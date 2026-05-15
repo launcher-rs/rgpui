@@ -2310,7 +2310,6 @@ dependencies = [
  "getrandom 0.3.4",
  "gpui_macros",
  "gpui_platform",
- "gpui_shared_string",
  "gpui_util",
  "gpui_web",
  "hdrhistogram",
@@ -2348,6 +2347,7 @@ dependencies = [
  "serde_json",
  "slotmap",
  "smallvec",
+ "smol_str",
  "spin 0.10.0",
  "stacksafe",
  "strum",
@@ -2482,15 +2482,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_shared_string"
-version = "0.1.0"
-dependencies = [
- "schemars",
- "serde",
- "smol_str",
-]
-
-[[package]]
 name = "gpui_tokio"
 version = "0.1.0"
 dependencies = [
@@ -2567,6 +2558,7 @@ dependencies = [
  "etagere",
  "futures",
  "gpui",
+ "gpui_util",
  "image",
  "itertools 0.14.0",
  "log",

@@ -8,7 +8,6 @@ members = [
     "crates/gpui_windows",
     "crates/gpui_web",
     "crates/gpui_platform",
-    "crates/gpui_shared_string",
     "crates/gpui_tokio",
     "crates/gpui_util",
     "crates/gpui_wgpu",
@@ -38,7 +37,6 @@ publish = false
 [workspace.dependencies]
 # ---- 内部 crates ----
 gpui = { path = "crates/gpui", default-features = false }
-gpui_shared_string = { path = "crates/gpui_shared_string" }
 gpui_linux = { path = "crates/gpui_linux", default-features = false }
 gpui_macos = { path = "crates/gpui_macos", default-features = false }
 gpui_macros = { path = "crates/gpui_macros" }

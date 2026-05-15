@@ -1,3 +1,8 @@
+//! GPUI 共享字符串类型。
+//!
+//! 提供 `SharedString` 类型，这是一个不可变的字符串，可以在 GPUI 任务中廉价地克隆。
+//! 本质上是 `Arc<str>` 和 `&'static str` 的抽象，当前由 `SmolStr` 支持。
+
 use std::{
     borrow::{Borrow, Cow},
     sync::Arc,
@@ -7,9 +12,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
-/// A shared string is an immutable string that can be cheaply cloned in GPUI
-/// tasks. Essentially an abstraction over an `Arc<str>` and `&'static str`,
-/// currently backed by a [`SmolStr`].
+/// 共享字符串是 GPUI 任务中可以廉价克隆的不可变字符串。
+/// 本质上是 `Arc<str>` 和 `&'static str` 的抽象，
+/// 当前由 [`SmolStr`] 支持。
 #[derive(Eq, PartialEq, PartialOrd, Ord, Hash, Clone)]
 pub struct SharedString(SmolStr);
 
@@ -22,17 +27,17 @@ impl std::ops::Deref for SharedString {
 }
 
 impl SharedString {
-    /// Creates a static [`SharedString`] from a `&'static str`.
+    /// 从 `&'static str` 创建静态 [`SharedString`]。
     pub const fn new_static(str: &'static str) -> Self {
         Self(SmolStr::new_static(str))
     }
 
-    /// Creates a [`SharedString`].
+    /// 创建 [`SharedString`]。
     pub fn new(str: impl AsRef<str>) -> Self {
         SharedString(SmolStr::new(str))
     }
 
-    /// Get a &str from the underlying string.
+    /// 从底层字符串获取 &str。
     pub fn as_str(&self) -> &str {
         &self.0
     }
