@@ -44,10 +44,9 @@ use std::{
     sync::Arc,
 };
 
-/// Implemented by types that participate in laying out and painting the contents of a window.
-/// Elements form a tree and are laid out according to web-based layout rules, as implemented by Taffy.
-/// You can create custom elements by implementing this trait, see the module-level documentation
-/// for more details.
+/// 实现此 trait 的类型将参与窗口内容的布局和绘制。
+/// 元素形成一棵树，并根据 Taffy 实现的基于 Web 的布局规则进行布局。
+/// 你可以通过实现此 trait 来创建自定义元素，详见模块级文档。
 pub trait Element: 'static + IntoElement {
     /// The type of state returned from [`Element::request_layout`]. A mutable reference to this state is subsequently
     /// provided to [`Element::prepaint`] and [`Element::paint`].
@@ -109,7 +108,10 @@ pub trait Element: 'static + IntoElement {
     }
 }
 
-/// Implemented by any type that can be converted into an element.
+/// 由任何可以转换为元素的类型实现。
+///
+/// 该 trait 是将其他类型（如字符串、组件等）
+/// 自动转换为元素的关键。
 pub trait IntoElement: Sized {
     /// The specific type of element into which the implementing type is converted.
     /// Useful for converting other types into elements automatically, like Strings
@@ -126,8 +128,8 @@ pub trait IntoElement: Sized {
 
 impl<T: IntoElement> FluentBuilder for T {}
 
-/// An object that can be drawn to the screen. This is the trait that distinguishes "views" from
-/// other entities. Views are `Entity`'s which `impl Render` and drawn to the screen.
+/// 可以被绘制到屏幕的对象。这是区分"视图"与其他实体的 trait。
+/// 视图是实现 `Render` 的 `Entity`，会被绘制到屏幕上。
 pub trait Render: 'static + Sized {
     /// Render this view into an element tree.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement;
@@ -151,8 +153,8 @@ pub trait RenderOnce: 'static {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement;
 }
 
-/// This is a helper trait to provide a uniform interface for constructing elements that
-/// can accept any number of any kind of child elements
+/// 此 trait 用于为任何实现 [`IntoElement`] 的类型提供 uniform 接口，
+/// 使其可以接受任意数量的任意类型的子元素。
 pub trait ParentElement {
     /// Extend this element's children with the given child elements.
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>);
@@ -286,7 +288,7 @@ impl<C: RenderOnce> IntoElement for Component<C> {
     }
 }
 
-/// A globally unique identifier for an element, used to track state across frames.
+/// 元素的全局唯一标识符，用于跨帧跟踪状态。
 #[derive(Deref, DerefMut, Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct GlobalElementId(pub(crate) Arc<[ElementId]>);
 
@@ -729,7 +731,7 @@ impl IntoElement for AnyElement {
     }
 }
 
-/// The empty element, which renders nothing.
+/// 空的元素，不渲染任何内容。
 pub struct Empty;
 
 impl IntoElement for Empty {

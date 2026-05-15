@@ -76,7 +76,7 @@ pub const DEFAULT_ADDITIONAL_WINDOW_SIZE: Size<Pixels> = Size {
     height: Pixels(750.),
 };
 
-/// Represents the two different phases when dispatching events.
+/// 表示事件分发时的两个不同阶段。
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DispatchPhase {
     /// After the capture phase comes the bubble phase, in which mouse event listeners are
@@ -347,7 +347,7 @@ impl FocusId {
     }
 }
 
-/// A handle which can be used to track and manipulate the focused element in a window.
+/// 用于跟踪和操控窗口中聚焦元素的句柄。
 pub struct FocusHandle {
     pub(crate) id: FocusId,
     handles: Arc<FocusMap>,
@@ -520,8 +520,7 @@ impl PartialEq<WeakFocusHandle> for FocusHandle {
     }
 }
 
-/// Focusable allows users of your view to easily
-/// focus it (using window.focus_view(cx, view))
+/// Focusable 允许用户通过 `window.focus_view(cx, view)` 来聚焦你的视图。
 pub trait Focusable: 'static {
     /// Returns the focus handle associated with this view.
     fn focus_handle(&self, cx: &App) -> FocusHandle;
@@ -533,13 +532,14 @@ impl<V: Focusable> Focusable for Entity<V> {
     }
 }
 
-/// ManagedView is a view (like a Modal, Popover, Menu, etc.)
-/// where the lifecycle of the view is handled by another view.
+/// ManagedView 是由另一个视图管理生命周期的视图
+/// （如 Modal、Popover、Menu 等）。
 pub trait ManagedView: Focusable + EventEmitter<DismissEvent> + Render {}
 
 impl<M: Focusable + EventEmitter<DismissEvent> + Render> ManagedView for M {}
 
-/// Emitted by implementers of [`ManagedView`] to indicate the view should be dismissed, such as when a view is presented as a modal.
+/// 由 [`ManagedView`] 的实现者发出，表示视图应该被解散，
+/// 例如当视图作为模态框呈现时。
 pub struct DismissEvent;
 
 type FrameCallback = Box<dyn FnOnce(&mut Window, &mut App)>;
@@ -559,7 +559,7 @@ pub(crate) struct HitTest {
     pub(crate) hover_hitbox_count: usize,
 }
 
-/// A type of window control area that corresponds to the platform window.
+/// 对应于平台窗口的窗口控制区域类型。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WindowControlArea {
     /// An area that allows dragging of the platform window.
@@ -640,8 +640,8 @@ impl HitboxId {
     }
 }
 
-/// A rectangular region that potentially blocks hitboxes inserted prior.
-/// See [Window::insert_hitbox] for more details.
+/// 一个矩形的命中区域，可能会阻止先插入的 hitbox。
+/// 详见 [Window::insert_hitbox]。
 #[derive(Clone, Debug, Deref)]
 pub struct Hitbox {
     /// A unique identifier for the hitbox.
@@ -687,7 +687,7 @@ impl Hitbox {
     }
 }
 
-/// How the hitbox affects mouse behavior.
+/// hitbox 影响鼠标行为的方式。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum HitboxBehavior {
     /// Normal hitbox mouse behavior, doesn't affect mouse handling for other hitboxes.

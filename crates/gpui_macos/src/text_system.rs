@@ -9,7 +9,7 @@ use core_foundation::{
     string::CFString,
 };
 use core_graphics::{
-    base::{CGGlyph, kCGImageAlphaPremultipliedLast},
+    base::{kCGImageAlphaPremultipliedLast, CGGlyph},
     color_space::CGColorSpace,
     context::{CGContext, CGTextDrawingMode},
     display::CGPoint,
@@ -18,8 +18,8 @@ use core_text::{
     font::CTFont,
     font_collection::CTFontCollectionRef,
     font_descriptor::{
-        CTFontDescriptor, kCTFontSlantTrait, kCTFontSymbolicTrait, kCTFontWeightTrait,
-        kCTFontWidthTrait,
+        kCTFontSlantTrait, kCTFontSymbolicTrait, kCTFontWeightTrait, kCTFontWidthTrait,
+        CTFontDescriptor,
     },
     line::CTLine,
     string_attributes::kCTFontAttributeName,
@@ -34,10 +34,10 @@ use font_kit::{
     sources::mem::MemSource,
 };
 use gpui::{
-    Bounds, DevicePixels, Font, FontFallbacks, FontFeatures, FontId, FontMetrics, FontRun,
-    FontStyle, FontWeight, GlyphId, Hsla, LineLayout, Pixels, PlatformTextSystem,
-    RenderGlyphParams, Result, Rgba, SUBPIXEL_VARIANTS_X, ShapedGlyph, ShapedRun, SharedString,
-    Size, TextRenderingMode, point, px, size, swap_rgba_pa_to_bgra,
+    point, px, size, swap_rgba_pa_to_bgra, Bounds, DevicePixels, Font, FontFallbacks, FontFeatures,
+    FontId, FontMetrics, FontRun, FontStyle, FontWeight, GlyphId, Hsla, LineLayout, Pixels,
+    PlatformTextSystem, RenderGlyphParams, Result, Rgba, ShapedGlyph, ShapedRun, SharedString,
+    Size, TextRenderingMode, SUBPIXEL_VARIANTS_X,
 };
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use pathfinder_geometry::{
@@ -53,7 +53,7 @@ use crate::open_type::apply_features_and_fallbacks;
 #[allow(non_upper_case_globals)]
 const kCGImageAlphaOnly: u32 = 7;
 
-/// macOS text system using CoreText for font shaping.
+/// macOS 文本系统，使用 CoreText 进行字体塑形和渲染。
 pub struct MacTextSystem(RwLock<MacTextSystemState>);
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -74,7 +74,7 @@ struct MacTextSystemState {
 }
 
 impl MacTextSystem {
-    /// Create a new MacTextSystem.
+    /// 创建新的 MacTextSystem 实例。
     pub fn new() -> Self {
         Self(RwLock::new(MacTextSystemState {
             memory_source: MemSource::empty(),
@@ -233,7 +233,7 @@ fn font_smoothing_allowed_by_user() -> bool {
     static ALLOWED: OnceLock<bool> = OnceLock::new();
     *ALLOWED.get_or_init(|| {
         use core_foundation_sys::preferences::{
-            CFPreferencesCopyAppValue, kCFPreferencesCurrentApplication,
+            kCFPreferencesCurrentApplication, CFPreferencesCopyAppValue,
         };
 
         let key = CFString::new("AppleFontSmoothing");
@@ -519,7 +519,7 @@ impl MacTextSystemState {
                 (text_run, text) = text.split_at(run.len);
 
                 let utf16_start = string.char_len(); // insert at end of string
-                // note: replace_str may silently ignore codepoints it dislikes (e.g., BOM at start of string)
+                                                     // note: replace_str may silently ignore codepoints it dislikes (e.g., BOM at start of string)
                 string.replace_str(&CFString::new(text_run), CFRange::init(utf16_start, 0));
                 let utf16_end = string.char_len();
 
@@ -707,7 +707,7 @@ mod lenient_font_attributes {
         string::{CFString, CFStringRef},
     };
     use core_text::font_descriptor::{
-        CTFontDescriptor, CTFontDescriptorCopyAttribute, kCTFontFamilyNameAttribute,
+        kCTFontFamilyNameAttribute, CTFontDescriptor, CTFontDescriptorCopyAttribute,
     };
 
     pub fn family_name(descriptor: &CTFontDescriptor) -> Option<String> {
@@ -743,7 +743,7 @@ mod lenient_font_attributes {
 #[cfg(test)]
 mod tests {
     use crate::MacTextSystem;
-    use gpui::{FontRun, GlyphId, PlatformTextSystem, font, px};
+    use gpui::{font, px, FontRun, GlyphId, PlatformTextSystem};
 
     #[test]
     fn test_layout_line_bom_char() {
@@ -766,7 +766,7 @@ mod tests {
         assert_eq!(layout.runs.len(), 1);
         assert_eq!(layout.runs[0].glyphs.len(), 2);
         assert_eq!(layout.runs[0].glyphs[0].id, GlyphId(68u32)); // a
-        // There's no glyph for \u{feff}
+                                                                 // There's no glyph for \u{feff}
         assert_eq!(layout.runs[0].glyphs[1].id, GlyphId(69u32)); // b
 
         let line = "\u{feff}ab";

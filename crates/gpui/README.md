@@ -1,66 +1,160 @@
-# Welcome to GPUI!
+# GPUI
 
-GPUI is a hybrid immediate and retained mode, GPU accelerated, UI framework
-for Rust, designed to support a wide variety of applications.
+GPUI 是一个混合即时/保留模式、GPU 加速的 Rust UI 框架，旨在支持广泛的应用程序开发。它是 [Zed 代码编辑器](https://github.com/zed-industries/zed) 的核心 UI 引擎。
 
-## Getting Started
+## 主要特性
 
-GPUI is still in active development as we work on the Zed code editor, and is still pre-1.0. There will often be breaking changes between versions. You'll also need to use the latest version of stable Rust and be on macOS or Linux. Add the following to your `Cargo.toml`:
+- **混合即时/保留模式**：结合即时模式的高性能与保留模式的状态管理优势
+- **基于 Entity 的状态管理**：通过智能指针安全地在应用各部分之间共享和通信状态
+- **声明式视图（View）**：实现 `Render` trait 即可构建声明式 UI，每帧自动刷新
+- **命令式元素（Element）**：底层构建块，提供对渲染和布局的完全控制
+- **GPU 加速渲染**：利用 Metal/Vulkan 进行高性能图形渲染
+- **Taffy 布局引擎**：支持 Flexbox 和 Grid 布局
+- **丰富的文本系统**：支持字体渲染、文本布局和高亮
+- **输入处理与快捷键**：完整的键盘/鼠标事件处理和可配置的键位映射
+- **动画系统**：内置动画支持
+- **跨平台**：支持 macOS、Linux 和 Windows
+- **Tailwind 风格 API**：通过 `div` 元素提供熟悉的样式链式调用
 
-```toml
-gpui = { version = "*" }
+## 快速开始
+
+GPUI 目前处于活跃开发阶段（pre-1.0），版本之间可能会有破坏性变更。请确保使用最新稳定版 Rust。
+
+### 安装依赖
+
+**macOS**：
+```sh
+xcode-select --install
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 ```
 
-- [Ownership and data flow](_ownership_and_data_flow)
+**Linux**：需要安装相应的图形库依赖（如 Wayland/X11 开发包）。
 
-Everything in GPUI starts with an `Application`. You can create one with `Application::new()`, and kick off your application by passing a callback to `Application::run()`. Inside this callback, you can create a new window with `App::open_window()`, and register your first root view. See [gpui.rs](https://www.gpui.rs/) for a complete example.
+### 添加依赖
 
-### Dependencies
+在 `Cargo.toml` 中添加：
 
-GPUI has various system dependencies that it needs in order to work.
+```toml
+[dependencies]
+gpui = "0.2"
+```
 
-#### macOS
+### 最小示例
 
-On macOS, GPUI uses Metal for rendering. In order to use Metal, you need to do the following:
+```rust
+use gpui::*;
 
-- Install [Xcode](https://apps.apple.com/us/app/xcode/id497799835?mt=12) from the macOS App Store, or from the [Apple Developer](https://developer.apple.com/download/all/) website. Note this requires a developer account.
+struct HelloWorld;
 
-> Ensure you launch Xcode after installing, and install the macOS components, which is the default option.
+impl Render for HelloWorld {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .justify_center()
+            .size_full()
+            .child("Hello, GPUI!")
+    }
+}
 
-- Install [Xcode command line tools](https://developer.apple.com/xcode/resources/)
+fn main() {
+    App::new().run(|cx: &mut App| {
+        cx.open_window(WindowOptions::default(), |window, cx| {
+            cx.new(|cx| HelloWorld)
+        });
+    });
+}
+```
 
-  ```sh
-  xcode-select --install
-  ```
+更多示例请查看 [examples 目录](../examples/) 或运行：
 
-- Ensure that the Xcode command line tools are using your newly installed copy of Xcode:
+```sh
+cargo run -p gpui --example hello_world
+```
 
-  ```sh
-  sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
-  ```
+## 架构概述
 
-## The Big Picture
+GPUI 提供三种不同层次的抽象，以满足不同场景的需求：
 
-GPUI offers three different [registers](<https://en.wikipedia.org/wiki/Register_(sociolinguistics)>) depending on your needs:
+### 1. Entity — 状态管理
 
-- State management and communication with `Entity`'s. Whenever you need to store application state that communicates between different parts of your application, you'll want to use GPUI's entities. Entities are owned by GPUI and are only accessible through an owned smart pointer similar to an `Rc`. See the `app::context` module for more information.
+Entity 是 GPUI 的状态容器，由框架统一管理生命周期。通过 `Entity<T>` 智能指针访问，类似 `Rc`，但支持跨组件通信和响应式更新。
 
-- High level, declarative UI with views. All UI in GPUI starts with a view. A view is simply an `Entity` that can be rendered, by implementing the `Render` trait. At the start of each frame, GPUI will call this render method on the root view of a given window. Views build a tree of `elements`, lay them out and style them with a tailwind-style API, and then give them to GPUI to turn into pixels. See the `div` element for an all purpose swiss-army knife of rendering.
+```rust
+// 创建 Entity
+let counter = cx.new(|cx| Counter { value: 0 });
 
-- Low level, imperative UI with Elements. Elements are the building blocks of UI in GPUI, and they provide a nice wrapper around an imperative API that provides as much flexibility and control as you need. Elements have total control over how they and their child elements are rendered and can be used for making efficient views into large lists, implement custom layouting for a code editor, and anything else you can think of. See the `element` module for more information.
+// 更新 Entity
+cx.update_entity(&counter, |counter, cx| {
+    counter.value += 1;
+});
+```
 
-Each of these registers has one or more corresponding contexts that can be accessed from all GPUI services. This context is your main interface to GPUI, and is used extensively throughout the framework.
+### 2. View — 声明式 UI
 
-## Other Resources
+View 是可渲染的 Entity，通过实现 `Render` trait 定义 UI 结构。每帧开始时 GPUI 会调用根 View 的 `render` 方法，构建元素树。
 
-In addition to the systems above, GPUI provides a range of smaller services that are useful for building complex applications:
+```rust
+impl Render for MyView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child("Title")
+            .child(Button::new("click_me", "Click me"))
+    }
+}
+```
 
-- Actions are user-defined structs that are used for converting keystrokes into logical operations in your UI. Use this for implementing keyboard shortcuts, such as cmd-q. See the `action` module for more information.
+### 3. Element — 命令式 UI
 
-- Platform services, such as `quit the app` or `open a URL` are available as methods on the `app::App`.
+Element 是 UI 的底层构建块，提供对布局、绘制和事件处理的完全控制。适合实现高性能列表、自定义编辑器等场景。
 
-- An async executor that is integrated with the platform's event loop. See the `executor` module for more information.,
+## 核心概念
 
-- The `[gpui::test]` macro provides a convenient way to write tests for your GPUI applications. Tests also have their own kind of context, a `TestAppContext` which provides ways of simulating common platform input. See `app::test_context` and `test` modules for more details.
+| 概念 | 说明 |
+|------|------|
+| `Application` | 应用入口点，管理全局状态和事件循环 |
+| `Window` | 窗口上下文，处理渲染、输入和布局 |
+| `Entity<T>` | 状态容器，由 GPUI 所有，通过智能指针访问 |
+| `View` | 可渲染的 Entity，实现 `Render` trait |
+| `Element` | UI 构建块，控制布局和绘制 |
+| `Context` | 上下文 trait，提供与 GPUI 交互的主要接口 |
+| `Action` | 用户定义的操作，用于将按键映射到逻辑操作 |
+| `Global` | 全局状态，在应用范围内共享 |
 
-Currently, the best way to learn about these APIs is to read the Zed source code or drop a question in the [Zed Discord](https://zed.dev/community-links). We're working on improving the documentation, creating more examples, and will be publishing more guides to GPUI on our [blog](https://zed.dev/blog).
+### 数据流
+
+```
+用户输入 → Action → Entity 更新 → View 重新渲染 → Element 树 → GPU 渲染
+```
+
+## 示例
+
+| 分类 | 示例 |
+|------|------|
+| 入门 | `hello_world`, `input`, `uniform_list` |
+| 布局与样式 | `grid_layout`, `opacity`, `shadow`, `text` |
+| 交互 | `drag_drop`, `scrollable`, `tab_stop`, `popover` |
+| 图像与动画 | `image`, `svg`, `gradient`, `animation` |
+| 窗口行为 | `set_menus`, `window_positioning`, `window_shadow` |
+
+完整示例列表请查看 [examples/README.md](../examples/README.md)。
+
+## 文档
+
+- [上下文系统](docs/contexts.md)
+- [按键分发](docs/key_dispatch.md)
+- [所有权与数据流](src/_ownership_and_data_flow.rs)
+
+## 许可证
+
+GPUI 采用 Apache-2.0 许可证。详见 [LICENSE](LICENSE-APACHE)。
+
+## 相关链接
+
+- [GitHub 仓库](https://github.com/zed-industries/zed)
+- [官方网站](https://gpui.rs)
+- [Zed Discord](https://zed.dev/community-links)
+- [Zed 博客](https://zed.dev/blog)

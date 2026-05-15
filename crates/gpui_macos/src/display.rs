@@ -8,23 +8,24 @@ use cocoa::{
 use core_foundation::base::CFRelease;
 use core_foundation::uuid::{CFUUIDGetUUIDBytes, CFUUIDRef};
 use core_graphics::display::{CGDirectDisplayID, CGDisplayBounds, CGGetActiveDisplayList};
-use gpui::{Bounds, DisplayId, Pixels, PlatformDisplay, point, px, size};
+use gpui::{point, px, size, Bounds, DisplayId, Pixels, PlatformDisplay};
 use objc::{msg_send, sel, sel_impl};
 use uuid::Uuid;
 
+/// macOS 显示器封装，包含 `CGDirectDisplayID`。
 #[derive(Debug)]
 pub(crate) struct MacDisplay(pub(crate) CGDirectDisplayID);
 
 unsafe impl Send for MacDisplay {}
 
 impl MacDisplay {
-    /// Get the screen with the given [`DisplayId`].
+    /// 根据 [`DisplayId`] 获取对应的显示器。
     pub fn find_by_id(id: DisplayId) -> Option<Self> {
         Self::all().find(|screen| screen.id() == id)
     }
 
-    /// Get the primary screen - the one with the menu bar, and whose bottom left
-    /// corner is at the origin of the AppKit coordinate system.
+    /// 获取主显示器——包含菜单栏的显示器，
+    /// 其左下角位于 AppKit 坐标系的原点。
     pub fn primary() -> Self {
         // Instead of iterating through all active systems displays via `all()` we use the first
         // NSScreen and gets its CGDirectDisplayID, because we can't be sure that `CGGetActiveDisplayList`
@@ -44,7 +45,7 @@ impl MacDisplay {
         }
     }
 
-    /// Obtains an iterator over all currently active system displays.
+    /// 获取当前所有活动显示器的迭代器。
     pub fn all() -> impl Iterator<Item = Self> {
         unsafe {
             // We're assuming there aren't more than 32 displays connected to the system.

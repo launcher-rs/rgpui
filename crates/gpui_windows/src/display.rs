@@ -1,9 +1,18 @@
+//! Windows 显示器管理
+//!
+//! 本模块处理 Windows 系统的显示器枚举和属性查询，包括：
+//! - 显示器枚举
+//! - 主显示器检测
+//! - DPI 缩放因子获取
+//! - 显示器边界和工作区域计算
+
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::rc::Rc;
 use util::ResultExt;
 use uuid::Uuid;
 use windows::{
+    core::*,
     Win32::{
         Foundation::*,
         Graphics::Gdi::*,
@@ -12,12 +21,18 @@ use windows::{
             WindowsAndMessaging::USER_DEFAULT_SCREEN_DPI,
         },
     },
-    core::*,
 };
 
 use crate::logical_point;
-use gpui::{Bounds, DevicePixels, DisplayId, Pixels, PlatformDisplay, point, size};
+use gpui::{point, size, Bounds, DevicePixels, DisplayId, Pixels, PlatformDisplay};
 
+/// Windows 显示器信息
+///
+/// 封装了 Windows 系统中单个显示器的所有相关信息，包括：
+/// - 显示器句柄和 ID
+/// - DPI 缩放因子
+/// - 逻辑和物理边界
+/// - 唯一标识符（UUID）
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct WindowsDisplay {
     pub handle: HMONITOR,
@@ -34,6 +49,7 @@ unsafe impl Send for WindowsDisplay {}
 unsafe impl Sync for WindowsDisplay {}
 
 impl WindowsDisplay {
+    /// 根据显示器 ID 创建显示器实例
     pub(crate) fn new(display_id: DisplayId) -> Option<Self> {
         let handle = HMONITOR(u64::from(display_id) as _);
         let info = get_monitor_info(handle).log_err()?;
@@ -74,10 +90,12 @@ impl WindowsDisplay {
         })
     }
 
+    /// 将显示器句柄转换为显示器 ID
     pub(crate) fn display_id_for_monitor(monitor: HMONITOR) -> DisplayId {
         DisplayId::new(monitor.0 as u64)
     }
 
+    /// 获取主显示器实例
     pub fn primary_monitor() -> Option<Self> {
         // https://devblogs.microsoft.com/oldnewthing/20070809-00/?p=25643
         const POINT_ZERO: POINT = POINT { x: 0, y: 0 };
@@ -93,6 +111,7 @@ impl WindowsDisplay {
     }
 
     /// Check if the center point of given bounds is inside this monitor
+    /// 检查给定边界的中心点是否在此显示器内
     pub fn check_given_bounds(&self, bounds: Bounds<Pixels>) -> bool {
         let center = bounds.center();
         let center = POINT {
@@ -110,6 +129,7 @@ impl WindowsDisplay {
         }
     }
 
+    /// 获取所有可用显示器列表
     pub fn displays() -> Vec<Rc<dyn PlatformDisplay>> {
         available_monitors()
             .into_iter()
@@ -122,6 +142,7 @@ impl WindowsDisplay {
             .collect()
     }
 
+    /// 获取显示器的物理边界（设备像素）
     pub fn physical_bounds(&self) -> Bounds<DevicePixels> {
         self.physical_bounds
     }

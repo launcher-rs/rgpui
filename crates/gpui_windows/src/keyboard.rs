@@ -1,11 +1,20 @@
+//! Windows 键盘布局映射器
+//!
+//! 本模块处理 Windows 键盘布局和按键映射，包括：
+//! - 键盘布局检测和名称获取
+//! - 虚拟键码到字符的转换
+//! - 快捷键组合映射
+//! - 支持不同键盘布局的按键等价物
+
 use anyhow::Result;
 use collections::HashMap;
 use windows::Win32::UI::{
     Input::KeyboardAndMouse::{
-        GetKeyboardLayoutNameW, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC, MapVirtualKeyW, ToUnicode,
+        GetKeyboardLayoutNameW, MapVirtualKeyW, ToUnicode, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC,
         VIRTUAL_KEY, VK_0, VK_1, VK_2, VK_3, VK_4, VK_5, VK_6, VK_7, VK_8, VK_9, VK_ABNT_C1,
-        VK_CONTROL, VK_MENU, VK_OEM_1, VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_5, VK_OEM_6, VK_OEM_7,
-        VK_OEM_8, VK_OEM_102, VK_OEM_COMMA, VK_OEM_MINUS, VK_OEM_PERIOD, VK_OEM_PLUS, VK_SHIFT,
+        VK_CONTROL, VK_MENU, VK_OEM_1, VK_OEM_102, VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_5,
+        VK_OEM_6, VK_OEM_7, VK_OEM_8, VK_OEM_COMMA, VK_OEM_MINUS, VK_OEM_PERIOD, VK_OEM_PLUS,
+        VK_SHIFT,
     },
     WindowsAndMessaging::KL_NAMELENGTH,
 };
@@ -14,11 +23,17 @@ use gpui::{
     KeybindingKeystroke, Keystroke, Modifiers, PlatformKeyboardLayout, PlatformKeyboardMapper,
 };
 
+/// Windows 键盘布局信息
+///
+/// 包含当前系统键盘布局的 ID 和显示名称
 pub(crate) struct WindowsKeyboardLayout {
     id: String,
     name: String,
 }
 
+/// Windows 键盘映射器
+///
+/// 负责将按键映射到对应的字符，支持普通键和 Shift 组合键的映射
 pub(crate) struct WindowsKeyboardMapper {
     key_to_vkey: HashMap<String, (u16, bool)>,
     vkey_to_key: HashMap<u16, String>,
@@ -145,6 +160,15 @@ impl WindowsKeyboardMapper {
     }
 }
 
+/// 根据虚拟键码、扫描码和修饰键状态获取按键字符串
+///
+/// # 参数
+/// * `vkey` - 虚拟键码
+/// * `scan_code` - 扫描码
+/// * `modifiers` - 修饰键状态（会被修改以反映实际的 Shift 状态）
+///
+/// # 返回
+/// 返回按键对应的字符串，如果需要转换为 Shift 组合键则会自动处理
 pub(crate) fn get_keystroke_key(
     vkey: VIRTUAL_KEY,
     scan_code: u32,
@@ -206,6 +230,19 @@ fn get_shifted_key(vkey: VIRTUAL_KEY, scan_code: u32) -> Option<String> {
     generate_key_char(vkey, scan_code, false, true, false)
 }
 
+/// 生成按键字符
+///
+/// 使用 Windows ToUnicode API 将虚拟键码转换为对应的字符
+///
+/// # 参数
+/// * `vkey` - 虚拟键码
+/// * `scan_code` - 扫描码
+/// * `control` - Control 键是否按下
+/// * `shift` - Shift 键是否按下
+/// * `alt` - Alt 键是否按下
+///
+/// # 返回
+/// 返回转换后的字符字符串，如果无法转换则返回 None
 pub(crate) fn generate_key_char(
     vkey: VIRTUAL_KEY,
     scan_code: u32,

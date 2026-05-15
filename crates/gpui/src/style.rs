@@ -5,11 +5,11 @@ use std::{
 };
 
 use crate::{
-    AbsoluteLength, App, Background, BackgroundTag, BorderStyle, Bounds, ContentMask, Corners,
-    CornersRefinement, CursorStyle, DefiniteLength, DevicePixels, Edges, EdgesRefinement, Font,
-    FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, Hsla, Length, Pixels, Point,
-    PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun, Window, black, phi,
-    point, quad, rems, size,
+    black, phi, point, quad, rems, size, AbsoluteLength, App, Background, BackgroundTag,
+    BorderStyle, Bounds, ContentMask, Corners, CornersRefinement, CursorStyle, DefiniteLength,
+    DevicePixels, Edges, EdgesRefinement, Font, FontFallbacks, FontFeatures, FontStyle, FontWeight,
+    GridLocation, Hsla, Length, Pixels, Point, PointRefinement, Rgba, SharedString, Size,
+    SizeRefinement, Styled, TextRun, Window,
 };
 use collections::HashSet;
 use refineable::Refineable;
@@ -25,7 +25,7 @@ pub struct DebugBelow;
 #[cfg(debug_assertions)]
 impl crate::Global for DebugBelow {}
 
-/// How to fit the image into the bounds of the element.
+/// 图像如何适应元素边界的方式。
 pub enum ObjectFit {
     /// The image will be stretched to fill the bounds of the element.
     Fill,
@@ -138,7 +138,7 @@ impl ObjectFit {
     }
 }
 
-/// The minimum size of a column or row in a grid layout
+/// 网格布局中列或行的最小尺寸
 #[derive(
     Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Default, JsonSchema, Serialize, Deserialize,
 )]
@@ -152,7 +152,7 @@ pub enum TemplateColumnMinSize {
     MaxContent,
 }
 
-/// A simplified representation of the grid-template-* value
+/// `grid-template-*` 值的简化表示
 #[derive(
     Copy,
     Clone,
@@ -174,7 +174,7 @@ pub struct GridTemplate {
     pub min_size: TemplateColumnMinSize,
 }
 
-/// The CSS styling that can be applied to an element via the `Styled` trait
+/// 可以通过 `Styled` trait 应用于元素的 CSS 样式
 #[derive(Clone, Refineable, Debug)]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Style {
@@ -330,7 +330,7 @@ impl StyleRefinement {
     }
 }
 
-/// The value of the visibility property, similar to the CSS property `visibility`
+/// 类似于 CSS `visibility` 属性的可见性值
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub enum Visibility {
     /// The element should be drawn as normal.
@@ -340,7 +340,7 @@ pub enum Visibility {
     Hidden,
 }
 
-/// The possible values of the box-shadow property
+/// box-shadow 属性的可能值
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct BoxShadow {
     /// What color should the shadow have?
@@ -353,7 +353,7 @@ pub struct BoxShadow {
     pub spread_radius: Pixels,
 }
 
-/// How to handle whitespace in text
+/// 如何处理文本中的空白字符
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum WhiteSpace {
     /// Normal line wrapping when text overflows the width of the element
@@ -363,7 +363,7 @@ pub enum WhiteSpace {
     Nowrap,
 }
 
-/// How to truncate text that overflows the width of the element
+/// 如何截断超出元素宽度的文本
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum TextOverflow {
     /// Truncate the text at the end when it doesn't fit, and represent this truncation by
@@ -375,7 +375,7 @@ pub enum TextOverflow {
     TruncateStart(SharedString),
 }
 
-/// How to align text within the element
+/// 如何对齐元素内的文本
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum TextAlign {
     /// Align the text to the left of the element
@@ -389,7 +389,7 @@ pub enum TextAlign {
     Right,
 }
 
-/// The properties that can be used to style text in GPUI
+/// 可用于在 GPUI 中设置文本样式的属性
 #[derive(Refineable, Clone, Debug, PartialEq)]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TextStyle {
@@ -531,8 +531,8 @@ impl TextStyle {
     }
 }
 
-/// A highlight style to apply, similar to a `TextStyle` except
-/// for a single font, uniformly sized and spaced text.
+/// 高亮样式，类似于 `TextStyle`，但适用于单一字体、
+/// 统一大小和间距的文本。
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct HighlightStyle {
     /// The color of the text
@@ -776,7 +776,7 @@ impl Default for Style {
     }
 }
 
-/// The properties that can be applied to an underline.
+/// 可以应用于下划线的属性。
 #[derive(
     Refineable, Copy, Clone, Default, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
 )]
@@ -791,7 +791,7 @@ pub struct UnderlineStyle {
     pub wavy: bool,
 }
 
-/// The properties that can be applied to a strikethrough.
+/// 可以应用于删除线的属性。
 #[derive(
     Refineable, Copy, Clone, Default, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
 )]
@@ -803,7 +803,7 @@ pub struct StrikethroughStyle {
     pub color: Option<Hsla>,
 }
 
-/// The kinds of fill that can be applied to a shape.
+/// 可以应用于形状的填充类型。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub enum Fill {
     /// A solid color fill.

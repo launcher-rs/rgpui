@@ -47,6 +47,10 @@ pub(crate) const KEYRING_LABEL: &str = "zed-github-account";
 const FILE_PICKER_PORTAL_MISSING: &str =
     "Couldn't open file picker due to missing xdg-desktop-portal implementation.";
 
+/// Linux 客户端 trait，定义各显示服务器后端需实现的接口。
+///
+/// 该 trait 封装了窗口创建、显示管理、剪贴板操作、光标控制
+/// 等平台相关功能，WaylandClient 和 X11Client 均实现此 trait。
 pub(crate) trait LinuxClient {
     fn compositor_name(&self) -> &'static str;
     fn with_common<R>(&self, f: impl FnOnce(&mut LinuxCommon) -> R) -> R;
@@ -102,6 +106,9 @@ pub(crate) trait LinuxClient {
     }
 }
 
+/// 平台事件处理器集合，包含各种应用级回调函数。
+///
+/// 用于注册 URL 打开、退出、重新打开、应用菜单等事件的回调。
 #[derive(Default)]
 pub(crate) struct PlatformHandlers {
     pub(crate) open_urls: Option<Box<dyn FnMut(Vec<String>)>>,
@@ -113,6 +120,10 @@ pub(crate) struct PlatformHandlers {
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
 }
 
+/// Linux 平台的公共状态和资源共享。
+///
+/// 包含后台/前台执行器、文本系统、外观设置、滚动条行为、
+/// 菜单和回调等跨后端共享的数据。
 pub(crate) struct LinuxCommon {
     pub(crate) background_executor: BackgroundExecutor,
     pub(crate) foreground_executor: ForegroundExecutor,
@@ -126,6 +137,17 @@ pub(crate) struct LinuxCommon {
 }
 
 impl LinuxCommon {
+    /// 创建新的 LinuxCommon 实例。
+    ///
+    /// 初始化事件循环信号、文本系统、调度器和执行器等核心组件。
+    ///
+    /// # 参数
+    ///
+    /// * `signal` - 事件循环控制信号
+    ///
+    /// # 返回值
+    ///
+    /// 返回 `(LinuxCommon, 优先级队列接收器)` 元组
     pub fn new(signal: LoopSignal) -> (Self, PriorityQueueCalloopReceiver<RunnableVariant>) {
         let (main_sender, main_receiver) = PriorityQueueCalloopReceiver::new();
 
@@ -156,6 +178,10 @@ impl LinuxCommon {
     }
 }
 
+/// Linux 平台包装结构，泛型参数 P 为具体的客户端实现。
+///
+/// 通过泛型设计，同一结构可适配 WaylandClient、X11Client
+/// 或 HeadlessClient 等不同后端。
 pub(crate) struct LinuxPlatform<P> {
     pub(crate) inner: P,
 }
@@ -643,6 +669,15 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn add_recent_document(&self, _path: &Path) {}
 }
 
+/// 在 Wayland/X11 环境下打开 URI 的内部辅助函数。
+///
+/// 优先尝试通过 `xdg-open` 打开链接，失败后回退到 ashpd 桌面门户。
+///
+/// # 参数
+///
+/// * `executor` - 后台执行器
+/// * `uri` - 要打开的 URI
+/// * `activation_token` - 可选的 XDG 激活令牌
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn open_uri_internal(
     executor: BackgroundExecutor,
@@ -696,6 +731,15 @@ pub(super) fn open_uri_internal(
     }
 }
 
+/// 在 Wayland/X11 环境下通过文件管理器显示指定路径的内部辅助函数。
+///
+/// 优先使用 ashpd 桌面门户打开目录，失败后回退到 `open` crate。
+///
+/// # 参数
+///
+/// * `executor` - 后台执行器
+/// * `path` - 要显示的文件或目录路径
+/// * `activation_token` - 可选的 XDG 激活令牌
 #[cfg(any(feature = "x11", feature = "wayland"))]
 pub(super) fn reveal_path_internal(
     executor: BackgroundExecutor,
@@ -723,12 +767,27 @@ pub(super) fn reveal_path_internal(
         .detach();
 }
 
+/// 判断两点之间的距离是否在双击判定范围内。
+///
+/// 使用 `DOUBLE_CLICK_DISTANCE` 常量进行比较。
+///
+/// # 参数
+///
+/// * `a` - 第一个点
+/// * `b` - 第二个点
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn is_within_click_distance(a: Point<Pixels>, b: Point<Pixels>) -> bool {
     let diff = a - b;
     diff.x.abs() <= DOUBLE_CLICK_DISTANCE && diff.y.abs() <= DOUBLE_CLICK_DISTANCE
 }
 
+/// 根据当前区域设置获取 XKB compose 状态。
+///
+/// 尝试从 `LC_CTYPE` 环境变量获取区域设置，失败则使用 "C" 作为回退。
+///
+/// # 参数
+///
+/// * `cx` - XKB 上下文
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn get_xkb_compose_state(cx: &xkb::Context) -> Option<xkb::compose::State> {
     let mut locales = Vec::default();
@@ -751,6 +810,15 @@ pub(super) fn get_xkb_compose_state(cx: &xkb::Context) -> Option<xkb::compose::S
     state
 }
 
+/// 从文件描述符中读取数据的辅助函数。
+///
+/// # 安全性
+///
+/// 此函数为 unsafe，调用者需确保 `fd` 是有效的且未被其他代码持有。
+///
+/// # 参数
+///
+/// * `fd` - 文件描述符
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) unsafe fn read_fd(fd: filedescriptor::FileDescriptor) -> Result<Vec<u8>> {
     let mut file = unsafe { File::from_raw_fd(fd.into_raw_fd()) };
@@ -759,9 +827,17 @@ pub(super) unsafe fn read_fd(fd: filedescriptor::FileDescriptor) -> Result<Vec<u
     Ok(buffer)
 }
 
+/// 默认光标图标名称（X11 传统名称）。
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) const DEFAULT_CURSOR_ICON_NAME: &str = "left_ptr";
 
+/// 将 GPUI 光标样式映射为 X11/Wayland 光标图标名称列表。
+///
+/// 返回多个名称作为回退选项，基于 Chromium 的光标命名约定。
+///
+/// # 参数
+///
+/// * `style` - GPUI 光标样式
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn cursor_style_to_icon_names(style: CursorStyle) -> &'static [&'static str] {
     // Based on cursor names from chromium:
@@ -791,6 +867,13 @@ pub(super) fn cursor_style_to_icon_names(style: CursorStyle) -> &'static [&'stat
     }
 }
 
+/// 记录光标图标加载失败的警告信息。
+///
+/// 如果设置了 `XCURSOR_PATH` 环境变量，会在警告中提示其值。
+///
+/// # 参数
+///
+/// * `message` - 警告消息
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn log_cursor_icon_warning(message: impl std::fmt::Display) {
     if let Ok(xcursor_path) = env::var("XCURSOR_PATH") {
@@ -859,6 +942,16 @@ fn guess_ascii(keycode: Keycode, shift: bool) -> Option<char> {
     Some(c)
 }
 
+/// 根据 XKB 状态和按键码生成 GPUI 按键事件。
+///
+/// 将 XKB 按键符号映射为 GPUI 统一的 `Keystroke` 结构，
+/// 处理修饰键、特殊按键（方向键、功能键等）和字符键。
+///
+/// # 参数
+///
+/// * `state` - XKB 按键状态
+/// * `modifiers` - 当前修饰键状态
+/// * `keycode` - 按键码
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn keystroke_from_xkb(
     state: &State,
@@ -984,10 +1077,17 @@ pub(super) fn keystroke_from_xkb(
     }
 }
 
-/**
- * Returns which symbol the dead key represents
- * <https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values#dead_keycodes_for_linux>
- */
+/// 获取 XKB dead key 对应的底层符号。
+///
+/// Dead key 用于输入带附加符号的字符（如 é, ñ 等）。
+///
+/// # 参数
+///
+/// * `keysym` - XKB 按键符号
+///
+/// # 返回值
+///
+/// 返回 dead key 代表的符号字符串，若非 dead key 则返回 None
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub fn keystroke_underlying_dead_key(keysym: Keysym) -> Option<String> {
     match keysym {
@@ -1043,6 +1143,14 @@ pub fn keystroke_underlying_dead_key(keysym: Keysym) -> Option<String> {
         _ => None,
     }
 }
+/// 从 XKB 状态中提取修饰键状态。
+///
+/// 将 XKB 的 Shift、Alt、Ctrl、Logo（Super/Command）修饰键
+/// 映射为 GPUI 的 `Modifiers` 结构。
+///
+/// # 参数
+///
+/// * `keymap_state` - XKB 按键映射状态
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn modifiers_from_xkb(keymap_state: &State) -> gpui::Modifiers {
     let shift = keymap_state.mod_name_is_active(xkb::MOD_NAME_SHIFT, xkb::STATE_MODS_EFFECTIVE);
@@ -1058,15 +1166,25 @@ pub(super) fn modifiers_from_xkb(keymap_state: &State) -> gpui::Modifiers {
     }
 }
 
+/// 从 XKB 状态中提取 CapsLock 状态。
+///
+/// # 参数
+///
+/// * `keymap_state` - XKB 按键映射状态
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn capslock_from_xkb(keymap_state: &State) -> gpui::Capslock {
     let on = keymap_state.mod_name_is_active(xkb::MOD_NAME_CAPS, xkb::STATE_MODS_EFFECTIVE);
     gpui::Capslock { on }
 }
 
-/// Resolve a Linux `dev_t` to PCI vendor/device IDs via sysfs, returning a
-/// [`CompositorGpuHint`] that the GPU adapter selection code can use to
-/// prioritize the compositor's rendering device.
+/// 通过系统 sysfs 解析 Linux `dev_t` 获取合成器 GPU 的 PCI 供应商/设备 ID。
+///
+/// 返回的 `CompositorGpuHint` 可用于 GPU 适配器选择逻辑，
+/// 优先使用合成器的渲染设备。
+///
+/// # 参数
+///
+/// * `dev` - Linux 设备号
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<gpui_wgpu::CompositorGpuHint> {
     fn dev_major(dev: u64) -> u32 {

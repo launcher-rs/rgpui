@@ -1,12 +1,30 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{parse_macro_input, DeriveInput};
 
 use crate::get_simple_attribute_field;
 
+/// 为持有 `&mut App` 的结构体生成 `gpui::AppContext` 特质实现。
+///
+/// 该函数通过查找标记了 `#[app]` 属性的字段，将该字段作为代理，
+/// 将所有 `AppContext` 特质方法转发到该字段上。
+///
+/// 生成的实现包括：
+/// - `new()` - 创建新实体
+/// - `reserve_entity()` / `insert_entity()` - 预留和插入实体
+/// - `update_entity()` - 更新实体
+/// - `as_mut()` - 获取实体的可变引用
+/// - `read_entity()` - 读取实体
+/// - `update_window()` / `with_window()` - 更新窗口
+/// - `read_window()` - 读取窗口
+/// - `background_spawn()` - 在后台生成异步任务
+/// - `read_global()` - 读取全局状态
+///
+/// 如果未找到 `#[app]` 属性，则返回编译错误。
 pub fn derive_app_context(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
+    // 查找标记了 #[app] 属性的字段，如果未找到则返回编译错误
     let Some(app_variable) = get_simple_attribute_field(&ast, "app") else {
         return quote! {
             compile_error!("Derive must have an #[app] attribute to detect the &mut App field");

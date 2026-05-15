@@ -2,8 +2,31 @@ use crate::register_action::generate_register_action;
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
-use syn::{Data, DeriveInput, LitStr, Token, parse::ParseStream};
+use syn::{parse::ParseStream, Data, DeriveInput, LitStr, Token};
 
+/// 为类型生成 `gpui::Action` 特质实现的过程宏核心逻辑。
+///
+/// 该函数解析 `#[action(...)]` 属性，支持以下配置项：
+/// - `name` - 指定动作名称
+/// - `namespace` - 指定动作命名空间
+/// - `no_json` - 禁用 JSON 序列化
+/// - `no_register` - 禁用自动注册
+/// - `deprecated_aliases` - 已弃用的别名列表
+/// - `deprecated` - 弃用提示信息
+///
+/// 同时会收集类型的文档注释（`#[doc]` 属性），用于生成动作的文档说明。
+///
+/// # 生成的实现
+///
+/// 生成的 `Action` 特质实现包括：
+/// - `name()` / `name_for_type()` - 返回动作的全限定名称
+/// - `partial_eq()` - 动作相等性比较
+/// - `boxed_clone()` - 克隆动作
+/// - `build()` - 从 JSON 值构建动作（除非设置了 `no_json`）
+/// - `action_json_schema()` - 生成 JSON Schema
+/// - `deprecated_aliases()` - 返回已弃用别名列表
+/// - `deprecation_message()` - 返回弃用提示信息
+/// - `documentation()` - 返回文档说明
 pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as DeriveInput);
 
@@ -23,6 +46,7 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
     *  bar: bool // is bar considered an attribute
     }
     */
+    // 解析 #[action(...)] 属性中的各个配置项
     for attr in &input.attrs {
         if attr.path().is_ident("action") {
             attr.parse_nested_meta(|meta| {
@@ -83,6 +107,7 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
             })
             .unwrap_or_else(|e| panic!("in #[action] attribute: {}", e));
         } else if attr.path().is_ident("doc") {
+            // 收集文档注释，用于生成动作的文档说明
             use syn::{Expr::Lit, ExprLit, Lit::Str, Meta, MetaNameValue};
             if let Meta::NameValue(MetaNameValue {
                 value:
@@ -101,7 +126,10 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
         }
     }
 
+    // 如果未指定名称，则使用结构体名称
     let name = name_argument.unwrap_or_else(|| struct_name.to_string());
+
+    // 名称不能包含 "::"，应使用 namespace 属性代替
 
     if name.contains("::") {
         panic!(
@@ -110,13 +138,17 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
         );
     }
 
+    // 构建完整名称（包含命名空间）
     let full_name = if let Some(namespace) = namespace {
         format!("{namespace}::{name}")
     } else {
         name
     };
 
+    // 检查是否为单元结构体（无字段），单元结构体的 JSON 构建逻辑不同
     let is_unit_struct = matches!(&input.data, Data::Struct(data) if data.fields.is_empty());
+
+    // 根据 no_json 和是否为单元结构体生成不同的 build 函数体
 
     let build_fn_body = if no_json {
         let error_msg = format!("{} cannot be built from JSON", full_name);
@@ -127,12 +159,14 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
         quote! { Ok(Box::new(gpui::private::serde_json::from_value::<Self>(_value)?)) }
     };
 
+    // 生成 JSON Schema 函数体（单元结构体和 no_json 不生成 schema）
     let json_schema_fn_body = if no_json || is_unit_struct {
         quote! { None }
     } else {
         quote! { Some(<Self as gpui::private::schemars::JsonSchema>::json_schema(_generator)) }
     };
 
+    // 生成已弃用别名列表的函数体
     let deprecated_aliases_fn_body = if deprecated_aliases.is_empty() {
         quote! { &[] }
     } else {
@@ -140,12 +174,14 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
         quote! { &[#(#aliases),*] }
     };
 
+    // 生成弃用提示信息函数体
     let deprecation_fn_body = if let Some(message) = deprecated {
         quote! { Some(#message) }
     } else {
         quote! { None }
     };
 
+    // 生成文档说明函数体（如果有文档注释则返回，否则返回 None）
     let documentation_fn_body = if let Some(doc) = doc_str {
         let doc = doc.trim();
         quote! { Some(#doc) }
@@ -153,6 +189,7 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
         quote! { None }
     };
 
+    // 根据 no_register 决定是否生成动作注册代码
     let registration = if no_register {
         quote! {}
     } else {

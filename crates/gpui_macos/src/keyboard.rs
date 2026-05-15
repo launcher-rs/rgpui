@@ -10,11 +10,14 @@ use crate::{
     kTISPropertyLocalizedName,
 };
 
+/// macOS 键盘布局封装，通过 TIS (Text Input Source) API 获取当前布局信息。
 pub(crate) struct MacKeyboardLayout {
     id: String,
     name: String,
 }
 
+/// macOS 键盘映射器，处理不同键盘布局下的按键映射。
+/// 解决非 QWERTY 布局（如德语 QWERTZ、法语 AZERTY）下快捷键不可用的问题。
 pub(crate) struct MacKeyboardMapper {
     key_equivalents: Option<HashMap<char, char>>,
 }

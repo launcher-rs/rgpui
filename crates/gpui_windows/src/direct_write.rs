@@ -1,3 +1,12 @@
+//! DirectWrite 文本系统实现
+//!
+//! 本模块使用 Windows DirectWrite API 提供高质量文本渲染功能，包括：
+//! - 字体选择和加载
+//! - 文本布局计算
+//! - 字形光栅化（支持单色、亚像素、彩色 Emoji）
+//! - 字体回退机制
+//! - GPU 加速的彩色 Emoji 渲染
+
 use std::{
     borrow::Cow,
     ffi::{c_uint, c_void},
@@ -35,6 +44,9 @@ struct FontInfo {
     font_collection: IDWriteFontCollection1,
 }
 
+/// DirectWrite 文本系统，实现了 GPUI 的 `PlatformTextSystem` trait
+///
+/// 该结构体管理所有与文本渲染相关的操作，包括字体管理、文本布局和字形光栅化
 pub(crate) struct DirectWriteTextSystem {
     components: DirectWriteComponents,
     state: RwLock<DirectWriteState>,
@@ -163,6 +175,10 @@ impl GPUState {
 }
 
 impl DirectWriteTextSystem {
+    /// 创建新的 DirectWrite 文本系统
+    ///
+    /// # 参数
+    /// * `directx_devices` - DirectX 设备引用，用于 GPU 加速的字形渲染
     pub(crate) fn new(directx_devices: &DirectXDevices) -> Result<Self> {
         let factory: IDWriteFactory5 = unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)? };
         // The `IDWriteInMemoryFontFileLoader` here is supported starting from
@@ -218,6 +234,7 @@ impl DirectWriteTextSystem {
         })
     }
 
+    /// 处理 GPU 设备丢失事件，重新创建 GPU 相关的渲染状态
     pub(crate) fn handle_gpu_lost(&self, directx_devices: &DirectXDevices) -> Result<()> {
         self.state.write().handle_gpu_lost(directx_devices)
     }

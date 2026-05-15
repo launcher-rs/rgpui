@@ -30,6 +30,16 @@ use windows::{
 use crate::*;
 use gpui::*;
 
+/// Windows 平台实现，负责管理整个应用程序的生命周期
+///
+/// 该结构体实现了 GPUI 的 `Platform` trait，提供了以下功能：
+/// - 窗口创建和管理
+/// - 事件循环处理
+/// - 剪贴板操作
+/// - 系统对话框（文件打开/保存）
+/// - 显示器枚举
+/// - 键盘和鼠标输入处理
+/// - GPU 设备丢失恢复
 pub struct WindowsPlatform {
     inner: Rc<WindowsPlatformInner>,
     raw_window_handles: Arc<RwLock<SmallVec<[SafeHwnd; 4]>>>,
@@ -97,6 +107,13 @@ impl WindowsPlatformState {
 }
 
 impl WindowsPlatform {
+    /// 创建新的 Windows 平台实例
+    ///
+    /// # 参数
+    /// * `headless` - 如果为 true，则不初始化 DirectX 设备和文本系统，适用于无头模式
+    ///
+    /// # 返回
+    /// 返回初始化成功的 `WindowsPlatform` 实例，或初始化失败的错误
     pub fn new(headless: bool) -> Result<Self> {
         unsafe {
             OleInitialize(None).context("unable to initialize Windows OLE")?;
@@ -199,6 +216,13 @@ impl WindowsPlatform {
         })
     }
 
+    /// 根据窗口句柄查找对应的窗口内部对象
+    ///
+    /// # 参数
+    /// * `hwnd` - Windows 窗口句柄
+    ///
+    /// # 返回
+    /// 如果找到对应的窗口，返回其内部对象的引用计数指针
     pub(crate) fn window_from_hwnd(&self, hwnd: HWND) -> Option<Rc<WindowsWindowInner>> {
         self.raw_window_handles
             .read()
@@ -207,6 +231,12 @@ impl WindowsPlatform {
             .and_then(|hwnd| window_from_hwnd(hwnd.as_raw()))
     }
 
+    /// 向所有窗口发送消息
+    ///
+    /// # 参数
+    /// * `message` - 要发送的 Windows 消息 ID
+    /// * `wparam` - 消息的 wParam 参数
+    /// * `lparam` - 消息的 lParam 参数
     #[inline]
     fn post_message(&self, message: u32, wparam: WPARAM, lparam: LPARAM) {
         self.raw_window_handles
@@ -217,6 +247,9 @@ impl WindowsPlatform {
             });
     }
 
+    /// 生成窗口创建所需的信息
+    ///
+    /// 该方法收集平台级别共享的资源配置，用于传递给新创建的窗口
     fn generate_creation_info(&self) -> WindowCreationInfo {
         WindowCreationInfo {
             icon: self.icon,
@@ -282,6 +315,7 @@ impl WindowsPlatform {
         })
     }
 
+    /// 查找当前处于活动状态的窗口句柄
     fn find_current_active_window(&self) -> Option<HWND> {
         let active_window_hwnd = unsafe { GetActiveWindow() };
         if active_window_hwnd.is_invalid() {
@@ -294,6 +328,12 @@ impl WindowsPlatform {
             .map(|hwnd| hwnd.as_raw())
     }
 
+    /// 启动 VSync 同步线程
+    ///
+    /// 该线程负责：
+    /// - 等待垂直同步信号
+    /// - 检测 GPU 设备丢失状态
+    /// - 触发所有窗口的重绘
     fn begin_vsync_thread(&self) {
         let Some(directx_devices) = self.inner.state.directx_devices.borrow().clone() else {
             return;
@@ -1040,6 +1080,9 @@ impl Drop for WindowsPlatform {
     }
 }
 
+/// 窗口创建时需要的配置信息
+///
+/// 包含创建新窗口所需的所有共享资源和配置
 pub(crate) struct WindowCreationInfo {
     pub(crate) icon: HICON,
     pub(crate) executor: ForegroundExecutor,

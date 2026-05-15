@@ -124,8 +124,11 @@ pub use window::*;
 
 pub use pollster::block_on;
 
-/// The context trait, allows the different contexts in GPUI to be used
-/// interchangeably for certain operations.
+/// GPUI 中的上下文 trait，允许不同的上下文类型
+/// 在某些操作中可以互换使用。
+///
+/// 该 trait 提供了创建、更新和读取实体（Entity）的方法，
+/// 以及窗口操作和后台任务调度的功能。
 pub trait AppContext {
     /// Create a new entity in the app context.
     #[expect(
@@ -201,8 +204,8 @@ pub trait AppContext {
         G: Global;
 }
 
-/// Returned by [Context::reserve_entity] to later be passed to [Context::insert_entity].
-/// Allows you to obtain the [EntityId] for a entity before it is created.
+/// 由 [Context::reserve_entity] 返回，用于稍后传递给 [Context::insert_entity]。
+/// 允许你在实体创建之前获取其 [EntityId]。
 pub struct Reservation<T>(pub(crate) Slot<T>);
 
 impl<T: 'static> Reservation<T> {
@@ -212,8 +215,11 @@ impl<T: 'static> Reservation<T> {
     }
 }
 
-/// This trait is used for the different visual contexts in GPUI that
-/// require a window to be present.
+/// 用于 GPUI 中不同可视化上下境的 trait，
+/// 这些上下文需要窗口才能运行。
+///
+/// 该 trait 扩展了 `AppContext`，添加了窗口特定的操作，
+/// 如创建窗口实体、替换根视图等。
 pub trait VisualContext: AppContext {
     /// The result type for window operations.
     type Result<T>;
@@ -248,12 +254,14 @@ pub trait VisualContext: AppContext {
         V: Focusable;
 }
 
-/// A trait for tying together the types of a GPUI entity and the events it can
-/// emit.
+/// 用于绑定 GPUI 实体类型与其可发出的事件类型的 trait。
+///
+/// 实现此 trait 的实体可以通过上下文发出指定类型的事件，
+/// 其他组件可以订阅这些事件。
 pub trait EventEmitter<E: Any>: 'static {}
 
-/// A helper trait for auto-implementing certain methods on contexts that
-/// can be used interchangeably.
+/// 一个辅助 trait，用于在可以互换使用的上下文上
+/// 自动实现某些方法。
 pub trait BorrowAppContext {
     /// Set a global value on the context.
     fn set_global<T: Global>(&mut self, global: T);
@@ -295,7 +303,10 @@ where
     }
 }
 
-/// Information about the GPU GPUI is running on.
+/// 关于 GPUI 运行所在的 GPU 的信息。
+///
+/// 包含 GPU 是否为软件模拟、设备名称、
+/// 驱动程序名称和驱动程序详细信息。
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct GpuSpecs {
     /// Whether the GPU is really a fake (like `llvmpipe`) running on the CPU.

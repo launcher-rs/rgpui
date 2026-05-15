@@ -1,3 +1,11 @@
+//! Windows 消息事件处理
+//!
+//! 本模块处理所有 Windows 窗口消息事件，包括：
+//! - 鼠标事件（点击、移动、滚轮）
+//! - 键盘事件（按键、IME 输入）
+//! - 窗口事件（大小变化、移动、DPI 变化）
+//! - 自定义 GPUI 消息
+
 use std::{rc::Rc, sync::atomic::Ordering};
 
 use ::util::ResultExt;
@@ -20,13 +28,21 @@ use windows::{
 use crate::*;
 use gpui::*;
 
+/// 自定义消息：光标样式改变
 pub(crate) const WM_GPUI_CURSOR_STYLE_CHANGED: u32 = WM_USER + 1;
+/// 自定义消息：关闭一个窗口
 pub(crate) const WM_GPUI_CLOSE_ONE_WINDOW: u32 = WM_USER + 2;
+/// 自定义消息：主线程任务已分发
 pub(crate) const WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD: u32 = WM_USER + 3;
+/// 自定义消息：停靠菜单操作
 pub(crate) const WM_GPUI_DOCK_MENU_ACTION: u32 = WM_USER + 4;
+/// 自定义消息：强制更新窗口
 pub(crate) const WM_GPUI_FORCE_UPDATE_WINDOW: u32 = WM_USER + 5;
+/// 自定义消息：键盘布局改变
 pub(crate) const WM_GPUI_KEYBOARD_LAYOUT_CHANGED: u32 = WM_USER + 6;
+/// 自定义消息：GPU 设备丢失
 pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
+/// 自定义消息：按键按下（用于快捷键加速）
 pub(crate) const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;

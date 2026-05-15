@@ -2,16 +2,23 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{
-    Token, Visibility, braced,
+    braced,
     parse::{Parse, ParseStream, Result},
-    parse_macro_input,
+    parse_macro_input, Token, Visibility,
 };
 
+/// 样式宏的输入结构体，用于解析样式方法的可见性配置。
+///
+/// 该结构体存储了生成样式方法时应使用的可见性修饰符（如 `pub`、`pub(crate)` 等）。
 #[derive(Debug)]
 struct StyleableMacroInput {
     method_visibility: Visibility,
 }
 
+/// 为 `StyleableMacroInput` 实现语法解析。
+///
+/// 解析格式为 `{ visibility: <visibility> }` 的输入，
+/// 如果输入为空或不包含可见性配置，则使用继承可见性（私有）。
 impl Parse for StyleableMacroInput {
     fn parse(input: ParseStream) -> Result<Self> {
         if !input.peek(syn::token::Brace) {
@@ -37,6 +44,9 @@ impl Parse for StyleableMacroInput {
     }
 }
 
+/// 生成样式辅助函数的过程宏入口。
+///
+/// 该宏由 GPUI 内部使用，生成边距、内边距、圆角等样式属性的基础辅助方法。
 pub fn style_helpers(input: TokenStream) -> TokenStream {
     let _ = parse_macro_input!(input as StyleableMacroInput);
     let methods = generate_methods();
@@ -47,6 +57,9 @@ pub fn style_helpers(input: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// 生成可见性样式方法的过程宏入口。
+///
+/// 生成 `visible()` 和 `invisible()` 方法，用于控制元素的可见性。
 pub fn visibility_style_methods(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as StyleableMacroInput);
     let visibility = input.method_visibility;
@@ -69,6 +82,9 @@ pub fn visibility_style_methods(input: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// 生成外边距（margin）样式方法的过程宏入口。
+///
+/// 生成 `m()`、`mt()`、`mb()`、`mx()`、`my()`、`ml()`、`mr()` 等方法。
 pub fn margin_style_methods(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as StyleableMacroInput);
     let methods = generate_box_style_methods(
@@ -83,6 +99,9 @@ pub fn margin_style_methods(input: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// 生成内边距（padding）样式方法的过程宏入口。
+///
+/// 生成 `p()`、`pt()`、`pb()`、`px()`、`py()`、`pl()`、`pr()` 等方法。
 pub fn padding_style_methods(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as StyleableMacroInput);
     let methods = generate_box_style_methods(
@@ -97,6 +116,9 @@ pub fn padding_style_methods(input: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// 生成定位（position）样式方法的过程宏入口。
+///
+/// 生成 `relative()`、`absolute()` 以及 `inset()`、`top()`、`bottom()`、`left()`、`right()` 等方法。
 pub fn position_style_methods(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as StyleableMacroInput);
     let visibility = input.method_visibility;
@@ -126,6 +148,9 @@ pub fn position_style_methods(input: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// 生成溢出（overflow）样式方法的过程宏入口。
+///
+/// 生成 `overflow_hidden()`、`overflow_x_hidden()`、`overflow_y_hidden()` 等方法。
 pub fn overflow_style_methods(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as StyleableMacroInput);
     let visibility = input.method_visibility;
@@ -156,6 +181,10 @@ pub fn overflow_style_methods(input: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// 生成光标（cursor）样式方法的过程宏入口。
+///
+/// 生成 `cursor()` 以及 `cursor_default()`、`cursor_pointer()`、`cursor_text()` 等
+/// 各种光标样式方法。
 pub fn cursor_style_methods(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as StyleableMacroInput);
     let visibility = input.method_visibility;
@@ -332,6 +361,10 @@ pub fn cursor_style_methods(input: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// 生成边框（border）样式方法的过程宏入口。
+///
+/// 生成 `border_color()` 以及 `border()`、`border_t()`、`border_b()`、`border_r()`、
+/// `border_l()`、`border_x()`、`border_y()` 等方法。
 pub fn border_style_methods(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as StyleableMacroInput);
     let visibility = input.method_visibility;
@@ -381,6 +414,10 @@ pub fn border_style_methods(input: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// 生成盒子阴影（box shadow）样式方法的过程宏入口。
+///
+/// 生成 `shadow()`、`shadow_none()` 以及 `shadow_2xs()`、`shadow_xs()`、`shadow_sm()`、
+/// `shadow_md()`、`shadow_lg()`、`shadow_xl()`、`shadow_2xl()` 等预定义阴影方法。
 pub fn box_shadow_style_methods(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as StyleableMacroInput);
     let visibility = input.method_visibility;
@@ -540,6 +577,9 @@ pub fn box_shadow_style_methods(input: TokenStream) -> TokenStream {
     output.into()
 }
 
+/// 盒子样式前缀配置结构体。
+///
+/// 用于定义样式方法的前缀（如 `m`、`mt`、`p` 等），以及对应的字段映射和文档说明。
 struct BoxStylePrefix {
     prefix: &'static str,
     auto_allowed: bool,
@@ -547,36 +587,57 @@ struct BoxStylePrefix {
     doc_string_prefix: &'static str,
 }
 
+/// 盒子样式后缀配置结构体。
+///
+/// 用于定义样式值的后缀（如 `0`、`1`、`2`、`auto`、`full` 等），
+/// 以及对应的长度标记和文档说明。
 struct BoxStyleSuffix {
     suffix: &'static str,
     length_tokens: TokenStream2,
     doc_string_suffix: &'static str,
 }
 
+/// 圆角样式前缀配置结构体。
+///
+/// 用于定义圆角样式方法的前缀（如 `rounded`、`rounded_t`、`rounded_tl` 等）。
 struct CornerStylePrefix {
     prefix: &'static str,
     fields: Vec<TokenStream2>,
     doc_string_prefix: &'static str,
 }
 
+/// 圆角样式后缀配置结构体。
+///
+/// 用于定义圆角值的后缀（如 `none`、`xs`、`sm`、`md`、`lg`、`full` 等）。
 struct CornerStyleSuffix {
     suffix: &'static str,
     radius_tokens: TokenStream2,
     doc_string_suffix: &'static str,
 }
 
+/// 边框样式前缀配置结构体。
+///
+/// 用于定义边框样式方法的前缀（如 `border`、`border_t`、`border_x` 等）。
 struct BorderStylePrefix {
     prefix: &'static str,
     fields: Vec<TokenStream2>,
     doc_string_prefix: &'static str,
 }
 
+/// 边框样式后缀配置结构体。
+///
+/// 用于定义边框宽度的后缀（如 `0`、`1`、`2` 等）。
 struct BorderStyleSuffix {
     suffix: &'static str,
     width_tokens: TokenStream2,
     doc_string_suffix: &'static str,
 }
 
+/// 生成盒子样式（外边距、内边距、定位、尺寸等）的方法列表。
+///
+/// 该函数遍历所有前缀和后缀组合，为每个组合生成：
+/// 1. 一个接受自定义值的 `custom_value_setter` 方法
+/// 2. 多个预定义值的 `predefined_setter` 方法（包括负值版本）
 fn generate_box_style_methods(
     prefixes: Vec<BoxStylePrefix>,
     suffixes: Vec<BoxStyleSuffix>,
@@ -635,6 +696,9 @@ fn generate_box_style_methods(
     methods
 }
 
+/// 生成所有基础样式方法（包括盒子样式和圆角样式）。
+///
+/// 该函数组合了 `box_prefixes()` 和 `corner_prefixes()` 的所有方法。
 fn generate_methods() -> Vec<TokenStream2> {
     let visibility = Visibility::Inherited;
     let mut methods =
@@ -669,6 +733,19 @@ fn generate_methods() -> Vec<TokenStream2> {
     methods
 }
 
+/// 生成预定义值的样式设置方法。
+///
+/// 该方法生成一个不接受参数的方法，方法内部使用预定义的长度值。
+///
+/// # 参数
+///
+/// * `visibility` - 方法的可见性
+/// * `name` - 方法名前缀
+/// * `length` - 长度后缀（如 `0`、`1`、`auto` 等）
+/// * `fields` - 要设置的样式字段列表
+/// * `length_tokens` - 长度值的 token 流
+/// * `negate` - 是否生成负值版本
+/// * `doc_string` - 文档说明
 fn generate_predefined_setter(
     visibility: Visibility,
     name: &'static str,
@@ -711,6 +788,17 @@ fn generate_predefined_setter(
     method
 }
 
+/// 生成接受自定义值的样式设置方法。
+///
+/// 该方法生成一个接受 `impl Into<LengthType>` 参数的方法，允许用户传入自定义长度值。
+///
+/// # 参数
+///
+/// * `visibility` - 方法的可见性
+/// * `prefix` - 方法名前缀
+/// * `length_type` - 长度类型（如 `Length`、`DefiniteLength`、`AbsoluteLength` 等）
+/// * `fields` - 要设置的样式字段列表
+/// * `doc_string` - 文档说明
 fn generate_custom_value_setter(
     visibility: Visibility,
     prefix: &str,

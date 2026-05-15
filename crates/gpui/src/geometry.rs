@@ -1,13 +1,19 @@
-//! The GPUI geometry module is a collection of types and traits that
-//! can be used to describe common units, concepts, and the relationships
-//! between them.
+//! GPUI 几何模块是类型和特征的集合，
+//! 可用于描述常见单位、概念以及它们之间的关系。
+//!
+//! # 核心类型
+//!
+//! - **Point**: 二维空间中的点
+//! - **Size**: 二维尺寸（宽度和高度）
+//! - **Bounds**: 矩形区域（原点 + 尺寸）
+//! - **Pixels/ScaledPixels/DevicePixels**: 不同的像素单位
 
-use anyhow::{Context as _, anyhow};
+use anyhow::{anyhow, Context as _};
 use core::fmt::Debug;
 use derive_more::{Add, AddAssign, Div, DivAssign, Mul, Neg, Sub, SubAssign};
 use refineable::Refineable;
-use schemars::{JsonSchema, json_schema};
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+use schemars::{json_schema, JsonSchema};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::ops::Range;
 use std::{
@@ -20,7 +26,7 @@ use taffy::prelude::{TaffyGridLine, TaffyGridSpan};
 
 use crate::{App, DisplayId};
 
-/// Axis in a 2D cartesian space.
+/// 二维笛卡尔空间中的轴。
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum Axis {
     /// The y axis, or up and down
@@ -39,7 +45,7 @@ impl Axis {
     }
 }
 
-/// A trait for accessing the given unit along a certain axis.
+/// 用于沿特定轴访问给定单位的 trait。
 pub trait Along {
     /// The unit associated with this type
     type Unit;
@@ -384,10 +390,10 @@ impl<T: Clone + Debug + Default + PartialEq + Display> Display for Point<T> {
     }
 }
 
-/// A structure representing a two-dimensional size with width and height in a given unit.
+/// 表示一个两维的尺寸，包含给定单位的宽度和高度。
 ///
-/// This struct is generic over the type `T`, which can be any type that implements `Clone`, `Default`, and `Debug`.
-/// It is commonly used to specify dimensions for elements in a UI, such as a window or element.
+/// 该结构体对类型 `T` 是泛型的，可以是任何实现 `Clone`、`Default` 和 `Debug` 的类型。
+/// 通常用于指定 UI 中元素的尺寸，如窗口或元素。
 #[derive(
     Add, Clone, Copy, Default, Deserialize, Div, Hash, Neg, PartialEq, Refineable, Serialize, Sub,
 )]
@@ -700,23 +706,11 @@ impl Size<Length> {
     }
 }
 
-/// Represents a rectangular area in a 2D space with an origin point and a size.
+/// 表示 2D 空间中的矩形区域，包含原点和尺寸。
 ///
-/// The `Bounds` struct is generic over a type `T` which represents the type of the coordinate system.
-/// The origin is represented as a `Point<T>` which defines the top left corner of the rectangle,
-/// and the size is represented as a `Size<T>` which defines the width and height of the rectangle.
-///
-/// # Examples
-///
-/// ```
-/// # use gpui::{Bounds, Point, Size};
-/// let origin = Point { x: 0, y: 0 };
-/// let size = Size { width: 10, height: 20 };
-/// let bounds = Bounds::new(origin, size);
-///
-/// assert_eq!(bounds.origin, origin);
-/// assert_eq!(bounds.size, size);
-/// ```
+/// `Bounds` 结构体对类型 `T` 是泛型的，代表坐标系统的类型。
+/// 原点表示为 `Point<T>`，定义矩形的左上角，
+/// 尺寸表示为 `Size<T>`，定义矩形的宽度和高度。
 #[derive(Refineable, Copy, Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[refineable(Debug)]
 #[repr(C)]
@@ -1101,8 +1095,9 @@ where
     }
 }
 
-impl<T: PartialOrd + Add<T, Output = T> + Sub<Output = T> + Clone + Debug + Default + PartialEq>
-    Bounds<T>
+impl<
+        T: PartialOrd + Add<T, Output = T> + Sub<Output = T> + Clone + Debug + Default + PartialEq,
+    > Bounds<T>
 {
     /// Calculates the intersection of two `Bounds` objects.
     ///

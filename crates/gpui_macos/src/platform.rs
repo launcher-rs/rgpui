@@ -159,6 +159,8 @@ unsafe fn build_classes() {
     }
 }
 
+/// macOS 平台实现，实现了 `gpui::Platform` trait。
+/// 封装了 Cocoa、Metal、Core Text 等 macOS 原生 API。
 pub struct MacPlatform(Mutex<MacPlatformState>);
 
 pub(crate) struct MacPlatformState {
@@ -187,6 +189,10 @@ pub(crate) struct MacPlatformState {
 }
 
 impl MacPlatform {
+    /// 创建新的 macOS 平台实例。
+    ///
+    /// # 参数
+    /// * `headless` - 是否以无头模式运行（无 GUI）
     pub fn new(headless: bool) -> Self {
         let dispatcher = Arc::new(MacDispatcher::new());
 

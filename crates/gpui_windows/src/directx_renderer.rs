@@ -3,9 +3,10 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use ::util::ResultExt;
 use anyhow::{Context, Result};
+use util::ResultExt;
 use windows::{
+    core::Interface,
     Win32::{
         Foundation::HWND,
         Graphics::{
@@ -16,18 +17,19 @@ use windows::{
             Dxgi::{Common::*, *},
         },
     },
-    core::Interface,
 };
 
 use crate::directx_renderer::shader_resources::{RawShaderBytes, ShaderModule, ShaderTarget};
 use crate::*;
 use gpui::*;
 
+/// 环境变量名，用于禁用 DirectComposition
 pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "GPUI_DISABLE_DIRECT_COMPOSITION";
 const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 // This configuration is used for MSAA rendering on paths only, and it's guaranteed to be supported by DirectX 11.
 const PATH_MULTISAMPLE_COUNT: u32 = 4;
 
+/// 字体渲染信息，包含伽马校正、对比度等参数
 pub(crate) struct FontInfo {
     pub gamma_ratios: [f32; 4],
     pub grayscale_enhanced_contrast: f32,
@@ -35,6 +37,13 @@ pub(crate) struct FontInfo {
     pub is_bgr: bool,
 }
 
+/// DirectX 渲染器，负责将 GPUI 场景渲染到窗口
+///
+/// 使用 DirectX 11 API 进行 GPU 加速渲染，支持：
+/// - 多种图元类型（阴影、矩形、路径、下划线、精灵）
+/// - 纹理图集管理
+/// - DirectComposition 窗口合成
+/// - GPU 设备丢失检测和恢复
 pub(crate) struct DirectXRenderer {
     hwnd: HWND,
     atlas: Arc<DirectXAtlas>,
@@ -55,7 +64,9 @@ pub(crate) struct DirectXRenderer {
     skip_draws: bool,
 }
 
-/// Direct3D objects
+/// Direct3D 设备对象
+///
+/// 包含 Direct3D 11 渲染所需的核心设备对象，这些对象在应用程序生命周期内保持不变
 #[derive(Clone)]
 pub(crate) struct DirectXRendererDevices {
     pub(crate) adapter: IDXGIAdapter1,
@@ -131,6 +142,12 @@ impl DirectXRendererDevices {
 }
 
 impl DirectXRenderer {
+    /// 创建新的 DirectX 渲染器
+    ///
+    /// # 参数
+    /// * `hwnd` - 窗口句柄
+    /// * `directx_devices` - DirectX 设备引用
+    /// * `disable_direct_composition` - 是否禁用 DirectComposition
     pub(crate) fn new(
         hwnd: HWND,
         directx_devices: &DirectXDevices,
@@ -177,6 +194,7 @@ impl DirectXRenderer {
         })
     }
 
+    /// 获取纹理图集
     pub(crate) fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         self.atlas.clone()
     }
@@ -227,6 +245,9 @@ impl DirectXRenderer {
         result.ok().context("Presenting swap chain failed")
     }
 
+    /// 处理 GPU 设备丢失事件
+    ///
+    /// 当 GPU 设备丢失时（如驱动更新、显示器切换），重新创建所有渲染资源
     pub(crate) fn handle_device_lost(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
         try_to_recover_from_device_lost(|| {
             self.handle_device_lost_impl(directx_devices)
@@ -301,6 +322,11 @@ impl DirectXRenderer {
         Ok(())
     }
 
+    /// 渲染 GPUI 场景到窗口
+    ///
+    /// # 参数
+    /// * `scene` - 要渲染的场景
+    /// * `background_appearance` - 窗口背景外观
     pub(crate) fn draw(
         &mut self,
         scene: &Scene,
@@ -355,6 +381,10 @@ impl DirectXRenderer {
         self.present()
     }
 
+    /// 调整渲染器大小以匹配新的窗口尺寸
+    ///
+    /// # 参数
+    /// * `new_size` - 新的窗口尺寸（设备像素）
     pub(crate) fn resize(&mut self, new_size: Size<DevicePixels>) -> Result<()> {
         let width = new_size.width.0.max(1) as u32;
         let height = new_size.height.0.max(1) as u32;
@@ -704,6 +734,7 @@ impl DirectXRenderer {
         Ok(())
     }
 
+    /// 获取 GPU 规格信息
     pub(crate) fn gpu_specs(&self) -> Result<GpuSpecs> {
         let devices = self.devices.as_ref().context("devices missing")?;
         let desc = unsafe { devices.adapter.GetDesc1() }?;
@@ -734,6 +765,7 @@ impl DirectXRenderer {
         })
     }
 
+    /// 获取字体渲染信息（缓存的静态实例）
     pub(crate) fn get_font_info() -> &'static FontInfo {
         static CACHED_FONT_INFO: OnceLock<FontInfo> = OnceLock::new();
         CACHED_FONT_INFO.get_or_init(|| unsafe {
@@ -749,6 +781,9 @@ impl DirectXRenderer {
         })
     }
 
+    /// 标记渲染器为可绘制状态
+    ///
+    /// 在 GPU 设备丢失恢复后调用，允许下一帧正常渲染
     pub(crate) fn mark_drawable(&mut self) {
         self.skip_draws = false;
     }
@@ -1586,11 +1621,11 @@ pub(crate) mod shader_resources {
 
     #[cfg(debug_assertions)]
     use windows::{
+        core::{HSTRING, PCSTR},
         Win32::Graphics::Direct3D::{
-            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
+            Fxc::{D3DCompileFromFile, D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION},
             ID3DBlob,
         },
-        core::{HSTRING, PCSTR},
     };
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -1774,13 +1809,21 @@ pub(crate) mod shader_resources {
 }
 
 mod nvidia {
+    //! DirectX 渲染器实现
+    //!
+    //! 本模块使用 DirectX 11 提供 GPU 加速的 2D 渲染功能，包括：
+    //! - 阴影、矩形、路径、下划线渲染
+    //! - 单色、亚像素、彩色精灵渲染
+    //! - DirectComposition 窗口合成支持
+    //! - GPU 设备丢失恢复
+
     use std::{
         ffi::CStr,
         os::raw::{c_char, c_int, c_uint},
     };
 
     use anyhow::Result;
-    use windows::{Win32::System::LibraryLoader::GetProcAddress, core::s};
+    use windows::{core::s, Win32::System::LibraryLoader::GetProcAddress};
 
     use crate::with_dll_library;
 
@@ -1847,7 +1890,7 @@ mod amd {
     use std::os::raw::{c_char, c_int, c_void};
 
     use anyhow::Result;
-    use windows::{Win32::System::LibraryLoader::GetProcAddress, core::s};
+    use windows::{core::s, Win32::System::LibraryLoader::GetProcAddress};
 
     use crate::with_dll_library;
 
@@ -1940,8 +1983,8 @@ mod amd {
 
 mod dxgi {
     use windows::{
-        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
         core::Interface,
+        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
     };
 
     pub(super) fn get_driver_version(adapter: &IDXGIAdapter1) -> anyhow::Result<String> {

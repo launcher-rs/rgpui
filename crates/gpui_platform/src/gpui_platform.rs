@@ -1,38 +1,43 @@
-//! Convenience crate that re-exports GPUI's platform traits and the
-//! `current_platform` constructor so consumers don't need `#[cfg]` gating.
+//! 便捷工具包，重新导出 GPUI 的平台特性及 `current_platform` 构造函数，
+//! 使使用者无需手动编写 `#[cfg]` 条件编译代码。
 
 pub use gpui::Platform;
 
 use std::rc::Rc;
 
-/// Returns a background executor for the current platform.
+/// 返回当前平台的后台执行器。
 pub fn background_executor() -> gpui::BackgroundExecutor {
     current_platform(true).background_executor()
 }
 
+/// 返回一个 GUI 应用程序实例。
 pub fn application() -> gpui::Application {
     gpui::Application::with_platform(current_platform(false))
 }
 
+/// 返回一个无头（headless）模式的应用程序实例。
 pub fn headless() -> gpui::Application {
     gpui::Application::with_platform(current_platform(true))
 }
 
-/// Unlike `application`, this function returns a single-threaded web application.
+/// 与 `application` 不同，此函数返回一个单线程的 Web 应用程序。
 #[cfg(target_family = "wasm")]
 pub fn single_threaded_web() -> gpui::Application {
     gpui::Application::with_platform(Rc::new(gpui_web::WebPlatform::new(false)))
 }
 
-/// Initializes panic hooks and logging for the web platform.
-/// Call this before running the application in a wasm_bindgen entrypoint.
+/// 初始化 Web 平台的 panic hook 和日志系统。
+/// 应在 `wasm_bindgen` 入口函数中、运行应用程序之前调用。
 #[cfg(target_family = "wasm")]
 pub fn web_init() {
     console_error_panic_hook::set_once();
     gpui_web::init_logging();
 }
 
-/// Returns the default [`Platform`] for the current OS.
+/// 返回当前操作系统的默认 [`Platform`] 实现。
+///
+/// # 参数
+/// * `headless` - 是否以无头模式初始化平台
 pub fn current_platform(headless: bool) -> Rc<dyn Platform> {
     #[cfg(target_os = "macos")]
     {
@@ -59,7 +64,7 @@ pub fn current_platform(headless: bool) -> Rc<dyn Platform> {
     }
 }
 
-/// Returns a new [`HeadlessRenderer`] for the current platform, if available.
+/// 返回当前平台的新 [`HeadlessRenderer`] 实例（如果可用）。
 #[cfg(feature = "test-support")]
 pub fn current_headless_renderer() -> Option<Box<dyn gpui::PlatformHeadlessRenderer>> {
     #[cfg(target_os = "macos")]

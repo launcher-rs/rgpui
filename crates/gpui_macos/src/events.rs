@@ -1,17 +1,17 @@
 use gpui::{
-    Capslock, KeyDownEvent, KeyUpEvent, Keystroke, Modifiers, ModifiersChangedEvent, MouseButton,
-    MouseDownEvent, MouseExitEvent, MouseMoveEvent, MousePressureEvent, MouseUpEvent,
+    point, px, Capslock, KeyDownEvent, KeyUpEvent, Keystroke, Modifiers, ModifiersChangedEvent,
+    MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent, MousePressureEvent, MouseUpEvent,
     NavigationDirection, PinchEvent, Pixels, PlatformInput, PressureStage, ScrollDelta,
-    ScrollWheelEvent, TouchPhase, point, px,
+    ScrollWheelEvent, TouchPhase,
 };
 
 use crate::{
-    LMGetKbdType, NSStringExt, TISCopyCurrentKeyboardLayoutInputSource, TISGetInputSourceProperty,
-    UCKeyTranslate, kTISPropertyUnicodeKeyLayoutData,
+    kTISPropertyUnicodeKeyLayoutData, LMGetKbdType, NSStringExt,
+    TISCopyCurrentKeyboardLayoutInputSource, TISGetInputSourceProperty, UCKeyTranslate,
 };
 use cocoa::{
     appkit::{NSEvent, NSEventModifierFlags, NSEventPhase, NSEventType},
-    base::{YES, id},
+    base::{id, YES},
 };
 use core_foundation::data::{CFDataGetBytePtr, CFDataRef};
 use core_graphics::event::CGKeyCode;
@@ -26,6 +26,7 @@ pub(crate) const ESCAPE_KEY: u16 = 0x1b;
 const TAB_KEY: u16 = 0x09;
 const SHIFT_TAB_KEY: u16 = 0x19;
 
+/// 将 GPUI 内部按键名称转换为 macOS 原生按键代码。
 pub fn key_to_native(key: &str) -> Cow<'_, str> {
     use cocoa::appkit::*;
     let code = match key {
@@ -101,6 +102,13 @@ unsafe fn read_modifiers(native_event: id) -> Modifiers {
     }
 }
 
+/// 将 macOS 原生 NSEvent 转换为 GPUI 的 `PlatformInput`。
+///
+/// 支持鼠标、键盘、滚轮、触摸板手势等多种事件类型。
+///
+/// # 参数
+/// * `native_event` - 原生 NSEvent 对象
+/// * `window_height` - 窗口高度（用于坐标转换，鼠标事件需要）
 pub(crate) unsafe fn platform_input_from_native(
     native_event: id,
     window_height: Option<Pixels>,

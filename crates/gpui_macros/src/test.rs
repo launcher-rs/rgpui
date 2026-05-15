@@ -10,6 +10,13 @@ use syn::{
     spanned::Spanned,
 };
 
+/// 测试宏的参数结构体。
+///
+/// 存储从 `#[gpui::test(...)]` 属性中解析出的配置项：
+/// - `seeds` - 随机种子列表
+/// - `max_retries` - 最大重试次数
+/// - `max_iterations` - 最大迭代次数
+/// - `on_failure_fn_name` - 失败时调用的回调函数
 struct Args {
     seeds: Vec<u64>,
     max_retries: usize,
@@ -17,6 +24,14 @@ struct Args {
     on_failure_fn_name: proc_macro2::TokenStream,
 }
 
+/// 为 `Args` 实现语法解析。
+///
+/// 解析以下参数格式：
+/// - `retries = <usize>` - 最大重试次数
+/// - `iterations = <usize>` - 最大迭代次数
+/// - `on_failure = "path::to::fn"` - 失败回调函数路径
+/// - `seed = <u64>` - 单个种子值
+/// - `seeds(u64, u64, ...)` - 种子值列表
 impl Parse for Args {
     fn parse(input: ParseStream) -> Result<Self, syn::Error> {
         let mut seeds = Vec::<u64>::new();
@@ -92,6 +107,10 @@ impl Parse for Args {
     }
 }
 
+/// `#[gpui::test]` 过程宏的入口函数。
+///
+/// 该函数解析宏参数和测试函数，然后调用 `generate_test_function` 生成包装后的测试代码。
+/// 生成的代码包含 `#[test]` 注解，可以与标准测试框架配合使用。
 pub fn test(args: TokenStream, function: TokenStream) -> TokenStream {
     let args = syn::parse_macro_input!(args as Args);
     let mut inner_fn = match syn::parse::<ItemFn>(function) {
@@ -116,6 +135,26 @@ pub fn test(args: TokenStream, function: TokenStream) -> TokenStream {
     }
 }
 
+/// 生成测试函数的核心逻辑。
+///
+/// 该函数根据测试函数是否为异步函数，生成不同的包装代码：
+///
+/// **异步测试**：使用 `ForegroundExecutor::block_test` 阻塞执行异步函数。
+/// **同步测试**：直接调用测试函数。
+///
+/// 对于测试函数的参数，该函数会识别以下类型并自动注入：
+/// - `StdRng` - 注入基于种子初始化的随机数生成器
+/// - `BackgroundExecutor` - 注入后台执行器
+/// - `&mut TestAppContext` - 注入测试应用上下文
+/// - `&mut App` - 注入应用的可变引用
+///
+/// # 参数
+///
+/// * `args` - 解析后的宏参数
+/// * `inner_fn` - 原始测试函数
+/// * `inner_fn_attributes` - 原始测试函数的属性
+/// * `inner_fn_name` - 内部函数名称（以 `__` 为前缀）
+/// * `outer_fn_name` - 外部函数名称（原始函数名）
 fn generate_test_function(
     args: Args,
     inner_fn: ItemFn,
@@ -129,12 +168,13 @@ fn generate_test_function(
     let on_failure_fn_name = &args.on_failure_fn_name;
     let seeds = quote!( #(#seeds),* );
 
+    // 根据测试函数是否为异步生成不同的包装代码
     let mut outer_fn: ItemFn = if inner_fn.sig.asyncness.is_some() {
-        // Pass to the test function the number of app contexts that it needs,
-        // based on its parameter list.
+        // 根据参数列表为测试函数注入所需的应用上下文
         let mut cx_vars = proc_macro2::TokenStream::new();
         let mut cx_teardowns = proc_macro2::TokenStream::new();
         let mut inner_fn_args = proc_macro2::TokenStream::new();
+        // 遍历测试函数参数，根据类型注入相应的测试上下文
         for (ix, arg) in inner_fn.sig.inputs.iter().enumerate() {
             if let FnArg::Typed(arg) = arg {
                 if let Type::Path(ty) = &*arg.ty {
@@ -209,11 +249,11 @@ fn generate_test_function(
             }
         }
     } else {
-        // Pass to the test function the number of app contexts that it needs,
-        // based on its parameter list.
+        // 同步测试：根据参数列表为测试函数注入所需的应用上下文
         let mut cx_vars = proc_macro2::TokenStream::new();
         let mut cx_teardowns = proc_macro2::TokenStream::new();
         let mut inner_fn_args = proc_macro2::TokenStream::new();
+        // 遍历同步测试函数参数，根据类型注入相应的测试上下文
         for (ix, arg) in inner_fn.sig.inputs.iter().enumerate() {
             if let FnArg::Typed(arg) = arg {
                 if let Type::Path(ty) = &*arg.ty {
@@ -305,6 +345,11 @@ fn generate_test_function(
     Ok(TokenStream::from(quote!(#outer_fn)))
 }
 
+/// 从表达式中解析 `usize` 类型的整数值。
+///
+/// # 错误
+///
+/// 如果表达式不是整数字面量或解析失败，则返回相应的语法错误。
 fn parse_usize_from_expr(expr: &Expr) -> Result<usize, syn::Error> {
     let Expr::Lit(ExprLit {
         lit: Lit::Int(int), ..
@@ -316,6 +361,9 @@ fn parse_usize_from_expr(expr: &Expr) -> Result<usize, syn::Error> {
         .map_err(|_| syn::Error::new(int.span(), "failed to parse integer"))
 }
 
+/// 从元列表（如 `seeds(1, 2, 3)`）中解析 `u64` 数组。
+///
+/// 该函数用于解析 `seeds(...)` 参数中的种子值列表。
 fn parse_u64_array(meta_list: &MetaList) -> Result<Vec<u64>, syn::Error> {
     let mut result = Vec::new();
     let tokens = &meta_list.tokens;
@@ -338,10 +386,16 @@ fn parse_u64_array(meta_list: &MetaList) -> Result<Vec<u64>, syn::Error> {
     Ok(result)
 }
 
+/// 将错误消息转换为编译错误 TokenStream。
+///
+/// 该函数用于在宏展开期间生成用户友好的编译错误。
 fn error_with_message(message: &str, spanned: impl Spanned) -> TokenStream {
     error_to_stream(syn::Error::new(spanned.span(), message))
 }
 
+/// 将 syn 错误转换为编译错误 TokenStream。
+///
+/// 该函数使用 `into_compile_error()` 将语法错误转换为可以在编译时显示的错误信息。
 fn error_to_stream(err: syn::Error) -> TokenStream {
     TokenStream::from(err.into_compile_error())
 }

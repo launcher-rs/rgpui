@@ -7,9 +7,9 @@ use cocoa::{
     quartzcore::AutoresizingMask,
 };
 use gpui::{
-    AtlasTextureId, Background, Bounds, ContentMask, DevicePixels, MonochromeSprite, PaintSurface,
-    Path, Point, PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene, Shadow, Size,
-    Surface, Underline, point, size,
+    point, size, AtlasTextureId, Background, Bounds, ContentMask, DevicePixels, MonochromeSprite,
+    PaintSurface, Path, Point, PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene, Shadow,
+    Size, Surface, Underline,
 };
 #[cfg(any(test, feature = "test-support"))]
 use image::RgbaImage;
@@ -108,6 +108,8 @@ impl InstanceBufferPool {
     }
 }
 
+/// Metal 渲染器，使用 Apple Metal API 进行 GPU 加速渲染。
+/// 支持窗口渲染和无头（离屏）渲染两种模式。
 pub(crate) struct MetalRenderer {
     device: metal::Device,
     layer: Option<metal::MetalLayer>,
@@ -144,7 +146,11 @@ pub struct PathRasterizationVertex {
 }
 
 impl MetalRenderer {
-    /// Creates a new MetalRenderer with a CAMetalLayer for window-based rendering.
+    /// 创建带有 CAMetalLayer 的新 Metal 渲染器，用于窗口渲染。
+    ///
+    /// # 参数
+    /// * `instance_buffer_pool` - 实例缓冲区池
+    /// * `transparent` - 窗口是否透明
     pub fn new(instance_buffer_pool: Arc<Mutex<InstanceBufferPool>>, transparent: bool) -> Self {
         let device = Self::create_device();
 
@@ -171,10 +177,10 @@ impl MetalRenderer {
         Self::new_internal(device, Some(layer), !transparent, instance_buffer_pool)
     }
 
-    /// Creates a new headless MetalRenderer for offscreen rendering without a window.
+    /// 创建无头 Metal 渲染器，用于无需窗口的离屏渲染。
     ///
-    /// This renderer can render scenes to images without requiring a CAMetalLayer,
-    /// window, or AppKit. Use `render_scene_to_image()` to render scenes.
+    /// 此渲染器可以在没有 CAMetalLayer、窗口或 AppKit 的情况下将场景渲染到图像。
+    /// 使用 `render_scene_to_image()` 进行渲染。
     #[cfg(any(test, feature = "test-support"))]
     pub fn new_headless(instance_buffer_pool: Arc<Mutex<InstanceBufferPool>>) -> Self {
         let device = Self::create_device();
@@ -350,10 +356,12 @@ impl MetalRenderer {
         }
     }
 
+    /// 获取 Metal 层的引用。
     pub fn layer(&self) -> Option<&metal::MetalLayerRef> {
         self.layer.as_ref().map(|l| l.as_ref())
     }
 
+    /// 获取 Metal 层的原始指针。
     pub fn layer_ptr(&self) -> *mut CAMetalLayer {
         self.layer
             .as_ref()
@@ -361,10 +369,12 @@ impl MetalRenderer {
             .unwrap_or(ptr::null_mut())
     }
 
+    /// 获取精灵图集。
     pub fn sprite_atlas(&self) -> &Arc<MetalAtlas> {
         &self.sprite_atlas
     }
 
+    /// 设置呈现是否与事务同步。
     pub fn set_presents_with_transaction(&mut self, presents_with_transaction: bool) {
         self.presents_with_transaction = presents_with_transaction;
         if let Some(layer) = &self.layer {
@@ -372,6 +382,7 @@ impl MetalRenderer {
         }
     }
 
+    /// 更新可绘制区域的大小。
     pub fn update_drawable_size(&mut self, size: Size<DevicePixels>) {
         if let Some(layer) = &self.layer {
             let ns_size = NSSize {
@@ -426,6 +437,7 @@ impl MetalRenderer {
         }
     }
 
+    /// 更新透明度设置。
     pub fn update_transparency(&mut self, transparent: bool) {
         self.opaque = !transparent;
         if let Some(layer) = &self.layer {
@@ -433,10 +445,15 @@ impl MetalRenderer {
         }
     }
 
+    /// 销毁渲染器资源。
     pub fn destroy(&self) {
         // nothing to do
     }
 
+    /// 绘制场景到窗口。
+    ///
+    /// # 参数
+    /// * `scene` - 要绘制的场景
     pub fn draw(&mut self, scene: &Scene) {
         let layer = match &self.layer {
             Some(l) => l.clone(),

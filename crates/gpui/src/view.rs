@@ -25,7 +25,10 @@ struct ViewCacheKey {
     text_style: TextStyle,
 }
 
-/// A dynamically-typed handle to a view, which can be downcast to a [Entity] for a specific type.
+/// 一个动态类型的视图句柄，可以向下转换为特定类型的 [Entity]。
+///
+/// `AnyView` 允许你在不知道具体类型的情况下存储和传递视图，
+/// 并在需要时通过 `downcast` 方法恢复具体类型。
 #[derive(Clone, Debug)]
 pub struct AnyView {
     entity: AnyEntity,
@@ -256,7 +259,10 @@ impl IntoElement for AnyView {
     }
 }
 
-/// A weak, dynamically-typed view handle that does not prevent the view from being released.
+/// 一个弱的、动态类型的视图句柄，不会阻止视图被释放。
+///
+/// 与 `AnyView` 不同，`AnyWeakView` 不会持有强引用，
+/// 因此视图可以在没有引用时正常销毁。
 pub struct AnyWeakView {
     entity: AnyWeakEntity,
     render: fn(&AnyView, &mut Window, &mut App) -> AnyElement,
@@ -310,7 +316,7 @@ mod any_view {
     }
 }
 
-/// A view that renders nothing
+/// 一个不渲染任何内容的视图
 pub struct EmptyView;
 
 impl Render for EmptyView {

@@ -1,5 +1,13 @@
 #![cfg(target_os = "windows")]
 
+//! Windows 平台特定的 GPUI 实现
+//!
+//! 本模块提供了 GPUI 在 Windows 操作系统上的完整平台支持，包括：
+//! - 使用 DirectX 11 进行 GPU 加速渲染
+//! - 使用 DirectWrite 进行高质量文本渲染
+//! - 使用 DirectComposition 进行窗口合成
+//! - 使用 Win32 API 处理窗口管理和输入事件
+
 mod clipboard;
 mod destination_list;
 mod direct_manipulation;
@@ -35,6 +43,7 @@ pub(crate) use vsync::*;
 pub(crate) use window::*;
 pub(crate) use wrapper::*;
 
+/// Windows 平台实现，实现了 GPUI 的 `Platform` trait
 pub use platform::WindowsPlatform;
 
 pub(crate) use windows::Win32::Foundation::HWND;

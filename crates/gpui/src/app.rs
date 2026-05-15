@@ -67,7 +67,7 @@ mod test_context;
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
 mod visual_test_context;
 
-/// The duration for which futures returned from [Context::on_app_quit] can run before the application fully quits.
+/// 应用程序退出前，[Context::on_app_quit] 返回的 future 可以运行的持续时间。
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Temporary(?) wrapper around [`RefCell<App>`] to help us debug any double borrows.
@@ -135,8 +135,8 @@ impl Drop for AppRefMut<'_> {
     }
 }
 
-/// A reference to a GPUI application, typically constructed in the `main` function of your app.
-/// You won't interact with this type much outside of initial configuration and startup.
+/// 对 GPUI 应用程序的引用，通常在应用的 `main` 函数中构建。
+/// 除了在初始配置和启动阶段外，你通常不会直接与这个类型交互。
 pub struct Application(Rc<AppCell>);
 
 /// Represents an application before it is fully launched. Once your app is
@@ -245,7 +245,7 @@ type WindowClosedHandler = Box<dyn FnMut(&mut App, WindowId)>;
 type ReleaseListener = Box<dyn FnOnce(&mut dyn Any, &mut App) + 'static>;
 type NewEntityListener = Box<dyn FnMut(AnyEntity, &mut Option<&mut Window>, &mut App) + 'static>;
 
-/// Defines when the application should automatically quit.
+/// 定义应用程序何时应该自动退出。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QuitMode {
     /// Use [`QuitMode::Explicit`] on macOS and [`QuitMode::LastWindowClosed`] on other platforms.
@@ -257,10 +257,10 @@ pub enum QuitMode {
     Explicit,
 }
 
-/// Controls when GPUI hides the mouse cursor in response to keyboard input.
+/// 控制 GPUI 何时响应键盘输入自动隐藏鼠标光标。
 ///
-/// Restoration on mouse motion is handled by the platform layer; this enum
-/// only describes the policy for *triggering* a hide.
+/// 鼠标移动时的恢复由平台层处理；此枚举
+/// 仅描述触发隐藏的策。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum CursorHideMode {
     /// Never hide the cursor automatically.
@@ -294,7 +294,10 @@ impl SystemWindowTab {
     }
 }
 
-/// A controller for managing window tabs.
+/// 窗口标签页的控制器。
+///
+/// 用于管理窗口标签页的可见性、标题、
+/// 位置以及标签页组之间的切换。
 #[derive(Default)]
 pub struct SystemWindowTabController {
     visible: Option<bool>,
@@ -590,9 +593,9 @@ impl GpuiMode {
     }
 }
 
-/// Contains the state of the full application, and passed as a reference to a variety of callbacks.
-/// Other [Context] derefs to this type.
-/// You need a reference to an `App` to access the state of a [Entity].
+/// 包含完整应用程序的状态，并作为引用传递给各种回调。
+/// 其他 [Context] 会解引用到此类型。
+/// 你需要一个 `App` 的引用来访问 [Entity] 的状态。
 pub struct App {
     pub(crate) this: Weak<AppCell>,
     pub(crate) platform: Rc<dyn Platform>,

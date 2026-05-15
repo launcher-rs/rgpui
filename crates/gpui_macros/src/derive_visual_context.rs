@@ -1,12 +1,26 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{parse_macro_input, DeriveInput};
 
 use super::get_simple_attribute_field;
 
+/// 为持有 `&mut Window` 和 `&mut App` 的结构体生成 `gpui::VisualContext` 特质实现。
+///
+/// 该函数通过查找标记了 `#[window]` 和 `#[app]` 属性的字段，将可视化上下文操作
+/// 转发到对应的字段上。
+///
+/// 生成的实现包括：
+/// - `window_handle()` - 获取窗口句柄
+/// - `update_window_entity()` - 更新窗口实体
+/// - `new_window_entity()` - 创建新窗口实体
+/// - `replace_root_view()` - 替换根视图
+/// - `focus()` - 设置焦点到可聚焦实体
+///
+/// 如果未找到 `#[window]` 或 `#[app]` 属性，则返回相应的编译错误。
 pub fn derive_visual_context(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
+    // 查找标记了 #[window] 属性的字段，如果未找到则返回编译错误
     let Some(window_variable) = get_simple_attribute_field(&ast, "window") else {
         return quote! {
             compile_error!("Derive must have a #[window] attribute to detect the &mut Window field");
@@ -14,6 +28,7 @@ pub fn derive_visual_context(input: TokenStream) -> TokenStream {
         .into();
     };
 
+    // 查找标记了 #[app] 属性的字段，如果未找到则返回编译错误
     let Some(app_variable) = get_simple_attribute_field(&ast, "app") else {
         return quote! {
             compile_error!("Derive must have a #[app] attribute to detect the &mut App field");

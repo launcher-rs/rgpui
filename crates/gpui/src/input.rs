@@ -1,12 +1,12 @@
 use crate::{App, Bounds, Context, Entity, InputHandler, Pixels, UTF16Selection, Window};
 use std::ops::Range;
 
-/// Implement this trait to allow views to handle textual input when implementing an editor, field, etc.
+/// 实现此 trait 以允许视图在处理编辑器、输入框等时处理文本输入。
 ///
-/// Once your view implements this trait, you can use it to construct an [`ElementInputHandler<V>`].
-/// This input handler can then be assigned during paint by calling [`Window::handle_input`].
+/// 一旦你的视图实现了此 trait，你就可以用它构造一个 [`ElementInputHandler<V>`]。
+/// 然后通过调用 [`Window::handle_input`] 将此输入处理器分配给 paint 阶段。
 ///
-/// See [`InputHandler`] for details on how to implement each method.
+/// 详见 [`InputHandler`] 了解如何实现每个方法的详情。
 pub trait EntityInputHandler: 'static + Sized {
     /// See [`InputHandler::text_for_range`] for details
     fn text_for_range(
@@ -77,8 +77,8 @@ pub trait EntityInputHandler: 'static + Sized {
     }
 }
 
-/// The canonical implementation of [`crate::PlatformInputHandler`]. Call [`Window::handle_input`]
-/// with an instance during your element's paint.
+/// [`crate::PlatformInputHandler`] 的标准实现。在元素的 paint 阶段
+/// 使用实例调用 [`Window::handle_input`]。
 pub struct ElementInputHandler<V> {
     view: Entity<V>,
     element_bounds: Bounds<Pixels>,

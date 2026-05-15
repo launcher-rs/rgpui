@@ -1,8 +1,8 @@
 #![cfg(target_os = "macos")]
-//! macOS platform implementation for GPUI.
+//! GPUI 的 macOS 平台实现。
 //!
-//! macOS screens have a y axis that goes up from the bottom of the screen and
-//! an origin at the bottom left of the main display.
+//! macOS 屏幕的 y 轴从屏幕底部向上延伸，
+//! 原点位于主显示器的左下角。
 
 mod dispatcher;
 mod display;
@@ -50,6 +50,7 @@ pub(crate) use window::*;
 #[cfg(feature = "font-kit")]
 pub(crate) use text_system::*;
 
+/// macOS 平台实现，供外部使用。
 pub use platform::MacPlatform;
 
 trait BoolExt {

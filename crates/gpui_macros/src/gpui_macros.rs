@@ -14,22 +14,63 @@ mod derive_inspector_reflection;
 use proc_macro::TokenStream;
 use syn::{DeriveInput, Ident};
 
-/// `Action` derive macro - see the trait documentation for details.
+/// `Action` 派生宏 - 用于为结构体自动实现 `gpui::Action` 特质。
+///
+/// 该宏会为标记的类型生成 `Action` 特质的实现，包括动作名称、JSON 序列化/反序列化、
+/// 克隆等功能。支持以下属性配置：
+///
+/// - `name = "..."` - 指定动作的名称
+/// - `namespace = ...` - 指定动作的命名空间
+/// - `no_json` - 禁用 JSON 构建功能
+/// - `no_register` - 禁用自动注册
+/// - `deprecated_aliases = [...]` - 指定已弃用的别名
+/// - `deprecated = "..."` - 标记为已弃用并提供提示信息
+///
+/// # 示例
+///
+/// ```ignore
+/// #[derive(Action)]
+/// struct MyAction {
+///     value: String,
+/// }
+/// ```
 #[proc_macro_derive(Action, attributes(action))]
 pub fn derive_action(input: TokenStream) -> TokenStream {
     derive_action::derive_action(input)
 }
 
-/// This can be used to register an action with the GPUI runtime when you want to manually implement
-/// the `Action` trait. Typically you should use the `Action` derive macro or `actions!` macro
-/// instead.
+/// 用于向 GPUI 运行时注册动作的过程宏。
+///
+/// 当你想要手动实现 `Action` 特质时，可以使用此宏来注册动作。
+/// 通常情况下，你应该使用 `Action` 派生宏或 `actions!` 宏来代替。
+///
+/// # 示例
+///
+/// ```ignore
+/// impl gpui::Action for MyAction {
+///     // 手动实现...
+/// }
+///
+/// gpui::register_action!(MyAction);
+/// ```
 #[proc_macro]
 pub fn register_action(ident: TokenStream) -> TokenStream {
     register_action::register_action(ident)
 }
 
-/// #[derive(IntoElement)] is used to create a Component out of anything that implements
-/// the `RenderOnce` trait.
+/// `IntoElement` 派生宏 - 用于将实现了 `RenderOnce` 特质的类型转换为 UI 组件。
+///
+/// 该宏会为标记的类型生成 `gpui::IntoElement` 特质的实现，使其可以作为
+/// UI 元素在渲染树中使用。
+///
+/// # 示例
+///
+/// ```ignore
+/// #[derive(IntoElement)]
+/// struct MyComponent {
+///     text: String,
+/// }
+/// ```
 #[proc_macro_derive(IntoElement)]
 pub fn derive_into_element(input: TokenStream) -> TokenStream {
     derive_into_element::derive_into_element(input)
@@ -41,10 +82,14 @@ pub fn derive_render(input: TokenStream) -> TokenStream {
     derive_render::derive_render(input)
 }
 
-/// #[derive(AppContext)] is used to create a context out of anything that holds a `&mut App`
-/// Note that a `#[app]` attribute is required to identify the variable holding the &mut App.
+/// `AppContext` 派生宏 - 用于为持有 `&mut App` 的结构体生成应用上下文实现。
 ///
-/// Failure to add the attribute causes a compile error:
+/// 该宏会为标记的类型生成 `gpui::AppContext` 特质的实现，使其能够访问和操作
+/// GPUI 应用状态，包括创建实体、更新实体、读取全局状态等。
+///
+/// 注意：必须使用 `#[app]` 属性标记持有 `&mut App` 的字段。
+///
+/// 缺少该属性会导致编译错误：
 ///
 /// ```compile_fail
 /// # #[macro_use] extern crate gpui_macros;
@@ -54,17 +99,29 @@ pub fn derive_render(input: TokenStream) -> TokenStream {
 ///     app: &'a mut gpui::App
 /// }
 /// ```
+///
+/// # 示例
+///
+/// ```ignore
+/// #[derive(AppContext)]
+/// struct MyContext<'a> {
+///     #[app]
+///     app: &'a mut gpui::App,
+/// }
+/// ```
 #[proc_macro_derive(AppContext, attributes(app))]
 pub fn derive_app_context(input: TokenStream) -> TokenStream {
     derive_app_context::derive_app_context(input)
 }
 
-/// #[derive(VisualContext)] is used to create a visual context out of anything that holds a `&mut Window` and
-/// implements `AppContext`
-/// Note that a `#[app]` and a `#[window]` attribute are required to identify the variables holding the &mut App,
-/// and &mut Window respectively.
+/// `VisualContext` 派生宏 - 用于为持有 `&mut Window` 并实现了 `AppContext` 的类型生成可视化上下文实现。
 ///
-/// Failure to add both attributes causes a compile error:
+/// 该宏会为标记的类型生成 `gpui::VisualContext` 特质的实现，使其能够管理窗口级别的
+/// 操作，如创建窗口实体、替换根视图、设置焦点等。
+///
+/// 注意：必须同时使用 `#[app]` 和 `#[window]` 属性分别标记持有 `&mut App` 和 `&mut Window` 的字段。
+///
+/// 缺少任一属性都会导致编译错误：
 ///
 /// ```compile_fail
 /// # #[macro_use] extern crate gpui_macros;
@@ -87,172 +144,190 @@ pub fn derive_app_context(input: TokenStream) -> TokenStream {
 ///     window: &'b mut gpui::Window
 /// }
 /// ```
+///
+/// # 示例
+///
+/// ```ignore
+/// #[derive(VisualContext)]
+/// struct MyContext<'a, 'b> {
+///     #[app]
+///     app: &'a mut gpui::App,
+///     #[window]
+///     window: &'b mut gpui::Window,
+/// }
+/// ```
 #[proc_macro_derive(VisualContext, attributes(window, app))]
 pub fn derive_visual_context(input: TokenStream) -> TokenStream {
     derive_visual_context::derive_visual_context(input)
 }
 
-/// Used by GPUI to generate the style helpers.
+/// 用于生成样式辅助函数的过程宏。
+///
+/// 该宏由 GPUI 内部使用，用于生成样式相关的基础辅助函数，
+/// 包括边距、内边距、圆角等样式属性的方法生成器。
 #[proc_macro]
 #[doc(hidden)]
 pub fn style_helpers(input: TokenStream) -> TokenStream {
     styles::style_helpers(input)
 }
 
-/// Generates methods for visibility styles.
+/// 生成可见性样式相关的方法。
+///
+/// 该宏会生成 `visible()` 和 `invisible()` 方法，用于控制元素的可见性。
+/// 参考 [Tailwind CSS 文档](https://tailwindcss.com/docs/visibility)
 #[proc_macro]
 pub fn visibility_style_methods(input: TokenStream) -> TokenStream {
     styles::visibility_style_methods(input)
 }
 
-/// Generates methods for margin styles.
+/// 生成外边距（margin）样式相关的方法。
+///
+/// 该宏会生成一系列方法，如 `m()`、`mt()`、`mb()`、`mx()`、`my()` 等，
+/// 用于设置元素的外边距。参考 [Tailwind CSS 文档](https://tailwindcss.com/docs/margin)
 #[proc_macro]
 pub fn margin_style_methods(input: TokenStream) -> TokenStream {
     styles::margin_style_methods(input)
 }
 
-/// Generates methods for padding styles.
+/// 生成内边距（padding）样式相关的方法。
+///
+/// 该宏会生成一系列方法，如 `p()`、`pt()`、`pb()`、`px()`、`py()` 等，
+/// 用于设置元素的内边距。参考 [Tailwind CSS 文档](https://tailwindcss.com/docs/padding)
 #[proc_macro]
 pub fn padding_style_methods(input: TokenStream) -> TokenStream {
     styles::padding_style_methods(input)
 }
 
-/// Generates methods for position styles.
+/// 生成定位（position）样式相关的方法。
+///
+/// 该宏会生成 `relative()`、`absolute()` 以及 `inset`、`top`、`bottom`、`left`、`right`
+/// 等方法，用于控制元素的定位行为。参考 [Tailwind CSS 文档](https://tailwindcss.com/docs/position)
 #[proc_macro]
 pub fn position_style_methods(input: TokenStream) -> TokenStream {
     styles::position_style_methods(input)
 }
 
-/// Generates methods for overflow styles.
+/// 生成溢出（overflow）样式相关的方法。
+///
+/// 该宏会生成 `overflow_hidden()`、`overflow_x_hidden()`、`overflow_y_hidden()` 等方法，
+/// 用于控制内容溢出容器时的行为。参考 [Tailwind CSS 文档](https://tailwindcss.com/docs/overflow)
 #[proc_macro]
 pub fn overflow_style_methods(input: TokenStream) -> TokenStream {
     styles::overflow_style_methods(input)
 }
 
-/// Generates methods for cursor styles.
+/// 生成光标（cursor）样式相关的方法。
+///
+/// 该宏会生成一系列方法，如 `cursor_default()`、`cursor_pointer()`、`cursor_text()` 等，
+/// 用于设置鼠标悬停在元素上时的光标样式。参考 [Tailwind CSS 文档](https://tailwindcss.com/docs/cursor)
 #[proc_macro]
 pub fn cursor_style_methods(input: TokenStream) -> TokenStream {
     styles::cursor_style_methods(input)
 }
 
-/// Generates methods for border styles.
+/// 生成边框（border）样式相关的方法。
+///
+/// 该宏会生成 `border_color()` 以及 `border()`、`border_t()`、`border_b()` 等方法，
+/// 用于设置元素的边框颜色和宽度。参考 [Tailwind CSS 文档](https://tailwindcss.com/docs/border-width)
 #[proc_macro]
 pub fn border_style_methods(input: TokenStream) -> TokenStream {
     styles::border_style_methods(input)
 }
 
-/// Generates methods for box shadow styles.
+/// 生成盒子阴影（box shadow）样式相关的方法。
+///
+/// 该宏会生成 `shadow()`、`shadow_none()` 以及 `shadow_sm()`、`shadow_md()`、`shadow_lg()` 等方法，
+/// 用于为元素添加预定义的盒子阴影效果。参考 [Tailwind CSS 文档](https://tailwindcss.com/docs/box-shadow)
 #[proc_macro]
 pub fn box_shadow_style_methods(input: TokenStream) -> TokenStream {
     styles::box_shadow_style_methods(input)
 }
 
-/// `#[gpui::test]` can be used to annotate test functions that run with GPUI support.
+/// `#[gpui::test]` 测试属性宏 - 用于注解需要 GPUI 支持的测试函数。
 ///
-/// It supports both synchronous and asynchronous tests, and can provide you with
-/// as many `TestAppContext` instances as you need.
-/// The output contains a `#[test]` annotation so this can be used with any existing
-/// test harness (`cargo test` or `cargo-nextest`).
+/// 该宏支持同步和异步测试，并可以提供任意数量的 `TestAppContext` 实例。
+/// 生成的代码包含 `#[test]` 注解，因此可以与任何现有测试框架配合使用
+/// （`cargo test` 或 `cargo-nextest`）。
 ///
-/// ```
+/// ```ignore
 /// #[gpui::test]
 /// async fn test_foo(mut cx: &TestAppContext) { }
 /// ```
 ///
-/// In addition to passing a TestAppContext, you can also ask for a `StdRnd` instance.
-/// this will be seeded with the `SEED` environment variable and is used internally by
-/// the ForegroundExecutor and BackgroundExecutor to run tasks deterministically in tests.
-/// Using the same `StdRng` for behavior in your test will allow you to exercise a wide
-/// variety of scenarios and interleavings just by changing the seed.
+/// 除了 `TestAppContext`，你还可以请求 `StdRng` 实例。
+/// 该实例将通过 `SEED` 环境变量进行种子设定，GPUI 内部的 ForegroundExecutor 和
+/// BackgroundExecutor 会使用它在测试中确定性地运行任务。
+/// 使用相同的 `StdRng` 可以通过仅改变种子来复现各种场景和执行交错。
 ///
-/// # Arguments
+/// # 参数
 ///
-/// - `#[gpui::test]` with no arguments runs once with the seed `0` or `SEED` env var if set.
-/// - `#[gpui::test(seed = 10)]` runs once with the seed `10`.
-/// - `#[gpui::test(seeds(10, 20, 30))]` runs three times with seeds `10`, `20`, and `30`.
-/// - `#[gpui::test(iterations = 5)]` runs five times, providing as seed the values in the range `0..5`.
-/// - `#[gpui::test(retries = 3)]` runs up to four times if it fails to try and make it pass.
-/// - `#[gpui::test(on_failure = "crate::test::report_failure")]` will call the specified function after the
-///   tests fail so that you can write out more detail about the failure.
+/// - `#[gpui::test]` - 无参数时使用种子 `0` 或 `SEED` 环境变量（如果已设置）运行一次。
+/// - `#[gpui::test(seed = 10)]` - 使用种子 `10` 运行一次。
+/// - `#[gpui::test(seeds(10, 20, 30))]` - 使用种子 `10`、`20` 和 `30` 分别运行三次。
+/// - `#[gpui::test(iterations = 5)]` - 运行五次，种子值为 `0..5` 范围。
+/// - `#[gpui::test(retries = 3)]` - 如果测试失败，最多重试四次以尝试使其通过。
+/// - `#[gpui::test(on_failure = "crate::test::report_failure")]` - 测试失败时调用指定函数，
+///   以便输出更详细的失败信息。
 ///
-/// You can combine `iterations = ...` with `seeds(...)`:
-/// - `#[gpui::test(iterations = 5, seed = 10)]` is equivalent to `#[gpui::test(seeds(0, 1, 2, 3, 4, 10))]`.
-/// - `#[gpui::test(iterations = 5, seeds(10, 20, 30)]` is equivalent to `#[gpui::test(seeds(0, 1, 2, 3, 4, 10, 20, 30))]`.
-/// - `#[gpui::test(seeds(10, 20, 30), iterations = 5]` is equivalent to `#[gpui::test(seeds(0, 1, 2, 3, 4, 10, 20, 30))]`.
+/// 可以组合 `iterations = ...` 和 `seeds(...)`：
+/// - `#[gpui::test(iterations = 5, seed = 10)]` 等价于 `#[gpui::test(seeds(0, 1, 2, 3, 4, 10))]`。
+/// - `#[gpui::test(iterations = 5, seeds(10, 20, 30)]` 等价于 `#[gpui::test(seeds(0, 1, 2, 3, 4, 10, 20, 30))]`。
+/// - `#[gpui::test(seeds(10, 20, 30), iterations = 5]` 等价于 `#[gpui::test(seeds(0, 1, 2, 3, 4, 10, 20, 30))]`。
 ///
-/// # Environment Variables
+/// # 环境变量
 ///
-/// - `SEED`: sets a seed for the first run
-/// - `ITERATIONS`: forces the value of the `iterations` argument
+/// - `SEED` - 设置首次运行的种子值
+/// - `ITERATIONS` - 强制设置 `iterations` 参数的值
 #[proc_macro_attribute]
 pub fn test(args: TokenStream, function: TokenStream) -> TokenStream {
     test::test(args, function)
 }
 
-/// A variant of `#[gpui::test]` that supports property-based testing.
+/// `#[gpui::property_test]` 属性测试宏 - 支持基于属性的测试（property-based testing）。
 ///
-/// A property test, much like a standard GPUI randomized test, allows testing
-/// claims of the form "for any possible X, Y should hold". For example:
-/// ```
+/// 属性测试类似于 GPUI 随机测试，但允许测试形如"对于任何可能的 X，Y 应该成立"的断言。
+/// 例如：
+/// ```ignore
 /// #[gpui::property_test]
 /// fn test_arithmetic(x: i32, y: i32) {
 ///     assert!(x == y || x < y || x > y);
 /// }
 /// ```
-/// Standard GPUI randomized tests provide you with an instance of `StdRng` to
-/// generate random data in a controlled manner. Property-based tests have some
-/// advantages, however:
-/// - Shrinking - the harness also understands a notion of the "complexity" of a
-///   particular value. This allows it to find the "simplest possible value that
-///   causes the test to fail".
-/// - Ergonomics/clarity - the property-testing harness will automatically
-///   generate values, removing the need to fill the test body with generation
-///   logic.
-/// - Failure persistence - if a failing seed is identified, it is stored in a
-///   file, which can be checked in, and future runs will check these cases before
-///   future cases.
 ///
-/// Property tests work best when all inputs can be generated up-front and kept
-/// in a simple data structure. Sometimes, this isn't possible - for example, if
-/// a test needs to make a random decision based on the current state of some
-/// structure. In this case, a standard GPUI randomized test may be more
-/// suitable.
+/// 标准 GPUI 随机测试提供 `StdRng` 实例以受控方式生成随机数据。
+/// 属性测试具有以下额外优势：
+/// - **收缩（Shrinking）** - 测试框架理解值的"复杂度"概念，能够找到导致测试失败的"最简单值"。
+/// - **易用性/清晰度** - 测试框架会自动生成值，无需在测试体中编写生成逻辑。
+/// - **失败持久化** - 如果找到失败的种子，会存储在文件中，后续运行会优先检查这些已知失败的情况。
 ///
-/// ## Customizing random values
+/// 当所有输入都可以预先生成并保存在简单数据结构中时，属性测试效果最佳。
+/// 某些情况下这可能不可行——例如，测试需要根据当前结构状态做出随机决策。
+/// 在这种情况下，标准 GPUI 随机测试可能更合适。
 ///
-/// This macro is based on the [`#[proptest::property_test]`] macro, but handles
-/// some of the same GPUI-specific arguments as `#[gpui::test]`. Specifically,
-/// `&{mut,} TestAppContext` and `BackgroundExecutor` work as normal. `StdRng`
-/// arguments are **explicitly forbidden**, since they break shrinking, and are
-/// a common footgun.
+/// ## 自定义随机值
 ///
-/// All other arguments are forwarded to the underlying proptest macro.
+/// 该宏基于 [`#[proptest::property_test]`] 宏，但处理了一些 GPUI 特有的参数。
+/// 具体来说，`&{mut,} TestAppContext` 和 `BackgroundExecutor` 正常工作。
+/// `StdRng` 参数被**明确禁止**，因为它们会破坏收缩机制，是常见的陷阱。
 ///
-/// Note: much of the following is copied from the proptest docs, specifically the
-/// [`#[proptest::property_test]`] macro docs.
+/// 所有其他参数都会转发到底层的 proptest 宏。
 ///
-/// Random values of type `T` are generated by a `Strategy<Value = T>` object.
-/// Some types have a canonical `Strategy` - these types also implement
-/// `Arbitrary`. Parameters to a `#[gpui::property_test]`, by default, use a
-/// type's `Arbitrary` implementation. If you'd like to provide a custom
-/// strategy, you can use `#[strategy = ...]` on the argument:
-/// ```
+/// 类型为 `T` 的随机值由 `Strategy<Value = T>` 对象生成。
+/// 某些类型有标准的 `Strategy`——这些类型也实现了 `Arbitrary`。
+/// `#[gpui::property_test]` 的参数默认使用类型的 `Arbitrary` 实现。
+/// 如果想要提供自定义策略，可以在参数上使用 `#[strategy = ...]`：
+/// ```ignore
 /// #[gpui::property_test]
 /// fn int_test(#[strategy = 1..10] x: i32, #[strategy = "[a-zA-Z0-9]{20}"] s: String) {
 ///   assert!(s.len() > (x as usize));
 /// }
 /// ```
 ///
-/// For more information on writing custom `Strategy` and `Arbitrary`
-/// implementations, see [the proptest book][book], and the [`Strategy`] trait.
+/// ## 调度器
 ///
-/// ## Scheduler
-///
-/// Similar to `#[gpui::test]`, this macro will choose random seeds for the test
-/// scheduler. It uses `.no_shrink()` to tell proptest that all seeds are
-/// roughly equivalent in terms of "complexity". If `$SEED` is set, it will
-/// affect **ONLY** the seed passed to the scheduler. To control other values,
-/// use custom `Strategy`s.
+/// 与 `#[gpui::test]` 类似，该宏会为测试调度器选择随机种子。
+/// 它使用 `.no_shrink()` 告诉 proptest 所有种子在"复杂度"方面大致等价。
+/// 如果设置了 `$SEED`，它只会影响传递给调度器的种子。要控制其他值，请使用自定义 `Strategy`。
 ///
 /// [`#[proptest::property_test]`]: https://docs.rs/proptest/latest/proptest/attr.property_test.html
 /// [book]: https://proptest-rs.github.io/proptest/intro.html
@@ -262,13 +337,13 @@ pub fn property_test(args: TokenStream, function: TokenStream) -> TokenStream {
     property_test::test(args.into(), function.into()).into()
 }
 
-/// When added to a trait, `#[derive_inspector_reflection]` generates a module which provides
-/// enumeration and lookup by name of all methods that have the shape `fn method(self) -> Self`.
-/// This is used by the inspector so that it can use the builder methods in `Styled` and
-/// `StyledExt`.
+/// `#[derive_inspector_reflection]` 属性宏 - 为特质生成检查器反射模块。
 ///
-/// The generated module will have the name `<snake_case_trait_name>_reflection` and contain the
-/// following functions:
+/// 当添加到特质上时，该宏会生成一个模块，提供对所有形如 `fn method(self) -> Self`
+/// 的方法的枚举和按名称查找功能。检查器（inspector）使用此功能来调用 `Styled` 和
+/// `StyledExt` 中的构建器方法。
+///
+/// 生成的模块名称为 `<snake_case_trait_name>_reflection`，包含以下函数：
 ///
 /// ```ignore
 /// pub fn methods::<T: TheTrait + 'static>() -> Vec<gpui::inspector_reflection::FunctionReflection<T>>;
@@ -276,14 +351,22 @@ pub fn property_test(args: TokenStream, function: TokenStream) -> TokenStream {
 /// pub fn find_method::<T: TheTrait + 'static>() -> Option<gpui::inspector_reflection::FunctionReflection<T>>;
 /// ```
 ///
-/// The `invoke` method on `FunctionReflection` will run the method. `FunctionReflection` also
-/// provides the method's documentation.
+/// `FunctionReflection` 的 `invoke` 方法会运行对应的方法。`FunctionReflection` 还提供方法的文档说明。
 #[cfg(any(feature = "inspector", debug_assertions))]
 #[proc_macro_attribute]
 pub fn derive_inspector_reflection(_args: TokenStream, input: TokenStream) -> TokenStream {
     derive_inspector_reflection::derive_inspector_reflection(_args, input)
 }
 
+/// 辅助函数：从派生输入中查找带有指定简单属性的字段。
+///
+/// 该函数用于查找结构体中标记了特定属性（如 `#[app]`、`#[window]`）的字段，
+/// 并返回该字段的标识符。仅支持结构体，对枚举和联合体返回 `None`。
+///
+/// # 参数
+///
+/// * `ast` - 派生输入的语法树
+/// * `name` - 要查找的属性名称
 pub(crate) fn get_simple_attribute_field(ast: &DeriveInput, name: &'static str) -> Option<Ident> {
     match &ast.data {
         syn::Data::Struct(data_struct) => data_struct

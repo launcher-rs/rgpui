@@ -1,8 +1,8 @@
-use anyhow::{Context as _, bail};
-use schemars::{JsonSchema, json_schema};
+use anyhow::{bail, Context as _};
+use schemars::{json_schema, JsonSchema};
 use serde::{
-    Deserialize, Deserializer, Serialize, Serializer,
     de::{self, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::borrow::Cow;
 use std::{
@@ -10,19 +10,19 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-/// Convert an RGB hex color code number to a color type
+/// 将 RGB 十六进制颜色代码转换为颜色类型
 pub fn rgb(hex: u32) -> Rgba {
     let [_, r, g, b] = hex.to_be_bytes().map(|b| (b as f32) / 255.0);
     Rgba { r, g, b, a: 1.0 }
 }
 
-/// Convert an RGBA hex color code number to [`Rgba`]
+/// 将 RGBA 十六进制颜色代码转换为 [`Rgba`]
 pub fn rgba(hex: u32) -> Rgba {
     let [r, g, b, a] = hex.to_be_bytes().map(|b| (b as f32) / 255.0);
     Rgba { r, g, b, a }
 }
 
-/// Swap from RGBA with premultiplied alpha to BGRA
+/// 从预乘 alpha 的 RGBA 转换为 BGRA
 pub fn swap_rgba_pa_to_bgra(color: &mut [u8]) {
     color.swap(0, 2);
     if color[3] > 0 {
@@ -33,7 +33,7 @@ pub fn swap_rgba_pa_to_bgra(color: &mut [u8]) {
     }
 }
 
-/// An RGBA color
+/// 一个 RGBA 颜色
 #[derive(PartialEq, Clone, Copy, Default)]
 #[repr(C)]
 pub struct Rgba {
@@ -266,7 +266,7 @@ impl TryFrom<&'_ str> for Rgba {
     }
 }
 
-/// An HSLA color
+/// 一个 HSLA 颜色
 #[derive(Default, Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Hsla {
@@ -358,7 +358,7 @@ impl Display for Hsla {
     }
 }
 
-/// Construct an [`Hsla`] object from plain values
+/// 使用普通值构造 [`Hsla`] 对象
 pub fn hsla(h: f32, s: f32, l: f32, a: f32) -> Hsla {
     Hsla {
         h: h.clamp(0., 1.),
@@ -368,7 +368,7 @@ pub fn hsla(h: f32, s: f32, l: f32, a: f32) -> Hsla {
     }
 }
 
-/// Pure black in [`Hsla`]
+/// [`Hsla`] 中的纯黑色
 pub const fn black() -> Hsla {
     Hsla {
         h: 0.,
@@ -378,7 +378,7 @@ pub const fn black() -> Hsla {
     }
 }
 
-/// Transparent black in [`Hsla`]
+/// [`Hsla`] 中的透明黑色
 pub const fn transparent_black() -> Hsla {
     Hsla {
         h: 0.,
@@ -408,7 +408,7 @@ pub fn opaque_grey(lightness: f32, opacity: f32) -> Hsla {
     }
 }
 
-/// Pure white in [`Hsla`]
+/// [`Hsla`] 中的纯白色
 pub const fn white() -> Hsla {
     Hsla {
         h: 0.,
@@ -687,9 +687,9 @@ pub(crate) enum BackgroundTag {
     Checkerboard = 3,
 }
 
-/// A color space for color interpolation.
+/// 用于颜色插值的颜色空间。
 ///
-/// References:
+/// 参考:
 /// - <https://developer.mozilla.org/en-US/docs/Web/CSS/color-interpolation-method>
 /// - <https://www.w3.org/TR/css-color-4/#typedef-color-space>
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, JsonSchema)]
@@ -711,7 +711,7 @@ impl Display for ColorSpace {
     }
 }
 
-/// A background color, which can be either a solid color or a linear gradient.
+/// 背景颜色，可以是纯色或线性渐变。
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(C)]
 pub struct Background {
@@ -813,7 +813,7 @@ pub fn linear_gradient(
     }
 }
 
-/// A color stop in a linear gradient.
+/// 线性渐变中的颜色停止点。
 ///
 /// <https://developer.mozilla.org/en-US/docs/Web/CSS/gradient/linear-gradient#linear-color-stop>
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
