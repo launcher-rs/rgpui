@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 use std::mem;
 use std::{cmp::Ordering, fmt, iter::FromIterator, sync::Arc};
 pub use tree_map::{MapSeekTarget, TreeMap, TreeSet};
-use ztracing::instrument;
+use tracing::instrument;
 
 #[cfg(test)]
 pub const TREE_BASE: usize = 2;
@@ -1398,7 +1398,7 @@ mod tests {
 
     #[ctor::ctor]
     fn init_logger() {
-        zlog::init_test();
+        let _ = env_logger::builder().is_test(true).try_init();
     }
 
     #[test]

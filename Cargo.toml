@@ -23,8 +23,6 @@ members = [
     "crates/reqwest_client",
     "crates/media",
     "crates/perf",
-    "crates/ztracing",
-    "crates/ztracing_macro",
     "crates/http_client_tls",
 
 ]
@@ -57,9 +55,6 @@ util_macros = { path = "crates/util_macros" }
 reqwest_client = { path = "crates/reqwest_client" }
 media = { path = "crates/media" }
 perf = { path = "crates/perf" }
-ztracing = { path = "crates/ztracing" }
-ztracing_macro = { path = "crates/ztracing_macro" }
-zlog = { path = "crates/zlog" }
 http_client_tls = { path = "crates/http_client_tls" }
 
 
