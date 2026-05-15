@@ -32,7 +32,6 @@ rand.workspace = true
 raw-window-handle = "0.6"
 smallvec.workspace = true
 util.workspace = true
-gpui_util.workspace = true
 uuid.workspace = true
 windows.workspace = true
 windows-core.workspace = true

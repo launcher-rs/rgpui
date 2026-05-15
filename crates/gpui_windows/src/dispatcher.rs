@@ -173,7 +173,7 @@ impl PlatformDispatcher for WindowsDispatcher {
         unsafe {
             timeBeginPeriod(1);
         }
-        util::defer(Box::new(|| unsafe {
+        gpui::defer(Box::new(|| unsafe {
             timeEndPeriod(1);
         }))
     }

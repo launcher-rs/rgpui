@@ -8,6 +8,7 @@ pub mod paths;
 pub mod process;
 pub mod redact;
 pub mod rel_path;
+pub mod result_ext;
 pub mod schemars;
 pub mod serde;
 pub mod shell;
@@ -17,6 +18,8 @@ pub mod size;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
 pub mod time;
+
+pub use result_ext::ResultExt;
 
 use anyhow::Result;
 use itertools::Either;
@@ -29,8 +32,6 @@ use std::{
     ops::{Range, RangeInclusive},
 };
 use unicase::UniCase;
-
-pub use gpui_util::*;
 
 pub use take_until::*;
 #[cfg(any(test, feature = "test-support"))]

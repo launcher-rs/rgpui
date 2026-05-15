@@ -7,7 +7,7 @@ mod bindings;
 pub mod core_media {
     #![allow(non_snake_case)]
 
-    pub use crate::bindings::{
+    pub use crate::media::bindings::{
         CMItemIndex, CMSampleTimingInfo, CMTime, CMTimeMake, CMVideoCodecType,
         kCMSampleAttachmentKey_NotSync, kCMTimeInvalid, kCMVideoCodecType_H264,
     };
@@ -25,7 +25,6 @@ pub mod core_media {
 
     #[repr(C)]
     pub struct __CMSampleBuffer(c_void);
-    // The ref type must be a pointer to the underlying struct.
     pub type CMSampleBufferRef = *const __CMSampleBuffer;
 
     declare_TCFType!(CMSampleBuffer, CMSampleBufferRef);
@@ -222,8 +221,8 @@ pub mod core_video {
     #[cfg(target_os = "macos")]
     use std::ffi::c_void;
 
-    use crate::bindings::{CVReturn, kCVReturnSuccess};
-    pub use crate::bindings::{
+    use crate::media::bindings::{CVReturn, kCVReturnSuccess};
+    pub use crate::media::bindings::{
         kCVPixelFormatType_32BGRA, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
         kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_420YpCbCr8Planar,
     };
@@ -249,9 +248,6 @@ pub mod core_video {
     impl_CFTypeDescription!(CVMetalTextureCache);
 
     impl CVMetalTextureCache {
-        /// # Safety
-        ///
-        /// metal_device must be valid according to CVMetalTextureCacheCreate
         pub unsafe fn new(metal_device: *mut MTLDevice) -> Result<Self> {
             let mut this = ptr::null();
             let result = unsafe {
@@ -270,9 +266,6 @@ pub mod core_video {
             unsafe { Ok(CVMetalTextureCache::wrap_under_create_rule(this)) }
         }
 
-        /// # Safety
-        ///
-        /// The arguments to this function must be valid according to CVMetalTextureCacheCreateTextureFromImage
         pub unsafe fn create_texture_from_image(
             &self,
             source: ::core_video::image_buffer::CVImageBufferRef,

@@ -13,7 +13,7 @@ use std::{
     mem::ManuallyDrop,
 };
 
-use ::util::{ResultExt, maybe};
+use ::gpui::{ResultExt, maybe};
 use anyhow::{Context, Result};
 use collections::HashMap;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};

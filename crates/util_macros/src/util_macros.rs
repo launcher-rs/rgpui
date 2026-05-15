@@ -1,10 +1,16 @@
 #![cfg_attr(not(target_os = "windows"), allow(unused))]
 #![allow(clippy::test_attr_in_doctest)]
 
+#[cfg(feature = "perf-enabled")]
 use perf::*;
 use proc_macro::TokenStream;
-use quote::{ToTokens, quote};
-use syn::{ItemFn, LitStr, parse_macro_input, parse_quote};
+use quote::quote;
+#[cfg(feature = "perf-enabled")]
+use quote::ToTokens;
+use syn::LitStr;
+use syn::parse_macro_input;
+#[cfg(feature = "perf-enabled")]
+use syn::{ItemFn, parse_quote};
 
 /// A macro used in tests for cross-platform path string literals in tests. On Windows it replaces
 /// `/` with `\\` and adds `C:` to the beginning of absolute paths. On other platforms, the path is
@@ -91,22 +97,17 @@ pub fn line_endings(input: TokenStream) -> TokenStream {
 }
 
 /// Inner data for the perf macro.
+#[cfg(feature = "perf-enabled")]
 #[derive(Default)]
 struct PerfArgs {
-    /// How many times to loop a test before rerunning the test binary. If left
-    /// empty, the test harness will auto-determine this value.
     iterations: Option<syn::Expr>,
-    /// How much this test's results should be weighed when comparing across runs.
-    /// If unspecified, defaults to `WEIGHT_DEFAULT` (50).
     weight: Option<syn::Expr>,
-    /// How relevant a benchmark is to overall performance. See docs on the enum
-    /// for details. If unspecified, `Average` is selected.
     importance: Importance,
 }
 
+#[cfg(feature = "perf-enabled")]
 #[warn(clippy::all, clippy::pedantic)]
 impl PerfArgs {
-    /// Parses attribute arguments into a `PerfArgs`.
     fn parse_into(&mut self, meta: syn::meta::ParseNestedMeta) -> syn::Result<()> {
         if meta.path.is_ident("iterations") {
             self.iterations = Some(meta.value()?.parse()?);
@@ -117,7 +118,6 @@ impl PerfArgs {
         } else if meta.path.is_ident("important") {
             self.importance = Importance::Important;
         } else if meta.path.is_ident("average") {
-            // This shouldn't be specified manually, but oh well.
             self.importance = Importance::Average;
         } else if meta.path.is_ident("iffy") {
             self.importance = Importance::Iffy;
@@ -130,56 +130,7 @@ impl PerfArgs {
     }
 }
 
-/// Marks a test as perf-sensitive, to be triaged when checking the performance
-/// of a build. This also automatically applies `#[test]`.
-///
-/// # Usage
-/// Applying this attribute to a test marks it as average importance by default.
-/// There are 5 levels of importance (`Critical`, `Important`, `Average`, `Iffy`,
-/// `Fluff`); see the documentation on `Importance` for details. Add the importance
-/// as a parameter to override the default (e.g. `#[perf(important)]`).
-///
-/// Each test also has a weight factor. This is irrelevant on its own, but is considered
-/// when comparing results across different runs. By default, this is set to 50;
-/// pass `weight = n` as a parameter to override this. Note that this value is only
-/// relevant within its importance category.
-///
-/// By default, the number of iterations when profiling this test is auto-determined.
-/// If this needs to be overwritten, pass the desired iteration count as a parameter
-/// (`#[perf(iterations = n)]`). Note that the actual profiler may still run the test
-/// an arbitrary number times; this flag just sets the number of executions before the
-/// process is restarted and global state is reset.
-///
-/// This attribute should probably not be applied to tests that do any significant
-/// disk IO, as locks on files may not be released in time when repeating a test many
-/// times. This might lead to spurious failures.
-///
-/// # Examples
-/// ```rust
-/// use util_macros::perf;
-///
-/// #[perf]
-/// fn generic_test() {
-///     // Test goes here.
-/// }
-///
-/// #[perf(fluff, weight = 30)]
-/// fn cold_path_test() {
-///     // Test goes here.
-/// }
-/// ```
-///
-/// This also works with `#[gpui::test]`s, though in most cases it shouldn't
-/// be used with automatic iterations.
-/// ```rust,ignore
-/// use util_macros::perf;
-///
-/// #[perf(iterations = 1, critical)]
-/// #[gpui::test]
-/// fn oneshot_test(_cx: &mut gpui::TestAppContext) {
-///     // Test goes here.
-/// }
-/// ```
+#[cfg(feature = "perf-enabled")]
 #[proc_macro_attribute]
 #[warn(clippy::all, clippy::pedantic)]
 pub fn perf(our_attr: TokenStream, input: TokenStream) -> TokenStream {

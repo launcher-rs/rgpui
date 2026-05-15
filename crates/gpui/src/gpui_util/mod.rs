@@ -1,5 +1,6 @@
-// FluentBuilder
-// pub use gpui_util::{FutureExt, Timeout, arc_cow::ArcCow};
+//! Internal utility functions for GPUI.
+
+#![allow(missing_docs)]
 
 use std::{
     env,
@@ -13,12 +14,14 @@ use std::{
 
 pub mod arc_cow;
 
+/// Increments a value and returns the previous value.
 pub fn post_inc<T: From<u8> + AddAssign<T> + Copy>(value: &mut T) -> T {
     let prev = *value;
     *value += T::from(1);
     prev
 }
 
+/// Measures the execution time of a closure if `ZED_MEASUREMENTS` env var is set.
 pub fn measure<R>(label: &str, f: impl FnOnce() -> R) -> R {
     static ZED_MEASUREMENTS: OnceLock<bool> = OnceLock::new();
     let zed_measurements = ZED_MEASUREMENTS.get_or_init(|| {
@@ -38,6 +41,7 @@ pub fn measure<R>(label: &str, f: impl FnOnce() -> R) -> R {
     }
 }
 
+/// Panics in debug mode, logs error with backtrace in release mode.
 #[macro_export]
 macro_rules! debug_panic {
     ( $($fmt_arg:tt)* ) => {
@@ -50,6 +54,7 @@ macro_rules! debug_panic {
     };
 }
 
+/// Returns the option or panics in debug mode if None.
 #[track_caller]
 pub fn some_or_debug_panic<T>(option: Option<T>) -> Option<T> {
     #[cfg(debug_assertions)]
@@ -61,8 +66,6 @@ pub fn some_or_debug_panic<T>(option: Option<T>) -> Option<T> {
 
 /// Expands to an immediately-invoked function expression. Good for using the ? operator
 /// in functions which do not return an Option or Result.
-///
-/// Accepts a normal block, an async block, or an async move block.
 #[macro_export]
 macro_rules! maybe {
     ($block:block) => {
@@ -75,20 +78,24 @@ macro_rules! maybe {
         (async move || $block)()
     };
 }
+/// Extension trait for Result types providing logging utilities.
 pub trait ResultExt<E> {
+    /// The Ok type of the Result.
     type Ok;
 
+    /// Logs the error at Error level and returns None if Err.
     fn log_err(self) -> Option<Self::Ok>;
-    /// Like [`ResultExt::log_err`], but uses `{:?}` formatting so `anyhow::Error` values emit their
-    /// full backtrace. Reach for this only when a backtrace is genuinely wanted — most call sites
-    /// should stick with `log_err` / `warn_on_err`, whose output is a single chained error message.
+    /// Logs the error with Debug formatting (backtrace) and returns None if Err.
     fn log_err_with_backtrace(self) -> Option<Self::Ok>
     where
         E: std::fmt::Debug;
-    /// Assert that this result should never be an error in development or tests.
+    /// Asserts that this result should never be an error in development.
     fn debug_assert_ok(self, reason: &str) -> Self;
+    /// Logs the error at Warn level and returns None if Err.
     fn warn_on_err(self) -> Option<Self::Ok>;
+    /// Logs the error at the specified level and returns None if Err.
     fn log_with_level(self, level: log::Level) -> Option<Self::Ok>;
+    /// Converts the error into an anyhow::Error.
     fn anyhow(self) -> anyhow::Result<Self::Ok>
     where
         E: Into<anyhow::Error>;
@@ -163,8 +170,6 @@ where
     let file = caller.file();
     #[cfg(windows)]
     let file = caller.file().replace('\\', "/");
-    // In this codebase all crates reside in a `crates` directory,
-    // so discard the prefix up to that segment to find the crate name
     let file = file.split_once("crates/");
     let target = file.as_ref().and_then(|(_, s)| s.split_once("/src/"));
 
@@ -192,8 +197,6 @@ pub fn log_err<E: std::fmt::Display>(error: &E) {
     log_error_with_caller(*Location::caller(), error, log::Level::Error);
 }
 
-// Forces `{:?}` formatting through a `Display`-bounded logging helper so `anyhow::Error` emits a
-// backtrace instead of the single-line chained message produced by its `Display`/`{:#}` forms.
 struct DebugAsDisplay<'a, E>(&'a E);
 
 impl<E: std::fmt::Debug> std::fmt::Display for DebugAsDisplay<'_, E> {
@@ -202,30 +205,36 @@ impl<E: std::fmt::Debug> std::fmt::Display for DebugAsDisplay<'_, E> {
     }
 }
 
+/// Extension trait for Future types providing logging utilities.
 pub trait TryFutureExt {
+    /// Logs the error at Error level and returns None if Err.
     fn log_err(self) -> LogErrorFuture<Self>
     where
         Self: Sized;
 
+    /// Logs the error at Error level with a tracked location.
     fn log_tracked_err(self, location: core::panic::Location<'static>) -> LogErrorFuture<Self>
     where
         Self: Sized;
 
+    /// Logs the error at Warn level and returns None if Err.
     fn warn_on_err(self) -> LogErrorFuture<Self>
     where
         Self: Sized;
+    /// Unwraps the result, panicking if Err.
     fn unwrap(self) -> UnwrapFuture<Self>
     where
         Self: Sized;
 }
 
-/// `{:?}`-formatting companion to [`TryFutureExt`]; emits a backtrace for `anyhow::Error`. Prefer
-/// [`TryFutureExt`] unless a backtrace is genuinely wanted.
+/// Extension trait for Future types providing backtrace logging.
 pub trait TryFutureExtBacktrace {
+    /// Logs the error with Debug formatting (backtrace) and returns None if Err.
     fn log_err_with_backtrace(self) -> LogErrorWithBacktraceFuture<Self>
     where
         Self: Sized;
 
+    /// Logs the error with Debug formatting and a tracked location.
     fn log_tracked_err_with_backtrace(
         self,
         location: core::panic::Location<'static>,
@@ -297,6 +306,7 @@ where
     }
 }
 
+/// A future that logs errors at the specified level when the inner future resolves to Err.
 #[must_use]
 pub struct LogErrorFuture<F>(F, log::Level, core::panic::Location<'static>);
 
@@ -324,6 +334,7 @@ where
     }
 }
 
+/// A future that logs errors with Debug formatting (backtrace) when the inner future resolves to Err.
 #[must_use]
 pub struct LogErrorWithBacktraceFuture<F>(F, log::Level, core::panic::Location<'static>);
 
@@ -351,6 +362,7 @@ where
     }
 }
 
+/// A future that unwraps the result, panicking if Err.
 pub struct UnwrapFuture<F>(F);
 
 impl<F, T, E> Future for UnwrapFuture<F>
@@ -369,10 +381,11 @@ where
     }
 }
 
+/// A guard that runs a closure when dropped, unless aborted.
 pub struct Deferred<F: FnOnce()>(Option<F>);
 
 impl<F: FnOnce()> Deferred<F> {
-    /// Drop without running the deferred function.
+    /// Drops without running the deferred function.
     pub fn abort(mut self) {
         self.0.take();
     }
@@ -386,7 +399,7 @@ impl<F: FnOnce()> Drop for Deferred<F> {
     }
 }
 
-/// Run the given function when the returned value is dropped (unless it's cancelled).
+/// Runs the given function when the returned value is dropped (unless aborted).
 #[must_use]
 pub fn defer<F: FnOnce()>(f: F) -> Deferred<F> {
     Deferred(Some(f))

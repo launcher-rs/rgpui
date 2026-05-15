@@ -2295,7 +2295,6 @@ dependencies = [
  "getrandom 0.3.4",
  "gpui_macros",
  "gpui_platform",
- "gpui_util",
  "gpui_web",
  "hdrhistogram",
  "http_client",
@@ -2305,7 +2304,6 @@ dependencies = [
  "log",
  "lyon",
  "mach2",
- "media",
  "metal",
  "num_cpus",
  "objc",
@@ -2323,7 +2321,6 @@ dependencies = [
  "raw-window-handle",
  "refineable",
  "regex",
- "reqwest_client",
  "resvg",
  "scheduler",
  "schemars",
@@ -2407,6 +2404,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-task",
+ "bindgen",
  "block",
  "cbindgen",
  "cocoa 0.26.0",
@@ -2428,7 +2426,6 @@ dependencies = [
  "libc",
  "log",
  "mach2",
- "media",
  "metal",
  "objc",
  "objc2-app-kit",
@@ -2477,14 +2474,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_util"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "log",
-]
-
-[[package]]
 name = "gpui_web"
 version = "0.1.0"
 dependencies = [
@@ -2517,7 +2506,6 @@ dependencies = [
  "cosmic-text",
  "etagere",
  "gpui",
- "gpui_util",
  "itertools 0.14.0",
  "js-sys",
  "log",
@@ -2543,7 +2531,6 @@ dependencies = [
  "etagere",
  "futures",
  "gpui",
- "gpui_util",
  "image",
  "itertools 0.14.0",
  "log",
@@ -2780,21 +2767,18 @@ dependencies = [
  "http-body",
  "log",
  "parking_lot",
+ "regex",
+ "rustls",
+ "rustls-platform-verifier",
  "serde",
  "serde_json",
  "serde_urlencoded",
  "sha2",
  "tempfile",
+ "tokio",
  "url",
  "util",
-]
-
-[[package]]
-name = "http_client_tls"
-version = "0.1.0"
-dependencies = [
- "rustls",
- "rustls-platform-verifier",
+ "zed-reqwest",
 ]
 
 [[package]]
@@ -3557,20 +3541,6 @@ checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
 dependencies = [
  "cfg-if",
  "digest",
-]
-
-[[package]]
-name = "media"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bindgen",
- "core-foundation 0.10.0",
- "core-video",
- "ctor",
- "foreign-types",
- "metal",
- "objc",
 ]
 
 [[package]]
@@ -4867,23 +4837,6 @@ name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
-
-[[package]]
-name = "reqwest_client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "futures",
- "gpui_util",
- "http_client",
- "http_client_tls",
- "log",
- "regex",
- "serde",
- "tokio",
- "zed-reqwest",
-]
 
 [[package]]
 name = "resvg"
@@ -6418,7 +6371,6 @@ dependencies = [
  "futures-lite 1.13.0",
  "git2",
  "globset",
- "gpui_util",
  "itertools 0.14.0",
  "libc",
  "log",

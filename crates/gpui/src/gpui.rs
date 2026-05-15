@@ -49,6 +49,7 @@ mod tab_stop;
 mod taffy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
+mod gpui_util;
 mod text_system;
 mod util;
 mod view;
@@ -94,6 +95,10 @@ pub use gpui_macros::{
 };
 pub use shared_string::*;
 pub use gpui_util::arc_cow::ArcCow;
+pub use gpui_util::{
+    defer, log_err, measure, post_inc, some_or_debug_panic, Deferred,
+    ResultExt, TryFutureExt, TryFutureExtBacktrace,
+};
 pub use http_client;
 pub use input::*;
 pub use inspector::*;

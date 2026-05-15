@@ -29,7 +29,6 @@ profiling.workspace = true
 raw-window-handle = "0.6"
 smallvec.workspace = true
 swash = "0.2.6"
-gpui_util.workspace = true
 wgpu.workspace = true
 
 # Optional: only needed on platforms with multiple font sources (e.g. Linux)

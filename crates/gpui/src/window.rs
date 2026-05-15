@@ -27,8 +27,8 @@ use core_video::pixel_buffer::CVPixelBuffer;
 use derive_more::{Deref, DerefMut};
 use futures::FutureExt;
 use futures::channel::oneshot;
-use gpui_util::post_inc;
-use gpui_util::{ResultExt, measure};
+use crate::post_inc;
+use crate::{ResultExt, measure};
 #[cfg(feature = "input-latency-histogram")]
 use hdrhistogram::Histogram;
 use itertools::FoldWhile::{Continue, Done};

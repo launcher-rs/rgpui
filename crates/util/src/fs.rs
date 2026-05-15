@@ -1,4 +1,4 @@
-use crate::ResultExt;
+use crate::result_ext::ResultExt;
 use anyhow::{Result, bail};
 use async_fs as fs;
 use futures_lite::StreamExt;

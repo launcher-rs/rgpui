@@ -17,7 +17,7 @@ doctest = false
 [dependencies]
 quote.workspace = true
 syn.workspace = true
-perf.workspace = true
+perf = { workspace = true, optional = true }
 
 [features]
-perf-enabled = []
+perf-enabled = ["dep:perf"]

@@ -27,7 +27,7 @@ use crate::{
     size,
 };
 use collections::HashMap;
-use gpui_util::ResultExt;
+use crate::ResultExt;
 use refineable::Refineable;
 use smallvec::SmallVec;
 use stacksafe::{StackSafe, stacksafe};

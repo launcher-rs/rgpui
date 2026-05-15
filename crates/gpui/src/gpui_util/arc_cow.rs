@@ -6,8 +6,13 @@ use std::{
     sync::Arc,
 };
 
+/// Arc-based copy-on-write type.
+
+/// An Arc-based copy-on-write smart pointer.
 pub enum ArcCow<'a, T: ?Sized> {
+    /// A borrowed reference.
     Borrowed(&'a T),
+    /// An owned Arc.
     Owned(Arc<T>),
 }
 

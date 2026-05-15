@@ -2,17 +2,35 @@ use std::error::Error;
 use std::sync::{LazyLock, OnceLock};
 use std::{borrow::Cow, mem, pin::Pin, task::Poll, time::Duration};
 
-use gpui_util::defer;
-
 use anyhow::anyhow;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::{AsyncRead, FutureExt as _, TryStreamExt as _};
-use http_client::{RedirectPolicy, Url, http};
+use crate::{RedirectPolicy, Url, http};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue},
     redirect,
 };
+
+pub struct Deferred<F: FnOnce()>(Option<F>);
+
+impl<F: FnOnce()> Deferred<F> {
+    pub fn abort(mut self) {
+        self.0.take();
+    }
+}
+
+impl<F: FnOnce()> Drop for Deferred<F> {
+    fn drop(&mut self) {
+        if let Some(f) = self.0.take() {
+            f()
+        }
+    }
+}
+
+pub fn defer<F: FnOnce()>(f: F) -> Deferred<F> {
+    Deferred(Some(f))
+}
 
 const DEFAULT_CAPACITY: usize = 4096;
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
@@ -65,7 +83,6 @@ impl ReqwestClient {
                 })
                 .ok()
         }) {
-            // Respect NO_PROXY env var
             client = client.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
             client_has_proxy = true;
         } else {
@@ -73,7 +90,7 @@ impl ReqwestClient {
         };
 
         let client = client
-            .use_preconfigured_tls(http_client_tls::tls_config())
+            .use_preconfigured_tls(crate::tls::tls_config())
             .build()?;
         let mut client: ReqwestClient = client.into();
         client.proxy = client_has_proxy.then_some(proxy).flatten();
@@ -85,7 +102,6 @@ impl ReqwestClient {
 pub fn runtime() -> &'static tokio::runtime::Runtime {
     RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
-            // Since we now have two executors, let's try to keep our footprint small
             .worker_threads(1)
             .enable_all()
             .build()
@@ -108,9 +124,6 @@ impl From<reqwest::Client> for ReqwestClient {
     }
 }
 
-// This struct is essentially a re-implementation of
-// https://docs.rs/tokio-util/0.7.12/tokio_util/io/struct.ReaderStream.html
-// except outside of Tokio's aegis
 struct StreamReader {
     reader: Option<Pin<Box<dyn futures::AsyncRead + Send + Sync>>>,
     buf: BytesMut,
@@ -150,7 +163,6 @@ impl futures::Stream for StreamReader {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(err)) => {
                 self.reader = None;
-
                 Poll::Ready(Some(Err(err)))
             }
             Poll::Ready(Ok(0)) => {
@@ -166,8 +178,6 @@ impl futures::Stream for StreamReader {
     }
 }
 
-/// Implementation from <https://docs.rs/tokio-util/0.7.12/src/tokio_util/util/poll_buf.rs.html>
-/// Specialized for this use case
 pub fn poll_read_buf(
     io: &mut Pin<Box<dyn futures::AsyncRead + Send + Sync>>,
     cx: &mut std::task::Context<'_>,
@@ -180,23 +190,17 @@ pub fn poll_read_buf(
     let n = {
         let dst = buf.chunk_mut();
 
-        // Safety: `chunk_mut()` returns a `&mut UninitSlice`, and `UninitSlice` is a
-        // transparent wrapper around `[MaybeUninit<u8>]`.
         let dst = unsafe { &mut *(dst as *mut _ as *mut [std::mem::MaybeUninit<u8>]) };
         let mut buf = tokio::io::ReadBuf::uninit(dst);
         let ptr = buf.filled().as_ptr();
         let unfilled_portion = buf.initialize_unfilled();
-        // SAFETY: Pin projection
         let io_pin = unsafe { Pin::new_unchecked(io) };
         std::task::ready!(io_pin.poll_read(cx, unfilled_portion)?);
 
-        // Ensure the pointer does not change from under us
         assert_eq!(ptr, buf.filled().as_ptr());
         buf.filled().len()
     };
 
-    // Safety: This is guaranteed to be the number of initialized (and read)
-    // bytes due to the invariants provided by `ReadBuf::filled`.
     unsafe {
         buf.advance_mut(n);
     }
@@ -214,7 +218,7 @@ fn redact_error(mut error: reqwest::Error) -> reqwest::Error {
     error
 }
 
-impl http_client::HttpClient for ReqwestClient {
+impl crate::HttpClient for ReqwestClient {
     fn proxy(&self) -> Option<&Url> {
         self.proxy.as_ref()
     }
@@ -225,10 +229,10 @@ impl http_client::HttpClient for ReqwestClient {
 
     fn send(
         &self,
-        req: http::Request<http_client::AsyncBody>,
+        req: http::Request<crate::AsyncBody>,
     ) -> futures::future::BoxFuture<
         'static,
-        anyhow::Result<http_client::Response<http_client::AsyncBody>>,
+        anyhow::Result<crate::Response<crate::AsyncBody>>,
     > {
         let (parts, body) = req.into_parts();
 
@@ -242,9 +246,9 @@ impl http_client::HttpClient for ReqwestClient {
             });
         }
         let request = request.body(match body.0 {
-            http_client::Inner::Empty => reqwest::Body::default(),
-            http_client::Inner::Bytes(cursor) => cursor.into_inner().into(),
-            http_client::Inner::AsyncReader(stream) => {
+            crate::Inner::Empty => reqwest::Body::default(),
+            crate::Inner::Bytes(cursor) => cursor.into_inner().into(),
+            crate::Inner::AsyncReader(stream) => {
                 reqwest::Body::wrap_stream(StreamReader::new(stream))
             }
         });
@@ -267,7 +271,7 @@ impl http_client::HttpClient for ReqwestClient {
                 .bytes_stream()
                 .map_err(futures::io::Error::other)
                 .into_async_read();
-            let body = http_client::AsyncBody::from_reader(bytes);
+            let body = crate::AsyncBody::from_reader(bytes);
 
             builder.body(body).map_err(|e| anyhow!(e))
         }
@@ -277,9 +281,9 @@ impl http_client::HttpClient for ReqwestClient {
 
 #[cfg(test)]
 mod tests {
-    use http_client::{HttpClient, Url};
+    use crate::{HttpClient, Url};
 
-    use crate::ReqwestClient;
+    use super::ReqwestClient;
 
     #[test]
     fn test_proxy_uri() {

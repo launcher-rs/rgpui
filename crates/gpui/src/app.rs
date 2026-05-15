@@ -26,7 +26,7 @@ pub use async_context::*;
 use collections::{FxHashMap, FxHashSet, HashMap, VecDeque};
 pub use context::*;
 pub use entity_map::*;
-use gpui_util::{ResultExt, debug_panic};
+use crate::{ResultExt, debug_panic};
 #[cfg(any(test, feature = "test-support"))]
 pub use headless_app_context::*;
 use http_client::{HttpClient, Url};

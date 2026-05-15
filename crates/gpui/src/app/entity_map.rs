@@ -964,7 +964,7 @@ impl LeakDetector {
         entity_id: EntityId,
         type_name: Option<&'static str>,
     ) -> HandleId {
-        let id = gpui_util::post_inc(&mut self.next_handle_id);
+        let id = crate::post_inc(&mut self.next_handle_id);
         let handle_id = HandleId { id };
         let handles = self
             .entity_handles

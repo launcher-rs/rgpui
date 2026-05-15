@@ -9,7 +9,6 @@ members = [
     "crates/gpui_web",
     "crates/gpui_platform",
     "crates/gpui_tokio",
-    "crates/gpui_util",
     "crates/gpui_wgpu",
     "crates/gpui_macros",
     "crates/collections",
@@ -20,10 +19,7 @@ members = [
     "crates/sum_tree",
     "crates/util",
     "crates/util_macros",
-    "crates/reqwest_client",
-    "crates/media",
     "crates/perf",
-    "crates/http_client_tls",
 
 ]
 
@@ -43,7 +39,6 @@ gpui_web = { path = "crates/gpui_web" }
 gpui_wgpu = { path = "crates/gpui_wgpu" }
 gpui_windows = { path = "crates/gpui_windows", default-features = false }
 gpui_tokio = { path = "crates/gpui_tokio" }
-gpui_util = { path = "crates/gpui_util" }
 collections = { path = "crates/collections" }
 http_client = { path = "crates/http_client" }
 refineable = { path = "crates/refineable" }
@@ -52,10 +47,7 @@ scheduler = { path = "crates/scheduler" }
 sum_tree = { path = "crates/sum_tree" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
-reqwest_client = { path = "crates/reqwest_client" }
-media = { path = "crates/media" }
 perf = { path = "crates/perf" }
-http_client_tls = { path = "crates/http_client_tls" }
 
 
 # ---- 错误处理 ----
