@@ -2,11 +2,11 @@ use crate::{App, PlatformDispatcher, PlatformScheduler};
 use futures::channel::mpsc;
 use futures::prelude::*;
 use crate::{TryFutureExt, TryFutureExtBacktrace};
-use scheduler::Instant;
-use scheduler::Scheduler;
+use crate::scheduler::Instant;
+use crate::scheduler::Scheduler;
 use std::{future::Future, marker::PhantomData, mem, pin::Pin, rc::Rc, sync::Arc, time::Duration};
 
-pub use scheduler::{
+pub use crate::scheduler::{
     FallibleTask, ForegroundExecutor as SchedulerForegroundExecutor, Priority, Task,
 };
 
@@ -14,7 +14,7 @@ pub use scheduler::{
 /// for spawning background tasks.
 #[derive(Clone)]
 pub struct BackgroundExecutor {
-    inner: scheduler::BackgroundExecutor,
+    inner: crate::scheduler::BackgroundExecutor,
     dispatcher: Arc<dyn PlatformDispatcher>,
 }
 
@@ -22,7 +22,7 @@ pub struct BackgroundExecutor {
 /// for spawning tasks on the main thread.
 #[derive(Clone)]
 pub struct ForegroundExecutor {
-    inner: scheduler::ForegroundExecutor,
+    inner: crate::scheduler::ForegroundExecutor,
     dispatcher: Arc<dyn PlatformDispatcher>,
     not_send: PhantomData<Rc<()>>,
 }
@@ -74,15 +74,15 @@ impl BackgroundExecutor {
         let scheduler: Arc<dyn Scheduler> = Arc::new(PlatformScheduler::new(dispatcher.clone()));
 
         Self {
-            inner: scheduler::BackgroundExecutor::new(scheduler),
+            inner: crate::scheduler::BackgroundExecutor::new(scheduler),
             dispatcher,
         }
     }
 
-    /// Returns the underlying scheduler::BackgroundExecutor.
+    /// Returns the underlying crate::scheduler::BackgroundExecutor.
     ///
     /// This is used by Ex to pass the executor to thread/worktree code.
-    pub fn scheduler_executor(&self) -> scheduler::BackgroundExecutor {
+    pub fn scheduler_executor(&self) -> crate::scheduler::BackgroundExecutor {
         self.inner.clone()
     }
 
@@ -234,7 +234,7 @@ impl BackgroundExecutor {
 
     /// In tests, returns the rng used by the dispatcher.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn rng(&self) -> scheduler::SharedRng {
+    pub fn rng(&self) -> crate::scheduler::SharedRng {
         self.dispatcher.as_test().unwrap().scheduler().rng()
     }
 
@@ -291,7 +291,7 @@ impl ForegroundExecutor {
             (platform_scheduler, session_id)
         };
 
-        let inner = scheduler::ForegroundExecutor::new(session_id, scheduler);
+        let inner = crate::scheduler::ForegroundExecutor::new(session_id, scheduler);
 
         Self {
             inner,
@@ -453,7 +453,7 @@ mod test {
         let background_executor = BackgroundExecutor::new(arc_dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(arc_dispatcher);
 
-        let platform = TestPlatform::new(background_executor.clone(), foreground_executor);
+        let platform = TestPlatformScheduler::new(background_executor.clone(), foreground_executor);
         let asset_source = Arc::new(());
         let http_client = http_client::FakeHttpClient::with_404_response();
 

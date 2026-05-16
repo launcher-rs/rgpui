@@ -1,4 +1,4 @@
-use scheduler::Instant;
+use crate::scheduler::Instant;
 use std::{
     any::{TypeId, type_name},
     cell::{BorrowMutError, Cell, Ref, RefCell, RefMut},

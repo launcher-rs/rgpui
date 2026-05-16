@@ -1,4 +1,4 @@
-use crate::{
+use super::{
     BackgroundExecutor, Clock, ForegroundExecutor, Instant, Priority, RunnableMeta, Scheduler,
     SessionId, TestClock, Timer,
 };

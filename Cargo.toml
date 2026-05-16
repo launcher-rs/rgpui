@@ -14,7 +14,6 @@ members = [
     "crates/http_client",
     "crates/refineable",
     "crates/refineable/derive_refineable",
-    "crates/scheduler",
     "crates/util",
     "crates/util_macros",
     "crates/perf",
@@ -40,7 +39,6 @@ gpui_tokio = { path = "crates/gpui_tokio" }
 http_client = { path = "crates/http_client" }
 refineable = { path = "crates/refineable" }
 derive_refineable = { path = "crates/refineable/derive_refineable" }
-scheduler = { path = "crates/scheduler" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
 perf = { path = "crates/perf" }

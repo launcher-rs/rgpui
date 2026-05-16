@@ -21,6 +21,8 @@ pub mod colors;
 pub mod collections;
 /// A sum tree data structure, a concurrency-friendly B-tree.
 pub mod sum_tree;
+/// Task scheduler for async execution.
+pub mod scheduler;
 mod element;
 mod elements;
 mod executor;

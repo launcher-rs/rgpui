@@ -2313,7 +2313,6 @@ dependencies = [
  "refineable",
  "regex",
  "resvg",
- "scheduler",
  "schemars",
  "seahash",
  "serde",
@@ -5105,20 +5104,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scheduler"
-version = "0.1.0"
-dependencies = [
- "async-task",
- "backtrace",
- "chrono",
- "flume",
- "futures",
- "parking_lot",
- "rand 0.9.4",
- "web-time",
-]
-
-[[package]]
 name = "schemars"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6334,10 +6319,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-fs",
+ "async-task",
  "async_zip",
+ "backtrace",
+ "chrono",
  "command-fds",
  "dirs",
  "dunce",
+ "flume",
  "futures",
  "futures-lite 1.13.0",
  "git2",
@@ -6349,6 +6338,7 @@ dependencies = [
  "log",
  "mach2",
  "nix 0.29.0",
+ "parking_lot",
  "percent-encoding",
  "pretty_assertions",
  "rand 0.9.4",
@@ -6370,6 +6360,7 @@ dependencies = [
  "url",
  "util_macros",
  "walkdir",
+ "web-time",
  "which",
 ]
 

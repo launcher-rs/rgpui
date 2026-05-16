@@ -10,6 +10,7 @@ pub mod process;
 pub mod redact;
 pub mod rel_path;
 pub mod result_ext;
+pub mod scheduler;
 pub mod schemars;
 pub mod serde;
 pub mod shell;

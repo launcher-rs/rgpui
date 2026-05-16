@@ -15,12 +15,16 @@ path = "src/util.rs"
 doctest = true
 
 [features]
-test-support = ["git2", "rand", "dep:util_macros"]
+test-support = ["git2", "dep:util_macros"]
 
 [dependencies]
 anyhow.workspace = true
+async-task.workspace = true
 async_zip.workspace = true
+backtrace.workspace = true
+chrono.workspace = true
 dunce.workspace = true
+flume = "0.11"
 futures-lite.workspace = true
 futures.workspace = true
 globset.workspace = true
@@ -28,7 +32,8 @@ heapless.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
 log.workspace = true
-rand = { workspace = true, optional = true }
+parking_lot.workspace = true
+rand.workspace = true
 rayon.workspace = true
 regex.workspace = true
 rust-embed.workspace = true
@@ -43,6 +48,7 @@ tempfile.workspace = true
 tracing.workspace = true
 unicase.workspace = true
 url.workspace = true
+web-time.workspace = true
 percent-encoding.workspace = true
 util_macros = { workspace = true, optional = true }
 

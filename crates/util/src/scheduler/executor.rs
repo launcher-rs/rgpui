@@ -1,4 +1,4 @@
-use crate::{Instant, Priority, RunnableMeta, Scheduler, SessionId, Timer};
+use super::{Instant, Priority, RunnableMeta, Scheduler, SessionId, Timer};
 use std::{
     future::Future,
     marker::PhantomData,
