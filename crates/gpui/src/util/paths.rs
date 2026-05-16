@@ -1639,7 +1639,7 @@ mod tests {
     use super::rel_path::rel_path;
 
     use super::*;
-    use util_macros::perf;
+    use gpui_macros::perf;
 
     #[test]
     fn test_join_path_uses_path_style_separator() {

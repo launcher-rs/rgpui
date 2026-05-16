@@ -1289,7 +1289,7 @@ mod tests {
 
     use super::*;
 
-    use util_macros::perf;
+    use gpui_macros::perf;
 
     #[perf]
     fn test_basic_highlight_style_combination() {

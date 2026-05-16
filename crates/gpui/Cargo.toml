@@ -24,7 +24,6 @@ test-support = [
     "x11",
     "proptest",
     "dep:git2",
-    "dep:util_macros",
 ]
 inspector = ["gpui_macros/inspector"]
 leak-detection = []
@@ -89,7 +88,6 @@ resvg = { version = "0.45.0", default-features = false, features = [
 ] }
 usvg = { version = "0.45.0", default-features = false }
 ttf-parser = "0.25"
-util_macros = { workspace = true, optional = true }
 schemars.workspace = true
 seahash = "4.1"
 serde.workspace = true

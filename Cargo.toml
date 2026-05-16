@@ -30,7 +30,6 @@ gpui_web = { path = "crates/gpui_web" }
 gpui_wgpu = { path = "crates/gpui_wgpu" }
 gpui_windows = { path = "crates/gpui_windows", default-features = false }
 gpui_tokio = { path = "crates/gpui_tokio" }
-util_macros = { path = "crates/util_macros" }
 
 
 # ---- 错误处理 ----
