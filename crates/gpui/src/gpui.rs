@@ -67,6 +67,7 @@ mod tray;
 pub mod util;
 mod view;
 mod window;
+pub mod window_positioner;
 
 #[cfg(any(test, feature = "test-support"))]
 pub use proptest;

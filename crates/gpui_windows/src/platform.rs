@@ -73,6 +73,9 @@ pub(crate) struct WindowsPlatformState {
     jump_list: RefCell<JumpList>,
     tray: RefCell<Option<WindowsTray>>,
     tray_menu_actions: RefCell<std::collections::HashMap<muda::MenuId, Box<dyn Action>>>,
+    // 新增：托盘事件回调
+    tray_icon_event_callback: RefCell<Option<Box<dyn FnMut(TrayIconEvent)>>>,
+    tray_menu_action_callback: RefCell<Option<Box<dyn FnMut(SharedString)>>>,
     // NOTE: standard cursor handles don't need to close.
     pub(crate) current_cursor: Cell<Option<HCURSOR>>,
     /// Shared with each window so `WM_SETCURSOR` can read it directly.
@@ -106,6 +109,8 @@ impl WindowsPlatformState {
             menus: RefCell::new(Vec::new()),
             tray: RefCell::new(None),
             tray_menu_actions: RefCell::new(std::collections::HashMap::new()),
+            tray_icon_event_callback: RefCell::new(None),
+            tray_menu_action_callback: RefCell::new(None),
         }
     }
 }
@@ -688,18 +693,87 @@ impl Platform for WindowsPlatform {
     }
 
     fn set_tray(&self, tray: Tray, menus: Option<Vec<MenuItem>>, _keymap: &Keymap) {
-        let mut action_map = std::collections::HashMap::new();
-        let tray_menu = menus
+        // 旧 API 兼容：将 MenuItem 转换为 TrayMenuItem
+        let tray_menu_items = menus
             .as_ref()
-            .map(|menus| build_muda_menu(menus, &mut action_map));
+            .map(|menus| convert_menu_items_to_tray(menus))
+            .unwrap_or_default();
 
-        *self.inner.state.tray_menu_actions.borrow_mut() = action_map;
         let mut windows_tray = self.inner.state.tray.borrow_mut();
         if let Some(windows_tray) = windows_tray.as_mut() {
-            windows_tray.update(&tray, tray_menu);
+            windows_tray.menu_items = tray_menu_items;
+            if let Some(icon_data) = &tray.icon_data {
+                windows_tray.set_icon(Some(&icon_data.data), self.handle);
+            }
+            if let Some(tooltip) = &tray.tooltip {
+                windows_tray.set_tooltip(tooltip, self.handle);
+            }
         } else {
-            windows_tray.replace(WindowsTray::create(&tray, tray_menu));
+            let mut new_tray = WindowsTray::new(self.handle);
+            new_tray.menu_items = tray_menu_items;
+            if let Some(icon_data) = &tray.icon_data {
+                new_tray.set_icon(Some(&icon_data.data), self.handle);
+            }
+            if let Some(tooltip) = &tray.tooltip {
+                new_tray.set_tooltip(tooltip, self.handle);
+            }
+            windows_tray.replace(new_tray);
         }
+    }
+
+    fn set_tray_icon(&self, icon: Option<&[u8]>) {
+        let mut windows_tray = self.inner.state.tray.borrow_mut();
+        if windows_tray.is_none() {
+            windows_tray.replace(WindowsTray::new(self.handle));
+        }
+        if let Some(windows_tray) = windows_tray.as_mut() {
+            windows_tray.set_icon(icon, self.handle);
+        }
+    }
+
+    fn set_tray_menu(&self, menu: Vec<TrayMenuItem>) {
+        eprintln!("[Platform] set_tray_menu called with {} items", menu.len());
+        let mut windows_tray = self.inner.state.tray.borrow_mut();
+        if windows_tray.is_none() {
+            eprintln!("[Platform] Creating new tray");
+            windows_tray.replace(WindowsTray::new(self.handle));
+        }
+        if let Some(windows_tray) = windows_tray.as_mut() {
+            windows_tray.menu_items = menu;
+            eprintln!("[Platform] Menu items set on tray");
+        }
+    }
+
+    fn set_tray_tooltip(&self, tooltip: &str) {
+        let mut windows_tray = self.inner.state.tray.borrow_mut();
+        if windows_tray.is_none() {
+            windows_tray.replace(WindowsTray::new(self.handle));
+        }
+        if let Some(windows_tray) = windows_tray.as_mut() {
+            windows_tray.set_tooltip(tooltip, self.handle);
+        }
+    }
+
+    fn set_tray_panel_mode(&self, _enabled: bool) {
+        // Windows 不支持面板模式，此方法为空
+    }
+
+    fn get_tray_icon_bounds(&self) -> Option<Bounds<Pixels>> {
+        // Windows 托盘图标位置由系统管理，难以获取精确位置
+        // 返回 None 表示不可用
+        None
+    }
+
+    fn on_tray_icon_event(&self, callback: Box<dyn FnMut(TrayIconEvent)>) {
+        *self.inner.state.tray_icon_event_callback.borrow_mut() = Some(callback);
+    }
+
+    fn on_tray_menu_action(&self, callback: Box<dyn FnMut(SharedString)>) {
+        *self.inner.state.tray_menu_action_callback.borrow_mut() = Some(callback);
+    }
+
+    fn set_keep_alive_without_windows(&self, _keep_alive: bool) {
+        // Windows 模式下即使没有窗口也会保持运行
     }
 
     fn on_app_menu_action(&self, callback: Box<dyn FnMut(&dyn Action)>) {
@@ -944,6 +1018,8 @@ impl WindowsPlatformInner {
             | WM_GPUI_DOCK_MENU_ACTION
             | WM_GPUI_KEYBOARD_LAYOUT_CHANGED
             | WM_GPUI_GPU_DEVICE_LOST => self.handle_gpui_events(msg, wparam, lparam),
+            WM_GPUI_TRAY_ICON => self.handle_tray_icon_event(handle, lparam),
+            WM_COMMAND => self.handle_tray_menu_command(wparam),
             _ => None,
         };
         if let Some(result) = handled {
@@ -1086,6 +1162,51 @@ impl WindowsPlatformInner {
         self.state.directx_devices.borrow_mut().take();
         *self.state.directx_devices.borrow_mut() = Some(directx_devices.clone());
 
+        Some(0)
+    }
+
+    /// 处理托盘图标消息
+    fn handle_tray_icon_event(&self, handle: HWND, lparam: LPARAM) -> Option<isize> {
+        let msg = (lparam.0 & 0xFFFF) as u32;
+        eprintln!("[Platform] handle_tray_icon_event called, msg: {}", msg);
+        let event = match msg {
+            WM_LBUTTONUP => Some(TrayIconEvent::LeftClick),
+            WM_RBUTTONUP => Some(TrayIconEvent::RightClick),
+            WM_LBUTTONDBLCLK => Some(TrayIconEvent::DoubleClick),
+            _ => None,
+        };
+        eprintln!("[Platform] Event: {:?}", event);
+        if let Some(event) = event {
+            if event == TrayIconEvent::RightClick {
+                eprintln!("[Platform] Right click, showing context menu");
+                let mut tray = self.state.tray.borrow_mut();
+                if let Some(ref mut t) = *tray {
+                    t.show_context_menu(handle);
+                } else {
+                    eprintln!("[Platform] No tray object found");
+                }
+            }
+            if let Some(callback) = self.state.tray_icon_event_callback.borrow_mut().as_mut() {
+                callback(event);
+            }
+        }
+        Some(0)
+    }
+
+    /// 处理托盘菜单命令
+    fn handle_tray_menu_command(&self, wparam: WPARAM) -> Option<isize> {
+        let cmd_id = (wparam.0 & 0xFFFF) as u32;
+        let item_id = {
+            let tray = self.state.tray.borrow();
+            tray.as_ref()
+                .and_then(|tray| tray.command_id_map.get(&cmd_id).cloned())
+        };
+        let Some(item_id) = item_id else {
+            return None;
+        };
+        if let Some(callback) = self.state.tray_menu_action_callback.borrow_mut().as_mut() {
+            callback(item_id);
+        }
         Some(0)
     }
 
@@ -1450,6 +1571,9 @@ unsafe extern "system" fn window_procedure(
     }
     let inner = unsafe { &*ptr };
     let result = if let Some(inner) = inner.upgrade() {
+        if msg == WM_GPUI_TRAY_ICON || msg == WM_COMMAND {
+            eprintln!("[WindowProc] msg: {}, wparam: {}, lparam: {}", msg, wparam.0, lparam.0);
+        }
         if cfg!(debug_assertions) {
             let inner = std::panic::AssertUnwindSafe(inner);
             match std::panic::catch_unwind(|| { inner }.handle_msg(hwnd, msg, wparam, lparam)) {
@@ -1500,6 +1624,7 @@ fn run_muda_menu_event_listener(
 }
 
 /// Builds a [`muda::Menu`] from a `Vec<MenuItem>`.
+#[allow(dead_code)]
 fn build_muda_menu(
     items: &Vec<MenuItem>,
     action_map: &mut std::collections::HashMap<muda::MenuId, Box<dyn Action>>,
@@ -1556,6 +1681,25 @@ fn build_muda_menu(
         };
     }
     menu
+}
+
+/// 将 MenuItem 转换为 TrayMenuItem（旧 API 兼容）
+fn convert_menu_items_to_tray(items: &[MenuItem]) -> Vec<TrayMenuItem> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            MenuItem::Separator => Some(TrayMenuItem::Separator),
+            MenuItem::Action { name, .. } => Some(TrayMenuItem::Action {
+                label: name.clone(),
+                id: name.clone(),
+            }),
+            MenuItem::Submenu(menu) => Some(TrayMenuItem::Submenu {
+                label: menu.name.clone(),
+                items: convert_menu_items_to_tray(&menu.items),
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]

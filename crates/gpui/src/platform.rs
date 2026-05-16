@@ -34,7 +34,8 @@ use crate::{
     ForegroundExecutor, GlyphId, GpuSpecs, Hsla, ImageSource, Keymap, LineLayout, Pixels,
     PlatformInput, Point, Priority, RenderGlyphParams, RenderImage, RenderImageParams,
     RenderSvgParams, Scene, ShapedGlyph, ShapedRun, SharedString, Size, SvgRenderer,
-    SystemWindowTab, Task, ThreadTaskTimings, Tray, Window, WindowControlArea, hash, point, px, size,
+    SystemWindowTab, Task, ThreadTaskTimings, Tray, TrayIconEvent, TrayMenuItem, Window,
+    WindowControlArea, hash, point, px, size,
 };
 use anyhow::Result;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -189,7 +190,6 @@ pub trait Platform: 'static {
     }
 
     fn set_dock_menu(&self, menu: Vec<MenuItem>, keymap: &Keymap);
-    fn set_tray(&self, _tray: Tray, _menu: Option<Vec<MenuItem>>, _keymap: &Keymap) {}
     fn perform_dock_menu_action(&self, _action: usize) {}
     fn add_recent_document(&self, _path: &Path) {}
     fn update_jump_list(
@@ -199,6 +199,22 @@ pub trait Platform: 'static {
     ) -> Task<Vec<SmallVec<[PathBuf; 2]>>> {
         Task::ready(Vec::new())
     }
+
+    // 系统托盘相关方法
+    fn set_tray_icon(&self, _icon: Option<&[u8]>) {}
+    fn set_tray_menu(&self, _menu: Vec<TrayMenuItem>) {}
+    fn set_tray_tooltip(&self, _tooltip: &str) {}
+    fn set_tray_panel_mode(&self, _enabled: bool) {}
+    fn get_tray_icon_bounds(&self) -> Option<Bounds<Pixels>> {
+        None
+    }
+    fn on_tray_icon_event(&self, _callback: Box<dyn FnMut(TrayIconEvent)>) {}
+    fn on_tray_menu_action(&self, _callback: Box<dyn FnMut(SharedString)>) {}
+
+    // 保留旧的 set_tray 方法以向后兼容
+    fn set_tray(&self, _tray: Tray, _menu: Option<Vec<MenuItem>>, _keymap: &Keymap) {}
+
+    fn set_keep_alive_without_windows(&self, _keep_alive: bool) {}
     fn on_app_menu_action(&self, callback: Box<dyn FnMut(&dyn Action)>);
     fn on_will_open_app_menu(&self, callback: Box<dyn FnMut()>);
     fn on_validate_app_menu_command(&self, callback: Box<dyn FnMut(&dyn Action) -> bool>);
@@ -2232,6 +2248,37 @@ impl From<String> for ClipboardString {
             metadata: None,
         }
     }
+}
+
+/// 语义化窗口位置，用于相对于屏幕定位窗口
+#[derive(Debug, Clone, PartialEq)]
+pub enum WindowPosition {
+    /// 在主显示器居中显示窗口
+    Center,
+    /// 在指定显示器上居中
+    CenterOnDisplay(DisplayId),
+    /// 在托盘图标区域上方居中显示
+    TrayCenter(Bounds<Pixels>),
+    /// 定位在右上角
+    TopRight {
+        /// 距离屏幕边缘的边距
+        margin: Pixels,
+    },
+    /// 定位在右下角
+    BottomRight {
+        /// 距离屏幕边缘的边距
+        margin: Pixels,
+    },
+    /// 定位在左上角
+    TopLeft {
+        /// 距离屏幕边缘的边距
+        margin: Pixels,
+    },
+    /// 定位在左下角
+    BottomLeft {
+        /// 距离屏幕边缘的边距
+        margin: Pixels,
+    },
 }
 
 #[cfg(test)]

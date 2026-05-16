@@ -49,8 +49,8 @@ use crate::{
     PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton, PromptHandle,
     PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation, ScreenCaptureSource,
     SharedString, SubscriberSet, Subscription, SvgRenderer, Task, TextRenderingMode, TextSystem,
-    ThermalState, Tray, Window, WindowAppearance, WindowButtonLayout, WindowHandle, WindowId,
-    WindowInvalidator,
+    ThermalState, Tray, TrayIconEvent, TrayMenuItem, Window, WindowAppearance, WindowButtonLayout,
+    WindowHandle, WindowId, WindowInvalidator,
     colors::{Colors, GlobalColors},
     hash, init_app_menus,
 };
@@ -2177,14 +2177,68 @@ impl App {
         self.platform.get_menus()
     }
 
-    /// Sets the right click menu for the app icon in the dock
+    /// 设置应用图标在程序坞中的右键菜单
     pub fn set_dock_menu(&self, menus: Vec<MenuItem>) {
         self.platform.set_dock_menu(menus, &self.keymap.borrow())
     }
 
-    /// Sets the system tray icon and menu.
+    /// 设置系统托盘图标和菜单（旧 API，向后兼容）
     pub fn set_tray(&self, tray: Tray, menus: Option<Vec<MenuItem>>) {
         self.platform.set_tray(tray, menus, &self.keymap.borrow())
+    }
+
+    /// 设置系统托盘图标
+    pub fn set_tray_icon(&self, icon: Option<&[u8]>) {
+        self.platform.set_tray_icon(icon);
+    }
+
+    /// 设置系统托盘菜单项
+    pub fn set_tray_menu(&self, menu: Vec<TrayMenuItem>) {
+        self.platform.set_tray_menu(menu);
+    }
+
+    /// 设置系统托盘工具提示
+    pub fn set_tray_tooltip(&self, tooltip: &str) {
+        self.platform.set_tray_tooltip(tooltip);
+    }
+
+    /// 启用或禁用托盘面板模式
+    /// 启用时，点击托盘图标会触发 `TrayIconEvent::LeftClick` 而不是显示菜单
+    pub fn set_tray_panel_mode(&self, enabled: bool) {
+        self.platform.set_tray_panel_mode(enabled);
+    }
+
+    /// 获取托盘图标的屏幕边界坐标，用于在其下方定位窗口
+    pub fn tray_icon_bounds(&self) -> Option<Bounds<Pixels>> {
+        self.platform.get_tray_icon_bounds()
+    }
+
+    /// 注册系统托盘图标事件的回调函数
+    pub fn on_tray_icon_event(
+        &self,
+        mut callback: impl FnMut(TrayIconEvent, &mut App) + 'static,
+    ) {
+        let this = self.this.clone();
+        self.platform.on_tray_icon_event(Box::new(move |event| {
+            if let Some(app) = this.upgrade() {
+                callback(event, &mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 注册托盘菜单项点击事件的回调函数
+    pub fn on_tray_menu_action(&self, mut callback: impl FnMut(SharedString, &mut App) + 'static) {
+        let this = self.this.clone();
+        self.platform.on_tray_menu_action(Box::new(move |id| {
+            if let Some(app) = this.upgrade() {
+                callback(id, &mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 设置应用程序是否应在没有窗口时保持运行
+    pub fn set_keep_alive_without_windows(&self, keep_alive: bool) {
+        self.platform.set_keep_alive_without_windows(keep_alive);
     }
 
     /// Performs the action associated with the given dock menu item, only used on Windows for now.

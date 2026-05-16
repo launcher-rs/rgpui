@@ -1,411 +1,311 @@
-// Tray icon implementation for Windows.
-//
-// Some code reference from:
-// https://github.com/tauri-apps/tray-icon/blob/cb22cd5df6b0938aaeebd6c302ec50bc696d8b1a/src/platform_impl/windows/mod.rs
+// Windows 托盘图标实现
 
-use crate::{get_window_long, set_window_long};
+use crate::WM_GPUI_TRAY_ICON;
 use gpui::*;
-use image::EncodableLayout;
-use muda::ContextMenu;
-use std::{
-    mem,
-    rc::Rc,
-    sync::{
-        LazyLock,
-        atomic::{AtomicU32, Ordering},
-    },
-};
+use std::collections::HashMap;
 use windows::{
+    core::PCWSTR,
     Win32::{
         Foundation::*,
-        UI::{Shell::*, WindowsAndMessaging::*},
+        UI::{
+            Shell::{
+                Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD,
+                NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
+            },
+            WindowsAndMessaging::*,
+        },
     },
-    core::*,
 };
 
-const PLATFORM_TRAY_CLASS_NAME: PCWSTR = w!("GPUI::PlatformTray");
-const WM_USER_TRAYICON: u32 = 6002;
-const WM_USER_UPDATE_TRAYMENU: u32 = 6003;
-const WM_USER_UPDATE_TRAYICON: u32 = 6004;
-const WM_USER_UPDATE_TRAYTOOLTIP: u32 = 6005;
-static WM_TASKBAR_RESTART: LazyLock<u32> =
-    LazyLock::new(|| unsafe { RegisterWindowMessageA(s!("TaskbarCreated")) });
-static COUNTER: AtomicU32 = AtomicU32::new(0);
+/// 托盘图标唯一标识
+const TRAY_ICON_ID: u32 = 1;
 
+/// Windows 托盘结构体
 pub(crate) struct WindowsTray {
-    tray_id: u32,
+    /// 是否已添加图标到系统托盘
+    icon_added: bool,
+    /// 托盘窗口句柄
     hwnd: HWND,
-    menu: Option<muda::Menu>,
-    visible: bool,
+    /// 当前显示的图标
+    current_icon: Option<HICON>,
+    /// 菜单项列表
+    pub(crate) menu_items: Vec<TrayMenuItem>,
+    /// 命令 ID 到菜单项 ID 的映射
+    pub(crate) command_id_map: HashMap<u32, SharedString>,
 }
 
 impl WindowsTray {
-    pub(crate) fn create(tray: &Tray, menu: Option<muda::Menu>) -> Self {
-        let tray_id = COUNTER.fetch_add(1, Ordering::Relaxed);
-
-        let mut this = Self {
-            tray_id,
-            hwnd: Self::create_tray_window(tray_id),
-            menu: None,
-            visible: tray.visible,
-        };
-        this.update(tray, menu);
-        this
-    }
-
-    pub(crate) fn update(&mut self, tray: &Tray, menu: Option<muda::Menu>) {
-        self.set_visible(tray.visible);
-        if !self.visible {
-            return;
-        }
-
-        let hicon = tray.icon_data.as_ref().map(|image| {
-            *Icon::new(image.data.as_bytes(), image.width, image.height).as_raw_handle()
-        });
-
-        self.set_menu(menu);
-        self.set_icon(hicon);
-        self.set_tooltip(tray.tooltip.clone());
-    }
-
-    fn create_tray_window(tray_id: u32) -> HWND {
-        let traydata = TrayUserData {
-            tray_id,
-            hwnd: HWND(std::ptr::null_mut()),
-            hpopupmenu: None,
-            icon: None,
-            tooltip: None,
-        };
-
-        register_platform_tray_class();
-        let result = unsafe {
-            CreateWindowExW(
-                WS_EX_NOACTIVATE | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
-                PLATFORM_TRAY_CLASS_NAME,
-                None,
-                WS_OVERLAPPED,
-                CW_USEDEFAULT,
-                0,
-                CW_USEDEFAULT,
-                0,
-                None,
-                None,
-                None,
-                Some(Box::into_raw(Box::new(traydata)) as _),
-            )
-        };
-
-        let hwnd = result.expect("Failed to create tray window");
-
-        if !register_tray_icon(hwnd, tray_id, None, None) {
-            unsafe {
-                let _ = DestroyWindow(hwnd);
-            };
-            return hwnd;
-        }
-
-        hwnd
-    }
-
-    fn set_visible(&mut self, visible: bool) {
-        if self.visible == visible {
-            return;
-        }
-
-        self.visible = visible;
-        if visible {
-            self.hwnd = Self::create_tray_window(self.tray_id);
-        } else {
-            remove_tray_icon(self.hwnd, self.tray_id);
-        }
-    }
-
-    fn set_icon(&mut self, icon: Option<HICON>) {
-        unsafe {
-            let mut nid = NOTIFYICONDATAW {
-                uFlags: NIF_ICON,
-                hWnd: self.hwnd,
-                uID: self.tray_id,
-                ..std::mem::zeroed()
-            };
-
-            if let Some(hicon) = icon {
-                nid.hIcon = hicon;
-            }
-
-            let _ = Shell_NotifyIconW(NIM_MODIFY, &mut nid as _);
-            SendMessageW(
-                self.hwnd,
-                WM_USER_UPDATE_TRAYICON,
-                Some(WPARAM(Box::into_raw(Box::new(icon)) as *mut _ as usize)),
-                Some(LPARAM(0)),
-            );
-        }
-    }
-
-    fn set_tooltip(&mut self, tooltip: Option<SharedString>) {
-        unsafe {
-            let mut nid = NOTIFYICONDATAW {
-                uFlags: NIF_TIP,
-                hWnd: self.hwnd,
-                uID: self.tray_id,
-                ..std::mem::zeroed()
-            };
-            if let Some(tooltip) = &tooltip {
-                let tip = encode_wide(tooltip.as_ref());
-                #[allow(clippy::manual_memcpy)]
-                for i in 0..tip.len().min(128) {
-                    nid.szTip[i] = tip[i];
-                }
-            }
-            let tooltip = tooltip.map(|t| t.as_ref().to_string());
-
-            let _ = Shell_NotifyIconW(NIM_MODIFY, &mut nid as _);
-            SendMessageW(
-                self.hwnd,
-                WM_USER_UPDATE_TRAYTOOLTIP,
-                Some(WPARAM(Box::into_raw(Box::new(tooltip)) as _)),
-                Some(LPARAM(0)),
-            );
-        }
-    }
-
-    fn set_menu(&mut self, menu: Option<muda::Menu>) {
-        if let Some(menu) = &self.menu {
-            unsafe { menu.detach_menu_subclass_from_hwnd(self.hwnd.0 as _) };
-        }
-        if let Some(menu) = &menu {
-            unsafe { menu.attach_menu_subclass_for_hwnd(self.hwnd.0 as _) };
-        }
-
-        unsafe {
-            // send the new menu to the subclass proc where we will update there
-            let menu_ptr = menu.as_ref().map(|m| HMENU(m.hpopupmenu() as _));
-            SendMessageW(
-                self.hwnd,
-                WM_USER_UPDATE_TRAYMENU,
-                Some(WPARAM(Box::into_raw(Box::new(menu_ptr)) as _)),
-                Some(LPARAM(0)),
-            );
-        }
-
-        self.menu = menu;
-    }
-}
-
-struct TrayUserData {
-    hwnd: HWND,
-    tray_id: u32,
-    hpopupmenu: Option<HMENU>,
-    icon: Option<HICON>,
-    tooltip: Option<String>,
-}
-
-/// An icon used for the window titlebar, taskbar, etc.
-#[derive(Clone)]
-struct Icon {
-    icon: Rc<HICON>,
-}
-
-#[repr(C)]
-struct Pixel {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
-}
-
-const PIXEL_SIZE: usize = mem::size_of::<Pixel>();
-
-impl Icon {
-    fn new(rgba: &[u8], width: u32, height: u32) -> Self {
-        let pixel_count = rgba.len() / PIXEL_SIZE;
-        let mut and_mask = Vec::with_capacity(pixel_count);
-        let pixels =
-            unsafe { std::slice::from_raw_parts_mut(rgba.as_ptr() as *mut Pixel, pixel_count) };
-        for pixel in pixels {
-            and_mask.push(pixel.a.wrapping_sub(u8::MAX)); // invert alpha channel
-        }
-        assert_eq!(and_mask.len(), pixel_count);
-        let handle = unsafe {
-            CreateIcon(
-                None,
-                width as i32,
-                height as i32,
-                1,
-                (PIXEL_SIZE * 8) as u8,
-                and_mask.as_ptr(),
-                rgba.as_ptr(),
-            )
-            .expect("Failed to create tray icon")
-        };
-        Self {
-            icon: Rc::new(handle),
-        }
-    }
-
-    fn as_raw_handle(&self) -> &HICON {
-        self.icon.as_ref()
-    }
-}
-
-fn register_platform_tray_class() {
-    let wc = WNDCLASSW {
-        lpfnWndProc: Some(tray_procedure),
-        lpszClassName: PCWSTR(PLATFORM_TRAY_CLASS_NAME.as_ptr()),
-        ..Default::default()
-    };
-    unsafe { RegisterClassW(&wc) };
-}
-
-/// Procedure for handling messages related to the platform tray.
-unsafe extern "system" fn tray_procedure(
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    let userdata_ptr = unsafe { get_window_long(hwnd, GWL_USERDATA) };
-    let userdata_ptr = match (userdata_ptr, msg) {
-        (0, WM_NCCREATE) => unsafe {
-            let createstruct = &mut *(lparam.0 as *mut CREATESTRUCTW);
-            let userdata = &mut *(createstruct.lpCreateParams as *mut TrayUserData);
-            userdata.hwnd = hwnd;
-
-            set_window_long(hwnd, GWL_USERDATA, createstruct.lpCreateParams as _);
-            return DefWindowProcW(hwnd, msg, wparam, lparam);
-        },
-        // Getting here should quite frankly be impossible,
-        // but we'll make window creation fail here just in case.
-        (0, WM_CREATE) => return LRESULT(-1),
-        (_, WM_CREATE) => unsafe { return DefWindowProcW(hwnd, msg, wparam, lparam) },
-        (0, _) => unsafe { return DefWindowProcW(hwnd, msg, wparam, lparam) },
-        _ => userdata_ptr as *mut TrayUserData,
-    };
-
-    unsafe {
-        let userdata = &mut *(userdata_ptr);
-        match msg {
-            WM_DESTROY => {
-                drop(Box::from_raw(userdata_ptr));
-                return LRESULT(0);
-            }
-            WM_USER_UPDATE_TRAYMENU => {
-                let hpopupmenu = Box::from_raw(wparam.0 as *mut Option<HMENU>);
-                userdata.hpopupmenu = *hpopupmenu;
-            }
-            WM_USER_UPDATE_TRAYICON => {
-                let icon = Box::from_raw(wparam.0 as *mut Option<HICON>);
-                userdata.icon = *icon;
-            }
-            WM_USER_UPDATE_TRAYTOOLTIP => {
-                let tooltip = Box::from_raw(wparam.0 as *mut Option<String>);
-                userdata.tooltip = *tooltip;
-            }
-            _ if msg == *WM_TASKBAR_RESTART => {
-                remove_tray_icon(userdata.hwnd, userdata.tray_id);
-                register_tray_icon(
-                    userdata.hwnd,
-                    userdata.tray_id,
-                    userdata.icon,
-                    userdata.tooltip.as_ref(),
-                );
-            }
-            WM_USER_TRAYICON if matches!(lparam.0 as u32, WM_RBUTTONDOWN) => {
-                let mut cursor = POINT { x: 0, y: 0 };
-                if GetCursorPos(&mut cursor as _).is_err() {
-                    return LRESULT(0);
-                }
-
-                if let Some(menu) = userdata.hpopupmenu {
-                    show_tray_menu(hwnd, menu, cursor.x, cursor.y);
-                }
-            }
-
-            _ => {}
-        }
-
-        DefWindowProcW(hwnd, msg, wparam, lparam)
-    }
-}
-
-fn show_tray_menu(hwnd: HWND, menu: HMENU, x: i32, y: i32) {
-    unsafe {
-        let _ = SetForegroundWindow(hwnd);
-        let result = TrackPopupMenu(
-            menu,
-            TPM_BOTTOMALIGN | TPM_LEFTALIGN,
-            x,
-            y,
-            Some(0),
+    /// 创建新的托盘实例
+    pub fn new(hwnd: HWND) -> Self {
+        let mut tray = Self {
+            icon_added: false,
             hwnd,
-            Some(std::ptr::null_mut()),
-        );
-        if !result.as_bool() {
-            log::error!("Failed to show tray menu.");
-        }
-    }
-}
-
-#[inline]
-fn register_tray_icon(
-    hwnd: HWND,
-    tray_id: u32,
-    hicon: Option<HICON>,
-    tooltip: Option<&String>,
-) -> bool {
-    let mut h_icon: HICON = HICON(std::ptr::null_mut());
-    let mut flags = NIF_MESSAGE;
-    let mut sz_tip: [u16; 128] = [0; 128];
-
-    if let Some(hicon) = hicon {
-        flags |= NIF_ICON;
-        h_icon = hicon;
-    }
-
-    if let Some(tooltip) = tooltip {
-        flags |= NIF_TIP;
-        let tip = encode_wide(tooltip.as_str());
-        #[allow(clippy::manual_memcpy)]
-        for i in 0..tip.len().min(128) {
-            sz_tip[i] = tip[i];
-        }
-    }
-
-    unsafe {
-        let mut nid = NOTIFYICONDATAW {
-            uFlags: flags,
-            hWnd: hwnd,
-            uID: tray_id,
-            uCallbackMessage: WM_USER_TRAYICON,
-            hIcon: h_icon,
-            szTip: sz_tip,
-            ..std::mem::zeroed()
+            current_icon: None,
+            menu_items: Vec::new(),
+            command_id_map: HashMap::new(),
         };
-
-        Shell_NotifyIconW(NIM_ADD, &mut nid as _) == TRUE
+        // 添加托盘图标到系统，使用默认图标
+        tray.ensure_icon_with_default(hwnd);
+        tray
     }
-}
 
-#[inline]
-fn remove_tray_icon(hwnd: HWND, id: u32) {
-    unsafe {
-        let mut nid = NOTIFYICONDATAW {
+    /// 确保托盘图标已添加到系统，并使用默认图标
+    fn ensure_icon_with_default(&mut self, hwnd: HWND) {
+        if self.icon_added {
+            return;
+        }
+        // 加载系统默认图标
+        let default_icon = unsafe { LoadIconW(None, IDI_APPLICATION).ok() };
+        self.current_icon = default_icon;
+        eprintln!("[Tray] ensure_icon_with_default: loading default icon");
+
+        let nid = NOTIFYICONDATAW {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: hwnd,
+            uID: TRAY_ICON_ID,
+            uFlags: NIF_MESSAGE | NIF_SHOWTIP | NIF_ICON,
+            uCallbackMessage: WM_GPUI_TRAY_ICON,
+            hIcon: self.current_icon.unwrap_or_default(),
+            ..Default::default()
+        };
+        unsafe {
+            let result = Shell_NotifyIconW(NIM_ADD, &nid);
+            eprintln!("[Tray] Shell_NotifyIconW(NIM_ADD) with default icon result: {}", result.as_bool());
+        }
+        self.icon_added = true;
+    }
+
+    /// 确保托盘图标已添加到系统（不设置默认图标）
+    fn ensure_icon(&mut self, hwnd: HWND) {
+        if self.icon_added {
+            eprintln!("[Tray] ensure_icon: icon already added");
+            return;
+        }
+        eprintln!("[Tray] ensure_icon: adding icon to system tray");
+        let nid = NOTIFYICONDATAW {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: hwnd,
+            uID: TRAY_ICON_ID,
+            uFlags: NIF_MESSAGE | NIF_SHOWTIP | NIF_ICON,
+            uCallbackMessage: WM_GPUI_TRAY_ICON,
+            hIcon: self.current_icon.unwrap_or_default(),
+            ..Default::default()
+        };
+        unsafe {
+            let result = Shell_NotifyIconW(NIM_ADD, &nid);
+            eprintln!("[Tray] Shell_NotifyIconW(NIM_ADD) result: {}", result.as_bool());
+        }
+        self.icon_added = true;
+    }
+
+    /// 设置托盘图标
+    pub fn set_icon(&mut self, icon_data: Option<&[u8]>, hwnd: HWND) {
+        self.ensure_icon(hwnd);
+        // 销毁旧图标
+        if let Some(old_icon) = self.current_icon.take() {
+            unsafe {
+                let _ = DestroyIcon(old_icon);
+            }
+        }
+        // 创建新图标
+        let hicon = match icon_data {
+            Some(data) => create_hicon_from_bytes(data),
+            None => None,
+        };
+        self.current_icon = hicon;
+        let nid = NOTIFYICONDATAW {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: hwnd,
+            uID: TRAY_ICON_ID,
             uFlags: NIF_ICON,
+            hIcon: hicon.unwrap_or_default(),
+            ..Default::default()
+        };
+        unsafe {
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
+        }
+    }
+
+    /// 设置托盘工具提示
+    pub fn set_tooltip(&mut self, tooltip: &str, hwnd: HWND) {
+        self.ensure_icon(hwnd);
+        let mut nid = NOTIFYICONDATAW {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
             hWnd: hwnd,
-            uID: id,
-            ..std::mem::zeroed()
+            uID: TRAY_ICON_ID,
+            uFlags: NIF_TIP | NIF_ICON,
+            hIcon: self.current_icon.unwrap_or_default(),
+            ..Default::default()
+        };
+        let wide: Vec<u16> = tooltip.encode_utf16().collect();
+        let len = wide.len().min(nid.szTip.len() - 1);
+        nid.szTip[..len].copy_from_slice(&wide[..len]);
+        unsafe {
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
+        }
+    }
+
+    /// 显示气球提示
+    #[allow(dead_code)]
+    pub fn show_balloon(&self, title: &str, body: &str, hwnd: HWND) -> anyhow::Result<()> {
+        let mut nid = NOTIFYICONDATAW {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: hwnd,
+            uID: TRAY_ICON_ID,
+            uFlags: NIF_INFO,
+            ..Default::default()
         };
 
-        if Shell_NotifyIconW(NIM_DELETE, &mut nid as _) == FALSE {
-            eprintln!("Error removing system tray icon");
+        let title_wide: Vec<u16> = title.encode_utf16().collect();
+        let title_len = title_wide.len().min(nid.szInfoTitle.len() - 1);
+        nid.szInfoTitle[..title_len].copy_from_slice(&title_wide[..title_len]);
+
+        let body_wide: Vec<u16> = body.encode_utf16().collect();
+        let body_len = body_wide.len().min(nid.szInfo.len() - 1);
+        nid.szInfo[..body_len].copy_from_slice(&body_wide[..body_len]);
+
+        unsafe {
+            Shell_NotifyIconW(NIM_MODIFY, &nid)
+                .ok()
+                .map_err(|e| anyhow::anyhow!("显示气球提示失败: {}", e))
+        }
+    }
+
+    /// 显示上下文菜单
+    pub fn show_context_menu(&mut self, hwnd: HWND) {
+        eprintln!("[Tray] show_context_menu called, menu_items count: {}", self.menu_items.len());
+        if self.menu_items.is_empty() {
+            eprintln!("[Tray] No menu items, returning");
+            return;
+        }
+        self.command_id_map.clear();
+        unsafe {
+            let hmenu = CreatePopupMenu();
+            if let Ok(hmenu) = hmenu {
+                let mut counter: u32 = 1;
+                Self::build_menu(
+                    hmenu,
+                    &self.menu_items,
+                    &mut counter,
+                    &mut self.command_id_map,
+                );
+                eprintln!("[Tray] Built menu with {} items", self.command_id_map.len());
+                let mut point = POINT::default();
+                let _ = GetCursorPos(&mut point);
+                eprintln!("[Tray] Cursor position: ({}, {})", point.x, point.y);
+                let _ = SetForegroundWindow(hwnd);
+                let result = TrackPopupMenu(
+                    hmenu,
+                    TPM_LEFTALIGN | TPM_BOTTOMALIGN,
+                    point.x,
+                    point.y,
+                    None,
+                    hwnd,
+                    None,
+                );
+                eprintln!("[Tray] TrackPopupMenu result: {}", result.0);
+                let _ = DestroyMenu(hmenu);
+            }
+        }
+    }
+
+    /// 构建 Windows 原生菜单
+    pub(crate) unsafe fn build_menu(
+        hmenu: HMENU,
+        items: &[TrayMenuItem],
+        counter: &mut u32,
+        id_map: &mut HashMap<u32, SharedString>,
+    ) {
+        for item in items.iter() {
+            match item {
+                TrayMenuItem::Action { label, id } => {
+                    let cmd_id = *counter;
+                    *counter += 1;
+                    id_map.insert(cmd_id, id.clone());
+                    let wide: Vec<u16> = label.encode_utf16().chain(Some(0)).collect();
+                    unsafe {
+                        let _ =
+                            AppendMenuW(hmenu, MF_STRING, cmd_id as usize, PCWSTR(wide.as_ptr()));
+                    }
+                }
+                TrayMenuItem::Separator => unsafe {
+                    let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, None);
+                },
+                TrayMenuItem::Submenu {
+                    label,
+                    items: sub_items,
+                } => {
+                    if let Ok(submenu) = unsafe { CreatePopupMenu() } {
+                        unsafe { Self::build_menu(submenu, sub_items, counter, id_map) };
+                        let wide: Vec<u16> = label.encode_utf16().chain(Some(0)).collect();
+                        unsafe {
+                            let _ = AppendMenuW(
+                                hmenu,
+                                MF_POPUP,
+                                submenu.0 as usize,
+                                PCWSTR(wide.as_ptr()),
+                            );
+                        }
+                    }
+                }
+                TrayMenuItem::Toggle {
+                    label, checked, id, ..
+                } => {
+                    let cmd_id = *counter;
+                    *counter += 1;
+                    id_map.insert(cmd_id, id.clone());
+                    let flags = if *checked {
+                        MF_STRING | MF_CHECKED
+                    } else {
+                        MF_STRING
+                    };
+                    let wide: Vec<u16> = label.encode_utf16().chain(Some(0)).collect();
+                    unsafe {
+                        let _ = AppendMenuW(hmenu, flags, cmd_id as usize, PCWSTR(wide.as_ptr()));
+                    }
+                }
+            }
         }
     }
 }
 
-#[inline]
-fn encode_wide<S: AsRef<std::ffi::OsStr>>(string: S) -> Vec<u16> {
-    std::os::windows::prelude::OsStrExt::encode_wide(string.as_ref())
-        .chain(std::iter::once(0))
-        .collect()
+impl Drop for WindowsTray {
+    fn drop(&mut self) {
+        // 删除托盘图标
+        if self.icon_added {
+            let nid = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: self.hwnd,
+                uID: TRAY_ICON_ID,
+                ..Default::default()
+            };
+            unsafe {
+                let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
+            }
+        }
+        // 销毁图标资源
+        if let Some(icon) = self.current_icon.take() {
+            unsafe {
+                let _ = DestroyIcon(icon);
+            }
+        }
+    }
+}
+
+/// 从字节数据创建 HICON 图标
+fn create_hicon_from_bytes(data: &[u8]) -> Option<HICON> {
+    unsafe {
+        // 查找图标资源偏移量
+        let offset = LookupIconIdFromDirectoryEx(data.as_ptr(), true, 0, 0, LR_DEFAULTCOLOR);
+        if offset <= 0 {
+            return None;
+        }
+        if (offset as usize) >= data.len() {
+            return None;
+        }
+        // 从资源数据创建图标
+        let icon_data = &data[offset as usize..];
+        let hicon = CreateIconFromResourceEx(icon_data, true, 0x00030000, 0, 0, LR_DEFAULTCOLOR);
+        hicon.ok()
+    }
 }

@@ -45,6 +45,9 @@ pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
 /// 自定义消息：按键按下（用于快捷键加速）
 pub(crate) const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
 
+/// 托盘图标消息
+pub(crate) const WM_GPUI_TRAY_ICON: u32 = WM_USER + 9;
+
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
 impl WindowsWindowInner {
