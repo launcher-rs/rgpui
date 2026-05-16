@@ -1,5 +1,6 @@
 mod derive_action;
 mod derive_app_context;
+mod derive_refineable;
 mod derive_into_element;
 mod derive_render;
 mod derive_visual_context;
@@ -159,6 +160,14 @@ pub fn derive_app_context(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(VisualContext, attributes(window, app))]
 pub fn derive_visual_context(input: TokenStream) -> TokenStream {
     derive_visual_context::derive_visual_context(input)
+}
+
+/// Derive macro for creating refinement types.
+///
+/// Generates a `Refinement` struct for partial initialization of complex structs.
+#[proc_macro_derive(Refineable, attributes(refineable))]
+pub fn derive_refineable(input: TokenStream) -> TokenStream {
+    derive_refineable::derive_refineable(input)
 }
 
 /// 用于生成样式辅助函数的过程宏。

@@ -23,6 +23,8 @@ pub mod collections;
 pub mod sum_tree;
 /// Task scheduler for async execution.
 pub mod scheduler;
+/// Refinement types for partial initialization.
+pub mod refineable;
 mod element;
 mod elements;
 mod executor;
@@ -119,7 +121,7 @@ pub use platform::*;
 pub use profiler::*;
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
 pub use queue::{PriorityQueueReceiver, PriorityQueueSender};
-pub use refineable::*;
+pub use crate::refineable::*;
 pub use scene::*;
 pub use shared_uri::*;
 use std::{any::Any, future::Future};

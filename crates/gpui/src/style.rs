@@ -12,7 +12,7 @@ use crate::{
     SizeRefinement, Styled, TextRun, Window,
 };
 use crate::collections::HashSet;
-use refineable::Refineable;
+use crate::refineable::Refineable;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

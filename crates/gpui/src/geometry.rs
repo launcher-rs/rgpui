@@ -11,7 +11,7 @@
 use anyhow::{anyhow, Context as _};
 use core::fmt::Debug;
 use derive_more::{Add, AddAssign, Div, DivAssign, Mul, Neg, Sub, SubAssign};
-use refineable::Refineable;
+use crate::refineable::Refineable;
 use schemars::{json_schema, JsonSchema};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;

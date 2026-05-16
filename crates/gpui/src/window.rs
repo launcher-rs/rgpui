@@ -35,7 +35,7 @@ use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use parking_lot::RwLock;
 use raw_window_handle::{HandleError, HasDisplayHandle, HasWindowHandle};
-use refineable::Refineable;
+use crate::refineable::Refineable;
 use crate::scheduler::Instant;
 use slotmap::SlotMap;
 use smallvec::SmallVec;

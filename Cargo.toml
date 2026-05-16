@@ -11,8 +11,6 @@ members = [
     "crates/gpui_tokio",
     "crates/gpui_wgpu",
     "crates/gpui_macros",
-    "crates/refineable",
-    "crates/refineable/derive_refineable",
 
 ]
 
@@ -32,8 +30,6 @@ gpui_web = { path = "crates/gpui_web" }
 gpui_wgpu = { path = "crates/gpui_wgpu" }
 gpui_windows = { path = "crates/gpui_windows", default-features = false }
 gpui_tokio = { path = "crates/gpui_tokio" }
-refineable = { path = "crates/refineable" }
-derive_refineable = { path = "crates/refineable/derive_refineable" }
 util_macros = { path = "crates/util_macros" }
 
 

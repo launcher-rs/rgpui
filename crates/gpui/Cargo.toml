@@ -80,7 +80,6 @@ profiling.workspace = true
 rand.workspace = true
 raw-window-handle = "0.6"
 regex.workspace = true
-refineable.workspace = true
 rustc-hash.workspace = true
 resvg = { version = "0.45.0", default-features = false, features = [
     "text",

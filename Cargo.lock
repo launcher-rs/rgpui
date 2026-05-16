@@ -1389,15 +1389,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derive_refineable"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2323,7 +2314,6 @@ dependencies = [
  "rand 0.9.4",
  "raw-window-handle",
  "rayon",
- "refineable",
  "regex",
  "resvg",
  "rust-embed",
@@ -4754,13 +4744,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "refineable"
-version = "0.1.0"
-dependencies = [
- "derive_refineable",
 ]
 
 [[package]]

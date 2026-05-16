@@ -28,7 +28,7 @@ use crate::{
 };
 use crate::collections::HashMap;
 use crate::ResultExt;
-use refineable::Refineable;
+use crate::refineable::Refineable;
 use smallvec::SmallVec;
 use stacksafe::{StackSafe, stacksafe};
 use std::{
