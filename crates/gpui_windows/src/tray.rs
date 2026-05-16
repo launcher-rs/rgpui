@@ -137,7 +137,7 @@ impl WindowsTray {
             SendMessageW(
                 self.hwnd,
                 WM_USER_UPDATE_TRAYICON,
-                icon.map(|icon| WPARAM(Box::into_raw(Box::new(Some(icon))) as *mut _ as usize)),
+                Some(WPARAM(Box::into_raw(Box::new(icon)) as *mut _ as usize)),
                 Some(LPARAM(0)),
             );
         }
@@ -164,7 +164,7 @@ impl WindowsTray {
             SendMessageW(
                 self.hwnd,
                 WM_USER_UPDATE_TRAYTOOLTIP,
-                tooltip.map(|t| WPARAM(Box::into_raw(Box::new(Some(t))) as _)),
+                Some(WPARAM(Box::into_raw(Box::new(tooltip)) as _)),
                 Some(LPARAM(0)),
             );
         }
@@ -180,12 +180,11 @@ impl WindowsTray {
 
         unsafe {
             // send the new menu to the subclass proc where we will update there
+            let menu_ptr = menu.as_ref().map(|m| HMENU(m.hpopupmenu() as _));
             SendMessageW(
                 self.hwnd,
                 WM_USER_UPDATE_TRAYMENU,
-                menu.as_ref().map(|menu| {
-                    WPARAM(Box::into_raw(Box::new(Some(HMENU(menu.hpopupmenu() as _)))) as _)
-                }),
+                Some(WPARAM(Box::into_raw(Box::new(menu_ptr)) as _)),
                 Some(LPARAM(0)),
             );
         }
