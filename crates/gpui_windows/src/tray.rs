@@ -7,6 +7,7 @@ use windows::{
     core::PCWSTR,
     Win32::{
         Foundation::*,
+        Graphics::Gdi::*,
         UI::{
             Shell::{
                 Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD,
@@ -295,17 +296,80 @@ impl Drop for WindowsTray {
 /// 从字节数据创建 HICON 图标
 fn create_hicon_from_bytes(data: &[u8]) -> Option<HICON> {
     unsafe {
-        // 查找图标资源偏移量
+        // 首先尝试作为 ICO 格式解析
         let offset = LookupIconIdFromDirectoryEx(data.as_ptr(), true, 0, 0, LR_DEFAULTCOLOR);
-        if offset <= 0 {
-            return None;
+        if offset > 0 && (offset as usize) < data.len() {
+            let icon_data = &data[offset as usize..];
+            if let Ok(hicon) = CreateIconFromResourceEx(icon_data, true, 0x00030000, 0, 0, LR_DEFAULTCOLOR) {
+                return Some(hicon);
+            }
         }
-        if (offset as usize) >= data.len() {
-            return None;
+
+        // 如果 ICO 解析失败，尝试作为 PNG 格式解析
+        // 使用 image crate 解码 PNG
+        let img = match image::load_from_memory(data) {
+            Ok(img) => img,
+            Err(_) => return None,
+        };
+
+        let rgba = img.to_rgba8();
+        let width = rgba.width();
+        let height = rgba.height();
+
+        // 创建 HBITMAP
+        let hdc = GetDC(None);
+        let bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width as i32,
+                biHeight: -(height as i32),
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: 0, // BI_RGB
+                biSizeImage: 0,
+                biXPelsPerMeter: 0,
+                biYPelsPerMeter: 0,
+                biClrUsed: 0,
+                biClrImportant: 0,
+            },
+            bmiColors: [RGBQUAD::default()],
+        };
+
+        let pixels = rgba.into_raw();
+        let mut pbits: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hbitmap = CreateDIBSection(
+            Some(hdc),
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut pbits,
+            None,
+            0,
+        );
+        ReleaseDC(None, hdc);
+
+        if let Ok(hbitmap) = hbitmap {
+            // 将像素数据复制到 HBITMAP
+            if !pbits.is_null() {
+                std::ptr::copy_nonoverlapping(
+                    pixels.as_ptr(),
+                    pbits as *mut u8,
+                    pixels.len(),
+                );
+            }
+
+            // 创建 HICON
+            let mut icon_info = ICONINFO::default();
+            icon_info.fIcon = true.into();
+            icon_info.xHotspot = 0;
+            icon_info.yHotspot = 0;
+            icon_info.hbmMask = hbitmap;
+            icon_info.hbmColor = hbitmap;
+            let hicon = CreateIconIndirect(&icon_info);
+            if let Ok(hicon) = hicon {
+                return Some(hicon);
+            }
         }
-        // 从资源数据创建图标
-        let icon_data = &data[offset as usize..];
-        let hicon = CreateIconFromResourceEx(icon_data, true, 0x00030000, 0, 0, LR_DEFAULTCOLOR);
-        hicon.ok()
+
+        None
     }
 }

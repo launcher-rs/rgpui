@@ -55,6 +55,10 @@ fn run_example() {
         // 设置托盘工具提示
         cx.set_tray_tooltip("GPUI Tray Example");
 
+        // 设置自定义托盘图标（使用 PNG 格式）
+        let icon_bytes = include_bytes!("image/app-icon.png");
+        cx.set_tray_icon(Some(icon_bytes.as_slice()));
+
         // 设置托盘菜单（使用新的 TrayMenuItem API）
         cx.set_tray_menu(vec![
             TrayMenuItem::Action {
