@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, fmt::Debug};
 
-use crate::{Bias, ContextLessSummary, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree};
+use super::{Bias, ContextLessSummary, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree};
 
 /// A cheaply-cloneable ordered map based on a [SumTree](crate::SumTree).
 #[derive(Clone, PartialEq, Eq)]

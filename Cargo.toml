@@ -15,7 +15,6 @@ members = [
     "crates/refineable",
     "crates/refineable/derive_refineable",
     "crates/scheduler",
-    "crates/sum_tree",
     "crates/util",
     "crates/util_macros",
     "crates/perf",
@@ -42,7 +41,6 @@ http_client = { path = "crates/http_client" }
 refineable = { path = "crates/refineable" }
 derive_refineable = { path = "crates/refineable/derive_refineable" }
 scheduler = { path = "crates/scheduler" }
-sum_tree = { path = "crates/sum_tree" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
 perf = { path = "crates/perf" }

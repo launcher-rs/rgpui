@@ -19,6 +19,8 @@ mod color;
 /// The default colors used by GPUI.
 pub mod colors;
 pub mod collections;
+/// A sum tree data structure, a concurrency-friendly B-tree.
+pub mod sum_tree;
 mod element;
 mod elements;
 mod executor;

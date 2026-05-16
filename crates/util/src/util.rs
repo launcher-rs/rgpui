@@ -16,6 +16,7 @@ pub mod shell;
 pub mod shell_builder;
 pub mod shell_env;
 pub mod size;
+pub mod sum_tree;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
 pub mod time;

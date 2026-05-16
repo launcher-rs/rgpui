@@ -2324,7 +2324,6 @@ dependencies = [
  "spin 0.10.0",
  "stacksafe",
  "strum",
- "sum_tree",
  "taffy",
  "thiserror 2.0.18",
  "ttf-parser",
@@ -5594,20 +5593,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
-name = "sum_tree"
-version = "0.1.0"
-dependencies = [
- "ctor",
- "env_logger",
- "heapless",
- "log",
- "proptest",
- "rand 0.9.4",
- "rayon",
- "tracing",
-]
-
-[[package]]
 name = "sval"
 version = "2.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6357,6 +6342,7 @@ dependencies = [
  "futures-lite 1.13.0",
  "git2",
  "globset",
+ "heapless",
  "indexmap",
  "itertools 0.14.0",
  "libc",
@@ -6366,6 +6352,7 @@ dependencies = [
  "percent-encoding",
  "pretty_assertions",
  "rand 0.9.4",
+ "rayon",
  "regex",
  "rust-embed",
  "rustc-hash 2.1.2",
@@ -6378,6 +6365,7 @@ dependencies = [
  "take-until",
  "tempfile",
  "tendril",
+ "tracing",
  "unicase",
  "url",
  "util_macros",

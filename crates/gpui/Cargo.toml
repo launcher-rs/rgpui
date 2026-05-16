@@ -92,7 +92,6 @@ smol_str = "0.3.6"
 async-channel.workspace = true
 stacksafe.workspace = true
 strum.workspace = true
-sum_tree.workspace = true
 taffy = "=0.10.1"
 thiserror.workspace = true
 util.workspace = true
