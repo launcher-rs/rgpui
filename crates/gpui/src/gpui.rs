@@ -62,6 +62,7 @@ mod taffy;
 pub mod test;
 mod gpui_util;
 mod text_system;
+mod tray;
 #[allow(missing_docs)]
 pub mod util;
 mod view;
@@ -136,6 +137,7 @@ pub use taffy::{AvailableSpace, LayoutId};
 #[cfg(any(test, feature = "test-support"))]
 pub use test::*;
 pub use text_system::*;
+pub use tray::*;
 pub use util::{FutureExt, Timeout};
 pub use view::*;
 pub use window::*;

@@ -49,7 +49,7 @@ use crate::{
     PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton, PromptHandle,
     PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation, ScreenCaptureSource,
     SharedString, SubscriberSet, Subscription, SvgRenderer, Task, TextRenderingMode, TextSystem,
-    ThermalState, Window, WindowAppearance, WindowButtonLayout, WindowHandle, WindowId,
+    ThermalState, Tray, Window, WindowAppearance, WindowButtonLayout, WindowHandle, WindowId,
     WindowInvalidator,
     colors::{Colors, GlobalColors},
     hash, init_app_menus,
@@ -2180,6 +2180,11 @@ impl App {
     /// Sets the right click menu for the app icon in the dock
     pub fn set_dock_menu(&self, menus: Vec<MenuItem>) {
         self.platform.set_dock_menu(menus, &self.keymap.borrow())
+    }
+
+    /// Sets the system tray icon and menu.
+    pub fn set_tray(&self, tray: Tray, menus: Option<Vec<MenuItem>>) {
+        self.platform.set_tray(tray, menus, &self.keymap.borrow())
     }
 
     /// Performs the action associated with the given dock menu item, only used on Windows for now.

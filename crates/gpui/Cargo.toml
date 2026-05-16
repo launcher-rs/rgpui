@@ -289,3 +289,7 @@ path = "examples/mouse_pressure.rs"
 [[example]]
 name = "transparent"
 path = "examples/transparent.rs"
+
+[[example]]
+name = "tray"
+path = "examples/tray.rs"
