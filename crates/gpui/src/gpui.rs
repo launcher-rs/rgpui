@@ -62,6 +62,7 @@ mod taffy;
 pub mod test;
 mod gpui_util;
 mod text_system;
+#[allow(missing_docs)]
 pub mod util;
 mod view;
 mod window;

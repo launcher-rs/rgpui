@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 pub use gpui_macros::Refineable;
 
 /// A trait for types that can be refined with partial updates.

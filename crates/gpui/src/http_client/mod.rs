@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 mod async_body;
 #[cfg(not(target_family = "wasm"))]
 pub mod github;
