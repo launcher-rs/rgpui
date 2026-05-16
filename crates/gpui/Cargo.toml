@@ -20,14 +20,22 @@ workspace = true
 default = ["font-kit", "wayland", "x11", "windows-manifest"]
 test-support = [
     "leak-detection",
-    "util/test-support",
-    "http_client/test-support",
     "wayland",
     "x11",
     "proptest",
+    "dep:git2",
+    "dep:util_macros",
 ]
 inspector = ["gpui_macros/inspector"]
-leak-detection = ["backtrace"]
+leak-detection = []
+reqwest = [
+    "dep:reqwest",
+    "dep:tokio",
+]
+tls = [
+    "dep:rustls",
+    "dep:rustls-platform-verifier",
+]
 wayland = [
     "bitflags",
 ]
@@ -47,18 +55,19 @@ doctest = false
 [dependencies]
 anyhow.workspace = true
 async-task = "4.7"
-backtrace = { workspace = true, optional = true }
+backtrace.workspace = true
 bitflags = { workspace = true, optional = true }
 
 ctor.workspace = true
+dirs.workspace = true
 derive_more.workspace = true
 gpui_macros.workspace = true
 etagere = "0.2"
 futures.workspace = true
 futures-concurrency.workspace = true
-http_client.workspace = true
 image.workspace = true
 inventory.workspace = true
+indexmap.workspace = true
 itertools.workspace = true
 log.workspace = true
 num_cpus = "1.13"
@@ -72,6 +81,7 @@ rand.workspace = true
 raw-window-handle = "0.6"
 regex.workspace = true
 refineable.workspace = true
+rustc-hash.workspace = true
 resvg = { version = "0.45.0", default-features = false, features = [
     "text",
     "system-fonts",
@@ -80,7 +90,7 @@ resvg = { version = "0.45.0", default-features = false, features = [
 ] }
 usvg = { version = "0.45.0", default-features = false }
 ttf-parser = "0.25"
-util_macros.workspace = true
+util_macros = { workspace = true, optional = true }
 schemars.workspace = true
 seahash = "4.1"
 serde.workspace = true
@@ -89,11 +99,41 @@ slotmap.workspace = true
 smallvec.workspace = true
 smol_str = "0.3.6"
 async-channel.workspace = true
+async-compression.workspace = true
+async-fs.workspace = true
+async-tar.workspace = true
+async_zip.workspace = true
+bytes.workspace = true
+dunce.workspace = true
+flume = "0.11"
+futures-lite.workspace = true
+git2 = { workspace = true, optional = true }
+globset.workspace = true
+heapless.workspace = true
+http.workspace = true
+http-body.workspace = true
+percent-encoding.workspace = true
+rayon.workspace = true
+reqwest = { workspace = true, optional = true }
+rust-embed.workspace = true
+rustls = { workspace = true, optional = true }
+rustls-platform-verifier = { workspace = true, optional = true }
+serde_json_lenient.workspace = true
+serde_urlencoded.workspace = true
+sha2.workspace = true
+shlex.workspace = true
+smol.workspace = true
+take-until.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"], optional = true }
+tracing.workspace = true
+unicase.workspace = true
+walkdir.workspace = true
+which.workspace = true
 stacksafe.workspace = true
 strum.workspace = true
 taffy = "=0.10.1"
 thiserror.workspace = true
-util.workspace = true
 hdrhistogram = { workspace = true, optional = true }
 waker-fn = "1.2.0"
 lyon = "1.0"
@@ -139,6 +179,12 @@ scap = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation"] }
+tendril = "0.4.3"
+
+[target.'cfg(unix)'.dependencies]
+command-fds = "0.3.1"
+libc.workspace = true
+nix = { workspace = true, features = ["user"] }
 
 
 [dev-dependencies]
@@ -149,10 +195,8 @@ lyon = { version = "1.0", features = ["extra"] }
 proptest = { workspace = true }
 rand.workspace = true
 unicode-segmentation = { workspace = true }
-util = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
-http_client = { workspace = true, features = ["test-support", "reqwest", "tls"] }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen = { workspace = true }

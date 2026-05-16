@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use ::util::{ResultExt, paths::SanitizedPath};
+use ::gpui::util::{ResultExt, paths::SanitizedPath};
 use anyhow::{Context as _, Result, anyhow};
 use futures::channel::oneshot::{self, Receiver};
 use itertools::Itertools;
@@ -508,7 +508,7 @@ impl Platform for WindowsPlatform {
                     reason = "We are restarting ourselves, using std command thus is fine"
                 )]
                 let restart_process =
-                    ::util::command::new_std_command(::util::shell::get_windows_system_shell())
+                    ::gpui::util::command::new_std_command(::gpui::util::shell::get_windows_system_shell())
                         .arg("-command")
                         .arg(script)
                         .spawn();

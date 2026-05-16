@@ -1,4 +1,4 @@
-use crate::collections::HashMap;
+use super::collections::HashMap;
 use std::{cmp::Ordering, ops::Range};
 
 /// Construct a string and a list of offsets within that string using a single

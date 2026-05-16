@@ -15,8 +15,8 @@ use std::{
     sync::LazyLock,
 };
 
-use crate::rel_path::RelPath;
-use crate::rel_path::RelPathBuf;
+use super::rel_path::RelPath;
+use super::rel_path::RelPathBuf;
 
 /// Returns the path to the user's home directory.
 pub fn home_dir() -> &'static PathBuf {
@@ -93,7 +93,7 @@ pub trait PathExt {
 
     /// Try to make a shell-safe representation of the path.
     #[cfg(not(target_family = "wasm"))]
-    fn try_shell_safe(&self, shell_kind: crate::shell::ShellKind) -> anyhow::Result<String>;
+    fn try_shell_safe(&self, shell_kind: super::shell::ShellKind) -> anyhow::Result<String>;
 }
 
 impl<T: AsRef<Path>> PathExt for T {
@@ -177,7 +177,7 @@ impl<T: AsRef<Path>> PathExt for T {
     }
 
     #[cfg(not(target_family = "wasm"))]
-    fn try_shell_safe(&self, shell_kind: crate::shell::ShellKind) -> anyhow::Result<String> {
+    fn try_shell_safe(&self, shell_kind: super::shell::ShellKind) -> anyhow::Result<String> {
         use anyhow::Context;
         let path_str = self
             .as_ref()
@@ -450,7 +450,7 @@ impl PathStyle {
 
     pub fn normalize(self, path_like: &str) -> String {
         match self {
-            PathStyle::Windows => crate::normalize_path(Path::new(path_like))
+            PathStyle::Windows => super::normalize_path(Path::new(path_like))
                 .to_string_lossy()
                 .into_owned(),
             PathStyle::Posix => {
@@ -717,7 +717,7 @@ impl PathWithPosition {
     /// # Examples
     ///
     /// ```
-    /// # use util::paths::PathWithPosition;
+    /// # use crate::util::paths::PathWithPosition;
     /// # use std::path::PathBuf;
     /// assert_eq!(PathWithPosition::parse_str("test_file"), PathWithPosition {
     ///     path: PathBuf::from("test_file"),
@@ -748,7 +748,7 @@ impl PathWithPosition {
     ///
     /// # Expected parsing results when encounter ill-formatted inputs.
     /// ```
-    /// # use util::paths::PathWithPosition;
+    /// # use crate::util::paths::PathWithPosition;
     /// # use std::path::PathBuf;
     /// assert_eq!(PathWithPosition::parse_str("test_file.rs:a"), PathWithPosition {
     ///     path: PathBuf::from("test_file.rs:a"),
@@ -1636,7 +1636,7 @@ impl UrlExt for url::Url {
 
 #[cfg(test)]
 mod tests {
-    use crate::rel_path::rel_path;
+    use super::rel_path::rel_path;
 
     use super::*;
     use util_macros::perf;

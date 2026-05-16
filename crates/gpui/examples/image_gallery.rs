@@ -8,7 +8,7 @@ use gpui::{
     actions, div, hash, image_cache, img, prelude::*, px, rgb, size,
 };
 #[cfg(not(target_family = "wasm"))]
-use http_client::reqwest_client::ReqwestClient;
+use gpui::http_client::reqwest_client::ReqwestClient;
 use std::{collections::HashMap, sync::Arc};
 
 const IMAGES_IN_GALLERY: usize = 30;

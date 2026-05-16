@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
-use crate::shell::get_system_shell;
-use crate::shell::{Shell, ShellKind};
+use super::shell::get_system_shell;
+use super::shell::{Shell, ShellKind};
 
 /// ShellBuilder is used to turn a user-requested task into a
 /// program that can be executed by the shell.
@@ -207,7 +207,7 @@ impl ShellBuilder {
         }
         let (program, args) = self.build(task_command, task_args);
 
-        let mut child = crate::command::new_std_command(program);
+        let mut child = super::command::new_std_command(program);
 
         #[cfg(windows)]
         if kind == ShellKind::Cmd {

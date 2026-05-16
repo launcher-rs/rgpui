@@ -1,10 +1,10 @@
 use std::path::Path;
 
 use anyhow::{Context as _, Result};
-use crate::collections::HashMap;
+use super::collections::HashMap;
 use serde::Deserialize;
 
-use crate::shell::ShellKind;
+use super::shell::ShellKind;
 
 fn parse_env_map_from_noisy_output(output: &str) -> Result<HashMap<String, String>> {
     for (position, _) in output.match_indices('{') {
@@ -79,7 +79,7 @@ async fn capture_unix(
 ) -> Result<HashMap<String, String>> {
     use std::os::unix::process::CommandExt;
 
-    use crate::command::new_std_command;
+    use super::command::new_std_command;
 
     let shell_kind = ShellKind::new(shell_path, false);
     let quoted_zed_path = super::get_shell_safe_zed_path(shell_kind)?;
@@ -230,7 +230,7 @@ async fn capture_windows(
             .map(|quoted| quoted.into_owned())
             .context("unexpected null in directory name")
     };
-    let mut cmd = crate::command::new_command(shell_path);
+    let mut cmd = super::command::new_command(shell_path);
     cmd.args(args);
     let quoted_directory = quote_for_shell(&directory_string)?;
     let quoted_zed_path = quote_for_shell(&zed_path_string)?;
@@ -308,7 +308,7 @@ mod tests {
     use std::process::ExitStatus;
 
     use super::*;
-    use crate::path;
+    use super::path;
 
     #[cfg(unix)]
     fn exit_status(code: i32) -> ExitStatus {

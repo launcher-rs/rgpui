@@ -1,4 +1,4 @@
-use crate::paths::{PathStyle, is_absolute};
+use super::paths::{PathStyle, is_absolute};
 use anyhow::{Context as _, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::{

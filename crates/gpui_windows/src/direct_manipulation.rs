@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use ::util::ResultExt;
+use ::gpui::util::ResultExt;
 use anyhow::Result;
 use gpui::*;
 use windows::Win32::{

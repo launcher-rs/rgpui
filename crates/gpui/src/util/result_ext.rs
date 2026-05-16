@@ -1,17 +1,5 @@
 use std::panic::Location;
 
-#[macro_export]
-macro_rules! debug_panic {
-    ( $($fmt_arg:tt)* ) => {
-        if cfg!(debug_assertions) {
-            panic!( $($fmt_arg)* );
-        } else {
-            let backtrace = std::backtrace::Backtrace::capture();
-            log::error!("{}\n{:?}", format_args!($($fmt_arg)*), backtrace);
-        }
-    };
-}
-
 pub trait ResultExt<E> {
     type Ok;
 

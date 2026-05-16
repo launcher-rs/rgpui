@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use ::util::ResultExt;
+use ::gpui::util::ResultExt;
 use anyhow::Context;
 use windows::{
     UI::{

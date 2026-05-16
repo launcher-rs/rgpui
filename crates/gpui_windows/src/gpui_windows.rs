@@ -38,6 +38,7 @@ pub(crate) use events::*;
 pub(crate) use keyboard::*;
 pub(crate) use platform::*;
 pub(crate) use system_settings::*;
+pub(crate) use gpui::util::*;
 pub(crate) use util::*;
 pub(crate) use vsync::*;
 pub(crate) use window::*;

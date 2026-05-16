@@ -29,7 +29,7 @@ impl Child {
         stdout: Stdio,
         stderr: Stdio,
     ) -> Result<Self> {
-        crate::set_pre_exec_to_start_new_session(&mut command);
+        super::set_pre_exec_to_start_new_session(&mut command);
         let mut command = smol::process::Command::from(command);
         let process = command
             .stdin(stdin)
@@ -39,7 +39,7 @@ impl Child {
             .with_context(|| {
                 format!(
                     "failed to spawn command {}",
-                    crate::redact::redact_command(&format!("{command:?}"))
+                    super::redact::redact_command(&format!("{command:?}"))
                 )
             })?;
         Ok(Self { process })
@@ -63,7 +63,7 @@ impl Child {
             .with_context(|| {
                 format!(
                     "failed to spawn command {}",
-                    crate::redact::redact_command(&format!("{command:?}"))
+                    super::redact::redact_command(&format!("{command:?}"))
                 )
             })?;
 

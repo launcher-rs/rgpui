@@ -763,7 +763,7 @@ pub enum ImageCacheError {
         /// The URI of the image.
         uri: SharedUri,
         /// The HTTP status code.
-        status: http_client::StatusCode,
+        status: crate::http_client::StatusCode,
         /// The HTTP response body.
         body: String,
     },

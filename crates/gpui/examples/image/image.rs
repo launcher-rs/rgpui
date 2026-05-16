@@ -11,7 +11,7 @@ use gpui::{
     img, prelude::*, px, rgb, size,
 };
 #[cfg(not(target_family = "wasm"))]
-use http_client::reqwest_client::ReqwestClient;
+use gpui::http_client::reqwest_client::ReqwestClient;
 
 struct Assets {
     base: PathBuf,

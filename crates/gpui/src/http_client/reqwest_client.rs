@@ -5,7 +5,7 @@ use std::{borrow::Cow, mem, pin::Pin, task::Poll, time::Duration};
 use anyhow::anyhow;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::{AsyncRead, FutureExt as _, TryStreamExt as _};
-use crate::{RedirectPolicy, Url, http};
+use super::{RedirectPolicy, Url, http};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue},
@@ -218,7 +218,7 @@ fn redact_error(mut error: reqwest::Error) -> reqwest::Error {
     error
 }
 
-impl crate::HttpClient for ReqwestClient {
+impl super::HttpClient for ReqwestClient {
     fn proxy(&self) -> Option<&Url> {
         self.proxy.as_ref()
     }
@@ -229,10 +229,10 @@ impl crate::HttpClient for ReqwestClient {
 
     fn send(
         &self,
-        req: http::Request<crate::AsyncBody>,
+        req: http::Request<super::AsyncBody>,
     ) -> futures::future::BoxFuture<
         'static,
-        anyhow::Result<crate::Response<crate::AsyncBody>>,
+        anyhow::Result<super::Response<super::AsyncBody>>,
     > {
         let (parts, body) = req.into_parts();
 
@@ -271,7 +271,7 @@ impl crate::HttpClient for ReqwestClient {
                 .bytes_stream()
                 .map_err(futures::io::Error::other)
                 .into_async_read();
-            let body = crate::AsyncBody::from_reader(bytes);
+            let body = super::AsyncBody::from_reader(bytes);
 
             builder.body(body).map_err(|e| anyhow!(e))
         }
@@ -281,7 +281,7 @@ impl crate::HttpClient for ReqwestClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::{HttpClient, Url};
+    use super::{HttpClient, Url};
 
     use super::ReqwestClient;
 

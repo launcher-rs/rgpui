@@ -1,4 +1,4 @@
-use crate::{HttpClient, HttpRequestExt};
+use super::{HttpClient, HttpRequestExt};
 use anyhow::{Context as _, Result, anyhow, bail};
 use futures::AsyncReadExt;
 use http::Request;
@@ -40,7 +40,7 @@ pub async fn latest_github_release(
     let url = format!("{GITHUB_API_URL}/repos/{repo_name_with_owner}/releases");
 
     let request = Request::get(&url)
-        .follow_redirects(crate::RedirectPolicy::FollowAll)
+        .follow_redirects(super::RedirectPolicy::FollowAll)
         .when_some(std::env::var("GITHUB_TOKEN").ok(), |builder, token| {
             builder.header("Authorization", format!("Bearer {}", token))
         })
@@ -102,7 +102,7 @@ pub async fn get_release_by_tag_name(
     let url = format!("{GITHUB_API_URL}/repos/{repo_name_with_owner}/releases/tags/{tag}");
 
     let request = Request::get(&url)
-        .follow_redirects(crate::RedirectPolicy::FollowAll)
+        .follow_redirects(super::RedirectPolicy::FollowAll)
         .when_some(std::env::var("GITHUB_TOKEN").ok(), |builder, token| {
             builder.header("Authorization", format!("Bearer {}", token))
         })
@@ -172,7 +172,7 @@ pub fn build_asset_url(repo_name_with_owner: &str, tag: &str, kind: AssetKind) -
 
 #[cfg(test)]
 mod tests {
-    use crate::github::{AssetKind, build_asset_url};
+    use super::github::{AssetKind, build_asset_url};
 
     #[test]
     fn test_build_asset_url() {

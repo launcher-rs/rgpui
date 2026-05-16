@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::paths::SanitizedPath;
+use super::paths::SanitizedPath;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 

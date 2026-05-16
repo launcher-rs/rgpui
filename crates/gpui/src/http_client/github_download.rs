@@ -9,7 +9,7 @@ use async_compression::futures::bufread::{BzDecoder, GzipDecoder};
 use futures::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWrite, io::BufReader};
 use sha2::{Digest, Sha256};
 
-use crate::{HttpClient, github::AssetKind};
+use super::{HttpClient, github::AssetKind};
 
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct GithubBinaryMetadata {
@@ -173,7 +173,7 @@ async fn stream_response_archive(
         AssetKind::TarBz2 => extract_tar_bz2(destination_path, url, response).await?,
         AssetKind::Gz => extract_gz(destination_path, url, response).await?,
         AssetKind::Zip => {
-            util::archive::extract_zip(destination_path, response).await?;
+            crate::util::archive::extract_zip(destination_path, response).await?;
         }
     };
     Ok(())
@@ -191,11 +191,11 @@ async fn stream_file_archive(
         AssetKind::Gz => extract_gz(destination_path, url, file_archive).await?,
         #[cfg(not(windows))]
         AssetKind::Zip => {
-            util::archive::extract_seekable_zip(destination_path, file_archive).await?;
+            crate::util::archive::extract_seekable_zip(destination_path, file_archive).await?;
         }
         #[cfg(windows)]
         AssetKind::Zip => {
-            util::archive::extract_zip(destination_path, file_archive).await?;
+            crate::util::archive::extract_zip(destination_path, file_archive).await?;
         }
     };
     Ok(())

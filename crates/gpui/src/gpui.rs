@@ -40,6 +40,10 @@ mod platform;
 pub mod prelude;
 /// Profiling utilities for task timing and thread performance tracking.
 pub mod profiler;
+/// Performance benchmarking utilities.
+pub mod perf;
+/// HTTP client library.
+pub mod http_client;
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
 #[expect(missing_docs)]
 pub mod queue;
@@ -56,7 +60,7 @@ mod taffy;
 pub mod test;
 mod gpui_util;
 mod text_system;
-mod util;
+pub mod util;
 mod view;
 mod window;
 
@@ -105,7 +109,6 @@ pub use gpui_util::{
     defer, log_err, measure, post_inc, some_or_debug_panic, Deferred,
     ResultExt, TryFutureExt, TryFutureExtBacktrace,
 };
-pub use http_client;
 pub use input::*;
 pub use inspector::*;
 pub use interactive::*;

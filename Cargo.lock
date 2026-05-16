@@ -1398,12 +1398,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "diff"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2261,15 +2255,21 @@ version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
+ "async-compression",
+ "async-fs",
+ "async-tar",
  "async-task",
+ "async_zip",
  "backtrace",
  "bindgen",
  "bitflags 2.11.1",
  "block",
+ "bytes",
  "cbindgen",
  "chrono",
  "cocoa 0.26.0",
  "cocoa-foundation 0.2.0",
+ "command-fds",
  "core-foundation 0.10.0",
  "core-foundation-sys",
  "core-graphics 0.24.0",
@@ -2277,25 +2277,36 @@ dependencies = [
  "core-video",
  "ctor",
  "derive_more",
+ "dirs",
+ "dunce",
  "embed-resource",
  "env_logger",
  "etagere",
+ "flume",
  "foreign-types",
  "futures",
  "futures-concurrency",
+ "futures-lite 1.13.0",
  "getrandom 0.3.4",
+ "git2",
+ "globset",
  "gpui_macros",
  "gpui_platform",
  "gpui_web",
  "hdrhistogram",
- "http_client",
+ "heapless",
+ "http",
+ "http-body",
  "image",
+ "indexmap",
  "inventory",
  "itertools 0.14.0",
+ "libc",
  "log",
  "lyon",
  "mach2",
  "metal",
+ "nix 0.29.0",
  "num_cpus",
  "objc",
  "objc2",
@@ -2303,6 +2314,7 @@ dependencies = [
  "parking",
  "parking_lot",
  "pathfinder_geometry",
+ "percent-encoding",
  "pin-project",
  "pollster 0.4.0",
  "postage",
@@ -2310,33 +2322,51 @@ dependencies = [
  "proptest",
  "rand 0.9.4",
  "raw-window-handle",
+ "rayon",
  "refineable",
  "regex",
  "resvg",
+ "rust-embed",
+ "rustc-hash 2.1.2",
+ "rustls",
+ "rustls-platform-verifier",
  "schemars",
  "seahash",
  "serde",
  "serde_json",
+ "serde_json_lenient",
+ "serde_urlencoded",
+ "sha2",
+ "shlex",
  "slotmap",
  "smallvec",
+ "smol",
  "smol_str",
  "spin 0.10.0",
  "stacksafe",
  "strum",
  "taffy",
+ "take-until",
+ "tempfile",
+ "tendril",
  "thiserror 2.0.18",
+ "tokio",
+ "tracing",
  "ttf-parser",
+ "unicase",
  "unicode-segmentation",
  "url",
  "usvg",
- "util",
  "util_macros",
  "uuid",
  "waker-fn",
+ "walkdir",
  "wasm-bindgen",
  "web-time",
+ "which",
  "windows 0.61.3",
  "zed-font-kit",
+ "zed-reqwest",
  "zed-scap",
 ]
 
@@ -2355,7 +2385,6 @@ dependencies = [
  "futures",
  "gpui",
  "gpui_wgpu",
- "http_client",
  "image",
  "itertools 0.14.0",
  "libc",
@@ -2372,7 +2401,6 @@ dependencies = [
  "strum",
  "swash",
  "url",
- "util",
  "uuid",
  "wayland-backend",
  "wayland-client",
@@ -2421,7 +2449,6 @@ dependencies = [
  "semver",
  "smallvec",
  "strum",
- "util",
  "uuid",
  "zed-font-kit",
 ]
@@ -2456,7 +2483,6 @@ dependencies = [
  "anyhow",
  "gpui",
  "tokio",
- "util",
 ]
 
 [[package]]
@@ -2468,7 +2494,6 @@ dependencies = [
  "futures",
  "gpui",
  "gpui_wgpu",
- "http_client",
  "js-sys",
  "log",
  "parking_lot",
@@ -2522,7 +2547,6 @@ dependencies = [
  "rand 0.9.4",
  "raw-window-handle",
  "smallvec",
- "util",
  "uuid",
  "windows 0.61.3",
  "windows-core 0.61.2",
@@ -2734,35 +2758,6 @@ dependencies = [
  "http",
  "http-body",
  "pin-project-lite",
-]
-
-[[package]]
-name = "http_client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-compression",
- "async-fs",
- "async-tar",
- "bytes",
- "derive_more",
- "futures",
- "http",
- "http-body",
- "log",
- "parking_lot",
- "regex",
- "rustls",
- "rustls-platform-verifier",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sha2",
- "tempfile",
- "tokio",
- "url",
- "util",
- "zed-reqwest",
 ]
 
 [[package]]
@@ -4141,16 +4136,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
-name = "perf"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "rustc-hash 2.1.2",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "pico-args"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4312,16 +4297,6 @@ name = "presser"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
-
-[[package]]
-name = "pretty_assertions"
-version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ae130e2f271fbc2ac3a40fb1d07180839cdbbe443c7a27e1e3c13c5cac0116d"
-dependencies = [
- "diff",
- "yansi",
-]
 
 [[package]]
 name = "prettyplease"
@@ -6314,61 +6289,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
-name = "util"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-fs",
- "async-task",
- "async_zip",
- "backtrace",
- "chrono",
- "command-fds",
- "dirs",
- "dunce",
- "flume",
- "futures",
- "futures-lite 1.13.0",
- "git2",
- "globset",
- "heapless",
- "indexmap",
- "itertools 0.14.0",
- "libc",
- "log",
- "mach2",
- "nix 0.29.0",
- "parking_lot",
- "percent-encoding",
- "pretty_assertions",
- "rand 0.9.4",
- "rayon",
- "regex",
- "rust-embed",
- "rustc-hash 2.1.2",
- "schemars",
- "serde",
- "serde_json",
- "serde_json_lenient",
- "shlex",
- "smol",
- "take-until",
- "tempfile",
- "tendril",
- "tracing",
- "unicase",
- "url",
- "util_macros",
- "walkdir",
- "web-time",
- "which",
-]
-
-[[package]]
 name = "util_macros"
 version = "0.1.0"
 dependencies = [
- "perf",
  "quote",
  "syn",
 ]
@@ -7769,12 +7692,6 @@ name = "y4m"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a5a4b21e1a62b67a2970e6831bc091d7b87e119e7f9791aef9702e3bef04448"
-
-[[package]]
-name = "yansi"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
 
 [[package]]
 name = "yazi"

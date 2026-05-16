@@ -50,7 +50,6 @@ raw-window-handle = "0.6"
 semver.workspace = true
 smallvec.workspace = true
 strum.workspace = true
-util.workspace = true
 uuid.workspace = true
 
 [target.'cfg(target_os = "macos")'.build-dependencies]

@@ -29,7 +29,7 @@ pub use entity_map::*;
 use crate::{ResultExt, debug_panic};
 #[cfg(any(test, feature = "test-support"))]
 pub use headless_app_context::*;
-use http_client::{HttpClient, Url};
+use crate::http_client::{HttpClient, Url};
 use smallvec::SmallVec;
 #[cfg(any(test, feature = "test-support"))]
 pub use test_app::*;
@@ -2691,10 +2691,10 @@ struct NullHttpClient;
 impl HttpClient for NullHttpClient {
     fn send(
         &self,
-        _req: http_client::Request<http_client::AsyncBody>,
+        _req: crate::http_client::Request<crate::http_client::AsyncBody>,
     ) -> futures::future::BoxFuture<
         'static,
-        anyhow::Result<http_client::Response<http_client::AsyncBody>>,
+        anyhow::Result<crate::http_client::Response<crate::http_client::AsyncBody>>,
     > {
         async move {
             anyhow::bail!("No HttpClient available");
@@ -2702,7 +2702,7 @@ impl HttpClient for NullHttpClient {
         .boxed()
     }
 
-    fn user_agent(&self) -> Option<&http_client::http::HeaderValue> {
+    fn user_agent(&self) -> Option<&crate::http_client::http::HeaderValue> {
         None
     }
 

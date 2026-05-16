@@ -8,7 +8,7 @@
 
 use std::{rc::Rc, sync::atomic::Ordering};
 
-use ::util::ResultExt;
+use ::gpui::util::ResultExt;
 use anyhow::Context as _;
 use windows::{
     Win32::{
