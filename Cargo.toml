@@ -11,7 +11,6 @@ members = [
     "crates/gpui_tokio",
     "crates/gpui_wgpu",
     "crates/gpui_macros",
-    "crates/collections",
     "crates/http_client",
     "crates/refineable",
     "crates/refineable/derive_refineable",
@@ -39,7 +38,6 @@ gpui_web = { path = "crates/gpui_web" }
 gpui_wgpu = { path = "crates/gpui_wgpu" }
 gpui_windows = { path = "crates/gpui_windows", default-features = false }
 gpui_tokio = { path = "crates/gpui_tokio" }
-collections = { path = "crates/collections" }
 http_client = { path = "crates/http_client" }
 refineable = { path = "crates/refineable" }
 derive_refineable = { path = "crates/refineable/derive_refineable" }

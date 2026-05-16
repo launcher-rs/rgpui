@@ -26,7 +26,7 @@ use crate::{
     StyleRefinement, Styled, Task, TooltipId, Visibility, Window, WindowControlArea, point, px,
     size,
 };
-use collections::HashMap;
+use crate::collections::HashMap;
 use crate::ResultExt;
 use refineable::Refineable;
 use smallvec::SmallVec;

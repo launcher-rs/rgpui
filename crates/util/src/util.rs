@@ -1,4 +1,5 @@
 pub mod archive;
+pub mod collections;
 pub mod command;
 pub mod disambiguate;
 pub mod fs;

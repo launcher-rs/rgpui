@@ -1,4 +1,4 @@
-use collections::HashMap;
+use gpui::collections::HashMap;
 use std::ffi::{CStr, c_void};
 
 use objc::{msg_send, runtime::Object, sel, sel_impl};

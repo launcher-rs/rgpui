@@ -6,7 +6,7 @@ use crate::{
     Task, TestDisplay, TestWindow, ThermalState, WindowAppearance, WindowParams, size,
 };
 use anyhow::Result;
-use collections::VecDeque;
+use crate::collections::VecDeque;
 use futures::channel::oneshot;
 use parking_lot::Mutex;
 use std::{

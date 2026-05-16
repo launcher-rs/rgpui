@@ -11,7 +11,7 @@ use crate::{
     GridLocation, Hsla, Length, Pixels, Point, PointRefinement, Rgba, SharedString, Size,
     SizeRefinement, Styled, TextRun, Window,
 };
-use collections::HashSet;
+use crate::collections::HashSet;
 use refineable::Refineable;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

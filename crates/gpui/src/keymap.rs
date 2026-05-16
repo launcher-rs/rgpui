@@ -5,7 +5,7 @@ pub use binding::*;
 pub use context::*;
 
 use crate::{Action, AsKeystroke, Keystroke, Unbind, is_no_action, is_unbind};
-use collections::{HashMap, HashSet};
+use crate::collections::{HashMap, HashSet};
 use smallvec::SmallVec;
 use std::any::TypeId;
 

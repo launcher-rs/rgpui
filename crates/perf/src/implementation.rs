@@ -1,9 +1,11 @@
 //! The implementation of the this crate is kept in a separate module
 //! so that it is easy to publish this crate as part of GPUI's dependencies
 
-use collections::HashMap;
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::{num::NonZero, time::Duration};
+
+type HashMap<K, V> = FxHashMap<K, V>;
 
 pub mod consts {
     //! Preset identifiers and constants so that the profiler and proc macro agree

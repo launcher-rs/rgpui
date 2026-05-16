@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use collections::HashMap;
+use crate::collections::HashMap;
 pub use gpui_macros::Action;
 pub use no_action::{NoAction, Unbind, is_no_action, is_unbind};
 use serde_json::json;

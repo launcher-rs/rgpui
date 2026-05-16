@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use collections::FxHashMap;
+use gpui::collections::FxHashMap;
 use derive_more::{Deref, DerefMut};
 use etagere::BucketedAtlasAllocator;
 use gpui::{

@@ -5,7 +5,7 @@ use crate::{
 };
 use crate::{Empty, Window};
 use anyhow::Result;
-use collections::FxHashSet;
+use crate::collections::FxHashSet;
 use refineable::Refineable;
 use std::mem;
 use std::rc::Rc;

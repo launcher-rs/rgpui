@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Ok, Result};
-use collections::HashMap;
+use gpui::collections::HashMap;
 use cosmic_text::{
     Attrs, AttrsList, Family, Font as CosmicTextFont, FontFeatures as CosmicFontFeatures,
     FontSystem, ShapeBuffer, ShapeLine,

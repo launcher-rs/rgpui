@@ -27,6 +27,7 @@ missing_safety_doc = "forbid"
 disallowed_methods = { level = "allow", priority = 1}
 
 [dependencies]
-collections.workspace = true
+indexmap.workspace = true
+rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true

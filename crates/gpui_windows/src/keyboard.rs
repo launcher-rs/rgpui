@@ -7,7 +7,7 @@
 //! - 支持不同键盘布局的按键等价物
 
 use anyhow::Result;
-use collections::HashMap;
+use gpui::collections::HashMap;
 use windows::Win32::UI::{
     Input::KeyboardAndMouse::{
         GetKeyboardLayoutNameW, MapVirtualKeyW, ToUnicode, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC,

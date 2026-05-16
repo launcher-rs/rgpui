@@ -1,4 +1,4 @@
-use collections::FxHashMap;
+use gpui::collections::FxHashMap;
 use etagere::BucketedAtlasAllocator;
 use parking_lot::Mutex;
 use windows::Win32::Graphics::{

@@ -4,7 +4,7 @@ use calloop::{
     EventLoop, LoopHandle, RegistrationToken,
     generic::{FdWrapper, Generic},
 };
-use collections::HashMap;
+use gpui::collections::HashMap;
 use core::str;
 use gpui::{Capslock, TaskTiming, profiler};
 use http_client::Url;
