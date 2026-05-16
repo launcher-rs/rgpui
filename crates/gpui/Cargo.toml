@@ -284,3 +284,8 @@ path = "examples/list_example.rs"
 [[example]]
 name = "mouse_pressure"
 path = "examples/mouse_pressure.rs"
+
+
+[[example]]
+name = "transparent"
+path = "examples/transparent.rs"

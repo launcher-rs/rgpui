@@ -1289,6 +1289,7 @@ impl Window {
                 icon,
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
+                window_decorations: window_decorations.unwrap_or(WindowDecorations::Server),
             },
         )?;
 

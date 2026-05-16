@@ -725,6 +725,11 @@ impl WindowsWindowInner {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> Option<isize> {
+        // 无边框窗口：整个窗口都是客户区，没有非客户区
+        if self.client_decorations {
+            return Some(0);
+        }
+
         if !self.hide_title_bar || self.state.is_fullscreen() || wparam.0 == 0 {
             return None;
         }

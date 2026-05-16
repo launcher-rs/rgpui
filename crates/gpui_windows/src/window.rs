@@ -92,6 +92,7 @@ pub(crate) struct WindowsWindowInner {
     system_settings: WindowsSystemSettings,
     pub(crate) handle: AnyWindowHandle,
     pub(crate) hide_title_bar: bool,
+    pub(crate) client_decorations: bool,
     pub(crate) is_movable: bool,
     pub(crate) executor: ForegroundExecutor,
     pub(crate) validation_number: usize,
@@ -259,6 +260,7 @@ impl WindowsWindowInner {
             state,
             handle: context.handle,
             hide_title_bar: context.hide_title_bar,
+            client_decorations: context.client_decorations,
             is_movable: context.is_movable,
             executor: context.executor.clone(),
             validation_number: context.validation_number,
@@ -380,6 +382,7 @@ struct WindowCreateContext {
     inner: Option<Result<Rc<WindowsWindowInner>>>,
     handle: AnyWindowHandle,
     hide_title_bar: bool,
+    client_decorations: bool,
     display: WindowsDisplay,
     is_movable: bool,
     min_size: Option<Size<Pixels>>,
@@ -447,6 +450,9 @@ impl WindowsWindow {
 
         let (mut dwexstyle, dwstyle) = if params.kind == WindowKind::PopUp {
             (WS_EX_TOOLWINDOW, WINDOW_STYLE(0x0))
+        } else if params.window_decorations == WindowDecorations::Client {
+            // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框
+            (WS_EX_APPWINDOW, WS_POPUP)
         } else {
             let mut dwstyle = WS_SYSMENU;
 
@@ -479,10 +485,12 @@ impl WindowsWindow {
         .or_else(WindowsDisplay::primary_monitor)
         .context("failed to find any monitor")?;
         let appearance = system_appearance().unwrap_or_default();
+        let client_decorations = params.window_decorations == WindowDecorations::Client;
         let mut context = WindowCreateContext {
             inner: None,
             handle,
             hide_title_bar,
+            client_decorations,
             display,
             is_movable: params.is_movable,
             min_size: params.window_min_size,

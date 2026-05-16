@@ -1496,6 +1496,11 @@ pub struct WindowParams {
     pub window_min_size: Option<Size<Pixels>>,
     #[cfg(target_os = "macos")]
     pub tabbing_identifier: Option<String>,
+    #[cfg_attr(
+        any(target_os = "linux", target_os = "freebsd", target_os = "macos"),
+        allow(dead_code)
+    )]
+    pub window_decorations: WindowDecorations,
 }
 
 /// Represents the status of how a window should be opened.
