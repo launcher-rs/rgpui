@@ -84,6 +84,12 @@ PlatformWindow trait 关键方法:
 - activate() → SW_RESTORE / SW_SHOWNORMAL + SetForegroundWindow
 ```
 
+## 代码规范
+
+- **所有函数必须添加中文注释**：公开 API 和内部函数均需使用简体中文说明功能、参数和返回值
+- 注释风格遵循 Rust 文档规范（`///` 用于公开 API，`//` 用于内部逻辑）
+- 避免使用英文注释，保持项目语言统一
+
 ## 注意事项
 
 - `gpui_platform` 是示例代码的入口 crate，通过 `cfg(target_os)` 选择平台实现
