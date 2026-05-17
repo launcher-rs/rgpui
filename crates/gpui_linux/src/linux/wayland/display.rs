@@ -11,9 +11,11 @@ use gpui::{Bounds, DisplayId, Pixels, PlatformDisplay};
 
 #[derive(Debug, Clone)]
 pub(crate) struct WaylandDisplay {
-    /// The ID of the wl_output object
+    /// wl_output 对象的 ID
     pub id: ObjectId,
+    /// 显示器名称
     pub name: Option<String>,
+    /// 显示器边界
     pub bounds: Bounds<Pixels>,
 }
 

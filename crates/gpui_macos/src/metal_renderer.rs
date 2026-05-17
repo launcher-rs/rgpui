@@ -29,14 +29,14 @@ use parking_lot::Mutex;
 
 use std::{cell::Cell, ffi::c_void, mem, ptr, sync::Arc};
 
-// Exported to metal
+// 导出到 metal
 pub(crate) type PointF = gpui::Point<f32>;
 
 #[cfg(not(feature = "runtime_shaders"))]
 const SHADERS_METALLIB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/shaders.metallib"));
 #[cfg(feature = "runtime_shaders")]
 const SHADERS_SOURCE_FILE: &str = include_str!(concat!(env!("OUT_DIR"), "/stitched_shaders.metal"));
-// Use 4x MSAA, all devices support it.
+// 使用 4x MSAA，所有设备都支持它。
 // https://developer.apple.com/documentation/metal/mtldevice/1433355-supportstexturesamplecount
 const PATH_SAMPLE_COUNT: u32 = 4;
 
@@ -86,7 +86,7 @@ impl InstanceBufferPool {
         let buffer = self.buffers.pop().unwrap_or_else(|| {
             let options = if unified_memory {
                 MTLResourceOptions::StorageModeShared
-                    // Buffers are write only which can benefit from the combined cache
+                    // 缓冲区是只写的，可以从组合缓存中受益
                     // https://developer.apple.com/documentation/metal/mtlresourceoptions/cpucachemodewritecombined
                     | MTLResourceOptions::CPUCacheModeWriteCombined
             } else {
@@ -116,7 +116,7 @@ pub(crate) struct MetalRenderer {
     is_apple_gpu: bool,
     is_unified_memory: bool,
     presents_with_transaction: bool,
-    /// For headless rendering, tracks whether output should be opaque
+    /// 对于无头渲染，跟踪输出是否应该不透明
     opaque: bool,
     command_queue: CommandQueue,
     paths_rasterization_pipeline_state: metal::RenderPipelineState,
@@ -157,11 +157,11 @@ impl MetalRenderer {
         let layer = metal::MetalLayer::new();
         layer.set_device(&device);
         layer.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
-        // Support direct-to-display rendering if the window is not transparent
+        // 如果窗口不透明，支持直接显示渲染
         // https://developer.apple.com/documentation/metal/managing-your-game-window-for-metal-in-macos
         layer.set_opaque(!transparent);
         layer.set_maximum_drawable_count(3);
-        // Allow texture reading for visual tests (captures screenshots without ScreenCaptureKit)
+        // 允许纹理读取以进行视觉测试（捕获截图而无需 ScreenCaptureKit）
         #[cfg(any(test, feature = "test-support"))]
         layer.set_framebuffer_only(false);
         unsafe {
@@ -188,17 +188,17 @@ impl MetalRenderer {
     }
 
     fn create_device() -> metal::Device {
-        // Prefer low‐power integrated GPUs on Intel Mac. On Apple
-        // Silicon, there is only ever one GPU, so this is equivalent to
-        // `metal::Device::system_default()`.
+        // 在 Intel Mac 上优先使用低功耗集成 GPU。在 Apple
+        // Silicon 上，只有一个 GPU，因此这等同于
+        // `metal::Device::system_default()`。
         if let Some(d) = metal::Device::all()
             .into_iter()
             .min_by_key(|d| (d.is_removable(), !d.is_low_power()))
         {
             d
         } else {
-            // For some reason `all()` can return an empty list, see https://github.com/zed-industries/zed/issues/37689
-            // In that case, we fall back to the system default device.
+            // 出于某种原因，`all()` 可能返回空列表，见 https://github.com/zed-industries/zed/issues/37689
+            // 在这种情况下，我们回退到系统默认设备。
             log::error!(
                 "Unable to enumerate Metal devices; attempting to use system default device"
             );
@@ -231,12 +231,12 @@ impl MetalRenderer {
             output
         }
 
-        // Shared memory can be used only if CPU and GPU share the same memory space.
+        // 仅当 CPU 和 GPU 共享相同内存空间时才能使用共享内存。
         // https://developer.apple.com/documentation/metal/setting-resource-storage-modes
         let is_unified_memory = device.has_unified_memory();
-        // Apple GPU families support memoryless textures, which can significantly reduce
-        // memory usage by keeping render targets in on-chip tile memory instead of
-        // allocating backing store in system memory.
+        // Apple GPU 系列支持无内存纹理，这可以显著减少
+        // 内存使用，通过将渲染目标保留在片上 tile 内存中，而不是
+        // 在系统内存中分配后备存储。
         // https://developer.apple.com/documentation/metal/mtlgpufamily
         let is_apple_gpu = device.supports_family(MTLGPUFamily::Apple1);
 
@@ -400,8 +400,8 @@ impl MetalRenderer {
     }
 
     fn update_path_intermediate_textures(&mut self, size: Size<DevicePixels>) {
-        // We are uncertain when this happens, but sometimes size can be 0 here. Most likely before
-        // the layout pass on window creation. Zero-sized texture creation causes SIGABRT.
+        // 我们不确定何时会发生，但有时这里的 size 可能为 0。最有可能是在
+        // 窗口创建时的布局传递之前。零大小的纹理创建会导致 SIGABRT。
         // https://github.com/zed-industries/zed/issues/36229
         if size.width.0 <= 0 || size.height.0 <= 0 {
             self.path_intermediate_texture = None;
@@ -420,7 +420,7 @@ impl MetalRenderer {
 
         if self.path_sample_count > 1 {
             // https://developer.apple.com/documentation/metal/choosing-a-resource-storage-mode-for-apple-gpus
-            // Rendering MSAA textures are done in a single pass, so we can use memory-less storage on Apple Silicon
+            // 渲染 MSAA 纹理在单次传递中完成，因此我们可以在 Apple Silicon 上使用无内存存储
             let storage_mode = if self.is_apple_gpu {
                 metal::MTLStorageMode::Memoryless
             } else {
@@ -531,12 +531,12 @@ impl MetalRenderer {
         }
     }
 
-    /// Renders the scene to a texture and returns the pixel data as an RGBA image.
-    /// This does not present the frame to screen - useful for visual testing
-    /// where we want to capture what would be rendered without displaying it.
+    /// 将场景渲染到纹理并返回像素数据作为 RGBA 图像。
+    /// 这不会将帧呈现到屏幕——用于视觉测试，
+    /// 我们希望捕获将要渲染的内容而不显示它。
     ///
-    /// Note: This requires a layer-backed renderer. For headless rendering,
-    /// use `render_scene_to_image()` instead.
+    /// 注意：这需要基于层的渲染器。对于无头渲染，
+    /// 请改用 `render_scene_to_image()`。
     #[cfg(any(test, feature = "test-support"))]
     pub fn render_to_image(&mut self, scene: &Scene) -> Result<RgbaImage> {
         let layer = self
@@ -573,11 +573,11 @@ impl MetalRenderer {
                     let block = block.copy();
                     command_buffer.add_completed_handler(&block);
 
-                    // Commit and wait for completion without presenting
+                    // 提交并等待完成而不呈现
                     command_buffer.commit();
                     command_buffer.wait_until_completed();
 
-                    // Read pixels from the texture
+                    // 从纹理读取像素
                     let texture = drawable.texture();
                     let width = texture.width() as u32;
                     let height = texture.height() as u32;
@@ -602,7 +602,7 @@ impl MetalRenderer {
                         0,
                     );
 
-                    // Convert BGRA to RGBA (swap B and R channels)
+                    // 将 BGRA 转换为 RGBA（交换 B 和 R 通道）
                     for chunk in pixels.chunks_exact_mut(4) {
                         chunk.swap(0, 2);
                     }
@@ -631,10 +631,10 @@ impl MetalRenderer {
         }
     }
 
-    /// Renders a scene to an image without requiring a window or CAMetalLayer.
+    /// 将场景渲染到图像，无需窗口或 CAMetalLayer。
     ///
-    /// This is the primary method for headless rendering. It creates an offscreen
-    /// texture, renders the scene to it, and returns the pixel data as an RGBA image.
+    /// 这是无头渲染的主要方法。它创建离屏
+    /// 纹理，将场景渲染到其中，并返回像素数据作为 RGBA 图像。
     #[cfg(any(test, feature = "test-support"))]
     pub fn render_scene_to_image(
         &mut self,
@@ -645,10 +645,10 @@ impl MetalRenderer {
             anyhow::bail!("Invalid size for render_scene_to_image: {:?}", size);
         }
 
-        // Update path intermediate textures for this size
+        // 更新此大小的路径中间纹理
         self.update_path_intermediate_textures(size);
 
-        // Create an offscreen texture as render target
+        // 创建离屏纹理作为渲染目标
         let texture_descriptor = metal::TextureDescriptor::new();
         texture_descriptor.set_width(size.width.0 as u64);
         texture_descriptor.set_height(size.height.0 as u64);
@@ -679,21 +679,21 @@ impl MetalRenderer {
                     let block = block.copy();
                     command_buffer.add_completed_handler(&block);
 
-                    // On discrete GPUs (non-unified memory), Managed textures
-                    // require an explicit blit synchronize before the CPU can
-                    // read back the rendered data. Without this, get_bytes
-                    // returns stale zeros.
+                    // 在离散 GPU（非统一内存）上，Managed 纹理
+                    // 在 CPU 可以回读渲染的数据之前需要显式的
+                    // blit 同步。没有这个，get_bytes
+                    // 返回陈旧的零。
                     if !self.is_unified_memory {
                         let blit = command_buffer.new_blit_command_encoder();
                         blit.synchronize_resource(&target_texture);
                         blit.end_encoding();
                     }
 
-                    // Commit and wait for completion
+                    // 提交并等待完成
                     command_buffer.commit();
                     command_buffer.wait_until_completed();
 
-                    // Read pixels from the texture
+                    // 从纹理读取像素
                     let width = size.width.0 as u32;
                     let height = size.height.0 as u32;
                     let bytes_per_row = width as usize * 4;
@@ -717,13 +717,13 @@ impl MetalRenderer {
                         0,
                     );
 
-                    // Convert BGRA to RGBA (swap B and R channels)
+                    // 将 BGRA 转换为 RGBA（交换 B 和 R 通道）
                     for chunk in pixels.chunks_exact_mut(4) {
                         chunk.swap(0, 2);
                     }
 
                     return RgbaImage::from_raw(width, height, pixels).ok_or_else(|| {
-                        anyhow::anyhow!("Failed to create RgbaImage from pixel data")
+                        anyhow::anyhow!("无法从像素数据创建 RgbaImage")
                     });
                 }
                 Err(err) => {
@@ -879,7 +879,7 @@ impl MetalRenderer {
         command_encoder.end_encoding();
 
         if !self.is_unified_memory {
-            // Sync the instance buffer to the GPU
+            // 将实例缓冲区同步到 GPU
             instance_buffer.metal_buffer.did_modify_range(NSRange {
                 location: 0,
                 length: instance_offset as NSUInteger,
@@ -1130,13 +1130,13 @@ impl MetalRenderer {
             Some(intermediate_texture),
         );
 
-        // When copying paths from the intermediate texture to the drawable,
-        // each pixel must only be copied once, in case of transparent paths.
+        // 从中间纹理复制路径到可绘制对象时，
+        // 每个像素只能复制一次，以防透明路径。
         //
-        // If all paths have the same draw order, then their bounds are all
-        // disjoint, so we can copy each path's bounds individually. If this
-        // batch combines different draw orders, we perform a single copy
-        // for a minimal spanning rect.
+        // 如果所有路径具有相同的绘制顺序，则它们的边界都是
+        // 不相交的，因此我们可以单独复制每个路径的边界。如果此
+        // 批次组合了不同的绘制顺序，我们执行单次复制
+        // 以获取最小包围矩形。
         let sprites;
         if paths.last().unwrap().order == first_path.order {
             sprites = paths
@@ -1632,7 +1632,7 @@ fn build_path_rasterization_pipeline_state(
         .expect("could not create render pipeline state")
 }
 
-// Align to multiples of 256 make Metal happy.
+// 对齐到 256 的倍数使 Metal 满意。
 fn align_offset(offset: &mut usize) {
     *offset = (*offset).div_ceil(256) * 256;
 }

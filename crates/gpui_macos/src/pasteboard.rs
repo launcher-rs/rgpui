@@ -49,7 +49,7 @@ impl Pasteboard {
 
     pub fn read(&self) -> Option<ClipboardItem> {
         unsafe {
-            // Check for file paths first
+            // 首先检查文件路径
             let filenames = NSPasteboard::propertyListForType(self.inner, NSFilenamesPboardType);
             if filenames != nil && NSArray::count(filenames) > 0 {
                 let mut paths = SmallVec::new();
@@ -61,8 +61,8 @@ impl Pasteboard {
                 if !paths.is_empty() {
                     let mut entries = vec![ClipboardEntry::ExternalPaths(ExternalPaths(paths))];
 
-                    // Also include the string representation so text editors can
-                    // paste the path as text.
+                    // 同时包含字符串表示，以便文本编辑器可以
+                    // 将路径作为文本粘贴。
                     if let Some(string_item) = self.read_string_from_pasteboard() {
                         entries.push(string_item);
                     }
@@ -71,14 +71,14 @@ impl Pasteboard {
                 }
             }
 
-            // Next, check for a plain string.
+            // 接下来，检查纯字符串。
             if let Some(string_entry) = self.read_string_from_pasteboard() {
                 return Some(ClipboardItem {
                     entries: vec![string_entry],
                 });
             }
 
-            // Finally, try the various supported image types.
+            // 最后，尝试各种支持的图像类型。
             for format in ImageFormat::iter() {
                 if let Some(item) = self.read_image(format) {
                     return Some(item);
@@ -166,7 +166,7 @@ impl Pasteboard {
         unsafe {
             match item.entries.as_slice() {
                 [] => {
-                    // Writing an empty list of entries just clears the clipboard.
+                    // 写入空的条目列表只会清除剪贴板。
                     self.inner.clearContents();
                 }
                 [ClipboardEntry::String(string)] => {
@@ -177,12 +177,12 @@ impl Pasteboard {
                 }
                 [ClipboardEntry::ExternalPaths(_)] => {}
                 _ => {
-                    // Agus NB: We're currently only writing string entries to the clipboard when we have more than one.
+                    // Agus NB：当我们有多个条目时，目前只将字符串条目写入剪贴板。
                     //
-                    // This was the existing behavior before I refactored the outer clipboard code:
+                    // 这是我重构外部剪贴板代码之前的现有行为：
                     // https://github.com/zed-industries/zed/blob/65f7412a0265552b06ce122655369d6cc7381dd6/crates/gpui/src/platform/mac/platform.rs#L1060-L1110
                     //
-                    // Note how `any_images` is always `false`. We should fix that, but that's orthogonal to the refactor.
+                    // 注意 `any_images` 始终为 `false`。我们应该修复这个问题，但这与重构无关。
 
                     let mut combined = ClipboardString {
                         text: String::new(),
@@ -277,13 +277,13 @@ impl From<ImageFormat> for UTType {
     }
 }
 
-// See https://developer.apple.com/documentation/uniformtypeidentifiers/uttype-swift.struct/
+// 参见 https://developer.apple.com/documentation/uniformtypeidentifiers/uttype-swift.struct/
 pub struct UTType(id);
 
 impl UTType {
     pub fn png() -> Self {
         // https://developer.apple.com/documentation/uniformtypeidentifiers/uttype-swift.struct/png
-        Self(unsafe { NSPasteboardTypePNG }) // This is a rare case where there's a built-in NSPasteboardType
+        Self(unsafe { NSPasteboardTypePNG }) // 这是一种罕见的情况，存在内置的 NSPasteboardType
     }
 
     pub fn jpeg() -> Self {
@@ -318,7 +318,7 @@ impl UTType {
 
     pub fn tiff() -> Self {
         // https://developer.apple.com/documentation/uniformtypeidentifiers/uttype-swift.struct/tiff
-        Self(unsafe { NSPasteboardTypeTIFF }) // This is a rare case where there's a built-in NSPasteboardType
+        Self(unsafe { NSPasteboardTypeTIFF }) // 这是一种罕见的情况，存在内置的 NSPasteboardType
     }
 
     pub fn pnm() -> Self {
@@ -419,10 +419,10 @@ mod tests {
 
         let item = pasteboard.read().expect("should read clipboard item");
 
-        // Test both ExternalPaths and String entries exist
+        // 测试 ExternalPaths 和 String 条目都存在
         assert_eq!(item.entries.len(), 2);
 
-        // Test first entry is ExternalPaths
+        // 测试第一个条目是 ExternalPaths
         match &item.entries[0] {
             ClipboardEntry::ExternalPaths(ep) => {
                 assert_eq!(ep.paths(), &[PathBuf::from("/test.txt")]);
@@ -430,7 +430,7 @@ mod tests {
             other => panic!("expected ExternalPaths, got {:?}", other),
         }
 
-        // Test second entry is String
+        // 测试第二个条目是 String
         match &item.entries[1] {
             ClipboardEntry::String(s) => {
                 assert_eq!(s.text(), "/test.txt");
@@ -470,7 +470,7 @@ mod tests {
         let item = pasteboard.read().expect("should read clipboard item");
         assert_eq!(item.entries.len(), 2);
 
-        // Test both ExternalPaths and String entries exist
+        // 测试 ExternalPaths 和 String 条目都存在
         match &item.entries[0] {
             ClipboardEntry::ExternalPaths(ep) => {
                 assert_eq!(
@@ -494,7 +494,7 @@ mod tests {
     fn test_read_image() {
         let pasteboard = Pasteboard::unique();
 
-        // Smallest valid PNG: 1x1 transparent pixel
+        // 最小的有效 PNG：1x1 透明像素
         let png_bytes: &[u8] = &[
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
             0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
@@ -518,7 +518,7 @@ mod tests {
 
         let item = pasteboard.read().expect("should read PNG image");
 
-        // Test Image entry exists
+        // 测试 Image 条目存在
         assert_eq!(item.entries.len(), 1);
         match &item.entries[0] {
             ClipboardEntry::Image(img) => {

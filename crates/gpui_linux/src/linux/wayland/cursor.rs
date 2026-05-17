@@ -1,3 +1,7 @@
+//! Wayland 光标模块
+//!
+//! 处理 Wayland 环境下的光标主题加载和图标设置
+
 use crate::linux::Globals;
 use crate::linux::{DEFAULT_CURSOR_ICON_NAME, log_cursor_icon_warning};
 use anyhow::{Context as _, anyhow};
@@ -8,6 +12,7 @@ use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_client::protocol::{wl_pointer::WlPointer, wl_shm::WlShm};
 use wayland_cursor::{CursorImageBuffer, CursorTheme};
 
+/// Wayland 光标实现
 pub(crate) struct Cursor {
     loaded_theme: Option<LoadedTheme>,
     size: u32,
@@ -17,6 +22,7 @@ pub(crate) struct Cursor {
     connection: Connection,
 }
 
+/// 已加载的光标主题
 pub(crate) struct LoadedTheme {
     theme: CursorTheme,
     name: Option<String>,
@@ -31,6 +37,7 @@ impl Drop for Cursor {
 }
 
 impl Cursor {
+    /// 创建新的光标实例
     pub fn new(connection: &Connection, globals: &Globals, size: u32) -> Self {
         let mut this = Self {
             loaded_theme: None,
@@ -91,6 +98,14 @@ impl Cursor {
         self.set_scaled_size(size);
     }
 
+    /// 设置光标图标
+    ///
+    /// # 参数
+    ///
+    /// * `wl_pointer` - Wayland 指针对象
+    /// * `serial_id` - 序列号
+    /// * `cursor_icon_names` - 光标图标名称列表（按优先级）
+    /// * `scale` - 缩放因子
     pub fn set_icon(
         &mut self,
         wl_pointer: &WlPointer,

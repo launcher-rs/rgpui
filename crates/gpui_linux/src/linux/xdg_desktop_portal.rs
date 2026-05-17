@@ -1,6 +1,6 @@
-//! Provides a [calloop] event source from [XDG Desktop Portal] events
+//! 从 [XDG 桌面门户] 事件提供 [calloop] 事件源
 //!
-//! This module uses the [ashpd] crate
+//! 本模块使用 [ashpd] crate
 
 use ashpd::desktop::settings::{ColorScheme, Settings};
 use calloop::channel::Channel;
@@ -9,20 +9,33 @@ use smol::stream::StreamExt;
 
 use gpui::{BackgroundExecutor, WindowAppearance};
 
+/// XDG 桌面门户事件类型
 pub enum Event {
+    /// 窗口外观变化
     WindowAppearance(WindowAppearance),
+    /// 光标主题变化
     #[cfg_attr(feature = "x11", allow(dead_code))]
     CursorTheme(String),
+    /// 光标大小变化
     #[cfg_attr(feature = "x11", allow(dead_code))]
     CursorSize(u32),
+    /// 窗口按钮布局变化
     ButtonLayout(String),
 }
 
+/// XDG 桌面门户事件源
 pub struct XDPEventSource {
     channel: Channel<Event>,
 }
 
 impl XDPEventSource {
+    /// 创建新的 XDP 事件源
+    ///
+    /// 订阅桌面门户设置变化，包括颜色方案、光标主题、光标大小和按钮布局
+    ///
+    /// # 参数
+    ///
+    /// * `executor` - 后台执行器
     pub fn new(executor: &BackgroundExecutor) -> Self {
         let (sender, channel) = calloop::channel::channel();
 
@@ -44,7 +57,7 @@ impl XDPEventSource {
                     sender.send(Event::CursorTheme(initial_theme))?;
                 }
 
-                // If u32 is used here, it throws invalid type error
+                // 如果这里使用 u32，会抛出无效类型错误
                 if let Ok(initial_size) = settings
                     .read::<i32>("org.gnome.desktop.interface", "cursor-size")
                     .await

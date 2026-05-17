@@ -131,7 +131,7 @@ unsafe impl objc::Encode for NSRange {
     }
 }
 
-/// Allow NSString::alloc use here because it sets autorelease
+/// 允许在此处使用 NSString::alloc，因为它设置了自动释放
 #[allow(clippy::disallowed_methods)]
 unsafe fn ns_string(string: &str) -> id {
     unsafe { NSString::alloc(nil).init_str(string).autorelease() }

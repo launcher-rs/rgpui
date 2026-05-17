@@ -59,9 +59,8 @@ struct RawWindow {
     display: *mut c_void,
 }
 
-// Safety: The raw pointers in RawWindow point to Wayland surface/display
-// which are valid for the window's lifetime. These are used only for
-// passing to wgpu which needs Send+Sync for surface creation.
+// 安全性：RawWindow 中的原始指针指向窗口生命周期内有效的 Wayland 表面/显示
+// 这些仅用于传递给 wgpu，后者需要 Send+Sync 来创建表面
 unsafe impl Send for RawWindow {}
 unsafe impl Sync for RawWindow {}
 
@@ -138,7 +137,7 @@ impl WaylandSurfaceState {
         parent: Option<WaylandWindowStatePtr>,
         target_output: Option<wl_output::WlOutput>,
     ) -> anyhow::Result<Self> {
-        // For layer_shell windows, create a layer surface instead of an xdg surface
+        // 对于 layer_shell 窗口，创建层表面而不是 xdg 表面
         if let WindowKind::LayerShell(options) = &params.kind {
             let Some(layer_shell) = globals.layer_shell.as_ref() else {
                 return Err(LayerShellNotSupportedError.into());
@@ -185,7 +184,7 @@ impl WaylandSurfaceState {
             }));
         }
 
-        // All other WindowKinds result in a regular xdg surface
+        // 所有其他 WindowKind 都创建为常规 xdg 表面
         let xdg_surface = globals
             .wm_base
             .get_xdg_surface(&surface, &globals.qh, surface.id());
@@ -217,7 +216,7 @@ impl WaylandSurfaceState {
             toplevel.set_min_size(f32::from(size.width) as i32, f32::from(size.height) as i32);
         }
 
-        // Attempt to set up window decorations based on the requested configuration
+        // 根据请求的配置尝试设置窗口装饰
         let decoration = globals
             .decoration_manager
             .as_ref()
@@ -279,7 +278,7 @@ impl WaylandSurfaceState {
                 xdg_surface.set_window_geometry(x, y, width, height);
             }
             WaylandSurfaceState::LayerShell(WaylandLayerSurfaceState { layer_surface, .. }) => {
-                // cannot set window position of a layer surface
+                // 无法设置层表面的窗口位置
                 layer_surface.set_size(width as u32, height as u32);
             }
         }
@@ -293,13 +292,13 @@ impl WaylandSurfaceState {
                 decoration: _decoration,
                 dialog,
             }) => {
-                // drop the dialog before toplevel so compositor can explicitly unapply it's effects
+                // 在 toplevel 之前丢弃 dialog，以便合成器显式取消应用其效果
                 if let Some(dialog) = dialog {
                     dialog.destroy();
                 }
 
-                // The role object (toplevel) must always be destroyed before the xdg_surface.
-                // See https://wayland.app/protocols/xdg-shell#xdg_surface:request:destroy
+                // 角色对象（toplevel）必须在 xdg_surface 之前销毁
+                // 参见 https://wayland.app/protocols/xdg-shell#xdg_surface:request:destroy
                 toplevel.destroy();
                 xdg_surface.destroy();
             }
@@ -352,9 +351,16 @@ impl WaylandWindowState {
         };
 
         if let WaylandSurfaceState::Xdg(ref xdg_state) = surface_state {
-            if let Some(title) = options.titlebar.and_then(|titlebar| titlebar.title) {
+            if let Some(titlebar) = options.titlebar.and_then(|titlebar| titlebar.title) {
                 xdg_state.toplevel.set_title(title.to_string());
             }
+            // 根据 GPU 的最大纹理尺寸设置最大窗口大小
+            // 这可以防止窗口被调整为大于 GPU 可渲染的尺寸
+            let max_texture_size = renderer.max_texture_size() as i32;
+            xdg_state
+                .toplevel
+                .set_max_size(max_texture_size, max_texture_size);
+        }
             // Set max window size based on the GPU's maximum texture dimension.
             // This prevents the window from being resized larger than what the GPU can render.
             let max_texture_size = renderer.max_texture_size() as i32;
@@ -460,28 +466,28 @@ impl Drop for WaylandWindow {
 
         state.renderer.destroy();
 
-        // Destroy blur first, this has no dependencies.
+        // 首先销毁模糊效果，这没有依赖关系
         if let Some(blur) = &state.blur {
             blur.release();
         }
 
-        // Decorations must be destroyed before the xdg state.
-        // See https://wayland.app/protocols/xdg-decoration-unstable-v1#zxdg_toplevel_decoration_v1
+        // 装饰必须在 xdg 状态之前销毁
+        // 参见 https://wayland.app/protocols/xdg-decoration-unstable-v1#zxdg_toplevel_decoration_v1
         if let Some(decoration) = &state.surface_state.decoration() {
             decoration.destroy();
         }
 
-        // Surface state might contain xdg_toplevel/xdg_surface which can be destroyed now that
-        // decorations are gone. layer_surface has no dependencies.
+        // 表面状态可能包含 xdg_toplevel/xdg_surface，现在装饰已移除可以销毁
+        // layer_surface 没有依赖关系
         state.surface_state.destroy();
 
-        // Viewport must be destroyed before the wl_surface.
-        // See https://wayland.app/protocols/viewporter#wp_viewport
+        // Viewport 必须在 wl_surface 之前销毁
+        // 参见 https://wayland.app/protocols/viewporter#wp_viewport
         if let Some(viewport) = &state.viewport {
             viewport.destroy();
         }
 
-        // The wl_surface itself should always be destroyed last.
+        // wl_surface 本身应该始终最后销毁
         state.surface.destroy();
 
         let state_ptr = self.0.clone();
@@ -555,27 +561,33 @@ impl WaylandWindow {
 }
 
 impl WaylandWindowStatePtr {
+    /// 获取窗口句柄
     pub fn handle(&self) -> AnyWindowHandle {
         self.state.borrow().handle
     }
 
+    /// 获取 wl_surface
     pub fn surface(&self) -> wl_surface::WlSurface {
         self.state.borrow().surface.clone()
     }
 
+    /// 获取 xdg_toplevel（如果存在）
     pub fn toplevel(&self) -> Option<xdg_toplevel::XdgToplevel> {
         self.state.borrow().surface_state.toplevel().cloned()
     }
 
+    /// 检查两个指针是否指向同一状态
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.state, &other.state)
     }
 
+    /// 添加子窗口
     pub fn add_child(&self, child: ObjectId) {
         let mut state = self.state.borrow_mut();
         state.children.insert(child);
     }
 
+    /// 检查窗口是否被阻塞（有子窗口）
     pub fn is_blocked(&self) -> bool {
         let state = self.state.borrow();
         !state.children.is_empty()
@@ -1159,9 +1171,9 @@ impl PlatformWindow for WaylandWindow {
         let state = self.borrow();
         let state_ptr = self.0.clone();
 
-        // Keep window geometry consistent with configure handling. On Wayland, window geometry is
-        // surface-local: resizing should not attempt to translate the window; the compositor
-        // controls placement. We also account for client-side decoration insets and tiling.
+        // 保持窗口几何形状与配置处理一致。在 Wayland 上，窗口几何形状是
+        // 表面局部的：调整大小不应尝试移动窗口；合成器
+        // 控制位置。我们还考虑了客户端装饰 inset 和平铺。
         let window_geometry = inset_by_tiling(
             Bounds {
                 origin: Point::default(),
@@ -1242,14 +1254,14 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn activate(&self) {
-        // Try to request an activation token. Even though the activation is likely going to be rejected,
-        // KWin and Mutter can use the app_id to visually indicate we're requesting attention.
+        // 尝试请求激活令牌。即使激活很可能被拒绝，
+        // KWin 和 Mutter 也可以使用 app_id 以视觉方式指示我们正在请求关注
         let state = self.borrow();
         if let (Some(activation), Some(app_id)) = (&state.globals.activation, state.app_id.clone())
         {
             state.client.set_pending_activation(state.surface.id());
             let token = activation.get_activation_token(&state.globals.qh, ());
-            // The serial isn't exactly important here, since the activation is probably going to be rejected anyway.
+            // 序列号在这里并不真正重要，因为激活很可能被拒绝
             let serial = state.client.get_serial(SerialKind::MousePress);
             token.set_app_id(app_id);
             token.set_serial(serial, &state.globals.seat);
@@ -1410,8 +1422,8 @@ impl PlatformWindow for WaylandWindow {
     fn completed_frame(&self) {
         let mut state = self.borrow_mut();
 
-        // Work around a bug in old versions of wlroots where committing without a buffer attached
-        // can cause invalid synchronization that leads to graphical corruption.
+        // 解决旧版本 wlroots 中的一个问题：在未附加缓冲区的情况下提交
+        // 可能导致无效同步，从而导致图形损坏
         if !state.renderer_presented {
             state.surface.commit();
         }
@@ -1538,14 +1550,14 @@ fn update_window(mut state: RefMut<WaylandWindowState>) {
         opaque_area.size.height,
     );
 
-    // Note that rounded corners make this rectangle API hard to work with.
-    // As this is common when using CSD, let's just disable this API.
+    // 注意：圆角使这个矩形 API 难以使用
+    // 由于使用 CSD 时这很常见，我们直接禁用此 API
     if state.background_appearance == WindowBackgroundAppearance::Opaque
         && state.decorations == WindowDecorations::Server
     {
-        // Promise the compositor that this region of the window surface
-        // contains no transparent pixels. This allows the compositor to skip
-        // updating whatever is behind the surface for better performance.
+        // 向合成器承诺窗口表面的这个区域
+        // 不包含透明像素。这允许合成器跳过
+        // 更新表面后面的内容以获得更好的性能
         state.surface.set_opaque_region(Some(&region));
     } else {
         state.surface.set_opaque_region(None);
@@ -1559,7 +1571,7 @@ fn update_window(mut state: RefMut<WaylandWindowState>) {
             }
             state.blur.as_ref().unwrap().commit();
         } else {
-            // It probably doesn't hurt to clear the blur for opaque windows
+            // 为不透明窗口清除模糊效果可能也无妨
             blur_manager.unset(&state.surface);
             if let Some(b) = state.blur.take() {
                 b.release()
@@ -1602,9 +1614,9 @@ impl ResizeEdgeWaylandExt for ResizeEdge {
     }
 }
 
-/// The configuration event is in terms of the window geometry, which we are constantly
-/// updating to account for the client decorations. But that's not the area we want to render
-/// to, due to our intrusize CSD. So, here we calculate the 'actual' size, by adding back in the insets
+/// 配置事件是基于窗口几何形状的，我们不断更新它以考虑客户端装饰
+/// 但由于我们的侵入式 CSD，这不是我们要渲染的区域
+/// 因此，这里我们通过重新加入 inset 来计算"实际"大小
 fn compute_outer_size(
     inset: Pixels,
     new_size: Option<Size<Pixels>>,

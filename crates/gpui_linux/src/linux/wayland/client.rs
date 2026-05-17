@@ -104,7 +104,7 @@ use wayland_protocols::wp::linux_dmabuf::zv1::client::{
     zwp_linux_dmabuf_feedback_v1, zwp_linux_dmabuf_v1,
 };
 
-/// Used to convert evdev scancode to xkb scancode
+/// 用于将 evdev 扫描码转换为 xkb 扫描码
 const MIN_KEYCODE: u32 = 8;
 
 const UNKNOWN_KEYBOARD_LAYOUT_NAME: SharedString = SharedString::new_static("unknown");
@@ -286,36 +286,40 @@ pub(crate) struct KeyRepeat {
     current_keycode: Option<xkb::Keycode>,
 }
 
+/// 待激活类型
 pub(crate) enum PendingActivation {
-    /// URI to open in the web browser.
+    /// 在浏览器中打开的 URI
     Uri(String),
-    /// Path to open in the file explorer.
+    /// 在文件管理器中打开的路径
     Path(PathBuf),
-    /// A window from ourselves to raise.
+    /// 需要提升的自身窗口
     Window(ObjectId),
 }
 
-/// This struct is required to conform to Rust's orphan rules, so we can dispatch on the state but hand the
-/// window to GPUI.
+/// 此结构体用于符合 Rust 的孤儿规则，使我们可以在状态上分发但将窗口句柄交给 GPUI
 #[derive(Clone)]
 pub struct WaylandClientStatePtr(Weak<RefCell<WaylandClientState>>);
 
 impl WaylandClientStatePtr {
+    /// 获取客户端实例
     pub fn get_client(&self) -> Rc<RefCell<WaylandClientState>> {
         self.0
             .upgrade()
             .expect("The pointer should always be valid when dispatching in wayland")
     }
 
+    /// 获取指定类型的序列号
     pub fn get_serial(&self, kind: SerialKind) -> u32 {
         self.0.upgrade().unwrap().borrow().serial_tracker.get(kind)
     }
 
+    /// 设置待激活的窗口
     pub fn set_pending_activation(&self, window: ObjectId) {
         self.0.upgrade().unwrap().borrow_mut().pending_activation =
             Some(PendingActivation::Window(window));
     }
 
+    /// 启用输入法
     pub fn enable_ime(&self) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
@@ -341,6 +345,7 @@ impl WaylandClientStatePtr {
         state.text_input = Some(text_input);
     }
 
+    /// 禁用输入法
     pub fn disable_ime(&self) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
@@ -351,6 +356,7 @@ impl WaylandClientStatePtr {
         }
     }
 
+    /// 更新输入法光标位置
     pub fn update_ime_position(&self, bounds: Bounds<Pixels>) {
         let client = self.get_client();
         let state = client.borrow_mut();
@@ -368,6 +374,7 @@ impl WaylandClientStatePtr {
         text_input.commit();
     }
 
+    /// 处理键盘布局变更
     pub fn handle_keyboard_layout_change(&self) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
@@ -397,6 +404,7 @@ impl WaylandClientStatePtr {
         }
     }
 
+    /// 移除窗口引用
     pub fn drop_window(&self, surface_id: &ObjectId) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
@@ -420,16 +428,17 @@ impl WaylandClientStatePtr {
 }
 
 impl WaylandClientState {
+    /// 隐藏光标直到鼠标移动
     fn hide_cursor_until_mouse_moves(&mut self) {
         if self.cursor_hidden_window.is_some() {
             return;
         }
         let Some(focused_window) = self.mouse_focused_window.clone() else {
-            // No surface to apply the hidden cursor to.
+            // 没有表面可以应用隐藏光标
             return;
         };
         let Some(wl_pointer) = self.wl_pointer.clone() else {
-            // Seat lost its pointer capability; nothing to hide.
+            // 座位失去了指针能力；无需隐藏
             return;
         };
         let serial = self.serial_tracker.get(SerialKind::MouseEnter);
@@ -437,6 +446,7 @@ impl WaylandClientState {
         self.cursor_hidden_window = Some(focused_window);
     }
 
+    /// 隐藏后恢复光标
     fn restore_cursor_after_hide(&mut self) {
         if self.cursor_hidden_window.take().is_none() {
             return;
@@ -498,8 +508,9 @@ impl Drop for WaylandClient {
 
 const WL_DATA_DEVICE_MANAGER_VERSION: u32 = 3;
 
+/// 获取 wl_seat 版本，确保支持 wl_pointer.frame 事件
 fn wl_seat_version(version: u32) -> u32 {
-    // We rely on the wl_pointer.frame event
+    // 我们依赖 wl_pointer.frame 事件
     const WL_SEAT_MIN_VERSION: u32 = 5;
     const WL_SEAT_MAX_VERSION: u32 = 9;
 
@@ -513,6 +524,7 @@ fn wl_seat_version(version: u32) -> u32 {
     version.clamp(WL_SEAT_MIN_VERSION, WL_SEAT_MAX_VERSION)
 }
 
+/// 获取 wl_output 版本
 fn wl_output_version(version: u32) -> u32 {
     const WL_OUTPUT_MIN_VERSION: u32 = 2;
     const WL_OUTPUT_MAX_VERSION: u32 = 4;

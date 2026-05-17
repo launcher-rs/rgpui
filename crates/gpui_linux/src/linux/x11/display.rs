@@ -1,9 +1,14 @@
+//! X11 显示器模块
+//!
+//! 提供 X11 环境下的显示器抽象实现
+
 use anyhow::Context as _;
 use uuid::Uuid;
 use x11rb::{connection::Connection as _, xcb_ffi::XCBConnection};
 
 use gpui::{Bounds, DisplayId, Pixels, PlatformDisplay, Size, px};
 
+/// X11 显示器实现
 #[derive(Debug)]
 pub(crate) struct X11Display {
     x_screen_index: usize,
@@ -12,6 +17,13 @@ pub(crate) struct X11Display {
 }
 
 impl X11Display {
+    /// 创建新的 X11 显示器实例
+    ///
+    /// # 参数
+    ///
+    /// * `xcb` - XCB 连接
+    /// * `scale_factor` - 缩放因子
+    /// * `x_screen_index` - X 屏幕索引
     pub(crate) fn new(
         xcb: &XCBConnection,
         scale_factor: f32,

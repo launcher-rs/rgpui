@@ -125,7 +125,7 @@ impl MetalAtlasState {
             width: DevicePixels(1024),
             height: DevicePixels(1024),
         };
-        // Max texture size on all modern Apple GPUs. Anything bigger than that crashes in validateWithDevice.
+        // 所有现代 Apple GPU 上的最大纹理大小。任何更大的尺寸都会在 validateWithDevice 中崩溃。
         const MAX_ATLAS_SIZE: Size<DevicePixels> = Size {
             width: DevicePixels(16384),
             height: DevicePixels(16384),
@@ -149,7 +149,7 @@ impl MetalAtlasState {
         }
         texture_descriptor.set_pixel_format(pixel_format);
         texture_descriptor.set_usage(usage);
-        // Shared memory mode can be used only on Apple GPU families
+        // 共享内存模式仅可在 Apple GPU 系列上使用
         // https://developer.apple.com/documentation/metal/mtlresourceoptions/storagemodeshared
         texture_descriptor.set_storage_mode(if self.is_apple_gpu {
             metal::MTLStorageMode::Shared
@@ -320,21 +320,21 @@ mod tests {
         assert_eq!(tile_a.texture_id, tile_b.texture_id);
         assert_eq!(tile_b.texture_id, tile_c.texture_id);
 
-        // Remove A: texture still has B and C, so it stays.
-        // The key for A must be removed from tiles_by_key.
+        // 移除 A：纹理仍然有 B 和 C，所以保留。
+        // A 的键必须从 tiles_by_key 中移除。
         atlas.remove(&key_a);
 
-        // Remove B: texture still has C.
+        // 移除 B：纹理仍然有 C。
         atlas.remove(&key_b);
 
-        // Remove C: texture becomes unreferenced and is deleted.
+        // 移除 C：纹理变为未引用并被删除。
         atlas.remove(&key_c);
 
-        // Re-inserting A must allocate a fresh tile on a new texture,
-        // NOT return a stale tile referencing the deleted texture.
+        // 重新插入 A 必须在新纹理上分配新图块，
+        // 而不是返回引用已删除纹理的过时图块。
         let tile_a2 = insert_tile(&atlas, &key_a, small);
 
-        // The texture must actually exist — this would panic before the fix.
+        // 纹理必须实际存在——这在修复之前会 panic。
         let _texture = atlas.metal_texture(tile_a2.texture_id);
     }
 

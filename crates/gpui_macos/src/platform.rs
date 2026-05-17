@@ -102,7 +102,7 @@ unsafe fn build_classes() {
                 sel!(handleGPUIMenuItem:),
                 handle_menu_item as extern "C" fn(&mut Object, Sel, id),
             );
-            // Add menu item handlers so that OS save panels have the correct key commands
+            // 添加菜单项处理器，以便 OS 保存面板具有正确的键命令
             decl.add_method(
                 sel!(cut:),
                 handle_menu_item as extern "C" fn(&mut Object, Sel, id),
@@ -184,7 +184,7 @@ pub(crate) struct MacPlatformState {
     dock_menu: Option<id>,
     menus: Option<Vec<OwnedMenu>>,
     keyboard_mapper: Rc<MacKeyboardMapper>,
-    /// Mirrors `[NSCursor setHiddenUntilMouseMoves:]` state, which AppKit doesn't expose.
+    /// 镜像 `[NSCursor setHiddenUntilMouseMoves:]` 状态，AppKit 不公开此状态。
     cursor_visible: Arc<AtomicBool>,
 }
 
@@ -312,9 +312,9 @@ impl MacPlatform {
                     checked,
                     disabled,
                 } => {
-                    // Note that this is intentionally using earlier bindings, whereas typically
-                    // later ones take display precedence. See the discussion on
-                    // https://github.com/zed-industries/zed/issues/23621
+                    // 注意这有意使用较早的绑定，而通常
+                    // 较晚的绑定会获得显示优先级。参见
+                    // https://github.com/zed-industries/zed/issues/23621 上的讨论
                     let keystrokes = keymap
                         .bindings_for_action(action.as_ref())
                         .find_or_first(|binding| {
@@ -340,8 +340,8 @@ impl MacPlatform {
                         Some(gpui::OsAction::Copy) => selector("copy:"),
                         Some(gpui::OsAction::Paste) => selector("paste:"),
                         Some(gpui::OsAction::SelectAll) => selector("selectAll:"),
-                        // "undo:" and "redo:" are always disabled in our case, as
-                        // we don't have a NSTextView/NSTextField to enable them on.
+                        // 在我们的情况下，"undo:" 和 "redo:" 始终被禁用，因为
+                        // 我们没有 NSTextView/NSTextField 来启用它们。
                         Some(gpui::OsAction::Undo) => selector("handleGPUIMenuItem:"),
                         Some(gpui::OsAction::Redo) => selector("handleGPUIMenuItem:"),
                         None => selector("handleGPUIMenuItem:"),
@@ -507,12 +507,12 @@ impl Platform for MacPlatform {
     }
 
     fn quit(&self) {
-        // Quitting the app causes us to close windows, which invokes `Window::on_close` callbacks
-        // synchronously before this method terminates. If we call `Platform::quit` while holding a
-        // borrow of the app state (which most of the time we will do), we will end up
-        // double-borrowing the app state in the `on_close` callbacks for our open windows. To solve
-        // this, we make quitting the application asynchronous so that we aren't holding borrows to
-        // the app state on the stack when we actually terminate the app.
+        // 退出应用会导致我们关闭窗口，这会在此方法终止之前
+        // 同步调用 `Window::on_close` 回调。如果我们在持有应用状态
+        // 借用时调用 `Platform::quit`（大多数时候我们会这样做），我们最终会在
+        // 打开窗口的 `on_close` 回调中双重借用应用状态。为了解决
+        // 这个问题，我们使退出应用异步，这样在实际终止应用时
+        // 我们不会在栈上持有应用状态的借用。
 
         unsafe {
             DispatchQueue::main().exec_async_f(ptr::null_mut(), quit);
@@ -534,14 +534,14 @@ impl Platform for MacPlatform {
             .or_else(|| {
                 self.app_path()
                     .ok()
-                    // When the app is not bundled, `app_path` returns the
-                    // directory containing the executable. Disregard this
-                    // and get the path to the executable itself.
+                    // 当应用未打包时，`app_path` 返回
+                    // 包含可执行文件的目录。忽略这一点
+                    // 并获取可执行文件本身的路径。
                     .and_then(|path| (path.extension()?.to_str()? == "app").then_some(path))
             })
             .unwrap_or_else(|| std::env::current_exe().unwrap());
 
-        // Wait until this process has exited and then re-open this path.
+        // 等待此进程退出，然后重新打开此路径。
         let script = r#"
             while kill -0 $0 2> /dev/null; do
                 sleep 0.1
@@ -622,8 +622,8 @@ impl Platform for MacPlatform {
         MacWindow::active_window()
     }
 
-    // Returns the windows ordered front-to-back, meaning that the active
-    // window is the first one in the returned vec.
+    // 返回从前到后排序的窗口，意味着活动
+    // 窗口是返回 vec 中的第一个。
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>> {
         Some(MacWindow::ordered_windows())
     }
@@ -675,7 +675,7 @@ impl Platform for MacPlatform {
     }
 
     fn register_url_scheme(&self, scheme: &str) -> Task<anyhow::Result<()>> {
-        // API only available post Monterey
+        // API 仅在 Monterey 之后可用
         // https://developer.apple.com/documentation/appkit/nsworkspace/3753004-setdefaultapplicationaturl
         let (done_tx, done_rx) = oneshot::channel();
         if Self::os_version() < Version::new(12, 0, 0) {
@@ -814,12 +814,12 @@ impl Platform for MacPlatform {
                                         .collect::<Vec<_>>();
 
                                     // https://github.com/zed-industries/zed/issues/16969
-                                    // Workaround a bug in macOS Sequoia that adds an extra file-extension
-                                    // sometimes. e.g. `a.sql` becomes `a.sql.s` or `a.txtx` becomes `a.txtx.txt`
+                                    // 解决 macOS Sequoia 中的一个 bug，该 bug 有时会添加额外的文件扩展名
+                                    // 例如 `a.sql` 变成 `a.sql.s` 或 `a.txtx` 变成 `a.txtx.txt`
                                     //
-                                    // This is conditional on OS version because I'd like to get rid of it, so that
-                                    // you can manually create a file called `a.sql.s`. That said it seems better
-                                    // to break that use-case than breaking `a.sql`.
+                                    // 这是基于 OS 版本的，因为我想摆脱它，这样
+                                    // 你就可以手动创建名为 `a.sql.s` 的文件。但这似乎比
+                                    // 破坏 `a.sql` 的使用情况更好。
                                     if chunks.len() == 3
                                         && chunks[1].starts_with(chunks[2])
                                         && Self::os_version() >= Version::new(15, 0, 0)
@@ -1000,8 +1000,8 @@ impl Platform for MacPlatform {
         }
     }
 
-    /// Match cursor style to one of the styles available
-    /// in macOS's [NSCursor](https://developer.apple.com/documentation/appkit/nscursor).
+    /// 将光标样式匹配到 macOS
+    /// [NSCursor](https://developer.apple.com/documentation/appkit/nscursor) 中可用的样式之一。
     fn set_cursor_style(&self, style: CursorStyle) {
         unsafe {
             set_active_window_cursor_style(style);
@@ -1064,8 +1064,8 @@ impl Platform for MacPlatform {
                 let username = CFString::from(username.as_str());
                 let password = CFData::from_buffer(&password);
 
-                // First, check if there are already credentials for the given server. If so, then
-                // update the username and password.
+                // 首先，检查是否已有给定服务器的凭据。如果有，则
+                // 更新用户名和密码。
                 let mut verb = "updating";
                 let mut query_attrs = CFMutableDictionary::with_capacity(2);
                 query_attrs.set(kSecClass as *const _, kSecClassInternetPassword as *const _);
@@ -1082,7 +1082,7 @@ impl Platform for MacPlatform {
                     attrs.as_concrete_TypeRef(),
                 );
 
-                // If there were no existing credentials for the given server, then create them.
+                // 如果给定服务器没有现有凭据，则创建它们。
                 if status == errSecItemNotFound {
                     verb = "creating";
                     status = SecItemAdd(attrs.as_concrete_TypeRef(), ptr::null_mut());
@@ -1102,7 +1102,7 @@ impl Platform for MacPlatform {
             unsafe {
                 use security::*;
 
-                // Find any credentials for the given server URL.
+                // 查找给定服务器 URL 的任何凭据。
                 let mut attrs = CFMutableDictionary::with_capacity(5);
                 attrs.set(kSecClass as *const _, kSecClassInternetPassword as *const _);
                 attrs.set(kSecAttrServer as *const _, url.as_CFTypeRef());
@@ -1177,10 +1177,10 @@ extern "C" fn will_finish_launching(_this: &mut Object, _: Sel, _: id) {
     unsafe {
         let user_defaults: id = msg_send![class!(NSUserDefaults), standardUserDefaults];
 
-        // The autofill heuristic controller causes slowdown and high CPU usage.
-        // We don't know exactly why. This disables the full heuristic controller.
+        // 自动填充启发式控制器会导致减速和高 CPU 使用率。
+        // 我们不知道确切原因。这会禁用完整的启发式控制器。
         //
-        // Adapted from: https://github.com/ghostty-org/ghostty/pull/8625
+        // 改编自：https://github.com/ghostty-org/ghostty/pull/8625
         let name = ns_string("NSAutoFillHeuristicControllerEnabled");
         let existing_value: id = msg_send![user_defaults, objectForKey: name];
         if existing_value == nil {
@@ -1259,9 +1259,9 @@ extern "C" fn on_keyboard_layout_change(this: &mut Object, _: Sel, _: id) {
 }
 
 extern "C" fn on_thermal_state_change(this: &mut Object, _: Sel, _: id) {
-    // Defer to the next run loop iteration to avoid re-entrant borrows of the App RefCell,
-    // as NSNotificationCenter delivers this notification synchronously and it may fire while
-    // the App is already borrowed (same pattern as quit() above).
+    // 推迟到下一个运行循环迭代，以避免对 App RefCell 的重复借用，
+    // 因为 NSNotificationCenter 同步传递此通知，它可能在
+    // App 已经被借用时触发（与上面的 quit() 相同的模式）。
     let platform = unsafe { get_mac_platform(this) };
     let platform_ptr = platform as *const MacPlatform as *mut c_void;
     unsafe {

@@ -30,26 +30,31 @@ use std::{
 pub(crate) struct MacDispatcher;
 
 impl MacDispatcher {
+    /// 创建新的 MacDispatcher 实例。
     pub fn new() -> Self {
         Self
     }
 }
 
 impl PlatformDispatcher for MacDispatcher {
+    /// 获取所有线程的任务计时信息。
     fn get_all_timings(&self) -> Vec<ThreadTaskTimings> {
         let global_timings = GLOBAL_THREAD_TIMINGS.lock();
         ThreadTaskTimings::convert(&global_timings)
     }
 
+    /// 获取当前线程的任务计时信息。
     fn get_current_thread_timings(&self) -> ThreadTaskTimings {
         gpui::profiler::get_current_thread_task_timings()
     }
 
+    /// 检查当前是否在主线程上。
     fn is_main_thread(&self) -> bool {
         let is_main_thread: BOOL = unsafe { msg_send![class!(NSThread), isMainThread] };
         is_main_thread == YES
     }
 
+    /// 将任务分发到后台线程执行。
     fn dispatch(&self, runnable: RunnableVariant, priority: Priority) {
         let context = runnable.into_raw().as_ptr() as *mut c_void;
 
@@ -68,6 +73,7 @@ impl PlatformDispatcher for MacDispatcher {
         }
     }
 
+    /// 将任务分发到主线程执行。
     fn dispatch_on_main_thread(&self, runnable: RunnableVariant, _priority: Priority) {
         let context = runnable.into_raw().as_ptr() as *mut c_void;
         unsafe {
@@ -75,6 +81,7 @@ impl PlatformDispatcher for MacDispatcher {
         }
     }
 
+    /// 延迟指定时间后执行任务。
     fn dispatch_after(&self, duration: Duration, runnable: RunnableVariant) {
         let context = runnable.into_raw().as_ptr() as *mut c_void;
         let queue = DispatchQueue::global_queue(GlobalQueueIdentifier::Priority(
@@ -86,6 +93,7 @@ impl PlatformDispatcher for MacDispatcher {
         }
     }
 
+    /// 使用实时音频优先级生成新线程。
     fn spawn_realtime(&self, f: Box<dyn FnOnce() + Send>) {
         std::thread::spawn(move || {
             set_audio_thread_priority().log_err();
@@ -95,19 +103,19 @@ impl PlatformDispatcher for MacDispatcher {
 }
 
 fn set_audio_thread_priority() -> anyhow::Result<()> {
-    // https://chromium.googlesource.com/chromium/chromium/+/master/base/threading/platform_thread_mac.mm#93
+    // https://chromium.googlesource.com/chromium/+/master/base/threading/platform_thread_mac.mm#93
 
-    // SAFETY: always safe to call
+    // 安全：始终可以安全调用
     let thread_id = unsafe { libc::pthread_self() };
 
-    // SAFETY: thread_id is a valid thread id
+    // 安全：thread_id 是有效的线程 id
     let thread_id = unsafe { libc::pthread_mach_thread_np(thread_id) };
 
-    // Fixed priority thread
+    // 固定优先级线程
     let mut policy = thread_extended_policy_data_t { timeshare: 0 };
 
-    // SAFETY: thread_id is a valid thread id
-    // SAFETY: thread_extended_policy_data_t is passed as THREAD_EXTENDED_POLICY
+    // 安全：thread_id 是有效的线程 id
+    // 安全：thread_extended_policy_data_t 作为 THREAD_EXTENDED_POLICY 传递
     let result = unsafe {
         mach2::thread_policy::thread_policy_set(
             thread_id,
@@ -121,11 +129,11 @@ fn set_audio_thread_priority() -> anyhow::Result<()> {
         anyhow::bail!("failed to set thread extended policy");
     }
 
-    // relatively high priority
+    // 相对较高的优先级
     let mut precedence = thread_precedence_policy_data_t { importance: 63 };
 
-    // SAFETY: thread_id is a valid thread id
-    // SAFETY: thread_precedence_policy_data_t is passed as THREAD_PRECEDENCE_POLICY
+    // 安全：thread_id 是有效的线程 id
+    // 安全：thread_precedence_policy_data_t 作为 THREAD_PRECEDENCE_POLICY 传递
     let result = unsafe {
         mach2::thread_policy::thread_policy_set(
             thread_id,
@@ -142,14 +150,14 @@ fn set_audio_thread_priority() -> anyhow::Result<()> {
     const GUARANTEED_AUDIO_DUTY_CYCLE: f32 = 0.75;
     const MAX_AUDIO_DUTY_CYCLE: f32 = 0.85;
 
-    // ~128 frames @ 44.1KHz
+    // 约 128 帧 @ 44.1KHz
     const TIME_QUANTUM: f32 = 2.9;
 
     const AUDIO_TIME_NEEDED: f32 = GUARANTEED_AUDIO_DUTY_CYCLE * TIME_QUANTUM;
     const MAX_TIME_ALLOWED: f32 = MAX_AUDIO_DUTY_CYCLE * TIME_QUANTUM;
 
     let mut timebase_info = mach_timebase_info_data_t { numer: 0, denom: 0 };
-    // SAFETY: timebase_info is a valid pointer to a mach_timebase_info_data_t struct
+    // 安全：timebase_info 是有效的 mach_timebase_info_data_t 结构体指针
     unsafe { mach2::mach_time::mach_timebase_info(&mut timebase_info) };
 
     let ms_to_abs_time = ((timebase_info.denom as f32) / (timebase_info.numer as f32)) * 1000000f32;
@@ -161,8 +169,8 @@ fn set_audio_thread_priority() -> anyhow::Result<()> {
         preemptible: 0,
     };
 
-    // SAFETY: thread_id is a valid thread id
-    // SAFETY: thread_precedence_pthread_time_constraint_policy_data_t is passed as THREAD_TIME_CONSTRAINT_POLICY
+    // 安全：thread_id 是有效的线程 id
+    // 安全：thread_time_constraint_policy_data_t 作为 THREAD_TIME_CONSTRAINT_POLICY 传递
     let result = unsafe {
         mach2::thread_policy::thread_policy_set(
             thread_id,

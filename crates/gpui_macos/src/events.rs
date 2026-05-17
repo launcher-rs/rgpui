@@ -116,8 +116,8 @@ pub(crate) unsafe fn platform_input_from_native(
     unsafe {
         let event_type = native_event.eventType();
 
-        // Filter out event types that aren't in the NSEventType enum.
-        // See https://github.com/servo/cocoa-rs/issues/155#issuecomment-323482792 for details.
+        // 过滤掉 NSEventType 枚举中不包含的事件类型。
+        // 详见 https://github.com/servo/cocoa-rs/issues/155#issuecomment-323482792
         match event_type as u64 {
             0 | 21 | 32 | 33 | 35 | 36 | 37 => {
                 return None;
@@ -153,7 +153,7 @@ pub(crate) unsafe fn platform_input_from_native(
                     2 => MouseButton::Middle,
                     3 => MouseButton::Navigate(NavigationDirection::Back),
                     4 => MouseButton::Navigate(NavigationDirection::Forward),
-                    // Other mouse buttons aren't tracked currently
+                    // 目前不跟踪其他鼠标按钮
                     _ => return None,
                 };
                 window_height.map(|window_height| {
@@ -161,7 +161,7 @@ pub(crate) unsafe fn platform_input_from_native(
                         button,
                         position: point(
                             px(native_event.locationInWindow().x as f32),
-                            // MacOS screen coordinates are relative to bottom left
+                            // macOS 屏幕坐标相对于左下角
                             window_height - px(native_event.locationInWindow().y as f32),
                         ),
                         modifiers: read_modifiers(native_event),
@@ -179,7 +179,7 @@ pub(crate) unsafe fn platform_input_from_native(
                     2 => MouseButton::Middle,
                     3 => MouseButton::Navigate(NavigationDirection::Back),
                     4 => MouseButton::Navigate(NavigationDirection::Forward),
-                    // Other mouse buttons aren't tracked currently
+                    // 目前不跟踪其他鼠标按钮
                     _ => return None,
                 };
 
@@ -215,7 +215,7 @@ pub(crate) unsafe fn platform_input_from_native(
                     })
                 })
             }
-            // Some mice (like Logitech MX Master) send navigation buttons as swipe events
+            // 某些鼠标（如 Logitech MX Master）将导航按钮作为滑动事件发送
             NSEventType::NSEventTypeSwipe => {
                 let navigation_direction = match native_event.phase() {
                     NSEventPhase::NSEventPhaseEnded => match native_event.deltaX() {
@@ -302,7 +302,7 @@ pub(crate) unsafe fn platform_input_from_native(
                     2 => MouseButton::Middle,
                     3 => MouseButton::Navigate(NavigationDirection::Back),
                     4 => MouseButton::Navigate(NavigationDirection::Forward),
-                    // Other mouse buttons aren't tracked currently
+                    // 目前不跟踪其他鼠标按钮
                     _ => return None,
                 };
 
@@ -389,7 +389,7 @@ unsafe fn parse_keystroke(native_event: id) -> Keystroke {
             Some(NSHomeFunctionKey) => "home".to_string(),
             Some(NSEndFunctionKey) => "end".to_string(),
             Some(NSDeleteFunctionKey) => "delete".to_string(),
-            // Observed Insert==NSHelpFunctionKey not NSInsertFunctionKey.
+            // 观察到 Insert 等于 NSHelpFunctionKey 而非 NSInsertFunctionKey。
             Some(NSHelpFunctionKey) => "insert".to_string(),
             Some(NSF1FunctionKey) => "f1".to_string(),
             Some(NSF2FunctionKey) => "f2".to_string(),
@@ -427,16 +427,16 @@ unsafe fn parse_keystroke(native_event: id) -> Keystroke {
             Some(NSF34FunctionKey) => "f34".to_string(),
             Some(NSF35FunctionKey) => "f35".to_string(),
             _ => {
-                // Cases to test when modifying this:
+                // 修改此代码时需要测试的用例：
                 //
-                //           qwerty key | none | cmd   | cmd-shift
-                // * Armenian         s | ս    | cmd-s | cmd-shift-s  (layout is non-ASCII, so we use cmd layout)
-                // * Dvorak+QWERTY    s | o    | cmd-s | cmd-shift-s  (layout switches on cmd)
-                // * Ukrainian+QWERTY s | с    | cmd-s | cmd-shift-s  (macOS reports cmd-s instead of cmd-S)
-                // * Czech            7 | ý    | cmd-ý | cmd-7        (layout has shifted numbers)
-                // * Norwegian        7 | 7    | cmd-7 | cmd-/        (macOS reports cmd-shift-7 instead of cmd-/)
-                // * Russian          7 | 7    | cmd-7 | cmd-&        (shift-7 is . but when cmd is down, should use cmd layout)
-                // * German QWERTZ    ; | ö    | cmd-ö | cmd-Ö        (Zed's shift special case only applies to a-z)
+                //           qwerty 按键 | 无修饰 | cmd   | cmd-shift
+                // * Armenian         s | ս    | cmd-s | cmd-shift-s  （布局为非 ASCII，因此使用 cmd 布局）
+                // * Dvorak+QWERTY    s | o    | cmd-s | cmd-shift-s  （cmd 时布局切换）
+                // * Ukrainian+QWERTY s | с    | cmd-s | cmd-shift-s  （macOS 报告 cmd-s 而非 cmd-S）
+                // * Czech            7 | ý    | cmd-ý | cmd-7        （布局有 shifted 数字）
+                // * Norwegian        7 | 7    | cmd-7 | cmd-/        （macOS 报告 cmd-shift-7 而非 cmd-/）
+                // * Russian          7 | 7    | cmd-7 | cmd-&        （shift-7 是 . 但 cmd 按下时应使用 cmd 布局）
+                // * German QWERTZ    ; | ö    | cmd-ö | cmd-Ö        （Zed 的 shift 特殊情况仅适用于 a-z）
                 //
                 let mut chars_ignoring_modifiers =
                     chars_for_modified_key(native_event.keyCode(), NO_MOD);
@@ -444,19 +444,17 @@ unsafe fn parse_keystroke(native_event: id) -> Keystroke {
                     chars_for_modified_key(native_event.keyCode(), SHIFT_MOD);
                 let always_use_cmd_layout = always_use_command_layout();
 
-                // Handle Dvorak+QWERTY / Russian / Armenian
+                // 处理 Dvorak+QWERTY / Russian / Armenian
                 if command || always_use_cmd_layout {
                     let chars_with_cmd = chars_for_modified_key(native_event.keyCode(), CMD_MOD);
                     let chars_with_both =
                         chars_for_modified_key(native_event.keyCode(), CMD_MOD | SHIFT_MOD);
 
-                    // We don't do this in the case that the shifted command key generates
-                    // the same character as the unshifted command key (Norwegian, e.g.)
+                    // 在未 shift 的 cmd 按键生成与已 shift 的 cmd 按键相同字符的情况下，我们不这样做（例如 Norwegian）
                     if chars_with_both != chars_with_cmd {
                         chars_with_shift = chars_with_both;
 
-                    // Handle edge-case where cmd-shift-s reports cmd-s instead of
-                    // cmd-shift-s (Ukrainian, etc.)
+                    // 处理边缘情况：cmd-shift-s 报告为 cmd-s 而非 cmd-shift-s（Ukrainian 等）
                     } else if chars_with_cmd.to_ascii_uppercase() != chars_with_cmd {
                         chars_with_shift = chars_with_cmd.to_ascii_uppercase();
                     }
@@ -518,8 +516,8 @@ const SHIFT_MOD: u32 = 2;
 const OPTION_MOD: u32 = 8;
 
 fn chars_for_modified_key(code: CGKeyCode, modifiers: u32) -> String {
-    // Values from: https://github.com/phracker/MacOSX-SDKs/blob/master/MacOSX10.6.sdk/System/Library/Frameworks/Carbon.framework/Versions/A/Frameworks/HIToolbox.framework/Versions/A/Headers/Events.h#L126
-    // shifted >> 8 for UCKeyTranslate
+    // 值来源：https://github.com/phracker/MacOSX-SDKs/blob/master/MacOSX10.6.sdk/System/Library/Frameworks/Carbon.framework/Versions/A/Frameworks/HIToolbox.framework/Versions/A/Headers/Events.h#L126
+    // 为 UCKeyTranslate 右移 8 位
     const CG_SPACE_KEY: u16 = 49;
     // https://github.com/phracker/MacOSX-SDKs/blob/master/MacOSX10.6.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers/UnicodeUtilities.h#L278
     #[allow(non_upper_case_globals)]

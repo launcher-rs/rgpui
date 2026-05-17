@@ -35,29 +35,36 @@ use gpui::{Pixels, Point, px};
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const SCROLL_LINES: f32 = 3.0;
 
-// Values match the defaults on GTK.
-// Taken from https://github.com/GNOME/gtk/blob/main/gtk/gtksettings.c#L320
+/// 双击间隔时间，与 GTK 默认值一致
+/// 取自 https://github.com/GNOME/gtk/blob/main/gtk/gtksettings.c#L320
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const DOUBLE_CLICK_DISTANCE: Pixels = px(5.0);
 pub(crate) const KEYRING_LABEL: &str = "zed-github-account";
 
+/// 文件选择器门户缺失时的错误提示
 #[cfg(any(feature = "wayland", feature = "x11"))]
 const FILE_PICKER_PORTAL_MISSING: &str =
-    "Couldn't open file picker due to missing xdg-desktop-portal implementation.";
+    "由于缺少 xdg-desktop-portal 实现，无法打开文件选择器。";
 
 /// Linux 客户端 trait，定义各显示服务器后端需实现的接口。
 ///
 /// 该 trait 封装了窗口创建、显示管理、剪贴板操作、光标控制
 /// 等平台相关功能，WaylandClient 和 X11Client 均实现此 trait。
 pub(crate) trait LinuxClient {
+    /// 返回合成器名称
     fn compositor_name(&self) -> &'static str;
+    /// 访问公共状态
     fn with_common<R>(&self, f: impl FnOnce(&mut LinuxCommon) -> R) -> R;
+    /// 获取当前键盘布局
     fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout>;
+    /// 获取所有显示器
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>>;
+    /// 获取指定显示器
     #[allow(unused)]
     fn display(&self, id: DisplayId) -> Option<Rc<dyn PlatformDisplay>>;
+    /// 获取主显示器
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>>;
 
     #[cfg(feature = "screen-capture")]
@@ -78,24 +85,37 @@ pub(crate) trait LinuxClient {
         sources_rx
     }
 
+    /// 打开新窗口
     fn open_window(
         &self,
         handle: AnyWindowHandle,
         options: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>>;
+    /// 设置光标样式
     fn set_cursor_style(&self, style: CursorStyle);
+    /// 隐藏光标直到鼠标移动
     fn hide_cursor_until_mouse_moves(&self) {}
+    /// 检查光标是否可见
     fn is_cursor_visible(&self) -> bool {
         true
     }
+    /// 打开 URI
     fn open_uri(&self, uri: &str);
+    /// 在文件管理器中显示路径
     fn reveal_path(&self, path: PathBuf);
+    /// 写入主剪贴板（选中即复制）
     fn write_to_primary(&self, item: ClipboardItem);
+    /// 写入常规剪贴板
     fn write_to_clipboard(&self, item: ClipboardItem);
+    /// 读取主剪贴板
     fn read_from_primary(&self) -> Option<ClipboardItem>;
+    /// 读取常规剪贴板
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
+    /// 获取活动窗口
     fn active_window(&self) -> Option<AnyWindowHandle>;
+    /// 获取窗口堆栈
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>>;
+    /// 运行事件循环
     fn run(&self);
 
     #[cfg(any(feature = "wayland", feature = "x11"))]
@@ -244,9 +264,9 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn restart(&self, binary_path: Option<PathBuf>) {
         use std::os::unix::process::CommandExt as _;
 
-        // get the process id of the current process
+        // 获取当前进程的进程 ID
         let app_pid = std::process::id().to_string();
-        // get the path to the executable
+        // 获取可执行文件的路径
         let app_path = if let Some(path) = binary_path {
             path
         } else {
@@ -261,8 +281,8 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
         log::info!("Restarting process, using app path: {:?}", app_path);
 
-        // Script to wait for the current process to exit and then restart the app.
-        // Pass dynamic values as positional parameters to avoid shell interpolation issues.
+        // 脚本：等待当前进程退出后重新启动应用。
+        // 使用位置参数传递动态值以避免 shell 插值问题。
         let script = r#"
             while kill -0 "$0" 2>/dev/null; do
                 sleep 0.1

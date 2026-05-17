@@ -27,11 +27,11 @@ impl MacDisplay {
     /// 获取主显示器——包含菜单栏的显示器，
     /// 其左下角位于 AppKit 坐标系的原点。
     pub fn primary() -> Self {
-        // Instead of iterating through all active systems displays via `all()` we use the first
-        // NSScreen and gets its CGDirectDisplayID, because we can't be sure that `CGGetActiveDisplayList`
-        // will always return a list of active displays (machine might be sleeping).
+        // 我们不通过 `all()` 遍历所有活动显示器，而是使用第一个
+        // NSScreen 并获取其 CGDirectDisplayID，因为我们无法确定 `CGGetActiveDisplayList`
+        // 总是返回活动显示器列表（机器可能处于睡眠状态）。
         //
-        // The following is what Chromium does too:
+        // 以下是 Chromium 的做法：
         //
         // https://chromium.googlesource.com/chromium/src/+/66.0.3359.158/ui/display/mac/screen_mac.mm#56
         unsafe {
@@ -48,7 +48,7 @@ impl MacDisplay {
     /// 获取当前所有活动显示器的迭代器。
     pub fn all() -> impl Iterator<Item = Self> {
         unsafe {
-            // We're assuming there aren't more than 32 displays connected to the system.
+            // 我们假设系统连接的显示器不超过 32 个。
             let mut displays = Vec::with_capacity(32);
             let mut display_count = 0;
             let result = CGGetActiveDisplayList(
@@ -108,8 +108,8 @@ impl PlatformDisplay for MacDisplay {
 
     fn bounds(&self) -> Bounds<Pixels> {
         unsafe {
-            // CGDisplayBounds is in "global display" coordinates, where 0 is
-            // the top left of the primary display.
+            // CGDisplayBounds 使用「全局显示」坐标系，其中 0 是
+            // 主显示器的左上角。
             let bounds = CGDisplayBounds(self.0);
 
             Bounds {
@@ -130,7 +130,7 @@ impl PlatformDisplay for MacDisplay {
             let screen_frame = NSScreen::frame(dominated_screen);
             let visible_frame = NSScreen::visibleFrame(dominated_screen);
 
-            // Convert from bottom-left origin (AppKit) to top-left origin
+            // 从左下角原点（AppKit）转换为左上角原点
             let origin_y =
                 screen_frame.size.height - visible_frame.origin.y - visible_frame.size.height
                     + screen_frame.origin.y;
@@ -150,7 +150,7 @@ impl PlatformDisplay for MacDisplay {
 }
 
 impl MacDisplay {
-    /// Find the NSScreen corresponding to this display
+    /// 查找与此显示器对应的 NSScreen
     unsafe fn get_nsscreen(&self) -> id {
         let screens = unsafe { NSScreen::screens(nil) };
         let count = unsafe { NSArray::count(screens) };

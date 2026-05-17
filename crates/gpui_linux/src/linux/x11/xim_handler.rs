@@ -1,23 +1,38 @@
+//! XIM（X Input Method）输入法处理器模块
+//!
+//! 处理 X11 输入法框架的回调事件，包括预编辑和提交
+
 use std::default::Default;
 
 use x11rb::protocol::{Event, xproto};
 use xim::{AHashMap, AttributeName, Client, ClientError, ClientHandler, InputStyle};
 
+/// XIM 回调事件类型
 pub enum XimCallbackEvent {
+    /// X11 原生事件
     XimXEvent(x11rb::protocol::Event),
+    /// 预编辑事件
     XimPreeditEvent(xproto::Window, String),
+    /// 提交事件
     XimCommitEvent(xproto::Window, String),
 }
 
+/// XIM 处理器实现
 pub struct XimHandler {
+    /// 输入法 ID
     pub im_id: u16,
+    /// 输入上下文 ID
     pub ic_id: u16,
+    /// 是否已连接
     pub connected: bool,
+    /// 关联的窗口
     pub window: xproto::Window,
+    /// 最后的回调事件
     pub last_callback_event: Option<XimCallbackEvent>,
 }
 
 impl XimHandler {
+    /// 创建新的 XIM 处理器实例
     pub fn new() -> Self {
         Self {
             im_id: Default::default(),
@@ -117,13 +132,13 @@ impl<C: Client<XEvent = xproto::KeyPressEvent>> ClientHandler<C> for XimHandler 
         preedit_string: &str,
         _feedbacks: Vec<xim::Feedback>,
     ) -> Result<(), ClientError> {
-        // XIMReverse: 1, XIMPrimary: 8, XIMTertiary: 32: selected text
-        // XIMUnderline: 2, XIMSecondary: 16: underlined text
-        // XIMHighlight: 4: normal text
-        // XIMVisibleToForward: 64, XIMVisibleToBackward: 128, XIMVisibleCenter: 256: text align position
-        // XIMPrimary, XIMHighlight, XIMSecondary, XIMTertiary are not specified,
-        // but interchangeable as above
-        // Currently there's no way to support these.
+        // XIMReverse: 1, XIMPrimary: 8, XIMTertiary: 32: 选中文本
+        // XIMUnderline: 2, XIMSecondary: 16: 带下划线的文本
+        // XIMHighlight: 4: 普通文本
+        // XIMVisibleToForward: 64, XIMVisibleToBackward: 128, XIMVisibleCenter: 256: 文本对齐位置
+        // XIMPrimary, XIMHighlight, XIMSecondary, XIMTertiary 未指定，
+        // 但可如上互换使用
+        // 目前无法支持这些
         self.last_callback_event = Some(XimCallbackEvent::XimPreeditEvent(
             self.window,
             String::from(preedit_string),

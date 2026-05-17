@@ -1,3 +1,7 @@
+//! 无头（headless）模式客户端实现
+//!
+//! 在无图形界面环境下提供平台抽象，不支持窗口创建
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -10,16 +14,19 @@ use gpui::{
     PlatformWindow, WindowParams,
 };
 
+/// 无头客户端状态
 pub struct HeadlessClientState {
     pub(crate) _loop_handle: LoopHandle<'static, HeadlessClient>,
     pub(crate) event_loop: Option<calloop::EventLoop<'static, HeadlessClient>>,
     pub(crate) common: LinuxCommon,
 }
 
+/// 无头客户端实现
 #[derive(Clone)]
 pub(crate) struct HeadlessClient(Rc<RefCell<HeadlessClientState>>);
 
 impl HeadlessClient {
+    /// 创建新的无头客户端实例
     pub(crate) fn new() -> Self {
         let event_loop = EventLoop::try_new().unwrap();
 

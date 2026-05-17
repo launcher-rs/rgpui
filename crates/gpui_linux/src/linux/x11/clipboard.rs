@@ -1,20 +1,20 @@
 /*
- * Copyright 2022 - 2025 Zed Industries, Inc.
- * License: Apache-2.0
- * See LICENSE-APACHE for complete license terms
+ * 版权所有 2022 - 2025 Zed Industries, Inc.
+ * 许可证：Apache-2.0
+ * 完整许可条款请参见 LICENSE-APACHE
  *
- * Adapted from the x11 submodule of the arboard project https://github.com/1Password/arboard
+ * 改编自 arboard 项目的 x11 子模块 https://github.com/1Password/arboard
  *
- * SPDX-License-Identifier: Apache-2.0 OR MIT
+ * SPDX-License-Identifier: Apache-2.0 或 MIT
  *
- * Copyright 2022 The Arboard contributors
+ * 版权所有 2022 arboard 贡献者
  *
- * The project to which this file belongs is licensed under either of
- * the Apache 2.0 or the MIT license at the licensee's choice. The terms
- * and conditions of the chosen license apply to this file.
+ * 此文件所属的项目根据以下任一许可证授权：
+ * Apache 2.0 或 MIT 许可证，由被许可人选择。所选许可证的
+ * 条款和条件适用于此文件。
 */
 
-// More info about using the clipboard on X11:
+// 更多关于在 X11 上使用剪贴板的信息：
 // https://tronche.com/gui/x/icccm/sec-2.html#s-2.6
 // https://freedesktop.org/wiki/ClipboardManager/
 
@@ -99,33 +99,38 @@ thread_local! {
     static ATOM_NAME_CACHE: RefCell<HashMap<Atom, &'static str>> = Default::default();
 }
 
-// Some clipboard items, like images, may take a very long time to produce a
-// `SelectionNotify`. Multiple seconds long.
+// 一些剪贴板项目（如图像）可能需要很长时间才能生成
+// `SelectionNotify`。可能长达数秒
 const LONG_TIMEOUT_DUR: Duration = Duration::from_millis(4000);
 const SHORT_TIMEOUT_DUR: Duration = Duration::from_millis(10);
 
+/// 剪贴板管理器交接状态
 #[derive(Debug, PartialEq, Eq)]
 enum ManagerHandoverState {
+    /// 空闲
     Idle,
+    /// 进行中
     InProgress,
+    /// 已完成
     Finished,
 }
 
+/// 全局剪贴板包装
 struct GlobalClipboard {
     inner: Arc<Inner>,
 
-    /// Join handle to the thread which serves selection requests.
+    /// 服务选择请求的线程的 Join 句柄
     server_handle: JoinHandle<()>,
 }
 
+/// X 上下文，包含连接和窗口 ID
 struct XContext {
     conn: RustConnection,
     win_id: u32,
 }
 
 struct Inner {
-    /// The context for the thread which serves clipboard read
-    /// requests coming to us.
+    /// 剪贴板读取请求线程的上下文
     server: XContext,
     atoms: Atoms,
 
@@ -141,27 +146,26 @@ struct Inner {
 
 impl XContext {
     fn new() -> Result<Self> {
-        // create a new connection to an X11 server
+        // 创建到 X11 服务器的新连接
         let (conn, screen_num): (RustConnection, _) =
             RustConnection::connect(None).map_err(|_| {
-                Error::unknown("X11 server connection timed out because it was unreachable")
+                Error::unknown("X11 服务器连接超时，因为无法访问")
             })?;
         let screen = conn
             .setup()
             .roots
             .get(screen_num)
-            .ok_or(Error::unknown("no screen found"))?;
+            .ok_or(Error::unknown("未找到屏幕"))?;
         let win_id = conn.generate_id().map_err(into_unknown)?;
 
         let event_mask =
-            // Just in case that some program reports SelectionNotify events
-            // with XCB_EVENT_MASK_PROPERTY_CHANGE mask.
+            // 以防某些程序使用 XCB_EVENT_MASK_PROPERTY_CHANGE 掩码报告 SelectionNotify 事件
             EventMask::PROPERTY_CHANGE |
-            // To receive DestroyNotify event and stop the message loop.
+            // 接收 DestroyNotify 事件并停止消息循环
             EventMask::STRUCTURE_NOTIFY;
-        // create the window
+        // 创建窗口
         conn.create_window(
-            // copy as much as possible from the parent, because no other specific input is needed
+            // 尽可能从父窗口复制，因为没有其他特定输入需要
             COPY_DEPTH_FROM_PARENT,
             win_id,
             screen.root,
@@ -185,19 +189,20 @@ impl XContext {
 #[derive(Default)]
 struct Selection {
     data: RwLock<Option<Vec<ClipboardData>>>,
-    /// Mutex around nothing to use with the below condvar.
+    /// 用于与下方 condvar 配合的 Mutex
     mutex: Mutex<()>,
-    /// A condvar that is notified when the contents of this clipboard are changed.
+    /// 当此剪贴板内容变更时被通知的 condvar
     ///
-    /// This is associated with `Self::mutex`.
+    /// 与 `Self::mutex` 关联
     data_changed: Condvar,
 }
 
+/// 剪贴板数据
 #[derive(Debug, Clone)]
 struct ClipboardData {
     bytes: Vec<u8>,
 
-    /// The atom representing the format in which the data is encoded.
+    /// 数据编码格式的原子
     format: Atom,
 }
 
@@ -241,8 +246,7 @@ impl Inner {
 
         let server_win = self.server.win_id;
 
-        // ICCCM version 2, section 2.6.1.3 states that we should re-assert ownership whenever data
-        // changes.
+        // ICCCM 版本 2，第 2.6.1.3 节规定我们应在数据变更时重新声明所有权
         self.server
             .conn
             .set_selection_owner(server_win, self.atom_of(selection), Time::CURRENT_TIME)
@@ -250,18 +254,17 @@ impl Inner {
 
         self.server.conn.flush().map_err(into_unknown)?;
 
-        // Just setting the data, and the `serve_requests` will take care of the rest.
+        // 仅设置数据，`serve_requests` 将处理其余部分
         let selection = self.selection_of(selection);
         let mut data_guard = selection.data.write();
         *data_guard = Some(data);
 
-        // Lock the mutex to both ensure that no wakers of `data_changed` can wake us between
-        // dropping the `data_guard` and calling `wait[_for]` and that we don't we wake other
-        // threads in that position.
+        // 锁定 mutex 以确保在丢弃 `data_guard` 和调用 `wait[_for]` 之间
+        // 没有 `data_changed` 的唤醒线程可以唤醒我们，并且我们不会唤醒处于该位置的线程
         let mut guard = selection.mutex.lock();
 
-        // Notify any existing waiting threads that we have changed the data in the selection.
-        // It is important that the mutex is locked to prevent this notification getting lost.
+        // 通知任何等待的线程我们已更改选择中的数据
+        // 保持 mutex 锁定以防止此通知丢失非常重要
         selection.data_changed.notify_all();
 
         match wait {
@@ -279,11 +282,10 @@ impl Inner {
         Ok(())
     }
 
-    /// `formats` must be a slice of atoms, where each atom represents a target format.
-    /// The first format from `formats`, which the clipboard owner supports will be the
-    /// format of the return value.
+    /// `formats` 必须是原子切片，其中每个原子代表一个目标格式
+    /// `formats` 中剪贴板所有者支持的第一个格式将是返回值的格式
     fn read(&self, formats: &[Atom], selection: ClipboardKind) -> Result<ClipboardData> {
-        // if we are the current owner, we can get the current clipboard ourselves
+        // 如果我们是当前所有者，我们可以自己获取当前剪贴板内容
         if self.is_owner(selection)? {
             let data = self.selection_of(selection).data.read();
             if let Some(data_list) = &*data {
@@ -324,7 +326,7 @@ impl Inner {
         if let Some(&format) = highest_precedence_format {
             let data = self.read_single(&reader, selection, format)?;
             if !formats.contains(&data.format) {
-                // This shouldn't happen since the format is from the TARGETS list.
+                // 这不应该发生，因为格式来自 TARGETS 列表
                 log::trace!(
                     "Conversion to {} responded with {} which is not supported",
                     self.atom_name(format),
@@ -335,7 +337,7 @@ impl Inner {
             return Ok(data);
         }
 
-        log::trace!("Falling back on attempting to convert clipboard to each format.");
+        log::trace!("回退到尝试将剪贴板转换为每个格式");
         for format in formats {
             match self.read_single(&reader, selection, *format) {
                 Ok(data) => {
@@ -359,7 +361,7 @@ impl Inner {
                 }
             }
         }
-        log::trace!("All conversions to supported formats failed.");
+        log::trace("所有支持的格式转换均失败");
         Err(Error::ContentNotAvailable)
     }
 
@@ -376,14 +378,14 @@ impl Inner {
         selection: ClipboardKind,
         target_format: Atom,
     ) -> Result<ClipboardData> {
-        // Delete the property so that we can detect (using property notify)
-        // when the selection owner receives our request.
+        // 删除属性以便我们可以检测（使用 property notify）
+        // 选择所有者何时收到我们的请求
         reader
             .conn
             .delete_property(reader.win_id, self.atoms.ARBOARD_CLIPBOARD)
             .map_err(into_unknown)?;
 
-        // request to convert the clipboard selection to our data type(s)
+        // 请求将剪贴板选择转换为我们的数据类型
         reader
             .conn
             .convert_selection(
@@ -539,11 +541,10 @@ impl Inner {
         incr_data: &mut Vec<u8>,
         event: SelectionNotifyEvent,
     ) -> Result<ReadSelNotifyResult> {
-        // The property being set to NONE means that the `convert_selection`
-        // failed.
+        // 属性设置为 NONE 表示 `convert_selection` 失败
 
-        // According to: https://tronche.com/gui/x/icccm/sec-2.html#s-2.4
-        // the target must be set to the same as what we requested.
+        // 根据：https://tronche.com/gui/x/icccm/sec-2.html#s-2.4
+        // 目标必须设置为我们请求的相同值
         if event.property == NONE || event.target != target_format {
             return Err(Error::ContentNotAvailable);
         }
@@ -629,8 +630,8 @@ impl Inner {
             return Ok(false);
         }
         if !using_incr {
-            // This must mean the selection owner received our request, and is
-            // now preparing the data
+            // 这一定意味着选择所有者收到了我们的请求，并且
+            // 正在准备数据
             return Ok(false);
         }
         let reply = reader
@@ -677,7 +678,7 @@ impl Inner {
         };
 
         let success;
-        // we are asked for a list of supported conversion targets
+        // 我们被要求提供支持的转换目标列表
         if event.target == self.atoms.TARGETS {
             log::trace!(
                 "Handling TARGETS, dst property is {}",
@@ -691,8 +692,8 @@ impl Inner {
                 for data in data_list {
                     targets.push(data.format);
                     if data.format == self.atoms.UTF8_STRING {
-                        // When we are storing a UTF8 string,
-                        // add all equivalent formats to the supported targets
+                        // 当我们存储 UTF8 字符串时，
+                        // 将所有等效格式添加到支持的目标中
                         targets.push(self.atoms.UTF8_MIME_0);
                         targets.push(self.atoms.UTF8_MIME_1);
                     }
@@ -733,13 +734,12 @@ impl Inner {
                     None => false,
                 };
             } else {
-                // This must mean that we lost ownership of the data
-                // since the other side requested the selection.
-                // Let's respond with the property set to none.
+                // 这一定意味着自对方请求选择以来，我们失去了数据所有权
+                // 让我们以属性设置为 none 来响应
                 success = false;
             }
         }
-        // on failure we notify the requester of it
+        // 失败时通知请求者
         let property = if success {
             event.property
         } else {
@@ -833,16 +833,16 @@ impl Inner {
 
 fn serve_requests(context: Arc<Inner>) -> Result<(), Box<dyn std::error::Error>> {
     fn handover_finished(clip: &Arc<Inner>, mut handover_state: MutexGuard<ManagerHandoverState>) {
-        log::trace!("Finishing clipboard manager handover.");
+        log::trace("完成剪贴板管理器交接");
         *handover_state = ManagerHandoverState::Finished;
 
-        // Not sure if unlocking the mutex is necessary here but better safe than sorry.
+        // 不确定这里是否需要解锁 mutex，但安全总比抱歉好
         drop(handover_state);
 
         clip.handover_cv.notify_all();
     }
 
-    log::trace!("Started serve requests thread.");
+    log::trace("开始服务请求线程");
 
     let _guard = util::defer(|| {
         context.serve_stopped.store(true, Ordering::Relaxed);
@@ -859,10 +859,10 @@ fn serve_requests(context: Arc<Inner>) -> Result<(), Box<dyn std::error::Error>>
                 return Ok(());
             }
             Event::SelectionClear(event) => {
-                // TODO: check if this works
-                // Someone else has new content in the clipboard, so it is
-                // notifying us that we should delete our data now.
-                log::trace!("Somebody else owns the clipboard now");
+                // TODO: 检查这是否有效
+                // 其他人剪贴板中有新内容，所以
+                // 通知我们应现在删除我们的数据
+                log::trace("现在其他人拥有剪贴板");
 
                 if let Some(selection) = context.kind_of(event.selection) {
                     let selection = context.selection_of(selection);
@@ -880,11 +880,11 @@ fn serve_requests(context: Arc<Inner>) -> Result<(), Box<dyn std::error::Error>>
             }
             Event::SelectionRequest(event) => {
                 log::trace!(
-                    "SelectionRequest - selection is: {}, target is {}",
+                    "SelectionRequest - 选择是: {}, 目标是 {}",
                     context.atom_name(event.selection),
                     context.atom_name(event.target),
                 );
-                // Someone is requesting the clipboard content from us.
+                // 有人正在从我们这里请求剪贴板内容
                 context
                     .handle_selection_request(event)
                     .map_err(into_unknown)?;
@@ -906,10 +906,10 @@ fn serve_requests(context: Arc<Inner>) -> Result<(), Box<dyn std::error::Error>>
                 }
             }
             Event::SelectionNotify(event) => {
-                // We've requested the clipboard content and this is the answer.
-                // Considering that this thread is not responsible for reading
-                // clipboard contents, this must come from the clipboard manager
-                // signaling that the data was handed over successfully.
+                // 我们已请求剪贴板内容，这是响应
+                // 考虑到此线程不负责读取
+                // 剪贴板内容，这一定来自剪贴板管理器
+                // 表示数据已成功交接
                 if event.selection != context.atoms.CLIPBOARD_MANAGER {
                     log::error!(
                         "Received a `SelectionNotify` from a selection other than the CLIPBOARD_MANAGER. This is unexpected in this thread."
@@ -1138,76 +1138,69 @@ fn into_unknown<E: std::fmt::Display>(error: E) -> Error {
     }
 }
 
-/// Clipboard selection
+/// 剪贴板选择类型
 ///
-/// Linux has a concept of clipboard "selections" which tend to be used in different contexts. This
-/// enum provides a way to get/set to a specific clipboard
+/// Linux 有剪贴板"选择"的概念，它们倾向于在不同的上下文中使用
+/// 此枚举提供了一种获取/设置到特定剪贴板的方法
 ///
-/// See <https://specifications.freedesktop.org/clipboards-spec/clipboards-0.1.txt> for a better
-/// description of the different clipboards.
+/// 参见 <https://specifications.freedesktop.org/clipboards-spec/clipboards-0.1.txt> 以获取不同剪贴板的更好描述
 #[derive(Copy, Clone, Debug)]
 pub enum ClipboardKind {
-    /// Typically used selection for explicit cut/copy/paste actions (ie. windows/macos like
-    /// clipboard behavior)
+    /// 通常用于显式剪切/复制/粘贴操作的选择（即 windows/macos 类似的剪贴板行为）
     Clipboard,
 
-    /// Typically used for mouse selections and/or currently selected text. Accessible via middle
-    /// mouse click.
+    /// 通常用于鼠标选择和/或当前选中的文本。可通过鼠标中键访问
     Primary,
 
-    /// The secondary clipboard is rarely used but theoretically available on X11.
+    /// 辅助剪贴板很少使用，但理论上在 X11 上可用
     Secondary,
 }
 
-/// Configuration on how long to wait for a new X11 copy event is emitted.
+/// 配置等待新的 X11 复制事件发出的时间
 #[derive(Default)]
 pub(crate) enum WaitConfig {
-    /// Waits until the given [`Instant`] has reached.
+    /// 等待直到达到指定的 [`Instant`]
     #[allow(
         unused,
-        reason = "Right now we don't wait for clipboard contents to sync on app close, but we may in the future"
+        reason = "目前我们不在应用关闭时等待剪贴板内容同步，但未来可能会"
     )]
     Until(Instant),
 
-    /// Waits forever until a new event is reached.
+    /// 永远等待直到新事件到达
     #[allow(unused)]
     #[allow(
         unused,
-        reason = "Right now we don't wait for clipboard contents to sync on app close, but we may in the future"
+        reason = "目前我们不在应用关闭时等待剪贴板内容同步，但未来可能会"
     )]
     Forever,
 
-    /// It shouldn't wait.
+    /// 不应等待
     #[default]
     None,
 }
 
 #[non_exhaustive]
 pub enum Error {
-    /// The clipboard contents were not available in the requested format.
-    /// This could either be due to the clipboard being empty or the clipboard contents having
-    /// an incompatible format to the requested one (eg when calling `get_image` on text)
+    /// 剪贴板内容在请求的格式中不可用
+    /// 这可能是由于剪贴板为空或剪贴板内容与请求的格式不兼容（例如在调用 `get_image` 时获取文本）
     ContentNotAvailable,
 
-    /// The native clipboard is not accessible due to being held by an other party.
+    /// 原生剪贴板由于被其他方持有而无法访问
     ///
-    /// This "other party" could be a different process or it could be within
-    /// the same program. So for example you may get this error when trying
-    /// to interact with the clipboard from multiple threads at once.
+    /// 这个"其他方"可能是不同的进程，也可能是同一程序中的不同部分
+    /// 例如，你可能在尝试从多个线程同时与剪贴板交互时遇到此错误
     ///
-    /// Note that it's OK to have multiple `Clipboard` instances. The underlying
-    /// implementation will make sure that the native clipboard is only
-    /// opened for transferring data and then closed as soon as possible.
+    /// 注意：拥有多个 `Clipboard` 实例是可以的。底层
+    /// 实现将确保原生剪贴板仅在传输数据时打开
+    /// 并在完成后尽快关闭
     ClipboardOccupied,
 
-    /// The image or the text that was about the be transferred to/from the clipboard could not be
-    /// converted to the appropriate format.
+    /// 即将传输到/从剪贴板的图像或文本无法转换为适当的格式
     ConversionFailure,
 
-    /// Any error that doesn't fit the other error types.
+    /// 不符合其他错误类型的任何错误
     ///
-    /// The `description` field is only meant to help the developer and should not be relied on as a
-    /// means to identify an error case during runtime.
+    /// `description` 字段仅用于帮助开发者，不应在运行时用作识别错误情况的手段
     Unknown { description: String },
 }
 

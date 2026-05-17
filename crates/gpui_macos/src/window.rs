@@ -79,7 +79,7 @@ static mut BLURRED_VIEW_CLASS: *const Class = ptr::null();
 #[allow(non_upper_case_globals)]
 const NSWindowStyleMaskNonactivatingPanel: NSWindowStyleMask =
     NSWindowStyleMask::from_bits_retain(1 << 7);
-// WindowLevel const value ref: https://docs.rs/core-graphics2/0.4.1/src/core_graphics2/window_level.rs.html
+// WindowLevel 常量值参考：https://docs.rs/core-graphics2/0.4.1/src/core_graphics2/window_level.rs.html
 #[allow(non_upper_case_globals)]
 const NSNormalWindowLevel: NSInteger = 0;
 #[allow(non_upper_case_globals)]
@@ -113,7 +113,7 @@ pub enum UserTabbingPreference {
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
-    // Widely used private APIs; Apple uses them for their Terminal.app.
+    // 广泛使用的私有 API；Apple 在其 Terminal.app 中也使用它们。
     fn CGSMainConnectionID() -> id;
     fn CGSSetWindowBackgroundBlurRadius(
         connection_id: id,
@@ -274,7 +274,7 @@ unsafe fn build_classes() {
                     view_did_change_effective_appearance as extern "C" fn(&Object, Sel),
                 );
 
-                // Suppress beep on keystrokes with modifier keys.
+                // 抑制带修饰键的按键蜂鸣声。
                 decl.add_method(
                     sel!(doCommandBySelector:),
                     do_command_by_selector as extern "C" fn(&Object, Sel, Sel),
@@ -312,21 +312,20 @@ unsafe fn build_classes() {
 pub(crate) fn convert_mouse_position(position: NSPoint, window_height: Pixels) -> Point<Pixels> {
     point(
         px(position.x as f32),
-        // macOS screen coordinates are relative to bottom left
+        // macOS 屏幕坐标相对于左下角
         window_height - px(position.y as f32),
     )
 }
 
-/// Stores the cursor style on the active GPUI window and invalidates its cursor rects.
+/// 存储活动 GPUI 窗口上的光标样式并使其光标矩形无效。
 ///
-/// # Safety
+/// # 安全
 ///
-/// This function is not thread safe. Callers must ensure this is called on the AppKit main
-/// thread because it reads the active AppKit window and updates GPUI window state associated
-/// with Objective-C objects.
+/// 此函数不是线程安全的。调用者必须确保在 AppKit 主线程上调用此函数，
+/// 因为它读取活动的 AppKit 窗口并更新与 Objective-C 对象关联的 GPUI 窗口状态。
 pub(crate) unsafe fn set_active_window_cursor_style(style: CursorStyle) {
-    // SAFETY: The caller guarantees AppKit main-thread access. The class check ensures the
-    // window has our WINDOW_STATE_IVAR before reading it.
+    // 安全：调用者保证 AppKit 主线程访问。类检查确保
+    // 窗口在读取之前具有我们的 WINDOW_STATE_IVAR。
     unsafe {
         let app = NSApplication::sharedApplication(nil);
         let key_window: id = msg_send![app, keyWindow];
@@ -494,7 +493,7 @@ struct MacWindowState {
     keystroke_for_do_command: Option<Keystroke>,
     do_command_handled: Option<bool>,
     external_files_dragged: bool,
-    // Whether the next left-mouse click is also the focusing click.
+    // 下一次左键鼠标点击是否也是聚焦点击。
     first_mouse: bool,
     fullscreen_restore_bounds: Bounds<Pixels>,
     move_tab_to_new_window_callback: Option<Box<dyn FnMut()>>,
@@ -504,18 +503,18 @@ struct MacWindowState {
     toggle_tab_bar_callback: Option<Box<dyn FnMut()>>,
     activated_least_once: bool,
     closed: Arc<AtomicBool>,
-    // The parent window if this window is a sheet (Dialog kind)
+    // 如果此窗口是 sheet（Dialog 类型），则为父窗口
     sheet_parent: Option<id>,
 }
 
 impl MacWindowState {
     fn move_traffic_light(&self) {
-        if let Some(traffic_light_position) = self.traffic_light_position {
-            if self.is_fullscreen() {
-                // Moving traffic lights while fullscreen doesn't work,
-                // see https://github.com/zed-industries/zed/issues/4712
-                return;
-            }
+            if let Some(traffic_light_position) = self.traffic_light_position {
+                if self.is_fullscreen() {
+                    // 全屏时移动交通灯按钮不起作用，
+                    // 见 https://github.com/zed-industries/zed/issues/4712
+                    return;
+                }
 
             let titlebar_height = self.titlebar_height();
 
@@ -612,7 +611,7 @@ impl MacWindowState {
         }
         let screen_frame = unsafe { NSScreen::frame(screen) };
 
-        // Flip the y coordinate to be top-left origin
+        // 翻转 y 坐标为左上角原点
         window_frame.origin.y =
             screen_frame.size.height - window_frame.origin.y - window_frame.size.height;
 
@@ -870,11 +869,11 @@ impl MacWindow {
             native_view.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
             native_view.setWantsBestResolutionOpenGLSurface_(YES);
 
-            // From winit crate: On Mojave, views automatically become layer-backed shortly after
-            // being added to a native_window. Changing the layer-backedness of a view breaks the
-            // association between the view and its associated OpenGL context. To work around this,
-            // on we explicitly make the view layer-backed up front so that AppKit doesn't do it
-            // itself and break the association with its context.
+            // 来自 winit crate：在 Mojave 上，视图在添加到 native_window 后不久
+            // 会自动变为层支持视图。更改视图的层支持性会破坏
+            // 视图与其关联 OpenGL 上下文之间的关联。为了解决这个问题，
+            // 我们在前面显式使视图层支持，以便 AppKit 不会自己这样做
+            // 并破坏与其上下文的关联。
             native_view.setWantsLayer(YES);
             let _: () = msg_send![
             native_view,
@@ -891,7 +890,7 @@ impl MacWindow {
             match kind {
                 WindowKind::Normal | WindowKind::Floating => {
                     if kind == WindowKind::Floating {
-                        // Let the window float keep above normal windows.
+                        // 让窗口浮动保持在普通窗口上方。
                         native_window.setLevel_(NSFloatingWindowLevel);
                     } else {
                         native_window.setLevel_(NSNormalWindowLevel);
@@ -906,9 +905,9 @@ impl MacWindow {
                     }
                 }
                 WindowKind::PopUp => {
-                    // Use a tracking area to allow receiving MouseMoved events even when
-                    // the window or application aren't active, which is often the case
-                    // e.g. for notification windows.
+                    // 使用跟踪区域以允许在
+                    // 窗口或应用不活动时接收 MouseMoved 事件，这通常是
+                    // 例如通知窗口的情况。
                     let tracking_area: id = msg_send![class!(NSTrackingArea), alloc];
                     let _: () = msg_send![
                         tracking_area,
@@ -968,8 +967,8 @@ impl MacWindow {
                     if main_window_can_tab == YES && main_window_visible == YES {
                         let _: () = msg_send![main_window, addTabbedWindow: native_window ordered: NSWindowOrderingMode::NSWindowAbove];
 
-                        // Ensure the window is visible immediately after adding the tab, since the tab bar is updated with a new entry at this point.
-                        // Note: Calling orderFront here can break fullscreen mode (makes fullscreen windows exit fullscreen), so only do this if the main window is not fullscreen.
+                        // 确保在添加标签后立即显示窗口，因为标签栏此时会用新条目更新。
+                        // 注意：在这里调用 orderFront 可能会破坏全屏模式（使全屏窗口退出全屏），因此仅在主窗口未全屏时才这样做。
                         if !main_window_is_fullscreen {
                             let _: () = msg_send![native_window, orderFront: nil];
                         }
@@ -983,10 +982,10 @@ impl MacWindow {
                 native_window.orderFront_(nil);
             }
 
-            // Set the initial position of the window to the specified origin.
-            // Although we already specified the position using `initWithContentRect_styleMask_backing_defer_screen_`,
-            // the window position might be incorrect if the main screen (the screen that contains the window that has focus)
-            //  is different from the primary screen.
+            // 将窗口的初始位置设置为指定的原点。
+            // 虽然我们已使用 `initWithContentRect_styleMask_backing_defer_screen_` 指定了位置，
+            // 但如果主屏幕（包含具有焦点的窗口的屏幕）
+            // 与主显示器不同，则窗口位置可能不正确。
             NSWindow::setFrameTopLeftPoint_(native_window, window_rect.origin);
             {
                 let mut window_state = window.0.lock();
@@ -1089,11 +1088,10 @@ impl Drop for MacWindow {
     }
 }
 
-/// Calls `f` if the window is not closed.
+/// 如果窗口未关闭，则调用 `f`。
 ///
-/// This should be used when spawning foreground tasks interacting with the
-/// window, as some messages will end hard faulting if dispatched to no longer
-/// valid window handles.
+/// 当生成与窗口交互的前台任务时应使用此函数，
+/// 因为某些消息如果分派到不再有效的窗口句柄会导致硬故障。
 fn if_window_not_closed(closed: Arc<AtomicBool>, f: impl FnOnce()) {
     if !closed.load(Ordering::Acquire) {
         f();
@@ -1272,10 +1270,10 @@ impl PlatformWindow for MacWindow {
         detail: Option<&str>,
         answers: &[PromptButton],
     ) -> Option<oneshot::Receiver<usize>> {
-        // NSAlert's first button keeps Return and Cancel keeps Escape, but the keyboard
-        // focus (and therefore Space) defaults to Cancel, leaving the middle button of
-        // prompts like "Save / Don't Save / Cancel" unreachable from the keyboard. Move
-        // the initial focus onto the last non-cancel, non-default button instead.
+        // NSAlert 的第一个按钮保留 Return，Cancel 保留 Escape，但键盘
+        // 焦点（因此 Space）默认在 Cancel 上，导致像
+        // 「保存 / 不保存 / 取消」这样的提示的中间按钮无法从键盘访问。将
+        // 初始焦点移到最后一个非取消、非默认按钮上。
         let initial_focus_ix = answers
             .iter()
             .enumerate()
@@ -1369,7 +1367,7 @@ impl PlatformWindow for MacWindow {
         unsafe { self.0.lock().native_window.isKeyWindow() == YES }
     }
 
-    // is_hovered is unused on macOS. See Window::is_window_hovered.
+    // is_hovered 在 macOS 上未使用。参见 Window::is_window_hovered。
     fn is_hovered(&self) -> bool {
         false
     }
@@ -1410,15 +1408,15 @@ impl PlatformWindow for MacWindow {
             let background_color = if opaque {
                 NSColor::colorWithSRGBRed_green_blue_alpha_(nil, 0f64, 0f64, 0f64, 1f64)
             } else {
-                // Not using `+[NSColor clearColor]` to avoid broken shadow.
+                // 不使用 `+[NSColor clearColor]` 以避免阴影损坏。
                 NSColor::colorWithSRGBRed_green_blue_alpha_(nil, 0f64, 0f64, 0f64, 0.0001)
             };
             this.native_window.setBackgroundColor_(background_color);
 
             if NSAppKitVersionNumber < NSAppKitVersionNumber12_0 {
-                // Whether `-[NSVisualEffectView respondsToSelector:@selector(_updateProxyLayer)]`.
-                // On macOS Catalina/Big Sur `NSVisualEffectView` doesn’t own concrete sublayers
-                // but uses a `CAProxyLayer`. Use the legacy WindowServer API.
+                // 是否 `-[NSVisualEffectView respondsToSelector:@selector(_updateProxyLayer)]`。
+                // 在 macOS Catalina/Big Sur 上，`NSVisualEffectView` 不拥有具体的子层，
+                // 而是使用 `CAProxyLayer`。使用旧版 WindowServer API。
                 let blur_radius = if background_appearance == WindowBackgroundAppearance::Blurred {
                     80
                 } else {
@@ -1428,9 +1426,9 @@ impl PlatformWindow for MacWindow {
                 let window_number = this.native_window.windowNumber();
                 CGSSetWindowBackgroundBlurRadius(CGSMainConnectionID(), window_number, blur_radius);
             } else {
-                // On newer macOS `NSVisualEffectView` manages the effect layer directly. Using it
-                // could have a better performance (it downsamples the backdrop) and more control
-                // over the effect layer.
+                // 在较新的 macOS 上，`NSVisualEffectView` 直接管理效果层。使用它
+                // 可以获得更好的性能（它对背景进行下采样）并对
+                // 效果层有更多控制。
                 if background_appearance != WindowBackgroundAppearance::Blurred {
                     if let Some(blur_view) = this.blurred_view {
                         NSView::removeFromSuperview(blur_view);
@@ -1469,9 +1467,8 @@ impl PlatformWindow for MacWindow {
             msg_send![window, setDocumentEdited: edited as BOOL]
         }
 
-        // Changing the document edited state resets the traffic light position,
-        // so we have to move it again.
-        self.0.lock().move_traffic_light();
+        // 更改文档编辑状态会重置交通灯位置，
+        // 所以我们必须再次移动它。
     }
 
     fn set_document_path(&self, path: Option<&std::path::Path>) {
@@ -1481,8 +1478,8 @@ impl PlatformWindow for MacWindow {
             let _: () = msg_send![window, setRepresentedFilename: filename];
         }
 
-        // Changing the document path state resets the traffic light position,
-        // so we have to move it again.
+        // 更改文档路径状态会重置交通灯位置，
+        // 所以我们必须再次移动它。
         self.0.lock().move_traffic_light();
     }
 
@@ -1701,7 +1698,7 @@ impl PlatformWindow for MacWindow {
                                 window.zoom_(nil);
                             }
                             "Fill" => {
-                                // There is no documented API for "Fill" action, so we'll just zoom the window
+                                // 「填充」操作没有已记录的 API，所以我们直接缩放窗口
                                 window.zoom_(nil);
                             }
                             _ => {
@@ -1738,7 +1735,7 @@ impl PlatformWindow for MacWindow {
 
 impl rwh::HasWindowHandle for MacWindow {
     fn window_handle(&self) -> Result<rwh::WindowHandle<'_>, rwh::HandleError> {
-        // SAFETY: The AppKitWindowHandle is a wrapper around a pointer to an NSView
+        // 安全：AppKitWindowHandle 是围绕 NSView 指针的包装器
         unsafe {
             Ok(rwh::WindowHandle::borrow_raw(rwh::RawWindowHandle::AppKit(
                 rwh::AppKitWindowHandle::new(self.0.lock().native_view.cast()),
@@ -1762,12 +1759,11 @@ fn get_scale_factor(native_window: id) -> f32 {
         NSScreen::backingScaleFactor(screen) as f32
     };
 
-    // We are not certain what triggers this, but it seems that sometimes
-    // this method would return 0 (https://github.com/zed-industries/zed/issues/6412)
-    // It seems most likely that this would happen if the window has no screen
-    // (if it is off-screen), though we'd expect to see viewDidChangeBackingProperties before
-    // it was rendered for real.
-    // Regardless, attempt to avoid the issue here.
+    // 我们不确定是什么触发了这个问题，但有时
+    // 此方法会返回 0（https://github.com/zed-industries/zed/issues/6412）
+    // 最有可能的是，如果窗口没有屏幕（如果它在屏幕外），就会发生这种情况，
+    // 尽管我们期望在真正渲染之前看到 viewDidChangeBackingProperties。
+    // 无论如何，在这里尝试避免这个问题。
     if factor == 0.0 { 2. } else { factor }
 }
 
@@ -1807,9 +1803,9 @@ extern "C" fn dealloc_view(this: &Object, _: Sel) {
 }
 
 extern "C" fn reset_cursor_rects(this: &Object, _: Sel) {
-    // SAFETY: AppKit invokes cursor-rect updates on the main thread for GPUIView instances,
-    // whose WINDOW_STATE_IVAR is initialized when the view is created. The cursor registered
-    // below is a valid NSCursor.
+    // 安全：AppKit 在主线程上为 GPUIView 实例调用光标矩形更新，
+    // 其 WINDOW_STATE_IVAR 在创建视图时已初始化。下面注册的
+    // 光标是有效的 NSCursor。
     unsafe {
         let _: () = msg_send![super(this, class!(NSView)), resetCursorRects];
 
@@ -1832,7 +1828,7 @@ extern "C" fn reset_cursor_rects(this: &Object, _: Sel) {
             CursorStyle::ResizeUp => msg_send![class!(NSCursor), resizeUpCursor],
             CursorStyle::ResizeDown => msg_send![class!(NSCursor), resizeDownCursor],
 
-            // Undocumented, private class methods:
+            // 未记录的私有类方法：
             // https://stackoverflow.com/questions/27242353/cocoa-predefined-resize-mouse-cursor
             CursorStyle::ResizeUpLeftDownRight => {
                 msg_send![class!(NSCursor), _windowResizeNorthWestSouthEastCursor]
@@ -1869,7 +1865,7 @@ extern "C" fn handle_key_up(this: &Object, _: Sel, native_event: id) {
     handle_key_event(this, native_event, false);
 }
 
-// Things to test if you're modifying this method:
+// 修改此方法时需要测试的事项：
 //  U.S. layout:
 //   - The IME consumes characters like 'j' and 'k', which makes paging through `less` in
 //     the terminal behave incorrectly by default. This behavior should be patched by our
@@ -1897,15 +1893,15 @@ extern "C" fn handle_key_up(this: &Object, _: Sel, native_event: id) {
 //   - In vim mode with `jj` bound to `vim::NormalBefore` in insert mode, typing 'j i' with
 //     Japanese IME should produce "じ" (ji), not "jい"
 
-/// Returns true if the current keyboard input source is a composition-based IME
-/// (e.g. Japanese Hiragana, Korean, Chinese Pinyin) that produces non-ASCII output.
+/// 如果当前键盘输入源是基于组合的 IME（例如日语平假名、韩语、中文拼音），
+/// 则返回 true，这些 IME 会产生非 ASCII 输出。
 ///
-/// This checks two properties:
-/// 1. The source type is `kTISTypeKeyboardInputMode` (an IME input mode, not a plain
-///    keyboard layout). This excludes non-ASCII layouts like Armenian and Ukrainian
-///    that map keys directly without composition.
-/// 2. The source is not ASCII-capable, which excludes modes like Japanese Romaji that
-///    produce ASCII characters and should allow multi-stroke keybindings like `jj`.
+/// 这会检查两个属性：
+/// 1. 源类型为 `kTISTypeKeyboardInputMode`（IME 输入模式，而非纯
+///    键盘布局）。这排除了非 ASCII 布局（如亚美尼亚语和乌克兰语），
+///    这些布局直接映射按键而不进行组合。
+/// 2. 源不是 ASCII 兼容的，这排除了像日语罗马字这样的模式，这些模式
+///    会产生 ASCII 字符，并应允许多次按键绑定（如 `jj`）。
 unsafe fn is_ime_input_source_active() -> bool {
     unsafe {
         let source = TISCopyCurrentKeyboardInputSource();
@@ -1957,10 +1953,10 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
 
     match event {
         PlatformInput::KeyDown(key_down_event) => {
-            // For certain keystrokes, macOS will first dispatch a "key equivalent" event.
-            // If that event isn't handled, it will then dispatch a "key down" event. GPUI
-            // makes no distinction between these two types of events, so we need to ignore
-            // the "key down" event if we've already just processed its "key equivalent" version.
+            // 对于某些按键，macOS 会先分发「按键等效」事件。
+            // 如果该事件未处理，则会分发「按键按下」事件。GPUI
+            // 不区分这两种事件类型，所以如果我们已经处理了
+            // 其「按键等效」版本，我们需要忽略「按键按下」事件。
             if key_equivalent {
                 lock.last_key_equivalent = Some(key_down_event.clone());
             } else if lock.last_key_equivalent.take().as_ref() == Some(&key_down_event) {
@@ -1974,21 +1970,21 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
                     .flatten()
                     .is_some();
 
-            // If we're composing, send the key to the input handler first;
-            // otherwise we only send to the input handler if we don't have a matching binding.
-            // The input handler may call `do_command_by_selector` if it doesn't know how to handle
-            // a key. If it does so, it will return YES so we won't send the key twice.
-            // We also do this for non-printing keys (like arrow keys and escape) as the IME menu
-            // may need them even if there is no marked text;
-            // however we skip keys with control or the input handler adds control-characters to the buffer.
-            // and keys with function, as the input handler swallows them.
-            // and keys with platform (Cmd), so that Cmd+key events (e.g. Cmd+`) are not
-            // consumed by the IME on non-QWERTY / dead-key layouts.
-            // We also send printable keys to the IME first when an IME input source (e.g. Japanese,
-            // Korean, Chinese) is active and the input handler accepts text input. This prevents
-            // multi-stroke keybindings like `jj` from intercepting keys that the IME should compose
-            // (e.g. typing 'ji' should produce 'じ', not 'jい'). If the IME doesn't handle the key,
-            // it calls `doCommandBySelector:` which routes it back to keybinding matching.
+            // 如果我们正在组合，先将按键发送到输入处理器；
+            // 否则，只有在没有匹配绑定时才发送到输入处理器。
+            // 如果输入处理器不知道如何处理按键，它可能会调用 `do_command_by_selector`。
+            // 如果它这样做了，它将返回 YES，这样我们就不会发送按键两次。
+            // 我们也对非打印键（如箭头键和 escape）执行此操作，因为 IME 菜单
+            // 即使没有标记文本也可能需要它们；
+            // 但是我们跳过带有 control 的按键，否则输入处理器会将控制字符添加到缓冲区。
+            // 以及带有 function 的按键，因为输入处理器会吞掉它们。
+            // 以及带有 platform（Cmd）的按键，这样 Cmd+key 事件（例如 Cmd+`）就不会
+            // 在非 QWERTY / 死键布局上被 IME 消耗。
+            // 当 IME 输入源（例如日语、韩语、中文）处于活动状态且输入处理器接受文本输入时，
+            // 我们也会先将可打印键发送到 IME。这可以防止
+            // 像 `jj` 这样的多次按键绑定拦截 IME 应该组合的按键
+            //（例如输入 'ji' 应该产生 'じ'，而不是 'jい'）。如果 IME 不处理该按键，
+            // 它会调用 `doCommandBySelector:`，将其路由回按键匹配。
             let is_ime_printable_key = !is_composing
                 && key_down_event
                     .keystroke
@@ -2053,8 +2049,8 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
                 }
             }
 
-            // Don't send key equivalents to the input handler if there are key modifiers other
-            // than Function key, or macOS shortcuts like cmd-` will stop working.
+            // 如果有除 Function 键以外的按键修饰符，不要将按键等效发送到输入处理器，
+            // 否则像 cmd-` 这样的 macOS 快捷键将停止工作。
             if key_equivalent && key_down_event.keystroke.modifiers != Modifiers::function() {
                 return NO;
             }
@@ -2082,7 +2078,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
     let event = unsafe { platform_input_from_native(native_event, Some(window_height)) };
 
     if let Some(mut event) = event {
-        // AppKit unhides the cursor on the next mouse movement; mirror that here.
+        // AppKit 在下一次鼠标移动时取消隐藏光标；在这里镜像该行为。
         if matches!(
             event,
             PlatformInput::MouseMove(_)
@@ -2104,7 +2100,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                     ..
                 },
             ) => {
-                // On mac, a ctrl-left click should be handled as a right click.
+                // 在 Mac 上，ctrl-左键点击应作为右键点击处理。
                 *event = MouseDownEvent {
                     button: MouseButton::Right,
                     modifiers: Modifiers {
@@ -2116,7 +2112,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                 };
             }
 
-            // Handles focusing click.
+            // 处理聚焦点击。
             PlatformInput::MouseDown(
                 event @ MouseDownEvent {
                     button: MouseButton::Left,
@@ -2130,9 +2126,9 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                 lock.first_mouse = false;
             }
 
-            // Because we map a ctrl-left_down to a right_down -> right_up let's ignore
-            // the ctrl-left_up to avoid having a mismatch in button down/up events if the
-            // user is still holding ctrl when releasing the left mouse button
+            // 因为我们将 ctrl-左键按下映射为右键按下 -> 右键抬起，所以让我们忽略
+            // ctrl-左键抬起，以避免在用户
+            // 释放左键时仍然按住 ctrl 的情况下出现按键按下/抬起事件不匹配
             PlatformInput::MouseUp(
                 event @ MouseUpEvent {
                     button: MouseButton::Left,
@@ -2169,9 +2165,9 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                     ..
                 },
             ) => {
-                // Synthetic drag is used for selecting long buffer contents while buffer is being scrolled.
-                // External file drag and drop is able to emit its own synthetic mouse events which will conflict
-                // with these ones.
+                // 合成拖拽用于在缓冲区滚动时选择长缓冲区内容。
+                // 外部文件拖放能够发出自己的合成鼠标事件，这将
+                // 与这些事件冲突。
                 if !lock.external_files_dragged {
                     lock.synthetic_drag_counter += 1;
                     let executor = lock.foreground_executor.clone();
@@ -2194,7 +2190,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                 modifiers,
                 capslock,
             }) => {
-                // Only raise modifiers changed event when they have actually changed
+                // 只有在修饰符实际更改时才引发修饰符更改事件
                 if let Some(PlatformInput::ModifiersChanged(ModifiersChangedEvent {
                     modifiers: prev_modifiers,
                     capslock: prev_capslock,
@@ -2282,7 +2278,7 @@ extern "C" fn window_did_move(this: &Object, _: Sel, _: id) {
     }
 }
 
-// Update the window scale factor and drawable size, and call the resize callback if any.
+// 更新窗口缩放因子和可绘制大小，并在有需要时调用缩放回调。
 fn update_window_scale_factor(window_state: &Arc<Mutex<MacWindowState>>) {
     let mut lock = window_state.as_ref().lock();
     let scale_factor = lock.scale_factor();
@@ -2321,18 +2317,18 @@ extern "C" fn window_did_change_key_status(this: &Object, selector: Sel, _: id) 
     let lock = window_state.lock();
     let is_active = unsafe { lock.native_window.isKeyWindow() == YES };
 
-    // AppKit also unhides the cursor on activation changes, so mirror that here.
+    // AppKit 也会在激活更改时取消隐藏光标，所以在这里镜像该行为。
     lock.cursor_visible.store(true, Ordering::Relaxed);
 
-    // When opening a pop-up while the application isn't active, Cocoa sends a spurious
-    // `windowDidBecomeKey` message to the previous key window even though that window
-    // isn't actually key. This causes a bug if the application is later activated while
-    // the pop-up is still open, making it impossible to activate the previous key window
-    // even if the pop-up gets closed. The only way to activate it again is to de-activate
-    // the app and re-activate it, which is a pretty bad UX.
-    // The following code detects the spurious event and invokes `resignKeyWindow`:
-    // in theory, we're not supposed to invoke this method manually but it balances out
-    // the spurious `becomeKeyWindow` event and helps us work around that bug.
+    // 在应用程序未处于活动状态时打开弹出窗口时，Cocoa 会向前一个
+    // 主窗口发送一个虚假的 `windowDidBecomeKey` 消息，尽管该窗口
+    // 实际上并非主窗口。如果应用程序稍后在弹出窗口仍打开时被激活，
+    // 这会导致一个 bug，使得无法激活前一个主窗口，
+    // 即使弹出窗口已关闭。再次激活它的唯一方法是停用
+    // 应用程序并重新激活它，这是一个非常糟糕的用户体验。
+    // 以下代码检测虚假事件并调用 `resignKeyWindow`：
+    // 理论上，我们不应该手动调用此方法，但它平衡了
+    // 虚假的 `becomeKeyWindow` 事件，并帮助我们解决该 bug。
     if selector == sel!(windowDidBecomeKey:) && !is_active {
         let native_window = lock.native_window;
         drop(lock);
@@ -2345,12 +2341,12 @@ extern "C" fn window_did_change_key_status(this: &Object, selector: Sel, _: id) 
     let executor = lock.foreground_executor.clone();
     drop(lock);
 
-    // When a window becomes active, trigger an immediate synchronous frame request to prevent
-    // tab flicker when switching between windows in native tabs mode.
+    // 当窗口变为活动状态时，触发立即同步帧请求以防止
+    // 在原生标签模式下在窗口之间切换时的标签闪烁。
     //
-    // This is only done on subsequent activations (not the first) to ensure the initial focus
-    // path is properly established. Without this guard, the focus state would remain unset until
-    // the first mouse click, causing keybindings to be non-functional.
+    // 这仅在后续激活时完成（不是第一次），以确保初始焦点
+    // 路径正确建立。没有这个守卫，焦点状态将保持未设置状态，直到
+    // 第一次鼠标点击，导致按键绑定无法正常工作。
     if selector == sel!(windowDidBecomeKey:) && is_active {
         let window_state = unsafe { get_window_state(this) };
         let mut lock = window_state.lock();
@@ -2640,8 +2636,8 @@ extern "C" fn attributed_substring_for_proposed_range(
     .unwrap_or(nil)
 }
 
-// We ignore which selector it asks us to do because the user may have
-// bound the shortcut to something else.
+// 我们忽略它要求我们执行的选择器，因为用户可能已将
+// 快捷键绑定到其他操作。
 extern "C" fn do_command_by_selector(this: &Object, _: Sel, _: Sel) {
     let state = unsafe { get_window_state(this) };
     let mut lock = state.as_ref().lock();
@@ -2776,8 +2772,8 @@ async fn synthetic_drag(
     }
 }
 
-/// Sends the specified FileDropEvent using `PlatformInput::FileDrop` to the window
-/// state and updates the window state according to the event passed.
+/// 使用 `PlatformInput::FileDrop` 将指定的 FileDropEvent 发送到窗口
+/// 状态，并根据传递的事件更新窗口状态。
 fn send_file_drop_event(
     window_state: Arc<Mutex<MacWindowState>>,
     file_drop_event: FileDropEvent,
@@ -2837,8 +2833,8 @@ unsafe fn display_id_for_screen(screen: id) -> CGDirectDisplayID {
 extern "C" fn blurred_view_init_with_frame(this: &Object, _: Sel, frame: NSRect) -> id {
     unsafe {
         let view = msg_send![super(this, class!(NSVisualEffectView)), initWithFrame: frame];
-        // Use a colorless semantic material. The default value `AppearanceBased`, though not
-        // manually set, is deprecated.
+        // 使用无色语义材质。默认值 `AppearanceBased` 虽然没有
+        // 手动设置，但已弃用。
         NSVisualEffectView::setMaterial_(view, NSVisualEffectMaterial::Selection);
         NSVisualEffectView::setState_(view, NSVisualEffectState::Active);
         view
@@ -2861,7 +2857,7 @@ unsafe fn remove_layer_background(layer: id) {
 
         let class_name: id = msg_send![layer, className];
         if class_name.isEqualToString("CAChameleonLayer") {
-            // Remove the desktop tinting effect.
+            // 移除桌面着色效果。
             let _: () = msg_send![layer, setHidden: YES];
             return;
         }

@@ -109,8 +109,8 @@ impl ScreenCaptureSource for MacScreenCaptureSource {
             let _: id = msg_send![configuration, setHeight: meta.resolution.height.0 as i64];
             let stream: id = msg_send![stream, initWithFilter:filter configuration:configuration delegate:delegate];
 
-            // Stream contains filter, configuration, and delegate internally so we release them here
-            // to prevent a memory leak when steam is dropped
+            // 流内部包含 filter、configuration 和 delegate，因此我们在这里释放它们
+            // 以防止流被丢弃时内存泄漏
             let _: () = msg_send![filter, release];
             let _: () = msg_send![configuration, release];
             let _: () = msg_send![delegate, release];
@@ -197,7 +197,7 @@ impl Drop for MacScreenCaptureStream {
 #[derive(Clone)]
 struct ScreenMeta {
     label: SharedString,
-    // Is this the screen with menu bar?
+    // 这是带有菜单栏的屏幕吗？
     is_main: bool,
 }
 

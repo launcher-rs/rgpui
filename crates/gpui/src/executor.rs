@@ -398,7 +398,7 @@ impl<'a> Scope<'a> {
         self.executor.num_cpus()
     }
 
-    /// 将未来任务生成到此作用域中。
+    /// Spawn a future into this scope.
     #[track_caller]
     pub fn spawn<F>(&mut self, f: F)
     where
@@ -406,8 +406,27 @@ impl<'a> Scope<'a> {
     {
         let tx = self.tx.clone().unwrap();
 
-        // SAFETY：'a 生命周期保证比这些未来任务中的任何一个都更长，因为
-        // 丢弃此 `Scope` 会阻塞直到所有生成的未来任务都解析完毕。
+        // SAFETY: The 'a lifetime is guaranteed to outlive any of these futures because
+        // dropping this `Scope` blocks until all of the futures have resolved.
+        let f = unsafe {
+            mem::transmute::<
+                Pin<Box<dyn Future<Output = ()> + Send + 'a>>,
+                Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
+            >(Box::pin(async move {
+                f.await;
+                drop(tx);
+            }))
+        };
+        self.futures.push(f);
+    }
+}
+
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        self.tx.take().unwrap();
+
+        // Wait until the channel is closed, which means that all of the spawned
+        // futures have resolved.
         let future = async {
             self.rx.next().await;
         };

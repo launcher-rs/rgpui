@@ -16,22 +16,40 @@ use gpui::{
     PriorityQueueSender, RunnableVariant, TaskTiming, ThreadTaskTimings, profiler,
 };
 
+/// 定时器触发后执行的任务包装结构
 struct TimerAfter {
+    /// 延迟时长
     duration: Duration,
+    /// 可执行对象
     runnable: RunnableVariant,
 }
 
+/// Linux 平台调度器实现
+///
+/// 负责在主线程、后台线程和定时器线程上分发任务执行
 pub(crate) struct LinuxDispatcher {
+    /// 主线程任务发送端
     main_sender: PriorityQueueCalloopSender<RunnableVariant>,
+    /// 定时器任务发送端
     timer_sender: Sender<TimerAfter>,
+    /// 后台任务发送端
     background_sender: PriorityQueueSender<RunnableVariant>,
+    /// 后台线程句柄
     _background_threads: Vec<thread::JoinHandle<()>>,
+    /// 主线程 ID
     main_thread_id: thread::ThreadId,
 }
 
 const MIN_THREADS: usize = 2;
 
 impl LinuxDispatcher {
+    /// 创建新的 LinuxDispatcher 实例
+    ///
+    /// 初始化后台工作线程池、定时器线程和主线程调度器
+    ///
+    /// # 参数
+    ///
+    /// * `main_sender` - 主线程任务发送端
     pub fn new(main_sender: PriorityQueueCalloopSender<RunnableVariant>) -> Self {
         let (background_sender, background_receiver) = PriorityQueueReceiver::new();
         let thread_count =
@@ -60,6 +78,7 @@ impl LinuxDispatcher {
                             timing.end = Some(end);
                             profiler::add_task_timing(timing);
 
+                            // 记录后台线程执行 runnable 的耗时
                             log::trace!(
                                 "background thread {}: ran runnable. took: {:?}",
                                 i,
@@ -152,14 +171,14 @@ impl PlatformDispatcher for LinuxDispatcher {
         self.main_sender
             .send(priority, runnable)
             .unwrap_or_else(|runnable| {
-                // NOTE: Runnable may wrap a Future that is !Send.
+                // 注意：Runnable 可能包装了 !Send 的 Future。
                 //
-                // This is usually safe because we only poll it on the main thread.
-                // However if the send fails, we know that:
-                // 1. main_receiver has been dropped (which implies the app is shutting down)
-                // 2. we are on a background thread.
-                // It is not safe to drop something !Send on the wrong thread, and
-                // the app will exit soon anyway, so we must forget the runnable.
+                // 这通常是安全的，因为我们只在主线程上 poll 它。
+                // 但如果发送失败，我们知道：
+                // 1. main_receiver 已被丢弃（意味着应用正在关闭）
+                // 2. 我们当前在后台线程上。
+                // 在错误的线程上丢弃 !Send 类型是不安全的，
+                // 而且应用即将关闭，所以我们必须忘记这个 runnable。
                 std::mem::forget(runnable);
             });
     }
@@ -172,17 +191,17 @@ impl PlatformDispatcher for LinuxDispatcher {
 
     fn spawn_realtime(&self, f: Box<dyn FnOnce() + Send>) {
         std::thread::spawn(move || {
-            // SAFETY: always safe to call
+            // 安全性：始终安全调用
             let thread_id = unsafe { libc::pthread_self() };
 
             let policy = libc::SCHED_FIFO;
             let sched_priority = 65;
 
-            // SAFETY: all sched_param members are valid when initialized to zero.
+            // 安全性：sched_param 成员在初始化为零时均有效
             let mut sched_param =
                 unsafe { MaybeUninit::<libc::sched_param>::zeroed().assume_init() };
             sched_param.sched_priority = sched_priority;
-            // SAFETY: sched_param is a valid initialized structure
+            // 安全性：sched_param 是有效的已初始化结构体
             let result = unsafe { libc::pthread_setschedparam(thread_id, policy, &sched_param) };
             if result != 0 {
                 log::warn!("failed to set realtime thread priority");
@@ -193,16 +212,21 @@ impl PlatformDispatcher for LinuxDispatcher {
     }
 }
 
+/// 带 calloop ping 通知的优先级队列发送器
 pub struct PriorityQueueCalloopSender<T> {
+    /// 底层优先级队列发送端
     sender: PriorityQueueSender<T>,
+    /// 用于通知事件循环的 ping 对象
     ping: calloop::ping::Ping,
 }
 
 impl<T> PriorityQueueCalloopSender<T> {
+    /// 创建新的发送器实例
     fn new(tx: PriorityQueueSender<T>, ping: calloop::ping::Ping) -> Self {
         Self { sender: tx, ping }
     }
 
+    /// 发送带优先级的项目，成功后触发 ping 通知
     fn send(&self, priority: Priority, item: T) -> Result<(), gpui::queue::SendError<T>> {
         let res = self.sender.send(priority, item);
         if res.is_ok() {
@@ -218,15 +242,20 @@ impl<T> Drop for PriorityQueueCalloopSender<T> {
     }
 }
 
+/// 带 calloop ping 源的优先级队列接收器
 pub struct PriorityQueueCalloopReceiver<T> {
+    /// 底层优先级队列接收端
     receiver: PriorityQueueReceiver<T>,
+    /// ping 事件源
     source: calloop::ping::PingSource,
+    /// 用于触发通知的 ping 对象
     ping: calloop::ping::Ping,
 }
 
 impl<T> PriorityQueueCalloopReceiver<T> {
+    /// 创建新的发送器/接收器对
     pub fn new() -> (PriorityQueueCalloopSender<T>, Self) {
-        let (ping, source) = calloop::ping::make_ping().expect("Failed to create a Ping.");
+        let (ping, source) = calloop::ping::make_ping().expect("Failed to create a ping.");
 
         let (tx, rx) = PriorityQueueReceiver::new();
 
@@ -243,6 +272,7 @@ impl<T> PriorityQueueCalloopReceiver<T> {
 
 use calloop::channel::Event;
 
+/// 通道错误包装类型
 #[derive(Debug)]
 pub struct ChannelError(calloop::ping::PingError);
 
@@ -311,7 +341,7 @@ impl<T> calloop::EventSource for PriorityQueueCalloopReceiver<T> {
         } else if clear_readiness {
             Ok(action)
         } else {
-            // Re-notify the ping source so we can try again.
+            // 重新通知 ping 源以便重试
             self.ping.ping();
             Ok(PostAction::Continue)
         }

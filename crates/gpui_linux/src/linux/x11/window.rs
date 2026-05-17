@@ -190,7 +190,7 @@ fn find_visuals(xcb: &XCBConnection, screen_index: usize) -> VisualSet {
                 depth: depth_info.depth,
             };
             log::debug!(
-                "Visual id: {}, class: {:?}, depth: {}, bits_per_value: {}, masks: 0x{:x} 0x{:x} 0x{:x}",
+                "Visual id: {}, 类: {:?}, 深度: {}, 每值位数: {}, 掩码: 0x{:x} 0x{:x} 0x{:x}",
                 visual_type.visual_id,
                 visual_type.class,
                 depth_info.depth,
@@ -234,9 +234,8 @@ struct RawWindow {
     visual_id: u32,
 }
 
-// Safety: The raw pointers in RawWindow point to X11 connection
-// which is valid for the window's lifetime. These are used only for
-// passing to wgpu which needs Send+Sync for surface creation.
+// 安全性：RawWindow 中的原始指针指向窗口生命周期内有效的 X11 连接
+// 这些仅用于传递给 wgpu，后者需要 Send+Sync 来创建表面
 unsafe impl Send for RawWindow {}
 unsafe impl Sync for RawWindow {}
 
@@ -472,7 +471,7 @@ impl X11WindowState {
         let mut bounds = params.bounds.to_device_pixels(scale_factor);
         if bounds.size.width.0 == 0 || bounds.size.height.0 == 0 {
             log::warn!(
-                "Window bounds contain a zero value. height={}, width={}. Falling back to defaults.",
+                "窗口边界包含零值。height={}, width={}。回退到默认值",
                 bounds.size.height.0,
                 bounds.size.width.0
             );
@@ -508,7 +507,7 @@ impl X11WindowState {
             ),
         )?;
 
-        // Collect errors during setup, so that window can be destroyed on failure.
+        // 收集设置过程中的错误，以便在失败时销毁窗口
         let setup_result = maybe!({
             let pid = std::process::id();
             check_reply(
@@ -525,9 +524,9 @@ impl X11WindowState {
             let reply = get_reply(|| "X11 GetGeometry failed.", xcb.get_geometry(x_window))?;
             if reply.x == 0 && reply.y == 0 {
                 bounds.origin.x.0 += 2;
-                // Work around a bug where our rendered content appears
-                // outside the window bounds when opened at the default position
-                // (14px, 49px on X + Gnome + Ubuntu 22).
+                // 解决一个 bug：当在默认位置打开时，
+                // 我们渲染的内容出现在窗口边界外
+                // （在 X + Gnome + Ubuntu 22 上为 14px, 49px）
                 let x = bounds.origin.x.0;
                 let y = bounds.origin.y.0;
                 check_reply(
@@ -575,9 +574,9 @@ impl X11WindowState {
 
             if params.kind == WindowKind::Floating || params.kind == WindowKind::Dialog {
                 if let Some(parent_window) = parent_window.as_ref().map(|w| w.x_window) {
-                    // WM_TRANSIENT_FOR hint indicating the main application window. For floating windows, we set
-                    // a parent window (WM_TRANSIENT_FOR) such that the window manager knows where to
-                    // place the floating window in relation to the main window.
+                    // WM_TRANSIENT_FOR 提示，表示主应用程序窗口。对于浮动窗口，我们设置
+                    // 一个父窗口（WM_TRANSIENT_FOR），以便窗口管理器知道将浮动窗口
+                    // 放置在主窗口的什么位置
                     // https://specifications.freedesktop.org/wm-spec/1.4/ar01s05.html
                     check_reply(
                         || "X11 ChangeProperty32 setting WM_TRANSIENT_FOR for floating window failed.",
@@ -603,7 +602,7 @@ impl X11WindowState {
             };
 
             if params.kind == WindowKind::Dialog {
-                // _NET_WM_WINDOW_TYPE_DIALOG indicates that this is a dialog (floating) window
+                // _NET_WM_WINDOW_TYPE_DIALOG 表示这是一个对话框（浮动）窗口
                 // https://specifications.freedesktop.org/wm-spec/1.4/ar01s05.html
                 check_reply(
                     || "X11 ChangeProperty32 setting window type for dialog window failed.",
@@ -616,9 +615,8 @@ impl X11WindowState {
                     ),
                 )?;
 
-                // We set the modal state for dialog windows, so that the window manager
-                // can handle it appropriately (e.g., prevent interaction with the parent window
-                // while the dialog is open).
+                // 我们为对话框窗口设置模态状态，以便窗口管理器
+                // 可以适当地处理它（例如，在对话框打开时防止与父窗口交互）
                 check_reply(
                     || "X11 ChangeProperty32 setting modal state for dialog window failed.",
                     xcb.change_property32(
@@ -669,9 +667,8 @@ impl X11WindowState {
                 | xinput::XIEventMask::ENTER
                 | xinput::XIEventMask::LEAVE;
             if supports_xinput_gestures {
-                // x11rb 0.13 doesn't define XIEventMask constants for gesture
-                // events, so we construct them from the event opcodes (each
-                // XInput event type N maps to mask bit N).
+                // x11rb 0.13 没有为手势事件定义 XIEventMask 常量，
+                // 因此我们从事件操作码构建它们（每个 XInput 事件类型 N 映射到掩码位 N）
                 xi_event_mask |=
                     xinput::XIEventMask::from(1u32 << xinput::GESTURE_PINCH_BEGIN_EVENT)
                         | xinput::XIEventMask::from(1u32 << xinput::GESTURE_PINCH_UPDATE_EVENT)
@@ -713,13 +710,12 @@ impl X11WindowState {
                     visual_id: visual.id,
                 };
                 let config = WgpuSurfaceConfig {
-                    // Note: this has to be done after the GPU init, or otherwise
-                    // the sizes are immediately invalidated.
+                    // 注意：这必须在 GPU 初始化之后完成，否则
+                    // 尺寸会立即失效
                     size: query_render_extent(xcb, x_window)?,
-                    // We set it to transparent by default, even if we have client-side
-                    // decorations, since those seem to work on X11 even without `true` here.
-                    // If the window appearance changes, then the renderer will get updated
-                    // too
+                    // 我们将其设置为透明，即使我们有客户端装饰，
+                    // 因为这些似乎在 X11 上即使没有 `true` 也能工作
+                    // 如果窗口外观改变，那么渲染器也会更新
                     transparent: false,
                     preferred_present_mode: None,
                 };
@@ -818,6 +814,9 @@ impl X11WindowState {
     }
 
     fn content_size(&self) -> Size<Pixels> {
+        // 迁移到 wgpu 后，X11WindowState::content_size() 返回逻辑像素
+        // （bounds.size 已在 set_bounds 中除以 scale_factor），因此这里不需要进一步除法
+        // 这与 Wayland 实现一致
         self.bounds.size
     }
 }
@@ -1147,7 +1146,7 @@ impl X11WindowStatePtr {
             }
         }
         if let PlatformInput::KeyDown(event) = input {
-            // only allow shift modifier when inserting text
+            // 插入文本时仅允许 shift 修饰键
             if event.keystroke.modifiers.is_subset_of(&Modifiers::shift()) {
                 let mut state = self.state.borrow_mut();
                 if let Some(mut input_handler) = state.input_handler.take() {
@@ -1239,8 +1238,8 @@ impl X11WindowStatePtr {
             let is_resize = bounds.size.width != state.bounds.size.width
                 || bounds.size.height != state.bounds.size.height;
 
-            // If it's a resize event (only width/height changed), we ignore `bounds.origin`
-            // because it contains wrong values.
+            // 如果是调整大小事件（仅宽度/高度改变），我们忽略 `bounds.origin`
+            // 因为它包含错误的值
             if is_resize {
                 state.bounds.size = bounds.size;
             } else {
@@ -1318,7 +1317,7 @@ impl PlatformWindow for X11Window {
     fn is_maximized(&self) -> bool {
         let state = self.0.state.borrow();
 
-        // A maximized window that gets minimized will still retain its maximized state.
+        // 最大化窗口被最小化后仍会保留其最大化状态
         !state.hidden && state.maximized_vertical && state.maximized_horizontal
     }
 
@@ -1742,7 +1741,7 @@ impl PlatformWindow for X11Window {
     fn window_decorations(&self) -> gpui::Decorations {
         let state = self.0.state.borrow();
 
-        // Client window decorations require compositor support
+        // 客户端窗口装饰需要合成器支持
         if !state.client_side_decorations_supported {
             return Decorations::Server;
         }
@@ -1883,7 +1882,7 @@ impl PlatformWindow for X11Window {
     }
 
     fn play_system_bell(&self) {
-        // Volume 0% means don't increase or decrease from system volume
+        // 音量 0% 表示不从系统音量增加或减少
         let _ = self.0.xcb.bell(0);
     }
 }

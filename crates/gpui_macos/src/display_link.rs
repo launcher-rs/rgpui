@@ -74,22 +74,21 @@ impl DisplayLink {
 impl Drop for DisplayLink {
     fn drop(&mut self) {
         self.stop().log_err();
-        // We see occasional segfaults on the CVDisplayLink thread.
+        // 我们在 CVDisplayLink 线程上偶尔会出现段错误。
         //
-        // It seems possible that this happens because CVDisplayLinkRelease releases the CVDisplayLink
-        // on the main thread immediately, but the background thread that CVDisplayLink uses for timers
-        // is still accessing it.
+        // 这种情况可能发生，因为 CVDisplayLinkRelease 在主线程上立即释放 CVDisplayLink，
+        // 但 CVDisplayLink 使用的后台计时器线程仍在访问它。
         //
-        // We might also want to upgrade to CADisplayLink, but that requires dropping old macOS support.
+        // 我们可能也想升级到 CADisplayLink，但这需要放弃对旧版 macOS 的支持。
         std::mem::forget(self.display_link.take());
         self.frame_requests.cancel();
     }
 }
 
 mod sys {
-    //! Derived from display-link crate under the following license:
+    //! 派生自 display-link crate，遵循以下许可证：
     //! <https://github.com/BrainiumLLC/display-link/blob/master/LICENSE-MIT>
-    //! Apple docs: [CVDisplayLink](https://developer.apple.com/documentation/corevideo/cvdisplaylinkoutputcallback?language=objc)
+    //! Apple 文档：[CVDisplayLink](https://developer.apple.com/documentation/corevideo/cvdisplaylinkoutputcallback?language=objc)
     #![allow(dead_code, non_upper_case_globals)]
 
     use anyhow::Result;
@@ -180,15 +179,15 @@ mod sys {
 
     pub type CVDisplayLinkOutputCallback = unsafe extern "C" fn(
         display_link_out: *mut CVDisplayLink,
-        // A pointer to the current timestamp. This represents the timestamp when the callback is called.
+        // 指向当前时间戳的指针。表示调用回调时的时间戳。
         current_time: *const CVTimeStamp,
-        // A pointer to the output timestamp. This represents the timestamp for when the frame will be displayed.
+        // 指向输出时间戳的指针。表示帧将显示时的时间戳。
         output_time: *const CVTimeStamp,
-        // Unused
+        // 未使用
         flags_in: i64,
-        // Unused
+        // 未使用
         flags_out: *mut i64,
-        // A pointer to app-defined data.
+        // 指向应用定义数据的指针。
         display_link_context: *mut c_void,
     ) -> i32;
 
@@ -215,7 +214,7 @@ mod sys {
     }
 
     impl DisplayLink {
-        /// Apple docs: [CVDisplayLinkCreateWithCGDisplay](https://developer.apple.com/documentation/corevideo/1456981-cvdisplaylinkcreatewithcgdisplay?language=objc)
+        /// Apple 文档：[CVDisplayLinkCreateWithCGDisplay](https://developer.apple.com/documentation/corevideo/1456981-cvdisplaylinkcreatewithcgdisplay?language=objc)
         pub unsafe fn new(
             display_id: CGDirectDisplayID,
             callback: CVDisplayLinkOutputCallback,
@@ -245,7 +244,7 @@ mod sys {
     }
 
     impl DisplayLinkRef {
-        /// Apple docs: [CVDisplayLinkStart](https://developer.apple.com/documentation/corevideo/1457193-cvdisplaylinkstart?language=objc)
+        /// Apple 文档：[CVDisplayLinkStart](https://developer.apple.com/documentation/corevideo/1457193-cvdisplaylinkstart?language=objc)
         pub unsafe fn start(&mut self) -> Result<()> {
             unsafe {
                 let code = CVDisplayLinkStart(self);
@@ -254,7 +253,7 @@ mod sys {
             }
         }
 
-        /// Apple docs: [CVDisplayLinkStop](https://developer.apple.com/documentation/corevideo/1457281-cvdisplaylinkstop?language=objc)
+        /// Apple 文档：[CVDisplayLinkStop](https://developer.apple.com/documentation/corevideo/1457281-cvdisplaylinkstop?language=objc)
         pub unsafe fn stop(&mut self) -> Result<()> {
             unsafe {
                 let code = CVDisplayLinkStop(self);
