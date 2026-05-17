@@ -33,6 +33,20 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/ztracing_macro/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/gpui_wgpu/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_linux/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_macos/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_macros/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_platform/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_tokio/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_web/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_web/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_wgpu/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_windows/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

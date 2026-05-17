@@ -1,0 +1,46 @@
+[package]
+name = "rgpui_windows"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license = "Apache-2.0"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/rgpui_windows.rs"
+
+[features]
+default = ["rgpui/default"]
+test-support = ["rgpui/test-support"]
+screen-capture = ["rgpui/screen-capture", "scap"]
+
+[dependencies]
+rgpui.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+anyhow.workspace = true
+etagere = "0.2"
+futures.workspace = true
+image.workspace = true
+itertools.workspace = true
+log.workspace = true
+muda = "0.16"
+parking_lot.workspace = true
+rand.workspace = true
+raw-window-handle = "0.6"
+smallvec.workspace = true
+smol.workspace = true
+uuid.workspace = true
+windows.workspace = true
+windows-core.workspace = true
+windows-numerics = "0.2"
+windows-registry = "0.5"
+
+[target.'cfg(target_os = "windows")'.dependencies.scap]
+workspace = true
+optional = true
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+windows-registry = "0.5"

@@ -2,15 +2,15 @@
 resolver = "3"
 
 members = [
-    "crates/gpui",
-    "crates/gpui_linux",
-    "crates/gpui_macos",
-    "crates/gpui_windows",
-    "crates/gpui_web",
-    "crates/gpui_platform",
-    "crates/gpui_tokio",
-    "crates/gpui_wgpu",
-    "crates/gpui_macros",
+    "crates/rgpui",
+    "crates/rgpui_linux",
+    "crates/rgpui_macos",
+    "crates/rgpui_windows",
+    "crates/rgpui_web",
+    "crates/rgpui_platform",
+    "crates/rgpui_tokio",
+    "crates/rgpui_wgpu",
+    "crates/rgpui_macros",
 
 ]
 
@@ -21,15 +21,15 @@ publish = false
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-gpui = { path = "crates/gpui", default-features = false }
-gpui_linux = { path = "crates/gpui_linux", default-features = false }
-gpui_macos = { path = "crates/gpui_macos", default-features = false }
-gpui_macros = { path = "crates/gpui_macros" }
-gpui_platform = { path = "crates/gpui_platform", default-features = false }
-gpui_web = { path = "crates/gpui_web" }
-gpui_wgpu = { path = "crates/gpui_wgpu" }
-gpui_windows = { path = "crates/gpui_windows", default-features = false }
-gpui_tokio = { path = "crates/gpui_tokio" }
+rgpui = { path = "crates/rgpui", default-features = false }
+rgpui_linux = { path = "crates/rgpui_linux", default-features = false }
+rgpui_macos = { path = "crates/rgpui_macos", default-features = false }
+rgpui_macros = { path = "crates/rgpui_macros" }
+rgpui_platform = { path = "crates/rgpui_platform", default-features = false }
+rgpui_web = { path = "crates/rgpui_web" }
+rgpui_wgpu = { path = "crates/rgpui_wgpu" }
+rgpui_windows = { path = "crates/rgpui_windows", default-features = false }
+rgpui_tokio = { path = "crates/rgpui_tokio" }
 
 
 # ---- 错误处理 ----
