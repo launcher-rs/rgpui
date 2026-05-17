@@ -771,6 +771,10 @@ impl PlatformWindow for WindowsWindow {
                     if IsIconic(hwnd).as_bool() {
                         ShowWindowAsync(hwnd, SW_RESTORE).ok().log_err();
                     }
+                    // If the window is hidden, show it.
+                    if !IsWindowVisible(hwnd).as_bool() {
+                        ShowWindowAsync(hwnd, SW_SHOWNORMAL).ok().log_err();
+                    }
 
                     SetActiveWindow(hwnd).ok();
                     SetFocus(Some(hwnd)).ok();
@@ -863,6 +867,10 @@ impl PlatformWindow for WindowsWindow {
 
     fn minimize(&self) {
         unsafe { ShowWindowAsync(self.0.hwnd, SW_MINIMIZE).ok().log_err() };
+    }
+
+    fn hide(&self) {
+        unsafe { ShowWindowAsync(self.0.hwnd, SW_HIDE).ok().log_err() };
     }
 
     fn zoom(&self) {

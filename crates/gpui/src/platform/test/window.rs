@@ -244,6 +244,10 @@ impl PlatformWindow for TestWindow {
         unimplemented!()
     }
 
+    fn hide(&self) {
+        unimplemented!()
+    }
+
     fn zoom(&self) {
         unimplemented!()
     }

@@ -114,10 +114,10 @@ fn create_main_window(cx: &mut App) {
                 message: "Hello from GPUI Tray!".into(),
             });
 
-            // 拦截窗口关闭事件，最小化到托盘而不是退出
+            // 拦截窗口关闭事件，隐藏到托盘而不是退出
             window.on_window_should_close(cx, |window, _cx| {
-                // 最小化窗口而不是关闭
-                window.minimize_window();
+                // 隐藏窗口（从任务栏移除）
+                window.hide_window();
                 // 返回 false 阻止窗口关闭
                 false
             });
