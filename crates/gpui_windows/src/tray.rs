@@ -18,25 +18,29 @@ use windows::{
     },
 };
 
-/// 托盘图标唯一标识
+/// 托盘图标唯一标识符
 const TRAY_ICON_ID: u32 = 1;
 
-/// Windows 托盘结构体
+/// Windows 平台托盘结构体
+/// 负责管理系统托盘图标的显示、菜单和交互事件
 pub(crate) struct WindowsTray {
-    /// 是否已添加图标到系统托盘
+    /// 是否已将图标添加到系统托盘
     icon_added: bool,
-    /// 托盘窗口句柄
+    /// 托盘所属窗口的句柄
     hwnd: HWND,
-    /// 当前显示的图标
+    /// 当前显示的图标句柄
     current_icon: Option<HICON>,
     /// 菜单项列表
     pub(crate) menu_items: Vec<TrayMenuItem>,
-    /// 命令 ID 到菜单项 ID 的映射
+    /// Windows 命令 ID 到菜单项 ID 的映射表
     pub(crate) command_id_map: HashMap<u32, SharedString>,
 }
 
 impl WindowsTray {
     /// 创建新的托盘实例
+    /// 参数:
+    ///   hwnd - 托盘所属窗口的句柄
+    /// 返回: 带有默认图标的托盘实例
     pub fn new(hwnd: HWND) -> Self {
         let mut tray = Self {
             icon_added: false,
@@ -45,20 +49,20 @@ impl WindowsTray {
             menu_items: Vec::new(),
             command_id_map: HashMap::new(),
         };
-        // 添加托盘图标到系统，使用默认图标
+        // 添加默认图标到系统托盘
         tray.ensure_icon_with_default(hwnd);
         tray
     }
 
     /// 确保托盘图标已添加到系统，并使用默认图标
+    /// 如果图标已存在则直接返回
     fn ensure_icon_with_default(&mut self, hwnd: HWND) {
         if self.icon_added {
             return;
         }
-        // 加载系统默认图标
+        // 加载系统默认应用程序图标
         let default_icon = unsafe { LoadIconW(None, IDI_APPLICATION).ok() };
         self.current_icon = default_icon;
-        eprintln!("[Tray] ensure_icon_with_default: loading default icon");
 
         let nid = NOTIFYICONDATAW {
             cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
@@ -70,19 +74,17 @@ impl WindowsTray {
             ..Default::default()
         };
         unsafe {
-            let result = Shell_NotifyIconW(NIM_ADD, &nid);
-            eprintln!("[Tray] Shell_NotifyIconW(NIM_ADD) with default icon result: {}", result.as_bool());
+            let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         }
         self.icon_added = true;
     }
 
     /// 确保托盘图标已添加到系统（不设置默认图标）
+    /// 如果图标已存在则直接返回
     fn ensure_icon(&mut self, hwnd: HWND) {
         if self.icon_added {
-            eprintln!("[Tray] ensure_icon: icon already added");
             return;
         }
-        eprintln!("[Tray] ensure_icon: adding icon to system tray");
         let nid = NOTIFYICONDATAW {
             cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
             hWnd: hwnd,
@@ -93,22 +95,24 @@ impl WindowsTray {
             ..Default::default()
         };
         unsafe {
-            let result = Shell_NotifyIconW(NIM_ADD, &nid);
-            eprintln!("[Tray] Shell_NotifyIconW(NIM_ADD) result: {}", result.as_bool());
+            let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         }
         self.icon_added = true;
     }
 
     /// 设置托盘图标
+    /// 参数:
+    ///   icon_data - 图标字节数据（支持 PNG/ICO 格式）
+    ///   hwnd - 托盘所属窗口的句柄
     pub fn set_icon(&mut self, icon_data: Option<&[u8]>, hwnd: HWND) {
         self.ensure_icon(hwnd);
-        // 销毁旧图标
+        // 销毁旧图标释放资源
         if let Some(old_icon) = self.current_icon.take() {
             unsafe {
                 let _ = DestroyIcon(old_icon);
             }
         }
-        // 创建新图标
+        // 从字节数据创建新图标
         let hicon = match icon_data {
             Some(data) => create_hicon_from_bytes(data),
             None => None,
@@ -127,7 +131,10 @@ impl WindowsTray {
         }
     }
 
-    /// 设置托盘工具提示
+    /// 设置托盘工具提示文本
+    /// 参数:
+    ///   tooltip - 提示文本内容
+    ///   hwnd - 托盘所属窗口的句柄
     pub fn set_tooltip(&mut self, tooltip: &str, hwnd: HWND) {
         self.ensure_icon(hwnd);
         let mut nid = NOTIFYICONDATAW {
@@ -146,7 +153,12 @@ impl WindowsTray {
         }
     }
 
-    /// 显示气球提示
+    /// 显示气球提示通知
+    /// 参数:
+    ///   title - 提示标题
+    ///   body - 提示内容
+    ///   hwnd - 托盘所属窗口的句柄
+    /// 返回: 操作结果
     #[allow(dead_code)]
     pub fn show_balloon(&self, title: &str, body: &str, hwnd: HWND) -> anyhow::Result<()> {
         let mut nid = NOTIFYICONDATAW {
@@ -173,10 +185,11 @@ impl WindowsTray {
     }
 
     /// 显示上下文菜单
+    /// 在鼠标当前位置弹出托盘菜单
+    /// 参数:
+    ///   hwnd - 托盘所属窗口的句柄
     pub fn show_context_menu(&mut self, hwnd: HWND) {
-        eprintln!("[Tray] show_context_menu called, menu_items count: {}", self.menu_items.len());
         if self.menu_items.is_empty() {
-            eprintln!("[Tray] No menu items, returning");
             return;
         }
         self.command_id_map.clear();
@@ -190,12 +203,10 @@ impl WindowsTray {
                     &mut counter,
                     &mut self.command_id_map,
                 );
-                eprintln!("[Tray] Built menu with {} items", self.command_id_map.len());
                 let mut point = POINT::default();
                 let _ = GetCursorPos(&mut point);
-                eprintln!("[Tray] Cursor position: ({}, {})", point.x, point.y);
                 let _ = SetForegroundWindow(hwnd);
-                let result = TrackPopupMenu(
+                let _ = TrackPopupMenu(
                     hmenu,
                     TPM_LEFTALIGN | TPM_BOTTOMALIGN,
                     point.x,
@@ -204,13 +215,17 @@ impl WindowsTray {
                     hwnd,
                     None,
                 );
-                eprintln!("[Tray] TrackPopupMenu result: {}", result.0);
                 let _ = DestroyMenu(hmenu);
             }
         }
     }
 
-    /// 构建 Windows 原生菜单
+    /// 递归构建 Windows 原生菜单
+    /// 参数:
+    ///   hmenu - 父菜单句柄
+    ///   items - 菜单项列表
+    ///   counter - 命令 ID 计数器（用于生成唯一 ID）
+    ///   id_map - 命令 ID 到菜单项 ID 的映射表
     pub(crate) unsafe fn build_menu(
         hmenu: HMENU,
         items: &[TrayMenuItem],
@@ -271,8 +286,9 @@ impl WindowsTray {
 }
 
 impl Drop for WindowsTray {
+    /// 销毁托盘实例时清理资源
     fn drop(&mut self) {
-        // 删除托盘图标
+        // 从系统托盘删除图标
         if self.icon_added {
             let nid = NOTIFYICONDATAW {
                 cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
@@ -284,7 +300,7 @@ impl Drop for WindowsTray {
                 let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
             }
         }
-        // 销毁图标资源
+        // 销毁图标句柄释放 GDI 资源
         if let Some(icon) = self.current_icon.take() {
             unsafe {
                 let _ = DestroyIcon(icon);
@@ -293,7 +309,11 @@ impl Drop for WindowsTray {
     }
 }
 
-/// 从字节数据创建 HICON 图标
+/// 从字节数据创建 HICON 图标句柄
+/// 支持 ICO 和 PNG 格式
+/// 参数:
+///   data - 图标字节数据
+/// 返回: 成功时返回 HICON 句柄，失败时返回 None
 fn create_hicon_from_bytes(data: &[u8]) -> Option<HICON> {
     unsafe {
         // 首先尝试作为 ICO 格式解析
@@ -305,8 +325,7 @@ fn create_hicon_from_bytes(data: &[u8]) -> Option<HICON> {
             }
         }
 
-        // 如果 ICO 解析失败，尝试作为 PNG 格式解析
-        // 使用 image crate 解码 PNG
+        // ICO 解析失败时，尝试使用 image crate 解码 PNG 格式
         let img = match image::load_from_memory(data) {
             Ok(img) => img,
             Err(_) => return None,
@@ -316,7 +335,7 @@ fn create_hicon_from_bytes(data: &[u8]) -> Option<HICON> {
         let width = rgba.width();
         let height = rgba.height();
 
-        // 创建 HBITMAP
+        // 创建 DIB 位图
         let hdc = GetDC(None);
         let bmi = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
@@ -348,7 +367,7 @@ fn create_hicon_from_bytes(data: &[u8]) -> Option<HICON> {
         ReleaseDC(None, hdc);
 
         if let Ok(hbitmap) = hbitmap {
-            // 将像素数据复制到 HBITMAP
+            // 将像素数据复制到 DIB 位图
             if !pbits.is_null() {
                 std::ptr::copy_nonoverlapping(
                     pixels.as_ptr(),
@@ -357,7 +376,7 @@ fn create_hicon_from_bytes(data: &[u8]) -> Option<HICON> {
                 );
             }
 
-            // 创建 HICON
+            // 通过 ICONINFO 创建 HICON
             let mut icon_info = ICONINFO::default();
             icon_info.fIcon = true.into();
             icon_info.xHotspot = 0;

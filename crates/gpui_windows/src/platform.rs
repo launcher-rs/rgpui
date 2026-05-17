@@ -692,6 +692,7 @@ impl Platform for WindowsPlatform {
         self.set_dock_menus(menus);
     }
 
+    /// 设置系统托盘图标和菜单（旧 API，向后兼容）
     fn set_tray(&self, tray: Tray, menus: Option<Vec<MenuItem>>, _keymap: &Keymap) {
         // 旧 API 兼容：将 MenuItem 转换为 TrayMenuItem
         let tray_menu_items = menus
@@ -721,6 +722,7 @@ impl Platform for WindowsPlatform {
         }
     }
 
+    /// 设置系统托盘图标
     fn set_tray_icon(&self, icon: Option<&[u8]>) {
         let mut windows_tray = self.inner.state.tray.borrow_mut();
         if windows_tray.is_none() {
@@ -731,19 +733,18 @@ impl Platform for WindowsPlatform {
         }
     }
 
+    /// 设置系统托盘菜单项
     fn set_tray_menu(&self, menu: Vec<TrayMenuItem>) {
-        eprintln!("[Platform] set_tray_menu called with {} items", menu.len());
         let mut windows_tray = self.inner.state.tray.borrow_mut();
         if windows_tray.is_none() {
-            eprintln!("[Platform] Creating new tray");
             windows_tray.replace(WindowsTray::new(self.handle));
         }
         if let Some(windows_tray) = windows_tray.as_mut() {
             windows_tray.menu_items = menu;
-            eprintln!("[Platform] Menu items set on tray");
         }
     }
 
+    /// 设置系统托盘工具提示文本
     fn set_tray_tooltip(&self, tooltip: &str) {
         let mut windows_tray = self.inner.state.tray.borrow_mut();
         if windows_tray.is_none() {
@@ -754,20 +755,24 @@ impl Platform for WindowsPlatform {
         }
     }
 
+    /// 启用或禁用托盘面板模式（Windows 不支持）
     fn set_tray_panel_mode(&self, _enabled: bool) {
         // Windows 不支持面板模式，此方法为空
     }
 
+    /// 获取托盘图标的屏幕边界坐标
     fn get_tray_icon_bounds(&self) -> Option<Bounds<Pixels>> {
         // Windows 托盘图标位置由系统管理，难以获取精确位置
         // 返回 None 表示不可用
         None
     }
 
+    /// 注册托盘图标事件回调
     fn on_tray_icon_event(&self, callback: Box<dyn FnMut(TrayIconEvent)>) {
         *self.inner.state.tray_icon_event_callback.borrow_mut() = Some(callback);
     }
 
+    /// 注册托盘菜单项点击事件回调
     fn on_tray_menu_action(&self, callback: Box<dyn FnMut(SharedString)>) {
         *self.inner.state.tray_menu_action_callback.borrow_mut() = Some(callback);
     }
@@ -1166,26 +1171,28 @@ impl WindowsPlatformInner {
     }
 
     /// 处理托盘图标消息
+    /// 根据 lParam 中的消息类型触发相应事件
+    /// 参数:
+    ///   handle - 窗口句柄
+    ///   lparam - 包含托盘消息类型的 LPARAM
+    /// 返回: 消息处理结果
     fn handle_tray_icon_event(&self, handle: HWND, lparam: LPARAM) -> Option<isize> {
         let msg = (lparam.0 & 0xFFFF) as u32;
-        eprintln!("[Platform] handle_tray_icon_event called, msg: {}", msg);
         let event = match msg {
             WM_LBUTTONUP => Some(TrayIconEvent::LeftClick),
             WM_RBUTTONUP => Some(TrayIconEvent::RightClick),
             WM_LBUTTONDBLCLK => Some(TrayIconEvent::DoubleClick),
             _ => None,
         };
-        eprintln!("[Platform] Event: {:?}", event);
         if let Some(event) = event {
+            // 右键点击时显示上下文菜单
             if event == TrayIconEvent::RightClick {
-                eprintln!("[Platform] Right click, showing context menu");
                 let mut tray = self.state.tray.borrow_mut();
                 if let Some(ref mut t) = *tray {
                     t.show_context_menu(handle);
-                } else {
-                    eprintln!("[Platform] No tray object found");
                 }
             }
+            // 触发托盘事件回调
             if let Some(callback) = self.state.tray_icon_event_callback.borrow_mut().as_mut() {
                 callback(event);
             }
@@ -1194,6 +1201,10 @@ impl WindowsPlatformInner {
     }
 
     /// 处理托盘菜单命令
+    /// 当用户点击菜单项时，通过命令 ID 查找对应的菜单项 ID 并触发回调
+    /// 参数:
+    ///   wparam - 包含命令 ID 的 WPARAM
+    /// 返回: 消息处理结果
     fn handle_tray_menu_command(&self, wparam: WPARAM) -> Option<isize> {
         let cmd_id = (wparam.0 & 0xFFFF) as u32;
         let item_id = {
@@ -1571,9 +1582,6 @@ unsafe extern "system" fn window_procedure(
     }
     let inner = unsafe { &*ptr };
     let result = if let Some(inner) = inner.upgrade() {
-        if msg == WM_GPUI_TRAY_ICON || msg == WM_COMMAND {
-            eprintln!("[WindowProc] msg: {}, wparam: {}, lparam: {}", msg, wparam.0, lparam.0);
-        }
         if cfg!(debug_assertions) {
             let inner = std::panic::AssertUnwindSafe(inner);
             match std::panic::catch_unwind(|| { inner }.handle_msg(hwnd, msg, wparam, lparam)) {

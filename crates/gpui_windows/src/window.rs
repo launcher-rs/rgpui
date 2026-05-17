@@ -758,6 +758,9 @@ impl PlatformWindow for WindowsWindow {
         Some(done_rx)
     }
 
+    /// 激活窗口并将其置于前台
+    /// 如果窗口已最小化则恢复，如果已隐藏则显示
+    /// 通过模拟 Alt 键输入绕过 Windows 前台窗口限制
     fn activate(&self) {
         let hwnd = self.0.hwnd;
         let this = self.0.clone();
@@ -767,11 +770,11 @@ impl PlatformWindow for WindowsWindow {
                 this.set_window_placement().log_err();
 
                 unsafe {
-                    // If the window is minimized, restore it.
+                    // 如果窗口已最小化，则恢复
                     if IsIconic(hwnd).as_bool() {
                         ShowWindowAsync(hwnd, SW_RESTORE).ok().log_err();
                     }
-                    // If the window is hidden, show it.
+                    // 如果窗口已隐藏，则显示
                     if !IsWindowVisible(hwnd).as_bool() {
                         ShowWindowAsync(hwnd, SW_SHOWNORMAL).ok().log_err();
                     }
@@ -780,11 +783,9 @@ impl PlatformWindow for WindowsWindow {
                     SetFocus(Some(hwnd)).ok();
                 }
 
-                // premium ragebait by windows, this is needed because the window
-                // must have received an input event to be able to set itself to foreground
-                // so let's just simulate user input as that seems to be the most reliable way
-                // some more info: https://gist.github.com/Aetopia/1581b40f00cc0cadc93a0e8ccb65dc8c
-                // bonus: this bug also doesn't manifest if you have vs attached to the process
+                // Windows 要求窗口必须接收到输入事件才能设置为前台窗口
+                // 通过模拟 Alt 键输入来绕过此限制
+                // 更多信息: https://gist.github.com/Aetopia/1581b40f00cc0cadc93a0e8ccb65dc8c
                 let inputs = [
                     INPUT {
                         r#type: INPUT_KEYBOARD,
@@ -865,14 +866,17 @@ impl PlatformWindow for WindowsWindow {
         }
     }
 
+    /// 最小化窗口到任务栏
     fn minimize(&self) {
         unsafe { ShowWindowAsync(self.0.hwnd, SW_MINIMIZE).ok().log_err() };
     }
 
+    /// 隐藏窗口（从任务栏移除）
     fn hide(&self) {
         unsafe { ShowWindowAsync(self.0.hwnd, SW_HIDE).ok().log_err() };
     }
 
+    /// 最大化窗口
     fn zoom(&self) {
         unsafe {
             if IsWindowVisible(self.0.hwnd).as_bool() {

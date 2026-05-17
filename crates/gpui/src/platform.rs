@@ -201,14 +201,21 @@ pub trait Platform: 'static {
     }
 
     // 系统托盘相关方法
+    /// 设置系统托盘图标
     fn set_tray_icon(&self, _icon: Option<&[u8]>) {}
+    /// 设置系统托盘菜单项
     fn set_tray_menu(&self, _menu: Vec<TrayMenuItem>) {}
+    /// 设置系统托盘工具提示文本
     fn set_tray_tooltip(&self, _tooltip: &str) {}
+    /// 启用或禁用托盘面板模式
     fn set_tray_panel_mode(&self, _enabled: bool) {}
+    /// 获取托盘图标的屏幕边界坐标
     fn get_tray_icon_bounds(&self) -> Option<Bounds<Pixels>> {
         None
     }
+    /// 注册托盘图标事件回调
     fn on_tray_icon_event(&self, _callback: Box<dyn FnMut(TrayIconEvent)>) {}
+    /// 注册托盘菜单项点击事件回调
     fn on_tray_menu_action(&self, _callback: Box<dyn FnMut(SharedString)>) {}
 
     // 保留旧的 set_tray 方法以向后兼容
