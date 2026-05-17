@@ -42,7 +42,7 @@ gpui = "0.2"
 ### 最小示例
 
 ```rust
-use gpui::*;
+use rgpui::*;
 
 struct HelloWorld;
 

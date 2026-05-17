@@ -1,5 +1,5 @@
-use crate::{FontId, GlyphId, Pixels, PlatformTextSystem, Point, SharedString, Size, point, px};
 use crate::collections::FxHashMap;
+use crate::{FontId, GlyphId, Pixels, PlatformTextSystem, Point, SharedString, Size, point, px};
 use parking_lot::{Mutex, RwLock, RwLockUpgradableReadGuard};
 use smallvec::SmallVec;
 use std::{
@@ -779,9 +779,9 @@ impl LineLayoutCache {
     }
 }
 
-    // 组合标记（如泰语元音符号、阿拉伯语变音符号）由 HarfBuzz 在与基础字符相同的 x 位置进行塑形。
-    // 强制宽度循环不得为这些零前进字形推进单元格计数器，
-    // 否则它们会被位移到下一个单元格。我们通过检查塑形 x 是否已推进至少半个单元格来判断。
+// 组合标记（如泰语元音符号、阿拉伯语变音符号）由 HarfBuzz 在与基础字符相同的 x 位置进行塑形。
+// 强制宽度循环不得为这些零前进字形推进单元格计数器，
+// 否则它们会被位移到下一个单元格。我们通过检查塑形 x 是否已推进至少半个单元格来判断。
 fn apply_force_width_to_layout(layout: &mut LineLayout, force_width: Pixels) {
     let mut glyph_pos: usize = 0;
     // NEG_INFINITY 确保第一个字形始终被分类为基础字符

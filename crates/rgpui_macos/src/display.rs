@@ -8,8 +8,8 @@ use cocoa::{
 use core_foundation::base::CFRelease;
 use core_foundation::uuid::{CFUUIDGetUUIDBytes, CFUUIDRef};
 use core_graphics::display::{CGDirectDisplayID, CGDisplayBounds, CGGetActiveDisplayList};
-use rgpui::{point, px, size, Bounds, DisplayId, Pixels, PlatformDisplay};
 use objc::{msg_send, sel, sel_impl};
+use rgpui::{Bounds, DisplayId, Pixels, PlatformDisplay, point, px, size};
 use uuid::Uuid;
 
 /// macOS 显示器封装，包含 `CGDirectDisplayID`。

@@ -10,11 +10,10 @@ use anyhow::Result;
 use rgpui::collections::HashMap;
 use windows::Win32::UI::{
     Input::KeyboardAndMouse::{
-        GetKeyboardLayoutNameW, MapVirtualKeyW, ToUnicode, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC,
+        GetKeyboardLayoutNameW, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC, MapVirtualKeyW, ToUnicode,
         VIRTUAL_KEY, VK_0, VK_1, VK_2, VK_3, VK_4, VK_5, VK_6, VK_7, VK_8, VK_9, VK_ABNT_C1,
-        VK_CONTROL, VK_MENU, VK_OEM_1, VK_OEM_102, VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_5,
-        VK_OEM_6, VK_OEM_7, VK_OEM_8, VK_OEM_COMMA, VK_OEM_MINUS, VK_OEM_PERIOD, VK_OEM_PLUS,
-        VK_SHIFT,
+        VK_CONTROL, VK_MENU, VK_OEM_1, VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_5, VK_OEM_6, VK_OEM_7,
+        VK_OEM_8, VK_OEM_102, VK_OEM_COMMA, VK_OEM_MINUS, VK_OEM_PERIOD, VK_OEM_PLUS, VK_SHIFT,
     },
     WindowsAndMessaging::KL_NAMELENGTH,
 };
@@ -71,10 +70,7 @@ impl PlatformKeyboardMapper for WindowsKeyboardMapper {
         keystroke.modifiers.shift = false;
 
         let Some(key) = self.vkey_to_key.get(&vkey).cloned() else {
-            log::error!(
-                "无法将快捷键 '{:?}' 映射到有效键",
-                keystroke
-            );
+            log::error!("无法将快捷键 '{:?}' 映射到有效键", keystroke);
             return KeybindingKeystroke::from_keystroke(keystroke);
         };
 

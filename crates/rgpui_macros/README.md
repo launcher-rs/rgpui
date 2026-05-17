@@ -158,7 +158,7 @@ gpui = "0.1.0"
 然后在代码中使用：
 
 ```rust
-use gpui::*;
+use rgpui::*;
 
 #[derive(Render)]
 struct MyComponent;

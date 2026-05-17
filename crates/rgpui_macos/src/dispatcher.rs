@@ -1,8 +1,4 @@
 use dispatch2::{DispatchQueue, DispatchQueueGlobalPriority, DispatchTime, GlobalQueueIdentifier};
-use rgpui::{
-    GLOBAL_THREAD_TIMINGS, PlatformDispatcher, Priority, RunnableMeta, RunnableVariant, TaskTiming,
-    ThreadTaskTimings, add_task_timing,
-};
 use mach2::{
     kern_return::KERN_SUCCESS,
     mach_time::mach_timebase_info_data_t,
@@ -12,6 +8,10 @@ use mach2::{
         THREAD_TIME_CONSTRAINT_POLICY_COUNT, thread_extended_policy_data_t,
         thread_precedence_policy_data_t, thread_time_constraint_policy_data_t,
     },
+};
+use rgpui::{
+    GLOBAL_THREAD_TIMINGS, PlatformDispatcher, Priority, RunnableMeta, RunnableVariant, TaskTiming,
+    ThreadTaskTimings, add_task_timing,
 };
 use util::ResultExt;
 

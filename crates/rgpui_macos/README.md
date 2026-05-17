@@ -90,7 +90,7 @@ GPUI 的 macOS 平台实现 crate。提供 macOS 原生 API 的封装，包括 C
 ## 使用示例
 
 ```rust
-use gpui_macos::MacPlatform;
+use rgpui_macos::MacPlatform;
 
 // 创建 macOS 平台实例
 let platform = MacPlatform::new(false);

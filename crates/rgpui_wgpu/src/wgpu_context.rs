@@ -56,8 +56,7 @@ impl WgpuContext {
                 .log_err(),
             Err(std::env::VarError::NotPresent) => None,
             err => {
-                err.context("读取 `ZED_DEVICE_ID` 环境变量失败")
-                    .log_err();
+                err.context("读取 `ZED_DEVICE_ID` 环境变量失败").log_err();
                 None
             }
         };

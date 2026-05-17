@@ -5,7 +5,6 @@ use crate::{
 };
 use anyhow::Result;
 use futures::FutureExt;
-use crate::Deferred;
 use std::{
     any::{Any, TypeId},
     borrow::{Borrow, BorrowMut},
@@ -276,7 +275,7 @@ impl<'a, T: 'static> Context<'a, T> {
     pub fn on_drop(
         &self,
         f: impl FnOnce(&mut T, &mut Context<T>) + 'static,
-    ) -> Deferred<impl FnOnce()> {
+    ) -> crate::rgpui_util::Deferred<impl FnOnce()> {
         let this = self.weak_entity();
         let mut cx = self.to_async();
         crate::defer(move || {

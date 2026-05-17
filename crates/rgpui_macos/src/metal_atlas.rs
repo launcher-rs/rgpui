@@ -1,13 +1,13 @@
 use anyhow::{Context as _, Result};
-use rgpui::collections::FxHashMap;
 use derive_more::{Deref, DerefMut};
 use etagere::BucketedAtlasAllocator;
+use metal::Device;
+use parking_lot::Mutex;
+use rgpui::collections::FxHashMap;
 use rgpui::{
     AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTextureList, AtlasTile, Bounds, DevicePixels,
     PlatformAtlas, Point, Size,
 };
-use metal::Device;
-use parking_lot::Mutex;
 use std::borrow::Cow;
 
 pub(crate) struct MetalAtlas(Mutex<MetalAtlasState>);

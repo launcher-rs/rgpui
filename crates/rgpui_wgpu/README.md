@@ -79,7 +79,7 @@ gpui_wgpu/
 ## 使用示例
 
 ```rust
-use gpui_wgpu::WgpuRenderer;
+use rgpui_wgpu::WgpuRenderer;
 
 // 创建 WebGPU 渲染器
 let renderer = WgpuRenderer::new(surface_config)?;

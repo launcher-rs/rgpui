@@ -47,6 +47,19 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_wgpu/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_wgpu/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui_windows/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component-assets/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component-macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples/app_assets/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples/dialog_overlay/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples/focus_trap/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples/hello_world/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples/input/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples/sidebar/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples/system_monitor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples/tooltip_top_edge/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/examples/window_title/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-component/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

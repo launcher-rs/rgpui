@@ -1,8 +1,8 @@
 use std::sync::LazyLock;
 
 use anyhow::Result;
-use rgpui::collections::FxHashMap;
 use itertools::Itertools;
+use rgpui::collections::FxHashMap;
 use windows::Win32::{
     Foundation::{HANDLE, HGLOBAL},
     System::{

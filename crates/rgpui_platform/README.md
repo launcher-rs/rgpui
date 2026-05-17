@@ -37,7 +37,7 @@ gpui_platform
 ### 创建 GUI 应用程序
 
 ```rust
-use gpui_platform;
+use rgpui_platform;
 
 // 创建 GUI 应用
 let app = gpui_platform::application();
@@ -49,7 +49,7 @@ let app = gpui_platform::headless();
 ### 获取平台实例
 
 ```rust
-use gpui_platform;
+use rgpui_platform;
 
 // 获取当前平台的 Platform 实现
 let platform = gpui_platform::current_platform(false);
@@ -58,7 +58,7 @@ let platform = gpui_platform::current_platform(false);
 ### 获取后台执行器
 
 ```rust
-use gpui_platform;
+use rgpui_platform;
 
 let executor = gpui_platform::background_executor();
 ```
@@ -66,7 +66,7 @@ let executor = gpui_platform::background_executor();
 ### Web (Wasm) 平台
 
 ```rust
-use gpui_platform;
+use rgpui_platform;
 
 #[wasm_bindgen(start)]
 pub fn main() {

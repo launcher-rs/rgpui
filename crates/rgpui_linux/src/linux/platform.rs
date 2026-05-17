@@ -45,8 +45,7 @@ pub(crate) const KEYRING_LABEL: &str = "zed-github-account";
 
 /// 文件选择器门户缺失时的错误提示
 #[cfg(any(feature = "wayland", feature = "x11"))]
-const FILE_PICKER_PORTAL_MISSING: &str =
-    "由于缺少 xdg-desktop-portal 实现，无法打开文件选择器。";
+const FILE_PICKER_PORTAL_MISSING: &str = "由于缺少 xdg-desktop-portal 实现，无法打开文件选择器。";
 
 /// Linux 客户端 trait，定义各显示服务器后端需实现的接口。
 ///

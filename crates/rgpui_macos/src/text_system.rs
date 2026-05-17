@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use cocoa::appkit::CGFloat;
-use rgpui::collections::HashMap;
 use core_foundation::{
     array::{CFArray, CFArrayRef},
     attributed_string::CFMutableAttributedString,
@@ -9,7 +8,7 @@ use core_foundation::{
     string::CFString,
 };
 use core_graphics::{
-    base::{kCGImageAlphaPremultipliedLast, CGGlyph},
+    base::{CGGlyph, kCGImageAlphaPremultipliedLast},
     color_space::CGColorSpace,
     context::{CGContext, CGTextDrawingMode},
     display::CGPoint,
@@ -18,8 +17,8 @@ use core_text::{
     font::CTFont,
     font_collection::CTFontCollectionRef,
     font_descriptor::{
-        kCTFontSlantTrait, kCTFontSymbolicTrait, kCTFontWeightTrait, kCTFontWidthTrait,
-        CTFontDescriptor,
+        CTFontDescriptor, kCTFontSlantTrait, kCTFontSymbolicTrait, kCTFontWeightTrait,
+        kCTFontWidthTrait,
     },
     line::CTLine,
     string_attributes::kCTFontAttributeName,
@@ -33,17 +32,18 @@ use font_kit::{
     source::SystemSource,
     sources::mem::MemSource,
 };
-use rgpui::{
-    point, px, size, swap_rgba_pa_to_bgra, Bounds, DevicePixels, Font, FontFallbacks, FontFeatures,
-    FontId, FontMetrics, FontRun, FontStyle, FontWeight, GlyphId, Hsla, LineLayout, Pixels,
-    PlatformTextSystem, RenderGlyphParams, Result, Rgba, ShapedGlyph, ShapedRun, SharedString,
-    Size, TextRenderingMode, SUBPIXEL_VARIANTS_X,
-};
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use pathfinder_geometry::{
     rect::{RectF, RectI},
     transform2d::Transform2F,
     vector::Vector2F,
+};
+use rgpui::collections::HashMap;
+use rgpui::{
+    Bounds, DevicePixels, Font, FontFallbacks, FontFeatures, FontId, FontMetrics, FontRun,
+    FontStyle, FontWeight, GlyphId, Hsla, LineLayout, Pixels, PlatformTextSystem,
+    RenderGlyphParams, Result, Rgba, SUBPIXEL_VARIANTS_X, ShapedGlyph, ShapedRun, SharedString,
+    Size, TextRenderingMode, point, px, size, swap_rgba_pa_to_bgra,
 };
 use smallvec::SmallVec;
 use std::{borrow::Cow, char, convert::TryFrom, sync::Arc, sync::OnceLock};
@@ -233,7 +233,7 @@ fn font_smoothing_allowed_by_user() -> bool {
     static ALLOWED: OnceLock<bool> = OnceLock::new();
     *ALLOWED.get_or_init(|| {
         use core_foundation_sys::preferences::{
-            kCFPreferencesCurrentApplication, CFPreferencesCopyAppValue,
+            CFPreferencesCopyAppValue, kCFPreferencesCurrentApplication,
         };
 
         let key = CFString::new("AppleFontSmoothing");
@@ -519,7 +519,7 @@ impl MacTextSystemState {
                 (text_run, text) = text.split_at(run.len);
 
                 let utf16_start = string.char_len(); // 在字符串末尾插入
-                                                     // 注意：replace_str 可能会静默忽略它不喜欢的代码点（例如字符串开头的 BOM）
+                // 注意：replace_str 可能会静默忽略它不喜欢的代码点（例如字符串开头的 BOM）
                 string.replace_str(&CFString::new(text_run), CFRange::init(utf16_start, 0));
                 let utf16_end = string.char_len();
 
@@ -707,7 +707,7 @@ mod lenient_font_attributes {
         string::{CFString, CFStringRef},
     };
     use core_text::font_descriptor::{
-        kCTFontFamilyNameAttribute, CTFontDescriptor, CTFontDescriptorCopyAttribute,
+        CTFontDescriptor, CTFontDescriptorCopyAttribute, kCTFontFamilyNameAttribute,
     };
 
     pub fn family_name(descriptor: &CTFontDescriptor) -> Option<String> {
@@ -743,7 +743,7 @@ mod lenient_font_attributes {
 #[cfg(test)]
 mod tests {
     use crate::MacTextSystem;
-    use rgpui::{font, px, FontRun, GlyphId, PlatformTextSystem};
+    use rgpui::{FontRun, GlyphId, PlatformTextSystem, font, px};
 
     #[test]
     fn test_layout_line_bom_char() {
@@ -766,7 +766,7 @@ mod tests {
         assert_eq!(layout.runs.len(), 1);
         assert_eq!(layout.runs[0].glyphs.len(), 2);
         assert_eq!(layout.runs[0].glyphs[0].id, GlyphId(68u32)); // a
-                                                                 // \u{feff} 没有字形
+        // \u{feff} 没有字形
         assert_eq!(layout.runs[0].glyphs[1].id, GlyphId(69u32)); // b
 
         let line = "\u{feff}ab";

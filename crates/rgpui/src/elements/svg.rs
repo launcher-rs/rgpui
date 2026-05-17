@@ -1,11 +1,11 @@
 use std::{fs, path::Path, sync::Arc};
 
+use crate::ResultExt;
 use crate::{
     App, Asset, Bounds, Element, GlobalElementId, Hitbox, InspectorElementId, InteractiveElement,
     Interactivity, IntoElement, LayoutId, Pixels, Point, Radians, SharedString, Size,
     StyleRefinement, Styled, TransformationMatrix, Window, point, px, radians, size,
 };
-use crate::ResultExt;
 
 /// An SVG element.
 pub struct Svg {

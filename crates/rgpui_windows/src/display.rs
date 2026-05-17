@@ -7,12 +7,11 @@
 //! - 显示器边界和工作区域计算
 
 use itertools::Itertools;
+use rgpui::util::ResultExt;
 use smallvec::SmallVec;
 use std::rc::Rc;
-use rgpui::util::ResultExt;
 use uuid::Uuid;
 use windows::{
-    core::*,
     Win32::{
         Foundation::*,
         Graphics::Gdi::*,
@@ -21,10 +20,11 @@ use windows::{
             WindowsAndMessaging::USER_DEFAULT_SCREEN_DPI,
         },
     },
+    core::*,
 };
 
 use crate::logical_point;
-use rgpui::{point, size, Bounds, DevicePixels, DisplayId, Pixels, PlatformDisplay};
+use rgpui::{Bounds, DevicePixels, DisplayId, Pixels, PlatformDisplay, point, size};
 
 /// Windows 显示器信息
 ///

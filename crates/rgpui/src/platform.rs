@@ -28,6 +28,8 @@ pub(crate) type PlatformScreenCaptureFrame = ();
 #[cfg(all(target_os = "macos", feature = "screen-capture"))]
 pub(crate) type PlatformScreenCaptureFrame = core_video::image_buffer::CVImageBuffer;
 
+use crate::scheduler::Instant;
+pub use crate::scheduler::RunnableMeta;
 use crate::{
     Action, AnyWindowHandle, App, AsyncWindowContext, BackgroundExecutor, Bounds,
     DEFAULT_WINDOW_SIZE, DevicePixels, DispatchEventResult, Font, FontId, FontMetrics, FontRun,
@@ -47,8 +49,6 @@ use image::RgbaImage;
 use image::codecs::gif::GifDecoder;
 use image::{AnimationDecoder as _, Frame};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use crate::scheduler::Instant;
-pub use crate::scheduler::RunnableMeta;
 use schemars::JsonSchema;
 use seahash::SeaHasher;
 use serde::{Deserialize, Serialize};
@@ -759,7 +759,7 @@ pub trait PlatformHeadlessRenderer {
 pub type RunnableVariant = Runnable<RunnableMeta>;
 
 #[doc(hidden)]
-pub type TimerResolutionGuard = crate::Deferred<Box<dyn FnOnce() + Send>>;
+pub type TimerResolutionGuard = crate::rgpui_util::Deferred<Box<dyn FnOnce() + Send>>;
 
 /// This type is public so that our test macro can generate and use it, but it should not
 /// be considered part of our public API.

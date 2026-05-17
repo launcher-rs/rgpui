@@ -267,11 +267,10 @@ impl AsyncApp {
         &self,
         entity: &WeakEntity<T>,
         f: Callback,
-    ) -> crate::Deferred<impl FnOnce() + use<T, Callback>> {
-
+    ) -> crate::rgpui_util::Deferred<impl FnOnce() + use<T, Callback>> {
         let entity = entity.clone();
         let app = self.app.clone();
-        crate::defer(move || {
+        crate::rgpui_util::defer(move || {
             if let Some(app) = app.upgrade() {
                 app.borrow_mut().0.update(|cx| {
                     entity.update(cx, |t, cx| f(t, cx)).ok();

@@ -340,40 +340,40 @@ impl ShellKind {
     fn to_cmd_variable(input: &str) -> String {
         if let Some(var_str) = input.strip_prefix("${") {
             if var_str.find(':').is_none() {
-            // 如果输入以 "${" 开头，移除尾部的 "}"
-            format!("%{}%", &var_str[..var_str.len() - 1])
+                // 如果输入以 "${" 开头，移除尾部的 "}"
+                format!("%{}%", &var_str[..var_str.len() - 1])
+            } else {
+                // `${SOME_VAR:-SOME_DEFAULT}`，我们目前不处理这种情况，
+                // 这将导致任务在此类情况下无法运行。
+                input.into()
+            }
+        } else if let Some(var_str) = input.strip_prefix('$') {
+            // 如果输入以 "$" 开头，直接附加
+            format!("%{}%", var_str)
         } else {
-            // `${SOME_VAR:-SOME_DEFAULT}`，我们目前不处理这种情况，
-            // 这将导致任务在此类情况下无法运行。
+            // 如果没有找到前缀，原样返回输入
             input.into()
         }
-    } else if let Some(var_str) = input.strip_prefix('$') {
-        // 如果输入以 "$" 开头，直接附加
-        format!("%{}%", var_str)
-    } else {
-        // 如果没有找到前缀，原样返回输入
-        input.into()
     }
-}
 
-fn to_powershell_variable(input: &str) -> String {
-    if let Some(var_str) = input.strip_prefix("${") {
-        if var_str.find(':').is_none() {
-            // 如果输入以 "${" 开头，移除尾部的 "}"
-            format!("$env:{}", &var_str[..var_str.len() - 1])
+    fn to_powershell_variable(input: &str) -> String {
+        if let Some(var_str) = input.strip_prefix("${") {
+            if var_str.find(':').is_none() {
+                // 如果输入以 "${" 开头，移除尾部的 "}"
+                format!("$env:{}", &var_str[..var_str.len() - 1])
+            } else {
+                // `${SOME_VAR:-SOME_DEFAULT}`，我们目前不处理这种情况，
+                // 这将导致任务在此类情况下无法运行。
+                input.into()
+            }
+        } else if let Some(var_str) = input.strip_prefix('$') {
+            // 如果输入以 "$" 开头，直接附加到 "$env:"
+            format!("$env:{}", var_str)
         } else {
-            // `${SOME_VAR:-SOME_DEFAULT}`，我们目前不处理这种情况，
-            // 这将导致任务在此类情况下无法运行。
+            // 如果没有找到前缀，原样返回输入
             input.into()
         }
-    } else if let Some(var_str) = input.strip_prefix('$') {
-        // 如果输入以 "$" 开头，直接附加到 "$env:"
-        format!("$env:{}", var_str)
-    } else {
-        // 如果没有找到前缀，原样返回输入
-        input.into()
     }
-}
 
     fn to_nushell_variable(input: &str) -> String {
         let mut result = String::new();

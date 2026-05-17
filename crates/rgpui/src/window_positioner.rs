@@ -2,7 +2,7 @@
 //!
 //! 根据语义化 [`WindowPosition`] 计算窗口边界。
 
-use crate::{point, Bounds, Pixels, PlatformDisplay, Point, Size, WindowPosition};
+use crate::{Bounds, Pixels, PlatformDisplay, Point, Size, WindowPosition, point};
 use std::rc::Rc;
 
 /// 根据所需大小和语义位置计算窗口边界。

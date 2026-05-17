@@ -2,7 +2,10 @@
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use rgpui::{App, Bounds, Context, SharedString, Window, WindowBounds, WindowOptions, WindowDecorations, div, prelude::*, px, rgb, size, WindowBackgroundAppearance};
+use rgpui::{
+    App, Bounds, Context, SharedString, Window, WindowBackgroundAppearance, WindowBounds,
+    WindowDecorations, WindowOptions, div, prelude::*, px, rgb, size,
+};
 use rgpui_platform::application;
 
 struct HelloWorld {
@@ -23,9 +26,8 @@ impl Render for HelloWorld {
             .child(
                 div()
                     .child(format!("Hello, {}!", &self.text))
-                    .bg(rgb(0xff00ff))
+                    .bg(rgb(0xff00ff)),
             )
-
     }
 }
 
@@ -49,7 +51,7 @@ fn run_example() {
                 })
             },
         )
-            .unwrap();
+        .unwrap();
         cx.activate(true);
     });
 }

@@ -5,10 +5,10 @@ mod async_body;
 pub mod github;
 #[cfg(not(target_family = "wasm"))]
 pub mod github_download;
-#[cfg(all(not(target_family = "wasm"), feature = "tls"))]
-pub mod tls;
 #[cfg(all(not(target_family = "wasm"), feature = "reqwest"))]
 pub mod reqwest_client;
+#[cfg(all(not(target_family = "wasm"), feature = "tls"))]
+pub mod tls;
 
 pub use anyhow::{Result, anyhow};
 pub use async_body::{AsyncBody, Inner, Json};

@@ -1,14 +1,14 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use futures::FutureExt;
+#[cfg(not(target_family = "wasm"))]
+use rgpui::http_client::reqwest_client::ReqwestClient;
 use rgpui::{
     App, AppContext, Asset as _, AssetLogger, Bounds, ClickEvent, Context, ElementId, Entity,
     ImageAssetLoader, ImageCache, ImageCacheProvider, KeyBinding, Menu, MenuItem,
     RetainAllImageCache, SharedString, TitlebarOptions, Window, WindowBounds, WindowOptions,
     actions, div, hash, image_cache, img, prelude::*, px, rgb, size,
 };
-#[cfg(not(target_family = "wasm"))]
-use rgpui::http_client::reqwest_client::ReqwestClient;
 use std::{collections::HashMap, sync::Arc};
 
 const IMAGES_IN_GALLERY: usize = 30;

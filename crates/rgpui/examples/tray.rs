@@ -9,8 +9,8 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::{
-    actions, div, prelude::*, px, rgb, size, App, Bounds, Context,
-    Render, SharedString, TrayMenuItem, Window, WindowBounds, WindowOptions,
+    App, Bounds, Context, Render, SharedString, TrayMenuItem, Window, WindowBounds, WindowOptions,
+    actions, div, prelude::*, px, rgb, size,
 };
 use rgpui_platform::application;
 
@@ -85,7 +85,8 @@ fn run_example() {
                     let handle = *window_handle;
                     cx.update_window(handle, |_, window, _cx| {
                         window.activate_window();
-                    }).ok();
+                    })
+                    .ok();
                 } else {
                     // 窗口不存在，创建新窗口
                     create_main_window(cx);

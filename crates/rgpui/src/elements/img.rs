@@ -6,13 +6,13 @@ use crate::{
 };
 use anyhow::Result;
 
-use futures::Future;
 use crate::ResultExt;
+use crate::scheduler::Instant;
+use futures::Future;
 use image::{
     AnimationDecoder, DynamicImage, Frame, ImageError, ImageFormat, Rgba,
     codecs::{gif::GifDecoder, webp::WebPDecoder},
 };
-use crate::scheduler::Instant;
 use smallvec::SmallVec;
 use std::{
     fs,

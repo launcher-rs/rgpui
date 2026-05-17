@@ -1,5 +1,9 @@
 #[cfg(any(feature = "inspector", debug_assertions))]
 use crate::Inspector;
+use crate::collections::{FxHashMap, FxHashSet};
+use crate::post_inc;
+use crate::refineable::Refineable;
+use crate::scheduler::Instant;
 use crate::{
     Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset,
     AsyncWindowContext, AvailableSpace, Background, BorderStyle, Bounds, BoxShadow, Capslock,
@@ -20,23 +24,19 @@ use crate::{
     WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, px, rems, size,
     transparent_black,
 };
+use crate::{ResultExt, measure};
 use anyhow::{Context as _, Result, anyhow};
-use crate::collections::{FxHashMap, FxHashSet};
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
 use derive_more::{Deref, DerefMut};
 use futures::FutureExt;
 use futures::channel::oneshot;
-use crate::post_inc;
-use crate::{ResultExt, measure};
 #[cfg(feature = "input-latency-histogram")]
 use hdrhistogram::Histogram;
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use parking_lot::RwLock;
 use raw_window_handle::{HandleError, HasDisplayHandle, HasWindowHandle};
-use crate::refineable::Refineable;
-use crate::scheduler::Instant;
 use slotmap::SlotMap;
 use smallvec::SmallVec;
 use std::{

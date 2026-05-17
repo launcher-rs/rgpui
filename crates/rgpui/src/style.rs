@@ -4,15 +4,15 @@ use std::{
     ops::Range,
 };
 
-use crate::{
-    black, phi, point, quad, rems, size, AbsoluteLength, App, Background, BackgroundTag,
-    BorderStyle, Bounds, ContentMask, Corners, CornersRefinement, CursorStyle, DefiniteLength,
-    DevicePixels, Edges, EdgesRefinement, Font, FontFallbacks, FontFeatures, FontStyle, FontWeight,
-    GridLocation, Hsla, Length, Pixels, Point, PointRefinement, Rgba, SharedString, Size,
-    SizeRefinement, Styled, TextRun, Window,
-};
 use crate::collections::HashSet;
 use crate::refineable::Refineable;
+use crate::{
+    AbsoluteLength, App, Background, BackgroundTag, BorderStyle, Bounds, ContentMask, Corners,
+    CornersRefinement, CursorStyle, DefiniteLength, DevicePixels, Edges, EdgesRefinement, Font,
+    FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, Hsla, Length, Pixels, Point,
+    PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun, Window, black, phi,
+    point, quad, rems, size,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

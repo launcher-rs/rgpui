@@ -16,6 +16,9 @@
 //! constructed by combining these two systems into an all-in-one element.
 
 use crate::PinchEvent;
+use crate::ResultExt;
+use crate::collections::HashMap;
+use crate::refineable::Refineable;
 use crate::{
     Action, AnyDrag, AnyElement, AnyTooltip, AnyView, App, Bounds, ClickEvent, DispatchPhase,
     Display, Element, ElementId, Entity, FocusHandle, Global, GlobalElementId, Hitbox,
@@ -26,9 +29,6 @@ use crate::{
     StyleRefinement, Styled, Task, TooltipId, Visibility, Window, WindowControlArea, point, px,
     size,
 };
-use crate::collections::HashMap;
-use crate::ResultExt;
-use crate::refineable::Refineable;
 use smallvec::SmallVec;
 use stacksafe::{StackSafe, stacksafe};
 use std::{

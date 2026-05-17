@@ -75,7 +75,7 @@ gpui_windows/
 ## 使用示例
 
 ```rust
-use gpui_windows::WindowsPlatform;
+use rgpui_windows::WindowsPlatform;
 
 // 创建 Windows 平台实例
 let platform = WindowsPlatform::new();

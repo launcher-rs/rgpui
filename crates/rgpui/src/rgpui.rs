@@ -15,40 +15,41 @@ mod arena;
 mod asset_cache;
 mod assets;
 mod bounds_tree;
+pub mod collections;
 mod color;
 /// The default colors used by GPUI.
 pub mod colors;
-pub mod collections;
-/// A sum tree data structure, a concurrency-friendly B-tree.
-pub mod sum_tree;
-/// Task scheduler for async execution.
-pub mod scheduler;
-/// Refinement types for partial initialization.
-pub mod refineable;
 mod element;
 mod elements;
 mod executor;
 mod platform_scheduler;
+/// Refinement types for partial initialization.
+pub mod refineable;
+/// Task scheduler for async execution.
+pub mod scheduler;
+/// A sum tree data structure, a concurrency-friendly B-tree.
+pub mod sum_tree;
 pub(crate) use platform_scheduler::PlatformScheduler;
 mod geometry;
 mod global;
+/// HTTP client library.
+pub mod http_client;
 mod input;
 mod inspector;
 mod interactive;
 mod key_dispatch;
 mod keymap;
 mod path_builder;
+/// Performance benchmarking utilities.
+pub mod perf;
 mod platform;
 pub mod prelude;
 /// Profiling utilities for task timing and thread performance tracking.
 pub mod profiler;
-/// Performance benchmarking utilities.
-pub mod perf;
-/// HTTP client library.
-pub mod http_client;
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
 #[expect(missing_docs)]
 pub mod queue;
+mod rgpui_util;
 mod scene;
 mod shared_string;
 mod shared_uri;
@@ -60,7 +61,6 @@ mod tab_stop;
 mod taffy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
-mod rgpui_util;
 mod text_system;
 mod tray;
 #[allow(missing_docs)]
@@ -91,6 +91,7 @@ mod seal {
     pub trait Sealed {}
 }
 
+pub use crate::collections::*;
 pub use action::*;
 pub use anyhow::Result;
 pub use app::*;
@@ -98,7 +99,6 @@ pub(crate) use arena::*;
 pub use asset_cache::*;
 pub use assets::*;
 pub use color::*;
-pub use crate::collections::*;
 pub use ctor::ctor;
 pub use element::*;
 pub use elements::*;
@@ -108,12 +108,11 @@ pub use global::*;
 pub use rgpui_macros::{
     AppContext, IntoElement, Render, VisualContext, property_test, register_action, test,
 };
-pub use shared_string::*;
 pub use rgpui_util::arc_cow::ArcCow;
-pub use rgpui_util::{
-    defer, log_err, measure, post_inc, some_or_debug_panic, Deferred,
-    ResultExt, TryFutureExt, TryFutureExtBacktrace,
-};
+pub use shared_string::*;
+
+// rgpui_util::Deferred 和 elements中的 Deferred冲突，所有 rgpui_util中的不直接导出
+pub use crate::refineable::*;
 pub use input::*;
 pub use inspector::*;
 pub use interactive::*;
@@ -124,7 +123,10 @@ pub use platform::*;
 pub use profiler::*;
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
 pub use queue::{PriorityQueueReceiver, PriorityQueueSender};
-pub use crate::refineable::*;
+pub use rgpui_util::{
+    Deferred as UtilDeferred, ResultExt, TryFutureExt, TryFutureExtBacktrace, defer, log_err,
+    measure, post_inc, some_or_debug_panic,
+};
 pub use scene::*;
 pub use shared_uri::*;
 use std::{any::Any, future::Future};
@@ -144,8 +146,6 @@ pub use view::*;
 pub use window::*;
 
 pub use pollster::block_on;
-
-
 
 /// GPUI 中的上下文 trait，允许不同的上下文类型
 /// 在某些操作中可以互换使用。

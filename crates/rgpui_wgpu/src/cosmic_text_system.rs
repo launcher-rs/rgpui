@@ -3,7 +3,12 @@ use cosmic_text::{
     Attrs, AttrsList, Family, Font as CosmicTextFont, FontFeatures as CosmicFontFeatures,
     FontSystem, ShapeBuffer, ShapeLine,
 };
-use rgpui::{Bounds, DevicePixels, Font, FontFallbacks, FontFeatures, FontId, FontMetrics, FontRun, GlyphId, LineLayout, Pixels, PlatformTextSystem, RenderGlyphParams, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ShapedGlyph, ShapedRun, SharedString, Size, TextRenderingMode, point, size, FxHashMap};
+use rgpui::{
+    Bounds, DevicePixels, Font, FontFallbacks, FontFeatures, FontId, FontMetrics, FontRun,
+    FxHashMap, GlyphId, LineLayout, Pixels, PlatformTextSystem, RenderGlyphParams,
+    SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ShapedGlyph, ShapedRun, SharedString, Size,
+    TextRenderingMode, point, size,
+};
 
 use itertools::Itertools;
 use parking_lot::RwLock;
@@ -19,7 +24,6 @@ use unicode_segmentation::UnicodeSegmentation;
 pub struct CosmicTextSystem(RwLock<CosmicTextSystemState>);
 
 pub type HashMap<K, V> = FxHashMap<K, V>;
-
 
 /// 字体唯一标识键
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

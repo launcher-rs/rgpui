@@ -1,11 +1,11 @@
 use anyhow::{Context as _, Result};
-use rgpui::collections::FxHashMap;
 use etagere::{BucketedAtlasAllocator, size2};
+use parking_lot::Mutex;
+use rgpui::collections::FxHashMap;
 use rgpui::{
     AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTextureList, AtlasTile, Bounds, DevicePixels,
     PlatformAtlas, Point, Size,
 };
-use parking_lot::Mutex;
 use std::{borrow::Cow, ops, sync::Arc};
 
 use crate::WgpuContext;

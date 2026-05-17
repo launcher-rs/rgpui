@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
-use crate::sum_tree::SumTree;
 use crate::collections::FxHashMap;
 use crate::sum_tree::Bias;
+use crate::sum_tree::SumTree;
 
 use crate::{FocusHandle, FocusId};
 
@@ -254,7 +254,10 @@ mod sum_tree_impl {
     impl crate::sum_tree::Item for TabStopNode {
         type Summary = TabStopOrderNodeSummary;
 
-        fn summary(&self, _cx: <Self::Summary as crate::sum_tree::Summary>::Context<'_>) -> Self::Summary {
+        fn summary(
+            &self,
+            _cx: <Self::Summary as crate::sum_tree::Summary>::Context<'_>,
+        ) -> Self::Summary {
             TabStopOrderNodeSummary {
                 max_index: self.node_insertion_index,
                 max_path: self.path.clone(),

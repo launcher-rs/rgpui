@@ -610,7 +610,8 @@ impl PlatformWindow for WindowsWindow {
 
     fn resize(&mut self, size: Size<Pixels>) {
         let hwnd = self.0.hwnd;
-        let bounds = rgpui::bounds(self.bounds().origin, size).to_device_pixels(self.scale_factor());
+        let bounds =
+            rgpui::bounds(self.bounds().origin, size).to_device_pixels(self.scale_factor());
         let rect = calculate_window_rect(bounds, &self.state.border_offset);
 
         self.0

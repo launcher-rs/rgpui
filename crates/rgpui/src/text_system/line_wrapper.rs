@@ -1,5 +1,5 @@
-use crate::{FontId, Pixels, SharedString, TextRun, TextSystem, px};
 use crate::collections::HashMap;
+use crate::{FontId, Pixels, SharedString, TextRun, TextSystem, px};
 use std::{borrow::Cow, iter, sync::Arc};
 
 /// Determines whether to truncate text from the start or end.

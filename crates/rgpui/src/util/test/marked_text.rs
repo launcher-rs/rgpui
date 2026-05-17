@@ -127,21 +127,21 @@ pub fn marked_text_ranges(
         prev_marked_ix = marked_ix + len;
 
         match marker {
-                    "ˇ" => {
-                        if current_range_start.is_some() {
-                            if current_range_cursor.is_some() {
-                                panic!("重复的点标记 'ˇ' 在索引 {marked_ix}");
-                            }
+            "ˇ" => {
+                if current_range_start.is_some() {
+                    if current_range_cursor.is_some() {
+                        panic!("重复的点标记 'ˇ' 在索引 {marked_ix}");
+                    }
 
                     current_range_cursor = Some(unmarked_len);
                 } else {
                     ranges.push(unmarked_len..unmarked_len);
                 }
             }
-                "«" => {
-                    if current_range_start.is_some() {
-                        panic!("意外的范围起始标记 '«' 在索引 {marked_ix}");
-                    }
+            "«" => {
+                if current_range_start.is_some() {
+                    panic!("意外的范围起始标记 '«' 在索引 {marked_ix}");
+                }
                 current_range_start = Some(unmarked_len);
             }
             "»" => {

@@ -2,10 +2,10 @@ use std::error::Error;
 use std::sync::{LazyLock, OnceLock};
 use std::{borrow::Cow, mem, pin::Pin, task::Poll, time::Duration};
 
+use super::{RedirectPolicy, Url, http};
 use anyhow::anyhow;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::{AsyncRead, FutureExt as _, TryStreamExt as _};
-use super::{RedirectPolicy, Url, http};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue},
@@ -239,10 +239,8 @@ impl super::HttpClient for ReqwestClient {
     fn send(
         &self,
         req: http::Request<super::AsyncBody>,
-    ) -> futures::future::BoxFuture<
-        'static,
-        anyhow::Result<super::Response<super::AsyncBody>>,
-    > {
+    ) -> futures::future::BoxFuture<'static, anyhow::Result<super::Response<super::AsyncBody>>>
+    {
         let (parts, body) = req.into_parts();
 
         let mut request = self.client.request(parts.method, parts.uri.to_string());

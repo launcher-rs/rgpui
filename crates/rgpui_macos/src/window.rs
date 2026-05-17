@@ -24,6 +24,8 @@ use cocoa::{
     },
 };
 use dispatch2::DispatchQueue;
+#[cfg(any(test, feature = "test-support"))]
+use image::RgbaImage;
 use rgpui::{
     AnyWindowHandle, BackgroundExecutor, Bounds, Capslock, CursorStyle, ExternalPaths,
     FileDropEvent, ForegroundExecutor, KeyDownEvent, Keystroke, Modifiers, ModifiersChangedEvent,
@@ -33,8 +35,6 @@ use rgpui::{
     WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowKind, WindowParams, point,
     px, size,
 };
-#[cfg(any(test, feature = "test-support"))]
-use image::RgbaImage;
 
 use core_foundation::base::{CFRelease, CFTypeRef};
 use core_foundation_sys::base::CFEqual;
@@ -509,12 +509,12 @@ struct MacWindowState {
 
 impl MacWindowState {
     fn move_traffic_light(&self) {
-            if let Some(traffic_light_position) = self.traffic_light_position {
-                if self.is_fullscreen() {
-                    // 全屏时移动交通灯按钮不起作用，
-                    // 见 https://github.com/zed-industries/zed/issues/4712
-                    return;
-                }
+        if let Some(traffic_light_position) = self.traffic_light_position {
+            if self.is_fullscreen() {
+                // 全屏时移动交通灯按钮不起作用，
+                // 见 https://github.com/zed-industries/zed/issues/4712
+                return;
+            }
 
             let titlebar_height = self.titlebar_height();
 

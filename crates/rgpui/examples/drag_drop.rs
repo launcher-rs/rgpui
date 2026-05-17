@@ -113,7 +113,11 @@ impl Render for DragDrop {
                     .justify_center()
                     .items_center()
                     .border_3()
-                    .border_color(self.drop_on.map(|info| info.color).unwrap_or(rgpui::black()))
+                    .border_color(
+                        self.drop_on
+                            .map(|info| info.color)
+                            .unwrap_or(rgpui::black()),
+                    )
                     .when_some(self.drop_on, |this, info| this.bg(info.color.opacity(0.5)))
                     .on_drop(cx.listener(|this, info: &DragInfo, _, _| {
                         this.drop_on = Some(*info);

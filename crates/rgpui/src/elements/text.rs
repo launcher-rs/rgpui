@@ -1,3 +1,4 @@
+use crate::ResultExt;
 use crate::{
     ActiveTooltip, AnyView, App, Bounds, DispatchPhase, Element, ElementId, GlobalElementId,
     HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId,
@@ -6,7 +7,6 @@ use crate::{
     WrappedLineLayout, register_tooltip_mouse_handlers, set_tooltip_on_window,
 };
 use anyhow::Context as _;
-use crate::ResultExt;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::{

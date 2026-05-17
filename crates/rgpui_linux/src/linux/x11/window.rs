@@ -11,8 +11,8 @@ use rgpui::{
 };
 use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig};
 
-use rgpui::collections::FxHashSet;
 use raw_window_handle as rwh;
+use rgpui::collections::FxHashSet;
 use util::{ResultExt, maybe};
 use x11rb::{
     connection::Connection,

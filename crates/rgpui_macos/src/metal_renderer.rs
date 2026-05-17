@@ -6,13 +6,13 @@ use cocoa::{
     foundation::{NSSize, NSUInteger},
     quartzcore::AutoresizingMask,
 };
-use rgpui::{
-    point, size, AtlasTextureId, Background, Bounds, ContentMask, DevicePixels, MonochromeSprite,
-    PaintSurface, Path, Point, PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene, Shadow,
-    Size, Surface, Underline,
-};
 #[cfg(any(test, feature = "test-support"))]
 use image::RgbaImage;
+use rgpui::{
+    AtlasTextureId, Background, Bounds, ContentMask, DevicePixels, MonochromeSprite, PaintSurface,
+    Path, Point, PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene, Shadow, Size,
+    Surface, Underline, point, size,
+};
 
 use core_foundation::base::TCFType;
 use core_video::{
@@ -722,9 +722,8 @@ impl MetalRenderer {
                         chunk.swap(0, 2);
                     }
 
-                    return RgbaImage::from_raw(width, height, pixels).ok_or_else(|| {
-                        anyhow::anyhow!("无法从像素数据创建 RgbaImage")
-                    });
+                    return RgbaImage::from_raw(width, height, pixels)
+                        .ok_or_else(|| anyhow::anyhow!("无法从像素数据创建 RgbaImage"));
                 }
                 Err(err) => {
                     log::error!(

@@ -15,8 +15,8 @@ use std::{
 
 use ::rgpui::{ResultExt, maybe};
 use anyhow::{Context, Result};
-use rgpui::collections::HashMap;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use rgpui::collections::HashMap;
 use windows::{
     Win32::{
         Foundation::*,

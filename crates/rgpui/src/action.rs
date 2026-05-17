@@ -1,7 +1,7 @@
-use anyhow::{Context as _, Result};
 use crate::collections::HashMap;
-pub use rgpui_macros::Action;
+use anyhow::{Context as _, Result};
 pub use no_action::{NoAction, Unbind, is_no_action, is_unbind};
+pub use rgpui_macros::Action;
 use serde_json::json;
 use std::{
     any::{Any, TypeId},

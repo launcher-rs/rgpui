@@ -147,10 +147,8 @@ struct Inner {
 impl XContext {
     fn new() -> Result<Self> {
         // 创建到 X11 服务器的新连接
-        let (conn, screen_num): (RustConnection, _) =
-            RustConnection::connect(None).map_err(|_| {
-                Error::unknown("X11 服务器连接超时，因为无法访问")
-            })?;
+        let (conn, screen_num): (RustConnection, _) = RustConnection::connect(None)
+            .map_err(|_| Error::unknown("X11 服务器连接超时，因为无法访问"))?;
         let screen = conn
             .setup()
             .roots

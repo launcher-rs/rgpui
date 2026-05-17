@@ -4,11 +4,11 @@ use calloop::{
     EventLoop, LoopHandle, RegistrationToken,
     generic::{FdWrapper, Generic},
 };
-use rgpui::collections::HashMap;
 use core::str;
-use rgpui::{Capslock, TaskTiming, profiler};
 use http_client::Url;
 use log::Level;
+use rgpui::collections::HashMap;
+use rgpui::{Capslock, TaskTiming, profiler};
 use smallvec::SmallVec;
 use std::{
     cell::RefCell,

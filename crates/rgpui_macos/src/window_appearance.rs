@@ -3,8 +3,8 @@ use cocoa::{
     base::id,
     foundation::NSString,
 };
-use rgpui::WindowAppearance;
 use objc::{msg_send, sel, sel_impl};
+use rgpui::WindowAppearance;
 use std::ffi::CStr;
 
 pub(crate) unsafe fn window_appearance_from_native(appearance: id) -> WindowAppearance {

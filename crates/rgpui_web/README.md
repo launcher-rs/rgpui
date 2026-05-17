@@ -73,7 +73,7 @@ gpui_web/
 ## 使用示例
 
 ```rust
-use gpui_web::WebPlatform;
+use rgpui_web::WebPlatform;
 
 // 初始化 panic hook，将 Rust panic 输出到浏览器控制台
 console_error_panic_hook::set_once();

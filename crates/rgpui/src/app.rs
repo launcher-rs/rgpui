@@ -22,14 +22,14 @@ use itertools::Itertools;
 use parking_lot::RwLock;
 use slotmap::SlotMap;
 
-pub use async_context::*;
 use crate::collections::{FxHashMap, FxHashSet, HashMap, VecDeque};
+use crate::http_client::{HttpClient, Url};
+use crate::{ResultExt, debug_panic};
+pub use async_context::*;
 pub use context::*;
 pub use entity_map::*;
-use crate::{ResultExt, debug_panic};
 #[cfg(any(test, feature = "test-support"))]
 pub use headless_app_context::*;
-use crate::http_client::{HttpClient, Url};
 use smallvec::SmallVec;
 #[cfg(any(test, feature = "test-support"))]
 pub use test_app::*;
@@ -2214,10 +2214,7 @@ impl App {
     }
 
     /// 注册系统托盘图标事件的回调函数
-    pub fn on_tray_icon_event(
-        &self,
-        mut callback: impl FnMut(TrayIconEvent, &mut App) + 'static,
-    ) {
+    pub fn on_tray_icon_event(&self, mut callback: impl FnMut(TrayIconEvent, &mut App) + 'static) {
         let this = self.this.clone();
         self.platform.on_tray_icon_event(Box::new(move |event| {
             if let Some(app) = this.upgrade() {

@@ -4,18 +4,18 @@ use crate::WM_GPUI_TRAY_ICON;
 use rgpui::*;
 use std::collections::HashMap;
 use windows::{
-    core::PCWSTR,
     Win32::{
         Foundation::*,
         Graphics::Gdi::*,
         UI::{
             Shell::{
-                Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD,
-                NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
+                NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE,
+                NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
             },
             WindowsAndMessaging::*,
         },
     },
+    core::PCWSTR,
 };
 
 /// 托盘图标唯一标识符
@@ -320,7 +320,9 @@ fn create_hicon_from_bytes(data: &[u8]) -> Option<HICON> {
         let offset = LookupIconIdFromDirectoryEx(data.as_ptr(), true, 0, 0, LR_DEFAULTCOLOR);
         if offset > 0 && (offset as usize) < data.len() {
             let icon_data = &data[offset as usize..];
-            if let Ok(hicon) = CreateIconFromResourceEx(icon_data, true, 0x00030000, 0, 0, LR_DEFAULTCOLOR) {
+            if let Ok(hicon) =
+                CreateIconFromResourceEx(icon_data, true, 0x00030000, 0, 0, LR_DEFAULTCOLOR)
+            {
                 return Some(hicon);
             }
         }
@@ -356,24 +358,13 @@ fn create_hicon_from_bytes(data: &[u8]) -> Option<HICON> {
 
         let pixels = rgba.into_raw();
         let mut pbits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let hbitmap = CreateDIBSection(
-            Some(hdc),
-            &bmi,
-            DIB_RGB_COLORS,
-            &mut pbits,
-            None,
-            0,
-        );
+        let hbitmap = CreateDIBSection(Some(hdc), &bmi, DIB_RGB_COLORS, &mut pbits, None, 0);
         ReleaseDC(None, hdc);
 
         if let Ok(hbitmap) = hbitmap {
             // 将像素数据复制到 DIB 位图
             if !pbits.is_null() {
-                std::ptr::copy_nonoverlapping(
-                    pixels.as_ptr(),
-                    pbits as *mut u8,
-                    pixels.len(),
-                );
+                std::ptr::copy_nonoverlapping(pixels.as_ptr(), pbits as *mut u8, pixels.len());
             }
 
             // 通过 ICONINFO 创建 HICON

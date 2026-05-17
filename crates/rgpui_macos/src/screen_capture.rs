@@ -1,3 +1,4 @@
+use crate::media::core_media::{CMSampleBuffer, CMSampleBufferRef};
 use crate::ns_string;
 use anyhow::{Result, anyhow};
 use block::ConcreteBlock;
@@ -5,7 +6,6 @@ use cocoa::{
     base::{YES, id, nil},
     foundation::NSArray,
 };
-use rgpui::collections::HashMap;
 use core_foundation::base::TCFType;
 use core_graphics::display::{
     CGDirectDisplayID, CGDisplayCopyDisplayMode, CGDisplayModeGetPixelHeight,
@@ -13,11 +13,6 @@ use core_graphics::display::{
 };
 use ctor::ctor;
 use futures::channel::oneshot;
-use rgpui::{
-    DevicePixels, ForegroundExecutor, ScreenCaptureFrame, ScreenCaptureSource, ScreenCaptureStream,
-    SharedString, SourceMetadata, size,
-};
-use crate::media::core_media::{CMSampleBuffer, CMSampleBufferRef};
 use metal::NSInteger;
 use objc::{
     class,
@@ -25,6 +20,11 @@ use objc::{
     msg_send,
     runtime::{Class, Object, Sel},
     sel, sel_impl,
+};
+use rgpui::collections::HashMap;
+use rgpui::{
+    DevicePixels, ForegroundExecutor, ScreenCaptureFrame, ScreenCaptureSource, ScreenCaptureStream,
+    SharedString, SourceMetadata, size,
 };
 use std::{cell::RefCell, ffi::c_void, mem, ptr, rc::Rc};
 

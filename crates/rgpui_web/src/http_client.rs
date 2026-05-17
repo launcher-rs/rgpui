@@ -73,8 +73,8 @@ impl<F: Future> Future for AssertSend<F> {
     type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
-            // 安全：对单字段 newtype 包装器的 pin 投影。
-            let inner = unsafe { self.map_unchecked_mut(|this| &mut this.0) };
+        // 安全：对单字段 newtype 包装器的 pin 投影。
+        let inner = unsafe { self.map_unchecked_mut(|this| &mut this.0) };
         inner.poll(cx)
     }
 }

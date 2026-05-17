@@ -1,9 +1,9 @@
-use crate::{App, PlatformDispatcher, PlatformScheduler};
-use futures::channel::mpsc;
-use futures::prelude::*;
-use crate::{TryFutureExt, TryFutureExtBacktrace};
 use crate::scheduler::Instant;
 use crate::scheduler::Scheduler;
+use crate::{App, PlatformDispatcher, PlatformScheduler};
+use crate::{TryFutureExt, TryFutureExtBacktrace};
+use futures::channel::mpsc;
+use futures::prelude::*;
 use std::{future::Future, marker::PhantomData, mem, pin::Pin, rc::Rc, sync::Arc, time::Duration};
 
 pub use crate::scheduler::{

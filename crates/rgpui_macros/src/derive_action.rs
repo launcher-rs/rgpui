@@ -2,7 +2,7 @@ use crate::register_action::generate_register_action;
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
-use syn::{parse::ParseStream, Data, DeriveInput, LitStr, Token};
+use syn::{Data, DeriveInput, LitStr, Token, parse::ParseStream};
 
 /// 为类型生成 `rgpui::Action` 特质实现的过程宏核心逻辑。
 ///
@@ -39,13 +39,13 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
     let mut deprecated = None;
     let mut doc_str: Option<String> = None;
 
-/*
-*
-* #[action()]
-* struct Foo {
-*  bar: bool // bar 是否被视为属性
-}
-*/
+    /*
+    *
+    * #[action()]
+    * struct Foo {
+    *  bar: bool // bar 是否被视为属性
+    }
+    */
     // 解析 #[action(...)] 属性中的各个配置项
     for attr in &input.attrs {
         if attr.path().is_ident("action") {

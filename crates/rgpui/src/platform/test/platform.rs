@@ -1,3 +1,4 @@
+use crate::collections::VecDeque;
 use crate::{
     AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DevicePixels,
     DummyKeyboardMapper, ForegroundExecutor, Keymap, NoopTextSystem, Platform, PlatformDisplay,
@@ -6,7 +7,6 @@ use crate::{
     Task, TestDisplay, TestWindow, ThermalState, WindowAppearance, WindowParams, size,
 };
 use anyhow::Result;
-use crate::collections::VecDeque;
 use futures::channel::oneshot;
 use parking_lot::Mutex;
 use std::{

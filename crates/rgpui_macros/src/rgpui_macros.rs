@@ -1,7 +1,7 @@
 mod derive_action;
 mod derive_app_context;
-mod derive_refineable;
 mod derive_into_element;
+mod derive_refineable;
 mod derive_render;
 mod derive_visual_context;
 mod property_test;
@@ -14,9 +14,9 @@ mod derive_inspector_reflection;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Ident};
 use syn::LitStr;
 use syn::parse_macro_input;
+use syn::{DeriveInput, Ident};
 
 /// `Action` 派生宏 - 用于为结构体自动实现 `rgpui::Action` 特质。
 ///

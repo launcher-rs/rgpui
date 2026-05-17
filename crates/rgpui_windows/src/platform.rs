@@ -517,11 +517,12 @@ impl Platform for WindowsPlatform {
                     clippy::disallowed_methods,
                     reason = "We are restarting ourselves, using std command thus is fine"
                 )]
-                let restart_process =
-                    ::rgpui::util::command::new_std_command(::rgpui::util::shell::get_windows_system_shell())
-                        .arg("-command")
-                        .arg(script)
-                        .spawn();
+                let restart_process = ::rgpui::util::command::new_std_command(
+                    ::rgpui::util::shell::get_windows_system_shell(),
+                )
+                .arg("-command")
+                .arg(script)
+                .spawn();
 
                 match restart_process {
                     Ok(_) => unsafe { PostQuitMessage(0) },
@@ -1076,9 +1077,9 @@ impl WindowsPlatformInner {
             'timeout_loop: loop {
                 if start.elapsed().as_millis() >= MAIN_TASK_TIMEOUT {
                     log::debug!("foreground task timeout reached");
-                // 我们花费了预算在 gpui 任务上，我们可能有很多工作排队，所以先清理系统事件以保持响应
-                // 然后退出前台工作，允许我们在返回前台任务工作之前先处理其他 gpui 事件
-                // 如果不这样做，我们可能例如无法处理窗口退出事件
+                    // 我们花费了预算在 gpui 任务上，我们可能有很多工作排队，所以先清理系统事件以保持响应
+                    // 然后退出前台工作，允许我们在返回前台任务工作之前先处理其他 gpui 事件
+                    // 如果不这样做，我们可能例如无法处理窗口退出事件
                     let mut msg = MSG::default();
                     let process_message = |msg: &_| {
                         if translate_accelerator(msg).is_none() {

@@ -4,8 +4,8 @@ mod context;
 pub use binding::*;
 pub use context::*;
 
-use crate::{Action, AsKeystroke, Keystroke, Unbind, is_no_action, is_unbind};
 use crate::collections::{HashMap, HashSet};
+use crate::{Action, AsKeystroke, Keystroke, Unbind, is_no_action, is_unbind};
 use smallvec::SmallVec;
 use std::any::TypeId;
 

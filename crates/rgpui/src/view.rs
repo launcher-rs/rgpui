@@ -1,3 +1,5 @@
+use crate::collections::FxHashSet;
+use crate::refineable::Refineable;
 use crate::{
     AnyElement, AnyEntity, AnyWeakEntity, App, Bounds, ContentMask, Context, Element, ElementId,
     Entity, EntityId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, PaintIndex,
@@ -5,8 +7,6 @@ use crate::{
 };
 use crate::{Empty, Window};
 use anyhow::Result;
-use crate::collections::FxHashSet;
-use crate::refineable::Refineable;
 use std::mem;
 use std::rc::Rc;
 use std::{any::TypeId, fmt, ops::Range};

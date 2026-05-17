@@ -120,7 +120,7 @@ fn get_dxgi_factory(debug_layer_available: bool) -> Result<IDXGIFactory6> {
         DXGI_CREATE_FACTORY_DEBUG
     } else {
         #[cfg(debug_assertions)]
-            log::warn!("获取 DXGI 调试接口失败。DirectX 调试功能将被禁用。");
+        log::warn!("获取 DXGI 调试接口失败。DirectX 调试功能将被禁用。");
         DXGI_CREATE_FACTORY_FLAGS::default()
     };
     unsafe { Ok(CreateDXGIFactory2(factory_flag)?) }

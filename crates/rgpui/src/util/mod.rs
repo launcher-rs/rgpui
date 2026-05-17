@@ -38,9 +38,9 @@ use std::{
 };
 use unicase::UniCase;
 
-pub use take_until::*;
 #[cfg(any(test, feature = "test-support"))]
 pub use rgpui_macros::{line_endings, path, uri};
+pub use take_until::*;
 
 pub use self::shell::{
     get_default_system_shell, get_default_system_shell_preferring_bash, get_system_shell,

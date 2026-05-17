@@ -5,13 +5,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
+#[cfg(not(target_family = "wasm"))]
+use rgpui::http_client::reqwest_client::ReqwestClient;
 use rgpui::{
     App, AppContext, AssetSource, Bounds, Context, ImageSource, KeyBinding, Menu, MenuItem, Point,
     SharedString, SharedUri, TitlebarOptions, Window, WindowBounds, WindowOptions, actions, div,
     img, prelude::*, px, rgb, size,
 };
-#[cfg(not(target_family = "wasm"))]
-use rgpui::http_client::reqwest_client::ReqwestClient;
 
 struct Assets {
     base: PathBuf,

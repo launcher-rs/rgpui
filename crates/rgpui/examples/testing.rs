@@ -215,8 +215,8 @@ pub fn start() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rgpui::{TestAppContext, VisualTestContext};
     use rand::prelude::*;
+    use rgpui::{TestAppContext, VisualTestContext};
 
     /// Here's a basic GPUI test. Just add the macro and take a TestAppContext as an argument!
     ///
@@ -316,7 +316,7 @@ mod tests {
             tx.send(42).ok();
         });
 
-        // Without allow_parking(), this await would panic because GPUI's
+        // Without allow_parking(), this await would panic because rgpui's
         // scheduler runs out of tasks while waiting for the external thread.
         let result = rx.await.unwrap();
         assert_eq!(result, 42);

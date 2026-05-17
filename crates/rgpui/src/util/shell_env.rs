@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use anyhow::{Context as _, Result};
 use super::collections::HashMap;
+use anyhow::{Context as _, Result};
 use serde::Deserialize;
 
 use super::shell::ShellKind;
@@ -306,8 +306,8 @@ async fn capture_windows(
 mod tests {
     use std::process::ExitStatus;
 
-    use super::*;
     use super::path;
+    use super::*;
 
     #[cfg(unix)]
     fn exit_status(code: i32) -> ExitStatus {
