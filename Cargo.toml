@@ -130,7 +130,8 @@ strum = { version = "0.27.2", features = ["derive"] }
 # 随机数生成
 rand = "0.9"
 # 属性测试
-proptest = { git = "https://github.com/proptest-rs/proptest", rev = "3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b", features = ["attr-macro"] }
+#proptest = { git = "https://github.com/proptest-rs/proptest", rev = "3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b", features = ["attr-macro"] }
+proptest = { version = "1.11.0",features = ["attr-macro"] }
 # 属性测试派生
 proptest-derive = "0.8.0"
 # 美观的断言差异
@@ -293,7 +294,8 @@ ashpd = { version = "0.13", default-features = false, features = [
 
 # ---- GPU 渲染 ----
 # WebGPU 实现
-wgpu = { git = "https://github.com/zed-industries/wgpu.git", branch = "v29" }
+#wgpu = { git = "https://github.com/zed-industries/wgpu.git", branch = "v29" }
+wgpu = { version = "29.0" }
 
 # ---- 版本语义 ----
 # 语义化版本
@@ -305,15 +307,17 @@ windows-core = "0.61"
 
 # ---- Reqwest HTTP 客户端 ----
 # HTTP 客户端
-reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "c15662463bda39148ba154100dd44d3fba5873a4", default-features = false, features = [
-    "charset",
-    "http2",
-    "macos-system-configuration",
-    "multipart",
-    "rustls-tls-native-roots",
-    "socks",
-    "stream",
-], package = "zed-reqwest", version = "0.12.15-zed" }
+reqwest = { version = "0.13", features = ["json","charset","http2","multipart","socks","stream"] }
+
+#reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "c15662463bda39148ba154100dd44d3fba5873a4", default-features = false, features = [
+#    "charset",
+#    "http2",
+#    "macos-system-configuration",
+#    "multipart",
+#    "rustls-tls-native-roots",
+#    "socks",
+#    "stream",
+#], package = "zed-reqwest", version = "0.12.15-zed" }
 
 # ---- Tokio 异步运行时 ----
 # 异步运行时
