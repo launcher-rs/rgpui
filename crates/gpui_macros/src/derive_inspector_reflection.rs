@@ -1,5 +1,5 @@
-//! Implements `#[derive_inspector_reflection]` macro to provide runtime access to trait methods
-//! that have the shape `fn method(self) -> Self`. This code was generated using Zed Agent with Claude Opus 4.
+//! 实现 `#[derive_inspector_reflection]` 宏，为具有 `fn method(self) -> Self` 形状的特质方法提供运行时访问能力。
+//! 此代码使用 Zed Agent 与 Claude Opus 4 生成。
 
 use heck::ToSnakeCase as _;
 use proc_macro::TokenStream;
@@ -14,7 +14,7 @@ use syn::{
 pub fn derive_inspector_reflection(_args: TokenStream, input: TokenStream) -> TokenStream {
     let mut item = parse_macro_input!(input as Item);
 
-    // First, expand any macros in the trait
+    // 首先展开特质中的任何宏
     match &mut item {
         Item::Trait(trait_item) => {
             let mut expander = MacroExpander;
@@ -30,7 +30,7 @@ pub fn derive_inspector_reflection(_args: TokenStream, input: TokenStream) -> To
         }
     }
 
-    // Now process the expanded trait
+    // 现在处理展开后的特质
     match item {
         Item::Trait(trait_item) => generate_reflected_trait(trait_item),
         _ => unreachable!(),
@@ -41,7 +41,7 @@ fn generate_reflected_trait(trait_item: ItemTrait) -> TokenStream {
     let trait_name = &trait_item.ident;
     let vis = &trait_item.vis;
 
-    // Determine if we're being called from within the gpui crate
+    // 确定是否从 gpui crate 内部调用
     let call_site = Span::call_site();
     let inspector_reflection_path = if is_called_from_gpui_crate(call_site) {
         quote! { crate::inspector_reflection }
@@ -49,21 +49,21 @@ fn generate_reflected_trait(trait_item: ItemTrait) -> TokenStream {
         quote! { ::gpui::inspector_reflection }
     };
 
-    // Collect method information for methods of form fn name(self) -> Self or fn name(mut self) -> Self
+    // 收集形如 fn name(self) -> Self 或 fn name(mut self) -> Self 的方法信息
     let mut method_infos = Vec::new();
 
     for item in &trait_item.items {
         if let TraitItem::Fn(method) = item {
             let method_name = &method.sig.ident;
 
-            // Check if method has self or mut self receiver
+            // 检查方法是否具有 self 或 mut self 接收器
             let has_valid_self_receiver = method
                 .sig
                 .inputs
                 .iter()
                 .any(|arg| matches!(arg, FnArg::Receiver(r) if r.reference.is_none()));
 
-            // Check if method returns Self
+            // 检查方法是否返回 Self
             let returns_self = match &method.sig.output {
                 ReturnType::Type(_, ty) => {
                     matches!(**ty, Type::Path(ref path) if path.path.is_ident("Self"))
@@ -71,13 +71,13 @@ fn generate_reflected_trait(trait_item: ItemTrait) -> TokenStream {
                 ReturnType::Default => false,
             };
 
-            // Check if method has exactly one parameter (self or mut self)
+            // 检查方法是否只有一个参数（self 或 mut self）
             let param_count = method.sig.inputs.len();
 
-            // Include methods of form fn name(self) -> Self or fn name(mut self) -> Self
-            // This includes methods with default implementations
+            // 包含形如 fn name(self) -> Self 或 fn name(mut self) -> Self 的方法
+            // 这包括具有默认实现的方法
             if has_valid_self_receiver && returns_self && param_count == 1 {
-                // Extract documentation and cfg attributes
+                // 提取文档注释和 cfg 属性
                 let doc = extract_doc_comment(&method.attrs);
                 let cfg_attrs = extract_cfg_attributes(&method.attrs);
                 method_infos.push((method_name.clone(), doc, cfg_attrs));
@@ -85,14 +85,14 @@ fn generate_reflected_trait(trait_item: ItemTrait) -> TokenStream {
         }
     }
 
-    // Generate the reflection module name
+    // 生成反射模块名称
     let reflection_mod_name = Ident::new(
         &format!("{}_reflection", trait_name.to_string().to_snake_case()),
         trait_name.span(),
     );
 
-    // Generate wrapper functions for each method
-    // These wrappers use type erasure to allow runtime invocation
+    // 为每个方法生成包装函数
+    // 这些包装函数使用类型擦除来允许运行时调用
     let wrapper_functions = method_infos.iter().map(|(method_name, _doc, cfg_attrs)| {
         let wrapper_name = Ident::new(
             &format!("__wrapper_{}", method_name),
@@ -110,7 +110,7 @@ fn generate_reflected_trait(trait_item: ItemTrait) -> TokenStream {
         }
     });
 
-    // Generate method info entries
+    // 生成方法信息条目
     let method_info_entries = method_infos.iter().map(|(method_name, doc, cfg_attrs)| {
         let method_name_str = method_name.to_string();
         let wrapper_name = Ident::new(&format!("__wrapper_{}", method_name), method_name.span());
@@ -129,24 +129,24 @@ fn generate_reflected_trait(trait_item: ItemTrait) -> TokenStream {
         }
     });
 
-    // Generate the complete output
+    // 生成完整输出
     let output = quote! {
         #trait_item
 
-        /// Implements function reflection
+        /// 实现函数反射
         #vis mod #reflection_mod_name {
             use super::*;
 
             #(#wrapper_functions)*
 
-            /// Get all reflectable methods for a concrete type implementing the trait
+            /// 获取实现该特质的具体类型的所有可反射方法
             pub fn methods<T: #trait_name + 'static>() -> Vec<#inspector_reflection_path::FunctionReflection<T>> {
                 vec![
                     #(#method_info_entries),*
                 ]
             }
 
-            /// Find a method by name for a concrete type implementing the trait
+            /// 按名称查找实现该特质的具体类型的方法
             pub fn find_method<T: #trait_name + 'static>(name: &str) -> Option<#inspector_reflection_path::FunctionReflection<T>> {
                 methods::<T>().into_iter().find(|m| m.name == name)
             }
@@ -187,8 +187,8 @@ fn extract_cfg_attributes(attrs: &[Attribute]) -> Vec<Attribute> {
 }
 
 fn is_called_from_gpui_crate(_span: Span) -> bool {
-    // Check if we're being called from within the gpui crate by examining the call site
-    // This is a heuristic approach - we check if the current crate name is "gpui"
+    // 通过检查调用站点来确定是否从 gpui crate 内部调用
+    // 这是一种启发式方法 - 我们检查当前 crate 名称是否为 "gpui"
     std::env::var("CARGO_PKG_NAME").is_ok_and(|name| name == "gpui")
 }
 
@@ -202,11 +202,11 @@ impl VisitMut for MacroExpander {
         for item in trait_item.items.drain(..) {
             match item {
                 TraitItem::Macro(macro_item) => {
-                    // Try to expand known macros
+                    // 尝试展开已知宏
                     if let Some(expanded) = try_expand_macro(&macro_item) {
                         expanded_items.extend(expanded);
                     } else {
-                        // Keep unknown macros as-is
+                        // 保留未知宏不变
                         items_to_keep.push(TraitItem::Macro(macro_item));
                     }
                 }
@@ -216,11 +216,11 @@ impl VisitMut for MacroExpander {
             }
         }
 
-        // Rebuild the items list with expanded content first, then original items
+        // 用展开的内容重建项目列表，然后是原始项目
         trait_item.items = expanded_items;
         trait_item.items.extend(items_to_keep);
 
-        // Continue visiting
+        // 继续访问
         visit_mut::visit_item_trait_mut(self, trait_item);
     }
 }
@@ -228,10 +228,10 @@ impl VisitMut for MacroExpander {
 fn try_expand_macro(macro_item: &syn::TraitItemMacro) -> Option<Vec<TraitItem>> {
     let path = &macro_item.mac.path;
 
-    // Check if this is one of our known style macros
+    // 检查这是否是我们已知的样式宏之一
     let macro_name = path_to_string(path);
 
-    // Handle the known macros by calling their implementations
+    // 处理已知宏，调用它们的实现
     match macro_name.as_str() {
         "gpui_macros::style_helpers" | "style_helpers" => {
             let tokens = macro_item.mac.tokens.clone();
@@ -293,8 +293,8 @@ fn path_to_string(path: &Path) -> String {
 fn parse_expanded_items(expanded: TokenStream) -> Option<Vec<TraitItem>> {
     let tokens = TokenStream2::from(expanded);
 
-    // Try to parse the expanded tokens as trait items
-    // We need to wrap them in a dummy trait to parse properly
+    // 尝试将展开后的 token 解析为特质项目
+    // 我们需要将它们包装在一个虚拟特质中才能正确解析
     let dummy_trait: ItemTrait = parse_quote! {
         trait Dummy {
             #tokens

@@ -22,12 +22,16 @@ use windows::{
 
 use gpui::{Action, MenuItem, SharedString};
 
+/// 跳转列表结构体，用于管理 Windows 任务栏右键菜单
 pub(crate) struct JumpList {
+    /// 停靠菜单项
     pub(crate) dock_menus: Vec<DockMenuItem>,
+    /// 最近工作区列表
     pub(crate) recent_workspaces: Arc<[SmallVec<[PathBuf; 2]>]>,
 }
 
 impl JumpList {
+    /// 创建新的空跳转列表
     pub(crate) fn new() -> Self {
         Self {
             dock_menus: Vec::default(),
@@ -36,31 +40,42 @@ impl JumpList {
     }
 }
 
+/// 停靠菜单项
 pub(crate) struct DockMenuItem {
+    /// 菜单项名称
     pub(crate) name: SharedString,
+    /// 菜单项描述
     pub(crate) description: SharedString,
+    /// 关联的动作
     pub(crate) action: Box<dyn Action>,
 }
 
 impl DockMenuItem {
+    /// 从 MenuItem 创建 DockMenuItem
     pub(crate) fn new(item: MenuItem) -> anyhow::Result<Self> {
         match item {
             MenuItem::Action { name, action, .. } => Ok(Self {
                 name: name.clone(),
                 description: if name == "New Window" {
-                    "Opens a new window".into()
+                    "打开新窗口".into()
                 } else {
                     name
                 },
                 action,
             }),
-            _ => anyhow::bail!("Only `MenuItem::Action` is supported for dock menu on Windows."),
+            _ => anyhow::bail!("Windows 停靠菜单仅支持 `MenuItem::Action` 类型。"),
         }
     }
 }
 
-// This code is based on the example from Microsoft:
+// 此代码基于 Microsoft 示例：
 // https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/winui/shell/appshellintegration/RecipePropertyHandler/RecipePropertyHandler.cpp
+
+/// 更新跳转列表
+/// 参数:
+///   recent_workspaces - 最近工作区路径列表
+///   dock_menus - 停靠菜单项（名称，描述）
+/// 返回: 用户删除的路径列表
 pub(crate) fn update_jump_list(
     recent_workspaces: &[SmallVec<[PathBuf; 2]>],
     dock_menus: &[(SharedString, SharedString)],
@@ -72,13 +87,14 @@ pub(crate) fn update_jump_list(
     Ok(removed)
 }
 
-// Copied from:
+// 复制自：
 // https://github.com/microsoft/windows-rs/blob/0fc3c2e5a13d4316d242bdeb0a52af611eba8bd4/crates/libs/windows/src/Windows/Win32/Storage/EnhancedStorage/mod.rs#L1881
 const PKEY_TITLE: PROPERTYKEY = PROPERTYKEY {
     fmtid: GUID::from_u128(0xf29f85e0_4ff9_1068_ab91_08002b27b3d9),
     pid: 2,
 };
 
+/// 创建目标列表
 fn create_destination_list() -> anyhow::Result<(ICustomDestinationList, Vec<SmallVec<[PathBuf; 2]>>)>
 {
     let list: ICustomDestinationList =
@@ -96,8 +112,8 @@ fn create_destination_list() -> anyhow::Result<(ICustomDestinationList, Vec<Smal
     for i in 0..count {
         let shell_link: IShellLinkW = unsafe { user_removed.GetAt(i)? };
         let description = {
-            // INFOTIPSIZE is the maximum size of the buffer
-            // see https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ishelllinkw-getdescription
+            // INFOTIPSIZE 是缓冲区最大大小
+            // 参见 https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ishelllinkw-getdescription
             let mut buffer = [0u16; INFOTIPSIZE as usize];
             unsafe { shell_link.GetDescription(&mut buffer)? };
             let len = unsafe { u_strlen(buffer.as_ptr()) };
@@ -111,6 +127,7 @@ fn create_destination_list() -> anyhow::Result<(ICustomDestinationList, Vec<Smal
     Ok((list, removed))
 }
 
+/// 添加停靠菜单到目标列表
 fn add_dock_menu(
     list: &ICustomDestinationList,
     dock_menus: &[(SharedString, SharedString)],
@@ -130,6 +147,7 @@ fn add_dock_menu(
     }
 }
 
+/// 添加最近文件夹到目标列表
 fn add_recent_folders(
     list: &ICustomDestinationList,
     entries: &[SmallVec<[PathBuf; 2]>],
@@ -154,7 +172,7 @@ fn add_recent_folders(
                     .collect::<Vec<_>>()
                     .join("\n"),
             );
-            // simulate folder icon
+            // 模拟文件夹图标
             // https://github.com/microsoft/vscode/blob/7a5dc239516a8953105da34f84bae152421a8886/src/vs/platform/workspaces/electron-main/workspacesHistoryMainService.ts#L380
             let icon = HSTRING::from("explorer.exe");
 
@@ -176,12 +194,13 @@ fn add_recent_folders(
         }
 
         if tasks.GetCount().unwrap_or(0) > 0 {
-            list.AppendCategory(&HSTRING::from("Recent Folders"), &tasks)?;
+            list.AppendCategory(&HSTRING::from("最近文件夹"), &tasks)?;
         }
         Ok(())
     }
 }
 
+/// 创建 Shell 链接对象
 fn create_shell_link(
     argument: HSTRING,
     description: HSTRING,

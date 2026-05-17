@@ -1,6 +1,7 @@
 use anyhow::Result;
 use gpui::{Bounds, DisplayId, Pixels, PlatformDisplay, Point, Size, px};
 
+/// Web 平台显示器实现
 #[derive(Debug)]
 pub struct WebDisplay {
     id: DisplayId,
@@ -8,11 +9,12 @@ pub struct WebDisplay {
     browser_window: web_sys::Window,
 }
 
-// Safety: WASM is single-threaded — there is no concurrent access to `web_sys::Window`.
+// 安全：WASM 是单线程的——不存在对 `web_sys::Window` 的并发访问
 unsafe impl Send for WebDisplay {}
 unsafe impl Sync for WebDisplay {}
 
 impl WebDisplay {
+    /// 创建新的 WebDisplay 实例
     pub fn new(browser_window: web_sys::Window) -> Self {
         WebDisplay {
             id: DisplayId::new(1),
@@ -21,6 +23,7 @@ impl WebDisplay {
         }
     }
 
+    /// 获取屏幕尺寸（物理显示器大小）
     fn screen_size(&self) -> Size<Pixels> {
         let Some(screen) = self.browser_window.screen().ok() else {
             return Size {

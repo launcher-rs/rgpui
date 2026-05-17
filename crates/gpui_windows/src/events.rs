@@ -51,6 +51,18 @@ pub(crate) const WM_GPUI_TRAY_ICON: u32 = WM_USER + 9;
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
 impl WindowsWindowInner {
+    /// 处理 Windows 窗口消息
+    ///
+    /// 根据消息类型分发到对应的处理函数
+    ///
+    /// # 参数
+    /// * `handle` - 窗口句柄
+    /// * `msg` - 消息 ID
+    /// * `wparam` - 消息的 wParam 参数
+    /// * `lparam` - 消息的 lParam 参数
+    ///
+    /// # 返回
+    /// 返回消息处理结果
     pub(crate) fn handle_msg(
         self: &Rc<Self>,
         handle: HWND,
@@ -59,7 +71,7 @@ impl WindowsWindowInner {
         lparam: LPARAM,
     ) -> LRESULT {
         let handled = match msg {
-            // eagerly activate the window, so calls to `active_window` will work correctly
+            // 提前激活窗口，使 `active_window` 调用能正常工作
             WM_MOUSEACTIVATE => {
                 unsafe { SetActiveWindow(handle).ok() };
                 None
@@ -82,9 +94,9 @@ impl WindowsWindowInner {
             WM_MOUSEMOVE => self.handle_mouse_move_msg(handle, lparam, wparam),
             WM_MOUSELEAVE | WM_NCMOUSELEAVE => self.handle_mouse_leave_msg(),
             WM_NCMOUSEMOVE => self.handle_nc_mouse_move_msg(handle, lparam),
-            // Treat double click as a second single click, since we track the double clicks ourselves.
-            // If you don't interact with any elements, this will fall through to the windows default
-            // behavior of toggling whether the window is maximized.
+            // 将双击视为第二次单击，因为我们自行跟踪双击
+            // 如果不与任何元素交互，将回退到 Windows 默认行为
+            // 即切换窗口是否最大化
             WM_NCLBUTTONDBLCLK | WM_NCLBUTTONDOWN => {
                 self.handle_nc_mouse_down_msg(handle, MouseButton::Left, wparam, lparam)
             }
@@ -156,12 +168,12 @@ impl WindowsWindowInner {
             || center_y < monitor_bounds.top().as_f32()
             || center_y > monitor_bounds.bottom().as_f32()
         {
-            // center of the window may have moved to another monitor
+            // 窗口中心可能已移动到另一个显示器
             let monitor = unsafe { MonitorFromWindow(handle, MONITOR_DEFAULTTONULL) };
-            // minimize the window can trigger this event too, in this case,
-            // monitor is invalid, we do nothing.
+            // 最小化窗口时也会触发此事件，此时
+            // monitor 无效，我们不做任何处理
             if !monitor.is_invalid() && self.state.display.get().handle != monitor {
-                // we will get the same monitor if we only have one
+                // 如果只有一个显示器，我们将获得相同的显示器
                 self.state.display.set(WindowsDisplay::new(
                     WindowsDisplay::display_id_for_monitor(monitor),
                 )?);
@@ -190,8 +202,8 @@ impl WindowsWindowInner {
     }
 
     fn handle_size_msg(&self, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
-        // Don't resize the renderer when the window is minimized, but record that it was minimized so
-        // that on restore the swap chain can be recreated via `update_drawable_size_even_if_unchanged`.
+        // 窗口最小化时不要调整渲染器大小，但记录它已被最小化，以便
+        // 恢复时可以通过 `update_drawable_size_even_if_unchanged` 重新创建交换链
         if wparam.0 == SIZE_MINIMIZED as usize {
             self.state
                 .restore_from_minimized
@@ -218,6 +230,12 @@ impl WindowsWindowInner {
         Some(0)
     }
 
+    /// 处理窗口大小变化
+    ///
+    /// # 参数
+    /// * `device_size` - 设备像素大小
+    /// * `scale_factor` - 缩放因子
+    /// * `should_resize_renderer` - 是否应该调整渲染器大小
     fn handle_size_change(
         &self,
         device_size: Size<DevicePixels>,
@@ -282,6 +300,12 @@ impl WindowsWindowInner {
         self.draw_window(handle, false)
     }
 
+    /// 处理关闭消息
+    ///
+    /// 调用 should_close 回调决定是否允许关闭
+    ///
+    /// # 返回
+    /// 如果允许关闭返回 None，否则返回 Some(0)
     fn handle_close_msg(&self) -> Option<isize> {
         let mut callback = self.state.callbacks.should_close.take()?;
         let should_close = callback();
@@ -289,9 +313,15 @@ impl WindowsWindowInner {
         if should_close { None } else { Some(0) }
     }
 
+    /// 处理窗口销毁消息
+    ///
+    /// 触发关闭回调，如果是模态对话框则重新启用父窗口
+    ///
+    /// # 参数
+    /// * `handle` - 窗口句柄
     fn handle_destroy_msg(&self, handle: HWND) -> Option<isize> {
         let callback = { self.state.callbacks.close.take() };
-        // Re-enable parent window if this was a modal dialog
+        // 如果是模态对话框，重新启用父窗口
         if let Some(parent_hwnd) = self.parent_hwnd {
             unsafe {
                 let _ = EnableWindow(parent_hwnd, true);
@@ -373,11 +403,11 @@ impl WindowsWindowInner {
         func(input);
         self.state.callbacks.input.set(Some(func));
 
-        // Always return 0 to indicate that the message was handled, so we could properly handle `ModifiersChanged` event.
+        // 始终返回 0 表示消息已处理，以便正确处理 `ModifiersChanged` 事件
         Some(0)
     }
 
-    // It's a known bug that you can't trigger `ctrl-shift-0`. See:
+    // 已知 bug：无法触发 `ctrl-shift-0`。参见：
     // https://superuser.com/questions/1455762/ctrl-shift-number-key-combination-has-stopped-working-for-a-few-numbers
     fn handle_keydown_msg(&self, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
         let Some(input) = handle_key_event(
@@ -601,7 +631,7 @@ impl WindowsWindowInner {
             let caret_range = input_handler.selected_text_range(false)?;
             let caret_position = input_handler.bounds_for_range(caret_range.range)?;
             Some(POINT {
-                // logical to physical
+                // 逻辑坐标转物理坐标
                 x: (caret_position.origin.x.as_f32() * scale_factor) as i32,
                 y: (caret_position.origin.y.as_f32() * scale_factor) as i32
                     + ((caret_position.size.height.as_f32() * scale_factor) as i32 / 2),
@@ -679,8 +709,7 @@ impl WindowsWindowInner {
     fn handle_ime_composition_inner(&self, ctx: HIMC, lparam: LPARAM) -> Option<isize> {
         let lparam = lparam.0 as u32;
         if lparam == 0 {
-            // Japanese IME may send this message with lparam = 0, which indicates that
-            // there is no composition string.
+            // 日文 IME 可能发送 lparam = 0 的消息，表示没有组合字符串
             self.with_input_handler(|input_handler| {
                 input_handler.replace_text_in_range(None, "");
             })?;
@@ -717,7 +746,7 @@ impl WindowsWindowInner {
                 return Some(0);
             }
 
-            // currently, we don't care other stuff
+            // 目前我们不关心其他内容
             None
         }
     }
@@ -758,10 +787,9 @@ impl WindowsWindowInner {
             this.state.cursor_visible.store(true, Ordering::Relaxed);
         }
 
-        // When the window is activated (gains focus), reset the modifier tracking state.
-        // This fixes the issue where Alt-Tab away and back leaves stale modifier state
-        // (especially the Alt key) because Windows doesn't always send key-up events to
-        // windows that have lost focus.
+        // 当窗口被激活（获得焦点）时，重置修饰键跟踪状态
+        // 这修复了 Alt-Tab 离开再返回时留下过期修饰键状态
+        // （尤其是 Alt 键）的问题，因为 Windows 不总是向失去焦点的窗口发送按键释放事件
         if activated {
             this.state.last_reported_modifiers.set(None);
             this.state.last_reported_capslock.set(None);
@@ -815,7 +843,7 @@ impl WindowsWindowInner {
             .set_scale_factor(new_scale_factor);
 
         if is_maximized {
-            // Get the monitor and its work area at the new DPI
+            // 获取新 DPI 下的显示器及其工作区域
             let monitor = unsafe { MonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST) };
             let mut monitor_info: MONITORINFO = unsafe { std::mem::zeroed() };
             monitor_info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
@@ -824,8 +852,8 @@ impl WindowsWindowInner {
                 let width = work_area.right - work_area.left;
                 let height = work_area.bottom - work_area.top;
 
-                // Update the window size to match the new monitor work area
-                // This will trigger WM_SIZE which will handle the size change
+                // 更新窗口大小以匹配新的显示器工作区域
+                // 这将触发 WM_SIZE 来处理大小变化
                 unsafe {
                     SetWindowPos(
                         handle,
@@ -840,19 +868,18 @@ impl WindowsWindowInner {
                     .log_err();
                 }
 
-                // SetWindowPos may not send WM_SIZE for maximized windows in some cases,
-                // so we manually update the size to ensure proper rendering
+                // SetWindowPos 在某些情况下可能不会为最大化窗口发送 WM_SIZE，
+                // 所以我们手动更新大小以确保正确渲染
                 let device_size = size(DevicePixels(width), DevicePixels(height));
                 self.handle_size_change(device_size, new_scale_factor, true);
             }
         } else {
-            // For non-maximized windows, use the suggested RECT from the system
+            // 对于非最大化窗口，使用系统建议的 RECT
             let rect = unsafe { &*(lparam.0 as *const RECT) };
             let width = rect.right - rect.left;
             let height = rect.bottom - rect.top;
-            // this will emit `WM_SIZE` and `WM_MOVE` right here
-            // even before this function returns
-            // the new size is handled in `WM_SIZE`
+            // 这将在此函数返回之前立即发送 `WM_SIZE` 和 `WM_MOVE`
+            // 新大小在 `WM_SIZE` 中处理
             unsafe {
                 SetWindowPos(
                     handle,
@@ -909,13 +936,13 @@ impl WindowsWindowInner {
         };
 
         if !self.hide_title_bar {
-            // If the OS draws the title bar, we don't need to handle hit test messages.
+            // 如果操作系统绘制标题栏，我们不需要处理命中测试消息
             return drag_area;
         }
 
         let dpi = unsafe { GetDpiForWindow(handle) };
-        // We do not use the OS title bar, so the default `DefWindowProcW` will only register a 1px edge for resizes
-        // We need to calculate the frame thickness ourselves and do the hit test manually.
+        // 我们不使用操作系统标题栏，所以默认的 `DefWindowProcW` 只会注册 1px 的边缘用于调整大小
+        // 我们需要自己计算边框厚度并手动进行命中测试
         let frame_y = get_frame_thicknessx(dpi);
         let frame_x = get_frame_thicknessy(dpi);
         let mut cursor_point = POINT {
@@ -925,15 +952,15 @@ impl WindowsWindowInner {
 
         unsafe { ScreenToClient(handle, &mut cursor_point).ok().log_err() };
         if !self.state.is_maximized() && 0 <= cursor_point.y && cursor_point.y <= frame_y {
-            // x-axis actually goes from -frame_x to 0
+            // x 轴实际上从 -frame_x 到 0
             return Some(if cursor_point.x <= 0 {
                 HTTOPLEFT
             } else {
                 let mut rect = Default::default();
                 unsafe { GetWindowRect(handle, &mut rect) }.log_err();
-                // right and bottom bounds of RECT are exclusive, thus `-1`
+                // RECT 的 right 和 bottom 边界是开区间，因此 `-1`
                 let right = rect.right - rect.left - 1;
-                // the bounds include the padding frames, so accomodate for both of them
+                // 边界包含填充框架，所以要容纳两者
                 if right - 2 * frame_x <= cursor_point.x {
                     HTTOPRIGHT
                 } else {
@@ -1001,7 +1028,7 @@ impl WindowsWindowInner {
         } else {
         };
 
-        // Since these are handled in handle_nc_mouse_up_msg we must prevent the default window proc
+        // 由于这些在 handle_nc_mouse_up_msg 中处理，我们必须阻止默认窗口过程
         if button == MouseButton::Left {
             match wparam.0 as u32 {
                 HTMINBUTTON => self.state.nc_button_pressed.set(Some(HTMINBUTTON)),
@@ -1131,7 +1158,7 @@ impl WindowsWindowInner {
         if wparam.0 != 0 {
             self.state.click_state.system_update(wparam.0);
             self.state.border_offset.update(handle).log_err();
-            // system settings may emit a window message which wants to take the refcell self.state, so drop it
+            // 系统设置可能发出窗口消息，该消息想要获取 refcell self.state，所以先释放它
 
             self.system_settings().update(wparam.0);
         } else {
@@ -1142,8 +1169,8 @@ impl WindowsWindowInner {
     }
 
     fn handle_system_theme_changed(&self, handle: HWND, lparam: LPARAM) -> Option<isize> {
-        // lParam is a pointer to a string that indicates the area containing the system parameter
-        // that was changed.
+        // lParam 是指向字符串的指针，表示包含系统参数的区域
+        // 该参数指示了哪个系统参数被更改了
         let parameter = PCWSTR::from_raw(lparam.0 as _);
         if unsafe { !parameter.is_null() && !parameter.is_empty() }
             && let Some(parameter_string) = unsafe { parameter.to_string() }.log_err()
@@ -1198,10 +1225,9 @@ impl WindowsWindowInner {
         {
             panic!("Device lost: {err}");
         }
-        // Make sure the first `draw_window` after recovery (whether it comes
-        // from the forced WM_GPUI_FORCE_UPDATE_WINDOW or a stray WM_PAINT in
-        // between) is treated as a forced render so it both clears
-        // `skip_draws` and bypasses the view cache.
+        // 确保设备丢失恢复后的第一次 `draw_window`（无论是来自
+        // 强制的 WM_GPUI_FORCE_UPDATE_WINDOW 还是中间的 WM_PAINT）
+        // 被视为强制渲染，这样既清除 `skip_draws` 又绕过视图缓存
         self.state.force_render_after_recovery.set(true);
         Some(0)
     }
@@ -1211,6 +1237,11 @@ impl WindowsWindowInner {
         None
     }
 
+    /// 绘制窗口内容
+    ///
+    /// # 参数
+    /// * `handle` - 窗口句柄
+    /// * `force_render` - 是否强制渲染
     #[inline]
     fn draw_window(&self, handle: HWND, force_render: bool) -> Option<isize> {
         let mut request_frame = self.state.callbacks.request_frame.take()?;
@@ -1229,8 +1260,8 @@ impl WindowsWindowInner {
 
         let force_render = force_render || self.state.force_render_after_recovery.take();
         if force_render {
-            // Re-enable drawing after a device loss recovery. The forced render
-            // will rebuild the scene with fresh atlas textures.
+            // 设备丢失恢复后重新启用绘制。强制渲染
+            // 将使用新的图集纹理重建场景
             self.state.renderer.borrow_mut().mark_drawable();
         }
         request_frame(RequestFrameOptions {
@@ -1245,6 +1276,15 @@ impl WindowsWindowInner {
         Some(0)
     }
 
+    /// 解析字符消息
+    ///
+    /// 处理 Unicode 代理对，将 WPARAM 转换为字符串
+    ///
+    /// # 参数
+    /// * `wparam` - 包含字符代码的 WPARAM
+    ///
+    /// # 返回
+    /// 返回解析后的字符串，如果是高代理对则返回 None 等待低代理对
     #[inline]
     fn parse_char_message(&self, wparam: WPARAM) -> Option<String> {
         let code_point = wparam.loword();
@@ -1252,16 +1292,16 @@ impl WindowsWindowInner {
         // https://www.unicode.org/versions/Unicode16.0.0/core-spec/chapter-3/#G2630
         match code_point {
             0xD800..=0xDBFF => {
-                // High surrogate, wait for low surrogate
+                // 高代理对，等待低代理对
                 self.state.pending_surrogate.set(Some(code_point));
                 None
             }
             0xDC00..=0xDFFF => {
                 if let Some(high_surrogate) = self.state.pending_surrogate.take() {
-                    // Low surrogate, combine with pending high surrogate
+                    // 低代理对，与等待中的高代理对组合
                     String::from_utf16(&[high_surrogate, code_point]).ok()
                 } else {
-                    // Invalid low surrogate without a preceding high surrogate
+                    // 无效的低代理对，前面没有高代理对
                     log::warn!(
                         "Received low surrogate without a preceding high surrogate: {code_point:x}"
                     );
@@ -1277,7 +1317,7 @@ impl WindowsWindowInner {
         }
     }
 
-    /// Clear the hidden flag and restore the cursor immediately
+    /// 立即清除隐藏标志并恢复光标
     fn restore_cursor_after_hide(&self) {
         if !self.state.cursor_visible.swap(true, Ordering::Relaxed) {
             unsafe {
@@ -1638,10 +1678,9 @@ pub(crate) fn current_capslock() -> Capslock {
     Capslock { on }
 }
 
-// there is some additional non-visible space when talking about window
-// borders on Windows:
-// - SM_CXSIZEFRAME: The resize handle.
-// - SM_CXPADDEDBORDER: Additional border space that isn't part of the resize handle.
+// Windows 窗口边框存在额外的不可见空间：
+// - SM_CXSIZEFRAME：调整大小的手柄
+// - SM_CXPADDEDBORDER：不属于调整大小手柄的额外边框空间
 fn get_frame_thicknessx(dpi: u32) -> i32 {
     let resize_frame_thickness = unsafe { GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) };
     let padding_thickness = unsafe { GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi) };

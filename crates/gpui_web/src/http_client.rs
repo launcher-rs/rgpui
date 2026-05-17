@@ -13,6 +13,7 @@ extern "C" {
     fn global_fetch(input: &web_sys::Request) -> Result<js_sys::Promise, JsValue>;
 }
 
+/// 基于浏览器 Fetch API 的 HTTP 客户端实现
 pub struct FetchHttpClient {
     user_agent: Option<http_client::http::header::HeaderValue>,
 }
@@ -25,16 +26,16 @@ impl Default for FetchHttpClient {
 
 #[cfg(feature = "multithreaded")]
 impl FetchHttpClient {
-    /// # Safety
+    /// # 安全性
     ///
-    /// The caller must ensure that the created `FetchHttpClient` is only used in a single thread environment.
+    /// 调用者必须确保创建的 `FetchHttpClient` 仅在单线程环境中使用。
     pub unsafe fn new() -> Self {
         Self::default()
     }
 
-    /// # Safety
+    /// # 安全性
     ///
-    /// The caller must ensure that the created `FetchHttpClient` is only used in a single thread environment.
+    /// 调用者必须确保创建的 `FetchHttpClient` 仅在单线程环境中使用。
     pub unsafe fn with_user_agent(user_agent: &str) -> anyhow::Result<Self> {
         Ok(Self {
             user_agent: Some(http_client::http::header::HeaderValue::from_str(
@@ -59,12 +60,11 @@ impl FetchHttpClient {
     }
 }
 
-/// Wraps a `!Send` future to satisfy the `Send` bound on `BoxFuture`.
+/// 包装一个 `!Send` 的 future 以满足 `BoxFuture` 的 `Send` 约束。
 ///
-/// Safety: only valid in WASM contexts where the `FetchHttpClient` is
-/// confined to a single thread (guaranteed by the caller via unsafe
-/// constructors when `multithreaded` is enabled, or by the absence of
-/// threads when it is not).
+/// 安全性：仅在 WASM 上下文中有效，此时 `FetchHttpClient`
+/// 被限制在单线程中（当启用 `multithreaded` 时由调用者通过
+/// unsafe 构造函数保证，或在未启用线程时由无线程环境保证）。
 struct AssertSend<F>(F);
 
 unsafe impl<F> Send for AssertSend<F> {}
@@ -73,8 +73,8 @@ impl<F: Future> Future for AssertSend<F> {
     type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
-        // Safety: pin projection for a single-field newtype wrapper.
-        let inner = unsafe { self.map_unchecked_mut(|this| &mut this.0) };
+            // 安全：对单字段 newtype 包装器的 pin 投影。
+            let inner = unsafe { self.map_unchecked_mut(|this| &mut this.0) };
         inner.poll(cx)
     }
 }
@@ -144,8 +144,8 @@ impl HttpClient for FetchHttpClient {
             let status = web_response.status();
             let mut builder = http_client::http::Response::builder().status(status);
 
-            // `Headers` is a JS iterable yielding `[name, value]` pairs.
-            // `js_sys::Array::from` calls `Array.from()` which accepts any iterable.
+            // `Headers` 是一个 JS 可迭代对象，产生 `[name, value]` 对。
+            // `js_sys::Array::from` 调用 `Array.from()`，它接受任何可迭代对象。
             let header_pairs = js_sys::Array::from(&web_response.headers());
             for index in 0..header_pairs.length() {
                 match header_pairs.get(index).dyn_into::<js_sys::Array>() {
@@ -166,10 +166,9 @@ impl HttpClient for FetchHttpClient {
                 }
             }
 
-            // The entire response body is eagerly buffered into memory via
-            // `arrayBuffer()`. The Fetch API does not expose a synchronous
-            // streaming interface; streaming would require `ReadableStream`
-            // interop which is significantly more complex.
+            // 整个响应体通过 `arrayBuffer()` 被急切地缓冲到内存中。
+            // Fetch API 不暴露同步流式接口；流式处理需要 `ReadableStream`
+            // 互操作，这会显著增加复杂度。
             let body_promise = web_response
                 .array_buffer()
                 .map_err(|error| anyhow!("failed to initiate response body read: {error:?}"))?;

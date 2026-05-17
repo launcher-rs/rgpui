@@ -1,5 +1,6 @@
 use log::{Level, Log, Metadata, Record};
 
+/// 将 Rust log 输出转发到浏览器控制台的日志记录器
 struct ConsoleLogger;
 
 impl Log for ConsoleLogger {
@@ -31,6 +32,7 @@ impl Log for ConsoleLogger {
     fn flush(&self) {}
 }
 
+/// 初始化日志系统，将 log crate 的输出重定向到浏览器控制台
 pub fn init_logging() {
     log::set_logger(&ConsoleLogger).ok();
     log::set_max_level(log::LevelFilter::Info);

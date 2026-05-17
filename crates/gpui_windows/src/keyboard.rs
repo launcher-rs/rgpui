@@ -62,7 +62,7 @@ impl PlatformKeyboardMapper for WindowsKeyboardMapper {
         };
         if shifted_key && keystroke.modifiers.shift {
             log::warn!(
-                "Keystroke '{}' has both shift and a shifted key, this is likely a bug",
+                "快捷键 '{}' 同时包含 shift 和已转换键，这可能是 bug",
                 keystroke.key
             );
         }
@@ -72,7 +72,7 @@ impl PlatformKeyboardMapper for WindowsKeyboardMapper {
 
         let Some(key) = self.vkey_to_key.get(&vkey).cloned() else {
             log::error!(
-                "Failed to map key equivalent '{:?}' to a valid key",
+                "无法将快捷键 '{:?}' 映射到有效键",
                 keystroke
             );
             return KeybindingKeystroke::from_keystroke(keystroke);
@@ -81,7 +81,7 @@ impl PlatformKeyboardMapper for WindowsKeyboardMapper {
         keystroke.key = if shift {
             let Some(shifted_key) = self.vkey_to_shifted.get(&vkey).cloned() else {
                 log::error!(
-                    "Failed to map keystroke {:?} with virtual key '{:?}' to a shifted key",
+                    "无法将快捷键 {:?} 与虚拟键 '{:?}' 映射到已转换键",
                     keystroke,
                     vkey
                 );
@@ -107,9 +107,9 @@ impl PlatformKeyboardMapper for WindowsKeyboardMapper {
 
 impl WindowsKeyboardLayout {
     pub(crate) fn new() -> Result<Self> {
-        let mut buffer = [0u16; KL_NAMELENGTH as usize]; // KL_NAMELENGTH includes the null terminator
+        let mut buffer = [0u16; KL_NAMELENGTH as usize]; // KL_NAMELENGTH 包含空终止符
         unsafe { GetKeyboardLayoutNameW(&mut buffer)? };
-        let id = String::from_utf16_lossy(&buffer[..buffer.len() - 1]); // Remove the null terminator
+        let id = String::from_utf16_lossy(&buffer[..buffer.len() - 1]); // 移除空终止符
         let entry = windows_registry::LOCAL_MACHINE.open(format!(
             "System\\CurrentControlSet\\Control\\Keyboard Layouts\\{id}"
         ))?;
@@ -189,7 +189,7 @@ fn get_key_from_vkey(vkey: VIRTUAL_KEY) -> Option<String> {
         return None;
     }
 
-    // The high word contains dead key flag, the low word contains the character
+    // 高字包含死键标志，低字包含字符
     let key = char::from_u32(key_data & 0xFFFF)?;
 
     Some(key.to_ascii_lowercase().to_string())

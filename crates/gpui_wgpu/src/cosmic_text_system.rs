@@ -15,11 +15,13 @@ use swash::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+/// 基于 cosmic-text 的文本系统实现
 pub struct CosmicTextSystem(RwLock<CosmicTextSystemState>);
 
 pub type HashMap<K, V> = FxHashMap<K, V>;
 
 
+/// 字体唯一标识键
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct FontKey {
     family: SharedString,
@@ -28,6 +30,7 @@ struct FontKey {
 }
 
 impl FontKey {
+    /// 创建字体键
     fn new(family: SharedString, features: FontFeatures, fallbacks: Option<FontFallbacks>) -> Self {
         Self {
             family,
@@ -37,28 +40,30 @@ impl FontKey {
     }
 }
 
+/// 文本系统内部状态
 struct CosmicTextSystemState {
     font_system: FontSystem,
     scratch: ShapeBuffer,
     swash_scale_context: ScaleContext,
-    /// Contains all already loaded fonts, including all faces. Indexed by `FontId`.
+    /// 包含所有已加载的字体，包括所有字形面。通过 `FontId` 索引。
     loaded_fonts: Vec<LoadedFont>,
-    /// Caches the `FontId`s associated with a specific family to avoid iterating the font database
-    /// for every font face in a family.
+    /// 缓存特定字体族关联的 `FontId`，避免为字体数据库中的每个字体面迭代查询。
     font_ids_by_family_cache: HashMap<FontKey, SmallVec<[FontId; 4]>>,
     system_font_fallback: String,
 }
 
+/// 已加载的字体信息
 struct LoadedFont {
     font: Arc<CosmicTextFont>,
     features: CosmicFontFeatures,
     is_known_emoji_font: bool,
-    /// resolved at load time so `layout_line` shares one chain across faces.
-    /// `Arc` keeps clone cheap on the per-run hot path.
+    /// 在加载时解析，以便 `layout_line` 跨字面共享一条链。
+    /// `Arc` 使每次运行热路径上的克隆保持廉价。
     user_fallback_chain: Arc<[(FontId, SharedString)]>,
 }
 
 impl CosmicTextSystem {
+    /// 创建新的文本系统，加载系统字体
     pub fn new(system_font_fallback: &str) -> Self {
         let font_system = FontSystem::new();
 
@@ -72,6 +77,7 @@ impl CosmicTextSystem {
         }))
     }
 
+    /// 创建不加载系统字体的文本系统
     pub fn new_without_system_fonts(system_font_fallback: &str) -> Self {
         let font_system = FontSystem::new_with_locale_and_db(
             "en-US".to_string(),
@@ -201,11 +207,13 @@ impl PlatformTextSystem for CosmicTextSystem {
 }
 
 impl CosmicTextSystemState {
+    /// 获取已加载字体的引用
     fn loaded_font(&self, font_id: FontId) -> &LoadedFont {
         &self.loaded_fonts[font_id.0]
     }
 
     #[profiling::function]
+    /// 添加字体数据到字体数据库
     fn add_fonts(&mut self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()> {
         let db = self.font_system.db_mut();
         for bytes in fonts {
@@ -222,15 +230,15 @@ impl CosmicTextSystemState {
     }
 
     #[profiling::function]
+    /// 加载字体族及其回退链
     fn load_family(
         &mut self,
         name: &str,
         features: &FontFeatures,
         fallbacks: Option<&FontFallbacks>,
     ) -> Result<SmallVec<[FontId; 4]>> {
-        // recurse with `fallbacks = None` so a fallback family cannot pull in
-        // another chain. missing fallback families are dropped so a typo in
-        // settings still lets the primary family load.
+        // 使用 `fallbacks = None` 递归，以便回退字体族无法拉入另一个链。
+        // 缺失的回退字体族会被丢弃，因此设置中的拼写错误仍允许主字体族加载。
         let user_fallback_chain: Arc<[(FontId, SharedString)]> = match fallbacks {
             Some(fallbacks) if !fallbacks.fallback_list().is_empty() => {
                 let mut chain: Vec<(FontId, SharedString)> = Vec::new();
@@ -282,7 +290,7 @@ impl CosmicTextSystemState {
                 .get_font(font_id, cosmic_text::Weight::NORMAL)
                 .context("Could not load font")?;
 
-            // HACK: To let the storybook run and render Windows caption icons. We should actually do better font fallback.
+            //  HACK: 允许 storybook 运行并渲染 Windows 标题栏图标。我们应该实现更好的字体回退。
             let allowed_bad_font_names = [
                 "SegoeFluentIcons", // NOTE: Segoe fluent icons postscript name is inconsistent
                 "Segoe Fluent Icons",
@@ -308,6 +316,7 @@ impl CosmicTextSystemState {
         Ok(loaded_font_ids)
     }
 
+    /// 获取字形的Advance（前进）尺寸
     fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>> {
         let glyph_metrics = self.loaded_font(font_id).font.as_swash().glyph_metrics(&[]);
         Ok(Size {
@@ -316,6 +325,7 @@ impl CosmicTextSystemState {
         })
     }
 
+    /// 获取字符对应的字形 ID
     fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId> {
         let glyph_id = self.loaded_font(font_id).font.as_swash().charmap().map(ch);
         if glyph_id == 0 {
@@ -325,6 +335,7 @@ impl CosmicTextSystemState {
         }
     }
 
+    /// 计算字形光栅化后的边界
     fn raster_bounds(&mut self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>> {
         let image = self.render_glyph_image(params)?;
         Ok(Bounds {
@@ -334,6 +345,7 @@ impl CosmicTextSystemState {
     }
 
     #[profiling::function]
+    /// 光栅化字形，返回尺寸和像素数据
     fn rasterize_glyph(
         &mut self,
         params: &RenderGlyphParams,
@@ -347,7 +359,7 @@ impl CosmicTextSystemState {
         let bitmap_size = glyph_bounds.size;
         match image.content {
             swash::scale::image::Content::Color | swash::scale::image::Content::SubpixelMask => {
-                // Convert from RGBA to BGRA.
+                // 将 RGBA 转换为 BGRA。
                 for pixel in image.data.chunks_exact_mut(4) {
                     pixel.swap(0, 2);
                 }
@@ -355,7 +367,7 @@ impl CosmicTextSystemState {
             }
             swash::scale::image::Content::Mask => {
                 if params.subpixel_rendering {
-                    // We must always return RGBA data when subpixel rendering is requested.
+                    // 当请求子像素渲染时，我们必须始终返回 RGBA 数据。
                     let expanded = image.data.iter().flat_map(|&a| [a, a, a, a]).collect();
                     Ok((bitmap_size, expanded))
                 } else {
@@ -365,6 +377,7 @@ impl CosmicTextSystemState {
         }
     }
 
+    /// 渲染字形图像
     fn render_glyph_image(
         &mut self,
         params: &RenderGlyphParams,
@@ -397,7 +410,7 @@ impl CosmicTextSystemState {
 
         let mut renderer = Render::new(sources);
         if params.subpixel_rendering {
-            // There seems to be a bug in Swash where the B and R values are swapped.
+            // Swash 中似乎存在一个 bug，B 和 R 值被交换了。
             renderer
                 .format(Format::subpixel_bgra())
                 .offset(subpixel_offset);
@@ -411,14 +424,13 @@ impl CosmicTextSystemState {
             .with_context(|| format!("unable to render glyph via swash for {params:?}"))
     }
 
-    /// This is used when cosmic_text has chosen a fallback font instead of using the requested
-    /// font, typically to handle some unicode characters. When this happens, `loaded_fonts` may not
-    /// yet have an entry for this fallback font, and so one is added.
+    /// 当 cosmic_text 选择使用回退字体而非请求的字体时（通常用于处理某些 Unicode 字符），
+    /// 会使用此方法。发生这种情况时，`loaded_fonts` 可能还没有这个回退字体的条目，
+    /// 因此会添加一个。
     ///
-    /// Note that callers shouldn't use this `FontId` somewhere that will retrieve the corresponding
-    /// `LoadedFont.features`, as it will have an arbitrarily chosen or empty value. The only
-    /// current use of this field is for the *input* of `layout_line`, and so it's fine to use
-    /// `font_id_for_cosmic_id` when computing the *output* of `layout_line`.
+    /// 注意：调用者不应在会检索对应 `LoadedFont.features` 的地方使用此 `FontId`，
+    /// 因为它会有一个任意选择或空的值。当前此字段的唯一用途是作为 `layout_line` 的*输入*，
+    /// 因此在计算 `layout_line` 的*输出*时使用 `font_id_for_cosmic_id` 是没问题的。
     fn font_id_for_cosmic_id(&mut self, id: cosmic_text::fontdb::ID) -> Result<FontId> {
         if let Some(ix) = self
             .loaded_fonts
@@ -450,6 +462,7 @@ impl CosmicTextSystemState {
     }
 
     #[profiling::function]
+    /// 排版文本行，返回布局信息
     fn layout_line(&mut self, text: &str, font_size: Pixels, font_runs: &[FontRun]) -> LineLayout {
         let mut attrs_list = AttrsList::new(&Attrs::new());
         let mut offs = 0;
@@ -481,8 +494,8 @@ impl CosmicTextSystemState {
             let primary_features = loaded_font.features.clone();
             let fallback_chain = Arc::clone(&loaded_font.user_fallback_chain);
 
-            // build one `Attrs` per slot up front. each clone of span attrs
-            // would otherwise re-allocate the `font_features` Vec.
+            // 预先为每个槽位构建一个 `Attrs`。否则每个 span 属性的克隆
+            // 都会重新分配 `font_features` Vec。
             let primary_attrs = Attrs::new()
                 .metadata(run.font_id.0)
                 .family(Family::Name(&primary_family_name))
@@ -539,7 +552,7 @@ impl CosmicTextSystemState {
         line.layout_to_buffer(
             &mut self.scratch,
             f32::from(font_size),
-            None, // We do our own wrapping
+            None, // 我们自己处理换行
             cosmic_text::Wrap::None,
             None,
             &mut layout_lines,
@@ -579,7 +592,7 @@ impl CosmicTextSystemState {
             }
             let is_emoji = loaded_font.is_known_emoji_font;
 
-            // HACK: Prevent crash caused by variation selectors.
+            // HACK: 防止因变体选择器导致的崩溃。
             if glyph.glyph_id == 3 && is_emoji {
                 continue;
             }
@@ -616,6 +629,7 @@ impl CosmicTextSystemState {
 }
 
 #[cfg(feature = "font-kit")]
+/// 在候选字体中找到最佳匹配
 fn find_best_match(
     font: &Font,
     candidates: &[FontId],
@@ -688,8 +702,8 @@ fn find_best_match(
     Ok(best_index)
 }
 
-/// one contiguous slice of a `FontRun` that maps to a single slot. `slot` is
-/// `None` for the primary font and `Some(ix)` for `fallback_chain[ix]`.
+/// `FontRun` 的一个连续切片，映射到单个槽位。`slot` 为
+/// `None` 表示主字体，`Some(ix)` 表示 `fallback_chain[ix]`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RunSpan {
     start: usize,
@@ -698,9 +712,9 @@ struct RunSpan {
     font_id: FontId,
 }
 
-/// walks `text[run_offset..run_offset + run_len]` and groups codepoints into
-/// spans. inheriting codepoints stay in the current span so shaping clusters
-/// like emoji zwj sequences and combining marks are not torn apart.
+/// 遍历 `text[run_offset..run_offset + run_len]` 并将码点分组为
+/// span。继承码点保留在当前 span 中，以便像 emoji zwj 序列
+/// 和组合标记这样的字形簇不会被拆分。
 fn compute_run_spans(
     text: &str,
     run_offset: usize,
@@ -757,6 +771,7 @@ fn compute_run_spans(
     spans
 }
 
+/// 根据槽位获取字体 ID
 fn slot_font_id(
     slot: Option<usize>,
     primary: FontId,
@@ -768,6 +783,7 @@ fn slot_font_id(
     }
 }
 
+/// 选择能覆盖指定字符的槽位
 fn pick_covering_slot(
     ch: char,
     current: Option<usize>,
@@ -793,12 +809,14 @@ fn pick_covering_slot(
     None
 }
 
+/// 检查字体的字符映射是否覆盖指定字符
 fn charmap_covers(loaded_fonts: &[LoadedFont], id: FontId, ch: char) -> bool {
     loaded_fonts
         .get(id.0)
         .is_some_and(|loaded| loaded.font.as_swash().charmap().map(ch) != 0)
 }
 
+/// 将 gpui 字体特性转换为 cosmic-text 字体特性
 fn cosmic_font_features(features: &FontFeatures) -> Result<CosmicFontFeatures> {
     let mut result = CosmicFontFeatures::new();
     for feature in features.0.iter() {
@@ -853,8 +871,9 @@ fn face_info_into_properties(
     }
 }
 
+/// 检查是否为已知的 emoji 字体
 fn check_is_known_emoji_font(postscript_name: &str) -> bool {
-    // TODO: Include other common emoji fonts
+    // TODO: 包含其他常见的 emoji 字体
     postscript_name == "NotoColorEmoji"
 }
 
@@ -862,16 +881,19 @@ fn check_is_known_emoji_font(postscript_name: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// 创建 FontId 辅助函数
     fn fid(i: usize) -> FontId {
         FontId(i)
     }
 
+    /// 创建回退链辅助函数
     fn chain(ids: &[usize]) -> SmallVec<[(FontId, SharedString); 4]> {
         ids.iter()
             .map(|&i| (fid(i), SharedString::from(format!("fb{i}"))))
             .collect()
     }
 
+    /// 创建 RunSpan 辅助函数
     fn span(start: usize, end: usize, slot: Option<usize>, font_id: FontId) -> RunSpan {
         RunSpan {
             start,
@@ -882,6 +904,7 @@ mod tests {
     }
 
     #[test]
+    /// 当主字体覆盖字符时，优先于当前回退字体
     fn primary_wins_over_current_fallback_when_primary_covers() {
         let primary = fid(0);
         let fb = chain(&[1, 2]);
@@ -893,6 +916,7 @@ mod tests {
     }
 
     #[test]
+    /// 当主字体和回退字体都能覆盖时，优先选择主字体
     fn primary_preferred_over_fallback_when_both_cover() {
         let primary = fid(0);
         let fb = chain(&[1]);
@@ -901,6 +925,7 @@ mod tests {
     }
 
     #[test]
+    /// 按顺序遍历回退链
     fn falls_through_chain_in_order() {
         let primary = fid(0);
         let fb = chain(&[1, 2, 3]);
@@ -913,6 +938,7 @@ mod tests {
     }
 
     #[test]
+    /// 无覆盖时返回主字体
     fn no_coverage_returns_primary() {
         let primary = fid(0);
         let fb = chain(&[1, 2]);
@@ -926,6 +952,7 @@ mod tests {
     }
 
     #[test]
+    /// 空链始终返回主字体
     fn empty_chain_always_returns_primary() {
         let primary = fid(0);
         let fb: SmallVec<[(FontId, SharedString); 4]> = SmallVec::new();
@@ -934,6 +961,7 @@ mod tests {
     }
 
     #[test]
+    /// 槽位字体 ID 解析
     fn slot_font_id_resolution() {
         let primary = fid(7);
         let fb = chain(&[10, 20]);
@@ -943,6 +971,7 @@ mod tests {
     }
 
     #[test]
+    /// 无回退链时发射单个主字体 span
     fn run_spans_with_no_chain_emit_one_primary_span() {
         let primary = fid(0);
         let fb: SmallVec<[(FontId, SharedString); 4]> = SmallVec::new();
@@ -953,6 +982,7 @@ mod tests {
     }
 
     #[test]
+    /// 多字节字符使用字节偏移
     fn run_spans_use_byte_offsets_for_multibyte_chars() {
         let primary = fid(0);
         let fb = chain(&[1]);
@@ -978,6 +1008,7 @@ mod tests {
     }
 
     #[test]
+    /// span 尊重运行偏移
     fn run_spans_respect_run_offset() {
         let primary = fid(0);
         let fb = chain(&[1]);
@@ -1000,6 +1031,7 @@ mod tests {
     }
 
     #[test]
+    /// 组合标记与基础字符保持在回退 span 中
     fn run_spans_keep_combining_marks_with_base_in_fallback() {
         let primary = fid(0);
         let fb = chain(&[1]);
@@ -1020,6 +1052,7 @@ mod tests {
     }
 
     #[test]
+    /// emoji 簇内的 ZWJ 保持不分割
     fn run_spans_keep_zwj_inside_emoji_cluster() {
         let primary = fid(0);
         let fb = chain(&[1]);
@@ -1032,6 +1065,7 @@ mod tests {
     }
 
     #[test]
+    /// 相邻相同槽位合并
     fn run_spans_collapse_adjacent_same_slot() {
         let primary = fid(0);
         let fb = chain(&[1]);
@@ -1048,6 +1082,7 @@ mod tests {
     }
 
     #[test]
+    /// 空运行返回空 span
     fn run_spans_empty_run_returns_no_spans() {
         let primary = fid(0);
         let fb = chain(&[1]);

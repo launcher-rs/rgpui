@@ -87,22 +87,22 @@ mod tests {
     use std::cell::RefCell;
     use std::time::Duration;
 
-    // Note: All VisualTestAppContext tests are ignored by default because they require
-    // the macOS main thread. Standard Rust tests run on worker threads, which causes
-    // SIGABRT when interacting with macOS AppKit/Cocoa APIs.
+    // 注意：默认情况下所有 VisualTestAppContext 测试都会被忽略，因为它们需要
+    // macOS 主线程。标准 Rust 测试在工作线程上运行，与 macOS AppKit/Cocoa API
+    // 交互时会导致 SIGABRT。
     //
-    // To run these tests, use:
+    // 运行这些测试请使用：
     // cargo test -p gpui visual_test_context -- --ignored --test-threads=1
 
     #[test]
-    #[ignore] // Requires macOS main thread
+    #[ignore] // 需要 macOS 主线程
     fn test_foreground_tasks_run_with_run_until_parked() {
         let mut cx = VisualTestAppContext::new(current_platform(false));
 
         let task_ran = Rc::new(RefCell::new(false));
 
-        // Spawn a foreground task via the App's spawn method
-        // This should use our TestDispatcher, not the MacDispatcher
+        // 通过 App 的 spawn 方法生成前台任务
+        // 这应该使用 TestDispatcher，而不是 MacDispatcher
         {
             let task_ran = task_ran.clone();
             cx.update(|cx| {
@@ -113,24 +113,24 @@ mod tests {
             });
         }
 
-        // The task should not have run yet
+        // 任务尚未执行
         assert!(!*task_ran.borrow());
 
-        // Run until parked should execute the foreground task
+        // run_until_parked 应该执行前台任务
         cx.run_until_parked();
 
-        // Now the task should have run
+        // 现在任务应该已执行
         assert!(*task_ran.borrow());
     }
 
     #[test]
-    #[ignore] // Requires macOS main thread
+    #[ignore] // 需要 macOS 主线程
     fn test_advance_clock_triggers_delayed_tasks() {
         let mut cx = VisualTestAppContext::new(current_platform(false));
 
         let task_ran = Rc::new(RefCell::new(false));
 
-        // Spawn a task that waits for a timer
+        // 生成等待计时器的任务
         {
             let task_ran = task_ran.clone();
             let executor = cx.background_executor.clone();
@@ -143,19 +143,19 @@ mod tests {
             });
         }
 
-        // Run until parked - the task should be waiting on the timer
+        // 运行直到挂起 - 任务应该正在等待计时器
         cx.run_until_parked();
         assert!(!*task_ran.borrow());
 
-        // Advance clock past the timer duration
+        // 将时钟推进到超过计时器时长
         cx.advance_clock(Duration::from_millis(600));
 
-        // Now the task should have completed
+        // 现在任务应该已完成
         assert!(*task_ran.borrow());
     }
 
     #[test]
-    #[ignore] // Requires macOS main thread - window creation fails on test threads
+    #[ignore] // 需要 macOS 主线程 - 在测试线程上窗口创建会失败
     fn test_window_spawn_uses_test_dispatcher() {
         let mut cx = VisualTestAppContext::new(current_platform(false));
 
@@ -163,10 +163,10 @@ mod tests {
 
         let window = cx
             .open_offscreen_window_default(|_, cx| cx.new(|_| Empty))
-            .expect("Failed to open window");
+            .expect("打开窗口失败");
 
-        // Spawn a task via window.spawn - this is the critical test case
-        // for tooltip behavior, as tooltips use window.spawn for delayed show
+        // 通过 window.spawn 生成任务 - 这是工具提示行为的关键测试用例
+        // 因为工具提示使用 window.spawn 进行延迟显示
         {
             let task_ran = task_ran.clone();
             cx.update_window(window.into(), |_, window, cx| {
@@ -179,13 +179,13 @@ mod tests {
             .ok();
         }
 
-        // The task should not have run yet
+        // 任务尚未执行
         assert!(!*task_ran.borrow());
 
-        // Run until parked should execute the foreground task spawned via window
+        // run_until_parked 应该执行通过 window 生成的前台任务
         cx.run_until_parked();
 
-        // Now the task should have run
+        // 现在任务应该已执行
         assert!(*task_ran.borrow());
     }
 }

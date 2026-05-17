@@ -39,13 +39,13 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
     let mut deprecated = None;
     let mut doc_str: Option<String> = None;
 
-    /*
-    *
-    * #[action()]
-    * Struct Foo {
-    *  bar: bool // is bar considered an attribute
-    }
-    */
+/*
+*
+* #[action()]
+* struct Foo {
+*  bar: bool // bar 是否被视为属性
+}
+*/
     // 解析 #[action(...)] 属性中的各个配置项
     for attr in &input.attrs {
         if attr.path().is_ident("action") {
@@ -81,7 +81,7 @@ pub(crate) fn derive_action(input: TokenStream) -> TokenStream {
                         );
                     }
                     meta.input.parse::<Token![=]>()?;
-                    // Parse array of string literals
+                    // 解析字符串字面量数组
                     let content;
                     syn::bracketed!(content in meta.input);
                     let aliases = content.parse_terminated(

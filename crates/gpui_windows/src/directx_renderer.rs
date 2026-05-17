@@ -26,7 +26,7 @@ use gpui::*;
 /// 环境变量名，用于禁用 DirectComposition
 pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "GPUI_DISABLE_DIRECT_COMPOSITION";
 const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
-// This configuration is used for MSAA rendering on paths only, and it's guaranteed to be supported by DirectX 11.
+// 此配置用于路径的 MSAA 渲染，保证被 DirectX 11 支持
 const PATH_MULTISAMPLE_COUNT: u32 = 4;
 
 /// 字体渲染信息，包含伽马校正、对比度等参数
@@ -1413,7 +1413,7 @@ fn set_rasterizer_state(device: &ID3D11Device, device_context: &ID3D11DeviceCont
     Ok(())
 }
 
-// https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_blend_desc
+// 参见 https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_blend_desc
 #[inline]
 fn create_blend_state(device: &ID3D11Device) -> Result<ID3D11BlendState> {
     let mut desc = D3D11_BLEND_DESC::default();

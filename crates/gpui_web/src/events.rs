@@ -11,11 +11,13 @@ use wasm_bindgen::prelude::*;
 
 use crate::window::WebWindowInner;
 
+/// Web 平台事件监听器集合，持有所有注册的 DOM 事件回调
 pub struct WebEventListeners {
     #[allow(dead_code)]
     closures: Vec<Closure<dyn FnMut(JsValue)>>,
 }
 
+/// 鼠标点击状态跟踪器，用于计算双击等多击事件
 pub(crate) struct ClickState {
     last_position: Point<Pixels>,
     last_time: f64,
@@ -33,6 +35,11 @@ impl Default for ClickState {
 }
 
 impl ClickState {
+    /// 注册一次点击并返回当前点击计数
+    ///
+    /// # 参数
+    /// * `position` - 点击位置
+    /// * `time` - 点击时间戳
     fn register_click(&mut self, position: Point<Pixels>, time: f64) -> usize {
         let distance = ((f32::from(position.x) - f32::from(self.last_position.x)).powi(2)
             + (f32::from(position.y) - f32::from(self.last_position.y)).powi(2))
@@ -102,8 +109,8 @@ impl WebWindowInner {
         closure
     }
 
-    /// Registers a listener with `{passive: false}` so that `preventDefault()` works.
-    /// Needed for events like `wheel` which are passive by default in modern browsers.
+    /// 注册一个带有 `{passive: false}` 的监听器，使 `preventDefault()` 能够正常工作。
+    /// 对于 `wheel` 等在现代浏览器中默认为被动的事件是必需的。
     fn listen_non_passive(
         self: &Rc<Self>,
         event_name: &str,
@@ -605,7 +612,7 @@ pub(crate) fn is_mac_platform(browser_window: &web_sys::Window) -> bool {
     let navigator = browser_window.navigator();
 
     #[allow(deprecated)]
-    // navigator.platform() is deprecated but navigator.userAgentData is not widely available yet
+    // navigator.platform() 已弃用，但 navigator.userAgentData 尚未广泛可用
     if let Ok(platform) = navigator.platform() {
         if platform.contains("Mac") {
             return true;

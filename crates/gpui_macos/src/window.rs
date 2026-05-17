@@ -1866,32 +1866,31 @@ extern "C" fn handle_key_up(this: &Object, _: Sel, native_event: id) {
 }
 
 // 修改此方法时需要测试的事项：
-//  U.S. layout:
-//   - The IME consumes characters like 'j' and 'k', which makes paging through `less` in
-//     the terminal behave incorrectly by default. This behavior should be patched by our
-//     IME integration
-//   - `alt-t` should open the tasks menu
-//   - In vim mode, this keybinding should work:
+//  美国布局：
+//   - IME 会消耗 'j' 和 'k' 等字符，这会导致在终端中分页浏览 `less` 时
+//     默认行为不正确。我们的 IME 集成应该修补此行为
+//   - `alt-t` 应该打开任务菜单
+//   - 在 vim 模式下，此按键绑定应该有效：
 //     ```
 //        {
 //          "context": "Editor && vim_mode == insert",
 //          "bindings": {"j j": "vim::NormalBefore"}
 //        }
 //     ```
-//     and typing 'j k' in insert mode with this keybinding should insert the two characters
-//  Brazilian layout:
-//   - `" space` should create an unmarked quote
-//   - `" backspace` should delete the marked quote
-//   - `" "`should create an unmarked quote and a second marked quote
-//   - `" up` should insert a quote, unmark it, and move up one line
-//   - `" cmd-down` should insert a quote, unmark it, and move to the end of the file
-//   - `cmd-ctrl-space` and clicking on an emoji should type it
-//  Czech (QWERTY) layout:
-//   - in vim mode `option-4`  should go to end of line (same as $)
-//  Japanese (Romaji) layout:
-//   - type `a i left down up enter enter` should create an unmarked text "愛"
-//   - In vim mode with `jj` bound to `vim::NormalBefore` in insert mode, typing 'j i' with
-//     Japanese IME should produce "じ" (ji), not "jい"
+//     在插入模式下使用此按键绑定输入 'j k' 应该插入这两个字符
+//  巴西布局：
+//   - `" space` 应该创建一个未标记的引号
+//   - `" backspace` 应该删除已标记的引号
+//   - `" "`应该创建一个未标记的引号和一个第二个已标记的引号
+//   - `" up` 应该插入一个引号，取消标记，并向上移动一行
+//   - `" cmd-down` 应该插入一个引号，取消标记，并移动到文件末尾
+//   - `cmd-ctrl-space` 并点击表情符号应该输入它
+//  捷克（QWERTY）布局：
+//   - 在 vim 模式下 `option-4` 应该跳转到行尾（与 $ 相同）
+//  日语（罗马字）布局：
+//   - 输入 `a i left down up enter enter` 应该创建未标记文本 "愛"
+//   - 在 vim 模式下，如果在插入模式下将 `jj` 绑定到 `vim::NormalBefore`，
+//     输入 'j i' 时日语 IME 应该产生 "じ"（ji），而不是 "jい"
 
 /// 如果当前键盘输入源是基于组合的 IME（例如日语平假名、韩语、中文拼音），
 /// 则返回 true，这些 IME 会产生非 ASCII 输出。
@@ -2864,11 +2863,11 @@ unsafe fn remove_layer_background(layer: id) {
 
         let filters: id = msg_send![layer, filters];
         if !filters.is_null() {
-            // Remove the increased saturation.
-            // The effect of a `CAFilter` or `CIFilter` is determined by its name, and the
-            // `description` reflects its name and some parameters. Currently `NSVisualEffectView`
-            // uses a `CAFilter` named "colorSaturate". If one day they switch to `CIFilter`, the
-            // `description` will still contain "Saturat" ("... inputSaturation = ...").
+            // 移除增加的饱和度。
+            // `CAFilter` 或 `CIFilter` 的效果由其名称决定，而
+            // `description` 反映其名称和一些参数。目前 `NSVisualEffectView`
+            // 使用名为 "colorSaturate" 的 `CAFilter`。如果有一天他们切换到 `CIFilter`，
+            // `description` 仍然会包含 "Saturat"（"... inputSaturation = ..."）。
             let test_string: id = ns_string("Saturat");
             let count = NSArray::count(filters);
             for i in 0..count {
@@ -2906,7 +2905,7 @@ extern "C" fn add_titlebar_accessory_view_controller(this: &Object, _: Sel, view
     unsafe {
         let _: () = msg_send![super(this, class!(NSWindow)), addTitlebarAccessoryViewController: view_controller];
 
-        // Hide the native tab bar and set its height to 0, since we render our own.
+        // 隐藏原生标签栏并将其高度设置为 0，因为我们渲染自己的标签栏。
         let accessory_view: id = msg_send![view_controller, view];
         let _: () = msg_send![accessory_view, setHidden: YES];
         let mut frame: NSRect = msg_send![accessory_view, frame];

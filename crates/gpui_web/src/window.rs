@@ -13,6 +13,7 @@ use gpui::{
 use gpui_wgpu::{WgpuContext, WgpuRenderer, WgpuSurfaceConfig};
 use wasm_bindgen::prelude::*;
 
+/// Web 窗口回调函数集合，存储窗口各类事件的回调
 #[derive(Default)]
 pub(crate) struct WebWindowCallbacks {
     pub(crate) request_frame: Option<Box<dyn FnMut(RequestFrameOptions)>>,
@@ -27,6 +28,7 @@ pub(crate) struct WebWindowCallbacks {
     pub(crate) hit_test_window_control: Option<Box<dyn FnMut() -> Option<WindowControlArea>>>,
 }
 
+/// Web 窗口可变状态，包含渲染器、边界、缩放因子等运行时数据
 pub(crate) struct WebWindowMutableState {
     pub(crate) renderer: WgpuRenderer,
     pub(crate) bounds: Bounds<Pixels>,
@@ -42,6 +44,7 @@ pub(crate) struct WebWindowMutableState {
     pub(crate) capslock: Capslock,
 }
 
+/// Web 窗口内部结构，持有浏览器窗口、canvas、输入元素等核心引用
 pub(crate) struct WebWindowInner {
     pub(crate) browser_window: web_sys::Window,
     pub(crate) canvas: web_sys::HtmlCanvasElement,
@@ -59,6 +62,7 @@ pub(crate) struct WebWindowInner {
     pending_physical_size: Cell<Option<(u32, u32)>>,
 }
 
+/// Web 平台窗口实现，实现 gpui 的 `PlatformWindow` trait
 pub struct WebWindow {
     inner: Rc<WebWindowInner>,
     display: Rc<dyn PlatformDisplay>,
@@ -71,6 +75,13 @@ pub struct WebWindow {
 }
 
 impl WebWindow {
+    /// 创建新的 WebWindow 实例
+    ///
+    /// # 参数
+    /// * `handle` - 窗口句柄
+    /// * `_params` - 窗口参数
+    /// * `context` - WebGPU 上下文
+    /// * `browser_window` - 浏览器窗口对象
     pub fn new(
         handle: AnyWindowHandle,
         _params: WindowParams,
@@ -235,7 +246,7 @@ impl WebWindow {
                     let lh = ph as f64 / dpr;
                     (pw, ph, lw as f32, lh as f32)
                 } else {
-                    // Safari fallback: use contentRect (always CSS px).
+                    // Safari 回退：使用 contentRect（始终是 CSS 像素）。
                     let rect = entry.content_rect();
                     let lw = rect.width() as f32;
                     let lh = rect.height() as f32;
@@ -255,12 +266,12 @@ impl WebWindow {
                 .last_physical_size
                 .set((physical_width, physical_height));
 
-            // Skip rendering to a zero-size canvas (e.g. display:none).
+            // 跳过渲染零大小的 canvas（例如 display:none）。
             if physical_width == 0 || physical_height == 0 {
                 let mut s = inner.state.borrow_mut();
                 s.bounds.size = Size::default();
                 s.scale_factor = dpr_f32;
-                // Still fire the callback so GPUI knows the window is gone.
+                // 仍然触发回调，以便 GPUI 知道窗口已消失。
                 drop(s);
                 let mut cbs = inner.callbacks.borrow_mut();
                 if let Some(ref mut callback) = cbs.resize {
@@ -316,7 +327,7 @@ impl WebWindowInner {
                 }
             }
 
-            // Re-schedule for the next frame
+            // 重新调度下一帧
             if let Some(ref func) = *raf_handle_inner.borrow() {
                 this.browser_window.request_animation_frame(func).ok();
             }
@@ -469,7 +480,7 @@ impl Drop for MqlHandle {
     }
 }
 
-// Safari does not support `devicePixelContentBoxSize`, so detect whether it's available.
+// Safari 不支持 `devicePixelContentBoxSize`，因此检测其是否可用。
 fn check_device_pixel_support() -> bool {
     let global: JsValue = js_sys::global().into();
     let Ok(constructor) = js_sys::Reflect::get(&global, &"ResizeObserverEntry".into()) else {
@@ -683,7 +694,7 @@ impl PlatformWindow for WebWindow {
     }
 
     fn completed_frame(&self) {
-        // On web, presentation happens automatically via wgpu surface present
+        // 在 Web 上，呈现通过 wgpu surface 自动完成
     }
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {

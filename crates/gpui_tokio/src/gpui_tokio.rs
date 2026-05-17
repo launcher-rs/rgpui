@@ -5,17 +5,17 @@ use gpui::defer;
 
 pub use tokio::task::JoinError;
 
-/// Initializes the Tokio wrapper using a new Tokio runtime with 2 worker threads.
+/// 初始化 Tokio 包装器，使用带有 2 个工作线程的新 Tokio 运行时。
 ///
-/// If you need more threads (or access to the runtime outside of GPUI), you can create the runtime
-/// yourself and pass a Handle to `init_from_handle`.
+/// 如果需要更多线程（或在 GPUI 外部访问运行时），可以自行创建运行时
+/// 并将 Handle 传递给 `init_from_handle`。
 pub fn init(cx: &mut App) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
-        // Since we now have two executors, let's try to keep our footprint small
+        // 由于现在有两个执行器，尽量保持占用最小
         .worker_threads(2)
         .enable_all()
         .build()
-        .expect("Failed to initialize Tokio");
+        .expect("初始化 Tokio 失败");
 
     let handle = runtime.handle().clone();
     cx.set_global(GlobalTokio {
@@ -24,7 +24,7 @@ pub fn init(cx: &mut App) {
     });
 }
 
-/// Initializes the Tokio wrapper using a Tokio runtime handle.
+/// 使用 Tokio 运行时句柄初始化包装器。
 pub fn init_from_handle(cx: &mut App, handle: tokio::runtime::Handle) {
     cx.set_global(GlobalTokio {
         owned_runtime: None,
@@ -32,14 +32,18 @@ pub fn init_from_handle(cx: &mut App, handle: tokio::runtime::Handle) {
     });
 }
 
+/// 全局 Tokio 运行时包装器
 struct GlobalTokio {
+    /// 拥有的运行时（如果由本 crate 创建）
     owned_runtime: Option<tokio::runtime::Runtime>,
+    /// 运行时句柄
     handle: tokio::runtime::Handle,
 }
 
 impl Global for GlobalTokio {}
 
 impl Drop for GlobalTokio {
+    /// 销毁时关闭运行时
     fn drop(&mut self) {
         if let Some(runtime) = self.owned_runtime.take() {
             runtime.shutdown_background();
@@ -47,11 +51,12 @@ impl Drop for GlobalTokio {
     }
 }
 
+/// Tokio 异步任务包装器
 pub struct Tokio {}
 
 impl Tokio {
-    /// Spawns the given future on Tokio's thread pool, and returns it via a GPUI task
-    /// Note that the Tokio task will be cancelled if the GPUI task is dropped
+    /// 在 Tokio 线程池上生成给定的 Future，并通过 GPUI 任务返回结果
+    /// 注意：如果 GPUI 任务被丢弃，Tokio 任务也会被取消
     pub fn spawn<C, Fut, R>(cx: &C, f: Fut) -> Task<Result<R, JoinError>>
     where
         C: AppContext,
@@ -72,8 +77,8 @@ impl Tokio {
         })
     }
 
-    /// Spawns the given future on Tokio's thread pool, and returns it via a GPUI task
-    /// Note that the Tokio task will be cancelled if the GPUI task is dropped
+    /// 在 Tokio 线程池上生成给定的 Future，并通过 GPUI 任务返回 Result
+    /// 注意：如果 GPUI 任务被丢弃，Tokio 任务也会被取消
     pub fn spawn_result<C, Fut, R>(cx: &C, f: Fut) -> Task<anyhow::Result<R>>
     where
         C: AppContext,
@@ -94,6 +99,7 @@ impl Tokio {
         })
     }
 
+    /// 获取 Tokio 运行时句柄
     pub fn handle(cx: &App) -> tokio::runtime::Handle {
         GlobalTokio::global(cx).handle.clone()
     }

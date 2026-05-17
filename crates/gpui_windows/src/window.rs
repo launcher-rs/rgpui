@@ -1512,8 +1512,8 @@ fn set_window_composition_attribute(hwnd: HWND, color: Option<Color>, state: u32
     }
 }
 
-// When the platform title bar is hidden, Windows may think that our application is meant to appear 'fullscreen'
-// and will stop the taskbar from appearing on top of our window. Prevent this.
+// 当隐藏平台标题栏时，Windows 可能认为应用程序应该以"全屏"模式显示
+// 从而阻止任务栏出现在窗口上方。此函数用于防止此行为。
 // https://devblogs.microsoft.com/oldnewthing/20250522-00/?p=111211
 fn set_non_rude_hwnd(hwnd: HWND, non_rude: bool) {
     if non_rude {

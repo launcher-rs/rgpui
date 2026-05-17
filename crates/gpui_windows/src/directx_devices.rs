@@ -21,11 +21,18 @@ use windows::Win32::{
 };
 use windows::core::Interface;
 
+/// 尝试从设备丢失状态中恢复，最多重试 5 次
+///
+/// # 参数
+/// * `f` - 需要执行的闭包，返回 Result<T>
+///
+/// # 返回
+/// 成功时返回 Ok(T)，失败时返回错误
 pub(crate) fn try_to_recover_from_device_lost<T>(mut f: impl FnMut() -> Result<T>) -> Result<T> {
     (0..5)
         .map(|i| {
             if i > 0 {
-                // Add a small delay before retrying
+                // 重试前添加短暂延迟
                 std::thread::sleep(std::time::Duration::from_millis(100 + i * 10));
             }
             f()
@@ -35,15 +42,26 @@ pub(crate) fn try_to_recover_from_device_lost<T>(mut f: impl FnMut() -> Result<T
         .context("DirectXRenderer failed to recover from lost device after multiple attempts")
 }
 
+/// DirectX 设备集合
+///
+/// 封装了 Direct3D 11 和 DXGI 所需的核心设备对象
 #[derive(Clone)]
 pub(crate) struct DirectXDevices {
+    /// DXGI 适配器
     pub(crate) adapter: IDXGIAdapter1,
+    /// DXGI 工厂
     pub(crate) dxgi_factory: IDXGIFactory6,
+    /// D3D11 设备
     pub(crate) device: ID3D11Device,
+    /// D3D11 设备上下文
     pub(crate) device_context: ID3D11DeviceContext,
 }
 
 impl DirectXDevices {
+    /// 创建新的 DirectX 设备实例
+    ///
+    /// # 返回
+    /// 返回初始化成功的 DirectXDevices 实例，或错误
     pub(crate) fn new() -> Result<Self> {
         let debug_layer_available = check_debug_layer_available();
         let dxgi_factory =
@@ -52,13 +70,13 @@ impl DirectXDevices {
             get_adapter(&dxgi_factory, debug_layer_available).context("Getting DXGI adapter")?;
         match feature_level {
             D3D_FEATURE_LEVEL_11_1 => {
-                log::info!("Created device with Direct3D 11.1 feature level.")
+                log::info!("创建了 Direct3D 11.1 特性级别的设备。")
             }
             D3D_FEATURE_LEVEL_11_0 => {
-                log::info!("Created device with Direct3D 11.0 feature level.")
+                log::info!("创建了 Direct3D 11.0 特性级别的设备。")
             }
             D3D_FEATURE_LEVEL_10_1 => {
-                log::info!("Created device with Direct3D 10.1 feature level.")
+                log::info!("创建了 Direct3D 10.1 特性级别的设备。")
             }
             _ => unreachable!(),
         }
@@ -72,6 +90,7 @@ impl DirectXDevices {
     }
 }
 
+/// 检查调试层是否可用（仅在 debug 模式下）
 #[inline]
 fn check_debug_layer_available() -> bool {
     #[cfg(debug_assertions)]
@@ -88,20 +107,35 @@ fn check_debug_layer_available() -> bool {
     }
 }
 
+/// 获取 DXGI 工厂实例
+///
+/// # 参数
+/// * `debug_layer_available` - 调试层是否可用
+///
+/// # 返回
+/// 返回 DXGI 工厂实例，或错误
 #[inline]
 fn get_dxgi_factory(debug_layer_available: bool) -> Result<IDXGIFactory6> {
     let factory_flag = if debug_layer_available {
         DXGI_CREATE_FACTORY_DEBUG
     } else {
         #[cfg(debug_assertions)]
-        log::warn!(
-            "Failed to get DXGI debug interface. DirectX debugging features will be disabled."
-        );
+            log::warn!("获取 DXGI 调试接口失败。DirectX 调试功能将被禁用。");
         DXGI_CREATE_FACTORY_FLAGS::default()
     };
     unsafe { Ok(CreateDXGIFactory2(factory_flag)?) }
 }
 
+/// 枚举并获取合适的 DXGI 适配器
+///
+/// 遍历所有适配器，找到支持 Direct3D 11 的设备并创建它
+///
+/// # 参数
+/// * `dxgi_factory` - DXGI 工厂实例
+/// * `debug_layer_available` - 调试层是否可用
+///
+/// # 返回
+/// 返回元组：(适配器, 设备, 设备上下文, 特性级别)
 #[inline]
 fn get_adapter(
     dxgi_factory: &IDXGIFactory6,
@@ -120,8 +154,7 @@ fn get_adapter(
                 .to_string();
             log::info!("Using GPU: {}", gpu_name);
         }
-        // Check to see whether the adapter supports Direct3D 11 and create
-        // the device if it does.
+        // 检查适配器是否支持 Direct3D 11，如果支持则创建设备
         let mut context: Option<ID3D11DeviceContext> = None;
         let mut feature_level = D3D_FEATURE_LEVEL::default();
         if let Some(device) = get_device(
@@ -139,6 +172,16 @@ fn get_adapter(
     unreachable!()
 }
 
+/// 在指定适配器上创建 D3D11 设备
+///
+/// # 参数
+/// * `adapter` - DXGI 适配器
+/// * `context` - 用于接收设备上下文的可选指针
+/// * `feature_level` - 用于接收特性级别的可选指针
+/// * `debug_layer_available` - 调试层是否可用
+///
+/// # 返回
+/// 返回创建的 ID3D11Device 实例，或错误
 #[inline]
 fn get_device(
     adapter: &IDXGIAdapter1,
@@ -158,7 +201,7 @@ fn get_device(
             D3D_DRIVER_TYPE_UNKNOWN,
             HMODULE::default(),
             device_flags,
-            // 4x MSAA is required for Direct3D Feature Level 10.1 or better
+            // Direct3D 特性级别 10.1 或更高需要 4x MSAA 支持
             Some(&[
                 D3D_FEATURE_LEVEL_11_1,
                 D3D_FEATURE_LEVEL_11_0,
@@ -188,7 +231,7 @@ fn get_device(
         Ok(device)
     } else {
         Err(anyhow::anyhow!(
-            "Required feature StructuredBuffer is not supported by GPU/driver"
+            "GPU/驱动程序不支持所需的 StructuredBuffer 特性"
         ))
     }
 }

@@ -91,9 +91,9 @@ struct Args {
 }
 
 impl Args {
-    /// By default, proptest uses random seeds unless `$PROPTEST_SEED` is set.
-    /// Rather than managing both `$SEED` and `$PROPTEST_SEED`, we intercept
-    /// `config = ...` tokens and add a call to `gpui::apply_seed_to_config`.
+    /// 默认情况下，proptest 使用随机种子，除非设置了 `$PROPTEST_SEED`。
+    /// 我们不需要同时管理 `$SEED` 和 `$PROPTEST_SEED`，而是拦截
+    /// `config = ...` token 并添加对 `gpui::apply_seed_to_config` 的调用。
     fn render(&self) -> TokenStream {
         let user_provided_config = match &self.config {
             None => quote! { ::gpui::proptest::prelude::ProptestConfig::default() },
@@ -148,9 +148,9 @@ struct ParsedArgs {
     proptest_args: TokenStream,
     errors: TokenStream,
 
-    // exprs passed at the call-site
+    // 在调用处传递的表达式
     inner_fn_args: TokenStream,
-    // args in the declaration
+    // 在声明中的参数
     inner_fn_decl_args: TokenStream,
 }
 
@@ -162,7 +162,7 @@ fn parse_args(args: Punctuated<FnArg, Comma>, test_name: &Ident) -> ParsedArgs {
     remove_std_rng(&mut parsed, &mut args);
     remove_background_executor(&mut parsed, &mut args);
 
-    // all remaining args forwarded to proptest's macro
+    // 所有剩余参数转发给 proptest 的宏
     parsed.proptest_args = quote!( #(#args),* );
 
     parsed

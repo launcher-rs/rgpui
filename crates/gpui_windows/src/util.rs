@@ -155,13 +155,12 @@ pub(crate) fn logical_point(x: f32, y: f32, scale_factor: f32) -> Point<Pixels> 
     }
 }
 
-// https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/apply-windows-themes
+// 参见 https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/apply-windows-themes
 #[inline]
 pub(crate) fn system_appearance() -> Result<WindowAppearance> {
     let ui_settings = UISettings::new()?;
     let foreground_color = ui_settings.GetColorValue(UIColorType::Foreground)?;
-    // If the foreground is light, then is_color_light will evaluate to true,
-    // meaning Dark mode is enabled.
+    // 如果前景色为浅色，则 is_color_light 将返回 true，表示启用了深色模式。
     if is_color_light(&foreground_color) {
         Ok(WindowAppearance::Dark)
     } else {

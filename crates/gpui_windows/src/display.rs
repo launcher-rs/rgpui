@@ -44,7 +44,7 @@ pub(crate) struct WindowsDisplay {
     uuid: Uuid,
 }
 
-// The `HMONITOR` is thread-safe.
+// `HMONITOR` 是线程安全的
 unsafe impl Send for WindowsDisplay {}
 unsafe impl Sync for WindowsDisplay {}
 
@@ -110,8 +110,13 @@ impl WindowsDisplay {
         WindowsDisplay::new(Self::display_id_for_monitor(monitor))
     }
 
-    /// Check if the center point of given bounds is inside this monitor
     /// 检查给定边界的中心点是否在此显示器内
+    ///
+    /// # 参数
+    /// * `bounds` - 要检查的边界
+    ///
+    /// # 返回
+    /// 如果中心点在此显示器内返回 true，否则返回 false
     pub fn check_given_bounds(&self, bounds: Bounds<Pixels>) -> bool {
         let center = bounds.center();
         let center = POINT {

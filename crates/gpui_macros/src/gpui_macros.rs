@@ -165,9 +165,9 @@ pub fn derive_visual_context(input: TokenStream) -> TokenStream {
     derive_visual_context::derive_visual_context(input)
 }
 
-/// Derive macro for creating refinement types.
+/// 用于创建细化类型的派生宏。
 ///
-/// Generates a `Refinement` struct for partial initialization of complex structs.
+/// 为复杂的结构体生成 `Refinement` 结构体，支持部分初始化。
 #[proc_macro_derive(Refineable, attributes(refineable))]
 pub fn derive_refineable(input: TokenStream) -> TokenStream {
     derive_refineable::derive_refineable(input)
@@ -391,11 +391,10 @@ pub(crate) fn get_simple_attribute_field(ast: &DeriveInput, name: &'static str) 
     }
 }
 
-/// A macro used in tests for cross-platform path string literals in tests. On Windows it replaces
-/// `/` with `\\` and adds `C:` to the beginning of absolute paths. On other platforms, the path is
-/// returned unmodified.
+/// 用于测试中跨平台路径字符串字面量的宏。在 Windows 上将 `/` 替换为 `\\` 并在绝对路径开头添加 `C:`。
+/// 在其他平台上，路径保持不变。
 ///
-/// # Example
+/// # 示例
 /// ```rust
 /// use gpui_macros::path;
 ///
@@ -423,10 +422,10 @@ pub fn path(input: TokenStream) -> TokenStream {
     })
 }
 
-/// This macro replaces the path prefix `file:///` with `file:///C:/` for Windows.
-/// But if the target OS is not Windows, the URI is returned as is.
+/// 此宏将路径前缀 `file:///` 替换为 `file:///C:/`（仅适用于 Windows）。
+/// 如果目标操作系统不是 Windows，则 URI 保持不变。
 ///
-/// # Example
+/// # 示例
 /// ```rust
 /// use gpui_macros::uri;
 ///
@@ -449,10 +448,10 @@ pub fn uri(input: TokenStream) -> TokenStream {
     })
 }
 
-/// This macro replaces the line endings `\n` with `\r\n` for Windows.
-/// But if the target OS is not Windows, the line endings are returned as is.
+/// 此宏将行尾 `\n` 替换为 `\r\n`（仅适用于 Windows）。
+/// 如果目标操作系统不是 Windows，则行尾保持不变。
 ///
-/// # Example
+/// # 示例
 /// ```rust
 /// use gpui_macros::line_endings;
 ///

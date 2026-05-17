@@ -1724,7 +1724,7 @@ fn font_face_to_font(font_face: &IDWriteFontFace3, locale: &HSTRING) -> Option<F
     })
 }
 
-// https://learn.microsoft.com/en-us/windows/win32/api/dwrite/ne-dwrite-dwrite_font_feature_tag
+// 参见 https://learn.microsoft.com/en-us/windows/win32/api/dwrite/ne-dwrite-dwrite_font_feature_tag
 fn apply_font_features(
     direct_write_features: &IDWriteTypography,
     features: &FontFeatures,
@@ -1854,8 +1854,8 @@ fn get_system_ui_font_name() -> SharedString {
     }
 }
 
-// One would think that with newer DirectWrite method: IDWriteFontFace4::GetGlyphImageFormats
-// but that doesn't seem to work for some glyphs, say ❤
+// 理论上可以使用较新的 DirectWrite 方法：IDWriteFontFace4::GetGlyphImageFormats
+// 但对于某些字形（如 ❤）似乎不起作用
 fn is_color_glyph(
     font_face: &IDWriteFontFace3,
     glyph_id: GlyphId,

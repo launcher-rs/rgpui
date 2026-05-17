@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use wgpu::TextureFormat;
 
+/// wgpu GPU 上下文，包含设备、队列和适配器等信息
 pub struct WgpuContext {
     pub instance: wgpu::Instance,
     pub adapter: wgpu::Adapter,
@@ -16,6 +17,7 @@ pub struct WgpuContext {
     device_lost: Arc<AtomicBool>,
 }
 
+/// 合成器 GPU 提示，用于适配器选择
 #[derive(Clone, Copy)]
 pub struct CompositorGpuHint {
     pub vendor_id: u32,
@@ -54,14 +56,14 @@ impl WgpuContext {
                 .log_err(),
             Err(std::env::VarError::NotPresent) => None,
             err => {
-                err.context("Failed to read value of `ZED_DEVICE_ID` environment variable")
+                err.context("读取 `ZED_DEVICE_ID` 环境变量失败")
                     .log_err();
                 None
             }
         };
 
-        // Select an adapter by actually testing surface configuration with the real device.
-        // This is the only reliable way to determine compatibility on hybrid GPU systems.
+        // 通过实际测试表面配置来选择适配器。
+        // 这是在混合 GPU 系统上确定兼容性的唯一可靠方法。
         let (adapter, device, queue, dual_source_blending, color_texture_format) =
             gpui::block_on(Self::select_adapter_and_device(
                 &instance,
@@ -100,6 +102,7 @@ impl WgpuContext {
     }
 
     #[cfg(target_family = "wasm")]
+    /// 为 Web/WASM 平台创建 wgpu 上下文
     pub async fn new_web() -> anyhow::Result<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL,
@@ -139,6 +142,7 @@ impl WgpuContext {
         })
     }
 
+    /// 创建 wgpu 设备和队列
     async fn create_device(
         adapter: &wgpu::Adapter,
     ) -> anyhow::Result<(wgpu::Device, wgpu::Queue, bool, TextureFormat)> {
@@ -191,6 +195,7 @@ impl WgpuContext {
         })
     }
 
+    /// 检查适配器是否与表面兼容
     pub fn check_compatible_with_surface(&self, surface: &wgpu::Surface<'_>) -> anyhow::Result<()> {
         let caps = surface.get_capabilities(&self.adapter);
         if caps.formats.is_empty() {
@@ -206,11 +211,11 @@ impl WgpuContext {
         Ok(())
     }
 
-    /// Select an adapter and create a device, testing that the surface can actually be configured.
-    /// This is the only reliable way to determine compatibility on hybrid GPU systems, where
-    /// adapters may report surface compatibility via get_capabilities() but fail when actually
-    /// configuring (e.g., NVIDIA reporting Vulkan Wayland support but failing because the
-    /// Wayland compositor runs on the Intel GPU).
+    /// 选择适配器并创建设备，测试表面是否可以实际配置。
+    /// 这是在混合 GPU 系统上确定兼容性的唯一可靠方法，
+    /// 适配器可能通过 get_capabilities() 报告表面兼容性，
+    /// 但在实际配置时失败（例如 NVIDIA 报告支持 Vulkan Wayland，
+    /// 但因为 Wayland 合成器运行在 Intel GPU 上而失败）。
     #[cfg(not(target_family = "wasm"))]
     async fn select_adapter_and_device(
         instance: &wgpu::Instance,
@@ -235,18 +240,18 @@ impl WgpuContext {
             log::info!("ZED_DEVICE_ID filter: {:#06x}", device_id);
         }
 
-        // Sort adapters into a single priority order. Tiers (from highest to lowest):
+        // 将适配器按单一优先级排序。层级（从高到低）：
         //
-        // 1. ZED_DEVICE_ID match — explicit user override
-        // 2. Compositor GPU match — the GPU the display server is rendering on
-        // 3. Device type (Discrete > Integrated > Other > Virtual > Cpu).
-        //    "Other" ranks above "Virtual" because OpenGL seems to count as "Other".
-        // 4. Backend — prefer Vulkan/Metal/Dx12 over GL/etc.
+        // 1. ZED_DEVICE_ID 匹配 — 用户显式覆盖
+        // 2. 合成器 GPU 匹配 — 显示服务器正在渲染的 GPU
+        // 3. 设备类型（Discrete > Integrated > Other > Virtual > Cpu）。
+        //    "Other" 排在 "Virtual" 之上，因为 OpenGL 似乎被归类为 "Other"。
+        // 4. 后端 — 优先选择 Vulkan/Metal/Dx12 而非 GL 等。
         adapters.sort_by_key(|adapter| {
             let info = adapter.get_info();
 
-            // Backends like OpenGL report device=0 for all adapters, so
-            // device-based matching is only meaningful when non-zero.
+            // OpenGL 等后端对所有适配器报告 device=0，
+            // 因此基于设备的匹配仅在非零时有意义。
             let device_known = info.device != 0;
 
             let user_override: u8 = match device_id_filter {
@@ -290,7 +295,7 @@ impl WgpuContext {
             )
         });
 
-        // Log all available adapters (in sorted order)
+        // 记录所有可用的适配器（按排序顺序）
         log::info!("Found {} GPU adapter(s):", adapters.len());
         for adapter in &adapters {
             let info = adapter.get_info();
@@ -304,7 +309,7 @@ impl WgpuContext {
             );
         }
 
-        // Test each adapter by creating a device and configuring the surface
+        // 测试每个适配器，创建设备并配置表面
         for adapter in adapters {
             let info = adapter.get_info();
 
@@ -348,8 +353,8 @@ impl WgpuContext {
         anyhow::bail!("No GPU adapter found that can configure the display surface")
     }
 
-    /// Try to use an adapter with a surface by creating a device and testing configuration.
-    /// Returns the device and queue if successful, allowing them to be reused.
+    /// 尝试使用适配器与表面，创建设备并测试配置。
+    /// 成功时返回设备和队列，以便复用。
     #[cfg(not(target_family = "wasm"))]
     async fn try_adapter_with_surface(
         adapter: &wgpu::Adapter,
@@ -393,6 +398,7 @@ impl WgpuContext {
         ))
     }
 
+    /// 选择适合的彩色纹理格式
     fn select_color_texture_format(adapter: &wgpu::Adapter) -> anyhow::Result<wgpu::TextureFormat> {
         let required_usages = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         let bgra_features = adapter.get_texture_format_features(wgpu::TextureFormat::Bgra8Unorm);
@@ -426,27 +432,30 @@ impl WgpuContext {
             rgba_features.allowed_usages,
         ))
     }
+    /// 检查是否支持双源混合
     pub fn supports_dual_source_blending(&self) -> bool {
         self.dual_source_blending
     }
 
+    /// 获取彩色纹理格式
     pub fn color_texture_format(&self) -> wgpu::TextureFormat {
         self.color_texture_format
     }
 
-    /// Returns true if the GPU device was lost (e.g., due to driver crash, suspend/resume).
-    /// When this returns true, the context should be recreated.
+    /// 返回 GPU 设备是否丢失（例如由于驱动崩溃、挂起/恢复）。
+    /// 当返回 true 时，需要重新创建上下文。
     pub fn device_lost(&self) -> bool {
         self.device_lost.load(Ordering::Relaxed)
     }
 
-    /// Returns a clone of the device_lost flag for sharing with renderers.
+    /// 返回 device_lost 标志的克隆，用于与渲染器共享
     pub(crate) fn device_lost_flag(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.device_lost)
     }
 }
 
 #[cfg(not(target_family = "wasm"))]
+/// 解析 PCI 设备 ID 字符串为 u32
 fn parse_pci_id(id: &str) -> anyhow::Result<u32> {
     let mut id = id.trim();
 

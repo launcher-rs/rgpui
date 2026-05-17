@@ -43,7 +43,7 @@ use gpui::*;
 pub struct WindowsPlatform {
     inner: Rc<WindowsPlatformInner>,
     raw_window_handles: Arc<RwLock<SmallVec<[SafeHwnd; 4]>>>,
-    // The below members will never change throughout the entire lifecycle of the app.
+    // 以下成员在应用整个生命周期中不会改变
     headless: bool,
     icon: HICON,
     background_executor: BackgroundExecutor,
@@ -51,8 +51,8 @@ pub struct WindowsPlatform {
     text_system: Arc<dyn PlatformTextSystem>,
     direct_write_text_system: Option<Arc<DirectWriteTextSystem>>,
     drop_target_helper: Option<IDropTargetHelper>,
-    /// Flag to instruct the `VSyncProvider` thread to invalidate the directx devices
-    /// as resizing them has failed, causing us to have lost at least the render target.
+    /// 标记用于指示 `VSyncProvider` 线程使 DirectX 设备失效
+    /// 因为调整它们的大小失败了，导致我们至少丢失了渲染目标
     invalidate_devices: Arc<AtomicBool>,
     handle: HWND,
     disable_direct_composition: bool,
@@ -61,7 +61,7 @@ pub struct WindowsPlatform {
 struct WindowsPlatformInner {
     state: WindowsPlatformState,
     raw_window_handles: std::sync::Weak<RwLock<SmallVec<[SafeHwnd; 4]>>>,
-    // The below members will never change throughout the entire lifecycle of the app.
+    // 以下成员在应用整个生命周期中不会改变
     validation_number: usize,
     main_receiver: PriorityQueueReceiver<RunnableVariant>,
     dispatcher: Arc<WindowsDispatcher>,
@@ -76,9 +76,9 @@ pub(crate) struct WindowsPlatformState {
     // 新增：托盘事件回调
     tray_icon_event_callback: RefCell<Option<Box<dyn FnMut(TrayIconEvent)>>>,
     tray_menu_action_callback: RefCell<Option<Box<dyn FnMut(SharedString)>>>,
-    // NOTE: standard cursor handles don't need to close.
+    // 注意：标准光标句柄不需要关闭
     pub(crate) current_cursor: Cell<Option<HCURSOR>>,
-    /// Shared with each window so `WM_SETCURSOR` can read it directly.
+    /// 与每个窗口共享，以便 `WM_SETCURSOR` 可以直接读取
     pub(crate) cursor_visible: Arc<AtomicBool>,
     directx_devices: RefCell<Option<DirectXDevices>>,
 }
@@ -258,9 +258,10 @@ impl WindowsPlatform {
             });
     }
 
-    /// 生成窗口创建所需的信息
+    /// 收集平台级别共享的资源配置，用于传递给新创建的窗口
     ///
-    /// 该方法收集平台级别共享的资源配置，用于传递给新创建的窗口
+    /// # 返回
+    /// 返回窗口创建信息结构体
     fn generate_creation_info(&self) -> WindowCreationInfo {
         WindowCreationInfo {
             icon: self.icon,
@@ -466,13 +467,13 @@ impl Platform for WindowsPlatform {
         self.inner
             .with_callback(|callbacks| &callbacks.quit, |callback| callback());
 
-        // Bypass the CRT exit logic, which runs atexit handlers before calling ExitProcess.
-        // aws-lc registers an atexit handler that intentionally acquires a lock without releasing it.
-        // aws-lc also has thread_local objects which acquire this lock in their destructor.
-        // Destructors for thread_locals run under the loader lock, so there is a race condition
-        // where, if a thread exits after atexit handlers have run, the TLS destructors will block
-        // indefinitely on this lock while holding the loader lock. Since ExitProcess also requires
-        // the loader lock, process teardown will deadlock.
+        // 绕过 CRT 退出逻辑，该逻辑在调用 ExitProcess 之前运行 atexit 处理程序。
+        // aws-lc 注册了一个 atexit 处理程序，该处理程序故意获取锁而不释放它。
+        // aws-lc 还有 thread_local 对象，在其析构函数中获取此锁。
+        // thread_locals 的析构函数在加载器锁下运行，因此存在竞争条件
+        // 如果在 atexit 处理程序运行后有线程退出，TLS 析构函数将
+        // 在持有加载器锁时无限期地阻塞此锁。由于 ExitProcess 也需要
+        // 加载器锁，进程拆卸将死锁。
         unsafe {
             windows::Win32::System::Threading::ExitProcess(0);
         }
@@ -507,11 +508,9 @@ impl Platform for WindowsPlatform {
             app_path.display(),
         );
 
-        // Defer spawning to the foreground executor so it runs after the
-        // current `AppCell` borrow is released. On Windows, `Command::spawn()`
-        // can pump the Win32 message loop (via `CreateProcessW`), which
-        // re-enters message handling possibly resulting in another mutable
-        // borrow of the `AppCell` ending up with a double borrow panic
+        // 延迟生成到前台执行器，以便在当前 `AppCell` 借用释放后运行。
+        // 在 Windows 上，`Command::spawn()` 可以泵送 Win32 消息循环（通过 `CreateProcessW`），
+        // 这会重新进入消息处理，可能导致另一个可变借用 `AppCell` 导致双重借用 panic
         self.foreground_executor
             .spawn(async move {
                 #[allow(
@@ -640,7 +639,7 @@ impl Platform for WindowsPlatform {
     }
 
     fn can_select_mixed_files_and_dirs(&self) -> bool {
-        // The FOS_PICKFOLDERS flag toggles between "only files" and "only folders".
+        // FOS_PICKFOLDERS 标志在"仅文件"和"仅文件夹"之间切换
         false
     }
 
@@ -997,7 +996,8 @@ impl WindowsPlatformInner {
         }))
     }
 
-    /// Calls `project` to project to the corresponding callback field, removes it from callbacks, calls `f` with the callback and then puts the callback back.
+    /// 调用 `project` 投影到对应的回调字段，从回调中移除它，
+    /// 用回调调用 `f`，然后将回调放回
     fn with_callback<T>(
         &self,
         project: impl Fn(&PlatformCallbacks) -> &Cell<Option<T>>,
@@ -1076,9 +1076,9 @@ impl WindowsPlatformInner {
             'timeout_loop: loop {
                 if start.elapsed().as_millis() >= MAIN_TASK_TIMEOUT {
                     log::debug!("foreground task timeout reached");
-                    // we spent our budget on gpui tasks, we likely have a lot of work queued so drain system events first to stay responsive
-                    // then quit out of foreground work to allow us to process other gpui events first before returning back to foreground task work
-                    // if we don't we might not for example process window quit events
+                // 我们花费了预算在 gpui 任务上，我们可能有很多工作排队，所以先清理系统事件以保持响应
+                // 然后退出前台工作，允许我们在返回前台任务工作之前先处理其他 gpui 事件
+                // 如果不这样做，我们可能例如无法处理窗口退出事件
                     let mut msg = MSG::default();
                     let process_message = |msg: &_| {
                         if translate_accelerator(msg).is_none() {

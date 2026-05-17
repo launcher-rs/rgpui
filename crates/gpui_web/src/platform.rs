@@ -31,6 +31,7 @@ static BUNDLED_FONTS: &[&[u8]] = &[
     include_bytes!("../../../assets/fonts/lilex/Lilex-BoldItalic.ttf"),
 ];
 
+/// Web 平台实现，实现 gpui 的 `Platform` trait
 pub struct WebPlatform {
     browser_window: web_sys::Window,
     background_executor: BackgroundExecutor,
@@ -58,6 +59,10 @@ struct WebPlatformCallbacks {
 }
 
 impl WebPlatform {
+    /// 创建新的 WebPlatform 实例
+    ///
+    /// # 参数
+    /// * `allow_multi_threading` - 是否允许多线程调度
     pub fn new(allow_multi_threading: bool) -> Self {
         let browser_window =
             web_sys::window().expect("must be running in a browser window context");

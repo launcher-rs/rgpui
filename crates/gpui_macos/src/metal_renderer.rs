@@ -447,7 +447,7 @@ impl MetalRenderer {
 
     /// 销毁渲染器资源。
     pub fn destroy(&self) {
-        // nothing to do
+        // 无需操作
     }
 
     /// 绘制场景到窗口。

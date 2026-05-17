@@ -65,7 +65,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    // Create trait bound that each wrapped type must implement Clone
+    // 创建每个包装类型必须实现 Clone 的特质约束
     let type_param_bounds: Vec<_> = wrapped_types
         .iter()
         .map(|ty| {
@@ -88,7 +88,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    // Append to where_clause or create a new one if it doesn't exist
+    // 追加到 where_clause，如果不存在则创建一个新的
     let where_clause = match where_clause.cloned() {
         Some(mut where_clause) => {
             where_clause.predicates.extend(type_param_bounds);
@@ -388,7 +388,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
     }
 
     let r#gen = quote! {
-        /// A refinable version of [`#ident`], see that documentation for details.
+        /// [`#ident`] 的可细化版本，详见该文档。
         #[derive(Clone)]
         #derive_stream
         pub struct #refinement_ident #impl_generics {
@@ -486,7 +486,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
         impl #impl_generics #refinement_ident #ty_generics
             #where_clause
         {
-            /// Returns `true` if all fields are `Some`
+            /// 如果所有字段都为 `Some` 则返回 `true`
             pub fn is_some(&self) -> bool {
                 #(
                     if self.#field_names.is_some() {

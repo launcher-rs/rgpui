@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
+/// 全局渲染参数，传递给着色器
 struct GlobalParams {
     viewport_size: [f32; 2],
     premultiplied_alpha: u32,
@@ -23,6 +24,7 @@ struct GlobalParams {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
+/// POD 格式的边界框，用于 GPU 传输
 struct PodBounds {
     origin: [f32; 2],
     size: [f32; 2],
@@ -39,6 +41,7 @@ impl From<Bounds<ScaledPixels>> for PodBounds {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
+/// 表面参数，包含边界和内容遮罩
 struct SurfaceParams {
     bounds: PodBounds,
     content_mask: PodBounds,
@@ -46,6 +49,7 @@ struct SurfaceParams {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
+/// Gamma 校正参数
 struct GammaParams {
     gamma_ratios: [f32; 4],
     grayscale_enhanced_contrast: f32,
@@ -56,12 +60,14 @@ struct GammaParams {
 
 #[derive(Clone, Debug)]
 #[repr(C)]
+/// 路径精灵，用于路径渲染
 struct PathSprite {
     bounds: Bounds<ScaledPixels>,
 }
 
 #[derive(Clone, Debug)]
 #[repr(C)]
+/// 路径光栅化顶点
 struct PathRasterizationVertex {
     xy_position: Point<ScaledPixels>,
     st_position: Point<f32>,
@@ -72,15 +78,14 @@ struct PathRasterizationVertex {
 pub struct WgpuSurfaceConfig {
     pub size: Size<DevicePixels>,
     pub transparent: bool,
-    /// Preferred presentation mode. When `Some`, the renderer will use this
-    /// mode if supported by the surface, falling back to `Fifo`.
-    /// When `None`, defaults to `Fifo` (VSync).
-    ///
-    /// Mobile platforms may prefer `Mailbox` (triple-buffering) to avoid
-    /// blocking in `get_current_texture()` during lifecycle transitions.
+    /// 首选呈现模式。当为 `Some` 时，渲染器将使用此模式（如果表面支持），
+    /// 否则回退到 `Fifo`。当为 `None` 时，默认为 `Fifo`（垂直同步）。
+    /// 移动平台可能更喜欢 `Mailbox`（三重缓冲）以避免在生命周期转换期间
+    /// 在 `get_current_texture()` 中阻塞。
     pub preferred_present_mode: Option<wgpu::PresentMode>,
 }
 
+/// wgpu 渲染管线集合
 struct WgpuPipelines {
     quads: wgpu::RenderPipeline,
     shadows: wgpu::RenderPipeline,
@@ -94,6 +99,7 @@ struct WgpuPipelines {
     surfaces: wgpu::RenderPipeline,
 }
 
+/// wgpu 绑定组布局集合
 struct WgpuBindGroupLayouts {
     globals: wgpu::BindGroupLayout,
     instances: wgpu::BindGroupLayout,
@@ -101,10 +107,10 @@ struct WgpuBindGroupLayouts {
     surfaces: wgpu::BindGroupLayout,
 }
 
-/// Shared GPU context reference, used to coordinate device recovery across multiple windows.
+/// 共享的 GPU 上下文引用，用于在多个窗口之间协调设备恢复。
 pub type GpuContext = Rc<RefCell<Option<WgpuContext>>>;
 
-/// GPU resources that must be dropped together during device recovery.
+/// GPU 资源集合，在设备恢复期间需要一起丢弃
 struct WgpuResources {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
@@ -123,6 +129,7 @@ struct WgpuResources {
 }
 
 impl WgpuResources {
+    /// 使中间纹理失效
     fn invalidate_intermediate_textures(&mut self) {
         self.path_intermediate_texture = None;
         self.path_intermediate_view = None;
@@ -132,10 +139,10 @@ impl WgpuResources {
 }
 
 pub struct WgpuRenderer {
-    /// Shared GPU context for device recovery coordination (unused on WASM).
+    /// 共享 GPU 上下文，用于设备恢复协调（WASM 上未使用）
     #[allow(dead_code)]
     context: Option<GpuContext>,
-    /// Compositor GPU hint for adapter selection (unused on WASM).
+    /// 合成器 GPU 提示，用于适配器选择（WASM 上未使用）
     #[allow(dead_code)]
     compositor_gpu: Option<CompositorGpuHint>,
     resources: Option<WgpuResources>,
@@ -161,27 +168,27 @@ pub struct WgpuRenderer {
 }
 
 impl WgpuRenderer {
+    /// 获取 GPU 资源引用
     fn resources(&self) -> &WgpuResources {
         self.resources
             .as_ref()
             .expect("GPU resources not available")
     }
 
+    /// 获取 GPU 资源可变引用
     fn resources_mut(&mut self) -> &mut WgpuResources {
         self.resources
             .as_mut()
             .expect("GPU resources not available")
     }
 
-    /// Creates a new WgpuRenderer from raw window handles.
+    /// 从原始窗口句柄创建新的 WgpuRenderer。
     ///
-    /// The `gpu_context` is a shared reference that coordinates GPU context across
-    /// multiple windows. The first window to create a renderer will initialize the
-    /// context; subsequent windows will share it.
+    /// `gpu_context` 是一个共享引用，用于在多个窗口之间协调 GPU 上下文。
+    /// 第一个创建渲染器的窗口将初始化上下文；后续窗口将共享它。
     ///
-    /// # Safety
-    /// The caller must ensure that the window handle remains valid for the lifetime
-    /// of the returned renderer.
+    /// # 安全性
+    /// 调用者必须确保窗口句柄在返回的渲染器的生命周期内保持有效。
     #[cfg(not(target_family = "wasm"))]
     pub fn new<W>(
         gpu_context: GpuContext,
@@ -197,23 +204,22 @@ impl WgpuRenderer {
             .map_err(|e| anyhow::anyhow!("Failed to get window handle: {e}"))?;
 
         let target = wgpu::SurfaceTargetUnsafe::RawHandle {
-            // Fall back to the display handle already provided via InstanceDescriptor::display.
+            // 回退到通过 InstanceDescriptor::display 已提供的显示句柄。
             raw_display_handle: None,
             raw_window_handle: window_handle.as_raw(),
         };
 
-        // Use the existing context's instance if available, otherwise create a new one.
-        // The surface must be created with the same instance that will be used for
-        // adapter selection, otherwise wgpu will panic.
+        // 如果已有上下文则使用其 instance，否则创建新的。
+        // 表面必须与用于适配器选择的相同 instance 创建，否则 wgpu 会 panic。
         let instance = gpu_context
             .borrow()
             .as_ref()
             .map(|ctx| ctx.instance.clone())
             .unwrap_or_else(|| WgpuContext::instance(Box::new(window.clone())));
 
-        // Safety: The caller guarantees that the window handle is valid for the
-        // lifetime of this renderer. In practice, the RawWindow struct is created
-        // from the native window handles and the surface is dropped before the window.
+        // 安全性：调用者保证窗口句柄在此渲染器的生命周期内有效。
+        // 实际上，RawWindow 结构体是从原生窗口句柄创建的，
+        // 并且表面在窗口之前被丢弃。
         let surface = unsafe {
             instance
                 .create_surface_unsafe(target)
@@ -457,8 +463,8 @@ impl WgpuRenderer {
             globals_bind_group,
             path_globals_bind_group,
             instance_buffer,
-            // Defer intermediate texture creation to first draw call via ensure_intermediate_textures().
-            // This avoids panics when the device/surface is in an invalid state during initialization.
+            // 延迟中间纹理创建到首次绘制调用，通过 ensure_intermediate_textures()。
+            // 这避免了在初始化期间设备/表面处于无效状态时的 panic。
             path_intermediate_texture: None,
             path_intermediate_view: None,
             path_msaa_texture: None,
@@ -491,6 +497,7 @@ impl WgpuRenderer {
         })
     }
 
+    /// 创建绑定组布局
     fn create_bind_group_layouts(device: &wgpu::Device) -> WgpuBindGroupLayouts {
         let globals =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -615,6 +622,7 @@ impl WgpuRenderer {
         }
     }
 
+    /// 创建渲染管线
     fn create_pipelines(
         device: &wgpu::Device,
         layouts: &WgpuBindGroupLayouts,
@@ -623,14 +631,14 @@ impl WgpuRenderer {
         path_sample_count: u32,
         dual_source_blending: bool,
     ) -> WgpuPipelines {
-        // Diagnostic guard: verify the device actually has
-        // DUAL_SOURCE_BLENDING. We have a crash report (ZED-5G1) where a
-        // feature mismatch caused a wgpu-hal abort, but we haven't
-        // identified the code path that produces the mismatch. This
-        // guard prevents the crash and logs more evidence.
-        // Remove this check once:
-        // a) We find and fix the root cause, or
-        // b) There are no reports of this warning appearing for some time.
+        // 诊断保护：验证设备确实启用了
+        // DUAL_SOURCE_BLENDING。我们有一个崩溃报告 (ZED-5G1) 显示
+        // 特性不匹配导致 wgpu-hal 中止，但我们尚未
+        // 确定产生不匹配的代码路径。此
+        // 保护防止崩溃并记录更多证据。
+        // 在以下情况移除此检查：
+        // a) 我们找到并修复根本原因，或
+        // b) 一段时间内没有此警告出现的报告。
         let device_has_feature = device
             .features()
             .contains(wgpu::Features::DUAL_SOURCE_BLENDING);
@@ -890,6 +898,7 @@ impl WgpuRenderer {
         }
     }
 
+    /// 创建路径中间纹理
     fn create_path_intermediate(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
@@ -914,6 +923,7 @@ impl WgpuRenderer {
         (texture, view)
     }
 
+    /// 根据需要创建 MSAA 纹理
     fn create_msaa_if_needed(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
@@ -969,10 +979,10 @@ impl WgpuRenderer {
                 submission_index: None,
                 timeout: None,
             }) {
-                warn!("Failed to poll device during resize: {e:?}");
+                warn!("在调整大小时轮询设备失败: {e:?}");
             }
 
-            // Destroy old textures before allocating new ones to avoid GPU memory spikes
+            // 在分配新纹理之前销毁旧纹理，以避免 GPU 内存峰值
             if let Some(ref texture) = resources.path_intermediate_texture {
                 texture.destroy();
             }
@@ -984,9 +994,9 @@ impl WgpuRenderer {
                 .surface
                 .configure(&resources.device, &surface_config);
 
-            // Invalidate intermediate textures - they will be lazily recreated
-            // in draw() after we confirm the surface is healthy. This avoids
-            // panics when the device/surface is in an invalid state during resize.
+            // 使中间纹理失效 - 它们将在 draw() 中惰性重新创建
+            // 在我们确认表面健康之后。这避免了
+            // 在调整大小时设备/表面处于无效状态时的 panic。
             resources.invalidate_intermediate_textures();
         }
     }
@@ -1080,10 +1090,10 @@ impl WgpuRenderer {
     }
 
     pub fn draw(&mut self, scene: &Scene) -> bool {
-        // Bail out early if the surface has been unconfigured (e.g. during
-        // Android background/rotation transitions).  Attempting to acquire
-        // a texture from an unconfigured surface can block indefinitely on
-        // some drivers (Adreno).
+        // 如果表面已被取消配置（例如在
+        // Android 后台/旋转转换期间），则提前退出。
+        // 尝试从未配置的表面获取纹理可能会
+        // 在某些驱动（Adreno）上无限期阻塞。
         if !self.surface_configured {
             return false;
         }
@@ -1092,13 +1102,13 @@ impl WgpuRenderer {
         if let Some(error) = last_error {
             self.failed_frame_count += 1;
             log::error!(
-                "GPU error during frame (failure {} of 10): {error}",
+                "GPU 错误在帧期间（失败 {} / 10）: {error}",
                 self.failed_frame_count
             );
 
-            // TBD. Does retrying more actually help?
+            // TBD. 重试更多次真的有帮助吗？
             if self.failed_frame_count > 10 {
-                panic!("Too many consecutive GPU errors. Last error: {error}");
+                panic!("连续 GPU 错误过多。最后错误: {error}");
             } else if self.failed_frame_count > 5 {
                 if let Some(res) = self.resources.as_mut() {
                     res.invalidate_intermediate_textures();
@@ -1117,7 +1127,7 @@ impl WgpuRenderer {
         let frame = match self.resources().surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame) => frame,
             wgpu::CurrentSurfaceTexture::Suboptimal(frame) => {
-                // Textures must be destroyed before the surface can be reconfigured.
+                // 在表面可以重新配置之前必须销毁纹理。
                 drop(frame);
                 let surface_config = self.surface_config.clone();
                 let resources = self.resources_mut();
@@ -1144,7 +1154,7 @@ impl WgpuRenderer {
             }
         };
 
-        // Now that we know the surface is healthy, ensure intermediate textures exist
+        // 现在我们知道表面是健康的，确保中间纹理存在
         self.ensure_intermediate_textures();
 
         let frame_view = frame
@@ -1301,8 +1311,8 @@ impl WgpuRenderer {
                                 &mut pass,
                             ),
                         PrimitiveBatch::Surfaces(_surfaces) => {
-                            // Surfaces are macOS-only for video playback
-                            // Not implemented for Linux/wgpu
+                            // 表面仅限 macOS 用于视频播放
+                            // Linux/wgpu 未实现
                             true
                         }
                     };
@@ -1683,29 +1693,29 @@ impl WgpuRenderer {
         })
     }
 
-    /// Mark the surface as unconfigured so rendering is skipped until a new
-    /// surface is provided via [`replace_surface`](Self::replace_surface).
+    /// 将表面标记为未配置，以便在通过 [`replace_surface`](Self::replace_surface)
+    /// 提供新表面之前跳过渲染。
     ///
-    /// This does **not** drop the renderer — the device, queue, atlas, and
-    /// pipelines stay alive.  Use this when the native window is destroyed
-    /// (e.g. Android `TerminateWindow`) but you intend to re-create the
-    /// surface later without losing cached atlas textures.
+    /// 这**不会**丢弃渲染器 —— 设备、队列、图集和
+    /// 管线保持活动状态。当原生窗口被销毁时使用此方法
+    /// （例如 Android `TerminateWindow`），但你打算稍后重新创建
+    /// 表面而不丢失缓存的图集纹理。
     pub fn unconfigure_surface(&mut self) {
         self.surface_configured = false;
-        // Drop intermediate textures since they reference the old surface size.
+        // 丢弃中间纹理，因为它们引用旧表面尺寸。
         if let Some(res) = self.resources.as_mut() {
             res.invalidate_intermediate_textures();
         }
     }
 
-    /// Replace the wgpu surface with a new one (e.g. after Android destroys
-    /// and recreates the native window).  Keeps the device, queue, atlas, and
-    /// all pipelines intact so cached `AtlasTextureId`s remain valid.
+    /// 用新表面替换 wgpu 表面（例如在 Android 销毁并
+    /// 重新创建原生窗口之后）。保持设备、队列、图集和
+    /// 所有管线完好无损，以便缓存的 `AtlasTextureId` 保持有效。
     ///
-    /// The `instance` **must** be the same [`wgpu::Instance`] that was used to
-    /// create the adapter and device (i.e. from the [`WgpuContext`]).  Using a
-    /// different instance will cause a "Device does not exist" panic because
-    /// the wgpu device is bound to its originating instance.
+    /// `instance` **必须** 是用于创建适配器和设备的
+    /// 同一个 [`wgpu::Instance`]（即来自 [`WgpuContext`]）。使用
+    /// 不同的实例将导致 "Device does not exist" panic，因为
+    /// wgpu 设备绑定到其原始实例。
     #[cfg(not(target_family = "wasm"))]
     pub fn replace_surface<W: HasWindowHandle>(
         &mut self,
@@ -1743,7 +1753,7 @@ impl WgpuRenderer {
             surface.configure(&res.device, &self.surface_config);
             res.surface = surface;
 
-            // Invalidate intermediate textures — they'll be recreated lazily.
+            // 使中间纹理失效 —— 它们将惰性重新创建。
             res.invalidate_intermediate_textures();
         }
 
@@ -1753,37 +1763,37 @@ impl WgpuRenderer {
     }
 
     pub fn destroy(&mut self) {
-        // Release surface-bound GPU resources eagerly so the underlying native
-        // window can be destroyed before the renderer itself is dropped.
+        // 主动释放绑定到表面的 GPU 资源，以便底层原生
+        // 窗口可以在渲染器本身被丢弃之前被销毁。
         self.resources.take();
     }
 
-    /// Returns true if the GPU device was lost and recovery is needed.
+    /// 返回 GPU 设备是否丢失以及是否需要恢复。
     pub fn device_lost(&self) -> bool {
         self.device_lost.load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    /// Returns true if a redraw is needed because GPU state was cleared.
-    /// Calling this method clears the flag.
+    /// 返回是否需要重绘，因为 GPU 状态已被清除。
+    /// 调用此方法将清除标志。
     pub fn needs_redraw(&mut self) -> bool {
         std::mem::take(&mut self.needs_redraw)
     }
 
-    /// Recovers from a lost GPU device by recreating the renderer with a new context.
+    /// 从丢失的 GPU 设备恢复，通过使用新上下文重新创建渲染器。
     ///
-    /// Call this after detecting `device_lost()` returns true.
+    /// 在检测到 `device_lost()` 返回 true 后调用此方法。
     ///
-    /// This method coordinates recovery across multiple windows:
-    /// - The first window to call this will recreate the shared context
-    /// - Subsequent windows will adopt the already-recovered context
+    /// 此方法协调多个窗口之间的恢复：
+    /// - 第一个调用此方法的窗口将重新创建共享上下文
+    /// - 后续窗口将采用已恢复的上下文
     #[cfg(not(target_family = "wasm"))]
     pub fn recover<W>(&mut self, window: &W) -> anyhow::Result<()>
     where
         W: HasWindowHandle + HasDisplayHandle + std::fmt::Debug + Send + Sync + Clone + 'static,
     {
-        let gpu_context = self.context.as_ref().expect("recover requires gpu_context");
+        let gpu_context = self.context.as_ref().expect("recover 需要 gpu_context");
 
-        // Check if another window already recovered the context
+        // 检查是否有其他窗口已经恢复了上下文
         let needs_new_context = gpu_context
             .borrow()
             .as_ref()
@@ -1794,16 +1804,16 @@ impl WgpuRenderer {
             .map_err(|e| anyhow::anyhow!("Failed to get window handle: {e}"))?;
 
         let surface = if needs_new_context {
-            log::warn!("GPU device lost, recreating context...");
+            log::warn!("GPU 设备丢失，正在重新创建上下文...");
 
-            // Drop old resources to release Arc<Device>/Arc<Queue> and GPU resources
+            // 丢弃旧资源以释放 Arc<Device>/Arc<Queue> 和 GPU 资源
             self.resources = None;
             *gpu_context.borrow_mut() = None;
 
-            // Wait briefly for the GPU driver to stabilize, then try to
-            // recreate the context without software renderers. If this fails
-            // the caller should request another frame and retry — the real GPU
-            // may need more time to come back (e.g. after suspend/resume).
+            // 等待片刻让 GPU 驱动稳定，然后尝试
+            // 不使用软件渲染器重新创建上下文。如果失败
+            // 调用者应该请求另一帧并重试 —— 真正的 GPU
+            // 可能需要更多时间才能恢复（例如挂起/恢复后）。
             std::thread::sleep(std::time::Duration::from_millis(350));
 
             let instance = WgpuContext::instance(Box::new(window.clone()));
@@ -1855,7 +1865,7 @@ fn create_surface(
     unsafe {
         instance
             .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
-                // Fall back to the display handle already provided via InstanceDescriptor::display.
+                // 回退到通过 InstanceDescriptor::display 已提供的显示句柄。
                 raw_display_handle: None,
                 raw_window_handle,
             })

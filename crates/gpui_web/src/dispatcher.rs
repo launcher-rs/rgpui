@@ -11,6 +11,7 @@ use web_time::Instant;
 #[cfg(feature = "multithreaded")]
 const MIN_BACKGROUND_THREADS: usize = 2;
 
+/// 检查当前环境是否支持 SharedArrayBuffer 和 Atomics
 #[cfg(feature = "multithreaded")]
 fn shared_memory_supported() -> bool {
     let global = js_sys::global();
@@ -23,16 +24,18 @@ fn shared_memory_supported() -> bool {
     has_shared_array_buffer && has_atomics && is_shared_buffer
 }
 
+/// 主线程任务项枚举
 enum MainThreadItem {
     Runnable(RunnableVariant),
     Delayed {
         runnable: RunnableVariant,
         millis: i32,
     },
-    // TODO-Wasm: Shouldn't these run on their own dedicated thread?
+    // TODO-Wasm：这些是否应该在它们专用的线程上运行？
     RealtimeFunction(Box<dyn FnOnce() + Send>),
 }
 
+/// 主线程邮箱，用于从其他线程向主线程发送任务
 struct MainThreadMailbox {
     sender: PriorityQueueSender<MainThreadItem>,
     receiver: parking_lot::Mutex<PriorityQueueReceiver<MainThreadItem>>,
@@ -54,7 +57,7 @@ impl MainThreadMailbox {
             log::error!("MainThreadMailbox::send failed: receiver disconnected");
         }
 
-        // TODO-Wasm: Verify this lock-free protocol
+        // TODO-Wasm：验证此无锁协议
         let view = self.signal_view();
         js_sys::Atomics::store(&view, 0, 1).ok();
         js_sys::Atomics::notify(&view, 0).ok();
@@ -63,8 +66,8 @@ impl MainThreadMailbox {
     fn drain(&self, window: &web_sys::Window) {
         let mut receiver = self.receiver.lock();
         loop {
-            // We need these `spin` variants because we can't acquire a lock on the main thread.
-            // TODO-WASM: Should we do something different?
+            // 我们需要这些 `spin` 变体，因为无法在主线程上获取锁
+            // TODO-WASM：我们应该做不同的处理吗？
             match receiver.spin_try_pop() {
                 Ok(Some(item)) => execute_on_main_thread(window, item),
                 Ok(None) => break,
@@ -122,6 +125,7 @@ impl MainThreadMailbox {
     }
 }
 
+/// Web 平台任务调度器，负责在主线程和后台线程之间分发任务
 pub struct WebDispatcher {
     main_thread_id: std::thread::ThreadId,
     browser_window: web_sys::Window,
@@ -132,12 +136,17 @@ pub struct WebDispatcher {
     _background_threads: Vec<wasm_thread::JoinHandle<()>>,
 }
 
-// Safety: `web_sys::Window` is only accessed from the main thread
-// All other fields are `Send + Sync` by construction.
+// 安全：`web_sys::Window` 仅从主线程访问
+// 所有其他字段通过构造保证是 `Send + Sync`
 unsafe impl Send for WebDispatcher {}
 unsafe impl Sync for WebDispatcher {}
 
 impl WebDispatcher {
+    /// 创建新的 WebDispatcher 实例
+    ///
+    /// # 参数
+    /// * `browser_window` - 浏览器窗口对象
+    /// * `allow_threads` - 是否允许多线程调度
     pub fn new(browser_window: web_sys::Window, allow_threads: bool) -> Self {
         #[cfg(feature = "multithreaded")]
         let (background_sender, background_receiver) = PriorityQueueReceiver::new();
@@ -166,7 +175,7 @@ impl WebDispatcher {
                 .hardware_concurrency()
                 .max(MIN_BACKGROUND_THREADS as f64) as usize;
 
-            // TODO-Wasm: Is it bad to have web workers blocking for a long time like this?
+            // TODO-Wasm：让 web worker 长时间阻塞是否有害？
             (0..thread_count)
                 .map(|i| {
                     let mut receiver = background_receiver.clone();
@@ -205,6 +214,7 @@ impl WebDispatcher {
         }
     }
 
+    /// 检查当前是否在主线程上运行
     fn on_main_thread(&self) -> bool {
         std::thread::current().id() == self.main_thread_id
     }
@@ -212,7 +222,7 @@ impl WebDispatcher {
 
 impl PlatformDispatcher for WebDispatcher {
     fn get_all_timings(&self) -> Vec<ThreadTaskTimings> {
-        // TODO-Wasm: should we panic here?
+        // TODO-Wasm：这里是否应该 panic？
         Vec::new()
     }
 
@@ -291,6 +301,7 @@ impl PlatformDispatcher for WebDispatcher {
     }
 }
 
+/// 在主线程上执行任务项
 fn execute_on_main_thread(window: &web_sys::Window, item: MainThreadItem) {
     match item {
         MainThreadItem::Runnable(runnable) => {
@@ -313,6 +324,7 @@ fn execute_on_main_thread(window: &web_sys::Window, item: MainThreadItem) {
     }
 }
 
+/// 根据优先级调度任务执行
 fn schedule_runnable(window: &web_sys::Window, runnable: RunnableVariant, priority: Priority) {
     let callback = Closure::once_into_js(move || {
         runnable.run();
@@ -324,7 +336,7 @@ fn schedule_runnable(window: &web_sys::Window, runnable: RunnableVariant, priori
             window.queue_microtask(callback);
         }
         _ => {
-            // TODO-Wasm: this ought to enqueue so we can dequeue with proper priority
+            // TODO-Wasm：这里应该入队以便我们能以正确的优先级出队
             window
                 .set_timeout_with_callback_and_timeout_and_arguments_0(callback, 0)
                 .ok();
