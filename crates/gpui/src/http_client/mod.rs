@@ -34,7 +34,7 @@ pub enum RedirectPolicy {
 pub struct FollowRedirects(pub bool);
 
 pub trait HttpRequestExt {
-    /// Conditionally modify self with the given closure.
+    /// 根据条件使用给定闭包修改自身
     fn when(self, condition: bool, then: impl FnOnce(Self) -> Self) -> Self
     where
         Self: Sized,
@@ -42,7 +42,7 @@ pub trait HttpRequestExt {
         if condition { then(self) } else { self }
     }
 
-    /// Conditionally unwrap and modify self with the given closure, if the given option is Some.
+    /// 如果给定选项为 Some，则解包并使用给定闭包修改自身
     fn when_some<T>(self, option: Option<T>, then: impl FnOnce(Self, T) -> Self) -> Self
     where
         Self: Sized,
@@ -53,7 +53,7 @@ pub trait HttpRequestExt {
         }
     }
 
-    /// Whether or not to follow redirects
+    /// 是否跟随重定向
     fn follow_redirects(self, follow: RedirectPolicy) -> Self;
 }
 
@@ -117,7 +117,7 @@ pub trait HttpClient: 'static + Send + Sync {
     }
 }
 
-/// An [`HttpClient`] that may have a proxy.
+/// 可能包含代理的 [`HttpClient`]
 #[derive(Deref)]
 pub struct HttpClientWithProxy {
     #[deref]
@@ -164,7 +164,7 @@ impl HttpClient for HttpClientWithProxy {
     }
 }
 
-/// An [`HttpClient`] that has a base URL.
+/// 具有基础 URL 的 [`HttpClient`]
 #[derive(Deref)]
 pub struct HttpClientWithUrl {
     base_url: Mutex<String>,
@@ -200,23 +200,23 @@ impl HttpClientWithUrl {
         }
     }
 
-    /// Returns the base URL.
+    /// 返回基础 URL
     pub fn base_url(&self) -> String {
         self.base_url.lock().clone()
     }
 
-    /// Sets the base URL.
+    /// 设置基础 URL
     pub fn set_base_url(&self, base_url: impl Into<String>) {
         let base_url = base_url.into();
         *self.base_url.lock() = base_url;
     }
 
-    /// Builds a URL using the given path.
+    /// 使用给定路径构建 URL
     pub fn build_url(&self, path: &str) -> String {
         format!("{}{}", self.base_url(), path)
     }
 
-    /// Builds a Zed API URL using the given path.
+    /// 使用给定路径构建 Zed API URL
     pub fn build_zed_api_url(&self, path: &str, query: &[(&str, &str)]) -> Result<Url> {
         let base_url = self.base_url();
         let base_api_url = match base_url.as_ref() {
@@ -232,7 +232,7 @@ impl HttpClientWithUrl {
         )?)
     }
 
-    /// Builds a Zed Cloud URL using the given path.
+    /// 使用给定路径构建 Zed Cloud URL
     pub fn build_zed_cloud_url(&self, path: &str) -> Result<Url> {
         let base_url = self.base_url();
         let base_api_url = match base_url.as_ref() {
@@ -245,7 +245,7 @@ impl HttpClientWithUrl {
         Ok(Url::parse(&format!("{}{}", base_api_url, path))?)
     }
 
-    /// Builds a Zed Cloud URL using the given path and query params.
+    /// 使用给定路径和查询参数构建 Zed Cloud URL
     pub fn build_zed_cloud_url_with_query(&self, path: &str, query: impl Serialize) -> Result<Url> {
         let base_url = self.base_url();
         let base_api_url = match base_url.as_ref() {
@@ -258,7 +258,7 @@ impl HttpClientWithUrl {
         Ok(Url::parse(&format!("{}{}?{}", base_api_url, path, query))?)
     }
 
-    /// Builds a Zed LLM URL using the given path.
+    /// 使用给定路径构建 Zed LLM URL
     pub fn build_zed_llm_url(&self, path: &str, query: &[(&str, &str)]) -> Result<Url> {
         let base_url = self.base_url();
         let base_api_url = match base_url.as_ref() {

@@ -71,8 +71,8 @@ impl ForegroundExecutor {
         output.take().expect("block_on future did not complete")
     }
 
-    /// Block until the future completes or timeout occurs.
-    /// Returns Ok(output) if completed, Err(future) if timed out.
+    /// 阻塞直到未来对象完成或超时发生。
+    /// 如果完成则返回 Ok(output)，如果超时则返回 Err(future)。
     pub fn block_with_timeout<Fut: Future>(
         &self,
         timeout: Duration,
@@ -149,7 +149,7 @@ impl BackgroundExecutor {
         Task(TaskState::Spawned(task))
     }
 
-    /// Spawns a future on a dedicated realtime thread for audio processing.
+    /// 在专用的实时线程上生成用于音频处理的任务。
     #[track_caller]
     pub fn spawn_realtime<F>(&self, future: F) -> Task<F::Output>
     where
@@ -191,32 +191,32 @@ impl BackgroundExecutor {
     }
 }
 
-/// Task is a primitive that allows work to happen in the background.
+/// Task 是允许在后台执行工作的原语。
 ///
-/// It implements [`Future`] so you can `.await` on it.
+/// 它实现了 [`Future`]，因此你可以对其使用 `.await`。
 ///
-/// If you drop a task it will be cancelled immediately. Calling [`Task::detach`] allows
-/// the task to continue running, but with no way to return a value.
+/// 如果丢弃任务，它将立即被取消。调用 [`Task::detach`] 允许
+/// 任务继续运行，但无法返回值。
 #[must_use]
 #[derive(Debug)]
 pub struct Task<T>(TaskState<T>);
 
 #[derive(Debug)]
 enum TaskState<T> {
-    /// A task that is ready to return a value
+    /// 已准备好返回值的任务
     Ready(Option<T>),
 
-    /// A task that is currently running.
+    /// 当前正在运行的任务。
     Spawned(async_task::Task<T, RunnableMeta>),
 }
 
 impl<T> Task<T> {
-    /// Creates a new task that will resolve with the value
+    /// 创建一个将解析为该值的新任务。
     pub fn ready(val: T) -> Self {
         Task(TaskState::Ready(Some(val)))
     }
 
-    /// Creates a Task from an async_task::Task
+    /// 从 async_task::Task 创建 Task。
     pub fn from_async_task(task: async_task::Task<T, RunnableMeta>) -> Self {
         Task(TaskState::Spawned(task))
     }
@@ -228,7 +228,7 @@ impl<T> Task<T> {
         }
     }
 
-    /// Detaching a task runs it to completion in the background
+    /// 分离任务使其在后台运行至完成。
     pub fn detach(self) {
         match self {
             Task(TaskState::Ready(_)) => {}
@@ -236,7 +236,7 @@ impl<T> Task<T> {
         }
     }
 
-    /// Converts this task into a fallible task that returns `Option<T>`.
+    /// 将此任务转换为返回 `Option<T>` 的可失败任务。
     pub fn fallible(self) -> FallibleTask<T> {
         FallibleTask(match self.0 {
             TaskState::Ready(val) => FallibleTaskState::Ready(val),
@@ -245,25 +245,25 @@ impl<T> Task<T> {
     }
 }
 
-/// A task that returns `Option<T>` instead of panicking when cancelled.
+/// 返回 `Option<T>` 而非在取消时 panic 的任务。
 #[must_use]
 pub struct FallibleTask<T>(FallibleTaskState<T>);
 
 enum FallibleTaskState<T> {
-    /// A task that is ready to return a value
+    /// 已准备好返回值的任务
     Ready(Option<T>),
 
-    /// A task that is currently running (wraps async_task::FallibleTask).
+    /// 当前正在运行的任务（包装 async_task::FallibleTask）。
     Spawned(async_task::FallibleTask<T, RunnableMeta>),
 }
 
 impl<T> FallibleTask<T> {
-    /// Creates a new fallible task that will resolve with the value.
+    /// 创建一个将解析为该值的新可失败任务。
     pub fn ready(val: T) -> Self {
         FallibleTask(FallibleTaskState::Ready(Some(val)))
     }
 
-    /// Detaching a task runs it to completion in the background.
+    /// 分离任务使其在后台运行至完成。
     pub fn detach(self) {
         match self.0 {
             FallibleTaskState::Ready(_) => {}
@@ -305,7 +305,7 @@ impl<T> Future for Task<T> {
     }
 }
 
-/// Variant of `async_task::spawn_local` that includes the source location of the spawn in panics.
+/// `async_task::spawn_local` 的变体，在 panic 中包含生成的源位置。
 #[track_caller]
 fn spawn_local_with_source_location<Fut, S>(
     future: Fut,

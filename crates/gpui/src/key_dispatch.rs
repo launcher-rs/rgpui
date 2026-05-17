@@ -1,9 +1,8 @@
-//! KeyDispatch is where GPUI deals with binding actions to key events.
+//! KeyDispatch 是 GPUI 处理将操作绑定到按键事件的地方。
 //!
-//! The key pieces to making a key binding work are to define an action,
-//! implement a method that takes that action as a type parameter,
-//! and then to register the action during render on a focused node
-//! with a keymap context:
+//! 使键绑定工作的关键部分是定义操作，
+//! 实现一个以操作类型参数为参数的方法，
+//! 然后在渲染期间在具有键映射上下文的聚焦节点上注册操作：
 //!
 //! ```ignore
 //! actions!(editor,[Undo, Redo]);
@@ -25,9 +24,9 @@
 //! }
 //!```
 //!
-//! The keybindings themselves are managed independently by calling cx.bind_keys().
-//! (Though mostly when developing Zed itself, you just need to add a new line to
-//!  assets/keymaps/default-{platform}.json).
+//! 键绑定本身通过调用 cx.bind_keys() 独立管理。
+//! （尽管在开发 Zed 本身时，你通常只需要在
+//!  assets/keymaps/default-{platform}.json 中添加一行）。
 //!
 //! ```ignore
 //! cx.bind_keys([
@@ -36,16 +35,16 @@
 //! ])
 //! ```
 //!
-//! With all of this in place, GPUI will ensure that if you have an Editor that contains
-//! the focus, hitting cmd-z will Undo.
+//! 有了所有这些，GPUI 将确保如果你有一个包含
+//! 焦点的 Editor，按下 cmd-z 将撤销。
 //!
-//! In real apps, it is a little more complicated than this, because typically you have
-//! several nested views that each register keyboard handlers. In this case action matching
-//! bubbles up from the bottom. For example in Zed, the Workspace is the top-level view, which contains Pane's, which contain Editors. If there are conflicting keybindings defined
-//! then the Editor's bindings take precedence over the Pane's bindings, which take precedence over the Workspace.
+//! 在实际应用中，这比这稍微复杂一些，因为通常你有
+//! 多个嵌套视图，每个视图都注册键盘处理程序。在这种情况下，操作匹配
+//! 从底部向上冒泡。例如在 Zed 中，Workspace 是顶级视图，包含 Pane，而 Pane 包含 Editor。如果存在冲突的键绑定定义，
+//! 则 Editor 的绑定优先于 Pane 的绑定，而 Pane 的绑定优先于 Workspace。
 //!
-//! In GPUI, keybindings are not limited to just single keystrokes, you can define
-//! sequences by separating the keys with a space:
+//! 在 GPUI 中，键绑定不仅限于单个按键，你可以定义
+//! 序列，通过用空格分隔按键：
 //!
 //!  KeyBinding::new("cmd-k left", pane::SplitLeft, Some("Pane"))
 
@@ -63,8 +62,8 @@ use std::{
     rc::Rc,
 };
 
-/// ID of a node within `DispatchTree`. Note that these are **not** stable between frames, and so a
-/// `DispatchNodeId` should only be used with the `DispatchTree` that provided it.
+/// `DispatchTree` 内节点的 ID。注意这些在帧之间**不**稳定，因此
+/// `DispatchNodeId` 仅应与提供它的 `DispatchTree` 一起使用。
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct DispatchNodeId(usize);
 
@@ -367,8 +366,8 @@ impl DispatchTree {
             for DispatchActionListener { action_type, .. } in &node.action_listeners {
                 if let Err(ix) = actions.binary_search_by_key(action_type, |a| a.as_any().type_id())
                 {
-                    // Intentionally silence these errors without logging.
-                    // If an action cannot be built by default, it's not available.
+                    // 有意静默这些错误而不记录日志。
+                    // 如果操作无法默认构建，则不可用。
                     let action = self.action_registry.build_action_type(action_type).ok();
                     if let Some(action) = action {
                         actions.insert(ix, action);
@@ -393,11 +392,11 @@ impl DispatchTree {
         false
     }
 
-    /// Returns key bindings that invoke an action on the currently focused element. Bindings are
-    /// returned in the order they were added. For display, the last binding should take precedence.
+    /// 返回在当前聚焦元素上调用操作的键绑定。绑定按
+    /// 添加顺序返回。对于显示，最后的绑定应优先。
     ///
-    /// Bindings are only included if they are the highest precedence match for their keystrokes, so
-    /// shadowed bindings are not included.
+    /// 仅当绑定是其按键序列的最高优先级匹配时才包含，因此
+    /// 被遮蔽的绑定不包含在内。
     pub fn bindings_for_action(
         &self,
         action: &dyn Action,
@@ -415,8 +414,8 @@ impl DispatchTree {
             .collect()
     }
 
-    /// Returns the highest precedence binding for the given action and context stack. This is the
-    /// same as the last result of `bindings_for_action`, but more efficient than getting all bindings.
+    /// 返回给定操作和上下文堆栈的最高优先级绑定。这
+    /// 与 `bindings_for_action` 的最后一个结果相同，但比获取所有绑定更高效。
     pub fn highest_precedence_binding_for_action(
         &self,
         action: &dyn Action,
@@ -473,13 +472,13 @@ impl DispatchTree {
             .possible_next_bindings_for_input(input, context_stack)
     }
 
-    /// dispatch_key processes the keystroke
-    /// input should be set to the value of `pending` from the previous call to dispatch_key.
-    /// This returns three instructions to the input handler:
-    /// - bindings: any bindings to execute before processing this keystroke
-    /// - pending: the new set of pending keystrokes to store
-    /// - to_replay: any keystroke that had been pushed to pending, but are no-longer matched,
-    ///   these should be replayed first.
+    /// dispatch_key 处理按键序列
+    /// input 应设置为上一次调用 dispatch_key 的 `pending` 值。
+    /// 这返回三条指令给输入处理程序：
+    /// - bindings：处理此按键序列前要执行的任何绑定
+    /// - pending：要存储的新待处理按键序列
+    /// - to_replay：任何已被推入 pending 但不再匹配的按键序列，
+    ///   这些应首先重放。
     pub fn dispatch_key(
         &mut self,
         mut input: SmallVec<[Keystroke; 1]>,
@@ -518,8 +517,8 @@ impl DispatchTree {
         result
     }
 
-    /// If the user types a matching prefix of a binding and then waits for a timeout
-    /// flush_dispatch() converts any previously pending input to replay events.
+    /// 如果用户输入匹配的绑定前缀然后等待超时，
+    /// flush_dispatch() 将任何之前待处理的输入转换为重放事件。
     pub fn flush_dispatch(
         &mut self,
         input: SmallVec<[Keystroke; 1]>,
@@ -534,7 +533,7 @@ impl DispatchTree {
         to_replay
     }
 
-    /// Converts the longest prefix of input to a replay event and returns the rest.
+    /// 将 input 的最长前缀转换为重放事件并返回剩余部分。
     fn replay_prefix(
         &self,
         mut input: SmallVec<[Keystroke; 1]>,
@@ -567,7 +566,7 @@ impl DispatchTree {
             dispatch_path.push(node_id);
             current_node_id = self.nodes.get(node_id.0).and_then(|node| node.parent);
         }
-        dispatch_path.reverse(); // Reverse the path so it goes from the root to the focused node.
+        dispatch_path.reverse(); // 反转路径使其从根到聚焦节点。
         dispatch_path
     }
 
@@ -581,7 +580,7 @@ impl DispatchTree {
             }
             current_node_id = node.parent;
         }
-        focus_path.reverse(); // Reverse the path so it goes from the root to the focused node.
+        focus_path.reverse(); // 反转路径使其从根到聚焦节点。
         focus_path
     }
 

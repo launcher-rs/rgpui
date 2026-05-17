@@ -6,7 +6,7 @@ use crate::{
 };
 use smallvec::SmallVec;
 
-/// A keybinding and its associated metadata, from the keymap.
+/// 键绑定及其关联的元数据，来自键映射
 pub struct KeyBinding {
     pub(crate) action: Box<dyn Action>,
     pub(crate) keystrokes: SmallVec<[KeybindingKeystroke; 2]>,
@@ -29,7 +29,7 @@ impl Clone for KeyBinding {
 }
 
 impl KeyBinding {
-    /// Construct a new keybinding from the given data. Panics on parse error.
+    /// 从给定数据构建新键绑定。解析错误时触发 panic
     pub fn new<A: Action>(keystrokes: &str, action: A, context: Option<&str>) -> Self {
         let context_predicate =
             context.map(|context| KeyBindingContextPredicate::parse(context).unwrap().into());
@@ -44,7 +44,7 @@ impl KeyBinding {
         .unwrap()
     }
 
-    /// Load a keybinding from the given raw data.
+    /// 从给定原始数据加载键绑定
     pub fn load(
         keystrokes: &str,
         action: Box<dyn Action>,
@@ -74,18 +74,18 @@ impl KeyBinding {
         })
     }
 
-    /// Set the metadata for this binding.
+    /// 设置此绑定的元数据
     pub fn with_meta(mut self, meta: KeyBindingMetaIndex) -> Self {
         self.meta = Some(meta);
         self
     }
 
-    /// Set the metadata for this binding.
+    /// 设置此绑定的元数据
     pub fn set_meta(&mut self, meta: KeyBindingMetaIndex) {
         self.meta = Some(meta);
     }
 
-    /// Check if the given keystrokes match this binding.
+    /// 检查给定的击键是否匹配此绑定
     pub fn match_keystrokes(&self, typed: &[impl AsKeystroke]) -> Option<bool> {
         if self.keystrokes.len() < typed.len() {
             return None;
@@ -100,27 +100,27 @@ impl KeyBinding {
         Some(self.keystrokes.len() > typed.len())
     }
 
-    /// Get the keystrokes associated with this binding
+    /// 获取与此绑定关联的击键
     pub fn keystrokes(&self) -> &[KeybindingKeystroke] {
         self.keystrokes.as_slice()
     }
 
-    /// Get the action associated with this binding
+    /// 获取与此绑定关联的动作
     pub fn action(&self) -> &dyn Action {
         self.action.as_ref()
     }
 
-    /// Get the predicate used to match this binding
+    /// 获取用于匹配此绑定的谓词
     pub fn predicate(&self) -> Option<Rc<KeyBindingContextPredicate>> {
         self.context_predicate.as_ref().map(|rc| rc.clone())
     }
 
-    /// Get the metadata for this binding
+    /// 获取此绑定的元数据
     pub fn meta(&self) -> Option<KeyBindingMetaIndex> {
         self.meta
     }
 
-    /// Get the action input associated with the action for this binding
+    /// 获取此绑定动作的输入
     pub fn action_input(&self) -> Option<SharedString> {
         self.action_input.clone()
     }
@@ -136,8 +136,8 @@ impl std::fmt::Debug for KeyBinding {
     }
 }
 
-/// A unique identifier for retrieval of metadata associated with a key binding.
-/// Intended to be used as an index or key into a user-defined store of metadata
-/// associated with the binding, such as the source of the binding.
+/// 用于检索与键绑定关联元数据的唯一标识符。
+/// 用作用户定义的元数据存储的索引或键，
+/// 例如绑定的来源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeyBindingMetaIndex(pub u32);

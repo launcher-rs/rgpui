@@ -14,6 +14,7 @@ use std::{
     sync::{self, Arc},
 };
 
+/// 测试窗口状态
 pub(crate) struct TestWindowState {
     pub(crate) bounds: Bounds<Pixels>,
     pub(crate) handle: AnyWindowHandle,
@@ -36,6 +37,7 @@ pub(crate) struct TestWindowState {
     is_fullscreen: bool,
 }
 
+/// 测试窗口包装器
 #[derive(Clone)]
 pub struct TestWindow(pub(crate) Rc<Mutex<TestWindowState>>);
 
@@ -56,6 +58,7 @@ impl HasDisplayHandle for TestWindow {
 }
 
 impl TestWindow {
+    /// 创建新的测试窗口
     pub(crate) fn new(
         handle: AnyWindowHandle,
         params: WindowParams,
@@ -89,10 +92,11 @@ impl TestWindow {
         })))
     }
 
+    /// 模拟窗口大小变化
     pub fn simulate_resize(&mut self, size: Size<Pixels>) {
         let scale_factor = self.scale_factor();
         let mut lock = self.0.lock();
-        // Always update bounds, even if no callback is registered
+        // 始终更新边界，即使没有注册回调
         lock.bounds.size = size;
         let Some(mut callback) = lock.resize_callback.take() else {
             return;
@@ -102,6 +106,7 @@ impl TestWindow {
         self.0.lock().resize_callback = Some(callback);
     }
 
+    /// 模拟活动状态变化
     pub(crate) fn simulate_active_status_change(&self, active: bool) {
         let mut lock = self.0.lock();
         let Some(mut callback) = lock.active_status_change_callback.take() else {
@@ -112,6 +117,7 @@ impl TestWindow {
         self.0.lock().active_status_change_callback = Some(callback);
     }
 
+    /// 模拟输入事件
     pub fn simulate_input(&mut self, event: PlatformInput) -> bool {
         let mut lock = self.0.lock();
         let Some(mut callback) = lock.input_callback.take() else {
@@ -338,14 +344,17 @@ impl PlatformWindow for TestWindow {
     }
 }
 
+/// 测试用图集状态
 pub(crate) struct TestAtlasState {
     next_id: u32,
     tiles: HashMap<AtlasKey, AtlasTile>,
 }
 
+/// 测试用图集实现
 pub(crate) struct TestAtlas(Mutex<TestAtlasState>);
 
 impl TestAtlas {
+    /// 创建新的测试图集
     pub fn new() -> Self {
         TestAtlas(Mutex::new(TestAtlasState {
             next_id: 0,

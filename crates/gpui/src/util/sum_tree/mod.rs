@@ -17,7 +17,7 @@ pub const TREE_BASE: usize = 2;
 #[cfg(not(test))]
 pub const TREE_BASE: usize = 6;
 
-// Helper for when we cannot use ArrayVec::<T>::push().unwrap() as T doesn't impl Debug
+// 当我们无法使用 ArrayVec::<T>::push().unwrap() 时的辅助函数，因为 T 未实现 Debug
 trait CapacityResultExt {
     fn unwrap_oob(self);
 }
@@ -28,26 +28,25 @@ impl<T> CapacityResultExt for Result<(), T> {
     }
 }
 
-/// An item that can be stored in a [`SumTree`]
+/// 可以存储在 [`SumTree`] 中的条目
 ///
-/// Must be summarized by a type that implements [`Summary`]
+/// 必须由实现 [`Summary`] 的类型进行总结
 pub trait Item: Clone {
     type Summary: Summary;
 
     fn summary(&self, cx: <Self::Summary as Summary>::Context<'_>) -> Self::Summary;
 }
 
-/// An [`Item`] whose summary has a specific key that can be used to identify it
+/// 其摘要具有可用于识别它的特定键的 [`Item`]
 pub trait KeyedItem: Item {
     type Key: for<'a> Dimension<'a, Self::Summary> + Ord;
 
     fn key(&self) -> Self::Key;
 }
 
-/// A type that describes the Sum of all [`Item`]s in a subtree of the [`SumTree`]
+/// 描述 [`SumTree`] 子树中所有 [`Item`] 之和的类型
 ///
-/// Each Summary type can have multiple [`Dimension`]s that it measures,
-/// which can be used to navigate the tree
+/// 每个 Summary 类型可以有多个用于导航树的 [`Dimension`]
 pub trait Summary: Clone {
     type Context<'a>: Copy;
     fn zero<'a>(cx: Self::Context<'a>) -> Self;
@@ -74,9 +73,9 @@ impl<T: ContextLessSummary> Summary for T {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NoSummary;
 
-/// Catch-all implementation for when you need something that implements [`Summary`] without a specific type.
-/// We implement it on a `NoSummary` instead of re-using `()`, as that avoids blanket impl collisions with `impl<T: Summary> Dimension for T`
-/// (as we also need unit type to be a fill-in dimension)
+/// 捕获-all 实现，当你需要实现 [`Summary`] 的东西而没有特定类型时使用。
+/// 我们在 `NoSummary` 上实现它而非重用 `()`，因为这避免了与 `impl<T: Summary> Dimension for T` 的空白 impl 冲突
+/// （因为我们也需要单元类型作为填充维度）
 impl ContextLessSummary for NoSummary {
     fn zero() -> Self {
         NoSummary
@@ -85,13 +84,13 @@ impl ContextLessSummary for NoSummary {
     fn add_summary(&mut self, _: &Self) {}
 }
 
-/// Each [`Summary`] type can have more than one [`Dimension`] type that it measures.
+/// 每个 [`Summary`] 类型可以有多个测量它的 [`Dimension`] 类型。
 ///
-/// You can use dimensions to seek to a specific location in the [`SumTree`]
+/// 你可以使用维度在 [`SumTree`] 中搜索到特定位置
 ///
-/// # Example:
-/// Zed's rope has a `TextSummary` type that summarizes lines, characters, and bytes.
-/// Each of these are different dimensions we may want to seek to
+/// # 示例：
+/// Zed 的 rope 有一个 `TextSummary` 类型，总结行、字符和字节。
+/// 这些是我们可能想要搜索到的不同维度
 pub trait Dimension<'a, S: Summary>: Clone {
     fn zero(cx: S::Context<'_>) -> Self;
 
@@ -164,33 +163,33 @@ where
     }
 }
 
-/// Bias is used to settle ambiguities when determining positions in an ordered sequence.
+/// Bias 用于确定有序序列中位置时的歧义消除。
 ///
-/// The primary use case is for text, where Bias influences
-/// which character an offset or anchor is associated with.
+/// 主要用例是文本，其中 Bias 影响
+/// 偏移量或锚点与哪个字符关联。
 ///
-/// # Examples
-/// Given the buffer `AˇBCD`:
-/// - The offset of the cursor is 1
-/// - [Bias::Left] would attach the cursor to the character `A`
-/// - [Bias::Right] would attach the cursor to the character `B`
+/// # 示例
+/// 给定缓冲区 `AˇBCD`：
+/// - 光标偏移量为 1
+/// - [Bias::Left] 将光标附加到字符 `A`
+/// - [Bias::Right] 将光标附加到字符 `B`
 ///
-/// Given the buffer `A«BCˇ»D`:
-/// - The offset of the cursor is 3, and the selection is from 1 to 3
-/// - The left anchor of the selection has [Bias::Right], attaching it to the character `B`
-/// - The right anchor of the selection has [Bias::Left], attaching it to the character `C`
+/// 给定缓冲区 `A«BCˇ»D`：
+/// - 光标偏移量为 3，选区为 1 到 3
+/// - 选区的左锚点有 [Bias::Right]，将其附加到字符 `B`
+/// - 选区的右锚点有 [Bias::Left]，将其附加到字符 `C`
 ///
-/// Given the buffer `{ˇ<...>`, where `<...>` is a folded region:
-/// - The display offset of the cursor is 1, but the offset in the buffer is determined by the bias
-/// - [Bias::Left] would attach the cursor to the character `{`, with a buffer offset of 1
-/// - [Bias::Right] would attach the cursor to the first character of the folded region,
-///   and the buffer offset would be the offset of the first character of the folded region
+/// 给定缓冲区 `{ˇ<...>`，其中 `<...>` 是折叠区域：
+/// - 光标的显示偏移量为 1，但缓冲区中的偏移量由 bias 确定
+/// - [Bias::Left] 将光标附加到字符 `{`，缓冲区偏移量为 1
+/// - [Bias::Right] 将光标附加到折叠区域的第一个字符，
+///   缓冲区偏移量将是折叠区域第一个字符的偏移量
 #[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Default)]
 pub enum Bias {
-    /// Attach to the character on the left
+    /// 附加到左侧字符
     #[default]
     Left,
-    /// Attach to the character on the right
+    /// 附加到右侧字符
     Right,
 }
 
@@ -203,12 +202,12 @@ impl Bias {
     }
 }
 
-/// A B+ tree in which each leaf node contains `Item`s of type `T` and a `Summary`s for each `Item`.
-/// Each internal node contains a `Summary` of the items in its subtree.
+/// B+ 树，其中每个叶节点包含类型 `T` 的 `Item` 和每个 `Item` 的 `Summary`。
+/// 每个内部节点包含其子树中条目的 `Summary`。
 ///
-/// The maximum number of items per node is `TREE_BASE * 2`.
+/// 每个节点的最大条目数为 `TREE_BASE * 2`。
 ///
-/// Any [`Dimension`] supported by the [`Summary`] type can be used to seek to a specific location in the tree.
+/// [`Summary`] 类型支持的任何 [`Dimension`] 都可用于在树中搜索到特定位置。
 #[derive(Clone)]
 pub struct SumTree<T: Item>(Arc<Node<T>>);
 
@@ -231,7 +230,7 @@ impl<T: Item> SumTree<T> {
         }))
     }
 
-    /// Useful in cases where the item type has a non-trivial context type, but the zero value of the summary type doesn't depend on that context.
+    /// 当条目类型具有非平凡的上下文类型，但摘要类型的零值不依赖于该上下文时很有用。
     pub fn from_summary(summary: T::Summary) -> Self {
         SumTree(Arc::new(Node::Leaf {
             summary,
@@ -393,9 +392,9 @@ impl<T: Item> SumTree<T> {
         Iter::new(self)
     }
 
-    /// A more efficient version of `Cursor::new()` + `Cursor::seek()` + `Cursor::item()`.
+    /// `Cursor::new()` + `Cursor::seek()` + `Cursor::item()` 的更高效版本。
     ///
-    /// Only returns the item that exactly has the target match.
+    /// 仅返回与目标完全匹配的条目。
     #[instrument(skip_all)]
     pub fn find_exact<'a, 'slf, D, Target>(
         &'slf self,
@@ -421,7 +420,7 @@ impl<T: Item> SumTree<T> {
         };
     }
 
-    /// A more efficient version of `Cursor::new()` + `Cursor::seek()` + `Cursor::item()`
+    /// `Cursor::new()` + `Cursor::seek()` + `Cursor::item()` 的更高效版本
     #[instrument(skip_all)]
     pub fn find<'a, 'slf, D, Target>(
         &'slf self,
@@ -506,7 +505,7 @@ impl<T: Item> SumTree<T> {
         }
     }
 
-    /// A more efficient version of `Cursor::new()` + `Cursor::seek()` + `Cursor::item()`
+    /// `Cursor::new()` + `Cursor::seek()` + `Cursor::item()` 的更高效版本
     #[instrument(skip_all)]
     pub fn find_with_prev<'a, 'slf, D, Target>(
         &'slf self,
@@ -604,8 +603,8 @@ impl<T: Item> SumTree<T> {
         Cursor::new(self, cx)
     }
 
-    /// Note: If the summary type requires a non `()` context, then the filter cursor
-    /// that is returned cannot be used with Rust's iterators.
+    /// 注意：如果摘要类型需要非 `()` 上下文，则返回的过滤游标
+    /// 不能与 Rust 的迭代器一起使用。
     pub fn filter<'a, 'b, F, U>(
         &'a self,
         cx: <T::Summary as Summary>::Context<'b>,

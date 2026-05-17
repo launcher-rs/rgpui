@@ -1,19 +1,19 @@
 use crate::{Action, App, Platform, SharedString};
 
-/// A menu of the application, either a main menu or a submenu
+/// 应用程序菜单，可以是主菜单或子菜单
 pub struct Menu {
-    /// The name of the menu
+    /// 菜单名称
     pub name: SharedString,
 
-    /// The items in the menu
+    /// 菜单项列表
     pub items: Vec<MenuItem>,
 
-    /// Whether this menu is disabled
+    /// 此菜单是否被禁用
     pub disabled: bool,
 }
 
 impl Menu {
-    /// Create a new Menu with the given name
+    /// 使用给定名称创建新菜单
     pub fn new(name: impl Into<SharedString>) -> Self {
         Self {
             name: name.into(),
@@ -22,19 +22,19 @@ impl Menu {
         }
     }
 
-    /// Set items to be in this menu
+    /// 设置菜单项
     pub fn items(mut self, items: impl IntoIterator<Item = MenuItem>) -> Self {
         self.items = items.into_iter().collect();
         self
     }
 
-    /// Set whether this menu is disabled
+    /// 设置此菜单是否被禁用
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
-    /// Create an OwnedMenu from this Menu
+    /// 从此菜单创建 OwnedMenu
     pub fn owned(self) -> OwnedMenu {
         OwnedMenu {
             name: self.name.to_string().into(),
@@ -44,19 +44,18 @@ impl Menu {
     }
 }
 
-/// OS menus are menus that are recognized by the operating system
-/// This allows the operating system to provide specialized items for
-/// these menus
+/// 操作系统菜单，由操作系统识别
+/// 这允许操作系统为这些菜单提供专门的菜单项
 pub struct OsMenu {
-    /// The name of the menu
+    /// 菜单名称
     pub name: SharedString,
 
-    /// The type of menu
+    /// 菜单类型
     pub menu_type: SystemMenuType,
 }
 
 impl OsMenu {
-    /// Create an OwnedOsMenu from this OsMenu
+    /// 从此 OsMenu 创建 OwnedOsMenu
     pub fn owned(self) -> OwnedOsMenu {
         OwnedOsMenu {
             name: self.name.to_string().into(),
@@ -65,56 +64,56 @@ impl OsMenu {
     }
 }
 
-/// The type of system menu
+/// 系统菜单类型
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum SystemMenuType {
-    /// The 'Services' menu in the Application menu on macOS
+    /// macOS 应用程序菜单中的"服务"菜单
     Services,
 }
 
-/// The different kinds of items that can be in a menu
+/// 菜单中可以的不同类型的菜单项
 pub enum MenuItem {
-    /// A separator between items
+    /// 项目之间的分隔符
     Separator,
 
-    /// A submenu
+    /// 子菜单
     Submenu(Menu),
 
-    /// A menu, managed by the system (for example, the Services menu on macOS)
+    /// 由系统管理的菜单（例如 macOS 上的服务菜单）
     SystemMenu(OsMenu),
 
-    /// An action that can be performed
+    /// 可执行的操作
     Action {
-        /// The name of this menu item
+        /// 此菜单项的名称
         name: SharedString,
 
-        /// The action to perform when this menu item is selected
+        /// 选择此菜单项时执行的操作
         action: Box<dyn Action>,
 
-        /// The OS Action that corresponds to this action, if any
-        /// See [`OsAction`] for more information
+        /// 与此操作对应的操作系统操作（如果有）
+        /// 有关更多信息，请参见 [`OsAction`]
         os_action: Option<OsAction>,
 
-        /// Whether this action is checked
+        /// 此操作是否被选中
         checked: bool,
 
-        /// Whether this action is disabled
+        /// 此操作是否被禁用
         disabled: bool,
     },
 }
 
 impl MenuItem {
-    /// Creates a new menu item that is a separator
+    /// 创建分隔符菜单项
     pub fn separator() -> Self {
         Self::Separator
     }
 
-    /// Creates a new menu item that is a submenu
+    /// 创建子菜单菜单项
     pub fn submenu(menu: Menu) -> Self {
         Self::Submenu(menu)
     }
 
-    /// Creates a new submenu that is populated by the OS
+    /// 创建由操作系统填充的子菜单
     pub fn os_submenu(name: impl Into<SharedString>, menu_type: SystemMenuType) -> Self {
         Self::SystemMenu(OsMenu {
             name: name.into(),
@@ -122,7 +121,7 @@ impl MenuItem {
         })
     }
 
-    /// Creates a new menu item that invokes an action
+    /// 创建调用操作的菜单项
     pub fn action(name: impl Into<SharedString>, action: impl Action) -> Self {
         Self::Action {
             name: name.into(),
@@ -133,7 +132,7 @@ impl MenuItem {
         }
     }
 
-    /// Creates a new menu item that invokes an action and has an OS action
+    /// 创建调用操作并带有操作系统操作的菜单项
     pub fn os_action(
         name: impl Into<SharedString>,
         action: impl Action,
@@ -148,7 +147,7 @@ impl MenuItem {
         }
     }
 
-    /// Create an OwnedMenuItem from this MenuItem
+    /// 从此 MenuItem 创建 OwnedMenuItem
     pub fn owned(self) -> OwnedMenuItem {
         match self {
             MenuItem::Separator => OwnedMenuItem::Separator,
@@ -170,9 +169,9 @@ impl MenuItem {
         }
     }
 
-    /// Set whether this menu item is checked
+    /// 设置此菜单项是否被选中
     ///
-    /// Only for [`MenuItem::Action`], otherwise, will be ignored
+    /// 仅适用于 [`MenuItem::Action`]，否则将被忽略
     pub fn checked(mut self, checked: bool) -> Self {
         match &mut self {
             MenuItem::Action { checked: old, .. } => {
@@ -183,9 +182,9 @@ impl MenuItem {
         self
     }
 
-    /// Returns whether this menu item is checked
+    /// 返回此菜单项是否被选中
     ///
-    /// Only for [`MenuItem::Action`], otherwise, returns false
+    /// 仅适用于 [`MenuItem::Action`]，否则返回 false
     #[inline]
     pub fn is_checked(&self) -> bool {
         match self {
@@ -194,7 +193,7 @@ impl MenuItem {
         }
     }
 
-    /// Set whether this menu item is disabled
+    /// 设置此菜单项是否被禁用
     pub fn disabled(mut self, disabled: bool) -> Self {
         match &mut self {
             MenuItem::Action { disabled: old, .. } => {
@@ -208,9 +207,9 @@ impl MenuItem {
         self
     }
 
-    /// Returns whether this menu item is disabled
+    /// 返回此菜单项是否被禁用
     ///
-    /// Only for [`MenuItem::Action`] and [`MenuItem::Submenu`], otherwise, returns false
+    /// 仅适用于 [`MenuItem::Action`] 和 [`MenuItem::Submenu`]，否则返回 false
     #[inline]
     pub fn is_disabled(&self) -> bool {
         match self {
@@ -221,58 +220,57 @@ impl MenuItem {
     }
 }
 
-/// OS menus are menus that are recognized by the operating system
-/// This allows the operating system to provide specialized items for
-/// these menus
+/// 操作系统菜单，由操作系统识别
+/// 这允许操作系统为这些菜单提供专门的行为
 #[derive(Clone)]
 pub struct OwnedOsMenu {
-    /// The name of the menu
+    /// 菜单名称
     pub name: SharedString,
 
-    /// The type of menu
+    /// 菜单类型
     pub menu_type: SystemMenuType,
 }
 
-/// A menu of the application, either a main menu or a submenu
+/// 应用程序菜单，可以是主菜单或子菜单
 #[derive(Clone)]
 pub struct OwnedMenu {
-    /// The name of the menu
+    /// 菜单名称
     pub name: SharedString,
 
-    /// The items in the menu
+    /// 菜单项列表
     pub items: Vec<OwnedMenuItem>,
 
-    /// Whether this menu is disabled
+    /// 此菜单是否被禁用
     pub disabled: bool,
 }
 
-/// The different kinds of items that can be in a menu
+/// 菜单中可以的不同类型的菜单项
 pub enum OwnedMenuItem {
-    /// A separator between items
+    /// 项目之间的分隔符
     Separator,
 
-    /// A submenu
+    /// 子菜单
     Submenu(OwnedMenu),
 
-    /// A menu, managed by the system (for example, the Services menu on macOS)
+    /// 由系统管理的菜单（例如 macOS 上的服务菜单）
     SystemMenu(OwnedOsMenu),
 
-    /// An action that can be performed
+    /// 可执行的操作
     Action {
-        /// The name of this menu item
+        /// 此菜单项的名称
         name: String,
 
-        /// The action to perform when this menu item is selected
+        /// 选择此菜单项时执行的操作
         action: Box<dyn Action>,
 
-        /// The OS Action that corresponds to this action, if any
-        /// See [`OsAction`] for more information
+        /// 与此操作对应的操作系统操作（如果有）
+        /// 有关更多信息，请参见 [`OsAction`]
         os_action: Option<OsAction>,
 
-        /// Whether this action is checked
+        /// 此操作是否被选中
         checked: bool,
 
-        /// Whether this action is disabled
+        /// 此操作是否被禁用
         disabled: bool,
     },
 }
@@ -300,31 +298,29 @@ impl Clone for OwnedMenuItem {
     }
 }
 
-// TODO: As part of the global selections refactor, these should
-// be moved to GPUI-provided actions that make this association
-// without leaking the platform details to GPUI users
+// TODO: 作为全局选择重构的一部分，这些应该
+// 移动到 GPUI 提供的操作中，在不向 GPUI 用户泄露平台细节的情况下建立此关联
 
-/// OS actions are actions that are recognized by the operating system
-/// This allows the operating system to provide specialized behavior for
-/// these actions
+/// 操作系统操作，由操作系统识别
+/// 这允许操作系统为这些操作提供专门的行为
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum OsAction {
-    /// The 'cut' action
+    /// "剪切"操作
     Cut,
 
-    /// The 'copy' action
+    /// "复制"操作
     Copy,
 
-    /// The 'paste' action
+    /// "粘贴"操作
     Paste,
 
-    /// The 'select all' action
+    /// "全选"操作
     SelectAll,
 
-    /// The 'undo' action
+    /// "撤销"操作
     Undo,
 
-    /// The 'redo' action
+    /// "重做"操作
     Redo,
 }
 

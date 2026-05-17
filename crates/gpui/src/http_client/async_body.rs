@@ -9,30 +9,30 @@ use futures::AsyncRead;
 use http_body::{Body, Frame};
 use serde::Serialize;
 
-/// Based on the implementation of AsyncBody in
-/// <https://github.com/sagebind/isahc/blob/5c533f1ef4d6bdf1fd291b5103c22110f41d0bf0/src/body/mod.rs>.
+/// 基于 AsyncBody 实现，参考：
+/// <https://github.com/sagebind/isahc/blob/5c533f1ef4d6bdf1fd291b5103c22110f41d0bf0/src/body/mod.rs>
 pub struct AsyncBody(pub Inner);
 
+/// 请求体的内部表示
 pub enum Inner {
-    /// An empty body.
+    /// 空请求体
     Empty,
 
-    /// A body stored in memory.
+    /// 存储在内存中的请求体
     Bytes(std::io::Cursor<Bytes>),
 
-    /// An asynchronous reader.
+    /// 异步读取器
     AsyncReader(Pin<Box<dyn futures::AsyncRead + Send + Sync>>),
 }
 
 impl AsyncBody {
-    /// Create a new empty body.
+    /// 创建新的空请求体。
     ///
-    /// An empty body represents the *absence* of a body, which is semantically
-    /// different than the presence of a body of zero length.
+    /// 空请求体表示主体的*缺失*，这与长度为零的请求体在语义上不同。
     pub fn empty() -> Self {
         Self(Inner::Empty)
     }
-    /// Create a streaming body that reads from the given reader.
+    /// 创建流式请求体，从给定读取器读取数据
     pub fn from_reader<R>(read: R) -> Self
     where
         R: AsyncRead + Send + Sync + 'static,
@@ -89,7 +89,7 @@ impl From<&'static str> for AsyncBody {
     }
 }
 
-/// Newtype wrapper that serializes a value as JSON into an `AsyncBody`.
+/// 新类型包装器，将值序列化为 JSON 到 `AsyncBody` 中
 pub struct Json<T: Serialize>(pub T);
 
 impl<T: Serialize> From<Json<T>> for AsyncBody {

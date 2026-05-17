@@ -16,9 +16,8 @@ use crate::refineable::Refineable;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Use this struct for interfacing with the 'debug_below' styling from your own elements.
-/// If a parent element has this style set on it, then this struct will be set as a global in
-/// GPUI.
+/// 使用此结构与你自己元素中的 'debug_below' 样式进行交互。
+/// 如果父元素设置了此样式，则此结构将被设置为 GPUI 中的全局值。
 #[cfg(debug_assertions)]
 pub struct DebugBelow;
 
@@ -27,20 +26,20 @@ impl crate::Global for DebugBelow {}
 
 /// 图像如何适应元素边界的方式。
 pub enum ObjectFit {
-    /// The image will be stretched to fill the bounds of the element.
+    /// 图像将拉伸以填充元素的边界。
     Fill,
-    /// The image will be scaled to fit within the bounds of the element.
+    /// 图像将缩放以适应元素的边界。
     Contain,
-    /// The image will be scaled to cover the bounds of the element.
+    /// 图像将缩放以覆盖元素的边界。
     Cover,
-    /// The image will be scaled down to fit within the bounds of the element.
+    /// 图像将缩小以适应元素的边界。
     ScaleDown,
-    /// The image will maintain its original size.
+    /// 图像将保持其原始大小。
     None,
 }
 
 impl ObjectFit {
-    /// Get the bounds of the image within the given bounds.
+    /// 获取给定边界内图像的边界。
     pub fn get_bounds(
         &self,
         bounds: Bounds<Pixels>,
@@ -97,8 +96,8 @@ impl ObjectFit {
                         size: new_size,
                     }
                 } else {
-                    // If the image is smaller than or equal to the container, display it at its original size,
-                    // centered within the container.
+                    // 如果图像小于或等于容器，则以其原始大小显示，
+                    // 居中于容器内。
                     let original_size = size(image_size.width, image_size.height);
                     Bounds {
                         origin: point(
@@ -143,12 +142,12 @@ impl ObjectFit {
     Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Default, JsonSchema, Serialize, Deserialize,
 )]
 pub enum TemplateColumnMinSize {
-    /// The column size may be 0
+    /// 列大小可能为 0
     #[default]
     Zero,
-    /// The column size can be determined by the min content
+    /// 列大小可以由最小内容决定
     MinContent,
-    /// The column size can be determined by the max content
+    /// 列大小可以由最大内容决定
     MaxContent,
 }
 
@@ -168,9 +167,9 @@ pub enum TemplateColumnMinSize {
     Deserialize,
 )]
 pub struct GridTemplate {
-    /// How this template directive should be repeated
+    /// 此模板指令应如何重复
     pub repeat: u16,
-    /// The minimum size in the repeat(<>, minmax(_, 1fr)) equation
+    /// 在 repeat(<>, minmax(_, 1fr)) 方程中的最小大小
     pub min_size: TemplateColumnMinSize,
 }
 
@@ -178,141 +177,140 @@ pub struct GridTemplate {
 #[derive(Clone, Refineable, Debug)]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Style {
-    /// What layout strategy should be used?
+    /// 应使用什么布局策略？
     pub display: Display,
 
-    /// Should the element be painted on screen?
+    /// 元素是否应在屏幕上绘制？
     pub visibility: Visibility,
 
-    // Overflow properties
-    /// How children overflowing their container should affect layout
+    // 溢出属性
+    /// 子元素溢出容器时如何影响布局
     #[refineable]
     pub overflow: Point<Overflow>,
-    /// How much space (in points) should be reserved for the scrollbars of `Overflow::Scroll` and `Overflow::Auto` nodes.
+    /// 应为 `Overflow::Scroll` 和 `Overflow::Auto` 节点的滚动条保留多少空间（以点为单位）。
     pub scrollbar_width: AbsoluteLength,
-    /// Whether both x and y axis should be scrollable at the same time.
+    /// x 和 y 轴是否应同时可滚动。
     pub allow_concurrent_scroll: bool,
-    /// Whether scrolling should be restricted to the axis indicated by the mouse wheel.
+    /// 滚动是否应限制在鼠标滚轮指示的轴上。
     ///
-    /// This means that:
-    /// - The mouse wheel alone will only ever scroll the Y axis.
-    /// - Holding `Shift` and using the mouse wheel will scroll the X axis.
+    /// 这意味着：
+    /// - 仅使用鼠标滚轮将永远只滚动 Y 轴。
+    /// - 按住 `Shift` 并使用鼠标滚轮将滚动 X 轴。
     ///
-    /// ## Motivation
+    /// ## 动机
     ///
-    /// On the web when scrolling with the mouse wheel, scrolling up and down will always scroll the Y axis, even when
-    /// the mouse is over a horizontally-scrollable element.
+    /// 在 Web 上使用鼠标滚轮滚动时，上下滚动将永远只滚动 Y 轴，即使
+    /// 鼠标位于水平可滚动元素上方。
     ///
-    /// The only way to scroll horizontally is to hold down `Shift` while scrolling, which then changes the scroll axis
-    /// to the X axis.
+    /// 唯一水平滚动的方法是在滚动时按住 `Shift`，这会将滚动轴
+    /// 更改为 X 轴。
     ///
-    /// Currently, GPUI operates differently from the web in that it will scroll an element in either the X or Y axis
-    /// when scrolling with just the mouse wheel. This causes problems when scrolling in a vertical list that contains
-    /// horizontally-scrollable elements, as when you get to the horizontally-scrollable elements the scroll will be
-    /// hijacked.
+    /// 目前，GPUI 的操作与 Web 不同，它会在仅使用鼠标滚轮滚动时在 X 或 Y 轴上滚动元素。这会导致在包含
+    /// 水平可滚动元素的垂直列表中滚动时出现问题，因为当你到达水平可滚动元素时滚动会被
+    /// 劫持。
     ///
-    /// Ideally we would match the web's behavior and not have a need for this, but right now we're adding this opt-in
-    /// style property to limit the potential blast radius.
+    /// 理想情况下我们将匹配 Web 的行为并且不需要这个，但目前我们添加了这个可选的
+    /// 样式属性以限制潜在的爆炸半径。
     pub restrict_scroll_to_axis: bool,
 
-    // Position properties
-    /// What should the `position` value of this struct use as a base offset?
+    // 位置属性
+    /// 此结构的 `position` 值应使用什么作为基础偏移量？
     pub position: Position,
-    /// How should the position of this element be tweaked relative to the layout defined?
+    /// 相对于定义的布局，此元素的位置应如何调整？
     #[refineable]
     pub inset: Edges<Length>,
 
-    // Size properties
-    /// Sets the initial size of the item
+    // 大小属性
+    /// 设置项目的初始大小
     #[refineable]
     pub size: Size<Length>,
-    /// Controls the minimum size of the item
+    /// 控制项目的最小大小
     #[refineable]
     pub min_size: Size<Length>,
-    /// Controls the maximum size of the item
+    /// 控制项目的最大大小
     #[refineable]
     pub max_size: Size<Length>,
-    /// Sets the preferred aspect ratio for the item. The ratio is calculated as width divided by height.
+    /// 设置项目的首选宽高比。宽高比计算为宽度除以高度。
     pub aspect_ratio: Option<f32>,
 
-    // Spacing Properties
-    /// How large should the margin be on each side?
+    // 间距属性
+    /// 每边的边距应有多大？
     #[refineable]
     pub margin: Edges<Length>,
-    /// How large should the padding be on each side?
+    /// 每边的内边距应有多大？
     #[refineable]
     pub padding: Edges<DefiniteLength>,
-    /// How large should the border be on each side?
+    /// 每边的边框应有多大？
     #[refineable]
     pub border_widths: Edges<AbsoluteLength>,
 
-    // Alignment properties
-    /// How this node's children aligned in the cross/block axis?
+    // 对齐属性
+    /// 此节点的子节点如何在交叉/块轴中对齐？
     pub align_items: Option<AlignItems>,
-    /// How this node should be aligned in the cross/block axis. Falls back to the parents [`AlignItems`] if not set
+    /// 此节点如何在交叉/块轴中对齐。如果未设置，则回退到父节点的 [`AlignItems`]
     pub align_self: Option<AlignSelf>,
-    /// How should content contained within this item be aligned in the cross/block axis
+    /// 此项目中包含的内容如何在交叉/块轴中对齐
     pub align_content: Option<AlignContent>,
-    /// How should contained within this item be aligned in the main/inline axis
+    /// 此项目中包含的内容如何在主/内联轴中对齐
     pub justify_content: Option<JustifyContent>,
-    /// How large should the gaps between items in a flex container be?
+    /// flex 容器中项目之间的间隙应有多大？
     #[refineable]
     pub gap: Size<DefiniteLength>,
 
-    // Flexbox properties
-    /// Which direction does the main axis flow in?
+    // Flexbox 属性
+    /// 主轴在哪个方向流动？
     pub flex_direction: FlexDirection,
-    /// Should elements wrap, or stay in a single line?
+    /// 元素应换行还是保持在单行中？
     pub flex_wrap: FlexWrap,
-    /// Sets the initial main axis size of the item
+    /// 设置项目的主轴初始大小
     pub flex_basis: Length,
-    /// The relative rate at which this item grows when it is expanding to fill space, 0.0 is the default value, and this value must be positive.
+    /// 此项目在扩展以填充空间时的相对增长率，0.0 是默认值，此值必须为正。
     pub flex_grow: f32,
-    /// The relative rate at which this item shrinks when it is contracting to fit into space, 1.0 is the default value, and this value must be positive.
+    /// 此项目在收缩以适应空间时的相对收缩率，1.0 是默认值，此值必须为正。
     pub flex_shrink: f32,
 
-    /// The fill color of this element
+    /// 此元素的填充颜色
     pub background: Option<Fill>,
 
-    /// The border color of this element
+    /// 此元素的边框颜色
     pub border_color: Option<Hsla>,
 
-    /// The border style of this element
+    /// 此元素的边框样式
     pub border_style: BorderStyle,
 
-    /// The radius of the corners of this element
+    /// 此元素角的半径
     #[refineable]
     pub corner_radii: Corners<AbsoluteLength>,
 
-    /// Box shadow of the element
+    /// 元素的盒阴影
     pub box_shadow: Vec<BoxShadow>,
 
-    /// The text style of this element
+    /// 此元素的文本样式
     #[refineable]
     pub text: TextStyleRefinement,
 
-    /// The mouse cursor style shown when the mouse pointer is over an element.
+    /// 鼠标指针位于元素上方时显示的鼠标光标样式。
     pub mouse_cursor: Option<CursorStyle>,
 
-    /// The opacity of this element
+    /// 此元素的透明度
     pub opacity: Option<f32>,
 
-    /// The grid columns of this element
-    /// Roughly equivalent to the Tailwind `grid-cols-<number>`
+    /// 此元素的网格列
+    /// 大致等效于 Tailwind 的 `grid-cols-<number>`
     pub grid_cols: Option<GridTemplate>,
 
-    /// The row span of this element
-    /// Equivalent to the Tailwind `grid-rows-<number>`
+    /// 此元素的行跨度
+    /// 等效于 Tailwind 的 `grid-rows-<number>`
     pub grid_rows: Option<GridTemplate>,
 
-    /// The grid location of this element
+    /// 此元素的网格位置
     pub grid_location: Option<GridLocation>,
 
-    /// Whether to draw a red debugging outline around this element
+    /// 是否在此元素周围绘制红色调试轮廓
     #[cfg(debug_assertions)]
     pub debug: bool,
 
-    /// Whether to draw a red debugging outline around this element and all of its conforming children
+    /// 是否在此元素及其所有符合条件的子元素周围绘制红色调试轮廓
     #[cfg(debug_assertions)]
     pub debug_below: bool,
 }
@@ -324,7 +322,7 @@ impl Styled for StyleRefinement {
 }
 
 impl StyleRefinement {
-    /// The grid location of this element
+    /// 此元素的网格位置
     pub fn grid_location_mut(&mut self) -> &mut GridLocation {
         self.grid_location.get_or_insert_default()
     }
@@ -333,59 +331,57 @@ impl StyleRefinement {
 /// 类似于 CSS `visibility` 属性的可见性值
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub enum Visibility {
-    /// The element should be drawn as normal.
+    /// 元素应正常绘制。
     #[default]
     Visible,
-    /// The element should not be drawn, but should still take up space in the layout.
+    /// 元素不应绘制，但仍应在布局中占据空间。
     Hidden,
 }
 
 /// box-shadow 属性的可能值
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct BoxShadow {
-    /// What color should the shadow have?
+    /// 阴影应有什么颜色？
     pub color: Hsla,
-    /// How should it be offset from its element?
+    /// 阴影应与其元素偏移多少？
     pub offset: Point<Pixels>,
-    /// How much should the shadow be blurred?
+    /// 阴影应模糊多少？
     pub blur_radius: Pixels,
-    /// How much should the shadow spread?
+    /// 阴影应扩散多少？
     pub spread_radius: Pixels,
 }
 
 /// 如何处理文本中的空白字符
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum WhiteSpace {
-    /// Normal line wrapping when text overflows the width of the element
+    /// 文本溢出元素宽度时正常换行
     #[default]
     Normal,
-    /// No line wrapping, text will overflow the width of the element
+    /// 不换行，文本将溢出元素宽度
     Nowrap,
 }
 
 /// 如何截断超出元素宽度的文本
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum TextOverflow {
-    /// Truncate the text at the end when it doesn't fit, and represent this truncation by
-    /// displaying the provided string (e.g., "very long te…").
+    /// 文本不适合时在末尾截断，并通过显示提供的字符串表示此截断（例如，"很长的 te..."）。
     Truncate(SharedString),
-    /// Truncate the text at the start when it doesn't fit, and represent this truncation by
-    /// displaying the provided string at the beginning (e.g., "…ong text here").
-    /// Typically more adequate for file paths where the end is more important than the beginning.
+    /// 文本不适合时在开头截断，并在开头显示提供的字符串（例如，"...ong text here"）。
+    /// 通常更适合文件路径，因为结尾比开头更重要。
     TruncateStart(SharedString),
 }
 
 /// 如何对齐元素内的文本
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum TextAlign {
-    /// Align the text to the left of the element
+    /// 将文本对齐到元素的左侧
     #[default]
     Left,
 
-    /// Center the text within the element
+    /// 在元素内居中
     Center,
 
-    /// Align the text to the right of the element
+    /// 将文本对齐到元素的右侧
     Right,
 }
 
@@ -393,49 +389,49 @@ pub enum TextAlign {
 #[derive(Refineable, Clone, Debug, PartialEq)]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TextStyle {
-    /// The color of the text
+    /// 文本的颜色
     pub color: Hsla,
 
-    /// The font family to use
+    /// 要使用的字体系列
     pub font_family: SharedString,
 
-    /// The font features to use
+    /// 要使用的字体特性
     pub font_features: FontFeatures,
 
-    /// The fallback fonts to use
+    /// 要使用的后备字体
     pub font_fallbacks: Option<FontFallbacks>,
 
-    /// The font size to use, in pixels or rems.
+    /// 要使用的字体大小，以像素或 rem 为单位。
     pub font_size: AbsoluteLength,
 
-    /// The line height to use, in pixels or fractions
+    /// 要使用的行高，以像素或分数为单位
     pub line_height: DefiniteLength,
 
-    /// The font weight, e.g. bold
+    /// 字体粗细，例如 bold
     pub font_weight: FontWeight,
 
-    /// The font style, e.g. italic
+    /// 字体样式，例如 italic
     pub font_style: FontStyle,
 
-    /// The background color of the text
+    /// 文本的背景颜色
     pub background_color: Option<Hsla>,
 
-    /// The underline style of the text
+    /// 文本的下划线样式
     pub underline: Option<UnderlineStyle>,
 
-    /// The strikethrough style of the text
+    /// 文本的删除线样式
     pub strikethrough: Option<StrikethroughStyle>,
 
-    /// How to handle whitespace in the text
+    /// 如何处理文本中的空白字符
     pub white_space: WhiteSpace,
 
-    /// The text should be truncated if it overflows the width of the element
+    /// 如果文本溢出元素的宽度，则应截断文本
     pub text_overflow: Option<TextOverflow>,
 
-    /// How the text should be aligned within the element
+    /// 文本应如何在元素内对齐
     pub text_align: TextAlign,
 
-    /// The number of lines to display before truncating the text
+    /// 截断文本前显示的行数
     pub line_clamp: Option<usize>,
 }
 
@@ -443,7 +439,7 @@ impl Default for TextStyle {
     fn default() -> Self {
         TextStyle {
             color: black(),
-            // todo(linux) make this configurable or choose better default
+            // todo(linux) 使其可配置或选择更好的默认值
             font_family: ".SystemUIFont".into(),
             font_features: FontFeatures::default(),
             font_fallbacks: None,
@@ -463,7 +459,7 @@ impl Default for TextStyle {
 }
 
 impl TextStyle {
-    /// Create a new text style with the given highlighting applied.
+    /// 创建应用给定高亮的新文本样式。
     pub fn highlight(mut self, style: impl Into<HighlightStyle>) -> Self {
         let style = style.into();
         if let Some(weight) = style.font_weight {
@@ -496,7 +492,7 @@ impl TextStyle {
         self
     }
 
-    /// Get the font configured for this text style.
+    /// 获取为此文本样式配置的字体。
     pub fn font(&self) -> Font {
         Font {
             family: self.font_family.clone(),
@@ -507,12 +503,12 @@ impl TextStyle {
         }
     }
 
-    /// Returns the rounded line height in pixels.
+    /// 返回四舍五入的行高（以像素为单位）。
     pub fn line_height_in_pixels(&self, rem_size: Pixels) -> Pixels {
         self.line_height.to_pixels(self.font_size, rem_size).round()
     }
 
-    /// Convert this text style into a [`TextRun`], for the given length of the text.
+    /// 将此文本样式转换为给定文本长度的 [`TextRun`]。
     pub fn to_run(&self, len: usize) -> TextRun {
         TextRun {
             len,
@@ -535,25 +531,25 @@ impl TextStyle {
 /// 统一大小和间距的文本。
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct HighlightStyle {
-    /// The color of the text
+    /// 文本的颜色
     pub color: Option<Hsla>,
 
-    /// The font weight, e.g. bold
+    /// 字体粗细，例如 bold
     pub font_weight: Option<FontWeight>,
 
-    /// The font style, e.g. italic
+    /// 字体样式，例如 italic
     pub font_style: Option<FontStyle>,
 
-    /// The background color of the text
+    /// 文本的背景颜色
     pub background_color: Option<Hsla>,
 
-    /// The underline style of the text
+    /// 文本的下划线样式
     pub underline: Option<UnderlineStyle>,
 
-    /// The underline style of the text
+    /// 文本的删除线样式
     pub strikethrough: Option<StrikethroughStyle>,
 
-    /// Similar to the CSS `opacity` property, this will cause the text to be less vibrant.
+    /// 类似于 CSS 的 `opacity` 属性，这将使文本变得不那么鲜艳。
     pub fade_out: Option<f32>,
 }
 
@@ -574,14 +570,14 @@ impl Hash for HighlightStyle {
 }
 
 impl Style {
-    /// Returns true if the style is visible and the background is opaque.
+    /// 如果样式可见且背景不透明则返回 true。
     pub fn has_opaque_background(&self) -> bool {
         self.background
             .as_ref()
             .is_some_and(|fill| fill.color().is_some_and(|color| !color.is_transparent()))
     }
 
-    /// Get the text style in this element style.
+    /// 获取此元素样式中的文本样式。
     pub fn text_style(&self) -> Option<&TextStyleRefinement> {
         if self.text.is_some() {
             Some(&self.text)
@@ -590,8 +586,8 @@ impl Style {
         }
     }
 
-    /// Get the content mask for this element style, based on the given bounds.
-    /// If the element does not hide its overflow, this will return `None`.
+    /// 获取此元素样式的内容掩码，基于给定的边界。
+    /// 如果元素不隐藏其溢出，则将返回 `None`。
     pub fn overflow_mask(
         &self,
         bounds: Bounds<Pixels>,
@@ -641,7 +637,7 @@ impl Style {
         }
     }
 
-    /// Paints the background of an element styled with this style.
+    /// 使用此样式绘制元素的背景。
     pub fn paint(
         &self,
         bounds: Bounds<Pixels>,
@@ -806,14 +802,14 @@ pub struct StrikethroughStyle {
 /// 可以应用于形状的填充类型。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub enum Fill {
-    /// A solid color fill.
+    /// 纯色填充。
     Color(Background),
 }
 
 impl Fill {
-    /// Unwrap this fill into a solid color, if it is one.
+    /// 如果这是纯色填充，则将其解包为纯色。
     ///
-    /// If the fill is not a solid color, this method returns `None`.
+    /// 如果填充不是纯色，则此方法返回 `None`。
     pub fn color(&self) -> Option<Background> {
         match self {
             Fill::Color(color) => Some(*color),
@@ -866,15 +862,15 @@ impl From<&TextStyle> for HighlightStyle {
 }
 
 impl HighlightStyle {
-    /// Create a highlight style with just a color
+    /// 创建仅包含颜色的高亮样式
     pub fn color(color: Hsla) -> Self {
         Self {
             color: Some(color),
             ..Default::default()
         }
     }
-    /// Blend this highlight style with another.
-    /// Non-continuous properties, like font_weight and font_style, are overwritten.
+    /// 将此高亮样式与另一个混合。
+    /// 非连续属性（如 font_weight 和 font_style）将被覆盖。
     #[must_use]
     pub fn highlight(self, other: HighlightStyle) -> Self {
         Self {
@@ -941,7 +937,7 @@ impl From<Rgba> for HighlightStyle {
     }
 }
 
-/// Combine and merge the highlights and ranges in the two iterators.
+/// 组合并合并两个迭代器中的高亮和范围。
 pub fn combine_highlights(
     a: impl IntoIterator<Item = (Range<usize>, HighlightStyle)>,
     b: impl IntoIterator<Item = (Range<usize>, HighlightStyle)>,
@@ -992,212 +988,208 @@ pub fn combine_highlights(
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 // Copy of taffy::style type of the same name, to derive JsonSchema.
 pub enum AlignItems {
-    /// Items are packed toward the start of the axis
+    /// 项目打包到轴的起始位置
     Start,
-    /// Items are packed toward the end of the axis
+    /// 项目打包到轴的末尾
     End,
-    /// Items are packed towards the flex-relative start of the axis.
+    /// 项目打包到相对于 flex 的轴的起始位置。
     ///
-    /// For flex containers with flex_direction RowReverse or ColumnReverse this is equivalent
-    /// to End. In all other cases it is equivalent to Start.
+    /// 对于 flex_direction 为 RowReverse 或 ColumnReverse 的 flex 容器，这等效于 End。在所有其他情况下，它等效于 Start。
     FlexStart,
-    /// Items are packed towards the flex-relative end of the axis.
+    /// 项目打包到相对于 flex 的轴的末尾。
     ///
-    /// For flex containers with flex_direction RowReverse or ColumnReverse this is equivalent
-    /// to Start. In all other cases it is equivalent to End.
+    /// 对于 flex_direction 为 RowReverse 或 ColumnReverse 的 flex 容器，这等效于 Start。在所有其他情况下，它等效于 End。
     FlexEnd,
-    /// Items are packed along the center of the cross axis
+    /// 项目沿交叉轴中心打包
     Center,
-    /// Items are aligned such as their baselines align
+    /// 项目对齐使其基线对齐
     Baseline,
-    /// Stretch to fill the container
+    /// 拉伸以填充容器
     Stretch,
 }
-/// Used to control how child nodes are aligned.
-/// Does not apply to Flexbox, and will be ignored if specified on a flex container
-/// For Grid it controls alignment in the inline axis
+/// 用于控制如何对齐子节点。
+/// 不适用于 Flexbox，如果在 flex 容器上指定将被忽略
+/// 对于 Grid，它控制内联轴中的对齐
 ///
 /// [MDN](https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items)
 pub type JustifyItems = AlignItems;
-/// Used to control how the specified nodes is aligned.
-/// Overrides the parent Node's `AlignItems` property.
-/// For Flexbox it controls alignment in the cross axis
-/// For Grid it controls alignment in the block axis
+/// 用于控制如何对齐指定的节点。
+/// 覆盖父节点的 `AlignItems` 属性。
+/// 对于 Flexbox，它控制交叉轴中的对齐
+/// 对于 Grid，它控制块轴中的对齐
 ///
 /// [MDN](https://developer.mozilla.org/en-US/docs/Web/CSS/align-self)
 pub type AlignSelf = AlignItems;
-/// Used to control how the specified nodes is aligned.
-/// Overrides the parent Node's `JustifyItems` property.
-/// Does not apply to Flexbox, and will be ignored if specified on a flex child
-/// For Grid it controls alignment in the inline axis
+/// 用于控制如何对齐指定的节点。
+/// 覆盖父节点的 `JustifyItems` 属性。
+/// 不适用于 Flexbox，如果在 flex 子项上指定将被忽略
+/// 对于 Grid，它控制内联轴中的对齐
 ///
 /// [MDN](https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self)
 pub type JustifySelf = AlignItems;
 
-/// Sets the distribution of space between and around content items
-/// For Flexbox it controls alignment in the cross axis
-/// For Grid it controls alignment in the block axis
+/// 设置内容之间和周围的空间分布
+/// 对于 Flexbox，它控制交叉轴中的对齐
+/// 对于 Grid，它控制块轴中的对齐
 ///
 /// [MDN](https://developer.mozilla.org/en-US/docs/Web/CSS/align-content)
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
-// Copy of taffy::style type of the same name, to derive JsonSchema.
+// 复制同名的 taffy::style 类型，以派生 JsonSchema。
 pub enum AlignContent {
-    /// Items are packed toward the start of the axis
+    /// 项目打包到轴的起始位置
     Start,
-    /// Items are packed toward the end of the axis
+    /// 项目打包到轴的末尾
     End,
-    /// Items are packed towards the flex-relative start of the axis.
+    /// 项目打包到相对于 flex 的轴的起始位置。
     ///
-    /// For flex containers with flex_direction RowReverse or ColumnReverse this is equivalent
-    /// to End. In all other cases it is equivalent to Start.
+    /// 对于 flex_direction 为 RowReverse 或 ColumnReverse 的 flex 容器，这等效于 End。在所有其他情况下，它等效于 Start。
     FlexStart,
-    /// Items are packed towards the flex-relative end of the axis.
+    /// 项目打包到相对于 flex 的轴的末尾。
     ///
-    /// For flex containers with flex_direction RowReverse or ColumnReverse this is equivalent
-    /// to Start. In all other cases it is equivalent to End.
+    /// 对于 flex_direction 为 RowReverse 或 ColumnReverse 的 flex 容器，这等效于 Start。在所有其他情况下，它等效于 End。
     FlexEnd,
-    /// Items are centered around the middle of the axis
+    /// 项目沿轴中心居中
     Center,
-    /// Items are stretched to fill the container
+    /// 项目拉伸以填充容器
     Stretch,
-    /// The first and last items are aligned flush with the edges of the container (no gap)
-    /// The gap between items is distributed evenly.
+    /// 第一个和最后一个项目与容器边缘对齐（无间隙）
+    /// 项目之间的间隙均匀分布。
     SpaceBetween,
-    /// The gap between the first and last items is exactly THE SAME as the gap between items.
-    /// The gaps are distributed evenly
+    /// 第一个和最后一个项目之间的间隙与项目之间的间隙完全相同。
+    /// 间隙均匀分布
     SpaceEvenly,
-    /// The gap between the first and last items is exactly HALF the gap between items.
-    /// The gaps are distributed evenly in proportion to these ratios.
+    /// 第一个和最后一个项目之间的间隙恰好是项目之间间隙的一半。
+    /// 间隙按这些比例均匀分布。
     SpaceAround,
 }
 
-/// Sets the distribution of space between and around content items
-/// For Flexbox it controls alignment in the main axis
-/// For Grid it controls alignment in the inline axis
+/// 设置内容之间和周围的空间分布
+/// 对于 Flexbox，它控制主轴中的对齐
+/// 对于 Grid，它控制内联轴中的对齐
 ///
 /// [MDN](https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content)
 pub type JustifyContent = AlignContent;
 
-/// Sets the layout used for the children of this node
+/// 设置此节点子项使用的布局
 ///
-/// The default values depends on on which feature flags are enabled. The order of precedence is: Flex, Grid, Block, None.
+/// 默认值取决于启用的功能标志。优先级顺序为：Flex、Grid、Block、None。
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, JsonSchema)]
-// Copy of taffy::style type of the same name, to derive JsonSchema.
+// 复制同名的 taffy::style 类型，以派生 JsonSchema。
 pub enum Display {
-    /// The children will follow the block layout algorithm
+    /// 子项将遵循块布局算法
     Block,
-    /// The children will follow the flexbox layout algorithm
+    /// 子项将遵循 flexbox 布局算法
     #[default]
     Flex,
-    /// The children will follow the CSS Grid layout algorithm
+    /// 子项将遵循 CSS Grid 布局算法
     Grid,
-    /// The children will not be laid out, and will follow absolute positioning
+    /// 子项将不进行布局，并将遵循绝对定位
     None,
 }
 
-/// Controls whether flex items are forced onto one line or can wrap onto multiple lines.
+/// 控制 flex 项目是否强制放在一行或可以换行到多行。
 ///
-/// Defaults to [`FlexWrap::NoWrap`]
+/// 默认值为 [`FlexWrap::NoWrap`]
 ///
-/// [Specification](https://www.w3.org/TR/css-flexbox-1/#flex-wrap-property)
+/// [规范](https://www.w3.org/TR/css-flexbox-1/#flex-wrap-property)
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, JsonSchema)]
-// Copy of taffy::style type of the same name, to derive JsonSchema.
+// 复制同名的 taffy::style 类型，以派生 JsonSchema。
 pub enum FlexWrap {
-    /// Items will not wrap and stay on a single line
+    /// 项目不会换行并保持在单行上
     #[default]
     NoWrap,
-    /// Items will wrap according to this item's [`FlexDirection`]
+    /// 项目将根据此项目的 [`FlexDirection`] 换行
     Wrap,
-    /// Items will wrap in the opposite direction to this item's [`FlexDirection`]
+    /// 项目将以与此项目的 [`FlexDirection`] 相反的方向换行
     WrapReverse,
 }
 
-/// The direction of the flexbox layout main axis.
+/// flexbox 布局主轴的方向。
 ///
-/// There are always two perpendicular layout axes: main (or primary) and cross (or secondary).
-/// Adding items will cause them to be positioned adjacent to each other along the main axis.
-/// By varying this value throughout your tree, you can create complex axis-aligned layouts.
+/// 总是有两个垂直的布局轴：主（或主要）和交叉（或次要）。
+/// 添加项目将导致它们沿主轴彼此相邻定位。
+/// 通过在整个树中变化此值，你可以创建复杂的轴对齐布局。
 ///
-/// Items are always aligned relative to the cross axis, and justified relative to the main axis.
+/// 项目始终相对于交叉轴对齐，并相对于主轴对齐。
 ///
-/// The default behavior is [`FlexDirection::Row`].
+/// 默认行为是 [`FlexDirection::Row`]。
 ///
-/// [Specification](https://www.w3.org/TR/css-flexbox-1/#flex-direction-property)
+/// [规范](https://www.w3.org/TR/css-flexbox-1/#flex-direction-property)
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, JsonSchema)]
-// Copy of taffy::style type of the same name, to derive JsonSchema.
+// 复制同名的 taffy::style 类型，以派生 JsonSchema。
 pub enum FlexDirection {
-    /// Defines +x as the main axis
+    /// 定义 +x 为主轴
     ///
-    /// Items will be added from left to right in a row.
+    /// 项目将从左到右添加到行中。
     #[default]
     Row,
-    /// Defines +y as the main axis
+    /// 定义 +y 为主轴
     ///
-    /// Items will be added from top to bottom in a column.
+    /// 项目将从上到下添加到列中。
     Column,
-    /// Defines -x as the main axis
+    /// 定义 -x 为主轴
     ///
-    /// Items will be added from right to left in a row.
+    /// 项目将从右到左添加到行中。
     RowReverse,
-    /// Defines -y as the main axis
+    /// 定义 -y 为主轴
     ///
-    /// Items will be added from bottom to top in a column.
+    /// 项目将从下到上添加到列中。
     ColumnReverse,
 }
 
-/// How children overflowing their container should affect layout
+/// 子元素溢出容器时如何影响布局
 ///
-/// In CSS the primary effect of this property is to control whether contents of a parent container that overflow that container should
-/// be displayed anyway, be clipped, or trigger the container to become a scroll container. However it also has secondary effects on layout,
-/// the main ones being:
+/// 在 CSS 中，此属性的主要效果是控制溢出父容器的内容是否应
+/// 仍然显示、被裁剪或触发容器成为滚动容器。但它也对布局有次要影响，
+/// 主要的是：
 ///
-///   - The automatic minimum size Flexbox/CSS Grid items with non-`Visible` overflow is `0` rather than being content based
-///   - `Overflow::Scroll` nodes have space in the layout reserved for a scrollbar (width controlled by the `scrollbar_width` property)
+///   - 具有非 `Visible` 溢出的 Flexbox/CSS Grid 项目的自动最小大小为 `0` 而不是基于内容
+///   - `Overflow::Scroll` 节点在布局中为滚动条保留空间（宽度由 `scrollbar_width` 属性控制）
 ///
-/// In Taffy, we only implement the layout related secondary effects as we are not concerned with drawing/painting. The amount of space reserved for
-/// a scrollbar is controlled by the `scrollbar_width` property. If this is `0` then `Scroll` behaves identically to `Hidden`.
+/// 在 Taffy 中，我们仅实现与布局相关的次要效果，因为我们不关心绘制/绘画。为
+/// 滚动条保留的空间量由 `scrollbar_width` 属性控制。如果这是 `0`，则 `Scroll` 的行为与 `Hidden` 相同。
 ///
 /// <https://developer.mozilla.org/en-US/docs/Web/CSS/overflow>
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, JsonSchema)]
-// Copy of taffy::style type of the same name, to derive JsonSchema.
+// 复制同名的 taffy::style 类型，以派生 JsonSchema。
 pub enum Overflow {
-    /// The automatic minimum size of this node as a flexbox/grid item should be based on the size of its content.
-    /// Content that overflows this node *should* contribute to the scroll region of its parent.
+    /// 此节点作为 flexbox/grid 项目的自动最小大小应基于其内容的大小。
+    /// 溢出此节点的内容*应*贡献到其父节点的滚动区域。
     #[default]
     Visible,
-    /// The automatic minimum size of this node as a flexbox/grid item should be based on the size of its content.
-    /// Content that overflows this node should *not* contribute to the scroll region of its parent.
+    /// 此节点作为 flexbox/grid 项目的自动最小大小应基于其内容的大小。
+    /// 溢出此节点的内容*不应*贡献到其父节点的滚动区域。
     Clip,
-    /// The automatic minimum size of this node as a flexbox/grid item should be `0`.
-    /// Content that overflows this node should *not* contribute to the scroll region of its parent.
+    /// 此节点作为 flexbox/grid 项目的自动最小大小应为 `0`。
+    /// 溢出此节点的内容*不应*贡献到其父节点的滚动区域。
     Hidden,
-    /// The automatic minimum size of this node as a flexbox/grid item should be `0`. Additionally, space should be reserved
-    /// for a scrollbar. The amount of space reserved is controlled by the `scrollbar_width` property.
-    /// Content that overflows this node should *not* contribute to the scroll region of its parent.
+    /// 此节点作为 flexbox/grid 项目的自动最小大小应为 `0`。此外，应保留空间
+    /// 用于滚动条。保留的空间量由 `scrollbar_width` 属性控制。
+    /// 溢出此节点的内容*不应*贡献到其父节点的滚动区域。
     Scroll,
 }
 
-/// The positioning strategy for this item.
+/// 此项目的定位策略。
 ///
-/// This controls both how the origin is determined for the [`Style::position`] field,
-/// and whether or not the item will be controlled by flexbox's layout algorithm.
+/// 这控制 [`Style::position`] 字段的原点如何确定，
+/// 以及项目是否将由 flexbox 的布局算法控制。
 ///
-/// WARNING: this enum follows the behavior of [CSS's `position` property](https://developer.mozilla.org/en-US/docs/Web/CSS/position),
-/// which can be unintuitive.
+/// 警告：此枚举遵循 [CSS 的 `position` 属性](https://developer.mozilla.org/en-US/docs/Web/CSS/position) 的行为，
+/// 这可能不直观。
 ///
-/// [`Position::Relative`] is the default value, in contrast to the default behavior in CSS.
+/// [`Position::Relative`] 是默认值，与 CSS 中的默认行为相反。
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, JsonSchema)]
-// Copy of taffy::style type of the same name, to derive JsonSchema.
+// 复制同名的 taffy::style 类型，以派生 JsonSchema。
 pub enum Position {
-    /// The offset is computed relative to the final position given by the layout algorithm.
-    /// Offsets do not affect the position of any other items; they are effectively a correction factor applied at the end.
+    /// 偏移量相对于布局算法给出的最终位置计算。
+    /// 偏移量不影响任何其他项目的位置；它们实际上是在最后应用的校正因子。
     #[default]
     Relative,
-    /// The offset is computed relative to this item's closest positioned ancestor, if any.
-    /// Otherwise, it is placed relative to the origin.
-    /// No space is created for the item in the page layout, and its size will not be altered.
+    /// 偏移量相对于此项目最近定位的祖先计算（如果有）。
+    /// 否则，它相对于原点放置。
+    /// 页面布局中不为项目创建空间，其大小也不会改变。
     ///
-    /// WARNING: to opt-out of layouting entirely, you must use [`Display::None`] instead on your [`Style`] object.
+    /// 警告：要完全退出布局，你必须在 [`Style`] 对象上使用 [`Display::None`]。
     Absolute,
 }
 

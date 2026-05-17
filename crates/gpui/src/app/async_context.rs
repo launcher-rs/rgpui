@@ -12,12 +12,12 @@ use std::{future::Future, rc::Weak};
 
 use super::{Context, WeakEntity};
 
-/// An async-friendly version of [App] with a static lifetime so it can be held across `await` points in async code.
-/// You're provided with an instance when calling [App::spawn], and you can also create one with [App::to_async].
+/// [App] 的异步友好版本，具有静态生命周期，因此可以在异步代码的 `await` 点之间持有。
+/// 调用 [App::spawn] 时会提供此实例，你也可以通过 [App::to_async] 创建。
 ///
-/// Internally, this holds a weak reference to an `App`. Methods will panic if the app has been dropped,
-/// but this should not happen in practice when using foreground tasks spawned via `cx.spawn()`,
-/// as the executor checks if the app is alive before running each task.
+/// 内部持有对 `App` 的弱引用。如果 app 已被丢弃，方法将 panic，
+/// 但在使用 `cx.spawn()` 生成的前台任务时实际上不会发生这种情况，
+/// 因为执行器会在运行每个任务之前检查 app 是否存活。
 #[derive(Clone)]
 pub struct AsyncApp {
     pub(crate) app: Weak<AppCell>,
@@ -26,6 +26,7 @@ pub struct AsyncApp {
 }
 
 impl AsyncApp {
+    /// 获取内部 app 的强引用
     fn app(&self) -> std::rc::Rc<AppCell> {
         self.app
             .upgrade()
@@ -70,7 +71,7 @@ impl AppContext for AsyncApp {
     where
         T: 'static,
     {
-        panic!("Cannot as_mut with an async context. Try calling update() first")
+        panic!("无法在异步上下文中使用 as_mut。请先调用 update()")
     }
 
     fn read_entity<T, R>(&self, handle: &Entity<T>, callback: impl FnOnce(&T, &App) -> R) -> R
@@ -261,7 +262,7 @@ impl AsyncApp {
         app.update(|cx| cx.update_global(update))
     }
 
-    /// Run something using this entity and cx, when the returned struct is dropped
+    /// 在实体和上下文上运行某个操作，当返回的结构体被丢弃时执行
     pub fn on_drop<T: 'static, Callback: FnOnce(&mut T, &mut Context<T>) + 'static>(
         &self,
         entity: &WeakEntity<T>,
@@ -280,8 +281,8 @@ impl AsyncApp {
     }
 }
 
-/// A cloneable, owned handle to the application context,
-/// composed with the window associated with the current task.
+/// 对应用上下文的克隆 owned 句柄，
+/// 与当前任务关联的窗口组合在一起。
 #[derive(Clone, Deref, DerefMut)]
 pub struct AsyncWindowContext {
     #[deref]
@@ -291,6 +292,7 @@ pub struct AsyncWindowContext {
 }
 
 impl AsyncWindowContext {
+    /// 创建新的异步窗口上下文
     pub(crate) fn new_context(app: AsyncApp, window: AnyWindowHandle) -> Self {
         Self { app, window }
     }
@@ -344,8 +346,7 @@ impl AsyncWindowContext {
         })
     }
 
-    /// Schedule a future to be executed on the main thread. This is used for collecting
-    /// the results of background tasks and updating the UI.
+    /// 调度一个未来在主线程上执行。用于收集后台任务的结果并更新 UI。
     #[track_caller]
     pub fn spawn<AsyncFn, R>(&self, f: AsyncFn) -> Task<R>
     where
@@ -357,9 +358,9 @@ impl AsyncWindowContext {
             .spawn(async move { f(&mut cx).await }.boxed_local())
     }
 
-    /// Present a platform dialog.
-    /// The provided message will be presented, along with buttons for each answer.
-    /// When a button is clicked, the returned Receiver will receive the index of the clicked button.
+    /// 呈现平台对话框。
+    /// 将显示提供的消息，以及每个答案的按钮。
+    /// 当点击按钮时，返回的 Receiver 将收到被点击按钮的索引。
     pub fn prompt<T>(
         &mut self,
         level: PromptLevel,
@@ -383,9 +384,8 @@ impl AppContext for AsyncWindowContext {
     where
         T: 'static,
     {
-        // Associate the new entity with our captured window so that
-        // `with_window` can resolve a dispatch target before the entity has
-        // been rendered.
+        // 将新实体与捕获的窗口关联，以便
+        // `with_window` 可以在实体渲染之前解析分发目标。
         self.app
             .update_window(self.window, |_, _, cx| cx.new(build_entity))
             .expect("window was unexpectedly closed")
@@ -419,7 +419,7 @@ impl AppContext for AsyncWindowContext {
     where
         T: 'static,
     {
-        panic!("Cannot use as_mut() from an async context, call `update`")
+        panic!("无法从异步上下文使用 as_mut()，请调用 `update`")
     }
 
     fn read_entity<T, R>(&self, handle: &Entity<T>, read: impl FnOnce(&T, &App) -> R) -> R

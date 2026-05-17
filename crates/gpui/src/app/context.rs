@@ -16,7 +16,7 @@ use std::{
 
 use super::{App, AsyncWindowContext, Entity, KeystrokeEvent};
 
-/// The app context, with specialized behavior for the given entity.
+/// 应用上下文，针对给定实体具有专门行为。
 pub struct Context<'a, T> {
     app: &'a mut App,
     entity_state: WeakEntity<T>,
@@ -37,6 +37,7 @@ impl<'a, T> ops::DerefMut for Context<'a, T> {
 }
 
 impl<'a, T: 'static> Context<'a, T> {
+    /// 创建新的上下文
     pub(crate) fn new_context(app: &'a mut App, entity_state: WeakEntity<T>) -> Self {
         Self { app, entity_state }
     }
@@ -80,7 +81,7 @@ impl<'a, T: 'static> Context<'a, T> {
         })
     }
 
-    /// Observe changes to ourselves
+    /// 观察自身的变化
     pub fn observe_self(
         &mut self,
         mut on_event: impl FnMut(&mut T, &mut Context<T>) + 'static,
@@ -94,7 +95,7 @@ impl<'a, T: 'static> Context<'a, T> {
         })
     }
 
-    /// Subscribe to an event type from another entity
+    /// 从另一个实体订阅事件类型
     pub fn subscribe<T2, Evt>(
         &mut self,
         entity: &Entity<T2>,
@@ -116,7 +117,7 @@ impl<'a, T: 'static> Context<'a, T> {
         })
     }
 
-    /// Subscribe to an event type from ourself
+    /// 从自身订阅事件类型
     pub fn subscribe_self<Evt>(
         &mut self,
         mut on_event: impl FnMut(&mut T, &Evt, &mut Context<T>) + 'static,
@@ -147,7 +148,7 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a callback to be run on the release of another entity
+    /// 注册回调，在另一个实体释放时运行
     pub fn observe_release<T2>(
         &self,
         entity: &Entity<T2>,
@@ -172,7 +173,7 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a callback to for updates to the given global
+    /// 注册回调以更新给定的全局状态
     pub fn observe_global<G: 'static>(
         &mut self,
         mut f: impl FnMut(&mut T, &mut Context<T>) + 'static,
@@ -230,9 +231,9 @@ impl<'a, T: 'static> Context<'a, T> {
         self.app.notify(self.entity_state.entity_id);
     }
 
-    /// Spawn the future returned by the given function.
-    /// The function is provided a weak handle to the entity owned by this context and a context that can be held across await points.
-    /// The returned task must be held or detached.
+    /// 生成给定函数返回的未来。
+    /// 函数提供实体所属的弱句柄和可跨 await 点持有的上下文。
+    /// 返回的任务必须被持有或分离。
     #[track_caller]
     pub fn spawn<AsyncFn, R>(&self, f: AsyncFn) -> Task<R>
     where
@@ -259,8 +260,8 @@ impl<'a, T: 'static> Context<'a, T> {
         }
     }
 
-    /// Convenience method for producing view state in a closure.
-    /// See `listener` for more details.
+    /// 在闭包中生成视图状态的便捷方法。
+    /// 有关更多详细信息，请参见 `listener`。
     pub fn processor<E, R>(
         &self,
         f: impl Fn(&mut T, E, &mut Window, &mut Context<T>) -> R + 'static,
@@ -271,7 +272,7 @@ impl<'a, T: 'static> Context<'a, T> {
         }
     }
 
-    /// Run something using this entity and cx, when the returned struct is dropped
+    /// 在实体和上下文上运行某个操作，当返回的结构体被丢弃时执行
     pub fn on_drop(
         &self,
         f: impl FnOnce(&mut T, &mut Context<T>) + 'static,
@@ -283,7 +284,7 @@ impl<'a, T: 'static> Context<'a, T> {
         })
     }
 
-    /// Focus the given view in the given window. View type is required to implement Focusable.
+    /// 聚焦给定视图，假设视图类型实现了 [`Focusable`]。
     pub fn focus_view<W: Focusable>(&mut self, view: &Entity<W>, window: &mut Window) {
         window.focus(&view.focus_handle(self), self);
     }
@@ -761,7 +762,7 @@ impl<'a, T: 'static> Context<'a, T> {
 }
 
 impl<T> Context<'_, T> {
-    /// Emit an event of the specified type, which can be handled by other entities that have subscribed via `subscribe` methods on their respective contexts.
+    /// 发射指定类型的事件，可由其他通过各自上下文 `subscribe` 方法订阅的实体处理。
     pub fn emit<Evt>(&mut self, event: Evt)
     where
         T: EventEmitter<Evt>,

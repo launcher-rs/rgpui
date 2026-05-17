@@ -2,7 +2,7 @@ use std::{cmp::Ordering, fmt::Debug};
 
 use super::{Bias, ContextLessSummary, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree};
 
-/// A cheaply-cloneable ordered map based on a [SumTree](super::SumTree).
+/// 基于 [SumTree](super::SumTree) 的可廉价克隆的有序映射。
 #[derive(Clone, PartialEq, Eq)]
 pub struct TreeMap<K, V>(SumTree<MapEntry<K, V>>)
 where

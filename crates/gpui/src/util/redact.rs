@@ -4,7 +4,9 @@ static REDACT_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"([A-Z_][A-Z0-9_]*)=("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+)"#).unwrap()
 });
 
-/// Whether a given environment variable name should have its value redacted
+/// 判断给定的环境变量名称是否应该被脱敏。
+///
+/// 当变量名以 KEY、TOKEN、PASSWORD、SECRET、PASS、CREDENTIALS 或 LICENSE 结尾时返回 true。
 pub fn should_redact(env_var_name: &str) -> bool {
     const REDACTED_SUFFIXES: &[&str] = &[
         "KEY",
@@ -20,7 +22,9 @@ pub fn should_redact(env_var_name: &str) -> bool {
         .any(|suffix| env_var_name.ends_with(suffix))
 }
 
-/// Redact a string which could include a command with environment variables
+/// 对可能包含环境变量的命令字符串进行脱敏处理。
+///
+/// 将敏感环境变量（如 API_KEY、TOKEN 等）的值替换为 "[REDACTED]"。
 pub fn redact_command(command: &str) -> String {
     REDACT_REGEX
         .replace_all(command, |caps: &regex::Captures| {

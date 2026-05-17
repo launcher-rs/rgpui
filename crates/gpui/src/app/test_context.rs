@@ -14,8 +14,8 @@ use std::{
     cell::RefCell, future::Future, ops::Deref, path::PathBuf, rc::Rc, sync::Arc, time::Duration,
 };
 
-/// A TestAppContext is provided to tests created with `#[gpui::test]`, it provides
-/// an implementation of `Context` with additional methods that are useful in tests.
+/// `TestAppContext` 提供给使用 `#[gpui::test]` 创建的测试，它提供了
+/// `Context` 的实现，并带有在测试中有用的额外方法。
 #[derive(Clone)]
 pub struct TestAppContext {
     #[doc(hidden)]
@@ -147,40 +147,40 @@ impl TestAppContext {
         }
     }
 
-    /// Skip all drawing operations for the duration of this test.
+    /// 跳过此测试期间的所有绘制操作。
     pub fn skip_drawing(&mut self) {
         self.app.borrow_mut().mode = GpuiMode::Test { skip_drawing: true };
     }
 
-    /// Create a single TestAppContext, for non-multi-client tests
+    /// 创建单个 TestAppContext，用于非多客户端测试
     pub fn single() -> Self {
         let dispatcher = TestDispatcher::new(0);
         Self::build(dispatcher, None)
     }
 
-    /// The name of the test function that created this `TestAppContext`
+    /// 创建此 `TestAppContext` 的测试函数名
     pub fn test_function_name(&self) -> Option<&'static str> {
         self.fn_name
     }
 
-    /// Checks whether there have been any new path prompts received by the platform.
+    /// 检查平台是否收到任何新的路径提示。
     pub fn did_prompt_for_new_path(&self) -> bool {
         self.test_platform.did_prompt_for_new_path()
     }
 
-    /// returns a new `TestAppContext` re-using the same executors to interleave tasks.
+    /// 返回一个新的 `TestAppContext`，重用相同的执行器以交错任务。
     pub fn new_app(&self) -> TestAppContext {
         Self::build(self.dispatcher.clone(), self.fn_name)
     }
 
-    /// Called by the test helper to end the test.
-    /// public so the macro can call it.
+    /// 由测试助手调用以结束测试。
+    /// 公开以便宏可以调用。
     pub fn quit(&self) {
         self.on_quit.borrow_mut().drain(..).for_each(|f| f());
         self.app.borrow_mut().shutdown();
     }
 
-    /// Register cleanup to run when the test ends.
+    /// 注册清理操作以在测试结束时运行。
     pub fn on_quit(&mut self, f: impl FnOnce() + 'static) {
         self.on_quit.borrow_mut().push(Box::new(f));
     }
@@ -192,30 +192,30 @@ impl TestAppContext {
         Ok(())
     }
 
-    /// Returns an executor (for running tasks in the background)
+    /// 返回执行器（用于在后台运行任务）
     pub fn executor(&self) -> BackgroundExecutor {
         self.background_executor.clone()
     }
 
-    /// Returns an executor (for running tasks on the main thread)
+    /// 返回执行器（用于在主线程上运行任务）
     pub fn foreground_executor(&self) -> &ForegroundExecutor {
         &self.foreground_executor
     }
 
-    /// Gives you an `&mut App` for the duration of the closure
+    /// 在闭包期间提供 `&mut App`
     pub fn update<R>(&self, f: impl FnOnce(&mut App) -> R) -> R {
         let mut cx = self.app.borrow_mut();
         cx.update(f)
     }
 
-    /// Gives you an `&App` for the duration of the closure
+    /// 在闭包期间提供 `&App`
     pub fn read<R>(&self, f: impl FnOnce(&App) -> R) -> R {
         let cx = self.app.borrow();
         f(&cx)
     }
 
-    /// Adds a new window. The Window will always be backed by a `TestWindow` which
-    /// can be retrieved with `self.test_window(handle)`
+    /// 添加新窗口。窗口将始终由 `TestWindow` 支持，
+    /// 可以通过 `self.test_window(handle)` 检索
     pub fn add_window<F, V>(&mut self, build_window: F) -> WindowHandle<V>
     where
         F: FnOnce(&mut Window, &mut Context<V>) -> V,
@@ -223,7 +223,7 @@ impl TestAppContext {
     {
         let mut cx = self.app.borrow_mut();
 
-        // Some tests rely on the window size matching the bounds of the test display
+        // 某些测试依赖窗口大小匹配测试显示的边界
         let bounds = Bounds::maximized(None, &cx);
         cx.open_window(
             WindowOptions {
@@ -262,7 +262,7 @@ impl TestAppContext {
         .unwrap()
     }
 
-    /// Adds a new window with no content.
+    /// 添加没有内容的新窗口。
     pub fn add_empty_window(&mut self) -> &mut VisualTestContext {
         let mut cx = self.app.borrow_mut();
         let bounds = Bounds::maximized(None, &cx);
@@ -281,9 +281,9 @@ impl TestAppContext {
         cx
     }
 
-    /// Adds a new window, and returns its root view and a `VisualTestContext` which can be used
-    /// as a `Window` and `App` for the rest of the test. Typically you would shadow this context with
-    /// the returned one. `let (view, cx) = cx.add_window_view(...);`
+    /// 添加新窗口，并返回其根视图和 `VisualTestContext`，
+    /// 可在测试的其余部分用作 `Window` 和 `App`。通常你会将此上下文阴影化为
+    /// 返回的上下文。`let (view, cx) = cx.add_window_view(...);`
     pub fn add_window_view<F, V>(
         &mut self,
         build_root_view: F,
@@ -308,27 +308,27 @@ impl TestAppContext {
         let cx = VisualTestContext::from_window(*window.deref(), self).into_mut();
         cx.run_until_parked();
 
-        // it might be nice to try and cleanup these at the end of each test.
+        // 可能值得尝试在每个测试结束时清理这些。
         (view, cx)
     }
 
-    /// returns the TextSystem
+    /// 返回 TextSystem
     pub fn text_system(&self) -> &Arc<TextSystem> {
         &self.text_system
     }
 
-    /// Simulates writing to the platform clipboard
+    /// 模拟写入平台剪贴板
     pub fn write_to_clipboard(&self, item: ClipboardItem) {
         self.test_platform.write_to_clipboard(item)
     }
 
-    /// Simulates reading from the platform clipboard.
-    /// This will return the most recent value from `write_to_clipboard`.
+    /// 模拟从平台剪贴板读取。
+    /// 这将返回 `write_to_clipboard` 的最新值。
     pub fn read_from_clipboard(&self) -> Option<ClipboardItem> {
         self.test_platform.read_from_clipboard()
     }
 
-    /// Simulates choosing a File in the platform's "Open" dialog.
+    /// 模拟在平台的"打开"对话框中选择文件。
     pub fn simulate_new_path_selection(
         &self,
         select_path: impl FnOnce(&std::path::Path) -> Option<std::path::PathBuf>,
@@ -336,51 +336,50 @@ impl TestAppContext {
         self.test_platform.simulate_new_path_selection(select_path);
     }
 
-    /// Simulates clicking a button in an platform-level alert dialog.
+    /// 模拟在平台级警报对话框中点击按钮。
     #[track_caller]
     pub fn simulate_prompt_answer(&self, button: &str) {
         self.test_platform.simulate_prompt_answer(button);
     }
 
-    /// Returns true if there's an alert dialog open.
+    /// 如果存在警报对话框则返回 true。
     pub fn has_pending_prompt(&self) -> bool {
         self.test_platform.has_pending_prompt()
     }
 
-    /// Returns true if there's an alert dialog open.
+    /// 如果存在警报对话框则返回 true。
     pub fn pending_prompt(&self) -> Option<(String, String)> {
         self.test_platform.pending_prompt()
     }
 
-    /// All the urls that have been opened with cx.open_url() during this test.
+    /// 此测试期间使用 cx.open_url() 打开的所有 URL。
     pub fn opened_url(&self) -> Option<String> {
         self.test_platform.opened_url.borrow().clone()
     }
 
-    /// Simulates the user resizing the window to the new size.
+    /// 模拟用户将窗口调整到新大小。
     pub fn simulate_window_resize(&self, window_handle: AnyWindowHandle, size: Size<Pixels>) {
         self.test_window(window_handle).simulate_resize(size);
     }
 
-    /// Returns true if there's an alert dialog open.
+    /// 如果存在警报对话框则返回 true。
     pub fn expect_restart(&self) -> oneshot::Receiver<Option<PathBuf>> {
         let (tx, rx) = futures::channel::oneshot::channel();
         self.test_platform.expect_restart.borrow_mut().replace(tx);
         rx
     }
 
-    /// Causes the given sources to be returned if the application queries for screen
-    /// capture sources.
+    /// 如果应用程序查询屏幕捕获源，则使给定源被返回。
     pub fn set_screen_capture_sources(&self, sources: Vec<TestScreenCaptureSource>) {
         self.test_platform.set_screen_capture_sources(sources);
     }
 
-    /// Returns all windows open in the test.
+    /// 返回测试中打开的所有窗口。
     pub fn windows(&self) -> Vec<AnyWindowHandle> {
         self.app.borrow().windows()
     }
 
-    /// Run the given task on the main thread.
+    /// 在主线程上运行给定任务。
     #[track_caller]
     pub fn spawn<Fut, R>(&self, f: impl FnOnce(AsyncApp) -> Fut) -> Task<R>
     where
@@ -390,39 +389,38 @@ impl TestAppContext {
         self.foreground_executor.spawn(f(self.to_async()))
     }
 
-    /// true if the given global is defined
+    /// 如果给定全局存在则返回 true
     pub fn has_global<G: Global>(&self) -> bool {
         let app = self.app.borrow();
         app.has_global::<G>()
     }
 
-    /// runs the given closure with a reference to the global
-    /// panics if `has_global` would return false.
+    /// 使用全局的引用运行给定闭包
+    /// 如果 `has_global` 返回 false 则 panic。
     pub fn read_global<G: Global, R>(&self, read: impl FnOnce(&G, &App) -> R) -> R {
         let app = self.app.borrow();
         read(app.global(), &app)
     }
 
-    /// runs the given closure with a reference to the global (if set)
+    /// 使用全局的引用运行给定闭包（如果已设置）
     pub fn try_read_global<G: Global, R>(&self, read: impl FnOnce(&G, &App) -> R) -> Option<R> {
         let lock = self.app.borrow();
         Some(read(lock.try_global()?, &lock))
     }
 
-    /// sets the global in this context.
+    /// 在此上下文中设置全局。
     pub fn set_global<G: Global>(&mut self, global: G) {
         let mut lock = self.app.borrow_mut();
         lock.update(|cx| cx.set_global(global))
     }
 
-    /// updates the global in this context. (panics if `has_global` would return false)
+    /// 更新此上下文中的全局。（如果 `has_global` 返回 false 则 panic）
     pub fn update_global<G: Global, R>(&mut self, update: impl FnOnce(&mut G, &mut App) -> R) -> R {
         let mut lock = self.app.borrow_mut();
         lock.update(|cx| cx.update_global(update))
     }
 
-    /// Returns an `AsyncApp` which can be used to run tasks that expect to be on a background
-    /// thread on the current thread in tests.
+    /// 返回 `AsyncApp`，可用于在测试中当前线程运行期望在后台线程的任务。
     pub fn to_async(&self) -> AsyncApp {
         AsyncApp {
             app: Rc::downgrade(&self.app),
@@ -431,12 +429,12 @@ impl TestAppContext {
         }
     }
 
-    /// Wait until there are no more pending tasks.
+    /// 等待直到没有更多待处理任务。
     pub fn run_until_parked(&self) {
         self.dispatcher.run_until_parked();
     }
 
-    /// Simulate dispatching an action to the currently focused node in the window.
+    /// 模拟将动作分派到窗口中当前聚焦的节点。
     pub fn dispatch_action<A>(&mut self, window: AnyWindowHandle, action: A)
     where
         A: Action,
@@ -450,10 +448,10 @@ impl TestAppContext {
         self.background_executor.run_until_parked()
     }
 
-    /// simulate_keystrokes takes a space-separated list of keys to type.
+    /// simulate_keystrokes 接受以空格分隔的要输入的键列表。
     /// cx.simulate_keystrokes("cmd-shift-p b k s p enter")
-    /// in Zed, this will run backspace on the current editor through the command palette.
-    /// This will also run the background executor until it's parked.
+    /// 在 Zed 中，这将通过命令面板在当前编辑器上运行退格。
+    /// 这还会运行后台执行器直到它被挂起。
     pub fn simulate_keystrokes(&mut self, window: AnyWindowHandle, keystrokes: &str) {
         for keystroke in keystrokes
             .split(' ')
@@ -466,10 +464,10 @@ impl TestAppContext {
         self.background_executor.run_until_parked()
     }
 
-    /// simulate_input takes a string of text to type.
+    /// simulate_input 接受要输入的文本字符串。
     /// cx.simulate_input("abc")
-    /// will type abc into your current editor
-    /// This will also run the background executor until it's parked.
+    /// 将在当前编辑器中输入 abc
+    /// 这还会运行后台执行器直到它被挂起。
     pub fn simulate_input(&mut self, window: AnyWindowHandle, input: &str) {
         for keystroke in input.split("").map(Keystroke::parse).map(Result::unwrap) {
             self.dispatch_keystroke(window, keystroke);
@@ -478,7 +476,7 @@ impl TestAppContext {
         self.background_executor.run_until_parked()
     }
 
-    /// dispatches a single Keystroke (see also `simulate_keystrokes` and `simulate_input`)
+    /// 分派单个击键（另请参阅 `simulate_keystrokes` 和 `simulate_input`）
     pub fn dispatch_keystroke(&mut self, window: AnyWindowHandle, keystroke: Keystroke) {
         self.update_window(window, |_, window, cx| {
             window.dispatch_keystroke(keystroke, cx)
@@ -486,7 +484,7 @@ impl TestAppContext {
         .unwrap();
     }
 
-    /// Returns the `TestWindow` backing the given handle.
+    /// 返回给定句柄背后的 `TestWindow`。
     pub(crate) fn test_window(&self, window: AnyWindowHandle) -> TestWindow {
         self.app
             .borrow_mut()
@@ -501,7 +499,7 @@ impl TestAppContext {
             .clone()
     }
 
-    /// Returns a stream of notifications whenever the Entity is updated.
+    /// 返回实体每次更新时的通知流。
     pub fn notifications<T: 'static>(
         &mut self,
         entity: &Entity<T>,
@@ -521,7 +519,7 @@ impl TestAppContext {
         rx
     }
 
-    /// Returns a stream of events emitted by the given Entity.
+    /// 返回给定实体发出的事件流。
     pub fn events<Evt, T: 'static + EventEmitter<Evt>>(
         &mut self,
         entity: &Entity<T>,
@@ -540,8 +538,7 @@ impl TestAppContext {
         rx
     }
 
-    /// Runs until the given condition becomes true. (Prefer `run_until_parked` if you
-    /// don't need to jump in at a specific time).
+    /// 运行直到给定条件变为 true。（如果不需要在特定时间介入，优先使用 `run_until_parked`）。
     pub async fn condition<T: 'static>(
         &mut self,
         entity: &Entity<T>,
@@ -572,7 +569,7 @@ impl TestAppContext {
             .unwrap();
     }
 
-    /// Set a name for this App.
+    /// 为此 App 设置名称。
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_name(&mut self, name: &'static str) {
         self.update(|cx| cx.name = Some(name))
@@ -580,7 +577,7 @@ impl TestAppContext {
 }
 
 impl<T: 'static> Entity<T> {
-    /// Block until the next event is emitted by the entity, then return it.
+    /// 阻塞直到实体发出下一个事件，然后返回它。
     pub fn next_event<Event>(&self, cx: &mut TestAppContext) -> impl Future<Output = Event>
     where
         Event: Send + Clone + 'static,
@@ -605,7 +602,7 @@ impl<T: 'static> Entity<T> {
 }
 
 impl<V: 'static> Entity<V> {
-    /// Returns a future that resolves when the view is next updated.
+    /// 返回视图下次更新时解析的未来。
     pub fn next_notification(
         &self,
         advance_clock_by: Duration,
@@ -630,7 +627,7 @@ impl<V: 'static> Entity<V> {
 }
 
 impl<V> Entity<V> {
-    /// Returns a future that resolves when the condition becomes true.
+    /// 返回条件变为 true 时解析的未来。
     pub fn condition<Evt>(
         &self,
         cx: &TestAppContext,
@@ -692,26 +689,26 @@ use derive_more::{Deref, DerefMut};
 
 use super::{Context, Entity};
 #[derive(Deref, DerefMut, Clone)]
-/// A VisualTestContext is the test-equivalent of a `Window` and `App`. It allows you to
-/// run window-specific test code. It can be dereferenced to a `TextAppContext`.
+/// VisualTestContext 是 `Window` 和 `App` 的测试等效物。它允许你
+/// 运行特定于窗口的测试代码。它可以解引用为 `TestAppContext`。
 pub struct VisualTestContext {
     #[deref]
     #[deref_mut]
-    /// cx is the original TestAppContext (you can more easily access this using Deref)
+    /// cx 是原始 TestAppContext（使用 Deref 可以更轻松地访问）
     pub cx: TestAppContext,
     window: AnyWindowHandle,
 }
 
 impl VisualTestContext {
-    /// Provides a `Window` and `App` for the duration of the closure.
+    /// 在闭包期间提供 `Window` 和 `App`。
     pub fn update<R>(&mut self, f: impl FnOnce(&mut Window, &mut App) -> R) -> R {
         self.cx
             .update_window(self.window, |_, window, cx| f(window, cx))
             .unwrap()
     }
 
-    /// Creates a new VisualTestContext. You would typically shadow the passed in
-    /// TestAppContext with this, as this is typically more useful.
+    /// 创建新的 VisualTestContext。你通常会将传入的
+    /// TestAppContext 与此阴影化。
     /// `let cx = VisualTestContext::from_window(window, cx);`
     pub fn from_window(window: AnyWindowHandle, cx: &TestAppContext) -> Self {
         Self {
@@ -720,12 +717,12 @@ impl VisualTestContext {
         }
     }
 
-    /// Wait until there are no more pending tasks.
+    /// 等待直到没有更多待处理任务。
     pub fn run_until_parked(&self) {
         self.cx.background_executor.run_until_parked();
     }
 
-    /// Dispatch the action to the currently focused node.
+    /// 将动作分派到当前聚焦的节点。
     pub fn dispatch_action<A>(&mut self, action: A)
     where
         A: Action,
@@ -733,12 +730,12 @@ impl VisualTestContext {
         self.cx.dispatch_action(self.window, action)
     }
 
-    /// Read the title off the window (set by `Window#set_window_title`)
+    /// 读取窗口标题（由 `Window#set_window_title` 设置）
     pub fn window_title(&mut self) -> Option<String> {
         self.cx.test_window(self.window).0.lock().title.clone()
     }
 
-    /// Read the document path off the window (set by `Window#set_document_path`)
+    /// 读取窗口的文档路径（由 `Window#set_document_path` 设置）
     pub fn document_path(&mut self) -> Option<std::path::PathBuf> {
         self.cx
             .test_window(self.window)
@@ -748,19 +745,19 @@ impl VisualTestContext {
             .clone()
     }
 
-    /// Simulate a sequence of keystrokes `cx.simulate_keystrokes("cmd-p escape")`
-    /// Automatically runs until parked.
+    /// 模拟一系列击键 `cx.simulate_keystrokes("cmd-p escape")`
+    /// 自动运行直到挂起。
     pub fn simulate_keystrokes(&mut self, keystrokes: &str) {
         self.cx.simulate_keystrokes(self.window, keystrokes)
     }
 
-    /// Simulate typing text `cx.simulate_input("hello")`
-    /// Automatically runs until parked.
+    /// 模拟输入文本 `cx.simulate_input("hello")`
+    /// 自动运行直到挂起。
     pub fn simulate_input(&mut self, input: &str) {
         self.cx.simulate_input(self.window, input)
     }
 
-    /// Simulate a mouse move event to the given point
+    /// 模拟鼠标移动到给定点
     pub fn simulate_mouse_move(
         &mut self,
         position: Point<Pixels>,
@@ -774,7 +771,7 @@ impl VisualTestContext {
         })
     }
 
-    /// Simulate a mouse down event to the given point
+    /// 模拟鼠标在给定点按下
     pub fn simulate_mouse_down(
         &mut self,
         position: Point<Pixels>,
@@ -790,7 +787,7 @@ impl VisualTestContext {
         })
     }
 
-    /// Simulate a mouse up event to the given point
+    /// 模拟鼠标在给定点释放
     pub fn simulate_mouse_up(
         &mut self,
         position: Point<Pixels>,
@@ -805,7 +802,7 @@ impl VisualTestContext {
         })
     }
 
-    /// Simulate a primary mouse click at the given point
+    /// 模拟在给定点的主要鼠标点击
     pub fn simulate_click(&mut self, position: Point<Pixels>, modifiers: Modifiers) {
         self.simulate_event(MouseDownEvent {
             position,
@@ -822,7 +819,7 @@ impl VisualTestContext {
         });
     }
 
-    /// Simulate a modifiers changed event
+    /// 模拟修饰键更改事件
     pub fn simulate_modifiers_change(&mut self, modifiers: Modifiers) {
         self.simulate_event(ModifiersChangedEvent {
             modifiers,
@@ -830,7 +827,7 @@ impl VisualTestContext {
         })
     }
 
-    /// Simulate a capslock changed event
+    /// 模拟大小写锁定更改事件
     pub fn simulate_capslock_change(&mut self, on: bool) {
         self.simulate_event(ModifiersChangedEvent {
             modifiers: Modifiers::none(),
@@ -838,17 +835,17 @@ impl VisualTestContext {
         })
     }
 
-    /// Simulates the user resizing the window to the new size.
+    /// 模拟用户将窗口调整到新大小。
     pub fn simulate_resize(&self, size: Size<Pixels>) {
         self.simulate_window_resize(self.window, size)
     }
 
-    /// debug_bounds returns the bounds of the element with the given selector.
+    /// debug_bounds 返回具有给定选择器的元素的边界。
     pub fn debug_bounds(&mut self, selector: &'static str) -> Option<Bounds<Pixels>> {
         self.update(|window, _| window.rendered_frame.debug_bounds.get(selector).copied())
     }
 
-    /// Draw an element to the window. Useful for simulating events or actions
+    /// 向窗口绘制元素。用于模拟事件或动作
     pub fn draw<E>(
         &mut self,
         origin: Point<Pixels>,
@@ -879,15 +876,15 @@ impl VisualTestContext {
         })
     }
 
-    /// Simulate an event from the platform, e.g. a ScrollWheelEvent
-    /// Make sure you've called [VisualTestContext::draw] first!
+    /// 模拟来自平台的事件，例如 ScrollWheelEvent
+    /// 确保你已先调用 [VisualTestContext::draw]！
     pub fn simulate_event<E: InputEvent>(&mut self, event: E) {
         self.test_window(self.window)
             .simulate_input(event.to_platform_input());
         self.background_executor.run_until_parked();
     }
 
-    /// Simulates the user blurring the window.
+    /// 模拟用户模糊窗口。
     pub fn deactivate_window(&mut self) {
         if Some(self.window) == self.test_platform.active_window() {
             self.test_platform.set_active_window(None)
@@ -895,8 +892,8 @@ impl VisualTestContext {
         self.background_executor.run_until_parked();
     }
 
-    /// Simulates the user closing the window.
-    /// Returns true if the window was closed.
+    /// 模拟用户关闭窗口。
+    /// 如果窗口已关闭则返回 true。
     pub fn simulate_close(&mut self) -> bool {
         let handler = self
             .cx
@@ -924,15 +921,15 @@ impl VisualTestContext {
         }
     }
 
-    /// Get an &mut VisualTestContext (which is mostly what you need to pass to other methods).
-    /// This method internally retains the VisualTestContext until the end of the test.
+    /// 获取 &mut VisualTestContext（这 mostly 是你需要传递给其他方法的内容）。
+    /// 此方法在内部将 VisualTestContext 保留到测试结束。
     pub fn into_mut(self) -> &'static mut Self {
         let ptr = Box::into_raw(Box::new(self));
-        // safety: on_quit will be called after the test has finished.
-        // the executor will ensure that all tasks related to the test have stopped.
-        // so there is no way for cx to be accessed after on_quit is called.
-        // todo: This is unsound under stacked borrows (also tree borrows probably?)
-        // the mutable reference invalidates `ptr` which is later used in the closure
+        // 安全：on_quit 将在测试完成后调用。
+        // 执行器将确保所有与测试相关的任务都已停止。
+        // 因此 on_quit 调用后无法访问 cx。
+        // 注意：这在堆叠借用（也可能是树借用）下是不健全的
+        // 可变引用会使 `ptr` 失效，而 `ptr` 稍后在闭包中使用
         let cx = unsafe { &mut *ptr };
         cx.on_quit(move || unsafe {
             drop(Box::from_raw(ptr));
@@ -1088,7 +1085,7 @@ impl VisualContext for VisualTestContext {
 }
 
 impl AnyWindowHandle {
-    /// Creates the given view in this window.
+    /// 在此窗口中创建给定视图。
     pub fn build_entity<V: Render + 'static>(
         &self,
         cx: &mut TestAppContext,

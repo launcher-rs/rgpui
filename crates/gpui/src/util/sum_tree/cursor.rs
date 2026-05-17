@@ -94,7 +94,7 @@ where
         }
     }
 
-    /// Item is None, when the list is empty, or this cursor is at the end of the list.
+    /// 当列表为空或此游标位于列表末尾时，Item 为 None。
     #[track_caller]
     pub fn item(&self) -> Option<&'a T> {
         self.assert_did_seek();
@@ -402,7 +402,7 @@ where
     T: Item,
     D: Dimension<'a, T::Summary>,
 {
-    /// Returns whether we found the item you were seeking for.
+    /// 返回是否找到你搜索的条目。
     #[track_caller]
     #[instrument(skip_all)]
     pub fn seek<Target>(&mut self, pos: &Target, bias: Bias) -> bool
@@ -413,11 +413,11 @@ where
         self.seek_internal(pos, bias, &mut ())
     }
 
-    /// Returns whether we found the item you were seeking for.
+    /// 返回是否找到你搜索的条目。
     ///
     /// # Panics
     ///
-    /// If we did not seek before, use seek instead in that case.
+    /// 如果之前未搜索，请改用 seek。
     #[track_caller]
     #[instrument(skip_all)]
     pub fn seek_forward<Target>(&mut self, pos: &Target, bias: Bias) -> bool
@@ -427,7 +427,7 @@ where
         self.seek_internal(pos, bias, &mut ())
     }
 
-    /// Advances the cursor and returns traversed items as a tree.
+    /// 推进游标并将遍历的条目作为树返回。
     #[track_caller]
     pub fn slice<Target>(&mut self, end: &Target, bias: Bias) -> SumTree<T>
     where
@@ -459,7 +459,7 @@ where
         summary.0
     }
 
-    /// Returns whether we found the item you were seeking for.
+    /// 返回是否找到你搜索的条目。
     #[track_caller]
     #[instrument(skip_all)]
     fn seek_internal(

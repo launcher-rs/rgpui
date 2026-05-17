@@ -26,7 +26,7 @@ pub fn print_env() {
     println!("{}", json);
 }
 
-/// Capture all environment variables from the login shell in the given directory.
+/// 从给定目录中的登录 shell 捕获所有环境变量。
 pub async fn capture(
     shell_path: impl AsRef<Path>,
     args: &[String],
@@ -38,11 +38,10 @@ pub async fn capture(
     return capture_unix(shell_path.as_ref(), args, directory.as_ref()).await;
 }
 
-/// Try to parse the environment output before checking the exit status.
-/// The user's shell rc files may contain commands that fail (e.g. editor
-/// integrations that call posix_spawnp outside a real PTY), causing a
-/// non-zero exit status even though `zed --printenv` ran successfully and
-/// produced valid output on its separate fd.
+/// 在检查退出状态之前尝试解析环境输出。
+/// 用户的 shell rc 文件可能包含会失败的命令（例如在非真实 PTY 中
+/// 调用 posix_spawnp 的编辑器集成），导致非零退出状态，
+/// 即使 `zed --printenv` 运行成功并在其独立的 fd 上产生了有效输出。
 fn parse_env_output(
     env_output: &str,
     status: &std::process::ExitStatus,
@@ -87,9 +86,9 @@ async fn capture_unix(
     let mut command_string = String::new();
     let mut command = new_std_command(shell_path);
     command.args(args);
-    // In some shells, file descriptors greater than 2 cannot be used in interactive mode,
-    // so file descriptor 0 (stdin) is used instead. This impacts zsh, old bash; perhaps others.
-    // See: https://github.com/zed-industries/zed/pull/32136#issuecomment-2999645482
+    // 在某些 shell 中，交互模式下不能使用大于 2 的文件描述符，
+    // 因此使用文件描述符 0（stdin）。这影响 zsh、旧版 bash 等。
+    // 参见：https://github.com/zed-industries/zed/pull/32136#issuecomment-2999645482
     const FD_STDIN: std::os::fd::RawFd = 0;
     const FD_STDOUT: std::os::fd::RawFd = 1;
     const FD_STDERR: std::os::fd::RawFd = 2;
@@ -97,8 +96,8 @@ async fn capture_unix(
     let (fd_num, redir) = match shell_kind {
         ShellKind::Rc => (FD_STDIN, format!(">[1={}]", FD_STDIN)), // `[1=0]`
         ShellKind::Nushell | ShellKind::Tcsh => (FD_STDOUT, "".to_string()),
-        // xonsh doesn't support redirecting to stdin, and control sequences are printed to
-        // stdout on startup
+        // xonsh 不支持重定向到 stdin，且启动时控制序列会打印到
+        // stdout
         ShellKind::Xonsh => (FD_STDERR, "o>e".to_string()),
         ShellKind::PowerShell => (FD_STDIN, format!(">{}", FD_STDIN)),
         _ => (FD_STDIN, format!(">&{}", FD_STDIN)), // `>&0`
@@ -106,11 +105,11 @@ async fn capture_unix(
 
     match shell_kind {
         ShellKind::Csh | ShellKind::Tcsh => {
-            // For csh/tcsh, login shell requires passing `-` as 0th argument (instead of `-l`)
+            // 对于 csh/tcsh，登录 shell 需要传递 `-` 作为第 0 个参数（而非 `-l`）
             command.arg0("-");
         }
         ShellKind::Fish => {
-            // in fish, asdf, direnv attach to the `fish_prompt` event
+            // 在 fish 中，asdf、direnv 附加到 `fish_prompt` 事件
             command_string.push_str("emit fish_prompt;");
             command.arg("-l");
         }
@@ -120,14 +119,14 @@ async fn capture_unix(
     }
 
     match shell_kind {
-        // Nushell does not allow non-interactive login shells.
-        // Instead of doing "-l -i -c '<command>'"
-        // use "-l -e '<command>; exit'" instead
+        // Nushell 不允许非交互登录 shell。
+        // 不使用 "-l -i -c '<command>'"
+        // 而是使用 "-l -e '<command>; exit'"
         ShellKind::Nushell => command.arg("-e"),
         _ => command.args(["-i", "-c"]),
     };
 
-    // Prefix with "./" if the path starts with "-" to prevent cd from interpreting it as a flag
+    // 如果路径以 "-" 开头，则添加 "./" 前缀，防止 cd 将其解释为标志
     let dir_str = directory.to_string_lossy();
     let dir_str = if dir_str.starts_with('-') {
         format!("./{dir_str}").into()
@@ -138,7 +137,7 @@ async fn capture_unix(
         .try_quote(&dir_str)
         .context("unexpected null in directory name")?;
 
-    // cd into the directory, triggering directory specific side-effects (asdf, direnv, etc)
+    // 进入目录，触发目录特定的副作用（asdf、direnv 等）
     command_string.push_str(&format!("cd {};", quoted_dir));
     if let Some(prefix) = shell_kind.command_prefix() {
         command_string.push(prefix);

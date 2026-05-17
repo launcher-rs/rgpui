@@ -220,16 +220,16 @@ impl<T> PriorityQueueReceiver<T> {
         (sender, receiver)
     }
 
-    /// Tries to pop one element from the priority queue without blocking.
+    /// 尝试在不阻塞的情况下从优先级队列中弹出一个元素。
     ///
-    /// This will early return if there are no elements in the queue.
+    /// 如果队列中没有元素，将提前返回。
     ///
-    /// This method is best suited if you only intend to pop one element, for better performance
-    /// on large queues see [`Self::try_iter`]
+    /// 如果你只打算弹出一个元素，此方法最合适，对于大型队列的更好性能，
+    /// 请参见 [`Self::try_iter`]
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// If the sender was dropped
+    /// 如果发送者被丢弃
     pub fn try_pop(&mut self) -> Result<Option<T>, RecvError> {
         self.pop_inner(false)
     }
@@ -272,20 +272,20 @@ impl<T> PriorityQueueReceiver<T> {
         Ok(None)
     }
 
-    /// Pops an element from the priority queue blocking if necessary.
+    /// 从优先级队列中弹出一个元素，必要时阻塞。
     ///
-    /// This method is best suited if you only intend to pop one element, for better performance
-    /// on large queues see [`Self::iter``]
+    /// 如果你只打算弹出一个元素，此方法最合适，对于大型队列的更好性能，
+    /// 请参见 [`Self::iter`]
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// If the sender was dropped
+    /// 如果发送者被丢弃
     pub fn pop(&mut self) -> Result<T, RecvError> {
         self.pop_inner(true).map(|e| e.unwrap())
     }
 
-    /// Returns an iterator over the elements of the queue
-    /// this iterator will end when all elements have been consumed and will not wait for new ones.
+    /// 返回队列元素的迭代器
+    /// 此迭代器将在所有元素被消耗后结束，并且不会等待新元素。
     pub fn try_iter(self) -> TryIter<T> {
         TryIter {
             receiver: self,
@@ -293,8 +293,8 @@ impl<T> PriorityQueueReceiver<T> {
         }
     }
 
-    /// Returns an iterator over the elements of the queue
-    /// this iterator will wait for new elements if the queue is empty.
+    /// 返回队列元素的迭代器
+    /// 如果队列为空，此迭代器将等待新元素。
     pub fn iter(self) -> Iter<T> {
         Iter(self)
     }

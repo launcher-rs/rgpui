@@ -6,13 +6,11 @@ use std::{
     sync::Arc,
 };
 
-/// Arc-based copy-on-write type.
-
-/// An Arc-based copy-on-write smart pointer.
+/// 基于 Arc 的写时复制智能指针
 pub enum ArcCow<'a, T: ?Sized> {
-    /// A borrowed reference.
+    /// 借用引用
     Borrowed(&'a T),
-    /// An owned Arc.
+    /// 拥有的 Arc
     Owned(Arc<T>),
 }
 

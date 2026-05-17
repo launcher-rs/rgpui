@@ -8,18 +8,18 @@ use std::{
     fmt::Display,
 };
 
-/// Defines and registers unit structs that can be used as actions. For more complex data types, derive `Action`.
+/// 定义并注册可用作操作的单元结构体。对于更复杂的数据类型，请派生 `Action`。
 ///
-/// For example:
+/// 例如：
 ///
 /// ```
 /// use gpui::actions;
 /// actions!(editor, [MoveUp, MoveDown, MoveLeft, MoveRight, Newline]);
 /// ```
 ///
-/// This will create actions with names like `editor::MoveUp`, `editor::MoveDown`, etc.
+/// 这将创建名称为 `editor::MoveUp`、`editor::MoveDown` 等的操作。
 ///
-/// The namespace argument `editor` can also be omitted, though it is required for Zed actions.
+/// 命名空间参数 `editor` 也可以省略，尽管 Zed 操作需要它。
 #[macro_export]
 macro_rules! actions {
     ($namespace:path, [ $( $(#[$attr:meta])* $name:ident),* $(,)? ]) => {

@@ -1,5 +1,8 @@
+/// 集合相等比较的错误类型。
 pub enum SetEqError<T> {
+    /// 左侧集合缺少的元素。
     LeftMissing(T),
+    /// 右侧集合缺少的元素。
     RightMissing(T),
 }
 

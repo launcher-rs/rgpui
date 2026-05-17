@@ -11,50 +11,50 @@ use std::{
 
 use super::LineWrapper;
 
-/// A laid out and styled line of text
+/// 已排版和样式化的文本行
 #[derive(Default, Debug)]
 pub struct LineLayout {
-    /// The font size for this line
+    /// 此行的字体大小
     pub font_size: Pixels,
-    /// The width of the line
+    /// 行的宽度
     pub width: Pixels,
-    /// The ascent of the line
+    /// 行的上升高度（基线到顶部的距离）
     pub ascent: Pixels,
-    /// The descent of the line
+    /// 行的下降高度（基线到底部的距离）
     pub descent: Pixels,
-    /// The shaped runs that make up this line
+    /// 构成此行的已塑形文本段
     pub runs: Vec<ShapedRun>,
-    /// The length of the line in utf-8 bytes
+    /// 行的长度（UTF-8 字节数）
     pub len: usize,
 }
 
-/// A run of text that has been shaped .
+/// 已塑形的文本段
 #[derive(Debug, Clone)]
 pub struct ShapedRun {
-    /// The font id for this run
+    /// 此文本段的字体 ID
     pub font_id: FontId,
-    /// The glyphs that make up this run
+    /// 构成此文本段的字形
     pub glyphs: Vec<ShapedGlyph>,
 }
 
-/// A single glyph, ready to paint.
+/// 单个字形，准备绘制
 #[derive(Clone, Debug)]
 pub struct ShapedGlyph {
-    /// The ID for this glyph, as determined by the text system.
+    /// 此字形的 ID，由文本系统确定
     pub id: GlyphId,
 
-    /// The position of this glyph in its containing line.
+    /// 此字形在其所在行中的位置
     pub position: Point<Pixels>,
 
-    /// The index of this glyph in the original text.
+    /// 此字形在原始文本中的索引
     pub index: usize,
 
-    /// Whether this glyph is an emoji
+    /// 此字形是否为 emoji
     pub is_emoji: bool,
 }
 
 impl LineLayout {
-    /// The index for the character at the given x coordinate
+    /// 获取给定 x 坐标处字符的索引
     pub fn index_for_x(&self, x: Pixels) -> Option<usize> {
         if x >= self.width {
             None
@@ -70,8 +70,8 @@ impl LineLayout {
         }
     }
 
-    /// closest_index_for_x returns the character boundary closest to the given x coordinate
-    /// (e.g. to handle aligning up/down arrow keys)
+    /// closest_index_for_x 返回距离给定 x 坐标最近的字符边界
+    /// （例如用于处理上下箭头键的对齐）
     pub fn closest_index_for_x(&self, x: Pixels) -> usize {
         let mut prev_index = 0;
         let mut prev_x = px(0.);
@@ -101,7 +101,7 @@ impl LineLayout {
         self.len
     }
 
-    /// The x position of the character at the given index
+    /// 获取给定索引处字符的 x 位置
     pub fn x_for_index(&self, index: usize) -> Pixels {
         for run in &self.runs {
             for glyph in &run.glyphs {
@@ -113,7 +113,7 @@ impl LineLayout {
         self.width
     }
 
-    /// The corresponding Font at the given index
+    /// 获取给定索引处对应的字体
     pub fn font_id_for_index(&self, index: usize) -> Option<FontId> {
         for run in &self.runs {
             for glyph in &run.glyphs {
@@ -162,8 +162,8 @@ impl LineLayout {
                 continue;
             }
 
-            // Here is very similar to `LineWrapper::wrap_line` to determine text wrapping,
-            // but there are some differences, so we have to duplicate the code here.
+            // 此处逻辑与 `LineWrapper::wrap_line` 非常相似，用于确定文本换行，
+            // 但存在一些差异，因此必须在此处重复代码。
             if LineWrapper::is_word_char(ch) {
                 if prev_ch == ' ' && ch != ' ' && first_non_whitespace_ix.is_some() {
                     last_candidate_ix = Some(boundary);
@@ -184,7 +184,7 @@ impl LineLayout {
             let width = next_x - last_boundary_x;
 
             if width > wrap_width && boundary > last_boundary {
-                // When used line_clamp, we should limit the number of lines.
+                // 使用 line_clamp 时，应限制行数
                 if let Some(max_lines) = max_lines
                     && boundaries.len() >= max_lines.saturating_sub(1)
                 {
@@ -207,44 +207,44 @@ impl LineLayout {
     }
 }
 
-/// A line of text that has been wrapped to fit a given width
+/// 已换行以适应给定宽度的文本行
 #[derive(Default, Debug)]
 pub struct WrappedLineLayout {
-    /// The line layout, pre-wrapping.
+    /// 换行前的行布局
     pub unwrapped_layout: Arc<LineLayout>,
 
-    /// The boundaries at which the line was wrapped
+    /// 行被换行时的换行边界
     pub wrap_boundaries: SmallVec<[WrapBoundary; 1]>,
 
-    /// The width of the line, if it was wrapped
+    /// 如果已换行，则为行的宽度
     pub wrap_width: Option<Pixels>,
 }
 
-/// A boundary at which a line was wrapped
+/// 行被换行时的换行边界
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WrapBoundary {
-    /// The index in the run just before the line was wrapped
+    /// 换行前文本段的索引
     pub run_ix: usize,
-    /// The index of the glyph just before the line was wrapped
+    /// 换行前字形的索引
     pub glyph_ix: usize,
 }
 
 impl WrappedLineLayout {
-    /// The length of the underlying text, in utf8 bytes.
+    /// 底层文本的长度（UTF-8 字节数）
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.unwrapped_layout.len
     }
 
-    /// The width of this line, in pixels, whether or not it was wrapped.
+    /// 此行的宽度（像素），无论是否已换行
     pub fn width(&self) -> Pixels {
         self.wrap_width
             .unwrap_or(Pixels::MAX)
             .min(self.unwrapped_layout.width)
     }
 
-    /// The size of the whole wrapped text, for the given line_height.
-    /// can span multiple lines if there are multiple wrap boundaries.
+    /// 整个换行文本的尺寸，根据给定的行高计算。
+    /// 如果有多个换行边界，可能跨越多行。
     pub fn size(&self, line_height: Pixels) -> Size<Pixels> {
         Size {
             width: self.width(),
@@ -252,34 +252,34 @@ impl WrappedLineLayout {
         }
     }
 
-    /// The ascent of a line in this layout
+    /// 此布局中行的上升高度
     pub fn ascent(&self) -> Pixels {
         self.unwrapped_layout.ascent
     }
 
-    /// The descent of a line in this layout
+    /// 此布局中行的下降高度
     pub fn descent(&self) -> Pixels {
         self.unwrapped_layout.descent
     }
 
-    /// The wrap boundaries in this layout
+    /// 此布局中的换行边界
     pub fn wrap_boundaries(&self) -> &[WrapBoundary] {
         &self.wrap_boundaries
     }
 
-    /// The font size of this layout
+    /// 此布局的字体大小
     pub fn font_size(&self) -> Pixels {
         self.unwrapped_layout.font_size
     }
 
-    /// The runs in this layout, sans wrapping
+    /// 此布局中的文本段，未换行
     pub fn runs(&self) -> &[ShapedRun] {
         &self.unwrapped_layout.runs
     }
 
-    /// The index corresponding to a given position in this layout for the given line height.
+    /// 返回给定位置在此布局中对应的索引（根据给定的行高）。
     ///
-    /// See also [`Self::closest_index_for_position`].
+    /// 另见 [`Self::closest_index_for_position`]。
     pub fn index_for_position(
         &self,
         position: Point<Pixels>,
@@ -288,11 +288,11 @@ impl WrappedLineLayout {
         self._index_for_position(position, line_height, false)
     }
 
-    /// The closest index to a given position in this layout for the given line height.
+    /// 返回距离给定位置最近的索引（根据给定的行高）。
     ///
-    /// Closest means the character boundary closest to the given position.
+    /// 最近值意味着距离给定位置最近的字符边界。
     ///
-    /// See also [`LineLayout::closest_index_for_x`].
+    /// 另见 [`LineLayout::closest_index_for_x`]。
     pub fn closest_index_for_position(
         &self,
         position: Point<Pixels>,
@@ -358,7 +358,7 @@ impl WrappedLineLayout {
         }
     }
 
-    /// Returns the pixel position for the given byte index.
+    /// 返回给定字节索引的像素位置
     pub fn position_for_index(&self, index: usize, line_height: Pixels) -> Option<Point<Pixels>> {
         let mut line_start_ix = 0;
         let mut line_end_indices = self
@@ -779,14 +779,12 @@ impl LineLayoutCache {
     }
 }
 
-// Combining marks (e.g. Thai vowel signs, Arabic diacritics) are shaped by
-// HarfBuzz at the same x position as their base character. The force-width
-// loop must not advance the cell counter for these zero-advance glyphs,
-// otherwise they get displaced into the next cell. We detect them by checking
-// whether shaped x has advanced by at least half a cell beyond the last base.
+    // 组合标记（如泰语元音符号、阿拉伯语变音符号）由 HarfBuzz 在与基础字符相同的 x 位置进行塑形。
+    // 强制宽度循环不得为这些零前进字形推进单元格计数器，
+    // 否则它们会被位移到下一个单元格。我们通过检查塑形 x 是否已推进至少半个单元格来判断。
 fn apply_force_width_to_layout(layout: &mut LineLayout, force_width: Pixels) {
     let mut glyph_pos: usize = 0;
-    // NEG_INFINITY ensures the first glyph is always classified as a base.
+    // NEG_INFINITY 确保第一个字形始终被分类为基础字符
     let mut last_base_shaped_x = px(f32::NEG_INFINITY);
     let mut last_base_actual_x = px(0.);
 
@@ -809,7 +807,7 @@ fn apply_force_width_to_layout(layout: &mut LineLayout, force_width: Pixels) {
     }
 }
 
-/// A run of text with a single font.
+/// 具有单一字体的文本段
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[expect(missing_docs)]
 pub struct FontRun {

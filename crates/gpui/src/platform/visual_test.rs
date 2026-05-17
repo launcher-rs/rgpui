@@ -1,9 +1,9 @@
-//! Visual test platform that combines real rendering (macOs-only for now) with controllable TestDispatcher.
+//! 视觉测试平台，结合真实渲染（目前仅 macOS）与可控的 TestDispatcher。
 //!
-//! This platform is used for visual tests that need:
-//! - Real rendering (e.g. Metal/compositor) for accurate screenshots
-//! - Deterministic task scheduling via TestDispatcher
-//! - Controllable time via `advance_clock`
+//! 此平台用于需要以下功能的视觉测试：
+//! - 真实渲染（例如 Metal/合成器）以获得准确的截图
+//! - 通过 TestDispatcher 进行确定性任务调度
+//! - 通过 `advance_clock` 控制时间
 
 use crate::ScreenCaptureSource;
 use crate::{
@@ -22,12 +22,12 @@ use std::{
     sync::Arc,
 };
 
-/// A platform that combines real Mac rendering with controllable TestDispatcher.
+/// 结合真实 Mac 渲染与可控 TestDispatcher 的平台。
 ///
-/// This allows visual tests to:
-/// - Render real UI via Metal for accurate screenshots
-/// - Control task scheduling deterministically via TestDispatcher
-/// - Advance simulated time for testing time-based behaviors (tooltips, animations, etc.)
+/// 这允许视觉测试：
+/// - 通过 Metal 渲染真实 UI 以获得准确的截图
+/// - 通过 TestDispatcher 确定性地控制任务调度
+/// - 推进模拟时间以测试基于时间的行为（工具提示、动画等）
 pub struct VisualTestPlatform {
     dispatcher: TestDispatcher,
     background_executor: BackgroundExecutor,
@@ -38,9 +38,9 @@ pub struct VisualTestPlatform {
 }
 
 impl VisualTestPlatform {
-    /// Creates a new VisualTestPlatform with the given random seed.
+    /// 使用给定的随机种子创建新的 VisualTestPlatform。
     ///
-    /// The seed is used for deterministic random number generation in the TestDispatcher.
+    /// 种子用于 TestDispatcher 中的确定性随机数生成。
     pub fn new(platform: Rc<dyn Platform>, seed: u64) -> Self {
         let dispatcher = TestDispatcher::new(seed);
         let arc_dispatcher = Arc::new(dispatcher.clone());
@@ -58,7 +58,7 @@ impl VisualTestPlatform {
         }
     }
 
-    /// Returns a reference to the TestDispatcher for controlling task scheduling and time.
+    /// 返回对 TestDispatcher 的引用，用于控制任务调度和时间。
     pub fn dispatcher(&self) -> &TestDispatcher {
         &self.dispatcher
     }

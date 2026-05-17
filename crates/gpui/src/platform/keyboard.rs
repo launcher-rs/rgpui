@@ -2,28 +2,28 @@ use crate::collections::HashMap;
 
 use crate::{KeybindingKeystroke, Keystroke};
 
-/// A trait for platform-specific keyboard layouts
+/// 平台特定键盘布局的 trait
 pub trait PlatformKeyboardLayout {
-    /// Get the keyboard layout ID, which should be unique to the layout
+    /// 获取键盘布局 ID，该 ID 对布局应该是唯一的
     fn id(&self) -> &str;
-    /// Get the keyboard layout display name
+    /// 获取键盘布局显示名称
     fn name(&self) -> &str;
 }
 
-/// A trait for platform-specific keyboard mappings
+/// 平台特定键盘映射的 trait
 pub trait PlatformKeyboardMapper {
-    /// Map a key equivalent to its platform-specific representation
+    /// 将按键等效映射为平台特定的表示
     fn map_key_equivalent(
         &self,
         keystroke: Keystroke,
         use_key_equivalents: bool,
     ) -> KeybindingKeystroke;
-    /// Get the key equivalents for the current keyboard layout,
-    /// only used on macOS
+    /// 获取当前键盘布局的按键等效映射，
+    /// 仅在 macOS 上使用
     fn get_key_equivalents(&self) -> Option<&HashMap<char, char>>;
 }
 
-/// A dummy implementation of the platform keyboard mapper
+/// 平台键盘映射器的虚拟实现
 pub struct DummyKeyboardMapper;
 
 impl PlatformKeyboardMapper for DummyKeyboardMapper {

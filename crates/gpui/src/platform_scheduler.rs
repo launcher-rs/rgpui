@@ -16,10 +16,10 @@ use std::{
     time::Duration,
 };
 
-/// A production implementation of [`Scheduler`] that wraps a [`PlatformDispatcher`].
+/// [`Scheduler`] 的生产实现，包装 [`PlatformDispatcher`]。
 ///
-/// This allows GPUI to use the scheduler crate's executor types with the platform's
-/// native dispatch mechanisms (e.g., Grand Central Dispatch on macOS).
+/// 这允许 GPUI 将调度器 crate 的执行器类型与平台的
+/// 原生调度机制一起使用（例如 macOS 上的 Grand Central Dispatch）。
 pub struct PlatformScheduler {
     dispatcher: Arc<dyn PlatformDispatcher>,
     clock: Arc<PlatformClock>,
@@ -69,8 +69,8 @@ impl Scheduler for PlatformScheduler {
             }
 
             let park_deadline = |deadline: Instant| {
-                // Timer expirations are only delivered every ~15.6 milliseconds by default on Windows.
-                // We increase the resolution during this wait so that short timeouts stay reasonably short.
+                // Windows 上默认情况下定时器过期仅每约 15.6 毫秒传递一次。
+                // 我们在此等待期间提高分辨率，以便短超时保持合理短。
                 let _timer_guard = self.dispatcher.increase_timer_resolution();
                 parker.park_deadline(deadline)
             };
@@ -112,7 +112,7 @@ impl Scheduler for PlatformScheduler {
         let (tx, rx) = oneshot::channel();
         let dispatcher = self.dispatcher.clone();
 
-        // Create a runnable that will send the completion signal
+        // 创建将发送完成信号的可运行任务
         let location = std::panic::Location::caller();
         let (runnable, _task) = async_task::Builder::new()
             .metadata(RunnableMeta { location })
@@ -138,7 +138,7 @@ impl Scheduler for PlatformScheduler {
     }
 }
 
-/// A production clock that uses the platform dispatcher's time.
+/// 使用平台调度器时间的生产时钟。
 struct PlatformClock {
     dispatcher: Arc<dyn PlatformDispatcher>,
 }

@@ -29,7 +29,7 @@ impl Drop for Chunk {
     fn drop(&mut self) {
         unsafe {
             let chunk_size = self.end.offset_from_unsigned(self.start);
-            // SAFETY: This succeeded during allocation.
+            // SAFETY：这在分配期间已成功。
             let layout = alloc::Layout::from_size_align_unchecked(chunk_size, 1);
             alloc::dealloc(self.start, layout);
         }
@@ -38,7 +38,7 @@ impl Drop for Chunk {
 
 impl Chunk {
     fn new(chunk_size: NonZeroUsize) -> Self {
-        // this only fails if chunk_size is unreasonably huge
+        // 仅在 chunk_size 大得离谱时才会失败
         let layout = alloc::Layout::from_size_align(chunk_size.get(), 1).unwrap();
         let start = unsafe { alloc::alloc(layout) };
         if start.is_null() {

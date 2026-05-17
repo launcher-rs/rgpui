@@ -19,30 +19,30 @@ use std::{
     time::Duration,
 };
 
-/// Task priority for background tasks.
+/// 后台任务的任务优先级。
 ///
-/// Higher priority tasks are more likely to be scheduled before lower priority tasks,
-/// but this is not a strict guarantee - the scheduler may interleave tasks of different
-/// priorities to prevent starvation.
+/// 高优先级任务更可能在低优先级任务之前被调度，
+/// 但这不是严格保证——调度器可能会交错不同优先级的任务
+/// 以防止饥饿。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Priority {
-    /// Realtime priority
+    /// 实时优先级
     ///
-    /// Spawning a task with this priority will spin it off on a separate thread dedicated just to that task. Only use for audio.
+    /// 使用此优先级生成的任务将在专用于该任务的单独线程上运行。仅用于音频。
     RealtimeAudio,
-    /// High priority - use for tasks critical to user experience/responsiveness.
+    /// 高优先级——用于对用户体验/响应能力至关重要的任务。
     High,
-    /// Medium priority - suitable for most use cases.
+    /// 中优先级——适用于大多数用例。
     #[default]
     Medium,
-    /// Low priority - use for background work that can be deprioritized.
+    /// 低优先级——用于可以降优先级的后台工作。
     Low,
 }
 
 impl Priority {
-    /// Returns the relative probability weight for this priority level.
-    /// Used by schedulers to determine task selection probability.
+    /// 返回此优先级级别的相对概率权重。
+    /// 由调度器用于确定任务选择概率。
     pub const fn weight(self) -> u32 {
         match self {
             Priority::High => 60,
@@ -54,10 +54,10 @@ impl Priority {
     }
 }
 
-/// Metadata attached to runnables for debugging and profiling.
+/// 附加到可运行对象的元数据，用于调试和分析。
 #[derive(Clone)]
 pub struct RunnableMeta {
-    /// The source location where the task was spawned.
+    /// 任务生成的源位置。
     pub location: &'static Location<'static>,
 }
 
@@ -70,11 +70,11 @@ impl std::fmt::Debug for RunnableMeta {
 }
 
 pub trait Scheduler: Send + Sync {
-    /// Block until the given future completes or timeout occurs.
+    /// 阻塞直到给定未来对象完成或超时发生。
     ///
-    /// Returns `true` if the future completed, `false` if it timed out.
-    /// The future is passed as a pinned mutable reference so the caller
-    /// retains ownership and can continue polling or return it on timeout.
+    /// 如果未来对象完成则返回 `true`，超时则返回 `false`。
+    /// 未来对象作为固定可变引用传递，因此调用者
+    /// 保留所有权并可以在超时后继续轮询或返回它。
     fn block(
         &self,
         session_id: Option<SessionId>,
@@ -84,17 +84,17 @@ pub trait Scheduler: Send + Sync {
 
     fn schedule_foreground(&self, session_id: SessionId, runnable: Runnable<RunnableMeta>);
 
-    /// Schedule a background task with the given priority.
+    /// 调度具有给定优先级的后台任务。
     fn schedule_background_with_priority(
         &self,
         runnable: Runnable<RunnableMeta>,
         priority: Priority,
     );
 
-    /// Spawn a closure on a dedicated realtime thread for audio processing.
+    /// 在专用的实时线程上生成用于音频处理的闭包。
     fn spawn_realtime(&self, f: Box<dyn FnOnce() + Send>);
 
-    /// Schedule a background task with default (medium) priority.
+    /// 使用默认（中）优先级调度后台任务。
     fn schedule_background(&self, runnable: Runnable<RunnableMeta>) {
         self.schedule_background_with_priority(runnable, Priority::default());
     }

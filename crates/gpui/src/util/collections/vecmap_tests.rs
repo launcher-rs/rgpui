@@ -1,7 +1,7 @@
-//! Tests for the VecMap collection.
+//! VecMap 集合的测试。
 //!
-//! This is in a sibling module so that the tests are guaranteed to only cover
-//! states that can be created by the public API.
+//! 此模块位于同级目录中，以确保测试仅覆盖
+//! 可通过公共 API 创建的状态。
 
 use super::vecmap::*;
 
@@ -95,7 +95,7 @@ fn test_multiple_entries_independent() {
     assert_eq!(map.iter().count(), 3);
 }
 
-// entry_ref tests
+// entry_ref 测试
 
 use std::cell::Cell;
 use std::rc::Rc;

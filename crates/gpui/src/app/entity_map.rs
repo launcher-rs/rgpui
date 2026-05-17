@@ -129,7 +129,7 @@ impl EntityMap {
         handle
     }
 
-    /// Move an entity to the stack.
+    /// 将实体移动到栈上。
     #[track_caller]
     pub fn lease<T>(&mut self, pointer: &Entity<T>) -> Lease<T> {
         self.assert_valid_context(pointer);
@@ -148,7 +148,7 @@ impl EntityMap {
         }
     }
 
-    /// Returns an entity after moving it to the stack.
+    /// 将实体移回后返回。
     pub fn end_lease<T>(&mut self, mut lease: Lease<T>) {
         self.entities.insert(lease.id, lease.entity.take().unwrap());
     }
@@ -164,10 +164,11 @@ impl EntityMap {
             .unwrap_or_else(|| double_lease_panic::<T>("read"))
     }
 
+    /// 验证上下文是否正确
     fn assert_valid_context(&self, entity: &AnyEntity) {
         debug_assert!(
             Weak::ptr_eq(&entity.entity_map, &Arc::downgrade(&self.ref_counts)),
-            "used a entity with the wrong context"
+            "使用了错误上下文的实体"
         );
     }
 
@@ -206,7 +207,7 @@ impl EntityMap {
 #[track_caller]
 fn double_lease_panic<T>(operation: &str) -> ! {
     panic!(
-        "cannot {operation} {} while it is already being updated",
+        "无法在 {operation} {} 时操作，因为它正在被更新",
         std::any::type_name::<T>()
     )
 }
@@ -234,7 +235,7 @@ impl<T: 'static> core::ops::DerefMut for Lease<T> {
 impl<T> Drop for Lease<T> {
     fn drop(&mut self) {
         if self.entity.is_some() && !panicking() {
-            panic!("Leases must be ended with EntityMap::end_lease")
+            panic!("Lease 必须通过 EntityMap::end_lease 结束")
         }
     }
 }
@@ -315,9 +316,9 @@ impl Clone for AnyEntity {
             let count = entity_map
                 .counts
                 .get(self.entity_id)
-                .expect("detected over-release of a entity");
+                .expect("检测到实体被过度释放");
             let prev_count = count.fetch_add(1, SeqCst);
-            assert_ne!(prev_count, 0, "Detected over-release of a entity.");
+            assert_ne!(prev_count, 0, "检测到实体被过度释放。");
         }
 
         Self {
@@ -343,11 +344,11 @@ impl Drop for AnyEntity {
             let count = entity_map
                 .counts
                 .get(self.entity_id)
-                .expect("detected over-release of a handle.");
+                .expect("检测到句柄被过度释放。");
             let prev_count = count.fetch_sub(1, SeqCst);
-            assert_ne!(prev_count, 0, "Detected over-release of a entity.");
+            assert_ne!(prev_count, 0, "检测到实体被过度释放。");
             if prev_count == 1 {
-                // We were the last reference to this entity, so we can remove it.
+                // 我们是此实体的最后一个引用，因此可以移除它。
                 let mut entity_map = RwLockUpgradableReadGuard::upgrade(entity_map);
                 entity_map.dropped_entity_ids.push(self.entity_id);
             }
@@ -862,84 +863,80 @@ impl<T: 'static> PartialOrd for WeakEntity<T> {
     }
 }
 
-/// Controls whether backtraces are captured when entity handles are created.
+/// 控制是否在创建实体句柄时捕获回溯。
 ///
-/// Set the `LEAK_BACKTRACE` environment variable to any non-empty value to enable
-/// backtrace capture. This helps identify where leaked handles were allocated.
+/// 将 `LEAK_BACKTRACE` 环境变量设置为任何非空值以启用回溯捕获。
+/// 这有助于识别泄漏的句柄是在哪里分配的。
 #[cfg(any(test, feature = "leak-detection"))]
 static LEAK_BACKTRACE: std::sync::LazyLock<bool> =
     std::sync::LazyLock::new(|| std::env::var("LEAK_BACKTRACE").is_ok_and(|b| !b.is_empty()));
 
-/// Unique identifier for a specific entity handle instance.
+/// 特定实体句柄实例的唯一标识符。
 ///
-/// This is distinct from `EntityId` - while multiple handles can point to the same
-/// entity (same `EntityId`), each handle has its own unique `HandleId`.
+/// 这与 `EntityId` 不同——虽然多个句柄可以指向同一个实体（相同的 `EntityId`），
+/// 但每个句柄都有自己唯一的 `HandleId`。
 #[cfg(any(test, feature = "leak-detection"))]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 pub(crate) struct HandleId {
     id: u64,
 }
 
-/// Tracks entity handle allocations to detect leaks.
+/// 跟踪实体句柄分配以检测泄漏。
 ///
-/// The leak detector is enabled in tests and when the `leak-detection` feature is active.
-/// It tracks every `Entity<T>` and `AnyEntity` handle that is created and released,
-/// allowing you to verify that all handles to an entity have been properly dropped.
+/// 泄漏检测器在测试中以及 `leak-detection` 特性激活时启用。
+/// 它跟踪创建和释放的每个 `Entity<T>` 和 `AnyEntity` 句柄，
+/// 允许你验证指向实体的所有句柄是否都已正确丢弃。
 ///
-/// # How do leaks happen?
+/// # 泄漏是如何发生的？
 ///
-/// Entities are reference-counted structures that can own other entities
-/// allowing to form cycles. If such a strong-reference counted cycle is
-/// created, all participating strong entities in this cycle will effectively
-/// leak as they cannot be released anymore.
+/// 实体是可以拥有其他实体的引用计数结构，
+/// 从而形成循环。如果创建了这样的强引用计数循环，
+/// 此循环中所有参与的强实体将有效地泄漏，因为它们无法再被释放。
 ///
-/// Cycles can also happen if an entity owns a task or subscription that it
-/// itself owns a strong reference to the entity again.
+/// 如果实体拥有它自身拥有强引用的任务或订阅，也可能发生循环。
 ///
-/// # Usage
+/// # 用法
 ///
-/// You can use `WeakEntity::assert_released` or `AnyWeakEntity::assert_released`
-/// to verify that an entity has been fully released:
+/// 你可以使用 `WeakEntity::assert_released` 或 `AnyWeakEntity::assert_released`
+/// 验证实体是否已完全释放：
 ///
 /// ```ignore
 /// let entity = cx.new(|_| MyEntity::new());
 /// let weak = entity.downgrade();
 /// drop(entity);
 ///
-/// // This will panic if any handles to the entity are still alive
+/// // 如果实体的任何句柄仍然存活，这将 panic
 /// weak.assert_released();
 /// ```
 ///
-/// # Debugging Leaks
+/// # 调试泄漏
 ///
-/// When a leak is detected, the detector will panic with information about the leaked
-/// handles. To see where the leaked handles were allocated, set the `LEAK_BACKTRACE`
-/// environment variable:
+/// 检测到泄漏时，检测器将 panic 并显示有关泄漏句柄的信息。
+/// 要查看泄漏句柄是在哪里分配的，请设置 `LEAK_BACKTRACE` 环境变量：
 ///
 /// ```bash
 /// LEAK_BACKTRACE=1 cargo test my_test
 /// ```
 ///
-/// This will capture and display backtraces for each leaked handle, helping you
-/// identify where leaked handles were created.
+/// 这将捕获并显示每个泄漏句柄的回溯，帮助你识别泄漏句柄的创建位置。
 ///
-/// # How It Works
+/// # 工作原理
 ///
-/// - When an entity handle is created (via `Entity::new`, `Entity::clone`, or
-///   `WeakEntity::upgrade`), `handle_created` is called to register the handle.
-/// - When a handle is dropped, `handle_released` removes it from tracking.
-/// - `assert_released` verifies that no handles remain for a given entity.
+/// - 当创建实体句柄时（通过 `Entity::new`、`Entity::clone` 或 `WeakEntity::upgrade`），
+///   调用 `handle_created` 注册句柄。
+/// - 当句柄被丢弃时，`handle_released` 将其从跟踪中移除。
+/// - `assert_released` 验证实体没有剩余句柄。
 #[cfg(any(test, feature = "leak-detection"))]
 pub(crate) struct LeakDetector {
     next_handle_id: u64,
     entity_handles: HashMap<EntityId, EntityLeakData>,
 }
 
-/// A snapshot of the set of alive entities at a point in time.
+/// 特定时间点存活实体集合的快照。
 ///
-/// Created by [`LeakDetector::snapshot`]. Can later be passed to
-/// [`LeakDetector::assert_no_new_leaks`] to verify that no new entity
-/// handles remain between the snapshot and the current state.
+/// 由 [`LeakDetector::snapshot`] 创建。之后可以传递给
+/// [`LeakDetector::assert_no_new_leaks`] 以验证在快照和当前状态之间
+/// 没有新的实体句柄残留。
 #[cfg(any(test, feature = "leak-detection"))]
 pub struct LeakDetectorSnapshot {
     entity_ids: collections::HashSet<EntityId>,
@@ -953,11 +950,10 @@ struct EntityLeakData {
 
 #[cfg(any(test, feature = "leak-detection"))]
 impl LeakDetector {
-    /// Records that a new handle has been created for the given entity.
+    /// 记录已为给定实体创建了新句柄。
     ///
-    /// Returns a unique `HandleId` that must be passed to `handle_released` when
-    /// the handle is dropped. If `LEAK_BACKTRACE` is set, captures a backtrace
-    /// at the allocation site.
+    /// 返回唯一的 `HandleId`，必须在句柄丢弃时传递给 `handle_released`。
+    /// 如果设置了 `LEAK_BACKTRACE`，则在分配点捕获回溯。
     #[track_caller]
     pub fn handle_created(
         &mut self,
@@ -980,10 +976,10 @@ impl LeakDetector {
         handle_id
     }
 
-    /// Records that a handle has been released (dropped).
+    /// 记录句柄已被释放（丢弃）。
     ///
-    /// This removes the handle from tracking. The `handle_id` should be the same
-    /// one returned by `handle_created` when the handle was allocated.
+    /// 这将从跟踪中移除句柄。`handle_id` 应与分配句柄时
+    /// `handle_created` 返回的相同。
     pub fn handle_released(&mut self, entity_id: EntityId, handle_id: HandleId) {
         if let std::collections::hash_map::Entry::Occupied(mut data) =
             self.entity_handles.entry(entity_id)
@@ -995,13 +991,13 @@ impl LeakDetector {
         }
     }
 
-    /// Asserts that all handles to the given entity have been released.
+    /// 断言给定实体的所有句柄都已释放。
     ///
     /// # Panics
     ///
-    /// Panics if any handles to the entity are still alive. The panic message
-    /// includes backtraces for each leaked handle if `LEAK_BACKTRACE` is set,
-    /// otherwise it suggests setting the environment variable to get more info.
+    /// 如果实体的任何句柄仍然存活则 panic。panic 消息
+    /// 包含每个泄漏句柄的回溯（如果设置了 `LEAK_BACKTRACE`），
+    /// 否则建议设置环境变量以获取更多信息。
     pub fn assert_released(&mut self, entity_id: EntityId) {
         use std::fmt::Write as _;
 
@@ -1015,37 +1011,36 @@ impl LeakDetector {
                 } else {
                     writeln!(
                         out,
-                        "Leaked handle: (export LEAK_BACKTRACE to find allocation site)"
+                        "泄漏的句柄：（导出 LEAK_BACKTRACE 以查找分配位置）"
                     )
                     .unwrap();
                 }
             }
-            panic!("Handles for {} leaked:\n{out}", data.type_name);
+            panic!("{} 的句柄泄漏:\n{out}", data.type_name);
         }
     }
 
-    /// Captures a snapshot of all entity IDs that currently have alive handles.
+    /// 捕获当前所有具有存活句柄的实体 ID 的快照。
     ///
-    /// The returned [`LeakDetectorSnapshot`] can later be passed to
-    /// [`assert_no_new_leaks`](Self::assert_no_new_leaks) to verify that no
-    /// entities created after the snapshot are still alive.
+    /// 返回的 [`LeakDetectorSnapshot`] 之后可以传递给
+    /// [`assert_no_new_leaks`](Self::assert_no_new_leaks) 以验证快照之后创建的
+    /// 实体没有仍然存活的。
     pub fn snapshot(&self) -> LeakDetectorSnapshot {
         LeakDetectorSnapshot {
             entity_ids: self.entity_handles.keys().copied().collect(),
         }
     }
 
-    /// Asserts that no entities created after `snapshot` still have alive handles.
+    /// 断言快照之后创建的实体没有仍然具有存活句柄的。
     ///
-    /// Entities that were already tracked at the time of the snapshot are ignored,
-    /// even if they still have handles. Only *new* entities (those whose
-    /// `EntityId` was not present in the snapshot) are considered leaks.
+    /// 快照时已跟踪的实体将被忽略，
+    /// 即使它们仍然有句柄。只有*新*实体（那些
+    /// `EntityId` 不在快照中的）才被视为泄漏。
     ///
     /// # Panics
     ///
-    /// Panics if any new entity handles exist. The panic message lists every
-    /// leaked entity with its type name, and includes allocation-site backtraces
-    /// when `LEAK_BACKTRACE` is set.
+    /// 如果存在任何新实体句柄则 panic。panic 消息列出每个
+    /// 泄漏实体及其类型名称，并在设置 `LEAK_BACKTRACE` 时包含分配位置回溯。
     pub fn assert_no_new_leaks(&self, snapshot: &LeakDetectorSnapshot) {
         use std::fmt::Write as _;
 
@@ -1061,14 +1056,14 @@ impl LeakDetector {
                     let backtrace = BacktraceFormatter(backtrace);
                     writeln!(
                         out,
-                        "Leaked handle for entity {} ({entity_id:?}):\n{:?}",
+                        "实体 {} ({entity_id:?}) 的泄漏句柄:\n{:?}",
                         data.type_name, backtrace
                     )
                     .unwrap();
                 } else {
                     writeln!(
                         out,
-                        "Leaked handle for entity {} ({entity_id:?}): (export LEAK_BACKTRACE to find allocation site)",
+                        "实体 {} ({entity_id:?}) 的泄漏句柄：（导出 LEAK_BACKTRACE 以查找分配位置）",
                         data.type_name
                     )
                     .unwrap();
@@ -1077,7 +1072,7 @@ impl LeakDetector {
         }
 
         if !out.is_empty() {
-            panic!("New entity leaks detected since snapshot:\n{out}");
+            panic!("自快照以来检测到新实体泄漏:\n{out}");
         }
     }
 }
@@ -1099,21 +1094,21 @@ impl Drop for LeakDetector {
                     let backtrace = BacktraceFormatter(backtrace);
                     writeln!(
                         out,
-                        "Leaked handle for entity {} ({entity_id:?}):\n{:?}",
+                        "实体 {} ({entity_id:?}) 的泄漏句柄:\n{:?}",
                         data.type_name, backtrace
                     )
                     .unwrap();
                 } else {
                     writeln!(
                         out,
-                        "Leaked handle for entity {} ({entity_id:?}): (export LEAK_BACKTRACE to find allocation site)",
+                        "实体 {} ({entity_id:?}) 的泄漏句柄：（导出 LEAK_BACKTRACE 以查找分配位置）",
                         data.type_name
                     )
                     .unwrap();
                 }
             }
         }
-        panic!("Exited with leaked handles:\n{out}");
+        panic!("退出时存在泄漏的句柄:\n{out}");
     }
 }
 
@@ -1131,10 +1126,9 @@ impl fmt::Debug for BacktraceFormatter {
             PrintFmt::Short
         };
 
-        // When printing paths we try to strip the cwd if it exists, otherwise
-        // we just print the path as-is. Note that we also only do this for the
-        // short format, because if it's full we presumably want to print
-        // everything.
+        // 打印路径时，如果存在则尝试剥离 cwd，否则
+        // 我们只按原样打印路径。注意我们也只对
+        // 短格式这样做，因为如果是完整格式，我们可能想打印所有内容。
         let cwd = std::env::current_dir();
         let mut print_path = move |fmt: &mut fmt::Formatter<'_>, path: BytesOrWideString<'_>| {
             let path = path.into_path_buf();
@@ -1192,7 +1186,7 @@ mod test {
 
     #[test]
     fn test_entity_map_slot_assignment_before_cleanup() {
-        // Tests that slots are not re-used before take_dropped.
+        // 测试在 take_dropped 之前槽位不会被重用。
         let mut entity_map = EntityMap::new();
 
         let slot = entity_map.reserve::<TestEntity>();
@@ -1215,7 +1209,7 @@ mod test {
 
     #[test]
     fn test_entity_map_weak_upgrade_before_cleanup() {
-        // Tests that weak handles are not upgraded before take_dropped
+        // 测试在 take_dropped 之前弱句柄不会被升级
         let mut entity_map = EntityMap::new();
 
         let slot = entity_map.reserve::<TestEntity>();
@@ -1269,7 +1263,7 @@ mod test {
         let slot = entity_map.reserve::<TestEntity>();
         let leaked = entity_map.insert(slot, TestEntity { i: 2 });
 
-        // `leaked` is still alive, so this should panic.
+        // `leaked` 仍然存活，所以这应该 panic。
         entity_map.assert_no_new_leaks(&snapshot);
 
         drop(pre_existing);

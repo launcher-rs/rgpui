@@ -538,32 +538,32 @@ impl From<Shadow> for Primitive {
     }
 }
 
-/// The style of a border.
+/// 边框的样式。
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[repr(C)]
 pub enum BorderStyle {
-    /// A solid border.
+    /// 实线边框。
     #[default]
     Solid = 0,
-    /// A dashed border.
+    /// 虚线边框。
     Dashed = 1,
 }
 
-/// A data type representing a 2 dimensional transformation that can be applied to an element.
+/// 表示可应用于元素的二维变换的数据类型。
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
 pub struct TransformationMatrix {
-    /// 2x2 matrix containing rotation and scale,
-    /// stored row-major
+    /// 2x2 矩阵，包含旋转和缩放，
+    /// 按行主序存储
     pub rotation_scale: [[f32; 2]; 2],
-    /// translation vector
+    /// 平移向量
     pub translation: [f32; 2],
 }
 
 impl Eq for TransformationMatrix {}
 
 impl TransformationMatrix {
-    /// The unit matrix, has no effect.
+    /// 单位矩阵，无效果。
     pub fn unit() -> Self {
         Self {
             rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
@@ -571,7 +571,7 @@ impl TransformationMatrix {
         }
     }
 
-    /// Move the origin by a given point
+    /// 将原点移动给定点
     pub fn translate(mut self, point: Point<ScaledPixels>) -> Self {
         self.compose(Self {
             rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
@@ -579,7 +579,7 @@ impl TransformationMatrix {
         })
     }
 
-    /// Clockwise rotation in radians around the origin
+    /// 绕原点顺时针旋转（以弧度为单位）
     pub fn rotate(self, angle: Radians) -> Self {
         self.compose(Self {
             rotation_scale: [
@@ -590,7 +590,7 @@ impl TransformationMatrix {
         })
     }
 
-    /// Scale around the origin
+    /// 绕原点缩放
     pub fn scale(self, size: Size<f32>) -> Self {
         self.compose(Self {
             rotation_scale: [[size.width, 0.0], [0.0, size.height]],
@@ -598,15 +598,15 @@ impl TransformationMatrix {
         })
     }
 
-    /// Perform matrix multiplication with another transformation
-    /// to produce a new transformation that is the result of
-    /// applying both transformations: first, `other`, then `self`.
+    /// 与另一个变换执行矩阵乘法
+    /// 以产生一个新的变换，它是
+    /// 应用两个变换的结果：首先 `other`，然后 `self`。
     #[inline]
     pub fn compose(self, other: TransformationMatrix) -> TransformationMatrix {
         if other == Self::unit() {
             return self;
         }
-        // Perform matrix multiplication
+        // 执行矩阵乘法
         TransformationMatrix {
             rotation_scale: [
                 [
@@ -633,7 +633,7 @@ impl TransformationMatrix {
         }
     }
 
-    /// Apply transformation to a point, mainly useful for debugging
+    /// 对点应用变换，主要用于调试
     pub fn apply(&self, point: Point<Pixels>) -> Point<Pixels> {
         let input = [point.x.0, point.y.0];
         let mut output = self.translation;
@@ -730,7 +730,7 @@ impl From<PaintSurface> for Primitive {
 #[expect(missing_docs)]
 pub struct PathId(pub usize);
 
-/// A line made up of a series of vertices and control points.
+/// 由一系列顶点和控制点组成的线。
 #[derive(Clone, Debug)]
 #[expect(missing_docs)]
 pub struct Path<P: Clone + Debug + Default + PartialEq> {
@@ -746,7 +746,7 @@ pub struct Path<P: Clone + Debug + Default + PartialEq> {
 }
 
 impl Path<Pixels> {
-    /// Create a new path with the given starting point.
+    /// 使用给定的起始点创建新路径。
     pub fn new(start: Point<Pixels>) -> Self {
         Self {
             id: PathId(0),
@@ -764,7 +764,7 @@ impl Path<Pixels> {
         }
     }
 
-    /// Scale this path by the given factor.
+    /// 按给定因子缩放此路径。
     pub fn scale(&self, factor: f32) -> Path<ScaledPixels> {
         Path {
             id: self.id,
@@ -783,14 +783,14 @@ impl Path<Pixels> {
         }
     }
 
-    /// Move the start, current point to the given point.
+    /// 将起点、当前点移动到给定点。
     pub fn move_to(&mut self, to: Point<Pixels>) {
         self.contour_count += 1;
         self.start = to;
         self.current = to;
     }
 
-    /// Draw a straight line from the current point to the given point.
+    /// 从当前点到给定点绘制直线。
     pub fn line_to(&mut self, to: Point<Pixels>) {
         self.contour_count += 1;
         if self.contour_count > 1 {
@@ -802,7 +802,7 @@ impl Path<Pixels> {
         self.current = to;
     }
 
-    /// Draw a curve from the current point to the given point, using the given control point.
+    /// 从当前点到给定点绘制曲线，使用给定的控制点。
     pub fn curve_to(&mut self, to: Point<Pixels>, ctrl: Point<Pixels>) {
         self.contour_count += 1;
         if self.contour_count > 1 {
@@ -819,7 +819,7 @@ impl Path<Pixels> {
         self.current = to;
     }
 
-    /// Push a triangle to the Path.
+    /// 向 Path 添加三角形。
     pub fn push_triangle(
         &mut self,
         xy: (Point<Pixels>, Point<Pixels>, Point<Pixels>),

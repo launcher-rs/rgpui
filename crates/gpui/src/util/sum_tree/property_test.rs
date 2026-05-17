@@ -19,9 +19,9 @@ where
     }
 }
 
-/// A strategy for producing a [`SumTree`] with a given size.
+/// 用于生成给定大小的 [`SumTree`] 的策略。
 ///
-/// Equivalent to [`proptest::collection::vec`].
+/// 等价于 [`proptest::collection::vec`]。
 pub fn sum_tree<S, T>(values: S, size: impl Into<SizeRange>) -> impl Strategy<Value = SumTree<T>>
 where
     T: Debug + Arbitrary + Item + 'static,

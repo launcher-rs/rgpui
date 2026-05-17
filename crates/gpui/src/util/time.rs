@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+/// 将 Duration 格式化为人类可读的时间字符串（如 "1h 30m 45s"）。
 pub fn duration_alt_display(duration: Duration) -> String {
     let hours = duration.as_secs() / 3600;
     let minutes = (duration.as_secs() % 3600) / 60;

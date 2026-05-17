@@ -8,7 +8,7 @@ use std::ops::Range;
 ///
 /// 详见 [`InputHandler`] 了解如何实现每个方法的详情。
 pub trait EntityInputHandler: 'static + Sized {
-    /// See [`InputHandler::text_for_range`] for details
+    /// 详见 [`InputHandler::text_for_range`]
     fn text_for_range(
         &mut self,
         range: Range<usize>,
@@ -17,7 +17,7 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     ) -> Option<String>;
 
-    /// See [`InputHandler::selected_text_range`] for details
+    /// 详见 [`InputHandler::selected_text_range`]
     fn selected_text_range(
         &mut self,
         ignore_disabled_input: bool,
@@ -25,17 +25,17 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     ) -> Option<UTF16Selection>;
 
-    /// See [`InputHandler::marked_text_range`] for details
+    /// 详见 [`InputHandler::marked_text_range`]
     fn marked_text_range(
         &self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Range<usize>>;
 
-    /// See [`InputHandler::unmark_text`] for details
+    /// 详见 [`InputHandler::unmark_text`]
     fn unmark_text(&mut self, window: &mut Window, cx: &mut Context<Self>);
 
-    /// See [`InputHandler::replace_text_in_range`] for details
+    /// 详见 [`InputHandler::replace_text_in_range`]
     fn replace_text_in_range(
         &mut self,
         range: Option<Range<usize>>,
@@ -44,7 +44,7 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     );
 
-    /// See [`InputHandler::replace_and_mark_text_in_range`] for details
+    /// 详见 [`InputHandler::replace_and_mark_text_in_range`]
     fn replace_and_mark_text_in_range(
         &mut self,
         range: Option<Range<usize>>,
@@ -54,7 +54,7 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     );
 
-    /// See [`InputHandler::bounds_for_range`] for details
+    /// 详见 [`InputHandler::bounds_for_range`]
     fn bounds_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -63,7 +63,7 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>>;
 
-    /// See [`InputHandler::character_index_for_point`] for details
+    /// 详见 [`InputHandler::character_index_for_point`]
     fn character_index_for_point(
         &mut self,
         point: crate::Point<Pixels>,
@@ -71,7 +71,7 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     ) -> Option<usize>;
 
-    /// See [`InputHandler::accepts_text_input`] for details
+    /// 详见 [`InputHandler::accepts_text_input`]
     fn accepts_text_input(&self, _window: &mut Window, _cx: &mut Context<Self>) -> bool {
         true
     }
@@ -85,7 +85,7 @@ pub struct ElementInputHandler<V> {
 }
 
 impl<V: 'static> ElementInputHandler<V> {
-    /// Used in [`Element::paint`][element_paint] with the element's bounds, a `Window`, and a `App` context.
+    /// 在 [`Element::paint`][element_paint] 中与元素的边界、`Window` 和 `App` 上下文一起使用。
     ///
     /// [element_paint]: crate::Element::paint
     pub fn new(element_bounds: Bounds<Pixels>, view: Entity<V>) -> Self {

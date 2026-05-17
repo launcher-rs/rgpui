@@ -13,19 +13,19 @@ pub use lyon::tessellation::{FillOptions, FillRule, StrokeOptions};
 
 use crate::{Path, Pixels, Point, point, px};
 
-/// Style of the PathBuilder
+/// PathBuilder 的样式
 pub enum PathStyle {
-    /// Stroke style
+    /// 描边样式
     Stroke(StrokeOptions),
-    /// Fill style
+    /// 填充样式
     Fill(FillOptions),
 }
 
-/// A [`Path`] builder.
+/// [`Path`] 构建器。
 pub struct PathBuilder {
     raw: lyon::path::builder::WithSvg<lyon::path::BuilderImpl>,
     transform: Option<lyon::math::Transform>,
-    /// PathStyle of the PathBuilder
+    /// PathBuilder 的 PathStyle
     pub style: PathStyle,
     dash_array: Option<Vec<Pixels>>,
 }
@@ -84,7 +84,7 @@ impl Default for PathBuilder {
 }
 
 impl PathBuilder {
-    /// Creates a new [`PathBuilder`] to build a Stroke path.
+    /// 创建新的 [`PathBuilder`] 以构建描边路径。
     pub fn stroke(width: Pixels) -> Self {
         Self {
             style: PathStyle::Stroke(StrokeOptions::default().with_line_width(width.0)),
@@ -92,22 +92,22 @@ impl PathBuilder {
         }
     }
 
-    /// Creates a new [`PathBuilder`] to build a Fill path.
+    /// 创建新的 [`PathBuilder`] 以构建填充路径。
     pub fn fill() -> Self {
         Self::default()
     }
 
-    /// Sets the style of the [`PathBuilder`].
+    /// 设置 [`PathBuilder`] 的样式。
     pub fn with_style(self, style: PathStyle) -> Self {
         Self { style, ..self }
     }
 
-    /// Sets the dash array of the [`PathBuilder`].
+    /// 设置 [`PathBuilder`] 的虚线数组。
     ///
     /// [MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/stroke-dasharray)
     pub fn dash_array(mut self, dash_array: &[Pixels]) -> Self {
-        // If an odd number of values is provided, then the list of values is repeated to yield an even number of values.
-        // Thus, 5,3,2 is equivalent to 5,3,2,5,3,2.
+        // 如果提供奇数个值，则重复该值列表以产生偶数个值。
+        // 因此，5,3,2 等效于 5,3,2,5,3,2。
         let array = if dash_array.len() % 2 == 1 {
             let mut new_dash_array = dash_array.to_vec();
             new_dash_array.extend_from_slice(dash_array);
@@ -120,26 +120,26 @@ impl PathBuilder {
         self
     }
 
-    /// Move the current point to the given point.
+    /// 将当前点移动到给定点。
     #[inline]
     pub fn move_to(&mut self, to: Point<Pixels>) {
         self.raw.move_to(to.into());
     }
 
-    /// Draw a straight line from the current point to the given point.
+    /// 从当前点到给定点绘制直线。
     #[inline]
     pub fn line_to(&mut self, to: Point<Pixels>) {
         self.raw.line_to(to.into());
     }
 
-    /// Draw a curve from the current point to the given point, using the given control point.
+    /// 从当前点到给定点绘制曲线，使用给定的控制点。
     #[inline]
     pub fn curve_to(&mut self, to: Point<Pixels>, ctrl: Point<Pixels>) {
         self.raw.quadratic_bezier_to(ctrl.into(), to.into());
     }
 
-    /// Adds a cubic Bézier to the [`Path`] given its two control points
-    /// and its end point.
+    /// 向 [`Path`] 添加三次贝塞尔曲线，给定其两个控制点
+    /// 和终点。
     #[inline]
     pub fn cubic_bezier_to(
         &mut self,
@@ -151,7 +151,7 @@ impl PathBuilder {
             .cubic_bezier_to(control_a.into(), control_b.into(), to.into());
     }
 
-    /// Adds an elliptical arc.
+    /// 添加椭圆弧。
     pub fn arc_to(
         &mut self,
         radii: Point<Pixels>,
@@ -168,7 +168,7 @@ impl PathBuilder {
         );
     }
 
-    /// Equivalent to `arc_to` in relative coordinates.
+    /// 等效于相对坐标中的 `arc_to`。
     pub fn relative_arc_to(
         &mut self,
         radii: Point<Pixels>,
@@ -185,7 +185,7 @@ impl PathBuilder {
         );
     }
 
-    /// Adds a polygon.
+    /// 添加多边形。
     pub fn add_polygon(&mut self, points: &[Point<Pixels>], closed: bool) {
         let points = points.iter().copied().map(|p| p.into()).collect::<Vec<_>>();
         self.raw.add_polygon(Polygon {
@@ -194,19 +194,19 @@ impl PathBuilder {
         });
     }
 
-    /// Close the current sub-path.
+    /// 关闭当前子路径。
     #[inline]
     pub fn close(&mut self) {
         self.raw.close();
     }
 
-    /// Applies a transform to the path.
+    /// 对路径应用变换。
     #[inline]
     pub fn transform(&mut self, transform: Transform) {
         self.transform = Some(transform);
     }
 
-    /// Applies a translation to the path.
+    /// 对路径应用平移。
     #[inline]
     pub fn translate(&mut self, to: Point<Pixels>) {
         if let Some(transform) = self.transform {
@@ -216,7 +216,7 @@ impl PathBuilder {
         }
     }
 
-    /// Applies a scale to the path.
+    /// 对路径应用缩放。
     #[inline]
     pub fn scale(&mut self, scale: f32) {
         if let Some(transform) = self.transform {
@@ -226,9 +226,9 @@ impl PathBuilder {
         }
     }
 
-    /// Applies a rotation to the path.
+    /// 对路径应用旋转。
     ///
-    /// The `angle` is in degrees value in the range 0.0 to 360.0.
+    /// `angle` 是以度为单位的值，范围为 0.0 到 360.0。
     #[inline]
     pub fn rotate(&mut self, angle: f32) {
         let radians = angle.to_radians();
@@ -239,7 +239,7 @@ impl PathBuilder {
         }
     }
 
-    /// Builds into a [`Path`].
+    /// 构建为 [`Path`]。
     #[inline]
     pub fn build(self) -> Result<Path<Pixels>, Error> {
         let path = if let Some(transform) = self.transform {
@@ -258,11 +258,11 @@ impl PathBuilder {
         path: &lyon::path::Path,
         options: &FillOptions,
     ) -> Result<Path<Pixels>, Error> {
-        // Will contain the result of the tessellation.
+        // 将包含镶嵌的结果。
         let mut buf: VertexBuffers<lyon::math::Point, u16> = VertexBuffers::new();
         let mut tessellator = FillTessellator::new();
 
-        // Compute the tessellation.
+        // 计算镶嵌。
         tessellator.tessellate_path(
             path,
             options,
@@ -304,11 +304,11 @@ impl PathBuilder {
             path
         };
 
-        // Will contain the result of the tessellation.
+        // 将包含镶嵌的结果。
         let mut buf: VertexBuffers<lyon::math::Point, u16> = VertexBuffers::new();
         let mut tessellator = StrokeTessellator::new();
 
-        // Compute the tessellation.
+        // 计算镶嵌。
         tessellator.tessellate_path(
             path,
             options,
@@ -318,7 +318,7 @@ impl PathBuilder {
         Ok(Self::build_path(buf))
     }
 
-    /// Builds a [`Path`] from a [`lyon::tessellation::VertexBuffers`].
+    /// 从 [`lyon::tessellation::VertexBuffers`] 构建 [`Path`]。
     pub fn build_path(buf: VertexBuffers<lyon::math::Point, u16>) -> Path<Pixels> {
         if buf.vertices.is_empty() {
             return Path::new(Point::default());

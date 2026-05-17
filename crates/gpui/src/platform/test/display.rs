@@ -1,6 +1,7 @@
 use crate::{Bounds, DisplayId, Pixels, PlatformDisplay, Point, px};
 use anyhow::{Ok, Result};
 
+/// 测试用显示实现
 #[derive(Debug)]
 pub(crate) struct TestDisplay {
     id: DisplayId,
@@ -9,6 +10,7 @@ pub(crate) struct TestDisplay {
 }
 
 impl TestDisplay {
+    /// 创建新的 TestDisplay，默认 1920x1080 分辨率
     pub fn new() -> Self {
         TestDisplay {
             id: DisplayId(1),

@@ -7,65 +7,63 @@ use derive_more::{Deref, DerefMut};
 use smallvec::SmallVec;
 use std::sync::Arc;
 
-/// Pre-computed glyph data for efficient painting without per-glyph cache lookups.
+/// 预计算的字形光栅数据，用于高效绘制而无需每个字形缓存查找。
 ///
-/// This is produced by `ShapedLine::compute_glyph_raster_data` during prepaint
-/// and consumed by `ShapedLine::paint_with_raster_data` during paint.
+/// 在 prepaint 阶段由 `ShapedLine::compute_glyph_raster_data` 生成，
+/// 在 paint 阶段由 `ShapedLine::paint_with_raster_data` 消费。
 #[derive(Clone, Debug)]
 pub struct GlyphRasterData {
-    /// The raster bounds for each glyph, in paint order.
+    /// 每个字形的光栅边界，按绘制顺序排列
     pub bounds: Vec<Bounds<DevicePixels>>,
-    /// The render params for each glyph (needed for sprite atlas lookup).
+    /// 每个字形的渲染参数（用于精灵图查找）
     pub params: Vec<RenderGlyphParams>,
 }
 
-/// Set the text decoration for a run of text.
+/// 设置文本段的文本装饰
 #[derive(Debug, Clone)]
 pub struct DecorationRun {
-    /// The length of the run in utf-8 bytes.
+    /// 文本段的长度（UTF-8 字节数）
     pub len: u32,
 
-    /// The color for this run
+    /// 此文本段的颜色
     pub color: Hsla,
 
-    /// The background color for this run
+    /// 此文本段的背景色
     pub background_color: Option<Hsla>,
 
-    /// The underline style for this run
+    /// 此文本段的下划线样式
     pub underline: Option<UnderlineStyle>,
 
-    /// The strikethrough style for this run
+    /// 此文本段的删除线样式
     pub strikethrough: Option<StrikethroughStyle>,
 }
 
-/// A line of text that has been shaped and decorated.
+/// 已塑形和装饰的文本行
 #[derive(Clone, Default, Debug, Deref, DerefMut)]
 pub struct ShapedLine {
     #[deref]
     #[deref_mut]
     pub(crate) layout: Arc<LineLayout>,
-    /// The text that was shaped for this line.
+    /// 为此行塑形的文本
     pub text: SharedString,
     pub(crate) decoration_runs: SmallVec<[DecorationRun; 32]>,
 }
 
 impl ShapedLine {
-    /// The length of the line in utf-8 bytes.
+    /// 行的长度（UTF-8 字节数）
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.layout.len
     }
 
-    /// The width of the shaped line in pixels.
+    /// 已塑形行的宽度（像素）。
     ///
-    /// This is the glyph advance width computed by the text shaping system and is useful for
-    /// incrementally advancing a "pen" when painting multiple fragments on the same row.
+    /// 这是由文本塑形系统计算的字形前进宽度，用于在同一行上绘制多个片段时逐步推进"画笔"位置。
     pub fn width(&self) -> Pixels {
         self.layout.width
     }
 
-    /// Override the len, useful if you're rendering text a
-    /// as text b (e.g. rendering invisibles).
+    /// 覆盖长度，用于将文本 a 渲染为文本 b（例如渲染不可见字符）
     pub fn with_len(mut self, len: usize) -> Self {
         let layout = self.layout.as_ref();
         self.layout = Arc::new(LineLayout {
@@ -79,7 +77,7 @@ impl ShapedLine {
         self
     }
 
-    /// Paint the line of text to the window.
+    /// 将此行文本绘制到窗口
     pub fn paint(
         &self,
         origin: Point<Pixels>,
@@ -104,7 +102,7 @@ impl ShapedLine {
         Ok(())
     }
 
-    /// Paint the background of the line to the window.
+    /// 将行的背景绘制到窗口
     pub fn paint_background(
         &self,
         origin: Point<Pixels>,
@@ -129,19 +127,18 @@ impl ShapedLine {
         Ok(())
     }
 
-    /// Split this shaped line at a byte index, returning `(prefix, suffix)`.
+    /// 在字节索引处分割此已塑形行，返回 `(前半部分, 后半部分)`。
     ///
-    /// - `prefix` contains glyphs for bytes `[0, byte_index)` with original positions.
-    ///   Its width equals the x-advance up to the split point.
-    /// - `suffix` contains glyphs for bytes `[byte_index, len)` with positions
-    ///   shifted left so the first glyph starts at x=0, and byte indices rebased to 0.
-    /// - Decoration runs are partitioned at the boundary; a run that straddles it is
-    ///   split into two with adjusted lengths.
-    /// - `font_size`, `ascent`, and `descent` are copied to both halves.
+    /// - `前半部分` 包含字节 `[0, byte_index)` 的字形，保持原始位置。
+    ///   其宽度等于分割点之前的 x 前进距离。
+    /// - `后半部分` 包含字节 `[byte_index, len)` 的字形，位置向左偏移，
+    ///   使第一个字形从 x=0 开始，字节索引重新基于 0。
+    /// - 装饰段在边界处分割；跨越边界的段被拆分为两个并调整长度。
+    /// - `font_size`、`ascent` 和 `descent` 复制到两半中。
     pub fn split_at(&self, byte_index: usize) -> (ShapedLine, ShapedLine) {
         let x_offset = self.layout.x_for_index(byte_index);
 
-        // Partition glyph runs. A single run may contribute glyphs to both halves.
+        // 分割字形段。单个段可能为两半贡献字形
         let mut left_runs = Vec::new();
         let mut right_runs = Vec::new();
 
@@ -172,7 +169,7 @@ impl ShapedLine {
             }
         }
 
-        // Partition decoration runs. A run straddling the boundary is split into two.
+        // 分割装饰段。跨越边界的段被拆分为两个
         let mut left_decorations = SmallVec::new();
         let mut right_decorations = SmallVec::new();
         let mut decoration_offset = 0u32;
@@ -207,7 +204,7 @@ impl ShapedLine {
             decoration_offset = run_end;
         }
 
-        // Split text
+        // 分割文本
         let left_text = if byte_index == self.text.len() {
             self.text.clone()
         } else {
@@ -252,25 +249,25 @@ impl ShapedLine {
     }
 }
 
-/// A line of text that has been shaped, decorated, and wrapped by the text layout system.
+/// 由文本布局系统塑形、装饰和换行的文本行
 #[derive(Default, Debug, Deref, DerefMut)]
 pub struct WrappedLine {
     #[deref]
     #[deref_mut]
     pub(crate) layout: Arc<WrappedLineLayout>,
-    /// The text that was shaped for this line.
+    /// 为此行塑形的文本
     pub text: SharedString,
     pub(crate) decoration_runs: Vec<DecorationRun>,
 }
 
 impl WrappedLine {
-    /// The length of the underlying, unwrapped layout, in utf-8 bytes.
+    /// 底层未换行布局的长度（UTF-8 字节数）
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.layout.len()
     }
 
-    /// Paint this line of text to the window.
+    /// 将此行文本绘制到窗口
     pub fn paint(
         &self,
         origin: Point<Pixels>,
@@ -300,7 +297,7 @@ impl WrappedLine {
         Ok(())
     }
 
-    /// Paint the background of line of text to the window.
+    /// 将行的背景绘制到窗口
     pub fn paint_background(
         &self,
         origin: Point<Pixels>,
@@ -436,7 +433,7 @@ fn paint_line(
                 if glyph.index >= run_end {
                     let mut style_run = decoration_runs.next();
 
-                    // ignore style runs that apply to a partial glyph
+                    // 忽略应用于不完整字形的样式段
                     while let Some(run) = style_run {
                         if glyph.index < run_end + (run.len as usize) {
                             break;
@@ -658,7 +655,7 @@ fn paint_line_background(
                 if glyph.index >= run_end {
                     let mut style_run = decoration_runs.next();
 
-                    // ignore style runs that apply to a partial glyph
+                    // 忽略应用于不完整字形的样式段
                     while let Some(run) = style_run {
                         if glyph.index < run_end + (run.len as usize) {
                             break;

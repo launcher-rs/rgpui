@@ -151,18 +151,18 @@ pub use pollster::block_on;
 /// 该 trait 提供了创建、更新和读取实体（Entity）的方法，
 /// 以及窗口操作和后台任务调度的功能。
 pub trait AppContext {
-    /// Create a new entity in the app context.
+    /// 在应用上下文中创建新实体。
     #[expect(
         clippy::wrong_self_convention,
         reason = "`App::new` is an ubiquitous function for creating entities"
     )]
     fn new<T: 'static>(&mut self, build_entity: impl FnOnce(&mut Context<T>) -> T) -> Entity<T>;
 
-    /// Reserve a slot for a entity to be inserted later.
-    /// The returned [Reservation] allows you to obtain the [EntityId] for the future entity.
+    /// 为稍后插入的实体预留一个槽位。
+    /// 返回的 [Reservation] 允许你获取未来实体的 [EntityId]。
     fn reserve_entity<T: 'static>(&mut self) -> Reservation<T>;
 
-    /// Insert a new entity in the app context based on a [Reservation] previously obtained from [`reserve_entity`].
+    /// 基于之前从 [`reserve_entity`] 获得的 [Reservation] 在应用上下文中插入新实体。
     ///
     /// [`reserve_entity`]: Self::reserve_entity
     fn insert_entity<T: 'static>(
@@ -171,7 +171,7 @@ pub trait AppContext {
         build_entity: impl FnOnce(&mut Context<T>) -> T,
     ) -> Entity<T>;
 
-    /// Update a entity in the app context.
+    /// 更新应用上下文中的实体。
     fn update_entity<T, R>(
         &mut self,
         handle: &Entity<T>,
@@ -180,32 +180,31 @@ pub trait AppContext {
     where
         T: 'static;
 
-    /// Update a entity in the app context.
+    /// 更新应用上下文中的实体。
     fn as_mut<'a, T>(&'a mut self, handle: &Entity<T>) -> GpuiBorrow<'a, T>
     where
         T: 'static;
 
-    /// Read a entity from the app context.
+    /// 从应用上下文中读取实体。
     fn read_entity<T, R>(&self, handle: &Entity<T>, read: impl FnOnce(&T, &App) -> R) -> R
     where
         T: 'static;
 
-    /// Update a window for the given handle.
+    /// 更新给定句柄的窗口。
     fn update_window<T, F>(&mut self, window: AnyWindowHandle, f: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T;
 
-    /// Run `f` against the entity's *current* window — the most recently
-    /// rendered window that referenced the entity. Returns `None` if the
-    /// entity has no current window or that window is unavailable. See
-    /// [`App::with_window`] for the underlying lookup.
+    /// 对实体的*当前*窗口运行 `f` —— 最近引用的
+    /// 渲染窗口。如果实体没有当前窗口或该窗口不可用，则返回 `None`。
+    /// 参见 [`App::with_window`] 了解底层查找。
     fn with_window<R>(
         &mut self,
         entity_id: EntityId,
         f: impl FnOnce(&mut Window, &mut App) -> R,
     ) -> Option<R>;
 
-    /// Read a window off of the application context.
+    /// 从应用上下文中读取窗口。
     fn read_window<T, R>(
         &self,
         window: &WindowHandle<T>,
@@ -214,12 +213,12 @@ pub trait AppContext {
     where
         T: 'static;
 
-    /// Spawn a future on a background thread
+    /// 在后台线程上生成未来任务
     fn background_spawn<R>(&self, future: impl Future<Output = R> + Send + 'static) -> Task<R>
     where
         R: Send + 'static;
 
-    /// Read a global from this app context
+    /// 从此应用上下文中读取全局值
     fn read_global<G, R>(&self, callback: impl FnOnce(&G, &App) -> R) -> R
     where
         G: Global;
@@ -230,7 +229,7 @@ pub trait AppContext {
 pub struct Reservation<T>(pub(crate) Slot<T>);
 
 impl<T: 'static> Reservation<T> {
-    /// Returns the [EntityId] that will be associated with the entity once it is inserted.
+    /// 返回实体插入后将关联的 [EntityId]。
     pub fn entity_id(&self) -> EntityId {
         self.0.entity_id()
     }
@@ -242,26 +241,26 @@ impl<T: 'static> Reservation<T> {
 /// 该 trait 扩展了 `AppContext`，添加了窗口特定的操作，
 /// 如创建窗口实体、替换根视图等。
 pub trait VisualContext: AppContext {
-    /// The result type for window operations.
+    /// 窗口操作的结果类型。
     type Result<T>;
 
-    /// Returns the handle of the window associated with this context.
+    /// 返回与此上下文关联的窗口句柄。
     fn window_handle(&self) -> AnyWindowHandle;
 
-    /// Update a view with the given callback
+    /// 使用给定回调更新视图
     fn update_window_entity<T: 'static, R>(
         &mut self,
         entity: &Entity<T>,
         update: impl FnOnce(&mut T, &mut Window, &mut Context<T>) -> R,
     ) -> Self::Result<R>;
 
-    /// Create a new entity, with access to `Window`.
+    /// 创建新实体，可访问 `Window`。
     fn new_window_entity<T: 'static>(
         &mut self,
         build_entity: impl FnOnce(&mut Window, &mut Context<T>) -> T,
     ) -> Self::Result<Entity<T>>;
 
-    /// Replace the root view of a window with a new view.
+    /// 用新视图替换窗口的根视图。
     fn replace_root_view<V>(
         &mut self,
         build_view: impl FnOnce(&mut Window, &mut Context<V>) -> V,
@@ -269,7 +268,7 @@ pub trait VisualContext: AppContext {
     where
         V: 'static + Render;
 
-    /// Focus a entity in the window, if it implements the [`Focusable`] trait.
+    /// 聚焦窗口中的实体，如果它实现了 [`Focusable`] trait。
     fn focus<V>(&mut self, entity: &Entity<V>) -> Self::Result<()>
     where
         V: Focusable;
@@ -284,13 +283,13 @@ pub trait EventEmitter<E: Any>: 'static {}
 /// 一个辅助 trait，用于在可以互换使用的上下文上
 /// 自动实现某些方法。
 pub trait BorrowAppContext {
-    /// Set a global value on the context.
+    /// 在上下文上设置全局值。
     fn set_global<T: Global>(&mut self, global: T);
-    /// Updates the global state of the given type.
+    /// 更新给定类型的全局状态。
     fn update_global<G, R>(&mut self, f: impl FnOnce(&mut G, &mut Self) -> R) -> R
     where
         G: Global;
-    /// Updates the global state of the given type, creating a default if it didn't exist before.
+    /// 更新给定类型的全局状态，如果之前不存在则创建默认值。
     fn update_default_global<G, R>(&mut self, f: impl FnOnce(&mut G, &mut Self) -> R) -> R
     where
         G: Global + Default;
@@ -330,12 +329,12 @@ where
 /// 驱动程序名称和驱动程序详细信息。
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct GpuSpecs {
-    /// Whether the GPU is really a fake (like `llvmpipe`) running on the CPU.
+    /// GPU 是否为软件模拟（如 `llvmpipe`）在 CPU 上运行。
     pub is_software_emulated: bool,
-    /// The name of the device, as reported by Vulkan.
+    /// 设备名称，由 Vulkan 报告。
     pub device_name: String,
-    /// The name of the driver, as reported by Vulkan.
+    /// 驱动程序名称，由 Vulkan 报告。
     pub driver_name: String,
-    /// Further information about the driver, as reported by Vulkan.
+    /// 有关驱动程序的更多信息，由 Vulkan 报告。
     pub driver_info: String,
 }

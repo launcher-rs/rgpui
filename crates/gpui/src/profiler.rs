@@ -32,7 +32,7 @@ pub struct ThreadTaskTimings {
 }
 
 impl ThreadTaskTimings {
-    /// Convert global thread timings into their structured format.
+    /// 将全局线程计时信息转换为其结构化格式。
     pub fn convert(timings: &[GlobalThreadTimings]) -> Vec<Self> {
         timings
             .iter()
@@ -62,14 +62,14 @@ impl ThreadTaskTimings {
     }
 }
 
-/// Serializable variant of [`core::panic::Location`]
+/// [`core::panic::Location`] 的可序列化变体
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializedLocation {
-    /// Name of the source file
+    /// 源文件名称
     pub file: SharedString,
-    /// Line in the source file
+    /// 源文件中的行号
     pub line: u32,
-    /// Column in the source file
+    /// 源文件中的列号
     pub column: u32,
 }
 
@@ -83,23 +83,23 @@ impl From<&core::panic::Location<'static>> for SerializedLocation {
     }
 }
 
-/// Serializable variant of [`TaskTiming`]
+/// [`TaskTiming`] 的可序列化变体
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializedTaskTiming {
-    /// Location of the timing
+    /// 计时信息的位置
     pub location: SerializedLocation,
-    /// Time at which the measurement was reported in nanoseconds
+    /// 报告测量值的时间（以纳秒为单位）
     pub start: u128,
-    /// Duration of the measurement in nanoseconds
+    /// 测量持续时间（以纳秒为单位）
     pub duration: u128,
 }
 
 impl SerializedTaskTiming {
-    /// Convert an array of [`TaskTiming`] into their serializable format
+    /// 将 [`TaskTiming`] 数组转换为其可序列化格式
     ///
-    /// # Params
+    /// # 参数
     ///
-    /// `anchor` - [`Instant`] that should be earlier than all timings to use as base anchor
+    /// `anchor` - 应早于所有计时信息的 [`Instant`]，用作基础锚点
     pub fn convert(anchor: Instant, timings: &[TaskTiming]) -> Vec<SerializedTaskTiming> {
         let serialized = timings
             .iter()
@@ -122,23 +122,23 @@ impl SerializedTaskTiming {
     }
 }
 
-/// Serializable variant of [`ThreadTaskTimings`]
+/// [`ThreadTaskTimings`] 的可序列化变体
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializedThreadTaskTimings {
-    /// Thread name
+    /// 线程名称
     pub thread_name: Option<String>,
-    /// Hash of the thread id
+    /// 线程 ID 的哈希值
     pub thread_id: u64,
-    /// Timing records for this thread
+    /// 此线程的计时记录
     pub timings: Vec<SerializedTaskTiming>,
 }
 
 impl SerializedThreadTaskTimings {
-    /// Convert [`ThreadTaskTimings`] into their serializable format
+    /// 将 [`ThreadTaskTimings`] 转换为其可序列化格式
     ///
-    /// # Params
+    /// # 参数
     ///
-    /// `anchor` - [`Instant`] that should be earlier than all timings to use as base anchor
+    /// `anchor` - 应早于所有计时信息的 [`Instant`]，用作基础锚点
     pub fn convert(anchor: Instant, timings: ThreadTaskTimings) -> SerializedThreadTaskTimings {
         let serialized_timings = SerializedTaskTiming::convert(anchor, &timings.timings);
 
@@ -157,16 +157,16 @@ impl SerializedThreadTaskTimings {
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct ThreadTimingsDelta {
-    /// Hashed thread id
+    /// 哈希后的线程 ID
     pub thread_id: u64,
-    /// Thread name, if known
+    /// 线程名称（如果已知）
     pub thread_name: Option<String>,
-    /// New timings since the last call. If the circular buffer wrapped around
-    /// since the previous poll, some entries may have been lost.
+    /// 自上次调用以来的新计时信息。如果循环缓冲区自上次轮询以来已环绕，
+    /// 则某些条目可能已丢失。
     pub new_timings: Vec<SerializedTaskTiming>,
 }
 
-/// Tracks which timing events have already been seen so that callers can request only unseen events.
+/// 跟踪哪些计时事件已被查看，以便调用者可以请求仅未查看的事件。
 #[doc(hidden)]
 pub struct ProfilingCollector {
     startup_time: Instant,
@@ -201,15 +201,15 @@ impl ProfilingCollector {
             let buffer_start = thread.total_pushed.saturating_sub(buffer_len);
 
             let mut slice = if prev_cursor < buffer_start {
-                // Cursor fell behind the buffer — some entries were evicted.
-                // Return everything still in the buffer.
+                // 游标落后于缓冲区 —— 某些条目已被驱逐。
+                // 返回缓冲区中仍存在的所有内容。
                 thread.timings.as_slice()
             } else {
                 let skip = (prev_cursor - buffer_start) as usize;
                 &thread.timings[skip.min(thread.timings.len())..]
             };
 
-            // Don't emit the last entry if it's still in-progress (end: None).
+            // 如果最后一个条目仍在进行中（end: None），则不发出。
             let incomplete_at_end = slice.last().is_some_and(|t| t.end.is_none());
             if incomplete_at_end {
                 slice = &slice[..slice.len() - 1];
@@ -244,9 +244,8 @@ impl ProfilingCollector {
     }
 }
 
-// Allow 16MiB of task timing entries.
-// VecDeque grows by doubling its capacity when full, so keep this a power of 2 to avoid wasting
-// memory.
+// 允许 16MiB 的任务计时条目。
+// VecDeque 在满时通过翻倍容量增长，因此将其保持为 2 的幂以避免浪费内存。
 const MAX_TASK_TIMINGS: usize = (16 * 1024 * 1024) / core::mem::size_of::<TaskTiming>();
 
 #[doc(hidden)]
@@ -305,9 +304,9 @@ impl ThreadTimings {
         }
     }
 
-    /// If this task is the same as the last task, update the end time of the last task.
+    /// 如果此任务与最后一个任务相同，则更新最后一个任务的结束时间。
     ///
-    /// Otherwise, add the new task timing to the list.
+    /// 否则，将新任务计时添加到列表中。
     pub fn add_task_timing(&mut self, timing: TaskTiming) {
         if let Some(last_timing) = self.timings.back_mut()
             && last_timing.location == timing.location
@@ -366,11 +365,10 @@ pub fn get_current_thread_task_timings() -> ThreadTaskTimings {
 
 static PROFILER_ENABLED: AtomicBool = AtomicBool::new(false);
 
-/// Enables or disables task timing collection at runtime.
+/// 在运行时启用或禁用任务计时收集。
 ///
-/// When transitioning from enabled to disabled, `add_task_timing` becomes a
-/// no-op and the existing per-thread buffers are cleared so stale data isn't
-/// reported after a later re-enable. Calls with the current value are a no-op.
+/// 从启用转换到禁用时，`add_task_timing` 变为
+/// 无操作，并清除每个线程的缓冲区，以便在稍后重新启用后不会报告陈旧数据。使用当前值调用是无操作的。
 pub fn set_enabled(enabled: bool) -> bool {
     if PROFILER_ENABLED.swap(enabled, Ordering::AcqRel) == enabled {
         return false;

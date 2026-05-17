@@ -264,7 +264,7 @@ impl TestApp {
         self.update(|cx| cx.update_global(f))
     }
 
-    // Platform simulation methods
+    // 平台模拟方法
 
     /// Write text to the simulated clipboard.
     pub fn write_to_clipboard(&self, item: ClipboardItem) {
@@ -276,7 +276,7 @@ impl TestApp {
         self.platform.read_from_clipboard()
     }
 
-    /// Get URLs that have been opened via `cx.open_url()`.
+    /// 获取通过 `cx.open_url()` 打开的 URL。
     pub fn opened_url(&self) -> Option<String> {
         self.platform.opened_url.borrow().clone()
     }
@@ -286,7 +286,7 @@ impl TestApp {
         self.platform.did_prompt_for_new_path()
     }
 
-    /// Simulate answering a path selection dialog.
+    /// 模拟回答路径选择对话框。
     pub fn simulate_new_path_selection(
         &self,
         select: impl FnOnce(&std::path::Path) -> Option<std::path::PathBuf>,
@@ -299,7 +299,7 @@ impl TestApp {
         self.platform.has_pending_prompt()
     }
 
-    /// Simulate answering a prompt dialog.
+    /// 模拟回答提示对话框。
     pub fn simulate_prompt_answer(&self, button: &str) {
         self.platform.simulate_prompt_answer(button);
     }
@@ -330,14 +330,14 @@ impl<V: 'static + Render> TestAppWindow<V> {
         self.handle
     }
 
-    /// Get the root view entity.
+    /// 获取根视图实体。
     pub fn root(&self) -> Entity<V> {
         let mut app = self.app.borrow_mut();
         let any_handle: AnyWindowHandle = self.handle.into();
         app.update_window(any_handle, |root_view, _, _| {
-            root_view.downcast::<V>().expect("root view type mismatch")
+            root_view.downcast::<V>().expect("根视图类型不匹配")
         })
-        .expect("window not found")
+        .expect("未找到窗口")
     }
 
     /// Update the root view.
@@ -349,7 +349,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
                 let view = root_view.downcast::<V>().expect("root view type mismatch");
                 view.update(cx, |view, cx| f(view, window, cx))
             })
-            .expect("window not found")
+            .expect("未找到窗口")
         };
         self.background_executor.run_until_parked();
         result
@@ -366,7 +366,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
             .and_then(|w| w.as_ref())
             .and_then(|w| w.root.clone())
             .and_then(|r| r.downcast::<V>().ok())
-            .expect("window or root view not found");
+            .expect("未找到窗口或根视图");
         f(view.read(&app), &app)
     }
 
@@ -374,7 +374,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
     pub fn title(&self) -> Option<String> {
         let app = self.app.borrow();
         app.read_window(&self.handle, |_, _cx| {
-            // TODO: expose title through Window API
+            // TODO: 通过 Window API 暴露标题
             None
         })
         .unwrap()

@@ -3,20 +3,20 @@ use std::borrow::Cow;
 use super::shell::get_system_shell;
 use super::shell::{Shell, ShellKind};
 
-/// ShellBuilder is used to turn a user-requested task into a
-/// program that can be executed by the shell.
+/// ShellBuilder 用于将用户请求的任务转换为
+/// 可由 shell 执行的程序。
 pub struct ShellBuilder {
-    /// The shell to run
+    /// 要运行的 shell
     program: String,
     args: Vec<String>,
     interactive: bool,
-    /// Whether to redirect stdin to /dev/null for the spawned command as a subshell.
+    /// 是否将生成命令的 stdin 重定向到 /dev/null。
     redirect_stdin: bool,
     kind: ShellKind,
 }
 
 impl ShellBuilder {
-    /// Create a new ShellBuilder as configured.
+    /// 创建一个新的 ShellBuilder。
     pub fn new(shell: &Shell, is_windows: bool) -> Self {
         let (program, args) = match shell {
             Shell::System => (get_system_shell(), Vec::new()),
@@ -38,7 +38,7 @@ impl ShellBuilder {
         self
     }
 
-    /// Returns the label to show in the terminal tab
+    /// 返回要在终端标签中显示的标签。
     pub fn command_label(&self, command_to_use_in_label: &str) -> String {
         if command_to_use_in_label.trim().is_empty() {
             self.program.clone()
@@ -73,7 +73,7 @@ impl ShellBuilder {
         self
     }
 
-    /// Returns the program and arguments to run this task in a shell.
+    /// 返回运行此任务的程序和参数。
     pub fn build(
         mut self,
         task_command: Option<String>,
@@ -130,7 +130,7 @@ impl ShellBuilder {
         (self.program, self.args)
     }
 
-    // This should not exist, but our task infra is broken beyond repair right now
+    // 此方法不应存在，但我们的任务基础设施目前存在问题
     #[doc(hidden)]
     pub fn build_no_quote(
         mut self,
@@ -176,10 +176,10 @@ impl ShellBuilder {
         (self.program, self.args)
     }
 
-    /// Builds a `smol::process::Command` with the given task command and arguments.
+    /// 使用给定任务命令和参数构建 `smol::process::Command`。
     ///
-    /// Prefer this over manually constructing a command with the output of `Self::build`,
-    /// as this method handles `cmd` weirdness on windows correctly.
+    /// 优先使用此方法而非手动使用 `Self::build` 的输出构造命令，
+    /// 因为此方法正确处理 Windows 上 `cmd` 的怪异行为。
     pub fn build_smol_command(
         self,
         task_command: Option<String>,
@@ -188,10 +188,10 @@ impl ShellBuilder {
         smol::process::Command::from(self.build_std_command(task_command, task_args))
     }
 
-    /// Builds a `std::process::Command` with the given task command and arguments.
+    /// 使用给定任务命令和参数构建 `std::process::Command`。
     ///
-    /// Prefer this over manually constructing a command with the output of `Self::build`,
-    /// as this method handles `cmd` weirdness on windows correctly.
+    /// 优先使用此方法而非手动使用 `Self::build` 的输出构造命令，
+    /// 因为此方法正确处理 Windows 上 `cmd` 的怪异行为。
     pub fn build_std_command(
         self,
         mut task_command: Option<String>,

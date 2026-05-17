@@ -188,8 +188,7 @@ impl HeadlessAppContext {
 
 impl Drop for HeadlessAppContext {
     fn drop(&mut self) {
-        // Shut down the app so windows are closed and entity handles are
-        // released before the LeakDetector runs.
+    /// 关闭应用以便在 LeakDetector 运行之前关闭窗口并释放实体句柄。
         self.app.borrow_mut().shutdown();
     }
 }

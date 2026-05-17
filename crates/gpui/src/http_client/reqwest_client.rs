@@ -12,9 +12,11 @@ use reqwest::{
     redirect,
 };
 
+/// 延迟执行闭包的守卫类型
 pub struct Deferred<F: FnOnce()>(Option<F>);
 
 impl<F: FnOnce()> Deferred<F> {
+    /// 中止延迟执行，丢弃时不会运行闭包
     pub fn abort(mut self) {
         self.0.take();
     }
@@ -28,12 +30,16 @@ impl<F: FnOnce()> Drop for Deferred<F> {
     }
 }
 
+/// 创建延迟执行闭包，在丢弃时运行
 pub fn defer<F: FnOnce()>(f: F) -> Deferred<F> {
     Deferred(Some(f))
 }
 
+/// 默认缓冲区容量
 const DEFAULT_CAPACITY: usize = 4096;
+/// 全局 Tokio 运行时，仅初始化一次
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+/// 用于脱敏 URL 中密钥参数的正则表达式
 static REDACT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"key=[^&]+").unwrap());
 
 pub struct ReqwestClient {
@@ -99,6 +105,7 @@ impl ReqwestClient {
     }
 }
 
+/// 获取全局 Tokio 运行时
 pub fn runtime() -> &'static tokio::runtime::Runtime {
     RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
@@ -124,6 +131,7 @@ impl From<reqwest::Client> for ReqwestClient {
     }
 }
 
+/// 将 reqwest 响应流转换为异步字节流的读取器
 struct StreamReader {
     reader: Option<Pin<Box<dyn futures::AsyncRead + Send + Sync>>>,
     buf: BytesMut,
@@ -208,6 +216,7 @@ pub fn poll_read_buf(
     Poll::Ready(Ok(n))
 }
 
+/// 脱敏错误信息中的 URL 密钥参数
 fn redact_error(mut error: reqwest::Error) -> reqwest::Error {
     if let Some(url) = error.url_mut()
         && let Some(query) = url.query()

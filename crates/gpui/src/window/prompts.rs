@@ -10,17 +10,16 @@ use crate::{
 
 use super::Window;
 
-/// The event emitted when a prompt's option is selected.
-/// The usize is the index of the selected option, from the actions
-/// passed to the prompt.
+/// 选择提示选项时触发的事件。
+/// usize 是所选选项的索引，来自传递给提示的动作
 pub struct PromptResponse(pub usize);
 
-/// A prompt that can be rendered in the window.
+/// 可在窗口中渲染的提示
 pub trait Prompt: EventEmitter<PromptResponse> + Focusable {}
 
 impl<V: EventEmitter<PromptResponse> + Focusable> Prompt for V {}
 
-/// A handle to a prompt that can be used to interact with it.
+/// 可用于与提示交互的句柄
 pub struct PromptHandle {
     sender: oneshot::Sender<usize>,
 }
@@ -30,7 +29,7 @@ impl PromptHandle {
         Self { sender }
     }
 
-    /// Construct a new prompt handle from a view of the appropriate types
+    /// 从适当类型的视图构建新的提示句柄
     pub fn with_view<V: Prompt + Render>(
         self,
         view: Entity<V>,
@@ -63,13 +62,13 @@ impl PromptHandle {
     }
 }
 
-/// A prompt handle capable of being rendered in a window.
+/// 可在窗口中渲染的提示句柄
 pub struct RenderablePromptHandle {
     pub(crate) view: Box<dyn PromptViewHandle>,
 }
 
-/// Use this function in conjunction with [App::set_prompt_builder] to force
-/// GPUI to always use the fallback prompt renderer.
+/// 使用此函数与 [App::set_prompt_builder] 结合，可强制
+/// GPUI 始终使用回退提示渲染器
 pub fn fallback_prompt_renderer(
     level: PromptLevel,
     message: &str,
@@ -90,7 +89,7 @@ pub fn fallback_prompt_renderer(
     handle.with_view(renderer, window, cx)
 }
 
-/// The default GPUI fallback for rendering prompts, when the platform doesn't support it.
+/// 默认的 GPUI 回退提示渲染，当平台不支持时使用
 pub struct FallbackPromptRenderer {
     _level: PromptLevel,
     message: String,

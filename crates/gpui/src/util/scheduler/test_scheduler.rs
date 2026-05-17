@@ -39,12 +39,12 @@ pub struct TestScheduler {
 }
 
 impl TestScheduler {
-    /// Run a test once with default configuration (seed 0)
+    /// 使用默认配置（种子 0）运行一次测试
     pub fn once<R>(f: impl AsyncFnOnce(Arc<TestScheduler>) -> R) -> R {
         Self::with_seed(0, f)
     }
 
-    /// Run a test multiple times with sequential seeds (0, 1, 2, ...)
+    /// 使用连续种子（0、1、2、...）多次运行测试
     pub fn many<R>(
         default_iterations: usize,
         mut f: impl AsyncFnMut(Arc<TestScheduler>) -> R,
@@ -76,7 +76,7 @@ impl TestScheduler {
         let scheduler = Arc::new(TestScheduler::new(TestSchedulerConfig::with_seed(seed)));
         let future = f(scheduler.clone());
         let result = scheduler.foreground().block_on(future);
-        scheduler.run(); // Ensure spawned tasks finish up before returning in tests
+        scheduler.run(); // 确保生成的任务在测试返回前完成
         result
     }
 
@@ -143,21 +143,21 @@ impl TestScheduler {
         self.state.lock().is_main_thread
     }
 
-    /// Allocate a new session ID for foreground task scheduling.
-    /// This is used by GPUI's TestDispatcher to map dispatcher instances to sessions.
+    /// 分配新的会话 ID 用于前台任务调度。
+    /// 这由 GPUI 的 TestDispatcher 用于将调度器实例映射到会话。
     pub fn allocate_session_id(&self) -> SessionId {
         let mut state = self.state.lock();
         state.next_session_id.0 += 1;
         state.next_session_id
     }
 
-    /// Create a foreground executor for this scheduler
+    /// 为此调度器创建前台执行器
     pub fn foreground(self: &Arc<Self>) -> ForegroundExecutor {
         let session_id = self.allocate_session_id();
         ForegroundExecutor::new(session_id, self.clone())
     }
 
-    /// Create a background executor for this scheduler
+    /// 为此调度器创建后台执行器
     pub fn background(self: &Arc<Self>) -> BackgroundExecutor {
         BackgroundExecutor::new(self.clone())
     }
@@ -183,28 +183,28 @@ impl TestScheduler {
         }
     }
 
-    /// Execute one tick of the scheduler, processing expired timers and running
-    /// at most one task. Returns true if any work was done.
+    /// 执行调度器的一个 tick，处理已过期的计时器并运行
+    /// 最多一个任务。如果有任何工作完成则返回 true。
     ///
-    /// This is the public interface for GPUI's TestDispatcher to drive task execution.
+    /// 这是 GPUI 的 TestDispatcher 驱动任务执行的公共接口。
     pub fn tick(&self) -> bool {
         self.step_filtered(false)
     }
 
-    /// Execute one tick, but only run background tasks (no foreground/session tasks).
-    /// Returns true if any work was done.
+    /// 执行一个 tick，但仅运行后台任务（无前台/会话任务）。
+    /// 如果有任何工作完成则返回 true。
     pub fn tick_background_only(&self) -> bool {
         self.step_filtered(true)
     }
 
-    /// Check if there are any pending tasks or timers that could run.
+    /// 检查是否有任何可以运行的待处理任务或计时器。
     pub fn has_pending_tasks(&self) -> bool {
         let state = self.state.lock();
         !state.runnables.is_empty() || !state.timers.is_empty()
     }
 
-    /// Returns counts of (foreground_tasks, background_tasks) currently queued.
-    /// Foreground tasks are those with a session_id, background tasks have none.
+    /// 返回当前排队的（前台任务，后台任务）数量。
+    /// 前台任务是那些有 session_id 的，后台任务没有。
     pub fn pending_task_counts(&self) -> (usize, usize) {
         let state = self.state.lock();
         let foreground = state
@@ -256,12 +256,12 @@ impl TestScheduler {
         let runnable = {
             let state = &mut *self.state.lock();
 
-            // Find candidate tasks:
-            // - For foreground tasks (with session_id), only the first task from each session
-            //   is a candidate (to preserve intra-session ordering)
-            // - For background tasks (no session_id), all are candidates
-            // - Tasks from blocked sessions are excluded
-            // - If background_only is true, skip foreground tasks entirely
+            // 查找候选任务：
+            // - 对于前台任务（有 session_id），只有每个会话的第一个任务
+            //   是候选任务（以保持会话内顺序）
+            // - 对于后台任务（无 session_id），所有都是候选任务
+            // - 排除被阻塞会话的任务
+            // - 如果 background_only 为 true，则完全跳过前台任务
             let mut seen_sessions = HashSet::new();
             let candidate_indices: Vec<usize> = state
                 .runnables
@@ -269,18 +269,18 @@ impl TestScheduler {
                 .enumerate()
                 .filter(|(_, runnable)| {
                     if let Some(session_id) = runnable.session_id {
-                        // Skip foreground tasks if background_only mode
+                        // 如果 background_only 模式则跳过前台任务
                         if background_only {
                             return false;
                         }
-                        // Exclude tasks from blocked sessions
+                        // 排除被阻塞会话的任务
                         if state.blocked_sessions.contains(&session_id) {
                             return false;
                         }
-                        // Only include first task from each session (insert returns true if new)
+                        // 仅包含每个会话的第一个任务（如果为新会话则 insert 返回 true）
                         seen_sessions.insert(session_id)
                     } else {
-                        // Background tasks are always candidates
+                        // 后台任务始终是候选任务
                         true
                     }
                 })
@@ -314,7 +314,7 @@ impl TestScheduler {
                     state.runnables.remove(candidate_indices[selected_idx])
                 }
             } else {
-                // Non-randomized: just take the first candidate task
+                // 非随机化：只需取第一个候选任务
                 state.runnables.remove(candidate_indices[0])
             }
         };
@@ -331,15 +331,14 @@ impl TestScheduler {
         false
     }
 
-    /// Drops all runnable tasks from the scheduler.
+    /// 从调度器中丢弃所有任务。
     ///
-    /// This is used by the leak detector to ensure that all tasks have been dropped as tasks may keep entities alive otherwise.
-    /// Why do we even have tasks left when tests finish you may ask. The reason for that is simple, the scheduler itself is the executor and it retains the scheduled runnables.
-    /// A lot of tasks, including every foreground task contain an executor handle that keeps the test scheduler alive, causing a reference cycle, thus the need for this function right now.
+    /// 这被泄漏检测器使用，以确保所有任务都被丢弃，因为任务可能会使实体保持活动状态。
+    /// 你可能会问，为什么测试完成时我们还有任务剩下。原因很简单，调度器本身是执行器，它保留已调度的可运行对象。
+    /// 许多任务，包括每个前台任务都包含一个执行器句柄，使测试调度器保持活动状态，导致引用循环，因此目前需要此函数。
     pub fn drain_tasks(&self) {
-        // dropping runnables may reschedule tasks
-        // due to drop impls with executors in them
-        // so drop until we reach a fixpoint
+        // 丢弃可运行对象可能会因包含执行器的 drop 实现而重新调度任务
+        // 因此丢弃直到达到固定点
         loop {
             let mut state = self.state.lock();
             if state.runnables.is_empty() && state.timers.is_empty() {
@@ -403,27 +402,27 @@ impl TestScheduler {
     fn park(&self, deadline: Option<Instant>) -> bool {
         if self.state.lock().allow_parking {
             let start = Instant::now();
-            // Enforce a hard timeout to prevent tests from hanging indefinitely
+            // 强制执行硬超时，防止测试无限期挂起
             let hard_deadline = start + Duration::from_secs(15);
 
-            // Use the earlier of the provided deadline or the hard timeout deadline
+            // 使用提供的 deadline 或硬超时 deadline 中较早的一个
             let effective_deadline = deadline
                 .map(|d| d.min(hard_deadline))
                 .unwrap_or(hard_deadline);
 
-            // Park in small intervals to allow checking both deadlines
+            // 以小间隔 park 以允许检查两个 deadline
             const PARK_INTERVAL: Duration = Duration::from_millis(100);
             loop {
                 let now = Instant::now();
                 if now >= effective_deadline {
-                    // Check if we hit the hard timeout
+                    // 检查是否达到硬超时
                     if now >= hard_deadline {
                         panic!(
-                            "Test timed out after 15 seconds while parking. \
-                            This may indicate a deadlock or missing waker.",
+                            "测试在 park 时超时 15 秒。\
+                            这可能表示死锁或缺少唤醒器。",
                         );
                     }
-                    // Hit the provided deadline
+                    // 达到提供的 deadline
                     return false;
                 }
 
@@ -433,11 +432,11 @@ impl TestScheduler {
                 thread::park_timeout(park_duration);
                 let elapsed = before_park.elapsed();
 
-                // Advance the test clock by the real elapsed time while parking
+                // 推进测试时钟，推进 park 期间的实际时间
                 self.clock.advance(elapsed);
 
-                // Check if any timers have expired after advancing the clock.
-                // If so, return so the caller can process them.
+                // 检查推进时钟后是否有任何计时器过期。
+                // 如果是，返回以便调用者可以处理它们。
                 if self
                     .state
                     .lock()
@@ -448,10 +447,10 @@ impl TestScheduler {
                     return true;
                 }
 
-                // Check if we were woken up by a different thread.
-                // We use a flag because timing-based detection is unreliable:
-                // OS scheduling delays can cause elapsed >= park_duration even when
-                // we were woken early by unpark().
+                // 检查是否被其他线程唤醒。
+                // 我们使用标志，因为基于时间的检测不可靠：
+                // OS 调度延迟可能导致 elapsed >= park_duration，即使
+                // 我们被 unpark() 提前唤醒。
                 if std::mem::take(&mut self.state.lock().unparked) {
                     return true;
                 }
@@ -498,13 +497,12 @@ fn assert_correct_thread(expected: &Thread, state: &Arc<Mutex<SchedulerState>>) 
 }
 
 impl Scheduler for TestScheduler {
-    /// Block until the given future completes, with an optional timeout. If the
-    /// future is unable to make progress at any moment before the timeout and
-    /// no other tasks or timers remain, we panic unless parking is allowed. If
-    /// parking is allowed, we block up to the timeout or indefinitely if none
-    /// is provided. This is to allow testing a mix of deterministic and
-    /// non-deterministic async behavior, such as when interacting with I/O in
-    /// an otherwise deterministic test.
+    /// 阻塞直到给定未来对象完成，带有可选超时。如果
+    /// 未来对象在任何时刻无法取得进展且
+    /// 没有其他任务或计时器剩余，除非允许 park 否则我们 panic。如果
+    /// 允许 park，我们阻塞直到超时或无限期（如果未提供）。
+    /// 这允许测试确定性和非确定性异步行为的混合，
+    /// 例如在否则确定性的测试中与 I/O 交互时。
     fn block(
         &self,
         session_id: Option<SessionId>,
@@ -557,8 +555,8 @@ impl Scheduler for TestScheduler {
             let awoken = awoken.swap(false, SeqCst);
             if !stepped && !awoken {
                 let parking_allowed = self.state.lock().allow_parking;
-                // In deterministic mode (parking forbidden), instantly jump to the next timer.
-                // In non-deterministic mode (parking allowed), let real time pass instead.
+                // 在确定性模式（不允许 park）中，立即跳转到下一个计时器。
+                // 在非确定性模式（允许 park）中，让实际时间流逝。
                 let advanced_to_timer = !parking_allowed && self.advance_clock_to_next_timer();
                 if !advanced_to_timer && !self.park(deadline) {
                     break;

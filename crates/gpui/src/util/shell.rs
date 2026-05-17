@@ -2,22 +2,22 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, fmt, path::Path, sync::LazyLock};
 
-/// Shell configuration to open the terminal with.
+/// Shell 配置，用于打开终端。
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq, JsonSchema, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Shell {
-    /// Use the system's default terminal configuration in /etc/passwd
+    /// 使用 /etc/passwd 中的系统默认终端配置
     #[default]
     System,
-    /// Use a specific program with no arguments.
+    /// 使用特定程序，不带参数。
     Program(String),
-    /// Use a specific program with arguments.
+    /// 使用特定程序，带参数。
     WithArguments {
-        /// The program to run.
+        /// 要运行的程序。
         program: String,
-        /// The arguments to pass to the program.
+        /// 传递给程序的参数。
         args: Vec<String>,
-        /// An optional string to override the title of the terminal tab
+        /// 可选字符串，用于覆盖终端标签的标题
         title_override: Option<String>,
     },
 }
@@ -256,29 +256,29 @@ impl ShellKind {
         Self::new(&get_system_shell(), cfg!(windows))
     }
 
-    /// Returns whether this shell's command chaining syntax can be parsed by brush-parser.
+    /// 返回此 shell 的命令链语法是否可被 brush-parser 解析。
     ///
-    /// This is used to determine if we can safely parse shell commands to extract sub-commands
-    /// for security purposes (e.g., preventing shell injection in "always allow" patterns).
+    /// 这用于确定我们是否可以安全地解析 shell 命令以提取子命令，
+    /// 用于安全目的（例如防止"始终允许"模式中的 shell 注入）。
     ///
-    /// The brush-parser handles `;` (sequential execution) and `|` (piping), which are
-    /// supported by all common shells. It also handles `&&` and `||` for conditional
-    /// execution, `$()` and backticks for command substitution, and process substitution.
+    /// brush-parser 处理 `;`（顺序执行）和 `|`（管道），这些
+    /// 被所有常见 shell 支持。它还处理 `&&` 和 `||` 用于条件
+    /// 执行，`$()` 和反引号用于命令替换，以及进程替换。
     ///
-    /// # Shell Notes
+    /// # Shell 说明
     ///
-    /// - **Nushell**: Uses `;` for sequential execution. The `and`/`or` keywords are boolean
-    ///   operators on values (e.g., `$true and $false`), not command chaining operators.
-    /// - **Elvish**: Uses `;` to separate pipelines, which brush-parser handles. Elvish does
-    ///   not have `&&` or `||` operators. Its `and`/`or` are special commands that operate
-    ///   on values, not command chaining (e.g., `and $true $false`).
-    /// - **Rc (Plan 9)**: Uses `;` for sequential execution and `|` for piping. Does not
-    ///   have `&&`/`||` operators for conditional chaining.
-    /// All current shell variants are listed here because brush-parser can handle
-    /// their syntax. If a new `ShellKind` variant is added, evaluate whether
-    /// brush-parser can safely parse its command chaining syntax before including
-    /// it. Omitting a variant will cause `tool_permissions::from_input` to deny
-    /// terminal commands that have `always_allow` patterns configured.
+    /// - **Nushell**：使用 `;` 进行顺序执行。`and`/`or` 关键字是布尔
+    ///   运算符（例如 `$true and $false`），而非命令链运算符。
+    /// - **Elvish**：使用 `;` 分隔管道，brush-parser 可处理。Elvish 没
+    ///   有 `&&` 或 `||` 运算符。其 `and`/`or` 是操作值的特殊命令，
+    ///   而非命令链（例如 `and $true $false`）。
+    /// - **Rc (Plan 9)**：使用 `;` 进行顺序执行，`|` 用于管道。没
+    ///   有用于条件链的 `&&`/`||` 运算符。
+    /// 所有当前的 shell 变体都列在这里，因为 brush-parser 可以处理
+    /// 它们的语法。如果添加了新的 `ShellKind` 变体，在包含之前
+    /// 请评估 brush-parser 是否可以安全地解析其命令链语法。
+    /// 省略变体会导致 `tool_permissions::from_input` 拒绝
+    /// 已配置 `always_allow` 模式的终端命令。
     pub fn supports_posix_chaining(&self) -> bool {
         matches!(
             self,
@@ -316,8 +316,8 @@ impl ShellKind {
             "elvish" => ShellKind::Elvish,
             "sh" | "bash" | "zsh" => ShellKind::Posix,
             _ if is_windows => ShellKind::PowerShell,
-            // Some other shell detected, the user might install and use a
-            // unix-like shell.
+            // 检测到其他 shell，用户可能安装并使用了
+            // 类似 unix 的 shell。
             _ => ShellKind::Posix,
         }
     }
@@ -340,40 +340,40 @@ impl ShellKind {
     fn to_cmd_variable(input: &str) -> String {
         if let Some(var_str) = input.strip_prefix("${") {
             if var_str.find(':').is_none() {
-                // If the input starts with "${", remove the trailing "}"
-                format!("%{}%", &var_str[..var_str.len() - 1])
-            } else {
-                // `${SOME_VAR:-SOME_DEFAULT}`, we currently do not handle this situation,
-                // which will result in the task failing to run in such cases.
-                input.into()
-            }
-        } else if let Some(var_str) = input.strip_prefix('$') {
-            // If the input starts with "$", directly append to "$env:"
-            format!("%{}%", var_str)
+            // 如果输入以 "${" 开头，移除尾部的 "}"
+            format!("%{}%", &var_str[..var_str.len() - 1])
         } else {
-            // If no prefix is found, return the input as is
+            // `${SOME_VAR:-SOME_DEFAULT}`，我们目前不处理这种情况，
+            // 这将导致任务在此类情况下无法运行。
             input.into()
         }
+    } else if let Some(var_str) = input.strip_prefix('$') {
+        // 如果输入以 "$" 开头，直接附加
+        format!("%{}%", var_str)
+    } else {
+        // 如果没有找到前缀，原样返回输入
+        input.into()
     }
+}
 
-    fn to_powershell_variable(input: &str) -> String {
-        if let Some(var_str) = input.strip_prefix("${") {
-            if var_str.find(':').is_none() {
-                // If the input starts with "${", remove the trailing "}"
-                format!("$env:{}", &var_str[..var_str.len() - 1])
-            } else {
-                // `${SOME_VAR:-SOME_DEFAULT}`, we currently do not handle this situation,
-                // which will result in the task failing to run in such cases.
-                input.into()
-            }
-        } else if let Some(var_str) = input.strip_prefix('$') {
-            // If the input starts with "$", directly append to "$env:"
-            format!("$env:{}", var_str)
+fn to_powershell_variable(input: &str) -> String {
+    if let Some(var_str) = input.strip_prefix("${") {
+        if var_str.find(':').is_none() {
+            // 如果输入以 "${" 开头，移除尾部的 "}"
+            format!("$env:{}", &var_str[..var_str.len() - 1])
         } else {
-            // If no prefix is found, return the input as is
+            // `${SOME_VAR:-SOME_DEFAULT}`，我们目前不处理这种情况，
+            // 这将导致任务在此类情况下无法运行。
             input.into()
         }
+    } else if let Some(var_str) = input.strip_prefix('$') {
+        // 如果输入以 "$" 开头，直接附加到 "$env:"
+        format!("$env:{}", var_str)
+    } else {
+        // 如果没有找到前缀，原样返回输入
+        input.into()
     }
+}
 
     fn to_nushell_variable(input: &str) -> String {
         let mut result = String::new();
@@ -704,23 +704,23 @@ impl ShellKind {
         Cow::Owned(result)
     }
 
-    /// Quotes the given argument if necessary, taking into account the command prefix.
+    /// 对给定参数进行引号处理（如有必要），同时考虑命令前缀。
     ///
-    /// In other words, this will consider quoting arg without its command prefix to not break the command.
-    /// You should use this over `try_quote` when you want to quote a shell command.
+    /// 换句话说，这将考虑在不破坏命令的情况下对不带命令前缀的 arg 进行引号处理。
+    /// 当你想对 shell 命令进行引号处理时，应使用此方法而非 `try_quote`。
     pub fn try_quote_prefix_aware<'a>(&self, arg: &'a str) -> Option<Cow<'a, str>> {
         if let Some(char) = self.command_prefix() {
             if let Some(arg) = arg.strip_prefix(char) {
-                // we have a command that is prefixed
+                // 我们有带前缀的命令
                 for quote in ['\'', '"'] {
                     if let Some(arg) = arg
                         .strip_prefix(quote)
                         .and_then(|arg| arg.strip_suffix(quote))
                     {
-                        // and the command itself is wrapped as a literal, that
-                        // means the prefix exists to interpret a literal as a
-                        // command. So strip the quotes, quote the command, and
-                        // re-add the quotes if they are missing after requoting
+                        // 命令本身被包装为字面量，这
+                        // 意味着前缀用于将字面量解释为
+                        // 命令。因此剥离引号，对命令进行引号处理，然后
+                        // 如果重新引号后缺少引号则重新添加
                         let quoted = self.try_quote(arg)?;
                         return Some(if quoted.starts_with(['\'', '"']) {
                             Cow::Owned(self.prepend_command_prefix(&quoted).into_owned())
@@ -779,8 +779,8 @@ impl ShellKind {
     }
 
     #[cfg(windows)]
-    /// We do not want to escape arguments if we are using CMD as our shell.
-    /// If we do we end up with too many quotes/escaped quotes for CMD to handle.
+    /// 如果使用 CMD 作为 shell，我们不想转义参数。
+    /// 如果转义，CMD 将无法处理过多的引号/转义引号。
     pub const fn tty_escape_args(&self) -> bool {
         match self {
             ShellKind::Cmd => false,

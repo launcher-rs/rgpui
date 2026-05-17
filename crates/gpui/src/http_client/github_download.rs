@@ -11,6 +11,7 @@ use sha2::{Digest, Sha256};
 
 use super::{HttpClient, github::AssetKind};
 
+/// GitHub 二进制文件的元数据结构
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct GithubBinaryMetadata {
     pub metadata_version: u64,
@@ -18,6 +19,7 @@ pub struct GithubBinaryMetadata {
 }
 
 impl GithubBinaryMetadata {
+    /// 从文件读取元数据
     pub async fn read_from_file(metadata_path: &Path) -> Result<GithubBinaryMetadata> {
         let metadata_content = async_fs::read_to_string(metadata_path)
             .await
@@ -26,6 +28,7 @@ impl GithubBinaryMetadata {
             .with_context(|| format!("parsing metadata file at {metadata_path:?}"))
     }
 
+    /// 将元数据写入文件
     pub async fn write_to_file(&self, metadata_path: &Path) -> Result<()> {
         let metadata_content = serde_json::to_string(self)
             .with_context(|| format!("serializing metadata for {metadata_path:?}"))?;
@@ -36,6 +39,7 @@ impl GithubBinaryMetadata {
     }
 }
 
+/// 下载 GitHub 服务器二进制文件
 pub async fn download_server_binary(
     http_client: &dyn HttpClient,
     url: &str,
@@ -68,6 +72,7 @@ pub async fn download_server_binary(
     Ok(())
 }
 
+/// 将响应体解压到临时目录
 async fn extract_to_staging(
     body: impl AsyncRead + Unpin,
     digest: Option<&str>,
@@ -117,6 +122,7 @@ async fn extract_to_staging(
     Ok(())
 }
 
+/// 根据资产类型创建临时路径（目录或文件）
 fn staging_path(parent: &Path, asset_kind: AssetKind) -> Result<PathBuf> {
     match asset_kind {
         AssetKind::TarGz | AssetKind::TarBz2 | AssetKind::Zip => {
@@ -139,6 +145,7 @@ fn staging_path(parent: &Path, asset_kind: AssetKind) -> Result<PathBuf> {
     }
 }
 
+/// 清理临时路径
 async fn cleanup_staging_path(staging_path: &Path, asset_kind: AssetKind) {
     match asset_kind {
         AssetKind::TarGz | AssetKind::TarBz2 | AssetKind::Zip => {
@@ -154,6 +161,7 @@ async fn cleanup_staging_path(staging_path: &Path, asset_kind: AssetKind) {
     }
 }
 
+/// 完成下载：将临时路径重命名为目标路径
 async fn finalize_download(staging_path: &Path, destination_path: &Path) -> Result<()> {
     _ = async_fs::remove_dir_all(destination_path).await;
     async_fs::rename(staging_path, destination_path)
@@ -162,6 +170,7 @@ async fn finalize_download(staging_path: &Path, destination_path: &Path) -> Resu
     Ok(())
 }
 
+/// 流式解压响应归档到目标路径
 async fn stream_response_archive(
     response: impl AsyncRead + Unpin,
     url: &str,
@@ -179,6 +188,7 @@ async fn stream_response_archive(
     Ok(())
 }
 
+/// 流式解压文件归档到目标路径
 async fn stream_file_archive(
     file_archive: impl AsyncRead + AsyncSeek + Unpin,
     url: &str,
@@ -201,6 +211,7 @@ async fn stream_file_archive(
     Ok(())
 }
 
+/// 解压 tar.gz 归档
 async fn extract_tar_gz(
     destination_path: &Path,
     url: &str,
@@ -211,6 +222,7 @@ async fn extract_tar_gz(
     Ok(())
 }
 
+/// 解压 tar.bz2 归档
 async fn extract_tar_bz2(
     destination_path: &Path,
     url: &str,
@@ -221,14 +233,14 @@ async fn extract_tar_bz2(
     Ok(())
 }
 
+/// 解压 tar 归档到目标路径
 async fn unpack_tar_archive(
     destination_path: &Path,
     url: &str,
     archive_bytes: impl AsyncRead + Unpin,
 ) -> Result<(), anyhow::Error> {
-    // We don't need to set the modified time. It's irrelevant to downloaded
-    // archive verification, and some filesystems return errors when asked to
-    // apply it after extraction.
+    // 无需设置修改时间。它与下载的归档验证无关，
+    // 且某些文件系统在提取后应用时会返回错误。
     let archive = async_tar::ArchiveBuilder::new(archive_bytes)
         .set_preserve_mtime(false)
         .build();
@@ -239,6 +251,7 @@ async fn unpack_tar_archive(
     Ok(())
 }
 
+/// 解压 gz 归档
 async fn extract_gz(
     destination_path: &Path,
     url: &str,
@@ -256,6 +269,7 @@ async fn extract_gz(
     Ok(())
 }
 
+/// 在写入数据时同时计算 SHA-256 哈希的写入器
 struct HashingWriter<W: AsyncWrite + Unpin> {
     writer: W,
     hasher: Sha256,

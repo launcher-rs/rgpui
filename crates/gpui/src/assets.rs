@@ -9,12 +9,12 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering::SeqCst},
 };
 
-/// A source of assets for this app to use.
+/// 应用程序使用的资源来源。
 pub trait AssetSource: 'static + Send + Sync {
-    /// Load the given asset from the source path.
+    /// 从源路径加载给定的资源。
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>>;
 
-    /// List the assets at the given path.
+    /// 列出给定路径下的资源。
     fn list(&self, path: &str) -> Result<Vec<SharedString>>;
 }
 
@@ -28,7 +28,7 @@ impl AssetSource for () {
     }
 }
 
-/// A unique identifier for the image cache
+/// 图像缓存的唯一标识符
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ImageId(pub usize);
 
@@ -39,11 +39,11 @@ pub struct RenderImageParams {
     pub frame_index: usize,
 }
 
-/// A cached and processed image, in BGRA format
+/// 已缓存并处理的图像，采用 BGRA 格式
 pub struct RenderImage {
-    /// The ID associated with this image
+    /// 与此图像关联的 ID
     pub id: ImageId,
-    /// The scale factor of this image on render.
+    /// 渲染时此图像的缩放因子。
     pub(crate) scale_factor: f32,
     data: SmallVec<[Frame; 1]>,
 }

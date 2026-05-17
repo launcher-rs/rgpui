@@ -6,14 +6,17 @@ use serde::Deserialize;
 use std::sync::Arc;
 use url::Url;
 
+/// GitHub API 基础 URL
 const GITHUB_API_URL: &str = "https://api.github.com";
 
+/// GitHub LSP 二进制版本信息
 pub struct GitHubLspBinaryVersion {
     pub name: String,
     pub url: String,
     pub digest: Option<String>,
 }
 
+/// GitHub 发布版本信息
 #[derive(Deserialize, Debug)]
 pub struct GithubRelease {
     pub tag_name: String,
@@ -24,6 +27,7 @@ pub struct GithubRelease {
     pub zipball_url: String,
 }
 
+/// GitHub 发布版本中的资源文件
 #[derive(Deserialize, Debug)]
 pub struct GithubReleaseAsset {
     pub name: String,
@@ -31,6 +35,7 @@ pub struct GithubReleaseAsset {
     pub digest: Option<String>,
 }
 
+/// 获取 GitHub 仓库的最新发布版本
 pub async fn latest_github_release(
     repo_name_with_owner: &str,
     require_assets: bool,
@@ -94,6 +99,7 @@ pub async fn latest_github_release(
     Ok(release)
 }
 
+/// 根据标签名获取 GitHub 发布版本
 pub async fn get_release_by_tag_name(
     repo_name_with_owner: &str,
     tag: &str,
@@ -141,6 +147,7 @@ pub async fn get_release_by_tag_name(
     Ok(release)
 }
 
+/// 资源文件的类型
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AssetKind {
     TarGz,
@@ -149,12 +156,12 @@ pub enum AssetKind {
     Zip,
 }
 
+/// 构建资源文件下载 URL
 pub fn build_asset_url(repo_name_with_owner: &str, tag: &str, kind: AssetKind) -> Result<String> {
     let mut url = Url::parse(&format!(
         "https://github.com/{repo_name_with_owner}/archive/refs/tags",
     ))?;
-    // We're pushing this here, because tags may contain `/` and other characters
-    // that need to be escaped.
+    // 在此处处理路径拼接，因为标签可能包含 `/` 和其他需要转义的字符
     let asset_filename = format!(
         "{tag}.{extension}",
         extension = match kind {

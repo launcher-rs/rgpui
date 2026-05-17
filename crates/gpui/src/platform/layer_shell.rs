@@ -3,81 +3,75 @@ use thiserror::Error;
 
 use crate::Pixels;
 
-/// The layer the surface is rendered on. Multiple surfaces can share a layer, and ordering within
-/// a single layer is undefined.
+/// 表面渲染的层级。多个表面可以共享同一层级，单个层级内的排序是未定义的。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum Layer {
-    /// The background layer, typically used for wallpapers.
+    /// 背景层级，通常用于壁纸。
     Background,
 
-    /// The bottom layer.
+    /// 底部层级。
     Bottom,
 
-    /// The top layer, typically used for fullscreen windows.
+    /// 顶部层级，通常用于全屏窗口。
     Top,
 
-    /// The overlay layer, used for surfaces that should always be on top.
+    /// 覆盖层级，用于应始终在最上面的表面。
     #[default]
     Overlay,
 }
 
 bitflags! {
-    /// Screen anchor point for layer_shell surfaces. These can be used in any combination, e.g.
-    /// specifying `Anchor::LEFT | Anchor::RIGHT` will stretch the surface across the width of the
-    /// screen.
+    /// layer_shell 表面的屏幕锚点。这些可以任意组合使用，例如
+    /// 指定 `Anchor::LEFT | Anchor::RIGHT` 将使表面横跨屏幕宽度。
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
     pub struct Anchor: u32 {
-        /// Anchor to the top edge of the screen.
+        /// 锚定到屏幕顶部边缘。
         const TOP = 1;
-        /// Anchor to the bottom edge of the screen.
+        /// 锚定到屏幕底部边缘。
         const BOTTOM = 2;
-        /// Anchor to the left edge of the screen.
+        /// 锚定到屏幕左侧边缘。
         const LEFT = 4;
-        /// Anchor to the right edge of the screen.
+        /// 锚定到屏幕右侧边缘。
         const RIGHT = 8;
     }
 }
 
-/// Keyboard interactivity mode for the layer_shell surfaces.
+/// layer_shell 表面的键盘交互模式。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum KeyboardInteractivity {
-    /// No keyboard inputs will be delivered to the surface and it won't be able to receive
-    /// keyboard focus.
+    /// 不会向表面传递任何键盘输入，且无法接收键盘焦点。
     None,
 
-    /// The surface will receive exclusive keyboard focus as long as it is above the shell surface
-    /// layer, and no other layer_shell surfaces are above it.
+    /// 只要表面位于 shell 表面层级之上，且没有其他 layer_shell 表面在其上方，
+    /// 表面将接收独占键盘焦点。
     Exclusive,
 
-    /// The surface can be focused similarly to a normal window.
+    /// 表面可以像普通窗口一样被聚焦。
     #[default]
     OnDemand,
 }
 
-/// Options for creating a layer_shell window.
+/// 创建 layer_shell 窗口的选项。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LayerShellOptions {
-    /// The namespace for the surface, mostly used by compositors to apply rules, can not be
-    /// changed after the surface is created.
+    /// 表面的命名空间，主要由合成器用于应用规则，表面创建后无法更改。
     pub namespace: String,
-    /// The layer the surface is rendered on.
+    /// 表面渲染的层级。
     pub layer: Layer,
-    /// The anchor point of the surface.
+    /// 表面的锚点。
     pub anchor: Anchor,
-    /// Requests that the compositor avoids occluding an area with other surfaces.
+    /// 请求合成器避免用其他表面遮挡某个区域。
     pub exclusive_zone: Option<Pixels>,
-    /// The anchor point of the exclusive zone, will be determined using the anchor if left
-    /// unspecified.
+    /// 独占区域的锚点，如果未指定将根据 anchor 确定。
     pub exclusive_edge: Option<Anchor>,
-    /// Margins between the surface and its anchor point(s).
-    /// Specified in CSS order: top, right, bottom, left.
+    /// 表面与其锚点之间的边距。
+    /// 按 CSS 顺序指定：上、右、下、左。
     pub margin: Option<(Pixels, Pixels, Pixels, Pixels)>,
-    /// How keyboard events should be delivered to the surface.
+    /// 键盘事件应如何传递给表面。
     pub keyboard_interactivity: KeyboardInteractivity,
 }
 
-/// An error indicating that an action failed because the compositor doesn't support the required
-/// layer_shell protocol.
+/// 表示由于合成器不支持所需的 layer_shell 协议而导致操作失败的错误。
 #[derive(Debug, Error)]
 #[error("Compositor doesn't support zwlr_layer_shell_v1")]
 pub struct LayerShellNotSupportedError;

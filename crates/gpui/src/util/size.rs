@@ -1,3 +1,8 @@
+/// 将文件大小格式化为人类可读的字符串。
+///
+/// # 参数
+/// * `size` - 文件大小（字节）
+/// * `use_decimal` - 是否使用十进制（1000 为基数）而非二进制（1024 为基数）
 pub fn format_file_size(size: u64, use_decimal: bool) -> String {
     if use_decimal {
         if size < 1000 {

@@ -1,10 +1,10 @@
-/// A unique identifier for an element that can be inspected.
+/// 可被检查的元素的唯一标识符。
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct InspectorElementId {
-    /// Stable part of the ID.
+    /// ID 的稳定部分。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub path: std::rc::Rc<InspectorElementPath>,
-    /// Disambiguates elements that have the same path.
+    /// 用于区分具有相同路径的元素。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub instance_id: usize,
 }
@@ -25,13 +25,13 @@ mod conditional {
     use crate::collections::FxHashMap;
     use std::any::{Any, TypeId};
 
-    /// `GlobalElementId` qualified by source location of element construction.
+    /// 具有元素构造源位置的 `GlobalElementId`。
     #[derive(Debug, Eq, PartialEq, Hash)]
     pub struct InspectorElementPath {
-        /// The path to the nearest ancestor element that has an `ElementId`.
+        /// 到具有 `ElementId` 的最近祖先元素的路径。
         #[cfg(any(feature = "inspector", debug_assertions))]
         pub global_id: crate::GlobalElementId,
-        /// Source location where this element was constructed.
+        /// 此元素构造的源位置。
         #[cfg(any(feature = "inspector", debug_assertions))]
         pub source_location: &'static std::panic::Location<'static>,
     }
@@ -51,12 +51,11 @@ mod conditional {
         }
     }
 
-    /// Function set on `App` to render the inspector UI.
+    /// 设置在 `App` 上用于渲染检查器 UI 的函数。
     pub type InspectorRenderer =
         Box<dyn Fn(&mut Inspector, &mut Window, &mut Context<Inspector>) -> AnyElement>;
 
-    /// Manages inspector state - which element is currently selected and whether the inspector is
-    /// in picking mode.
+    /// 管理检查器状态 —— 当前选中的元素以及检查器是否处于拾取模式。
     pub struct Inspector {
         active_element: Option<InspectedElement>,
         pub(crate) pick_depth: Option<f32>,
@@ -111,7 +110,7 @@ mod conditional {
             changed
         }
 
-        /// ID of the currently hovered or selected element.
+        /// 当前悬停或选中元素的 ID。
         pub fn active_element_id(&self) -> Option<&InspectorElementId> {
             self.active_element.as_ref().map(|e| &e.id)
         }
@@ -142,17 +141,17 @@ mod conditional {
             result
         }
 
-        /// Starts element picking mode, allowing the user to select elements by clicking.
+        /// 启动元素拾取模式，允许用户通过点击选择元素。
         pub fn start_picking(&mut self) {
             self.pick_depth = Some(0.0);
         }
 
-        /// Returns whether the inspector is currently in picking mode.
+        /// 返回检查器当前是否处于拾取模式。
         pub fn is_picking(&self) -> bool {
             self.pick_depth.is_some()
         }
 
-        /// Renders elements for all registered inspector states of the active inspector element.
+        /// 为活动检查器元素的所有已注册检查器状态渲染元素。
         pub fn render_inspector_states(
             &mut self,
             window: &mut Window,
@@ -222,27 +221,27 @@ mod conditional {
     }
 }
 
-/// Provides definitions used by `#[derive_inspector_reflection]`.
+/// 提供 `#[derive_inspector_reflection]` 使用的定义。
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub mod inspector_reflection {
     use std::any::Any;
 
-    /// Reification of a function that has the signature `fn some_fn(T) -> T`. Provides the name,
-    /// documentation, and ability to invoke the function.
+    /// 具有签名 `fn some_fn(T) -> T` 的函数的具体化。提供名称、
+    /// 文档和调用函数的能力。
     #[derive(Clone, Copy)]
     pub struct FunctionReflection<T> {
-        /// The name of the function
+        /// 函数名称
         pub name: &'static str,
-        /// The method
+        /// 方法
         pub function: fn(Box<dyn Any>) -> Box<dyn Any>,
-        /// Documentation for the function
+        /// 函数文档
         pub documentation: Option<&'static str>,
-        /// `PhantomData` for the type of the argument and result
+        /// 参数和结果类型的 `PhantomData`
         pub _type: std::marker::PhantomData<T>,
     }
 
     impl<T: 'static> FunctionReflection<T> {
-        /// Invoke this method on a value and return the result.
+        /// 在值上调用此方法并返回结果。
         pub fn invoke(&self, value: T) -> T {
             let boxed = Box::new(value) as Box<dyn Any>;
             let result = (self.function)(boxed);

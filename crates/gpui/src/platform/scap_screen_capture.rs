@@ -1,4 +1,4 @@
-//! Screen capture for Linux and Windows
+//! Linux 和 Windows 的屏幕捕获
 use crate::{
     DevicePixels, ForegroundExecutor, ScreenCaptureFrame, ScreenCaptureSource, ScreenCaptureStream,
     Size, SourceMetadata, size,
@@ -10,10 +10,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{self, AtomicBool};
 
-/// Populates the receiver with the screens that can be captured.
+/// 填充接收器，包含可捕获的屏幕。
 ///
-/// `scap_default_target_source` should be used instead on Wayland, since `scap_screen_sources`
-/// won't return any results.
+/// 在 Wayland 上应使用 `scap_default_target_source` 代替，因为 `scap_screen_sources`
+/// 不会返回任何结果。
 #[allow(dead_code)]
 pub fn scap_screen_sources(
     foreground_executor: &ForegroundExecutor,
@@ -23,11 +23,10 @@ pub fn scap_screen_sources(
     to_dyn_screen_capture_sources(sources_rx, foreground_executor)
 }
 
-/// Starts screen capture for the default target, and populates the receiver with a single source
-/// for it. The first frame of the screen capture is used to determine the size of the stream.
+/// 开始捕获默认目标的屏幕，并将单个源填充到接收器中。
+/// 屏幕捕获的第一帧用于确定流的大小。
 ///
-/// On Wayland (Linux), prompts the user to select a target, and populates the receiver with a
-/// single screen capture source for their selection.
+/// 在 Wayland（Linux）上，提示用户选择目标，并为其选择填充单个屏幕捕获源。
 #[allow(dead_code)]
 pub(crate) fn start_scap_default_target_source(
     foreground_executor: &ForegroundExecutor,
@@ -42,9 +41,9 @@ struct ScapCaptureSource {
     size: Size<DevicePixels>,
 }
 
-/// Populates the sender with the screens available for capture.
+/// 填充发送器，包含可用于捕获的屏幕。
 fn get_screen_targets(sources_tx: oneshot::Sender<Result<Vec<ScapCaptureSource>>>) {
-    // Due to use of blocking APIs, a new thread is used.
+    // 由于使用了阻塞 API，使用新线程。
     std::thread::spawn(|| {
         let targets = match scap::get_all_targets() {
             Ok(targets) => targets,
@@ -91,7 +90,7 @@ impl ScreenCaptureSource for ScapCaptureSource {
         let (stream_tx, stream_rx) = oneshot::channel();
         let target = self.target.clone();
 
-        // Due to use of blocking APIs, a dedicated thread is used.
+        // 由于使用了阻塞 API，使用专用线程。
         std::thread::spawn(move || {
             match new_scap_capturer(Some(scap::Target::Display(target.clone()))) {
                 Ok(mut capturer) => {
@@ -109,22 +108,22 @@ impl ScreenCaptureSource for ScapCaptureSource {
 }
 
 struct ScapDefaultTargetCaptureSource {
-    // Sender populated by single call to `ScreenCaptureSource::stream`.
+    // 由 `ScreenCaptureSource::stream` 单次调用填充的发送器。
     stream_call_tx: std::sync::mpsc::SyncSender<(
-        // Provides the result of `ScreenCaptureSource::stream`.
+        // 提供 `ScreenCaptureSource::stream` 的结果。
         oneshot::Sender<Result<ScapStream>>,
-        // Callback for frames.
+        // 帧回调。
         Box<dyn Fn(ScreenCaptureFrame) + Send>,
     )>,
     target: scap::Display,
     size: Size<DevicePixels>,
 }
 
-/// Starts screen capture on the default capture target, and populates the sender with the source.
+/// 在默认捕获目标上开始屏幕捕获，并将源填充到发送器中。
 fn start_default_target_screen_capture(
     sources_tx: oneshot::Sender<Result<Vec<ScapDefaultTargetCaptureSource>>>,
 ) {
-    // Due to use of blocking APIs, a dedicated thread is used.
+    // 由于使用了阻塞 API，使用专用线程。
     std::thread::spawn(|| {
         let start_result = crate::maybe!({
             let mut capturer = new_scap_capturer(None)?;
@@ -187,7 +186,7 @@ impl ScreenCaptureSource for ScapDefaultTargetCaptureSource {
             Ok(()) => {}
             Err(std::sync::mpsc::TrySendError::Full((tx, _)))
             | Err(std::sync::mpsc::TrySendError::Disconnected((tx, _))) => {
-                // Note: support could be added for being called again after end of prior stream.
+                // 注意：可以添加对在前一个流结束后再次调用的支持。
                 tx.send(Err(anyhow!(
                     "Can't call ScapDefaultTargetCaptureSource::stream multiple times."
                 )))
@@ -203,7 +202,7 @@ fn new_scap_capturer(target: Option<scap::Target>) -> Result<scap::capturer::Cap
         fps: 60,
         show_cursor: true,
         show_highlight: true,
-        // Note that the actual frame output type may differ.
+        // 注意：实际的帧输出类型可能不同。
         output_type: scap::frame::FrameType::YUVFrame,
         output_resolution: scap::capturer::Resolution::Captured,
         crop_area: None,
@@ -279,9 +278,9 @@ fn frame_size(frame: &scap::frame::Frame) -> Size<DevicePixels> {
     size(DevicePixels(width), DevicePixels(height))
 }
 
-/// This is used by `get_screen_targets` and `start_default_target_screen_capture` to turn their
-/// results into `Rc<dyn ScreenCaptureSource>`. They need to `Send` their capture source, and so
-/// the capture source structs are used as `Rc<dyn ScreenCaptureSource>` is not `Send`.
+/// 此函数由 `get_screen_targets` 和 `start_default_target_screen_capture` 使用，将它们的
+/// 结果转换为 `Rc<dyn ScreenCaptureSource>`。它们需要 `Send` 其捕获源，因此
+/// 捕获源结构体用作 `Rc<dyn ScreenCaptureSource>` 不是 `Send` 的。
 fn to_dyn_screen_capture_sources<T: ScreenCaptureSource + 'static>(
     sources_rx: oneshot::Receiver<Result<Vec<T>>>,
     foreground_executor: &ForegroundExecutor,
@@ -304,7 +303,7 @@ fn to_dyn_screen_capture_sources<T: ScreenCaptureSource + 'static>(
     dyn_sources_rx
 }
 
-/// Same motivation as `to_dyn_screen_capture_sources` above.
+/// 与上面的 `to_dyn_screen_capture_sources` 目的相同。
 fn to_dyn_screen_capture_stream<T: ScreenCaptureStream + 'static>(
     sources_rx: oneshot::Receiver<Result<T>>,
     foreground_executor: &ForegroundExecutor,

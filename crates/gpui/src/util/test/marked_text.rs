@@ -1,8 +1,8 @@
 use super::collections::HashMap;
 use std::{cmp::Ordering, ops::Range};
 
-/// Construct a string and a list of offsets within that string using a single
-/// string containing embedded position markers.
+/// 使用包含嵌入位置标记的单个字符串
+/// 构造字符串和该字符串中的偏移量列表。
 pub fn marked_text_offsets_by(
     marked_text: &str,
     markers: Vec<char>,
@@ -22,12 +22,12 @@ pub fn marked_text_offsets_by(
     (unmarked_text, extracted_markers)
 }
 
-/// Construct a string and a list of ranges within that string using a single
-/// string containing embedded range markers, using arbitrary characters as
-/// range markers. By using multiple different range markers, you can construct
-/// ranges that overlap each other.
+/// 使用包含嵌入范围标记的单个字符串
+/// 构造字符串和该字符串中的范围列表，使用任意字符作为
+/// 范围标记。通过使用多种不同的范围标记字符，你可以构造
+/// 相互重叠的范围。
 ///
-/// The returned ranges will be grouped by their range marking characters.
+/// 返回的范围将按其范围标记字符分组。
 pub fn marked_text_ranges_by(
     marked_text: &str,
     markers: Vec<TextRangeMarker>,
@@ -81,34 +81,33 @@ pub fn marked_text_ranges_by(
     (unmarked_text, range_lookup)
 }
 
-/// Construct a string and a list of ranges within that string using a single
-/// string containing embedded range markers. The characters used to mark the
-/// ranges are as follows:
+/// 使用包含嵌入范围标记的单个字符串
+/// 构造字符串和该字符串中的范围列表。用于标记范围的字符如下：
 ///
-/// 1. To mark a range of text, surround it with the `«` and `»` angle brackets,
-///    which can be typed on a US keyboard with the `alt-|` and `alt-shift-|` keys.
+/// 1. 要标记一段文本范围，用 `«` 和 `»` 尖括号包围它，
+///    可在 US 键盘上使用 `alt-|` 和 `alt-shift-|` 键输入。
 ///
 ///    ```text
 ///    foo «selected text» bar
 ///    ```
 ///
-/// 2. To mark a single position in the text, use the `ˇ` caron,
-///    which can be typed on a US keyboard with the `alt-shift-t` key.
+/// 2. 要标记文本中的单个位置，使用 `ˇ` 抑扬符，
+///    可在 US 键盘上使用 `alt-shift-t` 键输入。
 ///
 ///    ```text
 ///    the cursors are hereˇ and hereˇ.
 ///    ```
 ///
-/// 3. To mark a range whose direction is meaningful (like a selection),
-///    put a caron character beside one of its bounds, on the inside:
+/// 3. 要标记方向有意义的范围（如选区），
+///    在其中一个边界旁边放置一个抑扬符，在内部：
 ///
 ///    ```text
 ///    one «ˇreversed» selection and one «forwardˇ» selection
 ///    ```
 ///
-/// Any • characters in the input string will be replaced with spaces. This makes
-/// it easier to test cases with trailing spaces, which tend to get trimmed from the
-/// source code.
+/// 输入字符串中的任何 • 字符将被替换为空格。这使得
+/// 测试尾部空格的情况更容易，这些空格通常会被从
+/// 源代码中修剪掉。
 #[track_caller]
 pub fn marked_text_ranges(
     marked_text: &str,
@@ -128,28 +127,28 @@ pub fn marked_text_ranges(
         prev_marked_ix = marked_ix + len;
 
         match marker {
-            "ˇ" => {
-                if current_range_start.is_some() {
-                    if current_range_cursor.is_some() {
-                        panic!("duplicate point marker 'ˇ' at index {marked_ix}");
-                    }
+                    "ˇ" => {
+                        if current_range_start.is_some() {
+                            if current_range_cursor.is_some() {
+                                panic!("重复的点标记 'ˇ' 在索引 {marked_ix}");
+                            }
 
                     current_range_cursor = Some(unmarked_len);
                 } else {
                     ranges.push(unmarked_len..unmarked_len);
                 }
             }
-            "«" => {
-                if current_range_start.is_some() {
-                    panic!("unexpected range start marker '«' at index {marked_ix}");
-                }
+                "«" => {
+                    if current_range_start.is_some() {
+                        panic!("意外的范围起始标记 '«' 在索引 {marked_ix}");
+                    }
                 current_range_start = Some(unmarked_len);
             }
             "»" => {
                 let current_range_start = if let Some(start) = current_range_start.take() {
                     start
                 } else {
-                    panic!("unexpected range end marker '»' at index {marked_ix}");
+                    panic!("意外的范围结束标记 '»' 在索引 {marked_ix}");
                 };
 
                 let mut reversed = false;
@@ -157,10 +156,10 @@ pub fn marked_text_ranges(
                     if current_range_cursor == current_range_start {
                         reversed = true;
                     } else if current_range_cursor != unmarked_len {
-                        panic!("unexpected 'ˇ' marker in the middle of a range");
+                        panic!("范围中间有意外的 'ˇ' 标记");
                     }
                 } else if ranges_are_directed {
-                    panic!("missing 'ˇ' marker to indicate range direction");
+                    panic!("缺少 'ˇ' 标记以指示范围方向");
                 }
 
                 ranges.push(if reversed {

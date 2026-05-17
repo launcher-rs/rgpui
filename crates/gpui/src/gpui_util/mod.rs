@@ -1,6 +1,6 @@
-//! Internal utility functions for GPUI.
-
 #![allow(missing_docs)]
+
+//! GPUI 内部工具函数。
 
 use std::{
     env,
@@ -14,14 +14,14 @@ use std::{
 
 pub mod arc_cow;
 
-/// Increments a value and returns the previous value.
+/// 递增一个值并返回先前的值
 pub fn post_inc<T: From<u8> + AddAssign<T> + Copy>(value: &mut T) -> T {
     let prev = *value;
     *value += T::from(1);
     prev
 }
 
-/// Measures the execution time of a closure if `ZED_MEASUREMENTS` env var is set.
+/// 如果设置了 `ZED_MEASUREMENTS` 环境变量，则测量闭包的执行时间
 pub fn measure<R>(label: &str, f: impl FnOnce() -> R) -> R {
     static ZED_MEASUREMENTS: OnceLock<bool> = OnceLock::new();
     let zed_measurements = ZED_MEASUREMENTS.get_or_init(|| {
@@ -41,7 +41,7 @@ pub fn measure<R>(label: &str, f: impl FnOnce() -> R) -> R {
     }
 }
 
-/// Panics in debug mode, logs error with backtrace in release mode.
+/// 在调试模式下 panic，在发布模式下记录错误及回溯
 #[macro_export]
 macro_rules! debug_panic {
     ( $($fmt_arg:tt)* ) => {
@@ -54,7 +54,7 @@ macro_rules! debug_panic {
     };
 }
 
-/// Returns the option or panics in debug mode if None.
+/// 返回选项值，如果在调试模式下为 None 则 panic
 #[track_caller]
 pub fn some_or_debug_panic<T>(option: Option<T>) -> Option<T> {
     #[cfg(debug_assertions)]
@@ -64,8 +64,7 @@ pub fn some_or_debug_panic<T>(option: Option<T>) -> Option<T> {
     option
 }
 
-/// Expands to an immediately-invoked function expression. Good for using the ? operator
-/// in functions which do not return an Option or Result.
+/// 展开为立即调用的函数表达式。适用于在不返回 Option 或 Result 的函数中使用 ? 运算符
 #[macro_export]
 macro_rules! maybe {
     ($block:block) => {
@@ -78,24 +77,24 @@ macro_rules! maybe {
         (async move || $block)()
     };
 }
-/// Extension trait for Result types providing logging utilities.
+/// Result 类型的扩展特征，提供日志工具
 pub trait ResultExt<E> {
-    /// The Ok type of the Result.
+    /// Result 的 Ok 类型
     type Ok;
 
-    /// Logs the error at Error level and returns None if Err.
+    /// 在 Error 级别记录错误，如果为 Err 则返回 None
     fn log_err(self) -> Option<Self::Ok>;
-    /// Logs the error with Debug formatting (backtrace) and returns None if Err.
+    /// 使用 Debug 格式（回溯）记录错误，如果为 Err 则返回 None
     fn log_err_with_backtrace(self) -> Option<Self::Ok>
     where
         E: std::fmt::Debug;
-    /// Asserts that this result should never be an error in development.
+    /// 断言此结果在开发中不应为错误
     fn debug_assert_ok(self, reason: &str) -> Self;
-    /// Logs the error at Warn level and returns None if Err.
+    /// 在 Warn 级别记录错误，如果为 Err 则返回 None
     fn warn_on_err(self) -> Option<Self::Ok>;
-    /// Logs the error at the specified level and returns None if Err.
+    /// 在指定级别记录错误，如果为 Err 则返回 None
     fn log_with_level(self, level: log::Level) -> Option<Self::Ok>;
-    /// Converts the error into an anyhow::Error.
+    /// 将错误转换为 anyhow::Error
     fn anyhow(self) -> anyhow::Result<Self::Ok>
     where
         E: Into<anyhow::Error>;
@@ -205,36 +204,36 @@ impl<E: std::fmt::Debug> std::fmt::Display for DebugAsDisplay<'_, E> {
     }
 }
 
-/// Extension trait for Future types providing logging utilities.
+/// Future 类型的扩展特征，提供日志工具
 pub trait TryFutureExt {
-    /// Logs the error at Error level and returns None if Err.
+    /// 在 Error 级别记录错误，如果为 Err 则返回 None
     fn log_err(self) -> LogErrorFuture<Self>
     where
         Self: Sized;
 
-    /// Logs the error at Error level with a tracked location.
+    /// 在 Error 级别记录错误并跟踪位置
     fn log_tracked_err(self, location: core::panic::Location<'static>) -> LogErrorFuture<Self>
     where
         Self: Sized;
 
-    /// Logs the error at Warn level and returns None if Err.
+    /// 在 Warn 级别记录错误，如果为 Err 则返回 None
     fn warn_on_err(self) -> LogErrorFuture<Self>
     where
         Self: Sized;
-    /// Unwraps the result, panicking if Err.
+    /// 解包结果，如果为 Err 则 panic
     fn unwrap(self) -> UnwrapFuture<Self>
     where
         Self: Sized;
 }
 
-/// Extension trait for Future types providing backtrace logging.
+/// Future 类型的扩展特征，提供回溯日志
 pub trait TryFutureExtBacktrace {
-    /// Logs the error with Debug formatting (backtrace) and returns None if Err.
+    /// 使用 Debug 格式（回溯）记录错误，如果为 Err 则返回 None
     fn log_err_with_backtrace(self) -> LogErrorWithBacktraceFuture<Self>
     where
         Self: Sized;
 
-    /// Logs the error with Debug formatting and a tracked location.
+    /// 使用 Debug 格式记录错误并跟踪位置
     fn log_tracked_err_with_backtrace(
         self,
         location: core::panic::Location<'static>,
@@ -306,7 +305,7 @@ where
     }
 }
 
-/// A future that logs errors at the specified level when the inner future resolves to Err.
+/// 当内部 future 解析为 Err 时在指定级别记录错误的 future
 #[must_use]
 pub struct LogErrorFuture<F>(F, log::Level, core::panic::Location<'static>);
 
@@ -334,7 +333,7 @@ where
     }
 }
 
-/// A future that logs errors with Debug formatting (backtrace) when the inner future resolves to Err.
+/// 当内部 future 解析为 Err 时使用 Debug 格式（回溯）记录错误的 future
 #[must_use]
 pub struct LogErrorWithBacktraceFuture<F>(F, log::Level, core::panic::Location<'static>);
 
@@ -362,7 +361,7 @@ where
     }
 }
 
-/// A future that unwraps the result, panicking if Err.
+/// 解包结果的 future，如果为 Err 则 panic
 pub struct UnwrapFuture<F>(F);
 
 impl<F, T, E> Future for UnwrapFuture<F>
@@ -381,11 +380,11 @@ where
     }
 }
 
-/// A guard that runs a closure when dropped, unless aborted.
+/// 丢弃时运行闭包的守卫，除非被中止
 pub struct Deferred<F: FnOnce()>(Option<F>);
 
 impl<F: FnOnce()> Deferred<F> {
-    /// Drops without running the deferred function.
+    /// 丢弃时不运行延迟函数
     pub fn abort(mut self) {
         self.0.take();
     }
@@ -399,7 +398,7 @@ impl<F: FnOnce()> Drop for Deferred<F> {
     }
 }
 
-/// Runs the given function when the returned value is dropped (unless aborted).
+/// 运行给定函数，当返回值被丢弃时（除非被中止）
 #[must_use]
 pub fn defer<F: FnOnce()>(f: F) -> Deferred<F> {
     Deferred(Some(f))

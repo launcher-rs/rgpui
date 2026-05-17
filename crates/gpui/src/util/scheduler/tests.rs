@@ -150,7 +150,7 @@ fn test_send_from_bg_to_fg() {
 
 #[test]
 fn test_randomize_order() {
-    // Test deterministic mode: different seeds should produce same execution order
+    // 测试确定性模式：不同种子应产生相同的执行顺序
     let mut deterministic_results = HashSet::new();
     for seed in 0..10 {
         let config = TestSchedulerConfig {
@@ -163,14 +163,14 @@ fn test_randomize_order() {
         deterministic_results.insert(order);
     }
 
-    // All deterministic runs should produce the same result
+    // 所有确定性运行应产生相同的结果
     assert_eq!(
         deterministic_results.len(),
         1,
-        "Deterministic mode should always produce same execution order"
+        "确定性模式应始终产生相同的执行顺序"
     );
 
-    // Test randomized mode: different seeds can produce different execution orders
+    // 测试随机化模式：不同种子可以产生不同的执行顺序
     let mut randomized_results = HashSet::new();
     for seed in 0..20 {
         let config = TestSchedulerConfig::with_seed(seed);
@@ -179,10 +179,10 @@ fn test_randomize_order() {
         randomized_results.insert(order);
     }
 
-    // Randomized mode should produce multiple different execution orders
+    // 随机化模式应产生多个不同的执行顺序
     assert!(
         randomized_results.len() > 1,
-        "Randomized mode should produce multiple different orders"
+        "随机化模式应产生多个不同的顺序"
     );
 }
 
@@ -193,7 +193,7 @@ async fn capture_execution_order(config: TestSchedulerConfig) -> Vec<String> {
 
     let (sender, receiver) = mpsc::unbounded::<String>();
 
-    // Spawn foreground tasks
+    // 生成前台任务
     for i in 0..3 {
         let mut sender = sender.clone();
         foreground
@@ -203,7 +203,7 @@ async fn capture_execution_order(config: TestSchedulerConfig) -> Vec<String> {
             .detach();
     }
 
-    // Spawn background tasks
+    // 生成后台任务
     for i in 0..3 {
         let mut sender = sender.clone();
         background
@@ -213,7 +213,7 @@ async fn capture_execution_order(config: TestSchedulerConfig) -> Vec<String> {
             .detach();
     }
 
-    drop(sender); // Close sender to signal no more messages
+    drop(sender); // 关闭 sender 以表示没有更多消息
     scheduler.run();
 
     receiver.collect().await
@@ -224,7 +224,7 @@ fn test_block() {
     let scheduler = Arc::new(TestScheduler::new(TestSchedulerConfig::default()));
     let (tx, rx) = oneshot::channel();
 
-    // Spawn background task to send value
+    // 生成后台任务以发送值
     let _ = scheduler
         .background()
         .spawn(async move {
@@ -232,7 +232,7 @@ fn test_block() {
         })
         .detach();
 
-    // Block on receiving the value
+    // 阻塞接收值
     let result = scheduler.foreground().block_on(async { rx.await.unwrap() });
     assert_eq!(result, 42);
 }
@@ -275,14 +275,14 @@ fn test_block_with_parking() {
 
 #[test]
 fn test_helper_methods() {
-    // Test the once method
+    // 测试 once 方法
     let result = TestScheduler::once(async |scheduler: Arc<TestScheduler>| {
         let background = scheduler.background();
         background.spawn(async { 42 }).await
     });
     assert_eq!(result, 42);
 
-    // Test the many method
+    // 测试 many 方法
     let results = TestScheduler::many(3, async |scheduler: Arc<TestScheduler>| {
         let background = scheduler.background();
         background.spawn(async { 10 }).await
@@ -317,7 +317,7 @@ fn test_many_with_arbitrary_seed() {
 
 #[test]
 fn test_block_with_timeout() {
-    // Test case: future completes within timeout
+    // 测试用例：未来对象在超时内完成
     TestScheduler::once(async |scheduler| {
         let foreground = scheduler.foreground();
         let future = future::ready(42);
@@ -325,11 +325,11 @@ fn test_block_with_timeout() {
         assert_eq!(output.ok(), Some(42));
     });
 
-    // Test case: future times out
+    // 测试用例：未来对象超时
     TestScheduler::once(async |scheduler| {
-        // Make timeout behavior deterministic by forcing the timeout tick budget to be exactly 0.
-        // This prevents `block_with_timeout` from making progress via extra scheduler stepping and
-        // accidentally completing work that we expect to time out.
+        // 使超时行为确定性，强制超时 tick 预算恰好为 0。
+        // 这防止 `block_with_timeout` 通过额外的调度器步进取得进展并
+        /// 意外完成我们期望超时的工作。
         scheduler.set_timeout_ticks(0..=0);
 
         let foreground = scheduler.foreground();
@@ -338,11 +338,11 @@ fn test_block_with_timeout() {
         assert!(output.is_err(), "future should not have finished");
     });
 
-    // Test case: future makes progress via timer but still times out
+    // 测试用例：未来对象通过计时器取得进展但仍超时
     let mut results = BTreeSet::new();
     TestScheduler::many(100, async |scheduler| {
-        // Keep the existing probabilistic behavior here (do not force 0 ticks), since this subtest
-        // is explicitly checking that some seeds/timeouts can complete while others can time out.
+        // 在此处保持现有的概率行为（不强制 0 tick），因为此子测试
+        // 明确检查某些种子/超时可以完成而其他可以超时。
         let task = scheduler.background().spawn(async move {
             Yield { polls: 10 }.await;
             42
@@ -357,18 +357,18 @@ fn test_block_with_timeout() {
         vec![None, Some(42)]
     );
 
-    // Regression test:
-    // A timed-out future must not be cancelled. The returned future should still be
-    // pollable to completion later. We also want to ensure time only advances when we
-    // explicitly advance it (not by yielding).
+    // 回归测试：
+    // 超时的未来对象不得被取消。返回的未来对象仍应
+    // 可轮询至完成。我们还要确保时间仅在我们
+    // 显式推进时才推进（而非通过 yield）。
     TestScheduler::once(async |scheduler| {
-        // Force immediate timeout: the timeout tick budget is 0 so we will not step or
-        // advance timers inside `block_with_timeout`.
+        // 强制立即超时：超时 tick 预算为 0，因此我们不会在 `block_with_timeout` 内步进或
+        // 推进计时器。
         scheduler.set_timeout_ticks(0..=0);
 
         let background = scheduler.background();
 
-        // This task should only complete once time is explicitly advanced.
+        // 此任务应仅在时间被显式推进后才完成。
         let task = background.spawn({
             let scheduler = scheduler.clone();
             async move {
@@ -377,7 +377,7 @@ fn test_block_with_timeout() {
             }
         });
 
-        // This should time out before we advance time enough for the timer to fire.
+        // 这应在我们推进足够时间使计时器触发之前超时。
         let timed_out = scheduler
             .foreground()
             .block_with_timeout(Duration::from_millis(50), task);
@@ -386,7 +386,7 @@ fn test_block_with_timeout() {
             "expected timeout before advancing the clock enough for the timer"
         );
 
-        // Now explicitly advance time and ensure the returned future can complete.
+        // 现在显式推进时间并确保返回的未来对象可以完成。
         let mut task = timed_out.err().unwrap();
         scheduler.advance_clock(Duration::from_millis(100));
         scheduler.run();
@@ -396,7 +396,7 @@ fn test_block_with_timeout() {
     });
 }
 
-// When calling block, we shouldn't make progress on foreground-spawned futures with the same session id.
+// 调用 block 时，我们不应在具有相同会话 id 的前台生成的未来对象上取得进展。
 #[test]
 fn test_block_does_not_progress_same_session_foreground() {
     let mut task2_made_progress_once = false;
@@ -467,15 +467,15 @@ fn test_nondeterministic_wake_detection() {
 
     let (waker_tx, waker_rx) = std::sync::mpsc::channel::<Waker>();
 
-    // Get a waker by running a future that sends it
+    // 通过运行发送它的未来对象获取唤醒器
     scheduler.foreground().block_on(SendWakerToThread {
         waker_tx: Some(waker_tx),
     });
 
-    // Spawn a real OS thread that will call wake() on the waker
+    // 生成一个真实的 OS 线程，将在唤醒器上调用 wake()
     let handle = std::thread::spawn(move || {
         if let Ok(waker) = waker_rx.recv() {
-            // This should trigger the non-determinism detection
+            // 这应触发非确定性检测
             waker.wake();
         }
     });
@@ -496,7 +496,7 @@ fn test_nondeterministic_wake_detection() {
         .unwrap_or("<unknown panic>");
     assert!(
         panic_message.contains("Your test is not deterministic"),
-        "Expected panic message to contain non-determinism error, got: {}",
+        "期望 panic 消息包含非确定性错误，得到：{}",
         panic_message
     );
 }
@@ -509,7 +509,7 @@ fn test_nondeterministic_wake_allowed_with_parking() {
     };
     let scheduler = Arc::new(TestScheduler::new(config));
 
-    // A future that captures its waker and sends it to an external thread
+    // 捕获其唤醒器并将其发送到外部线程的未来对象
     struct WakeFromExternalThread {
         waker_sent: bool,
         waker_tx: Option<std::sync::mpsc::Sender<Waker>>,
@@ -533,15 +533,15 @@ fn test_nondeterministic_wake_allowed_with_parking() {
 
     let (waker_tx, waker_rx) = std::sync::mpsc::channel::<Waker>();
 
-    // Spawn a real OS thread that will call wake() on the waker
+    // 生成一个真实的 OS 线程，将在唤醒器上调用 wake()
     std::thread::spawn(move || {
         if let Ok(waker) = waker_rx.recv() {
-            // With allow_parking, this should NOT panic
+            // 允许 park 时，这不应 panic
             waker.wake();
         }
     });
 
-    // This should complete without panicking
+    // 这应在不 panic 的情况下完成
     scheduler.foreground().block_on(WakeFromExternalThread {
         waker_sent: false,
         waker_tx: Some(waker_tx),
@@ -579,10 +579,10 @@ fn test_nondeterministic_waker_drop_detection() {
         waker_tx: Some(waker_tx),
     });
 
-    // Spawn a real OS thread that will drop the waker without calling wake
+    // 生成一个真实的 OS 线程，将丢弃唤醒器而不调用 wake
     let handle = std::thread::spawn(move || {
         if let Ok(waker) = waker_rx.recv() {
-            // This should trigger the non-determinism detection on drop
+            // 这应在丢弃时触发非确定性检测
             drop(waker);
         }
     });
@@ -658,12 +658,12 @@ fn test_background_priority_scheduling() {
         }
     }
 
-    // High priority tasks should tend to run before low priority tasks
-    // With weights of 60 vs 10, high priority should dominate early execution
+    // 高优先级任务应倾向于在低优先级任务之前运行
+    // 权重为 60 vs 10 时，高优先级应在早期执行中占主导地位
     assert!(
         high_before_low_count > iterations / 2,
-        "Expected high priority tasks to run before low priority tasks more often. \
-         Got {} out of {} iterations",
+        "期望高优先级任务比低优先级任务更经常先运行。\
+         在 {} 次迭代中得到 {}",
         high_before_low_count,
         iterations
     );

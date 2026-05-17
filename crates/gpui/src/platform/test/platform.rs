@@ -16,7 +16,7 @@ use std::{
     sync::Arc,
 };
 
-/// TestPlatform implements the Platform trait for use in tests.
+/// TestPlatform 实现 Platform trait，用于测试。
 pub(crate) struct TestPlatform {
     background_executor: BackgroundExecutor,
     foreground_executor: ForegroundExecutor,
@@ -39,10 +39,10 @@ pub(crate) struct TestPlatform {
 }
 
 #[derive(Clone)]
-/// A fake screen capture source, used for testing.
+/// 伪造的屏幕捕获源，用于测试。
 pub struct TestScreenCaptureSource {}
 
-/// A fake screen capture stream, used for testing.
+/// 伪造的屏幕捕获流，用于测试。
 pub struct TestScreenCaptureStream {}
 
 impl ScreenCaptureSource for TestScreenCaptureSource {
@@ -88,6 +88,7 @@ pub(crate) struct TestPrompts {
 }
 
 impl TestPlatform {
+    /// 创建新的 TestPlatform
     pub fn new(executor: BackgroundExecutor, foreground_executor: ForegroundExecutor) -> Rc<Self> {
         Self::with_platform(
             executor,
@@ -97,6 +98,7 @@ impl TestPlatform {
         )
     }
 
+    /// 使用自定义文本系统创建 TestPlatform
     pub fn with_text_system(
         executor: BackgroundExecutor,
         foreground_executor: ForegroundExecutor,
@@ -105,6 +107,7 @@ impl TestPlatform {
         Self::with_platform(executor, foreground_executor, text_system, None)
     }
 
+    /// 使用自定义平台和文本系统创建 TestPlatform
     pub fn with_platform(
         executor: BackgroundExecutor,
         foreground_executor: ForegroundExecutor,
@@ -134,6 +137,7 @@ impl TestPlatform {
         })
     }
 
+    /// 模拟用户选择新路径
     pub(crate) fn simulate_new_path_selection(
         &self,
         select_path: impl FnOnce(&std::path::Path) -> Option<std::path::PathBuf>,
@@ -147,6 +151,7 @@ impl TestPlatform {
         tx.send(Ok(select_path(&path))).ok();
     }
 
+    /// 模拟用户回答提示对话框
     #[track_caller]
     pub(crate) fn simulate_prompt_answer(&self, response: &str) {
         let prompt = self
@@ -164,10 +169,12 @@ impl TestPlatform {
         prompt.tx.send(ix).ok();
     }
 
+    /// 检查是否有待处理的提示
     pub(crate) fn has_pending_prompt(&self) -> bool {
         !self.prompts.borrow().multiple_choice.is_empty()
     }
 
+    /// 获取待处理提示的信息
     pub(crate) fn pending_prompt(&self) -> Option<(String, String)> {
         let prompts = self.prompts.borrow();
         let prompt = prompts.multiple_choice.front()?;
@@ -177,10 +184,12 @@ impl TestPlatform {
         ))
     }
 
+    /// 设置屏幕捕获源
     pub(crate) fn set_screen_capture_sources(&self, sources: Vec<TestScreenCaptureSource>) {
         *self.screen_capture_sources.borrow_mut() = sources;
     }
 
+    /// 创建提示对话框
     pub(crate) fn prompt(
         &self,
         msg: &str,
@@ -201,6 +210,7 @@ impl TestPlatform {
         rx
     }
 
+    /// 设置活动窗口
     pub(crate) fn set_active_window(&self, window: Option<TestWindow>) {
         let executor = self.foreground_executor();
         let previous_window = self.active_window.borrow_mut().take();
@@ -223,6 +233,7 @@ impl TestPlatform {
             .detach();
     }
 
+    /// 检查是否提示过创建新路径
     pub(crate) fn did_prompt_for_new_path(&self) -> bool {
         !self.prompts.borrow().new_path.is_empty()
     }
@@ -463,12 +474,13 @@ impl Platform for TestPlatform {
 }
 
 impl TestScreenCaptureSource {
-    /// Create a fake screen capture source, for testing.
+    /// 创建伪造的屏幕捕获源，用于测试。
     pub fn new() -> Self {
         Self {}
     }
 }
 
+/// 测试用键盘布局
 struct TestKeyboardLayout;
 
 impl PlatformKeyboardLayout for TestKeyboardLayout {

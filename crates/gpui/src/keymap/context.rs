@@ -2,19 +2,17 @@ use crate::SharedString;
 use anyhow::{Context as _, Result};
 use std::fmt;
 
-/// A datastructure for resolving whether an action should be dispatched
-/// at this point in the element tree. Contains a set of identifiers
-/// and/or key value pairs representing the current context for the
-/// keymap.
+/// 用于解析是否应在元素树的当前位置分发动作的数据结构。
+/// 包含一组标识符和/或键值对，表示键映射的当前上下文。
 #[derive(Clone, Default, Eq, PartialEq, Hash)]
 pub struct KeyContext(Vec<ContextEntry>);
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-/// An entry in a KeyContext
+/// KeyContext 中的条目
 pub struct ContextEntry {
-    /// The key (or name if no value)
+    /// 键（或无值时的名称）
     pub key: SharedString,
-    /// The value
+    /// 值
     pub value: Option<SharedString>,
 }
 
@@ -27,7 +25,7 @@ impl<'a> TryFrom<&'a str> for KeyContext {
 }
 
 impl KeyContext {
-    /// Initialize a new [`KeyContext`] that contains an `os` key set to either `macos`, `linux`, `windows` or `unknown`.
+    /// 初始化新的 [`KeyContext`]，包含 `os` 键设置为 `macos`、`linux`、`windows` 或 `unknown`
     pub fn new_with_defaults() -> Self {
         let mut context = Self::default();
         #[cfg(target_os = "macos")]
@@ -46,22 +44,22 @@ impl KeyContext {
         context
     }
 
-    /// Returns the primary context entry (usually the name of the component)
+    /// 返回主上下文条目（通常是组件名称）
     pub fn primary(&self) -> Option<&ContextEntry> {
         self.0.iter().find(|p| p.value.is_none())
     }
 
-    /// Returns everything except the primary context entry.
+    /// 返回除主上下文条目之外的所有内容
     pub fn secondary(&self) -> impl Iterator<Item = &ContextEntry> {
         let primary = self.primary();
         self.0.iter().filter(move |&p| Some(p) != primary)
     }
 
-    /// Parse a key context from a string.
-    /// The key context format is very simple:
-    /// - either a single identifier, such as `StatusBar`
-    /// - or a key value pair, such as `mode = visible`
-    /// - separated by whitespace, such as `StatusBar mode = visible`
+    /// 从字符串解析键上下文。
+    /// 键上下文格式非常简单：
+    /// - 单个标识符，如 `StatusBar`
+    /// - 或键值对，如 `mode = visible`
+    /// - 用空格分隔，如 `StatusBar mode = visible`
     pub fn parse(source: &str) -> Result<Self> {
         let mut context = Self::default();
         let source = skip_whitespace(source);
@@ -94,17 +92,17 @@ impl KeyContext {
         Self::parse_expr(source, context)
     }
 
-    /// Check if this context is empty.
+    /// 检查此上下文是否为空
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    /// Clear this context.
+    /// 清空此上下文
     pub fn clear(&mut self) {
         self.0.clear();
     }
 
-    /// Extend this context with another context.
+    /// 使用另一个上下文扩展此上下文
     pub fn extend(&mut self, other: &Self) {
         for entry in &other.0 {
             if !self.contains(&entry.key) {
@@ -113,7 +111,7 @@ impl KeyContext {
         }
     }
 
-    /// Add an identifier to this context, if it's not already in this context.
+    /// 向此上下文添加标识符（如果尚不存在）
     pub fn add<I: Into<SharedString>>(&mut self, identifier: I) {
         let key = identifier.into();
 
@@ -122,7 +120,7 @@ impl KeyContext {
         }
     }
 
-    /// Set a key value pair in this context, if it's not already set.
+    /// 在此上下文中设置键值对（如果尚未设置）
     pub fn set<S1: Into<SharedString>, S2: Into<SharedString>>(&mut self, key: S1, value: S2) {
         let key = key.into();
         if !self.contains(&key) {
@@ -133,12 +131,12 @@ impl KeyContext {
         }
     }
 
-    /// Check if this context contains a given identifier or key.
+    /// 检查此上下文是否包含给定标识符或键
     pub fn contains(&self, key: &str) -> bool {
         self.0.iter().any(|entry| entry.key.as_ref() == key)
     }
 
-    /// Get the associated value for a given identifier or key.
+    /// 获取给定标识符或键的关联值
     pub fn get(&self, key: &str) -> Option<&SharedString> {
         self.0
             .iter()
@@ -165,31 +163,29 @@ impl fmt::Debug for KeyContext {
     }
 }
 
-/// A datastructure for resolving whether an action should be dispatched
-/// Representing a small language for describing which contexts correspond
-/// to which actions.
+/// 用于解析是否应分发动作的数据结构。
+/// 表示一种小型语言，用于描述哪些上下文对应哪些动作。
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum KeyBindingContextPredicate {
-    /// A predicate that will match a given identifier.
+    /// 匹配给定标识符的谓词
     Identifier(SharedString),
-    /// A predicate that will match a given key-value pair.
+    /// 匹配给定键值对的谓词
     Equal(SharedString, SharedString),
-    /// A predicate that will match a given key-value pair not being present.
+    /// 匹配给定键值对不存在的谓词
     NotEqual(SharedString, SharedString),
-    /// A predicate that will match a given predicate appearing below another predicate.
-    /// in the element tree
+    /// 匹配给定谓词在元素树中位于另一谓词下方的谓词
     Descendant(
         Box<KeyBindingContextPredicate>,
         Box<KeyBindingContextPredicate>,
     ),
-    /// Predicate that will invert another predicate.
+    /// 反转另一谓词的谓词
     Not(Box<KeyBindingContextPredicate>),
-    /// A predicate that will match if both of its children match.
+    /// 当其两个子项都匹配时匹配的谓词
     And(
         Box<KeyBindingContextPredicate>,
         Box<KeyBindingContextPredicate>,
     ),
-    /// A predicate that will match if either of its children match.
+    /// 当其任一子项匹配时匹配的谓词
     Or(
         Box<KeyBindingContextPredicate>,
         Box<KeyBindingContextPredicate>,
@@ -218,34 +214,26 @@ impl fmt::Display for KeyBindingContextPredicate {
 }
 
 impl KeyBindingContextPredicate {
-    /// Parse a string in the same format as the keymap's context field.
+    /// 以与键映射的 context 字段相同的格式解析字符串。
     ///
-    /// A basic equivalence check against a set of identifiers can performed by
-    /// simply writing a string:
+    /// 针对一组标识符的基本等价检查可以通过简单编写字符串来执行：
     ///
-    /// `StatusBar` -> A predicate that will match a context with the identifier `StatusBar`
+    /// `StatusBar` -> 匹配包含标识符 `StatusBar` 的上下文的谓词
     ///
-    /// You can also specify a key-value pair:
+    /// 你也可以指定键值对：
     ///
-    /// `mode == visible` -> A predicate that will match a context with the key `mode`
-    ///                      with the value `visible`
+    /// `mode == visible` -> 匹配包含键 `mode` 且值为 `visible` 的上下文的谓词
     ///
-    /// And a logical operations combining these two checks:
+    /// 以及组合这两种检查的逻辑运算：
     ///
-    /// `StatusBar && mode == visible` -> A predicate that will match a context with the
-    ///                                   identifier `StatusBar` and the key `mode`
-    ///                                   with the value `visible`
+    /// `StatusBar && mode == visible` -> 匹配包含标识符 `StatusBar` 且键 `mode` 值为 `visible` 的上下文的谓词
     ///
+    /// 还有一个特殊的子级 `>` 运算符，用于匹配位于另一谓词下方的谓词：
     ///
-    /// There is also a special child `>` operator that will match a predicate that is
-    /// below another predicate:
+    /// `StatusBar > mode == visible` -> 匹配上下文标识符 `StatusBar` 且子上下文具有键 `mode` 值为 `visible` 的谓词
     ///
-    /// `StatusBar > mode == visible` -> A predicate that will match a context identifier `StatusBar`
-    ///                                  and a child context that has the key `mode` with the
-    ///                                  value `visible`
-    ///
-    /// This syntax supports `!=`, `||` and `&&` as logical operators.
-    /// You can also preface an operation or check with a `!` to negate it.
+    /// 此语法支持 `!=`、`||` 和 `&&` 作为逻辑运算符。
+    /// 你也可以在操作或检查前加上 `!` 来否定它。
     pub fn parse(source: &str) -> Result<Self> {
         let source = skip_whitespace(source);
         let (predicate, rest) = Self::parse_expr(source, 0)?;
@@ -256,7 +244,7 @@ impl KeyBindingContextPredicate {
         }
     }
 
-    /// Find the deepest depth at which the predicate matches.
+    /// 查找谓词匹配的最深深度
     pub fn depth_of(&self, contexts: &[KeyContext]) -> Option<usize> {
         for depth in (0..=contexts.len()).rev() {
             let context_slice = &contexts[0..depth];
@@ -267,13 +255,13 @@ impl KeyBindingContextPredicate {
         None
     }
 
-    /// Eval a predicate against a set of contexts, arranged from lowest to highest.
+    /// 针对一组上下文评估谓词，从低到高排列
     #[allow(unused)]
     pub fn eval(&self, contexts: &[KeyContext]) -> bool {
         self.eval_inner(contexts, contexts)
     }
 
-    /// Eval a predicate against a set of contexts, arranged from lowest to highest.
+    /// 针对一组上下文评估谓词，从低到高排列
     pub fn eval_inner(&self, contexts: &[KeyContext], all_contexts: &[KeyContext]) -> bool {
         let Some(context) = contexts.last() else {
             return false;
@@ -323,8 +311,7 @@ impl KeyBindingContextPredicate {
         }
     }
 
-    /// Returns whether or not this predicate matches all possible contexts matched by
-    /// the other predicate.
+    /// 返回此谓词是否匹配另一谓词可能匹配的所有上下文
     pub fn is_superset(&self, other: &Self) -> bool {
         if self == other {
             return true;

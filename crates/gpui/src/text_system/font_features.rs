@@ -3,25 +3,25 @@ use std::sync::Arc;
 
 use schemars::{JsonSchema, json_schema};
 
-/// The OpenType features that can be configured for a given font.
+/// 可为给定字体配置的 OpenType 功能。
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
 pub struct FontFeatures(pub Arc<Vec<(String, u32)>>);
 
 impl FontFeatures {
-    /// Disables `calt`.
+    /// 禁用 `calt`（连字）功能。
     pub fn disable_ligatures() -> Self {
         Self(Arc::new(vec![("calt".into(), 0)]))
     }
 
-    /// Get the tag name list of the font OpenType features
-    /// only enabled or disabled features are returned
+    /// 获取字体 OpenType 功能的标签名称列表
+    /// 仅返回已启用或禁用的功能
     pub fn tag_value_list(&self) -> &[(String, u32)] {
         self.0.as_slice()
     }
 
-    /// Returns whether the `calt` feature is enabled.
+    /// 返回 `calt` 功能是否已启用。
     ///
-    /// Returns `None` if the feature is not present.
+    /// 如果该功能不存在，返回 `None`。
     pub fn is_calt_enabled(&self) -> Option<bool> {
         self.0
             .iter()
@@ -62,7 +62,7 @@ impl<'de> serde::Deserialize<'de> for FontFeatures {
             type Value = FontFeatures;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a map of font features")
+                formatter.write_str("字体功能映射")
             }
 
             fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
@@ -149,6 +149,7 @@ impl JsonSchema for FontFeatures {
     }
 }
 
+/// 验证字体功能标签是否有效（必须为4个ASCII字母数字字符）
 fn is_valid_feature_tag(tag: &str) -> bool {
     tag.len() == 4 && tag.chars().all(|c| c.is_ascii_alphanumeric())
 }

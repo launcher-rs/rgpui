@@ -1,3 +1,5 @@
+//! 元素模块，包含 GPUI 中各种可复用的 UI 元素组件。
+
 mod anchored;
 mod animation;
 mod canvas;

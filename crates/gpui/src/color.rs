@@ -37,13 +37,13 @@ pub fn swap_rgba_pa_to_bgra(color: &mut [u8]) {
 #[derive(PartialEq, Clone, Copy, Default)]
 #[repr(C)]
 pub struct Rgba {
-    /// The red component of the color, in the range 0.0 to 1.0
+    /// 颜色的红色分量，范围为 0.0 到 1.0
     pub r: f32,
-    /// The green component of the color, in the range 0.0 to 1.0
+    /// 颜色的绿色分量，范围为 0.0 到 1.0
     pub g: f32,
-    /// The blue component of the color, in the range 0.0 to 1.0
+    /// 颜色的蓝色分量，范围为 0.0 到 1.0
     pub b: f32,
-    /// The alpha component of the color, in the range 0.0 to 1.0
+    /// 颜色的透明度分量，范围为 0.0 到 1.0
     pub a: f32,
 }
 
@@ -54,7 +54,7 @@ impl fmt::Debug for Rgba {
 }
 
 impl Rgba {
-    /// Create a new [`Rgba`] color by blending this and another color together
+    /// 通过将此颜色与另一颜色混合来创建新的 [`Rgba`] 颜色
     pub fn blend(&self, other: Rgba) -> Self {
         if other.a >= 1.0 {
             other
@@ -87,7 +87,7 @@ impl Visitor<'_> for RgbaVisitor {
     type Value = Rgba;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a string in the format #rrggbb or #rrggbbaa")
+        formatter.write_str("格式为 #rrggbb 或 #rrggbbaa 的字符串")
     }
 
     fn visit_str<E: de::Error>(self, value: &str) -> Result<Rgba, E> {
@@ -206,8 +206,8 @@ impl TryFrom<&'_ str> for Rgba {
                     0xf
                 };
 
-                /// Duplicates a given hex digit.
-                /// E.g., `0xf` -> `0xff`.
+                /// 复制给定的十六进制数字。
+                /// 例如，`0xf` -> `0xff`。
                 const fn duplicate(value: u8) -> u8 {
                     (value << 4) | value
                 }
@@ -388,7 +388,7 @@ pub const fn transparent_black() -> Hsla {
     }
 }
 
-/// Transparent white in [`Hsla`]
+/// [`Hsla`] 中的透明白色
 pub const fn transparent_white() -> Hsla {
     Hsla {
         h: 0.,
@@ -398,7 +398,7 @@ pub const fn transparent_white() -> Hsla {
     }
 }
 
-/// Opaque grey in [`Hsla`], values will be clamped to the range [0, 1]
+/// [`Hsla`] 中的不透明灰色，值将被限制在 [0, 1] 范围内
 pub fn opaque_grey(lightness: f32, opacity: f32) -> Hsla {
     Hsla {
         h: 0.,
@@ -418,7 +418,7 @@ pub const fn white() -> Hsla {
     }
 }
 
-/// The color red in [`Hsla`]
+/// [`Hsla`] 中的红色
 pub const fn red() -> Hsla {
     Hsla {
         h: 0.,
@@ -428,7 +428,7 @@ pub const fn red() -> Hsla {
     }
 }
 
-/// The color blue in [`Hsla`]
+/// [`Hsla`] 中的蓝色
 pub const fn blue() -> Hsla {
     Hsla {
         h: 0.6666666667,
@@ -438,7 +438,7 @@ pub const fn blue() -> Hsla {
     }
 }
 
-/// The color green in [`Hsla`]
+/// [`Hsla`] 中的绿色
 pub const fn green() -> Hsla {
     Hsla {
         h: 0.3333333333,
@@ -448,7 +448,7 @@ pub const fn green() -> Hsla {
     }
 }
 
-/// The color yellow in [`Hsla`]
+/// [`Hsla`] 中的黄色
 pub const fn yellow() -> Hsla {
     Hsla {
         h: 0.1666666667,
@@ -464,57 +464,57 @@ impl Hsla {
         self.into()
     }
 
-    /// The color red
+    /// 红色
     pub const fn red() -> Self {
         red()
     }
 
-    /// The color green
+    /// 绿色
     pub const fn green() -> Self {
         green()
     }
 
-    /// The color blue
+    /// 蓝色
     pub const fn blue() -> Self {
         blue()
     }
 
-    /// The color black
+    /// 黑色
     pub const fn black() -> Self {
         black()
     }
 
-    /// The color white
+    /// 白色
     pub const fn white() -> Self {
         white()
     }
 
-    /// The color transparent black
+    /// 透明黑色
     pub const fn transparent_black() -> Self {
         transparent_black()
     }
 
-    /// Returns true if the HSLA color is fully transparent, false otherwise.
+    /// 如果 HSLA 颜色完全透明则返回 true，否则返回 false。
     pub fn is_transparent(&self) -> bool {
         self.a == 0.0
     }
 
-    /// Returns true if the HSLA color is fully opaque, false otherwise.
+    /// 如果 HSLA 颜色完全不透明则返回 true，否则返回 false。
     pub fn is_opaque(&self) -> bool {
         self.a == 1.0
     }
 
-    /// Blends `other` on top of `self` based on `other`'s alpha value. The resulting color is a combination of `self`'s and `other`'s colors.
+    /// 基于 `other` 的透明度值，将 `other` 混合到 `self` 之上。结果颜色是 `self` 和 `other` 颜色的组合。
     ///
-    /// If `other`'s alpha value is 1.0 or greater, `other` color is fully opaque, thus `other` is returned as the output color.
-    /// If `other`'s alpha value is 0.0 or less, `other` color is fully transparent, thus `self` is returned as the output color.
-    /// Else, the output color is calculated as a blend of `self` and `other` based on their weighted alpha values.
+    /// 如果 `other` 的透明度值为 1.0 或更大，`other` 颜色完全不透明，因此返回 `other` 作为输出颜色。
+    /// 如果 `other` 的透明度值为 0.0 或更小，`other` 颜色完全透明，因此返回 `self` 作为输出颜色。
+    /// 否则，输出颜色基于 `self` 和 `other` 的加权透明度值计算混合结果。
     ///
-    /// Assumptions:
-    /// - Alpha values are contained in the range [0, 1], with 1 as fully opaque and 0 as fully transparent.
-    /// - The relative contributions of `self` and `other` is based on `self`'s alpha value (`self.a`) and `other`'s  alpha value (`other.a`), `self` contributing `self.a * (1.0 - other.a)` and `other` contributing its own alpha value.
-    /// - RGB color components are contained in the range [0, 1].
-    /// - If `self` and `other` colors are out of the valid range, the blend operation's output and behavior is undefined.
+    /// 假设：
+    /// - 透明度值包含在 [0, 1] 范围内，1 表示完全不透明，0 表示完全透明。
+    /// - `self` 和 `other` 的相对贡献基于 `self` 的透明度值 (`self.a`) 和 `other` 的透明度值 (`other.a`)，`self` 贡献 `self.a * (1.0 - other.a)`，`other` 贡献其自身的透明度值。
+    /// - RGB 颜色分量包含在 [0, 1] 范围内。
+    /// - 如果 `self` 和 `other` 颜色超出有效范围，混合操作的输出和行为未定义。
     pub fn blend(self, other: Hsla) -> Hsla {
         let alpha = other.a;
 
@@ -530,7 +530,7 @@ impl Hsla {
         }
     }
 
-    /// Returns a new HSLA color with the same hue, and lightness, but with no saturation.
+    /// 返回一个新的 HSLA 颜色，具有相同的色相和亮度，但无饱和度。
     pub fn grayscale(&self) -> Self {
         Hsla {
             h: self.h,
@@ -540,37 +540,37 @@ impl Hsla {
         }
     }
 
-    /// Fade out the color by a given factor. This factor should be between 0.0 and 1.0.
-    /// Where 0.0 will leave the color unchanged, and 1.0 will completely fade out the color.
+    /// 按给定因子淡化颜色。该因子应在 0.0 到 1.0 之间。
+    /// 其中 0.0 将使颜色保持不变，1.0 将完全淡化颜色。
     pub fn fade_out(&mut self, factor: f32) {
         self.a *= 1.0 - factor.clamp(0., 1.);
     }
 
-    /// Multiplies the alpha value of the color by a given factor
-    /// and returns a new HSLA color.
+    /// 将颜色的透明度值乘以给定因子，
+    /// 并返回新的 HSLA 颜色。
     ///
-    /// Useful for transforming colors with dynamic opacity,
-    /// like a color from an external source.
+    /// 适用于转换带有动态透明度的颜色，
+    /// 例如来自外部源的颜色。
     ///
-    /// Example:
+    /// 示例：
     /// ```
     /// let color = gpui::red();
     /// let faded_color = color.opacity(0.5);
     /// assert_eq!(faded_color.a, 0.5);
     /// ```
     ///
-    /// This will return a red color with half the opacity.
+    /// 这将返回透明度减半的红色。
     ///
-    /// Example:
+    /// 示例：
     /// ```
     /// use gpui::hsla;
-    /// let color = hsla(0.7, 1.0, 0.5, 0.7); // A saturated blue
+    /// let color = hsla(0.7, 1.0, 0.5, 0.7); // 饱和的蓝色
     /// let faded_color = color.opacity(0.16);
     /// assert!((faded_color.a - 0.112).abs() < 1e-6);
     /// ```
     ///
-    /// This will return a blue color with around ~10% opacity,
-    /// suitable for an element's hover or selected state.
+    /// 这将返回透明度约为 ~10% 的蓝色，
+    /// 适用于元素的悬停或选中状态。
     ///
     pub fn opacity(&self, factor: f32) -> Self {
         Hsla {
@@ -581,27 +581,27 @@ impl Hsla {
         }
     }
 
-    /// Returns a new HSLA color with the same hue, saturation,
-    /// and lightness, but with a new alpha value.
+    /// 返回一个新的 HSLA 颜色，具有相同的色相、饱和度
+    /// 和亮度，但具有新的透明度值。
     ///
-    /// Example:
+    /// 示例：
     /// ```
     /// let color = gpui::red();
     /// let red_color = color.alpha(0.25);
     /// assert_eq!(red_color.a, 0.25);
     /// ```
     ///
-    /// This will return a red color with half the opacity.
+    /// 这将返回透明度减半的红色。
     ///
-    /// Example:
+    /// 示例：
     /// ```
     /// use gpui::hsla;
-    /// let color = hsla(0.7, 1.0, 0.5, 0.7); // A saturated blue
+    /// let color = hsla(0.7, 1.0, 0.5, 0.7); // 饱和的蓝色
     /// let faded_color = color.alpha(0.25);
     /// assert_eq!(faded_color.a, 0.25);
     /// ```
     ///
-    /// This will return a blue color with 25% opacity.
+    /// 这将返回透明度为 25% 的蓝色。
     pub fn alpha(&self, a: f32) -> Self {
         Hsla {
             h: self.h,
@@ -761,7 +761,7 @@ impl Default for Background {
     }
 }
 
-/// Creates a hash pattern background
+/// 创建哈希图案背景
 pub fn pattern_slash(color: impl Into<Hsla>, width: f32, interval: f32) -> Background {
     let width_scaled = (width * 255.0) as u32;
     let interval_scaled = (interval * 255.0) as u32;
@@ -775,7 +775,7 @@ pub fn pattern_slash(color: impl Into<Hsla>, width: f32, interval: f32) -> Backg
     }
 }
 
-/// Creates a checkerboard pattern background
+/// 创建棋盘图案背景
 pub fn checkerboard(color: impl Into<Hsla>, size: f32) -> Background {
     Background {
         tag: BackgroundTag::Checkerboard,
@@ -785,7 +785,7 @@ pub fn checkerboard(color: impl Into<Hsla>, size: f32) -> Background {
     }
 }
 
-/// Creates a solid background color.
+/// 创建纯色背景颜色。
 pub fn solid_background(color: impl Into<Hsla>) -> Background {
     Background {
         solid: color.into(),
@@ -793,11 +793,11 @@ pub fn solid_background(color: impl Into<Hsla>) -> Background {
     }
 }
 
-/// Creates a LinearGradient background color.
+/// 创建 LinearGradient 背景颜色。
 ///
-/// The gradient line's angle of direction. A value of `0.` is equivalent to top; increasing values rotate clockwise from there.
+/// 渐变线的方向角度。`0.` 的值等效于顶部；增加的值从那里顺时针旋转。
 ///
-/// The `angle` is in degrees value in the range 0.0 to 360.0.
+/// `angle` 是以度为单位的值，范围为 0.0 到 360.0。
 ///
 /// <https://developer.mozilla.org/en-US/docs/Web/CSS/gradient/linear-gradient>
 pub fn linear_gradient(
@@ -825,9 +825,9 @@ pub struct LinearColorStop {
     pub percentage: f32,
 }
 
-/// Creates a new linear color stop.
+/// 创建新的线性颜色停止点。
 ///
-/// The percentage of the gradient, in the range 0.0 to 1.0.
+/// 渐变的百分比，范围为 0.0 到 1.0。
 pub fn linear_color_stop(color: impl Into<Hsla>, percentage: f32) -> LinearColorStop {
     LinearColorStop {
         color: color.into(),
@@ -836,7 +836,7 @@ pub fn linear_color_stop(color: impl Into<Hsla>, percentage: f32) -> LinearColor
 }
 
 impl LinearColorStop {
-    /// Returns a new color stop with the same color, but with a modified alpha value.
+    /// 返回一个新的颜色停止点，颜色相同，但透明度值已修改。
     pub fn opacity(&self, factor: f32) -> Self {
         Self {
             percentage: self.percentage,
@@ -846,7 +846,7 @@ impl LinearColorStop {
 }
 
 impl Background {
-    /// Returns the solid color if this is a solid background, None otherwise.
+    /// 如果是纯色背景则返回纯色，否则返回 None。
     pub fn as_solid(&self) -> Option<Hsla> {
         if self.tag == BackgroundTag::Solid {
             Some(self.solid)
@@ -863,7 +863,7 @@ impl Background {
         self
     }
 
-    /// Returns a new background color with the same hue, saturation, and lightness, but with a modified alpha value.
+    /// 返回一个新的背景颜色，具有相同的色相、饱和度和亮度，但透明度值已修改。
     pub fn opacity(&self, factor: f32) -> Self {
         let mut background = *self;
         background.solid = background.solid.opacity(factor);
@@ -874,7 +874,7 @@ impl Background {
         background
     }
 
-    /// Returns whether the background color is transparent.
+    /// 返回背景颜色是否透明。
     pub fn is_transparent(&self) -> bool {
         match self.tag {
             BackgroundTag::Solid => self.solid.is_transparent(),

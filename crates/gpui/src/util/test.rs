@@ -9,6 +9,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
+/// 根据 JSON 描述创建临时目录树。
 pub struct TempTree {
     _temp_dir: TempDir,
     path: PathBuf,
@@ -31,6 +32,7 @@ impl TempTree {
     }
 }
 
+// 将 JSON 树结构写入文件系统。
 fn write_tree(path: &Path, tree: serde_json::Value) {
     use serde_json::Value;
     use std::fs;
@@ -57,15 +59,16 @@ fn write_tree(path: &Path, tree: serde_json::Value) {
                     fs::write(&path, contents).unwrap();
                 }
                 _ => {
-                    panic!("JSON object must contain only objects, strings, or null");
+                    panic!("JSON 对象必须只包含对象、字符串或 null");
                 }
             }
         }
     } else {
-        panic!("You must pass a JSON object to this helper")
+        panic!("你必须向此辅助函数传递一个 JSON 对象")
     }
 }
 
+/// 生成指定行数、列数并以指定字符开头的示例文本。
 pub fn sample_text(rows: usize, cols: usize, start_char: char) -> String {
     let mut text = String::new();
     for row in 0..rows {

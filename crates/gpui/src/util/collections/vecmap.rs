@@ -1,19 +1,17 @@
-/// A collection that provides a map interface but is backed by vectors.
+/// 提供映射接口但由向量支持的集合。
 ///
-/// This is suitable for small key-value stores where the item count is not
-/// large enough to overcome the overhead of a more complex algorithm.
+/// 适用于键值对数量不足以克服更复杂算法
+/// 开销的小型存储场景。
 ///
-/// If this meets your use cases, then [`VecMap`] should be a drop-in
-/// replacement for [`std::collections::HashMap`] or [`super::HashMap`]. Note
-/// that we are adding APIs on an as-needed basis. If the API you need is not
-/// present yet, please add it!
+/// 如果满足你的使用场景，[`VecMap`] 应该是 [`std::collections::HashMap`]
+/// 或 [`super::HashMap`] 的直接替代品。注意我们按需添加 API，
+/// 如果你需要的 API 尚不存在，请添加它！
 ///
-/// Because it uses vectors as a backing store, the map also iterates over items
-/// in insertion order, like [`super::IndexMap`].
+/// 由于使用向量作为底层存储，该映射也按插入顺序迭代，
+/// 类似于 [`super::IndexMap`]。
 ///
-/// This struct uses a struct-of-arrays (SoA) representation which tends to be
-/// more cache efficient and promotes autovectorization when using simple key or
-/// value types.
+/// 此结构体使用结构体数组（SoA）表示，通常具有更好的缓存效率
+/// 并在使用简单键或值类型时促进自动向量化。
 #[derive(Default)]
 pub struct VecMap<K, V> {
     keys: Vec<K>,
@@ -46,10 +44,10 @@ impl<K: Eq, V> VecMap<K, V> {
         }
     }
 
-    /// Like [`Self::entry`] but takes its key by reference instead of by value.
+    /// 类似于 [`Self::entry`]，但通过引用而非值获取键。
     ///
-    /// This can be helpful if you have a key where cloning is expensive, as we
-    /// can avoid cloning the key until a value is inserted under that entry.
+    /// 当克隆键的开销较大时，此方法很有用，因为我们
+    /// 可以等到在该条目下插入值时才克隆键。
     pub fn entry_ref<'a, 'k>(&'a mut self, key: &'k K) -> EntryRef<'k, 'a, K, V> {
         match self.keys.iter().position(|k| k == key) {
             Some(index) => EntryRef::Occupied(OccupiedEntry {

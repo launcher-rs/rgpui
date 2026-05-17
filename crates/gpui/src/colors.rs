@@ -2,26 +2,26 @@ use crate::{App, Global, Rgba, Window, WindowAppearance, rgb};
 use std::ops::Deref;
 use std::sync::Arc;
 
-/// The default set of colors for gpui.
+/// GPUI 的默认颜色集。
 ///
-/// These are used for styling base components, examples and more.
+/// 这些用于样式化基础组件、示例等。
 #[derive(Clone, Debug)]
 pub struct Colors {
-    /// Text color
+    /// 文本颜色
     pub text: Rgba,
-    /// Selected text color
+    /// 选中文本颜色
     pub selected_text: Rgba,
-    /// Background color
+    /// 背景颜色
     pub background: Rgba,
-    /// Disabled color
+    /// 禁用状态颜色
     pub disabled: Rgba,
-    /// Selected color
+    /// 选中状态颜色
     pub selected: Rgba,
-    /// Border color
+    /// 边框颜色
     pub border: Rgba,
-    /// Separator color
+    /// 分隔线颜色
     pub separator: Rgba,
-    /// Container color
+    /// 容器颜色
     pub container: Rgba,
 }
 
@@ -32,7 +32,7 @@ impl Default for Colors {
 }
 
 impl Colors {
-    /// Returns the default colors for the given window appearance.
+    /// 返回给定窗口外观的默认颜色。
     pub fn for_appearance(window: &Window) -> Self {
         match window.appearance() {
             WindowAppearance::Light | WindowAppearance::VibrantLight => Self::light(),
@@ -40,7 +40,7 @@ impl Colors {
         }
     }
 
-    /// Returns the default dark colors.
+    /// 返回默认的深色颜色集。
     pub fn dark() -> Self {
         Self {
             text: rgb(0xffffff),
@@ -54,7 +54,7 @@ impl Colors {
         }
     }
 
-    /// Returns the default light colors.
+    /// 返回默认的浅色颜色集。
     pub fn light() -> Self {
         Self {
             text: rgb(0x252525),
@@ -68,13 +68,13 @@ impl Colors {
         }
     }
 
-    /// Get [Colors] from the global state
+    /// 从全局状态获取 [Colors]
     pub fn get_global(cx: &App) -> &Arc<Colors> {
         &cx.global::<GlobalColors>().0
     }
 }
 
-/// Get [Colors] from the global state
+/// 从全局状态获取 [Colors]
 #[derive(Clone, Debug)]
 pub struct GlobalColors(pub Arc<Colors>);
 
@@ -88,7 +88,7 @@ impl Deref for GlobalColors {
 
 impl Global for GlobalColors {}
 
-/// Implement this trait to allow global [Colors] access via `cx.default_colors()`.
+/// 实现此 trait 以允许通过 `cx.default_colors()` 全局访问 [Colors]。
 pub trait DefaultColors {
     /// Returns the default [`Colors`]
     fn default_colors(&self) -> &Arc<Colors>;
@@ -100,15 +100,15 @@ impl DefaultColors for App {
     }
 }
 
-/// The appearance of the base GPUI colors, used to style GPUI elements
+/// 用于样式化 GPUI 元素的基础 GPUI 颜色外观
 ///
-/// Varies based on the system's current [`WindowAppearance`].
+/// 根据系统当前的 [`WindowAppearance`] 而变化。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum DefaultAppearance {
-    /// Use the set of colors for light appearances.
+    /// 对浅色外观使用一组颜色。
     #[default]
     Light,
-    /// Use the set of colors for dark appearances.
+    /// 对深色外观使用一组颜色。
     Dark,
 }
 

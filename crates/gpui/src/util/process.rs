@@ -1,8 +1,8 @@
 use anyhow::{Context as _, Result};
 use std::process::Stdio;
 
-/// A wrapper around `smol::process::Child` that ensures all subprocesses
-/// are killed when the process is terminated by using process groups.
+/// `smol::process::Child` 的包装器，通过使用进程组确保
+/// 所有子进程在进程终止时被杀死。
 pub struct Child {
     process: smol::process::Child,
 }
@@ -52,8 +52,8 @@ impl Child {
         stdout: Stdio,
         stderr: Stdio,
     ) -> Result<Self> {
-        // TODO(windows): create a job object and add the child process handle to it,
-        // see https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects
+        // TODO(windows): 创建作业对象并将子进程句柄添加到其中，
+        // 参见 https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects
         let mut command = smol::process::Command::from(command);
         let process = command
             .stdin(stdin)
@@ -85,7 +85,7 @@ impl Child {
 
     #[cfg(windows)]
     pub fn kill(&mut self) -> Result<()> {
-        // TODO(windows): terminate the job object in kill
+        // TODO(windows): 在 kill 中终止作业对象
         self.process.kill()?;
         Ok(())
     }
