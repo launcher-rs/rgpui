@@ -84,6 +84,11 @@ PlatformWindow trait 关键方法:
 - activate() → SW_RESTORE / SW_SHOWNORMAL + SetForegroundWindow
 ```
 
+## 提交与推送规范
+
+- **推送前必须检查**：执行 `cargo check --workspace` 确保没有任何错误和警告
+- **禁止使用 `#[allow(dead_code)]`**：未使用的代码应当删除或重构，不得使用属性压制警告
+
 ## 代码规范
 
 - **所有函数必须添加中文注释**：公开 API 和内部函数均需使用简体中文说明功能、参数和返回值
