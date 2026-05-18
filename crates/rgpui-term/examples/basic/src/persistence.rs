@@ -157,12 +157,3 @@ pub fn save_workspace(workspace: &WorkspaceLayout) {
         Err(e) => log::warn!("failed to serialize workspace: {e}"),
     }
 }
-
-pub fn delete_workspace(name: &str) {
-    let dir = workspaces_dir();
-    let filename = workspace_filename(name);
-    let path = dir.join(filename);
-    if path.exists() {
-        let _ = fs::remove_file(&path);
-    }
-}

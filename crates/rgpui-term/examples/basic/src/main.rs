@@ -65,11 +65,9 @@ const TEXT_PRIMARY: u32 = 0xd8d8d8;
 const TEXT_SUBTLE: u32 = 0xa6a6a6;
 const TEXT_FAINT: u32 = 0x5a5a5a;
 
-const SURFACE_ROOT: u32 = 0x000000;
 const SURFACE_SIDEBAR: u32 = 0x202020;
 const BORDER_SOFT: u32 = 0x3a3a3a;
 
-const SURFACE_ROOT_ALPHA: f32 = 0.12;
 const SURFACE_SIDEBAR_ALPHA: f32 = 0.4;
 const BORDER_SOFT_ALPHA: f32 = 0.50;
 

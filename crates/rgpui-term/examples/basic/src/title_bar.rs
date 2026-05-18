@@ -3,7 +3,7 @@ use std::rc::Rc;
 use rgpui::{
     AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
     MouseButton, ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, TitlebarOptions, Window, WindowControlArea, div,
+    StyleRefinement, Styled, Window, WindowControlArea, div,
     prelude::FluentBuilder as _, px,
 };
 use rgpui_component::{
@@ -35,27 +35,6 @@ impl TitleBar {
             children: SmallVec::new(),
             on_close_window: None,
         }
-    }
-
-    /// Returns the default title bar options for compatible with the [`crate::TitleBar`].
-    pub fn title_bar_options() -> TitlebarOptions {
-        TitlebarOptions {
-            title: None,
-            appears_transparent: true,
-            traffic_light_position: Some(rgpui::point(px(9.0), px(9.0))),
-        }
-    }
-
-    /// Add custom for close window event, default is None, then click X button will call `window.remove_window()`.
-    /// Linux only, this will do nothing on other platforms.
-    pub fn on_close_window(
-        mut self,
-        f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-    ) -> Self {
-        if cfg!(target_os = "linux") {
-            self.on_close_window = Some(Rc::new(Box::new(f)));
-        }
-        self
     }
 }
 

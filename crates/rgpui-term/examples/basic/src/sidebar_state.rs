@@ -20,13 +20,6 @@ impl FavoriteEntry {
         Self { path, label: None }
     }
 
-    pub fn with_label(path: PathBuf, label: impl Into<String>) -> Self {
-        Self {
-            path,
-            label: Some(label.into()),
-        }
-    }
-
     /// Returns the display name (label or directory name).
     pub fn display_name(&self) -> String {
         if let Some(label) = &self.label {
@@ -89,17 +82,6 @@ pub struct WorkspaceLayout {
     pub sidebar_width: f32,
 }
 
-impl WorkspaceLayout {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            tabs: Vec::new(),
-            active_tab_index: 0,
-            sidebar_width: 250.0,
-        }
-    }
-}
-
 /// Collapsible sections in the sidebar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SidebarSection {
@@ -110,16 +92,6 @@ pub enum SidebarSection {
 }
 
 impl SidebarSection {
-    /// Returns all sidebar sections in display order.
-    pub fn all() -> &'static [SidebarSection] {
-        &[
-            SidebarSection::Favorites,
-            SidebarSection::Projects,
-            SidebarSection::RecentDirs,
-            SidebarSection::Workspaces,
-        ]
-    }
-
     /// Returns the display title for this section.
     pub fn title(&self) -> &'static str {
         match self {
@@ -138,12 +110,6 @@ pub struct FavoritesData {
 }
 
 impl FavoritesData {
-    pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
-    }
-
     pub fn add(&mut self, entry: FavoriteEntry) {
         // Avoid duplicates
         if !self.entries.iter().any(|e| e.path == entry.path) {
@@ -169,13 +135,6 @@ fn default_max_entries() -> usize {
 }
 
 impl RecentData {
-    pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-            max_entries: 20,
-        }
-    }
-
     /// Add or update a recent entry, moving it to the front.
     pub fn touch(&mut self, path: PathBuf) {
         // Remove existing entry with same path
@@ -188,12 +147,5 @@ impl RecentData {
         if self.entries.len() > self.max_entries {
             self.entries.truncate(self.max_entries);
         }
-    }
-
-    /// Returns entries sorted by last_opened (most recent first).
-    pub fn sorted(&self) -> Vec<&RecentEntry> {
-        let mut sorted: Vec<_> = self.entries.iter().collect();
-        sorted.sort_by(|a, b| b.last_opened.cmp(&a.last_opened));
-        sorted
     }
 }

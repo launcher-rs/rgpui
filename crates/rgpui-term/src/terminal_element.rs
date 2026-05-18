@@ -1,20 +1,20 @@
-//! Terminal element for rendering terminal content in rgpui.
+//! 终端元素，用于在 rgpui 中渲染终端内容。
 //!
-//! This module provides the `TerminalElement` struct that implements rgpui's `Element` trait
-//! to render terminal content. It handles:
-//! - Batching adjacent cells with the same style for efficient rendering
-//! - Color conversion from Alacritty's color format to rgpui's Hsla
-//! - Cell flag handling (bold, italic, underline, strikethrough, dim)
-//! - Cursor rendering with support for block, bar, and underline shapes
+//! 本模块提供 `TerminalElement` 结构体，实现 rgpui 的 `Element` trait
+//! 以渲染终端内容。处理以下功能：
+//! - 批量处理相邻相同样式的单元格以提高渲染效率
+//! - 颜色转换：从 Alacritty 的颜色格式转换为 rgpui 的 Hsla
+//! - 单元格标志处理（粗体、斜体、下划线、删除线、暗淡）
+//! - 光标渲染，支持块状、条状和下划线形状
 //!
-//! # Architecture
+//! # 架构
 //!
-//! The rendering pipeline consists of three phases:
-//! 1. `request_layout` - Returns layout ID with the requested size
-//! 2. `prepaint` - Computes layout state: batched text runs, background rects, cursor
-//! 3. `paint` - Renders backgrounds, text runs, and cursor
+//! 渲染管道包含三个阶段：
+//! 1. `request_layout` - 返回布局 ID 和请求的尺寸
+//! 2. `prepaint` - 计算布局状态：批量文本运行、背景矩形、光标
+//! 3. `paint` - 渲染背景、文本运行和光标
 //!
-//! # Example
+//! # 示例
 //!
 //! ```ignore
 //! let element = TerminalElement::new(terminal_entity, focus_handle, true, true, TextStyle::default());
@@ -45,7 +45,7 @@ const SCROLLBAR_THUMB_MIN_HEIGHT: f32 = 20.0;
 
 /// Layout state computed during prepaint, used for painting.
 pub struct LayoutState {
-    hitbox: Hitbox,
+    _hitbox: Hitbox,
     batched_text_runs: Vec<BatchedTextRun>,
     background_rects: Vec<LayoutRect>,
     block_fragments: Vec<BlockFragment>,
@@ -55,7 +55,7 @@ pub struct LayoutState {
     background_color: Hsla,
     foreground_color: Hsla,
     dimensions: TerminalBounds,
-    mode: TermMode,
+    _mode: TermMode,
     history_size: usize,
     display_offset: usize,
 }
@@ -83,16 +83,21 @@ impl DisplayCursor {
     }
 }
 
-/// A batched text run combining adjacent cells with identical styles.
+/// 批处理的文本运行，合并具有相同样式的相邻单元格。
 ///
-/// Batching reduces draw calls by combining multiple characters that share
-/// the same font, color, and decoration properties into a single text shape.
+/// 通过将共享相同字体、颜色和装饰属性的多个字符合并为单个文本形状，
+/// 减少绘制调用次数。
 #[derive(Debug)]
 pub struct BatchedTextRun {
+    /// 起始位置
     pub start_point: AlacPoint<i32, i32>,
+    /// 文本内容
     pub text: String,
+    /// 单元格数量
     pub cell_count: usize,
+    /// 文本样式
     pub style: TextRun,
+    /// 字体大小
     pub font_size: AbsoluteLength,
 }
 
@@ -173,7 +178,7 @@ impl BatchedTextRun {
     }
 }
 
-/// A background rectangle for cells with non-default background colors.
+/// 具有非默认背景颜色的单元格的背景矩形。
 #[derive(Clone, Debug, Default)]
 pub struct LayoutRect {
     point: AlacPoint<i32, i32>,
@@ -279,7 +284,7 @@ impl PolygonFragment {
     }
 }
 
-/// Cursor rendering information.
+/// 光标渲染信息。
 pub struct CursorLayout {
     origin: Point<Pixels>,
     block_width: Pixels,
@@ -289,12 +294,16 @@ pub struct CursorLayout {
     text: Option<ShapedLine>,
 }
 
-/// Supported cursor shapes.
+/// 支持的光标形状。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorShape {
+    /// 块状光标
     Block,
+    /// 空心光标
     Hollow,
+    /// 条状光标
     Bar,
+    /// 下划线光标
     Underline,
 }
 
@@ -366,7 +375,7 @@ impl CursorLayout {
     }
 }
 
-/// Rectangular region for background merging optimization.
+/// 用于背景合并优化的矩形区域。
 #[derive(Debug, Clone)]
 struct BackgroundRegion {
     start_line: i32,
@@ -441,12 +450,12 @@ fn merge_background_regions(regions: Vec<BackgroundRegion>) -> Vec<BackgroundReg
     merged
 }
 
-/// rgpui element for rendering terminal content.
+/// 用于渲染终端内容的 rgpui 元素。
 ///
-/// Implements the three-phase rendering pipeline:
-/// 1. `request_layout` - Requests space from the layout system
-/// 2. `prepaint` - Computes batched text runs, background rects, and cursor
-/// 3. `paint` - Renders all computed elements
+/// 实现三阶段渲染管道：
+/// 1. `request_layout` - 向布局系统请求空间
+/// 2. `prepaint` - 计算批量文本运行、背景矩形和光标
+/// 3. `paint` - 渲染所有计算出的元素
 pub struct TerminalElement {
     terminal: Entity<Terminal>,
     focus: FocusHandle,
@@ -458,14 +467,14 @@ pub struct TerminalElement {
 }
 
 impl TerminalElement {
-    /// Creates a new terminal element.
+    /// 创建新的终端元素。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `terminal` - The terminal entity to render
-    /// * `focus` - Focus handle for keyboard input
-    /// * `focused` - Whether the terminal currently has focus
-    /// * `cursor_visible` - Whether the cursor should be visible (for blinking)
+    /// * `terminal` - 要渲染的终端实体
+    /// * `focus` - 键盘输入的焦点句柄
+    /// * `focused` - 终端当前是否获得焦点
+    /// * `cursor_visible` - 光标是否可见（用于闪烁）
     pub fn new(
         terminal: Entity<Terminal>,
         focus: FocusHandle,
@@ -485,8 +494,8 @@ impl TerminalElement {
         }
     }
 
-    /// Lays out the grid of cells, producing batched text runs and background rects.
-    /// Includes viewport culling to only render visible rows for better performance.
+    /// 布局单元格网格，生成批量文本运行和背景矩形。
+    /// 包含视口裁剪，仅渲染可见行以提高性能。
     fn layout_grid(
         grid: impl Iterator<Item = IndexedCell>,
         text_style: &TextStyle,
@@ -655,7 +664,7 @@ impl TerminalElement {
         (rects, block_fragments, polygon_fragments, batched_runs)
     }
 
-    /// Computes cursor position and dimensions.
+    /// 计算光标位置和尺寸。
     fn shape_cursor(
         cursor_point: DisplayCursor,
         size: TerminalBounds,
@@ -680,7 +689,7 @@ impl TerminalElement {
         }
     }
 
-    /// Converts Alacritty cell styles to a rgpui TextRun.
+    /// 将 Alacritty 单元格样式转换为 rgpui TextRun。
     fn cell_style(indexed: &IndexedCell, fg: AnsiColor, text_style: &TextStyle) -> TextRun {
         let flags = indexed.cell.flags;
         let mut fg_color = text_style.theme.resolve_color(&fg);
@@ -731,16 +740,24 @@ impl TerminalElement {
     }
 }
 
-/// Text styling configuration for terminal rendering.
+/// 终端渲染的文本样式配置。
 #[derive(Clone)]
 pub struct TextStyle {
+    /// 字体
     pub font: Font,
+    /// 字体大小
     pub font_size: AbsoluteLength,
+    /// 字体粗细
     pub font_weight: FontWeight,
+    /// 前景色
     pub foreground: Hsla,
+    /// 背景色
     pub background: Hsla,
+    /// 行高倍数
     pub line_height_multiplier: f32,
+    /// 字母间距
     pub letter_spacing: f32,
+    /// 终端主题
     pub theme: TerminalTheme,
 }
 
@@ -1502,7 +1519,7 @@ impl Element for TerminalElement {
         };
 
         LayoutState {
-            hitbox,
+            _hitbox: hitbox,
             batched_text_runs,
             background_rects: rects,
             block_fragments,
@@ -1512,7 +1529,7 @@ impl Element for TerminalElement {
             background_color,
             foreground_color,
             dimensions,
-            mode,
+            _mode: mode,
             history_size,
             display_offset,
         }
@@ -1623,7 +1640,7 @@ impl IntoElement for TerminalElement {
     }
 }
 
-/// Checks if a cell is blank and can be skipped during rendering.
+/// 检查单元格是否为空白，渲染时可以跳过。
 fn is_blank(cell: &IndexedCell) -> bool {
     if cell.c != ' ' {
         return false;
@@ -1643,12 +1660,12 @@ fn is_blank(cell: &IndexedCell) -> bool {
     true
 }
 
-/// Converts an Alacritty ANSI color to rgpui's Hsla format.
+/// 将 Alacritty ANSI 颜色转换为 rgpui 的 Hsla 格式。
 ///
-/// Supports:
-/// - Named colors (16 standard ANSI colors)
-/// - True colors (24-bit RGB)
-/// - Indexed colors (256-color palette)
+/// 支持：
+/// - 命名颜色（16 种标准 ANSI 颜色）
+/// - 真彩色（24 位 RGB）
+/// - 索引颜色（256 色调色板）
 pub fn convert_color(color: &AnsiColor) -> Hsla {
     match color {
         AnsiColor::Named(named) => named_color_to_hsla(*named),
@@ -1665,7 +1682,7 @@ pub fn convert_color(color: &AnsiColor) -> Hsla {
     }
 }
 
-/// Converts a named ANSI color to Hsla with improved color accuracy.
+/// 将命名 ANSI 颜色转换为 Hsla，提高颜色准确性。
 fn named_color_to_hsla(named: NamedColor) -> Hsla {
     match named {
         // Base colors - improved for better contrast and readability
@@ -1707,7 +1724,7 @@ fn named_color_to_hsla(named: NamedColor) -> Hsla {
     }
 }
 
-/// Converts a 256-color palette index to Hsla.
+/// 将 256 色调色板索引转换为 Hsla。
 fn indexed_color_to_hsla(idx: u8) -> Hsla {
     match idx {
         0..=15 => {
@@ -1751,7 +1768,7 @@ fn indexed_color_to_hsla(idx: u8) -> Hsla {
     }
 }
 
-/// Helper function to create Hsla from RGB values (0-255).
+/// 从 RGB 值（0-255）创建 Hsla 的辅助函数。
 fn hsla_from_rgb(r: u8, g: u8, b: u8) -> Hsla {
     let rgba = Rgba {
         r: r as f32 / 255.0,
@@ -1762,10 +1779,10 @@ fn hsla_from_rgb(r: u8, g: u8, b: u8) -> Hsla {
     rgba.into()
 }
 
-/// Input handler for the terminal that processes text input.
+/// 终端的输入处理器，处理文本输入。
 ///
-/// This handles regular character input (typing), IME composition,
-/// and other text-related input events via rgpui's InputHandler trait.
+/// 处理常规字符输入（打字）、IME 组合
+/// 以及其他与文本相关的输入事件，通过 rgpui 的 InputHandler trait。
 struct TerminalInputHandler {
     terminal: Entity<Terminal>,
     cursor_bounds: Option<Bounds<Pixels>>,

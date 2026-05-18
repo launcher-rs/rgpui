@@ -1,22 +1,21 @@
-//! Terminal entity wrapping Alacritty's terminal emulation.
+//! 终端实体，封装 Alacritty 的终端模拟功能。
 //!
-//! This module provides the core Terminal struct that bridges GPUI with Alacritty's
-//! terminal emulator. It handles PTY communication, event processing, and provides
-//! a clean API for the terminal view to interact with.
+//! 本模块提供核心的 Terminal 结构体，桥接 GPUI 与 Alacritty 终端模拟器。
+//! 处理 PTY 通信、事件处理，并为终端视图提供清晰的交互 API。
 //!
-//! # Architecture
+//! # 架构
 //!
-//! The terminal system consists of:
-//! - `ZedListener`: Bridges Alacritty events to GPUI via an unbounded channel
-//! - `TerminalBounds`: Manages terminal dimensions (cells, pixels, bounds)
-//! - `TerminalContent`: Holds rendered output for display
-//! - `Terminal`: Main entity wrapping `Arc<FairMutex<Term<ZedListener>>>`
-//! - `TerminalBuilder`: Factory for creating terminals with PTY subscription
+//! 终端系统包含以下部分：
+//! - `ZedListener`: 通过无界通道将 Alacritty 事件桥接到 GPUI
+//! - `TerminalBounds`: 管理终端尺寸（单元格、像素、边界）
+//! - `TerminalContent`: 持有渲染输出以供显示
+//! - `Terminal`: 主实体，封装 `Arc<FairMutex<Term<ZedListener>>>`
+//! - `TerminalBuilder`: 创建终端的工厂，包含 PTY 订阅
 //!
-//! # Event Processing
+//! # 事件处理
 //!
-//! Events from Alacritty are batched in 4ms windows to reduce UI update overhead.
-//! The event loop runs in a GPUI spawn task and processes events asynchronously.
+//! 来自 Alacritty 的事件会在 4ms 窗口内批处理，以减少 UI 更新开销。
+//! 事件循环在 GPUI spawn 任务中运行并异步处理事件。
 
 use std::{
     borrow::Cow, cmp, collections::VecDeque, ops::Deref, path::PathBuf, sync::Arc, time::Duration,
@@ -64,29 +63,29 @@ const DEBUG_TERMINAL_HEIGHT: Pixels = px(30.);
 const DEBUG_CELL_WIDTH: Pixels = px(5.);
 const DEBUG_LINE_HEIGHT: Pixels = px(5.);
 
-/// Events emitted by the Terminal for the view layer to handle.
+/// 终端发出的事件，供视图层处理。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
-    /// Terminal title has changed
+    /// 终端标题已更改
     TitleChanged,
-    /// Bell character received
+    /// 收到响铃字符
     Bell,
-    /// Terminal content has changed and needs redraw
+    /// 终端内容已更改，需要重绘
     Wakeup,
-    /// Cursor blinking state changed
+    /// 光标闪烁状态已更改
     BlinkChanged(bool),
-    /// Selection has changed
+    /// 选择区域已更改
     SelectionsChanged,
-    /// Terminal process exited
+    /// 终端进程已退出
     CloseTerminal,
 }
 
 impl EventEmitter<Event> for Terminal {}
 
-/// Bridges Alacritty events to GPUI via an unbounded channel.
+/// 通过无界通道将 Alacritty 事件桥接到 GPUI。
 ///
-/// Implements Alacritty's `EventListener` trait to receive events from the terminal
-/// emulator and forward them to the GPUI event loop for processing.
+/// 实现 Alacritty 的 `EventListener` trait，接收来自终端模拟器的事件
+/// 并将其转发到 GPUI 事件循环进行处理。
 #[derive(Clone)]
 pub struct ZedListener(pub UnboundedSender<AlacTermEvent>);
 
@@ -96,9 +95,9 @@ impl EventListener for ZedListener {
     }
 }
 
-/// Internal events for terminal state management.
+/// 用于终端状态管理的内部事件。
 ///
-/// These events are queued and processed during sync to update terminal state.
+/// 这些事件在同步期间排队并处理，以更新终端状态。
 #[derive(Clone)]
 enum InternalEvent {
     Resize(TerminalBounds),
@@ -110,14 +109,17 @@ enum InternalEvent {
     Copy(Option<bool>),
 }
 
-/// Terminal dimension management.
+/// 终端尺寸管理。
 ///
-/// Handles the relationship between pixel bounds, cell dimensions, and grid size.
-/// Used for coordinate translation between GPUI and Alacritty.
+/// 处理像素边界、单元格尺寸和网格大小之间的关系。
+/// 用于 GPUI 和 Alacritty 之间的坐标转换。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TerminalBounds {
+    /// 单元格宽度
     pub cell_width: Pixels,
+    /// 行高
     pub line_height: Pixels,
+    /// 边界矩形
     pub bounds: Bounds<Pixels>,
 }
 
@@ -196,10 +198,12 @@ impl Dimensions for TerminalBounds {
     }
 }
 
-/// A single cell with its position in the terminal grid.
+/// 终端网格中的单个单元格及其位置。
 #[derive(Clone, Debug)]
 pub struct IndexedCell {
+    /// 单元格在网格中的位置
     pub point: AlacPoint,
+    /// 单元格数据
     pub cell: Cell,
 }
 
@@ -211,22 +215,33 @@ impl Deref for IndexedCell {
     }
 }
 
-/// Rendered terminal content for display.
+/// 终端渲染内容，用于显示。
 ///
-/// Contains all the information needed to render the terminal:
-/// cells, cursor, selection, mode, and scroll state.
+/// 包含渲染终端所需的所有信息：
+/// 单元格、光标、选择区域、模式和滚动状态。
 #[derive(Clone)]
 pub struct TerminalContent {
+    /// 单元格列表
     pub cells: Vec<IndexedCell>,
+    /// 终端模式
     pub mode: TermMode,
+    /// 显示偏移量（滚动位置）
     pub display_offset: usize,
+    /// 选中的文本
     pub selection_text: Option<String>,
+    /// 选择区域范围
     pub selection: Option<SelectionRange>,
+    /// 光标信息
     pub cursor: RenderableCursor,
+    /// 光标字符
     pub cursor_char: char,
+    /// 终端尺寸
     pub terminal_bounds: TerminalBounds,
+    /// 是否已滚动到顶部
     pub scrolled_to_top: bool,
+    /// 是否已滚动到底部
     pub scrolled_to_bottom: bool,
+    /// 历史行数
     pub history_size: usize,
 }
 
@@ -329,26 +344,26 @@ fn default_shell_command() -> Option<String> {
     std::env::var("SHELL").ok()
 }
 
-/// Factory for creating Terminal instances with PTY subscription.
+/// 创建 Terminal 实例的工厂，包含 PTY 连接。
 ///
-/// Handles the async PTY creation and provides the `subscribe` method
-/// to wire up the event loop.
+/// 处理异步 PTY 创建并提供 `subscribe` 方法
+/// 来连接事件循环。
 pub struct TerminalBuilder {
     terminal: Terminal,
     events_rx: UnboundedReceiver<AlacTermEvent>,
 }
 
 impl TerminalBuilder {
-    /// Creates a new terminal with a PTY connection.
+    /// 创建带有 PTY 连接的新终端。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `working_directory` - Initial working directory for the shell
-    /// * `shell` - Shell program to run (None uses system default)
-    /// * `env` - Additional environment variables
-    /// * `max_scroll_history_lines` - Maximum scrollback history
-    /// * `window_id` - GPUI window identifier
-    /// * `cx` - Application context
+    /// * `working_directory` - Shell 的初始工作目录
+    /// * `shell` - 要运行的 Shell 程序（None 使用系统默认）
+    /// * `env` - 额外的环境变量
+    /// * `max_scroll_history_lines` - 最大滚动历史行数
+    /// * `window_id` - GPUI 窗口标识符
+    /// * `cx` - 应用上下文
     pub fn new(
         working_directory: Option<PathBuf>,
         shell: Option<String>,
@@ -480,10 +495,10 @@ impl TerminalBuilder {
         })
     }
 
-    /// Subscribes to terminal events and returns the configured Terminal.
+    /// 订阅终端事件并返回已配置的 Terminal。
     ///
-    /// This method sets up the event loop that processes Alacritty events
-    /// in batched 4ms windows to reduce UI update overhead.
+    /// 此方法设置事件循环，以批处理 4ms 窗口的方式处理 Alacritty 事件，
+    /// 减少 UI 更新开销。
     pub fn subscribe(mut self, cx: &Context<Terminal>) -> Terminal {
         self.terminal.event_loop_task = cx.spawn(async move |terminal, cx| {
             while let Some(event) = self.events_rx.next().await {
@@ -544,32 +559,44 @@ impl TerminalBuilder {
     }
 }
 
-/// Main terminal entity wrapping Alacritty's Term.
+/// 终端主实体，封装 Alacritty 的 Term。
 ///
-/// Provides the interface between GPUI and Alacritty's terminal emulator.
-/// Handles input, output, scrolling, selection, and event processing.
+/// 提供 GPUI 与 Alacritty 终端模拟器之间的接口。
+/// 处理输入、输出、滚动、选择和事件处理。
 pub struct Terminal {
+    /// Alacritty 终端实例
     term: Arc<FairMutex<Term<ZedListener>>>,
+    /// PTY 写入器
     pty_tx: Option<Notifier>,
+    /// 内部事件队列
     events: VecDeque<InternalEvent>,
+    /// 上次鼠标位置
     last_mouse: Option<(AlacPoint, AlacDirection)>,
+    /// 上次渲染内容
     pub last_content: TerminalContent,
+    /// 选择区域头部位置
     pub selection_head: Option<AlacPoint>,
+    /// 面包屑文本（终端标题）
     pub breadcrumb_text: String,
+    /// 滚动像素值
     scroll_px: Pixels,
+    /// 选择阶段
     selection_phase: SelectionPhase,
+    /// 中间件列表
     middlewares: Vec<Arc<dyn TerminalMiddleware>>,
+    /// 事件循环任务
     event_loop_task: Task<Result<(), anyhow::Error>>,
+    /// 代码块跟踪器
     block_tracker: BlockTracker,
 }
 
 impl Terminal {
-    /// Adds a middleware instance to the terminal pipeline.
+    /// 向终端添加中间件实例。
     pub fn add_middleware(&mut self, middleware: Arc<dyn TerminalMiddleware>) {
         self.middlewares.push(middleware);
     }
 
-    /// Replaces the middleware pipeline with a new list.
+    /// 用新列表替换中间件管道。
     pub fn set_middlewares(&mut self, middlewares: Vec<Arc<dyn TerminalMiddleware>>) {
         self.middlewares = middlewares;
     }
@@ -597,7 +624,7 @@ impl Terminal {
         }
     }
 
-    /// Writes bytes to the PTY after passing through middlewares.
+    /// 在中间件处理后向 PTY 写入字节。
     fn write_to_pty(&self, input: impl Into<Cow<'static, [u8]>>, origin: InputOrigin) -> bool {
         let Some(filtered) = self.apply_input_middlewares(input.into(), origin) else {
             return false;
@@ -609,12 +636,12 @@ impl Terminal {
         true
     }
 
-    /// Sends input to the terminal, scrolling to bottom and clearing selection.
+    /// 向终端发送输入，滚动到底部并清除选择区域。
     pub fn input(&mut self, input: impl Into<Cow<'static, [u8]>>) {
         self.input_with_origin(input, InputOrigin::Programmatic);
     }
 
-    /// Sends input to the terminal with origin metadata.
+    /// 向终端发送输入，附带来源元数据。
     pub fn input_with_origin(&mut self, input: impl Into<Cow<'static, [u8]>>, origin: InputOrigin) {
         let input = input.into();
 
@@ -632,10 +659,10 @@ impl Terminal {
         }
     }
 
-    /// Attempts to handle a keystroke, returning true if handled.
+    /// 尝试处理按键事件，返回 true 表示已处理。
     ///
-    /// This only handles special keys (arrows, function keys, ctrl combinations, etc.)
-    /// Regular character input is handled via InputHandler::replace_text_in_range.
+    /// 仅处理特殊键（方向键、功能键、Ctrl 组合等），
+    /// 常规字符输入通过 InputHandler::replace_text_in_range 处理。
     pub fn try_keystroke(&mut self, keystroke: &Keystroke, option_as_meta: bool) -> bool {
         let esc = to_esc_str(keystroke, &self.last_content.mode, option_as_meta);
         if let Some(esc) = esc {
@@ -653,15 +680,15 @@ impl Terminal {
         }
     }
 
-    /// Commits text input directly to the terminal.
-    /// Called by InputHandler when the user types regular characters.
+    /// 提交文本输入到终端。
+    /// 当用户输入常规字符时由 InputHandler 调用。
     pub fn input_text(&mut self, text: &str) {
         if !text.is_empty() {
             self.input_with_origin(text.as_bytes().to_vec(), InputOrigin::Text);
         }
     }
 
-    /// Pastes text into the terminal.
+    /// 粘贴文本到终端。
     pub fn paste(&mut self, text: &str) {
         let paste_text = if self.last_content.mode.contains(TermMode::BRACKETED_PASTE) {
             format!("{}{}{}", "\x1b[200~", text.replace('\x1b', ""), "\x1b[201~")
@@ -672,14 +699,14 @@ impl Terminal {
         self.input_with_origin(paste_text.into_bytes(), InputOrigin::Paste);
     }
 
-    /// Resizes the terminal to new bounds.
+    /// 将终端大小调整为新边界。
     pub fn set_size(&mut self, new_bounds: TerminalBounds) {
         if self.last_content.terminal_bounds != new_bounds {
             self.events.push_back(InternalEvent::Resize(new_bounds));
         }
     }
 
-    /// Synchronizes terminal state and updates content for rendering.
+    /// 同步终端状态并更新内容以供渲染。
     pub fn sync(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let term = self.term.clone();
         let mut terminal = term.lock_unfair();
@@ -729,37 +756,43 @@ impl Terminal {
         }
     }
 
+    /// 向上滚动一行。
     pub fn scroll_line_up(&mut self) {
         self.events
             .push_back(InternalEvent::Scroll(AlacScroll::Delta(1)));
     }
 
+    /// 向下滚动一行。
     pub fn scroll_line_down(&mut self) {
         self.events
             .push_back(InternalEvent::Scroll(AlacScroll::Delta(-1)));
     }
 
+    /// 向上滚动一页。
     pub fn scroll_page_up(&mut self) {
         self.events
             .push_back(InternalEvent::Scroll(AlacScroll::PageUp));
     }
 
+    /// 向下滚动一页。
     pub fn scroll_page_down(&mut self) {
         self.events
             .push_back(InternalEvent::Scroll(AlacScroll::PageDown));
     }
 
+    /// 滚动到顶部。
     pub fn scroll_to_top(&mut self) {
         self.events
             .push_back(InternalEvent::Scroll(AlacScroll::Top));
     }
 
+    /// 滚动到底部。
     pub fn scroll_to_bottom(&mut self) {
         self.events
             .push_back(InternalEvent::Scroll(AlacScroll::Bottom));
     }
 
-    /// Scrolls to a specific display offset in the scrollback history.
+    /// 滚动到滚动历史中的特定显示偏移量。
     pub fn scroll_to_offset(&mut self, target_offset: usize) {
         let current = self.last_content.display_offset;
         let delta = target_offset as i32 - current as i32;
@@ -769,7 +802,13 @@ impl Terminal {
         }
     }
 
-    /// Selects all text in the terminal.
+    /// 滚动到终端网格中的特定点。
+    pub fn scroll_to_point(&mut self, point: AlacPoint) {
+        self.events
+            .push_back(InternalEvent::ScrollToAlacPoint(point));
+    }
+
+    /// 选择终端中的所有文本。
     pub fn select_all(&mut self) {
         let term = self.term.lock();
         let start = AlacPoint::new(term.topmost_line(), Column(0));
@@ -783,40 +822,42 @@ impl Terminal {
             .push_back(InternalEvent::SetSelection(selection));
     }
 
-    /// Copies selected text to clipboard.
+    /// 复制选中的文本到剪贴板。
     pub fn copy(&mut self, keep_selection: Option<bool>) {
         self.events.push_back(InternalEvent::Copy(keep_selection));
     }
 
-    /// Clears the terminal screen.
+    /// 清除终端屏幕。
     pub fn clear(&mut self) {
         self.events.push_back(InternalEvent::Clear);
     }
 
+    /// 返回是否正在选择文本。
     pub fn selection_started(&self) -> bool {
         self.selection_phase == SelectionPhase::Selecting
     }
 
+    /// 返回上次渲染的内容。
     pub fn last_content(&self) -> &TerminalContent {
         &self.last_content
     }
 
-    /// Returns all finalized blocks.
+    /// 返回所有已完成的代码块。
     pub fn blocks(&self) -> &[Block] {
         self.block_tracker.blocks()
     }
 
-    /// Returns the most recently finalized block.
+    /// 返回最近完成的代码块。
     pub fn current_block(&self) -> Option<&Block> {
         self.block_tracker.current_block()
     }
 
-    /// Returns true if a command is currently running (between Enter and next prompt).
+    /// 返回是否有命令正在运行（在 Enter 和下一个提示符之间）。
     pub fn block_running(&self) -> bool {
         self.block_tracker.is_running()
     }
 
-    /// Returns all terminal text (scrollback history + visible screen) as the final state.
+    /// 返回所有终端文本（滚动历史 + 可见屏幕）作为最终状态。
     pub fn get_all_text(&self) -> String {
         let term = self.term.lock();
         let topmost = term.topmost_line();
@@ -836,10 +877,12 @@ impl Terminal {
         text
     }
 
+    /// 返回鼠标模式是否激活。
     pub fn mouse_mode(&self, shift: bool) -> bool {
         self.last_content.mode.intersects(TermMode::MOUSE_MODE) && !shift
     }
 
+    /// 检查鼠标位置是否发生变化。
     fn mouse_changed(&mut self, point: AlacPoint, side: AlacDirection) -> bool {
         match self.last_mouse {
             Some((old_point, old_side)) => {
@@ -857,6 +900,7 @@ impl Terminal {
         }
     }
 
+    /// 处理鼠标按下事件。
     pub fn mouse_down(&mut self, e: &MouseDownEvent, _cx: &mut Context<Self>) {
         let position = e.position - self.last_content.terminal_bounds.bounds.origin;
         let point = grid_point(
@@ -902,6 +946,7 @@ impl Terminal {
         }
     }
 
+    /// 处理鼠标释放事件。
     pub fn mouse_up(&mut self, e: &MouseUpEvent, _cx: &Context<Self>) {
         let position = e.position - self.last_content.terminal_bounds.bounds.origin;
 
@@ -923,6 +968,7 @@ impl Terminal {
         self.last_mouse = None;
     }
 
+    /// 处理鼠标移动事件。
     pub fn mouse_move(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
         let position = e.position - self.last_content.terminal_bounds.bounds.origin;
 
@@ -943,6 +989,7 @@ impl Terminal {
         cx.notify();
     }
 
+    /// 处理鼠标拖拽事件。
     pub fn mouse_drag(
         &mut self,
         e: &MouseMoveEvent,
@@ -967,6 +1014,7 @@ impl Terminal {
         }
     }
 
+    /// 计算拖拽滚动的行数。
     fn drag_line_delta(&self, e: &MouseMoveEvent, region: Bounds<Pixels>) -> Option<i32> {
         let top = region.origin.y;
         let bottom = region.bottom_left().y;
@@ -984,7 +1032,7 @@ impl Terminal {
         Some(scroll_lines.clamp(-3, 3))
     }
 
-    /// Handles scroll wheel events.
+    /// 处理滚轮事件。
     pub fn scroll_wheel(&mut self, e: &ScrollWheelEvent, scroll_multiplier: f32) {
         let mouse_mode = self.mouse_mode(e.shift);
         let scroll_multiplier = if mouse_mode { 1. } else { scroll_multiplier };
@@ -1017,6 +1065,7 @@ impl Terminal {
         }
     }
 
+    /// 计算滚轮事件应滚动的行数。
     fn determine_scroll_lines(
         &mut self,
         e: &ScrollWheelEvent,
@@ -1039,18 +1088,21 @@ impl Terminal {
         }
     }
 
+    /// 处理焦点进入事件。
     pub fn focus_in(&self) {
         if self.last_content.mode.contains(TermMode::FOCUS_IN_OUT) {
             self.write_to_pty("\x1b[I".as_bytes(), InputOrigin::Focus);
         }
     }
 
+    /// 处理焦点离开事件。
     pub fn focus_out(&mut self) {
         if self.last_content.mode.contains(TermMode::FOCUS_IN_OUT) {
             self.write_to_pty("\x1b[O".as_bytes(), InputOrigin::Focus);
         }
     }
 
+    /// 处理来自 Alacritty 的终端事件。
     fn process_event(&mut self, event: AlacTermEvent, cx: &mut Context<Self>) {
         match event {
             AlacTermEvent::Title(title) => {
@@ -1120,6 +1172,7 @@ impl Terminal {
         }
     }
 
+    /// 处理内部终端事件，更新终端状态。
     fn process_terminal_event(
         &mut self,
         event: &InternalEvent,
@@ -1214,6 +1267,7 @@ impl Terminal {
     }
 }
 
+/// 从范围创建选择区域。
 fn make_selection(range: &std::ops::RangeInclusive<AlacPoint>) -> Selection {
     let mut selection = Selection::new(SelectionType::Simple, *range.start(), Side::Left);
     selection.update(*range.end(), Side::Right);
