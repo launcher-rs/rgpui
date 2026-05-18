@@ -17,6 +17,7 @@ members = [
     "crates/rgpui-component",
     "crates/rgpui-component-macros",
     "crates/rgpui-component-assets",
+    "crates/rgpui-markdown",
 
     "crates/rgpui-component/examples/app_assets",
     "crates/rgpui-component/examples/dialog_overlay",
@@ -27,6 +28,8 @@ members = [
     "crates/rgpui-component/examples/system_monitor",
     "crates/rgpui-component/examples/tooltip_top_edge",
     "crates/rgpui-component/examples/window_title",
+
+    "crates/rgpui-editor",
 ]
 
 [workspace.package]
@@ -48,7 +51,9 @@ rgpui-tokio = { path = "crates/rgpui-tokio" }
 rgpui-component = { path = "crates/rgpui-component" }
 rgpui-component-macros = { path = "crates/rgpui-component-macros" }
 rgpui-component-assets = { path = "crates/rgpui-component-assets" }
+rgpui-markdown = { path = "crates/rgpui-markdown" }
 rgpui-webwiew = { path = "crates/rgpui-webview" }
+rgpui-editor = { path = "crates/rgpui-editor" }
 
 
 # ---- 错误处理 ----

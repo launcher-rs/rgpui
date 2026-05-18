@@ -138,7 +138,6 @@ rgpui-component = { path = "../rgpui-component" }
 |------|------|
 | `decimal` | 启用 `rust_decimal` 支持 |
 | `inspector` | 启用开发调试面板 |
-| `tree-sitter-languages` | 启用所有 Tree Sitter 语法高亮语言 |
 
 ## 快速开始
 
@@ -227,26 +226,19 @@ let theme = Theme::default();
 let color = theme.primary;
 ```
 
-## 代码编辑器
+## 编辑器
 
-支持 LSP 集成的代码编辑器组件：
-
-- 语法高亮（Tree Sitter）
-- 诊断信息
-- 代码补全
-- 悬停提示
-- 稳定支持 20 万行代码
+代码编辑器和语法高亮能力已迁移到 `rgpui-editor`。
 
 ## 待办事项
 
-- [ ] 提取 Editor 组件为独立模块
+- [x] 提取 Editor 组件为独立模块
 - [ ] 提取 LSP 集成为独立模块
 
 ## 依赖
 
 - `rgpui` - 核心 UI 框架
 - `ropey` - 文本缓冲区（Rope 数据结构）
-- `tree-sitter` - 语法分析器
 - `chrono` - 日期时间处理
 - `markdown` - Markdown 解析
 - `notify` - 文件监听

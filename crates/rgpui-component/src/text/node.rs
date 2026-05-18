@@ -11,11 +11,8 @@ use rgpui::{
     SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div, img,
     prelude::FluentBuilder as _, px, relative, rems,
 };
-use ropey::Rope;
-
 use crate::{
-    ActiveTheme as _, Icon, IconName, StyledExt, h_flex,
-    highlighter::{HighlightTheme, SyntaxHighlighter},
+    ActiveTheme as _, HighlightTheme, Icon, IconName, StyledExt, h_flex,
     text::{
         CodeBlockActionsFn,
         document::NodeRenderOptions,
@@ -517,22 +514,15 @@ impl CodeBlock {
     pub(crate) fn new(
         code: SharedString,
         lang: Option<SharedString>,
-        highlight_theme: &HighlightTheme,
+        _highlight_theme: &HighlightTheme,
         span: Option<impl Into<Span>>,
     ) -> Self {
-        let mut styles = vec![];
-        if let Some(lang) = &lang {
-            let mut highlighter = SyntaxHighlighter::new(&lang);
-            highlighter.update(None, &Rope::from_str(code.as_str()), None);
-            styles = highlighter.styles(&(0..code.len()), highlight_theme);
-        };
-
         let state = Arc::new(Mutex::new(InlineState::default()));
         state.lock().unwrap().set_text(code);
 
         Self {
             lang,
-            styles,
+            styles: Vec::new(),
             state,
             span: span.map(|s| s.into()),
         }

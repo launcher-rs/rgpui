@@ -28,7 +28,6 @@ pub(super) const RIGHT_MARGIN: Pixels = px(10.);
 pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(10.);
 const FOLD_ICON_WIDTH: Pixels = px(14.);
 const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
-const MAX_HIGHLIGHT_LINE_LENGTH: usize = 10_000;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct EditorScrollbarLayout {
@@ -660,19 +659,11 @@ impl TextElement {
 
     fn layout_hover_highlight(
         &self,
-        last_layout: &LastLayout,
-        bounds: &Bounds<Pixels>,
-        cx: &mut App,
+        _last_layout: &LastLayout,
+        _bounds: &Bounds<Pixels>,
+        _cx: &mut App,
     ) -> Option<Path<Pixels>> {
-        let state = self.state.read(cx);
-        let hover_popover = state.hover_popover.clone();
-
-        let Some(symbol_range) = hover_popover.map(|popover| popover.read(cx).symbol_range.clone())
-        else {
-            return None;
-        };
-
-        Self::layout_match_range(symbol_range, last_layout, bounds)
+        None
     }
 
     fn layout_document_colors(
@@ -900,91 +891,6 @@ impl TextElement {
         );
 
         Some(WhitespaceIndicators { space, tab })
-    }
-
-    /// Compute inline completion ghost lines for rendering.
-    ///
-    /// Returns (first_line, ghost_lines) where:
-    /// - first_line: Shaped text for the first line (goes after cursor on same line)
-    /// - ghost_lines: Shaped lines for subsequent lines (shift content down)
-    fn layout_inline_completion(
-        state: &InputState,
-        visible_range: &Range<usize>,
-        font_size: Pixels,
-        window: &mut Window,
-        cx: &App,
-    ) -> (Option<ShapedLine>, Vec<ShapedLine>) {
-        // Must be focused to show inline completion
-        if !state.focus_handle.is_focused(window) {
-            return (None, vec![]);
-        }
-
-        let Some(completion_item) = state.inline_completion.item.as_ref() else {
-            return (None, vec![]);
-        };
-
-        // Get cursor row from cursor position
-        let cursor_row = state.cursor_position().line as usize;
-
-        // Only show if cursor row is visible
-        if cursor_row < visible_range.start || cursor_row >= visible_range.end {
-            return (None, vec![]);
-        }
-
-        let completion_text = &completion_item.insert_text;
-        let completion_color = cx.theme().muted_foreground.opacity(0.5);
-
-        let text_style = window.text_style();
-        let font = text_style.font();
-
-        let lines: Vec<&str> = completion_text.split('\n').collect();
-        if lines.is_empty() {
-            return (None, vec![]);
-        }
-
-        // Shape first line (goes after cursor)
-        let first_text: SharedString = lines[0].to_string().into();
-        let first_line = if !first_text.is_empty() {
-            let first_run = TextRun {
-                len: first_text.len(),
-                font: font.clone(),
-                color: completion_color,
-                background_color: None,
-                underline: None,
-                strikethrough: None,
-            };
-            Some(
-                window
-                    .text_system()
-                    .shape_line(first_text, font_size, &[first_run], None),
-            )
-        } else {
-            None
-        };
-
-        // Shape ghost lines (lines 2+ that shift content down)
-        let ghost_lines: Vec<ShapedLine> = lines[1..]
-            .iter()
-            .map(|line_text| {
-                let text: SharedString = line_text.to_string().into();
-                let len = text.len().max(1); // Ensure at least 1 for empty lines
-                let run = TextRun {
-                    len,
-                    font: font.clone(),
-                    color: completion_color,
-                    background_color: None,
-                    underline: None,
-                    strikethrough: None,
-                };
-                // Use space for empty lines so they take up height
-                let shaped_text = if text.is_empty() { " ".into() } else { text };
-                window
-                    .text_system()
-                    .shape_line(shaped_text, font_size, &[run], None)
-            })
-            .collect();
-
-        (first_line, ghost_lines)
     }
 
     /// Return (line_number_width, line_number_len)
@@ -1239,89 +1145,12 @@ impl TextElement {
     /// First usize is the offset of skipped.
     fn highlight_lines(
         &mut self,
-        visible_buffer_lines: &[usize],
+        _visible_buffer_lines: &[usize],
         _visible_top: Pixels,
-        visible_byte_range: Range<usize>,
-        cx: &mut App,
+        _visible_byte_range: Range<usize>,
+        _cx: &mut App,
     ) -> Option<Vec<(Range<usize>, HighlightStyle)>> {
-        let state = self.state.read(cx);
-        let text = &state.text;
-        let is_multi_line = state.mode.is_multi_line();
-
-        let (mut highlighter, diagnostics) = match &state.mode {
-            InputMode::CodeEditor {
-                highlighter,
-                diagnostics,
-                ..
-            } => (highlighter.borrow_mut(), diagnostics),
-            _ => return None,
-        };
-        let highlighter = highlighter.as_mut()?;
-
-        let mut styles = Vec::with_capacity(visible_buffer_lines.len());
-
-        // Helper to flush a contiguous range of lines
-        let flush_range = |start_line: usize, end_line: usize, skip: bool, styles: &mut Vec<_>| {
-            let byte_start = text.line_start_offset(start_line);
-            let byte_end = if is_multi_line {
-                // +1 for `\n`
-                text.line_start_offset(end_line + 1)
-            } else {
-                text.line_end_offset(end_line)
-            };
-            let range_styles = if skip {
-                vec![(byte_start..byte_end, HighlightStyle::default())]
-            } else {
-                highlighter.styles(&(byte_start..byte_end), &cx.theme().highlight_theme)
-            };
-
-            *styles = rgpui::combine_highlights(styles.clone(), range_styles).collect();
-        };
-
-        // Group contiguous visible lines into ranges and call styles() once per range
-        let mut visible_iter = visible_buffer_lines.iter().peekable();
-        let mut range_start: Option<usize> = None;
-
-        while let Some(&line) = visible_iter.next() {
-            // Check if this line is too long for highlighting
-            let line_len = text.slice_line(line).len();
-            if line_len > MAX_HIGHLIGHT_LINE_LENGTH {
-                // Flush any accumulated range first
-                if let Some(start) = range_start.take() {
-                    flush_range(start, line - 1, false, &mut styles);
-                }
-
-                flush_range(line, line, true, &mut styles);
-                continue;
-            }
-
-            range_start.get_or_insert(line);
-
-            // Check if next line is contiguous, if so keep accumulating
-            if visible_iter
-                .peek()
-                .map(|&&next| next == line + 1)
-                .unwrap_or(false)
-            {
-                continue;
-            }
-
-            // Flush the contiguous range
-            let start_line = range_start.take().unwrap();
-            flush_range(start_line, line, false, &mut styles);
-        }
-
-        let diagnostic_styles = diagnostics.styles_for_range(&visible_byte_range, cx);
-
-        // hover definition style
-        if let Some(hover_style) = self.layout_hover_definition(cx) {
-            styles.push(hover_style);
-        }
-
-        // Combine marker styles
-        styles = rgpui::combine_highlights(diagnostic_styles, styles).collect();
-
-        Some(styles)
+        None
     }
 }
 
@@ -1619,9 +1448,7 @@ impl Element for TextElement {
             vec![run]
         };
 
-        let document_colors = state
-            .lsp
-            .document_colors_for_range(&text, &last_layout.visible_range);
+        let document_colors = Vec::new();
 
         // Create shaped lines for whitespace indicators before layout
         let whitespace_indicators =
@@ -1663,13 +1490,8 @@ impl Element for TextElement {
         }
         last_layout.lines = Rc::new(lines);
 
-        let (ghost_first_line, ghost_lines) = Self::layout_inline_completion(
-            state,
-            &last_layout.visible_range,
-            text_size,
-            window,
-            cx,
-        );
+        let ghost_first_line = None;
+        let ghost_lines = Vec::new();
         let ghost_line_count = ghost_lines.len();
         let ghost_lines_height = ghost_line_count as f32 * line_height;
 
@@ -1798,7 +1620,6 @@ impl Element for TextElement {
             None
         };
 
-        let hover_definition_hitbox = self.layout_hover_definition_hitbox(state, window, cx);
         let indent_guides_path =
             self.layout_indent_guides(state, &bounds, &last_layout, &text_style, window);
         state
@@ -1824,7 +1645,7 @@ impl Element for TextElement {
             selection_path,
             search_match_paths,
             hover_highlight_path,
-            hover_definition_hitbox,
+            hover_definition_hitbox: None,
             document_color_paths,
             indent_guides_path,
             fold_icon_layout,

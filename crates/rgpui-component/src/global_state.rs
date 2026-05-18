@@ -40,8 +40,8 @@ impl GlobalState {
         self.text_view_state_stack.last()
     }
 
-    /// Check if we are currently inside a deferred context (e.g., inside an open Popover).
-    pub(crate) fn is_in_deferred_context(&self) -> bool {
+    /// 检查当前是否处于延迟渲染上下文中，例如打开的 Popover 内部。
+    pub fn is_in_deferred_context(&self) -> bool {
         !self.open_deferred_popovers.is_empty()
     }
 

@@ -8,9 +8,8 @@ use rgpui::{
 };
 
 use crate::{
-    ActiveTheme, ElementExt,
+    ActiveTheme, ElementExt, HighlightTheme,
     async_util::{Receiver, Sender, unbounded},
-    highlighter::HighlightTheme,
     input::{self, Copy},
     text::{
         CodeBlockActionsFn, TextViewStyle,

@@ -19,7 +19,7 @@ mod virtual_list;
 mod window_border;
 mod window_ext;
 
-pub(crate) mod actions;
+pub mod actions;
 
 pub mod accordion;
 pub mod alert;
@@ -39,7 +39,6 @@ pub mod dialog;
 pub mod dock;
 pub mod form;
 pub mod group_box;
-pub mod highlighter;
 pub mod history;
 pub mod hover_card;
 pub mod input;

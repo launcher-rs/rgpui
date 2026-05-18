@@ -6270,7 +6270,6 @@ dependencies = [
  "instant",
  "itertools 0.13.0",
  "log",
- "lsp-types",
  "markdown",
  "markup5ever_rcdom",
  "notify",
@@ -6284,6 +6283,53 @@ dependencies = [
  "ropey",
  "rust-i18n",
  "rust_decimal",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "smallvec",
+ "smol",
+ "tracing",
+ "unicode-segmentation",
+ "uuid",
+]
+
+[[package]]
+name = "rgpui-component-assets"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "reqwest",
+ "rgpui",
+ "rust-embed",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "rgpui-component-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "rgpui-editor"
+version = "0.1.0"
+dependencies = [
+ "aho-corasick",
+ "anyhow",
+ "enum-iterator",
+ "instant",
+ "lsp-types",
+ "regex",
+ "rgpui",
+ "rgpui-component",
+ "ropey",
+ "rust-i18n",
  "schemars",
  "serde",
  "serde_json",
@@ -6327,29 +6373,6 @@ dependencies = [
  "tree-sitter-yaml",
  "tree-sitter-zig",
  "unicode-segmentation",
- "uuid",
-]
-
-[[package]]
-name = "rgpui-component-assets"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "log",
- "reqwest",
- "rgpui",
- "rust-embed",
- "wasm-bindgen",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "rgpui-component-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -6444,6 +6467,14 @@ dependencies = [
  "quote",
  "rgpui",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "rgpui-markdown"
+version = "0.1.0"
+dependencies = [
+ "markdown",
+ "rgpui",
 ]
 
 [[package]]
