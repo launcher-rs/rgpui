@@ -29,6 +29,10 @@ members = [
 
     "crates/rgpui-editor",
     "crates/rgpui-editor/examples/editor",
+    "crates/rgpui-term",
+    "crates/rgpui-term/examples/basic",
+    "crates/rgpui-term/examples/component-integration",
+
 ]
 
 [workspace.package]
@@ -52,6 +56,7 @@ rgpui-component-macros = { path = "crates/rgpui-component-macros" }
 rgpui-component-assets = { path = "crates/rgpui-component-assets" }
 rgpui-webwiew = { path = "crates/rgpui-webview" }
 rgpui-editor = { path = "crates/rgpui-editor" }
+rgpui-term = { path = "crates/rgpui-term" }
 
 
 # ---- 错误处理 ----
@@ -362,6 +367,7 @@ ropey = { version = "=2.0.0-beta.1", features = [
 rust-i18n = "4"
 serde_repr = "0.1"
 
+portable-pty = "0.9"
 
 [workspace.dependencies.windows]
 version = "0.61"
