@@ -23,7 +23,7 @@ test-support = [
     "proptest",
     "dep:git2",
 ]
-inspector = ["rgpui_macros/inspector"]
+inspector = ["rgpui-macros/inspector"]
 leak-detection = []
 reqwest = [
     "dep:reqwest",
@@ -58,7 +58,7 @@ bitflags = { workspace = true, optional = true }
 ctor.workspace = true
 dirs.workspace = true
 derive_more.workspace = true
-rgpui_macros.workspace = true
+rgpui-macros.workspace = true
 etagere = "0.2"
 futures.workspace = true
 futures-concurrency.workspace = true
@@ -185,7 +185,7 @@ nix = { workspace = true, features = ["user"] }
 [dev-dependencies]
 backtrace.workspace = true
 env_logger.workspace = true
-rgpui_platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
+rgpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
 lyon = { version = "1.0", features = ["extra"] }
 proptest = { workspace = true }
 rand.workspace = true
@@ -195,7 +195,7 @@ unicode-segmentation = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen = { workspace = true }
-rgpui_web.workspace = true
+rgpui-web.workspace = true
 
 [build-dependencies]
 embed-resource = { version = "3.0", optional = true }

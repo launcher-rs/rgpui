@@ -91,7 +91,7 @@ tree-sitter-zig = ["dep:tree-sitter-zig"]
 anyhow.workspace = true
 rgpui = { workspace = true }
 rgpui-component-macros = { workspace = true }
-rgpui_macros = { workspace = true }
+rgpui-macros = { workspace = true }
 notify.workspace = true
 ropey.workspace = true
 rust-i18n.workspace = true

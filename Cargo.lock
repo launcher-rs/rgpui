@@ -164,7 +164,7 @@ dependencies = [
  "anyhow",
  "rgpui",
  "rgpui-component",
- "rgpui_platform",
+ "rgpui-platform",
  "rust-embed",
 ]
 
@@ -1675,7 +1675,7 @@ dependencies = [
  "rgpui",
  "rgpui-component",
  "rgpui-component-assets",
- "rgpui_platform",
+ "rgpui-platform",
 ]
 
 [[package]]
@@ -2150,7 +2150,7 @@ dependencies = [
  "anyhow",
  "rgpui",
  "rgpui-component",
- "rgpui_platform",
+ "rgpui-platform",
 ]
 
 [[package]]
@@ -2954,7 +2954,7 @@ dependencies = [
  "anyhow",
  "rgpui",
  "rgpui-component",
- "rgpui_platform",
+ "rgpui-platform",
 ]
 
 [[package]]
@@ -3370,7 +3370,7 @@ dependencies = [
  "rgpui",
  "rgpui-component",
  "rgpui-component-assets",
- "rgpui_platform",
+ "rgpui-platform",
 ]
 
 [[package]]
@@ -5728,9 +5728,9 @@ dependencies = [
  "regex",
  "reqwest",
  "resvg",
- "rgpui_macros",
- "rgpui_platform",
- "rgpui_web",
+ "rgpui-macros",
+ "rgpui-platform",
+ "rgpui-web",
  "rust-embed",
  "rustc-hash 2.1.2",
  "rustls",
@@ -5799,7 +5799,7 @@ dependencies = [
  "regex",
  "rgpui",
  "rgpui-component-macros",
- "rgpui_macros",
+ "rgpui-macros",
  "ropey",
  "rust-i18n",
  "rust_decimal",
@@ -5872,7 +5872,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui_linux"
+name = "rgpui-linux"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -5896,7 +5896,7 @@ dependencies = [
  "profiling",
  "raw-window-handle",
  "rgpui",
- "rgpui_wgpu",
+ "rgpui-wgpu",
  "smallvec",
  "smol",
  "strum",
@@ -5917,7 +5917,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui_macos"
+name = "rgpui-macos"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -5955,7 +5955,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui_macros"
+name = "rgpui-macros"
 version = "0.1.0"
 dependencies = [
  "heck 0.5.0",
@@ -5966,19 +5966,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui_platform"
+name = "rgpui-platform"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "rgpui",
- "rgpui_linux",
- "rgpui_macos",
- "rgpui_web",
- "rgpui_windows",
+ "rgpui-linux",
+ "rgpui-macos",
+ "rgpui-web",
+ "rgpui-windows",
 ]
 
 [[package]]
-name = "rgpui_tokio"
+name = "rgpui-tokio"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -5987,7 +5987,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui_web"
+name = "rgpui-web"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -5998,7 +5998,7 @@ dependencies = [
  "parking_lot",
  "raw-window-handle",
  "rgpui",
- "rgpui_wgpu",
+ "rgpui-wgpu",
  "smallvec",
  "uuid",
  "wasm-bindgen",
@@ -6009,7 +6009,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui_wgpu"
+name = "rgpui-wgpu"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -6038,7 +6038,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui_windows"
+name = "rgpui-windows"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -6721,7 +6721,7 @@ dependencies = [
  "rgpui",
  "rgpui-component",
  "rgpui-component-assets",
- "rgpui_platform",
+ "rgpui-platform",
 ]
 
 [[package]]
@@ -7223,7 +7223,7 @@ dependencies = [
  "rgpui",
  "rgpui-component",
  "rgpui-component-assets",
- "rgpui_platform",
+ "rgpui-platform",
  "smol",
  "sysinfo 0.37.2",
  "windows 0.62.2",
@@ -7586,7 +7586,7 @@ dependencies = [
  "anyhow",
  "rgpui",
  "rgpui-component",
- "rgpui_platform",
+ "rgpui-platform",
 ]
 
 [[package]]
@@ -8870,7 +8870,7 @@ dependencies = [
  "rgpui",
  "rgpui-component",
  "rgpui-component-assets",
- "rgpui_platform",
+ "rgpui-platform",
 ]
 
 [[package]]

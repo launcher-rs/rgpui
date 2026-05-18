@@ -1,5 +1,5 @@
 [package]
-name = "rgpui_macos"
+name = "rgpui-macos"
 version = "0.1.0"
 edition.workspace = true
 publish.workspace = true

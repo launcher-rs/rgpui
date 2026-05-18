@@ -3,14 +3,14 @@ resolver = "3"
 
 members = [
     "crates/rgpui",
-    "crates/rgpui_linux",
-    "crates/rgpui_macos",
-    "crates/rgpui_windows",
-    "crates/rgpui_web",
-    "crates/rgpui_platform",
-    "crates/rgpui_tokio",
-    "crates/rgpui_wgpu",
-    "crates/rgpui_macros",
+    "crates/rgpui-linux",
+    "crates/rgpui-macos",
+    "crates/rgpui-windows",
+    "crates/rgpui-web",
+    "crates/rgpui-platform",
+    "crates/rgpui-tokio",
+    "crates/rgpui-wgpu",
+    "crates/rgpui-macros",
 
     "crates/rgpui-component",
     "crates/rgpui-component-macros",
@@ -35,14 +35,14 @@ publish = false
 [workspace.dependencies]
 # ---- 内部 crates ----
 rgpui = { path = "crates/rgpui", default-features = false }
-rgpui_linux = { path = "crates/rgpui_linux", default-features = false }
-rgpui_macos = { path = "crates/rgpui_macos", default-features = false }
-rgpui_macros = { path = "crates/rgpui_macros" }
-rgpui_platform = { path = "crates/rgpui_platform", default-features = false }
-rgpui_web = { path = "crates/rgpui_web" }
-rgpui_wgpu = { path = "crates/rgpui_wgpu" }
-rgpui_windows = { path = "crates/rgpui_windows", default-features = false }
-rgpui_tokio = { path = "crates/rgpui_tokio" }
+rgpui-linux = { path = "crates/rgpui-linux", default-features = false }
+rgpui-macos = { path = "crates/rgpui-macos", default-features = false }
+rgpui-macros = { path = "crates/rgpui-macros" }
+rgpui-platform = { path = "crates/rgpui-platform", default-features = false }
+rgpui-web = { path = "crates/rgpui-web" }
+rgpui-wgpu = { path = "crates/rgpui-wgpu" }
+rgpui-windows = { path = "crates/rgpui-windows", default-features = false }
+rgpui-tokio = { path = "crates/rgpui-tokio" }
 rgpui-component = { path = "crates/rgpui-component" }
 rgpui-component-macros = { path = "crates/rgpui-component-macros" }
 rgpui-component-assets = { path = "crates/rgpui-component-assets" }

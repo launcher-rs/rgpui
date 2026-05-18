@@ -1,5 +1,5 @@
 [package]
-name = "rgpui_web"
+name = "rgpui-web"
 version = "0.1.0"
 publish.workspace = true
 edition.workspace = true
@@ -19,7 +19,7 @@ path = "src/rgpui_web.rs"
 [target.'cfg(target_family = "wasm")'.dependencies]
 rgpui.workspace = true
 parking_lot = { workspace = true, features = ["nightly"] }
-rgpui_wgpu.workspace = true
+rgpui-wgpu.workspace = true
 anyhow.workspace = true
 futures.workspace = true
 log.workspace = true
