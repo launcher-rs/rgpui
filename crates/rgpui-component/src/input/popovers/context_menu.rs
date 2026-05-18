@@ -1,7 +1,7 @@
 use rgpui::{
     Anchor, App, AppContext as _, Context, DismissEvent, Entity, IntoElement, MouseDownEvent,
     ParentElement as _, Pixels, Point, Render, Styled, Subscription, Window, anchored, deferred,
-    div, prelude::FluentBuilder as _, px,
+    div, px,
 };
 use rust_i18n::t;
 
@@ -43,14 +43,7 @@ impl InputState {
 
         self.context_menu_content = Some(ContextMenu::RightClick(self.context_menu.clone()));
 
-        let is_code_editor = self.mode.is_code_editor();
-        if is_code_editor {
-            self.handle_hover_definition(offset, window, cx);
-        }
-
         let is_enable = !self.disabled;
-        let has_goto_definition = is_enable && self.lsp.definition_provider.is_some();
-        let has_code_action = is_enable && !self.lsp.code_action_providers.is_empty();
         let is_selected = !self.selected_range.is_empty();
         let has_paste = is_enable && cx.read_from_clipboard().is_some();
 
@@ -62,19 +55,6 @@ impl InputState {
                     builder(PopupMenu::new(cx), window, cx)
                 } else {
                     PopupMenu::new(cx)
-                        .when(is_code_editor, |m| {
-                            m.menu_with_enable(
-                                t!("Input.Go to Definition"),
-                                Box::new(input::GoToDefinition),
-                                has_goto_definition,
-                            )
-                            .menu_with_enable(
-                                t!("Input.Show Code Actions"),
-                                Box::new(input::ToggleCodeActions),
-                                has_code_action,
-                            )
-                            .separator()
-                        })
                         .menu_with_enable(
                             t!("Input.Cut"),
                             Box::new(input::Cut),

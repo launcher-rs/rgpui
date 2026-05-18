@@ -13,16 +13,13 @@ use super::{
 };
 use crate::Size;
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
-use crate::highlighter::DiagnosticSet;
-#[cfg(not(target_family = "wasm"))]
-use crate::highlighter::LanguageRegistry;
 use crate::input::blink_cursor::CURSOR_WIDTH;
 use crate::input::movement::MoveDirection;
 use crate::input::{
-    HoverDefinition, InlineCompletion, Lsp, Position, RopeExt as _, Selection,
+    Position, RopeExt as _, Selection,
     display_map::LineLayout,
     element::RIGHT_MARGIN,
-    popovers::{ContextMenu, DiagnosticPopover, HoverPopover, InputContextMenu},
+    popovers::{ContextMenu, InputContextMenu},
     search::{self, SearchPanel},
 };
 use crate::menu::PopupMenu;
@@ -93,9 +90,7 @@ actions!(
         MoveToPreviousWord,
         MoveToNextWord,
         Escape,
-        ToggleCodeActions,
         Search,
-        GoToDefinition,
     ]
 );
 
@@ -224,10 +219,6 @@ pub(crate) fn init(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-y", Redo, Some(CONTEXT)),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-.", ToggleCodeActions, Some(CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-.", ToggleCodeActions, Some(CONTEXT)),
-        #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-f", Search, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-f", Search, Some(CONTEXT)),
@@ -348,8 +339,6 @@ pub struct InputState {
     pub(crate) mask_pattern: MaskPattern,
     pub(super) placeholder: SharedString,
 
-    /// Popover
-    diagnostic_popover: Option<Entity<DiagnosticPopover>>,
     /// Completion/CodeAction context menu
     pub(super) context_menu_content: Option<ContextMenu>,
     pub(super) context_menu: Entity<InputContextMenu>,
@@ -364,14 +353,6 @@ pub struct InputState {
     ///
     /// This value will be ignored if a context menu builder is defined in [`Self::context_menu_builder`].
     pub(super) enable_context_menu: bool,
-
-    /// A flag to indicate if we are currently inserting a completion item.
-    pub(super) completion_inserting: bool,
-    pub(super) hover_popover: Option<Entity<HoverPopover>>,
-    /// The LSP definitions locations for "Go to Definition" feature.
-    pub(super) hover_definition: HoverDefinition,
-
-    pub lsp: Lsp,
 
     /// A flag to indicate if we have a pending update to the text.
     ///
@@ -390,7 +371,6 @@ pub struct InputState {
     _subscriptions: Vec<Subscription>,
 
     pub(super) _context_menu_task: Task<Result<()>>,
-    pub(super) inline_completion: InlineCompletion,
 }
 
 impl EventEmitter<InputEvent> for InputState {}
@@ -466,24 +446,42 @@ impl InputState {
             placeholder: SharedString::default(),
             mask_pattern: MaskPattern::default(),
             text_align: TextAlign::Left,
-            lsp: Lsp::default(),
-            diagnostic_popover: None,
             context_menu_content: None,
             context_menu: mouse_context_menu,
             context_menu_builder: None,
             enable_context_menu: true,
-            completion_inserting: false,
-            hover_popover: None,
-            hover_definition: HoverDefinition::default(),
             silent_replace_text: false,
             emit_events: true,
             size: Size::default(),
             _subscriptions,
             _context_menu_task: Task::ready(Ok(())),
             _pending_update: false,
-            inline_completion: InlineCompletion::default(),
             cursor_line_end_affinity: false,
         }
+    }
+
+    /// 隐藏输入框当前打开的上下文菜单。
+    pub(crate) fn hide_context_menu(&mut self, cx: &mut Context<Self>) {
+        self.context_menu_content = None;
+        self._context_menu_task = Task::ready(Ok(()));
+        cx.notify();
+    }
+
+    /// 返回输入框上下文菜单当前是否处于打开状态。
+    pub(crate) fn is_context_menu_open(&self, cx: &App) -> bool {
+        self.context_menu_content
+            .as_ref()
+            .is_some_and(|menu| menu.is_open(cx))
+    }
+
+    /// 兼容旧编辑器菜单动作入口，纯输入组件不处理编辑器专属动作。
+    pub fn handle_action_for_context_menu(
+        &mut self,
+        _action: Box<dyn Action>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> bool {
+        false
     }
 
     /// Set Input to use multi line mode.
@@ -500,30 +498,9 @@ impl InputState {
         self
     }
 
-    /// Set Input to use [`InputMode::CodeEditor`] mode.
-    ///
-    /// Default options:
-    ///
-    /// - line_number: true
-    /// - tab_size: 2
-    /// - hard_tabs: false
-    /// - height: 100%
-    /// - multi_line: true
-    /// - indent_guides: true
-    ///
-    /// If `highlighter` is None, will use the default highlighter.
-    ///
-    /// Code Editor aim for help used to simple code editing or display, not a full-featured code editor.
-    ///
-    /// ## Features
-    ///
-    /// - Syntax Highlighting
-    /// - Auto Indent
-    /// - Line Number
-    /// - Large Text support, up to 50K lines.
-    pub fn code_editor(mut self, language: impl Into<SharedString>) -> Self {
-        let language: SharedString = language.into();
-        self.mode = InputMode::code_editor(language);
+    /// 兼容旧调用：component 不再提供代码编辑器，改为多行普通文本。
+    pub(crate) fn code_editor(mut self, _language: impl Into<SharedString>) -> Self {
+        self.mode = InputMode::plain_text().multi_line(true);
         self.searchable = true;
         self
     }
@@ -550,47 +527,9 @@ impl InputState {
         self
     }
 
-    /// Set enable/disable code folding, only for [`InputMode::CodeEditor`] mode.
-    ///
-    /// Default: true
-    pub fn folding(mut self, folding: bool) -> Self {
-        debug_assert!(self.mode.is_code_editor());
-        if let InputMode::CodeEditor { folding: f, .. } = &mut self.mode {
-            *f = folding;
-        }
+    /// 兼容旧调用：component 输入控件不再显示代码编辑器行号。
+    pub(crate) fn line_number(self, _line_number: bool) -> Self {
         self
-    }
-
-    /// Set code folding at runtime, only for [`InputMode::CodeEditor`] mode.
-    ///
-    /// When disabling, all existing folds are cleared.
-    pub fn set_folding(&mut self, folding: bool, _: &mut Window, cx: &mut Context<Self>) {
-        debug_assert!(self.mode.is_code_editor());
-        if let InputMode::CodeEditor { folding: f, .. } = &mut self.mode {
-            *f = folding;
-        }
-        if !folding {
-            self.display_map.clear_folds();
-        }
-        cx.notify();
-    }
-
-    /// Set enable/disable line number, only for [`InputMode::CodeEditor`] mode.
-    pub fn line_number(mut self, line_number: bool) -> Self {
-        debug_assert!(self.mode.is_code_editor() && self.mode.is_multi_line());
-        if let InputMode::CodeEditor { line_number: l, .. } = &mut self.mode {
-            *l = line_number;
-        }
-        self
-    }
-
-    /// Set line number, only for [`InputMode::CodeEditor`] mode.
-    pub fn set_line_number(&mut self, line_number: bool, _: &mut Window, cx: &mut Context<Self>) {
-        debug_assert!(self.mode.is_code_editor() && self.mode.is_multi_line());
-        if let InputMode::CodeEditor { line_number: l, .. } = &mut self.mode {
-            *l = line_number;
-        }
-        cx.notify();
     }
 
     /// Set the number of rows for the multi-line Textarea.
@@ -600,9 +539,7 @@ impl InputState {
     /// default: 2
     pub fn rows(mut self, rows: usize) -> Self {
         match &mut self.mode {
-            InputMode::PlainText { rows: r, .. } | InputMode::CodeEditor { rows: r, .. } => {
-                *r = rows
-            }
+            InputMode::PlainText { rows: r, .. } => *r = rows,
             InputMode::AutoGrow {
                 max_rows: max_r,
                 rows: r,
@@ -615,51 +552,8 @@ impl InputState {
         self
     }
 
-    /// Set highlighter language for for [`InputMode::CodeEditor`] mode.
-    pub fn set_highlighter(
-        &mut self,
-        new_language: impl Into<SharedString>,
-        cx: &mut Context<Self>,
-    ) {
-        match &mut self.mode {
-            InputMode::CodeEditor {
-                language,
-                highlighter,
-                parse_task,
-                ..
-            } => {
-                *language = new_language.into();
-                *highlighter.borrow_mut() = None;
-                parse_task.borrow_mut().take();
-            }
-            _ => {}
-        }
+    fn reset_editor_state(&mut self, cx: &mut Context<Self>) {
         cx.notify();
-    }
-
-    fn reset_highlighter(&mut self, cx: &mut Context<Self>) {
-        match &mut self.mode {
-            InputMode::CodeEditor {
-                highlighter,
-                parse_task,
-                ..
-            } => {
-                *highlighter.borrow_mut() = None;
-                parse_task.borrow_mut().take();
-            }
-            _ => {}
-        }
-        cx.notify();
-    }
-
-    #[inline]
-    pub fn diagnostics(&self) -> Option<&DiagnosticSet> {
-        self.mode.diagnostics()
-    }
-
-    #[inline]
-    pub fn diagnostics_mut(&mut self) -> Option<&mut DiagnosticSet> {
-        self.mode.diagnostics_mut()
     }
 
     /// Set placeholder
@@ -726,11 +620,6 @@ impl InputState {
             self.selected_range.clear();
         }
 
-        if self.mode.is_code_editor() {
-            self._pending_update = true;
-            self.lsp.reset();
-        }
-
         // Move scroll to top
         self.scroll_handle.set_offset(point(px(0.), px(0.)));
 
@@ -784,7 +673,7 @@ impl InputState {
         let text: SharedString = text.into();
         let range = 0..self.text.chars().map(|c| c.len_utf16()).sum();
         self.replace_text_in_range_silent(Some(range), &text, window, cx);
-        self.reset_highlighter(cx);
+        self.reset_editor_state(cx);
         self.disabled = was_disabled;
     }
 
@@ -907,9 +796,6 @@ impl InputState {
     pub fn default_value(mut self, value: impl Into<SharedString>) -> Self {
         let text: SharedString = value.into();
         self.text = Rope::from(text.as_str());
-        if let Some(diagnostics) = self.mode.diagnostics_mut() {
-            diagnostics.reset(&self.text)
-        }
         // Note: We can't call display_map.set_text here because it needs cx.
         // The text will be set during prepare_if_need in element.rs
         self._pending_update = true;
@@ -1163,45 +1049,6 @@ impl InputState {
         line
     }
 
-    /// Get indent string of next line.
-    ///
-    /// To get current and next line indent, to return more depth one.
-    pub(super) fn indent_of_next_line(&mut self) -> String {
-        if self.mode.is_single_line() {
-            return "".into();
-        }
-
-        let mut current_indent = String::new();
-        let mut next_indent = String::new();
-        let current_line_start_pos = self.start_of_line();
-        let next_line_start_pos = self.end_of_line();
-        for c in self.text.slice(current_line_start_pos..).chars() {
-            if !c.is_whitespace() {
-                break;
-            }
-            if c == '\n' || c == '\r' {
-                break;
-            }
-            current_indent.push(c);
-        }
-
-        for c in self.text.slice(next_line_start_pos..).chars() {
-            if !c.is_whitespace() {
-                break;
-            }
-            if c == '\n' || c == '\r' {
-                break;
-            }
-            next_indent.push(c);
-        }
-
-        if next_indent.len() > current_indent.len() {
-            return next_indent;
-        } else {
-            return current_indent;
-        }
-    }
-
     pub(super) fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
             self.select_to(self.previous_boundary(self.cursor()), cx)
@@ -1317,22 +1164,8 @@ impl InputState {
             return;
         }
 
-        // Clear inline completion on enter (user chose not to accept it)
-        if self.has_inline_completion() {
-            self.clear_inline_completion(cx);
-        }
-
         if self.mode.is_multi_line() {
-            // Get current line indent
-            let indent = if self.mode.is_code_editor() {
-                self.indent_of_next_line()
-            } else {
-                "".to_string()
-            };
-
-            // Add newline and indent
-            let new_line_text = format!("\n{}", indent);
-            self.replace_text_in_range_silent(None, &new_line_text, window, cx);
+            self.replace_text_in_range_silent(None, "\n", window, cx);
             self.pause_blink_cursor(cx);
         } else {
             // Single line input, just emit the event (e.g.: In a dialog to confirm).
@@ -1355,12 +1188,6 @@ impl InputState {
             return;
         }
 
-        // Clear inline completion on escape
-        if self.has_inline_completion() {
-            self.clear_inline_completion(cx);
-            return; // Consume the escape, don't propagate
-        }
-
         if self.ime_marked_range.is_some() {
             self.unmark_text(window, cx);
         }
@@ -1378,9 +1205,6 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Clear inline completion on any mouse interaction
-        self.clear_inline_completion(cx);
-
         // If there have IME marked range and is empty (Means pressed Esc to abort IME typing)
         // Clear the marked range.
         if let Some(ime_marked_range) = &self.ime_marked_range {
@@ -1391,10 +1215,6 @@ impl InputState {
 
         self.selecting = true;
         let offset = self.index_for_mouse_position(event.position);
-
-        if self.handle_click_hover_definition(event, offset, window, cx) {
-            return;
-        }
 
         // Triple click to select line
         if event.button == MouseButton::Left && event.click_count >= 3 {
@@ -1439,7 +1259,7 @@ impl InputState {
     pub(super) fn on_mouse_move(
         &mut self,
         event: &MouseMoveEvent,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         // Check if mouse is within bounds
@@ -1450,40 +1270,12 @@ impl InputState {
             .unwrap_or(false);
 
         if !within_bounds {
-            // Clear hover when mouse leaves the input
-            self.clear_hover_state(cx);
             return;
         }
 
-        // Show diagnostic popover on mouse move
-        let offset = self.index_for_mouse_position(event.position);
-        self.handle_mouse_move(offset, event, window, cx);
-
-        if self.mode.is_code_editor() {
-            if let Some(diagnostic) = self
-                .mode
-                .diagnostics()
-                .and_then(|set| set.for_offset(offset))
-            {
-                if let Some(diagnostic_popover) = self.diagnostic_popover.as_ref() {
-                    if diagnostic_popover.read(cx).diagnostic.range == diagnostic.range {
-                        diagnostic_popover.update(cx, |this, cx| {
-                            this.show(cx);
-                        });
-
-                        return;
-                    }
-                }
-
-                self.diagnostic_popover = Some(DiagnosticPopover::new(diagnostic, cx.entity(), cx));
-                cx.notify();
-            } else {
-                if let Some(diagnostic_popover) = self.diagnostic_popover.as_mut() {
-                    diagnostic_popover.update(cx, |this, cx| {
-                        this.check_to_hide(event.position, cx);
-                    })
-                }
-            }
+        if self.selecting {
+            let offset = self.index_for_mouse_position(event.position);
+            self.select_to(offset, cx);
         }
     }
 
@@ -1507,8 +1299,6 @@ impl InputState {
         if self.scroll_handle.offset() != old_offset {
             cx.stop_propagation();
         }
-
-        self.diagnostic_popover = None;
     }
 
     pub(super) fn update_scroll_offset(
@@ -1828,8 +1618,6 @@ impl InputState {
     ///
     /// Ensure the offset use self.next_boundary or self.previous_boundary to get the correct offset.
     pub(crate) fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        self.clear_inline_completion(cx);
-
         let offset = offset.clamp(0, self.text.len());
         if self.selection_reversed {
             self.selected_range.start = offset
@@ -1957,10 +1745,7 @@ impl InputState {
         // NOTE: Do not cancel select, when blur.
         // Because maybe user want to copy the selected text by AppMenuBar (will take focus handle).
 
-        self.hover_popover = None;
-        self.diagnostic_popover = None;
         self.context_menu_content = None;
-        self.clear_inline_completion(cx);
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
         });
@@ -2129,28 +1914,14 @@ impl InputState {
         self.silent_replace_text = false;
     }
 
-    /// Update fold candidates from tree-sitter syntax tree (full extraction).
+    /// 更新可折叠区域候选项。
     /// Used only on initial load or language changes.
     fn update_fold_candidates(&mut self) {
         if !self.mode.is_folding() {
             return;
         }
 
-        let Some(highlighter_rc) = self.mode.highlighter() else {
-            return;
-        };
-
-        let highlighter = highlighter_rc.borrow();
-        let Some(highlighter) = highlighter.as_ref() else {
-            return;
-        };
-
-        let Some(tree) = highlighter.tree() else {
-            return;
-        };
-
-        let fold_ranges = crate::input::display_map::extract_fold_ranges(tree);
-        self.display_map.set_fold_candidates(fold_ranges);
+        self.display_map.set_fold_candidates(Vec::new());
     }
 
     /// Incrementally update fold candidates after a text edit.
@@ -2160,130 +1931,7 @@ impl InputState {
             return;
         }
 
-        let Some(highlighter_rc) = self.mode.highlighter() else {
-            return;
-        };
-
-        let highlighter = highlighter_rc.borrow();
-        let Some(highlighter) = highlighter.as_ref() else {
-            return;
-        };
-
-        let Some(tree) = highlighter.tree() else {
-            return;
-        };
-
-        // The new byte range in the updated text after the edit
-        let new_end = edit_range.start + new_text.len();
-        self.display_map.update_fold_candidates_for_edit(
-            tree,
-            edit_range.start..new_end,
-            &self.text,
-        );
-    }
-
-    /// Spawn a background parse after the synchronous parse timed out.
-    ///
-    /// Dropping the returned `Task` (stored in `parse_task`) cancels the
-    /// parse, which naturally debounces rapid edits.
-    #[cfg(not(target_family = "wasm"))]
-    fn dispatch_background_parse(
-        pending: super::mode::PendingBackgroundParse,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let highlighter_rc = pending.highlighter;
-        let parse_task_rc = pending.parse_task;
-        let language = pending.language;
-        let text = pending.text;
-        let is_folding = pending.is_folding;
-
-        let old_tree = highlighter_rc
-            .borrow()
-            .as_ref()
-            .and_then(|h| h.tree().cloned());
-
-        // Extract injection parse data on the main thread before spawning, so that
-        // compute_injection_layers can also run on the background thread.
-        let injection_data = highlighter_rc
-            .borrow()
-            .as_ref()
-            .and_then(|h| h.injection_parse_data());
-
-        let text_for_apply = text.clone();
-        let task = cx.spawn_in(window, async move |entity, cx| {
-            let result = cx
-                .background_executor()
-                .spawn(async move {
-                    let Some(config) = LanguageRegistry::singleton().language(&language) else {
-                        return None;
-                    };
-
-                    let mut parser = tree_sitter::Parser::new();
-                    if parser.set_language(&config.language).is_err() {
-                        return None;
-                    }
-
-                    let new_tree = parser.parse_with_options(
-                        &mut |offset, _| {
-                            if offset >= text.len() {
-                                ""
-                            } else {
-                                let (chunk, chunk_byte_ix) = text.chunk(offset);
-                                &chunk[offset - chunk_byte_ix..]
-                            }
-                        },
-                        old_tree.as_ref(),
-                        None,
-                    )?;
-
-                    // Compute injection layers in the background to avoid blocking the
-                    // main thread with combined-injection parsing (e.g. PHP, HTML+JS/CSS).
-                    let injection_layers = if let Some(data) = injection_data {
-                        crate::highlighter::SyntaxHighlighter::compute_injection_layers(
-                            data, &new_tree, &text,
-                        )
-                    } else {
-                        Default::default()
-                    };
-
-                    // Walk the syntax tree to extract fold ranges off the main thread.
-                    let fold_ranges = if is_folding {
-                        crate::input::display_map::extract_fold_ranges(&new_tree)
-                    } else {
-                        Vec::new()
-                    };
-
-                    Some((new_tree, injection_layers, fold_ranges))
-                })
-                .await;
-
-            if let Some((new_tree, injection_layers, fold_ranges)) = result {
-                if let Some(h) = highlighter_rc.borrow_mut().as_mut() {
-                    h.apply_background_tree(new_tree, &text_for_apply, injection_layers);
-                }
-
-                // Trigger re-render so the new highlights are displayed and
-                // apply the fold candidates extracted in the background.
-                _ = entity.update(cx, |state, cx| {
-                    if is_folding {
-                        state.display_map.set_fold_candidates(fold_ranges);
-                    }
-                    cx.notify();
-                });
-            }
-        });
-
-        parse_task_rc.borrow_mut().replace(task);
-    }
-
-    #[cfg(target_family = "wasm")]
-    fn dispatch_background_parse(
-        _pending: super::mode::PendingBackgroundParse,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) {
-        // No-op
+        _ = (edit_range, new_text);
     }
 }
 
@@ -2333,7 +1981,7 @@ impl EntityInputHandler for InputState {
         &mut self,
         range_utf16: Option<Range<usize>>,
         new_text: &str,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.disabled {
@@ -2377,32 +2025,18 @@ impl EntityInputHandler for InputState {
 
         self.push_history(&old_text, &range, &new_text);
         self.history.end_grouping();
-        if let Some(diagnostics) = self.mode.diagnostics_mut() {
-            diagnostics.reset(&self.text)
-        }
         // Adjust folds before updating wrap map: remove overlapping folds and shift others
         self.display_map
             .adjust_folds_for_edit(&old_text, &range, new_text);
         self.display_map
             .on_text_changed(&self.text, &range, &Rope::from(new_text), cx);
 
-        let bg = self
-            .mode
-            .update_highlighter(&range, &old_text, &self.text, &new_text, true, cx);
-        if let Some(bg) = bg {
-            Self::dispatch_background_parse(bg, window, cx);
-        }
-
         self.update_fold_candidates_incremental(&range, new_text);
-        self.lsp.update(&self.text, window, cx);
         self.selected_range = (new_offset..new_offset).into();
         self.ime_marked_range.take();
         self.update_preferred_column();
         self.update_search(cx);
         self.mode.update_auto_grow(&self.display_map);
-        if !self.silent_replace_text {
-            self.handle_completion_trigger(&range, &new_text, window, cx);
-        }
         if self.emit_events {
             cx.emit(InputEvent::Change);
         }
@@ -2415,14 +2049,12 @@ impl EntityInputHandler for InputState {
         range_utf16: Option<Range<usize>>,
         new_text: &str,
         new_selected_range_utf16: Option<Range<usize>>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.disabled {
             return;
         }
-
-        self.lsp.reset();
 
         let range = range_utf16
             .as_ref()
@@ -2444,24 +2076,13 @@ impl EntityInputHandler for InputState {
             }
         }
 
-        if let Some(diagnostics) = self.mode.diagnostics_mut() {
-            diagnostics.reset(&self.text)
-        }
         // Adjust folds before updating wrap map: remove overlapping folds and shift others
         self.display_map
             .adjust_folds_for_edit(&old_text, &range, new_text);
         self.display_map
             .on_text_changed(&self.text, &range, &Rope::from(new_text), cx);
 
-        let bg = self
-            .mode
-            .update_highlighter(&range, &old_text, &self.text, &new_text, true, cx);
-        if let Some(bg) = bg {
-            Self::dispatch_background_parse(bg, window, cx);
-        }
-
         self.update_fold_candidates_incremental(&range, new_text);
-        self.lsp.update(&self.text, window, cx);
         if new_text.is_empty() {
             // Cancel selection, when cancel IME input.
             self.selected_range = (range.start..range.start).into();
@@ -2568,17 +2189,9 @@ impl Focusable for InputState {
 }
 
 impl Render for InputState {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self._pending_update {
-            let bg = self
-                .mode
-                .update_highlighter(&(0..0), &self.text, &self.text, "", false, cx);
-            if let Some(bg) = bg {
-                Self::dispatch_background_parse(bg, window, cx);
-            }
-
             self.update_fold_candidates();
-            self.lsp.update(&self.text, window, cx);
             self._pending_update = false;
         }
 
@@ -2589,9 +2202,7 @@ impl Render for InputState {
             .flex_grow()
             .overflow_x_hidden()
             .child(TextElement::new(cx.entity().clone()).placeholder(self.placeholder.clone()))
-            .children(self.diagnostic_popover.clone())
             .children(self.context_menu_content.as_ref().map(|menu| menu.render()))
-            .children(self.hover_popover.clone())
     }
 }
 
@@ -2630,123 +2241,5 @@ mod tests {
                 window_handle: window,
             }
         }
-    }
-
-    #[gpui::test]
-    fn test_highlighting_preserved_after_fold(cx: &mut TestAppContext) {
-        use crate::highlighter::HighlightTheme;
-        use crate::input::display_map::FoldRange;
-
-        let input_view = InputView::new(cx);
-        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
-        let input = input_view.input;
-
-        // SQL text: fold the SELECT..WHERE block, verify comments keep highlighting.
-        // Lines 0-9: SELECT block (fold range 0..9 hides lines 1-8)
-        // Line 10+: comments that must keep highlighting
-        let text = "\
-SELECT *
-FROM users
-WHERE id = 1
-AND name = 'test'
-AND active = true
-AND role = 'admin'
-AND age > 18
-AND status = 'ok'
-AND country = 'US'
-ORDER BY id
-
--- Comment 1
--- Comment 2
--- Comment 3";
-
-        cx.update(|window, cx| {
-            input.update(cx, |state, cx| {
-                state.set_value(text, window, cx);
-            });
-        });
-        cx.run_until_parked();
-
-        // Grab styles for "-- Comment 1" (line 11) before folding
-        let theme = HighlightTheme::default_dark();
-        let comment_line = 11;
-        let comment_start = cx.update(|_, cx| {
-            input.read_with(cx, |state, _| state.text.line_start_offset(comment_line))
-        });
-        let styles_before: Vec<(Range<usize>, gpui::HighlightStyle)> = cx.update(|_, cx| {
-            input.read_with(cx, |state, _| {
-                let mode = &state.mode;
-                if let crate::input::mode::InputMode::CodeEditor { highlighter, .. } = mode {
-                    let h = highlighter.borrow();
-                    if let Some(h) = h.as_ref() {
-                        let line_end = state.text.line_end_offset(comment_line);
-                        return h.styles(&(comment_start..line_end), &theme);
-                    }
-                }
-                vec![]
-            })
-        });
-
-        // Fold at line 0 with range 0..9 (hides lines 1-8)
-        cx.update(|_, cx| {
-            input.update(cx, |state, _cx| {
-                state
-                    .display_map
-                    .set_fold_candidates(vec![FoldRange::new(0, 9)]);
-                state.display_map.set_folded(0, true);
-            });
-        });
-        cx.run_until_parked();
-
-        // Verify fold is active and lines 1-8 are hidden
-        cx.update(|_, cx| {
-            input.read_with(cx, |state, _| {
-                assert!(state.display_map.is_folded_at(0));
-                for line in 1..=8 {
-                    assert!(
-                        state.display_map.is_buffer_line_hidden(line),
-                        "Line {} should be hidden",
-                        line
-                    );
-                }
-                assert!(
-                    !state.display_map.is_buffer_line_hidden(9),
-                    "Line 9 (ORDER BY) should be visible"
-                );
-            });
-        });
-
-        // Get styles for the same comment line after folding
-        let styles_after: Vec<(Range<usize>, gpui::HighlightStyle)> = cx.update(|_, cx| {
-            input.read_with(cx, |state, _| {
-                let mode = &state.mode;
-                if let crate::input::mode::InputMode::CodeEditor { highlighter, .. } = mode {
-                    let h = highlighter.borrow();
-                    if let Some(h) = h.as_ref() {
-                        let line_end = state.text.line_end_offset(comment_line);
-                        return h.styles(&(comment_start..line_end), &theme);
-                    }
-                }
-                vec![]
-            })
-        });
-
-        let colored_before: Vec<_> = styles_before
-            .iter()
-            .filter(|(_, s)| s.color.is_some())
-            .cloned()
-            .collect();
-        let colored_after: Vec<_> = styles_after
-            .iter()
-            .filter(|(_, s)| s.color.is_some())
-            .cloned()
-            .collect();
-
-        assert_eq!(
-            colored_before, colored_after,
-            "Comment highlighting must be identical before and after folding.\n\
-             Before: {:?}\nAfter: {:?}",
-            colored_before, colored_after
-        );
     }
 }

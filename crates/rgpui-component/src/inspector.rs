@@ -1,14 +1,9 @@
-use std::{cell::OnceCell, collections::HashMap, fmt::Write as _, rc::Rc, sync::OnceLock};
+use std::{cell::OnceCell, collections::HashMap, fmt::Write as _, sync::OnceLock};
 
-use anyhow::Result;
-use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit, Diagnostic,
-    DiagnosticSeverity, Position, TextEdit,
-};
 use rgpui::{
     AnyElement, App, AppContext, Context, DivInspectorState, Entity, Inspector, InspectorElementId,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Refineable as _, Render,
-    SharedString, StyleRefinement, Styled, Subscription, Task, Window, actions, div,
+    SharedString, StyleRefinement, Styled, Subscription, Window, actions, div,
     inspector_reflection::FunctionReflection, prelude::FluentBuilder, px,
 };
 use ropey::Rope;
@@ -20,7 +15,7 @@ use crate::{
     clipboard::Clipboard,
     description_list::DescriptionList,
     h_flex,
-    input::{CompletionProvider, Input, InputEvent, InputState, RopeExt, TabSize},
+    input::{Input, InputEvent, InputState, Position, RopeExt, TabSize},
     link::Link,
     v_flex,
 };
@@ -83,8 +78,6 @@ pub struct DivInspector {
 
 impl DivInspector {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let lsp_provider = Rc::new(LspProvider {});
-
         let json_input_state = cx.new(|cx| {
             InputState::new(window, cx)
                 .code_editor("json")
@@ -92,16 +85,13 @@ impl DivInspector {
         });
 
         let rust_input_state = cx.new(|cx| {
-            let mut editor = InputState::new(window, cx)
+            InputState::new(window, cx)
                 .code_editor("rust")
                 .line_number(false)
                 .tab_size(TabSize {
                     tab_size: 4,
                     hard_tabs: false,
-                });
-
-            editor.lsp.completion_provider = Some(lsp_provider.clone());
-            editor
+                })
         });
 
         let _subscriptions = vec![
@@ -204,14 +194,7 @@ impl DivInspector {
             return;
         }
 
-        let (new_style, diagnostics) = rust_to_style(self.unconvertible_style.clone(), code);
-        self.rust_state.state.update(cx, |state, cx| {
-            if let Some(set) = state.diagnostics_mut() {
-                set.clear();
-                set.extend(diagnostics);
-            }
-            cx.notify();
-        });
+        let (new_style, _diagnostics) = rust_to_style(self.unconvertible_style.clone(), code);
         self.json_state.error = None;
         self.json_state.editing = false;
         self.update_json_from_style(&new_style, window, cx);
@@ -328,6 +311,35 @@ fn style_to_rust(input_style: &StyleRefinement) -> (String, StyleRefinement) {
     (code, style)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TextRange {
+    start: Position,
+    end: Position,
+}
+
+impl TextRange {
+    /// 创建文本范围。
+    fn new(start: Position, end: Position) -> Self {
+        Self { start, end }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Diagnostic {
+    range: TextRange,
+    message: String,
+}
+
+impl Diagnostic {
+    /// 创建检查器诊断信息。
+    fn new(range: TextRange, message: impl Into<String>) -> Self {
+        Self {
+            range,
+            message: message.into(),
+        }
+    }
+}
+
 fn rust_to_style(mut style: StyleRefinement, source: &str) -> (StyleRefinement, Vec<Diagnostic>) {
     let rope = Rope::from(source);
     let Some(begin) = source.find("div()").map(|i| i + "div()".len()) else {
@@ -336,12 +348,10 @@ fn rust_to_style(mut style: StyleRefinement, source: &str) -> (StyleRefinement, 
 
         return (
             style,
-            vec![Diagnostic {
-                range: lsp_types::Range::new(start_pos, end_pos),
-                severity: Some(DiagnosticSeverity::ERROR),
-                message: "expected `div()`".into(),
-                ..Default::default()
-            }],
+            vec![Diagnostic::new(
+                TextRange::new(start_pos, end_pos),
+                "expected `div()`",
+            )],
         );
     };
 
@@ -386,12 +396,7 @@ fn rust_to_style(mut style: StyleRefinement, source: &str) -> (StyleRefinement, 
                 let message = format!("unknown method `{}`", method);
                 let start = rope.offset_to_position(offset.saturating_sub(method.len()));
                 let end = rope.offset_to_position(offset);
-                let diagnostic = lsp_types::Diagnostic {
-                    range: lsp_types::Range::new(start, end),
-                    severity: Some(DiagnosticSeverity::ERROR),
-                    message,
-                    ..Default::default()
-                };
+                let diagnostic = Diagnostic::new(TextRange::new(start, end), message);
 
                 diagnostics.push(diagnostic);
             }
@@ -560,81 +565,10 @@ fn render_inspector(
         .into_any_element()
 }
 
-struct LspProvider {}
-
-impl CompletionProvider for LspProvider {
-    fn completions(
-        &self,
-        rope: &ropey::Rope,
-        offset: usize,
-        _: lsp_types::CompletionContext,
-        _: &mut Window,
-        cx: &mut Context<InputState>,
-    ) -> Task<Result<CompletionResponse>> {
-        let mut left_offset = 0;
-        while left_offset < 100 {
-            match rope.char_at(offset.saturating_sub(left_offset)) {
-                Some('.') => {
-                    break;
-                }
-                None => break,
-                _ => {}
-            }
-            left_offset += 1;
-        }
-        let start = offset.saturating_sub(left_offset);
-        let trigger_character = rope.slice(start..offset).to_string();
-        if !trigger_character.starts_with('.') {
-            return Task::ready(Ok(CompletionResponse::Array(vec![])));
-        }
-
-        let start_pos = rope.offset_to_position(start);
-        let end_pos = rope.offset_to_position(offset);
-
-        cx.background_spawn(async move {
-            let styles = StyleMethods::get()
-                .map
-                .iter()
-                .filter_map(|(name, method)| {
-                    let prefix = &trigger_character[1..];
-                    if name.starts_with(&prefix) {
-                        Some(CompletionItem {
-                            label: name.to_string(),
-                            filter_text: Some(prefix.to_string()),
-                            kind: Some(CompletionItemKind::METHOD),
-                            detail: Some("()".to_string()),
-                            documentation: method
-                                .documentation
-                                .as_ref()
-                                .map(|doc| lsp_types::Documentation::String(doc.to_string())),
-                            text_edit: Some(CompletionTextEdit::Edit(TextEdit {
-                                range: lsp_types::Range {
-                                    start: start_pos,
-                                    end: end_pos,
-                                },
-                                new_text: format!(".{}()", name),
-                            })),
-                            ..Default::default()
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            Ok(CompletionResponse::Array(styles))
-        })
-    }
-
-    fn is_completion_trigger(&self, _: usize, _: &str, _: &mut Context<InputState>) -> bool {
-        true
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::input::Position;
     use indoc::indoc;
-    use lsp_types::Position;
     use rgpui::{AbsoluteLength, DefiniteLength, Length, rems};
 
     #[test]

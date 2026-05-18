@@ -12,10 +12,10 @@ use schemars::JsonSchema;
 pub use separator_item::*;
 use serde::{Deserialize, Serialize};
 
-/// Settings for List.
+/// 列表组件设置
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ListSettings {
-    /// Whether to use active highlight style on ListItem, default
+    /// 是否在 ListItem 上使用活动高亮样式，默认为 true
     pub active_highlight: bool,
 }
 

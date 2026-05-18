@@ -5,6 +5,7 @@ use crate::{
     button::{Button, ButtonVariants as _},
 };
 
+/// 创建清除按钮
 #[inline]
 pub(crate) fn clear_button(cx: &App) -> Button {
     Button::new("clean")

@@ -1,0 +1,38 @@
+[package]
+name = "rgpui-platform"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license = "Apache-2.0"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/rgpui_platform.rs"
+
+[features]
+default = []
+font-kit = ["rgpui-macos/font-kit"]
+test-support = ["rgpui/test-support", "rgpui-macos/test-support"]
+screen-capture = ["rgpui/screen-capture", "rgpui-macos/screen-capture", "rgpui-windows/screen-capture", "rgpui-linux/screen-capture"]
+runtime_shaders = ["rgpui-macos/runtime_shaders"]
+wayland = ["rgpui-linux/wayland"]
+x11 = ["rgpui-linux/x11"]
+
+[dependencies]
+rgpui.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+rgpui-macos.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+rgpui-windows.workspace = true
+rgpui = { workspace = true, features = ["windows-manifest"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+rgpui-linux.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+rgpui-web.workspace = true
+console_error_panic_hook = "0.1.7"

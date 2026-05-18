@@ -57,30 +57,20 @@ impl InputMode {
     #[inline]
     pub(super) fn is_indentable(&self) -> bool {
         match self {
-            InputMode::PlainText { multi_line, .. } | InputMode::CodeEditor { multi_line, .. } => {
-                *multi_line
-            }
+            InputMode::PlainText { multi_line, .. } => *multi_line,
             _ => false,
         }
     }
 
     #[inline]
     pub(super) fn has_indent_guides(&self) -> bool {
-        match self {
-            InputMode::CodeEditor {
-                indent_guides,
-                multi_line,
-                ..
-            } => *indent_guides && *multi_line,
-            _ => false,
-        }
+        false
     }
 
     #[inline]
     pub(super) fn tab_size(&self) -> TabSize {
         match self {
             InputMode::PlainText { tab, .. } => *tab,
-            InputMode::CodeEditor { tab, .. } => *tab,
             _ => TabSize::default(),
         }
     }
@@ -170,47 +160,29 @@ impl TextElement {
 }
 
 impl InputState {
-    /// Set whether to show indent guides in code editor mode, default is true.
-    ///
-    /// Only for [`InputMode::CodeEditor`] mode.
-    pub fn indent_guides(mut self, indent_guides: bool) -> Self {
-        debug_assert!(self.mode.is_code_editor() && self.mode.is_multi_line());
-        if let InputMode::CodeEditor {
-            indent_guides: l, ..
-        } = &mut self.mode
-        {
-            *l = indent_guides;
-        }
+    /// 兼容旧调用：component 输入控件不再显示缩进参考线。
+    pub fn indent_guides(self, _indent_guides: bool) -> Self {
         self
     }
 
-    /// Set indent guides in code editor mode.
-    ///
-    /// Only for [`InputMode::CodeEditor`] mode.
+    /// 兼容旧调用：component 输入控件不再显示缩进参考线。
     pub fn set_indent_guides(
         &mut self,
         indent_guides: bool,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        debug_assert!(self.mode.is_code_editor());
-        if let InputMode::CodeEditor {
-            indent_guides: l, ..
-        } = &mut self.mode
-        {
-            *l = indent_guides;
-        }
+        _ = indent_guides;
         cx.notify();
     }
 
     /// Set the tab size for the input.
     ///
-    /// Only for [`InputMode::PlainText`] and [`InputMode::CodeEditor`] mode with multi_line.
+    /// Only for multi-line plain text mode.
     pub fn tab_size(mut self, tab: TabSize) -> Self {
         debug_assert!(self.mode.is_multi_line() || self.mode.is_code_editor());
         match &mut self.mode {
             InputMode::PlainText { tab: t, .. } => *t = tab,
-            InputMode::CodeEditor { tab: t, .. } => *t = tab,
             _ => {}
         }
         self
@@ -222,10 +194,6 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // First, try to accept inline completion if present
-        if self.accept_inline_completion(window, cx) {
-            return;
-        }
         self.indent(false, window, cx);
     }
 

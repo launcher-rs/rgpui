@@ -20,8 +20,8 @@ mod wrap_map;
 pub use self::display_map::DisplayMap;
 pub(crate) use self::text_wrapper::LineLayout;
 
-// Re-export FoldRange and extract_fold_ranges
-pub use folding::{FoldRange, extract_fold_ranges};
+// Re-export FoldRange
+pub use folding::FoldRange;
 
 /// Position in the buffer (logical text).
 ///

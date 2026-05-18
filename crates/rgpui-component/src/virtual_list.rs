@@ -1,15 +1,15 @@
-//! Virtual List for render a large number of differently sized rows/columns.
+//! 虚拟列表，用于渲染大量不同尺寸的行/列。
 //!
-//! > NOTE: This must ensure each column width or row height.
+//! > 注意：必须确保每列宽度或每行高度已知。
 //!
-//! Only visible range are rendered for performance reasons.
+//! 出于性能考虑，仅渲染可见范围内的元素。
 //!
-//! Inspired by `gpui::uniform_list`.
+//! 灵感来源于 `gpui::uniform_list`。
 //! https://github.com/zed-industries/zed/blob/0ae1603610ab6b265bdfbee7b8dbc23c5ab06edc/crates/gpui/src/elements/uniform_list.rs
 //!
-//! Unlike the `uniform_list`, the each item can have different size.
+//! 与 `uniform_list` 不同，每个项可以具有不同的尺寸。
 //!
-//! This is useful for more complex layout, for example, a table with different row height.
+//! 这对于更复杂的布局非常有用，例如具有不同行高的表格。
 use std::{
     cell::RefCell,
     cmp,
@@ -28,18 +28,24 @@ use smallvec::SmallVec;
 
 use crate::{AxisExt, scroll::ScrollbarHandle};
 
+/// 虚拟列表滚动句柄的内部状态
 struct VirtualListScrollHandleState {
+    /// 布局方向
     axis: Axis,
+    /// 项总数
     items_count: usize,
+    /// 延迟滚动到项的信息
     pub deferred_scroll_to_item: Option<DeferredScrollToItem>,
 }
 
-/// A scroll handle for [`VirtualList`].
+/// [`VirtualList`] 的滚动句柄
 ///
-/// See also [`ScrollHandle`].
+/// 参见 [`ScrollHandle`]。
 #[derive(Clone)]
 pub struct VirtualListScrollHandle {
+    /// 内部状态
     state: Rc<RefCell<VirtualListScrollHandleState>>,
+    /// 基础滚动句柄
     base_handle: ScrollHandle,
 }
 
@@ -80,7 +86,7 @@ impl Deref for VirtualListScrollHandle {
 }
 
 impl VirtualListScrollHandle {
-    /// Create a new VirtualListScrollHandle.
+    /// 创建新的虚拟列表滚动句柄
     pub fn new() -> Self {
         VirtualListScrollHandle {
             state: Rc::new(RefCell::new(VirtualListScrollHandleState {
@@ -92,17 +98,17 @@ impl VirtualListScrollHandle {
         }
     }
 
-    /// Get the base scroll handle.
+    /// 获取基础滚动句柄
     pub fn base_handle(&self) -> &ScrollHandle {
         &self.base_handle
     }
 
-    /// Scroll to the item at the given index.
+    /// 滚动到指定索引的项
     pub fn scroll_to_item(&self, ix: usize, strategy: ScrollStrategy) {
         self.scroll_to_item_with_offset(ix, strategy, 0);
     }
 
-    /// Scroll to the item at the given index, with an additional offset items.
+    /// 滚动到指定索引的项，带额外偏移
     fn scroll_to_item_with_offset(&self, ix: usize, strategy: ScrollStrategy, offset: usize) {
         let mut state = self.state.borrow_mut();
         state.deferred_scroll_to_item = Some(DeferredScrollToItem {
@@ -113,21 +119,21 @@ impl VirtualListScrollHandle {
         });
     }
 
-    /// Scrolls to the bottom of the list.
+    /// 滚动到列表底部
     pub fn scroll_to_bottom(&self) {
         let items_count = self.state.borrow().items_count;
         self.scroll_to_item(items_count.saturating_sub(1), ScrollStrategy::Top);
     }
 }
 
-/// Create a [`VirtualList`] in vertical direction.
+/// 创建垂直方向的 [`VirtualList`]
 ///
-/// This is like `uniform_list` in GPUI, but support two axis.
+/// 类似于 GPUI 中的 `uniform_list`，但支持两个方向。
 ///
-/// The `item_sizes` is the size of each column,
-/// only the `height` is used, `width` is ignored and VirtualList will measure the first item width.
+/// `item_sizes` 是每个项的尺寸，
+/// 仅使用 `height`，`width` 将被忽略，虚拟列表会测量第一个项的宽度。
 ///
-/// See also [`h_virtual_list`]
+/// 参见 [`h_virtual_list`]
 #[inline]
 pub fn v_virtual_list<R, V>(
     view: Entity<V>,
@@ -142,12 +148,12 @@ where
     virtual_list(view, id, Axis::Vertical, item_sizes, f)
 }
 
-/// Create a [`VirtualList`] in horizontal direction.
+/// 创建水平方向的 [`VirtualList`]
 ///
-/// The `item_sizes` is the size of each column,
-/// only the `width` is used, `height` is ignored and VirtualList will measure the first item height.
+/// `item_sizes` 是每个项的尺寸，
+/// 仅使用 `width`，`height` 将被忽略，虚拟列表会测量第一个项的高度。
 ///
-/// See also [`v_virtual_list`]
+/// 参见 [`v_virtual_list`]
 #[inline]
 pub fn h_virtual_list<R, V>(
     view: Entity<V>,
@@ -162,6 +168,7 @@ where
     virtual_list(view, id, Axis::Horizontal, item_sizes, f)
 }
 
+/// 内部虚拟列表创建函数
 pub(crate) fn virtual_list<R, V>(
     view: Entity<V>,
     id: impl Into<ElementId>,
@@ -200,17 +207,25 @@ where
     }
 }
 
-/// VirtualList component for rendering a large number of differently sized items.
+/// 虚拟列表组件，用于渲染大量不同尺寸的项
 pub struct VirtualList {
+    /// 元素 ID
     id: ElementId,
+    /// 布局方向
     axis: Axis,
+    /// 基础 Div 元素
     base: Stateful<Div>,
+    /// 滚动句柄
     scroll_handle: VirtualListScrollHandle,
+    /// 项总数
     items_count: usize,
+    /// 每个项的尺寸
     item_sizes: Rc<Vec<Size<Pixels>>>,
+    /// 渲染项的闭包
     render_items: Box<
         dyn for<'a> Fn(Range<usize>, &'a mut Window, &'a mut App) -> SmallVec<[AnyElement; 64]>,
     >,
+    /// 列表尺寸行为
     sizing_behavior: ListSizingBehavior,
 }
 
@@ -221,27 +236,29 @@ impl Styled for VirtualList {
 }
 
 impl VirtualList {
+    /// 绑定滚动句柄
     pub fn track_scroll(mut self, scroll_handle: &VirtualListScrollHandle) -> Self {
         self.base = self.base.track_scroll(&scroll_handle);
         self.scroll_handle = scroll_handle.clone();
         self
     }
 
-    /// Set the sizing behavior for the list.
+    /// 设置列表的尺寸行为
     pub fn with_sizing_behavior(mut self, behavior: ListSizingBehavior) -> Self {
         self.sizing_behavior = behavior;
         self
     }
 
-    /// Specify for table.
+    /// 专为表格设计
     ///
-    /// Table is special, because the `scroll_handle` is based on Table head (That is not a virtual list).
+    /// 表格比较特殊，因为其 `scroll_handle` 基于表头（那不是虚拟列表）。
     pub(crate) fn with_scroll_handle(mut self, scroll_handle: &VirtualListScrollHandle) -> Self {
         self.base = div().id(self.id.clone()).size_full();
         self.scroll_handle = scroll_handle.clone();
         self
     }
 
+    /// 处理延迟滚动到指定项
     fn scroll_to_deferred_item(
         &self,
         scroll_offset: Point<Pixels>,
@@ -270,7 +287,7 @@ impl VirtualList {
                 }
             }
             _ => {
-                // Ref: https://github.com/zed-industries/zed/blob/0d145289e0867a8d5d63e5e1397a5ca69c9d49c3/crates/gpui/src/elements/div.rs#L3026
+                // 参考：https://github.com/zed-industries/zed/blob/0d145289e0867a8d5d63e5e1397a5ca69c9d49c3/crates/gpui/src/elements/div.rs#L3026
                 if self.axis.is_vertical() {
                     if bounds.top() + scroll_offset.y < content_bounds.top() {
                         scroll_offset.y = content_bounds.top() - bounds.top()
@@ -290,7 +307,8 @@ impl VirtualList {
         scroll_offset
     }
 
-    /// Ref from: https://github.com/zed-industries/zed/blob/83f9f9d9e3f5914392cab9a09e3472711a1d7b38/crates/gpui/src/elements/uniform_list.rs#L660
+    /// 测量单个项的尺寸
+    /// 参考：https://github.com/zed-industries/zed/blob/83f9f9d9e3f5914392cab9a09e3472711a1d7b38/crates/gpui/src/elements/uniform_list.rs#L660
     fn measure_item(
         &self,
         list_width: Option<Pixels>,
@@ -316,19 +334,26 @@ impl VirtualList {
     }
 }
 
-/// Frame state used by the [VirtualItem].
+/// [VirtualItem] 使用的帧状态
 pub struct VirtualListFrameState {
-    /// Visible items to be painted.
+    /// 待绘制的可见项
     items: SmallVec<[AnyElement; 32]>,
+    /// 项尺寸布局信息
     size_layout: ItemSizeLayout,
 }
 
+/// 项尺寸布局数据
 #[derive(Default, Clone)]
 pub struct ItemSizeLayout {
+    /// 所有项的尺寸
     items_sizes: Rc<Vec<Size<Pixels>>>,
+    /// 内容总尺寸
     content_size: Size<Pixels>,
+    /// 沿主轴的每个项尺寸
     sizes: Vec<Pixels>,
+    /// 沿主轴的每个项起始位置
     origins: Vec<Pixels>,
+    /// 上次布局的边界
     last_layout_bounds: Bounds<Pixels>,
 }
 
@@ -375,7 +400,7 @@ impl Element for VirtualList {
                     |state: Option<ItemSizeLayout>, _window| {
                         let mut state = state.unwrap_or(ItemSizeLayout::default());
 
-                        // Including the gap between items for calculate the item size
+                        // 包含项之间的间距以计算项尺寸
                         let gap = style
                             .gap
                             .along(self.axis)
@@ -383,7 +408,7 @@ impl Element for VirtualList {
 
                         if state.items_sizes != self.item_sizes {
                             state.items_sizes = self.item_sizes.clone();
-                            // Prepare each item's size by axis
+                            // 准备每个项沿主轴的尺寸
                             state.sizes = self
                                 .item_sizes
                                 .iter()
@@ -398,7 +423,7 @@ impl Element for VirtualList {
                                 })
                                 .collect::<Vec<_>>();
 
-                            // Prepare each item's origin by axis
+                            // 准备每个项沿主轴的起始位置
                             state.origins = state
                                 .sizes
                                 .iter()
@@ -551,7 +576,7 @@ impl Element for VirtualList {
                 ),
         );
 
-        // Update scroll_handle with the item bounds
+        // 使用项边界更新滚动句柄
         let items_bounds = item_origins
             .iter()
             .enumerate()

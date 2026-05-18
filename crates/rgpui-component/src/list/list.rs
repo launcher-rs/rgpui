@@ -389,7 +389,8 @@ where
         cx.notify();
     }
 
-    pub(crate) fn on_action_select_prev(
+    /// 选择上一个可见列表项。
+    pub fn on_action_select_prev(
         &mut self,
         _: &SelectUp,
         window: &mut Window,
@@ -403,7 +404,8 @@ where
         self.select_item(prev_ix, window, cx);
     }
 
-    pub(crate) fn on_action_select_next(
+    /// 选择下一个可见列表项。
+    pub fn on_action_select_next(
         &mut self,
         _: &SelectDown,
         window: &mut Window,

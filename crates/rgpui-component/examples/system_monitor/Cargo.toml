@@ -8,7 +8,7 @@ edition = "2024"
 [dependencies]
 anyhow.workspace = true
 rgpui.workspace = true
-rgpui_platform.workspace = true
+rgpui-platform.workspace = true
 rgpui-component-assets.workspace = true
 rgpui-component.workspace = true
 sysinfo = "0.37"

@@ -7,7 +7,7 @@ use markdown::{
 use rgpui::SharedString;
 
 use crate::{
-    highlighter::HighlightTheme,
+    HighlightTheme,
     text::{
         document::ParsedDocument,
         node::{
