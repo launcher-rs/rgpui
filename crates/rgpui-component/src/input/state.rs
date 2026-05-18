@@ -16,7 +16,9 @@ use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::input::blink_cursor::CURSOR_WIDTH;
 use crate::input::movement::MoveDirection;
 use crate::input::{
-    Position, RopeExt as _, Selection, display_map::LineLayout, element::RIGHT_MARGIN,
+    Position, RopeExt as _, Selection,
+    display_map::LineLayout,
+    element::RIGHT_MARGIN,
     popovers::{ContextMenu, InputContextMenu},
     search::{self, SearchPanel},
 };
@@ -1297,7 +1299,6 @@ impl InputState {
         if self.scroll_handle.offset() != old_offset {
             cx.stop_propagation();
         }
-
     }
 
     pub(super) fn update_scroll_offset(
@@ -2241,5 +2242,4 @@ mod tests {
             }
         }
     }
-
 }

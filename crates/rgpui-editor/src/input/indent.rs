@@ -430,4 +430,3 @@ mod tests {
         assert_eq!(tab.indent_count(&RopeSlice::from("abc")), 0);
     }
 }
-

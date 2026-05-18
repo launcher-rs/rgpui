@@ -287,4 +287,3 @@ impl InputState {
         self.move_to(offset, None, cx);
     }
 }
-

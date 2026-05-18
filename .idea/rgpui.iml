@@ -62,6 +62,8 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-wgpu/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-windows/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-editor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-editor/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-editor/examples/editor/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

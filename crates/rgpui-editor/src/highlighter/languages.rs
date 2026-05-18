@@ -690,4 +690,3 @@ mod tests {
         assert_eq!(Language::from_str("unknown"), Language::Plain);
     }
 }
-

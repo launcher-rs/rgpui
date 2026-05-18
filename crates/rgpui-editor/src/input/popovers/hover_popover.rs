@@ -288,4 +288,3 @@ impl Element for Popover {
         })
     }
 }
-

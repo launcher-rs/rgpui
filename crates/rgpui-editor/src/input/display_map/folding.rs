@@ -179,4 +179,3 @@ mod tests {
         assert_eq!(ranges[2].start_line, 10);
     }
 }
-

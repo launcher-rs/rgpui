@@ -2,9 +2,7 @@ mod context_menu;
 
 pub(crate) use context_menu::*;
 
-use rgpui::{
-    App, Entity, IntoElement,
-};
+use rgpui::{App, Entity, IntoElement};
 
 pub(crate) enum ContextMenu {
     RightClick(Entity<InputContextMenu>),

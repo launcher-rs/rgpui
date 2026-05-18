@@ -91,4 +91,3 @@ impl Render for DiagnosticPopover {
         .into_any_element()
     }
 }
-

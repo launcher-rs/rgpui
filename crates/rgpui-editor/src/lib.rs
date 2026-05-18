@@ -1,4 +1,4 @@
-use rgpui::{actions, App};
+use rgpui::{App, actions};
 
 pub mod highlighter;
 pub mod input;
@@ -13,4 +13,3 @@ pub(crate) mod actions {
 pub fn init(cx: &mut App) {
     input::init(cx);
 }
-

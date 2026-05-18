@@ -2425,4 +2425,3 @@ mod tests {
         assert_eq!(result[5].color, gpui::blue());
     }
 }
-

@@ -567,8 +567,8 @@ fn render_inspector(
 
 #[cfg(test)]
 mod tests {
-    use indoc::indoc;
     use crate::input::Position;
+    use indoc::indoc;
     use rgpui::{AbsoluteLength, DefiniteLength, Length, rems};
 
     #[test]

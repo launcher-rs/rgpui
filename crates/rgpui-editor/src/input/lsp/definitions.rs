@@ -229,4 +229,3 @@ impl TextElement {
         Some(window.insert_hitbox(bounds, rgpui::HitboxBehavior::Normal))
     }
 }
-

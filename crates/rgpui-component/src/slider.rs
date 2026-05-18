@@ -226,14 +226,8 @@ impl SliderState {
     /// 设置滑块的最小值，默认：0.0
     pub fn min(mut self, min: f32) -> Self {
         if self.scale.is_logarithmic() {
-            assert!(
-                min > 0.0,
-                "对数缩放时 `min` 必须大于 0"
-            );
-            assert!(
-                min < self.max,
-                "对数缩放时 `min` 必须小于 `max`"
-            );
+            assert!(min > 0.0, "对数缩放时 `min` 必须大于 0");
+            assert!(min < self.max, "对数缩放时 `min` 必须小于 `max`");
         }
         self.min = min;
         self.update_thumb_pos();
@@ -243,10 +237,7 @@ impl SliderState {
     /// 设置滑块的最大值，默认：100.0
     pub fn max(mut self, max: f32) -> Self {
         if self.scale.is_logarithmic() {
-            assert!(
-                max > self.min,
-                "对数缩放时 `max` 必须大于 `min`"
-            );
+            assert!(max > self.min, "对数缩放时 `max` 必须大于 `min`");
         }
         self.max = max;
         self.update_thumb_pos();
@@ -262,14 +253,8 @@ impl SliderState {
     /// 设置滑块的缩放模式，默认：[`SliderScale::Linear`]
     pub fn scale(mut self, scale: SliderScale) -> Self {
         if scale.is_logarithmic() {
-            assert!(
-                self.min > 0.0,
-                "对数缩放时 `min` 必须大于 0"
-            );
-            assert!(
-                self.max > self.min,
-                "对数缩放时 `max` 必须大于 `min`"
-            );
+            assert!(self.min > 0.0, "对数缩放时 `min` 必须大于 0");
+            assert!(self.max > self.min, "对数缩放时 `max` 必须大于 `min`");
         }
         self.scale = scale;
         self.update_thumb_pos();

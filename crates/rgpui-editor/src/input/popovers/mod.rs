@@ -79,4 +79,3 @@ pub(super) fn editor_popover(id: impl Into<ElementId>, cx: &App) -> Stateful<Div
         .text_xs()
         .p_1()
 }
-

@@ -5,11 +5,7 @@ use rgpui::{
 };
 
 use crate::input::{self, InputState, popovers::ContextMenu};
-use rgpui_component::{
-    ActiveTheme as _,
-    global_state::GlobalState,
-    menu::PopupMenu,
-};
+use rgpui_component::{ActiveTheme as _, global_state::GlobalState, menu::PopupMenu};
 
 /// Context menu for mouse right clicks.
 pub(crate) struct InputContextMenu {
@@ -74,11 +70,7 @@ impl InputState {
                             )
                             .separator()
                         })
-                        .menu_with_enable(
-                            "Cut",
-                            Box::new(input::Cut),
-                            is_enable && is_selected,
-                        )
+                        .menu_with_enable("Cut", Box::new(input::Cut), is_enable && is_selected)
                         .menu_with_enable("Copy", Box::new(input::Copy), is_selected)
                         .menu_with_enable("Paste", Box::new(input::Paste), has_paste)
                         .separator()
@@ -157,4 +149,3 @@ impl Render for InputContextMenu {
         .into_any_element()
     }
 }
-

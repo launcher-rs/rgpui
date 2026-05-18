@@ -7,8 +7,8 @@ use rgpui::{
     StyleRefinement, Styled, TextAlign, Window, div, px, relative,
 };
 
-use rgpui_component::button::{Button, ButtonVariants as _};
 use crate::input::clear_button;
+use rgpui_component::button::{Button, ButtonVariants as _};
 use rgpui_component::menu::PopupMenu;
 use rgpui_component::spinner::Spinner;
 use rgpui_component::{
@@ -429,4 +429,3 @@ impl RenderOnce for Input {
             })
     }
 }
-

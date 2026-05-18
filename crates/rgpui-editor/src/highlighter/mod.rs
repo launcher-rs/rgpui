@@ -22,4 +22,3 @@ pub use registry::*;
 mod wasm_stub;
 #[cfg(target_family = "wasm")]
 pub use wasm_stub::*;
-

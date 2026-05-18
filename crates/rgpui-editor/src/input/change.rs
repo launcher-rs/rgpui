@@ -45,4 +45,3 @@ impl HistoryItem for Change {
         self.version = version;
     }
 }
-

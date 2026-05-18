@@ -4,13 +4,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use markdown::mdast;
-use rgpui::{
-    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
-    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
-    SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div, img,
-    prelude::FluentBuilder as _, px, relative, rems,
-};
 use crate::{
     ActiveTheme as _, HighlightTheme, Icon, IconName, StyledExt, h_flex,
     text::{
@@ -20,6 +13,13 @@ use crate::{
     },
     tooltip::Tooltip,
     v_flex,
+};
+use markdown::mdast;
+use rgpui::{
+    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
+    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
+    SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div, img,
+    prelude::FluentBuilder as _, px, relative, rems,
 };
 
 use super::{TextViewStyle, utils::list_item_prefix};

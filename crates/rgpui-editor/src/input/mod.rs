@@ -32,4 +32,3 @@ pub use mask_pattern::MaskPattern;
 pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines};
 pub use ropey::Rope;
 pub use state::*;
-

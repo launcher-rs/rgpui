@@ -458,4 +458,3 @@ impl Render for CompletionMenu {
         .into_any_element()
     }
 }
-

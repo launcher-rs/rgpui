@@ -265,12 +265,16 @@ impl std::ops::Deref for HighlightTheme {
 impl HighlightTheme {
     pub fn default_dark() -> std::sync::Arc<Self> {
         use rgpui_component::DEFAULT_THEME_COLORS;
-        DEFAULT_THEME_COLORS[&rgpui_component::themeMode::Dark].1.clone()
+        DEFAULT_THEME_COLORS[&rgpui_component::themeMode::Dark]
+            .1
+            .clone()
     }
 
     pub fn default_light() -> std::sync::Arc<Self> {
         use rgpui_component::DEFAULT_THEME_COLORS;
-        DEFAULT_THEME_COLORS[&rgpui_component::themeMode::Light].1.clone()
+        DEFAULT_THEME_COLORS[&rgpui_component::themeMode::Light]
+            .1
+            .clone()
     }
 }
 
@@ -302,4 +306,3 @@ impl LanguageRegistry {
         self.languages.lock().unwrap().get(name).cloned()
     }
 }
-

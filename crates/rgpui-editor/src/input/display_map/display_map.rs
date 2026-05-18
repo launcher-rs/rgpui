@@ -331,4 +331,3 @@ impl DisplayMap {
         self.wrap_map.buffer_line_count()
     }
 }
-

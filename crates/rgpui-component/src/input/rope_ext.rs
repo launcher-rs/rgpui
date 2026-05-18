@@ -457,10 +457,10 @@ impl RopeExt for Rope {
 
 #[cfg(test)]
 mod tests {
+    use super::Point;
     use crate::{RopeExt, input::Position};
     use rgpui::sum_tree::Bias;
     use ropey::Rope;
-    use super::Point;
 
     #[test]
     fn test_slice_line() {

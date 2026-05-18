@@ -721,4 +721,3 @@ mod tests {
         assert_eq!(rope.offset_to_char_index(10), 5);
     }
 }
-

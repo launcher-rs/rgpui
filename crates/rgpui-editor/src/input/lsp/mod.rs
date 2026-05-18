@@ -157,4 +157,3 @@ impl InputState {
         cx.notify();
     }
 }
-

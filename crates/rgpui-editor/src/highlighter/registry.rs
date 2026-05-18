@@ -456,16 +456,20 @@ impl HighlightTheme {
     pub fn default_dark() -> Arc<Self> {
         let theme = DEFAULT_THEME_COLORS[&ThemeMode::Dark].1.as_ref();
         Arc::new(
-            serde_json::from_value(serde_json::to_value(theme).expect("默认暗色高亮主题应可序列化"))
-                .expect("默认暗色高亮主题应可反序列化"),
+            serde_json::from_value(
+                serde_json::to_value(theme).expect("默认暗色高亮主题应可序列化"),
+            )
+            .expect("默认暗色高亮主题应可反序列化"),
         )
     }
 
     pub fn default_light() -> Arc<Self> {
         let theme = DEFAULT_THEME_COLORS[&ThemeMode::Light].1.as_ref();
         Arc::new(
-            serde_json::from_value(serde_json::to_value(theme).expect("默认亮色高亮主题应可序列化"))
-                .expect("默认亮色高亮主题应可反序列化"),
+            serde_json::from_value(
+                serde_json::to_value(theme).expect("默认亮色高亮主题应可序列化"),
+            )
+            .expect("默认亮色高亮主题应可反序列化"),
         )
     }
 }
@@ -554,4 +558,3 @@ mod tests {
         }
     }
 }
-

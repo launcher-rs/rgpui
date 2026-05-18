@@ -220,4 +220,3 @@ impl WrapMap {
             .count()
     }
 }
-

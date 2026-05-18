@@ -25,7 +25,7 @@ use rgpui_component::{
 
 const CONTEXT: &'static str = "SearchPanel";
 
-actions!(input, [Tab]);
+actions!(editor_input, [Tab]);
 
 pub(super) fn init(cx: &mut App) {
     cx.bind_keys(vec![KeyBinding::new(
@@ -640,4 +640,3 @@ mod tests {
         assert_eq!(matcher.current_match_ix, 2);
     }
 }
-

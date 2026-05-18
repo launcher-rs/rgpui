@@ -338,4 +338,3 @@ impl Render for CodeActionMenu {
         .into_any_element()
     }
 }
-

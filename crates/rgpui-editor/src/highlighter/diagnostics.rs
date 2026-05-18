@@ -5,9 +5,9 @@ use std::{
 };
 
 use crate::input::{Position, RopeExt as _};
-use rgpui_component::ActiveTheme;
 use rgpui::sum_tree::{Bias, SeekTarget, SumTree};
 use rgpui::{App, HighlightStyle, Hsla, SharedString, UnderlineStyle, px, sum_tree};
+use rgpui_component::ActiveTheme;
 use ropey::Rope;
 
 pub type DiagnosticRelatedInformation = lsp_types::DiagnosticRelatedInformation;
@@ -390,4 +390,3 @@ mod tests {
         assert_eq!(diagnostics.len(), 0);
     }
 }
-

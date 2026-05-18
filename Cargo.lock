@@ -6470,14 +6470,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui-markdown"
-version = "0.1.0"
-dependencies = [
- "markdown",
- "rgpui",
-]
-
-[[package]]
 name = "rgpui-platform"
 version = "0.1.0"
 dependencies = [
@@ -6585,6 +6577,18 @@ dependencies = [
  "windows-numerics 0.2.0",
  "windows-registry",
  "zed-scap",
+]
+
+[[package]]
+name = "rgpui_editor_example"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rgpui",
+ "rgpui-component",
+ "rgpui-component-assets",
+ "rgpui-editor",
+ "rgpui-platform",
 ]
 
 [[package]]

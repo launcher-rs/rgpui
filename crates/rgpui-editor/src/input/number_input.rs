@@ -1,4 +1,3 @@
-use rgpui_component::theme::ActiveTheme;
 use rgpui::Corners;
 use rgpui::Window;
 use rgpui::{AnyElement, App, Context, Edges, Entity, EventEmitter, FocusHandle, Focusable};
@@ -6,12 +5,13 @@ use rgpui::{
     InteractiveElement, IntoElement, KeyBinding, ParentElement, RenderOnce, SharedString,
     StyleRefinement, Styled, TextAlign, actions, prelude::FluentBuilder as _,
 };
+use rgpui_component::theme::ActiveTheme;
 
 use crate::{Disableable, IconName, Sizable, Size, StyledExt as _, button::Button, h_flex};
 
 use super::{Input, InputState};
 
-actions!(number_input, [Increment, Decrement]);
+actions!(editor_number_input, [Increment, Decrement]);
 
 const CONTEXT: &str = "NumberInput";
 pub fn init(cx: &mut App) {
@@ -222,4 +222,3 @@ impl RenderOnce for NumberInput {
             )
     }
 }
-

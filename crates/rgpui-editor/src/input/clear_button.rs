@@ -15,4 +15,3 @@ pub(crate) fn clear_button(cx: &App) -> Button {
         .tab_stop(false)
         .text_color(cx.theme().muted_foreground)
 }
-

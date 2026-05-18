@@ -6,7 +6,9 @@ use rgpui::{
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, global_state::GlobalState, input::{self, InputState, popovers::ContextMenu},
+    ActiveTheme as _,
+    global_state::GlobalState,
+    input::{self, InputState, popovers::ContextMenu},
     menu::PopupMenu,
 };
 

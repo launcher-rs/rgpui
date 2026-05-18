@@ -10,7 +10,6 @@ use super::{
     mask_pattern::MaskPattern,
     mode::InputMode,
 };
-use rgpui_component::Size;
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::highlighter::DiagnosticSet;
 #[cfg(not(target_family = "wasm"))]
@@ -24,8 +23,6 @@ use crate::input::{
     popovers::{ContextMenu, DiagnosticPopover, HoverPopover, InputContextMenu},
     search::{self, SearchPanel},
 };
-use rgpui_component::menu::PopupMenu;
-use rgpui_component::history::History;
 use anyhow::Result;
 use rgpui::sum_tree::Bias;
 use rgpui::{
@@ -37,6 +34,9 @@ use rgpui::{
     px,
 };
 use rgpui::{Half, TextAlign};
+use rgpui_component::Size;
+use rgpui_component::history::History;
+use rgpui_component::menu::PopupMenu;
 use ropey::{Rope, RopeSlice};
 use serde::Deserialize;
 use std::cell::Cell;
@@ -45,14 +45,14 @@ use std::rc::Rc;
 use unicode_segmentation::*;
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = input, no_json)]
+#[action(namespace = editor_input, no_json)]
 pub struct Enter {
     /// Is confirm with secondary.
     pub secondary: bool,
 }
 
 actions!(
-    input,
+    editor_input,
     [
         Backspace,
         Delete,
@@ -2593,8 +2593,8 @@ impl Render for InputState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rgpui_component::theme::Theme;
     use rgpui::{TestAppContext, VisualTestContext};
+    use rgpui_component::theme::Theme;
 
     struct InputView {
         input: Entity<InputState>,
@@ -2745,4 +2745,3 @@ ORDER BY id
         );
     }
 }
-

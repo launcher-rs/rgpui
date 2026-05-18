@@ -341,4 +341,3 @@ impl FoldMap {
         self.needs_rebuild = false;
     }
 }
-
