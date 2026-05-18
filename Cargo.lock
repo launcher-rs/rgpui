@@ -6757,6 +6757,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rgpui_editor_lsp_example"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "lsp-types",
+ "rgpui",
+ "rgpui-component",
+ "rgpui-component-assets",
+ "rgpui-editor",
+ "rgpui-platform",
+ "serde_json",
+ "smol",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -29,6 +29,7 @@ members = [
 
     "crates/rgpui-editor",
     "crates/rgpui-editor/examples/editor",
+    "crates/rgpui-editor/examples/lsp",
     "crates/rgpui-term",
     "crates/rgpui-term/examples/basic",
     "crates/rgpui-term/examples/component-integration",
