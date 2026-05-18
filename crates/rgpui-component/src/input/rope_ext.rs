@@ -3,37 +3,36 @@ use std::ops::Range;
 use ropey::{LineType, Rope, RopeSlice};
 
 use rgpui::sum_tree::Bias;
-#[cfg(not(target_family = "wasm"))]
-pub use tree_sitter::{InputEdit, Point};
 
-#[cfg(target_family = "wasm")]
-/// Stub type for tree-sitter Point on WASM (tree-sitter not available).
+/// 文本语法坐标，行列均为字节列。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Point {
     pub row: usize,
     pub column: usize,
 }
 
-#[cfg(target_family = "wasm")]
 impl Point {
+    /// 创建文本语法坐标。
     pub fn new(row: usize, column: usize) -> Self {
         Self { row, column }
     }
 }
 
-#[cfg(target_family = "wasm")]
-/// Stub type for tree-sitter InputEdit on WASM (tree-sitter not available).
-#[derive(Debug, Clone, Copy)]
-pub struct InputEdit {
-    pub start_byte: usize,
-    pub old_end_byte: usize,
-    pub new_end_byte: usize,
-    pub start_position: Point,
-    pub old_end_position: Point,
-    pub new_end_position: Point,
+/// 文本位置，行列均为 UTF-16 坐标，兼容文本输入 API。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Position {
+    /// 从 0 开始的行号。
+    pub line: u32,
+    /// 从 0 开始的 UTF-16 列号。
+    pub character: u32,
 }
 
-use crate::input::Position;
+impl Position {
+    /// 创建文本位置。
+    pub fn new(line: u32, character: u32) -> Self {
+        Self { line, character }
+    }
+}
 
 /// An iterator over the lines of a `Rope`.
 pub struct RopeLines<'a> {
@@ -458,10 +457,10 @@ impl RopeExt for Rope {
 
 #[cfg(test)]
 mod tests {
+    use super::Point;
     use crate::{RopeExt, input::Position};
     use rgpui::sum_tree::Bias;
     use ropey::Rope;
-    use tree_sitter::Point;
 
     #[test]
     fn test_slice_line() {

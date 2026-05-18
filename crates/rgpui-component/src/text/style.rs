@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rgpui::{Pixels, Rems, StyleRefinement, px, rems};
 
-use crate::highlighter::HighlightTheme;
+use crate::HighlightTheme;
 
 /// TextViewStyle used to customize the style for [`TextView`].
 #[derive(Clone)]

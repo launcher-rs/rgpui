@@ -4,7 +4,7 @@ use serde::Deserialize;
 #[derive(Clone, Action, PartialEq, Eq, Deserialize)]
 #[action(namespace = ui, no_json)]
 pub struct Confirm {
-    /// Is confirm with secondary.
+    /// 是否使用次级确认方式。
     pub secondary: bool,
 }
 

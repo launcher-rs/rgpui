@@ -8,21 +8,33 @@ use rgpui::{
 };
 use rgpui::{ClickEvent, Hsla, StatefulInteractiveElement};
 
-/// A simple star Rating element.
+/// 星级评分组件
 #[derive(IntoElement)]
 pub struct Rating {
+    /// 元素 ID
     id: ElementId,
+    /// 样式引用
     style: StyleRefinement,
+    /// 组件尺寸
     size: Size,
+    /// 是否禁用
     disabled: bool,
+    /// 当前评分值
     value: usize,
+    /// 最大评分值
     max: usize,
+    /// 激活状态颜色
     color: Option<Hsla>,
+    /// 评分变化时的回调
     on_click: Option<Rc<dyn Fn(&usize, &mut Window, &mut App) + 'static>>,
 }
 
 impl Rating {
-    /// Create a new Rating with an `ElementId`.
+    /// 创建新的星级评分组件
+    ///
+    /// # 参数
+    ///
+    /// * `id` - 元素 ID
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
             id: id.into(),
@@ -36,25 +48,25 @@ impl Rating {
         }
     }
 
-    /// Set the star size.
+    /// 设置星星尺寸
     pub fn with_size(mut self, size: impl Into<Size>) -> Self {
         self.size = size.into();
         self
     }
 
-    /// Disable interaction.
+    /// 禁用交互
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
-    /// Set active color, default will use `yellow` from theme colors.
+    /// 设置激活颜色，默认使用主题色中的 `yellow`
     pub fn color(mut self, color: impl Into<Hsla>) -> Self {
         self.color = Some(color.into());
         self
     }
 
-    /// Set initial value (0..=max).
+    /// 设置初始评分值（0..=max）
     pub fn value(mut self, value: usize) -> Self {
         self.value = value;
         if self.value > self.max {
@@ -63,7 +75,7 @@ impl Rating {
         self
     }
 
-    /// Set maximum number of stars.
+    /// 设置最大星星数量
     pub fn max(mut self, max: usize) -> Self {
         self.max = max;
         if self.value > self.max {
@@ -72,9 +84,9 @@ impl Rating {
         self
     }
 
-    /// Add on_click handler when the rating changes.
+    /// 添加评分变化时的回调
     ///
-    /// The `&usize` parameter is the new rating value.
+    /// `&usize` 参数为新的评分值
     pub fn on_click(mut self, handler: impl Fn(&usize, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Rc::new(handler));
         self
@@ -101,12 +113,13 @@ impl Disableable for Rating {
     }
 }
 
+/// 评分状态
 struct RaingState {
-    /// To save the default value on init state, to detect external value changes.
+    /// 保存初始化时的默认值，用于检测外部值变化
     default_value: usize,
-    /// To store the current selected value.
+    /// 当前选中的评分值
     value: usize,
-    /// To store the currently hovered value.
+    /// 当前悬停的评分值
     hovered_value: usize,
 }
 
@@ -126,7 +139,7 @@ impl RenderOnce for Rating {
             hovered_value: 0,
         });
 
-        // Reset state if outside has changed `value` prop.
+        // 如果外部改变了 value 属性，则重置状态
         if state.read(cx).default_value != default_value {
             state.update(cx, |state, _| {
                 state.default_value = default_value;

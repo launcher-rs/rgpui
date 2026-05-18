@@ -115,7 +115,7 @@ impl DisplayMap {
         self.buffer_line_to_display_row_range(line).is_none()
     }
 
-    /// Set fold candidates (from tree-sitter/LSP)
+    /// Set fold candidates.
     pub fn set_fold_candidates(&mut self, candidates: Vec<FoldRange>) {
         self.fold_map.set_candidates(candidates);
         self.rebuild_fold_projection();
@@ -177,26 +177,6 @@ impl DisplayMap {
 
         self.fold_map
             .adjust_folds_for_edit(edit_start_line, edit_end_line, line_delta);
-    }
-
-    /// Incrementally update fold candidates after a text edit.
-    ///
-    /// Extracts new fold candidates only within the edited byte range
-    /// and merges them with existing (already adjusted) candidates.
-    pub fn update_fold_candidates_for_edit(
-        &mut self,
-        tree: &super::folding::Tree,
-        edit_byte_range: Range<usize>,
-        new_text: &Rope,
-    ) {
-        let new_start_line = new_text.offset_to_point(edit_byte_range.start).row;
-        let new_end_line = new_text
-            .offset_to_point(edit_byte_range.end.min(new_text.len()))
-            .row;
-
-        let new_candidates = super::folding::extract_fold_ranges_in_range(tree, edit_byte_range);
-        self.fold_map
-            .merge_candidates_for_edit(new_start_line, new_end_line, new_candidates);
     }
 
     /// Update text (incremental or full)

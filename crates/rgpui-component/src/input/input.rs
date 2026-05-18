@@ -307,9 +307,6 @@ impl RenderOnce for Input {
                             .on_action(window.listener_for(&self.state, InputState::indent_block))
                             .on_action(window.listener_for(&self.state, InputState::outdent_block))
                     })
-                    .on_action(
-                        window.listener_for(&self.state, InputState::on_action_toggle_code_actions),
-                    )
             })
             .on_action(window.listener_for(&self.state, InputState::left))
             .on_action(window.listener_for(&self.state, InputState::right))
@@ -323,10 +320,6 @@ impl RenderOnce for Input {
                     .on_action(window.listener_for(&self.state, InputState::select_down))
                     .on_action(window.listener_for(&self.state, InputState::page_up))
                     .on_action(window.listener_for(&self.state, InputState::page_down));
-
-                let result = result.on_action(
-                    window.listener_for(&self.state, InputState::on_action_go_to_definition),
-                );
 
                 result
             })

@@ -5,25 +5,37 @@ use rgpui::{
     transparent_white,
 };
 
-/// The variant of the Tag.
+/// 标签的变体类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TagVariant {
+    /// 主要标签
     Primary,
+    /// 次要标签（默认）
     #[default]
     Secondary,
+    /// 危险/错误标签
     Danger,
+    /// 成功标签
     Success,
+    /// 警告标签
     Warning,
+    /// 信息标签
     Info,
+    /// 自定义颜色名称
     Color(ColorName),
+    /// 完全自定义颜色
     Custom {
+        /// 背景色
         color: Hsla,
+        /// 前景色
         foreground: Hsla,
+        /// 边框色
         border: Hsla,
     },
 }
 
 impl TagVariant {
+    /// 获取背景色
     fn bg(&self, cx: &App) -> Hsla {
         match self {
             Self::Primary => cx.theme().primary,
@@ -43,6 +55,7 @@ impl TagVariant {
         }
     }
 
+    /// 获取边框色
     fn border(&self, cx: &App) -> Hsla {
         match self {
             Self::Primary => cx.theme().primary,
@@ -62,6 +75,7 @@ impl TagVariant {
         }
     }
 
+    /// 获取前景色
     fn fg(&self, outline: bool, cx: &App) -> Hsla {
         match self {
             Self::Primary => {
@@ -118,20 +132,27 @@ impl TagVariant {
     }
 }
 
-/// Tag is a small status indicator.
+/// 标签组件，用于显示小型状态指示器
 ///
-/// Only support: Medium, Small
+/// 仅支持：Medium, Small 尺寸
 #[derive(IntoElement)]
 pub struct Tag {
+    /// 样式引用
     style: StyleRefinement,
+    /// 标签变体
     variant: TagVariant,
+    /// 是否为轮廓样式
     outline: bool,
+    /// 组件尺寸
     size: Size,
+    /// 圆角半径
     rounded: Option<AbsoluteLength>,
+    /// 子元素
     children: Vec<AnyElement>,
 }
+
 impl Tag {
-    /// Create a new Tag.
+    /// 创建新的标签
     pub fn new() -> Self {
         Self {
             style: StyleRefinement::default(),
@@ -143,37 +164,37 @@ impl Tag {
         }
     }
 
-    /// Create a new tag with default variant ([`TagVariant::Primary`]).
+    /// 创建主要标签（[`TagVariant::Primary`]）
     pub fn primary() -> Self {
         Self::new().with_variant(TagVariant::Primary)
     }
 
-    /// Create a new tag with default variant ([`TagVariant::Secondary`]).
+    /// 创建次要标签（[`TagVariant::Secondary`]）
     pub fn secondary() -> Self {
         Self::new().with_variant(TagVariant::Secondary)
     }
 
-    /// Create a new tag with default variant ([`TagVariant::Danger`]).
+    /// 创建危险标签（[`TagVariant::Danger`]）
     pub fn danger() -> Self {
         Self::new().with_variant(TagVariant::Danger)
     }
 
-    /// Create a new tag with default variant ([`TagVariant::Success`]).
+    /// 创建成功标签（[`TagVariant::Success`]）
     pub fn success() -> Self {
         Self::new().with_variant(TagVariant::Success)
     }
 
-    /// Create a new tag with default variant ([`TagVariant::Warning`]).
+    /// 创建警告标签（[`TagVariant::Warning`]）
     pub fn warning() -> Self {
         Self::new().with_variant(TagVariant::Warning)
     }
 
-    /// Create a new tag with default variant ([`TagVariant::Info`]).
+    /// 创建信息标签（[`TagVariant::Info`]）
     pub fn info() -> Self {
         Self::new().with_variant(TagVariant::Info)
     }
 
-    /// Create a new tag with default variant ([`TagVariant::Custom`]).
+    /// 创建自定义颜色标签（[`TagVariant::Custom`]）
     pub fn custom(color: Hsla, foreground: Hsla, border: Hsla) -> Self {
         Self::new().with_variant(TagVariant::Custom {
             color,
@@ -182,30 +203,30 @@ impl Tag {
         })
     }
 
-    /// Create a new tag with default variant ([`TagVariant::Color`]).
+    /// 创建指定颜色名称的标签（[`TagVariant::Color`]）
     pub fn color(color: impl Into<ColorName>) -> Self {
         Self::new().with_variant(TagVariant::Color(color.into()))
     }
 
-    /// Set the variant of the Tag.
+    /// 设置标签的变体类型
     pub fn with_variant(mut self, variant: TagVariant) -> Self {
         self.variant = variant;
         self
     }
 
-    /// Use outline style
+    /// 使用轮廓样式
     pub fn outline(mut self) -> Self {
         self.outline = true;
         self
     }
 
-    /// Set rounded corners.
+    /// 设置圆角半径
     pub fn rounded(mut self, radius: impl Into<AbsoluteLength>) -> Self {
         self.rounded = Some(radius.into());
         self
     }
 
-    /// Set rounded full
+    /// 设置为全圆角
     pub fn rounded_full(mut self) -> Self {
         self.rounded = Some(rems(1.).into());
         self

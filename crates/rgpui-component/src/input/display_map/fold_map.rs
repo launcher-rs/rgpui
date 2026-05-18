@@ -17,7 +17,7 @@ pub struct FoldMap {
     /// index = wrap_row, value = Some(display_row) if visible, None if folded
     wrap_row_to_display_row: Vec<Option<usize>>,
 
-    /// Candidate fold ranges (from tree-sitter/LSP)
+    /// Candidate fold ranges.
     /// Sorted by start_line, unique start_line
     candidates: Vec<FoldRange>,
 
@@ -105,7 +105,7 @@ impl FoldMap {
         }
     }
 
-    /// Set fold candidates (from tree-sitter/LSP), full replacement.
+    /// Set fold candidates, full replacement.
     pub fn set_candidates(&mut self, mut candidates: Vec<FoldRange>) {
         // Sort and deduplicate by start_line
         candidates.sort_by_key(|r| r.start_line);
@@ -118,27 +118,6 @@ impl FoldMap {
                 .iter()
                 .any(|c| c.start_line == fold.start_line)
         });
-    }
-
-    /// Merge new candidates extracted from an edited region into existing candidates.
-    ///
-    /// Replaces candidates within [edit_start_line, edit_end_line] with `new_candidates`,
-    /// keeping candidates outside the edit range intact.
-    pub fn merge_candidates_for_edit(
-        &mut self,
-        edit_start_line: usize,
-        edit_end_line: usize,
-        new_candidates: Vec<FoldRange>,
-    ) {
-        // Remove old candidates within the edit range (already done by adjust_folds_for_edit)
-        // But do it again in case adjust wasn't called or range differs
-        self.candidates
-            .retain(|c| c.start_line < edit_start_line || c.start_line > edit_end_line);
-
-        // Add new candidates
-        self.candidates.extend(new_candidates);
-        self.candidates.sort_by_key(|r| r.start_line);
-        self.candidates.dedup_by_key(|r| r.start_line);
     }
 
     /// Set a fold at the given start_line (must be in candidates)
