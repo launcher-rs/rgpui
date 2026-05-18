@@ -1,10 +1,10 @@
-# gpui_windows
+# rgpui-windows
 
-GPUI 框架的 Windows 平台后端实现，使用 DirectX 渲染、DirectWrite 文本渲染和 Win32 API 进行窗口管理。
+RGPUI 框架的 Windows 平台后端实现，使用 DirectX 渲染、DirectWrite 文本渲染和 Win32 API 进行窗口管理。
 
 ## 概述
 
-`gpui_windows` 为 GPUI 提供 Windows 系统上的完整平台抽象层，包括窗口管理、输入处理、DirectX 硬件加速渲染、DirectWrite 字体渲染以及系统级集成（剪贴板、文件对话框等）。
+`rgpui_windows` 为 RGPUI 提供 Windows 系统上的完整平台抽象层，包括窗口管理、输入处理、DirectX 硬件加速渲染、DirectWrite 字体渲染以及系统级集成（剪贴板、文件对话框等）。
 
 ## 功能特性
 
@@ -60,9 +60,9 @@ GPUI 框架的 Windows 平台后端实现，使用 DirectX 渲染、DirectWrite 
 ## 架构
 
 ```
-gpui_windows/
+rgpui-windows/
 ├── src/
-│   ├── gpui_windows.rs      # 入口点
+│   ├── rgpui_windows.rs      # 入口点
 │   └── windows/
 │       ├── platform.rs      # WindowsPlatform 实现
 │       ├── window.rs        # 窗口管理
@@ -86,7 +86,7 @@ let platform = WindowsPlatform::new();
 
 ## 依赖关系
 
-- `gpui` — GPUI 核心框架
+- `rgpui` — RGPUI 核心框架
 - `windows` / `windows-core` — Windows API 绑定
 - `windows-numerics` — Windows 数值计算库
 - `raw-window-handle` — 跨平台窗口句柄抽象

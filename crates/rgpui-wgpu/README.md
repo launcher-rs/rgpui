@@ -1,10 +1,10 @@
-# gpui_wgpu
+# rgpui-wgpu
 
-GPUI 框架的 WebGPU 渲染后端，为 Linux 和 Web 平台提供跨平台的 GPU 渲染能力。
+RGPUI 框架的 WebGPU 渲染后端，为 Linux 和 Web 平台提供跨平台的 GPU 渲染能力。
 
 ## 概述
 
-`gpui_wgpu` 是基于 `wgpu` 的跨平台 GPU 渲染后端，为 GPUI 提供现代化的图形渲染管线。它支持 Linux（通过 Vulkan/Metal/OpenGL）和 Web（通过 WebGPU）平台，使用 `cosmic-text` 和 `swash` 进行文本渲染和字形光栅化。
+`rgpui_wgpu` 是基于 `wgpu` 的跨平台 GPU 渲染后端，为 RGPUI 提供现代化的图形渲染管线。它支持 Linux（通过 Vulkan/Metal/OpenGL）和 Web（通过 WebGPU）平台，使用 `cosmic-text` 和 `swash` 进行文本渲染和字形光栅化。
 
 ## 功能特性
 
@@ -65,9 +65,9 @@ GPUI 框架的 WebGPU 渲染后端，为 Linux 和 Web 平台提供跨平台的 
 ## 架构
 
 ```
-gpui_wgpu/
+rgpui-wgpu/
 ├── src/
-│   ├── gpui_wgpu.rs         # 入口点
+│   ├── rgpui_wgpu.rs         # 入口点
 │   └── wgpu/
 │       ├── renderer.rs      # 主渲染器实现
 │       ├── atlas.rs         # 纹理图集管理
@@ -90,12 +90,12 @@ let renderer = WgpuRenderer::new(surface_config)?;
 
 ## 依赖关系
 
-- `gpui` — GPUI 核心框架
+- `rgpui` — RGPUI 核心框架
 - `wgpu` — WebGPU 的 Rust 实现
 - `cosmic-text` — 文本布局和排版引擎
 - `swash` — OpenType 字体解析和字形光栅化
 - `etagere` — 2D 矩形分配器（纹理图集管理）
-- `gpui_util` — GPUI 工具库
+- `rgpui_util` — RGPUI 工具库
 - `bytemuck` — 零成本类型转换
 - `raw-window-handle` — 跨平台窗口句柄抽象
 - `pollster` — 异步阻塞执行器（非 Wasm 平台）

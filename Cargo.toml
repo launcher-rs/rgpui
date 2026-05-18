@@ -12,6 +12,8 @@ members = [
     "crates/rgpui-wgpu",
     "crates/rgpui-macros",
 
+    "crates/rgpui-webview",
+
     "crates/rgpui-component",
     "crates/rgpui-component-macros",
     "crates/rgpui-component-assets",
@@ -46,6 +48,7 @@ rgpui-tokio = { path = "crates/rgpui-tokio" }
 rgpui-component = { path = "crates/rgpui-component" }
 rgpui-component-macros = { path = "crates/rgpui-component-macros" }
 rgpui-component-assets = { path = "crates/rgpui-component-assets" }
+rgpui-webwiew = { path = "crates/rgpui-webview" }
 
 
 # ---- 错误处理 ----

@@ -1,10 +1,10 @@
-# gpui_macos
+# rgpui_macos
 
-GPUI 的 macOS 平台实现 crate。提供 macOS 原生 API 的封装，包括 Cocoa 窗口管理、Metal GPU 渲染、Core Text 字体系统以及原生事件处理。
+RGPUI 的 macOS 平台实现 crate。提供 macOS 原生 API 的封装，包括 Cocoa 窗口管理、Metal GPU 渲染、Core Text 字体系统以及原生事件处理。
 
 ## 概述
 
-`gpui_macos` 是 GPUI 图形框架在 macOS 上的底层平台适配层，通过直接调用 macOS 原生框架实现高性能的 GUI 渲染和系统交互。
+`rgpui_macos` 是 GPUI 图形框架在 macOS 上的底层平台适配层，通过直接调用 macOS 原生框架实现高性能的 GUI 渲染和系统交互。
 
 ## macOS 专属特性
 
@@ -129,4 +129,4 @@ platform.run(Box::new(|| {
 
 ## 许可证
 
-本 crate 采用与主项目相同的许可证。详见 `LICENSE-APACHE` 文件。
+本 crate 采用与主项目相同的许可证。详见 `LICENSE` 文件。

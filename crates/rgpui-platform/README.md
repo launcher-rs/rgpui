@@ -1,10 +1,10 @@
-# gpui_platform
+# rgpui_platform
 
-GPUI 平台抽象层。本包根据目标操作系统自动重新导出对应的平台实现（`gpui_macos`、`gpui_windows`、`gpui_linux` 或 `gpui_web`），使使用者无需手动编写 `#[cfg]` 条件编译代码。
+RGPUI 平台抽象层。本包根据目标操作系统自动重新导出对应的平台实现（`rgpui-macos`、`rgpui-windows`、`rgpui-linux` 或 `gpui-web`），使使用者无需手动编写 `#[cfg]` 条件编译代码。
 
 ## 功能概述
 
-- 重新导出 `gpui::Platform` trait
+- 重新导出 `rgpui::Platform` trait
 - 提供 `current_platform()` 函数，根据编译目标自动创建正确的平台实例
 - 提供便捷的应用程序构造函数：`application()`、`headless()`
 - 提供 Web (Wasm) 平台的专用函数：`single_threaded_web()`、`web_init()`
@@ -12,25 +12,25 @@ GPUI 平台抽象层。本包根据目标操作系统自动重新导出对应的
 
 ## 支持的平台
 
-| 目标系统 | 后端包 |
-|---|---|
-| macOS | `gpui_macos` |
-| Windows | `gpui_windows` |
-| Linux / FreeBSD | `gpui_linux` |
-| Wasm (Web) | `gpui_web` |
+| 目标系统 | 后端包             |
+|---|-----------------|
+| macOS | `rgpui-macos`   |
+| Windows | `rgpui-windows` |
+| Linux / FreeBSD | `rgpui-linux`   |
+| Wasm (Web) | `rgpui-web`     |
 
-## 与 GPUI 其他包的关系
+## 与 RGPUI 其他包的关系
 
 ```
-gpui_platform
-├── gpui              (核心框架)
-├── gpui_macos        (macOS 平台实现)
-├── gpui_windows      (Windows 平台实现)
-├── gpui_linux        (Linux 平台实现)
-└── gpui_web          (Web/Wasm 平台实现)
+rgpui_platform
+├── rgpui              (核心框架)
+├── rgpui-macos        (macOS 平台实现)
+├── rgpui-windows      (Windows 平台实现)
+├── rgpui-linux        (Linux 平台实现)
+└── rgpui-web          (Web/Wasm 平台实现)
 ```
 
-`gpui_platform` 位于 `gpui` 核心包与各平台包之间，充当统一入口。应用层只需依赖 `gpui_platform`，无需关心底层平台差异。
+`rgpui-platform` 位于 `rgpui` 核心包与各平台包之间，充当统一入口。应用层只需依赖 `rgpui-platform`，无需关心底层平台差异。
 
 ## 使用示例
 
@@ -40,10 +40,10 @@ gpui_platform
 use rgpui_platform;
 
 // 创建 GUI 应用
-let app = gpui_platform::application();
+let app = rgpui_platform::application();
 
 // 或创建无头模式应用
-let app = gpui_platform::headless();
+let app = rgpui_platform::headless();
 ```
 
 ### 获取平台实例
@@ -52,7 +52,7 @@ let app = gpui_platform::headless();
 use rgpui_platform;
 
 // 获取当前平台的 Platform 实现
-let platform = gpui_platform::current_platform(false);
+let platform = rgpui_platform::current_platform(false);
 ```
 
 ### 获取后台执行器
@@ -60,7 +60,7 @@ let platform = gpui_platform::current_platform(false);
 ```rust
 use rgpui_platform;
 
-let executor = gpui_platform::background_executor();
+let executor = rgpui_platform::background_executor();
 ```
 
 ### Web (Wasm) 平台
@@ -71,10 +71,10 @@ use rgpui_platform;
 #[wasm_bindgen(start)]
 pub fn main() {
     // 初始化 panic hook 和日志
-    gpui_platform::web_init();
+    rgpui_platform::web_init();
 
     // 创建单线程 Web 应用
-    let app = gpui_platform::single_threaded_web();
+    let app = rgpui_platform::single_threaded_web();
 }
 ```
 
