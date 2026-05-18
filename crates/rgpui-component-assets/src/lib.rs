@@ -1,8 +1,8 @@
-/// Embed application assets for GPUI Component.
+/// 为 GPUI Component 嵌入应用资源。
 ///
-/// This assets provides icons svg files for [IconName](https://docs.rs/gpui-component/latest/gpui_component/enum.IconName.html).
+/// 本模块为 [IconName](https://docs.rs/gpui-component/latest/gpui_component/enum.IconName.html) 提供图标 SVG 文件。
 ///
-/// ## Usage
+/// ## 用法
 ///
 /// ```rust,no_run
 /// use rgpui::*;
@@ -11,13 +11,13 @@
 /// let app = gpui_platform::application().with_assets(Assets);
 /// ```
 ///
-/// ## Platform Differences
+/// ## 平台差异
 ///
-/// - **Native (Desktop)**: Icons are embedded in the binary using RustEmbed
-/// - **WASM (Web)**: Icons are downloaded from CDN using web_sys::Request
-///   - This significantly reduces WASM bundle size
-///   - Icons are downloaded on-demand when first used
-///   - Downloaded icons are cached in memory
+/// - **原生（桌面端）**: 图标使用 RustEmbed 嵌入到二进制文件中
+/// - **WASM（Web 端）**: 图标通过 web_sys::Request 从 CDN 下载
+///   - 这显著减小了 WASM 包体积
+///   - 图标在首次使用时按需下载
+///   - 下载的图标会在内存中缓存
 #[cfg(not(target_family = "wasm"))]
 mod native_assets;
 

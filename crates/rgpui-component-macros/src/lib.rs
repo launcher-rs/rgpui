@@ -4,11 +4,15 @@ use syn::parse::{Parse, ParseStream};
 
 mod derive_into_plot;
 
-/// Input for icon_name! macro: EnumName, "path", [optional derives]
+/// `icon_named!` 宏的输入结构：枚举名称、路径、可选的额外派生
 struct IconNameInput {
+    /// 枚举名称
     enum_name: syn::Ident,
+    /// 逗号分隔符
     _comma: syn::Token![,],
+    /// SVG 图标目录路径
     path: syn::LitStr,
+    /// 可选的额外派生 trait 列表
     derives: Option<(
         syn::Token![,],
         syn::punctuated::Punctuated<syn::Path, syn::Token![,]>,
@@ -21,7 +25,7 @@ impl Parse for IconNameInput {
         let _comma = input.parse()?;
         let path = input.parse()?;
 
-        // Check if there's an optional derives list
+        // 解析可选的额外派生列表
         let derives = if input.peek(syn::Token![,]) {
             let comma = input.parse()?;
             let content;
@@ -41,17 +45,18 @@ impl Parse for IconNameInput {
     }
 }
 
+/// 为图表类型派生 `IntoPlot` trait
 #[proc_macro_derive(IntoPlot)]
 pub fn derive_into_plot(input: TokenStream) -> TokenStream {
     derive_into_plot::derive_into_plot(input)
 }
 
-/// Convert an SVG filename to PascalCase identifier.
+/// 将 SVG 文件名转换为 PascalCase 标识符。
 ///
-/// Strips `.svg` extension, splits on separators (`-`, `_`, `.`),
-/// and capitalizes each word following Rust naming conventions.
+/// 移除 `.svg` 扩展名，按分隔符（`-`、`_`、`.`）分割，
+/// 并将每个单词首字母大写，遵循 Rust 命名规范。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```ignore
 /// assert_eq!(pascal_case("arrow-right.svg"), "ArrowRight");
@@ -80,19 +85,19 @@ fn pascal_case(filename: &str) -> String {
         .collect()
 }
 
-/// Generate a custom icon enum and its `IconNamed` impl by scanning a directory of SVG files.
+/// 通过扫描 SVG 文件目录生成自定义图标枚举及其 `IconNamed` 实现。
 ///
-/// Accepts an enum name, a path relative to the calling crate's `CARGO_MANIFEST_DIR`,
-/// and optionally a list of additional derive traits.
-/// Each `.svg` file becomes an enum variant using PascalCase conversion.
+/// 接受枚举名称、相对于调用 crate 的 `CARGO_MANIFEST_DIR` 的路径，
+/// 以及可选的额外派生 trait 列表。
+/// 每个 `.svg` 文件都会使用 PascalCase 转换成为枚举变体。
 ///
-/// # Example
+/// # 示例
 ///
 /// ```ignore
-/// // Basic usage (derives IntoElement, Clone by default)
+/// // 基本用法（默认派生 IntoElement、Clone）
 /// icon_named!(IconName, "../assets/assets/icons");
 ///
-/// // With custom derives
+/// // 带自定义派生
 /// icon_named!(IconName, "../assets/assets/icons", [Debug, Copy, PartialEq, Eq]);
 /// ```
 #[proc_macro]
@@ -113,14 +118,14 @@ pub fn icon_named(input: TokenStream) -> TokenStream {
 
     let dir = std::fs::read_dir(&icons_dir).unwrap_or_else(|e| {
         panic!(
-            "generate_icon_enum: failed to read '{}': {}",
+            "generate_icon_enum: 无法读取目录 '{}': {}",
             icons_dir.display(),
             e
         )
     });
 
     for entry in dir {
-        let entry = entry.expect("failed to read directory entry");
+        let entry = entry.expect("无法读取目录条目");
         let filename = entry.file_name().to_string_lossy().to_string();
         if filename.ends_with(".svg") {
             let variant_name = pascal_case(&filename);
@@ -137,7 +142,7 @@ pub fn icon_named(input: TokenStream) -> TokenStream {
         .collect();
     let paths: Vec<&str> = entries.iter().map(|(_, p)| p.as_str()).collect();
 
-    // Build derive list: always include IntoElement and Clone, then add custom derives
+    // 构建派生列表：始终包含 IntoElement 和 Clone，然后添加自定义派生
     let derive_attrs = if let Some((_, custom_derives)) = derives {
         let derives_vec: Vec<_> = custom_derives.iter().collect();
         quote! {

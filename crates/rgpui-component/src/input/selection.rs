@@ -5,24 +5,25 @@ use rgpui::sum_tree::Bias;
 use rgpui::{Context, Window};
 use ropey::Rope;
 
+/// 字符类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CharType {
     /// a-z, A-Z, 0-9, _
     Word,
-    /// '\t', ' ', '\u{00A0}' etc.
+    /// '\t', ' ', '\u{00A0}' 等
     Whitespace,
     /// \n, \r
     Newline,
-    /// . , ; : ( ) [ ] { } ... or CJK characters: `汉`, `🎉` etc.
+    /// . , ; : ( ) [ ] { } ... 或 CJK 字符：`汉`, `🎉` 等
     Other,
 }
 
-/// Implementation based on <https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system/line_wrapper.rs>
+/// 实现参考 <https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system/line_wrapper.rs>
 fn is_word_char(c: char) -> bool {
     matches!(c, '_' ) ||
-    // ASCII alphanumeric characters, for English, numbers: `Hello123`, etc.
+    // ASCII 字母数字字符，用于英语、数字：`Hello123` 等。
     c.is_ascii_alphanumeric() ||
-    // Latin script in Unicode for French, German, Spanish, etc.
+    // Unicode 中的拉丁语系，用于法语、德语、西班牙语等。
     // Latin-1 Supplement
     // https://en.wikipedia.org/wiki/Latin-1_Supplement
     matches!(c, '\u{00C0}'..='\u{00FF}') ||
@@ -32,13 +33,13 @@ fn is_word_char(c: char) -> bool {
     // Latin Extended-B
     // https://en.wikipedia.org/wiki/Latin_Extended-B
     matches!(c, '\u{0180}'..='\u{024F}') ||
-    // Cyrillic for Russian, Ukrainian, etc.
+    // 西里尔字母，用于俄语、乌克兰语等。
     // https://en.wikipedia.org/wiki/Cyrillic_script_in_Unicode
     matches!(c, '\u{0400}'..='\u{04FF}') ||
 
-    // Vietnamese (https://vietunicode.sourceforge.net/charset/)
+    // 越南语 (https://vietunicode.sourceforge.net/charset/)
     matches!(c, '\u{1E00}'..='\u{1EFF}') || // Latin Extended Additional
-    matches!(c, '\u{0300}'..='\u{036F}') // Combining Diacritical Marks
+    matches!(c, '\u{0300}'..='\u{036F}') // 组合变音符号
 }
 
 impl From<char> for CharType {
@@ -53,7 +54,7 @@ impl From<char> for CharType {
 }
 
 impl CharType {
-    /// Check if two CharTypes are connectable
+    /// 检查两个 CharType 是否可连接
     fn is_connectable(self, c: char) -> bool {
         let other = CharType::from(c);
         match (self, other) {
@@ -65,9 +66,9 @@ impl CharType {
 }
 
 impl InputState {
-    /// Select the word at the given offset on double-click.
+    /// 在给定偏移量处双击选中单词。
     ///
-    /// The offset is the UTF-8 offset.
+    /// 偏移量为 UTF-8 偏移量。
     pub(super) fn select_word(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
         let Some(range) = TextSelector::word_range(&self.text, offset) else {
             return;
@@ -78,9 +79,9 @@ impl InputState {
         cx.notify()
     }
 
-    /// Select the line at the given offset on triple-click.
+    /// 在给定偏移量处三击选中整行。
     ///
-    /// The offset is the UTF-8 offset.
+    /// 偏移量为 UTF-8 偏移量。
     pub(super) fn select_line(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
         let range = TextSelector::line_range(&self.text, offset);
         self.selected_range = (range.start..range.end).into();
@@ -89,13 +90,14 @@ impl InputState {
     }
 }
 
+/// 文本选择器辅助结构
 struct TextSelector;
 impl TextSelector {
-    /// Select a line in the given text at the specified offset.
+    /// 在给定文本的指定偏移量处选中一行。
     ///
-    /// The offset is the UTF-8 offset.
+    /// 偏移量为 UTF-8 偏移量。
     ///
-    /// Returns the start and end offsets of the selected line.
+    /// 返回选中行的起始和结束偏移量。
     pub fn line_range(text: &Rope, offset: usize) -> Range<usize> {
         let offset = text.clip_offset(offset, Bias::Left);
         let row = text.offset_to_point(offset).row;
@@ -105,11 +107,11 @@ impl TextSelector {
         start..end
     }
 
-    /// Select a word in the given text at the specified offset.
+    /// 在给定文本的指定偏移量处选中一个单词。
     ///
-    /// The offset is the UTF-8 offset.
+    /// 偏移量为 UTF-8 偏移量。
     ///
-    /// Returns the start and end offsets of the selected word.
+    /// 返回选中单词的起始和结束偏移量。
     pub fn word_range(text: &Rope, offset: usize) -> Option<Range<usize>> {
         let offset = text.clip_offset(offset, Bias::Left);
         let Some(char) = text.char_at(offset) else {
@@ -166,12 +168,12 @@ mod tests {
         assert_eq!(CharType::from('\n'), CharType::Newline);
         assert_eq!(CharType::from('\r'), CharType::Newline);
         assert_eq!(CharType::from('汉'), CharType::Other);
-        // European letters
+        // 欧洲字母
         assert_eq!(CharType::from('é'), CharType::Word);
         assert_eq!(CharType::from('ä'), CharType::Word);
         assert_eq!(CharType::from('ö'), CharType::Word);
         assert_eq!(CharType::from('ü'), CharType::Word);
-        //Cyrillic letters
+        // 西里尔字母
         assert_eq!(CharType::from('д'), CharType::Word);
     }
 
@@ -220,7 +222,7 @@ mod tests {
 
             let actual = range.map(|r| rope.slice(r).to_string());
             let expect = expected.map(|s| s.to_string());
-            assert_eq!(actual, expect, "line {}, column {}", line, column);
+            assert_eq!(actual, expect, "行 {}, 列 {}", line, column);
         }
     }
 
@@ -240,7 +242,7 @@ mod tests {
             let range = TextSelector::line_range(&rope, offset);
 
             let actual = rope.slice(range).to_string();
-            assert_eq!(actual, expected, "line {}, column {}", line, column);
+            assert_eq!(actual, expected, "行 {}, 列 {}", line, column);
         }
     }
 }

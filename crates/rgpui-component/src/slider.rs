@@ -9,6 +9,7 @@ use rgpui::{
     prelude::FluentBuilder as _, px, relative,
 };
 
+/// 拖拽滑块手柄的临时元素
 #[derive(Clone)]
 struct DragThumb((EntityId, bool));
 
@@ -18,6 +19,7 @@ impl Render for DragThumb {
     }
 }
 
+/// 拖拽滑块条的临时元素
 #[derive(Clone)]
 struct DragSlider(EntityId);
 
@@ -27,23 +29,25 @@ impl Render for DragSlider {
     }
 }
 
-/// Events emitted by the [`SliderState`].
+/// [`SliderState`] 发出的事件
 pub enum SliderEvent {
-    /// Emitted continuously while the slider value is being changed by the user.
+    /// 用户正在连续改变滑块值时持续发出
     Change(SliderValue),
-    /// Emitted once when the user releases the slider after a drag or click.
+    /// 用户拖拽或点击后释放滑块时发出一次
     Release(SliderValue),
 }
 
-/// The value of the slider, can be a single value or a range of values.
+/// 滑块的值，可以是单个值或范围值
 ///
-/// - Can from a f32 value, which will be treated as a single value.
-/// - Or from a (f32, f32) tuple, which will be treated as a range of values.
+/// - 可以从 f32 值创建，将被视为单值
+/// - 或从 (f32, f32) 元组创建，将被视为范围值
 ///
-/// The default value is `SliderValue::Single(0.0)`.
+/// 默认值为 `SliderValue::Single(0.0)`
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SliderValue {
+    /// 单值模式
     Single(f32),
+    /// 范围模式
     Range(f32, f32),
 }
 
@@ -81,7 +85,7 @@ impl Default for SliderValue {
 }
 
 impl SliderValue {
-    /// Clamp the value to the given range.
+    /// 将值限制在给定范围内
     pub fn clamp(self, min: f32, max: f32) -> Self {
         match self {
             SliderValue::Single(value) => SliderValue::Single(value.clamp(min, max)),
@@ -91,19 +95,19 @@ impl SliderValue {
         }
     }
 
-    /// Check if the value is a single value.
+    /// 检查是否为单值模式
     #[inline]
     pub fn is_single(&self) -> bool {
         matches!(self, SliderValue::Single(_))
     }
 
-    /// Check if the value is a range of values.
+    /// 检查是否为范围模式
     #[inline]
     pub fn is_range(&self) -> bool {
         matches!(self, SliderValue::Range(_, _))
     }
 
-    /// Get the start value.
+    /// 获取起始值
     pub fn start(&self) -> f32 {
         match self {
             SliderValue::Single(value) => *value,
@@ -111,7 +115,7 @@ impl SliderValue {
         }
     }
 
-    /// Get the end value.
+    /// 获取结束值
     pub fn end(&self) -> f32 {
         match self {
             SliderValue::Single(value) => *value,
@@ -119,6 +123,7 @@ impl SliderValue {
         }
     }
 
+    /// 设置起始值
     fn set_start(&mut self, value: f32) {
         if let SliderValue::Range(_, end) = self {
             *self = SliderValue::Range(value.min(*end), *end);
@@ -127,6 +132,7 @@ impl SliderValue {
         }
     }
 
+    /// 设置结束值
     fn set_end(&mut self, value: f32) {
         if let SliderValue::Range(start, _) = self {
             *self = SliderValue::Range(*start, value.max(*start));
@@ -136,70 +142,74 @@ impl SliderValue {
     }
 }
 
-/// The scale mode of the slider.
+/// 滑块的缩放模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SliderScale {
-    /// Linear scale where values change uniformly across the slider range.
-    /// This is the default mode.
+    /// 线性缩放，值在滑块范围内均匀变化（默认）
     #[default]
     Linear,
-    /// Logarithmic scale where the distance between values increases exponentially.
+    /// 对数缩放，值之间的距离呈指数增长
     ///
-    /// This is useful for parameters that have a large range of values where smaller
-    /// changes are more significant at lower values. Common examples include:
+    /// 适用于具有大范围值的参数，其中较小值的变化更为显著。常见示例包括：
     ///
-    /// - Volume controls (human hearing perception is logarithmic)
-    /// - Frequency controls (musical notes follow a logarithmic scale)
-    /// - Zoom levels
-    /// - Any parameter where you want finer control at lower values
+    /// - 音量控制（人类听觉感知是对数的）
+    /// - 频率控制（音符遵循对数比例）
+    /// - 缩放级别
+    /// - 任何希望在较低值时获得更精细控制的参数
     ///
-    /// # For example
+    /// # 示例
     ///
     /// ```
     /// use rgpui_component::slider::{SliderState, SliderScale};
     ///
     /// let slider = SliderState::new()
-    ///     .min(1.0)    // Must be > 0 for logarithmic scale
+    ///     .min(1.0)    // 对数缩放时必须大于 0
     ///     .max(1000.0)
     ///     .scale(SliderScale::Logarithmic);
     /// ```
     ///
-    /// - Moving the slider 1/3 of the way will yield ~10
-    /// - Moving it 2/3 of the way will yield ~100
-    /// - The full range covers 3 orders of magnitude evenly
+    /// - 将滑块移动 1/3 将得到约 10
+    /// - 移动 2/3 将得到约 100
+    /// - 全范围覆盖 3 个数量级
     Logarithmic,
 }
 
 impl SliderScale {
+    /// 检查是否为线性缩放
     #[inline]
     pub fn is_linear(&self) -> bool {
         matches!(self, SliderScale::Linear)
     }
 
+    /// 检查是否为对数缩放
     #[inline]
     pub fn is_logarithmic(&self) -> bool {
         matches!(self, SliderScale::Logarithmic)
     }
 }
 
-/// State of the [`Slider`].
+/// [`Slider`] 的状态
 pub struct SliderState {
+    /// 最小值
     min: f32,
+    /// 最大值
     max: f32,
+    /// 步长
     step: f32,
+    /// 当前值
     value: SliderValue,
-    /// When is single value mode, only `end` is used, the start is always 0.0.
+    /// 在单值模式下，仅使用 `end`，起始始终为 0.0
     percentage: Range<f32>,
-    /// The bounds of the slider after rendered.
+    /// 渲染后滑块的边界
     bounds: Bounds<Pixels>,
+    /// 缩放模式
     scale: SliderScale,
-    /// Tracks whether the user is currently interacting with the slider so we
-    /// only emit [`SliderEvent::Release`] after a real press/drag.
+    /// 跟踪用户是否正在与滑块交互，以便仅在真实按下/拖拽后发出 [`SliderEvent::Release`]
     dragging: bool,
 }
 
 impl SliderState {
-    /// Create a new [`SliderState`].
+    /// 创建新的 [`SliderState`]
     pub fn new() -> Self {
         Self {
             min: 0.0,
@@ -213,16 +223,16 @@ impl SliderState {
         }
     }
 
-    /// Set the minimum value of the slider, default: 0.0
+    /// 设置滑块的最小值，默认：0.0
     pub fn min(mut self, min: f32) -> Self {
         if self.scale.is_logarithmic() {
             assert!(
                 min > 0.0,
-                "`min` must be greater than 0 for SliderScale::Logarithmic"
+                "对数缩放时 `min` 必须大于 0"
             );
             assert!(
                 min < self.max,
-                "`min` must be less than `max` for Logarithmic scale"
+                "对数缩放时 `min` 必须小于 `max`"
             );
         }
         self.min = min;
@@ -230,12 +240,12 @@ impl SliderState {
         self
     }
 
-    /// Set the maximum value of the slider, default: 100.0
+    /// 设置滑块的最大值，默认：100.0
     pub fn max(mut self, max: f32) -> Self {
         if self.scale.is_logarithmic() {
             assert!(
                 max > self.min,
-                "`max` must be greater than `min` for Logarithmic scale"
+                "对数缩放时 `max` 必须大于 `min`"
             );
         }
         self.max = max;
@@ -243,22 +253,22 @@ impl SliderState {
         self
     }
 
-    /// Set the step value of the slider, default: 1.0
+    /// 设置滑块的步长，默认：1.0
     pub fn step(mut self, step: f32) -> Self {
         self.step = step;
         self
     }
 
-    /// Set the scale of the slider, default: [`SliderScale::Linear`].
+    /// 设置滑块的缩放模式，默认：[`SliderScale::Linear`]
     pub fn scale(mut self, scale: SliderScale) -> Self {
         if scale.is_logarithmic() {
             assert!(
                 self.min > 0.0,
-                "`min` must be greater than 0 for Logarithmic scale"
+                "对数缩放时 `min` 必须大于 0"
             );
             assert!(
                 self.max > self.min,
-                "`max` must be greater than `min` for Logarithmic scale"
+                "对数缩放时 `max` 必须大于 `min`"
             );
         }
         self.scale = scale;
@@ -266,14 +276,14 @@ impl SliderState {
         self
     }
 
-    /// Set the default value of the slider, default: 0.0
+    /// 设置滑块的默认值，默认：0.0
     pub fn default_value(mut self, value: impl Into<SliderValue>) -> Self {
         self.value = value.into();
         self.update_thumb_pos();
         self
     }
 
-    /// Set the value of the slider.
+    /// 设置滑块的值
     pub fn set_value(
         &mut self,
         value: impl Into<SliderValue>,
@@ -285,28 +295,26 @@ impl SliderState {
         cx.notify();
     }
 
-    /// Get the value of the slider.
+    /// 获取滑块的值
     pub fn value(&self) -> SliderValue {
         self.value
     }
 
-    /// Converts a value between 0.0 and 1.0 to a value between the minimum and maximum value,
-    /// depending on the chosen scale.
+    /// 根据选择的缩放模式，将 0.0 到 1.0 之间的百分比值转换为最小值和最大值之间的实际值
     fn percentage_to_value(&self, percentage: f32) -> f32 {
         match self.scale {
             SliderScale::Linear => self.min + (self.max - self.min) * percentage,
             SliderScale::Logarithmic => {
-                // when percentage is 0, this simplifies to (max/min)^0 * min = 1 * min = min
-                // when percentage is 1, this simplifies to (max/min)^1 * min = (max*min)/min = max
-                // we clamp just to make sure we don't have issue with floating point precision
+                // 当 percentage 为 0 时，简化为 (max/min)^0 * min = 1 * min = min
+                // 当 percentage 为 1 时，简化为 (max/min)^1 * min = (max*min)/min = max
+                // 使用 clamp 确保不会出现浮点精度问题
                 let base = self.max / self.min;
                 (base.powf(percentage) * self.min).clamp(self.min, self.max)
             }
         }
     }
 
-    /// Converts a value between the minimum and maximum value to a value between 0.0 and 1.0,
-    /// depending on the chosen scale.
+    /// 根据选择的缩放模式，将最小值和最大值之间的实际值转换为 0.0 到 1.0 之间的百分比值
     fn value_to_percentage(&self, value: f32) -> f32 {
         match self.scale {
             SliderScale::Linear => {
@@ -324,6 +332,7 @@ impl SliderState {
         }
     }
 
+    /// 更新滑块手柄位置
     fn update_thumb_pos(&mut self) {
         match self.value {
             SliderValue::Single(value) => {
@@ -339,7 +348,7 @@ impl SliderState {
         }
     }
 
-    /// Update value by mouse position
+    /// 根据鼠标位置更新值
     fn update_value_by_position(
         &mut self,
         axis: Axis,
@@ -380,8 +389,8 @@ impl SliderState {
         cx.notify();
     }
 
-    /// Emit [`SliderEvent::Release`] if the user was actively interacting
-    /// with the slider. Called on mouse-up both inside and outside the slider.
+    /// 如果用户正在与滑块交互，则发出 [`SliderEvent::Release`]
+    /// 在鼠标释放时调用，无论是否在滑块内部
     fn handle_release(&mut self, cx: &mut Context<Self>) {
         if !self.dragging {
             return;
@@ -393,17 +402,21 @@ impl SliderState {
 
 impl EventEmitter<SliderEvent> for SliderState {}
 
-/// A Slider element.
+/// 滑块组件
 #[derive(IntoElement)]
 pub struct Slider {
+    /// 滑块状态
     state: Entity<SliderState>,
+    /// 布局方向
     axis: Axis,
+    /// 样式引用
     style: StyleRefinement,
+    /// 是否禁用
     disabled: bool,
 }
 
 impl Slider {
-    /// Create a new [`Slider`] element bind to the [`SliderState`].
+    /// 创建新的 [`Slider`] 组件并绑定到 [`SliderState`]
     pub fn new(state: &Entity<SliderState>) -> Self {
         Self {
             axis: Axis::Horizontal,
@@ -413,24 +426,25 @@ impl Slider {
         }
     }
 
-    /// As a horizontal slider.
+    /// 设置为水平滑块
     pub fn horizontal(mut self) -> Self {
         self.axis = Axis::Horizontal;
         self
     }
 
-    /// As a vertical slider.
+    /// 设置为垂直滑块
     pub fn vertical(mut self) -> Self {
         self.axis = Axis::Vertical;
         self
     }
 
-    /// Set the disabled state of the slider, default: false
+    /// 设置滑块的禁用状态，默认：false
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
+    /// 渲染滑块手柄
     #[allow(clippy::too_many_arguments)]
     fn render_thumb(
         &self,
@@ -491,7 +505,7 @@ impl Slider {
                                 return;
                             }
 
-                            // set value by mouse position
+                            // 根据鼠标位置设置值
                             view.update_value_by_position(
                                 axis,
                                 e.event.position,

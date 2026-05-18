@@ -1,4 +1,4 @@
-/// The character used to mask password input fields.
+/// 用于遮蔽密码输入框的字符
 pub(super) const MASK_CHAR: char = '•';
 
 mod blink_cursor;

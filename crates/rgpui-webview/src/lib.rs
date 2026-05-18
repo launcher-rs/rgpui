@@ -11,13 +11,17 @@ use rgpui::{
     ParentElement as _, Pixels, Render, Size, Style, Styled as _, Window, canvas, div,
 };
 
-/// A webview based on wry WebView.
+/// 基于 wry WebView 的网页视图组件。
 ///
-/// [experimental]
+/// [实验性功能]
 pub struct WebView {
+    /// 焦点处理器
     focus_handle: FocusHandle,
+    /// 底层 wry WebView 实例
     webview: Rc<wry::WebView>,
+    /// 可见性状态
     visible: bool,
+    /// 当前边界尺寸
     bounds: Bounds<Pixels>,
 }
 
@@ -28,7 +32,13 @@ impl Drop for WebView {
 }
 
 impl WebView {
-    /// Create a new WebView from a wry WebView.
+    /// 从 wry WebView 创建新的 WebView 实例
+    ///
+    /// # 参数
+    ///
+    /// * `webview` - wry WebView 实例
+    /// * `window` - GPUI 窗口
+    /// * `cx` - 应用上下文
     pub fn new(webview: wry::WebView, _: &mut Window, cx: &mut App) -> Self {
         let _ = webview.set_bounds(Rect::default());
 
@@ -40,40 +50,44 @@ impl WebView {
         }
     }
 
-    /// Show the webview.
+    /// 显示网页视图
     pub fn show(&mut self) {
         let _ = self.webview.set_visible(true);
         self.visible = true;
     }
 
-    /// Hide the webview.
+    /// 隐藏网页视图
     pub fn hide(&mut self) {
         _ = self.webview.focus_parent();
         _ = self.webview.set_visible(false);
         self.visible = false;
     }
 
-    /// Get whether the webview is visible.
+    /// 获取网页视图的可见性状态
     pub fn visible(&self) -> bool {
         self.visible
     }
 
-    /// Get the current bounds of the webview.
+    /// 获取网页视图的当前边界尺寸
     pub fn bounds(&self) -> Bounds<Pixels> {
         self.bounds
     }
 
-    /// Go back in the webview history.
+    /// 在网页视图中后退到历史记录上一页
     pub fn back(&mut self) -> anyhow::Result<()> {
         Ok(self.webview.evaluate_script("history.back();")?)
     }
 
-    /// Load a URL in the webview.
+    /// 在网页视图中加载指定 URL
+    ///
+    /// # 参数
+    ///
+    /// * `url` - 要加载的 URL 地址
     pub fn load_url(&mut self, url: &str) {
         let _ = self.webview.load_url(url);
     }
 
-    /// Get the raw wry webview.
+    /// 获取底层的 wry WebView 引用
     pub fn raw(&self) -> &wry::WebView {
         &self.webview
     }
@@ -119,14 +133,23 @@ impl Render for WebView {
     }
 }
 
-/// A webview element can display a wry webview.
+/// 可嵌入 GPUI 布局的 WebView 元素
 pub struct WebViewElement {
+    /// 父级 WebView 实体
     parent: Entity<WebView>,
+    /// wry WebView 实例的引用计数指针
     view: Rc<wry::WebView>,
 }
 
 impl WebViewElement {
-    /// Create a new webview element from a wry WebView.
+    /// 从 wry WebView 创建新的 WebView 元素
+    ///
+    /// # 参数
+    ///
+    /// * `view` - wry WebView 实例
+    /// * `parent` - 父级 WebView 实体
+    /// * `window` - GPUI 窗口
+    /// * `cx` - 应用上下文
     pub fn new(
         view: Rc<wry::WebView>,
         parent: Entity<WebView>,
@@ -157,6 +180,7 @@ impl Element for WebViewElement {
         None
     }
 
+    /// 请求布局，使用全尺寸样式并设置弹性收缩
     fn request_layout(
         &mut self,
         _: Option<&GlobalElementId>,
@@ -170,11 +194,12 @@ impl Element for WebViewElement {
             ..Default::default()
         };
 
-        // If the parent view is no longer visible, we don't need to layout the webview
+        // 如果父级视图不再可见，则不需要布局网页视图
         let id = window.request_layout(style, [], cx);
         (id, ())
     }
 
+    /// 预绘制阶段，设置网页视图的边界并创建命中框
     fn prepaint(
         &mut self,
         _: Option<&GlobalElementId>,
@@ -199,10 +224,11 @@ impl Element for WebViewElement {
             )),
         });
 
-        // Create a hitbox to handle mouse event
+        // 创建命中框以处理鼠标事件
         Some(window.insert_hitbox(bounds, rgpui::HitboxBehavior::Normal))
     }
 
+    /// 绘制阶段，设置内容蒙版并处理鼠标点击事件
     fn paint(
         &mut self,
         _: Option<&GlobalElementId>,
@@ -218,7 +244,7 @@ impl Element for WebViewElement {
             let webview = self.view.clone();
             window.on_mouse_event(move |event: &MouseDownEvent, _, _, _| {
                 if !bounds.contains(&event.position) {
-                    // Click white space to blur the input focus
+                    // 点击空白区域以清除输入焦点
                     let _ = webview.focus_parent();
                 }
             });

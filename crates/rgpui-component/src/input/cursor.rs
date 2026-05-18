@@ -1,32 +1,37 @@
 use std::ops::{Range, RangeBounds};
 
-/// A selection in the text, represented by start and end byte indices.
+/// 文本中的选区，由起始和结束字节索引表示
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct Selection {
+    /// 起始位置
     pub start: usize,
+    /// 结束位置
     pub end: usize,
 }
 
 impl Selection {
+    /// 创建新的选区
     pub fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
 
+    /// 获取选区长度
     pub fn len(&self) -> usize {
         self.end.saturating_sub(self.start)
     }
 
+    /// 检查选区是否为空
     pub fn is_empty(&self) -> bool {
         self.start == self.end
     }
 
-    /// Clears the selection, setting start and end to 0.
+    /// 清除选区，将起始和结束位置设为 0
     pub fn clear(&mut self) {
         self.start = 0;
         self.end = 0;
     }
 
-    /// Checks if the given offset is within the selection range.
+    /// 检查给定偏移量是否在选区范围内
     pub fn contains(&self, offset: usize) -> bool {
         offset >= self.start && offset < self.end
     }
