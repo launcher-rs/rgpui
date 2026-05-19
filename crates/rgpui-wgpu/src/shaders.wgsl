@@ -809,6 +809,7 @@ struct QuadVarying {
     @location(5) @interpolate(flat) background_color1: vec4<f32>,
     @location(6) @interpolate(flat) background_color2: vec4<f32>,
     @location(7) @interpolate(flat) background_color3: vec4<f32>,
+    @location(8) local_position: vec2<f32>,
 }
 
 @vertex
@@ -816,8 +817,10 @@ fn vs_quad(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
     let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
     let quad = b_quads[instance_id];
 
+    let local_position = unit_vertex * quad.bounds.size + quad.bounds.origin;
+
     var out = QuadVarying();
-    out.position = to_device_position(unit_vertex, quad.bounds);
+    out.position = to_device_position_transformed(unit_vertex, quad.bounds, quad.transform);
 
     let gradient = prepare_gradient_color(
         quad.background.tag,
@@ -832,7 +835,8 @@ fn vs_quad(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
     out.background_color3 = gradient.color3;
     out.border_color = hsla_to_rgba(quad.border_color);
     out.quad_id = instance_id;
-    out.clip_distances = distance_from_clip_rect(unit_vertex, quad.bounds, quad.content_mask);
+    out.local_position = local_position;
+    out.clip_distances = distance_from_clip_rect_transformed(unit_vertex, quad.bounds, quad.content_mask, quad.transform);
     return out;
 }
 
@@ -845,7 +849,7 @@ fn fs_quad(input: QuadVarying) -> @location(0) vec4<f32> {
 
     let quad = b_quads[input.quad_id];
 
-    let background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
+    let background_color = gradient_color(quad.background, input.local_position, quad.bounds,
         input.background_solid, input.background_color0, input.background_color1, input.background_color2, input.background_color3);
 
     let unrounded = quad.corner_radii.top_left == 0.0 &&
@@ -864,7 +868,7 @@ fn fs_quad(input: QuadVarying) -> @location(0) vec4<f32> {
 
     let size = quad.bounds.size;
     let half_size = size / 2.0;
-    let point = input.position.xy - quad.bounds.origin;
+    let point = input.local_position - quad.bounds.origin;
     let center_to_point = point - half_size;
 
     // Signed distance field threshold for inclusion of pixels. 0.5 is the

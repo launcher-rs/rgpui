@@ -645,6 +645,7 @@ struct QuadVertexOutput {
     nointerpolation float4 background_color1: COLOR3;
     nointerpolation float4 background_color2: COLOR4;
     nointerpolation float4 background_color3: COLOR5;
+    float2 local_position: TEXCOORD1;
     float4 clip_distance: SV_ClipDistance;
 };
 
@@ -657,6 +658,7 @@ struct QuadFragmentInput {
     nointerpolation float4 background_color1: COLOR3;
     nointerpolation float4 background_color2: COLOR4;
     nointerpolation float4 background_color3: COLOR5;
+    float2 local_position: TEXCOORD1;
 };
 
 StructuredBuffer<Quad> quads: register(t1);
@@ -664,7 +666,9 @@ StructuredBuffer<Quad> quads: register(t1);
 QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     Quad quad = quads[quad_id];
-    float4 device_position = to_device_position(unit_vertex, quad.bounds);
+
+    float2 local_position = unit_vertex * quad.bounds.size + quad.bounds.origin;
+    float4 device_position = to_device_position_transformed(unit_vertex, quad.bounds, quad.transform);
 
     GradientColor gradient = prepare_gradient_color(
         quad.background.tag,
@@ -672,7 +676,7 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
         quad.background.solid,
         quad.background.colors
     );
-    float4 clip_distance = distance_from_clip_rect(unit_vertex, quad.bounds, quad.content_mask);
+    float4 clip_distance = distance_from_clip_rect_transformed(unit_vertex, quad.bounds, quad.content_mask, quad.transform);
     float4 border_color = hsla_to_rgba(quad.border_color);
 
     QuadVertexOutput output;
@@ -684,13 +688,14 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
     output.background_color1 = gradient.color1;
     output.background_color2 = gradient.color2;
     output.background_color3 = gradient.color3;
+    output.local_position = local_position;
     output.clip_distance = clip_distance;
     return output;
 }
 
 float4 quad_fragment(QuadFragmentInput input): SV_Target {
     Quad quad = quads[input.quad_id];
-    float4 background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
+    float4 background_color = gradient_color(quad.background, input.local_position, quad.bounds,
     input.background_solid, input.background_color0, input.background_color1, input.background_color2, input.background_color3);
 
     bool unrounded = quad.corner_radii.top_left == 0.0 &&
