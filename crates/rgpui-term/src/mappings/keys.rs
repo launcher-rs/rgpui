@@ -262,7 +262,7 @@ fn modifier_code(keystroke: &Keystroke) -> u32 {
 
 #[cfg(test)]
 mod test {
-    use gpui::Modifiers;
+    use rgpui::Modifiers;
 
     use super::*;
 

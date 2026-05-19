@@ -444,7 +444,7 @@ mod tests {
     use super::*;
     use rgpui::{TestAppContext, point};
 
-    #[gpui::test]
+    #[rgpui::test]
     fn set_text_then_push_str_appends_to_replaced_content(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("old", cx)));

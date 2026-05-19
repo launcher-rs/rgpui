@@ -2137,8 +2137,8 @@ mod tests {
     fn test_runs_for_range() {
         let run = TextRun {
             len: 0,
-            font: gpui::font(".SystemUIFont"),
-            color: gpui::black(),
+            font: rgpui::font(".SystemUIFont"),
+            color: rgpui::black(),
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -2195,8 +2195,8 @@ mod tests {
     fn test_placeholder_line_runs() {
         let run = TextRun {
             len: 0,
-            font: gpui::font(".SystemUIFont"),
-            color: gpui::black(),
+            font: rgpui::font(".SystemUIFont"),
+            color: rgpui::black(),
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -2233,8 +2233,8 @@ mod tests {
     fn test_split_runs_by_bg_segments() {
         let run = TextRun {
             len: 0,
-            font: gpui::font(".SystemUIFont"),
-            color: gpui::blue(),
+            font: rgpui::font(".SystemUIFont"),
+            color: rgpui::blue(),
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -2255,17 +2255,17 @@ mod tests {
             },
         ];
 
-        let bg_segments = vec![(8..12, gpui::red()), (12..18, gpui::blue())];
+        let bg_segments = vec![(8..12, rgpui::red()), (12..18, rgpui::blue())];
         let result = split_runs_by_bg_segments(5, &runs, &bg_segments);
         assert_eq!(
             result.iter().map(|run| run.len).collect::<Vec<_>>(),
             vec![3, 2, 2, 5, 1, 23]
         );
-        assert_eq!(result[0].color, gpui::blue());
-        assert_eq!(result[1].color, gpui::black());
-        assert_eq!(result[2].color, gpui::black());
-        assert_eq!(result[3].color, gpui::black());
-        assert_eq!(result[4].color, gpui::black());
-        assert_eq!(result[5].color, gpui::blue());
+        assert_eq!(result[0].color, rgpui::blue());
+        assert_eq!(result[1].color, rgpui::black());
+        assert_eq!(result[2].color, rgpui::black());
+        assert_eq!(result[3].color, rgpui::black());
+        assert_eq!(result[4].color, rgpui::black());
+        assert_eq!(result[5].color, rgpui::blue());
     }
 }

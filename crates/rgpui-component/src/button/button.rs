@@ -965,7 +965,7 @@ mod tests {
     use super::*;
 
     #[rgpui::test]
-    fn test_button_builder(_cx: &mut gpui::TestAppContext) {
+    fn test_button_builder(_cx: &mut rgpui::TestAppContext) {
         let button = Button::new("complex-button")
             .label("Save Changes")
             .primary()
@@ -998,7 +998,7 @@ mod tests {
     }
 
     #[rgpui::test]
-    fn test_button_clickable_logic(_cx: &mut gpui::TestAppContext) {
+    fn test_button_clickable_logic(_cx: &mut rgpui::TestAppContext) {
         // Button with click handler should be clickable
         let clickable = Button::new("test").on_click(|_, _, _| {});
         assert!(clickable.clickable());
@@ -1013,7 +1013,7 @@ mod tests {
     }
 
     #[rgpui::test]
-    fn test_button_variant_methods(_cx: &mut gpui::TestAppContext) {
+    fn test_button_variant_methods(_cx: &mut rgpui::TestAppContext) {
         // Test variant check methods
         assert!(ButtonVariant::Link.is_link());
         assert!(ButtonVariant::Text.is_text());

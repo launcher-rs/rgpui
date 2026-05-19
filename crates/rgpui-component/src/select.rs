@@ -774,7 +774,7 @@ mod tests {
         select::{SelectGroup, SelectState},
     };
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_select_initial_selection_seeds_cursor(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -791,7 +791,7 @@ mod tests {
         });
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_select_initial_grouped_selection_seeds_cursor(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();

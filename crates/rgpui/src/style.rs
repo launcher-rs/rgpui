@@ -1281,8 +1281,6 @@ mod tests {
 
     use super::*;
 
-    use rgpui_macros::perf;
-
     #[perf]
     fn test_basic_highlight_style_combination() {
         let style_a = HighlightStyle::default();

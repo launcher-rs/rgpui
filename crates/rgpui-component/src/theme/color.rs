@@ -821,7 +821,7 @@ mod tests {
     fn test_mix_oklab() {
         let red = Hsla::parse_hex("#FF0000").unwrap();
         let blue = Hsla::parse_hex("#0000FF").unwrap();
-        let transparent = gpui::Hsla {
+        let transparent = rgpui::Hsla {
             h: 0.0,
             s: 0.0,
             l: 0.0,

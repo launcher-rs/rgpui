@@ -585,11 +585,11 @@ mod tests {
     use super::*;
     use std::rc::Rc;
 
-    use rgpui::{Boundary, FontFeatures, FontStyle, FontWeight, px};
+    use rgpui::{Boundary, Font, FontFeatures, FontStyle, FontWeight, px};
 
     #[test]
     fn test_update() {
-        let font = gpui::Font {
+        let font = Font {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,
@@ -828,7 +828,7 @@ mod tests {
 
     #[test]
     fn test_offset_to_display_point() {
-        let font = gpui::Font {
+        let font = Font {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,

@@ -38,7 +38,7 @@ members = [
     "crates/rgpui-yororen-ui/examples/counter",
     "crates/rgpui-yororen-ui/examples/file_browser",
     "crates/rgpui-yororen-ui/examples/toast_notification",
-    "crates/rgpui-yororen-ui/examples/todolist",
+    "crates/rgpui-yororen-ui/examples/todolist", "crates/rgpui-adabraka-ui",
 
 ]
 
@@ -145,9 +145,9 @@ rayon = "1.8"
 
 # ---- 字符串与文本 ----
 # Unicode 文本分割
-unicode-segmentation = "1.10"
+unicode-segmentation = "1.13"
 # 正则表达式
-regex = "1.5"
+regex = "1.12"
 # glob 模式匹配
 globset = "0.4"
 # shell 词法分析

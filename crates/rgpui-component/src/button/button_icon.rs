@@ -135,8 +135,8 @@ mod tests {
     use super::*;
     use crate::IconName;
 
-    #[gpui::test]
-    fn test_button_icon_builder(_cx: &mut gpui::TestAppContext) {
+    #[rgpui::test]
+    fn test_button_icon_builder(_cx: &mut rgpui::TestAppContext) {
         let custom_icon = Icon::new(IconName::Loader);
         let icon = ButtonIcon::new(IconName::Plus)
             .loading(true)
@@ -148,8 +148,8 @@ mod tests {
         assert_eq!(icon.size, Size::Large);
     }
 
-    #[gpui::test]
-    fn test_button_icon_variant_types(_cx: &mut gpui::TestAppContext) {
+    #[rgpui::test]
+    fn test_button_icon_variant_types(_cx: &mut rgpui::TestAppContext) {
         // Test Icon variant
         let icon_variant = ButtonIconVariant::Icon(Icon::new(IconName::Plus));
         assert!(!icon_variant.is_spinner());

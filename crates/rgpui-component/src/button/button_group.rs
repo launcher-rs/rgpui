@@ -266,8 +266,8 @@ mod tests {
     use super::*;
     use rgpui::Axis;
 
-    #[gpui::test]
-    fn test_button_group_builder(_cx: &mut gpui::TestAppContext) {
+    #[rgpui::test]
+    fn test_button_group_builder(_cx: &mut rgpui::TestAppContext) {
         let group = ButtonGroup::new("complex-group")
             .child(Button::new("btn1").label("One"))
             .child(Button::new("btn2").label("Two"))

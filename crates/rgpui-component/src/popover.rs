@@ -498,7 +498,7 @@ mod tests {
                 x: px(100.),
                 y: px(100.),
             },
-            size: gpui::Size {
+            size: rgpui::Size {
                 width: px(200.),
                 height: px(50.),
             },
