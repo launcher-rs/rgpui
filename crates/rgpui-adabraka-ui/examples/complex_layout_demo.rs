@@ -236,9 +236,11 @@ impl ComplexLayoutDemo {
                     )
                     .child(
                         // Message content
-                        div()
-                            .text_color(rgb(0x374151))
-                            .child(message.content.clone()),
+                        div().text_color(rgb(0x374151)).child(format!(
+                            "{}:{}",
+                            message.id,
+                            message.content.clone()
+                        )),
                     ),
             )
     }

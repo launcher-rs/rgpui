@@ -419,7 +419,7 @@ fn main() {
             |window, cx| {
                 cx.new(|cx| {
                     let view = AppMenuStyledDemo::new(cx);
-                    window.focus(&view.focus);
+                    window.focus(&view.focus, cx);
                     view
                 })
             },

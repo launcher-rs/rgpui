@@ -18,7 +18,7 @@ fn main() {
 }
 
 struct DemoApp {
-    theme: Theme,
+    // theme: Theme,
     // Move ALL state to root view for interactive components to work
     click_count: usize,
     checkbox1_checked: bool,
@@ -35,7 +35,7 @@ impl DemoApp {
         install_theme(cx, theme.clone());
 
         Self {
-            theme,
+            // theme,
             click_count: 0,
             checkbox1_checked: false,
             checkbox2_checked: true,

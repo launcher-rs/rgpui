@@ -1,3 +1,4 @@
+use rgpui::{prelude::FluentBuilder as _, *};
 use rgpui_adabraka_ui::{
     components::icon_source::IconSource,
     layout::VStack,
@@ -6,21 +7,20 @@ use rgpui_adabraka_ui::{
     },
     theme::use_theme,
 };
-use rrgpui::{prelude::FluentBuilder as _, *};
 use std::path::PathBuf;
 
 struct Assets {
     base: PathBuf,
 }
 
-impl rrgpui::AssetSource for Assets {
+impl rgpui::AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<std::borrow::Cow<'static, [u8]>>> {
         std::fs::read(self.base.join(path))
             .map(|data| Some(std::borrow::Cow::Owned(data)))
             .map_err(|err| err.into())
     }
 
-    fn list(&self, path: &str) -> Result<Vec<rrgpui::SharedString>> {
+    fn list(&self, path: &str) -> Result<Vec<rgpui::SharedString>> {
         std::fs::read_dir(self.base.join(path))
             .map(|entries| {
                 entries
@@ -28,7 +28,7 @@ impl rrgpui::AssetSource for Assets {
                         entry
                             .ok()
                             .and_then(|entry| entry.file_name().into_string().ok())
-                            .map(rrgpui::SharedString::from)
+                            .map(rgpui::SharedString::from)
                     })
                     .collect()
             })

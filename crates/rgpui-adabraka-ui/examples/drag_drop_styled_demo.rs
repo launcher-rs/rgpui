@@ -318,7 +318,7 @@ impl DragDropStyledDemo {
                             .children(tasks.iter().enumerate().map(|(ix, task)| {
                                 let task_clone = task.clone();
                                 let drag_data = DragData::new(task_clone.clone())
-                                    .with_label(task.title.clone());
+                                    .with_label(format!("{}:{}", task.id, task.title.clone()));
 
                                 Draggable::new((zone_id, ix), drag_data)
                                     // Custom styling for draggable items

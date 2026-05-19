@@ -1,4 +1,4 @@
-use rgpui::{prelude::FluentBuilder as _, *};
+use rgpui::*;
 use rgpui_adabraka_ui::{layout::VStack, navigation::app_menu::*, theme::use_theme};
 
 // Define all the actions our app will use
@@ -475,7 +475,7 @@ fn main() {
             |window, cx| {
                 cx.new(|cx| {
                     let view = AppMenuDemo::new(cx);
-                    window.focus(&view.focus);
+                    window.focus(&view.focus, cx);
                     view
                 })
             },

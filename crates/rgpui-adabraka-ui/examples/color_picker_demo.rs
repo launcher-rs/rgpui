@@ -89,8 +89,8 @@ impl Render for ColorPickerDemo {
         let theme = use_theme();
         let basic_color = self.basic_state.read(cx).selected_color();
         let alpha_color = self.alpha_state.read(cx).selected_color();
-        let custom_swatches_color = self.custom_swatches_state.read(cx).selected_color();
-        let styled_color = self.styled_state.read(cx).selected_color();
+        // let custom_swatches_color = self.custom_swatches_state.read(cx).selected_color();
+        // let styled_color = self.styled_state.read(cx).selected_color();
         let background_color = self.background_state.read(cx).selected_color();
         let text_color = self.text_state.read(cx).selected_color();
 
