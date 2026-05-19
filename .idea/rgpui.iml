@@ -68,6 +68,14 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-term/examples/basic/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-term/examples/component-integration/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-term/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-editor/examples/lsp/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-yororen-ui/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-yororen-ui/examples/counter/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-yororen-ui/examples/file_browser/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-yororen-ui/examples/toast_notification/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-yororen-ui/examples/todolist/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-yororen-ui/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/ryouren-ui/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

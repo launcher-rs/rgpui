@@ -34,6 +34,12 @@ members = [
     "crates/rgpui-term/examples/basic",
     "crates/rgpui-term/examples/component-integration",
 
+    "crates/rgpui-yororen-ui",
+    "crates/rgpui-yororen-ui/examples/counter",
+    "crates/rgpui-yororen-ui/examples/file_browser",
+    "crates/rgpui-yororen-ui/examples/toast_notification",
+    "crates/rgpui-yororen-ui/examples/todolist",
+
 ]
 
 [workspace.package]
@@ -58,6 +64,7 @@ rgpui-component-assets = { path = "crates/rgpui-component-assets" }
 rgpui-webwiew = { path = "crates/rgpui-webview" }
 rgpui-editor = { path = "crates/rgpui-editor" }
 rgpui-term = { path = "crates/rgpui-term" }
+rgpui-yororen-ui = { path = "crates/rgpui-yororen-ui" }
 
 
 # ---- 错误处理 ----

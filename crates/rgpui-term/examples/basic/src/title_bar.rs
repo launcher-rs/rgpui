@@ -3,8 +3,7 @@ use std::rc::Rc;
 use rgpui::{
     AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
     MouseButton, ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window, WindowControlArea, div,
-    prelude::FluentBuilder as _, px,
+    StyleRefinement, Styled, Window, WindowControlArea, div, prelude::FluentBuilder as _, px,
 };
 use rgpui_component::{
     ActiveTheme, Icon, IconName, InteractiveElementExt as _, Sizable as _, StyledExt, h_flex,

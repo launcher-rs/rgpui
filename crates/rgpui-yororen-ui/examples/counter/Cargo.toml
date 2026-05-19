@@ -1,0 +1,9 @@
+[package]
+name = "counter-demo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rgpui.workspace = true
+rgpui-platform.workspace = true
+rgpui-yororen-ui.workspace = true

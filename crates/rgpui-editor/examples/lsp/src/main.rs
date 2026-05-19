@@ -7,9 +7,9 @@ use std::{
 };
 
 use rgpui::{
-    prelude::FluentBuilder as _, px, size, App, AppContext, Context, Entity, Focusable,
-    InteractiveElement, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Task,
-    StatefulInteractiveElement, Window, WindowBounds, WindowOptions, div,
+    App, AppContext, Context, Entity, Focusable, InteractiveElement, IntoElement,
+    ParentElement as _, Render, SharedString, StatefulInteractiveElement, Styled as _, Task,
+    Window, WindowBounds, WindowOptions, div, prelude::FluentBuilder as _, px, size,
 };
 use rgpui_component::{ActiveTheme as _, Root, h_flex, v_flex};
 use rgpui_component_assets::Assets;
@@ -102,11 +102,13 @@ fn slash_command_item(
     lsp_types::CompletionItem {
         label: label.to_string(),
         kind: Some(lsp_types::CompletionItemKind::SNIPPET),
-        text_edit: Some(lsp_types::CompletionTextEdit::InsertAndReplace(lsp_types::InsertReplaceEdit {
-            new_text: insert_text.to_string(),
-            insert: *replace_range,
-            replace: *replace_range,
-        })),
+        text_edit: Some(lsp_types::CompletionTextEdit::InsertAndReplace(
+            lsp_types::InsertReplaceEdit {
+                new_text: insert_text.to_string(),
+                insert: *replace_range,
+                replace: *replace_range,
+            },
+        )),
         documentation: Some(lsp_types::Documentation::String(documentation.to_string())),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         ..Default::default()
@@ -139,8 +141,18 @@ impl CompletionProvider for MockLspStore {
                 let replace_range = lsp_types::Range::new(start_pos, end_pos);
 
                 let slash_items = vec![
-                    slash_command_item(&replace_range, "/date", &format!("{}", chrono::Local::now().date_naive()), "插入当前日期"),
-                    slash_command_item(&replace_range, "/time", &format!("{}", chrono::Local::now().time()), "插入当前时间"),
+                    slash_command_item(
+                        &replace_range,
+                        "/date",
+                        &format!("{}", chrono::Local::now().date_naive()),
+                        "插入当前日期",
+                    ),
+                    slash_command_item(
+                        &replace_range,
+                        "/time",
+                        &format!("{}", chrono::Local::now().time()),
+                        "插入当前时间",
+                    ),
                     slash_command_item(&replace_range, "/thanks", "Thank you!", "插入感谢语"),
                     slash_command_item(&replace_range, "/+1", "👍", "插入点赞"),
                     slash_command_item(&replace_range, "/-1", "👎", "插入点踩"),
@@ -183,16 +195,13 @@ impl CompletionProvider for MockLspStore {
                 && !current_line.contains('{')
             {
                 Some("() {\n    // 在此编写代码..\n}".into())
-            } else if current_line.trim_start().starts_with("let ")
-                && !current_line.contains('=')
-            {
+            } else if current_line.trim_start().starts_with("let ") && !current_line.contains('=') {
                 Some(" = todo!();".into())
             } else if current_line.trim_start().starts_with("struct ")
                 && !current_line.contains('{')
             {
                 Some(" {\n    // 字段定义\n}".into())
-            } else if current_line.trim_start().starts_with("impl ")
-                && !current_line.contains('{')
+            } else if current_line.trim_start().starts_with("impl ") && !current_line.contains('{')
             {
                 Some(" {\n    // 方法实现\n}".into())
             } else {
@@ -283,10 +292,7 @@ impl HoverProvider for MockLspStore {
             return Task::ready(Ok(None));
         }
 
-        let item = self
-            .completions
-            .iter()
-            .find(|item| item.label == word);
+        let item = self.completions.iter().find(|item| item.label == word);
 
         let contents = if let Some(item) = item {
             if let Some(doc) = &item.documentation {
@@ -547,8 +553,7 @@ impl LspExample {
 
             let lsp_store = Rc::new(lsp_store.clone());
             editor.lsp.completion_provider = Some(lsp_store.clone());
-            editor.lsp.code_action_providers =
-                vec![lsp_store.clone(), Rc::new(TextConvertor)];
+            editor.lsp.code_action_providers = vec![lsp_store.clone(), Rc::new(TextConvertor)];
             editor.lsp.hover_provider = Some(lsp_store.clone());
             editor.lsp.definition_provider = Some(lsp_store.clone());
             editor.lsp.document_color_provider = Some(lsp_store.clone());
@@ -591,8 +596,10 @@ impl LspExample {
                 if line.contains("TODO") || line.contains("todo") {
                     let col = line.find("TODO").or_else(|| line.find("todo")).unwrap();
                     let start = Position::new(line_idx as u32, col as u32);
-                    let end =
-                        Position::new(line_idx as u32, (col + line[col..].trim_start().len()) as u32);
+                    let end = Position::new(
+                        line_idx as u32,
+                        (col + line[col..].trim_start().len()) as u32,
+                    );
                     let message = "发现待办事项，请处理".to_string();
                     diagnostics.push(
                         Diagnostic::new(start..end, message)
@@ -663,7 +670,9 @@ impl LspExample {
             .py_1()
             .rounded_sm()
             .cursor_pointer()
-            .when(self.line_number, |el| el.bg(cx.theme().primary.opacity(0.15)))
+            .when(self.line_number, |el| {
+                el.bg(cx.theme().primary.opacity(0.15))
+            })
             .hover(|el| el.bg(cx.theme().primary.opacity(0.1)))
             .child(
                 div()
@@ -717,7 +726,9 @@ impl LspExample {
             .py_1()
             .rounded_sm()
             .cursor_pointer()
-            .when(self.show_whitespaces, |el| el.bg(cx.theme().primary.opacity(0.15)))
+            .when(self.show_whitespaces, |el| {
+                el.bg(cx.theme().primary.opacity(0.15))
+            })
             .hover(|el| el.bg(cx.theme().primary.opacity(0.1)))
             .child(
                 div()
