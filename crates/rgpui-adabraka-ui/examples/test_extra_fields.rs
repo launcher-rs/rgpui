@@ -1,9 +1,9 @@
 // Test if extra fields break scrolling
 
 use rgpui::{
-    AnyElement, App, Application, Bounds, Context, ElementId, Interactivity, ParentElement,
-    ScrollHandle, Stateful, StatefulInteractiveElement, StyleRefinement, Styled, Window,
-    WindowBounds, WindowOptions, div, prelude::*, px, rgb, size,
+    AnyElement, App, Bounds, Context, Interactivity, ParentElement, ScrollHandle, Stateful,
+    StatefulInteractiveElement, StyleRefinement, Styled, Window, WindowBounds, WindowOptions, div,
+    prelude::*, px, rgb, size,
 };
 
 // Test 1: Single field (SHOULD WORK)

@@ -1,4 +1,4 @@
-use rgpui::{prelude::FluentBuilder as _, *};
+use rgpui::*;
 use rgpui_adabraka_ui::{
     components::{scrollable::scrollable_vertical, text::*},
     theme::{Theme, install_theme, use_theme},

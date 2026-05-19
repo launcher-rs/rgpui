@@ -1,4 +1,4 @@
-use gpui::*;
+use rgpui::*;
 use rgpui_adabraka_ui::{
     components::scrollable::scrollable_vertical, navigation::toolbar::*, prelude::*,
 };
@@ -8,7 +8,7 @@ struct Assets {
     base: PathBuf,
 }
 
-impl gpui::AssetSource for Assets {
+impl rgpui::AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<std::borrow::Cow<'static, [u8]>>> {
         std::fs::read(self.base.join(path))
             .map(|data| Some(std::borrow::Cow::Owned(data)))
@@ -252,7 +252,7 @@ impl Render for ToolbarStyledDemo {
                                     .border_2()  // 2px border
                                     .border_color(rgb(0x8b5cf6))  // Purple border
                                     .rounded(px(8.0))
-                                    .bg(gpui::transparent_black())
+                                    .bg(rgpui::transparent_black())
                             }))
                     )
                     .child(

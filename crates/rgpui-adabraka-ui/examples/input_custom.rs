@@ -1,10 +1,6 @@
-use rgpui::{prelude::FluentBuilder, *};
+use rgpui::*;
 use rgpui_adabraka_ui::{
-    components::{
-        input::{Input, InputSize, InputType, InputVariant},
-        input_state::InputState,
-        scrollable::scrollable_vertical,
-    },
+    components::{input::Input, input_state::InputState, scrollable::scrollable_vertical},
     layout::VStack,
     theme::{Theme, install_theme},
 };
@@ -48,7 +44,7 @@ impl CustomInputApp {
 }
 
 impl Render for CustomInputApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let theme = rgpui_adabraka_ui::theme::use_theme();
 
         VStack::new()

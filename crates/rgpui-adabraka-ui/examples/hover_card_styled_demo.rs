@@ -1,6 +1,6 @@
 use rgpui::{prelude::*, *};
 use rgpui_adabraka_ui::{
-    overlays::hover_card::{HoverCard, HoverCardAlignment, HoverCardPosition},
+    overlays::hover_card::{HoverCard, HoverCardPosition},
     prelude::*,
 };
 use std::path::PathBuf;

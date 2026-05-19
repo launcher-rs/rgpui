@@ -1,8 +1,7 @@
 // Debug version to understand what's happening with ScrollContainer
 
 use rgpui::{
-    App, Application, Bounds, Context, Window, WindowBounds, WindowOptions, div, prelude::*, px,
-    rgb, size,
+    App, Bounds, Context, Window, WindowBounds, WindowOptions, div, prelude::*, px, rgb, size,
 };
 
 struct DebugScroll {}

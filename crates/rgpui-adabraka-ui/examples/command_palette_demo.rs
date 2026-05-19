@@ -1,4 +1,4 @@
-use rgpui::{prelude::FluentBuilder as _, *};
+use rgpui::*;
 use rgpui_adabraka_ui::{
     components::button::{Button, ButtonVariant},
     components::icon_source::IconSource,

@@ -1,4 +1,4 @@
-use rgpui::{prelude::FluentBuilder as _, *};
+use rgpui::*;
 use rgpui_adabraka_ui::{
     components::range_slider::{RangeSlider, RangeSliderState},
     components::slider::SliderSize,

@@ -121,7 +121,7 @@ fn main() {
                 })),
                 ..Default::default()
             },
-            |window, cx| cx.new(|cx| InputTestApp::new(cx)),
+            |_window, cx| cx.new(|cx| InputTestApp::new(cx)),
         )
         .unwrap();
     });

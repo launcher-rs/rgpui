@@ -1,9 +1,9 @@
 // Debug to see if into_element is being called
 
 use rgpui::{
-    AnyElement, App, Application, Bounds, Context, ElementId, InteractiveElement, Interactivity,
-    ParentElement, Stateful, StatefulInteractiveElement, StyleRefinement, Styled, Window,
-    WindowBounds, WindowOptions, div, prelude::*, px, rgb, size,
+    AnyElement, App, Bounds, Context, InteractiveElement, Interactivity, ParentElement, Stateful,
+    StatefulInteractiveElement, StyleRefinement, Styled, Window, WindowBounds, WindowOptions, div,
+    prelude::*, px, rgb, size,
 };
 use rgpui_adabraka_ui::layout::{ScrollContainer, ScrollDirection};
 

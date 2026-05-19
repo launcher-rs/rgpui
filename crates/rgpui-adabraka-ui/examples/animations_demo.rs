@@ -1,10 +1,10 @@
 use rgpui::{prelude::FluentBuilder as _, *};
 use rgpui_adabraka_ui::{
-    animations::{self, durations, presets, pulse_opacity, pulse_scale, shake_offset},
+    animations::{presets, pulse_opacity, pulse_scale, shake_offset},
     components::{
         button::{Button, ButtonVariant},
         scrollable::scrollable_vertical,
-        text::{body, caption, h1, h2, muted},
+        text::{body, caption, h1, h2},
     },
     theme::{Theme, install_theme, use_theme},
 };

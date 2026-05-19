@@ -1,8 +1,8 @@
 // Test different ElementId creation methods
 
 use rgpui::{
-    App, Application, Bounds, Context, ElementId, Window, WindowBounds, WindowOptions, div,
-    prelude::*, px, rgb, size,
+    App, Bounds, Context, ElementId, Window, WindowBounds, WindowOptions, div, prelude::*, px, rgb,
+    size,
 };
 
 struct TestElementId {}

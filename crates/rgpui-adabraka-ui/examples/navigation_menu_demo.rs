@@ -1,4 +1,3 @@
-use rgpui::prelude::FluentBuilder;
 use rgpui::*;
 use rgpui_adabraka_ui::{
     components::{

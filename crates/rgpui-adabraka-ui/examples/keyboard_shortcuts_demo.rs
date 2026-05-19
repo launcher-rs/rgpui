@@ -1,6 +1,6 @@
-use rgpui::{prelude::FluentBuilder as _, *};
+use rgpui::*;
 use rgpui_adabraka_ui::{
-    components::keyboard_shortcuts::{KeyboardShortcuts, ShortcutCategory, ShortcutItem},
+    components::keyboard_shortcuts::{KeyboardShortcuts, ShortcutItem},
     layout::VStack,
     theme::use_theme,
 };

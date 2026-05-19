@@ -1,8 +1,7 @@
 // Test using the ACTUAL ScrollContainer from our library
 
 use rgpui::{
-    App, Application, Bounds, Context, Window, WindowBounds, WindowOptions, div, prelude::*, px,
-    rgb, size,
+    App, Bounds, Context, Window, WindowBounds, WindowOptions, div, prelude::*, px, rgb, size,
 };
 use rgpui_adabraka_ui::layout::ScrollContainer;
 
