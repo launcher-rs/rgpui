@@ -85,8 +85,8 @@ PlatformWindow trait 关键方法:
 ```
 
 ## 提交与推送规范
-
 - **推送前必须检查**：执行 `cargo check --workspace` 确保没有任何错误和警告
+- - **推送前格式化代码**: 执行 `cargo fmt` 格式化代码
 - **禁止使用 `#[allow(dead_code)]`**：未使用的代码应当删除或重构，不得使用属性压制警告
 
 ## 代码规范

@@ -3398,6 +3398,7 @@ impl Element for EditorElement {
                 border_widths: Edges::default(),
                 border_color: Hsla::transparent_black(),
                 border_style: BorderStyle::default(),
+                ..Default::default()
             });
 
             let mut line_num_buf2 = String::with_capacity(8);
@@ -3611,6 +3612,7 @@ impl Element for EditorElement {
                                     border_widths: Edges::all(px(1.0)),
                                     border_color: bracket_match_color,
                                     border_style: BorderStyle::default(),
+                                    ..Default::default()
                                 });
                             }
                         }
@@ -3694,6 +3696,7 @@ impl Element for EditorElement {
                             border_widths: Edges::default(),
                             border_color: Hsla::transparent_black(),
                             border_style: BorderStyle::default(),
+                            ..Default::default()
                         });
                     }
                 }

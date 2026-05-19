@@ -331,6 +331,7 @@ impl RenderOnce for CropArea {
                             border_widths: Edges::all(border_w),
                             border_color: data.border_color,
                             border_style: BorderStyle::default(),
+                            ..Default::default()
                         });
 
                         let handle_sz = px(8.0);
@@ -353,6 +354,7 @@ impl RenderOnce for CropArea {
                                 border_widths: Edges::all(px(1.5)),
                                 border_color: data.border_color,
                                 border_style: BorderStyle::default(),
+                                ..Default::default()
                             });
                         }
                     },

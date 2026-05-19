@@ -1,9 +1,9 @@
 use crate::{
-    self as rgpui, AbsoluteLength, AlignContent, AlignItems, AlignSelf, BorderStyle, CursorStyle,
-    DefiniteLength, Display, Fill, FlexDirection, FlexWrap, Font, FontFeatures, FontStyle,
-    FontWeight, GridPlacement, GridTemplate, Hsla, JustifyContent, Length, SharedString,
+    self as rgpui, AbsoluteLength, AlignContent, AlignItems, AlignSelf, BlendMode, BorderStyle,
+    CursorStyle, DefiniteLength, Display, Fill, FlexDirection, FlexWrap, Font, FontFeatures,
+    FontStyle, FontWeight, GridPlacement, GridTemplate, Hsla, JustifyContent, Length, SharedString,
     StrikethroughStyle, StyleRefinement, TemplateColumnMinSize, TextAlign, TextOverflow,
-    TextStyleRefinement, UnderlineStyle, WhiteSpace, px, relative, rems,
+    TextStyleRefinement, UnderlineStyle, WhiteSpace, point, px, relative, rems,
 };
 pub use rgpui_macros::{
     border_style_methods, box_shadow_style_methods, cursor_style_methods, margin_style_methods,
@@ -472,6 +472,13 @@ pub trait Styled: Sized {
         self
     }
 
+    /// 启用连续（圆角）角舍入而不是圆形。
+    /// 这会产生平滑的 Apple 风格圆角，匹配 SwiftUI 的连续角样式。
+    fn continuous_corners(mut self) -> Self {
+        self.style().continuous_corners = Some(true);
+        self
+    }
+
     /// 返回已在此元素上配置的文本样式的可变引用。
     fn text_style(&mut self) -> &mut TextStyleRefinement {
         let style: &mut StyleRefinement = self.style();
@@ -718,30 +725,36 @@ pub trait Styled: Sized {
         self
     }
 
-    // /// 设置旋转角度。
-    // fn rotate(mut self, angle_degrees: f32) -> Self {
-    //     self.style().rotate = Some(angle_degrees.to_radians());
-    //     self
-    // }
-    //
-    // /// Sets uniform scale factor.
-    // fn scale(mut self, factor: f32) -> Self {
-    //     self.style().scale = Some(point(factor, factor));
-    //     self
-    // }
-    //
-    // /// Sets non-uniform scale factors for x and y axes.
-    // fn scale_xy(mut self, x: f32, y: f32) -> Self {
-    //     self.style().scale = Some(point(x, y));
-    //     self
-    // }
-    //
-    // /// Sets the transform origin as a fraction of element size (0.0-1.0).
-    // /// Default is center (0.5, 0.5).
-    // fn transform_origin(mut self, x: f32, y: f32) -> Self {
-    //     self.style().transform_origin = Some(point(x, y));
-    //     self
-    // }
+    /// 设置渲染此元素背景时应用的混合模式。
+    fn blend_mode(mut self, mode: BlendMode) -> Self {
+        self.style().blend_mode = Some(mode);
+        self
+    }
+
+    /// 设置顺时针旋转角度（度数）。
+    fn rotate(mut self, angle_degrees: f32) -> Self {
+        self.style().rotate = Some(angle_degrees.to_radians());
+        self
+    }
+
+    /// 设置统一缩放因子。
+    fn scale(mut self, factor: f32) -> Self {
+        self.style().scale = Some(point(factor, factor));
+        self
+    }
+
+    /// 设置 x 和 y 轴的非统一缩放因子。
+    fn scale_xy(mut self, x: f32, y: f32) -> Self {
+        self.style().scale = Some(point(x, y));
+        self
+    }
+
+    /// 设置变换原点为元素大小的比例 (0.0-1.0)。
+    /// 默认为中心 (0.5, 0.5)。
+    fn transform_origin(mut self, x: f32, y: f32) -> Self {
+        self.style().transform_origin = Some(point(x, y));
+        self
+    }
 
     /// 设置此元素的网格列。
     fn grid_cols(mut self, cols: u16) -> Self {

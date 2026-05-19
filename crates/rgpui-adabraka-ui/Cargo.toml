@@ -305,6 +305,10 @@ name = "video_player_demo"
 path = "examples/video_player_demo.rs"
 
 [[example]]
+name = "gpui_extensions_showcase"
+path = "examples/gpui_extensions_showcase.rs"
+
+[[example]]
 name = "markdown_demo"
 path = "examples/markdown_demo.rs"
 required-features = ["markdown"]

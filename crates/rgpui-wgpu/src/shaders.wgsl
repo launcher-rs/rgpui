@@ -135,14 +135,19 @@ struct Background {
     // 1u is LinearGradient
     // 2u is PatternSlash
     // 3u is Checkerboard
+    // 4u is RadialGradient
+    // 5u is ConicGradient
     tag: u32,
     // 0u is sRGB linear color
     // 1u is Oklab color
     color_space: u32,
     solid: Hsla,
     gradient_angle_or_pattern_height: f32,
-    colors: array<LinearColorStop, 2>,
+    colors: array<LinearColorStop, 4>,
+    stop_count: u32,
     pad: u32,
+    center: vec2<f32>,
+    radius: vec2<f32>,
 }
 
 struct AtlasTextureId {
@@ -399,18 +404,22 @@ struct GradientColor {
     solid: vec4<f32>,
     color0: vec4<f32>,
     color1: vec4<f32>,
+    color2: vec4<f32>,
+    color3: vec4<f32>,
 }
 
 fn prepare_gradient_color(tag: u32, color_space: u32,
-    solid: Hsla, colors: array<LinearColorStop, 2>) -> GradientColor {
+    solid: Hsla, colors: array<LinearColorStop, 4>) -> GradientColor {
     var result = GradientColor();
 
     if (tag == 0u || tag == 2u || tag == 3u) {
         result.solid = hsla_to_rgba(solid);
-    } else if (tag == 1u) {
+    } else if (tag == 1u || tag == 4u || tag == 5u) {
         // The hsla_to_rgba is returns a linear sRGB color
         result.color0 = hsla_to_rgba(colors[0].color);
         result.color1 = hsla_to_rgba(colors[1].color);
+        result.color2 = hsla_to_rgba(colors[2].color);
+        result.color3 = hsla_to_rgba(colors[3].color);
 
         // Prepare color space in vertex for avoid conversion
         // in fragment shader for performance reasons
@@ -418,10 +427,14 @@ fn prepare_gradient_color(tag: u32, color_space: u32,
             // sRGB
             result.color0 = linear_to_srgba(result.color0);
             result.color1 = linear_to_srgba(result.color1);
+            result.color2 = linear_to_srgba(result.color2);
+            result.color3 = linear_to_srgba(result.color3);
         } else if (color_space == 1u) {
             // Oklab
             result.color0 = linear_srgb_to_oklab(result.color0);
             result.color1 = linear_srgb_to_oklab(result.color1);
+            result.color2 = linear_srgb_to_oklab(result.color2);
+            result.color3 = linear_srgb_to_oklab(result.color3);
         }
     }
 
@@ -429,7 +442,7 @@ fn prepare_gradient_color(tag: u32, color_space: u32,
 }
 
 fn gradient_color(background: Background, position: vec2<f32>, bounds: Bounds,
-    solid_color: vec4<f32>, color0: vec4<f32>, color1: vec4<f32>) -> vec4<f32> {
+    solid_color: vec4<f32>, color0: vec4<f32>, color1: vec4<f32>, color2: vec4<f32>, color3: vec4<f32>) -> vec4<f32> {
     var background_color = vec4<f32>(0.0);
 
     switch (background.tag) {
@@ -442,8 +455,8 @@ fn gradient_color(background: Background, position: vec2<f32>, bounds: Bounds,
             let angle = background.gradient_angle_or_pattern_height;
             let radians = (angle % 360.0 - 90.0) * M_PI_F / 180.0;
             var direction = vec2<f32>(cos(radians), sin(radians));
-            let stop0_percentage = background.colors[0].percentage;
-            let stop1_percentage = background.colors[1].percentage;
+            let stop_count = background.stop_count;
+            let effective_count = select(2u, stop_count, stop_count > 0u);
 
             // Expand the short side to be the same as the long side
             if (bounds.size.x > bounds.size.y) {
@@ -464,17 +477,81 @@ fn gradient_color(background: Background, position: vec2<f32>, bounds: Bounds,
                 t = (t + half_size.y) / bounds.size.y;
             }
 
-            // Adjust t based on the stop percentages
-            t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
-            t = clamp(t, 0.0, 1.0);
-
-            switch (background.color_space) {
-                default: {
-                    background_color = srgba_to_linear(mix(color0, color1, t));
+            // Interpolate based on the number of color stops
+            if (effective_count == 2u) {
+                let stop0_percentage = background.colors[0].percentage;
+                let stop1_percentage = background.colors[1].percentage;
+                t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
+                t = clamp(t, 0.0, 1.0);
+                switch (background.color_space) {
+                    default: {
+                        background_color = srgba_to_linear(mix(color0, color1, t));
+                    }
+                    case 1u: {
+                        let oklab_color = mix(color0, color1, t);
+                        background_color = oklab_to_linear_srgb(oklab_color);
+                    }
                 }
-                case 1u: {
-                    let oklab_color = mix(color0, color1, t);
-                    background_color = oklab_to_linear_srgb(oklab_color);
+            } else if (effective_count == 3u) {
+                let stop0_percentage = background.colors[0].percentage;
+                let stop1_percentage = background.colors[1].percentage;
+                let stop2_percentage = background.colors[2].percentage;
+                if (t < stop1_percentage) {
+                    let local_t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                } else {
+                    let local_t = (t - stop1_percentage) / (stop2_percentage - stop1_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                }
+            } else {
+                let stop0_percentage = background.colors[0].percentage;
+                let stop1_percentage = background.colors[1].percentage;
+                let stop2_percentage = background.colors[2].percentage;
+                let stop3_percentage = background.colors[3].percentage;
+                if (t < stop1_percentage) {
+                    let local_t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                } else if (t < stop2_percentage) {
+                    let local_t = (t - stop1_percentage) / (stop2_percentage - stop1_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                } else {
+                    let local_t = (t - stop2_percentage) / (stop3_percentage - stop2_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color2, color3, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color2, color3, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
                 }
             }
         }
@@ -509,6 +586,195 @@ fn gradient_color(background: Background, position: vec2<f32>, bounds: Bounds,
             background_color = solid_color;
             background_color.a *= saturate(should_be_colored);
         }
+        case 4u: {
+            // Radial gradient background.
+            let half_size = bounds.size / 2.0;
+            let center = bounds.origin + half_size;
+            let gradient_center = vec2<f32>(
+                center.x + background.center.x * bounds.size.x,
+                center.y + background.center.y * bounds.size.y
+            );
+            let gradient_radius = length(background.radius * bounds.size);
+            let center_to_point = position - gradient_center;
+            var t = length(center_to_point) / gradient_radius;
+            t = clamp(t, 0.0, 1.0);
+
+            let stop_count = background.stop_count;
+            let effective_count = select(2u, stop_count, stop_count > 0u);
+
+            if (effective_count == 2u) {
+                let stop0_percentage = background.colors[0].percentage;
+                let stop1_percentage = background.colors[1].percentage;
+                t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
+                t = clamp(t, 0.0, 1.0);
+                switch (background.color_space) {
+                    default: {
+                        background_color = srgba_to_linear(mix(color0, color1, t));
+                    }
+                    case 1u: {
+                        let oklab_color = mix(color0, color1, t);
+                        background_color = oklab_to_linear_srgb(oklab_color);
+                    }
+                }
+            } else if (effective_count == 3u) {
+                let stop0_percentage = background.colors[0].percentage;
+                let stop1_percentage = background.colors[1].percentage;
+                let stop2_percentage = background.colors[2].percentage;
+                if (t < stop1_percentage) {
+                    let local_t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                } else {
+                    let local_t = (t - stop1_percentage) / (stop2_percentage - stop1_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                }
+            } else {
+                let stop0_percentage = background.colors[0].percentage;
+                let stop1_percentage = background.colors[1].percentage;
+                let stop2_percentage = background.colors[2].percentage;
+                let stop3_percentage = background.colors[3].percentage;
+                if (t < stop1_percentage) {
+                    let local_t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                } else if (t < stop2_percentage) {
+                    let local_t = (t - stop1_percentage) / (stop2_percentage - stop1_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                } else {
+                    let local_t = (t - stop2_percentage) / (stop3_percentage - stop2_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color2, color3, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color2, color3, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                }
+            }
+        }
+        case 5u: {
+            // Conic gradient background.
+            let half_size = bounds.size / 2.0;
+            let center = bounds.origin + half_size;
+            let gradient_center = vec2<f32>(
+                center.x + background.center.x * bounds.size.x,
+                center.y + background.center.y * bounds.size.y
+            );
+            let center_to_point = position - gradient_center;
+            var angle = atan2(center_to_point.y, center_to_point.x);
+            // Normalize angle to [0, 2*PI]
+            if (angle < 0.0) {
+                angle = angle + 2.0 * M_PI_F;
+            }
+            var t = angle / (2.0 * M_PI_F);
+
+            let stop_count = background.stop_count;
+            let effective_count = select(2u, stop_count, stop_count > 0u);
+
+            if (effective_count == 2u) {
+                let stop0_percentage = background.colors[0].percentage;
+                let stop1_percentage = background.colors[1].percentage;
+                t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
+                t = clamp(t, 0.0, 1.0);
+                switch (background.color_space) {
+                    default: {
+                        background_color = srgba_to_linear(mix(color0, color1, t));
+                    }
+                    case 1u: {
+                        let oklab_color = mix(color0, color1, t);
+                        background_color = oklab_to_linear_srgb(oklab_color);
+                    }
+                }
+            } else if (effective_count == 3u) {
+                let stop0_percentage = background.colors[0].percentage;
+                let stop1_percentage = background.colors[1].percentage;
+                let stop2_percentage = background.colors[2].percentage;
+                if (t < stop1_percentage) {
+                    let local_t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                } else {
+                    let local_t = (t - stop1_percentage) / (stop2_percentage - stop1_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                }
+            } else {
+                let stop0_percentage = background.colors[0].percentage;
+                let stop1_percentage = background.colors[1].percentage;
+                let stop2_percentage = background.colors[2].percentage;
+                let stop3_percentage = background.colors[3].percentage;
+                if (t < stop1_percentage) {
+                    let local_t = (t - stop0_percentage) / (stop1_percentage - stop0_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color0, color1, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                } else if (t < stop2_percentage) {
+                    let local_t = (t - stop1_percentage) / (stop2_percentage - stop1_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color1, color2, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                } else {
+                    let local_t = (t - stop2_percentage) / (stop3_percentage - stop2_percentage);
+                    switch (background.color_space) {
+                        default: {
+                            background_color = srgba_to_linear(mix(color2, color3, clamp(local_t, 0.0, 1.0)));
+                        }
+                        case 1u: {
+                            background_color = oklab_to_linear_srgb(mix(color2, color3, clamp(local_t, 0.0, 1.0)));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     return background_color;
@@ -525,6 +791,10 @@ struct Quad {
     border_color: Hsla,
     corner_radii: Corners,
     border_widths: Edges,
+    continuous_corners: u32,
+    transform: TransformationMatrix,
+    blend_mode: u32,
+    pad_quad: u32,
 }
 @group(1) @binding(0) var<storage, read> b_quads: array<Quad>;
 
@@ -537,6 +807,8 @@ struct QuadVarying {
     @location(3) @interpolate(flat) background_solid: vec4<f32>,
     @location(4) @interpolate(flat) background_color0: vec4<f32>,
     @location(5) @interpolate(flat) background_color1: vec4<f32>,
+    @location(6) @interpolate(flat) background_color2: vec4<f32>,
+    @location(7) @interpolate(flat) background_color3: vec4<f32>,
 }
 
 @vertex
@@ -556,6 +828,8 @@ fn vs_quad(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
     out.background_solid = gradient.solid;
     out.background_color0 = gradient.color0;
     out.background_color1 = gradient.color1;
+    out.background_color2 = gradient.color2;
+    out.background_color3 = gradient.color3;
     out.border_color = hsla_to_rgba(quad.border_color);
     out.quad_id = instance_id;
     out.clip_distances = distance_from_clip_rect(unit_vertex, quad.bounds, quad.content_mask);
@@ -572,7 +846,7 @@ fn fs_quad(input: QuadVarying) -> @location(0) vec4<f32> {
     let quad = b_quads[input.quad_id];
 
     let background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
-        input.background_solid, input.background_color0, input.background_color1);
+        input.background_solid, input.background_color0, input.background_color1, input.background_color2, input.background_color3);
 
     let unrounded = quad.corner_radii.top_left == 0.0 &&
         quad.corner_radii.bottom_left == 0.0 &&
@@ -1079,7 +1353,7 @@ fn fs_path_rasterization(input: PathRasterizationVarying) -> @location(0) vec4<f
         background.colors,
     );
     let color = gradient_color(background, input.position.xy, bounds,
-        prepared_gradient.solid, prepared_gradient.color0, prepared_gradient.color1);
+        prepared_gradient.solid, prepared_gradient.color0, prepared_gradient.color1, prepared_gradient.color2, prepared_gradient.color3);
     return vec4<f32>(color.rgb * color.a * alpha, color.a * alpha);
 }
 

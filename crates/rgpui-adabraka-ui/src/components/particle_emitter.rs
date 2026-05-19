@@ -332,6 +332,7 @@ fn paint_particles(bounds: Bounds<Pixels>, data: &EmitterPaintData, window: &mut
             border_widths: Edges::default(),
             border_color: transparent_black(),
             border_style: BorderStyle::default(),
+            ..Default::default()
         });
     }
 }

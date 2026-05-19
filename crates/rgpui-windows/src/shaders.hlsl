@@ -52,20 +52,28 @@ struct Background {
     // 0u is Solid
     // 1u is LinearGradient
     // 2u is PatternSlash
+    // 3u is Checkerboard
+    // 4u is RadialGradient
+    // 5u is ConicGradient
     uint tag;
     // 0u is sRGB linear color
     // 1u is Oklab color
     uint color_space;
     Hsla solid;
     float gradient_angle_or_pattern_height;
-    LinearColorStop colors[2];
+    LinearColorStop colors[4];
+    uint stop_count;
     uint pad;
+    float2 center;
+    float2 radius;
 };
 
 struct GradientColor {
   float4 solid;
   float4 color0;
   float4 color1;
+  float4 color2;
+  float4 color3;
 };
 
 struct AtlasTextureId {
@@ -309,13 +317,15 @@ float quad_sdf(float2 pt, Bounds bounds, Corners corner_radii) {
     return quad_sdf_impl(corner_center_to_point, corner_radius);
 }
 
-GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, LinearColorStop colors[2]) {
+GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, LinearColorStop colors[4]) {
     GradientColor output;
     if (tag == 0 || tag == 2 || tag == 3) {
         output.solid = hsla_to_rgba(solid);
-    } else if (tag == 1) {
+    } else if (tag == 1 || tag == 4 || tag == 5) {
         output.color0 = hsla_to_rgba(colors[0].color);
         output.color1 = hsla_to_rgba(colors[1].color);
+        output.color2 = hsla_to_rgba(colors[2].color);
+        output.color3 = hsla_to_rgba(colors[3].color);
 
         // Prepare color space in vertex for avoid conversion
         // in fragment shader for performance reasons
@@ -323,6 +333,8 @@ GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, Lin
             // Oklab
             output.color0 = srgb_to_oklab(output.color0);
             output.color1 = srgb_to_oklab(output.color1);
+            output.color2 = srgb_to_oklab(output.color2);
+            output.color3 = srgb_to_oklab(output.color3);
         }
     }
 
@@ -338,7 +350,7 @@ float2x2 rotate2d(float angle) {
 float4 gradient_color(Background background,
                       float2 position,
                       Bounds bounds,
-                      float4 solid_color, float4 color0, float4 color1) {
+                      float4 solid_color, float4 color0, float4 color1, float4 color2, float4 color3) {
     float4 color;
 
     switch (background.tag) {
@@ -370,20 +382,38 @@ float4 gradient_color(Background background,
                 t = (t + half_size.y) / bounds.size.y;
             }
 
-            // Adjust t based on the stop percentages
-            t = (t - background.colors[0].percentage)
-                / (background.colors[1].percentage
-                - background.colors[0].percentage);
-            t = clamp(t, 0.0, 1.0);
+            uint stop_count = background.stop_count;
+            uint effective_count = stop_count > 0 ? stop_count : 2;
 
-            switch (background.color_space) {
-                case 0:
-                    color = lerp(color0, color1, t);
-                    break;
-                case 1: {
-                    float4 oklab_color = lerp(color0, color1, t);
-                    color = oklab_to_srgb(oklab_color);
-                    break;
+            if (effective_count == 2) {
+                t = (t - background.colors[0].percentage) / (background.colors[1].percentage - background.colors[0].percentage);
+                t = clamp(t, 0.0, 1.0);
+                color = background.color_space == 0 ? lerp(color0, color1, t) : oklab_to_srgb(lerp(color0, color1, t));
+            } else if (effective_count == 3) {
+                float s0 = background.colors[0].percentage;
+                float s1 = background.colors[1].percentage;
+                float s2 = background.colors[2].percentage;
+                if (t < s1) {
+                    float lt = clamp((t - s0) / (s1 - s0), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color0, color1, lt) : oklab_to_srgb(lerp(color0, color1, lt));
+                } else {
+                    float lt = clamp((t - s1) / (s2 - s1), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color1, color2, lt) : oklab_to_srgb(lerp(color1, color2, lt));
+                }
+            } else {
+                float s0 = background.colors[0].percentage;
+                float s1 = background.colors[1].percentage;
+                float s2 = background.colors[2].percentage;
+                float s3 = background.colors[3].percentage;
+                if (t < s1) {
+                    float lt = clamp((t - s0) / (s1 - s0), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color0, color1, lt) : oklab_to_srgb(lerp(color0, color1, lt));
+                } else if (t < s2) {
+                    float lt = clamp((t - s1) / (s2 - s1), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color1, color2, lt) : oklab_to_srgb(lerp(color1, color2, lt));
+                } else {
+                    float lt = clamp((t - s2) / (s3 - s2), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color2, color3, lt) : oklab_to_srgb(lerp(color2, color3, lt));
                 }
             }
 
@@ -429,6 +459,104 @@ float4 gradient_color(Background background,
 
             color = solid_color;
             color.a *= saturate(should_be_colored);
+            break;
+        }
+        case 4: {
+            // Radial gradient background.
+            float2 half_size = bounds.size * 0.5;
+            float2 center = bounds.origin + half_size;
+            float2 gradient_center = float2(
+                center.x + background.center.x * bounds.size.x,
+                center.y + background.center.y * bounds.size.y
+            );
+            float gradient_radius = length(background.radius * bounds.size);
+            float2 center_to_point = position - gradient_center;
+            float t = length(center_to_point) / gradient_radius;
+            t = clamp(t, 0.0, 1.0);
+
+            uint stop_count = background.stop_count;
+            uint effective_count = stop_count > 0 ? stop_count : 2;
+
+            if (effective_count == 2) {
+                t = (t - background.colors[0].percentage) / (background.colors[1].percentage - background.colors[0].percentage);
+                t = clamp(t, 0.0, 1.0);
+                color = background.color_space == 0 ? lerp(color0, color1, t) : oklab_to_srgb(lerp(color0, color1, t));
+            } else if (effective_count == 3) {
+                float s0 = background.colors[0].percentage;
+                float s1 = background.colors[1].percentage;
+                float s2 = background.colors[2].percentage;
+                if (t < s1) {
+                    float lt = clamp((t - s0) / (s1 - s0), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color0, color1, lt) : oklab_to_srgb(lerp(color0, color1, lt));
+                } else {
+                    float lt = clamp((t - s1) / (s2 - s1), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color1, color2, lt) : oklab_to_srgb(lerp(color1, color2, lt));
+                }
+            } else {
+                float s0 = background.colors[0].percentage;
+                float s1 = background.colors[1].percentage;
+                float s2 = background.colors[2].percentage;
+                float s3 = background.colors[3].percentage;
+                if (t < s1) {
+                    float lt = clamp((t - s0) / (s1 - s0), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color0, color1, lt) : oklab_to_srgb(lerp(color0, color1, lt));
+                } else if (t < s2) {
+                    float lt = clamp((t - s1) / (s2 - s1), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color1, color2, lt) : oklab_to_srgb(lerp(color1, color2, lt));
+                } else {
+                    float lt = clamp((t - s2) / (s3 - s2), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color2, color3, lt) : oklab_to_srgb(lerp(color2, color3, lt));
+                }
+            }
+            break;
+        }
+        case 5: {
+            // Conic gradient background.
+            float2 half_size = bounds.size * 0.5;
+            float2 center = bounds.origin + half_size;
+            float2 gradient_center = float2(
+                center.x + background.center.x * bounds.size.x,
+                center.y + background.center.y * bounds.size.y
+            );
+            float2 center_to_point = position - gradient_center;
+            float angle = atan2(center_to_point.y, center_to_point.x);
+            if (angle < 0.0) angle = angle + 2.0 * M_PI_F;
+            float t = angle / (2.0 * M_PI_F);
+
+            uint stop_count = background.stop_count;
+            uint effective_count = stop_count > 0 ? stop_count : 2;
+
+            if (effective_count == 2) {
+                t = (t - background.colors[0].percentage) / (background.colors[1].percentage - background.colors[0].percentage);
+                t = clamp(t, 0.0, 1.0);
+                color = background.color_space == 0 ? lerp(color0, color1, t) : oklab_to_srgb(lerp(color0, color1, t));
+            } else if (effective_count == 3) {
+                float s0 = background.colors[0].percentage;
+                float s1 = background.colors[1].percentage;
+                float s2 = background.colors[2].percentage;
+                if (t < s1) {
+                    float lt = clamp((t - s0) / (s1 - s0), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color0, color1, lt) : oklab_to_srgb(lerp(color0, color1, lt));
+                } else {
+                    float lt = clamp((t - s1) / (s2 - s1), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color1, color2, lt) : oklab_to_srgb(lerp(color1, color2, lt));
+                }
+            } else {
+                float s0 = background.colors[0].percentage;
+                float s1 = background.colors[1].percentage;
+                float s2 = background.colors[2].percentage;
+                float s3 = background.colors[3].percentage;
+                if (t < s1) {
+                    float lt = clamp((t - s0) / (s1 - s0), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color0, color1, lt) : oklab_to_srgb(lerp(color0, color1, lt));
+                } else if (t < s2) {
+                    float lt = clamp((t - s1) / (s2 - s1), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color1, color2, lt) : oklab_to_srgb(lerp(color1, color2, lt));
+                } else {
+                    float lt = clamp((t - s2) / (s3 - s2), 0.0, 1.0);
+                    color = background.color_space == 0 ? lerp(color2, color3, lt) : oklab_to_srgb(lerp(color2, color3, lt));
+                }
+            }
             break;
         }
     }
@@ -502,6 +630,10 @@ struct Quad {
     Hsla border_color;
     Corners corner_radii;
     Edges border_widths;
+    uint continuous_corners;
+    TransformationMatrix transform;
+    uint blend_mode;
+    uint pad_quad;
 };
 
 struct QuadVertexOutput {
@@ -511,6 +643,8 @@ struct QuadVertexOutput {
     nointerpolation float4 background_solid: COLOR1;
     nointerpolation float4 background_color0: COLOR2;
     nointerpolation float4 background_color1: COLOR3;
+    nointerpolation float4 background_color2: COLOR4;
+    nointerpolation float4 background_color3: COLOR5;
     float4 clip_distance: SV_ClipDistance;
 };
 
@@ -521,6 +655,8 @@ struct QuadFragmentInput {
     nointerpolation float4 background_solid: COLOR1;
     nointerpolation float4 background_color0: COLOR2;
     nointerpolation float4 background_color1: COLOR3;
+    nointerpolation float4 background_color2: COLOR4;
+    nointerpolation float4 background_color3: COLOR5;
 };
 
 StructuredBuffer<Quad> quads: register(t1);
@@ -546,6 +682,8 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
     output.background_solid = gradient.solid;
     output.background_color0 = gradient.color0;
     output.background_color1 = gradient.color1;
+    output.background_color2 = gradient.color2;
+    output.background_color3 = gradient.color3;
     output.clip_distance = clip_distance;
     return output;
 }
@@ -553,7 +691,7 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
 float4 quad_fragment(QuadFragmentInput input): SV_Target {
     Quad quad = quads[input.quad_id];
     float4 background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
-    input.background_solid, input.background_color0, input.background_color1);
+    input.background_solid, input.background_color0, input.background_color1, input.background_color2, input.background_color3);
 
     bool unrounded = quad.corner_radii.top_left == 0.0 &&
         quad.corner_radii.top_right == 0.0 &&
@@ -983,7 +1121,7 @@ float4 path_rasterization_fragment(PathFragmentInput input): SV_Target {
         background.tag, background.color_space, background.solid, background.colors);
 
     float4 color = gradient_color(background, input.position.xy, bounds,
-        gradient.solid, gradient.color0, gradient.color1);
+        gradient.solid, gradient.color0, gradient.color1, gradient.color2, gradient.color3);
     return float4(color.rgb * color.a * alpha, alpha * color.a);
 }
 

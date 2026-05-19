@@ -275,6 +275,7 @@ fn paint_confetti(bounds: Bounds<Pixels>, data: &ConfettiPaintData, window: &mut
             border_widths: Edges::default(),
             border_color: transparent_black(),
             border_style: BorderStyle::default(),
+            ..Default::default()
         });
     }
 }
