@@ -220,7 +220,7 @@ mod tests {
     use super::*;
 
     #[rgpui::test]
-    fn test_dropdown_button_builder(_cx: &mut gpui::TestAppContext) {
+    fn test_dropdown_button_builder(_cx: &mut rgpui::TestAppContext) {
         let button = Button::new("inner").label("Action");
         let dropdown = DropdownButton::new("complex-dropdown")
             .button(button)

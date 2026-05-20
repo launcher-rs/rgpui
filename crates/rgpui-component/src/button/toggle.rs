@@ -384,8 +384,8 @@ mod tests {
     use super::*;
     use crate::IconName;
 
-    #[gpui::test]
-    fn test_toggle_builder(_cx: &mut gpui::TestAppContext) {
+    #[rgpui::test]
+    fn test_toggle_builder(_cx: &mut rgpui::TestAppContext) {
         let toggle = Toggle::new("complex-toggle")
             .label("Enable Feature")
             .icon(IconName::Check)
@@ -403,8 +403,8 @@ mod tests {
         assert!(toggle.on_click.is_some());
     }
 
-    #[gpui::test]
-    fn test_toggle_group_builder(_cx: &mut gpui::TestAppContext) {
+    #[rgpui::test]
+    fn test_toggle_group_builder(_cx: &mut rgpui::TestAppContext) {
         let group = ToggleGroup::new("complex-group")
             .child(Toggle::new("toggle1").label("Option 1"))
             .child(Toggle::new("toggle2").label("Option 2").checked(true))

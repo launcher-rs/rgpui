@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn test_update() {
-        let font = gpui::Font {
+        let font = rgpui::Font {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,
@@ -828,7 +828,7 @@ mod tests {
 
     #[test]
     fn test_offset_to_display_point() {
-        let font = gpui::Font {
+        let font = rgpui::Font {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,

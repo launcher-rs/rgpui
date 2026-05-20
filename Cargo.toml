@@ -29,6 +29,17 @@ members = [
 
     "crates/rgpui-editor",
     "crates/rgpui-editor/examples/editor",
+    "crates/rgpui-editor/examples/lsp",
+    "crates/rgpui-term",
+    "crates/rgpui-term/examples/basic",
+    "crates/rgpui-term/examples/component-integration",
+
+    "crates/rgpui-yororen-ui",
+    "crates/rgpui-yororen-ui/examples/counter",
+    "crates/rgpui-yororen-ui/examples/file_browser",
+    "crates/rgpui-yororen-ui/examples/toast_notification",
+    "crates/rgpui-yororen-ui/examples/todolist", "crates/rgpui-adabraka-ui",
+
 ]
 
 [workspace.package]
@@ -52,6 +63,8 @@ rgpui-component-macros = { path = "crates/rgpui-component-macros" }
 rgpui-component-assets = { path = "crates/rgpui-component-assets" }
 rgpui-webwiew = { path = "crates/rgpui-webview" }
 rgpui-editor = { path = "crates/rgpui-editor" }
+rgpui-term = { path = "crates/rgpui-term" }
+rgpui-yororen-ui = { path = "crates/rgpui-yororen-ui" }
 
 
 # ---- 错误处理 ----
@@ -132,9 +145,9 @@ rayon = "1.8"
 
 # ---- 字符串与文本 ----
 # Unicode 文本分割
-unicode-segmentation = "1.10"
+unicode-segmentation = "1.13"
 # 正则表达式
-regex = "1.5"
+regex = "1.12"
 # glob 模式匹配
 globset = "0.4"
 # shell 词法分析
@@ -362,6 +375,7 @@ ropey = { version = "=2.0.0-beta.1", features = [
 rust-i18n = "4"
 serde_repr = "0.1"
 
+portable-pty = "0.9"
 
 [workspace.dependencies.windows]
 version = "0.61"

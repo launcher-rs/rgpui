@@ -1,4 +1,8 @@
+use super::Context;
 use crate::collections::FxHashSet;
+#[cfg(any(test, feature = "leak-detection"))]
+use crate::collections::HashMap;
+use crate::util::atomic_incr_if_not_zero;
 use crate::{App, AppContext, GpuiBorrow, VisualContext, Window, seal::Sealed};
 use anyhow::{Context as _, Result};
 use derive_more::{Deref, DerefMut};
@@ -18,11 +22,6 @@ use std::{
     },
     thread::panicking,
 };
-
-use super::Context;
-#[cfg(any(test, feature = "leak-detection"))]
-use crate::collections::HashMap;
-use crate::util::atomic_incr_if_not_zero;
 
 slotmap::new_key_type! {
     /// A unique identifier for a entity across the application.
@@ -939,7 +938,7 @@ pub(crate) struct LeakDetector {
 /// 没有新的实体句柄残留。
 #[cfg(any(test, feature = "leak-detection"))]
 pub struct LeakDetectorSnapshot {
-    entity_ids: collections::HashSet<EntityId>,
+    entity_ids: crate::util::collections::HashSet<EntityId>,
 }
 
 #[cfg(any(test, feature = "leak-detection"))]

@@ -154,8 +154,8 @@ mod tests {
         assert_eq!(extract_text_initials(&"huacnlee"), "HU".to_string());
     }
 
-    #[gpui::test]
-    fn test_avatar_builder(_cx: &mut gpui::TestAppContext) {
+    #[rgpui::test]
+    fn test_avatar_builder(_cx: &mut rgpui::TestAppContext) {
         let avatar = Avatar::new()
             .name("Jason Lee")
             .placeholder(Icon::new(IconName::User))

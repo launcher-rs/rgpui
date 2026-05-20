@@ -113,7 +113,7 @@ mod tests {
     use super::*;
 
     #[rgpui::test]
-    fn test_avatar_group_builder(_cx: &mut gpui::TestAppContext) {
+    fn test_avatar_group_builder(_cx: &mut rgpui::TestAppContext) {
         let group = AvatarGroup::new()
             .child(Avatar::new().name("Alice"))
             .child(Avatar::new().name("Bob"))

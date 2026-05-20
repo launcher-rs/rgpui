@@ -685,6 +685,8 @@ pub(crate) enum BackgroundTag {
     LinearGradient = 1,
     PatternSlash = 2,
     Checkerboard = 3,
+    RadialGradient = 4,
+    ConicGradient = 5,
 }
 
 /// 用于颜色插值的颜色空间。
@@ -719,20 +721,31 @@ pub struct Background {
     pub(crate) color_space: ColorSpace,
     pub(crate) solid: Hsla,
     pub(crate) gradient_angle_or_pattern_height: f32,
-    pub(crate) colors: [LinearColorStop; 2],
+    pub(crate) colors: [LinearColorStop; 4],
+    pub(crate) stop_count: u32,
     /// Padding for alignment for repr(C) layout.
     pad: u32,
+    pub(crate) center: [f32; 2],
+    pub(crate) radius: [f32; 2],
 }
 
 impl std::fmt::Debug for Background {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.tag {
             BackgroundTag::Solid => write!(f, "Solid({:?})", self.solid),
-            BackgroundTag::LinearGradient => write!(
-                f,
-                "LinearGradient({}, {:?}, {:?})",
-                self.gradient_angle_or_pattern_height, self.colors[0], self.colors[1]
-            ),
+            BackgroundTag::LinearGradient => {
+                let count = if self.stop_count == 0 {
+                    2
+                } else {
+                    self.stop_count as usize
+                };
+                write!(
+                    f,
+                    "LinearGradient({}, {:?})",
+                    self.gradient_angle_or_pattern_height,
+                    &self.colors[..count]
+                )
+            }
             BackgroundTag::PatternSlash => write!(
                 f,
                 "PatternSlash({:?}, {})",
@@ -743,6 +756,34 @@ impl std::fmt::Debug for Background {
                 "Checkerboard({:?}, {})",
                 self.solid, self.gradient_angle_or_pattern_height
             ),
+            BackgroundTag::RadialGradient => {
+                let count = if self.stop_count == 0 {
+                    2
+                } else {
+                    self.stop_count as usize
+                };
+                write!(
+                    f,
+                    "RadialGradient(center={:?}, radius={:?}, {:?})",
+                    self.center,
+                    self.radius,
+                    &self.colors[..count]
+                )
+            }
+            BackgroundTag::ConicGradient => {
+                let count = if self.stop_count == 0 {
+                    2
+                } else {
+                    self.stop_count as usize
+                };
+                write!(
+                    f,
+                    "ConicGradient(center={:?}, angle={}, {:?})",
+                    self.center,
+                    self.gradient_angle_or_pattern_height,
+                    &self.colors[..count]
+                )
+            }
         }
     }
 }
@@ -755,8 +796,11 @@ impl Default for Background {
             solid: Hsla::default(),
             color_space: ColorSpace::default(),
             gradient_angle_or_pattern_height: 0.0,
-            colors: [LinearColorStop::default(), LinearColorStop::default()],
+            colors: [LinearColorStop::default(); 4],
+            stop_count: 0,
             pad: 0,
+            center: [0.5, 0.5],
+            radius: [0.5, 0.5],
         }
     }
 }
@@ -808,7 +852,75 @@ pub fn linear_gradient(
     Background {
         tag: BackgroundTag::LinearGradient,
         gradient_angle_or_pattern_height: angle,
-        colors: [from.into(), to.into()],
+        colors: [
+            from.into(),
+            to.into(),
+            LinearColorStop::default(),
+            LinearColorStop::default(),
+        ],
+        stop_count: 2,
+        ..Default::default()
+    }
+}
+
+/// 创建最多 4 个颜色停止点的线性渐变。
+pub fn multi_stop_linear_gradient(angle: f32, stops: &[LinearColorStop]) -> Background {
+    let mut colors = [LinearColorStop::default(); 4];
+    let count = stops.len().min(4);
+    colors[..count].copy_from_slice(&stops[..count]);
+    Background {
+        tag: BackgroundTag::LinearGradient,
+        gradient_angle_or_pattern_height: angle,
+        colors,
+        stop_count: count as u32,
+        ..Default::default()
+    }
+}
+
+/// 创建径向渐变背景。
+///
+/// `center_x` 和 `center_y` 是渐变中心点的归一化坐标（0.0 到 1.0）。
+/// `radius` 是渐变的半径，使用归一化坐标（0.0 到 1.0）。
+/// 最多支持 4 个颜色停止点。
+pub fn radial_gradient(
+    center_x: f32,
+    center_y: f32,
+    radius: f32,
+    stops: &[LinearColorStop],
+) -> Background {
+    let mut colors = [LinearColorStop::default(); 4];
+    let count = stops.len().min(4);
+    colors[..count].copy_from_slice(&stops[..count]);
+    Background {
+        tag: BackgroundTag::RadialGradient,
+        colors,
+        stop_count: count as u32,
+        center: [center_x, center_y],
+        radius: [radius, radius],
+        ..Default::default()
+    }
+}
+
+/// 创建锥形（扫描）渐变背景。
+///
+/// `center_x` 和 `center_y` 是渐变中心点的归一化坐标（0.0 到 1.0）。
+/// `angle_offset` 是起始角度偏移量（度数）。
+/// 最多支持 4 个颜色停止点。
+pub fn conic_gradient(
+    center_x: f32,
+    center_y: f32,
+    angle_offset: f32,
+    stops: &[LinearColorStop],
+) -> Background {
+    let mut colors = [LinearColorStop::default(); 4];
+    let count = stops.len().min(4);
+    colors[..count].copy_from_slice(&stops[..count]);
+    Background {
+        tag: BackgroundTag::ConicGradient,
+        gradient_angle_or_pattern_height: angle_offset,
+        colors,
+        stop_count: count as u32,
+        center: [center_x, center_y],
         ..Default::default()
     }
 }
@@ -870,6 +982,8 @@ impl Background {
         background.colors = [
             self.colors[0].opacity(factor),
             self.colors[1].opacity(factor),
+            self.colors[2].opacity(factor),
+            self.colors[3].opacity(factor),
         ];
         background
     }
@@ -878,7 +992,11 @@ impl Background {
     pub fn is_transparent(&self) -> bool {
         match self.tag {
             BackgroundTag::Solid => self.solid.is_transparent(),
-            BackgroundTag::LinearGradient => self.colors.iter().all(|c| c.color.is_transparent()),
+            BackgroundTag::LinearGradient
+            | BackgroundTag::RadialGradient
+            | BackgroundTag::ConicGradient => self.colors[..self.stop_count as usize]
+                .iter()
+                .all(|c| c.color.is_transparent()),
             BackgroundTag::PatternSlash => self.solid.is_transparent(),
             BackgroundTag::Checkerboard => self.solid.is_transparent(),
         }

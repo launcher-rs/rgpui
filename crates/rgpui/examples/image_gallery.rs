@@ -1,7 +1,7 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use futures::FutureExt;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(not(target_family = "wasm"), feature = "reqwest"))]
 use rgpui::http_client::reqwest_client::ReqwestClient;
 use rgpui::{
     App, AppContext, Asset as _, AssetLogger, Bounds, ClickEvent, Context, ElementId, Entity,
@@ -254,7 +254,7 @@ fn run_example() {
     let app = rgpui_platform::single_threaded_web();
 
     app.run(move |cx: &mut App| {
-        #[cfg(not(target_family = "wasm"))]
+        #[cfg(all(not(target_family = "wasm"), feature = "reqwest"))]
         {
             let http_client = ReqwestClient::user_agent("gpui example").unwrap();
             cx.set_http_client(Arc::new(http_client));

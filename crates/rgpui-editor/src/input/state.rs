@@ -2594,6 +2594,7 @@ impl Render for InputState {
 mod tests {
     use super::*;
     use rgpui::{TestAppContext, VisualTestContext};
+    use rgpui_component::Root;
     use rgpui_component::theme::Theme;
 
     struct InputView {
@@ -2615,7 +2616,7 @@ mod tests {
 
                     input = Some(cx.new(|cx| InputState::new(window, cx).code_editor("sql")));
 
-                    cx.new(|cx| crate::Root::new(input.clone().unwrap(), window, cx))
+                    cx.new(|cx| Root::new(input.clone().unwrap(), window, cx))
                 })
                 .unwrap()
             });
@@ -2627,7 +2628,7 @@ mod tests {
         }
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_highlighting_preserved_after_fold(cx: &mut TestAppContext) {
         use crate::highlighter::HighlightTheme;
         use crate::input::display_map::FoldRange;
@@ -2668,7 +2669,7 @@ ORDER BY id
         let comment_start = cx.update(|_, cx| {
             input.read_with(cx, |state, _| state.text.line_start_offset(comment_line))
         });
-        let styles_before: Vec<(Range<usize>, gpui::HighlightStyle)> = cx.update(|_, cx| {
+        let styles_before: Vec<(Range<usize>, rgpui::HighlightStyle)> = cx.update(|_, cx| {
             input.read_with(cx, |state, _| {
                 let mode = &state.mode;
                 if let crate::input::mode::InputMode::CodeEditor { highlighter, .. } = mode {
@@ -2712,7 +2713,7 @@ ORDER BY id
         });
 
         // Get styles for the same comment line after folding
-        let styles_after: Vec<(Range<usize>, gpui::HighlightStyle)> = cx.update(|_, cx| {
+        let styles_after: Vec<(Range<usize>, rgpui::HighlightStyle)> = cx.update(|_, cx| {
             input.read_with(cx, |state, _| {
                 let mode = &state.mode;
                 if let crate::input::mode::InputMode::CodeEditor { highlighter, .. } = mode {

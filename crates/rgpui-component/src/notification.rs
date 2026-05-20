@@ -623,7 +623,7 @@ mod tests {
         cx.run_until_parked();
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn close_by_type_removes_id_and_all_id1_of_same_type(cx: &mut TestAppContext) {
         cx.update(|cx| cx.set_global(Theme::default()));
         let (root, cx) = cx.add_window_view(|window, cx| TestRoot {
@@ -669,7 +669,7 @@ mod tests {
         );
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn close_with_id_and_element_id_removes_only_matching_key(cx: &mut TestAppContext) {
         cx.update(|cx| cx.set_global(Theme::default()));
         let (root, cx) = cx.add_window_view(|window, cx| TestRoot {
@@ -713,7 +713,7 @@ mod tests {
         assert!(remaining.contains(&NotificationId::Id(TypeId::of::<FooKind>())));
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn close_with_only_type_id_does_not_match_id1_entries(cx: &mut TestAppContext) {
         // The plain `close(TypeId)` form (used by the legacy code path) must keep
         // its narrow semantics: it only matches `NotificationId::Id`, not
@@ -740,7 +740,7 @@ mod tests {
         assert_eq!(ids(&list, cx).len(), 1, "id1 entry should remain untouched");
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn close_by_type_with_no_match_is_noop(cx: &mut TestAppContext) {
         cx.update(|cx| cx.set_global(Theme::default()));
         let (root, cx) = cx.add_window_view(|window, cx| TestRoot {

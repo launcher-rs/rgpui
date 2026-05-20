@@ -1,4 +1,4 @@
-use super::collections::HashMap;
+use crate::HashMap;
 use std::{cmp::Ordering, ops::Range};
 
 /// 使用包含嵌入位置标记的单个字符串

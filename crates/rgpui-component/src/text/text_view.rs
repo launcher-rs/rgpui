@@ -364,7 +364,7 @@ mod tests {
         }
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn clipped_markdown_link_does_not_open(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, cx| {
@@ -377,7 +377,7 @@ mod tests {
         assert_eq!(cx.opened_url(), None);
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn clipped_markdown_cannot_start_selection(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) = cx

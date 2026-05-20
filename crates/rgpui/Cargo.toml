@@ -1,6 +1,6 @@
 [package]
 name = "rgpui"
-version = "0.2.2"
+version = "0.1.0"
 edition.workspace = true
 description = "GUI UI framework"
 repository = "https://github.com/launcher-rs/rgpui"
