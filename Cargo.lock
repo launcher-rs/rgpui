@@ -7043,6 +7043,7 @@ dependencies = [
  "anyhow",
  "async-task",
  "bindgen 0.71.1",
+ "bitflags 2.11.1",
  "cbindgen",
  "core-foundation 0.10.0",
  "core-foundation-sys 0.8.7",

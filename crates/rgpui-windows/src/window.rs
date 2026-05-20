@@ -454,29 +454,40 @@ impl WindowsWindow {
                 .unwrap_or(""),
         );
 
-        let (mut dwexstyle, dwstyle) = if params.kind == WindowKind::PopUp {
-            (WS_EX_TOOLWINDOW, WINDOW_STYLE(0x0))
-        } else if params.window_decorations == WindowDecorations::Client {
-            // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框
-            (WS_EX_APPWINDOW, WS_POPUP)
-        } else {
-            let mut dwstyle = WS_SYSMENU;
-
-            if params.is_resizable {
-                dwstyle |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+        // 根据窗口类型设置窗口样式
+        let (mut dwexstyle, dwstyle) = match &params.kind {
+            WindowKind::PopUp => (WS_EX_TOOLWINDOW, WINDOW_STYLE(0x0)),
+            WindowKind::Overlay(overlay_opts) => {
+                // Overlay 窗口：始终置顶、无装饰、支持透明度
+                let mut ex_style = WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+                if overlay_opts.click_through {
+                    ex_style |= WS_EX_TRANSPARENT;
+                }
+                (ex_style, WS_POPUP)
             }
-
-            if params.is_minimizable {
-                dwstyle |= WS_MINIMIZEBOX;
+            _ if params.window_decorations == WindowDecorations::Client => {
+                // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框
+                (WS_EX_APPWINDOW, WS_POPUP)
             }
-            let dwexstyle = if params.kind == WindowKind::Dialog {
-                dwstyle |= WS_POPUP | WS_CAPTION;
-                WS_EX_DLGMODALFRAME
-            } else {
-                WS_EX_APPWINDOW
-            };
+            _ => {
+                let mut dwstyle = WS_SYSMENU;
 
-            (dwexstyle, dwstyle)
+                if params.is_resizable {
+                    dwstyle |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+                }
+
+                if params.is_minimizable {
+                    dwstyle |= WS_MINIMIZEBOX;
+                }
+                let dwexstyle = if params.kind == WindowKind::Dialog {
+                    dwstyle |= WS_POPUP | WS_CAPTION;
+                    WS_EX_DLGMODALFRAME
+                } else {
+                    WS_EX_APPWINDOW
+                };
+
+                (dwexstyle, dwstyle)
+            }
         };
         if !disable_direct_composition {
             dwexstyle |= WS_EX_NOREDIRECTIONBITMAP;

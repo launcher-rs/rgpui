@@ -196,6 +196,13 @@ impl WaylandSurfaceState {
             toplevel.set_parent(xdg_parent.as_ref());
         }
 
+        // Overlay 窗口在 Wayland 上作为常规 toplevel 处理
+        // 注意：Wayland 协议不直接支持"始终置顶"，需要合成器支持
+        if let WindowKind::Overlay(_) = &params.kind {
+            // 可以设置窗口为无边框
+            // 透明度由渲染器处理
+        }
+
         let dialog = if params.kind == WindowKind::Dialog {
             let dialog = globals.dialog.as_ref().map(|dialog| {
                 let xdg_dialog = dialog.get_xdg_dialog(&toplevel, &globals.qh, ());

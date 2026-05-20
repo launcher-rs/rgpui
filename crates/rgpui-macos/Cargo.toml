@@ -24,6 +24,7 @@ rgpui.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 anyhow.workspace = true
 async-task = "4.7"
+bitflags.workspace = true
 core-foundation.workspace = true
 core-foundation-sys.workspace = true
 core-graphics = "0.24"

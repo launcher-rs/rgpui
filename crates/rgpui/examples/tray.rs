@@ -8,7 +8,10 @@
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use rgpui::{App, Bounds, Context, Render, SharedString, TrayMenuItem, Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size, TrayIconEvent};
+use rgpui::{
+    App, Bounds, Context, Render, SharedString, TrayIconEvent, TrayMenuItem, Window, WindowBounds,
+    WindowOptions, actions, div, prelude::*, px, rgb, size,
+};
 use rgpui_platform::application;
 
 actions!(tray, [Quit, ToggleWindow]);
@@ -80,8 +83,6 @@ fn run_example() {
                 id: "quit".into(),
             },
         ]);
-
-
 
         // 注册托盘菜单动作回调
         cx.on_tray_menu_action(|id, cx| match id.as_ref() {

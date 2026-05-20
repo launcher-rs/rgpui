@@ -224,6 +224,62 @@ pub trait Platform: 'static {
     fn set_tray(&self, _tray: Tray, _menu: Option<Vec<MenuItem>>, _keymap: &Keymap) {}
 
     fn set_keep_alive_without_windows(&self, _keep_alive: bool) {}
+
+    /// 注册全局快捷键
+    fn register_global_hotkey(&self, _id: u32, _keystroke: &Keystroke) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "Global hotkeys not supported on this platform"
+        ))
+    }
+
+    /// 注销全局快捷键
+    fn unregister_global_hotkey(&self, _id: u32) {}
+
+    /// 注册全局快捷键事件回调
+    fn on_global_hotkey(&self, _callback: Box<dyn FnMut(u32)>) {}
+
+    /// 显示系统原生通知
+    fn show_notification(&self, _title: &str, _body: &str) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "Notifications not supported on this platform"
+        ))
+    }
+
+    /// 设置开机自启动
+    fn set_auto_launch(&self, _app_id: &str, _enabled: bool) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "Auto launch not supported on this platform"
+        ))
+    }
+
+    /// 检查开机自启动是否已启用
+    fn is_auto_launch_enabled(&self, _app_id: &str) -> bool {
+        false
+    }
+
+    /// 获取当前聚焦窗口信息
+    fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
+        None
+    }
+
+    /// 获取辅助功能权限状态
+    fn accessibility_status(&self) -> PermissionStatus {
+        PermissionStatus::Granted
+    }
+
+    /// 请求辅助功能权限
+    fn request_accessibility_permission(&self) {}
+
+    /// 获取麦克风权限状态
+    fn microphone_status(&self) -> PermissionStatus {
+        PermissionStatus::Granted
+    }
+
+    /// 请求麦克风权限
+    fn request_microphone_permission(&self, callback: Box<dyn FnOnce(bool)>) {
+        callback(true);
+    }
+
     fn on_app_menu_action(&self, callback: Box<dyn FnMut(&dyn Action)>);
     fn on_will_open_app_menu(&self, callback: Box<dyn FnMut()>);
     fn on_validate_app_menu_command(&self, callback: Box<dyn FnMut(&dyn Action) -> bool>);
@@ -1613,7 +1669,7 @@ pub struct TitlebarOptions {
 }
 
 /// 要创建的窗口类型
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WindowKind {
     /// 普通应用窗口
     Normal,
@@ -1633,6 +1689,34 @@ pub enum WindowKind {
     /// 浮动在父窗口上方并阻止与其交互的窗口
     /// 直到模态窗口关闭
     Dialog,
+
+    /// 覆盖窗口，用于全局覆盖层、屏幕标注或透明 UI
+    /// 特性：始终置顶、无装饰、可配置透明度和点击穿透
+    Overlay(OverlayOptions),
+}
+
+/// Overlay 窗口配置选项
+#[derive(Clone, Debug, PartialEq)]
+pub struct OverlayOptions {
+    /// 是否允许鼠标事件穿透窗口
+    pub click_through: bool,
+    /// 窗口透明度（0.0 - 1.0）
+    pub opacity: f32,
+    /// 是否显示窗口装饰（标题栏、边框等）
+    pub decorations: bool,
+    /// 是否始终在所有窗口上方
+    pub always_on_top: bool,
+}
+
+impl Default for OverlayOptions {
+    fn default() -> Self {
+        Self {
+            click_through: false,
+            opacity: 1.0,
+            decorations: false,
+            always_on_top: true,
+        }
+    }
 }
 
 /// 窗口外观，由操作系统定义
@@ -2292,6 +2376,37 @@ pub enum WindowPosition {
         /// 距离屏幕边缘的边距
         margin: Pixels,
     },
+}
+
+/// 当前系统聚焦窗口的信息
+#[derive(Debug, Clone)]
+pub struct FocusedWindowInfo {
+    /// 应用程序名称
+    pub app_name: String,
+    /// 窗口标题
+    pub window_title: String,
+    /// macOS 专属：应用 Bundle ID
+    pub bundle_id: Option<String>,
+    /// 进程 ID
+    pub pid: Option<u32>,
+}
+
+/// 权限状态枚举
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionStatus {
+    /// 权限已授予
+    Granted,
+    /// 权限被拒绝
+    Denied,
+    /// 权限尚未确定（用户未做出选择）
+    NotDetermined,
+}
+
+/// 全局快捷键事件
+#[derive(Debug, Clone)]
+pub struct GlobalHotKeyEvent {
+    /// 快捷键的唯一标识符
+    pub id: u32,
 }
 
 #[cfg(test)]

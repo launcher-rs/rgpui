@@ -43,14 +43,14 @@ use crate::InspectorElementRegistry;
 use crate::{
     Action, ActionBuildError, ActionRegistry, Any, AnyView, AnyWindowHandle, AppContext, Arena,
     ArenaBox, Asset, AssetSource, BackgroundExecutor, Bounds, ClipboardItem, CursorStyle,
-    DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, ForegroundExecutor, Global,
-    KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu, MenuItem, OwnedMenu,
-    PathPromptOptions, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
-    PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton, PromptHandle,
-    PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation, ScreenCaptureSource,
-    SharedString, SubscriberSet, Subscription, SvgRenderer, Task, TextRenderingMode, TextSystem,
-    ThermalState, Tray, TrayIconEvent, TrayMenuItem, Window, WindowAppearance, WindowButtonLayout,
-    WindowHandle, WindowId, WindowInvalidator,
+    DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, FocusedWindowInfo,
+    ForegroundExecutor, Global, KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu,
+    MenuItem, OwnedMenu, PathPromptOptions, PermissionStatus, Pixels, Platform, PlatformDisplay,
+    PlatformKeyboardLayout, PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton,
+    PromptHandle, PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation,
+    ScreenCaptureSource, SharedString, SubscriberSet, Subscription, SvgRenderer, Task,
+    TextRenderingMode, TextSystem, ThermalState, Tray, TrayIconEvent, TrayMenuItem, Window,
+    WindowAppearance, WindowButtonLayout, WindowHandle, WindowId, WindowInvalidator,
     colors::{Colors, GlobalColors},
     hash, init_app_menus,
 };
@@ -2236,6 +2236,110 @@ impl App {
     /// 设置应用程序是否应在没有窗口时保持运行
     pub fn set_keep_alive_without_windows(&self, keep_alive: bool) {
         self.platform.set_keep_alive_without_windows(keep_alive);
+    }
+
+    /// 注册全局快捷键
+    ///
+    /// # 参数
+    /// * `id` - 快捷键的唯一标识符
+    /// * `keystroke` - 快捷键组合（如 "cmd-shift-k"）
+    ///
+    /// # 返回
+    /// 成功时返回 `Ok(())`，失败时返回错误
+    pub fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
+        self.platform.register_global_hotkey(id, keystroke)
+    }
+
+    /// 注销全局快捷键
+    ///
+    /// # 参数
+    /// * `id` - 要注销的快捷键 ID
+    pub fn unregister_global_hotkey(&self, id: u32) {
+        self.platform.unregister_global_hotkey(id);
+    }
+
+    /// 注册全局快捷键事件的回调函数
+    pub fn on_global_hotkey(&self, mut callback: impl FnMut(u32, &mut App) + 'static) {
+        let this = self.this.clone();
+        self.platform.on_global_hotkey(Box::new(move |id| {
+            if let Some(app) = this.upgrade() {
+                callback(id, &mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 显示系统原生通知
+    ///
+    /// # 参数
+    /// * `title` - 通知标题
+    /// * `body` - 通知内容
+    ///
+    /// # 返回
+    /// 成功时返回 `Ok(())`，失败时返回错误
+    pub fn show_notification(&self, title: &str, body: &str) -> Result<()> {
+        self.platform.show_notification(title, body)
+    }
+
+    /// 设置开机自启动
+    ///
+    /// # 参数
+    /// * `app_id` - 应用程序标识符
+    /// * `enabled` - 是否启用开机自启动
+    ///
+    /// # 返回
+    /// 成功时返回 `Ok(())`，失败时返回错误
+    pub fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
+        self.platform.set_auto_launch(app_id, enabled)
+    }
+
+    /// 检查开机自启动是否已启用
+    ///
+    /// # 参数
+    /// * `app_id` - 应用程序标识符
+    ///
+    /// # 返回
+    /// 如果已启用返回 `true`，否则返回 `false`
+    pub fn is_auto_launch_enabled(&self, app_id: &str) -> bool {
+        self.platform.is_auto_launch_enabled(app_id)
+    }
+
+    /// 获取当前系统聚焦窗口信息
+    ///
+    /// # 返回
+    /// 返回聚焦窗口信息，如果无法获取则返回 `None`
+    pub fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
+        self.platform.focused_window_info()
+    }
+
+    /// 获取辅助功能权限状态（主要用于 macOS）
+    ///
+    /// # 返回
+    /// 返回当前辅助功能权限状态
+    pub fn accessibility_status(&self) -> PermissionStatus {
+        self.platform.accessibility_status()
+    }
+
+    /// 请求辅助功能权限（主要用于 macOS）
+    /// 在 macOS 上会触发系统权限请求对话框
+    pub fn request_accessibility_permission(&self) {
+        self.platform.request_accessibility_permission();
+    }
+
+    /// 获取麦克风权限状态（主要用于 macOS）
+    ///
+    /// # 返回
+    /// 返回当前麦克风权限状态
+    pub fn microphone_status(&self) -> PermissionStatus {
+        self.platform.microphone_status()
+    }
+
+    /// 请求麦克风权限（主要用于 macOS）
+    ///
+    /// # 参数
+    /// * `callback` - 权限授予后调用的回调函数
+    pub fn request_microphone_permission(&self, callback: impl FnOnce(bool) + 'static) {
+        self.platform
+            .request_microphone_permission(Box::new(callback));
     }
 
     /// Performs the action associated with the given dock menu item, only used on Windows for now.
