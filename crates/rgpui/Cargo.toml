@@ -295,3 +295,7 @@ path = "examples/tray.rs"
 [[example]]
 name = "tray_simple"
 path = "examples/tray_simple.rs"
+
+[[example]]
+name = "daemon_app"
+path = "examples/daemon_app.rs"

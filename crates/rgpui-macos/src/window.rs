@@ -722,6 +722,31 @@ impl MacWindow {
                 WindowKind::Floating | WindowKind::Dialog => {
                     msg_send![PANEL_CLASS, alloc]
                 }
+                WindowKind::Overlay(overlay_opts) => {
+                    // Overlay 窗口：使用 NSPanel，不激活，无边框，始终置顶
+                    style_mask |= NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskBorderless;
+                    let panel: id = msg_send![PANEL_CLASS, alloc];
+
+                    // 设置窗口层级为浮动的
+                    let _: () = msg_send![panel, setLevel: cocoa::appkit::NSWindowLevel::NSFloatingWindowLevel as i32];
+
+                    // 设置透明度
+                    if overlay_opts.opacity < 1.0 {
+                        let _: () = msg_send![panel, setAlphaValue: overlay_opts.opacity as f64];
+                    }
+
+                    // 设置点击穿透
+                    if overlay_opts.click_through {
+                        let _: () = msg_send![panel, setIgnoresMouseEvents: YES];
+                    }
+
+                    panel
+                }
+                #[cfg(all(target_os = "linux", feature = "wayland"))]
+                WindowKind::LayerShell(_) => {
+                    // Linux Wayland LayerShell 不在 macOS 上支持
+                    msg_send![WINDOW_CLASS, alloc]
+                }
             };
 
             let display = display_id

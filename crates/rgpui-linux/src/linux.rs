@@ -17,6 +17,13 @@ mod x11;
 #[cfg(any(feature = "wayland", feature = "x11"))]
 mod xdg_desktop_portal;
 
+// 新功能模块
+mod auto_launch;
+mod focused_window;
+mod global_hotkey;
+mod notifications;
+mod permissions;
+
 pub use dispatcher::*;
 pub(crate) use headless::*;
 pub(crate) use keyboard::*;
@@ -27,6 +34,13 @@ pub(crate) use text_system::*;
 pub(crate) use wayland::*;
 #[cfg(feature = "x11")]
 pub(crate) use x11::*;
+
+// 导出新功能模块
+pub(crate) use auto_launch::LinuxAutoLaunch;
+pub(crate) use focused_window::get_focused_window_info;
+pub(crate) use global_hotkey::LinuxGlobalHotkey;
+pub(crate) use notifications::LinuxNotifications;
+pub(crate) use permissions::LinuxPermissions;
 
 use std::rc::Rc;
 
