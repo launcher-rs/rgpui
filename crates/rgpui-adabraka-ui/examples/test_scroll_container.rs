@@ -1,8 +1,8 @@
 // Direct test of ScrollContainer vs raw GPUI
 
 use rgpui::{
-    App, Application, Bounds, Context, FontWeight, Window, WindowBounds, WindowOptions, div,
-    prelude::*, px, rgb, size,
+    App, Bounds, Context, FontWeight, Window, WindowBounds, WindowOptions, div, prelude::*, px,
+    rgb, size,
 };
 use rgpui_adabraka_ui::prelude::*;
 

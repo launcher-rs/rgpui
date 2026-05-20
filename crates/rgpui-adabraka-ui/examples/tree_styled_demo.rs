@@ -62,15 +62,15 @@ fn main() {
 }
 
 struct TreeStyledDemo {
-    selected_id: Option<String>,
-    expanded_ids: Vec<String>,
+    // selected_id: Option<String>,
+    // expanded_ids: Vec<String>,
 }
 
 impl TreeStyledDemo {
     fn new() -> Self {
         Self {
-            selected_id: Some("file1".to_string()),
-            expanded_ids: vec!["root".to_string(), "folder1".to_string()],
+            // selected_id: Some("file1".to_string()),
+            // expanded_ids: vec!["root".to_string(), "folder1".to_string()],
         }
     }
 

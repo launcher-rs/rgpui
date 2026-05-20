@@ -78,25 +78,19 @@ impl VideoPlayerDemoApp {
                     .timer(Duration::from_millis(100))
                     .await;
 
-                let should_continue = state_for_timer
-                    .update(cx, |state, cx| {
-                        if state.is_playing() {
-                            let speed = state.playback_speed().multiplier() as f64;
-                            let new_time = state.current_time() + 0.1 * speed;
-                            if new_time >= state.duration() {
-                                state.set_current_time(0.0, cx);
-                                state.pause(cx);
-                            } else {
-                                state.set_current_time(new_time, cx);
-                            }
+                state_for_timer.update(cx, |state, cx| {
+                    if state.is_playing() {
+                        let speed = state.playback_speed().multiplier() as f64;
+                        let new_time = state.current_time() + 0.1 * speed;
+                        if new_time >= state.duration() {
+                            state.set_current_time(0.0, cx);
+                            state.pause(cx);
+                        } else {
+                            state.set_current_time(new_time, cx);
                         }
-                        state.check_auto_hide(cx);
-                    })
-                    .is_ok();
-
-                if !should_continue {
-                    break;
-                }
+                    }
+                    state.check_auto_hide(cx);
+                });
             }
         })
         .detach();

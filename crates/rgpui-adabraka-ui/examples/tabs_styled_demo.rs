@@ -4,6 +4,7 @@ use rgpui_adabraka_ui::{
     navigation::tabs::{TabItem, TabPanel, TabVariant, Tabs},
     prelude::*,
 };
+use std::fmt::format;
 use std::path::PathBuf;
 
 struct Assets {
@@ -136,7 +137,7 @@ impl Render for TabsStyledDemo {
                         )
                         // Example 1: Custom Background and Border
                         .child(Self::render_demo_section(
-                            "1. Custom Background & Border",
+                            format!("{}. Custom Background & Border",self.selected_tab),
                             "Tabs with custom background color, border, and rounded corners",
                             Tabs::<usize>::new()
                                 .tabs(vec![
