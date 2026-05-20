@@ -1,8 +1,7 @@
 // Absolute minimal test to debug ScrollContainer
 
 use rgpui::{
-    App, Application, Bounds, Context, ElementId, SharedString, Window, WindowBounds,
-    WindowOptions, div, prelude::*, px, rgb, size,
+    App, Bounds, Context, Window, WindowBounds, WindowOptions, div, prelude::*, px, rgb, size,
 };
 
 struct MinimalTest {}

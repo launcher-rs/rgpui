@@ -1,9 +1,9 @@
 // Exactly mimic what ScrollContainer does
 
 use rgpui::{
-    AnyElement, App, Application, Bounds, Context, ElementId, Interactivity, ParentElement,
-    Stateful, StatefulInteractiveElement, StyleRefinement, Styled, Window, WindowBounds,
-    WindowOptions, div, prelude::*, px, rgb, size,
+    AnyElement, App, Bounds, Context, ElementId, Interactivity, ParentElement, Stateful,
+    StatefulInteractiveElement, StyleRefinement, Styled, Window, WindowBounds, WindowOptions, div,
+    prelude::*, px, rgb, size,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 

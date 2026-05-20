@@ -10,15 +10,11 @@ use rgpui_adabraka_ui::{
 };
 
 struct FocusTestApp {
-    // Form inputs to test tab navigation
     first_name: Entity<InputState>,
     last_name: Entity<InputState>,
     email: Entity<InputState>,
     phone: Entity<InputState>,
     password: Entity<InputState>,
-
-    // Track which input has focus
-    current_focus_index: usize,
 }
 
 impl FocusTestApp {
@@ -29,7 +25,6 @@ impl FocusTestApp {
             email: cx.new(|cx| InputState::new(cx).input_type(InputType::Email)),
             phone: cx.new(|cx| InputState::new(cx).input_type(InputType::Tel)),
             password: cx.new(|cx| InputState::new(cx).input_type(InputType::Password)),
-            current_focus_index: 0,
         };
 
         // Set up tab navigation handlers
@@ -62,7 +57,7 @@ impl FocusTestApp {
                             let next_input = inputs_clone[next_index].clone();
                             cx.defer(move |cx| {
                                 cx.update_window(cx.active_window().unwrap(), |_, window, cx| {
-                                    window.focus(&next_input.read(cx).focus_handle(cx));
+                                    window.focus(&next_input.read(cx).focus_handle(cx), cx);
                                 })
                                 .ok();
                             });
@@ -77,7 +72,7 @@ impl FocusTestApp {
                             let prev_input = inputs_clone[prev_index].clone();
                             cx.defer(move |cx| {
                                 cx.update_window(cx.active_window().unwrap(), |_, window, cx| {
-                                    window.focus(&prev_input.read(cx).focus_handle(cx));
+                                    window.focus(&prev_input.read(cx).focus_handle(cx), cx);
                                 })
                                 .ok();
                             });

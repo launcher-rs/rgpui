@@ -1172,8 +1172,16 @@ impl rgpui::Element for InputTextElement {
             let char_count = input.content.chars().count();
             let masked_text = "•".repeat(char_count).into();
 
-            let start_chars = input.content[..input.selected_range.start].chars().count();
-            let end_chars = input.content[..input.selected_range.end].chars().count();
+            let start_chars = input
+                .content
+                .get(..input.selected_range.start)
+                .map(|s| s.chars().count())
+                .unwrap_or(0);
+            let end_chars = input
+                .content
+                .get(..input.selected_range.end)
+                .map(|s| s.chars().count())
+                .unwrap_or(0);
             let masked_selected_range = (start_chars * "•".len())..(end_chars * "•".len());
 
             let cursor_chars = if input.selection_reversed {
@@ -1211,8 +1219,16 @@ impl rgpui::Element for InputTextElement {
 
         let runs = if let Some(marked_range) = input.marked_range.as_ref() {
             let (marked_start, marked_end) = if input.masked {
-                let start_chars = input.content[..marked_range.start].chars().count();
-                let end_chars = input.content[..marked_range.end].chars().count();
+                let start_chars = input
+                    .content
+                    .get(..marked_range.start)
+                    .map(|s| s.chars().count())
+                    .unwrap_or(0);
+                let end_chars = input
+                    .content
+                    .get(..marked_range.end)
+                    .map(|s| s.chars().count())
+                    .unwrap_or(0);
                 (start_chars * "•".len(), end_chars * "•".len())
             } else {
                 (marked_range.start, marked_range.end)
