@@ -12,6 +12,12 @@ rgpui 是一个从 [zed-industries/gpui](https://github.com/zed-industries/zed) 
 
 rgpui 旨在解决这些问题，提供一个独立维护、持续更新的通用 GUI 框架。
 
+## 为什么重命名为 rgpui？
+
+在 Rust 生态中，多个 gpui 分支/版本（如 gpui 0.2.2、最新 git 源版本、gpui-ce、adabraka-gpui 等）都在各自的 `Cargo.toml` 中使用 `name = "gpui"` 进行重命名。虽然名称相同，但这些版本的 API 差异巨大，导致依赖它们的 UI 库无法共存，产生严重的版本冲突。
+
+将所有分支统一重命名为 `rgpui`，虽然看起来不够优雅，但能彻底解决依赖混乱问题，让不同版本的 UI 组件可以明确区分并独立演进。
+
 ## 新增功能
 
 ### 增强透明窗口支持
