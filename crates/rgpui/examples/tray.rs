@@ -8,10 +8,7 @@
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use rgpui::{
-    App, Bounds, Context, Render, SharedString, TrayMenuItem, Window, WindowBounds, WindowOptions,
-    actions, div, prelude::*, px, rgb, size,
-};
+use rgpui::{App, Bounds, Context, Render, SharedString, TrayMenuItem, Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size, TrayIconEvent};
 use rgpui_platform::application;
 
 actions!(tray, [Quit, ToggleWindow]);
@@ -59,6 +56,18 @@ fn run_example() {
         let icon_bytes = include_bytes!("image/app-icon.png");
         cx.set_tray_icon(Some(icon_bytes.as_slice()));
 
+        cx.on_tray_icon_event(|event, _cx| match event {
+            TrayIconEvent::LeftClick => {
+                eprintln!("Tray icon left-clicked");
+            }
+            TrayIconEvent::RightClick => {
+                eprintln!("Tray icon right-clicked");
+            }
+            TrayIconEvent::DoubleClick => {
+                eprintln!("Tray icon double-clicked");
+            }
+        });
+
         // 设置托盘菜单（使用新的 TrayMenuItem API）
         cx.set_tray_menu(vec![
             TrayMenuItem::Action {
@@ -71,6 +80,8 @@ fn run_example() {
                 id: "quit".into(),
             },
         ]);
+
+
 
         // 注册托盘菜单动作回调
         cx.on_tray_menu_action(|id, cx| match id.as_ref() {
