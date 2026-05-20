@@ -80,6 +80,8 @@ pub struct WindowsWindowState {
     /// Flag to instruct the `VSyncProvider` thread to invalidate the directx devices
     /// as resizing them has failed, causing us to have lost at least the render target.
     pub invalidate_devices: Arc<AtomicBool>,
+    /// 是否允许鼠标事件穿透到后面的窗口
+    pub mouse_passthrough: Cell<bool>,
     fullscreen: Cell<Option<StyleAndBounds>>,
     initial_placement: Cell<Option<WindowOpenStatus>>,
     hwnd: HWND,
@@ -113,6 +115,7 @@ impl WindowsWindowState {
         appearance: WindowAppearance,
         disable_direct_composition: bool,
         invalidate_devices: Arc<AtomicBool>,
+        mouse_passthrough: bool,
     ) -> Result<Self> {
         let scale_factor = {
             let monitor_dpi = unsafe { GetDpiForWindow(hwnd) } as f32;
@@ -177,6 +180,7 @@ impl WindowsWindowState {
             hwnd,
             invalidate_devices,
             direct_manipulation,
+            mouse_passthrough: Cell::new(mouse_passthrough),
         })
     }
 
@@ -252,6 +256,7 @@ impl WindowsWindowInner {
             context.appearance,
             context.disable_direct_composition,
             context.invalidate_devices.clone(),
+            context.mouse_passthrough,
         )?;
 
         Ok(Rc::new(Self {
@@ -398,6 +403,7 @@ struct WindowCreateContext {
     directx_devices: DirectXDevices,
     invalidate_devices: Arc<AtomicBool>,
     parent_hwnd: Option<HWND>,
+    mouse_passthrough: bool,
 }
 
 impl WindowsWindow {
@@ -475,6 +481,9 @@ impl WindowsWindow {
         if !disable_direct_composition {
             dwexstyle |= WS_EX_NOREDIRECTIONBITMAP;
         }
+        if params.mouse_passthrough {
+            dwexstyle |= WS_EX_TRANSPARENT | WS_EX_LAYERED;
+        }
 
         let hinstance = get_module_handle();
         let display = if let Some(display_id) = params.display_id {
@@ -506,6 +515,7 @@ impl WindowsWindow {
             directx_devices,
             invalidate_devices,
             parent_hwnd,
+            mouse_passthrough: params.mouse_passthrough,
         };
         let creation_result = unsafe {
             CreateWindowExW(
@@ -992,6 +1002,39 @@ impl PlatformWindow for WindowsWindow {
     fn play_system_bell(&self) {
         // MB_OK: The sound specified as the Windows Default Beep sound.
         let _ = unsafe { MessageBeep(MB_OK) };
+    }
+
+    /// 设置窗口是否允许鼠标事件穿透到后面的窗口
+    /// 使用 WS_EX_TRANSPARENT 和 WS_EX_LAYERED 扩展样式实现穿透效果
+    fn set_mouse_passthrough(&self, passthrough: bool) {
+        let hwnd = self.0.hwnd;
+        let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
+
+        let new_ex_style = if passthrough {
+            current_ex_style | WS_EX_TRANSPARENT.0 as isize | WS_EX_LAYERED.0 as isize
+        } else {
+            current_ex_style & !WS_EX_TRANSPARENT.0 as isize & !WS_EX_LAYERED.0 as isize
+        };
+
+        if current_ex_style != new_ex_style {
+            unsafe {
+                set_window_long(hwnd, GWL_EXSTYLE, new_ex_style);
+                // 刷新窗口以应用新的扩展样式
+                SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
+                )
+                .log_err();
+            }
+        }
+
+        // 更新内部状态
+        self.0.state.mouse_passthrough.set(passthrough);
     }
 }
 

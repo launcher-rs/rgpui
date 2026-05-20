@@ -38,7 +38,10 @@ members = [
     "crates/rgpui-yororen-ui/examples/counter",
     "crates/rgpui-yororen-ui/examples/file_browser",
     "crates/rgpui-yororen-ui/examples/toast_notification",
-    "crates/rgpui-yororen-ui/examples/todolist", "crates/rgpui-adabraka-ui",
+    "crates/rgpui-yororen-ui/examples/todolist",
+    "crates/rgpui-adabraka-ui",
+
+    "crates/rgpui/examples/mouse_passthrough_ceshi"
 
 ]
 

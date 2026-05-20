@@ -725,6 +725,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
 
     fn play_system_bell(&self) {}
 
+    /// 设置窗口是否允许鼠标事件穿透到后面的窗口
+    fn set_mouse_passthrough(&self, _passthrough: bool) {}
+
     #[cfg(any(test, feature = "test-support"))]
     fn as_test(&mut self) -> Option<&mut TestWindow> {
         None
@@ -1467,6 +1470,9 @@ pub struct WindowOptions {
 
     /// Tab group name, allows opening the window as a native tab on macOS 10.12+. Windows with the same tabbing identifier will be grouped together.
     pub tabbing_identifier: Option<String>,
+
+    /// Whether the window should allow mouse events to pass through to windows behind it
+    pub mouse_passthrough: bool,
 }
 
 /// The variables that can be configured when creating a new window
@@ -1526,6 +1532,13 @@ pub struct WindowParams {
         allow(dead_code)
     )]
     pub window_decorations: WindowDecorations,
+
+    /// Whether the window should allow mouse events to pass through to windows behind it
+    #[cfg_attr(
+        any(target_os = "linux", target_os = "freebsd", target_os = "macos"),
+        allow(dead_code)
+    )]
+    pub mouse_passthrough: bool,
 }
 
 /// Represents the status of how a window should be opened.
@@ -1585,6 +1598,7 @@ impl Default for WindowOptions {
             window_min_size: None,
             window_decorations: None,
             tabbing_identifier: None,
+            mouse_passthrough: false,
         }
     }
 }
