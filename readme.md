@@ -2,6 +2,8 @@
 
 rgpui 是一个从 [zed-industries/gpui](https://github.com/zed-industries/zed) 和 [longbridge/gpui-component](https://github.com/longbridge/gpui-component) 项目移植而来的跨平台 GPU 加速 UI 框架。
 
+代码仅在windows上验证，liunx,mac未验证。
+
 ## 项目背景
 
 本项目诞生的原因：
