@@ -67,7 +67,7 @@ impl IconShowcaseApp {
         Self {}
     }
 
-    fn render_icon_grid(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_icon_grid(&self, _cx: &mut Context<Self>) -> impl IntoElement {
         let theme = use_theme();
 
         let icons = vec![
@@ -153,20 +153,15 @@ impl IconShowcaseApp {
                     )
                     .child(
                         div().flex().flex_wrap().gap_4().children(
-                            icons.into_iter().map(|(icon_name, label)| {
-                                self.render_icon_card(icon_name, label, cx)
-                            }),
+                            icons
+                                .into_iter()
+                                .map(|(icon_name, label)| Self::render_icon_card(icon_name, label)),
                         ),
                     ),
             )
     }
 
-    fn render_icon_card(
-        &self,
-        icon_name: &str,
-        label: &str,
-        _cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn render_icon_card(icon_name: &str, label: &str) -> impl IntoElement {
         let theme = use_theme();
         let icon_name = icon_name.to_string();
         let label = label.to_string();
