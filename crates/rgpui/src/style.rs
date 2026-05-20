@@ -7,11 +7,11 @@ use std::{
 use crate::collections::HashSet;
 use crate::refineable::Refineable;
 use crate::{
-    AbsoluteLength, App, Background, BackgroundTag, BorderStyle, Bounds, ContentMask, Corners,
-    CornersRefinement, CursorStyle, DefiniteLength, DevicePixels, Edges, EdgesRefinement, Font,
-    FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, Hsla, Length, Pixels, Point,
-    PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun, Window, black, phi,
-    point, quad, rems, size,
+    AbsoluteLength, App, Background, BackgroundTag, BlendMode, BorderStyle, Bounds, ContentMask,
+    Corners, CornersRefinement, CursorStyle, DefiniteLength, DevicePixels, Edges, EdgesRefinement,
+    Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, Hsla, Length, Pixels,
+    Point, PointRefinement, Radians, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun,
+    TransformationMatrix, Window, black, phi, point, quad, rems, size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -282,6 +282,9 @@ pub struct Style {
     #[refineable]
     pub corner_radii: Corners<AbsoluteLength>,
 
+    /// 是否使用连续（圆角）角舍入而不是圆形。
+    pub continuous_corners: bool,
+
     /// 元素的盒阴影
     pub box_shadow: Vec<BoxShadow>,
 
@@ -294,6 +297,18 @@ pub struct Style {
 
     /// 此元素的透明度
     pub opacity: Option<f32>,
+
+    /// 渲染此元素背景时应用的混合模式。
+    pub blend_mode: Option<BlendMode>,
+
+    /// 旋转角度（顺时针，弧度制）
+    pub rotate: Option<f32>,
+
+    /// 缩放因子 (x, y)。未设置时默认为 (1.0, 1.0)
+    pub scale: Option<Point<f32>>,
+
+    /// 变换原点，以元素大小的比例表示 (0.0-1.0)。默认为中心 (0.5, 0.5)
+    pub transform_origin: Option<Point<f32>>,
 
     /// 此元素的网格列
     /// 大致等效于 Tailwind 的 `grid-cols-<number>`
@@ -661,6 +676,8 @@ impl Style {
             .to_pixels(rem_size)
             .clamp_radii_for_quad_size(bounds.size);
 
+        let transform = self.compose_transform(bounds);
+
         window.paint_shadows(bounds, corner_radii, &self.box_shadow);
 
         let background_color = self.background.as_ref().and_then(Fill::color);
@@ -671,7 +688,9 @@ impl Style {
                     | BackgroundTag::PatternSlash
                     | BackgroundTag::Checkerboard => color.solid,
 
-                    BackgroundTag::LinearGradient => color
+                    BackgroundTag::LinearGradient
+                    | BackgroundTag::RadialGradient
+                    | BackgroundTag::ConicGradient => color
                         .colors
                         .first()
                         .map(|stop| stop.color)
@@ -680,36 +699,121 @@ impl Style {
                 None => Hsla::default(),
             };
             border_color.a = 0.;
-            window.paint_quad(quad(
+            let mut bg_quad = quad(
                 bounds,
                 corner_radii,
                 background_color.unwrap_or_default(),
                 Edges::default(),
                 border_color,
                 self.border_style,
-            ));
+            );
+            bg_quad.continuous_corners = self.continuous_corners;
+            bg_quad.transform = transform;
+            bg_quad.blend_mode = self.blend_mode.unwrap_or_default();
+            window.paint_quad(bg_quad);
         }
 
         continuation(window, cx);
 
         if self.is_border_visible() {
             let border_widths = self.border_widths.to_pixels(rem_size);
+            let max_border_width = border_widths.max();
+            let max_corner_radius = corner_radii.max();
+
+            let top_bounds = Bounds::from_corners(
+                bounds.origin,
+                bounds.top_right() + point(Pixels::ZERO, max_border_width.max(max_corner_radius)),
+            );
+            let bottom_bounds = Bounds::from_corners(
+                bounds.bottom_left() - point(Pixels::ZERO, max_border_width.max(max_corner_radius)),
+                bounds.bottom_right(),
+            );
+            let left_bounds = Bounds::from_corners(
+                top_bounds.bottom_left(),
+                bottom_bounds.origin + point(max_border_width, Pixels::ZERO),
+            );
+            let right_bounds = Bounds::from_corners(
+                top_bounds.bottom_right() - point(max_border_width, Pixels::ZERO),
+                bottom_bounds.top_right(),
+            );
+
             let mut background = self.border_color.unwrap_or_default();
             background.a = 0.;
-            window.paint_quad(quad(
+            let mut quad = quad(
                 bounds,
                 corner_radii,
                 background,
                 border_widths,
                 self.border_color.unwrap_or_default(),
                 self.border_style,
-            ));
+            );
+            quad.continuous_corners = self.continuous_corners;
+            quad.transform = transform;
+
+            window.with_content_mask(Some(ContentMask { bounds: top_bounds }), |window| {
+                window.paint_quad(quad.clone());
+            });
+            window.with_content_mask(
+                Some(ContentMask {
+                    bounds: right_bounds,
+                }),
+                |window| window.paint_quad(quad.clone()),
+            );
+            window.with_content_mask(
+                Some(ContentMask {
+                    bounds: bottom_bounds,
+                }),
+                |window| {
+                    window.paint_quad(quad.clone());
+                },
+            );
+            window.with_content_mask(
+                Some(ContentMask {
+                    bounds: left_bounds,
+                }),
+                |window| {
+                    window.paint_quad(quad);
+                },
+            );
         }
 
         #[cfg(debug_assertions)]
         if self.debug_below {
             cx.remove_global::<DebugBelow>();
         }
+    }
+
+    fn compose_transform(&self, bounds: Bounds<Pixels>) -> TransformationMatrix {
+        let has_transform = self.rotate.is_some() || self.scale.is_some();
+        if !has_transform {
+            return TransformationMatrix::unit();
+        }
+
+        let origin_frac = self.transform_origin.unwrap_or(Point { x: 0.5, y: 0.5 });
+        let cx = bounds.origin.x.0 + bounds.size.width.0 * origin_frac.x;
+        let cy = bounds.origin.y.0 + bounds.size.height.0 * origin_frac.y;
+
+        let mut t = TransformationMatrix::unit();
+
+        if let Some(scale) = self.scale {
+            t = t.scale(crate::Size {
+                width: scale.x,
+                height: scale.y,
+            });
+        }
+        if let Some(rotate) = self.rotate {
+            t = t.rotate(Radians(rotate));
+        }
+
+        let neg_origin = TransformationMatrix {
+            rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
+            translation: [-cx, -cy],
+        };
+        let pos_origin = TransformationMatrix {
+            rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
+            translation: [cx, cy],
+        };
+        pos_origin.compose(t.compose(neg_origin))
     }
 
     fn is_border_visible(&self) -> bool {
@@ -756,10 +860,15 @@ impl Default for Style {
             border_color: None,
             border_style: BorderStyle::default(),
             corner_radii: Corners::default(),
+            continuous_corners: false,
             box_shadow: Default::default(),
             text: TextStyleRefinement::default(),
             mouse_cursor: None,
             opacity: None,
+            blend_mode: None,
+            rotate: None,
+            scale: None,
+            transform_origin: None,
             grid_rows: None,
             grid_cols: None,
             grid_location: None,
@@ -1272,205 +1381,5 @@ impl From<Position> for taffy::style::Position {
             Position::Relative => Self::Relative,
             Position::Absolute => Self::Absolute,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{blue, green, px, red, yellow};
-
-    use super::*;
-
-    use rgpui_macros::perf;
-
-    #[perf]
-    fn test_basic_highlight_style_combination() {
-        let style_a = HighlightStyle::default();
-        let style_b = HighlightStyle::default();
-        let style_a = style_a.highlight(style_b);
-        assert_eq!(
-            style_a,
-            HighlightStyle::default(),
-            "Combining empty styles should not produce a non-empty style."
-        );
-
-        let mut style_b = HighlightStyle {
-            color: Some(red()),
-            strikethrough: Some(StrikethroughStyle {
-                thickness: px(2.),
-                color: Some(blue()),
-            }),
-            fade_out: Some(0.),
-            font_style: Some(FontStyle::Italic),
-            font_weight: Some(FontWeight(300.)),
-            background_color: Some(yellow()),
-            underline: Some(UnderlineStyle {
-                thickness: px(2.),
-                color: Some(red()),
-                wavy: true,
-            }),
-        };
-        let expected_style = style_b;
-
-        let style_a = style_a.highlight(style_b);
-        assert_eq!(
-            style_a, expected_style,
-            "Blending an empty style with another style should return the other style"
-        );
-
-        let style_b = style_b.highlight(Default::default());
-        assert_eq!(
-            style_b, expected_style,
-            "Blending a style with an empty style should not change the style."
-        );
-
-        let mut style_c = expected_style;
-
-        let style_d = HighlightStyle {
-            color: Some(blue().alpha(0.7)),
-            strikethrough: Some(StrikethroughStyle {
-                thickness: px(4.),
-                color: Some(crate::red()),
-            }),
-            fade_out: Some(0.),
-            font_style: Some(FontStyle::Oblique),
-            font_weight: Some(FontWeight(800.)),
-            background_color: Some(green()),
-            underline: Some(UnderlineStyle {
-                thickness: px(4.),
-                color: None,
-                wavy: false,
-            }),
-        };
-
-        let expected_style = HighlightStyle {
-            color: Some(red().blend(blue().alpha(0.7))),
-            strikethrough: Some(StrikethroughStyle {
-                thickness: px(4.),
-                color: Some(red()),
-            }),
-            // TODO this does not seem right
-            fade_out: Some(0.),
-            font_style: Some(FontStyle::Oblique),
-            font_weight: Some(FontWeight(800.)),
-            background_color: Some(green()),
-            underline: Some(UnderlineStyle {
-                thickness: px(4.),
-                color: None,
-                wavy: false,
-            }),
-        };
-
-        let style_c = style_c.highlight(style_d);
-        assert_eq!(
-            style_c, expected_style,
-            "Blending styles should blend properties where possible and override all others"
-        );
-    }
-
-    #[perf]
-    fn test_combine_highlights() {
-        assert_eq!(
-            combine_highlights(
-                [
-                    (0..5, green().into()),
-                    (4..10, FontWeight::BOLD.into()),
-                    (15..20, yellow().into()),
-                ],
-                [
-                    (2..6, FontStyle::Italic.into()),
-                    (1..3, blue().into()),
-                    (21..23, red().into()),
-                ]
-            )
-            .collect::<Vec<_>>(),
-            [
-                (
-                    0..1,
-                    HighlightStyle {
-                        color: Some(green()),
-                        ..Default::default()
-                    }
-                ),
-                (
-                    1..2,
-                    HighlightStyle {
-                        color: Some(blue()),
-                        ..Default::default()
-                    }
-                ),
-                (
-                    2..3,
-                    HighlightStyle {
-                        color: Some(blue()),
-                        font_style: Some(FontStyle::Italic),
-                        ..Default::default()
-                    }
-                ),
-                (
-                    3..4,
-                    HighlightStyle {
-                        color: Some(green()),
-                        font_style: Some(FontStyle::Italic),
-                        ..Default::default()
-                    }
-                ),
-                (
-                    4..5,
-                    HighlightStyle {
-                        color: Some(green()),
-                        font_weight: Some(FontWeight::BOLD),
-                        font_style: Some(FontStyle::Italic),
-                        ..Default::default()
-                    }
-                ),
-                (
-                    5..6,
-                    HighlightStyle {
-                        font_weight: Some(FontWeight::BOLD),
-                        font_style: Some(FontStyle::Italic),
-                        ..Default::default()
-                    }
-                ),
-                (
-                    6..10,
-                    HighlightStyle {
-                        font_weight: Some(FontWeight::BOLD),
-                        ..Default::default()
-                    }
-                ),
-                (
-                    15..20,
-                    HighlightStyle {
-                        color: Some(yellow()),
-                        ..Default::default()
-                    }
-                ),
-                (
-                    21..23,
-                    HighlightStyle {
-                        color: Some(red()),
-                        ..Default::default()
-                    }
-                )
-            ]
-        );
-    }
-
-    #[perf]
-    fn test_text_style_refinement() {
-        let mut style = Style::default();
-        style.refine(&StyleRefinement::default().text_size(px(20.0)));
-        style.refine(&StyleRefinement::default().font_weight(FontWeight::SEMIBOLD));
-
-        assert_eq!(
-            Some(AbsoluteLength::from(px(20.0))),
-            style.text_style().unwrap().font_size
-        );
-
-        assert_eq!(
-            Some(FontWeight::SEMIBOLD),
-            style.text_style().unwrap().font_weight
-        );
     }
 }

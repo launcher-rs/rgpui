@@ -87,6 +87,7 @@ impl Inline {
             border_color: rgpui::transparent_black(),
             border_style: BorderStyle::default(),
             border_widths: rgpui::Edges::all(px(0.)),
+            ..Default::default()
         });
     }
 

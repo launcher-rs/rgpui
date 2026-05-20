@@ -645,7 +645,7 @@ mod tests {
     }
 
     #[rgpui::test]
-    fn test_tree_entry(cx: &mut gpui::TestAppContext) {
+    fn test_tree_entry(cx: &mut rgpui::TestAppContext) {
         use super::TreeItem;
 
         let items = vec![

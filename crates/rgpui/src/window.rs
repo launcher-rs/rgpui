@@ -6,8 +6,8 @@ use crate::refineable::Refineable;
 use crate::scheduler::Instant;
 use crate::{
     Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset,
-    AsyncWindowContext, AvailableSpace, Background, BorderStyle, Bounds, BoxShadow, Capslock,
-    Context, Corners, CursorHideMode, CursorStyle, Decorations, DevicePixels,
+    AsyncWindowContext, AvailableSpace, Background, BlendMode, BorderStyle, Bounds, BoxShadow,
+    Capslock, Context, Corners, CursorHideMode, CursorStyle, Decorations, DevicePixels,
     DispatchActionListener, DispatchNodeId, DispatchTree, DisplayId, Edges, Effect, Entity,
     EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
     Hsla, InputHandler, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke,
@@ -3501,6 +3501,10 @@ impl Window {
             corner_radii: quad.corner_radii.scale(self.scale_factor()),
             border_widths: snapped_border_widths,
             border_style: quad.border_style,
+            continuous_corners: if quad.continuous_corners { 1 } else { 0 },
+            transform: quad.transform,
+            blend_mode: quad.blend_mode as u32,
+            pad_quad: 0,
         });
     }
 
@@ -5872,6 +5876,28 @@ pub struct PaintQuad {
     pub border_color: Hsla,
     /// The style of the quad's borders.
     pub border_style: BorderStyle,
+    /// Whether to use continuous (squircle) corner rounding.
+    pub continuous_corners: bool,
+    /// The transformation matrix for the quad.
+    pub transform: TransformationMatrix,
+    /// The blend mode for rendering the quad.
+    pub blend_mode: BlendMode,
+}
+
+impl Default for PaintQuad {
+    fn default() -> Self {
+        PaintQuad {
+            bounds: Bounds::default(),
+            corner_radii: Corners::default(),
+            background: Background::default(),
+            border_widths: Edges::default(),
+            border_color: transparent_black(),
+            border_style: BorderStyle::default(),
+            continuous_corners: false,
+            transform: TransformationMatrix::unit(),
+            blend_mode: BlendMode::Normal,
+        }
+    }
 }
 
 impl PaintQuad {
@@ -5924,6 +5950,9 @@ pub fn quad(
         border_widths: border_widths.into(),
         border_color: border_color.into(),
         border_style,
+        continuous_corners: false,
+        transform: TransformationMatrix::unit(),
+        blend_mode: BlendMode::Normal,
     }
 }
 
@@ -5936,6 +5965,9 @@ pub fn fill(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Background>
         border_widths: (0.).into(),
         border_color: transparent_black(),
         border_style: BorderStyle::default(),
+        continuous_corners: false,
+        transform: TransformationMatrix::unit(),
+        blend_mode: BlendMode::Normal,
     }
 }
 
@@ -5952,5 +5984,8 @@ pub fn outline(
         border_widths: (1.).into(),
         border_color: border_color.into(),
         border_style,
+        continuous_corners: false,
+        transform: TransformationMatrix::unit(),
+        blend_mode: BlendMode::Normal,
     }
 }

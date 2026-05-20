@@ -13,7 +13,7 @@ cargo run -p gpui --example hello_world
 - `input` demonstrates text input, focus, selections, clipboard actions, and
   keyboard bindings.
 - `uniform_list` shows how to render a simple virtualized list.
-- `testing` demonstrates `#[gpui::test]`, `TestAppContext`, actions, focus, and
+- `testing` demonstrates `#[rgpui::test]`, `TestAppContext`, actions, focus, and
   window-based tests.
 
 ## Layout and styling

@@ -303,7 +303,7 @@ mod tests {
         }
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn preserves_action_context_while_switching_menus(cx: &mut TestAppContext) {
         let (root, cx) = cx.add_window_view(|window, cx| {
             let first_focus = cx.focus_handle();

@@ -2210,7 +2210,7 @@ impl Render for InputState {
 mod tests {
     use super::*;
     use crate::theme::Theme;
-    use rgpui::{TestAppContext, VisualTestContext};
+    use rgpui::TestAppContext;
 
     struct InputView {
         input: Entity<InputState>,

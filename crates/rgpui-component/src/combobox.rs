@@ -1063,7 +1063,7 @@ mod tests {
         },
     };
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_combo_box_builder(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -1074,15 +1074,15 @@ mod tests {
             let _cb = Combobox::new(&state)
                 .placeholder("Select language")
                 .search_placeholder("Search...")
-                .menu_width(gpui::px(300.))
-                .menu_max_h(gpui::rems(15.))
+                .menu_width(rgpui::px(300.))
+                .menu_max_h(rgpui::rems(15.))
                 .cleanable(true)
                 .disabled(false)
                 .appearance(true);
         });
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_combo_box_search_filters_items(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -1121,7 +1121,7 @@ mod tests {
         });
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_multi_combo_box_builder(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -1136,7 +1136,7 @@ mod tests {
             let _cb = Combobox::new(&state)
                 .placeholder("Select frameworks")
                 .search_placeholder("Search...")
-                .menu_width(gpui::px(300.))
+                .menu_width(rgpui::px(300.))
                 .cleanable(true)
                 .disabled(false);
 
@@ -1144,7 +1144,7 @@ mod tests {
         });
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_combo_box_initial_selection_seeds_cursor(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -1164,7 +1164,7 @@ mod tests {
         });
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_multi_combo_box_toggle(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -1183,7 +1183,7 @@ mod tests {
         });
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_multi_combo_box_clear(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -1205,7 +1205,7 @@ mod tests {
         });
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_single_combo_box_mode(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -1253,7 +1253,7 @@ mod tests {
         }
     }
 
-    #[gpui::test]
+    #[rgpui::test]
     fn test_on_will_change_veto(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();

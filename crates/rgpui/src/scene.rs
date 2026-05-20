@@ -493,6 +493,11 @@ pub struct Quad {
     pub border_color: Hsla,
     pub corner_radii: Corners<ScaledPixels>,
     pub border_widths: Edges<ScaledPixels>,
+    pub continuous_corners: u32,
+    pub transform: TransformationMatrix,
+    pub blend_mode: u32,
+    /// Padding for alignment to match shader struct stride (16-byte alignment).
+    pub pad_quad: u32,
 }
 
 impl From<Quad> for Primitive {
@@ -547,6 +552,25 @@ pub enum BorderStyle {
     Solid = 0,
     /// 虚线边框。
     Dashed = 1,
+}
+
+/// 渲染四边形时应用的混合模式。
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[repr(C)]
+pub enum BlendMode {
+    /// 标准 alpha 混合（源覆盖目标）。
+    #[default]
+    Normal = 0,
+    /// 通过将源颜色与自身相乘来变暗。
+    Multiply = 1,
+    /// 通过应用屏幕公式使源颜色变亮。
+    Screen = 2,
+    /// 基于源亮度结合乘法和屏幕。
+    Overlay = 3,
+    /// 覆盖的柔和版本，产生更柔和的对比度。
+    SoftLight = 4,
+    /// 从较亮的颜色中减去较暗的颜色。
+    Difference = 5,
 }
 
 /// 表示可应用于元素的二维变换的数据类型。
