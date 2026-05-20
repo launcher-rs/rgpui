@@ -67,6 +67,9 @@ x11rb::atom_manager! {
         _NET_WM_STATE_FULLSCREEN,
         _NET_WM_STATE_HIDDEN,
         _NET_WM_STATE_FOCUSED,
+        _NET_WM_STATE_ABOVE,
+        _NET_WM_STATE_MODAL,
+        _NET_WM_STATE_SYNC,
         _NET_ACTIVE_WINDOW,
         _NET_WM_SYNC_REQUEST,
         _NET_WM_SYNC_REQUEST_COUNTER,
@@ -75,7 +78,8 @@ x11rb::atom_manager! {
         _NET_WM_WINDOW_TYPE,
         _NET_WM_WINDOW_TYPE_NOTIFICATION,
         _NET_WM_WINDOW_TYPE_DIALOG,
-        _NET_WM_STATE_MODAL,
+        _NET_WM_WINDOW_TYPE_DOCK,
+        _NET_WM_WINDOW_OPACITY,
         _NET_WM_SYNC,
         _NET_SUPPORTED,
         _MOTIF_WM_HINTS,
@@ -457,7 +461,9 @@ impl X11WindowState {
             // https://stackoverflow.com/questions/43218127/x11-xlib-xcb-creating-a-window-requires-border-pixel-if-specifying-colormap-wh
             .border_pixel(visual_set.black_pixel)
             .colormap(colormap)
-            .override_redirect((params.kind == WindowKind::PopUp) as u32)
+            .override_redirect(
+                matches!(params.kind, WindowKind::PopUp | WindowKind::Overlay(_)) as u32,
+            )
             .event_mask(
                 xproto::EventMask::EXPOSURE
                     | xproto::EventMask::STRUCTURE_NOTIFY
@@ -627,6 +633,49 @@ impl X11WindowState {
                         &[atoms._NET_WM_STATE_MODAL],
                     ),
                 )?;
+            }
+
+            // 处理 Overlay 窗口
+            if let WindowKind::Overlay(overlay_opts) = &params.kind {
+                // 设置窗口类型为 DOCK（覆盖层）
+                check_reply(
+                    || "X11 ChangeProperty32 setting window type for overlay failed.",
+                    xcb.change_property32(
+                        xproto::PropMode::REPLACE,
+                        x_window,
+                        atoms._NET_WM_WINDOW_TYPE,
+                        xproto::AtomEnum::ATOM,
+                        &[atoms._NET_WM_WINDOW_TYPE_DOCK],
+                    ),
+                )?;
+
+                // 设置始终置顶状态
+                check_reply(
+                    || "X11 ChangeProperty32 setting above state for overlay failed.",
+                    xcb.change_property32(
+                        xproto::PropMode::REPLACE,
+                        x_window,
+                        atoms._NET_WM_STATE,
+                        xproto::AtomEnum::ATOM,
+                        &[atoms._NET_WM_STATE_ABOVE],
+                    ),
+                )?;
+
+                // 设置透明度（如果小于 1.0）
+                if overlay_opts.opacity < 1.0 {
+                    // _NET_WM_WINDOW_OPACITY 是 32 位无符号整数，范围 0 到 0xffffffff
+                    let opacity = (overlay_opts.opacity * 0xffffffff as f32) as u32;
+                    check_reply(
+                        || "X11 ChangeProperty32 setting opacity for overlay failed.",
+                        xcb.change_property32(
+                            xproto::PropMode::REPLACE,
+                            x_window,
+                            atoms._NET_WM_WINDOW_OPACITY,
+                            xproto::AtomEnum::CARDINAL,
+                            &[opacity],
+                        ),
+                    )?;
+                }
             }
 
             check_reply(
