@@ -1,6 +1,5 @@
 //! 桌面宠物演示 - 透明窗口 + 鼠标穿透 + 窗口移动宠物
 
-use rgpui::prelude::FluentBuilder;
 use rgpui::*;
 use rgpui_component::v_flex;
 use rgpui_component_assets::Assets;
@@ -148,6 +147,17 @@ impl PetState {
         self.is_moving = moving;
     }
 
+    /// 同步窗口当前位置，恢复自动移动时从用户拖动后的位置继续
+    fn set_position(&mut self, position: Point<Pixels>) {
+        self.x = position.x.as_f32();
+        self.y = position.y.as_f32();
+    }
+
+    /// 返回宠物当前是否处于自动移动状态
+    fn is_moving(&self) -> bool {
+        self.is_moving
+    }
+
     fn position(&self) -> Point<Pixels> {
         point(px(self.x), px(self.y))
     }
@@ -196,7 +206,11 @@ fn main() {
         let window_handle = cx
             .open_window(
                 WindowOptions {
-                    titlebar: None,
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("桌面宠物".into()),
+                        appears_transparent: true,
+                        ..Default::default()
+                    }),
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     window_background: WindowBackgroundAppearance::Transparent,
                     mouse_passthrough: passthrough_state.get(),
@@ -217,9 +231,14 @@ fn main() {
                 cx.background_executor()
                     .timer(Duration::from_millis(16))
                     .await;
-                let mut pet = pet_state_clone.lock().unwrap();
-                pet.update(Duration::from_millis(16));
-                let new_pos = pet.position();
+                let new_pos = {
+                    let mut pet = pet_state_clone.lock().unwrap();
+                    if !pet.is_moving() {
+                        continue;
+                    }
+                    pet.update(Duration::from_millis(16));
+                    pet.position()
+                };
 
                 // 移动窗口到新位置
                 let _ = cx.update_window(window_handle.into(), |_, window, _cx| {
@@ -247,13 +266,24 @@ fn setup_global_hotkey(
             eprintln!("Global hotkey triggered (Ctrl+Shift+P)");
             let enabled = state.toggle();
 
-            let mut pet = pet_state.lock().unwrap();
-            pet.set_moving(enabled);
+            {
+                let mut pet = pet_state.lock().unwrap();
+                pet.set_moving(enabled);
+            }
 
             if let Err(err) = cx.update_window(window_handle.into(), |view, window, cx| {
-                // 设置鼠标穿透
-                println!("mouse status: {}", enabled);
-                window.set_mouse_passthrough(enabled);
+                if enabled {
+                    // 恢复运行前先记录用户通过标题栏拖动后的新位置
+                    let current_position = window.bounds().origin;
+                    pet_state.lock().unwrap().set_position(current_position);
+                    window.set_titlebar_visible(false);
+                    window.set_mouse_passthrough(true);
+                } else {
+                    // 暂停时关闭穿透并显示系统标题栏，交给 Windows 原生 HTCAPTION 拖动
+                    window.set_mouse_passthrough(false);
+                    window.set_titlebar_visible(true);
+                    window.activate_window();
+                }
                 if let Ok(view) = view.downcast::<DesktopPet>() {
                     view.update(cx, |v, cx| {
                         v.passthrough = enabled;
@@ -288,18 +318,12 @@ impl Render for DesktopPet {
         let pet_emoji = pet.get_emoji().to_string();
         drop(pet);
 
-        div()
-            .size_full()
-            .overflow_hidden()
-            .when(!self.passthrough, |this| {
-                this.window_control_area(WindowControlArea::Drag)
-            })
-            .child(
-                v_flex()
-                    .size_full()
-                    .items_center()
-                    .justify_center()
-                    .child(div().text_size(px(120.0)).child(pet_emoji)),
-            )
+        div().size_full().overflow_hidden().child(
+            v_flex()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .child(div().text_size(px(120.0)).child(pet_emoji)),
+        )
     }
 }

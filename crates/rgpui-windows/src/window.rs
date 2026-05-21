@@ -82,6 +82,8 @@ pub struct WindowsWindowState {
     pub invalidate_devices: Arc<AtomicBool>,
     /// 是否允许鼠标事件穿透到后面的窗口
     pub mouse_passthrough: Cell<bool>,
+    /// 当前是否显示系统标题栏和边框
+    pub titlebar_visible: Cell<bool>,
     fullscreen: Cell<Option<StyleAndBounds>>,
     initial_placement: Cell<Option<WindowOpenStatus>>,
     hwnd: HWND,
@@ -93,7 +95,6 @@ pub(crate) struct WindowsWindowInner {
     pub(crate) state: WindowsWindowState,
     system_settings: WindowsSystemSettings,
     pub(crate) handle: AnyWindowHandle,
-    pub(crate) hide_title_bar: bool,
     pub(crate) client_decorations: bool,
     pub(crate) is_movable: bool,
     pub(crate) executor: ForegroundExecutor,
@@ -116,6 +117,7 @@ impl WindowsWindowState {
         disable_direct_composition: bool,
         invalidate_devices: Arc<AtomicBool>,
         mouse_passthrough: bool,
+        titlebar_visible: bool,
     ) -> Result<Self> {
         let scale_factor = {
             let monitor_dpi = unsafe { GetDpiForWindow(hwnd) } as f32;
@@ -181,6 +183,7 @@ impl WindowsWindowState {
             invalidate_devices,
             direct_manipulation,
             mouse_passthrough: Cell::new(mouse_passthrough),
+            titlebar_visible: Cell::new(titlebar_visible),
         })
     }
 
@@ -257,6 +260,7 @@ impl WindowsWindowInner {
             context.disable_direct_composition,
             context.invalidate_devices.clone(),
             context.mouse_passthrough,
+            !context.hide_title_bar,
         )?;
 
         Ok(Rc::new(Self {
@@ -264,7 +268,6 @@ impl WindowsWindowInner {
             drop_target_helper: context.drop_target_helper.clone(),
             state,
             handle: context.handle,
-            hide_title_bar: context.hide_title_bar,
             client_decorations: context.client_decorations,
             is_movable: context.is_movable,
             executor: context.executor.clone(),
@@ -659,24 +662,19 @@ impl PlatformWindow for WindowsWindow {
         let new_bounds = rgpui::bounds(position, size).to_device_pixels(self.scale_factor());
         let rect = calculate_window_rect(new_bounds, &self.state.border_offset);
 
-        self.0
-            .executor
-            .spawn(async move {
-                unsafe {
-                    SetWindowPos(
-                        hwnd,
-                        None,
-                        rect.left,
-                        rect.top,
-                        rect.right - rect.left,
-                        rect.bottom - rect.top,
-                        SWP_NOZORDER | SWP_NOACTIVATE,
-                    )
-                    .context("unable to set window position")
-                    .log_err();
-                }
-            })
-            .detach();
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                None,
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+            .context("unable to set window position")
+            .log_err();
+        }
     }
 
     fn scale_factor(&self) -> f32 {
@@ -1039,11 +1037,26 @@ impl PlatformWindow for WindowsWindow {
         let _ = unsafe { MessageBeep(MB_OK) };
     }
 
+    /// 开始由系统接管的窗口拖动
+    fn start_window_move(&self) {
+        unsafe {
+            ReleaseCapture().log_err();
+            SendMessageW(
+                self.0.hwnd,
+                WM_NCLBUTTONDOWN,
+                Some(WPARAM(HTCAPTION as usize)),
+                Some(LPARAM(0)),
+            );
+        }
+    }
+
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
     /// 使用 WS_EX_LAYERED 扩展样式和 WM_NCHITTEST 实现穿透效果
     /// 保留 titlebar 和边框区域的鼠标交互，允许移动和调整窗口大小
     fn set_mouse_passthrough(&self, passthrough: bool) {
         let hwnd = self.0.hwnd;
+        self.0.state.mouse_passthrough.set(passthrough);
+
         let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
 
         // 只切换 WS_EX_TRANSPARENT，始终保留 WS_EX_LAYERED
@@ -1071,9 +1084,6 @@ impl PlatformWindow for WindowsWindow {
                 .log_err();
             }
         }
-
-        // 更新内部状态
-        self.0.state.mouse_passthrough.set(passthrough);
     }
 
     /// 设置标题栏和边框是否可见
@@ -1083,6 +1093,11 @@ impl PlatformWindow for WindowsWindow {
     /// 同时控制任务栏图标：隐藏 titlebar 时使用 WS_EX_TOOLWINDOW 隐藏任务栏图标
     fn set_titlebar_visible(&self, visible: bool) {
         let hwnd = self.0.hwnd;
+        self.0.state.titlebar_visible.set(visible);
+        if visible {
+            self.0.state.mouse_passthrough.set(false);
+        }
+
         let current_style = unsafe { get_window_long(hwnd, GWL_STYLE) };
         let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
 
@@ -1107,7 +1122,9 @@ impl PlatformWindow for WindowsWindow {
 
         // 控制任务栏图标
         let new_ex_style = if visible {
-            (current_ex_style | WS_EX_APPWINDOW.0 as isize) & !WS_EX_TOOLWINDOW.0 as isize
+            (current_ex_style | WS_EX_APPWINDOW.0 as isize)
+                & !WS_EX_TOOLWINDOW.0 as isize
+                & !WS_EX_TRANSPARENT.0 as isize
         } else {
             (current_ex_style | WS_EX_TOOLWINDOW.0 as isize) & !WS_EX_APPWINDOW.0 as isize
         };

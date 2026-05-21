@@ -762,7 +762,7 @@ impl WindowsWindowInner {
             return Some(0);
         }
 
-        if !self.hide_title_bar || self.state.is_fullscreen() || wparam.0 == 0 {
+        if self.state.titlebar_visible.get() || self.state.is_fullscreen() || wparam.0 == 0 {
             return None;
         }
 
@@ -817,7 +817,7 @@ impl WindowsWindowInner {
     }
 
     fn handle_create_msg(&self, handle: HWND) -> Option<isize> {
-        if self.hide_title_bar {
+        if !self.state.titlebar_visible.get() {
             notify_frame_changed(handle);
             Some(0)
         } else {
@@ -972,7 +972,7 @@ impl WindowsWindowInner {
             }
 
             // 如果使用系统标题栏，标题栏区域保持可拖动
-            if !self.hide_title_bar {
+            if self.state.titlebar_visible.get() {
                 // 系统标题栏区域（通常在窗口顶部）
                 if cursor_point.y <= frame_y {
                     return Some(HTCAPTION as _);
@@ -983,7 +983,7 @@ impl WindowsWindowInner {
             return Some(HTTRANSPARENT as _);
         }
 
-        if !self.hide_title_bar {
+        if self.state.titlebar_visible.get() {
             // 如果操作系统绘制标题栏，我们不需要处理命中测试消息
             return drag_area;
         }
