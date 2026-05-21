@@ -1016,20 +1016,24 @@ impl PlatformWindow for WindowsWindow {
     }
 
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
-    /// 使用 WS_EX_TRANSPARENT 和 WS_EX_LAYERED 扩展样式实现穿透效果
+    /// 使用 WS_EX_LAYERED 扩展样式和 WM_NCHITTEST 实现穿透效果
+    /// 保留 titlebar 和边框区域的鼠标交互，允许移动和调整窗口大小
     fn set_mouse_passthrough(&self, passthrough: bool) {
         let hwnd = self.0.hwnd;
         let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
 
+        // 只切换 WS_EX_TRANSPARENT，始终保留 WS_EX_LAYERED
+        // 穿透逻辑通过 WM_NCHITTEST 返回 HTTRANSPARENT 实现
         let new_ex_style = if passthrough {
             current_ex_style | WS_EX_TRANSPARENT.0 as isize | WS_EX_LAYERED.0 as isize
         } else {
-            current_ex_style & !WS_EX_TRANSPARENT.0 as isize & !WS_EX_LAYERED.0 as isize
+            (current_ex_style | WS_EX_LAYERED.0 as isize) & !WS_EX_TRANSPARENT.0 as isize
         };
 
         if current_ex_style != new_ex_style {
             unsafe {
                 set_window_long(hwnd, GWL_EXSTYLE, new_ex_style);
+
                 // 刷新窗口以应用新的扩展样式
                 SetWindowPos(
                     hwnd,
@@ -1046,6 +1050,75 @@ impl PlatformWindow for WindowsWindow {
 
         // 更新内部状态
         self.0.state.mouse_passthrough.set(passthrough);
+    }
+
+    /// 设置标题栏和边框是否可见
+    /// 通过切换标准窗口样式实现
+    /// 显示时：添加 WS_CAPTION、WS_THICKFRAME、WS_SYSMENU、WS_MINIMIZEBOX、WS_MAXIMIZEBOX
+    /// 隐藏时：使用 WS_POPUP
+    /// 同时控制任务栏图标：隐藏 titlebar 时使用 WS_EX_TOOLWINDOW 隐藏任务栏图标
+    fn set_titlebar_visible(&self, visible: bool) {
+        let hwnd = self.0.hwnd;
+        let current_style = unsafe { get_window_long(hwnd, GWL_STYLE) };
+        let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
+
+        // 显示 titlebar 时添加标准窗口样式，移除 WS_POPUP
+        // 隐藏 titlebar 时使用 WS_POPUP，移除标准窗口样式
+        let new_style = if visible {
+            (current_style & !WS_POPUP.0 as isize)
+                | WS_CAPTION.0 as isize
+                | WS_THICKFRAME.0 as isize
+                | WS_SYSMENU.0 as isize
+                | WS_MINIMIZEBOX.0 as isize
+                | WS_MAXIMIZEBOX.0 as isize
+        } else {
+            (current_style
+                & !WS_CAPTION.0 as isize
+                & !WS_THICKFRAME.0 as isize
+                & !WS_SYSMENU.0 as isize
+                & !WS_MINIMIZEBOX.0 as isize
+                & !WS_MAXIMIZEBOX.0 as isize)
+                | WS_POPUP.0 as isize
+        };
+
+        // 控制任务栏图标
+        let new_ex_style = if visible {
+            (current_ex_style | WS_EX_APPWINDOW.0 as isize) & !WS_EX_TOOLWINDOW.0 as isize
+        } else {
+            (current_ex_style | WS_EX_TOOLWINDOW.0 as isize) & !WS_EX_APPWINDOW.0 as isize
+        };
+
+        if current_style != new_style || current_ex_style != new_ex_style {
+            unsafe {
+                set_window_long(hwnd, GWL_STYLE, new_style);
+                set_window_long(hwnd, GWL_EXSTYLE, new_ex_style);
+
+                // 刷新窗口以应用新的样式
+                SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE
+                        | SWP_NOSIZE
+                        | SWP_NOZORDER
+                        | SWP_FRAMECHANGED
+                        | SWP_NOACTIVATE
+                        | SWP_DRAWFRAME,
+                )
+                .log_err();
+
+                // 强制重绘非客户区和客户区
+                let _ = RedrawWindow(
+                    Some(hwnd),
+                    None,
+                    None,
+                    RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_ERASE,
+                );
+            }
+        }
     }
 }
 

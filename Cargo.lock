@@ -4764,6 +4764,8 @@ version = "0.1.0"
 dependencies = [
  "global-hotkey",
  "rgpui",
+ "rgpui-component",
+ "rgpui-component-assets",
  "rgpui-platform",
  "schemars",
  "serde",

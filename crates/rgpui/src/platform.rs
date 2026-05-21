@@ -786,6 +786,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
     fn set_mouse_passthrough(&self, _passthrough: bool) {}
 
+    /// 设置标题栏和边框是否可见
+    fn set_titlebar_visible(&self, _visible: bool) {}
+
     #[cfg(any(test, feature = "test-support"))]
     fn as_test(&mut self) -> Option<&mut TestWindow> {
         None
