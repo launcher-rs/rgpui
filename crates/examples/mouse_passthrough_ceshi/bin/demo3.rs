@@ -153,11 +153,8 @@ impl Render for ButtonStyledDemo {
             .size_full()
             .overflow_hidden()
             .child(if self.passthrough {
-                println!("不显示...");
-
                 div()
             } else {
-                println!("显示.....");
                 div().child(TitleBar::new())
             })
             // 状态提示文字
