@@ -75,10 +75,10 @@ fn main() {
                         ..Default::default()
                     }),
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
-
+                    // titlebar: None,
                     // 背景透明
                     window_background: WindowBackgroundAppearance::Transparent,
-                    // 初始穿透状态
+                    // 初始穿透状态（true 时开启穿透，隐藏 titlebar 和任务栏图标）
                     mouse_passthrough: passthrough_state.get(),
                     ..Default::default()
                 },
@@ -86,6 +86,18 @@ fn main() {
                 |_, cx| cx.new(|_| ButtonStyledDemo::new()),
             )
             .expect("failed to open window");
+
+        // 延迟设置 titlebar 可见性，等待窗口完全初始化
+        let initial_visible = !passthrough_state.get();
+        cx.spawn(async move |cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(100))
+                .await;
+            let _ = cx.update_window(window_handle.into(), |_, window, _| {
+                window.set_titlebar_visible(initial_visible);
+            });
+        })
+        .detach();
 
         // 设置全局快捷键
         setup_global_hotkey(cx, state_clone, window_handle);
@@ -108,6 +120,8 @@ fn setup_global_hotkey(
             let enabled = state.toggle();
             let _ = cx.update_window(window_handle.into(), |_, window, cx| {
                 window.set_mouse_passthrough(enabled);
+                // 穿透开启时隐藏标题栏和边框，穿透关闭时显示
+                window.set_titlebar_visible(!enabled);
                 cx.dispatch_action(&SetPassthrough { enabled });
             });
         }
