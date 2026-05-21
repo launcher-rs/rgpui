@@ -37,7 +37,7 @@ use rgpui::{
     WindowDecorations, WindowKind, WindowParams, layer_shell::LayerShellNotSupportedError, px,
     size,
 };
-use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig,wgpu};
+use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig, wgpu};
 
 #[derive(Default)]
 pub(crate) struct Callbacks {

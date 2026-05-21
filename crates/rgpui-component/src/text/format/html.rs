@@ -316,6 +316,9 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &Rc<Node>) {
                     Some(TextMark::default().strikethrough()),
                 );
             }
+            local_name!("u") => {
+                merge_children_with_mark(node, paragraph, Some(TextMark::default().underline()));
+            }
             local_name!("code") => {
                 merge_children_with_mark(node, paragraph, Some(TextMark::default().code()));
             }

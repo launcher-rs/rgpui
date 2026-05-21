@@ -208,6 +208,7 @@ pub struct TextMark {
     pub bold: bool,
     pub italic: bool,
     pub strikethrough: bool,
+    pub underline: bool,
     pub code: bool,
     pub link: Option<LinkMark>,
 }
@@ -228,6 +229,11 @@ impl TextMark {
         self
     }
 
+    pub fn underline(mut self) -> Self {
+        self.underline = true;
+        self
+    }
+
     pub fn code(mut self) -> Self {
         self.code = true;
         self
@@ -242,6 +248,7 @@ impl TextMark {
         self.bold |= other.bold;
         self.italic |= other.italic;
         self.strikethrough |= other.strikethrough;
+        self.underline |= other.underline;
         self.code |= other.code;
         if let Some(link) = other.link {
             self.link = Some(link);
@@ -683,6 +690,12 @@ impl Paragraph {
                     }
                     if style.strikethrough {
                         highlight.strikethrough = Some(rgpui::StrikethroughStyle {
+                            thickness: rgpui::px(1.),
+                            ..Default::default()
+                        });
+                    }
+                    if style.underline {
+                        highlight.underline = Some(rgpui::UnderlineStyle {
                             thickness: rgpui::px(1.),
                             ..Default::default()
                         });
@@ -1182,7 +1195,7 @@ impl BlockNode {
                     text_size = (f)(*level, node_cx.style.heading_base_font_size);
                 }
 
-                h_flex()
+                div()
                     .id(SharedString::from(format!("h{}-{}", level, ix)))
                     .pb(rems(0.3))
                     .whitespace_normal()
