@@ -9,3 +9,11 @@ rgpui-platform.workspace = true
 global-hotkey = "0.8.0"
 serde = { version = "1.0.228", features = ["derive"] }
 schemars = "1.2"
+
+[[bin]]
+name = "demo1"
+path = "bin/demo1.rs"
+
+[[bin]]
+name = "demo2"
+path = "bin/demo2.rs"
