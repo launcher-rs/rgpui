@@ -37,12 +37,12 @@ use rgpui::{
     WindowDecorations, WindowKind, WindowParams, layer_shell::LayerShellNotSupportedError, px,
     size,
 };
-use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig};
+use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig, wgpu};
 
 #[derive(Default)]
 pub(crate) struct Callbacks {
     request_frame: Option<Box<dyn FnMut(RequestFrameOptions)>>,
-    input: Option<Box<dyn FnMut(rgpui::PlatformInput) -> rgpui::DispatchEventResult>>,
+    input: Option<Box<dyn FnMut(gpui::PlatformInput) -> gpui::DispatchEventResult>>,
     active_status_change: Option<Box<dyn FnMut(bool)>>,
     hover_status_change: Option<Box<dyn FnMut(bool)>>,
     resize: Option<Box<dyn FnMut(Size<Pixels>, f32)>>,
@@ -352,7 +352,7 @@ impl WaylandWindowState {
                     height: DevicePixels(f32::from(options.bounds.size.height) as i32),
                 },
                 transparent: true,
-                preferred_present_mode: None,
+                preferred_present_mode: Some(wgpu::PresentMode::Mailbox),
             };
             WgpuRenderer::new(gpu_context, &raw_window, config, compositor_gpu)?
         };

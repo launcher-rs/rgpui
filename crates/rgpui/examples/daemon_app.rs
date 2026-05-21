@@ -1,8 +1,8 @@
 use rgpui::single_instance::{SingleInstance, send_activate_to_existing};
 use rgpui::{
-    App, Bounds, Context, Entity, Keystroke, Toast, ToastPosition, ToastStack,
-    TrayIconEvent, TrayMenuItem, Window, WindowBackgroundAppearance, WindowBounds, WindowKind,
-    WindowOptions, div, prelude::*, px, rgb, rgba, size,
+    App, Bounds, Context, Entity, Keystroke, Toast, ToastPosition, ToastStack, TrayIconEvent,
+    TrayMenuItem, Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div,
+    prelude::*, px, rgb, rgba, size,
 };
 use rgpui_platform::application;
 

@@ -935,14 +935,7 @@ impl WindowsWindowInner {
             None
         };
 
-        if !self.hide_title_bar {
-            // 如果操作系统绘制标题栏，我们不需要处理命中测试消息
-            return drag_area;
-        }
-
         let dpi = unsafe { GetDpiForWindow(handle) };
-        // 我们不使用操作系统标题栏，所以默认的 `DefWindowProcW` 只会注册 1px 的边缘用于调整大小
-        // 我们需要自己计算边框厚度并手动进行命中测试
         let frame_y = get_frame_thicknessx(dpi);
         let frame_x = get_frame_thicknessy(dpi);
         let mut cursor_point = POINT {
@@ -951,22 +944,53 @@ impl WindowsWindowInner {
         };
 
         unsafe { ScreenToClient(handle, &mut cursor_point).ok().log_err() };
-        if !self.state.is_maximized() && 0 <= cursor_point.y && cursor_point.y <= frame_y {
-            // x 轴实际上从 -frame_x 到 0
-            return Some(if cursor_point.x <= 0 {
-                HTTOPLEFT
-            } else {
-                let mut rect = Default::default();
-                unsafe { GetWindowRect(handle, &mut rect) }.log_err();
-                // RECT 的 right 和 bottom 边界是开区间，因此 `-1`
-                let right = rect.right - rect.left - 1;
-                // 边界包含填充框架，所以要容纳两者
-                if right - 2 * frame_x <= cursor_point.x {
-                    HTTOPRIGHT
+
+        // 检查是否在边框调整大小区域
+        let in_resize_area =
+            if !self.state.is_maximized() && 0 <= cursor_point.y && cursor_point.y <= frame_y {
+                Some(if cursor_point.x <= 0 {
+                    HTTOPLEFT
                 } else {
-                    HTTOP
+                    let mut rect = Default::default();
+                    unsafe { GetWindowRect(handle, &mut rect) }.log_err();
+                    let right = rect.right - rect.left - 1;
+                    if right - 2 * frame_x <= cursor_point.x {
+                        HTTOPRIGHT
+                    } else {
+                        HTTOP
+                    }
+                } as _)
+            } else {
+                None
+            };
+
+        // 穿透模式：边框和标题栏区域保持交互，其他区域穿透
+        if self.state.mouse_passthrough.get() {
+            // 优先返回边框调整大小区域
+            if let Some(hit) = in_resize_area {
+                return Some(hit);
+            }
+
+            // 如果使用系统标题栏，标题栏区域保持可拖动
+            if !self.hide_title_bar {
+                // 系统标题栏区域（通常在窗口顶部）
+                if cursor_point.y <= frame_y {
+                    return Some(HTCAPTION as _);
                 }
-            } as _);
+            }
+
+            // 其他区域穿透
+            return Some(HTTRANSPARENT as _);
+        }
+
+        if !self.hide_title_bar {
+            // 如果操作系统绘制标题栏，我们不需要处理命中测试消息
+            return drag_area;
+        }
+
+        // 非穿透模式：返回边框调整大小区域或拖动区域
+        if let Some(hit) = in_resize_area {
+            return Some(hit);
         }
 
         drag_area

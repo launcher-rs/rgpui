@@ -41,7 +41,7 @@ members = [
     "crates/rgpui-yororen-ui/examples/todolist",
     "crates/rgpui-adabraka-ui",
 
-    "crates/rgpui/examples/mouse_passthrough_ceshi"
+    "crates/examples/mouse_passthrough_ceshi"
 
 ]
 

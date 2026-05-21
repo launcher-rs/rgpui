@@ -2244,6 +2244,14 @@ impl Window {
         self.platform_window.set_mouse_passthrough(passthrough);
     }
 
+    /// 设置标题栏和边框是否可见
+    ///
+    /// # 参数
+    /// * `visible` - true 显示标题栏和边框，false 隐藏
+    pub fn set_titlebar_visible(&self, visible: bool) {
+        self.platform_window.set_titlebar_visible(visible);
+    }
+
     /// Mark the window as dirty at the platform level.
     pub fn set_window_edited(&mut self, edited: bool) {
         self.platform_window.set_edited(edited);
