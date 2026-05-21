@@ -78,7 +78,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-yororen-ui/examples/todolist/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/rgpui-yororen-ui/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/ryouren-ui/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/crates/rgpui/examples/mouse_passthrough_ceshi/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/examples/mouse_passthrough_ceshi/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

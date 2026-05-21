@@ -1,3 +1,4 @@
+//! 显示titlebar有问题，可以考虑是的自定义titlebar
 use rgpui::{
     App, AppContext, Bounds, Context, FontWeight, InteractiveElement, IntoElement, Keystroke,
     MouseButton, ParentElement, Render, SingleInstance, Styled, TitlebarOptions, Window,
