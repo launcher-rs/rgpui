@@ -1,7 +1,8 @@
 //! 桌面宠物演示 - 透明窗口 + 鼠标穿透 + 窗口移动宠物
 
+use rgpui::prelude::FluentBuilder;
 use rgpui::*;
-use rgpui_component::{v_flex, TitleBar};
+use rgpui_component::v_flex;
 use rgpui_component_assets::Assets;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -100,9 +101,11 @@ impl PetState {
         let min_y = -self.max_offscreen;
         let max_y = self.screen_height - self.window_size + self.max_offscreen;
 
-        // 如果超出范围，转向屏幕中心
+        // 如果超出范围，转向屏幕中心并将位置限制在有效范围内
         if new_x < min_x || new_x > max_x || new_y < min_y || new_y > max_y {
             self.turn_toward_center();
+            self.x = new_x.clamp(min_x, max_x);
+            self.y = new_y.clamp(min_y, max_y);
         } else {
             self.x = new_x;
             self.y = new_y;
@@ -163,7 +166,7 @@ const APP_ID: &str = "com.example.desktop_pet";
 
 fn main() {
     let passthrough_state = PassthroughState::new(true);
-    let pet_state = Arc::new(Mutex::new(PetState::new(1920.0, 1080.0, 80.0)));
+    let pet_state = Arc::new(Mutex::new(PetState::new(1920.0, 1080.0, 220.0)));
 
     let _instance = match SingleInstance::acquire(APP_ID) {
         Ok(instance) => instance,
@@ -186,10 +189,9 @@ fn main() {
 
         cx.activate(true);
 
-        let window_size = 80.0;
+        let window_size = 220.0;
         let initial_pos = pet_state.lock().unwrap().position();
-        // let bounds = Bounds::new(initial_pos, size(px(window_size), px(window_size)));
-        let bounds = Bounds::centered(None, size(px(300.), px(300.0)), cx);
+        let bounds = Bounds::new(initial_pos, size(px(window_size), px(window_size)));
 
         let window_handle = cx
             .open_window(
@@ -200,12 +202,7 @@ fn main() {
                     mouse_passthrough: passthrough_state.get(),
                     is_resizable: false,
                     is_minimizable: false,
-                    kind: WindowKind::Overlay(OverlayOptions {
-                        click_through: passthrough_state.get(),
-                        opacity: 1.0,
-                        decorations: false,
-                        always_on_top: true,
-                    }),
+                    kind: WindowKind::Overlay,
                     ..Default::default()
                 },
                 |_, cx| cx.new(|_| DesktopPet::new(pet_state.clone())),
@@ -253,7 +250,9 @@ fn setup_global_hotkey(
             let mut pet = pet_state.lock().unwrap();
             pet.set_moving(enabled);
 
-            let _ = cx.update_window(window_handle.into(), |view, window, cx| {
+            if let Err(err) = cx.update_window(window_handle.into(), |view, window, cx| {
+                // 设置鼠标穿透
+                println!("mouse status: {}", enabled);
                 window.set_mouse_passthrough(enabled);
                 if let Ok(view) = view.downcast::<DesktopPet>() {
                     view.update(cx, |v, cx| {
@@ -261,7 +260,9 @@ fn setup_global_hotkey(
                         cx.notify();
                     });
                 }
-            });
+            }) {
+                eprintln!("Failed to update window: {}", err);
+            }
         }
     });
 }
@@ -287,14 +288,18 @@ impl Render for DesktopPet {
         let pet_emoji = pet.get_emoji().to_string();
         drop(pet);
 
-        v_flex()
+        div()
             .size_full()
             .overflow_hidden()
-            .child(if self.passthrough {
-                div()
-            } else {
-                div().child(TitleBar::new())
+            .when(!self.passthrough, |this| {
+                this.window_control_area(WindowControlArea::Drag)
             })
-            .child(pet_emoji)
+            .child(
+                v_flex()
+                    .size_full()
+                    .items_center()
+                    .justify_center()
+                    .child(div().text_size(px(120.0)).child(pet_emoji)),
+            )
     }
 }

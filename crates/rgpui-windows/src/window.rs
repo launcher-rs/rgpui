@@ -457,13 +457,10 @@ impl WindowsWindow {
         // 根据窗口类型设置窗口样式
         let (mut dwexstyle, dwstyle) = match &params.kind {
             WindowKind::PopUp => (WS_EX_TOOLWINDOW, WINDOW_STYLE(0x0)),
-            WindowKind::Overlay(overlay_opts) => {
+            WindowKind::Overlay => {
                 // Overlay 窗口：始终置顶、无装饰、支持透明度
-                let mut ex_style = WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW;
-                if overlay_opts.click_through {
-                    ex_style |= WS_EX_TRANSPARENT;
-                }
-                (ex_style, WS_POPUP)
+                // 鼠标穿透通过 params.mouse_passthrough 在下方统一处理
+                (WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, WS_POPUP)
             }
             _ if params.window_decorations == WindowDecorations::Client => {
                 // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框

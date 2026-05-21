@@ -173,7 +173,7 @@ fn open_overlay(cx: &mut App) {
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            kind: WindowKind::Overlay(rgpui::OverlayOptions::default()),
+            kind: WindowKind::Overlay,
             titlebar: None,
             focus: true,
             show: true,

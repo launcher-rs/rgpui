@@ -198,7 +198,7 @@ impl WaylandSurfaceState {
 
         // Overlay 窗口在 Wayland 上作为常规 toplevel 处理
         // 注意：Wayland 协议不直接支持"始终置顶"，需要合成器支持
-        if let WindowKind::Overlay(_) = &params.kind {
+        if let WindowKind::Overlay = &params.kind {
             // 可以设置窗口为无边框
             // 透明度由渲染器处理
         }

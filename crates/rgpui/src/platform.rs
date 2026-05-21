@@ -1592,10 +1592,7 @@ pub struct WindowParams {
     pub window_decorations: WindowDecorations,
 
     /// 是否允许鼠标事件穿透到后面的窗口
-    #[cfg_attr(
-        any(target_os = "linux", target_os = "freebsd", target_os = "macos"),
-        allow(dead_code)
-    )]
+    #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub mouse_passthrough: bool,
 }
 
@@ -1696,32 +1693,10 @@ pub enum WindowKind {
     Dialog,
 
     /// 覆盖窗口，用于全局覆盖层、屏幕标注或透明 UI
-    /// 特性：始终置顶、无装饰、可配置透明度和点击穿透
-    Overlay(OverlayOptions),
-}
-
-/// Overlay 窗口配置选项
-#[derive(Clone, Debug, PartialEq)]
-pub struct OverlayOptions {
-    /// 是否允许鼠标事件穿透窗口
-    pub click_through: bool,
-    /// 窗口透明度（0.0 - 1.0）
-    pub opacity: f32,
-    /// 是否显示窗口装饰（标题栏、边框等）
-    pub decorations: bool,
-    /// 是否始终在所有窗口上方
-    pub always_on_top: bool,
-}
-
-impl Default for OverlayOptions {
-    fn default() -> Self {
-        Self {
-            click_through: false,
-            opacity: 1.0,
-            decorations: false,
-            always_on_top: true,
-        }
-    }
+    /// 特性：始终置顶、无装饰
+    /// 鼠标穿透通过 [`WindowOptions::mouse_passthrough`] 控制
+    /// 透明度通过 [`WindowOptions::window_background`] 控制
+    Overlay,
 }
 
 /// 窗口外观，由操作系统定义

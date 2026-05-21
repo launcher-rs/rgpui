@@ -673,6 +673,7 @@ impl MacWindow {
             display_id,
             window_min_size,
             tabbing_identifier,
+            mouse_passthrough,
             ..
         }: WindowParams,
         cursor_visible: Arc<AtomicBool>,
@@ -722,7 +723,7 @@ impl MacWindow {
                 WindowKind::Floating | WindowKind::Dialog => {
                     msg_send![PANEL_CLASS, alloc]
                 }
-                WindowKind::Overlay(overlay_opts) => {
+                WindowKind::Overlay => {
                     // Overlay 窗口：使用 NSPanel，不激活，无边框，始终置顶
                     style_mask |= NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskBorderless;
                     let panel: id = msg_send![PANEL_CLASS, alloc];
@@ -730,16 +731,7 @@ impl MacWindow {
                     // 设置窗口层级为浮动的
                     let _: () = msg_send![panel, setLevel: cocoa::appkit::NSWindowLevel::NSFloatingWindowLevel as i32];
 
-                    // 设置透明度
-                    if overlay_opts.opacity < 1.0 {
-                        let _: () = msg_send![panel, setAlphaValue: overlay_opts.opacity as f64];
-                    }
-
-                    // 设置点击穿透
-                    if overlay_opts.click_through {
-                        let _: () = msg_send![panel, setIgnoresMouseEvents: YES];
-                    }
-
+                    // 鼠标穿透通过 mouse_passthrough 参数在下方统一处理
                     panel
                 }
                 #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -878,6 +870,11 @@ impl MacWindow {
             }
 
             native_window.setMovable_(is_movable as BOOL);
+
+            // 设置鼠标穿透
+            if mouse_passthrough {
+                let _: () = msg_send![native_window, setIgnoresMouseEvents: YES];
+            }
 
             if let Some(window_min_size) = window_min_size {
                 native_window.setContentMinSize_(NSSize {

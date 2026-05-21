@@ -462,7 +462,7 @@ impl X11WindowState {
             .border_pixel(visual_set.black_pixel)
             .colormap(colormap)
             .override_redirect(
-                matches!(params.kind, WindowKind::PopUp | WindowKind::Overlay(_)) as u32,
+                matches!(params.kind, WindowKind::PopUp | WindowKind::Overlay) as u32,
             )
             .event_mask(
                 xproto::EventMask::EXPOSURE
@@ -636,7 +636,7 @@ impl X11WindowState {
             }
 
             // 处理 Overlay 窗口
-            if let WindowKind::Overlay(overlay_opts) = &params.kind {
+            if let WindowKind::Overlay = &params.kind {
                 // 设置窗口类型为 DOCK（覆盖层）
                 check_reply(
                     || "X11 ChangeProperty32 setting window type for overlay failed.",
@@ -660,22 +660,6 @@ impl X11WindowState {
                         &[atoms._NET_WM_STATE_ABOVE],
                     ),
                 )?;
-
-                // 设置透明度（如果小于 1.0）
-                if overlay_opts.opacity < 1.0 {
-                    // _NET_WM_WINDOW_OPACITY 是 32 位无符号整数，范围 0 到 0xffffffff
-                    let opacity = (overlay_opts.opacity * 0xffffffff as f32) as u32;
-                    check_reply(
-                        || "X11 ChangeProperty32 setting opacity for overlay failed.",
-                        xcb.change_property32(
-                            xproto::PropMode::REPLACE,
-                            x_window,
-                            atoms._NET_WM_WINDOW_OPACITY,
-                            xproto::AtomEnum::CARDINAL,
-                            &[opacity],
-                        ),
-                    )?;
-                }
             }
 
             check_reply(

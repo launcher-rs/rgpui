@@ -128,20 +128,10 @@
 
 ### 新增类型
 
-#### WindowKind::Overlay(OverlayOptions)
-- 始终置顶的覆盖窗口
-- 支持透明度和点击穿透
-- 无窗口装饰
-
-#### OverlayOptions 结构体
-```rust
-pub struct OverlayOptions {
-    pub click_through: bool,  // 鼠标事件穿透
-    pub opacity: f32,         // 透明度 0.0-1.0
-    pub decorations: bool,    // 窗口装饰
-    pub always_on_top: bool,  // 始终置顶
-}
-```
+#### WindowKind::Overlay
+- 始终置顶的覆盖窗口，无窗口装饰
+- 鼠标穿透通过 [`WindowOptions::mouse_passthrough`] 控制
+- 背景外观通过 [`WindowOptions::window_background`] 控制
 
 ### 各平台实现
 
@@ -206,19 +196,14 @@ let _instance = match SingleInstance::acquire("my-app") {
 };
 
 // Overlay 覆盖窗口
-use rgpui::{WindowKind, OverlayOptions};
-
-let overlay_window = cx.open_window(WindowParams {
-    kind: WindowKind::Overlay(OverlayOptions {
-        click_through: true,  // 允许点击穿透
-        opacity: 0.8,         // 80% 透明度
-        decorations: false,   // 无装饰
-        always_on_top: true,  // 始终置顶
-    }),
-    bounds: Bounds {
+let overlay_window = cx.open_window(WindowOptions {
+    kind: WindowKind::Overlay,
+    window_background: WindowBackgroundAppearance::Transparent,
+    mouse_passthrough: true,
+    window_bounds: Some(WindowBounds::Windowed(Bounds {
         origin: Point { x: px(100.0), y: px(100.0) },
         size: Size { width: px(400.0), height: px(300.0) },
-    },
+    })),
     ..Default::default()
 })?;
 ```
