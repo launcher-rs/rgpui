@@ -1205,6 +1205,32 @@ impl PlatformWindow for WaylandWindow {
             .detach();
     }
 
+    fn set_position(&mut self, position: Point<Pixels>) {
+        // 在 Wayland 上，窗口位置由合成器控制
+        // 这里我们只更新内部状态，实际位置可能不会被合成器尊重
+        let state = self.borrow();
+        let size = state.bounds.size;
+        let state_ptr = self.0.clone();
+
+        let window_geometry = inset_by_tiling(
+            Bounds {
+                origin: position,
+                size,
+            },
+            state.inset(),
+            state.tiling,
+        )
+        .map(|v| f32::from(v) as i32)
+        .map_size(|v| if v <= 0 { 1 } else { v });
+
+        state.surface_state.set_geometry(
+            window_geometry.origin.x,
+            window_geometry.origin.y,
+            window_geometry.size.width,
+            window_geometry.size.height,
+        );
+    }
+
     fn scale_factor(&self) -> f32 {
         self.borrow().scale
     }

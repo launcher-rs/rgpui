@@ -655,6 +655,33 @@ impl PlatformWindow for WindowsWindow {
             .detach();
     }
 
+    fn set_position(&mut self, position: Point<Pixels>) {
+        let hwnd = self.0.hwnd;
+        let bounds = self.bounds();
+        let size = bounds.size;
+        let new_bounds = rgpui::bounds(position, size).to_device_pixels(self.scale_factor());
+        let rect = calculate_window_rect(new_bounds, &self.state.border_offset);
+
+        self.0
+            .executor
+            .spawn(async move {
+                unsafe {
+                    SetWindowPos(
+                        hwnd,
+                        None,
+                        rect.left,
+                        rect.top,
+                        rect.right - rect.left,
+                        rect.bottom - rect.top,
+                        SWP_NOZORDER | SWP_NOACTIVATE,
+                    )
+                    .context("unable to set window position")
+                    .log_err();
+                }
+            })
+            .detach();
+    }
+
     fn scale_factor(&self) -> f32 {
         self.state.scale_factor.get()
     }

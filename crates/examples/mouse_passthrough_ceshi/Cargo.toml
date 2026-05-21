@@ -23,3 +23,7 @@ path = "bin/demo2.rs"
 [[bin]]
 name = "demo3"
 path = "bin/demo3.rs"
+
+[[bin]]
+name = "desktop_pet_demo"
+path = "bin/desktop_pet_demo.rs"

@@ -2135,6 +2135,11 @@ impl Window {
         self.platform_window.resize(size);
     }
 
+    /// 设置窗口位置（保持大小不变）
+    pub fn set_position(&mut self, position: Point<Pixels>) {
+        self.platform_window.set_position(position);
+    }
+
     /// Returns whether or not the window is currently fullscreen
     pub fn is_fullscreen(&self) -> bool {
         self.platform_window.is_fullscreen()

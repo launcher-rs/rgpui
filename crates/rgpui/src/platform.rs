@@ -689,6 +689,8 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn window_bounds(&self) -> WindowBounds;
     fn content_size(&self) -> Size<Pixels>;
     fn resize(&mut self, size: Size<Pixels>);
+    /// 设置窗口位置（保持大小不变）
+    fn set_position(&mut self, position: Point<Pixels>);
     fn scale_factor(&self) -> f32;
     fn appearance(&self) -> WindowAppearance;
     fn display(&self) -> Option<Rc<dyn PlatformDisplay>>;

@@ -1156,6 +1156,30 @@ impl PlatformWindow for MacWindow {
             .detach();
     }
 
+    fn set_position(&mut self, position: Point<Pixels>) {
+        let this = self.0.lock();
+        let window = this.native_window;
+        let closed = this.closed.clone();
+        let bounds = this.content_size();
+        this.foreground_executor
+            .spawn(async move {
+                if_window_not_closed(closed, || unsafe {
+                    let frame = NSRect {
+                        origin: NSPoint {
+                            x: position.x.as_f32() as f64,
+                            y: position.y.as_f32() as f64,
+                        },
+                        size: NSSize {
+                            width: bounds.width.as_f32() as f64,
+                            height: bounds.height.as_f32() as f64,
+                        },
+                    };
+                    window.setFrame_display_(frame, true);
+                })
+            })
+            .detach();
+    }
+
     fn merge_all_windows(&self) {
         let native_window = self.0.lock().native_window;
         extern "C" fn merge_windows_async(context: *mut std::ffi::c_void) {
