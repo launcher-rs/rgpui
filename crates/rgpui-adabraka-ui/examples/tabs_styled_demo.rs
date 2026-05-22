@@ -4,7 +4,6 @@ use rgpui_adabraka_ui::{
     navigation::tabs::{TabItem, TabPanel, TabVariant, Tabs},
     prelude::*,
 };
-use std::fmt::format;
 use std::path::PathBuf;
 
 struct Assets {

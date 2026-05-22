@@ -3,7 +3,7 @@ use rgpui_adabraka_ui::{
     components::icon_source::IconSource,
     layout::VStack,
     navigation::toolbar::{
-        Toolbar, ToolbarButton, ToolbarButtonVariant, ToolbarGroup, ToolbarItem, ToolbarSize,
+        Toolbar, ToolbarButton, ToolbarButtonVariant, ToolbarGroup, ToolbarSize,
     },
     theme::use_theme,
 };

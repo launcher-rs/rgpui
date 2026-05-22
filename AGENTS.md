@@ -85,7 +85,7 @@ PlatformWindow trait 关键方法:
 ```
 
 ## 提交与推送规范
-- **推送前必须检查**：执行 `cargo check --workspace` 确保没有任何错误和警告
+- **推送前必须检查**：执行 `cargo check --workspace --examples` 确保没有任何错误和警告
 - - **推送前格式化代码**: 执行 `cargo fmt` 格式化代码
 - **禁止使用 `#[allow(dead_code)]`**：未使用的代码应当删除或重构，不得使用属性压制警告
 
@@ -94,10 +94,3 @@ PlatformWindow trait 关键方法:
 - **所有函数必须添加中文注释**：公开 API 和内部函数均需使用简体中文说明功能、参数和返回值
 - 注释风格遵循 Rust 文档规范（`///` 用于公开 API，`//` 用于内部逻辑）
 - 避免使用英文注释，保持项目语言统一
-
-## 注意事项
-
-- `gpui_platform` 是示例代码的入口 crate，通过 `cfg(target_os)` 选择平台实现
-- 所有中文注释使用简体中文
-- 编辑文件后务必运行 `cargo check --workspace` 确认无警告
-- 新增 `PlatformWindow` trait 方法时，需同步更新 `gpui/src/platform.rs`、`gpui/src/platform/test/window.rs`、`gpui/src/platform/visual_test.rs` 和各平台实现
