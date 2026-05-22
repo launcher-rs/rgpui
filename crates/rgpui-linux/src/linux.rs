@@ -3,6 +3,12 @@
 //! 本模块根据运行时检测的显示服务器环境或特性配置，自动选择
 //! 合适的平台客户端实现。
 
+use std::cell::RefCell;
+
+use self::global_hotkey::LinuxGlobalHotkey;
+use self::notifications::LinuxNotifications;
+use self::permissions::LinuxPermissions;
+
 mod dispatcher;
 mod headless;
 mod keyboard;
@@ -35,13 +41,6 @@ pub(crate) use wayland::*;
 #[cfg(feature = "x11")]
 pub(crate) use x11::*;
 
-// 导出新功能模块
-pub(crate) use auto_launch::LinuxAutoLaunch;
-pub(crate) use focused_window::get_focused_window_info;
-pub(crate) use global_hotkey::LinuxGlobalHotkey;
-pub(crate) use notifications::LinuxNotifications;
-pub(crate) use permissions::LinuxPermissions;
-
 use std::rc::Rc;
 
 /// 返回当前操作系统的默认平台实现。
@@ -56,28 +55,31 @@ pub fn current_platform(headless: bool) -> Rc<dyn rgpui::Platform> {
     #[cfg(feature = "x11")]
     use anyhow::Context as _;
 
+    fn create_platform<P: LinuxClient + 'static>(inner: P) -> Rc<dyn rgpui::Platform> {
+        Rc::new(LinuxPlatform {
+            inner,
+            global_hotkey: RefCell::new(LinuxGlobalHotkey::new()),
+            notifications: LinuxNotifications::new(),
+            permissions: LinuxPermissions::new(),
+        })
+    }
+
     if headless {
-        return Rc::new(LinuxPlatform {
-            inner: HeadlessClient::new(),
-        });
+        return create_platform(HeadlessClient::new());
     }
 
     match rgpui::guess_compositor() {
         #[cfg(feature = "wayland")]
-        "Wayland" => Rc::new(LinuxPlatform {
-            inner: WaylandClient::new(),
-        }),
+        "Wayland" => create_platform(WaylandClient::new()),
 
         #[cfg(feature = "x11")]
-        "X11" => Rc::new(LinuxPlatform {
-            inner: X11Client::new()
+        "X11" => create_platform(
+            X11Client::new()
                 .context("Failed to initialize X11 client.")
                 .unwrap(),
-        }),
+        ),
 
-        "Headless" => Rc::new(LinuxPlatform {
-            inner: HeadlessClient::new(),
-        }),
+        "Headless" => create_platform(HeadlessClient::new()),
         _ => unreachable!(),
     }
 }

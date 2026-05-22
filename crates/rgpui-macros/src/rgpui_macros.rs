@@ -407,15 +407,17 @@ pub(crate) fn get_simple_attribute_field(ast: &DeriveInput, name: &'static str) 
 #[proc_macro]
 pub fn path(input: TokenStream) -> TokenStream {
     let path = parse_macro_input!(input as LitStr);
-    let mut path = path.value();
+    let path = path.value();
 
     #[cfg(target_os = "windows")]
-    {
-        path = path.replace("/", "\\");
+    let path = {
+        let path = path.replace("/", "\\");
         if path.starts_with("\\") {
-            path = format!("C:{}", path);
+            format!("C:{}", path)
+        } else {
+            path
         }
-    }
+    };
 
     TokenStream::from(quote! {
         #path

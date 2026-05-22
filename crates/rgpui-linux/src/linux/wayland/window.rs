@@ -42,7 +42,7 @@ use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig, wgpu};
 #[derive(Default)]
 pub(crate) struct Callbacks {
     request_frame: Option<Box<dyn FnMut(RequestFrameOptions)>>,
-    input: Option<Box<dyn FnMut(gpui::PlatformInput) -> gpui::DispatchEventResult>>,
+    input: Option<Box<dyn FnMut(rgpui::PlatformInput) -> rgpui::DispatchEventResult>>,
     active_status_change: Option<Box<dyn FnMut(bool)>>,
     hover_status_change: Option<Box<dyn FnMut(bool)>>,
     resize: Option<Box<dyn FnMut(Size<Pixels>, f32)>>,
@@ -359,7 +359,7 @@ impl WaylandWindowState {
 
         if let WaylandSurfaceState::Xdg(ref xdg_state) = surface_state {
             if let Some(titlebar) = options.titlebar.and_then(|titlebar| titlebar.title) {
-                xdg_state.toplevel.set_title(title.to_string());
+                xdg_state.toplevel.set_title(titlebar.to_string());
             }
             // 根据 GPU 的最大纹理尺寸设置最大窗口大小
             // 这可以防止窗口被调整为大于 GPU 可渲染的尺寸
@@ -368,12 +368,6 @@ impl WaylandWindowState {
                 .toplevel
                 .set_max_size(max_texture_size, max_texture_size);
         }
-        // Set max window size based on the GPU's maximum texture dimension.
-        // This prevents the window from being resized larger than what the GPU can render.
-        let max_texture_size = renderer.max_texture_size() as i32;
-        xdg_state
-            .toplevel
-            .set_max_size(max_texture_size, max_texture_size);
 
         Ok(Self {
             surface_state,
@@ -1210,7 +1204,7 @@ impl PlatformWindow for WaylandWindow {
         // 这里我们只更新内部状态，实际位置可能不会被合成器尊重
         let state = self.borrow();
         let size = state.bounds.size;
-        let state_ptr = self.0.clone();
+        let _state_ptr = self.0.clone();
 
         let window_geometry = inset_by_tiling(
             Bounds {
@@ -1345,6 +1339,12 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn minimize(&self) {
+        if let Some(toplevel) = self.borrow().surface_state.toplevel() {
+            toplevel.set_minimized();
+        }
+    }
+
+    fn hide(&self) {
         if let Some(toplevel) = self.borrow().surface_state.toplevel() {
             toplevel.set_minimized();
         }
