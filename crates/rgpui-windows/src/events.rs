@@ -981,7 +981,8 @@ impl WindowsWindowInner {
 
             // Ctrl 键按下时：允许拖动窗口（覆盖穿透）
             // 使桌面宠物等穿透窗口在运动时仍可被用户拖动
-            if is_virtual_key_pressed(VK_CONTROL) {
+            // 使用 GetAsyncKeyState 而非 GetKeyState，因为穿透窗口不接收焦点
+            if unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) < 0 } {
                 return Some(HTCAPTION as _);
             }
 
