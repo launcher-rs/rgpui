@@ -30,6 +30,13 @@ mod platform;
 mod window;
 mod window_appearance;
 
+// 新功能模块
+mod auto_launch;
+mod focused_window;
+mod global_hotkey;
+mod notifications;
+mod permissions;
+
 use cocoa::{
     base::{id, nil},
     foundation::{NSAutoreleasePool, NSNotFound, NSString, NSUInteger},
@@ -50,6 +57,13 @@ pub(crate) use window::*;
 
 #[cfg(feature = "font-kit")]
 pub(crate) use text_system::*;
+
+// 导出新功能模块
+pub(crate) use auto_launch::MacAutoLaunch;
+pub(crate) use focused_window::get_focused_window_info;
+pub(crate) use global_hotkey::MacGlobalHotkey;
+pub(crate) use notifications::MacNotifications;
+pub(crate) use permissions::MacPermissions;
 
 /// macOS 平台实现，供外部使用。
 pub use platform::MacPlatform;

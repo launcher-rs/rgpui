@@ -171,11 +171,10 @@ where
                         let Some(index) = selected_index else {
                             return;
                         };
-
                         // 防护：验证项是否存在再继续
-                        if list_state.delegate().delegate.item(index).is_none() {
+                        let Some(item) = list_state.delegate().delegate.item(index).cloned() else {
                             return;
-                        }
+                        };
 
                         let ix = index;
 
@@ -188,23 +187,7 @@ where
                             (s.multiple, s.state.selection.clone())
                         };
 
-                        let is_selected = selection.iter().any(|(cur_ix, _)| cur_ix == &ix);
-                        let changes: Vec<SearchableListChange> = if multiple {
-                            if is_selected {
-                                vec![SearchableListChange::Deselect { index: ix }]
-                            } else {
-                                vec![SearchableListChange::Select { index: ix }]
-                            }
-                        } else {
-                            let mut changes: Vec<SearchableListChange> = selection
-                                .iter()
-                                .map(|(cur_ix, _)| SearchableListChange::Deselect {
-                                    index: *cur_ix,
-                                })
-                                .collect();
-                            changes.push(SearchableListChange::Select { index: ix });
-                            changes
-                        };
+                        let changes = Self::selection_changes(multiple, &selection, ix, &item);
 
                         let before_indices: Vec<IndexPath> =
                             selection.iter().map(|(ix, _)| *ix).collect();
@@ -386,9 +369,35 @@ where
         self.state.focus_handle.focus(window, cx);
     }
 
-    /// 处理项点击：单选替换选中并关闭；多选切换状态
+    fn selection_changes(
+        multiple: bool,
+        selection: &[(IndexPath, D::Item)],
+        ix: IndexPath,
+        item: &D::Item,
+    ) -> Vec<SearchableListChange> {
+        let is_selected = selection
+            .iter()
+            .any(|(_, selected_item)| selected_item.value() == item.value());
+
+        if multiple {
+            if is_selected {
+                vec![SearchableListChange::Deselect { index: ix }]
+            } else {
+                vec![SearchableListChange::Select { index: ix }]
+            }
+        } else {
+            let mut changes: Vec<SearchableListChange> = selection
+                .iter()
+                .map(|(cur_ix, _)| SearchableListChange::Deselect { index: *cur_ix })
+                .collect();
+            changes.push(SearchableListChange::Select { index: ix });
+            changes
+        }
+    }
+
+    /// Process an item click: single-select replaces the selection and closes; multi-select toggles.
     ///
-    /// 在提交前调用 `delegate.on_will_change`，关闭时调用 `delegate.on_confirm`
+    /// Calls `delegate.on_will_change` before committing and `delegate.on_confirm` when closing.
     #[allow(dead_code)]
     pub(crate) fn handle_item_select(
         &mut self,
@@ -396,24 +405,19 @@ where
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let is_selected = self.state.selection.iter().any(|(cur_ix, _)| cur_ix == &ix);
-
-        let changes: Vec<SearchableListChange> = if self.multiple {
-            if is_selected {
-                vec![SearchableListChange::Deselect { index: ix }]
-            } else {
-                vec![SearchableListChange::Select { index: ix }]
-            }
-        } else {
-            let mut changes: Vec<SearchableListChange> = self
-                .state
-                .selection
-                .iter()
-                .map(|(cur_ix, _)| SearchableListChange::Deselect { index: *cur_ix })
-                .collect();
-            changes.push(SearchableListChange::Select { index: ix });
-            changes
+        let Some(item) = self
+            .state
+            .list
+            .read(cx)
+            .delegate()
+            .delegate
+            .item(ix)
+            .cloned()
+        else {
+            return;
         };
+
+        let changes = Self::selection_changes(self.multiple, &self.state.selection, ix, &item);
 
         let mut selection = self.state.selection.clone();
         let before_indices: Vec<IndexPath> = selection.iter().map(|(ix, _)| *ix).collect();
@@ -1158,7 +1162,7 @@ mod tests {
             assert_eq!(
                 state_ref.state.list.read(cx).selected_index(),
                 Some(IndexPath::new(1)),
-                "初始 selected_indices 应种子化 ListState.selected_index，而不仅仅是快照",
+                "initial selected_indices should seed ListState.selected_index, not just the snapshot",
             );
             assert_eq!(state_ref.selected_values(), vec!["Vue"]);
         });
@@ -1180,6 +1184,100 @@ mod tests {
 
             state.update(cx, |s, cx| s.remove_selected_index(IndexPath::new(0), cx));
             assert_eq!(state.read(cx).selected_values(), &["Vue"]);
+        });
+    }
+
+    #[rgpui::test]
+    fn test_multi_combo_box_search_selection_uses_value_identity(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        cx.update(|window, cx| {
+            let items = SearchableVec::new(vec!["React", "Vue", "Angular"]);
+            let state = cx.new(|cx| ComboboxState::new(items, vec![], window, cx).multiple(true));
+
+            state.update(cx, |s, cx| s.add_selected_index(IndexPath::new(0), cx));
+            assert_eq!(state.read(cx).selected_values(), &["React"]);
+
+            state.update(cx, |s, cx| {
+                s.state.list.update(cx, |list, cx| {
+                    let _ = list
+                        .delegate_mut()
+                        .delegate
+                        .perform_search("Vue", window, cx);
+                });
+            });
+
+            state.read_with(cx, |s, cx| {
+                let selection = s.state.selection.clone();
+                let list = s.state.list.read(cx);
+                let delegate = &list.delegate().delegate;
+                let ix = IndexPath::new(0);
+                let item = delegate.item(ix).expect("filtered item exists");
+
+                assert_eq!(item.value(), &"Vue");
+                assert!(
+                    !delegate.is_item_checked(ix, item, &selection, cx),
+                    "filtered row 0 should not inherit React's checked state",
+                );
+            });
+
+            state.update(cx, |s, cx| {
+                s.handle_item_select(IndexPath::new(0), window, cx);
+            });
+            assert_eq!(state.read(cx).selected_values(), &["React", "Vue"]);
+        });
+    }
+
+    #[rgpui::test]
+    fn test_multi_combo_box_search_deselects_by_value(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        cx.update(|window, cx| {
+            let items = SearchableVec::new(vec!["React", "Vue", "Angular"]);
+            let state = cx.new(|cx| ComboboxState::new(items, vec![], window, cx).multiple(true));
+
+            state.update(cx, |s, cx| s.add_selected_index(IndexPath::new(0), cx));
+
+            state.update(cx, |s, cx| {
+                s.state.list.update(cx, |list, cx| {
+                    let _ = list
+                        .delegate_mut()
+                        .delegate
+                        .perform_search("React", window, cx);
+                });
+            });
+
+            state.update(cx, |s, cx| {
+                s.handle_item_select(IndexPath::new(0), window, cx);
+            });
+            assert!(state.read(cx).selected_values().is_empty());
+        });
+    }
+
+    #[rgpui::test]
+    fn test_searchable_list_default_change_uses_value_identity(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        cx.update(|window, cx| {
+            let mut delegate = SearchableVec::new(vec!["React", "Vue", "Angular"]);
+            let mut selection = vec![(IndexPath::new(1), "Vue")];
+
+            let _ = delegate.perform_search("Vue", window, cx);
+            delegate.on_will_change(
+                &mut selection,
+                &[SearchableListChange::Deselect {
+                    index: IndexPath::new(0),
+                }],
+            );
+            assert!(selection.is_empty());
+
+            delegate.on_will_change(
+                &mut selection,
+                &[SearchableListChange::Select {
+                    index: IndexPath::new(0),
+                }],
+            );
+            assert_eq!(selection, vec![(IndexPath::new(0), "Vue")]);
         });
     }
 
@@ -1213,7 +1311,7 @@ mod tests {
             let items = SearchableVec::new(vec!["Rust", "Go", "C++"]);
             let state = cx.new(|cx| ComboboxState::new(items, vec![], window, cx));
 
-            // 默认模式为单选
+            // Default mode is Single.
             state.update(cx, |s, cx| s.add_selected_index(IndexPath::new(0), cx));
             assert_eq!(state.read(cx).selected_values(), &["Rust"]);
 
@@ -1222,7 +1320,7 @@ mod tests {
         });
     }
 
-    // 通过忽略更改来否决所有选择的代理
+    // Delegate that vetoes all selections via on_will_change by ignoring the changes.
     struct VetoDelegate(SearchableVec<&'static str>);
 
     impl SearchableListDelegate for VetoDelegate {
@@ -1249,7 +1347,7 @@ mod tests {
             _selection: &mut Vec<(IndexPath, &'static str)>,
             _changes: &[SearchableListChange],
         ) {
-            // 保持选择不变 — 起到否决作用
+            // Leave selection unchanged — acts as a veto.
         }
     }
 
@@ -1261,21 +1359,21 @@ mod tests {
             let delegate = VetoDelegate(SearchableVec::new(vec!["Rust", "Go", "C++"]));
             let state = cx.new(|cx| ComboboxState::new(delegate, vec![], window, cx));
 
-            // 预先直接选中一项，以便验证否决能防止更改
+            // Pre-select an item directly so we can verify veto prevents changes.
             state.update(cx, |s, cx| s.add_selected_index(IndexPath::new(0), cx));
             assert_eq!(state.read(cx).selected_values(), &["Rust"]);
 
-            // 通过 handle_item_select 模拟点击索引 1；on_will_change 将否决它
+            // Simulate a click on index 1 via handle_item_select; on_will_change vetoes it.
             state.update(cx, |s, cx| {
                 s.handle_item_select(IndexPath::new(1), window, cx);
             });
 
-            // 选择必须保持不变，因为 on_will_change 未修改它
+            // Selection must remain unchanged because on_will_change left it unmodified.
             assert_eq!(state.read(cx).selected_values(), &["Rust"]);
         });
     }
 
-    // 抑制测试模块中 SearchableListState 的未使用导入警告
+    // Suppress unused import warning for SearchableListState in test module.
     #[allow(unused)]
     fn _uses_state<D: SearchableListDelegate + 'static>(_: &SearchableListState<D>)
     where

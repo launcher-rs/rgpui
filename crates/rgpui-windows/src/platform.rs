@@ -81,6 +81,12 @@ pub(crate) struct WindowsPlatformState {
     /// 与每个窗口共享，以便 `WM_SETCURSOR` 可以直接读取
     pub(crate) cursor_visible: Arc<AtomicBool>,
     directx_devices: RefCell<Option<DirectXDevices>>,
+    // 新增：全局快捷键管理器
+    global_hotkey: RefCell<WindowsGlobalHotkey>,
+    // 新增：全局快捷键回调
+    global_hotkey_callback: RefCell<Option<Box<dyn FnMut(u32)>>>,
+    // 新增：无窗口保持运行标志
+    keep_alive_without_windows: AtomicBool,
 }
 
 #[derive(Default)]
@@ -111,6 +117,9 @@ impl WindowsPlatformState {
             tray_menu_actions: RefCell::new(std::collections::HashMap::new()),
             tray_icon_event_callback: RefCell::new(None),
             tray_menu_action_callback: RefCell::new(None),
+            global_hotkey: RefCell::new(WindowsGlobalHotkey::new()),
+            global_hotkey_callback: RefCell::new(None),
+            keep_alive_without_windows: AtomicBool::new(false),
         }
     }
 }
@@ -777,8 +786,66 @@ impl Platform for WindowsPlatform {
         *self.inner.state.tray_menu_action_callback.borrow_mut() = Some(callback);
     }
 
-    fn set_keep_alive_without_windows(&self, _keep_alive: bool) {
-        // Windows 模式下即使没有窗口也会保持运行
+    fn set_keep_alive_without_windows(&self, keep_alive: bool) {
+        self.inner
+            .state
+            .keep_alive_without_windows
+            .store(keep_alive, Ordering::Release);
+    }
+
+    /// 注册全局快捷键
+    fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
+        let mut hotkey = self.inner.state.global_hotkey.borrow_mut();
+        hotkey.register(self.handle, id as i32, keystroke)
+    }
+
+    /// 注销全局快捷键
+    fn unregister_global_hotkey(&self, id: u32) {
+        let mut hotkey = self.inner.state.global_hotkey.borrow_mut();
+        hotkey.unregister(id as i32);
+    }
+
+    /// 注册全局快捷键事件回调
+    fn on_global_hotkey(&self, callback: Box<dyn FnMut(u32)>) {
+        *self.inner.state.global_hotkey_callback.borrow_mut() = Some(callback);
+    }
+
+    /// 显示系统原生通知
+    fn show_notification(&self, title: &str, body: &str) -> Result<()> {
+        show_balloon_notification(self.handle, title, body)
+    }
+
+    /// 设置开机自启动
+    fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
+        crate::set_auto_launch(app_id, enabled)
+    }
+
+    /// 检查开机自启动是否已启用
+    fn is_auto_launch_enabled(&self, app_id: &str) -> bool {
+        crate::is_auto_launch_enabled(app_id)
+    }
+
+    /// 获取当前系统聚焦窗口信息
+    fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
+        crate::get_focused_window_info()
+    }
+
+    /// 获取辅助功能权限状态（Windows 默认授予）
+    fn accessibility_status(&self) -> PermissionStatus {
+        PermissionStatus::Granted
+    }
+
+    /// 请求辅助功能权限（Windows 无需请求）
+    fn request_accessibility_permission(&self) {}
+
+    /// 获取麦克风权限状态（Windows 默认授予）
+    fn microphone_status(&self) -> PermissionStatus {
+        PermissionStatus::Granted
+    }
+
+    /// 请求麦克风权限（Windows 无需请求）
+    fn request_microphone_permission(&self, callback: Box<dyn FnOnce(bool)>) {
+        callback(true);
     }
 
     fn on_app_menu_action(&self, callback: Box<dyn FnMut(&dyn Action)>) {
@@ -1026,6 +1093,7 @@ impl WindowsPlatformInner {
             | WM_GPUI_GPU_DEVICE_LOST => self.handle_gpui_events(msg, wparam, lparam),
             WM_GPUI_TRAY_ICON => self.handle_tray_icon_event(handle, lparam),
             WM_COMMAND => self.handle_tray_menu_command(wparam),
+            WM_HOTKEY => self.handle_global_hotkey(wparam),
             _ => None,
         };
         if let Some(result) = handled {
@@ -1238,6 +1306,19 @@ impl WindowsPlatformInner {
             |callback| callback(&*action),
         );
 
+        Some(0)
+    }
+
+    /// 处理全局快捷键消息
+    /// 当用户按下注册的全局快捷键时触发
+    /// 参数:
+    ///   wparam - 包含快捷键 ID 的 WPARAM
+    /// 返回: 消息处理结果
+    fn handle_global_hotkey(&self, wparam: WPARAM) -> Option<isize> {
+        let hotkey_id = wparam.0 as u32;
+        if let Some(callback) = self.state.global_hotkey_callback.borrow_mut().as_mut() {
+            callback(hotkey_id);
+        }
         Some(0)
     }
 }

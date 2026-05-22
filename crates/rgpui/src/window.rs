@@ -1270,6 +1270,7 @@ impl Window {
             icon,
             #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
             tabbing_identifier,
+            mouse_passthrough,
         } = options;
 
         let window_bounds = window_bounds.unwrap_or_else(|| default_bounds(display_id, cx));
@@ -1290,6 +1291,7 @@ impl Window {
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
                 window_decorations: window_decorations.unwrap_or(WindowDecorations::Server),
+                mouse_passthrough,
             },
         )?;
 
@@ -2133,6 +2135,11 @@ impl Window {
         self.platform_window.resize(size);
     }
 
+    /// 设置窗口位置（保持大小不变）
+    pub fn set_position(&mut self, position: Point<Pixels>) {
+        self.platform_window.set_position(position);
+    }
+
     /// Returns whether or not the window is currently fullscreen
     pub fn is_fullscreen(&self) -> bool {
         self.platform_window.is_fullscreen()
@@ -2235,6 +2242,19 @@ impl Window {
     pub fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance) {
         self.platform_window
             .set_background_appearance(background_appearance);
+    }
+
+    /// 设置窗口是否允许鼠标事件穿透到后面的窗口
+    pub fn set_mouse_passthrough(&self, passthrough: bool) {
+        self.platform_window.set_mouse_passthrough(passthrough);
+    }
+
+    /// 设置标题栏和边框是否可见
+    ///
+    /// # 参数
+    /// * `visible` - true 显示标题栏和边框，false 隐藏
+    pub fn set_titlebar_visible(&self, visible: bool) {
+        self.platform_window.set_titlebar_visible(visible);
     }
 
     /// Mark the window as dirty at the platform level.

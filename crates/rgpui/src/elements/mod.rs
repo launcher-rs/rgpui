@@ -11,6 +11,7 @@ mod list;
 mod surface;
 mod svg;
 mod text;
+mod toast;
 mod uniform_list;
 
 pub use anchored::*;
@@ -24,4 +25,5 @@ pub use list::*;
 pub use surface::*;
 pub use svg::*;
 pub use text::*;
+pub use toast::*;
 pub use uniform_list::*;

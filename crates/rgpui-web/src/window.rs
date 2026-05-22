@@ -542,6 +542,17 @@ impl PlatformWindow for WebWindow {
             .ok();
     }
 
+    fn set_position(&mut self, position: Point<Pixels>) {
+        let style = self.inner.canvas.style();
+        style.set_property("position", "absolute").ok();
+        style
+            .set_property("left", &format!("{}px", f32::from(position.x)))
+            .ok();
+        style
+            .set_property("top", &format!("{}px", f32::from(position.y)))
+            .ok();
+    }
+
     fn scale_factor(&self) -> f32 {
         self.inner.state.borrow().scale_factor
     }

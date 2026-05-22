@@ -67,6 +67,9 @@ x11rb::atom_manager! {
         _NET_WM_STATE_FULLSCREEN,
         _NET_WM_STATE_HIDDEN,
         _NET_WM_STATE_FOCUSED,
+        _NET_WM_STATE_ABOVE,
+        _NET_WM_STATE_MODAL,
+        _NET_WM_STATE_SYNC,
         _NET_ACTIVE_WINDOW,
         _NET_WM_SYNC_REQUEST,
         _NET_WM_SYNC_REQUEST_COUNTER,
@@ -75,7 +78,8 @@ x11rb::atom_manager! {
         _NET_WM_WINDOW_TYPE,
         _NET_WM_WINDOW_TYPE_NOTIFICATION,
         _NET_WM_WINDOW_TYPE_DIALOG,
-        _NET_WM_STATE_MODAL,
+        _NET_WM_WINDOW_TYPE_DOCK,
+        _NET_WM_WINDOW_OPACITY,
         _NET_WM_SYNC,
         _NET_SUPPORTED,
         _MOTIF_WM_HINTS,
@@ -457,7 +461,9 @@ impl X11WindowState {
             // https://stackoverflow.com/questions/43218127/x11-xlib-xcb-creating-a-window-requires-border-pixel-if-specifying-colormap-wh
             .border_pixel(visual_set.black_pixel)
             .colormap(colormap)
-            .override_redirect((params.kind == WindowKind::PopUp) as u32)
+            .override_redirect(
+                matches!(params.kind, WindowKind::PopUp | WindowKind::Overlay) as u32,
+            )
             .event_mask(
                 xproto::EventMask::EXPOSURE
                     | xproto::EventMask::STRUCTURE_NOTIFY
@@ -625,6 +631,33 @@ impl X11WindowState {
                         atoms._NET_WM_STATE,
                         xproto::AtomEnum::ATOM,
                         &[atoms._NET_WM_STATE_MODAL],
+                    ),
+                )?;
+            }
+
+            // 处理 Overlay 窗口
+            if let WindowKind::Overlay = &params.kind {
+                // 设置窗口类型为 DOCK（覆盖层）
+                check_reply(
+                    || "X11 ChangeProperty32 setting window type for overlay failed.",
+                    xcb.change_property32(
+                        xproto::PropMode::REPLACE,
+                        x_window,
+                        atoms._NET_WM_WINDOW_TYPE,
+                        xproto::AtomEnum::ATOM,
+                        &[atoms._NET_WM_WINDOW_TYPE_DOCK],
+                    ),
+                )?;
+
+                // 设置始终置顶状态
+                check_reply(
+                    || "X11 ChangeProperty32 setting above state for overlay failed.",
+                    xcb.change_property32(
+                        xproto::PropMode::REPLACE,
+                        x_window,
+                        atoms._NET_WM_STATE,
+                        xproto::AtomEnum::ATOM,
+                        &[atoms._NET_WM_STATE_ABOVE],
                     ),
                 )?;
             }
@@ -1379,6 +1412,23 @@ impl PlatformWindow for X11Window {
                 &xproto::ConfigureWindowAux::new()
                     .width(width)
                     .height(height),
+            ),
+        )
+        .log_err();
+        xcb_flush(&self.0.xcb);
+    }
+
+    fn set_position(&mut self, position: Point<Pixels>) {
+        let state = self.0.state.borrow();
+        let position = position.to_device_pixels(state.scale_factor);
+        let x = position.x.0 as i32;
+        let y = position.y.0 as i32;
+
+        check_reply(
+            || format!("X11 ConfigureWindow failed. x: {}, y: {}", x, y),
+            self.0.xcb.configure_window(
+                self.0.x_window,
+                &xproto::ConfigureWindowAux::new().x(x).y(y),
             ),
         )
         .log_err();

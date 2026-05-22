@@ -37,12 +37,12 @@ use rgpui::{
     WindowDecorations, WindowKind, WindowParams, layer_shell::LayerShellNotSupportedError, px,
     size,
 };
-use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig};
+use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig, wgpu};
 
 #[derive(Default)]
 pub(crate) struct Callbacks {
     request_frame: Option<Box<dyn FnMut(RequestFrameOptions)>>,
-    input: Option<Box<dyn FnMut(rgpui::PlatformInput) -> rgpui::DispatchEventResult>>,
+    input: Option<Box<dyn FnMut(gpui::PlatformInput) -> gpui::DispatchEventResult>>,
     active_status_change: Option<Box<dyn FnMut(bool)>>,
     hover_status_change: Option<Box<dyn FnMut(bool)>>,
     resize: Option<Box<dyn FnMut(Size<Pixels>, f32)>>,
@@ -196,6 +196,13 @@ impl WaylandSurfaceState {
             toplevel.set_parent(xdg_parent.as_ref());
         }
 
+        // Overlay 窗口在 Wayland 上作为常规 toplevel 处理
+        // 注意：Wayland 协议不直接支持"始终置顶"，需要合成器支持
+        if let WindowKind::Overlay = &params.kind {
+            // 可以设置窗口为无边框
+            // 透明度由渲染器处理
+        }
+
         let dialog = if params.kind == WindowKind::Dialog {
             let dialog = globals.dialog.as_ref().map(|dialog| {
                 let xdg_dialog = dialog.get_xdg_dialog(&toplevel, &globals.qh, ());
@@ -345,7 +352,7 @@ impl WaylandWindowState {
                     height: DevicePixels(f32::from(options.bounds.size.height) as i32),
                 },
                 transparent: true,
-                preferred_present_mode: None,
+                preferred_present_mode: Some(wgpu::PresentMode::Mailbox),
             };
             WgpuRenderer::new(gpu_context, &raw_window, config, compositor_gpu)?
         };
@@ -1196,6 +1203,32 @@ impl PlatformWindow for WaylandWindow {
             .executor
             .spawn(async move { state_ptr.resize(size) })
             .detach();
+    }
+
+    fn set_position(&mut self, position: Point<Pixels>) {
+        // 在 Wayland 上，窗口位置由合成器控制
+        // 这里我们只更新内部状态，实际位置可能不会被合成器尊重
+        let state = self.borrow();
+        let size = state.bounds.size;
+        let state_ptr = self.0.clone();
+
+        let window_geometry = inset_by_tiling(
+            Bounds {
+                origin: position,
+                size,
+            },
+            state.inset(),
+            state.tiling,
+        )
+        .map(|v| f32::from(v) as i32)
+        .map_size(|v| if v <= 0 { 1 } else { v });
+
+        state.surface_state.set_geometry(
+            window_geometry.origin.x,
+            window_geometry.origin.y,
+            window_geometry.size.width,
+            window_geometry.size.height,
+        );
     }
 
     fn scale_factor(&self) -> f32 {

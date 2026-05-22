@@ -80,6 +80,10 @@ pub struct WindowsWindowState {
     /// Flag to instruct the `VSyncProvider` thread to invalidate the directx devices
     /// as resizing them has failed, causing us to have lost at least the render target.
     pub invalidate_devices: Arc<AtomicBool>,
+    /// 是否允许鼠标事件穿透到后面的窗口
+    pub mouse_passthrough: Cell<bool>,
+    /// 当前是否显示系统标题栏和边框
+    pub titlebar_visible: Cell<bool>,
     fullscreen: Cell<Option<StyleAndBounds>>,
     initial_placement: Cell<Option<WindowOpenStatus>>,
     hwnd: HWND,
@@ -91,7 +95,6 @@ pub(crate) struct WindowsWindowInner {
     pub(crate) state: WindowsWindowState,
     system_settings: WindowsSystemSettings,
     pub(crate) handle: AnyWindowHandle,
-    pub(crate) hide_title_bar: bool,
     pub(crate) client_decorations: bool,
     pub(crate) is_movable: bool,
     pub(crate) executor: ForegroundExecutor,
@@ -113,6 +116,8 @@ impl WindowsWindowState {
         appearance: WindowAppearance,
         disable_direct_composition: bool,
         invalidate_devices: Arc<AtomicBool>,
+        mouse_passthrough: bool,
+        titlebar_visible: bool,
     ) -> Result<Self> {
         let scale_factor = {
             let monitor_dpi = unsafe { GetDpiForWindow(hwnd) } as f32;
@@ -177,6 +182,8 @@ impl WindowsWindowState {
             hwnd,
             invalidate_devices,
             direct_manipulation,
+            mouse_passthrough: Cell::new(mouse_passthrough),
+            titlebar_visible: Cell::new(titlebar_visible),
         })
     }
 
@@ -252,6 +259,8 @@ impl WindowsWindowInner {
             context.appearance,
             context.disable_direct_composition,
             context.invalidate_devices.clone(),
+            context.mouse_passthrough,
+            !context.hide_title_bar,
         )?;
 
         Ok(Rc::new(Self {
@@ -259,7 +268,6 @@ impl WindowsWindowInner {
             drop_target_helper: context.drop_target_helper.clone(),
             state,
             handle: context.handle,
-            hide_title_bar: context.hide_title_bar,
             client_decorations: context.client_decorations,
             is_movable: context.is_movable,
             executor: context.executor.clone(),
@@ -398,6 +406,7 @@ struct WindowCreateContext {
     directx_devices: DirectXDevices,
     invalidate_devices: Arc<AtomicBool>,
     parent_hwnd: Option<HWND>,
+    mouse_passthrough: bool,
 }
 
 impl WindowsWindow {
@@ -448,32 +457,44 @@ impl WindowsWindow {
                 .unwrap_or(""),
         );
 
-        let (mut dwexstyle, dwstyle) = if params.kind == WindowKind::PopUp {
-            (WS_EX_TOOLWINDOW, WINDOW_STYLE(0x0))
-        } else if params.window_decorations == WindowDecorations::Client {
-            // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框
-            (WS_EX_APPWINDOW, WS_POPUP)
-        } else {
-            let mut dwstyle = WS_SYSMENU;
-
-            if params.is_resizable {
-                dwstyle |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+        // 根据窗口类型设置窗口样式
+        let (mut dwexstyle, dwstyle) = match &params.kind {
+            WindowKind::PopUp => (WS_EX_TOOLWINDOW, WINDOW_STYLE(0x0)),
+            WindowKind::Overlay => {
+                // Overlay 窗口：始终置顶、无装饰、支持透明度
+                // WS_EX_LAYERED 仅在需要鼠标穿透或禁用 DirectComposition 时添加
+                // 鼠标穿透通过 params.mouse_passthrough 在下方统一处理
+                (WS_EX_TOPMOST | WS_EX_TOOLWINDOW, WS_POPUP)
             }
-
-            if params.is_minimizable {
-                dwstyle |= WS_MINIMIZEBOX;
+            _ if params.window_decorations == WindowDecorations::Client => {
+                // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框
+                (WS_EX_APPWINDOW, WS_POPUP)
             }
-            let dwexstyle = if params.kind == WindowKind::Dialog {
-                dwstyle |= WS_POPUP | WS_CAPTION;
-                WS_EX_DLGMODALFRAME
-            } else {
-                WS_EX_APPWINDOW
-            };
+            _ => {
+                let mut dwstyle = WS_SYSMENU;
 
-            (dwexstyle, dwstyle)
+                if params.is_resizable {
+                    dwstyle |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+                }
+
+                if params.is_minimizable {
+                    dwstyle |= WS_MINIMIZEBOX;
+                }
+                let dwexstyle = if params.kind == WindowKind::Dialog {
+                    dwstyle |= WS_POPUP | WS_CAPTION;
+                    WS_EX_DLGMODALFRAME
+                } else {
+                    WS_EX_APPWINDOW
+                };
+
+                (dwexstyle, dwstyle)
+            }
         };
         if !disable_direct_composition {
             dwexstyle |= WS_EX_NOREDIRECTIONBITMAP;
+        }
+        if params.mouse_passthrough {
+            dwexstyle |= WS_EX_TRANSPARENT | WS_EX_LAYERED;
         }
 
         let hinstance = get_module_handle();
@@ -506,6 +527,7 @@ impl WindowsWindow {
             directx_devices,
             invalidate_devices,
             parent_hwnd,
+            mouse_passthrough: params.mouse_passthrough,
         };
         let creation_result = unsafe {
             CreateWindowExW(
@@ -632,6 +654,28 @@ impl PlatformWindow for WindowsWindow {
                 }
             })
             .detach();
+    }
+
+    fn set_position(&mut self, position: Point<Pixels>) {
+        let hwnd = self.0.hwnd;
+        let bounds = self.bounds();
+        let size = bounds.size;
+        let new_bounds = rgpui::bounds(position, size).to_device_pixels(self.scale_factor());
+        let rect = calculate_window_rect(new_bounds, &self.state.border_offset);
+
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                None,
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+            .context("unable to set window position")
+            .log_err();
+        }
     }
 
     fn scale_factor(&self) -> f32 {
@@ -992,6 +1036,130 @@ impl PlatformWindow for WindowsWindow {
     fn play_system_bell(&self) {
         // MB_OK: The sound specified as the Windows Default Beep sound.
         let _ = unsafe { MessageBeep(MB_OK) };
+    }
+
+    /// 开始由系统接管的窗口拖动
+    fn start_window_move(&self) {
+        unsafe {
+            ReleaseCapture().log_err();
+            SendMessageW(
+                self.0.hwnd,
+                WM_NCLBUTTONDOWN,
+                Some(WPARAM(HTCAPTION as usize)),
+                Some(LPARAM(0)),
+            );
+        }
+    }
+
+    /// 设置窗口是否允许鼠标事件穿透到后面的窗口
+    /// 开启穿透时添加 WS_EX_TRANSPARENT | WS_EX_LAYERED
+    /// 关闭穿透时移除这两个样式，确保窗口正常接收鼠标事件
+    fn set_mouse_passthrough(&self, passthrough: bool) {
+        let hwnd = self.0.hwnd;
+        self.0.state.mouse_passthrough.set(passthrough);
+
+        let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
+
+        let new_ex_style = if passthrough {
+            current_ex_style | WS_EX_TRANSPARENT.0 as isize | WS_EX_LAYERED.0 as isize
+        } else {
+            current_ex_style & !WS_EX_TRANSPARENT.0 as isize & !WS_EX_LAYERED.0 as isize
+        };
+
+        if current_ex_style != new_ex_style {
+            unsafe {
+                set_window_long(hwnd, GWL_EXSTYLE, new_ex_style);
+
+                // 刷新窗口以应用新的扩展样式
+                SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
+                )
+                .log_err();
+            }
+        }
+    }
+
+    /// 设置标题栏和边框是否可见
+    /// 通过切换标准窗口样式实现
+    /// 显示时：添加 WS_CAPTION、WS_THICKFRAME、WS_SYSMENU、WS_MINIMIZEBOX、WS_MAXIMIZEBOX
+    /// 隐藏时：使用 WS_POPUP
+    /// 同时控制任务栏图标：隐藏 titlebar 时使用 WS_EX_TOOLWINDOW 隐藏任务栏图标
+    fn set_titlebar_visible(&self, visible: bool) {
+        let hwnd = self.0.hwnd;
+        self.0.state.titlebar_visible.set(visible);
+        if visible {
+            self.0.state.mouse_passthrough.set(false);
+        }
+
+        let current_style = unsafe { get_window_long(hwnd, GWL_STYLE) };
+        let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
+
+        // 显示 titlebar 时添加标准窗口样式，移除 WS_POPUP
+        // 隐藏 titlebar 时使用 WS_POPUP，移除标准窗口样式
+        let new_style = if visible {
+            (current_style & !WS_POPUP.0 as isize)
+                | WS_CAPTION.0 as isize
+                | WS_THICKFRAME.0 as isize
+                | WS_SYSMENU.0 as isize
+                | WS_MINIMIZEBOX.0 as isize
+                | WS_MAXIMIZEBOX.0 as isize
+        } else {
+            (current_style
+                & !WS_CAPTION.0 as isize
+                & !WS_THICKFRAME.0 as isize
+                & !WS_SYSMENU.0 as isize
+                & !WS_MINIMIZEBOX.0 as isize
+                & !WS_MAXIMIZEBOX.0 as isize)
+                | WS_POPUP.0 as isize
+        };
+
+        // 控制任务栏图标
+        let new_ex_style = if visible {
+            (current_ex_style | WS_EX_APPWINDOW.0 as isize)
+                & !WS_EX_TOOLWINDOW.0 as isize
+                & !WS_EX_TRANSPARENT.0 as isize
+                & !WS_EX_LAYERED.0 as isize
+        } else {
+            (current_ex_style | WS_EX_TOOLWINDOW.0 as isize) & !WS_EX_APPWINDOW.0 as isize
+        };
+
+        if current_style != new_style || current_ex_style != new_ex_style {
+            unsafe {
+                set_window_long(hwnd, GWL_STYLE, new_style);
+                set_window_long(hwnd, GWL_EXSTYLE, new_ex_style);
+
+                // 刷新窗口以应用新的样式
+                SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE
+                        | SWP_NOSIZE
+                        | SWP_NOZORDER
+                        | SWP_FRAMECHANGED
+                        | SWP_NOACTIVATE
+                        | SWP_DRAWFRAME,
+                )
+                .log_err();
+
+                // 强制重绘非客户区和客户区
+                let _ = RedrawWindow(
+                    Some(hwnd),
+                    None,
+                    None,
+                    RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_ERASE,
+                );
+            }
+        }
     }
 }
 

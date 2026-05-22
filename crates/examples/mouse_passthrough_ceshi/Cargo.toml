@@ -1,0 +1,29 @@
+[package]
+name = "mouse_passthrough_ceshi"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rgpui.workspace = true
+rgpui-platform.workspace = true
+rgpui-component.workspace = true
+rgpui-component-assets.workspace = true
+global-hotkey = "0.8.0"
+serde = { version = "1.0.228", features = ["derive"] }
+schemars = "1.2"
+
+[[bin]]
+name = "demo1"
+path = "bin/demo1.rs"
+
+[[bin]]
+name = "demo2"
+path = "bin/demo2.rs"
+
+[[bin]]
+name = "demo3"
+path = "bin/demo3.rs"
+
+[[bin]]
+name = "desktop_pet_demo"
+path = "bin/desktop_pet_demo.rs"

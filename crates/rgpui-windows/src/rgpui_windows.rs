@@ -8,6 +8,7 @@
 //! - 使用 DirectComposition 进行窗口合成
 //! - 使用 Win32 API 处理窗口管理和输入事件
 
+mod auto_launch;
 mod clipboard;
 mod destination_list;
 mod direct_manipulation;
@@ -18,7 +19,10 @@ mod directx_renderer;
 mod dispatcher;
 mod display;
 mod events;
+mod focused_window;
+mod global_hotkey;
 mod keyboard;
+mod notifications;
 mod platform;
 mod system_settings;
 mod tray;
@@ -27,6 +31,7 @@ mod vsync;
 mod window;
 mod wrapper;
 
+pub(crate) use auto_launch::*;
 pub(crate) use clipboard::*;
 pub(crate) use destination_list::*;
 pub(crate) use direct_write::*;
@@ -36,7 +41,10 @@ pub(crate) use directx_renderer::*;
 pub(crate) use dispatcher::*;
 pub(crate) use display::*;
 pub(crate) use events::*;
+pub(crate) use focused_window::*;
+pub(crate) use global_hotkey::*;
 pub(crate) use keyboard::*;
+pub(crate) use notifications::*;
 pub(crate) use platform::*;
 pub(crate) use system_settings::*;
 pub(crate) use tray::*;
