@@ -47,8 +47,6 @@ crates/
 ├── rgpui_wgpu/      # wgpu 渲染后端
 ├── rgpui_macros/    # 过程宏
 ├── rgpui_tokio/     # Tokio 异步运行时集成
-├── rgpui_webview/   # WebView 集成
-└── rgpui_component/ # UI 组件库
 ```
 
 ## 开发命令
