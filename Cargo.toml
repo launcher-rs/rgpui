@@ -48,6 +48,7 @@ members = [
 [workspace.package]
 edition = "2024"
 publish = true
+license = "Apache-2.0"
 
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]

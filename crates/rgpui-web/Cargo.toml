@@ -3,6 +3,7 @@ name = "rgpui-web"
 version = "0.1.0"
 publish.workspace = true
 edition.workspace = true
+description = "Web/WASM 平台实现"
 license = "Apache-2.0"
 autoexamples = false
 

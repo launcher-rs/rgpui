@@ -3,6 +3,8 @@ name = "rgpui-component"
 version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
+description = "UI 组件库"
+license.workspace = true
 
 
 [lib]
