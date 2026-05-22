@@ -1,6 +1,6 @@
 [package]
 name = "rgpui-component"
-version = "0.1.1"
+version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
 description = "UI 组件库"
@@ -68,10 +68,6 @@ smol.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-text = "=21.0.0"
-
-[dev-dependencies]
-rgpui = { workspace = true, features = ["test-support"] }
-indoc = "2"
 
 [lints]
 workspace = true

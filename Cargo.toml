@@ -53,7 +53,7 @@ license = "Apache-2.0"
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-rgpui = { path = "crates/rgpui", default-features = false ,version = "0.1.0"}
+rgpui = { path = "crates/rgpui", default-features = false ,version = "0.1.1"}
 rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "0.1.0" }
 rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "0.1.0"}
 rgpui-macros = { path = "crates/rgpui-macros" ,version = "0.1.0"}
