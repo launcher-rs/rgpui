@@ -94,7 +94,7 @@ async fn extract_to_staging(
                 .with_context(|| {
                     format!("saving archive contents into the temporary file for {url}")
                 })?;
-            let asset_sha_256 = format!("{:x}", writer.hasher.finalize());
+            let asset_sha_256 = writer.hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
 
             anyhow::ensure!(
                 asset_sha_256 == expected_sha_256,

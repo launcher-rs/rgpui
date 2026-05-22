@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     sync::atomic::{AtomicBool, Ordering},
     thread::{ThreadId, current},
     time::{Duration, Instant},
@@ -71,9 +72,9 @@ impl WindowsDispatcher {
     /// * `runnable` - 可执行任务
     fn dispatch_on_threadpool(&self, priority: WorkItemPriority, runnable: RunnableVariant) {
         let handler = {
-            let mut task_wrapper = Some(runnable);
+            let task_wrapper = RefCell::new(Some(runnable));
             WorkItemHandler::new(move |_| {
-                let runnable = task_wrapper.take().unwrap();
+                let runnable = task_wrapper.borrow_mut().take().unwrap();
                 Self::execute_runnable(runnable);
                 Ok(())
             })
@@ -89,9 +90,9 @@ impl WindowsDispatcher {
     /// * `duration` - 延迟时间
     fn dispatch_on_threadpool_after(&self, runnable: RunnableVariant, duration: Duration) {
         let handler = {
-            let mut task_wrapper = Some(runnable);
+            let task_wrapper = RefCell::new(Some(runnable));
             TimerElapsedHandler::new(move |_| {
-                let runnable = task_wrapper.take().unwrap();
+                let runnable = task_wrapper.borrow_mut().take().unwrap();
                 Self::execute_runnable(runnable);
                 Ok(())
             })

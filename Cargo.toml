@@ -79,16 +79,18 @@ thiserror = "2.0.12"
 backtrace = "0.3"
 
 # ---- 异步与并发 ----
+# 异步运行时（用于 async-tar）
+async-std = { version = "1.13", features = ["unstable"] }
 # 异步通道
 async-channel = "2.5.0"
 # 异步文件系统操作
-async-fs = "2.1"
+async-fs = "2.2"
 # 异步任务调度
 async-task = "4.7"
 # 异步压缩
 async-compression = { version = "0.4", features = ["bzip2", "gzip", "futures-io"] }
 # 异步 tar 归档
-async-tar = "0.5.1"
+async-tar = "0.6"
 # 异步 zip
 async_zip = { version = "0.0.18", features = ["deflate", "deflate64"] }
 # 异步 Futures 工具
@@ -96,7 +98,7 @@ futures = "0.3.32"
 # 并发 Futures 组合子
 futures-concurrency = "7.7.1"
 # 轻量级 Futures
-futures-lite = "1.13"
+futures-lite = "2.6"
 # 轻量级异步运行时
 smol = "2.0"
 # 阻塞等待异步结果
@@ -114,13 +116,13 @@ serde_json_lenient = { version = "0.2", features = ["preserve_order", "raw_value
 # URL 编码序列化
 serde_urlencoded = "0.7"
 # 保持插入顺序的哈希表
-indexmap = { version = "2.7.0", features = ["serde"] }
+indexmap = { version = "2.14.0", features = ["serde"] }
 # 高效句柄映射
-slotmap = "1.0.6"
+slotmap = "1.1.1"
 # 小数组优化的 Vec
 smallvec = { version = "1.6", features = ["union", "const_new"] }
 # 字节缓冲区
-bytes = "1.0"
+bytes = "1.11.1"
 
 # ---- 时间日期 ----
 # 日期时间处理
@@ -130,11 +132,11 @@ web-time = "1.1.0"
 
 # ---- 日志、追踪与性能分析 ----
 # 日志门面
-log = { version = "0.4.16", features = ["kv_unstable_serde", "serde"] }
+log = { version = "0.4", features = ["kv_unstable_serde", "serde"] }
 # 环境配置日志后端
 env_logger = "0.11"
 # 结构化追踪
-tracing = "0.1.40"
+tracing = "0.1"
 # 性能分析宏
 profiling = "1"
 # 高动态范围直方图
@@ -144,7 +146,7 @@ hdrhistogram = "7"
 # 扩展迭代器功能
 itertools = "0.14.0"
 # 数据并行
-rayon = "1.8"
+rayon = "1.12"
 
 # ---- 字符串与文本 ----
 # Unicode 文本分割
@@ -158,28 +160,28 @@ shlex = "1.3.0"
 # 流式读取直到分隔符
 take-until = "0.2.0"
 # Unicode 大小写不敏感比较
-unicase = "2.6"
+unicase = "2.9"
 # URL 百分号编码
 percent-encoding = "2.3.2"
 # 枚举字符串工具
-strum = { version = "0.27.2", features = ["derive"] }
+strum = { version = "0.28", features = ["derive"] }
 
 # ---- 随机与测试 ----
 # 随机数生成
-rand = "0.9"
+rand = "0.10"
 # 属性测试
 #proptest = { git = "https://github.com/proptest-rs/proptest", rev = "3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b", features = ["attr-macro"] }
 proptest = { version = "1.11.0",features = ["attr-macro"] }
 # 属性测试派生
 proptest-derive = "0.8.0"
 # 美观的断言差异
-pretty_assertions = { version = "1.3.0", features = ["unstable"] }
+pretty_assertions = { version = "1.4.1", features = ["unstable"] }
 
 # ---- 派生宏与代码生成 ----
 # 构造函数宏
-ctor = "0.4.0"
+ctor = "0.10.0"
 # 类型注册表
-inventory = "0.3.19"
+inventory = "0.3.24"
 # 常用 trait 派生
 derive_more = { version = "2.1.1", features = [
     "add",
@@ -193,17 +195,17 @@ derive_more = { version = "2.1.1", features = [
     "not",
 ] }
 # 栈安全检测
-stacksafe = "0.1"
+stacksafe = "1.0.1"
 
 # ---- 并发与同步 ----
 # 高性能锁
-parking_lot = "0.12.1"
+parking_lot = "0.12.5"
 
 # ---- 位标志与标识符 ----
 # 位标志宏
-bitflags = "2.6.0"
+bitflags = "2.11.1"
 # UUID 生成
-uuid = { version = "1.1.2", features = ["v4", "v5", "v7", "serde"] }
+uuid = { version = "1.23.1", features = ["v4", "v5", "v7", "serde"] }
 
 # ---- 图像处理 ----
 # 图像编解码
@@ -211,11 +213,11 @@ image = "0.25.1"
 
 # ---- 模式匹配与校验 ----
 # JSON Schema 生成
-schemars = { version = "1.0", features = ["indexmap2"] }
+schemars = { version = "1.2.1", features = ["indexmap2"] }
 
 # ---- URL 处理 ----
 # URL 解析
-url = "2.2"
+url = "2.5.8"
 
 # ---- 屏幕捕获 ----
 # 跨平台屏幕捕获
@@ -235,7 +237,7 @@ core-foundation-sys = "0.8.6"
 # CoreVideo 绑定
 core-video = { version = "0.5.2", features = ["metal"] }
 # Mach 内核接口
-mach2 = "0.5"
+mach2 = "0.6"
 # Metal GPU API 绑定
 metal = "0.33"
 # Objective-C 运行时
@@ -285,13 +287,13 @@ syn = { version = "2.0.101", features = ["full", "extra-traits", "visit-mut"] }
 
 # ---- HTTP 网络 ----
 # HTTP 类型
-http = "1.1"
+http = "1.4"
 # HTTP Body trait
 http-body = "1.0"
 
 # ---- 文件与目录 ----
 # 临时文件
-tempfile = "3.20.0"
+tempfile = "3.27.0"
 # 规范化路径
 dunce = "1.0"
 # 标准目录路径
@@ -299,23 +301,23 @@ dirs = "6.0"
 # 递归目录遍历
 walkdir = "2.5"
 # 查找可执行文件
-which = "6.0.0"
+which = "8.0.2"
 # 嵌入文件到二进制
 rust-embed = { version = "8.11", features = ["include-exclude"] }
 
 # ---- 加密与哈希 ----
 # SHA-2 哈希
-sha2 = "0.10"
+sha2 = "0.11"
 
 # ---- Git ----
 # Git 操作
-git2 = { version = "0.20.1", default-features = false, features = ["vendored-libgit2"] }
+git2 = { version = "0.20.4", default-features = false, features = ["vendored-libgit2"] }
 
 # ---- 系统 ----
 # C 标准库绑定
 libc = "0.2"
 # Unix API 绑定
-nix = "0.29"
+nix = "0.31"
 # 无堆分配容器
 heapless = "0.9.2"
 
@@ -341,7 +343,7 @@ semver = { version = "1.0", features = ["serde"] }
 
 # ---- Windows 平台 ----
 # Windows 核心类型
-windows-core = "0.61"
+windows-core = "0.62"
 
 # ---- Reqwest HTTP 客户端 ----
 # HTTP 客户端
@@ -365,12 +367,12 @@ tokio = { version = "1" }
 # TLS 实现
 rustls = { version = "0.23.26" }
 # 平台证书验证
-rustls-platform-verifier = "0.5.0"
+rustls-platform-verifier = "0.7.0"
 
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 lsp-types = { version = "0.97.0", features = ["proposed"] }
-notify = "7.0.0"
+notify = "8.2.0"
 ropey = { version = "=2.0.0-beta.1", features = [
     "metric_lines_lf",
     "metric_utf16",
@@ -381,7 +383,7 @@ serde_repr = "0.1"
 portable-pty = "0.9"
 
 [workspace.dependencies.windows]
-version = "0.61"
+version = "0.62"
 features = [
     "Foundation_Numerics",
     "Globalization_DateTimeFormatting",
