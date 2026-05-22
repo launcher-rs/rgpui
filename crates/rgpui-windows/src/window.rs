@@ -494,7 +494,7 @@ impl WindowsWindow {
             dwexstyle |= WS_EX_NOREDIRECTIONBITMAP;
         }
         if params.mouse_passthrough {
-            dwexstyle |= WS_EX_TRANSPARENT | WS_EX_LAYERED;
+            dwexstyle |= WS_EX_LAYERED;
         }
 
         let hinstance = get_module_handle();
@@ -1052,8 +1052,8 @@ impl PlatformWindow for WindowsWindow {
     }
 
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
-    /// 开启穿透时添加 WS_EX_TRANSPARENT | WS_EX_LAYERED
-    /// 关闭穿透时移除这两个样式，确保窗口正常接收鼠标事件
+    /// 开启穿透时添加 WS_EX_LAYERED（配合 WM_NCHITTEST 返回 HTTRANSPARENT）
+    /// 关闭穿透时移除 WS_EX_LAYERED，确保窗口正常接收鼠标事件
     fn set_mouse_passthrough(&self, passthrough: bool) {
         let hwnd = self.0.hwnd;
         self.0.state.mouse_passthrough.set(passthrough);
@@ -1061,9 +1061,9 @@ impl PlatformWindow for WindowsWindow {
         let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
 
         let new_ex_style = if passthrough {
-            current_ex_style | WS_EX_TRANSPARENT.0 as isize | WS_EX_LAYERED.0 as isize
+            current_ex_style | WS_EX_LAYERED.0 as isize
         } else {
-            current_ex_style & !WS_EX_TRANSPARENT.0 as isize & !WS_EX_LAYERED.0 as isize
+            current_ex_style & !WS_EX_LAYERED.0 as isize
         };
 
         if current_ex_style != new_ex_style {
@@ -1123,7 +1123,6 @@ impl PlatformWindow for WindowsWindow {
         let new_ex_style = if visible {
             (current_ex_style | WS_EX_APPWINDOW.0 as isize)
                 & !WS_EX_TOOLWINDOW.0 as isize
-                & !WS_EX_TRANSPARENT.0 as isize
                 & !WS_EX_LAYERED.0 as isize
         } else {
             (current_ex_style | WS_EX_TOOLWINDOW.0 as isize) & !WS_EX_APPWINDOW.0 as isize
