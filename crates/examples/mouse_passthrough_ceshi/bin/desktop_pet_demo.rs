@@ -4,6 +4,7 @@
 //! - 透明无框窗口（`WindowKind::Overlay` + 透明背景）
 //! - 鼠标穿透/非穿透运行时切换（`set_mouse_passthrough`）
 //! - Ctrl+拖动窗口交互（`GetAsyncKeyState` 检测物理键状态）
+//! - 系统托盘图标与右键菜单（最小化到托盘）
 //! - 全局快捷键（Ctrl+Shift+P 暂停/恢复）
 //! - 单例运行（`SingleInstance`）
 //!
@@ -12,6 +13,8 @@
 //! - 按住 Ctrl 暂停自动移动并关闭穿透，可点击 UI 或拖动窗口
 //! - Ctrl+Shift+P 全局热键暂停/恢复
 //! - 暂停后窗口关闭穿透，测试按钮可点击
+//! - 关闭窗口 → 最小化到系统托盘
+//! - 托盘左键/菜单「显示窗口」恢复显示
 
 use rgpui::*;
 use rgpui_component::button::Button;
@@ -270,6 +273,9 @@ fn main() {
         // 创建 300×300 的透明无框覆盖窗口
         let bounds = Bounds::centered(None, size(px(300.), px(300.0)), cx);
 
+        let window_visible = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let window_visible_close = window_visible.clone();
+
         let window_handle = cx
             .open_window(
                 WindowOptions {
@@ -280,9 +286,74 @@ fn main() {
                     kind: WindowKind::Overlay,
                     ..Default::default()
                 },
-                |_, cx| cx.new(|_| DesktopPet::new(pet_state.clone())),
+                |window, cx| {
+                    let view = cx.new(|_| DesktopPet::new(pet_state.clone()));
+
+                    // 拦截关闭事件，隐藏到托盘而不是退出
+                    window.on_window_should_close(cx, move |window, _cx| {
+                        window_visible_close.store(false, std::sync::atomic::Ordering::Release);
+                        window.hide_window();
+                        // 返回 false 阻止窗口关闭
+                        false
+                    });
+
+                    view
+                },
             )
             .expect("failed to open window");
+
+        // ── 托盘（系统通知区）设置 ──────────────────────────────────────
+        cx.set_tray_tooltip("桌面宠物");
+
+        // 设置托盘图标（复用 gpui 示例中的图标）
+        let icon_bytes = include_bytes!("../../../rgpui/examples/image/app-icon.png");
+        cx.set_tray_icon(Some(icon_bytes.as_slice()));
+
+        // 左键点击托盘：若窗口已隐藏则恢复显示
+        let wh_click = window_handle.clone();
+        let wv_click = window_visible.clone();
+        cx.on_tray_icon_event(move |event, cx| {
+            if matches!(event, TrayIconEvent::LeftClick | TrayIconEvent::DoubleClick) {
+                if !wv_click.load(std::sync::atomic::Ordering::Acquire) {
+                    let wv = wv_click.clone();
+                    cx.update_window(wh_click.into(), |_, window, _| {
+                        wv.store(true, std::sync::atomic::Ordering::Release);
+                        window.activate_window();
+                    })
+                    .ok();
+                }
+            }
+        });
+
+        // 设置托盘右键菜单
+        cx.set_tray_menu(vec![
+            TrayMenuItem::Action {
+                label: "显示窗口".into(),
+                id: "show_window".into(),
+            },
+            TrayMenuItem::Separator,
+            TrayMenuItem::Action {
+                label: "退出".into(),
+                id: "quit".into(),
+            },
+        ]);
+
+        // 注册托盘菜单动作回调
+        let wh_menu = window_handle.clone();
+        let wv_menu = window_visible;
+        cx.on_tray_menu_action(move |id, cx| match id.as_ref() {
+            "quit" => cx.quit(),
+            "show_window" => {
+                let wv = wv_menu.clone();
+                if let Err(err) = cx.update_window(wh_menu.into(), |_, window, _| {
+                    wv.store(true, std::sync::atomic::Ordering::Release);
+                    window.activate_window();
+                }) {
+                    eprintln!("Failed to activate window: {}", err);
+                }
+            }
+            _ => {}
+        });
 
         setup_global_hotkey(cx, state_clone, pet_state.clone(), window_handle);
 
