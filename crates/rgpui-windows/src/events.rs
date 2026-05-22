@@ -984,8 +984,17 @@ impl WindowsWindowInner {
         }
 
         if self.state.titlebar_visible.get() {
-            // 如果操作系统绘制标题栏，我们不需要处理命中测试消息
-            return drag_area;
+            // 如果操作系统绘制标题栏，优先返回自定义拖动区域
+            if drag_area.is_some() {
+                return drag_area;
+            }
+            // WS_CAPTION 窗口的标题栏区域在 ScreenToClient 后 Y 坐标为负数
+            // 返回 HTCAPTION 允许拖动标题栏
+            if cursor_point.y < 0 {
+                return Some(HTCAPTION as _);
+            }
+            // 客户区显式返回 HTCLIENT，确保窗口接收鼠标事件
+            return Some(HTCLIENT as _);
         }
 
         // 非穿透模式：返回边框调整大小区域或拖动区域
@@ -993,7 +1002,13 @@ impl WindowsWindowInner {
             return Some(hit);
         }
 
-        drag_area
+        // 优先使用自定义拖动区域
+        if let Some(hit) = drag_area {
+            return Some(hit);
+        }
+
+        // 客户区显式返回 HTCLIENT，防止 DefWindowProcW 对特殊窗口样式（如 Overlay）处理不正确
+        Some(HTCLIENT as _)
     }
 
     fn handle_nc_mouse_move_msg(&self, handle: HWND, lparam: LPARAM) -> Option<isize> {

@@ -1,7 +1,7 @@
 //! 桌面宠物演示 - 透明窗口 + 鼠标穿透 + 窗口移动宠物
 
 use rgpui::*;
-use rgpui_component::v_flex;
+use rgpui_component::{v_flex, TitleBar};
 use rgpui_component_assets::Assets;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -175,9 +175,10 @@ fn rand_f32() -> f32 {
 const APP_ID: &str = "com.example.desktop_pet";
 
 fn main() {
+    // 初始化穿透状态为 true（默认开启穿透）
     let passthrough_state = PassthroughState::new(true);
     let pet_state = Arc::new(Mutex::new(PetState::new(1920.0, 1080.0, 220.0)));
-
+    // 单例模式
     let _instance = match SingleInstance::acquire(APP_ID) {
         Ok(instance) => instance,
         Err(_) => {
@@ -190,6 +191,7 @@ fn main() {
     let state_clone = passthrough_state.clone();
     let pet_state_clone = pet_state.clone();
 
+    // ── 启动 GPUI 应用 ──────────────────────────────────────────────────
     let app = rgpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
@@ -199,23 +201,19 @@ fn main() {
 
         cx.activate(true);
 
-        let window_size = 220.0;
-        let initial_pos = pet_state.lock().unwrap().position();
-        let bounds = Bounds::new(initial_pos, size(px(window_size), px(window_size)));
+        let bounds = Bounds::centered(None, size(px(300.), px(300.0)), cx);
 
         let window_handle = cx
             .open_window(
                 WindowOptions {
-                    titlebar: Some(TitlebarOptions {
-                        title: Some("桌面宠物".into()),
-                        appears_transparent: true,
-                        ..Default::default()
-                    }),
+                    titlebar: None,
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    // 背景透明
                     window_background: WindowBackgroundAppearance::Transparent,
+                    // 初始穿透状态（true 时开启穿透，隐藏 titlebar 和任务栏图标）
                     mouse_passthrough: passthrough_state.get(),
-                    is_resizable: false,
-                    is_minimizable: false,
+                    // is_resizable: false,
+                    // is_minimizable: false,
                     kind: WindowKind::Overlay,
                     ..Default::default()
                 },
@@ -276,12 +274,10 @@ fn setup_global_hotkey(
                     // 恢复运行前先记录用户通过标题栏拖动后的新位置
                     let current_position = window.bounds().origin;
                     pet_state.lock().unwrap().set_position(current_position);
-                    window.set_titlebar_visible(false);
                     window.set_mouse_passthrough(true);
                 } else {
                     // 暂停时关闭穿透并显示系统标题栏，交给 Windows 原生 HTCAPTION 拖动
                     window.set_mouse_passthrough(false);
-                    window.set_titlebar_visible(true);
                     window.activate_window();
                 }
                 if let Ok(view) = view.downcast::<DesktopPet>() {
@@ -318,7 +314,13 @@ impl Render for DesktopPet {
         let pet_emoji = pet.get_emoji().to_string();
         drop(pet);
 
-        div().size_full().overflow_hidden().child(
+        v_flex().size_full().overflow_hidden()
+            .child(if self.passthrough {
+                div()
+            } else {
+                div().child(TitleBar::new())
+            })
+            .child(
             v_flex()
                 .size_full()
                 .items_center()

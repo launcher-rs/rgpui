@@ -462,8 +462,9 @@ impl WindowsWindow {
             WindowKind::PopUp => (WS_EX_TOOLWINDOW, WINDOW_STYLE(0x0)),
             WindowKind::Overlay => {
                 // Overlay 窗口：始终置顶、无装饰、支持透明度
+                // WS_EX_LAYERED 仅在需要鼠标穿透或禁用 DirectComposition 时添加
                 // 鼠标穿透通过 params.mouse_passthrough 在下方统一处理
-                (WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, WS_POPUP)
+                (WS_EX_TOPMOST | WS_EX_TOOLWINDOW, WS_POPUP)
             }
             _ if params.window_decorations == WindowDecorations::Client => {
                 // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框
@@ -1051,20 +1052,18 @@ impl PlatformWindow for WindowsWindow {
     }
 
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
-    /// 使用 WS_EX_LAYERED 扩展样式和 WM_NCHITTEST 实现穿透效果
-    /// 保留 titlebar 和边框区域的鼠标交互，允许移动和调整窗口大小
+    /// 开启穿透时添加 WS_EX_TRANSPARENT | WS_EX_LAYERED
+    /// 关闭穿透时移除这两个样式，确保窗口正常接收鼠标事件
     fn set_mouse_passthrough(&self, passthrough: bool) {
         let hwnd = self.0.hwnd;
         self.0.state.mouse_passthrough.set(passthrough);
 
         let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
 
-        // 只切换 WS_EX_TRANSPARENT，始终保留 WS_EX_LAYERED
-        // 穿透逻辑通过 WM_NCHITTEST 返回 HTTRANSPARENT 实现
         let new_ex_style = if passthrough {
             current_ex_style | WS_EX_TRANSPARENT.0 as isize | WS_EX_LAYERED.0 as isize
         } else {
-            (current_ex_style | WS_EX_LAYERED.0 as isize) & !WS_EX_TRANSPARENT.0 as isize
+            current_ex_style & !WS_EX_TRANSPARENT.0 as isize & !WS_EX_LAYERED.0 as isize
         };
 
         if current_ex_style != new_ex_style {
@@ -1125,6 +1124,7 @@ impl PlatformWindow for WindowsWindow {
             (current_ex_style | WS_EX_APPWINDOW.0 as isize)
                 & !WS_EX_TOOLWINDOW.0 as isize
                 & !WS_EX_TRANSPARENT.0 as isize
+                & !WS_EX_LAYERED.0 as isize
         } else {
             (current_ex_style | WS_EX_TOOLWINDOW.0 as isize) & !WS_EX_APPWINDOW.0 as isize
         };
