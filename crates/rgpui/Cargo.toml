@@ -3,7 +3,6 @@ name = "rgpui"
 version = "0.1.0"
 edition.workspace = true
 description = "GUI UI framework"
-repository = "https://github.com/launcher-rs/rgpui"
 publish = true
 license = "Apache-2.0"
 readme = "README.md"

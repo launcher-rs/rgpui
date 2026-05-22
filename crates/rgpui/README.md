@@ -1,5 +1,7 @@
 # RGPUI
 
+基于 gpui + adabraka-gpui 进行修改。 主要测试了windows平台，linux和mac没有测试。
+
 RGPUI 是一个混合即时/保留模式、GPU 加速的 Rust UI 框架，旨在支持广泛的应用程序开发。
 
 ## 主要特性
