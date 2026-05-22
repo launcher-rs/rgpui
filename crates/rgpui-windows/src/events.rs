@@ -964,6 +964,16 @@ impl WindowsWindowInner {
                 None
             };
 
+        // Ctrl 键按下时：始终允许拖动窗口，覆盖鼠标穿透设置
+        // 使用 GetAsyncKeyState 而非 GetKeyState，因穿透窗口不接收焦点
+        if unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) < 0 } {
+            // 优先返回边框调整大小区域
+            if let Some(hit) = in_resize_area {
+                return Some(hit);
+            }
+            return Some(HTCAPTION as _);
+        }
+
         // 穿透模式：边框和标题栏区域保持交互，其他区域穿透
         if self.state.mouse_passthrough.get() {
             // 优先返回边框调整大小区域
@@ -973,7 +983,6 @@ impl WindowsWindowInner {
 
             // 如果使用系统标题栏，标题栏区域保持可拖动
             if self.state.titlebar_visible.get() {
-                // 系统标题栏区域（通常在窗口顶部）
                 if cursor_point.y <= frame_y {
                     return Some(HTCAPTION as _);
                 }
@@ -984,17 +993,10 @@ impl WindowsWindowInner {
         }
 
         if self.state.titlebar_visible.get() {
-            // 如果操作系统绘制标题栏，优先返回自定义拖动区域
-            if drag_area.is_some() {
-                return drag_area;
-            }
-            // WS_CAPTION 窗口的标题栏区域在 ScreenToClient 后 Y 坐标为负数
-            // 返回 HTCAPTION 允许拖动标题栏
-            if cursor_point.y < 0 {
-                return Some(HTCAPTION as _);
-            }
-            // 客户区显式返回 HTCLIENT，确保窗口接收鼠标事件
-            return Some(HTCLIENT as _);
+            // 系统绘制标题栏（WS_CAPTION），由 DefWindowProcW 处理命中测试
+            // 包括关闭、最小化、最大化按钮和标题栏拖动
+            // WS_EX_LAYERED 已在 set_titlebar_visible 中移除，不会误返回 HTTRANSPARENT
+            return drag_area;
         }
 
         // 非穿透模式：返回边框调整大小区域或拖动区域
@@ -1041,6 +1043,23 @@ impl WindowsWindowInner {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> Option<isize> {
+        // 先存储按钮状态（HTMINBUTTON/HTMAXBUTTON/HTCLOSE），
+        // 确保后续 WM_NCLBUTTONUP 无论应用层是否消费事件都能正确匹配。
+        // 应用层可能消费事件（如 TitleBar 上的点击），
+        // 所以不能依赖 "应用层未处理 -> 才存储" 的逻辑。
+        let nc_action = if button == MouseButton::Left {
+            match wparam.0 as u32 {
+                HTMINBUTTON | HTMAXBUTTON | HTCLOSE => {
+                    self.state.nc_button_pressed.set(Some(wparam.0 as u32));
+                    true
+                }
+                _ => false,
+            }
+        } else {
+            false
+        };
+
+        // 仍向应用层分发鼠标按下事件（用于更新 UI 视觉效果等）
         if let Some(mut func) = self.state.callbacks.input.take() {
             let scale_factor = self.state.scale_factor.get();
             let mut cursor_point = POINT {
@@ -1058,27 +1077,12 @@ impl WindowsWindowInner {
                 click_count,
                 first_mouse: false,
             });
-            let handled = !func(input).propagate;
+            let _handled = !func(input).propagate;
             self.state.callbacks.input.set(Some(func));
-
-            if handled {
-                return Some(0);
-            }
-        } else {
-        };
-
-        // 由于这些在 handle_nc_mouse_up_msg 中处理，我们必须阻止默认窗口过程
-        if button == MouseButton::Left {
-            match wparam.0 as u32 {
-                HTMINBUTTON => self.state.nc_button_pressed.set(Some(HTMINBUTTON)),
-                HTMAXBUTTON => self.state.nc_button_pressed.set(Some(HTMAXBUTTON)),
-                HTCLOSE => self.state.nc_button_pressed.set(Some(HTCLOSE)),
-                _ => return None,
-            };
-            Some(0)
-        } else {
-            None
         }
+
+        // 对 NC 按钮（最小化/最大化/关闭）阻止默认窗口过程
+        if nc_action { Some(0) } else { None }
     }
 
     fn handle_nc_mouse_up_msg(
@@ -1088,34 +1092,12 @@ impl WindowsWindowInner {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> Option<isize> {
-        if let Some(mut func) = self.state.callbacks.input.take() {
-            let scale_factor = self.state.scale_factor.get();
-
-            let mut cursor_point = POINT {
-                x: lparam.signed_loword().into(),
-                y: lparam.signed_hiword().into(),
-            };
-            unsafe { ScreenToClient(handle, &mut cursor_point).ok().log_err() };
-            let input = PlatformInput::MouseUp(MouseUpEvent {
-                button,
-                position: logical_point(cursor_point.x as f32, cursor_point.y as f32, scale_factor),
-                modifiers: current_modifiers(),
-                click_count: 1,
-            });
-            let handled = !func(input).propagate;
-            self.state.callbacks.input.set(Some(func));
-
-            if handled {
-                return Some(0);
-            }
-        } else {
-        }
-
+        // 先检测按钮状态（在 down 时存储的），无论应用层是否消费鼠标释放事件都执行动作
         let last_pressed = self.state.nc_button_pressed.take();
-        if button == MouseButton::Left
+        let button_action = if button == MouseButton::Left
             && let Some(last_pressed) = last_pressed
         {
-            let handled = match (wparam.0 as u32, last_pressed) {
+            match (wparam.0 as u32, last_pressed) {
                 (HTMINBUTTON, HTMINBUTTON) => {
                     unsafe { ShowWindowAsync(handle, SW_MINIMIZE).ok().log_err() };
                     true
@@ -1136,13 +1118,31 @@ impl WindowsWindowInner {
                     true
                 }
                 _ => false,
-            };
-            if handled {
-                return Some(0);
             }
+        } else {
+            false
+        };
+
+        // 仍向应用层分发鼠标释放事件
+        if let Some(mut func) = self.state.callbacks.input.take() {
+            let scale_factor = self.state.scale_factor.get();
+
+            let mut cursor_point = POINT {
+                x: lparam.signed_loword().into(),
+                y: lparam.signed_hiword().into(),
+            };
+            unsafe { ScreenToClient(handle, &mut cursor_point).ok().log_err() };
+            let input = PlatformInput::MouseUp(MouseUpEvent {
+                button,
+                position: logical_point(cursor_point.x as f32, cursor_point.y as f32, scale_factor),
+                modifiers: current_modifiers(),
+                click_count: 1,
+            });
+            let _handled = !func(input).propagate;
+            self.state.callbacks.input.set(Some(func));
         }
 
-        None
+        if button_action { Some(0) } else { None }
     }
 
     fn handle_cursor_changed(&self, lparam: LPARAM) -> Option<isize> {
