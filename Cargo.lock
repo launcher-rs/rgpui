@@ -6882,7 +6882,6 @@ dependencies = [
  "qrcode",
  "regex",
  "rgpui",
- "rgpui-platform",
  "rodio",
  "ropey",
  "smallvec",
