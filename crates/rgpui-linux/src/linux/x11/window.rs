@@ -12,8 +12,9 @@ use rgpui::{
 use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig};
 
 use raw_window_handle as rwh;
+use rgpui::ResultExt;
 use rgpui::collections::FxHashSet;
-use util::{ResultExt, maybe};
+use rgpui::maybe;
 use x11rb::{
     connection::Connection,
     cookie::{Cookie, VoidCookie},
@@ -1634,6 +1635,14 @@ impl PlatformWindow for X11Window {
                 xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
                 message,
             ),
+        )
+        .log_err();
+    }
+
+    fn hide(&self) {
+        check_reply(
+            || "X11 UnmapWindow failed.",
+            self.0.xcb.unmap_window(self.0.x_window),
         )
         .log_err();
     }

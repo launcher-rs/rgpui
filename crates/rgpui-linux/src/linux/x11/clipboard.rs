@@ -359,7 +359,7 @@ impl Inner {
                 }
             }
         }
-        log::trace("所有支持的格式转换均失败");
+        log::trace!("所有支持的格式转换均失败");
         Err(Error::ContentNotAvailable)
     }
 
@@ -831,7 +831,7 @@ impl Inner {
 
 fn serve_requests(context: Arc<Inner>) -> Result<(), Box<dyn std::error::Error>> {
     fn handover_finished(clip: &Arc<Inner>, mut handover_state: MutexGuard<ManagerHandoverState>) {
-        log::trace("完成剪贴板管理器交接");
+        log::trace!("完成剪贴板管理器交接");
         *handover_state = ManagerHandoverState::Finished;
 
         // 不确定这里是否需要解锁 mutex，但安全总比抱歉好
@@ -840,9 +840,9 @@ fn serve_requests(context: Arc<Inner>) -> Result<(), Box<dyn std::error::Error>>
         clip.handover_cv.notify_all();
     }
 
-    log::trace("开始服务请求线程");
+    log::trace!("开始服务请求线程");
 
-    let _guard = util::defer(|| {
+    let _guard = rgpui::defer(|| {
         context.serve_stopped.store(true, Ordering::Relaxed);
     });
 
@@ -860,7 +860,7 @@ fn serve_requests(context: Arc<Inner>) -> Result<(), Box<dyn std::error::Error>>
                 // TODO: 检查这是否有效
                 // 其他人剪贴板中有新内容，所以
                 // 通知我们应现在删除我们的数据
-                log::trace("现在其他人拥有剪贴板");
+                log::trace!("现在其他人拥有剪贴板");
 
                 if let Some(selection) = context.kind_of(event.selection) {
                     let selection = context.selection_of(selection);

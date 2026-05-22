@@ -212,6 +212,14 @@ impl Point<Pixels> {
         }
     }
 
+    /// Converts the point from pixels to device pixels based on the given scale factor.
+    pub fn to_device_pixels(self, scale_factor: f32) -> Point<DevicePixels> {
+        Point {
+            x: DevicePixels((self.x.0 * scale_factor).round() as i32),
+            y: DevicePixels((self.y.0 * scale_factor).round() as i32),
+        }
+    }
+
     /// Calculates the Euclidean distance from the origin (0, 0) to this point.
     ///
     /// # Examples

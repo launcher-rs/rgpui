@@ -22,20 +22,11 @@ impl LinuxNotifications {
     ///
     /// # 返回
     /// 成功时返回 `Ok(())`，失败时返回错误
-    pub fn show_notification(&self, title: &str, body: &str, icon: Option<&str>) -> Result<()> {
+    pub fn show_notification(&self, title: &str, body: &str, _icon: Option<&str>) -> Result<()> {
         // 使用 notify-rust crate 发送通知
         // 这里简化实现，实际需要集成 notify-rust
 
         log::info!("发送通知: {} - {}", title, body);
-        Ok(())
-    }
-
-    /// 请求通知权限
-    ///
-    /// # 返回
-    /// 成功时返回 `Ok(())`，失败时返回错误
-    pub fn request_permission() -> Result<()> {
-        // Linux 上通知通常不需要显式权限
         Ok(())
     }
 }

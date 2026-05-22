@@ -42,14 +42,15 @@ pub use visual_test_context::*;
 use crate::InspectorElementRegistry;
 use crate::{
     Action, ActionBuildError, ActionRegistry, Any, AnyView, AnyWindowHandle, AppContext, Arena,
-    ArenaBox, Asset, AssetSource, BackgroundExecutor, Bounds, ClipboardItem, CursorStyle,
-    DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, FocusedWindowInfo,
-    ForegroundExecutor, Global, KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu,
-    MenuItem, OwnedMenu, PathPromptOptions, PermissionStatus, Pixels, Platform, PlatformDisplay,
-    PlatformKeyboardLayout, PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton,
+    ArenaBox, Asset, AssetSource, AttentionType, BackgroundExecutor, BiometricStatus, Bounds,
+    ClipboardItem, CursorStyle, DialogOptions, DispatchPhase, DisplayId, EventEmitter, FocusHandle,
+    FocusMap, FocusedWindowInfo, ForegroundExecutor, Global, KeyBinding, KeyContext, Keymap,
+    Keystroke, LayoutId, MediaKeyEvent, Menu, MenuItem, NetworkStatus, OsInfo, OwnedMenu,
+    PathPromptOptions, PermissionStatus, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
+    PlatformKeyboardMapper, Point, PowerSaveBlockerKind, Priority, PromptBuilder, PromptButton,
     PromptHandle, PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation,
-    ScreenCaptureSource, SharedString, SubscriberSet, Subscription, SvgRenderer, Task,
-    TextRenderingMode, TextSystem, ThermalState, Tray, TrayIconEvent, TrayMenuItem, Window,
+    ScreenCaptureSource, SharedString, SubscriberSet, Subscription, SvgRenderer, SystemPowerEvent,
+    Task, TextRenderingMode, TextSystem, ThermalState, Tray, TrayIconEvent, TrayMenuItem, Window,
     WindowAppearance, WindowButtonLayout, WindowHandle, WindowId, WindowInvalidator,
     colors::{Colors, GlobalColors},
     hash, init_app_menus,
@@ -2353,6 +2354,122 @@ impl App {
     /// If the path is already in the list, it will be moved to the bottom of the list.
     pub fn add_recent_document(&self, path: &Path) {
         self.platform.add_recent_document(path);
+    }
+
+    /// 注册系统电源事件回调
+    pub fn on_system_power_event(
+        &self,
+        mut callback: impl FnMut(SystemPowerEvent, &mut App) + 'static,
+    ) {
+        let this = self.this.clone();
+        self.platform.on_system_power_event(Box::new(move |event| {
+            if let Some(app) = this.upgrade() {
+                callback(event, &mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 启动电源阻止器，阻止系统进入省电模式
+    pub fn start_power_save_blocker(&self, kind: PowerSaveBlockerKind) -> Option<u32> {
+        self.platform.start_power_save_blocker(kind)
+    }
+
+    /// 停止电源阻止器
+    pub fn stop_power_save_blocker(&self, id: u32) {
+        self.platform.stop_power_save_blocker(id);
+    }
+
+    /// 获取系统空闲时间
+    pub fn system_idle_time(&self) -> Option<Duration> {
+        self.platform.system_idle_time()
+    }
+
+    /// 获取当前网络状态
+    pub fn network_status(&self) -> NetworkStatus {
+        self.platform.network_status()
+    }
+
+    /// 注册网络状态变更回调
+    pub fn on_network_status_change(
+        &self,
+        mut callback: impl FnMut(NetworkStatus, &mut App) + 'static,
+    ) {
+        let this = self.this.clone();
+        self.platform
+            .on_network_status_change(Box::new(move |status| {
+                if let Some(app) = this.upgrade() {
+                    callback(status, &mut app.borrow_mut());
+                }
+            }));
+    }
+
+    /// 注册媒体键事件回调
+    pub fn on_media_key_event(&self, mut callback: impl FnMut(MediaKeyEvent, &mut App) + 'static) {
+        let this = self.this.clone();
+        self.platform.on_media_key_event(Box::new(move |event| {
+            if let Some(app) = this.upgrade() {
+                callback(event, &mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 请求用户注意力（如弹跳 Dock 图标）
+    pub fn request_user_attention(&self, attention_type: AttentionType) {
+        self.platform.request_user_attention(attention_type);
+    }
+
+    /// 取消用户注意力请求
+    pub fn cancel_user_attention(&self) {
+        self.platform.cancel_user_attention();
+    }
+
+    /// 设置 Dock 徽章（如 macOS 上的未读计数）
+    pub fn set_dock_badge(&self, label: Option<&str>) {
+        self.platform.set_dock_badge(label);
+    }
+
+    /// 在指定位置显示上下文菜单
+    pub fn show_context_menu(
+        &self,
+        position: Point<Pixels>,
+        items: Vec<TrayMenuItem>,
+        mut callback: impl FnMut(SharedString, &mut App) + 'static,
+    ) {
+        let this = self.this.clone();
+        self.platform.show_context_menu(
+            position,
+            items,
+            Box::new(move |id| {
+                if let Some(app) = this.upgrade() {
+                    callback(id, &mut app.borrow_mut());
+                }
+            }),
+        );
+    }
+
+    /// 显示原生对话框
+    pub fn show_dialog(&self, options: DialogOptions) -> oneshot::Receiver<usize> {
+        self.platform.show_dialog(options)
+    }
+
+    /// 获取操作系统信息
+    pub fn os_info(&self) -> OsInfo {
+        self.platform.os_info()
+    }
+
+    /// 获取生物识别认证状态
+    pub fn biometric_status(&self) -> BiometricStatus {
+        self.platform.biometric_status()
+    }
+
+    /// 发起生物识别认证
+    pub fn authenticate_biometric(
+        &self,
+        reason: &str,
+        callback: impl FnOnce(bool) + Send + 'static,
+    ) {
+        self.platform
+            .authenticate_biometric(reason, Box::new(callback));
     }
 
     /// Updates the jump list with the updated list of recent paths for the application, only used on Windows for now.

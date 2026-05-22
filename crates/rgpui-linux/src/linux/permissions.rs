@@ -29,7 +29,7 @@ impl LinuxPermissions {
             PermissionType::ScreenCapture => self.check_screen_capture_permission(),
             PermissionType::InputMonitoring => {
                 // Linux 上输入监控通常需要 root 或特定权限
-                PermissionStatus::Unknown
+                PermissionStatus::NotDetermined
             }
         }
     }
@@ -38,7 +38,7 @@ impl LinuxPermissions {
     fn check_screen_capture_permission(&self) -> PermissionStatus {
         // Linux 上屏幕捕获通常需要 X11 的 XRecord 扩展或 Wayland 的 portal
         // 这里简化实现
-        PermissionStatus::Unknown
+        PermissionStatus::NotDetermined
     }
 
     /// 请求权限（Linux 上通常不需要）

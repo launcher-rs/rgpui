@@ -28,7 +28,9 @@ pub struct SingleInstance {
 #[cfg(unix)]
 struct UnixSingleInstance {
     socket_path: std::path::PathBuf,
+    #[allow(dead_code)]
     listener: Option<std::os::unix::net::UnixListener>,
+    #[allow(dead_code)]
     activate_callback: Option<Box<dyn Fn() + Send + 'static>>,
 }
 
@@ -123,7 +125,7 @@ impl SingleInstance {
     pub fn on_activate(&self, callback: Box<dyn Fn() + Send + 'static>) {
         #[cfg(unix)]
         {
-            if let Some(inner) = &self.inner {
+            if let Some(_inner) = &self.inner {
                 // Unix 实现中可以在后台线程监听
                 // 这里简化处理，实际实现需要更复杂的逻辑
                 let _ = callback;

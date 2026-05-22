@@ -14,10 +14,10 @@ use calloop::{
 };
 use calloop_wayland_source::WaylandSource;
 use filedescriptor::Pipe;
-use http_client::Url;
+use rgpui::ResultExt;
 use rgpui::collections::HashMap;
+use rgpui::http_client::Url;
 use smallvec::SmallVec;
-use util::ResultExt as _;
 use wayland_backend::client::ObjectId;
 use wayland_backend::protocol::WEnum;
 use wayland_client::event_created_child;

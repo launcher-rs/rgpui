@@ -3,7 +3,7 @@ use calloop::{
     channel::{self, Sender},
     timer::TimeoutAction,
 };
-use util::ResultExt;
+use rgpui::ResultExt;
 
 use std::{
     mem::MaybeUninit,

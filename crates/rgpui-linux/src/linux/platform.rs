@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     env,
     path::{Path, PathBuf},
     rc::Rc,
@@ -16,18 +17,21 @@ use std::{
 use anyhow::{Context as _, anyhow};
 use calloop::LoopSignal;
 use futures::channel::oneshot;
-use util::ResultExt as _;
-use util::command::{new_command, new_std_command};
+use rgpui::ResultExt;
+use rgpui::util::command::{new_command, new_std_command};
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
-use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
+use crate::linux::{
+    LinuxDispatcher, PriorityQueueCalloopReceiver, global_hotkey::LinuxGlobalHotkey,
+    notifications::LinuxNotifications, permissions::LinuxPermissions,
+};
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
-    ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
-    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
-    PlatformWindow, Result, RunnableVariant, Task, ThermalState, WindowAppearance,
-    WindowButtonLayout, WindowParams,
+    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OwnedMenu,
+    PathPromptOptions, PermissionStatus, Platform, PlatformDisplay, PlatformKeyboardLayout,
+    PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result, RunnableVariant, Task,
+    ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use rgpui::{Pixels, Point, px};
@@ -203,6 +207,9 @@ impl LinuxCommon {
 /// 或 HeadlessClient 等不同后端。
 pub(crate) struct LinuxPlatform<P> {
     pub(crate) inner: P,
+    pub(crate) global_hotkey: RefCell<LinuxGlobalHotkey>,
+    pub(crate) notifications: LinuxNotifications,
+    pub(crate) permissions: LinuxPermissions,
 }
 
 impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
@@ -686,6 +693,62 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     }
 
     fn add_recent_document(&self, _path: &Path) {}
+
+    fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
+        self.global_hotkey
+            .borrow_mut()
+            .register(id as i32, keystroke)
+    }
+
+    fn unregister_global_hotkey(&self, id: u32) {
+        self.global_hotkey.borrow_mut().unregister(id as i32);
+    }
+
+    fn on_global_hotkey(&self, _callback: Box<dyn FnMut(u32)>) {
+        log::info!("on_global_hotkey is not fully implemented on Linux");
+    }
+
+    fn show_notification(&self, title: &str, body: &str) -> Result<()> {
+        self.notifications.show_notification(title, body, None)
+    }
+
+    fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
+        let app_path = self.app_path()?;
+        let exec_path = app_path.to_string_lossy().to_string();
+        let auto_launch = crate::linux::auto_launch::LinuxAutoLaunch::new();
+        if enabled {
+            auto_launch.enable(app_id, &exec_path)
+        } else {
+            auto_launch.disable(app_id)
+        }
+    }
+
+    fn is_auto_launch_enabled(&self, app_id: &str) -> bool {
+        let auto_launch = crate::linux::auto_launch::LinuxAutoLaunch::new();
+        auto_launch.is_enabled(app_id)
+    }
+
+    fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
+        crate::linux::focused_window::get_focused_window_info()
+    }
+
+    fn accessibility_status(&self) -> PermissionStatus {
+        self.permissions
+            .query_permission(rgpui::PermissionType::Accessibility)
+    }
+
+    fn request_accessibility_permission(&self) {
+        LinuxPermissions::request_permission(rgpui::PermissionType::Accessibility);
+    }
+
+    fn microphone_status(&self) -> PermissionStatus {
+        self.permissions
+            .query_permission(rgpui::PermissionType::InputMonitoring)
+    }
+
+    fn request_microphone_permission(&self, _callback: Box<dyn FnOnce(bool)>) {
+        LinuxPermissions::request_permission(rgpui::PermissionType::InputMonitoring);
+    }
 }
 
 /// 在 Wayland/X11 环境下打开 URI 的内部辅助函数。

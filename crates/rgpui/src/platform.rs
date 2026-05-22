@@ -324,6 +324,65 @@ pub trait Platform: 'static {
     fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout>;
     fn keyboard_mapper(&self) -> Rc<dyn PlatformKeyboardMapper>;
     fn on_keyboard_layout_change(&self, callback: Box<dyn FnMut()>);
+
+    /// 注册系统电源事件回调
+    fn on_system_power_event(&self, _callback: Box<dyn FnMut(SystemPowerEvent)>) {}
+    /// 启动电源阻止器，阻止系统进入省电模式
+    fn start_power_save_blocker(&self, _kind: PowerSaveBlockerKind) -> Option<u32> {
+        None
+    }
+    /// 停止电源阻止器
+    fn stop_power_save_blocker(&self, _id: u32) {}
+    /// 获取系统空闲时间
+    fn system_idle_time(&self) -> Option<Duration> {
+        None
+    }
+    /// 获取当前网络状态
+    fn network_status(&self) -> NetworkStatus {
+        NetworkStatus::Online
+    }
+    /// 注册网络状态变更回调
+    fn on_network_status_change(&self, _callback: Box<dyn FnMut(NetworkStatus)>) {}
+    /// 注册媒体键事件回调
+    fn on_media_key_event(&self, _callback: Box<dyn FnMut(MediaKeyEvent)>) {}
+    /// 请求用户注意力（如弹跳 Dock 图标）
+    fn request_user_attention(&self, _attention_type: AttentionType) {}
+    /// 取消用户注意力请求
+    fn cancel_user_attention(&self) {}
+    /// 设置 Dock 徽章（如 macOS 上的未读计数）
+    fn set_dock_badge(&self, _label: Option<&str>) {}
+    /// 在指定位置显示上下文菜单
+    fn show_context_menu(
+        &self,
+        _position: Point<Pixels>,
+        _items: Vec<TrayMenuItem>,
+        _callback: Box<dyn FnMut(SharedString)>,
+    ) {
+    }
+    /// 显示原生对话框
+    fn show_dialog(&self, _options: DialogOptions) -> oneshot::Receiver<usize> {
+        let (tx, rx) = oneshot::channel();
+        tx.send(0).ok();
+        rx
+    }
+    /// 获取操作系统信息
+    fn os_info(&self) -> OsInfo {
+        OsInfo {
+            name: std::env::consts::OS.into(),
+            arch: std::env::consts::ARCH.into(),
+            version: String::new().into(),
+            locale: String::new().into(),
+            hostname: String::new().into(),
+        }
+    }
+    /// 获取生物识别认证状态
+    fn biometric_status(&self) -> BiometricStatus {
+        BiometricStatus::Unavailable
+    }
+    /// 发起生物识别认证
+    fn authenticate_biometric(&self, _reason: &str, callback: Box<dyn FnOnce(bool) + Send>) {
+        callback(false);
+    }
 }
 
 /// 平台显示器句柄 trait，表示物理显示器或笔记本屏幕
@@ -784,6 +843,15 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn update_ime_position(&self, _bounds: Bounds<Pixels>);
 
     fn play_system_bell(&self) {}
+
+    /// 显示窗口（与 hide 相对）
+    fn show(&self) {}
+    /// 检查窗口当前是否可见
+    fn is_visible(&self) -> bool {
+        true
+    }
+    /// 设置任务栏/程序坞进度条状态
+    fn set_progress_bar(&self, _state: ProgressBarState) {}
 
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
     fn set_mouse_passthrough(&self, _passthrough: bool) {}
@@ -2371,6 +2439,17 @@ pub struct FocusedWindowInfo {
     pub pid: Option<u32>,
 }
 
+/// 权限类型枚举
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionType {
+    /// 辅助功能权限
+    Accessibility,
+    /// 屏幕录制权限
+    ScreenCapture,
+    /// 输入监控权限
+    InputMonitoring,
+}
+
 /// 权限状态枚举
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionStatus {
@@ -2387,6 +2466,141 @@ pub enum PermissionStatus {
 pub struct GlobalHotKeyEvent {
     /// 快捷键的唯一标识符
     pub id: u32,
+}
+
+/// 系统电源状态变更事件
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemPowerEvent {
+    /// 系统即将休眠
+    Suspend,
+    /// 系统已从休眠中恢复
+    Resume,
+    /// 屏幕已锁定
+    LockScreen,
+    /// 屏幕已解锁
+    UnlockScreen,
+    /// 系统正在关机
+    Shutdown,
+}
+
+/// 电源阻止器类型，用于阻止系统进入省电模式
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerSaveBlockerKind {
+    /// 阻止应用被挂起
+    PreventAppSuspension,
+    /// 阻止显示器进入睡眠
+    PreventDisplaySleep,
+}
+
+/// 当前网络连接状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetworkStatus {
+    /// 系统有网络连接
+    Online,
+    /// 系统无网络连接
+    Offline,
+}
+
+/// 媒体键事件，来自硬件媒体键或系统媒体控件
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaKeyEvent {
+    /// 播放媒体
+    Play,
+    /// 暂停媒体
+    Pause,
+    /// 切换播放/暂停
+    PlayPause,
+    /// 停止媒体播放
+    Stop,
+    /// 跳转到下一曲目
+    NextTrack,
+    /// 跳转到上一曲目
+    PreviousTrack,
+}
+
+/// 请求用户注意力的类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttentionType {
+    /// 信息性请求（例如弹跳 Dock 图标一次）
+    Informational,
+    /// 关键请求（例如持续弹跳 Dock 图标）
+    Critical,
+}
+
+/// 任务栏/程序坞进度条状态
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ProgressBarState {
+    /// 不显示进度条
+    None,
+    /// 显示不确定进度条
+    Indeterminate,
+    /// 普通进度条，值为 0.0 到 1.0
+    Normal(f64),
+    /// 错误进度条，值为 0.0 到 1.0
+    Error(f64),
+    /// 暂停进度条，值为 0.0 到 1.0
+    Paused(f64),
+}
+
+/// 原生对话框类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogKind {
+    /// 信息对话框
+    Info,
+    /// 警告对话框
+    Warning,
+    /// 错误对话框
+    Error,
+}
+
+/// 原生对话框的选项
+#[derive(Debug, Clone)]
+pub struct DialogOptions {
+    /// 对话框类型
+    pub kind: DialogKind,
+    /// 对话框标题
+    pub title: SharedString,
+    /// 对话框主消息
+    pub message: SharedString,
+    /// 消息下方的可选详细信息
+    pub detail: Option<SharedString>,
+    /// 对话框按钮标签
+    pub buttons: Vec<SharedString>,
+}
+
+/// 操作系统信息
+#[derive(Debug, Clone)]
+pub struct OsInfo {
+    /// 操作系统名称（如 "linux"）
+    pub name: SharedString,
+    /// 操作系统版本
+    pub version: SharedString,
+    /// CPU 架构（如 "x86_64"）
+    pub arch: SharedString,
+    /// 系统区域设置（如 "en-US"）
+    pub locale: SharedString,
+    /// 系统主机名
+    pub hostname: SharedString,
+}
+
+/// 可用的生物识别认证类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BiometricKind {
+    /// macOS Touch ID
+    TouchId,
+    /// Windows Hello
+    WindowsHello,
+    /// 通用指纹识别器
+    Fingerprint,
+}
+
+/// 生物识别认证的可用性状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BiometricStatus {
+    /// 生物识别认证可用，指定了具体类型
+    Available(BiometricKind),
+    /// 生物识别认证不可用
+    Unavailable,
 }
 
 #[cfg(test)]
