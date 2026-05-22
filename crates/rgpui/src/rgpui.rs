@@ -53,6 +53,7 @@ mod rgpui_util;
 mod scene;
 mod shared_string;
 mod shared_uri;
+pub mod single_instance;
 mod style;
 mod styled;
 mod subscription;
@@ -129,6 +130,7 @@ pub use rgpui_util::{
 };
 pub use scene::*;
 pub use shared_uri::*;
+pub use single_instance::*;
 use std::{any::Any, future::Future};
 pub use style::*;
 pub use styled::*;

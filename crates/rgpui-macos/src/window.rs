@@ -673,6 +673,7 @@ impl MacWindow {
             display_id,
             window_min_size,
             tabbing_identifier,
+            mouse_passthrough,
             ..
         }: WindowParams,
         cursor_visible: Arc<AtomicBool>,
@@ -721,6 +722,22 @@ impl MacWindow {
                 }
                 WindowKind::Floating | WindowKind::Dialog => {
                     msg_send![PANEL_CLASS, alloc]
+                }
+                WindowKind::Overlay => {
+                    // Overlay 窗口：使用 NSPanel，不激活，无边框，始终置顶
+                    style_mask |= NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskBorderless;
+                    let panel: id = msg_send![PANEL_CLASS, alloc];
+
+                    // 设置窗口层级为浮动的
+                    let _: () = msg_send![panel, setLevel: cocoa::appkit::NSWindowLevel::NSFloatingWindowLevel as i32];
+
+                    // 鼠标穿透通过 mouse_passthrough 参数在下方统一处理
+                    panel
+                }
+                #[cfg(all(target_os = "linux", feature = "wayland"))]
+                WindowKind::LayerShell(_) => {
+                    // Linux Wayland LayerShell 不在 macOS 上支持
+                    msg_send![WINDOW_CLASS, alloc]
                 }
             };
 
@@ -853,6 +870,11 @@ impl MacWindow {
             }
 
             native_window.setMovable_(is_movable as BOOL);
+
+            // 设置鼠标穿透
+            if mouse_passthrough {
+                let _: () = msg_send![native_window, setIgnoresMouseEvents: YES];
+            }
 
             if let Some(window_min_size) = window_min_size {
                 native_window.setContentMinSize_(NSSize {
@@ -1126,6 +1148,30 @@ impl PlatformWindow for MacWindow {
                         width: size.width.as_f32() as f64,
                         height: size.height.as_f32() as f64,
                     });
+                })
+            })
+            .detach();
+    }
+
+    fn set_position(&mut self, position: Point<Pixels>) {
+        let this = self.0.lock();
+        let window = this.native_window;
+        let closed = this.closed.clone();
+        let bounds = this.content_size();
+        this.foreground_executor
+            .spawn(async move {
+                if_window_not_closed(closed, || unsafe {
+                    let frame = NSRect {
+                        origin: NSPoint {
+                            x: position.x.as_f32() as f64,
+                            y: position.y.as_f32() as f64,
+                        },
+                        size: NSSize {
+                            width: bounds.width.as_f32() as f64,
+                            height: bounds.height.as_f32() as f64,
+                        },
+                    };
+                    window.setFrame_display_(frame, true);
                 })
             })
             .detach();

@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    Sizable, StyledExt,
+    Disableable, Sizable, StyledExt,
     checkbox::Checkbox,
     setting::{
         AnySettingField, RenderOptions,
@@ -38,6 +38,7 @@ impl SettingFieldRender for BoolField {
             .child(if self.use_switch {
                 Switch::new("check")
                     .checked(checked)
+                    .disabled(options.disabled)
                     .with_size(options.size)
                     .on_click(move |checked: &bool, _, cx: &mut App| {
                         set_value(*checked, cx);
@@ -46,6 +47,7 @@ impl SettingFieldRender for BoolField {
             } else {
                 Checkbox::new("check")
                     .checked(checked)
+                    .disabled(options.disabled)
                     .with_size(options.size)
                     .on_click(move |checked: &bool, _, cx: &mut App| {
                         set_value(*checked, cx);
