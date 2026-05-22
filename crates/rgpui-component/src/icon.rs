@@ -21,7 +21,7 @@ impl<T: IconNamed> From<T> for Icon {
     }
 }
 
-icon_named!(IconName, "../rgpui-component-assets/assets/icons");
+icon_named!(IconName, "assets/icons");
 
 impl IconName {
     /// Return the icon as a Entity<Icon>
