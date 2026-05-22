@@ -1,7 +1,7 @@
 //! 桌面宠物演示 - 透明窗口 + 鼠标穿透 + 窗口移动宠物
 
 use rgpui::*;
-use rgpui_component::{v_flex, TitleBar};
+use rgpui_component::{TitleBar, v_flex};
 use rgpui_component_assets::Assets;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -172,6 +172,16 @@ fn rand_f32() -> f32 {
     ((s >> 33) as f32) / (u32::MAX as f32)
 }
 
+// 检查 Ctrl 键是否按下（用于 Ctrl+拖动交互）
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn GetAsyncKeyState(vKey: i32) -> i16;
+}
+const VK_CONTROL: i32 = 0x11;
+fn is_ctrl_pressed() -> bool {
+    unsafe { GetAsyncKeyState(VK_CONTROL) < 0 }
+}
+
 const APP_ID: &str = "com.example.desktop_pet";
 
 fn main() {
@@ -229,18 +239,28 @@ fn main() {
                 cx.background_executor()
                     .timer(Duration::from_millis(16))
                     .await;
-                let new_pos = {
-                    let mut pet = pet_state_clone.lock().unwrap();
-                    if !pet.is_moving() {
-                        continue;
-                    }
-                    pet.update(Duration::from_millis(16));
-                    pet.position()
-                };
 
-                // 移动窗口到新位置
+                // 检测 Ctrl 键状态，支持 Ctrl+拖动交互
+                let ctrl_held = is_ctrl_pressed();
+
                 let _ = cx.update_window(window_handle.into(), |_, window, _cx| {
-                    window.set_position(new_pos);
+                    if ctrl_held {
+                        // Ctrl 按下时：将宠物位置同步为窗口当前位置（用户拖动）
+                        let current_pos = window.bounds().origin;
+                        pet_state_clone.lock().unwrap().set_position(current_pos);
+                        // 不调用 set_position，让 Windows 拖动机制控制窗口位置
+                    } else {
+                        // 正常移动：计算下一帧位置并设置
+                        let new_pos = {
+                            let mut pet = pet_state_clone.lock().unwrap();
+                            if !pet.is_moving() {
+                                return;
+                            }
+                            pet.update(Duration::from_millis(16));
+                            pet.position()
+                        };
+                        window.set_position(new_pos);
+                    }
                 });
             }
         })
@@ -314,18 +334,20 @@ impl Render for DesktopPet {
         let pet_emoji = pet.get_emoji().to_string();
         drop(pet);
 
-        v_flex().size_full().overflow_hidden()
+        v_flex()
+            .size_full()
+            .overflow_hidden()
             .child(if self.passthrough {
                 div()
             } else {
                 div().child(TitleBar::new())
             })
             .child(
-            v_flex()
-                .size_full()
-                .items_center()
-                .justify_center()
-                .child(div().text_size(px(120.0)).child(pet_emoji)),
-        )
+                v_flex()
+                    .size_full()
+                    .items_center()
+                    .justify_center()
+                    .child(div().text_size(px(120.0)).child(pet_emoji)),
+            )
     }
 }

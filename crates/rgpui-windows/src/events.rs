@@ -979,6 +979,12 @@ impl WindowsWindowInner {
                 }
             }
 
+            // Ctrl 键按下时：允许拖动窗口（覆盖穿透）
+            // 使桌面宠物等穿透窗口在运动时仍可被用户拖动
+            if is_virtual_key_pressed(VK_CONTROL) {
+                return Some(HTCAPTION as _);
+            }
+
             // 其他区域穿透
             return Some(HTTRANSPARENT as _);
         }
