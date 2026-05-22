@@ -40,8 +40,6 @@ struct MenuDemo {
     selected_option: String,
     checkbox_state: bool,
     radio_option: String,
-    show_context_menu: bool,
-    context_menu_position: Point<Pixels>,
 }
 
 impl MenuDemo {
@@ -50,8 +48,6 @@ impl MenuDemo {
             selected_option: "None".to_string(),
             checkbox_state: false,
             radio_option: "Option 1".to_string(),
-            show_context_menu: false,
-            context_menu_position: point(px(0.0), px(0.0)),
         }
     }
 

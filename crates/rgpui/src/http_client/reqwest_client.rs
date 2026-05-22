@@ -2,15 +2,12 @@ use std::error::Error;
 use std::sync::{LazyLock, OnceLock};
 use std::{borrow::Cow, mem, pin::Pin, task::Poll, time::Duration};
 
-use super::{RedirectPolicy, Url, http};
+use super::{Url, http};
 use anyhow::anyhow;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::{AsyncRead, FutureExt as _, TryStreamExt as _};
 use regex::Regex;
-use reqwest::{
-    header::{HeaderMap, HeaderValue},
-    redirect,
-};
+use reqwest::header::{HeaderMap, HeaderValue};
 
 /// 延迟执行闭包的守卫类型
 pub struct Deferred<F: FnOnce()>(Option<F>);
@@ -95,9 +92,9 @@ impl ReqwestClient {
             client_has_proxy = false;
         };
 
-        let client = client
-            .use_preconfigured_tls(crate::tls::tls_config())
-            .build()?;
+        #[cfg(feature = "tls")]
+        let client = client.use_preconfigured_tls(crate::tls::tls_config());
+        let client = client.build()?;
         let mut client: ReqwestClient = client.into();
         client.proxy = client_has_proxy.then_some(proxy).flatten();
         client.user_agent = Some(user_agent);
@@ -245,17 +242,10 @@ impl super::HttpClient for ReqwestClient {
 
         let mut request = self.client.request(parts.method, parts.uri.to_string());
         request = request.headers(parts.headers);
-        if let Some(redirect_policy) = parts.extensions.get::<RedirectPolicy>() {
-            request = request.redirect_policy(match redirect_policy {
-                RedirectPolicy::NoFollow => redirect::Policy::none(),
-                RedirectPolicy::FollowLimit(limit) => redirect::Policy::limited(*limit as usize),
-                RedirectPolicy::FollowAll => redirect::Policy::limited(100),
-            });
-        }
         let request = request.body(match body.0 {
-            crate::Inner::Empty => reqwest::Body::default(),
-            crate::Inner::Bytes(cursor) => cursor.into_inner().into(),
-            crate::Inner::AsyncReader(stream) => {
+            crate::http_client::Inner::Empty => reqwest::Body::default(),
+            crate::http_client::Inner::Bytes(cursor) => cursor.into_inner().into(),
+            crate::http_client::Inner::AsyncReader(stream) => {
                 reqwest::Body::wrap_stream(StreamReader::new(stream))
             }
         });
