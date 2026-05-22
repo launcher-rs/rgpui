@@ -6,6 +6,7 @@ description = "GUI UI framework"
 publish = true
 license = "Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/launcher-rs/rgpui"
 keywords = ["desktop", "gui", "immediate"]
 categories = ["gui"]
 
