@@ -11,6 +11,7 @@ members = [
     "crates/rgpui-tokio",
     "crates/rgpui-wgpu",
     "crates/rgpui-macros",
+    "crates/rgpui-character",
 ]
 
 [workspace.package]
@@ -30,6 +31,7 @@ rgpui-web = { path = "crates/rgpui-web" ,version = "0.1.0"}
 rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "0.1.0" }
 rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "0.1.0"}
 rgpui-tokio = { path = "crates/rgpui-tokio",version = "0.1.0" }
+rgpui-character = { path = "crates/rgpui-character", version = "0.1.0" }
 
 
 # ---- 错误处理 ----

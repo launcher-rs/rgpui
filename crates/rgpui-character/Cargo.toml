@@ -1,0 +1,26 @@
+[package]
+name = "rgpui-character"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "rgpui 桌宠与 UI 角色运行时系统"
+license = "Apache-2.0"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/rgpui_character.rs"
+doctest = false
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+rgpui.workspace = true
+rgpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
+
+[[example]]
+name = "desktop_pet"
+path = "examples/desktop_pet.rs"

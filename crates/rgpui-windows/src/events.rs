@@ -71,10 +71,16 @@ impl WindowsWindowInner {
         lparam: LPARAM,
     ) -> LRESULT {
         let handled = match msg {
-            // 提前激活窗口，使 `active_window` 调用能正常工作
+            // 当 mouse_passthrough=true（穿透模式）时，不激活窗口，
+            // 返回 MA_NOACTIVATE 让 Windows 继续发送鼠标消息到底层窗口。
+            // 穿透模式下激活窗口会抢走焦点，导致底层窗口无法响应点击。
             WM_MOUSEACTIVATE => {
-                unsafe { SetActiveWindow(handle).ok() };
-                None
+                if self.state.mouse_passthrough.get() {
+                    Some(MA_NOACTIVATE as isize)
+                } else {
+                    unsafe { SetActiveWindow(handle).ok() };
+                    None
+                }
             }
             WM_ACTIVATE => self.handle_activate_msg(wparam),
             WM_CREATE => self.handle_create_msg(handle),

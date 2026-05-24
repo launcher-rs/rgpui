@@ -492,9 +492,16 @@ impl WindowsWindow {
         };
         if !disable_direct_composition {
             dwexstyle |= WS_EX_NOREDIRECTIONBITMAP;
+            // 使用 DirectComposition 时不需要 WS_EX_LAYERED。
+            // 透明度和混合由 DComp 视觉树直接处理，不依赖窗口样式。
+            // WS_EX_LAYERED 会导致 Windows 对每像素 alpha < 25% 的区域
+            // 自动覆盖 WM_NCHITTEST 结果为 HTTRANSPARENT，使我们的
+            // 鼠标穿透控制失效。DirectComposition 窗口的命中测试完全
+            // 由 WM_NCHITTEST 处理器通过 mouse_passthrough 状态控制。
         }
-        if params.mouse_passthrough {
+        if params.mouse_passthrough && disable_direct_composition {
             dwexstyle |= WS_EX_LAYERED;
+            // GDI 回退路径：WS_EX_LAYERED 提供逐像素透明度支持。
         }
 
         let hinstance = get_module_handle();
@@ -1052,36 +1059,39 @@ impl PlatformWindow for WindowsWindow {
     }
 
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
-    /// 开启穿透时添加 WS_EX_LAYERED（配合 WM_NCHITTEST 返回 HTTRANSPARENT）
-    /// 关闭穿透时移除 WS_EX_LAYERED，确保窗口正常接收鼠标事件
+    ///
+    /// 仅设置状态标记，不修改窗口样式。命中测试完全由 `WM_NCHITTEST`
+    /// 处理器根据 `mouse_passthrough` 状态返回 `HTTRANSPARENT` 控制。
+    ///
+    /// 不动态切换 `WS_EX_LAYERED`：该样式在启用 DirectComposition 时与
+    /// `WS_EX_NOREDIRECTIONBITMAP` 配合使用，运行时切换会断开 DirectComposition
+    /// 视觉链，导致窗口停止接收正确的命中测试消息。
     fn set_mouse_passthrough(&self, passthrough: bool) {
-        let hwnd = self.0.hwnd;
         self.0.state.mouse_passthrough.set(passthrough);
+    }
 
-        let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
+    /// 获取窗口扩展样式（GWL_EXSTYLE）
+    fn window_extended_style(&self) -> u32 {
+        unsafe { get_window_long(self.0.hwnd, GWL_EXSTYLE) as u32 }
+    }
 
-        let new_ex_style = if passthrough {
-            current_ex_style | WS_EX_LAYERED.0 as isize
-        } else {
-            current_ex_style & !WS_EX_LAYERED.0 as isize
-        };
-
-        if current_ex_style != new_ex_style {
-            unsafe {
-                set_window_long(hwnd, GWL_EXSTYLE, new_ex_style);
-
-                // 刷新窗口以应用新的扩展样式
-                SetWindowPos(
-                    hwnd,
-                    None,
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
-                )
-                .log_err();
-            }
+    /// 设置窗口扩展样式（GWL_EXSTYLE）
+    ///
+    /// 设置后调用 `SetWindowPos` 刷新窗口以应用更改。
+    /// 可用于调试，调用者负责确保样式的合法性。
+    fn set_window_extended_style(&self, style: u32) {
+        unsafe {
+            set_window_long(self.0.hwnd, GWL_EXSTYLE, style as isize);
+            SetWindowPos(
+                self.0.hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
+            )
+            .log_err();
         }
     }
 

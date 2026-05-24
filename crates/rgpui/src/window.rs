@@ -2249,6 +2249,18 @@ impl Window {
         self.platform_window.set_mouse_passthrough(passthrough);
     }
 
+    /// 获取窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
+    pub fn window_extended_style(&self) -> u32 {
+        self.platform_window.window_extended_style()
+    }
+
+    /// 设置窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
+    ///
+    /// 可用于调试和自定义窗口行为，例如控制 WS_EX_LAYERED 等标志。
+    pub fn set_window_extended_style(&self, style: u32) {
+        self.platform_window.set_window_extended_style(style);
+    }
+
     /// 设置标题栏和边框是否可见
     ///
     /// # 参数
@@ -3772,6 +3784,7 @@ impl Window {
                 content_mask,
                 tile,
                 opacity,
+                transformation: TransformationMatrix::unit(),
             });
         }
         Ok(())
@@ -3854,6 +3867,26 @@ impl Window {
         frame_index: usize,
         grayscale: bool,
     ) -> Result<()> {
+        self.paint_image_with_transform(
+            bounds,
+            corner_radii,
+            data,
+            frame_index,
+            grayscale,
+            TransformationMatrix::unit(),
+        )
+    }
+
+    /// 使用自定义变换绘制图片，支持翻转、缩放和旋转。
+    pub fn paint_image_with_transform(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+        grayscale: bool,
+        transformation: TransformationMatrix,
+    ) -> Result<()> {
         self.invalidator.debug_assert_paint();
 
         let bounds = self.snap_bounds(bounds);
@@ -3887,6 +3920,7 @@ impl Window {
             corner_radii,
             tile,
             opacity,
+            transformation,
         });
         Ok(())
     }
