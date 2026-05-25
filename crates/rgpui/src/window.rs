@@ -2121,6 +2121,27 @@ impl Window {
         self.platform_window.bounds()
     }
 
+    /// 返回当前窗口左上角在全局屏幕坐标系中的位置。
+    pub fn position(&self) -> Point<Pixels> {
+        self.bounds().origin
+    }
+
+    /// 返回当前窗口所在屏幕的边界。
+    ///
+    /// 如果窗口当前显示器不可用，则回退到主显示器。
+    pub fn screen_bounds(&self, cx: &App) -> Option<Bounds<Pixels>> {
+        self.display(cx)
+            .or_else(|| cx.primary_display())
+            .map(|display| display.bounds())
+    }
+
+    /// 返回当前窗口所在屏幕的尺寸。
+    ///
+    /// 如果窗口当前显示器不可用，则回退到主显示器。
+    pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
+        self.screen_bounds(cx).map(|bounds| bounds.size)
+    }
+
     /// Renders the current frame's scene to a texture and returns the pixel data as an RGBA image.
     /// This does not present the frame to screen - useful for visual testing where we want
     /// to capture what would be rendered without displaying it or requiring the window to be visible.

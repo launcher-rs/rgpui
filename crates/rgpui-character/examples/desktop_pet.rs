@@ -88,6 +88,10 @@ const SPRITE_SIZE: f32 = 220.0;
 /// 每 16 毫秒执行一次更新循环。
 const FRAME_TIME: Duration = Duration::from_millis(16);
 
+/// 退出交互模式后锚定窗口位置的帧数。
+/// 用于吸收 Windows 系统拖动结束后窗口 bounds 同步的一小段延迟。
+const POSITION_ANCHOR_FRAMES: u8 = 8;
+
 /// 暂停或恢复桌宠的全局快捷键编号。
 /// 用于在注册快捷键时标识此快捷键。
 const HOTKEY_TOGGLE_PAUSE: u32 = 1;
@@ -229,6 +233,10 @@ struct PetSharedState {
     interactive: bool,
     /// 当前正在执行的动作（如 Walk、Eat 等）
     activity: CatActivity,
+    /// 退出交互模式后要恢复的动作
+    resume_activity: CatActivity,
+    /// 退出交互模式后剩余的位置锚定帧数
+    position_anchor_frames: u8,
     /// 请求切换到指定动作（每帧在 tick 中消费）
     /// 由按钮点击或状态切换函数设置
     requested_activity: Option<CatActivity>,
@@ -284,13 +292,15 @@ impl PetSharedState {
         // 返回初始状态
         Self {
             runtime,
-            running: true,               // 自动运行
-            passthrough: true,           // 初始穿透（面板隐藏）
-            controls_visible: false,     // 初始不显示按钮组
-            interactive: false,          // 非交互模式
-            activity: CatActivity::Walk, // 初始动作：散步
-            requested_activity: None,    // 无待处理请求
-            last_render: None,           // 无渲染命令
+            running: true,                      // 自动运行
+            passthrough: true,                  // 初始穿透（面板隐藏）
+            controls_visible: false,            // 初始不显示按钮组
+            interactive: false,                 // 非交互模式
+            activity: CatActivity::Walk,        // 初始动作：散步
+            resume_activity: CatActivity::Walk, // 退出交互后恢复散步
+            position_anchor_frames: 0,          // 初始无需位置锚定
+            requested_activity: None,           // 无待处理请求
+            last_render: None,                  // 无渲染命令
             message: "Ctrl+Shift+P 暂停或恢复；按住 Ctrl 可拖动窗口".into(),
         }
     }
@@ -313,6 +323,22 @@ impl PetSharedState {
     fn set_position(&mut self, position: Point<Pixels>) {
         // 将 Point<Pixels> 转换为 Vec2 并设置到角色
         self.runtime.characters[0].position = Vec2::new(position.x.as_f32(), position.y.as_f32());
+        // 手动定位后清空旧速度，避免恢复运行第一帧沿旧方向跳动
+        self.runtime.characters[0].velocity = Vec2::new(0.0, 0.0);
+    }
+
+    /// 根据屏幕尺寸更新物理活动边界。
+    ///
+    /// # 参数
+    /// * `screen_width` - 屏幕宽度
+    /// * `screen_height` - 屏幕高度
+    fn set_screen_size(&mut self, screen_width: f32, screen_height: f32) {
+        self.runtime.physics.bounds = Rect::new(
+            -120.0,
+            -120.0,
+            screen_width - WINDOW_SIZE + 240.0,
+            screen_height - WINDOW_SIZE + 240.0,
+        );
     }
 
     /// 切换运行/暂停状态。
@@ -330,10 +356,12 @@ impl PetSharedState {
         // interactive 与 running 相反：运行时非交互，暂停时交互
         self.interactive = !self.running;
         if self.running {
-            // 恢复运行：请求散步动作
-            self.requested_activity = Some(CatActivity::Walk);
+            // 恢复运行：请求恢复暂停前记录的动作
+            self.requested_activity = Some(self.resume_activity);
             self.message = "自动运行中".into();
         } else {
+            // 暂停前记录当前动作，恢复时继续该动作
+            self.resume_activity = self.activity;
             // 暂停：设置睡觉动作
             self.activity = CatActivity::Sleep;
             self.requested_activity = Some(CatActivity::Sleep);
@@ -350,6 +378,8 @@ impl PetSharedState {
     fn request_activity(&mut self, activity: CatActivity) {
         // 睡眠时停止运行，其他动作保持运行
         self.running = !matches!(activity, CatActivity::Sleep);
+        // 记录用户选择的动作，退出交互模式后继续该动作
+        self.resume_activity = activity;
         // 记录待处理的动作请求
         self.requested_activity = Some(activity);
         // 更新提示信息
@@ -359,6 +389,8 @@ impl PetSharedState {
     /// 进入交互模式（由 Ctrl 键触发）。
     /// 交互模式下打开控制面板，关闭鼠标穿透。
     fn enter_interactive(&mut self) {
+        // 进入交互前记录当前动作，退出时恢复而不是强制散步
+        self.resume_activity = self.activity;
         self.running = false; // 停止自动运行
         self.passthrough = false; // 关闭穿透，让窗口开始接收 hover
         self.controls_visible = false; // 等鼠标移入后再显示按钮组
@@ -369,16 +401,15 @@ impl PetSharedState {
         self.message = "交互模式：点击按钮或再次按 Ctrl 退出".into();
     }
 
-    /// 退出交互模式，回到自动散步状态。
-    /// 强制回到 Walk，确保鼠标穿透立刻开启。
+    /// 退出交互模式，恢复进入交互前或用户按钮选择的动作。
     fn exit_interactive(&mut self) {
-        self.running = true; // 恢复自动运行
+        self.running = !matches!(self.resume_activity, CatActivity::Sleep); // 按恢复动作决定是否运行
         self.interactive = false; // 退出交互模式
         self.passthrough = true; // 开启穿透（面板隐藏）
         self.controls_visible = false; // 隐藏按钮组
-        // 强制散步：退出交互时始终回到 Walk，不恢复上一次活动
-        // 这样能确保鼠标穿透立刻生效（只有散步时穿透打开）
-        self.requested_activity = Some(CatActivity::Walk);
+        self.position_anchor_frames = POSITION_ANCHOR_FRAMES; // 短暂锚定当前位置，避免退出时跳位
+        // 恢复进入交互前或用户按钮选择的动作
+        self.requested_activity = Some(self.resume_activity);
         self.message = "自动运行中".into();
     }
 
@@ -437,6 +468,31 @@ impl PetSharedState {
             self.controls_visible = false;
             self.passthrough = true;
         }
+    }
+
+    /// 将角色位置临时锚定到当前窗口位置。
+    ///
+    /// # 参数
+    /// * `position` - 当前窗口位置
+    ///
+    /// # 返回
+    /// true = 本帧仍处于锚定期，窗口应保持在传入位置
+    fn anchor_position_if_needed(&mut self, position: Point<Pixels>) -> bool {
+        if self.position_anchor_frames == 0 {
+            return false;
+        }
+
+        self.set_position(position);
+        self.position_anchor_frames -= 1;
+        true
+    }
+
+    /// 判断是否仍处于退出交互后的位置锚定期。
+    ///
+    /// # 返回
+    /// true = 本帧应跳过自动移动和窗口定位
+    fn anchoring_position(&self) -> bool {
+        self.position_anchor_frames > 0
     }
 
     /// 获取当前帧的要绘制的纹理路径。
@@ -581,6 +637,16 @@ impl CatBehavior {
     /// 返回当前 CatActivity。
     fn activity(&self) -> CatActivity {
         self.activity
+    }
+
+    /// 更新行为控制器使用的屏幕尺寸。
+    ///
+    /// # 参数
+    /// * `screen_width` - 屏幕宽度
+    /// * `screen_height` - 屏幕高度
+    fn set_screen_size(&mut self, screen_width: f32, screen_height: f32) {
+        self.screen_width = screen_width;
+        self.screen_height = screen_height;
     }
 
     /// 强制切换到指定活动（由外部请求触发，如按钮点击）。
@@ -940,8 +1006,6 @@ fn main() {
 
     // 获取 Cargo 清单目录路径
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // 创建共享状态（使用 Arc+Mutex 跨线程访问）
-    let pet_state = Arc::new(Mutex::new(PetSharedState::new(1920.0, 1080.0)));
 
     // 启动 rgpui 应用程序
     application()
@@ -956,6 +1020,15 @@ fn main() {
             // 设置系统托盘
             setup_tray(cx);
 
+            // 获取主显示器边界，用真实屏幕尺寸初始化桌宠物理边界
+            let screen_bounds = cx
+                .primary_display()
+                .map(|display| display.bounds())
+                .unwrap_or_else(|| Bounds::centered(None, size(px(1920.0), px(1080.0)), cx));
+            let screen_width = screen_bounds.size.width.as_f32();
+            let screen_height = screen_bounds.size.height.as_f32();
+            // 创建共享状态（使用 Arc+Mutex 跨线程访问）
+            let pet_state = Arc::new(Mutex::new(PetSharedState::new(screen_width, screen_height)));
             // 计算窗口居中位置
             let bounds = Bounds::centered(None, size(px(WINDOW_SIZE), px(WINDOW_SIZE)), cx);
             // 窗口可见性标志
@@ -978,7 +1051,15 @@ fn main() {
                     // 视图创建回调
                     |window, cx| {
                         // 创建桌宠视图
-                        let view = cx.new(|_| DesktopPet::new(view_state));
+                        let view = cx.new(|cx| {
+                            // 监听窗口移动，把用户拖动后的真实窗口位置同步回角色运行时
+                            cx.observe_window_bounds(window, |this: &mut DesktopPet, window, _| {
+                                this.state.lock().unwrap().set_position(window.position());
+                            })
+                            .detach();
+
+                            DesktopPet::new(view_state)
+                        });
                         // 注册窗口关闭事件处理
                         window.on_window_should_close(cx, move |window, _cx| {
                             // 标记窗口已隐藏
@@ -999,7 +1080,7 @@ fn main() {
             // 设置全局快捷键
             setup_global_hotkey(cx, pet_state.clone(), window_handle);
             // 启动主循环
-            spawn_pet_loop(cx, pet_state, window_handle);
+            spawn_pet_loop(cx, pet_state, window_handle, screen_width, screen_height);
 
             // 激活应用程序
             cx.activate(true);
@@ -1135,13 +1216,17 @@ fn setup_global_hotkey(
 /// * `cx` - 应用程序上下文
 /// * `pet_state` - 桌宠共享状态
 /// * `window_handle` - 窗口句柄
+/// * `screen_width` - 当前屏幕宽度
+/// * `screen_height` - 当前屏幕高度
 fn spawn_pet_loop(
     cx: &mut App,
     pet_state: Arc<Mutex<PetSharedState>>,
     window_handle: rgpui::WindowHandle<DesktopPet>,
+    screen_width: f32,
+    screen_height: f32,
 ) {
-    // 创建猫行为控制器（初始屏幕尺寸 1920x1080）
-    let mut behavior = CatBehavior::new(1920.0, 1080.0);
+    // 创建猫行为控制器（使用真实屏幕尺寸）
+    let mut behavior = CatBehavior::new(screen_width, screen_height);
     // 记录上一帧 Ctrl 键状态（用于检测上升沿：按下瞬间触发切换）
     let mut was_ctrl_held = false;
     // 在后台异步任务中运行主循环
@@ -1161,17 +1246,29 @@ fn spawn_pet_loop(
                 let scale_factor = window.scale_factor();
                 // 锁定共享状态
                 let mut state = pet_state.lock().unwrap();
+                // 根据窗口所在屏幕动态刷新行为和物理边界，避免固定 1920x1080 导致右半屏异常
+                if let Some(screen_size) = window.screen_size(cx) {
+                    let screen_width = screen_size.width.as_f32();
+                    let screen_height = screen_size.height.as_f32();
+                    behavior.set_screen_size(screen_width, screen_height);
+                    state.set_screen_size(screen_width, screen_height);
+                }
                 // 只有交互模式才响应 hover；普通穿透状态下 hover 不生效
                 let mouse_hovered = state.interactive
                     && cursor_screen_position(scale_factor)
                         .is_some_and(|position| cursor_in_bounds(position, window_bounds));
+                // 标记本帧是否刚退出交互模式，避免立刻用旧 runtime 位置覆盖用户拖动后的窗口位置
+                let mut exited_interactive = false;
 
                 // Ctrl 单独按下时切换交互模式（Ctrl+Shift 同时按下时不切换，
                 // 避免与 Ctrl+Shift+P 快捷键冲突）
                 if ctrl_held && !was_ctrl_held && !shift_held {
                     if state.interactive {
-                        // 退出交互模式 → 猫恢复散步
+                        // 退出交互模式前先记录用户拖动后的窗口位置
+                        state.set_position(window.position());
+                        // 退出交互模式 → 恢复原动作或用户按钮选择的动作
                         state.exit_interactive();
+                        exited_interactive = true;
                     } else {
                         // 进入交互模式 → 打开面板，关闭穿透
                         state.enter_interactive();
@@ -1182,20 +1279,38 @@ fn spawn_pet_loop(
 
                 // Ctrl 按下时锁定猫的位置（方便拖动时位置不自动变化）
                 if ctrl_held {
-                    state.set_position(window_bounds.origin);
+                    state.set_position(window.position());
                 }
 
                 // 更新上一帧 Ctrl 状态
                 was_ctrl_held = ctrl_held;
 
-                if state.interactive {
+                if exited_interactive {
+                    // 刚退出交互的这一帧只恢复穿透，不移动窗口，等待 bounds observer 同步最终位置
+                    let should_passthrough = state.passthrough;
+                    drop(state);
+                    window.set_mouse_passthrough(should_passthrough);
+                } else if state.interactive {
                     // 交互模式：更新角色状态后仍由鼠标悬停决定按钮组显示
+                    state.set_position(window.position());
                     state.tick(&mut behavior);
+                    // 防止交互模式内的动作更新改变 runtime 位置，确保拖动后的窗口位置是唯一位置来源
+                    state.set_position(window.position());
                     state.set_hovered(mouse_hovered);
                     let should_passthrough = state.passthrough;
                     drop(state);
                     window.set_mouse_passthrough(should_passthrough);
                 } else if state.running {
+                    if state.anchoring_position() {
+                        // 锚定期完全不调用 window.set_position，避免穿透样式刚恢复时坐标被二次换算
+                        state.anchor_position_if_needed(window.position());
+                        let should_passthrough = state.passthrough;
+                        drop(state);
+                        window.set_mouse_passthrough(should_passthrough);
+                        cx.notify();
+                        return;
+                    }
+
                     // 运行模式：先更新状态，然后根据计算结果设置穿透
                     state.tick(&mut behavior);
                     // 普通运行模式下 hover 不生效，保持穿透
@@ -1214,6 +1329,8 @@ fn spawn_pet_loop(
                     // 非运行也非交互（暂停状态）：类似处理
                     state.tick(&mut behavior);
                     state.set_hovered(mouse_hovered);
+                    // 非运行状态下也吸收一次退出交互后的 bounds 同步延迟
+                    state.anchor_position_if_needed(window.position());
                     let should_passthrough = state.passthrough;
                     drop(state);
                     window.set_mouse_passthrough(should_passthrough);
