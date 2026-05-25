@@ -17,19 +17,20 @@ members = [
 edition = "2024"
 publish = true
 license = "Apache-2.0"
+version = "0.2.1"
 
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-rgpui = { path = "crates/rgpui", default-features = false ,version = "0.2.0"}
-rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "0.1.0" }
-rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "0.1.0"}
-rgpui-macros = { path = "crates/rgpui-macros" ,version = "0.1.0"}
-rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "0.1.0" }
-rgpui-web = { path = "crates/rgpui-web" ,version = "0.1.0"}
-rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "0.1.1" }
-rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "0.1.0"}
-rgpui-tokio = { path = "crates/rgpui-tokio",version = "0.1.0" }
+rgpui = { path = "crates/rgpui", default-features = false ,version = "0.2.1"}
+rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "0.2.1" }
+rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "0.2.1"}
+rgpui-macros = { path = "crates/rgpui-macros" ,version = "0.2.1"}
+rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "0.2.1" }
+rgpui-web = { path = "crates/rgpui-web" ,version = "0.2.1"}
+rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "0.2.1" }
+rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "0.2.1"}
+rgpui-tokio = { path = "crates/rgpui-tokio",version = "0.2.1" }
 
 
 # ---- 错误处理 ----

@@ -1,6 +1,6 @@
 [package]
 name = "rgpui-tokio"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 publish.workspace = true
 description = "Tokio 异步运行时集成"

@@ -1,6 +1,6 @@
 [package]
 name = "rgpui"
-version = "0.2.0"
+version.workspace = true
 edition.workspace = true
 description = "GUI UI framework"
 publish = true
