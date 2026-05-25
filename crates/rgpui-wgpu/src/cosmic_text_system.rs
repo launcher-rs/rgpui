@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Ok, Result};
 use cosmic_text::{
-    Attrs, AttrsList, Family, Font as CosmicTextFont, FontFeatures as CosmicFontFeatures,
-    FontSystem, ShapeBuffer, ShapeLine,
+    Attrs, AttrsList, Ellipsize, Family, Font as CosmicTextFont,
+    FontFeatures as CosmicFontFeatures, FontSystem, ShapeBuffer, ShapeLine,
 };
 use rgpui::{
     Bounds, DevicePixels, Font, FontFallbacks, FontFeatures, FontId, FontMetrics, FontRun,
@@ -558,6 +558,7 @@ impl CosmicTextSystemState {
             f32::from(font_size),
             None, // 我们自己处理换行
             cosmic_text::Wrap::None,
+            Ellipsize::None,
             None,
             &mut layout_lines,
             None,

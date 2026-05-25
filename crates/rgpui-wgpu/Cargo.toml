@@ -1,6 +1,6 @@
 [package]
 name = "rgpui-wgpu"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 publish.workspace = true
 description = "wgpu 渲染后端"
@@ -20,7 +20,7 @@ font-kit = ["dep:font-kit"]
 rgpui.workspace = true
 anyhow.workspace = true
 bytemuck = "1"
-cosmic-text = "0.17.0"
+cosmic-text = "0.19.0"
 etagere = "0.2"
 itertools.workspace = true
 log.workspace = true
