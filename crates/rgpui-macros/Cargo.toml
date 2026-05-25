@@ -5,6 +5,7 @@ edition.workspace = true
 publish = true
 license = "Apache-2.0"
 description = "Macros used by rgpui"
+repository = "https://github.com/launcher-rs/rgpui"
 
 [lints]
 workspace = true

@@ -5,6 +5,7 @@ edition.workspace = true
 publish.workspace = true
 description = "wgpu 渲染后端"
 license = "Apache-2.0"
+repository = "https://github.com/launcher-rs/rgpui"
 
 [lints]
 workspace = true
