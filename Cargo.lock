@@ -5259,16 +5259,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui-character"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "rgpui",
- "rgpui-platform",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "rgpui-linux"
 version = "0.1.0"
 dependencies = [
