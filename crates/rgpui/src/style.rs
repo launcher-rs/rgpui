@@ -783,7 +783,7 @@ impl Style {
         }
     }
 
-    fn compose_transform(&self, bounds: Bounds<Pixels>) -> TransformationMatrix {
+    pub(crate) fn compose_transform(&self, bounds: Bounds<Pixels>) -> TransformationMatrix {
         let has_transform = self.rotate.is_some() || self.scale.is_some();
         if !has_transform {
             return TransformationMatrix::unit();

@@ -492,9 +492,17 @@ impl WindowsWindow {
         };
         if !disable_direct_composition {
             dwexstyle |= WS_EX_NOREDIRECTIONBITMAP;
+            // 使用 DirectComposition 时不需要 WS_EX_LAYERED。
+            // 透明度和混合由 DComp 视觉树直接处理，不依赖窗口样式。
+            // WS_EX_LAYERED 会导致 Windows 对每像素 alpha < 25% 的区域
+            // 自动覆盖 WM_NCHITTEST 结果为 HTTRANSPARENT，使我们的
+            // 鼠标穿透控制失效。DirectComposition 窗口的命中测试完全
+            // 由 WM_NCHITTEST 处理器通过 mouse_passthrough 状态控制。
         }
         if params.mouse_passthrough {
-            dwexstyle |= WS_EX_LAYERED;
+            dwexstyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
+            // 鼠标穿透需要 layered + transparent 扩展样式同时存在，
+            // 才能可靠跨进程跳过该窗口。
         }
 
         let hinstance = get_module_handle();
@@ -551,6 +559,7 @@ impl WindowsWindow {
         let this = context.inner.take().transpose()?;
         let hwnd = creation_result?;
         let this = this.unwrap();
+        this.sync_mouse_passthrough_style(params.mouse_passthrough);
 
         register_drag_drop(&this)?;
         set_non_rude_hwnd(hwnd, true);
@@ -589,6 +598,44 @@ impl rwh::HasWindowHandle for WindowsWindow {
 impl rwh::HasDisplayHandle for WindowsWindow {
     fn display_handle(&self) -> std::result::Result<rwh::DisplayHandle<'_>, rwh::HandleError> {
         Ok(rwh::DisplayHandle::windows())
+    }
+}
+
+impl WindowsWindowInner {
+    /// 将鼠标穿透状态应用到 Windows 扩展样式
+    fn sync_mouse_passthrough_style(&self, passthrough: bool) {
+        let hwnd = self.hwnd;
+        let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
+        let mut new_ex_style = current_ex_style;
+
+        if passthrough {
+            new_ex_style |= WS_EX_LAYERED.0 as isize | WS_EX_TRANSPARENT.0 as isize;
+        } else {
+            new_ex_style &= !WS_EX_TRANSPARENT.0 as isize;
+        }
+
+        unsafe {
+            if current_ex_style != new_ex_style {
+                set_window_long(hwnd, GWL_EXSTYLE, new_ex_style);
+            }
+
+            if passthrough {
+                SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA).log_err();
+            }
+
+            if current_ex_style != new_ex_style {
+                SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
+                )
+                .log_err();
+            }
+        }
     }
 }
 
@@ -1052,36 +1099,39 @@ impl PlatformWindow for WindowsWindow {
     }
 
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
-    /// 开启穿透时添加 WS_EX_LAYERED（配合 WM_NCHITTEST 返回 HTTRANSPARENT）
-    /// 关闭穿透时移除 WS_EX_LAYERED，确保窗口正常接收鼠标事件
+    ///
+    /// 同步内部状态与 Windows 原生扩展样式。
+    ///
+    /// `WM_NCHITTEST` 返回 `HTTRANSPARENT` 只能可靠影响同线程窗口；
+    /// `WS_EX_LAYERED | WS_EX_TRANSPARENT` 才能让鼠标事件可靠穿过桌宠并
+    /// 落到其他应用窗口。
     fn set_mouse_passthrough(&self, passthrough: bool) {
-        let hwnd = self.0.hwnd;
         self.0.state.mouse_passthrough.set(passthrough);
+        self.0.sync_mouse_passthrough_style(passthrough);
+    }
 
-        let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
+    /// 获取窗口扩展样式（GWL_EXSTYLE）
+    fn window_extended_style(&self) -> u32 {
+        unsafe { get_window_long(self.0.hwnd, GWL_EXSTYLE) as u32 }
+    }
 
-        let new_ex_style = if passthrough {
-            current_ex_style | WS_EX_LAYERED.0 as isize
-        } else {
-            current_ex_style & !WS_EX_LAYERED.0 as isize
-        };
-
-        if current_ex_style != new_ex_style {
-            unsafe {
-                set_window_long(hwnd, GWL_EXSTYLE, new_ex_style);
-
-                // 刷新窗口以应用新的扩展样式
-                SetWindowPos(
-                    hwnd,
-                    None,
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
-                )
-                .log_err();
-            }
+    /// 设置窗口扩展样式（GWL_EXSTYLE）
+    ///
+    /// 设置后调用 `SetWindowPos` 刷新窗口以应用更改。
+    /// 可用于调试，调用者负责确保样式的合法性。
+    fn set_window_extended_style(&self, style: u32) {
+        unsafe {
+            set_window_long(self.0.hwnd, GWL_EXSTYLE, style as isize);
+            SetWindowPos(
+                self.0.hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
+            )
+            .log_err();
         }
     }
 

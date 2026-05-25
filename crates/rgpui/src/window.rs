@@ -2121,6 +2121,27 @@ impl Window {
         self.platform_window.bounds()
     }
 
+    /// 返回当前窗口左上角在全局屏幕坐标系中的位置。
+    pub fn position(&self) -> Point<Pixels> {
+        self.bounds().origin
+    }
+
+    /// 返回当前窗口所在屏幕的边界。
+    ///
+    /// 如果窗口当前显示器不可用，则回退到主显示器。
+    pub fn screen_bounds(&self, cx: &App) -> Option<Bounds<Pixels>> {
+        self.display(cx)
+            .or_else(|| cx.primary_display())
+            .map(|display| display.bounds())
+    }
+
+    /// 返回当前窗口所在屏幕的尺寸。
+    ///
+    /// 如果窗口当前显示器不可用，则回退到主显示器。
+    pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
+        self.screen_bounds(cx).map(|bounds| bounds.size)
+    }
+
     /// Renders the current frame's scene to a texture and returns the pixel data as an RGBA image.
     /// This does not present the frame to screen - useful for visual testing where we want
     /// to capture what would be rendered without displaying it or requiring the window to be visible.
@@ -2247,6 +2268,18 @@ impl Window {
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
     pub fn set_mouse_passthrough(&self, passthrough: bool) {
         self.platform_window.set_mouse_passthrough(passthrough);
+    }
+
+    /// 获取窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
+    pub fn window_extended_style(&self) -> u32 {
+        self.platform_window.window_extended_style()
+    }
+
+    /// 设置窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
+    ///
+    /// 可用于调试和自定义窗口行为，例如控制 WS_EX_LAYERED 等标志。
+    pub fn set_window_extended_style(&self, style: u32) {
+        self.platform_window.set_window_extended_style(style);
     }
 
     /// 设置标题栏和边框是否可见
@@ -3772,6 +3805,7 @@ impl Window {
                 content_mask,
                 tile,
                 opacity,
+                transformation: TransformationMatrix::unit(),
             });
         }
         Ok(())
@@ -3854,6 +3888,26 @@ impl Window {
         frame_index: usize,
         grayscale: bool,
     ) -> Result<()> {
+        self.paint_image_with_transform(
+            bounds,
+            corner_radii,
+            data,
+            frame_index,
+            grayscale,
+            TransformationMatrix::unit(),
+        )
+    }
+
+    /// 使用自定义变换绘制图片，支持翻转、缩放和旋转。
+    pub fn paint_image_with_transform(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+        grayscale: bool,
+        transformation: TransformationMatrix,
+    ) -> Result<()> {
         self.invalidator.debug_assert_paint();
 
         let bounds = self.snap_bounds(bounds);
@@ -3887,6 +3941,7 @@ impl Window {
             corner_radii,
             tile,
             opacity,
+            transformation,
         });
         Ok(())
     }

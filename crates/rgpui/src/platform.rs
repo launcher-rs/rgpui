@@ -856,6 +856,15 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
     fn set_mouse_passthrough(&self, _passthrough: bool) {}
 
+    /// 获取窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
+    fn window_extended_style(&self) -> u32 {
+        0
+    }
+
+    /// 设置窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
+    /// 调用者负责确保样式的合法性，不正确的样式可能导致窗口行为异常
+    fn set_window_extended_style(&self, _style: u32) {}
+
     /// 设置标题栏和边框是否可见
     fn set_titlebar_visible(&self, _visible: bool) {}
 

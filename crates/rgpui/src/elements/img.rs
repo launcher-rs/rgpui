@@ -490,13 +490,15 @@ impl Element for Img {
                         .corner_radii
                         .to_pixels(window.rem_size())
                         .clamp_radii_for_quad_size(new_bounds.size);
+                    let transform = style.compose_transform(bounds);
                     window
-                        .paint_image(
+                        .paint_image_with_transform(
                             new_bounds,
                             corner_radii,
                             data,
                             layout_state.frame_index,
                             self.style.grayscale,
+                            transform,
                         )
                         .log_err();
                 } else if let Some(replacement) = &mut layout_state.replacement {
