@@ -221,6 +221,9 @@ struct PetSharedState {
     /// 渲染层鼠标穿透标志
     /// true = 不显示控制面板（穿透）；false = 显示控制面板（可点击）
     passthrough: bool,
+    /// 鼠标是否悬停在桌宠窗口范围内
+    /// true = 显示按钮组并关闭穿透；false = 隐藏按钮组并恢复穿透
+    controls_visible: bool,
     /// 是否处于交互模式（与 running 互斥）
     /// true = 控制面板可见，可点击按钮
     interactive: bool,
@@ -283,6 +286,7 @@ impl PetSharedState {
             runtime,
             running: true,               // 自动运行
             passthrough: true,           // 初始穿透（面板隐藏）
+            controls_visible: false,     // 初始不显示按钮组
             interactive: false,          // 非交互模式
             activity: CatActivity::Walk, // 初始动作：散步
             requested_activity: None,    // 无待处理请求
@@ -321,6 +325,8 @@ impl PetSharedState {
         self.running = !self.running;
         // passthrough 与 running 同步：运行时穿透，暂停时关闭穿透
         self.passthrough = self.running;
+        // 暂停时保留按钮组，恢复运行时等待鼠标悬停再显示
+        self.controls_visible = !self.running;
         // interactive 与 running 相反：运行时非交互，暂停时交互
         self.interactive = !self.running;
         if self.running {
@@ -344,10 +350,6 @@ impl PetSharedState {
     fn request_activity(&mut self, activity: CatActivity) {
         // 睡眠时停止运行，其他动作保持运行
         self.running = !matches!(activity, CatActivity::Sleep);
-        // 散步退出交互模式，其他动作保持交互
-        self.interactive = !matches!(activity, CatActivity::Walk);
-        // 交互模式时关闭穿透（显示面板），非交互时开启穿透
-        self.passthrough = !self.interactive;
         // 记录待处理的动作请求
         self.requested_activity = Some(activity);
         // 更新提示信息
@@ -358,7 +360,8 @@ impl PetSharedState {
     /// 交互模式下打开控制面板，关闭鼠标穿透。
     fn enter_interactive(&mut self) {
         self.running = false; // 停止自动运行
-        self.passthrough = false; // 关闭穿透（显示面板）
+        self.passthrough = false; // 关闭穿透，让窗口开始接收 hover
+        self.controls_visible = false; // 等鼠标移入后再显示按钮组
         self.interactive = true; // 进入交互模式
         self.activity = CatActivity::Sleep; // 猫暂时入睡
         // 请求睡觉动作让角色播放睡眠动画
@@ -372,6 +375,7 @@ impl PetSharedState {
         self.running = true; // 恢复自动运行
         self.interactive = false; // 退出交互模式
         self.passthrough = true; // 开启穿透（面板隐藏）
+        self.controls_visible = false; // 隐藏按钮组
         // 强制散步：退出交互时始终回到 Walk，不恢复上一次活动
         // 这样能确保鼠标穿透立刻生效（只有散步时穿透打开）
         self.requested_activity = Some(CatActivity::Walk);
@@ -380,8 +384,8 @@ impl PetSharedState {
 
     /// 更新猫的状态。
     /// 每次调用都会同步 passthrough 状态：
-    /// - 非交互模式下：散步时开启鼠标穿透，非散步时关闭穿透（显示面板）
-    /// - 交互模式下：由 enter_interactive / request_activity 控制
+    /// - 非交互模式下：始终开启鼠标穿透，hover 不生效
+    /// - 交互模式下：始终关闭鼠标穿透，hover 只控制按钮组显示
     ///
     /// # 参数
     /// * `behavior` - 猫的行为控制器（决定何时切换动作）
@@ -412,10 +416,26 @@ impl PetSharedState {
         // 只取第一个渲染命令（只有一个角色）
         self.last_render = commands.into_iter().next();
 
-        // 非交互模式下：根据当前活动动态决定鼠标穿透
-        // 散步时开启穿透（面板隐藏），非散步时关闭穿透（面板可见可交互）
+        // 非交互模式下始终穿透，避免普通 hover 打扰底层窗口
         if !self.interactive {
-            self.passthrough = self.activity == CatActivity::Walk;
+            self.controls_visible = false;
+            self.passthrough = true;
+        }
+    }
+
+    /// 同步鼠标悬停状态。
+    ///
+    /// # 参数
+    /// * `hovered` - 鼠标是否位于桌宠窗口范围内
+    fn set_hovered(&mut self, hovered: bool) {
+        if self.interactive {
+            // 交互模式下穿透保持关闭，hover 只负责显示和隐藏按钮组
+            self.controls_visible = hovered;
+            self.passthrough = false;
+        } else {
+            // 普通状态下保持穿透，hover 完全不生效
+            self.controls_visible = false;
+            self.passthrough = true;
         }
     }
 
@@ -780,6 +800,23 @@ unsafe extern "system" {
     // # 返回
     // 返回 i16：高位（bit 15）表示当前是否按下
     fn GetAsyncKeyState(v_key: i32) -> i16;
+
+    // 获取当前鼠标光标的屏幕坐标。
+    // # 参数
+    // * `point` - 输出参数，接收屏幕坐标
+    // # 返回
+    // 非 0 表示获取成功
+    fn GetCursorPos(point: *mut WinCursorPoint) -> i32;
+}
+
+/// Windows 鼠标光标屏幕坐标结构。
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct WinCursorPoint {
+    /// 屏幕 X 坐标
+    x: i32,
+    /// 屏幕 Y 坐标
+    y: i32,
 }
 
 /// Windows：Ctrl 键的虚拟键代码
@@ -811,6 +848,26 @@ fn is_shift_pressed() -> bool {
     unsafe { GetAsyncKeyState(VK_SHIFT) < 0 }
 }
 
+/// 获取当前鼠标光标的屏幕坐标。
+///
+/// # 参数
+/// * `scale_factor` - 当前窗口 DPI 缩放因子
+///
+/// # 返回
+/// 成功时返回屏幕坐标，失败时返回 None。
+#[cfg(target_os = "windows")]
+fn cursor_screen_position(scale_factor: f32) -> Option<Point<Pixels>> {
+    let mut cursor_point = WinCursorPoint { x: 0, y: 0 };
+    if unsafe { GetCursorPos(&mut cursor_point) } == 0 {
+        return None;
+    }
+
+    Some(point(
+        px(cursor_point.x as f32 / scale_factor),
+        px(cursor_point.y as f32 / scale_factor),
+    ))
+}
+
 /// 非 Windows 平台：Ctrl 键检测始终返回 false
 #[cfg(not(target_os = "windows"))]
 fn is_ctrl_pressed() -> bool {
@@ -821,6 +878,31 @@ fn is_ctrl_pressed() -> bool {
 #[cfg(not(target_os = "windows"))]
 fn is_shift_pressed() -> bool {
     false
+}
+
+/// 非 Windows 平台：暂不提供全局鼠标坐标
+#[cfg(not(target_os = "windows"))]
+fn cursor_screen_position(_scale_factor: f32) -> Option<Point<Pixels>> {
+    None
+}
+
+/// 判断鼠标是否位于窗口范围内。
+///
+/// # 参数
+/// * `position` - 鼠标屏幕坐标
+/// * `bounds` - 桌宠窗口边界
+///
+/// # 返回
+/// true = 鼠标位于窗口范围内
+fn cursor_in_bounds(position: Point<Pixels>, bounds: Bounds<Pixels>) -> bool {
+    let left = bounds.origin.x.as_f32();
+    let top = bounds.origin.y.as_f32();
+    let right = bounds.origin.x.as_f32() + bounds.size.width.as_f32();
+    let bottom = bounds.origin.y.as_f32() + bounds.size.height.as_f32();
+    let x = position.x.as_f32();
+    let y = position.y.as_f32();
+
+    x >= left && x < right && y >= top && y < bottom
 }
 
 /// 生成伪随机 f32 值（0.0 ~ 1.0）。
@@ -1073,8 +1155,17 @@ fn spawn_pet_loop(
 
             // 更新窗口状态（必须在主线程执行）
             let _ = window_handle.update(cx, |_, window, cx| {
+                // 记录当前窗口边界，用于悬停命中和按钮显示期间的位置冻结
+                let window_bounds = window.bounds();
+                // 读取当前 DPI 缩放因子，Windows 全局鼠标坐标需要转成 rgpui 逻辑像素
+                let scale_factor = window.scale_factor();
                 // 锁定共享状态
                 let mut state = pet_state.lock().unwrap();
+                // 只有交互模式才响应 hover；普通穿透状态下 hover 不生效
+                let mouse_hovered = state.interactive
+                    && cursor_screen_position(scale_factor)
+                        .is_some_and(|position| cursor_in_bounds(position, window_bounds));
+
                 // Ctrl 单独按下时切换交互模式（Ctrl+Shift 同时按下时不切换，
                 // 避免与 Ctrl+Shift+P 快捷键冲突）
                 if ctrl_held && !was_ctrl_held && !shift_held {
@@ -1091,19 +1182,24 @@ fn spawn_pet_loop(
 
                 // Ctrl 按下时锁定猫的位置（方便拖动时位置不自动变化）
                 if ctrl_held {
-                    state.set_position(window.bounds().origin);
+                    state.set_position(window_bounds.origin);
                 }
 
                 // 更新上一帧 Ctrl 状态
                 was_ctrl_held = ctrl_held;
 
                 if state.interactive {
-                    // 交互模式：强制关闭穿透，让面板可点击
-                    window.set_mouse_passthrough(false);
+                    // 交互模式：更新角色状态后仍由鼠标悬停决定按钮组显示
                     state.tick(&mut behavior);
+                    state.set_hovered(mouse_hovered);
+                    let should_passthrough = state.passthrough;
+                    drop(state);
+                    window.set_mouse_passthrough(should_passthrough);
                 } else if state.running {
                     // 运行模式：先更新状态，然后根据计算结果设置穿透
                     state.tick(&mut behavior);
+                    // 普通运行模式下 hover 不生效，保持穿透
+                    state.set_hovered(mouse_hovered);
                     // 从更新后的状态读取穿透开关
                     let should_passthrough = state.passthrough;
                     // 读取猫的当前位置
@@ -1117,6 +1213,7 @@ fn spawn_pet_loop(
                 } else {
                     // 非运行也非交互（暂停状态）：类似处理
                     state.tick(&mut behavior);
+                    state.set_hovered(mouse_hovered);
                     let should_passthrough = state.passthrough;
                     drop(state);
                     window.set_mouse_passthrough(should_passthrough);
@@ -1167,8 +1264,8 @@ impl Render for DesktopPet {
         let texture_path = state.current_texture_path();
         // 水平缩放（用于精灵翻转）
         let scale_x = state.current_scale_x();
-        // 穿透标志（决定是否显示控制面板）
-        let passthrough = state.passthrough;
+        // 按钮组可见性
+        let controls_visible = state.controls_visible;
         // 当前活动（用于面板显示）
         let activity = state.activity;
         // 提示信息
@@ -1193,8 +1290,8 @@ impl Render for DesktopPet {
                     .scale_xy(scale_x, 1.0) // 水平翻转
                     .with_fallback(|| div().child("图片加载失败").into_any_element()),
             )
-            // 非穿透模式时显示控制面板
-            .when(!passthrough, |this| {
+            // 鼠标移入或交互模式时显示控制面板
+            .when(controls_visible, |this| {
                 this.child(control_panel(shared_state, activity, message))
             })
     }
