@@ -499,9 +499,10 @@ impl WindowsWindow {
             // 鼠标穿透控制失效。DirectComposition 窗口的命中测试完全
             // 由 WM_NCHITTEST 处理器通过 mouse_passthrough 状态控制。
         }
-        if params.mouse_passthrough && disable_direct_composition {
-            dwexstyle |= WS_EX_LAYERED;
-            // GDI 回退路径：WS_EX_LAYERED 提供逐像素透明度支持。
+        if params.mouse_passthrough {
+            dwexstyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
+            // 鼠标穿透需要 layered + transparent 扩展样式同时存在，
+            // 才能可靠跨进程跳过该窗口。
         }
 
         let hinstance = get_module_handle();
@@ -558,6 +559,7 @@ impl WindowsWindow {
         let this = context.inner.take().transpose()?;
         let hwnd = creation_result?;
         let this = this.unwrap();
+        this.sync_mouse_passthrough_style(params.mouse_passthrough);
 
         register_drag_drop(&this)?;
         set_non_rude_hwnd(hwnd, true);
@@ -596,6 +598,44 @@ impl rwh::HasWindowHandle for WindowsWindow {
 impl rwh::HasDisplayHandle for WindowsWindow {
     fn display_handle(&self) -> std::result::Result<rwh::DisplayHandle<'_>, rwh::HandleError> {
         Ok(rwh::DisplayHandle::windows())
+    }
+}
+
+impl WindowsWindowInner {
+    /// 将鼠标穿透状态应用到 Windows 扩展样式
+    fn sync_mouse_passthrough_style(&self, passthrough: bool) {
+        let hwnd = self.hwnd;
+        let current_ex_style = unsafe { get_window_long(hwnd, GWL_EXSTYLE) };
+        let mut new_ex_style = current_ex_style;
+
+        if passthrough {
+            new_ex_style |= WS_EX_LAYERED.0 as isize | WS_EX_TRANSPARENT.0 as isize;
+        } else {
+            new_ex_style &= !WS_EX_TRANSPARENT.0 as isize;
+        }
+
+        unsafe {
+            if current_ex_style != new_ex_style {
+                set_window_long(hwnd, GWL_EXSTYLE, new_ex_style);
+            }
+
+            if passthrough {
+                SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA).log_err();
+            }
+
+            if current_ex_style != new_ex_style {
+                SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
+                )
+                .log_err();
+            }
+        }
     }
 }
 
@@ -1060,14 +1100,14 @@ impl PlatformWindow for WindowsWindow {
 
     /// 设置窗口是否允许鼠标事件穿透到后面的窗口
     ///
-    /// 仅设置状态标记，不修改窗口样式。命中测试完全由 `WM_NCHITTEST`
-    /// 处理器根据 `mouse_passthrough` 状态返回 `HTTRANSPARENT` 控制。
+    /// 同步内部状态与 Windows 原生扩展样式。
     ///
-    /// 不动态切换 `WS_EX_LAYERED`：该样式在启用 DirectComposition 时与
-    /// `WS_EX_NOREDIRECTIONBITMAP` 配合使用，运行时切换会断开 DirectComposition
-    /// 视觉链，导致窗口停止接收正确的命中测试消息。
+    /// `WM_NCHITTEST` 返回 `HTTRANSPARENT` 只能可靠影响同线程窗口；
+    /// `WS_EX_LAYERED | WS_EX_TRANSPARENT` 才能让鼠标事件可靠穿过桌宠并
+    /// 落到其他应用窗口。
     fn set_mouse_passthrough(&self, passthrough: bool) {
         self.0.state.mouse_passthrough.set(passthrough);
+        self.0.sync_mouse_passthrough_style(passthrough);
     }
 
     /// 获取窗口扩展样式（GWL_EXSTYLE）
