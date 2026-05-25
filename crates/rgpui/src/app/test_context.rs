@@ -132,7 +132,8 @@ impl TestAppContext {
         #[cfg(feature = "test-support")]
         let http_client = crate::http_client::FakeHttpClient::with_404_response();
         #[cfg(not(feature = "test-support"))]
-        let http_client = Arc::new(crate::http_client::BlockedHttpClient::new()) as Arc<dyn crate::http_client::HttpClient>;
+        let http_client = Arc::new(crate::http_client::BlockedHttpClient::new())
+            as Arc<dyn crate::http_client::HttpClient>;
         let text_system = Arc::new(TextSystem::new(platform.text_system()));
 
         let app = App::new_app(platform.clone(), asset_source, http_client);

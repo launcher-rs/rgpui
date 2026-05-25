@@ -797,8 +797,8 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::maybe;
     use crate::TestAppContext;
+    use crate::maybe;
 
     #[test]
     fn test_extend_sorted() {
@@ -1327,5 +1327,3 @@ pub(crate) fn floor_to_device_pixel(logical: f32, scale_factor: f32) -> f32 {
 pub(crate) fn ceil_to_device_pixel(logical: f32, scale_factor: f32) -> f32 {
     (logical * scale_factor).ceil()
 }
-
-
