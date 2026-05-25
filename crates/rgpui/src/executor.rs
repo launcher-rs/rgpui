@@ -452,9 +452,12 @@ mod test {
         let background_executor = BackgroundExecutor::new(arc_dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(arc_dispatcher);
 
-        let platform = TestPlatformScheduler::new(background_executor.clone(), foreground_executor);
+        let platform = TestPlatform::new(background_executor.clone(), foreground_executor.clone());
         let asset_source = Arc::new(());
+        #[cfg(feature = "test-support")]
         let http_client = crate::http_client::FakeHttpClient::with_404_response();
+        #[cfg(not(feature = "test-support"))]
+        let http_client = Arc::new(crate::http_client::BlockedHttpClient::new()) as Arc<dyn crate::http_client::HttpClient>;
 
         let app = App::new_app(platform, asset_source, http_client);
         (dispatcher, background_executor, app)

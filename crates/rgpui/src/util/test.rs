@@ -4,6 +4,7 @@ mod marked_text;
 pub use assertions::*;
 pub use marked_text::*;
 
+#[cfg(feature = "test-support")]
 use git2;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -45,7 +46,7 @@ fn write_tree(path: &Path, tree: serde_json::Value) {
                 Value::Object(_) => {
                     fs::create_dir(&path).unwrap();
 
-                    #[cfg(not(target_family = "wasm"))]
+                    #[cfg(all(not(target_family = "wasm"), feature = "test-support"))]
                     if path.file_name() == Some(OsStr::new(".git")) {
                         git2::Repository::init(path.parent().unwrap()).unwrap();
                     }

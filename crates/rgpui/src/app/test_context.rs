@@ -129,7 +129,10 @@ impl TestAppContext {
         let foreground_executor = ForegroundExecutor::new(arc_dispatcher);
         let platform = TestPlatform::new(background_executor.clone(), foreground_executor.clone());
         let asset_source = Arc::new(());
+        #[cfg(feature = "test-support")]
         let http_client = crate::http_client::FakeHttpClient::with_404_response();
+        #[cfg(not(feature = "test-support"))]
+        let http_client = Arc::new(crate::http_client::BlockedHttpClient::new()) as Arc<dyn crate::http_client::HttpClient>;
         let text_system = Arc::new(TextSystem::new(platform.text_system()));
 
         let app = App::new_app(platform.clone(), asset_source, http_client);

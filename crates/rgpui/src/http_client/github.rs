@@ -179,7 +179,7 @@ pub fn build_asset_url(repo_name_with_owner: &str, tag: &str, kind: AssetKind) -
 
 #[cfg(test)]
 mod tests {
-    use super::github::{AssetKind, build_asset_url};
+    use super::{AssetKind, build_asset_url};
 
     #[test]
     fn test_build_asset_url() {

@@ -1886,7 +1886,7 @@ mod tests {
 
     impl SeekTarget<'_, IntegersSummary, IntegersSummary> for Count {
         fn cmp(&self, cursor_location: &IntegersSummary, _: ()) -> Ordering {
-            self.0.cmp(&cursor_location.count)
+            std::cmp::Ord::cmp(&self.0, &cursor_location.count)
         }
     }
 

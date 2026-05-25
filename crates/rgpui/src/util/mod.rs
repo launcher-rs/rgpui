@@ -797,6 +797,8 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::maybe;
+    use crate::TestAppContext;
 
     #[test]
     fn test_extend_sorted() {
@@ -1079,6 +1081,90 @@ Line 3"#
         assert_eq!(result[0], (0..6, "héllo")); // 'é' is 2 bytes
         assert_eq!(result[1], (10..15, "world")); // '🦀' is 4 bytes
     }
+
+    #[test]
+    fn test_round_half_toward_zero() {
+        // Midpoint ties go toward zero
+        assert_eq!(round_half_toward_zero(0.5), 0.0);
+        assert_eq!(round_half_toward_zero(1.5), 1.0);
+        assert_eq!(round_half_toward_zero(2.5), 2.0);
+        assert_eq!(round_half_toward_zero(-0.5), 0.0);
+        assert_eq!(round_half_toward_zero(-1.5), -1.0);
+        assert_eq!(round_half_toward_zero(-2.5), -2.0);
+
+        // Non-midpoint values round to nearest
+        assert_eq!(round_half_toward_zero(1.5001), 2.0);
+        assert_eq!(round_half_toward_zero(1.4999), 1.0);
+        assert_eq!(round_half_toward_zero(-1.5001), -2.0);
+        assert_eq!(round_half_toward_zero(-1.4999), -1.0);
+
+        // Integers are unchanged
+        assert_eq!(round_half_toward_zero(0.0), 0.0);
+        assert_eq!(round_half_toward_zero(3.0), 3.0);
+        assert_eq!(round_half_toward_zero(-3.0), -3.0);
+    }
+
+    #[test]
+    fn test_device_pixel_helpers() {
+        // Snap uses half-toward-zero: 1.0 * 1.5 = 1.5 ties toward 1.0.
+        assert_eq!(round_to_device_pixel(1.0, 1.5), 1.0);
+        // Below the tie rounds down, above rounds up.
+        assert_eq!(round_to_device_pixel(0.3, 2.0), 1.0);
+        assert_eq!(round_to_device_pixel(1.4, 1.0), 1.0);
+        assert_eq!(round_to_device_pixel(1.6, 1.0), 2.0);
+
+        // Stroke uses snap, but clamps non-zero input up to at least 1dp.
+        assert_eq!(round_stroke_to_device_pixel(0.0, 1.0), 0.0);
+        assert_eq!(round_stroke_to_device_pixel(0.4, 1.0), 1.0);
+        assert_eq!(round_stroke_to_device_pixel(0.5, 1.0), 1.0);
+        assert_eq!(round_stroke_to_device_pixel(1.0, 1.5), 1.0);
+        assert_eq!(round_stroke_to_device_pixel(1.6, 1.0), 2.0);
+
+        // Cover's near edge floors, far edge ceils. Together they form a strict superset.
+        assert_eq!(floor_to_device_pixel(0.3, 2.0), 0.0);
+        assert_eq!(ceil_to_device_pixel(0.3, 2.0), 1.0);
+        assert_eq!(floor_to_device_pixel(2.1, 1.0), 2.0);
+        assert_eq!(ceil_to_device_pixel(2.1, 1.0), 3.0);
+
+        // Integer device-pixel inputs are stable under all three.
+        assert_eq!(round_to_device_pixel(2.0, 2.0), 4.0);
+        assert_eq!(floor_to_device_pixel(2.0, 2.0), 4.0);
+        assert_eq!(ceil_to_device_pixel(2.0, 2.0), 4.0);
+    }
+
+    #[test]
+    fn test_round_half_toward_zero_f64() {
+        assert_eq!(round_half_toward_zero_f64(0.5), 0.0);
+        assert_eq!(round_half_toward_zero_f64(-0.5), 0.0);
+        assert_eq!(round_half_toward_zero_f64(1.5), 1.0);
+        assert_eq!(round_half_toward_zero_f64(-1.5), -1.0);
+        assert_eq!(round_half_toward_zero_f64(2.5001), 3.0);
+    }
+
+    #[rgpui::test]
+    async fn test_with_timeout(cx: &mut TestAppContext) {
+        Task::ready(())
+            .with_timeout(Duration::from_secs(1), &cx.executor())
+            .await
+            .expect("Timeout should be noop");
+
+        let long_duration = Duration::from_secs(6000);
+        let short_duration = Duration::from_secs(1);
+        cx.executor()
+            .timer(long_duration)
+            .with_timeout(short_duration, &cx.executor())
+            .await
+            .expect_err("timeout should have triggered");
+
+        let fut = cx
+            .executor()
+            .timer(long_duration)
+            .with_timeout(short_duration, &cx.executor());
+        cx.executor().advance_clock(short_duration * 2);
+        futures::FutureExt::now_or_never(fut)
+            .unwrap_or_else(|| panic!("timeout should have triggered"))
+            .expect_err("timeout");
+    }
 }
 use super::{BackgroundExecutor, Task};
 use std::{
@@ -1242,93 +1328,4 @@ pub(crate) fn ceil_to_device_pixel(logical: f32, scale_factor: f32) -> f32 {
     (logical * scale_factor).ceil()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::TestAppContext;
 
-    use super::*;
-
-    #[test]
-    fn test_round_half_toward_zero() {
-        // Midpoint ties go toward zero
-        assert_eq!(round_half_toward_zero(0.5), 0.0);
-        assert_eq!(round_half_toward_zero(1.5), 1.0);
-        assert_eq!(round_half_toward_zero(2.5), 2.0);
-        assert_eq!(round_half_toward_zero(-0.5), 0.0);
-        assert_eq!(round_half_toward_zero(-1.5), -1.0);
-        assert_eq!(round_half_toward_zero(-2.5), -2.0);
-
-        // Non-midpoint values round to nearest
-        assert_eq!(round_half_toward_zero(1.5001), 2.0);
-        assert_eq!(round_half_toward_zero(1.4999), 1.0);
-        assert_eq!(round_half_toward_zero(-1.5001), -2.0);
-        assert_eq!(round_half_toward_zero(-1.4999), -1.0);
-
-        // Integers are unchanged
-        assert_eq!(round_half_toward_zero(0.0), 0.0);
-        assert_eq!(round_half_toward_zero(3.0), 3.0);
-        assert_eq!(round_half_toward_zero(-3.0), -3.0);
-    }
-
-    #[test]
-    fn test_device_pixel_helpers() {
-        // Snap uses half-toward-zero: 1.0 * 1.5 = 1.5 ties toward 1.0.
-        assert_eq!(round_to_device_pixel(1.0, 1.5), 1.0);
-        // Below the tie rounds down, above rounds up.
-        assert_eq!(round_to_device_pixel(0.3, 2.0), 1.0);
-        assert_eq!(round_to_device_pixel(1.4, 1.0), 1.0);
-        assert_eq!(round_to_device_pixel(1.6, 1.0), 2.0);
-
-        // Stroke uses snap, but clamps non-zero input up to at least 1dp.
-        assert_eq!(round_stroke_to_device_pixel(0.0, 1.0), 0.0);
-        assert_eq!(round_stroke_to_device_pixel(0.4, 1.0), 1.0);
-        assert_eq!(round_stroke_to_device_pixel(0.5, 1.0), 1.0);
-        assert_eq!(round_stroke_to_device_pixel(1.0, 1.5), 1.0);
-        assert_eq!(round_stroke_to_device_pixel(1.6, 1.0), 2.0);
-
-        // Cover's near edge floors, far edge ceils. Together they form a strict superset.
-        assert_eq!(floor_to_device_pixel(0.3, 2.0), 0.0);
-        assert_eq!(ceil_to_device_pixel(0.3, 2.0), 1.0);
-        assert_eq!(floor_to_device_pixel(2.1, 1.0), 2.0);
-        assert_eq!(ceil_to_device_pixel(2.1, 1.0), 3.0);
-
-        // Integer device-pixel inputs are stable under all three.
-        assert_eq!(round_to_device_pixel(2.0, 2.0), 4.0);
-        assert_eq!(floor_to_device_pixel(2.0, 2.0), 4.0);
-        assert_eq!(ceil_to_device_pixel(2.0, 2.0), 4.0);
-    }
-
-    #[test]
-    fn test_round_half_toward_zero_f64() {
-        assert_eq!(round_half_toward_zero_f64(0.5), 0.0);
-        assert_eq!(round_half_toward_zero_f64(-0.5), 0.0);
-        assert_eq!(round_half_toward_zero_f64(1.5), 1.0);
-        assert_eq!(round_half_toward_zero_f64(-1.5), -1.0);
-        assert_eq!(round_half_toward_zero_f64(2.5001), 3.0);
-    }
-
-    #[rgpui::test]
-    async fn test_with_timeout(cx: &mut TestAppContext) {
-        Task::ready(())
-            .with_timeout(Duration::from_secs(1), &cx.executor())
-            .await
-            .expect("Timeout should be noop");
-
-        let long_duration = Duration::from_secs(6000);
-        let short_duration = Duration::from_secs(1);
-        cx.executor()
-            .timer(long_duration)
-            .with_timeout(short_duration, &cx.executor())
-            .await
-            .expect_err("timeout should have triggered");
-
-        let fut = cx
-            .executor()
-            .timer(long_duration)
-            .with_timeout(short_duration, &cx.executor());
-        cx.executor().advance_clock(short_duration * 2);
-        futures::FutureExt::now_or_never(fut)
-            .unwrap_or_else(|| panic!("timeout should have triggered"))
-            .expect_err("timeout");
-    }
-}

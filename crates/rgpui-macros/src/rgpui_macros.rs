@@ -450,6 +450,13 @@ pub fn uri(input: TokenStream) -> TokenStream {
     })
 }
 
+/// 空的性能标记属性宏，用作 no-op 标记。
+/// 在 Zed 上游中用于性能记录，此处保持兼容性。
+#[proc_macro_attribute]
+pub fn perf(_args: TokenStream, function: TokenStream) -> TokenStream {
+    function
+}
+
 /// 此宏将行尾 `\n` 替换为 `\r\n`（仅适用于 Windows）。
 /// 如果目标操作系统不是 Windows，则行尾保持不变。
 ///

@@ -306,7 +306,7 @@ async fn capture_windows(
 mod tests {
     use std::process::ExitStatus;
 
-    use super::path;
+    use super::super::path;
     use super::*;
 
     #[cfg(unix)]
