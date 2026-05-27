@@ -109,6 +109,7 @@ impl Render for Shadow {
                                     offset: point(px(0.), px(8.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(0.),
+                                    inset: false,
                                 }]),
                         ),
                         example(
@@ -119,6 +120,7 @@ impl Render for Shadow {
                                     offset: point(px(0.), px(8.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(0.),
+                                    inset: false,
                                 }]),
                         ),
                         example(
@@ -129,6 +131,7 @@ impl Render for Shadow {
                                     offset: point(px(0.), px(8.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(0.),
+                                    inset: false,
                                 }]),
                         ),
                         example(
@@ -139,6 +142,7 @@ impl Render for Shadow {
                                     offset: point(px(0.), px(8.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(0.),
+                                    inset: false,
                                 }]),
                         ),
                         example(
@@ -149,6 +153,7 @@ impl Render for Shadow {
                                     offset: point(px(0.), px(8.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(0.),
+                                    inset: false,
                                 }]),
                         ),
                     ]),
@@ -184,7 +189,18 @@ impl Render for Shadow {
                                 color: hsla(0.0, 0.0, 0.0, 0.3),
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(0.),
+                                    spread_radius: px(0.),
+                                    inset: false,
+                                }]),
+                        ),
+                        example(
+                            "Blur 0",
+                            Shadow::base().shadow(vec![BoxShadow {
+                                color: hsla(0.0, 0.0, 0.0, 0.3),
+                                offset: point(px(0.), px(8.)),
+                                blur_radius: px(0.),
                                 spread_radius: px(0.),
+                                inset: false,
                             }]),
                         ),
                         example(
@@ -194,6 +210,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(2.),
                                 spread_radius: px(0.),
+                                inset: false,
                             }]),
                         ),
                         example(
@@ -203,6 +220,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(4.),
                                 spread_radius: px(0.),
+                                inset: false,
                             }]),
                         ),
                         example(
@@ -212,6 +230,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                                inset: false,
                             }]),
                         ),
                         example(
@@ -221,6 +240,37 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(16.),
                                 spread_radius: px(0.),
+                                inset: false,
+                            }]),
+                        ),
+                        example(
+                            "Blur 4",
+                            Shadow::base().shadow(vec![BoxShadow {
+                                color: hsla(0.0, 0.0, 0.0, 0.3),
+                                offset: point(px(0.), px(8.)),
+                                blur_radius: px(4.),
+                                spread_radius: px(0.),
+                            inset: false,
+                            }]),
+                        ),
+                        example(
+                            "Blur 8",
+                            Shadow::base().shadow(vec![BoxShadow {
+                                color: hsla(0.0, 0.0, 0.0, 0.3),
+                                offset: point(px(0.), px(8.)),
+                                blur_radius: px(8.),
+                                spread_radius: px(0.),
+                            inset: false,
+                            }]),
+                        ),
+                        example(
+                            "Blur 16",
+                            Shadow::base().shadow(vec![BoxShadow {
+                                color: hsla(0.0, 0.0, 0.0, 0.3),
+                                offset: point(px(0.), px(8.)),
+                                blur_radius: px(16.),
+                                spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                     ]),
@@ -237,6 +287,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -246,6 +297,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(2.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -255,6 +307,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(4.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -264,6 +317,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(8.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -273,6 +327,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(16.),
+                            inset: false,
                             }]),
                         ),
                     ]),
@@ -289,6 +344,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -298,6 +354,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(8.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -307,6 +364,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(16.),
+                            inset: false,
                             }]),
                         ),
                     ]),
@@ -323,6 +381,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -332,6 +391,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(8.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -341,6 +401,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(16.),
+                            inset: false,
                             }]),
                         ),
                     ]),
@@ -357,6 +418,7 @@ impl Render for Shadow {
                                 offset: point(px(-8.), px(0.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -366,6 +428,7 @@ impl Render for Shadow {
                                 offset: point(px(8.), px(0.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -375,6 +438,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(-8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -384,6 +448,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                     ]),
@@ -400,6 +465,7 @@ impl Render for Shadow {
                                 offset: point(px(-8.), px(0.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -409,6 +475,7 @@ impl Render for Shadow {
                                 offset: point(px(8.), px(0.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -418,6 +485,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(-8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -427,6 +495,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                     ]),
@@ -443,6 +512,7 @@ impl Render for Shadow {
                                 offset: point(px(-8.), px(0.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -452,6 +522,7 @@ impl Render for Shadow {
                                 offset: point(px(8.), px(0.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -461,6 +532,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(-8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                         example(
@@ -470,6 +542,7 @@ impl Render for Shadow {
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(8.),
                                 spread_radius: px(0.),
+                            inset: false,
                             }]),
                         ),
                     ]),
@@ -487,24 +560,28 @@ impl Render for Shadow {
                                     offset: point(px(0.), px(-12.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                                 BoxShadow {
                                     color: hsla(60.0 / 360., 1.0, 0.5, 0.3), // Yellow
                                     offset: point(px(12.), px(0.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                                 BoxShadow {
                                     color: hsla(120.0 / 360., 1.0, 0.5, 0.3), // Green
                                     offset: point(px(0.), px(12.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                                 BoxShadow {
                                     color: hsla(240.0 / 360., 1.0, 0.5, 0.3), // Blue
                                     offset: point(px(-12.), px(0.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                             ]),
                         ),
@@ -516,24 +593,28 @@ impl Render for Shadow {
                                     offset: point(px(0.), px(-12.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                                 BoxShadow {
                                     color: hsla(60.0 / 360., 1.0, 0.5, 0.3), // Yellow
                                     offset: point(px(12.), px(0.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                                 BoxShadow {
                                     color: hsla(120.0 / 360., 1.0, 0.5, 0.3), // Green
                                     offset: point(px(0.), px(12.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                                 BoxShadow {
                                     color: hsla(240.0 / 360., 1.0, 0.5, 0.3), // Blue
                                     offset: point(px(-12.), px(0.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                             ]),
                         ),
@@ -545,24 +626,28 @@ impl Render for Shadow {
                                     offset: point(px(0.), px(-12.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                                 BoxShadow {
                                     color: hsla(60.0 / 360., 1.0, 0.5, 0.3), // Yellow
                                     offset: point(px(12.), px(0.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                                 BoxShadow {
                                     color: hsla(120.0 / 360., 1.0, 0.5, 0.3), // Green
                                     offset: point(px(0.), px(12.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                                 BoxShadow {
                                     color: hsla(240.0 / 360., 1.0, 0.5, 0.3), // Blue
                                     offset: point(px(-12.), px(0.)),
                                     blur_radius: px(8.),
                                     spread_radius: px(2.),
+                                inset: false,
                                 },
                             ]),
                         ),

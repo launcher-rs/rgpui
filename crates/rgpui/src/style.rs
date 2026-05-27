@@ -364,6 +364,8 @@ pub struct BoxShadow {
     pub blur_radius: Pixels,
     /// 阴影应扩散多少？
     pub spread_radius: Pixels,
+    /// 是否为内阴影（绘制在元素内部）？
+    pub inset: bool,
 }
 
 /// 如何处理文本中的空白字符
@@ -678,7 +680,7 @@ impl Style {
 
         let transform = self.compose_transform(bounds);
 
-        window.paint_shadows(bounds, corner_radii, &self.box_shadow);
+        window.paint_drop_shadows(bounds, corner_radii, &self.box_shadow);
 
         let background_color = self.background.as_ref().and_then(Fill::color);
         if background_color.is_some_and(|color| !color.is_transparent()) {
@@ -712,6 +714,8 @@ impl Style {
             bg_quad.blend_mode = self.blend_mode.unwrap_or_default();
             window.paint_quad(bg_quad);
         }
+
+        window.paint_inset_shadows(bounds, corner_radii, &self.box_shadow);
 
         continuation(window, cx);
 

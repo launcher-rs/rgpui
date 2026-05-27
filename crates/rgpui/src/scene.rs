@@ -535,6 +535,11 @@ pub struct Shadow {
     pub corner_radii: Corners<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub color: Hsla,
+    pub element_bounds: Bounds<ScaledPixels>,
+    pub element_corner_radii: Corners<ScaledPixels>,
+    /// 0 = 外阴影（绘制在元素外部），1 = 内阴影（绘制在元素内部）。
+    pub inset: u32,
+    pub pad: u32,
 }
 
 impl From<Shadow> for Primitive {
