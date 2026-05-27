@@ -5361,7 +5361,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macros"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
