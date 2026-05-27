@@ -22,7 +22,7 @@ version = "0.2.1"
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-rgpui-macros = { path = "crates/rgpui-macros" ,version = "0.2.0"}
+rgpui-macros = { path = "crates/rgpui-macros" ,version = "0.2.1"}
 rgpui = { path = "crates/rgpui", default-features = false ,version = "0.2.0"}
 rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "0.2.0" }
 rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "0.2.0" }
