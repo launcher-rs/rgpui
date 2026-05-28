@@ -7,15 +7,19 @@ use crate::{
     StyleRefinement, Styled, TransformationMatrix, Window, point, px, radians, size,
 };
 
-/// An SVG element.
+/// SVG 元素，用于渲染 SVG 矢量图形。
 pub struct Svg {
+    /// 交互状态管理
     interactivity: Interactivity,
+    /// 可选变换参数
     transformation: Option<Transformation>,
+    /// 通过 AssetSource 加载的 SVG 路径
     path: Option<SharedString>,
+    /// 直接文件系统路径（不经过 AssetSource）
     external_path: Option<SharedString>,
 }
 
-/// Create a new SVG element.
+/// 创建一个新的 SVG 元素。
 #[track_caller]
 pub fn svg() -> Svg {
     Svg {
@@ -27,20 +31,20 @@ pub fn svg() -> Svg {
 }
 
 impl Svg {
-    /// Set the path to the SVG file for this element.
+    /// 通过资源系统（AssetSource）设置 SVG 文件的路径。
     pub fn path(mut self, path: impl Into<SharedString>) -> Self {
         self.path = Some(path.into());
         self
     }
 
-    /// Set the path to the SVG file for this element.
+    /// 通过文件系统直接设置 SVG 文件的路径（不经过 AssetSource）。
     pub fn external_path(mut self, path: impl Into<SharedString>) -> Self {
         self.external_path = Some(path.into());
         self
     }
 
-    /// Transform the SVG element with the given transformation.
-    /// Note that this won't effect the hitbox or layout of the element, only the rendering.
+    /// 对 SVG 元素应用变换。
+    /// 注意：这不会影响元素的 hitbox 或布局，仅影响渲染效果。
     pub fn with_transformation(mut self, transformation: Transformation) -> Self {
         self.transformation = Some(transformation);
         self
@@ -182,11 +186,14 @@ impl InteractiveElement for Svg {
     }
 }
 
-/// A transformation to apply to an SVG element.
+/// 应用于 SVG 元素的变换参数。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transformation {
+    /// 缩放因子
     scale: Size<f32>,
+    /// 平移偏移量
     translate: Point<Pixels>,
+    /// 旋转角度（弧度）
     rotate: Radians,
 }
 
@@ -201,7 +208,7 @@ impl Default for Transformation {
 }
 
 impl Transformation {
-    /// Create a new Transformation with the specified scale along each axis.
+    /// 创建一个只包含缩放的新变换。
     pub fn scale(scale: Size<f32>) -> Self {
         Self {
             scale,
@@ -210,7 +217,7 @@ impl Transformation {
         }
     }
 
-    /// Create a new Transformation with the specified translation.
+    /// 创建一个只包含平移的新变换。
     pub fn translate(translate: Point<Pixels>) -> Self {
         Self {
             scale: size(1.0, 1.0),
@@ -219,7 +226,7 @@ impl Transformation {
         }
     }
 
-    /// Create a new Transformation with the specified rotation in radians.
+    /// 创建一个只包含旋转的新变换（弧度）。
     pub fn rotate(rotate: impl Into<Radians>) -> Self {
         let rotate = rotate.into();
         Self {
@@ -229,26 +236,27 @@ impl Transformation {
         }
     }
 
-    /// Update the scaling factor of this transformation.
+    /// 更新变换的缩放因子。
     pub fn with_scaling(mut self, scale: Size<f32>) -> Self {
         self.scale = scale;
         self
     }
 
-    /// Update the translation value of this transformation.
+    /// 更新变换的平移值。
     pub fn with_translation(mut self, translate: Point<Pixels>) -> Self {
         self.translate = translate;
         self
     }
 
-    /// Update the rotation angle of this transformation.
+    /// 更新变换的旋转角度。
     pub fn with_rotation(mut self, rotate: impl Into<Radians>) -> Self {
         self.rotate = rotate.into();
         self
     }
 
+    /// 将变换转换为变换矩阵。从底部开始读矩阵乘法顺序。
     fn into_matrix(self, center: Point<Pixels>, scale_factor: f32) -> TransformationMatrix {
-        //Note: if you read this as a sequence of matrix multiplications, start from the bottom
+        // 注意：将矩阵乘法序列从底部开始阅读
         TransformationMatrix::unit()
             .translate(center.scale(scale_factor) + self.translate.scale(scale_factor))
             .rotate(self.rotate)
@@ -257,12 +265,14 @@ impl Transformation {
     }
 }
 
+/// 用于 external_path 的内部资源类型，直接从文件系统加载 SVG 数据。
 enum SvgAsset {}
 
 impl Asset for SvgAsset {
     type Source = SharedString;
     type Output = Result<Arc<[u8]>, Arc<std::io::Error>>;
 
+    /// 从文件系统读取 SVG 文件内容。
     fn load(
         source: Self::Source,
         _cx: &mut App,
