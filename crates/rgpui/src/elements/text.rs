@@ -18,6 +18,174 @@ use std::{
     sync::Arc,
 };
 
+/// An [`Element`] that renders text.
+///
+/// In general, [`Text`] objects should be created via the [`text`] macro.
+/// [`Text`] elements have an ID, used to produce nodes in the accessibility tree.
+#[derive(Debug, Clone)]
+pub struct Text {
+    id: Option<ElementId>,
+    text: SharedString,
+}
+
+impl Text {
+    /// Create a new [`Text`] element with a specific ID.
+    #[inline]
+    pub const fn new(id: ElementId, text: SharedString) -> Self {
+        Self { id: Some(id), text }
+    }
+
+    /// Create a new [`Text`] element that is inaccessible to screen readers.
+    #[inline]
+    pub const fn new_inaccessible(text: SharedString) -> Self {
+        Self { id: None, text }
+    }
+
+    /// The ID of this [`Text`] element.
+    #[inline]
+    pub const fn id(&self) -> Option<&ElementId> {
+        self.id.as_ref()
+    }
+
+    /// Produce a new [`Text`] with the given `id`.
+    pub fn with_id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// The text that this [`Text`] element will display.
+    #[inline]
+    pub const fn text(&self) -> &SharedString {
+        &self.text
+    }
+}
+
+impl std::ops::Deref for Text {
+    type Target = SharedString;
+    fn deref(&self) -> &Self::Target {
+        &self.text
+    }
+}
+
+impl std::ops::DerefMut for Text {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.text
+    }
+}
+
+/// Create a new [`Text`] element.
+#[macro_export]
+macro_rules! text {
+    (id = $id:expr, $text:expr) => {{ $crate::Text::new($id.into(), $text.into()) }};
+    ($text:expr) => {{
+        const ID: &'static str = concat!(file!(), "/", line!(), ":", column!());
+        const HASH: u64 = $crate::__hash_text_macro_location_unstable_do_not_use(ID);
+        $crate::Text::new($crate::ElementId::Integer(HASH), $text.into())
+    }};
+}
+
+/// Trivial hash function for the location information produced by the [`text`]
+/// macro.
+#[doc(hidden)]
+pub const fn __hash_text_macro_location_unstable_do_not_use(s: &'static str) -> u64 {
+    const BASIS: u64 = 0xcbf29ce484222325;
+    const PRIME: u64 = 0x100000001b3;
+    let bytes = s.as_bytes();
+    let mut hash = BASIS;
+    let mut i = 0;
+    while i < bytes.len() {
+        hash ^= bytes[i] as u64;
+        hash = hash.wrapping_mul(PRIME);
+        i += 1;
+    }
+    hash
+}
+
+impl IntoElement for Text {
+    type Element = Self;
+    #[inline]
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for Text {
+    type RequestLayoutState = <SharedString as Element>::RequestLayoutState;
+    type PrepaintState = <SharedString as Element>::PrepaintState;
+
+    fn id(&self) -> Option<ElementId> {
+        self.id.clone()
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn a11y_role(&self) -> Option<accesskit::Role> {
+        if self.id.is_some() {
+            Some(accesskit::Role::Label)
+        } else {
+            None
+        }
+    }
+
+    fn write_a11y_info(&self, node: &mut accesskit::Node) {
+        node.set_value(self.text.to_string());
+    }
+
+    fn request_layout(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector_id: Option<&crate::InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        <SharedString as Element>::request_layout(&mut self.text, id, inspector_id, window, cx)
+    }
+
+    fn prepaint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector_id: Option<&crate::InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        request_layout: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        <SharedString as Element>::prepaint(
+            &mut self.text,
+            id,
+            inspector_id,
+            bounds,
+            request_layout,
+            window,
+            cx,
+        )
+    }
+
+    fn paint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector_id: Option<&crate::InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        request_layout: &mut Self::RequestLayoutState,
+        prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        <SharedString as Element>::paint(
+            &mut self.text,
+            id,
+            inspector_id,
+            bounds,
+            request_layout,
+            prepaint,
+            window,
+            cx,
+        );
+    }
+}
+
 impl Element for &'static str {
     type RequestLayoutState = TextLayout;
     type PrepaintState = ();
@@ -803,6 +971,14 @@ impl Element for InteractiveText {
         Some(self.element_id.clone())
     }
 
+    fn a11y_role(&self) -> Option<accesskit::Role> {
+        Some(accesskit::Role::Label)
+    }
+
+    fn write_a11y_info(&self, node: &mut accesskit::Node) {
+        node.set_value(self.text.text.to_string());
+    }
+
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
         None
     }
@@ -1009,6 +1185,8 @@ impl IntoElement for InteractiveText {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_into_element_for() {
         use crate::{ParentElement as _, SharedString, div};

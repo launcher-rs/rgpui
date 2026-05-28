@@ -32,6 +32,11 @@ rgpui-web = { path = "crates/rgpui-web" ,version = "0.2.0"}
 rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "0.2.0" }
 rgpui-tokio = { path = "crates/rgpui-tokio",version = "0.2.0" }
 
+# ---- 辅助功能（AccessKit） ----
+accesskit = "0.24.0"
+accesskit_macos = "0.26.0"
+accesskit_unix = "0.21.0"
+accesskit_windows = "0.32.1"
 
 # ---- 错误处理 ----
 # 错误处理库

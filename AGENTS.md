@@ -89,6 +89,28 @@ PlatformWindow trait 关键方法:
 - - **推送前格式化代码**: 执行 `cargo fmt` 格式化代码
 - **禁止使用 `#[allow(dead_code)]`**：未使用的代码应当删除或重构，不得使用属性压制警告
 
+## Zed PR 合并规范
+
+Zed 上游仓库的 PR 合并到 rgpui 时，所有包名/路径需要添加 `r` 前缀映射：
+
+| Zed 原 crate | rgpui 对应 crate |
+|--------------|------------------|
+| `gpui` | `rgpui` |
+| `gpui_platform` | `rgpui_platform` |
+| `gpui_windows` | `rgpui_windows` |
+| `gpui_macos` | `rgpui_macos` |
+| `gpui_linux` | `rgpui_linux` |
+| `gpui_web` | `rgpui_web` |
+| `gpui_wgpu` | `rgpui_wgpu` |
+| `gpui_macros` | `rgpui_macros` |
+| `gpui_tokio` | `rgpui_tokio` |
+
+合并步骤：
+1. 将上游 PR 中所有 `gpui` 开头的 crate 引用替换为 `rgpui` 开头
+2. 检查 `Cargo.toml` 中的依赖声明是否指向正确的 rgpui crate 路径
+3. 检查 `use` 语句和路径引用是否已更新
+4. 运行 `cargo check --workspace` 验证无编译错误
+
 ## 代码规范
 
 - **所有函数必须添加中文注释**：公开 API 和内部函数均需使用简体中文说明功能、参数和返回值

@@ -74,6 +74,8 @@ pub mod window_positioner;
 pub use proptest;
 
 #[cfg(doc)]
+pub mod _accessibility;
+#[cfg(doc)]
 pub mod _ownership_and_data_flow;
 
 /// Do not touch, here be dragons for use by rgpui_macros and such.
@@ -91,6 +93,10 @@ mod seal {
     /// See: <https://predr.ag/blog/definitive-guide-to-sealed-traits-in-rust/>
     pub trait Sealed {}
 }
+
+pub use accesskit;
+pub use accesskit::Action as AccessibleAction;
+pub use accesskit::{Orientation, Role, Toggled};
 
 pub use crate::collections::*;
 pub use action::*;

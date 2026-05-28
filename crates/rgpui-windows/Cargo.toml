@@ -22,6 +22,8 @@ screen-capture = ["rgpui/screen-capture", "scap"]
 rgpui.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
+accesskit.workspace = true
+accesskit_windows.workspace = true
 anyhow.workspace = true
 etagere = "0.2"
 futures.workspace = true
