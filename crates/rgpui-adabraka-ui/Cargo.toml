@@ -1,0 +1,330 @@
+[package]
+name = "rgpui-adabraka-ui"
+version = "0.1.1"
+edition = "2024"
+publish = true
+description = "基于 rgpui的Adabraka UI 组件库"
+license = "Apache-2.0"
+repository = "https://github.com/launcher-rs/rgpui.git"
+
+
+[dependencies]
+# Core Framework
+rgpui = ">=0.1, <1.0"
+smallvec = "1.6"
+once_cell = "1.19"
+
+# Text Processing
+unicode-segmentation = "1.13"
+regex = "1.12"
+
+# Async Runtime
+smol = "2.0"
+# 异步 Futures 工具
+futures = "0.3.32"
+
+# HTTP Client for remote images (optional)
+isahc = { version = "1.7", optional = true }
+# 字节缓冲区
+bytes = "1.11.1"
+
+# QR Code generation
+qrcode = "0.14"
+
+ropey = { version = "=2.0.0-beta.1", features = [
+    "metric_lines_lf",
+    "metric_utf16",
+] }
+
+# Syntax Highlighting (tree-sitter based)
+tree-sitter = "0.26"
+
+# Language grammars (optional, behind feature flags)
+tree-sitter-rust = { version = "0.24", optional = true }
+tree-sitter-javascript = { version = "0.23", optional = true }
+tree-sitter-typescript = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.23", optional = true }
+tree-sitter-json = { version = "0.24", optional = true }
+tree-sitter-toml-ng = { version = "0.7", optional = true }
+tree-sitter-md = { version = "0.5", optional = true }
+tree-sitter-go = { version = "0.25", optional = true }
+tree-sitter-c = { version = "0.24", optional = true }
+tree-sitter-cpp = { version = "0.23", optional = true }
+tree-sitter-java = { version = "0.23", optional = true }
+tree-sitter-ruby = { version = "0.23", optional = true }
+tree-sitter-bash = { version = "0.25", optional = true }
+tree-sitter-css = { version = "0.25", optional = true }
+tree-sitter-html = { version = "0.23", optional = true }
+tree-sitter-yaml = { version = "0.7", optional = true }
+tree-sitter-lua = { version = "0.4", optional = true }
+tree-sitter-zig = { version = "1.1", optional = true }
+tree-sitter-scala = { version = "0.24", optional = true }
+tree-sitter-php = { version = "0.24", optional = true }
+tree-sitter-ocaml = { version = "0.24", optional = true }
+tree-sitter-sequel = { version = "0.3", optional = true }
+
+# Markdown parsing (optional)
+pulldown-cmark = { version = "0.12", default-features = false, optional = true }
+
+# HTML parsing (optional)
+html5ever = { version = "0.36", optional = true }
+markup5ever_rcdom = { version = "0.36", optional = true }
+
+# Audio playback (optional)
+rodio = { version = "0.19", optional = true }
+
+[features]
+default = ["http"]
+http = ["isahc"]
+markdown = ["pulldown-cmark"]
+html-render = ["html5ever", "markup5ever_rcdom"]
+audio = ["rodio"]
+editor-languages = [
+    "tree-sitter-rust", "tree-sitter-javascript", "tree-sitter-typescript",
+    "tree-sitter-python", "tree-sitter-json", "tree-sitter-toml-ng",
+    "tree-sitter-md", "tree-sitter-go", "tree-sitter-c", "tree-sitter-cpp",
+    "tree-sitter-java", "tree-sitter-ruby", "tree-sitter-bash",
+    "tree-sitter-css", "tree-sitter-html", "tree-sitter-yaml",
+    "tree-sitter-lua", "tree-sitter-zig", "tree-sitter-scala",
+    "tree-sitter-php", "tree-sitter-ocaml",
+    "tree-sitter-sequel",
+]
+
+
+[dev-dependencies]
+rgpui-platform = ">=0.1, <1.0"
+
+[[example]]
+name = "scroll_test"
+path = "examples/scroll_test.rs"
+
+[[example]]
+name = "label_styled_demo"
+path = "examples/label_styled_demo.rs"
+
+[[example]]
+name = "collapsible_styled_demo"
+path = "examples/collapsible_styled_demo.rs"
+
+[[example]]
+name = "calendar_styled_demo"
+path = "examples/calendar_styled_demo.rs"
+
+[[example]]
+name = "carousel_demo"
+path = "examples/carousel_demo.rs"
+
+[[example]]
+name = "tooltip_styled_demo"
+path = "examples/tooltip_styled_demo.rs"
+
+[[example]]
+name = "toggle_group_styled_demo"
+path = "examples/toggle_group_styled_demo.rs"
+
+[[example]]
+name = "pagination_styled_demo"
+path = "examples/pagination_styled_demo.rs"
+
+[[example]]
+name = "keyboard_shortcuts_styled_demo"
+path = "examples/keyboard_shortcuts_styled_demo.rs"
+
+[[example]]
+name = "navigation_menu_styled_demo"
+path = "examples/navigation_menu_styled_demo.rs"
+
+[[example]]
+name = "text_field_styled_demo"
+path = "examples/text_field_styled_demo.rs"
+
+[[example]]
+name = "confirm_dialog_styled_demo"
+path = "examples/confirm_dialog_styled_demo.rs"
+
+[[example]]
+name = "card_styled_demo"
+path = "examples/card_styled_demo.rs"
+
+[[example]]
+name = "tabs_styled_demo"
+path = "examples/tabs_styled_demo.rs"
+
+[[example]]
+name = "table_styled_demo"
+path = "examples/table_styled_demo.rs"
+
+[[example]]
+name = "breadcrumbs_styled_demo"
+path = "examples/breadcrumbs_styled_demo.rs"
+
+[[example]]
+name = "badge_styled_demo"
+path = "examples/badge_styled_demo.rs"
+
+[[example]]
+name = "menu_styled_demo"
+path = "examples/menu_styled_demo.rs"
+
+[[example]]
+name = "accordion_styled_demo"
+path = "examples/accordion_styled_demo.rs"
+
+[[example]]
+name = "toolbar_styled_demo"
+path = "examples/toolbar_styled_demo.rs"
+
+[[example]]
+name = "sidebar_styled_demo"
+path = "examples/sidebar_styled_demo.rs"
+
+[[example]]
+name = "dialog_styled_demo"
+path = "examples/dialog_styled_demo.rs"
+
+[[example]]
+name = "sheet_styled_demo"
+path = "examples/sheet_styled_demo.rs"
+
+[[example]]
+name = "alert_dialog_styled_demo"
+path = "examples/alert_dialog_styled_demo.rs"
+
+[[example]]
+name = "command_palette_styled_demo"
+path = "examples/command_palette_styled_demo.rs"
+
+[[example]]
+name = "status_bar_styled_demo"
+path = "examples/status_bar_styled_demo.rs"
+
+[[example]]
+name = "tree_styled_demo"
+path = "examples/tree_styled_demo.rs"
+
+[[example]]
+name = "toast_styled_demo"
+path = "examples/toast_styled_demo.rs"
+
+[[example]]
+name = "bottom_sheet_styled_demo"
+path = "examples/bottom_sheet_styled_demo.rs"
+
+[[example]]
+name = "popover_styled_demo"
+path = "examples/popover_styled_demo.rs"
+
+[[example]]
+name = "popover_menu_styled_demo"
+path = "examples/popover_menu_styled_demo.rs"
+
+[[example]]
+name = "hover_card_styled_demo"
+path = "examples/hover_card_styled_demo.rs"
+
+
+[[example]]
+name = "context_menu_styled_demo"
+path = "examples/context_menu_styled_demo.rs"
+
+[[example]]
+name = "app_menu_styled_demo"
+path = "examples/app_menu_styled_demo.rs"
+
+[[example]]
+name = "select_styled_demo"
+path = "examples/select_styled_demo.rs"
+
+[[example]]
+name = "resizable_styled_demo"
+path = "examples/resizable_styled_demo.rs"
+
+[[example]]
+name = "editor_styled_demo"
+path = "examples/editor_styled_demo.rs"
+
+[[example]]
+name = "data_table_styled_demo"
+path = "examples/data_table_styled_demo.rs"
+
+[[example]]
+name = "drag_drop_styled_demo"
+path = "examples/drag_drop_styled_demo.rs"
+
+[[example]]
+name = "date_picker_demo"
+path = "examples/date_picker_demo.rs"
+
+[[example]]
+name = "color_picker_demo"
+path = "examples/color_picker_demo.rs"
+
+[[example]]
+name = "combobox_demo"
+path = "examples/combobox_demo.rs"
+
+[[example]]
+name = "pie_chart_demo"
+path = "examples/pie_chart_demo.rs"
+
+[[example]]
+name = "avatar_group_demo"
+path = "examples/avatar_group_demo.rs"
+
+[[example]]
+name = "otp_input_demo"
+path = "examples/otp_input_demo.rs"
+
+[[example]]
+name = "file_upload_demo"
+path = "examples/file_upload_demo.rs"
+
+[[example]]
+name = "image_viewer_demo"
+path = "examples/image_viewer_demo.rs"
+
+[[example]]
+name = "countdown_demo"
+path = "examples/countdown_demo.rs"
+
+[[example]]
+name = "masonry_grid_demo"
+path = "examples/masonry_grid_demo.rs"
+
+[[example]]
+name = "rating_demo"
+path = "examples/rating_demo.rs"
+
+[[example]]
+name = "audio_player_demo"
+path = "examples/audio_player_demo.rs"
+
+[[example]]
+name = "sparkline_demo"
+path = "examples/sparkline_demo.rs"
+
+[[example]]
+name = "mention_input_demo"
+path = "examples/mention_input_demo.rs"
+
+[[example]]
+name = "video_player_demo"
+path = "examples/video_player_demo.rs"
+
+[[example]]
+name = "gpui_extensions_showcase"
+path = "examples/gpui_extensions_showcase.rs"
+
+[[example]]
+name = "markdown_demo"
+path = "examples/markdown_demo.rs"
+required-features = ["markdown"]
+
+[[example]]
+name = "html_demo"
+path = "examples/html_demo.rs"
+required-features = ["html-render"]
+
+
+[lints]
+workspace = true

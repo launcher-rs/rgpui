@@ -1,0 +1,21 @@
+[package]
+name = "rgpui_editor_lsp_example"
+description = "LSP integration example for rgpui-editor with auto-completion."
+version = "0.1.0"
+publish = false
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+lsp-types.workspace = true
+rgpui.workspace = true
+rgpui-component.workspace = true
+rgpui-component-assets.workspace = true
+rgpui-editor = { workspace = true, features = ["tree-sitter-rust"] }
+rgpui-platform.workspace = true
+serde_json.workspace = true
+smol.workspace = true
+
+[lints]
+workspace = true

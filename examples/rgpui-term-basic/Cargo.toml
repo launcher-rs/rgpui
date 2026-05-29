@@ -1,0 +1,27 @@
+[package]
+name = "basic"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "basic"
+path = "src/main.rs"
+
+[dependencies]
+log.workspace = true
+rgpui-term.workspace = true
+rgpui-component.workspace = true
+rgpui-component-assets.workspace = true
+rgpui.workspace = true
+rgpui-platform.workspace = true
+portable-pty.workspace = true
+smallvec = "1"
+env_logger = "0.11"
+serde.workspace = true
+dirs.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+objc = "0.2"
+

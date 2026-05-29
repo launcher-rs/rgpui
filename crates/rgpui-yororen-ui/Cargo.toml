@@ -1,0 +1,25 @@
+[package]
+name = "rgpui-yororen-ui"
+version = "0.1.1"
+edition = "2024"
+publish = true
+description = "Yororen UI 组件库"
+license = "Apache-2.0"
+repository = "https://github.com/launcher-rs/rgpui"
+
+[dependencies]
+rgpui.workspace = true
+
+
+
+rust-embed = "8.9.0"
+smallvec = "1.15"
+stacksafe = "1"
+unicode-segmentation = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+
+[lints]
+workspace = true

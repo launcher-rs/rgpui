@@ -1,0 +1,15 @@
+[package]
+name = "focus_trap"
+description = "Example demonstrating focus trap functionality."
+version = "0.1.0"
+publish = false
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+rgpui.workspace = true
+rgpui-platform.workspace = true
+rgpui-component = { workspace = true }
+
+[lints]
+workspace = true

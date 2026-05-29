@@ -1,0 +1,36 @@
+[package]
+name = "rgpui-webview"
+version = "0.1.1"
+edition.workspace = true
+publish.workspace = true
+description = "WebView 集成"
+license.workspace = true
+repository = "https://github.com/launcher-rs/rgpui"
+
+[features]
+inspector = ["wry/devtools"]
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow.workspace = true
+rgpui.workspace = true
+wry = { version = "0.53.3", package = "lb-wry" }
+
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+rgpui.workspace = true
+rgpui-component.workspace = true
+rgpui-platform.workspace = true
+raw-window-handle = { version = "0.6", features = ["std"] }
+
+[target."cfg(target_os = \"linux\")".dev-dependencies]
+gtk = "0.18.2"
+
+[[example]]
+name = "rgpui_webview_demo"
+path = "example/rgpui_webview_demo.rs"
