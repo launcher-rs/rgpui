@@ -10,6 +10,7 @@ repository = "https://github.com/launcher-rs/rgpui"
 [features]
 default = ["scenix-renderer"]
 scenix-renderer = ["scenix/renderer", "scenix/loader"]
+shared-wgpu = ["dep:rgpui-wgpu"]
 
 [dependencies]
 rgpui = { workspace = true }
@@ -19,6 +20,7 @@ image = { workspace = true }
 bytemuck = "1"
 gltf = "1.4"
 smallvec = { workspace = true }
+rgpui-wgpu = { workspace = true, optional = true }
 
 [dev-dependencies]
 rgpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }

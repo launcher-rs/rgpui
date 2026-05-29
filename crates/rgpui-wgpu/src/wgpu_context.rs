@@ -89,11 +89,17 @@ impl WgpuContext {
             adapter.get_info().backend
         );
 
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
+
+        // 注册到共享上下文，供 rgpui-3d 等第三方渲染器复用
+        crate::shared_context::register(instance.clone(), device.clone(), queue.clone());
+
         Ok(Self {
             instance,
             adapter,
-            device: Arc::new(device),
-            queue: Arc::new(queue),
+            device,
+            queue,
             dual_source_blending,
             color_texture_format,
             device_lost,
@@ -130,11 +136,17 @@ impl WgpuContext {
         let (device, queue, dual_source_blending, color_texture_format) =
             Self::create_device(&adapter).await?;
 
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
+
+        // 注册到共享上下文，供 rgpui-3d 等第三方渲染器复用
+        crate::shared_context::register(instance.clone(), device.clone(), queue.clone());
+
         Ok(Self {
             instance,
             adapter,
-            device: Arc::new(device),
-            queue: Arc::new(queue),
+            device,
+            queue,
             dual_source_blending,
             color_texture_format,
             device_lost,

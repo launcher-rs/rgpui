@@ -7303,6 +7303,7 @@ dependencies = [
  "pollster 0.4.0",
  "rgpui 0.2.1",
  "rgpui-platform 0.2.1",
+ "rgpui-wgpu 0.2.1",
  "scenix",
  "smallvec",
  "smol",
