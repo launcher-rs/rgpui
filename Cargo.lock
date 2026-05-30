@@ -2217,6 +2217,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop_pet_3d"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rgpui 0.2.1",
+ "rgpui-3d",
+ "rgpui-character",
+ "rgpui-platform 0.2.1",
+ "smol",
+]
+
+[[package]]
 name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
