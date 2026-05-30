@@ -207,7 +207,7 @@ fn main() {
     }
 
     if model_path.is_none() {
-        let default_path = format!("{}/examples/3d/person.glb", env!("CARGO_MANIFEST_DIR"));
+        let default_path = format!("{}/examples/3d/1.glb", env!("CARGO_MANIFEST_DIR"));
         if std::path::Path::new(&default_path).exists() {
             model_path = Some(default_path);
         }

@@ -162,7 +162,7 @@ fn main() {
     let model_path = if let Some(pos) = args.iter().position(|a| a == "--model" || a == "-m") {
         args.get(pos + 1).cloned()
     } else {
-        let default_path = format!("{}/examples/3d/cat.glb", env!("CARGO_MANIFEST_DIR"));
+        let default_path = format!("{}/examples/3d/1.glb", env!("CARGO_MANIFEST_DIR"));
         if std::path::Path::new(&default_path).exists() {
             Some(default_path)
         } else {

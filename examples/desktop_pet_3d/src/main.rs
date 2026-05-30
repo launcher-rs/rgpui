@@ -12,7 +12,8 @@
 
 use rgpui::single_instance::{SingleInstance, send_activate_to_existing};
 use rgpui::{
-    App, Bounds, Context, Keystroke, Pixels, Point, Render, SharedString, TrayIconEvent,
+    App, Bounds, Context, Keystroke, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, SharedString, TrayIconEvent,
     TrayMenuItem, Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div,
     img, point, prelude::*, px, rgb, rgba, size,
 };
@@ -33,7 +34,8 @@ use std::time::{Duration, Instant};
 const APP_ID: &str = "com.example.rgpui-3d-desktop-pet-3d";
 
 /// 覆盖窗口尺寸
-const WINDOW_SIZE: f32 = 340.0;
+const WINDOW_WIDTH: f32 = 340.0;
+const WINDOW_HEIGHT: f32 = 480.0;
 
 /// 3D 渲染尺寸
 const RENDER_W: u32 = 320;
@@ -121,6 +123,12 @@ struct Pet3DSharedState {
     model_rotation: f32,
     /// 模型文件路径
     model_loaded: bool,
+    /// 请求切换的动画索引
+    requested_anim_index: Option<usize>,
+    /// 鼠标拖拽轨道控制
+    is_dragging: bool,
+    drag_start_x: f32,
+    drag_start_y: f32,
     /// 帧率统计
     fps: f32,
 }
@@ -133,16 +141,16 @@ impl Pet3DSharedState {
             bounds: Rect::new(
                 -120.0,
                 -120.0,
-                screen_width - WINDOW_SIZE + 240.0,
-                screen_height - WINDOW_SIZE + 240.0,
+                screen_width - WINDOW_WIDTH + 240.0,
+                screen_height - WINDOW_HEIGHT + 240.0,
             ),
             bounce: false,
         };
 
         let mut pet = Character::new("desktop-cat-3d");
         pet.position = Vec2::new(
-            (screen_width - WINDOW_SIZE) / 2.0,
-            (screen_height - WINDOW_SIZE) / 2.0,
+            (screen_width - WINDOW_WIDTH) / 2.0,
+            (screen_height - WINDOW_HEIGHT) / 2.0,
         );
         pet.animation.play("walk");
         runtime.add_character(pet);
@@ -154,7 +162,7 @@ impl Pet3DSharedState {
             render_image: None,
             orbit_x: 0.0,
             orbit_y: -0.15,
-            distance: 2.8,
+            distance: 12.0,
             running: true,
             passthrough: true,
             controls_visible: false,
@@ -166,6 +174,10 @@ impl Pet3DSharedState {
             message: "Ctrl+Shift+P 暂停；按住 Ctrl 拖动".into(),
             model_rotation: 0.0,
             model_loaded: false,
+            requested_anim_index: None,
+            is_dragging: false,
+            drag_start_x: 0.0,
+            drag_start_y: 0.0,
             fps: 0.0,
         }
     }
@@ -184,8 +196,8 @@ impl Pet3DSharedState {
         self.runtime.physics.bounds = Rect::new(
             -120.0,
             -120.0,
-            screen_width - WINDOW_SIZE + 240.0,
-            screen_height - WINDOW_SIZE + 240.0,
+            screen_width - WINDOW_WIDTH + 240.0,
+            screen_height - WINDOW_HEIGHT + 240.0,
         );
     }
 
@@ -204,13 +216,6 @@ impl Pet3DSharedState {
             self.message = "已暂停".into();
         }
         self.running
-    }
-
-    fn request_activity(&mut self, activity: CatActivity) {
-        self.running = !matches!(activity, CatActivity::Sleep);
-        self.resume_activity = activity;
-        self.requested_activity = Some(activity);
-        self.message = format!("已请求：{}", activity.label()).into();
     }
 
     fn enter_interactive(&mut self) {
@@ -371,9 +376,9 @@ impl CatBehavior3D {
 
     fn check_boundary_turn(&mut self, ctx: &BehaviorContext) -> bool {
         let margin = 20.0;
-        let max_x = self.screen_width - WINDOW_SIZE + 120.0 - margin;
+        let max_x = self.screen_width - WINDOW_WIDTH + 120.0 - margin;
         let min_x = -120.0 + margin;
-        let max_y = self.screen_height - WINDOW_SIZE + 120.0 - margin;
+        let max_y = self.screen_height - WINDOW_HEIGHT + 120.0 - margin;
         let min_y = -120.0 + margin;
 
         let at_left = ctx.position.x <= min_x && self.angle.cos() < -0.1;
@@ -391,9 +396,9 @@ impl CatBehavior3D {
     }
 
     fn update_direction(&mut self, ctx: &BehaviorContext) -> Vec2 {
-        let phys_max_x = self.screen_width - WINDOW_SIZE + 120.0;
+        let phys_max_x = self.screen_width - WINDOW_WIDTH + 120.0;
         let phys_min_x = -120.0;
-        let phys_max_y = self.screen_height - WINDOW_SIZE + 120.0;
+        let phys_max_y = self.screen_height - WINDOW_HEIGHT + 120.0;
         let phys_min_y = -120.0;
 
         if ctx.position.x >= phys_max_x
@@ -588,7 +593,7 @@ fn spawn_3d_render_thread(state: Arc<Mutex<Pet3DSharedState>>, model_path: Strin
         loop {
             let frame_start = Instant::now();
 
-            // 读取状态（一次性获取，避免多次锁）
+            // 读取状态
             let (running, orbit_x, orbit_y, distance, model_rotation) = {
                 let s = state.lock().unwrap();
                 (
@@ -600,13 +605,25 @@ fn spawn_3d_render_thread(state: Arc<Mutex<Pet3DSharedState>>, model_path: Strin
                 )
             };
 
-            // 取出 ctx_3d 和 scene_3d 进行渲染（避免同时借用 state 的多个字段）
+            // 取出 ctx_3d 和 scene_3d 进行渲染
             let mut ctx_scene = {
                 let mut s = state.lock().unwrap();
                 (s.ctx_3d.take(), s.scene_3d.take())
             };
 
             if let (Some(ctx), Some(scene)) = &mut ctx_scene {
+                // 检查是否有请求切换动画
+                let anim_idx = {
+                    let mut s = state.lock().unwrap();
+                    s.requested_anim_index.take()
+                };
+                if let Some(idx) = anim_idx {
+                    if idx < ctx.animation_names().len() {
+                        ctx.set_active_animation(idx);
+                        ctx.set_animation_time(0.0);
+                    }
+                }
+
                 // 推进动画
                 if running && ctx.animation_names().len() > 0 {
                     ctx.advance_animation(FRAME_TIME.as_secs_f32() * anim_speed);
@@ -622,10 +639,10 @@ fn spawn_3d_render_thread(state: Arc<Mutex<Pet3DSharedState>>, model_path: Strin
                         ))
                         .target(Vec3::new(0.0, -0.2, 0.0));
 
-                // 应用模型旋转到场景节点
-                let node_ids: Vec<scenix::NodeId> = scene.iter_depth_first().collect();
-                for id in node_ids {
-                    if let Some(node) = scene.get_mut(id) {
+                // 仅旋转场景根节点来调整模型朝向
+                let root_ids: Vec<scenix::NodeId> = scene.roots().to_vec();
+                for &root_id in &root_ids {
+                    if let Some(node) = scene.get_mut(root_id) {
                         node.transform.rotation = scenix::Quat::from_axis_angle(
                             Vec3::new(0.0, 1.0, 0.0),
                             -model_rotation,
@@ -724,11 +741,58 @@ impl Render for DesktopPet3D {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.lock().unwrap();
         let fps = state.fps;
+        let controls_visible = state.controls_visible;
+        let activity = state.activity;
+        let message = state.message.clone();
+        let shared_state = self.state.clone();
+        let orbit_state = self.state.clone();
+        drop(state);
 
-        let img_elem = match &state.render_image {
+        // 3D 渲染图像区域（支持拖拽旋转）
+        let img_elem = match &self.state.lock().unwrap().render_image {
             Some(img_ref) => div()
                 .size(px(RENDER_W as f32))
                 .size(px(RENDER_H as f32))
+                .cursor_grab()
+                .on_mouse_down(MouseButton::Left, move |ev: &MouseDownEvent, _, _| {
+                    let mut s = orbit_state.lock().unwrap();
+                    s.is_dragging = true;
+                    s.drag_start_x = ev.position.x.as_f32();
+                    s.drag_start_y = ev.position.y.as_f32();
+                })
+                .on_mouse_up(MouseButton::Left, {
+                    let state = self.state.clone();
+                    move |_: &MouseUpEvent, _, _| {
+                        state.lock().unwrap().is_dragging = false;
+                    }
+                })
+                .on_mouse_move({
+                    let state = self.state.clone();
+                    move |ev: &MouseMoveEvent, _, _| {
+                        let mut s = state.lock().unwrap();
+                        if s.is_dragging {
+                            let dx = ev.position.x.as_f32() - s.drag_start_x;
+                            let dy = ev.position.y.as_f32() - s.drag_start_y;
+                            s.drag_start_x = ev.position.x.as_f32();
+                            s.drag_start_y = ev.position.y.as_f32();
+                            s.orbit_x += dx * 0.008;
+                            s.orbit_y += dy * 0.008;
+                            s.orbit_y = s.orbit_y.clamp(-1.5, 1.5);
+                        }
+                    }
+                })
+                .on_scroll_wheel({
+                    let state = self.state.clone();
+                    move |ev: &ScrollWheelEvent, _, _| {
+                        let mut s = state.lock().unwrap();
+                        let delta = match ev.delta {
+                            ScrollDelta::Pixels(d) => d.y.as_f32(),
+                            ScrollDelta::Lines(d) => d.y * 20.0,
+                        };
+                        s.distance -= delta * 0.05;
+                        s.distance = s.distance.clamp(1.0, 50.0);
+                    }
+                })
                 .child(img(img_ref.clone())),
             None => div()
                 .size(px(RENDER_W as f32))
@@ -740,12 +804,6 @@ impl Render for DesktopPet3D {
                 .text_color(rgb(0xffffff))
                 .child("3D 猫加载中..."),
         };
-
-        let controls_visible = state.controls_visible;
-        let activity = state.activity;
-        let message = state.message.clone();
-        let shared_state = self.state.clone();
-        drop(state);
 
         div()
             .flex()
@@ -801,8 +859,17 @@ fn control_panel(
 }
 
 fn action_button(state: Arc<Mutex<Pet3DSharedState>>, activity: CatActivity) -> impl IntoElement {
+    // 每个按钮对应一个动画索引（按按钮顺序 0..5）
+    let anim_index = match activity {
+        CatActivity::Walk => 0,
+        CatActivity::Eat => 1,
+        CatActivity::Spin => 2,
+        CatActivity::Yawn => 3,
+        CatActivity::Sleep => 4,
+        CatActivity::Turn => 5,
+    };
     div()
-        .id(format!("activity-{}", activity.animation_name()))
+        .id(format!("anim-{}", anim_index))
         .px_2()
         .py_1()
         .rounded_sm()
@@ -812,7 +879,7 @@ fn action_button(state: Arc<Mutex<Pet3DSharedState>>, activity: CatActivity) -> 
         .cursor_pointer()
         .child(activity.label())
         .on_click(move |_, _, _| {
-            state.lock().unwrap().request_activity(activity);
+            state.lock().unwrap().requested_anim_index = Some(anim_index);
         })
 }
 
@@ -1030,7 +1097,7 @@ fn main() {
                 screen_width,
                 screen_height,
             )));
-            let bounds = Bounds::centered(None, size(px(WINDOW_SIZE), px(WINDOW_SIZE)), cx);
+            let bounds = Bounds::centered(None, size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT)), cx);
             let window_visible = Arc::new(std::sync::atomic::AtomicBool::new(true));
             let window_visible_close = window_visible.clone();
             let view_state = pet_state.clone();

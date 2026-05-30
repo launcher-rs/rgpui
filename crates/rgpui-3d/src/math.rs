@@ -170,10 +170,22 @@ pub(crate) fn mat4_mul(a: &scenix::Mat4, b: &scenix::Mat4) -> scenix::Mat4 {
 /// 将 scenix Mat4 转为 [f32; 16]（列主序，用于 GPU 上传）
 pub(crate) fn mat4_to_flat(m: &scenix::Mat4) -> [f32; 16] {
     [
-        m.cols[0].x, m.cols[0].y, m.cols[0].z, m.cols[0].w,
-        m.cols[1].x, m.cols[1].y, m.cols[1].z, m.cols[1].w,
-        m.cols[2].x, m.cols[2].y, m.cols[2].z, m.cols[2].w,
-        m.cols[3].x, m.cols[3].y, m.cols[3].z, m.cols[3].w,
+        m.cols[0].x,
+        m.cols[0].y,
+        m.cols[0].z,
+        m.cols[0].w,
+        m.cols[1].x,
+        m.cols[1].y,
+        m.cols[1].z,
+        m.cols[1].w,
+        m.cols[2].x,
+        m.cols[2].y,
+        m.cols[2].z,
+        m.cols[2].w,
+        m.cols[3].x,
+        m.cols[3].y,
+        m.cols[3].z,
+        m.cols[3].w,
     ]
 }
 

@@ -23,9 +23,9 @@
 /// 重新导出 scenix 公开类型
 pub use scenix;
 
+mod context;
+mod math;
 mod shader;
 mod types;
-mod math;
-mod context;
 
 pub use context::{RenderResult, Scenix3D};

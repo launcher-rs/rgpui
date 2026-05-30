@@ -20,7 +20,11 @@ static SHARED: OnceLock<SharedGpuContext> = OnceLock::new();
 
 /// 注册共享的 wgpu GPU 上下文。仅第一次调用生效，后续调用被忽略。
 pub fn register(instance: wgpu::Instance, device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) {
-    let _ = SHARED.set(SharedGpuContext { instance, device, queue });
+    let _ = SHARED.set(SharedGpuContext {
+        instance,
+        device,
+        queue,
+    });
 }
 
 /// 获取共享的 wgpu GPU 上下文（如果已注册）。
