@@ -25,15 +25,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// 覆盖窗口尺寸
-const WINDOW_WIDTH: f32 = 360.0;
-const WINDOW_HEIGHT: f32 = 520.0;
+const WINDOW_WIDTH: f32 = 340.0;
+const WINDOW_HEIGHT: f32 = 420.0;
 
 /// 3D 渲染尺寸
 const RENDER_W: u32 = 320;
 const RENDER_H: u32 = 320;
 
-/// 帧率
-const FRAME_TIME: Duration = Duration::from_millis(16);
+/// 帧率（30fps 足够，减少 CPU 占用）
+const FRAME_TIME: Duration = Duration::from_millis(33);
 
 // ============================================================================
 // 共享状态
@@ -336,46 +336,46 @@ impl Render for View {
                 .child("加载中..."),
         };
 
-        // 动画按钮列表
-        let buttons = div()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .mt_2()
-            .w(px(RENDER_W as f32));
+        // 动画按钮列表（2列紧凑网格，最多显示6个）
+        let max_btns = 6;
+        let show_names = &anim_names[..anim_names.len().min(max_btns)];
 
-        let buttons = if anim_names.is_empty() {
-            buttons.child(
-                div()
-                    .text_xs()
-                    .text_color(rgba(0xffffffaa))
-                    .child("暂无动画"),
-            )
-        } else {
-            let mut btns = buttons;
-            for (i, name) in anim_names.iter().enumerate() {
-                let is_active = current_anim == Some(i);
-                let state = self.state.clone();
-                let label = format!("{} - {}", i, name);
-                let btn = div()
-                    .id(format!("anim-{}", i))
-                    .px_3()
-                    .py_1()
-                    .rounded(px(4.0))
-                    .text_xs()
-                    .cursor_pointer()
-                    .child(label)
-                    .on_click(move |_, _, _| {
-                        state.lock().unwrap().requested_anim_index = Some(i);
-                    });
-                let btn = if is_active {
-                    btn.bg(rgba(0x4488ffcc)).text_color(rgb(0xffffff))
-                } else {
-                    btn.bg(rgba(0xffffffdd)).text_color(rgb(0x333333))
-                };
-                btns = btns.child(btn);
+        let mut row1 = div().flex().gap_1().mt_2();
+        let mut row2 = div().flex().gap_1().mt_1();
+
+        for (i, name) in show_names.iter().enumerate() {
+            let is_active = current_anim == Some(i);
+            let state = self.state.clone();
+            let label = format!("{}", name);
+            let btn = div()
+                .id(format!("anim-{}", i))
+                .px_2()
+                .py_1()
+                .rounded(px(4.0))
+                .text_xs()
+                .w(px(100.0))
+                .text_center()
+                .cursor_pointer()
+                .child(label)
+                .on_click(move |_, _, _| {
+                    state.lock().unwrap().requested_anim_index = Some(i);
+                });
+            let btn = if is_active {
+                btn.bg(rgba(0x4488ffcc)).text_color(rgb(0xffffff))
+            } else {
+                btn.bg(rgba(0xffffffdd)).text_color(rgb(0x333333))
+            };
+            if i < 3 {
+                row1 = row1.child(btn);
+            } else {
+                row2 = row2.child(btn);
             }
-            btns
+        }
+
+        let extra = if anim_names.len() > max_btns {
+            format!(" +{} more", anim_names.len() - max_btns)
+        } else {
+            String::new()
         };
 
         div()
@@ -392,7 +392,17 @@ impl Render for View {
                     .text_color(rgba(0xffffffaa))
                     .child(format!("{:.0} FPS | 拖拽旋转，滚轮缩放", fps)),
             )
-            .child(buttons)
+            .child(row1)
+            .child(row2)
+            .when(!extra.is_empty(), |this| {
+                this.child(
+                    div()
+                        .mt_1()
+                        .text_xs()
+                        .text_color(rgba(0xffffffaa))
+                        .child(extra),
+                )
+            })
     }
 }
 
