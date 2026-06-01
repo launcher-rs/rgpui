@@ -16,7 +16,7 @@ use rgpui::{
     WindowKind, WindowOptions, div, img, prelude::*, px, rgb, rgba, size,
 };
 use rgpui_3d::Scenix3D;
-use rgpui_3d::scenix::{self, PerspectiveCamera, SceneGraph, Vec3};
+use rgpui_3d::scenix::{self, PerspectiveCamera, Vec3};
 use rgpui_platform::application;
 use std::borrow::Cow;
 use std::fs;
@@ -35,20 +35,19 @@ const RENDER_H: u32 = 320;
 /// 帧率（30fps 足够，减少 CPU 占用）
 const FRAME_TIME: Duration = Duration::from_millis(33);
 
+/// UI 轮询间隔（与渲染帧率同步）
+const UI_POLL_INTERVAL: Duration = Duration::from_millis(33);
+
 // ============================================================================
 // 共享状态
 // ============================================================================
 
 struct SharedState {
-    /// 3D 渲染上下文
-    ctx_3d: Option<Scenix3D>,
-    /// 3D 场景图
-    scene_3d: Option<SceneGraph>,
-    /// 当前渲染帧
-    render_image: Option<Arc<rgpui::RenderImage>>,
-    /// 相机参数
+    /// 轨道旋转角度 X
     orbit_x: f32,
+    /// 轨道旋转角度 Y
     orbit_y: f32,
+    /// 相机距离
     distance: f32,
     /// 请求切换的动画索引
     requested_anim_index: Option<usize>,
@@ -56,10 +55,12 @@ struct SharedState {
     current_anim_index: Option<usize>,
     /// 动画名称列表
     anim_names: Vec<String>,
-    /// 鼠标拖拽轨道控制
+    /// 鼠标拖拽状态
     is_dragging: bool,
     drag_start_x: f32,
     drag_start_y: f32,
+    /// 3D 渲染帧（渲染线程写入，UI 线程读取）
+    render_image: Option<Arc<rgpui::RenderImage>>,
     /// 帧率统计
     fps: f32,
 }
@@ -67,9 +68,6 @@ struct SharedState {
 impl SharedState {
     fn new() -> Self {
         Self {
-            ctx_3d: None,
-            scene_3d: None,
-            render_image: None,
             orbit_x: 0.0,
             orbit_y: -0.3,
             distance: 5.0,
@@ -79,6 +77,7 @@ impl SharedState {
             is_dragging: false,
             drag_start_x: 0.0,
             drag_start_y: 0.0,
+            render_image: None,
             fps: 0.0,
         }
     }
@@ -98,7 +97,7 @@ fn spawn_3d_render_thread(state: Arc<Mutex<SharedState>>, model_path: String) {
 
         // 加载 3D 模型
         let loader = scenix::GltfLoader::new();
-        let scene = match loader.load_file(&model_path) {
+        let mut scene = match loader.load_file(&model_path) {
             Ok(asset) => {
                 if let Err(e) = ctx.register_gltf_asset(&asset) {
                     eprintln!("[3D] GPU 注册失败: {e}");
@@ -107,7 +106,6 @@ fn spawn_3d_render_thread(state: Arc<Mutex<SharedState>>, model_path: String) {
                         Ok(_) => {
                             let names = ctx.animation_names();
                             eprintln!("[3D] 蒙皮加载成功，共 {} 个动画: {:?}", names.len(), names);
-                            // 将动画名称存入共享状态
                             let mut s = state.lock().unwrap();
                             s.anim_names = names;
                         }
@@ -126,97 +124,77 @@ fn spawn_3d_render_thread(state: Arc<Mutex<SharedState>>, model_path: String) {
 
         ctx.set_clear_color(0.0, 0.0, 0.0, 0.0);
 
-        {
-            let mut s = state.lock().unwrap();
-            s.ctx_3d = Some(ctx);
-            s.scene_3d = Some(scene);
-        }
-
         let anim_speed = 1.0;
         let mut frame_times: Vec<f32> = Vec::with_capacity(30);
 
         loop {
             let frame_start = Instant::now();
 
-            // 读取状态
-            let (orbit_x, orbit_y, distance) = {
-                let s = state.lock().unwrap();
-                (s.orbit_x, s.orbit_y, s.distance)
-            };
-
-            // 取出 ctx 和 scene 进行渲染
-            let mut ctx_scene = {
+            // ── 一次性读取所有输入参数（仅 1 次加锁）──
+            let (orbit_x, orbit_y, distance, anim_idx) = {
                 let mut s = state.lock().unwrap();
-                (s.ctx_3d.take(), s.scene_3d.take())
+                (
+                    s.orbit_x,
+                    s.orbit_y,
+                    s.distance,
+                    s.requested_anim_index.take(),
+                )
             };
 
-            if let (Some(ctx), Some(scene)) = &mut ctx_scene {
-                // 切换动画
-                let anim_idx = {
-                    let mut s = state.lock().unwrap();
-                    s.requested_anim_index.take()
-                };
-                if let Some(idx) = anim_idx {
-                    let anim_count = ctx.animation_names().len();
-                    if idx < anim_count {
-                        ctx.set_active_animation(idx);
-                        ctx.set_animation_time(0.0);
-                        let mut s = state.lock().unwrap();
-                        s.current_anim_index = Some(idx);
-                        eprintln!("[3D] 切换到动画 {}: {}", idx, ctx.animation_names()[idx]);
-                    }
-                }
-
-                // 推进动画
+            // 切换动画
+            if let Some(idx) = anim_idx {
                 let anim_count = ctx.animation_names().len();
-                if anim_count > 0 {
-                    ctx.advance_animation(FRAME_TIME.as_secs_f32() * anim_speed);
+                if idx < anim_count {
+                    ctx.set_active_animation(idx);
+                    ctx.set_animation_time(0.0);
+                    let mut s = state.lock().unwrap();
+                    s.current_anim_index = Some(idx);
+                    eprintln!("[3D] 切换到动画 {}: {}", idx, ctx.animation_names()[idx]);
                 }
+            }
 
-                // 构建相机
-                let camera =
-                    PerspectiveCamera::new(45.0, RENDER_W as f32 / RENDER_H as f32, 0.1, 100.0)
-                        .position(Vec3::new(
-                            distance * orbit_x.sin() * orbit_y.cos(),
-                            distance * orbit_y.sin() + 0.5,
-                            distance * orbit_x.cos() * orbit_y.cos(),
-                        ))
-                        .target(Vec3::new(0.0, -0.2, 0.0));
+            // 推进动画
+            let anim_count = ctx.animation_names().len();
+            if anim_count > 0 {
+                ctx.advance_animation(FRAME_TIME.as_secs_f32() * anim_speed);
+            }
 
-                // 执行渲染
-                match ctx.render(scene, &camera) {
-                    Ok(render_result) => {
-                        let render_image = Arc::new(render_result.into_render_image());
+            // 构建相机
+            let camera =
+                PerspectiveCamera::new(45.0, RENDER_W as f32 / RENDER_H as f32, 0.1, 100.0)
+                    .position(Vec3::new(
+                        distance * orbit_x.sin() * orbit_y.cos(),
+                        distance * orbit_y.sin() + 0.5,
+                        distance * orbit_x.cos() * orbit_y.cos(),
+                    ))
+                    .target(Vec3::new(0.0, -0.2, 0.0));
+
+            // 执行渲染（ctx 和 scene 均为本线程局部变量，无需加锁传输）
+            match ctx.render(&mut scene, &camera) {
+                Ok(render_result) => {
+                    let render_image = Arc::new(render_result.into_render_image());
+
+                    // 计算帧率
+                    let elapsed = frame_start.elapsed().as_secs_f32();
+                    frame_times.push(elapsed);
+                    if frame_times.len() > 30 {
+                        frame_times.remove(0);
+                    }
+                    let avg_fps = frame_times.len() as f32 / frame_times.iter().sum::<f32>();
+
+                    // ── 一次性写入所有输出（仅 1 次加锁）──
+                    {
                         let mut s = state.lock().unwrap();
                         s.render_image = Some(render_image);
+                        s.fps = avg_fps;
                     }
-                    Err(e) => {
-                        eprintln!("[3D] 渲染错误: {e}");
-                    }
+                }
+                Err(e) => {
+                    eprintln!("[3D] 渲染错误: {e}");
                 }
             }
 
-            // 将 ctx/scene 放回 state
-            {
-                let mut s = state.lock().unwrap();
-                if let (Some(ctx), Some(scene)) = ctx_scene {
-                    s.ctx_3d = Some(ctx);
-                    s.scene_3d = Some(scene);
-                }
-            }
-
-            let elapsed = frame_start.elapsed().as_secs_f32();
-            frame_times.push(elapsed);
-            if frame_times.len() > 30 {
-                frame_times.remove(0);
-            }
-            let avg_fps = frame_times.len() as f32 / frame_times.iter().sum::<f32>();
-
-            {
-                let mut s = state.lock().unwrap();
-                s.fps = avg_fps;
-            }
-
+            // 帧率限制
             let elapsed = frame_start.elapsed();
             if elapsed < FRAME_TIME {
                 std::thread::sleep(FRAME_TIME - elapsed);
@@ -272,24 +250,31 @@ impl View {
 
 impl Render for View {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.state.lock().unwrap();
-        let fps = state.fps;
-        let anim_names = state.anim_names.clone();
-        let current_anim = state.current_anim_index;
-        let orbit_state = self.state.clone();
-        drop(state);
+        // ── 一次性读取所有需要的输出数据（仅 1 次加锁）──
+        let (fps, render_image, current_anim, anim_names) = {
+            let s = self.state.lock().unwrap();
+            (
+                s.fps,
+                s.render_image.clone(),
+                s.current_anim_index,
+                s.anim_names.clone(),
+            )
+        };
 
         // 3D 渲染图像区域（支持拖拽旋转）
-        let img_elem = match &self.state.lock().unwrap().render_image {
+        let img_elem = match &render_image {
             Some(img_ref) => div()
                 .size(px(RENDER_W as f32))
                 .size(px(RENDER_H as f32))
                 .cursor_grab()
-                .on_mouse_down(MouseButton::Left, move |ev: &MouseDownEvent, _, _| {
-                    let mut s = orbit_state.lock().unwrap();
-                    s.is_dragging = true;
-                    s.drag_start_x = ev.position.x.as_f32();
-                    s.drag_start_y = ev.position.y.as_f32();
+                .on_mouse_down(MouseButton::Left, {
+                    let state = self.state.clone();
+                    move |ev: &MouseDownEvent, _, _| {
+                        let mut s = state.lock().unwrap();
+                        s.is_dragging = true;
+                        s.drag_start_x = ev.position.x.as_f32();
+                        s.drag_start_y = ev.position.y.as_f32();
+                    }
                 })
                 .on_mouse_up(MouseButton::Left, {
                     let state = self.state.clone();
@@ -346,7 +331,7 @@ impl Render for View {
         for (i, name) in show_names.iter().enumerate() {
             let is_active = current_anim == Some(i);
             let state = self.state.clone();
-            let label = format!("{}", name);
+            let label = name.to_string();
             let btn = div()
                 .id(format!("anim-{}", i))
                 .px_2()
@@ -433,7 +418,18 @@ fn main() {
                     ..Default::default()
                 },
                 |_window, cx| {
-                    let view = cx.new(|_| View::new(view_state));
+                    let view = cx.new(move |cx| {
+                        // 启动 UI 轮询定时器，确保 3D 渲染帧能及时刷新到界面
+                        cx.spawn(async move |this, cx| {
+                            loop {
+                                smol::Timer::after(UI_POLL_INTERVAL).await;
+                                let _ = this.update(cx, |_, cx| cx.notify());
+                            }
+                        })
+                        .detach();
+
+                        View::new(view_state)
+                    });
 
                     // 启动 3D 渲染线程
                     let model_path = format!(
