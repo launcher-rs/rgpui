@@ -7,7 +7,7 @@
 //! cargo run --example desktop_pet_3d
 //! ```
 
-#![cfg_attr(target_family = "wasm", no_main)]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use rgpui::{
     App, Bounds, Context, Point, Render, SharedString, TrayMenuItem, Window,
