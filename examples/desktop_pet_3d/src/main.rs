@@ -145,9 +145,9 @@ struct SharedState {
 impl SharedState {
     fn new() -> Self {
         Self {
-            orbit_x: 0.0,
+            orbit_x: -0.8,
             orbit_y: -0.3,
-            distance: 10.0,
+            distance: 15.0,
             requested_anim_index: Some(DEFAULT_ANIM_INDEX),
             current_anim_index: None,
             anim_names: Vec::new(),
@@ -168,7 +168,7 @@ impl SharedState {
             current_model_yaw: 0.0,
             saved_orbit_x: 0.0,
             saved_orbit_y: -0.3,
-            saved_distance: 10.0,
+            saved_distance: 15.0,
         }
     }
 
