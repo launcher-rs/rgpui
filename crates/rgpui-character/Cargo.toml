@@ -1,6 +1,6 @@
 [package]
 name = "rgpui-character"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 publish = true
 description = "rgpui 桌宠与 UI 角色运行时系统"
