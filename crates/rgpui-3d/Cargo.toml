@@ -8,7 +8,7 @@ version= "0.1.0"
 repository = "https://github.com/launcher-rs/rgpui"
 
 [features]
-default = ["scenix-renderer"]
+default = ["shared-wgpu"]
 scenix-renderer = ["scenix/renderer", "scenix/loader"]
 shared-wgpu = ["dep:rgpui-wgpu"]
 

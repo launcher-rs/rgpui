@@ -13,15 +13,15 @@ use std::time::{Duration, Instant};
 use rgpui::{
     App, Bounds, Context, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render,
     RenderImage, ScrollDelta, ScrollWheelEvent, TitlebarOptions, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowOptions, div, img, prelude::*, px, rgb, size,
+    WindowBounds, WindowOptions, div, img, prelude::*, px, rgb, size,
 };
 use rgpui_3d::Scenix3D;
 use rgpui_3d::scenix::{self, PerspectiveCamera, SceneGraph, Vec3};
 use rgpui_platform::application;
 
 /// 渲染尺寸
-const RENDER_W: u32 = 800;
-const RENDER_H: u32 = 600;
+const RENDER_W: u32 = 500;
+const RENDER_H: u32 = 400;
 
 /// UI 与渲染线程共享的状态
 struct SharedState {
@@ -42,7 +42,7 @@ impl SharedState {
         Self {
             orbit_x: 0.0,
             orbit_y: 0.4,
-            distance: 4.0,
+            distance: 15.0,
             is_dragging: false,
             drag_start_x: 0.0,
             drag_start_y: 0.0,
@@ -94,8 +94,7 @@ impl Render for ModelView {
             .items_center()
             .gap(px(6.0))
             .bg(rgb(0x0f0f23))
-            .size(px(900.0))
-            .size(px(720.0))
+            .size_full()
             .child(
                 div().py(px(8.0)).child(
                     div()
@@ -333,7 +332,7 @@ fn main() {
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                window_background: WindowBackgroundAppearance::Transparent,
+                // window_background: WindowBackgroundAppearance::Transparent,
                 titlebar: Some(TitlebarOptions {
                     title: Some("rgpui + scenix 模型查看器".into()),
                     appears_transparent: false,

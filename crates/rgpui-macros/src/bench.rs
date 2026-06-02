@@ -1,41 +1,45 @@
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{FnArg, ItemFn, Token, parse_macro_input, punctuated::Punctuated};
+use quote::{format_ident, quote};
+use syn::{ItemFn, spanned::Spanned};
 
-/// `#[rgpui::bench]` 基准测试宏 - 用于注解需要 GPUI 支持的 Criterion 基准测试函数。
-///
-/// 该宏将普通函数转换为 Criterion 基准测试，自动管理 `BenchAppContext` 的生命周期。
-///
-/// # 用法
-///
-/// ```ignore
-/// #[rgpui::bench]
-/// fn bench_my_feature(cx: &mut BenchAppContext) {
-///     // 基准测试代码
-/// }
-/// ```
-pub(crate) fn bench(args: TokenStream, function: TokenStream) -> TokenStream {
-    let func = parse_macro_input!(function as ItemFn);
-    let ident = &func.sig.ident;
-    let vis = &func.vis;
+pub fn bench(args: TokenStream, function: TokenStream) -> TokenStream {
+    if !args.is_empty() {
+        return error_to_stream(syn::Error::new(
+            proc_macro2::TokenStream::from(args).span(),
+            "#[rgpui::bench] does not accept arguments yet",
+        ));
+    }
 
-    let bench_name = ident.to_string();
-
-    let result = quote! {
-        #vis fn #ident() -> criterion::Criterion {
-            let mut group = criterion::Criterion::default();
-            let mut group = group.benchmark_group(stringify!(#ident));
-            group.bench_function(#bench_name, |bencher| {
-                let mut cx = rgpui::app::BenchAppContext::new(Some(#bench_name));
-                bencher.iter(|| {
-                    cx.run_until_idle();
-                });
-                cx.teardown();
-            });
-            group.finalize();
-            group
-        }
+    let mut inner_fn = match syn::parse::<ItemFn>(function) {
+        Ok(function) => function,
+        Err(error) => return error_to_stream(error),
     };
 
-    TokenStream::from(result)
+    if let Some(asyncness) = &inner_fn.sig.asyncness {
+        return error_to_stream(syn::Error::new(
+            asyncness.span(),
+            "#[rgpui::bench] does not support async benchmark functions yet",
+        ));
+    }
+
+    let outer_fn_name = inner_fn.sig.ident.clone();
+    let inner_fn_name = format_ident!("__rgpui_bench_{}", outer_fn_name);
+    inner_fn.sig.ident = inner_fn_name.clone();
+
+    TokenStream::from(quote! {
+        #inner_fn
+
+        fn #outer_fn_name(criterion: &mut criterion::Criterion) {
+            criterion.bench_function(stringify!(#outer_fn_name), |bencher| {
+                let mut cx = gpui::BenchAppContext::new(Some(stringify!(#outer_fn_name)));
+                #inner_fn_name(bencher, &mut cx);
+                cx.teardown();
+            });
+        }
+
+    })
+}
+
+fn error_to_stream(error: syn::Error) -> TokenStream {
+    TokenStream::from(error.into_compile_error())
 }

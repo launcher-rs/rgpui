@@ -63,7 +63,7 @@ impl SharedState {
         Self {
             orbit_x: 0.0,
             orbit_y: 0.2,
-            distance: 3.5,
+            distance: 15.0,
             is_dragging: false,
             drag_start_x: 0.0,
             drag_start_y: 0.0,
