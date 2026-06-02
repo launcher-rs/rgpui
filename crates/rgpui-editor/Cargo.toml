@@ -1,6 +1,6 @@
 [package]
 name = "rgpui-editor"
-version = "0.1.2"
+version = "0.1.4"
 edition.workspace = true
 publish.workspace = true
 description = "代码编辑器组件"
