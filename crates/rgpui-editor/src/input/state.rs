@@ -347,6 +347,8 @@ pub struct InputState {
     pub(super) selected_range: Selection,
     pub(super) search_panel: Option<Entity<SearchPanel>>,
     pub(super) searchable: bool,
+    /// 是否允许替换（搜索替换中的替换按钮），默认为 true
+    pub(super) replaceable: bool,
     /// Range for save the selected word, use to keep word range when drag move.
     pub(super) selected_word_range: Option<Selection>,
     pub(super) selection_reversed: bool,
@@ -470,6 +472,7 @@ impl InputState {
             selected_range: Selection::default(),
             search_panel: None,
             searchable: false,
+            replaceable: true,
             selected_word_range: None,
             selection_reversed: false,
             ime_marked_range: None,
@@ -578,6 +581,12 @@ impl InputState {
     pub fn searchable(mut self, searchable: bool) -> Self {
         debug_assert!(self.mode.is_multi_line());
         self.searchable = searchable;
+        self
+    }
+
+    /// Set whether this input allows text replacement in search panel (default true).
+    pub fn replaceable(mut self, replaceable: bool) -> Self {
+        self.replaceable = replaceable;
         self
     }
 

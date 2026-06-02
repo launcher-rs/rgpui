@@ -1067,7 +1067,7 @@ impl LeakDetector {
         }
 
         if !out.is_empty() {
-            panic!("自快照以来检测到新实体泄漏:\n{out}");
+            panic!("New entity leaks detected since snapshot:\n{out}");
         }
     }
 }

@@ -113,8 +113,33 @@ pub use executor::*;
 pub use geometry::*;
 pub use global::*;
 pub use rgpui_macros::{
-    AppContext, IntoElement, Render, VisualContext, property_test, register_action, test,
+    AppContext, IntoElement, Render, VisualContext, bench, property_test, register_action, test,
 };
+
+/// 定义用于标注了 `#[rgpui::bench]` 的基准测试的 Criterion 基准测试组。
+///
+/// 这镜像了 `criterion::criterion_group!`，使 GPUI 基准测试文件可以保持与普通
+/// Criterion 基准测试相同的形式。
+///
+/// [`rgpui::bench`]: crate::bench
+#[macro_export]
+macro_rules! bench_group {
+    ($($tokens:tt)*) => {
+        criterion::criterion_group!($($tokens)*);
+    };
+}
+
+/// 定义 GPUI Criterion 基准测试组的入口点。
+///
+/// 这镜像了 `criterion::criterion_main!`，使 GPUI 基准测试文件可以保持与普通
+/// Criterion 基准测试相同的形式。
+#[macro_export]
+macro_rules! bench_main {
+    ($($tokens:tt)*) => {
+        criterion::criterion_main!($($tokens)*);
+    };
+}
+
 pub use rgpui_util::arc_cow::ArcCow;
 pub use shared_string::*;
 

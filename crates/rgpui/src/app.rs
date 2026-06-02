@@ -26,6 +26,8 @@ use crate::collections::{FxHashMap, FxHashSet, HashMap, VecDeque};
 use crate::http_client::{HttpClient, Url};
 use crate::{ResultExt, debug_panic};
 pub use async_context::*;
+#[cfg(feature = "test-support")]
+pub use bench_context::{BenchAppContext, BenchWindowContext};
 pub use context::*;
 pub use entity_map::*;
 #[cfg(any(test, feature = "test-support"))]
@@ -57,6 +59,8 @@ use crate::{
 };
 
 mod async_context;
+#[cfg(feature = "test-support")]
+mod bench_context;
 mod context;
 mod entity_map;
 #[cfg(any(test, feature = "test-support"))]

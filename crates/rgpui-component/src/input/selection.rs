@@ -1,69 +1,9 @@
-use std::{char, ops::Range};
+use std::ops::Range;
 
-use crate::{RopeExt as _, input::InputState};
+use crate::{RopeExt as _, input::InputState, text::selection::word_range_from_chars};
 use rgpui::sum_tree::Bias;
 use rgpui::{Context, Window};
 use ropey::Rope;
-
-/// 字符类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CharType {
-    /// a-z, A-Z, 0-9, _
-    Word,
-    /// '\t', ' ', '\u{00A0}' 等
-    Whitespace,
-    /// \n, \r
-    Newline,
-    /// . , ; : ( ) [ ] { } ... 或 CJK 字符：`汉`, `🎉` 等
-    Other,
-}
-
-/// 实现参考 <https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system/line_wrapper.rs>
-fn is_word_char(c: char) -> bool {
-    matches!(c, '_' ) ||
-    // ASCII 字母数字字符，用于英语、数字：`Hello123` 等。
-    c.is_ascii_alphanumeric() ||
-    // Unicode 中的拉丁语系，用于法语、德语、西班牙语等。
-    // Latin-1 Supplement
-    // https://en.wikipedia.org/wiki/Latin-1_Supplement
-    matches!(c, '\u{00C0}'..='\u{00FF}') ||
-    // Latin Extended-A
-    // https://en.wikipedia.org/wiki/Latin_Extended-A
-    matches!(c, '\u{0100}'..='\u{017F}') ||
-    // Latin Extended-B
-    // https://en.wikipedia.org/wiki/Latin_Extended-B
-    matches!(c, '\u{0180}'..='\u{024F}') ||
-    // 西里尔字母，用于俄语、乌克兰语等。
-    // https://en.wikipedia.org/wiki/Cyrillic_script_in_Unicode
-    matches!(c, '\u{0400}'..='\u{04FF}') ||
-
-    // 越南语 (https://vietunicode.sourceforge.net/charset/)
-    matches!(c, '\u{1E00}'..='\u{1EFF}') || // Latin Extended Additional
-    matches!(c, '\u{0300}'..='\u{036F}') // 组合变音符号
-}
-
-impl From<char> for CharType {
-    fn from(c: char) -> Self {
-        match c {
-            c if is_word_char(c) => CharType::Word,
-            c if c == '\n' || c == '\r' => CharType::Newline,
-            c if c.is_whitespace() => CharType::Whitespace,
-            _ => CharType::Other,
-        }
-    }
-}
-
-impl CharType {
-    /// 检查两个 CharType 是否可连接
-    fn is_connectable(self, c: char) -> bool {
-        let other = CharType::from(c);
-        match (self, other) {
-            (CharType::Word, CharType::Word) => true,
-            (CharType::Whitespace, CharType::Whitespace) => true,
-            _ => false,
-        }
-    }
-}
 
 impl InputState {
     /// 在给定偏移量处双击选中单词。
@@ -114,33 +54,11 @@ impl TextSelector {
     /// 返回选中单词的起始和结束偏移量。
     pub fn word_range(text: &Rope, offset: usize) -> Option<Range<usize>> {
         let offset = text.clip_offset(offset, Bias::Left);
-        let Some(char) = text.char_at(offset) else {
-            return None;
-        };
-
-        let char_type = CharType::from(char);
-        let mut start = offset;
-        let mut end = offset + char.len_utf8();
-        let prev_chars = text.chars_at(start).reversed().take(128);
+        let char = text.char_at(offset)?;
+        let end = offset + char.len_utf8();
+        let prev_chars = text.chars_at(offset).reversed().take(128);
         let next_chars = text.chars_at(end).take(128);
-
-        for ch in prev_chars {
-            if char_type.is_connectable(ch) {
-                start -= ch.len_utf8();
-            } else {
-                break;
-            }
-        }
-
-        for ch in next_chars {
-            if char_type.is_connectable(ch) {
-                end += ch.len_utf8();
-            } else {
-                break;
-            }
-        }
-
-        Some(start..end)
+        Some(word_range_from_chars(offset, char, prev_chars, next_chars))
     }
 }
 
@@ -148,34 +66,6 @@ impl TextSelector {
 mod tests {
     use super::*;
     use ropey::Rope;
-
-    #[test]
-    fn test_char_type_from_char() {
-        assert_eq!(CharType::from('a'), CharType::Word);
-        assert_eq!(CharType::from('Z'), CharType::Word);
-        assert_eq!(CharType::from('0'), CharType::Word);
-        assert_eq!(CharType::from('_'), CharType::Word);
-        assert_eq!(CharType::from('.'), CharType::Other);
-        assert_eq!(CharType::from(','), CharType::Other);
-        assert_eq!(CharType::from(';'), CharType::Other);
-        assert_eq!(CharType::from('!'), CharType::Other);
-        assert_eq!(CharType::from('?'), CharType::Other);
-        assert_eq!(CharType::from('['), CharType::Other);
-        assert_eq!(CharType::from('{'), CharType::Other);
-        assert_eq!(CharType::from(' '), CharType::Whitespace);
-        assert_eq!(CharType::from('\t'), CharType::Whitespace);
-        assert_eq!(CharType::from('\u{00A0}'), CharType::Whitespace);
-        assert_eq!(CharType::from('\n'), CharType::Newline);
-        assert_eq!(CharType::from('\r'), CharType::Newline);
-        assert_eq!(CharType::from('汉'), CharType::Other);
-        // 欧洲字母
-        assert_eq!(CharType::from('é'), CharType::Word);
-        assert_eq!(CharType::from('ä'), CharType::Word);
-        assert_eq!(CharType::from('ö'), CharType::Word);
-        assert_eq!(CharType::from('ü'), CharType::Word);
-        // 西里尔字母
-        assert_eq!(CharType::from('д'), CharType::Word);
-    }
 
     #[test]
     fn test_word_range() {

@@ -24,6 +24,15 @@ use rgpui::{
 
 use super::{TextViewStyle, utils::list_item_prefix};
 
+/// 提取文本的类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BlockTextKind {
+    /// 全部文本
+    All,
+    /// 仅选中文本
+    Selected,
+}
+
 /// The block-level nodes.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BlockNode {
@@ -75,6 +84,92 @@ pub(crate) enum BlockNode {
 }
 
 impl BlockNode {
+    /// 获取全部文本内容
+    pub(super) fn text(&self) -> String {
+        self.text_by_kind(BlockTextKind::All)
+    }
+
+    /// 根据类型获取文本内容
+    pub(super) fn text_by_kind(&self, kind: BlockTextKind) -> String {
+        match kind {
+            BlockTextKind::All => self._all_text(),
+            BlockTextKind::Selected => self._selected_text(),
+        }
+    }
+
+    /// 获取全部文本（内部实现）
+    fn _all_text(&self) -> String {
+        let mut text = String::new();
+        match self {
+            BlockNode::Root { children, .. } => {
+                text.push_str(&Self::children_text(children, BlockTextKind::All));
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+            }
+            BlockNode::Paragraph(paragraph) => {
+                text.push_str(&paragraph.text());
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+            }
+            BlockNode::Heading { children, .. } => {
+                text.push_str(&children.text());
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+            }
+            BlockNode::Blockquote { children, .. } => {
+                text.push_str(&Self::children_text(children, BlockTextKind::All));
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+            }
+            BlockNode::List { children, .. } => {
+                text.push_str(&Self::children_text(children, BlockTextKind::All));
+            }
+            BlockNode::ListItem { children, .. } => {
+                text.push_str(&Self::children_text(children, BlockTextKind::All));
+            }
+            BlockNode::Table(table) => {
+                for row in &table.children {
+                    let row_texts: Vec<String> = row
+                        .children
+                        .iter()
+                        .map(|cell| cell.children.text())
+                        .collect();
+                    if !row_texts.is_empty() {
+                        text.push_str(&row_texts.join(" "));
+                        text.push('\n');
+                    }
+                }
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+            }
+            BlockNode::CodeBlock(code_block) => {
+                text.push_str(&code_block.text());
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+            }
+            BlockNode::Definition { .. }
+            | BlockNode::Break { .. }
+            | BlockNode::HorizontalRule { .. }
+            | BlockNode::Unknown { .. } => {}
+        }
+        text
+    }
+
+    /// 获取所有子节点的文本
+    fn children_text(children: &[BlockNode], kind: BlockTextKind) -> String {
+        children
+            .iter()
+            .map(|c| c.text_by_kind(kind))
+            .collect::<Vec<_>>()
+            .concat()
+    }
+
     pub(super) fn is_list_item(&self) -> bool {
         matches!(self, Self::ListItem { .. })
     }
@@ -110,68 +205,58 @@ impl BlockNode {
     }
 
     pub(super) fn selected_text(&self) -> String {
+        self.text_by_kind(BlockTextKind::Selected)
+    }
+
+    /// 获取选中文本（内部实现）
+    fn _selected_text(&self) -> String {
         let mut text = String::new();
         match self {
             BlockNode::Root { children, .. } => {
-                let mut block_text = String::new();
-                for c in children.iter() {
-                    block_text.push_str(&c.selected_text());
-                }
-                if !block_text.is_empty() {
-                    text.push_str(&block_text);
+                text.push_str(&Self::children_text(children, BlockTextKind::Selected));
+                if !text.is_empty() {
                     text.push('\n');
                 }
             }
             BlockNode::Paragraph(paragraph) => {
-                let mut block_text = String::new();
-                block_text.push_str(&paragraph.selected_text());
+                let block_text = paragraph.selected_text();
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
                     text.push('\n');
                 }
             }
             BlockNode::Heading { children, .. } => {
-                let mut block_text = String::new();
-                block_text.push_str(&children.selected_text());
+                let block_text = children.selected_text();
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
+                    text.push('\n');
+                }
+            }
+            BlockNode::Blockquote { children, .. } => {
+                text.push_str(&Self::children_text(children, BlockTextKind::Selected));
+                if !text.is_empty() {
                     text.push('\n');
                 }
             }
             BlockNode::List { children, .. } => {
-                for c in children.iter() {
-                    text.push_str(&c.selected_text());
-                }
+                text.push_str(&Self::children_text(children, BlockTextKind::Selected));
             }
             BlockNode::ListItem { children, .. } => {
-                for c in children.iter() {
-                    text.push_str(&c.selected_text());
-                }
-            }
-            BlockNode::Blockquote { children, .. } => {
-                let mut block_text = String::new();
-                for c in children.iter() {
-                    block_text.push_str(&c.selected_text());
-                }
-
-                if !block_text.is_empty() {
-                    text.push_str(&block_text);
-                    text.push('\n');
-                }
+                text.push_str(&Self::children_text(children, BlockTextKind::Selected));
             }
             BlockNode::Table(table) => {
                 let mut block_text = String::new();
-                for row in table.children.iter() {
-                    let mut row_texts = vec![];
-                    for cell in row.children.iter() {
-                        row_texts.push(cell.children.selected_text());
-                    }
+                for row in &table.children {
+                    let row_texts: Vec<String> = row
+                        .children
+                        .iter()
+                        .map(|cell| cell.children.selected_text())
+                        .collect();
                     if !row_texts.is_empty() {
                         block_text.push_str(&row_texts.join(" "));
                         block_text.push('\n');
                     }
                 }
-
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
                     text.push('\n');
@@ -189,7 +274,6 @@ impl BlockNode {
             | BlockNode::HorizontalRule { .. }
             | BlockNode::Unknown { .. } => {}
         }
-
         text
     }
 }
@@ -373,21 +457,32 @@ impl Paragraph {
         }
     }
 
+    /// 获取段落全部文本内容
+    pub(super) fn text(&self) -> String {
+        self.children
+            .iter()
+            .map(|c| c.text.to_string())
+            .collect::<Vec<_>>()
+            .concat()
+    }
+
     pub(super) fn selected_text(&self) -> String {
         let mut text = String::new();
 
         for c in self.children.iter() {
-            let state = c.state.lock().unwrap();
-            if let Some(selection) = &state.selection {
-                let part_text = state.text.clone();
-                text.push_str(&part_text[selection.start..selection.end]);
+            if let Ok(state) = c.state.lock() {
+                if let Some(selection) = &state.selection {
+                    let part_text = state.text.clone();
+                    text.push_str(&part_text[selection.start..selection.end]);
+                }
             }
         }
 
-        let state = self.state.lock().unwrap();
-        if let Some(selection) = &state.selection {
-            let all_text = state.text.clone();
-            text.push_str(&all_text[selection.start..selection.end]);
+        if let Ok(state) = self.state.lock() {
+            if let Some(selection) = &state.selection {
+                let all_text = state.text.clone();
+                text.push_str(&all_text[selection.start..selection.end]);
+            }
         }
 
         text
@@ -515,7 +610,15 @@ impl CodeBlock {
 
     /// Get the code content of the code block.
     pub fn code(&self) -> SharedString {
-        self.state.lock().unwrap().text.clone()
+        self.state
+            .lock()
+            .map(|state| state.text.clone())
+            .unwrap_or_default()
+    }
+
+    /// 获取代码块的全部文本内容
+    pub(super) fn text(&self) -> String {
+        self.code().to_string()
     }
 
     pub(crate) fn new(
@@ -525,7 +628,9 @@ impl CodeBlock {
         span: Option<impl Into<Span>>,
     ) -> Self {
         let state = Arc::new(Mutex::new(InlineState::default()));
-        state.lock().unwrap().set_text(code);
+        if let Ok(mut guard) = state.lock() {
+            guard.set_text(code);
+        }
 
         Self {
             lang,
@@ -537,10 +642,11 @@ impl CodeBlock {
 
     pub(super) fn selected_text(&self) -> String {
         let mut text = String::new();
-        let state = self.state.lock().unwrap();
-        if let Some(selection) = &state.selection {
-            let part_text = state.text.clone();
-            text.push_str(&part_text[selection.start..selection.end]);
+        if let Ok(state) = self.state.lock() {
+            if let Some(selection) = &state.selection {
+                let part_text = state.text.clone();
+                text.push_str(&part_text[selection.start..selection.end]);
+            }
         }
         text
     }

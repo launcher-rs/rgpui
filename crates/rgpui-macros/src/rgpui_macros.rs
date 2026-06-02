@@ -1,3 +1,4 @@
+mod bench;
 mod derive_action;
 mod derive_app_context;
 mod derive_into_element;
@@ -253,6 +254,12 @@ pub fn border_style_methods(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn box_shadow_style_methods(input: TokenStream) -> TokenStream {
     styles::box_shadow_style_methods(input)
+}
+
+/// `#[rgpui::bench]` 标注一个使用 GPUI 支持的 Criterion 基准测试。
+#[proc_macro_attribute]
+pub fn bench(args: TokenStream, function: TokenStream) -> TokenStream {
+    bench::bench(args, function)
 }
 
 /// `#[rgpui::test]` 测试属性宏 - 用于注解需要 GPUI 支持的测试函数。
