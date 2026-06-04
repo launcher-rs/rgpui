@@ -1,5 +1,5 @@
 use crate::scheduler::Instant;
-use crate::scheduler::{Clock, Priority, Scheduler, SessionId, TestScheduler, Timer};
+use crate::scheduler::{Clock, Priority, Scheduler, SessionId, SpawnTime, TestScheduler, Timer};
 use crate::{PlatformDispatcher, RunnableMeta};
 use async_task::Runnable;
 use chrono::{DateTime, Utc};
@@ -115,7 +115,10 @@ impl Scheduler for PlatformScheduler {
         // 创建将发送完成信号的可运行任务
         let location = std::panic::Location::caller();
         let (runnable, _task) = async_task::Builder::new()
-            .metadata(RunnableMeta { location })
+            .metadata(RunnableMeta {
+                location,
+                spawned: SpawnTime(Instant::now()),
+            })
             .spawn(
                 move |_| async move {
                     let _ = tx.send(());

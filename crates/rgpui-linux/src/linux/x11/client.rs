@@ -9,7 +9,7 @@ use log::Level;
 use rgpui::ResultExt;
 use rgpui::collections::HashMap;
 use rgpui::http_client::Url;
-use rgpui::{Capslock, TaskTiming, profiler};
+use rgpui::{Capslock, profiler};
 use smallvec::SmallVec;
 use std::{
     cell::RefCell,
@@ -323,20 +323,11 @@ impl X11Client {
                         // events have higher priority and runnables are only worked off after the event
                         // callbacks.
                         handle.insert_idle(|_| {
-                            let start = Instant::now();
                             let location = runnable.metadata().location;
-                            let mut timing = TaskTiming {
-                                location,
-                                start,
-                                end: None,
-                            };
-                            profiler::add_task_timing(timing);
-
+                            let spawned = runnable.metadata().spawned;
+                            profiler::update_running_task(spawned, location);
                             runnable.run();
-
-                            let end = Instant::now();
-                            timing.end = Some(end);
-                            profiler::add_task_timing(timing);
+                            profiler::save_task_timing();
                         });
                     }
                 }

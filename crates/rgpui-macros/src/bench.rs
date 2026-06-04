@@ -31,7 +31,7 @@ pub fn bench(args: TokenStream, function: TokenStream) -> TokenStream {
 
         fn #outer_fn_name(criterion: &mut criterion::Criterion) {
             criterion.bench_function(stringify!(#outer_fn_name), |bencher| {
-                let mut cx = gpui::BenchAppContext::new(Some(stringify!(#outer_fn_name)));
+                let mut cx = rgpui::BenchAppContext::new(Some(stringify!(#outer_fn_name)));
                 #inner_fn_name(bencher, &mut cx);
                 cx.teardown();
             });

@@ -73,7 +73,7 @@ mod test_context;
 mod visual_test_context;
 
 /// 应用程序退出前，[Context::on_app_quit] 返回的 future 可以运行的持续时间。
-pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(100);
+pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(200);
 
 /// Temporary(?) wrapper around [`RefCell<App>`] to help us debug any double borrows.
 /// Strongly consider removing after stabilization.

@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 
 use rgpui::{
     App, Bounds, Context, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render,
-    RenderImage, ScrollDelta, ScrollWheelEvent, TitlebarOptions, Window,
-    WindowBounds, WindowOptions, div, img, prelude::*, px, rgb, size,
+    RenderImage, ScrollDelta, ScrollWheelEvent, TitlebarOptions, Window, WindowBounds,
+    WindowOptions, div, img, prelude::*, px, rgb, size,
 };
 use rgpui_3d::Scenix3D;
 use rgpui_3d::scenix::{self, PerspectiveCamera, SceneGraph, Vec3};

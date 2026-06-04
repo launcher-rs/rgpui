@@ -54,17 +54,24 @@ impl Priority {
     }
 }
 
+/// 任务生成的时间点
+#[derive(Copy, Clone, Debug)]
+pub struct SpawnTime(pub Instant);
+
 /// 附加到可运行对象的元数据，用于调试和分析。
 #[derive(Clone)]
 pub struct RunnableMeta {
     /// 任务生成的源位置。
     pub location: &'static Location<'static>,
+    /// 任务生成的时刻。
+    pub spawned: SpawnTime,
 }
 
 impl std::fmt::Debug for RunnableMeta {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RunnableMeta")
             .field("location", &self.location)
+            .field("spawned", &self.spawned)
             .finish()
     }
 }

@@ -2,7 +2,7 @@ use std::{
     cell::RefCell,
     sync::atomic::{AtomicBool, Ordering},
     thread::{ThreadId, current},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::Context;
@@ -21,8 +21,7 @@ use windows::{
 
 use crate::{HWND, SafeHwnd, WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD};
 use rgpui::{
-    GLOBAL_THREAD_TIMINGS, PlatformDispatcher, Priority, PriorityQueueSender, RunnableVariant,
-    TaskTiming, ThreadTaskTimings, TimerResolutionGuard,
+    PlatformDispatcher, Priority, PriorityQueueSender, RunnableVariant, TimerResolutionGuard,
 };
 
 /// Windows 平台任务调度器
@@ -106,35 +105,15 @@ impl WindowsDispatcher {
     /// * `runnable` - 要执行的任务
     #[inline(always)]
     pub(crate) fn execute_runnable(runnable: RunnableVariant) {
-        let start = Instant::now();
-
         let location = runnable.metadata().location;
-        let mut timing = TaskTiming {
-            location,
-            start,
-            end: None,
-        };
-        rgpui::profiler::add_task_timing(timing);
-
+        let spawned = runnable.metadata().spawned;
+        rgpui::profiler::update_running_task(spawned, location);
         runnable.run();
-
-        let end = Instant::now();
-        timing.end = Some(end);
-
-        rgpui::profiler::add_task_timing(timing);
+        rgpui::profiler::save_task_timing();
     }
 }
 
 impl PlatformDispatcher for WindowsDispatcher {
-    fn get_all_timings(&self) -> Vec<ThreadTaskTimings> {
-        let global_thread_timings = GLOBAL_THREAD_TIMINGS.lock();
-        ThreadTaskTimings::convert(&global_thread_timings)
-    }
-
-    fn get_current_thread_timings(&self) -> rgpui::ThreadTaskTimings {
-        rgpui::profiler::get_current_thread_task_timings()
-    }
-
     fn is_main_thread(&self) -> bool {
         current().id() == self.main_thread_id
     }

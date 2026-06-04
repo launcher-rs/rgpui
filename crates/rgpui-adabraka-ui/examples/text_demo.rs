@@ -1,6 +1,12 @@
 use rgpui::*;
 use rgpui_adabraka_ui::{
-    components::{scrollable::scrollable_vertical, text::*},
+    components::{
+        scrollable::scrollable_vertical,
+        text::{
+            Text, body, body_large, body_small, caption, code, code_small, h1, h2, h3, h4, h5, h6,
+            label, label_small, muted, muted_small,
+        },
+    },
     theme::{Theme, install_theme, use_theme},
 };
 

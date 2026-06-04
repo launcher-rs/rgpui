@@ -1,4 +1,4 @@
-use super::{Instant, Priority, RunnableMeta, Scheduler, SessionId, Timer};
+use super::{Instant, Priority, RunnableMeta, Scheduler, SessionId, SpawnTime, Timer};
 use std::{
     future::Future,
     marker::PhantomData,
@@ -50,7 +50,10 @@ impl ForegroundExecutor {
             move |runnable| {
                 scheduler.schedule_foreground(session_id, runnable);
             },
-            RunnableMeta { location },
+            RunnableMeta {
+                location,
+                spawned: SpawnTime(Instant::now()),
+            },
         );
         runnable.schedule();
         Task(TaskState::Spawned(task))
@@ -138,7 +141,10 @@ impl BackgroundExecutor {
         let scheduler = Arc::clone(&self.scheduler);
         let location = Location::caller();
         let (runnable, task) = async_task::Builder::new()
-            .metadata(RunnableMeta { location })
+            .metadata(RunnableMeta {
+                location,
+                spawned: SpawnTime(Instant::now()),
+            })
             .spawn(
                 move |_| future,
                 move |runnable| {
@@ -166,7 +172,10 @@ impl BackgroundExecutor {
         }));
 
         let (runnable, task) = async_task::Builder::new()
-            .metadata(RunnableMeta { location })
+            .metadata(RunnableMeta {
+                location,
+                spawned: SpawnTime(Instant::now()),
+            })
             .spawn(
                 move |_| future,
                 move |runnable| {

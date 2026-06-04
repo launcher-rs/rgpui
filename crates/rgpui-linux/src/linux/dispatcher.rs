@@ -5,15 +5,11 @@ use calloop::{
 };
 use rgpui::ResultExt;
 
-use std::{
-    mem::MaybeUninit,
-    thread,
-    time::{Duration, Instant},
-};
+use std::{mem::MaybeUninit, thread, time::Duration};
 
 use rgpui::{
-    GLOBAL_THREAD_TIMINGS, PlatformDispatcher, Priority, PriorityQueueReceiver,
-    PriorityQueueSender, RunnableVariant, TaskTiming, ThreadTaskTimings, profiler,
+    PlatformDispatcher, Priority, PriorityQueueReceiver, PriorityQueueSender, RunnableVariant,
+    profiler,
 };
 
 /// 定时器触发后执行的任务包装结构
@@ -62,28 +58,11 @@ impl LinuxDispatcher {
                     .name(format!("Worker-{i}"))
                     .spawn(move || {
                         for runnable in receiver.iter() {
-                            let start = Instant::now();
-
                             let location = runnable.metadata().location;
-                            let mut timing = TaskTiming {
-                                location,
-                                start,
-                                end: None,
-                            };
-                            profiler::add_task_timing(timing);
-
+                            let spawned = runnable.metadata().spawned;
+                            profiler::update_running_task(spawned, location);
                             runnable.run();
-
-                            let end = Instant::now();
-                            timing.end = Some(end);
-                            profiler::add_task_timing(timing);
-
-                            // 记录后台线程执行 runnable 的耗时
-                            log::trace!(
-                                "background thread {}: ran runnable. took: {:?}",
-                                i,
-                                start.elapsed()
-                            );
+                            profiler::save_task_timing();
                         }
                     })
                     .unwrap()
@@ -108,20 +87,11 @@ impl LinuxDispatcher {
                                     calloop::timer::Timer::from_duration(timer.duration),
                                     move |_, _, _| {
                                         if let Some(runnable) = runnable.take() {
-                                            let start = Instant::now();
                                             let location = runnable.metadata().location;
-                                            let mut timing = TaskTiming {
-                                                location,
-                                                start,
-                                                end: None,
-                                            };
-                                            profiler::add_task_timing(timing);
-
+                                            let spawned = runnable.metadata().spawned;
+                                            profiler::update_running_task(spawned, location);
                                             runnable.run();
-                                            let end = Instant::now();
-
-                                            timing.end = Some(end);
-                                            profiler::add_task_timing(timing);
+                                            profiler::save_task_timing();
                                         }
                                         TimeoutAction::Drop
                                     },
@@ -148,15 +118,6 @@ impl LinuxDispatcher {
 }
 
 impl PlatformDispatcher for LinuxDispatcher {
-    fn get_all_timings(&self) -> Vec<rgpui::ThreadTaskTimings> {
-        let global_timings = GLOBAL_THREAD_TIMINGS.lock();
-        ThreadTaskTimings::convert(&global_timings)
-    }
-
-    fn get_current_thread_timings(&self) -> rgpui::ThreadTaskTimings {
-        rgpui::profiler::get_current_thread_task_timings()
-    }
-
     fn is_main_thread(&self) -> bool {
         thread::current().id() == self.main_thread_id
     }

@@ -9,10 +9,7 @@ use mach2::{
         thread_precedence_policy_data_t, thread_time_constraint_policy_data_t,
     },
 };
-use rgpui::{
-    GLOBAL_THREAD_TIMINGS, PlatformDispatcher, Priority, RunnableMeta, RunnableVariant, TaskTiming,
-    ThreadTaskTimings, add_task_timing,
-};
+use rgpui::{PlatformDispatcher, Priority, RunnableMeta, RunnableVariant};
 use util::ResultExt;
 
 use async_task::Runnable;
@@ -21,11 +18,7 @@ use objc::{
     runtime::{BOOL, YES},
     sel, sel_impl,
 };
-use std::{
-    ffi::c_void,
-    ptr::NonNull,
-    time::{Duration, Instant},
-};
+use std::{ffi::c_void, ptr::NonNull, time::Duration};
 
 pub(crate) struct MacDispatcher;
 
@@ -37,17 +30,6 @@ impl MacDispatcher {
 }
 
 impl PlatformDispatcher for MacDispatcher {
-    /// 获取所有线程的任务计时信息。
-    fn get_all_timings(&self) -> Vec<ThreadTaskTimings> {
-        let global_timings = GLOBAL_THREAD_TIMINGS.lock();
-        ThreadTaskTimings::convert(&global_timings)
-    }
-
-    /// 获取当前线程的任务计时信息。
-    fn get_current_thread_timings(&self) -> ThreadTaskTimings {
-        rgpui::profiler::get_current_thread_task_timings()
-    }
-
     /// 检查当前是否在主线程上。
     fn is_main_thread(&self) -> bool {
         let is_main_thread: BOOL = unsafe { msg_send![class!(NSThread), isMainThread] };
@@ -192,18 +174,8 @@ extern "C" fn trampoline(context: *mut c_void) {
         unsafe { Runnable::<RunnableMeta>::from_raw(NonNull::new_unchecked(context as *mut ())) };
 
     let location = runnable.metadata().location;
-
-    let start = Instant::now();
-    let mut timing = TaskTiming {
-        location,
-        start,
-        end: None,
-    };
-
-    add_task_timing(timing);
-
+    let spawned = runnable.metadata().spawned;
+    rgpui::profiler::update_running_task(spawned, location);
     runnable.run();
-
-    timing.end = Some(Instant::now());
-    add_task_timing(timing);
+    rgpui::profiler::save_task_timing();
 }

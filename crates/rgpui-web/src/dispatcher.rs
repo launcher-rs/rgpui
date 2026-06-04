@@ -1,6 +1,5 @@
 use rgpui::{
     PlatformDispatcher, Priority, PriorityQueueReceiver, PriorityQueueSender, RunnableVariant,
-    ThreadTaskTimings,
 };
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
@@ -221,20 +220,6 @@ impl WebDispatcher {
 }
 
 impl PlatformDispatcher for WebDispatcher {
-    fn get_all_timings(&self) -> Vec<ThreadTaskTimings> {
-        // TODO-Wasm：这里是否应该 panic？
-        Vec::new()
-    }
-
-    fn get_current_thread_timings(&self) -> ThreadTaskTimings {
-        ThreadTaskTimings {
-            thread_name: None,
-            thread_id: std::thread::current().id(),
-            timings: Vec::new(),
-            total_pushed: 0,
-        }
-    }
-
     fn is_main_thread(&self) -> bool {
         self.on_main_thread()
     }
