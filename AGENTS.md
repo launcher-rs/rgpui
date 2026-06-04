@@ -96,23 +96,33 @@ PlatformWindow trait 关键方法:
 使用 `scripts/merge-upstream-pr.ps1` 脚本自动完成上游 PR 的获取、映射和应用。
 
 ```powershell
-# 合并指定 PR
+# 合并指定 PR（自动识别 PR 所属的上游仓库）
 .\scripts\merge-upstream-pr.ps1 -PR 58291
 
 # 合并所有待处理 PR（UPSTREAM-PRS.json 中 status = "pending" 的）
 .\scripts\merge-upstream-pr.ps1 -All
+
+# 指定上游仓库合并
+.\scripts\merge-upstream-pr.ps1 -PR 123 -Upstream gpui-component
 
 # 仅分析，不写入文件
 .\scripts\merge-upstream-pr.ps1 -PR 58291 -DryRun
 ```
 
 脚本自动执行：
-1. 克隆/拉取 https://github.com/zed-industries/zed.git 到 `temp/zed-upstream/`
-2. 获取 PR 的变更文件列表
-3. 按映射规则替换路径和内容中的 `gpui_*` → `rgpui_*`
-4. 写入本地仓库
-5. 运行 `cargo check -p rgpui` 验证
-6. 更新 `UPSTREAM-PRS.json` 中的 PR 状态
+1. 从 `UPSTREAM-PRS.json` 读取 PR 所属的上游仓库配置
+2. 克隆/拉取对应仓库到 `temp/<仓库名>-upstream/`
+3. 获取 PR 的变更文件列表，按映射规则处理路径和内容
+4. 写入本地仓库，运行 `cargo check -p rgpui` 验证
+5. 更新 `UPSTREAM-PRS.json` 中的 PR 状态
+
+### 支持的上游仓库
+
+| 名称 | 仓库 | 映射的 crate |
+|------|------|-------------|
+| `zed` | zed-industries/zed | rgpui, rgpui_macos, rgpui_windows, rgpui_linux, rgpui_web, rgpui_wgpu, rgpui_macros, rgpui_tokio, rgpui_platform |
+| `gpui-component` | longbridge/gpui-component | rgpui-component, rgpui-component-macros, rgpui-component-assets, rgpui-webview |
+| `yororen-ui` | MeowLynxSea/yororen-ui | rgpui-yororen-ui |
 
 ### 包名映射规则
 
@@ -129,6 +139,11 @@ Zed 上游仓库的 PR 合并到 rgpui 时，所有包名/路径需要添加 `r`
 | `gpui_wgpu` | `rgpui_wgpu` |
 | `gpui_macros` | `rgpui_macros` |
 | `gpui_tokio` | `rgpui_tokio` |
+| `gpui_component` | `rgpui_component` |
+| `gpui_component_macros` | `rgpui_component_macros` |
+| `gpui_component_assets` | `rgpui_component_assets` |
+| `gpui_webview` | `rgpui_webview` |
+| `yororen_ui` | `rgpui_yororen_ui` |
 
 ### PR 追踪配置
 
@@ -136,13 +151,25 @@ Zed 上游仓库的 PR 合并到 rgpui 时，所有包名/路径需要添加 `r`
 
 ```json
 {
-  "upstream": {
-    "url": "https://github.com/zed-industries/zed.git",
-    "branch": "main"
+  "upstreams": {
+    "zed": {
+      "url": "https://github.com/zed-industries/zed.git",
+      "branch": "main",
+      "worktree": "temp/zed-upstream",
+      "mappings": [...]
+    },
+    "gpui-component": {
+      "url": "https://github.com/longbridge/gpui-component.git",
+      "branch": "main",
+      "worktree": "temp/gpui-component-upstream",
+      "mappings": [...],
+      "content_mappings": {...}
+    }
   },
   "prs": [
     {
       "number": 57835,
+      "upstream": "zed",
       "title": "Log worst hanging tasks and actions",
       "status": "merged",
       "merged_at": "2025-06-04"
