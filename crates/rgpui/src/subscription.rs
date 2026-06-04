@@ -1,3 +1,16 @@
+//! # 订阅系统
+//!
+//! GPUI 的订阅系统基于观察者模式，提供了高效的事件通知机制。
+//! 核心组件包括：
+//! - [`SubscriberSet`] - 管理一组订阅者的容器
+//! - [`Subscription`] - 订阅句柄，Drop 时自动取消订阅
+//!
+//! ## 设计要点
+//!
+//! 1. **延迟激活**：新插入的订阅默认处于非活跃状态，需要通过返回的闭包手动激活
+//! 2. **安全取消**：在回调执行期间取消订阅是安全的，不会导致迭代器失效
+//! 3. **RAII 模式**：`Subscription` 的 `drop` 方法会自动调用取消订阅逻辑
+
 use crate::collections::BTreeMap;
 use crate::post_inc;
 use std::{
@@ -6,6 +19,14 @@ use std::{
     rc::Rc,
 };
 
+/// 订阅者集合 - 管理一组以 `EmitterKey` 为键的订阅者。
+///
+/// `EmitterKey` 通常是 `EntityId`（实体事件）或 `TypeId`（全局事件），
+/// `Callback` 是事件处理闭包的类型。
+///
+/// # 线程安全
+///
+/// 内部使用 `Rc<RefCell<...>>`，因此只能在单线程中使用。
 pub(crate) struct SubscriberSet<EmitterKey, Callback>(
     Rc<RefCell<SubscriberSetState<EmitterKey, Callback>>>,
 );
@@ -16,14 +37,22 @@ impl<EmitterKey, Callback> Clone for SubscriberSet<EmitterKey, Callback> {
     }
 }
 
+/// 订阅者集合的内部状态
 struct SubscriberSetState<EmitterKey, Callback> {
+    /// 订阅者映射表：键 -> (订阅者ID -> 订阅者)
+    /// `Option<BTreeMap>` 用于在回调遍历期间临时取出整个 map，避免借用冲突
     subscribers: BTreeMap<EmitterKey, Option<BTreeMap<usize, Subscriber<Callback>>>>,
+    /// 下一个可用的订阅者 ID（单调递增）
     next_subscriber_id: usize,
 }
 
+/// 单个订阅者的包装结构
 struct Subscriber<Callback> {
+    /// 订阅是否已激活（新插入的订阅默认未激活）
     active: Rc<Cell<bool>>,
+    /// 订阅是否已被标记为丢弃（在回调执行期间取消的订阅）
     dropped: Rc<Cell<bool>>,
+    /// 事件处理回调
     callback: Callback,
 }
 
@@ -32,6 +61,7 @@ where
     EmitterKey: 'static + Ord + Clone + Debug,
     Callback: 'static,
 {
+    /// 创建一个新的空订阅者集合
     pub fn new() -> Self {
         Self(Rc::new(RefCell::new(SubscriberSetState {
             subscribers: Default::default(),
@@ -39,10 +69,23 @@ where
         })))
     }
 
-    /// Inserts a new [`Subscription`] for the given `emitter_key`. By default, subscriptions
-    /// are inert, meaning that they won't be listed when calling `[SubscriberSet::remove]` or `[SubscriberSet::retain]`.
-    /// This method returns a tuple of a [`Subscription`] and an `impl FnOnce`, and you can use the latter
-    /// to activate the [`Subscription`].
+    /// 为给定的 `emitter_key` 插入一个新的订阅。
+    ///
+    /// 新插入的订阅默认处于**非活跃状态**，不会在 `remove` 或 `retain` 中被处理。
+    /// 需要调用返回的闭包来激活订阅。
+    ///
+    /// # 返回值
+    ///
+    /// 返回一个元组 `(_, activate)`：
+    /// - 第一个元素是 [`Subscription`] 句柄，Drop 时自动取消订阅
+    /// - 第二个是激活闭包，调用后订阅才会真正生效
+    ///
+    /// # 示例
+    ///
+    /// ```rust,ignore
+    /// let (subscription, activate) = subscriber_set.insert(key, callback);
+    /// activate(); // 激活订阅
+    /// ```
     pub fn insert(
         &self,
         emitter_key: EmitterKey,
@@ -51,6 +94,7 @@ where
         let active = Rc::new(Cell::new(false));
         let dropped = Rc::new(Cell::new(false));
         let mut lock = self.0.borrow_mut();
+        // 分配一个唯一的订阅者 ID
         let subscriber_id = post_inc(&mut lock.next_subscriber_id);
         lock.subscribers
             .entry(emitter_key.clone())
@@ -66,8 +110,10 @@ where
             );
         let this = self.0.clone();
 
+        // 创建订阅句柄，Drop 时从集合中移除自身
         let subscription = Subscription {
             unsubscribe: Some(Box::new(move || {
+                // 标记为已丢弃，防止在回调遍历期间再次被处理
                 dropped.set(true);
 
                 let mut lock = this.borrow_mut();
@@ -77,15 +123,20 @@ where
 
                 if let Some(subscribers) = subscribers {
                     subscribers.remove(&subscriber_id);
+                    // 如果该 emitter 的所有订阅者都已移除，清理整个条目
                     if subscribers.is_empty() {
                         lock.subscribers.remove(&emitter_key);
                     }
                 }
             })),
         };
+        // 返回激活闭包
         (subscription, move || active.set(true))
     }
 
+    /// 移除给定 emitter 的所有订阅，并返回它们的回调。
+    ///
+    /// 只有已激活的订阅会被返回，未激活的会被静默丢弃。
     pub fn remove(
         &self,
         emitter: &EmitterKey,
@@ -105,12 +156,16 @@ where
             })
     }
 
-    /// Call the given callback for each subscriber to the given emitter.
-    /// If the callback returns false, the subscriber is removed.
+    /// 遍历给定 emitter 的所有活跃订阅者。
+    ///
+    /// 如果回调返回 `false`，对应的订阅者将被移除。
+    /// 此方法在遍历期间是安全的：即使回调中取消订阅或添加新订阅，
+    /// 也不会导致迭代器失效。
     pub fn retain<F>(&self, emitter: &EmitterKey, mut f: F)
     where
         F: FnMut(&mut Callback) -> bool,
     {
+        // 临时取出订阅者 map，避免在回调期间持有借用
         let Some(mut subscribers) = self
             .0
             .borrow_mut()
@@ -122,18 +177,21 @@ where
         };
 
         subscribers.retain(|_, subscriber| {
+            // 跳过未激活的订阅者（保持它们不被处理）
             if !subscriber.active.get() {
                 return true;
             }
+            // 在回调执行期间被取消的订阅者
             if subscriber.dropped.get() {
                 return false;
             }
             let keep = f(&mut subscriber.callback);
+            // 再次检查 dropped，因为回调执行期间可能触发了取消
             keep && !subscriber.dropped.get()
         });
         let mut lock = self.0.borrow_mut();
 
-        // Add any new subscribers that were added while invoking the callback.
+        // 合并在回调执行期间新添加的订阅者
         if let Some(Some(new_subscribers)) = lock.subscribers.remove(emitter) {
             subscribers.extend(new_subscribers);
         }
@@ -144,31 +202,54 @@ where
     }
 }
 
-/// A handle to a subscription created by GPUI. When dropped, the subscription
-/// is cancelled and the callback will no longer be invoked.
+/// 订阅句柄 - GPUI 中事件订阅的 RAII 管理器。
+///
+/// 当 `Subscription` 被 Drop 时，对应的订阅会自动取消，
+/// 回调将不再被调用。此设计确保了：
+/// - 组件销毁时自动清理事件订阅，避免悬空回调
+/// - 作用域结束时自动取消订阅，无需手动管理生命周期
+///
+/// # 示例
+///
+/// ```rust,ignore
+/// // 订阅会在 subscription 离开作用域时自动取消
+/// let subscription = cx.subscribe(&entity, |entity, event, cx| {
+///     // 处理事件
+/// });
+///
+/// // 如果需要手动取消
+/// drop(subscription);
+///
+/// // 如果需要保持订阅活跃（即使句柄被丢弃）
+/// subscription.detach();
+/// ```
 #[must_use]
 pub struct Subscription {
+    /// 取消订阅的回调，`None` 表示已分离（detach）
     unsubscribe: Option<Box<dyn FnOnce() + 'static>>,
 }
 
 impl Subscription {
-    /// Creates a new subscription with a callback that gets invoked when
-    /// this subscription is dropped.
+    /// 创建一个新的订阅句柄，当其被 Drop 时调用 `unsubscribe` 回调。
     pub fn new(unsubscribe: impl 'static + FnOnce()) -> Self {
         Self {
             unsubscribe: Some(Box::new(unsubscribe)),
         }
     }
 
-    /// Detaches the subscription from this handle. The callback will
-    /// continue to be invoked until the entities it has been
-    /// subscribed to are dropped
+    /// 将订阅从句柄中分离。
+    ///
+    /// 分离后，即使句柄被 Drop，订阅仍会保持活跃，
+    /// 直到所订阅的实体被销毁。
+    /// 适用于需要"永久"监听事件的场景。
     pub fn detach(mut self) {
         self.unsubscribe.take();
     }
 
-    /// Joins two subscriptions into a single subscription. Detach will
-    /// detach both interior subscriptions.
+    /// 将两个订阅合并为一个。
+    ///
+    /// 返回的新订阅在 Drop 时会同时取消两个原始订阅。
+    /// 调用 `detach` 会同时分离两个内部订阅。
     pub fn join(mut subscription_a: Self, mut subscription_b: Self) -> Self {
         let a_unsubscribe = subscription_a.unsubscribe.take();
         let b_unsubscribe = subscription_b.unsubscribe.take();
@@ -187,6 +268,7 @@ impl Subscription {
 
 impl Drop for Subscription {
     fn drop(&mut self) {
+        // Drop 时执行取消订阅逻辑
         if let Some(unsubscribe) = self.unsubscribe.take() {
             unsubscribe();
         }

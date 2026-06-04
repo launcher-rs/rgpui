@@ -62,40 +62,75 @@ use std::{
     rc::Rc,
 };
 
-/// `DispatchTree` 内节点的 ID。注意这些在帧之间**不**稳定，因此
-/// `DispatchNodeId` 仅应与提供它的 `DispatchTree` 一起使用。
+/// 分发树节点 ID。注意这些 ID 在帧之间**不**稳定，
+/// 因此 `DispatchNodeId` 仅应与提供它的 `DispatchTree` 一起使用。
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct DispatchNodeId(usize);
 
+/// 分发树 - GPUI 键盘事件分发的核心数据结构。
+///
+/// 在每一帧渲染期间，GPUI 会根据 UI 树构建一棵分发树。
+/// 分发树中的每个节点对应一个可聚焦的 UI 元素，记录了：
+/// - 键盘事件监听器（key_listeners）
+/// - Action 监听器（action_listeners）
+/// - 修饰键变化监听器（modifiers_changed_listeners）
+/// - 键盘上下文（KeyContext）
+///
+/// 按键事件会沿着分发路径（从叶子到根）逐级冒泡，
+/// 直到找到匹配的绑定并执行对应的 Action。
 pub(crate) struct DispatchTree {
+    /// 节点栈 - 构建树时使用的临时栈
     node_stack: Vec<DispatchNodeId>,
+    /// 上下文栈 - 当前激活路径上的 KeyContext 序列
     pub(crate) context_stack: Vec<KeyContext>,
+    /// 视图栈 - 当前激活路径上的视图 ID 序列
     view_stack: Vec<EntityId>,
+    /// 所有节点的扁平存储
     nodes: Vec<DispatchNode>,
+    /// FocusId -> 节点 ID 的映射，用于快速查找焦点节点
     focusable_node_ids: FxHashMap<FocusId, DispatchNodeId>,
+    /// 视图 ID -> 节点 ID 的映射
     view_node_ids: FxHashMap<EntityId, DispatchNodeId>,
+    /// 全局快捷键映射表
     keymap: Rc<RefCell<Keymap>>,
+    /// Action 注册表，用于根据 TypeId 构建 Action 实例
     action_registry: Rc<ActionRegistry>,
 }
 
+/// 分发树中的单个节点，对应一个 UI 元素的键盘处理配置。
 #[derive(Default)]
 pub(crate) struct DispatchNode {
+    /// 键盘事件监听器列表
     pub key_listeners: Vec<KeyListener>,
+    /// Action 监听器列表
     pub action_listeners: Vec<DispatchActionListener>,
+    /// 修饰键（Ctrl、Shift、Alt、Cmd）变化监听器列表
     pub modifiers_changed_listeners: Vec<ModifiersChangedListener>,
+    /// 键盘上下文（如 "Editor"、"Pane" 等），用于限定快捷键作用域
     pub context: Option<KeyContext>,
+    /// 节点关联的焦点 ID（可选）
     pub focus_id: Option<FocusId>,
+    /// 节点关联的视图 ID（可选）
     view_id: Option<EntityId>,
+    /// 父节点 ID
     parent: Option<DispatchNodeId>,
 }
 
+/// 复用子树信息 - 用于帧间优化，跟踪哪些节点可以重用。
+///
+/// 当 UI 树在帧间变化不大时，GPUI 可以重用上一帧的分发树子树，
+/// 避免完全重建。此结构记录了旧子树和新子树的范围映射关系。
 pub(crate) struct ReusedSubtree {
+    /// 旧子树在源树中的节点范围
     old_range: Range<usize>,
+    /// 新子树在目标树中的节点范围
     new_range: Range<usize>,
+    /// 该子树是否包含当前焦点节点
     contains_focus: bool,
 }
 
 impl ReusedSubtree {
+    /// 将旧子树中的节点 ID 映射到新子树中的对应节点 ID
     pub fn refresh_node_id(&self, node_id: DispatchNodeId) -> DispatchNodeId {
         debug_assert!(
             self.old_range.contains(&node_id.0),
@@ -106,32 +141,47 @@ impl ReusedSubtree {
         DispatchNodeId((node_id.0 - self.old_range.start) + self.new_range.start)
     }
 
+    /// 该子树是否包含当前焦点节点
     pub fn contains_focus(&self) -> bool {
         self.contains_focus
     }
 }
 
+/// 按键回放信息 - 当部分按键序列不再匹配时，需要回放已推入的按键
 #[derive(Default, Debug)]
 pub(crate) struct Replay {
+    /// 需要回放的按键事件
     pub(crate) keystroke: Keystroke,
+    /// 该按键已经匹配到的绑定（可能需要重新处理）
     pub(crate) bindings: SmallVec<[KeyBinding; 1]>,
 }
 
+/// 按键分发的结果 - 描述一次按键事件处理后的状态
 #[derive(Default, Debug)]
 pub(crate) struct DispatchResult {
+    /// 待处理的按键序列（当匹配到部分前缀时）
     pub(crate) pending: SmallVec<[Keystroke; 1]>,
+    /// 待处理序列是否已有匹配的绑定
     pub(crate) pending_has_binding: bool,
+    /// 本次按键匹配到的完整绑定列表
     pub(crate) bindings: SmallVec<[KeyBinding; 1]>,
+    /// 需要回放的按键事件（当部分匹配失败时）
     pub(crate) to_replay: SmallVec<[Replay; 1]>,
+    /// 当前的上下文栈
     pub(crate) context_stack: Vec<KeyContext>,
 }
 
+/// 键盘事件监听器类型 - 接收原始键盘事件
 type KeyListener = Rc<dyn Fn(&dyn Any, DispatchPhase, &mut Window, &mut App)>;
+/// 修饰键变化监听器类型 - 接收 Ctrl/Shift/Alt/Cmd 等修饰键变化事件
 type ModifiersChangedListener = Rc<dyn Fn(&ModifiersChangedEvent, &mut Window, &mut App)>;
 
+/// Action 监听器 - 将 Action 类型与回调函数关联
 #[derive(Clone)]
 pub(crate) struct DispatchActionListener {
+    /// 监听的 Action 类型 ID
     pub(crate) action_type: TypeId,
+    /// Action 触发时调用的回调函数
     pub(crate) listener: Rc<dyn Fn(&dyn Any, DispatchPhase, &mut Window, &mut App)>,
 }
 

@@ -15,9 +15,27 @@ use std::{
 
 use super::{App, AsyncWindowContext, Entity, KeystrokeEvent};
 
-/// 应用上下文，针对给定实体具有专门行为。
+/// 实体上下文 - 针对给定实体类型 `T` 提供专门操作的上下文。
+///
+/// `Context<'a, T>` 是 GPUI 中最常用的上下文类型，它封装了：
+/// - 对 `App` 的可变引用（通过 Deref/DerefMut 自动解引用）
+/// - 对实体的弱引用（`WeakEntity<T>`）
+///
+/// 通过此上下文，你可以：
+/// - 观察其他实体的变化（`observe`）
+/// - 订阅事件（`subscribe`）
+/// - 注册键盘事件监听（`on_keystroke`）
+/// - 在后台执行异步任务（`spawn`）
+/// - 通知实体重新渲染（`notify`）
+///
+/// # 生命周期
+///
+/// `Context<'a, T>` 的生命周期与 `App` 的借用绑定。
+/// 当 `Context` 被 drop 时，对 `App` 的借用会释放。
 pub struct Context<'a, T> {
+    /// 对 App 的可变引用
     app: &'a mut App,
+    /// 对当前实体的弱引用
     entity_state: WeakEntity<T>,
 }
 
@@ -36,30 +54,47 @@ impl<'a, T> ops::DerefMut for Context<'a, T> {
 }
 
 impl<'a, T: 'static> Context<'a, T> {
-    /// 创建新的上下文
+    /// 创建新的实体上下文
     pub(crate) fn new_context(app: &'a mut App, entity_state: WeakEntity<T>) -> Self {
         Self { app, entity_state }
     }
 
-    /// The entity id of the entity backing this context.
+    /// 返回此上下文关联的实体 ID
     pub fn entity_id(&self) -> EntityId {
         self.entity_state.entity_id
     }
 
-    /// Returns a handle to the entity belonging to this context.
+    /// 返回此上下文所属实体的强引用句柄。
+    ///
+    /// 实体必须存活，否则会 panic。
     pub fn entity(&self) -> Entity<T> {
         self.weak_entity()
             .upgrade()
-            .expect("The entity must be alive if we have a entity context")
+            .expect("当我们拥有实体上下文时，实体必须存活")
     }
 
-    /// Returns a weak handle to the entity belonging to this context.
+    /// 返回此上下文所属实体的弱引用句柄。
+    ///
+    /// 弱引用不会延长实体的生命周期，适合在闭包中捕获以避免循环引用。
     pub fn weak_entity(&self) -> WeakEntity<T> {
         self.entity_state.clone()
     }
 
-    /// Arranges for the given function to be called whenever [`Context::notify`] is
-    /// called with the given entity.
+    /// 观察给定实体的变化。
+    ///
+    /// 当被观察的实体调用 `notify` 时，`on_notify` 回调会被调用。
+    /// 回调接收当前实体的可变引用、被观察实体的句柄和上下文。
+    ///
+    /// 返回的 [`Subscription`] 取消后停止观察。
+    ///
+    /// # 示例
+    ///
+    /// ```rust,ignore
+    /// cx.observe(&other_entity, |this, other_entity, cx| {
+    ///     // 当 other_entity 通知时执行
+    ///     this.handle_observation(&other_entity, cx);
+    /// });
+    /// ```
     pub fn observe<W>(
         &mut self,
         entity: &Entity<W>,

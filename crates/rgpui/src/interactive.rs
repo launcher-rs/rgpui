@@ -5,32 +5,35 @@ use crate::{
 use smallvec::SmallVec;
 use std::{any::Any, fmt::Debug, ops::Deref, path::PathBuf};
 
-/// 来自平台输入源的事件。
+/// 来自平台输入源的事件 trait。
+///
+/// 所有平台输入事件（键盘、鼠标、触摸等）都实现此 trait，
+/// 提供统一的事件处理接口。
 pub trait InputEvent: Sealed + 'static {
-    /// 将此事件转换为平台输入枚举。
+    /// 将此事件转换为平台输入枚举 [`PlatformInput`]
     fn to_platform_input(self) -> PlatformInput;
 }
 
-/// 来自平台的按键事件。
+/// 来自平台的按键事件标记 trait。
 pub trait KeyEvent: InputEvent {}
 
-/// 来自平台的鼠标事件。
+/// 来自平台的鼠标事件标记 trait。
 pub trait MouseEvent: InputEvent {}
 
-/// 来自平台的手势事件。
+/// 来自平台的手势事件标记 trait。
 pub trait GestureEvent: InputEvent {}
 
-/// 平台的按键按下事件等效物。
+/// 平台的按键按下事件。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct KeyDownEvent {
-    /// 生成的按键序列。
+    /// 生成的按键序列（包含修饰键状态和按键字符）
     pub keystroke: Keystroke,
 
-    /// 按键当前是否处于按下状态。
+    /// 按键当前是否处于长按状态（auto-repeat）
     pub is_held: bool,
 
     /// 对于此按键序列，是否优先使用字符输入而非键绑定。
-    /// 在某些情况下，如 Windows 上的 AltGr，修饰符对字符输入很重要。
+    /// 在某些情况下（如 Windows 上的 AltGr），修饰键对字符输入很重要。
     pub prefer_character_input: bool,
 }
 
@@ -42,10 +45,10 @@ impl InputEvent for KeyDownEvent {
 }
 impl KeyEvent for KeyDownEvent {}
 
-/// 平台的按键释放事件等效物。
+/// 平台的按键释放事件。
 #[derive(Clone, Debug)]
 pub struct KeyUpEvent {
-    /// 被释放的按键序列。
+    /// 被释放的按键序列
     pub keystroke: Keystroke,
 }
 
@@ -57,10 +60,12 @@ impl InputEvent for KeyUpEvent {
 }
 impl KeyEvent for KeyUpEvent {}
 
-/// 平台的修饰符更改事件等效物。
+/// 平台的修饰键状态变化事件。
+///
+/// 当 Ctrl、Shift、Alt、Cmd 等修饰键被按下或释放时触发。
 #[derive(Clone, Debug, Default)]
 pub struct ModifiersChangedEvent {
-    /// 修饰键的新状态
+    /// 修饰键的新状态（哪些修饰键被按下）
     pub modifiers: Modifiers,
     /// 大写锁定键的新状态
     pub capslock: Capslock,
