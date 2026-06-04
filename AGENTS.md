@@ -147,25 +147,22 @@ Zed 上游仓库的 PR 合并到 rgpui 时，所有包名/路径需要添加 `r`
 
 ### PR 追踪配置
 
-`UPSTREAM-PRS.json` 管理所有上游 PR 的状态和映射规则：
+上游规则定义在 `.opencode/upstream-rules.json`（URL、分支、路径映射、内容替换规则），PR 状态追踪在 `UPSTREAM-PRS.json`。
 
 ```json
+// .opencode/upstream-rules.json — 上游仓库配置（合并时读取）
 {
-  "upstreams": {
-    "zed": {
-      "url": "https://github.com/zed-industries/zed.git",
-      "branch": "main",
-      "worktree": "temp/zed-upstream",
-      "mappings": [...]
-    },
-    "gpui-component": {
-      "url": "https://github.com/longbridge/gpui-component.git",
-      "branch": "main",
-      "worktree": "temp/gpui-component-upstream",
-      "mappings": [...],
-      "content_mappings": {...}
-    }
-  },
+  "zed": {
+    "url": "https://github.com/zed-industries/zed.git",
+    "branch": "main",
+    "worktree": "temp/zed-upstream",
+    "mappings": [...],
+    "content_mappings": {...}
+  }
+}
+
+// UPSTREAM-PRS.json — 仅 PR 状态追踪
+{
   "prs": [
     {
       "number": 57835,

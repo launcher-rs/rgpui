@@ -51,7 +51,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$ConfigPath = Join-Path $RepoRoot 'UPSTREAM-PRS.json'
+$PrConfigPath = Join-Path $RepoRoot 'UPSTREAM-PRS.json'
+$RulesPath = Join-Path $RepoRoot '.opencode\upstream-rules.json'
 
 # ---------- 颜色输出辅助 ----------
 function Write-Info  { Write-Host "[INFO]  $args" -ForegroundColor Cyan }
@@ -61,42 +62,36 @@ function Write-Err  { Write-Host "[ERROR] $args" -ForegroundColor Red }
 function Write-Step { Write-Host "`n==> $args" -ForegroundColor Magenta }
 
 # ---------- 读取配置 ----------
-if (-not (Test-Path $ConfigPath)) {
-    Write-Err "找不到配置文件: $ConfigPath"
+if (-not (Test-Path $PrConfigPath)) {
+    Write-Err "找不到 PR 状态文件: $PrConfigPath"
     exit 1
 }
-$Config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$PrConfig = Get-Content $PrConfigPath -Raw | ConvertFrom-Json
+
+if (-not (Test-Path $RulesPath)) {
+    Write-Err "找不到上游规则文件: $RulesPath"
+    exit 1
+}
+$Rules = Get-Content $RulesPath -Raw | ConvertFrom-Json
 
 # ---------- 解析上游配置 ----------
 function Get-UpstreamConfig {
     param([string]$name)
-
-    # 新版：从 upstreams 字典中查找
-    $upstreams = $Config.upstreams
-    if ($upstreams -and $upstreams.$name) {
-        return $upstreams.$name
+    if ($Rules.$name) {
+        return $Rules.$name
     }
-
-    # 旧版兼容：顶层 upstream 对象
-    if ($Config.upstream) {
-        return $Config.upstream
-    }
-
-    Write-Err "找不到上游仓库配置: $name"
+    Write-Err "找不到上游仓库规则: $name"
     exit 1
 }
 
 function Resolve-PrUpstream {
     param([int]$prNumber)
-
     if ($Upstream) { return $Upstream }
-
-    $configObj = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-    $prEntry = $configObj.prs | Where-Object { $_.number -eq $prNumber }
+    $prEntry = $PrConfig.prs | Where-Object { $_.number -eq $prNumber }
     if ($prEntry -and $prEntry.upstream) {
         return $prEntry.upstream
     }
-    return 'zed'  # 默认
+    return 'zed'
 }
 
 # ---------- 构建映射表 ----------
@@ -343,7 +338,7 @@ function Show-ChangeSummary {
 function Update-PrStatus {
     param([int]$prNumber, [string]$status, [string]$title, [string]$upstreamName)
 
-    $configObj = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+    $configObj = Get-Content $PrConfigPath -Raw | ConvertFrom-Json
     $existing = $configObj.prs | Where-Object { $_.number -eq $prNumber }
 
     if ($existing) {
@@ -361,7 +356,7 @@ function Update-PrStatus {
         $configObj.prs += $newPr
     }
 
-    $configObj | ConvertTo-Json -Depth 10 | Set-Content $ConfigPath -Encoding UTF8
+    $configObj | ConvertTo-Json -Depth 10 | Set-Content $PrConfigPath -Encoding UTF8
     Write-Ok "已更新 UPSTREAM-PRS.json: PR #$prNumber → $status"
 }
 
@@ -401,7 +396,7 @@ if ($UpdateList) {
 
 # 收集要处理的 PR 列表
 $prList = @()
-$configObj = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$configObj = Get-Content $PrConfigPath -Raw | ConvertFrom-Json
 
 if ($PR) {
     $prEntry = $configObj.prs | Where-Object { $_.number -eq $PR }
