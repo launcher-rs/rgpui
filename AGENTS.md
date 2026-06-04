@@ -91,6 +91,31 @@ PlatformWindow trait 关键方法:
 
 ## Zed PR 合并规范
 
+### 自动合并（推荐）
+
+使用 `scripts/merge-upstream-pr.ps1` 脚本自动完成上游 PR 的获取、映射和应用。
+
+```powershell
+# 合并指定 PR
+.\scripts\merge-upstream-pr.ps1 -PR 58291
+
+# 合并所有待处理 PR（UPSTREAM-PRS.json 中 status = "pending" 的）
+.\scripts\merge-upstream-pr.ps1 -All
+
+# 仅分析，不写入文件
+.\scripts\merge-upstream-pr.ps1 -PR 58291 -DryRun
+```
+
+脚本自动执行：
+1. 克隆/拉取 https://github.com/zed-industries/zed.git 到 `temp/zed-upstream/`
+2. 获取 PR 的变更文件列表
+3. 按映射规则替换路径和内容中的 `gpui_*` → `rgpui_*`
+4. 写入本地仓库
+5. 运行 `cargo check -p rgpui` 验证
+6. 更新 `UPSTREAM-PRS.json` 中的 PR 状态
+
+### 包名映射规则
+
 Zed 上游仓库的 PR 合并到 rgpui 时，所有包名/路径需要添加 `r` 前缀映射：
 
 | Zed 原 crate | rgpui 对应 crate |
@@ -105,7 +130,33 @@ Zed 上游仓库的 PR 合并到 rgpui 时，所有包名/路径需要添加 `r`
 | `gpui_macros` | `rgpui_macros` |
 | `gpui_tokio` | `rgpui_tokio` |
 
-合并步骤：
+### PR 追踪配置
+
+`UPSTREAM-PRS.json` 管理所有上游 PR 的状态和映射规则：
+
+```json
+{
+  "upstream": {
+    "url": "https://github.com/zed-industries/zed.git",
+    "branch": "main"
+  },
+  "prs": [
+    {
+      "number": 57835,
+      "title": "Log worst hanging tasks and actions",
+      "status": "merged",
+      "merged_at": "2025-06-04"
+    }
+  ]
+}
+```
+
+状态值：`pending`、`merged`、`check-failed`、`analyzed`
+
+### 手动合并步骤
+
+当自动脚本不适用时（如需要手动调整）：
+
 1. 将上游 PR 中所有 `gpui` 开头的 crate 引用替换为 `rgpui` 开头
 2. 检查 `Cargo.toml` 中的依赖声明是否指向正确的 rgpui crate 路径
 3. 检查 `use` 语句和路径引用是否已更新
