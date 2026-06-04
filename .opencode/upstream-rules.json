@@ -5,14 +5,14 @@
     "worktree": "temp/zed-upstream",
     "mappings": [
       { "from": "crates/gpui/", "to": "crates/rgpui/" },
-      { "from": "crates/gpui_platform/", "to": "crates/rgpui_platform/" },
-      { "from": "crates/gpui_windows/", "to": "crates/rgpui_windows/" },
-      { "from": "crates/gpui_macos/", "to": "crates/rgpui_macos/" },
-      { "from": "crates/gpui_linux/", "to": "crates/rgpui_linux/" },
-      { "from": "crates/gpui_web/", "to": "crates/rgpui_web/" },
-      { "from": "crates/gpui_wgpu/", "to": "crates/rgpui_wgpu/" },
-      { "from": "crates/gpui_macros/", "to": "crates/rgpui_macros/" },
-      { "from": "crates/gpui_tokio/", "to": "crates/rgpui_tokio/" }
+      { "from": "crates/gpui_platform/", "to": "crates/rgpui-platform/" },
+      { "from": "crates/gpui_windows/", "to": "crates/rgpui-windows/" },
+      { "from": "crates/gpui_macos/", "to": "crates/rgpui-macos/" },
+      { "from": "crates/gpui_linux/", "to": "crates/rgpui-linux/" },
+      { "from": "crates/gpui_web/", "to": "crates/rgpui-web/" },
+      { "from": "crates/gpui_wgpu/", "to": "crates/rgpui-wgpu/" },
+      { "from": "crates/gpui_macros/", "to": "crates/rgpui-macros/" },
+      { "from": "crates/gpui_tokio/", "to": "crates/rgpui-tokio/" }
     ]
   },
   "gpui-component": {
@@ -20,6 +20,8 @@
     "branch": "main",
     "worktree": "temp/gpui-component-upstream",
     "mappings": [
+      { "from": "crates/ui/src/highlighter/", "to": "crates/rgpui-editor/src/highlighter/" },
+      { "from": "crates/ui/src/input/", "to": "crates/rgpui-editor/src/input/" },
       { "from": "crates/ui/", "to": "crates/rgpui-component/" },
       { "from": "crates/macros/", "to": "crates/rgpui-component-macros/" },
       { "from": "crates/assets/", "to": "crates/rgpui-component-assets/" },
@@ -34,7 +36,10 @@
       "gpui_component_assets": "rgpui_component_assets",
       "gpui-component-assets": "rgpui-component-assets",
       "gpui_macros": "rgpui_macros",
-      "gpui_platform": "rgpui_platform"
+      "gpui_platform": "rgpui_platform",
+      "gpui_editor": "rgpui_editor",
+      "crates/ui/src/highlighter/": "crates/rgpui-editor/src/highlighter/",
+      "crates/ui/src/input/": "crates/rgpui-editor/src/input/"
     }
   },
   "yororen-ui": {

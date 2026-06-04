@@ -10,23 +10,57 @@
     {
       "number": 58291,
       "upstream": "zed",
-      "title": "gpui: Make tooltip show delay configurable",
+      "title": "Test custom show delay",
       "status": "merged",
       "merged_at": "2025-06-04"
     },
     {
       "number": 55876,
       "upstream": "zed",
-      "title": "gpui: Anchor IME candidate window to the start of the visual line",
+      "title": "refactor: simplify IME candidate window anchoring logic",
       "status": "merged",
       "merged_at": "2025-06-04"
     },
     {
       "number": 58191,
       "upstream": "zed",
-      "title": "gpui: Add bare bones benchmark framework",
+      "title": "Merge branch 'main' into bench-app-context",
       "status": "merged",
       "merged_at": "2025-06-04"
+    },
+    {
+      "number": 2435,
+      "upstream": "gpui-component",
+      "title": "notification: Prevent close button click from triggering `on_click`",
+      "status": "pending"
+    },
+    {
+      "number": 2433,
+      "upstream": "gpui-component",
+      "title": "Restore markdown `injections.scm`",
+      "status": "check-failed",
+      "merged_at": "2026-06-04"
+    },
+    {
+      "number": 2431,
+      "upstream": "gpui-component",
+      "title": "Allow non-'static &str and Cow for Notification",
+      "status": "check-failed",
+      "merged_at": "2026-06-04"
+    },
+    {
+      "number": 2430,
+      "upstream": "gpui-component",
+      "title": "highlighter: Simplify combined injection range filtering",
+      "status": "pending",
+      "merged_at": "2026-06-04"
+    },
+    {
+      "number": 2411,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into heretic/gutter-background",
+      "status": "check-failed",
+      "merged_at": "2026-06-04"
     }
   ]
 }

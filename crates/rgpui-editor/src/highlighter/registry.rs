@@ -411,68 +411,7 @@ impl StatusColors {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
-pub struct HighlightThemeStyle {
-    #[serde(rename = "editor.background")]
-    pub editor_background: Option<Hsla>,
-    #[serde(rename = "editor.foreground")]
-    pub editor_foreground: Option<Hsla>,
-    #[serde(rename = "editor.active_line.background")]
-    pub editor_active_line: Option<Hsla>,
-    #[serde(rename = "editor.line_number")]
-    pub editor_line_number: Option<Hsla>,
-    #[serde(rename = "editor.active_line_number")]
-    pub editor_active_line_number: Option<Hsla>,
-    #[serde(rename = "editor.invisible")]
-    pub editor_invisible: Option<Hsla>,
-    #[serde(flatten)]
-    pub status: StatusColors,
-    #[serde(rename = "syntax")]
-    pub syntax: SyntaxColors,
-}
-
-/// Theme for Tree-sitter Highlight from JSON theme file.
-///
-/// This json is compatible with the Zed theme format.
-///
-/// https://zed.dev/docs/extensions/languages#syntax-highlighting
-#[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
-pub struct HighlightTheme {
-    pub name: String,
-    #[serde(default)]
-    pub appearance: ThemeMode,
-    pub style: HighlightThemeStyle,
-}
-
-impl Deref for HighlightTheme {
-    type Target = SyntaxColors;
-
-    fn deref(&self) -> &Self::Target {
-        &self.style.syntax
-    }
-}
-
-impl HighlightTheme {
-    pub fn default_dark() -> Arc<Self> {
-        let theme = DEFAULT_THEME_COLORS[&ThemeMode::Dark].1.as_ref();
-        Arc::new(
-            serde_json::from_value(
-                serde_json::to_value(theme).expect("默认暗色高亮主题应可序列化"),
-            )
-            .expect("默认暗色高亮主题应可反序列化"),
-        )
-    }
-
-    pub fn default_light() -> Arc<Self> {
-        let theme = DEFAULT_THEME_COLORS[&ThemeMode::Light].1.as_ref();
-        Arc::new(
-            serde_json::from_value(
-                serde_json::to_value(theme).expect("默认亮色高亮主题应可序列化"),
-            )
-            .expect("默认亮色高亮主题应可反序列化"),
-        )
-    }
-}
+pub use rgpui_component::{HighlightTheme, HighlightThemeStyle};
 
 /// Registry for code highlighter languages.
 pub struct LanguageRegistry {

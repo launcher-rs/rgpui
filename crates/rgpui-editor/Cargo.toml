@@ -89,7 +89,7 @@ enum-iterator = "2.1.0"
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 lsp-types.workspace = true
 regex = "1"
-rgpui = { workspace = true }
+rgpui = { workspace = true, features = ["test-support"] }
 rgpui-component = { workspace = true }
 ropey.workspace = true
 rust-i18n.workspace = true

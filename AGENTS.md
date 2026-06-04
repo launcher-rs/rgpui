@@ -85,106 +85,16 @@ PlatformWindow trait 关键方法:
 ```
 
 ## 提交与推送规范
-- **推送前必须检查**：执行 `cargo check --workspace --examples` 确保没有任何错误和警告
+- **推送前必须检查**：执行 `cargo check --workspace`和 `cargo check --workspace --examples`, 确保没有任何错误和警告
 - - **推送前格式化代码**: 执行 `cargo fmt` 格式化代码
 - **禁止使用 `#[allow(dead_code)]`**：未使用的代码应当删除或重构，不得使用属性压制警告
 
-## Zed PR 合并规范
+## 上游 PR 合并
 
-### 自动合并（推荐）
+需要合并上游 PR 时，先读取 `.opencode/merge-upstream-workflow.md` 并按说明执行。
 
-使用 `scripts/merge-upstream-pr.ps1` 脚本自动完成上游 PR 的获取、映射和应用。
-
-```powershell
-# 合并指定 PR（自动识别 PR 所属的上游仓库）
-.\scripts\merge-upstream-pr.ps1 -PR 58291
-
-# 合并所有待处理 PR（UPSTREAM-PRS.json 中 status = "pending" 的）
-.\scripts\merge-upstream-pr.ps1 -All
-
-# 指定上游仓库合并
-.\scripts\merge-upstream-pr.ps1 -PR 123 -Upstream gpui-component
-
-# 仅分析，不写入文件
-.\scripts\merge-upstream-pr.ps1 -PR 58291 -DryRun
-```
-
-脚本自动执行：
-1. 从 `UPSTREAM-PRS.json` 读取 PR 所属的上游仓库配置
-2. 克隆/拉取对应仓库到 `temp/<仓库名>-upstream/`
-3. 获取 PR 的变更文件列表，按映射规则处理路径和内容
-4. 写入本地仓库，运行 `cargo check -p rgpui` 验证
-5. 更新 `UPSTREAM-PRS.json` 中的 PR 状态
-
-### 支持的上游仓库
-
-| 名称 | 仓库 | 映射的 crate |
-|------|------|-------------|
-| `zed` | zed-industries/zed | rgpui, rgpui_macos, rgpui_windows, rgpui_linux, rgpui_web, rgpui_wgpu, rgpui_macros, rgpui_tokio, rgpui_platform |
-| `gpui-component` | longbridge/gpui-component | rgpui-component, rgpui-component-macros, rgpui-component-assets, rgpui-webview |
-| `yororen-ui` | MeowLynxSea/yororen-ui | rgpui-yororen-ui |
-
-### 包名映射规则
-
-Zed 上游仓库的 PR 合并到 rgpui 时，所有包名/路径需要添加 `r` 前缀映射：
-
-| Zed 原 crate | rgpui 对应 crate |
-|--------------|------------------|
-| `gpui` | `rgpui` |
-| `gpui_platform` | `rgpui_platform` |
-| `gpui_windows` | `rgpui_windows` |
-| `gpui_macos` | `rgpui_macos` |
-| `gpui_linux` | `rgpui_linux` |
-| `gpui_web` | `rgpui_web` |
-| `gpui_wgpu` | `rgpui_wgpu` |
-| `gpui_macros` | `rgpui_macros` |
-| `gpui_tokio` | `rgpui_tokio` |
-| `gpui_component` | `rgpui_component` |
-| `gpui_component_macros` | `rgpui_component_macros` |
-| `gpui_component_assets` | `rgpui_component_assets` |
-| `gpui_webview` | `rgpui_webview` |
-| `yororen_ui` | `rgpui_yororen_ui` |
-
-### PR 追踪配置
-
-上游规则定义在 `.opencode/upstream-rules.json`（URL、分支、路径映射、内容替换规则），PR 状态追踪在 `UPSTREAM-PRS.json`。
-
-```json
-// .opencode/upstream-rules.json — 上游仓库配置（合并时读取）
-{
-  "zed": {
-    "url": "https://github.com/zed-industries/zed.git",
-    "branch": "main",
-    "worktree": "temp/zed-upstream",
-    "mappings": [...],
-    "content_mappings": {...}
-  }
-}
-
-// UPSTREAM-PRS.json — 仅 PR 状态追踪
-{
-  "prs": [
-    {
-      "number": 57835,
-      "upstream": "zed",
-      "title": "Log worst hanging tasks and actions",
-      "status": "merged",
-      "merged_at": "2025-06-04"
-    }
-  ]
-}
-```
-
-状态值：`pending`、`merged`、`check-failed`、`analyzed`
-
-### 手动合并步骤
-
-当自动脚本不适用时（如需要手动调整）：
-
-1. 将上游 PR 中所有 `gpui` 开头的 crate 引用替换为 `rgpui` 开头
-2. 检查 `Cargo.toml` 中的依赖声明是否指向正确的 rgpui crate 路径
-3. 检查 `use` 语句和路径引用是否已更新
-4. 运行 `cargo check --workspace` 验证无编译错误
+- PR 状态追踪: `UPSTREAM-PRS.json`
+- 上游仓库规则: `.opencode/upstream-rules.json`
 
 ## 代码规范
 

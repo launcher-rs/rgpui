@@ -33,7 +33,7 @@ pub struct Root {
     view: AnyView,
     pub(crate) active_sheet: Option<ActiveSheet>,
     pub(crate) active_dialogs: Vec<ActiveDialog>,
-    pub(super) focused_input: Option<Entity<InputState>>,
+    pub focused_input: Option<Entity<InputState>>,
     pub notification: Entity<NotificationList>,
     pub(crate) tooltip_overlay: Entity<TooltipOverlay>,
     sheet_size: Option<DefiniteLength>,

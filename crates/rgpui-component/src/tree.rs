@@ -16,8 +16,6 @@ use crate::{
 };
 
 const CONTEXT: &str = "Tree";
-
-/// 初始化树组件的键盘绑定
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("up", SelectUp, Some(CONTEXT)),
@@ -27,20 +25,20 @@ pub(crate) fn init(cx: &mut App) {
     ]);
 }
 
-/// 创建 [`Tree`] 组件
+/// Create a [`Tree`].
 ///
-/// # 参数
+/// # Arguments
 ///
-/// * `state` - 管理树项的共享状态
-/// * `render_item` - 用于渲染每个树项的闭包
+/// * `state` - The shared state managing the tree items.
+/// * `render_item` - A closure to render each tree item.
 ///
 /// ```ignore
-/// let state = cx.new(|cx| {
-///     TreeState::new(cx).items(vec![
-///         TreeItem::new("src", "src")
-///             .child(TreeItem::new("src/lib.rs", "lib.rs")),
-///         TreeItem::new("Cargo.toml", "Cargo.toml"),
-///         TreeItem::new("README.md", "README.md"),
+/// let state = cx.new(|_| {
+///     TreeState::new().items(vec![
+///         TreeItem::new("src")
+///             .child(TreeItem::new("lib.rs"),
+///         TreeItem::new("Cargo.toml"),
+///         TreeItem::new("README.md"),
 ///     ])
 /// });
 ///
@@ -56,68 +54,57 @@ where
     Tree::new(state, render_item)
 }
 
-/// 树项的内部状态
 struct TreeItemState {
-    /// 是否展开
     expanded: bool,
-    /// 是否禁用
     disabled: bool,
 }
 
-/// 带有标签、子项和展开状态的树项
+/// A tree item with a label, children, and an expanded state.
 #[derive(Clone)]
 pub struct TreeItem {
-    /// 唯一标识符
     pub id: SharedString,
-    /// 显示文本
     pub label: SharedString,
-    /// 子项列表
     pub children: Vec<TreeItem>,
-    /// 内部状态
     state: Rc<RefCell<TreeItemState>>,
 }
 
-/// 树项的扁平化表示，包含其深度
+/// A flat representation of a tree item with its depth.
 #[derive(Clone)]
 pub struct TreeEntry {
-    /// 源树项
     item: TreeItem,
-    /// 树深度
     depth: usize,
 }
 
 impl TreeEntry {
-    /// 获取源树项
+    /// Get the source tree item.
     #[inline]
     pub fn item(&self) -> &TreeItem {
         &self.item
     }
 
-    /// 获取此项在树中的深度
+    /// The depth of this item in the tree.
     #[inline]
     pub fn depth(&self) -> usize {
         self.depth
     }
 
-    /// 检查是否为根节点
     #[inline]
     fn is_root(&self) -> bool {
         self.depth == 0
     }
 
-    /// 检查是否为文件夹（有子项）
+    /// Whether this item is a folder (has children).
     #[inline]
     pub fn is_folder(&self) -> bool {
         self.item.is_folder()
     }
 
-    /// 检查此项是否已展开
+    /// Return true if the item is expanded.
     #[inline]
     pub fn is_expanded(&self) -> bool {
         self.item.is_expanded()
     }
 
-    /// 检查此项是否已禁用
     #[inline]
     pub fn is_disabled(&self) -> bool {
         self.item.is_disabled()
@@ -125,15 +112,15 @@ impl TreeEntry {
 }
 
 impl TreeItem {
-    /// 创建新的树项
+    /// Create a new tree item with the given label.
     ///
-    /// - `id` 用于唯一标识此项，后续可用于选择或其他用途
-    /// - `label` 是此项显示的文本
+    /// - The `id` for you to uniquely identify this item, then later you can use it for selection or other purposes.
+    /// - The `label` is the text to display for this item.
     ///
-    /// 例如，`id` 可以是完整文件路径，`label` 可以是文件名
+    /// For example, the `id` is the full file path, and the `label` is the file name.
     ///
     /// ```ignore
-    /// TreeItem::new("src/ui/button.rs", "button.rs")
+    /// TreeItem::new("src/rgpui-component/button.rs", "button.rs")
     /// ```
     pub fn new(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
         Self {
@@ -147,48 +134,47 @@ impl TreeItem {
         }
     }
 
-    /// 添加子项
+    /// Add a child item to this tree item.
     pub fn child(mut self, child: TreeItem) -> Self {
         self.children.push(child);
         self
     }
 
-    /// 添加多个子项
+    /// Add multiple child items to this tree item.
     pub fn children(mut self, children: impl IntoIterator<Item = TreeItem>) -> Self {
         self.children.extend(children);
         self
     }
 
-    /// 设置展开状态
+    /// Set expanded state for this tree item.
     pub fn expanded(self, expanded: bool) -> Self {
         self.state.borrow_mut().expanded = expanded;
         self
     }
 
-    /// 设置禁用状态
+    /// Set disabled state for this tree item.
     pub fn disabled(self, disabled: bool) -> Self {
         self.state.borrow_mut().disabled = disabled;
         self
     }
 
-    /// 检查是否为文件夹（有子项）
+    /// Whether this item is a folder (has children).
     #[inline]
     pub fn is_folder(&self) -> bool {
-        !self.children.is_empty()
+        self.children.len() > 0
     }
 
-    /// 检查是否已禁用
+    /// Return true if the item is disabled.
     pub fn is_disabled(&self) -> bool {
         self.state.borrow().disabled
     }
 
-    /// 检查是否已展开
+    /// Return true if the item is expanded.
     #[inline]
     pub fn is_expanded(&self) -> bool {
         self.state.borrow().expanded
     }
 
-    /// 查找目标项的祖先路径
     fn find_ancestors(&self, target_id: &SharedString) -> Option<Vec<TreeItem>> {
         if self.id == *target_id {
             return Some(vec![]);
@@ -205,28 +191,21 @@ impl TreeItem {
     }
 }
 
-/// 管理树项的状态
+/// State for managing tree items.
 pub struct TreeState {
-    /// 焦点句柄
     focus_handle: FocusHandle,
-    /// 扁平化的树项列表
     entries: Vec<TreeEntry>,
-    /// 滚动句柄
     scroll_handle: UniformListScrollHandle,
-    /// 当前选中的索引
     selected_ix: Option<usize>,
-    /// 右键点击的索引
     right_clicked_ix: Option<usize>,
-    /// 渲染项的闭包
     render_item: Rc<dyn Fn(usize, &TreeEntry, bool, &mut Window, &mut App) -> ListItem>,
-    /// 上下文菜单构建器
     context_menu_builder: Option<
         Rc<dyn Fn(usize, &TreeEntry, PopupMenu, &mut Window, &mut Context<TreeState>) -> PopupMenu>,
     >,
 }
 
 impl TreeState {
-    /// 创建新的空树状态
+    /// Create a new empty tree state.
     pub fn new(cx: &mut App) -> Self {
         Self {
             selected_ix: None,
@@ -239,7 +218,7 @@ impl TreeState {
         }
     }
 
-    /// 设置树项
+    /// Set the tree items.
     pub fn items(mut self, items: impl Into<Vec<TreeItem>>) -> Self {
         let items = items.into();
         self.entries.clear();
@@ -249,7 +228,7 @@ impl TreeState {
         self
     }
 
-    /// 设置树项（可变引用版本）
+    /// Set the tree items.
     pub fn set_items(&mut self, items: impl Into<Vec<TreeItem>>, cx: &mut Context<Self>) {
         let items = items.into();
         self.entries.clear();
@@ -261,18 +240,18 @@ impl TreeState {
         cx.notify();
     }
 
-    /// 获取当前选中的索引
+    /// Get the currently selected index, if any.
     pub fn selected_index(&self) -> Option<usize> {
         self.selected_ix
     }
 
-    /// 设置选中的索引，或传入 `None` 清除选择
+    /// Set the selected index, or `None` to clear selection.
     pub fn set_selected_index(&mut self, ix: Option<usize>, cx: &mut Context<Self>) {
         self.selected_ix = ix;
         cx.notify();
     }
 
-    /// 通过树项设置选中索引，或传入 `None` 清除选择
+    /// Set the selected index by tree item, or `None` to clear selection.
     pub fn set_selected_item(&mut self, item: Option<&TreeItem>, cx: &mut Context<Self>) {
         if let Some(item) = item {
             let ix = self
@@ -294,23 +273,21 @@ impl TreeState {
         cx.notify();
     }
 
-    /// 获取当前选中的树项
+    /// Get the currently selected tree item, if any.
     pub fn selected_item(&self) -> Option<&TreeItem> {
         self.selected_ix
             .and_then(|ix| self.entries.get(ix).map(|entry| &entry.item))
     }
 
-    /// 滚动到指定项
     pub fn scroll_to_item(&mut self, ix: usize, strategy: rgpui::ScrollStrategy) {
         self.scroll_handle.scroll_to_item(ix, strategy);
     }
 
-    /// 获取当前选中的条目
+    /// Get the currently selected entry, if any.
     pub fn selected_entry(&self) -> Option<&TreeEntry> {
         self.selected_ix.and_then(|ix| self.entries.get(ix))
     }
 
-    /// 展开目标项的所有祖先节点
     fn expand_ancestors(&mut self, target_id: SharedString) {
         let mut ancestors = Vec::new();
 
@@ -332,7 +309,6 @@ impl TreeState {
         self.rebuild_entries();
     }
 
-    /// 添加条目到扁平列表
     fn add_entry(&mut self, item: TreeItem, depth: usize) {
         self.entries.push(TreeEntry {
             item: item.clone(),
@@ -345,7 +321,6 @@ impl TreeState {
         }
     }
 
-    /// 切换指定索引项的展开状态
     fn toggle_expand(&mut self, ix: usize) {
         let Some(entry) = self.entries.get_mut(ix) else {
             return;
@@ -359,7 +334,6 @@ impl TreeState {
         self.rebuild_entries();
     }
 
-    /// 重建扁平化条目列表
     fn rebuild_entries(&mut self) {
         let root_items: Vec<TreeItem> = self
             .entries
@@ -373,12 +347,10 @@ impl TreeState {
         }
     }
 
-    /// 聚焦树组件
     pub fn focus(&mut self, window: &mut Window, cx: &mut App) {
         self.focus_handle.focus(window, cx);
     }
 
-    /// 处理确认操作（展开/折叠文件夹）
     fn on_action_confirm(&mut self, _: &Confirm, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(selected_ix) = self.selected_ix {
             if let Some(entry) = self.entries.get(selected_ix) {
@@ -390,7 +362,6 @@ impl TreeState {
         }
     }
 
-    /// 处理向左选择操作（折叠文件夹）
     fn on_action_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(selected_ix) = self.selected_ix {
             if let Some(entry) = self.entries.get(selected_ix) {
@@ -402,7 +373,6 @@ impl TreeState {
         }
     }
 
-    /// 处理向右选择操作（展开文件夹）
     fn on_action_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(selected_ix) = self.selected_ix {
             if let Some(entry) = self.entries.get(selected_ix) {
@@ -414,7 +384,6 @@ impl TreeState {
         }
     }
 
-    /// 处理向上选择操作
     fn on_action_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
         let mut selected_ix = self.selected_ix.unwrap_or(0);
 
@@ -430,7 +399,6 @@ impl TreeState {
         cx.notify();
     }
 
-    /// 处理向下选择操作
     fn on_action_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
         let mut selected_ix = self.selected_ix.unwrap_or(0);
         if selected_ix + 1 < self.entries.len() {
@@ -445,7 +413,6 @@ impl TreeState {
         cx.notify();
     }
 
-    /// 处理条目点击
     fn on_entry_click(&mut self, ix: usize, _: &mut Window, cx: &mut Context<Self>) {
         self.selected_ix = Some(ix);
         self.toggle_expand(ix);
@@ -540,25 +507,19 @@ impl Render for TreeState {
     }
 }
 
-/// 树视图组件，用于显示层级数据
+/// A tree view element that displays hierarchical data.
 #[derive(IntoElement)]
 pub struct Tree {
-    /// 元素 ID
     id: ElementId,
-    /// 树状态
     state: Entity<TreeState>,
-    /// 样式引用
     style: StyleRefinement,
-    /// 渲染项闭包
     render_item: Rc<dyn Fn(usize, &TreeEntry, bool, &mut Window, &mut App) -> ListItem>,
-    /// 上下文菜单构建器
     context_menu_builder: Option<
         Rc<dyn Fn(usize, &TreeEntry, PopupMenu, &mut Window, &mut Context<TreeState>) -> PopupMenu>,
     >,
 }
 
 impl Tree {
-    /// 创建新的树组件
     pub fn new<R>(state: &Entity<TreeState>, render_item: R) -> Self
     where
         R: Fn(usize, &TreeEntry, bool, &mut Window, &mut App) -> ListItem + 'static,
@@ -574,12 +535,12 @@ impl Tree {
         }
     }
 
-    /// 添加上下文菜单
+    /// Add a context menu to the tree.
     ///
-    /// 闭包接收以下参数：
-    /// - `ix`: 右键点击条目的索引
-    /// - `entry`: 右键点击的树条目
-    /// - `menu`: 弹出菜单构建器
+    /// The closure receives:
+    /// - `ix`: the index of the right-clicked entry
+    /// - `entry`: the right-clicked tree entry
+    /// - `menu`: the popup menu builder
     pub fn context_menu<F>(mut self, f: F) -> Self
     where
         F: Fn(usize, &TreeEntry, PopupMenu, &mut Window, &mut Context<TreeState>) -> PopupMenu
@@ -629,7 +590,6 @@ mod tests {
     use super::TreeState;
     use rgpui::AppContext as _;
 
-    /// 断言条目列表是否符合预期
     fn assert_entries(entries: &Vec<super::TreeEntry>, expected: &str) {
         let actual: Vec<String> = entries
             .iter()
@@ -652,11 +612,11 @@ mod tests {
             TreeItem::new("src", "src")
                 .expanded(true)
                 .child(
-                    TreeItem::new("src/ui", "ui")
+                    TreeItem::new("src/rgpui-component", "rgpui-component")
                         .expanded(true)
-                        .child(TreeItem::new("src/ui/button.rs", "button.rs"))
-                        .child(TreeItem::new("src/ui/icon.rs", "icon.rs"))
-                        .child(TreeItem::new("src/ui/mod.rs", "mod.rs")),
+                        .child(TreeItem::new("src/rgpui-component/button.rs", "button.rs"))
+                        .child(TreeItem::new("src/rgpui-component/icon.rs", "icon.rs"))
+                        .child(TreeItem::new("src/rgpui-component/mod.rs", "mod.rs")),
                 )
                 .child(TreeItem::new("src/lib.rs", "lib.rs")),
             TreeItem::new("Cargo.toml", "Cargo.toml"),
@@ -671,7 +631,7 @@ mod tests {
                 indoc! {
                     r#"
                 src
-                    ui
+                    rgpui-component
                         button.rs
                         icon.rs
                         mod.rs
@@ -694,7 +654,7 @@ mod tests {
             assert_eq!(entry.is_root(), false);
             assert_eq!(entry.is_folder(), true);
             assert_eq!(entry.is_expanded(), true);
-            assert_eq!(entry.item().label.as_str(), "ui");
+            assert_eq!(entry.item().label.as_str(), "rgpui-component");
 
             state.toggle_expand(1);
             let entry = state.entries.get(1).unwrap();
@@ -704,7 +664,7 @@ mod tests {
                 indoc! {
                     r#"
                 src
-                    ui
+                    rgpui-component
                     lib.rs
                 Cargo.toml
                 Cargo.lock

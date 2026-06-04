@@ -69,6 +69,16 @@ impl Lsp {
         self._hover_task = Task::ready(Ok(()));
         self._document_color_task = Task::ready(());
     }
+
+    /// Returns semantic token highlights for a range of text.
+    pub(crate) fn semantic_tokens_for_range(
+        &self,
+        _text: &Rope,
+        _range: &std::ops::Range<usize>,
+        _theme: &crate::highlighter::HighlightTheme,
+    ) -> Vec<(std::ops::Range<usize>, rgpui::HighlightStyle)> {
+        Vec::new()
+    }
 }
 
 impl InputState {

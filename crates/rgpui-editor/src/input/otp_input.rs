@@ -6,8 +6,7 @@ use rgpui::{
 };
 
 use super::{InputEvent, blink_cursor::BlinkCursor, input::input_style, state::InputState};
-use crate::Root;
-use crate::{ActiveTheme, Disableable, Icon, IconName, Sizable, Size, h_flex, v_flex};
+use rgpui_component::{ActiveTheme, Disableable, Icon, IconName, Sizable, Size, h_flex, v_flex};
 
 pub struct OtpState {
     focus_handle: FocusHandle,
@@ -181,28 +180,12 @@ impl OtpState {
             cursor.start(cx);
         });
 
-        let input_state = self.input_state.clone();
-        Root::update(window, cx, |root, _, cx| {
-            if root.focused_input.as_ref() != Some(&input_state) {
-                root.focused_input = Some(input_state);
-                cx.notify();
-            }
-        });
-
         cx.emit(InputEvent::Focus);
     }
 
     fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
-        });
-
-        let input_state = self.input_state.clone();
-        Root::update(window, cx, |root, _, cx| {
-            if root.focused_input.as_ref() == Some(&input_state) {
-                root.focused_input = None;
-                cx.notify();
-            }
         });
 
         cx.emit(InputEvent::Blur);
@@ -377,4 +360,3 @@ impl RenderOnce for OtpInput {
             )
     }
 }
-

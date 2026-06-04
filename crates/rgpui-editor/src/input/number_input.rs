@@ -7,7 +7,9 @@ use rgpui::{
 };
 use rgpui_component::theme::ActiveTheme;
 
-use crate::{Disableable, IconName, Sizable, Size, StyledExt as _, button::Button, h_flex};
+use rgpui_component::{
+    Disableable, IconName, Sizable, Size, StyledExt as _, button::Button, h_flex,
+};
 
 use super::{Input, InputState};
 

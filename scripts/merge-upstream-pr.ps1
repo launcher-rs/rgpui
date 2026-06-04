@@ -1,37 +1,40 @@
 <#
 .SYNOPSIS
-  从上游仓库自动合并 PR 到 rgpui，处理 crate 路径和名称的 r- 前缀映射。
+  Auto-merge upstream PRs into rgpui with crate path/name r-prefix mapping.
 
 .DESCRIPTION
-  读取 UPSTREAM-PRS.json 配置，支持多个上游仓库（zed、gpui-component、yororen-ui）。
-  自动克隆/拉取上游，获取 PR 变更，映射路径和内容中的 crate 名称，应用后验证编译。
+  Reads UPSTREAM-PRS.json config, supports multiple upstreams (zed, gpui-component, yororen-ui).
+  Automatically clones/pulls upstream, fetches PR changes, maps paths/content, applies, verifies.
 
 .PARAMETER PR
-  要合并的上游 PR 编号。
+  Upstream PR number to merge.
 
 .PARAMETER All
-  处理所有 status 为 "pending" 的 PR。
+  Process all PRs with status "pending".
+
+.PARAMETER Scan
+  Scan upstream recent commits for unmerged PRs.
 
 .PARAMETER Upstream
-  指定上游仓库名称（默认自动从 PR 配置读取）。
-
-.PARAMETER UpdateList
-  仅更新 PR 列表，不执行合并。
+  Upstream repo name (default: auto-detect from PR config).
 
 .PARAMETER DryRun
-  仅分析并输出变更内容，不写入文件。
+  Analyze and print changes only, no file writes.
 
 .EXAMPLE
   .\scripts\merge-upstream-pr.ps1 -PR 58291
-  合并 PR #58291（自动查找其 upstream）
+
+.EXAMPLE
+  .\scripts\merge-upstream-pr.ps1 -Scan
+
+.EXAMPLE
+  .\scripts\merge-upstream-pr.ps1 -Scan -Upstream gpui-component
 
 .EXAMPLE
   .\scripts\merge-upstream-pr.ps1 -All
-  合并所有待处理的 PR
 
 .EXAMPLE
   .\scripts\merge-upstream-pr.ps1 -PR 58291 -DryRun
-  仅分析 PR #58291
 #>
 
 param(
@@ -41,6 +44,9 @@ param(
     [Parameter(ParameterSetName = 'All', Mandatory)]
     [switch]$All,
 
+    [Parameter(ParameterSetName = 'Scan', Mandatory)]
+    [switch]$Scan,
+
     [Parameter(ParameterSetName = 'UpdateList', Mandatory)]
     [switch]$UpdateList,
 
@@ -49,38 +55,38 @@ param(
     [switch]$DryRun
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $PrConfigPath = Join-Path $RepoRoot 'UPSTREAM-PRS.json'
 $RulesPath = Join-Path $RepoRoot '.opencode\upstream-rules.json'
 
-# ---------- 颜色输出辅助 ----------
+# ---------- colored output helpers ----------
 function Write-Info  { Write-Host "[INFO]  $args" -ForegroundColor Cyan }
 function Write-Ok   { Write-Host "[OK]    $args" -ForegroundColor Green }
 function Write-Warn { Write-Host "[WARN]  $args" -ForegroundColor Yellow }
 function Write-Err  { Write-Host "[ERROR] $args" -ForegroundColor Red }
 function Write-Step { Write-Host "`n==> $args" -ForegroundColor Magenta }
 
-# ---------- 读取配置 ----------
+# ---------- read config ----------
 if (-not (Test-Path $PrConfigPath)) {
-    Write-Err "找不到 PR 状态文件: $PrConfigPath"
+    Write-Err "PR status file not found: $PrConfigPath"
     exit 1
 }
 $PrConfig = Get-Content $PrConfigPath -Raw | ConvertFrom-Json
 
 if (-not (Test-Path $RulesPath)) {
-    Write-Err "找不到上游规则文件: $RulesPath"
+    Write-Err "Upstream rules file not found: $RulesPath"
     exit 1
 }
 $Rules = Get-Content $RulesPath -Raw | ConvertFrom-Json
 
-# ---------- 解析上游配置 ----------
+# ---------- resolve upstream config ----------
 function Get-UpstreamConfig {
     param([string]$name)
     if ($Rules.$name) {
         return $Rules.$name
     }
-    Write-Err "找不到上游仓库规则: $name"
+    Write-Err "Upstream config not found: $name"
     exit 1
 }
 
@@ -94,7 +100,7 @@ function Resolve-PrUpstream {
     return 'zed'
 }
 
-# ---------- 构建映射表 ----------
+# ---------- build mapping tables ----------
 function Build-Mappings {
     param($upstreamConfig)
 
@@ -125,28 +131,29 @@ function Build-Mappings {
         }
     }
 
-    # 兜底 gpui → rgpui
-    if (-not $contentMappings.ContainsKey('gpui')) {
+    # 兜底 gpui -> rgpui
+    if (-not $contentMappings.Contains('gpui')) {
         $contentMappings['gpui'] = 'rgpui'
     }
 
     return @{ PathMappings = $pathMappings; ContentMappings = $contentMappings }
 }
 
-# ---------- 路径映射函数 ----------
+# ---------- path mapping function ----------
 function Map-UpstreamPath {
     param([string]$upstreamPath, $pathMappings)
     $path = $upstreamPath.Replace('\', '/')
     foreach ($from in $pathMappings.Keys) {
         $fromNorm = $from.Replace('\', '/')
         if ($path -like ($fromNorm + '*') -or $path -eq $fromNorm.TrimEnd('/')) {
-            return $pathMappings[$from] + $path.Substring($fromNorm.Length)
+            $suffix = if ($fromNorm.Length -le $path.Length) { $path.Substring($fromNorm.Length) } else { '' }
+            return $pathMappings[$from] + $suffix
         }
     }
     return $null
 }
 
-# ---------- 内容替换函数 ----------
+# ---------- content replacement function ----------
 function Map-Content {
     param([string]$content, $contentMappings)
     $sortedKeys = $contentMappings.Keys | Sort-Object -Descending
@@ -157,7 +164,7 @@ function Map-Content {
     return $content
 }
 
-# ---------- 获取上游仓库 ----------
+# ---------- ensure upstream clone ----------
 function Ensure-UpstreamClone {
     param($upstreamConfig)
     $worktree = $upstreamConfig.worktree
@@ -166,26 +173,26 @@ function Ensure-UpstreamClone {
     $absWorktree = Join-Path $RepoRoot $worktree
 
     if (Test-Path (Join-Path $absWorktree '.git')) {
-        Write-Step "更新上游仓库: $worktree"
+        Write-Step "Updating upstream repo: $worktree"
         Push-Location $absWorktree
         try {
             git checkout $branch 2>&1 | Out-Null
             git pull --ff-only 2>&1 | Out-Null
-            Write-Ok "上游仓库已更新到最新"
+            Write-Ok "Upstream repo is up to date"
         } finally {
             Pop-Location
         }
     } else {
-        Write-Step "克隆上游仓库到: $worktree"
+        Write-Step "Cloning upstream repo to: $worktree"
         $parent = Split-Path $absWorktree -Parent
         if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
         git clone $url $absWorktree 2>&1 | Out-Null
-        Write-Ok "上游仓库克隆完成"
+        Write-Ok "Upstream repo cloned"
     }
     return $absWorktree
 }
 
-# ---------- 获取 PR 变更文件列表 ----------
+# ---------- get PR changes ----------
 function Get-PrChanges {
     param(
         [string]$upstreamDir,
@@ -198,23 +205,25 @@ function Get-PrChanges {
     try {
         $branchName = "pr-$prNumber"
 
-        Write-Info "获取 PR #$prNumber 的提交..."
+        Write-Info "Fetching PR #$prNumber ..."
         $fetchOutput = git fetch origin "pull/$prNumber/head:$branchName" 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-Err "获取 PR #$prNumber 失败: $fetchOutput"
+            Write-Err "Failed to fetch PR #${prNumber}: $fetchOutput"
             return $null
         }
 
-        $baseSha = git rev-parse $upstreamConfig.branch 2>&1
-        $headSha = git rev-parse $branchName 2>&1
+        $baseSha = (git rev-parse $upstreamConfig.branch 2>&1).Trim()
+        $headSha = (git rev-parse $branchName 2>&1).Trim()
+        $baseShort = if ($baseSha.Length -ge 8) { $baseSha.Substring(0, 8) } else { $baseSha }
+        $headShort = if ($headSha.Length -ge 8) { $headSha.Substring(0, 8) } else { $headSha }
 
-        Write-Info "  Base: $($upstreamConfig.branch) @ $($baseSha.Substring(0,8))"
-        Write-Info "  Head: $branchName @ $($headSha.Substring(0,8))"
+        Write-Info "  Base: $($upstreamConfig.branch) @ $baseShort"
+        Write-Info "  Head: $branchName @ $headShort"
 
-        $mergeBase = git merge-base $baseSha $headSha 2>&1
+        $mergeBase = (git merge-base $baseSha $headSha 2>&1).Trim()
 
-        $changedFiles = git diff $mergeBase..$headSha --name-status --diff-filter=ACMR 2>&1
-        Write-Info "变更文件:"
+        $changedFiles = git diff --name-status --diff-filter=ACMR $mergeBase $headSha 2>&1
+        Write-Info "Changed files:"
         $changedFiles | ForEach-Object { Write-Info "  $_" }
 
         $files = @()
@@ -228,11 +237,12 @@ function Get-PrChanges {
                     if ($DryRun) {
                         $content = ""
                     } else {
-                        $content = git show "$headSha`:$filePath" 2>&1
+                        $contentLines = git show "$headSha`:$filePath" 2>&1
                         if ($LASTEXITCODE -ne 0) {
-                            Write-Warn "  无法读取 $filePath，可能是二进制文件，跳过"
+                            Write-Warn "  Cannot read $filePath, may be binary, skipping"
                             return
                         }
+                        $content = ($contentLines -join "`n")
                     }
                     $files += [PSCustomObject]@{
                         Status       = $status
@@ -241,7 +251,7 @@ function Get-PrChanges {
                         Content      = $content
                     }
                 } else {
-                    Write-Warn "  跳过（不在映射中）: $filePath"
+                    Write-Warn "  Skipping (not in mapping): $filePath"
                 }
             }
         }
@@ -257,7 +267,7 @@ function Get-PrChanges {
     }
 }
 
-# ---------- 应用变更到 rgpui 仓库 ----------
+# ---------- apply changes to rgpui ----------
 function Apply-Changes {
     param($prChanges, $contentMappings)
 
@@ -277,7 +287,7 @@ function Apply-Changes {
                     }
                     $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings
                     Set-Content -Path $absPath -Value $mappedContent.TrimEnd() -NoNewline
-                    Write-Ok "  创建: $($file.RgpuiPath)"
+                    Write-Ok "  Created: $($file.RgpuiPath)"
                     $createdCount++
                 }
                 'M' {
@@ -286,7 +296,7 @@ function Apply-Changes {
                     }
                     $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings
                     Set-Content -Path $absPath -Value $mappedContent.TrimEnd() -NoNewline
-                    Write-Ok "  更新: $($file.RgpuiPath)"
+                    Write-Ok "  Updated: $($file.RgpuiPath)"
                     $modifiedCount++
                 }
                 'C' {
@@ -295,11 +305,11 @@ function Apply-Changes {
                     }
                     $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings
                     Set-Content -Path $absPath -Value $mappedContent.TrimEnd() -NoNewline
-                    Write-Ok "  复制创建: $($file.RgpuiPath)"
+                    Write-Ok "  Copied: $($file.RgpuiPath)"
                     $createdCount++
                 }
                 'R' {
-                    Write-Warn "  跳过重命名: $($file.RgpuiPath)"
+                    Write-Warn "  Skipping rename: $($file.RgpuiPath)"
                 }
             }
         }
@@ -313,28 +323,28 @@ function Apply-Changes {
     }
 }
 
-# ---------- 分析并打印变更摘要 ----------
+# ---------- show change summary ----------
 function Show-ChangeSummary {
     param($prChanges)
 
-    Write-Step "变更摘要 - PR #$($prChanges.PR)"
+    Write-Step "Change summary - PR #$($prChanges.PR)"
     Write-Info "  Base SHA: $($prChanges.BaseSha)"
     Write-Info "  Head SHA: $($prChanges.HeadSha)"
-    Write-Info "  文件列表:"
+    Write-Info "  Files:"
     foreach ($file in $prChanges.Files) {
         $statusStr = switch ($file.Status) {
-            'A' { '新增' }
-            'M' { '修改' }
-            'C' { '复制' }
-            'R' { '重命名' }
+            'A' { 'NEW' }
+            'M' { 'MOD' }
+            'C' { 'CPY' }
+            'R' { 'MOV' }
             default { $file.Status }
         }
-        Write-Info "    [$statusStr] $($file.UpstreamPath) → $($file.RgpuiPath)"
+        Write-Info "    [$statusStr] $($file.UpstreamPath) -> $($file.RgpuiPath)"
     }
-    Write-Info "  总计 $($prChanges.Files.Count) 个文件"
+    Write-Info "  Total $($prChanges.Files.Count) files"
 }
 
-# ---------- 更新配置文件 PR 状态 ----------
+# ---------- update PR status in config ----------
 function Update-PrStatus {
     param([int]$prNumber, [string]$status, [string]$title, [string]$upstreamName)
 
@@ -344,7 +354,13 @@ function Update-PrStatus {
     if ($existing) {
         $existing.status = $status
         if ($title) { $existing.title = $title }
-        if ($status -eq 'merged') { $existing.merged_at = (Get-Date -Format 'yyyy-MM-dd') }
+        if ($status -eq 'merged') {
+            if ($existing.PSObject.Properties.Name -contains 'merged_at') {
+                $existing.merged_at = (Get-Date -Format 'yyyy-MM-dd')
+            } else {
+                $existing | Add-Member -NotePropertyName 'merged_at' -NotePropertyValue (Get-Date -Format 'yyyy-MM-dd')
+            }
+        }
     } else {
         $newPr = [PSCustomObject]@{
             number    = $prNumber
@@ -357,10 +373,63 @@ function Update-PrStatus {
     }
 
     $configObj | ConvertTo-Json -Depth 10 | Set-Content $PrConfigPath -Encoding UTF8
-    Write-Ok "已更新 UPSTREAM-PRS.json: PR #$prNumber → $status"
+    Write-Ok "Updated UPSTREAM-PRS.json: PR #$prNumber -> $status"
 }
 
-# ---------- 获取 PR 标题 ----------
+# ---------- record merged PR in docs/merged-prs.md ----------
+$MergedPrsDoc = Join-Path $RepoRoot 'docs\merged-prs.md'
+
+function Record-MergedPr {
+    param([int]$prNumber, [string]$title, [string]$upstreamName)
+
+    if (-not (Test-Path $MergedPrsDoc)) { return }
+
+    $today = Get-Date -Format 'yyyy-MM-dd'
+    $line = "| #$prNumber | $today | $title |"
+    $content = Get-Content $MergedPrsDoc -Encoding UTF8
+
+    # 找到对应上游的表格，在表头后插入一行
+    $header = "## $upstreamName"
+    $insertAt = -1
+    for ($i = 0; $i -lt $content.Count; $i++) {
+        if ($content[$i] -eq $header) {
+            # 跳过分隔行和表头行
+            $j = $i + 1
+            while ($j -lt $content.Count -and $content[$j] -notmatch '^\|') { $j++ }
+            while ($j -lt $content.Count -and $content[$j] -match '^\|') { $j++ }
+            $insertAt = $j
+            break
+        }
+    }
+
+    # 检查是否已存在
+    $alreadyExists = $false
+    foreach ($l in $content) {
+        if ($l -match "^\| #$prNumber ") { $alreadyExists = $true; break }
+    }
+
+    if (-not $alreadyExists -and $insertAt -ge 0) {
+        $content = $content[0..($insertAt - 1)] + @($line) + $content[$insertAt..($content.Count - 1)]
+        $content | Set-Content $MergedPrsDoc -Encoding UTF8
+        Write-Ok "Recorded in docs/merged-prs.md"
+    }
+}
+
+# ---------- load merged PR numbers from docs ----------
+function Get-MergedPrNumbers {
+    if (-not (Test-Path $MergedPrsDoc)) { return @{} }
+
+    $merged = @{}
+    $content = Get-Content $MergedPrsDoc -Encoding UTF8
+    foreach ($line in $content) {
+        if ($line -match '^\| #(\d+) ') {
+            $merged[[int]$matches[1]] = $true
+        }
+    }
+    return $merged
+}
+
+# ---------- get PR title ----------
 function Get-PrTitle {
     param([string]$upstreamDir, [int]$prNumber)
 
@@ -374,6 +443,92 @@ function Get-PrTitle {
     return $null
 }
 
+# ---------- scan upstream for new PRs ----------
+function Scan-NewPrs {
+    param($upstreamConfig, $upstreamName)
+
+    $upstreamDir = Ensure-UpstreamClone $upstreamConfig
+
+    # 从映射中提取上游目录路径
+    $mappedPaths = @()
+    foreach ($m in $upstreamConfig.mappings) {
+        $path = $m.from.TrimEnd('/')
+        if ($path -ne '') { $mappedPaths += $path }
+    }
+    if ($mappedPaths.Count -eq 0) { $mappedPaths += '.' }
+
+    Write-Step "Scanning upstream commits (last 200)..."
+    Push-Location $upstreamDir
+    try {
+        $commitLog = git log $upstreamConfig.branch --oneline -200 2>&1
+        Write-Info "Found $($commitLog.Count) commits"
+
+        $foundPrs = [ordered]@{}
+        foreach ($line in $commitLog) {
+            $parts = $line -split '\s+', 2
+            $shortSha = $parts[0]
+            $msg = if ($parts.Count -gt 1) { $parts[1] } else { '' }
+
+            # 提取 PR 编号
+            $prNum = $null
+            if ($msg -match '\(#(\d+)\)') {
+                $prNum = [int]$matches[1]
+            } elseif ($msg -match 'Merge pull request #(\d+)') {
+                $prNum = [int]$matches[1]
+            }
+            if (-not $prNum) { continue }
+
+            # 检查提交是否触及映射路径
+            $touchedFiles = git diff-tree --no-commit-id -r --name-only $shortSha 2>&1
+            $touchesMapped = $false
+            foreach ($file in $touchedFiles) {
+                if ($file -isnot [string]) { continue }
+                $fileNorm = $file.Replace('\', '/')
+                foreach ($mp in $mappedPaths) {
+                    if ($fileNorm -like "$mp*") { $touchesMapped = $true; break }
+                }
+                if ($touchesMapped) { break }
+            }
+            if (-not $touchesMapped) { continue }
+
+            # 提取标题
+            $title = $msg
+            if ($msg -match '^(.+?)\s+\(#\d+\)$') {
+                $title = $matches[1].Trim()
+            } elseif ($msg -match 'Merge pull request #\d+ from .+?$') {
+                $title = $msg
+            }
+
+            if (-not $foundPrs.Contains([string]$prNum)) {
+                $foundPrs[[string]$prNum] = @{ Title = $title; Sha = $shortSha }
+            }
+        }
+    } finally {
+        Pop-Location
+    }
+
+    # 去重：过滤已在 UPSTREAM-PRS.json 和 docs/merged-prs.md 中的 PR
+    $configObj = Get-Content $PrConfigPath -Raw | ConvertFrom-Json
+    $existingNums = @{}
+    foreach ($p in $configObj.prs) { $existingNums[[string]$p.number] = $true }
+    $mergedDocs = Get-MergedPrNumbers
+    foreach ($num in $mergedDocs.Keys) { $existingNums[[string]$num] = $true }
+
+    $newPrs = @()
+    foreach ($prNum in $foundPrs.Keys) {
+        if (-not $existingNums.ContainsKey($prNum)) {
+            $info = $foundPrs[$prNum]
+            $newPrs += [PSCustomObject]@{
+                Number = $prNum
+                Title  = $info.Title
+                Sha    = $info.Sha
+            }
+        }
+    }
+
+    return $newPrs
+}
+
 # =====================================================================
 # 主流程
 # =====================================================================
@@ -381,16 +536,38 @@ function Get-PrTitle {
 if ($UpdateList) {
     $upstreamName = if ($Upstream) { $Upstream } else { 'zed' }
     $upstreamConfig = Get-UpstreamConfig $upstreamName
-    Write-Step "更新 PR 列表（上游: $upstreamName）"
+    Write-Step "Updating PR list (upstream: $upstreamName)"
     $upstreamDir = Ensure-UpstreamClone $upstreamConfig
     Push-Location $upstreamDir
     try {
         $recentCommits = git log $upstreamConfig.branch --oneline -50 -- 'crates/gpui/' 'crates/gpui_*/' 2>&1
-        Write-Info "最近涉及 gpui 的提交:"
+        Write-Info "Recent gpui-related commits:"
         $recentCommits | ForEach-Object { Write-Info "  $_" }
     } finally {
         Pop-Location
     }
+    exit 0
+}
+
+if ($Scan) {
+    $upstreamName = if ($Upstream) { $Upstream } else { 'zed' }
+    $upstreamConfig = Get-UpstreamConfig $upstreamName
+
+    Write-Step "Scanning upstream: $upstreamName ($($upstreamConfig.url))"
+    $newPrs = Scan-NewPrs -upstreamConfig $upstreamConfig -upstreamName $upstreamName
+
+    if ($newPrs.Count -eq 0) {
+        Write-Ok "No new unmerged PRs found (last 200 commits)"
+        exit 0
+    }
+
+    Write-Step "Found $($newPrs.Count) unmerged PRs"
+    $newPrs | ForEach-Object { Write-Info "  #$($_.Number) - $($_.Title) [commit $($_.Sha)]" }
+
+    Write-Host "`nTo add:" -ForegroundColor Yellow
+    Write-Host "  1. Copy the PR numbers to UPSTREAM-PRS.json prs array with status 'pending'" -ForegroundColor Yellow
+    Write-Host "  2. Run .\scripts\merge-upstream-pr.ps1 -All" -ForegroundColor Yellow
+    Write-Host "  3. Or run .\scripts\merge-upstream-pr.ps1 -PR <number>" -ForegroundColor Yellow
     exit 0
 }
 
@@ -406,12 +583,12 @@ if ($PR) {
         @{ Number = $_.number; UpstreamName = if ($_.upstream) { $_.upstream } else { 'zed' } }
     }
     if ($prList.Count -eq 0) {
-        Write-Info "没有待处理的 PR"
+        Write-Info "No pending PRs"
         exit 0
     }
-    Write-Info "待处理 PR: $($prList | ForEach-Object { "$($_.Number)($($_.UpstreamName))" } -join ', ')"
+    Write-Info "Pending PRs: $($prList | ForEach-Object { "$($_.Number)($($_.UpstreamName))" } -join ', ')"
 } else {
-    Write-Err "请指定 -PR <编号> 或 -All"
+    Write-Err "Please specify -PR <num>, -All, -Scan, or -UpdateList"
     exit 1
 }
 
@@ -423,14 +600,14 @@ foreach ($prItem in $prList) {
     $upstreamConfig = Get-UpstreamConfig $upstreamName
     $mappings = Build-Mappings $upstreamConfig
 
-    Write-Step "处理 PR #$prNum（上游: $upstreamName）"
+    Write-Step "Processing PR #$prNum (upstream: $upstreamName)"
 
     # 确保上游已克隆
     $upstreamDir = Ensure-UpstreamClone $upstreamConfig
 
     $prChanges = Get-PrChanges -upstreamDir $upstreamDir -prNumber $prNum -upstreamConfig $upstreamConfig -pathMappings $mappings.PathMappings
     if (-not $prChanges) {
-        Write-Err "跳过 PR #$prNum"
+        Write-Err "Skipping PR #$prNum"
         continue
     }
 
@@ -439,7 +616,7 @@ foreach ($prItem in $prList) {
     Show-ChangeSummary $prChanges
 
     if ($DryRun) {
-        Write-Warn "Dry-Run 模式，不写入文件"
+        Write-Warn "Dry-Run mode, no files written"
         Update-PrStatus -prNumber $prNum -status 'analyzed' -title $title -upstreamName $upstreamName
         $allResults += $prChanges
         continue
@@ -447,20 +624,23 @@ foreach ($prItem in $prList) {
 
     # 应用变更
     $stats = Apply-Changes -prChanges $prChanges -contentMappings $mappings.ContentMappings
-    Write-Ok "PR #$prNum 合并完成: $($stats.Modified) 个修改, $($stats.Created) 个新建"
+    Write-Ok "PR #$prNum merged: $($stats.Modified) modified, $($stats.Created) created"
 
     # 更新状态
     Update-PrStatus -prNumber $prNum -status 'merged' -title $title -upstreamName $upstreamName
 
+    # 记录到 docs/merged-prs.md
+    Record-MergedPr -prNumber $prNum -title $title -upstreamName $upstreamName
+
     # 运行 cargo check
-    Write-Step "验证编译: cargo check -p rgpui"
+    Write-Step "Verifying compilation: cargo check -p rgpui"
     Push-Location $RepoRoot
     try {
         $checkOutput = cargo check -p rgpui 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Ok "cargo check 通过"
+            Write-Ok "cargo check passed"
         } else {
-            Write-Err "cargo check 失败，请手动检查"
+            Write-Err "cargo check failed, please check manually"
             Write-Host $checkOutput -ForegroundColor Red
             Update-PrStatus -prNumber $prNum -status 'check-failed' -title $title -upstreamName $upstreamName
         }
@@ -471,9 +651,9 @@ foreach ($prItem in $prList) {
     $allResults += $prChanges
 }
 
-Write-Step "全部完成"
-Write-Info "处理了 $($allResults.Count) 个 PR"
+Write-Step "All done"
+Write-Info "Processed $($allResults.Count) PR(s)"
 if (-not $DryRun) {
-    Write-Info "请执行 cargo check --workspace --examples 全面验证"
-    Write-Info "然后执行 cargo fmt 格式化代码"
+    Write-Info "Run 'cargo check --workspace --examples' for full verification"
+    Write-Info "Then run 'cargo fmt' to format code"
 }

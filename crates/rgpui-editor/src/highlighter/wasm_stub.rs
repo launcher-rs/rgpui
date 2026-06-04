@@ -232,51 +232,7 @@ impl StatusColors {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
-pub struct HighlightThemeStyle {
-    pub editor_background: Option<gpui::Hsla>,
-    pub editor_foreground: Option<gpui::Hsla>,
-    pub editor_active_line: Option<gpui::Hsla>,
-    pub editor_line_number: Option<gpui::Hsla>,
-    pub editor_active_line_number: Option<gpui::Hsla>,
-    pub editor_invisible: Option<gpui::Hsla>,
-    #[serde(flatten)]
-    pub status: StatusColors,
-    #[serde(rename = "syntax")]
-    pub syntax: SyntaxColors,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
-pub struct HighlightTheme {
-    pub name: String,
-    #[serde(default)]
-    pub appearance: rgpui_component::themeMode,
-    pub style: HighlightThemeStyle,
-}
-
-impl std::ops::Deref for HighlightTheme {
-    type Target = SyntaxColors;
-
-    fn deref(&self) -> &Self::Target {
-        &self.style.syntax
-    }
-}
-
-impl HighlightTheme {
-    pub fn default_dark() -> std::sync::Arc<Self> {
-        use rgpui_component::DEFAULT_THEME_COLORS;
-        DEFAULT_THEME_COLORS[&rgpui_component::themeMode::Dark]
-            .1
-            .clone()
-    }
-
-    pub fn default_light() -> std::sync::Arc<Self> {
-        use rgpui_component::DEFAULT_THEME_COLORS;
-        DEFAULT_THEME_COLORS[&rgpui_component::themeMode::Light]
-            .1
-            .clone()
-    }
-}
+pub use rgpui_component::{HighlightTheme, HighlightThemeStyle};
 
 // Language registry stub
 pub struct LanguageRegistry {
