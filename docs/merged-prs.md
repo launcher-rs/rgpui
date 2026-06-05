@@ -18,6 +18,8 @@
 | #2431 | 2026-06-04 | Allow non-'static &str and Cow for Notification |
 | #2430 | 2026-06-04 | highlighter: Simplify combined injection range filtering |
 | #2411 | 2026-06-04 | Merge branch 'main' into heretic/gutter-background |
+| #2438 | 2026-06-05 | Renamed search_aliases 鈫?keywords |
+| #2437 | 2026-06-05 | fix(text): keep selection anchored to content when scrolling |
 
 ## yororen-ui
 

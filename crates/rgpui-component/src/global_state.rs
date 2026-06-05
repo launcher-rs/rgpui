@@ -13,10 +13,15 @@ pub struct GlobalState {
     pub(crate) text_view_state_stack: Vec<Entity<TextViewState>>,
     /// Set of open popover IDs that use deferred rendering.
     /// When this set is not empty, we are inside at least one deferred context.
-    /// This is used to prevent double-deferred elements which would cause rgpui to panic.
+    /// This is used to prevent double-deferred elements which would cause GPUI to panic.
     open_deferred_popovers: HashSet<ElementId>,
     /// Application menus storage
     app_menus: Vec<OwnedMenu>,
+    /// When true, the window-level text selection must not start on the
+    /// current mouse down. Set by components that own their own mouse-down
+    /// interaction (e.g. `Input`, `Button`); reset by the selection
+    /// controller in the capture phase of every left mouse down.
+    pub(crate) suppress_text_selection: bool,
 }
 
 impl GlobalState {
@@ -25,7 +30,17 @@ impl GlobalState {
             text_view_state_stack: Vec::new(),
             open_deferred_popovers: HashSet::new(),
             app_menus: Vec::new(),
+            suppress_text_selection: false,
         }
+    }
+
+    /// Suppress the window-level text selection for the current mouse down.
+    ///
+    /// Call this from a mouse-down handler (bubble phase) of a component that
+    /// owns its own press/drag interaction, so that pressing it does not start
+    /// a window text selection. The flag is reset on the next mouse down.
+    pub fn suppress_text_selection(cx: &mut App) {
+        Self::global_mut(cx).suppress_text_selection = true;
     }
 
     pub fn global(cx: &App) -> &Self {
@@ -40,7 +55,7 @@ impl GlobalState {
         self.text_view_state_stack.last()
     }
 
-    /// 检查当前是否处于延迟渲染上下文中，例如打开的 Popover 内部。
+    /// Check if we are currently inside a deferred context (e.g., inside an open Popover).
     pub fn is_in_deferred_context(&self) -> bool {
         !self.open_deferred_popovers.is_empty()
     }

@@ -32,7 +32,8 @@
       "number": 2435,
       "upstream": "gpui-component",
       "title": "notification: Prevent close button click from triggering `on_click`",
-      "status": "pending"
+      "status": "merged",
+      "merged_at": "2026-06-05"
     },
     {
       "number": 2433,
@@ -52,8 +53,8 @@
       "number": 2430,
       "upstream": "gpui-component",
       "title": "highlighter: Simplify combined injection range filtering",
-      "status": "pending",
-      "merged_at": "2026-06-04"
+      "status": "merged",
+      "merged_at": "2026-06-05"
     },
     {
       "number": 2411,
@@ -61,6 +62,20 @@
       "title": "Merge branch 'main' into heretic/gutter-background",
       "status": "check-failed",
       "merged_at": "2026-06-04"
+    },
+    {
+      "number": 2438,
+      "upstream": "gpui-component",
+      "title": "Renamed search_aliases 鈫?keywords",
+      "status": "merged",
+      "merged_at": "2026-06-05"
+    },
+    {
+      "number": 2437,
+      "upstream": "gpui-component",
+      "title": "fix(text): keep selection anchored to content when scrolling",
+      "status": "merged",
+      "merged_at": "2026-06-05"
     }
   ]
 }

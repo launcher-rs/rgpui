@@ -128,7 +128,6 @@ pub mod profiler;
 
 /// 优先级队列 - Windows/Linux/WASM 平台下的异步消息队列
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
-#[expect(missing_docs)]
 pub mod queue;
 
 mod rgpui_util;

@@ -22,24 +22,27 @@
 
 脚本自动执行：
 1. 从 `UPSTREAM-PRS.json` 读取 PR 所属的上游仓库配置
-2. 克隆/拉取对应仓库到 `temp/<仓库名>-upstream/`
+2. **自动更新上游仓库**：若 `temp/<仓库名>-upstream/` 已存在，执行 `git pull --ff-only` 获取最新代码；否则克隆仓库
 3. 获取 PR 的变更文件列表，按映射规则处理路径和内容
 4. 写入本地仓库，运行 `cargo check` 验证
 5. 更新 `UPSTREAM-PRS.json` 中的 PR 状态
 
 ### 扫描新 PR
 
-先扫描上游仓库的新提交，发现待处理 PR：
+扫描上游仓库的新提交，发现待处理 PR。脚本会：
+- 自动更新上游仓库到最新
+- 根据 `UPSTREAM-PRS.json` 中该上游的最新 `merged_at` 日期过滤，只返回该日期之后的提交
+- 自动跳过已在 `UPSTREAM-PRS.json` 或 `docs/merged-prs.md` 中记录的 PR
 
 ```powershell
-# 扫描所有上游仓库最近 200 个提交，输出未合并的 PR
+# 扫描所有上游仓库的未合并 PR（按日期过滤）
 .\scripts\merge-upstream-pr.ps1 -Scan
 
 # 指定上游仓库扫描
-.\scripts\merge-upstream-pr.ps1 -Scan -Upstream zed
+.\scripts\merge-upstream-pr.ps1 -Scan -Upstream gpui-component
 ```
 
-扫描结果会自动更新 `UPSTREAM-PRS.json`，新增的 PR 状态设为 `"pending"`。
+扫描结果输出后，脚本会将新发现的 PR 自动添加到 `UPSTREAM-PRS.json`，状态设为 `"pending"`。
 
 ## 2. 支持的上游仓库
 

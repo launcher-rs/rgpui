@@ -43,9 +43,9 @@ use crate::input::{
     search::{self, SearchPanel},
 };
 use rgpui_component::Size;
+use rgpui_component::history::History;
 use rgpui_component::menu::PopupMenu;
 use rgpui_component::scroll::AutoScroll;
-use rgpui_component::{Root, history::History};
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = input, no_json)]
@@ -1510,6 +1510,10 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Input has its own text selection; suppress the window-level text
+        // selection (Root) so it does not start a drag from here.
+        rgpui_component::global_state::GlobalState::suppress_text_selection(cx);
+
         // Clear inline completion on any mouse interaction
         self.clear_inline_completion(cx);
 
@@ -2093,7 +2097,7 @@ impl InputState {
         cx.emit(InputEvent::Focus);
     }
 
-    fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_blur(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if self.is_context_menu_open(cx) {
             return;
         }
@@ -2107,9 +2111,6 @@ impl InputState {
         self.clear_inline_completion(cx);
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
-        });
-        Root::update(window, cx, |root, _, _| {
-            root.focused_input = None;
         });
         cx.emit(InputEvent::Blur);
         cx.notify();
@@ -2771,8 +2772,8 @@ impl Render for InputState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rgpui_component::theme::Theme;
     use rgpui::{TestAppContext, VisualTestContext};
+    use rgpui_component::theme::Theme;
 
     struct InputView {
         input: Entity<InputState>,

@@ -4,12 +4,11 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{
     collections::HashMap,
-    ops::Deref,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{LazyLock, Mutex},
 };
 
 use crate::highlighter::{Language, languages};
-use rgpui_component::{ActiveTheme, DEFAULT_THEME_COLORS, ThemeMode};
+use rgpui_component::ActiveTheme;
 
 pub(super) const HIGHLIGHT_NAMES: [&str; 41] = [
     "attribute",

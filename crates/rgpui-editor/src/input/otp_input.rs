@@ -183,7 +183,7 @@ impl OtpState {
         cx.emit(InputEvent::Focus);
     }
 
-    fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_blur(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
         });

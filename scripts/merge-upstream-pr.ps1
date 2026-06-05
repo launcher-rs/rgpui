@@ -362,12 +362,21 @@ function Update-PrStatus {
             }
         }
     } else {
-        $newPr = [PSCustomObject]@{
-            number    = $prNumber
-            upstream  = $upstreamName
-            title     = $title
-            status    = $status
-            merged_at = if ($status -eq 'merged') { (Get-Date -Format 'yyyy-MM-dd') } else { $null }
+        if ($status -eq 'merged') {
+            $newPr = [PSCustomObject]@{
+                number    = $prNumber
+                upstream  = $upstreamName
+                title     = $title
+                status    = $status
+                merged_at = (Get-Date -Format 'yyyy-MM-dd')
+            }
+        } else {
+            $newPr = [PSCustomObject]@{
+                number   = $prNumber
+                upstream = $upstreamName
+                title    = $title
+                status   = $status
+            }
         }
         $configObj.prs += $newPr
     }
@@ -444,6 +453,23 @@ function Get-PrTitle {
 }
 
 # ---------- scan upstream for new PRs ----------
+function Get-LatestSyncedAt {
+    param($upstreamName)
+
+    $configObj = Get-Content $PrConfigPath -Raw | ConvertFrom-Json
+    $latest = $null
+    foreach ($p in $configObj.prs) {
+        if ($p.upstream -ne $upstreamName) { continue }
+        if ($p.merged_at) {
+            try {
+                $d = [DateTime]::ParseExact($p.merged_at, 'yyyy-MM-dd', $null)
+                if (-not $latest -or $d -gt $latest) { $latest = $d }
+            } catch { }
+        }
+    }
+    return $latest
+}
+
 function Scan-NewPrs {
     param($upstreamConfig, $upstreamName)
 
@@ -457,10 +483,18 @@ function Scan-NewPrs {
     }
     if ($mappedPaths.Count -eq 0) { $mappedPaths += '.' }
 
-    Write-Step "Scanning upstream commits (last 200)..."
+    # 获取上次同步日期，只扫描该日期之后的新 PR
+    $lastSynced = Get-LatestSyncedAt $upstreamName
+    if ($lastSynced) {
+        Write-Step "Scanning upstream commits since $($lastSynced.ToString('yyyy-MM-dd'))..."
+    } else {
+        Write-Step "Scanning upstream commits (last 200)..."
+    }
+
     Push-Location $upstreamDir
     try {
-        $commitLog = git log $upstreamConfig.branch --oneline -200 2>&1
+        $sinceParam = if ($lastSynced) { "--since=$($lastSynced.ToString('yyyy-MM-dd'))" } else { '' }
+        $commitLog = git log $upstreamConfig.branch --oneline -200 $sinceParam 2>&1
         Write-Info "Found $($commitLog.Count) commits"
 
         $foundPrs = [ordered]@{}
@@ -561,13 +595,24 @@ if ($Scan) {
         exit 0
     }
 
-    Write-Step "Found $($newPrs.Count) unmerged PRs"
+    if ($newPrs.Count -eq 0) {
+        Write-Ok "No new unmerged PRs found since last sync"
+        exit 0
+    }
+
+    Write-Step "Found $($newPrs.Count) new unmerged PRs"
     $newPrs | ForEach-Object { Write-Info "  #$($_.Number) - $($_.Title) [commit $($_.Sha)]" }
 
-    Write-Host "`nTo add:" -ForegroundColor Yellow
-    Write-Host "  1. Copy the PR numbers to UPSTREAM-PRS.json prs array with status 'pending'" -ForegroundColor Yellow
-    Write-Host "  2. Run .\scripts\merge-upstream-pr.ps1 -All" -ForegroundColor Yellow
-    Write-Host "  3. Or run .\scripts\merge-upstream-pr.ps1 -PR <number>" -ForegroundColor Yellow
+    # 自动添加到 UPSTREAM-PRS.json，状态设为 pending
+    Write-Step "Adding new PRs to UPSTREAM-PRS.json..."
+    $newPrs | ForEach-Object {
+        $num = [int]$_.Number
+        Update-PrStatus -prNumber $num -status 'pending' -title $_.Title -upstreamName $upstreamName
+    }
+    Write-Ok "Added $($newPrs.Count) new PR(s) to tracking list (status: pending)"
+
+    Write-Host "`nNext step:" -ForegroundColor Yellow
+    Write-Host "  Run .\scripts\merge-upstream-pr.ps1 -All  to merge all pending PRs" -ForegroundColor Yellow
     exit 0
 }
 

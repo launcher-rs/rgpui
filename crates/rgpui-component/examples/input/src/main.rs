@@ -1,4 +1,5 @@
 use rgpui::*;
+use rgpui_component::checkbox::Checkbox;
 use rgpui_component::{
     input::{Input, InputEvent, InputState},
     *,
@@ -14,6 +15,7 @@ pub struct Example {
     /// So if the Example entity is dropped, the subscriptions are also dropped.
     /// This is important to avoid memory leaks.
     _subscriptions: Vec<Subscription>,
+    is_checked: bool,
 }
 
 impl Example {
@@ -36,12 +38,13 @@ impl Example {
             input_state,
             display_text: SharedString::default(),
             _subscriptions,
+            is_checked: false,
         }
     }
 }
 
 impl Render for Example {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .p_5()
             .gap_2()
@@ -50,6 +53,15 @@ impl Render for Example {
             .justify_center()
             .child(Input::new(&self.input_state))
             .child(self.display_text.clone())
+            .child(
+                Checkbox::new("checkbox")
+                    .label("Option")
+                    .checked(self.is_checked)
+                    .on_click(cx.listener(|view, checked, _, cx| {
+                        view.is_checked = *checked;
+                        cx.notify();
+                    })),
+            )
     }
 }
 

@@ -24,15 +24,6 @@ use rgpui::{
 
 use super::{TextViewStyle, utils::list_item_prefix};
 
-/// 提取文本的类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BlockTextKind {
-    /// 全部文本
-    All,
-    /// 仅选中文本
-    Selected,
-}
-
 /// The block-level nodes.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BlockNode {
@@ -83,93 +74,13 @@ pub(crate) enum BlockNode {
     Unknown,
 }
 
+#[derive(Clone, Copy)]
+enum BlockTextKind {
+    All,
+    Selected,
+}
+
 impl BlockNode {
-    /// 获取全部文本内容
-    pub(super) fn text(&self) -> String {
-        self.text_by_kind(BlockTextKind::All)
-    }
-
-    /// 根据类型获取文本内容
-    pub(super) fn text_by_kind(&self, kind: BlockTextKind) -> String {
-        match kind {
-            BlockTextKind::All => self._all_text(),
-            BlockTextKind::Selected => self._selected_text(),
-        }
-    }
-
-    /// 获取全部文本（内部实现）
-    fn _all_text(&self) -> String {
-        let mut text = String::new();
-        match self {
-            BlockNode::Root { children, .. } => {
-                text.push_str(&Self::children_text(children, BlockTextKind::All));
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-            }
-            BlockNode::Paragraph(paragraph) => {
-                text.push_str(&paragraph.text());
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-            }
-            BlockNode::Heading { children, .. } => {
-                text.push_str(&children.text());
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-            }
-            BlockNode::Blockquote { children, .. } => {
-                text.push_str(&Self::children_text(children, BlockTextKind::All));
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-            }
-            BlockNode::List { children, .. } => {
-                text.push_str(&Self::children_text(children, BlockTextKind::All));
-            }
-            BlockNode::ListItem { children, .. } => {
-                text.push_str(&Self::children_text(children, BlockTextKind::All));
-            }
-            BlockNode::Table(table) => {
-                for row in &table.children {
-                    let row_texts: Vec<String> = row
-                        .children
-                        .iter()
-                        .map(|cell| cell.children.text())
-                        .collect();
-                    if !row_texts.is_empty() {
-                        text.push_str(&row_texts.join(" "));
-                        text.push('\n');
-                    }
-                }
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-            }
-            BlockNode::CodeBlock(code_block) => {
-                text.push_str(&code_block.text());
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-            }
-            BlockNode::Definition { .. }
-            | BlockNode::Break { .. }
-            | BlockNode::HorizontalRule { .. }
-            | BlockNode::Unknown { .. } => {}
-        }
-        text
-    }
-
-    /// 获取所有子节点的文本
-    fn children_text(children: &[BlockNode], kind: BlockTextKind) -> String {
-        children
-            .iter()
-            .map(|c| c.text_by_kind(kind))
-            .collect::<Vec<_>>()
-            .concat()
-    }
-
     pub(super) fn is_list_item(&self) -> bool {
         matches!(self, Self::ListItem { .. })
     }
@@ -187,7 +98,7 @@ impl BlockNode {
     }
 
     /// Get the span of the node.
-    pub(super) fn span(&self) -> Option<Span> {
+    pub(crate) fn span(&self) -> Option<Span> {
         match self {
             BlockNode::Root { span, .. } => *span,
             BlockNode::Paragraph(paragraph) => paragraph.span,
@@ -204,66 +115,81 @@ impl BlockNode {
         }
     }
 
+    pub(super) fn text(&self) -> String {
+        self.text_by_kind(BlockTextKind::All)
+    }
+
     pub(super) fn selected_text(&self) -> String {
         self.text_by_kind(BlockTextKind::Selected)
     }
 
-    /// 获取选中文本（内部实现）
-    fn _selected_text(&self) -> String {
+    fn text_by_kind(&self, kind: BlockTextKind) -> String {
         let mut text = String::new();
         match self {
             BlockNode::Root { children, .. } => {
-                text.push_str(&Self::children_text(children, BlockTextKind::Selected));
-                if !text.is_empty() {
+                let block_text = Self::children_text(children, kind);
+                if !block_text.is_empty() {
+                    text.push_str(&block_text);
                     text.push('\n');
                 }
             }
             BlockNode::Paragraph(paragraph) => {
-                let block_text = paragraph.selected_text();
+                let block_text = match kind {
+                    BlockTextKind::All => paragraph.text(),
+                    BlockTextKind::Selected => paragraph.selected_text(),
+                };
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
                     text.push('\n');
                 }
             }
             BlockNode::Heading { children, .. } => {
-                let block_text = children.selected_text();
+                let block_text = match kind {
+                    BlockTextKind::All => children.text(),
+                    BlockTextKind::Selected => children.selected_text(),
+                };
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
                     text.push('\n');
                 }
             }
+            BlockNode::List { children, .. } | BlockNode::ListItem { children, .. } => {
+                text.push_str(&Self::children_text(children, kind));
+            }
             BlockNode::Blockquote { children, .. } => {
-                text.push_str(&Self::children_text(children, BlockTextKind::Selected));
-                if !text.is_empty() {
+                let block_text = Self::children_text(children, kind);
+
+                if !block_text.is_empty() {
+                    text.push_str(&block_text);
                     text.push('\n');
                 }
             }
-            BlockNode::List { children, .. } => {
-                text.push_str(&Self::children_text(children, BlockTextKind::Selected));
-            }
-            BlockNode::ListItem { children, .. } => {
-                text.push_str(&Self::children_text(children, BlockTextKind::Selected));
-            }
             BlockNode::Table(table) => {
                 let mut block_text = String::new();
-                for row in &table.children {
-                    let row_texts: Vec<String> = row
-                        .children
-                        .iter()
-                        .map(|cell| cell.children.selected_text())
-                        .collect();
+                for row in table.children.iter() {
+                    let mut row_texts = vec![];
+                    for cell in row.children.iter() {
+                        row_texts.push(match kind {
+                            BlockTextKind::All => cell.children.text(),
+                            BlockTextKind::Selected => cell.children.selected_text(),
+                        });
+                    }
                     if !row_texts.is_empty() {
                         block_text.push_str(&row_texts.join(" "));
                         block_text.push('\n');
                     }
                 }
+
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
                     text.push('\n');
                 }
             }
             BlockNode::CodeBlock(code_block) => {
-                let block_text = code_block.selected_text();
+                let block_text = match kind {
+                    BlockTextKind::All => code_block.text(),
+                    BlockTextKind::Selected => code_block.selected_text(),
+                };
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
                     text.push('\n');
@@ -274,7 +200,48 @@ impl BlockNode {
             | BlockNode::HorizontalRule { .. }
             | BlockNode::Unknown { .. } => {}
         }
+
         text
+    }
+
+    fn children_text(children: &[BlockNode], kind: BlockTextKind) -> String {
+        let mut text = String::new();
+        for child in children.iter() {
+            text.push_str(&child.text_by_kind(kind));
+        }
+
+        text
+    }
+
+    /// Synchronously clear the selection stored in every inline state.
+    ///
+    /// Mirrors the [`selected_text`](Self::selected_text) traversal so the
+    /// selection can be cleared without relying on a repaint.
+    pub(super) fn clear_selection(&self) {
+        match self {
+            BlockNode::Root { children, .. }
+            | BlockNode::Blockquote { children, .. }
+            | BlockNode::List { children, .. }
+            | BlockNode::ListItem { children, .. } => {
+                for child in children.iter() {
+                    child.clear_selection();
+                }
+            }
+            BlockNode::Paragraph(paragraph) => paragraph.clear_selection(),
+            BlockNode::Heading { children, .. } => children.clear_selection(),
+            BlockNode::Table(table) => {
+                for row in table.children.iter() {
+                    for cell in row.children.iter() {
+                        cell.children.clear_selection();
+                    }
+                }
+            }
+            BlockNode::CodeBlock(code_block) => code_block.clear_selection(),
+            BlockNode::Definition { .. }
+            | BlockNode::Break { .. }
+            | BlockNode::HorizontalRule { .. }
+            | BlockNode::Unknown { .. } => {}
+        }
     }
 }
 
@@ -457,35 +424,48 @@ impl Paragraph {
         }
     }
 
-    /// 获取段落全部文本内容
-    pub(super) fn text(&self) -> String {
-        self.children
-            .iter()
-            .map(|c| c.text.to_string())
-            .collect::<Vec<_>>()
-            .concat()
-    }
-
     pub(super) fn selected_text(&self) -> String {
         let mut text = String::new();
 
         for c in self.children.iter() {
-            if let Ok(state) = c.state.lock() {
-                if let Some(selection) = &state.selection {
-                    let part_text = state.text.clone();
-                    text.push_str(&part_text[selection.start..selection.end]);
-                }
+            let Ok(state) = c.state.lock() else {
+                continue;
+            };
+            if let Some(selection) = &state.selection {
+                text.push_str(&state.text[selection.start..selection.end]);
             }
         }
 
-        if let Ok(state) = self.state.lock() {
-            if let Some(selection) = &state.selection {
-                let all_text = state.text.clone();
-                text.push_str(&all_text[selection.start..selection.end]);
-            }
+        if let Ok(state) = self.state.lock()
+            && let Some(selection) = &state.selection
+        {
+            text.push_str(&state.text[selection.start..selection.end]);
         }
 
         text
+    }
+
+    pub(super) fn text(&self) -> String {
+        let mut text = String::new();
+        for node in self.children.iter() {
+            text.push_str(&node.text);
+        }
+        text
+    }
+
+    /// Synchronously clear the selection stored in every inline state.
+    ///
+    /// Mirrors the [`selected_text`](Self::selected_text) traversal.
+    pub(super) fn clear_selection(&self) {
+        for c in self.children.iter() {
+            if let Ok(mut state) = c.state.lock() {
+                state.selection = None;
+            }
+        }
+
+        if let Ok(mut state) = self.state.lock() {
+            state.selection = None;
+        }
     }
 }
 
@@ -591,14 +571,13 @@ impl Paragraph {
 #[derive(Debug, Clone)]
 pub struct CodeBlock {
     lang: Option<SharedString>,
-    styles: Vec<(Range<usize>, HighlightStyle)>,
     state: Arc<Mutex<InlineState>>,
     pub span: Option<Span>,
 }
 
 impl PartialEq for CodeBlock {
     fn eq(&self, other: &Self) -> bool {
-        self.lang == other.lang && self.styles == other.styles
+        self.lang == other.lang && self.code() == other.code() && self.span == other.span
     }
 }
 
@@ -616,39 +595,53 @@ impl CodeBlock {
             .unwrap_or_default()
     }
 
-    /// 获取代码块的全部文本内容
-    pub(super) fn text(&self) -> String {
-        self.code().to_string()
-    }
-
     pub(crate) fn new(
         code: SharedString,
         lang: Option<SharedString>,
-        _highlight_theme: &HighlightTheme,
+        highlight_theme: &HighlightTheme,
         span: Option<impl Into<Span>>,
     ) -> Self {
         let state = Arc::new(Mutex::new(InlineState::default()));
-        if let Ok(mut guard) = state.lock() {
-            guard.set_text(code);
+        if let Ok(mut state) = state.lock() {
+            state.set_text(code);
         }
 
+        let _ = highlight_theme;
         Self {
             lang,
-            styles: Vec::new(),
             state,
             span: span.map(|s| s.into()),
         }
     }
 
+    pub(crate) fn styles(&self) -> Vec<(Range<usize>, HighlightStyle)> {
+        Vec::new()
+    }
+
     pub(super) fn selected_text(&self) -> String {
         let mut text = String::new();
-        if let Ok(state) = self.state.lock() {
-            if let Some(selection) = &state.selection {
-                let part_text = state.text.clone();
-                text.push_str(&part_text[selection.start..selection.end]);
-            }
+        if let Ok(state) = self.state.lock()
+            && let Some(selection) = &state.selection
+        {
+            text.push_str(&state.text[selection.start..selection.end]);
         }
         text
+    }
+
+    pub(super) fn text(&self) -> String {
+        self.state
+            .lock()
+            .map(|state| state.text.to_string())
+            .unwrap_or_default()
+    }
+
+    /// Synchronously clear the selection stored in the inline state.
+    ///
+    /// Mirrors the [`selected_text`](Self::selected_text) traversal.
+    pub(super) fn clear_selection(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            state.selection = None;
+        }
     }
 
     fn render(
@@ -676,7 +669,7 @@ impl CodeBlock {
                         "code",
                         self.state.clone(),
                         vec![],
-                        self.styles.clone(),
+                        self.styles(),
                     ))
                     .when_some(node_cx.code_block_actions.clone(), |this, actions| {
                         this.child(
@@ -743,11 +736,9 @@ impl Paragraph {
 
             if let Some(image) = &inline_node.image {
                 if text.len() > 0 {
-                    inline_node
-                        .state
-                        .lock()
-                        .unwrap()
-                        .set_text(text.clone().into());
+                    if let Ok(mut state) = inline_node.state.lock() {
+                        state.set_text(text.clone().into());
+                    }
                     child_nodes.push(
                         Inline::new(
                             ix,
@@ -838,7 +829,9 @@ impl Paragraph {
 
         // Add the last text node
         if text.len() > 0 {
-            self.state.lock().unwrap().set_text(text.into());
+            if let Ok(mut state) = self.state.lock() {
+                state.set_text(text.into());
+            }
             child_nodes
                 .push(Inline::new(ix, self.state.clone(), links, highlights).into_any_element());
         }
@@ -1071,7 +1064,7 @@ impl BlockNode {
                                     cx,
                                 );
 
-                                // Continuation paragraph — stack vertically below
+                                // Continuation paragraph 鈥?stack vertically below
                                 // the previous row, indented to align with the text
                                 // column (past bullet/number prefix).
                                 if last_not_list {
@@ -1195,6 +1188,7 @@ impl BlockNode {
                         .border_1()
                         .border_color(cx.theme().border)
                         .rounded(cx.theme().radius)
+                        .overflow_hidden()
                         .children({
                             let mut rows = Vec::with_capacity(table.children.len());
                             for (row_ix, row) in table.children.iter().enumerate() {
@@ -1379,5 +1373,29 @@ impl BlockNode {
                 div().into_any_element()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn code_block_equality_includes_code_content() {
+        let theme = HighlightTheme::default_light();
+        let first = CodeBlock::new(
+            "let value = 1;".into(),
+            Some("rust".into()),
+            &theme,
+            None::<Span>,
+        );
+        let second = CodeBlock::new(
+            "let value = 2;".into(),
+            Some("rust".into()),
+            &theme,
+            None::<Span>,
+        );
+
+        assert_ne!(first, second);
     }
 }

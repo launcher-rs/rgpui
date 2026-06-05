@@ -4,6 +4,7 @@ resolver = "3"
 members = [
     "crates/*",
     "examples/*",
+    "crates/rgpui-component/examples/*",
 ]
 
 [workspace.package]
