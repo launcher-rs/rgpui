@@ -39,25 +39,24 @@ macro_rules! actions {
     };
 }
 
-/// Actions are used to implement keyboard-driven UI. When you declare an action, you can bind keys
-/// to the action in the keymap and listeners for that action in the element tree.
+/// Action trait - GPUI 中所有用户交互动作的基础 trait。
 ///
-/// To declare a list of simple actions, you can use the actions! macro, which defines a simple unit
-/// struct action for each listed action name in the given namespace.
+/// Action 是 GPUI 的核心概念之一，用于实现键盘驱动的 UI：
+/// 1. 定义 Action 类型（通过 `actions!` 宏或 `#[derive(Action)]`）
+/// 2. 在元素树中注册 Action 监听器
+/// 3. 在快捷键映射中将按键绑定到 Action
 ///
-/// ```
-/// use rgpui::actions;
+/// # 创建 Action
+///
+/// 简单的单元结构体 Action 可以用 `actions!` 宏快速创建：
+///
+/// ```rust,ignore
 /// actions!(editor, [MoveUp, MoveDown, MoveLeft, MoveRight, Newline]);
 /// ```
 ///
-/// Registering the actions with the same name will result in a panic during  `App` creation.
+/// 带数据的复杂 Action 使用 `#[derive(Action)]`：
 ///
-/// # Derive Macro
-///
-/// More complex data types can also be actions, by using the derive macro for `Action`:
-///
-/// ```
-/// use rgpui::Action;
+/// ```rust,ignore
 /// #[derive(Clone, PartialEq, serde::Deserialize, schemars::JsonSchema, Action)]
 /// #[action(namespace = editor)]
 /// pub struct SelectNext {
@@ -65,77 +64,33 @@ macro_rules! actions {
 /// }
 /// ```
 ///
-/// The derive macro for `Action` requires that the type implement `Clone` and `PartialEq`. It also
-/// requires `serde::Deserialize` and `schemars::JsonSchema` unless `#[action(no_json)]` is
-/// specified. In Zed these trait impls are used to load keymaps from JSON.
+/// # 序列化支持
 ///
-/// Multiple arguments separated by commas may be specified in `#[action(...)]`:
-///
-/// - `namespace = some_namespace` sets the namespace. In Zed this is required.
-///
-/// - `name = "ActionName"` overrides the action's name. This must not contain `::`.
-///
-/// - `no_json` causes the `build` method to always error and `action_json_schema` to return `None`,
-///   and allows actions not implement `serde::Serialize` and `schemars::JsonSchema`.
-///
-/// - `no_register` skips registering the action. This is useful for implementing the `Action` trait
-///   while not supporting invocation by name or JSON deserialization.
-///
-/// - `deprecated_aliases = ["editor::SomeAction"]` specifies deprecated old names for the action.
-///   These action names should *not* correspond to any actions that are registered. These old names
-///   can then still be used to refer to invoke this action. In Zed, the keymap JSON schema will
-///   accept these old names and provide warnings.
-///
-/// - `deprecated = "Message about why this action is deprecation"` specifies a deprecation message.
-///   In Zed, the keymap JSON schema will cause this to be displayed as a warning.
-///
-/// # Manual Implementation
-///
-/// If you want to control the behavior of the action trait manually, you can use the lower-level
-/// `#[register_action]` macro, which only generates the code needed to register your action before
-/// `main`.
-///
-/// ```
-/// use rgpui::{SharedString, register_action};
-/// #[derive(Clone, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]
-/// pub struct Paste {
-///     pub content: SharedString,
-/// }
-///
-/// impl rgpui::Action for Paste {
-///     # fn boxed_clone(&self) -> Box<dyn rgpui::Action> { unimplemented!()}
-///     # fn partial_eq(&self, other: &dyn rgpui::Action) -> bool { unimplemented!() }
-///     # fn name(&self) -> &'static str { "Paste" }
-///     # fn name_for_type() -> &'static str { "Paste" }
-///     # fn build(value: serde_json::Value) -> anyhow::Result<Box<dyn rgpui::Action>> {
-///     #     unimplemented!()
-///     # }
-/// }
-///
-/// register_action!(Paste);
-/// ```
+/// Action 需要实现 `Clone` 和 `PartialEq`。默认还需要 `serde::Deserialize` 和
+/// `schemars::JsonSchema`（用于从 JSON 加载快捷键映射），
+/// 可通过 `#[action(no_json)]` 禁用。
 pub trait Action: Any + Send {
-    /// Clone the action into a new box
+    /// 将 Action 克隆到一个新的 Box 中（类型擦除的克隆）
     fn boxed_clone(&self) -> Box<dyn Action>;
 
-    /// Do a partial equality check on this action and the other
+    /// 对此 Action 和另一个 Action 进行部分相等性比较
     fn partial_eq(&self, action: &dyn Action) -> bool;
 
-    /// Get the name of this action, for displaying in UI
+    /// 获取此 Action 的名称（用于在 UI 中显示）
     fn name(&self) -> &'static str;
 
-    /// Get the name of this action type (static)
+    /// 获取此 Action 类型的名称（静态方法）
     fn name_for_type() -> &'static str
     where
         Self: Sized;
 
-    /// Build this action from a JSON value. This is used to construct actions from the keymap.
-    /// A value of `{}` will be passed for actions that don't have any parameters.
+    /// 从 JSON 值构建此 Action。用于从快捷键映射中构造 Action。
+    /// 没有参数的 Action 会传入 `{}`。
     fn build(value: serde_json::Value) -> Result<Box<dyn Action>>
     where
         Self: Sized;
 
-    /// Optional JSON schema for the action's input data.
+    /// Action 输入数据的可选 JSON Schema
     fn action_json_schema(_: &mut schemars::SchemaGenerator) -> Option<schemars::Schema>
     where
         Self: Sized,
@@ -143,9 +98,7 @@ pub trait Action: Any + Send {
         None
     }
 
-    /// A list of alternate, deprecated names for this action. These names can still be used to
-    /// invoke the action. In Zed, the keymap JSON schema will accept these old names and provide
-    /// warnings.
+    /// 此 Action 的已弃用别名列表。这些旧名称仍可用于调用此 Action。
     fn deprecated_aliases() -> &'static [&'static str]
     where
         Self: Sized,
@@ -153,8 +106,7 @@ pub trait Action: Any + Send {
         &[]
     }
 
-    /// Returns the deprecation message for this action, if any. In Zed, the keymap JSON schema will
-    /// cause this to be displayed as a warning.
+    /// 返回此 Action 的弃用消息（如果有）
     fn deprecation_message() -> Option<&'static str>
     where
         Self: Sized,
@@ -162,8 +114,7 @@ pub trait Action: Any + Send {
         None
     }
 
-    /// The documentation for this action, if any. When using the derive macro for actions
-    /// this will be automatically generated from the doc comments on the action struct.
+    /// 此 Action 的文档（如果有）。使用 derive 宏时会自动生成。
     fn documentation() -> Option<&'static str>
     where
         Self: Sized,
@@ -230,13 +181,27 @@ impl Display for ActionBuildError {
 
 type ActionBuilder = fn(json: serde_json::Value) -> anyhow::Result<Box<dyn Action>>;
 
+/// Action 注册表 - 管理所有已注册的 Action 类型。
+///
+/// 在应用启动时，所有 Action 通过 `register_action!` 宏注册到此表中。
+/// 注册表提供了：
+/// - 按名称查找 Action 并构建实例
+/// - 按 TypeId 查找 Action 名称
+/// - 获取所有已注册 Action 的名称列表
+/// - 管理弃用别名和弃用消息
 pub(crate) struct ActionRegistry {
+    /// 按名称存储的 Action 数据（包含构建函数和元数据）
     by_name: HashMap<&'static str, ActionData>,
+    /// TypeId -> Action 名称的映射
     names_by_type_id: HashMap<TypeId, &'static str>,
-    all_names: Vec<&'static str>, // So we can return a static slice.
-    deprecated_aliases: HashMap<&'static str, &'static str>, // deprecated name -> preferred name
-    deprecation_messages: HashMap<&'static str, &'static str>, // action name -> deprecation message
-    documentation: HashMap<&'static str, &'static str>, // action name -> documentation
+    /// 所有已注册 Action 的名称列表（用于返回静态切片）
+    all_names: Vec<&'static str>,
+    /// 弃用别名映射：旧名称 -> 推荐名称
+    deprecated_aliases: HashMap<&'static str, &'static str>,
+    /// 弃用消息映射：Action 名称 -> 弃用消息
+    deprecation_messages: HashMap<&'static str, &'static str>,
+    /// Action 文档映射：Action 名称 -> 文档字符串
+    documentation: HashMap<&'static str, &'static str>,
 }
 
 impl Default for ActionRegistry {

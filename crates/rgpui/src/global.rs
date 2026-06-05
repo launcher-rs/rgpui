@@ -1,36 +1,50 @@
+//! # 全局状态系统
+//!
+//! GPUI 的全局状态系统允许你在应用级别共享数据，而无需通过实体传递。
+//! 全局状态通过 [`Global`] trait 标记类型，通过 [`App`] 的方法进行访问。
+//!
+//! # 使用示例
+//!
+//! ```rust,ignore
+//! use rgpui::Global;
+//!
+//! /// 应用的主题配置
+//! struct ThemeConfig {
+//!     dark_mode: bool,
+//! }
+//!
+//! impl Global for ThemeConfig {}
+//!
+//! // 在 App 中设置全局状态
+//! cx.set_global(ThemeConfig { dark_mode: true });
+//!
+//! // 读取全局状态
+//! let theme = cx.global::<ThemeConfig>();
+//! ```
+//!
+//! # 限制访问
+//!
+//! 可以利用 Rust 的可见性系统限制全局状态的读写访问。
+//! 例如创建私有结构体实现 `Global`，然后通过 newtype 封装暴露有限的操作。
+
 use crate::{App, BorrowAppContext};
 
-/// A marker trait for types that can be stored in GPUI's global state.
+/// 全局状态标记 trait - 实现此 trait 的类型可以存储在 GPUI 的全局状态中。
 ///
-/// This trait exists to provide type-safe access to globals by ensuring only
-/// types that implement [`Global`] can be used with the accessor methods. For
-/// example, trying to access a global with a type that does not implement
-/// [`Global`] will result in a compile-time error.
+/// 此 trait 确保只有实现了 `Global` 的类型才能使用全局访问方法，
+/// 在编译时防止误用。
 ///
-/// Implement this on types you want to store in the context as a global.
-///
-/// ## Restricting Access to Globals
-///
-/// In some situations you may need to store some global state, but want to
-/// restrict access to reading it or writing to it.
-///
-/// In these cases, Rust's visibility system can be used to restrict access to
-/// a global value. For example, you can create a private struct that implements
-/// [`Global`] and holds the global state. Then create a newtype struct that wraps
-/// the global type and create custom accessor methods to expose the desired subset
-/// of operations.
+/// 此 trait 故意留空，仅作为标记使用。
+/// 可以通过 blanket 实现附加功能到实现了 `Global` 的类型上。
 pub trait Global: 'static {
-    // This trait is intentionally left empty, by virtue of being a marker trait.
-    //
-    // Use additional traits with blanket implementations to attach functionality
-    // to types that implement `Global`.
+    // 此 trait 故意留空，仅作为标记使用
 }
 
-/// A trait for reading a global value from the context.
+/// 从上下文中读取全局值的 trait。
 pub trait ReadGlobal {
-    /// Returns the global instance of the implementing type.
+    /// 返回实现类型的全局实例。
     ///
-    /// Panics if a global for that type has not been assigned.
+    /// 如果该类型的全局值尚未设置，会触发 panic。
     fn global(cx: &App) -> &Self;
 }
 
@@ -40,17 +54,17 @@ impl<T: Global> ReadGlobal for T {
     }
 }
 
-/// A trait for updating a global value in the context.
+/// 在上下文中更新全局值的 trait。
 pub trait UpdateGlobal {
-    /// Updates the global instance of the implementing type using the provided closure.
+    /// 使用提供的闭包更新全局实例。
     ///
-    /// This method provides the closure with mutable access to the context and the global simultaneously.
+    /// 闭包同时接收全局值的可变引用和上下文的可变引用。
     fn update_global<C, F, R>(cx: &mut C, update: F) -> R
     where
         C: BorrowAppContext,
         F: FnOnce(&mut Self, &mut C) -> R;
 
-    /// Set the global instance of the implementing type.
+    /// 设置全局实例。
     fn set_global<C>(cx: &mut C, global: Self)
     where
         C: BorrowAppContext;

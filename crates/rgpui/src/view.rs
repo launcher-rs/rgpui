@@ -11,28 +11,46 @@ use std::mem;
 use std::rc::Rc;
 use std::{any::TypeId, fmt, ops::Range};
 
+/// AnyView 的内部状态 - 存储预绘制和绘制数据的索引范围
 struct AnyViewState {
+    /// 预绘制状态在全局数组中的索引范围
     prepaint_range: Range<PrepaintStateIndex>,
+    /// 绘制指令在全局数组中的索引范围
     paint_range: Range<PaintIndex>,
+    /// 视图缓存键，用于判断视图是否可以复用上一帧的渲染结果
     cache_key: ViewCacheKey,
+    /// 该视图访问过的实体 ID 集合，用于判断缓存是否失效
     accessed_entities: FxHashSet<EntityId>,
 }
 
+/// 视图缓存键 - 通过比较这些属性判断视图是否需要重新渲染
 #[derive(Default)]
 struct ViewCacheKey {
+    /// 视图的边界矩形
     bounds: Bounds<Pixels>,
+    /// 内容遮罩（决定哪些区域可见）
     content_mask: ContentMask<Pixels>,
+    /// 文本样式
     text_style: TextStyle,
 }
 
-/// 一个动态类型的视图句柄，可以向下转换为特定类型的 [Entity]。
+/// 动态类型视图句柄 - 可以向下转换为特定类型的 [`Entity`]。
 ///
 /// `AnyView` 允许你在不知道具体类型的情况下存储和传递视图，
 /// 并在需要时通过 `downcast` 方法恢复具体类型。
+///
+/// # 使用场景
+///
+/// - 窗口的根视图通常存储为 `AnyView`
+/// - 需要在容器中存储不同类型视图时
+/// - 需要在运行时动态确定视图类型时
 #[derive(Clone, Debug)]
 pub struct AnyView {
+    /// 内部实体句柄（类型擦除）
     entity: AnyEntity,
+    /// 类型擦除的 render 函数指针
     render: fn(&AnyView, &mut Window, &mut App) -> AnyElement,
+    /// 缓存的样式精化（可选），用于视图缓存优化
     cached_style: Option<Rc<StyleRefinement>>,
 }
 
@@ -47,15 +65,17 @@ impl<V: Render> From<Entity<V>> for AnyView {
 }
 
 impl AnyView {
-    /// Indicate that this view should be cached when using it as an element.
-    /// When using this method, the view's previous layout and paint will be recycled from the previous frame if [Context::notify] has not been called since it was rendered.
-    /// The one exception is when [Window::refresh] is called, in which case caching is ignored.
+    /// 指示此视图在用作元素时应被缓存。
+    ///
+    /// 使用此方法后，如果自上次渲染以来没有调用 [`Context::notify`]，
+    /// 视图的上一帧布局和绘制结果将被复用。
+    /// 唯一的例外是调用 [`Window::refresh`] 时，此时会忽略缓存。
     pub fn cached(mut self, style: StyleRefinement) -> Self {
         self.cached_style = Some(style.into());
         self
     }
 
-    /// Convert this to a weak handle.
+    /// 转换为弱引用句柄。
     pub fn downgrade(&self) -> AnyWeakView {
         AnyWeakView {
             entity: self.entity.downgrade(),
@@ -63,8 +83,9 @@ impl AnyView {
         }
     }
 
-    /// Convert this to a [Entity] of a specific type.
-    /// If this handle does not contain a view of the specified type, returns itself in an `Err` variant.
+    /// 将此句柄向下转换为特定类型的 [`Entity`]。
+    ///
+    /// 如果此句柄不包含指定类型的视图，会在 `Err` 变体中返回自身。
     pub fn downcast<T: 'static>(self) -> Result<Entity<T>, Self> {
         match self.entity.downcast() {
             Ok(entity) => Ok(entity),
@@ -76,12 +97,12 @@ impl AnyView {
         }
     }
 
-    /// Gets the [TypeId] of the underlying view.
+    /// 获取底层视图的 [`TypeId`]
     pub fn entity_type(&self) -> TypeId {
         self.entity.entity_type
     }
 
-    /// Gets the entity id of this handle.
+    /// 获取此句柄的 [`EntityId`]
     pub fn entity_id(&self) -> EntityId {
         self.entity.entity_id()
     }
