@@ -4,6 +4,7 @@ use rgpui_component::{
     input::{Input, InputEvent, InputState},
     *,
 };
+use rgpui_component::text::TextView;
 use rgpui_component_assets::Assets;
 
 pub struct Example {
@@ -61,6 +62,9 @@ impl Render for Example {
                         view.is_checked = *checked;
                         cx.notify();
                     })),
+            )
+            .child(
+                TextView::plain("display_text",self.display_text.clone()).selectable(true)
             )
     }
 }

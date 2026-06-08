@@ -34,6 +34,15 @@ pub fn html(source: impl Into<SharedString>) -> TextView {
     TextView::html(id, source)
 }
 
+/// 创建一个新的纯文本文本视图，使用代码位置作为 id。
+///
+/// 支持文本选择功能，适用于显示原始文本内容。
+#[track_caller]
+pub fn plain(source: impl Into<SharedString>) -> TextView {
+    let id: ElementId = ElementId::CodeLocation(*std::panic::Location::caller());
+    TextView::plain(id, source)
+}
+
 #[derive(IntoElement, Clone)]
 pub enum Text {
     String(SharedString),

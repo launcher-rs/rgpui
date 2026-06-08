@@ -42,6 +42,8 @@ pub(super) enum TextViewFormat {
     Markdown,
     /// HTML view
     Html,
+    /// 纯文本视图
+    Plain,
 }
 
 /// The state of a TextView.
@@ -81,6 +83,11 @@ impl TextViewState {
     /// Create a HTML TextViewState.
     pub fn html(text: &str, cx: &mut Context<Self>) -> Self {
         Self::new(TextViewFormat::Html, text, cx)
+    }
+
+    /// 创建一个纯文本 TextViewState。
+    pub fn plain(text: &str, cx: &mut Context<Self>) -> Self {
+        Self::new(TextViewFormat::Plain, text, cx)
     }
 
     /// Create a new TextViewState.
@@ -522,6 +529,7 @@ fn parse_content(
             format::markdown::parse(&source, &mut node_cx, &options.highlight_theme)
         }
         TextViewFormat::Html => format::html::parse(&source, &mut node_cx),
+        TextViewFormat::Plain => format::plain::parse(&source, &mut node_cx),
     }?;
 
     if options.append {
