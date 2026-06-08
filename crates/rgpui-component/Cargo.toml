@@ -69,9 +69,18 @@ smol.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 core-text = "=21.0.0"
 
-[dev-dependencies]
-rgpui = { workspace = true, features = ["test-support"] }
-indoc = "2"
+
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+rgpui = { workspace = true, features = ["test-support"] }
+rgpui-component-assets = {workspace = true}
+rgpui-platform = { workspace = true }
+
+indoc = "2"
+
+[[example]]
+name = "dialog_example"
+path = "examples/dialog_example.rs"
