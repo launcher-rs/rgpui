@@ -75,7 +75,7 @@
       "upstream": "gpui-component",
       "title": "fix(text): keep selection anchored to content when scrolling",
       "status": "merged",
-      "merged_at": "2026-06-05"
+      "merged_at": "2026-06-08"
     }
   ]
 }

@@ -622,7 +622,7 @@ $configObj = Get-Content $PrConfigPath -Raw | ConvertFrom-Json
 
 if ($PR) {
     $prEntry = $configObj.prs | Where-Object { $_.number -eq $PR }
-    $prList = @(@{ Number = $PR; UpstreamName = if ($prEntry -and $prEntry.upstream) { $prEntry.upstream } else { $Upstream ?? 'zed' } })
+    $prList = @(@{ Number = $PR; UpstreamName = if ($prEntry -and $prEntry.upstream) { $prEntry.upstream } else { if ($Upstream) { $Upstream } else { 'zed' } } })
 } elseif ($All) {
     $prList = $configObj.prs | Where-Object { $_.status -eq 'pending' } | ForEach-Object {
         @{ Number = $_.number; UpstreamName = if ($_.upstream) { $_.upstream } else { 'zed' } }

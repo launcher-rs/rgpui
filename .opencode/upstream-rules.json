@@ -13,7 +13,23 @@
       { "from": "crates/gpui_wgpu/", "to": "crates/rgpui-wgpu/" },
       { "from": "crates/gpui_macros/", "to": "crates/rgpui-macros/" },
       { "from": "crates/gpui_tokio/", "to": "crates/rgpui-tokio/" }
-    ]
+    ],
+    "content_mappings": {
+      "gpui_macros": "rgpui_macros",
+      "gpui_platform": "rgpui_platform",
+      "gpui_windows": "rgpui_windows",
+      "gpui_macos": "rgpui_macos",
+      "gpui_linux": "rgpui_linux",
+      "gpui_web": "rgpui_web",
+      "gpui_wgpu": "rgpui_wgpu",
+      "gpui_tokio": "rgpui_tokio",
+      "gpui_util": "rgpui_util",
+      "collections": "crate::collections",
+      "sum_tree": "crate::sum_tree",
+      "scheduler": "crate::scheduler",
+      "refineable": "crate::refineable",
+      "http_client": "crate::http_client"
+    }
   },
   "gpui-component": {
     "url": "https://github.com/longbridge/gpui-component.git",

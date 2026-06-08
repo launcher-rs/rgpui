@@ -20,7 +20,7 @@ use crate::input::{
     display_map::LineLayout,
     element::RIGHT_MARGIN,
     popovers::{ContextMenu, InputContextMenu},
-    search::{self, SearchPanel},
+    search::SearchPanel,
 };
 use crate::menu::PopupMenu;
 use crate::scroll::AutoScroll;
@@ -48,6 +48,8 @@ use unicode_segmentation::*;
 pub struct Enter {
     /// Is confirm with secondary.
     pub secondary: bool,
+    /// Whether the Shift modifier was held when Enter was pressed.
+    pub shift: bool,
 }
 
 actions!(
@@ -125,9 +127,30 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("alt-delete", DeleteToNextWordEnd, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-delete", DeleteToNextWordEnd, Some(CONTEXT)),
-        KeyBinding::new("enter", Enter { secondary: false }, Some(CONTEXT)),
-        KeyBinding::new("shift-enter", Enter { secondary: false }, Some(CONTEXT)),
-        KeyBinding::new("secondary-enter", Enter { secondary: true }, Some(CONTEXT)),
+        KeyBinding::new(
+            "enter",
+            Enter {
+                secondary: false,
+                shift: false,
+            },
+            Some(CONTEXT),
+        ),
+        KeyBinding::new(
+            "shift-enter",
+            Enter {
+                secondary: false,
+                shift: true,
+            },
+            Some(CONTEXT),
+        ),
+        KeyBinding::new(
+            "secondary-enter",
+            Enter {
+                secondary: true,
+                shift: false,
+            },
+            Some(CONTEXT),
+        ),
         KeyBinding::new("escape", Escape, Some(CONTEXT)),
         KeyBinding::new("up", MoveUp, Some(CONTEXT)),
         KeyBinding::new("down", MoveDown, Some(CONTEXT)),
@@ -225,7 +248,6 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("ctrl-f", Search, Some(CONTEXT)),
     ]);
 
-    search::init(cx);
     number_input::init(cx);
 }
 

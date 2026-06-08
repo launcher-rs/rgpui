@@ -3,7 +3,6 @@
 //! Based on the `Input` example from the `rgpui` crate.
 //! https://github.com/zed-industries/zed/blob/main/crates/rgpui/examples/input.rs
 use anyhow::Result;
-use rgpui::sum_tree::Bias;
 use rgpui::{
     Action, App, AppContext, Bounds, ClipboardItem, Context, Edges, Entity, EntityInputHandler,
     EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding,
@@ -18,6 +17,7 @@ use serde::Deserialize;
 use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
+use sum_tree::Bias;
 use unicode_segmentation::*;
 
 use super::{
@@ -29,6 +29,7 @@ use super::{
     mode::InputMode,
     number_input,
 };
+use crate::Size;
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::highlighter::DiagnosticSet;
 #[cfg(not(target_family = "wasm"))]
@@ -42,10 +43,9 @@ use crate::input::{
     popovers::{ContextMenu, DiagnosticPopover, HoverPopover, InputContextMenu},
     search::{self, SearchPanel},
 };
-use rgpui_component::Size;
-use rgpui_component::history::History;
-use rgpui_component::menu::PopupMenu;
-use rgpui_component::scroll::AutoScroll;
+use crate::menu::PopupMenu;
+use crate::scroll::AutoScroll;
+use crate::{Root, history::History};
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = input, no_json)]
@@ -1512,7 +1512,7 @@ impl InputState {
     ) {
         // Input has its own text selection; suppress the window-level text
         // selection (Root) so it does not start a drag from here.
-        rgpui_component::global_state::GlobalState::suppress_text_selection(cx);
+        crate::global_state::GlobalState::suppress_text_selection(cx);
 
         // Clear inline completion on any mouse interaction
         self.clear_inline_completion(cx);
@@ -2097,7 +2097,7 @@ impl InputState {
         cx.emit(InputEvent::Focus);
     }
 
-    fn on_blur(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_context_menu_open(cx) {
             return;
         }
@@ -2111,6 +2111,9 @@ impl InputState {
         self.clear_inline_completion(cx);
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
+        });
+        Root::update(window, cx, |root, _, _| {
+            root.focused_input = None;
         });
         cx.emit(InputEvent::Blur);
         cx.notify();
@@ -2760,7 +2763,7 @@ impl Render for InputState {
             .id("input-state")
             .flex_1()
             .when(self.mode.is_multi_line(), |this| this.h_full())
-            .flex_grow()
+            .flex_grow_1()
             .overflow_x_hidden()
             .child(TextElement::new(cx.entity().clone()).placeholder(self.placeholder.clone()))
             .children(self.diagnostic_popover.clone())
@@ -2772,8 +2775,8 @@ impl Render for InputState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::Theme;
     use rgpui::{TestAppContext, VisualTestContext};
-    use rgpui_component::theme::Theme;
 
     struct InputView {
         input: Entity<InputState>,
@@ -2794,7 +2797,7 @@ mod tests {
 
                     input = Some(cx.new(|cx| InputState::new(window, cx).code_editor("sql")));
 
-                    cx.new(|cx| rgpui_component::Root::new(input.clone().unwrap(), window, cx))
+                    cx.new(|cx| crate::Root::new(input.clone().unwrap(), window, cx))
                 })
                 .unwrap()
             });
