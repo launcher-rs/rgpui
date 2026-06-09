@@ -270,13 +270,13 @@ impl Button {
     }
 
     /// Set the border corners side of the Button.
-    pub(crate) fn border_corners(mut self, corners: impl Into<Corners<bool>>) -> Self {
+    pub fn border_corners(mut self, corners: impl Into<Corners<bool>>) -> Self {
         self.border_corners = corners.into();
         self
     }
 
     /// Set the border edges of the Button.
-    pub(crate) fn border_edges(mut self, edges: impl Into<Edges<bool>>) -> Self {
+    pub fn border_edges(mut self, edges: impl Into<Edges<bool>>) -> Self {
         self.border_edges = edges.into();
         self
     }

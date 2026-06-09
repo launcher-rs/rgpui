@@ -29,7 +29,12 @@
       "scheduler": "crate::scheduler",
       "refineable": "crate::refineable",
       "http_client": "crate::http_client"
-    }
+    },
+    "cargo_exclude_fields": [
+      "name", "version", "edition", "authors", "description",
+      "license", "repository", "documentation", "readme", "homepage",
+      "rust-version", "publish", "categories", "keywords", "exclude", "include"
+    ]
   },
   "gpui-component": {
     "url": "https://github.com/longbridge/gpui-component.git",
@@ -56,7 +61,12 @@
       "gpui_editor": "rgpui_editor",
       "crates/ui/src/highlighter/": "crates/rgpui-editor/src/highlighter/",
       "crates/ui/src/input/": "crates/rgpui-editor/src/input/"
-    }
+    },
+    "cargo_exclude_fields": [
+      "name", "version", "edition", "authors", "description",
+      "license", "repository", "documentation", "readme", "homepage",
+      "rust-version", "publish", "categories", "keywords", "exclude", "include"
+    ]
   },
   "yororen-ui": {
     "url": "https://github.com/MeowLynxSea/yororen-ui.git",
@@ -74,6 +84,11 @@
       "yororen_ui": "rgpui_yororen_ui",
       "yororen-ui": "rgpui-yororen-ui",
       "gpui": "rgpui"
-    }
+    },
+    "cargo_exclude_fields": [
+      "name", "version", "edition", "authors", "description",
+      "license", "repository", "documentation", "readme", "homepage",
+      "rust-version", "publish", "categories", "keywords", "exclude", "include"
+    ]
   }
 }

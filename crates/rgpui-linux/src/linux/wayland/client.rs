@@ -13,11 +13,11 @@ use calloop::{
     timer::{TimeoutAction, Timer},
 };
 use calloop_wayland_source::WaylandSource;
+use crate::collections::HashMap;
 use filedescriptor::Pipe;
-use rgpui::ResultExt;
-use rgpui::collections::HashMap;
-use rgpui::http_client::Url;
+use crate::http_client::Url;
 use smallvec::SmallVec;
+use util::ResultExt as _;
 use wayland_backend::client::ObjectId;
 use wayland_backend::protocol::WEnum;
 use wayland_client::event_created_child;
@@ -78,10 +78,10 @@ use super::{
 };
 
 use crate::linux::{
-    DOUBLE_CLICK_INTERVAL, LinuxClient, LinuxCommon, LinuxKeyboardLayout, SCROLL_LINES,
-    capslock_from_xkb, cursor_style_to_icon_names, get_xkb_compose_state, is_within_click_distance,
-    keystroke_from_xkb, keystroke_underlying_dead_key, modifiers_from_xkb, open_uri_internal,
-    read_fd, reveal_path_internal,
+    DOUBLE_CLICK_INTERVAL, LinuxClient, LinuxCommon, LinuxKeyboardLayout, PIPE_READ_TIMEOUT,
+    SCROLL_LINES, capslock_from_xkb, cursor_style_to_icon_names, get_xkb_compose_state,
+    is_within_click_distance, keystroke_from_xkb, keystroke_underlying_dead_key,
+    modifiers_from_xkb, open_uri_internal, read_fd_with_timeout, reveal_path_internal,
     wayland::{
         clipboard::{Clipboard, DataOffer, FILE_LIST_MIME_TYPE, TEXT_MIME_TYPES},
         cursor::Cursor,
@@ -104,7 +104,7 @@ use wayland_protocols::wp::linux_dmabuf::zv1::client::{
     zwp_linux_dmabuf_feedback_v1, zwp_linux_dmabuf_v1,
 };
 
-/// 用于将 evdev 扫描码转换为 xkb 扫描码
+/// Used to convert evdev scancode to xkb scancode
 const MIN_KEYCODE: u32 = 8;
 
 const UNKNOWN_KEYBOARD_LAYOUT_NAME: SharedString = SharedString::new_static("unknown");
@@ -264,6 +264,7 @@ pub(crate) struct WaylandClientState {
     pending_activation: Option<PendingActivation>,
     event_loop: Option<EventLoop<'static, WaylandClientStatePtr>>,
     pub common: LinuxCommon,
+    ime_enabled: Option<bool>,
 }
 
 pub struct DragState {
@@ -286,43 +287,40 @@ pub(crate) struct KeyRepeat {
     current_keycode: Option<xkb::Keycode>,
 }
 
-/// 待激活类型
 pub(crate) enum PendingActivation {
-    /// 在浏览器中打开的 URI
+    /// URI to open in the web browser.
     Uri(String),
-    /// 在文件管理器中打开的路径
+    /// Path to open in the file explorer.
     Path(PathBuf),
-    /// 需要提升的自身窗口
+    /// A window from ourselves to raise.
     Window(ObjectId),
 }
 
-/// 此结构体用于符合 Rust 的孤儿规则，使我们可以在状态上分发但将窗口句柄交给 GPUI
+/// This struct is required to conform to Rust's orphan rules, so we can dispatch on the state but hand the
+/// window to GPUI.
 #[derive(Clone)]
 pub struct WaylandClientStatePtr(Weak<RefCell<WaylandClientState>>);
 
 impl WaylandClientStatePtr {
-    /// 获取客户端实例
     pub fn get_client(&self) -> Rc<RefCell<WaylandClientState>> {
         self.0
             .upgrade()
             .expect("The pointer should always be valid when dispatching in wayland")
     }
 
-    /// 获取指定类型的序列号
     pub fn get_serial(&self, kind: SerialKind) -> u32 {
         self.0.upgrade().unwrap().borrow().serial_tracker.get(kind)
     }
 
-    /// 设置待激活的窗口
     pub fn set_pending_activation(&self, window: ObjectId) {
         self.0.upgrade().unwrap().borrow_mut().pending_activation =
             Some(PendingActivation::Window(window));
     }
 
-    /// 启用输入法
     pub fn enable_ime(&self) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
+        state.ime_enabled = Some(true);
         let Some(text_input) = state.text_input.take() else {
             return;
         };
@@ -345,10 +343,10 @@ impl WaylandClientStatePtr {
         state.text_input = Some(text_input);
     }
 
-    /// 禁用输入法
     pub fn disable_ime(&self) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
+        state.ime_enabled = Some(false);
         state.composing = false;
         if let Some(text_input) = &state.text_input {
             text_input.disable();
@@ -356,7 +354,11 @@ impl WaylandClientStatePtr {
         }
     }
 
-    /// 更新输入法光标位置
+    pub fn ime_enabled(&self) -> Option<bool> {
+        let client = self.get_client();
+        client.borrow().ime_enabled
+    }
+
     pub fn update_ime_position(&self, bounds: Bounds<Pixels>) {
         let client = self.get_client();
         let state = client.borrow_mut();
@@ -374,7 +376,6 @@ impl WaylandClientStatePtr {
         text_input.commit();
     }
 
-    /// 处理键盘布局变更
     pub fn handle_keyboard_layout_change(&self) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
@@ -404,7 +405,6 @@ impl WaylandClientStatePtr {
         }
     }
 
-    /// 移除窗口引用
     pub fn drop_window(&self, surface_id: &ObjectId) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
@@ -428,17 +428,16 @@ impl WaylandClientStatePtr {
 }
 
 impl WaylandClientState {
-    /// 隐藏光标直到鼠标移动
     fn hide_cursor_until_mouse_moves(&mut self) {
         if self.cursor_hidden_window.is_some() {
             return;
         }
         let Some(focused_window) = self.mouse_focused_window.clone() else {
-            // 没有表面可以应用隐藏光标
+            // No surface to apply the hidden cursor to.
             return;
         };
         let Some(wl_pointer) = self.wl_pointer.clone() else {
-            // 座位失去了指针能力；无需隐藏
+            // Seat lost its pointer capability; nothing to hide.
             return;
         };
         let serial = self.serial_tracker.get(SerialKind::MouseEnter);
@@ -446,7 +445,6 @@ impl WaylandClientState {
         self.cursor_hidden_window = Some(focused_window);
     }
 
-    /// 隐藏后恢复光标
     fn restore_cursor_after_hide(&mut self) {
         if self.cursor_hidden_window.take().is_none() {
             return;
@@ -508,9 +506,8 @@ impl Drop for WaylandClient {
 
 const WL_DATA_DEVICE_MANAGER_VERSION: u32 = 3;
 
-/// 获取 wl_seat 版本，确保支持 wl_pointer.frame 事件
 fn wl_seat_version(version: u32) -> u32 {
-    // 我们依赖 wl_pointer.frame 事件
+    // We rely on the wl_pointer.frame event
     const WL_SEAT_MIN_VERSION: u32 = 5;
     const WL_SEAT_MAX_VERSION: u32 = 9;
 
@@ -524,7 +521,6 @@ fn wl_seat_version(version: u32) -> u32 {
     version.clamp(WL_SEAT_MIN_VERSION, WL_SEAT_MAX_VERSION)
 }
 
-/// 获取 wl_output 版本
 fn wl_output_version(version: u32) -> u32 {
     const WL_OUTPUT_MIN_VERSION: u32 = 2;
     const WL_OUTPUT_MAX_VERSION: u32 = 4;
@@ -735,6 +731,7 @@ impl WaylandClient {
             cursor,
             pending_activation: None,
             event_loop: Some(event_loop),
+            ime_enabled: None,
         }));
 
         WaylandSource::new(conn, event_queue)
@@ -954,9 +951,7 @@ impl LinuxClient for WaylandClient {
         };
         if state.mouse_focused_window.is_some() || state.keyboard_focused_window.is_some() {
             state.clipboard.set_primary(item);
-            let serial = state
-                .serial_tracker
-                .latest_of(&[SerialKind::KeyPress, SerialKind::MousePress]);
+            let serial = state.serial_tracker.get_latest();
             let data_source = primary_selection_manager.create_source(&state.globals.qh, ());
             for mime_type in TEXT_MIME_TYPES {
                 data_source.offer(mime_type.to_string());
@@ -976,9 +971,7 @@ impl LinuxClient for WaylandClient {
         };
         if state.mouse_focused_window.is_some() || state.keyboard_focused_window.is_some() {
             state.clipboard.set(item);
-            let serial = state
-                .serial_tracker
-                .latest_of(&[SerialKind::KeyPress, SerialKind::MousePress]);
+            let serial = state.serial_tracker.get_latest();
             let data_source = data_device_manager.create_data_source(&state.globals.qh, ());
             for mime_type in TEXT_MIME_TYPES {
                 data_source.offer(mime_type.to_string());
@@ -1704,7 +1697,7 @@ impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for WaylandClientStatePtr {
                 if let Some(commit_text) = text {
                     drop(state);
                     // IBus Intercepts keys like `a`, `b`, but those keys are needed for vim mode.
-                    // We should only send ASCII characters to Zed, otherwise a user could remap a letter like `か` or `相`.
+                    // We should only send ASCII characters to Zed, otherwise a user could remap a letter like `銇媊 or `鐩竊.
                     if commit_text.len() == 1 {
                         window.handle_input(PlatformInput::KeyDown(KeyDownEvent {
                             keystroke: Keystroke {
@@ -2293,7 +2286,7 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                     drop(pipe.write);
 
                     let read_task = state.common.background_executor.spawn(async {
-                        let buffer = unsafe { read_fd(fd)? };
+                        let buffer = read_fd_with_timeout(fd, PIPE_READ_TIMEOUT)?;
                         let text = String::from_utf8(buffer)?;
                         anyhow::Ok(text)
                     });

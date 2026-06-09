@@ -1,9 +1,9 @@
 {
-  "$schema": "https://github.com/longbridge/gpui-component/raw/refs/heads/main/.theme-schema.json",
+  "$schema": "https://github.com/longbridge/rgpui-component/raw/refs/heads/main/.theme-schema.json",
   "name": "Default",
   "author": "shadcn",
-  "url": "https://ui.shadcn.com",
-  "_ref": "https://github.com/shadcn-ui/ui/blob/main/apps/v4/public/r/colors/neutral.json",
+  "url": "https://rgpui-component.shadcn.com",
+  "_ref": "https://github.com/shadcn-rgpui-component/rgpui-component/blob/main/apps/v4/public/r/colors/neutral.json",
   "themes": [
     {
       "is_default": true,
@@ -91,6 +91,8 @@
         "tiles.background": "#fafafa",
         "title_bar.background": "#F8F8F8",
         "title_bar.border": "#e5e5e5",
+        "status_bar.background": "#F8F8F8",
+        "status_bar.border": "#e5e5e5",
         "warning.background": "yellow-500",
         "warning.foreground": "neutral-50",
         "overlay": "#0000000d",
@@ -290,6 +292,8 @@
         "tiles.background": "#171717",
         "title_bar.background": "#171717",
         "title_bar.border": "#262626",
+        "status_bar.background": "#171717",
+        "status_bar.border": "#262626",
         "warning.background": "yellow-400",
         "warning.foreground": "yellow-600",
         "overlay": "#00000033",

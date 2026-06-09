@@ -12,12 +12,12 @@ pub use line_wrapper::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::collections::FxHashMap;
 use crate::{
     Bounds, DevicePixels, Hsla, Pixels, PlatformTextSystem, Point, Result, SharedString, Size,
     StrikethroughStyle, TextRenderingMode, UnderlineStyle, px,
 };
 use anyhow::{Context as _, anyhow};
+use crate::collections::FxHashMap;
 use core::fmt;
 use derive_more::{Add, Deref, FromStr, Sub};
 use itertools::Itertools;
@@ -32,12 +32,12 @@ use std::{
     sync::Arc,
 };
 
-/// 特定字体的不透明标识符。
+/// An opaque identifier for a specific font.
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct FontId(pub usize);
 
-/// 特定字体族的不透明标识符。
+/// An opaque identifier for a specific font family.
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 pub struct FontFamilyId(pub usize);
 
@@ -47,9 +47,7 @@ pub const SUBPIXEL_VARIANTS_X: u8 = 4;
 /// Number of subpixel glyph variants along the Y axis.
 pub const SUBPIXEL_VARIANTS_Y: u8 = 1;
 
-/// GPUI 文本渲染子系统。
-///
-/// 负责字体加载、字形光栅化、文本布局等核心文本处理功能。
+/// The GPUI text rendering sub system.
 pub struct TextSystem {
     platform_text_system: Arc<dyn PlatformTextSystem>,
     font_ids_by_font: RwLock<FxHashMap<Font, Result<FontId>>>,
@@ -95,7 +93,7 @@ impl TextSystem {
                 .map(|font| font.family.to_string()),
         );
         names.push(".SystemUIFont".to_string());
-        names.sort();
+        names.sort_unstable();
         names.dedup();
         names
     }
@@ -236,12 +234,6 @@ impl TextSystem {
         Ok(self.advance(font_id, font_size, 'm')?.width)
     }
 
-    // Consider removing this?
-    /// Returns the shaped layout width of an `em`.
-    pub fn em_layout_width(&self, font_id: FontId, font_size: Pixels) -> Pixels {
-        self.layout_width(font_id, font_size, 'm')
-    }
-
     /// Returns the width of an `ch`.
     ///
     /// Uses the width of the `0` character in the given font and size.
@@ -367,9 +359,7 @@ impl TextSystem {
     }
 }
 
-/// GPUI 文本布局子系统。
-///
-/// 负责文本行和多行文本的形状化（shaping）和布局。
+/// The GPUI text layout subsystem.
 #[derive(Deref)]
 pub struct WindowTextSystem {
     line_layout_cache: LineLayoutCache,
@@ -703,6 +693,28 @@ impl WindowTextSystem {
         layout
     }
 
+    /// Returns the shaped layout width of for the given character, in the given font and size.
+    pub fn layout_width(&self, font_id: FontId, font_size: Pixels, ch: char) -> Pixels {
+        let mut buffer = [0; 4];
+        let buffer: &_ = ch.encode_utf8(&mut buffer);
+        self.line_layout_cache
+            .layout_line(
+                buffer,
+                font_size,
+                &[FontRun {
+                    len: buffer.len(),
+                    font_id,
+                }],
+                None,
+            )
+            .width
+    }
+
+    /// Returns the shaped layout width of an `em`.
+    pub fn em_layout_width(&self, font_id: FontId, font_size: Pixels) -> Pixels {
+        self.layout_width(font_id, font_size, 'm')
+    }
+
     /// Probe the line layout cache using a caller-provided content hash, without allocating.
     ///
     /// Returns `Some(layout)` if the layout is already cached in either the current frame
@@ -868,8 +880,8 @@ impl DerefMut for LineWrapperHandle {
     }
 }
 
-/// 文本的字重，范围从 100.0 到 900.0，
-/// 其中 400.0 为正常字重。
+/// The degree of blackness or stroke thickness of a font. This value ranges from 100.0 to 900.0,
+/// with 400.0 as normal.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Serialize, Deserialize, Add, Sub, FromStr)]
 #[serde(transparent)]
 pub struct FontWeight(pub f32);
@@ -952,7 +964,7 @@ impl schemars::JsonSchema for FontWeight {
     }
 }
 
-/// 允许选择斜体或倾斜字体。
+/// Allows italic or oblique faces to be selected.
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash, Default, Serialize, Deserialize, JsonSchema)]
 pub enum FontStyle {
     /// A face that is neither italic not obliqued.
@@ -970,7 +982,7 @@ impl Display for FontStyle {
     }
 }
 
-/// 用于 [`crate::TextLayout`] 的样式化文本段。
+/// A styled run of text, for use in [`crate::TextLayout`].
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TextRun {
     /// A number of utf8 bytes
@@ -996,7 +1008,7 @@ impl TextRun {
     }
 }
 
-/// 特定字形的标识符，由 [`WindowTextSystem::layout_line`] 返回。
+/// An identifier for a specific glyph, as returned by [`WindowTextSystem::layout_line`].
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[repr(C)]
 pub struct GlyphId(pub u32);
@@ -1034,7 +1046,7 @@ impl Hash for RenderGlyphParams {
     }
 }
 
-/// 用于标识特定字体的配置详情。
+/// The configuration details for identifying a specific font.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Font {
     /// The font family name.
@@ -1086,8 +1098,8 @@ impl Font {
     }
 }
 
-/// 用于存储字体指标的结构体。
-/// 用于定义字体的测量值。
+/// A struct for storing font metrics.
+/// It is used to define the measurements of a typeface.
 #[derive(Clone, Copy, Debug)]
 pub struct FontMetrics {
     /// The number of font units that make up the "em square",

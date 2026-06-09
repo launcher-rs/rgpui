@@ -76,6 +76,40 @@
 - `.opencode/upstream-rules.json` — 上游仓库配置（URL、分支、路径映射、内容替换规则）
 - `UPSTREAM-PRS.json` — PR 状态追踪（status: pending / merged / check-failed / analyzed）
 
+## 5. 重要规则：保护 Cargo.toml 包元数据
+
+**合并 PR 时，禁止修改 Cargo.toml 中以下包元数据字段：**
+
+| 字段 | 说明 |
+|------|------|
+| `name` | crate 名称 |
+| `version` | 版本号 |
+| `edition` | Rust 版本 |
+| `authors` | 作者信息 |
+| `description` | 描述 |
+| `license` | 许可证 |
+| `repository` | 仓库地址 |
+| `documentation` | 文档地址 |
+| `readme` | 自述文件 |
+| `homepage` | 主页 |
+| `rust-version` | MSRV |
+| `publish` | 发布设置 |
+
+这些字段在 `upstream-rules.json` 的 `cargo_exclude_fields` 中配置，脚本应自动跳过这些字段的内容替换。
+
+### 合并后手动检查
+
+合并完成后，检查所有被修改的 `Cargo.toml` 文件：
+1. `version` 是否被上游覆盖（应保持 rgpui 的原始版本号）
+2. `name` 是否被错误修改（应保持 rgpui 前缀的 crate 名称）
+3. `edition` 是否被更改（整个 workspace 统一使用 2024 edition）
+
+若发现 Cargo.toml 包元数据被错误修改，应立即还原。使用以下命令查看变更：
+```powershell
+git diff -- '*/Cargo.toml'
+```
+
+
 ## 5. 手动合并步骤
 
 当自动脚本不适用时（如需要手动调整）：

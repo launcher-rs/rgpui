@@ -10,36 +10,36 @@ use strum::IntoEnumIterator;
 use wayland_client::{Connection, protocol::wl_data_offer::WlDataOffer};
 use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1;
 
-use crate::linux::{WaylandClientStatePtr, platform::read_fd};
+use crate::linux::{
+    WaylandClientStatePtr,
+    platform::{PIPE_READ_TIMEOUT, read_fd_with_timeout},
+};
 use rgpui::{ClipboardEntry, ClipboardItem, Image, ImageFormat, hash};
 
-/// 我们将提供给其他程序的文本 mime 类型
+/// Text mime types that we'll offer to other programs.
 pub(crate) const TEXT_MIME_TYPES: [&str; 3] =
     ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"];
-/// 文件列表的 mime 类型
 pub(crate) const FILE_LIST_MIME_TYPE: &str = "text/uri-list";
 
-/// 我们接受其他程序的文本 mime 类型
+/// Text mime types that we'll accept from other programs.
 pub(crate) const ALLOWED_TEXT_MIME_TYPES: [&str; 2] = ["text/plain;charset=utf-8", "UTF8_STRING"];
 
-/// Wayland 剪贴板实现
 pub(crate) struct Clipboard {
     connection: Connection,
     loop_handle: LoopHandle<'static, WaylandClientStatePtr>,
     self_mime: String,
 
-    // 内部剪贴板
+    // Internal clipboard
     contents: Option<ClipboardItem>,
     primary_contents: Option<ClipboardItem>,
 
-    // 外部剪贴板
+    // External clipboard
     cached_read: Option<ClipboardItem>,
     current_offer: Option<DataOffer<WlDataOffer>>,
     cached_primary_read: Option<ClipboardItem>,
     current_primary_offer: Option<DataOffer<ZwpPrimarySelectionOfferV1>>,
 }
 
-/// 数据接收 trait，用于统一处理 WlDataOffer 和 ZwpPrimarySelectionOfferV1
 pub(crate) trait ReceiveData {
     fn receive_data(&self, mime_type: String, fd: BorrowedFd<'_>);
 }
@@ -57,14 +57,13 @@ impl ReceiveData for ZwpPrimarySelectionOfferV1 {
 }
 
 #[derive(Clone, Debug)]
-/// `WlDataOffer` 和 `ZwpPrimarySelectionOfferV1` 的包装器，用于帮助跟踪 mime 类型
+/// Wrapper for `WlDataOffer` and `ZwpPrimarySelectionOfferV1`, used to help track mime types.
 pub(crate) struct DataOffer<T: ReceiveData> {
     pub inner: T,
     mime_types: Vec<String>,
 }
 
 impl<T: ReceiveData> DataOffer<T> {
-    /// 创建新的 DataOffer 实例
     pub fn new(offer: T) -> Self {
         Self {
             inner: offer,
@@ -72,12 +71,10 @@ impl<T: ReceiveData> DataOffer<T> {
         }
     }
 
-    /// 添加 mime 类型
     pub fn add_mime_type(&mut self, mime_type: String) {
         self.mime_types.push(mime_type)
     }
 
-    /// 检查是否包含指定 mime 类型
     fn has_mime_type(&self, mime_type: &str) -> bool {
         self.mime_types.iter().any(|t| t == mime_type)
     }
@@ -92,7 +89,7 @@ impl<T: ReceiveData> DataOffer<T> {
 
         connection.flush().unwrap();
 
-        match unsafe { read_fd(fd) } {
+        match read_fd_with_timeout(fd, PIPE_READ_TIMEOUT) {
             Ok(bytes) => Some(bytes),
             Err(err) => {
                 log::error!("error reading clipboard pipe: {err:?}");
@@ -116,8 +113,9 @@ impl<T: ReceiveData> DataOffer<T> {
             }
         };
 
-        // 将文本标准化为 unix 换行符，否则
-        // 例如从 firefox 复制时会插入很多空行，非常烦人
+        // Normalize the text to unix line endings, otherwise
+        // copying from eg: firefox inserts a lot of blank
+        // lines, and that is super annoying.
         let result = text_content.replace("\r\n", "\n");
         Some(ClipboardItem::new_string(result))
     }

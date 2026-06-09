@@ -5,7 +5,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Colorize, HighlightTheme, HighlightThemeStyle, Theme, ThemeColor, ThemeMode, try_parse_color,
+    Colorize, Theme, ThemeColor, ThemeMode,
+    highlighter::{HighlightTheme, HighlightThemeStyle},
+    try_parse_color,
 };
 
 /// Represents a theme configuration.
@@ -63,7 +65,7 @@ pub struct ThemeConfig {
     pub colors: ThemeConfigColors,
     /// The highlight theme, this part is combilbility with `style` section in Zed theme.
     ///
-    /// https://github.com/zed-industries/zed/blob/f50041779dcfd7a76c8aec293361c60c53f02d51/assets/themes/ayu/ayu.json#L9
+    /// https://github.com/zed-industries/zed/blob/f50041779dcfd7a76c8aec293361c60c53f02d51/rgpui-component-assets/themes/ayu/ayu.json#L9
     pub highlight: Option<HighlightThemeStyle>,
 }
 
@@ -357,6 +359,12 @@ pub struct ThemeConfigColors {
     /// TitleBar border color.
     #[serde(rename = "title_bar.border")]
     pub title_bar_border: Option<SharedString>,
+    /// StatusBar background color, use for the bottom status bar.
+    #[serde(rename = "status_bar.background")]
+    pub status_bar: Option<SharedString>,
+    /// StatusBar border color.
+    #[serde(rename = "status_bar.border")]
+    pub status_bar_border: Option<SharedString>,
     /// Background color for Tiles.
     #[serde(rename = "tiles.background")]
     pub tiles: Option<SharedString>,
@@ -649,6 +657,8 @@ impl ThemeColor {
         apply_color!(table_row_border, fallback = self.border);
         apply_color!(title_bar, fallback = self.background);
         apply_color!(title_bar_border, fallback = self.border);
+        apply_color!(status_bar, fallback = self.title_bar);
+        apply_color!(status_bar_border, fallback = self.title_bar_border);
         apply_color!(tiles, fallback = self.background);
         apply_color!(overlay);
         apply_color!(window_border, fallback = self.border);

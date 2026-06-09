@@ -1,21 +1,19 @@
 use anyhow::{Context as _, Result};
-use etagere::{BucketedAtlasAllocator, size2};
-use parking_lot::Mutex;
 use rgpui::collections::FxHashMap;
+use etagere::{BucketedAtlasAllocator, size2};
 use rgpui::{
     AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTextureList, AtlasTile, Bounds, DevicePixels,
     PlatformAtlas, Point, Size,
 };
+use parking_lot::Mutex;
 use std::{borrow::Cow, ops, sync::Arc};
 
 use crate::WgpuContext;
 
-/// 将 DevicePixels 尺寸转换为 etagere 所需的尺寸格式
 fn device_size_to_etagere(size: Size<DevicePixels>) -> etagere::Size {
     size2(size.width.0, size.height.0)
 }
 
-/// 将 etagere 坐标点转换为 DevicePixels 坐标点
 fn etagere_point_to_device(point: etagere::Point) -> Point<DevicePixels> {
     Point {
         x: DevicePixels(point.x),
@@ -23,17 +21,14 @@ fn etagere_point_to_device(point: etagere::Point) -> Point<DevicePixels> {
     }
 }
 
-/// wgpu 纹理图集实现，用于缓存和渲染纹理
 pub struct WgpuAtlas(Mutex<WgpuAtlasState>);
 
-/// 待上传的纹理数据
 struct PendingUpload {
     id: AtlasTextureId,
     bounds: Bounds<DevicePixels>,
     data: Vec<u8>,
 }
 
-/// 图集内部状态
 struct WgpuAtlasState {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
@@ -44,13 +39,11 @@ struct WgpuAtlasState {
     pending_uploads: Vec<PendingUpload>,
 }
 
-/// wgpu 纹理信息，包含纹理视图
 pub struct WgpuTextureInfo {
     pub view: wgpu::TextureView,
 }
 
 impl WgpuAtlas {
-    /// 创建新的纹理图集
     pub fn new(
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
@@ -68,7 +61,6 @@ impl WgpuAtlas {
         }))
     }
 
-    /// 从 WgpuContext 创建纹理图集
     pub fn from_context(context: &WgpuContext) -> Self {
         Self::new(
             context.device.clone(),
@@ -77,13 +69,11 @@ impl WgpuAtlas {
         )
     }
 
-    /// 在每帧渲染前刷新待上传的纹理数据
     pub fn before_frame(&self) {
         let mut lock = self.0.lock();
         lock.flush_uploads();
     }
 
-    /// 获取指定纹理 ID 的纹理信息
     pub fn get_texture_info(&self, id: AtlasTextureId) -> WgpuTextureInfo {
         let lock = self.0.lock();
         let texture = &lock.storage[id];
@@ -92,8 +82,8 @@ impl WgpuAtlas {
         }
     }
 
-    /// 清除所有缓存的纹理和图块，强制它们重新创建。
-    /// 当设备仍然有效时，用于增量恢复。
+    /// Clears all cached textures and tiles, forcing them to be recreated.
+    /// Use this for incremental recovery when the device is still valid.
     pub fn clear(&self) {
         let mut lock = self.0.lock();
         lock.storage = WgpuAtlasStorage::default();
@@ -101,8 +91,8 @@ impl WgpuAtlas {
         lock.pending_uploads.clear();
     }
 
-    /// 处理设备丢失，清除所有纹理和缓存的图块。
-    /// 图集将在后续帧中按需惰性重新创建纹理。
+    /// Handles device lost by clearing all textures and cached tiles.
+    /// The atlas will lazily recreate textures as needed on subsequent frames.
     pub fn handle_device_lost(&self, context: &WgpuContext) {
         let mut lock = self.0.lock();
         lock.device = context.device.clone();
@@ -140,15 +130,17 @@ impl PlatformAtlas for WgpuAtlas {
     fn remove(&self, key: &AtlasKey) {
         let mut lock = self.0.lock();
 
-        let Some(id) = lock.tiles_by_key.remove(key).map(|tile| tile.texture_id) else {
+        let Some(tile) = lock.tiles_by_key.remove(key) else {
             return;
         };
+        let id = tile.texture_id;
 
         let Some(texture_slot) = lock.storage[id.kind].textures.get_mut(id.index as usize) else {
             return;
         };
 
         if let Some(mut texture) = texture_slot.take() {
+            texture.allocator.deallocate(tile.tile_id.into());
             texture.decrement_ref_count();
             if texture.is_unreferenced() {
                 lock.pending_uploads
@@ -164,7 +156,6 @@ impl PlatformAtlas for WgpuAtlas {
 }
 
 impl WgpuAtlasState {
-    /// 分配图集空间，如果现有纹理无法容纳则创建新纹理
     fn allocate(
         &mut self,
         size: Size<DevicePixels>,
@@ -186,7 +177,6 @@ impl WgpuAtlasState {
         texture.allocate(size)
     }
 
-    /// 创建新纹理并添加到图集中
     fn push_texture(
         &mut self,
         min_size: Size<DevicePixels>,
@@ -257,7 +247,6 @@ impl WgpuAtlasState {
         }
     }
 
-    /// 将纹理数据加入待上传队列
     fn upload_texture(&mut self, id: AtlasTextureId, bounds: Bounds<DevicePixels>, bytes: &[u8]) {
         let data = self
             .storage
@@ -269,7 +258,6 @@ impl WgpuAtlasState {
             .push(PendingUpload { id, bounds, data });
     }
 
-    /// 将所有待上传的纹理数据写入 GPU
     fn flush_uploads(&mut self) {
         for upload in self.pending_uploads.drain(..) {
             let Some(texture) = self.storage.get(upload.id) else {
@@ -305,7 +293,6 @@ impl WgpuAtlasState {
 }
 
 #[derive(Default)]
-/// 图集纹理存储，按类型分类管理
 struct WgpuAtlasStorage {
     monochrome_textures: AtlasTextureList<WgpuAtlasTexture>,
     subpixel_textures: AtlasTextureList<WgpuAtlasTexture>,
@@ -334,7 +321,6 @@ impl ops::IndexMut<AtlasTextureKind> for WgpuAtlasStorage {
 }
 
 impl WgpuAtlasStorage {
-    /// 根据纹理 ID 获取纹理引用
     fn get(&self, id: AtlasTextureId) -> Option<&WgpuAtlasTexture> {
         self[id.kind]
             .textures
@@ -357,7 +343,6 @@ impl ops::Index<AtlasTextureId> for WgpuAtlasStorage {
     }
 }
 
-/// 图集纹理，包含分配器和 GPU 资源
 struct WgpuAtlasTexture {
     id: AtlasTextureId,
     allocator: BucketedAtlasAllocator,
@@ -368,7 +353,6 @@ struct WgpuAtlasTexture {
 }
 
 impl WgpuAtlasTexture {
-    /// 在图集中分配指定大小的空间
     fn allocate(&mut self, size: Size<DevicePixels>) -> Option<AtlasTile> {
         let allocation = self.allocator.allocate(device_size_to_etagere(size))?;
         let tile = AtlasTile {
@@ -384,7 +368,6 @@ impl WgpuAtlasTexture {
         Some(tile)
     }
 
-    /// 获取每个像素占用的字节数
     fn bytes_per_pixel(&self) -> u8 {
         match self.format {
             wgpu::TextureFormat::R8Unorm => 1,
@@ -393,18 +376,15 @@ impl WgpuAtlasTexture {
         }
     }
 
-    /// 减少引用计数
     fn decrement_ref_count(&mut self) {
         self.live_atlas_keys -= 1;
     }
 
-    /// 检查是否无引用
     fn is_unreferenced(&self) -> bool {
         self.live_atlas_keys == 0
     }
 }
 
-/// 转换上传数据的通道顺序，将 RGBA 转换为 BGRA
 fn swizzle_upload_data(bytes: &[u8], format: wgpu::TextureFormat) -> Vec<u8> {
     match format {
         wgpu::TextureFormat::Rgba8Unorm => {
@@ -425,7 +405,6 @@ mod tests {
     use rgpui::{ImageId, RenderImageParams};
     use std::sync::Arc;
 
-    /// 创建测试用的 wgpu 设备和队列
     fn test_device_and_queue() -> anyhow::Result<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
         block_on(async {
             let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -475,12 +454,56 @@ mod tests {
         };
         let mut build = || Ok(Some((size, Cow::Owned(vec![0, 0, 0, 255]))));
 
-        // 回归测试：修复前会在 flush_uploads 中 panic
+        // Regression test: before the fix, this panicked in flush_uploads
         atlas
             .get_or_insert_with(&key, &mut build)?
             .expect("tile should be created");
         atlas.remove(&key);
         atlas.before_frame();
+        Ok(())
+    }
+
+    #[test]
+    fn remove_deallocates_tile_space_for_reuse() -> anyhow::Result<()> {
+        let (device, queue) = test_device_and_queue()?;
+        let atlas = WgpuAtlas::new(device, queue, wgpu::TextureFormat::Bgra8Unorm);
+
+        let small = Size {
+            width: DevicePixels(64),
+            height: DevicePixels(64),
+        };
+        let big = Size {
+            width: DevicePixels(700),
+            height: DevicePixels(700),
+        };
+
+        let make_key = |image_id: usize| {
+            AtlasKey::Image(RenderImageParams {
+                image_id: ImageId(image_id),
+                frame_index: 0,
+            })
+        };
+        let insert = |key: &AtlasKey, size: Size<DevicePixels>| {
+            let byte_count = (size.width.0 as usize) * (size.height.0 as usize) * 4;
+            atlas
+                .get_or_insert_with(key, &mut || {
+                    Ok(Some((size, Cow::Owned(vec![0u8; byte_count]))))
+                })
+                .expect("allocation should succeed")
+                .expect("callback returns Some")
+        };
+
+        let keeper_key = make_key(1);
+        let big_key_a = make_key(2);
+        let big_key_b = make_key(3);
+
+        let keeper_tile = insert(&keeper_key, small);
+        let tile_a = insert(&big_key_a, big);
+        assert_eq!(keeper_tile.texture_id, tile_a.texture_id);
+
+        atlas.remove(&big_key_a);
+        let tile_b = insert(&big_key_b, big);
+        assert_eq!(tile_b.texture_id, keeper_tile.texture_id);
         Ok(())
     }
 

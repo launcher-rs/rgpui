@@ -1,6 +1,34 @@
 {
   "prs": [
     {
+      "number": 58744,
+      "upstream": "zed",
+      "title": "Change \"Ok\" to \"OK\" in UI",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 58874,
+      "upstream": "zed",
+      "title": "gpui: Free atlas tile space when removing tiles",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 58826,
+      "upstream": "zed",
+      "title": "linux: Fix Wayland clipboard reads blocking indefinitely",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 58751,
+      "upstream": "zed",
+      "title": "Use unstable sorts if deduplicating",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
       "number": 57835,
       "upstream": "zed",
       "title": "Log worst hanging tasks and actions",
@@ -76,6 +104,27 @@
       "title": "fix(text): keep selection anchored to content when scrolling",
       "status": "merged",
       "merged_at": "2026-06-08"
+    },
+    {
+      "number": 2441,
+      "upstream": "gpui-component",
+      "title": "input: Expose API to set_scroll_offset method",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 2448,
+      "upstream": "gpui-component",
+      "title": "native_menu: add NativeMenu using OS-native menus",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 2449,
+      "upstream": "gpui-component",
+      "title": "status_bar: add StatusBar component",
+      "status": "merged",
+      "merged_at": "2026-06-09"
     }
   ]
 }

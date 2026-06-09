@@ -12,7 +12,7 @@ use std::{
 };
 
 mod color;
-mod highlight;
+pub mod highlight;
 mod registry;
 mod schema;
 mod theme_color;

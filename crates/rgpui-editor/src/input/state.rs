@@ -17,7 +17,7 @@ use serde::Deserialize;
 use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
-use sum_tree::Bias;
+use rgpui::sum_tree::Bias;
 use unicode_segmentation::*;
 
 use super::{
@@ -29,7 +29,6 @@ use super::{
     mode::InputMode,
     number_input,
 };
-use crate::Size;
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::highlighter::DiagnosticSet;
 #[cfg(not(target_family = "wasm"))]
@@ -43,9 +42,9 @@ use crate::input::{
     popovers::{ContextMenu, DiagnosticPopover, HoverPopover, InputContextMenu},
     search::{self, SearchPanel},
 };
-use crate::menu::PopupMenu;
-use crate::scroll::AutoScroll;
-use crate::{Root, history::History};
+use rgpui_component::menu::PopupMenu;
+use rgpui_component::scroll::AutoScroll;
+use rgpui_component::{Root, history::History};
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = input, no_json)]
@@ -365,7 +364,7 @@ pub struct InputState {
     pub(super) last_bounds: Option<Bounds<Pixels>>,
     pub(super) last_selected_range: Option<Selection>,
     pub(super) selecting: bool,
-    pub(super) size: Size,
+    pub(super) size: rgpui_component::Size,
     pub(super) disabled: bool,
     pub(super) masked: bool,
     pub(super) clean_on_escape: bool,
@@ -528,7 +527,7 @@ impl InputState {
             hover_definition: HoverDefinition::default(),
             silent_replace_text: false,
             emit_events: true,
-            size: Size::default(),
+            size: rgpui_component::Size::default(),
             _subscriptions,
             _context_menu_task: Task::ready(Ok(())),
             _pending_update: false,
@@ -1512,7 +1511,7 @@ impl InputState {
     ) {
         // Input has its own text selection; suppress the window-level text
         // selection (Root) so it does not start a drag from here.
-        crate::global_state::GlobalState::suppress_text_selection(cx);
+        rgpui_component::global_state::GlobalState::suppress_text_selection(cx);
 
         // Clear inline completion on any mouse interaction
         self.clear_inline_completion(cx);
@@ -1875,6 +1874,14 @@ impl InputState {
     /// Current scroll offset of the editor viewport.
     pub fn scroll_offset(&self) -> rgpui::Point<rgpui::Pixels> {
         self.scroll_handle.offset()
+    }
+
+    /// Set scroll offset of the editor viewport.
+    ///
+    /// The offset will be clamped to the valid range, and applied after the next layout.
+    pub fn set_scroll_offset(&mut self, offset: rgpui::Point<rgpui::Pixels>, cx: &mut Context<Self>) {
+        self.deferred_scroll_offset = Some(offset);
+        cx.notify();
     }
 
     /// Laid-out line height; `None` before first layout.
@@ -2763,7 +2770,6 @@ impl Render for InputState {
             .id("input-state")
             .flex_1()
             .when(self.mode.is_multi_line(), |this| this.h_full())
-            .flex_grow_1()
             .overflow_x_hidden()
             .child(TextElement::new(cx.entity().clone()).placeholder(self.placeholder.clone()))
             .children(self.diagnostic_popover.clone())

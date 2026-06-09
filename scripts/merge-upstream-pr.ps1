@@ -155,12 +155,42 @@ function Map-UpstreamPath {
 
 # ---------- content replacement function ----------
 function Map-Content {
-    param([string]$content, $contentMappings)
+    param([string]$content, $contentMappings, [string[]]$cargoExcludeFields, [string]$filePath)
+
+    # 对 Cargo.toml 文件，保护包元数据字段不被内容映射修改
+    $isCargoToml = $filePath -and ($filePath -match 'Cargo\.toml$')
+    $excludedLines = @{}
+    if ($isCargoToml -and $cargoExcludeFields -and $cargoExcludeFields.Count -gt 0) {
+        $lines = $content -split "`n"
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i].Trim()
+            foreach ($field in $cargoExcludeFields) {
+                if ($line -match "^\s*$field\s*=") {
+                    $excludedLines[$i] = $lines[$i]
+                    break
+                }
+            }
+        }
+        # 将受保护行替换为占位符，防止内容映射修改它们
+        foreach ($i in $excludedLines.Keys) {
+            $lines[$i] = "__CARGO_EXCLUDED_LINE_${i}__"
+        }
+        $content = $lines -join "`n"
+    }
+
     $sortedKeys = $contentMappings.Keys | Sort-Object -Descending
     foreach ($from in $sortedKeys) {
         $to = $contentMappings[$from]
         $content = [regex]::Replace($content, "(?<=^|[^a-zA-Z_])$from(?=[^a-zA-Z_]|$)", { param($m) $to })
     }
+
+    # 恢复被保护的行
+    if ($excludedLines.Count -gt 0) {
+        foreach ($i in $excludedLines.Keys) {
+            $content = $content.Replace("__CARGO_EXCLUDED_LINE_${i}__", $excludedLines[$i])
+        }
+    }
+
     return $content
 }
 
@@ -269,7 +299,7 @@ function Get-PrChanges {
 
 # ---------- apply changes to rgpui ----------
 function Apply-Changes {
-    param($prChanges, $contentMappings)
+    param($prChanges, $contentMappings, $upstreamConfig)
 
     $modifiedCount = 0
     $createdCount = 0
@@ -279,13 +309,14 @@ function Apply-Changes {
         foreach ($file in $prChanges.Files) {
             $absPath = Join-Path $RepoRoot $file.RgpuiPath
             $parentDir = Split-Path $absPath -Parent
+            $cargoExcludeFields = $upstreamConfig.cargo_exclude_fields
 
             switch ($file.Status) {
                 'A' {
                     if (-not (Test-Path $parentDir)) {
                         New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
                     }
-                    $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings
+                    $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings -cargoExcludeFields $cargoExcludeFields -filePath $file.RgpuiPath
                     Set-Content -Path $absPath -Value $mappedContent.TrimEnd() -NoNewline
                     Write-Ok "  Created: $($file.RgpuiPath)"
                     $createdCount++
@@ -294,7 +325,7 @@ function Apply-Changes {
                     if (-not (Test-Path $parentDir)) {
                         New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
                     }
-                    $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings
+                    $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings -cargoExcludeFields $cargoExcludeFields -filePath $file.RgpuiPath
                     Set-Content -Path $absPath -Value $mappedContent.TrimEnd() -NoNewline
                     Write-Ok "  Updated: $($file.RgpuiPath)"
                     $modifiedCount++
@@ -303,7 +334,7 @@ function Apply-Changes {
                     if (-not (Test-Path $parentDir)) {
                         New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
                     }
-                    $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings
+                    $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings -cargoExcludeFields $cargoExcludeFields -filePath $file.RgpuiPath
                     Set-Content -Path $absPath -Value $mappedContent.TrimEnd() -NoNewline
                     Write-Ok "  Copied: $($file.RgpuiPath)"
                     $createdCount++
@@ -668,7 +699,7 @@ foreach ($prItem in $prList) {
     }
 
     # 应用变更
-    $stats = Apply-Changes -prChanges $prChanges -contentMappings $mappings.ContentMappings
+    $stats = Apply-Changes -prChanges $prChanges -contentMappings $mappings.ContentMappings -upstreamConfig $upstreamConfig
     Write-Ok "PR #$prNum merged: $($stats.Modified) modified, $($stats.Created) created"
 
     # 更新状态

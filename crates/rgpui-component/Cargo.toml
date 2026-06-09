@@ -68,17 +68,32 @@ smol.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-text = "=21.0.0"
+# Native menu (NativeMenu) - drives AppKit NSMenu via objc2.
+raw-window-handle = "0.6"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = [
+    "NSMenu",
+    "NSMenuItem",
+    "NSView",
+    "NSResponder",
+    "NSEvent",
+] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSGeometry"] }
 
-
-
-[lints]
-workspace = true
+[target.'cfg(target_os = "windows")'.dependencies]
+# Native menu (NativeMenu) - drives Win32 popup menus.
+raw-window-handle = "0.6"
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [dev-dependencies]
 rgpui = { workspace = true, features = ["test-support"] }
 rgpui-component-assets = {workspace = true}
 rgpui-platform = { workspace = true }
-
 indoc = "2"
 
 [[example]]

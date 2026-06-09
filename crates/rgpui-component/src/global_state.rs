@@ -56,7 +56,7 @@ impl GlobalState {
     }
 
     /// Check if we are currently inside a deferred context (e.g., inside an open Popover).
-    pub(crate) fn is_in_deferred_context(&self) -> bool {
+    pub fn is_in_deferred_context(&self) -> bool {
         !self.open_deferred_popovers.is_empty()
     }
 

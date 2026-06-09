@@ -1,13 +1,13 @@
 use anyhow::{Context as _, Result};
+use crate::collections::FxHashMap;
 use derive_more::{Deref, DerefMut};
 use etagere::BucketedAtlasAllocator;
-use metal::Device;
-use parking_lot::Mutex;
-use rgpui::collections::FxHashMap;
 use rgpui::{
     AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTextureList, AtlasTile, Bounds, DevicePixels,
     PlatformAtlas, Point, Size,
 };
+use metal::Device;
+use parking_lot::Mutex;
 use std::borrow::Cow;
 
 pub(crate) struct MetalAtlas(Mutex<MetalAtlasState>);
@@ -61,9 +61,10 @@ impl PlatformAtlas for MetalAtlas {
 
     fn remove(&self, key: &AtlasKey) {
         let mut lock = self.0.lock();
-        let Some(id) = lock.tiles_by_key.remove(key).map(|v| v.texture_id) else {
+        let Some(tile) = lock.tiles_by_key.remove(key) else {
             return;
         };
+        let id = tile.texture_id;
 
         let textures = match id.kind {
             AtlasTextureKind::Monochrome => &mut lock.monochrome_textures,
@@ -80,6 +81,7 @@ impl PlatformAtlas for MetalAtlas {
         };
 
         if let Some(mut texture) = texture_slot.take() {
+            texture.allocator.deallocate(tile.tile_id.into());
             texture.decrement_ref_count();
             if texture.is_unreferenced() {
                 textures.free_list.push(id.index as usize);
@@ -125,7 +127,7 @@ impl MetalAtlasState {
             width: DevicePixels(1024),
             height: DevicePixels(1024),
         };
-        // 所有现代 Apple GPU 上的最大纹理大小。任何更大的尺寸都会在 validateWithDevice 中崩溃。
+        // Max texture size on all modern Apple GPUs. Anything bigger than that crashes in validateWithDevice.
         const MAX_ATLAS_SIZE: Size<DevicePixels> = Size {
             width: DevicePixels(16384),
             height: DevicePixels(16384),
@@ -149,7 +151,7 @@ impl MetalAtlasState {
         }
         texture_descriptor.set_pixel_format(pixel_format);
         texture_descriptor.set_usage(usage);
-        // 共享内存模式仅可在 Apple GPU 系列上使用
+        // Shared memory mode can be used only on Apple GPU families
         // https://developer.apple.com/documentation/metal/mtlresourceoptions/storagemodeshared
         texture_descriptor.set_storage_mode(if self.is_apple_gpu {
             metal::MTLStorageMode::Shared
@@ -320,22 +322,50 @@ mod tests {
         assert_eq!(tile_a.texture_id, tile_b.texture_id);
         assert_eq!(tile_b.texture_id, tile_c.texture_id);
 
-        // 移除 A：纹理仍然有 B 和 C，所以保留。
-        // A 的键必须从 tiles_by_key 中移除。
+        // Remove A: texture still has B and C, so it stays.
+        // The key for A must be removed from tiles_by_key.
         atlas.remove(&key_a);
 
-        // 移除 B：纹理仍然有 C。
+        // Remove B: texture still has C.
         atlas.remove(&key_b);
 
-        // 移除 C：纹理变为未引用并被删除。
+        // Remove C: texture becomes unreferenced and is deleted.
         atlas.remove(&key_c);
 
-        // 重新插入 A 必须在新纹理上分配新图块，
-        // 而不是返回引用已删除纹理的过时图块。
+        // Re-inserting A must allocate a fresh tile on a new texture,
+        // NOT return a stale tile referencing the deleted texture.
         let tile_a2 = insert_tile(&atlas, &key_a, small);
 
-        // 纹理必须实际存在——这在修复之前会 panic。
+        // The texture must actually exist 鈥?this would panic before the fix.
         let _texture = atlas.metal_texture(tile_a2.texture_id);
+    }
+
+    #[test]
+    fn test_remove_deallocates_tile_space_for_reuse() {
+        let Some(atlas) = create_atlas() else {
+            return;
+        };
+
+        let small = Size {
+            width: DevicePixels(64),
+            height: DevicePixels(64),
+        };
+        let big = Size {
+            width: DevicePixels(700),
+            height: DevicePixels(700),
+        };
+
+        let keeper_key = make_image_key(1, 0);
+        let big_key_a = make_image_key(2, 0);
+        let big_key_b = make_image_key(3, 0);
+
+        let keeper_tile = insert_tile(&atlas, &keeper_key, small);
+        let tile_a = insert_tile(&atlas, &big_key_a, big);
+        assert_eq!(keeper_tile.texture_id, tile_a.texture_id);
+
+        atlas.remove(&big_key_a);
+        let tile_b = insert_tile(&atlas, &big_key_b, big);
+        assert_eq!(tile_b.texture_id, keeper_tile.texture_id);
     }
 
     #[test]
