@@ -2,15 +2,15 @@
 
 use std::ffi::c_void;
 
-use rgpui::{Action, App, Pixels, Point, Window};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use rgpui::{Action, App, Pixels, Point, Window};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::Input::KeyboardAndMouse::SetCapture;
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, DestroyMenu, HMENU, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
-    MF_STRING, PostMessageW, SetForegroundWindow, TPM_LEFTALIGN, TPM_NONOTIFY, TPM_RETURNCMD,
-    TPM_TOPALIGN, TrackPopupMenuEx, WM_NULL,
+    AppendMenuW, CreatePopupMenu, DestroyMenu, HMENU, MF_CHECKED, MF_GRAYED, MF_POPUP,
+    MF_SEPARATOR, MF_STRING, PostMessageW, SetForegroundWindow, TPM_LEFTALIGN, TPM_NONOTIFY,
+    TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenuEx, WM_NULL,
 };
 use windows::core::PCWSTR;
 
@@ -87,7 +87,9 @@ fn run_menu(
 
         // Ids are 1-based (0 means "no selection"); map back to `actions`.
         match selected.0 {
-            id if id > 0 => actions.get((id - 1) as usize).map(|action| action.boxed_clone()),
+            id if id > 0 => actions
+                .get((id - 1) as usize)
+                .map(|action| action.boxed_clone()),
             _ => None,
         }
     }
@@ -147,9 +149,8 @@ unsafe fn build_menu<'a>(
                 }
                 let wide: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
                 // For MF_POPUP, the id parameter is the submenu handle.
-                let _ = unsafe {
-                    AppendMenuW(menu, flags, submenu.0 as usize, PCWSTR(wide.as_ptr()))
-                };
+                let _ =
+                    unsafe { AppendMenuW(menu, flags, submenu.0 as usize, PCWSTR(wide.as_ptr())) };
             }
         }
     }

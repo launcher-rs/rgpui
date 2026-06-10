@@ -1,6 +1,6 @@
-use rgpui::collections::FxHashMap;
 use etagere::BucketedAtlasAllocator;
 use parking_lot::Mutex;
+use rgpui::collections::FxHashMap;
 use windows::Win32::Graphics::{
     Direct3D11::{
         D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,

@@ -12,9 +12,9 @@ use crate::{
 };
 use rgpui::{
     Anchor, AnyView, App, AppContext, ClipboardItem, Context, DefiniteLength, ElementId, Entity,
-    EntityId, FocusHandle, Hitbox, InteractiveElement, IntoElement, KeyBinding,
-    ParentElement as _, Pixels, Render, StyleRefinement, Styled, WeakEntity, WeakFocusHandle,
-    Window, actions, div, prelude::FluentBuilder as _,
+    EntityId, FocusHandle, Hitbox, InteractiveElement, IntoElement, KeyBinding, ParentElement as _,
+    Pixels, Render, StyleRefinement, Styled, WeakEntity, WeakFocusHandle, Window, actions, div,
+    prelude::FluentBuilder as _,
 };
 use std::{any::TypeId, collections::HashMap, rc::Rc};
 

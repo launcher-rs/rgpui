@@ -3,6 +3,7 @@
 //! Based on the `Input` example from the `rgpui` crate.
 //! https://github.com/zed-industries/zed/blob/main/crates/rgpui/examples/input.rs
 use anyhow::Result;
+use rgpui::sum_tree::Bias;
 use rgpui::{
     Action, App, AppContext, Bounds, ClipboardItem, Context, Edges, Entity, EntityInputHandler,
     EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding,
@@ -17,7 +18,6 @@ use serde::Deserialize;
 use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
-use rgpui::sum_tree::Bias;
 use unicode_segmentation::*;
 
 use super::{
@@ -1879,7 +1879,11 @@ impl InputState {
     /// Set scroll offset of the editor viewport.
     ///
     /// The offset will be clamped to the valid range, and applied after the next layout.
-    pub fn set_scroll_offset(&mut self, offset: rgpui::Point<rgpui::Pixels>, cx: &mut Context<Self>) {
+    pub fn set_scroll_offset(
+        &mut self,
+        offset: rgpui::Point<rgpui::Pixels>,
+        cx: &mut Context<Self>,
+    ) {
         self.deferred_scroll_offset = Some(offset);
         cx.notify();
     }

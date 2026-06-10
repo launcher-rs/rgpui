@@ -84,12 +84,12 @@ pub use event::InteractiveElementExt;
 pub use focus_trap::FocusTrapElement;
 pub use geometry::*;
 pub use global_state::GlobalState;
-pub use rgpui_component_macros::icon_named;
 pub use icon::*;
 pub use index_path::IndexPath;
 pub use input::{Rope, RopeExt, RopeLines};
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use inspector::*;
+pub use rgpui_component_macros::icon_named;
 pub use root::Root;
 pub use styled::*;
 pub use theme::*;

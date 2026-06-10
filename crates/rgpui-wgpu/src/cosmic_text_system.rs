@@ -1,5 +1,4 @@
 use anyhow::{Context as _, Ok, Result};
-use std::collections::HashMap;
 use cosmic_text::{
     Attrs, AttrsList, Ellipsize, Family, Font as CosmicTextFont,
     FontFeatures as CosmicFontFeatures, FontSystem, ShapeBuffer, ShapeLine,
@@ -10,6 +9,7 @@ use rgpui::{
     SUBPIXEL_VARIANTS_Y, ShapedGlyph, ShapedRun, SharedString, Size, TextRenderingMode, point,
     size,
 };
+use std::collections::HashMap;
 
 use itertools::Itertools;
 use parking_lot::RwLock;
@@ -1056,7 +1056,7 @@ mod tests {
         let primary = fid(0);
         let fb = chain(&[1]);
         let covers = |_: FontId, _: char| true;
-        let spans = compute_run_spans( "anything", 3, 0, primary, &fb, &covers);
+        let spans = compute_run_spans("anything", 3, 0, primary, &fb, &covers);
         assert!(spans.is_empty());
     }
 }

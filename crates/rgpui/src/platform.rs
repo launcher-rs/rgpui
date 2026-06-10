@@ -28,6 +28,9 @@ pub(crate) type PlatformScreenCaptureFrame = ();
 #[cfg(all(target_os = "macos", feature = "screen-capture"))]
 pub(crate) type PlatformScreenCaptureFrame = core_video::image_buffer::CVImageBuffer;
 
+use crate::rgpui_util;
+use crate::scheduler::Instant;
+pub use crate::scheduler::RunnableMeta;
 use crate::{
     Action, AnyWindowHandle, App, AsyncWindowContext, BackgroundExecutor, Bounds,
     DEFAULT_WINDOW_SIZE, DevicePixels, DispatchEventResult, Font, FontId, FontMetrics, FontRun,
@@ -36,6 +39,7 @@ use crate::{
     RenderSvgParams, Scene, ShapedGlyph, ShapedRun, SharedString, Size, SvgRenderer,
     SystemWindowTab, Task, Window, WindowControlArea, hash, point, px, size,
 };
+use crate::{Tray, TrayIconEvent, TrayMenuItem};
 use anyhow::Result;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use anyhow::bail;
@@ -46,8 +50,6 @@ use image::RgbaImage;
 use image::codecs::gif::GifDecoder;
 use image::{AnimationDecoder as _, Frame};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use crate::scheduler::Instant;
-pub use crate::scheduler::RunnableMeta;
 use schemars::JsonSchema;
 use seahash::SeaHasher;
 use serde::{Deserialize, Serialize};
@@ -66,8 +68,6 @@ use std::{
 };
 use strum::EnumIter;
 use uuid::Uuid;
-use crate::rgpui_util;
-use crate::{Tray, TrayIconEvent, TrayMenuItem};
 
 pub use app_menu::*;
 pub use keyboard::*;
@@ -485,7 +485,8 @@ pub trait Platform: 'static {
         _position: Point<Pixels>,
         _items: Vec<TrayMenuItem>,
         _callback: Box<dyn FnMut(SharedString)>,
-    ) {}
+    ) {
+    }
 
     // ---- 原生对话框 ----
     fn show_dialog(&self, _options: DialogOptions) -> oneshot::Receiver<usize> {

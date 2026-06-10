@@ -2,13 +2,13 @@
 
 use std::cell::Cell;
 
-use rgpui::{Action, App, Pixels, Point, Window};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send, sel};
 use objc2_app_kit::{NSMenu, NSMenuItem, NSView};
 use objc2_foundation::{NSPoint, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use rgpui::{Action, App, Pixels, Point, Window};
 
 use super::NativeMenuItem;
 

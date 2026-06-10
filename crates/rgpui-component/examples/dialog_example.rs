@@ -10,10 +10,10 @@
 
 use rgpui::*;
 use rgpui_component::{
-    *,
     button::{Button, ButtonVariant, ButtonVariants},
     dialog::{DialogAction, DialogButtonProps, DialogClose, DialogFooter},
     scroll::ScrollableElement,
+    *,
 };
 use rgpui_component_assets::Assets;
 
@@ -161,18 +161,12 @@ impl Example {
                 .footer(
                     DialogFooter::new()
                         .child(
-                            DialogClose::new().child(
-                                Button::new("cancel")
-                                    .label("取消")
-                                    .secondary(),
-                            ),
+                            DialogClose::new()
+                                .child(Button::new("cancel").label("取消").secondary()),
                         )
                         .child(
-                            DialogAction::new().child(
-                                Button::new("confirm")
-                                    .label("确认")
-                                    .primary(),
-                            ),
+                            DialogAction::new()
+                                .child(Button::new("confirm").label("确认").primary()),
                         ),
                 )
         });

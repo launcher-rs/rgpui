@@ -1,10 +1,10 @@
 use rgpui::*;
 use rgpui_component::checkbox::Checkbox;
+use rgpui_component::text::TextView;
 use rgpui_component::{
     input::{Input, InputEvent, InputState},
     *,
 };
-use rgpui_component::text::TextView;
 use rgpui_component_assets::Assets;
 
 pub struct Example {
@@ -63,9 +63,7 @@ impl Render for Example {
                         cx.notify();
                     })),
             )
-            .child(
-                TextView::plain("display_text",self.display_text.clone()).selectable(true)
-            )
+            .child(TextView::plain("display_text", self.display_text.clone()).selectable(true))
     }
 }
 

@@ -5,8 +5,8 @@
 //! the [`super::NativeMenu`] API working on every platform.
 
 use rgpui::{
-    App, Context, DismissEvent, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
-    Pixels, Point, Render, Subscription, Window, anchored, deferred, div, px,
+    App, Context, DismissEvent, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Pixels,
+    Point, Render, Subscription, Window, anchored, deferred, div, px,
 };
 
 use crate::menu::{PopupMenu, PopupMenuItem};
