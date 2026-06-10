@@ -99,3 +99,35 @@ indoc = "2"
 [[example]]
 name = "dialog_example"
 path = "examples/dialog_example.rs"
+
+[[example]]
+name = "components_overview"
+path = "examples/components_overview.rs"
+
+[[example]]
+name = "button_example"
+path = "examples/button_example.rs"
+
+[[example]]
+name = "input_example"
+path = "examples/input_example.rs"
+
+[[example]]
+name = "form_controls_example"
+path = "examples/form_controls_example.rs"
+
+[[example]]
+name = "select_example"
+path = "examples/select_example.rs"
+
+[[example]]
+name = "data_display_example"
+path = "examples/data_display_example.rs"
+
+[[example]]
+name = "navigation_example"
+path = "examples/navigation_example.rs"
+
+[[example]]
+name = "feedback_example"
+path = "examples/feedback_example.rs"
