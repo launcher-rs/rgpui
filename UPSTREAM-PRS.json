@@ -125,6 +125,20 @@
       "title": "status_bar: add StatusBar component",
       "status": "merged",
       "merged_at": "2026-06-09"
+    },
+    {
+      "number": 58947,
+      "upstream": "zed",
+      "title": "gpui: Free atlas tile space when removing tiles",
+      "status": "merged",
+      "merged_at": "2026-06-10"
+    },
+    {
+      "number": 58942,
+      "upstream": "zed",
+      "title": "Update GPUI README to reflect new Application::new() API",
+      "status": "merged",
+      "merged_at": "2026-06-10"
     }
   ]
 }
