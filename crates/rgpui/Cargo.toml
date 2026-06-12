@@ -36,7 +36,9 @@ tls = [
 wayland = [
     "bitflags",
 ]
-x11 = []
+x11 = [
+    "scap?/x11",
+]
 screen-capture = [
     "scap",
 ]
