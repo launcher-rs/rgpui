@@ -3,8 +3,8 @@ use std::{ops::Range, rc::Rc};
 
 use rgpui::{
     App, AppContext as _, Context, Empty, Entity, FocusHandle, Focusable, Half,
-    InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Pixels, Render, Styled,
-    Subscription, Window, actions, div, prelude::FluentBuilder as _,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, Styled, Subscription,
+    Window, actions, div, prelude::FluentBuilder as _,
 };
 use ropey::Rope;
 
@@ -26,14 +26,6 @@ use rgpui_component::{
 const CONTEXT: &'static str = "SearchPanel";
 
 actions!(editor_input, [Tab]);
-
-pub(super) fn init(cx: &mut App) {
-    cx.bind_keys(vec![KeyBinding::new(
-        "shift-enter",
-        SelectUp,
-        Some(CONTEXT),
-    )]);
-}
 
 #[derive(Debug, Clone)]
 pub struct SearchMatcher {

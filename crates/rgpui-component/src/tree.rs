@@ -794,12 +794,11 @@ mod tests {
 
     #[rgpui::test]
     fn test_event_carries_item_id(cx: &mut rgpui::TestAppContext) {
-        let items = vec![
-            super::TreeItem::new("src", "src").expanded(true).child(
-                super::TreeItem::new("src/rgpui-component", "rgpui-component")
-                    .child(super::TreeItem::new("src/rgpui-component/button.rs", "button.rs")),
+        let items = vec![super::TreeItem::new("src", "src").expanded(true).child(
+            super::TreeItem::new("src/rgpui-component", "rgpui-component").child(
+                super::TreeItem::new("src/rgpui-component/button.rs", "button.rs"),
             ),
-        ];
+        )];
         let state = cx.new(|cx| TreeState::new(cx).items(items));
         let collector = cx.new(|cx| TestCollector::new(&state, cx));
 
@@ -809,7 +808,10 @@ mod tests {
         });
 
         let events = collector.read_with(cx, |c, _| c.events.borrow().clone());
-        assert_eq!(events, vec![TreeEvent::Expanded("src/rgpui-component".into())]);
+        assert_eq!(
+            events,
+            vec![TreeEvent::Expanded("src/rgpui-component".into())]
+        );
     }
 
     #[rgpui::test]
@@ -817,10 +819,13 @@ mod tests {
         cx: &mut rgpui::TestAppContext,
     ) {
         let target = super::TreeItem::new("src/rgpui-component/button.rs", "button.rs");
-        let items = vec![
-            super::TreeItem::new("src", "src")
-                .child(super::TreeItem::new("src/rgpui-component", "rgpui-component").child(target.clone())),
-        ];
+        let items =
+            vec![
+                super::TreeItem::new("src", "src").child(
+                    super::TreeItem::new("src/rgpui-component", "rgpui-component")
+                        .child(target.clone()),
+                ),
+            ];
         let state = cx.new(|cx| TreeState::new(cx).items(items));
         let collector = cx.new(|cx| TestCollector::new(&state, cx));
 

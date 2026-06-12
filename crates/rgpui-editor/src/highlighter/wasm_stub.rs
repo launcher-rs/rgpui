@@ -117,7 +117,7 @@ pub enum FontWeightContent {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
 pub struct ThemeStyle {
-    pub color: Option<gpui::Hsla>,
+    pub color: Option<rgpui::Hsla>,
     pub font_style: Option<FontStyle>,
     pub font_weight: Option<FontWeightContent>,
 }
@@ -127,20 +127,20 @@ impl From<ThemeStyle> for HighlightStyle {
         HighlightStyle {
             color: style.color,
             font_weight: style.font_weight.map(|w| match w {
-                FontWeightContent::Thin => gpui::FontWeight::THIN,
-                FontWeightContent::ExtraLight => gpui::FontWeight::EXTRA_LIGHT,
-                FontWeightContent::Light => gpui::FontWeight::LIGHT,
-                FontWeightContent::Normal => gpui::FontWeight::NORMAL,
-                FontWeightContent::Medium => gpui::FontWeight::MEDIUM,
-                FontWeightContent::Semibold => gpui::FontWeight::SEMIBOLD,
-                FontWeightContent::Bold => gpui::FontWeight::BOLD,
-                FontWeightContent::ExtraBold => gpui::FontWeight::EXTRA_BOLD,
-                FontWeightContent::Black => gpui::FontWeight::BLACK,
+                FontWeightContent::Thin => rgpui::FontWeight::THIN,
+                FontWeightContent::ExtraLight => rgpui::FontWeight::EXTRA_LIGHT,
+                FontWeightContent::Light => rgpui::FontWeight::LIGHT,
+                FontWeightContent::Normal => rgpui::FontWeight::NORMAL,
+                FontWeightContent::Medium => rgpui::FontWeight::MEDIUM,
+                FontWeightContent::Semibold => rgpui::FontWeight::SEMIBOLD,
+                FontWeightContent::Bold => rgpui::FontWeight::BOLD,
+                FontWeightContent::ExtraBold => rgpui::FontWeight::EXTRA_BOLD,
+                FontWeightContent::Black => rgpui::FontWeight::BLACK,
             }),
             font_style: style.font_style.map(|s| match s {
-                FontStyle::Normal => gpui::FontStyle::Normal,
-                FontStyle::Italic => gpui::FontStyle::Italic,
-                FontStyle::Underline => gpui::FontStyle::Normal,
+                FontStyle::Normal => rgpui::FontStyle::Normal,
+                FontStyle::Italic => rgpui::FontStyle::Italic,
+                FontStyle::Underline => rgpui::FontStyle::Normal,
             }),
             ..Default::default()
         }
@@ -171,68 +171,110 @@ pub struct StatusColors {
 }
 
 impl StatusColors {
-    pub fn error(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn error(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn error_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn error_background(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn error_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn error_border(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn warning(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn warning(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn warning_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn warning_background(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn warning_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn warning_border(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn info(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn info(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn info_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn info_background(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn info_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn info_border(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn success(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn success(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn success_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn success_background(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn success_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn success_border(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn hint(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn hint(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn hint_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn hint_background(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 
-    pub fn hint_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn hint_border(&self, _cx: &rgpui::App) -> rgpui::Hsla {
+        rgpui::Hsla::default()
     }
 }
 
-pub use rgpui_component::{HighlightTheme, HighlightThemeStyle};
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
+pub struct HighlightThemeStyle {
+    pub editor_background: Option<rgpui::Hsla>,
+    pub editor_foreground: Option<rgpui::Hsla>,
+    pub editor_active_line: Option<rgpui::Hsla>,
+    pub editor_line_number: Option<rgpui::Hsla>,
+    pub editor_active_line_number: Option<rgpui::Hsla>,
+    pub editor_invisible: Option<rgpui::Hsla>,
+    #[serde(rename = "editor.gutter.background")]
+    pub editor_gutter_background: Option<rgpui::Hsla>,
+    #[serde(flatten)]
+    pub status: StatusColors,
+    #[serde(rename = "syntax")]
+    pub syntax: SyntaxColors,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
+pub struct HighlightTheme {
+    pub name: String,
+    #[serde(default)]
+    pub appearance: crate::ThemeMode,
+    pub style: HighlightThemeStyle,
+}
+
+impl std::ops::Deref for HighlightTheme {
+    type Target = SyntaxColors;
+
+    fn deref(&self) -> &Self::Target {
+        &self.style.syntax
+    }
+}
+
+impl HighlightTheme {
+    pub fn default_dark() -> std::sync::Arc<Self> {
+        use crate::DEFAULT_THEME_COLORS;
+        DEFAULT_THEME_COLORS[&crate::ThemeMode::Dark].1.clone()
+    }
+
+    pub fn default_light() -> std::sync::Arc<Self> {
+        use crate::DEFAULT_THEME_COLORS;
+        DEFAULT_THEME_COLORS[&crate::ThemeMode::Light].1.clone()
+    }
+}
 
 // Language registry stub
 pub struct LanguageRegistry {

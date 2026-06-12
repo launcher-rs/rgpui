@@ -38,6 +38,7 @@
 | #2455 | 2026-06-12 | Move to `WindowExt` |
 | #2454 | 2026-06-12 | Fix tree events to emit when set_selected_item targeted hidden nodes |
 | #2453 | 2026-06-12 | input: restore custom context menu API on top of NativeMenu |
+| #2452 | 2026-06-12 | fix: add missing wasm theme gutter field |
 
 ## yororen-ui
 
