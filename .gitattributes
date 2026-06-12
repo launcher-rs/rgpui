@@ -1,0 +1,5 @@
+# 强制 Rust 源文件使用 LF 行尾，避免 Rust 2024 edition 解析问题
+*.rs text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

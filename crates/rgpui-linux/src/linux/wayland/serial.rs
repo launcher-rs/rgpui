@@ -65,4 +65,15 @@ impl SerialTracker {
             .map(|serial_data| serial_data.serial)
             .unwrap_or(0)
     }
+
+    /// 返回所有已跟踪类型中的最新序列号
+    ///
+    /// 如果没有任何序列号被跟踪则返回 0
+    pub fn get_latest(&self) -> u32 {
+        self.serials
+            .values()
+            .max_by_key(|serial_data| serial_data.serial)
+            .map(|serial_data| serial_data.serial)
+            .unwrap_or(0)
+    }
 }

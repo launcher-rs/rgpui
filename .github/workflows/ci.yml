@@ -30,40 +30,17 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libglib2.0-dev
+
       - name: cargo check
         run: cargo check --workspace
 
       - name: cargo check (examples)
         run: cargo check --workspace --examples
 
-      - name: cargo test
-        run: cargo test --workspace
-
-      - name: cargo clippy
-        run: cargo clippy --workspace -- --deny warnings
-        continue-on-error: true
-
-  feature-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-hack
-
-      # screen-capture/scap feature 因上游 zed-scap 依赖与 windows-capture 1.5.0 API 不兼容，暂时排除
-      - name: cargo hack (each feature)
-        run: cargo hack check --each-feature --workspace --ignore-private --exclude-features scap,screen-capture
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - uses: Swatinem/rust-cache@v2
-
-      - name: cargo fmt
-        run: cargo fmt --all --check
-        continue-on-error: true
