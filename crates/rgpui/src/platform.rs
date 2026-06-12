@@ -158,6 +158,27 @@ pub enum PermissionStatus {
     Unavailable,
 }
 
+/// 权限类型（用于描述应用在系统中申请的权限类别）
+///
+/// 通常用于 macOS / Windows 等系统能力访问控制，例如辅助功能、屏幕录制、输入监控等。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionType {
+    /// 辅助功能权限（Accessibility）
+    ///
+    /// 用于允许应用模拟用户操作、读取 UI 元素、控制系统界面等能力。
+    Accessibility,
+
+    /// 屏幕录制/屏幕捕获权限（Screen Capture）
+    ///
+    /// 用于获取屏幕内容，例如截图、录屏或远程桌面功能。
+    ScreenCapture,
+
+    /// 输入监控权限（Input Monitoring）
+    ///
+    /// 用于监听键盘和鼠标输入事件（如全局快捷键、输入记录等）。
+    InputMonitoring,
+}
+
 /// 网络状态
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NetworkStatus {
@@ -2615,7 +2636,7 @@ mod image_tests {
 #[cfg(all(test, any(target_os = "linux", target_os = "freebsd")))]
 mod tests {
     use super::*;
-    use std::crate::collections::HashSet;
+    use rgpui::collections::HashSet;
 
     #[test]
     fn test_window_button_layout_parse_standard() {

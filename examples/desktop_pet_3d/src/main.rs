@@ -492,7 +492,7 @@ fn build_tray_menu(anim_names: &[String], interactive: bool) -> Vec<TrayMenuItem
 // ============================================================================
 // 入口
 // ============================================================================
-
+#[cfg(target_os = "windows")]
 fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
@@ -790,4 +790,9 @@ fn main() {
 
             cx.activate(true);
         });
+}
+
+#[cfg(not(target_os = "windows"))]
+fn main() {
+    println!("目前仅支持windows");
 }

@@ -911,7 +911,7 @@ mod tests {
         // only fallback 2 at index 1 covers.
         let covers = |id: FontId, _: char| id == fid(2);
         assert_eq!(
-            pick_covering_slot('瀛?, None, primary, &fb, &covers),
+            pick_covering_slot('字', None, primary, &fb, &covers),
             Some(1)
         );
     }
