@@ -15,6 +15,7 @@ pub fn tls_config() -> ClientConfig {
                 .ok();
 
             ClientConfig::with_platform_verifier()
+                .expect("failed to create TLS client config with platform verifier")
         })
         .clone()
 }

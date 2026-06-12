@@ -85,9 +85,65 @@ PlatformWindow trait 关键方法:
 ```
 
 ## 提交与推送规范
-- **推送前必须检查**：执行 `cargo check --workspace`和 `cargo check --workspace --examples`, 确保没有任何错误和警告
-- - **推送前格式化代码**: 执行 `cargo fmt` 格式化代码
+- **推送前必须检查**：执行 `cargo check --workspace` 和 `cargo check --workspace --examples`，确保没有任何错误和警告
+- **推送前格式化代码**: 执行 `cargo fmt` 格式化代码（注意 `rgpui-linux/src/linux/platform.rs` 有 Rust 2024 edition 解析问题，`cargo fmt` 会报错，需跳过该文件）
 - **禁止使用 `#[allow(dead_code)]`**：未使用的代码应当删除或重构，不得使用属性压制警告
+
+## 跨平台检查
+
+### 问题背景
+
+Windows 下 `cargo check` 只编译 `#[cfg(target_os = "windows")]` 和通用代码，`#[cfg(target_os = "macos")]` 和 `#[cfg(target_os = "linux")]` 中的代码不会被编译。合并上游 PR 后容易把 Linux/macOS 代码弄坏。
+
+### 本地跨目标检查
+
+安装目标：
+```bash
+rustup target add x86_64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin
+```
+
+跨平台检查（只检查 Rust 语法和类型，不需要真机）：
+```bash
+# 检查 Linux 代码
+cargo check --target x86_64-unknown-linux-gnu
+
+# 检查 macOS Intel 代码
+cargo check --target x86_64-apple-darwin
+
+# 检查 macOS ARM 代码
+cargo check --target aarch64-apple-darwin
+```
+
+> **注意**：由于平台绑定的原生依赖（windows-rs、objc2、tree-sitter 的 C 库、psm/stacker），跨目标检查在 Windows 上几乎不可行——缺少对应平台的 C 编译器（如 `x86_64-linux-gnu-gcc`）。真正的跨平台验证依赖 CI（GitHub Actions 矩阵构建）。
+
+### Feature 组合检查
+
+使用 `cargo-hack` 验证所有 feature 组合：
+```bash
+cargo hack check --each-feature --workspace --ignore-private
+```
+
+### GitHub Actions CI
+
+项目配置了 CI（`.github/workflows/ci.yml`），在 push/PR 时自动执行：
+
+| 任务 | 平台 | 内容 |
+|------|------|------|
+| `check` | windows-latest / ubuntu-latest / macos-latest | `cargo check --workspace` + `cargo test --workspace` + `cargo clippy` |
+| `feature-check` | ubuntu-latest | `cargo hack check --each-feature`（排除已知故障的 `scap`/`screen-capture` feature） |
+| `lint` | ubuntu-latest | `cargo fmt --all --check` |
+
+CI 通过矩阵策略在三个平台分别运行，确保跨平台兼容性。
+
+## 已知问题
+
+### `screen-capture` / `scap` feature 编译失败
+
+`cargo hack check --each-feature` 中 `rgpui` 的 `screen-capture` feature 因其依赖的 `zed-scap` 与 `windows-capture` 1.5.0 API 不兼容（函数参数数量变化），暂时无法通过编译。CI 中已通过 `--exclude-features scap,screen-capture` 跳过此检查。等待上游 `zed-scap` 更新后可移除排除。
+
+### 跨目标检查在 Windows 上不可行
+
+`psm`/`stacker` 等 crate 依赖 C 编译器，Windows 上缺少对应平台（如 `x86_64-linux-gnu-gcc`、`cc` for macOS）的交叉编译工具链。真正的跨平台验证依赖 GitHub Actions 矩阵构建。
 
 ## 上游 PR 合并
 

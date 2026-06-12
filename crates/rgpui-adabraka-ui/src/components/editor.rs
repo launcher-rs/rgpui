@@ -287,7 +287,7 @@ impl Language {
             #[cfg(feature = "tree-sitter-json")]
             Language::Json => Some(tree_sitter_json::LANGUAGE.into()),
             #[cfg(feature = "tree-sitter-toml-ng")]
-            Language::Toml => Some(tree_sitter_toml_ng::language()),
+            Language::Toml => Some(tree_sitter_toml_ng::LANGUAGE.into()),
             #[cfg(feature = "tree-sitter-md")]
             Language::Markdown => Some(tree_sitter_md::LANGUAGE.into()),
             #[cfg(feature = "tree-sitter-go")]
