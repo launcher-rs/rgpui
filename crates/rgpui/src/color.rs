@@ -69,6 +69,26 @@ impl Rgba {
             }
         }
     }
+
+    /// 返回一个具有相同红、绿、蓝通道但具有新 alpha 值的 RGBA 颜色。
+    pub fn alpha(&self, a: f32) -> Self {
+        Rgba {
+            r: self.r,
+            g: self.g,
+            b: self.b,
+            a: a.clamp(0., 1.),
+        }
+    }
+
+    /// 返回一个具有相同红、绿、蓝通道但 alpha 通道乘以给定因子的 RGBA 颜色。
+    pub fn opacity(&self, factor: f32) -> Self {
+        Rgba {
+            r: self.r,
+            g: self.g,
+            b: self.b,
+            a: self.a * factor.clamp(0., 1.),
+        }
+    }
 }
 
 impl From<Rgba> for u32 {

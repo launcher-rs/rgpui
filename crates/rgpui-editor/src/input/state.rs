@@ -29,7 +29,6 @@ use super::{
     mode::InputMode,
     number_input,
 };
-use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::highlighter::DiagnosticSet;
 #[cfg(not(target_family = "wasm"))]
 use crate::highlighter::LanguageRegistry;
@@ -39,10 +38,12 @@ use crate::input::{
     HoverDefinition, InlineCompletion, Lsp, Position, RopeExt as _, Selection,
     display_map::LineLayout,
     element::RIGHT_MARGIN,
-    popovers::{ContextMenu, DiagnosticPopover, HoverPopover, InputContextMenu},
-    search::{self, SearchPanel},
+    popovers::{ContextMenu, DiagnosticPopover, HoverPopover},
+    search::SearchPanel,
 };
-use rgpui_component::menu::PopupMenu;
+use rgpui_component::Size;
+use rgpui_component::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
+use rgpui_component::native_menu::NativeMenu;
 use rgpui_component::scroll::AutoScroll;
 use rgpui_component::{Root, history::History};
 
@@ -271,7 +272,6 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("ctrl-f", Search, Some(CONTEXT)),
     ]);
 
-    search::init(cx);
     number_input::init(cx);
 }
 
@@ -364,7 +364,7 @@ pub struct InputState {
     pub(super) last_bounds: Option<Bounds<Pixels>>,
     pub(super) last_selected_range: Option<Selection>,
     pub(super) selecting: bool,
-    pub(super) size: rgpui_component::Size,
+    pub(super) size: Size,
     pub(super) disabled: bool,
     pub(super) masked: bool,
     pub(super) clean_on_escape: bool,
@@ -396,17 +396,16 @@ pub struct InputState {
     diagnostic_popover: Option<Entity<DiagnosticPopover>>,
     /// Completion/CodeAction context menu
     pub(super) context_menu_content: Option<ContextMenu>,
-    pub(super) context_menu: Entity<InputContextMenu>,
 
-    /// An optional context menu builder to allow a custom context menu on the input.
+    /// An optional context menu builder to allow a custom right-click context menu on the input.
     ///
-    /// If set, this will override the built-in context menu and ignore the value set in [`Self::enable_context_menu`].
+    /// If set, this overrides the built-in context menu (and ignores [`Self::enable_context_menu`]).
     pub(super) context_menu_builder:
-        Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>>,
+        Option<Rc<dyn Fn(NativeMenu, &mut Window, &mut App) -> NativeMenu>>,
 
     /// Whether the context menu that shows on right-click is enabled.
     ///
-    /// This value will be ignored if a context menu builder is defined in [`Self::context_menu_builder`].
+    /// This value is ignored if a context menu builder is defined in [`Self::context_menu_builder`].
     pub(super) enable_context_menu: bool,
 
     /// A flag to indicate if we are currently inserting a completion item.
@@ -469,7 +468,6 @@ impl InputState {
         ];
 
         let text_style = window.text_style();
-        let mouse_context_menu = InputContextMenu::new(cx.entity(), window, cx);
 
         Self {
             focus_handle: focus_handle.clone(),
@@ -519,7 +517,6 @@ impl InputState {
             lsp: Lsp::default(),
             diagnostic_popover: None,
             context_menu_content: None,
-            context_menu: mouse_context_menu,
             context_menu_builder: None,
             enable_context_menu: true,
             completion_inserting: false,
@@ -527,7 +524,7 @@ impl InputState {
             hover_definition: HoverDefinition::default(),
             silent_replace_text: false,
             emit_events: true,
-            size: rgpui_component::Size::default(),
+            size: Size::default(),
             _subscriptions,
             _context_menu_task: Task::ready(Ok(())),
             _pending_update: false,
@@ -582,7 +579,7 @@ impl InputState {
     /// Sets whether the context menu that shows on right-click is enabled.
     ///
     /// The context menu is enabled by default.
-    /// This value will be ignored if a custom context menu is defined on the input.
+    /// This value is ignored if a custom context menu builder is defined on the input.
     pub fn context_menu(mut self, enable: bool) -> Self {
         self.enable_context_menu = enable;
         self
@@ -1501,6 +1498,67 @@ impl InputState {
         }
 
         cx.propagate();
+    }
+
+    /// Show the right-click context menu as a native OS menu.
+    pub(crate) fn handle_right_click_menu(
+        &mut self,
+        event: &MouseDownEvent,
+        offset: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if rgpui_component::global_state::GlobalState::global(cx).is_in_deferred_context() {
+            return;
+        }
+
+        if !self.selected_range.contains(offset) {
+            self.move_to(offset, None, cx);
+        }
+
+        // A custom builder fully replaces the built-in context menu.
+        let menu = if let Some(builder) = self.context_menu_builder.clone() {
+            builder(NativeMenu::new(), window, cx)
+        } else {
+            let is_code_editor = self.mode.is_code_editor();
+            if is_code_editor {
+                self.handle_hover_definition(offset, window, cx);
+            }
+
+            let is_enable = !self.disabled;
+            let has_goto_definition = is_enable && self.lsp.definition_provider.is_some();
+            let has_code_action = is_enable && !self.lsp.code_action_providers.is_empty();
+            let is_selected = !self.selected_range.is_empty();
+            let has_paste = is_enable && cx.read_from_clipboard().is_some();
+
+            let mut menu = NativeMenu::new();
+            if is_code_editor {
+                menu = menu
+                    .menu_with_disabled(
+                        "Go to Definition",
+                        !has_goto_definition,
+                        Box::new(crate::input::GoToDefinition),
+                    )
+                    .menu_with_disabled(
+                        "Show Code Actions",
+                        !has_code_action,
+                        Box::new(crate::input::ToggleCodeActions),
+                    )
+                    .separator();
+            }
+
+            menu.menu_with_disabled(
+                "Cut",
+                !(is_enable && is_selected),
+                Box::new(crate::input::Cut),
+            )
+            .menu_with_disabled("Copy", !is_selected, Box::new(crate::input::Copy))
+            .menu_with_disabled("Paste", !has_paste, Box::new(crate::input::Paste))
+            .separator()
+            .menu("Select All", Box::new(crate::input::SelectAll))
+        };
+
+        menu.show(event.position, window, cx);
     }
 
     pub(super) fn on_mouse_down(
@@ -2774,6 +2832,7 @@ impl Render for InputState {
             .id("input-state")
             .flex_1()
             .when(self.mode.is_multi_line(), |this| this.h_full())
+            .flex_grow()
             .overflow_x_hidden()
             .child(TextElement::new(cx.entity().clone()).placeholder(self.placeholder.clone()))
             .children(self.diagnostic_popover.clone())
@@ -2785,8 +2844,8 @@ impl Render for InputState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::Theme;
     use rgpui::{TestAppContext, VisualTestContext};
+    use rgpui_component::theme::Theme;
 
     struct InputView {
         input: Entity<InputState>,
@@ -2807,7 +2866,7 @@ mod tests {
 
                     input = Some(cx.new(|cx| InputState::new(window, cx).code_editor("sql")));
 
-                    cx.new(|cx| crate::Root::new(input.clone().unwrap(), window, cx))
+                    cx.new(|cx| rgpui_component::Root::new(input.clone().unwrap(), window, cx))
                 })
                 .unwrap()
             });

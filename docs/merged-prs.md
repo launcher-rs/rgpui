@@ -33,6 +33,11 @@
 | #2441 | 2026-06-09 | rename |
 | #2448 | 2026-06-09 | . |
 | #2449 | 2026-06-09 | . |
+| #2459 | 2026-06-12 | Allow custom easing function for spinner |
+| #2457 | 2026-06-12 | Ignore empty highlight ranges |
+| #2455 | 2026-06-12 | Move to `WindowExt` |
+| #2454 | 2026-06-12 | Fix tree events to emit when set_selected_item targeted hidden nodes |
+| #2453 | 2026-06-12 | input: restore custom context menu API on top of NativeMenu |
 
 ## yororen-ui
 

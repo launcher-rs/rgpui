@@ -181,6 +181,47 @@
       "title": "Add LICENSE-GPL symlink to benchmarks crate",
       "status": "check-failed",
       "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2459,
+      "upstream": "gpui-component",
+      "title": "Allow custom easing function for spinner",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2457,
+      "upstream": "gpui-component",
+      "title": "Ignore empty highlight ranges",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2455,
+      "upstream": "gpui-component",
+      "title": "Move to `WindowExt`",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2454,
+      "upstream": "gpui-component",
+      "title": "Fix tree events to emit when set_selected_item targeted hidden nodes",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2453,
+      "upstream": "gpui-component",
+      "title": "input: restore custom context menu API on top of NativeMenu",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2452,
+      "upstream": "gpui-component",
+      "title": "Fix WASM highlighter stub mismatch in release docs build",
+      "status": "pending"
     }
   ]
 }

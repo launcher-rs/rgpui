@@ -85,7 +85,7 @@ impl InputContextMenu {
         cx: &mut App,
     ) -> Entity<Self> {
         cx.new(|cx| {
-            let menu = cx.new(|cx| PopupMenu::new(cx).small());
+            let menu = cx.new(|cx| PopupMenu::new(cx));
 
             let _subscriptions = vec![cx.subscribe_in(&menu, window, {
                 move |this: &mut Self, _, _: &DismissEvent, window, cx| {

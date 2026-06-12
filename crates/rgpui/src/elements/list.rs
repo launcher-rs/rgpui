@@ -347,6 +347,7 @@ impl ListState {
             state.reset = true;
             state.measuring_behavior.reset();
             state.logical_scroll_top = None;
+            state.pending_scroll = None;
             state.scrollbar_drag_start_height = None;
             state.items.summary().count
         };
@@ -561,6 +562,7 @@ impl ListState {
     pub fn scroll_to_end(&self) {
         let state = &mut *self.0.borrow_mut();
         let item_count = state.items.summary().count;
+        state.pending_scroll = None;
         state.logical_scroll_top = Some(ListOffset {
             item_ix: item_count,
             offset_in_item: px(0.),
@@ -613,6 +615,7 @@ impl ListState {
             state.follow_state.stop_following();
         }
 
+        state.rebase_pending_scroll(scroll_top);
         state.logical_scroll_top = Some(scroll_top);
     }
 
@@ -645,6 +648,7 @@ impl ListState {
             }
         }
 
+        state.rebase_pending_scroll(scroll_top);
         state.logical_scroll_top = Some(scroll_top);
     }
 
@@ -744,6 +748,38 @@ impl ListState {
 }
 
 impl StateInner {
+    /// 将待处理的滚动调整从重新测量锚定到新设置的滚动位置，
+    /// 使其在下次布局时钳制到重新测量项的新高度，而不是恢复滚动。
+    fn rebase_pending_scroll(&mut self, scroll_top: ListOffset) {
+        let Some(pending) = self.pending_scroll.take() else {
+            return;
+        };
+        if scroll_top.item_ix >= self.items.summary().count {
+            return;
+        }
+
+        self.pending_scroll = match pending {
+            PendingScroll::Absolute { .. } => Some(PendingScroll::Absolute {
+                item_ix: scroll_top.item_ix,
+                offset: scroll_top.offset_in_item,
+            }),
+            PendingScroll::Proportional(_) => {
+                let mut cursor = self.items.cursor::<Count>(());
+                cursor.seek(&Count(scroll_top.item_ix), Bias::Right);
+                cursor
+                    .item()
+                    .and_then(|item| item.size_hint())
+                    .filter(|size| size.height.0 > 0.0)
+                    .map(|size| {
+                        PendingScroll::Proportional(PendingScrollFraction {
+                            item_ix: scroll_top.item_ix,
+                            fraction: (scroll_top.offset_in_item.0 / size.height.0).clamp(0.0, 1.0),
+                        })
+                    })
+            }
+        };
+    }
+
     fn max_scroll_offset(&self) -> Pixels {
         let bounds = self.last_layout_bounds.unwrap_or_default();
         let height = self
@@ -787,17 +823,18 @@ impl StateInner {
             .min(scroll_max);
 
         if self.alignment == ListAlignment::Bottom && new_scroll_top == scroll_max {
+            self.pending_scroll = None;
             self.logical_scroll_top = None;
         } else {
             let (start, ..) =
                 self.items
                     .find::<ListItemSummary, _>((), &Height(new_scroll_top), Bias::Right);
-            let item_ix = start.count;
-            let offset_in_item = new_scroll_top - start.height;
-            self.logical_scroll_top = Some(ListOffset {
-                item_ix,
-                offset_in_item,
-            });
+            let scroll_top = ListOffset {
+                item_ix: start.count,
+                offset_in_item: new_scroll_top - start.height,
+            };
+            self.rebase_pending_scroll(scroll_top);
+            self.logical_scroll_top = Some(scroll_top);
         }
 
         if delta.y > px(0.) {
@@ -1226,6 +1263,7 @@ impl StateInner {
         if dragged_to_end && matches!(self.follow_state, FollowState::Tail { .. }) {
             self.follow_state = FollowState::Tail { is_following: true };
             let item_count = self.items.summary().count;
+            self.pending_scroll = None;
             self.logical_scroll_top = Some(ListOffset {
                 item_ix: item_count,
                 offset_in_item: px(0.),
@@ -1236,18 +1274,19 @@ impl StateInner {
         self.follow_state.stop_following();
 
         if self.alignment == ListAlignment::Bottom && new_scroll_top == scroll_max {
+            self.pending_scroll = None;
             self.logical_scroll_top = None;
         } else {
             let (start, _, _) =
                 self.items
                     .find::<ListItemSummary, _>((), &Height(new_scroll_top), Bias::Right);
 
-            let item_ix = start.count;
-            let offset_in_item = new_scroll_top - start.height;
-            self.logical_scroll_top = Some(ListOffset {
-                item_ix,
-                offset_in_item,
-            });
+            let scroll_top = ListOffset {
+                item_ix: start.count,
+                offset_in_item: new_scroll_top - start.height,
+            };
+            self.rebase_pending_scroll(scroll_top);
+            self.logical_scroll_top = Some(scroll_top);
         }
     }
 }

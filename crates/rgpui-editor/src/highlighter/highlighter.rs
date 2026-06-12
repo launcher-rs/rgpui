@@ -1,7 +1,7 @@
 use crate::highlighter::{HighlightTheme, LanguageRegistry};
 
 use anyhow::{Context, Result, anyhow};
-use rgpui::{HighlightStyle, SharedString};
+use rgpui::{HighlightStyle, SharedString, sum_tree};
 
 use ropey::{ChunkCursor, Rope};
 use std::sync::Arc;
@@ -201,7 +201,7 @@ impl HighlightItem {
     }
 }
 
-impl rgpui::sum_tree::Item for HighlightItem {
+impl sum_tree::Item for HighlightItem {
     type Summary = HighlightSummary;
     fn summary(&self, _cx: &()) -> Self::Summary {
         HighlightSummary {
@@ -214,7 +214,7 @@ impl rgpui::sum_tree::Item for HighlightItem {
     }
 }
 
-impl rgpui::sum_tree::Summary for HighlightSummary {
+impl sum_tree::Summary for HighlightSummary {
     type Context<'a> = &'a ();
     fn zero(_: Self::Context<'_>) -> Self {
         HighlightSummary {
@@ -235,7 +235,7 @@ impl rgpui::sum_tree::Summary for HighlightSummary {
     }
 }
 
-impl<'a> rgpui::sum_tree::Dimension<'a, HighlightSummary> for usize {
+impl<'a> sum_tree::Dimension<'a, HighlightSummary> for usize {
     fn zero(_: &()) -> Self {
         0
     }
@@ -243,7 +243,7 @@ impl<'a> rgpui::sum_tree::Dimension<'a, HighlightSummary> for usize {
     fn add_summary(&mut self, _: &'a HighlightSummary, _: &()) {}
 }
 
-impl<'a> rgpui::sum_tree::Dimension<'a, HighlightSummary> for Range<usize> {
+impl<'a> sum_tree::Dimension<'a, HighlightSummary> for Range<usize> {
     fn zero(_: &()) -> Self {
         Default::default()
     }
@@ -888,7 +888,7 @@ impl SyntaxHighlighter {
     /// # Example
     ///
     /// ```no_run
-    /// use rgpui_editor::highlighter::{HighlightTheme, SyntaxHighlighter};
+    /// use rgpui_component::highlighter::{HighlightTheme, SyntaxHighlighter};
     /// use ropey::Rope;
     ///
     /// let code = "fn main() {\n    println!(\"Hello\");\n}";
@@ -920,6 +920,9 @@ impl SyntaxHighlighter {
             let mut node_range = node_range.start.max(range.start)..node_range.end.min(range.end);
             if node_range.start > node_range.end {
                 node_range.end = node_range.start;
+            }
+            if node_range.is_empty() {
+                continue;
             }
 
             styles.push((node_range, theme.style(name.as_ref()).unwrap_or_default()));
@@ -960,6 +963,11 @@ pub(crate) fn unique_styles(
     total_range: &Range<usize>,
     styles: Vec<(Range<usize>, HighlightStyle)>,
 ) -> Vec<(Range<usize>, HighlightStyle)> {
+    let styles: Vec<_> = styles
+        .into_iter()
+        .filter(|(range, _)| !range.is_empty())
+        .collect();
+
     if styles.is_empty() {
         return styles;
     }
@@ -1391,6 +1399,12 @@ $x = 1;
                 (45..60, blue),
                 (60..65, clean),
             ],
+        );
+
+        assert_unique_styles(
+            0..10,
+            vec![(2..2, red), (4..6, green)],
+            vec![(0..4, clean), (4..6, green), (6..10, clean)],
         );
     }
 }

@@ -2,19 +2,19 @@ use std::rc::Rc;
 
 use rgpui::prelude::FluentBuilder as _;
 use rgpui::{
-    AnyElement, App, Context, DefiniteLength, Edges, EdgesRefinement, Entity, Hsla,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Rems, RenderOnce,
-    StyleRefinement, Styled, TextAlign, Window, div, px, relative,
+    AnyElement, App, DefiniteLength, Edges, EdgesRefinement, Entity, Hsla, InteractiveElement as _,
+    IntoElement, MouseButton, ParentElement as _, Rems, RenderOnce, StyleRefinement, Styled,
+    TextAlign, Window, div, px, relative,
 };
 
 use crate::input::clear_button;
 use rgpui_component::button::{Button, ButtonVariants as _};
-use rgpui_component::menu::PopupMenu;
+use rgpui_component::native_menu::NativeMenu;
 use rgpui_component::spinner::Spinner;
-use rgpui_component::{
-    ActiveTheme, Colorize, IconName, Selectable, Sizable, Size, StyleSized, StyledExt, h_flex,
-    v_flex,
-};
+use rgpui_component::{ActiveTheme, Colorize, v_flex};
+use rgpui_component::{IconName, Size};
+use rgpui_component::{Selectable, StyledExt, h_flex};
+use rgpui_component::{Sizable, StyleSized};
 
 use super::{InputState, element::EditorScrollbar};
 
@@ -50,9 +50,8 @@ pub struct Input {
 
     /// An optional context menu builder to allow a custom context menu on the input.
     ///
-    /// If set, this will override the built-in context menu.
-    context_menu_builder:
-        Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>>,
+    /// If set, this overrides the built-in context menu.
+    context_menu_builder: Option<Rc<dyn Fn(NativeMenu, &mut Window, &mut App) -> NativeMenu>>,
 }
 
 impl Sizable for Input {
@@ -159,10 +158,12 @@ impl Input {
         self
     }
 
-    /// Sets the context menu for the input.
+    /// Sets a custom context menu builder for the input, shown as a native OS menu.
+    ///
+    /// If set, this overrides the built-in right-click context menu.
     pub fn context_menu(
         mut self,
-        f: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+        f: impl Fn(NativeMenu, &mut Window, &mut App) -> NativeMenu + 'static,
     ) -> Self {
         self.context_menu_builder = Some(Rc::new(f));
         self

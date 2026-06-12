@@ -13,8 +13,8 @@ use rgpui::{
 };
 
 use crate::{
-    ActiveTheme, global_state::GlobalState, input::Selection, text::TextViewMultiClickKind,
-    text::node::LinkMark, text::selection::word_range_at,
+    ActiveTheme, WindowExt as _, global_state::GlobalState, input::Selection,
+    text::TextViewMultiClickKind, text::node::LinkMark, text::selection::word_range_at,
 };
 
 /// A inline element used to render a inline text and support selectable.
@@ -93,10 +93,10 @@ impl Inline {
             corner_radii: Corners::default(),
             border_color: rgpui::transparent_black(),
             border_style: BorderStyle::default(),
-            continuous_corners: false,
-            transform: Default::default(),
             border_widths: rgpui::Edges::all(px(0.)),
-            blend_mode: Default::default(),
+            continuous_corners: false,
+            transform: rgpui::TransformationMatrix::unit(),
+            blend_mode: rgpui::BlendMode::Normal,
         });
     }
 
@@ -458,6 +458,7 @@ impl Element for Inline {
                     if let Some(link) =
                         Self::link_for_position(&text_layout, &links, event.position)
                     {
+                        window.end_text_selection(cx);
                         cx.stop_propagation();
                         cx.open_url(&link.url);
                     }

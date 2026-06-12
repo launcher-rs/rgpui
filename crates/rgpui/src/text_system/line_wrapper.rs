@@ -314,7 +314,10 @@ impl LineWrapper {
         runs: &'a [TextRun],
         truncate_from: TruncateFrom,
     ) -> (SharedString, Cow<'a, [TextRun]>) {
-        if max_lines <= 1 || truncate_from == TruncateFrom::Start || truncate_from == TruncateFrom::Middle {
+        if max_lines <= 1
+            || truncate_from == TruncateFrom::Start
+            || truncate_from == TruncateFrom::Middle
+        {
             return self.truncate_line(
                 text,
                 wrap_width * max_lines,

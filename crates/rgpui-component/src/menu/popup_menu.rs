@@ -272,10 +272,9 @@ impl PopupMenuItem {
 
 pub struct PopupMenu {
     pub(crate) focus_handle: FocusHandle,
-    /// 菜单项列表。
-    pub menu_items: Vec<PopupMenuItem>,
-    /// 用于处理菜单动作的实体焦点句柄。
-    pub action_context: Option<FocusHandle>,
+    pub(crate) menu_items: Vec<PopupMenuItem>,
+    /// The focus handle of Entity to handle actions.
+    pub(crate) action_context: Option<FocusHandle>,
     selected_index: Option<usize>,
     min_width: Option<Pixels>,
     max_width: Option<Pixels>,
@@ -296,8 +295,7 @@ pub struct PopupMenu {
 }
 
 impl PopupMenu {
-    /// 创建新的弹出菜单。
-    pub fn new(cx: &mut App) -> Self {
+    pub(crate) fn new(cx: &mut App) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
             action_context: None,
@@ -655,12 +653,6 @@ impl PopupMenu {
     pub fn item(mut self, item: impl Into<PopupMenuItem>) -> Self {
         let item: PopupMenuItem = item.into();
         self.menu_items.push(item);
-        self
-    }
-
-    /// 使用小尺寸菜单项高度。
-    pub fn small(mut self) -> Self {
-        self.size = Size::Small;
         self
     }
 

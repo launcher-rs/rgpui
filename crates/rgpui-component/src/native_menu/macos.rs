@@ -2,13 +2,13 @@
 
 use std::cell::Cell;
 
+use rgpui::{Action, App, Pixels, Point, Window};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send, sel};
 use objc2_app_kit::{NSMenu, NSMenuItem, NSView};
 use objc2_foundation::{NSPoint, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use rgpui::{Action, App, Pixels, Point, Window};
 
 use super::NativeMenuItem;
 
@@ -60,12 +60,18 @@ pub(super) fn show(
     let handle = Window::window_handle(window);
 
     cx.spawn(async move |cx| {
-        let Some(action) = run_menu(view_ptr, &items, position) else {
-            return;
-        };
-        cx.update(move |app| {
+        let action = run_menu(view_ptr, &items, position);
+        let _ = cx.update(move |app| {
             let _ = handle.update(app, move |_, window, app| {
-                window.dispatch_action(action, app);
+                if let Some(action) = action {
+                    window.dispatch_action(action, app);
+                }
+                // Wake GPUI after the AppKit tracking loop returns so the window
+                // resumes painting and re-registers its mouse handlers. Without
+                // this, a dismissed menu (especially when nothing is selected)
+                // leaves the window idle and unresponsive to a second
+                // right-click.
+                window.refresh();
             });
         });
     })
