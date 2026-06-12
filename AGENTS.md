@@ -130,16 +130,16 @@ cargo hack check --each-feature --workspace --ignore-private
 | 任务 | 平台 | 内容 |
 |------|------|------|
 | `check` | windows-latest / ubuntu-latest / macos-latest | `cargo check --workspace` + `cargo test --workspace` + `cargo clippy` |
-| `feature-check` | ubuntu-latest | `cargo hack check --each-feature`（排除已知故障的 `scap`/`screen-capture` feature） |
+| `feature-check` | ubuntu-latest | `cargo hack check --each-feature` |
 | `lint` | ubuntu-latest | `cargo fmt --all --check` |
 
 CI 通过矩阵策略在三个平台分别运行，确保跨平台兼容性。
 
 ## 已知问题
 
-### `screen-capture` / `scap` feature 编译失败
+### `screen-capture` / `scap` feature
 
-`cargo hack check --each-feature` 中 `rgpui` 的 `screen-capture` feature 因其依赖的 `zed-scap` 与 `windows-capture` 1.5.0 API 不兼容（函数参数数量变化），暂时无法通过编译。CI 中已通过 `--exclude-features scap,screen-capture` 跳过此检查。等待上游 `zed-scap` 更新后可移除排除。
+原依赖 `zed-scap`（Zed 维护的 fork）因基于 `windows-capture` 1.3.x API 而无法兼容 1.5.x。已切换到 crates.io 上官方 `scap = "0.0.8"`，该版本依赖兼容的 `windows-capture` 版本，编译通过。
 
 ### 跨目标检查在 Windows 上不可行
 

@@ -51,9 +51,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-hack
 
-      # screen-capture/scap feature 因上游 zed-scap 依赖与 windows-capture 1.5.0 API 不兼容，暂时排除
       - name: cargo hack (each feature)
-        run: cargo hack check --each-feature --workspace --ignore-private --exclude-features scap,screen-capture
+        run: cargo hack check --each-feature --workspace --ignore-private
 
   lint:
     runs-on: ubuntu-latest

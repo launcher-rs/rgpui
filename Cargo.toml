@@ -196,7 +196,7 @@ url = "2.5.8"
 
 # ---- 屏幕捕获 ----
 # 跨平台屏幕捕获
-scap = { git = "https://github.com/zed-industries/scap", rev = "4afea48c3b002197176fb19cd0f9b180dd36eaac", default-features = false, package = "zed-scap", version = "0.0.8-zed" }
+scap = "0.0.8"
 
 # ---- macOS 平台 ----
 # WebAssembly 绑定

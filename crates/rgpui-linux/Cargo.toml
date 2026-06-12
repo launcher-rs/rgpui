@@ -45,7 +45,6 @@ x11 = [
     "x11-clipboard",
     "filedescriptor",
     "open",
-    "scap?/x11",
 ]
 screen-capture = [
     "rgpui/screen-capture",
