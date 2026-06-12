@@ -11,7 +11,7 @@ use crate::{
     Corners, CornersRefinement, CursorStyle, DefiniteLength, DevicePixels, Edges, EdgesRefinement,
     Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, Hsla, Length, Pixels,
     Point, PointRefinement, Radians, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun,
-    TransformationMatrix, Window, black, phi, point, quad, rems, size,
+    TransformationMatrix, Window, black, phi, point, px, quad, rems, size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -368,6 +368,38 @@ pub struct BoxShadow {
     pub inset: bool,
 }
 
+impl BoxShadow {
+    /// 创建一个新的 [`BoxShadow`]，给定偏移量和颜色，匹配 CSS `box-shadow` 属性的顺序。
+    /// 使用 builder 方法设置模糊半径、扩散半径和内阴影。
+    pub fn new(offset_x: Pixels, offset_y: Pixels, color: Hsla) -> Self {
+        Self {
+            color,
+            offset: point(offset_x, offset_y),
+            blur_radius: px(0.),
+            spread_radius: px(0.),
+            inset: false,
+        }
+    }
+
+    /// 设置阴影的模糊半径。
+    pub fn blur_radius(mut self, blur_radius: Pixels) -> Self {
+        self.blur_radius = blur_radius;
+        self
+    }
+
+    /// 设置阴影的扩散半径。
+    pub fn spread_radius(mut self, spread_radius: Pixels) -> Self {
+        self.spread_radius = spread_radius;
+        self
+    }
+
+    /// 将阴影标记为内阴影（在元素边界内部绘制）。
+    pub fn inset(mut self) -> Self {
+        self.inset = true;
+        self
+    }
+}
+
 /// 如何处理文本中的空白字符
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum WhiteSpace {
@@ -386,6 +418,9 @@ pub enum TextOverflow {
     /// 文本不适合时在开头截断，并在开头显示提供的字符串（例如，"...ong text here"）。
     /// 通常更适合文件路径，因为结尾比开头更重要。
     TruncateStart(SharedString),
+    /// 在中间截断文本，保留字符串的开头和结尾（例如，"long fi…name.rs"）。
+    /// 适用于文件名，其中前缀和扩展名都是重要的上下文。
+    TruncateMiddle(SharedString),
 }
 
 /// 如何对齐元素内的文本

@@ -139,6 +139,48 @@
       "title": "Update GPUI README to reflect new Application::new() API",
       "status": "merged",
       "merged_at": "2026-06-10"
+    },
+    {
+      "number": 57743,
+      "upstream": "zed",
+      "title": "gpui: Add builder API for BoxShadow",
+      "status": "check-failed",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 52125,
+      "upstream": "zed",
+      "title": "fix(gpui): align Rgba alpha/opacity with Hsla semantics",
+      "status": "check-failed",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 56771,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into improve-fallback-fonts-on-macos",
+      "status": "check-failed",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 59002,
+      "upstream": "zed",
+      "title": "gpui: Fix list scroll events being reverted by pending scroll",
+      "status": "check-failed",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 59072,
+      "upstream": "zed",
+      "title": "tab_switcher: Middle-truncate long picker filenames",
+      "status": "check-failed",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 58202,
+      "upstream": "zed",
+      "title": "Add LICENSE-GPL symlink to benchmarks crate",
+      "status": "check-failed",
+      "merged_at": "2026-06-12"
     }
   ]
 }

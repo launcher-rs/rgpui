@@ -2,13 +2,15 @@ use crate::collections::HashMap;
 use crate::{FontId, Pixels, SharedString, TextRun, TextSystem, px};
 use std::{borrow::Cow, iter, sync::Arc};
 
-/// Determines whether to truncate text from the start or end.
+/// Determines whether to truncate text from the start, end, or middle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TruncateFrom {
     /// Truncate text from the start.
     Start,
     /// Truncate text from the end.
     End,
+    /// Truncate text from the middle, preserving the start and end.
+    Middle,
 }
 
 /// The GPUI line wrapper, used to wrap lines of text to a given width.
@@ -179,9 +181,67 @@ impl LineWrapper {
                     }
                 }
             }
+            TruncateFrom::Middle => {}
         }
 
         None
+    }
+
+    fn should_truncate_line_middle(
+        &mut self,
+        line: &str,
+        truncate_width: Pixels,
+        truncation_affix: &str,
+    ) -> Option<(usize, usize)> {
+        let suffix_width = truncation_affix
+            .chars()
+            .map(|c| self.width_for_char(c))
+            .fold(px(0.0), |a, x| a + x);
+
+        let total_width: Pixels = line
+            .chars()
+            .map(|c| self.width_for_char(c))
+            .fold(px(0.0), |a, x| a + x);
+
+        if total_width <= truncate_width {
+            return None;
+        }
+
+        let content_budget = truncate_width - suffix_width;
+        if content_budget <= px(0.) {
+            return Some((0, line.len()));
+        }
+
+        let front_budget = content_budget * (2.0 / 3.0);
+        let back_budget = content_budget - front_budget;
+
+        let mut front_width = px(0.);
+        let mut front_end_ix = 0usize;
+        for (ix, c) in line.char_indices() {
+            let char_width = self.width_for_char(c);
+            if front_width + char_width > front_budget {
+                break;
+            }
+            front_width += char_width;
+            front_end_ix = ix + c.len_utf8();
+        }
+
+        let mut back_width = px(0.);
+        let mut back_start_ix = line.len();
+        for (ix, c) in line.char_indices().rev() {
+            let char_width = self.width_for_char(c);
+            if back_width + char_width > back_budget {
+                break;
+            }
+            back_width += char_width;
+            back_start_ix = ix;
+        }
+
+        if front_end_ix >= back_start_ix {
+            return Some((0, line.len()));
+        }
+
+        Some((front_end_ix, back_start_ix))
     }
 
     /// Truncate a line of text to the given width with this wrapper's font and font size.
@@ -193,6 +253,28 @@ impl LineWrapper {
         runs: &'a [TextRun],
         truncate_from: TruncateFrom,
     ) -> (SharedString, Cow<'a, [TextRun]>) {
+        if truncate_from == TruncateFrom::Middle {
+            if let Some((front_end_ix, back_start_ix)) =
+                self.should_truncate_line_middle(&line, truncate_width, truncation_affix)
+            {
+                let result = SharedString::from(format!(
+                    "{}{truncation_affix}{}",
+                    &line[..front_end_ix],
+                    &line[back_start_ix..]
+                ));
+                let mut runs = runs.to_vec();
+                update_runs_after_middle_truncation(
+                    truncation_affix,
+                    &mut runs,
+                    front_end_ix,
+                    back_start_ix,
+                );
+                return (result, Cow::Owned(runs));
+            } else {
+                return (line, Cow::Borrowed(runs));
+            }
+        }
+
         if let Some(truncate_ix) =
             self.should_truncate_line(&line, truncate_width, truncation_affix, truncate_from)
         {
@@ -206,6 +288,7 @@ impl LineWrapper {
                     line[..truncate_ix]
                         .trim_end_matches(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
                 )),
+                TruncateFrom::Middle => unreachable!("Middle truncation is handled above"),
             };
             let mut runs = runs.to_vec();
             update_runs_after_truncation(&result, truncation_affix, &mut runs, truncate_from);
@@ -231,7 +314,7 @@ impl LineWrapper {
         runs: &'a [TextRun],
         truncate_from: TruncateFrom,
     ) -> (SharedString, Cow<'a, [TextRun]>) {
-        if max_lines <= 1 || truncate_from == TruncateFrom::Start {
+        if max_lines <= 1 || truncate_from == TruncateFrom::Start || truncate_from == TruncateFrom::Middle {
             return self.truncate_line(
                 text,
                 wrap_width * max_lines,
@@ -445,7 +528,63 @@ fn update_runs_after_truncation(
                 }
             }
         }
+        TruncateFrom::Middle => {
+            unreachable!("Middle truncation calls this function with TruncateFrom::End directly")
+        }
     }
+}
+
+fn update_runs_after_middle_truncation(
+    ellipsis: &str,
+    runs: &mut Vec<TextRun>,
+    front_end_ix: usize,
+    back_start_ix: usize,
+) {
+    let original_runs = std::mem::take(runs);
+    let mut result_runs: Vec<TextRun> = Vec::with_capacity(original_runs.len());
+
+    let mut front_remaining = front_end_ix;
+    let mut front_done = false;
+    for run in &original_runs {
+        if front_done {
+            break;
+        }
+        if run.len <= front_remaining {
+            result_runs.push(run.clone());
+            front_remaining -= run.len;
+        } else {
+            let mut partial = run.clone();
+            partial.len = front_remaining + ellipsis.len();
+            result_runs.push(partial);
+            front_done = true;
+        }
+    }
+    if !front_done {
+        if let Some(last) = result_runs.last_mut() {
+            last.len += ellipsis.len();
+        } else if let Some(first) = original_runs.first() {
+            let mut affix_run = first.clone();
+            affix_run.len = ellipsis.len();
+            result_runs.push(affix_run);
+        }
+    }
+
+    let mut byte_pos = 0usize;
+    for run in &original_runs {
+        let run_end = byte_pos + run.len;
+        if run_end > back_start_ix {
+            if byte_pos < back_start_ix {
+                let mut partial = run.clone();
+                partial.len = run_end - back_start_ix;
+                result_runs.push(partial);
+            } else {
+                result_runs.push(run.clone());
+            }
+        }
+        byte_pos = run_end;
+    }
+
+    *runs = result_runs;
 }
 
 /// A fragment of a line that can be wrapped.
@@ -1324,6 +1463,80 @@ mod tests {
             text,
             "Text that fits exactly should not be modified: '{}'",
             result
+        );
+    }
+
+    #[test]
+    fn test_truncate_line_middle() {
+        let mut wrapper = build_wrapper();
+
+        // 当文本适应非常宽的预算时，不进行截断。
+        let short_text = "hello world";
+        let runs = generate_test_runs(&[short_text.len()]);
+        let (result, result_runs) = wrapper.truncate_line(
+            short_text.into(),
+            px(10000.),
+            "…",
+            &runs,
+            TruncateFrom::Middle,
+        );
+        assert_eq!(result.as_ref(), short_text);
+        assert_eq!(result_runs.len(), 1);
+        assert_eq!(result_runs[0].len, short_text.len());
+
+        // 基本中间截断：在 px(100.) 预算下的长字符串。
+        let long_text = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz";
+        let runs = generate_test_runs(&[long_text.len()]);
+        let (result, _result_runs) =
+            wrapper.truncate_line(long_text.into(), px(100.), "…", &runs, TruncateFrom::Middle);
+        assert!(
+            result.contains('…'),
+            "Middle-truncated result should contain '…', got: '{}'",
+            result
+        );
+        assert!(
+            result.chars().count() < long_text.chars().count(),
+            "Middle-truncated result should be shorter than original"
+        );
+        assert_eq!(
+            result.chars().next(),
+            long_text.chars().next(),
+            "Result should start with the same first character as original"
+        );
+        assert_eq!(
+            result.chars().last(),
+            long_text.chars().last(),
+            "Result should end with the same last character as original"
+        );
+
+        // 退化情况：预算非常窄，中间截断无法找到有效分�?仍然显示截断标记而不是返回原始的溢出文本。
+        let text = "abcdef";
+        let runs = generate_test_runs(&[text.len()]);
+        let (result, result_runs) =
+            wrapper.truncate_line(text.into(), px(1.), "…", &runs, TruncateFrom::Middle);
+        assert_eq!(result.as_ref(), "…");
+        assert_eq!(result_runs.len(), 1);
+        assert_eq!(result_runs[0].len, "…".len());
+
+        // 运行调整正确性：跨字符串的多个运行。
+        // 验证返回的 runs 长度之和等于 result.len()。
+        let multi_run_text = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz";
+        let run_lens = [20, 20, multi_run_text.len() - 40];
+        let runs = generate_test_runs(&run_lens);
+        let (result, result_runs) = wrapper.truncate_line(
+            multi_run_text.into(),
+            px(100.),
+            "…",
+            &runs,
+            TruncateFrom::Middle,
+        );
+        let total_run_len: usize = result_runs.iter().map(|r| r.len).sum();
+        assert_eq!(
+            total_run_len,
+            result.len(),
+            "Sum of run lengths ({}) should equal result byte length ({})",
+            total_run_len,
+            result.len()
         );
     }
 }

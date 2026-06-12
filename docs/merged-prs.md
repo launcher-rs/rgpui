@@ -12,6 +12,12 @@
 | #58874 | 2026-06-09 | gpui: Free atlas tile space when removing tiles |
 | #58826 | 2026-06-09 | add read fd with timeout |
 | #58751 | 2026-06-09 | Use unstable sorts if deduplicating |
+| #57743 | 2026-06-12 | gpui: Add builder API for BoxShadow |
+| #52125 | 2026-06-12 | fix(gpui): align Rgba alpha/opacity with Hsla semantics |
+| #56771 | 2026-06-12 | Merge branch 'main' into improve-fallback-fonts-on-macos |
+| #59002 | 2026-06-12 | gpui: Fix list scroll events being reverted by pending scroll |
+| #59072 | 2026-06-12 | tab_switcher: Middle-truncate long picker filenames |
+| #58202 | 2026-06-12 | Add LICENSE-GPL symlink to benchmarks crate |
 
 ## gpui-component
 

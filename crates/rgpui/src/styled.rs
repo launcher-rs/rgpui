@@ -99,6 +99,14 @@ pub trait Styled: Sized {
         self
     }
 
+    /// 设置如果需要则在中间用省略号 (...) 截断溢出的文本。
+    /// 保留文本的开头和结尾。适用于文件名。
+    /// 注意：这在 Tailwind CSS 中不存在。
+    fn text_ellipsis_middle(mut self) -> Self {
+        self.text_style().text_overflow = Some(TextOverflow::TruncateMiddle(ELLIPSIS));
+        self
+    }
+
     /// 设置元素的文本溢出行为。
     fn text_overflow(mut self, overflow: TextOverflow) -> Self {
         self.text_style().text_overflow = Some(overflow);
