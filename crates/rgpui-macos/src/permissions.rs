@@ -67,11 +67,13 @@ impl MacPermissions {
     pub fn request_accessibility_permission() {
         unsafe {
             // 使用 AXIsProcessTrustedWithOptions 请求权限
+            let key = accessibility::kAXTrustedCheckOptionPrompt as *const std::ffi::c_void;
+            let value = core_foundation::boolean::kCFBooleanTrue as *const std::ffi::c_void;
             accessibility::AXIsProcessTrustedWithOptions(
                 core_foundation::dictionary::CFDictionaryCreate(
                     std::ptr::null(),
-                    &[accessibility::kAXTrustedCheckOptionPrompt.take()],
-                    &[core_foundation::boolean::kCFBooleanTrue],
+                    &key,
+                    &value,
                     1,
                     &core_foundation::dictionary::kCFTypeDictionaryKeyCallBacks,
                     &core_foundation::dictionary::kCFTypeDictionaryValueCallBacks,

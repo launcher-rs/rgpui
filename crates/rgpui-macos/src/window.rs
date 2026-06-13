@@ -726,11 +726,11 @@ impl MacWindow {
                 }
                 WindowKind::Overlay => {
                     // Overlay 窗口：使用 NSPanel，不激活，无边框，始终置顶
-                    style_mask |= NSWindowStyleMaskNonactivatingPanel | cocoa::appkit::NSBorderlessWindowMask;
+                    style_mask |= NSWindowStyleMaskNonactivatingPanel | 0; // NSBorderlessWindowMask = 0
                     let panel: id = msg_send![PANEL_CLASS, alloc];
 
-                    // 设置窗口层级为浮动的
-                    let _: () = msg_send![panel, setLevel: cocoa::appkit::NSWindowLevel::NSFloatingWindowLevel as i32];
+                    // 设置窗口层级为浮动的 (NSFloatingWindowLevel = 3)
+                    let _: () = msg_send![panel, setLevel: 3_i32];
 
                     // 鼠标穿透通过 mouse_passthrough 参数在下方统一处理
                     panel

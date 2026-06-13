@@ -3,7 +3,6 @@
 //! 使用 Cocoa `NSWorkspace` 和 `AXUIElement` API 获取当前活动窗口信息
 
 use cocoa::base::{id, nil};
-use cocoa::foundation::NSString;
 use objc::{msg_send, rc::autoreleasepool, runtime::Class, sel, sel_impl};
 use rgpui::FocusedWindowInfo;
 
@@ -70,8 +69,10 @@ pub fn get_focused_window_info() -> Option<FocusedWindowInfo> {
 fn get_frontmost_window_title() -> String {
     unsafe {
         // 使用 AXUIElement 获取窗口标题（需要辅助功能权限）
-        let app = cocoa::appkit::NSRunningApplication::currentApplication();
-        if app.is_none() {
+        let workspace_class = Class::get("NSWorkspace").unwrap();
+        let workspace: id = msg_send![workspace_class, sharedWorkspace];
+        let app: id = msg_send![workspace, frontmostApplication];
+        if app == nil {
             return String::new();
         }
 

@@ -2,12 +2,10 @@
 //!
 //! 使用 `NSUserNotificationCenter` API 发送原生通知
 
-use cocoa::base::{YES, id, nil};
-use cocoa::foundation::{NSString, NSUInteger};
-use objc::rc::autoreleasepool;
-use objc::runtime::Class;
+use cocoa::base::{id, nil};
+use cocoa::foundation::NSString;
+use objc::{msg_send, rc::autoreleasepool, runtime::Class, sel, sel_impl};
 use rgpui::Result;
-use std::ffi::CStr;
 
 /// macOS 原生通知管理器
 pub struct MacNotifications;
