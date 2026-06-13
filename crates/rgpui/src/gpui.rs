@@ -33,9 +33,15 @@ mod keymap;
 mod path_builder;
 mod platform;
 pub mod prelude;
-/// Profiling utilities for task timing and thread performance tracking.
+/// 性能分析工具，用于任务、帧和线程性能跟踪
 pub mod profiler;
-#[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
+#[cfg(any(
+    test,
+    target_os = "windows",
+    target_os = "linux",
+    target_family = "wasm",
+    feature = "bench"
+))]
 #[expect(missing_docs)]
 pub mod queue;
 mod scene;

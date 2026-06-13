@@ -2,6 +2,9 @@ mod app_menu;
 mod keyboard;
 mod keystroke;
 
+#[cfg(any(test, feature = "bench"))]
+mod bench_dispatcher;
+
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 #[expect(missing_docs)]
 pub mod layer_shell;
@@ -78,6 +81,9 @@ pub(crate) use test::*;
 
 #[cfg(any(test, feature = "test-support"))]
 pub use test::{TestDispatcher, TestScreenCaptureSource, TestScreenCaptureStream};
+
+#[cfg(any(test, feature = "bench"))]
+pub use bench_dispatcher::BenchDispatcher;
 
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
 pub use visual_test::VisualTestPlatform;
@@ -1043,14 +1049,19 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
 /// A renderer for headless windows that can produce real rendered output.
 #[cfg(any(test, feature = "test-support"))]
 pub trait PlatformHeadlessRenderer {
-    /// Render a scene and return the result as an RGBA image.
+    /// 渲染场景并作为 RGBA 图像返回结果
     fn render_scene_to_image(
         &mut self,
         scene: &Scene,
         size: Size<DevicePixels>,
     ) -> Result<RgbaImage>;
 
-    /// Returns the sprite atlas used by this renderer.
+    /// 渲染场景到离屏目标，不读取结果
+    ///
+    /// 这是绘制到真实窗口的无头等效操作：它执行与绘制到真实窗口相同的 CPU 端场景编码和 GPU 提交，但不阻塞 GPU 完成或复制像素回来
+    fn render_scene(&mut self, scene: &Scene, size: Size<DevicePixels>) -> Result<()>;
+
+    /// 返回此渲染器使用的精灵图集
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas>;
 }
 
@@ -1089,6 +1100,12 @@ pub trait PlatformDispatcher: Send + Sync {
 
     #[cfg(any(test, feature = "test-support"))]
     fn as_test(&self) -> Option<&TestDispatcher> {
+        None
+    }
+
+    // 此 cfg 必须与 `bench_dispatcher` 模块的匹配，该模块在编译时实现此方法
+    #[cfg(any(test, feature = "bench"))]
+    fn as_bench(&self) -> Option<&BenchDispatcher> {
         None
     }
 }

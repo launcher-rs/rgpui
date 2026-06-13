@@ -19,7 +19,7 @@ pub(crate) use actions::{save_action_timing, update_running_action};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{SharedString, TasksIncluded};
+use crate::{SharedString, TasksIncluded, WindowId};
 
 #[doc(hidden)]
 pub fn get_all_timings(included: TasksIncluded) -> Vec<ThreadTaskTimings> {
@@ -633,4 +633,122 @@ pub fn set_trace_enabled(enabled: bool) -> bool {
 /// 检查 trace 模式是否已启用
 pub fn trace_enabled() -> bool {
     PROFILER_ENABLED.load(Ordering::Relaxed)
+}
+
+/// 窗口帧的计时信息
+#[derive(Debug, Copy, Clone)]
+pub struct FrameTiming {
+    /// 被绘制的窗口
+    pub window_id: WindowId,
+    /// 帧首次变脏的时间（首次失效）。如果在失效发生时帧跟踪尚未启用，则为 None
+    pub dirty_at: Option<Instant>,
+    /// 合并到此帧中的失效次数
+    pub invalidations: u64,
+    /// `Window::draw` 开始的时间
+    pub draw_start: Instant,
+    /// `Window::draw` 结束的时间
+    pub draw_end: Instant,
+}
+
+impl FrameTiming {
+    /// `Window::draw` 内部花费的时间
+    pub fn draw_duration(&self) -> Duration {
+        self.draw_end.duration_since(self.draw_start)
+    }
+
+    /// 从帧首次失效到绘制结束的时间（如果观察到首次失效）
+    pub fn dirty_to_draw_duration(&self) -> Option<Duration> {
+        self.dirty_at
+            .map(|dirty_at| self.draw_end.duration_since(dirty_at))
+    }
+}
+
+// 允许 16MiB 的帧计时条目
+const MAX_FRAME_TIMINGS: usize = (16 * 1024 * 1024) / core::mem::size_of::<FrameTiming>();
+
+struct FrameTimings {
+    timings: VecDeque<FrameTiming>,
+    total_pushed: u64,
+}
+
+static FRAME_TIMINGS: spin::Mutex<FrameTimings> = spin::Mutex::new(FrameTimings {
+    timings: VecDeque::new(),
+    total_pushed: 0,
+});
+
+static FRAME_TRACE_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// 在运行时启用或禁用帧计时收集
+///
+/// 从启用到禁用的转换时，会清除缓冲的帧计时数据，以便在后续重新启用时不会报告过时的数据。如果值未更改则返回 false
+pub fn set_frame_trace_enabled(enabled: bool) -> bool {
+    if FRAME_TRACE_ENABLED.swap(enabled, Ordering::AcqRel) == enabled {
+        return false;
+    }
+
+    if !enabled {
+        let mut frames = FRAME_TIMINGS.lock();
+        frames.timings.clear();
+        frames.timings.shrink_to_fit();
+        frames.total_pushed = 0;
+    }
+    true
+}
+
+/// 返回帧计时收集是否已启用
+pub fn frame_trace_enabled() -> bool {
+    FRAME_TRACE_ENABLED.load(Ordering::Relaxed)
+}
+
+/// 记录已绘制窗口帧的计时信息
+///
+/// 除非通过 [`set_frame_trace_enabled`] 启用帧跟踪，否则不执行任何操作
+pub fn record_frame_timing(timing: FrameTiming) {
+    if !frame_trace_enabled() {
+        return;
+    }
+    std::hint::cold_path(); // 优化 profiling 关闭时的情况
+
+    let mut frames = FRAME_TIMINGS.lock();
+    if frames.timings.len() >= MAX_FRAME_TIMINGS {
+        frames.timings.pop_front();
+    }
+    frames.timings.push_back(timing);
+    frames.total_pushed += 1;
+}
+
+/// 从此收集器创建后记录的帧计时中提取数据，跟踪游标以便每次调用 [`Self::collect_unseen`] 只返回新条目
+pub struct FrameTimingCollector {
+    cursor: u64,
+}
+
+impl Default for FrameTimingCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FrameTimingCollector {
+    /// 创建一个只看到从此点开始记录的帧的收集器
+    pub fn new() -> Self {
+        Self {
+            cursor: FRAME_TIMINGS.lock().total_pushed,
+        }
+    }
+
+    /// 返回自上次调用（或自从收集器创建以来）记录的帧计时。如果环形缓冲区自上次轮询以来发生环绕，则丢失的条目将被丢弃
+    pub fn collect_unseen(&mut self) -> Vec<FrameTiming> {
+        let frames = FRAME_TIMINGS.lock();
+        let buffer_len = frames.timings.len() as u64;
+        let buffer_start = frames.total_pushed.saturating_sub(buffer_len);
+        let skip = self.cursor.saturating_sub(buffer_start) as usize;
+        let unseen = frames
+            .timings
+            .iter()
+            .skip(skip.min(frames.timings.len()))
+            .copied()
+            .collect();
+        self.cursor = frames.total_pushed;
+        unseen
+    }
 }

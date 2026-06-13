@@ -220,6 +220,11 @@ impl<T> PriorityQueueReceiver<T> {
         (sender, receiver)
     }
 
+    /// 返回队列当前是否不包含任何元素
+    pub fn is_empty(&self) -> bool {
+        self.state.queues.lock().is_empty()
+    }
+
     /// 尝试在不阻塞的情况下从优先级队列中弹出一个元素。
     ///
     /// 如果队列中没有元素，将提前返回。

@@ -18,6 +18,7 @@
 | #59002 | 2026-06-12 | gpui: Fix list scroll events being reverted by pending scroll |
 | #59072 | 2026-06-12 | tab_switcher: Middle-truncate long picker filenames |
 | #58202 | 2026-06-12 | Add LICENSE-GPL symlink to benchmarks crate |
+| #59214 | 2026-06-13 | Revert "gpui: Fix title bar clicks being delayed on macOS 27 (#58947)" |
 
 ## gpui-component
 
