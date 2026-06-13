@@ -10,7 +10,7 @@ repository = "https://github.com/launcher-rs/rgpui.git"
 
 [dependencies]
 # Core Framework
-rgpui = ">=0.1, <1.0"
+rgpui.workspace = true
 smallvec = "1.6"
 once_cell = "1.19"
 
@@ -92,7 +92,7 @@ editor-languages = [
 
 
 [dev-dependencies]
-rgpui-platform = ">=0.1, <1.0"
+rgpui-platform.workspace = true
 
 [[example]]
 name = "scroll_test"
