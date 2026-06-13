@@ -54,36 +54,142 @@ const ANGLE_STEP: f32 = 0.05;
 const MODEL_YAW_OFFSET: f32 = PI / 2.0;
 
 // ============================================================================
-// Windows 平台：按键检测
+// 跨平台：按键检测
 // ============================================================================
 
+// -- Windows --
 #[cfg(target_os = "windows")]
 #[link(name = "user32")]
 unsafe extern "system" {
     fn GetAsyncKeyState(v_key: i32) -> i16;
 }
 
-/// F9 键的虚拟键代码
 #[cfg(target_os = "windows")]
-const VK_F9: i32 = 0x78;
+mod key_codes {
+    /// F9 键的虚拟键代码
+    pub const VK_F9: i32 = 0x78;
+    /// 左方向键虚拟键代码
+    pub const VK_LEFT: i32 = 0x25;
+    /// 右方向键虚拟键代码
+    pub const VK_RIGHT: i32 = 0x27;
+    /// 上方向键虚拟键代码
+    pub const VK_UP: i32 = 0x26;
+    /// 下方向键虚拟键代码
+    pub const VK_DOWN: i32 = 0x28;
+}
 
-/// 方向键虚拟键代码
 #[cfg(target_os = "windows")]
-const VK_LEFT: i32 = 0x25;
-#[cfg(target_os = "windows")]
-const VK_RIGHT: i32 = 0x27;
-#[cfg(target_os = "windows")]
-const VK_UP: i32 = 0x26;
-#[cfg(target_os = "windows")]
-const VK_DOWN: i32 = 0x28;
+use key_codes::*;
 
-/// 按键是否正在按下
+/// Windows 平台按键是否正在按下
 #[cfg(target_os = "windows")]
 fn is_key_pressed(vk: i32) -> bool {
     unsafe { GetAsyncKeyState(vk) < 0 }
 }
 
-#[cfg(not(target_os = "windows"))]
+// -- macOS --
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGEventSourceKeyState(source: i32, key: u16) -> bool;
+}
+
+#[cfg(target_os = "macos")]
+mod key_codes {
+    /// F9 键 (kVK_F9 = 0x47)
+    pub const VK_F9: i32 = 0x47;
+    /// 左方向键 (kVK_LeftArrow = 0x7B)
+    pub const VK_LEFT: i32 = 0x7B;
+    /// 右方向键 (kVK_RightArrow = 0x7C)
+    pub const VK_RIGHT: i32 = 0x7C;
+    /// 上方向键 (kVK_UpArrow = 0x7E)
+    pub const VK_UP: i32 = 0x7E;
+    /// 下方向键 (kVK_DownArrow = 0x7D)
+    pub const VK_DOWN: i32 = 0x7D;
+}
+
+#[cfg(target_os = "macos")]
+use key_codes::*;
+
+/// macOS 平台按键是否正在按下
+#[cfg(target_os = "macos")]
+fn is_key_pressed(vk: i32) -> bool {
+    unsafe { CGEventSourceKeyState(0, vk as u16) }
+}
+
+// -- Linux (X11) --
+#[cfg(target_os = "linux")]
+#[link(name = "X11")]
+unsafe extern "C" {
+    fn XOpenDisplay(display_name: *const std::ffi::c_char) -> *mut std::ffi::c_void;
+    fn XCloseDisplay(display: *mut std::ffi::c_void) -> std::ffi::c_int;
+    fn XQueryKeymap(display: *mut std::ffi::c_void, keys_return: *mut u8) -> std::ffi::c_int;
+    fn XKeysymToKeycode(display: *mut std::ffi::c_void, keysym: u64) -> u32;
+}
+
+#[cfg(target_os = "linux")]
+mod key_codes {
+    /// F9 键 (XK_F9 = 0xFFC6)
+    pub const VK_F9: i32 = 0xFFC6;
+    /// 左方向键 (XK_Left = 0xFF51)
+    pub const VK_LEFT: i32 = 0xFF51;
+    /// 右方向键 (XK_Right = 0xFF52)
+    pub const VK_RIGHT: i32 = 0xFF52;
+    /// 上方向键 (XK_Up = 0xFF53)
+    pub const VK_UP: i32 = 0xFF53;
+    /// 下方向键 (XK_Down = 0xFF54)
+    pub const VK_DOWN: i32 = 0xFF54;
+}
+
+#[cfg(target_os = "linux")]
+use key_codes::*;
+
+/// Linux (X11) 平台按键是否正在按下
+#[cfg(target_os = "linux")]
+fn is_key_pressed(vk: i32) -> bool {
+    use std::ffi::c_void;
+    use std::sync::OnceLock;
+
+    static DISPLAY: OnceLock<*mut c_void> = OnceLock::new();
+
+    let display = DISPLAY.get_or_init(|| unsafe { XOpenDisplay(std::ptr::null()) });
+    if display.is_null() {
+        return false;
+    }
+
+    unsafe {
+        let keycode = XKeysymToKeycode(*display, vk as u64);
+        if keycode == 0 {
+            return false;
+        }
+        let mut keys = [0u8; 32];
+        XQueryKeymap(*display, keys.as_mut_ptr());
+        let byte = (keycode / 8) as usize;
+        let bit = keycode % 8;
+        byte < keys.len() && (keys[byte] & (1 << bit)) != 0
+    }
+}
+
+// -- 其他平台（不支持按键检测） --
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+mod key_codes {
+    /// F9 键（占位）
+    pub const VK_F9: i32 = 0;
+    /// 左方向键（占位）
+    pub const VK_LEFT: i32 = 0;
+    /// 右方向键（占位）
+    pub const VK_RIGHT: i32 = 0;
+    /// 上方向键（占位）
+    pub const VK_UP: i32 = 0;
+    /// 下方向键（占位）
+    pub const VK_DOWN: i32 = 0;
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+use key_codes::*;
+
+/// 不支持的平台：按键始终返回 false
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
 fn is_key_pressed(_vk: i32) -> bool {
     false
 }
@@ -492,7 +598,7 @@ fn build_tray_menu(anim_names: &[String], interactive: bool) -> Vec<TrayMenuItem
 // ============================================================================
 // 入口
 // ============================================================================
-#[cfg(target_os = "windows")]
+// #[cfg(target_os = "windows")]
 fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
@@ -792,7 +898,7 @@ fn main() {
         });
 }
 
-#[cfg(not(target_os = "windows"))]
-fn main() {
-    println!("目前仅支持windows");
-}
+// #[cfg(not(target_os = "windows"))]
+// fn main() {
+//     println!("目前仅支持windows");
+// }
