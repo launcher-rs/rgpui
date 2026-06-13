@@ -726,7 +726,7 @@ impl MacWindow {
                 }
                 WindowKind::Overlay => {
                     // Overlay 窗口：使用 NSPanel，不激活，无边框，始终置顶
-                    style_mask |= NSWindowStyleMaskNonactivatingPanel | 0; // NSBorderlessWindowMask = 0
+                    style_mask |= NSWindowStyleMaskNonactivatingPanel;
                     let panel: id = msg_send![PANEL_CLASS, alloc];
 
                     // 设置窗口层级为浮动的 (NSFloatingWindowLevel = 3)

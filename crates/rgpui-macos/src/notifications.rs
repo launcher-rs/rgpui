@@ -64,7 +64,7 @@ impl MacNotifications {
     pub fn request_permission() -> Result<()> {
         unsafe {
             let class = Class::get("NSUserNotificationCenter").unwrap();
-            let center: id = msg_send![class, defaultUserNotificationCenter];
+            let _center: id = msg_send![class, defaultUserNotificationCenter];
             // macOS 10.8+ 自动请求权限，无需显式调用
         }
 
