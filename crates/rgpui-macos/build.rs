@@ -13,9 +13,9 @@ fn main() {
     .unwrap();
     let sdk_path = sdk_path.trim_end();
 
-    println!("cargo:rerun-if-changed=src/bindings.h");
+    println!("cargo:rerun-if-changed=src/media/bindings.h");
     let bindings = bindgen::Builder::default()
-        .header("src/bindings.h")
+        .header("src/media/bindings.h")
         .clang_arg(format!("-isysroot{}", sdk_path))
         .clang_arg("-xobjective-c")
         .allowlist_type("CMItemIndex")
