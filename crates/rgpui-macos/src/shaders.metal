@@ -3,6 +3,210 @@
 
 using namespace metal;
 
+// ---- Shared struct definitions (must match Rust #[repr(C)] layouts) ----
+
+struct Hsla {
+  float h;
+  float s;
+  float l;
+  float a;
+};
+
+struct Point_ScaledPixels {
+  float x;
+  float y;
+};
+
+struct Size_ScaledPixels {
+  float width;
+  float height;
+};
+
+struct Bounds_ScaledPixels {
+  Point_ScaledPixels origin;
+  Size_ScaledPixels size;
+};
+
+struct Point_DevicePixels {
+  int x;
+  int y;
+};
+
+struct Size_DevicePixels {
+  int width;
+  int height;
+};
+
+struct Bounds_DevicePixels {
+  Point_DevicePixels origin;
+  Size_DevicePixels size;
+};
+
+struct Corners_ScaledPixels {
+  float top_left;
+  float top_right;
+  float bottom_right;
+  float bottom_left;
+};
+
+struct Edges_ScaledPixels {
+  float top;
+  float right;
+  float bottom;
+  float left;
+};
+
+struct TransformationMatrix {
+  float2x2 rotation_scale;
+  float2 translation;
+};
+
+struct LinearColorStop {
+  Hsla color;
+  float percentage;
+};
+
+struct Background {
+  uint tag;
+  uint color_space;
+  Hsla solid;
+  float gradient_angle_or_pattern_height;
+  LinearColorStop colors[4];
+  uint stop_count;
+  uint pad;
+  float2 center;
+  float2 radius;
+};
+
+struct ContentMask_ScaledPixels {
+  Bounds_ScaledPixels bounds;
+};
+
+struct AtlasTile {
+  uint texture_index;
+  uint texture_kind;
+  uint tile_id;
+  uint padding;
+  Bounds_DevicePixels bounds;
+};
+
+struct Quad {
+  uint order;
+  uint border_style;
+  Bounds_ScaledPixels bounds;
+  ContentMask_ScaledPixels content_mask;
+  Background background;
+  Hsla border_color;
+  Corners_ScaledPixels corner_radii;
+  Edges_ScaledPixels border_widths;
+  uint continuous_corners;
+  TransformationMatrix transform;
+  uint blend_mode;
+  uint pad_quad;
+};
+
+struct Shadow {
+  uint order;
+  float blur_radius;
+  Bounds_ScaledPixels bounds;
+  Corners_ScaledPixels corner_radii;
+  ContentMask_ScaledPixels content_mask;
+  Hsla color;
+  Bounds_ScaledPixels element_bounds;
+  Corners_ScaledPixels element_corner_radii;
+  uint inset;
+  uint pad;
+};
+
+struct Underline {
+  uint order;
+  uint pad;
+  Bounds_ScaledPixels bounds;
+  ContentMask_ScaledPixels content_mask;
+  Hsla color;
+  float thickness;
+  uint wavy;
+};
+
+struct MonochromeSprite {
+  uint order;
+  uint pad;
+  Bounds_ScaledPixels bounds;
+  ContentMask_ScaledPixels content_mask;
+  Hsla color;
+  AtlasTile tile;
+  TransformationMatrix transformation;
+};
+
+struct PolychromeSprite {
+  uint order;
+  uint pad;
+  bool grayscale;
+  float opacity;
+  Bounds_ScaledPixels bounds;
+  ContentMask_ScaledPixels content_mask;
+  Corners_ScaledPixels corner_radii;
+  AtlasTile tile;
+  TransformationMatrix transformation;
+};
+
+struct PathRasterizationVertex {
+  float2 xy_position;
+  float2 st_position;
+  Background color;
+  Bounds_ScaledPixels bounds;
+};
+
+struct PathSprite {
+  Bounds_ScaledPixels bounds;
+};
+
+struct SurfaceBounds {
+  Bounds_ScaledPixels bounds;
+  ContentMask_ScaledPixels content_mask;
+};
+
+// ---- Buffer index enums ----
+
+enum QuadInputIndex {
+  QuadInputIndex_Vertices = 0,
+  QuadInputIndex_Quads = 1,
+  QuadInputIndex_ViewportSize = 2,
+};
+
+enum ShadowInputIndex {
+  ShadowInputIndex_Vertices = 0,
+  ShadowInputIndex_Shadows = 1,
+  ShadowInputIndex_ViewportSize = 2,
+};
+
+enum UnderlineInputIndex {
+  UnderlineInputIndex_Vertices = 0,
+  UnderlineInputIndex_Underlines = 1,
+};
+
+enum SpriteInputIndex {
+  SpriteInputIndex_Vertices = 0,
+  SpriteInputIndex_Sprites = 1,
+  SpriteInputIndex_ViewportSize = 2,
+  SpriteInputIndex_AtlasTextureSize = 3,
+  SpriteInputIndex_AtlasTexture = 4,
+};
+
+enum SurfaceInputIndex {
+  SurfaceInputIndex_Vertices = 0,
+  SurfaceInputIndex_Surfaces = 1,
+  SurfaceInputIndex_ViewportSize = 2,
+  SurfaceInputIndex_TextureSize = 3,
+  SurfaceInputIndex_YTexture = 4,
+  SurfaceInputIndex_CbCrTexture = 5,
+};
+
+enum PathRasterizationInputIndex {
+  PathRasterizationInputIndex_Vertices = 0,
+  PathRasterizationInputIndex_ViewportSize = 1,
+};
+
 float4 hsla_to_rgba(Hsla hsla);
 float3 srgb_to_linear(float3 color);
 float3 linear_to_srgb(float3 color);
