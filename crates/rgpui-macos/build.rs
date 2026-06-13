@@ -40,19 +40,22 @@ fn main() {
         .expect("couldn't write dispatch bindings");
 
     // 编译 Metal 着色器
-    println!("cargo:rerun-if-changed=src/shaders.metal");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let shader_src = format!("{}/src/shaders.metal", manifest_dir);
+    println!("cargo:rerun-if-changed={}", shader_src);
     let air_path = out_path.join("shaders.air");
     let metallib_path = out_path.join("shaders.metallib");
 
     let metallib_result = Command::new("xcrun")
         .args([
+            "--sdk",
+            "macosx",
             "metal",
             "-c",
-            "src/shaders.metal",
+            &shader_src,
             "-o",
             air_path.to_str().unwrap(),
         ])
-        .current_dir(std::env::current_dir().unwrap())
         .output()
         .expect("Failed to compile Metal shader to AIR");
 
@@ -64,7 +67,14 @@ fn main() {
     }
 
     let metallib_result = Command::new("xcrun")
-        .args(["metallib", air_path.to_str().unwrap(), "-o", metallib_path.to_str().unwrap()])
+        .args([
+            "--sdk",
+            "macosx",
+            "metallib",
+            air_path.to_str().unwrap(),
+            "-o",
+            metallib_path.to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to compile AIR to metallib");
 
