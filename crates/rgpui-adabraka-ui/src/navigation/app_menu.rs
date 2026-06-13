@@ -150,7 +150,7 @@ impl StandardMacMenuBar {
 
         #[cfg(target_os = "macos")]
         {
-            let app_menu = AppMenu::new(&self.app_name)
+            let app_menu = AppMenu::new(&self._app_name)
                 .os_submenu("Services", SystemMenuType::Services)
                 .separator();
             menus.push(app_menu.build());
