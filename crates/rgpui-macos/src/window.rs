@@ -971,10 +971,6 @@ impl MacWindow {
                 WindowKind::Overlay => {
                     // Overlay 窗口已在创建时配置，此处无需额外操作
                 }
-                #[cfg(all(target_os = "linux", feature = "wayland"))]
-                WindowKind::LayerShell(_) => {
-                    // Linux Wayland LayerShell 不在 macOS 上支持
-                }
             }
 
             if allows_automatic_window_tabbing
