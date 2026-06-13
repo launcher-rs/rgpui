@@ -4,8 +4,7 @@
 
 use cocoa::base::{id, nil};
 use cocoa::foundation::NSString;
-use objc::rc::autoreleasepool;
-use objc::runtime::Class;
+use objc::{msg_send, rc::autoreleasepool, runtime::Class, sel, sel_impl};
 use rgpui::FocusedWindowInfo;
 
 /// 获取当前系统聚焦窗口信息

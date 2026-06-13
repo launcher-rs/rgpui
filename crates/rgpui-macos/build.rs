@@ -38,6 +38,42 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("couldn't write dispatch bindings");
+
+    // 编译 Metal 着色器
+    println!("cargo:rerun-if-changed=src/shaders.metal");
+    let air_path = out_path.join("shaders.air");
+    let metallib_path = out_path.join("shaders.metallib");
+
+    let metallib_result = Command::new("xcrun")
+        .args([
+            "metal",
+            "-c",
+            "src/shaders.metal",
+            "-o",
+            air_path.to_str().unwrap(),
+        ])
+        .current_dir(std::env::current_dir().unwrap())
+        .output()
+        .expect("Failed to compile Metal shader to AIR");
+
+    if !metallib_result.status.success() {
+        panic!(
+            "Failed to compile Metal shader to AIR:\n{}",
+            String::from_utf8_lossy(&metallib_result.stderr)
+        );
+    }
+
+    let metallib_result = Command::new("xcrun")
+        .args(["metallib", air_path.to_str().unwrap(), "-o", metallib_path.to_str().unwrap()])
+        .output()
+        .expect("Failed to compile AIR to metallib");
+
+    if !metallib_result.status.success() {
+        panic!(
+            "Failed to compile AIR to metallib:\n{}",
+            String::from_utf8_lossy(&metallib_result.stderr)
+        );
+    }
 }
 
 #[cfg(not(target_os = "macos"))]

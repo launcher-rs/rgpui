@@ -57,7 +57,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use util::{
+use rgpui::util::{
     ResultExt,
     command::{new_command, new_std_command},
 };

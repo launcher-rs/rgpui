@@ -1,4 +1,4 @@
-use crate::collections::FxHashMap;
+use rgpui::collections::FxHashMap;
 use anyhow::{Context as _, Result};
 use derive_more::{Deref, DerefMut};
 use etagere::BucketedAtlasAllocator;

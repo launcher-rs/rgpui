@@ -46,8 +46,7 @@ impl MacPermissions {
         // macOS 10.15+ 使用 CGPreflightScreenCaptureAccess
         #[cfg(target_os = "macos")]
         {
-            use core_graphics::display::CGPreflightScreenCaptureAccess;
-            if CGPreflightScreenCaptureAccess() {
+            if unsafe { screen_capture::CGPreflightScreenCaptureAccess() } {
                 PermissionStatus::Granted
             } else {
                 PermissionStatus::Denied
@@ -72,7 +71,7 @@ impl MacPermissions {
                 core_foundation::dictionary::CFDictionaryCreate(
                     std::ptr::null(),
                     &[accessibility::kAXTrustedCheckOptionPrompt.take()],
-                    &[core_foundation::boolean::CFBooleanTrueValue],
+                    &[core_foundation::boolean::kCFBooleanTrue],
                     1,
                     &core_foundation::dictionary::kCFTypeDictionaryKeyCallBacks,
                     &core_foundation::dictionary::kCFTypeDictionaryValueCallBacks,
@@ -84,17 +83,22 @@ impl MacPermissions {
 
 // 辅助功能 API 绑定
 mod accessibility {
-    use core_foundation::base::CFBooleanRef;
-    use std::os::raw::c_void;
+    use core_foundation::dictionary::CFDictionaryRef;
+    use core_foundation::string::CFStringRef;
 
     #[link(name = "ApplicationServices", kind = "framework")]
-    extern "C" {
+    unsafe extern "C" {
         pub fn AXIsProcessTrusted() -> bool;
         pub fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
 
         pub static kAXTrustedCheckOptionPrompt: CFStringRef;
     }
+}
 
-    use core_foundation::dictionary::CFDictionaryRef;
-    use core_foundation::string::CFStringRef;
+// 屏幕录制权限 API 绑定
+mod screen_capture {
+    #[link(name = "ApplicationServices", kind = "framework")]
+    unsafe extern "C" {
+        pub fn CGPreflightScreenCaptureAccess() -> bool;
+    }
 }

@@ -67,7 +67,7 @@ use std::{
     },
     time::Duration,
 };
-use util::ResultExt;
+use rgpui::util::ResultExt;
 
 const WINDOW_STATE_IVAR: &str = "windowState";
 
@@ -726,7 +726,7 @@ impl MacWindow {
                 }
                 WindowKind::Overlay => {
                     // Overlay 窗口：使用 NSPanel，不激活，无边框，始终置顶
-                    style_mask |= NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskBorderless;
+                    style_mask |= NSWindowStyleMaskNonactivatingPanel | cocoa::appkit::NSBorderlessWindowMask;
                     let panel: id = msg_send![PANEL_CLASS, alloc];
 
                     // 设置窗口层级为浮动的
@@ -1771,7 +1771,7 @@ impl PlatformWindow for MacWindow {
     }
 
     fn play_system_bell(&self) {
-        unsafe { NSBeep() }
+        NSBeep()
     }
 
     fn a11y_init(&self, callbacks: rgpui::A11yCallbacks) {

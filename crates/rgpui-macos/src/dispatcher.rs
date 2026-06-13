@@ -10,7 +10,7 @@ use mach2::{
     },
 };
 use rgpui::{PlatformDispatcher, Priority, RunnableMeta, RunnableVariant};
-use util::ResultExt;
+use rgpui::util::ResultExt;
 
 use async_task::Runnable;
 use objc::{
