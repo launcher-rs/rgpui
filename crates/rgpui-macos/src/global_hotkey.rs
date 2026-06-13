@@ -5,8 +5,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use core_graphics::event::{CGEventField, CGEventTapLocation, CGEventType, CGKeyCode};
-use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+use core_graphics::event::CGKeyCode;
 
 use rgpui::{Keystroke, Modifiers, Result};
 
@@ -157,10 +156,7 @@ impl MacGlobalHotkey {
     }
 }
 
-use cocoa::base::id;
 use cocoa::foundation::NSUInteger;
-use objc::rc::autoreleasepool;
-use std::ffi::c_void;
 
 // NSEventModifierFlags 定义
 bitflags::bitflags! {
