@@ -144,26 +144,36 @@ mod key_codes {
 #[cfg(target_os = "linux")]
 use key_codes::*;
 
+/// Linux (X11) Display 指针包装，手动实现 Send+Sync（X11 线程安全依赖 XInitThreads）
+#[cfg(target_os = "linux")]
+struct XDisplayPtr(*mut std::ffi::c_void);
+
+#[cfg(target_os = "linux")]
+unsafe impl Send for XDisplayPtr {}
+
+#[cfg(target_os = "linux")]
+unsafe impl Sync for XDisplayPtr {}
+
 /// Linux (X11) 平台按键是否正在按下
 #[cfg(target_os = "linux")]
 fn is_key_pressed(vk: i32) -> bool {
-    use std::ffi::c_void;
     use std::sync::OnceLock;
 
-    static DISPLAY: OnceLock<*mut c_void> = OnceLock::new();
+    static DISPLAY: OnceLock<XDisplayPtr> = OnceLock::new();
 
-    let display = DISPLAY.get_or_init(|| unsafe { XOpenDisplay(std::ptr::null()) });
-    if display.is_null() {
+    let display = DISPLAY
+        .get_or_init(|| XDisplayPtr(unsafe { XOpenDisplay(std::ptr::null()) }));
+    if display.0.is_null() {
         return false;
     }
 
     unsafe {
-        let keycode = XKeysymToKeycode(*display, vk as u64);
+        let keycode = XKeysymToKeycode(display.0, vk as u64);
         if keycode == 0 {
             return false;
         }
         let mut keys = [0u8; 32];
-        XQueryKeymap(*display, keys.as_mut_ptr());
+        XQueryKeymap(display.0, keys.as_mut_ptr());
         let byte = (keycode / 8) as usize;
         let bit = keycode % 8;
         byte < keys.len() && (keys[byte] & (1 << bit)) != 0
