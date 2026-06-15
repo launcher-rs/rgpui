@@ -93,7 +93,7 @@ impl ReqwestClient {
         };
 
         #[cfg(feature = "tls")]
-        let client = client.use_preconfigured_tls(crate::tls::tls_config());
+        let client = client.use_preconfigured_tls(crate::http_client::tls::tls_config());
         let client = client.build()?;
         let mut client: ReqwestClient = client.into();
         client.proxy = client_has_proxy.then_some(proxy).flatten();
