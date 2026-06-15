@@ -64,33 +64,29 @@ impl ScreenCaptureExample {
 
         if capture_supported {
             let sources_rx = cx.screen_capture_sources();
-            view._fetch_task = cx.spawn_in(window, async move |this, cx| {
-                match sources_rx.await {
-                    Ok(Ok(sources)) => {
-                        let metadata_list: Vec<SourceMetadata> = sources
-                            .iter()
-                            .filter_map(|s| s.metadata().ok())
-                            .collect();
-                        let count = metadata_list.len();
-                        this.update(cx, |view, _cx| {
-                            view.source_metadata = metadata_list;
-                            view.sources = sources;
-                            view.status = format!("找到 {} 个屏幕捕获源", count).into();
-                        })
-                        .ok();
-                    }
-                    Ok(Err(e)) => {
-                        this.update(cx, |view, _cx| {
-                            view.status = format!("获取屏幕捕获源失败: {}", e).into();
-                        })
-                        .ok();
-                    }
-                    Err(_) => {
-                        this.update(cx, |view, _cx| {
-                            view.status = "屏幕捕获源请求被取消".into();
-                        })
-                        .ok();
-                    }
+            view._fetch_task = cx.spawn_in(window, async move |this, cx| match sources_rx.await {
+                Ok(Ok(sources)) => {
+                    let metadata_list: Vec<SourceMetadata> =
+                        sources.iter().filter_map(|s| s.metadata().ok()).collect();
+                    let count = metadata_list.len();
+                    this.update(cx, |view, _cx| {
+                        view.source_metadata = metadata_list;
+                        view.sources = sources;
+                        view.status = format!("找到 {} 个屏幕捕获源", count).into();
+                    })
+                    .ok();
+                }
+                Ok(Err(e)) => {
+                    this.update(cx, |view, _cx| {
+                        view.status = format!("获取屏幕捕获源失败: {}", e).into();
+                    })
+                    .ok();
+                }
+                Err(_) => {
+                    this.update(cx, |view, _cx| {
+                        view.status = "屏幕捕获源请求被取消".into();
+                    })
+                    .ok();
                 }
             });
         } else {
@@ -184,14 +180,10 @@ impl Render for ScreenCaptureExample {
                     .font_weight(rgpui::FontWeight::BOLD)
                     .child("屏幕捕获示例"),
             )
-            .child(
-                div()
-                    .text_sm()
-                    .child(format!(
-                        "屏幕捕获支持: {}",
-                        if self.capture_supported { "是" } else { "否" }
-                    )),
-            )
+            .child(div().text_sm().child(format!(
+                "屏幕捕获支持: {}",
+                if self.capture_supported { "是" } else { "否" }
+            )))
             .child(
                 div()
                     .text_sm()
@@ -237,10 +229,9 @@ impl Render for ScreenCaptureExample {
 
                                         // 创建帧回调，递增原子计数器
                                         let frame_count_ref = this.shared_frame_count.clone();
-                                        let frame_callback =
-                                            Box::new(move |_frame| {
-                                                frame_count_ref.fetch_add(1, Ordering::Relaxed);
-                                            });
+                                        let frame_callback = Box::new(move |_frame| {
+                                            frame_count_ref.fetch_add(1, Ordering::Relaxed);
+                                        });
 
                                         let source = source.clone();
                                         let foreground_executor = cx.foreground_executor().clone();
@@ -253,32 +244,32 @@ impl Render for ScreenCaptureExample {
                                         // 启动帧计数轮询任务
                                         this.start_polling(window, cx);
 
-                                        cx.spawn_in(window, async move |this, cx| {
-                                            match sources_rx.await {
-                                                Ok(Ok(stream)) => {
-                                                    this.update(cx, |view, _cx| {
-                                                        view._capture_stream = Some(stream);
-                                                        view.status = "捕获中...".into();
-                                                    })
-                                                    .ok();
-                                                }
-                                                Ok(Err(e)) => {
-                                                    this.update(cx, |view, _cx| {
-                                                        view.is_capturing = false;
-                                                        view._poll_task = None;
-                                                        view.status =
-                                                            format!("启动捕获失败: {}", e).into();
-                                                    })
-                                                    .ok();
-                                                }
-                                                Err(_) => {
-                                                    this.update(cx, |view, _cx| {
-                                                        view.is_capturing = false;
-                                                        view._poll_task = None;
-                                                        view.status = "捕获请求被取消".into();
-                                                    })
-                                                    .ok();
-                                                }
+                                        cx.spawn_in(window, async move |this, cx| match sources_rx
+                                            .await
+                                        {
+                                            Ok(Ok(stream)) => {
+                                                this.update(cx, |view, _cx| {
+                                                    view._capture_stream = Some(stream);
+                                                    view.status = "捕获中...".into();
+                                                })
+                                                .ok();
+                                            }
+                                            Ok(Err(e)) => {
+                                                this.update(cx, |view, _cx| {
+                                                    view.is_capturing = false;
+                                                    view._poll_task = None;
+                                                    view.status =
+                                                        format!("启动捕获失败: {}", e).into();
+                                                })
+                                                .ok();
+                                            }
+                                            Err(_) => {
+                                                this.update(cx, |view, _cx| {
+                                                    view.is_capturing = false;
+                                                    view._poll_task = None;
+                                                    view.status = "捕获请求被取消".into();
+                                                })
+                                                .ok();
                                             }
                                         })
                                         .detach();
@@ -339,9 +330,7 @@ fn run_example() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
             },
-            |window, cx| {
-                cx.new(|cx| ScreenCaptureExample::new(window, cx, capture_supported))
-            },
+            |window, cx| cx.new(|cx| ScreenCaptureExample::new(window, cx, capture_supported)),
         )
         .unwrap();
 

@@ -231,6 +231,13 @@
       "status": "merged",
       "merged_at": "2026-06-13",
       "note": "revert of #58947 which was never applied to rgpui (no-op)"
+    },
+    {
+      "number": 59247,
+      "upstream": "zed",
+      "title": "gpui_macos: Warn when falling back to NoopTextSystem",
+      "status": "merged",
+      "merged_at": "2026-06-15"
     }
   ]
 }
