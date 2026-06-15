@@ -2,7 +2,7 @@
 name = "rgpui-macos"
 version.workspace = true
 edition.workspace = true
-publish.workspace = true
+publish = true
 description = "macOS 平台实现"
 license = "Apache-2.0"
 repository = "https://github.com/launcher-rs/rgpui"

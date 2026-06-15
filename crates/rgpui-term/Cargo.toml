@@ -1,7 +1,7 @@
 [package]
 name = "rgpui-term"
-version = "0.1.2"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 publish = true
 description = "终端模拟器组件"
 license = "Apache-2.0"

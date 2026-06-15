@@ -1,6 +1,6 @@
 [package]
 name = "rgpui-component"
-version = "0.1.4"
+version.workspace = true
 edition.workspace = true
 publish.workspace = true
 description = "UI 组件库"

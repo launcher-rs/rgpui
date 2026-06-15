@@ -11,32 +11,32 @@ members = [
 edition = "2024"
 publish = true
 license = "Apache-2.0"
-version = "0.2.2"
+version = "0.3.0"
 
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-rgpui-macros = { path = "crates/rgpui-macros" ,version = "0.2.2"}
-rgpui = { path = "crates/rgpui", default-features = false ,version = "0.2.2"}
-rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "0.2.2" }
-rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "0.2.2" }
-rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "0.2.2"}
-rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "0.2.2"}
-rgpui-web = { path = "crates/rgpui-web" ,version = "0.2.2"}
-rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "0.2.2" }
-rgpui-tokio = { path = "crates/rgpui-tokio",version = "0.2.2" }
+rgpui-macros = { path = "crates/rgpui-macros" ,version = "0.3.0"}
+rgpui = { path = "crates/rgpui", default-features = false ,version = "0.3.0"}
+rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "0.3.0" }
+rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "0.3.0" }
+rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "0.3.0"}
+rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "0.3.0"}
+rgpui-web = { path = "crates/rgpui-web" ,version = "0.3.0"}
+rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "0.3.0" }
+rgpui-tokio = { path = "crates/rgpui-tokio",version = "0.3.0" }
 
-rgpui-component-macros = { path = "crates/rgpui-component-macros",version = "0.1.1" }
-rgpui-component = { path = "crates/rgpui-component" ,version = "0.1.1"}
-rgpui-component-assets = { path = "crates/rgpui-component-assets",version = "0.1.1" }
-rgpui-webview = { path = "crates/rgpui-webview",version = "0.1.1" }
-rgpui-editor = { path = "crates/rgpui-editor",version = "0.1.1" }
+rgpui-component-macros = { path = "crates/rgpui-component-macros",version = "0.3.0" }
+rgpui-component = { path = "crates/rgpui-component" ,version = "0.3.0"}
+rgpui-component-assets = { path = "crates/rgpui-component-assets",version = "0.3.0" }
+rgpui-webview = { path = "crates/rgpui-webview",version = "0.3.0" }
+rgpui-editor = { path = "crates/rgpui-editor",version = "0.3.0" }
 
-rgpui-adabraka-ui = { path = "crates/rgpui-adabraka-ui",version = "0.1.1" }
-rgpui-character = {path = "crates/rgpui-character",version = "0.2.0"}
-rgpui-3d = {path = "crates/rgpui-3d",version = "0.1.0"}
-rgpui-term = {path = "crates/rgpui-term", version = "0.1.0"}
-rgpui-yororen-ui = {path = "crates/rgpui-yororen-ui",version = "0.1.1"}
+rgpui-adabraka-ui = { path = "crates/rgpui-adabraka-ui",version = "0.3.0" }
+rgpui-character = {path = "crates/rgpui-character",version = "0.3.0"}
+rgpui-3d = {path = "crates/rgpui-3d",version = "0.3.0"}
+rgpui-term = {path = "crates/rgpui-term", version = "0.3.0"}
+rgpui-yororen-ui = {path = "crates/rgpui-yororen-ui",version = "0.3.0"}
 
 
 # ---- 辅助功能（AccessKit） ----
@@ -196,21 +196,22 @@ url = "2.5.8"
 
 # ---- 屏幕捕获 ----
 # 跨平台屏幕捕获
-scap = { git = "https://github.com/zed-industries/scap", rev = "4afea48c3b002197176fb19cd0f9b180dd36eaac", default-features = false, package = "zed-scap", version = "0.0.8-zed" }
+#scap = { git = "https://github.com/zed-industries/scap", rev = "4afea48c3b002197176fb19cd0f9b180dd36eaac", default-features = false, package = "zed-scap", version = "0.0.8-zed" }
+scap = { package = "scap-rs", version = "0.1",default-features = false }
 
 # ---- macOS 平台 ----
 # WebAssembly 绑定
 wasm-bindgen = "0.2.120"
 # Cocoa 框架绑定
-cocoa = "=0.26.0"
+cocoa = "0.26.1"
 # Cocoa 基础绑定
-cocoa-foundation = "=0.2.0"
+cocoa-foundation = "0.2.1"
 # CoreFoundation 绑定
-core-foundation = "=0.10.0"
+core-foundation = "0.10.1"
 # CoreFoundation 系统接口
-core-foundation-sys = "0.8.6"
+core-foundation-sys = "0.8.7"
 # CoreVideo 绑定
-core-video = { version = "0.5.2", features = ["metal"] }
+core-video = { version = "0.6.1", features = ["metal"] }
 # Mach 内核接口
 mach2 = "0.6"
 # Metal GPU API 绑定

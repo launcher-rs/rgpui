@@ -2,7 +2,7 @@
 name = "rgpui-platform"
 version.workspace = true
 edition.workspace = true
-publish.workspace = true
+publish = true
 description = "平台选择入口"
 license = "Apache-2.0"
 repository = "https://github.com/launcher-rs/rgpui"

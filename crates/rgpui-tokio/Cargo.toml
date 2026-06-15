@@ -2,7 +2,7 @@
 name = "rgpui-tokio"
 version.workspace = true
 edition.workspace = true
-publish.workspace = true
+publish = true
 description = "Tokio 异步运行时集成"
 license = "Apache-2.0"
 repository = "https://github.com/launcher-rs/rgpui"
