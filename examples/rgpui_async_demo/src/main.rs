@@ -3,8 +3,8 @@ use rgpui_component::{button::*, *};
 use rgpui_component_assets::Assets;
 use rgpui_tokio;
 
-#[derive(Default,Debug)]
-pub struct Example{
+#[derive(Default, Debug)]
+pub struct Example {
     result: String,
 }
 
@@ -21,31 +21,32 @@ impl Render for Example {
                 Button::new("ok")
                     .primary()
                     .label("Let's Go!")
-                    .on_click(cx.listener(|_this,_,_,cx|{
-                        cx.spawn(async move |this,cx|  {
+                    .on_click(cx.listener(|_this, _, _, cx| {
+                        cx.spawn(async move |this, cx| {
                             // 在使用 tokion
                             let text = rgpui_tokio::Tokio::spawn(cx, async move {
-                                reqwest::get(
-                                    "https://httpbin.org/ip"
-                                )
+                                reqwest::get("https://httpbin.org/ip")
                                     .await
                                     .unwrap()
                                     .text()
                                     .await
                                     .unwrap()
-                            }).await.unwrap();
+                            })
+                            .await
+                            .unwrap();
                             // 更新界面
-                            this.update(cx, |this,_|{
+                            this.update(cx, |this, _| {
                                 this.result = text;
-                            }).ok();
-                        }).detach();
+                            })
+                            .ok();
+                        })
+                        .detach();
                     })),
             )
     }
 }
 
 fn main() {
-
     let app = rgpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
@@ -56,23 +57,26 @@ fn main() {
         let bounds = Bounds::centered(None, size(px(1000.), px(600.)), cx);
 
         cx.spawn(async move |cx| {
-            cx.open_window(WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("异步测试".into()),
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("异步测试".into()),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }, |window, cx| {
-                let view = cx.new(|_| Example::default());
-                // This first level on the window, should be a Root.
-                cx.new(|cx| {
-                    // You can refine the root view style by yourself.
-                    Root::new(view, window, cx).bg(cx.theme().background)
-                })
-            })
-                .expect("Failed to open window");
+                },
+                |window, cx| {
+                    let view = cx.new(|_| Example::default());
+                    // This first level on the window, should be a Root.
+                    cx.new(|cx| {
+                        // You can refine the root view style by yourself.
+                        Root::new(view, window, cx).bg(cx.theme().background)
+                    })
+                },
+            )
+            .expect("Failed to open window");
         })
-            .detach();
+        .detach();
     });
 }

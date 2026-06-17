@@ -37,6 +37,10 @@ use objc::{
 };
 use parking_lot::Mutex;
 use ptr::null_mut;
+use rgpui::util::{
+    ResultExt,
+    command::{new_command, new_std_command},
+};
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, ForegroundExecutor,
     KeyContext, Keymap, Menu, MenuItem, OsMenu, OwnedMenu, PathPromptOptions, Platform,
@@ -56,10 +60,6 @@ use std::{
         Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
-};
-use rgpui::util::{
-    ResultExt,
-    command::{new_command, new_std_command},
 };
 
 #[allow(non_upper_case_globals)]

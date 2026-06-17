@@ -52,6 +52,7 @@ use objc::{
 use objc2_app_kit::NSBeep;
 use parking_lot::Mutex;
 use raw_window_handle as rwh;
+use rgpui::util::ResultExt;
 use smallvec::SmallVec;
 use std::{
     cell::Cell,
@@ -67,7 +68,6 @@ use std::{
     },
     time::Duration,
 };
-use rgpui::util::ResultExt;
 
 const WINDOW_STATE_IVAR: &str = "windowState";
 

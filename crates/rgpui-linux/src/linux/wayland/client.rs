@@ -13,11 +13,11 @@ use calloop::{
     timer::{TimeoutAction, Timer},
 };
 use calloop_wayland_source::WaylandSource;
-use rgpui::collections::HashMap;
 use filedescriptor::Pipe;
+use rgpui::collections::HashMap;
 use rgpui::http_client::Url;
-use smallvec::SmallVec;
 use rgpui::util::ResultExt as _;
+use smallvec::SmallVec;
 use wayland_backend::client::ObjectId;
 use wayland_backend::protocol::WEnum;
 use wayland_client::event_created_child;

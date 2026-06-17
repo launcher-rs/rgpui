@@ -9,8 +9,8 @@ use mach2::{
         thread_precedence_policy_data_t, thread_time_constraint_policy_data_t,
     },
 };
-use rgpui::{PlatformDispatcher, Priority, RunnableMeta, RunnableVariant};
 use rgpui::util::ResultExt;
+use rgpui::{PlatformDispatcher, Priority, RunnableMeta, RunnableVariant};
 
 use async_task::Runnable;
 use objc::{

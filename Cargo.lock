@@ -7690,6 +7690,7 @@ dependencies = [
  "accesskit",
  "accesskit_windows",
  "anyhow",
+ "dunce",
  "etagere",
  "futures",
  "image",
