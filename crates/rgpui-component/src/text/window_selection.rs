@@ -16,6 +16,7 @@ pub struct WindowTextSelection {
     pub(crate) anchor: Option<SelectionEndpoint>,
     pub(crate) cursor: Option<SelectionEndpoint>,
     pub(crate) is_selecting: bool,
+    pub(crate) did_hit_text: bool,
 }
 
 /// A selection endpoint, content-anchored to a TextView.
@@ -39,6 +40,9 @@ pub(crate) struct SelectionEndpoint {
     /// endpoint is proxy-anchored to the nearest view from blank space (so
     /// the selection follows content when an outer container scrolls).
     pub(crate) inside: bool,
+    /// True when the endpoint hit an Inline text run, not just blank space in
+    /// the parent TextView bounds.
+    pub(crate) inside_text: bool,
 }
 
 impl SelectionEndpoint {
@@ -68,6 +72,9 @@ impl WindowTextSelection {
     /// The (anchor, cursor) points in window coordinates, `None` if the
     /// selection is empty.
     pub(crate) fn resolved_points(&self, cx: &App) -> Option<(Point<Pixels>, Point<Pixels>)> {
+        if !self.did_hit_text {
+            return None;
+        }
         let start = self.anchor.as_ref()?.resolve(cx)?;
         let end = self.cursor.as_ref()?.resolve(cx)?;
         if start == end {
@@ -121,6 +128,30 @@ impl Root {
             root.selectable_text_views
                 .retain(|_, (view, _)| view.upgrade().is_some());
             root.selectable_text_views.insert(id, (weak, hitbox));
+            root.selectable_text_inlines.remove(&id);
+        });
+    }
+
+    /// Register Inline text bounds for a selectable TextView.
+    /// Called from Inline's paint on every frame.
+    pub(crate) fn register_selectable_text_inline(
+        state: &Entity<TextViewState>,
+        text_bounds: Vec<Bounds<Pixels>>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if text_bounds.is_empty() {
+            return;
+        }
+        let Some(root) = window.root::<Root>().flatten() else {
+            return;
+        };
+        let id = state.entity_id();
+        root.update(cx, |root, _| {
+            root.selectable_text_inlines
+                .entry(id)
+                .or_default()
+                .extend(text_bounds);
         });
     }
 
@@ -188,6 +219,7 @@ impl Root {
         self.text_selection.anchor = None;
         self.text_selection.cursor = None;
         self.text_selection.is_selecting = false;
+        self.text_selection.did_hit_text = false;
         self.selectable_text_views.retain(|_, (view, _)| {
             let Some(view) = view.upgrade() else {
                 return false;
@@ -210,6 +242,8 @@ impl Root {
             }
             true
         });
+        self.selectable_text_inlines
+            .retain(|id, _| self.selectable_text_views.contains_key(id));
     }
 
     /// Clear the window selection when a view it is anchored to has been
@@ -258,6 +292,11 @@ impl Root {
         }
         self.text_selection.anchor = Some(endpoint.clone());
         self.text_selection.cursor = Some(endpoint);
+        self.text_selection.did_hit_text = self
+            .text_selection
+            .anchor
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.inside_text);
         self.text_selection.is_selecting = true;
     }
 
@@ -281,7 +320,9 @@ impl Root {
         // matters: read the old points first, then update the cursor, then read
         // the new points.
         let old_points = self.text_selection.resolved_points(cx);
-        self.text_selection.cursor = Some(self.text_selection_endpoint(position, window, cx));
+        let endpoint = self.text_selection_endpoint(position, window, cx);
+        self.text_selection.did_hit_text |= endpoint.inside_text;
+        self.text_selection.cursor = Some(endpoint);
         let new_points = self.text_selection.resolved_points(cx);
 
         // Auto-scroll the anchor view when dragging near its viewport edges,
@@ -312,6 +353,11 @@ impl Root {
             return;
         }
         self.text_selection.is_selecting = false;
+        if !self.text_selection.did_hit_text {
+            self.text_selection.anchor = None;
+            self.text_selection.cursor = None;
+            return;
+        }
         // Only a true hit anchor (inside == true) had `is_selecting` and
         // auto-scroll set in `start_text_selection`; a proxy-anchored view
         // has nothing to tear down.
@@ -368,10 +414,15 @@ impl Root {
             best.and_then(|(view, _)| view.upgrade().map(|entity| (view, entity)))
         {
             let state = entity.read(cx);
+            let inside_text = self
+                .selectable_text_inlines
+                .get(&state.entity_id)
+                .is_some_and(|bounds| bounds.iter().any(|bounds| bounds.contains(&position)));
             return SelectionEndpoint {
                 point: position - state.bounds().origin - state.scroll_offset(),
                 view: Some(view),
                 inside: true,
+                inside_text,
             };
         }
 
@@ -411,12 +462,14 @@ impl Root {
                             point: position - state.bounds().origin - state.scroll_offset(),
                             view: Some(view),
                             inside: false,
+                            inside_text: false,
                         }
                     }
                     None => SelectionEndpoint {
                         view: None,
                         point: position,
                         inside: false,
+                        inside_text: false,
                     },
                 }
             }
@@ -424,6 +477,7 @@ impl Root {
                 view: None,
                 point: position,
                 inside: false,
+                inside_text: false,
             },
         }
     }

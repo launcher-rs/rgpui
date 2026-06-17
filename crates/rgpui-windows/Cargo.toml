@@ -25,6 +25,7 @@ rgpui.workspace = true
 accesskit.workspace = true
 accesskit_windows.workspace = true
 anyhow.workspace = true
+dunce.workspace = true
 etagere = "0.2"
 futures.workspace = true
 image.workspace = true

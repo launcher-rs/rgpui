@@ -20,6 +20,8 @@ pub struct TextViewStyle {
     pub highlight_theme: Arc<HighlightTheme>,
     /// The style refinement for code blocks.
     pub code_block: StyleRefinement,
+    /// The style refinement for tables.
+    pub table: StyleRefinement,
     pub is_dark: bool,
 }
 
@@ -39,6 +41,7 @@ impl Default for TextViewStyle {
             heading_font_size: None,
             highlight_theme: HighlightTheme::default_light().clone(),
             code_block: StyleRefinement::default(),
+            table: StyleRefinement::default(),
             is_dark: false,
         }
     }

@@ -6,6 +6,7 @@ use std::{
 
 use crate::{
     ActiveTheme as _, HighlightTheme, Icon, IconName, StyledExt, h_flex,
+    scroll::horizontal_scroll_area,
     text::{
         CodeBlockActionsFn,
         document::NodeRenderOptions,
@@ -17,9 +18,9 @@ use crate::{
 use markdown::mdast;
 use rgpui::{
     AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
-    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
-    SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div, img,
-    prelude::FluentBuilder as _, px, relative, rems,
+    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, ScrollHandle,
+    SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div,
+    img, prelude::FluentBuilder as _, px, relative, rems,
 };
 
 use super::{TextViewStyle, utils::list_item_prefix};
@@ -1178,75 +1179,108 @@ impl BlockNode {
         };
 
         match item {
-            BlockNode::Table(table) => div()
-                .pb(rems(1.))
-                .w_full()
-                .child(
-                    div()
-                        .id(("table", options.ix))
-                        .w_full()
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .rounded(cx.theme().radius)
-                        .overflow_hidden()
-                        .children({
-                            let mut rows = Vec::with_capacity(table.children.len());
-                            for (row_ix, row) in table.children.iter().enumerate() {
-                                rows.push(
-                                    div()
-                                        .id("row")
-                                        .w_full()
-                                        .when(row_ix < table.children.len() - 1, |this| {
-                                            this.border_b_1()
-                                        })
-                                        .border_color(cx.theme().border)
-                                        .flex()
-                                        .flex_row()
-                                        .children({
-                                            let mut cells = Vec::with_capacity(row.children.len());
-                                            for (ix, cell) in row.children.iter().enumerate() {
-                                                let align = table.column_align(ix);
-                                                let is_last_col = ix == row.children.len() - 1;
-                                                let len = col_lens
-                                                    .get(ix)
-                                                    .copied()
-                                                    .unwrap_or(MAX_LENGTH)
-                                                    .min(MAX_LENGTH);
+            BlockNode::Table(table) => {
+                let total_w: f32 = col_lens.iter().map(|&len| len as f32).sum();
 
-                                                cells.push(
-                                                    div()
-                                                        .id(("cell", ix))
-                                                        .overflow_hidden()
-                                                        .when(
-                                                            align == ColumnumnAlign::Center,
-                                                            |this| this.text_center(),
-                                                        )
-                                                        .when(
-                                                            align == ColumnumnAlign::Right,
-                                                            |this| this.text_right(),
-                                                        )
-                                                        .min_w_16()
-                                                        .w(Length::Definite(relative(len as f32)))
-                                                        .px_2()
-                                                        .py_1()
-                                                        .when(!is_last_col, |this| {
-                                                            this.border_r_1()
-                                                                .border_color(cx.theme().border)
-                                                        })
-                                                        .child(
-                                                            cell.children
-                                                                .render(node_cx, window, cx),
-                                                        ),
-                                                )
-                                            }
-                                            cells
-                                        }),
-                                )
-                            }
-                            rows
-                        }),
-                )
-                .into_any_element(),
+                let style = &node_cx.style;
+                let table_scroll_key = if let Some(span) = table.span {
+                    SharedString::from(format!(
+                        "{}-table-scroll-{}:{}",
+                        window.current_view(),
+                        span.start,
+                        span.end
+                    ))
+                } else {
+                    SharedString::from(format!(
+                        "{}-table-scroll-{}",
+                        window.current_view(),
+                        options.ix
+                    ))
+                };
+                let scroll_handle = window
+                    .use_keyed_state(table_scroll_key, cx, |_, _| ScrollHandle::default())
+                    .read(cx)
+                    .clone();
+                let row_count = table.children.len();
+                let mut rows = Vec::with_capacity(row_count);
+                for (row_ix, row) in table.children.iter().enumerate() {
+                    rows.push(
+                        div()
+                            .id("row")
+                            .w_full()
+                            .when(row_ix < row_count - 1, |this| this.border_b_1())
+                            .border_color(cx.theme().border)
+                            .flex()
+                            .flex_row()
+                            .children({
+                                let mut cells = Vec::with_capacity(row.children.len());
+                                for (ix, cell) in row.children.iter().enumerate() {
+                                    let align = table.column_align(ix);
+                                    let is_last_col = ix == row.children.len() - 1;
+                                    let len = col_lens
+                                        .get(ix)
+                                        .copied()
+                                        .unwrap_or(MAX_LENGTH)
+                                        .min(MAX_LENGTH);
+
+                                    cells.push(
+                                        div()
+                                            .id(("cell", ix))
+                                            .overflow_hidden()
+                                            .when(
+                                                align == ColumnumnAlign::Center,
+                                                |this| this.text_center(),
+                                            )
+                                            .when(
+                                                align == ColumnumnAlign::Right,
+                                                |this| this.text_right(),
+                                            )
+                                            .min_w_16()
+                                            .w(Length::Definite(relative(len as f32)))
+                                            .px_2()
+                                            .py_1()
+                                            .when(!is_last_col, |this| {
+                                                this.border_r_1()
+                                                    .border_color(cx.theme().border)
+                                            })
+                                            .child(
+                                                cell.children
+                                                    .render(node_cx, window, cx),
+                                            ),
+                                    )
+                                }
+                                cells
+                            }),
+                    )
+                }
+                div()
+                    .pb(rems(1.))
+                    .w_full()
+                    .child(
+                        // Scroll viewport: clips and scrolls horizontally (overflow-x
+                        // is handled by `ScrollableMask`, so vertical wheel events keep
+                        // bubbling to the parent TextView). No border — the frame is on
+                        // the inner track so it wraps the table tightly.
+                        horizontal_scroll_area(
+                            ("table", options.ix),
+                            &scroll_handle,
+                            &style.table,
+                            // Bordered track sized to `max(viewport, total table
+                            // width)`: `min_w_full` fills the frame when the table is
+                            // narrow (cells then grow to fill), the definite `w(total_w)`
+                            // lets it exceed the viewport and scroll when the content is
+                            // wider.
+                            div()
+                                .min_w_full()
+                                .w(px(total_w))
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .rounded(cx.theme().radius)
+                                .children(rows),
+                        ),
+                    )
+                    .into_any_element()
+            }
             _ => div().into_any_element(),
         }
     }

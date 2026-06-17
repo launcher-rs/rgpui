@@ -11,10 +11,10 @@ use crate::{
     window_border,
 };
 use rgpui::{
-    Anchor, AnyView, App, AppContext, ClipboardItem, Context, DefiniteLength, ElementId, Entity,
-    EntityId, FocusHandle, Hitbox, InteractiveElement, IntoElement, KeyBinding, ParentElement as _,
-    Pixels, Render, StyleRefinement, Styled, WeakEntity, WeakFocusHandle, Window, actions, div,
-    prelude::FluentBuilder as _,
+    Anchor, AnyView, App, AppContext, Bounds, ClipboardItem, Context, DefiniteLength, ElementId,
+    Entity, EntityId, FocusHandle, Hitbox, InteractiveElement, IntoElement, KeyBinding,
+    ParentElement as _, Pixels, Render, StyleRefinement, Styled, WeakEntity, WeakFocusHandle,
+    Window, actions, div, prelude::FluentBuilder as _,
 };
 use std::{any::TypeId, collections::HashMap, rc::Rc};
 
@@ -46,6 +46,8 @@ pub struct Root {
     pub(crate) native_menu_overlay: Entity<FallbackMenuOverlay>,
     sheet_size: Option<DefiniteLength>,
     window_shadow_size: Pixels,
+    /// Render the Linux CSD `window_border` wrapper.
+    bordered: bool,
     /// The focus handle that will be restored after a dialog is closed with animation.
     /// Used to handle rapid dialog opening/closing to maintain correct focus chain.
     pending_focus_restore: Option<WeakFocusHandle>,
@@ -53,6 +55,8 @@ pub struct Root {
     pub(crate) text_selection: WindowTextSelection,
     /// Selectable TextViews registered this frame, keyed by entity id.
     pub(crate) selectable_text_views: HashMap<EntityId, (WeakEntity<TextViewState>, Hitbox)>,
+    /// Inline text bounds for selectable TextViews, keyed by parent TextView id.
+    pub(crate) selectable_text_inlines: HashMap<EntityId, Vec<Bounds<Pixels>>>,
 }
 
 #[derive(Clone)]
@@ -100,9 +104,11 @@ impl Root {
             native_menu_overlay: cx.new(|_| FallbackMenuOverlay::new()),
             sheet_size: None,
             window_shadow_size: window_border::SHADOW_SIZE,
+            bordered: true,
             pending_focus_restore: None,
             text_selection: WindowTextSelection::default(),
             selectable_text_views: HashMap::new(),
+            selectable_text_inlines: HashMap::new(),
         }
     }
 
@@ -111,6 +117,15 @@ impl Root {
     /// Default: [`window_border::SHADOW_SIZE`]
     pub fn window_shadow_size(mut self, size: impl Into<Pixels>) -> Self {
         self.window_shadow_size = size.into();
+        self
+    }
+
+    /// Enable or disable the Linux client-side window border wrapper.
+    ///
+    /// Defaults to `true`. Use `bordered(false)` for layer-shell fullscreen windows
+    /// or other surfaces that should not render GPUI Component's window border.
+    pub fn bordered(mut self, bordered: bool) -> Self {
+        self.bordered = bordered;
         self
     }
 
@@ -525,23 +540,30 @@ impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         window.set_rem_size(cx.theme().font_size);
 
-        window_border().shadow_size(self.window_shadow_size).child(
-            div()
-                .id("root")
-                .key_context(CONTEXT)
-                .on_action(cx.listener(Self::on_action_tab))
-                .on_action(cx.listener(Self::on_action_tab_prev))
-                .on_action(cx.listener(Self::on_action_copy))
-                .relative()
-                .size_full()
-                .font_family(cx.theme().font_family.clone())
-                .bg(cx.theme().background)
-                .text_color(cx.theme().foreground)
-                .refine_style(&self.style)
-                .child(TextSelectionController)
-                .child(self.view.clone())
-                .child(self.tooltip_overlay.clone())
-                .child(self.native_menu_overlay.clone()),
-        )
+        let inner = div()
+            .id("root")
+            .key_context(CONTEXT)
+            .on_action(cx.listener(Self::on_action_tab))
+            .on_action(cx.listener(Self::on_action_tab_prev))
+            .on_action(cx.listener(Self::on_action_copy))
+            .relative()
+            .size_full()
+            .font_family(cx.theme().font_family.clone())
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .refine_style(&self.style)
+            .child(TextSelectionController)
+            .child(self.view.clone())
+            .child(self.tooltip_overlay.clone())
+            .child(self.native_menu_overlay.clone());
+
+        if self.bordered {
+            window_border()
+                .shadow_size(self.window_shadow_size)
+                .child(inner)
+                .into_any_element()
+        } else {
+            inner.into_any_element()
+        }
     }
 }

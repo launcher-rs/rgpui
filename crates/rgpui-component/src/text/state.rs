@@ -67,6 +67,9 @@ pub struct TextViewState {
     pub(super) auto_scroll: AutoScroll,
 
     pub(super) parsed_content: ParsedContent,
+    /// Content format (markdown / html), used to parse synchronously on the
+    /// main thread for full-replace updates.
+    format: TextViewFormat,
     text: String,
     parsed_error: Option<SharedString>,
     tx: Sender<UpdateOptions>,
@@ -133,12 +136,17 @@ impl TextViewState {
             select_all: false,
             selectable: false,
             scrollable: false,
-            list_state: ListState::new(0, rgpui::ListAlignment::Top, px(1000.)),
+            // Measure all blocks (not just visible ones) so the scrollbar
+            // thumb size stays stable. Without this, off-screen blocks count
+            // as zero height until scrolled into view, which makes the
+            // scrollbar jitter as more blocks get measured during scrolling.
+            list_state: ListState::new(0, rgpui::ListAlignment::Top, px(1000.)).measure_all(),
             text_view_style: TextViewStyle::default(),
             code_block_actions: None,
             is_selecting: false,
             auto_scroll: AutoScroll::default(),
             parsed_content: Default::default(),
+            format,
             parsed_error: None,
             text: text.to_string(),
             tx,
@@ -221,6 +229,32 @@ impl TextViewState {
             pending_text: text.to_string(),
             highlight_theme: cx.theme().highlight_theme.clone(),
         };
+
+        // Full-replace updates (initial content / `set_text`) parse
+        // synchronously on the main thread so the first layout already has the
+        // correct height. Otherwise parsing finishes later on a background task
+        // and the first layout sees an empty `parsed_content` (~0 height); when
+        // this `TextView` is an item inside an outer `list` with `measure_all`,
+        // off-screen items get measured at that empty height and the total
+        // content height keeps growing as items scroll into view; the scrollbar
+        // thumb jitters. Streaming appends stay async to avoid re-parsing the
+        // whole document on every chunk.
+        if !append {
+            match parse_content(self.format, ParsedContent::default(), &update_options) {
+                Ok(content) => {
+                    self.parsed_content = content;
+                    self.parsed_error = None;
+                    if !self.is_selecting {
+                        self.reset_selection();
+                    }
+                }
+                Err(err) => {
+                    self.parsed_error = Some(err);
+                }
+            }
+            cx.notify();
+            return;
+        }
 
         _ = self.tx.try_send(update_options);
     }

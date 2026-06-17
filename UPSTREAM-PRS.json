@@ -238,6 +238,141 @@
       "title": "gpui_macos: Warn when falling back to NoopTextSystem",
       "status": "merged",
       "merged_at": "2026-06-15"
+    },
+    {
+      "number": 59274,
+      "upstream": "zed",
+      "title": "editor: Refresh active debug line highlight on theme change",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "No applicable files in rgpui (changes only in crates/editor/ and test files)"
+    },
+    {
+      "number": 59358,
+      "upstream": "zed",
+      "title": "Remove gpui's dependency on async-process",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Applied dunce::simplified replacing SanitizedPath in rgpui-windows"
+    },
+    {
+      "number": 2444,
+      "upstream": "gpui-component",
+      "title": "dropdown_button: Fix style for selected outline button",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2442,
+      "upstream": "gpui-component",
+      "title": "search: Fix editor backward search",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Already applied in our codebase"
+    },
+    {
+      "number": 2439,
+      "upstream": "gpui-component",
+      "title": "setting: Support reset for element/render fields and custom items",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Already applied in our codebase"
+    },
+    {
+      "number": 59274,
+      "upstream": "zed",
+      "title": "editor: Refresh active debug line highlight on theme change",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "No applicable files (only crates/editor/, crates/debugger_ui/, crates/gpui/src/color.rs)"
+    },
+    {
+      "number": 59358,
+      "upstream": "zed",
+      "title": "Remove gpui's dependency on async-process",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2460,
+      "upstream": "gpui-component",
+      "title": "number_input: Support custom stepping",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Only touches crates/story/ (not ported)"
+    },
+    {
+      "number": 2451,
+      "upstream": "gpui-component",
+      "title": "fix(docs): update skills page",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Docs only, skipped"
+    },
+    {
+      "number": 2466,
+      "upstream": "gpui-component",
+      "title": "root: Support borderless root window",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2467,
+      "upstream": "gpui-component",
+      "title": "markdown: Add table_wrap support",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Only touches story example and text/style.rs (story not ported, style already has table field)"
+    },
+    {
+      "number": 2468,
+      "upstream": "gpui-component",
+      "title": "scrollable_mask: Add horizontal_scroll_area helper",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2469,
+      "upstream": "gpui-component",
+      "title": "text: Measure all blocks for stable scrollbar",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2470,
+      "upstream": "gpui-component",
+      "title": "text: Support full-replace sync updates",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2471,
+      "upstream": "gpui-component",
+      "title": "input: Add disabled state styling",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Only touches story files (not ported)"
+    },
+    {
+      "number": 2472,
+      "upstream": "gpui-component",
+      "title": "text: Store inline text bounds for selection",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2474,
+      "upstream": "gpui-component",
+      "title": "pie_chart: Add label rendering",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2478,
+      "upstream": "gpui-component",
+      "title": "notification: Support configurable max_items",
+      "status": "merged",
+      "merged_at": "2026-06-17"
     }
   ]
 }

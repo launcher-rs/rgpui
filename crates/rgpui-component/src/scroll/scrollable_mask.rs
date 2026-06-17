@@ -1,11 +1,36 @@
 use rgpui::{
     App, Axis, BorderStyle, Bounds, ContentMask, Edges, Element, ElementId, GlobalElementId,
-    Hitbox, Hsla, IntoElement, IsZero as _, LayoutId, PaintQuad, Point, Position, ScrollHandle,
-    ScrollWheelEvent, Style, Window, px, relative,
+    Hitbox, Hsla, InteractiveElement as _, IntoElement, IsZero as _, LayoutId, PaintQuad,
+    ParentElement as _, Point, Position, ScrollHandle, ScrollWheelEvent,
+    StatefulInteractiveElement as _, Style, StyleRefinement, Styled as _, Window, div, px,
+    relative,
 };
 use rgpui::{Corners, Pixels};
 
-use crate::AxisExt;
+use crate::{AxisExt, StyledExt as _};
+
+/// A horizontal scroll viewport that only consumes horizontal wheel deltas.
+///
+/// GPUI's native `overflow_x_scroll` maps vertical wheel input onto horizontal
+/// scrolling when there is no vertical overflow. This wrapper keeps the visual
+/// clipping and scroll offset, while delegating wheel input to [`ScrollableMask`]
+/// so vertical wheel events can continue bubbling to the parent scroller.
+pub(crate) fn horizontal_scroll_area(
+    id: impl Into<ElementId>,
+    scroll_handle: &ScrollHandle,
+    style: &StyleRefinement,
+    child: impl IntoElement,
+) -> impl IntoElement {
+    div()
+        .id(id)
+        .w_full()
+        .relative()
+        .refine_style(style)
+        .overflow_hidden()
+        .track_scroll(scroll_handle)
+        .child(child)
+        .child(ScrollableMask::new(Axis::Horizontal, scroll_handle))
+}
 
 /// Make a scrollable mask element to cover the parent view with the mouse wheel event listening.
 ///
