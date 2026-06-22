@@ -1227,26 +1227,20 @@ impl BlockNode {
                                         div()
                                             .id(("cell", ix))
                                             .overflow_hidden()
-                                            .when(
-                                                align == ColumnumnAlign::Center,
-                                                |this| this.text_center(),
-                                            )
-                                            .when(
-                                                align == ColumnumnAlign::Right,
-                                                |this| this.text_right(),
-                                            )
+                                            .when(align == ColumnumnAlign::Center, |this| {
+                                                this.text_center()
+                                            })
+                                            .when(align == ColumnumnAlign::Right, |this| {
+                                                this.text_right()
+                                            })
                                             .min_w_16()
                                             .w(Length::Definite(relative(len as f32)))
                                             .px_2()
                                             .py_1()
                                             .when(!is_last_col, |this| {
-                                                this.border_r_1()
-                                                    .border_color(cx.theme().border)
+                                                this.border_r_1().border_color(cx.theme().border)
                                             })
-                                            .child(
-                                                cell.children
-                                                    .render(node_cx, window, cx),
-                                            ),
+                                            .child(cell.children.render(node_cx, window, cx)),
                                     )
                                 }
                                 cells

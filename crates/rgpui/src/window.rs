@@ -1,9 +1,5 @@
 #[cfg(any(feature = "inspector", debug_assertions))]
 use crate::Inspector;
-use crate::collections::{FxHashMap, FxHashSet};
-use crate::post_inc;
-use crate::refineable::Refineable;
-use crate::scheduler::Instant;
 use crate::{
     Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset,
     AsyncWindowContext, AvailableSpace, Background, BlendMode, BorderStyle, Bounds, BoxShadow,
@@ -24,7 +20,12 @@ use crate::{
     WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, rems, size,
     transparent_black,
 };
-use crate::{ResultExt, measure};
+
+use crate::collections::{FxHashMap, FxHashSet};
+use crate::refineable::Refineable;
+use crate::rgpui_util::post_inc;
+use crate::rgpui_util::{ResultExt, measure};
+use crate::scheduler::Instant;
 use anyhow::{Context as _, Result, anyhow};
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
@@ -59,13 +60,13 @@ use std::{
 use uuid::Uuid;
 
 pub(crate) mod a11y;
-
 mod prompts;
+
+pub use a11y::A11ySubtreeBuilder;
 
 use self::a11y::A11y;
 #[cfg(not(target_family = "wasm"))]
 use self::a11y::ROOT_NODE_ID;
-
 use crate::util::{
     atomic_incr_if_not_zero, ceil_to_device_pixel, floor_to_device_pixel, round_half_toward_zero,
     round_half_toward_zero_f64, round_stroke_to_device_pixel, round_to_device_pixel,
@@ -82,7 +83,7 @@ pub const DEFAULT_ADDITIONAL_WINDOW_SIZE: Size<Pixels> = Size {
     height: Pixels(750.),
 };
 
-/// 表示事件分发时的两个不同阶段。
+/// Represents the two different phases when dispatching events.
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DispatchPhase {
     /// After the capture phase comes the bubble phase, in which mouse event listeners are
@@ -121,7 +122,10 @@ struct WindowInvalidatorInner {
     pub frame_dirty: FrameDirtyAccumulator,
 }
 
-/// 每帧失效记账，在绘制时排空并发送到帧分析器。跟踪当前帧首次变脏的时间以及合并了多少次失效。仅在设置了 `profiler::frame_trace_enabled()` 时填充
+/// Per-frame invalidation bookkeeping, drained at draw time and emitted to the
+/// frame profiler. Tracks when the current frame first became dirty and how
+/// many invalidations were coalesced into it. Only populated while
+/// `profiler::frame_trace_enabled()` is set.
 #[derive(Default)]
 struct FrameDirtyAccumulator {
     dirty_at: Option<Instant>,
@@ -169,11 +173,16 @@ impl WindowInvalidator {
         inner.dirty = dirty;
         if dirty {
             inner.update_count += 1;
+            Self::record_frame_dirty(&mut inner);
         }
     }
 
     pub fn set_phase(&self, phase: DrawPhase) {
         self.inner.borrow_mut().draw_phase = phase
+    }
+
+    pub fn update_count(&self) -> usize {
+        self.inner.borrow().update_count
     }
 
     fn record_frame_dirty(inner: &mut WindowInvalidatorInner) {
@@ -185,10 +194,6 @@ impl WindowInvalidator {
 
     fn take_frame_dirty(&self) -> FrameDirtyAccumulator {
         mem::take(&mut self.inner.borrow_mut().frame_dirty)
-    }
-
-    pub fn update_count(&self) -> usize {
-        self.inner.borrow().update_count
     }
 
     pub fn take_views(&self) -> FxHashSet<EntityId> {
@@ -269,7 +274,7 @@ thread_local! {
 
     /// Points to the current App's element arena during draw operations.
     /// This allows multiple test Apps to have isolated arenas, preventing
-    /// cross-session corruption when the scheduler interleaves their tasks.
+    /// cross-session corruption when the crate::scheduler interleaves their tasks.
     static CURRENT_ELEMENT_ARENA: Cell<Option<*const RefCell<Arena>>> = const { Cell::new(None) };
 }
 
@@ -374,7 +379,7 @@ impl FocusId {
     }
 }
 
-/// 用于跟踪和操控窗口中聚焦元素的句柄。
+/// A handle which can be used to track and manipulate the focused element in a window.
 pub struct FocusHandle {
     pub(crate) id: FocusId,
     handles: Arc<FocusMap>,
@@ -547,7 +552,8 @@ impl PartialEq<WeakFocusHandle> for FocusHandle {
     }
 }
 
-/// Focusable 允许用户通过 `window.focus_view(cx, view)` 来聚焦你的视图。
+/// Focusable allows users of your view to easily
+/// focus it (using window.focus_view(cx, view))
 pub trait Focusable: 'static {
     /// Returns the focus handle associated with this view.
     fn focus_handle(&self, cx: &App) -> FocusHandle;
@@ -559,14 +565,13 @@ impl<V: Focusable> Focusable for Entity<V> {
     }
 }
 
-/// ManagedView 是由另一个视图管理生命周期的视图
-/// （如 Modal、Popover、Menu 等）。
+/// ManagedView is a view (like a Modal, Popover, Menu, etc.)
+/// where the lifecycle of the view is handled by another view.
 pub trait ManagedView: Focusable + EventEmitter<DismissEvent> + Render {}
 
 impl<M: Focusable + EventEmitter<DismissEvent> + Render> ManagedView for M {}
 
-/// 由 [`ManagedView`] 的实现者发出，表示视图应该被解散，
-/// 例如当视图作为模态框呈现时。
+/// Emitted by implementers of [`ManagedView`] to indicate the view should be dismissed, such as when a view is presented as a modal.
 pub struct DismissEvent;
 
 type FrameCallback = Box<dyn FnOnce(&mut Window, &mut App)>;
@@ -586,7 +591,7 @@ pub(crate) struct HitTest {
     pub(crate) hover_hitbox_count: usize,
 }
 
-/// 对应于平台窗口的窗口控制区域类型。
+/// A type of window control area that corresponds to the platform window.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WindowControlArea {
     /// An area that allows dragging of the platform window.
@@ -667,8 +672,8 @@ impl HitboxId {
     }
 }
 
-/// 一个矩形的命中区域，可能会阻止先插入的 hitbox。
-/// 详见 [Window::insert_hitbox]。
+/// A rectangular region that potentially blocks hitboxes inserted prior.
+/// See [Window::insert_hitbox] for more details.
 #[derive(Clone, Debug, Deref)]
 pub struct Hitbox {
     /// A unique identifier for the hitbox.
@@ -714,7 +719,7 @@ impl Hitbox {
     }
 }
 
-/// hitbox 影响鼠标行为的方式。
+/// How the hitbox affects mouse behavior.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum HitboxBehavior {
     /// Normal hitbox mouse behavior, doesn't affect mouse handling for other hitboxes.
@@ -1038,6 +1043,9 @@ pub struct Window {
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
     focus_enabled: bool,
+    /// Incremented every time focus moves. Used to invalidate a
+    /// pending keyboard activation state when focus changes.
+    pub(crate) focus_generation: u64,
     pending_input: Option<PendingInput>,
     pending_modifier: ModifierState,
     pub(crate) pending_input_observers: SubscriberSet<(), AnyObserver>,
@@ -1301,6 +1309,10 @@ impl Window {
             mouse_passthrough,
         } = options;
 
+        let initial_window_title = titlebar
+            .as_ref()
+            .and_then(|titlebar| titlebar.title.clone());
+
         let window_bounds = window_bounds.unwrap_or_else(|| default_bounds(display_id, cx));
         let mut platform_window = cx.platform.open_window(
             handle,
@@ -1315,10 +1327,10 @@ impl Window {
                 show,
                 display_id,
                 window_min_size,
+                window_decorations: window_decorations.unwrap_or_default(),
                 icon,
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
-                window_decorations: window_decorations.unwrap_or(WindowDecorations::Server),
                 mouse_passthrough,
             },
         )?;
@@ -1356,12 +1368,17 @@ impl Window {
             WindowBounds::Windowed(_) => {}
         }
 
+        let accessibility_force_disabled = cx.accessibility_force_disabled;
         let a11y_active_flag = Arc::new(AtomicBool::new(false));
 
         #[cfg(not(target_family = "wasm"))]
-        if !cx.accessibility_force_disabled {
+        if !accessibility_force_disabled {
+            let mut initial_root_node = accesskit::Node::new(accesskit::Role::Window);
+            if let Some(title) = &initial_window_title {
+                initial_root_node.set_label(title.to_string());
+            }
             let initial_tree = accesskit::TreeUpdate {
-                nodes: vec![(ROOT_NODE_ID, accesskit::Node::new(accesskit::Role::Window))],
+                nodes: vec![(ROOT_NODE_ID, initial_root_node)],
                 tree: Some(accesskit::Tree::new(ROOT_NODE_ID)),
                 tree_id: accesskit::TreeId::ROOT,
                 focus: ROOT_NODE_ID,
@@ -1394,6 +1411,11 @@ impl Window {
                 },
             });
 
+            // A11y can be activated at any time, and so we cannot compute a
+            // correct `TreeUpdate` on-demand. When this happens, we return a
+            // default empty `TreeUpdate`.
+            //
+            // So we force a new frame, which will then send a correct `TreeUpdate`.
             let mut async_cx = cx.to_async();
             cx.foreground_executor()
                 .spawn(async move {
@@ -1729,6 +1751,7 @@ impl Window {
             activation_observers: SubscriberSet::new(),
             focus: None,
             focus_enabled: true,
+            focus_generation: 0,
             pending_input: None,
             pending_modifier: ModifierState::default(),
             pending_input_observers: SubscriberSet::new(),
@@ -1738,7 +1761,11 @@ impl Window {
             captured_hitbox: None,
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector: None,
-            a11y: A11y::new(a11y_active_flag, cx.accessibility_force_disabled),
+            a11y: A11y::new(
+                a11y_active_flag,
+                accessibility_force_disabled,
+                initial_window_title,
+            ),
         })
     }
 
@@ -1885,6 +1912,7 @@ impl Window {
         }
 
         self.focus = Some(handle.id);
+        self.focus_generation = self.focus_generation.wrapping_add(1);
         self.clear_pending_keystrokes();
 
         // Avoid re-entrant entity updates by deferring observer notifications to the end of the
@@ -1907,6 +1935,9 @@ impl Window {
             return;
         }
 
+        if self.focus.is_some() {
+            self.focus_generation = self.focus_generation.wrapping_add(1);
+        }
         self.focus = None;
         self.refresh();
     }
@@ -2224,25 +2255,16 @@ impl Window {
         self.platform_window.bounds()
     }
 
-    /// 返回当前窗口左上角在全局屏幕坐标系中的位置。
+    /// Returns the position of the window's top-left corner in screen coordinates.
     pub fn position(&self) -> Point<Pixels> {
         self.bounds().origin
     }
 
-    /// 返回当前窗口所在屏幕的边界。
-    ///
-    /// 如果窗口当前显示器不可用，则回退到主显示器。
-    pub fn screen_bounds(&self, cx: &App) -> Option<Bounds<Pixels>> {
+    /// Returns the size of the screen the window is on, or the primary screen if unavailable.
+    pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
         self.display(cx)
             .or_else(|| cx.primary_display())
-            .map(|display| display.bounds())
-    }
-
-    /// 返回当前窗口所在屏幕的尺寸。
-    ///
-    /// 如果窗口当前显示器不可用，则回退到主显示器。
-    pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
-        self.screen_bounds(cx).map(|bounds| bounds.size)
+            .map(|d| d.bounds().size)
     }
 
     /// Renders the current frame's scene to a texture and returns the pixel data as an RGBA image.
@@ -2257,11 +2279,6 @@ impl Window {
     /// Set the content size of the window.
     pub fn resize(&mut self, size: Size<Pixels>) {
         self.platform_window.resize(size);
-    }
-
-    /// 设置窗口位置（保持大小不变）
-    pub fn set_position(&mut self, position: Point<Pixels>) {
-        self.platform_window.set_position(position);
     }
 
     /// Returns whether or not the window is currently fullscreen
@@ -2355,6 +2372,13 @@ impl Window {
     /// Updates the window's title at the platform level.
     pub fn set_window_title(&mut self, title: &str) {
         self.platform_window.set_title(title);
+        self.a11y.set_window_title(title.to_string());
+    }
+
+    /// Sets the position of the macOS traffic light buttons.
+    #[cfg(target_os = "macos")]
+    pub fn set_traffic_light_position(&self, position: Point<Pixels>) {
+        self.platform_window.set_traffic_light_position(position);
     }
 
     /// Sets the application identifier.
@@ -2366,31 +2390,6 @@ impl Window {
     pub fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance) {
         self.platform_window
             .set_background_appearance(background_appearance);
-    }
-
-    /// 设置窗口是否允许鼠标事件穿透到后面的窗口
-    pub fn set_mouse_passthrough(&self, passthrough: bool) {
-        self.platform_window.set_mouse_passthrough(passthrough);
-    }
-
-    /// 获取窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
-    pub fn window_extended_style(&self) -> u32 {
-        self.platform_window.window_extended_style()
-    }
-
-    /// 设置窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
-    ///
-    /// 可用于调试和自定义窗口行为，例如控制 WS_EX_LAYERED 等标志。
-    pub fn set_window_extended_style(&self, style: u32) {
-        self.platform_window.set_window_extended_style(style);
-    }
-
-    /// 设置标题栏和边框是否可见
-    ///
-    /// # 参数
-    /// * `visible` - true 显示标题栏和边框，false 隐藏
-    pub fn set_titlebar_visible(&self, visible: bool) {
-        self.platform_window.set_titlebar_visible(visible);
     }
 
     /// Mark the window as dirty at the platform level.
@@ -2640,13 +2639,14 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // Drain unconditionally so a stale first-invalidation timestamp can't
+        // leak into a later frame across enable/disable of frame tracing.
+        let frame_dirty = self.invalidator.take_frame_dirty();
+        let draw_started_at = profiler::frame_trace_enabled().then(Instant::now);
+
         // Set up the per-App arena for element allocation during this draw.
         // This ensures that multiple test Apps have isolated arenas.
         let _arena_scope = ElementArenaScope::enter(&cx.element_arena);
-
-        // 无条件排空，以便过时的首次失效时间戳不能泄漏到后续帧中（跨帧跟踪的启用/禁用）
-        let frame_dirty = self.invalidator.take_frame_dirty();
-        let draw_started_at = profiler::frame_trace_enabled().then(Instant::now);
 
         self.invalidate_entities();
         cx.entities.clear_accessed();
@@ -2737,25 +2737,6 @@ impl Window {
         self.invalidator.set_phase(DrawPhase::None);
         self.needs_present.set(true);
 
-        // a11y may have been activated/deactivated halfway through the frame
-        let a11y_active_start_of_frame = self.a11y.is_active();
-        self.a11y.sync_active_flag();
-        let a11y_active_end_of_frame = self.a11y.is_active();
-
-        let should_send_a11y_update = a11y_active_start_of_frame && a11y_active_end_of_frame;
-
-        if a11y_active_start_of_frame {
-            let tree_update = self.a11y.end_frame();
-
-            if should_send_a11y_update {
-                log::debug!(
-                    "Sending a11y tree update: {} nodes",
-                    tree_update.nodes.len()
-                );
-                self.platform_window.a11y_tree_update(tree_update);
-            }
-        }
-
         if let Some(draw_start) = draw_started_at {
             profiler::record_frame_timing(profiler::FrameTiming {
                 window_id: self.handle.window_id(),
@@ -2800,9 +2781,11 @@ impl Window {
         profiling::finish_frame!();
     }
 
-    /// 如果尚未呈现，则呈现最近绘制的帧
+    /// Presents the most recently drawn frame if it hasn't been presented yet.
     ///
-    /// 基准测试同步驱动绘制，而不是通过平台帧请求循环，因此它们在每次测量更新后调用此方法以像生产环境呈现一样提交帧
+    /// Benchmarks drive drawing synchronously rather than through a platform
+    /// frame-request loop, so they call this after each measured update to
+    /// submit the frame like production presentation would.
     #[cfg(feature = "bench")]
     pub fn present_if_needed(&mut self) {
         if self.needs_present.get() {
@@ -2818,11 +2801,12 @@ impl Window {
 
     fn draw_roots(&mut self, cx: &mut App) {
         self.invalidator.set_phase(DrawPhase::Prepaint);
+        self.tooltip_bounds.take();
+
         self.a11y.sync_active_flag();
         if self.a11y.is_active() {
             self.a11y.begin_frame();
         }
-        self.tooltip_bounds.take();
 
         let _inspector_width: Pixels = rems(30.0).to_pixels(self.rem_size());
         let root_size = {
@@ -2890,6 +2874,26 @@ impl Window {
 
         #[cfg(any(feature = "inspector", debug_assertions))]
         self.paint_inspector_hitbox(cx);
+
+        // a11y may have been activated/deactivated halfway through the frame
+        let a11y_active_start_of_frame = self.a11y.is_active();
+        self.a11y.sync_active_flag();
+        let a11y_active_end_of_frame = self.a11y.is_active();
+
+        let should_send_a11y_update = a11y_active_start_of_frame && a11y_active_end_of_frame;
+
+        if a11y_active_start_of_frame {
+            // clear the builder state regardless
+            let tree_update = self.a11y.end_frame();
+
+            if should_send_a11y_update {
+                log::debug!(
+                    "Sending a11y tree update: {} nodes",
+                    tree_update.nodes.len()
+                );
+                self.platform_window.a11y_tree_update(tree_update);
+            }
+        }
     }
 
     fn prepaint_tooltip(&mut self, cx: &mut App) -> Option<AnyElement> {
@@ -3712,6 +3716,8 @@ impl Window {
                 continue;
             }
             let hole = (bounds + shadow.offset).dilate(-shadow.spread_radius);
+            // Clamp at zero so a large spread can't produce negative radii, which would
+            // break the SDF in the shader.
             let zero = Pixels::ZERO;
             let hole_corner_radii = Corners {
                 top_left: (corner_radii.top_left - shadow.spread_radius).max(zero),
@@ -4009,7 +4015,7 @@ impl Window {
                 content_mask,
                 tile,
                 opacity,
-                transformation: TransformationMatrix::unit(),
+                transformation: Default::default(),
             });
         }
         Ok(())
@@ -4092,17 +4098,45 @@ impl Window {
         frame_index: usize,
         grayscale: bool,
     ) -> Result<()> {
-        self.paint_image_with_transform(
-            bounds,
-            corner_radii,
-            data,
+        self.invalidator.debug_assert_paint();
+
+        let bounds = self.snap_bounds(bounds);
+        let params = RenderImageParams {
+            image_id: data.id,
             frame_index,
+        };
+
+        let tile = self
+            .sprite_atlas
+            .get_or_insert_with(&params.into(), &mut || {
+                Ok(Some((
+                    data.size(frame_index),
+                    Cow::Borrowed(
+                        data.as_bytes(frame_index)
+                            .expect("It's the caller's job to pass a valid frame index"),
+                    ),
+                )))
+            })?
+            .expect("Callback above only returns Some");
+        let content_mask = self.snapped_content_mask();
+        let corner_radii = corner_radii.scale(self.scale_factor());
+        let opacity = self.element_opacity();
+
+        self.next_frame.scene.insert_primitive(PolychromeSprite {
+            order: 0,
+            pad: 0,
             grayscale,
-            TransformationMatrix::unit(),
-        )
+            bounds,
+            content_mask,
+            corner_radii,
+            tile,
+            opacity,
+            transformation: Default::default(),
+        });
+        Ok(())
     }
 
-    /// 使用自定义变换绘制图片，支持翻转、缩放和旋转。
+    /// Paint an image into the scene with a transformation matrix.
     pub fn paint_image_with_transform(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -4110,7 +4144,7 @@ impl Window {
         data: Arc<RenderImage>,
         frame_index: usize,
         grayscale: bool,
-        transformation: TransformationMatrix,
+        transform: TransformationMatrix,
     ) -> Result<()> {
         self.invalidator.debug_assert_paint();
 
@@ -4145,7 +4179,7 @@ impl Window {
             corner_radii,
             tile,
             opacity,
-            transformation,
+            transformation: transform,
         });
         Ok(())
     }
@@ -5197,17 +5231,27 @@ impl Window {
         self.platform_window.activate();
     }
 
-    /// 最小化当前窗口到任务栏
+    /// Minimize the current window at the platform level.
     pub fn minimize_window(&self) {
         self.platform_window.minimize();
     }
 
-    /// 隐藏当前窗口（从任务栏移除）
+    /// Hide the window from the taskbar and screen.
     pub fn hide_window(&self) {
         self.platform_window.hide();
     }
 
-    /// 切换全屏状态
+    /// Set whether the window allows mouse events to pass through to windows behind it.
+    pub fn set_mouse_passthrough(&self, passthrough: bool) {
+        self.platform_window.set_mouse_passthrough(passthrough);
+    }
+
+    /// Set the window position in screen coordinates.
+    pub fn set_position(&mut self, position: Point<Pixels>) {
+        self.platform_window.set_position(position);
+    }
+
+    /// Toggle full screen status on the current window at the platform level.
     pub fn toggle_fullscreen(&self) {
         self.platform_window.toggle_fullscreen();
     }
@@ -5537,7 +5581,25 @@ impl Window {
         self.platform_window.play_system_bell()
     }
 
+    /// Returns whether accessibility features are active for this frame,
+    /// i.e. whether assistive technology (such as a screen reader) is
+    /// connected and an accessibility tree is being built.
+    ///
+    /// Use this to skip computing data during rendering that is only
+    /// observable through the accessibility tree. When accessibility is
+    /// activated, a redraw is forced, so gated work is recomputed before the
+    /// next tree update is sent to the platform.
+    ///
+    /// See the [accessibility guide](crate::_accessibility) for an overview.
+    pub fn is_a11y_active(&self) -> bool {
+        self.a11y.is_active()
+    }
+
     /// Register a listener for an accessibility action on a specific node.
+    /// The listener will be called when a screen reader requests the given
+    /// action on the node identified by `node_id`.
+    ///
+    /// See the [accessibility guide](crate::_accessibility) for an overview.
     pub fn on_a11y_action(
         &mut self,
         node_id: accesskit::NodeId,
@@ -5553,6 +5615,8 @@ impl Window {
 
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn handle_a11y_action(&mut self, request: accesskit::ActionRequest, cx: &mut App) {
+        // Take listeners out temporarily so the closures can borrow Window
+        // mutably, then restore them afterward.
         if let Some(mut listeners) = self.a11y.action_listeners.remove(&request.target_node) {
             let extra_data = request.data.as_ref();
             let mut matched = false;
@@ -5570,6 +5634,7 @@ impl Window {
             }
         }
 
+        // Fall back to built-in action handling.
         match request.action {
             accesskit::Action::Click => {
                 if let Some(bounds) = self.a11y.node_bounds.get(&request.target_node).copied() {
@@ -5581,7 +5646,7 @@ impl Window {
                         click_count: 1,
                         first_mouse: false,
                     });
-                    let mouse_up = PlatformInput::MouseUp(crate::MouseUpEvent {
+                    let mouse_up = PlatformInput::MouseUp(MouseUpEvent {
                         button: MouseButton::Left,
                         position: center,
                         modifiers: Modifiers::default(),
@@ -6237,25 +6302,25 @@ pub struct PaintQuad {
     pub border_color: Hsla,
     /// The style of the quad's borders.
     pub border_style: BorderStyle,
-    /// Whether to use continuous (squircle) corner rounding.
+    /// Whether to use continuous (rounded) corner rounding.
     pub continuous_corners: bool,
     /// The transformation matrix for the quad.
     pub transform: TransformationMatrix,
-    /// The blend mode for rendering the quad.
+    /// The blend mode for the quad.
     pub blend_mode: BlendMode,
 }
 
 impl Default for PaintQuad {
     fn default() -> Self {
-        PaintQuad {
+        Self {
             bounds: Bounds::default(),
             corner_radii: Corners::default(),
-            background: Background::default(),
+            background: Default::default(),
             border_widths: Edges::default(),
-            border_color: transparent_black(),
+            border_color: Default::default(),
             border_style: BorderStyle::default(),
             continuous_corners: false,
-            transform: TransformationMatrix::unit(),
+            transform: Default::default(),
             blend_mode: BlendMode::Normal,
         }
     }
@@ -6312,7 +6377,7 @@ pub fn quad(
         border_color: border_color.into(),
         border_style,
         continuous_corners: false,
-        transform: TransformationMatrix::unit(),
+        transform: Default::default(),
         blend_mode: BlendMode::Normal,
     }
 }
@@ -6327,7 +6392,7 @@ pub fn fill(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Background>
         border_color: transparent_black(),
         border_style: BorderStyle::default(),
         continuous_corners: false,
-        transform: TransformationMatrix::unit(),
+        transform: Default::default(),
         blend_mode: BlendMode::Normal,
     }
 }
@@ -6346,7 +6411,7 @@ pub fn outline(
         border_color: border_color.into(),
         border_style,
         continuous_corners: false,
-        transform: TransformationMatrix::unit(),
+        transform: Default::default(),
         blend_mode: BlendMode::Normal,
     }
 }

@@ -19,6 +19,13 @@
 | #59072 | 2026-06-12 | tab_switcher: Middle-truncate long picker filenames |
 | #58202 | 2026-06-12 | Add LICENSE-GPL symlink to benchmarks crate |
 | #59214 | 2026-06-13 | Revert "gpui: Fix title bar clicks being delayed on macOS 27 (#58947)" |
+| #59470 | 2026-06-22 | gpui: Fix web examples build |
+| #59604 | 2026-06-22 | remove TODO!'s (tracked in channel notes) and accidentally included file |
+| #57231 | 2026-06-22 | Fix keybindings |
+| #59524 | 2026-06-22 | Remove last ru ready  main tasks |
+| #59429 | 2026-06-22 | Merge branch 'settings-ui-a11y' of https://github.com/zed-industries/zed into settings-ui-a11y |
+| #59473 | 2026-06-22 | Use small vec |
+| #58510 | 2026-06-22 | Avoid selections allocations |
 
 ## gpui-component
 

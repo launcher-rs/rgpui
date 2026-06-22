@@ -373,6 +373,55 @@
       "title": "notification: Support configurable max_items",
       "status": "merged",
       "merged_at": "2026-06-17"
+    },
+    {
+      "number": 59470,
+      "upstream": "zed",
+      "title": "gpui: Fix web examples build",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 59604,
+      "upstream": "zed",
+      "title": "remove TODO!'s (tracked in channel notes) and accidentally included file",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 57231,
+      "upstream": "zed",
+      "title": "Fix keybindings",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 59524,
+      "upstream": "zed",
+      "title": "Remove last ru ready  main tasks",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 59429,
+      "upstream": "zed",
+      "title": "Merge branch 'settings-ui-a11y' of https://github.com/zed-industries/zed into settings-ui-a11y",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 59473,
+      "upstream": "zed",
+      "title": "Use small vec",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 58510,
+      "upstream": "zed",
+      "title": "Avoid selections allocations",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
     }
   ]
 }

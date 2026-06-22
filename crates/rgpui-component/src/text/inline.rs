@@ -213,9 +213,8 @@ impl Inline {
                 }
             }
 
-            let bounds =
-                Bounds::from_corners(pos, point(pos.x + char_width, pos.y + line_height))
-                    .intersect(&mask_bounds);
+            let bounds = Bounds::from_corners(pos, point(pos.x + char_width, pos.y + line_height))
+                .intersect(&mask_bounds);
             if bounds.size.width > px(0.) && bounds.size.height > px(0.) {
                 if current_line_y == Some(pos.y) {
                     if let Some(current) = current_bounds.as_mut() {

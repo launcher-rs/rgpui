@@ -16,12 +16,12 @@
 //! constructed by combining these two systems into an all-in-one element.
 
 use crate::PinchEvent;
-use crate::ResultExt;
 use crate::collections::HashMap;
 use crate::refineable::Refineable;
+use crate::rgpui_util::ResultExt;
 use crate::{
     Action, AnyDrag, AnyElement, AnyTooltip, AnyView, App, Bounds, ClickEvent, DispatchPhase,
-    Display, Element, ElementId, Entity, FocusHandle, Global, GlobalElementId, Hitbox,
+    Display, Element, ElementId, Entity, EntityId, FocusHandle, Global, GlobalElementId, Hitbox,
     HitboxBehavior, HitboxId, InspectorElementId, IntoElement, IsZero, KeyContext, KeyDownEvent,
     KeyUpEvent, KeyboardButton, KeyboardClickEvent, LayoutId, ModifiersChangedEvent, MouseButton,
     MouseClickEvent, MouseDownEvent, MouseMoveEvent, MousePressureEvent, MouseUpEvent, Overflow,
@@ -408,6 +408,7 @@ impl Interactivity {
     /// The imperative API equivalent to [`InteractiveElement::on_action`].
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    #[track_caller]
     pub fn on_action<A: Action>(&mut self, listener: impl Fn(&A, &mut Window, &mut App) + 'static) {
         self.action_listeners.push((
             TypeId::of::<A>(),
@@ -644,8 +645,8 @@ impl Interactivity {
         });
     }
 
-    /// 设置此元素提示框的显示延迟。
-    /// 对应 [`StatefulInteractiveElement::tooltip_show_delay`] 的命令式 API。
+    /// Set the delay before this element's tooltip is shown.
+    /// The imperative API equivalent to [`StatefulInteractiveElement::tooltip_show_delay`].
     pub fn tooltip_show_delay(&mut self, delay: Duration) {
         self.tooltip_show_delay = Some(delay);
     }
@@ -981,6 +982,7 @@ pub trait InteractiveElement: Sized {
     /// The fluent API equivalent to [`Interactivity::on_action`].
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    #[track_caller]
     fn on_action<A: Action>(
         mut self,
         listener: impl Fn(&A, &mut Window, &mut App) + 'static,
@@ -1182,6 +1184,8 @@ pub trait InteractiveElement: Sized {
 /// that require state.
 pub trait StatefulInteractiveElement: InteractiveElement {
     /// Set the accessible role for this element.
+    ///
+    /// See the [accessibility guide](crate::_accessibility) for an overview.
     fn role(mut self, role: accesskit::Role) -> Self {
         debug_assert!(
             role != accesskit::Role::GenericContainer,
@@ -1194,6 +1198,43 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// Set the accessible label for this element.
     fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.interactivity().aria_label = Some(label.into());
+        self
+    }
+
+    /// Report this element as the focused node in the accessibility tree,
+    /// overriding the element that holds real keyboard focus 鈥?but only while
+    /// one of its ancestors actually holds focus.
+    ///
+    /// This implements the `aria-activedescendant` pattern for composite
+    /// widgets that keep keyboard focus on a container (e.g. a menu or
+    /// listbox) while a child is "selected": set this on the selected child so
+    /// assistive technology announces and highlights it as focused.
+    ///
+    /// The element must also have a [`role`][Self::role] (and an id) so it
+    /// produces an accessibility node. Unlike the web's container-side
+    /// `aria-activedescendant`, this is set on the descendant; GPUI honors it
+    /// only when a focused ancestor is present in the tree, so it is safe to
+    /// set unconditionally on the selected child 鈥?if the container isn't
+    /// focused, the claim is ignored.
+    fn aria_active_descendant(mut self) -> Self {
+        self.interactivity().report_active_descendant_focus = true;
+        self
+    }
+
+    /// Contribute synthetic accessibility nodes 鈥?nodes that don't correspond
+    /// to any element 鈥?as children of this element's a11y node. For example,
+    /// text runs describing an editor's text content.
+    ///
+    /// The closure is called after this element is prepainted, and only if it
+    /// contributed a node to the accessibility tree (i.e. it has an id and a
+    /// [`role`][StatefulInteractiveElement::role]).
+    ///
+    /// See [`Element::a11y_synthetic_children`] for details.
+    fn a11y_synthetic_children(
+        mut self,
+        f: impl FnOnce(&mut crate::A11ySubtreeBuilder) + 'static,
+    ) -> Self {
+        self.interactivity().a11y_synthetic_children = Some(Box::new(f));
         self
     }
 
@@ -1218,6 +1259,27 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// Set the numeric value for this element.
     fn aria_numeric_value(mut self, value: f64) -> Self {
         self.interactivity().aria_numeric_value = Some(value);
+        self
+    }
+
+    /// Set the step by which assistive technology should expect the numeric
+    /// value of this element to change (e.g. when incrementing a spin button).
+    fn aria_numeric_value_step(mut self, step: f64) -> Self {
+        self.interactivity().aria_numeric_value_step = Some(step);
+        self
+    }
+
+    /// Set the string value of this element, e.g. the text content of a simple
+    /// text input.
+    fn aria_value(mut self, value: impl Into<SharedString>) -> Self {
+        self.interactivity().aria_value = Some(value.into());
+        self
+    }
+
+    /// Set the placeholder text reported to assistive technology for this
+    /// element, shown when a text input is empty.
+    fn aria_placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
+        self.interactivity().aria_placeholder = Some(placeholder.into());
         self
     }
 
@@ -1282,6 +1344,9 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     }
 
     /// Register a handler for an accessibility action on this element.
+    /// The handler is called when a screen reader requests the given action.
+    ///
+    /// See the [accessibility guide](crate::_accessibility) for an overview.
     fn on_a11y_action(
         mut self,
         action: accesskit::Action,
@@ -1441,8 +1506,8 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// 设置此元素提示框的显示延迟。
-    /// 对应 [`Interactivity::tooltip_show_delay`] 的流畅 API。
+    /// Set the delay before this element's tooltip is shown.
+    /// The fluent API equivalent to [`Interactivity::tooltip_show_delay`].
     fn tooltip_show_delay(mut self, delay: Duration) -> Self
     where
         Self: Sized,
@@ -1604,6 +1669,8 @@ impl Element for Div {
     }
 
     fn a11y_role(&self) -> Option<accesskit::Role> {
+        // Nodes with `GenericContainer` should never be reported to accesskit.
+        // Equivalent to an HTML div with no role.
         self.interactivity
             .override_role
             .filter(|role| *role != accesskit::Role::GenericContainer)
@@ -1611,6 +1678,16 @@ impl Element for Div {
 
     fn write_a11y_info(&self, node: &mut accesskit::Node) {
         self.interactivity.write_a11y_info(node);
+    }
+
+    fn a11y_synthetic_children(
+        &mut self,
+        _prepaint: &mut Self::PrepaintState,
+        builder: &mut crate::A11ySubtreeBuilder,
+    ) {
+        if let Some(f) = self.interactivity.a11y_synthetic_children.take() {
+            f(builder);
+        }
     }
 
     #[stacksafe]
@@ -1849,8 +1926,11 @@ pub struct Interactivity {
     pub(crate) tab_index: Option<isize>,
     pub(crate) tab_group: bool,
     pub(crate) tab_stop: bool,
+
     pub(crate) a11y_action_listeners:
         Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
+    pub(crate) a11y_synthetic_children: Option<Box<dyn FnOnce(&mut crate::A11ySubtreeBuilder)>>,
+    pub(crate) report_active_descendant_focus: bool,
     pub(crate) override_role: Option<accesskit::Role>,
     pub(crate) aria_label: Option<SharedString>,
     pub(crate) aria_selected: Option<bool>,
@@ -1859,6 +1939,9 @@ pub struct Interactivity {
     pub(crate) aria_numeric_value: Option<f64>,
     pub(crate) aria_min_numeric_value: Option<f64>,
     pub(crate) aria_max_numeric_value: Option<f64>,
+    pub(crate) aria_numeric_value_step: Option<f64>,
+    pub(crate) aria_value: Option<SharedString>,
+    pub(crate) aria_placeholder: Option<SharedString>,
     pub(crate) aria_orientation: Option<accesskit::Orientation>,
     pub(crate) aria_level: Option<usize>,
     pub(crate) aria_position_in_set: Option<usize>,
@@ -1988,14 +2071,23 @@ impl Interactivity {
 
         if let Some(focus_handle) = self.tracked_focus_handle.as_ref() {
             window.set_focus_handle(focus_handle, cx);
+
             if window.a11y.is_active() {
                 if let Some(global_id) = global_id {
                     let node_id = global_id.accesskit_node_id();
-                    window.a11y.focus_ids.insert(node_id, focus_handle.id);
+                    window.a11y.set_focusable(node_id, focus_handle.id);
                     if focus_handle.is_focused(window) {
-                        window.a11y.nodes.set_focus(node_id);
+                        window.a11y.set_focus(node_id);
                     }
                 }
+            }
+        }
+
+        if self.report_active_descendant_focus && window.a11y.is_active() {
+            if let Some(global_id) = global_id {
+                window
+                    .a11y
+                    .set_active_descendant(global_id.accesskit_node_id());
             }
         }
         window.with_optional_element_state::<InteractiveElementState, _>(
@@ -2221,6 +2313,7 @@ impl Interactivity {
                                         }
 
                                         self.paint_keyboard_listeners(window, cx);
+
                                         if window.a11y.is_active() {
                                             if let Some(global_id) = global_id {
                                                 if !self.a11y_action_listeners.is_empty() {
@@ -2235,6 +2328,7 @@ impl Interactivity {
                                                 }
                                             }
                                         }
+
                                         f(&style, window, cx);
 
                                         if let Some(_hitbox) = hitbox {
@@ -2552,6 +2646,11 @@ impl Interactivity {
                     .get_or_insert_with(Default::default)
                     .clone();
 
+                let pending_keyboard_down = element_state
+                    .pending_keyboard_down
+                    .get_or_insert_with(Default::default)
+                    .clone();
+
                 let clicked_state = element_state
                     .clicked_state
                     .get_or_insert_with(Default::default)
@@ -2605,6 +2704,29 @@ impl Interactivity {
                 });
 
                 if is_focused {
+                    // Record the focus generation at which an enter/space key
+                    // down event happened on this element. The next key up
+                    // event will be mapped to a click event if both of the
+                    // following are true:
+                    // - no other key events happen in between
+                    // - the focus generation is the same (implying focus did not move)
+                    //
+                    // This design avoids an ABA problem that happens if you
+                    // store the focus handle that registered the keypress.
+                    window.on_key_event({
+                        let pending_keyboard_down = pending_keyboard_down.clone();
+                        move |event: &KeyDownEvent, phase, window, _cx| {
+                            if phase.bubble() && !window.default_prevented() {
+                                let stroke = &event.keystroke;
+                                let is_activation_key = (stroke.key.eq("enter")
+                                    || stroke.key.eq("space"))
+                                    && !stroke.modifiers.modified();
+                                *pending_keyboard_down.borrow_mut() =
+                                    is_activation_key.then_some(window.focus_generation);
+                            }
+                        }
+                    });
+
                     // Press enter, space to trigger click, when the element is focused.
                     window.on_key_event({
                         let click_listeners = click_listeners.clone();
@@ -2623,6 +2745,12 @@ impl Interactivity {
                                 if let Some(button) = keyboard_button
                                     && !stroke.modifiers.modified()
                                 {
+                                    let pending =
+                                        std::mem::take(&mut *pending_keyboard_down.borrow_mut());
+                                    if pending != Some(window.focus_generation) {
+                                        return;
+                                    }
+
                                     let click_event = ClickEvent::Keyboard(KeyboardClickEvent {
                                         button,
                                         bounds: hitbox.bounds,
@@ -2631,6 +2759,11 @@ impl Interactivity {
                                     for listener in &click_listeners {
                                         listener(&click_event, window, cx);
                                     }
+                                } else {
+                                    // Releasing any other key mid-press means
+                                    // this isn't a clean activation, so cancel
+                                    // the pending keydown.
+                                    *pending_keyboard_down.borrow_mut() = None;
                                 }
                             }
                         }
@@ -3062,6 +3195,15 @@ impl Interactivity {
         if let Some(value) = self.aria_max_numeric_value {
             node.set_max_numeric_value(value);
         }
+        if let Some(step) = self.aria_numeric_value_step {
+            node.set_numeric_value_step(step);
+        }
+        if let Some(value) = &self.aria_value {
+            node.set_value(value.to_string());
+        }
+        if let Some(placeholder) = &self.aria_placeholder {
+            node.set_placeholder(placeholder.to_string());
+        }
         if let Some(orientation) = self.aria_orientation {
             node.set_orientation(orientation);
         }
@@ -3107,6 +3249,14 @@ pub struct InteractiveElementState {
     pub(crate) hover_state: Option<Rc<RefCell<ElementHoverState>>>,
     pub(crate) hover_listener_state: Option<Rc<RefCell<bool>>>,
     pub(crate) pending_mouse_down: Option<Rc<RefCell<Option<MouseDownEvent>>>>,
+    /// Set to the window's [`focus_generation`](crate::Window::focus_generation)
+    /// when an Enter/Space keydown is received while this element is focused,
+    /// recording that we are waiting for the matching keyup to fire a keyboard
+    /// click. On keyup the click only fires if the stored generation still
+    /// matches the window's current one, i.e. focus never moved during the
+    /// press (mirroring the browser clearing a control's pressed state on
+    /// blur). `None` means no activation key is pending.
+    pub(crate) pending_keyboard_down: Option<Rc<RefCell<Option<u64>>>>,
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     pub(crate) active_tooltip: Option<Rc<RefCell<Option<ActiveTooltip>>>>,
 }
@@ -3203,6 +3353,7 @@ pub(crate) fn register_tooltip_mouse_handlers(
     show_delay: Option<Duration>,
     window: &mut Window,
 ) {
+    let current_view = window.current_view();
     let show_delay = show_delay.unwrap_or(DEFAULT_TOOLTIP_SHOW_DELAY);
 
     window.on_mouse_event({
@@ -3215,6 +3366,8 @@ pub(crate) fn register_tooltip_mouse_handlers(
                 &build_tooltip,
                 &check_is_hovered,
                 &check_is_hovered_during_prepaint,
+                tooltip_id,
+                current_view,
                 phase,
                 show_delay,
                 window,
@@ -3258,6 +3411,8 @@ fn handle_tooltip_mouse_move(
     build_tooltip: &Rc<dyn Fn(&mut Window, &mut App) -> Option<(AnyView, bool)>>,
     check_is_hovered: &Rc<dyn Fn(&Window) -> bool>,
     check_is_hovered_during_prepaint: &Rc<dyn Fn(&Window) -> bool>,
+    tooltip_id: Option<TooltipId>,
+    current_view: EntityId,
     phase: DispatchPhase,
     show_delay: Duration,
     window: &mut Window,
@@ -3269,6 +3424,7 @@ fn handle_tooltip_mouse_move(
         None,
         CancelShow,
         ScheduleShow,
+        CheckVisible,
     }
 
     let action = match active_tooltip.borrow().as_ref() {
@@ -3288,9 +3444,26 @@ fn handle_tooltip_mouse_move(
                 Action::CancelShow
             }
         }
-        // These are handled in check_visible_and_update.
-        Some(ActiveTooltip::Visible { .. }) | Some(ActiveTooltip::WaitingForHide { .. }) => {
-            Action::None
+        Some(ActiveTooltip::Visible { is_hoverable, .. }) => {
+            if phase.capture()
+                && !check_is_hovered(window)
+                && (!*is_hoverable
+                    || !tooltip_id.is_some_and(|tooltip_id| tooltip_id.is_hovered(window)))
+            {
+                Action::CheckVisible
+            } else {
+                Action::None
+            }
+        }
+        Some(ActiveTooltip::WaitingForHide { .. }) => {
+            if phase.capture()
+                && (check_is_hovered(window)
+                    || tooltip_id.is_some_and(|tooltip_id| tooltip_id.is_hovered(window)))
+            {
+                Action::CheckVisible
+            } else {
+                Action::None
+            }
         }
     };
 
@@ -3351,6 +3524,7 @@ fn handle_tooltip_mouse_move(
                     _task: delayed_show_task,
                 });
         }
+        Action::CheckVisible => cx.notify(current_view),
     }
 }
 
@@ -3513,6 +3687,14 @@ where
 
     fn write_a11y_info(&self, node: &mut accesskit::Node) {
         self.element.write_a11y_info(node);
+    }
+
+    fn a11y_synthetic_children(
+        &mut self,
+        prepaint: &mut Self::PrepaintState,
+        builder: &mut crate::A11ySubtreeBuilder,
+    ) {
+        self.element.a11y_synthetic_children(prepaint, builder);
     }
 
     fn request_layout(
@@ -3832,8 +4014,8 @@ impl ScrollHandle {
 mod tests {
     use super::*;
     use crate::{
-        AppContext as _, Context, InputEvent, MouseMoveEvent, TestAppContext,
-        util::FluentBuilder as _,
+        AnyWindowHandle, AppContext as _, Context, InputEvent, Keystroke, MouseMoveEvent,
+        TestAppContext, util::FluentBuilder as _,
     };
     use std::rc::Weak;
 
@@ -4107,5 +4289,267 @@ mod tests {
         drop(active_tooltip);
 
         assert!(weak_active_tooltip.upgrade().is_none());
+    }
+
+    #[test]
+    fn tooltip_hides_after_mouse_leaves_origin() {
+        let (mut test_app, any_window, captured_active_tooltip) = setup_tooltip_owner_test(None);
+
+        let weak_active_tooltip = captured_active_tooltip.borrow().clone().unwrap();
+        let active_tooltip = weak_active_tooltip.upgrade().unwrap();
+
+        test_app
+            .dispatcher
+            .advance_clock(DEFAULT_TOOLTIP_SHOW_DELAY);
+        test_app.run_until_parked();
+
+        assert!(matches!(
+            active_tooltip.borrow().as_ref(),
+            Some(ActiveTooltip::Visible { .. })
+        ));
+
+        test_app
+            .update_window(any_window, |_, window, cx| {
+                window.dispatch_event(
+                    MouseMoveEvent {
+                        position: point(px(75.), px(75.)),
+                        modifiers: Default::default(),
+                        pressed_button: None,
+                    }
+                    .to_platform_input(),
+                    cx,
+                );
+            })
+            .unwrap();
+
+        assert!(active_tooltip.borrow().is_none());
+    }
+
+    #[test]
+    fn test_write_a11y_info_string_and_numeric_properties() {
+        let mut interactivity = Interactivity::default();
+        interactivity.aria_label = Some("Buffer Font Size".into());
+        interactivity.aria_value = Some("15".into());
+        interactivity.aria_placeholder = Some("Search".into());
+        interactivity.aria_numeric_value = Some(15.0);
+        interactivity.aria_min_numeric_value = Some(6.0);
+        interactivity.aria_max_numeric_value = Some(72.0);
+        interactivity.aria_numeric_value_step = Some(1.0);
+
+        let mut node = accesskit::Node::new(accesskit::Role::SpinButton);
+        interactivity.write_a11y_info(&mut node);
+
+        assert_eq!(node.label(), Some("Buffer Font Size"));
+        assert_eq!(node.value(), Some("15"));
+        assert_eq!(node.placeholder(), Some("Search"));
+        assert_eq!(node.numeric_value(), Some(15.0));
+        assert_eq!(node.min_numeric_value(), Some(6.0));
+        assert_eq!(node.max_numeric_value(), Some(72.0));
+        assert_eq!(node.numeric_value_step(), Some(1.0));
+    }
+
+    /// Two focusable, clickable elements ("a" and "b") used to exercise the
+    /// Enter/Space -> synthesized click press/release pairing.
+    struct KeyboardActivationTest {
+        focus_a: FocusHandle,
+        focus_b: FocusHandle,
+        clicks: Rc<RefCell<Vec<&'static str>>>,
+    }
+
+    impl Render for KeyboardActivationTest {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let clicks_a = self.clicks.clone();
+            let clicks_b = self.clicks.clone();
+            div()
+                .size_full()
+                .child(
+                    div()
+                        .id("a")
+                        .w(px(50.))
+                        .h(px(50.))
+                        .track_focus(&self.focus_a)
+                        .on_click(move |_, _, _| clicks_a.borrow_mut().push("a")),
+                )
+                .child(
+                    div()
+                        .id("b")
+                        .w(px(50.))
+                        .h(px(50.))
+                        .track_focus(&self.focus_b)
+                        .on_click(move |_, _, _| clicks_b.borrow_mut().push("b")),
+                )
+        }
+    }
+
+    fn setup_keyboard_activation_test() -> (
+        TestAppContext,
+        AnyWindowHandle,
+        Rc<RefCell<Vec<&'static str>>>,
+        FocusHandle,
+        FocusHandle,
+    ) {
+        let mut cx = TestAppContext::single();
+        let (focus_a, focus_b) = cx.update(|cx| (cx.focus_handle(), cx.focus_handle()));
+        let clicks: Rc<RefCell<Vec<&'static str>>> = Rc::new(RefCell::new(Vec::new()));
+        let window = cx.add_window({
+            let focus_a = focus_a.clone();
+            let focus_b = focus_b.clone();
+            let clicks = clicks.clone();
+            move |_, _| KeyboardActivationTest {
+                focus_a,
+                focus_b,
+                clicks,
+            }
+        });
+        (cx, window.into(), clicks, focus_a, focus_b)
+    }
+
+    /// Move focus to `handle`, flush effects, then paint so the newly focused
+    /// element registers its key handlers for the next dispatched event.
+    fn focus_and_draw(cx: &mut TestAppContext, window: AnyWindowHandle, handle: &FocusHandle) {
+        cx.update_window(window, |_, window, cx| window.focus(handle, cx))
+            .unwrap();
+        cx.run_until_parked();
+        cx.update_window(window, |_, window, cx| {
+            window.draw(cx).clear();
+        })
+        .unwrap();
+    }
+
+    fn key_down(cx: &mut TestAppContext, window: AnyWindowHandle, key: &str) {
+        let keystroke = Keystroke::parse(key).unwrap();
+        cx.update_window(window, |_, window, cx| {
+            window.dispatch_event(
+                KeyDownEvent {
+                    keystroke,
+                    is_held: false,
+                    prefer_character_input: false,
+                }
+                .to_platform_input(),
+                cx,
+            );
+        })
+        .unwrap();
+    }
+
+    fn key_up(cx: &mut TestAppContext, window: AnyWindowHandle, key: &str) {
+        let keystroke = Keystroke::parse(key).unwrap();
+        cx.update_window(window, |_, window, cx| {
+            window.dispatch_event(KeyUpEvent { keystroke }.to_platform_input(), cx);
+        })
+        .unwrap();
+    }
+
+    /// Pressing and releasing Enter on the same focused element fires a click.
+    #[test]
+    fn keyboard_activation_fires_click_on_same_element() {
+        let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
+
+        focus_and_draw(&mut cx, window, &focus_a);
+        key_down(&mut cx, window, "enter");
+        key_up(&mut cx, window, "enter");
+
+        assert_eq!(*clicks.borrow(), vec!["a"]);
+    }
+
+    /// A key-down whose key-up lands on a *different* element (because focus
+    /// moved in between) must not leak a synthesized click onto the newly
+    /// focused element. This is the core regression: previously the key-up
+    /// handler fired unconditionally on whatever was focused at key-up time.
+    #[test]
+    fn keyboard_activation_does_not_leak_across_focus_change() {
+        let (mut cx, window, clicks, focus_a, focus_b) = setup_keyboard_activation_test();
+
+        // Enter pressed while "a" is focused...
+        focus_and_draw(&mut cx, window, &focus_a);
+        key_down(&mut cx, window, "enter");
+
+        // ...focus moves to "b" before the release (as a confirm action would)...
+        focus_and_draw(&mut cx, window, &focus_b);
+        key_up(&mut cx, window, "enter");
+
+        // ...so neither element is clicked: "a" never saw the up, and "b"
+        // never saw the down.
+        assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
+    }
+
+    /// A keydown whose flag is left pending because focus moved away before
+    /// the keyup must not fire a click when focus later *returns* to the same
+    /// element (the menu trigger reopening case). The stamped focus generation
+    /// no longer matches, so the stale pending state is ignored.
+    #[test]
+    fn keyboard_activation_does_not_leak_when_focus_returns() {
+        let (mut cx, window, clicks, focus_a, focus_b) = setup_keyboard_activation_test();
+
+        // Enter pressed on "a"...
+        focus_and_draw(&mut cx, window, &focus_a);
+        key_down(&mut cx, window, "enter");
+
+        // ...focus leaves "a" before its keyup (so the pending state is never
+        // consumed), then comes back to "a"...
+        focus_and_draw(&mut cx, window, &focus_b);
+        focus_and_draw(&mut cx, window, &focus_a);
+        key_up(&mut cx, window, "enter");
+
+        // ...and the now-stale pending keydown must not fire a click.
+        assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
+    }
+
+    /// A non-activation key *released* during the press must cancel the pending
+    /// activation. For the sequence escape-down, space-down, escape-up,
+    /// space-up the space forms a clean down/up pair, but the intervening
+    /// escape-up means this isn't a plain space activation, so no click fires.
+    #[test]
+    fn keyboard_activation_cleared_by_intervening_key_release() {
+        let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
+
+        focus_and_draw(&mut cx, window, &focus_a);
+        key_down(&mut cx, window, "escape");
+        key_down(&mut cx, window, "space");
+        key_up(&mut cx, window, "escape");
+        key_up(&mut cx, window, "space");
+
+        assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
+    }
+
+    /// The flag is a single activation marker, not keyed by which activation
+    /// key was used, so a Space down paired with an Enter up on the same
+    /// element still fires a click.
+    #[test]
+    fn keyboard_activation_does_not_distinguish_space_and_enter() {
+        let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
+
+        focus_and_draw(&mut cx, window, &focus_a);
+        key_down(&mut cx, window, "space");
+        key_up(&mut cx, window, "enter");
+
+        assert_eq!(*clicks.borrow(), vec!["a"]);
+    }
+
+    /// A non-activation key pressed between the activation down and up clears
+    /// the pending flag, suppressing the click.
+    #[test]
+    fn keyboard_activation_cleared_by_intervening_keydown() {
+        let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
+
+        focus_and_draw(&mut cx, window, &focus_a);
+        key_down(&mut cx, window, "enter");
+        key_down(&mut cx, window, "a");
+        key_up(&mut cx, window, "enter");
+
+        assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
+    }
+
+    /// A modified Enter (e.g. cmd-enter) is not treated as an activation key,
+    /// so it neither sets the pending flag nor fires a click on release.
+    #[test]
+    fn keyboard_activation_ignores_modified_keys() {
+        let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
+
+        focus_and_draw(&mut cx, window, &focus_a);
+        key_down(&mut cx, window, "cmd-enter");
+        key_up(&mut cx, window, "cmd-enter");
+
+        assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
     }
 }

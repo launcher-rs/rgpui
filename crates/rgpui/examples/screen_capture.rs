@@ -22,8 +22,8 @@ use rgpui::{
 use rgpui_platform::application;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// 屏幕捕获示例视图
 struct ScreenCaptureExample {
@@ -219,8 +219,8 @@ fn merge_frames_to_gif(dir: &std::path::Path) -> Result<String, String> {
     let output_path = dir.parent().unwrap_or(dir).join(&output_name);
 
     // 创建 GIF 编码器
-    let output_file = std::fs::File::create(&output_path)
-        .map_err(|e| format!("创建 GIF 文件失败: {}", e))?;
+    let output_file =
+        std::fs::File::create(&output_path).map_err(|e| format!("创建 GIF 文件失败: {}", e))?;
     let mut encoder = image::codecs::gif::GifEncoder::new(output_file);
 
     // 设置无限循环播放
@@ -233,13 +233,9 @@ fn merge_frames_to_gif(dir: &std::path::Path) -> Result<String, String> {
     let mut frames = Vec::with_capacity(frame_count);
 
     for entry in &entries {
-        let img = image::open(entry).map_err(|e| format!("读取帧失败 {}: {}", entry.display(), e))?;
-        frames.push(image::Frame::from_parts(
-            img.into_rgba8(),
-            0,
-            0,
-            delay,
-        ));
+        let img =
+            image::open(entry).map_err(|e| format!("读取帧失败 {}: {}", entry.display(), e))?;
+        frames.push(image::Frame::from_parts(img.into_rgba8(), 0, 0, delay));
     }
 
     encoder
@@ -251,7 +247,11 @@ fn merge_frames_to_gif(dir: &std::path::Path) -> Result<String, String> {
         let _ = std::fs::remove_file(entry);
     }
 
-    Ok(format!("GIF 已保存: {} ({} 帧)", output_path.display(), frame_count))
+    Ok(format!(
+        "GIF 已保存: {} ({} 帧)",
+        output_path.display(),
+        frame_count
+    ))
 }
 
 impl Render for ScreenCaptureExample {

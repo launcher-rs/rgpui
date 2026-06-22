@@ -1,12 +1,6 @@
-//! GPUI 几何模块是类型和特征的集合，
-//! 可用于描述常见单位、概念以及它们之间的关系。
-//!
-//! # 核心类型
-//!
-//! - **Point**: 二维空间中的点
-//! - **Size**: 二维尺寸（宽度和高度）
-//! - **Bounds**: 矩形区域（原点 + 尺寸）
-//! - **Pixels/ScaledPixels/DevicePixels**: 不同的像素单位
+//! The GPUI geometry module is a collection of types and traits that
+//! can be used to describe common units, concepts, and the relationships
+//! between them.
 
 use crate::refineable::Refineable;
 use anyhow::{Context as _, anyhow};
@@ -15,7 +9,7 @@ use derive_more::{Add, AddAssign, Div, DivAssign, Mul, Neg, Sub, SubAssign};
 use schemars::{JsonSchema, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::borrow::Cow;
-use std::ops::Range;
+use std::ops::{AddAssign, Range};
 use std::{
     cmp::{self, PartialOrd},
     fmt::{self, Display},
@@ -26,7 +20,7 @@ use taffy::prelude::{TaffyGridLine, TaffyGridSpan};
 
 use crate::{App, DisplayId};
 
-/// 二维笛卡尔空间中的轴。
+/// Axis in a 2D cartesian space.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum Axis {
     /// The y axis, or up and down
@@ -45,7 +39,7 @@ impl Axis {
     }
 }
 
-/// 用于沿特定轴访问给定单位的 trait。
+/// A trait for accessing the given unit along a certain axis.
 pub trait Along {
     /// The unit associated with this type
     type Unit;
@@ -209,14 +203,6 @@ impl Point<Pixels> {
         Point {
             x: self.x.scale(factor),
             y: self.y.scale(factor),
-        }
-    }
-
-    /// Converts the point from pixels to device pixels based on the given scale factor.
-    pub fn to_device_pixels(self, scale_factor: f32) -> Point<DevicePixels> {
-        Point {
-            x: DevicePixels((self.x.0 * scale_factor).round() as i32),
-            y: DevicePixels((self.y.0 * scale_factor).round() as i32),
         }
     }
 
@@ -398,10 +384,10 @@ impl<T: Clone + Debug + Default + PartialEq + Display> Display for Point<T> {
     }
 }
 
-/// 表示一个两维的尺寸，包含给定单位的宽度和高度。
+/// A structure representing a two-dimensional size with width and height in a given unit.
 ///
-/// 该结构体对类型 `T` 是泛型的，可以是任何实现 `Clone`、`Default` 和 `Debug` 的类型。
-/// 通常用于指定 UI 中元素的尺寸，如窗口或元素。
+/// This struct is generic over the type `T`, which can be any type that implements `Clone`, `Default`, and `Debug`.
+/// It is commonly used to specify dimensions for elements in a UI, such as a window or element.
 #[derive(
     Add, Clone, Copy, Default, Deserialize, Div, Hash, Neg, PartialEq, Refineable, Serialize, Sub,
 )]
@@ -714,11 +700,23 @@ impl Size<Length> {
     }
 }
 
-/// 表示 2D 空间中的矩形区域，包含原点和尺寸。
+/// Represents a rectangular area in a 2D space with an origin point and a size.
 ///
-/// `Bounds` 结构体对类型 `T` 是泛型的，代表坐标系统的类型。
-/// 原点表示为 `Point<T>`，定义矩形的左上角，
-/// 尺寸表示为 `Size<T>`，定义矩形的宽度和高度。
+/// The `Bounds` struct is generic over a type `T` which represents the type of the coordinate system.
+/// The origin is represented as a `Point<T>` which defines the top left corner of the rectangle,
+/// and the size is represented as a `Size<T>` which defines the width and height of the rectangle.
+///
+/// # Examples
+///
+/// ```
+/// # use rgpui::{Bounds, Point, Size};
+/// let origin = Point { x: 0, y: 0 };
+/// let size = Size { width: 10, height: 20 };
+/// let bounds = Bounds::new(origin, size);
+///
+/// assert_eq!(bounds.origin, origin);
+/// assert_eq!(bounds.size, size);
+/// ```
 #[derive(Refineable, Copy, Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[refineable(Debug)]
 #[repr(C)]
@@ -3240,9 +3238,15 @@ impl MulAssign<f32> for ScaledPixels {
 pub struct Rems(pub f32);
 
 impl Rems {
+    /// A length of zero.
+    pub const ZERO: Self = Self(0.0);
     /// Convert this Rem value to pixels.
     pub fn to_pixels(self, rem_size: Pixels) -> Pixels {
         self * rem_size
+    }
+    /// Convert from pixels to Rem
+    pub fn from_pixels(length: Pixels, window: &rgpui::Window) -> Self {
+        Self(length / window.rem_size())
     }
 }
 
@@ -3251,6 +3255,12 @@ impl Mul<Pixels> for Rems {
 
     fn mul(self, other: Pixels) -> Pixels {
         Pixels(self.0 * other.0)
+    }
+}
+
+impl AddAssign<Rems> for Rems {
+    fn add_assign(&mut self, rhs: Rems) {
+        self.0 += rhs.0
     }
 }
 

@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 pub mod archive;
 pub mod collections;
 pub mod command;

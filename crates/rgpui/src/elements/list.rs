@@ -111,7 +111,7 @@ enum ScrollAnchor {
 /// Controls whether the list automatically follows new content at the end.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum FollowMode {
-    /// Normal scrolling — no automatic following.
+    /// Normal scrolling 鈥?no automatic following.
     #[default]
     Normal,
     /// The list should auto-scroll along with the tail, when scrolled to bottom.
@@ -547,17 +547,20 @@ impl ListState {
             cursor.seek(&Height(new_pixel_offset), Bias::Right);
         }
 
-        state.logical_scroll_top = Some(ListOffset {
+        let scroll_top = ListOffset {
             item_ix: cursor.start().count,
             offset_in_item: new_pixel_offset - cursor.start().height,
-        });
+        };
+        drop(cursor);
+        state.rebase_pending_scroll(scroll_top);
+        state.logical_scroll_top = Some(scroll_top);
     }
 
     /// Scroll the list to the very end (past the last item).
     ///
     /// Unlike [`scroll_to_reveal_item`], this uses the total item count as the
     /// anchor, so the list's layout pass will walk backwards from the end and
-    /// always show the bottom of the last item — even when that item is still
+    /// always show the bottom of the last item 鈥?even when that item is still
     /// growing (e.g. during streaming).
     pub fn scroll_to_end(&self) {
         let state = &mut *self.0.borrow_mut();
@@ -745,11 +748,52 @@ impl ListState {
     pub fn viewport_bounds(&self) -> Bounds<Pixels> {
         self.0.borrow().last_layout_bounds.unwrap_or_default()
     }
+
+    /// Returns whether the item is entirely above the viewport, or `None` if
+    /// the list has not measured enough layout to know.
+    ///
+    /// A zero-height viewport still yields a definitive answer: callers may
+    /// size sibling UI based on this query (potentially squeezing the list
+    /// itself to zero height), so returning `None` in that case would make
+    /// the answer oscillate from frame to frame.
+    pub fn item_is_above_viewport(&self, ix: usize) -> Option<bool> {
+        let viewport_bounds = self.0.borrow().last_layout_bounds?;
+
+        let scroll_top = self.logical_scroll_top();
+        if ix < scroll_top.item_ix {
+            // Rows before the logical scroll top have no item bounds, but
+            // their position relative to the viewport is known from scroll state.
+            return Some(true);
+        }
+
+        let item_bounds = self.bounds_for_item(ix)?;
+        Some(item_bounds.bottom() <= viewport_bounds.top())
+    }
+
+    /// Returns whether the item is entirely below the viewport, or `None` if
+    /// the list has not measured enough layout to know.
+    ///
+    /// See [`Self::item_is_above_viewport`] for why a zero-height viewport
+    /// still yields a definitive answer.
+    pub fn item_is_below_viewport(&self, ix: usize) -> Option<bool> {
+        let viewport_bounds = self.0.borrow().last_layout_bounds?;
+
+        let scroll_top = self.logical_scroll_top();
+        if ix < scroll_top.item_ix {
+            // Rows before the logical scroll top have no item bounds, but
+            // their position relative to the viewport is known from scroll state.
+            return Some(false);
+        }
+
+        let item_bounds = self.bounds_for_item(ix)?;
+        Some(item_bounds.top() >= viewport_bounds.bottom())
+    }
 }
 
 impl StateInner {
-    /// 将待处理的滚动调整从重新测量锚定到新设置的滚动位置，
-    /// 使其在下次布局时钳制到重新测量项的新高度，而不是恢复滚动。
+    /// Re-anchor a pending scroll adjustment from a remeasure onto a newly set
+    /// scroll position, so it clamps to the remeasured item's new height on
+    /// the next layout instead of reverting the scroll.
     fn rebase_pending_scroll(&mut self, scroll_top: ListOffset) {
         let Some(pending) = self.pending_scroll.take() else {
             return;
@@ -833,6 +877,9 @@ impl StateInner {
                 item_ix: start.count,
                 offset_in_item: new_scroll_top - start.height,
             };
+            // The user's scroll supersedes the position stashed by a
+            // remeasure; re-anchor the pending adjustment so it doesn't revert
+            // this scroll on the next layout.
             self.rebase_pending_scroll(scroll_top);
             self.logical_scroll_top = Some(scroll_top);
         }
@@ -1192,9 +1239,38 @@ impl StateInner {
                         && autoscroll
                     {
                         if autoscroll_bounds.top() < bounds.top() {
+                            let mut item_ix = item.index;
+                            let mut offset_in_item = autoscroll_bounds.top() - item_origin.y;
+
+                            // The requested top can sit above this item's own
+                            // top. Walk into earlier items so the offset stays
+                            // non-negative and no blank space appears above the
+                            // list.
+                            if offset_in_item < Pixels::ZERO {
+                                let mut cursor = self.items.cursor::<Count>(());
+                                cursor.seek(&Count(item_ix), Bias::Right);
+                                while offset_in_item < Pixels::ZERO {
+                                    cursor.prev();
+                                    let Some(prev_item) = cursor.item() else {
+                                        offset_in_item = Pixels::ZERO;
+                                        break;
+                                    };
+                                    let size = prev_item.size().unwrap_or_else(|| {
+                                        let mut element = render_item(cursor.start().0, window, cx);
+                                        let item_available_size = size(
+                                            bounds.size.width.into(),
+                                            AvailableSpace::MinContent,
+                                        );
+                                        element.layout_as_root(item_available_size, window, cx)
+                                    });
+                                    item_ix = cursor.start().0;
+                                    offset_in_item += size.height;
+                                }
+                            }
+
                             return Err(ListOffset {
-                                item_ix: item.index,
-                                offset_in_item: autoscroll_bounds.top() - item_origin.y,
+                                item_ix,
+                                offset_in_item,
                             });
                         } else if autoscroll_bounds.bottom() > bounds.bottom() {
                             let mut cursor = self.items.cursor::<Count>(());
@@ -1591,9 +1667,62 @@ mod test {
     use std::rc::Rc;
 
     use crate::{
-        self as rgpui, AppContext, Context, Element, FollowMode, IntoElement, ListState, Render,
-        Styled, TestAppContext, Window, div, list, point, px, size,
+        self as rgpui, AppContext, Bounds, Context, Element, FollowMode, IntoElement, ListState,
+        Render, Styled, TestAppContext, Window, canvas, div, list, point, px, size,
     };
+
+    #[rgpui::test]
+    fn test_autoscroll_above_item_top_renders_items_above(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+
+        let state = ListState::new(5, crate::ListAlignment::Top, px(10.));
+        state.scroll_to(rgpui::ListOffset {
+            item_ix: 2,
+            offset_in_item: px(0.),
+        });
+
+        struct TestView(ListState);
+        impl Render for TestView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                list(self.0.clone(), |ix, _, _| {
+                    if ix == 2 {
+                        // Request an autoscroll whose top sits 30px above item 2's
+                        // own top, mimicking a scroll-margin overshoot.
+                        canvas(
+                            |bounds, window, _| {
+                                window.request_autoscroll(Bounds::from_corners(
+                                    point(bounds.left(), bounds.top() - px(30.)),
+                                    point(bounds.right(), bounds.top() + px(5.)),
+                                ));
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .h(px(20.))
+                        .w_full()
+                        .into_any()
+                    } else {
+                        div().h(px(20.)).w_full().into_any()
+                    }
+                })
+                .w_full()
+                .h_full()
+            }
+        }
+
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(60.)), |_, cx| {
+            cx.new(|_| TestView(state.clone())).into_any_element()
+        });
+
+        // 30px above item 2's top, with 20px items, lands 10px into item 0.
+        let scroll_top = state.logical_scroll_top();
+        assert!(
+            scroll_top.offset_in_item >= px(0.),
+            "offset_in_item must never be negative (would leave blank space above), got {:?}",
+            scroll_top.offset_in_item,
+        );
+        assert_eq!(scroll_top.item_ix, 0);
+        assert_eq!(scroll_top.offset_in_item, px(10.));
+    }
 
     #[rgpui::test]
     fn test_reset_after_paint_before_scroll(cx: &mut TestAppContext) {
@@ -1681,6 +1810,145 @@ mod test {
         let offset = state.logical_scroll_top();
         assert_eq!(offset.item_ix, 0);
         assert_eq!(offset.offset_in_item, px(0.));
+    }
+
+    struct TestListView(ListState);
+    impl Render for TestListView {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            list(self.0.clone(), |_, _, _| {
+                div().h(px(20.)).w_full().into_any()
+            })
+            .w_full()
+            .h_full()
+        }
+    }
+
+    #[rgpui::test]
+    fn test_item_viewport_queries_return_none_before_layout(_cx: &mut TestAppContext) {
+        let state = ListState::new(5, crate::ListAlignment::Top, px(10.)).measure_all();
+
+        assert_eq!(state.item_is_above_viewport(0), None);
+        assert_eq!(state.item_is_below_viewport(0), None);
+    }
+
+    #[rgpui::test]
+    fn test_item_viewport_queries_before_logical_scroll_top(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+
+        let state = ListState::new(5, crate::ListAlignment::Top, px(10.)).measure_all();
+
+        state.scroll_to(rgpui::ListOffset {
+            item_ix: 2,
+            offset_in_item: px(0.),
+        });
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(20.)), |_, cx| {
+            cx.new(|_| TestListView(state.clone())).into_any_element()
+        });
+
+        assert_eq!(state.item_is_above_viewport(1), Some(true));
+        assert_eq!(state.item_is_below_viewport(1), Some(false));
+    }
+
+    #[rgpui::test]
+    fn test_item_viewport_queries_measured_item_inside_viewport(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+
+        let state = ListState::new(5, crate::ListAlignment::Top, px(10.)).measure_all();
+
+        state.scroll_to(rgpui::ListOffset {
+            item_ix: 2,
+            offset_in_item: px(0.),
+        });
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(20.)), |_, cx| {
+            cx.new(|_| TestListView(state.clone())).into_any_element()
+        });
+
+        assert_eq!(state.item_is_above_viewport(2), Some(false));
+        assert_eq!(state.item_is_below_viewport(2), Some(false));
+    }
+
+    #[rgpui::test]
+    fn test_item_viewport_queries_measured_item_above_viewport(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+
+        let state = ListState::new(5, crate::ListAlignment::Top, px(10.)).measure_all();
+
+        state.scroll_to(rgpui::ListOffset {
+            item_ix: 2,
+            offset_in_item: px(20.),
+        });
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(20.)), |_, cx| {
+            cx.new(|_| TestListView(state.clone())).into_any_element()
+        });
+
+        assert_eq!(state.item_is_above_viewport(2), Some(true));
+        assert_eq!(state.item_is_below_viewport(2), Some(false));
+    }
+
+    #[rgpui::test]
+    fn test_item_viewport_queries_measured_item_below_viewport(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+
+        let state = ListState::new(5, crate::ListAlignment::Top, px(10.)).measure_all();
+
+        state.scroll_to(rgpui::ListOffset {
+            item_ix: 2,
+            offset_in_item: px(0.),
+        });
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(20.)), |_, cx| {
+            cx.new(|_| TestListView(state.clone())).into_any_element()
+        });
+
+        assert_eq!(state.item_is_above_viewport(3), Some(false));
+        assert_eq!(state.item_is_below_viewport(3), Some(true));
+    }
+
+    #[rgpui::test]
+    fn test_item_viewport_queries_remain_stable_with_zero_height_viewport(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+
+        let state = ListState::new(5, crate::ListAlignment::Top, px(10.)).measure_all();
+
+        state.scroll_to(rgpui::ListOffset {
+            item_ix: 2,
+            offset_in_item: px(0.),
+        });
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(20.)), |_, cx| {
+            cx.new(|_| TestListView(state.clone())).into_any_element()
+        });
+
+        assert_eq!(state.item_is_above_viewport(3), Some(false));
+        assert_eq!(state.item_is_below_viewport(3), Some(true));
+
+        // Squeeze the list to zero height, e.g. because a sibling element
+        // (sized based on the queries above) consumed all the space. The
+        // answers must remain definitive rather than becoming `None`,
+        // otherwise the sibling's size can oscillate between frames.
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(0.)), |_, cx| {
+            cx.new(|_| TestListView(state.clone())).into_any_element()
+        });
+
+        assert_eq!(state.item_is_above_viewport(1), Some(true));
+        assert_eq!(state.item_is_below_viewport(1), Some(false));
+        assert_eq!(state.item_is_above_viewport(3), Some(false));
+        assert_eq!(state.item_is_below_viewport(3), Some(true));
+    }
+
+    #[rgpui::test]
+    fn test_item_viewport_queries_after_scroll_to_end_before_layout(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+
+        let state = ListState::new(5, crate::ListAlignment::Top, px(10.)).measure_all();
+
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(20.)), |_, cx| {
+            cx.new(|_| TestListView(state.clone())).into_any_element()
+        });
+
+        state.scroll_to_end();
+
+        assert_eq!(state.logical_scroll_top().item_ix, state.item_count());
+        assert_eq!(state.item_is_above_viewport(0), Some(true));
+        assert_eq!(state.item_is_below_viewport(0), Some(false));
     }
 
     #[rgpui::test]
@@ -1839,10 +2107,128 @@ mod test {
     }
 
     #[rgpui::test]
+    fn test_remeasure_then_scroll_does_not_revert_scroll_position(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+
+        let state = ListState::new(20, crate::ListAlignment::Top, px(10.));
+
+        struct TestView(ListState);
+        impl Render for TestView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                list(self.0.clone(), |_, _, _| {
+                    div().h(px(100.)).w_full().into_any()
+                })
+                .w_full()
+                .h_full()
+            }
+        }
+
+        let view = {
+            let state = state.clone();
+            cx.update(|_, cx| cx.new(|_| TestView(state)))
+        };
+
+        state.scroll_to(rgpui::ListOffset {
+            item_ix: 5,
+            offset_in_item: px(40.),
+        });
+
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {
+            view.clone().into_any_element()
+        });
+
+        state.remeasure_items(5..6);
+
+        cx.simulate_event(ScrollWheelEvent {
+            position: point(px(50.), px(100.)),
+            delta: ScrollDelta::Pixels(point(px(0.), px(-30.))),
+            ..Default::default()
+        });
+
+        let offset = state.logical_scroll_top();
+        assert_eq!(offset.item_ix, 5);
+        assert_eq!(offset.offset_in_item, px(70.));
+
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {
+            view.into_any_element()
+        });
+
+        let offset = state.logical_scroll_top();
+        assert_eq!(offset.item_ix, 5);
+        assert_eq!(
+            offset.offset_in_item,
+            px(70.),
+            "scrolling after a remeasure should not be reverted by the stale pending scroll"
+        );
+    }
+
+    #[rgpui::test]
+    fn test_scroll_after_remeasure_clamps_to_shrunk_item_height(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+
+        let item_height = Rc::new(Cell::new(100usize));
+        let state = ListState::new(20, crate::ListAlignment::Top, px(10.));
+
+        struct TestView {
+            state: ListState,
+            item_height: Rc<Cell<usize>>,
+        }
+
+        impl Render for TestView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let height = self.item_height.get();
+                list(self.state.clone(), move |index, _, _| {
+                    let height = if index == 5 { height } else { 100 };
+                    div().h(px(height as f32)).w_full().into_any()
+                })
+                .w_full()
+                .h_full()
+            }
+        }
+
+        let view = {
+            let state = state.clone();
+            let item_height = item_height.clone();
+            cx.update(|_, cx| cx.new(|_| TestView { state, item_height }))
+        };
+
+        state.scroll_to(rgpui::ListOffset {
+            item_ix: 5,
+            offset_in_item: px(40.),
+        });
+
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {
+            view.clone().into_any_element()
+        });
+
+        // Item 5 shrinks from 100px to 50px and is remeasured...
+        item_height.set(50);
+        state.remeasure_items(5..6);
+
+        // ...and then the user scrolls down by 30px before the next frame,
+        // landing at offset 70.
+        cx.simulate_event(ScrollWheelEvent {
+            position: point(px(50.), px(100.)),
+            delta: ScrollDelta::Pixels(point(px(0.), px(-30.))),
+            ..Default::default()
+        });
+
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {
+            view.into_any_element()
+        });
+
+        // The rebased pending scroll clamps the user's offset to the item's
+        // new height instead of leaving it pointing past the end of the item.
+        let offset = state.logical_scroll_top();
+        assert_eq!(offset.item_ix, 5);
+        assert_eq!(offset.offset_in_item, px(50.));
+    }
+
+    #[rgpui::test]
     fn test_follow_tail_stays_at_bottom_as_items_grow(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
 
-        // 10 items, each 50px tall → 500px total content, 200px viewport.
+        // 10 items, each 50px tall 鈫?500px total content, 200px viewport.
         // With follow-tail on, the list should always show the bottom.
         let item_height = Rc::new(Cell::new(50usize));
         let state = ListState::new(10, crate::ListAlignment::Top, px(0.));
@@ -1873,7 +2259,7 @@ mod test {
 
         state.set_follow_mode(FollowMode::Tail);
 
-        // First paint — items are 50px, total 500px, viewport 200px.
+        // First paint 鈥?items are 50px, total 500px, viewport 200px.
         // Follow-tail should anchor to the end.
         cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {
             view.clone().into_any_element()
@@ -1887,7 +2273,7 @@ mod test {
         assert!(state.is_following_tail());
 
         // Simulate items growing (e.g. streaming content makes each item taller).
-        // 10 items × 80px = 800px total.
+        // 10 items 脳 80px = 800px total.
         item_height.set(80);
         state.remeasure();
 
@@ -1896,11 +2282,10 @@ mod test {
         });
 
         // After growth, follow-tail should have re-anchored to the new end.
-        // 800px total − 200px viewport = 600px offset → item 7 at offset 40px,
+        // 800px total 鈭?200px viewport = 600px offset 鈫?item 7 at offset 40px,
         // but follow-tail anchors to item_count (10), and layout walks back to
-        // fill 200px, landing at item 7 (7 × 80 = 560, 800 − 560 = 240 > 200,
-        // so item 8: 8 × 80 = 640, 800 − 640 = 160 < 200 → keeps walking →
-        // item 7: offset = 800 − 200 = 600, item_ix = 600/80 = 7, remainder 40).
+        // fill 200px, landing at item 7 (7 脳 80 = 560, 800 鈭?560 = 240 > 200,
+        // so item 8: 8 脳 80 = 640, 800 鈭?640 = 160 < 200 鈫?keeps walking 鈫?        // item 7: offset = 800 鈭?200 = 600, item_ix = 600/80 = 7, remainder 40).
         let offset = state.logical_scroll_top();
         assert_eq!(offset.item_ix, 7);
         assert_eq!(offset.offset_in_item, px(40.));
@@ -1911,7 +2296,7 @@ mod test {
     fn test_follow_tail_disengages_on_user_scroll(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
 
-        // 10 items × 50px = 500px total, 200px viewport.
+        // 10 items 脳 50px = 500px total, 200px viewport.
         let state = ListState::new(10, crate::ListAlignment::Top, px(0.));
 
         struct TestView(ListState);
@@ -1927,7 +2312,7 @@ mod test {
 
         state.set_follow_mode(FollowMode::Tail);
 
-        // Paint with follow-tail — scroll anchored to the bottom.
+        // Paint with follow-tail 鈥?scroll anchored to the bottom.
         cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, cx| {
             cx.new(|_| TestView(state.clone())).into_any_element()
         });
@@ -1951,7 +2336,7 @@ mod test {
     fn test_follow_tail_disengages_on_scrollbar_reposition(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
 
-        // 10 items × 50px = 500px total, 200px viewport.
+        // 10 items 脳 50px = 500px total, 200px viewport.
         let state = ListState::new(10, crate::ListAlignment::Top, px(0.)).measure_all();
 
         struct TestView(ListState);
@@ -1969,7 +2354,7 @@ mod test {
 
         state.set_follow_mode(FollowMode::Tail);
 
-        // Paint with follow-tail — scroll anchored to the bottom.
+        // Paint with follow-tail 鈥?scroll anchored to the bottom.
         cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {
             view.clone().into_any_element()
         });
@@ -2066,7 +2451,7 @@ mod test {
     fn test_set_follow_tail_snaps_to_bottom(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
 
-        // 10 items × 50px = 500px total, 200px viewport.
+        // 10 items 脳 50px = 500px total, 200px viewport.
         let state = ListState::new(10, crate::ListAlignment::Top, px(0.));
 
         struct TestView(ListState);
@@ -2097,7 +2482,7 @@ mod test {
         assert_eq!(offset.offset_in_item, px(0.));
         assert!(!state.is_following_tail());
 
-        // Enable follow-tail — this should immediately snap the scroll anchor
+        // Enable follow-tail 鈥?this should immediately snap the scroll anchor
         // to the end, like the user just sent a prompt.
         state.set_follow_mode(FollowMode::Tail);
 
@@ -2106,7 +2491,7 @@ mod test {
         });
 
         // After paint, scroll should be at the bottom.
-        // 500px total − 200px viewport = 300px offset → item 6, offset 0.
+        // 500px total 鈭?200px viewport = 300px offset 鈫?item 6, offset 0.
         let offset = state.logical_scroll_top();
         assert_eq!(offset.item_ix, 6);
         assert_eq!(offset.offset_in_item, px(0.));
@@ -2162,7 +2547,7 @@ mod test {
     fn test_follow_tail_reengages_when_scrolled_back_to_bottom(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
 
-        // 10 items × 50px = 500px total, 200px viewport.
+        // 10 items 脳 50px = 500px total, 200px viewport.
         let state = ListState::new(10, crate::ListAlignment::Top, px(0.));
 
         struct TestView(ListState);
@@ -2185,7 +2570,7 @@ mod test {
         });
         assert!(state.is_following_tail());
 
-        // Scroll up — follow_tail should suspend (not fully disengage).
+        // Scroll up 鈥?follow_tail should suspend (not fully disengage).
         cx.simulate_event(ScrollWheelEvent {
             position: point(px(50.), px(100.)),
             delta: ScrollDelta::Pixels(point(px(0.), px(50.))),
@@ -2217,7 +2602,7 @@ mod test {
     fn test_follow_tail_reengagement_not_fooled_by_unmeasured_items(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
 
-        // 20 items × 50px = 1000px total, 200px viewport, 1000px
+        // 20 items 脳 50px = 1000px total, 200px viewport, 1000px
         // overdraw so all items get measured during the follow_tail
         // paint (matching realistic production settings).
         let state = ListState::new(20, crate::ListAlignment::Top, px(1000.));
@@ -2242,8 +2627,8 @@ mod test {
         });
         assert!(state.is_following_tail());
 
-        // Scroll up a meaningful amount — suspends follow_tail.
-        // 20 items × 50px = 1000px. viewport 200px. scroll_max = 800px.
+        // Scroll up a meaningful amount 鈥?suspends follow_tail.
+        // 20 items 脳 50px = 1000px. viewport 200px. scroll_max = 800px.
         // Scrolling up 200px puts us at 600px, clearly not at bottom.
         cx.simulate_event(ScrollWheelEvent {
             position: point(px(50.), px(100.)),
@@ -2257,10 +2642,10 @@ mod test {
         // temporarily wrong (0px for the invalidated item).
         state.remeasure_items(19..20);
 
-        // Paint — layout re-measures the invalidated item with its true
+        // Paint 鈥?layout re-measures the invalidated item with its true
         // height. The re-engagement check uses these fresh measurements.
         // Since we scrolled 200px up from the 800px max, we're at
-        // ~600px — NOT at the bottom, so follow_tail should NOT
+        // ~600px 鈥?NOT at the bottom, so follow_tail should NOT
         // re-engage.
         cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {
             view.clone().into_any_element()
@@ -2276,7 +2661,7 @@ mod test {
     fn test_follow_tail_reengages_after_scrollbar_disengagement(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
 
-        // 10 items × 50px = 500px total, 200px viewport, scroll_max = 300px.
+        // 10 items 脳 50px = 500px total, 200px viewport, scroll_max = 300px.
         let state = ListState::new(10, crate::ListAlignment::Top, px(0.)).measure_all();
 
         struct TestView(ListState);
@@ -2298,11 +2683,11 @@ mod test {
         });
         assert!(state.is_following_tail());
 
-        // Drag the scrollbar up to the middle — follow_tail should suspend.
+        // Drag the scrollbar up to the middle 鈥?follow_tail should suspend.
         state.set_offset_from_scrollbar(point(px(0.), px(-150.)));
         assert!(!state.is_following_tail());
 
-        // Drag the scrollbar back to the bottom — follow_tail should re-engage
+        // Drag the scrollbar back to the bottom 鈥?follow_tail should re-engage
         // on the next paint.
         state.set_offset_from_scrollbar(point(px(0.), px(-300.)));
         cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {

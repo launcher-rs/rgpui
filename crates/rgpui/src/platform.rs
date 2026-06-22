@@ -762,8 +762,8 @@ impl ScreenCaptureFrame {
                         // BT.601 YUV → RGB 转换
                         let c = 298 * (y - 16);
                         let r = ((c + 409 * (v - 128) + 128) >> 8).clamp(0, 255) as u8;
-                        let g = ((c - 100 * (u - 128) - 208 * (v - 128) + 128) >> 8)
-                            .clamp(0, 255) as u8;
+                        let g = ((c - 100 * (u - 128) - 208 * (v - 128) + 128) >> 8).clamp(0, 255)
+                            as u8;
                         let b = ((c + 516 * (u - 128) + 128) >> 8).clamp(0, 255) as u8;
 
                         rgba.push(r);

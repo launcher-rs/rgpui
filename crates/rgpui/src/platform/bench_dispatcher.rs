@@ -1,9 +1,10 @@
 use std::{
-    collections::BinaryHeap,
     sync::Arc,
     thread,
     time::{Duration, Instant},
 };
+
+use crate::collections::BinaryHeap;
 
 use parking_lot::{Condvar, Mutex};
 
@@ -14,11 +15,18 @@ use crate::{
 
 const MIN_THREADS: usize = 2;
 
-/// 用于基准测试的多线程 [`PlatformDispatcher`]
+/// A multithreaded [`PlatformDispatcher`] for benchmarks.
 ///
-/// 后台任务在工作线程池上并行运行，计时器在专用计时器线程上实时触发，镜像生产环境的调度器（参见 `LinuxDispatcher`）。主线程任务在基准测试线程通过 [`Self::run_until_idle`] 排空它们之前排队，因为没有平台运行循环来泵送它们
+/// Background tasks run in parallel on a pool of worker threads and timers fire
+/// in real time on a dedicated timer thread, mirroring the production
+/// dispatchers (see `LinuxDispatcher`). Main-thread tasks are queued until the
+/// benchmark thread drains them via [`Self::run_until_idle`], since there is no
+/// platform run loop pumping them.
 ///
-/// 与在单线程上使用虚拟时钟运行所有内容的 [`TestDispatcher`](crate::TestDispatcher) 不同，通过此调度器分派的工作以生产环境并发性执行，因此墙钟测量反映真实的并行性
+/// Unlike [`TestDispatcher`](crate::TestDispatcher), which runs everything on a
+/// single thread with a virtual clock, work dispatched through this dispatcher
+/// executes with production concurrency, so wall-clock measurements reflect
+/// real parallelism.
 pub struct BenchDispatcher {
     background_sender: PriorityQueueSender<RunnableVariant>,
     main_sender: PriorityQueueSender<RunnableVariant>,
@@ -28,7 +36,8 @@ pub struct BenchDispatcher {
     main_thread_id: thread::ThreadId,
 }
 
-/// 跟踪有多少后台和计时器 runnable 排队或运行中，以便 [`BenchDispatcher::run_until_idle`] 知道何时停止等待
+/// Tracks how many background and timer runnables are queued or running so
+/// [`BenchDispatcher::run_until_idle`] knows when to stop waiting.
 #[derive(Default)]
 struct IdleTracker {
     inflight: Mutex<usize>,
@@ -48,12 +57,15 @@ impl IdleTracker {
         }
     }
 
-    /// 返回一个 guard，当被丢弃时递减飞行中计数，以便即使正在执行的 runnable 发生 panic，计数也保持正确
+    /// Returns a guard that decrements the in-flight count when dropped, so
+    /// the count stays correct even if the runnable being executed panics.
     fn decrement_on_drop(&self) -> impl Drop + '_ {
-        rgpui_util::defer(|| self.decrement())
+        crate::rgpui_util::defer(|| self.decrement())
     }
 
-    /// 在持有飞行中锁时通知等待者。`run_until_idle` 在此锁下重新检查其唤醒条件，然后再等待，因此通知不会在其检查和等待之间丢失
+    /// Notifies waiters while holding the in-flight lock. `run_until_idle`
+    /// re-checks its wake conditions under this lock before waiting, so the
+    /// notification can't slip between its check and its wait and be lost.
     fn notify_under_lock(&self) {
         let _inflight = self.inflight.lock();
         self.condvar.notify_all();
@@ -92,7 +104,8 @@ impl PartialOrd for TimerEntry {
 
 impl Ord for TimerEntry {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // 反转以便最早到期时间的条目（按插入顺序断开平局）位于最大堆顶部
+        // Reversed so that the entry with the earliest due time (breaking ties
+        // by insertion order) is at the top of the max-heap.
         other
             .due
             .cmp(&self.due)
@@ -107,9 +120,10 @@ impl Default for BenchDispatcher {
 }
 
 impl BenchDispatcher {
-    /// 创建一个主线程是调用线程的调度器
+    /// Creates a dispatcher whose main thread is the calling thread.
     ///
-    /// 工作线程和计时器线程在进程的生命周期内存在；调度器预期被创建一次并在基准测试之间重用
+    /// Worker and timer threads live for the lifetime of the process; the
+    /// dispatcher is expected to be created once and reused across benchmarks.
     pub fn new() -> Self {
         let (background_sender, background_receiver) = PriorityQueueReceiver::new();
         let (main_sender, main_receiver) = PriorityQueueReceiver::new();
@@ -163,7 +177,11 @@ impl BenchDispatcher {
                         let Some(entry) = state.heap.pop() else {
                             continue;
                         };
-                        // 在释放锁之前将触发的计时器计为飞行中，以便它可以生成 `run_until_idle` 将等待的后续工作。锁顺序始终是计时器状态，然后飞行中计数；`run_until_idle` 永远不会以相反顺序获取它们
+                        // Count the firing timer as in-flight before releasing
+                        // the lock so it can spawn follow-up work that
+                        // `run_until_idle` will wait for. Lock order is always
+                        // timer state, then in-flight count; `run_until_idle`
+                        // never takes them in the opposite order.
                         idle.increment();
                         drop(state);
 
@@ -192,9 +210,15 @@ impl BenchDispatcher {
         }
     }
 
-    /// 运行排队的主线程任务并等待直到没有后台或计时器工作排队、运行中或已到期
+    /// Runs queued main thread tasks and waits until no background or timer
+    /// work is queued, running, or already due.
     ///
-    /// 尚未达到到期时间的计时器*不*被等待：调度器实时运行，无法像 `TestDispatcher` 的虚拟时钟那样跳过 ahead，因此等待未来的计时器将阻塞其完整的实际持续时间。在此类计时器上休眠的任务被认为处于空闲状态。必须在创建此调度器的线程上调用
+    /// Timers that haven't reached their due time yet are *not* waited for:
+    /// the dispatcher runs in real time and cannot skip ahead like the
+    /// `TestDispatcher`'s virtual clock, so waiting on a future timer would
+    /// block for its full real duration. Tasks sleeping on such timers are
+    /// considered idle. Must be called on the thread that created this
+    /// dispatcher.
     pub fn run_until_idle(&self) {
         assert!(
             self.is_main_thread(),
@@ -205,9 +229,11 @@ impl BenchDispatcher {
                 continue;
             }
 
-            // 在获取飞行中锁之前检查；计时器线程以相反顺序锁定它们，因此嵌套将导致死锁
+            // Checked before taking the in-flight lock; the timer thread
+            // locks them in the opposite order, so nesting would deadlock.
             if self.has_due_timer() {
-                // 简短轮询：触发的计时器在注册为飞行中之前离开堆
+                // Poll briefly: a firing timer leaves the heap just before it
+                // registers as in-flight.
                 let mut inflight = self.idle.inflight.lock();
                 self.idle
                     .condvar
@@ -216,27 +242,51 @@ impl BenchDispatcher {
             }
 
             let mut inflight = self.idle.inflight.lock();
-            // 在 `dispatch_on_main_thread` 通知下的锁下重新检查，因此通知不会丢失
+            // Re-checked under the lock that `dispatch_on_main_thread`
+            // notifies under, so the notification can't be lost.
             if self.main_queue_has_work() {
                 continue;
             }
             if *inflight == 0 {
-                // 主线程发送发生在飞行中递减之前，递减发生在此锁下，因此上面的检查观察到了所有已完成的工作
+                // Main-thread sends happen before in-flight decrements, and
+                // decrements happen under this lock, so the check above
+                // observed all completed work.
                 return;
             }
-            // 当主线程工作到达或飞行中计数达到零时唤醒；两者都在此锁下通知
+            // Woken when main-thread work arrives or the in-flight count
+            // reaches zero; both notify under this lock.
             self.idle.condvar.wait(&mut inflight);
         }
     }
 
-    /// 遗忘所有待处理的计时器，以便一个基准测试武装的计时器不会在共享此进程生命周期调度器的后续基准测试期间触发
+    /// Cancels all pending timers so timers armed by one benchmark can't fire
+    /// during a later benchmark sharing this process-lifetime dispatcher.
     ///
-    /// runnable 被泄漏而不是丢弃，因为丢弃一个会唤醒等待的任务，就像计时器已触发一样
-    pub fn forget_pending_timers(&self) {
-        let mut state = self.timers.state.lock();
-        for entry in state.heap.drain() {
-            std::mem::forget(entry.runnable);
-        }
+    /// Dropping a timer runnable drops its completion sender, waking the task
+    /// awaiting the timer. Call [`Self::run_until_idle`] after this method to
+    /// drain any work that cancellation unblocks.
+    pub fn cancel_pending_timers(&self) -> usize {
+        let timers = {
+            let mut state = self.timers.state.lock();
+            let timers: Vec<_> = state.heap.drain().collect();
+            self.timers.condvar.notify_all();
+            timers
+        };
+        let canceled = timers.len();
+        drop(timers);
+        canceled
+    }
+
+    /// Describes the dispatcher's idle-tracking state, for diagnosing
+    /// benchmarks that fail to reach quiescence.
+    pub fn debug_state(&self) -> String {
+        let inflight = *self.idle.inflight.lock();
+        let timers = self.timers.state.lock().heap.len();
+        let main_queue_has_work = self.main_queue_has_work();
+        format!(
+            "BenchDispatcher {{ inflight: {inflight}, pending_timers: {timers}, \
+             main_queue_has_work: {main_queue_has_work} }}"
+        )
     }
 
     fn has_due_timer(&self) -> bool {
@@ -254,7 +304,8 @@ impl BenchDispatcher {
     fn drain_main_queue(&self) -> bool {
         let mut ran_any = false;
         loop {
-            // 仅在弹出时加锁，以便 runnable 可以在运行时通过 sender 重入分派更多主线程工作
+            // Lock only around the pop so runnables can re-entrantly dispatch
+            // more main-thread work through the sender while they run.
             let runnable = self.main_receiver.lock().try_pop();
             match runnable {
                 Ok(Some(runnable)) => {
@@ -285,11 +336,14 @@ impl PlatformDispatcher for BenchDispatcher {
 
     fn dispatch_on_main_thread(&self, runnable: RunnableVariant, priority: Priority) {
         if let Err(error) = self.main_sender.send(priority, runnable) {
-            // 主接收器与此调度器的生命周期一样长，因此发送失败意味着我们正在拆解中。runnable 可能包装了 !Send future，因此忘记它而不是在此线程上丢弃它（镜像 LinuxDispatcher）
+            // The main receiver lives as long as this dispatcher, so a failed
+            // send means we're mid-teardown. The runnable may wrap a !Send
+            // future, so forget it rather than dropping it on this thread
+            // (mirrors LinuxDispatcher).
             std::mem::forget(error);
             return;
         }
-        // 如果 `run_until_idle` 正在等待主线程工作，则唤醒它
+        // Wake `run_until_idle` if it's waiting for main-thread work.
         self.idle.notify_under_lock();
     }
 
@@ -306,7 +360,8 @@ impl PlatformDispatcher for BenchDispatcher {
     }
 
     fn spawn_realtime(&self, f: Box<dyn FnOnce() + Send>) {
-        // 基准测试不需要实时调度优先级；普通线程使其可移植
+        // Benchmarks don't need realtime scheduling priority; a plain thread
+        // keeps this portable.
         thread::Builder::new()
             .name("BenchRealtime".to_owned())
             .spawn(f)
@@ -379,12 +434,12 @@ mod tests {
     }
 
     #[test]
-    fn forget_pending_timers_prevents_stale_timers_from_firing() {
+    fn cancel_pending_timers_wakes_waiters_without_waiting_for_deadline() {
         let dispatcher = Arc::new(BenchDispatcher::new());
         let background = BackgroundExecutor::new(dispatcher.clone());
 
         let fired = Arc::new(AtomicBool::new(false));
-        let timer = background.timer(Duration::from_millis(250));
+        let timer = background.timer(Duration::from_secs(10));
         background
             .spawn({
                 let fired = fired.clone();
@@ -396,10 +451,10 @@ mod tests {
             .detach();
 
         dispatcher.run_until_idle();
-        dispatcher.forget_pending_timers();
-
-        thread::sleep(Duration::from_millis(400));
+        assert_eq!(dispatcher.cancel_pending_timers(), 1);
         dispatcher.run_until_idle();
-        assert!(!fired.load(Ordering::SeqCst));
+
+        assert!(fired.load(Ordering::SeqCst));
+        assert_eq!(dispatcher.cancel_pending_timers(), 0);
     }
 }
