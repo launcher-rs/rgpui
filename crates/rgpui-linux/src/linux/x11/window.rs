@@ -1454,8 +1454,8 @@ impl PlatformWindow for X11Window {
 
     fn set_position(&mut self, position: Point<Pixels>) {
         let state = self.0.state.borrow();
-        let x = (position.x.0 * state.scale_factor).round() as i32;
-        let y = (position.y.0 * state.scale_factor).round() as i32;
+        let x = (position.x.as_f32() * state.scale_factor).round() as i32;
+        let y = (position.y.as_f32() * state.scale_factor).round() as i32;
 
         check_reply(
             || format!("X11 ConfigureWindow failed. x: {}, y: {}", x, y),

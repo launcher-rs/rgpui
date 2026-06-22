@@ -617,7 +617,10 @@ pub trait ScreenCaptureStream {
 /// A frame of video captured from a screen.
 pub struct ScreenCaptureFrame(pub PlatformScreenCaptureFrame);
 
-#[cfg(feature = "screen-capture")]
+#[cfg(all(
+    any(target_os = "windows", target_os = "linux"),
+    feature = "screen-capture"
+))]
 impl ScreenCaptureFrame {
     /// 获取帧宽度（像素）
     pub fn width(&self) -> u32 {
