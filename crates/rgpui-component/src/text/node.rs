@@ -4,15 +4,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use markdown::mdast;
-use rgpui::{
-    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
-    InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement, ScrollHandle,
-    SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div,
-    img, prelude::FluentBuilder as _, px, relative, rems,
-};
-use ropey::Rope;
-
 use crate::{
     ActiveTheme as _, Icon, IconName, StyledExt, WindowExt as _, h_flex,
     highlighter::HighlightTheme,
@@ -25,6 +16,13 @@ use crate::{
     },
     tooltip::Tooltip,
     v_flex,
+};
+use markdown::mdast;
+use rgpui::{
+    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
+    InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement, ScrollHandle,
+    SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div,
+    img, prelude::FluentBuilder as _, px, relative, rems,
 };
 
 use super::{TextViewStyle, utils::list_item_prefix};
@@ -590,7 +588,7 @@ impl Paragraph {
 pub struct CodeBlock {
     lang: Option<SharedString>,
     styles: Arc<Mutex<Option<Vec<(Range<usize>, HighlightStyle)>>>>,
-    highlight_theme: Arc<HighlightTheme>,
+    _highlight_theme: Arc<HighlightTheme>,
     state: Arc<Mutex<InlineState>>,
     pub span: Option<Span>,
 }
@@ -629,7 +627,7 @@ impl CodeBlock {
         Self {
             lang,
             styles: Arc::new(Mutex::new(None)),
-            highlight_theme: Arc::new(highlight_theme.clone()),
+            _highlight_theme: Arc::new(highlight_theme.clone()),
             state,
             span: span.map(|s| s.into()),
         }

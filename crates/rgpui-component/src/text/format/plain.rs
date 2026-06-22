@@ -6,7 +6,7 @@ use crate::text::{
 };
 
 /// 解析纯文本，将每一行作为段落处理。
-pub(crate) fn parse(
+pub(crate) fn _parse(
     source: &str,
     node_cx: &mut NodeContext,
 ) -> Result<ParsedDocument, SharedString> {

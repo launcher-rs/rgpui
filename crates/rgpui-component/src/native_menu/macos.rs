@@ -134,17 +134,17 @@ fn build_menu<'a>(
                 label,
                 disabled,
                 checked,
-                image,
+                icon,
                 action,
             } => {
                 let ns_item = NSMenuItem::new(mtm);
                 unsafe {
                     ns_item.setTitle(&NSString::from_str(label));
                     ns_item.setEnabled(!*disabled);
-                    if let Some(image) = image {
+                    if let Some(icon) = icon {
                         if let Some(ns_image) = NSImage::initWithContentsOfFile(
                             NSImage::alloc(),
-                            &NSString::from_str(image),
+                            &NSString::from_str(icon.path_ref()),
                         ) {
                             ns_image.setSize(NSSize::new(MENU_IMAGE_SIZE, MENU_IMAGE_SIZE));
                             ns_image.setTemplate(true);

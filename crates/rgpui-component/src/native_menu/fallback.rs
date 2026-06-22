@@ -9,7 +9,6 @@ use rgpui::{
     Point, Render, Subscription, Window, anchored, deferred, div, px,
 };
 
-use crate::Icon;
 use crate::menu::{PopupMenu, PopupMenuItem};
 use crate::root::Root;
 

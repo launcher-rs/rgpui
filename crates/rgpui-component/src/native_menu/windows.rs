@@ -7,7 +7,7 @@ use rgpui::{Action, App, AssetSource, ImageFormat, Pixels, Point, SharedString, 
 use windows::Win32::Foundation::{GlobalFree, HANDLE, HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, ClientToScreen, CreateDIBSection, DIB_RGB_COLORS,
-    DeleteObject, HBITMAP, HDC, HGDIOBJ,
+    DeleteObject, HBITMAP, HGDIOBJ,
 };
 use windows::Win32::Graphics::GdiPlus::{
     GdipCreateBitmapFromStream, GdipCreateHBITMAPFromBitmap, GdipDisposeImage,

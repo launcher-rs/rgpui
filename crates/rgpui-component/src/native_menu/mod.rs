@@ -199,7 +199,7 @@ impl NativeMenu {
 
         #[cfg(target_os = "macos")]
         {
-            macos::show(self.items, cx.asset_source().clone(), position, window, cx);
+            macos::show(self.items, position, window, cx);
         }
         #[cfg(target_os = "windows")]
         {

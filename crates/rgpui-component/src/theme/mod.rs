@@ -1,6 +1,6 @@
 use crate::{
-    highlighter::HighlightTheme, list::ListSettings, notification::NotificationSettings,
-    scroll::ScrollbarShow, sheet::SheetSettings,
+    list::ListSettings, notification::NotificationSettings, scroll::ScrollbarShow,
+    sheet::SheetSettings,
 };
 use rgpui::{App, Global, Hsla, Pixels, SharedString, Window, WindowAppearance, px};
 use schemars::JsonSchema;

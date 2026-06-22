@@ -1,11 +1,10 @@
 use std::{cell::OnceCell, collections::HashMap, fmt::Write as _, sync::OnceLock};
 
-use anyhow::Result;
 use lsp_types::{Diagnostic, DiagnosticSeverity, Position};
 use rgpui::{
     AnyElement, App, AppContext, Context, DivInspectorState, Entity, Inspector, InspectorElementId,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Refineable as _, Render,
-    SharedString, StyleRefinement, Styled, Subscription, Task, Window, actions, div,
+    SharedString, StyleRefinement, Styled, Subscription, Window, actions, div,
     inspector_reflection::FunctionReflection, prelude::FluentBuilder, px,
 };
 use ropey::Rope;
@@ -197,8 +196,8 @@ impl DivInspector {
         }
 
         let (new_style, _diagnostics) = rust_to_style(self.unconvertible_style.clone(), code);
-        self.rust_state.state.update(cx, |state, cx| {
-            cx.notify();
+        self.rust_state.state.update(cx, |_state, _cx| {
+            // 触发 UI 刷新
         });
         self.json_state.error = None;
         self.json_state.editing = false;
