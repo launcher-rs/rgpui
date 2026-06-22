@@ -101,11 +101,11 @@ impl RenderOnce for MenuItemElement {
             })
             .when(!self.disabled, |this| {
                 this.group_hover(self.group_name, |this| {
-                    this.bg(cx.theme().accent)
+                    this.bg(cx.theme().tokens.accent)
                         .text_color(cx.theme().accent_foreground)
                 })
                 .when(self.selected, |this| {
-                    this.bg(cx.theme().accent)
+                    this.bg(cx.theme().tokens.accent)
                         .text_color(cx.theme().accent_foreground)
                 })
                 .when_some(self.on_click, |this, on_click| {

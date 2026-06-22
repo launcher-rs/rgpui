@@ -30,7 +30,7 @@ const SIDEBAR_TRANSITION_DURATION: Duration = Duration::from_millis(200);
 
 /// The way a [`Sidebar`] behaves when it is collapsed.
 ///
-/// This follows the shadcn/ui sidebar modes:
+/// This follows the shadcn/rgpui-component sidebar modes:
 /// - [`SidebarCollapsible::Icon`] collapses the sidebar to icon width.
 /// - [`SidebarCollapsible::Offcanvas`] slides the sidebar out and releases its layout width.
 /// - [`SidebarCollapsible::None`] keeps the sidebar expanded and ignores collapsed state.
@@ -410,7 +410,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
             .h_full()
             .overflow_hidden()
             .relative()
-            .bg(cx.theme().sidebar)
+            .bg(cx.theme().tokens.sidebar)
             .text_color(cx.theme().sidebar_foreground)
             .border_color(cx.theme().sidebar_border)
             .map(|this| match self.side {

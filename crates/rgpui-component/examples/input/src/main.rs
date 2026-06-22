@@ -63,7 +63,7 @@ impl Render for Example {
                         cx.notify();
                     })),
             )
-            .child(TextView::plain("display_text", self.display_text.clone()).selectable(true))
+            .child(TextView::markdown("display_text", self.display_text.clone()).selectable(true))
     }
 }
 

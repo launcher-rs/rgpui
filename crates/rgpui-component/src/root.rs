@@ -112,20 +112,20 @@ impl Root {
         }
     }
 
-    /// Set the window border shadow size for Linux client-side decorations.
-    ///
-    /// Default: [`window_border::SHADOW_SIZE`]
-    pub fn window_shadow_size(mut self, size: impl Into<Pixels>) -> Self {
-        self.window_shadow_size = size.into();
-        self
-    }
-
     /// Enable or disable the Linux client-side window border wrapper.
     ///
     /// Defaults to `true`. Use `bordered(false)` for layer-shell fullscreen windows
     /// or other surfaces that should not render GPUI Component's window border.
     pub fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
+        self
+    }
+
+    /// Set the window border shadow size for Linux client-side decorations.
+    ///
+    /// Default: [`window_border::SHADOW_SIZE`]
+    pub fn window_shadow_size(mut self, size: impl Into<Pixels>) -> Self {
+        self.window_shadow_size = size.into();
         self
     }
 
@@ -549,7 +549,7 @@ impl Render for Root {
             .relative()
             .size_full()
             .font_family(cx.theme().font_family.clone())
-            .bg(cx.theme().background)
+            .bg(cx.theme().tokens.background)
             .text_color(cx.theme().foreground)
             .refine_style(&self.style)
             .child(TextSelectionController)
@@ -565,5 +565,42 @@ impl Render for Root {
         } else {
             inner.into_any_element()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rgpui::TestAppContext;
+
+    struct TestView;
+
+    impl Render for TestView {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+        }
+    }
+
+    #[rgpui::test]
+    fn bordered_builder_toggles_window_border(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+
+        let (default_root, _) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx)
+        });
+        assert!(default_root.read_with(cx, |root, _| root.bordered));
+
+        let (root, _) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx).bordered(false)
+        });
+        assert!(!root.read_with(cx, |root, _| root.bordered));
+
+        let (root, _) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx).bordered(false).bordered(true)
+        });
+        assert!(root.read_with(cx, |root, _| root.bordered));
     }
 }

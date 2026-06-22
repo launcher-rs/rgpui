@@ -209,7 +209,7 @@ pub struct TableState<D: TableDelegate> {
     /// default is `true`.
     ///
     /// Set to `false` to hide the narrow leftmost header column while keeping cell
-    /// selection 鈥?useful when you want to put your own content (e.g. a row index
+    /// selection — useful when you want to put your own content (e.g. a row index
     /// column) on the left. When hidden, clicking the already-selected cell again
     /// escalates the selection to the whole row so users can still pick rows; row
     /// escalation requires `row_selectable` to be enabled.
@@ -354,7 +354,7 @@ where
 
     /// Set whether the row header column is shown, default is `true`.
     ///
-    /// Only effective when `cell_selectable` is `true` 鈥?otherwise the row header
+    /// Only effective when `cell_selectable` is `true` — otherwise the row header
     /// column is never rendered. Hide it when you want to use the leftmost column
     /// for your own content (e.g. a row index column).
     ///
@@ -426,7 +426,7 @@ where
 
     /// Set or clear the right-clicked row state.
     ///
-    /// Pass `None` to clear 鈥?useful when opening a header context menu
+    /// Pass `None` to clear — useful when opening a header context menu
     /// to prevent the row context menu from appearing simultaneously.
     pub fn set_right_clicked_row(&mut self, row: Option<usize>, cx: &mut Context<Self>) {
         self.right_clicked_row = row;
@@ -707,7 +707,8 @@ where
         let is_double_click = e.click_count() == 2;
 
         // When the row header column is hidden, a single click on the
-        // already-selected cell escalates the selection to the entire row 鈥?        // giving users a way to pick rows without the dedicated header column.
+        // already-selected cell escalates the selection to the entire row —
+        // giving users a way to pick rows without the dedicated header column.
         // Double-clicks are passed through to `DoubleClickedCell` and never
         // trigger the escalation.
         let is_reselect =
@@ -1214,7 +1215,7 @@ where
         }
 
         if selectable && self.selected_col == Some(col_ix) && self.selection_mode.is_column() {
-            el.bg(cx.theme().table_active)
+            el.bg(cx.theme().tokens.table_active)
         } else {
             el
         }
@@ -1328,7 +1329,7 @@ where
             .h_full()
             .border_r_1()
             .border_color(cx.theme().table_row_border)
-            .bg(cx.theme().table_head)
+            .bg(cx.theme().tokens.table_head)
             .flex_shrink_0()
             .table_cell_size(self.options.size)
             .when(!is_head, |this| {
@@ -1370,8 +1371,8 @@ where
                     true => this,
                     false => this.opacity(0.5),
                 })
-                .hover(|this| this.bg(cx.theme().secondary).opacity(7.))
-                .active(|this| this.bg(cx.theme().secondary_active).opacity(1.))
+                .hover(|this| this.bg(cx.theme().tokens.secondary).opacity(7.))
+                .active(|this| this.bg(cx.theme().tokens.secondary_active).opacity(1.))
                 .on_click(
                     cx.listener(move |table, _, window, cx| table.perform_sort(col_ix, window, cx)),
                 )
@@ -1533,7 +1534,7 @@ where
         // We restrict rendering to the columns currently visible inside the
         // overflow-scroll viewport, surrounding them with inert spacer divs:
         //
-        //   [left_spacer] [visible columns鈥 [right_spacer] [last_empty_col]
+        //   [left_spacer] [visible columns…] [right_spacer] [last_empty_col]
         //
         // The spacers preserve the flex container's total content width so that
         // the scrollbar range stays correct.
@@ -1556,7 +1557,7 @@ where
             .h_flex()
             .w_full()
             .flex_shrink_0()
-            .bg(cx.theme().table_head)
+            .bg(cx.theme().tokens.table_head)
             .text_color(cx.theme().table_head_foreground)
             .refine_style(&style)
             .when(self.cell_selectable && self.row_header, |this| {
@@ -1569,7 +1570,7 @@ where
                     h_flex()
                         .relative()
                         .h_full()
-                        .bg(cx.theme().table_head)
+                        .bg(cx.theme().tokens.table_head)
                         .child(v_flex().min_w_full().flex_shrink_0().children(
                             layout.iter().enumerate().map(|(_row_ix, row_cells)| {
                                 h_flex()
@@ -1629,7 +1630,7 @@ where
                     .overflow_scroll()
                     .relative()
                     .track_scroll(&horizontal_scroll_handle)
-                    .bg(cx.theme().table_head)
+                    .bg(cx.theme().tokens.table_head)
                     .child(v_flex().min_w_full().flex_shrink_0().children(
                         layout.iter().enumerate().map(|(row_ix, row_cells)| {
                             let is_leaf_row = row_ix + 1 == layout_len;
@@ -1737,13 +1738,13 @@ where
                 .when(need_render_border, |this| {
                     this.border_b_1().border_color(cx.theme().table_row_border)
                 })
-                .when(is_stripe_row, |this| this.bg(cx.theme().table_even))
+                .when(is_stripe_row, |this| this.bg(cx.theme().tokens.table_even))
                 .refine_style(&style)
                 .hover(|this| {
                     if is_selected || self.right_clicked_row == Some(row_ix) {
                         this
                     } else {
-                        this.bg(cx.theme().table_hover)
+                        this.bg(cx.theme().tokens.table_hover)
                     }
                 })
                 .when(self.cell_selectable && self.row_header, |this| {
@@ -1779,7 +1780,7 @@ where
                                                             div()
                                                                 .absolute()
                                                                 .inset_0()
-                                                                .bg(cx.theme().table_active)
+                                                                .bg(cx.theme().tokens.table_active)
                                                                 .border_1()
                                                                 .border_color(
                                                                     cx.theme().table_active_border,
@@ -1898,7 +1899,10 @@ where
                                                                 div()
                                                                     .absolute()
                                                                     .inset_0()
-                                                                    .bg(cx.theme().table_active)
+                                                                    .bg(cx
+                                                                        .theme()
+                                                                        .tokens
+                                                                        .table_active)
                                                                     .border_1()
                                                                     .border_color(
                                                                         cx.theme()
@@ -1971,12 +1975,12 @@ where
                                         .right(px(0.))
                                         .bottom(px(-1.))
                                         .absolute()
-                                        .bg(cx.theme().table_active)
+                                        .bg(cx.theme().tokens.table_active)
                                         .border_1()
                                         .border_color(cx.theme().table_active_border),
                                 )
                             } else {
-                                this.bg(cx.theme().accent)
+                                this.bg(cx.theme().tokens.accent)
                             }
                         })
                     })
@@ -2012,7 +2016,7 @@ where
                 .h(row_height)
                 .border_b_1()
                 .border_color(cx.theme().table_row_border)
-                .when(is_stripe_row, |this| this.bg(cx.theme().table_even))
+                .when(is_stripe_row, |this| this.bg(cx.theme().tokens.table_even))
                 .when(self.cell_selectable && self.row_header, |this| {
                     // Render empty row header cell for fake rows
                     this.child(

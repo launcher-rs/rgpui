@@ -1,9 +1,11 @@
 use std::{cell::OnceCell, collections::HashMap, fmt::Write as _, sync::OnceLock};
 
+use anyhow::Result;
+use lsp_types::{Diagnostic, DiagnosticSeverity, Position};
 use rgpui::{
     AnyElement, App, AppContext, Context, DivInspectorState, Entity, Inspector, InspectorElementId,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Refineable as _, Render,
-    SharedString, StyleRefinement, Styled, Subscription, Window, actions, div,
+    SharedString, StyleRefinement, Styled, Subscription, Task, Window, actions, div,
     inspector_reflection::FunctionReflection, prelude::FluentBuilder, px,
 };
 use ropey::Rope;
@@ -15,7 +17,7 @@ use crate::{
     clipboard::Clipboard,
     description_list::DescriptionList,
     h_flex,
-    input::{Input, InputEvent, InputState, Position, RopeExt, TabSize},
+    input::{Input, InputEvent, InputState, RopeExt, TabSize},
     link::Link,
     v_flex,
 };
@@ -195,6 +197,9 @@ impl DivInspector {
         }
 
         let (new_style, _diagnostics) = rust_to_style(self.unconvertible_style.clone(), code);
+        self.rust_state.state.update(cx, |state, cx| {
+            cx.notify();
+        });
         self.json_state.error = None;
         self.json_state.editing = false;
         self.update_json_from_style(&new_style, window, cx);
@@ -311,47 +316,24 @@ fn style_to_rust(input_style: &StyleRefinement) -> (String, StyleRefinement) {
     (code, style)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TextRange {
-    start: Position,
-    end: Position,
-}
-
-impl TextRange {
-    /// 创建文本范围。
-    fn new(start: Position, end: Position) -> Self {
-        Self { start, end }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Diagnostic {
-    range: TextRange,
-    message: String,
-}
-
-impl Diagnostic {
-    /// 创建检查器诊断信息。
-    fn new(range: TextRange, message: impl Into<String>) -> Self {
-        Self {
-            range,
-            message: message.into(),
-        }
-    }
+fn rope_to_lsp(pos: crate::input::Position) -> Position {
+    Position::new(pos.line, pos.character)
 }
 
 fn rust_to_style(mut style: StyleRefinement, source: &str) -> (StyleRefinement, Vec<Diagnostic>) {
     let rope = Rope::from(source);
     let Some(begin) = source.find("div()").map(|i| i + "div()".len()) else {
         let start_pos = Position::new(0, 0);
-        let end_pos = rope.offset_to_position(rope.len());
+        let end_pos = rope_to_lsp(rope.offset_to_position(rope.len()));
 
         return (
             style,
-            vec![Diagnostic::new(
-                TextRange::new(start_pos, end_pos),
-                "expected `div()`",
-            )],
+            vec![Diagnostic {
+                range: lsp_types::Range::new(start_pos, end_pos),
+                severity: Some(DiagnosticSeverity::ERROR),
+                message: "expected `div()`".into(),
+                ..Default::default()
+            }],
         );
     };
 
@@ -394,9 +376,15 @@ fn rust_to_style(mut style: StyleRefinement, source: &str) -> (StyleRefinement, 
             Some(method_reflection) => style = method_reflection.invoke(style),
             None => {
                 let message = format!("unknown method `{}`", method);
-                let start = rope.offset_to_position(offset.saturating_sub(method.len()));
-                let end = rope.offset_to_position(offset);
-                let diagnostic = Diagnostic::new(TextRange::new(start, end), message);
+                let start =
+                    rope_to_lsp(rope.offset_to_position(offset.saturating_sub(method.len())));
+                let end = rope_to_lsp(rope.offset_to_position(offset));
+                let diagnostic = lsp_types::Diagnostic {
+                    range: lsp_types::Range::new(start, end),
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    message,
+                    ..Default::default()
+                };
 
                 diagnostics.push(diagnostic);
             }
@@ -495,7 +483,7 @@ fn render_inspector(
         .id("inspector")
         .font_family(cx.theme().font_family.clone())
         .size_full()
-        .bg(cx.theme().background)
+        .bg(cx.theme().tokens.background)
         .border_l_1()
         .border_color(cx.theme().border)
         .text_color(cx.theme().foreground)
@@ -510,7 +498,7 @@ fn render_inspector(
                 .px_2()
                 .border_b_1()
                 .border_color(cx.theme().title_bar_border)
-                .bg(cx.theme().title_bar)
+                .bg(cx.theme().tokens.title_bar)
                 .child(
                     h_flex()
                         .gap_2()
@@ -565,10 +553,13 @@ fn render_inspector(
         .into_any_element()
 }
 
+// TODO: Add LSP completion provider for inspector once the `CompletionProvider`
+// trait is available from this crate. Currently it lives in `rgpui-editor`.
+
 #[cfg(test)]
 mod tests {
-    use crate::input::Position;
     use indoc::indoc;
+    use lsp_types::Position;
     use rgpui::{AbsoluteLength, DefiniteLength, Length, rems};
 
     #[test]

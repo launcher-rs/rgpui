@@ -1,4 +1,5 @@
-use crate::{HighlightTheme, Theme, ThemeColor, ThemeConfig, ThemeMode, ThemeSet};
+use crate::highlighter::HighlightTheme;
+use crate::{Theme, ThemeColor, ThemeConfig, ThemeMode, ThemeSet};
 #[allow(unused)]
 use anyhow::Result;
 use rgpui::{App, Global, SharedString};

@@ -1698,7 +1698,7 @@ impl Element for TextElement {
                 },
                 TextRun {
                     len: display_text.len() - ime_marked_range.end,
-                    ..run.clone()
+                    ..run
                 },
             ]
             .into_iter()

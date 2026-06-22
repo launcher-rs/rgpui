@@ -10,43 +10,27 @@ use rgpui::{
     prelude::FluentBuilder, px, relative, rems,
 };
 
-/// 单选按钮组件
+/// A Radio element.
 ///
-/// 此组件不包含单选组实现，您可以自行管理组逻辑。
+/// This is not included the Radio group implementation, you can manage the group by yourself.
 #[derive(IntoElement)]
 pub struct Radio {
-    /// 基础 Div 元素
     base: Div,
-    /// 样式引用
     style: StyleRefinement,
-    /// 元素 ID
     id: ElementId,
-    /// 标签文本
     label: Option<Text>,
-    /// 子元素
     children: Vec<AnyElement>,
-    /// 是否选中
     checked: bool,
-    /// 是否禁用
     disabled: bool,
-    /// 是否可聚焦
     tab_stop: bool,
-    /// 聚焦索引
     tab_index: isize,
-    /// 组件尺寸
     size: Size,
-    /// 点击回调
     on_click: Option<Rc<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
-    /// 提示文本
     tooltip: ComponentTooltip,
 }
 
 impl Radio {
-    /// 创建新的单选按钮
-    ///
-    /// # 参数
-    ///
-    /// * `id` - 元素 ID
+    /// Create a new Radio element with the given id.
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
             id: id.into(),
@@ -64,51 +48,50 @@ impl Radio {
         }
     }
 
-    /// 设置单选按钮的提示文本
+    /// Set tooltip text for the radio.
     pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
         self.tooltip.text = Some((tooltip.into(), None));
         self
     }
 
-    /// 设置单选按钮的标签文本
+    /// Set the label of the Radio element.
     pub fn label(mut self, label: impl Into<Text>) -> Self {
         self.label = Some(label.into());
         self
     }
 
-    /// 设置单选按钮的选中状态，默认为 `false`
+    /// Set the checked state of the Radio element, default is `false`.
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
         self
     }
 
-    /// 设置单选按钮的禁用状态，默认为 `false`
+    /// Set the disabled state of the Radio element, default is `false`.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
-    /// 设置单选按钮的聚焦索引，默认为 `0`
+    /// Set the tab index for the Radio element, default is `0`.
     pub fn tab_index(mut self, tab_index: isize) -> Self {
         self.tab_index = tab_index;
         self
     }
 
-    /// 设置单选按钮是否可聚焦，默认为 `true`
+    /// Set the tab stop for the Radio element, default is `true`.
     pub fn tab_stop(mut self, tab_stop: bool) -> Self {
         self.tab_stop = tab_stop;
         self
     }
 
-    /// 添加点击事件处理
+    /// Add on_click handler when the Radio is clicked.
     ///
-    /// `&bool` 参数表示**新的选中状态**
+    /// The `&bool` parameter is the **new checked state**.
     pub fn on_click(mut self, handler: impl Fn(&bool, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Rc::new(handler));
         self
     }
 
-    /// 处理点击事件
     fn handle_click(
         on_click: &Option<Rc<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
         checked: bool,
@@ -170,7 +153,7 @@ impl RenderOnce for Radio {
             (border_color, bg)
         };
 
-        // 使用 flex 包装使单选按钮内联显示
+        // wrap a flex to patch for let Radio display inline
         div().child(
             self.base
                 .id(self.id.clone())
@@ -213,7 +196,8 @@ impl RenderOnce for Radio {
                         .when(cx.theme().shadow && !disabled, |this| this.shadow_xs())
                         .map(|this| match self.checked {
                             false => this.bg(cx.theme().input_background()),
-                            _ => this.bg(bg),
+                            true if disabled => this.bg(bg),
+                            true => this.bg(cx.theme().tokens.primary),
                         })
                         .child(checkbox_check_icon(
                             self.id, self.size, checked, disabled, window, cx,
@@ -240,7 +224,7 @@ impl RenderOnce for Radio {
                     )
                 })
                 .on_mouse_down(rgpui::MouseButton::Left, |_, window, _| {
-                    // 避免在鼠标按下时聚焦
+                    // Avoid focus on mouse down.
                     window.prevent_default();
                 })
                 .when(!self.disabled, |this| {
@@ -257,27 +241,19 @@ impl RenderOnce for Radio {
     }
 }
 
-/// 单选按钮组组件
+/// A Radio group element.
 #[derive(IntoElement)]
 pub struct RadioGroup {
-    /// 元素 ID
     id: ElementId,
-    /// 样式引用
     style: StyleRefinement,
-    /// 单选按钮列表
     radios: Vec<Radio>,
-    /// 布局方向
     layout: Axis,
-    /// 选中的索引
     selected_index: Option<usize>,
-    /// 是否禁用
     disabled: bool,
-    /// 选中变化回调
     on_click: Option<Rc<dyn Fn(&usize, &mut Window, &mut App) + 'static>>,
 }
 
 impl RadioGroup {
-    /// 创建新的单选按钮组
     fn new(id: impl Into<ElementId>) -> Self {
         Self {
             id: id.into(),
@@ -290,49 +266,49 @@ impl RadioGroup {
         }
     }
 
-    /// 创建垂直布局的单选按钮组（默认）
+    /// Create a new Radio group with default Vertical layout.
     pub fn vertical(id: impl Into<ElementId>) -> Self {
         Self::new(id)
     }
 
-    /// 创建水平布局的单选按钮组
+    /// Create a new Radio group with Horizontal layout.
     pub fn horizontal(id: impl Into<ElementId>) -> Self {
         Self::new(id).layout(Axis::Horizontal)
     }
 
-    /// 设置单选按钮组的布局方向，默认为 `Axis::Vertical`
+    /// Set the layout of the Radio group. Default is `Axis::Vertical`.
     pub fn layout(mut self, layout: Axis) -> Self {
         self.layout = layout;
         self
     }
 
-    /// 添加选中索引变化时的回调
-    ///
-    /// `&usize` 参数为选中的索引
+    // Add on_click handler when selected index changes.
+    //
+    // The `&usize` parameter is the selected index.
     pub fn on_click(mut self, handler: impl Fn(&usize, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Rc::new(handler));
         self
     }
 
-    /// 设置选中的索引
+    /// Set the selected index.
     pub fn selected_index(mut self, index: Option<usize>) -> Self {
         self.selected_index = index;
         self
     }
 
-    /// 设置禁用状态
+    /// Set the disabled state.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
-    /// 添加单选按钮子元素
+    /// Add a child Radio element.
     pub fn child(mut self, child: impl Into<Radio>) -> Self {
         self.radios.push(child.into());
         self
     }
 
-    /// 添加多个单选按钮子元素
+    /// Add multiple child Radio elements.
     pub fn children(mut self, children: impl IntoIterator<Item = impl Into<Radio>>) -> Self {
         self.radios.extend(children.into_iter().map(Into::into));
         self

@@ -10,6 +10,7 @@ use rgpui::{
 use crate::StyledExt;
 use crate::scroll::ScrollableElement;
 use crate::text::TextViewFormat;
+use crate::text::markdown_ext::{MarkdownExtensions, MarkdownNode, MarkdownPlugin};
 use crate::text::node::CodeBlock;
 use crate::text::state::TextViewState;
 use crate::{global_state::GlobalState, text::TextViewStyle};
@@ -45,6 +46,24 @@ pub struct TextView {
     selectable: bool,
     scrollable: bool,
     code_block_actions: Option<Arc<CodeBlockActionsFn>>,
+    markdown_extensions: Arc<MarkdownExtensions>,
+}
+
+/// A plugin that can configure a [`TextView`].
+pub trait TextViewPlugin {
+    fn setup(self, text_view: TextView) -> TextView;
+}
+
+impl<P> TextViewPlugin for P
+where
+    P: MarkdownPlugin,
+{
+    fn setup(self, mut text_view: TextView) -> TextView {
+        let extensions = Arc::make_mut(&mut text_view.markdown_extensions);
+        let current = std::mem::take(extensions);
+        *extensions = current.plugin(self);
+        text_view
+    }
 }
 
 impl Styled for TextView {
@@ -66,6 +85,7 @@ impl TextView {
             selectable: false,
             scrollable: false,
             code_block_actions: None,
+            markdown_extensions: Arc::default(),
         }
     }
 
@@ -81,6 +101,7 @@ impl TextView {
             selectable: false,
             scrollable: false,
             code_block_actions: None,
+            markdown_extensions: Arc::default(),
         }
     }
 
@@ -96,21 +117,7 @@ impl TextView {
             selectable: false,
             scrollable: false,
             code_block_actions: None,
-        }
-    }
-
-    /// 创建一个新的纯文本文本视图，支持文本选择。
-    pub fn plain(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Self {
-        Self {
-            id: id.into(),
-            format: Some(TextViewFormat::Plain),
-            text: Some(text.into()),
-            text_view_style: TextViewStyle::default(),
-            style: StyleRefinement::default(),
-            state: None,
-            selectable: false,
-            scrollable: false,
-            code_block_actions: None,
+            markdown_extensions: Arc::default(),
         }
     }
 
@@ -157,6 +164,63 @@ impl TextView {
         }));
         self
     }
+
+    /// Replace the Markdown extension registry.
+    pub fn markdown_extensions(mut self, extensions: MarkdownExtensions) -> Self {
+        self.markdown_extensions = Arc::new(extensions);
+        self
+    }
+
+    /// Enable MDX JSX/expression parsing.
+    ///
+    /// This disables raw HTML parsing because `markdown-rs` gives HTML
+    /// priority over MDX when both are enabled.
+    pub fn markdown_mdx(mut self) -> Self {
+        let extensions = Arc::make_mut(&mut self.markdown_extensions);
+        *extensions = extensions.clone().mdx();
+        self
+    }
+
+    /// Register a custom block-level Markdown parser.
+    ///
+    /// The parser runs during Markdown AST conversion and must be independent
+    /// of [`Window`] / [`App`]. Store any parsed data in [`MarkdownNode`] and
+    /// render it later with [`Self::markdown_block_renderer`].
+    pub fn markdown_block_parser<F>(mut self, parser: F) -> Self
+    where
+        F: for<'a> Fn(
+                &markdown::mdast::Node,
+                &crate::text::MarkdownParseContext<'a>,
+            ) -> Option<MarkdownNode>
+            + Send
+            + Sync
+            + 'static,
+    {
+        Arc::make_mut(&mut self.markdown_extensions).push_block_parser(parser);
+        self
+    }
+
+    /// Register a renderer for a custom block-level Markdown node name.
+    pub fn markdown_block_renderer<F, E>(
+        mut self,
+        name: impl Into<SharedString>,
+        renderer: F,
+    ) -> Self
+    where
+        F: Fn(&MarkdownNode, &mut Window, &mut App) -> E + Send + Sync + 'static,
+        E: IntoElement,
+    {
+        Arc::make_mut(&mut self.markdown_extensions).push_block_renderer(name, renderer);
+        self
+    }
+
+    /// Apply a reusable text view plugin.
+    pub fn plugin<P>(self, plugin: P) -> Self
+    where
+        P: TextViewPlugin,
+    {
+        plugin.setup(self)
+    }
 }
 
 impl IntoElement for TextView {
@@ -200,10 +264,12 @@ impl Element for TextView {
             let state = window.use_keyed_state(
                 SharedString::from(format!("{}/state", self.id)),
                 cx,
-                move |_, cx| match default_format {
-                    TextViewFormat::Markdown => TextViewState::markdown(default_text.as_str(), cx),
-                    TextViewFormat::Html => TextViewState::html(default_text.as_str(), cx),
-                    TextViewFormat::Plain => TextViewState::plain(default_text.as_str(), cx),
+                move |_, cx| {
+                    if default_format == TextViewFormat::Markdown {
+                        TextViewState::markdown(default_text.as_str(), cx)
+                    } else {
+                        TextViewState::html(default_text.as_str(), cx)
+                    }
                 },
             );
             self.state = Some(state.clone());
@@ -212,6 +278,7 @@ impl Element for TextView {
 
         state.update(cx, |state, cx| {
             state.code_block_actions = self.code_block_actions.clone();
+            state.set_markdown_extensions(self.markdown_extensions.clone(), cx);
             state.selectable = self.selectable;
             state.scrollable = self.scrollable;
             state.text_view_style = self.text_view_style.clone();
@@ -288,7 +355,7 @@ impl Element for TextView {
 
 #[cfg(test)]
 mod tests {
-    use super::TextView;
+    use super::{TextView, TextViewPlugin};
     use crate::text::TextViewState;
     use rgpui::{
         AppContext as _, Context, Entity, IntoElement, Modifiers, MouseButton, MouseDownEvent,
@@ -298,6 +365,15 @@ mod tests {
 
     struct TextViewTestRoot {
         text_view: Entity<TextViewState>,
+    }
+
+    struct DummyTextViewPlugin;
+
+    impl TextViewPlugin for DummyTextViewPlugin {
+        fn setup(self, mut text_view: TextView) -> TextView {
+            text_view.selectable = true;
+            text_view
+        }
     }
 
     impl TextViewTestRoot {
@@ -320,6 +396,13 @@ mod tests {
                 )
                 .child(div().h(px(40.)).child("footer"))
         }
+    }
+
+    #[test]
+    fn plugin_accepts_text_view_plugins_beyond_markdown() {
+        let view = TextView::markdown("plugin-test", "").plugin(DummyTextViewPlugin);
+
+        assert!(view.selectable);
     }
 
     #[rgpui::test]
@@ -430,5 +513,85 @@ mod tests {
 
         let selected_text = view.read_with(cx, |root, cx| root.text_view.read(cx).selected_text());
         assert_eq!(selected_text.trim(), "quick select value");
+    }
+
+    // Regression: markdown `TextView` items inside an outer `rgpui::list` with
+    // `measure_all` must keep a stable total content height while scrolling.
+    // Before synchronous full-replace parsing, off-screen markdown views were
+    // first measured with empty content and the scrollbar thumb jittered as the
+    // total height grew during scrolling.
+    #[rgpui::test]
+    fn outer_list_content_total_stable_while_scrolling(cx: &mut TestAppContext) {
+        use rgpui::{ListAlignment, ListState, list};
+
+        const ITEMS: &[&str] = &[
+            "# Heading\n\nA paragraph long enough to wrap across several lines and produce a non-trivial height.",
+            "Short.",
+            "Paragraph A\n\nParagraph B\n\nParagraph C with more words to increase the height.",
+            "## Subheading\n\n- One\n- Two\n- Three\n\nClosing paragraph.",
+            "Only one line.",
+            "**Bold**: medium length text with `code` mixed with regular words.",
+            "1. First\n2. Second\n3. Third\n\nA short closing paragraph.",
+            "A long message with enough words to wrap across multiple lines, create a taller item, and verify that off-screen measurement matches visible measurement.",
+        ];
+        let n = 40usize;
+
+        struct ListRoot {
+            state: ListState,
+        }
+        impl Render for ListRoot {
+            fn render(&mut self, _w: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+                div().w(px(360.)).h(px(500.)).child(
+                    list(self.state.clone(), |ix, _w, _cx| {
+                        div()
+                            .w_full()
+                            .child(TextView::markdown(
+                                ("md", ix as u64),
+                                ITEMS[ix % ITEMS.len()],
+                            ))
+                            .into_any_element()
+                    })
+                    .size_full(),
+                )
+            }
+        }
+
+        cx.update(crate::init);
+        let state = ListState::new(n, ListAlignment::Top, px(2048.)).measure_all();
+        let probe = state.clone();
+        let (_view, cx) = cx.add_window_view(|_w, _cx| ListRoot { state });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|w, cx| {
+            let _ = w.draw(cx);
+        });
+        cx.run_until_parked();
+        cx.update(|w, cx| {
+            let _ = w.draw(cx);
+        });
+
+        let total = |p: &ListState| {
+            f32::from(p.max_offset_for_scrollbar().y + p.viewport_bounds().size.height)
+        };
+        let mut totals = vec![total(&probe)];
+        for _ in 0..20 {
+            probe.scroll_by(px(150.));
+            cx.update(|w, cx| {
+                let _ = w.draw(cx);
+            });
+            cx.run_until_parked();
+            totals.push(total(&probe));
+        }
+        let min = totals.iter().cloned().fold(f32::INFINITY, f32::min);
+        let max = totals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        println!(
+            "OUTER_LIST_PROBE min={min:.1} max={max:.1} delta={:.1}",
+            max - min
+        );
+        assert!(
+            (max - min) < 2.0,
+            "list content total jittered while scrolling: min={min} max={max} totals={totals:?}"
+        );
     }
 }

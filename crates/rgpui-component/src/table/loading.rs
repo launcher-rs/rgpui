@@ -60,7 +60,7 @@ impl RenderOnce for LoadingRow {
             .items_center()
             .justify_between()
             .overflow_hidden()
-            .when(self.header, |this| this.bg(cx.theme().table_head))
+            .when(self.header, |this| this.bg(cx.theme().tokens.table_head))
             .when(!self.header, |this| {
                 this.border_t_1().border_color(cx.theme().table_row_border)
             })

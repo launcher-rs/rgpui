@@ -1,6 +1,8 @@
 mod document;
 mod format;
 mod inline;
+mod inline_flow;
+mod markdown_ext;
 mod node;
 pub(crate) mod selection;
 mod state;
@@ -9,6 +11,7 @@ mod text_view;
 mod utils;
 mod window_selection;
 
+pub use markdown_ext::*;
 use rgpui::{App, ElementId, IntoElement, RenderOnce, SharedString, Window};
 pub use state::*;
 pub use style::*;
@@ -32,15 +35,6 @@ pub fn markdown(source: impl Into<SharedString>) -> TextView {
 pub fn html(source: impl Into<SharedString>) -> TextView {
     let id: ElementId = ElementId::CodeLocation(*std::panic::Location::caller());
     TextView::html(id, source)
-}
-
-/// 创建一个新的纯文本文本视图，使用代码位置作为 id。
-///
-/// 支持文本选择功能，适用于显示原始文本内容。
-#[track_caller]
-pub fn plain(source: impl Into<SharedString>) -> TextView {
-    let id: ElementId = ElementId::CodeLocation(*std::panic::Location::caller());
-    TextView::plain(id, source)
 }
 
 #[derive(IntoElement, Clone)]

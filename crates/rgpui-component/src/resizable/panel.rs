@@ -108,12 +108,9 @@ impl ResizablePanelGroup {
     }
 }
 
-impl<T> From<T> for ResizablePanel
-where
-    T: Into<AnyElement>,
-{
-    fn from(value: T) -> Self {
-        resizable_panel().child(value.into())
+impl From<AnyElement> for ResizablePanel {
+    fn from(value: AnyElement) -> Self {
+        resizable_panel().child(value)
     }
 }
 

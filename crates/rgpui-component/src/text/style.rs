@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rgpui::{Pixels, Rems, StyleRefinement, px, rems};
 
-use crate::HighlightTheme;
+use crate::highlighter::HighlightTheme;
 
 /// TextViewStyle used to customize the style for [`TextView`].
 #[derive(Clone)]
@@ -22,6 +22,8 @@ pub struct TextViewStyle {
     pub code_block: StyleRefinement,
     /// The style refinement for tables.
     pub table: StyleRefinement,
+    /// The style refinement for table cells.
+    pub table_cell: StyleRefinement,
     pub is_dark: bool,
 }
 
@@ -42,6 +44,7 @@ impl Default for TextViewStyle {
             highlight_theme: HighlightTheme::default_light().clone(),
             code_block: StyleRefinement::default(),
             table: StyleRefinement::default(),
+            table_cell: StyleRefinement::default(),
             is_dark: false,
         }
     }

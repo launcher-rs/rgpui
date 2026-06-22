@@ -93,6 +93,9 @@ pub use rgpui_component_macros::icon_named;
 pub use root::Root;
 pub use styled::*;
 pub use theme::*;
+// Explicit re-exports needed for Rust 2024 edition glob re-export rules
+pub use theme::highlight::HighlightTheme;
+pub use theme::highlight::HighlightThemeStyle;
 pub use time::{calendar, date_picker};
 pub use title_bar::*;
 pub use virtual_list::{VirtualList, VirtualListScrollHandle, h_virtual_list, v_virtual_list};

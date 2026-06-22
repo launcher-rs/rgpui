@@ -47,6 +47,14 @@
 | #2454 | 2026-06-12 | Fix tree events to emit when set_selected_item targeted hidden nodes |
 | #2453 | 2026-06-12 | input: restore custom context menu API on top of NativeMenu |
 | #2452 | 2026-06-12 | fix: add missing wasm theme gutter field |
+| #2498 | 2026-06-22 | number_input: Match stepper button variant to appearance |
+| #2493 | 2026-06-22 | test: stabilize markdown overlap highlight test |
+| #2489 | 2026-06-22 | Update link |
+| #2371 | 2026-06-22 | Merge branch 'main' into md-render-optimization |
+| #2484 | 2026-06-22 | . |
+| #2483 | 2026-06-22 | Merge branch 'main' into markdown-inline-image |
+| #2473 | 2026-06-22 | docs: add TextView Markdown plugin docs |
+| #2485 | 2026-06-22 | docs: clarify theme registry lookup |
 
 ## yororen-ui
 

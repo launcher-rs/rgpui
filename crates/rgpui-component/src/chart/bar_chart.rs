@@ -430,7 +430,7 @@ where
 ///
 /// When a stop position falls outside `[0, 1]` (e.g. because `chart_to_bar`
 /// returned a value past the bar's edge for a chart-relative gradient),
-/// gpui's renderer would clamp the position and lose the gradient effect.
+/// rgpui's renderer would clamp the position and lose the gradient effect.
 /// This function instead replaces such a stop with the color sampled along
 /// the line through both stops at position `0.0` or `1.0`, preserving the
 /// visual slice.

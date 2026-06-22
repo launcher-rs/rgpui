@@ -25,7 +25,6 @@ use crate::{
 
 const CONTEXT: &str = "Combobox";
 
-/// 初始化组合框的键盘绑定
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("up", SelectUp, Some(CONTEXT)),
@@ -42,50 +41,33 @@ pub(crate) fn init(cx: &mut App) {
 
 // MARK: ComboboxTriggerCtx
 
-/// 传递给 [`Combobox`] 的 `render_trigger` 闭包的上下文
+/// Context passed to the `render_trigger` closure on [`Combobox`].
 pub struct ComboboxTriggerCtx<'a, D: SearchableListDelegate + 'static> {
-    /// 当前选中项
     pub selection: &'a [(IndexPath, D::Item)],
-    /// 占位文本
     pub placeholder: Option<&'a SharedString>,
-    /// 是否打开
     pub open: bool,
-    /// 是否禁用
     pub disabled: bool,
-    /// 组件尺寸
     pub size: Size,
 }
 
 // MARK: ComboboxChange
 
-/// 向后兼容别名 — 新代码应直接使用 [`SearchableListChange`]
+/// Back-compat alias — new code should use [`SearchableListChange`] directly.
 pub type ComboboxChange = SearchableListChange;
 
 // MARK: ComboboxOptions
 
-/// 组合框配置选项
 struct ComboboxOptions {
-    /// 样式引用
     style: StyleRefinement,
-    /// 组件尺寸
     size: Size,
-    /// 是否显示清除按钮
     cleanable: bool,
-    /// 占位文本
     placeholder: Option<SharedString>,
-    /// 搜索框占位文本
     search_placeholder: Option<SharedString>,
-    /// 菜单宽度
     menu_width: Length,
-    /// 菜单最大高度
     menu_max_h: Length,
-    /// 是否禁用
     disabled: bool,
-    /// 是否显示外观样式
     appearance: bool,
-    /// 触发器图标
     trigger_icon: Option<Icon>,
-    /// 选中标记图标
     check_icon: Option<Icon>,
 }
 
@@ -109,38 +91,31 @@ impl Default for ComboboxOptions {
 
 // MARK: ComboboxState
 
-/// [`Combobox`] 组件的状态
+/// State of the [`Combobox`] component.
 pub struct ComboboxState<D: SearchableListDelegate + 'static>
 where
     <D::Item as SearchableListItem>::Value: PartialEq + Clone,
 {
-    /// 底层可搜索列表状态
     pub(crate) state: SearchableListState<D>,
 
-    // Combobox 特有字段
-    /// 是否多选
+    // Combobox-specific fields
     multiple: bool,
-    /// 是否可搜索
     searchable: bool,
-    /// 触发器图标
     trigger_icon: Option<Icon>,
-    /// 选中标记图标
     check_icon: Option<Icon>,
-    /// 自定义触发器渲染闭包
     render_trigger:
         Option<Box<dyn Fn(&ComboboxTriggerCtx<D>, &mut Window, &mut App) -> AnyElement + 'static>>,
-    /// 页脚渲染闭包
     footer: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
 }
 
-/// [`ComboboxState`] 发出的事件
+/// Events emitted by [`ComboboxState`].
 pub enum ComboboxEvent<D: SearchableListDelegate + 'static>
 where
     <D::Item as SearchableListItem>::Value: PartialEq + Clone,
 {
-    /// 每次切换（添加或移除项）时发出
+    /// Emitted on every toggle (item added or removed).
     Change(Vec<<D::Item as SearchableListItem>::Value>),
-    /// 弹出框关闭时发出
+    /// Emitted when the popover closes.
     Confirm(Vec<<D::Item as SearchableListItem>::Value>),
 }
 
@@ -149,7 +124,7 @@ where
     D: SearchableListDelegate + 'static,
     <D::Item as SearchableListItem>::Value: PartialEq + Clone,
 {
-    /// 创建新的 `Combobox` 状态
+    /// Create a new `Combobox` state.
     pub fn new(
         delegate: D,
         selected_indices: Vec<IndexPath>,
@@ -171,7 +146,7 @@ where
                         let Some(index) = selected_index else {
                             return;
                         };
-                        // 防护：验证项是否存在再继续
+
                         let Some(item) = list_state.delegate().delegate.item(index).cloned() else {
                             return;
                         };
@@ -192,8 +167,8 @@ where
                         let before_indices: Vec<IndexPath> =
                             selection.iter().map(|(ix, _)| *ix).collect();
 
-                        // on_will_change 直接调用 — 实体句柄访问会
-                        // 重新进入 defer_in 为此回调持有的 ListState 锁。
+                        // on_will_change is called directly — entity-handle access would
+                        // re-enter the ListState lock that defer_in holds for this callback.
                         list_state
                             .delegate_mut()
                             .delegate
@@ -221,7 +196,7 @@ where
                             this.state.selection.clone()
                         });
 
-                        // 同步快照并直接触发 on_confirm — 同样的重入防护
+                        // Sync snapshot and fire on_confirm directly — same re-entrancy guard.
                         if let Ok(new_selection) = new_selection {
                             list_state
                                 .delegate_mut()
@@ -237,7 +212,7 @@ where
                     }
                 });
             },
-            // on_cancel — 关闭并发出当前值的 Confirm 事件
+            // on_cancel — close and emit Confirm with current values
             move |_final_selected_index, window, cx| {
                 cx.defer_in(window, {
                     let weak_cancel = weak_cancel.clone();
@@ -282,39 +257,39 @@ where
         }
     }
 
-    /// 启用多选模式
+    /// Enable multi-select mode.
     ///
-    /// 当为 `true` 时，点击项会切换其选中状态，弹出框保持打开
-    /// 当为 `false`（默认）时，点击项会替换选中项并关闭弹出框
+    /// When `true`, clicking an item toggles it in the selection and the popover stays open.
+    /// When `false` (default), clicking an item replaces the selection and closes the popover.
     pub fn multiple(mut self, multiple: bool) -> Self {
         self.multiple = multiple;
         self
     }
 
-    /// 启用或禁用下拉框顶部的搜索输入
+    /// Enable or disable the search input at the top of the dropdown.
     pub fn searchable(mut self, searchable: bool) -> Self {
         self.searchable = searchable;
         self
     }
 
-    /// 返回当前选中的值
+    /// Return the currently selected values.
     pub fn selected_values(&self) -> Vec<<D::Item as SearchableListItem>::Value> {
         self.state.selected_values()
     }
 
-    /// 返回第一个选中的值，未选中时返回 `None`
+    /// Return the first selected value, or `None` when nothing is selected.
     ///
-    /// 适用于单选模式（`.multiple(false)`）的便捷方法
+    /// Convenience for single-select mode (`.multiple(false)`).
     pub fn selected_value(&self) -> Option<<D::Item as SearchableListItem>::Value> {
         self.state.selected_values().into_iter().next()
     }
 
-    /// 返回当前选中的 `(IndexPath, Item)` 对
+    /// Return the currently selected `(IndexPath, Item)` pairs.
     pub fn selection(&self) -> &[(IndexPath, D::Item)] {
         self.state.selection()
     }
 
-    /// 替换整个选中集合
+    /// Replace the entire selection set.
     pub fn set_selected_indices(
         &mut self,
         indices: impl IntoIterator<Item = IndexPath>,
@@ -326,7 +301,7 @@ where
         cx.notify();
     }
 
-    /// 向选中集合添加单个索引（如果不存在），返回是否已添加
+    /// Add a single index to the selection, if not already present, returning whether it was added.
     pub fn add_selected_index(&mut self, index: IndexPath, cx: &mut Context<Self>) -> bool {
         let added = self.state.add_selected_index(index, cx);
 
@@ -338,7 +313,7 @@ where
         added
     }
 
-    /// 从选中集合移除单个索引，返回是否已移除
+    /// Remove a single index from the selection, returning whether it was removed.
     pub fn remove_selected_index(&mut self, index: IndexPath, cx: &mut Context<Self>) -> bool {
         let removed = self.state.remove_selected_index(index);
 
@@ -349,7 +324,7 @@ where
         removed
     }
 
-    /// 清除所有选中值
+    /// Clear all selected values.
     pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
         self.state.selection.clear();
         self.state.sync_snapshot(cx);
@@ -357,14 +332,14 @@ where
         cx.notify();
     }
 
-    /// 替换底层代理（项数据源）
+    /// Replace the underlying delegate (item data source).
     pub fn set_items(&mut self, items: D, _: &mut Window, cx: &mut Context<Self>) {
         self.state.list.update(cx, |list, _| {
             list.delegate_mut().delegate = items;
         });
     }
 
-    /// 聚焦触发器
+    /// Focus the trigger.
     pub fn focus(&self, window: &mut Window, cx: &mut App) {
         self.state.focus_handle.focus(window, cx);
     }
@@ -452,7 +427,6 @@ where
         }
     }
 
-    /// 失去焦点时关闭菜单
     fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.state.list.read(cx).is_focused(window, cx)
             || self.state.focus_handle.is_focused(window)
@@ -464,7 +438,6 @@ where
         cx.notify();
     }
 
-    /// 处理向上选择动作
     fn up(&mut self, _: &SelectUp, window: &mut Window, cx: &mut Context<Self>) {
         if !self.state.open {
             self.set_open(true, cx);
@@ -474,7 +447,6 @@ where
         cx.propagate();
     }
 
-    /// 处理向下选择动作
     fn down(&mut self, _: &SelectDown, window: &mut Window, cx: &mut Context<Self>) {
         if !self.state.open {
             self.set_open(true, cx);
@@ -484,7 +456,6 @@ where
         cx.propagate();
     }
 
-    /// 处理确认动作
     fn enter(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
         cx.propagate();
 
@@ -496,7 +467,6 @@ where
         self.state.list.focus_handle(cx).focus(window, cx);
     }
 
-    /// 切换菜单打开状态
     fn toggle_menu(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
 
@@ -509,7 +479,6 @@ where
         cx.notify();
     }
 
-    /// 处理取消动作（Escape）
     fn escape(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
         if !self.state.open {
             cx.propagate();
@@ -524,7 +493,6 @@ where
         cx.notify();
     }
 
-    /// 设置打开状态
     fn set_open(&mut self, open: bool, cx: &mut Context<Self>) {
         self.state.open = open;
 
@@ -537,13 +505,11 @@ where
         cx.notify();
     }
 
-    /// 清除选中
     fn clean(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
         self.clear_selection(cx);
     }
 
-    /// 默认触发器内容渲染
     fn default_trigger_body(&self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let placeholder_text = self
             .state
@@ -739,29 +705,23 @@ where
     }
 }
 
-// MARK: Combobox 元素
+// MARK: Combobox element
 
-/// 支持单选和多选的组合框
+/// A combo box with support for single and multi-select.
 ///
-/// 点击项会切换其选中状态；下拉框保持打开直到用户
-/// 按下 Escape 或点击外部
+/// Clicking an item toggles it in the selection; the dropdown stays open until the user
+/// presses Escape or clicks outside.
 #[derive(IntoElement)]
 pub struct Combobox<D: SearchableListDelegate + 'static>
 where
     <D::Item as SearchableListItem>::Value: PartialEq + Clone,
 {
-    /// 元素 ID
     id: ElementId,
-    /// 组合框状态
     state: Entity<ComboboxState<D>>,
-    /// 配置选项
     options: ComboboxOptions,
-    /// 自定义触发器渲染闭包
     render_trigger:
         Option<Box<dyn Fn(&ComboboxTriggerCtx<D>, &mut Window, &mut App) -> AnyElement + 'static>>,
-    /// 页脚渲染闭包
     footer: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
-    /// 空状态渲染闭包
     empty: Option<Box<dyn Fn(&mut Window, &App) -> AnyElement + 'static>>,
 }
 
@@ -770,7 +730,6 @@ where
     D: SearchableListDelegate + 'static,
     <D::Item as SearchableListItem>::Value: PartialEq + Clone,
 {
-    /// 创建新的组合框
     pub fn new(state: &Entity<ComboboxState<D>>) -> Self {
         Self {
             id: ("multi-combo-box", state.entity_id()).into(),
@@ -782,55 +741,55 @@ where
         }
     }
 
-    /// 设置下拉菜单的宽度
+    /// Set the width of the dropdown menu.
     pub fn menu_width(mut self, width: impl Into<Length>) -> Self {
         self.options.menu_width = width.into();
         self
     }
 
-    /// 设置下拉菜单的最大高度
+    /// Set the maximum height of the dropdown menu.
     pub fn menu_max_h(mut self, max_h: impl Into<Length>) -> Self {
         self.options.menu_max_h = max_h.into();
         self
     }
 
-    /// 设置未选中任何项时显示的占位文本
+    /// Set the placeholder text shown when no items are selected.
     pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.options.placeholder = Some(placeholder.into());
         self
     }
 
-    /// 覆盖触发器的下拉箭头图标
+    /// Override the trigger chevron icon.
     pub fn icon(mut self, icon: impl Into<Icon>) -> Self {
         self.options.trigger_icon = Some(icon.into());
         self
     }
 
-    /// 覆盖选中项旁边显示的尾部勾选图标
+    /// Override the trailing check icon shown next to selected items.
     pub fn check_icon(mut self, icon: impl Into<Icon>) -> Self {
         self.options.check_icon = Some(icon.into());
         self
     }
 
-    /// 设置搜索输入框的占位文本
+    /// Set the placeholder text for the search input.
     pub fn search_placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.options.search_placeholder = Some(placeholder.into());
         self
     }
 
-    /// 当至少选中一个项时显示清除按钮
+    /// Show a clear button when at least one item is selected.
     pub fn cleanable(mut self, cleanable: bool) -> Self {
         self.options.cleanable = cleanable;
         self
     }
 
-    /// 设置禁用状态
+    /// Set the disabled state.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.options.disabled = disabled;
         self
     }
 
-    /// 设置渲染空状态元素的自定义闭包
+    /// Set a custom closure that renders the empty-state element.
     pub fn empty<E: IntoElement + 'static>(
         mut self,
         builder: impl Fn(&mut Window, &App) -> E + 'static,
@@ -841,13 +800,13 @@ where
         self
     }
 
-    /// 控制触发器是否显示边框和背景
+    /// Control whether the trigger shows a border and background.
     pub fn appearance(mut self, appearance: bool) -> Self {
         self.options.appearance = appearance;
         self
     }
 
-    /// 覆盖整个触发器元素
+    /// Override the entire trigger element.
     pub fn render_trigger<E: IntoElement + 'static>(
         mut self,
         f: impl Fn(&ComboboxTriggerCtx<D>, &mut Window, &mut App) -> E + 'static,
@@ -858,7 +817,7 @@ where
         self
     }
 
-    /// 在下拉框底部的分隔线下方渲染元素
+    /// Render an element below a separator at the bottom of the dropdown.
     pub fn footer<E: IntoElement + 'static>(
         mut self,
         f: impl Fn(&mut Window, &mut App) -> E + 'static,
@@ -937,9 +896,9 @@ where
     }
 }
 
-// MARK: 渲染辅助函数
+// MARK: Rendering helpers
 
-/// 渲染带样式的触发器容器
+/// Renders the styled trigger container.
 #[allow(clippy::too_many_arguments)]
 fn render_trigger_container(
     disabled: bool,
@@ -994,7 +953,7 @@ fn render_trigger_container(
         .on_prepaint(prepaint_handler)
 }
 
-/// 渲染延迟锚定弹出框外壳，包含可搜索列表和可选页脚
+/// Renders the deferred anchored popup shell containing the searchable list and optional footer.
 #[allow(clippy::too_many_arguments)]
 fn render_popup_shell<D: SearchableListDelegate + 'static>(
     list: &Entity<ListState<SearchableListAdapter<D>>>,
@@ -1023,7 +982,7 @@ fn render_popup_shell<D: SearchableListDelegate + 'static>(
                     v_flex()
                         .occlude()
                         .mt_1p5()
-                        .bg(cx.theme().background)
+                        .bg(cx.theme().tokens.background)
                         .border_1()
                         .border_color(cx.theme().border)
                         .rounded(popup_radius)
@@ -1052,7 +1011,7 @@ fn render_popup_shell<D: SearchableListDelegate + 'static>(
         .into_any_element()
 }
 
-// MARK: 测试
+// MARK: Tests
 
 #[cfg(test)]
 mod tests {

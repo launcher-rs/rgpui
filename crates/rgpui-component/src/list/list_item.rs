@@ -8,58 +8,39 @@ use rgpui::{
 use smallvec::SmallVec;
 use std::collections::HashMap;
 
-/// 列表项的模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum ListItemMode {
-    /// 普通条目
     #[default]
     Entry,
-    /// 分隔线
     Separator,
 }
 
 impl ListItemMode {
-    /// 检查是否为分隔线
     #[inline]
     fn is_separator(&self) -> bool {
         matches!(self, ListItemMode::Separator)
     }
 }
 
-/// 列表项组件
 #[derive(IntoElement)]
 pub struct ListItem {
-    /// 基础 Stateful Div
     base: Stateful<Div>,
-    /// 列表项模式
     mode: ListItemMode,
-    /// 样式引用
     style: StyleRefinement,
-    /// 是否禁用
     disabled: bool,
-    /// 是否选中
     selected: bool,
-    /// 是否次要选中（如右键菜单）
     secondary_selected: bool,
-    /// 是否确认状态
     confirmed: bool,
-    /// 选中标记图标
     check_icon: Option<Icon>,
-    /// 点击回调
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
-    /// 鼠标按下回调
     on_mouse_down:
         HashMap<MouseButton, Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>>,
-    /// 鼠标进入回调
     on_mouse_enter: Option<Box<dyn Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static>>,
-    /// 后缀元素
     suffix: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
-    /// 子元素
     children: SmallVec<[AnyElement; 2]>,
 }
 
 impl ListItem {
-    /// 创建新的列表项
     pub fn new(id: impl Into<ElementId>) -> Self {
         let id: ElementId = id.into();
         Self {
@@ -79,37 +60,36 @@ impl ListItem {
         }
     }
 
-    /// 将此列表项设置为分隔线，不可选中
+    /// Set this list item to as a separator, it not able to be selected.
     pub fn separator(mut self) -> Self {
         self.mode = ListItemMode::Separator;
         self
     }
 
-    /// 设置显示选中标记图标，默认为 None
+    /// Set to show check icon, default is None.
     pub fn check_icon(mut self, icon: impl Into<Icon>) -> Self {
         self.check_icon = Some(icon.into());
         self
     }
 
-    /// 设置列表项为选中样式
+    /// Set ListItem as the selected item style.
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
         self
     }
 
-    /// 设置列表项为确认样式，将显示勾选图标
+    /// Set ListItem as the confirmed item style, it will show a check icon.
     pub fn confirmed(mut self, confirmed: bool) -> Self {
         self.confirmed = confirmed;
         self
     }
 
-    /// 设置禁用状态
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
-    /// 设置输入字段的后缀元素，例如清除按钮
+    /// Set the suffix element of the input field, for example a clear button.
     pub fn suffix<F, E>(mut self, builder: F) -> Self
     where
         F: Fn(&mut Window, &mut App) -> E + 'static,
@@ -121,7 +101,6 @@ impl ListItem {
         self
     }
 
-    /// 添加点击事件处理
     pub fn on_click(
         mut self,
         handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -130,7 +109,6 @@ impl ListItem {
         self
     }
 
-    /// 添加鼠标按下事件处理
     pub fn on_mouse_down(
         mut self,
         button: MouseButton,
@@ -140,7 +118,6 @@ impl ListItem {
         self
     }
 
-    /// 添加鼠标进入事件处理
     pub fn on_mouse_enter(
         mut self,
         handler: impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static,
@@ -222,7 +199,7 @@ impl RenderOnce for ListItem {
                             })
                     })
                     .when(!is_active, |this| {
-                        this.hover(|this| this.bg(cx.theme().list_hover))
+                        this.hover(|this| this.bg(cx.theme().tokens.list_hover))
                     })
             })
             .when(!is_selectable, |this| {

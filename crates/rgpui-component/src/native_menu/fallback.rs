@@ -9,6 +9,7 @@ use rgpui::{
     Point, Render, Subscription, Window, anchored, deferred, div, px,
 };
 
+use crate::Icon;
 use crate::menu::{PopupMenu, PopupMenuItem};
 use crate::root::Root;
 
@@ -78,7 +79,15 @@ fn build_popup(
                 NativeMenuItem::Item {
                     label,
                     disabled,
+                    checked: _,
+                    icon: Some(icon),
+                    action: Some(action),
+                } => menu.menu_with_icon_and_disabled(label, *icon, action, disabled),
+                NativeMenuItem::Item {
+                    label,
+                    disabled,
                     checked,
+                    icon: None,
                     action: Some(action),
                 } => menu.menu_with_check_and_disabled(label, checked, action, disabled),
                 NativeMenuItem::Item { action: None, .. } => menu,

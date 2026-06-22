@@ -56,7 +56,6 @@ pub struct Label {
     secondary: Option<SharedString>,
     masked: bool,
     highlights_text: Option<HighlightsMatch>,
-    truncate_middle: bool,
 }
 
 impl Label {
@@ -69,7 +68,6 @@ impl Label {
             secondary: None,
             masked: false,
             highlights_text: None,
-            truncate_middle: false,
         }
     }
 
@@ -89,13 +87,6 @@ impl Label {
     /// Set for matching text to highlight in the label.
     pub fn highlights(mut self, text: impl Into<HighlightsMatch>) -> Self {
         self.highlights_text = Some(text.into());
-        self
-    }
-
-    /// 当文本溢出时在中间截断，保留开头和结尾（例如 "long fi…name.rs"）。
-    /// 适用于文件名，前缀和扩展名都很重要的情况。
-    pub fn truncate_middle(mut self) -> Self {
-        self.truncate_middle = true;
         self
     }
 
@@ -214,12 +205,6 @@ impl RenderOnce for Label {
         div()
             .line_height(rems(1.25))
             .text_color(cx.theme().foreground)
-            .when(self.truncate_middle, |this| {
-                this.min_w_0()
-                    .overflow_x_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis_middle()
-            })
             .refine_style(&self.style)
             .child(
                 StyledText::new(&text).when_some(highlights, |this, hl| this.with_highlights(hl)),

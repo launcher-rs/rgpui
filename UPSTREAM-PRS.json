@@ -422,6 +422,74 @@
       "title": "Avoid selections allocations",
       "status": "check-failed",
       "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2498,
+      "upstream": "gpui-component",
+      "title": "number_input: Match stepper button variant to appearance",
+      "status": "merged",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2493,
+      "upstream": "gpui-component",
+      "title": "test: stabilize markdown overlap highlight test",
+      "status": "analyzed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2489,
+      "upstream": "gpui-component",
+      "title": "Update link",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2371,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into md-render-optimization",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2484,
+      "upstream": "gpui-component",
+      "title": ".",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2483,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into markdown-inline-image",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2473,
+      "upstream": "gpui-component",
+      "title": "docs: add TextView Markdown plugin docs",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2482,
+      "upstream": "gpui-component",
+      "title": "text: Render Markdown math blocks",
+      "status": "pending"
+    },
+    {
+      "number": 2485,
+      "upstream": "gpui-component",
+      "title": "docs: clarify theme registry lookup",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2487,
+      "upstream": "gpui-component",
+      "title": "theme: Fix Aurora theme syntax highlights",
+      "status": "pending"
     }
   ]
 }

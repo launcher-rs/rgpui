@@ -1,6 +1,6 @@
 use crate::{
-    list::ListSettings, notification::NotificationSettings, scroll::ScrollbarShow,
-    sheet::SheetSettings,
+    highlighter::HighlightTheme, list::ListSettings, notification::NotificationSettings,
+    scroll::ScrollbarShow, sheet::SheetSettings,
 };
 use rgpui::{App, Global, Hsla, Pixels, SharedString, Window, WindowAppearance, px};
 use schemars::JsonSchema;
@@ -46,6 +46,8 @@ impl ActiveTheme for App {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Theme {
     pub colors: ThemeColor,
+    #[serde(default)]
+    pub tokens: ThemeTokens,
     pub highlight_theme: Arc<HighlightTheme>,
     pub light_theme: Rc<ThemeConfig>,
     pub dark_theme: Rc<ThemeConfig>,
@@ -141,7 +143,7 @@ impl Theme {
     /// Sync the theme with the system appearance
     pub fn sync_system_appearance(window: Option<&mut Window>, cx: &mut App) {
         // Better use window.appearance() for avoid error on Linux.
-        // https://github.com/longbridge/gpui-component/issues/104
+        // https://github.com/longbridge/rgpui-component/issues/104
         let appearance = window
             .as_ref()
             .map(|window| window.appearance())
@@ -195,7 +197,7 @@ impl Theme {
         }
     }
 
-    /// 获取编辑器背景色，未设置时使用输入框背景色。
+    /// Get the editor background color, if not set, use the input background color.
     #[inline]
     pub fn editor_background(&self) -> Hsla {
         self.highlight_theme
@@ -231,6 +233,7 @@ impl From<&ThemeColor> for Theme {
             tile_radius: px(0.),
             list: ListSettings::default(),
             colors: *colors,
+            tokens: ThemeTokens::from(colors),
             light_theme: Rc::new(ThemeConfig::default()),
             dark_theme: Rc::new(ThemeConfig::default()),
             highlight_theme: HighlightTheme::default_light(),

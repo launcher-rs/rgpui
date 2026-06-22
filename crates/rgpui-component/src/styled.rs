@@ -176,7 +176,7 @@ pub trait StyledExt: Styled + Sized {
     /// Set as Popover style
     #[inline]
     fn popover_style(self, cx: &App) -> Self {
-        self.bg(cx.theme().popover)
+        self.bg(cx.theme().tokens.popover)
             .text_color(cx.theme().popover_foreground)
             .border_1()
             .border_color(cx.theme().border)
@@ -392,7 +392,7 @@ pub trait Disableable {
 /// Size::Medium is use by default.
 #[allow(patterns_in_fns_without_body)]
 pub trait Sizable: Sized {
-    /// Set the ui::Size of this element.
+    /// Set the rgpui-component::Size of this element.
     ///
     /// Also can receive a `ButtonSize` to convert to `IconSize`,
     /// Or a `Pixels` to set a custom size: `px(30.)`

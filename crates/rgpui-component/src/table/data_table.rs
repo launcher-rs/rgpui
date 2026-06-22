@@ -162,7 +162,7 @@ where
             .on_action(window.listener_for(&self.state, TableState::action_select_last_column))
             .on_action(window.listener_for(&self.state, TableState::action_select_page_up))
             .on_action(window.listener_for(&self.state, TableState::action_select_page_down))
-            .bg(cx.theme().table)
+            .bg(cx.theme().tokens.table)
             .when(bordered, |this| {
                 this.rounded(cx.theme().radius)
                     .border_1()
