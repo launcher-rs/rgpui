@@ -840,7 +840,7 @@ fn run_example() {
     });
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(not(target_family = "wasm"), not(target_os = "macos")))]
 fn main() {
     run_example();
 }

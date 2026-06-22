@@ -781,6 +781,58 @@ impl ScreenCaptureFrame {
     }
 }
 
+#[cfg(all(target_os = "macos", feature = "screen-capture"))]
+impl ScreenCaptureFrame {
+    /// 获取帧宽度（像素）
+    pub fn width(&self) -> u32 {
+        self.0.width() as u32
+    }
+
+    /// 获取帧高度（像素）
+    pub fn height(&self) -> u32 {
+        self.0.height() as u32
+    }
+
+    /// 将帧转换为 RGBA 图像
+    pub fn to_rgba(&self) -> Option<image::RgbaImage> {
+        use core_video_sys::*;
+        use std::ffi::c_void;
+
+        unsafe {
+            let pb = CVImageBufferGetPixelBuffer(self.0);
+            if pb.is_null() {
+                return None;
+            }
+
+            CVPixelBufferLockBaseAddress(pb, 0);
+            let w = CVPixelBufferGetWidth(pb) as u32;
+            let h = CVPixelBufferGetHeight(pb) as u32;
+            let bytes_per_row = CVPixelBufferGetBytesPerRow(pb) as u32;
+            let base = CVPixelBufferGetBaseAddress(pb) as *const u8;
+
+            let result = if base.is_null() {
+                None
+            } else {
+                let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+                for row in 0..h as usize {
+                    let row_ptr = base.add(row * bytes_per_row as usize);
+                    for col in 0..w as usize {
+                        let offset = col * 4;
+                        rgba.push(*row_ptr.add(offset)); // R
+                        rgba.push(*row_ptr.add(offset + 1)); // G
+                        rgba.push(*row_ptr.add(offset + 2)); // B
+                        rgba.push(*row_ptr.add(offset + 3)); // A
+                    }
+                }
+                image::RgbaImage::from_raw(w, h, rgba)
+            };
+
+            CVPixelBufferUnlockBaseAddress(pb, 0);
+            result
+        }
+    }
+}
+
 /// An opaque identifier for a hardware display
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
 pub struct DisplayId(pub(crate) u64);

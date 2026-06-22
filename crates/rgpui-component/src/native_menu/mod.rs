@@ -210,7 +210,7 @@ impl NativeMenu {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 pub(super) fn resolve_icon_image(
     path: &SharedString,
     asset_source: &dyn AssetSource,
@@ -232,7 +232,7 @@ pub(super) fn resolve_icon_image(
     Some(Arc::new(Image::from_bytes(format, bytes)))
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 fn image_format(path: &str, bytes: &[u8]) -> Option<ImageFormat> {
     if let Some(extension) = Path::new(path)
         .extension()
@@ -256,7 +256,7 @@ fn image_format(path: &str, bytes: &[u8]) -> Option<ImageFormat> {
     image_format_from_bytes(bytes)
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 fn image_format_from_bytes(bytes: &[u8]) -> Option<ImageFormat> {
     let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -285,7 +285,7 @@ fn image_format_from_bytes(bytes: &[u8]) -> Option<ImageFormat> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 fn is_svg_bytes(bytes: &[u8]) -> bool {
     let text = match std::str::from_utf8(&bytes[..bytes.len().min(256)]) {
         Ok(text) => text.trim_start(),
