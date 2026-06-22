@@ -845,6 +845,11 @@ fn main() {
     run_example();
 }
 
+#[cfg(all(not(target_family = "wasm"), target_os = "macos"))]
+fn main() {
+    eprintln!("screen_capture example is not supported on macOS (scap crate not available)");
+}
+
 #[cfg(target_family = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn start() {

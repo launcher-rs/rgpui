@@ -24,12 +24,12 @@
 
 use crate::Icon;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 use rgpui::AssetSource;
 use rgpui::{Action, App, Pixels, Point, SharedString, Window};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 use rgpui::{Image, ImageFormat};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 use std::{path::Path, sync::Arc};
 
 #[cfg(target_os = "macos")]
