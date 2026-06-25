@@ -1,4 +1,4 @@
-# Merged Upstream PRs
+﻿# Merged Upstream PRs
 
 ## zed
 
@@ -26,6 +26,11 @@
 | #59429 | 2026-06-22 | Merge branch 'settings-ui-a11y' of https://github.com/zed-industries/zed into settings-ui-a11y |
 | #59473 | 2026-06-22 | Use small vec |
 | #58510 | 2026-06-22 | Avoid selections allocations |
+| #59831 | 2026-06-25 | gpui: Add system wake callback |
+| #59816 | 2026-06-25 | gpui(windows): Fix immovable windows skipping hit testing entirely |
+| #59775 | 2026-06-25 | Merge branch 'main' into fix-softwrap-nbsp |
+| #59712 | 2026-06-25 | Merge branch 'main' into codex/fix-macos-traffic-light-appearance |
+| #59704 | 2026-06-25 | bump resvg/usvg and regression test for panic |
 
 ## gpui-component
 
@@ -55,6 +60,12 @@
 | #2483 | 2026-06-22 | Merge branch 'main' into markdown-inline-image |
 | #2473 | 2026-06-22 | docs: add TextView Markdown plugin docs |
 | #2485 | 2026-06-22 | docs: clarify theme registry lookup |
+| #2482 | 2026-06-25 | . |
+| #2507 | 2026-06-25 | plot: Confine `CrossLine::both()` axes independently |
+| #2505 | 2026-06-25 | tab: Fade `Pill` selected text color in sync with indicator slide |
+| #2501 | 2026-06-25 | Don't block mouse down |
+| #2500 | 2026-06-25 | plot: Refine the chart tooltip capability |
+| #2503 | 2026-06-25 | dock: Count only visible panels in `is_last_panel` |
 
 ## yororen-ui
 
