@@ -510,7 +510,7 @@
                     "number":  59775,
                     "upstream":  "zed",
                     "title":  "Merge branch \u0027main\u0027 into fix-softwrap-nbsp",
-                    "status":  "check-failed",
+                    "status":  "merged",
                     "merged_at":  "2026-06-25"
                 },
                 {
@@ -531,21 +531,21 @@
                     "number":  2507,
                     "upstream":  "gpui-component",
                     "title":  "plot: Confine `CrossLine::both()` axes independently",
-                    "status":  "check-failed",
+                    "status":  "merged",
                     "merged_at":  "2026-06-25"
                 },
                 {
                     "number":  2505,
                     "upstream":  "gpui-component",
                     "title":  "tab: Fade `Pill` selected text color in sync with indicator slide",
-                    "status":  "check-failed",
+                    "status":  "merged",
                     "merged_at":  "2026-06-25"
                 },
                 {
                     "number":  2501,
                     "upstream":  "gpui-component",
                     "title":  "Don\u0027t block mouse down",
-                    "status":  "check-failed",
+                    "status":  "merged",
                     "merged_at":  "2026-06-25"
                 },
                 {
@@ -558,14 +558,14 @@
                     "number":  2500,
                     "upstream":  "gpui-component",
                     "title":  "plot: Refine the chart tooltip capability",
-                    "status":  "check-failed",
+                    "status":  "merged",
                     "merged_at":  "2026-06-25"
                 },
                 {
                     "number":  2503,
                     "upstream":  "gpui-component",
                     "title":  "dock: Count only visible panels in `is_last_panel`",
-                    "status":  "check-failed",
+                    "status":  "merged",
                     "merged_at":  "2026-06-25"
                 }
             ]
