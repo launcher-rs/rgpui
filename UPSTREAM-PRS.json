@@ -414,7 +414,7 @@
       "upstream": "zed",
       "title": "Use small vec",
       "status": "check-failed",
-      "merged_at": "2026-06-22"
+      "merged_at": "2026-06-26"
     },
     {
       "number": 58510,
@@ -496,7 +496,7 @@
       "number": 59831,
       "upstream": "zed",
       "title": "gpui: Add system wake callback",
-      "status": "check-failed",
+      "status": "analyzed",
       "merged_at": "2026-06-25"
     },
     {
@@ -504,7 +504,7 @@
       "upstream": "zed",
       "title": "gpui(windows): Fix immovable windows skipping hit testing entirely",
       "status": "check-failed",
-      "merged_at": "2026-06-25"
+      "merged_at": "2026-06-26"
     },
     {
       "number": 59775,
@@ -587,7 +587,7 @@
       "number": 58685,
       "upstream": "zed",
       "title": "Slightly reformulate the message",
-      "status": "check-failed",
+      "status": "merged",
       "merged_at": "2026-06-26"
     },
     {
