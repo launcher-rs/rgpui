@@ -1,11 +1,11 @@
 use std::{ops::RangeInclusive, rc::Rc};
 
+use num_traits::{Num, ToPrimitive};
 use rgpui::{
     AnyElement, App, Background, Bounds, Corners, ElementId, Hsla, IntoElement, LinearColorStop,
     Pixels, Point, SharedString, Size, TextAlign, Window, linear_gradient, point, px,
 };
 use rgpui_component_macros::IntoPlot;
-use num_traits::{Num, ToPrimitive};
 
 use crate::{
     ActiveTheme,

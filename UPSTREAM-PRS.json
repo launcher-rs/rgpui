@@ -413,8 +413,9 @@
       "number": 59473,
       "upstream": "zed",
       "title": "Use small vec",
-      "status": "check-failed",
-      "merged_at": "2026-06-26"
+      "status": "merged",
+      "merged_at": "2026-06-26",
+      "note": "Only touches markdown crate (not mapped in rgpui)"
     },
     {
       "number": 58510,
@@ -503,7 +504,7 @@
       "number": 59816,
       "upstream": "zed",
       "title": "gpui(windows): Fix immovable windows skipping hit testing entirely",
-      "status": "check-failed",
+      "status": "merged",
       "merged_at": "2026-06-26"
     },
     {
