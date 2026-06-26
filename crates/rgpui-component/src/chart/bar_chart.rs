@@ -1,11 +1,11 @@
 use std::{ops::RangeInclusive, rc::Rc};
 
-use num_traits::{Num, ToPrimitive};
 use rgpui::{
     AnyElement, App, Background, Bounds, Corners, ElementId, Hsla, IntoElement, LinearColorStop,
     Pixels, Point, SharedString, Size, TextAlign, Window, linear_gradient, point, px,
 };
 use rgpui_component_macros::IntoPlot;
+use num_traits::{Num, ToPrimitive};
 
 use crate::{
     ActiveTheme,
@@ -111,8 +111,8 @@ where
     ///    e.g. flip a gradient angle).
     ///
     /// Both rectangles share the same coordinate system, so callers can
-    /// implement arbitrary chart-aware backgrounds —bar-local gradients,
-    /// chart-wide gradients, patterns, sampled colormaps, etc. —without any
+    /// implement arbitrary chart-aware backgrounds 鈥?bar-local gradients,
+    /// chart-wide gradients, patterns, sampled colormaps, etc. 鈥?without any
     /// help from the library.
     ///
     /// Accepts any type convertible to [`Background`]. Setting this clears any
@@ -404,7 +404,7 @@ where
             size: Size::new(total_width, total_height),
         };
 
-        // Chart data range in f32 —passed to `fill_gradient` callers and used
+        // Chart data range in f32 鈥?passed to `fill_gradient` callers and used
         // by the `chart_to_bar` remap helper.
         let chart_range = {
             let mut lo = 0.0_f32;
@@ -533,7 +533,7 @@ where
             }
             CrossLine::new(state.cross_line)
                 .horizontal()
-                .span(start, length)
+                .h_span(start, length)
                 .band(px(band_width))
         } else {
             let axis_gap = if self.label_axis { AXIS_GAP } else { 0. };

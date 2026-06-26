@@ -594,21 +594,21 @@
       "number": 2513,
       "upstream": "gpui-component",
       "title": "plot: Polish hover crosshair color and fix horizontal bar band",
-      "status": "check-failed",
+      "status": "merged",
       "merged_at": "2026-06-26"
     },
     {
       "number": 2512,
       "upstream": "gpui-component",
       "title": "theme: Clamp each gradient stop's alpha for active/selection backgrounds",
-      "status": "check-failed",
+      "status": "merged",
       "merged_at": "2026-06-26"
     },
     {
       "number": 2510,
       "upstream": "gpui-component",
       "title": "Place the caret at the end on `set_value`, view stays at the start",
-      "status": "check-failed",
+      "status": "merged",
       "merged_at": "2026-06-26"
     }
   ]
