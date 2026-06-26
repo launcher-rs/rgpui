@@ -1,4 +1,4 @@
-﻿# Merged Upstream PRs
+# Merged Upstream PRs
 
 ## zed
 
@@ -31,6 +31,9 @@
 | #59775 | 2026-06-25 | Merge branch 'main' into fix-softwrap-nbsp |
 | #59712 | 2026-06-25 | Merge branch 'main' into codex/fix-macos-traffic-light-appearance |
 | #59704 | 2026-06-25 | bump resvg/usvg and regression test for panic |
+| #55583 | 2026-06-26 | wayland: fix xdg_toplevel app_id set to None at first commit |
+| #59836 | 2026-06-26 | Fix delayed titlebar clicks on macOS 27 Beta |
+| #58685 | 2026-06-26 | Slightly reformulate the message |
 
 ## gpui-component
 
@@ -66,6 +69,10 @@
 | #2501 | 2026-06-25 | Don't block mouse down |
 | #2500 | 2026-06-25 | plot: Refine the chart tooltip capability |
 | #2503 | 2026-06-25 | dock: Count only visible panels in `is_last_panel` |
+| #2502 | 2026-06-26 | tiles: Revert out-of-scope Cargo.toml changes from resize-snapping work |
+| #2513 | 2026-06-26 | plot: Polish hover crosshair color and fix horizontal bar band |
+| #2512 | 2026-06-26 | theme: Clamp each gradient stop's alpha for active/selection backgrounds |
+| #2510 | 2026-06-26 | Place the caret at the end on `set_value`, view stays at the start |
 
 ## yororen-ui
 

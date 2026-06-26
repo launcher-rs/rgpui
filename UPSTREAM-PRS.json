@@ -1,572 +1,615 @@
-﻿{
-    "prs":  [
-                {
-                    "number":  58744,
-                    "upstream":  "zed",
-                    "title":  "Change \"Ok\" to \"OK\" in UI",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-09"
-                },
-                {
-                    "number":  58874,
-                    "upstream":  "zed",
-                    "title":  "gpui: Free atlas tile space when removing tiles",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-09"
-                },
-                {
-                    "number":  58826,
-                    "upstream":  "zed",
-                    "title":  "linux: Fix Wayland clipboard reads blocking indefinitely",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-09"
-                },
-                {
-                    "number":  58751,
-                    "upstream":  "zed",
-                    "title":  "Use unstable sorts if deduplicating",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-09"
-                },
-                {
-                    "number":  57835,
-                    "upstream":  "zed",
-                    "title":  "Log worst hanging tasks and actions",
-                    "status":  "merged",
-                    "merged_at":  "2025-06-04"
-                },
-                {
-                    "number":  58291,
-                    "upstream":  "zed",
-                    "title":  "Test custom show delay",
-                    "status":  "merged",
-                    "merged_at":  "2025-06-04"
-                },
-                {
-                    "number":  55876,
-                    "upstream":  "zed",
-                    "title":  "refactor: simplify IME candidate window anchoring logic",
-                    "status":  "merged",
-                    "merged_at":  "2025-06-04"
-                },
-                {
-                    "number":  58191,
-                    "upstream":  "zed",
-                    "title":  "Merge branch \u0027main\u0027 into bench-app-context",
-                    "status":  "merged",
-                    "merged_at":  "2025-06-04"
-                },
-                {
-                    "number":  2435,
-                    "upstream":  "gpui-component",
-                    "title":  "notification: Prevent close button click from triggering `on_click`",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-05"
-                },
-                {
-                    "number":  2433,
-                    "upstream":  "gpui-component",
-                    "title":  "Restore markdown `injections.scm`",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-04"
-                },
-                {
-                    "number":  2431,
-                    "upstream":  "gpui-component",
-                    "title":  "Allow non-\u0027static \u0026str and Cow for Notification",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-04"
-                },
-                {
-                    "number":  2430,
-                    "upstream":  "gpui-component",
-                    "title":  "highlighter: Simplify combined injection range filtering",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-05"
-                },
-                {
-                    "number":  2411,
-                    "upstream":  "gpui-component",
-                    "title":  "Merge branch \u0027main\u0027 into heretic/gutter-background",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-04"
-                },
-                {
-                    "number":  2438,
-                    "upstream":  "gpui-component",
-                    "title":  "Renamed search_aliases 閳?keywords",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-05"
-                },
-                {
-                    "number":  2437,
-                    "upstream":  "gpui-component",
-                    "title":  "fix(text): keep selection anchored to content when scrolling",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-08"
-                },
-                {
-                    "number":  2441,
-                    "upstream":  "gpui-component",
-                    "title":  "input: Expose API to set_scroll_offset method",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-09"
-                },
-                {
-                    "number":  2448,
-                    "upstream":  "gpui-component",
-                    "title":  "native_menu: add NativeMenu using OS-native menus",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-09"
-                },
-                {
-                    "number":  2449,
-                    "upstream":  "gpui-component",
-                    "title":  "status_bar: add StatusBar component",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-09"
-                },
-                {
-                    "number":  58947,
-                    "upstream":  "zed",
-                    "title":  "gpui: Free atlas tile space when removing tiles",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-10"
-                },
-                {
-                    "number":  58942,
-                    "upstream":  "zed",
-                    "title":  "Update GPUI README to reflect new Application::new() API",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-10"
-                },
-                {
-                    "number":  57743,
-                    "upstream":  "zed",
-                    "title":  "gpui: Add builder API for BoxShadow",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  52125,
-                    "upstream":  "zed",
-                    "title":  "fix(gpui): align Rgba alpha/opacity with Hsla semantics",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  56771,
-                    "upstream":  "zed",
-                    "title":  "Merge branch \u0027main\u0027 into improve-fallback-fonts-on-macos",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  59002,
-                    "upstream":  "zed",
-                    "title":  "gpui: Fix list scroll events being reverted by pending scroll",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  59072,
-                    "upstream":  "zed",
-                    "title":  "tab_switcher: Middle-truncate long picker filenames",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  58202,
-                    "upstream":  "zed",
-                    "title":  "Add LICENSE-GPL symlink to benchmarks crate",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  2459,
-                    "upstream":  "gpui-component",
-                    "title":  "Allow custom easing function for spinner",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  2457,
-                    "upstream":  "gpui-component",
-                    "title":  "Ignore empty highlight ranges",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  2455,
-                    "upstream":  "gpui-component",
-                    "title":  "Move to `WindowExt`",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  2454,
-                    "upstream":  "gpui-component",
-                    "title":  "Fix tree events to emit when set_selected_item targeted hidden nodes",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  2453,
-                    "upstream":  "gpui-component",
-                    "title":  "input: restore custom context menu API on top of NativeMenu",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  2452,
-                    "upstream":  "gpui-component",
-                    "title":  "fix: add missing wasm theme gutter field",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-12"
-                },
-                {
-                    "number":  59214,
-                    "upstream":  "zed",
-                    "title":  "Revert \"gpui: Fix title bar clicks being delayed on macOS 27 (#58947)\"",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-13",
-                    "note":  "revert of #58947 which was never applied to rgpui (no-op)"
-                },
-                {
-                    "number":  59247,
-                    "upstream":  "zed",
-                    "title":  "gpui_macos: Warn when falling back to NoopTextSystem",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-15"
-                },
-                {
-                    "number":  59274,
-                    "upstream":  "zed",
-                    "title":  "editor: Refresh active debug line highlight on theme change",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17",
-                    "note":  "No applicable files in rgpui (changes only in crates/editor/ and test files)"
-                },
-                {
-                    "number":  59358,
-                    "upstream":  "zed",
-                    "title":  "Remove gpui\u0027s dependency on async-process",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17",
-                    "note":  "Applied dunce::simplified replacing SanitizedPath in rgpui-windows"
-                },
-                {
-                    "number":  2444,
-                    "upstream":  "gpui-component",
-                    "title":  "dropdown_button: Fix style for selected outline button",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17"
-                },
-                {
-                    "number":  2442,
-                    "upstream":  "gpui-component",
-                    "title":  "search: Fix editor backward search",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17",
-                    "note":  "Already applied in our codebase"
-                },
-                {
-                    "number":  2439,
-                    "upstream":  "gpui-component",
-                    "title":  "setting: Support reset for element/render fields and custom items",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17",
-                    "note":  "Already applied in our codebase"
-                },
-                {
-                    "number":  59274,
-                    "upstream":  "zed",
-                    "title":  "editor: Refresh active debug line highlight on theme change",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17",
-                    "note":  "No applicable files (only crates/editor/, crates/debugger_ui/, crates/gpui/src/color.rs)"
-                },
-                {
-                    "number":  59358,
-                    "upstream":  "zed",
-                    "title":  "Remove gpui\u0027s dependency on async-process",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17"
-                },
-                {
-                    "number":  2460,
-                    "upstream":  "gpui-component",
-                    "title":  "number_input: Support custom stepping",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17",
-                    "note":  "Only touches crates/story/ (not ported)"
-                },
-                {
-                    "number":  2451,
-                    "upstream":  "gpui-component",
-                    "title":  "fix(docs): update skills page",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17",
-                    "note":  "Docs only, skipped"
-                },
-                {
-                    "number":  2466,
-                    "upstream":  "gpui-component",
-                    "title":  "root: Support borderless root window",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17"
-                },
-                {
-                    "number":  2467,
-                    "upstream":  "gpui-component",
-                    "title":  "markdown: Add table_wrap support",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17",
-                    "note":  "Only touches story example and text/style.rs (story not ported, style already has table field)"
-                },
-                {
-                    "number":  2468,
-                    "upstream":  "gpui-component",
-                    "title":  "scrollable_mask: Add horizontal_scroll_area helper",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17"
-                },
-                {
-                    "number":  2469,
-                    "upstream":  "gpui-component",
-                    "title":  "text: Measure all blocks for stable scrollbar",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17"
-                },
-                {
-                    "number":  2470,
-                    "upstream":  "gpui-component",
-                    "title":  "text: Support full-replace sync updates",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17"
-                },
-                {
-                    "number":  2471,
-                    "upstream":  "gpui-component",
-                    "title":  "input: Add disabled state styling",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17",
-                    "note":  "Only touches story files (not ported)"
-                },
-                {
-                    "number":  2472,
-                    "upstream":  "gpui-component",
-                    "title":  "text: Store inline text bounds for selection",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17"
-                },
-                {
-                    "number":  2474,
-                    "upstream":  "gpui-component",
-                    "title":  "pie_chart: Add label rendering",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17"
-                },
-                {
-                    "number":  2478,
-                    "upstream":  "gpui-component",
-                    "title":  "notification: Support configurable max_items",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-17"
-                },
-                {
-                    "number":  59470,
-                    "upstream":  "zed",
-                    "title":  "gpui: Fix web examples build",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  59604,
-                    "upstream":  "zed",
-                    "title":  "remove TODO!\u0027s (tracked in channel notes) and accidentally included file",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  57231,
-                    "upstream":  "zed",
-                    "title":  "Fix keybindings",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  59524,
-                    "upstream":  "zed",
-                    "title":  "Remove last ru ready  main tasks",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  59429,
-                    "upstream":  "zed",
-                    "title":  "Merge branch \u0027settings-ui-a11y\u0027 of https://github.com/zed-industries/zed into settings-ui-a11y",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  59473,
-                    "upstream":  "zed",
-                    "title":  "Use small vec",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  58510,
-                    "upstream":  "zed",
-                    "title":  "Avoid selections allocations",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  2498,
-                    "upstream":  "gpui-component",
-                    "title":  "number_input: Match stepper button variant to appearance",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  2493,
-                    "upstream":  "gpui-component",
-                    "title":  "test: stabilize markdown overlap highlight test",
-                    "status":  "analyzed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  2489,
-                    "upstream":  "gpui-component",
-                    "title":  "Update link",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  2371,
-                    "upstream":  "gpui-component",
-                    "title":  "Merge branch \u0027main\u0027 into md-render-optimization",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  2484,
-                    "upstream":  "gpui-component",
-                    "title":  ".",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  2483,
-                    "upstream":  "gpui-component",
-                    "title":  "Merge branch \u0027main\u0027 into markdown-inline-image",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  2473,
-                    "upstream":  "gpui-component",
-                    "title":  "docs: add TextView Markdown plugin docs",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  2482,
-                    "upstream":  "gpui-component",
-                    "title":  ".",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  2485,
-                    "upstream":  "gpui-component",
-                    "title":  "docs: clarify theme registry lookup",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-22"
-                },
-                {
-                    "number":  2487,
-                    "upstream":  "gpui-component",
-                    "title":  "theme: Fix Aurora theme syntax highlights",
-                    "status":  "pending"
-                },
-                {
-                    "number":  59831,
-                    "upstream":  "zed",
-                    "title":  "gpui: Add system wake callback",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  59816,
-                    "upstream":  "zed",
-                    "title":  "gpui(windows): Fix immovable windows skipping hit testing entirely",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  59775,
-                    "upstream":  "zed",
-                    "title":  "Merge branch \u0027main\u0027 into fix-softwrap-nbsp",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  59712,
-                    "upstream":  "zed",
-                    "title":  "Merge branch \u0027main\u0027 into codex/fix-macos-traffic-light-appearance",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  59704,
-                    "upstream":  "zed",
-                    "title":  "bump resvg/usvg and regression test for panic",
-                    "status":  "check-failed",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  2507,
-                    "upstream":  "gpui-component",
-                    "title":  "plot: Confine `CrossLine::both()` axes independently",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  2505,
-                    "upstream":  "gpui-component",
-                    "title":  "tab: Fade `Pill` selected text color in sync with indicator slide",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  2501,
-                    "upstream":  "gpui-component",
-                    "title":  "Don\u0027t block mouse down",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  2502,
-                    "upstream":  "gpui-component",
-                    "title":  "tiles: Snap panel edges to neighboring panels when resizing",
-                    "status":  "pending"
-                },
-                {
-                    "number":  2500,
-                    "upstream":  "gpui-component",
-                    "title":  "plot: Refine the chart tooltip capability",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-25"
-                },
-                {
-                    "number":  2503,
-                    "upstream":  "gpui-component",
-                    "title":  "dock: Count only visible panels in `is_last_panel`",
-                    "status":  "merged",
-                    "merged_at":  "2026-06-25"
-                }
-            ]
+{
+  "prs": [
+    {
+      "number": 58744,
+      "upstream": "zed",
+      "title": "Change \"Ok\" to \"OK\" in UI",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 58874,
+      "upstream": "zed",
+      "title": "gpui: Free atlas tile space when removing tiles",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 58826,
+      "upstream": "zed",
+      "title": "linux: Fix Wayland clipboard reads blocking indefinitely",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 58751,
+      "upstream": "zed",
+      "title": "Use unstable sorts if deduplicating",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 57835,
+      "upstream": "zed",
+      "title": "Log worst hanging tasks and actions",
+      "status": "merged",
+      "merged_at": "2025-06-04"
+    },
+    {
+      "number": 58291,
+      "upstream": "zed",
+      "title": "Test custom show delay",
+      "status": "merged",
+      "merged_at": "2025-06-04"
+    },
+    {
+      "number": 55876,
+      "upstream": "zed",
+      "title": "refactor: simplify IME candidate window anchoring logic",
+      "status": "merged",
+      "merged_at": "2025-06-04"
+    },
+    {
+      "number": 58191,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into bench-app-context",
+      "status": "merged",
+      "merged_at": "2025-06-04"
+    },
+    {
+      "number": 2435,
+      "upstream": "gpui-component",
+      "title": "notification: Prevent close button click from triggering `on_click`",
+      "status": "merged",
+      "merged_at": "2026-06-05"
+    },
+    {
+      "number": 2433,
+      "upstream": "gpui-component",
+      "title": "Restore markdown `injections.scm`",
+      "status": "check-failed",
+      "merged_at": "2026-06-04"
+    },
+    {
+      "number": 2431,
+      "upstream": "gpui-component",
+      "title": "Allow non-'static &str and Cow for Notification",
+      "status": "check-failed",
+      "merged_at": "2026-06-04"
+    },
+    {
+      "number": 2430,
+      "upstream": "gpui-component",
+      "title": "highlighter: Simplify combined injection range filtering",
+      "status": "merged",
+      "merged_at": "2026-06-05"
+    },
+    {
+      "number": 2411,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into heretic/gutter-background",
+      "status": "check-failed",
+      "merged_at": "2026-06-04"
+    },
+    {
+      "number": 2438,
+      "upstream": "gpui-component",
+      "title": "Renamed search_aliases 閳?keywords",
+      "status": "merged",
+      "merged_at": "2026-06-05"
+    },
+    {
+      "number": 2437,
+      "upstream": "gpui-component",
+      "title": "fix(text): keep selection anchored to content when scrolling",
+      "status": "merged",
+      "merged_at": "2026-06-08"
+    },
+    {
+      "number": 2441,
+      "upstream": "gpui-component",
+      "title": "input: Expose API to set_scroll_offset method",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 2448,
+      "upstream": "gpui-component",
+      "title": "native_menu: add NativeMenu using OS-native menus",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 2449,
+      "upstream": "gpui-component",
+      "title": "status_bar: add StatusBar component",
+      "status": "merged",
+      "merged_at": "2026-06-09"
+    },
+    {
+      "number": 58947,
+      "upstream": "zed",
+      "title": "gpui: Free atlas tile space when removing tiles",
+      "status": "merged",
+      "merged_at": "2026-06-10"
+    },
+    {
+      "number": 58942,
+      "upstream": "zed",
+      "title": "Update GPUI README to reflect new Application::new() API",
+      "status": "merged",
+      "merged_at": "2026-06-10"
+    },
+    {
+      "number": 57743,
+      "upstream": "zed",
+      "title": "gpui: Add builder API for BoxShadow",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 52125,
+      "upstream": "zed",
+      "title": "fix(gpui): align Rgba alpha/opacity with Hsla semantics",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 56771,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into improve-fallback-fonts-on-macos",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 59002,
+      "upstream": "zed",
+      "title": "gpui: Fix list scroll events being reverted by pending scroll",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 59072,
+      "upstream": "zed",
+      "title": "tab_switcher: Middle-truncate long picker filenames",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 58202,
+      "upstream": "zed",
+      "title": "Add LICENSE-GPL symlink to benchmarks crate",
+      "status": "check-failed",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2459,
+      "upstream": "gpui-component",
+      "title": "Allow custom easing function for spinner",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2457,
+      "upstream": "gpui-component",
+      "title": "Ignore empty highlight ranges",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2455,
+      "upstream": "gpui-component",
+      "title": "Move to `WindowExt`",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2454,
+      "upstream": "gpui-component",
+      "title": "Fix tree events to emit when set_selected_item targeted hidden nodes",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2453,
+      "upstream": "gpui-component",
+      "title": "input: restore custom context menu API on top of NativeMenu",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 2452,
+      "upstream": "gpui-component",
+      "title": "fix: add missing wasm theme gutter field",
+      "status": "merged",
+      "merged_at": "2026-06-12"
+    },
+    {
+      "number": 59214,
+      "upstream": "zed",
+      "title": "Revert \"gpui: Fix title bar clicks being delayed on macOS 27 (#58947)\"",
+      "status": "merged",
+      "merged_at": "2026-06-13",
+      "note": "revert of #58947 which was never applied to rgpui (no-op)"
+    },
+    {
+      "number": 59247,
+      "upstream": "zed",
+      "title": "gpui_macos: Warn when falling back to NoopTextSystem",
+      "status": "merged",
+      "merged_at": "2026-06-15"
+    },
+    {
+      "number": 59274,
+      "upstream": "zed",
+      "title": "editor: Refresh active debug line highlight on theme change",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "No applicable files in rgpui (changes only in crates/editor/ and test files)"
+    },
+    {
+      "number": 59358,
+      "upstream": "zed",
+      "title": "Remove gpui's dependency on async-process",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Applied dunce::simplified replacing SanitizedPath in rgpui-windows"
+    },
+    {
+      "number": 2444,
+      "upstream": "gpui-component",
+      "title": "dropdown_button: Fix style for selected outline button",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2442,
+      "upstream": "gpui-component",
+      "title": "search: Fix editor backward search",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Already applied in our codebase"
+    },
+    {
+      "number": 2439,
+      "upstream": "gpui-component",
+      "title": "setting: Support reset for element/render fields and custom items",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Already applied in our codebase"
+    },
+    {
+      "number": 59274,
+      "upstream": "zed",
+      "title": "editor: Refresh active debug line highlight on theme change",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "No applicable files (only crates/editor/, crates/debugger_ui/, crates/gpui/src/color.rs)"
+    },
+    {
+      "number": 59358,
+      "upstream": "zed",
+      "title": "Remove gpui's dependency on async-process",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2460,
+      "upstream": "gpui-component",
+      "title": "number_input: Support custom stepping",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Only touches crates/story/ (not ported)"
+    },
+    {
+      "number": 2451,
+      "upstream": "gpui-component",
+      "title": "fix(docs): update skills page",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Docs only, skipped"
+    },
+    {
+      "number": 2466,
+      "upstream": "gpui-component",
+      "title": "root: Support borderless root window",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2467,
+      "upstream": "gpui-component",
+      "title": "markdown: Add table_wrap support",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Only touches story example and text/style.rs (story not ported, style already has table field)"
+    },
+    {
+      "number": 2468,
+      "upstream": "gpui-component",
+      "title": "scrollable_mask: Add horizontal_scroll_area helper",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2469,
+      "upstream": "gpui-component",
+      "title": "text: Measure all blocks for stable scrollbar",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2470,
+      "upstream": "gpui-component",
+      "title": "text: Support full-replace sync updates",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2471,
+      "upstream": "gpui-component",
+      "title": "input: Add disabled state styling",
+      "status": "merged",
+      "merged_at": "2026-06-17",
+      "note": "Only touches story files (not ported)"
+    },
+    {
+      "number": 2472,
+      "upstream": "gpui-component",
+      "title": "text: Store inline text bounds for selection",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2474,
+      "upstream": "gpui-component",
+      "title": "pie_chart: Add label rendering",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 2478,
+      "upstream": "gpui-component",
+      "title": "notification: Support configurable max_items",
+      "status": "merged",
+      "merged_at": "2026-06-17"
+    },
+    {
+      "number": 59470,
+      "upstream": "zed",
+      "title": "gpui: Fix web examples build",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 59604,
+      "upstream": "zed",
+      "title": "remove TODO!'s (tracked in channel notes) and accidentally included file",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 57231,
+      "upstream": "zed",
+      "title": "Fix keybindings",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 59524,
+      "upstream": "zed",
+      "title": "Remove last ru ready  main tasks",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 59429,
+      "upstream": "zed",
+      "title": "Merge branch 'settings-ui-a11y' of https://github.com/zed-industries/zed into settings-ui-a11y",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 59473,
+      "upstream": "zed",
+      "title": "Use small vec",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 58510,
+      "upstream": "zed",
+      "title": "Avoid selections allocations",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2498,
+      "upstream": "gpui-component",
+      "title": "number_input: Match stepper button variant to appearance",
+      "status": "merged",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2493,
+      "upstream": "gpui-component",
+      "title": "test: stabilize markdown overlap highlight test",
+      "status": "analyzed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2489,
+      "upstream": "gpui-component",
+      "title": "Update link",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2371,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into md-render-optimization",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2484,
+      "upstream": "gpui-component",
+      "title": ".",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2483,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into markdown-inline-image",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2473,
+      "upstream": "gpui-component",
+      "title": "docs: add TextView Markdown plugin docs",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2482,
+      "upstream": "gpui-component",
+      "title": ".",
+      "status": "merged",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 2485,
+      "upstream": "gpui-component",
+      "title": "docs: clarify theme registry lookup",
+      "status": "check-failed",
+      "merged_at": "2026-06-22"
+    },
+    {
+      "number": 2487,
+      "upstream": "gpui-component",
+      "title": "theme: Fix Aurora theme syntax highlights",
+      "status": "pending"
+    },
+    {
+      "number": 59831,
+      "upstream": "zed",
+      "title": "gpui: Add system wake callback",
+      "status": "check-failed",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 59816,
+      "upstream": "zed",
+      "title": "gpui(windows): Fix immovable windows skipping hit testing entirely",
+      "status": "check-failed",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 59775,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into fix-softwrap-nbsp",
+      "status": "merged",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 59712,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into codex/fix-macos-traffic-light-appearance",
+      "status": "check-failed",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 59704,
+      "upstream": "zed",
+      "title": "bump resvg/usvg and regression test for panic",
+      "status": "check-failed",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 2507,
+      "upstream": "gpui-component",
+      "title": "plot: Confine `CrossLine::both()` axes independently",
+      "status": "merged",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 2505,
+      "upstream": "gpui-component",
+      "title": "tab: Fade `Pill` selected text color in sync with indicator slide",
+      "status": "merged",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 2501,
+      "upstream": "gpui-component",
+      "title": "Don't block mouse down",
+      "status": "merged",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 2502,
+      "upstream": "gpui-component",
+      "title": "tiles: Revert out-of-scope Cargo.toml changes from resize-snapping work",
+      "status": "merged",
+      "merged_at": "2026-06-26"
+    },
+    {
+      "number": 2500,
+      "upstream": "gpui-component",
+      "title": "plot: Refine the chart tooltip capability",
+      "status": "merged",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 2503,
+      "upstream": "gpui-component",
+      "title": "dock: Count only visible panels in `is_last_panel`",
+      "status": "merged",
+      "merged_at": "2026-06-25"
+    },
+    {
+      "number": 55583,
+      "upstream": "zed",
+      "title": "wayland: fix xdg_toplevel app_id set to None at first commit",
+      "status": "check-failed",
+      "merged_at": "2026-06-26"
+    },
+    {
+      "number": 59836,
+      "upstream": "zed",
+      "title": "Fix delayed titlebar clicks on macOS 27 Beta",
+      "status": "check-failed",
+      "merged_at": "2026-06-26"
+    },
+    {
+      "number": 58685,
+      "upstream": "zed",
+      "title": "Slightly reformulate the message",
+      "status": "check-failed",
+      "merged_at": "2026-06-26"
+    },
+    {
+      "number": 2513,
+      "upstream": "gpui-component",
+      "title": "plot: Polish hover crosshair color and fix horizontal bar band",
+      "status": "check-failed",
+      "merged_at": "2026-06-26"
+    },
+    {
+      "number": 2512,
+      "upstream": "gpui-component",
+      "title": "theme: Clamp each gradient stop's alpha for active/selection backgrounds",
+      "status": "check-failed",
+      "merged_at": "2026-06-26"
+    },
+    {
+      "number": 2510,
+      "upstream": "gpui-component",
+      "title": "Place the caret at the end on `set_value`, view stays at the start",
+      "status": "check-failed",
+      "merged_at": "2026-06-26"
+    }
+  ]
 }
