@@ -175,7 +175,7 @@ scap = { workspace = true, optional = true }
 
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { workspace=true, features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security"] }
+windows = { workspace=true, features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_System_Power"] }
 tendril = "0.4.3"
 
 [target.'cfg(unix)'.dependencies]

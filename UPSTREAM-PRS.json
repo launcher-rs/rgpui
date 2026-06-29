@@ -611,6 +611,22 @@
       "title": "Place the caret at the end on `set_value`, view stays at the start",
       "status": "merged",
       "merged_at": "2026-06-26"
+    },
+    {
+      "number": 59886,
+      "upstream": "zed",
+      "title": "gpui_windows: Add missing windows dependency feature",
+      "status": "merged",
+      "merged_at": "2026-06-29",
+      "note": "Added Win32_System_Power feature to rgpui windows dependency"
+    },
+    {
+      "number": 2515,
+      "upstream": "gpui-component",
+      "title": "text: Support HTML `<mark>` tag with highlight color",
+      "status": "merged",
+      "merged_at": "2026-06-29",
+      "note": "Added highlight support for <mark> tag in HTML renderer"
     }
   ]
 }

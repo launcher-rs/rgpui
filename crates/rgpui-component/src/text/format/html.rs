@@ -6,7 +6,7 @@ use std::rc::Rc;
 use html5ever::tendril::TendrilSink;
 use html5ever::{LocalName, ParseOpts, local_name, parse_document};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
-use rgpui::{DefiniteLength, SharedString, px, relative};
+use rgpui::{DefiniteLength, Hsla, SharedString, px, relative};
 
 use crate::text::document::ParsedDocument;
 use crate::text::node::{
@@ -99,6 +99,30 @@ fn attr_value(attrs: &RefCell<Vec<html5ever::Attribute>>, name: LocalName) -> Op
             None
         }
     })
+}
+
+/// 获取 `<mark>` 元素的高亮背景颜色。
+///
+/// 优先读取 `color` 属性，然后读取 `style` 属性中的 `background-color` 声明。
+/// 颜色值由 [`crate::try_parse_color`] 解析，支持十六进制（`#3366ff`）和 Tailwind 表达式（`blue`、`blue-200`、`blue/30`）。
+fn mark_color(attrs: &RefCell<Vec<html5ever::Attribute>>) -> Option<Hsla> {
+    let color_attr = attrs.borrow().iter().find_map(|attr| {
+        if &*attr.name.local == "color" {
+            Some(attr.value.to_string())
+        } else {
+            None
+        }
+    });
+
+    if let Some(value) = color_attr
+        && let Ok(color) = crate::try_parse_color(value.trim())
+    {
+        return Some(color);
+    }
+
+    style_attrs(attrs)
+        .get("background-color")
+        .and_then(|v| crate::try_parse_color(v.trim()).ok())
 }
 
 /// Get style properties to HashMap
@@ -321,6 +345,14 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &Rc<Node>) {
             }
             local_name!("code") => {
                 merge_children_with_mark(node, paragraph, Some(TextMark::default().code()));
+            }
+            local_name!("mark") => {
+                let color = mark_color(&attrs).unwrap_or_else(|| crate::yellow_200());
+                merge_children_with_mark(
+                    node,
+                    paragraph,
+                    Some(TextMark::default().highlight(color)),
+                );
             }
             local_name!("a") => {
                 let link_mark = LinkMark {
@@ -661,6 +693,20 @@ mod tests {
     #[test]
     fn test_trim_text() {
         assert_eq!(trim_text("  \n\tHello world \t\r "), " Hello world ",);
+    }
+
+    #[test]
+    fn test_mark() {
+        let mut cx = NodeContext::default();
+
+        // `<mark>` 渲染为高亮，在 markdown 中保留为 `==...==`。
+        let html = r#"<p>Hello <mark>world</mark></p>"#;
+        let node = super::parse(html, &mut cx).unwrap();
+        assert_eq!(node.to_markdown(), "Hello ==world==");
+
+        let html = r#"<p><mark color="blue">blue</mark> and <mark style="background-color: #336699">hex</mark></p>"#;
+        let node = super::parse(html, &mut cx).unwrap();
+        assert_eq!(node.to_markdown(), "==blue== and ==hex==");
     }
 
     #[test]
