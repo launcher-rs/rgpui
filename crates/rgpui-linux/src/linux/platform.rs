@@ -1243,8 +1243,9 @@ mod tests {
         #[test]
         fn reads_data_written_before_close() {
             let mut pipe = filedescriptor::Pipe::new().unwrap();
-            let payload = b"payload";
-            pipe.write.write_all(payload).unwrap();
+            // "payload" in ASCII
+            let payload: Vec<u8> = vec![112, 97, 121, 108, 111, 97, 100];
+            pipe.write.write_all(&payload).unwrap();
             drop(pipe.write);
 
             let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
@@ -1277,7 +1278,8 @@ mod tests {
         #[test]
         fn times_out_when_writer_stalls_after_partial_write() {
             let mut pipe = filedescriptor::Pipe::new().unwrap();
-            pipe.write.write_all(b"partial").unwrap();
+            // "partial" in ASCII
+            pipe.write.write_all(&[112, 97, 114, 116, 105, 97, 108]).unwrap();
             let _open_writer = pipe.write;
 
             drop(read_fd_with_timeout(pipe.read, Duration::from_millis(50)).unwrap_err());
