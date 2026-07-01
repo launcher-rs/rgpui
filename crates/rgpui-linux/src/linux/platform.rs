@@ -512,7 +512,7 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     }
 
     fn can_select_mixed_files_and_dirs(&self) -> bool {
-        // org.freedesktop.portal.FileChooser only supports "pick files" and "pick directories".
+        // org.freedesktop.portal.FileChooser only supports pick files and pick directories.
         false
     }
 
@@ -1243,7 +1243,6 @@ mod tests {
         #[test]
         fn reads_data_written_before_close() {
             let mut pipe = filedescriptor::Pipe::new().unwrap();
-            // "payload" in ASCII
             let payload: Vec<u8> = vec![112, 97, 121, 108, 111, 97, 100];
             pipe.write.write_all(&payload).unwrap();
             drop(pipe.write);
@@ -1278,7 +1277,6 @@ mod tests {
         #[test]
         fn times_out_when_writer_stalls_after_partial_write() {
             let mut pipe = filedescriptor::Pipe::new().unwrap();
-            // "partial" in ASCII
             pipe.write.write_all(&[112, 97, 114, 116, 105, 97, 108]).unwrap();
             let _open_writer = pipe.write;
 
