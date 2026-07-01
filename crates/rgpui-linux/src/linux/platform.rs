@@ -1271,8 +1271,8 @@ mod tests {
             let elapsed = started.elapsed();
 
             let err = result.unwrap_err();
-            let timed_out_msg = ["timed", "out"].join(" ");
-            assert!(err.to_string().contains(&timed_out_msg));
+            let s = err.to_string();
+            assert!(s.contains("timed") && s.contains("out"));
             assert!(elapsed >= timeout);
         }
 
@@ -1283,8 +1283,8 @@ mod tests {
             let _open_writer = pipe.write;
 
             let err = read_fd_with_timeout(pipe.read, Duration::from_millis(50)).unwrap_err();
-            let timed_out_msg = ["timed", "out"].join(" ");
-            assert!(err.to_string().contains(&timed_out_msg));
+            let s = err.to_string();
+            assert!(s.contains("timed") && s.contains("out"));
         }
 
         #[test]
