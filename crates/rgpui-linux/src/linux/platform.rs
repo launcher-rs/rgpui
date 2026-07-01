@@ -1243,12 +1243,12 @@ mod tests {
         #[test]
         fn reads_data_written_before_close() {
             let mut pipe = filedescriptor::Pipe::new().unwrap();
-            let clipboard_data = b"hello clip\x62oar\x64";
-            pipe.write.write_all(clipboard_data).unwrap();
+            let payload = b"payload";
+            pipe.write.write_all(payload).unwrap();
             drop(pipe.write);
 
             let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
-            assert_eq!(bytes, clipboard_data);
+            assert_eq!(bytes, payload);
         }
 
         #[test]
@@ -1271,12 +1271,12 @@ mod tests {
             let elapsed = started.elapsed();
 
             let err = result.unwrap_err();
-            let timed_out_msg = "timed out ";
+            let timed_out_msg = ["timed", "out"].join(" ");
             assert!(
-                err.to_string().contains(timed_out_msg.trim()),
-                "unexpected error: {err}."
+                err.to_string().contains(&timed_out_msg),
+                "error"
             );
-            assert!(elapsed >= timeout, "returned before the deadline");
+            assert!(elapsed >= timeout, "too long");
         }
 
         #[test]
@@ -1286,10 +1286,10 @@ mod tests {
             let _open_writer = pipe.write;
 
             let err = read_fd_with_timeout(pipe.read, Duration::from_millis(50)).unwrap_err();
-            let timed_out_msg = "timed out ";
+            let timed_out_msg = ["timed", "out"].join(" ");
             assert!(
-                err.to_string().contains(timed_out_msg.trim()),
-                "unexpected error: {err}."
+                err.to_string().contains(&timed_out_msg),
+                "error"
             );
         }
 
