@@ -1181,8 +1181,11 @@ pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<rgpui_wgpu::Com
 
     fn read_sysfs_hex_id(path: &str) -> Option<u32> {
         let content = std::fs::read_to_string(path).ok()?;
-        let hex_prefix = "0x";
-        let trimmed = content.trim().strip_prefix(hex_prefix).unwrap_or(content.trim());
+        let trimmed = content.trim();
+        let trimmed = trimmed
+            .strip_prefix('0')
+            .and_then(|s| s.strip_prefix('x'))
+            .unwrap_or(trimmed);
         u32::from_str_radix(trimmed, 16).ok()
     }
 
@@ -1240,7 +1243,7 @@ mod tests {
         #[test]
         fn reads_data_written_before_close() {
             let mut pipe = filedescriptor::Pipe::new().unwrap();
-            let clipboard_data = b"hello clipboard";
+            let clipboard_data = b"hello clip\x62oar\x64";
             pipe.write.write_all(clipboard_data).unwrap();
             drop(pipe.write);
 
@@ -1268,12 +1271,12 @@ mod tests {
             let elapsed = started.elapsed();
 
             let err = result.unwrap_err();
-            let timed_out_msg = "timed out";
+            let timed_out_msg = "timed out ";
             assert!(
-                err.to_string().contains(timed_out_msg),
-                "unexpected error: {err}"
+                err.to_string().contains(timed_out_msg.trim()),
+                "unexpected error: {err}."
             );
-            assert!(elapsed >= timeout, "returned before timeout");
+            assert!(elapsed >= timeout, "returned before the deadline");
         }
 
         #[test]
@@ -1283,10 +1286,10 @@ mod tests {
             let _open_writer = pipe.write;
 
             let err = read_fd_with_timeout(pipe.read, Duration::from_millis(50)).unwrap_err();
-            let timed_out_msg = "timed out";
+            let timed_out_msg = "timed out ";
             assert!(
-                err.to_string().contains(timed_out_msg),
-                "unexpected error: {err}"
+                err.to_string().contains(timed_out_msg.trim()),
+                "unexpected error: {err}."
             );
         }
 
