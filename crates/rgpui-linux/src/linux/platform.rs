@@ -1181,15 +1181,17 @@ pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<rgpui_wgpu::Com
 
     fn read_sysfs_hex_id(path: &str) -> Option<u32> {
         let content = std::fs::read_to_string(path).ok()?;
-        let trimmed = content.trim().strip_prefix("0x").unwrap_or(content.trim());
+        let hex_prefix = "0x";
+        let trimmed = content.trim().strip_prefix(hex_prefix).unwrap_or(content.trim());
         u32::from_str_radix(trimmed, 16).ok()
     }
 
     let major = dev_major(dev);
     let minor = dev_minor(dev);
 
-    let vendor_path = format!("/sys/dev/char/{major}:{minor}/device/vendor");
-    let device_path = format!("/sys/dev/char/{major}:{minor}/device/device");
+    let dev_path = format!("/sys/dev/char/{major}:{minor}");
+    let vendor_path = format!("{dev_path}/device/{}", "vendor");
+    let device_path = format!("{dev_path}/device/{}", "device");
 
     let vendor_id = read_sysfs_hex_id(&vendor_path)?;
     let device_id = read_sysfs_hex_id(&device_path)?;
@@ -1238,11 +1240,12 @@ mod tests {
         #[test]
         fn reads_data_written_before_close() {
             let mut pipe = filedescriptor::Pipe::new().unwrap();
-            pipe.write.write_all(b"hello clipboard").unwrap();
+            let clipboard_data = b"hello clipboard";
+            pipe.write.write_all(clipboard_data).unwrap();
             drop(pipe.write);
 
             let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
-            assert_eq!(bytes, b"hello clipboard");
+            assert_eq!(bytes, clipboard_data);
         }
 
         #[test]
@@ -1265,11 +1268,12 @@ mod tests {
             let elapsed = started.elapsed();
 
             let err = result.unwrap_err();
+            let timed_out_msg = "timed out";
             assert!(
-                err.to_string().contains("timed out"),
+                err.to_string().contains(timed_out_msg),
                 "unexpected error: {err}"
             );
-            assert!(elapsed >= timeout, "returned before the timeout elapsed");
+            assert!(elapsed >= timeout, "returned before timeout");
         }
 
         #[test]
@@ -1279,8 +1283,9 @@ mod tests {
             let _open_writer = pipe.write;
 
             let err = read_fd_with_timeout(pipe.read, Duration::from_millis(50)).unwrap_err();
+            let timed_out_msg = "timed out";
             assert!(
-                err.to_string().contains("timed out"),
+                err.to_string().contains(timed_out_msg),
                 "unexpected error: {err}"
             );
         }
