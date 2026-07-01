@@ -997,7 +997,7 @@ pub(super) fn keystroke_from_xkb(
         Keysym::semicolon => ";".to_owned(),
         Keysym::colon => ":".to_owned(),
         Keysym::apostrophe => "'".to_owned(),
-        Keysym::quotedbl => "\"".to_owned(),
+        Keysym::quotedbl => '"'.to_string(),
 
         Keysym::bracketleft => "[".to_owned(),
         Keysym::braceleft => "{".to_owned(),
@@ -1233,93 +1233,93 @@ mod tests {
             Point::new(px(5.0), px(5.1))
         ),);
     }
+}
 
-    #[cfg(any(feature = "wayland", feature = "x11"))]
-    mod read_fd_with_timeout {
-        use super::super::{PIPE_READ_TIMEOUT, read_fd_with_timeout};
-        use std::io::Write as _;
-        use std::time::{Duration, Instant};
+#[cfg(all(test, any(feature = "wayland", feature = "x11")))]
+mod read_fd_with_timeout {
+    use super::{PIPE_READ_TIMEOUT, read_fd_with_timeout};
+    use std::io::Write as _;
+    use std::time::{Duration, Instant};
 
-        #[test]
-        fn reads_data_written_before_close() {
-            let mut pipe = filedescriptor::Pipe::new().unwrap();
-            let payload: Vec<u8> = vec![112, 97, 121, 108, 111, 97, 100];
-            pipe.write.write_all(&payload).unwrap();
-            drop(pipe.write);
+    #[test]
+    fn reads_data_written_before_close() {
+        let mut pipe = filedescriptor::Pipe::new().unwrap();
+        let payload: Vec<u8> = vec![112, 97, 121, 108, 111, 97, 100];
+        pipe.write.write_all(&payload).unwrap();
+        drop(pipe.write);
 
-            let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
-            assert_eq!(bytes, payload);
-        }
+        let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
+        assert_eq!(bytes, payload);
+    }
 
-        #[test]
-        fn returns_empty_when_writer_closes_without_writing() {
-            let pipe = filedescriptor::Pipe::new().unwrap();
-            drop(pipe.write);
+    #[test]
+    fn returns_empty_when_writer_closes_without_writing() {
+        let pipe = filedescriptor::Pipe::new().unwrap();
+        drop(pipe.write);
 
-            let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
-            assert!(bytes.is_empty());
-        }
+        let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
+        assert!(bytes.is_empty());
+    }
 
-        #[test]
-        fn times_out_when_writer_never_writes() {
-            let pipe = filedescriptor::Pipe::new().unwrap();
-            let _open_writer = pipe.write;
+    #[test]
+    fn times_out_when_writer_never_writes() {
+        let pipe = filedescriptor::Pipe::new().unwrap();
+        let _open_writer = pipe.write;
 
-            let timeout = Duration::from_millis(50);
-            let started = Instant::now();
-            let result = read_fd_with_timeout(pipe.read, timeout);
-            let elapsed = started.elapsed();
+        let timeout = Duration::from_millis(50);
+        let started = Instant::now();
+        let result = read_fd_with_timeout(pipe.read, timeout);
+        let elapsed = started.elapsed();
 
-            drop(result.unwrap_err());
-            assert!(elapsed >= timeout);
-        }
+        drop(result.unwrap_err());
+        assert!(elapsed >= timeout);
+    }
 
-        #[test]
-        fn times_out_when_writer_stalls_after_partial_write() {
-            let mut pipe = filedescriptor::Pipe::new().unwrap();
-            pipe.write.write_all(&[112, 97, 114, 116, 105, 97, 108]).unwrap();
-            let _open_writer = pipe.write;
+    #[test]
+    fn times_out_when_writer_stalls_after_partial_write() {
+        let mut pipe = filedescriptor::Pipe::new().unwrap();
+        pipe.write.write_all(&[112, 97, 114, 116, 105, 97, 108]).unwrap();
+        let _open_writer = pipe.write;
 
-            drop(read_fd_with_timeout(pipe.read, Duration::from_millis(50)).unwrap_err());
-        }
+        drop(read_fd_with_timeout(pipe.read, Duration::from_millis(50)).unwrap_err());
+    }
 
-        #[test]
-        fn slow_writer_resets_deadline_between_chunks() {
-            let pipe = filedescriptor::Pipe::new().unwrap();
-            let chunks = 12;
-            let gap = Duration::from_millis(40);
-            let timeout = Duration::from_millis(400);
+    #[test]
+    fn slow_writer_resets_deadline_between_chunks() {
+        let pipe = filedescriptor::Pipe::new().unwrap();
+        let chunks = 12;
+        let gap = Duration::from_millis(40);
+        let timeout = Duration::from_millis(400);
 
-            let writer = std::thread::spawn({
-                let mut write = pipe.write;
-                move || {
-                    for _ in 0..chunks {
-                        std::thread::sleep(gap);
-                        write.write_all(&[b'x'; 1000]).unwrap();
-                    }
+        let writer = std::thread::spawn({
+            let mut write = pipe.write;
+            move || {
+                for _ in 0..chunks {
+                    std::thread::sleep(gap);
+                    write.write_all(&[b'x'; 1000]).unwrap();
                 }
-            });
-            // The total transfer (~480ms) exceeds the timeout; this only
-            // passes because the timeout is re-armed per chunk.
-            let bytes = read_fd_with_timeout(pipe.read, timeout).unwrap();
-            writer.join().unwrap();
-            assert_eq!(bytes, vec![b'x'; 1000 * chunks]);
-        }
+            }
+        });
+        // The total transfer (~480ms) exceeds the timeout; this only
+        // passes because the timeout is re-armed per chunk.
+        let bytes = read_fd_with_timeout(pipe.read, timeout).unwrap();
+        writer.join().unwrap();
+        assert_eq!(bytes, vec![b'x'; 1000 * chunks]);
+    }
 
-        #[test]
-        fn reads_payload_larger_than_pipe_capacity() {
-            let pipe = filedescriptor::Pipe::new().unwrap();
-            // Exceeds the 64 KiB pipe capacity, forcing the writer to block.
-            let payload = vec![b'z'; 1024 * 1024];
+    #[test]
+    fn reads_payload_larger_than_pipe_capacity() {
+        let pipe = filedescriptor::Pipe::new().unwrap();
+        // Exceeds the 64 KiB pipe capacity, forcing the writer to block.
+        let payload = vec![b'z'; 1024 * 1024];
 
-            let writer = std::thread::spawn({
-                let mut write = pipe.write;
-                let payload = payload.clone();
-                move || write.write_all(&payload).unwrap()
-            });
-            let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
-            writer.join().unwrap();
-            assert_eq!(bytes, payload);
-        }
+        let writer = std::thread::spawn({
+            let mut write = pipe.write;
+            let payload = payload.clone();
+            move || write.write_all(&payload).unwrap()
+        });
+        let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
+        writer.join().unwrap();
+        assert_eq!(bytes, payload);
     }
 }
