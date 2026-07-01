@@ -479,6 +479,9 @@ pub trait Platform: 'static {
     // ---- 系统电源 ----
     fn on_system_power_event(&self, _callback: Box<dyn FnMut(SystemPowerEvent)>) {}
 
+    /// 注册系统唤醒时的回调函数
+    fn on_system_wake(&self, _callback: Box<dyn FnMut()>) {}
+
     // ---- 电源阻止 ----
     fn start_power_save_blocker(&self, _kind: PowerSaveBlockerKind) -> Option<u32> {
         None

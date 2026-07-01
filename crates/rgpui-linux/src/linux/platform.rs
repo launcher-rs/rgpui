@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     env,
     path::{Path, PathBuf},
     rc::Rc,
@@ -16,11 +17,14 @@ use std::{
 use anyhow::{Context as _, anyhow};
 use calloop::{LoopSignal, channel::Sender};
 use futures::channel::oneshot;
-use rgpui_util::{ResultExt as _, new_std_command};
+use rgpui::{ResultExt as _, util::command::new_std_command};
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
 use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
+use crate::linux::{
+    LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions,
+};
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
     ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
@@ -221,6 +225,9 @@ async fn listen_for_system_wake(wake_sender: Sender<()>) -> anyhow::Result<()> {
 
 pub(crate) struct LinuxPlatform<P> {
     pub(crate) inner: P,
+    pub(crate) global_hotkey: RefCell<LinuxGlobalHotkey>,
+    pub(crate) notifications: LinuxNotifications,
+    pub(crate) permissions: LinuxPermissions,
 }
 
 impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
