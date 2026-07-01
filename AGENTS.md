@@ -152,6 +152,75 @@ CI 通过矩阵策略在三个平台分别运行，确保跨平台兼容性。
 - PR 状态追踪: `UPSTREAM-PRS.json`
 - 上游仓库规则: `.opencode/upstream-rules.json`
 
+## Web/WASM 开发
+
+项目支持编译为 WebAssembly 在浏览器中运行。Web 平台实现位于 `rgpui-web/` crate。
+
+### 前置条件
+
+```bash
+rustup toolchain install nightly
+rustup target add wasm32-unknown-unknown --toolchain nightly
+rustup component add rust-src --toolchain nightly
+cargo install trunk
+```
+
+### 运行 Web 示例
+
+```bash
+# rgpui-component Web 示例
+cd crates/rgpui-component/examples/hello_world_web && trunk serve
+cd crates/rgpui-component/examples/components_web && trunk serve
+
+# rgpui-web 示例
+cd crates/rgpui-web/examples/hello_web && trunk serve
+```
+
+### Web 示例目录结构
+
+每个 Web 示例是独立的子 crate，包含以下必要文件：
+
+| 文件 | 说明 |
+|------|------|
+| `Cargo.toml` | 包配置，使用 `[workspace]` 避免继承问题 |
+| `main.rs` | 应用代码，包含 `#[cfg(target_family = "wasm")]` 入口 |
+| `index.html` | HTML 外壳，通过 `data-trunk` 链接 Rust 二进制 |
+| `trunk.toml` | Trunk 配置，设置 COOP/COEP 头（SharedArrayBuffer 所需） |
+| `.cargo/config.toml` | WASM 编译 flags（atomics、shared-memory 等） |
+| `rust-toolchain.toml` | 指定 nightly 工具链和 wasm32 目标 |
+
+### Web 入口函数模式
+
+```rust
+#![cfg_attr(target_family = "wasm", no_main)]
+
+fn run_example() {
+    rgpui_platform::application().run(|cx| {
+        // 应用逻辑
+    });
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn main() { run_example(); }
+
+#[cfg(target_family = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(start)]
+pub fn start() {
+    rgpui_platform::web_init();  // 必须在应用逻辑前调用
+    run_example();
+}
+```
+
+### Web 平台限制
+
+- 剪贴板 API 未实现（返回 None）
+- 文件对话框不可用（浏览器安全限制）
+- 系统托盘、原生菜单不支持
+- Tree-sitter 语法高亮不可用（WASM 中无法编译 C 依赖）
+- 图标从 CDN 运行时下载（需要网络连接）
+
+详细文档见 `crates/rgpui-component/examples/WEB.md`。
+
 ## 代码规范
 
 - **所有函数必须添加中文注释**：公开 API 和内部函数均需使用简体中文说明功能、参数和返回值

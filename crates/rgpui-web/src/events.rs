@@ -140,7 +140,10 @@ impl WebWindowInner {
         let this = Rc::clone(self);
         self.listen("pointerdown", move |event: JsValue| {
             let event: web_sys::PointerEvent = event.unchecked_into();
-            event.prevent_default();
+            // 不阻止右键默认行为（右键菜单由 contextmenu 事件处理）
+            if event.button() != 2 {
+                event.prevent_default();
+            }
             this.input_element.focus().ok();
 
             let button = dom_mouse_button_to_gpui(event.button());
@@ -277,10 +280,45 @@ impl WebWindowInner {
     }
 
     fn register_context_menu(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
-        self.listen("contextmenu", move |event: JsValue| {
+        // 使用捕获阶段监听 contextmenu，在浏览器处理右键菜单之前拦截
+        let this = Rc::clone(self);
+        let closure = Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
             let event: web_sys::Event = event.unchecked_into();
             event.prevent_default();
-        })
+            event.stop_propagation();
+        });
+        let canvas_js: &JsValue = this.canvas.as_ref();
+        let callback_js: &JsValue = closure.as_ref();
+        let options = js_sys::Object::new();
+        js_sys::Reflect::set(&options, &"capture".into(), &true.into()).ok();
+        js_sys::Reflect::set(&options, &"passive".into(), &false.into()).ok();
+        if let Ok(add_fn_val) = js_sys::Reflect::get(canvas_js, &"addEventListener".into()) {
+            if let Ok(add_fn) = add_fn_val.dyn_into::<js_sys::Function>() {
+                add_fn
+                    .call3(canvas_js, &"contextmenu".into(), callback_js, &options)
+                    .ok();
+            }
+        }
+        // 同时在文档级别阻止冒泡，防止 body/document 的默认右键菜单
+        if let Some(document) = this.browser_window.document() {
+            let doc_closure = Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
+                let event: web_sys::Event = event.unchecked_into();
+                event.prevent_default();
+            });
+            let doc_js: &JsValue = document.as_ref();
+            let doc_callback_js: &JsValue = doc_closure.as_ref();
+            let doc_options = js_sys::Object::new();
+            js_sys::Reflect::set(&doc_options, &"capture".into(), &true.into()).ok();
+            if let Ok(add_fn_val) = js_sys::Reflect::get(doc_js, &"addEventListener".into()) {
+                if let Ok(add_fn) = add_fn_val.dyn_into::<js_sys::Function>() {
+                    add_fn
+                        .call3(doc_js, &"contextmenu".into(), doc_callback_js, &doc_options)
+                        .ok();
+                }
+            }
+            return closure;
+        }
+        closure
     }
 
     fn register_dragover(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
@@ -358,7 +396,10 @@ impl WebWindowInner {
                 return;
             }
 
-            event.prevent_default();
+            // 函数键（F1-F12）留给浏览器处理（F12 开发者工具等）
+            if !is_function_key(&key) {
+                event.prevent_default();
+            }
 
             let is_held = event.repeat();
             let key_char = compute_key_char(&event, &key, &modifiers);
@@ -420,7 +461,10 @@ impl WebWindowInner {
                 return;
             }
 
-            event.prevent_default();
+            // 函数键（F1-F12）留给浏览器处理（F12 开发者工具等）
+            if !is_function_key(&key) {
+                event.prevent_default();
+            }
 
             let key_char = compute_key_char(&event, &key, &modifiers);
 
@@ -631,6 +675,16 @@ fn is_modifier_only_key(key: &str) -> bool {
         key,
         "control" | "alt" | "shift" | "platform" | "capslock" | "compose" | "process"
     )
+}
+
+/// 检查是否为函数键（F1-F12），这些键应留给浏览器默认行为
+fn is_function_key(key: &str) -> bool {
+    if let Some(rest) = key.strip_prefix('f') {
+        if let Ok(number) = rest.parse::<u8>() {
+            return (1..=12).contains(&number);
+        }
+    }
+    false
 }
 
 fn compute_key_char(

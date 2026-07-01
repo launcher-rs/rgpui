@@ -1,0 +1,19 @@
+[workspace]
+
+[package]
+name = "components_web"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "components_web"
+path = "src/main.rs"
+
+[dependencies]
+rgpui = { path = "../../../rgpui" }
+rgpui-platform = { path = "../../../rgpui-platform" }
+rgpui-component = { path = "../../" }
+rgpui-component-assets = { path = "../../../rgpui-component-assets" }
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"

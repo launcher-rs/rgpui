@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     env,
     path::{Path, PathBuf},
     rc::Rc,
@@ -10,28 +9,24 @@ use std::{
     ffi::OsString,
     fs::File,
     io::Read as _,
-    os::fd::{AsFd, FromRawFd, IntoRawFd},
+    os::fd::{AsFd, AsRawFd},
     time::Duration,
 };
 
 use anyhow::{Context as _, anyhow};
-use calloop::LoopSignal;
+use calloop::{LoopSignal, channel::Sender};
 use futures::channel::oneshot;
-use rgpui::ResultExt;
-use rgpui::util::command::{new_command, new_std_command};
+use rgpui_util::{ResultExt as _, new_std_command};
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
-use crate::linux::{
-    LinuxDispatcher, PriorityQueueCalloopReceiver, global_hotkey::LinuxGlobalHotkey,
-    notifications::LinuxNotifications, permissions::LinuxPermissions,
-};
+use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
-    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OwnedMenu,
-    PathPromptOptions, PermissionStatus, Platform, PlatformDisplay, PlatformKeyboardLayout,
-    PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result, RunnableVariant, Task,
-    ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
+    ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
+    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
+    PlatformWindow, Result, RunnableVariant, Task, ThermalState, WindowAppearance,
+    WindowButtonLayout, WindowParams,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use rgpui::{Pixels, Point, px};
@@ -39,35 +34,25 @@ use rgpui::{Pixels, Point, px};
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const SCROLL_LINES: f32 = 3.0;
 
-/// 双击间隔时间，与 GTK 默认值一致
-/// 取自 https://github.com/GNOME/gtk/blob/main/gtk/gtksettings.c#L320
+// Values match the defaults on GTK.
+// Taken from https://github.com/GNOME/gtk/blob/main/gtk/gtksettings.c#L320
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const DOUBLE_CLICK_DISTANCE: Pixels = px(5.0);
 pub(crate) const KEYRING_LABEL: &str = "zed-github-account";
 
-/// 文件选择器门户缺失时的错误提示
 #[cfg(any(feature = "wayland", feature = "x11"))]
-const FILE_PICKER_PORTAL_MISSING: &str = "由于缺少 xdg-desktop-portal 实现，无法打开文件选择器。";
+const FILE_PICKER_PORTAL_MISSING: &str =
+    "Couldn't open file picker due to missing xdg-desktop-portal implementation.";
 
-/// Linux 客户端 trait，定义各显示服务器后端需实现的接口。
-///
-/// 该 trait 封装了窗口创建、显示管理、剪贴板操作、光标控制
-/// 等平台相关功能，WaylandClient 和 X11Client 均实现此 trait。
 pub(crate) trait LinuxClient {
-    /// 返回合成器名称
     fn compositor_name(&self) -> &'static str;
-    /// 访问公共状态
     fn with_common<R>(&self, f: impl FnOnce(&mut LinuxCommon) -> R) -> R;
-    /// 获取当前键盘布局
     fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout>;
-    /// 获取所有显示器
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>>;
-    /// 获取指定显示器
     #[allow(unused)]
     fn display(&self, id: DisplayId) -> Option<Rc<dyn PlatformDisplay>>;
-    /// 获取主显示器
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>>;
 
     #[cfg(feature = "screen-capture")]
@@ -88,37 +73,24 @@ pub(crate) trait LinuxClient {
         sources_rx
     }
 
-    /// 打开新窗口
     fn open_window(
         &self,
         handle: AnyWindowHandle,
         options: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>>;
-    /// 设置光标样式
     fn set_cursor_style(&self, style: CursorStyle);
-    /// 隐藏光标直到鼠标移动
     fn hide_cursor_until_mouse_moves(&self) {}
-    /// 检查光标是否可见
     fn is_cursor_visible(&self) -> bool {
         true
     }
-    /// 打开 URI
     fn open_uri(&self, uri: &str);
-    /// 在文件管理器中显示路径
     fn reveal_path(&self, path: PathBuf);
-    /// 写入主剪贴板（选中即复制）
     fn write_to_primary(&self, item: ClipboardItem);
-    /// 写入常规剪贴板
     fn write_to_clipboard(&self, item: ClipboardItem);
-    /// 读取主剪贴板
     fn read_from_primary(&self) -> Option<ClipboardItem>;
-    /// 读取常规剪贴板
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
-    /// 获取活动窗口
     fn active_window(&self) -> Option<AnyWindowHandle>;
-    /// 获取窗口堆栈
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>>;
-    /// 运行事件循环
     fn run(&self);
 
     #[cfg(any(feature = "wayland", feature = "x11"))]
@@ -129,9 +101,6 @@ pub(crate) trait LinuxClient {
     }
 }
 
-/// 平台事件处理器集合，包含各种应用级回调函数。
-///
-/// 用于注册 URL 打开、退出、重新打开、应用菜单等事件的回调。
 #[derive(Default)]
 pub(crate) struct PlatformHandlers {
     pub(crate) open_urls: Option<Box<dyn FnMut(Vec<String>)>>,
@@ -141,12 +110,9 @@ pub(crate) struct PlatformHandlers {
     pub(crate) will_open_app_menu: Option<Box<dyn FnMut()>>,
     pub(crate) validate_app_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
+    pub(crate) system_wake: Option<Box<dyn FnMut()>>,
 }
 
-/// Linux 平台的公共状态和资源共享。
-///
-/// 包含后台/前台执行器、文本系统、外观设置、滚动条行为、
-/// 菜单和回调等跨后端共享的数据。
 pub(crate) struct LinuxCommon {
     pub(crate) background_executor: BackgroundExecutor,
     pub(crate) foreground_executor: ForegroundExecutor,
@@ -157,22 +123,24 @@ pub(crate) struct LinuxCommon {
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
     pub(crate) menus: Vec<OwnedMenu>,
+    #[cfg_attr(
+        not(all(target_os = "linux", any(feature = "wayland", feature = "x11"))),
+        allow(dead_code)
+    )]
+    wake_sender: Sender<()>,
+    wake_listener_started: bool,
 }
 
 impl LinuxCommon {
-    /// 创建新的 LinuxCommon 实例。
-    ///
-    /// 初始化事件循环信号、文本系统、调度器和执行器等核心组件。
-    ///
-    /// # 参数
-    ///
-    /// * `signal` - 事件循环控制信号
-    ///
-    /// # 返回值
-    ///
-    /// 返回 `(LinuxCommon, 优先级队列接收器)` 元组
-    pub fn new(signal: LoopSignal) -> (Self, PriorityQueueCalloopReceiver<RunnableVariant>) {
+    pub fn new(
+        signal: LoopSignal,
+    ) -> (
+        Self,
+        PriorityQueueCalloopReceiver<RunnableVariant>,
+        calloop::channel::Channel<()>,
+    ) {
         let (main_sender, main_receiver) = PriorityQueueCalloopReceiver::new();
+        let (wake_sender, wake_receiver) = calloop::channel::channel();
 
         #[cfg(any(feature = "wayland", feature = "x11"))]
         let text_system = Arc::new(crate::linux::CosmicTextSystem::new("IBM Plex Sans"));
@@ -195,21 +163,64 @@ impl LinuxCommon {
             callbacks,
             signal,
             menus: Vec::new(),
+            wake_sender,
+            wake_listener_started: false,
         };
 
-        (common, main_receiver)
+        (common, main_receiver, wake_receiver)
+    }
+
+    pub(crate) fn start_wake_listener(&mut self) {
+        if !self.wake_listener_started {
+            #[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
+            smol::spawn({
+                let wake_sender = self.wake_sender.clone();
+                async move {
+                    if let Err(error) = listen_for_system_wake(wake_sender).await {
+                        log::debug!("failed to listen for system wake events: {error:?}");
+                    }
+                }
+            })
+            .detach();
+
+            self.wake_listener_started = true;
+        }
+    }
+
+    pub(crate) fn handle_system_wake(&mut self) {
+        if let Some(mut callback) = self.callbacks.system_wake.take() {
+            callback();
+            self.callbacks.system_wake = Some(callback);
+        }
     }
 }
 
-/// Linux 平台包装结构，泛型参数 P 为具体的客户端实现。
-///
-/// 通过泛型设计，同一结构可适配 WaylandClient、X11Client
-/// 或 HeadlessClient 等不同后端。
+#[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
+async fn listen_for_system_wake(wake_sender: Sender<()>) -> anyhow::Result<()> {
+    use futures::StreamExt as _;
+
+    let connection = ashpd::zbus::Connection::system().await?;
+    let proxy = ashpd::zbus::Proxy::new(
+        &connection,
+        "org.freedesktop.login1",
+        "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager",
+    )
+    .await?;
+    let mut sleep_events = proxy.receive_signal("PrepareForSleep").await?;
+
+    while let Some(message) = sleep_events.next().await {
+        let sleeping = message.body().deserialize::<bool>()?;
+        if !sleeping {
+            wake_sender.send(()).ok();
+        }
+    }
+
+    Ok(())
+}
+
 pub(crate) struct LinuxPlatform<P> {
     pub(crate) inner: P,
-    pub(crate) global_hotkey: RefCell<LinuxGlobalHotkey>,
-    pub(crate) notifications: LinuxNotifications,
-    pub(crate) permissions: LinuxPermissions,
 }
 
 impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
@@ -270,9 +281,9 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn restart(&self, binary_path: Option<PathBuf>) {
         use std::os::unix::process::CommandExt as _;
 
-        // 获取当前进程的进程 ID
+        // get the process id of the current process
         let app_pid = std::process::id().to_string();
-        // 获取可执行文件的路径
+        // get the path to the executable
         let app_path = if let Some(path) = binary_path {
             path
         } else {
@@ -287,8 +298,8 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
         log::info!("Restarting process, using app path: {:?}", app_path);
 
-        // 脚本：等待当前进程退出后重新启动应用。
-        // 使用位置参数传递动态值以避免 shell 插值问题。
+        // Script to wait for the current process to exit and then restart the app.
+        // Pass dynamic values as positional parameters to avoid shell interpolation issues.
         let script = r#"
             while kill -0 "$0" 2>/dev/null; do
                 sleep 0.1
@@ -513,15 +524,15 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         let path = path.to_owned();
         self.background_executor()
             .spawn(async move {
-                let _ = new_command("xdg-open")
+                #[allow(
+                    clippy::disallowed_methods,
+                    reason = "running on a background thread, so blocking is fine"
+                )]
+                new_std_command("xdg-open")
                     .arg(path)
-                    .spawn()
-                    .context("invoking xdg-open")
-                    .log_err()?
                     .status()
-                    .await
-                    .log_err()?;
-                Some(())
+                    .context("invoking xdg-open")
+                    .log_err();
             })
             .detach();
     }
@@ -535,6 +546,13 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn on_reopen(&self, callback: Box<dyn FnMut()>) {
         self.inner.with_common(|common| {
             common.callbacks.reopen = Some(callback);
+        });
+    }
+
+    fn on_system_wake(&self, callback: Box<dyn FnMut()>) {
+        self.inner.with_common(|common| {
+            common.callbacks.system_wake = Some(callback);
+            common.start_wake_listener();
         });
     }
 
@@ -693,73 +711,8 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     }
 
     fn add_recent_document(&self, _path: &Path) {}
-
-    fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
-        self.global_hotkey
-            .borrow_mut()
-            .register(id as i32, keystroke)
-    }
-
-    fn unregister_global_hotkey(&self, id: u32) {
-        self.global_hotkey.borrow_mut().unregister(id as i32);
-    }
-
-    fn on_global_hotkey(&self, _callback: Box<dyn FnMut(u32)>) {
-        log::info!("on_global_hotkey is not fully implemented on Linux");
-    }
-
-    fn show_notification(&self, title: &str, body: &str) -> Result<()> {
-        self.notifications.show_notification(title, body, None)
-    }
-
-    fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
-        let app_path = self.app_path()?;
-        let exec_path = app_path.to_string_lossy().to_string();
-        let auto_launch = crate::linux::auto_launch::LinuxAutoLaunch::new();
-        if enabled {
-            auto_launch.enable(app_id, &exec_path)
-        } else {
-            auto_launch.disable(app_id)
-        }
-    }
-
-    fn is_auto_launch_enabled(&self, app_id: &str) -> bool {
-        let auto_launch = crate::linux::auto_launch::LinuxAutoLaunch::new();
-        auto_launch.is_enabled(app_id)
-    }
-
-    fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
-        crate::linux::focused_window::get_focused_window_info()
-    }
-
-    fn accessibility_status(&self) -> PermissionStatus {
-        self.permissions
-            .query_permission(rgpui::PermissionType::Accessibility)
-    }
-
-    fn request_accessibility_permission(&self) {
-        LinuxPermissions::request_permission(rgpui::PermissionType::Accessibility);
-    }
-
-    fn microphone_status(&self) -> PermissionStatus {
-        self.permissions
-            .query_permission(rgpui::PermissionType::InputMonitoring)
-    }
-
-    fn request_microphone_permission(&self, _callback: Box<dyn FnOnce(bool)>) {
-        LinuxPermissions::request_permission(rgpui::PermissionType::InputMonitoring);
-    }
 }
 
-/// 在 Wayland/X11 环境下打开 URI 的内部辅助函数。
-///
-/// 优先尝试通过 `xdg-open` 打开链接，失败后回退到 ashpd 桌面门户。
-///
-/// # 参数
-///
-/// * `executor` - 后台执行器
-/// * `uri` - 要打开的 URI
-/// * `activation_token` - 可选的 XDG 激活令牌
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn open_uri_internal(
     executor: BackgroundExecutor,
@@ -813,15 +766,6 @@ pub(super) fn open_uri_internal(
     }
 }
 
-/// 在 Wayland/X11 环境下通过文件管理器显示指定路径的内部辅助函数。
-///
-/// 优先使用 ashpd 桌面门户打开目录，失败后回退到 `open` crate。
-///
-/// # 参数
-///
-/// * `executor` - 后台执行器
-/// * `path` - 要显示的文件或目录路径
-/// * `activation_token` - 可选的 XDG 激活令牌
 #[cfg(any(feature = "x11", feature = "wayland"))]
 pub(super) fn reveal_path_internal(
     executor: BackgroundExecutor,
@@ -849,27 +793,12 @@ pub(super) fn reveal_path_internal(
         .detach();
 }
 
-/// 判断两点之间的距离是否在双击判定范围内。
-///
-/// 使用 `DOUBLE_CLICK_DISTANCE` 常量进行比较。
-///
-/// # 参数
-///
-/// * `a` - 第一个点
-/// * `b` - 第二个点
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn is_within_click_distance(a: Point<Pixels>, b: Point<Pixels>) -> bool {
     let diff = a - b;
     diff.x.abs() <= DOUBLE_CLICK_DISTANCE && diff.y.abs() <= DOUBLE_CLICK_DISTANCE
 }
 
-/// 根据当前区域设置获取 XKB compose 状态。
-///
-/// 尝试从 `LC_CTYPE` 环境变量获取区域设置，失败则使用 "C" 作为回退。
-///
-/// # 参数
-///
-/// * `cx` - XKB 上下文
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn get_xkb_compose_state(cx: &xkb::Context) -> Option<xkb::compose::State> {
     let mut locales = Vec::default();
@@ -892,84 +821,49 @@ pub(super) fn get_xkb_compose_state(cx: &xkb::Context) -> Option<xkb::compose::S
     state
 }
 
-/// 从管道读取数据的超时时间。
 #[cfg(any(feature = "wayland", feature = "x11"))]
-pub(crate) const PIPE_READ_TIMEOUT: Duration = Duration::from_secs(10);
+pub(super) const PIPE_READ_TIMEOUT: Duration = Duration::from_secs(4);
 
-/// 从文件描述符中读取数据的辅助函数。
-///
-/// # 安全性
-///
-/// 此函数为 unsafe，调用者需确保 `fd` 是有效的且未被其他代码持有。
-///
-/// # 参数
-///
-/// * `fd` - 文件描述符
 #[cfg(any(feature = "wayland", feature = "x11"))]
-pub(super) unsafe fn read_fd(fd: filedescriptor::FileDescriptor) -> Result<Vec<u8>> {
-    let mut file = unsafe { File::from_raw_fd(fd.into_raw_fd()) };
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// 从文件描述符中读取数据，带有超时限制。
-///
-/// 使用 `poll` 系统调用实现超时控制。如果在指定时间内没有数据可读，
-/// 返回超时错误。
-///
-/// # 参数
-///
-/// * `fd` - 要读取的文件描述符
-/// * `timeout` - 超时时间
-///
-/// # 返回值
-///
-/// 读取到的数据字节，或超时/IO 错误
-#[cfg(any(feature = "wayland", feature = "x11"))]
-pub(crate) fn read_fd_with_timeout(
-    fd: filedescriptor::FileDescriptor,
+pub(super) fn read_fd_with_timeout(
+    mut fd: filedescriptor::FileDescriptor,
     timeout: Duration,
 ) -> Result<Vec<u8>> {
-    use std::os::unix::io::AsRawFd;
-
-    let raw_fd = fd.as_raw_fd();
-    let timeout_ms = timeout.as_millis() as i32;
-
-    let mut pollfd = libc::pollfd {
-        fd: raw_fd,
-        events: libc::POLLIN,
-        revents: 0,
-    };
-
-    let ret = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
-
-    if ret < 0 {
-        return Err(anyhow!("poll failed: {}", std::io::Error::last_os_error()));
+    fd.set_non_blocking(true)?;
+    let mut buffer = Vec::new();
+    let mut chunk = [0u8; 8192];
+    loop {
+        let mut poll_fds = [filedescriptor::pollfd {
+            fd: fd.as_raw_fd(),
+            events: filedescriptor::POLLIN,
+            revents: 0,
+        }];
+        let ready = match filedescriptor::poll(&mut poll_fds, Some(timeout)) {
+            Ok(ready) => ready,
+            Err(filedescriptor::Error::Poll(err))
+                if err.kind() == std::io::ErrorKind::Interrupted =>
+            {
+                continue;
+            }
+            Err(err) => return Err(err.into()),
+        };
+        if ready == 0 {
+            anyhow::bail!("timed out waiting for data on pipe after {timeout:?}");
+        }
+        match fd.read(&mut chunk) {
+            Ok(0) => return Ok(buffer),
+            Ok(len) => buffer.extend_from_slice(&chunk[..len]),
+            Err(err)
+                if err.kind() == std::io::ErrorKind::WouldBlock
+                    || err.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(err) => return Err(err.into()),
+        }
     }
-
-    if ret == 0 {
-        return Err(anyhow!("timed out"));
-    }
-
-    if (pollfd.revents & libc::POLLIN) == 0 {
-        return Err(anyhow!("fd not ready for reading"));
-    }
-
-    unsafe { read_fd(fd) }
 }
 
-/// 默认光标图标名称（X11 传统名称）。
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) const DEFAULT_CURSOR_ICON_NAME: &str = "left_ptr";
 
-/// 将 GPUI 光标样式映射为 X11/Wayland 光标图标名称列表。
-///
-/// 返回多个名称作为回退选项，基于 Chromium 的光标命名约定。
-///
-/// # 参数
-///
-/// * `style` - GPUI 光标样式
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn cursor_style_to_icon_names(style: CursorStyle) -> &'static [&'static str] {
     // Based on cursor names from chromium:
@@ -999,13 +893,6 @@ pub(super) fn cursor_style_to_icon_names(style: CursorStyle) -> &'static [&'stat
     }
 }
 
-/// 记录光标图标加载失败的警告信息。
-///
-/// 如果设置了 `XCURSOR_PATH` 环境变量，会在警告中提示其值。
-///
-/// # 参数
-///
-/// * `message` - 警告消息
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn log_cursor_icon_warning(message: impl std::fmt::Display) {
     if let Ok(xcursor_path) = env::var("XCURSOR_PATH") {
@@ -1074,16 +961,6 @@ fn guess_ascii(keycode: Keycode, shift: bool) -> Option<char> {
     Some(c)
 }
 
-/// 根据 XKB 状态和按键码生成 GPUI 按键事件。
-///
-/// 将 XKB 按键符号映射为 GPUI 统一的 `Keystroke` 结构，
-/// 处理修饰键、特殊按键（方向键、功能键等）和字符键。
-///
-/// # 参数
-///
-/// * `state` - XKB 按键状态
-/// * `modifiers` - 当前修饰键状态
-/// * `keycode` - 按键码
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn keystroke_from_xkb(
     state: &State,
@@ -1209,51 +1086,44 @@ pub(super) fn keystroke_from_xkb(
     }
 }
 
-/// 获取 XKB dead key 对应的底层符号。
-///
-/// Dead key 用于输入带附加符号的字符（如 é, ñ 等）。
-///
-/// # 参数
-///
-/// * `keysym` - XKB 按键符号
-///
-/// # 返回值
-///
-/// 返回 dead key 代表的符号字符串，若非 dead key 则返回 None
+/**
+ * Returns which symbol the dead key represents
+ * <https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values#dead_keycodes_for_linux>
+ */
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub fn keystroke_underlying_dead_key(keysym: Keysym) -> Option<String> {
     match keysym {
         Keysym::dead_grave => Some("`".to_owned()),
-        Keysym::dead_acute => Some("´".to_owned()),
+        Keysym::dead_acute => Some("麓".to_owned()),
         Keysym::dead_circumflex => Some("^".to_owned()),
         Keysym::dead_tilde => Some("~".to_owned()),
-        Keysym::dead_macron => Some("¯".to_owned()),
-        Keysym::dead_breve => Some("˘".to_owned()),
-        Keysym::dead_abovedot => Some("˙".to_owned()),
-        Keysym::dead_diaeresis => Some("¨".to_owned()),
-        Keysym::dead_abovering => Some("˚".to_owned()),
-        Keysym::dead_doubleacute => Some("˝".to_owned()),
-        Keysym::dead_caron => Some("ˇ".to_owned()),
-        Keysym::dead_cedilla => Some("¸".to_owned()),
-        Keysym::dead_ogonek => Some("˛".to_owned()),
-        Keysym::dead_iota => Some("ͅ".to_owned()),
-        Keysym::dead_voiced_sound => Some("゙".to_owned()),
-        Keysym::dead_semivoiced_sound => Some("゚".to_owned()),
-        Keysym::dead_belowdot => Some("̣̣".to_owned()),
-        Keysym::dead_hook => Some("̡".to_owned()),
-        Keysym::dead_horn => Some("̛".to_owned()),
-        Keysym::dead_stroke => Some("̶̶".to_owned()),
-        Keysym::dead_abovecomma => Some("̓̓".to_owned()),
-        Keysym::dead_abovereversedcomma => Some("ʽ".to_owned()),
-        Keysym::dead_doublegrave => Some("̏".to_owned()),
-        Keysym::dead_belowring => Some("˳".to_owned()),
-        Keysym::dead_belowmacron => Some("̱".to_owned()),
-        Keysym::dead_belowcircumflex => Some("ꞈ".to_owned()),
-        Keysym::dead_belowtilde => Some("̰".to_owned()),
-        Keysym::dead_belowbreve => Some("̮".to_owned()),
-        Keysym::dead_belowdiaeresis => Some("̤".to_owned()),
-        Keysym::dead_invertedbreve => Some("̯".to_owned()),
-        Keysym::dead_belowcomma => Some("̦".to_owned()),
+        Keysym::dead_macron => Some("炉".to_owned()),
+        Keysym::dead_breve => Some("藰".to_owned()),
+        Keysym::dead_abovedot => Some("藱".to_owned()),
+        Keysym::dead_diaeresis => Some("篓".to_owned()),
+        Keysym::dead_abovering => Some("藲".to_owned()),
+        Keysym::dead_doubleacute => Some("藵".to_owned()),
+        Keysym::dead_caron => Some("藝".to_owned()),
+        Keysym::dead_cedilla => Some("赂".to_owned()),
+        Keysym::dead_ogonek => Some("藳".to_owned()),
+        Keysym::dead_iota => Some("蛥".to_owned()),
+        Keysym::dead_voiced_sound => Some("銈?.to_owned()),
+        Keysym::dead_semivoiced_sound => Some("銈?.to_owned()),
+        Keysym::dead_belowdot => Some("蹋蹋".to_owned()),
+        Keysym::dead_hook => Some("獭".to_owned()),
+        Keysym::dead_horn => Some("虥".to_owned()),
+        Keysym::dead_stroke => Some("潭潭".to_owned()),
+        Keysym::dead_abovecomma => Some("虛虛".to_owned()),
+        Keysym::dead_abovereversedcomma => Some("式".to_owned()),
+        Keysym::dead_doublegrave => Some("虖".to_owned()),
+        Keysym::dead_belowring => Some("顺".to_owned()),
+        Keysym::dead_belowmacron => Some("瘫".to_owned()),
+        Keysym::dead_belowcircumflex => Some("隇?.to_owned()),
+        Keysym::dead_belowtilde => Some("贪".to_owned()),
+        Keysym::dead_belowbreve => Some("坍".to_owned()),
+        Keysym::dead_belowdiaeresis => Some("踏".to_owned()),
+        Keysym::dead_invertedbreve => Some("摊".to_owned()),
+        Keysym::dead_belowcomma => Some("苔".to_owned()),
         Keysym::dead_currency => None,
         Keysym::dead_lowline => None,
         Keysym::dead_aboveverticalline => None,
@@ -1269,20 +1139,12 @@ pub fn keystroke_underlying_dead_key(keysym: Keysym) -> Option<String> {
         Keysym::dead_O => None,
         Keysym::dead_u => None,
         Keysym::dead_U => None,
-        Keysym::dead_small_schwa => Some("ə".to_owned()),
-        Keysym::dead_capital_schwa => Some("Ə".to_owned()),
+        Keysym::dead_small_schwa => Some("蓹".to_owned()),
+        Keysym::dead_capital_schwa => Some("茝".to_owned()),
         Keysym::dead_greek => None,
         _ => None,
     }
 }
-/// 从 XKB 状态中提取修饰键状态。
-///
-/// 将 XKB 的 Shift、Alt、Ctrl、Logo（Super/Command）修饰键
-/// 映射为 GPUI 的 `Modifiers` 结构。
-///
-/// # 参数
-///
-/// * `keymap_state` - XKB 按键映射状态
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn modifiers_from_xkb(keymap_state: &State) -> rgpui::Modifiers {
     let shift = keymap_state.mod_name_is_active(xkb::MOD_NAME_SHIFT, xkb::STATE_MODS_EFFECTIVE);
@@ -1298,25 +1160,15 @@ pub(super) fn modifiers_from_xkb(keymap_state: &State) -> rgpui::Modifiers {
     }
 }
 
-/// 从 XKB 状态中提取 CapsLock 状态。
-///
-/// # 参数
-///
-/// * `keymap_state` - XKB 按键映射状态
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn capslock_from_xkb(keymap_state: &State) -> rgpui::Capslock {
     let on = keymap_state.mod_name_is_active(xkb::MOD_NAME_CAPS, xkb::STATE_MODS_EFFECTIVE);
     rgpui::Capslock { on }
 }
 
-/// 通过系统 sysfs 解析 Linux `dev_t` 获取合成器 GPU 的 PCI 供应商/设备 ID。
-///
-/// 返回的 `CompositorGpuHint` 可用于 GPU 适配器选择逻辑，
-/// 优先使用合成器的渲染设备。
-///
-/// # 参数
-///
-/// * `dev` - Linux 设备号
+/// Resolve a Linux `dev_t` to PCI vendor/device IDs via sysfs, returning a
+/// [`CompositorGpuHint`] that the GPU adapter selection code can use to
+/// prioritize the compositor's rendering device.
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<rgpui_wgpu::CompositorGpuHint> {
     fn dev_major(dev: u64) -> u32 {
@@ -1375,5 +1227,101 @@ mod tests {
             zero,
             Point::new(px(5.0), px(5.1))
         ),);
+    }
+
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    mod read_fd_with_timeout {
+        use super::super::{PIPE_READ_TIMEOUT, read_fd_with_timeout};
+        use std::io::Write as _;
+        use std::time::{Duration, Instant};
+
+        #[test]
+        fn reads_data_written_before_close() {
+            let mut pipe = filedescriptor::Pipe::new().unwrap();
+            pipe.write.write_all(b"hello clipboard").unwrap();
+            drop(pipe.write);
+
+            let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
+            assert_eq!(bytes, b"hello clipboard");
+        }
+
+        #[test]
+        fn returns_empty_when_writer_closes_without_writing() {
+            let pipe = filedescriptor::Pipe::new().unwrap();
+            drop(pipe.write);
+
+            let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
+            assert!(bytes.is_empty());
+        }
+
+        #[test]
+        fn times_out_when_writer_never_writes() {
+            let pipe = filedescriptor::Pipe::new().unwrap();
+            let _open_writer = pipe.write;
+
+            let timeout = Duration::from_millis(50);
+            let started = Instant::now();
+            let result = read_fd_with_timeout(pipe.read, timeout);
+            let elapsed = started.elapsed();
+
+            let err = result.unwrap_err();
+            assert!(
+                err.to_string().contains("timed out"),
+                "unexpected error: {err}"
+            );
+            assert!(elapsed >= timeout, "returned before the timeout elapsed");
+        }
+
+        #[test]
+        fn times_out_when_writer_stalls_after_partial_write() {
+            let mut pipe = filedescriptor::Pipe::new().unwrap();
+            pipe.write.write_all(b"partial").unwrap();
+            let _open_writer = pipe.write;
+
+            let err = read_fd_with_timeout(pipe.read, Duration::from_millis(50)).unwrap_err();
+            assert!(
+                err.to_string().contains("timed out"),
+                "unexpected error: {err}"
+            );
+        }
+
+        #[test]
+        fn slow_writer_resets_deadline_between_chunks() {
+            let pipe = filedescriptor::Pipe::new().unwrap();
+            let chunks = 12;
+            let gap = Duration::from_millis(40);
+            let timeout = Duration::from_millis(400);
+
+            let writer = std::thread::spawn({
+                let mut write = pipe.write;
+                move || {
+                    for _ in 0..chunks {
+                        std::thread::sleep(gap);
+                        write.write_all(&[b'x'; 1000]).unwrap();
+                    }
+                }
+            });
+            // The total transfer (~480ms) exceeds the timeout; this only
+            // passes because the timeout is re-armed per chunk.
+            let bytes = read_fd_with_timeout(pipe.read, timeout).unwrap();
+            writer.join().unwrap();
+            assert_eq!(bytes, vec![b'x'; 1000 * chunks]);
+        }
+
+        #[test]
+        fn reads_payload_larger_than_pipe_capacity() {
+            let pipe = filedescriptor::Pipe::new().unwrap();
+            // Exceeds the 64 KiB pipe capacity, forcing the writer to block.
+            let payload = vec![b'z'; 1024 * 1024];
+
+            let writer = std::thread::spawn({
+                let mut write = pipe.write;
+                let payload = payload.clone();
+                move || write.write_all(&payload).unwrap()
+            });
+            let bytes = read_fd_with_timeout(pipe.read, PIPE_READ_TIMEOUT).unwrap();
+            writer.join().unwrap();
+            assert_eq!(bytes, payload);
+        }
     }
 }

@@ -12,5 +12,5 @@ path = "main.rs"
 
 [dependencies]
 rgpui = { path = "../../../rgpui" }
-rgpui_platform = { path = "../../../rgpui_platform" }
+rgpui-platform = { path = "../../../rgpui-platform" }
 web-time = "1"

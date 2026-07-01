@@ -490,8 +490,9 @@
     {
       "number": 2487,
       "upstream": "gpui-component",
-      "title": "theme: Fix Aurora theme syntax highlights",
-      "status": "pending"
+      "title": "fix: restore aurora syntax highlights",
+      "status": "merged",
+      "merged_at": "2026-07-01"
     },
     {
       "number": 59831,
@@ -627,6 +628,27 @@
       "status": "merged",
       "merged_at": "2026-06-29",
       "note": "Added highlight support for <mark> tag in HTML renderer"
+    },
+    {
+      "number": 2521,
+      "upstream": "gpui-component",
+      "title": "examples: Rename \"drawer\" to \"sheet\" in dialog_overlay",
+      "status": "merged",
+      "merged_at": "2026-07-01"
+    },
+    {
+      "number": 59995,
+      "upstream": "zed",
+      "title": "Add xdg-activation spec reference comment",
+      "status": "merged",
+      "merged_at": "2026-07-01"
+    },
+    {
+      "number": 60090,
+      "upstream": "zed",
+      "title": "gpui_linux: Suppress dead code warning on `wake_sender`",
+      "status": "merged",
+      "merged_at": "2026-07-01"
     }
   ]
 }

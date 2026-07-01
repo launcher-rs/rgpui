@@ -7,6 +7,11 @@ members = [
     "crates/rgpui-component/examples/*",
 ]
 
+exclude = [
+    "crates/rgpui-component/examples/hello_world_web",
+    "crates/rgpui-component/examples/components_web",
+]
+
 [workspace.package]
 edition = "2024"
 publish = true
@@ -22,7 +27,7 @@ rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "0.3.0" }
 rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "0.3.0" }
 rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "0.3.0"}
 rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "0.3.0"}
-rgpui-web = { path = "crates/rgpui-web" ,version = "0.3.0"}
+rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "0.3.0" }
 rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "0.3.0" }
 rgpui-tokio = { path = "crates/rgpui-tokio",version = "0.3.0" }
 
@@ -310,8 +315,8 @@ ashpd = { version = "0.13", default-features = false, features = [
 
 # ---- GPU 渲染 ----
 # WebGPU 实现
-#wgpu = { git = "https://github.com/zed-industries/wgpu.git", branch = "v29" }
 wgpu = { version = "29.0" }
+#wgpu = { git = "https://github.com/zed-industries/wgpu.git", rev = "357a0c56e0070480ad9daea5d2eaa83150b79e88" }
 
 # ---- 版本语义 ----
 # 语义化版本

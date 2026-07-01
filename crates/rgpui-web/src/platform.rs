@@ -29,6 +29,7 @@ static BUNDLED_FONTS: &[&[u8]] = &[
     include_bytes!("../../../assets/fonts/lilex/Lilex-Bold.ttf"),
     include_bytes!("../../../assets/fonts/lilex/Lilex-Italic.ttf"),
     include_bytes!("../../../assets/fonts/lilex/Lilex-BoldItalic.ttf"),
+    include_bytes!("../../../assets/fonts/noto-sans-sc/NotoSansSC-Regular.ttf"),
 ];
 
 /// Web 平台实现，实现 gpui 的 `Platform` trait
@@ -130,13 +131,12 @@ impl Platform for WebPlatform {
                 Ok(context) => {
                     log::info!("WebGPU context initialized successfully");
                     *wgpu_context.borrow_mut() = Some(context);
-                    on_finish_launching();
                 }
                 Err(err) => {
                     log::error!("Failed to initialize WebGPU context: {err:#}");
-                    on_finish_launching();
                 }
             }
+            on_finish_launching();
         });
     }
 

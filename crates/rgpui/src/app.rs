@@ -200,6 +200,13 @@ impl Application {
             let cx = &mut *this.borrow_mut();
             on_finish_launching(cx);
         }));
+        // On WASM, Platform::run returns immediately (spawn_local is non-blocking).
+        // The closure (which holds the only other Rc<AppCell> clone) will be dropped
+        // after the async task completes, causing App to be dropped. This invalidates
+        // all wasm-bindgen closures (RAF, ResizeObserver, etc.) registered by windows.
+        // Forgetting self keeps one Rc<AppCell> alive for the page lifetime.
+        #[cfg(target_family = "wasm")]
+        std::mem::forget(self);
     }
 
     /// Register a handler to be invoked when the platform instructs the application

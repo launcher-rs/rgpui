@@ -93,6 +93,7 @@ impl WgpuContext {
         let queue = Arc::new(queue);
 
         // 注册到共享上下文，供 rgpui-3d 等第三方渲染器复用
+        #[cfg(not(target_family = "wasm"))]
         crate::shared_context::register(instance.clone(), device.clone(), queue.clone());
 
         Ok(Self {
@@ -139,8 +140,7 @@ impl WgpuContext {
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
-        // 注册到共享上下文，供 rgpui-3d 等第三方渲染器复用
-        crate::shared_context::register(instance.clone(), device.clone(), queue.clone());
+        // WASM 平台不注册共享上下文（wgpu WebGPU 后端不满足 Send+Sync）
 
         Ok(Self {
             instance,

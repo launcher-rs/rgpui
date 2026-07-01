@@ -95,11 +95,7 @@ slotmap.workspace = true
 smallvec.workspace = true
 smol_str = "0.3.6"
 async-channel.workspace = true
-async-compression.workspace = true
-async-fs.workspace = true
-async-std.workspace = true
-async-tar.workspace = true
-async_zip.workspace = true
+
 bytes.workspace = true
 dunce.workspace = true
 flume = "0.11"
@@ -110,7 +106,6 @@ heapless.workspace = true
 http.workspace = true
 http-body.workspace = true
 percent-encoding.workspace = true
-rayon.workspace = true
 reqwest = { workspace = true, optional = true }
 rust-embed.workspace = true
 rustls = { workspace = true, optional = true }
@@ -119,14 +114,10 @@ serde_json_lenient.workspace = true
 serde_urlencoded.workspace = true
 sha2.workspace = true
 shlex.workspace = true
-smol.workspace = true
 take-until.workspace = true
-tempfile.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"], optional = true }
 tracing.workspace = true
 unicase.workspace = true
-walkdir.workspace = true
-which.workspace = true
 stacksafe.workspace = true
 strum.workspace = true
 taffy = "=0.10.1"
@@ -142,8 +133,20 @@ uuid.workspace = true
 web-time.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-getrandom = { version = "0.3.4", features = ["wasm_js"] }
+getrandom = { version = "0.4.3", features = ["wasm_js"] }
 uuid = { workspace = true, features = ["js"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+async-compression.workspace = true
+async-fs.workspace = true
+async-std.workspace = true
+async-tar.workspace = true
+async_zip.workspace = true
+rayon.workspace = true
+smol.workspace = true
+tempfile.workspace = true
+walkdir.workspace = true
+which.workspace = true
 
 
 [target.'cfg(target_os = "macos")'.dependencies]

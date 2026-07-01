@@ -146,6 +146,7 @@ struct Background {
     colors: array<LinearColorStop, 4>,
     stop_count: u32,
     pad: u32,
+    align_pad: u32,
     center: vec2<f32>,
     radius: vec2<f32>,
 }

@@ -448,8 +448,10 @@ impl WgpuRenderer {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let last_error_clone = Arc::clone(&last_error);
         device.on_uncaptured_error(Arc::new(move |error| {
+            let error_str = error.to_string();
+            log::error!("WebGPU uncaptured error: {error_str}");
             let mut guard = last_error_clone.lock().unwrap();
-            *guard = Some(error.to_string());
+            *guard = Some(error_str);
         }));
 
         let resources = WgpuResources {
@@ -1208,6 +1210,13 @@ impl WgpuRenderer {
             );
         }
 
+        // 创建错误作用域以捕获验证错误
+        #[cfg(target_family = "wasm")]
+        let error_scope = self
+            .resources()
+            .device
+            .push_error_scope(wgpu::ErrorFilter::Validation);
+
         loop {
             let mut instance_offset: u64 = 0;
             let mut overflow = false;
@@ -1337,9 +1346,21 @@ impl WgpuRenderer {
                 continue;
             }
 
+            let command_buffer = encoder.finish();
             self.resources()
                 .queue
-                .submit(std::iter::once(encoder.finish()));
+                .submit(std::iter::once(command_buffer));
+
+            #[cfg(target_family = "wasm")]
+            {
+                let error_future = error_scope.pop();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Some(error) = error_future.await {
+                        log::error!("WebGPU 验证错误 (error scope): {error}");
+                    }
+                });
+            }
+
             frame.present();
             return true;
         }

@@ -34,6 +34,8 @@
 | #55583 | 2026-06-26 | wayland: fix xdg_toplevel app_id set to None at first commit |
 | #59836 | 2026-06-26 | Fix delayed titlebar clicks on macOS 27 Beta |
 | #58685 | 2026-06-26 | Slightly reformulate the message |
+| #59995 | 2026-07-01 | Add xdg-activation spec reference comment |
+| #60090 | 2026-07-01 | gpui_linux: Suppress dead code warning on `wake_sender` |
 
 ## gpui-component
 
@@ -73,6 +75,8 @@
 | #2513 | 2026-06-26 | plot: Polish hover crosshair color and fix horizontal bar band |
 | #2512 | 2026-06-26 | theme: Clamp each gradient stop's alpha for active/selection backgrounds |
 | #2510 | 2026-06-26 | Place the caret at the end on `set_value`, view stays at the start |
+| #2487 | 2026-07-01 | fix: restore aurora syntax highlights |
+| #2521 | 2026-07-01 | examples: Rename "drawer" to "sheet" in dialog_overlay |
 
 ## yororen-ui
 

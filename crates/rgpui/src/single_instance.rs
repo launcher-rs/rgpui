@@ -23,6 +23,8 @@ pub struct SingleInstance {
     inner: Option<windows::Win32::Foundation::HANDLE>,
     #[cfg(unix)]
     inner: Option<UnixSingleInstance>,
+    #[cfg(not(any(windows, unix)))]
+    _placeholder: (),
 }
 
 #[cfg(unix)]
@@ -54,7 +56,7 @@ impl SingleInstance {
         #[cfg(not(any(windows, unix)))]
         {
             let _ = app_id;
-            Ok(Self { inner: None })
+            Ok(Self { _placeholder: () })
         }
     }
 
@@ -122,19 +124,21 @@ impl SingleInstance {
     ///
     /// # 参数
     /// * `callback` - 回调函数
-    pub fn on_activate(&self, callback: Box<dyn Fn() + Send + 'static>) {
+    pub fn on_activate(&self, _callback: Box<dyn Fn() + Send + 'static>) {
         #[cfg(unix)]
         {
             if let Some(_inner) = &self.inner {
                 // Unix 实现中可以在后台线程监听
                 // 这里简化处理，实际实现需要更复杂的逻辑
-                let _ = callback;
             }
         }
         #[cfg(windows)]
         {
             // Windows 命名互斥量不支持消息传递
-            let _ = callback;
+        }
+        #[cfg(not(any(windows, unix)))]
+        {
+            // WASM 平台不支持单实例激活回调
         }
     }
 }

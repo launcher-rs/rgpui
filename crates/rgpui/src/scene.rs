@@ -580,7 +580,7 @@ pub enum BlendMode {
 
 /// 表示可应用于元素的二维变换的数据类型。
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[repr(C)]
+#[repr(C, align(8))]
 pub struct TransformationMatrix {
     /// 2x2 矩阵，包含旋转和缩放，
     /// 按行主序存储
