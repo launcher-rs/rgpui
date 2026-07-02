@@ -10,6 +10,7 @@ use super::{
     mask_pattern::MaskPattern,
     mode::InputMode,
     number_input,
+    number_input::StepAction,
 };
 use crate::Size;
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
@@ -100,7 +101,7 @@ actions!(
 #[derive(Clone)]
 pub enum InputEvent {
     Change,
-    PressEnter { secondary: bool },
+    PressEnter { secondary: bool, shift: bool },
     Focus,
     Blur,
 }
@@ -398,6 +399,16 @@ pub struct InputState {
     _subscriptions: Vec<Subscription>,
 
     pub(super) _context_menu_task: Task<Result<()>>,
+
+    /// NumberInput 步进值，None 表示不使用内部步进
+    pub(super) step_value: Option<f64>,
+    /// NumberInput 最小值
+    pub(super) min_value: Option<f64>,
+    /// 自定义步进函数
+    pub(super) step_by_fn:
+        Option<Box<dyn Fn(f64, StepAction, &mut Context<Self>) -> f64 + 'static>>,
+    /// 是否在 Enter 时提交（用于多行文本框场景）
+    pub(super) submit_on_enter: bool,
 }
 
 impl EventEmitter<InputEvent> for InputState {}
@@ -486,6 +497,10 @@ impl InputState {
             _context_menu_task: Task::ready(Ok(())),
             _pending_update: false,
             cursor_line_end_affinity: false,
+            step_value: None,
+            min_value: None,
+            step_by_fn: None,
+            submit_on_enter: false,
         }
     }
 
@@ -528,9 +543,41 @@ impl InputState {
     }
 
     /// 兼容旧调用：component 不再提供代码编辑器，改为多行普通文本。
-    pub(crate) fn code_editor(mut self, _language: impl Into<SharedString>) -> Self {
+    pub fn code_editor(mut self, _language: impl Into<SharedString>) -> Self {
         self.mode = InputMode::plain_text().multi_line(true);
         self.searchable = true;
+        self
+    }
+
+    /// 设置 NumberInput 的步进值。传入 None 表示不使用内部步进，由订阅者处理。
+    pub fn set_step(&mut self, step: Option<f64>, _window: &mut Window, _cx: &mut Context<Self>) {
+        self.step_value = step;
+    }
+
+    /// 设置 NumberInput 的最小值。
+    pub fn min(mut self, min: f64) -> Self {
+        self.min_value = Some(min);
+        self
+    }
+
+    /// 设置 NumberInput 的固定步进值。
+    pub fn step(mut self, step: f64) -> Self {
+        self.step_value = Some(step);
+        self
+    }
+
+    /// 设置 NumberInput 的自定义步进函数。
+    pub fn step_by(
+        mut self,
+        f: impl Fn(f64, StepAction, &mut Context<Self>) -> f64 + 'static,
+    ) -> Self {
+        self.step_by_fn = Some(Box::new(f));
+        self
+    }
+
+    /// 设置是否在按下 Enter 时提交内容（用于多行文本框聊天场景）。
+    pub fn submit_on_enter(mut self, submit: bool) -> Self {
+        self.submit_on_enter = submit;
         self
     }
 
@@ -1209,6 +1256,7 @@ impl InputState {
 
         cx.emit(InputEvent::PressEnter {
             secondary: action.secondary,
+            shift: action.shift,
         });
     }
 
