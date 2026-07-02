@@ -5,8 +5,10 @@ use rgpui::{
 use ropey::Rope;
 use std::{ops::Range, rc::Rc};
 
-use crate::input::{GoToDefinition, InputState, RopeExt, element::TextElement};
-use rgpui_component::ActiveTheme;
+use crate::{
+    ActiveTheme,
+    input::{GoToDefinition, InputState, RopeExt, element::TextElement},
+};
 
 /// Definition provider
 ///

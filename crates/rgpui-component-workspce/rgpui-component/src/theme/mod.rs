@@ -1,6 +1,6 @@
 use crate::{
-    list::ListSettings, notification::NotificationSettings, scroll::ScrollbarShow,
-    sheet::SheetSettings,
+    highlighter::HighlightTheme, list::ListSettings, notification::NotificationSettings,
+    scroll::ScrollbarShow, sheet::SheetSettings,
 };
 use rgpui::{App, Global, Hsla, Pixels, SharedString, Window, WindowAppearance, px};
 use schemars::JsonSchema;
@@ -12,13 +12,11 @@ use std::{
 };
 
 mod color;
-pub mod highlight;
 mod registry;
 mod schema;
 mod theme_color;
 
 pub use color::*;
-pub use highlight::*;
 pub use registry::*;
 pub use schema::*;
 pub use theme_color::*;
@@ -199,7 +197,7 @@ impl Theme {
 
     /// Get the editor background color, if not set, use the input background color.
     #[inline]
-    pub fn editor_background(&self) -> Hsla {
+    pub(crate) fn editor_background(&self) -> Hsla {
         self.highlight_theme
             .style
             .editor_background

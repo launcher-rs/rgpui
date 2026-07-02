@@ -9,7 +9,7 @@ use super::delegate::{SearchableListDelegate, SearchableListItem};
 
 /// Shared infrastructure for all searchable-list-based components (`SelectState`, `ComboBoxState`).
 ///
-/// This struct is a plain nested value inside a GPUI entity — it has no entity context of its
+/// This struct is a plain nested value inside a rgpui entity — it has no entity context of its
 /// own and cannot call `cx.notify()` or `cx.emit()`. Callers are responsible for those after
 /// calling mutable methods.
 pub struct SearchableListState<D: SearchableListDelegate + 'static>

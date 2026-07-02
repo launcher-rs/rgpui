@@ -28,19 +28,19 @@ pub fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> impl Fn(f32) -> f32 {
 
 // ── Easing presets ──────────────────────────────────────────────────────────
 
-/// Cubic ease-out —fast start, slow end. Good for enter animations.
+/// Cubic ease-out — fast start, slow end. Good for enter animations.
 pub fn ease_out_cubic(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     1.0 - (1.0 - t).powi(3)
 }
 
-/// Cubic ease-in —slow start, fast end. Good for exit animations.
+/// Cubic ease-in — slow start, fast end. Good for exit animations.
 pub fn ease_in_cubic(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     t * t * t
 }
 
-/// Cubic ease-in-out —slow start and end. Good for position transitions.
+/// Cubic ease-in-out — slow start and end. Good for position transitions.
 pub fn ease_in_out_cubic(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     if t < 0.5 {

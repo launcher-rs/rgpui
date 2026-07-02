@@ -93,10 +93,10 @@ impl Inline {
             corner_radii: Corners::default(),
             border_color: rgpui::transparent_black(),
             border_style: BorderStyle::default(),
-            border_widths: rgpui::Edges::all(px(0.)),
             continuous_corners: false,
-            transform: rgpui::TransformationMatrix::unit(),
-            blend_mode: rgpui::BlendMode::Normal,
+            transform: Default::default(),
+            border_widths: rgpui::Edges::all(px(0.)),
+            blend_mode: Default::default(),
         });
     }
 
@@ -406,22 +406,6 @@ impl Element for Inline {
 
         state.selection = selection;
 
-        if is_selectable {
-            if let Some(text_view_state) = GlobalState::global(cx).text_view_state().cloned() {
-                let text_bounds = self.text_line_bounds(
-                    &text_layout,
-                    window.line_height(),
-                    window.content_mask().bounds,
-                );
-                crate::Root::register_selectable_text_inline(
-                    &text_view_state,
-                    text_bounds,
-                    window,
-                    cx,
-                );
-            }
-        }
-
         if is_selection || is_selectable {
             window.set_cursor_style(CursorStyle::IBeam, &hitbox);
         }
@@ -437,6 +421,20 @@ impl Element for Inline {
         }
 
         if is_selectable {
+            if let Some(text_view_state) = GlobalState::global(cx).text_view_state().cloned() {
+                let text_bounds = self.text_line_bounds(
+                    &text_layout,
+                    text_layout.line_height(),
+                    window.content_mask().bounds,
+                );
+                crate::Root::register_selectable_text_inline(
+                    &text_view_state,
+                    text_bounds,
+                    window,
+                    cx,
+                );
+            }
+
             window.on_mouse_event({
                 let hitbox = hitbox.clone();
                 let text_layout = text_layout.clone();

@@ -392,7 +392,7 @@ pub trait Disableable {
 /// Size::Medium is use by default.
 #[allow(patterns_in_fns_without_body)]
 pub trait Sizable: Sized {
-    /// Set the rgpui-component::Size of this element.
+    /// Set the ui::Size of this element.
     ///
     /// Also can receive a `ButtonSize` to convert to `IconSize`,
     /// Or a `Pixels` to set a custom size: `px(30.)`

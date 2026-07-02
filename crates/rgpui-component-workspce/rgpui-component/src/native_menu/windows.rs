@@ -22,7 +22,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetMenuItemInfoW, TPM_LEFTALIGN, TPM_NONOTIFY, TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenuEx,
     WM_NULL,
 };
-use windows::core::PCWSTR;
+use windows::core::{BOOL, PCWSTR};
 
 use super::{NativeMenuItem, resolve_icon_image};
 
@@ -34,7 +34,7 @@ const MENU_IMAGE_SIZE: u32 = 16;
 /// Show a native popup menu and dispatch the selected item's action.
 ///
 /// The Win32 tracking loop (`TrackPopupMenuEx`) blocks, so — like macOS — it is
-/// run from a foreground task to avoid re-entering GPUI while it is borrowed.
+/// run from a foreground task to avoid re-entering rgpui while it is borrowed.
 pub(super) fn show(
     items: Vec<NativeMenuItem>,
     asset_source: Arc<dyn AssetSource>,
@@ -52,7 +52,7 @@ pub(super) fn show(
     // The menu draws item bitmaps at their native pixel size, so rasterize them
     // at the device pixel size to keep them sharp on HiDPI displays.
     let image_px = (MENU_IMAGE_SIZE as f32 * scale).round().max(1.0) as u32;
-    // Inherent `Window::window_handle` (GPUI's `AnyWindowHandle`), not the
+    // Inherent `Window::window_handle` (rgpui's `AnyWindowHandle`), not the
     // `raw_window_handle::HasWindowHandle` trait method in scope below.
     let handle = Window::window_handle(window);
 
@@ -119,8 +119,8 @@ fn run_menu(
         }
         drop(gdiplus);
 
-        // The menu's modal loop cleared the capture GPUI set on mouse-down;
-        // restore it so GPUI's mouse-up `ReleaseCapture` succeeds and doesn't
+        // The menu's modal loop cleared the capture rgpui set on mouse-down;
+        // restore it so rgpui's mouse-up `ReleaseCapture` succeeds and doesn't
         // log a spurious "operation completed successfully" (GetLastError == 0).
         let _ = SetCapture(hwnd);
         let _ = PostMessageW(Some(hwnd), WM_NULL, WPARAM(0), LPARAM(0));
@@ -242,8 +242,8 @@ impl GdiplusSession {
         let input = GdiplusStartupInput {
             GdiplusVersion: 1,
             DebugEventCallback: 0,
-            SuppressBackgroundThread: false.into(),
-            SuppressExternalCodecs: false.into(),
+            SuppressBackgroundThread: BOOL(0),
+            SuppressExternalCodecs: BOOL(0),
         };
 
         let mut token: usize = 0;

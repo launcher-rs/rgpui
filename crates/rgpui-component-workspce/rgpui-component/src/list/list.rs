@@ -389,7 +389,7 @@ where
         cx.notify();
     }
 
-    pub fn on_action_select_prev(
+    pub(crate) fn on_action_select_prev(
         &mut self,
         _: &SelectUp,
         window: &mut Window,
@@ -403,7 +403,7 @@ where
         self.select_item(prev_ix, window, cx);
     }
 
-    pub fn on_action_select_next(
+    pub(crate) fn on_action_select_next(
         &mut self,
         _: &SelectDown,
         window: &mut Window,
@@ -506,7 +506,7 @@ where
         let scroll_handle = self.scroll_handle.clone();
 
         v_flex()
-            .flex_grow()
+            .flex_grow_1()
             .relative()
             .size_full()
             .when_some(self.options.max_height, |this, h| this.max_h(h))

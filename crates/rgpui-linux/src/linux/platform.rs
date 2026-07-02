@@ -22,9 +22,7 @@ use rgpui::{ResultExt as _, util::command::new_std_command};
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
 use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
-use crate::linux::{
-    LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions,
-};
+use crate::linux::{LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions};
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
     ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
@@ -1285,7 +1283,9 @@ mod read_fd_with_timeout {
     #[test]
     fn times_out_when_writer_stalls_after_partial_write() {
         let mut pipe = filedescriptor::Pipe::new().unwrap();
-        pipe.write.write_all(&[112, 97, 114, 116, 105, 97, 108]).unwrap();
+        pipe.write
+            .write_all(&[112, 97, 114, 116, 105, 97, 108])
+            .unwrap();
         let _open_writer = pipe.write;
 
         drop(read_fd_with_timeout(pipe.read, Duration::from_millis(50)).unwrap_err());

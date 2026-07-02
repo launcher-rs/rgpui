@@ -12,7 +12,7 @@ pub(crate) enum CharType {
     Other,
 }
 
-/// Implementation based on <https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system/line_wrapper.rs>
+/// Implementation based on <https://github.com/zed-industries/zed/blob/main/crates/rgpui/src/text_system/line_wrapper.rs>
 fn is_word_char(c: char) -> bool {
     matches!(c, '_')
         // ASCII alphanumeric characters, for English, numbers: `Hello123`, etc.

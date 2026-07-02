@@ -5,6 +5,7 @@ use rgpui::{
     Styled, Window, actions, prelude::FluentBuilder as _, px,
 };
 
+use rand::seq::SliceRandom as _;
 use rgpui_component::{
     ActiveTheme as _, IconName,
     button::Button,
@@ -15,7 +16,6 @@ use rgpui_component::{
     tree::{TreeItem, TreeState, tree},
     v_flex,
 };
-use rand::seq::SliceRandom as _;
 
 #[cfg(not(target_family = "wasm"))]
 use autocorrect::ignorer::Ignorer;

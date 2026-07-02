@@ -162,7 +162,7 @@ impl FeedbackExample {
                                 Accordion::new("accordion-1")
                                     .item(|item| {
                                         item.title("什么是 rgpui？").child(Label::new(
-                                            "rgpui 是一个基于 gpui 的 Rust UI 组件库。",
+                                            "rgpui 是一个基于 rgpui 的 Rust UI 组件库。",
                                         ))
                                     })
                                     .item(|item| {

@@ -1,6 +1,6 @@
 use rgpui::{App, AppContext as _, Context, Entity, IntoElement, Render, Styled, Window};
 
-use rgpui_component::{input::*, ActiveTheme};
+use rgpui_component::{ActiveTheme, input::*};
 
 const EXAMPLE_CODE: &str = include_str!("./editor_story.rs");
 

@@ -111,8 +111,8 @@ where
     ///    e.g. flip a gradient angle).
     ///
     /// Both rectangles share the same coordinate system, so callers can
-    /// implement arbitrary chart-aware backgrounds 鈥?bar-local gradients,
-    /// chart-wide gradients, patterns, sampled colormaps, etc. 鈥?without any
+    /// implement arbitrary chart-aware backgrounds — bar-local gradients,
+    /// chart-wide gradients, patterns, sampled colormaps, etc. — without any
     /// help from the library.
     ///
     /// Accepts any type convertible to [`Background`]. Setting this clears any
@@ -404,7 +404,7 @@ where
             size: Size::new(total_width, total_height),
         };
 
-        // Chart data range in f32 鈥?passed to `fill_gradient` callers and used
+        // Chart data range in f32 — passed to `fill_gradient` callers and used
         // by the `chart_to_bar` remap helper.
         let chart_range = {
             let mut lo = 0.0_f32;

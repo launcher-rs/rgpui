@@ -801,7 +801,7 @@ impl TabPanel {
                 div()
                     .id("tab-bar-empty-space")
                     .h_full()
-                    .flex_grow()
+                    .flex_grow_1()
                     .min_w_16()
                     .when(state.droppable, |this| {
                         this.drag_over::<DragPanel>(|this, _, _, cx| {
@@ -965,7 +965,7 @@ impl TabPanel {
         // Here is looks like remove_panel on a same item, but it difference.
         //
         // We must to split it to remove_panel, unless it will be crash by error:
-        // Cannot update rgpui-component::dock::tab_panel::TabPanel while it is already being updated
+        // Cannot update ui::dock::tab_panel::TabPanel while it is already being updated
         if is_same_tab {
             self.detach_panel(panel.clone(), window, cx);
         } else {

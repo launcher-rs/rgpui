@@ -7,8 +7,10 @@ use rgpui::{
     px,
 };
 
-use crate::input::{InputState, popovers::render_markdown};
-use rgpui_component::StyledExt;
+use crate::{
+    StyledExt,
+    input::{InputState, popovers::render_markdown},
+};
 
 pub struct HoverPopover {
     editor: Entity<InputState>,

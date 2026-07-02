@@ -1,6 +1,6 @@
-# GPUI Component basic examples
+# rgpui Component basic examples
 
-This folder contains basic examples of how to use the GPUI Component library. Each example demonstrates a specific feature or functionality of the library.
+This folder contains basic examples of how to use the rgpui Component library. Each example demonstrates a specific feature or functionality of the library.
 
 Unlike the examples in the `story` folder, these examples focus on 1 example for 1 feature, making it easier to understand and implement specific functionalities in your own projects.
 
@@ -40,4 +40,4 @@ When creating an example, please follow these guidelines:
 1. Keep 1 example just doing 1 thing for more clarity.
 2. Testing the example to ensure it works as expected.
 3. Write some comment at some key parts of the code to explain what it does.
-4. Following the code style and name style used in the existing examples or in entire of GPUI Component.
+4. Following the code style and name style used in the existing examples or in entire of rgpui Component.

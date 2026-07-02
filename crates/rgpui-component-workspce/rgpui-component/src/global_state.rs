@@ -13,7 +13,7 @@ pub struct GlobalState {
     pub(crate) text_view_state_stack: Vec<Entity<TextViewState>>,
     /// Set of open popover IDs that use deferred rendering.
     /// When this set is not empty, we are inside at least one deferred context.
-    /// This is used to prevent double-deferred elements which would cause GPUI to panic.
+    /// This is used to prevent double-deferred elements which would cause rgpui to panic.
     open_deferred_popovers: HashSet<ElementId>,
     /// Application menus storage
     app_menus: Vec<OwnedMenu>,
@@ -82,7 +82,7 @@ impl GlobalState {
     }
 
     /// Check if we are currently inside a deferred context (e.g., inside an open Popover).
-    pub fn is_in_deferred_context(&self) -> bool {
+    pub(crate) fn is_in_deferred_context(&self) -> bool {
         !self.open_deferred_popovers.is_empty()
     }
 

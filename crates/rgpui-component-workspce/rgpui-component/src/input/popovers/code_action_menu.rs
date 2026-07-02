@@ -12,11 +12,8 @@ const MAX_MENU_WIDTH: Pixels = px(320.);
 const MAX_MENU_HEIGHT: Pixels = px(480.);
 
 use crate::{
-    actions,
+    ActiveTheme, IndexPath, Selectable, actions, h_flex,
     input::{self, InputState, popovers::editor_popover},
-};
-use rgpui_component::{
-    ActiveTheme, IndexPath, Selectable, h_flex,
     list::{List, ListDelegate, ListEvent, ListState},
 };
 
@@ -93,7 +90,7 @@ impl RenderOnce for MenuItem {
             .rounded(cx.theme().radius.half())
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {
-                this.bg(cx.theme().accent)
+                this.bg(cx.theme().tokens.accent)
                     .text_color(cx.theme().accent_foreground)
             })
             .child(
@@ -114,7 +111,7 @@ impl ListDelegate for MenuDelegate {
 
     fn render_item(
         &mut self,
-        ix: rgpui_component::IndexPath,
+        ix: crate::IndexPath,
         _: &mut Window,
         _: &mut Context<ListState<Self>>,
     ) -> Option<Self::Item> {
@@ -124,7 +121,7 @@ impl ListDelegate for MenuDelegate {
 
     fn set_selected_index(
         &mut self,
-        ix: Option<rgpui_component::IndexPath>,
+        ix: Option<crate::IndexPath>,
         _: &mut Window,
         cx: &mut Context<ListState<Self>>,
     ) {
@@ -222,7 +219,7 @@ impl CodeActionMenu {
         }
 
         cx.propagate();
-        if input::is_enter_primary(&*action) {
+        if input::Enter::is_primary(&*action) {
             self.on_action_enter(window, cx);
         } else if action.partial_eq(&input::Escape) {
             self.on_action_escape(window, cx);

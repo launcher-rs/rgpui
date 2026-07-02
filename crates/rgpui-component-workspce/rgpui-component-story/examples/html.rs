@@ -1,16 +1,15 @@
 use rgpui::*;
 use rgpui_component::{
     ActiveTheme as _,
+    highlighter::Language,
+    input::{Input, InputState, TabSize},
     resizable::h_resizable,
     text::html,
 };
 use rgpui_component_assets::Assets;
-use rgpui_editor::highlighter::Language;
-use rgpui_editor::input::TabSize;
-use rgpui_editor::{Editor, EditorEvent, EditorState};
 
 pub struct Example {
-    edotpr_state: Entity<EditorState>,
+    input_state: Entity<InputState>,
     _subscribe: Subscription,
 }
 
@@ -18,8 +17,8 @@ const EXAMPLE: &str = include_str!("./fixtures/test.html");
 
 impl Example {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let editor_state = cx.new(|cx| {
-            EditorState::new(window, cx)
+        let input_state = cx.new(|cx| {
+            InputState::new(window, cx)
                 .code_editor(Language::Html)
                 .tab_size(TabSize {
                     tab_size: 4,
@@ -30,14 +29,14 @@ impl Example {
         });
 
         let _subscribe = cx.subscribe(
-            &editor_state,
-            |_, _, _: &EditorEvent, cx| {
+            &input_state,
+            |_, _, _: &rgpui_component::input::InputEvent, cx| {
                 cx.notify();
             },
         );
 
         Self {
-            edotpr_state: editor_state,
+            input_state,
             _subscribe,
         }
     }
@@ -57,7 +56,7 @@ impl Render for Example {
                     .font_family(cx.theme().mono_font_family.clone())
                     .text_size(cx.theme().mono_font_size)
                     .child(
-                        Editor::new(&self.edotpr_state)
+                        Input::new(&self.input_state)
                             .h_full()
                             .appearance(false)
                             .focus_bordered(false),
@@ -65,7 +64,7 @@ impl Render for Example {
                     .into_any(),
             )
             .child(
-                html(self.edotpr_state.read(cx).value().clone())
+                html(self.input_state.read(cx).value().clone())
                     .p_5()
                     .scrollable(true)
                     .selectable(true)

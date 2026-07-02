@@ -48,7 +48,7 @@ impl<E: IntoElement> SelectionScopeElement for E {}
 /// [`SelectionScope`] during paint, so selectable
 /// [`TextView`](crate::text::TextView)s painted inside it register under that
 /// scope. It delegates every [`Element`] method to the wrapped element and only
-/// brackets `paint` with a scope push/pop 鈥?mirroring the `text_view_state_stack`
+/// brackets `paint` with a scope push/pop — mirroring the `text_view_state_stack`
 /// idiom in `TextView::paint`.
 pub(crate) struct SelectionScopeMarker<E> {
     scope: SelectionScope,
@@ -147,7 +147,7 @@ pub struct WindowTextSelection {
 /// blank space: in that case the endpoint is proxy-anchored to the nearest view
 /// in document flow (see [`Root::text_selection_endpoint`]) and `inside` is
 /// false. This keeps the selection following the content when an outer
-/// container scrolls 鈥?a window-coordinate anchor would drift relative to the
+/// container scrolls — a window-coordinate anchor would drift relative to the
 /// content. `view` is only `None` when no view is registered at all.
 #[derive(Clone)]
 pub(crate) struct SelectionEndpoint {
@@ -211,7 +211,7 @@ impl WindowTextSelection {
     /// behavior identical to before. Proxy-anchored endpoints (from blank
     /// space) count here too: a drag that begins in the blank space just above
     /// view A proxy-anchors its anchor to A, so a drag from there into A stays
-    /// single-view 鈥?geometrically the selection starts at A's top, which is
+    /// single-view — geometrically the selection starts at A's top, which is
     /// correct. When the two endpoints anchor to different views, all
     /// registered views participate and the per-character geometric test (in
     /// `Inline`) decides what is actually selected.
@@ -246,7 +246,7 @@ impl Root {
         // `SelectionScopeMarker` wrapping a Dialog/Sheet content subtree).
         let scope = GlobalState::global(cx).current_selection_scope();
         root.update(cx, |root, _| {
-            // Prune dead views on each registration. This is O(N) per call (O(N虏)
+            // Prune dead views on each registration. This is O(N) per call (O(N²)
             // per frame across N selectable views), acceptable for typical view
             // counts; revisit if a window ever hosts hundreds of selectable views.
             root.selectable_text_views
@@ -408,8 +408,8 @@ impl Root {
         // etc.) set `GlobalState::suppress_text_selection` in their bubble-phase
         // handler; the controller checks that flag before calling this, so a
         // press starts a selection from any point that is not consumed by such a
-        // component 鈥?including blank space inside a focusable container, which
-        // GPUI's focus-on-mouse-down would otherwise mark default-prevented.
+        // component — including blank space inside a focusable container, which
+        // rgpui's focus-on-mouse-down would otherwise mark default-prevented.
         // Only focus the view when the press actually hit it. A proxy-anchored
         // endpoint (blank space) must not steal focus from wherever it was.
         if endpoint.inside {
@@ -439,7 +439,7 @@ impl Root {
         if !self.text_selection.is_selecting {
             return;
         }
-        // Do not update the selection while a GPUI drag-and-drop is active
+        // Do not update the selection while a rgpui drag-and-drop is active
         // (e.g. dragging a dock tab or a resize handle across TextViews).
         if cx.has_active_drag() {
             return;
@@ -546,7 +546,8 @@ impl Root {
         let scope = self.active_selection_scope();
 
         let mut best: Option<(WeakEntity<TextViewState>, f32)> = None;
-        // `is_hovered` reflects the hitbox state as of the last prepaint frame 鈥?        // a one-frame lag that is negligible for mouse-driven selection.
+        // `is_hovered` reflects the hitbox state as of the last prepaint frame —
+        // a one-frame lag that is negligible for mouse-driven selection.
         // Smallest-area wins as a proxy for the innermost (topmost) view when
         // TextViews overlap.
         for (view, hitbox, view_scope) in self.selectable_text_views.values() {
@@ -587,7 +588,8 @@ impl Root {
         // the largest value still at or above `position.y` (the nearest
         // predecessor in the flow); if the position is above every view, fall
         // back to the first view (smallest top). `point` is computed with the
-        // same formula as a true hit and may fall outside the view's bounds 鈥?        // it is a pure relative offset.
+        // same formula as a true hit and may fall outside the view's bounds —
+        // it is a pure relative offset.
         let mut predecessor: Option<(WeakEntity<TextViewState>, Pixels)> = None;
         let mut first: Option<(WeakEntity<TextViewState>, Pixels)> = None;
         for (view, _, view_scope) in self.selectable_text_views.values() {
@@ -670,7 +672,7 @@ impl Root {
         // second view and then came back inside the anchor view leaves the new
         // band single-view, but the old band still covers the view that must
         // clear its now-stale highlight. In that case fall through to the
-        // general band path (band = old 鈭?new), which always covers the anchor
+        // general band path (band = old ∪ new), which always covers the anchor
         // view too.
         if old_points.is_none() {
             if let Some(id) = self.text_selection.single_view() {
@@ -888,7 +890,7 @@ mod tests {
 
     impl Render for ChatTestView {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-            // `track_focus` makes the root a focusable container, so GPUI's
+            // `track_focus` makes the root a focusable container, so rgpui's
             // focus-on-mouse-down marks every press inside it default-prevented.
             // Selection must still start from blank space here (regression
             // guard for `drag_from_blank_space_selects_views_below`), which the
@@ -1081,7 +1083,7 @@ mod tests {
             "expected only the second view selected, got: {before:?}"
         );
 
-        // Shift the whole content down by 80px 鈥?the equivalent of an outer
+        // Shift the whole content down by 80px — the equivalent of an outer
         // container scrolling. A window-anchored blank endpoint stays at window
         // y=80, which the first view now covers (first moves to ~[90,130]), so
         // the selection drifts to also grab "Hello world". A proxy-anchored
@@ -1345,7 +1347,7 @@ mod tests {
         let dialog_state = open_dialog_with_text(cx, "Dialog text");
 
         // A drag entirely within the dialog's TextView must still select (the
-        // scope filter must not break in-dialog selection 鈥?see #2501).
+        // scope filter must not break in-dialog selection — see #2501).
         let b = dialog_state.read_with(cx, |s, _| s.bounds());
         drag(
             cx,

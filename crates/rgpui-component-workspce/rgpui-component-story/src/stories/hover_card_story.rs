@@ -1,10 +1,9 @@
-use rgpui::{ Anchor,
-    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    Window, div, px, relative,
+use rgpui::{
+    Anchor, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
+    Styled as _, Window, div, px, relative,
 };
 use rgpui_component::{
-    ActiveTheme, StyledExt, avatar::Avatar, button::Button, h_flex, hover_card::HoverCard,
-    v_flex,
+    ActiveTheme, StyledExt, avatar::Avatar, button::Button, h_flex, hover_card::HoverCard, v_flex,
 };
 use std::time::Duration;
 
@@ -97,7 +96,9 @@ impl HoverCardStory {
                                                 .text_color(cx.theme().link)
                                                 .text_sm(),
                                         )
-                                        .child(div().mt_1().child("The author of rgpui Component.")),
+                                        .child(
+                                            div().mt_1().child("The author of rgpui Component."),
+                                        ),
                                 )
                         }),
                 )

@@ -30,7 +30,7 @@ const SIDEBAR_TRANSITION_DURATION: Duration = Duration::from_millis(200);
 
 /// The way a [`Sidebar`] behaves when it is collapsed.
 ///
-/// This follows the shadcn/rgpui-component sidebar modes:
+/// This follows the shadcn/ui sidebar modes:
 /// - [`SidebarCollapsible::Icon`] collapses the sidebar to icon width.
 /// - [`SidebarCollapsible::Offcanvas`] slides the sidebar out and releases its layout width.
 /// - [`SidebarCollapsible::None`] keeps the sidebar expanded and ignores collapsed state.
@@ -494,7 +494,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         };
 
         // Store animation state in keyed state so it remains stable across
-        // re-renders (GPUI re-renders the whole tree on each animation frame).
+        // re-renders (rgpui re-renders the whole tree on each animation frame).
         // The target width is derived from the current layout, so changes to
         // collapsible mode or expanded width are handled even if `collapsed`
         // itself does not change. Offcanvas keeps content mounted while the

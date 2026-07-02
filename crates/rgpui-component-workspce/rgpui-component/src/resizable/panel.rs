@@ -108,9 +108,12 @@ impl ResizablePanelGroup {
     }
 }
 
-impl From<AnyElement> for ResizablePanel {
-    fn from(value: AnyElement) -> Self {
-        resizable_panel().child(value)
+impl<T> From<T> for ResizablePanel
+where
+    T: Into<AnyElement>,
+{
+    fn from(value: T) -> Self {
+        resizable_panel().child(value.into())
     }
 }
 
@@ -180,7 +183,7 @@ impl RenderOnce for ResizablePanelGroup {
 ///
 /// Implements [`Styled`], so call sites can override the panel's
 /// rendered styles. User overrides are applied **between** the panel's
-/// flex defaults and its size management 鈥?the caller can override the
+/// flex defaults and its size management — the caller can override the
 /// internal `flex_grow: 1` (e.g. via `.flex_none()`) and add their own
 /// padding / colors / borders, while the panel's runtime size
 /// constraints (`min_w`/`max_w`/`flex_basis` driven by `ResizableState`)
@@ -197,11 +200,11 @@ impl RenderOnce for ResizablePanelGroup {
 ///     .child(resizable_panel().size(px(280.)).flex_none().child(metadata))
 /// ```
 ///
-/// **Reserved styles**: do not call these from outside 鈥?they fight the
+/// **Reserved styles**: do not call these from outside — they fight the
 /// panel's own layout management:
-/// - `.flex_basis(...)` 鈥?driven by `ResizableState`, not by the caller.
-/// - `.absolute()` 鈥?would remove the panel from the resizable's flex flow.
-/// - `.overflow_hidden()` 鈥?may clip the resize handle, which is positioned
+/// - `.flex_basis(...)` — driven by `ResizableState`, not by the caller.
+/// - `.absolute()` — would remove the panel from the resizable's flex flow.
+/// - `.overflow_hidden()` — may clip the resize handle, which is positioned
 ///   absolute at `left: -4px` of each panel after the first.
 #[derive(IntoElement)]
 pub struct ResizablePanel {
@@ -284,12 +287,12 @@ impl RenderOnce for ResizablePanel {
         div()
             .id(("resizable-panel", self.panel_ix))
             .flex()
-            .flex_grow()
+            .flex_grow_1()
             .size_full()
             .relative()
-            // Apply caller style overrides here 鈥?between the flex defaults
+            // Apply caller style overrides here — between the flex defaults
             // above and the size management below. This lets callers cancel
-            // the unconditional `.flex_grow()` (via `.flex_none()`, the load-
+            // the unconditional `.flex_grow_1()` (via `.flex_none()`, the load-
             // bearing case for sized panels next to a collapsing sibling) and
             // add their own padding / colors / borders, while keeping the
             // panel's runtime size constraints (min/max + `flex_basis` driven
@@ -304,7 +307,7 @@ impl RenderOnce for ResizablePanel {
             // 1. initial_size is None, to use auto size.
             // 2. initial_size is Some and size is none, to use the initial size of the panel for first time render.
             // 3. initial_size is Some and size is Some, use `size`.
-            .when(self.initial_size.is_none(), |this| this.flex_shrink())
+            .when(self.initial_size.is_none(), |this| this.flex_shrink_1())
             .when_some(self.initial_size, |this, initial_size| {
                 // The `self.size` is None, that mean the initial size for the panel,
                 // so we need set `flex_shrink_0` To let it keep the initial size.

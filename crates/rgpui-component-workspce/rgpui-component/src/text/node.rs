@@ -1,12 +1,23 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     ops::Range,
     sync::{Arc, Mutex},
 };
 
+use markdown::mdast;
+use rgpui::{
+    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
+    Hsla, InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement,
+    ScrollHandle, SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _,
+    Window, div, img, prelude::FluentBuilder as _, px, relative, rems,
+};
+use ropey::Rope;
+
 use crate::{
     ActiveTheme as _, Icon, IconName, StyledExt, WindowExt as _, h_flex,
-    highlighter::HighlightTheme,
+    highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
+    input::{InputEdit, Point, RopeExt as _},
     scroll::horizontal_scroll_area,
     text::{
         CodeBlockActionsFn, MarkdownExtensions, MarkdownNode,
@@ -17,15 +28,13 @@ use crate::{
     tooltip::Tooltip,
     v_flex,
 };
-use markdown::mdast;
-use rgpui::{
-    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
-    Hsla, InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement,
-    ScrollHandle, SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _,
-    Window, div, img, prelude::FluentBuilder as _, px, relative, rems,
-};
 
 use super::{TextViewStyle, utils::list_item_prefix};
+
+thread_local! {
+    static CODE_BLOCK_HIGHLIGHTERS: RefCell<HashMap<SharedString, SyntaxHighlighter>> =
+        RefCell::new(HashMap::new());
+}
 
 /// The block-level nodes.
 #[derive(Debug, Clone, PartialEq)]
@@ -88,10 +97,6 @@ enum BlockTextKind {
 impl BlockNode {
     pub(super) fn is_list_item(&self) -> bool {
         matches!(self, Self::ListItem { .. })
-    }
-
-    pub(super) fn is_break(&self) -> bool {
-        matches!(self, Self::Break { .. })
     }
 
     /// Combine all children, omitting the empt parent nodes.
@@ -277,9 +282,9 @@ pub struct TextMark {
     pub strikethrough: bool,
     pub underline: bool,
     pub code: bool,
-    /// 高亮（`<mark>`）文本的背景颜色。
+    /// Highlight (`<mark>`) the text with this background color.
     ///
-    /// `None` 表示文本未高亮。
+    /// `None` means the text is not highlighted.
     pub highlight: Option<Hsla>,
     pub link: Option<LinkMark>,
 }
@@ -310,7 +315,7 @@ impl TextMark {
         self
     }
 
-    /// 将文本标记为高亮（`<mark>`），使用指定的背景颜色。
+    /// Mark the text as highlighted (`<mark>`) with the given background color.
     pub fn highlight(mut self, color: Hsla) -> Self {
         self.highlight = Some(color);
         self
@@ -601,7 +606,7 @@ impl Paragraph {
 pub struct CodeBlock {
     lang: Option<SharedString>,
     styles: Arc<Mutex<Option<Vec<(Range<usize>, HighlightStyle)>>>>,
-    _highlight_theme: Arc<HighlightTheme>,
+    highlight_theme: Arc<HighlightTheme>,
     state: Arc<Mutex<InlineState>>,
     pub span: Option<Span>,
 }
@@ -640,13 +645,17 @@ impl CodeBlock {
         Self {
             lang,
             styles: Arc::new(Mutex::new(None)),
-            _highlight_theme: Arc::new(highlight_theme.clone()),
+            highlight_theme: Arc::new(highlight_theme.clone()),
             state,
             span: span.map(|s| s.into()),
         }
     }
 
     pub(crate) fn styles(&self) -> Vec<(Range<usize>, HighlightStyle)> {
+        let Some(lang) = &self.lang else {
+            return Vec::new();
+        };
+
         let Ok(mut styles) = self.styles.lock() else {
             return Vec::new();
         };
@@ -655,11 +664,35 @@ impl CodeBlock {
             return styles.clone();
         }
 
-        // Syntax highlighting for code blocks requires tree-sitter,
-        // which is available in the `rgpui-editor` crate.
-        // TODO: Add syntax highlighting support when `rgpui-editor`'s
-        // highlighter types are available from this crate.
-        let computed_styles = Vec::new();
+        let code = self.code();
+        let computed_styles = CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            let highlighter = cache
+                .entry(lang.clone())
+                .or_insert_with(|| SyntaxHighlighter::new(lang));
+
+            if let Some(config) = LanguageRegistry::singleton().language(lang)
+                && highlighter.language() != &config.name
+            {
+                *highlighter = SyntaxHighlighter::new(lang);
+            }
+
+            let old_end_byte = highlighter.text().len();
+            let old_end_position = highlighter.text().offset_to_point(old_end_byte);
+            let code_rope = Rope::from_str(code.as_str());
+
+            let edit = InputEdit {
+                start_byte: 0,
+                old_end_byte,
+                new_end_byte: code.len(),
+                start_position: Point::new(0, 0),
+                old_end_position,
+                new_end_position: code_rope.offset_to_point(code.len()),
+            };
+
+            highlighter.update(Some(edit), &code_rope, None);
+            highlighter.styles(&(0..code.len()), &self.highlight_theme)
+        });
         *styles = Some(computed_styles.clone());
         computed_styles
     }
@@ -1442,7 +1475,7 @@ impl BlockNode {
                         // keeps columns from collapsing when the table is wider
                         // than the viewport and scrolls.
                         .flex_basis(px(width))
-                        .flex_grow()
+                        .flex_grow(width)
                         .flex_shrink_0()
                         .overflow_hidden()
                         .whitespace_nowrap()
@@ -1725,5 +1758,64 @@ mod tests {
         );
 
         assert_ne!(first, second);
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn code_block_highlighter_cache_refreshes_after_language_registration() {
+        let lang = SharedString::from("json-cache-test");
+        let theme = HighlightTheme::default_light();
+
+        CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
+            cache.borrow_mut().remove(&lang);
+        });
+
+        let unknown_block = CodeBlock::new(
+            "{\"value\": 1}".into(),
+            Some(lang.clone()),
+            &theme,
+            None::<Span>,
+        );
+        _ = unknown_block.styles();
+
+        let cached_language = CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
+            cache
+                .borrow()
+                .get(&lang)
+                .map(|highlighter| highlighter.language().clone())
+        });
+        assert_eq!(cached_language.as_deref(), Some("text"));
+
+        LanguageRegistry::singleton().register(
+            lang.as_ref(),
+            &crate::highlighter::LanguageConfig::new(
+                lang.clone(),
+                tree_sitter_json::LANGUAGE.into(),
+                vec![],
+                r#"
+                    (string) @string
+                    (number) @number
+                    (pair key: (string) @property)
+                "#,
+                "",
+                "",
+            ),
+        );
+
+        let registered_block = CodeBlock::new(
+            "{\"value\": 2}".into(),
+            Some(lang.clone()),
+            &theme,
+            None::<Span>,
+        );
+        _ = registered_block.styles();
+
+        let cached_language = CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
+            cache
+                .borrow()
+                .get(&lang)
+                .map(|highlighter| highlighter.language().clone())
+        });
+        assert_eq!(cached_language.as_deref(), Some(lang.as_ref()));
     }
 }

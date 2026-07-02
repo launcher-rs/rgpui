@@ -24,7 +24,7 @@ pub(crate) type CodeBlockActionsFn =
 /// ## Goals
 ///
 /// - Provide a rich text rendering component for such as Markdown or HTML,
-/// used to display rich text in GPUI application (e.g., Help messages, Release notes)
+/// used to display rich text in rgpui application (e.g., Help messages, Release notes)
 /// - Support Markdown GFM and HTML (Simple HTML like Safari Reader Mode) for showing most common used markups.
 /// - Support Heading, Paragraph, Bold, Italic, StrikeThrough, Code, Link, Image, Blockquote, List, Table, HorizontalRule, CodeBlock ...
 ///
@@ -396,6 +396,69 @@ mod tests {
                 )
                 .child(div().h(px(40.)).child("footer"))
         }
+    }
+
+    struct InlineImageTextViewTestRoot {
+        text_view: Entity<TextViewState>,
+    }
+
+    impl InlineImageTextViewTestRoot {
+        fn new(cx: &mut Context<Self>) -> Self {
+            let text_view = cx.new(|cx| {
+                TextViewState::markdown(
+                    "Build Status ![inline image](https://example.com/image.svg) after",
+                    cx,
+                )
+            });
+            Self { text_view }
+        }
+    }
+
+    impl Render for InlineImageTextViewTestRoot {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .w(px(420.))
+                .child(TextView::new(&self.text_view).selectable(true))
+        }
+    }
+
+    #[rgpui::test]
+    fn inline_image_keeps_surrounding_text_on_same_line(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|cx| InlineImageTextViewTestRoot::new(cx));
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        let inline_bounds = cx.update(|window, cx| {
+            crate::Root::read(window, cx)
+                .selectable_text_inlines
+                .values()
+                .next()
+                .cloned()
+                .unwrap_or_default()
+        });
+
+        assert_eq!(inline_bounds.len(), 2);
+        assert_eq!(
+            inline_bounds[0].top(),
+            inline_bounds[1].top(),
+            "text before and after an inline image should share a rendered line"
+        );
+        assert!(
+            inline_bounds[1].left() - inline_bounds[0].right() > px(8.),
+            "inline image should reserve horizontal space in the text layout"
+        );
+        assert!(
+            inline_bounds[1].left() - inline_bounds[0].right() < px(40.),
+            "unloaded inline image fallback should stay generic and compact"
+        );
     }
 
     #[test]

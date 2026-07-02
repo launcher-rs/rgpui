@@ -52,7 +52,7 @@ impl FileBrowserTreePanel {
                 .flex()
                 .items_center()
                 .justify_center()
-                .flex_grow()
+                .flex_grow_1()
                 .child(if is_scanning {
                     label("Scanning...").muted(true).into_any_element()
                 } else {
@@ -92,7 +92,7 @@ impl FileBrowserTreePanel {
             .consume(false)
             .flex()
             .flex_col()
-            .flex_grow()
+            .flex_grow_1()
             .min_h_0()
             .rounded_lg()
             .bg(theme.surface.raised)

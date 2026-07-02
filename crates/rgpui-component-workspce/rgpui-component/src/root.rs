@@ -40,7 +40,7 @@ pub struct Root {
     view: AnyView,
     pub(crate) active_sheet: Option<ActiveSheet>,
     pub(crate) active_dialogs: Vec<ActiveDialog>,
-    pub focused_input: Option<Entity<InputState>>,
+    pub(super) focused_input: Option<Entity<InputState>>,
     pub notification: Entity<NotificationList>,
     pub(crate) tooltip_overlay: Entity<TooltipOverlay>,
     pub(crate) native_menu_overlay: Entity<FallbackMenuOverlay>,
@@ -116,7 +116,7 @@ impl Root {
     /// Enable or disable the Linux client-side window border wrapper.
     ///
     /// Defaults to `true`. Use `bordered(false)` for layer-shell fullscreen windows
-    /// or other surfaces that should not render GPUI Component's window border.
+    /// or other surfaces that should not render rgpui Component's window border.
     pub fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
         self
@@ -145,7 +145,7 @@ impl Root {
     pub fn read<'a>(window: &'a Window, cx: &'a App) -> &'a Self {
         &window
             .root::<Root>()
-            .expect("The window root view should be of type `rgpui-component::Root`.")
+            .expect("The window root view should be of type `ui::Root`.")
             .unwrap()
             .read(cx)
     }

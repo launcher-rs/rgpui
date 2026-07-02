@@ -57,7 +57,7 @@ impl Placement {
     }
 }
 
-// The local Anchor enum has been removed. use rgpui::Anchor instead.
+// The local Anchor enum has been removed. Use rgpui::Anchor instead.
 
 /// A enum for defining the side of the element.
 ///
@@ -121,7 +121,7 @@ impl LengthExt for Length {
 
 /// A struct for defining the edges of an element.
 ///
-/// A extend version of [`gpui::Edges`] to serialize/deserialize.
+/// A extend version of [`rgpui::Edges`] to serialize/deserialize.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, Eq, PartialEq)]
 #[repr(C)]
 pub struct Edges<T: Clone + Debug + Default + PartialEq> {

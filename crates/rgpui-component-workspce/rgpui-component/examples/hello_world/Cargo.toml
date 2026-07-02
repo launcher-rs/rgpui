@@ -1,6 +1,6 @@
 [package]
 name = "hello_world"
-description = "A minimal example of application development with GPUI Component."
+description = "A minimal example of application development with rgpui Component."
 version = "0.1.0"
 publish = false
 edition.workspace = true

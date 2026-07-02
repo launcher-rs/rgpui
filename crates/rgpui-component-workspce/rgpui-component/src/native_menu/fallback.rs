@@ -78,10 +78,16 @@ fn build_popup(
                 NativeMenuItem::Item {
                     label,
                     disabled,
-                    checked: _,
+                    checked,
                     icon: Some(icon),
                     action: Some(action),
-                } => menu.menu_with_icon_and_disabled(label, *icon, action, disabled),
+                } => menu.item(
+                    PopupMenuItem::new(label)
+                        .icon(*icon)
+                        .action(action)
+                        .disabled(disabled)
+                        .checked(checked),
+                ),
                 NativeMenuItem::Item {
                     label,
                     disabled,

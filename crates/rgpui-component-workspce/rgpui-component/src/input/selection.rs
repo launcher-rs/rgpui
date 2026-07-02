@@ -6,9 +6,9 @@ use rgpui::{Context, Window};
 use ropey::Rope;
 
 impl InputState {
-    /// 在给定偏移量处双击选中单词。
+    /// Select the word at the given offset on double-click.
     ///
-    /// 偏移量为 UTF-8 偏移量。
+    /// The offset is the UTF-8 offset.
     pub(super) fn select_word(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
         let Some(range) = TextSelector::word_range(&self.text, offset) else {
             return;
@@ -19,9 +19,9 @@ impl InputState {
         cx.notify()
     }
 
-    /// 在给定偏移量处三击选中整行。
+    /// Select the line at the given offset on triple-click.
     ///
-    /// 偏移量为 UTF-8 偏移量。
+    /// The offset is the UTF-8 offset.
     pub(super) fn select_line(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
         let range = TextSelector::line_range(&self.text, offset);
         self.selected_range = (range.start..range.end).into();
@@ -30,14 +30,13 @@ impl InputState {
     }
 }
 
-/// 文本选择器辅助结构
 struct TextSelector;
 impl TextSelector {
-    /// 在给定文本的指定偏移量处选中一行。
+    /// Select a line in the given text at the specified offset.
     ///
-    /// 偏移量为 UTF-8 偏移量。
+    /// The offset is the UTF-8 offset.
     ///
-    /// 返回选中行的起始和结束偏移量。
+    /// Returns the start and end offsets of the selected line.
     pub fn line_range(text: &Rope, offset: usize) -> Range<usize> {
         let offset = text.clip_offset(offset, Bias::Left);
         let row = text.offset_to_point(offset).row;
@@ -47,14 +46,17 @@ impl TextSelector {
         start..end
     }
 
-    /// 在给定文本的指定偏移量处选中一个单词。
+    /// Select a word in the given text at the specified offset.
     ///
-    /// 偏移量为 UTF-8 偏移量。
+    /// The offset is the UTF-8 offset.
     ///
-    /// 返回选中单词的起始和结束偏移量。
+    /// Returns the start and end offsets of the selected word.
     pub fn word_range(text: &Rope, offset: usize) -> Option<Range<usize>> {
         let offset = text.clip_offset(offset, Bias::Left);
-        let char = text.char_at(offset)?;
+        let Some(char) = text.char_at(offset) else {
+            return None;
+        };
+
         let end = offset + char.len_utf8();
         let prev_chars = text.chars_at(offset).reversed().take(128);
         let next_chars = text.chars_at(end).take(128);
@@ -112,7 +114,7 @@ mod tests {
 
             let actual = range.map(|r| rope.slice(r).to_string());
             let expect = expected.map(|s| s.to_string());
-            assert_eq!(actual, expect, "行 {}, 列 {}", line, column);
+            assert_eq!(actual, expect, "line {}, column {}", line, column);
         }
     }
 
@@ -132,7 +134,7 @@ mod tests {
             let range = TextSelector::line_range(&rope, offset);
 
             let actual = rope.slice(range).to_string();
-            assert_eq!(actual, expected, "行 {}, 列 {}", line, column);
+            assert_eq!(actual, expected, "line {}, column {}", line, column);
         }
     }
 }

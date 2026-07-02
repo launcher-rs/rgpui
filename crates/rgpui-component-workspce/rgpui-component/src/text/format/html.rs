@@ -101,10 +101,11 @@ fn attr_value(attrs: &RefCell<Vec<html5ever::Attribute>>, name: LocalName) -> Op
     })
 }
 
-/// 获取 `<mark>` 元素的高亮背景颜色。
+/// Get the highlight background color for a `<mark>` element.
 ///
-/// 优先读取 `color` 属性，然后读取 `style` 属性中的 `background-color` 声明。
-/// 颜色值由 [`crate::try_parse_color`] 解析，支持十六进制（`#3366ff`）和 Tailwind 表达式（`blue`、`blue-200`、`blue/30`）。
+/// Reads the `color` attribute first, then the `background-color` declaration
+/// from the `style` attribute. Color values are parsed by [`crate::try_parse_color`],
+/// supporting hex (`#3366ff`) and Tailwind expressions (`blue`, `blue-200`, `blue/30`).
 fn mark_color(attrs: &RefCell<Vec<html5ever::Attribute>>) -> Option<Hsla> {
     let color_attr = attrs.borrow().iter().find_map(|attr| {
         if &*attr.name.local == "color" {
@@ -347,7 +348,7 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &Rc<Node>) {
                 merge_children_with_mark(node, paragraph, Some(TextMark::default().code()));
             }
             local_name!("mark") => {
-                let color = mark_color(&attrs).unwrap_or_else(|| crate::yellow_200());
+                let color = mark_color(&attrs).unwrap_or_else(|| crate::yellow(200));
                 merge_children_with_mark(
                     node,
                     paragraph,
@@ -699,7 +700,7 @@ mod tests {
     fn test_mark() {
         let mut cx = NodeContext::default();
 
-        // `<mark>` 渲染为高亮，在 markdown 中保留为 `==...==`。
+        // `<mark>` is rendered as a highlight, kept as `==...==` in markdown.
         let html = r#"<p>Hello <mark>world</mark></p>"#;
         let node = super::parse(html, &mut cx).unwrap();
         assert_eq!(node.to_markdown(), "Hello ==world==");

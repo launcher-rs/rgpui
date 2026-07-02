@@ -33,7 +33,7 @@ impl AnyChildElement {
     }
 }
 
-/// A trait to extend [`gpui::Element`] with additional functionality.
+/// A trait to extend [`rgpui::Element`] with additional functionality.
 pub trait ElementExt: ParentElement + Sized {
     /// Add a prepaint callback to the element.
     ///
@@ -41,7 +41,7 @@ pub trait ElementExt: ParentElement + Sized {
     ///
     /// The first argument is the bounds of the element in pixels.
     ///
-    /// See also [`gpui::canvas`].
+    /// See also [`rgpui::canvas`].
     fn on_prepaint<F>(self, f: F) -> Self
     where
         F: FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static,

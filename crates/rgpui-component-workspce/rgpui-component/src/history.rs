@@ -24,8 +24,7 @@ pub struct History<I: HistoryItem> {
     redos: Vec<I>,
     last_changed_at: Instant,
     version: usize,
-    /// 是否暂时忽略历史记录写入。
-    pub ignore: bool,
+    pub(crate) ignore: bool,
     max_undos: usize,
     group_interval: Option<Duration>,
     grouping: bool,

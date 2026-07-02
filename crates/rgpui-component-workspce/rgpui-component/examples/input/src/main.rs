@@ -71,7 +71,7 @@ fn main() {
     let app = rgpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        // This must be called before using any GPUI Component features.
+        // This must be called before using any rgpui Component features.
         rgpui_component::init(cx);
 
         let window_options = WindowOptions {

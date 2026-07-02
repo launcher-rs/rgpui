@@ -3,8 +3,8 @@ use rgpui::{
     Styled, Window,
 };
 use rgpui_component::{
-    avatar::Avatar, badge::Badge, dock::PanelControl, v_flex, ActiveTheme as _, Icon, IconName,
-    Sizable as _,
+    ActiveTheme as _, Icon, IconName, Sizable as _, avatar::Avatar, badge::Badge,
+    dock::PanelControl, v_flex,
 };
 
 use crate::section;

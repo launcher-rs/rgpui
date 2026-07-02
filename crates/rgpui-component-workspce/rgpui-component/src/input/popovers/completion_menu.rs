@@ -13,14 +13,11 @@ const MAX_MENU_HEIGHT: Pixels = px(240.);
 const POPOVER_GAP: Pixels = px(4.);
 
 use crate::{
-    actions,
+    ActiveTheme, IndexPath, Selectable, actions, h_flex,
     input::{
         self, InputState, RopeExt,
         popovers::{editor_popover, render_markdown},
     },
-};
-use rgpui_component::{
-    ActiveTheme, IndexPath, Selectable, h_flex,
     label::Label,
     list::{List, ListDelegate, ListEvent, ListState},
 };
@@ -114,7 +111,7 @@ impl RenderOnce for CompletionMenuItem {
             .when(item.deprecated.unwrap_or(false), |this| this.line_through())
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {
-                this.bg(cx.theme().accent)
+                this.bg(cx.theme().tokens.accent)
                     .text_color(cx.theme().accent_foreground)
             })
             .child(div().child(StyledText::new(item.label.clone()).with_highlights(highlights)))
@@ -141,7 +138,7 @@ impl ListDelegate for ContextMenuDelegate {
 
     fn render_item(
         &mut self,
-        ix: rgpui_component::IndexPath,
+        ix: crate::IndexPath,
         _: &mut Window,
         _: &mut Context<ListState<Self>>,
     ) -> Option<Self::Item> {
@@ -151,7 +148,7 @@ impl ListDelegate for ContextMenuDelegate {
 
     fn set_selected_index(
         &mut self,
-        ix: Option<rgpui_component::IndexPath>,
+        ix: Option<crate::IndexPath>,
         _: &mut Window,
         cx: &mut Context<ListState<Self>>,
     ) {
@@ -285,7 +282,7 @@ impl CompletionMenu {
         }
 
         cx.propagate();
-        if input::is_enter_primary(&*action) {
+        if input::Enter::is_primary(&*action) {
             self.on_action_enter(window, cx);
         } else if action.partial_eq(&input::Escape) {
             self.on_action_escape(window, cx);
@@ -435,8 +432,8 @@ impl Render for CompletionMenu {
                 )
                 .when_some(selected_documentation, |this, documentation| {
                     let mut doc = match documentation {
-                        lsp_types::Documentation::String(s) => s,
-                        lsp_types::Documentation::MarkupContent(mc) => mc.value,
+                        lsp_types::Documentation::String(s) => s.clone(),
+                        lsp_types::Documentation::MarkupContent(mc) => mc.value.clone(),
                     };
                     if vertical_layout {
                         doc = doc.split("\n").next().unwrap_or_default().to_string();

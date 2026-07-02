@@ -2,8 +2,8 @@
   "$schema": "https://github.com/longbridge/rgpui-component/raw/refs/heads/main/.theme-schema.json",
   "name": "Default",
   "author": "shadcn",
-  "url": "https://rgpui-component.shadcn.com",
-  "_ref": "https://github.com/shadcn-rgpui-component/rgpui-component/blob/main/apps/v4/public/r/colors/neutral.json",
+  "url": "https://ui.shadcn.com",
+  "_ref": "https://github.com/shadcn-ui/ui/blob/main/apps/v4/public/r/colors/neutral.json",
   "themes": [
     {
       "is_default": true,

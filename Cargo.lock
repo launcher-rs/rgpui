@@ -7616,7 +7616,7 @@ dependencies = [
  "tree-sitter-c",
  "tree-sitter-cpp",
  "tree-sitter-css 0.25.0",
- "tree-sitter-go",
+ "tree-sitter-go 0.25.0",
  "tree-sitter-html",
  "tree-sitter-java",
  "tree-sitter-javascript",
@@ -7688,6 +7688,41 @@ dependencies = [
  "smallvec",
  "smol",
  "tracing",
+ "tree-sitter",
+ "tree-sitter-astro-next",
+ "tree-sitter-bash 0.23.3",
+ "tree-sitter-c",
+ "tree-sitter-c-sharp",
+ "tree-sitter-cmake",
+ "tree-sitter-cpp",
+ "tree-sitter-css 0.23.2",
+ "tree-sitter-diff",
+ "tree-sitter-elixir",
+ "tree-sitter-embedded-template",
+ "tree-sitter-go 0.23.4",
+ "tree-sitter-graphql",
+ "tree-sitter-html",
+ "tree-sitter-java",
+ "tree-sitter-javascript",
+ "tree-sitter-jsdoc",
+ "tree-sitter-json",
+ "tree-sitter-kotlin-sg",
+ "tree-sitter-lua",
+ "tree-sitter-make",
+ "tree-sitter-md",
+ "tree-sitter-php",
+ "tree-sitter-proto",
+ "tree-sitter-python",
+ "tree-sitter-ruby",
+ "tree-sitter-rust",
+ "tree-sitter-scala 0.23.4",
+ "tree-sitter-sequel",
+ "tree-sitter-svelte-next",
+ "tree-sitter-swift",
+ "tree-sitter-toml-ng",
+ "tree-sitter-typescript",
+ "tree-sitter-yaml",
+ "tree-sitter-zig",
  "unicode-segmentation",
  "uuid",
  "windows 0.62.2",
@@ -7734,7 +7769,6 @@ dependencies = [
  "rgpui",
  "rgpui-component",
  "rgpui-component-assets",
- "rgpui-editor",
  "rgpui-platform",
  "rgpui-web",
  "rust-i18n",
@@ -7761,66 +7795,6 @@ dependencies = [
  "rgpui-platform",
  "tracing-wasm",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "rgpui-editor"
-version = "0.3.0"
-dependencies = [
- "aho-corasick",
- "anyhow",
- "enum-iterator",
- "indoc",
- "instant",
- "lsp-types 0.97.0",
- "regex",
- "rgpui",
- "rgpui-component",
- "ropey",
- "rust-i18n",
- "schemars",
- "serde",
- "serde_json",
- "serde_repr",
- "smallvec",
- "smol",
- "tracing",
- "tree-sitter",
- "tree-sitter-astro-next",
- "tree-sitter-bash 0.23.3",
- "tree-sitter-c",
- "tree-sitter-c-sharp",
- "tree-sitter-cmake",
- "tree-sitter-cpp",
- "tree-sitter-css 0.23.2",
- "tree-sitter-diff",
- "tree-sitter-elixir",
- "tree-sitter-embedded-template",
- "tree-sitter-go",
- "tree-sitter-graphql",
- "tree-sitter-html",
- "tree-sitter-java",
- "tree-sitter-javascript",
- "tree-sitter-jsdoc",
- "tree-sitter-json",
- "tree-sitter-kotlin-sg",
- "tree-sitter-lua",
- "tree-sitter-make",
- "tree-sitter-md",
- "tree-sitter-php",
- "tree-sitter-proto",
- "tree-sitter-python",
- "tree-sitter-ruby",
- "tree-sitter-rust",
- "tree-sitter-scala 0.23.4",
- "tree-sitter-sequel",
- "tree-sitter-svelte-next",
- "tree-sitter-swift",
- "tree-sitter-toml-ng",
- "tree-sitter-typescript",
- "tree-sitter-yaml",
- "tree-sitter-zig",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -8082,34 +8056,6 @@ dependencies = [
  "rgpui-component-assets",
  "rgpui-platform",
  "rgpui-tokio",
-]
-
-[[package]]
-name = "rgpui_editor_example"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "rgpui",
- "rgpui-component",
- "rgpui-component-assets",
- "rgpui-editor",
- "rgpui-platform",
-]
-
-[[package]]
-name = "rgpui_editor_lsp_example"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "lsp-types 0.97.0",
- "rgpui",
- "rgpui-component",
- "rgpui-component-assets",
- "rgpui-editor",
- "rgpui-platform",
- "serde_json",
- "smol",
 ]
 
 [[package]]
@@ -10529,6 +10475,16 @@ name = "tree-sitter-embedded-template"
 version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790063ef14e5b67556abc0b3be0ed863fb41d65ee791cf8c0b20eb42a1fa46af"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-go"
+version = "0.23.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b13d476345220dbe600147dd444165c5791bf85ef53e28acbedd46112ee18431"
 dependencies = [
  "cc",
  "tree-sitter-language",

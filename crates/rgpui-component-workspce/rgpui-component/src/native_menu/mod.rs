@@ -1,13 +1,13 @@
 //! A menu rendered natively by the operating system.
 //!
-//! Unlike [`crate::menu::PopupMenu`], which is drawn by GPUI and therefore
+//! Unlike [`crate::menu::PopupMenu`], which is drawn by rgpui and therefore
 //! clipped to the window bounds, [`NativeMenu`] is rendered by the OS. It can
-//! extend beyond the window — useful for small windows where a GPUI-drawn popup
+//! extend beyond the window — useful for small windows where a rgpui-drawn popup
 //! menu would otherwise be cut off.
 //!
-//! Items carry a GPUI [`Action`], dispatched via [`Window::dispatch_action`]
+//! Items carry a rgpui [`Action`], dispatched via [`Window::dispatch_action`]
 //! when selected — the same mechanism the application menu bar and key bindings
-//! use. A [`NativeMenu`] can therefore be built directly from GPUI
+//! use. A [`NativeMenu`] can therefore be built directly from rgpui
 //! [`rgpui::MenuItem`]s (see [`NativeMenu::from_menu_items`] /
 //! [`From<rgpui::Menu>`]).
 //!
@@ -24,12 +24,12 @@
 
 use crate::Icon;
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use rgpui::AssetSource;
 use rgpui::{Action, App, Pixels, Point, SharedString, Window};
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use rgpui::{Image, ImageFormat};
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::{path::Path, sync::Arc};
 
 #[cfg(target_os = "macos")]
@@ -190,7 +190,7 @@ impl NativeMenu {
     /// Pop up the menu at `position` (window coordinates, in logical pixels).
     ///
     /// The menu is shown without blocking the caller: the OS tracking loop runs
-    /// off GPUI's call stack, so GPUI is not borrowed while it is open. When an
+    /// off rgpui's call stack, so rgpui is not borrowed while it is open. When an
     /// item is selected, its action is dispatched via [`Window::dispatch_action`].
     pub fn show(self, position: Point<Pixels>, window: &mut Window, cx: &mut App) {
         if self.items.is_empty() {
@@ -199,7 +199,7 @@ impl NativeMenu {
 
         #[cfg(target_os = "macos")]
         {
-            macos::show(self.items, position, window, cx);
+            macos::show(self.items, cx.asset_source().clone(), position, window, cx);
         }
         #[cfg(target_os = "windows")]
         {
@@ -210,7 +210,7 @@ impl NativeMenu {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(super) fn resolve_icon_image(
     path: &SharedString,
     asset_source: &dyn AssetSource,
@@ -232,7 +232,7 @@ pub(super) fn resolve_icon_image(
     Some(Arc::new(Image::from_bytes(format, bytes)))
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn image_format(path: &str, bytes: &[u8]) -> Option<ImageFormat> {
     if let Some(extension) = Path::new(path)
         .extension()
@@ -256,7 +256,7 @@ fn image_format(path: &str, bytes: &[u8]) -> Option<ImageFormat> {
     image_format_from_bytes(bytes)
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn image_format_from_bytes(bytes: &[u8]) -> Option<ImageFormat> {
     let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -285,7 +285,7 @@ fn image_format_from_bytes(bytes: &[u8]) -> Option<ImageFormat> {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn is_svg_bytes(bytes: &[u8]) -> bool {
     let text = match std::str::from_utf8(&bytes[..bytes.len().min(256)]) {
         Ok(text) => text.trim_start(),
@@ -294,7 +294,7 @@ fn is_svg_bytes(bytes: &[u8]) -> bool {
     text.starts_with("<svg") || text.starts_with("<?xml")
 }
 
-/// Reuse an existing GPUI menu definition as a native menu.
+/// Reuse an existing rgpui menu definition as a native menu.
 ///
 /// `Action`s, separators, submenus, `checked`, and `disabled` are mapped over;
 /// system menus (e.g. macOS Services) have no native popup equivalent and are

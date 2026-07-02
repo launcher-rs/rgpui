@@ -242,7 +242,7 @@ struct TitleBarState {
     should_move: bool,
 }
 
-// TODO: Remove this when GPUI has released v0.2.3
+// TODO: Remove this when rgpui has released v0.2.3
 impl Render for TitleBarState {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()

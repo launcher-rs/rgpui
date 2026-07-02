@@ -1,5 +1,5 @@
 use rgpui_component_assets::Assets;
-use rgpui_component_story::{Gallery, init, create_new_window};
+use rgpui_component_story::{Gallery, create_new_window, init};
 
 fn main() {
     let app = rgpui_platform::application().with_assets(Assets);

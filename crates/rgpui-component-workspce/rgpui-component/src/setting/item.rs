@@ -73,24 +73,6 @@ impl SettingItem {
         }
     }
 
-    /// Set additional keywords used only for search matching (not rendered).
-    ///
-    /// For example, an item titled "Enable Two-factor auth" can be made
-    /// searchable via "MFA". This is also useful for custom elements that
-    /// have no title/description but should still show up in search results.
-    pub fn keywords<I, S>(mut self, keywords: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<SharedString>,
-    {
-        let keywords: Vec<SharedString> = keywords.into_iter().map(Into::into).collect();
-        match &mut self {
-            SettingItem::Item { keywords: k, .. } => *k = keywords,
-            SettingItem::Element { keywords: k, .. } => *k = keywords,
-        }
-        self
-    }
-
     /// Provide custom reset behavior for a custom element item.
     ///
     /// Only applies to [`SettingItem::Element`] (created via
@@ -117,6 +99,24 @@ impl SettingItem {
                      use SettingField::default_value or SettingField::on_reset for a normal item"
                 );
             }
+        }
+        self
+    }
+
+    /// Set additional keywords used only for search matching (not rendered).
+    ///
+    /// For example, an item titled "Enable Two-factor auth" can be made
+    /// searchable via "MFA". This is also useful for custom elements that
+    /// have no title/description but should still show up in search results.
+    pub fn keywords<I, S>(mut self, keywords: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<SharedString>,
+    {
+        let keywords: Vec<SharedString> = keywords.into_iter().map(Into::into).collect();
+        match &mut self {
+            SettingItem::Item { keywords: k, .. } => *k = keywords,
+            SettingItem::Element { keywords: k, .. } => *k = keywords,
         }
         self
     }

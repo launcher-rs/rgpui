@@ -251,7 +251,7 @@ impl Render for LayoutDemo {
                                                 )
                                                 .child(
                                                     VStack::new()
-                                                        .flex_grow()
+                                                        .flex_grow_1()
                                                         .p(px(16.0))
                                                         .bg(theme.tokens.card)
                                                         .border_1()

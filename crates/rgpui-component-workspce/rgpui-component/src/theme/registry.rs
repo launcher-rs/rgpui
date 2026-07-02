@@ -1,5 +1,4 @@
-use crate::highlighter::HighlightTheme;
-use crate::{Theme, ThemeColor, ThemeConfig, ThemeMode, ThemeSet};
+use crate::{Theme, ThemeColor, ThemeConfig, ThemeMode, ThemeSet, highlighter::HighlightTheme};
 #[allow(unused)]
 use anyhow::Result;
 use rgpui::{App, Global, SharedString};
@@ -11,8 +10,7 @@ use std::{
 };
 
 const DEFAULT_THEME: &str = include_str!("./default-theme.json");
-/// 默认主题颜色和高亮主题映射。
-pub static DEFAULT_THEME_COLORS: LazyLock<
+pub(crate) static DEFAULT_THEME_COLORS: LazyLock<
     HashMap<ThemeMode, (Arc<ThemeColor>, Arc<HighlightTheme>)>,
 > = LazyLock::new(|| {
     let mut colors = HashMap::new();

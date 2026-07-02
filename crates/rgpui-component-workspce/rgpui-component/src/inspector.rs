@@ -1,10 +1,14 @@
-use std::{cell::OnceCell, collections::HashMap, fmt::Write as _, sync::OnceLock};
+use std::{cell::OnceCell, collections::HashMap, fmt::Write as _, rc::Rc, sync::OnceLock};
 
-use lsp_types::{Diagnostic, DiagnosticSeverity, Position};
+use anyhow::Result;
+use lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit, Diagnostic,
+    DiagnosticSeverity, Position, TextEdit,
+};
 use rgpui::{
     AnyElement, App, AppContext, Context, DivInspectorState, Entity, Inspector, InspectorElementId,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Refineable as _, Render,
-    SharedString, StyleRefinement, Styled, Subscription, Window, actions, div,
+    SharedString, StyleRefinement, Styled, Subscription, Task, Window, actions, div,
     inspector_reflection::FunctionReflection, prelude::FluentBuilder, px,
 };
 use ropey::Rope;
@@ -16,7 +20,7 @@ use crate::{
     clipboard::Clipboard,
     description_list::DescriptionList,
     h_flex,
-    input::{Input, InputEvent, InputState, RopeExt, TabSize},
+    input::{CompletionProvider, Input, InputEvent, InputState, RopeExt, TabSize},
     link::Link,
     v_flex,
 };
@@ -79,6 +83,8 @@ pub struct DivInspector {
 
 impl DivInspector {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let lsp_provider = Rc::new(LspProvider {});
+
         let json_input_state = cx.new(|cx| {
             InputState::new(window, cx)
                 .code_editor("json")
@@ -86,13 +92,16 @@ impl DivInspector {
         });
 
         let rust_input_state = cx.new(|cx| {
-            InputState::new(window, cx)
+            let mut editor = InputState::new(window, cx)
                 .code_editor("rust")
                 .line_number(false)
                 .tab_size(TabSize {
                     tab_size: 4,
                     hard_tabs: false,
-                })
+                });
+
+            editor.lsp.completion_provider = Some(lsp_provider.clone());
+            editor
         });
 
         let _subscriptions = vec![
@@ -195,9 +204,13 @@ impl DivInspector {
             return;
         }
 
-        let (new_style, _diagnostics) = rust_to_style(self.unconvertible_style.clone(), code);
-        self.rust_state.state.update(cx, |_state, _cx| {
-            // 触发 UI 刷新
+        let (new_style, diagnostics) = rust_to_style(self.unconvertible_style.clone(), code);
+        self.rust_state.state.update(cx, |state, cx| {
+            if let Some(set) = state.diagnostics_mut() {
+                set.clear();
+                set.extend(diagnostics);
+            }
+            cx.notify();
         });
         self.json_state.error = None;
         self.json_state.editing = false;
@@ -315,15 +328,11 @@ fn style_to_rust(input_style: &StyleRefinement) -> (String, StyleRefinement) {
     (code, style)
 }
 
-fn rope_to_lsp(pos: crate::input::Position) -> Position {
-    Position::new(pos.line, pos.character)
-}
-
 fn rust_to_style(mut style: StyleRefinement, source: &str) -> (StyleRefinement, Vec<Diagnostic>) {
     let rope = Rope::from(source);
     let Some(begin) = source.find("div()").map(|i| i + "div()".len()) else {
         let start_pos = Position::new(0, 0);
-        let end_pos = rope_to_lsp(rope.offset_to_position(rope.len()));
+        let end_pos = rope.offset_to_position(rope.len());
 
         return (
             style,
@@ -375,9 +384,8 @@ fn rust_to_style(mut style: StyleRefinement, source: &str) -> (StyleRefinement, 
             Some(method_reflection) => style = method_reflection.invoke(style),
             None => {
                 let message = format!("unknown method `{}`", method);
-                let start =
-                    rope_to_lsp(rope.offset_to_position(offset.saturating_sub(method.len())));
-                let end = rope_to_lsp(rope.offset_to_position(offset));
+                let start = rope.offset_to_position(offset.saturating_sub(method.len()));
+                let end = rope.offset_to_position(offset);
                 let diagnostic = lsp_types::Diagnostic {
                     range: lsp_types::Range::new(start, end),
                     severity: Some(DiagnosticSeverity::ERROR),
@@ -552,8 +560,76 @@ fn render_inspector(
         .into_any_element()
 }
 
-// TODO: Add LSP completion provider for inspector once the `CompletionProvider`
-// trait is available from this crate. Currently it lives in `rgpui-editor`.
+struct LspProvider {}
+
+impl CompletionProvider for LspProvider {
+    fn completions(
+        &self,
+        rope: &ropey::Rope,
+        offset: usize,
+        _: lsp_types::CompletionContext,
+        _: &mut Window,
+        cx: &mut Context<InputState>,
+    ) -> Task<Result<CompletionResponse>> {
+        let mut left_offset = 0;
+        while left_offset < 100 {
+            match rope.char_at(offset.saturating_sub(left_offset)) {
+                Some('.') => {
+                    break;
+                }
+                None => break,
+                _ => {}
+            }
+            left_offset += 1;
+        }
+        let start = offset.saturating_sub(left_offset);
+        let trigger_character = rope.slice(start..offset).to_string();
+        if !trigger_character.starts_with('.') {
+            return Task::ready(Ok(CompletionResponse::Array(vec![])));
+        }
+
+        let start_pos = rope.offset_to_position(start);
+        let end_pos = rope.offset_to_position(offset);
+
+        cx.background_spawn(async move {
+            let styles = StyleMethods::get()
+                .map
+                .iter()
+                .filter_map(|(name, method)| {
+                    let prefix = &trigger_character[1..];
+                    if name.starts_with(&prefix) {
+                        Some(CompletionItem {
+                            label: name.to_string(),
+                            filter_text: Some(prefix.to_string()),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: Some("()".to_string()),
+                            documentation: method
+                                .documentation
+                                .as_ref()
+                                .map(|doc| lsp_types::Documentation::String(doc.to_string())),
+                            text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                                range: lsp_types::Range {
+                                    start: start_pos,
+                                    end: end_pos,
+                                },
+                                new_text: format!(".{}()", name),
+                            })),
+                            ..Default::default()
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            Ok(CompletionResponse::Array(styles))
+        })
+    }
+
+    fn is_completion_trigger(&self, _: usize, _: &str, _: &mut Context<InputState>) -> bool {
+        true
+    }
+}
 
 #[cfg(test)]
 mod tests {

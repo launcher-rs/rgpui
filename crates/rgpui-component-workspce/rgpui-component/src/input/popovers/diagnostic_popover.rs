@@ -5,10 +5,12 @@ use rgpui::{
     Styled, Window, prelude::FluentBuilder as _, px,
 };
 
-use crate::highlighter::DiagnosticEntry;
-use crate::input::{
-    InputState,
-    popovers::{Popover, render_markdown},
+use crate::{
+    highlighter::DiagnosticEntry,
+    input::{
+        InputState,
+        popovers::{Popover, render_markdown},
+    },
 };
 
 pub struct DiagnosticPopover {

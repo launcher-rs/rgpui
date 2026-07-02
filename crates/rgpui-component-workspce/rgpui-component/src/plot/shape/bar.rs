@@ -34,7 +34,7 @@ impl BarAlignment {
     /// Linear-gradient angle (in degrees) that runs from the bar's base to its
     /// tip for this alignment.
     ///
-    /// gpui convention: `0°` points upward (stop-0 at bottom, stop-1 at top);
+    /// rgpui convention: `0°` points upward (stop-0 at bottom, stop-1 at top);
     /// angles increase clockwise.
     pub fn gradient_angle(self) -> f32 {
         match self {
@@ -142,7 +142,7 @@ impl<T> Bar<T> {
     /// coordinates from this frame should do so themselves.
     ///
     /// Accepts any type convertible to [`Background`], including solid colors and
-    /// fully-specified [`gpui::linear_gradient`] values. The background is used
+    /// fully-specified [`rgpui::linear_gradient`] values. The background is used
     /// verbatim — the gradient angle is not adjusted for bar orientation.
     pub fn fill<F, B>(mut self, fill: F) -> Self
     where
@@ -240,7 +240,7 @@ impl<T> Bar<T> {
 
 /// Origin point for a bar label, positioned outside the bar at the value end.
 ///
-/// The caller chooses the [`gpui::TextAlign`] (typically `Center` for vertical
+/// The caller chooses the [`rgpui::TextAlign`] (typically `Center` for vertical
 /// bars, `Left` for `BarAlignment::Left`, `Right` for `BarAlignment::Right`).
 fn label_origin(
     alignment: BarAlignment,

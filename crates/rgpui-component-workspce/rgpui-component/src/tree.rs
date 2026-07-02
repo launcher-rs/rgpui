@@ -129,7 +129,7 @@ impl TreeItem {
     /// For example, the `id` is the full file path, and the `label` is the file name.
     ///
     /// ```ignore
-    /// TreeItem::new("src/rgpui-component/button.rs", "button.rs")
+    /// TreeItem::new("src/ui/button.rs", "button.rs")
     /// ```
     pub fn new(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
         Self {
@@ -521,7 +521,7 @@ impl Render for TreeState {
                         items
                     })
                 })
-                .flex_grow()
+                .flex_grow_1()
                 .size_full()
                 .track_scroll(&self.scroll_handle)
                 .with_sizing_behavior(ListSizingBehavior::Auto)
@@ -669,11 +669,11 @@ mod tests {
             TreeItem::new("src", "src")
                 .expanded(true)
                 .child(
-                    TreeItem::new("src/rgpui-component", "rgpui-component")
+                    TreeItem::new("src/ui", "ui")
                         .expanded(true)
-                        .child(TreeItem::new("src/rgpui-component/button.rs", "button.rs"))
-                        .child(TreeItem::new("src/rgpui-component/icon.rs", "icon.rs"))
-                        .child(TreeItem::new("src/rgpui-component/mod.rs", "mod.rs")),
+                        .child(TreeItem::new("src/ui/button.rs", "button.rs"))
+                        .child(TreeItem::new("src/ui/icon.rs", "icon.rs"))
+                        .child(TreeItem::new("src/ui/mod.rs", "mod.rs")),
                 )
                 .child(TreeItem::new("src/lib.rs", "lib.rs")),
             TreeItem::new("Cargo.toml", "Cargo.toml"),
@@ -688,7 +688,7 @@ mod tests {
                 indoc! {
                     r#"
                 src
-                    rgpui-component
+                    ui
                         button.rs
                         icon.rs
                         mod.rs
@@ -711,7 +711,7 @@ mod tests {
             assert_eq!(entry.is_root(), false);
             assert_eq!(entry.is_folder(), true);
             assert_eq!(entry.is_expanded(), true);
-            assert_eq!(entry.item().label.as_str(), "rgpui-component");
+            assert_eq!(entry.item().label.as_str(), "ui");
 
             state.toggle_expand(1, cx);
             let entry = state.entries.get(1).unwrap();
@@ -721,7 +721,7 @@ mod tests {
                 indoc! {
                     r#"
                 src
-                    rgpui-component
+                    ui
                     lib.rs
                 Cargo.toml
                 Cargo.lock
@@ -794,38 +794,33 @@ mod tests {
 
     #[rgpui::test]
     fn test_event_carries_item_id(cx: &mut rgpui::TestAppContext) {
-        let items = vec![super::TreeItem::new("src", "src").expanded(true).child(
-            super::TreeItem::new("src/rgpui-component", "rgpui-component").child(
-                super::TreeItem::new("src/rgpui-component/button.rs", "button.rs"),
+        let items = vec![
+            super::TreeItem::new("src", "src").expanded(true).child(
+                super::TreeItem::new("src/ui", "ui")
+                    .child(super::TreeItem::new("src/ui/button.rs", "button.rs")),
             ),
-        )];
+        ];
         let state = cx.new(|cx| TreeState::new(cx).items(items));
         let collector = cx.new(|cx| TestCollector::new(&state, cx));
 
-        // Toggle the child at index 1 ("src/rgpui-component"), event payload should be the id not the index.
+        // Toggle the child at index 1 ("src/ui"), event payload should be the id not the index.
         state.update(cx, |state, cx| {
             state.toggle_expand(1, cx);
         });
 
         let events = collector.read_with(cx, |c, _| c.events.borrow().clone());
-        assert_eq!(
-            events,
-            vec![TreeEvent::Expanded("src/rgpui-component".into())]
-        );
+        assert_eq!(events, vec![TreeEvent::Expanded("src/ui".into())]);
     }
 
     #[rgpui::test]
     fn test_set_selected_item_emits_expanded_events_for_hidden_ancestors(
         cx: &mut rgpui::TestAppContext,
     ) {
-        let target = super::TreeItem::new("src/rgpui-component/button.rs", "button.rs");
-        let items =
-            vec![
-                super::TreeItem::new("src", "src").child(
-                    super::TreeItem::new("src/rgpui-component", "rgpui-component")
-                        .child(target.clone()),
-                ),
-            ];
+        let target = super::TreeItem::new("src/ui/button.rs", "button.rs");
+        let items = vec![
+            super::TreeItem::new("src", "src")
+                .child(super::TreeItem::new("src/ui", "ui").child(target.clone())),
+        ];
         let state = cx.new(|cx| TreeState::new(cx).items(items));
         let collector = cx.new(|cx| TestCollector::new(&state, cx));
 
@@ -838,7 +833,7 @@ mod tests {
             events,
             vec![
                 TreeEvent::Expanded("src".into()),
-                TreeEvent::Expanded("src/rgpui-component".into())
+                TreeEvent::Expanded("src/ui".into())
             ]
         );
     }

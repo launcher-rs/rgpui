@@ -22,7 +22,7 @@ impl Render for Example {
 
 fn main() {
     rgpui_platform::application().run(move |cx| {
-        // This must be called before using any GPUI Component features.
+        // This must be called before using any rgpui Component features.
         rgpui_component::init(cx);
 
         cx.spawn(async move |cx| {

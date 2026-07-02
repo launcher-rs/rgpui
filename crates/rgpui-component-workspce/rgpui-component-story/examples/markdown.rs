@@ -7,6 +7,8 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
+use lsp_types::{SemanticToken, SemanticTokenType, SemanticTokens, SemanticTokensLegend};
+use regex::{Captures, Regex};
 use rgpui::{prelude::FluentBuilder as _, *};
 use rgpui_component::{
     ActiveTheme as _, Icon, IconName, Sizable as _,
@@ -14,6 +16,10 @@ use rgpui_component::{
     button::{Button, ButtonVariants as _},
     clipboard::Clipboard,
     h_flex,
+    highlighter::Language,
+    input::{
+        DocumentRangeSemanticTokensProvider, Input, InputEvent, InputState, Rope, RopeExt, TabSize,
+    },
     resizable::{h_resizable, resizable_panel},
     status_bar::StatusBar,
     text::{
@@ -23,11 +29,6 @@ use rgpui_component::{
 };
 use rgpui_component_assets::Assets;
 use rgpui_component_story::Open;
-use lsp_types::{SemanticToken, SemanticTokenType, SemanticTokens, SemanticTokensLegend};
-use regex::{Captures, Regex};
-use rgpui_editor::input::{DocumentRangeSemanticTokensProvider, TabSize};
-use rgpui_editor::{Editor, EditorEvent, EditorState, Rope, RopeExt};
-use rgpui_editor::highlighter::Language;
 
 /// Markers, each mapped to a different `HighlightTheme` token-type name so
 /// `TODO`, `FIXME`, … render in distinct colors.
@@ -599,9 +600,9 @@ impl MarkdownPlugin for UserCardPlugin {
 
 const MATHJAX_NODE_SCRIPT: &str = r#"
 const path = require("path");
-const root = process.env.rgpui_MATHJAX_ROOT;
-const source = process.env.rgpui_MATH_SOURCE || "";
-const display = process.env.rgpui_MATH_DISPLAY === "1";
+const root = process.env.GPUI_MATHJAX_ROOT;
+const source = process.env.GPUI_MATH_SOURCE || "";
+const display = process.env.GPUI_MATH_DISPLAY === "1";
 const req = (file) => require(path.join(root, file));
 
 const {mathjax} = req("js/mathjax.js");
@@ -681,9 +682,9 @@ fn render_math_svg(
     let output = Command::new("node")
         .arg("-e")
         .arg(MATHJAX_NODE_SCRIPT)
-        .env("rgpui_MATHJAX_ROOT", root)
-        .env("rgpui_MATH_SOURCE", source)
-        .env("rgpui_MATH_DISPLAY", if inline { "0" } else { "1" })
+        .env("GPUI_MATHJAX_ROOT", root)
+        .env("GPUI_MATH_SOURCE", source)
+        .env("GPUI_MATH_DISPLAY", if inline { "0" } else { "1" })
         .output()
         .ok()?;
 
@@ -771,11 +772,11 @@ fn inject_svg_background(svg: &str, fill: &str, opacity: f32) -> String {
     };
     let background = if let Some((x, y, width, height)) = svg_view_box(svg) {
         format!(
-            r#"<rect data-rgpui-math-background="true" x="{x:.3}" y="{y:.3}" width="{width:.3}" height="{height:.3}" fill="{fill}"{opacity_attr}></rect>"#
+            r#"<rect data-gpui-math-background="true" x="{x:.3}" y="{y:.3}" width="{width:.3}" height="{height:.3}" fill="{fill}"{opacity_attr}></rect>"#
         )
     } else {
         format!(
-            r#"<rect data-rgpui-math-background="true" width="100%" height="100%" fill="{fill}"{opacity_attr}></rect>"#
+            r#"<rect data-gpui-math-background="true" width="100%" height="100%" fill="{fill}"{opacity_attr}></rect>"#
         )
     };
 
@@ -1108,7 +1109,7 @@ impl DocumentRangeSemanticTokensProvider for MarkerHighlighter {
 }
 
 pub struct Example {
-    input_state: Entity<EditorState>,
+    input_state: Entity<InputState>,
     /// When `true`, tables wrap cell content to fit the width; when `false`
     /// (the default), tables keep cells on one line and scroll horizontally.
     table_wrap: bool,
@@ -1120,7 +1121,7 @@ const EXAMPLE: &str = include_str!("./fixtures/test.md");
 impl Example {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input_state = cx.new(|cx| {
-            let mut input_state = EditorState::new(window, cx)
+            let mut input_state = InputState::new(window, cx)
                 .code_editor(Language::Markdown)
                 .line_number(true)
                 .tab_size(TabSize {
@@ -1145,7 +1146,7 @@ impl Example {
             focus_handle.focus(window, cx);
         });
 
-        let _subscriptions = vec![cx.subscribe(&input_state, |_, _, _: &EditorEvent, _| {})];
+        let _subscriptions = vec![cx.subscribe(&input_state, |_, _, _: &InputEvent, _| {})];
 
         Self {
             input_state,
@@ -1218,7 +1219,7 @@ impl Render for Example {
                                             .font_family(cx.theme().mono_font_family.clone())
                                             .text_size(cx.theme().mono_font_size)
                                             .child(
-                                                Editor::new(&self.input_state)
+                                                Input::new(&self.input_state)
                                                     .h_full()
                                                     .p_0()
                                                     .border_0()
@@ -1412,7 +1413,7 @@ mod tests {
             return;
         };
 
-        assert!(svg.contains(r#"data-rgpui-math-background="true""#));
+        assert!(svg.contains(r#"data-gpui-math-background="true""#));
         assert!(svg.contains("fill=\"#ffffff\""));
     }
 

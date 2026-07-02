@@ -215,7 +215,7 @@ impl DatePickerState {
 
     // To focus the Picker Input, if current focus in is on the container.
     //
-    // This is because mouse down out the Calendar, GPUI will move focus to the container.
+    // This is because mouse down out the Calendar, rgpui will move focus to the container.
     // So we need to move focus back to the Picker Input.
     //
     // But if mouse down target is some other focusable element (e.g.: [`crate::Input`]), we should not move focus.

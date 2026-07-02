@@ -4,7 +4,10 @@ version = "0.1.0"
 publish = false
 edition.workspace = true
 
-
+[features]
+inspector = ["rgpui-component/inspector"]
+tree-sitter = ["rgpui-component/tree-sitter-languages"]
+default = ["tree-sitter"]
 
 [dependencies]
 anyhow.workspace = true
@@ -42,8 +45,6 @@ rgpui-web.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18" }
 
-[dev-dependencies]
-rgpui-editor = {workspace = true,features = ["tree-sitter-languages"]}
 
 
 [lints]

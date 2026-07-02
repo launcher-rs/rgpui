@@ -110,8 +110,8 @@ impl From<Point<Pixels>> for CrossLine {
 }
 
 impl CrossLine {
-    /// Build a single line along one axis: `vertical` runs top鈫抌ottom at the data point's
-    /// `x`; otherwise left鈫抮ight at its `y`. A dashed hairline draws a 1px dashed border; a
+    /// Build a single line along one axis: `vertical` runs top→bottom at the data point's
+    /// `x`; otherwise left→right at its `y`. A dashed hairline draws a 1px dashed border; a
     /// solid band fills a `thickness`-wide strip centered on the data point.
     fn line(&self, vertical: bool, cx: &App) -> Div {
         let color = if self.dashed {

@@ -19,7 +19,7 @@ mod virtual_list;
 mod window_border;
 mod window_ext;
 
-pub mod actions;
+pub(crate) mod actions;
 
 pub mod accordion;
 pub mod alert;
@@ -93,9 +93,6 @@ pub use rgpui_component_macros::icon_named;
 pub use root::Root;
 pub use styled::*;
 pub use theme::*;
-// Explicit re-exports needed for Rust 2024 edition glob re-export rules
-pub use theme::highlight::HighlightTheme;
-pub use theme::highlight::HighlightThemeStyle;
 pub use time::{calendar, date_picker};
 pub use title_bar::*;
 pub use virtual_list::{VirtualList, VirtualListScrollHandle, h_virtual_list, v_virtual_list};
@@ -143,12 +140,12 @@ pub fn set_locale(locale: &str) {
 
 #[inline]
 pub(crate) fn measure_enable() -> bool {
-    std::env::var("ZED_MEASUREMENTS").is_ok() || std::env::var("GPUI_MEASUREMENTS").is_ok()
+    std::env::var("ZED_MEASUREMENTS").is_ok() || std::env::var("rgpui_MEASUREMENTS").is_ok()
 }
 
 /// Measures the execution time of a function and logs it if `if_` is true.
 ///
-/// And need env `GPUI_MEASUREMENTS=1`
+/// And need env `rgpui_MEASUREMENTS=1`
 #[inline]
 #[track_caller]
 pub fn measure_if(name: impl Into<SharedString>, if_: bool, f: impl FnOnce()) {

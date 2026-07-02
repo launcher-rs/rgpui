@@ -1,6 +1,6 @@
+use itertools::Itertools as _;
 use rgpui::*;
 use rgpui_component::{button::*, checkbox::*, input::*, select::*, separator::*, *};
-use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
 
 use crate::section;

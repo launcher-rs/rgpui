@@ -307,7 +307,7 @@ impl Render for TitleBar {
             .items_center()
             // Occupy remaining space so nav items stay on the right.
             // (Also keeps the empty area draggable on Windows.)
-            .flex_grow()
+            .flex_grow_1()
             .min_w(px(0.0))
             .pl_3()
             .when(
@@ -341,7 +341,7 @@ impl Render for TitleBar {
             )
             // Keep the draggable region on the left side (including empty space before the nav)
             // so it doesn't interfere with nav items or window controls.
-            .child(div().flex_grow());
+            .child(div().flex_grow_1());
 
         div()
             .id("titlebar")

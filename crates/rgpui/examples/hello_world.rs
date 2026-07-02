@@ -1,6 +1,9 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use rgpui::{div, prelude::*, px, rgb, size, App, Bounds, Context, SharedString, Window, WindowBounds, WindowOptions};
+use rgpui::{
+    App, Bounds, Context, SharedString, Window, WindowBounds, WindowOptions, div, prelude::*, px,
+    rgb, size,
+};
 use rgpui_platform::application;
 
 struct HelloWorld {

@@ -1,8 +1,8 @@
+use regex::Regex;
 use rgpui::{
     App, AppContext as _, Context, Entity, Focusable, InteractiveElement, IntoElement,
     ParentElement as _, Render, Styled, Subscription, Window, px,
 };
-use regex::Regex;
 
 use crate::section;
 use rgpui_component::{

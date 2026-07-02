@@ -146,66 +146,59 @@ impl Render for NativeMenuStory {
             .on_action(cx.listener(Self::open_github))
             .size_full()
             .gap_6()
-            .child(
-                section("Builder API (disabled / checked / submenu)").child(
-                    self.trigger("Right-click here", cx).on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(|this, ev: &MouseDownEvent, window, cx| {
-                            // Focus the story so the dispatched action reaches `on_click`.
-                            this.focus_handle.focus(window, cx);
-                            // Nudge right so the cursor doesn't land on the first item.
-                            let position = Point {
-                                x: ev.position.x + px(4.),
-                                y: ev.position.y,
-                            };
-                            demo_menu(this.word_wrap).show(position, window, cx);
-                        }),
-                    ),
+            .child(section("Builder API (disabled / checked / submenu)").child(
+                self.trigger("Right-click here", cx).on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(|this, ev: &MouseDownEvent, window, cx| {
+                        // Focus the story so the dispatched action reaches `on_click`.
+                        this.focus_handle.focus(window, cx);
+                        // Nudge right so the cursor doesn't land on the first item.
+                        let position = Point {
+                            x: ev.position.x + px(4.),
+                            y: ev.position.y,
+                        };
+                        demo_menu(this.word_wrap).show(position, window, cx);
+                    }),
                 ),
-            )
-            .child(
-                section("From rgpui::Menu items").child(
-                    self.trigger("Right-click here", cx).on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(|this, ev: &MouseDownEvent, window, cx| {
-                            this.focus_handle.focus(window, cx);
-                            let position = Point {
-                                x: ev.position.x + px(4.),
-                                y: ev.position.y,
-                            };
-                            // Reuse a rgpui menu definition (incl. a submenu) directly.
-                            NativeMenu::from(rgpui::Menu::new("Edit").items([
-                                rgpui::MenuItem::action("Copy", MenuClick("Copy".into())),
-                                rgpui::MenuItem::action("Paste", MenuClick("Paste".into())),
-                                rgpui::MenuItem::separator(),
-                                rgpui::MenuItem::submenu(
-                                    rgpui::Menu::new("Share").items([
-                                        rgpui::MenuItem::action("Email", MenuClick("Email".into())),
-                                        rgpui::MenuItem::action(
-                                            "Message",
-                                            MenuClick("Message".into()),
-                                        ),
-                                    ]),
-                                ),
-                            ]))
-                            .show(position, window, cx);
-                        }),
-                    ),
+            ))
+            .child(section("From rgpui::Menu items").child(
+                self.trigger("Right-click here", cx).on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(|this, ev: &MouseDownEvent, window, cx| {
+                        this.focus_handle.focus(window, cx);
+                        let position = Point {
+                            x: ev.position.x + px(4.),
+                            y: ev.position.y,
+                        };
+                        // Reuse a rgpui menu definition (incl. a submenu) directly.
+                        NativeMenu::from(rgpui::Menu::new("Edit").items([
+                            rgpui::MenuItem::action("Copy", MenuClick("Copy".into())),
+                            rgpui::MenuItem::action("Paste", MenuClick("Paste".into())),
+                            rgpui::MenuItem::separator(),
+                            rgpui::MenuItem::submenu(rgpui::Menu::new("Share").items([
+                                rgpui::MenuItem::action("Email", MenuClick("Email".into())),
+                                rgpui::MenuItem::action("Message", MenuClick("Message".into())),
+                            ])),
+                        ]))
+                        .show(position, window, cx);
+                    }),
                 ),
-            )
-            .child(
-                section("Dropdown (click to open)").child({
-                    // A native menu isn't limited to right-click — `show` takes
-                    // any window position. Capture the trigger's bounds so the
-                    // menu opens at its bottom-left, like a real dropdown.
-                    let trigger_bounds: Rc<Cell<Bounds<Pixels>>> =
-                        Rc::new(Cell::new(Bounds::default()));
-                    let bounds_writer = trigger_bounds.clone();
+            ))
+            .child(section("Dropdown (click to open)").child({
+                // A native menu isn't limited to right-click — `show` takes
+                // any window position. Capture the trigger's bounds so the
+                // menu opens at its bottom-left, like a real dropdown.
+                let trigger_bounds: Rc<Cell<Bounds<Pixels>>> =
+                    Rc::new(Cell::new(Bounds::default()));
+                let bounds_writer = trigger_bounds.clone();
 
-                    div()
-                        .on_prepaint(move |bounds, _, _| bounds_writer.set(bounds))
-                        .child(Button::new("native-dropdown").outline().label("Open Menu").on_click(
-                            move |_: &ClickEvent, window, cx| {
+                div()
+                    .on_prepaint(move |bounds, _, _| bounds_writer.set(bounds))
+                    .child(
+                        Button::new("native-dropdown")
+                            .outline()
+                            .label("Open Menu")
+                            .on_click(move |_: &ClickEvent, window, cx| {
                                 let bounds = trigger_bounds.get();
                                 let position = Point {
                                     x: bounds.origin.x,
@@ -214,10 +207,9 @@ impl Render for NativeMenuStory {
                                 };
                                 focus_handle.focus(window, cx);
                                 demo_menu(view.read(cx).word_wrap).show(position, window, cx);
-                            },
-                        ))
-                }),
-            )
+                            }),
+                    )
+            }))
             .child(section("Result").child(SharedString::from(result)))
     }
 }

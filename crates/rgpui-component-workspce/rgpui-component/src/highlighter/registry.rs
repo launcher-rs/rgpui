@@ -4,11 +4,14 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{
     collections::HashMap,
-    sync::{LazyLock, Mutex},
+    ops::Deref,
+    sync::{Arc, LazyLock, Mutex},
 };
 
-use crate::highlighter::{Language, languages};
-use rgpui_component::ActiveTheme;
+use crate::{
+    ActiveTheme, DEFAULT_THEME_COLORS, ThemeMode,
+    highlighter::{Language, languages},
+};
 
 pub(super) const HIGHLIGHT_NAMES: [&str; 41] = [
     "attribute",
@@ -410,7 +413,60 @@ impl StatusColors {
     }
 }
 
-pub use rgpui_component::{HighlightTheme, HighlightThemeStyle};
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
+pub struct HighlightThemeStyle {
+    #[serde(rename = "editor.background")]
+    pub editor_background: Option<Hsla>,
+    #[serde(rename = "editor.foreground")]
+    pub editor_foreground: Option<Hsla>,
+    #[serde(rename = "editor.active_line.background")]
+    pub editor_active_line: Option<Hsla>,
+    #[serde(rename = "editor.line_number")]
+    pub editor_line_number: Option<Hsla>,
+    #[serde(rename = "editor.active_line_number")]
+    pub editor_active_line_number: Option<Hsla>,
+    #[serde(rename = "editor.invisible")]
+    pub editor_invisible: Option<Hsla>,
+    /// Optional background color for the gutter (line-number column).
+    /// Falls back to [`Self::editor_background`] when unset.
+    #[serde(rename = "editor.gutter.background")]
+    pub editor_gutter_background: Option<Hsla>,
+    #[serde(flatten)]
+    pub status: StatusColors,
+    #[serde(rename = "syntax")]
+    pub syntax: SyntaxColors,
+}
+
+/// Theme for Tree-sitter Highlight from JSON theme file.
+///
+/// This json is compatible with the Zed theme format.
+///
+/// https://zed.dev/docs/extensions/languages#syntax-highlighting
+#[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
+pub struct HighlightTheme {
+    pub name: String,
+    #[serde(default)]
+    pub appearance: ThemeMode,
+    pub style: HighlightThemeStyle,
+}
+
+impl Deref for HighlightTheme {
+    type Target = SyntaxColors;
+
+    fn deref(&self) -> &Self::Target {
+        &self.style.syntax
+    }
+}
+
+impl HighlightTheme {
+    pub fn default_dark() -> Arc<Self> {
+        DEFAULT_THEME_COLORS[&ThemeMode::Dark].1.clone()
+    }
+
+    pub fn default_light() -> Arc<Self> {
+        DEFAULT_THEME_COLORS[&ThemeMode::Light].1.clone()
+    }
+}
 
 /// Registry for code highlighter languages.
 pub struct LanguageRegistry {

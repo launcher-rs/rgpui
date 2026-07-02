@@ -800,8 +800,8 @@ impl Element for Scrollbar {
                             border_color: state.border,
                             border_style: BorderStyle::default(),
                             continuous_corners: false,
-                            transform: rgpui::TransformationMatrix::default(),
-                            blend_mode: rgpui::BlendMode::default(),
+                            transform: Default::default(),
+                            blend_mode: Default::default(),
                         });
 
                         cx.paint_quad(

@@ -43,11 +43,11 @@ impl Render for Example {
 }
 
 fn main() {
-    // Register Assets to GPUI application.
+    // Register Assets to rgpui application.
     let app = rgpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        // We must initialize gpui_component before using it.
+        // We must initialize rgpui_component before using it.
         rgpui_component::init(cx);
 
         cx.spawn(async move |cx| {

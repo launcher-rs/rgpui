@@ -1,6 +1,6 @@
 [package]
 name = "system_monitor"
-description = "A real-time system resource monitor using GPUI Component charts."
+description = "A real-time system resource monitor using rgpui Component charts."
 version = "0.1.0"
 publish = false
 edition = "2024"

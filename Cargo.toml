@@ -51,7 +51,6 @@ rgpui-component-macros = { path = "crates/rgpui-component-workspce/rgpui-compone
 rgpui-component = { path = "crates/rgpui-component-workspce/rgpui-component" ,version = "0.3.0"}
 rgpui-component-assets = { path = "crates/rgpui-component-workspce/rgpui-component-assets",version = "0.3.0" }
 rgpui-webview = { path = "crates/rgpui-component-workspce/rgpui-webview",version = "0.3.0" }
-rgpui-editor = { path = "crates/rgpui-component-workspce/rgpui-editor",version = "0.3.0" }
 
 rgpui-adabraka-ui = { path = "crates/rgpui-adabraka-ui",version = "0.3.0" }
 rgpui-character = {path = "crates/rgpui-character",version = "0.3.0"}
