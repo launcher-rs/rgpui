@@ -42,5 +42,9 @@ rgpui-web.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18" }
 
+[dev-dependencies]
+rgpui-editor = {workspace = true,features = ["tree-sitter-languages"]}
+
+
 [lints]
 workspace = true

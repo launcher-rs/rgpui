@@ -7734,6 +7734,7 @@ dependencies = [
  "rgpui",
  "rgpui-component",
  "rgpui-component-assets",
+ "rgpui-editor",
  "rgpui-platform",
  "rgpui-web",
  "rust-i18n",

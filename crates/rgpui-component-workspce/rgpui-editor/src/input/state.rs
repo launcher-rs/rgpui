@@ -14,7 +14,6 @@ use rgpui::{
 };
 use rgpui::{Half, TextAlign};
 use ropey::{Rope, RopeSlice};
-use serde::Deserialize;
 use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
@@ -47,72 +46,30 @@ use rgpui_component::native_menu::NativeMenu;
 use rgpui_component::scroll::AutoScroll;
 use rgpui_component::{Root, history::History};
 
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = input, no_json)]
-pub struct Enter {
-    /// Is confirm with secondary.
-    pub secondary: bool,
-    /// Whether the Shift modifier was held when Enter was pressed.
-    pub shift: bool,
-}
+pub use rgpui_component::input::{
+    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine,
+    DeleteToNextWordEnd, DeleteToPreviousWordStart, Enter, Escape, Indent, IndentInline,
+    MoveDown, MoveEnd, MoveHome, MoveLeft, MovePageDown, MovePageUp, MoveRight, MoveToEnd,
+    MoveToEndOfLine, MoveToNextWord, MoveToPreviousWord, MoveToStart, MoveToStartOfLine, MoveUp,
+    Outdent, OutdentInline, Paste, Redo, Search, SelectAll, SelectToEnd, SelectToEndOfLine,
+    SelectToNextWordEnd, SelectToPreviousWordStart, SelectToStart, SelectToStartOfLine,
+    ShowCharacterPalette, Undo,
+};
 
-impl Enter {
-    /// Returns true if `action` is a primary `Enter` action (`secondary: false`),
-    /// regardless of whether Shift was held.
-    pub fn is_primary(action: &dyn Action) -> bool {
-        action.partial_eq(&Enter {
-            secondary: false,
-            shift: false,
-        }) || action.partial_eq(&Enter {
-            secondary: false,
-            shift: true,
-        })
-    }
+pub fn is_enter_primary(action: &dyn Action) -> bool {
+    action.partial_eq(&Enter {
+        secondary: false,
+        shift: false,
+    }) || action.partial_eq(&Enter {
+        secondary: false,
+        shift: true,
+    })
 }
 
 actions!(
     input,
     [
-        Backspace,
-        Delete,
-        DeleteToBeginningOfLine,
-        DeleteToEndOfLine,
-        DeleteToPreviousWordStart,
-        DeleteToNextWordEnd,
-        Indent,
-        Outdent,
-        IndentInline,
-        OutdentInline,
-        MoveUp,
-        MoveDown,
-        MoveLeft,
-        MoveRight,
-        MoveHome,
-        MoveEnd,
-        MovePageUp,
-        MovePageDown,
-        SelectAll,
-        SelectToStartOfLine,
-        SelectToEndOfLine,
-        SelectToStart,
-        SelectToEnd,
-        SelectToPreviousWordStart,
-        SelectToNextWordEnd,
-        ShowCharacterPalette,
-        Copy,
-        Cut,
-        Paste,
-        Undo,
-        Redo,
-        MoveToStartOfLine,
-        MoveToEndOfLine,
-        MoveToStart,
-        MoveToEnd,
-        MoveToPreviousWord,
-        MoveToNextWord,
-        Escape,
         ToggleCodeActions,
-        Search,
         GoToDefinition,
     ]
 );

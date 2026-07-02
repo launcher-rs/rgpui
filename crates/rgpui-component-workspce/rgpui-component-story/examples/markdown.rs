@@ -25,6 +25,9 @@ use rgpui_component_assets::Assets;
 use rgpui_component_story::Open;
 use lsp_types::{SemanticToken, SemanticTokenType, SemanticTokens, SemanticTokensLegend};
 use regex::{Captures, Regex};
+use rgpui_editor::input::{DocumentRangeSemanticTokensProvider, TabSize};
+use rgpui_editor::{Editor, EditorEvent, EditorState, Rope, RopeExt};
+use rgpui_editor::highlighter::Language;
 
 /// Markers, each mapped to a different `HighlightTheme` token-type name so
 /// `TODO`, `FIXME`, … render in distinct colors.
@@ -1105,7 +1108,7 @@ impl DocumentRangeSemanticTokensProvider for MarkerHighlighter {
 }
 
 pub struct Example {
-    input_state: Entity<InputState>,
+    input_state: Entity<EditorState>,
     /// When `true`, tables wrap cell content to fit the width; when `false`
     /// (the default), tables keep cells on one line and scroll horizontally.
     table_wrap: bool,
@@ -1117,7 +1120,7 @@ const EXAMPLE: &str = include_str!("./fixtures/test.md");
 impl Example {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input_state = cx.new(|cx| {
-            let mut input_state = InputState::new(window, cx)
+            let mut input_state = EditorState::new(window, cx)
                 .code_editor(Language::Markdown)
                 .line_number(true)
                 .tab_size(TabSize {
@@ -1142,7 +1145,7 @@ impl Example {
             focus_handle.focus(window, cx);
         });
 
-        let _subscriptions = vec![cx.subscribe(&input_state, |_, _, _: &InputEvent, _| {})];
+        let _subscriptions = vec![cx.subscribe(&input_state, |_, _, _: &EditorEvent, _| {})];
 
         Self {
             input_state,
@@ -1215,7 +1218,7 @@ impl Render for Example {
                                             .font_family(cx.theme().mono_font_family.clone())
                                             .text_size(cx.theme().mono_font_size)
                                             .child(
-                                                Input::new(&self.input_state)
+                                                Editor::new(&self.input_state)
                                                     .h_full()
                                                     .p_0()
                                                     .border_0()
