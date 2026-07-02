@@ -56,7 +56,7 @@ impl Render for WelcomeStory {
         _: &mut rgpui::Window,
         _: &mut rgpui::Context<Self>,
     ) -> impl rgpui::IntoElement {
-        markdown(include_str!("../../../../../README.md"))
+        markdown(include_str!("../sample.md"))
             .px_4()
             .scrollable(true)
             .selectable(true)

@@ -345,7 +345,7 @@ impl DialogStory {
                             .overlay(dialog_overlay)
                             .overlay_closable(overlay_closable)
                             .title("Dialog with scrollbar")
-                            .child(markdown(include_str!("../../../../../README.md")))
+                            .child(markdown(include_str!("../sample.md")))
                             .footer(
                                 DialogFooter::new()
                                     .gap_2()
