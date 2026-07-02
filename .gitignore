@@ -3,3 +3,4 @@ temp
 stderr.txt
 stdout.txt
 .idea
+*.log

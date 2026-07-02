@@ -2,14 +2,29 @@
 resolver = "3"
 
 members = [
-    "crates/*",
+    "crates/rgpui",
+    "crates/rgpui-3d",
+    "crates/rgpui-adabraka-ui",
+    "crates/rgpui-character",
+    "crates/rgpui-linux",
+    "crates/rgpui-macos",
+    "crates/rgpui-macros",
+    "crates/rgpui-platform",
+    "crates/rgpui-term",
+    "crates/rgpui-tokio",
+    "crates/rgpui-web",
+    "crates/rgpui-wgpu",
+    "crates/rgpui-windows",
+    "crates/rgpui-yororen-ui",
     "examples/*",
-    "crates/rgpui-component/examples/*",
+    "crates/rgpui-component-workspce/*",
+    "crates/rgpui-component-workspce/rgpui-component/examples/*",
 ]
 
 exclude = [
-    "crates/rgpui-component/examples/hello_world_web",
-    "crates/rgpui-component/examples/components_web",
+    "crates/rgpui-component-workspce/rgpui-component/examples/hello_world_web",
+    "crates/rgpui-component-workspce/rgpui-component/examples/components_web",
+    "crates/rgpui-component-workspce/rgpui-component/examples/components_web",
 ]
 
 [workspace.package]
@@ -31,11 +46,11 @@ rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "0.
 rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "0.3.0" }
 rgpui-tokio = { path = "crates/rgpui-tokio",version = "0.3.0" }
 
-rgpui-component-macros = { path = "crates/rgpui-component-macros",version = "0.3.0" }
-rgpui-component = { path = "crates/rgpui-component" ,version = "0.3.0"}
-rgpui-component-assets = { path = "crates/rgpui-component-assets",version = "0.3.0" }
-rgpui-webview = { path = "crates/rgpui-webview",version = "0.3.0" }
-rgpui-editor = { path = "crates/rgpui-editor",version = "0.3.0" }
+rgpui-component-macros = { path = "crates/rgpui-component-workspce/rgpui-component-macros",version = "0.3.0" }
+rgpui-component = { path = "crates/rgpui-component-workspce/rgpui-component" ,version = "0.3.0"}
+rgpui-component-assets = { path = "crates/rgpui-component-workspce/rgpui-component-assets",version = "0.3.0" }
+rgpui-webview = { path = "crates/rgpui-component-workspce/rgpui-webview",version = "0.3.0" }
+rgpui-editor = { path = "crates/rgpui-component-workspce/rgpui-editor",version = "0.3.0" }
 
 rgpui-adabraka-ui = { path = "crates/rgpui-adabraka-ui",version = "0.3.0" }
 rgpui-character = {path = "crates/rgpui-character",version = "0.3.0"}
