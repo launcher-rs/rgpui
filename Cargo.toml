@@ -22,6 +22,7 @@ members = [
 ]
 
 exclude = [
+    "crates/rgpui-component-workspce/themes",
     "crates/rgpui-component-workspce/rgpui-component/examples/hello_world_web",
     "crates/rgpui-component-workspce/rgpui-component/examples/components_web",
     "crates/rgpui-component-workspce/rgpui-component/examples/components_web",

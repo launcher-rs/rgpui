@@ -2,26 +2,40 @@
 
 ## 项目概述
 
-rgpui 是基于 Zed 的 GPU 加速 UI 框架 `gpui` 的跨平台移植。采用 Rust workspace 架构，核心库 `gpui` 通过 `Platform` trait 抽象各平台实现。
+rgpui 是基于 Zed 的 GPU 加速 UI 框架 `gpui` 的跨平台移植。采用 Rust workspace 架构，核心库 `rgpui` 通过 `Platform` trait 抽象各平台实现。
 
 ## 架构与包边界
 
 ```
 crates/
-├── gpui/           # 核心 UI 框架，平台无关逻辑
-├── gpui_platform/  # 平台选择入口，根据 cfg 选择具体平台 crate
-├── gpui_windows/   # Windows 平台实现（windows-rs 绑定）
-├── gpui_macos/     # macOS 平台实现
-├── gpui_linux/     # Linux 平台实现
-├── gpui_web/       # Web/WASM 平台实现
-├── gpui_wgpu/      # wgpu 渲染后端
-├── gpui_macros/    # 过程宏
-└── gpui_tokio/     # Tokio 异步运行时集成
+├── rgpui/                   # 核心 UI 框架，平台无关逻辑
+├── rgpui-3d/                # 3D 渲染支持
+├── rgpui-adabraka-ui/       # Adabraka UI 组件库
+├── rgpui-character/         # 字符/文本处理
+├── rgpui-linux/             # Linux 平台实现
+├── rgpui-macos/             # macOS 平台实现
+├── rgpui-macros/            # 过程宏
+├── rgpui-platform/          # 平台选择入口，根据 cfg 选择具体平台 crate
+├── rgpui-term/              # 终端组件
+├── rgpui-tokio/             # Tokio 异步运行时集成
+├── rgpui-web/               # Web/WASM 平台实现
+├── rgpui-wgpu/              # wgpu 渲染后端
+├── rgpui-windows/           # Windows 平台实现（windows-rs 绑定）
+├── rgpui-yororen-ui/        # Yororen UI 组件库
+└── rgpui-component-workspce/  # 组件子工作区（独立 Cargo workspace）
+    ├── rgpui-component/          # 通用 UI 组件框架
+    ├── rgpui-component-assets/   # 组件资源文件（图标、图片等）
+    ├── rgpui-component-macros/   # 组件过程宏
+    ├── rgpui-component-story/    # 组件 Storybook（原生）
+    ├── rgpui-component-story-web/ # 组件 Storybook（WASM/Web）
+    ├── rgpui-editor/             # 编辑器组件（支持 LSP 集成）
+    ├── rgpui-webview/            # WebView 组件
+    └── themes/                   # 22 套 JSON 颜色主题
 ```
 
-- `gpui/src/platform.rs` 定义了 `Platform` trait 和 `PlatformWindow` trait，所有平台必须实现
-- 示例代码使用 `gpui_platform::application()` 获取平台应用入口
-- 平台特有代码放在对应 `gpui_<platform>/` crate 中
+- `rgpui/src/platform.rs` 定义了 `Platform` trait 和 `PlatformWindow` trait，所有平台必须实现
+- 示例代码使用 `rgpui_platform::application()` 获取平台应用入口
+- 平台特有代码放在对应 `rgpui-<platform>/` crate 中
 
 ## 开发命令
 
@@ -39,7 +53,7 @@ cargo run --example tray
 cargo test --workspace
 
 # 运行单个包的测试
-cargo test -p gpui
+cargo test -p rgpui
 
 # Clippy 检查
 cargo clippy --workspace
@@ -54,14 +68,14 @@ workspace 级别拒绝 `dbg_macro` 和 `todo`。`style` lint 规则设为 `allow
 
 ## 托盘（System Tray）实现
 
-托盘功能在 `gpui` + `gpui_windows` 中实现，关键文件：
+托盘功能在 `rgpui` + `rgpui-windows` 中实现，关键文件：
 
 | 文件 | 说明 |
 |------|------|
-| `gpui/src/tray.rs` | `TrayMenuItem`、`TrayIconEvent` 等公开类型 |
-| `gpui/src/app.rs` | `set_tray_icon`、`set_tray_menu`、`on_tray_menu_action` 等 App 方法 |
-| `gpui_windows/src/tray.rs` | `WindowsTray` 结构体，`Shell_NotifyIconW` 集成 |
-| `gpui_windows/src/platform.rs` | 消息循环处理 `WM_GPUI_TRAY_ICON` 和 `WM_COMMAND` |
+| `rgpui/src/tray.rs` | `TrayMenuItem`、`TrayIconEvent` 等公开类型 |
+| `rgpui/src/app.rs` | `set_tray_icon`、`set_tray_menu`、`on_tray_menu_action` 等 App 方法 |
+| `rgpui-windows/src/tray.rs` | `WindowsTray` 结构体，`Shell_NotifyIconW` 集成 |
+| `rgpui-windows/src/platform.rs` | 消息循环处理 `WM_GPUI_TRAY_ICON` 和 `WM_COMMAND` |
 
 ### 托盘图标格式
 
@@ -168,12 +182,14 @@ cargo install trunk
 ### 运行 Web 示例
 
 ```bash
-# rgpui-component Web 示例
-cd crates/rgpui-component/examples/hello_world_web && trunk serve
-cd crates/rgpui-component/examples/components_web && trunk serve
+# rgpui-component Web 示例（位于子工作区中）
+cd crates/rgpui-component-workspce/rgpui-component/examples/hello_world_web && trunk serve
+cd crates/rgpui-component-workspce/rgpui-component/examples/components_web && trunk serve
 
 # rgpui-web 示例
 cd crates/rgpui-web/examples/hello_web && trunk serve
+cd crates/rgpui-web/examples/hello_world_web && trunk serve
+cd crates/rgpui-web/examples/components_web && trunk serve
 ```
 
 ### Web 示例目录结构
@@ -219,7 +235,7 @@ pub fn start() {
 - Tree-sitter 语法高亮不可用（WASM 中无法编译 C 依赖）
 - 图标从 CDN 运行时下载（需要网络连接）
 
-详细文档见 `crates/rgpui-component/examples/WEB.md`。
+详细文档见 `crates/rgpui-component-workspce/rgpui-component/examples/WEB.md`。
 
 ## 代码规范
 
