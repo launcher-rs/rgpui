@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::collections::HashMap;
+use rgpui::collections::HashMap;
 use parking_lot::Mutex;
 use uuid::Uuid;
 
