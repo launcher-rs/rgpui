@@ -36,6 +36,8 @@
 | #58685 | 2026-06-26 | Slightly reformulate the message |
 | #59995 | 2026-07-01 | Add xdg-activation spec reference comment |
 | #60090 | 2026-07-01 | gpui_linux: Suppress dead code warning on `wake_sender` |
+| #59911 | 2026-07-07 | terminal: Fix IME candidate window not following cursor in TUI apps |
+| #60359 | 2026-07-07 | gpui_linux: Add support for open_window in headless client |
 
 ## gpui-component
 
@@ -77,6 +79,15 @@
 | #2510 | 2026-06-26 | Place the caret at the end on `set_value`, view stays at the start |
 | #2487 | 2026-07-01 | fix: restore aurora syntax highlights |
 | #2521 | 2026-07-01 | examples: Rename "drawer" to "sheet" in dialog_overlay |
+| #2495 | 2026-07-07 | Fix test. |
+| #2537 | 2026-07-07 | popover: Clarify what the anchor means in docs and API comments |
+| #2491 | 2026-07-07 | feat(input): add InputState::refresh to apply runtime LSP provider changes |
+| #2535 | 2026-07-07 | . |
+| #2450 | 2026-07-07 | tree-sitter: simplify cfg gating to feature flag |
+| #2530 | 2026-07-07 | tab: Fix `Segmented`/`Pill`/`Underline` tabs shrinking when overflowing |
+| #2523 | 2026-07-07 | Extract shared logic into functions |
+| #2529 | 2026-07-07 | resizable: Avoid NaN panel sizes when total size is zero or non-finite |
+| #2524 | 2026-07-07 | Fix input soft-wrap width |
 
 ## yororen-ui
 

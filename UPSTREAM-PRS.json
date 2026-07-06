@@ -649,6 +649,99 @@
       "title": "gpui_linux: Suppress dead code warning on `wake_sender`",
       "status": "merged",
       "merged_at": "2026-07-01"
+    },
+    {
+      "number": 2495,
+      "upstream": "gpui-component",
+      "title": "Fix test.",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 2537,
+      "upstream": "gpui-component",
+      "title": "popover: Clarify what the anchor means in docs and API comments",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 2491,
+      "upstream": "gpui-component",
+      "title": "feat(input): add InputState::refresh to apply runtime LSP provider changes",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 2535,
+      "upstream": "gpui-component",
+      "title": ".",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 2450,
+      "upstream": "gpui-component",
+      "title": "tree-sitter: simplify cfg gating to feature flag",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 2530,
+      "upstream": "gpui-component",
+      "title": "tab: Fix `Segmented`/`Pill`/`Underline` tabs shrinking when overflowing",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 2523,
+      "upstream": "gpui-component",
+      "title": "Extract shared logic into functions",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 2529,
+      "upstream": "gpui-component",
+      "title": "resizable: Avoid NaN panel sizes when total size is zero or non-finite",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 2524,
+      "upstream": "gpui-component",
+      "title": "Fix input soft-wrap width",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 59911,
+      "upstream": "zed",
+      "title": "terminal: Fix IME candidate window not following cursor in TUI apps",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 58541,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into fix-windows-chatgpt-oauth-scope",
+      "status": "check-failed",
+      "merged_at": "2026-07-07",
+      "note": "Destroys rgpui-specific tray/notification/hotkey code and uses non-existent rgpui_util crate. Manually reverted."
+    },
+    {
+      "number": 60359,
+      "upstream": "zed",
+      "title": "gpui_linux: Add support for open_window in headless client",
+      "status": "merged",
+      "merged_at": "2026-07-07"
+    },
+    {
+      "number": 60301,
+      "upstream": "zed",
+      "title": "fix hanging updates after system sleep",
+      "status": "check-failed",
+      "merged_at": "2026-07-07",
+      "note": "Reverts rgpui-specific code (tray, notification, platform APIs) and introduces invalid `crate::http_client` syntax. Manually reverted - not applicable to rgpui."
     }
   ]
 }
