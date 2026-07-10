@@ -1299,6 +1299,7 @@ impl Window {
             app_id,
             window_min_size,
             window_decorations,
+            mouse_passthrough,
             #[cfg_attr(
                 not(any(target_os = "linux", target_os = "freebsd")),
                 allow(unused_variables)
@@ -1306,7 +1307,6 @@ impl Window {
             icon,
             #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
             tabbing_identifier,
-            mouse_passthrough,
         } = options;
 
         let initial_window_title = titlebar
@@ -1327,11 +1327,12 @@ impl Window {
                 show,
                 display_id,
                 window_min_size,
-                window_decorations: window_decorations.unwrap_or_default(),
+                app_id: app_id.clone(),
                 icon,
+                window_decorations: window_decorations.unwrap_or_default(),
+                mouse_passthrough,
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
-                mouse_passthrough,
             },
         )?;
 
@@ -2001,6 +2002,16 @@ impl Window {
         self.platform_window.start_window_resize(edge);
     }
 
+    /// Linux (wayland) only: Set the window's input region, the area that receives pointer
+    /// and touch input. Events outside it pass through to whatever is below the window.
+    ///
+    /// - `Some(rects)` restricts input to the union of `rects`, in window coordinates.
+    /// - `Some(&[])` is an empty region, so the window receives no pointer or touch input.
+    /// - `None` resets the region to the default, so the whole window receives input again.
+    pub fn set_input_region(&self, region: Option<&[Bounds<Pixels>]>) {
+        self.platform_window.set_input_region(region);
+    }
+
     /// Return the `WindowBounds` to indicate that how a window should be opened
     /// after it has been closed
     pub fn window_bounds(&self) -> WindowBounds {
@@ -2242,6 +2253,7 @@ impl Window {
         self.scale_factor = self.platform_window.scale_factor();
         self.viewport_size = self.platform_window.content_size();
         self.display_id = self.platform_window.display().map(|display| display.id());
+        self.mouse_position = self.platform_window.mouse_position();
 
         self.refresh();
 
@@ -2253,18 +2265,6 @@ impl Window {
     /// Returns the bounds of the current window in the global coordinate space, which could span across multiple displays.
     pub fn bounds(&self) -> Bounds<Pixels> {
         self.platform_window.bounds()
-    }
-
-    /// Returns the position of the window's top-left corner in screen coordinates.
-    pub fn position(&self) -> Point<Pixels> {
-        self.bounds().origin
-    }
-
-    /// Returns the size of the screen the window is on, or the primary screen if unavailable.
-    pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
-        self.display(cx)
-            .or_else(|| cx.primary_display())
-            .map(|d| d.bounds().size)
     }
 
     /// Renders the current frame's scene to a texture and returns the pixel data as an RGBA image.
@@ -2827,7 +2827,7 @@ impl Window {
         };
 
         // Layout all root elements.
-        let mut root_element = self.root.as_ref().unwrap().clone().into_any();
+        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
         root_element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
 
         #[cfg(any(feature = "inspector", debug_assertions))]
@@ -2839,12 +2839,12 @@ impl Window {
         let mut active_drag_element = None;
         let mut tooltip_element = None;
         if let Some(prompt) = self.prompt.take() {
-            let mut element = prompt.view.any_view().into_any();
+            let mut element = prompt.view.any_view().into_any_element();
             element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
             prompt_element = Some(element);
             self.prompt = Some(prompt);
         } else if let Some(active_drag) = cx.active_drag.take() {
-            let mut element = active_drag.view.clone().into_any();
+            let mut element = active_drag.view.clone().into_any_element();
             let offset = self.mouse_position() - active_drag.cursor_offset;
             element.prepaint_as_root(offset, AvailableSpace::min_size(), self, cx);
             active_drag_element = Some(element);
@@ -2908,7 +2908,7 @@ impl Window {
                 log::error!("Unexpectedly absent TooltipRequest");
                 continue;
             };
-            let mut element = tooltip_request.tooltip.view.clone().into_any();
+            let mut element = tooltip_request.tooltip.view.clone().into_any_element();
             let mouse_position = tooltip_request.tooltip.mouse_position;
             let tooltip_size = element.layout_as_root(AvailableSpace::min_size(), self, cx);
 
@@ -3764,7 +3764,7 @@ impl Window {
             corner_radii: quad.corner_radii.scale(self.scale_factor()),
             border_widths: snapped_border_widths,
             border_style: quad.border_style,
-            continuous_corners: if quad.continuous_corners { 1 } else { 0 },
+            continuous_corners: quad.continuous_corners as u32,
             transform: quad.transform,
             blend_mode: quad.blend_mode as u32,
             pad_quad: 0,
@@ -4137,6 +4137,8 @@ impl Window {
     }
 
     /// Paint an image into the scene with a transformation matrix.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
     pub fn paint_image_with_transform(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -5236,21 +5238,6 @@ impl Window {
         self.platform_window.minimize();
     }
 
-    /// Hide the window from the taskbar and screen.
-    pub fn hide_window(&self) {
-        self.platform_window.hide();
-    }
-
-    /// Set whether the window allows mouse events to pass through to windows behind it.
-    pub fn set_mouse_passthrough(&self, passthrough: bool) {
-        self.platform_window.set_mouse_passthrough(passthrough);
-    }
-
-    /// Set the window position in screen coordinates.
-    pub fn set_position(&mut self, position: Point<Pixels>) {
-        self.platform_window.set_position(position);
-    }
-
     /// Toggle full screen status on the current window at the platform level.
     pub fn toggle_fullscreen(&self) {
         self.platform_window.toggle_fullscreen();
@@ -5886,6 +5873,35 @@ impl Window {
     }
 }
 
+impl Window {
+    /// Returns the position of the window's top-left corner in screen coordinates.
+    pub fn position(&self) -> Point<Pixels> {
+        self.bounds().origin
+    }
+
+    /// Returns the size of the screen the window is on, or the primary screen if unavailable.
+    pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
+        self.display(cx)
+            .or_else(|| cx.primary_display())
+            .map(|d| d.bounds().size)
+    }
+
+    /// Hide the window from the taskbar and screen.
+    pub fn hide_window(&self) {
+        self.platform_window.hide();
+    }
+
+    /// Set whether the window allows mouse events to pass through to windows behind it.
+    pub fn set_mouse_passthrough(&self, passthrough: bool) {
+        self.platform_window.set_mouse_passthrough(passthrough);
+    }
+
+    /// Set the window position in screen coordinates.
+    pub fn set_position(&mut self, position: Point<Pixels>) {
+        self.platform_window.set_position(position);
+    }
+}
+
 // #[derive(Clone, Copy, Eq, PartialEq, Hash)]
 slotmap::new_key_type! {
     /// A unique identifier for a window.
@@ -6302,25 +6318,28 @@ pub struct PaintQuad {
     pub border_color: Hsla,
     /// The style of the quad's borders.
     pub border_style: BorderStyle,
-    /// Whether to use continuous (rounded) corner rounding.
+    /// 是否使用连续（圆角）角舍入。
     pub continuous_corners: bool,
-    /// The transformation matrix for the quad.
+    /// 应用于四边形的变换矩阵。
     pub transform: TransformationMatrix,
-    /// The blend mode for the quad.
+    /// 渲染此四边形时应用的混合模式。
     pub blend_mode: BlendMode,
 }
 
 impl Default for PaintQuad {
     fn default() -> Self {
         Self {
-            bounds: Bounds::default(),
+            bounds: Bounds {
+                origin: point(px(0.0), px(0.0)),
+                size: size(px(0.0), px(0.0)),
+            },
             corner_radii: Corners::default(),
-            background: Default::default(),
+            background: transparent_black().into(),
             border_widths: Edges::default(),
-            border_color: Default::default(),
+            border_color: transparent_black(),
             border_style: BorderStyle::default(),
             continuous_corners: false,
-            transform: Default::default(),
+            transform: TransformationMatrix::unit(),
             blend_mode: BlendMode::Normal,
         }
     }
@@ -6377,7 +6396,7 @@ pub fn quad(
         border_color: border_color.into(),
         border_style,
         continuous_corners: false,
-        transform: Default::default(),
+        transform: TransformationMatrix::unit(),
         blend_mode: BlendMode::Normal,
     }
 }
@@ -6392,7 +6411,7 @@ pub fn fill(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Background>
         border_color: transparent_black(),
         border_style: BorderStyle::default(),
         continuous_corners: false,
-        transform: Default::default(),
+        transform: TransformationMatrix::unit(),
         blend_mode: BlendMode::Normal,
     }
 }
@@ -6411,7 +6430,7 @@ pub fn outline(
         border_color: border_color.into(),
         border_style,
         continuous_corners: false,
-        transform: Default::default(),
+        transform: TransformationMatrix::unit(),
         blend_mode: BlendMode::Normal,
     }
 }

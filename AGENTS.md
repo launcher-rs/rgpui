@@ -28,7 +28,6 @@ crates/
     ├── rgpui-component-macros/   # 组件过程宏
     ├── rgpui-component-story/    # 组件 Storybook（原生）
     ├── rgpui-component-story-web/ # 组件 Storybook（WASM/Web）
-    ├── rgpui-editor/             # 编辑器组件（支持 LSP 集成）
     ├── rgpui-webview/            # WebView 组件
     └── themes/                   # 22 套 JSON 颜色主题
 ```
@@ -165,6 +164,25 @@ CI 通过矩阵策略在三个平台分别运行，确保跨平台兼容性。
 
 - PR 状态追踪: `UPSTREAM-PRS.json`
 - 上游仓库规则: `.opencode/upstream-rules.json`
+
+### 上游独立 crate → rgpui 模块映射
+
+上游 zed 将多个 crate 拆为独立工作区 crate（`collections`、`sum_tree` 等），而 rgpui 将它们合并为 `rgpui` crate 内部的模块。合并 PR 时，`scripts/merge-upstream-pr.ps1` 通过 `content_mappings` 自动替换 `use` 路径。以下是关键映射：
+
+| 上游 `use <crate>::<item>` | rgpui 中的位置 | 说明 |
+|---|---|---|
+| `use collections::FxHashMap;` | `use crate::collections::FxHashMap;` | 根级 `pub mod collections;`，文件在 `rgpui/src/collections.rs` |
+| `use sum_tree::SumTree;` | `use crate::sum_tree::SumTree;` | 根级 `pub mod sum_tree;`，文件在 `rgpui/src/sum_tree.rs` |
+| `use scheduler::Scheduler;` | `use crate::scheduler::Scheduler;` | 根级 `pub mod scheduler;`，文件在 `rgpui/src/scheduler.rs` |
+| `use refineable::Refineable;` | `use crate::refineable::Refineable;` | 根级 `pub mod refineable;`，目录在 `rgpui/src/refineable/` |
+| `use http_client::HttpClient;` | `use crate::http_client::HttpClient;` | 根级 `pub mod http_client;`，目录在 `rgpui/src/http_client/` |
+| `use gpui_util::ResultExt;` | `use rgpui::ResultExt;` | `gpui_util` → `crate::rgpui_util`（私有模块），关键项通过 `pub use rgpui_util::...` 重导出到 `rgpui::` |
+| `use gpui_util::defer;` | `use rgpui::defer;` | 同上 |
+| `use gpui_macros::*;` | `use rgpui_macros::*;` | 独立 proc-macro crate，路径不变 |
+
+**关于 `gpui_util` 的重要说明**：内容映射 `"gpui_util": "rgpui_util"` 在 `rgpui` crate 内部代码中正确，但在**平台 crate**（`rgpui-windows`、`rgpui-linux`、`rgpui-macos`）中，`rgpui_util` 不是一个可访问的 crate 或路径。平台 crate 应使用 `use rgpui::ResultExt` 等通过 `rgpui` crate 重导出的名称。合并后需手动修正此导入。
+
+**关于 `Cargo.toml`**：上游 `Cargo.toml` 中包含 `collections.workspace = true`、`sum_tree.workspace = true` 等依赖声明，这些在 rgpui 中不存在对应工作区 crate。合并 PR 时**跳过修改 Cargo.toml**，仅在代码中手动适配依赖项的引用方式。
 
 ## Web/WASM 开发
 

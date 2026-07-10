@@ -45,7 +45,8 @@ use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, ForegroundExecutor,
     KeyContext, Keymap, Menu, MenuItem, OsMenu, OwnedMenu, PathPromptOptions, Platform,
     PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
-    PlatformWindow, Result, SystemMenuType, Task, ThermalState, WindowAppearance, WindowParams,
+    PlatformWindow, Result, SystemMenuType, Task, ThermalState, WindowAppearance, WindowKind,
+    WindowParams, popup::PopupNotSupportedError,
 };
 use semver::Version;
 use std::{
@@ -640,6 +641,10 @@ impl Platform for MacPlatform {
         handle: AnyWindowHandle,
         options: WindowParams,
     ) -> Result<Box<dyn PlatformWindow>> {
+        if let WindowKind::AnchoredPopup(_) = options.kind {
+            return Err(PopupNotSupportedError.into());
+        }
+
         let (cursor_visible, foreground_executor, background_executor, renderer_context) = {
             let guard = self.0.lock();
             (

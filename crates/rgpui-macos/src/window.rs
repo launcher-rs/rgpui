@@ -12,9 +12,8 @@ use cocoa::{
         NSAppKitVersionNumber, NSAppKitVersionNumber12_0, NSApplication, NSBackingStoreBuffered,
         NSColor, NSEvent, NSEventModifierFlags, NSFilenamesPboardType, NSPasteboard, NSScreen,
         NSView, NSViewHeightSizable, NSViewWidthSizable, NSVisualEffectMaterial,
-        NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowButton,
-        NSWindowCollectionBehavior, NSWindowOcclusionState, NSWindowOrderingMode,
-        NSWindowStyleMask, NSWindowTitleVisibility,
+        NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowCollectionBehavior,
+        NSWindowOcclusionState, NSWindowOrderingMode, NSWindowStyleMask, NSWindowTitleVisibility,
     },
     base::{id, nil},
     foundation::{
@@ -39,7 +38,7 @@ use rgpui::{
 use core_foundation::base::{CFRelease, CFTypeRef};
 use core_foundation_sys::base::CFEqual;
 use core_foundation_sys::number::{CFBooleanGetValue, CFBooleanRef};
-use core_graphics::display::{CGDirectDisplayID, CGPoint, CGRect};
+use core_graphics::display::{CGDirectDisplayID, CGRect};
 use ctor::ctor;
 use futures::channel::oneshot;
 use objc::{
@@ -49,10 +48,15 @@ use objc::{
     runtime::{BOOL, Class, NO, Object, Protocol, Sel, YES},
     sel, sel_impl,
 };
-use objc2_app_kit::NSBeep;
+use objc2::rc::Retained;
+use objc2_app_kit::{
+    NSBeep, NSButton as Objc2NSButton, NSView as Objc2NSView, NSWindow as Objc2NSWindow,
+    NSWindowButton as Objc2NSWindowButton,
+};
+use objc2_foundation::{NSPoint as Objc2NSPoint, NSRect as Objc2NSRect};
 use parking_lot::Mutex;
 use raw_window_handle as rwh;
-use rgpui::util::ResultExt;
+use rgpui_util::ResultExt;
 use smallvec::SmallVec;
 use std::{
     cell::Cell,
@@ -79,7 +83,7 @@ static mut BLURRED_VIEW_CLASS: *const Class = ptr::null();
 #[allow(non_upper_case_globals)]
 const NSWindowStyleMaskNonactivatingPanel: NSWindowStyleMask =
     NSWindowStyleMask::from_bits_retain(1 << 7);
-// WindowLevel 常量值参考：https://docs.rs/core-graphics2/0.4.1/src/core_graphics2/window_level.rs.html
+// WindowLevel const value ref: https://docs.rs/core-graphics2/0.4.1/src/core_graphics2/window_level.rs.html
 #[allow(non_upper_case_globals)]
 const NSNormalWindowLevel: NSInteger = 0;
 #[allow(non_upper_case_globals)]
@@ -113,7 +117,7 @@ pub enum UserTabbingPreference {
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
-    // 广泛使用的私有 API；Apple 在其 Terminal.app 中也使用它们。
+    // Widely used private APIs; Apple uses them for their Terminal.app.
     fn CGSMainConnectionID() -> id;
     fn CGSSetWindowBackgroundBlurRadius(
         connection_id: id,
@@ -122,7 +126,7 @@ unsafe extern "C" {
     ) -> i32;
 }
 
-#[ctor]
+#[ctor(unsafe)]
 unsafe fn build_classes() {
     unsafe {
         WINDOW_CLASS = build_window_class("GPUIWindow", class!(NSWindow));
@@ -130,181 +134,177 @@ unsafe fn build_classes() {
         VIEW_CLASS = {
             let mut decl = ClassDecl::new("GPUIView", class!(NSView)).unwrap();
             decl.add_ivar::<*mut c_void>(WINDOW_STATE_IVAR);
-            unsafe {
-                decl.add_method(sel!(dealloc), dealloc_view as extern "C" fn(&Object, Sel));
+            decl.add_method(sel!(dealloc), dealloc_view as extern "C" fn(&Object, Sel));
 
-                decl.add_method(
-                    sel!(performKeyEquivalent:),
-                    handle_key_equivalent as extern "C" fn(&Object, Sel, id) -> BOOL,
-                );
-                decl.add_method(
-                    sel!(keyDown:),
-                    handle_key_down as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(keyUp:),
-                    handle_key_up as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(mouseDown:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(mouseUp:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(rightMouseDown:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(rightMouseUp:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(otherMouseDown:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(otherMouseUp:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(mouseMoved:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(resetCursorRects),
-                    reset_cursor_rects as extern "C" fn(&Object, Sel),
-                );
-                decl.add_method(
-                    sel!(pressureChangeWithEvent:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(mouseExited:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(magnifyWithEvent:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(mouseDragged:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(rightMouseDragged:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(otherMouseDragged:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(scrollWheel:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(swipeWithEvent:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(flagsChanged:),
-                    handle_view_event as extern "C" fn(&Object, Sel, id),
-                );
+            decl.add_method(
+                sel!(performKeyEquivalent:),
+                handle_key_equivalent as extern "C" fn(&Object, Sel, id) -> BOOL,
+            );
+            decl.add_method(
+                sel!(keyDown:),
+                handle_key_down as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(keyUp:),
+                handle_key_up as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(mouseDown:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(mouseUp:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(rightMouseDown:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(rightMouseUp:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(otherMouseDown:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(otherMouseUp:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(mouseMoved:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(resetCursorRects),
+                reset_cursor_rects as extern "C" fn(&Object, Sel),
+            );
+            decl.add_method(
+                sel!(pressureChangeWithEvent:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(mouseExited:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(magnifyWithEvent:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(mouseDragged:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(rightMouseDragged:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(otherMouseDragged:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(scrollWheel:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(swipeWithEvent:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(flagsChanged:),
+                handle_view_event as extern "C" fn(&Object, Sel, id),
+            );
 
-                decl.add_method(
-                    sel!(makeBackingLayer),
-                    make_backing_layer as extern "C" fn(&Object, Sel) -> id,
-                );
+            decl.add_method(
+                sel!(makeBackingLayer),
+                make_backing_layer as extern "C" fn(&Object, Sel) -> id,
+            );
 
-                decl.add_protocol(Protocol::get("CALayerDelegate").unwrap());
-                decl.add_method(
-                    sel!(viewDidChangeBackingProperties),
-                    view_did_change_backing_properties as extern "C" fn(&Object, Sel),
-                );
-                decl.add_method(
-                    sel!(setFrameSize:),
-                    set_frame_size as extern "C" fn(&Object, Sel, NSSize),
-                );
-                decl.add_method(
-                    sel!(displayLayer:),
-                    display_layer as extern "C" fn(&Object, Sel, id),
-                );
+            decl.add_protocol(Protocol::get("CALayerDelegate").unwrap());
+            decl.add_method(
+                sel!(viewDidChangeBackingProperties),
+                view_did_change_backing_properties as extern "C" fn(&Object, Sel),
+            );
+            decl.add_method(
+                sel!(setFrameSize:),
+                set_frame_size as extern "C" fn(&Object, Sel, NSSize),
+            );
+            decl.add_method(
+                sel!(displayLayer:),
+                display_layer as extern "C" fn(&Object, Sel, id),
+            );
 
-                decl.add_protocol(Protocol::get("NSTextInputClient").unwrap());
-                decl.add_method(
-                    sel!(validAttributesForMarkedText),
-                    valid_attributes_for_marked_text as extern "C" fn(&Object, Sel) -> id,
-                );
-                decl.add_method(
-                    sel!(hasMarkedText),
-                    has_marked_text as extern "C" fn(&Object, Sel) -> BOOL,
-                );
-                decl.add_method(
-                    sel!(markedRange),
-                    marked_range as extern "C" fn(&Object, Sel) -> NSRange,
-                );
-                decl.add_method(
-                    sel!(selectedRange),
-                    selected_range as extern "C" fn(&Object, Sel) -> NSRange,
-                );
-                decl.add_method(
-                    sel!(firstRectForCharacterRange:actualRange:),
-                    first_rect_for_character_range
-                        as extern "C" fn(&Object, Sel, NSRange, id) -> NSRect,
-                );
-                decl.add_method(
-                    sel!(insertText:replacementRange:),
-                    insert_text as extern "C" fn(&Object, Sel, id, NSRange),
-                );
-                decl.add_method(
-                    sel!(setMarkedText:selectedRange:replacementRange:),
-                    set_marked_text as extern "C" fn(&Object, Sel, id, NSRange, NSRange),
-                );
-                decl.add_method(sel!(unmarkText), unmark_text as extern "C" fn(&Object, Sel));
-                decl.add_method(
-                    sel!(attributedSubstringForProposedRange:actualRange:),
-                    attributed_substring_for_proposed_range
-                        as extern "C" fn(&Object, Sel, NSRange, *mut c_void) -> id,
-                );
-                decl.add_method(
-                    sel!(viewDidChangeEffectiveAppearance),
-                    view_did_change_effective_appearance as extern "C" fn(&Object, Sel),
-                );
+            decl.add_protocol(Protocol::get("NSTextInputClient").unwrap());
+            decl.add_method(
+                sel!(validAttributesForMarkedText),
+                valid_attributes_for_marked_text as extern "C" fn(&Object, Sel) -> id,
+            );
+            decl.add_method(
+                sel!(hasMarkedText),
+                has_marked_text as extern "C" fn(&Object, Sel) -> BOOL,
+            );
+            decl.add_method(
+                sel!(markedRange),
+                marked_range as extern "C" fn(&Object, Sel) -> NSRange,
+            );
+            decl.add_method(
+                sel!(selectedRange),
+                selected_range as extern "C" fn(&Object, Sel) -> NSRange,
+            );
+            decl.add_method(
+                sel!(firstRectForCharacterRange:actualRange:),
+                first_rect_for_character_range
+                    as extern "C" fn(&Object, Sel, NSRange, id) -> NSRect,
+            );
+            decl.add_method(
+                sel!(insertText:replacementRange:),
+                insert_text as extern "C" fn(&Object, Sel, id, NSRange),
+            );
+            decl.add_method(
+                sel!(setMarkedText:selectedRange:replacementRange:),
+                set_marked_text as extern "C" fn(&Object, Sel, id, NSRange, NSRange),
+            );
+            decl.add_method(sel!(unmarkText), unmark_text as extern "C" fn(&Object, Sel));
+            decl.add_method(
+                sel!(attributedSubstringForProposedRange:actualRange:),
+                attributed_substring_for_proposed_range
+                    as extern "C" fn(&Object, Sel, NSRange, *mut c_void) -> id,
+            );
+            decl.add_method(
+                sel!(viewDidChangeEffectiveAppearance),
+                view_did_change_effective_appearance as extern "C" fn(&Object, Sel),
+            );
 
-                // 抑制带修饰键的按键蜂鸣声。
-                decl.add_method(
-                    sel!(doCommandBySelector:),
-                    do_command_by_selector as extern "C" fn(&Object, Sel, Sel),
-                );
+            // Suppress beep on keystrokes with modifier keys.
+            decl.add_method(
+                sel!(doCommandBySelector:),
+                do_command_by_selector as extern "C" fn(&Object, Sel, Sel),
+            );
 
-                decl.add_method(
-                    sel!(acceptsFirstMouse:),
-                    accepts_first_mouse as extern "C" fn(&Object, Sel, id) -> BOOL,
-                );
+            decl.add_method(
+                sel!(acceptsFirstMouse:),
+                accepts_first_mouse as extern "C" fn(&Object, Sel, id) -> BOOL,
+            );
 
-                decl.add_method(
-                    sel!(characterIndexForPoint:),
-                    character_index_for_point as extern "C" fn(&Object, Sel, NSPoint) -> u64,
-                );
-            }
+            decl.add_method(
+                sel!(characterIndexForPoint:),
+                character_index_for_point as extern "C" fn(&Object, Sel, NSPoint) -> u64,
+            );
             decl.register()
         };
         BLURRED_VIEW_CLASS = {
             let mut decl = ClassDecl::new("BlurredView", class!(NSVisualEffectView)).unwrap();
-            unsafe {
-                decl.add_method(
-                    sel!(initWithFrame:),
-                    blurred_view_init_with_frame as extern "C" fn(&Object, Sel, NSRect) -> id,
-                );
-                decl.add_method(
-                    sel!(updateLayer),
-                    blurred_view_update_layer as extern "C" fn(&Object, Sel),
-                );
-                decl.register()
-            }
+            decl.add_method(
+                sel!(initWithFrame:),
+                blurred_view_init_with_frame as extern "C" fn(&Object, Sel, NSRect) -> id,
+            );
+            decl.add_method(
+                sel!(updateLayer),
+                blurred_view_update_layer as extern "C" fn(&Object, Sel),
+            );
+            decl.register()
         };
     }
 }
@@ -312,29 +312,28 @@ unsafe fn build_classes() {
 pub(crate) fn convert_mouse_position(position: NSPoint, window_height: Pixels) -> Point<Pixels> {
     point(
         px(position.x as f32),
-        // macOS 屏幕坐标相对于左下角
+        // macOS screen coordinates are relative to bottom left
         window_height - px(position.y as f32),
     )
 }
 
-/// 存储活动 GPUI 窗口上的光标样式并使其光标矩形无效。
+/// Stores the cursor style on the active GPUI window and invalidates its cursor rects.
 ///
-/// # 安全
+/// # Safety
 ///
-/// 此函数不是线程安全的。调用者必须确保在 AppKit 主线程上调用此函数，
-/// 因为它读取活动的 AppKit 窗口并更新与 Objective-C 对象关联的 GPUI 窗口状态。
+/// This function is not thread safe. Callers must ensure this is called on the AppKit main
+/// thread because it reads the active AppKit window and updates GPUI window state associated
+/// with Objective-C objects.
 pub(crate) unsafe fn set_active_window_cursor_style(style: CursorStyle) {
-    // 安全：调用者保证 AppKit 主线程访问。类检查确保
-    // 窗口在读取之前具有我们的 WINDOW_STATE_IVAR。
+    // SAFETY: The caller guarantees AppKit main-thread access. `is_gpui_window` ensures the
+    // window has our WINDOW_STATE_IVAR before reading it.
     unsafe {
         let app = NSApplication::sharedApplication(nil);
         let key_window: id = msg_send![app, keyWindow];
         let main_window: id = msg_send![app, mainWindow];
-        let active_window = if !key_window.is_null()
-            && msg_send![key_window, isKindOfClass: WINDOW_CLASS]
-        {
+        let active_window = if !key_window.is_null() && is_gpui_window(key_window) {
             Some(key_window)
-        } else if !main_window.is_null() && msg_send![main_window, isKindOfClass: WINDOW_CLASS] {
+        } else if !main_window.is_null() && is_gpui_window(main_window) {
             Some(main_window)
         } else {
             None
@@ -385,6 +384,10 @@ unsafe fn build_window_class(name: &'static str, superclass: &Class) -> *const C
         decl.add_method(
             sel!(windowWillExitFullScreen:),
             window_will_exit_fullscreen as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(windowDidExitFullScreen:),
+            window_did_exit_fullscreen as extern "C" fn(&Object, Sel, id),
         );
         decl.add_method(
             sel!(windowDidMove:),
@@ -464,6 +467,19 @@ unsafe fn build_window_class(name: &'static str, superclass: &Class) -> *const C
     }
 }
 
+struct TrafficLightFrames {
+    titlebar: Objc2NSRect,
+    close: Objc2NSRect,
+    minimize: Objc2NSRect,
+    zoom: Objc2NSRect,
+}
+
+struct TrafficLightButtons {
+    close: Retained<Objc2NSButton>,
+    minimize: Retained<Objc2NSButton>,
+    zoom: Retained<Objc2NSButton>,
+}
+
 struct MacWindowState {
     handle: AnyWindowHandle,
     foreground_executor: ForegroundExecutor,
@@ -488,12 +504,13 @@ struct MacWindowState {
     last_key_equivalent: Option<KeyDownEvent>,
     synthetic_drag_counter: usize,
     traffic_light_position: Option<Point<Pixels>>,
+    traffic_light_frames: Option<TrafficLightFrames>,
     transparent_titlebar: bool,
     previous_modifiers_changed_event: Option<PlatformInput>,
     keystroke_for_do_command: Option<Keystroke>,
     do_command_handled: Option<bool>,
     external_files_dragged: bool,
-    // 下一次左键鼠标点击是否也是聚焦点击。
+    // Whether the next left-mouse click is also the focusing click.
     first_mouse: bool,
     fullscreen_restore_bounds: Bounds<Pixels>,
     move_tab_to_new_window_callback: Option<Box<dyn FnMut()>>,
@@ -503,60 +520,127 @@ struct MacWindowState {
     toggle_tab_bar_callback: Option<Box<dyn FnMut()>>,
     activated_least_once: bool,
     closed: Arc<AtomicBool>,
-    // 如果此窗口是 sheet（Dialog 类型），则为父窗口
-    sheet_parent: Option<id>,
     accesskit_adapter: Option<accesskit_macos::SubclassingAdapter>,
+    // The parent window if this window is a sheet (Dialog kind)
+    sheet_parent: Option<id>,
 }
 
 impl MacWindowState {
-    fn move_traffic_light(&self) {
+    fn move_traffic_light(&mut self) {
         if let Some(traffic_light_position) = self.traffic_light_position {
             if self.is_fullscreen() {
-                // 全屏时移动交通灯按钮不起作用，
-                // 见 https://github.com/zed-industries/zed/issues/4712
+                self.restore_traffic_light();
                 return;
             }
 
-            let titlebar_height = self.titlebar_height();
-
-            unsafe {
-                let close_button: id = msg_send![
-                    self.native_window,
-                    standardWindowButton: NSWindowButton::NSWindowCloseButton
-                ];
-                let min_button: id = msg_send![
-                    self.native_window,
-                    standardWindowButton: NSWindowButton::NSWindowMiniaturizeButton
-                ];
-                let zoom_button: id = msg_send![
-                    self.native_window,
-                    standardWindowButton: NSWindowButton::NSWindowZoomButton
-                ];
-
-                let mut close_button_frame: CGRect = msg_send![close_button, frame];
-                let mut min_button_frame: CGRect = msg_send![min_button, frame];
-                let mut zoom_button_frame: CGRect = msg_send![zoom_button, frame];
-                let mut origin = point(
-                    traffic_light_position.x,
-                    titlebar_height
-                        - traffic_light_position.y
-                        - px(close_button_frame.size.height as f32),
-                );
-                let button_spacing =
-                    px((min_button_frame.origin.x - close_button_frame.origin.x) as f32);
-
-                close_button_frame.origin = CGPoint::new(origin.x.into(), origin.y.into());
-                let _: () = msg_send![close_button, setFrame: close_button_frame];
-                origin.x += button_spacing;
-
-                min_button_frame.origin = CGPoint::new(origin.x.into(), origin.y.into());
-                let _: () = msg_send![min_button, setFrame: min_button_frame];
-                origin.x += button_spacing;
-
-                zoom_button_frame.origin = CGPoint::new(origin.x.into(), origin.y.into());
-                let _: () = msg_send![zoom_button, setFrame: zoom_button_frame];
-                origin.x += button_spacing;
+            if self.traffic_light_frames.is_none() {
+                self.traffic_light_frames = self.capture_traffic_light_frames();
             }
+
+            let window_height = Pixels::from(self.native_window().frame().size.height);
+            if self.traffic_light_frames.is_some() {
+                // AppKit can recreate standard buttons, so fetch the live views for each layout pass.
+                let Some(buttons) = self.traffic_light_buttons() else {
+                    return;
+                };
+                let Some(titlebar_container) = Self::titlebar_container(&buttons.close) else {
+                    return;
+                };
+
+                let close_frame = buttons.close.frame();
+                let minimize_frame = buttons.minimize.frame();
+                let button_width = Pixels::from(close_frame.size.width);
+                let button_height = Pixels::from(close_frame.size.height);
+                let button_padding = Pixels::from(
+                    minimize_frame.origin.x - close_frame.origin.x - close_frame.size.width,
+                );
+                let container_height =
+                    button_height + traffic_light_position.y + traffic_light_position.y;
+
+                let mut titlebar_frame = titlebar_container.frame();
+                titlebar_frame.size.height = container_height.to_f64();
+                titlebar_frame.origin.y = (window_height - container_height).to_f64();
+
+                let minimize_x = traffic_light_position.x + button_width + button_padding;
+                let zoom_x = minimize_x + button_width + button_padding;
+
+                titlebar_container.setFrame(titlebar_frame);
+                buttons.close.setFrameOrigin(Objc2NSPoint::new(
+                    traffic_light_position.x.to_f64(),
+                    traffic_light_position.y.to_f64(),
+                ));
+                buttons.minimize.setFrameOrigin(Objc2NSPoint::new(
+                    minimize_x.to_f64(),
+                    traffic_light_position.y.to_f64(),
+                ));
+                buttons.zoom.setFrameOrigin(Objc2NSPoint::new(
+                    zoom_x.to_f64(),
+                    traffic_light_position.y.to_f64(),
+                ));
+
+                titlebar_container.updateTrackingAreas();
+                buttons.close.updateTrackingAreas();
+                buttons.minimize.updateTrackingAreas();
+                buttons.zoom.updateTrackingAreas();
+            }
+        }
+    }
+
+    fn capture_traffic_light_frames(&self) -> Option<TrafficLightFrames> {
+        let buttons = self.traffic_light_buttons()?;
+        let titlebar_container = Self::titlebar_container(&buttons.close)?;
+
+        Some(TrafficLightFrames {
+            titlebar: titlebar_container.frame(),
+            close: buttons.close.frame(),
+            minimize: buttons.minimize.frame(),
+            zoom: buttons.zoom.frame(),
+        })
+    }
+
+    fn native_window(&self) -> &Objc2NSWindow {
+        // SAFETY: `MacWindow::new` initializes `self.native_window` with the AppKit
+        // window for this state. It is either `NSWindow` or `NSPanel`, so borrowing it
+        // as `Objc2NSWindow` is valid here.
+        unsafe { &*self.native_window.cast::<Objc2NSWindow>() }
+    }
+
+    fn traffic_light_buttons(&self) -> Option<TrafficLightButtons> {
+        let window = self.native_window();
+        Some(TrafficLightButtons {
+            close: window.standardWindowButton(Objc2NSWindowButton::CloseButton)?,
+            minimize: window.standardWindowButton(Objc2NSWindowButton::MiniaturizeButton)?,
+            zoom: window.standardWindowButton(Objc2NSWindowButton::ZoomButton)?,
+        })
+    }
+
+    fn titlebar_container(close_button: &Objc2NSButton) -> Option<Retained<Objc2NSView>> {
+        // SAFETY: `close_button` comes from AppKit's `standardWindowButton(_:)`.
+        // Although `superview` is unsafe, objc2 returns each result as `Retained<NSView>`.
+        unsafe {
+            let button_container = close_button.superview()?;
+            button_container.superview()
+        }
+    }
+
+    fn restore_traffic_light(&mut self) {
+        if let Some(frames) = self.traffic_light_frames.take() {
+            let Some(buttons) = self.traffic_light_buttons() else {
+                return;
+            };
+            let Some(titlebar_container) = Self::titlebar_container(&buttons.close) else {
+                return;
+            };
+
+            buttons.close.setFrame(frames.close);
+            buttons.minimize.setFrame(frames.minimize);
+            buttons.zoom.setFrame(frames.zoom);
+            titlebar_container.setFrame(frames.titlebar);
+
+            titlebar_container.updateTrackingAreas();
+            buttons.close.updateTrackingAreas();
+            buttons.minimize.updateTrackingAreas();
+            buttons.zoom.updateTrackingAreas();
         }
     }
 
@@ -571,7 +655,10 @@ impl MacWindowState {
                 return;
             }
         }
-        let display_id = unsafe { display_id_for_screen(self.native_window.screen()) };
+        let Some(display_id) = display_id_for_screen(unsafe { self.native_window.screen() }) else {
+            // AppKit can temporarily report no screen while displays are being reconfigured.
+            return;
+        };
         if let Some(mut display_link) =
             DisplayLink::new(display_id, self.native_view.as_ptr() as *mut c_void, step).log_err()
         {
@@ -612,7 +699,7 @@ impl MacWindowState {
         }
         let screen_frame = unsafe { NSScreen::frame(screen) };
 
-        // 翻转 y 坐标为左上角原点
+        // Flip the y coordinate to be top-left origin
         window_frame.origin.y =
             screen_frame.size.height - window_frame.origin.y - window_frame.size.height;
 
@@ -636,14 +723,6 @@ impl MacWindowState {
 
     fn scale_factor(&self) -> f32 {
         get_scale_factor(self.native_window)
-    }
-
-    fn titlebar_height(&self) -> Pixels {
-        unsafe {
-            let frame = NSWindow::frame(self.native_window);
-            let content_layout_rect: CGRect = msg_send![self.native_window, contentLayoutRect];
-            px((frame.size.height - content_layout_rect.size.height) as f32)
-        }
     }
 
     fn window_bounds(&self) -> WindowBounds {
@@ -674,7 +753,6 @@ impl MacWindow {
             display_id,
             window_min_size,
             tabbing_identifier,
-            mouse_passthrough,
             ..
         }: WindowParams,
         cursor_visible: Arc<AtomicBool>,
@@ -717,28 +795,12 @@ impl MacWindow {
                 WindowKind::Normal => {
                     msg_send![WINDOW_CLASS, alloc]
                 }
-                WindowKind::PopUp => {
+                WindowKind::PopUp | WindowKind::AnchoredPopup(_) => {
                     style_mask |= NSWindowStyleMaskNonactivatingPanel;
                     msg_send![PANEL_CLASS, alloc]
                 }
                 WindowKind::Floating | WindowKind::Dialog => {
                     msg_send![PANEL_CLASS, alloc]
-                }
-                WindowKind::Overlay => {
-                    // Overlay 窗口：使用 NSPanel，不激活，无边框，始终置顶
-                    style_mask |= NSWindowStyleMaskNonactivatingPanel;
-                    let panel: id = msg_send![PANEL_CLASS, alloc];
-
-                    // 设置窗口层级为浮动的 (NSFloatingWindowLevel = 3)
-                    let _: () = msg_send![panel, setLevel: 3_i32];
-
-                    // 鼠标穿透通过 mouse_passthrough 参数在下方统一处理
-                    panel
-                }
-                #[cfg(all(target_os = "linux", feature = "wayland"))]
-                WindowKind::LayerShell(_) => {
-                    // Linux Wayland LayerShell 不在 macOS 上支持
-                    msg_send![WINDOW_CLASS, alloc]
                 }
             };
 
@@ -753,8 +815,10 @@ impl MacWindow {
             let count: u64 = cocoa::foundation::NSArray::count(screens);
             for i in 0..count {
                 let screen = cocoa::foundation::NSArray::objectAtIndex(screens, i);
+                let Some(display_id) = display_id_for_screen(screen) else {
+                    continue;
+                };
                 let frame = NSScreen::frame(screen);
-                let display_id = display_id_for_screen(screen);
                 if display_id == display.0 {
                     screen_frame = Some(frame);
                     target_screen = screen;
@@ -834,6 +898,7 @@ impl MacWindow {
                 traffic_light_position: titlebar
                     .as_ref()
                     .and_then(|titlebar| titlebar.traffic_light_position),
+                traffic_light_frames: None,
                 transparent_titlebar: titlebar
                     .as_ref()
                     .is_none_or(|titlebar| titlebar.appears_transparent),
@@ -850,8 +915,8 @@ impl MacWindow {
                 toggle_tab_bar_callback: None,
                 activated_least_once: false,
                 closed: Arc::new(AtomicBool::new(false)),
-                sheet_parent: None,
                 accesskit_adapter: None,
+                sheet_parent: None,
             })));
 
             (*native_window).set_ivar(
@@ -873,11 +938,6 @@ impl MacWindow {
 
             native_window.setMovable_(is_movable as BOOL);
 
-            // 设置鼠标穿透
-            if mouse_passthrough {
-                let _: () = msg_send![native_window, setIgnoresMouseEvents: YES];
-            }
-
             if let Some(window_min_size) = window_min_size {
                 native_window.setContentMinSize_(NSSize {
                     width: window_min_size.width.to_f64(),
@@ -893,11 +953,11 @@ impl MacWindow {
             native_view.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
             native_view.setWantsBestResolutionOpenGLSurface_(YES);
 
-            // 来自 winit crate：在 Mojave 上，视图在添加到 native_window 后不久
-            // 会自动变为层支持视图。更改视图的层支持性会破坏
-            // 视图与其关联 OpenGL 上下文之间的关联。为了解决这个问题，
-            // 我们在前面显式使视图层支持，以便 AppKit 不会自己这样做
-            // 并破坏与其上下文的关联。
+            // From winit crate: On Mojave, views automatically become layer-backed shortly after
+            // being added to a native_window. Changing the layer-backedness of a view breaks the
+            // association between the view and its associated OpenGL context. To work around this,
+            // on we explicitly make the view layer-backed up front so that AppKit doesn't do it
+            // itself and break the association with its context.
             native_view.setWantsLayer(YES);
             let _: () = msg_send![
             native_view,
@@ -914,7 +974,7 @@ impl MacWindow {
             match kind {
                 WindowKind::Normal | WindowKind::Floating => {
                     if kind == WindowKind::Floating {
-                        // 让窗口浮动保持在普通窗口上方。
+                        // Let the window float keep above normal windows.
                         native_window.setLevel_(NSFloatingWindowLevel);
                     } else {
                         native_window.setLevel_(NSNormalWindowLevel);
@@ -928,10 +988,10 @@ impl MacWindow {
                         let _: () = msg_send![native_window, setTabbingIdentifier:nil];
                     }
                 }
-                WindowKind::PopUp => {
-                    // 使用跟踪区域以允许在
-                    // 窗口或应用不活动时接收 MouseMoved 事件，这通常是
-                    // 例如通知窗口的情况。
+                WindowKind::PopUp | WindowKind::AnchoredPopup(_) => {
+                    // Use a tracking area to allow receiving MouseMoved events even when
+                    // the window or application aren't active, which is often the case
+                    // e.g. for notification windows.
                     let tracking_area: id = msg_send![class!(NSTrackingArea), alloc];
                     let _: () = msg_send![
                         tracking_area,
@@ -968,9 +1028,6 @@ impl MacWindow {
                         sheet_parent = Some(parent);
                     }
                 }
-                WindowKind::Overlay => {
-                    // Overlay 窗口已在创建时配置，此处无需额外操作
-                }
             }
 
             if allows_automatic_window_tabbing
@@ -994,8 +1051,8 @@ impl MacWindow {
                     if main_window_can_tab == YES && main_window_visible == YES {
                         let _: () = msg_send![main_window, addTabbedWindow: native_window ordered: NSWindowOrderingMode::NSWindowAbove];
 
-                        // 确保在添加标签后立即显示窗口，因为标签栏此时会用新条目更新。
-                        // 注意：在这里调用 orderFront 可能会破坏全屏模式（使全屏窗口退出全屏），因此仅在主窗口未全屏时才这样做。
+                        // Ensure the window is visible immediately after adding the tab, since the tab bar is updated with a new entry at this point.
+                        // Note: Calling orderFront here can break fullscreen mode (makes fullscreen windows exit fullscreen), so only do this if the main window is not fullscreen.
                         if !main_window_is_fullscreen {
                             let _: () = msg_send![native_window, orderFront: nil];
                         }
@@ -1009,10 +1066,10 @@ impl MacWindow {
                 native_window.orderFront_(nil);
             }
 
-            // 将窗口的初始位置设置为指定的原点。
-            // 虽然我们已使用 `initWithContentRect_styleMask_backing_defer_screen_` 指定了位置，
-            // 但如果主屏幕（包含具有焦点的窗口的屏幕）
-            // 与主显示器不同，则窗口位置可能不正确。
+            // Set the initial position of the window to the specified origin.
+            // Although we already specified the position using `initWithContentRect_styleMask_backing_defer_screen_`,
+            // the window position might be incorrect if the main screen (the screen that contains the window that has focus)
+            //  is different from the primary screen.
             NSWindow::setFrameTopLeftPoint_(native_window, window_rect.origin);
             {
                 let mut window_state = window.0.lock();
@@ -1115,10 +1172,11 @@ impl Drop for MacWindow {
     }
 }
 
-/// 如果窗口未关闭，则调用 `f`。
+/// Calls `f` if the window is not closed.
 ///
-/// 当生成与窗口交互的前台任务时应使用此函数，
-/// 因为某些消息如果分派到不再有效的窗口句柄会导致硬故障。
+/// This should be used when spawning foreground tasks interacting with the
+/// window, as some messages will end hard faulting if dispatched to no longer
+/// valid window handles.
 fn if_window_not_closed(closed: Arc<AtomicBool>, f: impl FnOnce()) {
     if !closed.load(Ordering::Acquire) {
         f();
@@ -1153,30 +1211,6 @@ impl PlatformWindow for MacWindow {
                         width: size.width.as_f32() as f64,
                         height: size.height.as_f32() as f64,
                     });
-                })
-            })
-            .detach();
-    }
-
-    fn set_position(&mut self, position: Point<Pixels>) {
-        let this = self.0.lock();
-        let window = this.native_window;
-        let closed = this.closed.clone();
-        let bounds = this.content_size();
-        this.foreground_executor
-            .spawn(async move {
-                if_window_not_closed(closed, || unsafe {
-                    let frame = NSRect {
-                        origin: NSPoint {
-                            x: position.x.as_f32() as f64,
-                            y: position.y.as_f32() as f64,
-                        },
-                        size: NSSize {
-                            width: bounds.width.as_f32() as f64,
-                            height: bounds.height.as_f32() as f64,
-                        },
-                    };
-                    window.setFrame_display_(frame, true);
                 })
             })
             .detach();
@@ -1237,6 +1271,12 @@ impl PlatformWindow for MacWindow {
                 let _: () = msg_send![native_window, setTabbingIdentifier:nil];
             }
         }
+    }
+
+    fn set_traffic_light_position(&self, position: Point<Pixels>) {
+        let mut state = self.0.lock();
+        state.traffic_light_position = Some(position);
+        state.move_traffic_light();
     }
 
     fn scale_factor(&self) -> f32 {
@@ -1321,10 +1361,10 @@ impl PlatformWindow for MacWindow {
         detail: Option<&str>,
         answers: &[PromptButton],
     ) -> Option<oneshot::Receiver<usize>> {
-        // NSAlert 的第一个按钮保留 Return，Cancel 保留 Escape，但键盘
-        // 焦点（因此 Space）默认在 Cancel 上，导致像
-        // 「保存 / 不保存 / 取消」这样的提示的中间按钮无法从键盘访问。将
-        // 初始焦点移到最后一个非取消、非默认按钮上。
+        // NSAlert's first button keeps Return and Cancel keeps Escape, but the keyboard
+        // focus (and therefore Space) defaults to Cancel, leaving the middle button of
+        // prompts like "Save / Don't Save / Cancel" unreachable from the keyboard. Move
+        // the initial focus onto the last non-cancel, non-default button instead.
         let initial_focus_ix = answers
             .iter()
             .enumerate()
@@ -1418,7 +1458,7 @@ impl PlatformWindow for MacWindow {
         unsafe { self.0.lock().native_window.isKeyWindow() == YES }
     }
 
-    // is_hovered 在 macOS 上未使用。参见 Window::is_window_hovered。
+    // is_hovered is unused on macOS. See Window::is_window_hovered.
     fn is_hovered(&self) -> bool {
         false
     }
@@ -1459,15 +1499,15 @@ impl PlatformWindow for MacWindow {
             let background_color = if opaque {
                 NSColor::colorWithSRGBRed_green_blue_alpha_(nil, 0f64, 0f64, 0f64, 1f64)
             } else {
-                // 不使用 `+[NSColor clearColor]` 以避免阴影损坏。
+                // Not using `+[NSColor clearColor]` to avoid broken shadow.
                 NSColor::colorWithSRGBRed_green_blue_alpha_(nil, 0f64, 0f64, 0f64, 0.0001)
             };
             this.native_window.setBackgroundColor_(background_color);
 
             if NSAppKitVersionNumber < NSAppKitVersionNumber12_0 {
-                // 是否 `-[NSVisualEffectView respondsToSelector:@selector(_updateProxyLayer)]`。
-                // 在 macOS Catalina/Big Sur 上，`NSVisualEffectView` 不拥有具体的子层，
-                // 而是使用 `CAProxyLayer`。使用旧版 WindowServer API。
+                // Whether `-[NSVisualEffectView respondsToSelector:@selector(_updateProxyLayer)]`.
+                // On macOS Catalina/Big Sur `NSVisualEffectView` doesn鈥檛 own concrete sublayers
+                // but uses a `CAProxyLayer`. Use the legacy WindowServer API.
                 let blur_radius = if background_appearance == WindowBackgroundAppearance::Blurred {
                     80
                 } else {
@@ -1477,9 +1517,9 @@ impl PlatformWindow for MacWindow {
                 let window_number = this.native_window.windowNumber();
                 CGSSetWindowBackgroundBlurRadius(CGSMainConnectionID(), window_number, blur_radius);
             } else {
-                // 在较新的 macOS 上，`NSVisualEffectView` 直接管理效果层。使用它
-                // 可以获得更好的性能（它对背景进行下采样）并对
-                // 效果层有更多控制。
+                // On newer macOS `NSVisualEffectView` manages the effect layer directly. Using it
+                // could have a better performance (it downsamples the backdrop) and more control
+                // over the effect layer.
                 if background_appearance != WindowBackgroundAppearance::Blurred {
                     if let Some(blur_view) = this.blurred_view {
                         NSView::removeFromSuperview(blur_view);
@@ -1518,8 +1558,9 @@ impl PlatformWindow for MacWindow {
             msg_send![window, setDocumentEdited: edited as BOOL]
         }
 
-        // 更改文档编辑状态会重置交通灯位置，
-        // 所以我们必须再次移动它。
+        // Changing the document edited state resets the traffic light position,
+        // so we have to move it again.
+        self.0.lock().move_traffic_light();
     }
 
     fn set_document_path(&self, path: Option<&std::path::Path>) {
@@ -1529,8 +1570,8 @@ impl PlatformWindow for MacWindow {
             let _: () = msg_send![window, setRepresentedFilename: filename];
         }
 
-        // 更改文档路径状态会重置交通灯位置，
-        // 所以我们必须再次移动它。
+        // Changing the document path state resets the traffic light position,
+        // so we have to move it again.
         self.0.lock().move_traffic_light();
     }
 
@@ -1749,7 +1790,7 @@ impl PlatformWindow for MacWindow {
                                 window.zoom_(nil);
                             }
                             "Fill" => {
-                                // 「填充」操作没有已记录的 API，所以我们直接缩放窗口
+                                // There is no documented API for "Fill" action, so we'll just zoom the window
                                 window.zoom_(nil);
                             }
                             _ => {
@@ -1775,6 +1816,12 @@ impl PlatformWindow for MacWindow {
 
     fn play_system_bell(&self) {
         NSBeep()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    fn render_to_image(&self, scene: &rgpui::Scene) -> Result<RgbaImage> {
+        let mut this = self.0.lock();
+        this.renderer.render_to_image(scene)
     }
 
     fn a11y_init(&self, callbacks: rgpui::A11yCallbacks) {
@@ -1811,29 +1858,6 @@ impl PlatformWindow for MacWindow {
     fn a11y_update_window_bounds(&self) {
         // macOS handles window bounds tracking automatically via NSAccessibility.
     }
-
-    #[cfg(any(test, feature = "test-support"))]
-    fn render_to_image(&self, scene: &rgpui::Scene) -> Result<RgbaImage> {
-        let mut this = self.0.lock();
-        this.renderer.render_to_image(scene)
-    }
-}
-
-impl rwh::HasWindowHandle for MacWindow {
-    fn window_handle(&self) -> Result<rwh::WindowHandle<'_>, rwh::HandleError> {
-        // 安全：AppKitWindowHandle 是围绕 NSView 指针的包装器
-        unsafe {
-            Ok(rwh::WindowHandle::borrow_raw(rwh::RawWindowHandle::AppKit(
-                rwh::AppKitWindowHandle::new(self.0.lock().native_view.cast()),
-            )))
-        }
-    }
-}
-
-impl rwh::HasDisplayHandle for MacWindow {
-    fn display_handle(&self) -> Result<rwh::DisplayHandle<'_>, rwh::HandleError> {
-        Ok(rwh::DisplayHandle::appkit())
-    }
 }
 
 struct A11yActivationHandler {
@@ -1854,6 +1878,23 @@ impl accesskit::ActionHandler for A11yActionHandler {
     }
 }
 
+impl rwh::HasWindowHandle for MacWindow {
+    fn window_handle(&self) -> Result<rwh::WindowHandle<'_>, rwh::HandleError> {
+        // SAFETY: The AppKitWindowHandle is a wrapper around a pointer to an NSView
+        unsafe {
+            Ok(rwh::WindowHandle::borrow_raw(rwh::RawWindowHandle::AppKit(
+                rwh::AppKitWindowHandle::new(self.0.lock().native_view.cast()),
+            )))
+        }
+    }
+}
+
+impl rwh::HasDisplayHandle for MacWindow {
+    fn display_handle(&self) -> Result<rwh::DisplayHandle<'_>, rwh::HandleError> {
+        Ok(rwh::DisplayHandle::appkit())
+    }
+}
+
 fn get_scale_factor(native_window: id) -> f32 {
     let factor = unsafe {
         let screen: id = msg_send![native_window, screen];
@@ -1863,12 +1904,21 @@ fn get_scale_factor(native_window: id) -> f32 {
         NSScreen::backingScaleFactor(screen) as f32
     };
 
-    // 我们不确定是什么触发了这个问题，但有时
-    // 此方法会返回 0（https://github.com/zed-industries/zed/issues/6412）
-    // 最有可能的是，如果窗口没有屏幕（如果它在屏幕外），就会发生这种情况，
-    // 尽管我们期望在真正渲染之前看到 viewDidChangeBackingProperties。
-    // 无论如何，在这里尝试避免这个问题。
+    // We are not certain what triggers this, but it seems that sometimes
+    // this method would return 0 (https://github.com/zed-industries/zed/issues/6412)
+    // It seems most likely that this would happen if the window has no screen
+    // (if it is off-screen), though we'd expect to see viewDidChangeBackingProperties before
+    // it was rendered for real.
+    // Regardless, attempt to avoid the issue here.
     if factor == 0.0 { 2. } else { factor }
+}
+
+/// Returns whether `window` is one of GPUI's managed windows.
+unsafe fn is_gpui_window(window: id) -> bool {
+    unsafe {
+        msg_send![window, isKindOfClass: WINDOW_CLASS]
+            || msg_send![window, isKindOfClass: PANEL_CLASS]
+    }
 }
 
 unsafe fn get_window_state(object: &Object) -> Arc<Mutex<MacWindowState>> {
@@ -1907,9 +1957,9 @@ extern "C" fn dealloc_view(this: &Object, _: Sel) {
 }
 
 extern "C" fn reset_cursor_rects(this: &Object, _: Sel) {
-    // 安全：AppKit 在主线程上为 GPUIView 实例调用光标矩形更新，
-    // 其 WINDOW_STATE_IVAR 在创建视图时已初始化。下面注册的
-    // 光标是有效的 NSCursor。
+    // SAFETY: AppKit invokes cursor-rect updates on the main thread for GPUIView instances,
+    // whose WINDOW_STATE_IVAR is initialized when the view is created. The cursor registered
+    // below is a valid NSCursor.
     unsafe {
         let _: () = msg_send![super(this, class!(NSView)), resetCursorRects];
 
@@ -1932,7 +1982,7 @@ extern "C" fn reset_cursor_rects(this: &Object, _: Sel) {
             CursorStyle::ResizeUp => msg_send![class!(NSCursor), resizeUpCursor],
             CursorStyle::ResizeDown => msg_send![class!(NSCursor), resizeDownCursor],
 
-            // 未记录的私有类方法：
+            // Undocumented, private class methods:
             // https://stackoverflow.com/questions/27242353/cocoa-predefined-resize-mouse-cursor
             CursorStyle::ResizeUpLeftDownRight => {
                 msg_send![class!(NSCursor), _windowResizeNorthWestSouthEastCursor]
@@ -1969,42 +2019,43 @@ extern "C" fn handle_key_up(this: &Object, _: Sel, native_event: id) {
     handle_key_event(this, native_event, false);
 }
 
-// 修改此方法时需要测试的事项：
-//  美国布局：
-//   - IME 会消耗 'j' 和 'k' 等字符，这会导致在终端中分页浏览 `less` 时
-//     默认行为不正确。我们的 IME 集成应该修补此行为
-//   - `alt-t` 应该打开任务菜单
-//   - 在 vim 模式下，此按键绑定应该有效：
+// Things to test if you're modifying this method:
+//  U.S. layout:
+//   - The IME consumes characters like 'j' and 'k', which makes paging through `less` in
+//     the terminal behave incorrectly by default. This behavior should be patched by our
+//     IME integration
+//   - `alt-t` should open the tasks menu
+//   - In vim mode, this keybinding should work:
 //     ```
 //        {
 //          "context": "Editor && vim_mode == insert",
 //          "bindings": {"j j": "vim::NormalBefore"}
 //        }
 //     ```
-//     在插入模式下使用此按键绑定输入 'j k' 应该插入这两个字符
-//  巴西布局：
-//   - `" space` 应该创建一个未标记的引号
-//   - `" backspace` 应该删除已标记的引号
-//   - `" "`应该创建一个未标记的引号和一个第二个已标记的引号
-//   - `" up` 应该插入一个引号，取消标记，并向上移动一行
-//   - `" cmd-down` 应该插入一个引号，取消标记，并移动到文件末尾
-//   - `cmd-ctrl-space` 并点击表情符号应该输入它
-//  捷克（QWERTY）布局：
-//   - 在 vim 模式下 `option-4` 应该跳转到行尾（与 $ 相同）
-//  日语（罗马字）布局：
-//   - 输入 `a i left down up enter enter` 应该创建未标记文本 "愛"
-//   - 在 vim 模式下，如果在插入模式下将 `jj` 绑定到 `vim::NormalBefore`，
-//     输入 'j i' 时日语 IME 应该产生 "じ"（ji），而不是 "jい"
+//     and typing 'j k' in insert mode with this keybinding should insert the two characters
+//  Brazilian layout:
+//   - `" space` should create an unmarked quote
+//   - `" backspace` should delete the marked quote
+//   - `" "`should create an unmarked quote and a second marked quote
+//   - `" up` should insert a quote, unmark it, and move up one line
+//   - `" cmd-down` should insert a quote, unmark it, and move to the end of the file
+//   - `cmd-ctrl-space` and clicking on an emoji should type it
+//  Czech (QWERTY) layout:
+//   - in vim mode `option-4`  should go to end of line (same as $)
+//  Japanese (Romaji) layout:
+//   - type `a i left down up enter enter` should create an unmarked text "鎰?
+//   - In vim mode with `jj` bound to `vim::NormalBefore` in insert mode, typing 'j i' with
+//     Japanese IME should produce "銇? (ji), not "j銇?
 
-/// 如果当前键盘输入源是基于组合的 IME（例如日语平假名、韩语、中文拼音），
-/// 则返回 true，这些 IME 会产生非 ASCII 输出。
+/// Returns true if the current keyboard input source is a composition-based IME
+/// (e.g. Japanese Hiragana, Korean, Chinese Pinyin) that produces non-ASCII output.
 ///
-/// 这会检查两个属性：
-/// 1. 源类型为 `kTISTypeKeyboardInputMode`（IME 输入模式，而非纯
-///    键盘布局）。这排除了非 ASCII 布局（如亚美尼亚语和乌克兰语），
-///    这些布局直接映射按键而不进行组合。
-/// 2. 源不是 ASCII 兼容的，这排除了像日语罗马字这样的模式，这些模式
-///    会产生 ASCII 字符，并应允许多次按键绑定（如 `jj`）。
+/// This checks two properties:
+/// 1. The source type is `kTISTypeKeyboardInputMode` (an IME input mode, not a plain
+///    keyboard layout). This excludes non-ASCII layouts like Armenian and Ukrainian
+///    that map keys directly without composition.
+/// 2. The source is not ASCII-capable, which excludes modes like Japanese Romaji that
+///    produce ASCII characters and should allow multi-stroke keybindings like `jj`.
 unsafe fn is_ime_input_source_active() -> bool {
     unsafe {
         let source = TISCopyCurrentKeyboardInputSource();
@@ -2056,10 +2107,10 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
 
     match event {
         PlatformInput::KeyDown(key_down_event) => {
-            // 对于某些按键，macOS 会先分发「按键等效」事件。
-            // 如果该事件未处理，则会分发「按键按下」事件。GPUI
-            // 不区分这两种事件类型，所以如果我们已经处理了
-            // 其「按键等效」版本，我们需要忽略「按键按下」事件。
+            // For certain keystrokes, macOS will first dispatch a "key equivalent" event.
+            // If that event isn't handled, it will then dispatch a "key down" event. GPUI
+            // makes no distinction between these two types of events, so we need to ignore
+            // the "key down" event if we've already just processed its "key equivalent" version.
             if key_equivalent {
                 lock.last_key_equivalent = Some(key_down_event.clone());
             } else if lock.last_key_equivalent.take().as_ref() == Some(&key_down_event) {
@@ -2073,21 +2124,21 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
                     .flatten()
                     .is_some();
 
-            // 如果我们正在组合，先将按键发送到输入处理器；
-            // 否则，只有在没有匹配绑定时才发送到输入处理器。
-            // 如果输入处理器不知道如何处理按键，它可能会调用 `do_command_by_selector`。
-            // 如果它这样做了，它将返回 YES，这样我们就不会发送按键两次。
-            // 我们也对非打印键（如箭头键和 escape）执行此操作，因为 IME 菜单
-            // 即使没有标记文本也可能需要它们；
-            // 但是我们跳过带有 control 的按键，否则输入处理器会将控制字符添加到缓冲区。
-            // 以及带有 function 的按键，因为输入处理器会吞掉它们。
-            // 以及带有 platform（Cmd）的按键，这样 Cmd+key 事件（例如 Cmd+`）就不会
-            // 在非 QWERTY / 死键布局上被 IME 消耗。
-            // 当 IME 输入源（例如日语、韩语、中文）处于活动状态且输入处理器接受文本输入时，
-            // 我们也会先将可打印键发送到 IME。这可以防止
-            // 像 `jj` 这样的多次按键绑定拦截 IME 应该组合的按键
-            //（例如输入 'ji' 应该产生 'じ'，而不是 'jい'）。如果 IME 不处理该按键，
-            // 它会调用 `doCommandBySelector:`，将其路由回按键匹配。
+            // If we're composing, send the key to the input handler first;
+            // otherwise we only send to the input handler if we don't have a matching binding.
+            // The input handler may call `do_command_by_selector` if it doesn't know how to handle
+            // a key. If it does so, it will return YES so we won't send the key twice.
+            // We also do this for non-printing keys (like arrow keys and escape) as the IME menu
+            // may need them even if there is no marked text;
+            // however we skip keys with control or the input handler adds control-characters to the buffer.
+            // and keys with function, as the input handler swallows them.
+            // and keys with platform (Cmd), so that Cmd+key events (e.g. Cmd+`) are not
+            // consumed by the IME on non-QWERTY / dead-key layouts.
+            // We also send printable keys to the IME first when an IME input source (e.g. Japanese,
+            // Korean, Chinese) is active and the input handler accepts text input. This prevents
+            // multi-stroke keybindings like `jj` from intercepting keys that the IME should compose
+            // (e.g. typing 'ji' should produce '銇?, not 'j銇?). If the IME doesn't handle the key,
+            // it calls `doCommandBySelector:` which routes it back to keybinding matching.
             let is_ime_printable_key = !is_composing
                 && key_down_event
                     .keystroke
@@ -2152,8 +2203,8 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
                 }
             }
 
-            // 如果有除 Function 键以外的按键修饰符，不要将按键等效发送到输入处理器，
-            // 否则像 cmd-` 这样的 macOS 快捷键将停止工作。
+            // Don't send key equivalents to the input handler if there are key modifiers other
+            // than Function key, or macOS shortcuts like cmd-` will stop working.
             if key_equivalent && key_down_event.keystroke.modifiers != Modifiers::function() {
                 return NO;
             }
@@ -2181,7 +2232,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
     let event = unsafe { platform_input_from_native(native_event, Some(window_height)) };
 
     if let Some(mut event) = event {
-        // AppKit 在下一次鼠标移动时取消隐藏光标；在这里镜像该行为。
+        // AppKit unhides the cursor on the next mouse movement; mirror that here.
         if matches!(
             event,
             PlatformInput::MouseMove(_)
@@ -2203,7 +2254,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                     ..
                 },
             ) => {
-                // 在 Mac 上，ctrl-左键点击应作为右键点击处理。
+                // On mac, a ctrl-left click should be handled as a right click.
                 *event = MouseDownEvent {
                     button: MouseButton::Right,
                     modifiers: Modifiers {
@@ -2215,7 +2266,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                 };
             }
 
-            // 处理聚焦点击。
+            // Handles focusing click.
             PlatformInput::MouseDown(
                 event @ MouseDownEvent {
                     button: MouseButton::Left,
@@ -2229,9 +2280,9 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                 lock.first_mouse = false;
             }
 
-            // 因为我们将 ctrl-左键按下映射为右键按下 -> 右键抬起，所以让我们忽略
-            // ctrl-左键抬起，以避免在用户
-            // 释放左键时仍然按住 ctrl 的情况下出现按键按下/抬起事件不匹配
+            // Because we map a ctrl-left_down to a right_down -> right_up let's ignore
+            // the ctrl-left_up to avoid having a mismatch in button down/up events if the
+            // user is still holding ctrl when releasing the left mouse button
             PlatformInput::MouseUp(
                 event @ MouseUpEvent {
                     button: MouseButton::Left,
@@ -2268,9 +2319,9 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                     ..
                 },
             ) => {
-                // 合成拖拽用于在缓冲区滚动时选择长缓冲区内容。
-                // 外部文件拖放能够发出自己的合成鼠标事件，这将
-                // 与这些事件冲突。
+                // Synthetic drag is used for selecting long buffer contents while buffer is being scrolled.
+                // External file drag and drop is able to emit its own synthetic mouse events which will conflict
+                // with these ones.
                 if !lock.external_files_dragged {
                     lock.synthetic_drag_counter += 1;
                     let executor = lock.foreground_executor.clone();
@@ -2293,7 +2344,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
                 modifiers,
                 capslock,
             }) => {
-                // 只有在修饰符实际更改时才引发修饰符更改事件
+                // Only raise modifiers changed event when they have actually changed
                 if let Some(PlatformInput::ModifiersChanged(ModifiersChangedEvent {
                     modifiers: prev_modifiers,
                     capslock: prev_capslock,
@@ -2344,6 +2395,7 @@ extern "C" fn window_will_enter_fullscreen(this: &Object, _: Sel, _: id) {
     let window_state = unsafe { get_window_state(this) };
     let mut lock = window_state.as_ref().lock();
     lock.fullscreen_restore_bounds = lock.bounds();
+    lock.restore_traffic_light();
 
     let min_version = NSOperatingSystemVersion::new(15, 3, 0);
 
@@ -2367,6 +2419,13 @@ extern "C" fn window_will_exit_fullscreen(this: &Object, _: Sel, _: id) {
     }
 }
 
+extern "C" fn window_did_exit_fullscreen(this: &Object, _: Sel, _: id) {
+    // SAFETY: This method is registered only on GPUI window classes, which initialize
+    // WINDOW_STATE_IVAR with an Arc<Mutex<MacWindowState>> during window creation.
+    let window_state = unsafe { get_window_state(this) };
+    window_state.as_ref().lock().move_traffic_light();
+}
+
 pub(crate) fn is_macos_version_at_least(version: NSOperatingSystemVersion) -> bool {
     unsafe { NSProcessInfo::processInfo(nil).isOperatingSystemAtLeastVersion(version) }
 }
@@ -2381,7 +2440,7 @@ extern "C" fn window_did_move(this: &Object, _: Sel, _: id) {
     }
 }
 
-// 更新窗口缩放因子和可绘制大小，并在有需要时调用缩放回调。
+// Update the window scale factor and drawable size, and call the resize callback if any.
 fn update_window_scale_factor(window_state: &Arc<Mutex<MacWindowState>>) {
     let mut lock = window_state.as_ref().lock();
     let scale_factor = lock.scale_factor();
@@ -2420,18 +2479,18 @@ extern "C" fn window_did_change_key_status(this: &Object, selector: Sel, _: id) 
     let lock = window_state.lock();
     let is_active = unsafe { lock.native_window.isKeyWindow() == YES };
 
-    // AppKit 也会在激活更改时取消隐藏光标，所以在这里镜像该行为。
+    // AppKit also unhides the cursor on activation changes, so mirror that here.
     lock.cursor_visible.store(true, Ordering::Relaxed);
 
-    // 在应用程序未处于活动状态时打开弹出窗口时，Cocoa 会向前一个
-    // 主窗口发送一个虚假的 `windowDidBecomeKey` 消息，尽管该窗口
-    // 实际上并非主窗口。如果应用程序稍后在弹出窗口仍打开时被激活，
-    // 这会导致一个 bug，使得无法激活前一个主窗口，
-    // 即使弹出窗口已关闭。再次激活它的唯一方法是停用
-    // 应用程序并重新激活它，这是一个非常糟糕的用户体验。
-    // 以下代码检测虚假事件并调用 `resignKeyWindow`：
-    // 理论上，我们不应该手动调用此方法，但它平衡了
-    // 虚假的 `becomeKeyWindow` 事件，并帮助我们解决该 bug。
+    // When opening a pop-up while the application isn't active, Cocoa sends a spurious
+    // `windowDidBecomeKey` message to the previous key window even though that window
+    // isn't actually key. This causes a bug if the application is later activated while
+    // the pop-up is still open, making it impossible to activate the previous key window
+    // even if the pop-up gets closed. The only way to activate it again is to de-activate
+    // the app and re-activate it, which is a pretty bad UX.
+    // The following code detects the spurious event and invokes `resignKeyWindow`:
+    // in theory, we're not supposed to invoke this method manually but it balances out
+    // the spurious `becomeKeyWindow` event and helps us work around that bug.
     if selector == sel!(windowDidBecomeKey:) && !is_active {
         let native_window = lock.native_window;
         drop(lock);
@@ -2454,12 +2513,12 @@ extern "C" fn window_did_change_key_status(this: &Object, selector: Sel, _: id) 
         events.raise();
     }
 
-    // 当窗口变为活动状态时，触发立即同步帧请求以防止
-    // 在原生标签模式下在窗口之间切换时的标签闪烁。
+    // When a window becomes active, trigger an immediate synchronous frame request to prevent
+    // tab flicker when switching between windows in native tabs mode.
     //
-    // 这仅在后续激活时完成（不是第一次），以确保初始焦点
-    // 路径正确建立。没有这个守卫，焦点状态将保持未设置状态，直到
-    // 第一次鼠标点击，导致按键绑定无法正常工作。
+    // This is only done on subsequent activations (not the first) to ensure the initial focus
+    // path is properly established. Without this guard, the focus state would remain unset until
+    // the first mouse click, causing keybindings to be non-functional.
     if selector == sel!(windowDidBecomeKey:) && is_active {
         let window_state = unsafe { get_window_state(this) };
         let mut lock = window_state.lock();
@@ -2749,8 +2808,8 @@ extern "C" fn attributed_substring_for_proposed_range(
     .unwrap_or(nil)
 }
 
-// 我们忽略它要求我们执行的选择器，因为用户可能已将
-// 快捷键绑定到其他操作。
+// We ignore which selector it asks us to do because the user may have
+// bound the shortcut to something else.
 extern "C" fn do_command_by_selector(this: &Object, _: Sel, _: Sel) {
     let state = unsafe { get_window_state(this) };
     let mut lock = state.as_ref().lock();
@@ -2773,12 +2832,20 @@ extern "C" fn do_command_by_selector(this: &Object, _: Sel, _: Sel) {
 extern "C" fn view_did_change_effective_appearance(this: &Object, _: Sel) {
     unsafe {
         let state = get_window_state(this);
-        let mut lock = state.as_ref().lock();
-        if let Some(mut callback) = lock.appearance_changed_callback.take() {
-            drop(lock);
+        let appearance_changed_callback = {
+            let mut lock = state.as_ref().lock();
+            lock.appearance_changed_callback.take()
+        };
+
+        if let Some(mut callback) = appearance_changed_callback {
             callback();
             state.lock().appearance_changed_callback = Some(callback);
         }
+
+        // AppKit can relayout the standard traffic light buttons as part of
+        // applying a new appearance. Reapply GPUI's custom position after
+        // notifying appearance observers.
+        state.lock().move_traffic_light();
     }
 }
 
@@ -2885,8 +2952,8 @@ async fn synthetic_drag(
     }
 }
 
-/// 使用 `PlatformInput::FileDrop` 将指定的 FileDropEvent 发送到窗口
-/// 状态，并根据传递的事件更新窗口状态。
+/// Sends the specified FileDropEvent using `PlatformInput::FileDrop` to the window
+/// state and updates the window state according to the event passed.
 fn send_file_drop_event(
     window_state: Arc<Mutex<MacWindowState>>,
     file_drop_event: FileDropEvent,
@@ -2933,21 +3000,25 @@ where
     }
 }
 
-unsafe fn display_id_for_screen(screen: id) -> CGDirectDisplayID {
+fn display_id_for_screen(screen: id) -> Option<CGDirectDisplayID> {
+    if screen.is_null() {
+        return None;
+    }
+
     unsafe {
         let device_description = NSScreen::deviceDescription(screen);
         let screen_number_key: id = ns_string("NSScreenNumber");
         let screen_number = device_description.objectForKey_(screen_number_key);
         let screen_number: NSUInteger = msg_send![screen_number, unsignedIntegerValue];
-        screen_number as CGDirectDisplayID
+        Some(screen_number as CGDirectDisplayID)
     }
 }
 
 extern "C" fn blurred_view_init_with_frame(this: &Object, _: Sel, frame: NSRect) -> id {
     unsafe {
         let view = msg_send![super(this, class!(NSVisualEffectView)), initWithFrame: frame];
-        // 使用无色语义材质。默认值 `AppearanceBased` 虽然没有
-        // 手动设置，但已弃用。
+        // Use a colorless semantic material. The default value `AppearanceBased`, though not
+        // manually set, is deprecated.
         NSVisualEffectView::setMaterial_(view, NSVisualEffectMaterial::Selection);
         NSVisualEffectView::setState_(view, NSVisualEffectState::Active);
         view
@@ -2970,18 +3041,18 @@ unsafe fn remove_layer_background(layer: id) {
 
         let class_name: id = msg_send![layer, className];
         if class_name.isEqualToString("CAChameleonLayer") {
-            // 移除桌面着色效果。
+            // Remove the desktop tinting effect.
             let _: () = msg_send![layer, setHidden: YES];
             return;
         }
 
         let filters: id = msg_send![layer, filters];
         if !filters.is_null() {
-            // 移除增加的饱和度。
-            // `CAFilter` 或 `CIFilter` 的效果由其名称决定，而
-            // `description` 反映其名称和一些参数。目前 `NSVisualEffectView`
-            // 使用名为 "colorSaturate" 的 `CAFilter`。如果有一天他们切换到 `CIFilter`，
-            // `description` 仍然会包含 "Saturat"（"... inputSaturation = ..."）。
+            // Remove the increased saturation.
+            // The effect of a `CAFilter` or `CIFilter` is determined by its name, and the
+            // `description` reflects its name and some parameters. Currently `NSVisualEffectView`
+            // uses a `CAFilter` named "colorSaturate". If one day they switch to `CIFilter`, the
+            // `description` will still contain "Saturat" ("... inputSaturation = ...").
             let test_string: id = ns_string("Saturat");
             let count = NSArray::count(filters);
             for i in 0..count {
@@ -3019,7 +3090,7 @@ extern "C" fn add_titlebar_accessory_view_controller(this: &Object, _: Sel, view
     unsafe {
         let _: () = msg_send![super(this, class!(NSWindow)), addTitlebarAccessoryViewController: view_controller];
 
-        // 隐藏原生标签栏并将其高度设置为 0，因为我们渲染自己的标签栏。
+        // Hide the native tab bar and set its height to 0, since we render our own.
         let accessory_view: id = msg_send![view_controller, view];
         let _: () = msg_send![accessory_view, setHidden: YES];
         let mut frame: NSRect = msg_send![accessory_view, frame];
@@ -3089,5 +3160,15 @@ extern "C" fn toggle_tab_bar(this: &Object, _sel: Sel, _id: id) {
             callback();
             window_state.lock().toggle_tab_bar_callback = Some(callback);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_id_for_screen_returns_none_for_null_screen() {
+        assert_eq!(display_id_for_screen(nil), None);
     }
 }

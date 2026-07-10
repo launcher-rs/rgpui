@@ -41,7 +41,6 @@ crates/
     ├── rgpui-component-macros/   # 组件过程宏
     ├── rgpui-component-story/    # 组件 Storybook（原生）
     ├── rgpui-component-story-web/ # 组件 Storybook（Web）
-    ├── rgpui-editor/             # 编辑器组件（支持 LSP）
     ├── rgpui-webview/            # WebView 组件
     └── themes/                   # 22 套 JSON 颜色主题
 ```

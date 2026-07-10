@@ -742,6 +742,179 @@
       "status": "check-failed",
       "merged_at": "2026-07-07",
       "note": "Reverts rgpui-specific code (tray, notification, platform APIs) and introduces invalid `crate::http_client` syntax. Manually reverted - not applicable to rgpui."
+    },
+    {
+      "number": 2551,
+      "upstream": "gpui-component",
+      "title": "fix: field.rs:56:46 - no method named `into_any` found for struct `AnyView` in the current scope",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 2545,
+      "upstream": "gpui-component",
+      "title": "Do not focus when set_selected_range for slient update.",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 2546,
+      "upstream": "gpui-component",
+      "title": "Add more test.",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 2547,
+      "upstream": "gpui-component",
+      "title": "scroll: Fix `Scrollable` height collapse in auto-sized containers",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 2509,
+      "upstream": "gpui-component",
+      "title": "fix tests",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 2541,
+      "upstream": "gpui-component",
+      "title": "slider: Support `reverse` to fill the track from thumb to max end",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 2542,
+      "upstream": "gpui-component",
+      "title": "plot: Defer only the tooltip box",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60693,
+      "upstream": "zed",
+      "title": "Fix \"Task polled after completion\" panic",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60482,
+      "upstream": "zed",
+      "title": "gpui: Store GPU-facing bools as PaddedBool32 to avoid uninitialized padding",
+      "status": "check-failed",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60621,
+      "upstream": "zed",
+      "title": "Update wayland-backend to 0.3.15 to fix Wayland file dialog crash",
+      "status": "check-failed",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60275,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into gpui-mouse-hover-exit-fix",
+      "status": "check-failed",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60122,
+      "upstream": "zed",
+      "title": "gpui_windows: Check composition attribute lookup",
+      "status": "check-failed",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60232,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into gpui-anchored-popups",
+      "status": "merged"
+    },
+    {
+      "number": 60339,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into feat/csv-preview/add-filtering",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 58087,
+      "upstream": "zed",
+      "title": "Lock caching to entity-backed views, document identity uniqueness, clamp example cursor on external writes",
+      "status": "check-failed",
+      "note": "大型重构（Unify Render/RenderOnce），修改 Cargo.toml，需手动处理",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60574,
+      "upstream": "zed",
+      "title": "gpui: Add run_embedded and ApplicationHandle for externally driven run loops",
+      "status": "check-failed",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60160,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into fix-wgpu-renderer-teardown-panic",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 56468,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into lillian/weird-mermaid-vram-leak",
+      "status": "check-failed",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60421,
+      "upstream": "zed",
+      "title": "gpui: Refresh mouse position after bounds changes",
+      "status": "merged"
+    },
+    {
+      "number": 45759,
+      "upstream": "zed",
+      "title": "style",
+      "status": "check-failed",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60419,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into fix-gpui-nil-screen-display-link",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60440,
+      "upstream": "zed",
+      "title": "Address Windows window control review",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 57250,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into geist-mono-postscript-name-dedup",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 54145,
+      "upstream": "zed",
+      "title": "Merge branch 'main' into parent-animation-element",
+      "status": "merged",
+      "merged_at": "2026-07-10"
+    },
+    {
+      "number": 60161,
+      "upstream": "zed",
+      "title": "gpui: Add input region support for Wayland windows",
+      "status": "merged"
     }
   ]
 }

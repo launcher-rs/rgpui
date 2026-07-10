@@ -10,16 +10,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use rgpui::collections::HashMap;
 use parking_lot::Mutex;
+use rgpui::collections::HashMap;
 use uuid::Uuid;
 
 use rgpui::{
-    px, AtlasKey, AtlasTextureId, AtlasTile, Bounds, Capslock, DevicePixels, DispatchEventResult,
+    AtlasKey, AtlasTextureId, AtlasTile, Bounds, Capslock, DevicePixels, DispatchEventResult,
     DisplayId, GpuSpecs, Modifiers, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput,
     PlatformInputHandler, PlatformWindow, Point, PromptButton, PromptLevel, RequestFrameOptions,
     Scene, Size, TileId, WindowAppearance, WindowBackgroundAppearance, WindowBounds,
-    WindowControlArea, WindowParams,
+    WindowControlArea, WindowParams, px,
 };
 
 #[derive(Debug)]

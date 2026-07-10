@@ -38,6 +38,21 @@
 | #60090 | 2026-07-01 | gpui_linux: Suppress dead code warning on `wake_sender` |
 | #59911 | 2026-07-07 | terminal: Fix IME candidate window not following cursor in TUI apps |
 | #60359 | 2026-07-07 | gpui_linux: Add support for open_window in headless client |
+| #60693 | 2026-07-10 | Fix "Task polled after completion" panic |
+| #60482 | 2026-07-10 | gpui: Store GPU-facing bools as PaddedBool32 to avoid uninitialized padding |
+| #60122 | 2026-07-10 | gpui_windows: Check composition attribute lookup |
+| #60275 | 2026-07-10 | Merge branch 'main' into gpui-mouse-hover-exit-fix |
+| #60160 | 2026-07-10 | Merge branch 'main' into fix-wgpu-renderer-teardown-panic |
+| #60339 | 2026-07-10 | Merge branch 'main' into feat/csv-preview/add-filtering |
+| #57250 | 2026-07-10 | Merge branch 'main' into geist-mono-postscript-name-dedup |
+| #60419 | 2026-07-10 | Merge branch 'main' into fix-gpui-nil-screen-display-link |
+| #60440 | 2026-07-10 | Address Windows window control review |
+| #60621 | 2026-07-10 | Update wayland-backend to 0.3.15 to fix Wayland file dialog crash |
+| #60574 | 2026-07-10 | gpui: Add run_embedded and ApplicationHandle for externally driven run loops |
+| #45759 | 2026-07-10 | style |
+| #56468 | 2026-07-10 | Merge branch 'main' into lillian/weird-mermaid-vram-leak |
+| #54145 | 2026-07-10 | Merge branch 'main' into parent-animation-element |
+| #58087 | 2026-07-10 | Lock caching to entity-backed views, document identity uniqueness, clamp example cursor on external writes |
 
 ## gpui-component
 
@@ -88,6 +103,13 @@
 | #2523 | 2026-07-07 | Extract shared logic into functions |
 | #2529 | 2026-07-07 | resizable: Avoid NaN panel sizes when total size is zero or non-finite |
 | #2524 | 2026-07-07 | Fix input soft-wrap width |
+| #2551 | 2026-07-10 | fix: field.rs:56:46 - no method named `into_any` found for struct `AnyView` in the current scope |
+| #2545 | 2026-07-10 | Do not focus when set_selected_range for slient update. |
+| #2547 | 2026-07-10 | scroll: Fix `Scrollable` height collapse in auto-sized containers |
+| #2541 | 2026-07-10 | slider: Support `reverse` to fill the track from thumb to max end |
+| #2542 | 2026-07-10 | plot: Defer only the tooltip box |
+| #2546 | 2026-07-10 | Add more test. |
+| #2509 | 2026-07-10 | fix tests |
 
 ## yororen-ui
 

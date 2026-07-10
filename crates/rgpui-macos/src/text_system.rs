@@ -1,3 +1,4 @@
+use crate::collections::{HashMap, HashSet};
 use anyhow::anyhow;
 use cocoa::appkit::CGFloat;
 use core_foundation::{
@@ -38,7 +39,6 @@ use pathfinder_geometry::{
     transform2d::Transform2F,
     vector::Vector2F,
 };
-use rgpui::collections::HashMap;
 use rgpui::{
     Bounds, DevicePixels, Font, FontFallbacks, FontFeatures, FontId, FontMetrics, FontRun,
     FontStyle, FontWeight, GlyphId, Hsla, LineLayout, Pixels, PlatformTextSystem,
@@ -53,7 +53,7 @@ use crate::open_type::apply_features_and_fallbacks;
 #[allow(non_upper_case_globals)]
 const kCGImageAlphaOnly: u32 = 7;
 
-/// macOS 文本系统，使用 CoreText 进行字体塑形和渲染。
+/// macOS text system using CoreText for font shaping.
 pub struct MacTextSystem(RwLock<MacTextSystemState>);
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -74,7 +74,7 @@ struct MacTextSystemState {
 }
 
 impl MacTextSystem {
-    /// 创建新的 MacTextSystem 实例。
+    /// Create a new MacTextSystem.
     pub fn new() -> Self {
         Self(RwLock::new(MacTextSystemState {
             memory_source: MemSource::empty(),
@@ -102,11 +102,11 @@ impl PlatformTextSystem for MacTextSystem {
     fn all_font_names(&self) -> Vec<String> {
         let mut names = Vec::new();
         let collection = core_text::font_collection::create_for_all_families();
-        // 注意：我们有意避免在此处使用 `collection.get_descriptors()`，因为
-        // 它在 core-text v21.0.0 中存在内存泄漏 bug。上游代码使用
-        // `wrap_under_get_rule`，但 `CTFontCollectionCreateMatchingFontDescriptors`
-        // 遵循 Create Rule（调用者拥有结果），因此应该使用
-        // `wrap_under_create_rule`。我们直接调用该函数并进行正确的内存管理。
+        // NOTE: We intentionally avoid using `collection.get_descriptors()` here because
+        // it has a memory leak bug in core-text v21.0.0. The upstream code uses
+        // `wrap_under_get_rule` but `CTFontCollectionCreateMatchingFontDescriptors`
+        // follows the Create Rule (caller owns the result), so it should use
+        // `wrap_under_create_rule`. We call the function directly with correct memory management.
         unsafe extern "C" {
             fn CTFontCollectionCreateMatchingFontDescriptors(
                 collection: CTFontCollectionRef,
@@ -216,9 +216,9 @@ impl PlatformTextSystem for MacTextSystem {
     }
 
     fn glyph_dilation_for_color(&self, color: Hsla) -> u8 {
-        // 启用字体平滑时，CoreGraphics 会根据前景色的亮度
-        // 加粗字形笔画。我们复制 CoreGraphics 使用的逻辑
-        // 来选择不同级别的膨胀。
+        // When font smoothing is enabled, CoreGraphics thickens glyph strokes by an amount that
+        // depends on the foreground color's luminance. We replicate the logic used by CoreGraphics
+        // to select between the different levels of dilation.
         if !font_smoothing_allowed_by_user() {
             return 0;
         }
@@ -247,7 +247,7 @@ fn font_smoothing_allowed_by_user() -> bool {
         let Some(number) = value.downcast_into::<CFNumber>() else {
             return true;
         };
-        // 只有显式值为 `0` 时才表示禁用字体平滑。
+        // Only an explicit value of `0` means that font smoothing is disabled.
         number.to_i64() != Some(0)
     })
 }
@@ -282,6 +282,7 @@ impl MacTextSystemState {
         let name = rgpui::font_name_with_fallbacks(name, ".AppleSystemUIFont");
 
         let mut font_ids = SmallVec::new();
+        let mut postscript_names_seen = HashSet::default();
         let family = self
             .memory_source
             .select_family_by_name(name)
@@ -290,25 +291,25 @@ impl MacTextSystemState {
             let mut font = font.load()?;
 
             apply_features_and_fallbacks(&mut font, features, fallbacks)?;
-            // 此块包含预防性修复，以防止加载可能导致
-            // 由于链中 `.unwrap()` 而恐慌的字体。
+            // This block contains a precautionary fix to guard against loading fonts
+            // that might cause panics due to `.unwrap()`s up the chain.
             {
-                // 我们在各个地方使用 'm' 字符进行文本测量
-                // （例如编辑器）。但是，在撰写本文时，如果字体没有 'm' 字形，
-                // 其中一些用法会恐慌。
+                // We use the 'm' character for text measurements in various spots
+                // (e.g., the editor). However, at time of writing some of those usages
+                // will panic if the font has no 'm' glyph.
                 //
-                // 因此，我们预先检查字体是否具有必要的字形。
+                // Therefore, we check up front that the font has the necessary glyph.
                 let has_m_glyph = font.glyph_for_char('m').is_some();
 
-                // HACK：'Segoe Fluent Icons' 字体没有 'm' 字形，
-                // 但我们需要能够加载它以在 Storybook 中渲染 Windows 图标
-                // （在 macOS 上）。
+                // HACK: The 'Segoe Fluent Icons' font does not have an 'm' glyph,
+                // but we need to be able to load it for rendering Windows icons in
+                // the Storybook (on macOS).
                 let is_segoe_fluent_icons = font.full_name() == "Segoe Fluent Icons";
 
                 if !has_m_glyph && !is_segoe_fluent_icons {
-                    // 我花了太长时间试图追踪为什么缺少 'm'
-                    // 字符的字体无法加载。这条日志语句希望能帮助
-                    // 其他人避免遭受同样的命运。
+                    // I spent far too long trying to track down why a font missing the 'm'
+                    // character wasn't loading. This log statement will hopefully save
+                    // someone else from suffering the same fate.
                     log::warn!(
                         "font '{}' has no 'm' character and was not loaded",
                         font.full_name()
@@ -317,9 +318,9 @@ impl MacTextSystemState {
                 }
             }
 
-            // 我们在生产中看到过多次由于调用 font.properties() 而导致恐慌，
-            // 该方法会解包对 CFNumber 的下 cast。这是避免恐慌的尝试，
-            // 并尝试识别出问题的字体。
+            // We've seen a number of panics in production caused by calling font.properties()
+            // which unwraps a downcast to CFNumber. This is an attempt to avoid the panic,
+            // and to try and identify the incalcitrant font.
             let traits = font.native_font().all_traits();
             if unsafe {
                 !(traits
@@ -340,15 +341,38 @@ impl MacTextSystemState {
                         .is_some())
             } {
                 log::error!(
-                    "Failed to read traits for font {:?}",
-                    font.postscript_name().unwrap()
+                    "Failed to read traits for font {:?} (PostScript name {:?})",
+                    font.full_name(),
+                    font.postscript_name(),
                 );
                 continue;
             }
 
+            let Some(postscript_name) = font.postscript_name() else {
+                log::warn!(
+                    "font {:?} in family {:?} has no PostScript name; skipping",
+                    font.full_name(),
+                    name,
+                );
+                continue;
+            };
+            // Dedup is scoped to this single `load_family` call (issue #55472).
+            // The same family can be reloaded later under a different `FontKey`
+            // (different features/fallbacks); a global check against
+            // `font_ids_by_postscript_name` would skip every already-registered
+            // font and leave the second call's `font_ids` empty.
+            if !postscript_names_seen.insert(postscript_name.clone()) {
+                log::warn!(
+                    "skipping duplicate font {:?} with PostScript name {:?} \
+                     in family {:?}",
+                    font.full_name(),
+                    postscript_name,
+                    name,
+                );
+                continue;
+            }
             let font_id = FontId(self.fonts.len());
             font_ids.push(font_id);
-            let postscript_name = font.postscript_name().unwrap();
             self.font_ids_by_postscript_name
                 .insert(postscript_name.clone(), font_id);
             self.postscript_names_by_font_id
@@ -405,7 +429,7 @@ impl MacTextSystemState {
             font_kit::canvas::RasterizationOptions::GrayscaleAa,
         )?);
 
-        // 在每侧扩展 1 像素的边界，为 CG 提供抗别名空间。
+        // Expand the bounds by 1 pixel on each side to give CG room for anti-aliasing.
         Ok(bounds.dilate(DevicePixels(1)))
     }
 
@@ -417,7 +441,7 @@ impl MacTextSystemState {
         if glyph_bounds.size.width.0 == 0 || glyph_bounds.size.height.0 == 0 {
             anyhow::bail!("glyph bounds are empty");
         } else {
-            // 当子像素变体不为零时，添加额外像素以容纳抗锯齿。
+            // Add an extra pixel when the subpixel variant isn't zero to make room for anti-aliasing.
             let mut bitmap_size = glyph_bounds.size;
             if params.subpixel_variant.x > 0 {
                 bitmap_size.width += DevicePixels(1);
@@ -453,8 +477,8 @@ impl MacTextSystemState {
                 );
             }
 
-            // 将原点移动到底部左侧并考虑缩放，这
-            // 使绘制文本与 font-kit 的 raster_bounds 保持一致。
+            // Move the origin to bottom left and account for scaling, this
+            // makes drawing text consistent with the font-kit's raster_bounds.
             cx.translate(
                 -glyph_bounds.origin.x.0 as CGFloat,
                 (glyph_bounds.origin.y.0 + glyph_bounds.size.height.0) as CGFloat,
@@ -495,7 +519,7 @@ impl MacTextSystemState {
                 );
 
             if params.is_emoji {
-                // 从带预乘 alpha 的 RGBA 转换为带直线 alpha 的 BGRA。
+                // Convert from RGBA with premultiplied alpha to BGRA with straight alpha.
                 for pixel in bytes.chunks_exact_mut(4) {
                     swap_rgba_pa_to_bgra(pixel);
                 }
@@ -506,7 +530,7 @@ impl MacTextSystemState {
     }
 
     fn layout_line(&mut self, text: &str, font_size: Pixels, font_runs: &[FontRun]) -> LineLayout {
-        // 构造属性字符串，将 UTF8 范围转换为 UTF16 范围。
+        // Construct the attributed string, converting UTF8 ranges to UTF16 ranges.
         let mut string = CFMutableAttributedString::new();
         let mut max_ascent = 0.0f32;
         let mut max_descent = 0.0f32;
@@ -518,8 +542,8 @@ impl MacTextSystemState {
                 let text_run;
                 (text_run, text) = text.split_at(run.len);
 
-                let utf16_start = string.char_len(); // 在字符串末尾插入
-                // 注意：replace_str 可能会静默忽略它不喜欢的代码点（例如字符串开头的 BOM）
+                let utf16_start = string.char_len(); // insert at end of string
+                // note: replace_str may silently ignore codepoints it dislikes (e.g., BOM at start of string)
                 string.replace_str(&CFString::new(text_run), CFRange::init(utf16_start, 0));
                 let utf16_end = string.char_len();
 
@@ -547,7 +571,7 @@ impl MacTextSystemState {
                 break_ligature = !break_ligature;
             }
         }
-        // 从形状行中检索字形，将 UTF16 偏移量转换为 UTF8 偏移量。
+        // Retrieve the glyphs from the shaped line, converting UTF16 offsets to UTF8 offsets.
         let line = CTLine::new_with_attributed_string(string.as_concrete_TypeRef());
         let glyph_runs = line.glyph_runs();
         let mut runs = <Vec<ShapedRun>>::with_capacity(glyph_runs.len() as usize);
@@ -580,7 +604,7 @@ impl MacTextSystemState {
             {
                 let glyph_utf16_ix = usize::try_from(glyph_utf16_ix).unwrap();
                 if ix_converter.utf16_ix > glyph_utf16_ix {
-                    // 我们无法重用当前索引转换器，因为它只能向前搜索。重新开始搜索。
+                    // We cannot reuse current index converter, as it can only seek forward. Restart the search.
                     ix_converter = StringIndexConverter::new(text);
                 }
                 ix_converter.advance_to_utf16_ix(glyph_utf16_ix);
@@ -607,9 +631,9 @@ impl MacTextSystemState {
 #[derive(Debug, Clone)]
 struct StringIndexConverter<'a> {
     text: &'a str,
-    /// UTF-8 字节索引
+    /// Index in UTF-8 bytes
     utf8_ix: usize,
-    /// UTF-16 代码单元索引
+    /// Index in UTF-16 code units
     utf16_ix: usize,
 }
 
@@ -699,8 +723,8 @@ fn fontkit_style(style: FontStyle) -> FontkitStyle {
     }
 }
 
-// 某些字体可能没有属性，尽管 `core_text` 需要它们（并且会恐慌）。
-// 这与 `core_text` 的版本相同，但没有 `expect` 调用。
+// Some fonts may have no attributes despite `core_text` requiring them (and panicking).
+// This is the same version as `core_text` has without `expect` calls.
 mod lenient_font_attributes {
     use core_foundation::{
         base::{CFRetain, CFType, TCFType},
@@ -766,7 +790,7 @@ mod tests {
         assert_eq!(layout.runs.len(), 1);
         assert_eq!(layout.runs[0].glyphs.len(), 2);
         assert_eq!(layout.runs[0].glyphs[0].id, GlyphId(68u32)); // a
-        // \u{feff} 没有字形
+        // There's no glyph for \u{feff}
         assert_eq!(layout.runs[0].glyphs[1].id, GlyphId(69u32)); // b
 
         let line = "\u{feff}ab";
@@ -784,7 +808,7 @@ mod tests {
         assert_eq!(layout.len, line.len());
         assert_eq!(layout.runs.len(), 1);
         assert_eq!(layout.runs[0].glyphs.len(), 2);
-        // \u{feff} 没有字形
+        // There's no glyph for \u{feff}
         assert_eq!(layout.runs[0].glyphs[0].id, GlyphId(68u32)); // a
         assert_eq!(layout.runs[0].glyphs[1].id, GlyphId(69u32)); // b
     }
@@ -814,7 +838,7 @@ mod tests {
             }
         }
 
-        // 使用不同的字体运行测试——不应插入 ZWNJ
+        // Test with different font runs - should not insert ZWNJ
         let font_id2 = fonts.font_id(&font("Times")).unwrap_or(font_id);
         let font_runs_different = &[
             FontRun { font_id, len: 5 }, // "hello"
@@ -870,7 +894,7 @@ mod tests {
             }
         }
 
-        // 使用空文本测试
+        // Test with empty text
         let text = "";
         let font_runs = &[];
         let layout = fonts.layout_line(text, px(16.), font_runs);

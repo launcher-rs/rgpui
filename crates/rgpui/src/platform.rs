@@ -2,6 +2,9 @@ mod app_menu;
 mod keyboard;
 mod keystroke;
 
+/// Types for configuring parent-anchored popup windows such as menus, dropdowns and tooltips.
+pub mod popup;
+
 #[cfg(any(test, feature = "bench"))]
 mod bench_dispatcher;
 
@@ -1173,6 +1176,7 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn show_window_menu(&self, _position: Point<Pixels>) {}
     fn start_window_move(&self) {}
     fn start_window_resize(&self, _edge: ResizeEdge) {}
+    fn set_input_region(&self, _region: Option<&[Bounds<Pixels>]>) {}
     fn window_decorations(&self) -> Decorations {
         Decorations::Server
     }
@@ -2066,6 +2070,9 @@ pub struct WindowParams {
     #[cfg_attr(feature = "wayland", allow(dead_code))]
     pub display_id: Option<DisplayId>,
 
+    /// 应用标识符（主要用于 Wayland）
+    pub app_id: Option<String>,
+
     pub window_min_size: Option<Size<Pixels>>,
     #[cfg(target_os = "macos")]
     pub tabbing_identifier: Option<String>,
@@ -2162,6 +2169,14 @@ pub enum WindowKind {
     /// A window that appears above all other windows, usually used for alerts or popups
     /// use sparingly!
     PopUp,
+
+    /// A parent-anchored, platform-native popup window for menus, comboboxes, context menus and
+    /// tooltips. Unlike [`WindowKind::PopUp`], it is positioned relative to a parent window.
+    ///
+    /// The popup's size comes from [`WindowOptions::window_bounds`], whose origin is ignored.
+    /// See [`popup::PopupOptions`] for the placement options. Platforms without a native
+    /// implementation reject it with [`popup::PopupNotSupportedError`].
+    AnchoredPopup(popup::PopupOptions),
 
     /// A floating window that appears on top of its parent window
     Floating,

@@ -440,6 +440,10 @@ impl WindowsWindow {
         params: WindowParams,
         creation_info: WindowCreationInfo,
     ) -> Result<Self> {
+        if let WindowKind::AnchoredPopup(_) = params.kind {
+            return Err(rgpui::popup::PopupNotSupportedError.into());
+        }
+
         let WindowCreationInfo {
             icon,
             executor,
@@ -484,7 +488,9 @@ impl WindowsWindow {
 
         // 根据窗口类型设置窗口样式
         let (mut dwexstyle, dwstyle) = match &params.kind {
-            WindowKind::PopUp => (WS_EX_TOOLWINDOW, WINDOW_STYLE(0x0)),
+            WindowKind::PopUp | WindowKind::AnchoredPopup(_) => {
+                (WS_EX_TOOLWINDOW, WINDOW_STYLE(0x0))
+            }
             WindowKind::Overlay => {
                 // Overlay 窗口：始终置顶、无装饰、支持透明度
                 // WS_EX_LAYERED 仅在需要鼠标穿透或禁用 DirectComposition 时添加
