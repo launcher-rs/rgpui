@@ -53,6 +53,7 @@
 | #56468 | 2026-07-10 | Merge branch 'main' into lillian/weird-mermaid-vram-leak |
 | #54145 | 2026-07-10 | Merge branch 'main' into parent-animation-element |
 | #58087 | 2026-07-10 | Lock caching to entity-backed views, document identity uniqueness, clamp example cursor on external writes |
+| #58139 | 2026-07-10 | gpui: Add tests for simulated path prompt |
 
 ## gpui-component
 

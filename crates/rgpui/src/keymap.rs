@@ -4,10 +4,9 @@ mod context;
 pub use binding::*;
 pub use context::*;
 
-use crate::collections::{HashMap, HashSet};
+use crate::collections::{HashSet, TypeIdHashMap};
 use crate::{Action, AsKeystroke, Keystroke, Unbind, is_no_action, is_unbind};
 use smallvec::SmallVec;
-use std::any::TypeId;
 
 /// 当前活动的键映射版本的不透明标识符。
 /// 每当添加或删除绑定时，键映射的版本都会更改。
@@ -18,7 +17,7 @@ pub struct KeymapVersion(usize);
 #[derive(Default)]
 pub struct Keymap {
     bindings: Vec<KeyBinding>,
-    binding_indices_by_action_id: HashMap<TypeId, SmallVec<[usize; 3]>>,
+    binding_indices_by_action_id: TypeIdHashMap<SmallVec<[usize; 3]>>,
     disabled_binding_indices: Vec<usize>,
     version: KeymapVersion,
 }

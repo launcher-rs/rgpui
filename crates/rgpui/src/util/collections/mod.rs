@@ -6,10 +6,14 @@ pub type HashSet<T> = FxHashSet<T>;
 pub type IndexMap<K, V> = indexmap::IndexMap<K, V, rustc_hash::FxBuildHasher>;
 /// 基于 FxHasher 的索引有序 IndexSet 类型别名。
 pub type IndexSet<T> = indexmap::IndexSet<T, rustc_hash::FxBuildHasher>;
+pub type TypeIdHashMap<V> =
+    std::collections::HashMap<std::any::TypeId, V, crate::rgpui_util::TypeIdHashBuilder>;
+pub type TypeIdHashSet =
+    std::collections::HashSet<std::any::TypeId, crate::rgpui_util::TypeIdHashBuilder>;
 
 pub use indexmap::Equivalent;
 pub use rustc_hash::FxHasher;
-pub use rustc_hash::{FxHashMap, FxHashSet};
+pub use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 pub use std::collections::*;
 
 pub mod vecmap;

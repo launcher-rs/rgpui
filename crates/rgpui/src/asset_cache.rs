@@ -2,7 +2,7 @@ use crate::{App, SharedString, SharedUri};
 use futures::{Future, TryFutureExt};
 
 use std::fmt::Debug;
-use std::hash::{Hash, Hasher};
+use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -78,7 +78,5 @@ where
 
 /// 使用快速、非密码学安全的哈希函数从数据中获取标识符
 pub fn hash<T: Hash>(data: &T) -> u64 {
-    let mut hasher = crate::collections::FxHasher::default();
-    data.hash(&mut hasher);
-    hasher.finish()
+    crate::collections::FxBuildHasher.hash_one(data)
 }

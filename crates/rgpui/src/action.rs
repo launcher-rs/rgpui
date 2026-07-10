@@ -1,4 +1,4 @@
-use crate::collections::HashMap;
+use crate::collections::{HashMap, TypeIdHashMap};
 use anyhow::{Context as _, Result};
 pub use no_action::{NoAction, Unbind, is_no_action, is_unbind};
 pub use rgpui_macros::Action;
@@ -193,7 +193,7 @@ pub(crate) struct ActionRegistry {
     /// 按名称存储的 Action 数据（包含构建函数和元数据）
     by_name: HashMap<&'static str, ActionData>,
     /// TypeId -> Action 名称的映射
-    names_by_type_id: HashMap<TypeId, &'static str>,
+    names_by_type_id: TypeIdHashMap<&'static str>,
     /// 所有已注册 Action 的名称列表（用于返回静态切片）
     all_names: Vec<&'static str>,
     /// 弃用别名映射：旧名称 -> 推荐名称

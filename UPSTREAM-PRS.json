@@ -844,8 +844,8 @@
       "number": 58087,
       "upstream": "zed",
       "title": "Lock caching to entity-backed views, document identity uniqueness, clamp example cursor on external writes",
-      "status": "check-failed",
-      "note": "大型重构（Unify Render/RenderOnce），修改 Cargo.toml，需手动处理",
+      "status": "merged",
+      "note": "大型重构（Unify Render/RenderOnce），手动合并成功",
       "merged_at": "2026-07-10"
     },
     {
@@ -915,6 +915,164 @@
       "upstream": "zed",
       "title": "gpui: Add input region support for Wayland windows",
       "status": "merged"
+    },
+    {
+      "number": 57609,
+      "upstream": "zed",
+      "title": "More leaks",
+      "status": "analyzed"
+    },
+    {
+      "number": 50665,
+      "upstream": "zed",
+      "title": "Fix GPUI crash when using cached view with Input",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 56065,
+      "upstream": "zed",
+      "title": "gpui: Accesskit support",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 56656,
+      "upstream": "zed",
+      "title": "build: Reduce dev debug info level from full to limited",
+      "status": "check-failed",
+      "merged_at": "",
+      "note": "skipped - build config, not gpui core"
+    },
+    {
+      "number": 57106,
+      "upstream": "zed",
+      "title": "gpui: Trim trailing whitespace and punctuation before ellipsis",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 57203,
+      "upstream": "zed",
+      "title": "Fix window crash",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 57450,
+      "upstream": "zed",
+      "title": "Fix multiline text truncation",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 57685,
+      "upstream": "zed",
+      "title": "gpui: Add support for inset shadow",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 57717,
+      "upstream": "zed",
+      "title": "sidebar: Improve performance of rebuild_contents",
+      "status": "check-failed",
+      "merged_at": "",
+      "note": "skipped - sidebar, not gpui core"
+    },
+    {
+      "number": 57741,
+      "upstream": "zed",
+      "title": "gpui: Make Window::paint_*_shadows pub",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 57885,
+      "upstream": "zed",
+      "title": "gpui: Fix panic with invalid focus IDs",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 57954,
+      "upstream": "zed",
+      "title": "gpui: Application::inaccessible()",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 58061,
+      "upstream": "zed",
+      "title": "gpui: Add item_is_above_viewport / item_is_below_viewport APIs to ListState",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 58134,
+      "upstream": "zed",
+      "title": "gpui: Fix stuck tooltips after mouse leaves origin",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 58139,
+      "upstream": "zed",
+      "title": "gpui: Add tests for simulated path prompt",
+      "status": "merged",
+      "merged_at": "2026-07-10",
+      "note": ""
+    },
+    {
+      "number": 58142,
+      "upstream": "zed",
+      "title": "gpui: Allow chaining flex_grow() and flex_shrink() with custom factors",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 58169,
+      "upstream": "zed",
+      "title": "gpui: Allow repositioning macOS traffic lights at runtime",
+      "status": "merged",
+      "merged_at": "",
+      "note": "already in base (pre-fork)"
+    },
+    {
+      "number": 58629,
+      "upstream": "zed",
+      "title": "Use no-op hasher for TypeId hashing",
+      "status": "pending",
+      "merged_at": "",
+      "note": ""
+    },
+    {
+      "number": 58689,
+      "upstream": "zed",
+      "title": "Fix agent permission row flicker when scrolled away from a tall plan",
+      "status": "check-failed",
+      "merged_at": "",
+      "note": "skipped - agent, not gpui core"
+    },
+    {
+      "number": 58813,
+      "upstream": "zed",
+      "title": "Fix profiler breaking concurrent tests",
+      "status": "check-failed",
+      "merged_at": "",
+      "note": "skipped - test infra, not gpui core"
     }
   ]
 }
