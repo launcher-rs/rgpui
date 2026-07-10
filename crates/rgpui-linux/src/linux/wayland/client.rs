@@ -7,8 +7,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::collections::HashMap;
-use crate::http_client::Url;
 use ashpd::WindowIdentifier;
 use calloop::{
     EventLoop, LoopHandle,
@@ -17,6 +15,8 @@ use calloop::{
 use calloop_wayland_source::WaylandSource;
 use filedescriptor::Pipe;
 use rgpui::ResultExt as _;
+use rgpui::collections::HashMap;
+use rgpui::http_client::Url;
 use smallvec::SmallVec;
 use wayland_backend::client::ObjectId;
 use wayland_backend::protocol::WEnum;

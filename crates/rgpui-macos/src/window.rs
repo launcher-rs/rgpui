@@ -56,7 +56,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSPoint as Objc2NSPoint, NSRect as Objc2NSRect};
 use parking_lot::Mutex;
 use raw_window_handle as rwh;
-use rgpui_util::ResultExt;
+use rgpui::ResultExt;
 use smallvec::SmallVec;
 use std::{
     cell::Cell,
@@ -795,7 +795,7 @@ impl MacWindow {
                 WindowKind::Normal => {
                     msg_send![WINDOW_CLASS, alloc]
                 }
-                WindowKind::PopUp | WindowKind::AnchoredPopup(_) => {
+                WindowKind::PopUp | WindowKind::AnchoredPopup(_) | WindowKind::Overlay => {
                     style_mask |= NSWindowStyleMaskNonactivatingPanel;
                     msg_send![PANEL_CLASS, alloc]
                 }
@@ -988,7 +988,7 @@ impl MacWindow {
                         let _: () = msg_send![native_window, setTabbingIdentifier:nil];
                     }
                 }
-                WindowKind::PopUp | WindowKind::AnchoredPopup(_) => {
+                WindowKind::PopUp | WindowKind::AnchoredPopup(_) | WindowKind::Overlay => {
                     // Use a tracking area to allow receiving MouseMoved events even when
                     // the window or application aren't active, which is often the case
                     // e.g. for notification windows.
