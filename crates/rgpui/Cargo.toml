@@ -310,7 +310,3 @@ path = "examples/a11y.rs"
 name = "daemon_app"
 path = "examples/daemon_app.rs"
 
-[[example]]
-name = "screen_capture"
-path = "examples/screen_capture.rs"
-required-features = ["screen-capture"]
