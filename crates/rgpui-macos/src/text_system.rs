@@ -1,4 +1,3 @@
-use crate::collections::{HashMap, HashSet};
 use anyhow::anyhow;
 use cocoa::appkit::CGFloat;
 use core_foundation::{
@@ -39,6 +38,7 @@ use pathfinder_geometry::{
     transform2d::Transform2F,
     vector::Vector2F,
 };
+use rgpui::collections::{HashMap, HashSet};
 use rgpui::{
     Bounds, DevicePixels, Font, FontFallbacks, FontFeatures, FontId, FontMetrics, FontRun,
     FontStyle, FontWeight, GlyphId, Hsla, LineLayout, Pixels, PlatformTextSystem,
