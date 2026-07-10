@@ -33,9 +33,7 @@ tls = [
     "dep:rustls",
     "dep:rustls-platform-verifier",
 ]
-wayland = [
-    "bitflags",
-]
+wayland = []
 x11 = [
     "scap?/x11",
 ]
@@ -54,7 +52,7 @@ accesskit.workspace = true
 anyhow.workspace = true
 async-task = "4.7"
 backtrace.workspace = true
-bitflags = { workspace = true, optional = true }
+bitflags.workspace = true
 
 ctor.workspace = true
 dirs.workspace = true
