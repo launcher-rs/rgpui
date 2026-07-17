@@ -1216,6 +1216,12 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         anyhow::bail!("render_to_image not implemented for this platform")
     }
 
+    // ---- 窗口扩展区域（Wayland layer-shell） ----
+    fn set_exclusive_zone(&self, _zone: Pixels) {}
+
+    // ---- 用户注意力 ----
+    fn request_attention(&self) {}
+
     // ---- 窗口位置 ----
     fn set_position(&mut self, _position: Point<Pixels>) {}
 

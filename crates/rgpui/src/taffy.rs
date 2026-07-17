@@ -242,6 +242,33 @@ impl TaffyLayoutEngine {
             .expect(EXPECT_MESSAGE);
     }
 
+    /// 将指定节点的尺寸设置为填充可用空间。
+    /// 当元素尺寸为 `auto` 时，此方法将其宽高设置为可用空间大小。
+    pub fn stretch_auto_size_to_fill(
+        &mut self,
+        id: LayoutId,
+        available_space: Size<Pixels>,
+        scale_factor: f32,
+    ) {
+        let taffy_tree = &mut self.taffy;
+        let node = id.into();
+        let mut style = taffy_tree.style(node).expect(EXPECT_MESSAGE).clone();
+
+        let auto = taffy::style::Dimension::auto();
+        if style.size.width == auto {
+            style.size.width =
+                taffy::style::Dimension::length(available_space.width.0 * scale_factor);
+        }
+        let auto = taffy::style::Dimension::auto();
+        if style.size.height == auto {
+            style.size.height =
+                taffy::style::Dimension::length(available_space.height.0 * scale_factor);
+        }
+
+        // TaffyTree does not have a style_mut, so we need to set the style via set_style
+        _ = taffy_tree.set_style(node, style);
+    }
+
     // Pixel snapping
     //
     // Painting primitives at non-integer pixel coordinates produces blurry

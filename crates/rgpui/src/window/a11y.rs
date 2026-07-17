@@ -99,6 +99,23 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+/// 辅助功能调试信息
+pub mod debug {
+    use crate::{Pixels, Size};
+
+    /// 每帧的辅助功能调试信息
+    pub struct FrameDebugInfo {
+        /// 视口大小
+        pub viewport_size: Size<Pixels>,
+        /// 缩放因子
+        pub scale_factor: f32,
+        /// Tab 停靠点数量
+        pub tab_stop_count: usize,
+    }
+}
+
+use debug::FrameDebugInfo;
+
 /// The fixed AccessKit node ID used for the root of every window's a11y tree.
 pub(crate) const ROOT_NODE_ID: NodeId = NodeId(0);
 
@@ -139,6 +156,8 @@ pub(crate) struct A11y {
     /// The window's title, used to label the root node so assistive
     /// technology can tell windows apart.
     window_title: Option<SharedString>,
+    /// 上一帧的辅助功能调试信息
+    last_frame_info: Option<FrameDebugInfo>,
 }
 
 impl A11y {
@@ -156,6 +175,7 @@ impl A11y {
             node_bounds: FxHashMap::default(),
             action_listeners: FxHashMap::default(),
             window_title,
+            last_frame_info: None,
         }
     }
 
@@ -225,8 +245,31 @@ impl A11y {
     }
 
     /// Finalize the tree and produce a [`TreeUpdate`] for the platform adapter.
-    pub(crate) fn end_frame(&mut self) -> TreeUpdate {
+    pub(crate) fn end_frame(&mut self, frame_info: FrameDebugInfo) -> TreeUpdate {
+        self.last_frame_info = Some(frame_info);
         self.nodes.finalize()
+    }
+
+    /// 记录焦点在无对应 a11y 节点时的警告
+    pub(crate) fn note_focus_without_node(&mut self, focus_id: FocusId, reason: &str) {
+        log::warn!(
+            "a11y: focus handle {:?} is focused but has no a11y node: {}",
+            focus_id,
+            reason
+        );
+    }
+
+    /// 返回上一帧辅助功能调试信息的 JSON 表示
+    pub(crate) fn debug_tree_json(&self) -> Option<String> {
+        self.last_frame_info.as_ref().map(|info| {
+            format!(
+                r#"{{"viewport_size":{{"width":{},"height":{}}},"scale_factor":{},"tab_stop_count":{}}}"#,
+                info.viewport_size.width.0,
+                info.viewport_size.height.0,
+                info.scale_factor,
+                info.tab_stop_count
+            )
+        })
     }
 }
 
@@ -528,8 +571,8 @@ impl A11yNodeBuilder {
 mod tests {
     // Import specific items rather than glob-importing `super`, which would pull
     // in rgpui's own `test` attribute macro and shadow the standard one.
-    use super::{A11y, A11yNodeBuilder, ROOT_NODE_ID};
-    use crate::FocusId;
+    use super::{A11y, A11yNodeBuilder, FrameDebugInfo, ROOT_NODE_ID};
+    use crate::{FocusId, Pixels};
     use accesskit::{NodeId, Role};
     use std::sync::{Arc, atomic::AtomicBool};
 
@@ -777,7 +820,15 @@ mod tests {
         a11y.nodes.pop(); // c
         a11y.nodes.pop(); // b
 
-        let update = a11y.end_frame();
+        use crate::Size;
+        let update = a11y.end_frame(FrameDebugInfo {
+            viewport_size: Size {
+                width: Pixels(0.0),
+                height: Pixels(0.0),
+            },
+            scale_factor: 1.0,
+            tab_stop_count: 0,
+        });
         assert_eq!(update.focus, a);
     }
 }

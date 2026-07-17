@@ -54,6 +54,9 @@
 | #54145 | 2026-07-10 | Merge branch 'main' into parent-animation-element |
 | #58087 | 2026-07-10 | Lock caching to entity-backed views, document identity uniqueness, clamp example cursor on external writes |
 | #58139 | 2026-07-10 | gpui: Add tests for simulated path prompt |
+| #58629 | 2026-07-17 | Autofix |
+| #61136 | 2026-07-17 | fix gpui prompt mouse down listener |
+| #61118 | 2026-07-17 | gpui: Avoid redundant group hover redraws |
 
 ## gpui-component
 

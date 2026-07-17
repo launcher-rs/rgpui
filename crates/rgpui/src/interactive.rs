@@ -474,6 +474,35 @@ impl Default for ScrollDelta {
     }
 }
 
+/// 来自平台的触摸事件，当用户触摸屏幕或触控板时生成。
+#[derive(Clone, Debug)]
+pub struct TouchEvent {
+    /// 触摸在窗口上的位置。
+    pub position: Point<Pixels>,
+    /// 触摸事件阶段。
+    pub phase: TouchPhase,
+    /// 触摸事件期间按住的修饰符。
+    pub modifiers: Modifiers,
+}
+
+impl Default for TouchEvent {
+    fn default() -> Self {
+        Self {
+            position: Point::default(),
+            phase: TouchPhase::default(),
+            modifiers: Modifiers::default(),
+        }
+    }
+}
+
+impl Sealed for TouchEvent {}
+impl InputEvent for TouchEvent {
+    fn to_platform_input(self) -> PlatformInput {
+        PlatformInput::Touch(self)
+    }
+}
+impl GestureEvent for TouchEvent {}
+
 /// 来自平台的捏合手势事件，当用户执行
 /// 捏合缩放手势时生成（通常在触控板上）。
 ///
@@ -672,6 +701,8 @@ pub enum PlatformInput {
     ScrollWheel(ScrollWheelEvent),
     /// 执行了捏合手势。
     Pinch(PinchEvent),
+    /// 触摸事件。
+    Touch(TouchEvent),
     /// 文件被拖放并放到窗口上。
     FileDrop(FileDropEvent),
 }
@@ -689,6 +720,7 @@ impl PlatformInput {
             PlatformInput::MouseExited(event) => Some(event),
             PlatformInput::ScrollWheel(event) => Some(event),
             PlatformInput::Pinch(event) => Some(event),
+            PlatformInput::Touch(_) => None,
             PlatformInput::FileDrop(event) => Some(event),
         }
     }
@@ -705,6 +737,7 @@ impl PlatformInput {
             PlatformInput::MouseExited(_) => None,
             PlatformInput::ScrollWheel(_) => None,
             PlatformInput::Pinch(_) => None,
+            PlatformInput::Touch(_) => None,
             PlatformInput::FileDrop(_) => None,
         }
     }

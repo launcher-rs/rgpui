@@ -745,7 +745,7 @@ impl Style {
                 self.border_style,
             );
             bg_quad.continuous_corners = self.continuous_corners;
-            bg_quad.transform = transform;
+            bg_quad.transform = Some(transform);
             bg_quad.blend_mode = self.blend_mode.unwrap_or_default();
             window.paint_quad(bg_quad);
         }
@@ -787,7 +787,7 @@ impl Style {
                 self.border_style,
             );
             quad.continuous_corners = self.continuous_corners;
-            quad.transform = transform;
+            quad.transform = Some(transform);
 
             window.with_content_mask(Some(ContentMask { bounds: top_bounds }), |window| {
                 window.paint_quad(quad.clone());
