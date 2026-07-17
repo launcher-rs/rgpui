@@ -2850,7 +2850,7 @@ impl Window {
     /// Benchmarks drive drawing synchronously rather than through a platform
     /// frame-request loop, so they call this after each measured update to
     /// submit the frame like production presentation would.
-    #[cfg(feature = "bench")]
+    #[cfg(any(feature = "bench", feature = "test-support"))]
     pub fn present_if_needed(&mut self) {
         if self.needs_present.get() {
             self.present();

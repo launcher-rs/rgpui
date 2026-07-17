@@ -5,7 +5,7 @@ mod keystroke;
 /// Types for configuring parent-anchored popup windows such as menus, dropdowns and tooltips.
 pub mod popup;
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(any(test, feature = "bench", feature = "test-support"))]
 mod bench_dispatcher;
 
 #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -85,7 +85,7 @@ pub(crate) use test::*;
 #[cfg(any(test, feature = "test-support"))]
 pub use test::{TestDispatcher, TestScreenCaptureSource, TestScreenCaptureStream};
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(any(test, feature = "bench", feature = "test-support"))]
 pub use bench_dispatcher::BenchDispatcher;
 
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
@@ -1301,7 +1301,7 @@ pub trait PlatformDispatcher: Send + Sync {
     }
 
     // 此 cfg 必须与 `bench_dispatcher` 模块的匹配，该模块在编译时实现此方法
-    #[cfg(any(test, feature = "bench"))]
+    #[cfg(any(test, feature = "bench", feature = "test-support"))]
     fn as_bench(&self) -> Option<&BenchDispatcher> {
         None
     }
