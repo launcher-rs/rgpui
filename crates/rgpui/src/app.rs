@@ -26,7 +26,10 @@ use crate::collections::{FxHashMap, FxHashSet, HashMap, TypeIdHashMap, TypeIdHas
 use crate::http_client::{HttpClient, Url};
 use crate::rgpui_util::ResultExt;
 pub use async_context::*;
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(all(
+    any(test, feature = "test-support"),
+    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+))]
 pub use bench_context::{BenchAppContext, BenchWindowContext};
 pub use context::*;
 pub use entity_map::*;
@@ -58,7 +61,10 @@ use crate::{
 };
 
 mod async_context;
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(all(
+    any(test, feature = "test-support"),
+    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+))]
 mod bench_context;
 mod context;
 mod entity_map;

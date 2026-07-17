@@ -5,7 +5,10 @@ mod keystroke;
 /// Types for configuring parent-anchored popup windows such as menus, dropdowns and tooltips.
 pub mod popup;
 
-#[cfg(any(test, feature = "bench", feature = "test-support"))]
+#[cfg(all(
+    any(test, feature = "bench", feature = "test-support"),
+    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+))]
 mod bench_dispatcher;
 
 #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -85,7 +88,10 @@ pub(crate) use test::*;
 #[cfg(any(test, feature = "test-support"))]
 pub use test::{TestDispatcher, TestScreenCaptureSource, TestScreenCaptureStream};
 
-#[cfg(any(test, feature = "bench", feature = "test-support"))]
+#[cfg(all(
+    any(test, feature = "bench", feature = "test-support"),
+    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+))]
 pub use bench_dispatcher::BenchDispatcher;
 
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
