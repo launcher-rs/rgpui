@@ -1,0 +1,16 @@
+[package]
+name = "rgpui_async_demo"
+edition.workspace = true
+publish = false
+version = "0.1.0"
+
+[dependencies]
+rgpui = {workspace = true}
+rgpui-component = {workspace = true}
+rgpui-platform = {workspace = true}
+rgpui-component-assets = {workspace = true}
+rgpui-tokio  = {workspace = true}
+reqwest = { workspace = true }
+
+[lints]
+workspace = true

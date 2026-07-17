@@ -1,7 +1,9 @@
 use rgpui::{
     PlatformDispatcher, Priority, PriorityQueueReceiver, PriorityQueueSender, RunnableVariant,
 };
+#[cfg(feature = "multithreaded")]
 use std::sync::Arc;
+#[cfg(feature = "multithreaded")]
 use std::sync::atomic::AtomicI32;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
@@ -24,6 +26,7 @@ fn shared_memory_supported() -> bool {
 }
 
 /// 主线程任务项枚举
+#[cfg(feature = "multithreaded")]
 enum MainThreadItem {
     Runnable(RunnableVariant),
     Delayed {
@@ -35,12 +38,14 @@ enum MainThreadItem {
 }
 
 /// 主线程邮箱，用于从其他线程向主线程发送任务
+#[cfg(feature = "multithreaded")]
 struct MainThreadMailbox {
     sender: PriorityQueueSender<MainThreadItem>,
     receiver: parking_lot::Mutex<PriorityQueueReceiver<MainThreadItem>>,
     signal: AtomicI32,
 }
 
+#[cfg(feature = "multithreaded")]
 impl MainThreadMailbox {
     fn new() -> Self {
         let (sender, receiver) = PriorityQueueReceiver::new();
@@ -129,6 +134,7 @@ pub struct WebDispatcher {
     main_thread_id: std::thread::ThreadId,
     browser_window: web_sys::Window,
     background_sender: PriorityQueueSender<RunnableVariant>,
+    #[cfg(feature = "multithreaded")]
     main_thread_mailbox: Arc<MainThreadMailbox>,
     supports_threads: bool,
     #[cfg(feature = "multithreaded")]
@@ -152,14 +158,19 @@ impl WebDispatcher {
         #[cfg(not(feature = "multithreaded"))]
         let (background_sender, _) = PriorityQueueReceiver::new();
 
+        #[cfg(feature = "multithreaded")]
         let main_thread_mailbox = Arc::new(MainThreadMailbox::new());
 
         #[cfg(feature = "multithreaded")]
         let supports_threads = allow_threads && shared_memory_supported();
         #[cfg(not(feature = "multithreaded"))]
-        let supports_threads = false;
+        let supports_threads = {
+            let _ = allow_threads;
+            false
+        };
 
         if supports_threads {
+            #[cfg(feature = "multithreaded")]
             main_thread_mailbox.run_waker_loop(browser_window.clone());
         } else {
             log::warn!(
@@ -206,6 +217,7 @@ impl WebDispatcher {
             main_thread_id: std::thread::current().id(),
             browser_window,
             background_sender,
+            #[cfg(feature = "multithreaded")]
             main_thread_mailbox,
             supports_threads,
             #[cfg(feature = "multithreaded")]
@@ -245,8 +257,11 @@ impl PlatformDispatcher for WebDispatcher {
         if self.on_main_thread() {
             schedule_runnable(&self.browser_window, runnable, priority);
         } else {
+            #[cfg(feature = "multithreaded")]
             self.main_thread_mailbox
                 .post(priority, MainThreadItem::Runnable(runnable));
+            #[cfg(not(feature = "multithreaded"))]
+            schedule_runnable(&self.browser_window, runnable, priority);
         }
     }
 
@@ -263,8 +278,21 @@ impl PlatformDispatcher for WebDispatcher {
                 )
                 .ok();
         } else {
+            #[cfg(feature = "multithreaded")]
             self.main_thread_mailbox
                 .post(Priority::High, MainThreadItem::Delayed { runnable, millis });
+            #[cfg(not(feature = "multithreaded"))]
+            {
+                let callback = Closure::once_into_js(move || {
+                    runnable.run();
+                });
+                self.browser_window
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(
+                        callback.unchecked_ref(),
+                        millis,
+                    )
+                    .ok();
+            }
         }
     }
 
@@ -276,8 +304,17 @@ impl PlatformDispatcher for WebDispatcher {
             self.browser_window
                 .queue_microtask(callback.unchecked_ref());
         } else {
+            #[cfg(feature = "multithreaded")]
             self.main_thread_mailbox
                 .post(Priority::High, MainThreadItem::RealtimeFunction(function));
+            #[cfg(not(feature = "multithreaded"))]
+            {
+                let callback = Closure::once_into_js(move || {
+                    function();
+                });
+                self.browser_window
+                    .queue_microtask(callback.unchecked_ref());
+            }
         }
     }
 
@@ -287,6 +324,7 @@ impl PlatformDispatcher for WebDispatcher {
 }
 
 /// 在主线程上执行任务项
+#[cfg(feature = "multithreaded")]
 fn execute_on_main_thread(window: &web_sys::Window, item: MainThreadItem) {
     match item {
         MainThreadItem::Runnable(runnable) => {

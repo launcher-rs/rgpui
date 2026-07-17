@@ -64,6 +64,7 @@ struct Background {
     LinearColorStop colors[4];
     uint stop_count;
     uint pad;
+    uint align_pad;
     float2 center;
     float2 radius;
 };
@@ -94,7 +95,8 @@ struct AtlasTile {
 };
 
 struct TransformationMatrix {
-    float2x2 rotation_scale;
+    float2 rotation_scale_0;
+    float2 rotation_scale_1;
     float2 translation;
 };
 
@@ -124,7 +126,10 @@ float4 distance_from_clip_rect(float2 unit_vertex, Bounds bounds, Bounds clip_bo
 
 float4 distance_from_clip_rect_transformed(float2 unit_vertex, Bounds bounds, Bounds clip_bounds, TransformationMatrix transformation) {
     float2 position = unit_vertex * bounds.size + bounds.origin;
-    float2 transformed = mul(position, transformation.rotation_scale) + transformation.translation;
+    float2 transformed = float2(
+        dot(transformation.rotation_scale_0, position),
+        dot(transformation.rotation_scale_1, position)
+    ) + transformation.translation;
     return distance_from_clip_rect_impl(transformed, clip_bounds);
 }
 
@@ -284,7 +289,10 @@ float pick_corner_radius(float2 center_to_point, Corners corner_radii) {
 float4 to_device_position_transformed(float2 unit_vertex, Bounds bounds,
                                       TransformationMatrix transformation) {
     float2 position = unit_vertex * bounds.size + bounds.origin;
-    float2 transformed = mul(position, transformation.rotation_scale) + transformation.translation;
+    float2 transformed = float2(
+        dot(transformation.rotation_scale_0, position),
+        dot(transformation.rotation_scale_1, position)
+    ) + transformation.translation;
     float2 device_position = transformed / global_viewport_size * float2(2.0, -2.0) + float2(-1.0, 1.0);
     return float4(device_position, 0.0, 1.0);
 }
@@ -631,6 +639,7 @@ struct Quad {
     Corners corner_radii;
     Edges border_widths;
     uint continuous_corners;
+    uint pad_after_continuous_corners;
     TransformationMatrix transform;
     uint blend_mode;
     uint pad_quad;

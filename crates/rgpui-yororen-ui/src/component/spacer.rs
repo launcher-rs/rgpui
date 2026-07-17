@@ -51,6 +51,6 @@ impl Styled for Spacer {
 
 impl RenderOnce for Spacer {
     fn render(self, _window: &mut rgpui::Window, _cx: &mut rgpui::App) -> impl IntoElement {
-        self.base.id(self.element_id).flex_grow()
+        self.base.id(self.element_id).flex_grow_1()
     }
 }

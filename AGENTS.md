@@ -2,26 +2,39 @@
 
 ## 项目概述
 
-rgpui 是基于 Zed 的 GPU 加速 UI 框架 `gpui` 的跨平台移植。采用 Rust workspace 架构，核心库 `gpui` 通过 `Platform` trait 抽象各平台实现。
+rgpui 是基于 Zed 的 GPU 加速 UI 框架 `gpui` 的跨平台移植。采用 Rust workspace 架构，核心库 `rgpui` 通过 `Platform` trait 抽象各平台实现。
 
 ## 架构与包边界
 
 ```
 crates/
-├── gpui/           # 核心 UI 框架，平台无关逻辑
-├── gpui_platform/  # 平台选择入口，根据 cfg 选择具体平台 crate
-├── gpui_windows/   # Windows 平台实现（windows-rs 绑定）
-├── gpui_macos/     # macOS 平台实现
-├── gpui_linux/     # Linux 平台实现
-├── gpui_web/       # Web/WASM 平台实现
-├── gpui_wgpu/      # wgpu 渲染后端
-├── gpui_macros/    # 过程宏
-└── gpui_tokio/     # Tokio 异步运行时集成
+├── rgpui/                   # 核心 UI 框架，平台无关逻辑
+├── rgpui-3d/                # 3D 渲染支持
+├── rgpui-adabraka-ui/       # Adabraka UI 组件库
+├── rgpui-character/         # 字符/文本处理
+├── rgpui-linux/             # Linux 平台实现
+├── rgpui-macos/             # macOS 平台实现
+├── rgpui-macros/            # 过程宏
+├── rgpui-platform/          # 平台选择入口，根据 cfg 选择具体平台 crate
+├── rgpui-term/              # 终端组件
+├── rgpui-tokio/             # Tokio 异步运行时集成
+├── rgpui-web/               # Web/WASM 平台实现
+├── rgpui-wgpu/              # wgpu 渲染后端
+├── rgpui-windows/           # Windows 平台实现（windows-rs 绑定）
+├── rgpui-yororen-ui/        # Yororen UI 组件库
+└── rgpui-component-workspce/  # 组件子工作区（独立 Cargo workspace）
+    ├── rgpui-component/          # 通用 UI 组件框架
+    ├── rgpui-component-assets/   # 组件资源文件（图标、图片等）
+    ├── rgpui-component-macros/   # 组件过程宏
+    ├── rgpui-component-story/    # 组件 Storybook（原生）
+    ├── rgpui-component-story-web/ # 组件 Storybook（WASM/Web）
+    ├── rgpui-webview/            # WebView 组件
+    └── themes/                   # 22 套 JSON 颜色主题
 ```
 
-- `gpui/src/platform.rs` 定义了 `Platform` trait 和 `PlatformWindow` trait，所有平台必须实现
-- 示例代码使用 `gpui_platform::application()` 获取平台应用入口
-- 平台特有代码放在对应 `gpui_<platform>/` crate 中
+- `rgpui/src/platform.rs` 定义了 `Platform` trait 和 `PlatformWindow` trait，所有平台必须实现
+- 示例代码使用 `rgpui_platform::application()` 获取平台应用入口
+- 平台特有代码放在对应 `rgpui-<platform>/` crate 中
 
 ## 开发命令
 
@@ -39,7 +52,7 @@ cargo run --example tray
 cargo test --workspace
 
 # 运行单个包的测试
-cargo test -p gpui
+cargo test -p rgpui
 
 # Clippy 检查
 cargo clippy --workspace
@@ -54,14 +67,14 @@ workspace 级别拒绝 `dbg_macro` 和 `todo`。`style` lint 规则设为 `allow
 
 ## 托盘（System Tray）实现
 
-托盘功能在 `gpui` + `gpui_windows` 中实现，关键文件：
+托盘功能在 `rgpui` + `rgpui-windows` 中实现，关键文件：
 
 | 文件 | 说明 |
 |------|------|
-| `gpui/src/tray.rs` | `TrayMenuItem`、`TrayIconEvent` 等公开类型 |
-| `gpui/src/app.rs` | `set_tray_icon`、`set_tray_menu`、`on_tray_menu_action` 等 App 方法 |
-| `gpui_windows/src/tray.rs` | `WindowsTray` 结构体，`Shell_NotifyIconW` 集成 |
-| `gpui_windows/src/platform.rs` | 消息循环处理 `WM_GPUI_TRAY_ICON` 和 `WM_COMMAND` |
+| `rgpui/src/tray.rs` | `TrayMenuItem`、`TrayIconEvent` 等公开类型 |
+| `rgpui/src/app.rs` | `set_tray_icon`、`set_tray_menu`、`on_tray_menu_action` 等 App 方法 |
+| `rgpui-windows/src/tray.rs` | `WindowsTray` 结构体，`Shell_NotifyIconW` 集成 |
+| `rgpui-windows/src/platform.rs` | 消息循环处理 `WM_GPUI_TRAY_ICON` 和 `WM_COMMAND` |
 
 ### 托盘图标格式
 
@@ -151,6 +164,96 @@ CI 通过矩阵策略在三个平台分别运行，确保跨平台兼容性。
 
 - PR 状态追踪: `UPSTREAM-PRS.json`
 - 上游仓库规则: `.opencode/upstream-rules.json`
+
+### 上游独立 crate → rgpui 模块映射
+
+上游 zed 将多个 crate 拆为独立工作区 crate（`collections`、`sum_tree` 等），而 rgpui 将它们合并为 `rgpui` crate 内部的模块。合并 PR 时，`scripts/merge-upstream-pr.ps1` 通过 `content_mappings` 自动替换 `use` 路径。以下是关键映射：
+
+| 上游 `use <crate>::<item>` | rgpui 中的位置 | 说明 |
+|---|---|---|
+| `use collections::FxHashMap;` | `use crate::collections::FxHashMap;` | 根级 `pub mod collections;`，文件在 `rgpui/src/collections.rs` |
+| `use sum_tree::SumTree;` | `use crate::sum_tree::SumTree;` | 根级 `pub mod sum_tree;`，文件在 `rgpui/src/sum_tree.rs` |
+| `use scheduler::Scheduler;` | `use crate::scheduler::Scheduler;` | 根级 `pub mod scheduler;`，文件在 `rgpui/src/scheduler.rs` |
+| `use refineable::Refineable;` | `use crate::refineable::Refineable;` | 根级 `pub mod refineable;`，目录在 `rgpui/src/refineable/` |
+| `use http_client::HttpClient;` | `use crate::http_client::HttpClient;` | 根级 `pub mod http_client;`，目录在 `rgpui/src/http_client/` |
+| `use gpui_util::ResultExt;` | `use rgpui::ResultExt;` | `gpui_util` → `crate::rgpui_util`（私有模块），关键项通过 `pub use rgpui_util::...` 重导出到 `rgpui::` |
+| `use gpui_util::defer;` | `use rgpui::defer;` | 同上 |
+| `use gpui_macros::*;` | `use rgpui_macros::*;` | 独立 proc-macro crate，路径不变 |
+
+**关于 `gpui_util` 的重要说明**：内容映射 `"gpui_util": "rgpui_util"` 在 `rgpui` crate 内部代码中正确，但在**平台 crate**（`rgpui-windows`、`rgpui-linux`、`rgpui-macos`）中，`rgpui_util` 不是一个可访问的 crate 或路径。平台 crate 应使用 `use rgpui::ResultExt` 等通过 `rgpui` crate 重导出的名称。合并后需手动修正此导入。
+
+**关于 `Cargo.toml`**：上游 `Cargo.toml` 中包含 `collections.workspace = true`、`sum_tree.workspace = true` 等依赖声明，这些在 rgpui 中不存在对应工作区 crate。合并 PR 时**跳过修改 Cargo.toml**，仅在代码中手动适配依赖项的引用方式。
+
+## Web/WASM 开发
+
+项目支持编译为 WebAssembly 在浏览器中运行。Web 平台实现位于 `rgpui-web/` crate。
+
+### 前置条件
+
+```bash
+rustup toolchain install nightly
+rustup target add wasm32-unknown-unknown --toolchain nightly
+rustup component add rust-src --toolchain nightly
+cargo install trunk
+```
+
+### 运行 Web 示例
+
+```bash
+# rgpui-component Web 示例（位于子工作区中）
+cd crates/rgpui-component-workspce/rgpui-component/examples/hello_world_web && trunk serve
+cd crates/rgpui-component-workspce/rgpui-component/examples/components_web && trunk serve
+
+# rgpui-web 示例
+cd crates/rgpui-web/examples/hello_web && trunk serve
+cd crates/rgpui-web/examples/hello_world_web && trunk serve
+cd crates/rgpui-web/examples/components_web && trunk serve
+```
+
+### Web 示例目录结构
+
+每个 Web 示例是独立的子 crate，包含以下必要文件：
+
+| 文件 | 说明 |
+|------|------|
+| `Cargo.toml` | 包配置，使用 `[workspace]` 避免继承问题 |
+| `main.rs` | 应用代码，包含 `#[cfg(target_family = "wasm")]` 入口 |
+| `index.html` | HTML 外壳，通过 `data-trunk` 链接 Rust 二进制 |
+| `trunk.toml` | Trunk 配置，设置 COOP/COEP 头（SharedArrayBuffer 所需） |
+| `.cargo/config.toml` | WASM 编译 flags（atomics、shared-memory 等） |
+| `rust-toolchain.toml` | 指定 nightly 工具链和 wasm32 目标 |
+
+### Web 入口函数模式
+
+```rust
+#![cfg_attr(target_family = "wasm", no_main)]
+
+fn run_example() {
+    rgpui_platform::application().run(|cx| {
+        // 应用逻辑
+    });
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn main() { run_example(); }
+
+#[cfg(target_family = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(start)]
+pub fn start() {
+    rgpui_platform::web_init();  // 必须在应用逻辑前调用
+    run_example();
+}
+```
+
+### Web 平台限制
+
+- 剪贴板 API 未实现（返回 None）
+- 文件对话框不可用（浏览器安全限制）
+- 系统托盘、原生菜单不支持
+- Tree-sitter 语法高亮不可用（WASM 中无法编译 C 依赖）
+- 图标从 CDN 运行时下载（需要网络连接）
+
+详细文档见 `crates/rgpui-component-workspce/rgpui-component/examples/WEB.md`。
 
 ## 代码规范
 

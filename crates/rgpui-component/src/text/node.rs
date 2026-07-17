@@ -1,11 +1,23 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     ops::Range,
     sync::{Arc, Mutex},
 };
 
+use rgpui::{
+    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
+    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
+    SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div, img,
+    prelude::FluentBuilder as _, px, relative, rems,
+};
+use markdown::mdast;
+use ropey::Rope;
+
 use crate::{
-    ActiveTheme as _, HighlightTheme, Icon, IconName, StyledExt, h_flex,
+    ActiveTheme as _, Icon, IconName, StyledExt, WindowExt as _, h_flex,
+    highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
+    input::{InputEdit, Point, RopeExt as _},
     text::{
         CodeBlockActionsFn,
         document::NodeRenderOptions,
@@ -14,15 +26,13 @@ use crate::{
     tooltip::Tooltip,
     v_flex,
 };
-use markdown::mdast;
-use rgpui::{
-    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
-    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
-    SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div, img,
-    prelude::FluentBuilder as _, px, relative, rems,
-};
 
 use super::{TextViewStyle, utils::list_item_prefix};
+
+thread_local! {
+    static CODE_BLOCK_HIGHLIGHTERS: RefCell<HashMap<SharedString, SyntaxHighlighter>> =
+        RefCell::new(HashMap::new());
+}
 
 /// The block-level nodes.
 #[derive(Debug, Clone, PartialEq)]
@@ -571,6 +581,8 @@ impl Paragraph {
 #[derive(Debug, Clone)]
 pub struct CodeBlock {
     lang: Option<SharedString>,
+    styles: Arc<Mutex<Option<Vec<(Range<usize>, HighlightStyle)>>>>,
+    highlight_theme: Arc<HighlightTheme>,
     state: Arc<Mutex<InlineState>>,
     pub span: Option<Span>,
 }
@@ -606,16 +618,59 @@ impl CodeBlock {
             state.set_text(code);
         }
 
-        let _ = highlight_theme;
         Self {
             lang,
+            styles: Arc::new(Mutex::new(None)),
+            highlight_theme: Arc::new(highlight_theme.clone()),
             state,
             span: span.map(|s| s.into()),
         }
     }
 
     pub(crate) fn styles(&self) -> Vec<(Range<usize>, HighlightStyle)> {
-        Vec::new()
+        let Some(lang) = &self.lang else {
+            return Vec::new();
+        };
+
+        let Ok(mut styles) = self.styles.lock() else {
+            return Vec::new();
+        };
+
+        if let Some(styles) = styles.as_ref() {
+            return styles.clone();
+        }
+
+        let code = self.code();
+        let computed_styles = CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            let highlighter = cache
+                .entry(lang.clone())
+                .or_insert_with(|| SyntaxHighlighter::new(lang));
+
+            if let Some(config) = LanguageRegistry::singleton().language(lang)
+                && highlighter.language() != &config.name
+            {
+                *highlighter = SyntaxHighlighter::new(lang);
+            }
+
+            let old_end_byte = highlighter.text().len();
+            let old_end_position = highlighter.text().offset_to_point(old_end_byte);
+            let code_rope = Rope::from_str(code.as_str());
+
+            let edit = InputEdit {
+                start_byte: 0,
+                old_end_byte,
+                new_end_byte: code.len(),
+                start_position: Point::new(0, 0),
+                old_end_position,
+                new_end_position: code_rope.offset_to_point(code.len()),
+            };
+
+            highlighter.update(Some(edit), &code_rope, None);
+            highlighter.styles(&(0..code.len()), &self.highlight_theme)
+        });
+        *styles = Some(computed_styles.clone());
+        computed_styles
     }
 
     pub(super) fn selected_text(&self) -> String {
@@ -761,7 +816,8 @@ impl Paragraph {
                                 .tooltip(move |window, cx| {
                                     Tooltip::new(title.clone()).build(window, cx)
                                 })
-                                .on_click(move |_, _, cx| {
+                                .on_click(move |_, window, cx| {
+                                    window.end_text_selection(cx);
                                     cx.stop_propagation();
                                     cx.open_url(&link.url);
                                 })
@@ -1397,5 +1453,64 @@ mod tests {
         );
 
         assert_ne!(first, second);
+    }
+
+    #[cfg(feature = "tree-sitter")]
+    #[test]
+    fn code_block_highlighter_cache_refreshes_after_language_registration() {
+        let lang = SharedString::from("json-cache-test");
+        let theme = HighlightTheme::default_light();
+
+        CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
+            cache.borrow_mut().remove(&lang);
+        });
+
+        let unknown_block = CodeBlock::new(
+            "{\"value\": 1}".into(),
+            Some(lang.clone()),
+            &theme,
+            None::<Span>,
+        );
+        _ = unknown_block.styles();
+
+        let cached_language = CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
+            cache
+                .borrow()
+                .get(&lang)
+                .map(|highlighter| highlighter.language().clone())
+        });
+        assert_eq!(cached_language.as_deref(), Some("text"));
+
+        LanguageRegistry::singleton().register(
+            lang.as_ref(),
+            &crate::highlighter::LanguageConfig::new(
+                lang.clone(),
+                tree_sitter_json::LANGUAGE.into(),
+                vec![],
+                r#"
+                    (string) @string
+                    (number) @number
+                    (pair key: (string) @property)
+                "#,
+                "",
+                "",
+            ),
+        );
+
+        let registered_block = CodeBlock::new(
+            "{\"value\": 2}".into(),
+            Some(lang.clone()),
+            &theme,
+            None::<Span>,
+        );
+        _ = registered_block.styles();
+
+        let cached_language = CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
+            cache
+                .borrow()
+                .get(&lang)
+                .map(|highlighter| highlighter.language().clone())
+        });
+        assert_eq!(cached_language.as_deref(), Some(lang.as_ref()));
     }
 }

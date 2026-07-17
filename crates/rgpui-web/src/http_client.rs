@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use futures::AsyncReadExt as _;
-use http_client::{AsyncBody, HttpClient, RedirectPolicy};
+use rgpui::http_client::{AsyncBody, HttpClient, RedirectPolicy};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::Poll;
@@ -15,7 +15,7 @@ extern "C" {
 
 /// 基于浏览器 Fetch API 的 HTTP 客户端实现
 pub struct FetchHttpClient {
-    user_agent: Option<http_client::http::header::HeaderValue>,
+    user_agent: Option<rgpui::http_client::http::header::HeaderValue>,
 }
 
 impl Default for FetchHttpClient {
@@ -38,7 +38,7 @@ impl FetchHttpClient {
     /// 调用者必须确保创建的 `FetchHttpClient` 仅在单线程环境中使用。
     pub unsafe fn with_user_agent(user_agent: &str) -> anyhow::Result<Self> {
         Ok(Self {
-            user_agent: Some(http_client::http::header::HeaderValue::from_str(
+            user_agent: Some(rgpui::http_client::http::header::HeaderValue::from_str(
                 user_agent,
             )?),
         })
@@ -53,7 +53,7 @@ impl FetchHttpClient {
 
     pub fn with_user_agent(user_agent: &str) -> anyhow::Result<Self> {
         Ok(Self {
-            user_agent: Some(http_client::http::header::HeaderValue::from_str(
+            user_agent: Some(rgpui::http_client::http::header::HeaderValue::from_str(
                 user_agent,
             )?),
         })
@@ -80,19 +80,21 @@ impl<F: Future> Future for AssertSend<F> {
 }
 
 impl HttpClient for FetchHttpClient {
-    fn user_agent(&self) -> Option<&http_client::http::header::HeaderValue> {
+    fn user_agent(&self) -> Option<&rgpui::http_client::http::header::HeaderValue> {
         self.user_agent.as_ref()
     }
 
-    fn proxy(&self) -> Option<&http_client::Url> {
+    fn proxy(&self) -> Option<&rgpui::http_client::Url> {
         None
     }
 
     fn send(
         &self,
-        req: http_client::http::Request<AsyncBody>,
-    ) -> futures::future::BoxFuture<'static, anyhow::Result<http_client::http::Response<AsyncBody>>>
-    {
+        req: rgpui::http_client::http::Request<AsyncBody>,
+    ) -> futures::future::BoxFuture<
+        'static,
+        anyhow::Result<rgpui::http_client::http::Response<AsyncBody>>,
+    > {
         let (parts, body) = req.into_parts();
 
         Box::pin(AssertSend(async move {
@@ -142,7 +144,7 @@ impl HttpClient for FetchHttpClient {
                 .map_err(|error| anyhow!("fetch result is not a Response: {error:?}"))?;
 
             let status = web_response.status();
-            let mut builder = http_client::http::Response::builder().status(status);
+            let mut builder = rgpui::http_client::http::Response::builder().status(status);
 
             // `Headers` 是一个 JS 可迭代对象，产生 `[name, value]` 对。
             // `js_sys::Array::from` 调用 `Array.from()`，它接受任何可迭代对象。

@@ -8,7 +8,7 @@ use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DummyKeyboardMapper,
     ForegroundExecutor, Keymap, Menu, MenuItem, PathPromptOptions, Platform, PlatformDisplay,
     PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Task,
-    ThermalState, WindowAppearance, WindowParams,
+    ThermalState, WindowAppearance, WindowKind, WindowParams, popup::PopupNotSupportedError,
 };
 use rgpui_wgpu::WgpuContext;
 use std::{
@@ -29,6 +29,7 @@ static BUNDLED_FONTS: &[&[u8]] = &[
     include_bytes!("../../../assets/fonts/lilex/Lilex-Bold.ttf"),
     include_bytes!("../../../assets/fonts/lilex/Lilex-Italic.ttf"),
     include_bytes!("../../../assets/fonts/lilex/Lilex-BoldItalic.ttf"),
+    include_bytes!("../../../assets/fonts/noto-sans-sc/NotoSansSC-Regular.ttf"),
 ];
 
 /// Web 平台实现，实现 gpui 的 `Platform` trait
@@ -130,13 +131,12 @@ impl Platform for WebPlatform {
                 Ok(context) => {
                     log::info!("WebGPU context initialized successfully");
                     *wgpu_context.borrow_mut() = Some(context);
-                    on_finish_launching();
                 }
                 Err(err) => {
                     log::error!("Failed to initialize WebGPU context: {err:#}");
-                    on_finish_launching();
                 }
             }
+            on_finish_launching();
         });
     }
 
@@ -171,6 +171,10 @@ impl Platform for WebPlatform {
         handle: AnyWindowHandle,
         params: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
+        if let WindowKind::AnchoredPopup(_) = params.kind {
+            return Err(PopupNotSupportedError.into());
+        }
+
         let context_ref = self.wgpu_context.borrow();
         let context = context_ref.as_ref().ok_or_else(|| {
             anyhow::anyhow!("WebGPU context not initialized. Was Platform::run() called?")

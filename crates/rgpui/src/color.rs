@@ -699,7 +699,7 @@ impl<'de> Deserialize<'de> for Hsla {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[repr(C)]
+#[repr(u32)]
 pub(crate) enum BackgroundTag {
     Solid = 0,
     LinearGradient = 1,
@@ -735,7 +735,7 @@ impl Display for ColorSpace {
 
 /// 背景颜色，可以是纯色或线性渐变。
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[repr(C)]
+#[repr(C, align(8))]
 pub struct Background {
     pub(crate) tag: BackgroundTag,
     pub(crate) color_space: ColorSpace,
@@ -745,6 +745,8 @@ pub struct Background {
     pub(crate) stop_count: u32,
     /// Padding for alignment for repr(C) layout.
     pad: u32,
+    /// 对齐到 WGSL vec2<f32>（对齐要求 8）
+    align_pad: u32,
     pub(crate) center: [f32; 2],
     pub(crate) radius: [f32; 2],
 }
@@ -819,6 +821,7 @@ impl Default for Background {
             colors: [LinearColorStop::default(); 4],
             stop_count: 0,
             pad: 0,
+            align_pad: 0,
             center: [0.5, 0.5],
             radius: [0.5, 0.5],
         }

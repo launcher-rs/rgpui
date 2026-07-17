@@ -74,6 +74,7 @@ struct Background {
   LinearColorStop colors[4];
   uint stop_count;
   uint pad;
+  uint align_pad;
   float2 center;
   float2 radius;
 };

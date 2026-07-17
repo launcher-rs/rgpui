@@ -144,7 +144,7 @@ impl Render for TodoApp {
                         div()
                             .flex_col()
                             .gap(px(12.))
-                            .flex_grow()
+                            .flex_grow_1()
                             .min_h_0()
                             .children(filtered_todos.into_iter().map(|todo| {
                                 components::todo_item::TodoItem::render(app, &todo, compact_mode)

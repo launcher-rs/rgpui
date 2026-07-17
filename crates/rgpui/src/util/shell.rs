@@ -1,6 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, fmt, path::Path, sync::LazyLock};
+#[cfg(not(target_family = "wasm"))]
+use std::sync::LazyLock;
+use std::{borrow::Cow, fmt, path::Path};
 
 /// Shell 配置，用于打开终端。
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq, JsonSchema, Hash)]
@@ -66,6 +68,7 @@ pub enum ShellKind {
     Elvish,
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub fn get_system_shell() -> String {
     if cfg!(windows) {
         get_windows_system_shell()
@@ -74,6 +77,12 @@ pub fn get_system_shell() -> String {
     }
 }
 
+#[cfg(target_family = "wasm")]
+pub fn get_system_shell() -> String {
+    "/bin/sh".to_string()
+}
+
+#[cfg(not(target_family = "wasm"))]
 pub fn get_default_system_shell() -> String {
     if cfg!(windows) {
         get_windows_system_shell()
@@ -82,7 +91,13 @@ pub fn get_default_system_shell() -> String {
     }
 }
 
+#[cfg(target_family = "wasm")]
+pub fn get_default_system_shell() -> String {
+    "/bin/sh".to_string()
+}
+
 /// Get the default system shell, preferring bash on Windows.
+#[cfg(not(target_family = "wasm"))]
 pub fn get_default_system_shell_preferring_bash() -> String {
     if cfg!(windows) {
         get_windows_bash().unwrap_or_else(|| get_windows_system_shell())
@@ -91,6 +106,13 @@ pub fn get_default_system_shell_preferring_bash() -> String {
     }
 }
 
+/// Get the default system shell, preferring bash on Windows.
+#[cfg(target_family = "wasm")]
+pub fn get_default_system_shell_preferring_bash() -> String {
+    "/bin/sh".to_string()
+}
+
+#[cfg(not(target_family = "wasm"))]
 pub fn get_windows_bash() -> Option<String> {
     use std::path::PathBuf;
 
@@ -120,6 +142,7 @@ pub fn get_windows_bash() -> Option<String> {
     (*BASH).clone()
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub fn get_windows_system_shell() -> String {
     use std::path::PathBuf;
 

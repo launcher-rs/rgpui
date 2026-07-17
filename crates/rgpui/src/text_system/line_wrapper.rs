@@ -474,7 +474,10 @@ impl LineWrapper {
         // is included so it stays attached to the preceding word when wrapping.
         matches!(c, '-' | '_' | '.' | '\'' | '’' | '‘' | '$' | '%' | '@' | '#' | '^' | '~' | ',' | '=' | ':' | ';') ||
         // `⋯` character is special used in Zed, to keep this at the end of the line.
-        matches!(c, '⋯')
+        matches!(c, '⋯') ||
+
+        // Non-breaking glue characters
+        matches!(c, ' ' | ' ' | '‑')
     }
 
     #[inline(always)]
@@ -1159,6 +1162,12 @@ mod tests {
         assert_not_word("こんにちは");
         assert_not_word("😀😁😂");
         assert_not_word("()[]{}<>");
+
+        // Non-breaking ("Glue") characters, see https://www.unicode.org/reports/tr14/
+        // (https://github.com/zed-industries/zed/issues/59664)
+        assert_word("\u{202F}"); // NNBSP " "
+        assert_word("\u{00A0}"); // NBSP " "
+        assert_word("\u{2011}"); // NBH "‑"
     }
 
     // For compatibility with the test macro

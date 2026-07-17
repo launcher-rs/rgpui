@@ -1,10 +1,34 @@
+#![cfg_attr(target_family = "wasm", no_main)]
+
 //! Accessibility (AccessKit) demo app.
 //!
 //! Run with: `cargo run -p rgpui --example a11y`
 //!
-//! This app uses rgpui's accessibility APIs to attach structured information to
+//! Or on Linux: `cargo run -p rgpui --features rgpui_platform/wayland,rgpui_platform/x11 --example a11y`
+//!
+//! This app uses GPUI's accessibility APIs to attach structured information to
 //! the element tree, which allows assistive technology to see and interact with
 //! the UI programmatically.
+//!
+//! The app behaves as follows:
+//! - It opens a single window.
+//! - The window's title is "GPUI Accessibility Demo".
+//! - The window has a sequence of UI elements, stacked vertically:
+//!   - A heading with the text "Accessibility Demo".
+//!   - A row containing two elements:
+//!     - A spin button (role `SpinButton`) labelled "Counter: <n>", where
+//!       `<n>` is the current count. It supports `Increment` and `Decrement`
+//!       accessible actions, and also increments on click. The numeric value
+//!       is clamped to a minimum of 0.
+//!     - A button labelled "Reset counter" that resets the count to 0.
+//!   - A row containing two elements:
+//!     - A switch, that can be toggled, and starts disabled. Toggling the switch
+//!       does nothing.
+//!     - The text "Enable feature".
+//!   - A "to-do" list, with three items, each represented with a `Text` element:
+//!     - "1. Write code"
+//!     - "2. Run tests"
+//!     - "3. Ship it"
 
 use rgpui::{
     AccessibleAction, App, Bounds, Context, FocusHandle, KeyBinding, Role, SharedString, Toggled,
@@ -48,6 +72,7 @@ impl Render for A11yDemo {
             .p_4()
             .bg(rgb(0x1e1e2e))
             .text_color(rgb(0xcdd6f4))
+            // Heading
             .child(
                 div()
                     .id("heading")
@@ -58,6 +83,9 @@ impl Render for A11yDemo {
                     .font_weight(rgpui::FontWeight::BOLD)
                     .child(text!("Accessibility Demo")),
             )
+            // Counter 鈥?uses a SpinButton role with Increment/Decrement
+            // actions so screen readers can adjust the value directly.
+            // Click also works via the built-in handler.
             .child(
                 div()
                     .flex()
@@ -123,6 +151,7 @@ impl Render for A11yDemo {
                             .child(text!("Reset")),
                     ),
             )
+            // A toggle switch
             .child(
                 div()
                     .flex()
@@ -162,6 +191,7 @@ impl Render for A11yDemo {
                     )
                     .child(text!("Enable feature")),
             )
+            // A short list
             .child(
                 div()
                     .id("task-list")
@@ -183,6 +213,10 @@ impl Render for A11yDemo {
                                     .aria_size_of_set(3)
                                     .py_1()
                                     .px_2()
+                                    // Note: even though this `text!` macro
+                                    // produces multiple elements, it doesn't
+                                    // need its own unique ID because the parent
+                                    // div has different IDs for each string.
                                     .child(text!(format!("{}. {}", i + 1, label)))
                             }),
                     ),

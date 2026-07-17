@@ -196,6 +196,11 @@ impl TabStopMap {
         self.insertion_history.len()
     }
 
+    /// 返回当前 TabStopMap 中 tab_stop 节点的数量
+    pub fn tab_stop_count(&self) -> usize {
+        self.order.summary().tab_stops
+    }
+
     fn focus_handle_for_order(&self, order: &TabStopNode) -> Option<FocusHandle> {
         let handle = self.insertion_history[order.node_insertion_index].focus_handle();
         debug_assert!(

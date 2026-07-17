@@ -487,7 +487,7 @@ impl Tree {
         .w_full()
         .h_full()
         .min_h_0()
-        .flex_grow();
+        .flex_grow_1();
 
         // Preserve styling set on the `Tree` itself (e.g. `.height(px(...))`).
         // This wrapper provides the bounded height needed for the virtualized
@@ -499,7 +499,7 @@ impl Tree {
             .w_full()
             .h_full()
             .min_h_0()
-            .flex_grow()
+            .flex_grow_1()
             .child(list)
     }
 

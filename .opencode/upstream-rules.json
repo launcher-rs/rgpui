@@ -41,8 +41,6 @@
     "branch": "main",
     "worktree": "temp/gpui-component-upstream",
     "mappings": [
-      { "from": "crates/ui/src/highlighter/", "to": "crates/rgpui-editor/src/highlighter/" },
-      { "from": "crates/ui/src/input/", "to": "crates/rgpui-editor/src/input/" },
       { "from": "crates/ui/", "to": "crates/rgpui-component/" },
       { "from": "crates/macros/", "to": "crates/rgpui-component-macros/" },
       { "from": "crates/assets/", "to": "crates/rgpui-component-assets/" },
@@ -58,9 +56,7 @@
       "gpui-component-assets": "rgpui-component-assets",
       "gpui_macros": "rgpui_macros",
       "gpui_platform": "rgpui_platform",
-      "gpui_editor": "rgpui_editor",
-      "crates/ui/src/highlighter/": "crates/rgpui-editor/src/highlighter/",
-      "crates/ui/src/input/": "crates/rgpui-editor/src/input/"
+      "gpui_editor": "rgpui_editor"
     },
     "cargo_exclude_fields": [
       "name", "version", "edition", "authors", "description",

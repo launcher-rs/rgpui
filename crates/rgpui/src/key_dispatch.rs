@@ -1,8 +1,9 @@
-//! KeyDispatch 是 GPUI 处理将操作绑定到按键事件的地方。
+//! KeyDispatch is where GPUI deals with binding actions to key events.
 //!
-//! 使键绑定工作的关键部分是定义操作，
-//! 实现一个以操作类型参数为参数的方法，
-//! 然后在渲染期间在具有键映射上下文的聚焦节点上注册操作：
+//! The key pieces to making a key binding work are to define an action,
+//! implement a method that takes that action as a type parameter,
+//! and then to register the action during render on a focused node
+//! with a keymap context:
 //!
 //! ```ignore
 //! actions!(editor,[Undo, Redo]);
@@ -24,9 +25,9 @@
 //! }
 //!```
 //!
-//! 键绑定本身通过调用 cx.bind_keys() 独立管理。
-//! （尽管在开发 Zed 本身时，你通常只需要在
-//!  assets/keymaps/default-{platform}.json 中添加一行）。
+//! The keybindings themselves are managed independently by calling cx.bind_keys().
+//! (Though mostly when developing Zed itself, you just need to add a new line to
+//!  assets/keymaps/default-{platform}.json).
 //!
 //! ```ignore
 //! cx.bind_keys([
@@ -35,16 +36,16 @@
 //! ])
 //! ```
 //!
-//! 有了所有这些，GPUI 将确保如果你有一个包含
-//! 焦点的 Editor，按下 cmd-z 将撤销。
+//! With all of this in place, GPUI will ensure that if you have an Editor that contains
+//! the focus, hitting cmd-z will Undo.
 //!
-//! 在实际应用中，这比这稍微复杂一些，因为通常你有
-//! 多个嵌套视图，每个视图都注册键盘处理程序。在这种情况下，操作匹配
-//! 从底部向上冒泡。例如在 Zed 中，Workspace 是顶级视图，包含 Pane，而 Pane 包含 Editor。如果存在冲突的键绑定定义，
-//! 则 Editor 的绑定优先于 Pane 的绑定，而 Pane 的绑定优先于 Workspace。
+//! In real apps, it is a little more complicated than this, because typically you have
+//! several nested views that each register keyboard handlers. In this case action matching
+//! bubbles up from the bottom. For example in Zed, the Workspace is the top-level view, which contains Pane's, which contain Editors. If there are conflicting keybindings defined
+//! then the Editor's bindings take precedence over the Pane's bindings, which take precedence over the Workspace.
 //!
-//! 在 GPUI 中，键绑定不仅限于单个按键，你可以定义
-//! 序列，通过用空格分隔按键：
+//! In GPUI, keybindings are not limited to just single keystrokes, you can define
+//! sequences by separating the keys with a space:
 //!
 //!  KeyBinding::new("cmd-k left", pane::SplitLeft, Some("Pane"))
 
@@ -62,75 +63,40 @@ use std::{
     rc::Rc,
 };
 
-/// 分发树节点 ID。注意这些 ID 在帧之间**不**稳定，
-/// 因此 `DispatchNodeId` 仅应与提供它的 `DispatchTree` 一起使用。
+/// ID of a node within `DispatchTree`. Note that these are **not** stable between frames, and so a
+/// `DispatchNodeId` should only be used with the `DispatchTree` that provided it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct DispatchNodeId(usize);
 
-/// 分发树 - GPUI 键盘事件分发的核心数据结构。
-///
-/// 在每一帧渲染期间，GPUI 会根据 UI 树构建一棵分发树。
-/// 分发树中的每个节点对应一个可聚焦的 UI 元素，记录了：
-/// - 键盘事件监听器（key_listeners）
-/// - Action 监听器（action_listeners）
-/// - 修饰键变化监听器（modifiers_changed_listeners）
-/// - 键盘上下文（KeyContext）
-///
-/// 按键事件会沿着分发路径（从叶子到根）逐级冒泡，
-/// 直到找到匹配的绑定并执行对应的 Action。
 pub(crate) struct DispatchTree {
-    /// 节点栈 - 构建树时使用的临时栈
     node_stack: Vec<DispatchNodeId>,
-    /// 上下文栈 - 当前激活路径上的 KeyContext 序列
     pub(crate) context_stack: Vec<KeyContext>,
-    /// 视图栈 - 当前激活路径上的视图 ID 序列
     view_stack: Vec<EntityId>,
-    /// 所有节点的扁平存储
     nodes: Vec<DispatchNode>,
-    /// FocusId -> 节点 ID 的映射，用于快速查找焦点节点
     focusable_node_ids: FxHashMap<FocusId, DispatchNodeId>,
-    /// 视图 ID -> 节点 ID 的映射
     view_node_ids: FxHashMap<EntityId, DispatchNodeId>,
-    /// 全局快捷键映射表
     keymap: Rc<RefCell<Keymap>>,
-    /// Action 注册表，用于根据 TypeId 构建 Action 实例
     action_registry: Rc<ActionRegistry>,
 }
 
-/// 分发树中的单个节点，对应一个 UI 元素的键盘处理配置。
 #[derive(Default)]
 pub(crate) struct DispatchNode {
-    /// 键盘事件监听器列表
     pub key_listeners: Vec<KeyListener>,
-    /// Action 监听器列表
     pub action_listeners: Vec<DispatchActionListener>,
-    /// 修饰键（Ctrl、Shift、Alt、Cmd）变化监听器列表
     pub modifiers_changed_listeners: Vec<ModifiersChangedListener>,
-    /// 键盘上下文（如 "Editor"、"Pane" 等），用于限定快捷键作用域
     pub context: Option<KeyContext>,
-    /// 节点关联的焦点 ID（可选）
     pub focus_id: Option<FocusId>,
-    /// 节点关联的视图 ID（可选）
     view_id: Option<EntityId>,
-    /// 父节点 ID
     parent: Option<DispatchNodeId>,
 }
 
-/// 复用子树信息 - 用于帧间优化，跟踪哪些节点可以重用。
-///
-/// 当 UI 树在帧间变化不大时，GPUI 可以重用上一帧的分发树子树，
-/// 避免完全重建。此结构记录了旧子树和新子树的范围映射关系。
 pub(crate) struct ReusedSubtree {
-    /// 旧子树在源树中的节点范围
     old_range: Range<usize>,
-    /// 新子树在目标树中的节点范围
     new_range: Range<usize>,
-    /// 该子树是否包含当前焦点节点
     contains_focus: bool,
 }
 
 impl ReusedSubtree {
-    /// 将旧子树中的节点 ID 映射到新子树中的对应节点 ID
     pub fn refresh_node_id(&self, node_id: DispatchNodeId) -> DispatchNodeId {
         debug_assert!(
             self.old_range.contains(&node_id.0),
@@ -141,47 +107,32 @@ impl ReusedSubtree {
         DispatchNodeId((node_id.0 - self.old_range.start) + self.new_range.start)
     }
 
-    /// 该子树是否包含当前焦点节点
     pub fn contains_focus(&self) -> bool {
         self.contains_focus
     }
 }
 
-/// 按键回放信息 - 当部分按键序列不再匹配时，需要回放已推入的按键
 #[derive(Default, Debug)]
 pub(crate) struct Replay {
-    /// 需要回放的按键事件
     pub(crate) keystroke: Keystroke,
-    /// 该按键已经匹配到的绑定（可能需要重新处理）
     pub(crate) bindings: SmallVec<[KeyBinding; 1]>,
 }
 
-/// 按键分发的结果 - 描述一次按键事件处理后的状态
 #[derive(Default, Debug)]
 pub(crate) struct DispatchResult {
-    /// 待处理的按键序列（当匹配到部分前缀时）
     pub(crate) pending: SmallVec<[Keystroke; 1]>,
-    /// 待处理序列是否已有匹配的绑定
     pub(crate) pending_has_binding: bool,
-    /// 本次按键匹配到的完整绑定列表
     pub(crate) bindings: SmallVec<[KeyBinding; 1]>,
-    /// 需要回放的按键事件（当部分匹配失败时）
     pub(crate) to_replay: SmallVec<[Replay; 1]>,
-    /// 当前的上下文栈
     pub(crate) context_stack: Vec<KeyContext>,
 }
 
-/// 键盘事件监听器类型 - 接收原始键盘事件
 type KeyListener = Rc<dyn Fn(&dyn Any, DispatchPhase, &mut Window, &mut App)>;
-/// 修饰键变化监听器类型 - 接收 Ctrl/Shift/Alt/Cmd 等修饰键变化事件
 type ModifiersChangedListener = Rc<dyn Fn(&ModifiersChangedEvent, &mut Window, &mut App)>;
 
-/// Action 监听器 - 将 Action 类型与回调函数关联
 #[derive(Clone)]
 pub(crate) struct DispatchActionListener {
-    /// 监听的 Action 类型 ID
     pub(crate) action_type: TypeId,
-    /// Action 触发时调用的回调函数
     pub(crate) listener: Rc<dyn Fn(&dyn Any, DispatchPhase, &mut Window, &mut App)>,
 }
 
@@ -416,8 +367,8 @@ impl DispatchTree {
             for DispatchActionListener { action_type, .. } in &node.action_listeners {
                 if let Err(ix) = actions.binary_search_by_key(action_type, |a| a.as_any().type_id())
                 {
-                    // 有意静默这些错误而不记录日志。
-                    // 如果操作无法默认构建，则不可用。
+                    // Intentionally silence these errors without logging.
+                    // If an action cannot be built by default, it's not available.
                     let action = self.action_registry.build_action_type(action_type).ok();
                     if let Some(action) = action {
                         actions.insert(ix, action);
@@ -442,11 +393,11 @@ impl DispatchTree {
         false
     }
 
-    /// 返回在当前聚焦元素上调用操作的键绑定。绑定按
-    /// 添加顺序返回。对于显示，最后的绑定应优先。
+    /// Returns key bindings that invoke an action on the currently focused element. Bindings are
+    /// returned in the order they were added. For display, the last binding should take precedence.
     ///
-    /// 仅当绑定是其按键序列的最高优先级匹配时才包含，因此
-    /// 被遮蔽的绑定不包含在内。
+    /// Bindings are only included if they are the highest precedence match for their keystrokes, so
+    /// shadowed bindings are not included.
     pub fn bindings_for_action(
         &self,
         action: &dyn Action,
@@ -464,8 +415,8 @@ impl DispatchTree {
             .collect()
     }
 
-    /// 返回给定操作和上下文堆栈的最高优先级绑定。这
-    /// 与 `bindings_for_action` 的最后一个结果相同，但比获取所有绑定更高效。
+    /// Returns the highest precedence binding for the given action and context stack. This is the
+    /// same as the last result of `bindings_for_action`, but more efficient than getting all bindings.
     pub fn highest_precedence_binding_for_action(
         &self,
         action: &dyn Action,
@@ -522,13 +473,13 @@ impl DispatchTree {
             .possible_next_bindings_for_input(input, context_stack)
     }
 
-    /// dispatch_key 处理按键序列
-    /// input 应设置为上一次调用 dispatch_key 的 `pending` 值。
-    /// 这返回三条指令给输入处理程序：
-    /// - bindings：处理此按键序列前要执行的任何绑定
-    /// - pending：要存储的新待处理按键序列
-    /// - to_replay：任何已被推入 pending 但不再匹配的按键序列，
-    ///   这些应首先重放。
+    /// dispatch_key processes the keystroke
+    /// input should be set to the value of `pending` from the previous call to dispatch_key.
+    /// This returns three instructions to the input handler:
+    /// - bindings: any bindings to execute before processing this keystroke
+    /// - pending: the new set of pending keystrokes to store
+    /// - to_replay: any keystroke that had been pushed to pending, but are no-longer matched,
+    ///   these should be replayed first.
     pub fn dispatch_key(
         &mut self,
         mut input: SmallVec<[Keystroke; 1]>,
@@ -567,8 +518,8 @@ impl DispatchTree {
         result
     }
 
-    /// 如果用户输入匹配的绑定前缀然后等待超时，
-    /// flush_dispatch() 将任何之前待处理的输入转换为重放事件。
+    /// If the user types a matching prefix of a binding and then waits for a timeout
+    /// flush_dispatch() converts any previously pending input to replay events.
     pub fn flush_dispatch(
         &mut self,
         input: SmallVec<[Keystroke; 1]>,
@@ -583,7 +534,7 @@ impl DispatchTree {
         to_replay
     }
 
-    /// 将 input 的最长前缀转换为重放事件并返回剩余部分。
+    /// Converts the longest prefix of input to a replay event and returns the rest.
     fn replay_prefix(
         &self,
         mut input: SmallVec<[Keystroke; 1]>,
@@ -616,7 +567,7 @@ impl DispatchTree {
             dispatch_path.push(node_id);
             current_node_id = self.nodes.get(node_id.0).and_then(|node| node.parent);
         }
-        dispatch_path.reverse(); // 反转路径使其从根到聚焦节点。
+        dispatch_path.reverse(); // Reverse the path so it goes from the root to the focused node.
         dispatch_path
     }
 
@@ -630,7 +581,7 @@ impl DispatchTree {
             }
             current_node_id = node.parent;
         }
-        focus_path.reverse(); // 反转路径使其从根到聚焦节点。
+        focus_path.reverse(); // Reverse the path so it goes from the root to the focused node.
         focus_path
     }
 
@@ -771,6 +722,66 @@ mod tests {
 
         let highest = tree.highest_precedence_binding_for_action(&TestAction, &contexts);
         assert!(highest.is_some_and(|binding| binding.action.partial_eq(&TestAction)));
+    }
+
+    /// Models the picker preview footer scenario: a picker action is bound in
+    /// `Picker > Editor`, but a base keymap binds the same chord to an editor
+    /// action in `Editor`. `Picker > Editor` and `Editor` resolve at the same
+    /// context depth, so at equal depth precedence is decided purely by load
+    /// order (later wins). Because base keymaps load after the default keymap,
+    /// the picker binding is shadowed unless it is (re)bound by an overlay that
+    /// loads after the base keymap - which is exactly what
+    /// `keymaps/specific-overrides*.json` does.
+    #[test]
+    fn test_overlay_after_base_restores_shadowed_picker_binding() {
+        // SecondaryTestAction stands in for the editor/base action (e.g.
+        // editor::AddSelectionBelow), TestAction for the picker action.
+        let contexts = vec![
+            KeyContext::parse("Picker").unwrap(),
+            KeyContext::parse("Editor").unwrap(),
+        ];
+
+        // Default keymap (picker binding) followed by a base keymap that binds
+        // the same chord to an editor action: the base binding wins and the
+        // picker action is shadowed, so its footer tooltip renders no shortcut.
+        let shadowed = test_dispatch_tree(vec![
+            KeyBinding::new("ctrl-alt-down", TestAction, Some("Picker > Editor")),
+            KeyBinding::new("ctrl-alt-down", SecondaryTestAction, Some("Editor")),
+        ]);
+        let highest = shadowed.highest_precedence_binding_for_action(&TestAction, &contexts);
+        assert!(
+            highest.is_none(),
+            "picker binding should be shadowed by the base editor binding"
+        );
+
+        // Re-binding the picker action in an overlay loaded after the base keymap
+        // restores it as the resolved binding.
+        let fixed = test_dispatch_tree(vec![
+            KeyBinding::new("ctrl-alt-down", TestAction, Some("Picker > Editor")),
+            KeyBinding::new("ctrl-alt-down", SecondaryTestAction, Some("Editor")),
+            // overlay loaded last:
+            KeyBinding::new("ctrl-alt-down", TestAction, Some("Picker > Editor")),
+        ]);
+        let highest = fixed.highest_precedence_binding_for_action(&TestAction, &contexts);
+        assert!(
+            highest.is_some_and(|binding| binding.action.partial_eq(&TestAction)),
+            "overlay loaded after base should restore the picker binding"
+        );
+
+        // Conversely, putting the override in the default keymap (i.e. before the
+        // base keymap) does NOT help: the later base binding still wins at equal
+        // depth. This is why the overlay must be loaded after the base keymap.
+        let override_before_base = test_dispatch_tree(vec![
+            KeyBinding::new("ctrl-alt-down", TestAction, Some("Picker > Editor")),
+            KeyBinding::new("ctrl-alt-down", TestAction, Some("Picker > Editor")),
+            KeyBinding::new("ctrl-alt-down", SecondaryTestAction, Some("Editor")),
+        ]);
+        let highest =
+            override_before_base.highest_precedence_binding_for_action(&TestAction, &contexts);
+        assert!(
+            highest.is_none(),
+            "an override loaded before the base binding cannot win the equal-depth tie"
+        );
     }
 
     #[test]

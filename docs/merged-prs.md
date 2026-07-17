@@ -19,6 +19,44 @@
 | #59072 | 2026-06-12 | tab_switcher: Middle-truncate long picker filenames |
 | #58202 | 2026-06-12 | Add LICENSE-GPL symlink to benchmarks crate |
 | #59214 | 2026-06-13 | Revert "gpui: Fix title bar clicks being delayed on macOS 27 (#58947)" |
+| #59470 | 2026-06-22 | gpui: Fix web examples build |
+| #59604 | 2026-06-22 | remove TODO!'s (tracked in channel notes) and accidentally included file |
+| #57231 | 2026-06-22 | Fix keybindings |
+| #59524 | 2026-06-22 | Remove last ru ready  main tasks |
+| #59429 | 2026-06-22 | Merge branch 'settings-ui-a11y' of https://github.com/zed-industries/zed into settings-ui-a11y |
+| #59473 | 2026-06-22 | Use small vec |
+| #58510 | 2026-06-22 | Avoid selections allocations |
+| #59831 | 2026-06-25 | gpui: Add system wake callback |
+| #59816 | 2026-06-25 | gpui(windows): Fix immovable windows skipping hit testing entirely |
+| #59775 | 2026-06-25 | Merge branch 'main' into fix-softwrap-nbsp |
+| #59712 | 2026-06-25 | Merge branch 'main' into codex/fix-macos-traffic-light-appearance |
+| #59704 | 2026-06-25 | bump resvg/usvg and regression test for panic |
+| #55583 | 2026-06-26 | wayland: fix xdg_toplevel app_id set to None at first commit |
+| #59836 | 2026-06-26 | Fix delayed titlebar clicks on macOS 27 Beta |
+| #58685 | 2026-06-26 | Slightly reformulate the message |
+| #59995 | 2026-07-01 | Add xdg-activation spec reference comment |
+| #60090 | 2026-07-01 | gpui_linux: Suppress dead code warning on `wake_sender` |
+| #59911 | 2026-07-07 | terminal: Fix IME candidate window not following cursor in TUI apps |
+| #60359 | 2026-07-07 | gpui_linux: Add support for open_window in headless client |
+| #60693 | 2026-07-10 | Fix "Task polled after completion" panic |
+| #60482 | 2026-07-10 | gpui: Store GPU-facing bools as PaddedBool32 to avoid uninitialized padding |
+| #60122 | 2026-07-10 | gpui_windows: Check composition attribute lookup |
+| #60275 | 2026-07-10 | Merge branch 'main' into gpui-mouse-hover-exit-fix |
+| #60160 | 2026-07-10 | Merge branch 'main' into fix-wgpu-renderer-teardown-panic |
+| #60339 | 2026-07-10 | Merge branch 'main' into feat/csv-preview/add-filtering |
+| #57250 | 2026-07-10 | Merge branch 'main' into geist-mono-postscript-name-dedup |
+| #60419 | 2026-07-10 | Merge branch 'main' into fix-gpui-nil-screen-display-link |
+| #60440 | 2026-07-10 | Address Windows window control review |
+| #60621 | 2026-07-10 | Update wayland-backend to 0.3.15 to fix Wayland file dialog crash |
+| #60574 | 2026-07-10 | gpui: Add run_embedded and ApplicationHandle for externally driven run loops |
+| #45759 | 2026-07-10 | style |
+| #56468 | 2026-07-10 | Merge branch 'main' into lillian/weird-mermaid-vram-leak |
+| #54145 | 2026-07-10 | Merge branch 'main' into parent-animation-element |
+| #58087 | 2026-07-10 | Lock caching to entity-backed views, document identity uniqueness, clamp example cursor on external writes |
+| #58139 | 2026-07-10 | gpui: Add tests for simulated path prompt |
+| #58629 | 2026-07-17 | Autofix |
+| #61136 | 2026-07-17 | fix gpui prompt mouse down listener |
+| #61118 | 2026-07-17 | gpui: Avoid redundant group hover redraws |
 
 ## gpui-component
 
@@ -40,6 +78,42 @@
 | #2454 | 2026-06-12 | Fix tree events to emit when set_selected_item targeted hidden nodes |
 | #2453 | 2026-06-12 | input: restore custom context menu API on top of NativeMenu |
 | #2452 | 2026-06-12 | fix: add missing wasm theme gutter field |
+| #2498 | 2026-06-22 | number_input: Match stepper button variant to appearance |
+| #2493 | 2026-06-22 | test: stabilize markdown overlap highlight test |
+| #2489 | 2026-06-22 | Update link |
+| #2371 | 2026-06-22 | Merge branch 'main' into md-render-optimization |
+| #2484 | 2026-06-22 | . |
+| #2483 | 2026-06-22 | Merge branch 'main' into markdown-inline-image |
+| #2473 | 2026-06-22 | docs: add TextView Markdown plugin docs |
+| #2485 | 2026-06-22 | docs: clarify theme registry lookup |
+| #2482 | 2026-06-25 | . |
+| #2507 | 2026-06-25 | plot: Confine `CrossLine::both()` axes independently |
+| #2505 | 2026-06-25 | tab: Fade `Pill` selected text color in sync with indicator slide |
+| #2501 | 2026-06-25 | Don't block mouse down |
+| #2500 | 2026-06-25 | plot: Refine the chart tooltip capability |
+| #2503 | 2026-06-25 | dock: Count only visible panels in `is_last_panel` |
+| #2502 | 2026-06-26 | tiles: Revert out-of-scope Cargo.toml changes from resize-snapping work |
+| #2513 | 2026-06-26 | plot: Polish hover crosshair color and fix horizontal bar band |
+| #2512 | 2026-06-26 | theme: Clamp each gradient stop's alpha for active/selection backgrounds |
+| #2510 | 2026-06-26 | Place the caret at the end on `set_value`, view stays at the start |
+| #2487 | 2026-07-01 | fix: restore aurora syntax highlights |
+| #2521 | 2026-07-01 | examples: Rename "drawer" to "sheet" in dialog_overlay |
+| #2495 | 2026-07-07 | Fix test. |
+| #2537 | 2026-07-07 | popover: Clarify what the anchor means in docs and API comments |
+| #2491 | 2026-07-07 | feat(input): add InputState::refresh to apply runtime LSP provider changes |
+| #2535 | 2026-07-07 | . |
+| #2450 | 2026-07-07 | tree-sitter: simplify cfg gating to feature flag |
+| #2530 | 2026-07-07 | tab: Fix `Segmented`/`Pill`/`Underline` tabs shrinking when overflowing |
+| #2523 | 2026-07-07 | Extract shared logic into functions |
+| #2529 | 2026-07-07 | resizable: Avoid NaN panel sizes when total size is zero or non-finite |
+| #2524 | 2026-07-07 | Fix input soft-wrap width |
+| #2551 | 2026-07-10 | fix: field.rs:56:46 - no method named `into_any` found for struct `AnyView` in the current scope |
+| #2545 | 2026-07-10 | Do not focus when set_selected_range for slient update. |
+| #2547 | 2026-07-10 | scroll: Fix `Scrollable` height collapse in auto-sized containers |
+| #2541 | 2026-07-10 | slider: Support `reverse` to fill the track from thumb to max end |
+| #2542 | 2026-07-10 | plot: Defer only the tooltip box |
+| #2546 | 2026-07-10 | Add more test. |
+| #2509 | 2026-07-10 | fix tests |
 
 ## yororen-ui
 

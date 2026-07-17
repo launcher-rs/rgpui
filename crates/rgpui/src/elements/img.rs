@@ -498,7 +498,7 @@ impl Element for Img {
                             data,
                             layout_state.frame_index,
                             self.style.grayscale,
-                            transform,
+                            Some(transform),
                         )
                         .log_err();
                 } else if let Some(replacement) = &mut layout_state.replacement {

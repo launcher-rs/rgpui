@@ -2,7 +2,13 @@ mod app_menu;
 mod keyboard;
 mod keystroke;
 
-#[cfg(any(test, feature = "bench"))]
+/// Types for configuring parent-anchored popup windows such as menus, dropdowns and tooltips.
+pub mod popup;
+
+#[cfg(all(
+    any(test, feature = "bench", feature = "test-support"),
+    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+))]
 mod bench_dispatcher;
 
 #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -82,7 +88,10 @@ pub(crate) use test::*;
 #[cfg(any(test, feature = "test-support"))]
 pub use test::{TestDispatcher, TestScreenCaptureSource, TestScreenCaptureStream};
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(all(
+    any(test, feature = "bench", feature = "test-support"),
+    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+))]
 pub use bench_dispatcher::BenchDispatcher;
 
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
@@ -479,6 +488,9 @@ pub trait Platform: 'static {
     // ---- 系统电源 ----
     fn on_system_power_event(&self, _callback: Box<dyn FnMut(SystemPowerEvent)>) {}
 
+    /// 注册系统唤醒时的回调函数
+    fn on_system_wake(&self, _callback: Box<dyn FnMut()>) {}
+
     // ---- 电源阻止 ----
     fn start_power_save_blocker(&self, _kind: PowerSaveBlockerKind) -> Option<u32> {
         None
@@ -616,6 +628,188 @@ pub trait ScreenCaptureStream {
 
 /// A frame of video captured from a screen.
 pub struct ScreenCaptureFrame(pub PlatformScreenCaptureFrame);
+
+#[cfg(all(
+    any(target_os = "windows", target_os = "linux"),
+    feature = "screen-capture"
+))]
+impl ScreenCaptureFrame {
+    /// 获取帧宽度（像素）
+    pub fn width(&self) -> u32 {
+        match &self.0 {
+            scap::frame::Frame::YUVFrame(f) => f.width as u32,
+            scap::frame::Frame::RGB(f) => f.width as u32,
+            scap::frame::Frame::RGBx(f) => f.width as u32,
+            scap::frame::Frame::XBGR(f) => f.width as u32,
+            scap::frame::Frame::BGRx(f) => f.width as u32,
+            scap::frame::Frame::BGR0(f) => f.width as u32,
+            scap::frame::Frame::BGRA(f) => f.width as u32,
+        }
+    }
+
+    /// 获取帧高度（像素）
+    pub fn height(&self) -> u32 {
+        match &self.0 {
+            scap::frame::Frame::YUVFrame(f) => f.height as u32,
+            scap::frame::Frame::RGB(f) => f.height as u32,
+            scap::frame::Frame::RGBx(f) => f.height as u32,
+            scap::frame::Frame::XBGR(f) => f.height as u32,
+            scap::frame::Frame::BGRx(f) => f.height as u32,
+            scap::frame::Frame::BGR0(f) => f.height as u32,
+            scap::frame::Frame::BGRA(f) => f.height as u32,
+        }
+    }
+
+    /// 将帧转换为 RGBA 图像
+    ///
+    /// 支持所有 scap 输出格式：BGRA、BGR0、BGRx、XBGR、RGB、RGBx、YUV(NV12)。
+    /// YUV 格式使用 BT.601 标准进行色彩空间转换。
+    pub fn to_rgba(&self) -> Option<image::RgbaImage> {
+        match &self.0 {
+            scap::frame::Frame::BGRA(f) => {
+                let w = f.width as u32;
+                let h = f.height as u32;
+                let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+                for chunk in f.data.chunks_exact(4) {
+                    rgba.push(chunk[2]); // R
+                    rgba.push(chunk[1]); // G
+                    rgba.push(chunk[0]); // B
+                    rgba.push(chunk[3]); // A
+                }
+                image::RgbaImage::from_raw(w, h, rgba)
+            }
+            scap::frame::Frame::BGR0(f) => {
+                let w = f.width as u32;
+                let h = f.height as u32;
+                let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+                for chunk in f.data.chunks_exact(4) {
+                    rgba.push(chunk[2]); // R
+                    rgba.push(chunk[1]); // G
+                    rgba.push(chunk[0]); // B
+                    rgba.push(255); // A (不透明)
+                }
+                image::RgbaImage::from_raw(w, h, rgba)
+            }
+            scap::frame::Frame::BGRx(f) => {
+                let w = f.width as u32;
+                let h = f.height as u32;
+                let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+                for chunk in f.data.chunks_exact(4) {
+                    rgba.push(chunk[2]); // R
+                    rgba.push(chunk[1]); // G
+                    rgba.push(chunk[0]); // B
+                    rgba.push(255); // A (不透明)
+                }
+                image::RgbaImage::from_raw(w, h, rgba)
+            }
+            scap::frame::Frame::XBGR(f) => {
+                let w = f.width as u32;
+                let h = f.height as u32;
+                let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+                for chunk in f.data.chunks_exact(4) {
+                    rgba.push(chunk[3]); // R
+                    rgba.push(chunk[2]); // G
+                    rgba.push(chunk[1]); // B
+                    rgba.push(255); // A (不透明)
+                }
+                image::RgbaImage::from_raw(w, h, rgba)
+            }
+            scap::frame::Frame::RGB(f) => {
+                let w = f.width as u32;
+                let h = f.height as u32;
+                let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+                for chunk in f.data.chunks_exact(3) {
+                    rgba.push(chunk[0]); // R
+                    rgba.push(chunk[1]); // G
+                    rgba.push(chunk[2]); // B
+                    rgba.push(255); // A (不透明)
+                }
+                image::RgbaImage::from_raw(w, h, rgba)
+            }
+            scap::frame::Frame::RGBx(f) => {
+                let w = f.width as u32;
+                let h = f.height as u32;
+                let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+                for chunk in f.data.chunks_exact(4) {
+                    rgba.push(chunk[0]); // R
+                    rgba.push(chunk[1]); // G
+                    rgba.push(chunk[2]); // B
+                    rgba.push(255); // A (不透明)
+                }
+                image::RgbaImage::from_raw(w, h, rgba)
+            }
+            scap::frame::Frame::YUVFrame(f) => {
+                let w = f.width as u32;
+                let h = f.height as u32;
+                let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+
+                // NV12 格式：Y 平面 + 交错 UV 平面
+                let y_plane = &f.luminance_bytes;
+                let uv_plane = &f.chrominance_bytes;
+                let y_stride = f.luminance_stride as usize;
+                let uv_stride = f.chrominance_stride as usize;
+
+                for row in 0..h as usize {
+                    for col in 0..w as usize {
+                        // 读取 Y 值（考虑步长）
+                        let y_idx = row * y_stride + col;
+                        let y = if y_idx < y_plane.len() {
+                            y_plane[y_idx] as i32
+                        } else {
+                            0
+                        };
+
+                        // 读取 U、V 值（UV 交错，每两个像素共享）
+                        let uv_row = row / 2;
+                        let uv_col = (col / 2) * 2;
+                        let uv_idx = uv_row * uv_stride + uv_col;
+                        let u = if uv_idx < uv_plane.len() {
+                            uv_plane[uv_idx] as i32
+                        } else {
+                            128
+                        };
+                        let v = if uv_idx + 1 < uv_plane.len() {
+                            uv_plane[uv_idx + 1] as i32
+                        } else {
+                            128
+                        };
+
+                        // BT.601 YUV → RGB 转换
+                        let c = 298 * (y - 16);
+                        let r = ((c + 409 * (v - 128) + 128) >> 8).clamp(0, 255) as u8;
+                        let g = ((c - 100 * (u - 128) - 208 * (v - 128) + 128) >> 8).clamp(0, 255)
+                            as u8;
+                        let b = ((c + 516 * (u - 128) + 128) >> 8).clamp(0, 255) as u8;
+
+                        rgba.push(r);
+                        rgba.push(g);
+                        rgba.push(b);
+                        rgba.push(255); // A (不透明)
+                    }
+                }
+                image::RgbaImage::from_raw(w, h, rgba)
+            }
+        }
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "screen-capture"))]
+impl ScreenCaptureFrame {
+    /// 获取帧宽度（像素）
+    pub fn width(&self) -> u32 {
+        0
+    }
+
+    /// 获取帧高度（像素）
+    pub fn height(&self) -> u32 {
+        0
+    }
+
+    /// 将帧转换为 RGBA 图像
+    pub fn to_rgba(&self) -> Option<image::RgbaImage> {
+        None
+    }
+}
 
 /// An opaque identifier for a hardware display
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
@@ -988,6 +1182,7 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn show_window_menu(&self, _position: Point<Pixels>) {}
     fn start_window_move(&self) {}
     fn start_window_resize(&self, _edge: ResizeEdge) {}
+    fn set_input_region(&self, _region: Option<&[Bounds<Pixels>]>) {}
     fn window_decorations(&self) -> Decorations {
         Decorations::Server
     }
@@ -1026,6 +1221,14 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn render_to_image(&self, _scene: &Scene) -> Result<RgbaImage> {
         anyhow::bail!("render_to_image not implemented for this platform")
     }
+
+    // ---- 窗口扩展区域（Wayland layer-shell） ----
+    fn set_exclusive_zone(&self, _zone: Pixels) {}
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    fn set_exclusive_edge(&self, _edge: layer_shell::Anchor) {}
+
+    // ---- 用户注意力 ----
+    fn request_attention(&self) {}
 
     // ---- 窗口位置 ----
     fn set_position(&mut self, _position: Point<Pixels>) {}
@@ -1104,7 +1307,10 @@ pub trait PlatformDispatcher: Send + Sync {
     }
 
     // 此 cfg 必须与 `bench_dispatcher` 模块的匹配，该模块在编译时实现此方法
-    #[cfg(any(test, feature = "bench"))]
+    #[cfg(all(
+        any(test, feature = "bench", feature = "test-support"),
+        any(target_os = "windows", target_os = "linux", target_family = "wasm")
+    ))]
     fn as_bench(&self) -> Option<&BenchDispatcher> {
         None
     }
@@ -1881,6 +2087,9 @@ pub struct WindowParams {
     #[cfg_attr(feature = "wayland", allow(dead_code))]
     pub display_id: Option<DisplayId>,
 
+    /// 应用标识符（主要用于 Wayland）
+    pub app_id: Option<String>,
+
     pub window_min_size: Option<Size<Pixels>>,
     #[cfg(target_os = "macos")]
     pub tabbing_identifier: Option<String>,
@@ -1977,6 +2186,14 @@ pub enum WindowKind {
     /// A window that appears above all other windows, usually used for alerts or popups
     /// use sparingly!
     PopUp,
+
+    /// A parent-anchored, platform-native popup window for menus, comboboxes, context menus and
+    /// tooltips. Unlike [`WindowKind::PopUp`], it is positioned relative to a parent window.
+    ///
+    /// The popup's size comes from [`WindowOptions::window_bounds`], whose origin is ignored.
+    /// See [`popup::PopupOptions`] for the placement options. Platforms without a native
+    /// implementation reject it with [`popup::PopupNotSupportedError`].
+    AnchoredPopup(popup::PopupOptions),
 
     /// A floating window that appears on top of its parent window
     Floating,

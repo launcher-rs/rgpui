@@ -248,7 +248,7 @@ impl RenderOnce for TreeItem {
                     .flex_col()
                     .gap_1()
                     .items_start()
-                    .flex_grow()
+                    .flex_grow_1()
                     .children(label_element)
                     .children(secondary.map(|el| {
                         div()

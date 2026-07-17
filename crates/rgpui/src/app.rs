@@ -22,12 +22,15 @@ use itertools::Itertools;
 use parking_lot::RwLock;
 use slotmap::SlotMap;
 
-use crate::collections::{FxHashMap, FxHashSet, HashMap, VecDeque};
+use crate::collections::{FxHashMap, FxHashSet, HashMap, TypeIdHashMap, TypeIdHashSet, VecDeque};
 use crate::http_client::{HttpClient, Url};
-use crate::{ResultExt, debug_panic};
+use crate::rgpui_util::ResultExt;
 pub use async_context::*;
-#[cfg(feature = "bench")]
-pub use bench_context::{BenchAppContext, BenchReport, BenchWindowContext, bench_platform};
+#[cfg(all(
+    any(test, feature = "test-support"),
+    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+))]
+pub use bench_context::{BenchAppContext, BenchWindowContext};
 pub use context::*;
 pub use entity_map::*;
 #[cfg(any(test, feature = "test-support"))]
@@ -44,22 +47,24 @@ pub use visual_test_context::*;
 use crate::InspectorElementRegistry;
 use crate::{
     Action, ActionBuildError, ActionRegistry, Any, AnyView, AnyWindowHandle, AppContext, Arena,
-    ArenaBox, Asset, AssetSource, AttentionType, BackgroundExecutor, BiometricStatus, Bounds,
-    ClipboardItem, CursorStyle, DialogOptions, DispatchPhase, DisplayId, EventEmitter, FocusHandle,
-    FocusMap, FocusedWindowInfo, ForegroundExecutor, Global, KeyBinding, KeyContext, Keymap,
-    Keystroke, LayoutId, MediaKeyEvent, Menu, MenuItem, NetworkStatus, OsInfo, OwnedMenu,
-    PathPromptOptions, PermissionStatus, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
-    PlatformKeyboardMapper, Point, PowerSaveBlockerKind, Priority, PromptBuilder, PromptButton,
-    PromptHandle, PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation,
-    ScreenCaptureSource, SharedString, SubscriberSet, Subscription, SvgRenderer, SystemPowerEvent,
-    Task, TextRenderingMode, TextSystem, ThermalState, Tray, TrayIconEvent, TrayMenuItem, Window,
-    WindowAppearance, WindowButtonLayout, WindowHandle, WindowId, WindowInvalidator,
+    ArenaBox, Asset, AssetSource, BackgroundExecutor, Bounds, ClipboardItem, CursorStyle,
+    DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, ForegroundExecutor, Global,
+    KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu, MenuItem, OwnedMenu,
+    PathPromptOptions, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
+    PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton, PromptHandle,
+    PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation, ScreenCaptureSource,
+    SharedString, SubscriberSet, Subscription, SvgRenderer, Task, TextRenderingMode, TextSystem,
+    ThermalState, Tray, TrayIconEvent, TrayMenuItem, Window, WindowAppearance, WindowButtonLayout,
+    WindowHandle, WindowId, WindowInvalidator,
     colors::{Colors, GlobalColors},
     hash, init_app_menus,
 };
 
 mod async_context;
-#[cfg(feature = "bench")]
+#[cfg(all(
+    any(test, feature = "test-support"),
+    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+))]
 mod bench_context;
 mod context;
 mod entity_map;
@@ -72,7 +77,7 @@ mod test_context;
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
 mod visual_test_context;
 
-/// 应用程序退出前，[Context::on_app_quit] 返回的 future 可以运行的持续时间。
+/// The duration for which futures returned from [Context::on_app_quit] can run before the application fully quits.
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(200);
 
 /// Temporary(?) wrapper around [`RefCell<App>`] to help us debug any double borrows.
@@ -140,8 +145,8 @@ impl Drop for AppRefMut<'_> {
     }
 }
 
-/// 对 GPUI 应用程序的引用，通常在应用的 `main` 函数中构建。
-/// 除了在初始配置和启动阶段外，你通常不会直接与这个类型交互。
+/// A reference to a GPUI application, typically constructed in the `main` function of your app.
+/// You won't interact with this type much outside of initial configuration and startup.
 pub struct Application(Rc<AppCell>);
 
 /// Represents an application before it is fully launched. Once your app is
@@ -156,7 +161,15 @@ impl Application {
         ))
     }
 
-    /// Builds an app with accessibility (AccessKit) integration forcibly disabled.
+    /// Builds an app with accessibility (AccessKit) integration forcibly
+    /// disabled.
+    ///
+    /// In this mode, accessibility APIs (e.g.
+    /// [`div().role()`][crate::StatefulInteractiveElement::role]) silently
+    /// no-op.
+    ///
+    /// See the [accessibility guide](crate::_accessibility) for an overview of
+    /// the features this disables.
     pub fn new_inaccessible(platform: Rc<dyn Platform>) -> Self {
         let this = Self::with_platform(platform);
         this.0.borrow_mut().accessibility_force_disabled = true;
@@ -257,7 +270,7 @@ type WindowClosedHandler = Box<dyn FnMut(&mut App, WindowId)>;
 type ReleaseListener = Box<dyn FnOnce(&mut dyn Any, &mut App) + 'static>;
 type NewEntityListener = Box<dyn FnMut(AnyEntity, &mut Option<&mut Window>, &mut App) + 'static>;
 
-/// 定义应用程序何时应该自动退出。
+/// Defines when the application should automatically quit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QuitMode {
     /// Use [`QuitMode::Explicit`] on macOS and [`QuitMode::LastWindowClosed`] on other platforms.
@@ -269,10 +282,10 @@ pub enum QuitMode {
     Explicit,
 }
 
-/// 控制 GPUI 何时响应键盘输入自动隐藏鼠标光标。
+/// Controls when GPUI hides the mouse cursor in response to keyboard input.
 ///
-/// 鼠标移动时的恢复由平台层处理；此枚举
-/// 仅描述触发隐藏的策。
+/// Restoration on mouse motion is handled by the platform layer; this enum
+/// only describes the policy for *triggering* a hide.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum CursorHideMode {
     /// Never hide the cursor automatically.
@@ -306,10 +319,7 @@ impl SystemWindowTab {
     }
 }
 
-/// 窗口标签页的控制器。
-///
-/// 用于管理窗口标签页的可见性、标题、
-/// 位置以及标签页组之间的切换。
+/// A controller for managing window tabs.
 #[derive(Default)]
 pub struct SystemWindowTabController {
     visible: Option<bool>,
@@ -605,9 +615,9 @@ impl GpuiMode {
     }
 }
 
-/// 包含完整应用程序的状态，并作为引用传递给各种回调。
-/// 其他 [Context] 会解引用到此类型。
-/// 你需要一个 `App` 的引用来访问 [Entity] 的状态。
+/// Contains the state of the full application, and passed as a reference to a variety of callbacks.
+/// Other [Context] derefs to this type.
+/// You need a reference to an `App` to access the state of a [Entity].
 pub struct App {
     pub(crate) this: Weak<AppCell>,
     pub(crate) platform: Rc<dyn Platform>,
@@ -626,7 +636,7 @@ pub struct App {
     pub(crate) keyboard_layout: Box<dyn PlatformKeyboardLayout>,
     pub(crate) keyboard_mapper: Rc<dyn PlatformKeyboardMapper>,
     pub(crate) global_action_listeners:
-        FxHashMap<TypeId, Vec<Rc<dyn Fn(&dyn Any, DispatchPhase, &mut Self)>>>,
+        TypeIdHashMap<Vec<Rc<dyn Fn(&dyn Any, DispatchPhase, &mut Self)>>>,
     pending_effects: VecDeque<Effect>,
 
     pub(crate) observers: SubscriberSet<EntityId, Handler>,
@@ -651,7 +661,7 @@ pub struct App {
     // callbacks are marked cancelled at this point as this will also shutdown
     // the tokio runtime. As any task attempting to spawn a blocking tokio task,
     // might panic.
-    pub(crate) globals_by_type: FxHashMap<TypeId, Box<dyn Any>>,
+    pub(crate) globals_by_type: TypeIdHashMap<Box<dyn Any>>,
 
     // assets
     pub(crate) loading_assets: FxHashMap<(TypeId, u64), Box<dyn Any>>,
@@ -661,7 +671,7 @@ pub struct App {
 
     // below is plain data, the drop order is insignificant here
     pub(crate) pending_notifications: FxHashSet<EntityId>,
-    pub(crate) pending_global_notifications: FxHashSet<TypeId>,
+    pub(crate) pending_global_notifications: TypeIdHashSet,
     pub(crate) restart_path: Option<PathBuf>,
     pub(crate) layout_id_buffer: Vec<LayoutId>, // We recycle this memory across layout requests.
     pub(crate) propagate_event: bool,
@@ -681,6 +691,8 @@ pub struct App {
     pub(crate) window_update_stack: Vec<WindowId>,
     pub(crate) mode: GpuiMode,
     pub(crate) cursor_hide_mode: CursorHideMode,
+    /// Whether the app was created by [`Application::new_inaccessible`]. No
+    /// accesskit APIs will be called when this flag is set.
     pub(crate) accessibility_force_disabled: bool,
     flushing_effects: bool,
     pending_updates: usize,
@@ -732,7 +744,8 @@ impl App {
                 loading_assets: Default::default(),
                 asset_source,
                 http_client,
-                globals_by_type: FxHashMap::default(),
+
+                globals_by_type: Default::default(),
                 entities,
                 new_entity_observers: SubscriberSet::new(),
                 windows: SlotMap::with_key(),
@@ -742,10 +755,10 @@ impl App {
                 keymap: Rc::new(RefCell::new(Keymap::default())),
                 keyboard_layout,
                 keyboard_mapper,
-                global_action_listeners: FxHashMap::default(),
+                global_action_listeners: Default::default(),
                 pending_effects: VecDeque::new(),
                 pending_notifications: FxHashSet::default(),
-                pending_global_notifications: FxHashSet::default(),
+                pending_global_notifications: Default::default(),
                 observers: SubscriberSet::new(),
                 tracked_entities: FxHashMap::default(),
                 window_invalidators_by_entity: FxHashMap::default(),
@@ -856,7 +869,7 @@ impl App {
     }
 
     /// Quit the application gracefully. Handlers registered with [`Context::on_app_quit`]
-    /// will be given 100ms to complete before exiting.
+    /// will be given `SHUTDOWN_TIMEOUT` to complete before exiting.
     pub fn shutdown(&mut self) {
         let mut futures = Vec::new();
 
@@ -1617,7 +1630,7 @@ impl App {
         });
     }
 
-    /// Run `f` against the entity's *current* window — the most recently
+    /// Run `f` against the entity's *current* window 鈥?the most recently
     /// rendered window that referenced the entity, or its creation window if
     /// it has yet to be rendered. Returns `None` if the entity has no
     /// current window, or if that window has been closed, or if it is
@@ -1726,7 +1739,7 @@ impl App {
         R: 'static,
     {
         if self.quitting {
-            debug_panic!("Can't spawn on main thread after on_app_quit")
+            crate::debug_panic!("Can't spawn on main thread after on_app_quit")
         };
 
         let mut cx = self.to_async();
@@ -1744,7 +1757,7 @@ impl App {
         R: 'static,
     {
         if self.quitting {
-            debug_panic!("Can't spawn on main thread after on_app_quit")
+            crate::debug_panic!("Can't spawn on main thread after on_app_quit")
         };
 
         let mut cx = self.to_async();
@@ -2191,9 +2204,32 @@ impl App {
         self.platform.get_menus()
     }
 
-    /// 设置应用图标在程序坞中的右键菜单
+    /// Sets the right click menu for the app icon in the dock
     pub fn set_dock_menu(&self, menus: Vec<MenuItem>) {
         self.platform.set_dock_menu(menus, &self.keymap.borrow())
+    }
+
+    /// Performs the action associated with the given dock menu item, only used on Windows for now.
+    pub fn perform_dock_menu_action(&self, action: usize) {
+        self.platform.perform_dock_menu_action(action);
+    }
+
+    /// Adds given path to the bottom of the list of recent paths for the application.
+    /// The list is usually shown on the application icon's context menu in the dock,
+    /// and allows to open the recent files via that context menu.
+    /// If the path is already in the list, it will be moved to the bottom of the list.
+    pub fn add_recent_document(&self, path: &Path) {
+        self.platform.add_recent_document(path);
+    }
+
+    /// Updates the jump list with the updated list of recent paths for the application, only used on Windows for now.
+    /// Note that this also sets the dock menu on Windows.
+    pub fn update_jump_list(
+        &self,
+        menus: Vec<MenuItem>,
+        entries: Vec<SmallVec<[PathBuf; 2]>>,
+    ) -> Task<Vec<SmallVec<[PathBuf; 2]>>> {
+        self.platform.update_jump_list(menus, entries)
     }
 
     /// 设置系统托盘图标和菜单（旧 API，向后兼容）
@@ -2222,7 +2258,12 @@ impl App {
         self.platform.set_tray_panel_mode(enabled);
     }
 
-    /// 获取托盘图标的屏幕边界坐标，用于在其下方定位窗口
+    /// 在操作系统中显示通知
+pub fn show_notification(&self, title: &str, body: &str) -> Result<()> {
+    self.platform.show_notification(title, body)
+}
+
+/// 获取托盘图标的屏幕边界坐标，用于在其下方定位窗口
     pub fn tray_icon_bounds(&self) -> Option<Bounds<Pixels>> {
         self.platform.get_tray_icon_bounds()
     }
@@ -2280,219 +2321,6 @@ impl App {
                 callback(id, &mut app.borrow_mut());
             }
         }));
-    }
-
-    /// 显示系统原生通知
-    ///
-    /// # 参数
-    /// * `title` - 通知标题
-    /// * `body` - 通知内容
-    ///
-    /// # 返回
-    /// 成功时返回 `Ok(())`，失败时返回错误
-    pub fn show_notification(&self, title: &str, body: &str) -> Result<()> {
-        self.platform.show_notification(title, body)
-    }
-
-    /// 设置开机自启动
-    ///
-    /// # 参数
-    /// * `app_id` - 应用程序标识符
-    /// * `enabled` - 是否启用开机自启动
-    ///
-    /// # 返回
-    /// 成功时返回 `Ok(())`，失败时返回错误
-    pub fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
-        self.platform.set_auto_launch(app_id, enabled)
-    }
-
-    /// 检查开机自启动是否已启用
-    ///
-    /// # 参数
-    /// * `app_id` - 应用程序标识符
-    ///
-    /// # 返回
-    /// 如果已启用返回 `true`，否则返回 `false`
-    pub fn is_auto_launch_enabled(&self, app_id: &str) -> bool {
-        self.platform.is_auto_launch_enabled(app_id)
-    }
-
-    /// 获取当前系统聚焦窗口信息
-    ///
-    /// # 返回
-    /// 返回聚焦窗口信息，如果无法获取则返回 `None`
-    pub fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
-        self.platform.focused_window_info()
-    }
-
-    /// 获取辅助功能权限状态（主要用于 macOS）
-    ///
-    /// # 返回
-    /// 返回当前辅助功能权限状态
-    pub fn accessibility_status(&self) -> PermissionStatus {
-        self.platform.accessibility_status()
-    }
-
-    /// 请求辅助功能权限（主要用于 macOS）
-    /// 在 macOS 上会触发系统权限请求对话框
-    pub fn request_accessibility_permission(&self) {
-        self.platform.request_accessibility_permission();
-    }
-
-    /// 获取麦克风权限状态（主要用于 macOS）
-    ///
-    /// # 返回
-    /// 返回当前麦克风权限状态
-    pub fn microphone_status(&self) -> PermissionStatus {
-        self.platform.microphone_status()
-    }
-
-    /// 请求麦克风权限（主要用于 macOS）
-    ///
-    /// # 参数
-    /// * `callback` - 权限授予后调用的回调函数
-    pub fn request_microphone_permission(&self, callback: impl FnOnce(bool) + 'static) {
-        self.platform
-            .request_microphone_permission(Box::new(callback));
-    }
-
-    /// Performs the action associated with the given dock menu item, only used on Windows for now.
-    pub fn perform_dock_menu_action(&self, action: usize) {
-        self.platform.perform_dock_menu_action(action);
-    }
-
-    /// Adds given path to the bottom of the list of recent paths for the application.
-    /// The list is usually shown on the application icon's context menu in the dock,
-    /// and allows to open the recent files via that context menu.
-    /// If the path is already in the list, it will be moved to the bottom of the list.
-    pub fn add_recent_document(&self, path: &Path) {
-        self.platform.add_recent_document(path);
-    }
-
-    /// 注册系统电源事件回调
-    pub fn on_system_power_event(
-        &self,
-        mut callback: impl FnMut(SystemPowerEvent, &mut App) + 'static,
-    ) {
-        let this = self.this.clone();
-        self.platform.on_system_power_event(Box::new(move |event| {
-            if let Some(app) = this.upgrade() {
-                callback(event, &mut app.borrow_mut());
-            }
-        }));
-    }
-
-    /// 启动电源阻止器，阻止系统进入省电模式
-    pub fn start_power_save_blocker(&self, kind: PowerSaveBlockerKind) -> Option<u32> {
-        self.platform.start_power_save_blocker(kind)
-    }
-
-    /// 停止电源阻止器
-    pub fn stop_power_save_blocker(&self, id: u32) {
-        self.platform.stop_power_save_blocker(id);
-    }
-
-    /// 获取系统空闲时间
-    pub fn system_idle_time(&self) -> Option<Duration> {
-        self.platform.system_idle_time()
-    }
-
-    /// 获取当前网络状态
-    pub fn network_status(&self) -> NetworkStatus {
-        self.platform.network_status()
-    }
-
-    /// 注册网络状态变更回调
-    pub fn on_network_status_change(
-        &self,
-        mut callback: impl FnMut(NetworkStatus, &mut App) + 'static,
-    ) {
-        let this = self.this.clone();
-        self.platform
-            .on_network_status_change(Box::new(move |status| {
-                if let Some(app) = this.upgrade() {
-                    callback(status, &mut app.borrow_mut());
-                }
-            }));
-    }
-
-    /// 注册媒体键事件回调
-    pub fn on_media_key_event(&self, mut callback: impl FnMut(MediaKeyEvent, &mut App) + 'static) {
-        let this = self.this.clone();
-        self.platform.on_media_key_event(Box::new(move |event| {
-            if let Some(app) = this.upgrade() {
-                callback(event, &mut app.borrow_mut());
-            }
-        }));
-    }
-
-    /// 请求用户注意力（如弹跳 Dock 图标）
-    pub fn request_user_attention(&self, attention_type: AttentionType) {
-        self.platform.request_user_attention(attention_type);
-    }
-
-    /// 取消用户注意力请求
-    pub fn cancel_user_attention(&self) {
-        self.platform.cancel_user_attention();
-    }
-
-    /// 设置 Dock 徽章（如 macOS 上的未读计数）
-    pub fn set_dock_badge(&self, label: Option<&str>) {
-        self.platform.set_dock_badge(label);
-    }
-
-    /// 在指定位置显示上下文菜单
-    pub fn show_context_menu(
-        &self,
-        position: Point<Pixels>,
-        items: Vec<TrayMenuItem>,
-        mut callback: impl FnMut(SharedString, &mut App) + 'static,
-    ) {
-        let this = self.this.clone();
-        self.platform.show_context_menu(
-            position,
-            items,
-            Box::new(move |id| {
-                if let Some(app) = this.upgrade() {
-                    callback(id, &mut app.borrow_mut());
-                }
-            }),
-        );
-    }
-
-    /// 显示原生对话框
-    pub fn show_dialog(&self, options: DialogOptions) -> oneshot::Receiver<usize> {
-        self.platform.show_dialog(options)
-    }
-
-    /// 获取操作系统信息
-    pub fn os_info(&self) -> OsInfo {
-        self.platform.os_info()
-    }
-
-    /// 获取生物识别认证状态
-    pub fn biometric_status(&self) -> BiometricStatus {
-        self.platform.biometric_status()
-    }
-
-    /// 发起生物识别认证
-    pub fn authenticate_biometric(
-        &self,
-        reason: &str,
-        callback: impl FnOnce(bool) + Send + 'static,
-    ) {
-        self.platform
-            .authenticate_biometric(reason, Box::new(callback));
-    }
-
-    /// Updates the jump list with the updated list of recent paths for the application, only used on Windows for now.
-    /// Note that this also sets the dock menu on Windows.
-    pub fn update_jump_list(
-        &self,
-        menus: Vec<MenuItem>,
-        entries: Vec<SmallVec<[PathBuf; 2]>>,
-    ) -> Task<Vec<SmallVec<[PathBuf; 2]>>> {
-        self.platform.update_jump_list(menus, entries)
     }
 
     /// Dispatch an action to the currently active window or global action handler
@@ -2730,7 +2558,7 @@ impl App {
         self.inspector_element_registry.register(f);
     }
 
-    /// Initializes gpui's default colors for the application.
+    /// Initializes rgpui's default colors for the application.
     ///
     /// These colors can be accessed through `cx.default_colors()`.
     pub fn init_colors(&mut self) {

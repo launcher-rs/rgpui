@@ -11,6 +11,8 @@ mod icon;
 mod index_path;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
+#[cfg(all(target_os = "macos", not(test)))]
+mod macos_accessibility;
 mod root;
 mod styled;
 mod time;
@@ -19,7 +21,7 @@ mod virtual_list;
 mod window_border;
 mod window_ext;
 
-pub mod actions;
+pub(crate) mod actions;
 
 pub mod accordion;
 pub mod alert;
@@ -84,12 +86,12 @@ pub use event::InteractiveElementExt;
 pub use focus_trap::FocusTrapElement;
 pub use geometry::*;
 pub use global_state::GlobalState;
+pub use rgpui_component_macros::icon_named;
 pub use icon::*;
 pub use index_path::IndexPath;
 pub use input::{Rope, RopeExt, RopeLines};
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use inspector::*;
-pub use rgpui_component_macros::icon_named;
 pub use root::Root;
 pub use styled::*;
 pub use theme::*;

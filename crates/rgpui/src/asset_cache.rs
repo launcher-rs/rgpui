@@ -2,19 +2,19 @@ use crate::{App, SharedString, SharedUri};
 use futures::{Future, TryFutureExt};
 
 use std::fmt::Debug;
-use std::hash::{Hash, Hasher};
+use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// 表示资源位置的枚举
+/// An enum representing
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Resource {
-    /// 此资源位于给定的 URI 处
+    /// This resource is at a given URI
     Uri(SharedUri),
-    /// 此资源位于文件系统中的给定路径
+    /// This resource is at a given path in the file system
     Path(Arc<Path>),
-    /// 此资源嵌入在应用程序二进制文件中
+    /// This resource is embedded in the application binary
     Embedded(SharedString),
 }
 
@@ -36,22 +36,22 @@ impl From<Arc<Path>> for Resource {
     }
 }
 
-/// 用于异步加载资源的 trait。
+/// A trait for asynchronous asset loading.
 pub trait Asset: 'static {
-    /// 资源的来源。
+    /// The source of the asset.
     type Source: Clone + Hash + Send;
 
-    /// 已加载的资源
+    /// The loaded asset
     type Output: Clone + Send;
 
-    /// 异步加载资源
+    /// Load the asset asynchronously
     fn load(
         source: Self::Source,
         cx: &mut App,
     ) -> impl Future<Output = Self::Output> + Send + 'static;
 }
 
-/// 一个资源加载器，在加载期间记录 [`Result`] 的 [`Err`] 变体
+/// An asset Loader which logs the [`Err`] variant of a [`Result`] during loading
 pub enum AssetLogger<T> {
     #[doc(hidden)]
     _Phantom(PhantomData<T>, &'static dyn crate::seal::Sealed),
@@ -76,9 +76,7 @@ where
     }
 }
 
-/// 使用快速、非密码学安全的哈希函数从数据中获取标识符
+/// Use a quick, non-cryptographically secure hash function to get an identifier from data
 pub fn hash<T: Hash>(data: &T) -> u64 {
-    let mut hasher = crate::collections::FxHasher::default();
-    data.hash(&mut hasher);
-    hasher.finish()
+    crate::collections::FxBuildHasher.hash_one(data)
 }

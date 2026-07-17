@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use ::rgpui::util::{ResultExt, paths::SanitizedPath};
+use ::rgpui::util::ResultExt;
 use anyhow::{Context as _, Result, anyhow};
 use futures::channel::oneshot::{self, Receiver};
 use itertools::Itertools;
@@ -1483,8 +1483,8 @@ fn file_save_dialog(
             .context("failed to canonicalize directory")
             .log_err()
     {
-        let full_path = SanitizedPath::new(&full_path);
-        let full_path_string = full_path.to_string();
+        let full_path = dunce::simplified(&full_path);
+        let full_path_string = full_path.display().to_string();
         let path_item: IShellItem =
             unsafe { SHCreateItemFromParsingName(&HSTRING::from(full_path_string), None)? };
         unsafe {

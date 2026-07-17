@@ -1,22 +1,24 @@
 use std::{
-    cell::RefCell,
+    ffi::c_void,
+    ptr::NonNull,
     sync::atomic::{AtomicBool, Ordering},
     thread::{ThreadId, current},
     time::Duration,
 };
 
 use anyhow::Context;
-use rgpui::util::ResultExt;
-use windows::{
+use rgpui::ResultExt;
+use windows::Win32::{
+    Foundation::{FILETIME, LPARAM, WPARAM},
+    Media::{timeBeginPeriod, timeEndPeriod},
     System::Threading::{
-        ThreadPool, ThreadPoolTimer, TimerElapsedHandler, WorkItemHandler, WorkItemPriority,
+        CloseThreadpoolTimer, CloseThreadpoolWork, CreateThreadpoolTimer, CreateThreadpoolWork,
+        GetCurrentThread, PTP_CALLBACK_INSTANCE, PTP_TIMER, PTP_WORK, SetThreadPriority,
+        SetThreadpoolTimer, SubmitThreadpoolWork, THREAD_PRIORITY_TIME_CRITICAL,
+        TP_CALLBACK_ENVIRON_V3, TP_CALLBACK_PRIORITY, TP_CALLBACK_PRIORITY_HIGH,
+        TP_CALLBACK_PRIORITY_LOW, TP_CALLBACK_PRIORITY_NORMAL,
     },
-    Win32::{
-        Foundation::{LPARAM, WPARAM},
-        Media::{timeBeginPeriod, timeEndPeriod},
-        System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL},
-        UI::WindowsAndMessaging::PostMessageW,
-    },
+    UI::WindowsAndMessaging::PostMessageW,
 };
 
 use crate::{HWND, SafeHwnd, WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD};
@@ -24,29 +26,15 @@ use rgpui::{
     PlatformDispatcher, Priority, PriorityQueueSender, RunnableVariant, TimerResolutionGuard,
 };
 
-/// Windows 平台任务调度器
-///
-/// 负责在 Windows 线程池上调度任务，支持不同优先级和延迟执行
 pub(crate) struct WindowsDispatcher {
-    /// 标记是否已发送唤醒消息
     pub(crate) wake_posted: AtomicBool,
-    /// 主线程任务发送器
     main_sender: PriorityQueueSender<RunnableVariant>,
-    /// 主线程 ID
     main_thread_id: ThreadId,
-    /// 平台窗口句柄
     pub(crate) platform_window_handle: SafeHwnd,
-    /// 验证编号，用于消息验证
     validation_number: usize,
 }
 
 impl WindowsDispatcher {
-    /// 创建新的 Windows 调度器
-    ///
-    /// # 参数
-    /// * `main_sender` - 主线程任务发送器
-    /// * `platform_window_handle` - 平台窗口句柄
-    /// * `validation_number` - 验证编号
     pub(crate) fn new(
         main_sender: PriorityQueueSender<RunnableVariant>,
         platform_window_handle: HWND,
@@ -64,45 +52,46 @@ impl WindowsDispatcher {
         }
     }
 
-    /// 在线程池上调度任务
-    ///
-    /// # 参数
-    /// * `priority` - 任务优先级
-    /// * `runnable` - 可执行任务
-    fn dispatch_on_threadpool(&self, priority: WorkItemPriority, runnable: RunnableVariant) {
-        let handler = {
-            let task_wrapper = RefCell::new(Some(runnable));
-            WorkItemHandler::new(move |_| {
-                let runnable = task_wrapper.borrow_mut().take().unwrap();
-                Self::execute_runnable(runnable);
-                Ok(())
-            })
+    fn dispatch_on_threadpool(&self, priority: TP_CALLBACK_PRIORITY, runnable: RunnableVariant) {
+        let environ = TP_CALLBACK_ENVIRON_V3 {
+            Version: 3,
+            CallbackPriority: priority,
+            Size: size_of::<TP_CALLBACK_ENVIRON_V3>() as u32,
+            ..Default::default()
         };
 
-        ThreadPool::RunWithPriorityAsync(&handler, priority).log_err();
+        // If the thread pool never runs our callback, the matching `from_raw` is never called, which leaks the runnable.
+        // Dropping the scheduled runnable would cancel its task and make the next poll of any awaiter panic. Since we expect
+        // the scenario to usually happen during shutdown, this leak is acceptable.
+        let context = runnable.into_raw().as_ptr() as *mut c_void;
+
+        unsafe {
+            if let Ok(work) =
+                CreateThreadpoolWork(Some(run_work_callback), Some(context), Some(&environ))
+            {
+                SubmitThreadpoolWork(work);
+            }
+        }
     }
 
-    /// 在线程池上延迟调度任务
-    ///
-    /// # 参数
-    /// * `runnable` - 可执行任务
-    /// * `duration` - 延迟时间
     fn dispatch_on_threadpool_after(&self, runnable: RunnableVariant, duration: Duration) {
-        let handler = {
-            let task_wrapper = RefCell::new(Some(runnable));
-            TimerElapsedHandler::new(move |_| {
-                let runnable = task_wrapper.borrow_mut().take().unwrap();
-                Self::execute_runnable(runnable);
-                Ok(())
-            })
-        };
-        ThreadPoolTimer::CreateTimer(&handler, duration.into()).log_err();
+        let context = runnable.into_raw().as_ptr() as *mut c_void;
+
+        unsafe {
+            if let Ok(timer) = CreateThreadpoolTimer(Some(run_timer_callback), Some(context), None)
+            {
+                // Negative FILETIME expresses a relative delay in 100ns ticks
+                let ticks = (duration.as_nanos() / 100).min(i64::MAX as u128) as i64;
+                let due = (-ticks) as u64;
+                let due_time = FILETIME {
+                    dwLowDateTime: due as u32,
+                    dwHighDateTime: (due >> 32) as u32,
+                };
+                SetThreadpoolTimer(timer, Some(&due_time), 0, None);
+            }
+        }
     }
 
-    /// 执行可执行任务，并记录任务耗时
-    ///
-    /// # 参数
-    /// * `runnable` - 要执行的任务
     #[inline(always)]
     pub(crate) fn execute_runnable(runnable: RunnableVariant) {
         let location = runnable.metadata().location;
@@ -121,11 +110,11 @@ impl PlatformDispatcher for WindowsDispatcher {
     fn dispatch(&self, runnable: RunnableVariant, priority: Priority) {
         let priority = match priority {
             Priority::RealtimeAudio => {
-                panic!("RealtimeAudio 优先级应使用 spawn_realtime，而非 dispatch")
+                panic!("RealtimeAudio priority should use spawn_realtime, not dispatch")
             }
-            Priority::High => WorkItemPriority::High,
-            Priority::Medium => WorkItemPriority::Normal,
-            Priority::Low => WorkItemPriority::Low,
+            Priority::High => TP_CALLBACK_PRIORITY_HIGH,
+            Priority::Medium => TP_CALLBACK_PRIORITY_NORMAL,
+            Priority::Low => TP_CALLBACK_PRIORITY_LOW,
         };
         self.dispatch_on_threadpool(priority, runnable);
     }
@@ -146,14 +135,14 @@ impl PlatformDispatcher for WindowsDispatcher {
                 }
             }
             Err(runnable) => {
-                // 注意：Runnable 可能包装了 !Send 的 Future。
+                // NOTE: Runnable may wrap a Future that is !Send.
                 //
-                // 这通常是安全的，因为我们只在主线程上轮询它。
-                // 但如果发送失败，我们知道：
-                // 1. main_receiver 已被丢弃（意味着应用正在关闭）
-                // 2. 我们当前在后台线程上。
-                // 在错误的线程上丢弃 !Send 的对象是不安全的，而且
-                // 应用即将退出，所以我们必须遗忘这个 runnable。
+                // This is usually safe because we only poll it on the main thread.
+                // However if the send fails, we know that:
+                // 1. main_receiver has been dropped (which implies the app is shutting down)
+                // 2. we are on a background thread.
+                // It is not safe to drop something !Send on the wrong thread, and
+                // the app will exit soon anyway, so we must forget the runnable.
                 std::mem::forget(runnable);
             }
         }
@@ -165,10 +154,10 @@ impl PlatformDispatcher for WindowsDispatcher {
 
     fn spawn_realtime(&self, f: Box<dyn FnOnce() + Send>) {
         std::thread::spawn(move || {
-            // 安全：始终安全可调用
+            // SAFETY: always safe to call
             let thread_handle = unsafe { GetCurrentThread() };
 
-            // 安全：thread_handle 是当前线程的有效句柄
+            // SAFETY: thread_handle is a valid handle to the current thread
             unsafe { SetThreadPriority(thread_handle, THREAD_PRIORITY_TIME_CRITICAL) }
                 .context("thread priority")
                 .log_err();
@@ -185,4 +174,24 @@ impl PlatformDispatcher for WindowsDispatcher {
             timeEndPeriod(1);
         }))
     }
+}
+
+unsafe extern "system" fn run_work_callback(
+    _instance: PTP_CALLBACK_INSTANCE,
+    context: *mut c_void,
+    work: PTP_WORK,
+) {
+    let runnable = unsafe { RunnableVariant::from_raw(NonNull::new_unchecked(context as *mut ())) };
+    WindowsDispatcher::execute_runnable(runnable);
+    unsafe { CloseThreadpoolWork(work) };
+}
+
+unsafe extern "system" fn run_timer_callback(
+    _instance: PTP_CALLBACK_INSTANCE,
+    context: *mut c_void,
+    timer: PTP_TIMER,
+) {
+    let runnable = unsafe { RunnableVariant::from_raw(NonNull::new_unchecked(context as *mut ())) };
+    WindowsDispatcher::execute_runnable(runnable);
+    unsafe { CloseThreadpoolTimer(timer) };
 }

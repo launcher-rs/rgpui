@@ -1,10 +1,10 @@
-/// 可被检查的元素的唯一标识符。
+/// A unique identifier for an element that can be inspected.
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct InspectorElementId {
-    /// ID 的稳定部分。
+    /// Stable part of the ID.
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub path: std::rc::Rc<InspectorElementPath>,
-    /// 用于区分具有相同路径的元素。
+    /// Disambiguates elements that have the same path.
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub instance_id: usize,
 }
@@ -21,17 +21,17 @@ pub use conditional::*;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod conditional {
     use super::*;
-    use crate::collections::FxHashMap;
+    use crate::collections::{FxHashMap, TypeIdHashMap};
     use crate::{AnyElement, App, Context, Empty, IntoElement, Render, Window};
     use std::any::{Any, TypeId};
 
-    /// 具有元素构造源位置的 `GlobalElementId`。
+    /// `GlobalElementId` qualified by source location of element construction.
     #[derive(Debug, Eq, PartialEq, Hash)]
     pub struct InspectorElementPath {
-        /// 到具有 `ElementId` 的最近祖先元素的路径。
+        /// The path to the nearest ancestor element that has an `ElementId`.
         #[cfg(any(feature = "inspector", debug_assertions))]
         pub global_id: crate::GlobalElementId,
-        /// 此元素构造的源位置。
+        /// Source location where this element was constructed.
         #[cfg(any(feature = "inspector", debug_assertions))]
         pub source_location: &'static std::panic::Location<'static>,
     }
@@ -51,11 +51,12 @@ mod conditional {
         }
     }
 
-    /// 设置在 `App` 上用于渲染检查器 UI 的函数。
+    /// Function set on `App` to render the inspector UI.
     pub type InspectorRenderer =
         Box<dyn Fn(&mut Inspector, &mut Window, &mut Context<Inspector>) -> AnyElement>;
 
-    /// 管理检查器状态 —— 当前选中的元素以及检查器是否处于拾取模式。
+    /// Manages inspector state - which element is currently selected and whether the inspector is
+    /// in picking mode.
     pub struct Inspector {
         active_element: Option<InspectedElement>,
         pub(crate) pick_depth: Option<f32>,
@@ -63,14 +64,14 @@ mod conditional {
 
     struct InspectedElement {
         id: InspectorElementId,
-        states: FxHashMap<TypeId, Box<dyn Any>>,
+        states: TypeIdHashMap<Box<dyn Any>>,
     }
 
     impl InspectedElement {
         fn new(id: InspectorElementId) -> Self {
             InspectedElement {
                 id,
-                states: FxHashMap::default(),
+                states: Default::default(),
             }
         }
     }
@@ -110,7 +111,7 @@ mod conditional {
             changed
         }
 
-        /// 当前悬停或选中元素的 ID。
+        /// ID of the currently hovered or selected element.
         pub fn active_element_id(&self) -> Option<&InspectorElementId> {
             self.active_element.as_ref().map(|e| &e.id)
         }
@@ -141,17 +142,17 @@ mod conditional {
             result
         }
 
-        /// 启动元素拾取模式，允许用户通过点击选择元素。
+        /// Starts element picking mode, allowing the user to select elements by clicking.
         pub fn start_picking(&mut self) {
             self.pick_depth = Some(0.0);
         }
 
-        /// 返回检查器当前是否处于拾取模式。
+        /// Returns whether the inspector is currently in picking mode.
         pub fn is_picking(&self) -> bool {
             self.pick_depth.is_some()
         }
 
-        /// 为活动检查器元素的所有已注册检查器状态渲染元素。
+        /// Renders elements for all registered inspector states of the active inspector element.
         pub fn render_inspector_states(
             &mut self,
             window: &mut Window,
@@ -221,27 +222,27 @@ mod conditional {
     }
 }
 
-/// 提供 `#[derive_inspector_reflection]` 使用的定义。
+/// Provides definitions used by `#[derive_inspector_reflection]`.
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub mod inspector_reflection {
     use std::any::Any;
 
-    /// 具有签名 `fn some_fn(T) -> T` 的函数的具体化。提供名称、
-    /// 文档和调用函数的能力。
+    /// Reification of a function that has the signature `fn some_fn(T) -> T`. Provides the name,
+    /// documentation, and ability to invoke the function.
     #[derive(Clone, Copy)]
     pub struct FunctionReflection<T> {
-        /// 函数名称
+        /// The name of the function
         pub name: &'static str,
-        /// 方法
+        /// The method
         pub function: fn(Box<dyn Any>) -> Box<dyn Any>,
-        /// 函数文档
+        /// Documentation for the function
         pub documentation: Option<&'static str>,
-        /// 参数和结果类型的 `PhantomData`
+        /// `PhantomData` for the type of the argument and result
         pub _type: std::marker::PhantomData<T>,
     }
 
     impl<T: 'static> FunctionReflection<T> {
-        /// 在值上调用此方法并返回结果。
+        /// Invoke this method on a value and return the result.
         pub fn invoke(&self, value: T) -> T {
             let boxed = Box::new(value) as Box<dyn Any>;
             let result = (self.function)(boxed);

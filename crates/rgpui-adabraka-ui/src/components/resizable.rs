@@ -434,7 +434,7 @@ impl RenderOnce for ResizablePanel {
         let mut panel_div = div()
             .id(("resizable-panel", self.index))
             .flex()
-            .flex_grow()
+            .flex_grow_1()
             .size_full()
             .relative();
 

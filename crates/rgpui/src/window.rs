@@ -1,9 +1,5 @@
 #[cfg(any(feature = "inspector", debug_assertions))]
 use crate::Inspector;
-use crate::collections::{FxHashMap, FxHashSet};
-use crate::post_inc;
-use crate::refineable::Refineable;
-use crate::scheduler::Instant;
 use crate::{
     Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset,
     AsyncWindowContext, AvailableSpace, Background, BlendMode, BorderStyle, Bounds, BoxShadow,
@@ -24,7 +20,12 @@ use crate::{
     WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, rems, size,
     transparent_black,
 };
-use crate::{ResultExt, measure};
+
+use crate::collections::{FxHashMap, FxHashSet};
+use crate::refineable::Refineable;
+use crate::rgpui_util::post_inc;
+use crate::rgpui_util::{ResultExt, measure};
+use crate::scheduler::Instant;
 use anyhow::{Context as _, Result, anyhow};
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
@@ -59,13 +60,13 @@ use std::{
 use uuid::Uuid;
 
 pub(crate) mod a11y;
-
 mod prompts;
+
+pub use a11y::A11ySubtreeBuilder;
 
 use self::a11y::A11y;
 #[cfg(not(target_family = "wasm"))]
 use self::a11y::ROOT_NODE_ID;
-
 use crate::util::{
     atomic_incr_if_not_zero, ceil_to_device_pixel, floor_to_device_pixel, round_half_toward_zero,
     round_half_toward_zero_f64, round_stroke_to_device_pixel, round_to_device_pixel,
@@ -82,7 +83,7 @@ pub const DEFAULT_ADDITIONAL_WINDOW_SIZE: Size<Pixels> = Size {
     height: Pixels(750.),
 };
 
-/// 表示事件分发时的两个不同阶段。
+/// Represents the two different phases when dispatching events.
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DispatchPhase {
     /// After the capture phase comes the bubble phase, in which mouse event listeners are
@@ -121,7 +122,10 @@ struct WindowInvalidatorInner {
     pub frame_dirty: FrameDirtyAccumulator,
 }
 
-/// 每帧失效记账，在绘制时排空并发送到帧分析器。跟踪当前帧首次变脏的时间以及合并了多少次失效。仅在设置了 `profiler::frame_trace_enabled()` 时填充
+/// Per-frame invalidation bookkeeping, drained at draw time and emitted to the
+/// frame profiler. Tracks when the current frame first became dirty and how
+/// many invalidations were coalesced into it. Only populated while
+/// `profiler::frame_trace_enabled()` is set.
 #[derive(Default)]
 struct FrameDirtyAccumulator {
     dirty_at: Option<Instant>,
@@ -169,11 +173,16 @@ impl WindowInvalidator {
         inner.dirty = dirty;
         if dirty {
             inner.update_count += 1;
+            Self::record_frame_dirty(&mut inner);
         }
     }
 
     pub fn set_phase(&self, phase: DrawPhase) {
         self.inner.borrow_mut().draw_phase = phase
+    }
+
+    pub fn update_count(&self) -> usize {
+        self.inner.borrow().update_count
     }
 
     fn record_frame_dirty(inner: &mut WindowInvalidatorInner) {
@@ -185,10 +194,6 @@ impl WindowInvalidator {
 
     fn take_frame_dirty(&self) -> FrameDirtyAccumulator {
         mem::take(&mut self.inner.borrow_mut().frame_dirty)
-    }
-
-    pub fn update_count(&self) -> usize {
-        self.inner.borrow().update_count
     }
 
     pub fn take_views(&self) -> FxHashSet<EntityId> {
@@ -269,7 +274,7 @@ thread_local! {
 
     /// Points to the current App's element arena during draw operations.
     /// This allows multiple test Apps to have isolated arenas, preventing
-    /// cross-session corruption when the scheduler interleaves their tasks.
+    /// cross-session corruption when the crate::scheduler interleaves their tasks.
     static CURRENT_ELEMENT_ARENA: Cell<Option<*const RefCell<Arena>>> = const { Cell::new(None) };
 }
 
@@ -374,7 +379,7 @@ impl FocusId {
     }
 }
 
-/// 用于跟踪和操控窗口中聚焦元素的句柄。
+/// A handle which can be used to track and manipulate the focused element in a window.
 pub struct FocusHandle {
     pub(crate) id: FocusId,
     handles: Arc<FocusMap>,
@@ -547,7 +552,8 @@ impl PartialEq<WeakFocusHandle> for FocusHandle {
     }
 }
 
-/// Focusable 允许用户通过 `window.focus_view(cx, view)` 来聚焦你的视图。
+/// Focusable allows users of your view to easily
+/// focus it (using window.focus_view(cx, view))
 pub trait Focusable: 'static {
     /// Returns the focus handle associated with this view.
     fn focus_handle(&self, cx: &App) -> FocusHandle;
@@ -559,14 +565,13 @@ impl<V: Focusable> Focusable for Entity<V> {
     }
 }
 
-/// ManagedView 是由另一个视图管理生命周期的视图
-/// （如 Modal、Popover、Menu 等）。
+/// ManagedView is a view (like a Modal, Popover, Menu, etc.)
+/// where the lifecycle of the view is handled by another view.
 pub trait ManagedView: Focusable + EventEmitter<DismissEvent> + Render {}
 
 impl<M: Focusable + EventEmitter<DismissEvent> + Render> ManagedView for M {}
 
-/// 由 [`ManagedView`] 的实现者发出，表示视图应该被解散，
-/// 例如当视图作为模态框呈现时。
+/// Emitted by implementers of [`ManagedView`] to indicate the view should be dismissed, such as when a view is presented as a modal.
 pub struct DismissEvent;
 
 type FrameCallback = Box<dyn FnOnce(&mut Window, &mut App)>;
@@ -586,7 +591,7 @@ pub(crate) struct HitTest {
     pub(crate) hover_hitbox_count: usize,
 }
 
-/// 对应于平台窗口的窗口控制区域类型。
+/// A type of window control area that corresponds to the platform window.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WindowControlArea {
     /// An area that allows dragging of the platform window.
@@ -667,8 +672,8 @@ impl HitboxId {
     }
 }
 
-/// 一个矩形的命中区域，可能会阻止先插入的 hitbox。
-/// 详见 [Window::insert_hitbox]。
+/// A rectangular region that potentially blocks hitboxes inserted prior.
+/// See [Window::insert_hitbox] for more details.
 #[derive(Clone, Debug, Deref)]
 pub struct Hitbox {
     /// A unique identifier for the hitbox.
@@ -714,7 +719,7 @@ impl Hitbox {
     }
 }
 
-/// hitbox 影响鼠标行为的方式。
+/// How the hitbox affects mouse behavior.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum HitboxBehavior {
     /// Normal hitbox mouse behavior, doesn't affect mouse handling for other hitboxes.
@@ -977,6 +982,7 @@ impl Frame {
 enum InputModality {
     Mouse,
     Keyboard,
+    Touch,
 }
 
 /// Holds the state for a specific window.
@@ -1038,6 +1044,9 @@ pub struct Window {
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
     focus_enabled: bool,
+    /// Incremented every time focus moves. Used to invalidate a
+    /// pending keyboard activation state when focus changes.
+    pub(crate) focus_generation: u64,
     pending_input: Option<PendingInput>,
     pending_modifier: ModifierState,
     pub(crate) pending_input_observers: SubscriberSet<(), AnyObserver>,
@@ -1284,6 +1293,7 @@ impl Window {
             show,
             kind,
             is_movable,
+            mouse_passthrough,
             is_resizable,
             is_minimizable,
             display_id,
@@ -1298,8 +1308,11 @@ impl Window {
             icon,
             #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
             tabbing_identifier,
-            mouse_passthrough,
         } = options;
+
+        let initial_window_title = titlebar
+            .as_ref()
+            .and_then(|titlebar| titlebar.title.clone());
 
         let window_bounds = window_bounds.unwrap_or_else(|| default_bounds(display_id, cx));
         let mut platform_window = cx.platform.open_window(
@@ -1309,17 +1322,18 @@ impl Window {
                 titlebar,
                 kind,
                 is_movable,
+                mouse_passthrough,
                 is_resizable,
                 is_minimizable,
                 focus,
                 show,
                 display_id,
                 window_min_size,
+                app_id: app_id.clone(),
                 icon,
+                window_decorations: window_decorations.unwrap_or_default(),
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
-                window_decorations: window_decorations.unwrap_or(WindowDecorations::Server),
-                mouse_passthrough,
             },
         )?;
 
@@ -1356,12 +1370,17 @@ impl Window {
             WindowBounds::Windowed(_) => {}
         }
 
+        let accessibility_force_disabled = cx.accessibility_force_disabled;
         let a11y_active_flag = Arc::new(AtomicBool::new(false));
 
         #[cfg(not(target_family = "wasm"))]
-        if !cx.accessibility_force_disabled {
+        if !accessibility_force_disabled {
+            let mut initial_root_node = accesskit::Node::new(accesskit::Role::Window);
+            if let Some(title) = &initial_window_title {
+                initial_root_node.set_label(title.to_string());
+            }
             let initial_tree = accesskit::TreeUpdate {
-                nodes: vec![(ROOT_NODE_ID, accesskit::Node::new(accesskit::Role::Window))],
+                nodes: vec![(ROOT_NODE_ID, initial_root_node)],
                 tree: Some(accesskit::Tree::new(ROOT_NODE_ID)),
                 tree_id: accesskit::TreeId::ROOT,
                 focus: ROOT_NODE_ID,
@@ -1394,6 +1413,11 @@ impl Window {
                 },
             });
 
+            // A11y can be activated at any time, and so we cannot compute a
+            // correct `TreeUpdate` on-demand. When this happens, we return a
+            // default empty `TreeUpdate`.
+            //
+            // So we force a new frame, which will then send a correct `TreeUpdate`.
             let mut async_cx = cx.to_async();
             cx.foreground_executor()
                 .spawn(async move {
@@ -1729,6 +1753,7 @@ impl Window {
             activation_observers: SubscriberSet::new(),
             focus: None,
             focus_enabled: true,
+            focus_generation: 0,
             pending_input: None,
             pending_modifier: ModifierState::default(),
             pending_input_observers: SubscriberSet::new(),
@@ -1738,7 +1763,11 @@ impl Window {
             captured_hitbox: None,
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector: None,
-            a11y: A11y::new(a11y_active_flag, cx.accessibility_force_disabled),
+            a11y: A11y::new(
+                a11y_active_flag,
+                accessibility_force_disabled,
+                initial_window_title,
+            ),
         })
     }
 
@@ -1885,6 +1914,7 @@ impl Window {
         }
 
         self.focus = Some(handle.id);
+        self.focus_generation = self.focus_generation.wrapping_add(1);
         self.clear_pending_keystrokes();
 
         // Avoid re-entrant entity updates by deferring observer notifications to the end of the
@@ -1907,6 +1937,9 @@ impl Window {
             return;
         }
 
+        if self.focus.is_some() {
+            self.focus_generation = self.focus_generation.wrapping_add(1);
+        }
         self.focus = None;
         self.refresh();
     }
@@ -1965,9 +1998,37 @@ impl Window {
         self.platform_window.request_decorations(decorations);
     }
 
+    /// Set the exclusive zone for a layer-shell surface: how much screen space it
+    /// reserves so other surfaces avoid occluding it (e.g. a panel reserving space).
+    /// Positive values reserve that distance from the anchored edge, 0 lets the
+    /// surface be moved out of others' exclusive zones, and -1 ignores reserved
+    /// space and may extend under other surfaces. (Wayland layer-shell windows only)
+    pub fn set_exclusive_zone(&self, zone: Pixels) {
+        self.platform_window.set_exclusive_zone(zone);
+    }
+
+    /// Set which anchored edge a layer-shell surface's exclusive zone applies to.
+    /// This is only needed to disambiguate a corner-anchored surface; otherwise the
+    /// edge is deduced from the anchor. The edge must be a single edge the surface
+    /// is anchored to, or it is ignored. (Wayland layer-shell windows only)
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    pub fn set_exclusive_edge(&self, edge: crate::layer_shell::Anchor) {
+        self.platform_window.set_exclusive_edge(edge);
+    }
+
     /// Start a window resize operation (Wayland)
     pub fn start_window_resize(&self, edge: ResizeEdge) {
         self.platform_window.start_window_resize(edge);
+    }
+
+    /// Linux (wayland) only: Set the window's input region, the area that receives pointer
+    /// and touch input. Events outside it pass through to whatever is below the window.
+    ///
+    /// - `Some(rects)` restricts input to the union of `rects`, in window coordinates.
+    /// - `Some(&[])` is an empty region, so the window receives no pointer or touch input.
+    /// - `None` resets the region to the default, so the whole window receives input again.
+    pub fn set_input_region(&self, region: Option<&[Bounds<Pixels>]>) {
+        self.platform_window.set_input_region(region);
     }
 
     /// Return the `WindowBounds` to indicate that how a window should be opened
@@ -2160,9 +2221,29 @@ impl Window {
     /// It will cause the window to redraw on the next frame, even if no other changes have occurred.
     ///
     /// If called from within a view, it will notify that view on the next frame. Otherwise, it will refresh the entire window.
+    ///
+    /// Callers driving purely decorative animations (spinners, pulses, and the
+    /// like) should prefer [`AnimationExt::with_animation`](crate::AnimationExt::with_animation),
+    /// which automatically respects [`App::reduce_motion`]. When using this
+    /// method directly for decorative motion, check [`App::reduce_motion`]
+    /// and skip the frame request when it is set.
     pub fn request_animation_frame(&self) {
         let entity = self.current_view();
         self.on_next_frame(move |_, cx| cx.notify(entity));
+    }
+
+    /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
+    ///
+    /// Tests have no platform frame loop, so this simulates the delivery of the
+    /// next frame.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn simulate_next_frame(&mut self, cx: &mut App) -> usize {
+        let callbacks = self.next_frame_callbacks.take();
+        let count = callbacks.len();
+        for callback in callbacks {
+            callback(self, cx);
+        }
+        count
     }
 
     /// Spawn the future returned by the given closure on the application thread pool.
@@ -2211,6 +2292,7 @@ impl Window {
         self.scale_factor = self.platform_window.scale_factor();
         self.viewport_size = self.platform_window.content_size();
         self.display_id = self.platform_window.display().map(|display| display.id());
+        self.mouse_position = self.platform_window.mouse_position();
 
         self.refresh();
 
@@ -2224,25 +2306,16 @@ impl Window {
         self.platform_window.bounds()
     }
 
-    /// 返回当前窗口左上角在全局屏幕坐标系中的位置。
+    /// Returns the position of the window's top-left corner in screen coordinates.
     pub fn position(&self) -> Point<Pixels> {
         self.bounds().origin
     }
 
-    /// 返回当前窗口所在屏幕的边界。
-    ///
-    /// 如果窗口当前显示器不可用，则回退到主显示器。
-    pub fn screen_bounds(&self, cx: &App) -> Option<Bounds<Pixels>> {
+    /// Returns the size of the screen the window is on, or the primary screen if unavailable.
+    pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
         self.display(cx)
             .or_else(|| cx.primary_display())
-            .map(|display| display.bounds())
-    }
-
-    /// 返回当前窗口所在屏幕的尺寸。
-    ///
-    /// 如果窗口当前显示器不可用，则回退到主显示器。
-    pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
-        self.screen_bounds(cx).map(|bounds| bounds.size)
+            .map(|d| d.bounds().size)
     }
 
     /// Renders the current frame's scene to a texture and returns the pixel data as an RGBA image.
@@ -2257,11 +2330,6 @@ impl Window {
     /// Set the content size of the window.
     pub fn resize(&mut self, size: Size<Pixels>) {
         self.platform_window.resize(size);
-    }
-
-    /// 设置窗口位置（保持大小不变）
-    pub fn set_position(&mut self, position: Point<Pixels>) {
-        self.platform_window.set_position(position);
     }
 
     /// Returns whether or not the window is currently fullscreen
@@ -2355,6 +2423,13 @@ impl Window {
     /// Updates the window's title at the platform level.
     pub fn set_window_title(&mut self, title: &str) {
         self.platform_window.set_title(title);
+        self.a11y.set_window_title(title.to_string());
+    }
+
+    /// Sets the position of the macOS traffic light buttons.
+    #[cfg(target_os = "macos")]
+    pub fn set_traffic_light_position(&self, position: Point<Pixels>) {
+        self.platform_window.set_traffic_light_position(position);
     }
 
     /// Sets the application identifier.
@@ -2366,31 +2441,6 @@ impl Window {
     pub fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance) {
         self.platform_window
             .set_background_appearance(background_appearance);
-    }
-
-    /// 设置窗口是否允许鼠标事件穿透到后面的窗口
-    pub fn set_mouse_passthrough(&self, passthrough: bool) {
-        self.platform_window.set_mouse_passthrough(passthrough);
-    }
-
-    /// 获取窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
-    pub fn window_extended_style(&self) -> u32 {
-        self.platform_window.window_extended_style()
-    }
-
-    /// 设置窗口扩展样式（GWL_EXSTYLE），仅 Windows 有效
-    ///
-    /// 可用于调试和自定义窗口行为，例如控制 WS_EX_LAYERED 等标志。
-    pub fn set_window_extended_style(&self, style: u32) {
-        self.platform_window.set_window_extended_style(style);
-    }
-
-    /// 设置标题栏和边框是否可见
-    ///
-    /// # 参数
-    /// * `visible` - true 显示标题栏和边框，false 隐藏
-    pub fn set_titlebar_visible(&self, visible: bool) {
-        self.platform_window.set_titlebar_visible(visible);
     }
 
     /// Mark the window as dirty at the platform level.
@@ -2640,13 +2690,14 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // Drain unconditionally so a stale first-invalidation timestamp can't
+        // leak into a later frame across enable/disable of frame tracing.
+        let frame_dirty = self.invalidator.take_frame_dirty();
+        let draw_started_at = profiler::frame_trace_enabled().then(Instant::now);
+
         // Set up the per-App arena for element allocation during this draw.
         // This ensures that multiple test Apps have isolated arenas.
         let _arena_scope = ElementArenaScope::enter(&cx.element_arena);
-
-        // 无条件排空，以便过时的首次失效时间戳不能泄漏到后续帧中（跨帧跟踪的启用/禁用）
-        let frame_dirty = self.invalidator.take_frame_dirty();
-        let draw_started_at = profiler::frame_trace_enabled().then(Instant::now);
 
         self.invalidate_entities();
         cx.entities.clear_accessed();
@@ -2703,6 +2754,7 @@ impl Window {
         self.next_frame.clear();
         let current_focus_path = self.rendered_frame.focus_path();
         let current_window_active = self.rendered_frame.window_active;
+        let mut focus_before_listeners = self.focus;
 
         if previous_focus_path != current_focus_path
             || previous_window_active != current_window_active
@@ -2711,6 +2763,11 @@ impl Window {
                 self.focus_lost_listeners
                     .clone()
                     .retain(&(), |listener| listener(self, cx));
+                // The focus-lost fallback (e.g. a workspace refocusing itself) may target
+                // an element that isn't part of the element tree, in which case scheduling
+                // a redraw below would dispatch focus-lost again, looping forever. Only
+                // track focus movement caused by the focus listeners.
+                focus_before_listeners = self.focus;
             }
 
             let event = WindowFocusEvent {
@@ -2735,26 +2792,14 @@ impl Window {
         self.reset_cursor_style(cx);
         self.refreshing = false;
         self.invalidator.set_phase(DrawPhase::None);
-        self.needs_present.set(true);
-
-        // a11y may have been activated/deactivated halfway through the frame
-        let a11y_active_start_of_frame = self.a11y.is_active();
-        self.a11y.sync_active_flag();
-        let a11y_active_end_of_frame = self.a11y.is_active();
-
-        let should_send_a11y_update = a11y_active_start_of_frame && a11y_active_end_of_frame;
-
-        if a11y_active_start_of_frame {
-            let tree_update = self.a11y.end_frame();
-
-            if should_send_a11y_update {
-                log::debug!(
-                    "Sending a11y tree update: {} nodes",
-                    tree_update.nodes.len()
-                );
-                self.platform_window.a11y_tree_update(tree_update);
-            }
+        // Focus listeners may move focus (e.g. a dock forwarding focus to its active
+        // panel). `Window::focus` suppresses `refresh` while a draw is in progress, so
+        // schedule another frame here to render the new focus state and dispatch the
+        // resulting focus events.
+        if self.focus != focus_before_listeners {
+            self.refresh();
         }
+        self.needs_present.set(true);
 
         if let Some(draw_start) = draw_started_at {
             profiler::record_frame_timing(profiler::FrameTiming {
@@ -2800,10 +2845,12 @@ impl Window {
         profiling::finish_frame!();
     }
 
-    /// 如果尚未呈现，则呈现最近绘制的帧
+    /// Presents the most recently drawn frame if it hasn't been presented yet.
     ///
-    /// 基准测试同步驱动绘制，而不是通过平台帧请求循环，因此它们在每次测量更新后调用此方法以像生产环境呈现一样提交帧
-    #[cfg(feature = "bench")]
+    /// Benchmarks drive drawing synchronously rather than through a platform
+    /// frame-request loop, so they call this after each measured update to
+    /// submit the frame like production presentation would.
+    #[cfg(any(feature = "bench", feature = "test-support"))]
     pub fn present_if_needed(&mut self) {
         if self.needs_present.get() {
             self.present();
@@ -2818,11 +2865,12 @@ impl Window {
 
     fn draw_roots(&mut self, cx: &mut App) {
         self.invalidator.set_phase(DrawPhase::Prepaint);
+        self.tooltip_bounds.take();
+
         self.a11y.sync_active_flag();
         if self.a11y.is_active() {
             self.a11y.begin_frame();
         }
-        self.tooltip_bounds.take();
 
         let _inspector_width: Pixels = rems(30.0).to_pixels(self.rem_size());
         let root_size = {
@@ -2842,8 +2890,16 @@ impl Window {
             }
         };
 
-        // Layout all root elements.
-        let mut root_element = self.root.as_ref().unwrap().clone().into_any();
+        // Layout all root elements. Like the root element on the web, which
+        // stretches to fill the viewport unless explicitly sized, window roots
+        // fill the window when their size is `auto`.
+        let scale_factor = self.scale_factor();
+        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
+        let root_layout_id = root_element.request_layout(self, cx);
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .stretch_auto_size_to_fill(root_layout_id, root_size, scale_factor);
         root_element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
 
         #[cfg(any(feature = "inspector", debug_assertions))]
@@ -2855,12 +2911,17 @@ impl Window {
         let mut active_drag_element = None;
         let mut tooltip_element = None;
         if let Some(prompt) = self.prompt.take() {
-            let mut element = prompt.view.any_view().into_any();
+            let mut element = prompt.view.any_view().into_any_element();
+            let prompt_layout_id = element.request_layout(self, cx);
+            self.layout_engine
+                .as_mut()
+                .unwrap()
+                .stretch_auto_size_to_fill(prompt_layout_id, root_size, scale_factor);
             element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
             prompt_element = Some(element);
             self.prompt = Some(prompt);
         } else if let Some(active_drag) = cx.active_drag.take() {
-            let mut element = active_drag.view.clone().into_any();
+            let mut element = active_drag.view.clone().into_any_element();
             let offset = self.mouse_position() - active_drag.cursor_offset;
             element.prepaint_as_root(offset, AvailableSpace::min_size(), self, cx);
             active_drag_element = Some(element);
@@ -2890,6 +2951,33 @@ impl Window {
 
         #[cfg(any(feature = "inspector", debug_assertions))]
         self.paint_inspector_hitbox(cx);
+
+        // a11y may have been activated/deactivated halfway through the frame
+        let a11y_active_start_of_frame = self.a11y.is_active();
+        self.a11y.sync_active_flag();
+        let a11y_active_end_of_frame = self.a11y.is_active();
+
+        let should_send_a11y_update = a11y_active_start_of_frame && a11y_active_end_of_frame;
+
+        if a11y_active_start_of_frame {
+            // Harvest frame metadata for the debug dump while the live window
+            // and frame are still in scope.
+            let frame_info = crate::window::a11y::debug::FrameDebugInfo {
+                viewport_size: self.viewport_size,
+                scale_factor: self.scale_factor,
+                tab_stop_count: self.next_frame.tab_stops.tab_stop_count(),
+            };
+            // clear the builder state regardless
+            let tree_update = self.a11y.end_frame(frame_info);
+
+            if should_send_a11y_update {
+                log::debug!(
+                    "Sending a11y tree update: {} nodes",
+                    tree_update.nodes.len()
+                );
+                self.platform_window.a11y_tree_update(tree_update);
+            }
+        }
     }
 
     fn prepaint_tooltip(&mut self, cx: &mut App) -> Option<AnyElement> {
@@ -2904,7 +2992,7 @@ impl Window {
                 log::error!("Unexpectedly absent TooltipRequest");
                 continue;
             };
-            let mut element = tooltip_request.tooltip.view.clone().into_any();
+            let mut element = tooltip_request.tooltip.view.clone().into_any_element();
             let mouse_position = tooltip_request.tooltip.mouse_position;
             let tooltip_size = element.layout_as_root(AvailableSpace::min_size(), self, cx);
 
@@ -2964,62 +3052,71 @@ impl Window {
     fn prepaint_deferred_draws(&mut self, cx: &mut App) {
         assert_eq!(self.element_id_stack.len(), 0);
 
-        let mut completed_draws = Vec::new();
-
         // Process deferred draws in multiple rounds to support nesting.
-        // Each round processes all current deferred draws, which may produce new ones.
+        // Each round processes all current deferred draws, which may push new ones.
+        //
+        // The draws are processed in place rather than being moved out of
+        // `next_frame.deferred_draws`: `prepaint_index` snapshots that vector's
+        // length, so any prepaint range recorded during a round (view caches,
+        // nested deferred draws) must index the same vector `reuse_prepaint`
+        // slices on the next frame. Moving the draws out and re-appending them
+        // shifts the indices of nested draws, causing reused subtrees to graft
+        // the wrong deferred draws and panic in the dispatch tree.
+        let mut round_start = 0;
         let mut depth = 0;
         loop {
+            let round_end = self.next_frame.deferred_draws.len();
+            if round_start == round_end {
+                break;
+            }
             // Limit maximum nesting depth to prevent infinite loops.
             assert!(depth < 10, "Exceeded maximum (10) deferred depth");
             depth += 1;
-            let deferred_count = self.next_frame.deferred_draws.len();
-            if deferred_count == 0 {
-                break;
-            }
 
-            // Sort by priority for this round
-            let traversal_order = self.deferred_draw_traversal_order();
-            let mut deferred_draws = mem::take(&mut self.next_frame.deferred_draws);
+            // Sort this round by priority.
+            let mut traversal_order = (round_start..round_end).collect::<SmallVec<[usize; 8]>>();
+            traversal_order.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
 
             for deferred_draw_ix in traversal_order {
-                let deferred_draw = &mut deferred_draws[deferred_draw_ix];
-                self.element_id_stack
-                    .clone_from(&deferred_draw.element_id_stack);
-                self.text_style_stack
-                    .clone_from(&deferred_draw.text_style_stack);
-                self.next_frame
-                    .dispatch_tree
-                    .set_active_node(deferred_draw.parent_node);
+                let (element, parent_node, current_view, rem_size, absolute_offset, prepaint_range) = {
+                    let deferred_draw = &mut self.next_frame.deferred_draws[deferred_draw_ix];
+                    self.element_id_stack
+                        .clone_from(&deferred_draw.element_id_stack);
+                    self.text_style_stack
+                        .clone_from(&deferred_draw.text_style_stack);
+                    (
+                        deferred_draw.element.take(),
+                        deferred_draw.parent_node,
+                        deferred_draw.current_view,
+                        deferred_draw.rem_size,
+                        deferred_draw.absolute_offset,
+                        deferred_draw.prepaint_range.clone(),
+                    )
+                };
+                self.next_frame.dispatch_tree.set_active_node(parent_node);
 
                 let prepaint_start = self.prepaint_index();
-                if let Some(element) = deferred_draw.element.as_mut() {
-                    self.with_rendered_view(deferred_draw.current_view, |window| {
-                        window.with_rem_size(Some(deferred_draw.rem_size), |window| {
-                            window.with_absolute_element_offset(
-                                deferred_draw.absolute_offset,
-                                |window| {
-                                    element.prepaint(window, cx);
-                                },
-                            );
+                if let Some(mut element) = element {
+                    self.with_rendered_view(current_view, |window| {
+                        window.with_rem_size(Some(rem_size), |window| {
+                            window.with_absolute_element_offset(absolute_offset, |window| {
+                                element.prepaint(window, cx);
+                            });
                         });
-                    })
+                    });
+                    self.next_frame.deferred_draws[deferred_draw_ix].element = Some(element);
                 } else {
-                    self.reuse_prepaint(deferred_draw.prepaint_range.clone());
+                    self.reuse_prepaint(prepaint_range);
                 }
                 let prepaint_end = self.prepaint_index();
-                deferred_draw.prepaint_range = prepaint_start..prepaint_end;
+                self.next_frame.deferred_draws[deferred_draw_ix].prepaint_range =
+                    prepaint_start..prepaint_end;
             }
-
-            // Save completed draws and continue with newly added ones
-            completed_draws.append(&mut deferred_draws);
 
             self.element_id_stack.clear();
             self.text_style_stack.clear();
+            round_start = round_end;
         }
-
-        // Restore all completed draws
-        self.next_frame.deferred_draws = completed_draws;
     }
 
     fn paint_deferred_draws(&mut self, cx: &mut App) {
@@ -3712,6 +3809,8 @@ impl Window {
                 continue;
             }
             let hole = (bounds + shadow.offset).dilate(-shadow.spread_radius);
+            // Clamp at zero so a large spread can't produce negative radii, which would
+            // break the SDF in the shader.
             let zero = Pixels::ZERO;
             let hole_corner_radii = Corners {
                 top_left: (corner_radii.top_left - shadow.spread_radius).max(zero),
@@ -3758,8 +3857,8 @@ impl Window {
             corner_radii: quad.corner_radii.scale(self.scale_factor()),
             border_widths: snapped_border_widths,
             border_style: quad.border_style,
-            continuous_corners: if quad.continuous_corners { 1 } else { 0 },
-            transform: quad.transform,
+            continuous_corners: quad.continuous_corners as u32,
+            transform: quad.transform.unwrap_or_default(),
             blend_mode: quad.blend_mode as u32,
             pad_quad: 0,
         });
@@ -3813,7 +3912,7 @@ impl Window {
             content_mask: self.snapped_content_mask(),
             color: style.color.unwrap_or_default().opacity(element_opacity),
             thickness,
-            wavy: if style.wavy { 1 } else { 0 },
+            wavy: style.wavy.into(),
         });
     }
 
@@ -3843,7 +3942,7 @@ impl Window {
             content_mask: self.snapped_content_mask(),
             thickness: self.snap_stroke(style.thickness),
             color: style.color.unwrap_or_default().opacity(opacity),
-            wavy: 0,
+            wavy: false.into(),
         });
     }
 
@@ -4003,7 +4102,7 @@ impl Window {
             self.next_frame.scene.insert_primitive(PolychromeSprite {
                 order: 0,
                 pad: 0,
-                grayscale: false,
+                grayscale: false.into(),
                 bounds,
                 corner_radii: Default::default(),
                 content_mask,
@@ -4080,6 +4179,63 @@ impl Window {
         Ok(())
     }
 
+    /// Paint an image into the scene for the next frame at the current z-index,
+    /// with an optional transform.
+    /// This method will panic if the frame_index is not valid
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn paint_image_with_transform(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+        grayscale: bool,
+        transform: Option<TransformationMatrix>,
+    ) -> Result<()> {
+        self.invalidator.debug_assert_paint();
+
+        let bounds = self.snap_bounds(bounds);
+        let snapped_bounds = bounds;
+        let params = RenderImageParams {
+            image_id: data.id,
+            frame_index,
+        };
+
+        let tile = self
+            .sprite_atlas
+            .get_or_insert_with(&params.into(), &mut || {
+                Ok(Some((
+                    data.size(frame_index),
+                    Cow::Borrowed(
+                        data.as_bytes(frame_index)
+                            .expect("It's the caller's job to pass a valid frame index"),
+                    ),
+                )))
+            })?
+            .expect("Callback above only returns Some");
+        let content_mask = self.snapped_content_mask();
+        let corner_radii = corner_radii.scale(self.scale_factor());
+        let opacity = self.element_opacity();
+
+        let mut sprite = PolychromeSprite {
+            order: 0,
+            pad: 0,
+            grayscale: grayscale.into(),
+            bounds: snapped_bounds,
+            content_mask,
+            corner_radii,
+            tile,
+            opacity,
+            transformation: TransformationMatrix::unit(),
+        };
+        if let Some(transform) = transform {
+            sprite.transformation = transform;
+        }
+        self.next_frame.scene.insert_primitive(sprite);
+        Ok(())
+    }
+
     /// Paint an image into the scene for the next frame at the current z-index.
     /// This method will panic if the frame_index is not valid
     ///
@@ -4091,26 +4247,6 @@ impl Window {
         data: Arc<RenderImage>,
         frame_index: usize,
         grayscale: bool,
-    ) -> Result<()> {
-        self.paint_image_with_transform(
-            bounds,
-            corner_radii,
-            data,
-            frame_index,
-            grayscale,
-            TransformationMatrix::unit(),
-        )
-    }
-
-    /// 使用自定义变换绘制图片，支持翻转、缩放和旋转。
-    pub fn paint_image_with_transform(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        corner_radii: Corners<Pixels>,
-        data: Arc<RenderImage>,
-        frame_index: usize,
-        grayscale: bool,
-        transformation: TransformationMatrix,
     ) -> Result<()> {
         self.invalidator.debug_assert_paint();
 
@@ -4139,13 +4275,13 @@ impl Window {
         self.next_frame.scene.insert_primitive(PolychromeSprite {
             order: 0,
             pad: 0,
-            grayscale,
+            grayscale: grayscale.into(),
             bounds,
             content_mask,
             corner_radii,
             tile,
             opacity,
-            transformation,
+            transformation: TransformationMatrix::unit(),
         });
         Ok(())
     }
@@ -4564,6 +4700,7 @@ impl Window {
         self.last_input_modality = match &event {
             PlatformInput::KeyDown(_) => InputModality::Keyboard,
             PlatformInput::MouseMove(_) | PlatformInput::MouseDown(_) => InputModality::Mouse,
+            PlatformInput::Touch(_) => InputModality::Touch,
             _ => self.last_input_modality,
         };
         if self.last_input_modality != old_modality {
@@ -4657,6 +4794,7 @@ impl Window {
                     PlatformInput::FileDrop(FileDropEvent::Exited)
                 }
             },
+            PlatformInput::Touch(touch) => PlatformInput::Touch(touch),
             PlatformInput::KeyDown(_) | PlatformInput::KeyUp(_) => event,
         };
 
@@ -5197,17 +5335,32 @@ impl Window {
         self.platform_window.activate();
     }
 
-    /// 最小化当前窗口到任务栏
+    /// Requests that the operating system draw attention to this window.
+    pub fn request_attention(&self) {
+        self.platform_window.request_attention();
+    }
+
+    /// Minimize the current window at the platform level.
     pub fn minimize_window(&self) {
         self.platform_window.minimize();
     }
 
-    /// 隐藏当前窗口（从任务栏移除）
+    /// Hide the window from the taskbar and screen.
     pub fn hide_window(&self) {
         self.platform_window.hide();
     }
 
-    /// 切换全屏状态
+    /// Set whether the window allows mouse events to pass through to windows behind it.
+    pub fn set_mouse_passthrough(&self, passthrough: bool) {
+        self.platform_window.set_mouse_passthrough(passthrough);
+    }
+
+    /// Set the window position in screen coordinates.
+    pub fn set_position(&mut self, position: Point<Pixels>) {
+        self.platform_window.set_position(position);
+    }
+
+    /// Toggle full screen status on the current window at the platform level.
     pub fn toggle_fullscreen(&self) {
         self.platform_window.toggle_fullscreen();
     }
@@ -5279,6 +5432,14 @@ impl Window {
         let handle = (prompt_builder)(level, message, detail, answers, handle, self, cx);
         self.prompt = Some(handle);
         receiver
+    }
+
+    /// Returns whether a prompt rendered by GPUI is currently active in this window.
+    ///
+    /// This is only true for prompts rendered in the window (see
+    /// [`App::set_prompt_builder`]), not for platform-native prompt dialogs.
+    pub fn has_active_prompt(&self) -> bool {
+        self.prompt.is_some()
     }
 
     /// Returns the current context stack.
@@ -5537,7 +5698,30 @@ impl Window {
         self.platform_window.play_system_bell()
     }
 
+    /// Returns whether accessibility features are active for this frame,
+    /// i.e. whether assistive technology (such as a screen reader) is
+    /// connected and an accessibility tree is being built.
+    ///
+    /// Use this to skip computing data during rendering that is only
+    /// observable through the accessibility tree. When accessibility is
+    /// activated, a redraw is forced, so gated work is recomputed before the
+    /// next tree update is sent to the platform.
+    ///
+    /// See the [accessibility guide](crate::_accessibility) for an overview.
+    pub fn is_a11y_active(&self) -> bool {
+        self.a11y.is_active()
+    }
+
+    /// Debug representation of the last frame's accessibility information.
+    pub fn debug_a11y_tree_json(&self) -> Option<String> {
+        self.a11y.debug_tree_json()
+    }
+
     /// Register a listener for an accessibility action on a specific node.
+    /// The listener will be called when a screen reader requests the given
+    /// action on the node identified by `node_id`.
+    ///
+    /// See the [accessibility guide](crate::_accessibility) for an overview.
     pub fn on_a11y_action(
         &mut self,
         node_id: accesskit::NodeId,
@@ -5553,6 +5737,8 @@ impl Window {
 
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn handle_a11y_action(&mut self, request: accesskit::ActionRequest, cx: &mut App) {
+        // Take listeners out temporarily so the closures can borrow Window
+        // mutably, then restore them afterward.
         if let Some(mut listeners) = self.a11y.action_listeners.remove(&request.target_node) {
             let extra_data = request.data.as_ref();
             let mut matched = false;
@@ -5570,6 +5756,7 @@ impl Window {
             }
         }
 
+        // Fall back to built-in action handling.
         match request.action {
             accesskit::Action::Click => {
                 if let Some(bounds) = self.a11y.node_bounds.get(&request.target_node).copied() {
@@ -5581,7 +5768,7 @@ impl Window {
                         click_count: 1,
                         first_mouse: false,
                     });
-                    let mouse_up = PlatformInput::MouseUp(crate::MouseUpEvent {
+                    let mouse_up = PlatformInput::MouseUp(MouseUpEvent {
                         button: MouseButton::Left,
                         position: center,
                         modifiers: Modifiers::default(),
@@ -6223,7 +6410,7 @@ impl From<[u8; 20]> for ElementId {
 
 /// A rectangle to be rendered in the window at the given position and size.
 /// Passed as an argument [`Window::paint_quad`].
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct PaintQuad {
     /// The bounds of the quad within the window.
     pub bounds: Bounds<Pixels>,
@@ -6237,28 +6424,12 @@ pub struct PaintQuad {
     pub border_color: Hsla,
     /// The style of the quad's borders.
     pub border_style: BorderStyle,
-    /// Whether to use continuous (squircle) corner rounding.
+    /// Whether to use continuous corners.
     pub continuous_corners: bool,
-    /// The transformation matrix for the quad.
-    pub transform: TransformationMatrix,
-    /// The blend mode for rendering the quad.
+    /// Optional transform to apply to the quad.
+    pub transform: Option<TransformationMatrix>,
+    /// The blend mode to use when rendering the quad.
     pub blend_mode: BlendMode,
-}
-
-impl Default for PaintQuad {
-    fn default() -> Self {
-        PaintQuad {
-            bounds: Bounds::default(),
-            corner_radii: Corners::default(),
-            background: Background::default(),
-            border_widths: Edges::default(),
-            border_color: transparent_black(),
-            border_style: BorderStyle::default(),
-            continuous_corners: false,
-            transform: TransformationMatrix::unit(),
-            blend_mode: BlendMode::Normal,
-        }
-    }
 }
 
 impl PaintQuad {
@@ -6312,7 +6483,7 @@ pub fn quad(
         border_color: border_color.into(),
         border_style,
         continuous_corners: false,
-        transform: TransformationMatrix::unit(),
+        transform: None,
         blend_mode: BlendMode::Normal,
     }
 }
@@ -6327,7 +6498,7 @@ pub fn fill(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Background>
         border_color: transparent_black(),
         border_style: BorderStyle::default(),
         continuous_corners: false,
-        transform: TransformationMatrix::unit(),
+        transform: None,
         blend_mode: BlendMode::Normal,
     }
 }
@@ -6346,7 +6517,141 @@ pub fn outline(
         border_color: border_color.into(),
         border_style,
         continuous_corners: false,
-        transform: TransformationMatrix::unit(),
+        transform: None,
         blend_mode: BlendMode::Normal,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        AppContext as _, Bounds, Context, FocusHandle, InteractiveElement as _, IntoElement,
+        ParentElement as _, Pixels, Render, Styled as _, TestAppContext, Window, canvas, div, px,
+        size,
+    };
+    use std::{cell::Cell, rc::Rc};
+
+    struct RootView {
+        explicit_size: bool,
+        child_bounds: Rc<Cell<Bounds<Pixels>>>,
+    }
+
+    impl Render for RootView {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let child_bounds = self.child_bounds.clone();
+            let root = div().flex().flex_col().child(
+                canvas(
+                    move |bounds, _, _| child_bounds.set(bounds),
+                    |_, _, _, _| {},
+                )
+                .size_full(),
+            );
+            if self.explicit_size {
+                root.w(px(300.)).h(px(200.))
+            } else {
+                root
+            }
+        }
+    }
+
+    #[test]
+    fn auto_sized_window_root_fills_the_window() {
+        let mut cx = TestAppContext::single();
+        let child_bounds = Rc::new(Cell::new(Bounds::default()));
+        let window = cx.add_window({
+            let child_bounds = child_bounds.clone();
+            move |_, _| RootView {
+                explicit_size: false,
+                child_bounds,
+            }
+        });
+
+        let viewport_size = cx
+            .update_window(window.into(), |_, window, cx| {
+                window.draw(cx).clear();
+                window.viewport_size()
+            })
+            .unwrap();
+
+        assert_eq!(child_bounds.get().size, viewport_size);
+    }
+
+    #[test]
+    fn explicitly_sized_window_root_keeps_its_size() {
+        let mut cx = TestAppContext::single();
+        let child_bounds = Rc::new(Cell::new(Bounds::default()));
+        let window = cx.add_window({
+            let child_bounds = child_bounds.clone();
+            move |_, _| RootView {
+                explicit_size: true,
+                child_bounds,
+            }
+        });
+
+        cx.update_window(window.into(), |_, window, cx| {
+            window.draw(cx).clear();
+        })
+        .unwrap();
+
+        assert_eq!(child_bounds.get().size, size(px(300.), px(200.)));
+    }
+
+    struct FocusForwarder {
+        a: FocusHandle,
+        b: FocusHandle,
+    }
+
+    impl Render for FocusForwarder {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .child(div().w(px(50.)).h(px(50.)).track_focus(&self.a))
+                .child(div().w(px(50.)).h(px(50.)).track_focus(&self.b))
+        }
+    }
+
+    /// When a focus listener moves focus again (e.g. a dock forwarding focus to its
+    /// active panel), the resulting focus events must be dispatched without waiting
+    /// for an unrelated redraw of the window.
+    #[rgpui::test]
+    fn test_focus_moved_by_focus_listener_is_dispatched(cx: &mut TestAppContext) {
+        let b_focus_count = Rc::new(Cell::new(0));
+        let window = cx.add_window({
+            let b_focus_count = b_focus_count.clone();
+            move |window, cx| {
+                let a = cx.focus_handle();
+                let b = cx.focus_handle();
+                cx.on_focus(&a, window, |this: &mut FocusForwarder, window, cx| {
+                    let b = this.b.clone();
+                    window.focus(&b, cx);
+                })
+                .detach();
+                cx.on_focus(&b, window, move |_, _, _| {
+                    b_focus_count.set(b_focus_count.get() + 1);
+                })
+                .detach();
+                FocusForwarder { a, b }
+            }
+        });
+
+        window
+            .update(cx, |_, window, _| window.activate_window())
+            .unwrap();
+        cx.executor().run_until_parked();
+
+        window
+            .update(cx, |this, window, cx| {
+                let a = this.a.clone();
+                window.focus(&a, cx);
+            })
+            .unwrap();
+        cx.executor().run_until_parked();
+
+        window
+            .update(cx, |this, window, _| {
+                assert!(this.b.is_focused(window));
+            })
+            .unwrap();
+        assert_eq!(b_focus_count.get(), 1);
     }
 }

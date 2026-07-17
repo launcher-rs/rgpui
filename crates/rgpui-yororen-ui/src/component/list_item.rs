@@ -151,7 +151,7 @@ impl RenderOnce for ListItem {
                     .flex_col()
                     .gap_1()
                     .items_start()
-                    .flex_grow()
+                    .flex_grow_1()
                     .children(content)
                     .children(secondary.map(|el| {
                         div()

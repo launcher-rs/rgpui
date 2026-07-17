@@ -1,36 +1,31 @@
-//! 无头（headless）模式客户端实现
-//!
-//! 在无图形界面环境下提供平台抽象，不支持窗口创建
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use calloop::{EventLoop, LoopHandle};
 use rgpui::ResultExt;
 
+use crate::linux::headless::window::{HeadlessDisplay, HeadlessWindow};
 use crate::linux::{LinuxClient, LinuxCommon, LinuxKeyboardLayout};
 use rgpui::{
     AnyWindowHandle, CursorStyle, DisplayId, PlatformDisplay, PlatformKeyboardLayout,
     PlatformWindow, WindowParams,
 };
 
-/// 无头客户端状态
 pub struct HeadlessClientState {
     pub(crate) _loop_handle: LoopHandle<'static, HeadlessClient>,
     pub(crate) event_loop: Option<calloop::EventLoop<'static, HeadlessClient>>,
     pub(crate) common: LinuxCommon,
+    pub(crate) display: Rc<dyn PlatformDisplay>,
 }
 
-/// 无头客户端实现
 #[derive(Clone)]
 pub(crate) struct HeadlessClient(Rc<RefCell<HeadlessClientState>>);
 
 impl HeadlessClient {
-    /// 创建新的无头客户端实例
     pub(crate) fn new() -> Self {
         let event_loop = EventLoop::try_new().unwrap();
 
-        let (common, main_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let (common, main_receiver, wake_receiver) = LinuxCommon::new(event_loop.get_signal());
 
         let handle = event_loop.handle();
 
@@ -42,10 +37,19 @@ impl HeadlessClient {
             })
             .ok();
 
+        handle
+            .insert_source(wake_receiver, |event, _, client: &mut HeadlessClient| {
+                if let calloop::channel::Event::Msg(()) = event {
+                    client.with_common(|common| common.handle_system_wake());
+                }
+            })
+            .ok();
+
         HeadlessClient(Rc::new(RefCell::new(HeadlessClientState {
             event_loop: Some(event_loop),
             _loop_handle: handle,
             common,
+            display: Rc::new(HeadlessDisplay::new()),
         })))
     }
 }
@@ -60,15 +64,16 @@ impl LinuxClient for HeadlessClient {
     }
 
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
-        vec![]
+        vec![self.0.borrow().display.clone()]
     }
 
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        None
+        Some(self.0.borrow().display.clone())
     }
 
-    fn display(&self, _id: DisplayId) -> Option<Rc<dyn PlatformDisplay>> {
-        None
+    fn display(&self, id: DisplayId) -> Option<Rc<dyn PlatformDisplay>> {
+        let display = self.0.borrow().display.clone();
+        (display.id() == id).then_some(display)
     }
 
     #[cfg(feature = "screen-capture")]
@@ -95,9 +100,12 @@ impl LinuxClient for HeadlessClient {
     fn open_window(
         &self,
         _handle: AnyWindowHandle,
-        _params: WindowParams,
+        params: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
-        anyhow::bail!("neither DISPLAY nor WAYLAND_DISPLAY is set. You can run in headless mode");
+        Ok(Box::new(HeadlessWindow::new(
+            params,
+            self.0.borrow().display.clone(),
+        )))
     }
 
     fn compositor_name(&self) -> &'static str {

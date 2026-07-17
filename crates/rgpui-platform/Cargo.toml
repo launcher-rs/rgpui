@@ -15,6 +15,7 @@ path = "src/rgpui_platform.rs"
 
 [features]
 default = []
+multithreaded = ["rgpui-web/multithreaded"]
 font-kit = ["rgpui-macos/font-kit"]
 test-support = ["rgpui/test-support", "rgpui-macos/test-support"]
 screen-capture = ["rgpui/screen-capture", "rgpui-macos/screen-capture", "rgpui-windows/screen-capture", "rgpui-linux/screen-capture"]
@@ -36,5 +37,5 @@ rgpui = { workspace = true, features = ["windows-manifest"] }
 rgpui-linux.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-rgpui-web.workspace = true
+rgpui-web = { workspace = true, default-features = false }
 console_error_panic_hook = "0.1.7"

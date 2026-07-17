@@ -161,8 +161,7 @@ fn is_key_pressed(vk: i32) -> bool {
 
     static DISPLAY: OnceLock<XDisplayPtr> = OnceLock::new();
 
-    let display = DISPLAY
-        .get_or_init(|| XDisplayPtr(unsafe { XOpenDisplay(std::ptr::null()) }));
+    let display = DISPLAY.get_or_init(|| XDisplayPtr(unsafe { XOpenDisplay(std::ptr::null()) }));
     if display.0.is_null() {
         return false;
     }

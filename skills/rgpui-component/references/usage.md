@@ -369,4 +369,3 @@ impl Render for MyApp {
 - `Styled`：任何 GPUI 样式方法（`.w()`、`.bg()`、`.p_2()` 等）
 
 对于此处未涵盖的任何组件，请从以下地址获取其文档：
-`https://longbridge.github.io/gpui-component/docs/components/{name}.md`
