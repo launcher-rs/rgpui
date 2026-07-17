@@ -1218,6 +1218,8 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
 
     // ---- 窗口扩展区域（Wayland layer-shell） ----
     fn set_exclusive_zone(&self, _zone: Pixels) {}
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    fn set_exclusive_edge(&self, _edge: layer_shell::Anchor) {}
 
     // ---- 用户注意力 ----
     fn request_attention(&self) {}

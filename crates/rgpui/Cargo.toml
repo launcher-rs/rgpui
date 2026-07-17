@@ -41,7 +41,7 @@ screen-capture = [
     "scap",
 ]
 windows-manifest = ["dep:embed-resource"]
-input-latency-histogram = ["dep:hdrhistogram"]
+input-latency-histogram = []
 
 [lib]
 path = "src/rgpui.rs"
@@ -118,9 +118,10 @@ tracing.workspace = true
 unicase.workspace = true
 stacksafe.workspace = true
 strum.workspace = true
+criterion.workspace = true
 taffy = "=0.10.1"
 thiserror.workspace = true
-hdrhistogram = { workspace = true, optional = true }
+hdrhistogram = { workspace = true }
 waker-fn = "1.2.0"
 lyon = "1.0"
 pin-project = "1.1.10"
@@ -187,7 +188,6 @@ nix = { workspace = true, features = ["user"] }
 
 [dev-dependencies]
 backtrace.workspace = true
-criterion.workspace = true
 env_logger.workspace = true
 pretty_assertions.workspace = true
 rgpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11", "screen-capture"] }
