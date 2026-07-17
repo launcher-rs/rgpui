@@ -2252,7 +2252,12 @@ impl App {
         self.platform.set_tray_panel_mode(enabled);
     }
 
-    /// 获取托盘图标的屏幕边界坐标，用于在其下方定位窗口
+    /// 在操作系统中显示通知
+pub fn show_notification(&self, title: &str, body: &str) -> Result<()> {
+    self.platform.show_notification(title, body)
+}
+
+/// 获取托盘图标的屏幕边界坐标，用于在其下方定位窗口
     pub fn tray_icon_bounds(&self) -> Option<Bounds<Pixels>> {
         self.platform.get_tray_icon_bounds()
     }
