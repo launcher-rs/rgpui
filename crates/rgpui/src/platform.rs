@@ -1307,7 +1307,10 @@ pub trait PlatformDispatcher: Send + Sync {
     }
 
     // 此 cfg 必须与 `bench_dispatcher` 模块的匹配，该模块在编译时实现此方法
-    #[cfg(any(test, feature = "bench", feature = "test-support"))]
+    #[cfg(all(
+        any(test, feature = "bench", feature = "test-support"),
+        any(target_os = "windows", target_os = "linux", target_family = "wasm")
+    ))]
     fn as_bench(&self) -> Option<&BenchDispatcher> {
         None
     }
