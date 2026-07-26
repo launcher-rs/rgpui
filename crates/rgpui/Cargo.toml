@@ -48,7 +48,7 @@ path = "src/rgpui.rs"
 doctest = false
 
 [dependencies]
-accesskit.workspace = true
+accesskit = { workspace = true, features = ["enumn"] }
 anyhow.workspace = true
 async-task = "4.7"
 backtrace.workspace = true

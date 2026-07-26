@@ -1091,122 +1091,142 @@
     {
       "number": 61107,
       "upstream": "zed",
-      "title": "Fix post-taffy-bump layouting issues",
-      "status": "pending"
+      "title": "Merge branch 'main' into kb/text-layout",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60721,
       "upstream": "zed",
       "title": "gpui: Bump taffy from 0.10.1 to 0.12.1",
-      "status": "pending"
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60163,
       "upstream": "zed",
-      "title": "gpui: Linux wayland set exclusive zone and edge",
-      "status": "pending"
+      "title": "Fix Wayland window module formatting and missing bracket",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60917,
       "upstream": "zed",
       "title": "Use more efficient thread pool API on Windows",
-      "status": "pending"
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60974,
       "upstream": "zed",
       "title": "Fix project panel follow focus issues",
-      "status": "pending"
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60614,
       "upstream": "zed",
       "title": "Disable all spinners in Zed",
-      "status": "pending"
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60834,
       "upstream": "zed",
-      "title": "gpui_linux: split xkbcommon wayland/x11 features",
-      "status": "pending"
+      "title": "Merge branch 'main' into main",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60926,
       "upstream": "zed",
-      "title": "gpui: Fix crash when opening a popover from inside another popover",
-      "status": "pending"
+      "title": "Add tests",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60937,
       "upstream": "zed",
-      "title": "Add a bunch of stray design refinement throughout",
-      "status": "pending"
+      "title": "Improve debugger pane UI buttons",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60889,
       "upstream": "zed",
-      "title": "gpui_web: Only prevent default for keyboard events the app handled",
-      "status": "pending"
+      "title": "Merge branch 'main' into spiral/pr-web-keyboard",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60397,
       "upstream": "zed",
-      "title": "a11y: Landmarks and menu improvements",
-      "status": "pending"
+      "title": "uncomment cfg(doc)",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60696,
       "upstream": "zed",
-      "title": "gpui_macos: Replace per-window CVDisplayLinks with a per-display registry",
-      "status": "pending"
+      "title": "gpui_macos: Tighten the unsafe scope in WindowFrameSource::new",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60890,
       "upstream": "zed",
-      "title": "gpui_web: Implement clipboard write and paste",
-      "status": "pending"
+      "title": "gpui_web: implement clipboard write and paste",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 58779,
       "upstream": "zed",
-      "title": "gpui: Implement window attention",
-      "status": "pending"
+      "title": "Autofix",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60124,
       "upstream": "zed",
-      "title": "gpui_windows: Harden DirectWrite and DirectX text rendering",
-      "status": "pending"
+      "title": "gpui_windows: Drop update_buffer capacity assertion",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 58588,
       "upstream": "zed",
-      "title": "editor: Add support for pasting images in Markdown",
-      "status": "pending"
+      "title": "remove clone",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60620,
       "upstream": "zed",
-      "title": "macos: Fix window move controls are disabled",
-      "status": "pending"
+      "title": "Add gpui examples for testing",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60774,
       "upstream": "zed",
-      "title": "gpui: Add container_query element",
-      "status": "pending"
+      "title": "Update container_query.rs",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60739,
       "upstream": "zed",
-      "title": "gpui: Fill auto-sized window roots to the viewport",
-      "status": "pending"
+      "title": "Autofix",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 60496,
       "upstream": "zed",
-      "title": "gpui: Add mobile/touch API surface",
-      "status": "pending"
+      "title": "Merge branch 'main' into gpui-mobile-api",
+      "status": "check-failed",
+      "merged_at": "2026-07-26"
     }
   ]
 }

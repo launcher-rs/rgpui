@@ -1,16 +1,14 @@
 use rgpui::single_instance::{SingleInstance, send_activate_to_existing};
 use rgpui::{
-    App, Bounds, Context, Entity, Keystroke, Toast, ToastPosition, ToastStack, TrayIconEvent,
-    TrayMenuItem, Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div,
-    prelude::*, px, rgb, rgba, size,
+    App, Bounds, Context, Keystroke, TrayIconEvent, TrayMenuItem, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, prelude::*, px, rgb,
+    rgba, size,
 };
 use rgpui_platform::application;
 
 const APP_ID: &str = "com.example.daemon-app";
 
-struct OverlayView {
-    toast_stack: Entity<ToastStack>,
-}
+struct OverlayView;
 
 impl Render for OverlayView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
@@ -50,7 +48,6 @@ impl Render for OverlayView {
                             .child("Uses WindowKind::Overlay + transparent background."),
                     ),
             )
-            .child(self.toast_stack.clone())
     }
 }
 
@@ -180,22 +177,7 @@ fn open_overlay(cx: &mut App) {
             window_background: WindowBackgroundAppearance::Transparent,
             ..Default::default()
         },
-        |window, cx| {
-            let toast_stack = cx.new(|_| ToastStack::new().with_position(ToastPosition::TopRight));
-            let toast_stack_handle = toast_stack.clone();
-
-            cx.new(|cx| {
-                toast_stack_handle.update(cx, |stack, cx| {
-                    stack.push(
-                        Toast::new("Overlay Opened").body("This toast auto-dismisses in 3 seconds"),
-                        window,
-                        cx,
-                    );
-                });
-
-                OverlayView { toast_stack }
-            })
-        },
+        |_, cx| cx.new(|_| OverlayView),
     )
     .ok();
 }

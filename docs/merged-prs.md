@@ -57,6 +57,26 @@
 | #58629 | 2026-07-17 | Autofix |
 | #61136 | 2026-07-17 | fix gpui prompt mouse down listener |
 | #61118 | 2026-07-17 | gpui: Avoid redundant group hover redraws |
+| #61107 | 2026-07-26 | Merge branch 'main' into kb/text-layout |
+| #60721 | 2026-07-26 | gpui: Bump taffy from 0.10.1 to 0.12.1 |
+| #60163 | 2026-07-26 | Fix Wayland window module formatting and missing bracket |
+| #60917 | 2026-07-26 | Use more efficient thread pool API on Windows |
+| #60974 | 2026-07-26 | Fix project panel follow focus issues |
+| #60614 | 2026-07-26 | Disable all spinners in Zed |
+| #60834 | 2026-07-26 | Merge branch 'main' into main |
+| #60926 | 2026-07-26 | Add tests |
+| #60937 | 2026-07-26 | Improve debugger pane UI buttons |
+| #60889 | 2026-07-26 | Merge branch 'main' into spiral/pr-web-keyboard |
+| #60397 | 2026-07-26 | uncomment cfg(doc) |
+| #60696 | 2026-07-26 | gpui_macos: Tighten the unsafe scope in WindowFrameSource::new |
+| #60890 | 2026-07-26 | gpui_web: implement clipboard write and paste |
+| #58779 | 2026-07-26 | Autofix |
+| #60124 | 2026-07-26 | gpui_windows: Drop update_buffer capacity assertion |
+| #58588 | 2026-07-26 | remove clone |
+| #60620 | 2026-07-26 | Add gpui examples for testing |
+| #60774 | 2026-07-26 | Update container_query.rs |
+| #60739 | 2026-07-26 | Autofix |
+| #60496 | 2026-07-26 | Merge branch 'main' into gpui-mobile-api |
 
 ## gpui-component
 

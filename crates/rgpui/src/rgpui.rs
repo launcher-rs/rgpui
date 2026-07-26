@@ -90,6 +90,9 @@ pub(crate) use platform_scheduler::PlatformScheduler;
 /// 几何类型 - 定义 Point、Size、Bounds、BoundsRect 等几何图元
 mod geometry;
 
+/// 手势识别 - 定义平台手势事件和原生手势识别器
+mod gestures;
+
 /// 全局状态 - 定义 Global trait，用于跨组件共享全局状态
 mod global;
 
@@ -250,6 +253,8 @@ pub use elements::*;
 pub use executor::*;
 /// 重导出几何类型（Point、Size、Bounds 等）
 pub use geometry::*;
+/// 重导出手势识别相关类型
+pub use gestures::*;
 /// 重导出全局状态相关类型
 pub use global::*;
 /// 重导出 rgpui_macros 中的过程宏（AppContext、IntoElement、Render 等）

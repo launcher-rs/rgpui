@@ -1,14 +1,14 @@
 use crate::{App, Bounds, Context, Entity, InputHandler, Pixels, UTF16Selection, Window};
 use std::ops::Range;
 
-/// 实现此 trait 以允许视图在处理编辑器、输入框等时处理文本输入。
+/// Implement this trait to allow views to handle textual input when implementing an editor, field, etc.
 ///
-/// 一旦你的视图实现了此 trait，你就可以用它构造一个 [`ElementInputHandler<V>`]。
-/// 然后通过调用 [`Window::handle_input`] 将此输入处理器分配给 paint 阶段。
+/// Once your view implements this trait, you can use it to construct an [`ElementInputHandler<V>`].
+/// This input handler can then be assigned during paint by calling [`Window::handle_input`].
 ///
-/// 详见 [`InputHandler`] 了解如何实现每个方法的详情。
+/// See [`InputHandler`] for details on how to implement each method.
 pub trait EntityInputHandler: 'static + Sized {
-    /// 详见 [`InputHandler::text_for_range`]
+    /// See [`InputHandler::text_for_range`] for details
     fn text_for_range(
         &mut self,
         range: Range<usize>,
@@ -17,7 +17,7 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     ) -> Option<String>;
 
-    /// 详见 [`InputHandler::selected_text_range`]
+    /// See [`InputHandler::selected_text_range`] for details
     fn selected_text_range(
         &mut self,
         ignore_disabled_input: bool,
@@ -25,17 +25,17 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     ) -> Option<UTF16Selection>;
 
-    /// 详见 [`InputHandler::marked_text_range`]
+    /// See [`InputHandler::marked_text_range`] for details
     fn marked_text_range(
         &self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Range<usize>>;
 
-    /// 详见 [`InputHandler::unmark_text`]
+    /// See [`InputHandler::unmark_text`] for details
     fn unmark_text(&mut self, window: &mut Window, cx: &mut Context<Self>);
 
-    /// 详见 [`InputHandler::replace_text_in_range`]
+    /// See [`InputHandler::replace_text_in_range`] for details
     fn replace_text_in_range(
         &mut self,
         range: Option<Range<usize>>,
@@ -44,7 +44,7 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     );
 
-    /// 详见 [`InputHandler::replace_and_mark_text_in_range`]
+    /// See [`InputHandler::replace_and_mark_text_in_range`] for details
     fn replace_and_mark_text_in_range(
         &mut self,
         range: Option<Range<usize>>,
@@ -54,7 +54,7 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     );
 
-    /// 详见 [`InputHandler::bounds_for_range`]
+    /// See [`InputHandler::bounds_for_range`] for details
     fn bounds_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -63,7 +63,7 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>>;
 
-    /// 详见 [`InputHandler::character_index_for_point`]
+    /// See [`InputHandler::character_index_for_point`] for details
     fn character_index_for_point(
         &mut self,
         point: crate::Point<Pixels>,
@@ -71,21 +71,39 @@ pub trait EntityInputHandler: 'static + Sized {
         cx: &mut Context<Self>,
     ) -> Option<usize>;
 
-    /// 详见 [`InputHandler::accepts_text_input`]
+    /// See [`InputHandler::set_selected_text_range`] for details
+    fn set_selected_text_range(
+        &mut self,
+        _range_utf16: Range<usize>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
+    }
+
+    /// See [`InputHandler::text_length_utf16`] for details
+    fn text_length_utf16(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        None
+    }
+
+    /// See [`InputHandler::accepts_text_input`] for details
     fn accepts_text_input(&self, _window: &mut Window, _cx: &mut Context<Self>) -> bool {
         true
     }
 }
 
-/// [`crate::PlatformInputHandler`] 的标准实现。在元素的 paint 阶段
-/// 使用实例调用 [`Window::handle_input`]。
+/// The canonical implementation of [`crate::PlatformInputHandler`]. Call [`Window::handle_input`]
+/// with an instance during your element's paint.
 pub struct ElementInputHandler<V> {
     view: Entity<V>,
     element_bounds: Bounds<Pixels>,
 }
 
 impl<V: 'static> ElementInputHandler<V> {
-    /// 在 [`Element::paint`][element_paint] 中与元素的边界、`Window` 和 `App` 上下文一起使用。
+    /// Used in [`Element::paint`][element_paint] with the element's bounds, a `Window`, and a `App` context.
     ///
     /// [element_paint]: crate::Element::paint
     pub fn new(element_bounds: Bounds<Pixels>, view: Entity<V>) -> Self {
@@ -181,6 +199,26 @@ impl<V: EntityInputHandler> InputHandler for ElementInputHandler<V> {
         self.view.update(cx, |view, cx| {
             view.character_index_for_point(point, window, cx)
         })
+    }
+
+    fn set_selected_text_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.view.update(cx, |view, cx| {
+            view.set_selected_text_range(range_utf16, window, cx)
+        })
+    }
+
+    fn element_bounds(&mut self, _window: &mut Window, _cx: &mut App) -> Option<Bounds<Pixels>> {
+        Some(self.element_bounds)
+    }
+
+    fn text_length_utf16(&mut self, window: &mut Window, cx: &mut App) -> Option<usize> {
+        self.view
+            .update(cx, |view, cx| view.text_length_utf16(window, cx))
     }
 
     fn accepts_text_input(&mut self, window: &mut Window, cx: &mut App) -> bool {

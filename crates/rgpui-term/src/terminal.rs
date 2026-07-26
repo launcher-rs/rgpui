@@ -1085,6 +1085,7 @@ impl Terminal {
                 Some(new_offset - old_offset)
             }
             TouchPhase::Ended => None,
+            TouchPhase::Cancelled => None,
         }
     }
 
