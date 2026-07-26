@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::Result;
 
-use crate::ResultExt;
+use crate::rgpui_util::ResultExt;
 use crate::scheduler::Instant;
 use futures::Future;
 use image::{
@@ -317,7 +317,7 @@ impl Element for Img {
 
                             if let Some(state) = &mut state {
                                 state.frame_index = state.frame_index.min(max_frame_index);
-                                if frame_count > 1 {
+                                if frame_count > 1 && !cx.reduce_motion() {
                                     if window.is_window_active() {
                                         let current_time = Instant::now();
                                         if let Some(last_frame_time) = state.last_frame_time {
@@ -378,6 +378,7 @@ impl Element for Img {
                             if global_id.is_some()
                                 && data.frame_count() > 1
                                 && window.is_window_active()
+                                && !cx.reduce_motion()
                             {
                                 window.request_animation_frame();
                             }
@@ -490,15 +491,13 @@ impl Element for Img {
                         .corner_radii
                         .to_pixels(window.rem_size())
                         .clamp_radii_for_quad_size(new_bounds.size);
-                    let transform = style.compose_transform(bounds);
                     window
-                        .paint_image_with_transform(
+                        .paint_image(
                             new_bounds,
                             corner_radii,
                             data,
                             layout_state.frame_index,
                             self.style.grayscale,
-                            Some(transform),
                         )
                         .log_err();
                 } else if let Some(replacement) = &mut layout_state.replacement {

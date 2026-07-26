@@ -181,7 +181,14 @@ function Map-Content {
     $sortedKeys = $contentMappings.Keys | Sort-Object -Descending
     foreach ($from in $sortedKeys) {
         $to = $contentMappings[$from]
-        $content = [regex]::Replace($content, "(?<=^|[^a-zA-Z_])$from(?=[^a-zA-Z_]|$)", { param($m) $to })
+        # crate:: 前缀的映射（如 collections → crate::collections）只在 :: 前匹配，
+        # 避免将 Cargo.toml 中的依赖名（如 collections.workspace）错误替换
+        if ($isCargoToml -or $to -match '^crate::') {
+            $lookahead = '(?=::)'
+        } else {
+            $lookahead = '(?=[^a-zA-Z_]|$)'
+        }
+        $content = [regex]::Replace($content, "(?<=^|[^a-zA-Z_])$from$lookahead", { param($m) $to })
     }
 
     # 恢复被保护的行
@@ -190,6 +197,22 @@ function Map-Content {
             $content = $content.Replace("__CARGO_EXCLUDED_LINE_${i}__", $excludedLines[$i])
         }
     }
+
+    return $content
+}
+
+# ---------- Cargo.toml 后处理：清理模块依赖引用 ----------
+function Clear-CargoModuleRefs {
+    param([string]$content)
+
+    # 移除 crate:: 前缀的依赖行（如 crate::collections.workspace = true）
+    $content = $content -replace '^\s*crate::\w+.*$', ''
+    # 移除 feature 数组中的 "crate::" 条目
+    $content = $content -replace '"crate::\w+(?:/[^"]*)?"', ''
+    # 移除依赖行中残留的 crate:: 前缀（如 "crate::collections = { ... }"）
+    $content = $content -replace '^\s*crate::\w+\s*=.*$', ''
+    # 清理空行重复
+    $content = $content -replace "`n{3,}", "`n`n"
 
     return $content
 }
@@ -311,12 +334,18 @@ function Apply-Changes {
             $parentDir = Split-Path $absPath -Parent
             $cargoExcludeFields = $upstreamConfig.cargo_exclude_fields
 
+            $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings -cargoExcludeFields $cargoExcludeFields -filePath $file.RgpuiPath
+
+            # Cargo.toml 后处理：清理 content mapping 残留的 crate:: 前缀（仅作补充保护）
+            if ($file.RgpuiPath -match 'Cargo\.toml$') {
+                $mappedContent = Clear-CargoModuleRefs $mappedContent
+            }
+
             switch ($file.Status) {
                 'A' {
                     if (-not (Test-Path $parentDir)) {
                         New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
                     }
-                    $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings -cargoExcludeFields $cargoExcludeFields -filePath $file.RgpuiPath
                     Set-Content -Path $absPath -Value $mappedContent.TrimEnd() -NoNewline
                     Write-Ok "  Created: $($file.RgpuiPath)"
                     $createdCount++
@@ -325,7 +354,6 @@ function Apply-Changes {
                     if (-not (Test-Path $parentDir)) {
                         New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
                     }
-                    $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings -cargoExcludeFields $cargoExcludeFields -filePath $file.RgpuiPath
                     Set-Content -Path $absPath -Value $mappedContent.TrimEnd() -NoNewline
                     Write-Ok "  Updated: $($file.RgpuiPath)"
                     $modifiedCount++
@@ -334,7 +362,6 @@ function Apply-Changes {
                     if (-not (Test-Path $parentDir)) {
                         New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
                     }
-                    $mappedContent = Map-Content -content $file.Content -contentMappings $contentMappings -cargoExcludeFields $cargoExcludeFields -filePath $file.RgpuiPath
                     Set-Content -Path $absPath -Value $mappedContent.TrimEnd() -NoNewline
                     Write-Ok "  Copied: $($file.RgpuiPath)"
                     $createdCount++

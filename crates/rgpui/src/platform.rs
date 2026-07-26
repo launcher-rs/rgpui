@@ -1980,6 +1980,25 @@ pub trait InputHandler: 'static {
     fn prefers_ime_for_printable_keys(&mut self, _window: &mut Window, _cx: &mut App) -> bool {
         false
     }
+
+    /// Set the selected text range in the input
+    fn set_selected_text_range(
+        &mut self,
+        _range_utf16: Range<usize>,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+
+    /// Get the bounds of the element in screen coordinates
+    fn element_bounds(&mut self, _window: &mut Window, _cx: &mut App) -> Option<Bounds<Pixels>> {
+        None
+    }
+
+    /// Get the length of the text in UTF-16 characters
+    fn text_length_utf16(&mut self, _window: &mut Window, _cx: &mut App) -> Option<usize> {
+        None
+    }
 }
 
 /// The variables that can be configured when creating a new window

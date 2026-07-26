@@ -24,6 +24,7 @@ mod executor;
 mod platform_scheduler;
 pub(crate) use platform_scheduler::PlatformScheduler;
 mod geometry;
+mod gestures;
 mod global;
 mod input;
 mod inspector;
@@ -33,7 +34,7 @@ mod keymap;
 mod path_builder;
 mod platform;
 pub mod prelude;
-/// 性能分析工具，用于任务、帧和线程性能跟踪
+/// Profiling utilities for task, frame, and thread performance tracking.
 pub mod profiler;
 #[cfg(any(
     test,
@@ -98,6 +99,7 @@ pub use element::*;
 pub use elements::*;
 pub use executor::*;
 pub use geometry::*;
+pub use gestures::*;
 pub use global::*;
 pub use rgpui_macros::{
     AppContext, IntoElement, Render, VisualContext, bench, property_test, register_action, test,
@@ -127,8 +129,8 @@ macro_rules! bench_main {
     };
 }
 pub use gpui_shared_string::*;
-pub use gpui_util::arc_cow::ArcCow;
-pub use http_client;
+pub use rgpui_util::arc_cow::ArcCow;
+pub use crate::http_client;
 pub use input::*;
 pub use inspector::*;
 pub use interactive::*;
@@ -139,7 +141,7 @@ pub use platform::*;
 pub use profiler::*;
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
 pub use queue::{PriorityQueueReceiver, PriorityQueueSender};
-pub use refineable::*;
+pub use crate::refineable::*;
 pub use scene::*;
 pub use shared_uri::*;
 use std::{any::Any, future::Future};
