@@ -2479,6 +2479,11 @@ impl App {
         }
     }
 
+    /// Takes the value of the active drag, if any (used for receiving file drops).
+    pub fn take_active_drag_value(&mut self) -> Option<Arc<dyn std::any::Any>> {
+        self.active_drag.take().map(|drag| drag.value)
+    }
+
     /// Sets the cursor style for the currently active drag operation.
     pub fn set_active_drag_cursor_style(
         &mut self,

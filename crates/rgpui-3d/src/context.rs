@@ -1011,6 +1011,15 @@ impl Scenix3D {
                     .to_vec(),
                     wgpu::IndexFormat::Uint32 => bytemuck::cast_slice(&indices).to_vec(),
                 };
+                // wgpu 要求 write_buffer 的数据长度满足 COPY_BUFFER_ALIGNMENT (4 字节对齐)
+                let aligned_len = (index_data.len() + 3) & !3;
+                let index_data = if index_data.len() < aligned_len {
+                    let mut padded = index_data;
+                    padded.resize(aligned_len, 0);
+                    padded
+                } else {
+                    index_data
+                };
 
                 let vertex_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some(&format!("rgpui-3d.skin_vb_{}", prim_mesh_id.get())),
@@ -1570,6 +1579,17 @@ impl Scenix3D {
     /// 获取当前被覆盖的关节数量
     pub fn joint_override_count(&self) -> usize {
         self.joint_overrides.iter().filter(|o| o.is_some()).count()
+    }
+    /// 清除所有蒙皮和动画数据（用于在 load_gltf_skins 失败后恢复干净状态）
+    pub fn clear_skin_data(&mut self) {
+        self.skinned_meshes.clear();
+        self.mesh_to_skin.clear();
+        self.joints.clear();
+        self.anim_clips.clear();
+        self.skins.clear();
+        self.active_anim = 0;
+        self.anim_time = 0.0;
+        self.anim_paused = false;
     }
     /// 获取 GPU 场景的可变引用
     pub fn gpu_scene_mut(&mut self) -> &mut GpuScene {
