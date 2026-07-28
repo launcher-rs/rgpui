@@ -7,6 +7,7 @@
 //!   cargo run --example viewer3d
 //!   cargo run --example viewer3d -- --model 模型.glb
 //!   cargo run --example viewer3d -- --auto-rotate
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
