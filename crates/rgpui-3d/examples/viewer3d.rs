@@ -224,6 +224,12 @@ fn project_to_screen(
 
 /// 尝试加载 3D 模型文件
 fn try_load_model(ctx: &mut Scenix3D, path: &str) -> (Option<SceneGraph>, String, Vec<String>) {
+    // 清除上一模型的 GPU 资源，避免残留数据干扰
+    ctx.clear_skin_data();
+    ctx.gpu_scene_mut().clear_meshes();
+    ctx.gpu_scene_mut().clear_materials();
+    ctx.gpu_scene_mut().clear_textures();
+
     let loader = scenix::GltfLoader::new();
     match loader.load_file(path) {
         Ok(asset) => match ctx.register_gltf_asset(&asset) {
