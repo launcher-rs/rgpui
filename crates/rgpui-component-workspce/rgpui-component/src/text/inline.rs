@@ -93,10 +93,7 @@ impl Inline {
             corner_radii: Corners::default(),
             border_color: rgpui::transparent_black(),
             border_style: BorderStyle::default(),
-            continuous_corners: false,
-            transform: Default::default(),
             border_widths: rgpui::Edges::all(px(0.)),
-            blend_mode: Default::default(),
         });
     }
 

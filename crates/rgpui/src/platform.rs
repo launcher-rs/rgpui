@@ -2053,7 +2053,12 @@ pub struct WindowOptions {
     /// Tab group name, allows opening the window as a native tab on macOS 10.12+. Windows with the same tabbing identifier will be grouped together.
     pub tabbing_identifier: Option<String>,
 
-    /// 是否启用鼠标事件穿透（点击穿透到后面的窗口）
+    /// macOS only: 应用是否自行处理标题栏拖拽。当使用自定义标题栏时设置为 true，
+    /// 使 AppKit 不拦截标题栏点击，由应用通过 `Window::start_window_move` 自行处理。
+    pub app_owns_titlebar_drag: bool,
+
+    /// Windows/Linux: 是否启用鼠标事件穿透（点击穿透到后面的窗口）。
+    /// 用于桌面宠物、覆盖层等需要让鼠标点击穿透到下层窗口的场景。
     pub mouse_passthrough: bool,
 }
 
@@ -2113,10 +2118,12 @@ pub struct WindowParams {
     #[cfg(target_os = "macos")]
     pub tabbing_identifier: Option<String>,
 
-    /// 窗口装饰风格（主要用于 Wayland）
-    pub window_decorations: WindowDecorations,
+    /// macOS only: 应用是否自行处理标题栏拖拽。
+    /// 当使用自定义标题栏时设置为 true（macOS 专用，其他平台无效果）。
+    pub app_owns_titlebar_drag: bool,
 
-    /// 是否启用鼠标事件穿透
+    /// Windows/Linux: 是否启用鼠标事件穿透（点击穿透到后面的窗口）。
+    /// 覆盖层窗口需要此选项让鼠标事件穿透到底层窗口。
     pub mouse_passthrough: bool,
 }
 
@@ -2177,6 +2184,7 @@ impl Default for WindowOptions {
             window_min_size: None,
             window_decorations: None,
             tabbing_identifier: None,
+            app_owns_titlebar_drag: false,
             mouse_passthrough: false,
         }
     }

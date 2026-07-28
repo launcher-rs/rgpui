@@ -8056,6 +8056,7 @@ dependencies = [
  "rustc-hash 2.1.2",
  "smallvec",
  "swash",
+ "unicode-bidi",
  "unicode-segmentation",
  "wasm-bindgen",
  "wasm-bindgen-futures",

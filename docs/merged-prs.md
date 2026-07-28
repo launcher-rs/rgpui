@@ -77,6 +77,9 @@
 | #60774 | 2026-07-26 | Update container_query.rs |
 | #60739 | 2026-07-26 | Autofix |
 | #60496 | 2026-07-26 | Merge branch 'main' into gpui-mobile-api |
+| #61600 | 2026-07-28 | gpui: Fix dropped frames when scrolling an unfocused window |
+| #61682 | 2026-07-28 | gpui: Make hsla functions const |
+| #61651 | 2026-07-28 | Refactor even more |
 
 ## gpui-component
 
@@ -134,6 +137,37 @@
 | #2542 | 2026-07-10 | plot: Defer only the tooltip box |
 | #2546 | 2026-07-10 | Add more test. |
 | #2509 | 2026-07-10 | fix tests |
+| #2607 | 2026-07-28 | refactor: reuse caret in combobox triggers |
+| #2606 | 2026-07-28 | style: use pointer cursor for text buttons |
+| #2585 | 2026-07-28 | Adjust indent. |
+| #2604 | 2026-07-28 | plot: Apply default tooltip `min_w` only when caller has not set one |
+| #2596 | 2026-07-28 | fix(dock): avoid adding split children twice |
+| #2602 | 2026-07-28 | style(story): use semantic decoration colors |
+| #2601 | 2026-07-28 | test(input): cover IME underline run splitting |
+| #2587 | 2026-07-28 | . |
+| #2591 | 2026-07-28 | tab: Fix previous tab keeping active text color until the mouse moves |
+| #2588 | 2026-07-28 | plot: Derive tooltip position from the live cursor to avoid scroll jitter |
+| #2584 | 2026-07-28 | native_menu: sync Windows theme and mouse capture |
+| #2583 | 2026-07-28 | fix: match segmented tab shadow to shadcn |
+| #2581 | 2026-07-28 | plot: Don't track hover through occluding overlays for tooltips |
+| #2579 | 2026-07-28 | story: Enable tooltip on all radar chart examples |
+| #2574 | 2026-07-28 | select: Use popover background for dropdown menus |
+| #2577 | 2026-07-28 | lsp: clear_hover_state only notify if hover state changed |
+| #2576 | 2026-07-28 | combobox: Add value-based selection API |
+| #2573 | 2026-07-28 | . |
+| #2572 | 2026-07-28 | input: avoid painting unset gutter background |
+| #2570 | 2026-07-28 | fix: preserve text color without syntax highlighting |
+| #2567 | 2026-07-28 | Remove added matches stmt |
+| #2569 | 2026-07-28 | input: model show-document hook after LSP window/showDocument |
+| #2564 | 2026-07-28 | test(scroll): account for stretched GPUI roots |
+| #2562 | 2026-07-28 | table: Fix missing drag indicator next to non-movable columns |
+| #2554 | 2026-07-28 | tree: Address review feedback |
+| #2560 | 2026-07-28 | . |
+| #2557 | 2026-07-28 | Fix hightlight all fenced blocks when in a large markdown file. |
+| #2559 | 2026-07-28 | Merge branch 'main' into setting-title-suffix |
+| #2538 | 2026-07-28 | Merge branch 'main' into chart-sankey |
+| #2558 | 2026-07-28 | Update app_menu_bar.rs |
+| #2540 | 2026-07-28 | Merge branch 'main' into fix_settings |
 
 ## yororen-ui
 

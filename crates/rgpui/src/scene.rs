@@ -493,11 +493,6 @@ pub struct Quad {
     pub border_color: Hsla,
     pub corner_radii: Corners<ScaledPixels>,
     pub border_widths: Edges<ScaledPixels>,
-    pub continuous_corners: u32,
-    pub transform: TransformationMatrix,
-    pub blend_mode: u32,
-    /// Padding for alignment to match shader struct stride (16-byte alignment).
-    pub pad_quad: u32,
 }
 
 impl From<Quad> for Primitive {
@@ -731,7 +726,6 @@ pub struct PolychromeSprite {
     pub content_mask: ContentMask<ScaledPixels>,
     pub corner_radii: Corners<ScaledPixels>,
     pub tile: AtlasTile,
-    pub transformation: TransformationMatrix,
 }
 
 impl From<PolychromeSprite> for Primitive {

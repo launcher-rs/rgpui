@@ -654,8 +654,8 @@ fn main() {
                             s.interactive = false;
                             s.walking = true;
                             drop(s);
-                            window.set_mouse_passthrough(true);
-                            window.hide_window();
+                            window.set_input_region(Some(&[]));
+                            window.minimize_window();
                             false
                         });
 
@@ -705,7 +705,7 @@ fn main() {
                         let interactive = st.interactive;
                         st.menu_dirty = true;
                         drop(st);
-                        window.set_mouse_passthrough(!interactive);
+                        window.set_input_region(if !interactive { Some(&[]) } else { None });
                         if interactive {
                             window.activate_window();
                         }
@@ -778,7 +778,7 @@ fn main() {
                             let interactive = st.interactive;
                             st.menu_dirty = true;
                             drop(st);
-                            window.set_mouse_passthrough(!interactive);
+                            window.set_input_region(if !interactive { Some(&[]) } else { None });
                             if interactive {
                                 window.activate_window();
                             }
@@ -867,7 +867,7 @@ fn main() {
                             if !st.walking {
                                 st.walking = true;
                                 st.requested_anim_index = Some(DEFAULT_ANIM_INDEX);
-                                let win_pos = window.position();
+                                let win_pos = window.bounds().origin;
                                 st.pos_x = win_pos.x.as_f32();
                                 st.pos_y = win_pos.y.as_f32();
                             }
@@ -883,9 +883,6 @@ fn main() {
                             st.current_model_yaw =
                                 lerp_angle(st.current_model_yaw, st.model_yaw, lerp_speed);
 
-                            let pos_x = st.pos_x;
-                            let pos_y = st.pos_y;
-
                             // 检测动画列表是否首次加载完成，标记菜单需要刷新
                             if !st.anim_names.is_empty() && !st.menu_refreshed {
                                 st.menu_dirty = true;
@@ -894,7 +891,7 @@ fn main() {
 
                             drop(st);
 
-                            window.set_position(Point::new(px(pos_x), px(pos_y)));
+                            // TODO: window.set_position was removed from public API
                         }
 
                         cx.notify();

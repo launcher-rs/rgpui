@@ -16,7 +16,7 @@ doctest = false
 
 [features]
 decimal = ["dep:rust_decimal"]
-inspector = ["rgpui_macros/inspector", "rgpui/inspector"]
+inspector = ["gpui_macros/inspector", "gpui/inspector"]
 tree-sitter = ["dep:tree-sitter", "dep:tree-sitter-json"]
 
 # For syntax highlighting in Markdown and CodeEditor.
@@ -96,10 +96,10 @@ tree-sitter-zig = ["tree-sitter", "dep:tree-sitter-zig"]
 
 [dependencies]
 anyhow.workspace = true
-rgpui = { workspace = true }
-rgpui_macros.workspace = true
-rgpui-component-rgpui-component-macros = { workspace = true }
-rgpui-component-rgpui-component-assets = { workspace = true }
+gpui = { workspace = true }
+gpui_macros.workspace = true
+gpui-component-macros = { workspace = true }
+gpui-component-assets = { workspace = true }
 notify.workspace = true
 ropey.workspace = true
 rust-i18n.workspace = true
@@ -193,33 +193,41 @@ objc2-app-kit = { version = "0.3", features = [
     "NSMenu",
     "NSMenuItem",
     "NSView",
+    "NSWindow",
     "NSResponder",
     "NSEvent",
+    "NSImage",
 ] }
-objc2-foundation = { version = "0.3", features = ["NSString", "NSGeometry"] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSString", "NSGeometry"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Native menu (NativeMenu) 鈥?drives Win32 popup menus.
 raw-window-handle = { workspace = true }
+resvg = "0.45.1"
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_GdiPlus",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]
-rgpui = { workspace = true, features = ["test-support"] }
+gpui = { workspace = true, features = ["test-support"] }
 indoc = "2"
 
 [lints]
 workspace = true
 
-# `rgpui-component-rgpui-component-assets` ships the canonical icon set whose variants we
+# `gpui-component-assets` ships the canonical icon set whose variants we
 # enumerate to generate `IconName` at build time. Cargo's
 # `DEP_<links>_<key>` propagation (the bridge that hands the icons-dir
-# path from the rgpui-component-assets crate's build.rs into our own) only works through
+# path from the assets crate's build.rs into our own) only works through
 # *regular* dependencies, not build-deps, so this has to live here even
 # though our use is entirely build-time.
 [package.metadata.cargo-machete]
-ignored = ["rgpui-component-rgpui-component-assets"]
+ignored = ["gpui-component-assets"]

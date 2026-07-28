@@ -497,7 +497,7 @@ impl WindowsWindow {
                 // 鼠标穿透通过 params.mouse_passthrough 在下方统一处理
                 (WS_EX_TOPMOST | WS_EX_TOOLWINDOW, WS_POPUP)
             }
-            _ if params.window_decorations == WindowDecorations::Client => {
+            _ if params.app_owns_titlebar_drag => {
                 // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框
                 (WS_EX_APPWINDOW, WS_POPUP)
             }
@@ -545,7 +545,7 @@ impl WindowsWindow {
         .or_else(WindowsDisplay::primary_monitor)
         .context("failed to find any monitor")?;
         let appearance = system_appearance().unwrap_or_default();
-        let client_decorations = params.window_decorations == WindowDecorations::Client;
+        let client_decorations = params.app_owns_titlebar_drag;
         let mut context = WindowCreateContext {
             inner: None,
             handle,

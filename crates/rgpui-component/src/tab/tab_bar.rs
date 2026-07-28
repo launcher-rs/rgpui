@@ -2,9 +2,9 @@ use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use rgpui::{
     Anchor, Animation, AnimationExt as _, AnyElement, App, Background, Bounds, Div, Edges,
-    ElementId, InteractiveElement, IntoElement, ParentElement, Pixels, RenderOnce, ScrollHandle,
-    SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    prelude::FluentBuilder as _, px,
+    ElementId, InteractiveElement, IntoElement, ParentElement, Pixels, RenderOnce, Role,
+    ScrollHandle, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    Window, div, prelude::FluentBuilder as _, px,
 };
 use rust_i18n::t;
 use smallvec::SmallVec;
@@ -224,7 +224,7 @@ impl TabBar {
                         .h(inner_height)
                         .bg(cx.theme().tokens.background)
                         .rounded(inner_radius)
-                        .shadow_xs(),
+                        .shadow_sm(),
                 ),
                 TabVariant::Pill => el.flex().items_center().child(
                     div()
@@ -416,6 +416,7 @@ impl RenderOnce for TabBar {
         let on_click = self.on_click.clone();
 
         self.base
+            .role(Role::TabList)
             .group("tab-bar")
             .relative()
             .flex()

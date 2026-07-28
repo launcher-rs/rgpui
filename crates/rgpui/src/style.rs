@@ -10,8 +10,8 @@ use crate::{
     AbsoluteLength, App, Background, BackgroundTag, BlendMode, BorderStyle, Bounds, ContentMask,
     Corners, CornersRefinement, CursorStyle, DefiniteLength, DevicePixels, Edges, EdgesRefinement,
     Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, Hsla, Length, Pixels,
-    Point, PointRefinement, Radians, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun,
-    TransformationMatrix, Window, black, phi, point, px, quad, rems, size,
+    Point, PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun, Window,
+    black, phi, point, px, quad, rems, size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -713,8 +713,6 @@ impl Style {
             .to_pixels(rem_size)
             .clamp_radii_for_quad_size(bounds.size);
 
-        let transform = self.compose_transform(bounds);
-
         window.paint_drop_shadows(bounds, corner_radii, &self.box_shadow);
 
         let background_color = self.background.as_ref().and_then(Fill::color);
@@ -736,7 +734,7 @@ impl Style {
                 None => Hsla::default(),
             };
             border_color.a = 0.;
-            let mut bg_quad = quad(
+            let bg_quad = quad(
                 bounds,
                 corner_radii,
                 background_color.unwrap_or_default(),
@@ -744,9 +742,6 @@ impl Style {
                 border_color,
                 self.border_style,
             );
-            bg_quad.continuous_corners = self.continuous_corners;
-            bg_quad.transform = Some(transform);
-            bg_quad.blend_mode = self.blend_mode.unwrap_or_default();
             window.paint_quad(bg_quad);
         }
 
@@ -778,7 +773,7 @@ impl Style {
 
             let mut background = self.border_color.unwrap_or_default();
             background.a = 0.;
-            let mut quad = quad(
+            let quad = quad(
                 bounds,
                 corner_radii,
                 background,
@@ -786,8 +781,6 @@ impl Style {
                 self.border_color.unwrap_or_default(),
                 self.border_style,
             );
-            quad.continuous_corners = self.continuous_corners;
-            quad.transform = Some(transform);
 
             window.with_content_mask(Some(ContentMask { bounds: top_bounds }), |window| {
                 window.paint_quad(quad.clone());
@@ -820,39 +813,6 @@ impl Style {
         if self.debug_below {
             cx.remove_global::<DebugBelow>();
         }
-    }
-
-    pub(crate) fn compose_transform(&self, bounds: Bounds<Pixels>) -> TransformationMatrix {
-        let has_transform = self.rotate.is_some() || self.scale.is_some();
-        if !has_transform {
-            return TransformationMatrix::unit();
-        }
-
-        let origin_frac = self.transform_origin.unwrap_or(Point { x: 0.5, y: 0.5 });
-        let cx = bounds.origin.x.0 + bounds.size.width.0 * origin_frac.x;
-        let cy = bounds.origin.y.0 + bounds.size.height.0 * origin_frac.y;
-
-        let mut t = TransformationMatrix::unit();
-
-        if let Some(scale) = self.scale {
-            t = t.scale(crate::Size {
-                width: scale.x,
-                height: scale.y,
-            });
-        }
-        if let Some(rotate) = self.rotate {
-            t = t.rotate(Radians(rotate));
-        }
-
-        let neg_origin = TransformationMatrix {
-            rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
-            translation: [-cx, -cy],
-        };
-        let pos_origin = TransformationMatrix {
-            rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
-            translation: [cx, cy],
-        };
-        pos_origin.compose(t.compose(neg_origin))
     }
 
     fn is_border_visible(&self) -> bool {
