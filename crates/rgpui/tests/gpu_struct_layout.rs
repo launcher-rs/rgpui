@@ -47,8 +47,13 @@ fn verify_quad_layout() {
     // border_color: Hsla                offset 176
     // corner_radii: Corners             offset 192
     // border_widths: Edges              offset 208
-    // 总大小: 224, align: 8
-    assert_eq!(size_of::<Quad>(), 224, "Quad 大小必须为 224 字节");
+    // continuous_corners: u32            offset 224
+    // [padding 4 bytes]                 offset 228
+    // transform: TransformationMatrix   offset 232 (align 8)
+    // blend_mode: u32                   offset 256
+    // pad_quad: u32                     offset 260
+    // 总大小: 264, align: 8
+    assert_eq!(size_of::<Quad>(), 264, "Quad 大小必须为 264 字节");
     assert_eq!(align_of::<Quad>(), 8, "Quad 对齐必须为 8");
     assert_eq!(offset_of!(Quad, order), 0);
     assert_eq!(offset_of!(Quad, border_style), 4);
@@ -58,6 +63,10 @@ fn verify_quad_layout() {
     assert_eq!(offset_of!(Quad, border_color), 176);
     assert_eq!(offset_of!(Quad, corner_radii), 192);
     assert_eq!(offset_of!(Quad, border_widths), 208);
+    assert_eq!(offset_of!(Quad, continuous_corners), 224);
+    assert_eq!(offset_of!(Quad, transform), 232);
+    assert_eq!(offset_of!(Quad, blend_mode), 256);
+    assert_eq!(offset_of!(Quad, pad_quad), 260);
 }
 
 #[test]

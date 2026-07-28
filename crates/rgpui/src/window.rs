@@ -3981,6 +3981,10 @@ impl Window {
             corner_radii: quad.corner_radii.scale(self.scale_factor()),
             border_widths: snapped_border_widths,
             border_style: quad.border_style,
+            continuous_corners: 0,
+            transform: TransformationMatrix::default(),
+            blend_mode: 0,
+            pad_quad: 0,
         };
 
         if !quad.background.is_transparent() {
@@ -4297,6 +4301,7 @@ impl Window {
                 content_mask,
                 tile,
                 opacity,
+                transformation: TransformationMatrix::default(),
             });
         }
         Ok(())
@@ -4412,6 +4417,7 @@ impl Window {
             corner_radii,
             tile,
             opacity,
+            transformation: TransformationMatrix::default(),
         });
         Ok(())
     }
