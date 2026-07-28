@@ -64,6 +64,7 @@ struct SharedState {
     selected_joint: Option<usize>,
     show_skeleton: bool,
     show_skin: bool,
+    msaa_enabled: bool,
     pending_override: Option<(usize, [f32; 4])>,
     pending_clear: bool,
     pending_anim_switch: Option<isize>,
@@ -102,6 +103,7 @@ impl SharedState {
             selected_joint: None,
             show_skeleton: true,
             show_skin: true,
+            msaa_enabled: false,
             pending_override: None,
             pending_clear: false,
             pending_anim_switch: None,
@@ -287,6 +289,7 @@ impl Render for Viewer3D {
         let show_skeleton = s.show_skeleton;
         let show_skin = s.show_skin;
         let auto_rotate = s.auto_rotate;
+        let msaa_enabled = s.msaa_enabled;
 
         let img_elem = match &s.render_image {
             Some(img_ref) => div()
@@ -656,6 +659,31 @@ impl Render for Viewer3D {
                             } else {
                                 "停止旋转"
                             }),
+                    )
+                    .child(
+                        div()
+                            .px(px(6.0))
+                            .py(px(2.0))
+                            .bg(if msaa_enabled {
+                                rgb(0x1a4a1a)
+                            } else {
+                                rgb(0x4a0000)
+                            })
+                            .text_color(rgb(0xcccccc))
+                            .text_sm()
+                            .cursor_pointer()
+                            .on_mouse_down(MouseButton::Left, {
+                                let state = state.clone();
+                                move |_: &MouseDownEvent, _, _| {
+                                    let mut s = state.lock().unwrap();
+                                    s.msaa_enabled = !s.msaa_enabled;
+                                }
+                            })
+                            .child(if msaa_enabled {
+                                "MSAA 4x"
+                            } else {
+                                "MSAA 关闭"
+                            }),
                     ),
             )
             .child(
@@ -798,7 +826,7 @@ fn main() {
                 s.joints_info.clear();
             }
 
-            let (pending, anim_switch, do_pause, show_skeleton, show_skin) = {
+            let (pending, anim_switch, do_pause, msaa_enabled, show_skeleton, show_skin) = {
                 let mut s = render_shared.lock().unwrap();
                 let result = s.pending_override.take();
                 if s.pending_clear {
@@ -807,10 +835,12 @@ fn main() {
                 }
                 let anim_switch = s.pending_anim_switch.take();
                 let do_pause = s.pending_anim_pause.take();
+                let msaa = s.msaa_enabled;
                 let show = s.show_skeleton;
                 let skin = s.show_skin;
-                (result, anim_switch, do_pause, show, skin)
+                (result, anim_switch, do_pause, msaa, show, skin)
             };
+            ctx.set_msaa_enabled(msaa_enabled);
             if let Some((idx, q)) = pending {
                 ctx.set_joint_rotation_override(idx, scenix::Quat::new(q[0], q[1], q[2], q[3]));
             }

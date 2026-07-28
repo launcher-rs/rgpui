@@ -259,9 +259,9 @@ checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
 
 [[package]]
 name = "animato"
-version = "1.6.0"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43fe35b2a133295bf512300fa9e5328971d330d6289756c3fc6e3b0fb4e22f44"
+checksum = "3442e820517e920a1ac56d9e331be066374ecf1e9deda46c4107e3fde0ce12e3"
 dependencies = [
  "animato-color",
  "animato-core",
@@ -276,9 +276,9 @@ dependencies = [
 
 [[package]]
 name = "animato-color"
-version = "1.6.0"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5876f4dd776df1bb89f09ff45be1f87b89551e4e8763d4303df4a5803975218d"
+checksum = "dc1df04494af8cebba5be3f2246305773f0d277c19e1d17c8c9821fa9d7a2998"
 dependencies = [
  "animato-core",
  "palette",
@@ -286,27 +286,27 @@ dependencies = [
 
 [[package]]
 name = "animato-core"
-version = "1.6.0"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c056e87b83becb7b2bd982e86dca73cd1a91d31b43c118cc99b1df4cdeafb84"
+checksum = "4bec574aad55366acee5e4bcce6f75045f11459db2b1ab4e0ac456fc1d9357ff"
 dependencies = [
  "libm",
 ]
 
 [[package]]
 name = "animato-driver"
-version = "1.6.0"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edcb6db5cc3bbc549a89eb0a3ca09ca9742c1e2adda78f4af4436b92687b4508"
+checksum = "13ab9246e96b6a684d1993d9d5126d8ea1401143289783fc627f4007310b9625"
 dependencies = [
  "animato-core",
 ]
 
 [[package]]
 name = "animato-path"
-version = "1.6.0"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8393d6c262716daa1219798c590089e296741c4fa7453f58ffb33cbf89235573"
+checksum = "c620d219530cae27b3f662c898abb8a20912a9f69fc48d81764061c18716796c"
 dependencies = [
  "animato-core",
  "animato-tween",
@@ -315,9 +315,9 @@ dependencies = [
 
 [[package]]
 name = "animato-physics"
-version = "1.6.0"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4762d157b12f20b0fcd84ae2ef62baa8b32282327bae051a1f3f07c8c36f1680"
+checksum = "fcbf115da430fd4f504eeb4b184d9343490988839778e941f0c769f9ec0f5866"
 dependencies = [
  "animato-core",
  "libm",
@@ -325,18 +325,18 @@ dependencies = [
 
 [[package]]
 name = "animato-spring"
-version = "1.6.0"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0de5b0eb0ef9426afee1229f175c1c2d4ab2c62fd8a8d72eb6ca6ce1155d670c"
+checksum = "42248f390dffc3d3c667f33334f1a2745a3f45d3269a6acad04208f8ff785940"
 dependencies = [
  "animato-core",
 ]
 
 [[package]]
 name = "animato-timeline"
-version = "1.6.0"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6c2c6b354c7a97bb64926bea7283a00184d5498480354660f40dcdd0f6c6c3"
+checksum = "0c9dd50eebac8b2079fa5948609939513ea6f3981f3beb920adca41b8fde96c7"
 dependencies = [
  "animato-core",
  "animato-tween",
@@ -344,9 +344,9 @@ dependencies = [
 
 [[package]]
 name = "animato-tween"
-version = "1.6.0"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7243dce6dcafb3963d85f9a0097e7f7e9e1a8a62d0c0897ca269509e10b3d4b9"
+checksum = "3dde84d5eb9a52c61447b0026fd4e1026b96bcb591d99637d9d90770cf4ed20e"
 dependencies = [
  "animato-core",
 ]
@@ -8567,9 +8567,9 @@ dependencies = [
 
 [[package]]
 name = "scenix"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "988de9cad08cbf8ee5fb333220cbb50dfb14ac20a4a2e90de1723389d673e737"
+checksum = "033963a69603998ea6ee12dccfd55cb0041ff2812eb7eb4bb6a8c5d6a3dc6ad9"
 dependencies = [
  "scenix-animato",
  "scenix-camera",
@@ -8591,13 +8591,14 @@ dependencies = [
 
 [[package]]
 name = "scenix-animato"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c09f07a2cb9129ff48ab7a870340a57ca81a67c792fdef65f0184edff2e0c0b7"
+checksum = "1467ce96b32650a527441ee6416e938131766686b14370c6a06b2c6a2794d43c"
 dependencies = [
  "animato",
  "scenix-camera",
  "scenix-core",
+ "scenix-light",
  "scenix-material",
  "scenix-math",
  "scenix-scene",
@@ -8605,9 +8606,9 @@ dependencies = [
 
 [[package]]
 name = "scenix-camera"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6343d8abd44f3d45e954b686ba16ca1676fbbe36732e38fbcf026d6532936350"
+checksum = "986d8c2b01afd5268e7d95ab3bf722ae1629d6f4f4345b78bba9996793886aa6"
 dependencies = [
  "scenix-core",
  "scenix-input",
@@ -8616,39 +8617,41 @@ dependencies = [
 
 [[package]]
 name = "scenix-core"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f5d6ccb4f3f92d675101ffbbcf97a15044471fd1351fa2b2c26ab036f616074"
+checksum = "b19e0c7710d7deb1450b52365b021ba8c65032998a5d635c1dbed0ca88d87b4a"
 dependencies = [
  "scenix-math",
+ "serde",
 ]
 
 [[package]]
 name = "scenix-helpers"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ddb5d40a3acd87410a3f8ca2db79f119a8b951675a8ea84c1f34ba89e03a7f"
+checksum = "227024ef94a1b2922609f4be5b35cefad816f781e1706c4a6eb7c7d61da69a84"
 dependencies = [
  "scenix-camera",
  "scenix-core",
  "scenix-light",
  "scenix-math",
+ "scenix-scene",
 ]
 
 [[package]]
 name = "scenix-input"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6ddca11ba2eaea5ab98448a8e55ecdfb2ff3db442e252ff61726ae056f11c9b"
+checksum = "63078ff0d6debf56a8b24c990f984107793d7cf122724eca7fc50ce223292375"
 dependencies = [
  "scenix-math",
 ]
 
 [[package]]
 name = "scenix-light"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0a1b4819bdff96722c295c1f3374b3c23d0eac5b819252d045aebdff74b2ef0"
+checksum = "3a7ecf60b9139b4cf298208624ccc81f74c676fd9f80465040536fd6b971d82c"
 dependencies = [
  "scenix-core",
  "scenix-math",
@@ -8656,9 +8659,9 @@ dependencies = [
 
 [[package]]
 name = "scenix-loader"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6692223607a0e8bc7e20173c5ba3053ab964762d4f4ecc19b4b899d11f515769"
+checksum = "a816f8f79c970c85fa82019b199fdf80f43012c9ea1398719c68d52fc1ef6183"
 dependencies = [
  "gltf",
  "image",
@@ -8677,9 +8680,9 @@ dependencies = [
 
 [[package]]
 name = "scenix-material"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4d78843a13c957fdd8da990919967895c3b32d2ac64f4fdeb1e685c18e7f7b7"
+checksum = "0d16f3042d1f684765c6820f304ef2d49a0f420c454a7cd74a267eaeab0335b8"
 dependencies = [
  "scenix-core",
  "scenix-math",
@@ -8687,15 +8690,18 @@ dependencies = [
 
 [[package]]
 name = "scenix-math"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3265e4f68c92909bdddb7062bc0223be755016f42d9d0fbb39d2fa36ed5ce8d"
+checksum = "62cc245fca38c8ac37364e770fae2a4711b2176aadedea94636626cc52be7732"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "scenix-mesh"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbfcbc4251f6e01001c416b98588fd0c8feba94499a1c25b6593c659bc605cce"
+checksum = "149c66ae2049eb63d7579ad6fd6e7914b2ca9e95237284cf3cc729cba3aed6df"
 dependencies = [
  "scenix-core",
  "scenix-math",
@@ -8703,9 +8709,9 @@ dependencies = [
 
 [[package]]
 name = "scenix-post"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e5122bc9f5cf317e1d633a16f8a6ea25e930fa701eef022cfc9e50713dd9b3d"
+checksum = "50423577fda8d66a752d9a6e29300cc5df0ad9bdc9a9b313728956483b76c377"
 dependencies = [
  "bytemuck",
  "scenix-core",
@@ -8715,9 +8721,9 @@ dependencies = [
 
 [[package]]
 name = "scenix-raycaster"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e866e1c8d0bf51168da70883e9a19ea23bfc219de9f01dce1729ea459c37e206"
+checksum = "8ea0b9fce210fe4bda09c587efe2454894893ea516e56fcdca979cc75adb84b8"
 dependencies = [
  "scenix-camera",
  "scenix-core",
@@ -8728,9 +8734,9 @@ dependencies = [
 
 [[package]]
 name = "scenix-renderer"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03a75bae3672261f3d8ac002dd634e5d8e8f2f3e491ddc1e91f29aa37dab3ac6"
+checksum = "4b8fd98085d9af2ec5c205428be36c1de4d92d7f96a25a375701c1bca20cd334"
 dependencies = [
  "bytemuck",
  "raw-window-handle",
@@ -8748,9 +8754,9 @@ dependencies = [
 
 [[package]]
 name = "scenix-scene"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d78b4e5351b629e7a795a5d282edc404359495be8ce2ae6a9ca164efedffaca6"
+checksum = "88f993bee35a676e52509eec90337dcae4d64b1e63bb35915e040eefcfac0cdf"
 dependencies = [
  "scenix-core",
  "scenix-math",
@@ -8759,18 +8765,18 @@ dependencies = [
 
 [[package]]
 name = "scenix-texture"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb9c0ceb9c2e581c12094bb9fd8da1b2984c5f5b399e95043e611eeb88c47fbc"
+checksum = "05d24cda38142c2ab9f23cb222d9e7d7e2cd169424ba74e9684d504604dd8ae3"
 dependencies = [
  "scenix-core",
 ]
 
 [[package]]
 name = "scenix-wasm"
-version = "1.3.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f6c68ba7ed0205cd8764c1c39a52bd1eed3c82dbc8db2e2a4d7b1b12e5ac611"
+checksum = "639450138e3e70fd71362c9006a739e5e9b482b55fea35ddbd5c1a62947ec0a3"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
@@ -8786,6 +8792,7 @@ dependencies = [
  "scenix-raycaster",
  "scenix-renderer",
  "scenix-scene",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
