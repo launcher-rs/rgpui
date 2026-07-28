@@ -8,6 +8,7 @@ struct FrameUniform {
 
 struct ObjectUniform {
     world: mat4x4<f32>,
+    bone_offset: u32,
 };
 
 struct MaterialUniform {
@@ -85,16 +86,13 @@ struct FrameUniform {
 
 struct ObjectUniform {
     world: mat4x4<f32>,
+    bone_offset: u32,
 };
 
 struct MaterialUniform {
     base_color: vec4<f32>,
     emissive_cutoff: vec4<f32>,
     params: vec4<f32>,
-};
-
-struct SkinInfo {
-    first_joint: u32,
 };
 
 struct VsOut {
@@ -110,7 +108,6 @@ struct VsOut {
 @group(3) @binding(0) var albedo_texture: texture_2d<f32>;
 @group(3) @binding(1) var tex_sampler: sampler;
 @group(4) @binding(0) var<storage> bones: array<mat4x4<f32>>;
-@group(4) @binding(1) var<uniform> skin_info: SkinInfo;
 
 @vertex
 fn vs_skin(
@@ -123,7 +120,7 @@ fn vs_skin(
 ) -> VsOut {
     var skinned_pos = vec4<f32>(0.0, 0.0, 0.0, 0.0);
     var skinned_nml = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-    let base = skin_info.first_joint;
+    let base = object.bone_offset;
     for (var i = 0u; i < 4u; i++) {
         let w = joint_weights[i];
         if (w > 0.0) {

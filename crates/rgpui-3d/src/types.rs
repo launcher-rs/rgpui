@@ -14,10 +14,14 @@ pub(crate) struct FrameUniform {
 }
 
 /// 每个对象的 uniform 数据，对应 WGSL ObjectUniform
+/// bone_offset.x 记录该 mesh 在骨骼数组中的起始偏移（用于蒙皮网格），
+/// 非蒙皮网格的 bone_offset 为 0。
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub(crate) struct ObjectUniform {
     pub(crate) world: [[f32; 4]; 4],
+    pub(crate) bone_offset: u32,
+    pub(crate) _pad: [u32; 3],
 }
 
 /// 材质 uniform 数据，对应 WGSL MaterialUniform
@@ -118,14 +122,6 @@ impl SkinnedVertex {
             ],
         }
     }
-}
-
-/// 皮肤信息 uniform，对应 WGSL SkinInfo
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Pod, Zeroable)]
-pub(crate) struct SkinInfoUniform {
-    pub(crate) first_joint: u32,
-    pub(crate) _pad: [u32; 3],
 }
 
 /// CPU 端皮肤数据

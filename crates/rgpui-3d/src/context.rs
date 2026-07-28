@@ -99,6 +99,7 @@ pub struct Scenix3D {
     skinned_meshes: HashMap<MeshId, GpuSkinnedMesh>,
     skins: Vec<SkinData>,
     mesh_to_skin: HashMap<MeshId, usize>,
+    mesh_to_node: HashMap<MeshId, usize>,
     joints: Vec<JointNode>,
     anim_clips: Vec<AnimClip>,
     active_anim: usize,
@@ -107,8 +108,7 @@ pub struct Scenix3D {
     anim_paused: bool,
     bone_buffer: wgpu::Buffer,
     bone_capacity: u32,
-    skin_info_buffer: wgpu::Buffer,
-    skin_info_bg: wgpu::BindGroup,
+    bone_bg: wgpu::BindGroup,
 
     cached_local_trs: Vec<([f32; 3], [f32; 4], [f32; 3])>,
     cached_global_mats: Vec<scenix::Mat4>,
@@ -486,7 +486,7 @@ impl Scenix3D {
             }],
         });
 
-        // 蒙皮管线绑定组布局
+        // 蒙皮管线绑定组布局（仅 bones storage buffer）
         let skin_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("rgpui-3d.skin_layout"),
             entries: &[
@@ -495,16 +495,6 @@ impl Scenix3D {
                     visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -573,23 +563,8 @@ impl Scenix3D {
             mapped_at_creation: false,
         });
 
-        let skin_info_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("rgpui-3d.skin_info_buffer"),
-            size: std::mem::size_of::<SkinInfoUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        queue.write_buffer(
-            &skin_info_buffer,
-            0,
-            bytemuck::bytes_of(&SkinInfoUniform {
-                first_joint: 0,
-                _pad: [0u32; 3],
-            }),
-        );
-
-        let skin_info_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("rgpui-3d.skin_info_bg"),
+        let bone_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("rgpui-3d.bone_bg"),
             layout: &skin_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -598,14 +573,6 @@ impl Scenix3D {
                         buffer: &bone_buffer,
                         offset: 0,
                         size: wgpu::BufferSize::new(bone_capacity as u64 * 64),
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &skin_info_buffer,
-                        offset: 0,
-                        size: wgpu::BufferSize::new(std::mem::size_of::<SkinInfoUniform>() as u64),
                     }),
                 },
             ],
@@ -647,6 +614,7 @@ impl Scenix3D {
             skinned_meshes: HashMap::new(),
             skins: Vec::new(),
             mesh_to_skin: HashMap::new(),
+            mesh_to_node: HashMap::new(),
             joints: Vec::new(),
             anim_clips: Vec::new(),
             active_anim: 0,
@@ -655,8 +623,7 @@ impl Scenix3D {
             anim_paused: false,
             bone_buffer,
             bone_capacity,
-            skin_info_buffer,
-            skin_info_bg,
+            bone_bg,
             cached_local_trs: Vec::new(),
             cached_global_mats: Vec::new(),
             cached_bone_data: Vec::new(),
@@ -1064,6 +1031,22 @@ impl Scenix3D {
             next_id += gltf_mesh.primitives().count() as u64;
         }
 
+        // 建立 mesh_id → node 索引映射（用于动画场景中非蒙皮网格跟随骨骼）
+        self.mesh_to_node.clear();
+        for node in document.nodes() {
+            if let Some(mesh_gltf) = node.mesh() {
+                let mesh_idx = mesh_gltf.index();
+                if mesh_idx < mesh_prim_start.len() {
+                    let start = mesh_prim_start[mesh_idx];
+                    let count = mesh_gltf.primitives().count() as u64;
+                    for prim_offset in 0..count {
+                        let mesh_id = MeshId::from(start + prim_offset);
+                        self.mesh_to_node.insert(mesh_id, node.index());
+                    }
+                }
+            }
+        }
+
         for node in document.nodes() {
             let (Some(mesh_gltf), Some(skin)) = (node.mesh(), node.skin()) else {
                 continue;
@@ -1469,8 +1452,8 @@ impl Scenix3D {
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            self.skin_info_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("rgpui-3d.skin_info_bg"),
+            self.bone_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("rgpui-3d.bone_bg"),
                 layout: &self.skin_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
@@ -1481,23 +1464,12 @@ impl Scenix3D {
                             size: wgpu::BufferSize::new(self.bone_capacity as u64 * 64),
                         }),
                     },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                            buffer: &self.skin_info_buffer,
-                            offset: 0,
-                            size: wgpu::BufferSize::new(
-                                std::mem::size_of::<SkinInfoUniform>() as u64
-                            ),
-                        }),
-                    },
                 ],
             });
         }
 
         self.cached_bone_data.clear();
         self.cached_bone_data.reserve(total_bones * 16);
-        let mut first_joint = 0u32;
         for skin in &self.skins {
             for (joint_idx, ibm) in skin
                 .joint_node_indices
@@ -1512,15 +1484,6 @@ impl Scenix3D {
                 self.cached_bone_data
                     .extend_from_slice(&mat4_to_flat(&bone_mat));
             }
-            self.queue.write_buffer(
-                &self.skin_info_buffer,
-                0,
-                bytemuck::bytes_of(&SkinInfoUniform {
-                    first_joint,
-                    _pad: [0u32; 3],
-                }),
-            );
-            first_joint += skin.joint_node_indices.len() as u32;
         }
         self.queue.write_buffer(
             &self.bone_buffer,
@@ -1873,20 +1836,46 @@ impl Scenix3D {
             draw_is_skinned.push(self.skinned_meshes.contains_key(&draw.mesh_id));
         }
 
+        // 预计算每个 skin 的骨骼偏移量
+        let skin_offsets: Vec<u32> = self
+            .skins
+            .iter()
+            .scan(0u32, |acc, s| {
+                let off = *acc;
+                *acc += s.joint_node_indices.len() as u32;
+                Some(off)
+            })
+            .collect();
+
         for (i, draw) in all_draws.iter().enumerate() {
             let object_off = i as u64 * self.object_stride;
             let material_off = i as u64 * self.material_stride;
             let is_skinned = draw_is_skinned[i];
 
+            let (world, bone_offset) = if is_skinned {
+                let bo = self
+                    .mesh_to_skin
+                    .get(&draw.mesh_id)
+                    .and_then(|&si| skin_offsets.get(si).copied())
+                    .unwrap_or(0);
+                (mat4_to_array(mat4_identity()), bo)
+            } else if let Some(&node_idx) = self.mesh_to_node.get(&draw.mesh_id) {
+                if node_idx < self.cached_global_mats.len() {
+                    (mat4_to_array(self.cached_global_mats[node_idx]), 0)
+                } else {
+                    (mat4_to_array(draw.world_matrix), 0)
+                }
+            } else {
+                (mat4_to_array(draw.world_matrix), 0)
+            };
+
             self.queue.write_buffer(
                 &self.object_buffer,
                 object_off,
                 bytemuck::bytes_of(&ObjectUniform {
-                    world: if is_skinned {
-                        mat4_to_array(mat4_identity())
-                    } else {
-                        mat4_to_array(draw.world_matrix)
-                    },
+                    world,
+                    bone_offset,
+                    _pad: [0u32; 3],
                 }),
             );
 
@@ -1995,7 +1984,7 @@ impl Scenix3D {
                 let has_skinned = draw_is_skinned.iter().any(|&s| s);
                 if has_skinned {
                     pass.set_pipeline(&self.skin_pipeline);
-                    pass.set_bind_group(4, &self.skin_info_bg, &[]);
+                    pass.set_bind_group(4, &self.bone_bg, &[]);
 
                     for (i, draw) in all_draws.iter().enumerate() {
                         if !draw_is_skinned[i] {
