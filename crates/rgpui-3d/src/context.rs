@@ -1265,17 +1265,43 @@ impl Scenix3D {
                     .read_inputs()
                     .map(|i| i.collect())
                     .unwrap_or_default();
+                let is_cubic = channel.sampler().interpolation()
+                    == gltf::animation::Interpolation::CubicSpline;
                 let outputs: Vec<[f32; 4]> = reader
                     .read_outputs()
                     .map(|output| match output {
                         gltf::animation::util::ReadOutputs::Translations(iter) => {
-                            iter.map(|v| [v[0], v[1], v[2], 0.0]).collect()
+                            let all: Vec<[f32; 3]> = iter.collect();
+                            if is_cubic {
+                                all.iter()
+                                    .skip(1)
+                                    .step_by(3)
+                                    .map(|v| [v[0], v[1], v[2], 0.0])
+                                    .collect()
+                            } else {
+                                all.iter().map(|v| [v[0], v[1], v[2], 0.0]).collect()
+                            }
                         }
                         gltf::animation::util::ReadOutputs::Rotations(iter) => {
-                            iter.into_f32().map(|v| [v[0], v[1], v[2], v[3]]).collect()
+                            let all: Vec<[f32; 4]> =
+                                iter.into_f32().map(|v| [v[0], v[1], v[2], v[3]]).collect();
+                            if is_cubic {
+                                all.iter().skip(1).step_by(3).copied().collect()
+                            } else {
+                                all
+                            }
                         }
                         gltf::animation::util::ReadOutputs::Scales(iter) => {
-                            iter.map(|v| [v[0], v[1], v[2], 0.0]).collect()
+                            let all: Vec<[f32; 3]> = iter.collect();
+                            if is_cubic {
+                                all.iter()
+                                    .skip(1)
+                                    .step_by(3)
+                                    .map(|v| [v[0], v[1], v[2], 0.0])
+                                    .collect()
+                            } else {
+                                all.iter().map(|v| [v[0], v[1], v[2], 0.0]).collect()
+                            }
                         }
                         _ => Vec::new(),
                     })
