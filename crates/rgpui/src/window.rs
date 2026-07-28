@@ -2330,6 +2330,18 @@ impl Window {
         RefCell::borrow_mut(&self.next_frame_callbacks).push(Box::new(callback));
     }
 
+    /// Returns the position of the window's top-left corner in screen coordinates.
+    pub fn position(&self) -> Point<Pixels> {
+        self.bounds().origin
+    }
+
+    /// Returns the size of the screen the window is on, or the primary screen if unavailable.
+    pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
+        self.display(cx)
+            .or_else(|| cx.primary_display())
+            .map(|d| d.bounds().size)
+    }
+
     /// Schedule a frame to be drawn on the next animation frame.
     ///
     /// This is useful for elements that need to animate continuously, such as a video player or an animated GIF.
@@ -5466,6 +5478,16 @@ impl Window {
     /// Hide the window from the taskbar and screen.
     pub fn hide_window(&self) {
         self.platform_window.hide();
+    }
+
+    /// Set whether the window allows mouse events to pass through to windows behind it.
+    pub fn set_mouse_passthrough(&self, passthrough: bool) {
+        self.platform_window.set_mouse_passthrough(passthrough);
+    }
+
+    /// Set the window position in screen coordinates.
+    pub fn set_position(&mut self, position: Point<Pixels>) {
+        self.platform_window.set_position(position);
     }
 
     /// Toggle full screen status on the current window at the platform level.
