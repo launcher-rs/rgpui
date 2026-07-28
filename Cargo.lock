@@ -7512,7 +7512,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -7635,7 +7635,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-3d"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bytemuck",
  "gltf",
@@ -7653,7 +7653,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-adabraka-ui"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bytes",
  "futures",
@@ -7698,14 +7698,14 @@ dependencies = [
 
 [[package]]
 name = "rgpui-character"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "rgpui-component"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -7789,7 +7789,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-component-assets"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "log",
@@ -7802,7 +7802,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-component-macros"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7858,7 +7858,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-linux"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -7905,7 +7905,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macos"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -7950,7 +7950,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macros"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -7961,7 +7961,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-platform"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "console_error_panic_hook",
  "rgpui",
@@ -7973,7 +7973,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-term"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -7993,7 +7993,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-tokio"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "rgpui",
@@ -8002,7 +8002,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-web"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -8024,7 +8024,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-webview"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "gtk",
@@ -8037,7 +8037,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-wgpu"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -8067,7 +8067,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-windows"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -8095,7 +8095,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-yororen-ui"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "rgpui",
