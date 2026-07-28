@@ -59,6 +59,7 @@ pub struct Scenix3D {
     material_layout: wgpu::BindGroupLayout,
     texture_layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
+    pipeline_layout: wgpu::PipelineLayout,
 
     // uniform 资源
     frame_buffer: wgpu::Buffer,
@@ -78,6 +79,10 @@ pub struct Scenix3D {
     // GPU 场景资源
     gpu_scene: GpuScene,
 
+    // 抗锯齿配置
+    msaa_sample_count: u32,
+    resolve_texture: Option<wgpu::Texture>,
+
     // 配置
     width: u32,
     height: u32,
@@ -89,6 +94,7 @@ pub struct Scenix3D {
 
     // 蒙皮/骨骼动画
     skin_pipeline: wgpu::RenderPipeline,
+    skin_pipeline_layout: wgpu::PipelineLayout,
     skin_layout: wgpu::BindGroupLayout,
     skinned_meshes: HashMap<MeshId, GpuSkinnedMesh>,
     skins: Vec<SkinData>,
@@ -125,6 +131,7 @@ impl Scenix3D {
                 wgpu::Queue::clone(&shared.queue),
                 width,
                 height,
+                1,
             );
         }
 
@@ -153,7 +160,7 @@ impl Scenix3D {
             .await
             .map_err(|_| ScenixError::Gpu(GpuError::Init))?;
 
-        Self::new_inner(device, queue, width, height)
+        Self::new_inner(device, queue, width, height, 1)
     }
 
     /// 从已有的 wgpu 设备+队列创建（共享 rgpui 的 GPU 上下文，不创建新实例）
@@ -166,7 +173,7 @@ impl Scenix3D {
         width: u32,
         height: u32,
     ) -> Result<Self, ScenixError> {
-        Self::new_inner(device, queue, width, height)
+        Self::new_inner(device, queue, width, height, 1)
     }
 
     /// 内部初始化逻辑，从已有的 device/queue 创建完整的 3D 上下文
@@ -175,9 +182,16 @@ impl Scenix3D {
         queue: wgpu::Queue,
         width: u32,
         height: u32,
+        sample_count: u32,
     ) -> Result<Self, ScenixError> {
         let color_format = wgpu::TextureFormat::Bgra8UnormSrgb;
+        let msaa = sample_count > 1;
 
+        let color_usage = if msaa {
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+        } else {
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC
+        };
         let color_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("rgpui-3d.color"),
             size: wgpu::Extent3d {
@@ -186,12 +200,31 @@ impl Scenix3D {
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
-            sample_count: 1,
+            sample_count: sample_count,
             dimension: wgpu::TextureDimension::D2,
             format: color_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: color_usage,
             view_formats: &[],
         });
+
+        let resolve_texture = if msaa {
+            Some(device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("rgpui-3d.resolve"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: color_format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            }))
+        } else {
+            None
+        };
 
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("rgpui-3d.depth"),
@@ -201,7 +234,7 @@ impl Scenix3D {
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
-            sample_count: 1,
+            sample_count: sample_count,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -337,6 +370,12 @@ impl Scenix3D {
             source: wgpu::ShaderSource::Wgsl(SHADER_SRC.into()),
         });
 
+        let msaa_state = wgpu::MultisampleState {
+            count: sample_count,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        };
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("rgpui-3d.pipeline_layout"),
             bind_group_layouts: &[
@@ -368,7 +407,7 @@ impl Scenix3D {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: msaa_state,
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
@@ -511,7 +550,7 @@ impl Scenix3D {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: msaa_state,
             fragment: Some(wgpu::FragmentState {
                 module: &skin_shader,
                 entry_point: Some("fs_skin"),
@@ -577,11 +616,14 @@ impl Scenix3D {
             queue,
             color_texture,
             depth_texture,
+            msaa_sample_count: sample_count,
+            resolve_texture,
             _frame_layout: frame_layout,
             object_layout,
             material_layout,
             texture_layout,
             pipeline,
+            pipeline_layout,
             frame_buffer,
             frame_bind_group,
             object_stride,
@@ -600,6 +642,7 @@ impl Scenix3D {
             clear_color: [1.0, 1.0, 1.0, 1.0],
             frame_index: 0,
             skin_pipeline,
+            skin_pipeline_layout,
             skin_layout,
             skinned_meshes: HashMap::new(),
             skins: Vec::new(),
@@ -625,34 +668,187 @@ impl Scenix3D {
     pub fn resize(&mut self, width: u32, height: u32) {
         self.width = width;
         self.height = height;
+        self.recreate_render_targets();
+    }
+
+    /// 重建渲染目标纹理（颜色、深度、resolve），使用当前 msaa_sample_count
+    fn recreate_render_targets(&mut self) {
+        let msaa = self.msaa_sample_count > 1;
+        let color_usage = if msaa {
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+        } else {
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC
+        };
         self.color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("rgpui-3d.color"),
             size: wgpu::Extent3d {
-                width,
-                height,
+                width: self.width,
+                height: self.height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
-            sample_count: 1,
+            sample_count: self.msaa_sample_count,
             dimension: wgpu::TextureDimension::D2,
             format: self.color_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: color_usage,
             view_formats: &[],
         });
+        if msaa {
+            self.resolve_texture = Some(self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("rgpui-3d.resolve"),
+                size: wgpu::Extent3d {
+                    width: self.width,
+                    height: self.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.color_format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            }));
+        } else {
+            self.resolve_texture = None;
+        }
         self.depth_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("rgpui-3d.depth"),
             size: wgpu::Extent3d {
-                width,
-                height,
+                width: self.width,
+                height: self.height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
-            sample_count: 1,
+            sample_count: self.msaa_sample_count,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
+    }
+
+    /// 重建渲染管线，使用当前 msaa_sample_count
+    fn recreate_pipelines(&mut self) {
+        let shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("rgpui-3d.shader"),
+                source: wgpu::ShaderSource::Wgsl(crate::shader::SHADER_SRC.into()),
+            });
+        let skin_shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("rgpui-3d.skin_shader"),
+                source: wgpu::ShaderSource::Wgsl(crate::shader::SKIN_SHADER_SRC.into()),
+            });
+        let msaa_state = wgpu::MultisampleState {
+            count: self.msaa_sample_count,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        };
+
+        self.pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("rgpui-3d.pipeline"),
+                layout: Some(&self.pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[PackedVertex::layout()],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: msaa_state,
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: self.color_format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                multiview_mask: None,
+                cache: None,
+            });
+
+        self.skin_pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("rgpui-3d.skin_pipeline"),
+                layout: Some(&self.skin_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &skin_shader,
+                    entry_point: Some("vs_skin"),
+                    buffers: &[SkinnedVertex::layout()],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: msaa_state,
+                fragment: Some(wgpu::FragmentState {
+                    module: &skin_shader,
+                    entry_point: Some("fs_skin"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: self.color_format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                multiview_mask: None,
+                cache: None,
+            });
+    }
+
+    /// 设置 MSAA 采样数（1 = 关闭抗锯齿，推荐 4 或 8）
+    pub fn set_msaa_sample_count(&mut self, sample_count: u32) {
+        let count = match sample_count {
+            0 | 1 => 1,
+            n => n.next_power_of_two().min(16),
+        };
+        if count == self.msaa_sample_count {
+            return;
+        }
+        self.msaa_sample_count = count;
+        self.recreate_render_targets();
+        self.recreate_pipelines();
+    }
+
+    /// 获取当前 MSAA 采样数（1 = 关闭）
+    pub fn msaa_sample_count(&self) -> u32 {
+        self.msaa_sample_count
+    }
+
+    /// 开关抗锯齿（开启使用 4x MSAA）
+    pub fn set_msaa_enabled(&mut self, enabled: bool) {
+        self.set_msaa_sample_count(if enabled { 4 } else { 1 });
+    }
+
+    /// 抗锯齿是否开启
+    pub fn msaa_enabled(&self) -> bool {
+        self.msaa_sample_count > 1
     }
 
     /// 获取渲染宽度
@@ -1683,6 +1879,10 @@ impl Scenix3D {
         let depth_view = self
             .depth_texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let resolve_view = self
+            .resolve_texture
+            .as_ref()
+            .map(|t| t.create_view(&wgpu::TextureViewDescriptor::default()));
 
         let mut encoder = self
             .device
@@ -1696,7 +1896,7 @@ impl Scenix3D {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &color_view,
                     depth_slice: None,
-                    resolve_target: None,
+                    resolve_target: resolve_view.as_ref(),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: self.clear_color[0] as f64,
@@ -1824,9 +2024,10 @@ impl Scenix3D {
             mapped_at_creation: false,
         });
 
+        let readback_texture = self.resolve_texture.as_ref().unwrap_or(&self.color_texture);
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
-                texture: &self.color_texture,
+                texture: readback_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
