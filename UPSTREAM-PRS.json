@@ -1227,6 +1227,250 @@
       "title": "Merge branch 'main' into gpui-mobile-api",
       "status": "check-failed",
       "merged_at": "2026-07-26"
+    },
+    {
+      "number": 2607,
+      "upstream": "gpui-component",
+      "title": "refactor: reuse caret in combobox triggers",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2606,
+      "upstream": "gpui-component",
+      "title": "style: use pointer cursor for text buttons",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2585,
+      "upstream": "gpui-component",
+      "title": "Adjust indent.",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2604,
+      "upstream": "gpui-component",
+      "title": "plot: Apply default tooltip `min_w` only when caller has not set one",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2596,
+      "upstream": "gpui-component",
+      "title": "fix(dock): avoid adding split children twice",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2552,
+      "upstream": "gpui-component",
+      "title": "input: Fix prevent single-line input panic on multiline text (#2552)",
+      "status": "pending"
+    },
+    {
+      "number": 2602,
+      "upstream": "gpui-component",
+      "title": "style(story): use semantic decoration colors",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2601,
+      "upstream": "gpui-component",
+      "title": "test(input): cover IME underline run splitting",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2587,
+      "upstream": "gpui-component",
+      "title": ".",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2591,
+      "upstream": "gpui-component",
+      "title": "tab: Fix previous tab keeping active text color until the mouse moves",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2588,
+      "upstream": "gpui-component",
+      "title": "plot: Derive tooltip position from the live cursor to avoid scroll jitter",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2584,
+      "upstream": "gpui-component",
+      "title": "native_menu: sync Windows theme and mouse capture",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2583,
+      "upstream": "gpui-component",
+      "title": "fix: match segmented tab shadow to shadcn",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2581,
+      "upstream": "gpui-component",
+      "title": "plot: Don't track hover through occluding overlays for tooltips",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2579,
+      "upstream": "gpui-component",
+      "title": "story: Enable tooltip on all radar chart examples",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2574,
+      "upstream": "gpui-component",
+      "title": "select: Use popover background for dropdown menus",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2577,
+      "upstream": "gpui-component",
+      "title": "lsp: clear_hover_state only notify if hover state changed",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2576,
+      "upstream": "gpui-component",
+      "title": "combobox: Add value-based selection API",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2573,
+      "upstream": "gpui-component",
+      "title": ".",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2572,
+      "upstream": "gpui-component",
+      "title": "input: avoid painting unset gutter background",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2570,
+      "upstream": "gpui-component",
+      "title": "fix: preserve text color without syntax highlighting",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2567,
+      "upstream": "gpui-component",
+      "title": "Remove added matches stmt",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2569,
+      "upstream": "gpui-component",
+      "title": "input: model show-document hook after LSP window/showDocument",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2564,
+      "upstream": "gpui-component",
+      "title": "test(scroll): account for stretched GPUI roots",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2562,
+      "upstream": "gpui-component",
+      "title": "table: Fix missing drag indicator next to non-movable columns",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2554,
+      "upstream": "gpui-component",
+      "title": "tree: Address review feedback",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2560,
+      "upstream": "gpui-component",
+      "title": ".",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2557,
+      "upstream": "gpui-component",
+      "title": "Fix hightlight all fenced blocks when in a large markdown file.",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2559,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into setting-title-suffix",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2538,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into chart-sankey",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2558,
+      "upstream": "gpui-component",
+      "title": "Update app_menu_bar.rs",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 2540,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into fix_settings",
+      "status": "merged",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 61682,
+      "upstream": "zed",
+      "title": "gpui: Make hsla functions const",
+      "status": "check-failed",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 61651,
+      "upstream": "zed",
+      "title": "Refactor even more",
+      "status": "check-failed",
+      "merged_at": "2026-07-28"
+    },
+    {
+      "number": 61600,
+      "upstream": "zed",
+      "title": "gpui: Fix dropped frames when scrolling an unfocused window",
+      "status": "check-failed",
+      "merged_at": "2026-07-28"
     }
   ]
 }

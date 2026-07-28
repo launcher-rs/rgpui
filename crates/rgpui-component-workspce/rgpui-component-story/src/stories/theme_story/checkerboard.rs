@@ -63,9 +63,6 @@ impl RenderOnce for Checkerboard {
                                         border_widths: rgpui::Edges::default(),
                                         border_color: rgpui::transparent_black(),
                                         border_style: rgpui::BorderStyle::default(),
-                                        continuous_corners: false,
-                                        transform: Some(rgpui::TransformationMatrix::default()),
-                                        blend_mode: rgpui::BlendMode::default(),
                                     });
                                 }
                             }

@@ -305,17 +305,6 @@ impl PetSharedState {
         }
     }
 
-    /// 获取猫当前在屏幕上的位置（以像素为单位）。
-    ///
-    /// # 返回
-    /// 返回 Point<Pixels> 类型的位置坐标。
-    fn position(&self) -> Point<Pixels> {
-        // 从运行时获取第一个角色的位置
-        let position = self.runtime.characters[0].position;
-        // 转换为 Point<Pixels>
-        point(px(position.x), px(position.y))
-    }
-
     /// 设置猫的位置（以像素为单位）。
     ///
     /// # 参数
@@ -1052,7 +1041,10 @@ fn main() {
                         let view = cx.new(|cx| {
                             // 监听窗口移动，把用户拖动后的真实窗口位置同步回角色运行时
                             cx.observe_window_bounds(window, |this: &mut DesktopPet, window, _| {
-                                this.state.lock().unwrap().set_position(window.position());
+                                this.state
+                                    .lock()
+                                    .unwrap()
+                                    .set_position(window.bounds().origin);
                             })
                             .detach();
 
@@ -1063,7 +1055,7 @@ fn main() {
                             // 标记窗口已隐藏
                             window_visible_close.store(false, std::sync::atomic::Ordering::Release);
                             // 隐藏窗口而非关闭（保留进程和托盘）
-                            window.hide_window();
+                            window.minimize_window();
                             // 阻止窗口真正关闭
                             false
                         });
@@ -1192,10 +1184,10 @@ fn setup_global_hotkey(
                     // 恢复运行：记录当前位置，开启鼠标穿透
                     let current_position = window.bounds().origin;
                     pet_state.lock().unwrap().set_position(current_position);
-                    window.set_mouse_passthrough(true);
+                    window.set_input_region(Some(&[]));
                 } else {
                     // 暂停：关闭鼠标穿透，激活窗口显示面板
-                    window.set_mouse_passthrough(false);
+                    window.set_input_region(None);
                     window.activate_window();
                 }
                 // 触发重绘
@@ -1245,7 +1237,7 @@ fn spawn_pet_loop(
                 // 锁定共享状态
                 let mut state = pet_state.lock().unwrap();
                 // 根据窗口所在屏幕动态刷新行为和物理边界，避免固定 1920x1080 导致右半屏异常
-                if let Some(screen_size) = window.screen_size(cx) {
+                if let Some(screen_size) = window.display(cx).map(|d| d.bounds().size) {
                     let screen_width = screen_size.width.as_f32();
                     let screen_height = screen_size.height.as_f32();
                     behavior.set_screen_size(screen_width, screen_height);
@@ -1263,21 +1255,21 @@ fn spawn_pet_loop(
                 if ctrl_held && !was_ctrl_held && !shift_held {
                     if state.interactive {
                         // 退出交互模式前先记录用户拖动后的窗口位置
-                        state.set_position(window.position());
+                        state.set_position(window.bounds().origin);
                         // 退出交互模式 → 恢复原动作或用户按钮选择的动作
                         state.exit_interactive();
                         exited_interactive = true;
                     } else {
                         // 进入交互模式 → 打开面板，关闭穿透
                         state.enter_interactive();
-                        window.set_mouse_passthrough(false);
+                        window.set_input_region(None);
                         window.activate_window();
                     }
                 }
 
                 // Ctrl 按下时锁定猫的位置（方便拖动时位置不自动变化）
                 if ctrl_held {
-                    state.set_position(window.position());
+                    state.set_position(window.bounds().origin);
                 }
 
                 // 更新上一帧 Ctrl 状态
@@ -1287,24 +1279,24 @@ fn spawn_pet_loop(
                     // 刚退出交互的这一帧只恢复穿透，不移动窗口，等待 bounds observer 同步最终位置
                     let should_passthrough = state.passthrough;
                     drop(state);
-                    window.set_mouse_passthrough(should_passthrough);
+                    window.set_input_region(if should_passthrough { Some(&[]) } else { None });
                 } else if state.interactive {
                     // 交互模式：更新角色状态后仍由鼠标悬停决定按钮组显示
-                    state.set_position(window.position());
+                    state.set_position(window.bounds().origin);
                     state.tick(&mut behavior);
                     // 防止交互模式内的动作更新改变 runtime 位置，确保拖动后的窗口位置是唯一位置来源
-                    state.set_position(window.position());
+                    state.set_position(window.bounds().origin);
                     state.set_hovered(mouse_hovered);
                     let should_passthrough = state.passthrough;
                     drop(state);
-                    window.set_mouse_passthrough(should_passthrough);
+                    window.set_input_region(if should_passthrough { Some(&[]) } else { None });
                 } else if state.running {
                     if state.anchoring_position() {
                         // 锚定期完全不调用 window.set_position，避免穿透样式刚恢复时坐标被二次换算
-                        state.anchor_position_if_needed(window.position());
+                        state.anchor_position_if_needed(window.bounds().origin);
                         let should_passthrough = state.passthrough;
                         drop(state);
-                        window.set_mouse_passthrough(should_passthrough);
+                        window.set_input_region(if should_passthrough { Some(&[]) } else { None });
                         cx.notify();
                         return;
                     }
@@ -1315,23 +1307,20 @@ fn spawn_pet_loop(
                     state.set_hovered(mouse_hovered);
                     // 从更新后的状态读取穿透开关
                     let should_passthrough = state.passthrough;
-                    // 读取猫的当前位置
-                    let position = state.position();
                     // 释放状态锁（后续操作不需要访问状态）
                     drop(state);
                     // 同步窗口鼠标穿透状态
-                    window.set_mouse_passthrough(should_passthrough);
-                    // 更新窗口位置（跟随猫移动）
-                    window.set_position(position);
+                    window.set_input_region(if should_passthrough { Some(&[]) } else { None });
+                    // TODO: window.set_position was removed from public API
                 } else {
                     // 非运行也非交互（暂停状态）：类似处理
                     state.tick(&mut behavior);
                     state.set_hovered(mouse_hovered);
                     // 非运行状态下也吸收一次退出交互后的 bounds 同步延迟
-                    state.anchor_position_if_needed(window.position());
+                    state.anchor_position_if_needed(window.bounds().origin);
                     let should_passthrough = state.passthrough;
                     drop(state);
-                    window.set_mouse_passthrough(should_passthrough);
+                    window.set_input_region(if should_passthrough { Some(&[]) } else { None });
                 }
                 // 触发视图重绘
                 cx.notify();

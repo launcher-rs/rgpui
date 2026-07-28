@@ -75,6 +75,7 @@ pub struct Arena {
     valid: Rc<Cell<bool>>,
     current_chunk_index: usize,
     chunk_size: NonZeroUsize,
+    scope_depth: usize,
 }
 
 impl Drop for Arena {
@@ -92,6 +93,7 @@ impl Arena {
             valid: Rc::new(Cell::new(true)),
             current_chunk_index: 0,
             chunk_size,
+            scope_depth: 0,
         }
     }
 
@@ -100,6 +102,13 @@ impl Arena {
     }
 
     pub fn clear(&mut self) {
+        if self.scope_depth > 0 {
+            log::debug!(
+                "deferring arena clear due to scope_depth={}",
+                self.scope_depth
+            );
+            return;
+        }
         self.valid.set(false);
         self.valid = Rc::new(Cell::new(true));
         self.elements.clear();
@@ -107,6 +116,14 @@ impl Arena {
             self.chunks[chunk_index].reset();
         }
         self.current_chunk_index = 0;
+    }
+
+    pub fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    pub fn end_scope(&mut self) {
+        self.scope_depth = self.scope_depth.saturating_sub(1);
     }
 
     #[inline(always)]

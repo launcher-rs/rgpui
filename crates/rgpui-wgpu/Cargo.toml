@@ -32,6 +32,7 @@ smallvec.workspace = true
 swash = "0.2.6"
 wgpu.workspace = true
 unicode-segmentation.workspace = true
+unicode-bidi = "0.3"
 
 # Optional: only needed on platforms with multiple font sources (e.g. Linux)
 # WARNING: If you change this, you must also publish a new version of zed-font-kit to crates.io
