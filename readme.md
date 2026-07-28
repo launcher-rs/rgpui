@@ -45,6 +45,8 @@ crates/
     └── themes/                   # 22 套 JSON 颜色主题
 ```
 
+> **注意**：`crates/rgpui-component/` 和 `crates/rgpui-component-macros/` 是已废弃的旧目录（已迁移至 `crates/rgpui-component-workspce/` 下）。合并上游 PR 时若被重建，请立即删除。
+
 ## 示例程序
 
 ```

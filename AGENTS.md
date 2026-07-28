@@ -165,6 +165,19 @@ CI 通过矩阵策略在三个平台分别运行，确保跨平台兼容性。
 - PR 状态追踪: `UPSTREAM-PRS.json`
 - 上游仓库规则: `.opencode/upstream-rules.json`
 
+### 防止 `rgpui-component` 旧目录被重建
+
+合并来自 `longbridge/gpui-component` 上游的 PR 时，以下废弃目录可能被重新创建在 `crates/` 根目录下：
+
+- `crates/rgpui-component/` — 旧版（已迁移至 `crates/rgpui-component-workspce/rgpui-component/`）
+- `crates/rgpui-component-macros/` — 旧版（已迁移至 `crates/rgpui-component-workspce/rgpui-component-macros/`）
+
+合并后必须执行以下检查：
+
+1. 确认 `crates/rgpui-component/` 和 `crates/rgpui-component-macros/` **不存在**。若被重建，立即删除
+2. 确认 `crates/rgpui-web/examples/hello_world_web/Cargo.toml` 和 `crates/rgpui-web/examples/components_web/Cargo.toml` 中的 `rgpui-component` 路径仍指向 `rgpui-component-workspce` 下的正确路径，未被上游 PR 覆盖为旧路径
+3. 运行 `cargo check --workspace` 确认编译无误
+
 ### 上游独立 crate → rgpui 模块映射
 
 上游 zed 将多个 crate 拆为独立工作区 crate（`collections`、`sum_tree` 等），而 rgpui 将它们合并为 `rgpui` crate 内部的模块。合并 PR 时，`scripts/merge-upstream-pr.ps1` 通过 `content_mappings` 自动替换 `use` 路径。以下是关键映射：
