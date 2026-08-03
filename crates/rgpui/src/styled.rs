@@ -1,8 +1,8 @@
 use crate::{
     self as rgpui, AbsoluteLength, AlignContent, AlignItems, AlignSelf, BlendMode, BorderStyle,
     CursorStyle, DefiniteLength, Display, Fill, FlexDirection, FlexWrap, Font, FontFeatures,
-    FontStyle, FontWeight, GridPlacement, GridTemplate, Hsla, JustifyContent, Length, SharedString,
-    StrikethroughStyle, StyleRefinement, TemplateColumnMinSize, TextAlign, TextOverflow,
+    FontStyle, FontWeight, GridPlacement, GridTemplate, GridTemplateMinSize, Hsla, JustifyContent,
+    Length, SharedString, StrikethroughStyle, StyleRefinement, TextAlign, TextOverflow,
     TextStyleRefinement, UnderlineStyle, WhiteSpace, point, px, relative, rems,
 };
 pub use rgpui_macros::{
@@ -783,7 +783,7 @@ pub trait Styled: Sized {
     fn grid_cols(mut self, cols: u16) -> Self {
         self.style().grid_cols = Some(GridTemplate {
             repeat: cols,
-            min_size: TemplateColumnMinSize::Zero,
+            min_size: GridTemplateMinSize::Zero,
         });
         self
     }
@@ -793,7 +793,7 @@ pub trait Styled: Sized {
     fn grid_cols_min_content(mut self, cols: u16) -> Self {
         self.style().grid_cols = Some(GridTemplate {
             repeat: cols,
-            min_size: TemplateColumnMinSize::MinContent,
+            min_size: GridTemplateMinSize::MinContent,
         });
         self
     }
@@ -802,7 +802,7 @@ pub trait Styled: Sized {
     fn grid_cols_max_content(mut self, cols: u16) -> Self {
         self.style().grid_cols = Some(GridTemplate {
             repeat: cols,
-            min_size: TemplateColumnMinSize::MaxContent,
+            min_size: GridTemplateMinSize::MaxContent,
         });
         self
     }
@@ -811,7 +811,26 @@ pub trait Styled: Sized {
     fn grid_rows(mut self, rows: u16) -> Self {
         self.style().grid_rows = Some(GridTemplate {
             repeat: rows,
-            min_size: TemplateColumnMinSize::Zero,
+            min_size: GridTemplateMinSize::Zero,
+        });
+        self
+    }
+
+    /// 设置具有最小内容最小大小的网格行。
+    /// 与 grid_rows 不同，它不会在 AvailableSpace::MinContent 约束下收缩到高度 0。
+    fn grid_rows_min_content(mut self, rows: u16) -> Self {
+        self.style().grid_rows = Some(GridTemplate {
+            repeat: rows,
+            min_size: GridTemplateMinSize::MinContent,
+        });
+        self
+    }
+
+    /// 设置具有最大内容最大大小的网格行，用于基于内容的行高。
+    fn grid_rows_max_content(mut self, rows: u16) -> Self {
+        self.style().grid_rows = Some(GridTemplate {
+            repeat: rows,
+            min_size: GridTemplateMinSize::MaxContent,
         });
         self
     }

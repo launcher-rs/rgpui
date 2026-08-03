@@ -489,18 +489,16 @@ impl Scenix3D {
         // 蒙皮管线绑定组布局（仅 bones storage buffer）
         let skin_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("rgpui-3d.skin_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
                 },
-            ],
+                count: None,
+            }],
         });
 
         let skin_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -566,16 +564,14 @@ impl Scenix3D {
         let bone_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("rgpui-3d.bone_bg"),
             layout: &skin_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &bone_buffer,
-                        offset: 0,
-                        size: wgpu::BufferSize::new(bone_capacity as u64 * 64),
-                    }),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &bone_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(bone_capacity as u64 * 64),
+                }),
+            }],
         });
 
         Ok(Self {
@@ -1455,16 +1451,14 @@ impl Scenix3D {
             self.bone_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("rgpui-3d.bone_bg"),
                 layout: &self.skin_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                            buffer: &self.bone_buffer,
-                            offset: 0,
-                            size: wgpu::BufferSize::new(self.bone_capacity as u64 * 64),
-                        }),
-                    },
-                ],
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &self.bone_buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(self.bone_capacity as u64 * 64),
+                    }),
+                }],
             });
         }
 

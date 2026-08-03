@@ -80,6 +80,11 @@
 | #61600 | 2026-07-28 | gpui: Fix dropped frames when scrolling an unfocused window |
 | #61682 | 2026-07-28 | gpui: Make hsla functions const |
 | #61651 | 2026-07-28 | Refactor even more |
+| #61473 | 2026-08-03 | gpui: Add resizable and minimizable state to Window |
+| #61789 | 2026-08-03 | gpui: Defer appearance change callback to avoid reentrant borrow |
+| #61837 | 2026-08-03 | gpui: Add grid_rows_min_content and grid_rows_max_content |
+| #61270 | 2026-08-03 | gpui: Keep the pending-input getters consistent |
+| #61807 | 2026-08-03 | gpui_web: Point wasm_thread at a fork (Cargo.toml only) |
 
 ## gpui-component
 

@@ -1160,7 +1160,7 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     #[cfg(target_os = "macos")]
     fn set_traffic_light_position(&self, _position: Point<Pixels>) {}
     fn show_character_palette(&self) {}
-    fn titlebar_double_click(&self) {}
+    fn titlebar_double_click(&self, _is_resizable: bool, _is_minimizable: bool) {}
     fn on_move_tab_to_new_window(&self, _callback: Box<dyn FnMut()>) {}
     fn on_merge_all_windows(&self, _callback: Box<dyn FnMut()>) {}
     fn on_select_previous_tab(&self, _callback: Box<dyn FnMut()>) {}
@@ -1849,10 +1849,18 @@ impl PlatformInputHandler {
             .unwrap_or(true)
     }
 
+    /// 参见 [`InputHandler::prefers_ime_for_printable_keys`]。
+    ///
+    /// 这不是对处理器简单的委托：当多按键绑定处于待处理状态时，无论处理器的偏好如何，
+    /// 该函数都会返回 `false`，因为下一个可打印按键可能完成一个前缀已绕过 IME 的绑定。
     #[allow(dead_code)]
     pub fn query_prefers_ime_for_printable_keys(&mut self) -> bool {
         self.cx
-            .update(|window, cx| self.handler.prefers_ime_for_printable_keys(window, cx))
+            .update(|window, cx| {
+                // 下一个可打印按键可能完成一个前缀已绕过 IME 的按键组合。
+                !window.has_pending_keystrokes()
+                    && self.handler.prefers_ime_for_printable_keys(window, cx)
+            })
             .unwrap_or(false)
     }
 }

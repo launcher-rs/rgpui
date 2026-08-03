@@ -141,13 +141,13 @@ impl ObjectFit {
 #[derive(
     Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Default, JsonSchema, Serialize, Deserialize,
 )]
-pub enum TemplateColumnMinSize {
-    /// 列大小可能为 0
+pub enum GridTemplateMinSize {
+    /// 列或行大小可能为 0
     #[default]
     Zero,
-    /// 列大小可以由最小内容决定
+    /// 列或行大小可以由最小内容决定
     MinContent,
-    /// 列大小可以由最大内容决定
+    /// 列或行大小可以由最大内容决定
     MaxContent,
 }
 
@@ -170,7 +170,7 @@ pub struct GridTemplate {
     /// 此模板指令应如何重复
     pub repeat: u16,
     /// 在 repeat(<>, minmax(_, 1fr)) 方程中的最小大小
-    pub min_size: TemplateColumnMinSize,
+    pub min_size: GridTemplateMinSize,
 }
 
 /// 可以通过 `Styled` trait 应用于元素的 CSS 样式

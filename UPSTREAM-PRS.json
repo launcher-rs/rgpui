@@ -1471,6 +1471,120 @@
       "title": "gpui: Fix dropped frames when scrolling an unfocused window",
       "status": "check-failed",
       "merged_at": "2026-07-28"
+    },
+    {
+      "number": 61473,
+      "upstream": "zed",
+      "title": "gpui: Add resizable and minimizable state to Window",
+      "status": "merged",
+      "merged_at": "2026-08-03"
+    },
+    {
+      "number": 61789,
+      "upstream": "zed",
+      "title": "gpui: Defer appearance change callback to avoid reentrant borrow",
+      "status": "merged",
+      "merged_at": "2026-08-03"
+    },
+    {
+      "number": 61837,
+      "upstream": "zed",
+      "title": "gpui: Add grid_rows_min_content and grid_rows_max_content",
+      "status": "merged",
+      "merged_at": "2026-08-03"
+    },
+    {
+      "number": 61270,
+      "upstream": "zed",
+      "title": "gpui: Keep the pending-input getters consistent",
+      "status": "merged",
+      "merged_at": "2026-08-03"
+    },
+    {
+      "number": 61807,
+      "upstream": "zed",
+      "title": "gpui_web: Point wasm_thread at a fork that fixes the wasm-bindgen init call",
+      "status": "merged",
+      "merged_at": "2026-08-03",
+      "note": "Cargo.toml only; web source files skipped (unverifiable on Windows)"
+    },
+    {
+      "number": 62096,
+      "upstream": "zed",
+      "title": "Expose threaded dispatcher for tests",
+      "status": "pending"
+    },
+    {
+      "number": 61947,
+      "upstream": "zed",
+      "title": "gpui_linux: Emit FileDropEvent::Ended in Wayland",
+      "status": "pending"
+    },
+    {
+      "number": 61162,
+      "upstream": "zed",
+      "title": "x11 repaint issue",
+      "status": "pending"
+    },
+    {
+      "number": 61797,
+      "upstream": "zed",
+      "title": "polish (div scroll)",
+      "status": "pending"
+    },
+    {
+      "number": 61940,
+      "upstream": "zed",
+      "title": "restore file drags when re-entering the source window",
+      "status": "pending"
+    },
+    {
+      "number": 61929,
+      "upstream": "zed",
+      "title": "fuzzy_nucleo: Remove util dependency",
+      "status": "pending"
+    },
+    {
+      "number": 58803,
+      "upstream": "zed",
+      "title": "image texture leak cleanup",
+      "status": "pending"
+    },
+    {
+      "number": 61883,
+      "upstream": "zed",
+      "title": "docs fix",
+      "status": "pending"
+    },
+    {
+      "number": 58161,
+      "upstream": "zed",
+      "title": "macOS drag-out fix",
+      "status": "pending"
+    },
+    {
+      "number": 61827,
+      "upstream": "zed",
+      "title": "idle scheduling improvement",
+      "status": "pending"
+    },
+    {
+      "number": 56315,
+      "upstream": "zed",
+      "title": "macOS blur cleanup",
+      "status": "pending"
+    },
+    {
+      "number": 61782,
+      "upstream": "zed",
+      "title": "gpui_web: Fall back without Atomics.waitAsync",
+      "status": "pending"
+    },
+    {
+      "number": 58902,
+      "upstream": "zed",
+      "title": "Remove crates/gpui/examples/window_appearance.rs",
+      "status": "pending"
     }
   ]
 }
