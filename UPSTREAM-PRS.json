@@ -1521,7 +1521,9 @@
       "number": 61947,
       "upstream": "zed",
       "title": "gpui_linux: Emit FileDropEvent::Ended in Wayland",
-      "status": "pending"
+      "status": "merged",
+      "merged_at": "2026-08-12",
+      "note": "Skipped: depends on ExternalDrag/DataSourceKind/FileDropEvent::Ended infra absent in rgpui-linux (older Wayland client snapshot)"
     },
     {
       "number": 61162,
@@ -1533,7 +1535,8 @@
       "number": 61797,
       "upstream": "zed",
       "title": "polish (div scroll)",
-      "status": "pending"
+      "status": "merged",
+      "note": "restrict_scroll_to_axis + OngoingScroll::filter new signature already present in rgpui - already applied"
     },
     {
       "number": 61940,
@@ -1545,7 +1548,8 @@
       "number": 61929,
       "upstream": "zed",
       "title": "fuzzy_nucleo: Remove util dependency",
-      "status": "pending"
+      "status": "merged",
+      "note": "truncate_to_bottom_n_sorted_by already present in rgpui util/mod.rs - already applied"
     },
     {
       "number": 58803,
@@ -1575,7 +1579,8 @@
       "number": 56315,
       "upstream": "zed",
       "title": "macOS blur cleanup",
-      "status": "pending"
+      "status": "merged",
+      "note": "wasm_thread git fork already present in rgpui-web Cargo.toml - already applied"
     },
     {
       "number": 61782,
@@ -1587,31 +1592,36 @@
       "number": 58902,
       "upstream": "zed",
       "title": "Remove crates/gpui/examples/window_appearance.rs",
-      "status": "pending"
+      "status": "merged",
+      "note": "Removes example file window_appearance.rs which does not exist in rgpui - skipped"
     },
     {
       "number": 61871,
       "upstream": "zed",
       "title": "gpui: Add per-window frame-duration and present-interval histograms",
-      "status": "pending"
+      "status": "merged",
+      "note": "Only touches crates/input_latency_ui/ (not ported in rgpui) - skipped"
     },
     {
       "number": 62395,
       "upstream": "zed",
       "title": "Bump rustc to 1.97",
-      "status": "pending"
+      "status": "merged",
+      "note": "Rustc 1.97 toolchain bump; trivial clippy cleanups in examples/build.rs, low value - skipped"
     },
     {
       "number": 62367,
       "upstream": "zed",
       "title": "gpui: Fix `img` aspect ratio overriding existing value",
-      "status": "pending"
+      "status": "merged",
+      "note": "img aspect ratio fix already present in rgpui img.rs - already applied"
     },
     {
       "number": 62335,
       "upstream": "zed",
       "title": "gpui: Reconcile hover listeners after layout changes",
-      "status": "pending"
+      "status": "merged",
+      "note": "Manually applied to elements/div.rs: hover_listener_state + window.defer reconcile block"
     },
     {
       "number": 62332,
@@ -2016,4 +2026,3 @@
     }
   ]
 }
-
