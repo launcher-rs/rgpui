@@ -1562,19 +1562,22 @@
       "number": 61883,
       "upstream": "zed",
       "title": "docs fix",
-      "status": "pending"
+      "status": "merged",
+      "note": "Merge of the #58161 macOS file drag-out branch with docs/settings; same infra absent in rgpui - skipped"
     },
     {
       "number": 58161,
       "upstream": "zed",
       "title": "macOS drag-out fix",
-      "status": "pending"
+      "status": "merged",
+      "note": "Skipped: macOS file drag-out feature (ExternalDragPayload/start_external_drag) infra absent in rgpui; 1 window.rs test line (clear(cx)) already applied"
     },
     {
       "number": 61827,
       "upstream": "zed",
       "title": "idle scheduling improvement",
-      "status": "pending"
+      "status": "merged",
+      "note": "Doc-only change to spawn_when_idle/dispatch_on_main_thread_when_idle which do not exist in rgpui - skipped"
     },
     {
       "number": 56315,
