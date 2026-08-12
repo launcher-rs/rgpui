@@ -1529,7 +1529,8 @@
       "number": 61162,
       "upstream": "zed",
       "title": "x11 repaint issue",
-      "status": "pending"
+      "status": "merged",
+      "note": "Applied: window.rs frame-throttle gate (require_presentation OR empty callbacks bypass active-cap); x11 client.rs removed expose_event_received tracking, refreshed expose-flagged mapped windows with require_presentation in process_x11_events tail. Linux-only code unverified on Windows build but matches upstream exactly"
     },
     {
       "number": 61797,
@@ -1588,10 +1589,11 @@
       "note": "wasm_thread git fork already present in rgpui-web Cargo.toml - already applied"
     },
     {
-      "number": 61782,
+"number": 61782,
       "upstream": "zed",
-      "title": "gpui_web: Fall back without Atomics.waitAsync",
-      "status": "pending"
+      "title": "gpui_web: Atomics.waitAsync fallback to single-threaded dispatcher",
+      "status": "merged",
+      "note": "Skipped: web-only refactor (dispatcher browser_window global + wait_async_supported gate + http_client rewrite + application() http_client wiring) on diverged rgpui-web code (~75/27 diff vs base); local already handles waitAsync failures at runtime in run_waker_loop"
     },
     {
       "number": 58902,
