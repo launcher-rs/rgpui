@@ -1632,13 +1632,15 @@
       "number": 62332,
       "upstream": "zed",
       "title": "gpui: Add synced repeating animations and phase-lock spinners",
-      "status": "pending"
+      "status": "merged",
+      "note": "Applied: Animation.synced + repeat_synced(), App.synced_animation_epoch, modulo-phase logic, synced animation test"
     },
     {
       "number": 62327,
       "upstream": "zed",
       "title": "Gpui web dont repaint",
-      "status": "pending"
+      "status": "merged",
+      "note": "Skipped: invasive frame-waker change to core WindowInvalidator + web idle-stop optimization which rgpui-web lacks; high risk low priority"
     },
     {
       "number": 61926,
