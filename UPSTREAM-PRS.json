@@ -1639,7 +1639,8 @@
       "number": 61926,
       "upstream": "zed",
       "title": "gpui: Expose accessibility identifiers to platform clients",
-      "status": "pending"
+      "status": "merged",
+      "note": "Doc-only change to accessibility_id / author_id which does not exist in rgpui (a11y API diverged to aria_* methods) - skipped"
     },
     {
       "number": 62192,
@@ -1663,7 +1664,8 @@
       "number": 62036,
       "upstream": "zed",
       "title": "gpui: Prevent multi-modifier gestures from dispatching standalone modifiers",
-      "status": "pending"
+      "status": "merged",
+      "note": "Manually applied to window.rs (saw_keystroke->saw_other_input, >1 modifiers sets flag) + interactive.rs test"
     },
     {
       "number": 62220,
