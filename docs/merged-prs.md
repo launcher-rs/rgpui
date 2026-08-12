@@ -85,6 +85,7 @@
 | #61837 | 2026-08-03 | gpui: Add grid_rows_min_content and grid_rows_max_content |
 | #61270 | 2026-08-03 | gpui: Keep the pending-input getters consistent |
 | #61807 | 2026-08-03 | gpui_web: Point wasm_thread at a fork (Cargo.toml only) |
+| #62096 | 2026-08-12 | Expose threaded dispatcher for tests |
 
 ## gpui-component
 
@@ -173,6 +174,53 @@
 | #2538 | 2026-07-28 | Merge branch 'main' into chart-sankey |
 | #2558 | 2026-07-28 | Update app_menu_bar.rs |
 | #2540 | 2026-07-28 | Merge branch 'main' into fix_settings |
+| #2146 | 2026-08-12 | Extract inline code highlight into TextViewStyle |
+| #2232 | 2026-08-12 | Merge branch 'main' into feat/submenu-parent-wire |
+| #2369 | 2026-08-12 | Merge branch 'main' into input/configurable-completion-menu-width |
+| #2548 | 2026-08-12 | calendar: added custom starting day |
+| #2571 | 2026-08-12 | Fix virtual list measurement cache invalidation |
+| #2608 | 2026-08-12 | scroll: Fix markdown table horizontal scroll leaking into vertical body scroll |
+| #2609 | 2026-08-12 | story: Add async submenu example to popover story |
+| #2610 | 2026-08-12 | . |
+| #2611 | 2026-08-12 | scroll: Remove unreachable vertical arm from the horizontal trap path |
+| #2613 | 2026-08-12 | fix(input): preserve IME selection during composition |
+| #2614 | 2026-08-12 | menu: Fix dangling focus after `ContextMenu` dismissed |
+| #2615 | 2026-08-12 | Merge branch 'main' into radar-label-element |
+| #2621 | 2026-08-12 | Merge remote-tracking branch 'origin/main' into textview-link-handler |
+| #2623 | 2026-08-12 | input: Fix panic on IME composition in `masked` input |
+| #2628 | 2026-08-12 | text: Keep source copies to Markdown, and to what a mark carries |
+| #2629 | 2026-08-12 | Merge branch 'main' into wrapping-indent |
+| #2631 | 2026-08-12 | input: Improve replace keybinding, focus cycle and match stepping |
+| #2638 | 2026-08-12 | Control frequency |
+| #2639 | 2026-08-12 | list: Address review feedback for drag and drop demo |
+| #2641 | 2026-08-12 | title_bar: Only draw the window controls the WM supports |
+| #2642 | 2026-08-12 | switch: Add AccessKit role, toggle state, and label |
+| #2646 | 2026-08-12 | Merge branch 'main' into refactor-tab-panel-active-sync |
+| #2648 | 2026-08-12 | scroll: Lock trackpad wheel gestures to their starting axis |
+| #2651 | 2026-08-12 | text_view: Make the scroll table layout adaptive instead of always nowrap |
+| #2658 | 2026-08-12 | sidebar: Show tooltips for collapsed menu items |
+| #2660 | 2026-08-12 | menu: Skip focus restore on dismiss when focus has moved elsewhere |
+| #2661 | 2026-08-12 | dock: Report where a host drag item landed in the dock |
+| #2664 | 2026-08-12 | text: keep blocks scrolled past in the selected text |
+| #2665 | 2026-08-12 | feat: animate dock drop placeholders |
+| #2666 | 2026-08-12 | accessibility: Expose control IDs on Button and Input |
+| #2667 | 2026-08-12 | title-bar: Let the title bar own dragging and double clicking |
+| #2668 | 2026-08-12 | button: Fade the whole button while loading |
+| #2670 | 2026-08-12 | select: Look up a value in all items, not the search results |
+| #2672 | 2026-08-12 | accordion: Style the group, the items and their parts |
+| #2674 | 2026-08-12 | . |
+| #2675 | 2026-08-12 | chore: Fix cargo fmt |
+| #2676 | 2026-08-12 | text: Handle newlines before inline images |
+| #2678 | 2026-08-12 | input: Compute line number gutter width from actual line count |
+| #2679 | 2026-08-12 | dock: Emit `LayoutChanged` after resizing a dock |
+| #2622 | 2026-08-12 | Merge remote-tracking branch 'upstream/main' into fix/text-view-code-block-theme-2618 |
+| #2624 | 2026-08-12 | menu: Split action context and previous focus handler |
+| #2637 | 2026-08-12 | Add `toggled()` |
+| #2643 | 2026-08-12 | Use placeholder for input aria fields |
+| #2645 | 2026-08-12 | color_picker: add ColorPickerState::set_open and is_open |
+| #2649 | 2026-08-12 | tab, menu: Add `restrict_scroll_to_axis` to `TabBar` and `AppMenuBar` |
+| #2654 | 2026-08-12 | combobox: Stop `dismiss` from swallowing presses on the trigger |
+| #2655 | 2026-08-12 | switched from on_mouse_move to on_hover to reduce rerenders |
 
 ## yororen-ui
 

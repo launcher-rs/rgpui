@@ -1267,7 +1267,8 @@
       "number": 2552,
       "upstream": "gpui-component",
       "title": "input: Fix prevent single-line input panic on multiline text (#2552)",
-      "status": "pending"
+      "status": "merged",
+      "merged_at": "2026-07-26"
     },
     {
       "number": 2602,
@@ -1512,7 +1513,9 @@
       "number": 62096,
       "upstream": "zed",
       "title": "Expose threaded dispatcher for tests",
-      "status": "pending"
+      "status": "merged",
+      "merged_at": "2026-08-12",
+      "note": "Manually applied: renamed bench_dispatcher -> threaded_dispatcher (file + symbols as_bench->as_threaded), cfg bench->test-support. Preserved rgpui OS-restricted cfg."
     },
     {
       "number": 61947,
@@ -1585,6 +1588,432 @@
       "upstream": "zed",
       "title": "Remove crates/gpui/examples/window_appearance.rs",
       "status": "pending"
+    },
+    {
+      "number": 61871,
+      "upstream": "zed",
+      "title": "gpui: Add per-window frame-duration and present-interval histograms",
+      "status": "pending"
+    },
+    {
+      "number": 62395,
+      "upstream": "zed",
+      "title": "Bump rustc to 1.97",
+      "status": "pending"
+    },
+    {
+      "number": 62367,
+      "upstream": "zed",
+      "title": "gpui: Fix `img` aspect ratio overriding existing value",
+      "status": "pending"
+    },
+    {
+      "number": 62335,
+      "upstream": "zed",
+      "title": "gpui: Reconcile hover listeners after layout changes",
+      "status": "pending"
+    },
+    {
+      "number": 62332,
+      "upstream": "zed",
+      "title": "gpui: Add synced repeating animations and phase-lock spinners",
+      "status": "pending"
+    },
+    {
+      "number": 62327,
+      "upstream": "zed",
+      "title": "Gpui web dont repaint",
+      "status": "pending"
+    },
+    {
+      "number": 61926,
+      "upstream": "zed",
+      "title": "gpui: Expose accessibility identifiers to platform clients",
+      "status": "pending"
+    },
+    {
+      "number": 62192,
+      "upstream": "zed",
+      "title": "wgpu: Only store embedded fonts once in memory",
+      "status": "pending"
+    },
+    {
+      "number": 62235,
+      "upstream": "zed",
+      "title": "gpui: Bound benchmark frame servicing to the tasks queued at frame start",
+      "status": "pending"
+    },
+    {
+      "number": 62115,
+      "upstream": "zed",
+      "title": "markdown: Mermaid zoom",
+      "status": "pending"
+    },
+    {
+      "number": 62036,
+      "upstream": "zed",
+      "title": "gpui: Prevent multi-modifier gestures from dispatching standalone modifiers",
+      "status": "pending"
+    },
+    {
+      "number": 62220,
+      "upstream": "zed",
+      "title": "gpui: Check run_until readiness between main-thread runnables",
+      "status": "pending"
+    },
+    {
+      "number": 62086,
+      "upstream": "zed",
+      "title": "Prevent inactive windows from updating the IME position on linux/Wayland",
+      "status": "pending"
+    },
+    {
+      "number": 62180,
+      "upstream": "zed",
+      "title": "gpui: Add async task benchmark support",
+      "status": "pending"
+    },
+    {
+      "number": 62165,
+      "upstream": "zed",
+      "title": "gpui: Webgl backend",
+      "status": "pending"
+    },
+    {
+      "number": 62069,
+      "upstream": "zed",
+      "title": "Tweak renderer resource management",
+      "status": "pending"
+    },
+    {
+      "number": 2548,
+      "upstream": "gpui-component",
+      "title": "calendar: added custom starting day",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2679,
+      "upstream": "gpui-component",
+      "title": "dock: Emit `LayoutChanged` after resizing a dock",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2661,
+      "upstream": "gpui-component",
+      "title": "dock: Report where a host drag item landed in the dock",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2678,
+      "upstream": "gpui-component",
+      "title": "input: Compute line number gutter width from actual line count",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2676,
+      "upstream": "gpui-component",
+      "title": "text: Handle newlines before inline images",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2675,
+      "upstream": "gpui-component",
+      "title": "chore: Fix cargo fmt",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2674,
+      "upstream": "gpui-component",
+      "title": ".",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2672,
+      "upstream": "gpui-component",
+      "title": "accordion: Style the group, the items and their parts",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2232,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into feat/submenu-parent-wire",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2146,
+      "upstream": "gpui-component",
+      "title": "Extract inline code highlight into TextViewStyle",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2369,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into input/configurable-completion-menu-width",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2670,
+      "upstream": "gpui-component",
+      "title": "select: Look up a value in all items, not the search results",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2628,
+      "upstream": "gpui-component",
+      "title": "text: Keep source copies to Markdown, and to what a mark carries",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2668,
+      "upstream": "gpui-component",
+      "title": "button: Fade the whole button while loading",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2667,
+      "upstream": "gpui-component",
+      "title": "title-bar: Let the title bar own dragging and double clicking",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2621,
+      "upstream": "gpui-component",
+      "title": "Merge remote-tracking branch 'origin/main' into textview-link-handler",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2666,
+      "upstream": "gpui-component",
+      "title": "accessibility: Expose control IDs on Button and Input",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2665,
+      "upstream": "gpui-component",
+      "title": "feat: animate dock drop placeholders",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2664,
+      "upstream": "gpui-component",
+      "title": "text: keep blocks scrolled past in the selected text",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2631,
+      "upstream": "gpui-component",
+      "title": "input: Improve replace keybinding, focus cycle and match stepping",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2658,
+      "upstream": "gpui-component",
+      "title": "sidebar: Show tooltips for collapsed menu items",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2660,
+      "upstream": "gpui-component",
+      "title": "menu: Skip focus restore on dismiss when focus has moved elsewhere",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2643,
+      "upstream": "gpui-component",
+      "title": "Use placeholder for input aria fields",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2655,
+      "upstream": "gpui-component",
+      "title": "switched from on_mouse_move to on_hover to reduce rerenders",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2629,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into wrapping-indent",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2654,
+      "upstream": "gpui-component",
+      "title": "combobox: Stop `dismiss` from swallowing presses on the trigger",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2651,
+      "upstream": "gpui-component",
+      "title": "text_view: Make the scroll table layout adaptive instead of always nowrap",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2646,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into refactor-tab-panel-active-sync",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2649,
+      "upstream": "gpui-component",
+      "title": "tab, menu: Add `restrict_scroll_to_axis` to `TabBar` and `AppMenuBar`",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2642,
+      "upstream": "gpui-component",
+      "title": "switch: Add AccessKit role, toggle state, and label",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2648,
+      "upstream": "gpui-component",
+      "title": "scroll: Lock trackpad wheel gestures to their starting axis",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2645,
+      "upstream": "gpui-component",
+      "title": "color_picker: add ColorPickerState::set_open and is_open",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2641,
+      "upstream": "gpui-component",
+      "title": "title_bar: Only draw the window controls the WM supports",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2639,
+      "upstream": "gpui-component",
+      "title": "list: Address review feedback for drag and drop demo",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2637,
+      "upstream": "gpui-component",
+      "title": "Add `toggled()`",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2638,
+      "upstream": "gpui-component",
+      "title": "Control frequency",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2571,
+      "upstream": "gpui-component",
+      "title": "Fix virtual list measurement cache invalidation",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2622,
+      "upstream": "gpui-component",
+      "title": "Merge remote-tracking branch 'upstream/main' into fix/text-view-code-block-theme-2618",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2624,
+      "upstream": "gpui-component",
+      "title": "menu: Split action context and previous focus handler",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2623,
+      "upstream": "gpui-component",
+      "title": "input: Fix panic on IME composition in `masked` input",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2613,
+      "upstream": "gpui-component",
+      "title": "fix(input): preserve IME selection during composition",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2615,
+      "upstream": "gpui-component",
+      "title": "Merge branch 'main' into radar-label-element",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2614,
+      "upstream": "gpui-component",
+      "title": "menu: Fix dangling focus after `ContextMenu` dismissed",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2610,
+      "upstream": "gpui-component",
+      "title": ".",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2611,
+      "upstream": "gpui-component",
+      "title": "scroll: Remove unreachable vertical arm from the horizontal trap path",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2609,
+      "upstream": "gpui-component",
+      "title": "story: Add async submenu example to popover story",
+      "status": "merged",
+      "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2608,
+      "upstream": "gpui-component",
+      "title": "scroll: Fix markdown table horizontal scroll leaking into vertical body scroll",
+      "status": "merged",
+      "merged_at": "2026-08-12"
     }
   ]
 }
+

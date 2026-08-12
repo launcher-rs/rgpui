@@ -6,10 +6,10 @@ mod keystroke;
 pub mod popup;
 
 #[cfg(all(
-    any(test, feature = "bench", feature = "test-support"),
+    any(test, feature = "test-support"),
     any(target_os = "windows", target_os = "linux", target_family = "wasm")
 ))]
-mod bench_dispatcher;
+mod threaded_dispatcher;
 
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 #[expect(missing_docs)]
@@ -89,10 +89,10 @@ pub(crate) use test::*;
 pub use test::{TestDispatcher, TestScreenCaptureSource, TestScreenCaptureStream};
 
 #[cfg(all(
-    any(test, feature = "bench", feature = "test-support"),
+    any(test, feature = "test-support"),
     any(target_os = "windows", target_os = "linux", target_family = "wasm")
 ))]
-pub use bench_dispatcher::BenchDispatcher;
+pub use threaded_dispatcher::ThreadedDispatcher;
 
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
 pub use visual_test::VisualTestPlatform;
@@ -1306,12 +1306,12 @@ pub trait PlatformDispatcher: Send + Sync {
         None
     }
 
-    // 此 cfg 必须与 `bench_dispatcher` 模块的匹配，该模块在编译时实现此方法
+    // 此 cfg 必须与 `threaded_dispatcher` 模块的匹配，该模块在编译时实现此方法
     #[cfg(all(
-        any(test, feature = "bench", feature = "test-support"),
+        any(test, feature = "test-support"),
         any(target_os = "windows", target_os = "linux", target_family = "wasm")
     ))]
-    fn as_bench(&self) -> Option<&BenchDispatcher> {
+    fn as_threaded(&self) -> Option<&ThreadedDispatcher> {
         None
     }
 }

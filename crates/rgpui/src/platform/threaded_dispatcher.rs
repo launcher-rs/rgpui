@@ -27,7 +27,7 @@ const MIN_THREADS: usize = 2;
 /// single thread with a virtual clock, work dispatched through this dispatcher
 /// executes with production concurrency, so wall-clock measurements reflect
 /// real parallelism.
-pub struct BenchDispatcher {
+pub struct ThreadedDispatcher {
     background_sender: PriorityQueueSender<RunnableVariant>,
     main_sender: PriorityQueueSender<RunnableVariant>,
     main_receiver: Mutex<PriorityQueueReceiver<RunnableVariant>>,
@@ -37,7 +37,7 @@ pub struct BenchDispatcher {
 }
 
 /// Tracks how many background and timer runnables are queued or running so
-/// [`BenchDispatcher::run_until_idle`] knows when to stop waiting.
+/// [`ThreadedDispatcher::run_until_idle`] knows when to stop waiting.
 #[derive(Default)]
 struct IdleTracker {
     inflight: Mutex<usize>,
@@ -113,13 +113,13 @@ impl Ord for TimerEntry {
     }
 }
 
-impl Default for BenchDispatcher {
+impl Default for ThreadedDispatcher {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BenchDispatcher {
+impl ThreadedDispatcher {
     /// Creates a dispatcher whose main thread is the calling thread.
     ///
     /// Worker and timer threads live for the lifetime of the process; the
@@ -135,7 +135,7 @@ impl BenchDispatcher {
             let mut receiver: PriorityQueueReceiver<RunnableVariant> = background_receiver.clone();
             let idle = idle.clone();
             thread::Builder::new()
-                .name(format!("BenchWorker-{i}"))
+                .name(format!("ThreadedDispatcherWorker-{i}"))
                 .spawn(move || {
                     while let Ok(runnable) = receiver.pop() {
                         let _decrement = idle.decrement_on_drop();
@@ -146,7 +146,7 @@ impl BenchDispatcher {
                         profiler::save_task_timing();
                     }
                 })
-                .expect("failed to spawn benchmark worker thread");
+                .expect("failed to spawn threaded dispatcher worker");
         }
         drop(background_receiver);
 
@@ -161,7 +161,7 @@ impl BenchDispatcher {
             let timers = timers.clone();
             let idle = idle.clone();
             thread::Builder::new()
-                .name("BenchTimer".to_owned())
+                .name("ThreadedDispatcherTimer".to_owned())
                 .spawn(move || {
                     let mut state = timers.state.lock();
                     loop {
@@ -197,7 +197,7 @@ impl BenchDispatcher {
                         state = timers.state.lock();
                     }
                 })
-                .expect("failed to spawn benchmark timer thread");
+                .expect("failed to spawn threaded dispatcher timer");
         }
 
         Self {
@@ -284,7 +284,7 @@ impl BenchDispatcher {
         let timers = self.timers.state.lock().heap.len();
         let main_queue_has_work = self.main_queue_has_work();
         format!(
-            "BenchDispatcher {{ inflight: {inflight}, pending_timers: {timers}, \
+            "ThreadedDispatcher {{ inflight: {inflight}, pending_timers: {timers}, \
              main_queue_has_work: {main_queue_has_work} }}"
         )
     }
@@ -322,7 +322,7 @@ impl BenchDispatcher {
     }
 }
 
-impl PlatformDispatcher for BenchDispatcher {
+impl PlatformDispatcher for ThreadedDispatcher {
     fn is_main_thread(&self) -> bool {
         thread::current().id() == self.main_thread_id
     }
@@ -331,7 +331,7 @@ impl PlatformDispatcher for BenchDispatcher {
         self.idle.increment();
         self.background_sender
             .send(priority, runnable)
-            .unwrap_or_else(|_| panic!("benchmark worker threads are no longer running"));
+            .unwrap_or_else(|_| panic!("threaded dispatcher workers are no longer running"));
     }
 
     fn dispatch_on_main_thread(&self, runnable: RunnableVariant, priority: Priority) {
@@ -363,12 +363,12 @@ impl PlatformDispatcher for BenchDispatcher {
         // Benchmarks don't need realtime scheduling priority; a plain thread
         // keeps this portable.
         thread::Builder::new()
-            .name("BenchRealtime".to_owned())
+            .name("ThreadedDispatcherRealtime".to_owned())
             .spawn(f)
             .expect("failed to spawn benchmark realtime thread");
     }
 
-    fn as_bench(&self) -> Option<&BenchDispatcher> {
+    fn as_threaded(&self) -> Option<&ThreadedDispatcher> {
         Some(self)
     }
 }
@@ -382,7 +382,7 @@ mod tests {
 
     #[test]
     fn run_until_idle_completes_background_to_main_handoffs() {
-        let dispatcher = Arc::new(BenchDispatcher::new());
+        let dispatcher = Arc::new(ThreadedDispatcher::new());
         let background = BackgroundExecutor::new(dispatcher.clone());
         let foreground = ForegroundExecutor::new(dispatcher.clone());
 
@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn timers_fire_in_real_time() {
-        let dispatcher = Arc::new(BenchDispatcher::new());
+        let dispatcher = Arc::new(ThreadedDispatcher::new());
         let background = BackgroundExecutor::new(dispatcher);
 
         let fired = Arc::new(AtomicBool::new(false));
@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     fn cancel_pending_timers_wakes_waiters_without_waiting_for_deadline() {
-        let dispatcher = Arc::new(BenchDispatcher::new());
+        let dispatcher = Arc::new(ThreadedDispatcher::new());
         let background = BackgroundExecutor::new(dispatcher.clone());
 
         let fired = Arc::new(AtomicBool::new(false));
