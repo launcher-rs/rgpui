@@ -1804,6 +1804,10 @@ impl PlatformWindow for WaylandWindow {
 
     fn update_ime_position(&self, bounds: Bounds<Pixels>) {
         let state = self.borrow();
+        // 非激活窗口不更新 IME 位置，避免 Wayland 下误触发输入法候选框移动
+        if !state.active {
+            return;
+        }
         state.client.update_ime_position(bounds);
     }
 

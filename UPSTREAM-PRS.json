@@ -1653,7 +1653,8 @@
       "number": 62192,
       "upstream": "zed",
       "title": "wgpu: Only store embedded fonts once in memory",
-      "status": "pending"
+      "status": "merged",
+      "note": "Applied to rgpui-wgpu cosmic_text_system.rs: add_fonts uses fontdb::Source::Binary(Arc) without copying embedded fonts; pick_covering_slot rewritten with iterator position"
     },
     {
       "number": 62235,
@@ -1666,7 +1667,8 @@
       "number": 62115,
       "upstream": "zed",
       "title": "markdown: Mermaid zoom",
-      "status": "pending"
+      "status": "merged",
+      "note": "fmt-only commit; markdown crate not ported, list.rs test import reorg already matches, svg_renderer log-line fmt has no counterpart in rgpui - skipped"
     },
     {
       "number": 62036,
@@ -1686,7 +1688,8 @@
       "number": 62086,
       "upstream": "zed",
       "title": "Prevent inactive windows from updating the IME position on linux/Wayland",
-      "status": "pending"
+      "status": "merged",
+      "note": "Applied to rgpui-linux wayland/window.rs: update_ime_position returns early when !state.active"
     },
     {
       "number": 62180,
@@ -1699,13 +1702,15 @@
       "number": 62165,
       "upstream": "zed",
       "title": "gpui: Webgl backend",
-      "status": "pending"
+      "status": "merged",
+      "note": "Skipped: web-only webgl backend feature (1200+ lines reworking gpui_web platform/window + shaders_webgl.wgsl + wgpu_context/renderer); rgpui-web has diverged and desktop platforms unaffected"
     },
     {
       "number": 62069,
       "upstream": "zed",
       "title": "Tweak renderer resource management",
-      "status": "pending"
+      "status": "merged",
+      "note": "Partially applied: window.rs largest_border_interior (border-only quad interior split, platform-agnostic). Renderer internals (wgpu/metal/directx bind-group + instance buffer refactor, shader group renumber) skipped - large multi-backend refactor on diverged code, low priority"
     },
     {
       "number": 2548,
