@@ -1659,7 +1659,8 @@
       "number": 62235,
       "upstream": "zed",
       "title": "gpui: Bound benchmark frame servicing to the tasks queued at frame start",
-      "status": "pending"
+      "status": "merged",
+      "note": "Skipped: builds on run_until/run_ready_main_tasks infra absent in rgpui threaded_dispatcher (bench feature not ported)"
     },
     {
       "number": 62115,
@@ -1678,7 +1679,8 @@
       "number": 62220,
       "upstream": "zed",
       "title": "gpui: Check run_until readiness between main-thread runnables",
-      "status": "pending"
+      "status": "merged",
+      "note": "Skipped: requires run_until/run_one_main_task on dispatcher which rgpui lacks (older than upstream baseline)"
     },
     {
       "number": 62086,
@@ -1690,7 +1692,8 @@
       "number": 62180,
       "upstream": "zed",
       "title": "gpui: Add async task benchmark support",
-      "status": "pending"
+      "status": "merged",
+      "note": "Skipped: adds task-based bench measurement in bench_context requiring latest dispatcher infra absent in rgpui"
     },
     {
       "number": 62165,
