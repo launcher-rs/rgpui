@@ -2,8 +2,9 @@ use std::rc::Rc;
 
 use rgpui::prelude::FluentBuilder as _;
 use rgpui::{
-    AnyElement, App, DefiniteLength, Edges, EdgesRefinement, Entity, Hsla, InteractiveElement as _,
-    IntoElement, MouseButton, ParentElement as _, Rems, RenderOnce, StyleRefinement, Styled,
+    AccessibleAction, AnyElement, App, DefiniteLength, Edges, EdgesRefinement, Entity, Hsla,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Rems,
+    RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
     TextAlign, Window, div, px, relative,
 };
 
@@ -16,7 +17,9 @@ use crate::{IconName, Size};
 use crate::{Selectable, StyledExt, h_flex};
 use crate::{Sizable, StyleSized};
 
-use super::{InputState, element::EditorScrollbar};
+use super::{
+    InputContentType, InputState, content_type::sync_native_content_type, element::EditorScrollbar,
+};
 
 /// Returns `(background, foreground)` colors for input-like components.
 pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
@@ -47,6 +50,9 @@ pub struct Input {
     focus_bordered: bool,
     tab_index: isize,
     selected: bool,
+    content_type: Option<InputContentType>,
+    role: Option<Role>,
+    aria_label: Option<SharedString>,
 
     /// An optional context menu builder to allow a custom context menu on the input.
     ///
@@ -90,8 +96,16 @@ impl Input {
             focus_bordered: true,
             tab_index: 0,
             selected: false,
+            content_type: None,
+            role: None,
+            aria_label: None,
             context_menu_builder: None,
         }
+    }
+
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
     }
 
     pub fn prefix(mut self, prefix: impl IntoElement) -> Self {
@@ -146,6 +160,23 @@ impl Input {
         self
     }
 
+    /// Set the semantic content type for password managers and autofill.
+    ///
+    /// This is a component-level semantic hint. It does not change the text
+    /// value or masked rendering state.
+    pub fn content_type(mut self, content_type: InputContentType) -> Self {
+        self.content_type = Some(content_type);
+        self
+    }
+
+    /// Override the accessible role for the input.
+    ///
+    /// If unset, the role is inferred from multi-line mode and content type.
+    pub fn role(mut self, role: Role) -> Self {
+        self.role = Some(role);
+        self
+    }
+
     /// Set to disable the input field.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
@@ -178,7 +209,7 @@ impl Input {
                 IconName::EyeOff
             })
             .xsmall()
-            .ghost()
+            .text()
             .tab_stop(false)
             .on_click({
                 let state = state.clone();
@@ -188,6 +219,103 @@ impl Input {
                     })
                 }
             })
+    }
+
+    fn mouse_down_handler(
+        state: Entity<InputState>,
+        content_type: Option<InputContentType>,
+        disabled: bool,
+    ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+        move |event, window, cx| {
+            sync_native_content_type(window, content_type, disabled);
+            state.update(cx, |state, cx| state.on_mouse_down(event, window, cx));
+        }
+    }
+
+    fn accessibility_role(
+        is_multi_line: bool,
+        content_type: Option<InputContentType>,
+        role: Option<Role>,
+    ) -> Role {
+        if let Some(role) = role {
+            return role;
+        }
+
+        if is_multi_line {
+            return Role::MultilineTextInput;
+        }
+
+        match content_type {
+            None => Role::TextInput,
+            Some(InputContentType::TelephoneNumber) => Role::PhoneNumberInput,
+            Some(InputContentType::EmailAddress) => Role::EmailInput,
+            Some(InputContentType::Url) => Role::UrlInput,
+            Some(InputContentType::Password | InputContentType::NewPassword) => Role::PasswordInput,
+            Some(InputContentType::DateTime) => Role::DateTimeInput,
+            Some(InputContentType::Birthdate) => Role::DateInput,
+            Some(
+                InputContentType::Name
+                | InputContentType::NamePrefix
+                | InputContentType::GivenName
+                | InputContentType::MiddleName
+                | InputContentType::FamilyName
+                | InputContentType::NameSuffix
+                | InputContentType::Nickname
+                | InputContentType::JobTitle
+                | InputContentType::OrganizationName
+                | InputContentType::Location
+                | InputContentType::FullStreetAddress
+                | InputContentType::StreetAddressLine1
+                | InputContentType::StreetAddressLine2
+                | InputContentType::AddressCity
+                | InputContentType::AddressState
+                | InputContentType::AddressCityAndState
+                | InputContentType::Sublocality
+                | InputContentType::CountryName
+                | InputContentType::PostalCode
+                | InputContentType::CreditCardNumber
+                | InputContentType::CreditCardName
+                | InputContentType::CreditCardGivenName
+                | InputContentType::CreditCardMiddleName
+                | InputContentType::CreditCardFamilyName
+                | InputContentType::CreditCardSecurityCode
+                | InputContentType::CreditCardExpiration
+                | InputContentType::CreditCardExpirationMonth
+                | InputContentType::CreditCardExpirationYear
+                | InputContentType::CreditCardType
+                | InputContentType::Username
+                | InputContentType::OneTimeCode
+                | InputContentType::ShipmentTrackingNumber
+                | InputContentType::FlightNumber
+                | InputContentType::BirthdateDay
+                | InputContentType::BirthdateMonth
+                | InputContentType::BirthdateYear
+                | InputContentType::CellularEid
+                | InputContentType::CellularImei,
+            ) => Role::TextInput,
+        }
+    }
+
+    fn exposes_accessibility_value(masked: bool, content_type: Option<InputContentType>) -> bool {
+        !masked
+            && !matches!(
+                content_type,
+                Some(InputContentType::Password | InputContentType::NewPassword)
+            )
+    }
+
+    fn handle_accessibility_set_value(
+        state: &Entity<InputState>,
+        data: Option<&rgpui::accesskit::ActionData>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let Some(rgpui::accesskit::ActionData::Value(value)) = data else {
+            return;
+        };
+        state.update(cx, |state, cx| {
+            state.replace_all(value.to_string(), window, cx);
+        });
     }
 
     /// This method must after the refine_style.
@@ -258,7 +386,21 @@ impl RenderOnce for Input {
         });
 
         let state = self.state.read(cx);
+        let content_type = self.content_type;
+        let disabled = self.disabled;
+        let is_multi_line = state.mode.is_multi_line();
+        let accessibility_role = Self::accessibility_role(is_multi_line, content_type, self.role);
+        let accessibility_state = self.state.clone();
+        // Materializing the whole rope is only observable through the
+        // accessibility tree, so skip it when no client is listening.
+        let accessibility_value = (window.is_a11y_active()
+            && Self::exposes_accessibility_value(state.masked, content_type))
+        .then(|| state.text.to_string());
         let focused = state.focus_handle.is_focused(window) && !state.disabled;
+        if focused {
+            sync_native_content_type(window, content_type, state.disabled);
+        }
+
         let gap_x = match self.size {
             Size::Small => px(4.),
             Size::Large => px(8.),
@@ -287,36 +429,57 @@ impl RenderOnce for Input {
             && state.mode.is_single_line();
         let has_suffix = suffix.is_some() || state.loading || self.mask_toggle || show_clear_button;
 
+        let placeholder = Some(state.placeholder.clone()).filter(|p| !p.is_empty());
+
+        // Don't use a mask-derived placeholder ("(___)___-___") as an aria_label fallback.
+        let placeholder_is_mask =
+            state.mask_pattern.placeholder().as_deref() == placeholder.as_deref();
+
+        let aria_label = match self.aria_label {
+            Some(label) => Some(label),
+            None if placeholder_is_mask => None,
+            None => placeholder.clone(),
+        };
+
         div()
             .id(("input", self.state.entity_id()))
+            .role(accessibility_role)
+            .when_some(aria_label, |this, label| this.aria_label(label))
+            .when_some(placeholder, |this, placeholder| {
+                this.aria_placeholder(placeholder)
+            })
+            .when_some(accessibility_value, |this, value| this.aria_value(value))
             .flex()
             .key_context(crate::input::CONTEXT)
             .track_focus(&state.focus_handle.clone())
             .tab_index(self.tab_index)
             .when(!state.disabled, |this| {
-                this.on_action(window.listener_for(&self.state, InputState::backspace))
-                    .on_action(window.listener_for(&self.state, InputState::delete))
-                    .on_action(
-                        window.listener_for(&self.state, InputState::delete_to_beginning_of_line),
-                    )
-                    .on_action(window.listener_for(&self.state, InputState::delete_to_end_of_line))
-                    .on_action(window.listener_for(&self.state, InputState::delete_previous_word))
-                    .on_action(window.listener_for(&self.state, InputState::delete_next_word))
-                    .on_action(window.listener_for(&self.state, InputState::enter))
-                    .on_action(window.listener_for(&self.state, InputState::escape))
-                    .on_action(window.listener_for(&self.state, InputState::paste))
-                    .on_action(window.listener_for(&self.state, InputState::cut))
-                    .on_action(window.listener_for(&self.state, InputState::undo))
-                    .on_action(window.listener_for(&self.state, InputState::redo))
-                    .when(state.mode.is_multi_line(), |this| {
-                        this.on_action(window.listener_for(&self.state, InputState::indent_inline))
-                            .on_action(window.listener_for(&self.state, InputState::outdent_inline))
-                            .on_action(window.listener_for(&self.state, InputState::indent_block))
-                            .on_action(window.listener_for(&self.state, InputState::outdent_block))
-                    })
-                    .on_action(
-                        window.listener_for(&self.state, InputState::on_action_toggle_code_actions),
-                    )
+                this.on_a11y_action(AccessibleAction::SetValue, move |data, window, cx| {
+                    Self::handle_accessibility_set_value(&accessibility_state, data, window, cx);
+                })
+                .on_action(window.listener_for(&self.state, InputState::backspace))
+                .on_action(window.listener_for(&self.state, InputState::delete))
+                .on_action(
+                    window.listener_for(&self.state, InputState::delete_to_beginning_of_line),
+                )
+                .on_action(window.listener_for(&self.state, InputState::delete_to_end_of_line))
+                .on_action(window.listener_for(&self.state, InputState::delete_previous_word))
+                .on_action(window.listener_for(&self.state, InputState::delete_next_word))
+                .on_action(window.listener_for(&self.state, InputState::enter))
+                .on_action(window.listener_for(&self.state, InputState::escape))
+                .on_action(window.listener_for(&self.state, InputState::paste))
+                .on_action(window.listener_for(&self.state, InputState::cut))
+                .on_action(window.listener_for(&self.state, InputState::undo))
+                .on_action(window.listener_for(&self.state, InputState::redo))
+                .when(state.mode.is_multi_line(), |this| {
+                    this.on_action(window.listener_for(&self.state, InputState::indent_inline))
+                        .on_action(window.listener_for(&self.state, InputState::outdent_inline))
+                        .on_action(window.listener_for(&self.state, InputState::indent_block))
+                        .on_action(window.listener_for(&self.state, InputState::outdent_block))
+                })
+                .on_action(
+                    window.listener_for(&self.state, InputState::on_action_toggle_code_actions),
+                )
             })
             .on_action(window.listener_for(&self.state, InputState::left))
             .on_action(window.listener_for(&self.state, InputState::right))
@@ -356,11 +519,11 @@ impl RenderOnce for Input {
             .on_key_down(window.listener_for(&self.state, InputState::on_key_down))
             .on_mouse_down(
                 MouseButton::Left,
-                window.listener_for(&self.state, InputState::on_mouse_down),
+                Self::mouse_down_handler(self.state.clone(), content_type, disabled),
             )
             .on_mouse_down(
                 MouseButton::Right,
-                window.listener_for(&self.state, InputState::on_mouse_down),
+                Self::mouse_down_handler(self.state.clone(), content_type, disabled),
             )
             .on_mouse_up(
                 MouseButton::Left,
@@ -390,7 +553,6 @@ impl RenderOnce for Input {
                     .when(self.bordered, |this| {
                         this.border_color(border_color)
                             .border_1()
-                            .when(cx.theme().shadow, |this| this.shadow_xs())
                             .when(focused && self.focus_bordered, |this| {
                                 this.focused_border(cx)
                             })
@@ -417,6 +579,7 @@ impl RenderOnce for Input {
                         .id("suffix")
                         .gap(gap_x)
                         .items_center()
+                        .cursor_default()
                         .when(state.disabled, |this| this.opacity(0.5))
                         .when(state.loading, |this| {
                             this.child(Spinner::new().color(cx.theme().muted_foreground))
@@ -438,5 +601,192 @@ impl RenderOnce for Input {
                         .children(suffix),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn content_types_map_to_accessibility_roles() {
+        let cases = [
+            (None, Role::TextInput),
+            (Some(InputContentType::Name), Role::TextInput),
+            (Some(InputContentType::NamePrefix), Role::TextInput),
+            (Some(InputContentType::GivenName), Role::TextInput),
+            (Some(InputContentType::MiddleName), Role::TextInput),
+            (Some(InputContentType::FamilyName), Role::TextInput),
+            (Some(InputContentType::NameSuffix), Role::TextInput),
+            (Some(InputContentType::Nickname), Role::TextInput),
+            (Some(InputContentType::JobTitle), Role::TextInput),
+            (Some(InputContentType::OrganizationName), Role::TextInput),
+            (Some(InputContentType::Location), Role::TextInput),
+            (Some(InputContentType::FullStreetAddress), Role::TextInput),
+            (Some(InputContentType::StreetAddressLine1), Role::TextInput),
+            (Some(InputContentType::StreetAddressLine2), Role::TextInput),
+            (Some(InputContentType::AddressCity), Role::TextInput),
+            (Some(InputContentType::AddressState), Role::TextInput),
+            (Some(InputContentType::AddressCityAndState), Role::TextInput),
+            (Some(InputContentType::Sublocality), Role::TextInput),
+            (Some(InputContentType::CountryName), Role::TextInput),
+            (Some(InputContentType::PostalCode), Role::TextInput),
+            (
+                Some(InputContentType::TelephoneNumber),
+                Role::PhoneNumberInput,
+            ),
+            (Some(InputContentType::EmailAddress), Role::EmailInput),
+            (Some(InputContentType::Url), Role::UrlInput),
+            (Some(InputContentType::CreditCardNumber), Role::TextInput),
+            (Some(InputContentType::CreditCardName), Role::TextInput),
+            (Some(InputContentType::CreditCardGivenName), Role::TextInput),
+            (
+                Some(InputContentType::CreditCardMiddleName),
+                Role::TextInput,
+            ),
+            (
+                Some(InputContentType::CreditCardFamilyName),
+                Role::TextInput,
+            ),
+            (
+                Some(InputContentType::CreditCardSecurityCode),
+                Role::TextInput,
+            ),
+            (
+                Some(InputContentType::CreditCardExpiration),
+                Role::TextInput,
+            ),
+            (
+                Some(InputContentType::CreditCardExpirationMonth),
+                Role::TextInput,
+            ),
+            (
+                Some(InputContentType::CreditCardExpirationYear),
+                Role::TextInput,
+            ),
+            (Some(InputContentType::CreditCardType), Role::TextInput),
+            (Some(InputContentType::Username), Role::TextInput),
+            (Some(InputContentType::Password), Role::PasswordInput),
+            (Some(InputContentType::NewPassword), Role::PasswordInput),
+            (Some(InputContentType::OneTimeCode), Role::TextInput),
+            (
+                Some(InputContentType::ShipmentTrackingNumber),
+                Role::TextInput,
+            ),
+            (Some(InputContentType::FlightNumber), Role::TextInput),
+            (Some(InputContentType::DateTime), Role::DateTimeInput),
+            (Some(InputContentType::Birthdate), Role::DateInput),
+            (Some(InputContentType::BirthdateDay), Role::TextInput),
+            (Some(InputContentType::BirthdateMonth), Role::TextInput),
+            (Some(InputContentType::BirthdateYear), Role::TextInput),
+            (Some(InputContentType::CellularEid), Role::TextInput),
+            (Some(InputContentType::CellularImei), Role::TextInput),
+        ];
+
+        for (content_type, role) in cases {
+            assert_eq!(Input::accessibility_role(false, content_type, None), role);
+        }
+    }
+
+    #[test]
+    fn multiline_inputs_keep_multiline_accessibility_role() {
+        assert_eq!(
+            Input::accessibility_role(true, Some(InputContentType::Password), None),
+            Role::MultilineTextInput
+        );
+    }
+
+    #[test]
+    fn explicit_accessibility_role_overrides_defaults() {
+        assert_eq!(
+            Input::accessibility_role(
+                false,
+                Some(InputContentType::Password),
+                Some(Role::TextInput)
+            ),
+            Role::TextInput
+        );
+        assert_eq!(
+            Input::accessibility_role(
+                true,
+                Some(InputContentType::Password),
+                Some(Role::TextInput)
+            ),
+            Role::TextInput
+        );
+    }
+
+    #[rgpui::test]
+    fn editable_input_offers_accessibility_write_action(cx: &mut rgpui::TestAppContext) {
+        use crate::ElementExt as _;
+        use rgpui::{AppContext as _, Element as _, IntoElement as _, Render};
+        use std::sync::{Arc, Mutex};
+
+        type EmittedState = Option<(Option<String>, bool)>;
+
+        struct InputA11yProbe {
+            state: Entity<InputState>,
+            emitted: Arc<Mutex<EmittedState>>,
+        }
+
+        impl Render for InputA11yProbe {
+            fn render(
+                &mut self,
+                _window: &mut Window,
+                _cx: &mut rgpui::Context<Self>,
+            ) -> impl IntoElement {
+                let state = self.state.clone();
+                let emitted = self.emitted.clone();
+                div().on_prepaint(move |_, window, cx| {
+                    let input = Input::new(&state).render(window, cx).into_element();
+                    let mut node = rgpui::accesskit::Node::new(Role::TextInput);
+                    input.write_a11y_info(&mut node);
+                    *emitted.lock().unwrap() = Some((
+                        node.value().map(ToOwned::to_owned),
+                        node.supports_action(AccessibleAction::SetValue),
+                    ));
+                })
+            }
+        }
+
+        cx.update(crate::init);
+        let emitted = Arc::new(Mutex::new(None));
+        let captured = emitted.clone();
+        let (probe, cx) = cx.add_window_view(move |window, cx| InputA11yProbe {
+            state: cx.new(|cx| InputState::new(window, cx).default_value("initial")),
+            emitted,
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        // No assistive technology is attached in tests, so the value stays
+        // unmaterialized while `SetValue` is still advertised.
+        assert_eq!(*captured.lock().unwrap(), Some((None, true)));
+
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            Input::handle_accessibility_set_value(&state, None, window, cx);
+        });
+        assert_eq!(state.read_with(cx, |state, _| state.value()), "initial");
+
+        let action = rgpui::accesskit::ActionData::Value("updated".into());
+        cx.update(|window, cx| {
+            Input::handle_accessibility_set_value(&state, Some(&action), window, cx);
+        });
+        assert_eq!(state.read_with(cx, |state, _| state.value()), "updated");
+    }
+
+    #[test]
+    fn accessibility_value_is_hidden_for_secret_inputs() {
+        assert!(Input::exposes_accessibility_value(false, None));
+        assert!(!Input::exposes_accessibility_value(true, None));
+        assert!(!Input::exposes_accessibility_value(
+            false,
+            Some(InputContentType::Password)
+        ));
+        assert!(!Input::exposes_accessibility_value(
+            false,
+            Some(InputContentType::NewPassword)
+        ));
     }
 }

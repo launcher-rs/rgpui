@@ -1,7 +1,7 @@
 use anyhow::Result;
+use rgpui::{App, Context, Hsla, Task, Window};
 use instant::Duration;
 use lsp_types::ColorInformation;
-use rgpui::{App, Context, Hsla, Task, Window};
 use ropey::Rope;
 use std::ops::Range;
 

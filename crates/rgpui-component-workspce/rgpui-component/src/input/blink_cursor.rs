@@ -1,5 +1,5 @@
-use instant::Duration;
 use rgpui::{Context, Pixels, Task, px};
+use instant::Duration;
 
 static INTERVAL: Duration = Duration::from_millis(500);
 static PAUSE_DELAY: Duration = Duration::from_millis(300);

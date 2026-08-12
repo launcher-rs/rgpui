@@ -1,15 +1,15 @@
 use std::{cell::OnceCell, collections::HashMap, fmt::Write as _, rc::Rc, sync::OnceLock};
 
 use anyhow::Result;
-use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit, Diagnostic,
-    DiagnosticSeverity, Position, TextEdit,
-};
 use rgpui::{
     AnyElement, App, AppContext, Context, DivInspectorState, Entity, Inspector, InspectorElementId,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Refineable as _, Render,
     SharedString, StyleRefinement, Styled, Subscription, Task, Window, actions, div,
     inspector_reflection::FunctionReflection, prelude::FluentBuilder, px,
+};
+use lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit, Diagnostic,
+    DiagnosticSeverity, Position, TextEdit,
 };
 use ropey::Rope;
 
@@ -514,6 +514,7 @@ fn render_inspector(
                             Button::new("inspect")
                                 .icon(IconName::Inspector)
                                 .selected(inspector.is_picking())
+                                .toggled(inspector.is_picking())
                                 .small()
                                 .ghost()
                                 .on_click(cx.listener(|this, _, window, _| {
@@ -633,9 +634,9 @@ impl CompletionProvider for LspProvider {
 
 #[cfg(test)]
 mod tests {
+    use rgpui::{AbsoluteLength, DefiniteLength, Length, rems};
     use indoc::indoc;
     use lsp_types::Position;
-    use rgpui::{AbsoluteLength, DefiniteLength, Length, rems};
 
     #[test]
     fn test_rust_to_style() {

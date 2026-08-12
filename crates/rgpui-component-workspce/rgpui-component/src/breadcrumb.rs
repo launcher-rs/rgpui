@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use rgpui::{
     App, ClickEvent, ElementId, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,
+    Role, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _,
 };
 
@@ -92,6 +92,11 @@ impl RenderOnce for BreadcrumbItem {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
             .id(self.id)
+            .role(if self.on_click.is_some() && !self.disabled {
+                Role::Link
+            } else {
+                Role::ListItem
+            })
             .child(self.label)
             .text_color(cx.theme().muted_foreground)
             .when(self.is_last, |this| this.text_color(cx.theme().foreground))

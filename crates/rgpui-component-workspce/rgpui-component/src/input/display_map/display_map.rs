@@ -1,7 +1,7 @@
 /// DisplayMap: Public facade for Editor/Input display mapping.
 ///
 /// This combines WrapMap and FoldMap to provide a unified API:
-/// - BufferPoint ↔ DisplayPoint conversion
+/// - BufferPoint 鈫?DisplayPoint conversion
 /// - Fold management (candidates, toggle, query)
 /// - Automatic projection updates on text/layout changes
 use std::ops::Range;
@@ -11,6 +11,7 @@ use ropey::Rope;
 
 use super::fold_map::FoldMap;
 use super::folding::FoldRange;
+pub use super::text_wrapper::WrappingIndent;
 use super::text_wrapper::{LineItem, WrapDisplayPoint};
 use super::wrap_map::WrapMap;
 use super::{BufferPoint, DisplayPoint};
@@ -21,8 +22,8 @@ use crate::input::rope_ext::RopeExt as _;
 /// DisplayMap is the main interface for Editor/Input coordinate mapping.
 ///
 /// It manages the two-layer projection:
-/// 1. Buffer → Wrap (soft-wrapping)
-/// 2. Wrap → Display (folding)
+/// 1. Buffer 鈫?Wrap (soft-wrapping)
+/// 2. Wrap 鈫?Display (folding)
 ///
 /// Editor/Input only needs to work with BufferPoint and DisplayPoint.
 pub struct DisplayMap {
@@ -42,10 +43,10 @@ impl DisplayMap {
 
     /// Convert buffer position to display position
     pub fn buffer_pos_to_display_pos(&self, pos: BufferPoint) -> DisplayPoint {
-        // Buffer → Wrap
+        // Buffer 鈫?Wrap
         let wrap_pos = self.wrap_map.buffer_pos_to_wrap_pos(pos);
 
-        // Wrap → Display
+        // Wrap 鈫?Display
         if let Some(display_row) = self.fold_map.wrap_row_to_display_row(wrap_pos.row) {
             DisplayPoint::new(display_row, wrap_pos.col)
         } else {
@@ -57,10 +58,10 @@ impl DisplayMap {
 
     /// Convert display position to buffer position
     pub fn display_pos_to_buffer_pos(&self, pos: DisplayPoint) -> BufferPoint {
-        // Display → Wrap
+        // Display 鈫?Wrap
         let wrap_row = self.fold_map.display_row_to_wrap_row(pos.row).unwrap_or(0);
 
-        // Wrap → Buffer
+        // Wrap 鈫?Buffer
         let wrap_pos = WrapPoint::new(wrap_row, pos.col);
         self.wrap_map.wrap_pos_to_buffer_pos(wrap_pos)
     }
@@ -73,20 +74,20 @@ impl DisplayMap {
 
     /// Get the buffer line for a given display row
     pub fn display_row_to_buffer_line(&self, display_row: usize) -> usize {
-        // Display → Wrap
+        // Display 鈫?Wrap
         let wrap_row = self
             .fold_map
             .display_row_to_wrap_row(display_row)
             .unwrap_or(0);
 
-        // Wrap → Buffer line
+        // Wrap 鈫?Buffer line
         self.wrap_map.wrap_row_to_buffer_line(wrap_row)
     }
 
     /// Get the display row range for a buffer line: [start, end)
     /// Returns None if the buffer line is completely hidden
     pub fn buffer_line_to_display_row_range(&self, line: usize) -> Option<Range<usize>> {
-        // Buffer line → Wrap row range
+        // Buffer line 鈫?Wrap row range
         let wrap_row_range = self.wrap_map.buffer_line_to_wrap_row_range(line);
 
         // Find first and last visible display rows in this range
@@ -113,6 +114,18 @@ impl DisplayMap {
     #[inline]
     pub fn is_buffer_line_hidden(&self, line: usize) -> bool {
         self.buffer_line_to_display_row_range(line).is_none()
+    }
+
+    /// First display row of a buffer line. If the line is fully folded, returns the
+    /// nearest visible display row.
+    pub fn buffer_line_to_display_row(&self, line: usize) -> usize {
+        match self.buffer_line_to_display_row_range(line) {
+            Some(range) => range.start,
+            None => {
+                let wrap_row = self.wrap_map.buffer_line_to_first_wrap_row(line);
+                self.fold_map.nearest_visible_display_row(wrap_row)
+            }
+        }
     }
 
     /// Set fold candidates (from tree-sitter/LSP)
@@ -218,6 +231,12 @@ impl DisplayMap {
         self.rebuild_fold_projection();
     }
 
+    /// Set the wrapping indent for continuation lines.
+    pub fn set_wrapping_indent(&mut self, wrapping_indent: WrappingIndent, cx: &mut App) {
+        self.wrap_map.set_wrapping_indent(wrapping_indent, cx);
+        self.rebuild_fold_projection();
+    }
+
     /// Set font parameters
     pub fn set_font(&mut self, font: Font, font_size: Pixels, cx: &mut App) {
         self.wrap_map.set_font(font, font_size, cx);
@@ -295,15 +314,15 @@ impl DisplayMap {
     /// Get the longest row index (by byte length).
     #[inline]
     pub(crate) fn longest_row(&self) -> usize {
-        self.wrap_map.wrapper().longest_row.row
+        self.wrap_map.wrapper().longest_row()
     }
 
     // ==================== Access Methods ====================
 
-    /// Get access to line items (for rendering)
+    /// Get the line item by buffer row index.
     #[inline]
-    pub(crate) fn lines(&self) -> &[LineItem] {
-        self.wrap_map.lines()
+    pub(crate) fn line(&self, row: usize) -> Option<&LineItem> {
+        self.wrap_map.line(row)
     }
 
     /// Get the rope text

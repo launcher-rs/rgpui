@@ -22,6 +22,8 @@
 //!     .show(position, window, cx);
 //! ```
 
+#[cfg(target_os = "windows")]
+use crate::ActiveTheme as _;
 use crate::Icon;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -203,7 +205,14 @@ impl NativeMenu {
         }
         #[cfg(target_os = "windows")]
         {
-            windows::show(self.items, cx.asset_source().clone(), position, window, cx);
+            windows::show(
+                self.items,
+                cx.asset_source().clone(),
+                position,
+                cx.theme().is_dark(),
+                window,
+                cx,
+            );
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         fallback::show(self.items, position, window, cx);

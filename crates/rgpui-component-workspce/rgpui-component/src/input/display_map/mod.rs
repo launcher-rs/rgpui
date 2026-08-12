@@ -1,26 +1,28 @@
 /// Display mapping system for Editor/Input.
 ///
 /// This module implements a layered display mapping architecture:
-/// - **WrapMap**: Handles soft-wrapping (buffer → wrap rows)
-/// - **FoldMap**: Handles folding (wrap rows → display rows)
+/// - **WrapMap**: Handles soft-wrapping (buffer 鈫?wrap rows)
+/// - **FoldMap**: Handles folding (wrap rows 鈫?display rows)
 /// - **DisplayMap**: Public facade for Editor/Input
 ///
 /// The goal is to provide a clean, unified API where Editor only needs to know
-/// about `BufferPoint ↔ DisplayPoint` mapping, without worrying about internal wrap/fold complexity.
+/// about `BufferPoint 鈫?DisplayPoint` mapping, without worrying about internal wrap/fold complexity.
 mod display_map;
 mod fold_map;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "tree-sitter")]
 mod folding;
-#[cfg(target_family = "wasm")]
+#[cfg(not(feature = "tree-sitter"))]
 pub mod folding;
 mod text_wrapper;
 mod wrap_map;
 
 // Re-export public API
-pub use self::display_map::DisplayMap;
+pub use self::display_map::{DisplayMap, WrappingIndent};
 pub(crate) use self::text_wrapper::LineLayout;
 
 // Re-export FoldRange and extract_fold_ranges
+#[cfg(not(feature = "tree-sitter"))]
+pub use folding::Tree;
 pub use folding::{FoldRange, extract_fold_ranges};
 
 /// Position in the buffer (logical text).

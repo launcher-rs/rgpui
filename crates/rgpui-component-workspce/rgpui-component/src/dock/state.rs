@@ -1,5 +1,5 @@
-use itertools::Itertools as _;
 use rgpui::{App, AppContext, Axis, Bounds, Entity, Pixels, WeakEntity, Window, point, px, size};
+use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
 
 use super::{Dock, DockArea, DockItem, DockPlacement, Panel, PanelRegistry};

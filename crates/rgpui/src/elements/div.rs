@@ -1431,6 +1431,14 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
+    /// 将滚动限制为输入手势的方向轴。
+    ///
+    /// 参见 [`Style::restrict_scroll_to_axis`](crate::Style::restrict_scroll_to_axis) 的说明。
+    fn restrict_scroll_to_axis(mut self) -> Self {
+        self.interactivity().base_style.restrict_scroll_to_axis = Some(true);
+        self
+    }
+
     /// Track the scroll state of this element with the given handle.
     fn track_scroll(mut self, scroll_handle: &ScrollHandle) -> Self {
         self.interactivity().tracked_scroll_handle = Some(scroll_handle.clone());

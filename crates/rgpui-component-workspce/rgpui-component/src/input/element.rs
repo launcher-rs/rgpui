@@ -21,7 +21,7 @@ use crate::{
     scroll::Scrollbar,
 };
 
-use super::{InputState, LastLayout, WhitespaceIndicators, mode::InputMode};
+use super::{InputState, LastLayout, TextDecoration, WhitespaceIndicators, mode::InputMode};
 
 const BOTTOM_MARGIN_ROWS: usize = 3;
 pub(super) const RIGHT_MARGIN: Pixels = px(10.);
@@ -29,6 +29,49 @@ pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(10.);
 const FOLD_ICON_WIDTH: Pixels = px(14.);
 const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
 const MAX_HIGHLIGHT_LINE_LENGTH: usize = 10_000;
+
+fn compose_decorations(
+    mut styles: Vec<(Range<usize>, HighlightStyle)>,
+    decorations: impl IntoIterator<Item = (Range<usize>, HighlightStyle)>,
+    visible_byte_range: Range<usize>,
+) -> Option<Vec<(Range<usize>, HighlightStyle)>> {
+    let mut visible_decorations = decorations
+        .into_iter()
+        .filter_map(|(range, style)| {
+            let range =
+                range.start.max(visible_byte_range.start)..range.end.min(visible_byte_range.end);
+            (!range.is_empty()).then_some((range, style))
+        })
+        .peekable();
+
+    if visible_decorations.peek().is_none() {
+        return (!styles.is_empty()).then_some(styles);
+    }
+    if styles.is_empty() {
+        styles.push((visible_byte_range.clone(), HighlightStyle::default()));
+    }
+
+    Some(rgpui::combine_highlights(visible_decorations, styles).collect())
+}
+
+fn compose_decoration_collections<'a>(
+    mut styles: Vec<(Range<usize>, HighlightStyle)>,
+    collections: impl IntoIterator<Item = &'a [TextDecoration]>,
+    visible_byte_range: Range<usize>,
+) -> Option<Vec<(Range<usize>, HighlightStyle)>> {
+    for decorations in collections {
+        styles = compose_decorations(
+            styles,
+            decorations
+                .iter()
+                .map(|decoration| (decoration.range.clone(), decoration.style)),
+            visible_byte_range.clone(),
+        )
+        .unwrap_or_default();
+    }
+
+    (!styles.is_empty()).then_some(styles)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct EditorScrollbarLayout {
@@ -217,6 +260,22 @@ fn masked_display_offset(text: &Rope, original_offset: usize) -> usize {
     text.offset_to_char_index(original_offset) * MASK_CHAR.len_utf8()
 }
 
+/// Move the IME marked range (tracked against the original text) into the display text
+/// coordinate space, so that a run boundary can't land inside a multi-byte `MASK_CHAR`
+/// and panic text shaping on a non-char-boundary slice.
+fn ime_marked_display_range(
+    text: &Rope,
+    marked_range: Option<Range<usize>>,
+    masked: bool,
+) -> Option<Range<usize>> {
+    let marked = marked_range?;
+    if masked {
+        Some(masked_display_offset(text, marked.start)..masked_display_offset(text, marked.end))
+    } else {
+        Some(marked)
+    }
+}
+
 /// Minimum pixel padding the cursor is kept clear of the viewport's
 /// top/bottom edges before auto-scroll engages. Backs
 /// [`InputState::cursor_surrounding_lines`].
@@ -357,15 +416,17 @@ impl TextElement {
         let is_selected_all = selected_range.len() == state.text.len();
 
         let mut cursor = state.cursor();
+        // Buffer rows from the raw (pre-mask) offsets, used to locate the cursor line.
+        let cursor_row = state.text.offset_to_point(cursor).row;
+        let sel_start_row = state.text.offset_to_point(selected_range.start).row;
+        let sel_end_row = state.text.offset_to_point(selected_range.end).row;
         if state.masked {
             selected_range.start = masked_display_offset(&state.text, selected_range.start);
             selected_range.end = masked_display_offset(&state.text, selected_range.end);
             cursor = masked_display_offset(&state.text, cursor);
         }
 
-        let mut current_row = None;
         let mut scroll_offset = state.scroll_handle.offset();
-        let mut cursor_bounds = None;
 
         // Padding kept between the cursor and the viewport's top/bottom
         // edges, used by the auto-scroll-into-view computation below.
@@ -376,85 +437,30 @@ impl TextElement {
             line_height,
         );
 
-        // The cursor corresponds to the current cursor position in the text no only the line.
-        let mut cursor_pos = None;
-        let mut cursor_start = None;
-        let mut cursor_end = None;
-
-        let mut prev_lines_offset = 0;
-        let mut offset_y = px(0.);
-        let buffer_lines = state.display_map.lines();
+        // Resolve a cursor or selection endpoint to a content-space position.
         let visible_buffer_lines = &last_layout.visible_buffer_lines;
-        let mut vi = 0; // index into visible_buffer_lines / lines
-        for (ix, wrap_line) in buffer_lines.iter().enumerate() {
-            let row = ix;
-            let line_origin = point(px(0.), offset_y);
+        let caret_for = |row: usize, offset: usize, affinity: bool| -> Point<Pixels> {
+            // y of the top of buffer line `row` in content space.
+            let top = line_height * state.display_map.buffer_line_to_display_row(row);
+            let line_origin = point(px(0.), top);
 
-            // break loop if all cursor positions are found
-            if cursor_pos.is_some() && cursor_start.is_some() && cursor_end.is_some() {
-                break;
+            if let Some(vi) = visible_buffer_lines.iter().position(|&bl| bl == row) {
+                let line = &lines[vi];
+                let line_start = last_layout.visible_line_byte_offsets[vi];
+                let local = offset.saturating_sub(line_start);
+                if let Some(pos) = line.position_for_index(local, last_layout, affinity) {
+                    return line_origin + pos;
+                }
             }
+            line_origin
+        };
 
-            // Check if this buffer line has a LineLayout in the compact lines vec
-            let line_layout = if vi < visible_buffer_lines.len() && visible_buffer_lines[vi] == ix {
-                let l = &lines[vi];
-                vi += 1;
-                Some(l)
-            } else {
-                None
-            };
+        let current_row = Some(cursor_row);
+        let cursor_pos = caret_for(cursor_row, cursor, state.cursor_line_end_affinity);
+        let cursor_start = caret_for(sel_start_row, selected_range.start, false);
+        let cursor_end = caret_for(sel_end_row, selected_range.end, false);
 
-            if let Some(line) = line_layout {
-                if cursor_pos.is_none() {
-                    let offset = cursor.saturating_sub(prev_lines_offset);
-                    if let Some(pos) =
-                        line.position_for_index(offset, last_layout, state.cursor_line_end_affinity)
-                    {
-                        current_row = Some(row);
-                        cursor_pos = Some(line_origin + pos);
-                    }
-                }
-                if cursor_start.is_none() {
-                    let offset = selected_range.start.saturating_sub(prev_lines_offset);
-                    if let Some(pos) = line.position_for_index(offset, last_layout, false) {
-                        cursor_start = Some(line_origin + pos);
-                    }
-                }
-                if cursor_end.is_none() {
-                    let offset = selected_range.end.saturating_sub(prev_lines_offset);
-                    if let Some(pos) = line.position_for_index(offset, last_layout, false) {
-                        cursor_end = Some(line_origin + pos);
-                    }
-                }
-
-                offset_y += line.size(line_height).height;
-                // +1 for the last `\n`
-                prev_lines_offset += wrap_line.len() + 1;
-            } else {
-                // Not visible (before visible range or hidden/folded).
-                // Just increase the offset_y and prev_lines_offset for scroll tracking.
-                if prev_lines_offset >= cursor && cursor_pos.is_none() {
-                    current_row = Some(row);
-                    cursor_pos = Some(line_origin);
-                }
-                if prev_lines_offset >= selected_range.start && cursor_start.is_none() {
-                    cursor_start = Some(line_origin);
-                }
-                if prev_lines_offset >= selected_range.end && cursor_end.is_none() {
-                    cursor_end = Some(line_origin);
-                }
-
-                let visible_wrap_rows =
-                    state.display_map.visible_wrap_row_count_for_buffer_line(ix);
-                offset_y += line_height * visible_wrap_rows;
-                // +1 for the last `\n`
-                prev_lines_offset += wrap_line.len() + 1;
-            }
-        }
-
-        if let (Some(cursor_pos), Some(cursor_start), Some(cursor_end)) =
-            (cursor_pos, cursor_start, cursor_end)
-        {
+        let cursor_bounds = {
             let selection_changed = state.last_selected_range != Some(selected_range);
             let auto_scrolling = state.auto_scroll.is_active();
             if selection_changed && !is_selected_all {
@@ -481,7 +487,7 @@ impl TextElement {
                 // Vertical cursor-follow is suppressed while auto-scroll manages the y axis,
                 // to prevent fighting the background scroll task.
                 if !auto_scrolling {
-                    // If we change the scroll_offset.y, rgpui will render and trigger the next run loop.
+                    // If we change the scroll_offset.y, GPUI will render and trigger the next run loop.
                     // So, here we just adjust offset by `line_height` for move smooth.
                     scroll_offset.y = if scroll_offset.y + cursor_pos.y
                         > bounds.size.height - top_bottom_margin
@@ -543,14 +549,14 @@ impl TextElement {
             } else {
                 cursor_x
             };
-            cursor_bounds = Some(Bounds::new(
+            Some(Bounds::new(
                 point(
                     cursor_x,
                     bounds.top() + cursor_pos.y + ((line_height - cursor_height) / 2.),
                 ),
                 size(CURSOR_WIDTH, cursor_height),
-            ));
-        }
+            ))
+        };
 
         if let Some(deferred_scroll_offset) = state.deferred_scroll_offset {
             scroll_offset = deferred_scroll_offset;
@@ -648,7 +654,8 @@ impl TextElement {
 
                 // wrapped lines
                 for i in 1..=wrapped_lines {
-                    let start = point(px(0.), start.y + i as f32 * line_height);
+                    let indent = line.wrap_indent;
+                    let start = point(indent, start.y + i as f32 * line_height);
                     let mut end = point(end.x, end.y + i as f32 * line_height);
                     if i < wrapped_lines {
                         end.x = line_size.width;
@@ -693,7 +700,7 @@ impl TextElement {
         while let Some(corners) = rev_line_corners.next() {
             points.push(corners.top_left);
             if let Some(next) = rev_line_corners.peek() {
-                if next.top_left.x > corners.top_left.x {
+                if next.top_left.x != corners.top_left.x {
                     points.push(point(next.top_left.x, corners.top_left.y));
                 }
             }
@@ -829,52 +836,57 @@ impl TextElement {
     ) -> (Range<usize>, Vec<usize>, Pixels) {
         // Add extra rows to avoid showing empty space when scroll to bottom.
         let extra_rows = 1;
-        let mut visible_top = px(0.);
         if state.mode.is_single_line() {
-            return (0..1, vec![0], visible_top);
+            return (0..1, vec![0], px(0.));
         }
 
         let total_lines = state.display_map.wrap_row_count();
+        let display_count = state.display_map.display_row_count();
+        let buffer_line_count = state.display_map.buffer_line_count();
+        if display_count == 0 || buffer_line_count == 0 {
+            return (0..0, Vec::new(), px(0.));
+        }
+
         let mut scroll_top = if let Some(deferred_scroll_offset) = state.deferred_scroll_offset {
             deferred_scroll_offset.y
         } else {
             state.scroll_handle.offset().y
         };
-
-        let mut visible_range = 0..total_lines;
         scroll_top = clamp_auto_grow_vertical_scroll_offset(
             &state.mode,
             scroll_top,
             line_height * total_lines,
             input_height,
         );
-        let mut line_bottom = px(0.);
-        for (ix, _line) in state.display_map.lines().iter().enumerate() {
-            let visible_wrap_rows = state.display_map.visible_wrap_row_count_for_buffer_line(ix);
 
-            if visible_wrap_rows == 0 {
-                continue;
-            }
+        // Display rows are uniformly `line_height` tall, so the visible window maps
+        // directly to a display-row range.
+        let viewport_top = (-scroll_top).max(px(0.));
+        let viewport_bottom = viewport_top + input_height;
+        let line_height_f = f32::from(line_height);
+        let first_display =
+            ((f32::from(viewport_top) / line_height_f).floor() as usize).min(display_count - 1);
+        let last_display =
+            ((f32::from(viewport_bottom) / line_height_f).ceil() as usize).min(display_count - 1);
 
-            let wrapped_height = line_height * visible_wrap_rows;
-            line_bottom += wrapped_height;
+        let start_line = state.display_map.display_row_to_buffer_line(first_display);
+        let end_line = state.display_map.display_row_to_buffer_line(last_display);
 
-            if line_bottom < -scroll_top {
-                visible_top = line_bottom - wrapped_height;
-                visible_range.start = ix;
-            }
+        // y of the top of the first visible buffer line (in content space).
+        let visible_top = match state
+            .display_map
+            .buffer_line_to_display_row_range(start_line)
+        {
+            Some(range) => line_height * range.start,
+            None => line_height * first_display,
+        };
 
-            if line_bottom + scroll_top >= input_height {
-                visible_range.end = (ix + extra_rows).min(total_lines);
-                break;
-            }
-        }
+        let visible_range = start_line..(end_line + 1 + extra_rows).min(buffer_line_count);
 
         // Collect non-hidden buffer lines within the visible range
         let mut visible_buffer_lines = Vec::with_capacity(visible_range.len());
-        for ix in visible_range.start..visible_range.end {
-            let visible_wrap_rows = state.display_map.visible_wrap_row_count_for_buffer_line(ix);
-            if visible_wrap_rows > 0 {
+        for ix in visible_range.clone() {
+            if state.display_map.visible_wrap_row_count_for_buffer_line(ix) > 0 {
                 visible_buffer_lines.push(ix);
             }
         }
@@ -891,12 +903,9 @@ impl TextElement {
         window: &mut Window,
     ) -> (Pixels, usize) {
         let total_lines = text.lines_len();
-        let line_number_len = match total_lines {
-            0..=9999 => 5,
-            10000..=99999 => 6,
-            100000..=999999 => 7,
-            _ => 8,
-        };
+        // One extra column beyond the widest line number, so right-aligned
+        // numbers keep a gap from the left edge.
+        let line_number_len = total_lines.max(1).ilog10() as usize + 2;
 
         let mut line_number_width = if state.mode.line_number() {
             let empty_line_number = window.text_system().shape_line(
@@ -1233,7 +1242,6 @@ impl TextElement {
         window: &mut Window,
     ) -> Vec<LineLayout> {
         let is_single_line = state.mode.is_single_line();
-        let buffer_lines = state.display_map.lines();
 
         if is_single_line {
             let shaped_line = window.text_system().shape_line(
@@ -1279,13 +1287,14 @@ impl TextElement {
 
         for (vi, &buffer_line) in last_layout.visible_buffer_lines.iter().enumerate() {
             let line_text: String = display_text.slice_line(buffer_line).into();
-            let line_item = buffer_lines
-                .get(buffer_line)
+            let line_item = state
+                .display_map
+                .line(buffer_line)
                 .expect("line should exists in wrapper");
 
             debug_assert_eq!(line_item.len(), line_text.len());
 
-            let mut wrapped_lines = SmallVec::with_capacity(1);
+            let mut wrapped_lines: SmallVec<[ShapedLine; 1]> = SmallVec::with_capacity(1);
 
             for range in &line_item.wrapped_lines {
                 let line_runs = runs_for_range(runs, run_offset, &range);
@@ -1307,8 +1316,21 @@ impl TextElement {
                 wrapped_lines.push(shaped_line);
             }
 
+            // Use the first visual line's indentation width for continuation lines.
+            let wrap_indent = if line_item.indent > 0 && wrapped_lines.len() > 1 {
+                let indent_byte_len = line_text
+                    .char_indices()
+                    .nth(line_item.indent as usize)
+                    .map(|(ix, _)| ix)
+                    .unwrap_or(line_text.len());
+                wrapped_lines[0].x_for_index(indent_byte_len)
+            } else {
+                px(0.)
+            };
+
             let line_layout = LineLayout::new()
                 .lines(wrapped_lines)
+                .wrap_indent(wrap_indent)
                 .with_whitespaces(whitespace_indicators.clone());
             lines.push(line_layout);
 
@@ -1337,9 +1359,29 @@ impl TextElement {
                 diagnostics,
                 ..
             } => (highlighter.borrow_mut(), diagnostics),
-            _ => return None,
+            _ => {
+                return (!state.masked)
+                    .then(|| {
+                        compose_decoration_collections(
+                            Vec::new(),
+                            state.decorations.iter(),
+                            visible_byte_range,
+                        )
+                    })
+                    .flatten();
+            }
         };
-        let highlighter = highlighter.as_mut()?;
+        let Some(highlighter) = highlighter.as_mut() else {
+            return (!state.masked)
+                .then(|| {
+                    compose_decoration_collections(
+                        Vec::new(),
+                        state.decorations.iter(),
+                        visible_byte_range,
+                    )
+                })
+                .flatten();
+        };
 
         let mut styles = Vec::with_capacity(visible_buffer_lines.len());
 
@@ -1412,10 +1454,16 @@ impl TextElement {
             styles.push(hover_style);
         }
 
-        // Compose order: tree-sitter (base) -> custom (overlay) -> diagnostics (top).
-        // Diagnostics keep highest priority so errors remain visible regardless
-        // of language coloring.
+        // Compose tree-sitter, semantic, application, then diagnostic styles.
         styles = rgpui::combine_highlights(custom_styles, styles).collect();
+        if !state.masked {
+            styles = compose_decoration_collections(
+                styles,
+                state.decorations.iter(),
+                visible_byte_range.clone(),
+            )
+            .unwrap_or_default();
+        }
         styles = rgpui::combine_highlights(diagnostic_styles, styles).collect();
 
         Some(styles)
@@ -1562,23 +1610,6 @@ impl Element for TextElement {
         });
 
         let state = self.state.read(cx);
-        let line_height = window.line_height();
-
-        let (visible_range, visible_buffer_lines, visible_top) =
-            self.calculate_visible_range(&state, line_height, bounds.size.height);
-        let visible_start_offset = state.text.line_start_offset(visible_range.start);
-        let visible_end_offset = state
-            .text
-            .line_end_offset(visible_range.end.saturating_sub(1));
-
-        let highlight_styles = self.highlight_lines(
-            &visible_buffer_lines,
-            visible_top,
-            visible_start_offset..visible_end_offset,
-            cx,
-        );
-
-        let state = self.state.read(cx);
         let multi_line = state.mode.is_multi_line();
         let text = state.text.clone();
         let is_empty = text.len() == 0;
@@ -1613,6 +1644,45 @@ impl Element for TextElement {
             None
         };
 
+        let wrapping_indent = state.wrapping_indent;
+        let wrap_width_changed = state
+            .last_layout
+            .as_ref()
+            .map(|l| l.wrap_width != wrap_width)
+            .unwrap_or(true);
+
+        let wrapping_indent_changed = state
+            .last_layout
+            .as_ref()
+            .map(|l| l.wrapping_indent != wrapping_indent)
+            .unwrap_or(true);
+
+        if wrap_width_changed || wrapping_indent_changed {
+            self.state.update(cx, |state, cx| {
+                state.display_map.on_layout_changed(wrap_width, cx);
+                state.display_map.set_wrapping_indent(wrapping_indent, cx);
+            });
+        }
+
+        let state = self.state.read(cx);
+        let line_height = window.line_height();
+
+        let (visible_range, visible_buffer_lines, visible_top) =
+            self.calculate_visible_range(&state, line_height, bounds.size.height);
+        let visible_start_offset = state.text.line_start_offset(visible_range.start);
+        let visible_end_offset = state
+            .text
+            .line_end_offset(visible_range.end.saturating_sub(1));
+
+        let highlight_styles = self.highlight_lines(
+            &visible_buffer_lines,
+            visible_top,
+            visible_start_offset..visible_end_offset,
+            cx,
+        );
+
+        let state = self.state.read(cx);
+
         let visible_line_byte_offsets: Vec<usize> = visible_buffer_lines
             .iter()
             .map(|&bl| state.text.line_start_offset(bl))
@@ -1643,6 +1713,7 @@ impl Element for TextElement {
             visible_range_offset,
             line_height,
             wrap_width,
+            wrapping_indent,
             line_number_width,
             lines: Rc::new(vec![]),
             cursor_bounds: None,
@@ -1671,55 +1742,37 @@ impl Element for TextElement {
             strikethrough: None,
         };
 
-        let runs = if !is_empty {
-            if let Some(highlight_styles) = highlight_styles {
-                let mut runs = Vec::with_capacity(highlight_styles.len());
+        let ime_marked_range = ime_marked_display_range(
+            &text,
+            state.ime_marked_range.as_ref().map(|m| m.start..m.end),
+            state.masked,
+        );
 
-                runs.extend(highlight_styles.iter().map(|(range, style)| {
-                    let mut run = text_style.clone().highlight(*style).to_run(range.len());
-                    if let Some(ime_marked_range) = &state.ime_marked_range {
-                        if range.start >= ime_marked_range.start
-                            && range.end <= ime_marked_range.end
-                        {
-                            run.color = marked_run.color;
-                            run.strikethrough = marked_run.strikethrough;
-                            run.underline = marked_run.underline;
-                        }
-                    }
+        let runs = if let (false, Some(highlight_styles)) = (is_empty, highlight_styles) {
+            let mut runs = Vec::with_capacity(highlight_styles.len() + 2);
 
-                    if disabled {
-                        run.color = run.color.opacity(0.5)
-                    }
+            for (range, style) in &highlight_styles {
+                let mut run = text_style.clone().highlight(*style).to_run(range.len());
+                if disabled {
+                    run.color = run.color.opacity(0.5);
+                }
 
-                    run
-                }));
-
-                runs.into_iter().filter(|run| run.len > 0).collect()
-            } else {
-                vec![run]
+                runs.extend(split_run_for_ime_underline(
+                    run,
+                    range.clone(),
+                    ime_marked_range.clone(),
+                    marked_run.underline,
+                ));
             }
-        } else if let Some(ime_marked_range) = &state.ime_marked_range {
-            // IME marked text
-            vec![
-                TextRun {
-                    len: ime_marked_range.start,
-                    ..run.clone()
-                },
-                TextRun {
-                    len: ime_marked_range.end - ime_marked_range.start,
-                    underline: marked_run.underline,
-                    ..run.clone()
-                },
-                TextRun {
-                    len: display_text.len() - ime_marked_range.end,
-                    ..run.clone()
-                },
-            ]
-            .into_iter()
-            .filter(|run| run.len > 0)
-            .collect()
+            runs
         } else {
-            vec![run]
+            split_run_for_ime_underline(
+                run,
+                0..display_text.len(),
+                ime_marked_range,
+                marked_run.underline,
+            )
+            .into_vec()
         };
 
         let document_colors = state
@@ -1808,9 +1861,9 @@ impl Element for TextElement {
         //
         // #### text
         //
-        // Hello 世界，this is rgpui component.
-        // The rgpui Component is a collection of UI components for
-        // rgpui framework, including Button, Input, Checkbox, Radio,
+        // Hello 世界，this is GPUI component.
+        // The GPUI Component is a collection of UI components for
+        // GPUI framework, including Button, Input, Checkbox, Radio,
         // Dropdown, Tab, and more...
         //
         // wrap_width: 444px, line_height: 20px
@@ -2156,25 +2209,18 @@ impl Element for TextElement {
         if let Some(line_numbers) = prepaint.line_numbers.as_ref() {
             offset_y += invisible_top_padding;
 
-            // Gutter background: prefer the dedicated `editor.gutter.background`
-            // theme key, falling back to the editor background so existing
-            // themes render unchanged.
-            let gutter_bg = cx
-                .theme()
-                .highlight_theme
-                .style
-                .editor_gutter_background
-                .unwrap_or_else(|| cx.theme().editor_background());
-            window.paint_quad(fill(
-                Bounds {
-                    origin: input_bounds.origin,
-                    size: size(
-                        prepaint.last_layout.line_number_width - LINE_NUMBER_RIGHT_MARGIN,
-                        input_bounds.size.height + prepaint.ghost_lines_height,
-                    ),
-                },
-                gutter_bg,
-            ));
+            if let Some(gutter_bg) = cx.theme().highlight_theme.style.editor_gutter_background {
+                window.paint_quad(fill(
+                    Bounds {
+                        origin: input_bounds.origin,
+                        size: size(
+                            prepaint.last_layout.line_number_width - LINE_NUMBER_RIGHT_MARGIN,
+                            input_bounds.size.height + prepaint.ghost_lines_height,
+                        ),
+                    },
+                    gutter_bg,
+                ));
+            }
 
             // Each item is the normal lines.
             for (lines, &buffer_line) in line_numbers
@@ -2323,6 +2369,46 @@ pub(super) fn runs_for_range(
     result
 }
 
+fn split_run_for_ime_underline(
+    run: TextRun,
+    run_range: Range<usize>,
+    marked_range: Option<Range<usize>>,
+    marked_underline: Option<UnderlineStyle>,
+) -> SmallVec<[TextRun; 3]> {
+    if run.len == 0 {
+        return SmallVec::new();
+    }
+
+    let Some(marked) = marked_range else {
+        return [run].into_iter().collect();
+    };
+
+    let intersection_start = run_range.start.max(marked.start);
+    let intersection_end = run_range.end.min(marked.end);
+    if intersection_start >= intersection_end {
+        return [run].into_iter().collect();
+    }
+
+    [
+        TextRun {
+            len: intersection_start - run_range.start,
+            ..run.clone()
+        },
+        TextRun {
+            len: intersection_end - intersection_start,
+            underline: marked_underline,
+            ..run.clone()
+        },
+        TextRun {
+            len: run_range.end - intersection_end,
+            ..run
+        },
+    ]
+    .into_iter()
+    .filter(|run| run.len > 0)
+    .collect()
+}
+
 fn split_runs_by_bg_segments(
     start_offset: usize,
     runs: &[TextRun],
@@ -2388,6 +2474,50 @@ fn split_runs_by_bg_segments(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_plain_text_decorations_include_unstyled_gaps() {
+        let decoration = HighlightStyle {
+            background_color: Some(rgpui::red()),
+            ..Default::default()
+        };
+        let styles = compose_decorations(Vec::new(), [(2..5, decoration)], 0..10).unwrap();
+
+        assert_eq!(
+            styles
+                .iter()
+                .map(|(range, _)| range.clone())
+                .collect::<Vec<_>>(),
+            vec![0..2, 2..5, 5..10]
+        );
+        assert_eq!(styles[0].1, HighlightStyle::default());
+        assert_eq!(styles[1].1.background_color, Some(rgpui::red()));
+        assert_eq!(styles[2].1, HighlightStyle::default());
+    }
+
+    #[test]
+    fn test_first_decoration_collection_has_precedence() {
+        let first = [TextDecoration::new(
+            0..4,
+            HighlightStyle {
+                background_color: Some(rgpui::red()),
+                ..Default::default()
+            },
+        )];
+        let second = [TextDecoration::new(
+            0..4,
+            HighlightStyle {
+                background_color: Some(rgpui::blue()),
+                ..Default::default()
+            },
+        )];
+
+        let styles =
+            compose_decoration_collections(Vec::new(), [&first[..], &second[..]], 0..4).unwrap();
+
+        assert_eq!(styles.len(), 1);
+        assert_eq!(styles[0].1.background_color, Some(rgpui::red()));
+    }
 
     #[test]
     fn test_editor_scrollbar_layout_uses_current_scroll_size() {
@@ -2498,6 +2628,97 @@ mod tests {
         assert_runs(runs_for_range(&runs, 3, &(0..3)), &[1, 2]);
         assert_runs(runs_for_range(&runs, 3, &(2..10)), &[4, 1, 3]);
         assert_runs(runs_for_range(&runs, 9, &(0..8)), &[1, 7]);
+    }
+
+    #[test]
+    fn test_split_runs_preserve_ime_underline_across_highlight_boundaries() {
+        let underline = UnderlineStyle {
+            thickness: px(1.),
+            color: Some(rgpui::black()),
+            wavy: false,
+        };
+
+        let runs = [0..4, 4..10]
+            .into_iter()
+            .flat_map(|range| {
+                split_run_for_ime_underline(
+                    TextStyle::default().to_run(range.len()),
+                    range,
+                    Some(2..7),
+                    Some(underline),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.len, run.underline.is_some()))
+                .collect::<Vec<_>>(),
+            vec![(2, false), (2, true), (3, true), (3, false)]
+        );
+    }
+
+    #[test]
+    fn test_split_run_applies_ime_underline_without_highlighting() {
+        let underline = UnderlineStyle {
+            thickness: px(1.),
+            color: Some(rgpui::black()),
+            wavy: false,
+        };
+
+        let runs = split_run_for_ime_underline(
+            TextStyle::default().to_run(10),
+            0..10,
+            Some(2..7),
+            Some(underline),
+        );
+
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.len, run.underline.is_some()))
+                .collect::<Vec<_>>(),
+            vec![(2, false), (5, true), (3, false)]
+        );
+        assert!(
+            split_run_for_ime_underline(TextStyle::default().to_run(0), 0..0, None, None)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_masked_ime_underline_splits_on_mask_char_boundaries() {
+        let underline = UnderlineStyle {
+            thickness: px(1.),
+            color: Some(rgpui::black()),
+            wavy: false,
+        };
+        let text = Rope::from("abcdef");
+        let mask_len = MASK_CHAR.len_utf8();
+
+        assert_eq!(
+            ime_marked_display_range(&text, Some(4..6), false),
+            Some(4..6)
+        );
+        assert_eq!(ime_marked_display_range(&text, None, true), None);
+        assert_eq!(
+            ime_marked_display_range(&text, Some(4..6), true),
+            Some(4 * mask_len..6 * mask_len)
+        );
+
+        let display_text = MASK_CHAR.to_string().repeat(text.chars().count());
+        let runs = split_run_for_ime_underline(
+            TextStyle::default().to_run(display_text.len()),
+            0..display_text.len(),
+            ime_marked_display_range(&text, Some(4..6), true),
+            Some(underline),
+        );
+
+        let mut offset = 0;
+        for run in &runs {
+            assert!(display_text.is_char_boundary(offset));
+            offset += run.len;
+        }
+        assert_eq!(offset, display_text.len());
     }
 
     #[test]

@@ -21,7 +21,7 @@ pub use state::*;
 pub use tab_panel::*;
 pub use tiles::*;
 
-use crate::ElementExt;
+use crate::{ElementExt, Placement};
 
 pub(crate) fn init(cx: &mut App) {
     PanelRegistry::init(cx);
@@ -36,8 +36,27 @@ pub enum DockEvent {
     /// So it emits may be too frequently, you may want to debounce the event.
     LayoutChanged,
 
-    /// The drag item drop event.
-    DragDrop(AnyDrag),
+    /// A host-owned drag item ([`AnyDrag`]) was dropped inside the dock.
+    DragDrop { item: AnyDrag, target: DropTarget },
+}
+
+/// Where a host-owned drag landed, and how much the container can say about it.
+#[derive(Clone, Debug)]
+pub enum DropTarget {
+    /// Dropped on a [`Tiles`] canvas, where the landing position is just the
+    /// cursor position and the host can read it directly.
+    Canvas,
+
+    /// Dropped on a [`TabPanel`] in a split layout. A split layout has no free
+    /// coordinates, so the container reports the panel and the edge it resolved
+    /// from the cursor instead.
+    ///
+    /// `placement` is `None` for the centre zone, meaning merge into the tab
+    /// group rather than split.
+    Panel {
+        tab_panel: Entity<TabPanel>,
+        placement: Option<Placement>,
+    },
 }
 
 /// The main area of the dock.
@@ -221,15 +240,8 @@ impl DockItem {
         window: &mut Window,
         cx: &mut App,
     ) -> Self {
-        let mut items = items;
         let stack_panel = cx.new(|cx| {
             let mut stack_panel = StackPanel::new(axis, window, cx);
-            for (i, item) in items.iter_mut().enumerate() {
-                let view = item.view();
-                let size = sizes.get(i).copied().flatten();
-                stack_panel.add_panel(view.clone(), size, dock_area.clone(), window, cx)
-            }
-
             for (i, item) in items.iter().enumerate() {
                 let view = item.view();
                 let size = sizes.get(i).copied().flatten();
@@ -516,6 +528,44 @@ impl DockItem {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rgpui::TestAppContext;
+
+    #[rgpui::test]
+    fn split_with_sizes_adds_each_child_once(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            cx.set_global(crate::Theme::default());
+            cx.open_window(Default::default(), |window, cx| {
+                let dock_area = cx.new(|cx| DockArea::new("test-dock", None, window, cx));
+                let weak_dock_area = dock_area.downgrade();
+                let children = vec![
+                    DockItem::tabs(Vec::new(), &weak_dock_area, window, cx),
+                    DockItem::tabs(Vec::new(), &weak_dock_area, window, cx),
+                ];
+
+                let split = DockItem::split_with_sizes(
+                    Axis::Horizontal,
+                    children,
+                    vec![None, None],
+                    &weak_dock_area,
+                    window,
+                    cx,
+                );
+
+                let DockItem::Split { view, .. } = split else {
+                    unreachable!("split_with_sizes must return DockItem::Split");
+                };
+                assert_eq!(view.read(cx).panels_len(), 2);
+
+                cx.new(|cx| crate::Root::new(dock_area, window, cx))
+            })
+            .unwrap();
+        });
+    }
+}
+
 impl DockArea {
     pub fn new(
         id: impl Into<SharedString>,
@@ -568,8 +618,10 @@ impl DockArea {
     ) {
         self._subscriptions
             .push(cx.subscribe(tile_panel, move |_, _, evt: &DragDrop, cx| {
-                let item = evt.0.clone();
-                cx.emit(DockEvent::DragDrop(item));
+                cx.emit(DockEvent::DragDrop {
+                    item: evt.0.clone(),
+                    target: DropTarget::Canvas,
+                });
             }));
     }
 

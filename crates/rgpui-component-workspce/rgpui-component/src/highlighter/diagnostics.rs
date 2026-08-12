@@ -4,13 +4,14 @@ use std::{
     usize,
 };
 
+use rgpui::{App, HighlightStyle, Hsla, SharedString, UnderlineStyle, px};
+use ropey::Rope;
+use rgpui::sum_tree::{Bias, SeekTarget, SumTree};
+
 use crate::{
     ActiveTheme,
     input::{Position, RopeExt as _},
 };
-use rgpui::sum_tree::{Bias, SeekTarget, SumTree};
-use rgpui::{App, HighlightStyle, Hsla, SharedString, UnderlineStyle, px, sum_tree};
-use ropey::Rope;
 
 pub type DiagnosticRelatedInformation = lsp_types::DiagnosticRelatedInformation;
 pub type CodeDescription = lsp_types::CodeDescription;
@@ -198,7 +199,7 @@ pub struct DiagnosticSummary {
     end: usize,
 }
 
-impl sum_tree::Item for DiagnosticEntry {
+impl rgpui::sum_tree::Item for DiagnosticEntry {
     type Summary = DiagnosticSummary;
     fn summary(&self, _cx: &()) -> Self::Summary {
         DiagnosticSummary {
@@ -209,7 +210,7 @@ impl sum_tree::Item for DiagnosticEntry {
     }
 }
 
-impl sum_tree::Summary for DiagnosticSummary {
+impl rgpui::sum_tree::Summary for DiagnosticSummary {
     type Context<'a> = &'a ();
     fn zero(_: Self::Context<'_>) -> Self {
         DiagnosticSummary {
@@ -346,7 +347,7 @@ mod tests {
 
         use super::{Diagnostic, DiagnosticSet, DiagnosticSeverity};
 
-        let text = Rope::from("Hello, 你好warld!\nThis is a test.\nGoodbye, world!");
+        let text = Rope::from("Hello, 浣犲ソwarld!\nThis is a test.\nGoodbye, world!");
         let mut diagnostics = DiagnosticSet::new(&text);
 
         diagnostics.push(

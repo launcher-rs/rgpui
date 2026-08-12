@@ -56,6 +56,9 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+# 强制以 UTF-8 解释/输出控制台文本，避免 git show 的中文内容被按 gb2312 解码而损坏
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $PrConfigPath = Join-Path $RepoRoot 'UPSTREAM-PRS.json'
 $RulesPath = Join-Path $RepoRoot '.opencode\upstream-rules.json'
@@ -117,9 +120,11 @@ function Build-Mappings {
         $contentMappings[$fromTrim] = $toTrim
 
         # crate 短名称：从 crates/gpui_windows/ 提取 gpui_windows
+        # 仅当目标路径是扁平 crate 目录（无额外子目录）时才派生映射，
+        # 避免将子目录路径（如 crates/rgpui-component-workspce/rgpui-component/）写入内容
         $crateFrom = $fromTrim -replace '^crates/', ''
         $crateTo = $toTrim -replace '^crates/', ''
-        if ($crateFrom -ne $crateTo) {
+        if ($crateFrom -ne $crateTo -and $crateTo -notmatch '/') {
             $contentMappings[$crateFrom] = $crateTo
         }
     }

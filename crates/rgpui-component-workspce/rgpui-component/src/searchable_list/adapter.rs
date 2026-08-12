@@ -17,11 +17,11 @@ use super::{
 /// the parent; the adapter only handles item layout.
 pub(crate) struct SearchableListAdapter<D: SearchableListDelegate + 'static> {
     pub(crate) delegate: D,
-    /// Keyboard cursor row — updated by `ListDelegate::set_selected_index`.
+    /// Keyboard cursor row 鈥?updated by `ListDelegate::set_selected_index`.
     selected_index: Option<IndexPath>,
     /// Snapshot of the parent's committed selection, kept in sync by the parent state after every
     /// selection change. `render_item` reads this directly so it never touches the parent entity
-    /// (which would panic — the `ListState` entity is already locked during render).
+    /// (which would panic 鈥?the `ListState` entity is already locked during render).
     pub(crate) selection_snapshot: Vec<(IndexPath, D::Item)>,
     /// Called when the user confirms an item (click or Enter).
     on_confirm:
@@ -107,7 +107,7 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         use rgpui::IntoElement as _;
 
         let item = self.delegate.item(ix)?;
-        // Read check state from the snapshot — never from an external entity, which would panic
+        // Read check state from the snapshot 鈥?never from an external entity, which would panic
         // because the ListState entity is already locked for this render pass.
         let is_checked = self
             .delegate

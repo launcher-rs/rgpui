@@ -19,6 +19,18 @@ pub use document_colors::*;
 pub use hover::*;
 pub use semantic_tokens::*;
 
+/// Host hook to show a document when following an LSP location
+/// (Go to Definition), modeled after the `window/showDocument` request.
+///
+/// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#window_showDocument
+///
+/// Called before the built-in behavior. Return `true` if the host has shown
+/// the document (e.g. opened a docs window for a virtual/external URI);
+/// return `false` to fall through to the default handling (`external` URIs
+/// open in the browser, anything else jumps within the current document).
+pub type ShowDocumentHandler =
+    Rc<dyn Fn(&lsp_types::ShowDocumentParams, &mut Window, &mut App) -> bool>;
+
 /// LSP ServerCapabilities
 ///
 /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#serverCapabilities
@@ -35,6 +47,14 @@ pub struct Lsp {
     pub document_color_provider: Option<Rc<dyn DocumentColorProvider>>,
     /// The range semantic tokens provider.
     pub semantic_tokens_provider: Option<Rc<dyn DocumentRangeSemanticTokensProvider>>,
+    /// Optional host hook to show documents for Go to Definition locations,
+    /// following the `window/showDocument` request (see [`ShowDocumentHandler`]).
+    ///
+    /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#window_showDocument
+    pub show_document: Option<ShowDocumentHandler>,
+
+    /// Display options for the completion popover.
+    pub completion_menu: CompletionMenuOptions,
 
     document_colors: Vec<(lsp_types::Range, Hsla)>,
     /// Cached semantic tokens as absolute position ranges + theme token-type
@@ -54,7 +74,9 @@ impl Default for Lsp {
             hover_provider: None,
             definition_provider: None,
             document_color_provider: None,
+            completion_menu: CompletionMenuOptions::default(),
             semantic_tokens_provider: None,
+            show_document: None,
             document_colors: vec![],
             semantic_tokens: vec![],
             _hover_task: Task::ready(Ok(())),
@@ -173,9 +195,13 @@ impl InputState {
     }
 
     pub(crate) fn clear_hover_state(&mut self, cx: &mut Context<InputState>) {
+        let had_definition = !self.hover_definition.is_empty();
+        let had_popover = self.hover_popover.is_some();
         self.hover_definition.clear();
         self.hover_popover = None;
         self.lsp._hover_task = Task::ready(Ok(()));
-        cx.notify();
+        if had_definition || had_popover {
+            cx.notify();
+        }
     }
 }

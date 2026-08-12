@@ -1,9 +1,9 @@
 use std::ops::Range;
 
 use anyhow::Result;
+use rgpui::{App, Context, HighlightStyle, SharedString, Task, Window};
 use instant::Duration;
 use lsp_types::{Position, SemanticTokens, SemanticTokensLegend};
-use rgpui::{App, Context, HighlightStyle, SharedString, Task, Window};
 use ropey::Rope;
 
 use crate::highlighter::HighlightTheme;
@@ -15,8 +15,8 @@ use crate::input::{InputState, Lsp, RopeExt};
 /// This is the editor counterpart of the LSP
 /// `textDocument/semanticTokens/range` request (and Monaco Editor's
 /// [`DocumentRangeSemanticTokensProvider`][monaco]). Like the other
-/// providers on [`Lsp`](crate::input::Lsp) — `DocumentColorProvider`,
-/// `HoverProvider`, … — it is installed on `InputState::lsp`, fetched
+/// providers on [`Lsp`](crate::input::Lsp) 鈥?`DocumentColorProvider`,
+/// `HoverProvider`, 鈥?鈥?it is installed on `InputState::lsp`, fetched
 /// asynchronously when the document changes, and its result is cached and
 /// composed into the render pipeline. It does **not** replace the
 /// tree-sitter highlighter.
@@ -26,9 +26,8 @@ use crate::input::{InputState, Lsp, RopeExt};
 /// Returned tokens are delta-encoded with a numeric `token_type` that
 /// indexes [`legend`](Self::legend)`.token_types`. The editor resolves each
 /// type *name* against the active
-/// [`HighlightTheme`](crate::highlighter::HighlightTheme) at paint time —
-/// the same vocabulary the tree-sitter path uses (`"keyword"`, `"comment"`,
-/// `"string"`, …; `"keyword.modifier"` falls back to `"keyword"`). Because
+/// [`HighlightTheme`](crate::highlighter::HighlightTheme) at paint time 鈥?/// the same vocabulary the tree-sitter path uses (`"keyword"`, `"comment"`,
+/// `"string"`, 鈥? `"keyword.modifier"` falls back to `"keyword"`). Because
 /// the color is resolved from the name on every paint, theme switches
 /// recolor semantic tokens with no provider cooperation. Token *modifiers*
 /// are accepted but not currently mapped to styles.
@@ -61,8 +60,8 @@ impl Lsp {
     ///
     /// Called on every paint. The cache is sorted by start position, so this
     /// binary-searches the small window of tokens that can touch the viewport
-    /// (`O(log N + visible)`) instead of scanning the whole document — only
-    /// the windowed candidates pay the position→byte conversion. Tokens
+    /// (`O(log N + visible)`) instead of scanning the whole document 鈥?only
+    /// the windowed candidates pay the position鈫抌yte conversion. Tokens
     /// resolving to an empty byte range, or whose type name the theme does
     /// not recognize, are skipped.
     ///
@@ -83,7 +82,7 @@ impl Lsp {
         // Cache is sorted by `range.start`. A token can only touch the
         // viewport if its start is before `visible_end` (upper bound) and it
         // is not on a line entirely above the viewport's first line (lower
-        // bound — tokens are single-line, so an earlier line cannot reach in).
+        // bound 鈥?tokens are single-line, so an earlier line cannot reach in).
         let hi = self
             .semantic_tokens
             .partition_point(|(range, _)| range.start < visible_end);

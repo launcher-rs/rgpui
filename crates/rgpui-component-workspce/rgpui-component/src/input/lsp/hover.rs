@@ -1,6 +1,6 @@
 use anyhow::Result;
-use instant::Duration;
 use rgpui::{App, Context, Task, Window};
+use instant::Duration;
 use ropey::Rope;
 
 use crate::input::{InputState, RopeExt, popovers::HoverPopover};

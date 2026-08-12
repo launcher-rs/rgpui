@@ -2,35 +2,7 @@
 //!
 //! Based on the `Input` example from the `rgpui` crate.
 //! https://github.com/zed-industries/zed/blob/main/crates/rgpui/examples/input.rs
-use super::{
-    DisplayMap, MASK_CHAR,
-    blink_cursor::BlinkCursor,
-    change::Change,
-    element::{EditorScrollbarSnapshot, TextElement},
-    mask_pattern::{MaskPattern, normalize_number_input},
-    mode::InputMode,
-    number_input,
-    number_input::{NumberStep, StepAction},
-};
-use crate::Size;
-use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
-use crate::highlighter::DiagnosticSet;
-#[cfg(not(target_family = "wasm"))]
-use crate::highlighter::LanguageRegistry;
-use crate::input::blink_cursor::CURSOR_WIDTH;
-use crate::input::movement::MoveDirection;
-use crate::input::{
-    HoverDefinition, InlineCompletion, Lsp, Position, RopeExt as _, Selection,
-    display_map::LineLayout,
-    element::RIGHT_MARGIN,
-    popovers::{ContextMenu, DiagnosticPopover, HoverPopover},
-    search::SearchPanel,
-};
-use crate::native_menu::NativeMenu;
-use crate::scroll::AutoScroll;
-use crate::{Root, history::History};
 use anyhow::Result;
-use rgpui::sum_tree::Bias;
 use rgpui::{
     Action, App, AppContext, Bounds, ClipboardItem, Context, Edges, Entity, EntityInputHandler,
     EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding,
@@ -46,7 +18,37 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
+use rgpui::sum_tree::Bias;
 use unicode_segmentation::*;
+
+use super::{
+    DisplayMap, MASK_CHAR, WrappingIndent,
+    blink_cursor::BlinkCursor,
+    change::Change,
+    decorations::DecorationCollections,
+    element::{EditorScrollbarSnapshot, TextElement},
+    mask_pattern::{MaskPattern, normalize_number_input},
+    mode::InputMode,
+    number_input,
+    number_input::{NumberStep, StepAction},
+};
+use crate::Size;
+use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
+use crate::highlighter::DiagnosticSet;
+#[cfg(feature = "tree-sitter")]
+use crate::highlighter::LanguageRegistry;
+use crate::input::blink_cursor::CURSOR_WIDTH;
+use crate::input::movement::MoveDirection;
+use crate::input::{
+    HoverDefinition, InlineCompletion, Lsp, Position, RopeExt as _, Selection,
+    display_map::LineLayout,
+    element::RIGHT_MARGIN,
+    popovers::{ContextMenu, DiagnosticPopover, HoverPopover},
+    search::SearchPanel,
+};
+use crate::native_menu::NativeMenu;
+use crate::scroll::AutoScroll;
+use crate::{Root, history::History};
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = input, no_json)]
@@ -114,6 +116,7 @@ actions!(
         Escape,
         ToggleCodeActions,
         Search,
+        Replace,
         GoToDefinition,
     ]
 );
@@ -271,6 +274,10 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("cmd-f", Search, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-f", Search, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-f", Replace, Some(CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-h", Replace, Some(CONTEXT)),
     ]);
 
     number_input::init(cx);
@@ -301,10 +308,12 @@ pub(super) struct LastLayout {
     pub(super) visible_range_offset: Range<usize>,
     /// The last layout lines (Only have visible lines, no empty entries for hidden lines).
     pub(super) lines: Rc<Vec<LineLayout>>,
-    /// The line_height of text layout, this will change will InputElement painted.
+    /// The line_height of text layout, this may change when InputElement is painted.
     pub(super) line_height: Pixels,
-    /// The wrap width of text layout, this will change will InputElement painted.
+    /// The wrap width of text layout, this may change when InputElement is painted.
     pub(super) wrap_width: Option<Pixels>,
+    /// The wrapping indent mode of text layout, this may change when InputElement is painted.
+    pub(super) wrapping_indent: WrappingIndent,
     /// The line number area width of text layout, if not line number, this will be 0px.
     pub(super) line_number_width: Pixels,
     /// The cursor position (top, left) in pixels.
@@ -371,6 +380,7 @@ pub struct InputState {
     pub(super) clean_on_escape: bool,
     pub(super) submit_on_enter: bool,
     pub(super) soft_wrap: bool,
+    pub(super) wrapping_indent: WrappingIndent,
     /// See [`Self::scroll_beyond_last_line`].
     pub(super) scroll_beyond_last_line: Option<usize>,
     /// See [`Self::cursor_surrounding_lines`].
@@ -395,6 +405,7 @@ pub struct InputState {
     pub(super) editor_scrollbar_paddings: Cell<Edges<Pixels>>,
     pub(super) editor_scrollbar_snapshot: Cell<Option<EditorScrollbarSnapshot>>,
     pub(super) text_align: TextAlign,
+    pub(super) decorations: DecorationCollections,
 
     /// The mask pattern for formatting the input text
     pub(crate) mask_pattern: MaskPattern,
@@ -414,6 +425,7 @@ pub struct InputState {
     /// If set, this overrides the built-in context menu (and ignores [`Self::enable_context_menu`]).
     pub(super) context_menu_builder:
         Option<Rc<dyn Fn(NativeMenu, &mut Window, &mut App) -> NativeMenu>>,
+    pending_context_menu: Option<(Point<Pixels>, usize)>,
 
     /// Whether the context menu that shows on right-click is enabled.
     ///
@@ -501,6 +513,7 @@ impl InputState {
             clean_on_escape: false,
             submit_on_enter: false,
             soft_wrap: true,
+            wrapping_indent: WrappingIndent::default(),
             scroll_beyond_last_line: None,
             cursor_surrounding_lines: None,
             show_whitespaces: false,
@@ -530,10 +543,12 @@ impl InputState {
             mask_pattern: MaskPattern::default(),
             mask_pattern_set: false,
             text_align: TextAlign::Left,
+            decorations: DecorationCollections::default(),
             lsp: Lsp::default(),
             diagnostic_popover: None,
             context_menu_content: None,
             context_menu_builder: None,
+            pending_context_menu: None,
             enable_context_menu: true,
             completion_inserting: false,
             hover_popover: None,
@@ -792,29 +807,34 @@ impl InputState {
         self.history.ignore = false;
         self.emit_events = true;
 
-        // Place the caret at the end for single-line inputs (like HTML
-        // `<input>`); multi-line inputs reset the selection to the start.
-        if self.mode.is_single_line() {
-            let end = self.text.len();
-            self.selected_range = (end..end).into();
-        } else {
-            self.selected_range.clear();
-        }
-
-        if self.mode.is_code_editor() {
-            self._pending_update = true;
-            self.lsp.reset();
-        }
-
-        // Move scroll to the start. For single-line the caret is at the end, so
-        // override the cursor-follow scroll for the next painted frame to keep
-        // the start visible; the deferred offset is consumed during that paint.
-        self.scroll_handle.set_offset(point(px(0.), px(0.)));
-        if self.mode.is_single_line() {
-            self.deferred_scroll_offset = Some(point(px(0.), px(0.)));
-        }
+        self.reset_selection();
+        self.reset_lsp_state();
+        self.reset_scroll_to_start();
 
         self.history.clear();
+        cx.notify();
+    }
+
+    /// Replace the entire text content while preserving undo history.
+    ///
+    /// Unlike [`set_value`](Self::set_value), this method records the
+    /// replacement in the undo stack, allowing the user to undo/redo
+    /// the change. The selection is placed at the end of the new text
+    /// for single-line inputs, or cleared (0..0) for multi-line inputs.
+    ///
+    /// Use this when programmatically replacing the full text but the
+    /// user should still be able to undo the operation — e.g. formatting.
+    pub fn replace_all(
+        &mut self,
+        text: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.replace_text(text, window, cx);
+        self.reset_selection();
+        self.reset_lsp_state();
+        self.reset_scroll_to_start();
+
         cx.notify();
     }
 
@@ -866,6 +886,35 @@ impl InputState {
         self.replace_text_in_range_silent(Some(range), &text, window, cx);
         self.reset_highlighter(cx);
         self.disabled = was_disabled;
+    }
+
+    fn reset_selection(&mut self) {
+        // For single-line inputs the caret is placed at the end of the text
+        // (matching HTML `<input>`); multi-line inputs reset the selection to
+        // `0..0`.
+        if self.mode.is_single_line() {
+            let end = self.text.len();
+            self.selected_range = (end..end).into();
+        } else {
+            self.selected_range.clear();
+        }
+    }
+
+    fn reset_lsp_state(&mut self) {
+        if self.mode.is_code_editor() {
+            self._pending_update = true;
+            self.lsp.reset();
+        }
+    }
+
+    fn reset_scroll_to_start(&mut self) {
+        // Move scroll to the start. For single-line the caret is at the end, so
+        // override the cursor-follow scroll for the next painted frame to keep
+        // the start visible; the deferred offset is consumed during that paint.
+        self.scroll_handle.set_offset(point(px(0.), px(0.)));
+        if self.mode.is_single_line() {
+            self.deferred_scroll_offset = Some(point(px(0.), px(0.)));
+        }
     }
 
     /// Set with disabled mode.
@@ -923,6 +972,13 @@ impl InputState {
         self
     }
 
+    /// Set how soft-wrapped continuation lines are indented, default is [`WrappingIndent::Same`]
+    pub fn wrapping_indent(mut self, wrapping_indent: WrappingIndent) -> Self {
+        debug_assert!(self.mode.is_multi_line());
+        self.wrapping_indent = wrapping_indent;
+        self
+    }
+
     /// Update the soft wrap mode for multi-line input, default is true.
     pub fn set_soft_wrap(&mut self, wrap: bool, _: &mut Window, cx: &mut Context<Self>) {
         debug_assert!(self.mode.is_multi_line());
@@ -949,6 +1005,18 @@ impl InputState {
     /// Update whether to show whitespace characters.
     pub fn set_show_whitespaces(&mut self, show: bool, _: &mut Window, cx: &mut Context<Self>) {
         self.show_whitespaces = show;
+        cx.notify();
+    }
+
+    /// Update how soft-wrapped continuation lines are indented.
+    pub fn set_wrapping_indent(
+        &mut self,
+        wrapping_indent: WrappingIndent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.wrapping_indent = wrapping_indent;
+        self.display_map.set_wrapping_indent(wrapping_indent, cx);
         cx.notify();
     }
 
@@ -1153,7 +1221,7 @@ impl InputState {
     /// Set the default value of the input field.
     pub fn default_value(mut self, value: impl Into<SharedString>) -> Self {
         let text: SharedString = value.into();
-        self.text = Rope::from(text.as_str());
+        self.text = Rope::from(self.normalize_input(&text).as_ref());
         if let Some(diagnostics) = self.mode.diagnostics_mut() {
             diagnostics.reset(&self.text)
         }
@@ -1213,6 +1281,24 @@ impl InputState {
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.start(cx);
         });
+    }
+
+    /// Refresh the input, so the next render re-runs syntax highlighting and
+    /// the LSP providers, not just a redraw.
+    ///
+    /// Assigning the `lsp` providers (or other render-affecting state) at
+    /// runtime does not take effect until the text next changes. Call this
+    /// afterwards to force the refresh on the next render.
+    ///
+    /// ```ignore
+    /// input.update(cx, |state, cx| {
+    ///     state.lsp.hover_provider = Some(provider);
+    ///     state.refresh(cx);
+    /// });
+    /// ```
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self._pending_update = true;
+        cx.notify();
     }
 
     pub(super) fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
@@ -1342,7 +1428,7 @@ impl InputState {
 
         if self.soft_wrap && self.mode.is_code_editor() {
             let wrap_point = self.display_map.offset_to_wrap_display_point(self.cursor());
-            if let Some(line) = self.display_map.lines().get(row)
+            if let Some(line) = self.display_map.line(row)
                 && let Some(range) = line.wrapped_lines.get(wrap_point.local_row)
             {
                 let visual_start = logical_start + range.start;
@@ -1370,7 +1456,7 @@ impl InputState {
 
         if self.soft_wrap && self.mode.is_code_editor() {
             let wrap_point = self.display_map.offset_to_wrap_display_point(self.cursor());
-            if let Some(line) = self.display_map.lines().get(row)
+            if let Some(line) = self.display_map.line(row)
                 && let Some(range) = line.wrapped_lines.get(wrap_point.local_row)
             {
                 let visual_end = logical_start + range.end;
@@ -1630,7 +1716,7 @@ impl InputState {
     /// Show the right-click context menu as a native OS menu.
     pub(crate) fn handle_right_click_menu(
         &mut self,
-        event: &MouseDownEvent,
+        position: Point<Pixels>,
         offset: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1696,7 +1782,7 @@ impl InputState {
             )
         };
 
-        menu.show(event.position, window, cx);
+        menu.show(position, window, cx);
     }
 
     pub(super) fn on_mouse_down(
@@ -1742,7 +1828,10 @@ impl InputState {
         // Show Mouse context menu
         if event.button == MouseButton::Right {
             if self.enable_context_menu || self.context_menu_builder.is_some() {
-                self.handle_right_click_menu(event, offset, window, cx);
+                if !self.selected_range.contains(offset) {
+                    self.move_to(offset, None, cx);
+                }
+                self.pending_context_menu = Some((event.position, offset));
             }
             return;
         }
@@ -1756,10 +1845,15 @@ impl InputState {
 
     pub(super) fn on_mouse_up(
         &mut self,
-        _: &MouseUpEvent,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
+        event: &MouseUpEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) {
+        if event.button == MouseButton::Right {
+            if let Some((position, offset)) = self.pending_context_menu.take() {
+                self.handle_right_click_menu(position, offset, window, cx);
+            }
+        }
         if self.selected_range.is_empty() {
             self.selection_reversed = false;
         }
@@ -1895,16 +1989,8 @@ impl InputState {
 
         let row = point.row;
 
-        let mut row_offset_y = px(0.);
-        for (ix, _wrap_line) in self.display_map.lines().iter().enumerate() {
-            if ix == row {
-                break;
-            }
-
-            // Only accumulate height for visible (non-folded) wrap rows
-            let visible_wrap_rows = self.display_map.visible_wrap_row_count_for_buffer_line(ix);
-            row_offset_y += line_height * visible_wrap_rows;
-        }
+        // Calculate row offset by multiplying the number of lines before it with the line height
+        let mut row_offset_y = line_height * self.display_map.buffer_line_to_display_row(row);
 
         // For Right alignment use 0 margin: the cursor indicator is clamped inside bounds
         // in layout_cursor, so shifting the text here would cause a first-click visual jump.
@@ -2001,11 +2087,7 @@ impl InputState {
 
     pub(super) fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(clipboard) = cx.read_from_clipboard() {
-            let mut new_text = clipboard.text().unwrap_or_default();
-            if !self.mode.is_multi_line() {
-                new_text = new_text.replace('\n', "");
-            }
-
+            let new_text = clipboard.text().unwrap_or_default();
             self.replace_text_in_range_silent(None, &new_text, window, cx);
             self.scroll_to(self.cursor(), None, cx);
         }
@@ -2075,11 +2157,7 @@ impl InputState {
     /// Set scroll offset of the editor viewport.
     ///
     /// The offset will be clamped to the valid range, and applied after the next layout.
-    pub fn set_scroll_offset(
-        &mut self,
-        offset: rgpui::Point<rgpui::Pixels>,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn set_scroll_offset(&mut self, offset: rgpui::Point<rgpui::Pixels>, cx: &mut Context<Self>) {
         self.deferred_scroll_offset = Some(offset);
         cx.notify();
     }
@@ -2096,6 +2174,18 @@ impl InputState {
     /// in the underlying rope's byte units.
     pub fn selected_range(&self) -> std::ops::Range<usize> {
         self.selected_range.into()
+    }
+
+    /// Set the selected range using UTF-8 byte offsets.
+    pub fn set_selected_range(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
+        let len = self.text.len();
+        let start = range.start.min(len);
+        let end = range.end.min(len);
+
+        self.move_to(start, None, cx);
+        self.selection_reversed = false;
+        self.selected_word_range = None;
+        self.select_to(end, cx);
     }
 
     pub(crate) fn index_for_mouse_position(&self, position: Point<Pixels>) -> usize {
@@ -2434,10 +2524,16 @@ impl InputState {
     /// full-width number characters into their ASCII equivalents,
     /// e.g. `12。5` -> `12.5`.
     fn normalize_input<'a>(&self, new_text: &'a str) -> Cow<'a, str> {
-        if matches!(self.mask_pattern, MaskPattern::Number { .. }) {
+        let normalized = if matches!(self.mask_pattern, MaskPattern::Number { .. }) {
             normalize_number_input(new_text)
         } else {
             Cow::Borrowed(new_text)
+        };
+
+        if self.mode.is_single_line() && normalized.contains(['\n', '\r']) {
+            Cow::Owned(normalized.replace(['\n', '\r'], ""))
+        } else {
+            normalized
         }
     }
 
@@ -2622,12 +2718,18 @@ impl InputState {
     ///
     /// Dropping the returned `Task` (stored in `parse_task`) cancels the
     /// parse, which naturally debounces rapid edits.
-    #[cfg(not(target_family = "wasm"))]
+    #[cfg(feature = "tree-sitter")]
     fn dispatch_background_parse(
         pending: super::mode::PendingBackgroundParse,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::time::Duration;
+
+        const PARSE_DEBOUNCE: Duration = Duration::from_millis(150);
+
         let highlighter_rc = pending.highlighter;
         let parse_task_rc = pending.parse_task;
         let language = pending.language;
@@ -2646,19 +2748,45 @@ impl InputState {
             .as_ref()
             .and_then(|h| h.injection_parse_data());
 
+        let cancel = Arc::new(AtomicBool::new(false));
+
         let text_for_apply = text.clone();
         let task = cx.spawn_in(window, async move |entity, cx| {
+            struct CancelOnDrop(Arc<AtomicBool>);
+            impl Drop for CancelOnDrop {
+                fn drop(&mut self) {
+                    self.0.store(true, Ordering::Relaxed);
+                }
+            }
+            let _cancel_guard = CancelOnDrop(cancel.clone());
+
+            // Debounce
+            cx.background_executor().timer(PARSE_DEBOUNCE).await;
+
+            let parse_cancel = cancel.clone();
             let result = cx
                 .background_executor()
                 .spawn(async move {
                     let Some(config) = LanguageRegistry::singleton().language(&language) else {
                         return None;
                     };
+                    let Some(grammar) = config.language.as_ref() else {
+                        return None;
+                    };
 
                     let mut parser = tree_sitter::Parser::new();
-                    if parser.set_language(&config.language).is_err() {
+                    if parser.set_language(grammar).is_err() {
                         return None;
                     }
+
+                    let mut progress = |_: &tree_sitter::ParseState| -> std::ops::ControlFlow<()> {
+                        if parse_cancel.load(Ordering::Relaxed) {
+                            std::ops::ControlFlow::Break(())
+                        } else {
+                            std::ops::ControlFlow::Continue(())
+                        }
+                    };
+                    let options = tree_sitter::ParseOptions::new().progress_callback(&mut progress);
 
                     let new_tree = parser.parse_with_options(
                         &mut |offset, _| {
@@ -2670,8 +2798,13 @@ impl InputState {
                             }
                         },
                         old_tree.as_ref(),
-                        None,
+                        Some(options),
                     )?;
+
+                    // Disrcard the partial result on cancel
+                    if parse_cancel.load(Ordering::Relaxed) {
+                        return None;
+                    }
 
                     // Compute injection layers in the background to avoid blocking the
                     // main thread with combined-injection parsing (e.g. PHP, HTML+JS/CSS).
@@ -2713,7 +2846,7 @@ impl InputState {
         parse_task_rc.borrow_mut().replace(task);
     }
 
-    #[cfg(target_family = "wasm")]
+    #[cfg(not(feature = "tree-sitter"))]
     fn dispatch_background_parse(
         _pending: super::mode::PendingBackgroundParse,
         _window: &mut Window,
@@ -2829,6 +2962,11 @@ impl EntityInputHandler for InputState {
         }
 
         if mask_changed {
+            self.decorations.clear();
+        } else {
+            self.decorations.adjust_for_edit(&range, new_text.len());
+        }
+        if mask_changed {
             // A segment-based history entry no longer matches the masked
             // document, record a whole-document change instead, so that
             // undo/redo can restore the text exactly.
@@ -2911,6 +3049,7 @@ impl EntityInputHandler for InputState {
             }
         }
 
+        self.decorations.adjust_for_edit(&range, new_text.len());
         if let Some(diagnostics) = self.mode.diagnostics_mut() {
             diagnostics.reset(&self.text)
         }
@@ -2937,8 +3076,11 @@ impl EntityInputHandler for InputState {
             self.ime_marked_range = Some((range.start..range.start + new_text.len()).into());
             self.selected_range = new_selected_range_utf16
                 .as_ref()
-                .map(|range_utf16| self.range_from_utf16(range_utf16))
-                .map(|new_range| new_range.start + range.start..new_range.end + range.end)
+                .map(|range_utf16| {
+                    let new_text = Rope::from(new_text);
+                    range.start + new_text.offset_utf16_to_offset(range_utf16.start)
+                        ..range.start + new_text.offset_utf16_to_offset(range_utf16.end)
+                })
                 .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len())
                 .into();
         }
@@ -3065,6 +3207,7 @@ impl Render for InputState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::theme::Theme;
     use rgpui::{TestAppContext, VisualTestContext};
 
@@ -3575,6 +3718,225 @@ ORDER BY id
                     px(0.),
                     "long value should display from its start, not its tail"
                 );
+            });
+        });
+    }
+
+    /// `replace_all` on a single-line input replaces the text, puts the
+    /// caret at the end, and — like `set_value` — snaps the view back to the
+    /// start so a long value shows its beginning instead of its tail.
+    #[rgpui::test]
+    fn test_replace_all_single_line(cx: &mut TestAppContext) {
+        let input_view = InputView::build(cx, |state| state);
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        // Long enough to overflow any reasonable single-line input width.
+        let value = format!("https://example.com/v1/users?{}", "x=1&".repeat(120));
+        let len = value.len();
+
+        // Right after `replace_all`, before the next paint consumes the
+        // deferred offset: caret is at the end, and the view is forced back
+        // to the start.
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_value("hello", window, cx);
+                state.replace_all(value.clone(), window, cx);
+                assert_eq!(state.value(), value);
+                assert_eq!(
+                    state.selected_range,
+                    Selection::new(len, len),
+                    "single-line caret should be at the end after replace_all"
+                );
+                assert_eq!(
+                    state.scroll_handle.offset(),
+                    point(px(0.), px(0.)),
+                    "the scroll offset should be reset to the start"
+                );
+                assert_eq!(
+                    state.deferred_scroll_offset,
+                    Some(point(px(0.), px(0.))),
+                    "single-line should set a deferred scroll offset to keep the start visible"
+                );
+            });
+        });
+
+        // After a paint, the steady-state view stays at the start (x == 0)
+        // even though the caret is at the far end.
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            input.read_with(cx, |state, _| {
+                assert!(
+                    state.scroll_size.width > state.input_bounds.size.width,
+                    "value must overflow the input width or this test is vacuous"
+                );
+                assert_eq!(
+                    state.scroll_handle.offset().x,
+                    px(0.),
+                    "long value should display from its start, not its tail"
+                );
+            });
+        });
+    }
+
+    #[rgpui::test]
+    fn test_single_line_removes_newlines(cx: &mut TestAppContext) {
+        let input_view = InputView::build(cx, |state| state.default_value("default\nvalue"));
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                assert_eq!(state.value(), "defaultvalue");
+
+                state.set_value("first\nsecond\r\nthird\rfourth", window, cx);
+                assert_eq!(state.value(), "firstsecondthirdfourth");
+
+                state.set_value("", window, cx);
+                state.insert("a\nb", window, cx);
+                assert_eq!(state.value(), "ab");
+            });
+
+            cx.write_to_clipboard(ClipboardItem::new_string("a\r\nb\nc\rd".to_string()));
+            input.update(cx, |state, cx| {
+                state.set_value("", window, cx);
+                state.paste(&Paste, window, cx);
+                assert_eq!(state.value(), "abcd");
+            });
+        });
+
+        cx.run_until_parked();
+    }
+
+    /// `replace_all` on a multi-line (non-code-editor) input clears the
+    /// selection to `0..0` and resets the scroll offset, but does not set a
+    /// deferred scroll offset (single-line only).
+    #[rgpui::test]
+    fn test_replace_all_multi_line(cx: &mut TestAppContext) {
+        let input_view = InputView::build(cx, |state| state.multi_line(true));
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_value("foo\nbar", window, cx);
+                state.replace_all("baz\nqux", window, cx);
+                assert_eq!(state.value(), "baz\nqux");
+                assert_eq!(
+                    state.selected_range,
+                    Selection::new(0, 0),
+                    "multi-line selection should be cleared after replace_all"
+                );
+                assert_eq!(
+                    state.scroll_handle.offset(),
+                    point(px(0.), px(0.)),
+                    "the scroll offset should be reset to the start"
+                );
+                assert!(
+                    state.deferred_scroll_offset.is_none(),
+                    "multi-line should not set a deferred scroll offset"
+                );
+            });
+        });
+    }
+
+    /// Unlike `set_value`, `replace_all` records the change so the user can
+    /// undo it back to the previous text and redo to the new text.
+    #[rgpui::test]
+    fn test_replace_all_preserves_undo_history(cx: &mut TestAppContext) {
+        let input_view = InputView::build(cx, |state| state);
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                // Seed with a value and clear history so the baseline is clean.
+                state.set_value("first", window, cx);
+                assert!(
+                    state.history.undos().is_empty(),
+                    "history should be empty after set_value"
+                );
+
+                // replace_all records a single undoable change.
+                state.replace_all("second", window, cx);
+                assert_eq!(state.value(), "second");
+                assert!(
+                    !state.history.undos().is_empty(),
+                    "replace_all should record an undo step"
+                );
+
+                // Undo restores the previous text.
+                state.undo(&Undo, window, cx);
+                assert_eq!(state.value(), "first");
+
+                // Redo reapplies the replacement.
+                state.redo(&Redo, window, cx);
+                assert_eq!(state.value(), "second");
+            });
+        });
+    }
+
+    /// `replace_all` on a code editor marks a pending update and resets LSP
+    /// state, so diagnostics/completions refresh against the new text.
+    #[rgpui::test]
+    fn test_replace_all_code_editor(cx: &mut TestAppContext) {
+        let input_view = InputView::new(cx);
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                // Plant a pending-update flag and some LSP state to verify reset.
+                state.set_value("select 1", window, cx);
+                state._pending_update = false;
+
+                state.replace_all("select 2", window, cx);
+                assert_eq!(state.value(), "select 2");
+                assert!(
+                    state._pending_update,
+                    "replace_all on a code editor should request a pending update"
+                );
+            });
+        });
+    }
+
+    #[rgpui::test]
+    fn test_set_selected_range(cx: &mut TestAppContext) {
+        let input_view = InputView::build(cx, |state| state.default_value("hello world"));
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        cx.update(|_, cx| {
+            input.update(cx, |s, cx| {
+                s.set_selected_range(0..5, cx);
+                assert_eq!(s.selected_range(), 0..5);
+                assert_eq!(s.selected_text().to_string(), "hello");
+
+                s.set_selected_range(6..11, cx);
+                assert_eq!(s.selected_text().to_string(), "world");
+
+                // clamped + collapsed
+                s.set_selected_range(100..100, cx);
+                assert_eq!(s.selected_range(), 11..11);
+            });
+        });
+    }
+
+    #[rgpui::test]
+    fn test_ime_selection_is_relative_to_replacement_start(cx: &mut TestAppContext) {
+        let input_view = InputView::build(cx, |state| state.default_value("你好 "));
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_selected_range(7..7, cx);
+                state.replace_and_mark_text_in_range(None, "s", Some(1..1), window, cx);
+                state.replace_and_mark_text_in_range(None, "sh", Some(2..2), window, cx);
+
+                assert_eq!(state.value(), "你好 sh");
+                assert_eq!(state.selected_range(), 9..9);
+                assert_eq!(state.ime_marked_range, Some((7..9).into()));
             });
         });
     }
