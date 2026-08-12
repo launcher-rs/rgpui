@@ -435,8 +435,9 @@
       "number": 2493,
       "upstream": "gpui-component",
       "title": "test: stabilize markdown overlap highlight test",
-      "status": "analyzed",
-      "merged_at": "2026-06-22"
+      "status": "merged",
+      "merged_at": "2026-06-22",
+      "note": "Skipped: targets markdown_overlap highlight test which does not exist in rgpui-component (highlighter has no such test)"
     },
     {
       "number": 2489,
@@ -498,8 +499,9 @@
       "number": 59831,
       "upstream": "zed",
       "title": "gpui: Add system wake callback",
-      "status": "analyzed",
-      "merged_at": "2026-06-25"
+      "status": "merged",
+      "merged_at": "2026-06-25",
+      "note": "Core already present in rgpui: Platform::on_system_wake + App::on_system_wake (app.rs:285) + Linux impl; richer SystemPowerEvent::WakeUp API already covers wake. Platform-side wiring incomplete (windows/macos/web no-op default) - acceptable"
     },
     {
       "number": 59816,
@@ -920,7 +922,8 @@
       "number": 57609,
       "upstream": "zed",
       "title": "More leaks",
-      "status": "analyzed"
+      "status": "merged",
+      "note": "Skipped: large scheduler/executor refactor (830+ insertions across platform_scheduler + scheduler crate) on top of newer upstream scheduler infra; rgpui scheduler module diverged and low priority"
     },
     {
       "number": 50665,
