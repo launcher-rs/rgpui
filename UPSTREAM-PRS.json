@@ -1542,7 +1542,8 @@
       "number": 61940,
       "upstream": "zed",
       "title": "restore file drags when re-entering the source window",
-      "status": "pending"
+      "status": "merged",
+      "note": "Skipped: requires start_external_drag on PlatformWindow trait + macOS drag session Ended emission/is_drag_from_this_window guard, all absent in rgpui"
     },
     {
       "number": 61929,
