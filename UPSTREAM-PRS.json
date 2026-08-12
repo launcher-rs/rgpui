@@ -1556,7 +1556,8 @@
       "number": 58803,
       "upstream": "zed",
       "title": "image texture leak cleanup",
-      "status": "pending"
+      "status": "merged",
+      "note": "Applied: PlatformAtlas.contains (test) + TestAtlas impl + Window::has_image_atlas_entry; image_viewer crate not ported"
     },
     {
       "number": 61883,

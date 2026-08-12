@@ -433,4 +433,8 @@ impl PlatformAtlas for TestAtlas {
         let mut state = self.0.lock();
         state.tiles.remove(key);
     }
+
+    fn contains(&self, key: &AtlasKey) -> bool {
+        self.0.lock().tiles.contains_key(key)
+    }
 }
