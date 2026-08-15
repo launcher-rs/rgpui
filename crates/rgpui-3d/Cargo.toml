@@ -3,7 +3,7 @@ name = "rgpui-3d"
 description = "scenix 3D 渲染引擎的 rgpui 集成，支持 3D 场景渲染和合成"
 publish=true
 license = "Apache-2.0"
-version = "0.4.2"
+version = "0.5.0"
 edition.workspace = true
 repository = "https://github.com/launcher-rs/rgpui"
 
