@@ -148,3 +148,9 @@ StyledExt（1.2 步骤）使用 `cx.theme()`，依赖 `ActiveTheme` trait 已在
 ### 8. schema.rs 测试依赖外部主题文件（已处理）
 
 原 `test_aurora_theme_parses_gradient_backgrounds` 测试依赖 `../../../../themes/aurora.json`（存在于 rgpui-component 但不在 rgpui），已**删除**该测试。若 rgpui 未来有自定义主题目录，可恢复此测试。
+
+### 9. Button 依赖 Tooltip → Root 全局系统（延迟处理）
+
+Button（2.3）依赖 `managed_tooltip`（`ManagedTooltipExt`，tooltip.rs 内 pub(crate)），而 Tooltip 又依赖 Root 全局容器系统、animation（Transition）、Kbd、Text 等大量未移植组件。
+
+**决策**：先移植独立的基础组件（Checkbox/Switch/Slider 等，不依赖 Tooltip），Tooltip/Root 系统留待基础组件完成后单独处理，再回来完成 Button 的 tooltip 集成。已移植的 Button 前置依赖：FocusableExt、Caret、Icon、StyleSized、tokens 系统均已就绪。
