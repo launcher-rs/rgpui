@@ -106,7 +106,7 @@ PlatformWindow trait 关键方法:
 
 ### 问题背景
 
-Windows 下 `cargo check` 只编译 `#[cfg(target_os = "windows")]` 和通用代码，`#[cfg(target_os = "macos")]` 和 `#[cfg(target_os = "linux")]` 中的代码不会被编译。合并上游 PR 后容易把 Linux/macOS 代码弄坏。
+Windows 下 `cargo check` 只编译 `#[cfg(target_os = "windows")]` 和通用代码，`#[cfg(target_os = "macos")]` 和 `#[cfg(target_os = "linux")]` 中的代码不会被编译，跨平台代码改动容易把 Linux/macOS 代码弄坏。
 
 ### 本地跨目标检查
 
@@ -158,63 +158,24 @@ CI 通过矩阵策略在三个平台分别运行，确保跨平台兼容性。
 
 `psm`/`stacker` 等 crate 依赖 C 编译器，Windows 上缺少对应平台（如 `x86_64-linux-gnu-gcc`、`cc` for macOS）的交叉编译工具链。真正的跨平台验证依赖 GitHub Actions 矩阵构建。
 
-## 上游 PR 合并
+## rgpui 独有的功能
 
-需要合并上游 PR 时，先读取 `.opencode/merge-upstream-workflow.md` 并按说明执行。
-
-- PR 状态追踪: `UPSTREAM-PRS.json`
-- 上游仓库规则: `.opencode/upstream-rules.json`
-
-### 防止 `rgpui-component` 旧目录被重建
-
-合并来自 `longbridge/gpui-component` 上游的 PR 时，以下废弃目录可能被重新创建在 `crates/` 根目录下：
-
-- `crates/rgpui-component/` — 旧版（已迁移至 `crates/rgpui-component-workspce/rgpui-component/`）
-- `crates/rgpui-component-macros/` — 旧版（已迁移至 `crates/rgpui-component-workspce/rgpui-component-macros/`）
-
-合并后必须执行以下检查：
-
-1. 确认 `crates/rgpui-component/` 和 `crates/rgpui-component-macros/` **不存在**。若被重建，立即删除
-2. 确认 `crates/rgpui-web/examples/hello_world_web/Cargo.toml` 和 `crates/rgpui-web/examples/components_web/Cargo.toml` 中的 `rgpui-component` 路径仍指向 `rgpui-component-workspce` 下的正确路径，未被上游 PR 覆盖为旧路径
-3. 运行 `cargo check --workspace` 确认编译无误
-
-### 上游独立 crate → rgpui 模块映射
-
-上游 zed 将多个 crate 拆为独立工作区 crate（`collections`、`sum_tree` 等），而 rgpui 将它们合并为 `rgpui` crate 内部的模块。合并 PR 时，`scripts/merge-upstream-pr.ps1` 通过 `content_mappings` 自动替换 `use` 路径。以下是关键映射：
-
-| 上游 `use <crate>::<item>` | rgpui 中的位置 | 说明 |
-|---|---|---|
-| `use collections::FxHashMap;` | `use crate::collections::FxHashMap;` | 根级 `pub mod collections;`，文件在 `rgpui/src/collections.rs` |
-| `use sum_tree::SumTree;` | `use crate::sum_tree::SumTree;` | 根级 `pub mod sum_tree;`，文件在 `rgpui/src/sum_tree.rs` |
-| `use scheduler::Scheduler;` | `use crate::scheduler::Scheduler;` | 根级 `pub mod scheduler;`，文件在 `rgpui/src/scheduler.rs` |
-| `use refineable::Refineable;` | `use crate::refineable::Refineable;` | 根级 `pub mod refineable;`，目录在 `rgpui/src/refineable/` |
-| `use http_client::HttpClient;` | `use crate::http_client::HttpClient;` | 根级 `pub mod http_client;`，目录在 `rgpui/src/http_client/` |
-| `use gpui_util::ResultExt;` | `use rgpui::ResultExt;` | `gpui_util` → `crate::rgpui_util`（私有模块），关键项通过 `pub use rgpui_util::...` 重导出到 `rgpui::` |
-| `use gpui_util::defer;` | `use rgpui::defer;` | 同上 |
-| `use gpui_macros::*;` | `use rgpui_macros::*;` | 独立 proc-macro crate，路径不变 |
-
-**关于 `gpui_util` 的重要说明**：内容映射 `"gpui_util": "rgpui_util"` 在 `rgpui` crate 内部代码中正确，但在**平台 crate**（`rgpui-windows`、`rgpui-linux`、`rgpui-macos`）中，`rgpui_util` 不是一个可访问的 crate 或路径。平台 crate 应使用 `use rgpui::ResultExt` 等通过 `rgpui` crate 重导出的名称。合并后需手动修正此导入。
-
-**关于 `Cargo.toml`**：上游 `Cargo.toml` 中包含 `collections.workspace = true`、`sum_tree.workspace = true` 等依赖声明，这些在 rgpui 中不存在对应工作区 crate。合并 PR 时**跳过修改 Cargo.toml**，仅在代码中手动适配依赖项的引用方式。
-
-## rgpui 独有的功能（合并上游 PR 时需保护）
-
-rgpui 在上游 gpui 基础上增加了大量独有功能。合并上游 PR 后必须检查这些功能是否被破坏。
+rgpui 在上游 gpui 基础上增加了大量独有功能，是项目的差异化价值所在，任何重构不得移除这些功能。
 
 ### 关键字段/类型（platform.rs）
 
-| 项目 | 位置 | 说明 | 合并风险 |
-|------|------|------|----------|
-| `mouse_passthrough: bool` | `WindowOptions` + `WindowParams` | 鼠标事件穿透（桌面宠物覆盖层） | 上游 PR 可能移除/重命名此字段 |
-| `WindowKind::Overlay` | 窗口类型枚举 | 覆盖层窗口（始终置顶、无边框） | 上游 PR 可能删除此变体 |
-| `MicaBackdrop` / `MicaAltBackdrop` | `WindowBackgroundAppearance` | Windows 11 Mica 材质 | 上游无此变体 |
-| `Tray` / `TrayMenuItem` / `TrayIconEvent` / `TrayIconData` | `tray.rs` 公开类型 | 托盘系统 | 上游无此功能 |
-| `SystemPowerEvent` / `PowerSaveBlockerKind` / `OsInfo` / `PermissionType` / `NetworkStatus` / `MediaKeyEvent` / `BiometricStatus` / `AttentionType` / `FocusedWindowInfo` / `WindowPosition` | 平台相关类型 | 系统集成 API | 上游不存�?/在 |
-| `single_instance` | `single_instance.rs` 模块 | 单实例进程管理 | 上游无此功能 |
+| 项目 | 位置 | 说明 |
+|------|------|------|
+| `mouse_passthrough: bool` | `WindowOptions` + `WindowParams` | 鼠标事件穿透（桌面宠物覆盖层） |
+| `WindowKind::Overlay` | 窗口类型枚举 | 覆盖层窗口（始终置顶、无边框） |
+| `MicaBackdrop` / `MicaAltBackdrop` | `WindowBackgroundAppearance` | Windows 11 Mica 材质 |
+| `Tray` / `TrayMenuItem` / `TrayIconEvent` / `TrayIconData` | `tray.rs` 公开类型 | 托盘系统 |
+| `SystemPowerEvent` / `PowerSaveBlockerKind` / `OsInfo` / `PermissionType` / `NetworkStatus` / `MediaKeyEvent` / `BiometricStatus` / `AttentionType` / `FocusedWindowInfo` / `WindowPosition` | 平台相关类型 | 系统集成 API |
+| `single_instance` | `single_instance.rs` 模块 | 单实例进程管理 |
 
 ### 自定义 PlatformWindow 方法
 
-以下 `PlatformWindow` trait 方法是 rgpui 独有的，合并 PR 时不能删除：
+以下 `PlatformWindow` trait 方法是 rgpui 自有 API：
 
 ```rust
 fn hide(&self) {}                                              // 隐藏窗口（从任务栏移除）
@@ -268,12 +229,12 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 - `set_msaa_sample_count(u32)`, `set_msaa_enabled(bool)`
 - 离线渲染路径（无 swapchain，MSAA 通过 resolve texture 读回 CPU）
 
-### 保护清单（合并 PR 后检查）
+### 完整性检查清单
 
-合并上游 PR 后，必须检查以下内容未被破坏：
+任何重构/提交前，应检查以下内容保持完整：
 
 1. `cargo check --workspace` 通过
-2. `mouse_passthrough` 字段仍存在于 `WindowOptions` 和 `WindowParams`（`platform.rs`）
+2. `mouse_passthrough` 字段存在于 `WindowOptions` 和 `WindowParams`（`platform.rs`）
 3. `WindowKind::Overlay` 变体存在
 4. `PlatformWindow` trait 的所有自定义方法都在
 5. `Platform` trait 的所有自定义方法都在
