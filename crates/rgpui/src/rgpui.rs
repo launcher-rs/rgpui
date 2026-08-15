@@ -308,7 +308,8 @@ pub use gestures::*;
 pub use global::*;
 /// 重导出 rgpui_macros 中的过程宏（AppContext、IntoElement、Render 等）
 pub use rgpui_macros::{
-    AppContext, IntoElement, Render, VisualContext, bench, property_test, register_action, test,
+    AppContext, IntoElement, Render, VisualContext, bench, icon_named, property_test,
+    register_action, test,
 };
 
 /// 定义用于标注了 `#[rgpui::bench]` 的基准测试的 Criterion 基准测试组。

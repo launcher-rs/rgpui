@@ -5,6 +5,7 @@ mod derive_into_element;
 mod derive_refineable;
 mod derive_render;
 mod derive_visual_context;
+mod icon_named;
 mod property_test;
 mod register_action;
 mod styles;
@@ -254,6 +255,14 @@ pub fn border_style_methods(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn box_shadow_style_methods(input: TokenStream) -> TokenStream {
     styles::box_shadow_style_methods(input)
+}
+
+/// `icon_named!` 宏 - 通过扫描 SVG 目录生成图标枚举及其 `IconNamed` 实现。
+///
+/// 生成的枚举提供 `path()`（资源路径字符串）与 `bytes()`（编译期嵌入字节）。
+#[proc_macro]
+pub fn icon_named(input: TokenStream) -> TokenStream {
+    icon_named::icon_named_impl(input)
 }
 
 /// `#[rgpui::bench]` 标注一个使用 GPUI 支持的 Criterion 基准测试。
