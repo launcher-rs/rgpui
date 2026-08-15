@@ -7603,6 +7603,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_json_lenient",
+ "serde_repr",
  "serde_urlencoded",
  "sha2 0.11.0",
  "shlex 1.3.0",

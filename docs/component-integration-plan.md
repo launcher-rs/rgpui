@@ -22,12 +22,12 @@
 
 | 步骤 | 内容 | 来源 | 状态 |
 |------|------|------|------|
-| 1.1 | `Size` 枚举（xsmall/small/medium/large） | rgpui-component/src/styled.rs | ☑（改名 `ElementSize`，避免与 geometry::Size 冲突） |
-| 1.2 | `StyledExt` trait（h_flex/v_flex/paddings/margins/corner_radii/popover_style 等） | rgpui-component/src/styled.rs | ☐ |
+| 1.1 | `ElementSize` 枚举（原 Size，改名避免与 geometry::Size 冲突） | rgpui-component/src/styled.rs | ☑ |
+| 1.4 | `Colorize` trait + 颜色常量函数（hsl/ColorName/try_parse_*） | rgpui-component/src/theme/color.rs | ☑（依赖顺序调整为 1.4 提前） |
+| 1.5 | `ActiveTheme` trait + `Theme` 结构 + 主题注册机制 | rgpui-component/src/theme/ | ☑（含 highlight.rs 纯数据结构、settings.rs 轻量设置类型） |
+| 1.6 | 默认主题 JSON（default-theme.json / default-colors.json） | rgpui-component/src/theme/ | ☑（随 1.5 一并移植） |
+| 1.2 | `StyledExt` trait（h_flex/v_flex/paddings/margins/corner_radii/popover_style 等） | rgpui-component/src/styled.rs | ☐（依赖 ActiveTheme，待 1.5 完成后进行） |
 | 1.3 | `Selectable` / `Disableable` / `Sizable` / `StyleSized` trait | rgpui-component/src/styled.rs | ☐ |
-| 1.4 | `Colorize` trait（opacity/lighten/darken/mix/mix_oklab/to_hex 等颜色工具） | rgpui-component/src/theme/color.rs | ☐ |
-| 1.5 | `ActiveTheme` trait + `Theme` 结构 + 主题注册机制 | rgpui-component/src/theme/mod.rs | ☐ |
-| 1.6 | 默认主题 JSON（default-theme.json / default-colors.json） | rgpui-component/src/theme/ | ☐ |
 | 1.7 | 布局辅助 `h_flex()` / `v_flex()` | rgpui-component/src/styled.rs | ☐ |
 
 ### 阶段二：基础组件（轻依赖、应用必需）
@@ -89,3 +89,62 @@
 
 - 合并采用**手动移植**（保留中文注释与 rgpui 风格），不使用整文件覆盖。
 - 若某组件依赖尚未并入的模块，先并入其依赖（按依赖顺序微调步骤）。
+
+## 已发现的问题（移植过程中记录，待后续修复）
+
+### 1. 颜色函数命名冲突（已解决，属于架构约束）
+
+rgpui 核心 `color.rs` 已定义无参标准色函数（`black()`/`white()`/`red()` 等），而 rgpui-component 的 `theme/color.rs` 定义了**带参色板函数**（`red(scale)`）+ **色阶函数**（`red_50()`~`red_950()`）。
+
+处理结果：
+- theme 的 `black()`/`white()` 与核心语义重复，已**删除**，统一用核心版本。
+- theme 的裸色名带参版 `red(scale)` 设为 `pub(crate)`（不导出到根，避免与核心 `red()` 冲突），只能通过 `rgpui::theme::color::red(500)` 访问。
+- 色阶函数 `red_500()` 等不与核心冲突，但**未在根命名空间导出**（通过 `theme::color` 模块路径访问）。
+
+> 未来移植组件时，裸色名带参版（`red(500)` 这种）需改为 `theme::color::red(500)` 或色阶函数形式。建议在 4.x 收尾时统一处理。
+
+### 2. `FakeHttpClient` 测试编译失败（既有问题，非移植引入）
+
+`cargo test -p rgpui --lib`（不启用 `test-support` feature）会报错：
+
+```
+cannot find `FakeHttpClient` in `http_client`
+```
+
+- `FakeHttpClient` 定义在 `http_client/mod.rs:367`，受 `#[cfg(feature = "test-support")]` 门控。
+- `app/test_context.rs:132` 无条件引用它。
+- **结论**：既有 bug（0.5.0 发布前已存在），与本整合无关。修复方式：为 `app/test_context.rs`（及引用 FakeHttpClient 的测试文件）添加 `#[cfg(feature = "test-support")]` 门控，或让 `test-support` 成为默认 feature。
+
+### 3. theme 模块裁剪了 notify 目录监听功能
+
+`registry.rs` 的 `watch_dir`/`_watch_themes_dir`/`reload_themes`/`reload` 依赖 `notify` crate（主题目录热重载）。rgpui 核心无 `notify` 依赖，**已裁剪**这四个函数。
+
+> 若未来需要主题目录热重载，可：
+> 1. 为 rgpui 添加 `notify` 依赖（optional feature），或
+> 2. 在 rgpui-component 层保留该功能（通过 rgpui 公开的 `ThemeRegistry` API 扩展）。
+
+### 4. `tracing::info!` 在 init 回调中引用（`Reload active theme`）
+
+`registry.rs::init` 中 `observe_global::<ThemeRegistry>` 回调使用了 `tracing::info!`。rgpui 已有 `tracing` 依赖，无需处理。
+
+### 5. 主题系统的 `HighlightTheme` 为纯数据结构
+
+`theme/highlight.rs` 只移植了 `HighlightTheme`/`HighlightThemeStyle`/`SyntaxColors`/`StatusColors`/`ThemeStyle` 等**纯 JSON schema 数据结构**（无 tree-sitter 依赖）。`LanguageRegistry`（代码高亮注册表）与高亮渲染逻辑未移植，保留在 rgpui-component。
+
+> 这与整合原则一致：语法高亮不并入 rgpui。主题系统依赖的仅是高亮主题的**数据结构**，用于主题 JSON 解析与颜色访问。
+
+### 6. 下一步注意：StyledExt 的 `cx.theme()` 需要 ActiveTheme 在根命名空间可见
+
+StyledExt（1.2 步骤）使用 `cx.theme()`，依赖 `ActiveTheme` trait 已在根导出（rgpui.rs 已 `pub use theme::{ActiveTheme, ...}`）。同时 `focused_border`/`popover_style` 使用 `cx.theme().ring`/`tokens` 等 Theme 字段，均已就绪。
+
+### 7. 既有测试失败：`elements::img` 与 `elements::list`（非移植引入）
+
+`cargo test -p rgpui --features test-support --lib` 有 26 个失败测试，全部集中在：
+- `elements::img::tests::*`（如 `stale_frame_index_is_clamped_when_image_changes`）
+- `elements::list::test::*`（如 `test_autoscroll_above_item_top_renders_items_above`）
+
+**验证**：在移植主题（1.5）之前的提交 `3c2be44057` 上，这些测试同样失败。**结论**：既有问题，与组件整合无关。可能原因：运行环境（Windows 无 GPU）或上游代码在测试环境下的行为差异。后续可单独排查。
+
+### 8. schema.rs 测试依赖外部主题文件（已处理）
+
+原 `test_aurora_theme_parses_gradient_backgrounds` 测试依赖 `../../../../themes/aurora.json`（存在于 rgpui-component 但不在 rgpui），已**删除**该测试。若 rgpui 未来有自定义主题目录，可恢复此测试。

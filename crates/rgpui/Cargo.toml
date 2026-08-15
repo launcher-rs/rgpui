@@ -90,6 +90,7 @@ schemars.workspace = true
 seahash = "4.1"
 serde.workspace = true
 serde_json.workspace = true
+serde_repr = "0.1"
 slotmap.workspace = true
 smallvec.workspace = true
 smol_str = "0.3.6"
