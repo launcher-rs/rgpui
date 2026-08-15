@@ -1,6 +1,7 @@
 mod anchored;
 mod animation;
 mod canvas;
+mod caret;
 mod container_query;
 mod deferred;
 mod div;
@@ -17,6 +18,7 @@ mod uniform_list;
 pub use anchored::*;
 pub use animation::*;
 pub use canvas::*;
+pub use caret::*;
 pub use container_query::*;
 pub use deferred::*;
 pub use div::*;
