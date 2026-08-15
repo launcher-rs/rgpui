@@ -153,6 +153,9 @@ mod style;
 /// 样式化 trait - 为元素添加链式样式配置的能力
 mod styled;
 
+/// 尺寸系统 - 定义统一的元素尺寸规格（Size 枚举）
+mod size;
+
 /// 订阅系统 - 观察者模式的事件订阅与通知机制
 mod subscription;
 
@@ -328,6 +331,7 @@ use std::{any::Any, future::Future};
 pub use style::*;
 /// 重导出样式化 trait
 pub use styled::*;
+pub use size::*;
 /// 重导出订阅系统类型（Subscription、SubscriberSet 等）
 pub use subscription::*;
 /// 重导出 SVG 渲染器相关类型
