@@ -64,6 +64,9 @@ mod color;
 /// GPUI 默认使用的颜色常量和主题定义
 pub mod colors;
 
+/// 主题系统 - 颜色工具、色板与主题注册机制
+mod theme;
+
 /// 元素系统核心 - 定义 Element trait 和元素树构建机制
 mod element;
 
@@ -246,6 +249,7 @@ pub use asset_cache::*;
 pub use assets::*;
 /// 重导出颜色类型（Hsla、Rgba、HslOverride 等）
 pub use color::*;
+pub use theme::color::{hsl, Colorize, ColorName, try_parse_background, try_parse_color};
 /// 重导出 ctor 宏，用于在程序启动前执行初始化函数
 pub use ctor::ctor;
 /// 重导出元素系统核心类型
