@@ -1592,7 +1592,7 @@
       "note": "wasm_thread git fork already present in rgpui-web Cargo.toml - already applied"
     },
     {
-"number": 61782,
+      "number": 61782,
       "upstream": "zed",
       "title": "gpui_web: Atomics.waitAsync fallback to single-threaded dispatcher",
       "status": "merged",
@@ -2045,6 +2045,186 @@
       "title": "scroll: Fix markdown table horizontal scroll leaking into vertical body scroll",
       "status": "merged",
       "merged_at": "2026-08-12"
+    },
+    {
+      "number": 2729,
+      "upstream": "gpui-component",
+      "title": "text: extend TextView selection on shift-click",
+      "status": "pending"
+    },
+    {
+      "number": 2727,
+      "upstream": "gpui-component",
+      "title": "theme: Let an application turn the focus ring off",
+      "status": "pending"
+    },
+    {
+      "number": 2726,
+      "upstream": "gpui-component",
+      "title": "input: Split themed styles out of StyledExt, and publish the focus ring",
+      "status": "pending"
+    },
+    {
+      "number": 2724,
+      "upstream": "gpui-component",
+      "title": "input: Let Textarea and Editor take a context menu builder",
+      "status": "pending"
+    },
+    {
+      "number": 2716,
+      "upstream": "gpui-component",
+      "title": "input: Make the three input states one engine, keyed by kind",
+      "status": "pending"
+    },
+    {
+      "number": 2663,
+      "upstream": "gpui-component",
+      "title": "combobox: expose search query accessors",
+      "status": "pending"
+    },
+    {
+      "number": 2709,
+      "upstream": "gpui-component",
+      "title": "input: Move focus ring styling into UI",
+      "status": "pending"
+    },
+    {
+      "number": 2708,
+      "upstream": "gpui-component",
+      "title": "text: Load images from local paths in `TextView`",
+      "status": "pending"
+    },
+    {
+      "number": 2707,
+      "upstream": "gpui-component",
+      "title": "notification: Add configurable width and per-notification placement",
+      "status": "pending"
+    },
+    {
+      "number": 2706,
+      "upstream": "gpui-component",
+      "title": "base, ui: Close the pub-field seam types behind builders",
+      "status": "pending"
+    },
+    {
+      "number": 2705,
+      "upstream": "gpui-component",
+      "title": "input: Add readonly mode for Input, Textarea and Editor",
+      "status": "pending"
+    },
+    {
+      "number": 2701,
+      "upstream": "gpui-component",
+      "title": "chore: Fix theme refresh, popup layering, and title bar styling",
+      "status": "pending"
+    },
+    {
+      "number": 2578,
+      "upstream": "gpui-component",
+      "title": "tab: Add max_width to TabBar",
+      "status": "pending"
+    },
+    {
+      "number": 2689,
+      "upstream": "gpui-component",
+      "title": "highlighter: Bound non-combined injection parsing",
+      "status": "pending"
+    },
+    {
+      "number": 2695,
+      "upstream": "gpui-component",
+      "title": "story: Refine component story gallery",
+      "status": "pending"
+    },
+    {
+      "number": 2692,
+      "upstream": "gpui-component",
+      "title": "docs: split text editing guides and add WASM highlighting",
+      "status": "pending"
+    },
+    {
+      "number": 2691,
+      "upstream": "gpui-component",
+      "title": "input: Split Input, Textarea, and Editor APIs",
+      "status": "pending"
+    },
+    {
+      "number": 2677,
+      "upstream": "gpui-component",
+      "title": "refactor: introduce the internal gpui-base architecture",
+      "status": "pending"
+    },
+    {
+      "number": 62259,
+      "upstream": "zed",
+      "title": "acp: Poll the client connection future on a dedicated thread",
+      "status": "merged",
+      "merged_at": "2026-08-15",
+      "note": "Skipped: requires Scheduler::spawn_dedicated + LocalExecutor infra absent in rgpui; acp-specific feature"
+    },
+    {
+      "number": 62649,
+      "upstream": "zed",
+      "title": "Extract shared Apple renderer from gpui_macos",
+      "status": "merged",
+      "merged_at": "2026-08-15",
+      "note": "Skipped: extracts shared gpui_apple crate (new crate not mapped, macOS-only refactor)"
+    },
+    {
+      "number": 62496,
+      "upstream": "zed",
+      "title": "gpui: Unify performance tracking under the profiler feature",
+      "status": "merged",
+      "merged_at": "2026-08-15",
+      "note": "Skipped: profiler unification refactor (714 lines profiler.rs + 405 window.rs) on diverged code"
+    },
+    {
+      "number": 62478,
+      "upstream": "zed",
+      "title": "Properly measure invisible character replacement",
+      "status": "merged",
+      "merged_at": "2026-08-15",
+      "note": "Skipped: main change in editor crate (not ported); shared_string From<char> has no consumer in rgpui"
+    },
+    {
+      "number": 62587,
+      "upstream": "zed",
+      "title": "gpui: Settle benchmark app state between task iterations",
+      "status": "merged",
+      "merged_at": "2026-08-15",
+      "note": "Skipped: bench_context only, benchmark feature not ported"
+    },
+    {
+      "number": 62579,
+      "upstream": "zed",
+      "title": "gpui: Allow setting max FPS for `Animation`",
+      "status": "merged",
+      "merged_at": "2026-08-15",
+      "note": "Applied: Animation::with_max_fps + max_fps field + timer-driven re-render (manually applied, preserved Chinese comments)"
+    },
+    {
+      "number": 52319,
+      "upstream": "zed",
+      "title": "gpui: Add binary data support to `Svg` element",
+      "status": "merged",
+      "merged_at": "2026-08-15",
+      "note": "Applied: Svg::data() binary data support (manually applied)"
+    },
+    {
+      "number": 62538,
+      "upstream": "zed",
+      "title": "gpui: Add track_caller to gpui_util::log_err",
+      "status": "merged",
+      "merged_at": "2026-08-15",
+      "note": "Already present: rgpui result_ext.rs has #[track_caller] log_err/log_error_with_caller"
+    },
+    {
+      "number": 61773,
+      "upstream": "zed",
+      "title": "markdown: Auto-size table columns to content width",
+      "status": "merged",
+      "merged_at": "2026-08-15",
+      "note": "Skipped: markdown crate not ported; div.rs change is test-only using grid_cols_max_content absent in rgpui"
     }
   ]
 }

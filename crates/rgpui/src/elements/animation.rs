@@ -1,5 +1,5 @@
 use crate::scheduler::Instant;
-use std::{rc::Rc, time::Duration};
+use std::{cell::Cell, rc::Rc, time::Duration};
 
 use crate::{
     AnyElement, App, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
@@ -21,6 +21,9 @@ pub struct Animation {
     /// A function that takes a delta between 0 and 1 and returns a new delta
     /// between 0 and 1 based on the given easing function.
     pub easing: Rc<dyn Fn(f32) -> f32>,
+    /// 该动画每秒最多重新渲染的次数。
+    /// 当为 `None` 时，动画会在每一帧重新渲染。
+    pub max_fps: Option<f32>,
 }
 
 impl Animation {
@@ -32,6 +35,7 @@ impl Animation {
             oneshot: true,
             synced: false,
             easing: Rc::new(linear),
+            max_fps: None,
         }
     }
 
@@ -53,6 +57,13 @@ impl Animation {
     /// between 0 and 1
     pub fn with_easing(mut self, easing: impl Fn(f32) -> f32 + 'static) -> Self {
         self.easing = Rc::new(easing);
+        self
+    }
+
+    /// 限制该动画的渲染频率。不再每帧重渲染，而是安排在当前帧之后
+    /// `1 / max_fps` 秒再渲染。非有限或非正数的值会被忽略。
+    pub fn with_max_fps(mut self, max_fps: f32) -> Self {
+        self.max_fps = Some(max_fps);
         self
     }
 }
@@ -142,6 +153,9 @@ impl<E: IntoElement + 'static> IntoElement for AnimationElement<E> {
 struct AnimationState {
     start: Instant,
     animation_ix: usize,
+    /// 是否已安排了节流后的重渲染（参见 [`Animation::with_max_fps`]），
+    /// 以避免重叠渲染叠加多余的定时器。
+    delayed_frame_pending: Rc<Cell<bool>>,
 }
 
 impl<E: IntoElement + 'static> Element for AnimationElement<E> {
@@ -167,6 +181,7 @@ impl<E: IntoElement + 'static> Element for AnimationElement<E> {
             let mut state = state.unwrap_or_else(|| AnimationState {
                 start: Instant::now(),
                 animation_ix: 0,
+                delayed_frame_pending: Rc::new(Cell::new(false)),
             });
             let (animation_ix, delta, done) = if cx.reduce_motion() {
                 let animation_ix = self.animations.len() - 1;
@@ -216,7 +231,24 @@ impl<E: IntoElement + 'static> Element for AnimationElement<E> {
             let mut element = (self.animator)(element, animation_ix, delta).into_any_element();
 
             if !done {
-                window.request_animation_frame();
+                match self.animations[animation_ix].max_fps {
+                    Some(max_fps) if max_fps.is_finite() && max_fps > 0.0 => {
+                        if !state.delayed_frame_pending.get() {
+                            state.delayed_frame_pending.set(true);
+                            let delayed_frame_pending = state.delayed_frame_pending.clone();
+                            let view = window.current_view();
+                            let interval = Duration::from_secs_f32(1.0 / max_fps);
+                            window
+                                .spawn(cx, async move |cx| {
+                                    cx.background_executor().timer(interval).await;
+                                    delayed_frame_pending.set(false);
+                                    cx.update(move |_, cx| cx.notify(view)).ok();
+                                })
+                                .detach();
+                        }
+                    }
+                    _ => window.request_animation_frame(),
+                }
             }
 
             ((element.request_layout(window, cx), element), state)
@@ -318,6 +350,7 @@ mod tests {
 
     struct AnimationTestView {
         rendered_deltas: Rc<RefCell<Vec<f32>>>,
+        max_fps: Option<f32>,
     }
 
     struct SyncedAnimationTestView {
@@ -354,9 +387,17 @@ mod tests {
     impl Render for AnimationTestView {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
             let rendered_deltas = self.rendered_deltas.clone();
+            // 节流变体同步到共享时钟，因此 delta 跟随测试调度器的时钟
+            // 而不是墙钟时间。
+            let mut animation = Animation::new(Duration::from_secs(1));
+            if let Some(max_fps) = self.max_fps {
+                animation = animation.repeat_synced().with_max_fps(max_fps);
+            } else {
+                animation = animation.repeat();
+            }
             div().size_full().child(div().with_animation(
                 "repeating-animation",
-                Animation::new(Duration::from_secs(1)).repeat(),
+                animation,
                 move |this, delta| {
                     rendered_deltas.borrow_mut().push(delta);
                     this
@@ -368,19 +409,26 @@ mod tests {
     fn open_test_window(
         cx: &mut TestAppContext,
     ) -> (Rc<RefCell<Vec<f32>>>, WindowHandle<AnimationTestView>) {
+        open_test_window_with_max_fps(cx, None)
+    }
+
+    fn open_test_window_with_max_fps(
+        cx: &mut TestAppContext,
+        max_fps: Option<f32>,
+    ) -> (Rc<RefCell<Vec<f32>>>, WindowHandle<AnimationTestView>) {
         let rendered_deltas = Rc::new(RefCell::new(Vec::new()));
         let window = cx.open_window(size(px(100.), px(100.)), {
             let rendered_deltas = rendered_deltas.clone();
-            move |_, _| AnimationTestView { rendered_deltas }
+            move |_, _| AnimationTestView {
+                rendered_deltas,
+                max_fps,
+            }
         });
         cx.run_until_parked();
         (rendered_deltas, window)
     }
 
-    fn simulate_next_frame<V: Render>(
-        window: &WindowHandle<V>,
-        cx: &mut TestAppContext,
-    ) -> usize {
+    fn simulate_next_frame<V: Render>(window: &WindowHandle<V>, cx: &mut TestAppContext) -> usize {
         let callback_count = window
             .update(cx, |_, window, cx| window.simulate_next_frame(cx))
             .unwrap();
@@ -419,6 +467,38 @@ mod tests {
             assert_eq!(simulate_next_frame(&window, cx), 1);
             assert_eq!(rendered_deltas.borrow().len(), expected_frames);
         }
+    }
+
+    #[rgpui::test]
+    fn test_max_fps_schedules_timer_driven_frames(cx: &mut TestAppContext) {
+        let (rendered_deltas, window) = open_test_window_with_max_fps(cx, Some(10.0));
+
+        // 测试调度器的时钟在每次轮询时会轻微向前跳动，
+        // 因此与预期值做宽松比较。
+        let assert_deltas_approx_eq = |expected: &[f32]| {
+            let actual = rendered_deltas.borrow();
+            assert_eq!(actual.len(), expected.len(), "deltas: {actual:?}");
+            for (actual, expected) in actual.iter().zip(expected) {
+                assert!(
+                    (actual - expected).abs() < 1e-2,
+                    "expected {expected}, got {actual}"
+                );
+            }
+        };
+
+        assert_deltas_approx_eq(&[0.0]);
+
+        // 不会调度每帧回调；重渲染由定时器驱动。
+        assert_eq!(simulate_next_frame(&window, cx), 0);
+        assert_deltas_approx_eq(&[0.0]);
+
+        cx.executor().advance_clock(Duration::from_millis(105));
+        cx.run_until_parked();
+        assert_deltas_approx_eq(&[0.0, 0.105]);
+
+        cx.executor().advance_clock(Duration::from_millis(105));
+        cx.run_until_parked();
+        assert_deltas_approx_eq(&[0.0, 0.105, 0.21]);
     }
 
     #[rgpui::test]

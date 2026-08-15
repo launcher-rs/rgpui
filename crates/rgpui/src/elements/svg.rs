@@ -1,4 +1,9 @@
-use std::{fs, path::Path, sync::Arc};
+use std::{
+    fs,
+    hash::{Hash, Hasher},
+    path::Path,
+    sync::Arc,
+};
 
 use crate::ResultExt;
 use crate::{
@@ -17,6 +22,10 @@ pub struct Svg {
     path: Option<SharedString>,
     /// 直接文件系统路径（不经过 AssetSource）
     external_path: Option<SharedString>,
+    /// 原始 SVG 二进制数据
+    data: Option<Arc<[u8]>>,
+    /// 基于数据哈希生成的确定性缓存路径
+    data_path: Option<SharedString>,
 }
 
 /// 创建一个新的 SVG 元素。
@@ -27,6 +36,8 @@ pub fn svg() -> Svg {
         transformation: None,
         path: None,
         external_path: None,
+        data: None,
+        data_path: None,
     }
 }
 
@@ -40,6 +51,19 @@ impl Svg {
     /// 通过文件系统直接设置 SVG 文件的路径（不经过 AssetSource）。
     pub fn external_path(mut self, path: impl Into<SharedString>) -> Self {
         self.external_path = Some(path.into());
+        self
+    }
+
+    /// 设置此元素的原始 SVG 数据。
+    /// SVG 将直接从提供的字节渲染。
+    pub fn data(mut self, data: &[u8]) -> Self {
+        // 基于数据哈希生成确定性的唯一路径，用于缓存。
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        data.hash(&mut hasher);
+        let hash = hasher.finish();
+        let path = SharedString::from(format!("__binary_svg__{}", hash));
+        self.data = Some(Arc::from(data));
+        self.data_path = Some(path);
         self
     }
 
@@ -120,18 +144,27 @@ impl Element for Svg {
             window,
             cx,
             |style, window, cx| {
-                if let Some((path, color)) = self.path.as_ref().zip(style.text.color) {
-                    let transformation = self
-                        .transformation
-                        .as_ref()
-                        .map(|transformation| {
-                            transformation.into_matrix(bounds.center(), window.scale_factor())
-                        })
-                        .unwrap_or_default();
+                let transformation = self
+                    .transformation
+                    .as_ref()
+                    .map(|transformation| {
+                        transformation.into_matrix(bounds.center(), window.scale_factor())
+                    })
+                    .unwrap_or_default();
 
-                    window
-                        .paint_svg(bounds, path.clone(), None, transformation, color, cx)
-                        .log_err();
+                if let Some((data, path)) = self.data.as_ref().zip(self.data_path.as_ref()) {
+                    if let Some(color) = style.text.color {
+                        window
+                            .paint_svg(
+                                bounds,
+                                path.clone(),
+                                Some(&**data),
+                                transformation,
+                                color,
+                                cx,
+                            )
+                            .log_err();
+                    }
                 } else if let Some((path, color)) =
                     self.external_path.as_ref().zip(style.text.color)
                 {
@@ -142,14 +175,6 @@ impl Element for Svg {
                         return;
                     };
 
-                    let transformation = self
-                        .transformation
-                        .as_ref()
-                        .map(|transformation| {
-                            transformation.into_matrix(bounds.center(), window.scale_factor())
-                        })
-                        .unwrap_or_default();
-
                     window
                         .paint_svg(
                             bounds,
@@ -159,6 +184,10 @@ impl Element for Svg {
                             color,
                             cx,
                         )
+                        .log_err();
+                } else if let Some((path, color)) = self.path.as_ref().zip(style.text.color) {
+                    window
+                        .paint_svg(bounds, path.clone(), None, transformation, color, cx)
                         .log_err();
                 }
             },
