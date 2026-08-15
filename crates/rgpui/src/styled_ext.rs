@@ -1,6 +1,6 @@
 use crate::{
-    App, BoxShadow, Corners, DefiniteLength, Edges, FocusHandle, Hsla, Pixels, Refineable,
-    StyleRefinement, Styled, Window, point,
+    App, BoxShadow, Corners, DefiniteLength, Edges, ElementSize, FocusHandle, Hsla, Pixels,
+    Refineable, StyleRefinement, Styled, Window, point,
 };
 use crate::theme::{green_500, pink_500, red_500, blue_500, yellow_500};
 use crate::ActiveTheme;
@@ -189,4 +189,190 @@ pub fn h_flex() -> crate::Div {
 #[inline(always)]
 pub fn v_flex() -> crate::Div {
     crate::div().v_flex()
+}
+
+/// 定义可以被选中的元素 trait。
+#[allow(patterns_in_fns_without_body)]
+pub trait Selectable: Sized {
+    /// 设置元素的选中状态。
+    fn selected(mut self, selected: bool) -> Self;
+
+    /// 返回该元素是否处于选中状态。
+    fn is_selected(&self) -> bool;
+
+    /// 设置该元素是否为鼠标右键选中，默认不做任何操作。
+    fn secondary_selected(self, _: bool) -> Self {
+        self
+    }
+}
+
+/// 定义可以被禁用的元素 trait。
+#[allow(patterns_in_fns_without_body)]
+pub trait Disableable {
+    /// 设置元素的禁用状态。
+    fn disabled(mut self, disabled: bool) -> Self;
+}
+
+/// 定义元素尺寸的 trait，默认使用 `Size::Medium`。
+#[allow(patterns_in_fns_without_body)]
+pub trait Sizable: Sized {
+    /// 设置该元素的 [`ElementSize`]。
+    ///
+    /// 也可接收一个 `ButtonSize` 以转换为 `IconSize`，
+    /// 或一个 `Pixels` 来设置自定义尺寸：`px(30.)`
+    fn with_size(mut self, size: impl Into<ElementSize>) -> Self;
+
+    /// 设置为 `Size::XSmall`。
+    #[inline(always)]
+    fn xsmall(self) -> Self {
+        self.with_size(ElementSize::XSmall)
+    }
+
+    /// 设置为 `Size::Small`。
+    #[inline(always)]
+    fn small(self) -> Self {
+        self.with_size(ElementSize::Small)
+    }
+
+    /// 设置为 `Size::Large`。
+    #[inline(always)]
+    fn large(self) -> Self {
+        self.with_size(ElementSize::Large)
+    }
+}
+
+/// 应用元素尺寸相关样式的 trait。
+#[allow(unused)]
+pub trait StyleSized<T: Styled> {
+    /// 根据给定尺寸设置输入框文字大小。
+    fn input_text_size(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置输入框整体尺寸。
+    fn input_size(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置输入框左内边距。
+    fn input_pl(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置输入框右内边距。
+    fn input_pr(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置输入框水平内边距。
+    fn input_px(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置输入框垂直内边距。
+    fn input_py(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置输入框高度。
+    fn input_h(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置列表整体尺寸。
+    fn list_size(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置列表水平内边距。
+    fn list_px(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置列表垂直内边距。
+    fn list_py(self, size: ElementSize) -> Self;
+    /// 应用给定尺寸。
+    fn size_with(self, size: ElementSize) -> Self;
+    /// 应用表格单元格尺寸（字体大小、内边距）。
+    fn table_cell_size(self, size: ElementSize) -> Self;
+    /// 根据给定尺寸设置按钮文字大小。
+    fn button_text_size(self, size: ElementSize) -> Self;
+}
+
+impl<T: Styled> StyleSized<T> for T {
+    #[inline]
+    fn input_text_size(self, size: ElementSize) -> Self {
+        match size {
+            ElementSize::XSmall => self.text_xs(),
+            ElementSize::Small => self.text_sm(),
+            ElementSize::Medium => self.text_sm(),
+            ElementSize::Large => self.text_base(),
+            ElementSize::ElementSize(size) => self.text_size(size * 0.875),
+        }
+    }
+
+    #[inline]
+    fn input_size(self, size: ElementSize) -> Self {
+        self.input_px(size).input_py(size).input_h(size)
+    }
+
+    #[inline]
+    fn input_pl(self, size: ElementSize) -> Self {
+        self.pl(size.input_px())
+    }
+
+    #[inline]
+    fn input_pr(self, size: ElementSize) -> Self {
+        self.pr(size.input_px())
+    }
+
+    #[inline]
+    fn input_px(self, size: ElementSize) -> Self {
+        self.px(size.input_px())
+    }
+
+    #[inline]
+    fn input_py(self, size: ElementSize) -> Self {
+        self.py(size.input_py())
+    }
+
+    #[inline]
+    fn input_h(self, size: ElementSize) -> Self {
+        match size {
+            ElementSize::Large => self.h_11(),
+            ElementSize::Medium => self.h_8(),
+            ElementSize::Small => self.h_6(),
+            ElementSize::XSmall => self.h_5(),
+            _ => self.h_6(),
+        }
+    }
+
+    #[inline]
+    fn list_size(self, size: ElementSize) -> Self {
+        self.list_px(size).list_py(size).input_text_size(size)
+    }
+
+    #[inline]
+    fn list_px(self, size: ElementSize) -> Self {
+        match size {
+            ElementSize::Small => self.px_2(),
+            _ => self.px_3(),
+        }
+    }
+
+    #[inline]
+    fn list_py(self, size: ElementSize) -> Self {
+        match size {
+            ElementSize::Large => self.py_2(),
+            ElementSize::Medium => self.py_1(),
+            ElementSize::Small => self.py_0p5(),
+            _ => self.py_1(),
+        }
+    }
+
+    #[inline]
+    fn size_with(self, size: ElementSize) -> Self {
+        match size {
+            ElementSize::Large => self.size_11(),
+            ElementSize::Medium => self.size_8(),
+            ElementSize::Small => self.size_5(),
+            ElementSize::XSmall => self.size_4(),
+            ElementSize::ElementSize(size) => self.size(size),
+        }
+    }
+
+    #[inline]
+    fn table_cell_size(self, size: ElementSize) -> Self {
+        let padding = size.table_cell_padding();
+        match size {
+            ElementSize::XSmall => self.text_sm(),
+            ElementSize::Small => self.text_sm(),
+            _ => self,
+        }
+        .pl(padding.left)
+        .pr(padding.right)
+        .pt(padding.top)
+        .pb(padding.bottom)
+    }
+
+    fn button_text_size(self, size: ElementSize) -> Self {
+        match size {
+            ElementSize::XSmall => self.text_xs(),
+            ElementSize::Small => self.text_sm(),
+            _ => self.text_base(),
+        }
+    }
 }
