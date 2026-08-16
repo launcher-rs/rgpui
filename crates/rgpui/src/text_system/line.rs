@@ -247,6 +247,21 @@ impl ShapedLine {
 
         (left, right)
     }
+
+    /// 获取给定字符索引处的 x 位置（像素）。
+    pub fn x_for_index(&self, index: usize) -> Pixels {
+        self.layout.x_for_index(index)
+    }
+
+    /// 获取距离给定 x 坐标最近的字符边界索引。
+    pub fn closest_index_for_x(&self, x: Pixels) -> usize {
+        self.layout.closest_index_for_x(x)
+    }
+
+    /// 获取给定 x 坐标处字符的索引，越界时返回 None。
+    pub fn index_for_x(&self, x: Pixels) -> Option<usize> {
+        self.layout.index_for_x(x)
+    }
 }
 
 /// 由文本布局系统塑形、装饰和换行的文本行
