@@ -7,6 +7,7 @@ mod dropdown_menu;
 mod global_state;
 mod hover_card;
 mod menu_item;
+mod notification;
 mod popover;
 mod popup_menu;
 
@@ -16,6 +17,7 @@ pub use context_menu::{ContextMenu, ContextMenuExt, ContextMenuState};
 pub use dropdown_menu::DropdownMenu;
 pub use global_state::GlobalState;
 pub use hover_card::{HoverCard, HoverCardState};
+pub use notification::{Notification, NotificationId, NotificationList, NotificationType};
 pub use popover::Popover;
 pub use popup_menu::{PopupMenu, PopupMenuItem};
 
