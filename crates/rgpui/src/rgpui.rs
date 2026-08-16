@@ -189,11 +189,17 @@ mod text_system;
 /// 过渡动画系统 - Transition 组合动画、缓动函数与 Lerp 插值
 mod transition;
 
+/// 焦点陷阱 - 将 Tab 键循环限制在模态容器内（对话框、抽屉等覆盖层）
+mod focus_trap;
+
 /// 根视图 - 窗口顶层视图，管理全局覆盖层
 mod root;
 
 /// 系统托盘 - 跨平台的系统托盘图标和菜单管理
 mod tray;
+
+/// 对话框组件 - 模态对话框与警告对话框
+mod dialog;
 
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
@@ -204,6 +210,12 @@ mod view;
 
 /// 窗口系统 - 窗口创建、管理、渲染管线和事件处理
 mod window;
+
+/// 窗口边框工具 - 计算客户端装饰窗口的内容内边距
+mod window_border;
+
+/// 窗口扩展 trait - 为 Window 添加对话框等能力
+mod window_ext;
 
 /// 窗口定位器 - 计算新窗口在屏幕上的初始位置
 pub mod window_positioner;
@@ -273,6 +285,8 @@ pub use element::*;
 pub use elements::*;
 /// 重导出执行器类型（ForegroundExecutor、BackgroundExecutor）
 pub use executor::*;
+/// 重导出焦点陷阱能力（FocusTrapElement、FocusTrapContainer）
+pub use focus_trap::*;
 /// 重导出几何类型（Point、Size、Bounds 等）
 pub use geometry::*;
 /// 重导出手势识别相关类型
@@ -287,8 +301,8 @@ pub use rgpui_macros::{
 pub use theme::registry::DEFAULT_THEME_COLORS;
 pub use theme::{
     ActiveTheme, HighlightTheme, HighlightThemeStyle, ListSettings, NotificationSettings,
-    ScrollbarShow, SheetSettings, StatusColors, SyntaxColors, Theme, ThemeColor, ThemeConfig,
-    ThemeConfigColors, ThemeMode, ThemeRegistry, ThemeSet, ThemeToken, ThemeTokens,
+    ScrollbarShow, SheetSettings, StatusColors, SyntaxColors, TITLE_BAR_HEIGHT, Theme, ThemeColor,
+    ThemeConfig, ThemeConfigColors, ThemeMode, ThemeRegistry, ThemeSet, ThemeToken, ThemeTokens,
 };
 pub use theme::{
     amber_50, amber_100, amber_200, amber_300, amber_400, amber_500, amber_600, amber_700,
@@ -393,6 +407,8 @@ pub use styled_ext::*;
 /// 重导出过渡动画系统
 pub use transition::*;
 
+/// 重导出对话框组件
+pub use dialog::*;
 /// 重导出根视图
 pub use root::*;
 pub use size::*;
@@ -418,6 +434,10 @@ pub use util::{FutureExt, Timeout};
 pub use view::*;
 /// 重导出窗口系统类型
 pub use window::*;
+/// 重导出窗口边框工具
+pub use window_border::*;
+/// 重导出窗口扩展 trait
+pub use window_ext::*;
 
 /// 重导出 pollster::block_on 用于在同步上下文中阻塞等待异步任务
 pub use pollster::block_on;

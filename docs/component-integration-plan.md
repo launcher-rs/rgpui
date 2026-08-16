@@ -52,7 +52,7 @@
 | 步骤 | 内容 | 来源 | 状态 |
 |------|------|------|------|
 | 3.0 | **滚动子系统**（scrollable + scrollbar + scrollable_mask + auto_scroll） | rgpui-component/src/scroll/ | ☑ 移至 `rgpui/src/elements/scroll/`，25 测试通过 |
-| 3.1 | `Dialog` / `AlertDialog` | rgpui-component/src/dialog/ | ☐ |
+| 3.1 | `Dialog` / `AlertDialog` | rgpui-component/src/dialog/ | ☑ 移至 `rgpui/src/dialog/` + `focus_trap.rs` + `window_ext.rs` + `window_border.rs` + `root.rs` 扩展，4 测试通过 |
 | 3.2 | `Menu`（右键/下拉菜单） | rgpui-component/src/menu/ | ☐ |
 | 3.3 | `Popover` / `HoverCard` | rgpui-component/src/popover.rs, hover_card.rs | ☐ |
 | 3.4 | `Notification` / `Toast` | rgpui-component/src/notification.rs | ☐ |
