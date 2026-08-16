@@ -1,8 +1,8 @@
+use crate::prelude::FluentBuilder as _;
 use crate::{
     Action, ActiveTheme, AsKeystroke, FocusHandle, Half, IntoElement, KeyContext, Keystroke,
     ParentElement as _, RenderOnce, StyleRefinement, Styled, StyledExt as _, Window, div, relative,
 };
-use crate::prelude::FluentBuilder as _;
 
 /// 用于显示键盘快捷键的标签（Kbd）。
 #[derive(IntoElement, Clone, Debug)]

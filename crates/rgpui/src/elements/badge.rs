@@ -1,8 +1,8 @@
+use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, AnyElement, App, ElementSize, Hsla, Icon, IntoElement, ParentElement, RenderOnce,
     Sizable, StyleRefinement, Styled, StyledExt as _, Window, div, h_flex, px, relative, white,
 };
-use crate::prelude::FluentBuilder as _;
 
 /// 徽标变体。
 #[derive(Default, Clone)]

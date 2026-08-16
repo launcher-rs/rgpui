@@ -1,11 +1,11 @@
 use std::time::Duration;
 
+use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, Animation, AnimationExt as _, App, ElementSize, Hsla, Icon, IconName, IntoElement,
     ParentElement as _, RenderOnce, Sizable, Styled as _, Transformation, Window, div, ease_in_out,
     percentage,
 };
-use crate::prelude::FluentBuilder as _;
 
 /// 循环加载的旋转指示器（Spinner）。
 #[derive(IntoElement)]
@@ -95,7 +95,9 @@ mod tests {
     /// 测试 Spinner 基本构造
     #[test]
     fn test_spinner_build() {
-        let s = Spinner::new().with_size(ElementSize::Small).color(crate::red_500());
+        let s = Spinner::new()
+            .with_size(ElementSize::Small)
+            .color(crate::red_500());
         assert_eq!(s.size, ElementSize::Small);
         assert!(s.color.is_some());
     }

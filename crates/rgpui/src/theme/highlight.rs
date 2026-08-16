@@ -1,6 +1,4 @@
-use crate::{
-    theme::ThemeMode, App, ActiveTheme, FontWeight, HighlightStyle, Hsla,
-};
+use crate::{ActiveTheme, App, FontWeight, HighlightStyle, Hsla, theme::ThemeMode};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -254,9 +252,7 @@ impl SyntaxColors {
 
     #[inline]
     pub fn style_for_index(&self, index: usize) -> Option<HighlightStyle> {
-        HIGHLIGHT_NAMES
-            .get(index)
-            .and_then(|name| self.style(name))
+        HIGHLIGHT_NAMES.get(index).and_then(|name| self.style(name))
     }
 }
 

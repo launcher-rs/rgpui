@@ -1,10 +1,11 @@
 use std::rc::Rc;
 
 use crate::{
-    ActiveTheme, App, AnyElement, ClickEvent, Colorize as _, Corners, Div, Edges, ElementId,
+    ActiveTheme, AnyElement, App, ClickEvent, Colorize as _, Corners, Div, Edges, ElementId,
     ElementSize, Hsla, InteractiveElement, Interactivity, IntoElement, MouseButton, ParentElement,
     Pixels, RenderOnce, Role, SharedString, Stateful, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px, relative, transparent_white,
+    StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px, relative,
+    transparent_white,
 };
 use crate::{
     ButtonIcon, Caret, Disableable, FocusableExt as _, ManagedTooltipExt as _, Selectable, Sizable,
@@ -533,10 +534,9 @@ impl RenderOnce for Button {
                     // 普通按钮
                     match self.size {
                         ElementSize::ElementSize(size) => this.px(size * 0.2),
-                        ElementSize::XSmall => this
-                            .h_5()
-                            .px_1()
-                            .when(self.compact, |this| this.min_w_5()),
+                        ElementSize::XSmall => {
+                            this.h_5().px_1().when(self.compact, |this| this.min_w_5())
+                        }
                         ElementSize::Small => this
                             .h_6()
                             .px_2()

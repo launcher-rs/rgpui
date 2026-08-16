@@ -1,7 +1,7 @@
-use crate::prelude::FluentBuilder as _;
 use crate::icon_named;
+use crate::prelude::FluentBuilder as _;
 use crate::{
-    ActiveTheme, App, AppContext, AnyElement, Context, Element, ElementSize, Entity, Hsla,
+    ActiveTheme, AnyElement, App, AppContext, Context, Element, ElementSize, Entity, Hsla,
     IntoElement, Radians, Render, RenderOnce, SharedString, StyleRefinement, Styled, Svg,
     Transformation, VisualContext, Window, svg,
 };
@@ -242,5 +242,3 @@ mod tests {
         assert_eq!(icon.size, Some(ElementSize::Small));
     }
 }
-
-

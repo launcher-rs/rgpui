@@ -941,8 +941,8 @@ impl Theme {
 mod tests {
     use rgpui::{linear_color_stop, linear_gradient};
 
-    use crate::{Theme, ThemeConfig, ThemeMode, ThemeSet, try_parse_color};
     use crate::theme::color::{blue_600, red_500};
+    use crate::{Theme, ThemeConfig, ThemeMode, ThemeSet, try_parse_color};
 
     #[test]
     fn test_apply_config_preserves_gradient_background_and_solid_color_fallback() {
@@ -983,7 +983,7 @@ mod tests {
                 linear_color_stop(blue_600(), 0.75)
             )
         );
-assert_eq!(theme.mode, ThemeMode::Light);
+        assert_eq!(theme.mode, ThemeMode::Light);
     }
 
     #[test]
@@ -1037,5 +1037,3 @@ assert_eq!(theme.mode, ThemeMode::Light);
         );
     }
 }
-
-

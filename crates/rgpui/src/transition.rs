@@ -3,7 +3,7 @@ use std::{rc::Rc, time::Duration};
 use smallvec::SmallVec;
 
 use crate::{
-    Animation, AnimationExt, AnimationElement, ElementId, Hsla, IntoElement, Pixels, Point, Styled,
+    Animation, AnimationElement, AnimationExt, ElementId, Hsla, IntoElement, Pixels, Point, Styled,
     point, px,
 };
 

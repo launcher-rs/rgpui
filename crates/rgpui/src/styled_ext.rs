@@ -1,9 +1,9 @@
+use crate::ActiveTheme;
+use crate::theme::{blue_500, green_500, pink_500, red_500, yellow_500};
 use crate::{
     App, BoxShadow, Corners, DefiniteLength, Edges, ElementSize, FocusHandle, Hsla, ParentElement,
     Pixels, Refineable, StyleRefinement, Styled, Window, div, point, px,
 };
-use crate::theme::{green_500, pink_500, red_500, blue_500, yellow_500};
-use crate::ActiveTheme;
 
 /// 侧边方向枚举，用于组件中指定左/右位置。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -546,10 +546,3 @@ impl<T: ParentElement + Styled + Sized> FocusableExt<T> for T {
         )
     }
 }
-
-
-
-
-
-
-

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    App, HighlightStyle, HighlightTheme, IntoElement, Pixels, RenderOnce, Rems, SharedString,
+    App, HighlightStyle, HighlightTheme, IntoElement, Pixels, Rems, RenderOnce, SharedString,
     StyleRefinement, Window, px, rems,
 };
 

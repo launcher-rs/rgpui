@@ -1,7 +1,5 @@
 use crate::prelude::FluentBuilder;
-use crate::{
-    App, ElementSize, Hsla, IntoElement, RenderOnce, Sizable, Styled, Window,
-};
+use crate::{App, ElementSize, Hsla, IntoElement, RenderOnce, Sizable, Styled, Window};
 use crate::{Icon, IconName};
 
 /// 下拉选择箭头（caret）元素。

@@ -90,7 +90,7 @@ impl ThemeRegistry {
         cx.global_mut::<Self>()
     }
 
-/// Returns a reference to the map of themes (including default themes).
+    /// Returns a reference to the map of themes (including default themes).
     pub fn themes(&self) -> &HashMap<SharedString, Rc<ThemeConfig>> {
         &self.themes
     }
@@ -145,7 +145,7 @@ impl ThemeRegistry {
             }
         }
         self.themes_dir = PathBuf::from("./themes");
-self.themes = self
+        self.themes = self
             .default_themes
             .values()
             .map(|theme| {
@@ -155,4 +155,3 @@ self.themes = self
             .collect();
     }
 }
-

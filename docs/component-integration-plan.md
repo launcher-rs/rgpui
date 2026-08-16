@@ -26,31 +26,32 @@
 | 1.4 | `Colorize` trait + 颜色常量函数（hsl/ColorName/try_parse_*） | rgpui-component/src/theme/color.rs | ☑（依赖顺序调整为 1.4 提前） |
 | 1.5 | `ActiveTheme` trait + `Theme` 结构 + 主题注册机制 | rgpui-component/src/theme/ | ☑（含 highlight.rs 纯数据结构、settings.rs 轻量设置类型） |
 | 1.6 | 默认主题 JSON（default-theme.json / default-colors.json） | rgpui-component/src/theme/ | ☑（随 1.5 一并移植） |
-| 1.2 | `StyledExt` trait（h_flex/v_flex/paddings/margins/corner_radii/popover_style 等） | rgpui-component/src/styled.rs | ☐（依赖 ActiveTheme，待 1.5 完成后进行） |
-| 1.3 | `Selectable` / `Disableable` / `Sizable` / `StyleSized` trait | rgpui-component/src/styled.rs | ☐ |
-| 1.7 | 布局辅助 `h_flex()` / `v_flex()` | rgpui-component/src/styled.rs | ☐ |
+| 1.2 | `StyledExt` trait（h_flex/v_flex/paddings/margins/corner_radii/popover_style 等） | rgpui-component/src/styled.rs | ☑（含 FocusableExt/Side/AxisExt/ElementExt 追加） |
+| 1.3 | `Selectable` / `Disableable` / `Sizable` / `StyleSized` trait | rgpui-component/src/styled.rs | ☑ |
+| 1.7 | 布局辅助 `h_flex()` / `v_flex()` | rgpui-component/src/styled.rs | ☑ |
 
 ### 阶段二：基础组件（轻依赖、应用必需）
 
 | 步骤 | 内容 | 来源 | 状态 |
 |------|------|------|------|
-| 2.1 | `Icon` 组件 | rgpui-component/src/icon.rs | ☐ |
-| 2.2 | `Label` 组件 | rgpui-component/src/label.rs | ☐ |
-| 2.3 | `Button` + `ButtonIcon` | rgpui-component/src/button/ | ☐ |
-| 2.4 | `Checkbox` | rgpui-component/src/checkbox.rs | ☐ |
-| 2.5 | `Radio` | rgpui-component/src/radio.rs | ☐ |
-| 2.6 | `Switch` | rgpui-component/src/switch.rs | ☐ |
-| 2.7 | `Slider` | rgpui-component/src/slider.rs | ☐ |
-| 2.8 | `Input`（文本输入） | rgpui-component/src/input/ | ☐ |
-| 2.9 | `Select` + `Caret` | rgpui-component/src/select.rs | ☐ |
-| 2.10 | `Spinner` / `Progress` | rgpui-component/src/spinner.rs, progress/ | ☐ |
-| 2.11 | `Skeleton` / `Badge` / `Tag` / `Separator` / `Kbd` | rgpui-component/src/ | ☐ |
-| 2.12 | `Tooltip` | rgpui-component/src/tooltip.rs | ☐ |
+| 2.1 | `Icon` 组件 | rgpui-component/src/icon.rs | ☑ |
+| 2.2 | `Label` 组件 | rgpui-component/src/label.rs | ☑ |
+| 2.3 | `Button` + `ButtonIcon` | rgpui-component/src/button/ | ☑（依赖 Tooltip/Root，随 2.12 完成） |
+| 2.4 | `Checkbox` | rgpui-component/src/checkbox.rs | ☑ |
+| 2.5 | `Radio` | rgpui-component/src/radio.rs | ☑ |
+| 2.6 | `Switch` | rgpui-component/src/switch.rs | ☑ |
+| 2.7 | `Slider` | rgpui-component/src/slider.rs | ☑ |
+| 2.8 | `Input`（文本输入） | rgpui-component/src/input/ | ☐（延后，依赖 text/display_map 系统） |
+| 2.9 | `Select` + `Caret` | rgpui-component/src/select.rs | ☐（延后，依赖 Input） |
+| 2.10 | `Spinner` / `Progress` | rgpui-component/src/spinner.rs, progress/ | ☑ Spinner（Progress 未并入） |
+| 2.11 | `Skeleton` / `Badge` / `Tag` / `Separator` / `Kbd` | rgpui-component/src/ | ☑ |
+| 2.12 | `Tooltip` | rgpui-component/src/tooltip.rs | ☑（含精简 Root + transition + Placement） |
 
 ### 阶段三：复合组件（依赖阶段二）
 
 | 步骤 | 内容 | 来源 | 状态 |
 |------|------|------|------|
+| 3.0 | **滚动子系统**（scrollable + scrollbar + scrollable_mask + auto_scroll） | rgpui-component/src/scroll/ | ☑ 移至 `rgpui/src/elements/scroll/`，25 测试通过 |
 | 3.1 | `Dialog` / `AlertDialog` | rgpui-component/src/dialog/ | ☐ |
 | 3.2 | `Menu`（右键/下拉菜单） | rgpui-component/src/menu/ | ☐ |
 | 3.3 | `Popover` / `HoverCard` | rgpui-component/src/popover.rs, hover_card.rs | ☐ |

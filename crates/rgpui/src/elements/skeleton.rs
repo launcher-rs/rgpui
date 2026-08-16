@@ -1,10 +1,10 @@
 use std::time::Duration;
 
+use crate::StyledExt as _;
 use crate::{
     ActiveTheme, Animation, AnimationExt as _, IntoElement, RenderOnce, StyleRefinement, Styled,
     bounce, div, ease_in_out,
 };
-use crate::StyledExt as _;
 
 /// 骨架屏（Skeleton）加载占位元素。
 #[derive(IntoElement)]

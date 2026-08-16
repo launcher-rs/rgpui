@@ -1,6 +1,4 @@
-use crate::{
-    App, Global, Hsla, Pixels, SharedString, Window, WindowAppearance, px,
-};
+use crate::{App, Global, Hsla, Pixels, SharedString, Window, WindowAppearance, px};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{

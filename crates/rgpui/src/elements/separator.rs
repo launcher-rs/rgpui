@@ -1,8 +1,8 @@
+use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, App, Axis, Div, Hsla, IntoElement, ParentElement, PathBuilder, RenderOnce,
     SharedString, StyleRefinement, Styled, StyledExt as _, Window, canvas, div, point, px,
 };
-use crate::prelude::FluentBuilder as _;
 
 /// 分隔线的样式。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

@@ -1,12 +1,12 @@
 use std::{rc::Rc, time::Duration};
 
+use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, Animation, AnimationExt as _, App, Background, ComponentText, Disableable,
     ElementId, ElementSize, Hsla, InteractiveElement, IntoElement, ParentElement as _, RenderOnce,
-    Role, SharedString, Side, Sizable, StatefulInteractiveElement as _, Styled, StyledExt as _,
-    StyleRefinement, Toggled, Window, div, h_flex, px,
+    Role, SharedString, Side, Sizable, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    StyledExt as _, Toggled, Window, div, h_flex, px,
 };
-use crate::prelude::FluentBuilder as _;
 
 /// 可切换开/关的开关（Switch）元素。
 #[derive(IntoElement)]

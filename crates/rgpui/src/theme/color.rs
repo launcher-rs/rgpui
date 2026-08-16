@@ -923,7 +923,7 @@ mod tests {
 
     #[test]
     fn test_default_colors() {
-assert_eq!(crate::white(), hsl(0.0, 0.0, 100.0));
+        assert_eq!(crate::white(), hsl(0.0, 0.0, 100.0));
         assert_eq!(crate::black(), hsl(0.0, 0.0, 0.0));
 
         assert_eq!(slate_50(), hsl(210.0, 40.0, 98.0));
@@ -1120,6 +1120,3 @@ assert_eq!(crate::white(), hsl(0.0, 0.0, 100.0));
         );
     }
 }
-
-
-

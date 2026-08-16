@@ -50,7 +50,7 @@ impl ElementSize {
     /// - "lg" 或 "large"
     ///
     /// 其他值一律返回 `ElementSize::Medium`。
-pub fn from_str(size: &str) -> Self {
+    pub fn from_str(size: &str) -> Self {
         match size.to_lowercase().as_str() {
             "xs" | "xsmall" => ElementSize::XSmall,
             "sm" | "small" => ElementSize::Small,
@@ -130,7 +130,9 @@ pub fn from_str(size: &str) -> Self {
     /// 例如 `ElementSize::XSmall.max(ElementSize::Small)` 返回 `ElementSize::XSmall`。
     pub fn max(&self, other: Self) -> Self {
         match (self, other) {
-            (ElementSize::ElementSize(a), ElementSize::ElementSize(b)) => ElementSize::ElementSize(px(a.as_f32().min(b.as_f32()))),
+            (ElementSize::ElementSize(a), ElementSize::ElementSize(b)) => {
+                ElementSize::ElementSize(px(a.as_f32().min(b.as_f32())))
+            }
             (ElementSize::ElementSize(a), _) => ElementSize::ElementSize(*a),
             (_, ElementSize::ElementSize(b)) => ElementSize::ElementSize(b),
             (a, b) if a.as_f32() < b.as_f32() => *a,
@@ -143,7 +145,9 @@ pub fn from_str(size: &str) -> Self {
     /// 例如 `ElementSize::XSmall.min(ElementSize::Small)` 返回 `ElementSize::Small`。
     pub fn min(&self, other: Self) -> Self {
         match (self, other) {
-            (ElementSize::ElementSize(a), ElementSize::ElementSize(b)) => ElementSize::ElementSize(px(a.as_f32().max(b.as_f32()))),
+            (ElementSize::ElementSize(a), ElementSize::ElementSize(b)) => {
+                ElementSize::ElementSize(px(a.as_f32().max(b.as_f32())))
+            }
             (ElementSize::ElementSize(a), _) => ElementSize::ElementSize(*a),
             (_, ElementSize::ElementSize(b)) => ElementSize::ElementSize(b),
             (a, b) if a.as_f32() > b.as_f32() => *a,
