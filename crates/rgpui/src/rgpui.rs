@@ -204,6 +204,9 @@ mod dialog;
 /// 菜单组件 - 弹窗菜单、右键菜单、下拉菜单与应用菜单栏
 mod menu;
 
+/// 表单组件 - 表单容器与表单字段
+mod form;
+
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
 pub mod util;
@@ -412,6 +415,8 @@ pub use transition::*;
 
 /// 重导出对话框组件
 pub use dialog::*;
+/// 重导出表单组件
+pub use form::*;
 /// 重导出菜单组件
 pub use menu::*;
 /// 重导出根视图

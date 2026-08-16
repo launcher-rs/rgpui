@@ -56,7 +56,7 @@
 | 3.2 | `Menu`（右键/下拉菜单） | rgpui-component/src/menu/ | ☑ 移至 `rgpui/src/menu/`（popup_menu + context_menu + dropdown_menu + app_menu_bar + menu_item），顺带移植 `popover.rs` 作 dropdown_menu 依赖 + 精简 `global_state.rs`（app_menus 存储），8 测试通过 |
 | 3.3 | `Popover` / `HoverCard` | rgpui-component/src/popover.rs, hover_card.rs | ☑ Popover 随 3.2 移植至 `rgpui/src/menu/popover.rs`；HoverCard 移至 `rgpui/src/menu/hover_card.rs`（std::time::Duration 替代 instant），2 测试通过 |
 | 3.4 | `Notification` / `Toast` | rgpui-component/src/notification.rs | ☑ 移至 `rgpui/src/menu/notification.rs`（Notification + NotificationList + NotificationType），`NotificationSettings` 复用 theme 层，`NotificationId` 公开导出，4 测试通过 |
-| 3.5 | `Form`（表单容器） | rgpui-component/src/form/ | ☐ |
+| 3.5 | `Form`（表单容器） | rgpui-component/src/form/ | ☑ 移至 `rgpui/src/form/`（Form + Field + FieldBuilder + v_form/h_form/field 构造器），`Size`→`ElementSize`、`AxisExt` 用 `matches!` 替代，1 测试通过 |
 | 3.6 | `List` / `VirtualList` | rgpui-component/src/list/ | ☐ |
 | 3.7 | `Table` | rgpui-component/src/table/ | ☐ |
 | 3.8 | `Tabs` / `Accordion` / `Collapsible` | rgpui-component/src/ | ☐ |
