@@ -67,6 +67,11 @@ pub mod colors;
 /// 主题系统 - 颜色工具、色板与主题注册机制
 pub mod theme;
 
+/// 组件文本类型 - 轻量文本封装，供组件库使用
+pub mod component_text;
+/// 重导出组件文本类型
+pub use component_text::{ComponentText, ComponentTextViewStyle};
+
 /// 元素系统核心 - 定义 Element trait 和元素树构建机制
 mod element;
 
