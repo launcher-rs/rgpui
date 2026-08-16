@@ -29,6 +29,26 @@ impl Side {
     }
 }
 
+/// 用于扩展 [`crate::Axis`] 的便捷方法。
+pub trait AxisExt {
+    /// 是否为水平方向。
+    fn is_horizontal(self) -> bool;
+    /// 是否为垂直方向。
+    fn is_vertical(self) -> bool;
+}
+
+impl AxisExt for crate::Axis {
+    #[inline]
+    fn is_horizontal(self) -> bool {
+        self == crate::Axis::Horizontal
+    }
+
+    #[inline]
+    fn is_vertical(self) -> bool {
+        self == crate::Axis::Vertical
+    }
+}
+
 macro_rules! font_weight {
     ($fn:ident, $const:ident) => {
         /// [文档](https://tailwindcss.com/docs/font-weight)
