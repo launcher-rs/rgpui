@@ -201,6 +201,9 @@ mod tray;
 /// 对话框组件 - 模态对话框与警告对话框
 mod dialog;
 
+/// 菜单组件 - 弹窗菜单、右键菜单、下拉菜单与应用菜单栏
+mod menu;
+
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
 pub mod util;
@@ -409,6 +412,8 @@ pub use transition::*;
 
 /// 重导出对话框组件
 pub use dialog::*;
+/// 重导出菜单组件
+pub use menu::*;
 /// 重导出根视图
 pub use root::*;
 pub use size::*;
