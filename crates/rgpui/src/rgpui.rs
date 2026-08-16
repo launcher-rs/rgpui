@@ -186,6 +186,12 @@ pub mod test;
 /// 文本系统 - 文本排版、字体管理和 GPU 文本渲染管线
 mod text_system;
 
+/// 过渡动画系统 - Transition 组合动画、缓动函数与 Lerp 插值
+mod transition;
+
+/// 根视图 - 窗口顶层视图，管理全局覆盖层
+mod root;
+
 /// 系统托盘 - 跨平台的系统托盘图标和菜单管理
 mod tray;
 
@@ -384,6 +390,12 @@ pub use style::*;
 /// 重导出样式化 trait
 pub use styled::*;
 pub use styled_ext::*;
+
+/// 重导出过渡动画系统
+pub use transition::*;
+
+/// 重导出根视图
+pub use root::*;
 pub use size::*;
 /// 重导出订阅系统类型（Subscription、SubscriberSet 等）
 pub use subscription::*;

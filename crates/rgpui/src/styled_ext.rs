@@ -29,6 +29,45 @@ impl Side {
     }
 }
 
+/// 元素放置位置枚举，用于定义元素在四个边缘的放置方向。
+///
+/// 参见 [`Side`] 用于定义左/右两侧。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Placement {
+    /// 顶部
+    #[default]
+    Top,
+    /// 底部
+    Bottom,
+    /// 左侧
+    Left,
+    /// 右侧
+    Right,
+}
+
+impl Placement {
+    /// 是否为水平方向。
+    #[inline]
+    pub fn is_horizontal(&self) -> bool {
+        matches!(self, Self::Left | Self::Right)
+    }
+
+    /// 是否为垂直方向。
+    #[inline]
+    pub fn is_vertical(&self) -> bool {
+        matches!(self, Self::Top | Self::Bottom)
+    }
+
+    /// 返回对应的轴方向。
+    #[inline]
+    pub fn axis(&self) -> crate::Axis {
+        match self {
+            Self::Top | Self::Bottom => crate::Axis::Vertical,
+            Self::Left | Self::Right => crate::Axis::Horizontal,
+        }
+    }
+}
+
 /// 用于扩展 [`crate::Axis`] 的便捷方法。
 pub trait AxisExt {
     /// 是否为水平方向。
