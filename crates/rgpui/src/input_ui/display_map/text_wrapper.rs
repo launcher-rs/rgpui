@@ -1,15 +1,15 @@
 use crate::Half;
 use std::ops::Range;
 
+use crate::sum_tree::{Bias, Dimensions, SumTree};
 use crate::{
     App, Font, LineFragment, Pixels, Point, ShapedLine, Size, TextAlign, Window, point, px, size,
 };
 use ropey::Rope;
 use smallvec::SmallVec;
-use crate::sum_tree::{Bias, Dimensions, SumTree};
 
-use super::super::{LastLayout, RopeExt, WhitespaceIndicators};
 use super::super::Point as TreeSitterPoint;
+use super::super::{LastLayout, RopeExt, WhitespaceIndicators};
 
 /// 控制软换行续行如何缩进。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1158,11 +1158,15 @@ mod tests {
         };
 
         // 索引 0 应映射到第一个空视觉行。
-        let pos = line_layout.position_for_index(0, &last_layout, false).unwrap();
+        let pos = line_layout
+            .position_for_index(0, &last_layout, false)
+            .unwrap();
         assert_eq!(pos.y, px(0.));
 
         // 索引 3（字节 3）应映射到第三行。
-        let pos = line_layout.position_for_index(3, &last_layout, false).unwrap();
+        let pos = line_layout
+            .position_for_index(3, &last_layout, false)
+            .unwrap();
         assert_eq!(pos.y, px(40.));
     }
 }

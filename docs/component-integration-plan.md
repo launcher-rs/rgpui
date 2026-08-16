@@ -41,7 +41,7 @@
 | 2.5 | `Radio` | rgpui-component/src/radio.rs | ☑ |
 | 2.6 | `Switch` | rgpui-component/src/switch.rs | ☑ |
 | 2.7 | `Slider` | rgpui-component/src/slider.rs | ☑ |
-| 2.8 | `Input`（文本输入） | rgpui-component/src/input/ | ☐（延后，依赖 text/display_map 系统） |
+| 2.8 | `Input`（文本输入） | rgpui-component/src/input/ | 🚧 进行中，见下方"Input 子系统移植进度" |
 | 2.9 | `Select` + `Caret` | rgpui-component/src/select.rs | ☐（延后，依赖 Input） |
 | 2.10 | `Spinner` / `Progress` | rgpui-component/src/spinner.rs, progress/ | ☑ Spinner（Progress 未并入） |
 | 2.11 | `Skeleton` / `Badge` / `Tag` / `Separator` / `Kbd` | rgpui-component/src/ | ☑ |
@@ -78,6 +78,29 @@
 - 代码编辑器 `input/` 后半 + `text/`
 - markdown 渲染
 - rgpui-adabraka-ui / rgpui-yororen-ui 的融合决策
+
+### Input 子系统移植进度（2.8）
+
+> 移植源：`rgpui-component-workspce/rgpui-component/src/input/`（state.rs 3943 行为核心）。目标模块：`rgpui/src/input_ui/`（避免与 rgpui 原生 `mod input` 冲突）。
+
+**已完成（基础层，已提交 commit `6d63082c43`，43 测试通过）**：
+
+- 依赖：rgpui 新增 `ropey` + `instant`
+- `history.rs` / `auto_scroll.rs` / `word_selection.rs` / `rope_ext.rs` / `cursor.rs` / `change.rs` / `layout.rs`
+- `display_map/`（folding / text_wrapper / wrap_map / display_map / fold_map）
+- `mode.rs`（InputMode，已裁剪 highlighter/diagnostics/parse_task 字段，保留 CodeEditor 外壳能力）
+- `indent.rs`（TabSize + is_indentable）/ `selection.rs`（TextSelector）/ `blink_cursor.rs` / `content_type.rs` / `mask_pattern.rs`
+- `ShapedLine` 新增 `x_for_index`/`closest_index_for_x`/`index_for_x` 委托方法
+- `menu/global_state.rs` 新增 `suppress_text_selection` 支持（供 InputState 鼠标按下抑制窗口级文本选择）
+
+**待移植（下一阶段）**：
+
+- `state.rs`（InputState 核心，3943 行，需剥离 highlighter/LSP/search/popovers/NativeMenu/Root 依赖）
+- `element.rs`（TextElement + EditorScrollbarSnapshot，滚动条改用 `rgpui/src/elements/scroll/` 的 scrollable API）
+- `input.rs`（Input 元素外壳）/ `movement.rs` / `decorations.rs` / `number_input.rs` / `clear_button.rs`
+- 移植完成后：`cargo test -p rgpui --features test-support --lib input_ui` 全绿 → 更新本表 2.8 为 ☑
+
+> 注意：被中断的子代理遗留的 state.rs 依赖文件（movement/decorations/number_input/clear_button/input，引用未移植的 `InputState`）已删除，需在 state.rs 完成后按依赖顺序重写。
 
 ## 验证方式
 

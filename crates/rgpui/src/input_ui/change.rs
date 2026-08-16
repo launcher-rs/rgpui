@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
-use super::history::HistoryItem;
 use super::Selection;
+use super::history::HistoryItem;
 
 /// 一次文本变更，用于撤销/重做。
 #[derive(Debug, PartialEq, Clone)]

@@ -479,8 +479,8 @@ mod tests {
     use ropey::Rope;
 
     use super::{Point, Position};
-    use crate::sum_tree::Bias;
     use crate::input_ui::RopeExt;
+    use crate::sum_tree::Bias;
 
     #[test]
     fn test_slice_line() {

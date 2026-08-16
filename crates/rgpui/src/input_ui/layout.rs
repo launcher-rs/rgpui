@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use crate::{Bounds, Half, Pixels, ShapedLine, TextAlign, px};
 
-use super::display_map::text_wrapper::LineLayout;
 use super::display_map::WrappingIndent;
+use super::display_map::text_wrapper::LineLayout;
 
 /// 空白指示符，用于渲染空格和制表符。
 #[derive(Clone, Default)]

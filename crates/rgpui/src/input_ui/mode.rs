@@ -1,7 +1,7 @@
 use rgpui::SharedString;
 
-use super::display_map::DisplayMap;
 use super::TabSize;
+use super::display_map::DisplayMap;
 
 /// 输入模式枚举。
 ///

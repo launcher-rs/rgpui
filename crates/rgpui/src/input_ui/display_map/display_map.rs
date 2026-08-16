@@ -9,15 +9,15 @@ use std::ops::Range;
 use crate::{App, Font, Pixels};
 use ropey::Rope;
 
+use super::super::Point as TreeSitterPoint;
+use super::super::display_map::WrapPoint;
+use super::super::rope_ext::RopeExt as _;
 use super::fold_map::FoldMap;
 use super::folding::FoldRange;
 pub use super::text_wrapper::WrappingIndent;
 use super::text_wrapper::{LineItem, WrapDisplayPoint};
 use super::wrap_map::WrapMap;
 use super::{BufferPoint, DisplayPoint};
-use super::super::Point as TreeSitterPoint;
-use super::super::display_map::WrapPoint;
-use super::super::rope_ext::RopeExt as _;
 
 /// DisplayMap 是 Editor/Input 坐标映射的主要接口。
 ///

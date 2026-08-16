@@ -9,10 +9,10 @@ use std::ops::Range;
 use crate::{App, Font, Pixels};
 use ropey::Rope;
 
+use super::super::RopeExt;
 use super::fold_map::FoldMap;
 use super::text_wrapper::{LineItem, TextWrapper, WrapDisplayPoint, WrappingIndent};
 use super::{BufferPoint, WrapPoint};
-use super::super::RopeExt;
 
 /// WrapMap 管理软换行并提供 buffer → wrap 坐标映射。
 ///
