@@ -5,6 +5,30 @@ use crate::{
 use crate::theme::{green_500, pink_500, red_500, blue_500, yellow_500};
 use crate::ActiveTheme;
 
+/// 侧边方向枚举，用于组件中指定左/右位置。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Side {
+    /// 左侧
+    #[default]
+    Left,
+    /// 右侧
+    Right,
+}
+
+impl Side {
+    /// 是否为左侧。
+    #[inline]
+    pub fn is_left(&self) -> bool {
+        matches!(self, Self::Left)
+    }
+
+    /// 是否为右侧。
+    #[inline]
+    pub fn is_right(&self) -> bool {
+        matches!(self, Self::Right)
+    }
+}
+
 macro_rules! font_weight {
     ($fn:ident, $const:ident) => {
         /// [文档](https://tailwindcss.com/docs/font-weight)
