@@ -5,6 +5,7 @@ mod app_menu_bar;
 mod context_menu;
 mod dropdown_menu;
 mod global_state;
+mod hover_card;
 mod menu_item;
 mod popover;
 mod popup_menu;
@@ -14,6 +15,7 @@ pub use app_menu_bar::AppMenuBar;
 pub use context_menu::{ContextMenu, ContextMenuExt, ContextMenuState};
 pub use dropdown_menu::DropdownMenu;
 pub use global_state::GlobalState;
+pub use hover_card::{HoverCard, HoverCardState};
 pub use popover::Popover;
 pub use popup_menu::{PopupMenu, PopupMenuItem};
 
