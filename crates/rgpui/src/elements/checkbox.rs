@@ -150,7 +150,7 @@ impl Sizable for Checkbox {
     }
 }
 
-fn checkbox_check_icon(
+pub(crate) fn checkbox_check_icon(
     id: ElementId,
     size: ElementSize,
     checked: bool,
