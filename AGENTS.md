@@ -226,7 +226,26 @@ CI 通过矩阵策略在三个平台分别运行，确保跨平台兼容性。
 
 rgpui 在上游 gpui 基础上增加了大量独有功能，是项目的差异化价值所在，任何重构不得移除这些功能。
 
-> 组件整合（`docs/component-integration-plan.md`）是**加法**：只把成熟组件并入 rgpui 核心，不删减下列任何独有能力。整合完成后，本清单应扩展为「平台系统能力 + 组件库」两部分。
+> 组件整合（`docs/component-integration-plan.md`）是**加法**：只把成熟组件并入 rgpui 核心，不删减下列任何独有能力。整合已完成，本清单已扩展为「平台系统能力 + 组件库」两部分。
+
+### 组件库（从 rgpui-component 并入 rgpui 核心）
+
+组件整合（`docs/component-integration-plan.md`）已全部完成，rgpui 核心自带完整组件库，不再依赖 `rgpui-component`。已并入的子系统：
+
+| 子系统 | 目标模块 | 关键公开类型 |
+|--------|----------|--------------|
+| 滚动 | `elements/scroll/` | `Scrollable`、`Scrollbar`、`scrollable()`、`ScrollHandle` |
+| 基础元素 | `elements/` | `Button`、`Checkbox`、`Radio`、`Switch`、`Slider`、`Spinner`、`Skeleton`、`Badge`、`Tag`、`Separator`、`Kbd`、`Tooltip`、`Icon` |
+| 表单 | `form/` | `Form`、`Field`、`FieldBuilder`、`v_form`/`h_form`/`field` |
+| 输入 | `input_ui/` | `Input`、`MaskedInput`、`NumberInput`、`PasswordInput`、`TextArea` |
+| 菜单 | `menu/` | `PopupMenu`、`ContextMenu`、`DropdownMenu`、`Menu`、`MenuBar`、`MenuItem`、`HoverCard`、`Notification`、`Toast` |
+| 对话框 | `dialog/` | `Dialog`、`AlertDialog`、`DialogHeader/Content/Footer/Title/Description`、`FocusTrapElement` |
+| 列表 | `list/` | `List`、`VirtualList`、`ListDelegate`、`ListState` |
+| 表格 | `table/` | `Table`、`DataTable`、`Column`、`TableState`、`TableHeader/Body/Footer/Row/Head/Cell/Caption` |
+| 标签页 | `tabs/` | `Tab`、`TabBar`、`TabVariant`、`Accordion`、`AccordionItem`、`Collapsible` |
+| 标题栏 | `title_bar/` | `TitleBar`、`WindowBorder`、`window_paddings()` |
+
+配套扩展 trait 已并入 `prelude`：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`（`on_double_click`）、`Selectable`、`Sizable`、`StyledExt`、`FluentBuilder`。
 
 ### 关键字段/类型（platform.rs）
 
@@ -311,6 +330,8 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 10. `tray.rs` / `single_instance.rs` 模块未被删除
 11. rgpui-3d MSAA 方法存在
 12. 组件整合进度遵循 `docs/component-integration-plan.md`，已并入的功能存在于 `rgpui` 核心（而非只依赖 `rgpui-component`）
+13. 组件库核心模块存在：`form/`、`input_ui/`、`menu/`、`dialog/`、`list/`、`table/`、`tabs/`、`title_bar/`、`elements/scroll/`
+14. `prelude` 暴露组件扩展 trait：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、`Sizable`、`StyledExt`、`FluentBuilder`
 
 ## Web/WASM 开发
 

@@ -11,6 +11,7 @@
 5. [异步任务](./05-async-tasks.md) - 后台任务、前台执行器与定时器
 6. [元素系统](./06-elements.md) - Element trait、布局与绘制管线
 7. [窗口管理](./07-window-management.md) - 窗口创建、视图与焦点管理
+8. [组件库](./08-components.md) - 内置 UI 组件库使用指南
 
 ## 关于 rgpui
 
