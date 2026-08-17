@@ -29,6 +29,7 @@ mod tag;
 mod text;
 mod tooltip;
 mod uniform_list;
+mod virtual_list;
 
 pub use anchored::*;
 pub use animation::*;
@@ -61,3 +62,4 @@ pub use tag::*;
 pub use text::*;
 pub use tooltip::*;
 pub use uniform_list::*;
+pub use virtual_list::*;

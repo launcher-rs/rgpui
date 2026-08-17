@@ -57,7 +57,7 @@
 | 3.3 | `Popover` / `HoverCard` | rgpui-component/src/popover.rs, hover_card.rs | ☑ Popover 随 3.2 移植至 `rgpui/src/menu/popover.rs`；HoverCard 移至 `rgpui/src/menu/hover_card.rs`（std::time::Duration 替代 instant），2 测试通过 |
 | 3.4 | `Notification` / `Toast` | rgpui-component/src/notification.rs | ☑ 移至 `rgpui/src/menu/notification.rs`（Notification + NotificationList + NotificationType），`NotificationSettings` 复用 theme 层，`NotificationId` 公开导出，4 测试通过 |
 | 3.5 | `Form`（表单容器） | rgpui-component/src/form/ | ☑ 移至 `rgpui/src/form/`（Form + Field + FieldBuilder + v_form/h_form/field 构造器），`Size`→`ElementSize`、`AxisExt` 用 `matches!` 替代，1 测试通过 |
-| 3.6 | `List` / `VirtualList` | rgpui-component/src/list/ | ☐ |
+| 3.6 | `List` / `VirtualList` | rgpui-component/src/list/ | ☑ 见下方"List 子系统移植进度" |
 | 3.7 | `Table` | rgpui-component/src/table/ | ☐ |
 | 3.8 | `Tabs` / `Accordion` / `Collapsible` | rgpui-component/src/ | ☐ |
 | 3.9 | `TitleBar` / `WindowBorder` | rgpui-component/src/title_bar.rs, window_border.rs | ☐ |
@@ -106,6 +106,20 @@
 - 依赖：rgpui 新增 `unicode-segmentation`（state.rs 主代码使用）
 
 > 注：本阶段结束后 `cargo check --workspace` 的失败项（button_example 等组件的 `h_flex`/`Button` 歧义、rgpui-component-story、dialog_overlay 等）与 26 项既有失败测试（img 2 + list 24）均为**基线既有问题**，非本阶段引入。
+
+### List 子系统移植进度（3.6）
+
+> 移植源：`rgpui-component-workspce/rgpui-component/src/list/`（list.rs 26395 字节为核心）+ `src/virtual_list.rs` + `src/index_path.rs`。目标模块：`rgpui/src/list/`（列表）与 `rgpui/src/elements/virtual_list.rs`（虚拟列表）。
+
+**已完成（核心移植 + 挂接编译，新增 6 测试全绿；`cargo check -p rgpui` 通过，`cargo test -p rgpui --features test-support --lib` 458 通过 / 26 失败与基线一致）**：
+
+- 前置：`index_path.rs`（IndexPath + 3 测试），rgpui.rs 注册 `pub mod index_path` + `pub use index_path::*`
+- `elements/virtual_list.rs`（VirtualListScrollHandle + ItemSizeLayout + VirtualList + v_virtual_list/h_virtual_list），elements/mod.rs 注册
+- `list/cache.rs`（RowsCache + 3 测试）/ `loading.rs`（ListLoading）/ `separator_item.rs`（ListSeparatorItem）/ `list_item.rs`（ListItem）
+- `list/delegate.rs`（ListDelegate trait，`render_initial`/`loading`/`has_more`/`load_more` 等默认实现）
+- `list/list.rs`（init 快捷键绑定 + ListEvent + ListOptions + ListState + List 元素 + `impl Render`/`Focusable`/`EventEmitter`）
+- `list/mod.rs` 模块声明与重导出；rgpui.rs 注册 `pub mod list`（组件版 `ListSettings` 与 theme 层重复，弃用 theme 版）
+- 适配点：`crate::input_ui::{Input, InputEvent, InputState}`、`crate::menu::{Cancel, Confirm, SelectUp, SelectDown}`、`t!("List.search_placeholder")` → 字面量 `"Search..."`、`Size`→`ElementSize`、`Scrollbar` 走 `crate::Scrollbar`（elements::* 重导出）、`instant::Duration` → `std::time::Duration`
 
 ## 验证方式
 

@@ -210,6 +210,12 @@ mod form;
 /// 输入组件子系统 - 输入框、文本框、数字输入、掩码输入等
 pub mod input_ui;
 
+/// 索引路径 - 列表/表格中用于定位节、行、列的索引
+pub mod index_path;
+
+/// 列表子系统 - 虚拟化列表、ListDelegate、ListState 等
+pub mod list;
+
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
 pub mod util;
@@ -420,6 +426,8 @@ pub use transition::*;
 pub use dialog::*;
 /// 重导出表单组件
 pub use form::*;
+/// 重导出索引路径类型
+pub use index_path::*;
 /// 重导出菜单组件
 pub use menu::*;
 /// 重导出根视图
