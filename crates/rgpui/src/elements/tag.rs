@@ -1,9 +1,8 @@
 use crate::prelude::FluentBuilder as _;
 use crate::{
     AbsoluteLength, ActiveTheme, AnyElement, App, ColorName, ElementSize, Hsla,
-    InteractiveElement as _, IntoElement, ParentElement, RenderOnce, Sizable,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, StyledExt as _, Window, div,
-    relative, rems, transparent_white,
+    InteractiveElement as _, IntoElement, ParentElement, RenderOnce, Sizable, StyleRefinement,
+    Styled, StyledExt as _, Window, div, relative, rems, transparent_white,
 };
 
 /// Tag 的变体。

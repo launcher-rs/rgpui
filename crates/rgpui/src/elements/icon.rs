@@ -1,9 +1,9 @@
 use crate::icon_named;
 use crate::prelude::FluentBuilder as _;
 use crate::{
-    ActiveTheme, AnyElement, App, AppContext, Context, Element, ElementSize, Entity, Hsla,
-    IntoElement, Radians, Render, RenderOnce, SharedString, StyleRefinement, Styled, Svg,
-    Transformation, VisualContext, Window, svg,
+    ActiveTheme, AnyElement, App, AppContext, Context, ElementSize, Entity, Hsla, IntoElement,
+    Radians, Render, RenderOnce, SharedString, StyleRefinement, Styled, Svg, Transformation,
+    Window, svg,
 };
 
 /// 实现该 trait 的类型可以自动转换为 [`Icon`]。

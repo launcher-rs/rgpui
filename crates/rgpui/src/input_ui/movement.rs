@@ -110,7 +110,7 @@ impl InputState {
                 if let Some(x) = line.closest_index_for_position(
                     Point {
                         x: preferred_x,
-                        y: next_display_point.local_row * last_layout.line_height,
+                        y: next_display_point.local_row as f32 * last_layout.line_height,
                     },
                     last_layout,
                 ) {

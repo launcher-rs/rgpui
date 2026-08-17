@@ -3,15 +3,15 @@
 //! 从 rgpui-component 移植，裁剪了 LSP 集成、语法高亮、搜索面板、
 //! 弹窗（诊断/悬停/上下文菜单）以及内联补全等非核心功能。
 
-use crate::menu::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
+use crate::menu::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::sum_tree::Bias;
 use crate::{
     Action, App, AppContext, Bounds, ClipboardItem, Context, Edges, ElementSize, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
     KeyBinding, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement as _, Point, Pixels, Render, ScrollHandle, ScrollWheelEvent, SharedString, Styled
-        as _, Subscription, TextAlign, UTF16Selection, Window, div, point, prelude::FluentBuilder
-        as _, px,
+    ParentElement as _, Pixels, Point, Render, ScrollHandle, ScrollWheelEvent, SharedString,
+    Styled as _, Subscription, TextAlign, UTF16Selection, Window, div, point,
+    prelude::FluentBuilder as _, px,
 };
 use regex::Regex;
 use ropey::{Rope, RopeSlice};
@@ -22,12 +22,11 @@ use std::ops::Range;
 use unicode_segmentation::*;
 
 use super::{
-    DisplayMap, MASK_CHAR, Position, RopeExt as _, Selection, WrappingIndent,
+    DisplayMap, LastLayout, MASK_CHAR, Position, RopeExt as _, Selection, WrappingIndent,
     auto_scroll::AutoScroll,
     blink_cursor::{BlinkCursor, CURSOR_WIDTH},
     change::Change,
     decorations::DecorationCollections,
-    display_map::LineLayout,
     element::{EditorScrollbarSnapshot, RIGHT_MARGIN, TextElement},
     history::History,
     mask_pattern::{MaskPattern, normalize_number_input},
@@ -379,7 +378,11 @@ impl InputState {
         Self {
             focus_handle: focus_handle.clone(),
             text: "".into(),
-            display_map: DisplayMap::new(text_style.font(), text_style.font_size, None),
+            display_map: DisplayMap::new(
+                text_style.font(),
+                text_style.font_size.to_pixels(window.rem_size()),
+                None,
+            ),
             blink_cursor,
             history,
             selected_range: Selection::default(),
@@ -853,12 +856,7 @@ impl InputState {
     /// 设置输入框的正则表达式模式（引用方式）。
     ///
     /// 仅 [`InputMode::SingleLine`] 模式。
-    pub fn set_pattern(
-        &mut self,
-        pattern: Regex,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) {
+    pub fn set_pattern(&mut self, pattern: Regex, _window: &mut Window, _cx: &mut Context<Self>) {
         debug_assert!(self.mode.is_single_line());
         self.pattern = Some(pattern);
     }
@@ -1409,7 +1407,7 @@ impl InputState {
         self.scroll_to(0, None, cx);
     }
 
-    pub(super) fn escape(&mut self, action: &Escape, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn escape(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
         if self.ime_marked_range.is_some() {
             self.unmark_text(window, cx);
         }
@@ -1739,7 +1737,11 @@ impl InputState {
     /// 设置编辑视口的滚动偏移。
     ///
     /// 偏移量会被钳制到合法范围，并在下次布局后应用。
-    pub fn set_scroll_offset(&mut self, offset: crate::Point<crate::Pixels>, cx: &mut Context<Self>) {
+    pub fn set_scroll_offset(
+        &mut self,
+        offset: crate::Point<crate::Pixels>,
+        cx: &mut Context<Self>,
+    ) {
         self.deferred_scroll_offset = Some(offset);
         cx.notify();
     }
@@ -2271,7 +2273,7 @@ impl EntityInputHandler for InputState {
         &mut self,
         range_utf16: Option<Range<usize>>,
         new_text: &str,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.disabled {
@@ -2362,7 +2364,7 @@ impl EntityInputHandler for InputState {
         range_utf16: Option<Range<usize>>,
         new_text: &str,
         new_selected_range_utf16: Option<Range<usize>>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.disabled {
@@ -2512,7 +2514,7 @@ impl Focusable for InputState {
 }
 
 impl Render for InputState {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self._pending_update {
             self.display_map.ensure_text_prepared(&self.text, cx);
             self._pending_update = false;

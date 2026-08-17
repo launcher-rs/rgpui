@@ -1,11 +1,14 @@
 use crate::prelude::FluentBuilder as _;
+use crate::theme::ActiveTheme as _;
 use crate::{
     AccessibleAction, AnyElement, App, Colorize as _, DefiniteLength, Edges, ElementSize, Entity,
     Hsla, IconName, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
     ParentElement as _, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
     StyleRefinement, Styled, StyledExt as _, TextAlign, Window, div, px, relative,
 };
-use crate::{Button, ButtonVariants as _, Disableable, Selectable, Sizable, Spinner, h_flex, v_flex};
+use crate::{
+    Button, ButtonVariants as _, Selectable, Sizable, Spinner, StyleSized as _, h_flex, v_flex,
+};
 
 use super::{
     CONTEXT, InputContentType, InputState, content_type::sync_native_content_type,
@@ -311,15 +314,13 @@ impl Input {
         state.editor_scrollbar_paddings.set(paddings);
         state.editor_scrollbar_snapshot.set(None);
 
-        v_flex()
-            .size_full()
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .child(input_state.clone())
-                    .child(EditorScrollbar::new(input_state.clone())),
-            )
+        v_flex().size_full().child(
+            div()
+                .relative()
+                .flex_1()
+                .child(input_state.clone())
+                .child(EditorScrollbar::new(input_state.clone())),
+        )
     }
 }
 
@@ -515,8 +516,13 @@ impl RenderOnce for Input {
                     .child(p)
             }))
             .when(state.mode.is_multi_line(), |mut this| {
-                let paddings = this.style().padding;
-                this.child(Self::render_editor(paddings, &self.state, &state, window))
+                let paddings = this.style().padding.clone();
+                this.child(Self::render_editor(
+                    paddings.into(),
+                    &self.state,
+                    &state,
+                    window,
+                ))
             })
             .when(!state.mode.is_multi_line(), |this| {
                 this.child(self.state.clone())
@@ -698,6 +704,7 @@ mod tests {
         }
 
         cx.update(super::super::init);
+        cx.update(crate::theme::init);
         let emitted = Arc::new(Mutex::new(None));
         let captured = emitted.clone();
         let (probe, cx) = cx.add_window_view(move |window, cx| InputA11yProbe {

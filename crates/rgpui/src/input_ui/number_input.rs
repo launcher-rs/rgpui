@@ -2,14 +2,12 @@ use std::rc::Rc;
 
 use crate::prelude::FluentBuilder as _;
 use crate::{
-    actions, AnyElement, App, Context, Corners, Disableable, ElementSize, Entity, EventEmitter,
-    FocusHandle, Focusable, IconName, InteractiveElement as _, IntoElement, KeyBinding, ParentElement,
-    RenderOnce, Role, SharedString, Sizable, StatefulInteractiveElement as _, StyleRefinement,
-    Styled, TextAlign, Window, h_flex, px, ActiveTheme as _,
+    ActiveTheme as _, AnyElement, App, Context, Corners, Disableable, ElementSize, Entity,
+    EventEmitter, FocusHandle, Focusable, IconName, InteractiveElement as _, IntoElement,
+    KeyBinding, ParentElement, RenderOnce, Role, SharedString, Sizable,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, TextAlign, Window, h_flex, px,
 };
-use crate::{
-    Button, ButtonCustomVariant, ButtonVariants as _, StyledExt as _,
-};
+use crate::{Button, ButtonCustomVariant, ButtonVariants as _, StyledExt as _};
 
 use super::{Input, InputState, MaskPattern, input_style};
 

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::prelude::FluentBuilder as _;
 use crate::{
-    ActiveTheme, Animation, AnimationExt as _, App, ElementSize, Hsla, Icon, IconName, IntoElement,
+    Animation, AnimationExt as _, App, ElementSize, Hsla, Icon, IconName, IntoElement,
     ParentElement as _, RenderOnce, Sizable, Styled as _, Transformation, Window, div, ease_in_out,
     percentage,
 };

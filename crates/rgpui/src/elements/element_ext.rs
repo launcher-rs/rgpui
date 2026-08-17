@@ -1,4 +1,4 @@
-use crate::{App, Bounds, IntoElement, ParentElement, Pixels, Styled as _, Window, canvas};
+use crate::{App, Bounds, ParentElement, Pixels, Styled as _, Window, canvas};
 
 /// 用于扩展 [`crate::ParentElement`] 元素的额外功能。
 pub trait ElementExt: ParentElement + Sized {

@@ -41,7 +41,7 @@
 | 2.5 | `Radio` | rgpui-component/src/radio.rs | ☑ |
 | 2.6 | `Switch` | rgpui-component/src/switch.rs | ☑ |
 | 2.7 | `Slider` | rgpui-component/src/slider.rs | ☑ |
-| 2.8 | `Input`（文本输入） | rgpui-component/src/input/ | 🚧 进行中，见下方"Input 子系统移植进度" |
+| 2.8 | `Input`（文本输入） | rgpui-component/src/input/ | ☑ 见下方"Input 子系统移植进度" |
 | 2.9 | `Select` + `Caret` | rgpui-component/src/select.rs | ☐（延后，依赖 Input） |
 | 2.10 | `Spinner` / `Progress` | rgpui-component/src/spinner.rs, progress/ | ☑ Spinner（Progress 未并入） |
 | 2.11 | `Skeleton` / `Badge` / `Tag` / `Separator` / `Kbd` | rgpui-component/src/ | ☑ |
@@ -95,21 +95,17 @@
 - `ShapedLine` 新增 `x_for_index`/`closest_index_for_x`/`index_for_x` 委托方法
 - `menu/global_state.rs` 新增 `suppress_text_selection` 支持（供 InputState 鼠标按下抑制窗口级文本选择）
 
-**已完成（核心移植，未挂接编译）**：
+**已完成（核心移植 + 挂接编译，`cargo test -p rgpui --features test-support --lib input_ui` 68 测试全绿）**：
 
-- `state.rs`（InputState 核心移植完成，约 1500 行：40 个动作 + `Enter`(no_json) + `InputEvent` + `init()` 按键绑定 + `EntityInputHandler`/`Focusable`/`Render`，已剥离 highlighter/LSP/search/popovers/NativeMenu/Root/inline-completion）
-- `input.rs` / `movement.rs` / `decorations.rs` / `number_input.rs` / `clear_button.rs`（已写，随 state.rs 一起挂接）
-- `selection.rs` 补充了 `InputState::select_word`/`select_line`（双击/三击选中），**但已注释掉**：`super::state` 未挂接时会导致编译错误
+- `state.rs`（InputState 核心移植完成：40 个动作 + `Enter`(no_json) + `InputEvent` + `init()` 按键绑定 + `EntityInputHandler`/`Focusable`/`Render`，已剥离 highlighter/LSP/search/popovers/NativeMenu/Root/inline-completion）
+- `element.rs`（TextElement + EditorScrollbarSnapshot + EditorScrollbar，`RIGHT_MARGIN`/`cursor_surrounding_padding`/`BOTTOM_MARGIN_ROWS`，滚动条改用 `rgpui/src/elements/scroll/` 的 scrollable API）
+- `indent.rs` 补齐 `indent_inline`/`indent_block`/`outdent_inline`/`outdent_block`/`has_indent_guides`
+- `selection.rs` 恢复 `InputState::select_word`/`select_line`（双击/三击选中）
+- `input.rs` / `movement.rs` / `decorations.rs` / `number_input.rs` / `clear_button.rs` / `mask_pattern.rs` / `mode.rs` / `word_selection.rs`
+- `input_ui/mod.rs` 挂接全部模块；`input_ui` 已改为 `pub mod`（rgpui.rs）对外暴露，`pub use state::*`
+- 依赖：rgpui 新增 `unicode-segmentation`（state.rs 主代码使用）
 
-**待移植（下一阶段，优先项）**：
-
-- ☑ 最高优先：`element.rs`（TextElement + EditorScrollbarSnapshot + EditorScrollbar，`RIGHT_MARGIN`/`cursor_surrounding_padding`/`BOTTOM_MARGIN_ROWS`，滚动条改用 `rgpui/src/elements/scroll/` 的 scrollable API）——`state.rs` 编译依赖
-- ☑ 优先：`indent.rs` 补齐 `indent_inline`/`indent_block`/`outdent_inline`/`outdent_block`/`has_indent_guides`（`input.rs` on_action 依赖）
-- ☑ 优先：恢复 `selection.rs` 中注释掉的 `InputState::select_word`/`select_line`
-- `input_ui/mod.rs` 挂接模块：`mod state/element/input/number_input/movement/decorations/clear_button` + `pub(crate) use state::*`（`CONTEXT` 已改为 `pub(crate)`）
-- 移植完成后：`cargo test -p rgpui --features test-support --lib input_ui` 全绿 → 更新本表 2.8 为 ☑
-
-> 注意：`state.rs` / `input.rs` 等核心移植文件目前为未挂接状态（不参与编译），挂接前必须先完成 `element.rs` 及其余依赖，否则 `cargo check` 失败。
+> 注：本阶段结束后 `cargo check --workspace` 的失败项（button_example 等组件的 `h_flex`/`Button` 歧义、rgpui-component-story、dialog_overlay 等）与 26 项既有失败测试（img 2 + list 24）均为**基线既有问题**，非本阶段引入。
 
 ## 验证方式
 

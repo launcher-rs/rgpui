@@ -5,32 +5,33 @@ use rgpui::{Context, Window};
 use ropey::Rope;
 
 use super::rope_ext::RopeExt as _;
+use super::state::InputState;
 use super::word_selection::word_range_from_chars;
 
-// impl InputState {
-//     /// 在双击时选中指定偏移量处的单词。
-//     ///
-//     /// 偏移量为 UTF-8 偏移量。
-//     pub(super) fn select_word(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
-//         let Some(range) = TextSelector::word_range(&self.text, offset) else {
-//             return;
-//         };
-//
-//         self.selected_range = (range.start..range.end).into();
-//         self.selected_word_range = Some(self.selected_range);
-//         cx.notify()
-//     }
-//
-//     /// 在三击时选中指定偏移量所在的行。
-//     ///
-//     /// 偏移量为 UTF-8 偏移量。
-//     pub(super) fn select_line(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
-//         let range = TextSelector::line_range(&self.text, offset);
-//         self.selected_range = (range.start..range.end).into();
-//         self.selected_word_range = None;
-//         cx.notify()
-//     }
-// }
+impl InputState {
+    /// 在双击时选中指定偏移量处的单词。
+    ///
+    /// 偏移量为 UTF-8 偏移量。
+    pub(super) fn select_word(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(range) = TextSelector::word_range(&self.text, offset) else {
+            return;
+        };
+
+        self.selected_range = (range.start..range.end).into();
+        self.selected_word_range = Some(self.selected_range);
+        cx.notify()
+    }
+
+    /// 在三击时选中指定偏移量所在的行。
+    ///
+    /// 偏移量为 UTF-8 偏移量。
+    pub(super) fn select_line(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
+        let range = TextSelector::line_range(&self.text, offset);
+        self.selected_range = (range.start..range.end).into();
+        self.selected_word_range = None;
+        cx.notify()
+    }
+}
 
 /// 文本选择器辅助结构体。
 ///

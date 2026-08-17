@@ -208,7 +208,7 @@ mod menu;
 mod form;
 
 /// 输入组件子系统 - 输入框、文本框、数字输入、掩码输入等
-mod input_ui;
+pub mod input_ui;
 
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]

@@ -18,7 +18,7 @@ pub use self::display_map::{DisplayMap, WrappingIndent};
 pub(crate) use self::text_wrapper::LineLayout;
 
 // 重新导出 FoldRange 和 extract_fold_ranges
-pub use folding::{FoldRange, Tree, extract_fold_ranges};
+pub use folding::FoldRange;
 
 /// Buffer 中的位置（逻辑文本）。
 ///

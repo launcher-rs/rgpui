@@ -135,6 +135,7 @@ uuid.workspace = true
 web-time.workspace = true
 ropey.workspace = true
 instant = { version = "0.1", features = ["wasm-bindgen"] }
+unicode-segmentation = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.4.3", features = ["wasm_js"] }
@@ -198,7 +199,6 @@ pretty_assertions.workspace = true
 rgpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11", "screen-capture"] }
 lyon = { version = "1.0", features = ["extra"] }
 rand.workspace = true
-unicode-segmentation = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 proptest = { workspace = true }
