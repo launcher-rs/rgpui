@@ -296,6 +296,15 @@ impl Button {
         self
     }
 
+    /// 设置按钮各角是否启用圆角。
+    ///
+    /// 默认四角全部启用。可用来让按钮贴合外部容器边框（如数字输入框
+    /// 内部的加减按钮只保留外侧圆角）。
+    pub fn border_corners(mut self, corners: Corners<bool>) -> Self {
+        self.border_corners = corners;
+        self
+    }
+
     /// 设置按钮标签，如果未设置标签，则按钮为图标按钮模式。
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = Some(label.into());
