@@ -216,6 +216,9 @@ pub mod index_path;
 /// 列表子系统 - 虚拟化列表、ListDelegate、ListState 等
 pub mod list;
 
+/// 表格子系统 - 虚拟化数据表格、列定义、表头与表体组件
+pub mod table;
+
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
 pub mod util;

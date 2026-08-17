@@ -58,7 +58,7 @@
 | 3.4 | `Notification` / `Toast` | rgpui-component/src/notification.rs | ☑ 移至 `rgpui/src/menu/notification.rs`（Notification + NotificationList + NotificationType），`NotificationSettings` 复用 theme 层，`NotificationId` 公开导出，4 测试通过 |
 | 3.5 | `Form`（表单容器） | rgpui-component/src/form/ | ☑ 移至 `rgpui/src/form/`（Form + Field + FieldBuilder + v_form/h_form/field 构造器），`Size`→`ElementSize`、`AxisExt` 用 `matches!` 替代，1 测试通过 |
 | 3.6 | `List` / `VirtualList` | rgpui-component/src/list/ | ☑ 见下方"List 子系统移植进度" |
-| 3.7 | `Table` | rgpui-component/src/table/ | ☐ |
+| 3.7 | `Table` | rgpui-component/src/table/ | ☑ 见下方"Table 子系统移植进度" |
 | 3.8 | `Tabs` / `Accordion` / `Collapsible` | rgpui-component/src/ | ☐ |
 | 3.9 | `TitleBar` / `WindowBorder` | rgpui-component/src/title_bar.rs, window_border.rs | ☐ |
 
@@ -120,6 +120,24 @@
 - `list/list.rs`（init 快捷键绑定 + ListEvent + ListOptions + ListState + List 元素 + `impl Render`/`Focusable`/`EventEmitter`）
 - `list/mod.rs` 模块声明与重导出；rgpui.rs 注册 `pub mod list`（组件版 `ListSettings` 与 theme 层重复，弃用 theme 版）
 - 适配点：`crate::input_ui::{Input, InputEvent, InputState}`、`crate::menu::{Cancel, Confirm, SelectUp, SelectDown}`、`t!("List.search_placeholder")` → 字面量 `"Search..."`、`Size`→`ElementSize`、`Scrollbar` 走 `crate::Scrollbar`（elements::* 重导出）、`instant::Duration` → `std::time::Duration`
+
+### Table 子系统移植进度（3.7）
+
+> 移植源：`rgpui-component-workspce/rgpui-component/src/table/`（state.rs 96006 字节为核心）。目标模块：`rgpui/src/table/`。
+
+**已完成（核心移植 + 挂接编译；`cargo check -p rgpui` 通过，`cargo test -p rgpui --features test-support --lib` 458 通过 / 26 失败与基线一致，clippy 新文件 0 问题）**：
+
+- 前置：`elements/element_ext.rs` 补充 `ChildElement` + `AnyChildElement`（从组件 element_ext.rs 手动移植，表组件依赖）
+- `table/column.rs`（Column/ColumnGroup/ColumnSort/ColumnFixed/ColGroup + DragColumn/ResizeColumn 上下文事件）
+- `table/loading.rs`（Loading/LoadingRow 骨架屏，用 `crate::elements::Skeleton`）
+- `table/delegate.rs`（TableDelegate trait 全量默认实现）
+- `table/data_table.rs`（`pub(super) fn init` 注册 DataTable 快捷键 + TableOptions + DataTable 元素 + `pub(super)` Render/Focusable 监听）
+- `table/state.rs`（TableEvent/SelectionMode/TableVisibleRange/HeaderCell/TableState + Render/Focusable/EventEmitter；`measure_enable()` 内联私有 fn）
+- `table/table.rs`（Table/TableHeader/TableBody/TableFooter/TableRow/TableHead/TableCell/TableCaption 可组合组件）
+- `table/mod.rs` 模块声明与重导出（loading 不重导出，按源模式）；rgpui.rs 注册 `pub mod table`
+- 适配点：`crate::menu::{Cancel, SelectUp, SelectDown, ...}`（actions 经 menu 重导出）、`Skeleton` 走 `crate::elements::Skeleton`、`virtual_list(...)` 改走公开的 `crate::h_virtual_list`（横向虚拟列）、`menu::actions` 私有模块不可直接引用
+- 校验：`table/delegate.rs` 未用参数 `_` 前缀化，`pub` 项补齐中文文档注释（`#![warn(missing_docs)]`），`cx.entity().clone()` / `.name.clone()` 移除（clippy `redundant_clone` deny）
+- 注：rgpui lib 既有的 missing_docs / dead_code 警告（theme/、input_ui/ 等）与 12 项 clippy `redundant_clone` 均为**基线既有问题**，非本阶段引入
 
 ## 验证方式
 

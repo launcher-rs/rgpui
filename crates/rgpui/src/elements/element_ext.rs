@@ -1,4 +1,42 @@
-use crate::{App, Bounds, ParentElement, Pixels, Styled as _, Window, canvas};
+use crate::{
+    AnyElement, App, Bounds, ElementSize, IntoElement, ParentElement, Pixels, Sizable, Styled as _,
+    Window, canvas,
+};
+
+/// 子元素尺寸选项。
+#[derive(Default)]
+struct ChildElementOptions {
+    ix: usize,
+    size: ElementSize,
+}
+
+/// 可携带索引的子元素 trait。
+///
+/// 用于表等容器组件中，为每个子元素分配其在父容器中的索引。
+pub trait ChildElement: Sizable + IntoElement {
+    /// 为子元素设置其在父容器中的索引。
+    fn with_ix(self, ix: usize) -> Self;
+}
+
+/// 类型擦除的子元素，可在渲染前接受 [`ChildElementOptions`]。
+pub struct AnyChildElement(Box<dyn FnOnce(ChildElementOptions) -> AnyElement>);
+
+impl AnyChildElement {
+    /// 将实现了 [`ChildElement`] 的元素包装为类型擦除的子元素。
+    pub fn new(element: impl ChildElement + 'static) -> Self {
+        Self(Box::new(|options| {
+            element
+                .with_ix(options.ix)
+                .with_size(options.size)
+                .into_any_element()
+        }))
+    }
+
+    /// 将类型擦除的子元素转为实际的元素，传入索引与尺寸。
+    pub fn into_any(self, ix: usize, size: ElementSize) -> AnyElement {
+        (self.0)(ChildElementOptions { ix, size })
+    }
+}
 
 /// 用于扩展 [`crate::ParentElement`] 元素的额外功能。
 pub trait ElementExt: ParentElement + Sized {
