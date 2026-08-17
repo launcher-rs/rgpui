@@ -6,6 +6,49 @@ rgpui 是一个**独立演进**的 GPU 加速跨平台 UI 框架。它历史上�
 
 采用 Rust workspace 架构，核心库 `rgpui` 通过 `Platform` trait 抽象各平台实现。
 
+## AGENTS.md — 项目约定（本机 Windows + PowerShell 7）
+
+本机（Windows + PowerShell 7）下的 opencode / agent 约定，避免中文输出乱码与命令副作用。
+
+### 中文乱码约定
+
+本机 pwsh 的 `[Console]::OutputEncoding` 默认是系统代码页（936 / GB2312），而
+opencode 等工具读取 pwsh 输出时按 UTF-8 解码。因此任何**含中文的输出**命令
+（`git log`、`git diff`、`rg`、`cargo` 警告、`Get-Content`、`Get-ChildItem`、
+`Write-Output` 等）都可能出现乱码，影响对结果的判断。
+
+#### 执行含中文输出的命令前，先设置 UTF-8（四行都设）
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$PSStyle.OutputRendering = 'PlainText'
+```
+
+- `[Console]::OutputEncoding` / `InputEncoding`：控制台层编码。
+- `$OutputEncoding`：管道 / 外部命令的输出编码。
+- `$PSStyle.OutputRendering = 'PlainText'`：pwsh 7 默认会往管道输出 ANSI 样式
+  （彩色），在重定向 / 捕获时干扰编码与解析，先关掉再执行。
+
+#### 读取中文文件建议加 -Encoding UTF8
+
+```powershell
+Get-Content -Path <file> -Encoding UTF8
+```
+
+#### 可选项：写入 pwsh profile 让所有会话自动生效
+
+把上述四行写入 `$PROFILE`（`C:\Users\deego\Documents\PowerShell\Microsoft.PowerShell_profile.ps1`），
+之后每个 pwsh 会话都默认 UTF-8，不再需要逐个命令前手动设置。
+
+#### 规避建议
+
+- 识别文本结果（文件名、crate 名、报错位置）尽量用专用工具（Read / Glob / Grep），
+  它们按 UTF-8 读取，不受控制台代码页影响。
+- 需要程序化解析命令输出时，优先让命令输出英文（如 `git -c core.quotepath=false diff`），
+  或用 `--no-ansi` 去掉样式。
+
 ## 与上游切分及组件整合战略
 
 > 这是本项目的**最高层战略**，任何重构、评审、提交都应以它为准绳。
