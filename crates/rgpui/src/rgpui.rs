@@ -219,6 +219,9 @@ pub mod list;
 /// 表格子系统 - 虚拟化数据表格、列定义、表头与表体组件
 pub mod table;
 
+/// 标签页子系统 - Tab、TabBar、手风琴与折叠面板组件
+pub mod tabs;
+
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
 pub mod util;

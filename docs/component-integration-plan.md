@@ -59,7 +59,7 @@
 | 3.5 | `Form`（表单容器） | rgpui-component/src/form/ | ☑ 移至 `rgpui/src/form/`（Form + Field + FieldBuilder + v_form/h_form/field 构造器），`Size`→`ElementSize`、`AxisExt` 用 `matches!` 替代，1 测试通过 |
 | 3.6 | `List` / `VirtualList` | rgpui-component/src/list/ | ☑ 见下方"List 子系统移植进度" |
 | 3.7 | `Table` | rgpui-component/src/table/ | ☑ 见下方"Table 子系统移植进度" |
-| 3.8 | `Tabs` / `Accordion` / `Collapsible` | rgpui-component/src/ | ☐ |
+| 3.8 | `Tabs` / `Accordion` / `Collapsible` | rgpui-component/src/ | ☑ 见下方"Tabs/Accordion/Collapsible 子系统移植进度" |
 | 3.9 | `TitleBar` / `WindowBorder` | rgpui-component/src/title_bar.rs, window_border.rs | ☐ |
 
 ### 阶段四：收尾
@@ -138,6 +138,20 @@
 - 适配点：`crate::menu::{Cancel, SelectUp, SelectDown, ...}`（actions 经 menu 重导出）、`Skeleton` 走 `crate::elements::Skeleton`、`virtual_list(...)` 改走公开的 `crate::h_virtual_list`（横向虚拟列）、`menu::actions` 私有模块不可直接引用
 - 校验：`table/delegate.rs` 未用参数 `_` 前缀化，`pub` 项补齐中文文档注释（`#![warn(missing_docs)]`），`cx.entity().clone()` / `.name.clone()` 移除（clippy `redundant_clone` deny）
 - 注：rgpui lib 既有的 missing_docs / dead_code 警告（theme/、input_ui/ 等）与 12 项 clippy `redundant_clone` 均为**基线既有问题**，非本阶段引入
+
+### Tabs/Accordion/Collapsible 子系统移植进度（3.8）
+
+> 移植源：`rgpui-component-workspce/rgpui-component/src/`（tab/tab.rs、tab/tab_bar.rs、accordion.rs、collapsible.rs）。目标模块：`rgpui/src/tabs/`。
+
+**已完成（核心移植 + 挂接编译；`cargo check -p rgpui` 通过，`cargo test -p rgpui --features test-support --lib` 458 通过 / 26 失败与基线一致，clippy 新文件 0 问题）**：
+
+- `tabs/collapsible.rs`（Collapsible：open 状态 + content 折叠渲染）
+- `tabs/accordion.rs`（Accordion + AccordionItem + AccordionContent，AccordionContent 为自定义 Element，含内容高度动画 `request_animation_frame` + `with_element_state` + `with_content_mask`）
+- `tabs/tab.rs`（Tab + TabVariant 五变体样式 + TabStyle，支持 label/icon/prefix/suffix/disabled/selected/on_click，Sizable/Selectable/InteractiveElement 等 trait）
+- `tabs/tab_bar.rs`（TabBar：Segmented/Pill/Underline 滑动指示器动画，边界经 `on_prepaint` + `Rc<RefCell<TabIndicatorBounds>>` 捕获，`use_keyed_state` 管理动画参数与纪元，溢出 menu 按钮 + Anchor::TopRight 弹出菜单）
+- `tabs/mod.rs` 模块声明与重导出；rgpui.rs 注册 `pub mod tabs`（`pub mod table` 之后）
+- 适配点：`crate::animation::{Lerp, ease_in_out_cubic}` → `crate::{Lerp, ease_in_out_cubic}`（transition 重导出）、组件 `Size` → `ElementSize`、`crate::button` / `crate::menu` 路径改走根重导出（`Button`/`ButtonVariants`/`DropdownMenu`/`PopupMenuItem`）、`rust_i18n::t` + `t!("Dock.Unnamed")` → 字面量 `"Unnamed"`、`TabStyle` 移除 `#[allow(dead_code)]`
+- 校验：`pub` 项补齐中文文档注释（`#![warn(missing_docs)]`），clippy `redundant_clone` deny 无新增（12 项仍为基线既有）
 
 ## 验证方式
 
