@@ -60,7 +60,7 @@
 | 3.6 | `List` / `VirtualList` | rgpui-component/src/list/ | ☑ 见下方"List 子系统移植进度" |
 | 3.7 | `Table` | rgpui-component/src/table/ | ☑ 见下方"Table 子系统移植进度" |
 | 3.8 | `Tabs` / `Accordion` / `Collapsible` | rgpui-component/src/ | ☑ 见下方"Tabs/Accordion/Collapsible 子系统移植进度" |
-| 3.9 | `TitleBar` / `WindowBorder` | rgpui-component/src/title_bar.rs, window_border.rs | ☐ |
+| 3.9 | `TitleBar` / `WindowBorder` | rgpui-component/src/title_bar.rs, window_border.rs | ☑ 见下方"TitleBar/WindowBorder 子系统移植进度" |
 
 ### 阶段四：收尾
 
@@ -151,6 +151,19 @@
 - `tabs/tab_bar.rs`（TabBar：Segmented/Pill/Underline 滑动指示器动画，边界经 `on_prepaint` + `Rc<RefCell<TabIndicatorBounds>>` 捕获，`use_keyed_state` 管理动画参数与纪元，溢出 menu 按钮 + Anchor::TopRight 弹出菜单）
 - `tabs/mod.rs` 模块声明与重导出；rgpui.rs 注册 `pub mod tabs`（`pub mod table` 之后）
 - 适配点：`crate::animation::{Lerp, ease_in_out_cubic}` → `crate::{Lerp, ease_in_out_cubic}`（transition 重导出）、组件 `Size` → `ElementSize`、`crate::button` / `crate::menu` 路径改走根重导出（`Button`/`ButtonVariants`/`DropdownMenu`/`PopupMenuItem`）、`rust_i18n::t` + `t!("Dock.Unnamed")` → 字面量 `"Unnamed"`、`TabStyle` 移除 `#[allow(dead_code)]`
+- 校验：`pub` 项补齐中文文档注释（`#![warn(missing_docs)]`），clippy `redundant_clone` deny 无新增（12 项仍为基线既有）
+
+### TitleBar/WindowBorder 子系统移植进度（3.9）
+
+> 移植源：`rgpui-component-workspce/rgpui-component/src/`（title_bar.rs、window_border.rs）。目标模块：`rgpui/src/title_bar/`。
+
+**已完成（核心移植 + 挂接编译；`cargo check -p rgpui` 通过，`cargo test -p rgpui --features test-support --lib` 458 通过 / 26 失败与基线一致，clippy 新文件 0 问题）**：
+
+- 前置：`elements/element_ext.rs` 补充 `InteractiveElementExt`（`on_double_click`，从组件 event.rs 手动移植，标题栏双击依赖）
+- `title_bar/title_bar.rs`（`TitleBar` + `TITLE_BAR_HEIGHT` + `title_bar_options`/`window_options` + `ControlIcon`（Minimize/Restore/Maximize/Close，Windows 走 `window_control_area`、Linux 走手动点击）+ `WindowControls`（按平台 `window.window_controls()` 支持度渲染）+ 拖拽移动/双击事件）
+- `title_bar/window_border.rs`（`WindowBorder` + `window_border()` + `window_paddings()`，客户端装饰阴影/边框/调整大小命中带 `resize_hit_zones` + `resize_edge`）
+- `title_bar/mod.rs` 模块声明与重导出；rgpui.rs 注册 `pub mod title_bar`
+- 适配点：`rgpui::` 前缀改走 `crate::` 根重导出（`point`/`px`/`transparent_black`/`BoxShadow`）、`Renderer` 相关类型（`Context`/`Render`）无需移植（rgpui 核心 `use_state` 不要求 `Render`，移除 `TitleBarState` 的 `impl Render` 历史 workaround）、`InteractiveElementExt as _` 由核心 `elements::element_ext.rs` 提供
 - 校验：`pub` 项补齐中文文档注释（`#![warn(missing_docs)]`），clippy `redundant_clone` deny 无新增（12 项仍为基线既有）
 
 ## 验证方式

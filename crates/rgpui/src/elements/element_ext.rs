@@ -1,6 +1,6 @@
 use crate::{
-    AnyElement, App, Bounds, ElementSize, IntoElement, ParentElement, Pixels, Sizable, Styled as _,
-    Window, canvas,
+    AnyElement, App, Bounds, ClickEvent, ElementSize, InteractiveElement, IntoElement,
+    ParentElement, Pixels, Sizable, Stateful, Styled as _, Window, canvas,
 };
 
 /// 子元素尺寸选项。
@@ -63,3 +63,26 @@ pub trait ElementExt: ParentElement + Sized {
 }
 
 impl<T: ParentElement> ElementExt for T {}
+
+/// 用于扩展 [`crate::InteractiveElement`] 的额外事件方法。
+pub trait InteractiveElementExt: InteractiveElement {
+    /// 设置双击事件的监听器。
+    ///
+    /// 在点击计数为 2 时触发给定的回调。
+    fn on_double_click(
+        mut self,
+        listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self
+    where
+        Self: Sized,
+    {
+        self.interactivity().on_click(move |event, window, cx| {
+            if event.click_count() == 2 {
+                listener(event, window, cx);
+            }
+        });
+        self
+    }
+}
+
+impl<E: InteractiveElement> InteractiveElementExt for Stateful<E> {}

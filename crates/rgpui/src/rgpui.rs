@@ -222,6 +222,9 @@ pub mod table;
 /// 标签页子系统 - Tab、TabBar、手风琴与折叠面板组件
 pub mod tabs;
 
+/// 标题栏子系统 - 自定义标题栏、窗口控制按钮与客户端装饰边框
+pub mod title_bar;
+
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
 pub mod util;
