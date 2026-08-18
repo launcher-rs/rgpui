@@ -1,0 +1,14 @@
+[package]
+name = "rgpui_story"
+description = "rgpui 组件示例大全：通过侧边栏导航分类展示所有组件的用法"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+rgpui = { workspace = true, features = ["charts", "effects", "qr-code"] }
+rgpui-platform.workspace = true
+
+[lints]
+workspace = true

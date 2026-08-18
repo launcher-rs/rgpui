@@ -6231,6 +6231,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rgpui_story"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rgpui",
+ "rgpui-platform",
+]
+
+[[package]]
 name = "rgpui_term_basic"
 version = "0.1.0"
 dependencies = [

@@ -6,6 +6,28 @@ Examples can be run from the Zed repository root:
 cargo run -p gpui --example hello_world
 ```
 
+## Feature-gated component examples
+
+These examples require enabling the corresponding rgpui feature:
+
+```sh
+cargo run -p gpui --example charts --features charts
+cargo run -p gpui --example effects --features effects
+cargo run -p gpui --example qr_code --features qr-code
+```
+
+- `charts` demonstrates the chart components (bar, line, pie, donut charts).
+- `effects` demonstrates the decorative effect components (aurora, confetti,
+  particle emitter, shimmer, marquee, pulse indicator, ripple).
+- `qr_code` demonstrates the QR code component with custom colors.
+
+A comprehensive component storybook (covering core, form, menu, dialog, list,
+table, tab, and extended components) lives in `examples/rgpui_story`:
+
+```sh
+cargo run -p rgpui_story
+```
+
 ## Where to start
 
 - `hello_world` shows the basic shape of a GPUI application: create an
