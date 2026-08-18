@@ -2272,6 +2272,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "extended_components"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rgpui",
+ "rgpui-platform",
+]
+
+[[package]]
 name = "fast-srgb8"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6239,7 +6248,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui_term_component_integration"
+name = "rgpui_term_integration"
 version = "0.1.0"
 dependencies = [
  "anyhow",
