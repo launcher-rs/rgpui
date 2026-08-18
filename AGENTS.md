@@ -332,6 +332,7 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 16. `crates/rgpui-markdown` 存在，`pulldown-cmark = "0.12"` 为工作区依赖
 17. `rgpui-ui` 存在 `charts` feature（`components/charts/` 门控），`cargo check -p rgpui-ui --features charts` 通过
 18. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
+19. `rgpui-ui` 迁移已全部完成（执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter）、显示（qr_code/sparkline/svg_renderer/image_viewer，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）
 
 ## Web/WASM 开发
 
