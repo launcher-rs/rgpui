@@ -34,7 +34,7 @@ impl Default for ComponentTextViewStyle {
             paragraph_gap: rems(1.),
             heading_base_font_size: px(14.),
             heading_font_size: None,
-            highlight_theme: HighlightTheme::default_light().clone(),
+            highlight_theme: HighlightTheme::default_light(),
             code_block: StyleRefinement::default(),
             table: StyleRefinement::default(),
             table_cell: StyleRefinement::default(),

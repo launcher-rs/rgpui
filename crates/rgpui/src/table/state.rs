@@ -1787,7 +1787,7 @@ where
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let horizontal_scroll_handle = self.horizontal_scroll_handle.clone();
-        let is_stripe_row = self.options.stripe && row_ix % 2 != 0;
+        let is_stripe_row = self.options.stripe && !row_ix.is_multiple_of(2);
         let is_selected = self.selected_row == Some(row_ix);
         let view = cx.entity();
         let row_height = self.options.size.table_row_height();

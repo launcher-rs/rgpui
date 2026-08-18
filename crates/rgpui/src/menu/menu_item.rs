@@ -25,7 +25,7 @@ impl MenuItemElement {
     pub(crate) fn new(id: impl Into<ElementId>, group_name: impl Into<SharedString>) -> Self {
         let id: ElementId = id.into();
         Self {
-            id: id.clone(),
+            id: id,
             group_name: group_name.into(),
             aria_label: None,
             style: StyleRefinement::default(),

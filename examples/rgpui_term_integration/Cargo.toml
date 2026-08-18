@@ -1,0 +1,17 @@
+[package]
+name = "rgpui_term_integration"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rgpui = { workspace = true, features = ["bundled-themes"] }
+rgpui-platform.workspace = true
+rgpui-term.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger = "0.11"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+objc = "0.2"

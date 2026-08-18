@@ -133,7 +133,7 @@ where
                     }
                 };
 
-                menu.clone()
+                menu
             })
     }
 }

@@ -837,7 +837,7 @@ impl PopupMenu {
                     }) => {
                         if let Some(handler) = handler {
                             handler(&ClickEvent::default(), window, cx);
-                        } else if let Some(action) = action.as_ref() {
+                        } else if let Some(action) = action.as_deref() {
                             self.dispatch_confirm_action(action, window, cx);
                         }
 
@@ -848,7 +848,7 @@ impl PopupMenu {
                     }) => {
                         if let Some(handler) = handler {
                             handler(&ClickEvent::default(), window, cx);
-                        } else if let Some(action) = action.as_ref() {
+                        } else if let Some(action) = action.as_deref() {
                             self.dispatch_confirm_action(action, window, cx);
                         }
                         self.dismiss(&Cancel, window, cx)
@@ -862,7 +862,7 @@ impl PopupMenu {
 
     fn dispatch_confirm_action(
         &self,
-        action: &Box<dyn Action>,
+        action: &dyn Action,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1112,7 +1112,7 @@ impl PopupMenu {
         }
 
         let icon = if let Some(icon) = icon {
-            icon.clone()
+            icon
         } else if checked {
             Icon::new(IconName::Check)
         } else {
@@ -1388,7 +1388,7 @@ impl Render for PopupMenu {
             }
         }
 
-        let view = cx.entity().clone();
+        let view = cx.entity();
         let items_count = self.menu_items.len();
 
         let max_height = self.max_height.unwrap_or_else(|| {

@@ -7,6 +7,9 @@ version.workspace = true
 edition.workspace = true
 repository = "https://github.com/launcher-rs/rgpui"
 
+[lints]
+workspace = true
+
 [dependencies]
 rgpui = { workspace = true }
 pulldown-cmark = { workspace = true }

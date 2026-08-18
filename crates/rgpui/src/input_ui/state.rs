@@ -2541,6 +2541,6 @@ impl Render for InputState {
             .when(self.mode.is_multi_line(), |this| this.h_full())
             .flex_grow_1()
             .overflow_x_hidden()
-            .child(TextElement::new(cx.entity().clone()).placeholder(self.placeholder.clone()))
+            .child(TextElement::new(cx.entity()).placeholder(self.placeholder.clone()))
     }
 }

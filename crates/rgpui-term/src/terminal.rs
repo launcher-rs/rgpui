@@ -374,14 +374,12 @@ impl TerminalBuilder {
     ) -> Task<Result<TerminalBuilder>> {
         cx.spawn(async move |_| {
             let mut shell_cmd = shell.clone();
-            let shell_args: Option<Vec<String>> = None;
 
             if shell_cmd.is_none() {
                 shell_cmd = default_shell_command();
             }
 
-            let alac_shell =
-                shell_cmd.map(|program| tty::Shell::new(program, shell_args.unwrap_or_default()));
+            let alac_shell = shell_cmd.map(|program| tty::Shell::new(program, Vec::new()));
 
             // Validate and fallback working directory
             let working_directory = working_directory
@@ -421,7 +419,7 @@ impl TerminalBuilder {
 
             let pty_options = tty::Options {
                 shell: alac_shell,
-                working_directory: working_directory.clone(),
+                working_directory,
                 drain_on_exit: true,
                 env: env.into_iter().collect(),
                 #[cfg(windows)]
@@ -454,7 +452,7 @@ impl TerminalBuilder {
             let (events_tx, events_rx) = unbounded();
 
             let term = Term::new(
-                config.clone(),
+                config,
                 &TerminalBounds::default(),
                 ZedListener(events_tx.clone()),
             );

@@ -422,7 +422,7 @@ impl TooltipOverlay {
         } else {
             // 新建：延迟后显示并带下滑动画
             let epoch = self.next_epoch();
-            let content = content.clone();
+            let content = content;
             self._show_task = Some(cx.spawn_in(window, async move |this, cx| {
                 cx.background_executor().timer(SHOW_DELAY).await;
                 let _ = this.update_in(cx, |this, _, cx| {
@@ -581,8 +581,7 @@ pub(crate) trait ManagedTooltipExt:
             bounds_writer.set(bounds);
         })
         .on_hover({
-            let trigger_bounds_cell = trigger_bounds_cell.clone();
-            let build_tooltip = build_tooltip.clone();
+            let build_tooltip = build_tooltip;
             move |hovered, window, cx| {
                 if let Some(overlay) = Root::tooltip_overlay(window, cx) {
                     if *hovered {
