@@ -162,7 +162,9 @@ pub(super) fn sync_native_content_type(
     }
 
     #[cfg(target_os = "macos")]
-    super::native::set_text_content_type(window, content_type);
+    window
+        .platform_window
+        .set_text_content_type(content_type.and_then(InputContentType::ns_text_content_type));
 
     #[cfg(not(target_os = "macos"))]
     let _ = (window, content_type);

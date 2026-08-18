@@ -1247,6 +1247,13 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
 
     // ---- 标题栏可见性 ----
     fn set_titlebar_visible(&self, _visible: bool) {}
+
+    // ---- 输入框原生内容类型（macOS 输入法提示） ----
+    ///
+    /// 设置窗口输入视图的语义内容类型（如 `password`、`email` 等），
+    /// 供系统输入法/自动填充识别。macOS 通过 `NSTextContent` 协议实现，
+    /// 其他平台为空操作。
+    fn set_text_content_type(&self, _content_type: Option<&'static str>) {}
 }
 
 /// A renderer for headless windows that can produce real rendered output.

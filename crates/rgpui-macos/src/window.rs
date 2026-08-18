@@ -53,13 +53,14 @@ use objc2_app_kit::{
     NSBeep, NSButton as Objc2NSButton, NSView as Objc2NSView, NSWindow as Objc2NSWindow,
     NSWindowButton as Objc2NSWindowButton,
 };
-use objc2_foundation::{NSPoint as Objc2NSPoint, NSRect as Objc2NSRect};
+use objc2_foundation::{NSPoint as Objc2NSPoint, NSRect as Objc2NSRect, NSString as Objc2NSString};
 use parking_lot::Mutex;
 use raw_window_handle as rwh;
 use rgpui::ResultExt;
 use smallvec::SmallVec;
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
+    collections::HashMap,
     ffi::{CStr, c_void},
     mem,
     ops::Range,
@@ -272,6 +273,20 @@ unsafe fn build_classes() {
                 attributed_substring_for_proposed_range
                     as extern "C" fn(&Object, Sel, NSRange, *mut c_void) -> id,
             );
+
+            // NSTextContent 协议：输入框语义内容类型（密码/邮箱等），供系统输入法/自动填充识别。
+            if let Some(protocol) = Protocol::get("NSTextContent") {
+                decl.add_protocol(protocol);
+            }
+            decl.add_method(
+                sel!(contentType),
+                view_content_type as extern "C" fn(&Object, Sel) -> id,
+            );
+            decl.add_method(
+                sel!(setContentType:),
+                set_view_content_type as extern "C" fn(&Object, Sel, id),
+            );
+
             decl.add_method(
                 sel!(viewDidChangeEffectiveAppearance),
                 view_did_change_effective_appearance as extern "C" fn(&Object, Sel),
@@ -307,6 +322,38 @@ unsafe fn build_classes() {
             decl.register()
         };
     }
+}
+
+/// 每个视图指针 → 已设置的语义内容类型（NSString）。
+///
+/// NSTextContent 协议要求 `contentType` 返回当前内容类型，这里用一个
+/// 线程局部表按视图指针存取值（与设置端同线程，安全性与旧 rgpui-component 一致）。
+thread_local! {
+    static CONTENT_TYPES: RefCell<HashMap<usize, Retained<Objc2NSString>>> =
+        RefCell::new(HashMap::new());
+}
+
+/// `contentType` getter：返回当前视图已设置的语义内容类型。
+unsafe extern "C" fn view_content_type(this: &Object, _: Sel) -> id {
+    let key = this as *const _ as usize;
+    CONTENT_TYPES.with(|content_types| {
+        content_types.borrow().get(&key).map_or(nil, |value| {
+            Retained::as_ptr(value).cast_mut().cast::<Object>()
+        })
+    })
+}
+
+/// `setContentType:` setter：存储视图的语义内容类型。
+unsafe extern "C" fn set_view_content_type(this: &Object, _: Sel, value: id) {
+    let key = this as *const _ as usize;
+    CONTENT_TYPES.with(|content_types| {
+        let mut content_types = content_types.borrow_mut();
+        if value.is_null() {
+            content_types.remove(&key);
+        } else if let Some(value) = unsafe { Retained::retain(value.cast::<Objc2NSString>()) } {
+            content_types.insert(key, value);
+        }
+    });
 }
 
 pub(crate) fn convert_mouse_position(position: NSPoint, window_height: Pixels) -> Point<Pixels> {
@@ -1865,6 +1912,15 @@ impl PlatformWindow for MacWindow {
 
     fn a11y_update_window_bounds(&self) {
         // macOS handles window bounds tracking automatically via NSAccessibility.
+    }
+
+    fn set_text_content_type(&self, content_type: Option<&'static str>) {
+        let view = self.0.lock().native_view.as_ptr();
+        let ns_content_type = content_type.map(|s| unsafe { ns_string(s) });
+        let ns_content_type = ns_content_type.unwrap_or(nil);
+        unsafe {
+            let _: () = msg_send![view, setContentType: ns_content_type];
+        }
     }
 }
 
