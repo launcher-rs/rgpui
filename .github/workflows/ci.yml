@@ -33,6 +33,10 @@ jobs:
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
+          # azure.archive.ubuntu.com 镜像在 GitHub 托管 runner 上经常不可达，导致 apt-get update 无限重试卡死。
+          # 这里将其替换为可用的 archive.ubuntu.com，并强制 IPv4、设置获取超时避免再次挂起。
+          sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+          printf 'Acquire::ForceIPv4 "true";\nAcquire::http::Timeout "30";\nAcquire::Retries "5";\n' | sudo tee /etc/apt/apt.conf.d/99-github-runner >/dev/null
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
