@@ -231,7 +231,12 @@ metal = "0.33"
 # Objective-C 运行时
 objc = "0.2"
 # AppKit 绑定
-objc2-app-kit = { version = "0.3", default-features = false, features = [ "NSGraphics" ] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "NSGraphics",
+    "NSButton",
+    "NSView",
+    "NSWindow",
+] }
 # Foundation 框架绑定
 objc2-foundation = { version = "=0.3.2", default-features = false, features = [
     "NSArray",

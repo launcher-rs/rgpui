@@ -324,27 +324,30 @@ unsafe fn build_classes() {
     }
 }
 
-/// 每个视图指针 → 已设置的语义内容类型（NSString）。
-///
-/// NSTextContent 协议要求 `contentType` 返回当前内容类型，这里用一个
-/// 线程局部表按视图指针存取值（与设置端同线程，安全性与旧 rgpui-component 一致）。
+// 每个视图指针 → 已设置的语义内容类型（NSString）。
+//
+// NSTextContent 协议要求 `contentType` 返回当前内容类型，这里用一个
+// 线程局部表按视图指针存取值（与设置端同线程，安全性与旧 rgpui-component 一致）。
 thread_local! {
     static CONTENT_TYPES: RefCell<HashMap<usize, Retained<Objc2NSString>>> =
         RefCell::new(HashMap::new());
 }
 
-/// `contentType` getter：返回当前视图已设置的语义内容类型。
-unsafe extern "C" fn view_content_type(this: &Object, _: Sel) -> id {
+// `contentType` getter：返回当前视图已设置的语义内容类型。
+extern "C" fn view_content_type(this: &Object, _: Sel) -> id {
     let key = this as *const _ as usize;
     CONTENT_TYPES.with(|content_types| {
-        content_types.borrow().get(&key).map_or(nil, |value| {
-            Retained::as_ptr(value).cast_mut().cast::<Object>()
-        })
+        content_types
+            .borrow()
+            .get(&key)
+            .map_or(nil, |value| unsafe {
+                Retained::as_ptr(value).cast_mut().cast::<Object>()
+            })
     })
 }
 
-/// `setContentType:` setter：存储视图的语义内容类型。
-unsafe extern "C" fn set_view_content_type(this: &Object, _: Sel, value: id) {
+// `setContentType:` setter：存储视图的语义内容类型。
+extern "C" fn set_view_content_type(this: &Object, _: Sel, value: id) {
     let key = this as *const _ as usize;
     CONTENT_TYPES.with(|content_types| {
         let mut content_types = content_types.borrow_mut();
