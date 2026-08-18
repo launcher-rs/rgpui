@@ -147,10 +147,10 @@ div()
 
 ## h_flex / v_flex 辅助函数
 
-rgpui-component 提供简写辅助函数（从 `rgpui_component` 导入）：
+rgpui 提供简写辅助函数（从 `rgpui` 的 prelude 导入）：
 
 ```rust
-use rgpui_component::{h_flex, v_flex};
+use rgpui::prelude::*;
 
 // h_flex() = div().flex().flex_row().items_center()
 h_flex()

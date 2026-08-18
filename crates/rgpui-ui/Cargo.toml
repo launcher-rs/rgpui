@@ -1,0 +1,23 @@
+[package]
+name = "rgpui-ui"
+version.workspace = true
+edition.workspace = true
+description = "rgpui 扩展 UI 组件库（核心没有的组件 + 动画组件/特效 + 精选自建能力）"
+publish = true
+license.workspace = true
+repository = "https://github.com/launcher-rs/rgpui"
+
+[dependencies]
+rgpui.workspace = true
+smallvec.workspace = true
+unicode-segmentation.workspace = true
+
+[features]
+# 图表组件（可选门控，需求明确后拆独立 rgpui-chart 库）
+charts = []
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+rgpui-platform.workspace = true

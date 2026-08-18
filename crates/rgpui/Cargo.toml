@@ -42,6 +42,9 @@ screen-capture = [
 ]
 windows-manifest = ["dep:embed-resource"]
 input-latency-histogram = []
+# 内嵌额外主题表（自 rgpui-component 主题整合而来，37 套，约 178KB）。
+# 默认关闭以保持核心二进制精简，需要多主题的应用程序可显式开启。
+bundled-themes = []
 
 [lib]
 path = "src/rgpui.rs"

@@ -21,9 +21,8 @@ rgpui 是一个从 [zed-industries/gpui](https://github.com/zed-industries/zed) 
 
 ```
 crates/
-├── rgpui/                   # 核心 UI 框架，平台无关逻辑
+├── rgpui/                   # 核心 UI 框架（含基础组件库），平台无关逻辑
 ├── rgpui-3d/                # 3D 渲染支持
-├── rgpui-adabraka-ui/       # Adabraka UI 组件库
 ├── rgpui-character/         # 字符/文本处理
 ├── rgpui-linux/             # Linux 平台实现
 ├── rgpui-macos/             # macOS 平台实现
@@ -33,19 +32,10 @@ crates/
 ├── rgpui-tokio/             # Tokio 异步运行时集成
 ├── rgpui-web/               # Web/WASM 平台实现
 ├── rgpui-wgpu/              # wgpu 渲染后端
-├── rgpui-windows/           # Windows 平台实现
-├── rgpui-yororen-ui/        # Yororen UI 组件库
-└── rgpui-component-workspce/  # 组件子工作区
-    ├── rgpui-component/          # 通用 UI 组件框架
-    ├── rgpui-component-assets/   # 组件资源文件
-    ├── rgpui-component-macros/   # 组件过程宏
-    ├── rgpui-component-story/    # 组件 Storybook（原生）
-    ├── rgpui-component-story-web/ # 组件 Storybook（Web）
-    ├── rgpui-webview/            # WebView 组件
-    └── themes/                   # 22 套 JSON 颜色主题
+└── rgpui-windows/           # Windows 平台实现
 ```
 
-> **注意**：`crates/rgpui-component/` 和 `crates/rgpui-component-macros/` 是已废弃的旧目录（已迁移至 `crates/rgpui-component-workspce/` 下）。合并上游 PR 时若被重建，请立即删除。
+> **注意**：旧 UI 库（`rgpui-component`、`rgpui-adabraka-ui`、`rgpui-yororen-ui`、`rgpui-webview`）已删除，基础组件全部并入 `rgpui` 核心。新增组件的发展计划见 `docs/ui-crate-plan.md`。
 
 ## 示例程序
 
@@ -53,15 +43,7 @@ crates/
 examples/
 ├── desktop_pet/                       # 桌面宠物（系统托盘、窗口管理）
 ├── desktop_pet_3d/                    # 桌面宠物（3D 渲染）
-├── rgpui_async_demo/                  # 异步运行时演示
-├── rgpui_editor_example/              # 编辑器组件演示
-├── rgpui_editor_lsp_example/          # 编辑器 LSP 集成演示
-├── rgpui_term_basic/                  # 终端模拟器基础演示
-├── rgpui_term_component_integration/  # 终端 + 组件框架集成
-├── rgpui_yororen_ui_counter/          # 计数器（Yororen UI）
-├── rgpui_yororen_ui_file_browser/     # 文件浏览器（Yororen UI）
-├── rgpui_yororen_ui_toast_notification/ # 通知提示（Yororen UI）
-└── rgpui_yororen_ui_todolist/         # 待办事项（Yororen UI，多语言）
+└── screen_capture/                    # 屏幕捕获演示
 ```
 
 ## 开发命令

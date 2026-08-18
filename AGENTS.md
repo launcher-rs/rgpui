@@ -61,39 +61,35 @@ Get-Content -Path <file> -Encoding UTF8
 
 ### 整合原则
 
-- **能并则并，减少第三方依赖**：既然 `rgpui-component` 等 crate 也是自己的，就把成熟功能逐步整合进 `rgpui` 核心，减少对外部组件 crate 的依赖。
-- **不常用但重要的组件放扩展库**：并非所有组件都要并入 rgpui 核心。低频使用但重要（如高重依赖、专业场景）的组件，将来单独做成 **rgpui UI 扩展库**（独立 crate）存放处理，保持核心轻量。
-- **执行文档**：`docs/component-integration-plan.md` 是整合的**唯一执行计划**，按阶段（地基 → 基础组件 → 复合组件 → 收尾）逐文件推进，每完成一步在文档中打 ☑。
-- **按依赖顺序、保持轻量**：先地基后组件；语法高亮（tree-sitter 72 包）、图表、markdown 等高重依赖组件**不并入**。
+- **组件整合已完成**：`docs/component-integration-plan.md` 记录的整合（地基 → 基础组件 → 复合组件 → 收尾）已全部完成，rgpui 核心自带完整基础组件库。
+- **旧 UI 库已废弃删除**：`rgpui-component`（含子工作区）、`rgpui-adabraka-ui`、`rgpui-yororen-ui`、`rgpui-webview` 已删除。后续 UI 库发展以 `docs/ui-crate-plan.md`（rgpui-ui 重组计划）为准：新建自有 `rgpui-ui`，只收核心没有的组件，基于核心构建。
+- **不常用但重要的组件放扩展库**：并非所有组件都要并入 rgpui 核心。低频使用但重要（如高重依赖、专业场景）的组件，单独做成 **rgpui UI 扩展库**（独立 crate，如已落地的 `rgpui-markdown`）存放处理，保持核心轻量。
+- **按依赖顺序、保持轻量**：先地基后组件；语法高亮（tree-sitter）、代码编辑器（rgpui-editor 预留，论证见 `docs/ui-crate-plan.md` §6.5）、markdown（已独立为 `rgpui-markdown`）等高重依赖组件**不并入核心**；图表以 `rgpui-ui` 的 `charts` feature 门控存放（需求明确后再考虑拆独立 `rgpui-chart`）。
 - **保留中文注释与 rgpui 风格**：并入代码沿用 rgpui 的模块组织与命名习惯，手动移植而非整文件覆盖。
 - **完整性约束**：每步完成后运行 `cargo check --workspace`，并保持下方「完整性检查清单」全绿。
 
 ## 架构与包边界
 
 ```
+rgpui（核心：框架 + 基础组件 + 时间驱动动画原语）
+  ├── rgpui-ui（新：核心没有的组件 + 动画组件/特效 + 图表 charts feature + 精选自建能力）
+  ├── rgpui-markdown（独立专业库，已落地；rgpui-editor 预留，另行论证）
+  └── rgpui-term / rgpui-3d / rgpui-tokio（专业集成库）
+
 crates/
 ├── rgpui/                   # 核心 UI 框架，平台无关逻辑
 ├── rgpui-3d/                # 3D 渲染支持
-├── rgpui-adabraka-ui/       # Adabraka UI 组件库
 ├── rgpui-character/         # 字符/文本处理
 ├── rgpui-linux/             # Linux 平台实现
 ├── rgpui-macos/             # macOS 平台实现
+├── rgpui-markdown/          # Markdown 渲染独立库（pulldown-cmark 0.12）
 ├── rgpui-macros/            # 过程宏
 ├── rgpui-platform/          # 平台选择入口，根据 cfg 选择具体平台 crate
 ├── rgpui-term/              # 终端组件
 ├── rgpui-tokio/             # Tokio 异步运行时集成
 ├── rgpui-web/               # Web/WASM 平台实现
 ├── rgpui-wgpu/              # wgpu 渲染后端
-├── rgpui-windows/           # Windows 平台实现（windows-rs 绑定）
-├── rgpui-yororen-ui/        # Yororen UI 组件库
-└── rgpui-component-workspce/  # 组件子工作区（独立 Cargo workspace）
-    ├── rgpui-component/          # 通用 UI 组件框架
-    ├── rgpui-component-assets/   # 组件资源文件（图标、图片等）
-    ├── rgpui-component-macros/   # 组件过程宏
-    ├── rgpui-component-story/    # 组件 Storybook（原生）
-    ├── rgpui-component-story-web/ # 组件 Storybook（WASM/Web）
-    ├── rgpui-webview/            # WebView 组件
-    └── themes/                   # 22 套 JSON 颜色主题
+└── rgpui-windows/           # Windows 平台实现（windows-rs 绑定）
 ```
 
 - `rgpui/src/platform.rs` 定义了 `Platform` trait 和 `PlatformWindow` trait，所有平台必须实现
@@ -228,9 +224,9 @@ rgpui 在上游 gpui 基础上增加了大量独有功能，是项目的差异�
 
 > 组件整合（`docs/component-integration-plan.md`）是**加法**：只把成熟组件并入 rgpui 核心，不删减下列任何独有能力。整合已完成，本清单已扩展为「平台系统能力 + 组件库」两部分。
 
-### 组件库（从 rgpui-component 并入 rgpui 核心）
+### 组件库（rgpui 核心自带）
 
-组件整合（`docs/component-integration-plan.md`）已全部完成，rgpui 核心自带完整组件库，不再依赖 `rgpui-component`。已并入的子系统：
+组件整合（`docs/component-integration-plan.md`）已全部完成，`rgpui-component` 等旧 UI 库已删除，rgpui 核心自带完整基础组件库。已并入的子系统：
 
 | 子系统 | 目标模块 | 关键公开类型 |
 |--------|----------|--------------|
@@ -329,9 +325,13 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 9. 所有中文注释未被删除
 10. `tray.rs` / `single_instance.rs` 模块未被删除
 11. rgpui-3d MSAA 方法存在
-12. 组件整合进度遵循 `docs/component-integration-plan.md`，已并入的功能存在于 `rgpui` 核心（而非只依赖 `rgpui-component`）
+12. 组件整合已全部完成，已并入的功能存在于 `rgpui` 核心（`rgpui-component` 等旧库已删除）
 13. 组件库核心模块存在：`form/`、`input_ui/`、`menu/`、`dialog/`、`list/`、`table/`、`tabs/`、`title_bar/`、`elements/scroll/`
 14. `prelude` 暴露组件扩展 trait：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、`Sizable`、`StyledExt`、`FluentBuilder`
+15. `crates/rgpui-adabraka-ui`、`crates/rgpui-yororen-ui`、`crates/rgpui-component-workspce` 已删除，workspace 不再依赖旧 UI 库
+16. `crates/rgpui-markdown` 存在，`pulldown-cmark = "0.12"` 为工作区依赖
+17. `rgpui-ui` 存在 `charts` feature（`components/charts/` 门控），`cargo check -p rgpui-ui --features charts` 通过
+18. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
 
 ## Web/WASM 开发
 
@@ -349,14 +349,8 @@ cargo install trunk
 ### 运行 Web 示例
 
 ```bash
-# rgpui-component Web 示例（位于子工作区中）
-cd crates/rgpui-component-workspce/rgpui-component/examples/hello_world_web && trunk serve
-cd crates/rgpui-component-workspce/rgpui-component/examples/components_web && trunk serve
-
 # rgpui-web 示例
 cd crates/rgpui-web/examples/hello_web && trunk serve
-cd crates/rgpui-web/examples/hello_world_web && trunk serve
-cd crates/rgpui-web/examples/components_web && trunk serve
 ```
 
 ### Web 示例目录结构
@@ -401,8 +395,6 @@ pub fn start() {
 - 系统托盘、原生菜单不支持
 - Tree-sitter 语法高亮不可用（WASM 中无法编译 C 依赖）
 - 图标从 CDN 运行时下载（需要网络连接）
-
-详细文档见 `crates/rgpui-component-workspce/rgpui-component/examples/WEB.md`。
 
 ## 代码规范
 

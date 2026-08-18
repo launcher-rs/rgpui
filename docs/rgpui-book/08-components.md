@@ -1,6 +1,6 @@
 # 组件库
 
-> rgpui 核心自带的完整 UI 组件库（由 `rgpui-component` 整合并入）
+> rgpui 核心自带的完整 UI 组件库（`rgpui-component` 已删除，基础组件全部并入核心；新增组件见 `docs/ui-crate-plan.md` 的 rgpui-ui 计划）
 
 ## 概览
 

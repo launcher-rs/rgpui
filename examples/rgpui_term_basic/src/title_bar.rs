@@ -1,12 +1,10 @@
 use std::rc::Rc;
 
 use rgpui::{
-    AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window, WindowControlArea, div, prelude::FluentBuilder as _, px,
-};
-use rgpui_component::{
-    ActiveTheme, Icon, IconName, InteractiveElementExt as _, Sizable as _, StyledExt, h_flex,
+    ActiveTheme, AnyElement, App, ClickEvent, Context, Decorations, Hsla, Icon, IconName,
+    InteractiveElement, InteractiveElementExt as _, IntoElement, MouseButton, ParentElement,
+    Pixels, Render, RenderOnce, Sizable as _, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, StyledExt, Window, WindowControlArea, div, h_flex, prelude::FluentBuilder as _, px,
 };
 use smallvec::SmallVec;
 

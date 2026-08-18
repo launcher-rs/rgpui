@@ -111,13 +111,8 @@ pub fn icon_named_impl(input: TokenStream) -> TokenStream {
 
     let mut entries: Vec<(String, String)> = Vec::new();
 
-    let dir = std::fs::read_dir(&icons_dir).unwrap_or_else(|e| {
-        panic!(
-            "icon_named: 无法读取目录 '{}': {}",
-            icons_dir.display(),
-            e
-        )
-    });
+    let dir = std::fs::read_dir(&icons_dir)
+        .unwrap_or_else(|e| panic!("icon_named: 无法读取目录 '{}': {}", icons_dir.display(), e));
 
     for entry in dir {
         let entry = entry.expect("无法读取目录条目");

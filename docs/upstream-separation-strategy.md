@@ -2,6 +2,8 @@
 
 > 文档日期：2026-08-15
 > 状态：战略思考，待评审决策
+>
+> **执行状态（2026-08-18 更新）**：本战略的核心决策已落地——三大 UI 库（`rgpui-component`、`rgpui-adabraka-ui`、`rgpui-yororen-ui` 及 `rgpui-webview`）已全部删除，基础组件已并入 rgpui 核心，后续 UI 库发展以 `docs/ui-crate-plan.md`（rgpui-ui 重组计划）为准。本文档的 C/D 类组件划分及依赖关系图仅作历史记录。
 
 ## 1. 背景与决策动机
 

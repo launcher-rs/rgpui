@@ -10,17 +10,10 @@ use std::env;
 use std::sync::Arc;
 
 use rgpui::{
-    App, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
-    ParentElement, Render, SharedString, Styled, Window, WindowOptions, actions, div, prelude::*,
-    px,
-};
-
-use rgpui_component::{
-    ActiveTheme, Sizable, StyledExt, Theme as ComponentTheme, ThemeMode, ThemeRegistry,
-    button::{Button, ButtonVariants},
-    h_flex,
-    scroll::ScrollableElement,
-    v_flex,
+    ActiveTheme, App, Button, ButtonVariants, Context, Entity, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyBinding, ParentElement, Render, ScrollableElement,
+    SharedString, Sizable, Styled, StyledExt, Theme, ThemeMode, ThemeRegistry, Window,
+    WindowOptions, actions, div, h_flex, prelude::*, px, v_flex,
 };
 
 use rgpui_term::{
@@ -157,19 +150,19 @@ impl ComponentIntegrationApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let current_mode = ComponentTheme::global(cx).mode;
+        let current_mode = Theme::global(cx).mode;
         let new_mode = match current_mode {
             ThemeMode::Light => ThemeMode::Dark,
             ThemeMode::Dark => ThemeMode::Light,
         };
 
-        ComponentTheme::change(new_mode, None, cx);
+        Theme::change(new_mode, None, cx);
         cx.notify();
     }
 
     fn switch_theme(&mut self, theme_name: SharedString, cx: &mut Context<Self>) {
         if let Some(theme_config) = ThemeRegistry::global(cx).themes().get(&theme_name).cloned() {
-            ComponentTheme::global_mut(cx).apply_config(&theme_config);
+            Theme::global_mut(cx).apply_config(&theme_config);
             self.current_theme = theme_name;
             cx.notify();
         }
@@ -315,7 +308,7 @@ impl ComponentIntegrationApp {
     }
 
     fn render_color_swatch(&self, cx: &App, label: String, color: rgpui::Hsla) -> impl IntoElement {
-        let theme = ComponentTheme::global(cx);
+        let theme = Theme::global(cx);
 
         h_flex()
             .items_center()
@@ -393,7 +386,7 @@ fn main() {
 
     application().run(|cx: &mut App| {
         // Initialize gpui-component theme system
-        rgpui_component::init(cx);
+        rgpui::theme::init(cx);
 
         cx.bind_keys(keybindings());
         cx.on_action(|_: &Quit, cx| cx.quit());

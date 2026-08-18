@@ -61,8 +61,8 @@ impl ThemeAdapter {
     /// # Returns
     ///
     /// A fully configured TerminalTheme with colors derived from the component theme.
-    pub fn to_terminal_theme(component_theme: &rgpui_component::ThemeColor) -> TerminalTheme {
-        use rgpui_component::Colorize;
+    pub fn to_terminal_theme(component_theme: &rgpui::ThemeColor) -> TerminalTheme {
+        use rgpui::Colorize;
 
         // Extract base colors with fallbacks
         let fg = component_theme.foreground;
@@ -148,7 +148,7 @@ impl ThemeAdapter {
     ///
     /// This is a convenience method that accesses the global Theme and converts it.
     pub fn from_global_theme(cx: &App) -> TerminalTheme {
-        let theme = rgpui_component::ActiveTheme::theme(cx);
+        let theme = rgpui::ActiveTheme::theme(cx);
         Self::to_terminal_theme(&theme.colors)
     }
 
@@ -211,7 +211,7 @@ impl ComponentThemeExt for rgpui_term::TerminalView {
     }
 
     fn observe_component_theme(&mut self, cx: &mut rgpui::Context<Self>) {
-        cx.observe_global::<rgpui_component::Theme>(|this, cx| {
+        cx.observe_global::<rgpui::Theme>(|this, cx| {
             this.apply_component_theme(cx);
         })
         .detach();
@@ -239,7 +239,7 @@ trait BaseColorExt {
     fn base_cyan_light(&self) -> Option<Hsla>;
 }
 
-impl BaseColorExt for rgpui_component::ThemeColor {
+impl BaseColorExt for rgpui::ThemeColor {
     fn base_black(&self) -> Option<Hsla> {
         // gpui-component doesn't have explicit base_black, use background
         None

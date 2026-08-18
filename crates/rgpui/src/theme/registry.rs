@@ -9,6 +9,11 @@ use std::{
 };
 
 const DEFAULT_THEME: &str = include_str!("./default-theme.json");
+
+// 内嵌额外主题表（默认关闭，feature = "bundled-themes" 时启用）。
+// 主题来源于原 rgpui-component 的 themes/ 目录，整合为单个 ThemeSet。
+#[cfg(feature = "bundled-themes")]
+const EXTRA_THEMES: &str = include_str!("./themes/extra-themes.json");
 pub static DEFAULT_THEME_COLORS: LazyLock<
     HashMap<ThemeMode, (Arc<ThemeColor>, Arc<HighlightTheme>)>,
 > = LazyLock::new(|| {
@@ -153,5 +158,35 @@ impl ThemeRegistry {
                 (name, Rc::clone(theme))
             })
             .collect();
+
+        #[cfg(feature = "bundled-themes")]
+        {
+            // 加载内置额外主题，名称冲突时保留已有主题。
+            if let Err(e) = self.load_themes_from_str(EXTRA_THEMES) {
+                tracing::error!("Failed to load bundled extra themes: {e}");
+            }
+        }
+    }
+}
+
+#[cfg(all(test, feature = "bundled-themes"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bundled_themes_parse_and_load() {
+        // 验证额外主题 JSON 可解析且全部主题加载成功。
+        let mut registry = ThemeRegistry::default();
+        registry
+            .load_themes_from_str(EXTRA_THEMES)
+            .expect("bundled extra themes should parse");
+
+        // 37 套额外主题全部加载
+        assert_eq!(
+            registry.themes().len(),
+            37,
+            "themes: {:?}",
+            registry.themes().keys()
+        );
     }
 }

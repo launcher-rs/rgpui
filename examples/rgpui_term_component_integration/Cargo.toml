@@ -5,10 +5,9 @@ edition = "2024"
 publish = false
 
 [dependencies]
-rgpui.workspace = true
+rgpui = { workspace = true, features = ["bundled-themes"] }
 rgpui-platform.workspace = true
 rgpui-term.workspace = true
-rgpui-component.workspace = true
 anyhow.workspace = true
 log.workspace = true
 env_logger = "0.11"

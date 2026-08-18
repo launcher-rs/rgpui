@@ -11,8 +11,6 @@ path = "src/main.rs"
 [dependencies]
 log.workspace = true
 rgpui-term.workspace = true
-rgpui-component.workspace = true
-rgpui-component-assets.workspace = true
 rgpui.workspace = true
 rgpui-platform.workspace = true
 portable-pty.workspace = true

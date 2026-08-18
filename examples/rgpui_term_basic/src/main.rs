@@ -6,27 +6,24 @@
 //! - Transparent/blurred window background
 //! - Multi-session terminal tabs in the title bar
 
-use rgpui_component::button::{Button, ButtonVariants};
-use rgpui_component::resizable::{h_resizable, resizable_panel, v_resizable};
-use rgpui_component::tab::{Tab, TabBar};
-use rgpui_component::{ActiveTheme, AxisExt, IconName, Sizable, h_flex, v_flex};
-use rgpui_platform::application;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::env;
-use std::sync::{Arc, Mutex};
-
+use rgpui::tabs::{Tab, TabBar};
 use rgpui::{
-    AnyElement, App, AppContext, Axis, BoxShadow, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ParentElement, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Window, WindowBackgroundAppearance, WindowOptions, actions,
-    div, hsla, point, prelude::*, px, rgb, rgba,
+    ActiveTheme, AnyElement, App, AppContext, Axis, AxisExt, BoxShadow, Button, ButtonVariants,
+    Context, DefiniteLength, Entity, FocusHandle, Focusable, IconName, InteractiveElement,
+    IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Pixels, Render, ScrollHandle, SharedString, Sizable, StatefulInteractiveElement,
+    Styled, Window, WindowBackgroundAppearance, WindowOptions, actions, div, h_flex, hsla, point,
+    prelude::*, px, rgb, rgba, v_flex,
 };
+use rgpui_platform::application;
 use rgpui_term::{
     Clear, Copy, Event, InputOrigin, Paste, SelectAll, Terminal, TerminalBuilder, TerminalConfig,
     TerminalContent, TerminalMiddleware, TerminalView, TextStyle, ThemeManager,
 };
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::env;
+use std::sync::{Arc, Mutex};
 
 mod persistence;
 mod sidebar_state;
@@ -295,10 +292,9 @@ fn rgba_u32(rgb: u32, alpha: f32) -> u32 {
 }
 
 fn main() {
-    let app = application().with_assets(rgpui_component_assets::Assets);
+    let app = application();
 
     app.run(|cx: &mut App| {
-        rgpui_component::init(cx);
         cx.bind_keys(platform_keybindings());
 
         cx.on_action(|_: &Quit, cx| cx.quit());
@@ -385,6 +381,8 @@ fn main() {
                     recent_dirs,
                     saved_workspaces,
                     section_expanded,
+                    pane_ratios: HashMap::new(),
+                    resizing_split: None,
                 }
             });
 
@@ -577,6 +575,10 @@ struct AgentTermApp {
     saved_workspaces: Vec<WorkspaceLayout>,
     // Section collapse state
     section_expanded: HashMap<SidebarSection, bool>,
+    // 面板分割比例：pane_id -> 份额（渲染时归一化）
+    pane_ratios: HashMap<usize, f32>,
+    // 正在拖拽的分割条：左/上 pane_id、起始比例、起始鼠标坐标、轴向
+    resizing_split: Option<(usize, f32, f32, Axis)>,
 }
 
 impl AgentTermApp {
@@ -1033,20 +1035,88 @@ impl AgentTermApp {
                     .into_any_element()
             }
             PaneNode::Split { axis, children } => {
-                let id = SharedString::from(format!("{}-split", id_prefix));
-                let mut group = if axis.is_horizontal() {
-                    h_resizable(id)
-                } else {
-                    v_resizable(id)
-                };
+                let is_h = axis.is_horizontal();
+                // 归一化各面板的份额，保证总和为 1.0
+                let mut ratios: Vec<f32> = children
+                    .iter()
+                    .map(|child| self.pane_ratio(child.first_pane_id()))
+                    .collect();
+                let sum: f32 = ratios.iter().sum();
+                for ratio in ratios.iter_mut() {
+                    *ratio /= sum;
+                }
+
+                let mut group = div()
+                    .id(SharedString::from(format!("{}-split", id_prefix)))
+                    .size_full()
+                    .flex()
+                    .overflow_hidden()
+                    .when(is_h, |el| el.flex_row())
+                    .when(!is_h, |el| el.flex_col());
+
                 for (i, child) in children.iter().enumerate() {
-                    let child_id = format!("{}-{}", id_prefix, i);
-                    let child_el = self.render_pane_node(child, &child_id, window, cx);
-                    group = group.child(resizable_panel().child(child_el));
+                    if i > 0 {
+                        group = group.child(self.render_split_handle(
+                            *axis,
+                            children[i - 1].first_pane_id(),
+                            ratios[i - 1],
+                            cx,
+                        ));
+                    }
+                    let child_el =
+                        self.render_pane_node(child, &format!("{}-{}", id_prefix, i), window, cx);
+                    group = group.child(
+                        div()
+                            .flex_basis(DefiniteLength::Fraction(ratios[i]))
+                            .flex_shrink_1()
+                            .min_w(px(40.0))
+                            .min_h(px(40.0))
+                            .size_full()
+                            .overflow_hidden()
+                            .child(child_el),
+                    );
                 }
                 group.into_any_element()
             }
         }
+    }
+
+    /// 获取面板的当前分割份额，默认均分（返回 1.0）。
+    fn pane_ratio(&self, pane_id: usize) -> f32 {
+        self.pane_ratios.get(&pane_id).copied().unwrap_or(1.0)
+    }
+
+    /// 渲染面板分割条：拖拽它调整左侧（横向）或上侧（纵向）面板的份额。
+    fn render_split_handle(
+        &self,
+        axis: Axis,
+        left_pane_id: usize,
+        left_ratio: f32,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let is_h = axis.is_horizontal();
+        div()
+            .id(SharedString::from(format!("split-handle-{}", left_pane_id)))
+            .flex_none()
+            .w(if is_h { px(4.0) } else { px(0.0) })
+            .h(if is_h { px(0.0) } else { px(4.0) })
+            .when(is_h, |el| el.cursor_ew_resize())
+            .when(!is_h, |el| el.cursor_ns_resize())
+            .bg(rgba(0x00000000))
+            .hover(|s| s.bg(rgba(rgba_u32(TEXT_PRIMARY, 0.18))))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    let pos = if is_h {
+                        event.position.x.as_f32()
+                    } else {
+                        event.position.y.as_f32()
+                    };
+                    this.resizing_split = Some((left_pane_id, left_ratio, pos, axis));
+                    cx.notify();
+                }),
+            )
+            .into_any_element()
     }
 
     fn tab_scroll_step(&self) -> Pixels {
@@ -1115,33 +1185,57 @@ impl AgentTermApp {
         cx.notify();
     }
 
-    fn stop_sidebar_resize(
+    fn stop_resize_drag(
         &mut self,
         _event: &MouseUpEvent,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.resizing_sidebar {
-            self.resizing_sidebar = false;
+        let changed = self.resizing_sidebar || self.resizing_split.is_some();
+        self.resizing_sidebar = false;
+        self.resizing_split = None;
+        if changed {
             cx.notify();
         }
     }
 
-    fn update_sidebar_resize(
+    fn update_resize_drag(
         &mut self,
         event: &MouseMoveEvent,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.resizing_sidebar || !event.dragging() {
+        // 侧栏宽度拖拽
+        if self.resizing_sidebar && event.dragging() {
+            let delta = event.position.x - self.resize_start_x;
+            let next_width = (self.resize_start_width + delta / px(1.0))
+                .clamp(SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
+            if (next_width - self.sidebar_width).abs() > 0.1 {
+                self.sidebar_width = next_width;
+                cx.notify();
+            }
             return;
         }
 
-        let delta = event.position.x - self.resize_start_x;
-        let next_width =
-            (self.resize_start_width + delta / px(1.0)).clamp(SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
-        if (next_width - self.sidebar_width).abs() > 0.1 {
-            self.sidebar_width = next_width;
+        // 面板分割条拖拽：将像素位移换算为份额变化
+        if let Some((pane_id, start_ratio, start_pos, axis)) = self.resizing_split {
+            if !event.dragging() {
+                self.resizing_split = None;
+                return;
+            }
+            let window_size = if axis.is_horizontal() {
+                window.bounds().size.width.as_f32()
+            } else {
+                window.bounds().size.height.as_f32()
+            };
+            let pos = if axis.is_horizontal() {
+                event.position.x.as_f32()
+            } else {
+                event.position.y.as_f32()
+            };
+            let delta = pos - start_pos;
+            let new_ratio = (start_ratio + delta / window_size.max(1.0)).clamp(0.08, 0.92);
+            self.pane_ratios.insert(pane_id, new_ratio);
             cx.notify();
         }
     }
@@ -1199,11 +1293,11 @@ impl AgentTermApp {
                     .w(px(6.0))
                     .rounded(px(999.0))
                     .bg(rgpui::transparent_black())
-                    .cursor_col_resize()
+                    .cursor_ew_resize()
                     .hover(|s| s.bg(rgba(rgba_u32(TEXT_PRIMARY, 0.20))))
                     .on_mouse_down(MouseButton::Left, cx.listener(Self::start_sidebar_resize))
-                    .on_mouse_up(MouseButton::Left, cx.listener(Self::stop_sidebar_resize))
-                    .on_mouse_move(cx.listener(Self::update_sidebar_resize)),
+                    .on_mouse_up(MouseButton::Left, cx.listener(Self::stop_resize_drag))
+                    .on_mouse_move(cx.listener(Self::update_resize_drag)),
             )
     }
 
@@ -2070,8 +2164,8 @@ impl Render for AgentTermApp {
                     .on_action(cx.listener(Self::on_split_right))
                     .on_action(cx.listener(Self::on_split_down))
                     .on_action(cx.listener(Self::on_dump_text))
-                    .on_mouse_move(cx.listener(Self::update_sidebar_resize))
-                    .on_mouse_up(MouseButton::Left, cx.listener(Self::stop_sidebar_resize))
+                    .on_mouse_move(cx.listener(Self::update_resize_drag))
+                    .on_mouse_up(MouseButton::Left, cx.listener(Self::stop_resize_drag))
                     .child(self.render_terminal_container(window, cx))
                     .when(self.sidebar_visible, |el| {
                         el.child(self.render_sidebar_shell(cx))

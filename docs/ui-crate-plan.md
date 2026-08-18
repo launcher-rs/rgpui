@@ -1,7 +1,7 @@
 # rgpui UI 库重组计划（rgpui-ui）
 
 > 文档日期：2026-08-18
-> 状态：战略探讨，待评审决策（含未决项）
+> 状态：**执行中**。战略已定稿，§8 全部决策项已拍板（2026-08-18 用户确认），开始 §7 执行步骤。执行进度见文末「§9 执行记录」。
 > 上游文档：`docs/upstream-separation-strategy.md`（切割战略）、`docs/component-integration-plan.md`（组件整合，已全部完成）
 
 ## 1. 背景与决策动机
@@ -80,10 +80,13 @@ rgpui（核心：框架 + 基础组件 + 时间驱动动画原语）
 | 图表 | charts/（10+ 图，自成体系） | **待定：独立库 or feature** |
 | markdown | display/markdown | **待定：独立库**（见 §5） |
 
+**共享辅助层随组件一起迁**：adabraka 的独有组件并非孤立文件，依赖其 `styled_ext.rs`、`gpui_ext.rs`、`layout.rs`、`responsive.rs`、`util.rs`、`icon_config.rs` 等共享模块。迁移时必须连带处理——与核心 `Styled`/`Responsive` 等冲突部分并入核心，其余进 rgpui-ui 内部 `util/`、`layout/` 子模块，避免"只迁组件、丢了地基"。
+
 ### 3.2 明确不迁入
 
 - 核心已有的全部基础组件（component/adabraka/yororen 三库中的 button、input、checkbox、radio、switch、slider、select、dialog、menu、tabs、table、avatar、alert、pagination、color_picker、rating、stepper、resizable、dock、status_bar、tree、calendar、date_picker、time_picker、sheet、badge、kbd、tooltip、separator、progress、spinner、skeleton、form、textarea 等）。
 - yororen 独有的 keybinding_input/display、file_path_input、button_group、combo_box、dropdown_menu、disclosure、focus_ring —— **评估迁移或放弃**（部分可能并入核心或 rgpui-ui，待定）。
+- adabraka 的 `editor.rs`（ropey + tree-sitter 的完整代码编辑器）—— 计划新增决策项：重依赖且与 rgpui-term 相关，**建议丢弃或预留为未来独立 `rgpui-editor` 专业库，不并入 rgpui-ui**（见 §8 #9）。
 
 ## 4. 动画归属探讨
 
@@ -102,6 +105,11 @@ rgpui（核心：框架 + 基础组件 + 时间驱动动画原语）
 - 动画组件：`animated_*`、`number_ticker`、`type_writer`、`ripple`、`shimmer`、`marquee`、`meteors`、`confetti`、`particle_emitter`、`aurora`、`pulse_indicator`、`countdown`、`text_reveal` 等。
 
 **关键结论：核心是"时间驱动"，adabraka 补的是"值驱动（弹簧）"+ 动画组件，二者互补而非重复。**
+
+**桥接点（落地时第一个技术点）**：弹簧是 **dt 驱动**的（`spring.tick(dt)`），而核心 `Animation` 是**进度驱动**（0~1 delta）。rgpui-ui 的动画组件无法直接用 `with_animation` 驱动弹簧，需要一个桥接方案，例如：
+- 在 `with_animation` 的 animator 里把 delta 换算成 dt（如 `dt = delta * duration`，配合 `repeat_synced` 或每帧重渲染），或
+- 动画组件自建 `request_animation_frame` 状态机，按真实帧间隔 `tick` 弹簧。
+建议在动画子模块迁入时先写好一个 spring→animation 桥接的测试用例（类似核心 `animation.rs` 的 `#[rgpui::test]`），再逐组件套用。
 
 ### 4.2 动画归属的三种方案与优劣
 
@@ -161,6 +169,8 @@ rgpui（核心：框架 + 基础组件 + 时间驱动动画原语）
 
 **倾向**：方案 A（独立成库）。rgpui-ui 定位轻量组件集合，被 markdown 重依赖污染不划算。
 
+> **已落地**（2026-08-18）：按方案 A 新建 `crates/rgpui-markdown`，见 §9 执行记录 §7.6。
+
 ## 6. 其他待决项与优劣
 
 ### 6.1 图表（charts/）
@@ -172,6 +182,8 @@ rgpui（核心：框架 + 基础组件 + 时间驱动动画原语）
 | 暂缓 | 避免过早设计 | 图表能力缺失 |
 
 **倾向**：先随 rgpui-ui 以 feature 门控迁入（保持可选），待图表需求明确后再拆独立库。**未定**。
+
+> **已落地**（2026-08-18）：按用户决策**全量迁入** `rgpui-ui` 的 `charts` feature（`[features] charts = []`，11 文件 ~5.1k 行），见 §9 执行记录 §7.6。
 
 ### 6.2 特效类（aurora/confetti/particle_emitter/meteors/dot_pattern/noise 等装饰性组件）
 
@@ -192,26 +204,73 @@ rgpui（核心：框架 + 基础组件 + 时间驱动动画原语）
 
 keybinding_input/display、file_path_input、button_group 等 → **评估迁移或放弃**。其中 keybinding（热键录制）与核心 keymap 强相关，可能更适合并入核心（待定）。
 
+### 6.5 代码编辑器归属（rgpui-editor）
+
+> **现状核实（2026-08-18）**：编写 rgpui-editor 前先做了三方勘察，结论如下，**留档待议**，暂不创建 crate。
+
+**已集成到核心**（`crates/rgpui/src/input_ui/`）：rgpui-editor → rgpui-component → 核心这条线的输入编辑器**已经全部在核心里**——`InputState` 完整文本编辑（多行、`code_editor(language)` 模式、行号、软换行、自动滚动、undo/redo、光标/选区/词移动、缩进、掩码）与 `display_map`（wrap_map 换行映射 + fold_map 折叠映射）。历史上 crates.io 发布的 `rgpui-editor 0.3.0` 因**不好维护**而合并回 rgpui-component，rgpui-component 又并回核心，其 `input/` 子系统即今日核心 `input_ui/`（core 裁剪了 otp_input/search/lsp/popovers）。
+
+**核心未集成（缺口）**：
+- **tree-sitter 语法高亮**——`display_map/folding.rs` 明示 stub（"rgpui 不引入 tree-sitter"），折叠与着色为空；但核心 `theme/highlight.rs` 已有语法高亮主题基建，可作为高亮器的样式挂钩。
+- **LSP**（completions/hover/definitions/code_actions/semantic_tokens/document_colors）
+- **popovers**（补全菜单/completion_menu、诊断弹窗、悬停弹窗）
+- 搜索面板（search.rs）、文件读写
+
+#### 候选路线（优略）
+
+| 方案 | 优点 | 缺点 |
+|------|------|------|
+| A. 以核心 `input_ui` 为底座，**只补 tree-sitter 高亮 + 真实折叠** | 编辑器功能全在核心、零重复；增量最小；可维护 | 高亮器仍是一笔重依赖；input_ui 需开一个高亮接入点替代 folding.rs stub |
+| B. 移植 adabraka `editor.rs`（4511 行，ropey+tree-sitter） | 功能全（高亮/折叠/诊断/括号匹配/补全/面包屑/文件 IO）；tree-sitter 高亮真实可用 | 与核心 input_ui 是**两套重复体系**；单文件 4511 行难维护；tree-sitter + 数十个语法 grammar 重依赖；中文注释/API 适配量大 |
+| C. 整体恢复 crates.io `rgpui-editor 0.3.0`（highlighter + input + lsp + popovers） | `highlighter/` 设计成熟、34 语言 feature 门控；lsp/popovers 曾是完整方案 | 与"合并回归"历史决策相悖；input 部分与核心重复；等于重造一个重库，维护成本已被实践证明很高 |
+
+#### 未来可能思路（推荐优先级）
+
+1. **短期**：以核心 `input_ui` 为编辑器底座，**不新建独立 crate**。若确有语法高亮需求，做一个**独立高亮器 crate**（复用 crates.io rgpui-editor 的 `highlighter/` 模块 + tree-sitter，语言按 feature 门控），产出高亮样式喂给 input_ui 的 decoration/样式接口；核心 input_ui 补一个高亮器接入点替代 folding.rs 的 stub。这是最小增量、可维护性最好。
+2. **中期**：需要 LSP/补全/诊断时，把 `lsp` + `popovers` 做成挂在 input_ui 之上的独立 crate（或 rgpui-editor 扩展），**不要恢复单体编辑器**。
+3. **adabraka `editor.rs` 不再考虑**：与 input_ui 体系重复、难维护，且已有"合并回归"先例。
+4. **未定**：待编辑器/代码展示需求明确后再逐项拍板。
+
 ## 7. 执行步骤（草稿）
 
 > 当前为探讨阶段，**尚未开始迁移**。用户确认架构后方可动手。
 
 1. 编写/确认本计划文档，逐项拍板未决项（§6）。
-2. 删除三个旧库：改根 Cargo.toml、删 7 个受影响 examples、清理失效 web 示例、评估 22 套主题去向、清理文档/skills。验证 `cargo check --workspace`（首次全绿）+ 测试基线。
-3. 新建 `crates/rgpui-ui`（先搭骨架 + 动画子模块：Spring/animate/动画组件）。
-4. 分批迁入组件（动画组件 → 特效 → 媒体/显示 → 高级输入 → 布局 → 通知/命令）。
-5. 独立库论证与落地：`rgpui-markdown`（§5）、`rgpui-chart`（§6.1）。
-6. 更新 AGENTS.md、完整性检查清单、rgpui-book 文档。
+2. 删除三个旧库（第一阶段）：改根 Cargo.toml、删 7 个受影响 examples、清理失效 web 示例、评估 22 套主题去向、清理文档/skills。验证 `cargo check --workspace`（首次全绿）+ 测试基线。
+3. 受影响 examples 处理（第二阶段）：term 两示例重写为用核心组件（独立提交，避免与删除混在一起难定位）。
+4. 新建 `crates/rgpui-ui`（先搭骨架 + 动画子模块：Spring/桥接测试/animate/动画组件）。
+5. 分批迁入组件（动画组件 → 特效 → 媒体/显示 → 高级输入 → 布局 → 通知/命令）。
+6. 独立库论证与落地：`rgpui-markdown`（§5）、`rgpui-chart`（§6.1）、`rgpui-editor`（§8 #9）。
+7. 更新 AGENTS.md、完整性检查清单、rgpui-book 文档。
 
 ## 8. 待拍板清单（汇总）
 
+> 评审意见（2026-08-18）：依据代码勘察，各推荐项已核实（见 §4 桥接点、§3.1 共享层、§8 #9），下表"推荐"列为当前定稿倾向，**状态列待用户逐项确认**。
+
 | # | 事项 | 推荐 | 状态 |
 |---|------|------|------|
-| 1 | 动画归属 | 方案 A：时间驱动留核心，弹簧+动画组件进 rgpui-ui | 待定 |
-| 2 | markdown | 独立成库 `rgpui-markdown` | 待定 |
-| 3 | charts | 先随 rgpui-ui 作 feature，需求明确后拆独立库 | 待定 |
-| 4 | 特效类 | 精选保留 | 待定 |
-| 5 | 手势/滚动物理 | 查重后迁入或丢弃 | 待定 |
-| 6 | yororen 独有组件 | 评估迁移或放弃（keybinding 倾向并入核心） | 待定 |
-| 7 | 22 套主题 JSON | 拷入核心/新库或放弃 | 待定 |
-| 8 | 受影响 examples | 删除或重写（term 两示例评估用核心组件） | 待定 |
+| 1 | 动画归属 | 方案 A：时间驱动留核心，弹簧+动画组件进 rgpui-ui | **已定** |
+| 2 | markdown | 独立成库 `rgpui-markdown`（复用 adabraka pulldown-cmark 轻量路线） | **已定** |
+| 3 | charts | 先随 rgpui-ui 作 feature，需求明确后拆独立库 | **已定** |
+| 4 | 特效类 | 精选保留 aurora/confetti/particle_emitter/marquee/ripple/shimmer；dot_pattern/noise/gradient_* 静态装饰丢弃 | **已定** |
+| 5 | 手势/滚动物理 | 勘察结论：核心 `InteractiveElement` 仅有点击/双击/拖拽，swipe/pan 手势与惯性滚动核心没有 → 迁入 rgpui-ui；scroll_physics 查核心 `elements/scroll/` 后决定 | **已定** |
+| 6 | yororen 独有组件 | keybinding_input/display 并入核心（与 `keymap` 强相关）；button_group/combo_box 等迁 rgpui-ui 或放弃 | **已定** |
+| 7 | 22 套主题 JSON | 拷贝进核心 `theme/registry.rs` 作为可选内置主题表（catppuccin/tokyonight/gruvbox 等实用性强） | **已定** |
+| 8 | 受影响 examples | term 两示例重写为用核心组件；yororen 四例直接删除 | **已定** |
+| 9 | adabraka `editor.rs` | **丢弃或预留独立 `rgpui-editor` 专业库，不并入 rgpui-ui**（ropey+tree-sitter 重依赖） | **已定** |
+
+> **已预留**（2026-08-18）：`rgpui-editor` 仅作文档预留（§7.6），不创建 crate、不构建；待编辑器需求明确后单独论证落地。
+> **补充留档（2026-08-18）**：论证分析已写入 §6.5（三方勘察：核心 input_ui 已集成输入编辑器、缺口仅为 tree-sitter 高亮 + 折叠 + LSP/popovers；三条候选路线优略与未来思路，推荐"以核心 input_ui 为底座、独立高亮器 crate 补 tree-sitter 高亮"）。**保持预留不构建**。
+
+## 9. 执行记录
+
+> 每完成一个执行步骤在此打 ☑，并简述验证结果。
+
+| 步骤 | 内容 | 状态 |
+|------|------|------|
+| §7.2 | 删除三个旧库（Cargo.toml、examples、web 示例、主题、文档/skills），`cargo check --workspace` 首次全绿 | **☑ 已完成**（2026-08-18：Cargo.toml 清理、三个旧库目录删除、7 个 affected examples + 2 个失效 web 示例删除、主题拷入核心 `bundled-themes` feature、AGENTS.md/readme/上游战略/08-components/skills 清理，`cargo check --workspace` 与 `--workspace --examples` 通过） |
+| §7.3 | term 两示例重写为用核心组件（独立提交） | **☑ 已完成**（2026-08-18：从 git 恢复 `examples/rgpui_term_basic` 与 `rgpui_term_component_integration`（§7.2 误删），改用核心组件并编译通过——去 `rgpui-component`/`rgpui-component-assets` 依赖；导入全部切到 `rgpui`（`Tab`/`TabBar` 在 `rgpui::tabs`，`Button`/`ButtonVariants`/`Sizable`/`AxisExt`/`IconName` 在根）；basic 移除 `init(cx)` 与 `with_assets`，用 `DefiniteLength::Fraction` + 自实现分割条替换 `h_resizable`/`v_resizable`/`resizable_panel`（`pane_ratios` + `resizing_split` 状态、`cursor_ew_resize`/`cursor_ns_resize`）；integration 改用核心主题 API（`rgpui::theme::init`、`Theme`/`ThemeMode`/`ThemeRegistry`/`ThemeColor`/`Colorize`，并开启 `bundled-themes` feature），`overflow_y_scrollbar` 用核心 `ScrollableElement`。`cargo check --workspace --examples` 全绿，示例零警告） |
+| §7.4 | 新建 `crates/rgpui-ui`（骨架 + 动画子模块：Spring/桥接测试/animate/动画组件） | **进行中**（2026-08-18：骨架已建——`spring.rs`（3 个物理测试）、`easing.rs`（back/elastic 系列）、`animate.rs`（Preset/Keyframe/Stagger）、`bridge.rs`（spring→animation 桥接）；已迁 13 个动画组件：`pulse_indicator`/`shimmer`/`marquee`/`number_ticker`/`type_writer`/`text_reveal`/`animated_switch`/`animated_text`/`animated_collapsible`/`ripple`/`animated_counter`/`animated_presence`/`animated_list`/`countdown`，13 个测试全过；经验：render 返回 `AnyElement` 截断类型深度，测试用定向导入避免 recursion_limit（默认 128 足够，无需该属性）） |
+| §7.5 | 分批迁入组件（动画组件 → 特效 → 媒体/显示 → 高级输入 → 布局 → 通知/命令） | **进行中**（2026-08-18：**特效批已完成**——从 git 恢复 adabraka 源码，迁入 `aurora`（`ThemeTokens.primary/accent` 是 `ThemeToken`（Deref 到 `Hsla`），用 `..*primary` 解引用；`relative(f32)`/`ease_in_out`/`with_animation` 均用核心）、`confetti`、`particle_emitter`（`canvas` 用核心 `FnOnce` 签名、`paint_quad`/`Corners::all`/`Edges::default` 均存在；删除旧 `.map()` 模式改用 `root.style().refine(&user_style)`；meteors/dot_pattern/noise 按 §8#4 决策不保留）；另修复此前批次遗留警告：`countdown`/`number_ticker` 的 Render/RenderOnce 返回 `impl trait` 与 trait 签名不匹配，已改回 `impl IntoElement`（`div().into_any_element()` → `div()`），13 测试仍全过、零警告。**媒体批（部分）**：迁入 `waveform`（155 行，纯 canvas 自绘，无外部依赖；`FluentBuilder::when` 需 `prelude::FluentBuilder as _` 导入）。**video_player（1150 行）/audio_player（899 行，依赖 rodio）暂缓**：按 §8#4 重依赖/大组件原则与用户决策，留作后续**专门视频/音频播放器组件**单独设计落地（涉及核心 svg/img/actions!/KeyBinding 等 API 适配，优先级不高）。**高级输入批已完成**——迁入 `tag_input`（284 行）、`otp_input`（505 行，`actions!`+`KeyBinding` 注册、render 体内**先提取主题值再 `self.state.update`** 避免 `cx.theme()` 借用冲突、error 用 `theme.highlight_theme.style.status.error_border(cx)`、聚焦外发光用 `BoxShadow::new(..).blur_radius` 替代旧库 `focus_ring_light`）、`hotkey_input`（328 行，`HotkeyValue::format_display` 平台相关分支保留）、`inline_edit`（815 行，含自定义 `Element`：`ElementInputHandler`/`EntityInputHandler`/`UTF16Selection`/`ShapedLine::paint` 等核心文本输入 API 全套可用；`rgpui-ui` 新增 `unicode-segmentation` 工作区依赖用于字素边界）。**暂缓**：`mention_input`（需 Avatar + scrollable + unicode_segmentation）、`search_input`/`file_upload`（依赖 adabraka 自家 Icon/Input 子系统与 `SpinnerSize`/`SpinnerVariant` 枚举，核心无）。移植经验：`BoxShadow::new`/`.bg()` 等函数参数不触发 Deref，`ThemeToken` 需 `*tok`/`tok.color` 显式转 `Hsla`；`if/else` 两分支类型必须统一（ThemeToken vs Hsla）；`root.child(..)` 消费 root 需 `root = root.child(..)`；多个组件导出 `init` 时 `pub use module::*` 触发 `ambiguous_glob_reexports`，改显式重导出 + components/mod.rs 聚合 `init(cx)`。**布局批已完成**——迁入 `split_pane`（528 行）、`resizable`（801 行，自定义 `Element`：`ResizeHandle`/`ResizePanelGroupElement`，`ResizeHandle::request_layout` 的 `with_element_state` 闭包内无 cx，须**提前提取 `theme.tokens.accent/border` 所有权值**）、`drag_drop`（344 行，`DragData`/`Draggable`/`DropZone`；match 分支统一 `(Pixels, Hsla, Hsla)`——ThemeToken 是 struct（Deref 到 Hsla），`muted` 作 `bg` 需 `theme.tokens.muted.color`）、`sortable_list`（214 行）、`view_router`（292 行）、`canvas_component`（82 行）、`segmented_nav`（248 行，render 体内先 `self.state.update` 再 `cx.theme()` 避免借用冲突）、`expandable_card`（194 行）、`layout_transition`（144 行）、`empty_state`（215 行，`IconSource`→核心 `Icon`、`Button::new(id).label(..)`、无 `.variant()`/`.color()` 方法，改 `.ghost()` 便捷方法与 `.with_size()`/`.text_color()`）、`infinite_scroll`（234 行，旧库 `Spinner`→核心 `Spinner::new()`、`theme.tokens.destructive`→`theme.highlight_theme.style.status.error_border(cx)`）。核心 API 核实用法：`canvas` 为 `FnOnce`（prepaint 3 参、paint 4 参）、`on_drag` 闭包签名 `(&T, Point<Pixels>, &mut Window, &mut App)`、`drag_over::<S>` 闭包签名 `(StyleRefinement, &S, &mut Window, &mut App)`、`relative(f32)`（geometry.rs:3705）、`px()` 是 const fn、`Animation::new(duration).with_easing(easings::ease_out_cubic)`（`use crate::animation::easing::easings`）。`cargo check -p rgpui-ui` 零警告、13 测试全过、`cargo check --workspace` 与 `--workspace --examples` 全绿。**通知/命令批已完成**——迁入 `spotlight`（聚光灯，跟随鼠标的圆形高亮光斑）、`app_menu`（`AppMenuBar`/`AppMenu`/`StandardMacMenuBar` + file_menu/edit_menu/view_menu/window_menu/help_menu 便捷函数；核心 `Menu{name,items,disabled}` 字段直接构造、`MenuItem::action/separator/submenu/os_submenu`、`SystemMenuType::Services`；与核心 `rgpui::AppMenuBar`（macOS 系统菜单）重名，下游同时 glob 两 crate 时需路径限定）、`drawer_navigation`（抽屉导航，`deferred(child).with_priority(usize)` 延迟渲染提升层级）、`bottom_sheet`（底部弹层；rgpui-ui `animate.rs` 无 `slide_in_bottom`/`presets` 模块，改用 `Animation::new(Duration::from_millis(250)).with_easing(rgpui::ease_out_cubic)`）、`navigation_menu`（泛型递归侧边菜单；`IconSource`→核心 `Icon`、`IconName::ArrowDown/ArrowRight` 枚举变体、`&rgpui::Theme` 参数传递）、`command_palette`（命令面板；核心 `input_ui::Input/InputState/InputEvent` 全套：`InputState::new(window, cx).placeholder(..)` 构造、`cx.subscribe` 订阅 `InputEvent::Change` 实时过滤、`actions!` 快捷键导航；RenderOnce 无 `cx.listener`（仅 `Context` 有），改克隆 state/on_close 后闭包捕获；`App::notify` 需 `EntityId` 参数，改在 `Entity::update` 闭包内用 `Context::notify()` 无参版本）、`notification_center`（`NotificationCenter`/`NotificationBell`/`NotificationItem` 通知中心与铃铛徽标；复用本批迁入的 `EmptyState`；`Button::new(id).label(..).ghost()/.outline().small()`；徽标红用 `theme.tokens.danger/danger_foreground`）。核心差异记录：`Icon::new` 收 1 参（`IconName`/`Icon`）、`Button::new` 只收 id + `.label(..)`、`popover` 令牌替代 `card`、`theme.radius/radius_lg` 替代 `radius_sm/md/xl` 令牌、`theme.font_family` 为字段非令牌、`rgba(hex)`→`Background`、大阴影手写 `BoxShadow{color,offset,blur_radius,spread_radius,inset}`。`cargo check -p rgpui-ui` 零警告、13 测试全过、`cargo fmt -p rgpui-ui`、`cargo check --workspace` 与 `--workspace --examples` 全绿。**§7.5 组件分批迁入全部完成**） |
+| §7.6 | 独立库落地：`rgpui-markdown`、`rgpui-chart`（feature 门控）、`rgpui-editor`（预留） | **进行中**（2026-08-18：**rgpui-markdown 已落地**——新建 `crates/rgpui-markdown`（`src/lib.rs`+`markdown.rs`+`rich_text.rs`+`code_block.rs`），复用 adabraka pulldown-cmark 0.12 轻量路线；工作区依赖加 `pulldown-cmark = "0.12"`（`Tag::Table(Vec<Alignment>)` 签名匹配）；移植适配：去全部 `#[cfg(feature="markdown")]` 门控、`use_theme()`→`cx.theme()`、`theme.tokens.font_family/font_mono`→`theme.font_family`/`theme.mono_font_family` 字段、`radius_md/sm`→`theme.radius`、`Separator::new()`→`Separator::horizontal()`、`text_right()`→`.text_align(TextAlign::Right)`、TextVariant→本地 `heading_style()` 尺寸换算（H1=32 BOLD…H6=16 MEDIUM）、rich_text 渲染函数 thread `theme: &Theme` 参数（核心无全局 `use_theme()`）；code_block 用 `StyledText`/`InteractiveText::on_click`+`cx.open_url` 处理链接、`ClipboardItem::new_string`+`cx.write_to_clipboard` 复制、简易 Rust 关键字/字符串/注释/数字分词。`cargo check -p rgpui-markdown`、`cargo check --workspace`、`cargo check --workspace --examples` 全绿零警告。**rgpui-chart 已落地**——按用户决策**全量迁入** `rgpui-ui` 的 `charts` feature（非独立 crate）：`Cargo.toml` 加 `[features] charts = []`，`components/mod.rs` 加 `#[cfg(feature="charts")] pub mod charts;` + `pub use charts::*;`；迁入 11 文件共 ~5.1k 行：`chart.rs`（地基，Axis/Chart/Series/Legend/Tooltip + canvas 绘制与悬停 tooltip）、`line_chart`、`bar_chart`（单/多系列、分组/堆叠、横/纵）、`area_chart`（叠加/堆叠）、`pie_chart`（点阵近似扇区 + 图例）、`gauge`、`heatmap`、`radar_chart`、`treemap`（squarify 布局 + `window.paint_quad` + `shape_line`/`ShapedLine::paint`）、`donut_chart`（点阵环 + 中心标签，复用 `super::pie_chart::PieChartSegment`）。移植统一适配：去 `use_theme()`→`cx.theme()`、自由渲染函数 thread `&Theme` 参数、`theme.tokens.border` 需 Hsla 处取 `.color`、`radius_sm`→`theme.radius`、`text_right()`→`.text_align(TextAlign::Right)`、删除未用字段/下划线 `_id` 保留（禁 `#[allow(dead_code)]`）；treemap 矩形描边 `PaintQuad.border_color` 用 `theme.tokens.background.color.into()`、反色对比 `rect.color.l > 0.5`、`ShapedLine::paint` 6 参签名（origin, font_size, align, align_width=None, window, cx）。`cargo check -p rgpui-ui --features charts`/默认/`--all-features`/`--workspace`/`--workspace --examples` 全绿零警告、`cargo fmt -p rgpui-ui`。**rgpui-editor 保持预留不构建**——论证留档于 §6.5：核实核心 `input_ui`（源自 crates.io `rgpui-editor 0.3.0` → rgpui-component → 核心）已含完整输入编辑器（`InputState`/display_map/undo 等），缺口仅为 tree-sitter 语法高亮 + 真实折叠（folding.rs 为 stub）+ LSP/popovers；adabraka `editor.rs` 与 input_ui 为两套重复体系且 4511 行难维护、已有"合并回归"先例，不再考虑；推荐"以核心 input_ui 为底座、独立高亮器 crate 补 tree-sitter 高亮"，待需求明确后处理） |
+| §7.7 | 更新 AGENTS.md、完整性检查清单、rgpui-book 文档 | 待执行 |
