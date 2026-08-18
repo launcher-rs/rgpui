@@ -243,7 +243,9 @@ pub enum StepAction {
     Decrement,
     Increment,
 }
+/// 数字输入组件的事件。
 pub enum NumberInputEvent {
+    /// 用户触发步进操作（增减）。
     Step(StepAction),
 }
 impl EventEmitter<NumberInputEvent> for InputState {}

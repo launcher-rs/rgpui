@@ -80,42 +80,42 @@ pub(crate) fn word_range_from_chars(
     start..end
 }
 
-/// 在文本的给定偏移处计算词的范围。
-pub(crate) fn word_range_at(text: &str, offset: usize) -> Option<Range<usize>> {
-    if text.is_empty() {
-        return None;
-    }
-
-    let offset = clip_offset(text, offset);
-    let c = text[offset..].chars().next()?;
-    Some(word_range_from_chars(
-        offset,
-        c,
-        text[..offset].chars().rev(),
-        text[offset + c.len_utf8()..].chars(),
-    ))
-}
-
-fn clip_offset(text: &str, offset: usize) -> usize {
-    let offset = offset.min(text.len());
-    if offset == text.len() {
-        return text.char_indices().next_back().map_or(0, |(ix, _)| ix);
-    }
-
-    if text.is_char_boundary(offset) {
-        offset
-    } else {
-        text.char_indices()
-            .map(|(ix, _)| ix)
-            .take_while(|ix| *ix < offset)
-            .last()
-            .unwrap_or_default()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 在文本的给定偏移处计算词的范围。
+    fn word_range_at(text: &str, offset: usize) -> Option<Range<usize>> {
+        if text.is_empty() {
+            return None;
+        }
+
+        let offset = clip_offset(text, offset);
+        let c = text[offset..].chars().next()?;
+        Some(word_range_from_chars(
+            offset,
+            c,
+            text[..offset].chars().rev(),
+            text[offset + c.len_utf8()..].chars(),
+        ))
+    }
+
+    fn clip_offset(text: &str, offset: usize) -> usize {
+        let offset = offset.min(text.len());
+        if offset == text.len() {
+            return text.char_indices().next_back().map_or(0, |(ix, _)| ix);
+        }
+
+        if text.is_char_boundary(offset) {
+            offset
+        } else {
+            text.char_indices()
+                .map(|(ix, _)| ix)
+                .take_while(|ix| *ix < offset)
+                .last()
+                .unwrap_or_default()
+        }
+    }
 
     #[test]
     fn test_char_type_from_char() {

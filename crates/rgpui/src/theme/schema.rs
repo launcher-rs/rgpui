@@ -33,6 +33,7 @@ pub struct ThemeSet {
     pub themes: Vec<ThemeConfig>,
 }
 
+/// 主题配置，定义字体、圆角、阴影、颜色与高亮等主题属性。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct ThemeConfig {
@@ -77,6 +78,7 @@ pub struct ThemeConfig {
     pub highlight: Option<HighlightThemeStyle>,
 }
 
+/// 主题颜色配置，覆盖 `ThemeColor` 中对应名称的颜色值。
 #[derive(Debug, Default, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct ThemeConfigColors {
     /// Used for accents such as hover background on MenuItem, ListItem, etc.

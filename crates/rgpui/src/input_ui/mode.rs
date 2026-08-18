@@ -29,7 +29,7 @@ pub(crate) enum InputMode {
         rows: usize,
         /// 是否显示行号
         line_number: bool,
-        /// 语言名称（仅用于标识，无高亮）
+        /// 语言名称，预留用于未来选择对应的语法处理器（tree-sitter）。
         language: SharedString,
         indent_guides: bool,
         folding: bool,
@@ -91,6 +91,15 @@ impl InputMode {
     #[inline]
     pub(super) fn is_code_editor(&self) -> bool {
         matches!(self, InputMode::CodeEditor { .. })
+    }
+
+    /// 返回代码编辑器模式的语言名称，非代码编辑器模式返回 None。
+    #[inline]
+    pub(super) fn language(&self) -> Option<&str> {
+        match self {
+            InputMode::CodeEditor { language, .. } => Some(language.as_str()),
+            _ => None,
+        }
     }
 
     /// 当模式为代码编辑器且 `folding: true`、`multi_line: true` 时返回 true。
@@ -161,15 +170,6 @@ impl InputMode {
         .max(1)
     }
 
-    /// 至少返回 1 行。
-    pub(super) fn min_rows(&self) -> usize {
-        match self {
-            InputMode::AutoGrow { min_rows, .. } => *min_rows,
-            _ => 1,
-        }
-        .max(1)
-    }
-
     pub(super) fn max_rows(&self) -> usize {
         if !self.is_multi_line() {
             return 1;
@@ -230,8 +230,8 @@ mod tests {
         assert_eq!(mode.is_single_line(), false);
         assert_eq!(mode.line_number(), true);
         assert_eq!(mode.has_indent_guides(), true);
+        assert_eq!(mode.language(), Some("rust"));
         assert_eq!(mode.max_rows(), usize::MAX);
-        assert_eq!(mode.min_rows(), 1);
         assert_eq!(mode.is_folding(), true);
 
         let mode = InputMode::CodeEditor {
@@ -249,7 +249,6 @@ mod tests {
         assert_eq!(mode.line_number(), false);
         assert_eq!(mode.has_indent_guides(), false);
         assert_eq!(mode.max_rows(), 1);
-        assert_eq!(mode.min_rows(), 1);
         assert_eq!(mode.is_folding(), false);
     }
 
@@ -266,7 +265,6 @@ mod tests {
         assert_eq!(mode.line_number(), false);
         assert_eq!(mode.rows(), 5);
         assert_eq!(mode.max_rows(), usize::MAX);
-        assert_eq!(mode.min_rows(), 1);
 
         let mode = InputMode::plain_text();
         assert_eq!(mode.is_code_editor(), false);
@@ -274,7 +272,6 @@ mod tests {
         assert_eq!(mode.is_single_line(), true);
         assert_eq!(mode.line_number(), false);
         assert_eq!(mode.max_rows(), 1);
-        assert_eq!(mode.min_rows(), 1);
     }
 
     #[test]
@@ -286,7 +283,6 @@ mod tests {
         assert_eq!(mode.line_number(), false);
         assert_eq!(mode.rows(), 2);
         assert_eq!(mode.max_rows(), 5);
-        assert_eq!(mode.min_rows(), 2);
 
         mode.set_rows(4);
         assert_eq!(mode.rows(), 4);

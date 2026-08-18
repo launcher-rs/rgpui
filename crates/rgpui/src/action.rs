@@ -27,6 +27,7 @@ macro_rules! actions {
             #[derive(::std::clone::Clone, ::std::cmp::PartialEq, ::std::default::Default, ::std::fmt::Debug, rgpui::Action)]
             #[action(namespace = $namespace)]
             $(#[$attr])*
+            #[doc = concat!("`", stringify!($name), "` 动作。")]
             pub struct $name;
         )*
     };
@@ -34,6 +35,7 @@ macro_rules! actions {
         $(
             #[derive(::std::clone::Clone, ::std::cmp::PartialEq, ::std::default::Default, ::std::fmt::Debug, rgpui::Action)]
             $(#[$attr])*
+            #[doc = concat!("`", stringify!($name), "` 动作。")]
             pub struct $name;
         )*
     };

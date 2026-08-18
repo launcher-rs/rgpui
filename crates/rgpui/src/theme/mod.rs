@@ -7,10 +7,15 @@ use std::{
     sync::Arc,
 };
 
+/// 颜色定义模块。
 pub mod color;
+/// 代码高亮主题模块。
 pub mod highlight;
+/// 主题注册表模块。
 pub mod registry;
+/// 主题 JSON 模式定义模块。
 pub mod schema;
+/// 主题设置模块。
 pub mod settings;
 mod theme_color;
 
@@ -269,11 +274,14 @@ impl From<&ThemeColor> for Theme {
 #[serde(rename_all = "snake_case")]
 pub enum ThemeMode {
     #[default]
+    /// 亮色模式。
     Light,
+    /// 暗色模式。
     Dark,
 }
 
 impl ThemeMode {
+    /// 是否为暗色模式。
     #[inline(always)]
     pub fn is_dark(&self) -> bool {
         matches!(self, Self::Dark)

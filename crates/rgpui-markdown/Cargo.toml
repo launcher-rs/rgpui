@@ -3,7 +3,7 @@ name = "rgpui-markdown"
 description = "rgpui 的 Markdown 渲染组件库：解析 Markdown 并渲染为富文本/表格/代码块等元素"
 publish = true
 license = "Apache-2.0"
-version = "0.6.0"
+version.workspace = true
 edition.workspace = true
 repository = "https://github.com/launcher-rs/rgpui"
 

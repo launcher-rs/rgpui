@@ -172,11 +172,13 @@ pub enum SliderScale {
 }
 
 impl SliderScale {
+    /// 是否为线性刻度。
     #[inline]
     pub fn is_linear(&self) -> bool {
         matches!(self, SliderScale::Linear)
     }
 
+    /// 是否为对数刻度。
     #[inline]
     pub fn is_logarithmic(&self) -> bool {
         matches!(self, SliderScale::Logarithmic)

@@ -28,11 +28,6 @@ impl FoldRange {
     }
 }
 
-/// 提取折叠范围 - stub 实现（无 tree-sitter，返回空）。
-pub fn extract_fold_ranges(_tree: &Tree) -> Vec<FoldRange> {
-    Vec::new()
-}
-
 /// 提取指定字节范围内的折叠范围 - stub 实现（无 tree-sitter，返回空）。
 pub fn extract_fold_ranges_in_range(_tree: &Tree, _byte_range: Range<usize>) -> Vec<FoldRange> {
     Vec::new()

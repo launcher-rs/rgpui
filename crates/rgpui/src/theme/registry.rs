@@ -14,6 +14,7 @@ const DEFAULT_THEME: &str = include_str!("./default-theme.json");
 // 主题来源于原 rgpui-component 的 themes/ 目录，整合为单个 ThemeSet。
 #[cfg(feature = "bundled-themes")]
 const EXTRA_THEMES: &str = include_str!("./themes/extra-themes.json");
+/// 默认主题颜色与高亮主题映射（按亮/暗模式）。
 pub static DEFAULT_THEME_COLORS: LazyLock<
     HashMap<ThemeMode, (Arc<ThemeColor>, Arc<HighlightTheme>)>,
 > = LazyLock::new(|| {
@@ -76,6 +77,7 @@ pub(super) fn init(cx: &mut App) {
     .detach();
 }
 
+/// 主题注册表，管理默认主题与自定义主题。
 #[derive(Default, Debug)]
 pub struct ThemeRegistry {
     themes_dir: PathBuf,
@@ -87,10 +89,12 @@ pub struct ThemeRegistry {
 impl Global for ThemeRegistry {}
 
 impl ThemeRegistry {
+    /// 返回全局主题注册表引用。
     pub fn global(cx: &App) -> &Self {
         cx.global::<Self>()
     }
 
+    /// 返回全局主题注册表可变引用。
     pub fn global_mut(cx: &mut App) -> &mut Self {
         cx.global_mut::<Self>()
     }
@@ -118,14 +122,17 @@ impl ThemeRegistry {
         &self.default_themes
     }
 
+    /// 返回默认亮色主题。
     pub fn default_light_theme(&self) -> &Rc<ThemeConfig> {
         &self.default_themes[&ThemeMode::Light]
     }
 
+    /// 返回默认暗色主题。
     pub fn default_dark_theme(&self) -> &Rc<ThemeConfig> {
         &self.default_themes[&ThemeMode::Dark]
     }
 
+    /// 从 JSON 字符串加载主题集，名称冲突时跳过。
     pub fn load_themes_from_str(&mut self, content: &str) -> anyhow::Result<()> {
         let theme_set = serde_json::from_str::<ThemeSet>(content)?;
         for theme in theme_set.themes {

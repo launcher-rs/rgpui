@@ -2,6 +2,7 @@
 ///
 /// 包含输入框、文本框、数字输入、掩码输入等组件。
 /// 裁剪了 LSP 集成、搜索面板、弹窗等非核心功能。
+use crate::App;
 
 /// 掩码字符，用于密码输入字段。
 pub(super) const MASK_CHAR: char = '?';
@@ -43,3 +44,8 @@ pub use number_input::{NumberInput, NumberInputEvent, NumberStep};
 pub use rope_ext::{InputEdit, Point, Position, RopeExt, RopeLines};
 pub use ropey::Rope;
 pub use state::*;
+
+/// 初始化输入子系统，注册全局按键绑定。
+pub fn init(cx: &mut App) {
+    state::init(cx);
+}

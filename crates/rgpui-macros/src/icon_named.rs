@@ -157,8 +157,10 @@ pub fn icon_named_impl(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #derive_attrs
 
+        /// 内置图标名称枚举，由 `icon_named!` 宏根据 SVG 目录生成。
+        #[doc = concat!("`", stringify!(#enum_name), "`：内置图标名称。")]
         pub enum #enum_name {
-            #(#variants,)*
+            #(#[doc = concat!("`", stringify!(#variants), "` 图标。")] #variants,)*
         }
 
         impl crate::IconNamed for #enum_name {

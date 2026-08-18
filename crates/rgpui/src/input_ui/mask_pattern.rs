@@ -76,12 +76,17 @@ impl MaskToken {
 /// 掩码模式，用于格式化输入文本。
 #[derive(Clone, Default)]
 pub enum MaskPattern {
+    /// 无掩码，任意输入。
     #[default]
     None,
+    /// 自定义掩码模式，如 `(999)999-9999`。
     Pattern {
+        /// 掩码模式的原始字符串。
         pattern: SharedString,
+        /// 解析后的掩码 token 列表。
         tokens: Vec<MaskToken>,
     },
+    /// 数字掩码模式，支持千分位分隔符与小数位。
     Number {
         /// 千分位分隔符，如 "," 或 " "
         separator: Option<char>,
@@ -129,14 +134,6 @@ impl MaskPattern {
         }
     }
 
-    fn tokens(&self) -> Option<&Vec<MaskToken>> {
-        match self {
-            Self::Pattern { tokens, .. } => Some(tokens),
-            Self::Number { .. } => None,
-            Self::None => None,
-        }
-    }
-
     /// 创建带千分位分隔符的掩码模式。
     pub fn number(sep: Option<char>) -> Self {
         Self::Number {
@@ -145,6 +142,7 @@ impl MaskPattern {
         }
     }
 
+    /// 返回掩码对应的占位文本，Number/None 模式返回 None。
     pub fn placeholder(&self) -> Option<String> {
         match self {
             Self::Pattern { tokens, .. } => {
@@ -454,6 +452,15 @@ pub(crate) fn normalize_number_input(text: &str) -> Cow<'_, str> {
 mod tests {
     use crate::input_ui::mask_pattern::{MaskPattern, MaskToken};
 
+    /// 返回 Pattern 变体的 token 列表，仅测试使用。
+    fn tokens(mask: &MaskPattern) -> Option<&Vec<MaskToken>> {
+        match mask {
+            MaskPattern::Pattern { tokens, .. } => Some(tokens),
+            MaskPattern::Number { .. } => None,
+            MaskPattern::None => None,
+        }
+    }
+
     #[test]
     fn test_is_match() {
         assert_eq!(MaskToken::Sep('(').is_match('('), true);
@@ -495,7 +502,7 @@ mod tests {
     fn test_mask_pattern1() {
         let mask = MaskPattern::new("(AA)999-999");
         assert_eq!(
-            mask.tokens(),
+            tokens(&mask),
             Some(&vec![
                 MaskToken::Sep('('),
                 MaskToken::Letter,
@@ -546,7 +553,7 @@ mod tests {
     fn test_mask_pattern2() {
         let mask = MaskPattern::new("999-999-******");
         assert_eq!(
-            mask.tokens(),
+            tokens(&mask),
             Some(&vec![
                 MaskToken::Digit,
                 MaskToken::Digit,

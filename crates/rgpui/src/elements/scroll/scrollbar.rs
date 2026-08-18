@@ -361,7 +361,7 @@ impl Scrollbar {
         self
     }
 
-    // 获取滚动条的宽度。
+    /// 获取滚动条的宽度。
     pub const fn width() -> Pixels {
         WIDTH
     }

@@ -91,16 +91,19 @@ impl Input {
         }
     }
 
+    /// 设置无障碍标签（aria-label）。
     pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.aria_label = Some(label.into());
         self
     }
 
+    /// 设置前缀元素，渲染在输入框左侧。
     pub fn prefix(mut self, prefix: impl IntoElement) -> Self {
         self.prefix = Some(prefix.into_any_element());
         self
     }
 
+    /// 设置后缀元素，渲染在输入框右侧。
     pub fn suffix(mut self, suffix: impl IntoElement) -> Self {
         self.suffix = Some(suffix.into_any_element());
         self

@@ -110,7 +110,12 @@ pub enum InputEvent {
     /// 文本内容发生变化。
     Change,
     /// 按下回车键。
-    PressEnter { secondary: bool, shift: bool },
+    PressEnter {
+        /// 是否按住 secondary 修饰键（如 Alt）。
+        secondary: bool,
+        /// 是否按住 Shift 键。
+        shift: bool,
+    },
     /// 获得焦点。
     Focus,
     /// 失去焦点。
@@ -466,6 +471,13 @@ impl InputState {
         let language: SharedString = language.into();
         self.mode = InputMode::code_editor(language);
         self
+    }
+
+    /// 返回代码编辑器模式的语言名称，非代码编辑器模式返回 None。
+    ///
+    /// 语言名称当前仅作标识，预留用于未来接入对应的语法处理器（tree-sitter 高亮等）。
+    pub fn language(&self) -> Option<&str> {
+        self.mode.language()
     }
 
     /// 设置占位文本。
@@ -2144,6 +2156,9 @@ impl InputState {
         self
     }
 
+    /// 设置输入框的掩码模式（链式构建）。
+    ///
+    /// 与 [`Self::set_mask_pattern`] 等价，便于在构建时链式调用。
     pub fn set_mask_pattern(
         &mut self,
         pattern: impl Into<MaskPattern>,

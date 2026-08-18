@@ -17,6 +17,7 @@ pub fn hsl(h: f32, s: f32, l: f32) -> Hsla {
     hsla(h / 360., s / 100.0, l / 100.0, 1.0)
 }
 
+/// 颜色运算扩展 trait，为颜色类型提供透明度、明暗等变换能力。
 pub trait Colorize: Sized {
     /// Returns a new color with the given opacity.
     ///
@@ -354,29 +355,50 @@ mod color_scales {
     }
 }
 
-/// Enum representing the available color names.
+/// 可用颜色名称枚举。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ColorName {
+    /// 白色。
     White,
+    /// 黑色。
     Black,
+    /// 中性色。
     Neutral,
+    /// 灰色。
     Gray,
+    /// 红色。
     Red,
+    /// 橙色。
     Orange,
+    /// 琥珀色。
     Amber,
+    /// 黄色。
     Yellow,
+    /// 酸橙绿。
     Lime,
+    /// 绿色。
     Green,
+    /// 祖母绿色。
     Emerald,
+    /// 青色。
     Teal,
+    /// 蓝绿色。
     Cyan,
+    /// 天蓝色。
     Sky,
+    /// 蓝色。
     Blue,
+    /// 靛蓝色。
     Indigo,
+    /// 紫罗兰色。
     Violet,
+    /// 紫色。
     Purple,
+    /// 品红色。
     Fuchsia,
+    /// 粉色。
     Pink,
+    /// 玫瑰色。
     Rose,
 }
 
@@ -583,6 +605,7 @@ where
 macro_rules! color_method {
     ($color:tt, $scale:tt) => {
         paste::paste! {
+            /// 按色标编号获取对应颜色，未找到时返回黑色。
             #[inline]
             #[allow(unused)]
             pub fn [<$color _ $scale>]() -> Hsla {
@@ -643,7 +666,7 @@ color_methods!(gray);
 color_methods!(zinc);
 color_methods!(neutral);
 color_methods!(stone);
-color_methods!(red, pub(crate));
+color_methods!(red);
 color_methods!(orange);
 color_methods!(amber);
 color_methods!(yellow);

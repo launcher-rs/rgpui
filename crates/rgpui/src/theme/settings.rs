@@ -19,10 +19,12 @@ pub enum ScrollbarShow {
 }
 
 impl ScrollbarShow {
+    /// 是否为悬停显示模式。
     pub fn is_hover(&self) -> bool {
         matches!(self, Self::Hover)
     }
 
+    /// 是否为始终显示模式。
     pub fn is_always(&self) -> bool {
         matches!(self, Self::Always)
     }

@@ -6,14 +6,17 @@ use rgpui::{Background, Fill, Hsla};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// A theme token that keeps a solid representative color and its renderable background.
+/// 主题令牌：持有代表颜色及其可渲染背景。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ThemeToken {
+    /// 代表颜色。
     pub color: Hsla,
+    /// 可渲染背景（纯色或渐变）。
     pub background: Background,
 }
 
 impl ThemeToken {
+    /// 从颜色与背景创建主题令牌。
     pub fn new(color: Hsla, background: Background) -> Self {
         Self { color, background }
     }
@@ -344,11 +347,11 @@ pub struct ThemeColor {
 
 macro_rules! define_theme_tokens {
     ($($field:ident),+ $(,)?) => {
-        /// Resolved theme tokens used when a value needs both a solid representative
-        /// color and the configured paint background.
+        /// 已解析的主题令牌：同时持有代表颜色与配置的绘制背景。
         #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, JsonSchema)]
         pub struct ThemeTokens {
-            $(pub $field: ThemeToken,)+
+            $(/// 主题令牌（颜色 + 背景）。
+            pub $field: ThemeToken,)+
         }
 
         impl From<ThemeColor> for ThemeTokens {

@@ -8,6 +8,7 @@ use crate::{
 /// List 的代理 trait。
 #[allow(unused)]
 pub trait ListDelegate: Sized + 'static {
+    /// 列表条目的类型，需实现 [`Selectable`] 与 [`IntoElement`]。
     type Item: Selectable + IntoElement;
 
     /// 当查询输入变化时调用，可在此执行搜索。
