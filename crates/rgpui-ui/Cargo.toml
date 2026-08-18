@@ -9,6 +9,7 @@ repository = "https://github.com/launcher-rs/rgpui"
 
 [dependencies]
 rgpui.workspace = true
+qrcode.workspace = true
 smallvec.workspace = true
 unicode-segmentation.workspace = true
 

@@ -136,6 +136,8 @@ rayon = "1.12"
 # ---- 字符串与文本 ----
 # Unicode 文本分割
 unicode-segmentation = "1.13"
+# QR 码生成（rgpui-ui qr_code 组件）
+qrcode = "0.14"
 # 正则表达式
 regex = "1.12"
 # glob 模式匹配

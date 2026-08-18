@@ -20,6 +20,7 @@ pub mod drawer_navigation;
 pub mod empty_state;
 pub mod expandable_card;
 pub mod hotkey_input;
+pub mod image_viewer;
 pub mod infinite_scroll;
 pub mod inline_edit;
 pub mod layout_transition;
@@ -30,13 +31,16 @@ pub mod number_ticker;
 pub mod otp_input;
 pub mod particle_emitter;
 pub mod pulse_indicator;
+pub mod qr_code;
 pub mod resizable;
 pub mod ripple;
 pub mod segmented_nav;
 pub mod shimmer;
 pub mod sortable_list;
+pub mod sparkline;
 pub mod split_pane;
 pub mod spotlight;
+pub mod svg_renderer;
 pub mod tag_input;
 pub mod text_reveal;
 pub mod type_writer;
@@ -64,6 +68,7 @@ pub use drawer_navigation::*;
 pub use empty_state::*;
 pub use expandable_card::*;
 pub use hotkey_input::*;
+pub use image_viewer::*;
 pub use infinite_scroll::*;
 pub use inline_edit::{
     Cancel, InlineEdit, InlineEditBlurBehavior, InlineEditState, InlineEditTrigger, Save,
@@ -79,13 +84,16 @@ pub use otp_input::{
 };
 pub use particle_emitter::*;
 pub use pulse_indicator::*;
+pub use qr_code::*;
 pub use resizable::*;
 pub use ripple::*;
 pub use segmented_nav::*;
 pub use shimmer::*;
 pub use sortable_list::*;
+pub use sparkline::*;
 pub use split_pane::*;
 pub use spotlight::*;
+pub use svg_renderer::*;
 pub use tag_input::*;
 pub use text_reveal::*;
 pub use type_writer::*;
@@ -95,8 +103,9 @@ pub use waveform::*;
 #[cfg(feature = "charts")]
 pub use charts::*;
 
-/// 初始化需要注册快捷键绑定的组件（行内编辑、OTP 输入）。
+/// 初始化需要注册快捷键绑定的组件（行内编辑、OTP 输入、图片查看器）。
 pub fn init(cx: &mut App) {
     inline_edit::init(cx);
     otp_input::init(cx);
+    image_viewer::init_image_viewer(cx);
 }
