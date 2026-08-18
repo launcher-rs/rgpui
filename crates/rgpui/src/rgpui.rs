@@ -225,6 +225,18 @@ pub mod tabs;
 /// 标题栏子系统 - 自定义标题栏、窗口控制按钮与客户端装饰边框
 pub mod title_bar;
 
+/// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
+pub mod animation;
+
+/// 扩展组件库 - 核心没有的组件 + 动画组件/特效（原 rgpui-ui 并入）
+pub mod components;
+
+/// 鼠标手势识别 - 轻点/双击/长按/拖动/滑动
+pub mod mouse_gestures;
+
+/// 滚动物理模型 - 滚动惯性（动量）、减速度与越界回弹
+pub mod scroll_physics;
+
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
 pub mod util;

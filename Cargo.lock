@@ -5907,6 +5907,7 @@ dependencies = [
  "pretty_assertions",
  "profiling",
  "proptest",
+ "qrcode",
  "rand 0.10.1",
  "raw-window-handle",
  "rayon",
@@ -6138,17 +6139,6 @@ dependencies = [
  "anyhow",
  "rgpui",
  "tokio",
-]
-
-[[package]]
-name = "rgpui-ui"
-version = "1.0.0"
-dependencies = [
- "qrcode",
- "rgpui",
- "rgpui-platform",
- "smallvec",
- "unicode-segmentation",
 ]
 
 [[package]]

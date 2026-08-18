@@ -144,16 +144,19 @@ let bg = cx.theme().tokens.tab_bar;        // 令牌颜色
 
 更多主题系统细节见后续章节。
 
-## 扩展库（rgpui-ui / rgpui-markdown）
+## 扩展组件（并入核心的 rgpui-ui / rgpui-markdown）
 
-核心之外的高价值组件按 `docs/ui-crate-plan.md` 分散在扩展库，保持核心轻量：
+原独立 `rgpui-ui` 已**并入 rgpui 核心**（2026-08-19），高价值组件按 `docs/ui-crate-plan.md` 迁入核心 `animation` / `components` / `mouse_gestures` / `scroll_physics` 子模块：
 
-| crate | 内容 | 引入方式 |
-|-------|------|----------|
-| `rgpui-ui` | 核心没有的组件（动画 13 组件、特效、显示、高级输入、布局、通知/命令、工具），详见 `docs/ui-crate-plan.md` §9 | 普通依赖，按需取用 |
-| `rgpui-ui` `charts` feature | 图表（line/bar/area/pie/gauge/heatmap/radar/treemap/donut） | `rgpui-ui = { features = ["charts"] }` |
+| 模块 | 内容 | 引入方式 |
+|------|------|----------|
+| `components`（默认） | 核心没有的功能性组件（动画 13 组件、显示、高级输入、布局、通知/命令、工具），详见 `docs/ui-crate-plan.md` §9 | `use rgpui::components::*`（核心自带） |
+| `components` `charts` feature | 图表（line/bar/area/pie/gauge/heatmap/radar/treemap/donut） | `rgpui = { features = ["charts"] }` |
+| `components` `effects` feature | 纯装饰特效（aurora/confetti/particle_emitter/ripple/shimmer/marquee/pulse_indicator） | `rgpui = { features = ["effects"] }` |
+| `components` `qr-code` feature | 二维码（qrcode 依赖） | `rgpui = { features = ["qr-code"] }` |
+| `animation` / `mouse_gestures` / `scroll_physics` | 弹簧动画原语与 DSL、手势识别、滚动物理 | 核心自带 |
 | `rgpui-markdown` | Markdown 渲染（`Markdown`/`CodeBlock`/`RichBlock`），基于 pulldown-cmark 0.12 | 普通依赖 |
 
-- `rgpui-ui` 的部分组件（如 `otp_input`/`hotkey_input`/`image_viewer`）需要调用各自的 `init(cx)` 注册 `actions!` 快捷键。
+- `components` 的部分组件（如 `otp_input`/`hotkey_input`/`image_viewer`）需要调用各自的 `init(cx)` 注册 `actions!` 快捷键。
 - 组件迁移规则：**只收核心没有的组件**；与核心（或 `rgpui-markdown`）功能重叠的组件在迁移时直接放弃（如 `code_block`/`rich_text`、yororen keybinding）。
-- 手势与滚动物理：`rgpui-ui::gestures`（GestureDetector）与 `rgpui-ui::scroll_physics`（ScrollPhysics）位于 crate 根，非 `components/`。
+- 手势与滚动物理：`mouse_gestures`（GestureDetector）与 `scroll_physics`（ScrollPhysics）为核心子模块，非 `components/`。

@@ -12,7 +12,6 @@ members = [
     "crates/rgpui-platform",
     "crates/rgpui-term",
     "crates/rgpui-tokio",
-    "crates/rgpui-ui",
     "crates/rgpui-web",
     "crates/rgpui-wgpu",
     "crates/rgpui-windows",
@@ -43,7 +42,6 @@ rgpui-tokio = { path = "crates/rgpui-tokio",version = "1.0.0" }
 rgpui-character = {path = "crates/rgpui-character",version = "1.0.0"}
 rgpui-3d = {path = "crates/rgpui-3d",version = "1.0.0"}
 rgpui-term = {path = "crates/rgpui-term", version = "1.0.0"}
-rgpui-ui = {path = "crates/rgpui-ui", version = "1.0.0"}
 rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.0.0"}
 
 
@@ -136,7 +134,7 @@ rayon = "1.12"
 # ---- 字符串与文本 ----
 # Unicode 文本分割
 unicode-segmentation = "1.13"
-# QR 码生成（rgpui-ui qr_code 组件）
+# QR 码生成（rgpui qr-code feature，qr_code 组件）
 qrcode = "0.14"
 # 正则表达式
 regex = "1.12"

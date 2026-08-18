@@ -45,6 +45,13 @@ input-latency-histogram = []
 # 内嵌额外主题表（自 rgpui-component 主题整合而来，37 套，约 178KB）。
 # 默认关闭以保持核心二进制精简，需要多主题的应用程序可显式开启。
 bundled-themes = []
+# 图表组件（自 rgpui-ui 并入，11 个图，自成体系）。默认关闭。
+charts = []
+# 纯装饰特效组件（aurora/confetti/particle_emitter/ripple/shimmer/marquee/pulse_indicator）。
+# 默认关闭，非核心功能。
+effects = []
+# 二维码组件（引入 qrcode 依赖）。默认关闭。
+qr-code = ["dep:qrcode"]
 
 [lib]
 path = "src/rgpui.rs"
@@ -139,6 +146,7 @@ web-time.workspace = true
 ropey.workspace = true
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 unicode-segmentation = { workspace = true }
+qrcode = { workspace = true, optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.4.3", features = ["wasm_js"] }

@@ -62,17 +62,16 @@ Get-Content -Path <file> -Encoding UTF8
 ### 整合原则
 
 - **组件整合已完成**：`docs/component-integration-plan.md` 记录的整合（地基 → 基础组件 → 复合组件 → 收尾）已全部完成，rgpui 核心自带完整基础组件库。
-- **旧 UI 库已废弃删除**：`rgpui-component`（含子工作区）、`rgpui-adabraka-ui`、`rgpui-yororen-ui`、`rgpui-webview` 已删除。后续 UI 库发展以 `docs/ui-crate-plan.md`（rgpui-ui 重组计划）为准：新建自有 `rgpui-ui`，只收核心没有的组件，基于核心构建。
+- **旧 UI 库已废弃删除**：`rgpui-component`（含子工作区）、`rgpui-adabraka-ui`、`rgpui-yororen-ui`、`rgpui-webview` 已删除。`rgpui-ui` 也已完成使命并入核心（2026-08-19），其组件全部收编到核心 `components` / `animation` / `mouse_gestures` / `scroll_physics` 子模块。
 - **不常用但重要的组件放扩展库**：并非所有组件都要并入 rgpui 核心。低频使用但重要（如高重依赖、专业场景）的组件，单独做成 **rgpui UI 扩展库**（独立 crate，如已落地的 `rgpui-markdown`）存放处理，保持核心轻量。
-- **按依赖顺序、保持轻量**：先地基后组件；语法高亮（tree-sitter）、代码编辑器（rgpui-editor 预留，论证见 `docs/ui-crate-plan.md` §6.5）、markdown（已独立为 `rgpui-markdown`）等高重依赖组件**不并入核心**；图表以 `rgpui-ui` 的 `charts` feature 门控存放（需求明确后再考虑拆独立 `rgpui-chart`）。
+- **按依赖顺序、保持轻量**：先地基后组件；语法高亮（tree-sitter）、代码编辑器（rgpui-editor 预留，论证见 `docs/ui-crate-plan.md` §6.5）、markdown（已独立为 `rgpui-markdown`）等高重依赖组件**不并入核心**；已并入核心的组件按 feature 门控隔离重依赖：图表（`charts`）、纯装饰特效（`effects`）、二维码（`qr-code`，qrcode 依赖）。
 - **保留中文注释与 rgpui 风格**：并入代码沿用 rgpui 的模块组织与命名习惯，手动移植而非整文件覆盖。
 - **完整性约束**：每步完成后运行 `cargo check --workspace`，并保持下方「完整性检查清单」全绿。
 
 ## 架构与包边界
 
 ```
-rgpui（核心：框架 + 基础组件 + 时间驱动动画原语）
-  ├── rgpui-ui（新：核心没有的组件 + 动画组件/特效 + 图表 charts feature + 精选自建能力）
+rgpui（核心：框架 + 基础组件 + 扩展组件/动画/手势/滚动物理，charts/effects/qr-code feature 门控）
   ├── rgpui-markdown（独立专业库，已落地；rgpui-editor 预留，另行论证）
   └── rgpui-term / rgpui-3d / rgpui-tokio（专业集成库）
 
@@ -240,6 +239,8 @@ rgpui 在上游 gpui 基础上增加了大量独有功能，是项目的差异�
 | 表格 | `table/` | `Table`、`DataTable`、`Column`、`TableState`、`TableHeader/Body/Footer/Row/Head/Cell/Caption` |
 | 标签页 | `tabs/` | `Tab`、`TabBar`、`TabVariant`、`Accordion`、`AccordionItem`、`Collapsible` |
 | 标题栏 | `title_bar/` | `TitleBar`、`WindowBorder`、`window_paddings()` |
+| 扩展组件 | `components/`（原 rgpui-ui 并入） | 动画 13 组件、`TagInput`/`OtpInput`/`HotkeyInput`/`InlineEdit`、`SplitPane`/`Resizable`/`DragDrop`/`SortableList`、`Spotlight`/`CommandPalette`/`AppMenuBar`、`ImageViewer`/`Sparkline`/`SvgRenderer`、`Waveform` 等；`charts`/`effects`/`qr-code` feature 门控 |
+| 动画/手势/物理 | `animation/`、`mouse_gestures.rs`、`scroll_physics.rs` | `Spring`、`AnimationPreset`、`GestureDetector`、`ScrollPhysics` |
 
 配套扩展 trait 已并入 `prelude`：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`（`on_double_click`）、`Selectable`、`Sizable`、`StyledExt`、`FluentBuilder`。
 
@@ -330,9 +331,9 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 14. `prelude` 暴露组件扩展 trait：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、`Sizable`、`StyledExt`、`FluentBuilder`
 15. `crates/rgpui-adabraka-ui`、`crates/rgpui-yororen-ui`、`crates/rgpui-component-workspce` 已删除，workspace 不再依赖旧 UI 库
 16. `crates/rgpui-markdown` 存在，`pulldown-cmark = "0.12"` 为工作区依赖
-17. `rgpui-ui` 存在 `charts` feature（`components/charts/` 门控），`cargo check -p rgpui-ui --features charts` 通过
+17. 核心 `rgpui` 存在 `charts` / `effects` / `qr-code` 三个 feature（`components/charts/` 及特效、二维码组件门控），`cargo check -p rgpui --features charts,effects,qr-code` 通过
 18. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
-19. `rgpui-ui` 迁移已全部完成（执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter）、显示（qr_code/sparkline/svg_renderer/image_viewer，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）
+19. `rgpui-ui` 迁移已全部完成并**已并入核心**（2026-08-19，执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter，门控于 `effects`）、显示（qr_code/sparkline/svg_renderer/image_viewer，qr_code 门控于 `qr-code`，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（mouse_gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）；`crates/rgpui-ui` 已删除，workspace 不再依赖该 crate
 
 ## Web/WASM 开发
 

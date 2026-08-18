@@ -1,0 +1,163 @@
+//! 布局过渡：对子元素应用错峰进场动画的容器。
+
+use crate::{prelude::FluentBuilder as _, *};
+use std::time::Duration;
+
+use crate::animation::{durations, easing::easings};
+
+/// 进场动画类型。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LayoutAnimation {
+    /// 淡入上移。
+    #[default]
+    FadeUp,
+    /// 淡入下移。
+    FadeDown,
+    /// 从左滑入。
+    SlideLeft,
+    /// 从右滑入。
+    SlideRight,
+    /// 缩放淡入。
+    Scale,
+}
+
+/// 布局过渡组件。
+#[derive(IntoElement)]
+pub struct LayoutTransition {
+    /// 元素 ID。
+    id: ElementId,
+    /// 子元素列表。
+    children: Vec<AnyElement>,
+    /// 单个动画时长。
+    duration: Duration,
+    /// 子元素间错峰间隔。
+    stagger: Duration,
+    /// 动画类型。
+    animation: LayoutAnimation,
+    /// 版本号（重播动画用）。
+    version: usize,
+    /// 用户样式。
+    style: StyleRefinement,
+}
+
+impl LayoutTransition {
+    /// 创建布局过渡组件。
+    pub fn new(id: impl Into<ElementId>) -> Self {
+        Self {
+            id: id.into(),
+            children: Vec::new(),
+            duration: durations::NORMAL,
+            stagger: Duration::from_millis(50),
+            animation: LayoutAnimation::default(),
+            version: 0,
+            style: StyleRefinement::default(),
+        }
+    }
+
+    /// 设置动画时长。
+    pub fn duration(mut self, duration: Duration) -> Self {
+        self.duration = duration;
+        self
+    }
+
+    /// 设置错峰间隔。
+    pub fn stagger(mut self, stagger: Duration) -> Self {
+        self.stagger = stagger;
+        self
+    }
+
+    /// 设置动画类型。
+    pub fn animation(mut self, animation: LayoutAnimation) -> Self {
+        self.animation = animation;
+        self
+    }
+
+    /// 设置版本号（改变后重播动画）。
+    pub fn version(mut self, version: usize) -> Self {
+        self.version = version;
+        self
+    }
+}
+
+impl Styled for LayoutTransition {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
+impl ParentElement for LayoutTransition {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
+impl RenderOnce for LayoutTransition {
+    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+        let user_style = self.style;
+        let duration = self.duration;
+        let stagger = self.stagger;
+        let animation = self.animation;
+        let version = self.version;
+
+        div()
+            .id(self.id)
+            .children(
+                self.children
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(idx, child)| {
+                        let delay = Duration::from_millis(stagger.as_millis() as u64 * idx as u64);
+                        let total_duration = duration + delay;
+                        let delay_fraction = if total_duration.as_secs_f32() > 0.0 {
+                            delay.as_secs_f32() / total_duration.as_secs_f32()
+                        } else {
+                            0.0
+                        };
+
+                        div()
+                            .id(ElementId::Name(
+                                format!("lt-child-{}-{}", idx, version).into(),
+                            ))
+                            .child(child)
+                            .with_animation(
+                                ElementId::Name(format!("lt-anim-{}-{}", idx, version).into()),
+                                Animation::new(total_duration).with_easing(easings::ease_out_cubic),
+                                move |el, raw_delta| {
+                                    let delta = if raw_delta <= delay_fraction {
+                                        0.0
+                                    } else {
+                                        ((raw_delta - delay_fraction) / (1.0 - delay_fraction))
+                                            .min(1.0)
+                                    };
+
+                                    match animation {
+                                        LayoutAnimation::FadeUp => {
+                                            el.opacity(delta).mt(px(-12.0 * (1.0 - delta)))
+                                        }
+                                        LayoutAnimation::FadeDown => {
+                                            el.opacity(delta).mt(px(12.0 * (1.0 - delta)))
+                                        }
+                                        LayoutAnimation::SlideLeft => {
+                                            el.opacity(delta).ml(px(20.0 * (1.0 - delta)))
+                                        }
+                                        LayoutAnimation::SlideRight => {
+                                            el.opacity(delta).ml(px(-20.0 * (1.0 - delta)))
+                                        }
+                                        LayoutAnimation::Scale => {
+                                            let scale_val = 0.8 + 0.2 * delta;
+                                            el.opacity(delta)
+                                                .w(relative(scale_val))
+                                                .h(relative(scale_val))
+                                        }
+                                    }
+                                },
+                            )
+                    }),
+            )
+            .map(|this| {
+                let mut el = this;
+                el.style().refine(&user_style);
+                el
+            })
+    }
+}
