@@ -11,6 +11,7 @@ pub mod lists;
 pub mod menus;
 pub mod tables;
 pub mod tabs;
+pub mod themes;
 
 use rgpui::{AnyView, App, Window};
 
@@ -33,5 +34,6 @@ pub fn registry() -> Vec<(&'static str, Vec<StoryItem>)> {
         ("表格", tables::stories()),
         ("标签页与折叠", tabs::stories()),
         ("扩展组件", extended::stories()),
+        ("主题", themes::stories()),
     ]
 }

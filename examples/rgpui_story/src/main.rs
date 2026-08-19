@@ -14,9 +14,12 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::prelude::FluentBuilder;
+use rgpui::title_bar::TitleBar;
 use rgpui::{
-    App, AppContext as _, Context, InteractiveElement, IntoElement, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Window, WindowOptions, div, px, size,
+    ActiveTheme, App, AppContext as _, Button, ButtonVariants, Context, DropdownMenu, IconName,
+    InteractiveElement, IntoElement, ParentElement, PopupMenuItem, Render, Sizable,
+    StatefulInteractiveElement, Styled, Theme, ThemeMode, ThemeRegistry, Window, WindowOptions,
+    div, h_flex, px, size,
 };
 use rgpui_platform::application;
 
@@ -77,31 +80,95 @@ impl Render for StoryApp {
             .id("story-app")
             .size_full()
             .flex()
+            .flex_col()
+            .child(title_bar(window, cx))
             .child(
                 div()
-                    .id("story-sidebar")
-                    .h_full()
-                    .w(px(240.0))
-                    .flex_col()
+                    .id("story-body")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_hidden()
+                    .flex()
                     .child(
                         div()
-                            .p(px(16.0))
-                            .child(div().child("rgpui 组件示例大全").text_size(px(16.0))),
+                            .id("story-sidebar")
+                            .h_full()
+                            .w(px(240.0))
+                            .flex_col()
+                            .child(
+                                div()
+                                    .p(px(16.0))
+                                    .child(div().child("rgpui 组件示例大全").text_size(px(16.0))),
+                            )
+                            .child(sidebar_nav(self, window, cx)),
                     )
-                    .child(sidebar_nav(self, window, cx)),
-            )
-            .child(
-                div()
-                    .id("story-content")
-                    .flex_1()
-                    .h_full()
-                    .overflow_y_scroll()
-                    .when_some(content, |d, view| d.child(view)),
+                    .child(
+                        div()
+                            .id("story-content")
+                            .flex_1()
+                            .h_full()
+                            .min_w_0()
+                            .overflow_y_scroll()
+                            .when_some(content, |d, view| d.child(view)),
+                    ),
             )
             // 对话框层必须作为最后一个子元素挂载，否则会绘制在侧边栏/内容之下，
             // 导致遮罩无法遮蔽下层内容、点击事件穿透到下层按钮。
             .when_some(dialog_layer, |d, layer| d.child(layer))
     }
+}
+
+/// 渲染自定义标题栏，右侧提供主题切换下拉菜单。
+fn title_bar(_window: &mut Window, cx: &mut Context<StoryApp>) -> impl IntoElement {
+    let theme = cx.theme();
+    let current_name = theme.theme_name().clone();
+
+    // 提前收集主题元数据，克隆进 'static 菜单构建闭包。
+    let items: Vec<(rgpui::SharedString, ThemeMode, bool)> = ThemeRegistry::global(cx)
+        .sorted_themes()
+        .into_iter()
+        .map(|theme| {
+            let name = theme.name.clone();
+            (name.clone(), theme.mode, name == current_name)
+        })
+        .collect();
+
+    TitleBar::new().child(
+        h_flex()
+            .w_full()
+            .justify_between()
+            .items_center()
+            .px_2()
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .text_color(theme.muted_foreground)
+                    .child("rgpui 组件示例大全"),
+            )
+            .child(
+                Button::new("title-bar-theme")
+                    .small()
+                    .ghost()
+                    .icon(IconName::Palette)
+                    .label(current_name.clone())
+                    .dropdown_menu(move |menu, _, _| {
+                        let mut menu = menu.label("选择主题");
+                        for (name, mode, checked) in &items {
+                            let name = name.clone();
+                            let mode = *mode;
+                            menu = menu.item(
+                                PopupMenuItem::new(name.clone()).checked(*checked).on_click(
+                                    move |_, window, cx| {
+                                        Theme::change(mode, Some(window), cx);
+                                        cx.refresh_windows();
+                                    },
+                                ),
+                            );
+                        }
+                        menu
+                    }),
+            ),
+    )
 }
 
 /// 渲染侧边栏分类导航：每组标题 + 该组下的故事条目按钮。
@@ -116,6 +183,7 @@ fn sidebar_nav(
         .w_full()
         .h_full()
         .flex_1()
+        .min_h_0()
         .overflow_y_scroll()
         .p(px(8.0));
 
@@ -169,16 +237,13 @@ fn main() {
 
         let window_options = WindowOptions {
             window_background: rgpui::WindowBackgroundAppearance::Opaque,
-            titlebar: Some(rgpui::TitlebarOptions {
-                title: Some("rgpui 组件示例大全".into()),
-                ..Default::default()
-            }),
             // 设置合理的默认窗口尺寸，避免默认尺寸过大。
             window_bounds: Some(rgpui::WindowBounds::centered(
                 size(px(1100.0), px(720.0)),
                 cx,
             )),
-            ..Default::default()
+            // 使用自定义 TitleBar：隐藏系统标题栏，由 StoryApp 自行渲染标题栏。
+            ..TitleBar::window_options()
         };
 
         let _ = cx.open_window(window_options, |window, cx| {

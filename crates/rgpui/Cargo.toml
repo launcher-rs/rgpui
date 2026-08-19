@@ -15,7 +15,11 @@ categories = ["gui"]
 workspace = true
 
 [features]
+# 默认特性集合：macOS 字体回退栈 font-kit、Linux 的 Wayland/X11 平台后端、
+# Windows 应用清单嵌入。
 default = ["font-kit", "wayland", "x11", "windows-manifest"]
+# 测试支持：启用泄漏检测、proptest 属性测试、假 HTTP 客户端（FakeHttpClient）
+# 与 visual_test（macOS 截图对比测试），并启用 Wayland/X11 与 git2 依赖。
 test-support = [
     "leak-detection",
     "wayland",
@@ -23,24 +27,34 @@ test-support = [
     "proptest",
     "dep:git2",
 ]
+# 元素检查器：为元素/窗口附加调试信息（默认 debug_assertions 下也启用）。
 inspector = ["rgpui-macros/inspector"]
+# 实体（Entity）内存泄漏检测：测试与 test-support 下跟踪实体分配与释放。
 leak-detection = []
+# HTTP 客户端：启用基于 reqwest 的 HttpClient 实现（非 wasm 目标）。
 reqwest = [
     "dep:reqwest",
     "dep:tokio",
 ]
+# TLS 支持：为 reqwest 客户端启用 rustls 平台证书校验（含系统根证书）。
 tls = [
     "dep:rustls",
     "dep:rustls-platform-verifier",
 ]
+# Linux Wayland 平台后端。
 wayland = []
+# Linux X11 平台后端（scap 屏幕捕获可选启用 X11 支持）。
 x11 = [
     "scap?/x11",
 ]
+# 屏幕捕获：启用 PlatformScreenCaptureFrame 与 scap 后端（Windows/Linux），
+# macOS 使用 core-video 实现。
 screen-capture = [
     "scap",
 ]
+# Windows 应用清单：通过 embed-resource 嵌入 windows.manifest 等资源。
 windows-manifest = ["dep:embed-resource"]
+# 输入延迟直方图：用 hdrhistogram 统计窗口输入事件处理延迟。
 input-latency-histogram = []
 # 内嵌额外主题表（自 rgpui-component 主题整合而来，37 套，约 178KB）。
 # 默认关闭以保持核心二进制精简，需要多主题的应用程序可显式开启。
@@ -275,6 +289,30 @@ path = "examples/svg/svg.rs"
 [[example]]
 name = "tab_stop"
 path = "examples/tab_stop.rs"
+
+[[example]]
+name = "charts"
+path = "examples/charts.rs"
+required-features = ["charts"]
+
+[[example]]
+name = "effects"
+path = "examples/effects.rs"
+required-features = ["effects"]
+
+[[example]]
+name = "qr_code"
+path = "examples/qr_code.rs"
+required-features = ["qr-code"]
+
+[[example]]
+name = "input_latency"
+path = "examples/input_latency.rs"
+required-features = ["input-latency-histogram"]
+
+[[example]]
+name = "theme"
+path = "examples/theme.rs"
 
 [[example]]
 name = "tokio"

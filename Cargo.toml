@@ -436,6 +436,9 @@ features = [
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow" }
+# MSVC 链接器在链接 DLL 时总会输出「正在创建库 xxx.lib/xxx.exp」，
+# 该 stdout 被 cargo 当作 linker_messages 警告显示，属正常输出，予以屏蔽。
+linker_messages = { level = "allow" }
 
 [workspace.lints.clippy]
 dbg_macro = "deny"
