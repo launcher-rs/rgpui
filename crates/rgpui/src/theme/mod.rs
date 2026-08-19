@@ -106,7 +106,12 @@ pub struct Theme {
 
 impl Default for Theme {
     fn default() -> Self {
-        Self::from(&ThemeColor::default())
+        // 使用内置默认亮色主题的真实颜色作为回退，
+        // 避免应用未显式调用 `theme::init` 时渲染为全透明（窗口显示空白）。
+        let (colors, highlight_theme) = &DEFAULT_THEME_COLORS[&ThemeMode::Light];
+        let mut theme = Self::from(&**colors);
+        theme.highlight_theme = highlight_theme.clone();
+        theme
     }
 }
 
