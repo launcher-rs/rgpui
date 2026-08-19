@@ -10,8 +10,10 @@
 //! cargo run -p rgpui_story
 //! ```
 
-// 在 wasm 目标上禁用 main 函数入口
-#![cfg_attr(target_family = "wasm", no_main)]
+#[cfg(target_family = "wasm")]
+use std::borrow::Cow;
+#[cfg(target_family = "wasm")]
+use std::cell::RefCell;
 
 use rgpui::prelude::FluentBuilder;
 use rgpui::title_bar::TitleBar;
@@ -21,9 +23,20 @@ use rgpui::{
     StatefulInteractiveElement, Styled, Theme, ThemeMode, ThemeRegistry, Window, WindowOptions,
     div, h_flex, px, size,
 };
+#[cfg(not(target_family = "wasm"))]
 use rgpui_platform::application;
 
 mod stories;
+
+// 持有 wasm 下 ApplicationHandle，防止 App 在启动回调返回后被释放。
+//
+// Web 平台的 `run` 通过 `spawn_local` 启动后立即返回，若句柄被丢弃，
+// 事件监听器闭包会被回收而 DOM 监听仍挂载，导致
+// "closure invoked recursively or after being dropped" 崩溃。
+#[cfg(target_family = "wasm")]
+thread_local! {
+    static APPLICATION: RefCell<Option<rgpui::ApplicationHandle>> = const { RefCell::new(None) };
+}
 
 use stories::{StoryItem, registry};
 
@@ -160,6 +173,14 @@ fn title_bar(_window: &mut Window, cx: &mut Context<StoryApp>) -> impl IntoEleme
                                 PopupMenuItem::new(name.clone()).checked(*checked).on_click(
                                     move |_, window, cx| {
                                         Theme::change(mode, Some(window), cx);
+                                        // wasm 下主题切换不会重置内嵌字体（配置无 font_family），
+                                        // 但保持与桌面一致的健壮性，切换后显式恢复内嵌字体族。
+                                        #[cfg(target_family = "wasm")]
+                                        {
+                                            let theme = cx.global_mut::<Theme>();
+                                            theme.font_family = "Inter Variable".into();
+                                            theme.mono_font_family = "JetBrains Mono".into();
+                                        }
                                         cx.refresh_windows();
                                     },
                                 ),
@@ -225,7 +246,39 @@ fn sidebar_nav(
 }
 
 fn main() {
-    application().run(|cx: &mut App| {
+    // wasm 下初始化 panic hook 与日志系统。
+    #[cfg(target_family = "wasm")]
+    rgpui_platform::web_init();
+
+    // wasm 使用单线程 Web 平台（无需 SharedArrayBuffer/atomics），
+    // 桌面端使用默认平台。
+    let app = {
+        #[cfg(target_family = "wasm")]
+        {
+            rgpui_platform::single_threaded_web()
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
+            application()
+        }
+    };
+
+    let launch = move |cx: &mut App| {
+        // wasm 下无系统字体，需内嵌加载应用用到的字体族（CJK/Emoji 通过回退匹配）。
+        #[cfg(target_family = "wasm")]
+        {
+            let ui_font = Cow::Borrowed(include_bytes!("../fonts/Inter-Regular.ttf").as_slice());
+            let mono_font =
+                Cow::Borrowed(include_bytes!("../fonts/JetBrainsMono-Regular.ttf").as_slice());
+            let emoji_font =
+                Cow::Borrowed(include_bytes!("../fonts/NotoEmoji-Regular.ttf").as_slice());
+            let cjk_font =
+                Cow::Borrowed(include_bytes!("../fonts/NotoSansSC-Regular-subset.ttf").as_slice());
+            cx.text_system()
+                .add_fonts(vec![ui_font, mono_font, emoji_font, cjk_font])
+                .expect("字体加载失败");
+        }
+
         // 依次初始化各子系统：主题、输入（含数字输入）、菜单（含全局状态）、
         // 列表、表格与扩展组件（快捷键绑定）。
         rgpui::theme::init(cx);
@@ -234,6 +287,14 @@ fn main() {
         rgpui::list::init(cx);
         rgpui::table::init(cx);
         rgpui::components::init(cx);
+
+        // wasm 下指定内嵌字体族，避免回退到不存在的系统字体。
+        #[cfg(target_family = "wasm")]
+        {
+            let theme = cx.global_mut::<Theme>();
+            theme.font_family = "Inter Variable".into();
+            theme.mono_font_family = "JetBrains Mono".into();
+        }
 
         let window_options = WindowOptions {
             window_background: rgpui::WindowBackgroundAppearance::Opaque,
@@ -249,5 +310,14 @@ fn main() {
         let _ = cx.open_window(window_options, |window, cx| {
             cx.new(|cx| StoryApp::new(window, cx))
         });
+    };
+
+    // wasm 下通过 run_embedded 持有 ApplicationHandle，避免 App 在启动后即被释放；
+    // 桌面端 run 会阻塞直至退出。
+    #[cfg(target_family = "wasm")]
+    APPLICATION.with(|application| {
+        *application.borrow_mut() = Some(app.run_embedded(launch));
     });
+    #[cfg(not(target_family = "wasm"))]
+    app.run(launch);
 }

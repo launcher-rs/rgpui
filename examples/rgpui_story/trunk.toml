@@ -1,0 +1,7 @@
+[serve]
+addresses = ["127.0.0.1"]
+port = 8080
+open = true
+
+# 与 hello_web 保持一致；单线程模式下非必需，但保留无副作用。
+headers = { "Cross-Origin-Embedder-Policy" = "require-corp", "Cross-Origin-Opener-Policy" = "same-origin" }
