@@ -453,7 +453,9 @@ impl RenderOnce for SplitPane {
                 div()
                     .absolute()
                     .when(is_horizontal, |this| {
-                        this.top(px(4.0))
+                        // 水平分割：按钮列居中于分隔线（y 方向居中、x 方向贴住分隔线）。
+                        this.top(relative(0.5))
+                            .mt(-px(17.0))
                             .left(relative(ratio))
                             .ml(-px(8.0))
                             .flex()
@@ -461,7 +463,9 @@ impl RenderOnce for SplitPane {
                             .gap(px(2.0))
                     })
                     .when(!is_horizontal, |this| {
-                        this.left(px(4.0))
+                        // 垂直分割：按钮行居中于分隔线（x 方向居中、y 方向贴住分隔线）。
+                        this.left(relative(0.5))
+                            .ml(-px(17.0))
                             .top(relative(ratio))
                             .mt(-px(8.0))
                             .flex()

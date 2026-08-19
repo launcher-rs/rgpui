@@ -36,10 +36,11 @@ struct ShowcaseApp {
 }
 
 impl ShowcaseApp {
-    fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // 初始化各组件状态实体。
         let split_pane_state = cx.new(SplitPaneState::new);
-        let tag_input_state = cx.new(|cx| TagInputState::with_tags(cx, vec!["rgpui", "扩展组件"]));
+        let tag_input_state =
+            cx.new(|cx| TagInputState::with_tags(window, cx, vec!["rgpui", "扩展组件"]));
         let type_writer_state = cx.new(|_cx| TypeWriterState::new("rgpui 扩展组件打字机动画演示"));
         // 启动打字动画（逐字显示）。
         type_writer_state.update(cx, |state, cx| state.start(cx));
@@ -158,6 +159,10 @@ fn svg_path() -> impl IntoElement {
 
 fn main() {
     application().run(|cx: &mut App| {
+        // 初始化主题与输入子系统（TagInput 内嵌的 Input 依赖其按键绑定）。
+        rgpui::theme::init(cx);
+        rgpui::input_ui::init(cx);
+
         let window_options = WindowOptions {
             window_background: WindowBackgroundAppearance::Opaque,
             titlebar: Some(rgpui::TitlebarOptions {

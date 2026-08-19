@@ -80,8 +80,9 @@ struct TagInputStory {
 }
 
 impl TagInputStory {
-    fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let state = cx.new(|cx| TagInputState::with_tags(cx, vec!["rgpui", "组件", "示例"]));
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let state =
+            cx.new(|cx| TagInputState::with_tags(window, cx, vec!["rgpui", "组件", "示例"]));
         Self { state }
     }
 }
@@ -180,22 +181,33 @@ impl rgpui::Render for InlineEditStory {
 struct TypeWriterCounterStory {
     writer_state: Entity<TypeWriterState>,
     counter_state: Entity<AnimatedCounterState>,
+    /// 是否已在首次渲染时启动动画（避免在 `new` 中提前启动，导致切换到该页时动画早已结束）。
+    started: bool,
 }
 
 impl TypeWriterCounterStory {
     fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let writer_state = cx.new(|_cx| TypeWriterState::new("rgpui 打字机动画与计数器演示"));
-        writer_state.update(cx, |state, cx| state.start(cx));
         let counter_state = cx.new(|_cx| AnimatedCounterState::new(0.0));
         Self {
             writer_state,
             counter_state,
+            started: false,
         }
     }
 }
 
 impl rgpui::Render for TypeWriterCounterStory {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // 视图首次渲染（即切换到本页）时启动打字机动画并触发计数滚动。
+        if !self.started {
+            self.started = true;
+            self.writer_state.update(cx, |state, cx| state.start(cx));
+            self.counter_state.update(cx, |state, cx| {
+                state.set_value(12345.0, cx);
+            });
+        }
+
         v_flex()
             .id("type-writer-story")
             .gap(px(8.0))

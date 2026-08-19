@@ -202,7 +202,7 @@ mod tray;
 mod dialog;
 
 /// 菜单组件 - 弹窗菜单、右键菜单、下拉菜单与应用菜单栏
-mod menu;
+pub mod menu;
 
 /// 表单组件 - 表单容器与表单字段
 mod form;

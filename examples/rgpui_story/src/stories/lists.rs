@@ -39,10 +39,8 @@ impl rgpui::Render for ListStory {
             .p(px(16.0))
             .child(section_title("普通列表（list）"))
             .child(
-                v_flex()
-                    .w(px(360.0))
-                    .h(px(320.0))
-                    .child(rgpui::list(state, |ix, _, _| {
+                v_flex().w(px(360.0)).h(px(320.0)).child(
+                    rgpui::list(state, |ix, _, _| {
                         div()
                             .id(rgpui::ElementId::Name(format!("list-item-{ix}").into()))
                             .h(px(32.0))
@@ -51,7 +49,10 @@ impl rgpui::Render for ListStory {
                             .px(px(12.0))
                             .child(format!("列表项 {ix}"))
                             .into_any_element()
-                    })),
+                    })
+                    .w_full()
+                    .h_full(),
+                ),
             )
     }
 }

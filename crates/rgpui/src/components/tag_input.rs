@@ -2,37 +2,40 @@
 
 use std::rc::Rc;
 
+use crate::input_ui::{Input, InputState};
 use crate::{prelude::FluentBuilder as _, *};
 
 /// 标签输入状态。
 pub struct TagInputState {
     /// 已添加的标签。
     tags: Vec<SharedString>,
-    /// 当前输入框文本。
-    input_value: String,
-    /// 焦点句柄。
-    focus_handle: FocusHandle,
+    /// 输入框状态实体（复用 `input_ui` 输入状态，支持完整键盘与输入法处理）。
+    input: Entity<InputState>,
     /// 标签数量上限。
     max_tags: Option<usize>,
 }
 
 impl TagInputState {
     /// 创建标签输入状态。
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let input = cx.new(|cx| InputState::new(window, cx));
         Self {
             tags: Vec::new(),
-            input_value: String::new(),
-            focus_handle: cx.focus_handle(),
+            input,
             max_tags: None,
         }
     }
 
     /// 以初始标签列表创建状态。
-    pub fn with_tags(cx: &mut Context<Self>, tags: Vec<impl Into<SharedString>>) -> Self {
+    pub fn with_tags(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        tags: Vec<impl Into<SharedString>>,
+    ) -> Self {
+        let input = cx.new(|cx| InputState::new(window, cx));
         Self {
             tags: tags.into_iter().map(|t| t.into()).collect(),
-            input_value: String::new(),
-            focus_handle: cx.focus_handle(),
+            input,
             max_tags: None,
         }
     }
@@ -90,13 +93,21 @@ impl TagInputState {
     }
 
     /// 获取输入框文本。
-    pub fn input_value(&self) -> &str {
-        &self.input_value
+    pub fn input_value(&self, cx: &App) -> String {
+        self.input.read(cx).text().to_string()
     }
 
     /// 设置输入框文本。
-    pub fn set_input_value(&mut self, value: impl Into<String>, cx: &mut Context<Self>) {
-        self.input_value = value.into();
+    pub fn set_input_value(
+        &mut self,
+        value: impl Into<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let value: String = value.into();
+        self.input.update(cx, |input, cx| {
+            input.set_value(value, window, cx);
+        });
         cx.notify();
     }
 
@@ -112,20 +123,16 @@ impl TagInputState {
     }
 
     /// 提交当前输入为标签，成功时清空输入。
-    pub fn commit_input(&mut self, cx: &mut Context<Self>) -> bool {
-        let value = self.input_value.trim().to_string();
+    pub fn commit_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let value = self.input.read(cx).text().to_string().trim().to_string();
         if self.add_tag(value, cx) {
-            self.input_value.clear();
+            self.input.update(cx, |input, cx| {
+                input.set_value("", window, cx);
+            });
             true
         } else {
             false
         }
-    }
-}
-
-impl Focusable for TagInputState {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handle.clone()
     }
 }
 
@@ -201,14 +208,23 @@ impl Styled for TagInput {
 
 impl RenderOnce for TagInput {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let theme = cx.theme();
         let user_style = self.style;
+        let placeholder = self.placeholder;
+        let disabled = self.disabled;
+        let state = self.state.clone();
+
+        // 将占位文本同步到输入状态（Input 组件从输入状态读取占位文本）。
+        state.update(cx, |s, cx| {
+            s.input.update(cx, |input, cx| {
+                input.set_placeholder(placeholder.clone(), window, cx);
+            });
+        });
+
+        let theme = cx.theme();
         let state_data = self.state.read(cx);
         let tags = state_data.tags.clone();
-        let input_value = state_data.input_value.clone();
-        let focus_handle = state_data.focus_handle(cx);
-        let is_focused = focus_handle.is_focused(window);
-        let state = self.state.clone();
+        let input_state = state_data.input.clone();
+        let is_focused = state_data.input.read(cx).is_focused(window);
 
         let mut root = div();
         root.style().refine(&user_style);
@@ -231,14 +247,20 @@ impl RenderOnce for TagInput {
                     theme.tokens.input
                 })
                 .rounded(theme.radius)
-                .when(self.disabled, |d| d.opacity(0.5))
-                .when(!self.disabled, |d| {
-                    d.track_focus(&focus_handle.tab_index(0).tab_stop(true))
+                .when(disabled, |d| d.opacity(0.5))
+                .when(!disabled, |d| {
+                    // 点击容器任意位置都聚焦输入框。
+                    let state = state.clone();
+                    d.on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        state.update(cx, |s, cx| {
+                            s.input.update(cx, |input, cx| input.focus(window, cx));
+                        });
+                    })
                 })
                 .children(tags.iter().enumerate().map(|(idx, tag)| {
                     let state_for_remove = state.clone();
                     let on_change = self.on_change.clone();
-                    let disabled = self.disabled;
+                    let disabled = disabled;
 
                     div()
                         .id(SharedString::from(format!("tag-{}", idx)))
@@ -266,7 +288,7 @@ impl RenderOnce for TagInput {
                                         state_for_remove.update(cx, |s, cx| {
                                             s.remove_tag(idx, cx);
                                             if let Some(ref handler) = on_change {
-                                                handler(&s.tags, window, cx);
+                                                handler(&s.tags, window, &mut **cx);
                                             }
                                         });
                                     })
@@ -274,10 +296,10 @@ impl RenderOnce for TagInput {
                             )
                         })
                 }))
-                .when(!self.disabled, {
+                .when(!disabled, {
                     let state_for_input = state;
+                    let input_state = input_state.clone();
                     let on_change = self.on_change.clone();
-                    let placeholder = self.placeholder.clone();
 
                     move |container| {
                         container.child(
@@ -285,13 +307,6 @@ impl RenderOnce for TagInput {
                                 div()
                                     .id("tag-input-field")
                                     .min_w(px(60.0))
-                                    .text_size(px(14.0))
-                                    .text_color(if input_value.is_empty() {
-                                        theme.tokens.muted_foreground
-                                    } else {
-                                        theme.tokens.foreground
-                                    })
-                                    .font_family(theme.font_family.clone())
                                     .on_key_down({
                                         let state = state_for_input.clone();
                                         let on_change = on_change.clone();
@@ -299,9 +314,9 @@ impl RenderOnce for TagInput {
                                         {
                                             "enter" => {
                                                 state.update(cx, |s, cx| {
-                                                    if s.commit_input(cx) {
+                                                    if s.commit_input(window, cx) {
                                                         if let Some(ref handler) = on_change {
-                                                            handler(&s.tags, window, cx);
+                                                            handler(&s.tags, window, &mut **cx);
                                                         }
                                                     }
                                                 });
@@ -309,12 +324,12 @@ impl RenderOnce for TagInput {
                                             }
                                             "backspace" => {
                                                 state.update(cx, |s, cx| {
-                                                    if s.input_value.is_empty()
+                                                    if s.input.read(cx).text().len() == 0
                                                         && !s.tags.is_empty()
                                                     {
                                                         s.remove_last_tag(cx);
                                                         if let Some(ref handler) = on_change {
-                                                            handler(&s.tags, window, cx);
+                                                            handler(&s.tags, window, &mut **cx);
                                                         }
                                                         cx.stop_propagation();
                                                     }
@@ -323,11 +338,12 @@ impl RenderOnce for TagInput {
                                             _ => {}
                                         }
                                     })
-                                    .child(if input_value.is_empty() {
-                                        placeholder.to_string()
-                                    } else {
-                                        input_value
-                                    }),
+                                    .child(
+                                        Input::new(&input_state)
+                                            .appearance(false)
+                                            .bordered(false)
+                                            .small(),
+                                    ),
                             ),
                         )
                     }

@@ -295,6 +295,10 @@ pub struct InputState {
     pub(super) size: ElementSize,
     pub(super) disabled: bool,
     pub(super) masked: bool,
+    /// 掩码状态是否被显式设置（通过 [`Self::masked`] 或 [`Self::set_masked`]），
+    /// 用于让 [`Input`](super::Input) 在密码内容类型下仅在用户未显式选择时
+    /// 才应用默认掩码，避免覆盖切换按钮的选择。
+    pub(super) masked_set: bool,
     pub(super) clean_on_escape: bool,
     pub(super) submit_on_enter: bool,
     pub(super) soft_wrap: bool,
@@ -398,6 +402,7 @@ impl InputState {
             selecting: false,
             disabled: false,
             masked: false,
+            masked_set: false,
             clean_on_escape: false,
             submit_on_enter: false,
             soft_wrap: true,
@@ -719,6 +724,7 @@ impl InputState {
     pub fn masked(mut self, masked: bool) -> Self {
         debug_assert!(self.mode.is_single_line());
         self.masked = masked;
+        self.masked_set = true;
         self
     }
 
@@ -728,6 +734,7 @@ impl InputState {
     pub fn set_masked(&mut self, masked: bool, _: &mut Window, cx: &mut Context<Self>) {
         debug_assert!(self.mode.is_single_line());
         self.masked = masked;
+        self.masked_set = true;
         cx.notify();
     }
 
@@ -1977,6 +1984,11 @@ impl InputState {
             && !self.disabled
             && self.blink_cursor.read(cx).visible()
             && window.is_window_active()
+    }
+
+    /// 返回输入框当前是否聚焦。
+    pub fn is_focused(&self, window: &Window) -> bool {
+        self.focus_handle.is_focused(window)
     }
 
     fn on_focus(&mut self, _: &mut Window, cx: &mut Context<Self>) {

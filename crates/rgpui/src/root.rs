@@ -130,7 +130,10 @@ impl Root {
     /// 渲染对话框层。
     ///
     /// 由用户视图手动调用并挂载到渲染树中（Root 自身不挂载）。
-    pub fn render_dialog_layer(window: &mut Window, cx: &mut App) -> Option<impl IntoElement> {
+    pub fn render_dialog_layer(
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<impl IntoElement + use<>> {
         let root = window.root::<Root>()??;
 
         let active_dialogs = root.read(cx).active_dialogs.clone();

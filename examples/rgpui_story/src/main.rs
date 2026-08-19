@@ -70,6 +70,8 @@ impl Render for StoryApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // 内容区：渲染当前激活的故事视图。
         let content = self.active_view();
+        // 对话框层：由用户视图手动挂载（Root 自身不挂载），否则对话框无法显示。
+        let dialog_layer = rgpui::Root::render_dialog_layer(window, cx);
 
         div()
             .id("story-app")
@@ -96,6 +98,9 @@ impl Render for StoryApp {
                     .overflow_y_scroll()
                     .when_some(content, |d, view| d.child(view)),
             )
+            // 对话框层必须作为最后一个子元素挂载，否则会绘制在侧边栏/内容之下，
+            // 导致遮罩无法遮蔽下层内容、点击事件穿透到下层按钮。
+            .when_some(dialog_layer, |d, layer| d.child(layer))
     }
 }
 
@@ -153,7 +158,14 @@ fn sidebar_nav(
 
 fn main() {
     application().run(|cx: &mut App| {
+        // 依次初始化各子系统：主题、输入（含数字输入）、菜单（含全局状态）、
+        // 列表、表格与扩展组件（快捷键绑定）。
         rgpui::theme::init(cx);
+        rgpui::input_ui::init(cx);
+        rgpui::menu::init(cx);
+        rgpui::list::init(cx);
+        rgpui::table::init(cx);
+        rgpui::components::init(cx);
 
         let window_options = WindowOptions {
             window_background: rgpui::WindowBackgroundAppearance::Opaque,
