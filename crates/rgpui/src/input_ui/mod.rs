@@ -5,7 +5,7 @@
 use crate::App;
 
 /// 掩码字符，用于密码输入字段。
-pub(super) const MASK_CHAR: char = '?';
+pub(super) const MASK_CHAR: char = '*';
 
 mod auto_scroll;
 mod blink_cursor;
