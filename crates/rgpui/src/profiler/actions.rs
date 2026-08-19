@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     hint::cold_path,
     time::{Duration, Instant},
 };
@@ -11,9 +12,7 @@ use crate::action::Action;
 #[derive(Clone)]
 pub struct ActionStatistics {
     runtime_to_beat: Duration,
-
     longest_runtimes: heapless::Vec<ActionTiming, 5>,
-    running: Option<(&'static str, Instant)>,
 }
 
 impl std::fmt::Debug for ActionStatistics {
@@ -21,10 +20,6 @@ impl std::fmt::Debug for ActionStatistics {
         f.debug_struct("ActionStatistics")
             .field("runtime_to_beat", &self.runtime_to_beat)
             .field("longest_runtimes", &self.longest_runtimes)
-            .field(
-                "running",
-                &self.running.map(|(id, started)| (id, started.elapsed())),
-            )
             .finish()
     }
 }
@@ -59,68 +54,21 @@ impl ActionStatistics {
         Self {
             runtime_to_beat: Duration::from_micros(100),
             longest_runtimes: heapless::Vec::new(),
-            running: None,
         }
     }
 
     pub fn take(&mut self) -> Self {
-        let taken = std::mem::take(self);
-        self.running = taken.running;
-        taken
+        std::mem::take(self)
     }
 
     pub fn is_empty(&self) -> bool {
         self.longest_runtimes.is_empty()
     }
 
-    pub fn update_running_action(&mut self, action: &'static str, started: Instant) {
-        self.running = Some((action, started));
-    }
-
-    pub fn save_action_timing(&mut self) {
-        let now = Instant::now();
-        let (action, started) = self
-            .running
-            .take()
-            .expect("only called after `update_running_action`");
-
-        let runtime = now.duration_since(started);
-        if runtime >= self.runtime_to_beat {
-            cold_path();
-
-            if self.longest_runtimes.is_full()
-                && let Some(to_replace) = self
-                    .longest_runtimes
-                    .iter_mut()
-                    .min_by_key(|action| runtime >= action.runtime())
-            {
-                *to_replace = ActionTiming {
-                    name: action,
-                    start: started,
-                    end: now,
-                };
-            } else {
-                self.longest_runtimes
-                    .push(ActionTiming {
-                        name: action,
-                        start: started,
-                        end: now,
-                    })
-                    .expect("just checked it is not full");
-            };
-
-            self.runtime_to_beat = self
-                .longest_runtimes
-                .iter()
-                .map(|action| action.runtime())
-                .min()
-                .expect("never empty");
-        }
-    }
-
     pub fn longest_runtimes(&self, include_running: bool) -> impl Iterator<Item = ActionTiming> {
         self.longest_runtimes.iter().copied().chain(
-            self.running
+            RUNNING_ACTIONS
+                .with(|stack| stack.borrow().last().copied())
                 .into_iter()
                 .filter(move |_| include_running)
                 .map(|(name, start)| ActionTiming {
@@ -165,17 +113,63 @@ impl ActionTiming {
 static ACTION_STATISTICS: spin::Mutex<ActionStatistics> =
     const { spin::Mutex::new(ActionStatistics::new()) };
 
+// 记录当前线程正在运行的 action 栈。之所以用线程局部变量而非全局的
+// `running` 字段：action 分发可能在任意线程上进行（并行测试、后台任务），
+// 若所有线程共享一个 `running`，两个线程交错执行
+// `update_running_action`/`save_action_timing` 时会相互覆盖，导致
+// `save_action_timing` 读到空值而 panic。每个线程各自维护栈即可避免竞争。
+thread_local! {
+    static RUNNING_ACTIONS: RefCell<Vec<(&'static str, Instant)>> = const {
+        RefCell::new(Vec::new())
+    };
+}
+
 #[doc(hidden)]
 pub(crate) fn update_running_action(action: &(dyn Action + 'static), cx: &mut crate::App) {
     let now = Instant::now();
     let action = action.type_id();
     let action = cx.actions.try_resolve_action(&action).unwrap_or("un-named");
-    ACTION_STATISTICS.lock().update_running_action(action, now);
+    RUNNING_ACTIONS.with(|stack| stack.borrow_mut().push((action, now)));
 }
 
 #[doc(hidden)]
 pub(crate) fn save_action_timing() {
-    ACTION_STATISTICS.lock().save_action_timing();
+    let (action, started) = RUNNING_ACTIONS
+        .with(|stack| stack.borrow_mut().pop())
+        .expect("only called after `update_running_action`");
+    let now = Instant::now();
+    let runtime = now.duration_since(started);
+    let mut statistics = ACTION_STATISTICS.lock();
+    if runtime >= statistics.runtime_to_beat {
+        cold_path();
+        if statistics.longest_runtimes.is_full()
+            && let Some(to_replace) = statistics
+                .longest_runtimes
+                .iter_mut()
+                .min_by_key(|action| runtime >= action.runtime())
+        {
+            *to_replace = ActionTiming {
+                name: action,
+                start: started,
+                end: now,
+            };
+        } else {
+            statistics
+                .longest_runtimes
+                .push(ActionTiming {
+                    name: action,
+                    start: started,
+                    end: now,
+                })
+                .expect("just checked it is not full");
+        };
+        statistics.runtime_to_beat = statistics
+            .longest_runtimes
+            .iter()
+            .map(|action| action.runtime())
+            .min()
+            .expect("never empty");
+    }
 }
 
 #[doc(hidden)]

@@ -17,8 +17,8 @@ use crate::{
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRenderingMode, TextStyle,
     TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
     WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
-    WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, rems, size,
-    transparent_black,
+    WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, rems,
+    root::Root, size, transparent_black,
 };
 
 use crate::collections::{FxHashMap, FxHashSet};
@@ -6267,9 +6267,8 @@ impl<V: 'static + Render> WindowHandle<V> {
     where
         C: AppContext,
     {
-        cx.update_window(self.any_handle, |root_view, _, _| {
-            root_view
-                .downcast::<V>()
+        cx.update_window(self.any_handle, |root_view, _, cx| {
+            Root::root_view_downcast::<V>(root_view, cx)
                 .map_err(|_| anyhow!("the type of the window's root view has changed"))
         })?
     }
@@ -6286,8 +6285,7 @@ impl<V: 'static + Render> WindowHandle<V> {
         C: AppContext,
     {
         cx.update_window(self.any_handle, |root_view, window, cx| {
-            let view = root_view
-                .downcast::<V>()
+            let view = Root::root_view_downcast::<V>(root_view, cx)
                 .map_err(|_| anyhow!("the type of the window's root view has changed"))?;
 
             Ok(view.update(cx, |view, cx| update(view, window, cx)))
@@ -6305,7 +6303,7 @@ impl<V: 'static + Render> WindowHandle<V> {
                 window
                     .as_deref()
                     .and_then(|window| window.root.clone())
-                    .map(|root_view| root_view.downcast::<V>())
+                    .map(|root_view| Root::root_view_downcast::<V>(root_view, cx))
             })
             .context("window not found")?
             .map_err(|_| anyhow!("the type of the window's root view has changed"))?;

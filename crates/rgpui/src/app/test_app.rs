@@ -338,8 +338,8 @@ impl<V: 'static + Render> TestAppWindow<V> {
     pub fn root(&self) -> Entity<V> {
         let mut app = self.app.borrow_mut();
         let any_handle: AnyWindowHandle = self.handle.into();
-        app.update_window(any_handle, |root_view, _, _| {
-            root_view.downcast::<V>().expect("根视图类型不匹配")
+        app.update_window(any_handle, |root_view, _, cx| {
+            crate::root::Root::root_view_downcast::<V>(root_view, cx).expect("根视图类型不匹配")
         })
         .expect("未找到窗口")
     }
@@ -350,7 +350,8 @@ impl<V: 'static + Render> TestAppWindow<V> {
             let mut app = self.app.borrow_mut();
             let any_handle: AnyWindowHandle = self.handle.into();
             app.update_window(any_handle, |root_view, window, cx| {
-                let view = root_view.downcast::<V>().expect("root view type mismatch");
+                let view = crate::root::Root::root_view_downcast::<V>(root_view, cx)
+                    .expect("root view type mismatch");
                 view.update(cx, |view, cx| f(view, window, cx))
             })
             .expect("未找到窗口")
@@ -369,7 +370,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
             .get(self.handle.window_id())
             .and_then(|w| w.as_ref())
             .and_then(|w| w.root.clone())
-            .and_then(|r| r.downcast::<V>().ok())
+            .and_then(|r| crate::root::Root::root_view_downcast::<V>(r, &app).ok())
             .expect("未找到窗口或根视图");
         f(view.read(&app), &app)
     }

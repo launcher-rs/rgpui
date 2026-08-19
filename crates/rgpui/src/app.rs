@@ -56,6 +56,7 @@ use crate::{
     WindowHandle, WindowId, WindowInvalidator,
     colors::{Colors, GlobalColors},
     hash, init_app_menus,
+    root::Root,
 };
 
 mod async_context;
@@ -1228,10 +1229,21 @@ impl App {
             let handle = WindowHandle::new(id);
             match Window::new(handle.into(), options, cx) {
                 Ok(mut window) => {
+                    // 确保存在全局主题：Root 渲染需要主题；若未显式初始化则使用默认主题。
+                    if !cx.has_global::<crate::theme::Theme>() {
+                        cx.set_global(crate::theme::Theme::default());
+                    }
                     cx.window_update_stack.push(id);
-                    let root_view = build_root_view(&mut window, cx);
+                    let root_view: AnyView = build_root_view(&mut window, cx).into();
                     cx.window_update_stack.pop();
-                    window.root.replace(root_view.into());
+                    // 自动将用户视图包装进 Root，以提供 tooltip/dialog 等全局覆盖层支持。
+                    // 若用户已显式传入 Root（例如对话框测试），则不重复包装。
+                    let root_view = if root_view.clone().downcast::<Root>().is_ok() {
+                        root_view
+                    } else {
+                        cx.new(|cx| Root::new(root_view, cx)).into()
+                    };
+                    window.root.replace(root_view);
                     window.defer(cx, |window: &mut Window, cx| window.appearance_changed(cx));
 
                     // allow a window to draw at least once before returning
@@ -2750,8 +2762,7 @@ impl AppContext for App {
             .expect("attempted to read a window that is already on the stack");
 
         let root_view = window.root.clone().unwrap();
-        let view = root_view
-            .downcast::<T>()
+        let view = Root::root_view_downcast::<T>(root_view, self)
             .map_err(|_| anyhow!("root view's type has changed"))?;
 
         Ok(read(view, self))

@@ -56,7 +56,10 @@ impl ActiveDialog {
 impl Root {
     /// 创建新的 Root 视图。
     pub fn new(view: impl Into<AnyView>, cx: &mut Context<Self>) -> Self {
-        cx.bind_keys([
+        // 直接将按键绑定写入 keymap，而不走 `bind_keys`。
+        // `bind_keys` 会推送 `Effect::RefreshWindows`，在窗口创建阶段会对刚绘制的窗口再次触发
+        // 重绘，导致多余的一帧渲染；Root 的按键绑定是静态的，无需刷新已存在的窗口。
+        cx.key_bindings().borrow_mut().add_bindings([
             KeyBinding::new("tab", Tab, Some(CONTEXT)),
             KeyBinding::new("shift-tab", TabPrev, Some(CONTEXT)),
             KeyBinding::new("escape", CancelDialog, Some("Dialog")),
@@ -102,6 +105,26 @@ impl Root {
     /// 返回 Root 的内容视图。
     pub fn view(&self) -> &AnyView {
         &self.view
+    }
+
+    /// 从窗口根视图中提取用户视图。
+    ///
+    /// 窗口根视图可能是包装过的 `Root`（自动或用户手动包装），也可能是用户视图本身。
+    /// 此函数优先尝试直接 downcast 到目标类型 `V`，若失败则尝试穿透 `Root` 包装
+    /// 取其内部视图再 downcast。返回 `Ok` 时给出用户视图实体，`Err` 返回原视图。
+    pub(crate) fn root_view_downcast<V: 'static>(
+        root_view: AnyView,
+        cx: &App,
+    ) -> Result<Entity<V>, AnyView> {
+        if let Ok(view) = root_view.clone().downcast::<V>() {
+            return Ok(view);
+        }
+        if let Ok(root) = root_view.clone().downcast::<Root>() {
+            if let Ok(view) = root.read(cx).view().clone().downcast::<V>() {
+                return Ok(view);
+            }
+        }
+        Err(root_view)
     }
 
     /// 渲染对话框层。
@@ -301,6 +324,11 @@ impl Render for Root {
             .on_action(cx.listener(Self::on_action_tab_prev))
             .relative()
             .size_full()
+            .grid()
+            // 用 1fr 网格轨道容纳子视图，使 auto 尺寸的子视图拉伸填满窗口
+            // （与窗口根元素的拉伸语义一致），显式尺寸的子视图则保持自身尺寸。
+            .grid_cols(1)
+            .grid_rows(1)
             .font_family(cx.theme().font_family.clone())
             .bg(cx.theme().tokens.background)
             .text_color(cx.theme().foreground)
