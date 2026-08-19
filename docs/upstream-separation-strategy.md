@@ -30,10 +30,10 @@ rgpui 基于 Zed 的 GPU 加速 UI 框架 `gpui` 移植，并同步移植了 `gp
 | 平台 | rgpui-wgpu | 7 | 4,061 | wgpu 渲染后端 |
 | 平台 | rgpui-platform | 1 | 157 | 平台选择入口 |
 | 核心 | rgpui | 141 | 74,768 | 核心 UI 框架 |
-| 扩展 | rgpui-tokio | 1 | 94 | Tokio 异步运行时集成 |
 | 扩展 | rgpui-3d | 9 | 5,057 | 3D 渲染引擎集成 |
 | 扩展 | rgpui-character | 8 | 647 | 桌宠角色运行时系统 |
 | 扩展 | rgpui-term | 11 | 5,600 | 终端模拟器组件 |
+| ~~扩展~~ | ~~rgpui-tokio~~ | — | — | 已并入 rgpui 核心（feature `tokio` 门控，`rgpui::tokio` 模块） |
 | UI | rgpui-component | 260 | 89,281 | 移植自 gpui-component |
 | UI | rgpui-adabraka-ui | 319 | 112,268 | 自研组件库（shadcn 风格） |
 | UI | rgpui-yororen-ui | 100 | 19,775 | 独立 UI 组件库 |

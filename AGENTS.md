@@ -71,9 +71,9 @@ Get-Content -Path <file> -Encoding UTF8
 ## 架构与包边界
 
 ```
-rgpui（核心：框架 + 基础组件 + 扩展组件/动画/手势/滚动物理，charts/effects/qr-code feature 门控）
+rgpui（核心：框架 + 基础组件 + 扩展组件/动画/手势/滚动物理，charts/effects/qr-code/tokio feature 门控）
   ├── rgpui-markdown（独立专业库，已落地；rgpui-editor 预留，另行论证）
-  └── rgpui-term / rgpui-3d / rgpui-tokio（专业集成库）
+  └── rgpui-term / rgpui-3d（专业集成库）
 
 crates/
 ├── rgpui/                   # 核心 UI 框架，平台无关逻辑
@@ -85,11 +85,12 @@ crates/
 ├── rgpui-macros/            # 过程宏
 ├── rgpui-platform/          # 平台选择入口，根据 cfg 选择具体平台 crate
 ├── rgpui-term/              # 终端组件
-├── rgpui-tokio/             # Tokio 异步运行时集成
 ├── rgpui-web/               # Web/WASM 平台实现
 ├── rgpui-wgpu/              # wgpu 渲染后端
 └── rgpui-windows/           # Windows 平台实现（windows-rs 绑定）
 ```
+
+- Tokio 异步运行时集成已并入 `rgpui` 核心（feature `tokio` 门控，`rgpui::tokio` 模块），不再作为独立 crate 存在
 
 - `rgpui/src/platform.rs` 定义了 `Platform` trait 和 `PlatformWindow` trait，所有平台必须实现
 - 示例代码使用 `rgpui_platform::application()` 获取平台应用入口
@@ -332,8 +333,9 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 15. `crates/rgpui-adabraka-ui`、`crates/rgpui-yororen-ui`、`crates/rgpui-component-workspce` 已删除，workspace 不再依赖旧 UI 库
 16. `crates/rgpui-markdown` 存在，`pulldown-cmark = "0.12"` 为工作区依赖
 17. 核心 `rgpui` 存在 `charts` / `effects` / `qr-code` 三个 feature（`components/charts/` 及特效、二维码组件门控），`cargo check -p rgpui --features charts,effects,qr-code` 通过
-18. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
-19. `rgpui-ui` 迁移已全部完成并**已并入核心**（2026-08-19，执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter，门控于 `effects`）、显示（qr_code/sparkline/svg_renderer/image_viewer，qr_code 门控于 `qr-code`，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（mouse_gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）；`crates/rgpui-ui` 已删除，workspace 不再依赖该 crate
+18. `rgpui-tokio` 已并入核心（feature `tokio` 门控，`rgpui::tokio` 模块），`crates/rgpui-tokio` 已删除，workspace 不再依赖该 crate；`cargo check -p rgpui --features tokio` 通过
+19. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
+20. `rgpui-ui` 迁移已全部完成并**已并入核心**（2026-08-19，执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter，门控于 `effects`）、显示（qr_code/sparkline/svg_renderer/image_viewer，qr_code 门控于 `qr-code`，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（mouse_gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）；`crates/rgpui-ui` 已删除，workspace 不再依赖该 crate
 
 ## Web/WASM 开发
 

@@ -52,6 +52,9 @@ charts = []
 effects = []
 # 二维码组件（引入 qrcode 依赖）。默认关闭。
 qr-code = ["dep:qrcode"]
+# Tokio 异步运行时集成（自 rgpui-tokio 并入，约 120 行薄封装）。
+# 默认关闭以保持核心精简，需要 tokio 异步能力的应用可显式开启。
+tokio = ["dep:tokio"]
 
 [lib]
 path = "src/rgpui.rs"
@@ -125,7 +128,7 @@ serde_urlencoded.workspace = true
 sha2.workspace = true
 shlex.workspace = true
 take-until.workspace = true
-tokio = { workspace = true, features = ["rt", "rt-multi-thread"], optional = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time"], optional = true }
 tracing.workspace = true
 unicase.workspace = true
 stacksafe.workspace = true
@@ -272,6 +275,11 @@ path = "examples/svg/svg.rs"
 [[example]]
 name = "tab_stop"
 path = "examples/tab_stop.rs"
+
+[[example]]
+name = "tokio"
+path = "examples/tokio.rs"
+required-features = ["tokio"]
 
 [[example]]
 name = "text"

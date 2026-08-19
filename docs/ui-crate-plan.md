@@ -24,7 +24,7 @@
 
 ## 2. 删除旧库的影响范围（已勘察）
 
-勘察结论：`rgpui` 核心、`rgpui-term`、`rgpui-tokio`、`rgpui-web` 及所有平台/渲染 crate **完全不依赖**这三个旧库，删除无框架风险。
+勘察结论：`rgpui` 核心、`rgpui-term`、`rgpui-web` 及所有平台/渲染 crate **完全不依赖**这三个旧库，删除无框架风险。（`rgpui-tokio` 当时也已独立，后于 2026-08-19 并入 rgpui 核心 feature `tokio`。）
 
 ### 2.1 各旧库被引用情况
 

@@ -6142,15 +6142,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rgpui-tokio"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "rgpui",
- "tokio",
-]
-
-[[package]]
 name = "rgpui-web"
 version = "1.0.0"
 dependencies = [

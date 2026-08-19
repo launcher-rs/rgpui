@@ -237,6 +237,10 @@ pub mod mouse_gestures;
 /// 滚动物理模型 - 滚动惯性（动量）、减速度与越界回弹
 pub mod scroll_physics;
 
+/// Tokio 异步运行时集成 - 在 Tokio 线程池上生成任务并通过 GPUI 任务返回结果（feature `tokio` 门控）
+#[cfg(feature = "tokio")]
+pub mod tokio;
+
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
 pub mod util;

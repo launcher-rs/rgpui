@@ -29,7 +29,6 @@ crates/
 ├── rgpui-macros/            # 过程宏
 ├── rgpui-platform/          # 平台选择入口
 ├── rgpui-term/              # 终端组件
-├── rgpui-tokio/             # Tokio 异步运行时集成
 ├── rgpui-web/               # Web/WASM 平台实现
 ├── rgpui-wgpu/              # wgpu 渲染后端
 └── rgpui-windows/           # Windows 平台实现

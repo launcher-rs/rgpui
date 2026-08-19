@@ -37,6 +37,7 @@ crates/
 ├── rgpui_linux/     # Linux 平台实现
 ├── rgpui_web/       # Web/WASM 平台实现
 ├── rgpui_wgpu/      # wgpu 渲染后端
-├── rgpui_macros/    # 过程宏
-└── rgpui_tokio/     # Tokio 异步运行时集成
+└── rgpui_macros/    # 过程宏
 ```
+
+> 注：Tokio 异步运行时集成已并入 `rgpui` 核心（`rgpui::tokio` 模块，feature `tokio` 门控），不再作为独立 crate 存在。
