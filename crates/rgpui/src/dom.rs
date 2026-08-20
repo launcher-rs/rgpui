@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use crate::collections::{FxHashMap, FxHashSet};
 use crate::{
-    Bounds, CursorStyle, ElementId, FontStyle, FontWeight, GlobalElementId, Hsla, Pixels,
+    Bounds, CursorStyle, ElementId, FontStyle, FontWeight, GlobalElementId, Hsla, Pixels, Point,
     SharedString, TextAlign, WhiteSpace,
 };
 
@@ -26,6 +26,46 @@ pub enum DomDisplay {
     Block,
     /// 不显示（`display: none`）。
     None,
+}
+
+/// 背景渐变类型。
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DomGradientKind {
+    /// 线性渐变。
+    #[default]
+    Linear,
+    /// 径向渐变。
+    Radial,
+    /// 锥形渐变。
+    Conic,
+}
+
+/// 一个背景渐变（v1 支持单次线性/径向渐变，多色标）。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DomGradient {
+    /// 渐变类型。
+    pub kind: DomGradientKind,
+    /// 渐变角度（线性：顺时针方向角度；锥形：起始角）。
+    pub angle: f32,
+    /// 色标（颜色 + 位置 0..=1）。
+    pub stops: Vec<(Hsla, f32)>,
+}
+
+/// 一个盒阴影，字段与 [`crate::BoxShadow`] 一一对应（CSS `box-shadow`）。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DomBoxShadow {
+    /// 阴影颜色。
+    pub color: Hsla,
+    /// 偏移量（x, y）。
+    pub offset_x: Pixels,
+    /// 偏移量（y 分量）。
+    pub offset_y: Pixels,
+    /// 模糊半径。
+    pub blur_radius: Pixels,
+    /// 扩散半径。
+    pub spread_radius: Pixels,
+    /// 是否为内阴影。
+    pub inset: bool,
 }
 
 /// 溢出处理方式。
@@ -60,8 +100,16 @@ pub struct DomStyle {
     pub color: Option<Hsla>,
     /// 背景颜色。
     pub background_color: Option<Hsla>,
+    /// 背景渐变（优先级高于背景色）。
+    pub background_gradient: Option<DomGradient>,
     /// 圆角半径。
     pub border_radius: Option<Pixels>,
+    /// 边框颜色。
+    pub border_color: Option<Hsla>,
+    /// 边框宽度（统一四条边，v1 不支持逐边宽度）。
+    pub border_width: Option<Pixels>,
+    /// 盒阴影列表。
+    pub box_shadows: Vec<DomBoxShadow>,
     /// 字体大小。
     pub font_size: Option<Pixels>,
     /// 字体系列。
@@ -136,6 +184,10 @@ pub struct DomNode {
 ///   带 id 的元素以 `global_id` 自身即可唯一标识（DOM 全局 id 唯一）；
 /// - `dom_path`：该节点在其 DOM 父链中的兄弟序号路径。带 id 元素为空；
 ///   匿名元素为 `父节点.dom_path + [父下兄弟序号]`，从而与匿名祖先/后代天然区分。
+///
+/// 特殊情形：当同一 `ElementId`（如同一个 entity 复用于多个输入框）导致多个带 id
+/// 元素的 `global_id` 相同产生碰撞时，重复实例会回退为「匿名式」消歧（`dom_path`
+/// 追加父下兄弟序号），首个实例保留干净 key，从而保证 key 唯一且跨帧稳定。
 ///
 /// 在「确定性渲染」前提下跨帧稳定，与 React 的 index-key 语义一致。
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
@@ -213,6 +265,13 @@ pub struct DomTreeBuilder {
     tree: DomTree,
     /// 当前 DOM 父链（栈）。
     stack: Vec<DomNodeKey>,
+    /// 与 `stack` 平行：每个栈帧对应的窗口绝对原点（px）。
+    ///
+    /// CSS 中所有节点均为 `position:absolute`，子节点的 `left/top` 是相对最近
+    /// 的 positioned 祖先计算的。若直接使用 Taffy 的窗口绝对坐标，嵌套节点的
+    /// 偏移会被逐层累加导致错位（"按钮文字丢失、布局错乱"的根因）。因此
+    /// `register` 时把窗口绝对坐标换算为「相对父节点原点」的坐标。
+    origins: Vec<Point<Pixels>>,
     /// 每个父节点下的匿名子节点计数。
     anon_counts: FxHashMap<DomNodeKey, u32>,
     /// paint 顺序计数器（z 序）。
@@ -233,6 +292,7 @@ impl DomTreeBuilder {
         Self {
             tree: DomTree::default(),
             stack: Vec::new(),
+            origins: Vec::new(),
             anon_counts: FxHashMap::default(),
             order: 0,
             seen: FxHashSet::default(),
@@ -244,10 +304,12 @@ impl DomTreeBuilder {
         self.tree = DomTree::default();
         self.tree.root = DomNodeKey::root();
         self.stack.clear();
+        self.origins.clear();
         self.anon_counts.clear();
         self.seen.clear();
         self.order = 0;
         self.stack.push(self.tree.root.clone());
+        self.origins.push(Point::default());
     }
 
     /// 登记一个节点，返回其 key，并把它压入 DOM 父链（元素有子节点时使用）。
@@ -270,8 +332,25 @@ impl DomTreeBuilder {
             .last()
             .expect("dom stack 不能为空，需先 begin_frame")
             .clone();
+        // 父节点的窗口绝对原点（根节点为 0,0）。
+        let parent_origin = *self
+            .origins
+            .last()
+            .expect("dom origins 与 stack 平行，不能为空");
+
+        // 把本节点的窗口绝对坐标换算为相对父节点原点的坐标。
+        // 绝对定位的 CSS 子元素相对最近 positioned 祖先定位，若保留绝对坐标，
+        // 嵌套节点的偏移会累加（按钮文字丢失/布局错乱的根因）。
+        let window_origin = Point {
+            x: node.style.left,
+            y: node.style.top,
+        };
+        let mut node = node;
+        node.style.left = window_origin.x - parent_origin.x;
+        node.style.top = window_origin.y - parent_origin.y;
+
         let global_id = GlobalElementId(Arc::from(element_path));
-        let key = if is_keyed {
+        let mut key = if is_keyed {
             DomNodeKey {
                 global_id,
                 dom_path: Vec::new(),
@@ -287,19 +366,36 @@ impl DomTreeBuilder {
             }
         };
 
+        // 带 id 的元素通常以 `global_id` 唯一标识（DOM 全局 id 唯一）。但当同一
+        // `ElementId` 复用于多个兄弟元素时（如故事里三个 Input 共享同一个
+        // `InputState`，且外层包裹为匿名元素不压入 `element_id_stack`），
+        // `global_id` 相同 → key 碰撞。此时回退为「匿名式」消歧：首个实例保留
+        // 干净 key（跨帧稳定），重复实例在父节点下追加兄弟序号，保证 key 唯一。
+        if self.seen.contains(&key) {
+            let index = self.anon_counts.entry(parent.clone()).or_insert(0);
+            *index += 1;
+            let mut dom_path = parent.dom_path.clone();
+            dom_path.push(*index);
+            key = DomNodeKey {
+                global_id: key.global_id,
+                dom_path,
+            };
+        }
+
         debug_assert!(!self.seen.contains(&key), "DOM key 重复：{}", key.global_id);
         self.seen.insert(key.clone());
 
         self.tree.nodes.insert(key.clone(), node);
         self.tree
             .children
-            .entry(parent.clone())
+            .entry(parent)
             .or_default()
             .push(key.clone());
         self.tree.z_orders.insert(key.clone(), self.order);
         self.order += 1;
 
         self.stack.push(key.clone());
+        self.origins.push(window_origin);
         key
     }
 
@@ -307,12 +403,18 @@ impl DomTreeBuilder {
     pub fn exit(&mut self) {
         if self.stack.len() > 1 {
             self.stack.pop();
+            self.origins.pop();
         }
     }
 
     /// 当前 DOM 父节点 key。
     pub fn current_parent(&self) -> DomNodeKey {
         self.stack.last().expect("dom stack 不能为空").clone()
+    }
+
+    /// 当前 DOM 栈深度（根节点也算一层）。
+    pub fn stack_len(&self) -> usize {
+        self.stack.len()
     }
 
     /// 结束一帧，取走新鲜树。

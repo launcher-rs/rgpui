@@ -65,7 +65,6 @@ impl WebWindowInner {
             self.register_pointer_move(),
             self.register_pointer_leave(),
             self.register_wheel(),
-            self.register_context_menu(),
             self.register_dragover(),
             self.register_drop(),
             self.register_dragleave(),
@@ -81,6 +80,7 @@ impl WebWindowInner {
         ];
         closures.extend(self.register_visibility_change());
         closures.extend(self.register_appearance_change());
+        closures.extend(self.register_context_menu());
 
         WebEventListeners { closures }
     }
@@ -134,6 +134,111 @@ impl WebWindowInner {
     fn dispatch_input(&self, input: PlatformInput) -> Option<DispatchEventResult> {
         let mut borrowed = self.callbacks.borrow_mut();
         borrowed.input.as_mut().map(|callback| callback(input))
+    }
+
+    /// 处理来自 DOM 覆盖层的委托事件（点击 DOM 元素时按 key 链回调）。
+    ///
+    /// 纯 DOM 模式下点击带 `data-gpui-id` 的元素会走到这里：把原始 DOM 事件转换
+    /// 为 [`PlatformInput`]，连同反查出的 key 链一起交给核心按 key 命中
+    /// （绕过坐标 hit-test）。位置用 client 坐标相对 canvas 计算，与 canvas
+    /// 监听器使用的坐标空间一致。
+    pub(crate) fn dispatch_dom_event(&self, keys: Vec<rgpui::DomNodeKey>, event: web_sys::Event) {
+        let event_type = event.type_();
+        let input = match event_type.as_str() {
+            "pointerdown" => {
+                let event: &web_sys::PointerEvent = event.unchecked_ref();
+                if event.button() != 2 {
+                    event.prevent_default();
+                }
+                self.input_element.focus().ok();
+                let button = dom_mouse_button_to_gpui(event.button());
+                let position = mouse_position_from_event(event.as_ref(), &self.canvas);
+                let modifiers = modifiers_from_mouse_event(event, self.is_mac);
+                let time = js_sys::Date::now();
+                self.pressed_button.set(Some(button));
+                let click_count = self.click_state.borrow_mut().register_click(position, time);
+                {
+                    let mut current_state = self.state.borrow_mut();
+                    current_state.mouse_position = position;
+                    current_state.modifiers = modifiers;
+                }
+                PlatformInput::MouseDown(MouseDownEvent {
+                    button,
+                    position,
+                    modifiers,
+                    click_count,
+                    first_mouse: false,
+                })
+            }
+            "pointerup" => {
+                let event: &web_sys::PointerEvent = event.unchecked_ref();
+                event.prevent_default();
+                let button = dom_mouse_button_to_gpui(event.button());
+                let position = mouse_position_from_event(event.as_ref(), &self.canvas);
+                let modifiers = modifiers_from_mouse_event(event, self.is_mac);
+                self.pressed_button.set(None);
+                let click_count = self.click_state.borrow().current_count;
+                {
+                    let mut current_state = self.state.borrow_mut();
+                    current_state.mouse_position = position;
+                    current_state.modifiers = modifiers;
+                }
+                PlatformInput::MouseUp(MouseUpEvent {
+                    button,
+                    position,
+                    modifiers,
+                    click_count,
+                })
+            }
+            "pointermove" => {
+                let event: &web_sys::PointerEvent = event.unchecked_ref();
+                event.prevent_default();
+                let position = mouse_position_from_event(event.as_ref(), &self.canvas);
+                let modifiers = modifiers_from_mouse_event(event, self.is_mac);
+                let current_pressed = self.pressed_button.get();
+                {
+                    let mut current_state = self.state.borrow_mut();
+                    current_state.mouse_position = position;
+                    current_state.modifiers = modifiers;
+                }
+                PlatformInput::MouseMove(MouseMoveEvent {
+                    position,
+                    pressed_button: current_pressed,
+                    modifiers,
+                })
+            }
+            "wheel" => {
+                let event: &web_sys::WheelEvent = event.unchecked_ref();
+                event.prevent_default();
+                let position = mouse_position_from_event(event.as_ref(), &self.canvas);
+                let modifiers = modifiers_from_wheel_event(event.as_ref(), self.is_mac);
+                let delta_mode = event.delta_mode();
+                let delta = if delta_mode == 1 {
+                    ScrollDelta::Lines(point(-event.delta_x() as f32, -event.delta_y() as f32))
+                } else {
+                    ScrollDelta::Pixels(point(
+                        px(-event.delta_x() as f32),
+                        px(-event.delta_y() as f32),
+                    ))
+                };
+                {
+                    let mut current_state = self.state.borrow_mut();
+                    current_state.modifiers = modifiers;
+                }
+                PlatformInput::ScrollWheel(ScrollWheelEvent {
+                    position,
+                    delta,
+                    modifiers,
+                    touch_phase: TouchPhase::Moved,
+                })
+            }
+            _ => return,
+        };
+
+        let mut borrowed = self.callbacks.borrow_mut();
+        if let Some(ref mut callback) = borrowed.dom_event {
+            callback(keys, input);
+        }
     }
 
     fn register_pointer_down(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
@@ -279,7 +384,7 @@ impl WebWindowInner {
         })
     }
 
-    fn register_context_menu(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
+    fn register_context_menu(self: &Rc<Self>) -> Vec<Closure<dyn FnMut(JsValue)>> {
         // 使用捕获阶段监听 contextmenu，在浏览器处理右键菜单之前拦截
         let this = Rc::clone(self);
         let closure = Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
@@ -299,7 +404,10 @@ impl WebWindowInner {
                     .ok();
             }
         }
-        // 同时在文档级别阻止冒泡，防止 body/document 的默认右键菜单
+        // 同时在文档级别阻止冒泡，防止 body/document 的默认右键菜单。
+        // 注意：doc_closure 也必须随闭包集合一起保留，否则函数返回后被 drop，
+        // 后续 contextmenu 事件会触发已释放的 wasm-bindgen 闭包（"closure invoked
+        // recursively or after being dropped"），导致事件循环中断。
         if let Some(document) = this.browser_window.document() {
             let doc_closure = Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
                 let event: web_sys::Event = event.unchecked_into();
@@ -316,9 +424,9 @@ impl WebWindowInner {
                         .ok();
                 }
             }
-            return closure;
+            return vec![closure, doc_closure];
         }
-        closure
+        vec![closure]
     }
 
     fn register_dragover(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
@@ -716,6 +824,21 @@ fn compute_key_char(
 fn pointer_position_in_element(event: &web_sys::PointerEvent) -> Point<Pixels> {
     let mouse_event: &web_sys::MouseEvent = event.as_ref();
     mouse_position_in_element(mouse_event)
+}
+
+/// 从 DOM 事件计算窗口内坐标（相对 canvas 位置）。
+///
+/// 委托事件的 `offset_x/offset_y` 是相对点击目标元素（DOM 覆盖层节点）的，
+/// 不能直接用作 canvas 命中坐标，故改用 client 坐标减去 canvas 的边界矩形。
+fn mouse_position_from_event(
+    event: &web_sys::MouseEvent,
+    canvas: &web_sys::HtmlCanvasElement,
+) -> Point<Pixels> {
+    let rect = canvas.get_bounding_client_rect();
+    point(
+        px(event.client_x() as f32 - rect.left() as f32),
+        px(event.client_y() as f32 - rect.top() as f32),
+    )
 }
 
 fn mouse_position_in_element(event: &web_sys::MouseEvent) -> Point<Pixels> {

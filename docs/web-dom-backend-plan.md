@@ -1,7 +1,7 @@
 # rgpui Web DOM Backend 规划
 
 > 文档日期：2026-08-19
-> 状态：**战略思考，待评审决策**
+> 状态：**已落地（2026-08-20，纯 DOM 渲染模式）**，本文档保留战略思考与路线，实际实现见 §9
 >
 > 上游文档：`docs/upstream-separation-strategy.md`（切割战略）、`docs/ui-crate-plan.md`（UI 重组）、`docs/research-text-selection.md`（文本选择调研）
 >
@@ -244,3 +244,101 @@ DomBackend
 - **不做通用 VirtualDOM diff 引擎**：rgpui 没有保留 widget 树，DOM 复用靠 `GlobalElementId` 映射，复杂度更低。
 - **第一版不支持 CSS**：全部样式来自 rgpui Styled，映射为内联 style（absolute 定位）。
 - **不修改 Entity/Context/事件模型**：桌面与 DOM 后端共用同一套。
+
+## 9. 实际实现记录（2026-08-20）
+
+> 本文档前半部分（§1~§8）是规划；本节约定**已落地的实际形态**。实施过程中方案有两处偏离规划：
+
+### 9.1 偏离一：叠加层（canvas + DOM 文本）→ 纯 DOM 渲染
+
+初版按 §4.9 的 Hybrid 叠加层思路实现（`00ca144`）：canvas 画全部形状，DOM 层只叠加文本 span。
+实测暴露根因——**坐标复合错误**：DOM 节点写入 Taffy 的**窗口绝对坐标**，但 CSS `position:absolute`
+子元素相对最近 positioned 祖先定位，嵌套节点（host → button div → label div → text span）的偏移逐层累加，
+导致按钮文字丢失、布局错乱、canvas 与 DOM 双重渲染。
+
+**决策**（与用户确认）：放弃叠加层，重建为**纯 DOM 渲染**——DOM 层是主渲染器，canvas 视觉隐藏
+（`opacity:0`），`WgpuRenderer::draw` 被跳过。DOM 节点坐标统一换算为**父相对坐标**（`origins` 栈）。
+
+### 9.2 偏离二：容器节点从"透明结构"改为"完整视觉"
+
+规划 §4.9 中 DOM 容器是透明定位结构。纯 DOM 模式下 canvas 被隐藏，容器必须自带视觉：
+`Div::dom` 现映射背景（纯色 / 线性 / 径向 / 锥形渐变）、圆角、边框（颜色 + 统一宽度）、
+盒阴影（内 / 外）、透明度、光标、`overflow`。`DomStyle` 相应新增 `background_gradient` /
+`border_color` / `border_width` / `box_shadows` 字段及 `DomGradient` / `DomBoxShadow` 类型。
+
+### 9.3 落地清单
+
+| 项 | 位置 | 说明 |
+|----|------|------|
+| 坐标修复 | `crates/rgpui/src/dom.rs`（`DomTreeBuilder::register`） | `origins` 栈与节点栈平行，父相对坐标换算 |
+| 样式模型扩展 | `crates/rgpui/src/dom.rs` | `DomGradient`（Linear/Radial/Conic）、`DomBoxShadow`、`DomStyle` 新字段 |
+| 完整形状映射 | `crates/rgpui/src/elements/div.rs`（`Div::dom`） | 渐变/边框/阴影/圆角/透明度/光标/overflow |
+| CSS 序列化 | `crates/rgpui-dom/src/css.rs` | `linear-gradient(...)` / `radial-gradient(...)` / `conic-gradient(...)`、`border`、`box-shadow`；删除无用的 `dom_structure_to_css` |
+| 纯 DOM 模式 | `crates/rgpui-web/src/window.rs` | `dom_tree_update` 时隐藏 canvas（`opacity:0`），`draw` 跳过 `renderer.draw` |
+| 节点样式统一 | `crates/rgpui-dom/src/web.rs` | 元素节点改用完整视觉样式（`dom_style_to_css`），不再区分结构/文本样式 |
+| 形状映射到 Stateful | `crates/rgpui/src/elements/div.rs`（`Stateful<E>::dom`） | `button`/`checkbox`/`radio` 的根元素是 `Stateful<Div>`，此前未实现 `dom()`，纯 DOM 模式下形状不显示；现委托给内部元素 |
+| 事件转发防递归 | `crates/rgpui-dom/src/web.rs` | 合成事件设 `bubbles:false` 且顶部检查 `FORWARD_MARK`，避免合成事件冒泡回 `document` 重入同一 wasm-bindgen 闭包（"closure invoked recursively"） |
+| 样式串去重缓存 | `crates/rgpui-dom/src/web.rs` | `WebDomBackend.styles` 缓存节点 CSS 串，未变化时跳过 `setAttribute`，减少 DOM 写 |
+| 同 id 兄弟消歧 | `crates/rgpui/src/dom.rs`（`DomTreeBuilder::register`） | 多个元素复用同一 `ElementId`（如 story 三个 Input 共享同一 entity）导致 `GlobalElementId` 碰撞时，重复实例回退为匿名式 `dom_path` 消歧，首个实例保留干净 key |
+
+### 9.4 验证状态
+
+- `cargo check --workspace` ✅
+- `cargo check -p rgpui --features dom-backend` ✅
+- `cargo test -p rgpui-dom`（14 项，含新增渐变/边框/阴影序列化用例）✅
+- `cargo +nightly check -p rgpui-web --target wasm32-unknown-unknown` ✅
+- `cargo +nightly build -p rgpui_story --target wasm32-unknown-unknown` ✅
+- clippy：本次改动零新增告警（`tag_input.rs:301` 冗余 clone 为存量问题）
+- 浏览器视觉验收：**进行中**（`trunk serve` 后确认按钮文字/布局正常、无双渲染）
+- 已修复运行时问题：
+  - 按钮形状不显示（`Stateful::dom` 委托）
+  - 事件转发递归崩溃（`FORWARD_MARK` + `bubbles:false`）
+  - `DOM key 重复` 崩溃（同 id 兄弟消歧，根因：story 三个 Input 复用同一 entity）
+  - **右键菜单崩溃**（`rgpui-web/src/events.rs` `register_context_menu`：document 级 `doc_closure`
+    注册后未被持有就 drop，右键 `contextmenu` 触发已释放的 wasm-bindgen 闭包报 "closure invoked
+    recursively or after being dropped"；现改为返回闭包向量一并保活）
+
+### 9.5 下一步（后续迭代）
+
+- `button` / `img` / `svg` / `scrollable` 等核心元素 DOM 化（纯 DOM 模式下 canvas 已隐藏，这些元素 v1 不显示）。
+- 图标（`Icon`）SVG 映射，替代 canvas 精灵图。
+- 输入组件（`Input`/`TextArea`）DOM 化，获得原生 IME/剪贴板。
+- 文本选择与点按交互的边界（起始点在可点元素标签上的取舍）打磨。
+
+### 9.6 DOM 事件委托（点击错位修复）
+
+**背景**：纯 DOM 模式下 canvas 已隐藏（`opacity:0`）但保留为不可见命中传感器，点击事件
+走 `canvas` 监听器按坐标 hit-test 命中。滚动容器由浏览器原生 `overflow:auto` 滚动，而 gpui
+hitbox 使用自己的滚动偏移，DOM 层与 canvas 命中空间在滚动/缩放下错位，导致"点滑块却打开
+/选中的是选择类控件"。
+
+**方案**：点击 DOM 覆盖层上的元素时，改按 DOM 树身份（`data-gpui-id` → `DomNodeKey`）直接
+命中对应 hitbox，绕过坐标 hit-test。
+
+**改动清单**：
+
+| 项 | 位置 | 说明 |
+|----|------|------|
+| DOM key 提前到 prepaint | `crates/rgpui/src/element.rs`（prepaint） | 在 bounds 计算后、`element.prepaint` 前调用 `window.dom_element` 压栈，prepaint 后 `dom_exit` 配对出栈；paint 阶段移除原 `dom_element`/`dom_exit` |
+| 覆盖层全可命中 | `crates/rgpui-dom/src/web.rs`（`attach_default`） | 宿主样式 `pointer-events:none` → `pointer-events:auto`，全部节点可命中（纯 DOM 模式下 DOM 层是主渲染器）；文本节点保留 `user-select:text` |
+| key→hitbox 映射 | `crates/rgpui/src/window.rs`（`Frame.dom_key_hitboxes`） | `insert_hitbox` 时用 `current_dom_key()`（DOM 栈顶）把 hitbox 记入 `Frame.dom_key_hitboxes`；`Frame::new`/`clear` 同步初始化/清理 |
+| 显式命中派发 | `crates/rgpui/src/window.rs`（`dispatch_event_for_dom`） | 新增 `dispatch_event_for_dom(keys, event, cx)`，`dispatch_event` 重构为内部 `dispatch_event_inner` 支持可选的 key 覆盖；`dispatch_mouse_event` 按 key 链构造 HitTest（`dom_keys_hit_test`） |
+| 平台回调 | `crates/rgpui/src/platform.rs`（`PlatformWindow::on_dom_event`） | 新增默认空实现；`Window::new` 在 `on_input` 后注册，转发到 `dispatch_event_for_dom` |
+| id→key 反查表 | `crates/rgpui-dom/src/web.rs`（`WebDomBackend.id_to_key`） | 每帧 `update`/`rebuild` 时从树重建 `data-gpui-id` → `DomNodeKey` 映射 |
+| 委托回调注入 | `crates/rgpui-dom/src/web.rs`（`set_dom_event_handler`） | `rgpui-web` 首次创建后端时注入，转发器命中 `data-gpui-id` 链时调用 |
+| 事件转换 | `crates/rgpui-web/src/events.rs`（`dispatch_dom_event`） | 把 DOM 事件按类型转换为 `PlatformInput`（位置用 client 坐标减 canvas 矩形，与 canvas 监听器坐标空间一致），连同 key 链交给核心 |
+| 平台注册 | `crates/rgpui-web/src/window.rs` | `WebWindowCallbacks.dom_event` 字段 + `on_dom_event` 实现 + `dom_tree_update` 首次创建后端时注入回调 |
+
+**验证状态**：
+
+- `cargo check --workspace` ✅
+- `cargo check -p rgpui --features dom-backend` ✅
+- `cargo test -p rgpui-dom` ✅
+- `cargo +nightly check -p rgpui-web --target wasm32-unknown-unknown` ✅
+- `cargo +nightly build -p rgpui_story --target wasm32-unknown-unknown` ✅
+- clippy：本次改动零新增告警（`tag_input.rs:301`、`div.rs:1964`、`util/mod.rs:203` 为存量问题）
+- 浏览器复测：待用户验证（`trunk serve` 侧边栏点击、滑块、选择控件、右键菜单）
+
+**已知限制**：覆盖层全可命中后，canvas 不再收到原生 `pointerenter/leave`，窗口级 hover 状态
+（`on_hover_status_change`）在纯 DOM 模式下不再更新（DOM 层本就不渲染 hover 样式，视觉无感）。
+若后续需要窗口级 hover 感知，可在宿主上补监听 pointerenter/leave 并合成状态变更。

@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 use rgpui::{
-    AnyWindowHandle, Bounds, Capslock, Decorations, DevicePixels, DispatchEventResult, GpuSpecs,
-    Modifiers, MouseButton, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput,
+    AnyWindowHandle, Bounds, Capslock, Decorations, DevicePixels, DispatchEventResult, DomNodeKey,
+    GpuSpecs, Modifiers, MouseButton, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput,
     PlatformInputHandler, PlatformWindow, Point, PromptButton, PromptLevel, RequestFrameOptions,
     ResizeEdge, Scene, Size, WindowAppearance, WindowBackgroundAppearance, WindowBounds,
     WindowControlArea, WindowControls, WindowDecorations, WindowParams, px,
@@ -19,6 +19,9 @@ use wasm_bindgen::prelude::*;
 pub(crate) struct WebWindowCallbacks {
     pub(crate) request_frame: Option<Box<dyn FnMut(RequestFrameOptions)>>,
     pub(crate) input: Option<Box<dyn FnMut(PlatformInput) -> DispatchEventResult>>,
+    /// DOM 事件委托回调：由 DOM 层点击（key 链）触发，绕过坐标命中。
+    pub(crate) dom_event:
+        Option<Box<dyn FnMut(Vec<DomNodeKey>, PlatformInput) -> DispatchEventResult>>,
     pub(crate) active_status_change: Option<Box<dyn FnMut(bool)>>,
     pub(crate) hover_status_change: Option<Box<dyn FnMut(bool)>>,
     pub(crate) resize: Option<Box<dyn FnMut(Size<Pixels>, f32)>>,
@@ -63,6 +66,8 @@ pub(crate) struct WebWindowInner {
     pending_physical_size: Cell<Option<(u32, u32)>>,
     /// DOM 层后端（懒初始化，首次 dom_tree_update 时挂载覆盖层宿主）。
     pub(crate) dom_backend: RefCell<Option<WebDomBackend>>,
+    /// 纯 DOM 模式下 canvas 是否已被视觉隐藏（opacity:0）。
+    pub(crate) dom_visual_hidden: Cell<bool>,
 }
 
 /// Web 平台窗口实现，实现 gpui 的 `PlatformWindow` trait
@@ -199,6 +204,7 @@ impl WebWindow {
             mql_handle: RefCell::new(None),
             pending_physical_size: Cell::new(None),
             dom_backend: RefCell::new(None),
+            dom_visual_hidden: Cell::new(false),
         });
 
         let raf_closure = inner.create_raf_closure();
@@ -658,6 +664,13 @@ impl PlatformWindow for WebWindow {
         self.inner.callbacks.borrow_mut().input = Some(callback);
     }
 
+    fn on_dom_event(
+        &self,
+        callback: Box<dyn FnMut(Vec<DomNodeKey>, PlatformInput) -> DispatchEventResult>,
+    ) {
+        self.inner.callbacks.borrow_mut().dom_event = Some(callback);
+    }
+
     fn on_active_status_change(&self, callback: Box<dyn FnMut(bool)>) {
         self.inner.callbacks.borrow_mut().active_status_change = Some(callback);
     }
@@ -695,10 +708,25 @@ impl PlatformWindow for WebWindow {
     }
 
     fn dom_tree_update(&self, tree: &rgpui::DomTree) {
+        // 纯 DOM 模式：DOM 层是主渲染器，canvas 只作为不可见的命中测试传感器。
+        // 首次交付 DOM 树时把 canvas 视觉隐藏（opacity:0），避免与 DOM 双重渲染。
+        if !self.inner.dom_visual_hidden.get() {
+            let _ = self.inner.canvas.style().set_property("opacity", "0");
+            self.inner.dom_visual_hidden.set(true);
+        }
         let mut backend = self.inner.dom_backend.borrow_mut();
-        backend
-            .get_or_insert_with(WebDomBackend::attach_default)
-            .update(tree);
+        if backend.is_none() {
+            // 首次创建后端时注入事件委托回调：点击 DOM 元素时按 key 链回调核心。
+            let this = std::rc::Rc::clone(&self.inner);
+            let new_backend = WebDomBackend::attach_default();
+            new_backend.set_dom_event_handler(Box::new(move |keys, event| {
+                this.dispatch_dom_event(keys, event);
+            }));
+            *backend = Some(new_backend);
+        }
+        if let Some(backend) = backend.as_mut() {
+            backend.update(tree);
+        }
     }
 
     fn draw(&self, scene: &Scene) {
@@ -716,6 +744,10 @@ impl PlatformWindow for WebWindow {
             drop(state);
         }
 
+        // 纯 DOM 模式：DOM 层已接管全部视觉渲染，跳过 wgpu 绘制。
+        if rgpui::dom_layer_enabled() {
+            return;
+        }
         self.inner.state.borrow_mut().renderer.draw(scene);
     }
 

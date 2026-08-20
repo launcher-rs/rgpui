@@ -1161,6 +1161,17 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     #[cfg(feature = "dom-backend")]
     fn dom_tree_update(&self, _tree: &crate::dom::DomTree) {}
 
+    /// 注册 Web DOM 事件委托回调。
+    ///
+    /// 点击 DOM 覆盖层上的元素时，平台按 `data-gpui-id` 反查 DOM key 链并回调，
+    /// 由核心按 key 链直接命中 hitbox（绕过坐标 hit-test）。桌面平台默认空实现。
+    #[cfg(feature = "dom-backend")]
+    fn on_dom_event(
+        &self,
+        _callback: Box<dyn FnMut(Vec<crate::DomNodeKey>, PlatformInput) -> DispatchEventResult>,
+    ) {
+    }
+
     // macOS specific methods
     fn get_title(&self) -> String {
         String::new()

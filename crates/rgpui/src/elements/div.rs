@@ -1930,7 +1930,10 @@ impl Element for Div {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<crate::DomNode> {
-        use crate::{Corners, DomDisplay, DomNode, DomNodeKind, DomOverflow, DomStyle, Overflow};
+        use crate::{
+            BackgroundTag, Corners, DomBoxShadow, DomDisplay, DomGradient, DomGradientKind,
+            DomNode, DomNodeKind, DomOverflow, DomStyle, Overflow,
+        };
 
         let style = self.interactivity.compute_style(None, None, window, cx);
         if style.visibility == Visibility::Hidden {
@@ -1945,9 +1948,41 @@ impl Element for Div {
             _ => DomDisplay::Block,
         };
 
-        if let Some(fill) = style.background.as_ref() {
-            if let Some(color) = fill.color().and_then(|background| background.as_solid()) {
-                dom_style.background_color = Some(color);
+        if let Some(fill) = style.background.as_ref()
+            && let Some(background) = fill.color()
+        {
+            // 渐变背景：把 Background 的渐变数据映射为 DOM 渐变（v1 支持线性/径向/锥形）。
+            match background.tag {
+                BackgroundTag::Solid => {
+                    if !background.solid.is_transparent() {
+                        dom_style.background_color = Some(background.solid);
+                    }
+                }
+                BackgroundTag::LinearGradient
+                | BackgroundTag::RadialGradient
+                | BackgroundTag::ConicGradient => {
+                    let count = (background.stop_count as usize).max(1).min(4);
+                    let stops = background.colors[..count]
+                        .iter()
+                        .map(|stop| (stop.color, stop.percentage))
+                        .collect();
+                    let kind = match background.tag {
+                        BackgroundTag::LinearGradient => DomGradientKind::Linear,
+                        BackgroundTag::RadialGradient => DomGradientKind::Radial,
+                        _ => DomGradientKind::Conic,
+                    };
+                    dom_style.background_gradient = Some(DomGradient {
+                        kind,
+                        angle: background.gradient_angle_or_pattern_height,
+                        stops,
+                    });
+                }
+                BackgroundTag::PatternSlash | BackgroundTag::Checkerboard => {
+                    // 图案背景 v1 降级为纯色（浏览器无等效 CSS）。
+                    if !background.solid.is_transparent() {
+                        dom_style.background_color = Some(background.solid);
+                    }
+                }
             }
         }
 
@@ -1958,6 +1993,32 @@ impl Element for Div {
             && radii.bottom_right == radii.bottom_left
         {
             dom_style.border_radius = Some(radii.top_left);
+        }
+
+        // 边框：颜色 + 统一宽度（v1 不支持逐边宽度）。
+        if let Some(color) = style.border_color {
+            let widths = style.border_widths.to_pixels(window.rem_size());
+            let max_width = widths.max();
+            if max_width > Pixels::ZERO && !color.is_transparent() {
+                dom_style.border_color = Some(color);
+                dom_style.border_width = Some(max_width);
+            }
+        }
+
+        // 盒阴影：映射为 CSS box-shadow（内/外阴影均支持）。
+        if !style.box_shadow.is_empty() {
+            dom_style.box_shadows = style
+                .box_shadow
+                .iter()
+                .map(|shadow| DomBoxShadow {
+                    color: shadow.color,
+                    offset_x: shadow.offset.x,
+                    offset_y: shadow.offset.y,
+                    blur_radius: shadow.blur_radius,
+                    spread_radius: shadow.spread_radius,
+                    inset: shadow.inset,
+                })
+                .collect();
         }
 
         dom_style.opacity = style.opacity;
@@ -3917,6 +3978,22 @@ where
             window,
             cx,
         );
+    }
+
+    /// Web DOM 后端：委托给内部元素（`Stateful<Div>` → `Div::dom`）。
+    ///
+    /// `button`/`checkbox`/`radio` 等交互组件的渲染根部通常是 `Stateful<Div>`；
+    /// 若此层不实现 `dom()`，这些组件的形状（背景/边框等）在纯 DOM 模式下
+    /// 不会进入 DOM，而 canvas 已被隐藏，组件形状就会消失。委托后与直接使用
+    /// `div` 一致，输出完整的视觉样式。
+    #[cfg(feature = "dom-backend")]
+    fn dom(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<crate::DomNode> {
+        self.element.dom(bounds, window, cx)
     }
 }
 

@@ -923,6 +923,8 @@ pub(crate) struct Frame {
     pub(crate) next_inspector_instance_ids: FxHashMap<Rc<crate::InspectorElementPath>, usize>,
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub(crate) inspector_hitboxes: FxHashMap<HitboxId, crate::InspectorElementId>,
+    #[cfg(feature = "dom-backend")]
+    pub(crate) dom_key_hitboxes: FxHashMap<crate::DomNodeKey, Vec<HitboxId>>,
     pub(crate) tab_stops: TabStopMap,
 }
 
@@ -972,6 +974,8 @@ impl Frame {
 
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector_hitboxes: FxHashMap::default(),
+            #[cfg(feature = "dom-backend")]
+            dom_key_hitboxes: FxHashMap::default(),
             tab_stops: TabStopMap::default(),
         }
     }
@@ -1000,6 +1004,11 @@ impl Frame {
         {
             self.next_inspector_instance_ids.clear();
             self.inspector_hitboxes.clear();
+        }
+
+        #[cfg(feature = "dom-backend")]
+        {
+            self.dom_key_hitboxes.clear();
         }
     }
 
@@ -1749,6 +1758,18 @@ impl Window {
             Box::new(move |event| {
                 handle
                     .update(&mut cx, |_, window, cx| window.dispatch_event(event, cx))
+                    .log_err()
+                    .unwrap_or(DispatchEventResult::default())
+            })
+        });
+        #[cfg(feature = "dom-backend")]
+        platform_window.on_dom_event({
+            let mut cx = cx.to_async();
+            Box::new(move |keys, event| {
+                handle
+                    .update(&mut cx, |_, window, cx| {
+                        window.dispatch_event_for_dom(keys, event, cx)
+                    })
                     .log_err()
                     .unwrap_or(DispatchEventResult::default())
             })
@@ -3176,6 +3197,19 @@ impl Window {
     pub(crate) fn dom_exit(&mut self) {
         if let Some(builder) = &mut self.dom_builder {
             builder.exit();
+        }
+    }
+
+    /// 当前正在 prepaint 的元素的 DOM key（无 DOM 层或栈为空时为 `None`）。
+    ///
+    /// 由 `insert_hitbox` 使用，把 hitbox 关联到当前元素的 DOM key。
+    #[cfg(feature = "dom-backend")]
+    fn current_dom_key(&self) -> Option<crate::DomNodeKey> {
+        let builder = self.dom_builder.as_ref()?;
+        if builder.stack_len() == 0 {
+            None
+        } else {
+            Some(builder.current_parent())
         }
     }
 
@@ -4671,6 +4705,18 @@ impl Window {
             behavior,
         };
         self.next_frame.hitboxes.push(hitbox.clone());
+
+        // DOM 后端：把 hitbox 关联到当前 prepaint 元素的 DOM key（若有），
+        // 供事件委托在点击 DOM 元素时按 key 链直接命中 hitbox。
+        #[cfg(feature = "dom-backend")]
+        if let Some(key) = self.current_dom_key() {
+            self.next_frame
+                .dom_key_hitboxes
+                .entry(key)
+                .or_default()
+                .push(hitbox.id);
+        }
+
         hitbox
     }
 
@@ -4937,6 +4983,31 @@ impl Window {
     /// Dispatch a mouse or keyboard event on the window.
     #[profiling::function]
     pub fn dispatch_event(&mut self, event: PlatformInput, cx: &mut App) -> DispatchEventResult {
+        self.dispatch_event_inner(event, cx, None)
+    }
+
+    /// 按 DOM key 链派发事件：跳过坐标 hit-test，直接命中这些 key 关联的 hitbox。
+    ///
+    /// 用于 Web 纯 DOM 模式的事件委托——点击 DOM 元素时浏览器报告的是元素身份而非
+    /// 画布坐标，坐标 hit-test 在滚动/缩放下会错位，这里改按 DOM 树反查 key 链命中。
+    #[cfg(feature = "dom-backend")]
+    pub fn dispatch_event_for_dom(
+        &mut self,
+        keys: Vec<crate::DomNodeKey>,
+        event: PlatformInput,
+        cx: &mut App,
+    ) -> DispatchEventResult {
+        self.dispatch_event_inner(event, cx, Some(keys))
+    }
+
+    /// `dispatch_event` 的内部实现，支持可选的 DOM key 覆盖（事件委托时使用）。
+    #[profiling::function]
+    fn dispatch_event_inner(
+        &mut self,
+        event: PlatformInput,
+        cx: &mut App,
+        dom_keys: Option<Vec<crate::DomNodeKey>>,
+    ) -> DispatchEventResult {
         #[cfg(feature = "input-latency-histogram")]
         let dispatch_time = Instant::now();
         let update_count_before = self.invalidator.update_count();
@@ -5046,7 +5117,7 @@ impl Window {
         };
 
         if let Some(any_mouse_event) = event.mouse_event() {
-            self.dispatch_mouse_event(any_mouse_event, cx);
+            self.dispatch_mouse_event(any_mouse_event, cx, dom_keys.as_deref());
         } else if let Some(any_key_event) = event.keyboard_event() {
             self.dispatch_key_event(any_key_event, cx);
         }
@@ -5067,8 +5138,17 @@ impl Window {
         }
     }
 
-    fn dispatch_mouse_event(&mut self, event: &dyn Any, cx: &mut App) {
-        let hit_test = self.rendered_frame.hit_test(self.mouse_position());
+    fn dispatch_mouse_event(
+        &mut self,
+        event: &dyn Any,
+        cx: &mut App,
+        dom_keys: Option<&[crate::DomNodeKey]>,
+    ) {
+        let hit_test = match dom_keys {
+            // 事件委托：按 DOM key 链收集 hitbox，跳过坐标 hit-test。
+            Some(keys) => self.dom_keys_hit_test(keys),
+            None => self.rendered_frame.hit_test(self.mouse_position()),
+        };
         if hit_test != self.mouse_hit_test {
             self.mouse_hit_test = hit_test;
             self.reset_cursor_style(cx);
@@ -5122,6 +5202,28 @@ impl Window {
         // Auto-release pointer capture on mouse up
         if event.is::<MouseUpEvent>() && self.captured_hitbox.is_some() {
             self.captured_hitbox = None;
+        }
+    }
+
+    /// 根据 DOM key 链收集对应的 hitbox，构造一个显式命中结果（事件委托用）。
+    ///
+    /// 链上所有 key 的 hitbox 都视为命中（hover_hitbox_count 等于命中总数），
+    /// 从而绕过坐标 hit-test 的错位问题。
+    #[cfg(feature = "dom-backend")]
+    fn dom_keys_hit_test(&self, keys: &[crate::DomNodeKey]) -> HitTest {
+        let mut ids = SmallVec::<[HitboxId; 8]>::new();
+        for key in keys {
+            if let Some(hitbox_ids) = self.rendered_frame.dom_key_hitboxes.get(key) {
+                for hitbox_id in hitbox_ids {
+                    if !ids.contains(hitbox_id) {
+                        ids.push(*hitbox_id);
+                    }
+                }
+            }
+        }
+        HitTest {
+            hover_hitbox_count: ids.len(),
+            ids,
         }
     }
 

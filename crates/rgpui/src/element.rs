@@ -382,6 +382,19 @@ impl<E: Element> Drawable<E> {
                 }
 
                 let bounds = window.layout_bounds(layout_id);
+
+                // DOM 后端：在 prepaint 阶段生成 DOM key 并压入 DOM 栈，使
+                // `insert_hitbox` 能把 hitbox 关联到当前元素的 DOM key（事件委托用）。
+                #[cfg(feature = "dom-backend")]
+                let dom_key = if window.dom_builder_active() {
+                    let dom_node = self.element.dom(bounds, window, cx);
+                    window.dom_element(dom_node, global_id.is_some())
+                } else {
+                    None
+                };
+                #[cfg(not(feature = "dom-backend"))]
+                let dom_key: Option<()> = None;
+
                 let mut pushed_a11y_node = false;
                 if window.a11y.is_active() {
                     if let Some(global_id) = global_id.as_ref() {
@@ -430,6 +443,13 @@ impl<E: Element> Drawable<E> {
                     cx,
                 );
                 window.next_frame.dispatch_tree.pop_node();
+
+                // DOM 后端：元素 prepaint 完成后弹出其 DOM key，保持 DOM 栈与
+                // prepaint 嵌套顺序一致。
+                #[cfg(feature = "dom-backend")]
+                if dom_key.is_some() {
+                    window.dom_exit();
+                }
 
                 if pushed_a11y_node {
                     if let Some(global_id) = global_id.as_ref() {
@@ -495,15 +515,6 @@ impl<E: Element> Drawable<E> {
                 }
 
                 window.next_frame.dispatch_tree.set_active_node(node_id);
-                #[cfg(feature = "dom-backend")]
-                let dom_key = if window.dom_builder_active() {
-                    let dom_node = self.element.dom(bounds, window, cx);
-                    window.dom_element(dom_node, global_id.is_some())
-                } else {
-                    None
-                };
-                #[cfg(not(feature = "dom-backend"))]
-                let _dom_key: Option<()> = None;
                 self.element.paint(
                     global_id.as_ref(),
                     inspector_id.as_ref(),
@@ -513,10 +524,6 @@ impl<E: Element> Drawable<E> {
                     window,
                     cx,
                 );
-                #[cfg(feature = "dom-backend")]
-                if dom_key.is_some() {
-                    window.dom_exit();
-                }
 
                 if global_id.is_some() {
                     window.element_id_stack.pop();

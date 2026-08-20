@@ -4,41 +4,10 @@
 //! 不依赖浏览器重排；视觉字段按 [`rgpui::DomStyle`] 字段逐一映射。
 
 use rgpui::{
-    CursorStyle, DomDisplay, DomOverflow, DomStyle, FontStyle, FontWeight, Hsla, TextAlign,
-    WhiteSpace,
+    CursorStyle, DomDisplay, DomGradientKind, DomOverflow, DomStyle, FontStyle, FontWeight, Hsla,
+    TextAlign, WhiteSpace,
 };
 use std::fmt::Write;
-
-/// 序列化为“结构样式”（元素/容器节点专用，仅 wasm 后端使用）。
-///
-/// 只保留绝对定位、尺寸、裁剪、透明度与 z-index，**不输出背景/文本等视觉字段**：
-/// 这些视觉仍由 canvas 绘制，DOM 元素节点只是透明的定位容器，避免覆盖层与 canvas
-/// 对同一区域双重渲染（背景被隐藏、边框/阴影被盖住等）。
-#[cfg(target_family = "wasm")]
-pub fn dom_structure_to_css(style: &DomStyle) -> String {
-    let mut out = String::new();
-    write!(out, "position:absolute;").unwrap();
-    push_px(&mut out, "left", style.left);
-    push_px(&mut out, "top", style.top);
-    push_px(&mut out, "width", style.width);
-    push_px(&mut out, "height", style.height);
-
-    match style.display {
-        DomDisplay::Block => {}
-        DomDisplay::None => out.push_str("display:none;"),
-    }
-    match style.overflow {
-        DomOverflow::Visible => {}
-        DomOverflow::Hidden => out.push_str("overflow:hidden;"),
-        DomOverflow::Scroll => out.push_str("overflow:auto;"),
-    }
-    if let Some(opacity) = style.opacity {
-        let _ = write!(out, "opacity:{};", opacity);
-    }
-    let _ = write!(out, "z-index:{};", style.z_index);
-
-    out
-}
 
 /// 把一个 [`DomStyle`] 序列化为 CSS 内联样式字符串（如 `position:absolute;left:10px;...`）。
 pub fn dom_style_to_css(style: &DomStyle) -> String {
@@ -62,11 +31,27 @@ pub fn dom_style_to_css(style: &DomStyle) -> String {
     if let Some(color) = style.color {
         let _ = write!(out, "color:{};", hsla_to_css(color));
     }
-    if let Some(background) = style.background_color {
+    if let Some(gradient) = &style.background_gradient {
+        let _ = write!(out, "background-image:{};", gradient_to_css(gradient));
+    } else if let Some(background) = style.background_color {
         let _ = write!(out, "background-color:{};", hsla_to_css(background));
     }
     if let Some(radius) = style.border_radius {
         push_px(&mut out, "border-radius", radius);
+    }
+    if let Some(color) = style.border_color {
+        let _ = write!(out, "border-color:{};", hsla_to_css(color));
+    }
+    if let Some(width) = style.border_width {
+        push_px(&mut out, "border-width", width);
+        out.push_str("border-style:solid;");
+    }
+    if !style.box_shadows.is_empty() {
+        let _ = write!(
+            out,
+            "box-shadow:{};",
+            box_shadows_to_css(&style.box_shadows)
+        );
     }
     if let Some(size) = style.font_size {
         push_px(&mut out, "font-size", size);
@@ -100,6 +85,47 @@ pub fn dom_style_to_css(style: &DomStyle) -> String {
     let _ = write!(out, "z-index:{};", style.z_index);
 
     out
+}
+
+/// 把渐变序列化为 CSS `background-image` 函数字符串。
+fn gradient_to_css(gradient: &rgpui::DomGradient) -> String {
+    let mut stops = String::new();
+    for (i, (color, position)) in gradient.stops.iter().enumerate() {
+        if i > 0 {
+            stops.push_str(", ");
+        }
+        let _ = write!(stops, "{} {}%", hsla_to_css(*color), position * 100.0);
+    }
+    match gradient.kind {
+        DomGradientKind::Linear => {
+            format!("linear-gradient({}deg, {})", gradient.angle, stops)
+        }
+        DomGradientKind::Radial => {
+            // v1 径向渐变以圆形近似（中心默认 50% 50%）。
+            format!("radial-gradient(circle, {})", stops)
+        }
+        DomGradientKind::Conic => {
+            format!("conic-gradient(from {}deg, {})", gradient.angle, stops)
+        }
+    }
+}
+
+/// 把盒阴影列表序列化为 CSS `box-shadow` 值。
+fn box_shadows_to_css(shadows: &[rgpui::DomBoxShadow]) -> String {
+    let mut parts = Vec::with_capacity(shadows.len());
+    for shadow in shadows {
+        let inset = if shadow.inset { "inset " } else { "" };
+        parts.push(format!(
+            "{}{}px {}px {}px {}px {}",
+            inset,
+            shadow.offset_x.as_f32(),
+            shadow.offset_y.as_f32(),
+            shadow.blur_radius.as_f32(),
+            shadow.spread_radius.as_f32(),
+            hsla_to_css(shadow.color)
+        ));
+    }
+    parts.join(", ")
 }
 
 /// 拼接一个像素值（px）。
@@ -234,5 +260,51 @@ mod tests {
             let css = dom_style_to_css(&style);
             assert!(css.contains(&format!("font-family:\"{family}\";")), "{css}");
         }
+    }
+
+    #[test]
+    fn test_dom_style_to_css_gradient_border_shadow() {
+        // 渐变/边框/盒阴影序列化（纯 DOM 渲染模式下的完整视觉样式）。
+        use rgpui::{DomBoxShadow, DomGradient, DomGradientKind, hsla};
+
+        let style = DomStyle {
+            left: px(0.0),
+            top: px(0.0),
+            width: px(40.0),
+            height: px(40.0),
+            background_gradient: Some(DomGradient {
+                kind: DomGradientKind::Linear,
+                angle: 135.0,
+                stops: vec![
+                    (hsla(0.6, 1.0, 0.5, 1.0), 0.0),
+                    (hsla(0.3, 1.0, 0.5, 1.0), 1.0),
+                ],
+            }),
+            border_color: Some(hsla(0.0, 0.0, 0.0, 1.0)),
+            border_width: Some(px(2.0)),
+            box_shadows: vec![DomBoxShadow {
+                color: hsla(0.0, 0.0, 0.0, 0.5),
+                offset_x: px(1.0),
+                offset_y: px(2.0),
+                blur_radius: px(3.0),
+                spread_radius: px(4.0),
+                inset: false,
+            }],
+            z_index: 0,
+            ..Default::default()
+        };
+        let css = dom_style_to_css(&style);
+        assert!(
+            css.contains("background-image:linear-gradient(135deg,"),
+            "{css}"
+        );
+        assert!(css.contains("0%"), "{css}");
+        assert!(css.contains("100%"), "{css}");
+        assert!(css.contains("border-width:2px"), "{css}");
+        assert!(css.contains("border-style:solid"), "{css}");
+        assert!(css.contains("border-color:"), "{css}");
+        assert!(css.contains("box-shadow:1px 2px 3px 4px "), "{css}");
+        // 渐变与纯色背景互斥：有渐变时不输出 background-color。
+        assert!(!css.contains("background-color"), "{css}");
     }
 }
