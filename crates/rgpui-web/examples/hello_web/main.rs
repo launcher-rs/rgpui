@@ -407,6 +407,9 @@ impl Render for HelloWeb {
 
 fn main() {
     rgpui_platform::web_init();
+    // 启用 DOM 文本覆盖层：让浏览器原生提供文本选择/复制能力（canvas 之上叠加绘制）。
+    #[cfg(target_family = "wasm")]
+    rgpui::set_dom_layer_enabled(true);
     rgpui_platform::application().run(|cx: &mut App| {
         let bounds = Bounds::centered(None, size(px(640.), px(560.)), cx);
         cx.open_window(

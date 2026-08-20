@@ -83,6 +83,11 @@ impl WebPlatform {
         if let Err(error) = text_system.add_fonts(fonts) {
             log::error!("failed to load bundled fonts: {error:#}");
         }
+        // 把内嵌默认 UI 字体同步注册给 DOM 覆盖层（@font-face），让默认主题
+        // （`.SystemUIFont`）在 DOM 层与应用使用同一字面，避免双重绘制时浏览器
+        // 回退到默认字体造成“重影”。应用自带的字体（如 rgpui_story 的 Inter）
+        // 由应用自行调用 `rgpui::set_dom_font_face` 注册。
+        rgpui::set_dom_font_face(".SystemUIFont", BUNDLED_FONTS[0]);
         let text_system: Arc<dyn PlatformTextSystem> = text_system;
         let active_display: Rc<dyn PlatformDisplay> =
             Rc::new(WebDisplay::new(browser_window.clone()));

@@ -250,6 +250,12 @@ fn main() {
     #[cfg(target_family = "wasm")]
     rgpui_platform::web_init();
 
+    // wasm 下启用 DOM 文本覆盖层：让浏览器原生提供文本选择/复制/IME 能力
+    // （在 canvas 之上叠加绘制，v1 接受双重绘制）。可在打开窗口前按需关闭：
+    // rgpui::set_dom_layer_enabled(false)。
+    #[cfg(target_family = "wasm")]
+    rgpui::set_dom_layer_enabled(true);
+
     // wasm 使用单线程 Web 平台（无需 SharedArrayBuffer/atomics），
     // 桌面端使用默认平台。
     let app = {
@@ -277,6 +283,16 @@ fn main() {
             cx.text_system()
                 .add_fonts(vec![ui_font, mono_font, emoji_font, cjk_font])
                 .expect("字体加载失败");
+            // 把内嵌字体同步注册给 DOM 覆盖层（@font-face），避免双重绘制时
+            // 浏览器回退到默认字体造成“重影”。
+            rgpui::set_dom_font_face(
+                "Inter Variable",
+                include_bytes!("../fonts/Inter-Regular.ttf"),
+            );
+            rgpui::set_dom_font_face(
+                "JetBrains Mono",
+                include_bytes!("../fonts/JetBrainsMono-Regular.ttf"),
+            );
         }
 
         // 依次初始化各子系统：主题、输入（含数字输入）、菜单（含全局状态）、

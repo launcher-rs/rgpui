@@ -69,6 +69,9 @@ qr-code = ["dep:qrcode"]
 # Tokio 异步运行时集成（自 rgpui-tokio 并入，约 120 行薄封装）。
 # 默认关闭以保持核心精简，需要 tokio 异步能力的应用可显式开启。
 tokio = ["dep:tokio"]
+# Web DOM 后端：DOM 树数据模型与构建器（`src/dom.rs`），以及 Element::dom 语义映射。
+# 默认关闭，桌面端完全不受影响；由 rgpui-web / rgpui-dom 启用。
+dom-backend = []
 
 [lib]
 path = "src/rgpui.rs"

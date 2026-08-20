@@ -19,7 +19,8 @@ multithreaded = ["dep:wasm_thread"]
 path = "src/rgpui_web.rs"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-rgpui.workspace = true
+rgpui = { workspace = true, features = ["dom-backend"] }
+rgpui-dom.workspace = true
 parking_lot = { workspace = true, features = ["nightly"] }
 rgpui-wgpu.workspace = true
 anyhow.workspace = true

@@ -174,6 +174,38 @@ impl IntoElement for Text {
     }
 }
 
+/// Web DOM 后端：把一个文本节点映射为 `<span>` 文本节点。
+///
+/// 文本样式取自 `Window::text_style()`（text_style_stack 合成的当前文本样式），
+/// 布局取 Taffy 结果。DOM 文本节点天然获得浏览器的选择/复制/IME/无障碍能力。
+#[cfg(feature = "dom-backend")]
+fn dom_text_node(
+    text: crate::SharedString,
+    bounds: Bounds<Pixels>,
+    window: &mut Window,
+) -> Option<crate::DomNode> {
+    use crate::{DomNode, DomNodeKind, DomStyle};
+    let text_style = window.text_style();
+    let rem_size = window.rem_size();
+    let mut dom_style = DomStyle::from_bounds(bounds);
+    dom_style.color = Some(text_style.color);
+    dom_style.font_size = Some(text_style.font_size.to_pixels(rem_size));
+    dom_style.font_family = Some(text_style.font_family.clone());
+    dom_style.font_weight = Some(text_style.font_weight);
+    dom_style.font_style = Some(text_style.font_style);
+    dom_style.line_height = Some(
+        text_style
+            .line_height
+            .to_pixels(text_style.font_size, rem_size),
+    );
+    dom_style.text_align = Some(text_style.text_align);
+    dom_style.white_space = Some(text_style.white_space);
+    Some(DomNode {
+        kind: DomNodeKind::Text { text },
+        style: dom_style,
+    })
+}
+
 impl Element for Text {
     type RequestLayoutState = TextLayout;
     type PrepaintState = ();
@@ -196,6 +228,16 @@ impl Element for Text {
 
     fn write_a11y_info(&self, node: &mut accesskit::Node) {
         node.set_value(self.text.to_string());
+    }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<crate::DomNode> {
+        <SharedString as Element>::dom(&self.text, bounds, window, cx)
     }
 
     fn request_layout(
@@ -299,6 +341,16 @@ impl Element for &'static str {
     ) {
         text_layout.paint(self, window, cx)
     }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        _cx: &mut App,
+    ) -> Option<crate::DomNode> {
+        dom_text_node(crate::SharedString::from(*self), bounds, window)
+    }
 }
 
 impl IntoElement for &'static str {
@@ -372,6 +424,16 @@ impl Element for SharedString {
         cx: &mut App,
     ) {
         text_layout.paint(self.as_ref(), window, cx)
+    }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        _cx: &mut App,
+    ) -> Option<crate::DomNode> {
+        dom_text_node(self.clone(), bounds, window)
     }
 }
 
@@ -599,6 +661,18 @@ impl Element for StyledText {
     ) {
         self.layout.paint(&self.text, window, cx)
     }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<crate::DomNode> {
+        // v1：多段样式（runs）统一退化为基础文本样式，与 canvas 跳过字形绘制
+        // 配合，保证 DOM 层是文本的唯一渲染者（可选中/复制）。
+        <crate::SharedString as Element>::dom(&self.text, bounds, window, cx)
+    }
 }
 
 impl IntoElement for StyledText {
@@ -813,6 +887,21 @@ impl TextLayout {
                 cx,
             )
             .log_err();
+            // DOM 覆盖层启用时，文本字形改由 DOM 层渲染（可选中/复制/IME），
+            // canvas 不再重复绘制字形，避免双重渲染“重影”；行背景仍由 canvas 绘制。
+            #[cfg(feature = "dom-backend")]
+            if !window.dom_builder_active() {
+                line.paint(
+                    line_origin,
+                    line_height,
+                    text_style.text_align,
+                    Some(bounds),
+                    window,
+                    cx,
+                )
+                .log_err();
+            }
+            #[cfg(not(feature = "dom-backend"))]
             line.paint(
                 line_origin,
                 line_height,

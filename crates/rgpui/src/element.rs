@@ -31,6 +31,8 @@
 //! elements when you need to take manual control of the layout and painting process, such as when using
 //! your own custom layout algorithm or rendering a code editor.
 
+#[cfg(feature = "dom-backend")]
+use crate::DomNode;
 use crate::{
     A11ySubtreeBuilder, App, ArenaBox, AvailableSpace, Bounds, Context, DispatchNodeId, ElementId,
     FocusHandle, InspectorElementId, LayoutId, Pixels, Point, Size, Style, Window,
@@ -110,6 +112,19 @@ pub trait Element: 'static + IntoElement {
     ///
     /// See the [accessibility guide](crate::_accessibility) for an overview.
     fn a11y_role(&self) -> Option<accesskit::Role> {
+        None
+    }
+
+    /// If this element participates in the Web DOM backend, return the DOM node to register.
+    ///
+    /// 默认实现返回 `None`，即该元素不进入 DOM 树。需要映射到 DOM 的元素
+    /// （如 `Div`、文本）在 [`Element::paint`] 时基于给定布局 bounds 与当前样式
+    /// 生成一个 [`DomNode`]；DOM 层作为 canvas 之上的覆盖层渲染（v1 接受双重绘制），
+    /// 布局沿用 Taffy 结果，不依赖浏览器重排。
+    ///
+    /// 见 `docs/web-dom-backend-plan.md` 与 `docs/web-dom-backend-analysis.md`。
+    #[cfg(feature = "dom-backend")]
+    fn dom(&self, _bounds: Bounds<Pixels>, _window: &mut Window, _cx: &mut App) -> Option<DomNode> {
         None
     }
 
@@ -225,6 +240,11 @@ impl Display for GlobalElementId {
 }
 
 impl GlobalElementId {
+    /// 由元素 id 序列构造全局 id（Web DOM 后端等外部 crate 需要自行构造 key）。
+    pub fn from_ids(ids: impl IntoIterator<Item = ElementId>) -> Self {
+        Self(ids.into_iter().collect())
+    }
+
     pub(crate) fn accesskit_node_id(&self) -> accesskit::NodeId {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::hash::DefaultHasher::default();
@@ -475,6 +495,15 @@ impl<E: Element> Drawable<E> {
                 }
 
                 window.next_frame.dispatch_tree.set_active_node(node_id);
+                #[cfg(feature = "dom-backend")]
+                let dom_key = if window.dom_builder_active() {
+                    let dom_node = self.element.dom(bounds, window, cx);
+                    window.dom_element(dom_node, global_id.is_some())
+                } else {
+                    None
+                };
+                #[cfg(not(feature = "dom-backend"))]
+                let _dom_key: Option<()> = None;
                 self.element.paint(
                     global_id.as_ref(),
                     inspector_id.as_ref(),
@@ -484,6 +513,10 @@ impl<E: Element> Drawable<E> {
                     window,
                     cx,
                 );
+                #[cfg(feature = "dom-backend")]
+                if dom_key.is_some() {
+                    window.dom_exit();
+                }
 
                 if global_id.is_some() {
                     window.element_id_stack.pop();

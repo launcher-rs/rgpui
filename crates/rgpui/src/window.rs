@@ -1143,6 +1143,10 @@ pub struct Window {
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector: Option<Entity<Inspector>>,
     pub(crate) a11y: A11y,
+    /// Web DOM 后端构建器：当平台窗口声明 `supports_dom()` 时创建，
+    /// 每帧在 paint 阶段收集 DOM 节点，帧末交付给平台窗口。
+    #[cfg(feature = "dom-backend")]
+    pub(crate) dom_builder: Option<crate::DomTreeBuilder>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1823,6 +1827,9 @@ impl Window {
 
         platform_window.map_window().unwrap();
 
+        #[cfg(feature = "dom-backend")]
+        let supports_dom = platform_window.supports_dom();
+
         Ok(Window {
             handle,
             invalidator,
@@ -1891,6 +1898,8 @@ impl Window {
                 accessibility_force_disabled,
                 initial_window_title,
             ),
+            #[cfg(feature = "dom-backend")]
+            dom_builder: supports_dom.then(crate::DomTreeBuilder::new),
         })
     }
 
@@ -3016,6 +3025,12 @@ impl Window {
             self.a11y.begin_frame();
         }
 
+        // DOM 后端：开始本帧的 DOM 树收集（仅当平台窗口声明支持时）。
+        #[cfg(feature = "dom-backend")]
+        if let Some(builder) = &mut self.dom_builder {
+            builder.begin_frame();
+        }
+
         let _inspector_width: Pixels = rems(30.0).to_pixels(self.rem_size());
         let root_size = {
             #[cfg(any(feature = "inspector", debug_assertions))]
@@ -3096,6 +3111,13 @@ impl Window {
         #[cfg(any(feature = "inspector", debug_assertions))]
         self.paint_inspector_hitbox(cx);
 
+        // DOM 后端：结束本帧的 DOM 树收集，并把新鲜树交付给平台窗口。
+        #[cfg(feature = "dom-backend")]
+        if let Some(builder) = &mut self.dom_builder {
+            let tree = builder.finish();
+            self.platform_window.dom_tree_update(&tree);
+        }
+
         // a11y may have been activated/deactivated halfway through the frame
         let a11y_active_start_of_frame = self.a11y.is_active();
         self.a11y.sync_active_flag();
@@ -3121,6 +3143,39 @@ impl Window {
                 );
                 self.platform_window.a11y_tree_update(tree_update);
             }
+        }
+    }
+
+    /// DOM 后端是否启用（即平台窗口声明支持 DOM 层）。
+    #[cfg(feature = "dom-backend")]
+    pub(crate) fn dom_builder_active(&self) -> bool {
+        self.dom_builder.is_some()
+    }
+
+    /// 登记一个 DOM 节点并返回其跨帧稳定 key，同时把该 key 压入 DOM 父链。
+    ///
+    /// 由 [`crate::element::Drawable`] 在 paint 前后调用：
+    /// - `node` 为 `None`（元素不参与 DOM 映射）时不登记、不压栈；
+    /// - `is_keyed` 表示元素是否带 `.id()`（决定匿名兄弟序号归零）。
+    ///
+    /// 路径取当前 `element_id_stack`（此时已压入本元素自身的 id）。
+    #[cfg(feature = "dom-backend")]
+    pub(crate) fn dom_element(
+        &mut self,
+        node: Option<crate::DomNode>,
+        is_keyed: bool,
+    ) -> Option<crate::DomNodeKey> {
+        let builder = self.dom_builder.as_mut()?;
+        let node = node?;
+        let path = &*self.element_id_stack;
+        Some(builder.register(node, is_keyed, path))
+    }
+
+    /// 结束当前元素的 DOM 栈帧（与 [`Self::dom_element`] 配对）。
+    #[cfg(feature = "dom-backend")]
+    pub(crate) fn dom_exit(&mut self) {
+        if let Some(builder) = &mut self.dom_builder {
+            builder.exit();
         }
     }
 

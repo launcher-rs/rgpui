@@ -1,0 +1,46 @@
+[package]
+name = "rgpui-dom"
+version.workspace = true
+edition.workspace = true
+publish = true
+description = "rgpui Web DOM 后端：DOM 树增量对账、HTML 序列化与平台后端"
+license = "Apache-2.0"
+repository = "https://github.com/launcher-rs/rgpui"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+rgpui = { workspace = true, features = ["dom-backend"] }
+anyhow.workspace = true
+log.workspace = true
+rustc-hash.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen.workspace = true
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "CssStyleDeclaration",
+    "Document",
+    "Element",
+    "Event",
+    "EventInit",
+    "EventModifierInit",
+    "EventTarget",
+    "HtmlCollection",
+    "HtmlElement",
+    "HtmlHeadElement",
+    "MouseEvent",
+    "MouseEventInit",
+    "Node",
+    "NodeList",
+    "PointerEvent",
+    "PointerEventInit",
+    "Text",
+    "WheelEvent",
+    "WheelEventInit",
+] }

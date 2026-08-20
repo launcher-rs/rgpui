@@ -1145,6 +1145,22 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas>;
     fn is_subpixel_rendering_supported(&self) -> bool;
 
+    /// 该平台窗口是否支持 Web DOM 后端。
+    ///
+    /// 返回 `true` 时，核心会在每帧构建 DOM 树并通过 [`Self::dom_tree_update`] 交付，
+    /// 桌面平台默认 `false` 以保持零开销。
+    #[cfg(feature = "dom-backend")]
+    fn supports_dom(&self) -> bool {
+        false
+    }
+
+    /// 交付当前帧的 DOM 树（每帧一次，仅当 `supports_dom()` 为真）。
+    ///
+    /// DOM 层渲染在 canvas 之上的覆盖层中（v1 接受双重绘制），
+    /// 平台侧负责增量对账（见 `rgpui-dom` crate 的 reconcile）。
+    #[cfg(feature = "dom-backend")]
+    fn dom_tree_update(&self, _tree: &crate::dom::DomTree) {}
+
     // macOS specific methods
     fn get_title(&self) -> String {
         String::new()

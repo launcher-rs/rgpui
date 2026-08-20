@@ -4,6 +4,8 @@
 > 状态：**战略思考，待评审决策**
 >
 > 上游文档：`docs/upstream-separation-strategy.md`（切割战略）、`docs/ui-crate-plan.md`（UI 重组）、`docs/research-text-selection.md`（文本选择调研）
+>
+> 支撑分析：`docs/web-dom-backend-analysis.md`（参考 dioxus / topcoat / Flutter Web 的深入调研，2026-08-19）
 
 ## 1. 背景与动机
 

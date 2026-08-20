@@ -11,6 +11,6 @@ name = "hello_web"
 path = "main.rs"
 
 [dependencies]
-rgpui = { path = "../../../rgpui" }
+rgpui = { path = "../../../rgpui", features = ["dom-backend"] }
 rgpui-platform = { path = "../../../rgpui-platform" }
 web-time = "1"

@@ -5,6 +5,7 @@ members = [
     "crates/rgpui",
     "crates/rgpui-3d",
     "crates/rgpui-character",
+    "crates/rgpui-dom",
     "crates/rgpui-linux",
     "crates/rgpui-macos",
     "crates/rgpui-macros",
@@ -36,6 +37,8 @@ rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,versi
 rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.0.0"}
 rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.0.0" }
 rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.0.0" }
+
+rgpui-dom = { path = "crates/rgpui-dom", version = "1.0.0" }
 
 rgpui-character = {path = "crates/rgpui-character",version = "1.0.0"}
 rgpui-3d = {path = "crates/rgpui-3d",version = "1.0.0"}

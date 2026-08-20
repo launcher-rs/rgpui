@@ -5996,6 +5996,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rgpui-dom"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "js-sys",
+ "log",
+ "rgpui",
+ "rustc-hash 2.1.2",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "rgpui-linux"
 version = "1.0.0"
 dependencies = [
@@ -6153,6 +6166,7 @@ dependencies = [
  "parking_lot",
  "raw-window-handle",
  "rgpui",
+ "rgpui-dom",
  "rgpui-wgpu",
  "smallvec",
  "uuid",

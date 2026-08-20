@@ -10,6 +10,7 @@ use rgpui::{
     ResizeEdge, Scene, Size, WindowAppearance, WindowBackgroundAppearance, WindowBounds,
     WindowControlArea, WindowControls, WindowDecorations, WindowParams, px,
 };
+use rgpui_dom::WebDomBackend;
 use rgpui_wgpu::{WgpuContext, WgpuRenderer, WgpuSurfaceConfig};
 use wasm_bindgen::prelude::*;
 
@@ -60,6 +61,8 @@ pub(crate) struct WebWindowInner {
     pub(crate) is_composing: Cell<bool>,
     mql_handle: RefCell<Option<MqlHandle>>,
     pending_physical_size: Cell<Option<(u32, u32)>>,
+    /// DOM 层后端（懒初始化，首次 dom_tree_update 时挂载覆盖层宿主）。
+    pub(crate) dom_backend: RefCell<Option<WebDomBackend>>,
 }
 
 /// Web 平台窗口实现，实现 gpui 的 `PlatformWindow` trait
@@ -195,6 +198,7 @@ impl WebWindow {
             is_composing: Cell::new(false),
             mql_handle: RefCell::new(None),
             pending_physical_size: Cell::new(None),
+            dom_backend: RefCell::new(None),
         });
 
         let raf_closure = inner.create_raf_closure();
@@ -684,6 +688,17 @@ impl PlatformWindow for WebWindow {
 
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>) {
         self.inner.callbacks.borrow_mut().appearance_changed = Some(callback);
+    }
+
+    fn supports_dom(&self) -> bool {
+        rgpui::dom_layer_enabled()
+    }
+
+    fn dom_tree_update(&self, tree: &rgpui::DomTree) {
+        let mut backend = self.inner.dom_backend.borrow_mut();
+        backend
+            .get_or_insert_with(WebDomBackend::attach_default)
+            .update(tree);
     }
 
     fn draw(&self, scene: &Scene) {

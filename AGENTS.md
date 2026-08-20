@@ -336,6 +336,7 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 18. `rgpui-tokio` 已并入核心（feature `tokio` 门控，`rgpui::tokio` 模块），`crates/rgpui-tokio` 已删除，workspace 不再依赖该 crate；`cargo check -p rgpui --features tokio` 通过
 19. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
 20. `rgpui-ui` 迁移已全部完成并**已并入核心**（2026-08-19，执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter，门控于 `effects`）、显示（qr_code/sparkline/svg_renderer/image_viewer，qr_code 门控于 `qr-code`，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（mouse_gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）；`crates/rgpui-ui` 已删除，workspace 不再依赖该 crate
+21. Web DOM 后端存在：核心 `rgpui` 有 `dom-backend` feature（`src/dom.rs`，含 `DomTree`/`DomNodeKey`/`DomTreeBuilder`/`set_dom_layer_enabled`）、`crates/rgpui-dom` 存在（`reconcile`/`DomPatch`/`DomBackend`/`WebDomBackend`/`to_html`）、`rgpui-web` 已接入（`supports_dom`/`dom_tree_update`）；`cargo check -p rgpui --features dom-backend` 与 `cargo test -p rgpui-dom` 通过；用法见 `docs/web-dom-backend-usage.md`
 
 ## Web/WASM 开发
 
@@ -399,6 +400,14 @@ pub fn start() {
 - 系统托盘、原生菜单不支持
 - Tree-sitter 语法高亮不可用（WASM 中无法编译 C 依赖）
 - 图标从 CDN 运行时下载（需要网络连接）
+
+### Web DOM 后端（文本选择/复制）
+
+默认 Web 平台走纯 canvas 渲染（文本不可选中）。需要浏览器原生文本能力时，启用
+`rgpui` 的 `dom-backend` feature 并在打开窗口前调用 `rgpui::set_dom_layer_enabled(true)`，
+即可叠加一层绝对定位的 DOM 覆盖层（`rgpui-dom` 增量对账，div/文本已 DOM 化）。
+运行时开关默认关闭；用法与定制方式见 `docs/web-dom-backend-usage.md`。
+`hello_web` 与 `rgpui_story` 两个示例已在 wasm 下开启 DOM 层。
 
 ## 代码规范
 

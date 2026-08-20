@@ -1917,6 +1917,65 @@ impl Element for Div {
             )
         });
     }
+
+    /// Web DOM 后端：把 Div 映射为一个绝对定位的 `<div>` 节点。
+    ///
+    /// 基于基础样式（`base_style` 解析后的 [`Style`]）与 Taffy 布局 bounds 生成。
+    /// v1 不传 `global_id`/`hitbox`，因此 hover/focus/drag 等交互态样式不会反映到
+    /// DOM 层（DOM 层尚未桥接指针事件，属已知限制，见 `docs/web-dom-backend-analysis.md`）。
+    #[cfg(feature = "dom-backend")]
+    fn dom(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<crate::DomNode> {
+        use crate::{Corners, DomDisplay, DomNode, DomNodeKind, DomOverflow, DomStyle, Overflow};
+
+        let style = self.interactivity.compute_style(None, None, window, cx);
+        if style.visibility == Visibility::Hidden {
+            return None;
+        }
+
+        let mut dom_style = DomStyle::from_bounds(bounds);
+
+        // 布局由 Taffy 完成，DOM 只负责绝对定位呈现，因此 Block/Flex/Grid 统一映射为 block。
+        dom_style.display = match style.display {
+            crate::Display::None => DomDisplay::None,
+            _ => DomDisplay::Block,
+        };
+
+        if let Some(fill) = style.background.as_ref() {
+            if let Some(color) = fill.color().and_then(|background| background.as_solid()) {
+                dom_style.background_color = Some(color);
+            }
+        }
+
+        // 圆角：四角相等时映射为统一的 border-radius（不等时 v1 降级为 0）。
+        let radii: Corners<crate::Pixels> = style.corner_radii.to_pixels(window.rem_size());
+        if radii.top_left == radii.top_right
+            && radii.top_right == radii.bottom_right
+            && radii.bottom_right == radii.bottom_left
+        {
+            dom_style.border_radius = Some(radii.top_left);
+        }
+
+        dom_style.opacity = style.opacity;
+        dom_style.cursor = style.mouse_cursor;
+        dom_style.overflow = match style.overflow.x {
+            Overflow::Visible => DomOverflow::Visible,
+            Overflow::Clip | Overflow::Hidden => DomOverflow::Hidden,
+            Overflow::Scroll => DomOverflow::Scroll,
+        };
+
+        Some(DomNode {
+            kind: DomNodeKind::Element {
+                tag: "div",
+                attrs: Vec::new(),
+            },
+            style: dom_style,
+        })
+    }
 }
 
 impl IntoElement for Div {

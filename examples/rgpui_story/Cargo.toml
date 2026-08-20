@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 anyhow.workspace = true
-rgpui = { workspace = true, features = ["charts", "effects", "qr-code"] }
+rgpui = { workspace = true, features = ["charts", "effects", "qr-code", "dom-backend"] }
 rgpui-platform.workspace = true
 
 [lints]

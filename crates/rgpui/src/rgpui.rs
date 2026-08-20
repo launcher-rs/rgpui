@@ -60,6 +60,10 @@ pub mod collections;
 /// 集合类型 - 提供 FxHashMap、FxHashSet 等高性能集合
 mod color;
 
+/// Web DOM 后端 - DOM 树数据模型与构建器（feature `dom-backend` 门控，默认关闭）
+#[cfg(feature = "dom-backend")]
+mod dom;
+
 /// 颜色模块 - 定义 HSL、RGBA 等颜色类型及转换
 /// GPUI 默认使用的颜色常量和主题定义
 pub mod colors;
@@ -315,6 +319,9 @@ pub use asset_cache::*;
 pub use assets::*;
 /// 重导出颜色类型（Hsla、Rgba、HslOverride 等）
 pub use color::*;
+/// 重导出 Web DOM 后端类型（DomNode、DomTree、DomStyle 等）
+#[cfg(feature = "dom-backend")]
+pub use dom::*;
 pub use theme::color::{ColorName, Colorize, hsl, try_parse_background, try_parse_color};
 // 重导出主题色阶函数（red_500、blue_600 等）
 /// 重导出 ctor 宏，用于在程序启动前执行初始化函数
