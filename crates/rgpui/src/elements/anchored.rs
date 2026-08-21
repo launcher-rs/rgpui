@@ -6,6 +6,9 @@ use crate::{
     Window, point, px,
 };
 
+#[cfg(feature = "dom-backend")]
+use crate::{DomNode, DomNodeKind, DomStyle};
+
 /// The state that the anchored element element uses to track its children.
 pub struct AnchoredState {
     child_layout_ids: SmallVec<[LayoutId; 4]>,
@@ -93,6 +96,19 @@ impl Element for Anchored {
 
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
         None
+    }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(&self, bounds: Bounds<Pixels>, _window: &mut Window, _cx: &mut App) -> Option<DomNode> {
+        let mut style = DomStyle::from_bounds(bounds);
+        style.display = crate::DomDisplay::Block;
+        Some(DomNode {
+            kind: DomNodeKind::Element {
+                tag: "div",
+                attrs: Vec::new(),
+            },
+            style,
+        })
     }
 
     fn request_layout(
