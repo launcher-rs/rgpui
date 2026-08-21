@@ -3,6 +3,7 @@
 use crate::{prelude::FluentBuilder as _, *};
 
 /// 绘制用的波形快照数据。
+#[derive(Clone)]
 struct WaveformPaintData {
     data: Vec<f32>,
     bar_width: f32,
@@ -111,21 +112,34 @@ impl RenderOnce for Waveform {
             playback_position: self.playback_position,
         };
 
+        // 纯 DOM 模式下 canvas 隐藏，需为 canvas 元素附加等价 SVG 的 DOM 节点。
+        #[cfg(feature = "dom-backend")]
+        let dom_data = paint_data.clone();
+
+        let mut chart = canvas(
+            move |_bounds, _window, _cx| paint_data,
+            move |bounds, data, window, _cx| {
+                paint_waveform(bounds, &data, window);
+            },
+        )
+        .absolute()
+        .inset_0()
+        .size_full();
+
+        // 纯 DOM 模式下用 data URI 的 `<img>` 呈现波形。
+        #[cfg(feature = "dom-backend")]
+        {
+            chart = chart.with_dom(move |bounds, _window, _cx| {
+                let svg = waveform_svg(bounds, &dom_data);
+                crate::components::dom_svg::svg_img_node(bounds, svg)
+            });
+        }
+
         let mut root = div()
             .relative()
             .when(user_style.size.width.is_none(), |this| this.w_full())
             .when(user_style.size.height.is_none(), |this| this.h(px(48.0)))
-            .child(
-                canvas(
-                    move |_bounds, _window, _cx| paint_data,
-                    move |bounds, data, window, _cx| {
-                        paint_waveform(bounds, &data, window);
-                    },
-                )
-                .absolute()
-                .inset_0()
-                .size_full(),
-            );
+            .child(chart);
         root.style().refine(&user_style);
         root
     }
@@ -192,4 +206,67 @@ fn paint_waveform(bounds: Bounds<Pixels>, data: &WaveformPaintData, window: &mut
             border_style: BorderStyle::default(),
         });
     }
+}
+
+/// 把波形数据转为等价的 SVG 字符串（纯 DOM 模式显示用）。
+///
+/// 与 [`paint_waveform`] 几何一致（本地坐标，去掉 bounds 原点），用圆角矩形
+/// 条形柱复现波形，播放进度之前的部分用高亮色。
+#[cfg(feature = "dom-backend")]
+fn waveform_svg(bounds: Bounds<Pixels>, data: &WaveformPaintData) -> String {
+    use crate::components::dom_svg::css_color;
+
+    let width = bounds.size.width / px(1.0);
+    let height = bounds.size.height / px(1.0);
+    let mut svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {} {}\">",
+        width, height
+    );
+
+    let color = css_color(data.color);
+    let active_color = css_color(data.active_color);
+
+    if !data.data.is_empty() && width > 0.0 && height > 0.0 {
+        let bar_w = data.bar_width;
+        let gap_w = data.gap;
+        let step = bar_w + gap_w;
+        if step > 0.0 {
+            let max_bars = (width / step).floor() as usize;
+            let bar_count = max_bars.min(data.data.len());
+            let active_bar_boundary = (data.playback_position * bar_count as f32).floor() as usize;
+            for i in 0..bar_count {
+                let sample_idx = if bar_count < data.data.len() {
+                    (i as f32 / bar_count as f32 * data.data.len() as f32) as usize
+                } else {
+                    i
+                };
+                let amplitude = data
+                    .data
+                    .get(sample_idx)
+                    .copied()
+                    .unwrap_or(0.0)
+                    .clamp(0.0, 1.0);
+                let bar_height = (amplitude * height).max(2.0);
+                let x = i as f32 * step;
+                let y = (height - bar_height) * 0.5;
+                let bar_color = if i < active_bar_boundary {
+                    active_color.clone()
+                } else {
+                    color.clone()
+                };
+                svg.push_str(&format!(
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\"/>",
+                    x,
+                    y,
+                    bar_w,
+                    bar_height,
+                    bar_w * 0.5,
+                    bar_color
+                ));
+            }
+        }
+    }
+
+    svg.push_str("</svg>");
+    svg
 }

@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     ActiveTheme as _, Anchor, Animation, AnimationExt as _, AnyElement, App, AppContext,
-    ClickEvent, Context, DismissEvent, ElementId, Entity, EventEmitter, Icon, IconName,
+    ClickEvent, Context, DismissEvent, ElementId, Entity, EventEmitter, Hsla, Icon, IconName,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
     StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Window, div,
     prelude::FluentBuilder, px,
@@ -37,6 +37,16 @@ impl NotificationType {
             Self::Success => Icon::new(IconName::CircleCheck).text_color(cx.theme().success),
             Self::Warning => Icon::new(IconName::TriangleAlert).text_color(cx.theme().warning),
             Self::Error => Icon::new(IconName::CircleX).text_color(cx.theme().danger),
+        }
+    }
+
+    /// 返回变体对应的强调色，用于左侧边框等视觉区分。
+    fn variant_color(&self, cx: &App) -> Hsla {
+        match self {
+            Self::Info => cx.theme().info,
+            Self::Success => cx.theme().success,
+            Self::Warning => cx.theme().warning,
+            Self::Error => cx.theme().danger,
         }
     }
 }
@@ -312,6 +322,7 @@ impl Render for Notification {
         };
         let has_icon = icon.is_some();
         let placement = cx.theme().notification.placement;
+        let variant_color = self.type_.map(|t| t.variant_color(cx));
 
         h_flex()
             .id("notification")
@@ -328,6 +339,16 @@ impl Render for Notification {
             .px_4()
             .gap_3()
             .refine_style(&self.style)
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .top_0()
+                    .bottom_0()
+                    .w_1()
+                    .rounded_l(cx.theme().radius_lg)
+                    .when_some(variant_color, |this, color| this.bg(color)),
+            )
             .when_some(icon, |this, icon| {
                 this.child(div().absolute().top(px(18.)).left_4().child(icon))
             })

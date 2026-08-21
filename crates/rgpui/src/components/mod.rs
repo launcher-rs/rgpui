@@ -25,6 +25,8 @@ pub mod command_palette;
 #[cfg(feature = "effects")]
 pub mod confetti;
 pub mod countdown;
+#[cfg(feature = "dom-backend")]
+mod dom_svg;
 pub mod drag_drop;
 pub mod drawer_navigation;
 pub mod empty_state;

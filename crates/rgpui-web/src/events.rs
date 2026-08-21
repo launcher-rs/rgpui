@@ -142,14 +142,15 @@ impl WebWindowInner {
     /// 为 [`PlatformInput`]，连同反查出的 key 链一起交给核心按 key 命中
     /// （绕过坐标 hit-test）。位置用 client 坐标相对 canvas 计算，与 canvas
     /// 监听器使用的坐标空间一致。
+    ///
+    /// 指针事件不调用 `preventDefault`：保留浏览器原生行为（文本 span 的
+    /// `user-select:text` 原生选择/复制）；wheel 仍要阻止默认滚动，避免与
+    /// gpui 自绘滚动双重滚动。
     pub(crate) fn dispatch_dom_event(&self, keys: Vec<rgpui::DomNodeKey>, event: web_sys::Event) {
         let event_type = event.type_();
         let input = match event_type.as_str() {
             "pointerdown" => {
                 let event: &web_sys::PointerEvent = event.unchecked_ref();
-                if event.button() != 2 {
-                    event.prevent_default();
-                }
                 self.input_element.focus().ok();
                 let button = dom_mouse_button_to_gpui(event.button());
                 let position = mouse_position_from_event(event.as_ref(), &self.canvas);
@@ -172,7 +173,6 @@ impl WebWindowInner {
             }
             "pointerup" => {
                 let event: &web_sys::PointerEvent = event.unchecked_ref();
-                event.prevent_default();
                 let button = dom_mouse_button_to_gpui(event.button());
                 let position = mouse_position_from_event(event.as_ref(), &self.canvas);
                 let modifiers = modifiers_from_mouse_event(event, self.is_mac);
@@ -192,7 +192,6 @@ impl WebWindowInner {
             }
             "pointermove" => {
                 let event: &web_sys::PointerEvent = event.unchecked_ref();
-                event.prevent_default();
                 let position = mouse_position_from_event(event.as_ref(), &self.canvas);
                 let modifiers = modifiers_from_mouse_event(event, self.is_mac);
                 let current_pressed = self.pressed_button.get();

@@ -1,10 +1,5 @@
-use std::{
-    cell::RefCell,
-    collections::HashSet,
-    rc::Rc,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc};
+use web_time::{Duration, Instant};
 
 use crate::{
     AnyElement, App, AvailableSpace, Bounds, ContentMask, Element, ElementId, GlobalElementId,

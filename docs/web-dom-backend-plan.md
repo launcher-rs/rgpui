@@ -342,3 +342,36 @@ hitbox 使用自己的滚动偏移，DOM 层与 canvas 命中空间在滚动/缩
 **已知限制**：覆盖层全可命中后，canvas 不再收到原生 `pointerenter/leave`，窗口级 hover 状态
 （`on_hover_status_change`）在纯 DOM 模式下不再更新（DOM 层本就不渲染 hover 样式，视觉无感）。
 若后续需要窗口级 hover 感知，可在宿主上补监听 pointerenter/leave 并合成状态变更。
+
+### 9.7 自绘组件 DOM 化（数据可视化显示修复）
+
+**背景**：纯 DOM 模式下 canvas 隐藏（`opacity:0`）且 `renderer.draw` 跳过，凡是通过
+`canvas(...)` 元素自绘的组件（`Sparkline` / `Waveform` / `SVGRenderer` 等图表类组件）在
+DOM 覆盖层中不可见——故事页「数据可视化」区域的音频波形、迷你走势图、SVG 渲染全部空白。
+
+**方案**：为 `canvas` 元素增加可选的 DOM 渲染闭包（`Canvas::with_dom`），自绘组件把数据转成
+等价 SVG 字符串、编码为 base64 data URI 的 `<img>` 节点登记到 DOM 树。浏览器原生渲染 SVG，
+无需引入 SVG 命名空间与嵌套子节点；`<img>` 按布局 bounds 绝对定位，几何与 paint 一致。
+
+**改动清单**：
+
+| 项 | 位置 | 说明 |
+|----|------|------|
+| Canvas 附加 DOM 闭包 | `crates/rgpui/src/elements/canvas.rs` | 新增 `dom_impl` 字段与 `with_dom` 构造方法（仅 `dom-backend` feature 编译），`Element::dom` 委托给该闭包 |
+| SVG 辅助 | `crates/rgpui/src/components/dom_svg.rs`（新增） | `css_color`（Hsla→CSS rgba）、`base64_encode`、`svg_data_uri`、`svg_img_node`（构造 `<img src=data URI>` 节点） |
+| 走势图 | `crates/rgpui/src/components/sparkline.rs` | 折线/柱状/面积三变体按 paint 几何镜像为 SVG（polyline/rect/path），支持 min/max 高亮 |
+| 波形 | `crates/rgpui/src/components/waveform.rs` | 圆角矩形条形柱复现波形，播放进度前用高亮色 |
+| SVG 路径 | `crates/rgpui/src/components/svg_renderer.rs` | 直接复用原始 path 数据生成 `<path d viewBox fill/stroke>` |
+| 属性更新 | `crates/rgpui-dom/src/web.rs`（`UpdateNode`） | 元素节点属性变更（图表 `<img src>` 更新）时重写属性 |
+| 事件转发非被动 | `crates/rgpui-dom/src/web.rs`（`install_event_forwarder`） | 转发器改非被动注册（`passive:false`），修复委托路径对原始事件 `preventDefault` 触发的 `[Intervention] Unable to preventDefault inside passive event listener` |
+| 指针事件不拦截 | `crates/rgpui-web/src/events.rs`（`dispatch_dom_event`） | 移除 `pointerdown/up/move` 分支的 `prevent_default`（保留文本 span 原生选择），wheel 仍 `preventDefault` 避免双重滚动 |
+
+**验证状态**：
+
+- `cargo check --workspace` ✅
+- `cargo check -p rgpui --features dom-backend` ✅
+- `cargo test -p rgpui-dom`（14 项）✅
+- `cargo +nightly check -p rgpui-web --target wasm32-unknown-unknown` ✅
+- `cargo +nightly build -p rgpui_story --target wasm32-unknown-unknown` ✅
+- clippy：本次改动零新增告警（`tag_input.rs:301`、`div.rs:1964`、`util/mod.rs:203` 为存量问题）
+- 浏览器复测：待用户验证（`trunk serve` 确认数据可视化区域波形/走势图/SVG 可见、console 无报错）

@@ -279,10 +279,23 @@ impl WebDomBackend {
             }
         });
 
+        // 非被动注册：wheel 在 document 上默认被动（passive），无法对其
+        // preventDefault（会触发 "[Intervention] Unable to preventDefault inside
+        // passive event listener"）。事件委托/转发都需要阻止默认行为（wheel 交给
+        // gpui 滚动），必须显式声明 passive:false。保持冒泡阶段注册，避免
+        // capture+冒泡导致同一事件被本闭包触发两次。
+        let options = js_sys::Object::new();
+        js_sys::Reflect::set(&options, &"passive".into(), &false.into()).ok();
+        let document_js: &JsValue = self.document.as_ref();
+        let callback_js: &JsValue = closure.as_ref();
         for event_name in FORWARD_EVENTS {
-            let _ = self
-                .document
-                .add_event_listener_with_callback(event_name, closure.as_ref().unchecked_ref());
+            if let Ok(add_fn_val) = js_sys::Reflect::get(document_js, &"addEventListener".into()) {
+                if let Ok(add_fn) = add_fn_val.dyn_into::<js_sys::Function>() {
+                    add_fn
+                        .call3(document_js, &(*event_name).into(), callback_js, &options)
+                        .ok();
+                }
+            }
         }
         self._forwarder = Some(closure);
     }
@@ -407,10 +420,18 @@ impl DomBackend for WebDomBackend {
                 DomPatch::UpdateNode { key, node } => {
                     if let Some(element) = self.elements.get(key).cloned() {
                         self.apply_style(&element, node, key);
-                        if let DomNodeKind::Text { text } = &node.kind {
-                            element
-                                .unchecked_ref::<Node>()
-                                .set_text_content(Some(text.as_ref()));
+                        match &node.kind {
+                            DomNodeKind::Element { attrs, .. } => {
+                                // 属性变更（如图表 `<img src>` 数据更新）时重写属性。
+                                for (name, value) in attrs {
+                                    let _ = element.set_attribute(name, value);
+                                }
+                            }
+                            DomNodeKind::Text { text } => {
+                                element
+                                    .unchecked_ref::<Node>()
+                                    .set_text_content(Some(text.as_ref()));
+                            }
                         }
                     }
                 }

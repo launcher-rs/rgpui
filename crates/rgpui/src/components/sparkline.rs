@@ -159,6 +159,7 @@ fn compute_trend(data: &[f64]) -> SparklineTrend {
 }
 
 /// 走势图绘制所需的数据。
+#[derive(Clone)]
 struct SparklinePaintData {
     /// 原始数据序列。
     data: Vec<f64>,
@@ -354,6 +355,10 @@ impl RenderOnce for Sparkline {
             size: self.size,
         };
 
+        // 纯 DOM 模式下 canvas 隐藏，需为 canvas 元素附加等价 SVG 的 DOM 节点。
+        #[cfg(feature = "dom-backend")]
+        let dom_data = paint_data.clone();
+
         let user_style = self.style;
 
         let trend_icon = trend.map(|t| {
@@ -365,20 +370,29 @@ impl RenderOnce for Sparkline {
             (icon_char, color)
         });
 
+        let mut chart = canvas(
+            move |_bounds, _window, _cx| paint_data,
+            move |bounds, paint_data, window, _cx| {
+                paint_sparkline(bounds, &paint_data, window);
+            },
+        )
+        .w(width)
+        .h(height);
+
+        // 纯 DOM 模式下用 data URI 的 `<img>` 呈现走势图。
+        #[cfg(feature = "dom-backend")]
+        {
+            chart = chart.with_dom(move |bounds, _window, _cx| {
+                let svg = sparkline_svg(bounds, &dom_data);
+                crate::components::dom_svg::svg_img_node(bounds, svg)
+            });
+        }
+
         let mut root = div()
             .flex()
             .items_center()
             .gap(px(4.0))
-            .child(
-                canvas(
-                    move |_bounds, _window, _cx| paint_data,
-                    move |bounds, paint_data, window, _cx| {
-                        paint_sparkline(bounds, &paint_data, window);
-                    },
-                )
-                .w(width)
-                .h(height),
-            )
+            .child(chart)
             .when_some(trend_icon, |this, (icon, color)| {
                 this.child(
                     div()
@@ -408,6 +422,159 @@ fn paint_sparkline(bounds: Bounds<Pixels>, data: &SparklinePaintData, window: &m
         SparklineVariant::Bar => paint_bar_sparkline(bounds, data, window),
         SparklineVariant::Area => paint_area_sparkline(bounds, data, window),
     }
+}
+
+/// 把走势图数据转为等价的 SVG 字符串（纯 DOM 模式显示用）。
+///
+/// 内容坐标按元素自身 0..宽 × 0..高 生成本地坐标，与 paint 函数的绝对坐标
+/// 计算保持一致（仅去掉 bounds 原点），配合 `viewBox` 由浏览器等比缩放。
+#[cfg(feature = "dom-backend")]
+fn sparkline_svg(bounds: Bounds<Pixels>, data: &SparklinePaintData) -> String {
+    use crate::components::dom_svg::css_color;
+
+    let width = bounds.size.width / px(1.0);
+    let height = bounds.size.height / px(1.0);
+    let mut svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {} {}\">",
+        width, height
+    );
+    let line_color = css_color(data.line_color);
+    let fill_color = css_color(data.fill_color);
+    let min_max_color = css_color(data.min_max_color);
+
+    match data.variant {
+        SparklineVariant::Line => {
+            if let Some(points) = sparkline_points(bounds, data) {
+                svg.push_str(&format!(
+                    "<polyline points=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+                    points,
+                    line_color,
+                    data.size.line_width() / px(1.0)
+                ));
+            }
+        }
+        SparklineVariant::Area => {
+            if let Some(points) = sparkline_points(bounds, data) {
+                // 面积填充：从底部起始、沿折线绕回底部闭合。
+                let pts: Vec<(f32, f32)> = points
+                    .split(' ')
+                    .filter_map(|p| {
+                        let mut it = p.split(',');
+                        match (it.next(), it.next()) {
+                            (Some(x), Some(y)) => x.parse().ok().zip(y.parse().ok()),
+                            _ => None,
+                        }
+                    })
+                    .collect();
+                if pts.len() >= 2 {
+                    svg.push_str(&format!(
+                        "<path d=\"M{} {} L{} L{} {} Z\" fill=\"{}\"/>",
+                        pts[0].0,
+                        height,
+                        points,
+                        pts[pts.len() - 1].0,
+                        height,
+                        fill_color
+                    ));
+                }
+            }
+        }
+        SparklineVariant::Bar => {
+            let range = DataRange::from_data(&data.data);
+            let point_count = data.data.len();
+            if point_count == 0 {
+                return svg;
+            }
+            let padding_y = 2.0;
+            let chart_top = padding_y;
+            let chart_bottom = height - padding_y;
+            let chart_height = chart_bottom - chart_top;
+            let gap = data.size.bar_gap();
+            let total_gap = gap * (point_count.saturating_sub(1)) as f32;
+            let bar_width = ((width - total_gap) / point_count as f32).max(1.0);
+            for (i, &value) in data.data.iter().enumerate() {
+                let x = bar_width * i as f32 + gap * i as f32;
+                let height_ratio = range.normalize(value);
+                let bar_height = chart_height * height_ratio;
+                let y = chart_bottom - bar_height;
+                let bar_color =
+                    if data.show_min_max && (i == range.min_index || i == range.max_index) {
+                        min_max_color.clone()
+                    } else {
+                        line_color.clone()
+                    };
+                svg.push_str(&format!(
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\"/>",
+                    x,
+                    y,
+                    bar_width,
+                    bar_height,
+                    bar_width * 0.5,
+                    bar_color
+                ));
+            }
+        }
+    }
+
+    // 高亮最小/最大值端点（折线与面积图共用）。
+    if data.show_min_max
+        && matches!(
+            data.variant,
+            SparklineVariant::Line | SparklineVariant::Area
+        )
+    {
+        if let Some(points) = sparkline_points(bounds, data) {
+            let range = DataRange::from_data(&data.data);
+            let radius = data.size.point_radius() / px(1.0);
+            for &index in &[range.min_index, range.max_index] {
+                if let Some(pt) = points.split(' ').nth(index) {
+                    let mut it = pt.split(',');
+                    if let (Some(x), Some(y)) = (it.next(), it.next()) {
+                        svg.push_str(&format!(
+                            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\"/>",
+                            x, y, radius, min_max_color
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    svg.push_str("</svg>");
+    svg
+}
+
+/// 计算折线/面积图的数据点坐标字符串（本地坐标），点数不足 2 时返回 `None`。
+#[cfg(feature = "dom-backend")]
+fn sparkline_points(bounds: Bounds<Pixels>, data: &SparklinePaintData) -> Option<String> {
+    let range = DataRange::from_data(&data.data);
+    let point_count = data.data.len();
+    if point_count < 2 {
+        return None;
+    }
+
+    let width = bounds.size.width / px(1.0);
+    let height = bounds.size.height / px(1.0);
+    let padding = data.size.point_radius() / px(1.0);
+    let chart_left = padding;
+    let chart_right = width - padding;
+    let chart_top = padding;
+    let chart_bottom = height - padding;
+    let chart_width = chart_right - chart_left;
+    let chart_height = chart_bottom - chart_top;
+    if chart_width <= 0.0 || chart_height <= 0.0 {
+        return None;
+    }
+
+    let mut points = String::new();
+    for (i, &value) in data.data.iter().enumerate() {
+        let x_ratio = i as f32 / (point_count - 1) as f32;
+        let y_ratio = range.normalize(value);
+        let x = chart_left + chart_width * x_ratio;
+        let y = chart_bottom - chart_height * y_ratio;
+        points.push_str(&format!("{:.2},{:.2} ", x, y));
+    }
+    Some(points.trim().to_string())
 }
 
 /// 绘制折线走势图。

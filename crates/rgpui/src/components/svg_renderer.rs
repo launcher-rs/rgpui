@@ -252,6 +252,16 @@ impl RenderOnce for SVGRenderer {
         let fill_color = self.fill_color.unwrap_or(*theme.tokens.foreground);
         let commands = parse_svg_path(&self.path_data);
 
+        // 纯 DOM 模式下 canvas 隐藏，直接复用原始 path 数据生成等价 SVG。
+        #[cfg(feature = "dom-backend")]
+        let dom_data = (
+            self.path_data.clone(),
+            self.view_box,
+            fill_color,
+            self.stroke_color,
+            self.stroke_width,
+        );
+
         let paint_data = SvgPaintData {
             commands,
             view_box: self.view_box,
@@ -260,134 +270,161 @@ impl RenderOnce for SVGRenderer {
             stroke_width: self.stroke_width,
         };
 
-        let mut root = div().size_full().child(
-            canvas(
-                move |_, _, _| paint_data,
-                move |bounds, data, window, _cx| {
-                    if data.commands.is_empty() {
-                        return;
-                    }
+        let mut svg = canvas(
+            move |_, _, _| paint_data,
+            move |bounds, data, window, _cx| {
+                if data.commands.is_empty() {
+                    return;
+                }
 
-                    let mut current_x = 0.0_f32;
-                    let mut current_y = 0.0_f32;
+                let mut current_x = 0.0_f32;
+                let mut current_y = 0.0_f32;
 
-                    if let Some(stroke_color) = data.stroke_color {
-                        let mut builder = PathBuilder::stroke(px(data.stroke_width));
-                        let mut started = false;
+                if let Some(stroke_color) = data.stroke_color {
+                    let mut builder = PathBuilder::stroke(px(data.stroke_width));
+                    let mut started = false;
 
-                        for cmd in &data.commands {
-                            match cmd {
-                                SvgCommand::MoveTo(x, y) => {
-                                    let pt = transform_point(*x, *y, &data.view_box, &bounds);
-                                    if started {
-                                        if let Ok(path) = builder.build() {
-                                            window.paint_path(path, stroke_color);
-                                        }
-                                        builder = PathBuilder::stroke(px(data.stroke_width));
+                    for cmd in &data.commands {
+                        match cmd {
+                            SvgCommand::MoveTo(x, y) => {
+                                let pt = transform_point(*x, *y, &data.view_box, &bounds);
+                                if started {
+                                    if let Ok(path) = builder.build() {
+                                        window.paint_path(path, stroke_color);
                                     }
-                                    builder.move_to(pt);
-                                    current_x = *x;
-                                    current_y = *y;
-                                    started = true;
+                                    builder = PathBuilder::stroke(px(data.stroke_width));
                                 }
-                                SvgCommand::LineTo(x, y) => {
-                                    let fx = if x.is_nan() { current_x } else { *x };
-                                    let fy = if y.is_nan() { current_y } else { *y };
-                                    let pt = transform_point(fx, fy, &data.view_box, &bounds);
-                                    builder.line_to(pt);
-                                    current_x = fx;
-                                    current_y = fy;
-                                }
-                                SvgCommand::CurveTo(x1, y1, x2, y2, x, y) => {
-                                    let _cp1 = transform_point(*x1, *y1, &data.view_box, &bounds);
-                                    let cp2 = transform_point(*x2, *y2, &data.view_box, &bounds);
-                                    let end = transform_point(*x, *y, &data.view_box, &bounds);
-                                    builder.curve_to(cp2, end);
-                                    current_x = *x;
-                                    current_y = *y;
-                                }
-                                SvgCommand::QuadTo(cx1, cy1, x, y) => {
-                                    let cp = transform_point(*cx1, *cy1, &data.view_box, &bounds);
-                                    let end = transform_point(*x, *y, &data.view_box, &bounds);
-                                    builder.curve_to(cp, end);
-                                    current_x = *x;
-                                    current_y = *y;
-                                }
-                                SvgCommand::Close => {
-                                    builder.close();
-                                }
+                                builder.move_to(pt);
+                                current_x = *x;
+                                current_y = *y;
+                                started = true;
                             }
-                        }
-
-                        if started {
-                            if let Ok(path) = builder.build() {
-                                window.paint_path(path, stroke_color);
+                            SvgCommand::LineTo(x, y) => {
+                                let fx = if x.is_nan() { current_x } else { *x };
+                                let fy = if y.is_nan() { current_y } else { *y };
+                                let pt = transform_point(fx, fy, &data.view_box, &bounds);
+                                builder.line_to(pt);
+                                current_x = fx;
+                                current_y = fy;
+                            }
+                            SvgCommand::CurveTo(x1, y1, x2, y2, x, y) => {
+                                let _cp1 = transform_point(*x1, *y1, &data.view_box, &bounds);
+                                let cp2 = transform_point(*x2, *y2, &data.view_box, &bounds);
+                                let end = transform_point(*x, *y, &data.view_box, &bounds);
+                                builder.curve_to(cp2, end);
+                                current_x = *x;
+                                current_y = *y;
+                            }
+                            SvgCommand::QuadTo(cx1, cy1, x, y) => {
+                                let cp = transform_point(*cx1, *cy1, &data.view_box, &bounds);
+                                let end = transform_point(*x, *y, &data.view_box, &bounds);
+                                builder.curve_to(cp, end);
+                                current_x = *x;
+                                current_y = *y;
+                            }
+                            SvgCommand::Close => {
+                                builder.close();
                             }
                         }
                     }
 
-                    {
-                        let mut builder = PathBuilder::fill();
-                        let mut started = false;
-                        current_x = 0.0;
-                        current_y = 0.0;
+                    if started {
+                        if let Ok(path) = builder.build() {
+                            window.paint_path(path, stroke_color);
+                        }
+                    }
+                }
 
-                        for cmd in &data.commands {
-                            match cmd {
-                                SvgCommand::MoveTo(x, y) => {
-                                    if started {
-                                        builder.close();
-                                        if let Ok(path) = builder.build() {
-                                            window.paint_path(path, data.fill_color);
-                                        }
-                                        builder = PathBuilder::fill();
+                {
+                    let mut builder = PathBuilder::fill();
+                    let mut started = false;
+                    current_x = 0.0;
+                    current_y = 0.0;
+
+                    for cmd in &data.commands {
+                        match cmd {
+                            SvgCommand::MoveTo(x, y) => {
+                                if started {
+                                    builder.close();
+                                    if let Ok(path) = builder.build() {
+                                        window.paint_path(path, data.fill_color);
                                     }
-                                    let pt = transform_point(*x, *y, &data.view_box, &bounds);
-                                    builder.move_to(pt);
-                                    current_x = *x;
-                                    current_y = *y;
-                                    started = true;
+                                    builder = PathBuilder::fill();
                                 }
-                                SvgCommand::LineTo(x, y) => {
-                                    let fx = if x.is_nan() { current_x } else { *x };
-                                    let fy = if y.is_nan() { current_y } else { *y };
-                                    let pt = transform_point(fx, fy, &data.view_box, &bounds);
-                                    builder.line_to(pt);
-                                    current_x = fx;
-                                    current_y = fy;
-                                }
-                                SvgCommand::CurveTo(x1, y1, x2, y2, x, y) => {
-                                    let _cp1 = transform_point(*x1, *y1, &data.view_box, &bounds);
-                                    let cp2 = transform_point(*x2, *y2, &data.view_box, &bounds);
-                                    let end = transform_point(*x, *y, &data.view_box, &bounds);
-                                    builder.curve_to(cp2, end);
-                                    current_x = *x;
-                                    current_y = *y;
-                                }
-                                SvgCommand::QuadTo(cx1, cy1, x, y) => {
-                                    let cp = transform_point(*cx1, *cy1, &data.view_box, &bounds);
-                                    let end = transform_point(*x, *y, &data.view_box, &bounds);
-                                    builder.curve_to(cp, end);
-                                    current_x = *x;
-                                    current_y = *y;
-                                }
-                                SvgCommand::Close => {
-                                    builder.close();
-                                }
+                                let pt = transform_point(*x, *y, &data.view_box, &bounds);
+                                builder.move_to(pt);
+                                current_x = *x;
+                                current_y = *y;
+                                started = true;
                             }
-                        }
-
-                        if started {
-                            builder.close();
-                            if let Ok(path) = builder.build() {
-                                window.paint_path(path, data.fill_color);
+                            SvgCommand::LineTo(x, y) => {
+                                let fx = if x.is_nan() { current_x } else { *x };
+                                let fy = if y.is_nan() { current_y } else { *y };
+                                let pt = transform_point(fx, fy, &data.view_box, &bounds);
+                                builder.line_to(pt);
+                                current_x = fx;
+                                current_y = fy;
+                            }
+                            SvgCommand::CurveTo(x1, y1, x2, y2, x, y) => {
+                                let _cp1 = transform_point(*x1, *y1, &data.view_box, &bounds);
+                                let cp2 = transform_point(*x2, *y2, &data.view_box, &bounds);
+                                let end = transform_point(*x, *y, &data.view_box, &bounds);
+                                builder.curve_to(cp2, end);
+                                current_x = *x;
+                                current_y = *y;
+                            }
+                            SvgCommand::QuadTo(cx1, cy1, x, y) => {
+                                let cp = transform_point(*cx1, *cy1, &data.view_box, &bounds);
+                                let end = transform_point(*x, *y, &data.view_box, &bounds);
+                                builder.curve_to(cp, end);
+                                current_x = *x;
+                                current_y = *y;
+                            }
+                            SvgCommand::Close => {
+                                builder.close();
                             }
                         }
                     }
-                },
-            )
-            .size_full(),
-        );
+
+                    if started {
+                        builder.close();
+                        if let Ok(path) = builder.build() {
+                            window.paint_path(path, data.fill_color);
+                        }
+                    }
+                }
+            },
+        )
+        .size_full();
+
+        // 纯 DOM 模式下用 data URI 的 `<img>` 呈现 SVG 路径（viewBox 等比缩放）。
+        #[cfg(feature = "dom-backend")]
+        {
+            let (dom_path, dom_view_box, dom_fill, dom_stroke, dom_stroke_width) = dom_data;
+            svg = svg.with_dom(move |bounds, _window, _cx| {
+                use crate::components::dom_svg::css_color;
+                let mut markup = format!(
+                    "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\">",
+                    dom_view_box.origin.x,
+                    dom_view_box.origin.y,
+                    dom_view_box.size.width,
+                    dom_view_box.size.height
+                );
+                markup.push_str(&format!("<path d=\"{}\"", dom_path));
+                markup.push_str(&format!(" fill=\"{}\"", css_color(dom_fill)));
+                if let Some(stroke) = dom_stroke {
+                    markup.push_str(&format!(
+                        " stroke=\"{}\" stroke-width=\"{}\"",
+                        css_color(stroke),
+                        dom_stroke_width
+                    ));
+                }
+                markup.push_str("/></svg>");
+                crate::components::dom_svg::svg_img_node(bounds, markup)
+            });
+        }
+
+        let mut root = div().size_full().child(svg);
         root.style().refine(&user_style);
         root
     }

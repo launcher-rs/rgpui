@@ -1,7 +1,7 @@
 //! 手势检测器：将鼠标按下/移动/抬起序列识别为轻点、双击、长按、拖动（pan）与滑动（swipe）。
 
 use crate::*;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// 滑动方向。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
