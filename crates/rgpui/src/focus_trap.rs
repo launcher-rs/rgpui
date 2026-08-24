@@ -1,7 +1,7 @@
 //! 焦点陷阱 - 将 Tab 键循环限制在模态容器内。
 
 use crate::{
-    AnyElement, App, Bounds, Element, ElementId, FocusHandle, Global, GlobalElementId,
+    AnyElement, App, Bounds, DomNode, Element, ElementId, FocusHandle, Global, GlobalElementId,
     InteractiveElement, Interactivity, IntoElement, LayoutId, ParentElement, Pixels,
     StatefulInteractiveElement, StyleRefinement, Styled, WeakFocusHandle, Window,
 };
@@ -168,6 +168,16 @@ impl<E: InteractiveElement + ParentElement + Styled + Element + 'static> Element
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
         None
+    }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<DomNode> {
+        self.base.dom(bounds, window, cx)
     }
 
     fn request_layout(

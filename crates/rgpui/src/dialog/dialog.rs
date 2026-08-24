@@ -537,6 +537,25 @@ impl RenderOnce for Dialog {
                             .top(y)
                             .w(self.props.width)
                             .when_some(self.props.max_width, |this, w| this.max_w(w))
+                            .with_animation("slide-down", animation.clone(), move |this, delta| {
+                                let shadow = vec![
+                                    BoxShadow {
+                                        color: crate::black().opacity(0.22),
+                                        offset: point(px(0.), px(8.) * delta),
+                                        blur_radius: px(28.) * delta,
+                                        spread_radius: px(0.),
+                                        inset: false,
+                                    },
+                                    BoxShadow {
+                                        color: crate::black().opacity(0.16),
+                                        offset: point(px(0.), px(2.) * delta),
+                                        blur_radius: px(8.) * delta,
+                                        spread_radius: px(0.),
+                                        inset: false,
+                                    },
+                                ];
+                                this.top(y * delta).shadow(shadow)
+                            })
                             .child(
                                 v_flex()
                                     .flex_1()
@@ -606,26 +625,6 @@ impl RenderOnce for Dialog {
                                         }
                                     })
                             }))
-                            .with_animation("slide-down", animation.clone(), move |this, delta| {
-                                // 相当于 `shadow_xl` 再加一个透明度。
-                                let shadow = vec![
-                                    BoxShadow {
-                                        color: hsla(0., 0., 0., 0.1 * delta),
-                                        offset: point(px(0.), px(20.)),
-                                        blur_radius: px(25.),
-                                        spread_radius: px(-5.),
-                                        inset: false,
-                                    },
-                                    BoxShadow {
-                                        color: hsla(0., 0., 0., 0.1 * delta),
-                                        offset: point(px(0.), px(8.)),
-                                        blur_radius: px(10.),
-                                        spread_radius: px(-6.),
-                                        inset: false,
-                                    },
-                                ];
-                                this.top(y * delta).shadow(shadow)
-                            }),
                     )
                     .with_animation("fade-in", animation, move |this, delta| this.opacity(delta)),
             )
