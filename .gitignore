@@ -4,4 +4,5 @@ stderr.txt
 stdout.txt
 .idea
 *.log
-dist/examples/rgpui_story/test_shots2/
+examples/rgpui_story/dist/
+examples/rgpui_story/test_shots2/

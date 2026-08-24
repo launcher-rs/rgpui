@@ -8,6 +8,9 @@ use crate::{
     Styled, Window, div, percentage, prelude::FluentBuilder as _, px, relative, rems, size,
 };
 
+#[cfg(feature = "dom-backend")]
+use crate::{DomNode, DomNodeKind, DomOverflow, DomStyle};
+
 use crate::{
     ActiveTheme as _, ElementSize, Icon, IconName, Sizable, StyledExt as _, ease_out_cubic, h_flex,
     v_flex,
@@ -325,6 +328,21 @@ impl Element for AccordionContent {
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             self.child.paint(window, cx);
         });
+    }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(&self, bounds: Bounds<Pixels>, _window: &mut Window, _cx: &mut App) -> Option<DomNode> {
+        // 折叠内容靠 `bounds` 高度（动画进度 × 自然高度）裁剪，
+        // DOM 模式以 `overflow: hidden` 的包裹层承载，子内容在其下自动定位。
+        let mut style = DomStyle::from_bounds(bounds);
+        style.overflow = DomOverflow::Hidden;
+        Some(DomNode {
+            kind: DomNodeKind::Element {
+                tag: "div",
+                attrs: Vec::new(),
+            },
+            style,
+        })
     }
 }
 
