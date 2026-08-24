@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[cfg(feature = "dom-backend")]
-use crate::{DomNode, DomNodeKind, DomStyle};
+use crate::DomNode;
 
 /// The state that the anchored element element uses to track its children.
 pub struct AnchoredState {
@@ -99,16 +99,13 @@ impl Element for Anchored {
     }
 
     #[cfg(feature = "dom-backend")]
-    fn dom(&self, bounds: Bounds<Pixels>, _window: &mut Window, _cx: &mut App) -> Option<DomNode> {
-        let mut style = DomStyle::from_bounds(bounds);
-        style.display = crate::DomDisplay::Block;
-        Some(DomNode {
-            kind: DomNodeKind::Element {
-                tag: "div",
-                attrs: Vec::new(),
-            },
-            style,
-        })
+    fn dom(&self, _bounds: Bounds<Pixels>, _window: &mut Window, _cx: &mut App) -> Option<DomNode> {
+        // Anchored 仅做窗口内防溢出定位（canvas 模式通过 `with_element_offset`
+        // 偏移子元素）。DOM 模式下子元素各自基于自身布局 bounds 与 `occlude`/
+        // 绝对定位自行落位，外层包裹节点无需（也不应）占据 Taffy 原始 bounds——
+        // 那会是一个位于视口外（如 y=2500）的空透明容器。故这里返回 None，
+        // 让子元素直接挂到上一层 DOM 节点，避免产生离屏空节点。
+        None
     }
 
     fn request_layout(
