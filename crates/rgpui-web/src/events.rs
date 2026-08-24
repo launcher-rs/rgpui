@@ -109,6 +109,23 @@ impl WebWindowInner {
         closure
     }
 
+    /// 在 `window` 上注册监听。键盘事件挂到 window 而非隐藏 `input_element`，
+    /// 因为 DOM 模式点击后浏览器默认会把焦点移到 body，导致挂在 `input_element`
+    /// 上的 keydown 收不到；而按键最终由核心按当前聚焦的编辑器路由，与 DOM 焦点无关。
+    fn listen_window(
+        self: &Rc<Self>,
+        event_name: &str,
+        handler: impl FnMut(JsValue) + 'static,
+    ) -> Closure<dyn FnMut(JsValue)> {
+        let closure = Closure::<dyn FnMut(JsValue)>::new(handler);
+        if let Some(window) = web_sys::window() {
+            window
+                .add_event_listener_with_callback(event_name, closure.as_ref().unchecked_ref())
+                .ok();
+        }
+        closure
+    }
+
     /// 注册一个带有 `{passive: false}` 的监听器，使 `preventDefault()` 能够正常工作。
     /// 对于 `wheel` 等在现代浏览器中默认为被动的事件是必需的。
     fn listen_non_passive(
@@ -480,7 +497,7 @@ impl WebWindowInner {
 
     fn register_key_down(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
         let this = Rc::clone(self);
-        self.listen_input("keydown", move |event: JsValue| {
+        self.listen_window("keydown", move |event: JsValue| {
             let event: web_sys::KeyboardEvent = event.unchecked_into();
 
             let modifiers = modifiers_from_keyboard_event(&event, this.is_mac);
@@ -545,7 +562,7 @@ impl WebWindowInner {
 
     fn register_key_up(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
         let this = Rc::clone(self);
-        self.listen_input("keyup", move |event: JsValue| {
+        self.listen_window("keyup", move |event: JsValue| {
             let event: web_sys::KeyboardEvent = event.unchecked_into();
 
             let modifiers = modifiers_from_keyboard_event(&event, this.is_mac);

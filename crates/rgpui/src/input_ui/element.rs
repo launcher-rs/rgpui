@@ -14,6 +14,9 @@ use ropey::Rope;
 use crate::theme::ActiveTheme as _;
 use crate::{Button, ButtonVariants as _, IconName, Scrollbar, Selectable as _, Sizable as _};
 
+#[cfg(feature = "dom-backend")]
+use crate::{DomNode, DomNodeKind, DomStyle};
+
 use super::{
     InputState, LastLayout, MASK_CHAR, RopeExt as _, TextDecoration, WhitespaceIndicators,
     blink_cursor::CURSOR_WIDTH, display_map::LineLayout, mode::InputMode,
@@ -1247,6 +1250,55 @@ impl Element for TextElement {
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
         None
+    }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<DomNode> {
+        // DOM 模式下输入框文本需进入 DOM 树（canvas 不可见），否则输入内容无法显示。
+        // 复用与 canvas 绘制一致的 display_text 计算（占位符 / 掩码 / 原文）。
+        let state = self.state.read(cx);
+        let fg = window.text_style().color;
+        let (display, color) = if state.text.len() == 0 {
+            (
+                if self.placeholder.is_empty() {
+                    SharedString::default()
+                } else {
+                    self.placeholder.clone()
+                },
+                cx.theme().muted_foreground,
+            )
+        } else if state.masked {
+            (
+                SharedString::from(MASK_CHAR.to_string().repeat(state.text.chars().count())),
+                fg,
+            )
+        } else {
+            (state.text.to_string().into(), fg)
+        };
+
+        if display.is_empty() {
+            return None;
+        }
+
+        let text_style = window.text_style();
+        let rem_size = window.rem_size();
+        let mut dom_style = DomStyle::from_bounds(bounds);
+        dom_style.color = Some(color);
+        dom_style.font_size = Some(text_style.font_size.to_pixels(rem_size));
+        dom_style.font_family = Some(text_style.font_family.clone());
+        dom_style.font_weight = Some(text_style.font_weight);
+        dom_style.font_style = Some(text_style.font_style);
+        dom_style.line_height = Some(text_style.line_height.to_pixels(text_style.font_size, rem_size));
+        dom_style.white_space = Some(text_style.white_space);
+        Some(DomNode {
+            kind: DomNodeKind::Text { text: display },
+            style: dom_style,
+        })
     }
 
     fn request_layout(
