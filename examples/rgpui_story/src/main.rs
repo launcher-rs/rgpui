@@ -163,7 +163,7 @@ fn title_bar(_window: &mut Window, cx: &mut Context<StoryApp>) -> impl IntoEleme
                     .small()
                     .ghost()
                     .icon(IconName::Palette)
-                    .label(current_name.clone())
+                    .label(current_name)
                     .dropdown_menu(move |menu, _, _| {
                         let mut menu = menu.label("选择主题");
                         for (name, mode, checked) in &items {

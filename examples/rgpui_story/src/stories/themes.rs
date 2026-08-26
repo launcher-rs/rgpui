@@ -116,7 +116,7 @@ fn theme_selector(cx: &Context<ThemeStory>) -> impl IntoElement {
         .collect();
 
     Button::new("theme-list")
-        .label(current_name.clone())
+        .label(current_name)
         .icon(IconName::Palette)
         .dropdown_menu(move |menu, _, _| {
             let mut menu = menu.label("选择主题");
