@@ -149,8 +149,13 @@ impl WebWindowInner {
     }
 
     fn dispatch_input(&self, input: PlatformInput) -> Option<DispatchEventResult> {
-        let mut borrowed = self.callbacks.borrow_mut();
-        borrowed.input.as_mut().map(|callback| callback(input))
+        // 取出回调后释放借用再调用，避免 gpui 输入回调内部再次借用 callbacks（如请求绘制）时重借。
+        let mut callback = self.callbacks.borrow_mut().input.take();
+        let result = callback.as_mut().map(|callback| callback(input));
+        if let Some(callback) = callback {
+            self.callbacks.borrow_mut().input = Some(callback);
+        }
+        result
     }
 
     /// 处理来自 DOM 覆盖层的委托事件（点击 DOM 元素时按 key 链回调）。
@@ -251,9 +256,11 @@ impl WebWindowInner {
             _ => return,
         };
 
-        let mut borrowed = self.callbacks.borrow_mut();
-        if let Some(ref mut callback) = borrowed.dom_event {
+        // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+        let callback = self.callbacks.borrow_mut().dom_event.take();
+        if let Some(mut callback) = callback {
             callback(keys, input);
+            self.callbacks.borrow_mut().dom_event = Some(callback);
         }
     }
 
@@ -642,9 +649,11 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_active = true;
             }
-            let mut callbacks = this.callbacks.borrow_mut();
-            if let Some(ref mut callback) = callbacks.active_status_change {
+            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+            let callback = this.callbacks.borrow_mut().active_status_change.take();
+            if let Some(mut callback) = callback {
                 callback(true);
+                this.callbacks.borrow_mut().active_status_change = Some(callback);
             }
         })
     }
@@ -656,9 +665,11 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_active = false;
             }
-            let mut callbacks = this.callbacks.borrow_mut();
-            if let Some(ref mut callback) = callbacks.active_status_change {
+            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+            let callback = this.callbacks.borrow_mut().active_status_change.take();
+            if let Some(mut callback) = callback {
                 callback(false);
+                this.callbacks.borrow_mut().active_status_change = Some(callback);
             }
         })
     }
@@ -670,9 +681,11 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_hovered = true;
             }
-            let mut callbacks = this.callbacks.borrow_mut();
-            if let Some(ref mut callback) = callbacks.hover_status_change {
+            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+            let callback = this.callbacks.borrow_mut().hover_status_change.take();
+            if let Some(mut callback) = callback {
                 callback(true);
+                this.callbacks.borrow_mut().hover_status_change = Some(callback);
             }
         })
     }
@@ -684,9 +697,11 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_hovered = false;
             }
-            let mut callbacks = this.callbacks.borrow_mut();
-            if let Some(ref mut callback) = callbacks.hover_status_change {
+            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+            let callback = this.callbacks.borrow_mut().hover_status_change.take();
+            if let Some(mut callback) = callback {
                 callback(false);
+                this.callbacks.borrow_mut().hover_status_change = Some(callback);
             }
         })
     }

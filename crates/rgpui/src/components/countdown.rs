@@ -1,7 +1,8 @@
 //! 倒计时/正计时组件：天/时/分/秒展示，可选标签与分隔符。
 
 use std::rc::Rc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
+use web_time::SystemTime;
 
 use crate::{prelude::FluentBuilder as _, *};
 

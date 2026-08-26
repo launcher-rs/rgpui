@@ -340,6 +340,7 @@ impl Element for AccordionContent {
             kind: DomNodeKind::Element {
                 tag: "div",
                 attrs: Vec::new(),
+                children: Vec::new(),
             },
             style,
         })

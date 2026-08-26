@@ -14,7 +14,7 @@
 
 use crate::{DomBackend, DomPatch, css, reconcile};
 use rgpui::{DomNode, DomNodeKey, DomNodeKind, DomTree};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -210,6 +210,10 @@ impl WebDomBackend {
         let host = self.host.clone();
         let id_to_key = self.id_to_key.clone();
         let handler = self.handler.clone();
+        // 重入保护：核心同步处理委托事件时可能再次派发指针事件并回到本转发器闭包，
+        // 此时若仍持有 `handler` 借用会触发 RefCell 恐慌（wasm 直接 abort，整页卡死）。
+        // 用原子布尔标记拦截重入调用，使其直接跳过委托。
+        let reentrancy = Rc::new(Cell::new(false));
         let closure = Closure::<dyn FnMut(Event)>::new(move |event: Event| {
             // 转发器自身派发的合成事件带 FORWARD_MARK 标记，直接跳过，
             // 避免在 bubble 阶段再次进入本闭包（wasm-bindgen FnMut 闭包禁止重入）。
@@ -227,10 +231,16 @@ impl WebDomBackend {
             }
             // 事件委托：点击 DOM 元素时按 key 链直接命中核心 hitbox。
             if let Some(keys) = Self::collect_key_chain(target_node, &host, &id_to_key) {
-                if let Some(on_dom_event) = handler.borrow_mut().as_mut() {
-                    on_dom_event(keys, event);
+                // 重入保护：若正在处理一次委托事件（核心同步派发的新事件回到本闭包），
+                // 直接跳过，避免二次借用 `handler` 触发 RefCell 恐慌导致整页卡死。
+                if reentrancy.replace(true) {
                     return;
                 }
+                if let Some(on_dom_event) = handler.borrow_mut().as_mut() {
+                    on_dom_event(keys, event);
+                }
+                reentrancy.set(false);
+                return;
             }
             // 未命中委托（点击 canvas 本身等），回退到坐标转发。
             // 找到应用 canvas；覆盖层文本必须与 canvas 同源定位。
@@ -320,7 +330,7 @@ impl WebDomBackend {
     /// 创建单个 DOM 元素并打上 `data-gpui-id`。
     fn create_dom_node(&self, node: &DomNode, key: &DomNodeKey) -> Element {
         match &node.kind {
-            DomNodeKind::Element { tag, attrs } => {
+            DomNodeKind::Element { tag, attrs, .. } => {
                 let element = self.document.create_element(tag).expect("创建元素节点失败");
                 for (name, value) in attrs {
                     let _ = element.set_attribute(name, value);

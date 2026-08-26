@@ -5,8 +5,9 @@ use std::{
     ops::Deref,
     panic::Location,
     rc::Rc,
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 use crate::{ActiveTheme, AxisExt};
 use crate::{

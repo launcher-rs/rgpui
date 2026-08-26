@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use crate::collections::{FxHashMap, FxHashSet};
 use crate::{
-    Bounds, CursorStyle, ElementId, FontStyle, FontWeight, GlobalElementId, Hsla, Pixels, Point,
-    SharedString, TextAlign, WhiteSpace,
+    BorderStyle, Bounds, CursorStyle, ElementId, FontStyle, FontWeight, GlobalElementId, Hsla,
+    Pixels, Point, SharedString, TextAlign, WhiteSpace,
 };
 
 /// DOM 显示类型（v1 仅区分显示/隐藏）。
@@ -108,6 +108,8 @@ pub struct DomStyle {
     pub border_color: Option<Hsla>,
     /// 边框宽度（统一四条边，v1 不支持逐边宽度）。
     pub border_width: Option<Pixels>,
+    /// 边框样式（solid/dashed，v1 仅映射这两种）。
+    pub border_style: Option<BorderStyle>,
     /// 盒阴影列表。
     pub box_shadows: Vec<DomBoxShadow>,
     /// 字体大小。
@@ -158,6 +160,11 @@ pub enum DomNodeKind {
         tag: &'static str,
         /// 额外属性（如 `src`、`role`、`aria-*`）。
         attrs: Vec<(String, String)>,
+        /// 内部子节点（如输入框的光标）。
+        ///
+        /// 由 [`DomTreeBuilder::register`] 取出并折叠进 `tree.children`，
+        /// 因此存储的节点里该字段恒为空，避免与元素树子节点重复表达。
+        children: Vec<DomNode>,
     },
     /// 文本节点，由浏览器负责选择/复制/IME/无障碍。
     Text {
@@ -346,6 +353,12 @@ impl DomTreeBuilder {
             y: node.style.top,
         };
         let mut node = node;
+        // 取出内部子节点（如输入框光标），避免占用 `tree.nodes` 存储；
+        // 稍后作为当前节点的直接子节点登记进 `tree.children`。
+        let internal_children = match &mut node.kind {
+            DomNodeKind::Element { children, .. } => std::mem::take(children),
+            _ => Vec::new(),
+        };
         node.style.left = window_origin.x - parent_origin.x;
         node.style.top = window_origin.y - parent_origin.y;
 
@@ -394,8 +407,14 @@ impl DomTreeBuilder {
         self.tree.z_orders.insert(key.clone(), self.order);
         self.order += 1;
 
+        // 把内部子节点登记为当前节点的直接子节点（与元素树子节点共用 `children` 容器）。
+        // 子节点以「匿名」方式登记（即使父节点带 id），保证 key 唯一且跨帧稳定。
         self.stack.push(key.clone());
         self.origins.push(window_origin);
+        for child in internal_children {
+            let _ = self.register(child, false, element_path);
+            self.exit();
+        }
         key
     }
 
@@ -515,6 +534,7 @@ mod tests {
             kind: DomNodeKind::Element {
                 tag: "div",
                 attrs: Vec::new(),
+                children: Vec::new(),
             },
             style: DomStyle::default(),
         }

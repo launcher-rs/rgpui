@@ -118,14 +118,27 @@ impl WgpuContext {
             display: None,
         });
 
-        let adapter = instance
+        let adapter = match instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
             })
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to request GPU adapter: {e}"))?;
+        {
+            Ok(adapter) => adapter,
+            Err(_) => {
+                log::warn!("未找到高性能 GPU 适配器，尝试使用回退适配器（软件渲染）");
+                instance
+                    .request_adapter(&wgpu::RequestAdapterOptions {
+                        power_preference: wgpu::PowerPreference::LowPower,
+                        compatible_surface: None,
+                        force_fallback_adapter: true,
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to request GPU adapter: {e}"))?
+            }
+        };
 
         log::info!(
             "Selected GPU adapter: {:?} ({:?})",

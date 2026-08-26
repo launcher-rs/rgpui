@@ -26,7 +26,7 @@ pub fn stories() -> Vec<StoryItem> {
         },
         StoryItem {
             title: "表单布局",
-            build: |_, cx| cx.new(|cx| FormStory::new(cx)).into(),
+            build: |window, cx| cx.new(|cx| FormStory::new(window, cx)).into(),
         },
     ]
 }
@@ -121,19 +121,26 @@ impl rgpui::Render for PasswordStory {
 }
 
 /// 表单布局示例视图。
-struct FormStory;
+struct FormStory {
+    name_input: Entity<InputState>,
+    email_input: Entity<InputState>,
+}
 
 impl FormStory {
-    fn new(_cx: &mut Context<Self>) -> Self {
-        Self
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let name_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("请输入姓名"));
+        let email_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("name@example.com"));
+        Self {
+            name_input,
+            email_input,
+        }
     }
 }
 
 impl rgpui::Render for FormStory {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let name_input = cx.new(|cx| InputState::new(_window, cx).placeholder("请输入姓名"));
-        let email_input = cx.new(|cx| InputState::new(_window, cx).placeholder("name@example.com"));
-
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .id("form-story")
             .gap(px(8.0))
@@ -141,15 +148,15 @@ impl rgpui::Render for FormStory {
             .child(section_title("垂直表单（v_form）"))
             .child(
                 v_form()
-                    .child(field().label("姓名").child(Input::new(&name_input)))
-                    .child(field().label("邮箱").child(Input::new(&email_input))),
+                    .child(field().label("姓名").child(Input::new(&self.name_input)))
+                    .child(field().label("邮箱").child(Input::new(&self.email_input))),
             )
             .child(div().h(px(16.0)))
             .child(section_title("水平表单（h_form）"))
             .child(
                 h_form()
-                    .child(field().label("姓名").child(Input::new(&name_input)))
-                    .child(field().label("邮箱").child(Input::new(&email_input))),
+                    .child(field().label("姓名").child(Input::new(&self.name_input)))
+                    .child(field().label("邮箱").child(Input::new(&self.email_input))),
             )
     }
 }

@@ -57,7 +57,7 @@ fn render_node(tree: &DomTree, key: &DomNodeKey, out: &mut String) {
         return;
     };
     match &node.kind {
-        DomNodeKind::Element { tag, attrs } => {
+        DomNodeKind::Element { tag, attrs, .. } => {
             out.push('<');
             out.push_str(tag);
             for (name, value) in attrs {
@@ -139,6 +139,7 @@ mod tests {
             kind: DomNodeKind::Element {
                 tag: "div",
                 attrs: Vec::new(),
+                children: Vec::new(),
             },
             style: DomStyle {
                 left: px(10.0),

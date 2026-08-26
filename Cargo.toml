@@ -110,7 +110,7 @@ bytes = "1.11.1"
 
 # ---- 时间日期 ----
 # 日期时间处理
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
 # Web 平台时间 API
 web-time = "1.1.0"
 

@@ -115,6 +115,7 @@ mod tests {
             kind: DomNodeKind::Element {
                 tag,
                 attrs: Vec::new(),
+                children: Vec::new(),
             },
             style: DomStyle::default(),
         }

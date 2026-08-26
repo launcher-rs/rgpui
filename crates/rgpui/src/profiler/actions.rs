@@ -1,8 +1,10 @@
 use std::{
     cell::RefCell,
     hint::cold_path,
-    time::{Duration, Instant},
+    time::Duration,
 };
+
+use crate::scheduler::Instant;
 
 use itertools::Itertools;
 

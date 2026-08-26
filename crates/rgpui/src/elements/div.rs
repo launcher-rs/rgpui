@@ -2002,6 +2002,7 @@ impl Element for Div {
             if max_width > Pixels::ZERO && !color.is_transparent() {
                 dom_style.border_color = Some(color);
                 dom_style.border_width = Some(max_width);
+                dom_style.border_style = Some(style.border_style);
             }
         }
 
@@ -2033,6 +2034,7 @@ impl Element for Div {
             kind: DomNodeKind::Element {
                 tag: "div",
                 attrs: Vec::new(),
+                children: Vec::new(),
             },
             style: dom_style,
         })

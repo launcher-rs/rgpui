@@ -6242,6 +6242,7 @@ dependencies = [
  "anyhow",
  "rgpui",
  "rgpui-platform",
+ "web-sys",
 ]
 
 [[package]]

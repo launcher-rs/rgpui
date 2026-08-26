@@ -2114,7 +2114,7 @@ where
                 .into_any_element();
         }
 
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
         let el = self.delegate.render_td(row_ix, col_ix, window, cx);
         self._measure.push(start.elapsed());
         el.into_any_element()

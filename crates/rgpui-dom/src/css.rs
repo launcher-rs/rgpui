@@ -4,8 +4,8 @@
 //! 不依赖浏览器重排；视觉字段按 [`rgpui::DomStyle`] 字段逐一映射。
 
 use rgpui::{
-    CursorStyle, DomDisplay, DomGradientKind, DomOverflow, DomStyle, FontStyle, FontWeight, Hsla,
-    TextAlign, WhiteSpace,
+    BorderStyle, CursorStyle, DomDisplay, DomGradientKind, DomOverflow, DomStyle, FontStyle,
+    FontWeight, Hsla, TextAlign, WhiteSpace,
 };
 use std::fmt::Write;
 
@@ -44,7 +44,12 @@ pub fn dom_style_to_css(style: &DomStyle) -> String {
     }
     if let Some(width) = style.border_width {
         push_px(&mut out, "border-width", width);
-        out.push_str("border-style:solid;");
+        // 边框样式默认实线；虚线映射为 CSS dashed（DOM 模式下虚线分隔线依赖此映射）。
+        let border_style = match style.border_style {
+            Some(BorderStyle::Dashed) => "dashed",
+            _ => "solid",
+        };
+        let _ = write!(out, "border-style:{};", border_style);
     }
     if !style.box_shadows.is_empty() {
         let _ = write!(

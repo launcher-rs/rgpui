@@ -1,7 +1,7 @@
 use crate::prelude::FluentBuilder as _;
 use crate::{
-    ActiveTheme, App, Axis, Div, Hsla, IntoElement, ParentElement, PathBuilder, RenderOnce,
-    SharedString, StyleRefinement, Styled, StyledExt as _, Window, canvas, div, point, px,
+    ActiveTheme, App, Axis, Div, Hsla, IntoElement, ParentElement, RenderOnce, SharedString,
+    StyleRefinement, Styled, StyledExt as _, Window, div, px,
 };
 
 /// 分隔线的样式。
@@ -96,32 +96,16 @@ impl Separator {
     }
 
     fn render_dashed(axis: Axis, color: Hsla) -> impl IntoElement {
-        Self::render_base(axis).child(
-            canvas(
-                move |_, _, _| {},
-                move |bounds, _, window, _| {
-                    let mut builder = PathBuilder::stroke(px(1.)).dash_array(&[px(4.), px(2.)]);
-                    let (start, end) = match axis {
-                        Axis::Horizontal => {
-                            let x = bounds.origin.x;
-                            let y = bounds.origin.y + px(0.5);
-                            (point(x, y), point(x + bounds.size.width, y))
-                        }
-                        Axis::Vertical => {
-                            let x = bounds.origin.x + px(0.5);
-                            let y = bounds.origin.y;
-                            (point(x, y), point(x, y + bounds.size.height))
-                        }
-                    };
-                    builder.move_to(start);
-                    builder.line_to(end);
-                    if let Ok(line) = builder.build() {
-                        window.paint_path(line, color);
-                    }
-                },
-            )
-            .size_full(),
-        )
+        // DOM 模式下 canvas 被隐藏（opacity:0），故虚线分隔线改用 DOM 边框渲染，
+        // 由 dom.rs 将 border_style=dashed 映射为 CSS `border-style:dashed`。
+        div()
+            .absolute()
+            .map(|this| match axis {
+                Axis::Horizontal => this.w_full().h(px(1.)).border_t_1(),
+                Axis::Vertical => this.h_full().w(px(1.)).border_l_1(),
+            })
+            .border_dashed()
+            .border_color(color)
     }
 }
 

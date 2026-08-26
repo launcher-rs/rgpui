@@ -63,6 +63,7 @@ pub(crate) fn svg_img_node(bounds: Bounds<Pixels>, svg: String) -> Option<DomNod
                 ("src".into(), svg_data_uri(&svg)),
                 ("draggable".into(), "false".into()),
             ],
+            children: Vec::new(),
         },
         style: DomStyle::from_bounds(bounds),
     })

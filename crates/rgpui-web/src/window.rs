@@ -283,9 +283,11 @@ impl WebWindow {
                 s.scale_factor = dpr_f32;
                 // 仍然触发回调，以便 GPUI 知道窗口已消失。
                 drop(s);
-                let mut cbs = inner.callbacks.borrow_mut();
-                if let Some(ref mut callback) = cbs.resize {
+                // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 this.callbacks 时重借。
+                let callback = inner.callbacks.borrow_mut().resize.take();
+                if let Some(mut callback) = callback {
                     callback(Size::default(), dpr_f32);
+                    inner.callbacks.borrow_mut().resize = Some(callback);
                 }
                 return;
             }
@@ -312,12 +314,22 @@ impl WebWindow {
                 height: px(logical_height),
             };
 
-            let mut cbs = inner.callbacks.borrow_mut();
-            if let Some(ref mut callback) = cbs.resize {
+            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 this.callbacks 时重借。
+            let callback = inner.callbacks.borrow_mut().resize.take();
+            if let Some(mut callback) = callback {
                 callback(new_size, dpr_f32);
+                inner.callbacks.borrow_mut().resize = Some(callback);
             }
         })
     }
+}
+
+// wasm 上 request_animation_frame 在某些情况下会同步重入调用本闭包，导致 App 已被借出
+// 时再次进入帧回调并重借 panic。用线程局部标记检测重入并直接跳过本次帧（与 gpui 的
+// draw_in_progress 守卫语义一致：跳过重入帧，由下一次正常帧补绘）。
+#[cfg(target_family = "wasm")]
+thread_local! {
+    static RAF_IN_PROGRESS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 impl WebWindowInner {
@@ -327,19 +339,38 @@ impl WebWindowInner {
 
         let this = Rc::clone(self);
         let closure = Closure::new(move || {
+            #[cfg(target_family = "wasm")]
             {
-                let mut callbacks = this.callbacks.borrow_mut();
-                if let Some(ref mut callback) = callbacks.request_frame {
-                    callback(RequestFrameOptions {
-                        require_presentation: true,
-                        force_render: false,
-                    });
+                if RAF_IN_PROGRESS.with(|f| f.replace(true)) {
+                    // 重入的帧回调，跳过以避免重借 App。
+                    return;
                 }
+            }
+            // 从 RefCell 中取出回调并立即释放借用，再调用 gpui 的 request_frame 回调。
+            // 否则 gpui 回调内部（例如再次请求绘制时调用 on_request_frame）会再次
+            // 借用 this.callbacks，导致 RefCell 重借 panic。
+            let callback = match this.callbacks.try_borrow_mut() {
+                Ok(mut c) => c.request_frame.take(),
+                // 极少数情况下 callbacks 仍被外层持有（如 gpui 在回调中同步重入），
+                // 跳过本次帧，交由后续正常帧补绘，避免重借 panic。
+                Err(_) => None,
+            };
+            if let Some(mut callback) = callback {
+                callback(RequestFrameOptions {
+                    require_presentation: true,
+                    force_render: false,
+                });
+                this.callbacks.borrow_mut().request_frame = Some(callback);
             }
 
             // 重新调度下一帧
             if let Some(ref func) = *raf_handle_inner.borrow() {
                 this.browser_window.request_animation_frame(func).ok();
+            }
+
+            #[cfg(target_family = "wasm")]
+            {
+                RAF_IN_PROGRESS.with(|f| f.set(false));
             }
         });
 
@@ -416,9 +447,11 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_active = is_visible;
             }
-            let mut callbacks = this.callbacks.borrow_mut();
-            if let Some(ref mut callback) = callbacks.active_status_change {
+            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 this.callbacks 时重借。
+            let callback = this.callbacks.borrow_mut().active_status_change.take();
+            if let Some(mut callback) = callback {
                 callback(is_visible);
+                this.callbacks.borrow_mut().active_status_change = Some(callback);
             }
         });
 
@@ -449,9 +482,11 @@ impl WebWindowInner {
 
         let this = Rc::clone(self);
         let closure = Closure::<dyn FnMut(JsValue)>::new(move |_event: JsValue| {
-            let mut callbacks = this.callbacks.borrow_mut();
-            if let Some(ref mut callback) = callbacks.appearance_changed {
+            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 this.callbacks 时重借。
+            let callback = this.callbacks.borrow_mut().appearance_changed.take();
+            if let Some(mut callback) = callback {
                 callback();
+                this.callbacks.borrow_mut().appearance_changed = Some(callback);
             }
         });
 

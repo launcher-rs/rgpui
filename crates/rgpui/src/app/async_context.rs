@@ -32,6 +32,40 @@ impl AsyncApp {
             .upgrade()
             .expect("app was released before async operation completed")
     }
+
+    /// wasm 上重借安全的实体更新。
+    ///
+    /// 异步任务（例如 `BlinkCursor` 的定时闪烁）可能在 `App` 已被借出的时刻被泵送执行。
+    /// 此时若直接 `borrow_mut` 会触发 `RefCell` 重借 panic。这里在重借时把更新延后到
+    /// `App` 释放后的下一个空闲时机（通过 `spawn`）执行，对闪烁这类场景延后一个 tick 无可见影响。
+    #[cfg(target_family = "wasm")]
+    pub fn update_entity_reentrant<T: 'static, R: Default>(
+        &mut self,
+        handle: &Entity<T>,
+        update: impl FnOnce(&mut T, &mut Context<T>) -> R + 'static,
+    ) -> R {
+        let app = self.app();
+        match app.try_borrow_mut() {
+            Ok(mut app) => app.update_entity(handle, update),
+            Err(_) => {
+                let handle = handle.clone();
+                let _task = self.spawn(async move |cx: &mut AsyncApp| {
+                    handle.update(cx, update);
+                });
+                R::default()
+            }
+        }
+    }
+
+    /// 非 wasm 平台直接更新实体。
+    #[cfg(not(target_family = "wasm"))]
+    pub fn update_entity_reentrant<T: 'static, R: Default>(
+        &mut self,
+        handle: &Entity<T>,
+        update: impl FnOnce(&mut T, &mut Context<T>) -> R + 'static,
+    ) -> R {
+        self.update_entity(handle, update)
+    }
 }
 
 impl AppContext for AsyncApp {

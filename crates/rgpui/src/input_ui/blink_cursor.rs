@@ -63,7 +63,7 @@ impl BlinkCursor {
         self._task = cx.spawn(async move |this, cx| {
             cx.background_executor().timer(INTERVAL).await;
             if let Some(this) = this.upgrade() {
-                this.update(cx, |this, cx| this.blink(epoch, cx));
+                cx.update_entity_reentrant(&this, move |this, cx| this.blink(epoch, cx));
             }
         });
     }
@@ -83,9 +83,8 @@ impl BlinkCursor {
         let epoch = self.next_epoch();
         self._task = cx.spawn(async move |this, cx| {
             cx.background_executor().timer(PAUSE_DELAY).await;
-
             if let Some(this) = this.upgrade() {
-                this.update(cx, |this, cx| {
+                cx.update_entity_reentrant(&this, move |this, cx| {
                     this.paused = false;
                     this.blink(epoch, cx);
                 });

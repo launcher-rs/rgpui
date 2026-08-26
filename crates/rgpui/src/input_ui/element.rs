@@ -1259,45 +1259,120 @@ impl Element for TextElement {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<DomNode> {
+        let text_style = window.text_style();
+        let rem_size = window.rem_size();
+        let fg = text_style.color;
+
         // DOM 模式下输入框文本需进入 DOM 树（canvas 不可见），否则输入内容无法显示。
         // 复用与 canvas 绘制一致的 display_text 计算（占位符 / 掩码 / 原文）。
-        let state = self.state.read(cx);
-        let fg = window.text_style().color;
-        let (display, color) = if state.text.len() == 0 {
-            (
-                if self.placeholder.is_empty() {
-                    SharedString::default()
-                } else {
-                    self.placeholder.clone()
-                },
-                cx.theme().muted_foreground,
-            )
-        } else if state.masked {
-            (
-                SharedString::from(MASK_CHAR.to_string().repeat(state.text.chars().count())),
-                fg,
-            )
-        } else {
-            (state.text.to_string().into(), fg)
+        let (display, color) = {
+            let state = self.state.read(cx);
+            if state.text.len() == 0 {
+                (
+                    if self.placeholder.is_empty() {
+                        SharedString::default()
+                    } else {
+                        self.placeholder.clone()
+                    },
+                    cx.theme().muted_foreground,
+                )
+            } else if state.masked {
+                (
+                    SharedString::from(MASK_CHAR.to_string().repeat(state.text.chars().count())),
+                    fg,
+                )
+            } else {
+                (state.text.to_string().into(), fg)
+            }
         };
 
         if display.is_empty() {
             return None;
         }
 
-        let text_style = window.text_style();
-        let rem_size = window.rem_size();
-        let mut dom_style = DomStyle::from_bounds(bounds);
-        dom_style.color = Some(color);
-        dom_style.font_size = Some(text_style.font_size.to_pixels(rem_size));
-        dom_style.font_family = Some(text_style.font_family.clone());
-        dom_style.font_weight = Some(text_style.font_weight);
-        dom_style.font_style = Some(text_style.font_style);
-        dom_style.line_height = Some(text_style.line_height.to_pixels(text_style.font_size, rem_size));
-        dom_style.white_space = Some(text_style.white_space);
-        Some(DomNode {
+        // 光标可见性：聚焦且闪烁光标当前可见（暂停时恒为可见）、未禁用，
+        // 且上一帧已产出文本布局（首帧无布局时退化为不显示光标）。
+        let caret_bounds = {
+            // 先把需要的状态取出（释放对 cx 的不可变借用），再调用会可变借用 cx 的
+            // `layout_cursor`，避免借用冲突。
+            let (focused, blink_visible, disabled, last_layout, scroll_size) = {
+                let state = self.state.read(cx);
+                (
+                    state.focus_handle.is_focused(window),
+                    state.blink_cursor.read(cx).visible(),
+                    state.disabled,
+                    state.last_layout.clone(),
+                    state.scroll_size,
+                )
+            };
+            if focused && blink_visible && !disabled {
+                if let Some(last_layout) = last_layout {
+                    let mut cbounds = bounds;
+                    let (cb, _, _) = self.layout_cursor(
+                        &last_layout,
+                        &mut cbounds,
+                        scroll_size,
+                        window,
+                        cx,
+                    );
+                    cb
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        // 容器：输入框本身。文本与光标作为其内部子节点。
+        let mut container_style = DomStyle::from_bounds(bounds);
+        container_style.color = Some(color);
+        container_style.font_size = Some(text_style.font_size.to_pixels(rem_size));
+        container_style.font_family = Some(text_style.font_family.clone());
+        container_style.font_weight = Some(text_style.font_weight);
+        container_style.font_style = Some(text_style.font_style);
+        container_style.line_height =
+            Some(text_style.line_height.to_pixels(text_style.font_size, rem_size));
+        container_style.white_space = Some(text_style.white_space);
+
+        // 文本子节点（沿用 from_bounds 绝对定位，作为容器首个子节点）。
+        let mut text_style2 = DomStyle::from_bounds(bounds);
+        text_style2.color = Some(color);
+        text_style2.font_size = Some(text_style.font_size.to_pixels(rem_size));
+        text_style2.font_family = Some(text_style.font_family.clone());
+        text_style2.font_weight = Some(text_style.font_weight);
+        text_style2.font_style = Some(text_style.font_style);
+        text_style2.line_height =
+            Some(text_style.line_height.to_pixels(text_style.font_size, rem_size));
+        text_style2.white_space = Some(text_style.white_space);
+
+        let mut children = vec![DomNode {
             kind: DomNodeKind::Text { text: display },
-            style: dom_style,
+            style: text_style2,
+        }];
+
+        // 可见光标：纯 DOM 模式下 canvas 不可见，用一个绝对定位的细 div 模拟，
+        // 位置由 canvas 同款的 `layout_cursor` 计算（沿用上一帧文本布局）。
+        if let Some(cb) = caret_bounds {
+            let mut caret_style = DomStyle::from_bounds(cb);
+            caret_style.background_color = Some(cx.theme().caret);
+            children.push(DomNode {
+                kind: DomNodeKind::Element {
+                    tag: "div",
+                    attrs: Vec::new(),
+                    children: Vec::new(),
+                },
+                style: caret_style,
+            });
+        }
+
+        Some(DomNode {
+            kind: DomNodeKind::Element {
+                tag: "div",
+                attrs: Vec::new(),
+                children,
+            },
+            style: container_style,
         })
     }
 
