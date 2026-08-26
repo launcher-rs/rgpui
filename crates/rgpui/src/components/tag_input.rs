@@ -298,7 +298,7 @@ impl RenderOnce for TagInput {
                 }))
                 .when(!disabled, {
                     let state_for_input = state;
-                    let input_state = input_state.clone();
+                    let input_state = input_state;
                     let on_change = self.on_change.clone();
 
                     move |container| {
