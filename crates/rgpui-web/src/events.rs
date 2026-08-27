@@ -73,6 +73,7 @@ impl WebWindowInner {
             self.register_composition_start(),
             self.register_composition_update(),
             self.register_composition_end(),
+            self.register_paste(),
             self.register_focus(),
             self.register_blur(),
             self.register_pointer_enter(),
@@ -174,6 +175,10 @@ impl WebWindowInner {
             "pointerdown" => {
                 let event: &web_sys::PointerEvent = event.unchecked_ref();
                 self.input_element.focus().ok();
+                // 阻止默认行为，避免浏览器把焦点移到被点击的 DOM 元素 / body，
+                // 否则隐藏的 IME 输入框（input_element）失去焦点，中文输入法的
+                // composition 事件收不到，导致无法输入中文。canvas 指针路径已同样处理。
+                event.prevent_default();
                 let button = dom_mouse_button_to_gpui(event.button());
                 let position = mouse_position_from_event(event.as_ref(), &self.canvas);
                 let modifiers = modifiers_from_mouse_event(event, self.is_mac);
@@ -651,6 +656,28 @@ impl WebWindowInner {
                 handler.unmark_text();
             });
             this.input_element.set_value("");
+        })
+    }
+
+    /// 处理粘贴：浏览器会把 `paste` 事件派发到当前聚焦的元素（即隐藏的 IME 输入框）。
+    ///
+    /// Web 平台的 `cx.read_from_clipboard` 尚未实现（恒返回 `None`），原生的 cmd/ctrl-v
+    /// 走 `Paste` 动作读取剪贴板会落空，因此这里直接从 `ClipboardEvent` 取出文本并
+    /// 写入当前聚焦的编辑器，使纯 DOM 模式也能粘贴。
+    fn register_paste(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
+        let this = Rc::clone(self);
+        self.listen_input("paste", move |event: JsValue| {
+            let event: web_sys::ClipboardEvent = event.unchecked_into();
+            event.prevent_default();
+            let text = event
+                .clipboard_data()
+                .and_then(|data| data.get_data("text/plain").ok())
+                .unwrap_or_default();
+            if !text.is_empty() {
+                this.with_input_handler(|handler| {
+                    handler.replace_text_in_range(None, &text);
+                });
+            }
         })
     }
 
