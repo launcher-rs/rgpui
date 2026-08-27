@@ -696,6 +696,105 @@ impl Element for InlineEditTextElement {
             state.last_bounds = Some(bounds);
         });
     }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) -> Option<DomNode> {
+        // 纯 DOM 模式下 canvas 不可见，行内编辑的可编辑文本必须进入 DOM 树，
+        // 否则编辑态下文本不可见、且看起来「无法编辑」。复用与 canvas 一致的 display 计算。
+        let state = self.state.read(cx);
+        let text_style = window.text_style();
+        let rem_size = window.rem_size();
+        let theme = cx.theme();
+        let focused = state.focus_handle.is_focused(window);
+
+        let (display, color) = if state.edit_value.is_empty() {
+            (
+                self.placeholder.clone(),
+                theme.tokens.muted_foreground.color,
+            )
+        } else {
+            (
+                SharedString::from(state.edit_value.clone()),
+                text_style.color,
+            )
+        };
+
+        if display.is_empty() {
+            return None;
+        }
+
+        let font_size = text_style.font_size.to_pixels(rem_size);
+        let line_height = text_style
+            .line_height
+            .to_pixels(text_style.font_size, rem_size);
+        let run = TextRun {
+            len: display.len(),
+            font: text_style.font(),
+            color,
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let line = window
+            .text_system()
+            .shape_line(display.clone(), font_size, &[run], None);
+        let cursor = state.cursor_offset();
+
+        // 容器：可编辑文本本身（绝对定位，复用 bounds）。
+        let mut container_style = DomStyle::from_bounds(bounds);
+        container_style.color = Some(color);
+        container_style.font_size = Some(font_size);
+        container_style.font_family = Some(text_style.font_family.clone());
+        container_style.font_weight = Some(text_style.font_weight);
+        container_style.font_style = Some(text_style.font_style);
+        container_style.line_height = Some(line_height);
+        container_style.white_space = Some(text_style.white_space);
+
+        // 文本子节点（沿用 from_bounds 绝对定位，作为容器首个子节点）。
+        let mut text_style_dom = DomStyle::from_bounds(bounds);
+        text_style_dom.color = Some(color);
+        text_style_dom.font_size = Some(font_size);
+        text_style_dom.font_family = Some(text_style.font_family.clone());
+        text_style_dom.font_weight = Some(text_style.font_weight);
+        text_style_dom.font_style = Some(text_style.font_style);
+        text_style_dom.line_height = Some(line_height);
+        text_style_dom.white_space = Some(text_style.white_space);
+
+        let mut children = vec![DomNode {
+            kind: DomNodeKind::Text { text: display },
+            style: text_style_dom,
+            scroll_handle: None,
+        }];
+
+        // 可见光标：聚焦时用一个绝对定位的细 div 模拟。
+        if focused {
+            let caret_x = line.x_for_index(cursor);
+            let mut caret_style = DomStyle::from_bounds(Bounds {
+                origin: point(bounds.origin.x + caret_x, bounds.origin.y),
+                size: size(px(2.0), line_height),
+            });
+            caret_style.background_color = Some(theme.caret);
+            children.push(DomNode {
+                kind: DomNodeKind::Element {
+                    tag: "div",
+                    attrs: Vec::new(),
+                    children: Vec::new(),
+                },
+                style: caret_style,
+                scroll_handle: None,
+            });
+        }
+
+        Some(DomNode {
+            kind: DomNodeKind::Element {
+                tag: "div",
+                attrs: Vec::new(),
+                children,
+            },
+            style: container_style,
+            scroll_handle: None,
+        })
+    }
 }
 
 /// 行内编辑组件。
