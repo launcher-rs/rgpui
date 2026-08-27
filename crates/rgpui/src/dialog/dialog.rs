@@ -624,7 +624,7 @@ impl RenderOnce for Dialog {
                                             on_close(&ClickEvent::default(), window, cx);
                                         }
                                     })
-                            }))
+                            })),
                     )
                     .with_animation("fade-in", animation, move |this, delta| this.opacity(delta)),
             )

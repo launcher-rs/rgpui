@@ -12,6 +12,7 @@
 
 use std::sync::Arc;
 
+use crate::ScrollHandle;
 use crate::collections::{FxHashMap, FxHashSet};
 use crate::{
     BorderStyle, Bounds, CursorStyle, ElementId, FontStyle, FontWeight, GlobalElementId, Hsla,
@@ -173,15 +174,40 @@ pub enum DomNodeKind {
     },
 }
 
+impl DomNodeKind {
+    /// 返回该节点在 DOM 中对应的标签名（文本节点为 `span`）。
+    ///
+    /// 对账时用它判断同 key 节点能否原地更新：DOM 元素一旦创建便无法更改
+    /// 标签，若新旧标签不同必须整棵移除重建，否则会留下错误标签的元素。
+    pub fn dom_tag(&self) -> &'static str {
+        match self {
+            DomNodeKind::Element { tag, .. } => tag,
+            DomNodeKind::Text { .. } => "span",
+        }
+    }
+}
+
 /// 一个已登记的 DOM 节点。
 ///
 /// `key`（跨帧稳定标识）由 [`DomTreeBuilder`] 填充，元素侧只需提供 `kind` 与 `style`。
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct DomNode {
     /// 节点类型（元素/文本）。
     pub kind: DomNodeKind,
     /// 节点样式（含绝对定位与视觉样式）。
     pub style: DomStyle,
+    /// 可滚动容器在 DOM 模式下携带其 [`ScrollHandle`]，用于把浏览器原生滚动位置
+    /// 同步回 Rust（`scroll_offset`），以及把 Rust 程序化滚动（`scroll_to`）推回 DOM。
+    /// 非滚动元素为 `None`。该字段为后端元数据，不参与节点相等性比较。
+    pub scroll_handle: Option<ScrollHandle>,
+}
+
+impl PartialEq for DomNode {
+    fn eq(&self, other: &Self) -> bool {
+        // `scroll_handle` 是后端运行期元数据，不影响视觉呈现，故相等性比较忽略它，
+        // 避免 `ScrollHandle`（含 Rc）不可比较导致 DOM 增量对账失效。
+        self.kind == other.kind && self.style == other.style
+    }
 }
 
 /// DOM 节点的跨帧稳定 key。
@@ -537,6 +563,7 @@ mod tests {
                 children: Vec::new(),
             },
             style: DomStyle::default(),
+            scroll_handle: None,
         }
     }
 
@@ -546,6 +573,7 @@ mod tests {
                 text: SharedString::from(text),
             },
             style: DomStyle::default(),
+            scroll_handle: None,
         }
     }
 

@@ -925,6 +925,10 @@ pub(crate) struct Frame {
     pub(crate) inspector_hitboxes: FxHashMap<HitboxId, crate::InspectorElementId>,
     #[cfg(feature = "dom-backend")]
     pub(crate) dom_key_hitboxes: FxHashMap<crate::DomNodeKey, Vec<HitboxId>>,
+    /// DOM 模式下可滚动容器（`overflow: scroll` 的 div）的 key → `ScrollHandle` 映射。
+    /// 浏览器原生滚动时由 `dispatch_dom_scroll` 按 key 反查并更新 `ScrollHandle` 的偏移。
+    #[cfg(feature = "dom-backend")]
+    pub(crate) dom_scroll_handles: FxHashMap<crate::DomNodeKey, crate::ScrollHandle>,
     pub(crate) tab_stops: TabStopMap,
 }
 
@@ -976,6 +980,8 @@ impl Frame {
             inspector_hitboxes: FxHashMap::default(),
             #[cfg(feature = "dom-backend")]
             dom_key_hitboxes: FxHashMap::default(),
+            #[cfg(feature = "dom-backend")]
+            dom_scroll_handles: FxHashMap::default(),
             tab_stops: TabStopMap::default(),
         }
     }
@@ -1009,6 +1015,7 @@ impl Frame {
         #[cfg(feature = "dom-backend")]
         {
             self.dom_key_hitboxes.clear();
+            self.dom_scroll_handles.clear();
         }
     }
 
@@ -1774,6 +1781,17 @@ impl Window {
                     .unwrap_or(DispatchEventResult::default())
             })
         });
+        #[cfg(feature = "dom-backend")]
+        platform_window.on_dom_scroll({
+            let mut cx = cx.to_async();
+            Box::new(move |keys, left, top| {
+                let _ = handle
+                    .update(&mut cx, |_, window, _cx| {
+                        window.dispatch_dom_scroll(keys, left, top);
+                    })
+                    .log_err();
+            })
+        });
         platform_window.on_hit_test_window_control({
             let mut cx = cx.to_async();
             Box::new(move || {
@@ -2042,6 +2060,32 @@ impl Window {
     }
 
     /// Mark the window as dirty, scheduling it to be redrawn on the next frame.
+    /// 由 DOM 后端在浏览器原生滚动（可滚动容器的 `scroll` 事件）后回调：
+    /// 根据事件链反查到对应的可滚动容器，把浏览器滚动位置同步回其 [`ScrollHandle`]。
+    ///
+    /// `left`/`top` 为浏览器滚动视口的 `scrollLeft`/`scrollTop`（向下/向右为正），
+    /// 与 Rust 的滚动偏移（向下/向右为负）符号相反，这里取反后写入。
+    #[cfg(feature = "dom-backend")]
+    pub(crate) fn dispatch_dom_scroll(
+        &mut self,
+        keys: Vec<crate::DomNodeKey>,
+        left: f64,
+        top: f64,
+    ) {
+        let handle = keys
+            .iter()
+            .rev()
+            .find_map(|k| self.rendered_frame.dom_scroll_handles.get(k).cloned());
+        let Some(handle) = handle else { return };
+        let new_offset = Point::new(px(-left as f32), px(-top as f32));
+        // 仅在滚动位置真正变化时刷新，避免原生滚动回写引发的重绘循环。
+        if handle.offset() != new_offset {
+            handle.set_offset(new_offset);
+            self.refresh();
+        }
+    }
+
+    /// 标记窗口需要重绘（立即调度下一帧），用于滚动/输入等交互后刷新视图。
     pub fn refresh(&mut self) {
         if self.invalidator.not_drawing() {
             self.refreshing = true;
@@ -3135,6 +3179,11 @@ impl Window {
         // DOM 后端：结束本帧的 DOM 树收集，并把新鲜树交付给平台窗口。
         #[cfg(feature = "dom-backend")]
         if let Some(builder) = &mut self.dom_builder {
+            static DOM_FRAME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let f = DOM_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if f % 20 == 0 {
+                log::info!("DOM_FRAME {}", f);
+            }
             let tree = builder.finish();
             self.platform_window.dom_tree_update(&tree);
         }
@@ -3189,7 +3238,19 @@ impl Window {
         let builder = self.dom_builder.as_mut()?;
         let node = node?;
         let path = &*self.element_id_stack;
-        Some(builder.register(node, is_keyed, path))
+        // 在 `register` 消费 `node` 之前取出可滚动容器的 `ScrollHandle`（若有）。
+        #[cfg(feature = "dom-backend")]
+        let scroll_handle = node.scroll_handle.clone();
+        let key = builder.register(node, is_keyed, path);
+        // DOM 模式：把可滚动容器的 `ScrollHandle` 登记进反查表，供浏览器原生滚动时
+        // 由 `dispatch_dom_scroll` 反查并更新滚动偏移。
+        #[cfg(feature = "dom-backend")]
+        if let Some(handle) = scroll_handle {
+            self.next_frame
+                .dom_scroll_handles
+                .insert(key.clone(), handle);
+        }
+        Some(key)
     }
 
     /// 结束当前元素的 DOM 栈帧（与 [`Self::dom_element`] 配对）。

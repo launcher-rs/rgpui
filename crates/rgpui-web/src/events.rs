@@ -264,6 +264,18 @@ impl WebWindowInner {
         }
     }
 
+    /// 由 DOM 后端在可滚动容器发生原生滚动后回调：把 (key 链, scrollLeft, scrollTop)
+    /// 交给核心，反查 `ScrollHandle` 并同步滚动偏移。
+    #[cfg(feature = "dom-backend")]
+    pub(crate) fn dispatch_dom_scroll(&self, keys: Vec<rgpui::DomNodeKey>, left: f64, top: f64) {
+        // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+        let callback = self.callbacks.borrow_mut().dom_scroll.take();
+        if let Some(mut callback) = callback {
+            callback(keys, left, top);
+            self.callbacks.borrow_mut().dom_scroll = Some(callback);
+        }
+    }
+
     fn register_pointer_down(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
         let this = Rc::clone(self);
         self.listen("pointerdown", move |event: JsValue| {

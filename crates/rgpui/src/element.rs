@@ -387,6 +387,9 @@ impl<E: Element> Drawable<E> {
                 // `insert_hitbox` 能把 hitbox 关联到当前元素的 DOM key（事件委托用）。
                 #[cfg(feature = "dom-backend")]
                 let dom_key = if window.dom_builder_active() {
+                    // DOM 后端中，可滚动容器的内容偏移由浏览器通过 `scrollTop` 原生承载，
+                    // 子元素应按「未滚动」的绝对坐标定位（与画布的 `with_element_offset`
+                    // 单层偏移不同，这里若再加 `element_offset` 会让滚动内容被双重偏移）。
                     let dom_node = self.element.dom(bounds, window, cx);
                     window.dom_element(dom_node, global_id.is_some())
                 } else {

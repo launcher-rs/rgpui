@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    hint::cold_path,
-    time::Duration,
-};
+use std::{cell::RefCell, hint::cold_path, time::Duration};
 
 use crate::scheduler::Instant;
 

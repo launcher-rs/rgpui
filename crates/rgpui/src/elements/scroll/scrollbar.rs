@@ -1,12 +1,6 @@
 //! 滚动条 - 支持悬停、拖动与自动淡出的滚动条元素。
 
-use std::{
-    cell::Cell,
-    ops::Deref,
-    panic::Location,
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::Cell, ops::Deref, panic::Location, rc::Rc, time::Duration};
 use web_time::Instant;
 
 use crate::{ActiveTheme, AxisExt};

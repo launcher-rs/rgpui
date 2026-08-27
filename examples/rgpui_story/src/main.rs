@@ -86,6 +86,8 @@ impl Render for StoryApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // 内容区：渲染当前激活的故事视图。
         let content = self.active_view();
+        // 复制当前激活索引（Copy），供下方闭包内构造唯一 id 使用，避免借用 self。
+        let active = self.active;
         // 对话框层：由用户视图手动挂载（Root 自身不挂载），否则对话框无法显示。
         let dialog_layer = rgpui::Root::render_dialog_layer(window, cx);
 
@@ -122,7 +124,14 @@ impl Render for StoryApp {
                             .h_full()
                             .min_w_0()
                             .overflow_y_scroll()
-                            .when_some(content, |d, view| d.child(view)),
+                            .when_some(content, |d, view| {
+                                // 给当前激活的故事视图包一层「按分类+条目」唯一且跨帧稳定的 id，
+                                // 使其 DOM 节点的 key 与其他视图区分。否则不同视图的根元素会作为
+                                // story-content 下的匿名子节点共享同一 key，切换组件时互相碰撞、
+                                // 样式错乱（ViewElement 是透传包裹，本身不产生 DOM 节点）。
+                                let (gix, six) = active;
+                                d.child(div().id(format!("story-view-{gix}-{six}")).child(view))
+                            }),
                     ),
             )
             // 对话框层必须作为最后一个子元素挂载，否则会绘制在侧边栏/内容之下，

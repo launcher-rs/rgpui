@@ -1172,6 +1172,12 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     ) {
     }
 
+    /// 由 DOM 后端在可滚动容器发生浏览器原生滚动（`scroll` 事件）后回调，
+    /// 参数为事件链与滚动视口的 `scrollLeft`/`scrollTop`（向下/向右为正）。
+    /// 默认空实现：仅 Web DOM 后端使用。
+    #[cfg(feature = "dom-backend")]
+    fn on_dom_scroll(&self, _callback: Box<dyn FnMut(Vec<crate::DomNodeKey>, f64, f64)>) {}
+
     // macOS specific methods
     fn get_title(&self) -> String {
         String::new()

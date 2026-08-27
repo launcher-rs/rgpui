@@ -171,12 +171,7 @@ impl<E: InteractiveElement + ParentElement + Styled + Element + 'static> Element
     }
 
     #[cfg(feature = "dom-backend")]
-    fn dom(
-        &self,
-        bounds: Bounds<Pixels>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Option<DomNode> {
+    fn dom(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) -> Option<DomNode> {
         self.base.dom(bounds, window, cx)
     }
 

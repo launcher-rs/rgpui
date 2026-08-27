@@ -87,8 +87,14 @@ pub struct WebDomBackend {
     ///
     /// 由平台（`rgpui-web`）在创建后端后通过 [`Self::set_dom_event_handler`] 注入。
     handler: Rc<RefCell<Option<Box<dyn FnMut(Vec<DomNodeKey>, Event)>>>>,
+    /// 原生滚动同步回调（可滚动容器 `scroll` 事件后回传 key 链与 scrollLeft/Top）。
+    ///
+    /// 由平台（`rgpui-web`）在创建后端后通过 [`Self::set_dom_scroll_handler`] 注入。
+    scroll_handler: Rc<RefCell<Option<Box<dyn FnMut(Vec<DomNodeKey>, f64, f64)>>>>,
     /// 事件转发闭包（需持有以保活）。
     _forwarder: Option<Closure<dyn FnMut(Event)>>,
+    /// 滚动监听闭包（需持有以保活）。
+    _scroll_forwarder: Option<Closure<dyn FnMut(Event)>>,
 }
 
 impl WebDomBackend {
@@ -106,7 +112,9 @@ impl WebDomBackend {
             last_tree: DomTree::default(),
             id_to_key: Rc::new(RefCell::new(HashMap::new())),
             handler: Rc::new(RefCell::new(None)),
+            scroll_handler: Rc::new(RefCell::new(None)),
             _forwarder: None,
+            _scroll_forwarder: None,
         };
         backend.inject_font_faces();
         backend.install_event_forwarder();
@@ -164,6 +172,11 @@ impl WebDomBackend {
         *self.handler.borrow_mut() = Some(handler);
     }
 
+    /// 设置原生滚动同步回调：可滚动容器发生 `scroll` 事件后，回传 (key 链, scrollLeft, scrollTop)。
+    pub fn set_dom_scroll_handler(&self, handler: Box<dyn FnMut(Vec<DomNodeKey>, f64, f64)>) {
+        *self.scroll_handler.borrow_mut() = Some(handler);
+    }
+
     /// 从事件目标向上收集 `data-gpui-id` 链（根 → 叶），并反查为 DOM key 链。
     ///
     /// 目标必须位于覆盖层宿主内；没有带 `data-gpui-id` 的祖先（如点击 canvas 本身）
@@ -200,6 +213,33 @@ impl WebDomBackend {
         if keys.is_empty() { None } else { Some(keys) }
     }
 
+    /// 判断事件目标（或祖先）是否存在可原生滚动的元素（`overflow: scroll/auto` 且内容可溢出）。
+    fn is_scrollable_target(target: &Node, host: &Element) -> bool {
+        let mut current = Some(target.clone());
+        while let Some(node) = current {
+            if !host.contains(Some(&node)) {
+                break;
+            }
+            if let Some(el) = node.dyn_ref::<Element>() {
+                if let Some(win) = web_sys::window() {
+                    if let Ok(Some(style)) = win.get_computed_style(el) {
+                        let oy = style.get_property_value("overflow-y").unwrap_or_default();
+                        let ox = style.get_property_value("overflow-x").unwrap_or_default();
+                        let scrollable_y = (oy == "scroll" || oy == "auto")
+                            && el.scroll_height() > el.client_height();
+                        let scrollable_x = (ox == "scroll" || ox == "auto")
+                            && el.scroll_width() > el.client_width();
+                        if scrollable_y || scrollable_x {
+                            return true;
+                        }
+                    }
+                }
+            }
+            current = node.parent_node();
+        }
+        false
+    }
+
     /// 安装文档级捕获转发器：把落在覆盖层（文本 span）上的指针/滚轮事件转发到
     /// canvas，使应用交互不受覆盖层遮挡，同时保留 span 上的原生文本选择。
     ///
@@ -228,6 +268,18 @@ impl WebDomBackend {
             let target_node: &Node = target.unchecked_ref();
             if !host.contains(Some(target_node)) {
                 return;
+            }
+            // 滚轮落在可滚动元素上时，交给浏览器原生滚动（不拦截、不转发），
+            // 再由 `scroll` 监听把位置同步回 Rust；Ctrl/Meta+滚轮保留给应用做缩放。
+            let event_type = event.type_();
+            if event_type == "wheel" {
+                let zoom = event
+                    .dyn_ref::<web_sys::WheelEvent>()
+                    .map(|w| w.ctrl_key() || w.meta_key())
+                    .unwrap_or(false);
+                if !zoom && Self::is_scrollable_target(target_node, &host) {
+                    return;
+                }
             }
             // 事件委托：点击 DOM 元素时按 key 链直接命中核心 hitbox。
             if let Some(keys) = Self::collect_key_chain(target_node, &host, &id_to_key) {
@@ -308,6 +360,42 @@ impl WebDomBackend {
             }
         }
         self._forwarder = Some(closure);
+
+        // 安装 `scroll` 监听：可滚动容器原生滚动后，把位置同步回 Rust 的 `ScrollHandle`。
+        // 用 capture 阶段在宿主上捕获（元素 `scroll` 事件在现代浏览器会冒泡，但
+        // capture 更稳妥），避免漏掉嵌套滚动容器的事件。
+        let scroll_handler = self.scroll_handler.clone();
+        let host_for_scroll = self.host.clone();
+        let id_to_key_scroll = self.id_to_key.clone();
+        let scroll_closure = Closure::<dyn FnMut(Event)>::new(move |event: Event| {
+            let target = match event.target() {
+                Some(t) => t,
+                None => return,
+            };
+            let target_node: &Node = target.unchecked_ref();
+            if !host_for_scroll.contains(Some(target_node)) {
+                return;
+            }
+            let keys = Self::collect_key_chain(target_node, &host_for_scroll, &id_to_key_scroll);
+            let Some(keys) = keys else { return };
+            let el: &Element = target_node.unchecked_ref();
+            let left = el.scroll_left() as f64;
+            let top = el.scroll_top() as f64;
+            if let Some(h) = scroll_handler.borrow_mut().as_mut() {
+                h(keys, left, top);
+            }
+        });
+        let scroll_fn: &js_sys::Function = scroll_closure.as_ref().unchecked_ref();
+        let _ = self
+            .host
+            .add_event_listener_with_callback_and_bool("scroll", scroll_fn, true)
+            .map_err(|e| {
+                web_sys::console::error_2(
+                    &"安装 scroll 监听失败".into(),
+                    &format!("{:?}", e).into(),
+                )
+            });
+        self._scroll_forwarder = Some(scroll_closure);
     }
 
     /// 用一棵新树增量更新 DOM（对账 + 应用）。
@@ -323,6 +411,25 @@ impl WebDomBackend {
             map.clear();
             for key in self.last_tree.nodes.keys() {
                 map.insert(key.to_dom_id(), key.clone());
+            }
+        }
+
+        // 把 Rust 侧程序化滚动（如 `ScrollHandle::scroll_to`）推回 DOM：
+        // 设置可滚动容器的 `scrollLeft/scrollTop`。仅在不一致时写入，避免每帧触发
+        // 多余的 `scroll` 事件与回写循环。浏览器原生滚动时此处值与 DOM 一致，故为空操作。
+        for (key, node) in &self.last_tree.nodes {
+            if let Some(handle) = &node.scroll_handle {
+                if let Some(el) = self.elements.get(key) {
+                    let offset = handle.offset();
+                    let want_top = -(f32::from(offset.y)) as i32;
+                    let want_left = -(f32::from(offset.x)) as i32;
+                    if el.scroll_top() != want_top {
+                        el.set_scroll_top(want_top);
+                    }
+                    if el.scroll_left() != want_left {
+                        el.set_scroll_left(want_left);
+                    }
+                }
             }
         }
     }

@@ -22,6 +22,9 @@ pub(crate) struct WebWindowCallbacks {
     /// DOM 事件委托回调：由 DOM 层点击（key 链）触发，绕过坐标命中。
     pub(crate) dom_event:
         Option<Box<dyn FnMut(Vec<DomNodeKey>, PlatformInput) -> DispatchEventResult>>,
+    /// DOM 原生滚动同步回调：可滚动容器的 `scroll` 事件后回传 (key 链, scrollLeft, scrollTop)。
+    #[cfg(feature = "dom-backend")]
+    pub(crate) dom_scroll: Option<Box<dyn FnMut(Vec<DomNodeKey>, f64, f64)>>,
     pub(crate) active_status_change: Option<Box<dyn FnMut(bool)>>,
     pub(crate) hover_status_change: Option<Box<dyn FnMut(bool)>>,
     pub(crate) resize: Option<Box<dyn FnMut(Size<Pixels>, f32)>>,
@@ -706,6 +709,11 @@ impl PlatformWindow for WebWindow {
         self.inner.callbacks.borrow_mut().dom_event = Some(callback);
     }
 
+    #[cfg(feature = "dom-backend")]
+    fn on_dom_scroll(&self, callback: Box<dyn FnMut(Vec<DomNodeKey>, f64, f64)>) {
+        self.inner.callbacks.borrow_mut().dom_scroll = Some(callback);
+    }
+
     fn on_active_status_change(&self, callback: Box<dyn FnMut(bool)>) {
         self.inner.callbacks.borrow_mut().active_status_change = Some(callback);
     }
@@ -752,10 +760,19 @@ impl PlatformWindow for WebWindow {
         let mut backend = self.inner.dom_backend.borrow_mut();
         if backend.is_none() {
             // 首次创建后端时注入事件委托回调：点击 DOM 元素时按 key 链回调核心。
-            let this = std::rc::Rc::clone(&self.inner);
             let new_backend = WebDomBackend::attach_default();
-            new_backend.set_dom_event_handler(Box::new(move |keys, event| {
-                this.dispatch_dom_event(keys, event);
+            new_backend.set_dom_event_handler(Box::new({
+                let this = std::rc::Rc::clone(&self.inner);
+                move |keys, event| {
+                    this.dispatch_dom_event(keys, event);
+                }
+            }));
+            #[cfg(feature = "dom-backend")]
+            new_backend.set_dom_scroll_handler(Box::new({
+                let this = std::rc::Rc::clone(&self.inner);
+                move |keys, left, top| {
+                    this.dispatch_dom_scroll(keys, left, top);
+                }
             }));
             *backend = Some(new_backend);
         }

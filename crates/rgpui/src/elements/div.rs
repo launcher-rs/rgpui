@@ -1855,7 +1855,18 @@ impl Element for Div {
                 }
 
                 window.with_image_cache(image_cache, |window| {
-                    window.with_element_offset(scroll_offset, |window| {
+                    // DOM 模式下由浏览器原生滚动处理：子元素按布局坐标（不叠加滚动偏移）
+                    // 渲染，浏览器 `overflow:scroll` 容器负责真实滚动，滚动位置再经
+                    // `scroll` 事件同步回 Rust 的 `ScrollHandle`。
+                    #[cfg(feature = "dom-backend")]
+                    let paint_offset = if window.dom_builder_active() {
+                        Point::default()
+                    } else {
+                        scroll_offset
+                    };
+                    #[cfg(not(feature = "dom-backend"))]
+                    let paint_offset = scroll_offset;
+                    window.with_element_offset(paint_offset, |window| {
                         if let Some(order_fn) = &self.prepaint_order_fn {
                             let order = order_fn(window, cx);
                             for idx in order {
@@ -2024,10 +2035,26 @@ impl Element for Div {
 
         dom_style.opacity = style.opacity;
         dom_style.cursor = style.mouse_cursor;
-        dom_style.overflow = match style.overflow.x {
-            Overflow::Visible => DomOverflow::Visible,
-            Overflow::Clip | Overflow::Hidden => DomOverflow::Hidden,
-            Overflow::Scroll => DomOverflow::Scroll,
+        // 同时考虑 x/y 两个方向的溢出设置：任一方向为 `Scroll` 即视为可滚动容器
+        // （DOM 侧用 `overflow:auto` 承载），否则 `overflow_y_scroll()` 等只设置单轴时
+        // 因只看 `overflow.x` 而被错误映射成 `Visible`，导致 DOM 层无法原生滚动。
+        dom_style.overflow = match (style.overflow.x, style.overflow.y) {
+            (Overflow::Scroll, _) | (_, Overflow::Scroll) => DomOverflow::Scroll,
+            (Overflow::Clip | Overflow::Hidden, _) | (_, Overflow::Clip | Overflow::Hidden) => {
+                DomOverflow::Hidden
+            }
+            _ => DomOverflow::Visible,
+        };
+
+        // DOM 模式下，真正的「用户可滚动」容器（`overflow: scroll/auto`）携带 `ScrollHandle`，
+        // 用于把浏览器原生滚动位置同步回 Rust（`crate::Window::dispatch_dom_scroll`），
+        // 以及把程序化滚动推回 DOM。仅当样式为 `Overflow::Scroll` 时才挂载——输入框等仅用
+        // `scroll_offset` 做光标自动滚动、或 `overflow:hidden` 裁剪的元素不在此列，避免每帧
+        // 把 `ScrollHandle` 偏移写入 DOM 造成光标跳动/对话框错位。
+        let scroll_handle = if dom_style.overflow == DomOverflow::Scroll {
+            self.interactivity.tracked_scroll_handle.clone()
+        } else {
+            None
         };
 
         Some(DomNode {
@@ -2037,6 +2064,7 @@ impl Element for Div {
                 children: Vec::new(),
             },
             style: dom_style,
+            scroll_handle,
         })
     }
 }

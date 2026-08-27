@@ -447,7 +447,11 @@ impl TextElement {
             if let Some(vi) = visible_buffer_lines.iter().position(|&bl| bl == row) {
                 let line = &lines[vi];
                 let line_start = last_layout.visible_line_byte_offsets[vi];
-                let local = offset.saturating_sub(line_start);
+                // DOM 模式下 `dom()` 在 prepaint 阶段运行，而 `last_layout` 要到本帧 `paint`
+                // 才会刷新，故输入过程中 `state.cursor()` 已超前于上一帧布局时，`offset` 可能
+                // 超过本行的字节长度。此处把 `local` 钳制到行尾，避免 `position_for_index`
+                // 返回 `None` 而回退到行首（x=0），表现为光标在一帧内跳到首位。
+                let local = offset.saturating_sub(line_start).min(line.len());
                 if let Some(pos) = line.position_for_index(local, last_layout, affinity) {
                     return line_origin + pos;
                 }
@@ -1253,12 +1257,7 @@ impl Element for TextElement {
     }
 
     #[cfg(feature = "dom-backend")]
-    fn dom(
-        &self,
-        bounds: Bounds<Pixels>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Option<DomNode> {
+    fn dom(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) -> Option<DomNode> {
         let text_style = window.text_style();
         let rem_size = window.rem_size();
         let fg = text_style.color;
@@ -1306,15 +1305,47 @@ impl Element for TextElement {
                 )
             };
             if focused && blink_visible && !disabled {
-                if let Some(last_layout) = last_layout {
+                let state = self.state.read(cx);
+                if state.mode.is_single_line() {
+                    // DOM 模式下 `dom()` 在 prepaint 阶段先于布局计算运行，`state.last_layout`
+                    // 会滞后一帧，在末尾输入时光标偏移超出上一帧布局而落后一个字符。单行输入
+                    // 直接按当前「显示文本」测量光标像素位置，与浏览器输入保持同步；仅当光标
+                    // 位于文本末尾（无选区）时走此精确路径，光标在中间时仍用 `layout_cursor`。
+                    let at_end = state.cursor() == state.text.len()
+                        && state.selected_range.start == state.selected_range.end;
+                    if at_end {
+                        let text_size = text_style.font_size.to_pixels(rem_size);
+                        let run = TextRun {
+                            len: display.len(),
+                            font: text_style.font(),
+                            color: crate::black(),
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        };
+                        let caret_x = window
+                            .text_system()
+                            .shape_line(display.clone(), text_size, &[run], None)
+                            .width;
+                        let line_height = text_style
+                            .line_height
+                            .to_pixels(text_style.font_size, rem_size);
+                        Some(Bounds {
+                            origin: point(bounds.origin.x + caret_x, bounds.origin.y),
+                            size: size(CURSOR_WIDTH, line_height),
+                        })
+                    } else if let Some(last_layout) = last_layout {
+                        let mut cbounds = bounds;
+                        let (cb, _, _) =
+                            self.layout_cursor(&last_layout, &mut cbounds, scroll_size, window, cx);
+                        cb
+                    } else {
+                        None
+                    }
+                } else if let Some(last_layout) = last_layout {
                     let mut cbounds = bounds;
-                    let (cb, _, _) = self.layout_cursor(
-                        &last_layout,
-                        &mut cbounds,
-                        scroll_size,
-                        window,
-                        cx,
-                    );
+                    let (cb, _, _) =
+                        self.layout_cursor(&last_layout, &mut cbounds, scroll_size, window, cx);
                     cb
                 } else {
                     None
@@ -1331,8 +1362,11 @@ impl Element for TextElement {
         container_style.font_family = Some(text_style.font_family.clone());
         container_style.font_weight = Some(text_style.font_weight);
         container_style.font_style = Some(text_style.font_style);
-        container_style.line_height =
-            Some(text_style.line_height.to_pixels(text_style.font_size, rem_size));
+        container_style.line_height = Some(
+            text_style
+                .line_height
+                .to_pixels(text_style.font_size, rem_size),
+        );
         container_style.white_space = Some(text_style.white_space);
 
         // 文本子节点（沿用 from_bounds 绝对定位，作为容器首个子节点）。
@@ -1342,13 +1376,17 @@ impl Element for TextElement {
         text_style2.font_family = Some(text_style.font_family.clone());
         text_style2.font_weight = Some(text_style.font_weight);
         text_style2.font_style = Some(text_style.font_style);
-        text_style2.line_height =
-            Some(text_style.line_height.to_pixels(text_style.font_size, rem_size));
+        text_style2.line_height = Some(
+            text_style
+                .line_height
+                .to_pixels(text_style.font_size, rem_size),
+        );
         text_style2.white_space = Some(text_style.white_space);
 
         let mut children = vec![DomNode {
             kind: DomNodeKind::Text { text: display },
             style: text_style2,
+            scroll_handle: None,
         }];
 
         // 可见光标：纯 DOM 模式下 canvas 不可见，用一个绝对定位的细 div 模拟，
@@ -1363,6 +1401,7 @@ impl Element for TextElement {
                     children: Vec::new(),
                 },
                 style: caret_style,
+                scroll_handle: None,
             });
         }
 
@@ -1373,6 +1412,7 @@ impl Element for TextElement {
                 children,
             },
             style: container_style,
+            scroll_handle: None,
         })
     }
 

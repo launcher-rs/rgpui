@@ -46,10 +46,41 @@ pub enum DomPatch {
 /// （不等则 UpdateNode），随后递归其子节点；仅存在于新树的节点产出 CreateNode
 /// （并递归其新后代）；仅存在于旧树的节点产出 RemoveNode。key 跨帧稳定，因此
 /// 语义等价于 React 的 keyed diff 简化版；v1 不做兄弟重排，顺序错位只走原地更新。
+///
+/// 关键约束：DOM 元素一旦创建便无法更改标签（tag）。若同 key 节点的类型
+/// （`div` / `span` 等）在两树间不同，原地 `UpdateNode` 无法修正标签，会导致
+/// 留下错误标签的元素、样式错乱。因此对这类节点整棵「先删后建」替换。
 pub fn reconcile(old: &DomTree, new: &DomTree) -> Vec<DomPatch> {
     let mut patches = Vec::new();
     diff_children(old, new, &DomNodeKey::root(), &mut patches);
     patches
+}
+
+/// 收集以 `root` 为根的整棵子树 key（含自身），用于整棵移除。
+fn collect_subtree(tree: &DomTree, root: &DomNodeKey, out: &mut Vec<DomNodeKey>) {
+    out.push(root.clone());
+    if let Some(children) = tree.children.get(root) {
+        for child in children {
+            collect_subtree(tree, child, out);
+        }
+    }
+}
+
+/// 仅按新树递归发出 `parent_key` 下整棵子树的 CreateNode（用于类型变化时的整棵重建）。
+fn create_subtree(tree: &DomTree, parent_key: &DomNodeKey, patches: &mut Vec<DomPatch>) {
+    if let Some(children) = tree.children.get(parent_key) {
+        for (index, child) in children.iter().enumerate() {
+            if let Some(node) = tree.nodes.get(child) {
+                patches.push(DomPatch::CreateNode {
+                    key: child.clone(),
+                    parent: parent_key.clone(),
+                    index,
+                    node: node.clone(),
+                });
+            }
+            create_subtree(tree, child, patches);
+        }
+    }
 }
 
 /// 对账父节点 `parent_key` 下的子节点列表。
@@ -65,20 +96,48 @@ fn diff_children(
     let new_set: FxHashSet<DomNodeKey> = new_children.iter().cloned().collect();
     let old_set: FxHashSet<DomNodeKey> = old_children.iter().cloned().collect();
 
-    // 1) 删除与原地更新（仅遍历两树都存在的节点，避免对已删子树重复处理）。
+    // 1) 删除、原地更新 / 整棵替换（仅遍历两树都存在的节点，避免对已删子树重复处理）。
     for child in &old_children {
         if !new_set.contains(child) {
-            patches.push(DomPatch::RemoveNode { key: child.clone() });
+            // 整棵删除（含后代）。
+            let mut sub = Vec::new();
+            collect_subtree(old, child, &mut sub);
+            for key in sub {
+                patches.push(DomPatch::RemoveNode { key });
+            }
         } else {
             let old_node = &old.nodes[child];
             let new_node = &new.nodes[child];
-            if old_node != new_node {
+            if old_node.kind.dom_tag() != new_node.kind.dom_tag() {
+                // 类型（标签）变化：DOM 元素无法改标签，必须整棵「先删后建」。
+                // 先整棵删除旧子树，再按新树就地建出整棵新子树（含后代）。
+                // 注意：`child` 自身仍留在 `old_set` 中，使下方创建阶段对其跳过、
+                // 不会重复建出（其新后代已由这里的 create_subtree 一次性建好）。
+                let mut sub = Vec::new();
+                collect_subtree(old, child, &mut sub);
+                for key in &sub {
+                    patches.push(DomPatch::RemoveNode { key: key.clone() });
+                }
+                if let Some(index) = new_children.iter().position(|k| k == child) {
+                    if let Some(node) = new.nodes.get(child) {
+                        patches.push(DomPatch::CreateNode {
+                            key: child.clone(),
+                            parent: parent_key.clone(),
+                            index,
+                            node: node.clone(),
+                        });
+                    }
+                    create_subtree(new, child, patches);
+                }
+            } else if old_node != new_node {
                 patches.push(DomPatch::UpdateNode {
                     key: child.clone(),
                     node: new_node.clone(),
                 });
+                diff_children(old, new, child, patches);
+            } else {
+                diff_children(old, new, child, patches);
             }
-            diff_children(old, new, child, patches);
         }
     }
 
@@ -118,6 +177,7 @@ mod tests {
                 children: Vec::new(),
             },
             style: DomStyle::default(),
+            scroll_handle: None,
         }
     }
 
@@ -227,5 +287,37 @@ mod tests {
         let new = tree(vec![(a.clone(), t2.clone())]);
         let patches = reconcile(&old, &new);
         assert_eq!(patches, vec![DomPatch::UpdateNode { key: a, node: t2 }]);
+    }
+
+    #[test]
+    fn test_reconcile_kind_change_rebuilds_subtree() {
+        // 同 key 节点类型从 div 变为 text（或反之）时，DOM 元素无法改标签，
+        // 必须整棵「先删后建」，否则会留下错误标签的元素导致样式错乱。
+        let a = key(&[ElementId::Name("a".into())], &[]);
+        let b = key(&[ElementId::Name("a".into())], &[1]);
+
+        let mut old = tree(vec![(a.clone(), node("div"))]);
+        old.children.insert(a.clone(), vec![b.clone()]);
+        old.nodes.insert(b.clone(), node("div"));
+
+        let mut new_node = node("div");
+        new_node.kind = DomNodeKind::Text { text: "hi".into() };
+        let mut new = tree(vec![(a.clone(), node("div"))]);
+        new.children.insert(a.clone(), vec![b.clone()]);
+        new.nodes.insert(b.clone(), new_node.clone());
+
+        let patches = reconcile(&old, &new);
+        assert_eq!(
+            patches,
+            vec![
+                DomPatch::RemoveNode { key: b.clone() },
+                DomPatch::CreateNode {
+                    key: b.clone(),
+                    parent: a.clone(),
+                    index: 0,
+                    node: new_node,
+                },
+            ]
+        );
     }
 }

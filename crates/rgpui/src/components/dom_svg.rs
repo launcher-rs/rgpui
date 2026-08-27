@@ -66,5 +66,6 @@ pub(crate) fn svg_img_node(bounds: Bounds<Pixels>, svg: String) -> Option<DomNod
             children: Vec::new(),
         },
         style: DomStyle::from_bounds(bounds),
+        scroll_handle: None,
     })
 }

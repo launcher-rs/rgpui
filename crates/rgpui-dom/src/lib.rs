@@ -148,6 +148,7 @@ mod tests {
                 height: px(50.0),
                 ..Default::default()
             },
+            scroll_handle: None,
         }
     }
 
@@ -166,6 +167,7 @@ mod tests {
                 font_size: Some(px(14.0)),
                 ..Default::default()
             },
+            scroll_handle: None,
         }
     }
 

@@ -343,6 +343,7 @@ impl Element for AccordionContent {
                 children: Vec::new(),
             },
             style,
+            scroll_handle: None,
         })
     }
 }

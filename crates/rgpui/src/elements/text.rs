@@ -203,6 +203,7 @@ fn dom_text_node(
     Some(DomNode {
         kind: DomNodeKind::Text { text },
         style: dom_style,
+        scroll_handle: None,
     })
 }
 

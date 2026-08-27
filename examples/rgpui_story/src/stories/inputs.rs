@@ -128,10 +128,8 @@ struct FormStory {
 
 impl FormStory {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let name_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("请输入姓名"));
-        let email_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("name@example.com"));
+        let name_input = cx.new(|cx| InputState::new(window, cx).placeholder("请输入姓名"));
+        let email_input = cx.new(|cx| InputState::new(window, cx).placeholder("name@example.com"));
         Self {
             name_input,
             email_input,
