@@ -539,7 +539,6 @@ impl DomBackend for WebDomBackend {
                         self.apply_style(&element, node, key);
                         match &node.kind {
                             DomNodeKind::Element { attrs, .. } => {
-                                // 属性变更（如图表 `<img src>` 数据更新）时重写属性。
                                 for (name, value) in attrs {
                                     let _ = element.set_attribute(name, value);
                                 }

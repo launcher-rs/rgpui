@@ -152,7 +152,10 @@ fn diff_children(
                     node: node.clone(),
                 });
             }
-            diff_children(old, new, child, patches);
+            // 新建节点的整棵子树必须强制创建：其后代 key 可能与旧树中
+            // 属于其他父节点的节点重合（old_set 中存在），但那些节点
+            // 已随父节点的 RemoveNode 从 DOM 删除，不能再跳过创建。
+            create_subtree(new, child, patches);
         }
     }
 }

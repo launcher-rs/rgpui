@@ -157,7 +157,7 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Pill => TabStyle {
-                fg: cx.theme().foreground,
+                fg: cx.theme().tab_foreground,
                 bg: cx.theme().transparent.into(),
                 ..Default::default()
             },

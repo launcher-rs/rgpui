@@ -754,6 +754,28 @@ impl PlatformWindow for WebWindow {
         // 纯 DOM 模式：DOM 层是主渲染器，canvas 只作为不可见的命中测试传感器。
         // 首次交付 DOM 树时把 canvas 视觉隐藏（opacity:0），避免与 DOM 双重渲染。
         if !self.inner.dom_visual_hidden.get() {
+            // DOM 首次接管时，从树根节点取 theme background 作为宿主背景，
+            // 确保 DOM 层的底色与 canvas 渲染一致。
+            if let Some(root_node) = tree.nodes.get(&tree.root) {
+                if let Some(bg) = root_node.style.background_color {
+                    if let Some(host) = web_sys::window()
+                        .and_then(|w| w.document())
+                        .and_then(|d| d.query_selector("[data-gpui-dom-layer]").ok())
+                        .flatten()
+                    {
+                        if let Ok(el) = host.dyn_into::<web_sys::HtmlElement>() {
+                            let css = format!(
+                                "hsla({}deg, {}%, {}%, {})",
+                                bg.h * 360.0,
+                                bg.s * 100.0,
+                                bg.l * 100.0,
+                                bg.a
+                            );
+                            let _ = el.style().set_property("background-color", &css);
+                        }
+                    }
+                }
+            }
             let _ = self.inner.canvas.style().set_property("opacity", "0");
             self.inner.dom_visual_hidden.set(true);
         }
