@@ -21,7 +21,7 @@ use crate::ScrollStrategy;
 const CONTEXT: &str = "Tree";
 
 /// 初始化树形组件所需的关键键绑定（上/下/左/右导航）。
-pub(crate) fn init(cx: &mut App) {
+pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("up", SelectUp, Some(CONTEXT)),
         KeyBinding::new("down", SelectDown, Some(CONTEXT)),
