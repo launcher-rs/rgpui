@@ -3,7 +3,7 @@ use crate::elements::TooltipOverlay;
 use crate::{
     ActiveTheme, AnyView, App, AppContext, Context, Entity, FocusHandle, FocusTrapManager,
     InteractiveElement, IntoElement, KeyBinding, ParentElement as _, Render, StyleRefinement,
-    Styled, StyledExt as _, WeakFocusHandle, Window, div,
+    Styled, StyledExt as _, WeakFocusHandle, Window, WindowBackgroundAppearance, div,
 };
 use std::rc::Rc;
 
@@ -320,7 +320,10 @@ impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         window.set_rem_size(cx.theme().font_size);
 
-        div()
+        let is_transparent = window.background_appearance() != WindowBackgroundAppearance::Opaque;
+        let bg_color = cx.theme().tokens.background;
+
+        let root = div()
             .id("root")
             .key_context(CONTEXT)
             .on_action(cx.listener(Self::on_action_tab))
@@ -333,10 +336,18 @@ impl Render for Root {
             .grid_cols(1)
             .grid_rows(1)
             .font_family(cx.theme().font_family.clone())
-            .bg(cx.theme().tokens.background)
             .text_color(cx.theme().foreground)
-            .refine_style(&self.style)
-            .child(self.view.clone())
+            .refine_style(&self.style);
+
+        // 透明窗口（如桌宠 Overlay）不画背景色，保留平台层透明效果；
+        // 不透明窗口正常绘制主题背景色。
+        let root = if is_transparent {
+            root
+        } else {
+            root.bg(bg_color)
+        };
+
+        root.child(self.view.clone())
             .child(self.tooltip_overlay.clone())
     }
 }
