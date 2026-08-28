@@ -81,6 +81,34 @@ pub enum DomOverflow {
     Scroll,
 }
 
+/// DOM 节点定位方式，决定 [`DomStyle`] 是否输出 `position:absolute` 及 `left/top/width/height`。
+///
+/// 绝大多数节点使用默认的 `Absolute`（配合 Taffy 绝对定位结果）；
+/// 富文本多段样式（`StyledText` 的 run 片段）作为行内子节点，需 `Static`
+/// 才能随父节点自然流动，否则每个片段会被单独绝对定位而错位。
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DomPosition {
+    /// 绝对定位（DOM 后端默认）。
+    #[default]
+    Absolute,
+    /// 静态定位（行内子元素，不输出 `left/top`）。
+    Static,
+    /// 相对定位（输出 `left/top`，相对自身原本位置偏移）。
+    Relative,
+}
+
+/// DOM 文本装饰线（对应 CSS `text-decoration-line`）。
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DomTextDecoration {
+    /// 无装饰。
+    #[default]
+    None,
+    /// 下划线（链接等）。
+    Underline,
+    /// 删除线（已删除文本等）。
+    LineThrough,
+}
+
 /// DOM 节点样式，最终映射为内联 CSS。
 ///
 /// 布局字段（`left/top/width/height`）直接来自 Taffy 结果；
@@ -89,6 +117,8 @@ pub enum DomOverflow {
 pub struct DomStyle {
     /// 显示类型。
     pub display: DomDisplay,
+    /// 定位方式（默认绝对定位）。
+    pub position: DomPosition,
     /// 绝对定位的左边距（Taffy bounds 结果）。
     pub left: Pixels,
     /// 绝对定位的上边距（Taffy bounds 结果）。
@@ -127,6 +157,8 @@ pub struct DomStyle {
     pub text_align: Option<TextAlign>,
     /// 空白处理。
     pub white_space: Option<WhiteSpace>,
+    /// 文本装饰线（下划线 / 删除线等）。
+    pub text_decoration: DomTextDecoration,
     /// 溢出处理。
     pub overflow: DomOverflow,
     /// 鼠标光标样式。
@@ -311,6 +343,9 @@ pub struct DomTreeBuilder {
     order: u32,
     /// 已用 key 集合（debug 断言防碰撞）。
     seen: FxHashSet<DomNodeKey>,
+    /// `GlobalElementId → DomNodeKey` 反查表，供 `insert_hitbox` 在
+    /// builder 栈不可靠时（deferred/overlay 绘制）直接定位元素自身的 DOM key。
+    global_id_to_key: FxHashMap<GlobalElementId, DomNodeKey>,
 }
 
 impl Default for DomTreeBuilder {
@@ -329,6 +364,7 @@ impl DomTreeBuilder {
             anon_counts: FxHashMap::default(),
             order: 0,
             seen: FxHashSet::default(),
+            global_id_to_key: FxHashMap::default(),
         }
     }
 
@@ -340,6 +376,7 @@ impl DomTreeBuilder {
         self.origins.clear();
         self.anon_counts.clear();
         self.seen.clear();
+        self.global_id_to_key.clear();
         self.order = 0;
         self.stack.push(self.tree.root.clone());
         self.origins.push(Point::default());
@@ -424,6 +461,11 @@ impl DomTreeBuilder {
         debug_assert!(!self.seen.contains(&key), "DOM key 重复：{}", key.global_id);
         self.seen.insert(key.clone());
 
+        // 记录 GlobalElementId → DomNodeKey 反查，供 insert_hitbox 通过
+        // element_id_stack 精确定位元素自身的 DOM key（不受 builder 栈偏移影响）。
+        self.global_id_to_key
+            .insert(key.global_id.clone(), key.clone());
+
         self.tree.nodes.insert(key.clone(), node);
         self.tree
             .children
@@ -460,6 +502,18 @@ impl DomTreeBuilder {
     /// 当前 DOM 栈深度（根节点也算一层）。
     pub fn stack_len(&self) -> usize {
         self.stack.len()
+    }
+
+    /// 根据 `element_id_stack` 反查元素在 DOM 树中的 key。
+    ///
+    /// 用于 `insert_hitbox` 在 deferred/overlay 绘制路径中精确定位元素自身
+    /// 的 DOM key（此时 builder 栈可能已偏移，`current_parent()` 不可靠）。
+    pub fn key_for_element_id_stack(&self, element_id_stack: &[ElementId]) -> Option<DomNodeKey> {
+        if element_id_stack.is_empty() {
+            return None;
+        }
+        let global_id = GlobalElementId(Arc::from(element_id_stack));
+        self.global_id_to_key.get(&global_id).cloned()
     }
 
     /// 结束一帧，取走新鲜树。

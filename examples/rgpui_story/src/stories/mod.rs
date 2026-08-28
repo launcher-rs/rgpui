@@ -8,6 +8,7 @@ pub mod dialogs;
 pub mod extended;
 pub mod inputs;
 pub mod lists;
+pub mod markdown;
 pub mod menus;
 pub mod tables;
 pub mod tabs;
@@ -33,6 +34,7 @@ pub fn registry() -> Vec<(&'static str, Vec<StoryItem>)> {
         ("列表与虚拟列表", lists::stories()),
         ("表格", tables::stories()),
         ("标签页与折叠", tabs::stories()),
+        ("Markdown 渲染", markdown::stories()),
         ("扩展组件", extended::stories()),
         ("主题", themes::stories()),
     ]

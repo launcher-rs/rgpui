@@ -127,27 +127,32 @@ impl RenderOnce for CodeBlock {
 
         let max_h = self.max_height;
 
-        if show_copy {
-            let copy_btn = div()
-                .id("code-block-copy")
-                .absolute()
-                .top(px(8.0))
-                .right(px(8.0))
-                .px(px(8.0))
-                .py(px(4.0))
-                .rounded(radius)
-                .bg(theme.tokens.muted.opacity(0.6))
-                .text_color(theme.tokens.muted_foreground)
-                .text_size(px(11.0))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme.tokens.muted))
-                .active(|s| s.opacity(0.7))
-                .child("Copy")
-                .on_click(move |_, _window, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(code_for_copy.to_string()));
-                });
-            outer = outer.child(copy_btn);
-        }
+        let copy_btn = if show_copy {
+            let copy_id: SharedString =
+                format!("code-block-copy-{}", &self.code[..self.code.len().min(16)]).into();
+            Some(
+                div()
+                    .id(copy_id)
+                    .absolute()
+                    .top(px(8.0))
+                    .right(px(8.0))
+                    .px(px(8.0))
+                    .py(px(4.0))
+                    .rounded(radius)
+                    .bg(theme.tokens.muted.opacity(0.6))
+                    .text_color(theme.tokens.muted_foreground)
+                    .text_size(px(11.0))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.tokens.muted))
+                    .active(|s| s.opacity(0.7))
+                    .child("Copy")
+                    .on_click(move |_, _window, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(code_for_copy.to_string()));
+                    }),
+            )
+        } else {
+            None
+        };
 
         let mut content = div().flex().flex_col().py(px(12.0));
 
@@ -193,15 +198,21 @@ impl RenderOnce for CodeBlock {
         }
 
         if let Some(h) = max_h {
-            outer.child(
+            outer = outer.child(
                 div()
                     .id("code-block-scroll")
                     .max_h(h)
                     .overflow_y_scroll()
                     .child(content),
-            )
+            );
         } else {
-            outer.child(content)
+            outer = outer.child(content);
+        }
+
+        if let Some(btn) = copy_btn {
+            outer.child(btn)
+        } else {
+            outer
         }
     }
 }

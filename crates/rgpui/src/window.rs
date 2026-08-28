@@ -3264,9 +3264,17 @@ impl Window {
     /// 当前正在 prepaint 的元素的 DOM key（无 DOM 层或栈为空时为 `None`）。
     ///
     /// 由 `insert_hitbox` 使用，把 hitbox 关联到当前元素的 DOM key。
+    /// 优先使用 `element_id_stack` 反查（精确，不受 builder 栈偏移影响），
+    /// 回退到 builder 栈顶（快速路径）。
     #[cfg(feature = "dom-backend")]
     fn current_dom_key(&self) -> Option<crate::DomNodeKey> {
         let builder = self.dom_builder.as_ref()?;
+        // 精确路径：通过 element_id_stack 反查（适用于 deferred/overlay 绘制，
+        // 此时 builder 栈可能已偏移到祖先 key）。
+        if let Some(key) = builder.key_for_element_id_stack(&self.element_id_stack) {
+            return Some(key);
+        }
+        // 快速路径：builder 栈顶（正常 inline 绘制时栈与 element_id_stack 同步）。
         if builder.stack_len() == 0 {
             None
         } else {

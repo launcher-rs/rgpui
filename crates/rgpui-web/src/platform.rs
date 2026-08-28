@@ -348,7 +348,19 @@ impl Platform for WebPlatform {
         None
     }
 
-    fn write_to_clipboard(&self, _item: ClipboardItem) {}
+    fn write_to_clipboard(&self, item: ClipboardItem) {
+        // 优先用同步的 execCommand('copy')（无需安全上下文，且必须在用户手势内同步执行，
+        // 转发事件链中 on_click 即同步运行于此手势内），失败再回退到异步 Clipboard API。
+        if let Some(text) = item.text() {
+            if let Some(window) = web_sys::window() {
+                if let Some(document) = window.document() {
+                    if !Self::write_clipboard_via_exec_command(&document, &text) {
+                        Self::write_clipboard_via_api(&window, &text);
+                    }
+                }
+            }
+        }
+    }
 
     fn write_credentials(&self, _url: &str, _username: &str, _password: &[u8]) -> Task<Result<()>> {
         Task::ready(Err(anyhow::anyhow!(
@@ -376,6 +388,66 @@ impl Platform for WebPlatform {
 
     fn on_keyboard_layout_change(&self, callback: Box<dyn FnMut()>) {
         self.callbacks.borrow_mut().keyboard_layout_change = Some(callback);
+    }
+}
+
+impl WebPlatform {
+    /// 用隐藏 textarea + `document.execCommand('copy')` 同步写入剪贴板。
+    ///
+    /// 该方式不依赖安全上下文，且在用户手势内同步执行即可成功，适合转发事件链中的
+    /// `on_click` 回调场景（异步 Clipboard API 在此处常因丢失用户激活而静默失败）。
+    /// 注意：web-sys 未暴露 `execCommand`，这里通过 `Reflect` 直接调用运行时的
+    /// `document.execCommand` 方法。
+    fn write_clipboard_via_exec_command(document: &web_sys::Document, text: &str) -> bool {
+        let Ok(textarea) = document.create_element("textarea") else {
+            return false;
+        };
+        let Ok(textarea) = textarea.dyn_into::<web_sys::HtmlTextAreaElement>() else {
+            return false;
+        };
+        textarea.set_value(text);
+        let style = textarea.style();
+        let _ = style.set_property("position", "fixed");
+        let _ = style.set_property("top", "-9999px");
+        let _ = style.set_property("opacity", "0");
+        let Some(body) = document.body() else {
+            return false;
+        };
+        if body.append_child(&textarea).is_err() {
+            return false;
+        }
+        let _ = textarea.focus();
+        textarea.select();
+        let _ = textarea.set_selection_range(0, text.len() as u32);
+        let exec_command = match js_sys::Reflect::get(document.as_ref(), &"execCommand".into()) {
+            Ok(value) => value,
+            Err(_) => {
+                let _ = body.remove_child(&textarea);
+                return false;
+            }
+        };
+        let Some(exec_command_fn) = exec_command.dyn_ref::<js_sys::Function>() else {
+            let _ = body.remove_child(&textarea);
+            return false;
+        };
+        let ok = exec_command_fn.call1(document, &"copy".into()).is_ok();
+        let _ = body.remove_child(&textarea);
+        ok
+    }
+
+    /// 用浏览器异步 Clipboard API（`navigator.clipboard.writeText`）写入文本。
+    fn write_clipboard_via_api(window: &web_sys::Window, text: &str) -> bool {
+        if let Ok(navigator) = js_sys::Reflect::get(window.as_ref(), &"navigator".into()) {
+            if let Ok(clipboard) = js_sys::Reflect::get(&navigator, &"clipboard".into()) {
+                if let Some(write_text) = js_sys::Reflect::get(&clipboard, &"writeText".into())
+                    .ok()
+                    .and_then(|f| f.dyn_ref::<js_sys::Function>().cloned())
+                {
+                    return write_text.call1(&clipboard, &text.into()).is_ok();
+                }
+            }
+        }
+        false
     }
 }
 

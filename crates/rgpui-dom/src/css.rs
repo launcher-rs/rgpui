@@ -4,19 +4,34 @@
 //! 不依赖浏览器重排；视觉字段按 [`rgpui::DomStyle`] 字段逐一映射。
 
 use rgpui::{
-    BorderStyle, CursorStyle, DomDisplay, DomGradientKind, DomOverflow, DomStyle, FontStyle,
-    FontWeight, Hsla, TextAlign, WhiteSpace,
+    BorderStyle, CursorStyle, DomDisplay, DomGradientKind, DomOverflow, DomPosition, DomStyle,
+    DomTextDecoration, FontStyle, FontWeight, Hsla, TextAlign, WhiteSpace,
 };
 use std::fmt::Write;
 
 /// 把一个 [`DomStyle`] 序列化为 CSS 内联样式字符串（如 `position:absolute;left:10px;...`）。
 pub fn dom_style_to_css(style: &DomStyle) -> String {
     let mut out = String::new();
-    write!(out, "position:absolute;").unwrap();
-    push_px(&mut out, "left", style.left);
-    push_px(&mut out, "top", style.top);
-    push_px(&mut out, "width", style.width);
-    push_px(&mut out, "height", style.height);
+    match style.position {
+        DomPosition::Absolute => {
+            out.push_str("position:absolute;");
+            push_px(&mut out, "left", style.left);
+            push_px(&mut out, "top", style.top);
+            push_px(&mut out, "width", style.width);
+            push_px(&mut out, "height", style.height);
+        }
+        DomPosition::Relative => {
+            out.push_str("position:relative;");
+            push_px(&mut out, "left", style.left);
+            push_px(&mut out, "top", style.top);
+            push_px(&mut out, "width", style.width);
+            push_px(&mut out, "height", style.height);
+        }
+        DomPosition::Static => {
+            // 行内子元素（富文本 run 片段）：不输出定位，随父节点自然流动。
+            out.push_str("position:static;");
+        }
+    }
 
     match style.display {
         DomDisplay::Block => {}
@@ -80,6 +95,11 @@ pub fn dom_style_to_css(style: &DomStyle) -> String {
     }
     if let Some(white_space) = style.white_space {
         let _ = write!(out, "white-space:{};", white_space_to_css(white_space));
+    }
+    match style.text_decoration {
+        DomTextDecoration::None => {}
+        DomTextDecoration::Underline => out.push_str("text-decoration:underline;"),
+        DomTextDecoration::LineThrough => out.push_str("text-decoration:line-through;"),
     }
     if let Some(cursor) = style.cursor {
         let _ = write!(out, "cursor:{};", cursor_to_css(cursor));

@@ -454,6 +454,11 @@ impl IntoElement for SharedString {
 pub struct StyledText {
     text: SharedString,
     runs: Option<Vec<TextRun>>,
+    /// 已解析的样式片段，供 DOM 后端在 `dom()` 中按段渲染（canvas 模式不消费）。
+    ///
+    /// `request_layout` 会消费 `runs`/`delayed_highlights`，因此在这里保留一份克隆，
+    /// 使晚于布局的 `dom()` 阶段仍能按 `TextRun` 拆分段落、输出带样式的行内 DOM。
+    dom_runs: Option<Vec<TextRun>>,
     delayed_highlights: Option<Vec<(Range<usize>, HighlightStyle)>>,
     delayed_font_family_overrides: Option<Vec<(Range<usize>, SharedString)>>,
     layout: TextLayout,
@@ -465,6 +470,7 @@ impl StyledText {
         StyledText {
             text: text.into(),
             runs: None,
+            dom_runs: None,
             delayed_highlights: None,
             delayed_font_family_overrides: None,
             layout: TextLayout::default(),
@@ -634,7 +640,11 @@ impl Element for StyledText {
             Self::apply_font_family_overrides(runs, overrides);
         }
 
-        let layout_id = self.layout.layout(self.text.clone(), runs, window, cx);
+        let layout_id = self
+            .layout
+            .layout(self.text.clone(), runs.clone(), window, cx);
+        // 保留已解析的样式片段供 DOM 后端使用（dom() 晚于本阶段调用）。
+        self.dom_runs = runs;
         (layout_id, ())
     }
 
@@ -668,11 +678,86 @@ impl Element for StyledText {
         &self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
-        cx: &mut App,
+        _cx: &mut App,
     ) -> Option<crate::DomNode> {
-        // v1：多段样式（runs）统一退化为基础文本样式，与 canvas 跳过字形绘制
-        // 配合，保证 DOM 层是文本的唯一渲染者（可选中/复制）。
-        <crate::SharedString as Element>::dom(&self.text, bounds, window, cx)
+        use crate::{DomNode, DomNodeKind, DomPosition, DomStyle, DomTextDecoration};
+
+        // 无多段样式：退化为基础文本节点（与 canvas 跳过字形绘制配合，DOM 是唯一文本渲染者）。
+        let Some(runs) = &self.dom_runs else {
+            return <crate::SharedString as Element>::dom(&self.text, bounds, window, _cx);
+        };
+        if runs.is_empty() {
+            return <crate::SharedString as Element>::dom(&self.text, bounds, window, _cx);
+        }
+
+        let text_style = window.text_style();
+        let rem_size = window.rem_size();
+        let text = self.text.to_string();
+
+        // 父 span：承载整段文本的基础样式，绝对定位到 Taffy 计算出的 bounds。
+        let mut parent_style = DomStyle::from_bounds(bounds);
+        parent_style.color = Some(text_style.color);
+        parent_style.font_size = Some(text_style.font_size.to_pixels(rem_size));
+        parent_style.font_family = Some(text_style.font_family.clone());
+        parent_style.font_weight = Some(text_style.font_weight);
+        parent_style.font_style = Some(text_style.font_style);
+        parent_style.line_height = Some(
+            text_style
+                .line_height
+                .to_pixels(text_style.font_size, rem_size),
+        );
+        parent_style.text_align = Some(text_style.text_align);
+        parent_style.white_space = Some(text_style.white_space);
+
+        // 行内子片段：每个 run 一个小 span，按段着色 / 字重 / 字型 / 装饰线。
+        let mut byte_offset = 0usize;
+        let mut children = Vec::new();
+        for run in runs {
+            let end = byte_offset + run.len;
+            let segment: crate::SharedString = match text.get(byte_offset..end) {
+                Some(s) => s.to_string().into(),
+                None => String::new().into(),
+            };
+            byte_offset = end;
+            if segment.is_empty() {
+                continue;
+            }
+
+            let mut child_style = DomStyle::default();
+            child_style.position = DomPosition::Static;
+            child_style.color = Some(run.color);
+            child_style.font_family = Some(run.font.family.clone());
+            child_style.font_weight = Some(run.font.weight);
+            child_style.font_style = Some(run.font.style);
+            if let Some(bg) = run.background_color {
+                child_style.background_color = Some(bg);
+            }
+            if run.underline.is_some() {
+                child_style.text_decoration = DomTextDecoration::Underline;
+            } else if run.strikethrough.is_some() {
+                child_style.text_decoration = DomTextDecoration::LineThrough;
+            }
+
+            children.push(DomNode {
+                kind: DomNodeKind::Text { text: segment },
+                style: child_style,
+                scroll_handle: None,
+            });
+        }
+
+        if children.is_empty() {
+            return <crate::SharedString as Element>::dom(&self.text, bounds, window, _cx);
+        }
+
+        Some(DomNode {
+            kind: DomNodeKind::Element {
+                tag: "span",
+                attrs: vec![],
+                children,
+            },
+            style: parent_style,
+            scroll_handle: None,
+        })
     }
 }
 
@@ -1164,6 +1249,16 @@ impl Element for InteractiveText {
 
     fn write_a11y_info(&self, node: &mut accesskit::Node) {
         node.set_value(self.text.text.to_string());
+    }
+
+    #[cfg(feature = "dom-backend")]
+    fn dom(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<crate::DomNode> {
+        self.text.dom(bounds, window, cx)
     }
 
     fn request_layout(

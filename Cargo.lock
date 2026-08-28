@@ -6241,6 +6241,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "rgpui",
+ "rgpui-markdown",
  "rgpui-platform",
  "web-sys",
 ]

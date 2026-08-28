@@ -174,11 +174,30 @@ impl WebWindowInner {
         let input = match event_type.as_str() {
             "pointerdown" => {
                 let event: &web_sys::PointerEvent = event.unchecked_ref();
-                self.input_element.focus().ok();
-                // 阻止默认行为，避免浏览器把焦点移到被点击的 DOM 元素 / body，
-                // 否则隐藏的 IME 输入框（input_element）失去焦点，中文输入法的
-                // composition 事件收不到，导致无法输入中文。canvas 指针路径已同样处理。
-                event.prevent_default();
+                // 检测点击目标是否为可选中文本（user-select:text）。
+                // 若是，跳过 prevent_default() 以保留浏览器原生文本选择能力；
+                // 否则阻止默认行为，避免焦点离开隐藏的 IME 输入框。
+                let target_is_selectable = event
+                    .target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                    .and_then(|el| {
+                        web_sys::window()
+                            .and_then(|w| w.get_computed_style(&el).ok())
+                            .flatten()
+                            .map(|s| s.get_property_value("user-select").unwrap_or_default())
+                    })
+                    .map(|v| v == "text")
+                    .unwrap_or(false);
+                // 可选中文本的左键不阻止默认行为（保留浏览器原生选择）；
+                // 右键仍需阻止，否则浏览器默认行为会清除已有选区。
+                if !target_is_selectable || event.button() == 2 {
+                    event.prevent_default();
+                }
+                // 可选中文本上右键时跳过 focus，否则焦点转移到隐藏 input
+                // 会清除 DOM 覆盖层中用户已选中的文本。
+                if !(target_is_selectable && event.button() == 2) {
+                    self.input_element.focus().ok();
+                }
                 let button = dom_mouse_button_to_gpui(event.button());
                 let position = mouse_position_from_event(event.as_ref(), &self.canvas);
                 let modifiers = modifiers_from_mouse_event(event, self.is_mac);
@@ -451,7 +470,19 @@ impl WebWindowInner {
         if let Some(document) = this.browser_window.document() {
             let doc_closure = Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
                 let event: web_sys::Event = event.unchecked_into();
-                event.prevent_default();
+                // 若右键目标在 DOM 覆盖层（data-gpui-dom-layer）内，不阻止默认行为，
+                // 让浏览器显示原生右键菜单，使文本选择后能右键复制。
+                let in_dom_layer = event
+                    .target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                    .map(|el| {
+                        el.has_attribute("data-gpui-dom-layer")
+                            || el.closest("[data-gpui-dom-layer]").ok().flatten().is_some()
+                    })
+                    .unwrap_or(false);
+                if !in_dom_layer {
+                    event.prevent_default();
+                }
             });
             let doc_js: &JsValue = document.as_ref();
             let doc_callback_js: &JsValue = doc_closure.as_ref();
@@ -544,8 +575,10 @@ impl WebWindowInner {
                 return;
             }
 
-            // 函数键（F1-F12）留给浏览器处理（F12 开发者工具等）
-            if !is_function_key(&key) {
+            // 函数键（F1-F12）留给浏览器处理（F12 开发者工具等）；
+            // Ctrl/Meta 组合键（Ctrl+C / Ctrl+A 等）也留给浏览器原生处理，
+            // 使 DOM 覆盖层上的文本选择后能正常复制/全选。
+            if !is_function_key(&key) && !modifiers.control && !modifiers.platform {
                 event.prevent_default();
             }
 
@@ -609,8 +642,10 @@ impl WebWindowInner {
                 return;
             }
 
-            // 函数键（F1-F12）留给浏览器处理（F12 开发者工具等）
-            if !is_function_key(&key) {
+            // 函数键（F1-F12）留给浏览器处理（F12 开发者工具等）；
+            // Ctrl/Meta 组合键（Ctrl+C / Ctrl+A 等）也留给浏览器原生处理，
+            // 使 DOM 覆盖层上的文本选择后能正常复制/全选。
+            if !is_function_key(&key) && !modifiers.control && !modifiers.platform {
                 event.prevent_default();
             }
 

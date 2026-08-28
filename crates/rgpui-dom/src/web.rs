@@ -95,6 +95,8 @@ pub struct WebDomBackend {
     _forwarder: Option<Closure<dyn FnMut(Event)>>,
     /// 滚动监听闭包（需持有以保活）。
     _scroll_forwarder: Option<Closure<dyn FnMut(Event)>>,
+    /// 复制监听闭包（需持有以保活）。
+    _copy_handler: Option<Closure<dyn FnMut(Event)>>,
 }
 
 impl WebDomBackend {
@@ -115,6 +117,7 @@ impl WebDomBackend {
             scroll_handler: Rc::new(RefCell::new(None)),
             _forwarder: None,
             _scroll_forwarder: None,
+            _copy_handler: None,
         };
         backend.inject_font_faces();
         backend.install_event_forwarder();
@@ -396,6 +399,95 @@ impl WebDomBackend {
                 )
             });
         self._scroll_forwarder = Some(scroll_closure);
+
+        // 安装 `copy` 监听：DOM 覆盖层中文本被复制时，从选区逐文本节点构造
+        // 带换行的 HTML/纯文本。由于 DOM 后端用绝对定位渲染，相邻文本 span 在
+        // 选区里被浏览器当作连续内联内容，原生 copy 不会插入换行；此处按各文本
+        // 节点的纵向位置变化手动补 `\n`（纯文本）与 `<br>`（HTML）。
+        let host_for_copy = self.host.clone();
+        let copy_handler = move |event: Event| {
+            let window = match web_sys::window() {
+                Some(w) => w,
+                None => return,
+            };
+            let selection = js_sys::Reflect::get(window.as_ref(), &"getSelection".into())
+                .ok()
+                .and_then(|f| f.dyn_ref::<js_sys::Function>().cloned())
+                .and_then(|f| f.call0(window.as_ref()).ok());
+            let Some(selection) = selection else { return };
+            let range_count = js_sys::Reflect::get(&selection, &"rangeCount".into())
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            if range_count < 1.0 {
+                return;
+            }
+            let anchor = js_sys::Reflect::get(&selection, &"anchorNode".into())
+                .ok()
+                .filter(|v| !v.is_null() && !v.is_undefined());
+            let Some(anchor) = anchor else { return };
+            let anchor_node: &Node = anchor.unchecked_ref();
+            if !host_for_copy.contains(Some(anchor_node)) {
+                return;
+            }
+            // 用注入的 JS 函数遍历选区文本节点并按纵向位置补换行。
+            let copy_fn = js_sys::Function::new_with_args(
+                "event, host",
+                r#"
+                const sel = window.getSelection();
+                if (!sel || sel.rangeCount === 0) return;
+                const range = sel.getRangeAt(0);
+                if (!host.contains(sel.anchorNode)) return;
+                const walker = document.createTreeWalker(
+                    host, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, null);
+                let plain = '', html = '';
+                let lastTop = null;
+                let n;
+                while ((n = walker.nextNode())) {
+                    if (!range.intersectsNode(n)) continue;
+                    if (n.nodeType === 3) {
+                        const top = Math.round(n.parentElement.getBoundingClientRect().top);
+                        if (lastTop !== null && Math.abs(top - lastTop) > 2) {
+                            plain += '\n'; html += '<br>';
+                        }
+                        lastTop = top;
+                        const t = n.textContent;
+                        plain += t;
+                        const esc = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                        const style = n.parentElement.getAttribute('style') || '';
+                        html += '<span style="' + style + '">' + esc.replace(/\n/g,'<br>') + '</span>';
+                    } else if (n.nodeName === 'BR') {
+                        plain += '\n'; html += '<br>';
+                        lastTop = null;
+                    }
+                }
+                const data = event.clipboardData;
+                if (data) {
+                    data.setData('text/plain', plain);
+                    data.setData('text/html', html);
+                    event.preventDefault();
+                }
+                "#,
+            );
+            let _ = copy_fn.call2(
+                &JsValue::NULL,
+                event.unchecked_ref(),
+                host_for_copy.unchecked_ref(),
+            );
+        };
+        let copy_closure = Closure::<dyn FnMut(Event)>::new(copy_handler);
+        {
+            let doc_js: &JsValue = self.document.as_ref();
+            let callback_js: &JsValue = copy_closure.as_ref();
+            let options = js_sys::Object::new();
+            js_sys::Reflect::set(&options, &"passive".into(), &false.into()).ok();
+            if let Ok(add_fn_val) = js_sys::Reflect::get(doc_js, &"addEventListener".into()) {
+                if let Ok(add_fn) = add_fn_val.dyn_into::<js_sys::Function>() {
+                    let _ = add_fn.call3(doc_js, &"copy".into(), callback_js, &options);
+                }
+            }
+        }
+        self._copy_handler = Some(copy_closure);
     }
 
     /// 用一棵新树增量更新 DOM（对账 + 应用）。
@@ -452,12 +544,35 @@ impl WebDomBackend {
                     .document
                     .create_element("span")
                     .expect("创建文本包装节点失败");
-                span.unchecked_ref::<Node>()
-                    .set_text_content(Some(text.as_ref()));
+                self.set_span_text(&span, text.as_ref());
                 span.set_attribute(NODE_ATTR, &key.to_dom_id())
                     .expect("设置 data-gpui-id 失败");
                 span
             }
+        }
+    }
+
+    /// 设置文本 span 的内容：把 `\n` 转换为真实的 `<br>` DOM 元素，
+    /// 使浏览器原生复制在 `text/plain` 放 `\n`、在 `text/html` 放 `<br>`。
+    ///
+    /// 创建与每帧更新（[`Self::apply_patches`]）都走这里，保证 `<br>` 不被
+    /// `set_text_content` 覆盖。
+    fn set_span_text(&self, span: &Element, text: &str) {
+        let node: &Node = span.unchecked_ref();
+        node.set_text_content(None);
+        if text.contains('\n') {
+            for (i, line) in text.split('\n').enumerate() {
+                if i > 0 {
+                    let br = self.document.create_element("br").expect("创建 br 失败");
+                    span.append_child(br.unchecked_ref()).ok();
+                }
+                if !line.is_empty() {
+                    let text_node = self.document.create_text_node(line);
+                    span.append_child(text_node.unchecked_ref()).ok();
+                }
+            }
+        } else {
+            node.set_text_content(Some(text));
         }
     }
 
@@ -474,7 +589,7 @@ impl WebDomBackend {
     fn apply_style(&mut self, element: &Element, node: &DomNode, key: &DomNodeKey) {
         let mut css_text = css::dom_style_to_css(&node.style);
         if matches!(&node.kind, DomNodeKind::Text { .. }) {
-            css_text.push_str(";user-select:text");
+            css_text.push_str(";user-select:text;white-space:pre-wrap");
         }
         if self.styles.get(key).map(String::as_str) == Some(css_text.as_str()) {
             return;
@@ -544,9 +659,7 @@ impl DomBackend for WebDomBackend {
                                 }
                             }
                             DomNodeKind::Text { text } => {
-                                element
-                                    .unchecked_ref::<Node>()
-                                    .set_text_content(Some(text.as_ref()));
+                                self.set_span_text(&element, text.as_ref());
                             }
                         }
                     }

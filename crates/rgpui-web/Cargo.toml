@@ -68,6 +68,7 @@ web-sys = { version = "0.3", features = [
     "Storage",
     "VisualViewport",
     "Headers",
+    "HtmlTextAreaElement",
     "Request",
     "RequestInit",
     "RequestRedirect",
