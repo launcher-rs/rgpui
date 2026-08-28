@@ -235,6 +235,9 @@ pub mod animation;
 /// 扩展组件库 - 核心没有的组件 + 动画组件/特效（原 rgpui-ui 并入）
 pub mod components;
 
+/// 树形组件 - 分层树视图（文件树、目录树等）
+pub mod tree;
+
 /// 鼠标手势识别 - 轻点/双击/长按/拖动/滑动
 pub mod mouse_gestures;
 

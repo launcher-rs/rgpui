@@ -130,9 +130,10 @@ pub use waveform::*;
 #[cfg(feature = "charts")]
 pub use charts::*;
 
-/// 初始化需要注册快捷键绑定的组件（行内编辑、OTP 输入、图片查看器）。
+/// 初始化需要注册快捷键绑定的组件（行内编辑、OTP 输入、图片查看器、树形组件）。
 pub fn init(cx: &mut App) {
     inline_edit::init(cx);
     otp_input::init(cx);
     image_viewer::init_image_viewer(cx);
+    crate::tree::init(cx);
 }
