@@ -252,3 +252,134 @@ WindowHandle<rgpui::Root>
 4. **Input/InputState**：在 `rgpui::input_ui` 模块中，不在 crate 根
 5. **Select**：未迁移，需自行用 Button + DropdownMenu 或其他方案替代
 6. **Markdown**：使用独立 crate `rgpui-markdown`，API 为 `Markdown::new(source)`
+
+---
+
+## 九、ru_editor 迁移补充（较复杂差异）
+
+以下差异在 `ru_pet` 等简单项目中未暴露，在 `ru_editor` 这类大型项目迁移时必须处理。
+
+### 9.1 Tree 组件已并入核心
+
+`rgpui-component::tree` 已移植进 rgpui 核心（见 `crates/rgpui/src/tree.rs`），`init` 已暴露为 `pub`：
+
+```rust
+rgpui::tree::init(cx);  // 在 main.rs 的 init 序列中调用
+use rgpui::tree::{TreeItem, TreeState, TreeEvent};
+```
+
+注意点：
+- `AppContext` 在 rgpui 中是 **trait**，`App` 是具体类型。回调闭包统一接收 `&mut App`。
+- `TreeItem.state` 为 `Rc<RefCell<TreeItemState>>`，用 `RefCell::borrow_mut(&self.state)` 取可变引用（不要用 `.borrow_mut()`，会与 `Rc` 的 `BorrowMut` 冲突）。
+- `Tree::render(cx: &mut App)`（RenderOnce）；`TreeState::render(cx: &mut Context<Self>)`（Render）。
+- `Confirm` 位于 `rgpui::menu::{Confirm, ...}`（`menu::actions` 为私有，不要直接引用）。
+- `ScrollableElement` 从 `rgpui` 根路径导出（`use rgpui::ScrollableElement;`），不在 `rgpui::scroll`。
+
+### 9.2 通知系统（无全局 push_notification）
+
+rgpui 的 `Root` 不再提供 `window.push_notification(...)`，也没有 `Root::render_notification_layer(...)`。
+`NotificationList` 是视图组件，需自行持有并渲染：
+
+```rust
+use rgpui::menu::{Notification, NotificationList};
+use rgpui::Global;
+
+/// Entity<NotificationList> 未实现 Global，需用 newtype 包裹
+pub struct NotificationListHandle(pub Entity<NotificationList>);
+impl Global for NotificationListHandle {}
+
+// App::new 中：
+let notification_list = NotificationList::new(window, cx);
+cx.set_global(NotificationListHandle(notification_list.clone()));
+
+// 全局推送辅助函数（cx 为 &mut Context<App>）：
+pub fn push_notification(
+    window: &mut Window,
+    notification: impl Into<Notification>,
+    cx: &mut Context<App>,
+) {
+    let list = cx.global::<NotificationListHandle>().0.clone();
+    list.update(cx, |list, cx| list.push(notification, window, cx));
+}
+
+// App::render 中手动挂载（绝对定位到右上角）：
+.children({
+    let list = cx.global::<NotificationListHandle>().0.clone();
+    div().absolute().top_0().right_0().child(list)
+})
+```
+
+原 `window.push_notification(notification, cx)` 调用统一替换为
+`crate::core::app::push_notification(notification, window, cx)`。
+
+> 注意：导入通知类型时用 `rgpui::menu::{Notification, NotificationList, NotificationType}`；
+> `rgpui::notification` 是私有模块，直接引用会报 "module notification is private"。
+
+### 9.3 Resizable 面板（API 变更最大）
+
+- **错误写法**：`cx.new(|cx| ResizableState::new(cx))` 会双重包裹成 `Entity<Entity<ResizableState>>`。
+  **正确写法**：`ResizableState::new` 本身返回 `Entity<ResizableState>`，直接调用即可：
+  ```rust
+  let state = ResizableState::new(std::borrow::BorrowMut::borrow_mut(cx));
+  ```
+  （`Context<App>` 实现了 `BorrowMut<App>`，不能用 `cx.borrow_mut()` 以免与 `RefCell::borrow_mut` 混淆；
+  若 `use std::borrow::BorrowMut` 全局导入，会与 `RefCell` 的方法冲突，建议用完全限定 `std::borrow::BorrowMut::borrow_mut(cx)`。）
+- `h_resizable` / `v_resizable` 现在需要 `(id, state: Entity<ResizableState>)` 两个参数，
+  旧版的 `with_state(...)` 已移除，改为构造时传入：
+  ```rust
+  let layout = h_resizable("multi-panel", file_tree_panel_state.clone());
+  ```
+- 旧版 `ResizablePanelGroup::on_resize(cb)` 已移除。rgpui 改为 `ResizableState` 发出
+  `ResizablePanelEvent`，通过 `cx.subscribe` 监听：
+  ```rust
+  cx.subscribe(&file_tree_panel_state, move |this: &mut App, _state, _event, cx| {
+      // 注意闭包是 4 参数：(&mut App, Entity<T2>, &Evt, &mut Context<App>)
+      if let Some(size) = _state.read(cx).sizes().first() { /* ... */ }
+  }).detach();
+  ```
+- `resizable_panel()` 仍无需参数，链式 `child` / `size` / `size_range` 保持不变。
+
+### 9.4 InputState 无 searchable
+
+`InputState` 不再有 `.searchable(true/false)` 方法，直接删除对应链式调用即可。
+
+### 9.5 Markdown 预览
+
+`rgpui_component::text::TextView::markdown(id, src)` 替换为 `rgpui_markdown::Markdown::new(src)`。
+`Markdown` 仅实现 `Styled` 与 `RenderOnce`，**没有** `.selectable()` / `.scrollable()`：
+
+```rust
+div()
+    .size_full()
+    .overflow_y_scrollbar()   // 用 scrollbar 而非 scrollable
+    .p_2()
+    .child(Markdown::new(content.clone()))
+```
+
+### 9.6 ThemeRegistry 无 watch_dir
+
+旧版 `ThemeRegistry::watch_dir(dir, cx, cb)` 不存在。改为启动时直接调用加载逻辑：
+
+```rust
+apply_themes_from_registry(cx);
+```
+
+### 9.7 其它零散变更
+
+- `TitleBar` 位于 `rgpui::title_bar::TitleBar`（不在 crate 根，旧 `use rgpui::TitleBar` 失效）。
+- `gpui_component::set_locale(...)` 已删除，仅保留 `rust_i18n::set_locale(...)`。
+- `Root::new(view, cx)`（2 参数）保持不变；`Root::render_dialog_layer(window, cx)` 仍存在可用。
+
+### 9.8 Cargo.toml 本地依赖（ru_editor 当前用法）
+
+ru_editor 直接引用本地 rgpui git 仓库（而非 crates.io）：
+
+```toml
+rgpui          = { git = "file:///C:/code/rgpui_workspace/rgpui", branch = "dev", features = ["tokio"] }
+rgpui-platform = { git = "file:///C:/code/rgpui_workspace/rgpui", branch = "dev" }
+rgpui-term     = { git = "file:///C:/code/rgpui_workspace/rgpui", branch = "dev" }
+rgpui-markdown = { git = "file:///C:/code/rgpui_workspace/rgpui", branch = "dev" }
+```
+
+> 由于 rgpui 依赖的 `rayon`/`indexmap` 等版本可能与上游不同，若 Cargo.lock 解析冲突，
+> 删除 `Cargo.lock` 后重新 `cargo generate-lockfile` / `cargo build` 即可。
