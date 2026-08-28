@@ -5213,10 +5213,19 @@ impl Window {
         cx: &mut App,
         dom_keys: Option<&[crate::DomNodeKey]>,
     ) {
-        let hit_test = match dom_keys {
-            // 事件委托：按 DOM key 链收集 hitbox，跳过坐标 hit-test。
-            Some(keys) => self.dom_keys_hit_test(keys),
-            None => self.rendered_frame.hit_test(self.mouse_position()),
+        let hit_test = {
+            #[cfg(feature = "dom-backend")]
+            {
+                match dom_keys {
+                    Some(keys) => self.dom_keys_hit_test(keys),
+                    None => self.rendered_frame.hit_test(self.mouse_position()),
+                }
+            }
+            #[cfg(not(feature = "dom-backend"))]
+            {
+                let _ = dom_keys;
+                self.rendered_frame.hit_test(self.mouse_position())
+            }
         };
         if hit_test != self.mouse_hit_test {
             self.mouse_hit_test = hit_test;

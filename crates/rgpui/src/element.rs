@@ -396,7 +396,7 @@ impl<E: Element> Drawable<E> {
                     None
                 };
                 #[cfg(not(feature = "dom-backend"))]
-                let dom_key: Option<()> = None;
+                let _dom_key: Option<()> = None;
 
                 let mut pushed_a11y_node = false;
                 if window.a11y.is_active() {

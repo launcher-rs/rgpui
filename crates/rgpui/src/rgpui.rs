@@ -322,6 +322,9 @@ pub use color::*;
 /// 重导出 Web DOM 后端类型（DomNode、DomTree、DomStyle 等）
 #[cfg(feature = "dom-backend")]
 pub use dom::*;
+/// 当 dom-backend 未启用时，提供 DomNodeKey 占位类型，使函数签名编译通过。
+#[cfg(not(feature = "dom-backend"))]
+pub(crate) type DomNodeKey = ();
 pub use theme::color::{ColorName, Colorize, hsl, try_parse_background, try_parse_color};
 // 重导出主题色阶函数（red_500、blue_600 等）
 /// 重导出 ctor 宏，用于在程序启动前执行初始化函数

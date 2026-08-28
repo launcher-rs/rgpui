@@ -1,10 +1,12 @@
 //! 焦点陷阱 - 将 Tab 键循环限制在模态容器内。
 
 use crate::{
-    AnyElement, App, Bounds, DomNode, Element, ElementId, FocusHandle, Global, GlobalElementId,
+    AnyElement, App, Bounds, Element, ElementId, FocusHandle, Global, GlobalElementId,
     InteractiveElement, Interactivity, IntoElement, LayoutId, ParentElement, Pixels,
     StatefulInteractiveElement, StyleRefinement, Styled, WeakFocusHandle, Window,
 };
+#[cfg(feature = "dom-backend")]
+use crate::DomNode;
 use std::collections::HashMap;
 
 /// 为交互元素添加 `focus_trap` 能力的扩展 trait。
