@@ -661,7 +661,7 @@ mod tests {
 
     fn setup(cx: &mut TestAppContext) -> (Entity<Root>, &mut VisualTestContext) {
         cx.update(crate::theme::init);
-        cx.add_window_view(|window, cx| {
+        cx.add_window_view(|_window, cx| {
             let focus_handle = cx.focus_handle();
             let view = cx.new(move |_| DialogHost { focus_handle });
             Root::new(view, cx)

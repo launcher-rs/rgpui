@@ -1,5 +1,4 @@
 {
-  "$schema": "https://github.com/longbridge/rgpui-component/raw/refs/heads/main/.theme-schema.json",
   "name": "Default",
   "author": "shadcn",
   "url": "https://ui.shadcn.com",

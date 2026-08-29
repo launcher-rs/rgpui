@@ -244,7 +244,7 @@ impl InputState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rgpui::{Context, FontWeight};
+    use rgpui::FontWeight;
 
     #[test]
     fn collections_are_independent_and_ranges_are_clipped() {

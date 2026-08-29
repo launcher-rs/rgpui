@@ -13,7 +13,6 @@ use crate::window::WebWindowInner;
 
 /// Web 平台事件监听器集合，持有所有注册的 DOM 事件回调
 pub struct WebEventListeners {
-    #[allow(dead_code)]
     closures: Vec<Closure<dyn FnMut(JsValue)>>,
 }
 

@@ -162,7 +162,6 @@ impl Theme {
     /// 与系统外观同步主题。
     pub fn sync_system_appearance(window: Option<&mut Window>, cx: &mut App) {
         // 优先使用 window.appearance() 以避免 Linux 上报错。
-        // https://github.com/longbridge/rgpui-component/issues/104
         let appearance = window
             .as_ref()
             .map(|window| window.appearance())

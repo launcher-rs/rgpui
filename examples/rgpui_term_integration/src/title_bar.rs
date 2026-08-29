@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
-use gpui::{
+use rgpui::{
     AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
     MouseButton, ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement as _,
     StyleRefinement, Styled, TitlebarOptions, Window, WindowControlArea, div,
     prelude::FluentBuilder as _, px,
 };
-use gpui_component::{
+use rgpui::{
     ActiveTheme, Icon, IconName, InteractiveElementExt as _, Sizable as _, StyledExt, h_flex,
 };
 use smallvec::SmallVec;
@@ -42,7 +42,7 @@ impl TitleBar {
         TitlebarOptions {
             title: None,
             appears_transparent: true,
-            traffic_light_position: Some(gpui::point(px(9.0), px(9.0))),
+            traffic_light_position: Some(rgpui::point(px(9.0), px(9.0))),
         }
     }
 
@@ -227,7 +227,7 @@ impl RenderOnce for WindowControls {
 }
 
 impl Styled for TitleBar {
-    fn style(&mut self) -> &mut gpui::StyleRefinement {
+    fn style(&mut self) -> &mut rgpui::StyleRefinement {
         &mut self.style
     }
 }

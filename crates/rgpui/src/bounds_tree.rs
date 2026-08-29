@@ -375,7 +375,7 @@ where
 mod tests {
     use super::*;
     use crate::{Bounds, Point, Size};
-    use rand::{Rng, RngExt, SeedableRng};
+    use rand::{RngExt, SeedableRng};
 
     #[test]
     fn test_insert() {

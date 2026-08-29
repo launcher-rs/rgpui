@@ -1681,6 +1681,7 @@ mod tests {
         paths
     }
 
+    #[test]
     fn compare_paths_with_dots() {
         let mut paths = vec![
             (Path::new("test_dirs"), false),
@@ -1718,6 +1719,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_paths_with_same_name_different_extensions() {
         let mut paths = vec![
             (Path::new("test_dirs/file.rs"), true),
@@ -1739,6 +1741,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_paths_case_semi_sensitive() {
         let mut paths = vec![
             (Path::new("test_DIRS"), false),
@@ -1770,6 +1773,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_paths_mixed_case_numeric_ordering() {
         let mut entries = [
             (Path::new(".config"), false),
@@ -1796,6 +1800,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_mixed_case_insensitive() {
         // Test that mixed mode is case-insensitive
         let mut paths = vec![
@@ -1819,6 +1824,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_files_first_basic() {
         // Test that files come before directories
         let mut paths = vec![
@@ -1843,6 +1849,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_files_first_case_insensitive() {
         // Test case-insensitive sorting within files and directories
         let mut paths = vec![
@@ -1866,6 +1873,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_files_first_numeric() {
         // Test natural number sorting with files first
         let mut paths = vec![
@@ -1889,6 +1897,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_mixed_case() {
         // Test case-insensitive sorting with varied capitalization
         let mut paths = vec![
@@ -1908,6 +1917,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_mixed_files_and_dirs() {
         // Verify directories and files are still mixed
         let mut paths = vec![
@@ -1929,6 +1939,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_mixed_same_name_different_case_file_and_dir() {
         let mut paths = vec![
             (RelPath::unix("Hello.txt").unwrap(), true),
@@ -1957,6 +1968,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_mixed_with_nested_paths() {
         // Test that nested paths still work correctly
         let mut paths = vec![
@@ -1977,6 +1989,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_files_first_with_nested() {
         // Files come before directories, even with nested paths
         let mut paths = vec![
@@ -1998,6 +2011,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_mixed_dotfiles() {
         // Test that dotfiles are handled correctly in mixed mode
         let mut paths = vec![
@@ -2018,6 +2032,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_files_first_dotfiles() {
         // Test that dotfiles come first when they're files
         let mut paths = vec![
@@ -2039,6 +2054,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_mixed_same_stem_different_extension() {
         // Files with same stem but different extensions should sort by extension
         let mut paths = vec![
@@ -2057,6 +2073,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_files_first_same_stem() {
         // Same stem files should still sort by extension with files_first
         let mut paths = vec![
@@ -2076,6 +2093,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_mixed_deep_nesting() {
         // Test sorting with deeply nested paths
         let mut paths = vec![
@@ -2096,6 +2114,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_upper() {
         let directories_only_paths = vec![
             rel_path_entry("mixedCase", false),
@@ -2214,6 +2233,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_lower() {
         let directories_only_paths = vec![
             rel_path_entry("mixedCase", false),
@@ -2302,6 +2322,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn compare_rel_paths_unicode() {
         let directories_only_paths = vec![
             rel_path_entry("mixedCase", false),
@@ -2420,6 +2441,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn path_with_position_parse_posix_path() {
         // Test POSIX filename edge cases
         // Read more at https://en.wikipedia.org/wiki/Filename
@@ -2517,6 +2539,7 @@ mod tests {
 
     #[perf]
     #[cfg(not(target_os = "windows"))]
+    #[test]
     fn path_with_position_parse_posix_path_with_suffix() {
         assert_eq!(
             PathWithPosition::parse_str("foo/bar:34:in"),
@@ -2572,6 +2595,7 @@ mod tests {
     }
 
     #[cfg(target_os = "windows")]
+    #[test]
     fn path_with_position_parse_windows_path() {
         assert_eq!(
             PathWithPosition::parse_str("crates\\utils\\paths.rs"),
@@ -2602,6 +2626,7 @@ mod tests {
     }
 
     #[cfg(target_os = "windows")]
+    #[test]
     fn path_with_position_parse_windows_path_with_suffix() {
         assert_eq!(
             PathWithPosition::parse_str("crates\\utils\\paths.rs:101"),
@@ -2713,6 +2738,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_path_compact() {
         let path: PathBuf = [
             home_dir().to_string_lossy().into_owned(),
@@ -2727,6 +2753,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn test_extension_or_hidden_file_name() {
         // No dots in name
         let path = Path::new("/a/b/c/file_name.rs");
@@ -2785,6 +2812,7 @@ mod tests {
     //     );
     // }
     #[cfg(target_os = "windows")]
+    #[test]
     fn test_sanitized_path() {
         let path = Path::new("C:\\Users\\someone\\test_file.rs");
         let sanitized_path = SanitizedPath::new(path);
@@ -2801,6 +2829,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_compare_numeric_segments() {
         // Helper function to create peekable iterators and test
         fn compare(a: &str, b: &str) -> Ordering {
@@ -2868,6 +2897,7 @@ mod tests {
         assert_eq!(b_iter.collect::<String>(), "def");
     }
 
+    #[test]
     fn test_natural_sort() {
         // Basic alphanumeric
         assert_eq!(natural_sort("a", "b"), Ordering::Less);
@@ -2921,6 +2951,7 @@ mod tests {
         assert_eq!(natural_sort("File_a1", "File_A1"), Ordering::Less);
     }
 
+    #[test]
     fn test_compare_paths() {
         // Helper function for cleaner tests
         fn compare(a: &str, is_a_file: bool, b: &str, is_b_file: bool) -> Ordering {
@@ -3006,6 +3037,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_natural_sort_case_sensitivity() {
         std::thread::sleep(std::time::Duration::from_millis(100));
         // Same letter different case - lowercase should come first
@@ -3025,6 +3057,7 @@ mod tests {
         assert_eq!(natural_sort("a", "B"), Ordering::Less);
     }
 
+    #[test]
     fn test_natural_sort_with_numbers() {
         // Basic number ordering
         assert_eq!(natural_sort("file1", "file2"), Ordering::Less);
@@ -3098,6 +3131,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_natural_sort_case_sensitive() {
         // Numerically smaller values come first.
         assert_eq!(natural_sort("File1", "file2"), Ordering::Less);
@@ -3116,6 +3150,7 @@ mod tests {
         assert_eq!(natural_sort("dir10", "Dir10"), Ordering::Less);
     }
 
+    #[test]
     fn test_natural_sort_edge_cases() {
         // Empty strings
         assert_eq!(natural_sort("", ""), Ordering::Equal);

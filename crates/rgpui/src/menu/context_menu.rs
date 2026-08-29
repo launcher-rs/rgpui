@@ -347,8 +347,7 @@ mod tests {
     use super::*;
     use crate::theme::Theme;
     use crate::{
-        Context, FocusHandle, IntoElement, Render, TestAppContext, VisualTestContext, actions,
-        point, px,
+        Context, FocusHandle, IntoElement, Render, TestAppContext, VisualTestContext, point, px,
     };
     use std::cell::Cell;
 

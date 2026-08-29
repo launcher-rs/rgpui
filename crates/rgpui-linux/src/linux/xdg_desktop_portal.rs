@@ -14,10 +14,8 @@ pub enum Event {
     /// 窗口外观变化
     WindowAppearance(WindowAppearance),
     /// 光标主题变化
-    #[cfg_attr(feature = "x11", allow(dead_code))]
     CursorTheme(String),
     /// 光标大小变化
-    #[cfg_attr(feature = "x11", allow(dead_code))]
     CursorSize(u32),
     /// 窗口按钮布局变化
     ButtonLayout(String),

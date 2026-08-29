@@ -1713,66 +1713,6 @@ fn run_muda_menu_event_listener(
         .unwrap();
 }
 
-/// Builds a [`muda::Menu`] from a `Vec<MenuItem>`.
-#[allow(dead_code)]
-fn build_muda_menu(
-    items: &Vec<MenuItem>,
-    action_map: &mut std::collections::HashMap<muda::MenuId, Box<dyn Action>>,
-) -> muda::Menu {
-    use muda::{CheckMenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
-
-    let menu = muda::Menu::new();
-    for item in items {
-        match item {
-            MenuItem::Separator => {
-                let _ = menu.append(&PredefinedMenuItem::separator());
-            }
-            MenuItem::Action {
-                name,
-                checked,
-                action,
-                ..
-            } => {
-                if *checked {
-                    let muda_item = CheckMenuItem::new(name, true, *checked, None);
-                    action_map.insert(muda_item.id().clone(), action.boxed_clone());
-                    let _ = menu.append(&muda_item);
-                } else {
-                    let muda_item = muda::MenuItem::new(name, true, None);
-                    action_map.insert(muda_item.id().clone(), action.boxed_clone());
-                    let _ = menu.append(&muda_item);
-                }
-            }
-            MenuItem::Submenu(_submenu) => {
-                let child_menu = build_muda_menu(&_submenu.items, action_map);
-                let submenu = Submenu::new(&_submenu.name, true);
-                for item in child_menu.items() {
-                    match item {
-                        MenuItemKind::Check(item) => {
-                            let _ = submenu.append(&item);
-                        }
-                        MenuItemKind::Icon(item) => {
-                            let _ = submenu.append(&item);
-                        }
-                        MenuItemKind::Predefined(item) => {
-                            let _ = submenu.append(&item);
-                        }
-                        MenuItemKind::Submenu(item) => {
-                            let _ = submenu.append(&item);
-                        }
-                        MenuItemKind::MenuItem(item) => {
-                            let _ = submenu.append(&item);
-                        }
-                    }
-                }
-                let _ = menu.append(&submenu);
-            }
-            _ => {}
-        };
-    }
-    menu
-}
-
 /// 将 MenuItem 转换为 TrayMenuItem（旧 API 兼容）
 fn convert_menu_items_to_tray(items: &[MenuItem]) -> Vec<TrayMenuItem> {
     items

@@ -42,7 +42,7 @@ pub(crate) const SCROLL_LINES: f32 = 3.0;
 pub(crate) const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const DOUBLE_CLICK_DISTANCE: Pixels = px(5.0);
-pub(crate) const KEYRING_LABEL: &str = "zed-github-account";
+pub(crate) const KEYRING_LABEL: &str = "rgpui-github-account";
 
 #[cfg(any(feature = "wayland", feature = "x11"))]
 const FILE_PICKER_PORTAL_MISSING: &str =
@@ -125,10 +125,7 @@ pub(crate) struct LinuxCommon {
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
     pub(crate) menus: Vec<OwnedMenu>,
-    #[cfg_attr(
-        not(all(target_os = "linux", any(feature = "wayland", feature = "x11"))),
-        allow(dead_code)
-    )]
+    #[cfg_attr(not(all(target_os = "linux", any(feature = "wayland", feature = "x11"))))]
     wake_sender: Sender<()>,
     wake_listener_started: bool,
 }

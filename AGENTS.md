@@ -230,7 +230,7 @@ rgpui 在上游 gpui 基础上增加了大量独有功能，是项目的差异�
 
 | 子系统 | 目标模块 | 关键公开类型 |
 |--------|----------|--------------|
-| 滚动 | `elements/scroll/` | `Scrollable`、`Scrollbar`、`scrollable()`、`ScrollHandle` |
+| 滚动 | `elements/scroll/` | `Scrollable`、`Scrollbar`、`ScrollHandle` |
 | 基础元素 | `elements/` | `Button`、`Checkbox`、`Radio`、`Switch`、`Slider`、`Spinner`、`Skeleton`、`Badge`、`Tag`、`Separator`、`Kbd`、`Tooltip`、`Icon` |
 | 表单 | `form/` | `Form`、`Field`、`FieldBuilder`、`v_form`/`h_form`/`field` |
 | 输入 | `input_ui/` | `Input`、`MaskedInput`、`NumberInput`、`PasswordInput`、`TextArea` |

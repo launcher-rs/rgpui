@@ -41,7 +41,7 @@ pub async fn capture(
 /// 在检查退出状态之前尝试解析环境输出。
 /// 用户的 shell rc 文件可能包含会失败的命令（例如在非真实 PTY 中
 /// 调用 posix_spawnp 的编辑器集成），导致非零退出状态，
-/// 即使 `zed --printenv` 运行成功并在其独立的 fd 上产生了有效输出。
+/// 即使 `rgpui --printenv` 运行成功并在其独立的 fd 上产生了有效输出。
 fn parse_env_output(
     env_output: &str,
     status: &std::process::ExitStatus,
@@ -81,7 +81,7 @@ async fn capture_unix(
     use super::command::new_std_command;
 
     let shell_kind = ShellKind::new(shell_path, false);
-    let quoted_zed_path = super::get_shell_safe_zed_path(shell_kind)?;
+    let quoted_rgpui_path = super::get_shell_safe_rgpui_path(shell_kind)?;
 
     let mut command_string = String::new();
     let mut command = new_std_command(shell_path);
@@ -142,7 +142,7 @@ async fn capture_unix(
     if let Some(prefix) = shell_kind.command_prefix() {
         command_string.push(prefix);
     }
-    command_string.push_str(&format!("{} --printenv {}", quoted_zed_path, redir));
+    command_string.push_str(&format!("{} --printenv {}", quoted_rgpui_path, redir));
 
     if let ShellKind::Nushell = shell_kind {
         command_string.push_str("; exit");
@@ -211,8 +211,8 @@ async fn capture_windows(
 ) -> Result<HashMap<String, String>> {
     use std::process::Stdio;
 
-    let zed_path =
-        std::env::current_exe().context("Failed to determine current zed executable path.")?;
+    let rgpui_path =
+        std::env::current_exe().context("Failed to determine current rgpui executable path.")?;
 
     let shell_kind = ShellKind::new(shell_path, true);
     // Prefix with "./" if the path starts with "-" to prevent cd from interpreting it as a flag
@@ -222,7 +222,7 @@ async fn capture_windows(
     } else {
         directory_string
     };
-    let zed_path_string = zed_path.display().to_string();
+    let rgpui_path_string = rgpui_path.display().to_string();
     let quote_for_shell = |value: &str| {
         shell_kind
             .try_quote(value)
@@ -232,7 +232,7 @@ async fn capture_windows(
     let mut cmd = super::command::new_command(shell_path);
     cmd.args(args);
     let quoted_directory = quote_for_shell(&directory_string)?;
-    let quoted_zed_path = quote_for_shell(&zed_path_string)?;
+    let quoted_rgpui_path = quote_for_shell(&rgpui_path_string)?;
     let cmd = match shell_kind {
         ShellKind::Csh
         | ShellKind::Tcsh
@@ -243,7 +243,7 @@ async fn capture_windows(
             "-l",
             "-i",
             "-c",
-            &format!("cd {}; {} --printenv", quoted_directory, quoted_zed_path),
+            &format!("cd {}; {} --printenv", quoted_directory, quoted_rgpui_path),
         ]),
         ShellKind::PowerShell | ShellKind::Pwsh => cmd.args([
             "-NonInteractive",
@@ -251,25 +251,33 @@ async fn capture_windows(
             "-Command",
             &format!(
                 "Set-Location {}; & {} --printenv",
-                quoted_directory, quoted_zed_path
+                quoted_directory, quoted_rgpui_path
             ),
         ]),
         ShellKind::Elvish => cmd.args([
             "-c",
-            &format!("cd {}; {} --printenv", quoted_directory, quoted_zed_path),
+            &format!("cd {}; {} --printenv", quoted_directory, quoted_rgpui_path),
         ]),
         ShellKind::Nushell => {
-            let zed_command = shell_kind
-                .prepend_command_prefix(&quoted_zed_path)
+            let rgpui_command = shell_kind
+                .prepend_command_prefix(&quoted_rgpui_path)
                 .into_owned();
             cmd.args([
                 "-c",
-                &format!("cd {}; {} --printenv", quoted_directory, zed_command),
+                &format!("cd {}; {} --printenv", quoted_directory, rgpui_command),
             ])
         }
         ShellKind::Cmd => {
             let dir = directory_string.trim_end_matches('\\');
-            cmd.args(["/d", "/c", "cd", dir, "&&", &zed_path_string, "--printenv"])
+            cmd.args([
+                "/d",
+                "/c",
+                "cd",
+                dir,
+                "&&",
+                &rgpui_path_string,
+                "--printenv",
+            ])
         }
     }
     .stdin(Stdio::null())

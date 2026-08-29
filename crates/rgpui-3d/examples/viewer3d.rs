@@ -33,13 +33,10 @@ fn is_supported_model(path: &std::path::Path) -> bool {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
 struct JointScreenInfo {
     index: usize,
     screen_x: f32,
     screen_y: f32,
-    depth: f32,
-    world_pos: Vec3,
 }
 
 struct SharedState {
@@ -952,8 +949,6 @@ fn main() {
                                     index: i,
                                     screen_x: sx,
                                     screen_y: sy,
-                                    depth,
-                                    world_pos,
                                 });
 
                                 let is_selected = {

@@ -30,9 +30,7 @@ pub struct SingleInstance {
 #[cfg(unix)]
 struct UnixSingleInstance {
     socket_path: std::path::PathBuf,
-    #[allow(dead_code)]
     listener: Option<std::os::unix::net::UnixListener>,
-    #[allow(dead_code)]
     activate_callback: Option<Box<dyn Fn() + Send + 'static>>,
 }
 

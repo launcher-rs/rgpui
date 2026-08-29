@@ -89,7 +89,7 @@ mod sys {
     //! 派生自 display-link crate，遵循以下许可证：
     //! <https://github.com/BrainiumLLC/display-link/blob/master/LICENSE-MIT>
     //! Apple 文档：[CVDisplayLink](https://developer.apple.com/documentation/corevideo/cvdisplaylinkoutputcallback?language=objc)
-    #![allow(dead_code, non_upper_case_globals)]
+    #![allow(non_upper_case_globals)]
 
     use anyhow::Result;
     use core_graphics::display::CGDirectDisplayID;

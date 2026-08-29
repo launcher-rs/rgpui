@@ -329,7 +329,7 @@ fn test_block_with_timeout() {
     TestScheduler::once(async |scheduler| {
         // 使超时行为确定性，强制超时 tick 预算恰好为 0。
         // 这防止 `block_with_timeout` 通过额外的调度器步进取得进展并
-        /// 意外完成我们期望超时的工作。
+        // 意外完成我们期望超时的工作。
         scheduler.set_timeout_ticks(0..=0);
 
         let foreground = scheduler.foreground();

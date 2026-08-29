@@ -1395,7 +1395,6 @@ pub struct NoopTextSystem;
 
 #[expect(missing_docs)]
 impl NoopTextSystem {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Self
     }
@@ -1524,7 +1523,6 @@ impl PlatformTextSystem for NoopTextSystem {
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 /// Compute gamma correction ratios for subpixel text rendering.
-#[allow(dead_code)]
 pub fn get_gamma_correction_ratios(gamma: f32) -> [f32; 4] {
     const GAMMA_INCORRECT_TARGET_RATIOS: [[f32; 4]; 13] = [
         [0.0000 / 4.0, 0.0000 / 4.0, 0.0000 / 4.0, 0.0000 / 4.0], // gamma = 1.0
@@ -1565,13 +1563,6 @@ pub enum AtlasKey {
 }
 
 impl AtlasKey {
-    #[cfg_attr(
-        all(
-            any(target_os = "linux", target_os = "freebsd"),
-            not(any(feature = "x11", feature = "wayland"))
-        ),
-        allow(dead_code)
-    )]
     /// Returns the texture kind for this atlas key.
     pub fn texture_kind(&self) -> AtlasTextureKind {
         match self {
@@ -1652,7 +1643,6 @@ impl<T> AtlasTextureList<T> {
         self.textures.drain(..)
     }
 
-    #[allow(dead_code)]
     pub fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut T> {
         self.textures.iter_mut().flatten()
     }
@@ -1685,13 +1675,6 @@ pub struct AtlasTextureId {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
-#[cfg_attr(
-    all(
-        any(target_os = "linux", target_os = "freebsd"),
-        not(any(feature = "x11", feature = "wayland"))
-    ),
-    allow(dead_code)
-)]
 #[expect(missing_docs)]
 pub enum AtlasTextureKind {
     Monochrome = 0,
@@ -1723,13 +1706,6 @@ pub struct PlatformInputHandler {
 }
 
 #[expect(missing_docs)]
-#[cfg_attr(
-    all(
-        any(target_os = "linux", target_os = "freebsd"),
-        not(any(feature = "x11", feature = "wayland"))
-    ),
-    allow(dead_code)
-)]
 impl PlatformInputHandler {
     pub fn new(cx: AsyncWindowContext, handler: Box<dyn InputHandler>) -> Self {
         Self { cx, handler }
@@ -1745,7 +1721,6 @@ impl PlatformInputHandler {
             .flatten()
     }
 
-    #[cfg_attr(target_os = "windows", allow(dead_code))]
     pub fn marked_text_range(&mut self) -> Option<Range<usize>> {
         self.cx
             .update(|window, cx| self.handler.marked_text_range(window, cx))
@@ -1753,10 +1728,6 @@ impl PlatformInputHandler {
             .flatten()
     }
 
-    #[cfg_attr(
-        any(target_os = "linux", target_os = "freebsd", target_os = "windows"),
-        allow(dead_code)
-    )]
     pub fn text_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -1799,7 +1770,6 @@ impl PlatformInputHandler {
             .ok();
     }
 
-    #[cfg_attr(target_os = "windows", allow(dead_code))]
     pub fn unmark_text(&mut self) {
         self.cx
             .update(|window, cx| self.handler.unmark_text(window, cx))
@@ -1813,7 +1783,6 @@ impl PlatformInputHandler {
             .flatten()
     }
 
-    #[allow(dead_code)]
     pub fn apple_press_and_hold_enabled(&mut self) -> bool {
         self.handler.apple_press_and_hold_enabled()
     }
@@ -1881,12 +1850,10 @@ impl PlatformInputHandler {
             .flatten()
     }
 
-    #[allow(dead_code)]
     pub fn accepts_text_input(&mut self, window: &mut Window, cx: &mut App) -> bool {
         self.handler.accepts_text_input(window, cx)
     }
 
-    #[allow(dead_code)]
     pub fn query_accepts_text_input(&mut self) -> bool {
         self.cx
             .update(|window, cx| self.handler.accepts_text_input(window, cx))
@@ -1897,7 +1864,6 @@ impl PlatformInputHandler {
     ///
     /// 这不是对处理器简单的委托：当多按键绑定处于待处理状态时，无论处理器的偏好如何，
     /// 该函数都会返回 `false`，因为下一个可打印按键可能完成一个前缀已绕过 IME 的绑定。
-    #[allow(dead_code)]
     pub fn query_prefers_ime_for_printable_keys(&mut self) -> bool {
         self.cx
             .update(|window, cx| {
@@ -2011,7 +1977,6 @@ pub trait InputHandler: 'static {
     /// sending these to the platform.
     /// TODO: Ideally we should be able to set ApplePressAndHoldEnabled in NSUserDefaults
     /// (which is how iTerm does it) but it doesn't seem to work for me.
-    #[allow(dead_code)]
     fn apple_press_and_hold_enabled(&mut self) -> bool {
         true
     }
@@ -2116,51 +2081,32 @@ pub struct WindowOptions {
 
 /// The variables that can be configured when creating a new window
 #[derive(Debug)]
-#[cfg_attr(
-    all(
-        any(target_os = "linux", target_os = "freebsd"),
-        not(any(feature = "x11", feature = "wayland"))
-    ),
-    allow(dead_code)
-)]
 #[allow(missing_docs)]
 pub struct WindowParams {
     pub bounds: Bounds<Pixels>,
 
     /// The titlebar configuration of the window
-    #[cfg_attr(feature = "wayland", allow(dead_code))]
     pub titlebar: Option<TitlebarOptions>,
 
     /// The kind of window to create
-    #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub kind: WindowKind,
 
     /// Whether the window should be movable by the user
-    #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub is_movable: bool,
 
     /// Whether the window should be resizable by the user
-    #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub is_resizable: bool,
 
     /// Whether the window should be minimized by the user
-    #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub is_minimizable: bool,
 
-    #[cfg_attr(
-        any(target_os = "linux", target_os = "freebsd", target_os = "windows"),
-        allow(dead_code)
-    )]
     pub focus: bool,
 
-    #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub show: bool,
 
     /// An image to set as the window icon (x11 only)
-    #[cfg_attr(feature = "wayland", allow(dead_code))]
     pub icon: Option<Arc<image::RgbaImage>>,
 
-    #[cfg_attr(feature = "wayland", allow(dead_code))]
     pub display_id: Option<DisplayId>,
 
     /// 应用标识符（主要用于 Wayland）
@@ -2409,7 +2355,6 @@ impl PromptButton {
     }
 
     /// Returns true if this button is a cancel button.
-    #[allow(dead_code)]
     pub fn is_cancel(&self) -> bool {
         matches!(self, PromptButton::Cancel(_))
     }
@@ -2604,7 +2549,6 @@ impl ClipboardItem {
     }
 
     /// If this item is one ClipboardEntry::String, returns its metadata.
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     pub fn metadata(&self) -> Option<&String> {
         match self.entries().first() {
             Some(ClipboardEntry::String(clipboard_string)) if self.entries.len() == 1 => {
@@ -2904,7 +2848,6 @@ impl ClipboardString {
             .and_then(|m| serde_json::from_str(m).ok())
     }
 
-    #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     /// Compute a hash of the given text for clipboard change detection.
     pub fn text_hash(text: &str) -> u64 {
         let mut hasher = SeaHasher::new();

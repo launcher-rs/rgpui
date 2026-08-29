@@ -333,7 +333,7 @@ mod tests {
 
     #[rgpui::test]
     fn test_hover_card_state_initial_closed(cx: &mut TestAppContext) {
-        cx.update(|cx| {
+        cx.update(|_cx| {
             let state = HoverCardState::new(Duration::from_millis(100), Duration::from_millis(50));
             assert!(!state.is_open());
         });
@@ -341,7 +341,7 @@ mod tests {
 
     #[rgpui::test]
     fn test_hover_card_builder(cx: &mut TestAppContext) {
-        cx.update(|cx| {
+        cx.update(|_cx| {
             let card = HoverCard::new("hover")
                 .trigger(div().child("trigger"))
                 .content(|_, _, _| div().child("content"))

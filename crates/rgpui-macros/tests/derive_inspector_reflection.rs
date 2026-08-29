@@ -24,11 +24,8 @@ trait Transform: Clone {
     }
 
     // These methods will be filtered out:
-    #[allow(dead_code)]
     fn add(&self, other: &Self) -> Self;
-    #[allow(dead_code)]
     fn set_value(&mut self, value: i32);
-    #[allow(dead_code)]
     fn get_value(&self) -> i32;
 
     /// Adds one to the value
@@ -95,6 +92,14 @@ fn test_derive_inspector_reflection() {
 
     let quadrupled = find_method::<Number>("quadruple").unwrap().invoke(num);
     assert_eq!(quadrupled, Number(20));
+
+    // 下列三个方法是故意写进 trait 用来验证宏会把它们过滤出反射元数据
+    // （它们不匹配 fn(self) -> Self 形态）。这里直接以普通 trait 方法调用，
+    // 既保住这组过滤测试的意义，也避免其成为死代码。
+    let mut n = Number(5);
+    n.set_value(7);
+    assert_eq!(n.get_value(), 7);
+    assert_eq!(n.add(&Number(3)), Number(10));
 
     // Try to invoke a non-existent method
     let result = find_method::<Number>("nonexistent");

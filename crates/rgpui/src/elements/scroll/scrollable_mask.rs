@@ -88,7 +88,6 @@ impl ScrollableMask {
     }
 
     /// 启用调试边框，显示遮罩边界。
-    #[allow(dead_code)]
     pub fn debug(mut self) -> Self {
         self.debug = Some(crate::yellow());
         self

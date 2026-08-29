@@ -619,7 +619,6 @@ impl<T: Item> SumTree<T> {
         FilterCursor::new(self, cx, filter_node)
     }
 
-    #[allow(dead_code)]
     pub fn first(&self) -> Option<&T> {
         self.leftmost_leaf().0.items().first()
     }

@@ -6,17 +6,19 @@
 
 use std::{borrow::BorrowMut, cell::RefCell, ops::Range, rc::Rc};
 
-use crate::{
-    list::ListItem, menu::ContextMenuExt as _, menu::PopupMenu,
-    menu::{
-        Confirm, SelectDown, SelectLeft, SelectRight, SelectUp,
-    },
-    App, Context, ElementId, Entity, EventEmitter, FocusHandle, InteractiveElement as _, IntoElement,
-    KeyBinding, ListSizingBehavior, MouseButton, ParentElement, Render, RenderOnce,
-    ScrollableElement, SharedString, StyleRefinement, Styled, UniformListScrollHandle, Window, div,
-    prelude::FluentBuilder as _, uniform_list, Selectable as _, StyledExt,
-};
 use crate::ScrollStrategy;
+use crate::{
+    App, Context, ElementId, Entity, EventEmitter, FocusHandle, InteractiveElement as _,
+    IntoElement, KeyBinding, ListSizingBehavior, MouseButton, ParentElement, Render, RenderOnce,
+    ScrollableElement, Selectable as _, SharedString, StyleRefinement, Styled, StyledExt,
+    UniformListScrollHandle, Window, div,
+    list::ListItem,
+    menu::ContextMenuExt as _,
+    menu::PopupMenu,
+    menu::{Confirm, SelectDown, SelectLeft, SelectRight, SelectUp},
+    prelude::FluentBuilder as _,
+    uniform_list,
+};
 
 const CONTEXT: &str = "Tree";
 
@@ -217,8 +219,9 @@ pub struct TreeState {
     selected_ix: Option<usize>,
     right_clicked_ix: Option<usize>,
     render_item: Rc<dyn Fn(usize, &TreeEntry, bool, &mut Window, &mut App) -> ListItem>,
-    context_menu_builder:
-        Option<Rc<dyn Fn(usize, &TreeEntry, PopupMenu, &mut Window, &mut Context<TreeState>) -> PopupMenu>>,
+    context_menu_builder: Option<
+        Rc<dyn Fn(usize, &TreeEntry, PopupMenu, &mut Window, &mut Context<TreeState>) -> PopupMenu>,
+    >,
 }
 
 impl EventEmitter<TreeEvent> for TreeState {}
@@ -546,10 +549,10 @@ pub struct Tree {
     id: ElementId,
     state: Entity<TreeState>,
     style: StyleRefinement,
-    render_item:
-        Rc<dyn Fn(usize, &TreeEntry, bool, &mut Window, &mut App) -> ListItem>,
-    context_menu_builder:
-        Option<Rc<dyn Fn(usize, &TreeEntry, PopupMenu, &mut Window, &mut Context<TreeState>) -> PopupMenu>>,
+    render_item: Rc<dyn Fn(usize, &TreeEntry, bool, &mut Window, &mut App) -> ListItem>,
+    context_menu_builder: Option<
+        Rc<dyn Fn(usize, &TreeEntry, PopupMenu, &mut Window, &mut Context<TreeState>) -> PopupMenu>,
+    >,
 }
 
 impl Tree {
@@ -650,7 +653,11 @@ mod tests {
     }
 
     impl Render for TestCollector {
-        fn render(&mut self, _: &mut crate::Window, _: &mut crate::Context<Self>) -> impl crate::IntoElement {
+        fn render(
+            &mut self,
+            _: &mut crate::Window,
+            _: &mut crate::Context<Self>,
+        ) -> impl crate::IntoElement {
             crate::div()
         }
     }

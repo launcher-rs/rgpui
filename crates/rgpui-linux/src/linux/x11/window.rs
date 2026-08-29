@@ -146,19 +146,15 @@ fn resize_edge_to_moveresize(edge: ResizeEdge) -> u32 {
 #[derive(Debug)]
 struct EdgeConstraints {
     top_tiled: bool,
-    #[allow(dead_code)]
     top_resizable: bool,
 
     right_tiled: bool,
-    #[allow(dead_code)]
     right_resizable: bool,
 
     bottom_tiled: bool,
-    #[allow(dead_code)]
     bottom_resizable: bool,
 
     left_tiled: bool,
-    #[allow(dead_code)]
     left_resizable: bool,
 }
 

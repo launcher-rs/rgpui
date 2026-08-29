@@ -9,8 +9,8 @@ use windows::{
         Graphics::Gdi::*,
         UI::{
             Shell::{
-                NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE,
-                NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
+                NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+                NOTIFYICONDATAW, Shell_NotifyIconW,
             },
             WindowsAndMessaging::*,
         },
@@ -159,30 +159,6 @@ impl WindowsTray {
     ///   body - 提示内容
     ///   hwnd - 托盘所属窗口的句柄
     /// 返回: 操作结果
-    #[allow(dead_code)]
-    pub fn show_balloon(&self, title: &str, body: &str, hwnd: HWND) -> anyhow::Result<()> {
-        let mut nid = NOTIFYICONDATAW {
-            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
-            hWnd: hwnd,
-            uID: TRAY_ICON_ID,
-            uFlags: NIF_INFO,
-            ..Default::default()
-        };
-
-        let title_wide: Vec<u16> = title.encode_utf16().collect();
-        let title_len = title_wide.len().min(nid.szInfoTitle.len() - 1);
-        nid.szInfoTitle[..title_len].copy_from_slice(&title_wide[..title_len]);
-
-        let body_wide: Vec<u16> = body.encode_utf16().collect();
-        let body_len = body_wide.len().min(nid.szInfo.len() - 1);
-        nid.szInfo[..body_len].copy_from_slice(&body_wide[..body_len]);
-
-        unsafe {
-            Shell_NotifyIconW(NIM_MODIFY, &nid)
-                .ok()
-                .map_err(|e| anyhow::anyhow!("显示气球提示失败: {}", e))
-        }
-    }
 
     /// 显示上下文菜单
     /// 在鼠标当前位置弹出托盘菜单

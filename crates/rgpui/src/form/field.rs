@@ -364,7 +364,7 @@ mod tests {
 
     #[rgpui::test]
     fn form_builder_chaining(cx: &mut TestAppContext) {
-        cx.update(|cx| {
+        cx.update(|_cx| {
             let _form = Form::horizontal()
                 .columns(2)
                 .child(Field::new().label("Name").child(div().child("input")))

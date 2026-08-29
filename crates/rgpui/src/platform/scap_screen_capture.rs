@@ -1,11 +1,10 @@
 //! Linux 和 Windows 的屏幕捕获
 use crate::{
     DevicePixels, ForegroundExecutor, ScreenCaptureFrame, ScreenCaptureSource, ScreenCaptureStream,
-    Size, SourceMetadata, size,
+    Size, SourceMetadata,
 };
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::Result;
 use futures::channel::oneshot;
-use scap::Target;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{self, AtomicBool};
@@ -14,7 +13,6 @@ use std::sync::atomic::{self, AtomicBool};
 ///
 /// 在 Wayland 上应使用 `scap_default_target_source` 代替，因为 `scap_screen_sources`
 /// 不会返回任何结果。
-#[allow(dead_code)]
 pub fn scap_screen_sources(
     foreground_executor: &ForegroundExecutor,
 ) -> oneshot::Receiver<Result<Vec<Rc<dyn ScreenCaptureSource>>>> {
@@ -27,14 +25,6 @@ pub fn scap_screen_sources(
 /// 屏幕捕获的第一帧用于确定流的大小。
 ///
 /// 在 Wayland（Linux）上，提示用户选择目标，并为其选择填充单个屏幕捕获源。
-#[allow(dead_code)]
-pub(crate) fn start_scap_default_target_source(
-    foreground_executor: &ForegroundExecutor,
-) -> oneshot::Receiver<Result<Vec<Rc<dyn ScreenCaptureSource>>>> {
-    let (sources_tx, sources_rx) = oneshot::channel();
-    start_default_target_screen_capture(sources_tx);
-    to_dyn_screen_capture_sources(sources_rx, foreground_executor)
-}
 
 struct ScapCaptureSource {
     target: scap::Display,
@@ -107,96 +97,6 @@ impl ScreenCaptureSource for ScapCaptureSource {
     }
 }
 
-struct ScapDefaultTargetCaptureSource {
-    // 由 `ScreenCaptureSource::stream` 单次调用填充的发送器。
-    stream_call_tx: std::sync::mpsc::SyncSender<(
-        // 提供 `ScreenCaptureSource::stream` 的结果。
-        oneshot::Sender<Result<ScapStream>>,
-        // 帧回调。
-        Box<dyn Fn(ScreenCaptureFrame) + Send>,
-    )>,
-    target: scap::Display,
-    size: Size<DevicePixels>,
-}
-
-/// 在默认捕获目标上开始屏幕捕获，并将源填充到发送器中。
-fn start_default_target_screen_capture(
-    sources_tx: oneshot::Sender<Result<Vec<ScapDefaultTargetCaptureSource>>>,
-) {
-    // 由于使用了阻塞 API，使用专用线程。
-    std::thread::spawn(|| {
-        let start_result = crate::maybe!({
-            let mut capturer = new_scap_capturer(None)?;
-            capturer.start_capture();
-            let first_frame = capturer
-                .get_next_frame()
-                .context("Failed to get first frame of screenshare to get the size.")?;
-            let size = frame_size(&first_frame);
-            let target = capturer
-                .target()
-                .context("Unable to determine the target display.")?;
-            let target = target.clone();
-            Ok((capturer, size, target))
-        });
-
-        match start_result {
-            Ok((capturer, size, Target::Display(display))) => {
-                let (stream_call_tx, stream_rx) = std::sync::mpsc::sync_channel(1);
-                sources_tx
-                    .send(Ok(vec![ScapDefaultTargetCaptureSource {
-                        stream_call_tx,
-                        size,
-                        target: display.clone(),
-                    }]))
-                    .ok();
-                let Ok((stream_tx, frame_callback)) = stream_rx.recv() else {
-                    return;
-                };
-                run_capture(capturer, display, frame_callback, stream_tx);
-            }
-            Err(e) => {
-                sources_tx.send(Err(e)).ok();
-            }
-            _ => {
-                sources_tx
-                    .send(Err(anyhow!("The screen capture source is not a display")))
-                    .ok();
-            }
-        }
-    });
-}
-
-impl ScreenCaptureSource for ScapDefaultTargetCaptureSource {
-    fn metadata(&self) -> Result<SourceMetadata> {
-        Ok(SourceMetadata {
-            resolution: self.size,
-            label: None,
-            is_main: None,
-            id: self.target.id as u64,
-        })
-    }
-
-    fn stream(
-        &self,
-        foreground_executor: &ForegroundExecutor,
-        frame_callback: Box<dyn Fn(ScreenCaptureFrame) + Send>,
-    ) -> oneshot::Receiver<Result<Box<dyn ScreenCaptureStream>>> {
-        let (tx, rx) = oneshot::channel();
-        match self.stream_call_tx.try_send((tx, frame_callback)) {
-            Ok(()) => {}
-            Err(std::sync::mpsc::TrySendError::Full((tx, _)))
-            | Err(std::sync::mpsc::TrySendError::Disconnected((tx, _))) => {
-                // 注意：可以添加对在前一个流结束后再次调用的支持。
-                tx.send(Err(anyhow!(
-                    "Can't call ScapDefaultTargetCaptureSource::stream multiple times."
-                )))
-                .ok();
-            }
-        }
-        to_dyn_screen_capture_stream(rx, foreground_executor)
-    }
-}
-
 fn new_scap_capturer(target: Option<scap::Target>) -> Result<scap::capturer::Capturer> {
     scap::capturer::Capturer::build(scap::capturer::Options {
         fps: 60,
@@ -263,19 +163,6 @@ impl Drop for ScapStream {
     fn drop(&mut self) {
         self.cancel_stream.store(true, atomic::Ordering::SeqCst);
     }
-}
-
-fn frame_size(frame: &scap::frame::Frame) -> Size<DevicePixels> {
-    let (width, height) = match frame {
-        scap::frame::Frame::YUVFrame(frame) => (frame.width, frame.height),
-        scap::frame::Frame::RGB(frame) => (frame.width, frame.height),
-        scap::frame::Frame::RGBx(frame) => (frame.width, frame.height),
-        scap::frame::Frame::XBGR(frame) => (frame.width, frame.height),
-        scap::frame::Frame::BGRx(frame) => (frame.width, frame.height),
-        scap::frame::Frame::BGR0(frame) => (frame.width, frame.height),
-        scap::frame::Frame::BGRA(frame) => (frame.width, frame.height),
-    };
-    size(DevicePixels(width), DevicePixels(height))
 }
 
 /// 此函数由 `get_screen_targets` 和 `start_default_target_screen_capture` 使用，将它们的

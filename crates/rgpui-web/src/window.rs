@@ -77,7 +77,6 @@ pub(crate) struct WebWindowInner {
 pub struct WebWindow {
     inner: Rc<WebWindowInner>,
     display: Rc<dyn PlatformDisplay>,
-    #[allow(dead_code)]
     handle: AnyWindowHandle,
     _raf_closure: Closure<dyn FnMut()>,
     _resize_observer: Option<web_sys::ResizeObserver>,

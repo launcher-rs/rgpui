@@ -194,7 +194,6 @@ impl<T: fmt::Debug> fmt::Debug for SendError<T> {
 #[doc(hidden)]
 pub struct RecvError;
 
-#[allow(dead_code)]
 impl<T> PriorityQueueReceiver<T> {
     pub fn new() -> (PriorityQueueSender<T>, Self) {
         let state = PriorityQueueState {

@@ -429,7 +429,7 @@ mod no_action {
     use serde::Deserialize;
 
     actions!(
-        zed,
+        rgpui,
         [
             /// Action with special handling which unbinds the keybinding this is associated with,
             /// if it is the highest precedence match.
@@ -442,9 +442,9 @@ mod no_action {
     ///
     /// In keymap JSON this is written as:
     ///
-    /// `["zed::Unbind", "editor::NewLine"]`
+    /// `["rgpui::Unbind", "editor::NewLine"]`
     #[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema, rgpui::Action)]
-    #[action(namespace = zed)]
+    #[action(namespace = rgpui)]
     pub struct Unbind(pub rgpui::SharedString);
 
     /// Returns whether or not this action represents a removed key binding.
