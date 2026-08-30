@@ -30,8 +30,8 @@ pub struct SingleInstance {
 #[cfg(unix)]
 struct UnixSingleInstance {
     socket_path: std::path::PathBuf,
-    listener: Option<std::os::unix::net::UnixListener>,
-    activate_callback: Option<Box<dyn Fn() + Send + 'static>>,
+    // 持有 UnixListener 以保持套接字绑定（单实例锁），仅写不读，用下划线前缀避免死代码警告
+    _listener: Option<std::os::unix::net::UnixListener>,
 }
 
 impl SingleInstance {
@@ -110,8 +110,7 @@ impl SingleInstance {
             Ok(listener) => Ok(Self {
                 inner: Some(UnixSingleInstance {
                     socket_path,
-                    listener: Some(listener),
-                    activate_callback: None,
+                    _listener: Some(listener),
                 }),
             }),
             Err(_) => Err(AlreadyRunning),

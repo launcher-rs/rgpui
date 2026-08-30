@@ -146,29 +146,18 @@ fn resize_edge_to_moveresize(edge: ResizeEdge) -> u32 {
 #[derive(Debug)]
 struct EdgeConstraints {
     top_tiled: bool,
-    top_resizable: bool,
-
     right_tiled: bool,
-    right_resizable: bool,
-
     bottom_tiled: bool,
-    bottom_resizable: bool,
-
     left_tiled: bool,
-    left_resizable: bool,
 }
 
 impl EdgeConstraints {
     fn from_atom(atom: u32) -> Self {
         EdgeConstraints {
             top_tiled: (atom & (1 << 0)) != 0,
-            top_resizable: (atom & (1 << 1)) != 0,
             right_tiled: (atom & (1 << 2)) != 0,
-            right_resizable: (atom & (1 << 3)) != 0,
             bottom_tiled: (atom & (1 << 4)) != 0,
-            bottom_resizable: (atom & (1 << 5)) != 0,
             left_tiled: (atom & (1 << 6)) != 0,
-            left_resizable: (atom & (1 << 7)) != 0,
         }
     }
 
