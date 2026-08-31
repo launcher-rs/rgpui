@@ -80,10 +80,12 @@ fn select_emoji_font(
 /// When rendering SVGs, we render them at twice the size to get a higher-quality result.
 pub const SMOOTH_SVG_SCALE_FACTOR: f32 = 2.;
 
+/// SVG 渲染参数，用作精灵图集的缓存键。
 #[derive(Clone, PartialEq, Hash, Eq)]
-#[expect(missing_docs)]
 pub struct RenderSvgParams {
+    /// SVG 资源路径。
     pub path: SharedString,
+    /// 渲染目标尺寸（设备像素）。
     pub size: Size<DevicePixels>,
 }
 

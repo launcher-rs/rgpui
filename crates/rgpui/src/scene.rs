@@ -14,15 +14,15 @@ use std::{
     slice,
 };
 
+/// 路径顶点的缩放像素类型别名（已废弃，使用 `PathVertex<ScaledPixels>`）。
 #[allow(non_camel_case_types, unused)]
-#[expect(missing_docs)]
 pub type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
 
-#[expect(missing_docs)]
+/// 绘制顺序值，数值越小越先绘制。
 pub type DrawOrder = u32;
 
+/// 渲染场景 — 收集所有绘制图元（四边形、路径、精灵、阴影等），供 GPU 批量渲染。
 #[derive(Default)]
-#[expect(missing_docs)]
 pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
     primitive_bounds: BoundsTree<ScaledPixels>,
@@ -37,8 +37,9 @@ pub struct Scene {
     pub surfaces: Vec<PaintSurface>,
 }
 
-#[expect(missing_docs)]
+/// 渲染场景的构建和管理方法。
 impl Scene {
+    /// 清空场景中的所有绘制操作。
     pub fn clear(&mut self) {
         self.paint_operations.clear();
         self.primitive_bounds.clear();
@@ -188,21 +189,29 @@ pub(crate) enum PaintOperation {
     EndLayer,
 }
 
+/// 渲染图元 — 场景中所有可绘制元素的枚举。
 #[derive(Clone)]
-#[expect(missing_docs)]
 pub enum Primitive {
+    /// 阴影
     Shadow(Shadow),
+    /// 四边形
     Quad(Quad),
+    /// 矢量路径
     Path(Path<ScaledPixels>),
+    /// 下划线
     Underline(Underline),
+    /// 单色精灵（灰度字形/图标）
     MonochromeSprite(MonochromeSprite),
+    /// 亚像素精灵（LCD 抗锯齿字形）
     SubpixelSprite(SubpixelSprite),
+    /// 多色精灵（彩色图像/Emoji）
     PolychromeSprite(PolychromeSprite),
+    /// 平台原生绘制表面
     Surface(PaintSurface),
 }
 
-#[expect(missing_docs)]
 impl Primitive {
+    /// 获取此图元的边界框。
     pub fn bounds(&self) -> &Bounds<ScaledPixels> {
         match self {
             Primitive::Shadow(shadow) => &shadow.bounds,
@@ -429,31 +438,45 @@ impl<'a> Iterator for BatchIterator<'a> {
     }
 }
 
+/// 图元批处理 — 按类型分组的图元索引范围，用于 GPU 批量绘制。
 #[derive(Debug)]
-#[allow(missing_docs)]
 pub enum PrimitiveBatch {
+    /// 阴影批
     Shadows(Range<usize>),
+    /// 四边形批
     Quads(Range<usize>),
+    /// 路径批
     Paths(Range<usize>),
+    /// 下划线批
     Underlines(Range<usize>),
+    /// 单色精灵批
     MonochromeSprites {
+        /// 图集纹理 ID
         texture_id: AtlasTextureId,
+        /// 索引范围
         range: Range<usize>,
     },
+    /// 亚像素精灵批
     SubpixelSprites {
+        /// 图集纹理 ID
         texture_id: AtlasTextureId,
+        /// 索引范围
         range: Range<usize>,
     },
+    /// 多色精灵批
     PolychromeSprites {
+        /// 图集纹理 ID
         texture_id: AtlasTextureId,
+        /// 索引范围
         range: Range<usize>,
     },
+    /// 平台原生表面批
     Surfaces(Range<usize>),
 }
 
+/// 四边形图元 — 矩形区域，支持背景色、边框、圆角和变换。
 #[derive(Default, Debug, Copy, Clone)]
 #[repr(C)]
-#[expect(missing_docs)]
 pub struct Quad {
     pub order: DrawOrder,
     pub border_style: BorderStyle,
@@ -475,9 +498,9 @@ impl From<Quad> for Primitive {
     }
 }
 
+/// 下划线图元 — 支持直线和波浪线样式。
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
-#[expect(missing_docs)]
 pub struct Underline {
     pub order: DrawOrder,
     pub pad: u32, // align to 8 bytes
@@ -494,9 +517,9 @@ impl From<Underline> for Primitive {
     }
 }
 
+/// 阴影图元 — 支持外阴影和内阴影，可配置模糊半径和颜色。
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
-#[expect(missing_docs)]
 pub struct Shadow {
     pub order: DrawOrder,
     pub blur_radius: ScaledPixels,
@@ -650,9 +673,9 @@ impl Default for TransformationMatrix {
     }
 }
 
+/// 单色精灵 — 从图集纹理中采样的灰度字形或图标。
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
-#[expect(missing_docs)]
 pub struct MonochromeSprite {
     pub order: DrawOrder,
     pub pad: u32,
@@ -669,9 +692,9 @@ impl From<MonochromeSprite> for Primitive {
     }
 }
 
+/// 亚像素精灵 — 使用 LCD 抗锯齿渲染的字形，需要 RGB 三通道采样。
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
-#[expect(missing_docs)]
 pub struct SubpixelSprite {
     pub order: DrawOrder,
     pub pad: u32, // align to 8 bytes
@@ -688,9 +711,9 @@ impl From<SubpixelSprite> for Primitive {
     }
 }
 
+/// 多色精灵 — 从图集纹理中采样的彩色图像（Emoji、图标等）。
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
-#[expect(missing_docs)]
 pub struct PolychromeSprite {
     pub order: DrawOrder,
     pub pad: u32,
@@ -709,8 +732,8 @@ impl From<PolychromeSprite> for Primitive {
     }
 }
 
+/// 绘制表面 — 用于平台原生表面渲染（如 macOS CVPixelBuffer）。
 #[derive(Clone, Debug)]
-#[allow(missing_docs)]
 pub struct PaintSurface {
     pub order: DrawOrder,
     pub bounds: Bounds<ScaledPixels>,
@@ -725,13 +748,12 @@ impl From<PaintSurface> for Primitive {
     }
 }
 
+/// 路径的唯一标识符。
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[expect(missing_docs)]
 pub struct PathId(pub usize);
 
-/// 由一系列顶点和控制点组成的线。
+/// 由一系列顶点和控制点组成的矢量路径，支持填充和变换。
 #[derive(Clone, Debug)]
-#[expect(missing_docs)]
 pub struct Path<P: Clone + Debug + Default + PartialEq> {
     pub id: PathId,
     pub order: DrawOrder,
@@ -861,8 +883,8 @@ impl<T> Path<T>
 where
     T: Clone + Debug + Default + PartialEq + PartialOrd + Add<T, Output = T> + Sub<Output = T>,
 {
+    /// 返回路径与内容遮罩的交集边界。
     #[allow(unused)]
-    #[expect(missing_docs)]
     pub fn clipped_bounds(&self) -> Bounds<T> {
         self.bounds.intersect(&self.content_mask.bounds)
     }

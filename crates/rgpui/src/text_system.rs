@@ -1013,21 +1013,26 @@ impl TextRun {
 #[repr(C)]
 pub struct GlyphId(pub u32);
 
-/// Parameters for rendering a glyph, used as cache keys for raster bounds.
+/// 字形渲染参数，用作光栅化边界和精灵图集的缓存键。
 ///
-/// This struct identifies a specific glyph rendering configuration including
-/// font, size, subpixel positioning, and scale factor. It's used to look up
-/// cached raster bounds and sprite atlas entries.
+/// 标识特定的字形渲染配置，包括字体、大小、亚像素定位和缩放因子。
 #[derive(Clone, Debug, PartialEq)]
-#[expect(missing_docs)]
 pub struct RenderGlyphParams {
+    /// 字体 ID。
     pub font_id: FontId,
+    /// 字形 ID。
     pub glyph_id: GlyphId,
+    /// 字体大小（逻辑像素）。
     pub font_size: Pixels,
+    /// 亚像素位置变体（用于缓存不同亚像素位置的光栅化结果）。
     pub subpixel_variant: Point<u8>,
+    /// 设备缩放因子。
     pub scale_factor: f32,
+    /// 是否为 Emoji 字形。
     pub is_emoji: bool,
+    /// 是否启用亚像素渲染（LCD 抗锯齿）。
     pub subpixel_rendering: bool,
+    /// 字形膨胀级别（用于彩色渲染）。
     pub dilation: u8,
 }
 

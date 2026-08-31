@@ -32,10 +32,12 @@ impl AssetSource for () {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ImageId(pub usize);
 
+/// 图像渲染参数，用作精灵图集（Atlas）的缓存键。
 #[derive(PartialEq, Eq, Hash, Clone)]
-#[expect(missing_docs)]
 pub struct RenderImageParams {
+    /// 引用的图像 ID。
     pub image_id: ImageId,
+    /// 动画帧索引（静态图通常为 0）。
     pub frame_index: usize,
 }
 

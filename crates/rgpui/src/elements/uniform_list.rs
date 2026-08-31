@@ -98,22 +98,25 @@ pub enum ScrollStrategy {
     Nearest,
 }
 
+/// 延迟滚动到指定项的参数。在下次布局时执行滚动。
 #[derive(Clone, Copy, Debug)]
-#[allow(missing_docs)]
 pub struct DeferredScrollToItem {
-    /// The item index to scroll to
+    /// 要滚动到的项索引。
     pub item_index: usize,
-    /// The scroll strategy to use
+    /// 滚动策略。
     pub strategy: ScrollStrategy,
-    /// The offset in number of items
+    /// 相对于目标项的偏移量（项数）。
     pub offset: usize,
+    /// 是否严格按偏移量滚动（而非仅确保可见）。
     pub scroll_strict: bool,
 }
 
+/// 均匀列表的滚动状态，管理滚动句柄和延迟滚动参数。
 #[derive(Clone, Debug, Default)]
-#[allow(missing_docs)]
 pub struct UniformListScrollState {
+    /// 底层滚动句柄。
     pub base_handle: ScrollHandle,
+    /// 待执行的延迟滚动目标。
     pub deferred_scroll_to_item: Option<DeferredScrollToItem>,
     /// Size of the item, captured during last layout.
     pub last_item_size: Option<ItemSize>,

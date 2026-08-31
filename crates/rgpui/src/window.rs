@@ -1957,10 +1957,12 @@ impl Window {
     }
 }
 
+/// 事件分发结果 — 指示事件是否继续传播以及默认行为是否被阻止。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-#[expect(missing_docs)]
 pub struct DispatchEventResult {
+    /// 事件是否继续向父元素传播。
     pub propagate: bool,
+    /// 默认行为是否已被阻止。
     pub default_prevented: bool,
 }
 

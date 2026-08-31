@@ -807,11 +807,12 @@ fn apply_force_width_to_layout(layout: &mut LineLayout, force_width: Pixels) {
     }
 }
 
-/// 具有单一字体的文本段
+/// 具有单一字体的文本段，记录该段使用的字体和字符数。
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-#[expect(missing_docs)]
 pub struct FontRun {
+    /// 该字体运行的字符数。
     pub len: usize,
+    /// 使用的字体 ID。
     pub font_id: FontId,
 }
 

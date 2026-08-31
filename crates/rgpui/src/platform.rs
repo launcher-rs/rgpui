@@ -11,8 +11,8 @@ pub mod popup;
 ))]
 mod threaded_dispatcher;
 
+/// Wayland Layer Shell 支持 — 允许窗口作为覆盖层、面板或桌面背景渲染。
 #[cfg(all(target_os = "linux", feature = "wayland"))]
-#[expect(missing_docs)]
 pub mod layer_shell;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -1500,8 +1500,9 @@ pub trait PlatformDispatcher: Send + Sync {
     }
 }
 
-#[expect(missing_docs)]
+/// 平台文本系统抽象 — 提供字体加载、字形光栅化、文本排版等能力。各平台需实现此 trait。
 pub trait PlatformTextSystem: Send + Sync {
+    /// 加载指定的字体数据（TTF/OTF 字节流）。
     fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()>;
     /// Get all available font names.
     fn all_font_names(&self) -> Vec<String>;
@@ -1534,11 +1535,11 @@ pub trait PlatformTextSystem: Send + Sync {
     }
 }
 
-#[expect(missing_docs)]
+/// 空操作文本系统实现，所有方法返回默认值。用于测试或无文本系统需求的平台。
 pub struct NoopTextSystem;
 
-#[expect(missing_docs)]
 impl NoopTextSystem {
+    /// 创建一个新的空操作文本系统实例。
     pub fn new() -> Self {
         Self
     }
@@ -1698,11 +1699,14 @@ pub fn get_gamma_correction_ratios(gamma: f32) -> [f32; 4] {
     ]
 }
 
+/// 精灵图集的缓存键，标识一种可渲染的图元（字形、SVG 或图像）。
 #[derive(PartialEq, Eq, Hash, Clone)]
-#[expect(missing_docs)]
 pub enum AtlasKey {
+    /// 字形图元
     Glyph(RenderGlyphParams),
+    /// SVG 矢量图元
     Svg(RenderSvgParams),
+    /// 位图图像图元
     Image(RenderImageParams),
 }
 
@@ -1743,13 +1747,15 @@ impl From<RenderImageParams> for AtlasKey {
     }
 }
 
-#[expect(missing_docs)]
+/// 平台精灵图集抽象 — 管理 GPU 纹理中的图元缓存（字形、SVG、图像）。
 pub trait PlatformAtlas {
+    /// 根据键获取图集瓦片，若不存在则通过 build 闭包创建并插入。
     fn get_or_insert_with<'a>(
         &self,
         key: &AtlasKey,
         build: &mut dyn FnMut() -> Result<Option<(Size<DevicePixels>, Cow<'a, [u8]>)>>,
     ) -> Result<Option<AtlasTile>>;
+    /// 从图集中移除指定键对应的瓦片。
     fn remove(&self, key: &AtlasKey);
     #[cfg(any(test, feature = "test-support"))]
     fn contains(&self, _key: &AtlasKey) -> bool {
@@ -1792,9 +1798,9 @@ impl<T> AtlasTextureList<T> {
     }
 }
 
+/// 精灵图集中的一块瓦片，描述其在纹理中的位置和边距。
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(C)]
-#[expect(missing_docs)]
 pub struct AtlasTile {
     /// The texture this tile belongs to.
     pub texture_id: AtlasTextureId,
@@ -1806,9 +1812,9 @@ pub struct AtlasTile {
     pub bounds: Bounds<DevicePixels>,
 }
 
+/// 图集纹理的唯一标识符，包含索引和内容类型。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
-#[expect(missing_docs)]
 pub struct AtlasTextureId {
     // We use u32 instead of usize for Metal Shader Language compatibility
     /// The index of this texture in the atlas.
@@ -1819,16 +1825,19 @@ pub struct AtlasTextureId {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
-#[expect(missing_docs)]
+/// 图集纹理的内容类型，决定颜色格式和渲染路径。
 pub enum AtlasTextureKind {
-    Monochrome = 0,
-    Polychrome = 1,
-    Subpixel = 2,
+    /// 单色（灰度字形）
+    Monochrome,
+    /// 多色（彩色图像、Emoji）
+    Polychrome,
+    /// 亚像素渲染（LCD 抗锯齿字形）
+    Subpixel,
 }
 
+/// 图集瓦片的唯一标识符，封装 etagere 分配器的序列化 ID。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(C)]
-#[expect(missing_docs)]
 pub struct TileId(pub u32);
 
 impl From<etagere::AllocId> for TileId {
@@ -1843,18 +1852,19 @@ impl From<TileId> for etagere::AllocId {
     }
 }
 
-#[expect(missing_docs)]
+/// 平台输入处理器，封装异步窗口上下文和文本输入回调，处理选区、标记文本等 IME 操作。
 pub struct PlatformInputHandler {
     cx: AsyncWindowContext,
     handler: Box<dyn InputHandler>,
 }
 
-#[expect(missing_docs)]
 impl PlatformInputHandler {
+    /// 创建新的输入处理器。
     pub fn new(cx: AsyncWindowContext, handler: Box<dyn InputHandler>) -> Self {
         Self { cx, handler }
     }
 
+    /// 获取当前选中的文本范围（UTF-16 偏移）。
     pub fn selected_text_range(&mut self, ignore_disabled_input: bool) -> Option<UTF16Selection> {
         self.cx
             .update(|window, cx| {
@@ -1865,6 +1875,7 @@ impl PlatformInputHandler {
             .flatten()
     }
 
+    /// 获取当前标记（未确认）文本的范围。
     pub fn marked_text_range(&mut self) -> Option<Range<usize>> {
         self.cx
             .update(|window, cx| self.handler.marked_text_range(window, cx))
@@ -1872,6 +1883,7 @@ impl PlatformInputHandler {
             .flatten()
     }
 
+    /// 获取指定 UTF-16 范围内的文本内容。
     pub fn text_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -1886,6 +1898,7 @@ impl PlatformInputHandler {
             .flatten()
     }
 
+    /// 替换指定范围内的文本。
     pub fn replace_text_in_range(&mut self, replacement_range: Option<Range<usize>>, text: &str) {
         self.cx
             .update(|window, cx| {
@@ -1895,6 +1908,7 @@ impl PlatformInputHandler {
             .ok();
     }
 
+    /// 替换指定范围内的文本并设置标记（IME 组合文本）。
     pub fn replace_and_mark_text_in_range(
         &mut self,
         range_utf16: Option<Range<usize>>,
@@ -1914,12 +1928,14 @@ impl PlatformInputHandler {
             .ok();
     }
 
+    /// 清除标记文本（确认输入）。
     pub fn unmark_text(&mut self) {
         self.cx
             .update(|window, cx| self.handler.unmark_text(window, cx))
             .ok();
     }
 
+    /// 获取指定 UTF-16 范围在屏幕上的边界矩形。
     pub fn bounds_for_range(&mut self, range_utf16: Range<usize>) -> Option<Bounds<Pixels>> {
         self.cx
             .update(|window, cx| self.handler.bounds_for_range(range_utf16, window, cx))
@@ -1927,14 +1943,17 @@ impl PlatformInputHandler {
             .flatten()
     }
 
+    /// macOS: 是否启用长按弹出字符面板功能。
     pub fn apple_press_and_hold_enabled(&mut self) -> bool {
         self.handler.apple_press_and_hold_enabled()
     }
 
+    /// 直接分发文本输入（绕过 IME 组合流程）。
     pub fn dispatch_input(&mut self, input: &str, window: &mut Window, cx: &mut App) {
         self.handler.replace_text_in_range(None, input, window, cx);
     }
 
+    /// 计算 IME 候选框的屏幕位置（基于标记文本范围和选区位置）。
     pub fn compute_ime_candidate_bounds(
         marked_range: Option<Range<usize>>,
         selection: &UTF16Selection,
@@ -2223,40 +2242,45 @@ pub struct WindowOptions {
     pub mouse_passthrough: bool,
 }
 
-/// The variables that can be configured when creating a new window
+/// 创建窗口时的配置参数。
 #[derive(Debug)]
-#[allow(missing_docs)]
 pub struct WindowParams {
+    /// 窗口初始位置和尺寸。
     pub bounds: Bounds<Pixels>,
 
-    /// The titlebar configuration of the window
+    /// 标题栏配置。
     pub titlebar: Option<TitlebarOptions>,
 
-    /// The kind of window to create
+    /// 窗口类型（普通窗口、覆盖层等）。
     pub kind: WindowKind,
 
-    /// Whether the window should be movable by the user
+    /// 窗口是否可被用户拖拽移动。
     pub is_movable: bool,
 
-    /// Whether the window should be resizable by the user
+    /// 窗口是否可被用户调整大小。
     pub is_resizable: bool,
 
-    /// Whether the window should be minimized by the user
+    /// 窗口是否可被用户最小化。
     pub is_minimizable: bool,
 
+    /// 窗口打开后是否自动获取焦点。
     pub focus: bool,
 
+    /// 窗口打开后是否立即显示。
     pub show: bool,
 
-    /// An image to set as the window icon (x11 only)
+    /// 窗口图标（仅 X11 有效）。
     pub icon: Option<Arc<image::RgbaImage>>,
 
+    /// 指定显示在哪个显示器上（None 为默认）。
     pub display_id: Option<DisplayId>,
 
-    /// 应用标识符（主要用于 Wayland）
+    /// 应用标识符（主要用于 Wayland）。
     pub app_id: Option<String>,
 
+    /// 窗口最小尺寸限制。
     pub window_min_size: Option<Size<Pixels>>,
+    /// macOS 标签页分组标识符，相同标识符的窗口可合并为标签页。
     #[cfg(target_os = "macos")]
     pub tabbing_identifier: Option<String>,
 
