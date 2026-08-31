@@ -73,7 +73,7 @@ pub(crate) struct WebWindowInner {
     pub(crate) dom_visual_hidden: Cell<bool>,
 }
 
-/// Web 平台窗口实现，实现 gpui 的 `PlatformWindow` trait
+/// Web 平台窗口实现，实现 rgpui 的 `PlatformWindow` trait
 pub struct WebWindow {
     inner: Rc<WebWindowInner>,
     display: Rc<dyn PlatformDisplay>,
@@ -281,9 +281,9 @@ impl WebWindow {
                 let mut s = inner.state.borrow_mut();
                 s.bounds.size = Size::default();
                 s.scale_factor = dpr_f32;
-                // 仍然触发回调，以便 GPUI 知道窗口已消失。
+                // 仍然触发回调，以便 RGPUI 知道窗口已消失。
                 drop(s);
-                // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 this.callbacks 时重借。
+                // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 this.callbacks 时重借。
                 let callback = inner.callbacks.borrow_mut().resize.take();
                 if let Some(mut callback) = callback {
                     callback(Size::default(), dpr_f32);
@@ -314,7 +314,7 @@ impl WebWindow {
                 height: px(logical_height),
             };
 
-            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 this.callbacks 时重借。
+            // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 this.callbacks 时重借。
             let callback = inner.callbacks.borrow_mut().resize.take();
             if let Some(mut callback) = callback {
                 callback(new_size, dpr_f32);
@@ -325,7 +325,7 @@ impl WebWindow {
 }
 
 // wasm 上 request_animation_frame 在某些情况下会同步重入调用本闭包，导致 App 已被借出
-// 时再次进入帧回调并重借 panic。用线程局部标记检测重入并直接跳过本次帧（与 gpui 的
+// 时再次进入帧回调并重借 panic。用线程局部标记检测重入并直接跳过本次帧（与 rgpui 的
 // draw_in_progress 守卫语义一致：跳过重入帧，由下一次正常帧补绘）。
 #[cfg(target_family = "wasm")]
 thread_local! {
@@ -346,12 +346,12 @@ impl WebWindowInner {
                     return;
                 }
             }
-            // 从 RefCell 中取出回调并立即释放借用，再调用 gpui 的 request_frame 回调。
-            // 否则 gpui 回调内部（例如再次请求绘制时调用 on_request_frame）会再次
+            // 从 RefCell 中取出回调并立即释放借用，再调用 rgpui 的 request_frame 回调。
+            // 否则 rgpui 回调内部（例如再次请求绘制时调用 on_request_frame）会再次
             // 借用 this.callbacks，导致 RefCell 重借 panic。
             let callback = match this.callbacks.try_borrow_mut() {
                 Ok(mut c) => c.request_frame.take(),
-                // 极少数情况下 callbacks 仍被外层持有（如 gpui 在回调中同步重入），
+                // 极少数情况下 callbacks 仍被外层持有（如 rgpui 在回调中同步重入），
                 // 跳过本次帧，交由后续正常帧补绘，避免重借 panic。
                 Err(_) => None,
             };
@@ -447,7 +447,7 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_active = is_visible;
             }
-            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 this.callbacks 时重借。
+            // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 this.callbacks 时重借。
             let callback = this.callbacks.borrow_mut().active_status_change.take();
             if let Some(mut callback) = callback {
                 callback(is_visible);
@@ -482,7 +482,7 @@ impl WebWindowInner {
 
         let this = Rc::clone(self);
         let closure = Closure::<dyn FnMut(JsValue)>::new(move |_event: JsValue| {
-            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 this.callbacks 时重借。
+            // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 this.callbacks 时重借。
             let callback = this.callbacks.borrow_mut().appearance_changed.take();
             if let Some(mut callback) = callback {
                 callback();

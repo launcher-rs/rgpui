@@ -9,40 +9,36 @@ use std::{
     sync::Arc,
 };
 
-/// A file system path that is guaranteed to be relative and normalized.
+/// 保证为相对路径且已规范化的文件系统路径。
 ///
-/// This type can be used to represent paths in a uniform way, regardless of
-/// whether they refer to Windows or POSIX file systems, and regardless of
-/// the host platform.
+/// 此类型可用于以统一方式表示路径，无论其引用的是 Windows 还是 POSIX 文件系统，
+/// 也无论宿主平台是什么。
 ///
-/// Internally, paths are stored in POSIX ('/'-delimited) format, but they can
-/// be displayed in either POSIX or Windows format.
+/// 内部以 POSIX（'/' 分隔）格式存储路径，但可以 POSIX 或 Windows 格式显示。
 ///
-/// Relative paths are also guaranteed to be valid unicode.
+/// 相对路径还保证是有效的 unicode。
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Hash, Serialize)]
 pub struct RelPath(str);
 
-/// An owned representation of a file system path that is guaranteed to be
-/// relative and normalized.
+/// 文件系统路径的所有权表示，保证为相对路径且已规范化。
 ///
-/// This type is to [`RelPath`] as [`std::path::PathBuf`] is to [`std::path::Path`]
+/// 此类型之于 [`RelPath`]，犹如 [`std::path::PathBuf`] 之于 [`std::path::Path`]
 #[derive(PartialEq, Eq, Clone, Ord, PartialOrd, Serialize)]
 pub struct RelPathBuf(String);
 
 impl RelPath {
-    /// Creates an empty [`RelPath`].
+    /// 创建一个空的 [`RelPath`]。
     pub fn empty() -> &'static Self {
         Self::new_unchecked("")
     }
 
-    /// Converts a path with a given style into a [`RelPath`].
+    /// 将给定样式的路径转换为 [`RelPath`]。
     ///
-    /// Returns an error if the path is absolute, or is not valid unicode.
+    /// 如果路径是绝对路径或不是有效的 unicode，则返回错误。
     ///
-    /// This method will normalize the path by removing `.` components,
-    /// processing `..` components, and removing trailing separators. It does
-    /// not allocate unless it's necessary to reformat the path.
+    /// 此方法将通过移除 `.` 组件、处理 `..` 组件和移除尾部分隔符来规范化路径。
+    /// 除非需要重新格式化路径，否则不会分配内存。
     #[track_caller]
     pub fn new<'a>(path: &'a Path, path_style: PathStyle) -> Result<Cow<'a, Self>> {
         let mut path = path.to_str().context("non utf-8 path")?;
@@ -98,10 +94,9 @@ impl RelPath {
         Ok(result)
     }
 
-    /// Converts a path that is already normalized and uses '/' separators
-    /// into a [`RelPath`] .
+    /// 将已规范化且使用 '/' 分隔符的路径转换为 [`RelPath`]。
     ///
-    /// Returns an error if the path is not already in the correct format.
+    /// 如果路径格式不正确，则返回错误。
     #[track_caller]
     pub fn unix<S: AsRef<Path> + ?Sized>(path: &S) -> anyhow::Result<&Self> {
         let path = path.as_ref();
@@ -211,20 +206,19 @@ impl RelPath {
         Arc::from(self)
     }
 
-    /// Convert the path into the wire representation.
+    /// 将路径转换为线路表示。
     pub fn to_proto(&self) -> String {
         self.as_unix_str().to_owned()
     }
 
-    /// Load the path from its wire representation.
+    /// 从线路表示加载路径。
     pub fn from_proto(path: &str) -> Result<Arc<Self>> {
         Ok(Arc::from(Self::unix(path)?))
     }
 
-    /// Convert the path into a string with the given path style.
+    /// 将路径转换为指定路径样式的字符串。
     ///
-    /// Whenever a path is presented to the user, it should be converted to
-    /// a string via this method.
+    /// 每当向用户展示路径时，都应通过此方法将其转换为字符串。
     pub fn display(&self, style: PathStyle) -> Cow<'_, str> {
         match style {
             PathStyle::Posix => Cow::Borrowed(&self.0),
@@ -233,19 +227,18 @@ impl RelPath {
         }
     }
 
-    /// Get the internal unix-style representation of the path.
+    /// 获取路径的内部 unix 格式表示。
     ///
-    /// This should not be shown to the user.
+    /// 不应向用户展示此内容。
     pub fn as_unix_str(&self) -> &str {
         &self.0
     }
 
-    /// Interprets the path as a [`std::path::Path`], suitable for file system calls.
+    /// 将路径解释为 [`std::path::Path`]，适用于文件系统调用。
     ///
-    /// This is guaranteed to be a valid path regardless of the host platform, because
-    /// the `/` is accepted as a path separator on windows.
+    /// 无论宿主平台如何，都保证这是有效路径，因为 Windows 上也接受 `/` 作为路径分隔符。
     ///
-    /// This should not be shown to the user.
+    /// 不应向用户展示此内容。
     pub fn as_std_path(&self) -> &Path {
         Path::new(&self.0)
     }

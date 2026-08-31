@@ -327,7 +327,7 @@ pub struct PopupMenu {
     ///
     /// 顶层菜单依赖其容器（例如 `Popover`、`ContextMenu`）进行 `deferred` 绘制，
     /// 每个子菜单在 `render_item` 中以 `priority + 1` 延迟一次。每层保持单一的
-    /// 延迟层级很重要，因为 GPUI 限制了嵌套延迟的深度（参见 `prepaint_deferred_draws`）。
+    /// 延迟层级很重要，因为 RGPUI 限制了嵌套延迟的深度（参见 `prepaint_deferred_draws`）。
     priority: usize,
 
     _subscriptions: Vec<Subscription>,

@@ -1,5 +1,5 @@
-//! The implementation of the this crate is kept in a separate module
-//! so that it is easy to publish this crate as part of GPUI's dependencies
+//! 本 crate 的实现保存在单独的模块中，
+//! 以便于将其作为 RGPUI 依赖的一部分发布
 
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -8,56 +8,53 @@ use std::{num::NonZero, time::Duration};
 type HashMap<K, V> = FxHashMap<K, V>;
 
 pub mod consts {
-    //! Preset identifiers and constants so that the profiler and proc macro agree
-    //! on their communication protocol.
+    //! 预设标识符和常量，使分析器和过程宏在通信协议上保持一致。
 
-    /// The suffix on the actual test function.
+    /// 实际测试函数上的后缀。
     pub const SUF_NORMAL: &str = "__ZED_PERF_FN";
-    /// The suffix on an extra function which prints metadata about a test to stdout.
+    /// 用于向 stdout 打印测试元数据的额外函数的后缀。
     pub const SUF_MDATA: &str = "__ZED_PERF_MDATA";
-    /// The env var in which we pass the iteration count to our tests.
+    /// 用于向测试传递迭代次数的环境变量。
     pub const ITER_ENV_VAR: &str = "ZED_PERF_ITER";
-    /// The prefix printed on all benchmark test metadata lines, to distinguish it from
-    /// possible output by the test harness itself.
+    /// 所有基准测试元数据行的前缀，用于将其与测试框架本身的可能输出区分开。
     pub const MDATA_LINE_PREF: &str = "ZED_MDATA_";
-    /// The version number for the data returned from the test metadata function.
-    /// Increment on non-backwards-compatible changes.
+    /// 测试元数据函数返回数据的版本号。
+    /// 在非向后兼容的更改时递增。
     pub const MDATA_VER: u32 = 0;
-    /// The default weight, if none is specified.
+    /// 默认权重，如果未指定。
     pub const WEIGHT_DEFAULT: u8 = 50;
-    /// How long a test must have run to be assumed to be reliable-ish.
+    /// 测试必须运行多长时间才被认为是可靠的。
     pub const NOISE_CUTOFF: std::time::Duration = std::time::Duration::from_millis(250);
 
-    /// Identifier for the iteration count of a test metadata.
+    /// 测试元数据中迭代次数的标识符。
     pub const ITER_COUNT_LINE_NAME: &str = "iter_count";
-    /// Identifier for the weight of a test metadata.
+    /// 测试元数据中权重的标识符。
     pub const WEIGHT_LINE_NAME: &str = "weight";
-    /// Identifier for importance in test metadata.
+    /// 测试元数据中重要性的标识符。
     pub const IMPORTANCE_LINE_NAME: &str = "importance";
-    /// Identifier for the test metadata version.
+    /// 测试元数据版本的标识符。
     pub const VERSION_LINE_NAME: &str = "version";
 
-    /// Where to save json run information.
+    /// 保存 json 运行信息的位置。
     pub const RUNS_DIR: &str = ".perf-runs";
 }
 
-/// How relevant a benchmark is.
+/// 基准测试的相关程度。
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Importance {
-    /// Regressions shouldn't be accepted without good reason.
+    /// 除非有充分理由，否则不应接受回归。
     Critical = 4,
-    /// Regressions should be paid extra attention.
+    /// 应额外关注回归。
     Important = 3,
-    /// No extra attention should be paid to regressions, but they might still
-    /// be indicative of something happening.
+    /// 不应对回归给予额外关注，但它们仍可能表明发生了某些事情。
     #[default]
     Average = 2,
-    /// Unclear if regressions are likely to be meaningful, but still worth keeping
-    /// an eye on. Lowest level that's checked by default by the profiler.
+    /// 不清楚回归是否有意义，但仍值得留意。
+    /// 分析器默认检查的最低级别。
     Iffy = 1,
-    /// Regressions are likely to be spurious or don't affect core functionality.
-    /// Only relevant if a lot of them happen, or as supplemental evidence for a
-    /// higher-importance benchmark regressing. Not checked by default.
+    /// 回归可能是虚假的或不影响核心功能。
+    /// 仅在大量回归发生时相关，或作为更高重要性基准测试回归的补充证据。
+    /// 默认不检查。
     Fluff = 0,
 }
 
@@ -73,18 +70,18 @@ impl std::fmt::Display for Importance {
     }
 }
 
-/// Why or when did this test fail?
+/// 为什么或何时此测试失败？
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum FailKind {
-    /// Failed while triaging it to determine the iteration count.
+    /// 在分类以确定迭代次数时失败。
     Triage,
-    /// Failed while profiling it.
+    /// 在分析时失败。
     Profile,
-    /// Failed due to an incompatible version for the test.
+    /// 由于测试版本不兼容而失败。
     VersionMismatch,
-    /// Could not parse metadata for a test.
+    /// 无法解析测试的元数据。
     BadMetadata,
-    /// Skipped due to filters applied on the perf run.
+    /// 由于应用了 perf 运行的过滤器而跳过。
     Skipped,
 }
 
@@ -100,41 +97,37 @@ impl std::fmt::Display for FailKind {
     }
 }
 
-/// Information about a given perf test.
+/// 给定 perf 测试的信息。
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TestMdata {
-    /// A version number for when the test was generated. If this is greater
-    /// than the version this test handler expects, one of the following will
-    /// happen in an unspecified manner:
-    /// - The test is skipped silently.
-    /// - The handler exits with an error message indicating the version mismatch
-    ///   or inability to parse the metadata.
+    /// 测试生成时的版本号。如果大于此测试处理器期望的版本，
+    /// 将以未指定的方式发生以下情况之一：
+    /// - 测试被静默跳过。
+    /// - 处理器退出并显示指示版本不匹配或无法解析元数据的错误消息。
     ///
-    /// INVARIANT: If `version` <= `MDATA_VER`, this tool *must* be able to
-    /// correctly parse the output of this test.
+    /// 不变量：如果 `version` <= `MDATA_VER`，此工具*必须*能够
+    /// 正确解析此测试的输出。
     pub version: u32,
-    /// How many iterations to pass this test if this is preset, or how many
-    /// iterations a test ended up running afterwards if determined at runtime.
+    /// 如果是预设的，通过此测试需要多少次迭代，
+    /// 或者如果在运行时确定，测试最终运行了多少次迭代。
     pub iterations: Option<NonZero<usize>>,
-    /// The importance of this particular test. See the docs on `Importance` for
-    /// details.
+    /// 此特定测试的重要性。详见 `Importance` 的文档。
     pub importance: Importance,
-    /// The weight of this particular test within its importance category. Used
-    /// when comparing across runs.
+    /// 此特定测试在其重要性类别中的权重。用于跨运行比较时。
     pub weight: u8,
 }
 
-/// The actual timings of a test, as measured by Hyperfine.
+/// 测试的实际计时，由 Hyperfine 测量。
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Timings {
-    /// Mean runtime for `self.iter_total` runs of this test.
+    /// 此测试运行 `self.iter_total` 次的平均运行时间。
     pub mean: Duration,
-    /// Standard deviation for the above.
+    /// 上述的标准偏差。
     pub stddev: Duration,
 }
 
 impl Timings {
-    /// How many iterations does this test seem to do per second?
+    /// 此测试每秒似乎执行多少次迭代？
     #[expect(
         clippy::cast_precision_loss,
         reason = "We only care about a couple sig figs anyways"
@@ -145,29 +138,29 @@ impl Timings {
     }
 }
 
-/// Aggregate results, meant to be used for a given importance category. Each
-/// test name corresponds to its benchmark results, iteration count, and weight.
+/// 聚合结果，用于给定的重要性类别。每个测试名称对应其基准测试结果、
+/// 迭代次数和权重。
 type CategoryInfo = HashMap<String, (Timings, NonZero<usize>, u8)>;
 
-/// Aggregate output of all tests run by this handler.
+/// 此处理器运行的所有测试的聚合输出。
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Output {
-    /// A list of test outputs. Format is `(test_name, mdata, timings)`.
-    /// The latter being `Ok(_)` indicates the test succeeded.
+    /// 测试输出列表。格式为 `(test_name, mdata, timings)`。
+    /// 后者为 `Ok(_)` 表示测试成功。
     ///
-    /// INVARIANT: If the test succeeded, the second field is `Some(mdata)` and
-    /// `mdata.iterations` is `Some(_)`.
+    /// 不变量：如果测试成功，第二个字段为 `Some(mdata)` 且
+    /// `mdata.iterations` 为 `Some(_)`。
     tests: Vec<(String, Option<TestMdata>, Result<Timings, FailKind>)>,
 }
 
 impl Output {
-    /// Instantiates an empty "output". Useful for merging.
+    /// 实例化空的"输出"。用于合并。
     #[must_use]
     pub fn blank() -> Self {
         Output { tests: Vec::new() }
     }
 
-    /// Reports a success and adds it to this run's `Output`.
+    /// 报告成功并将其添加到此运行的 `Output` 中。
     pub fn success(
         &mut self,
         name: impl AsRef<str>,
@@ -180,11 +173,10 @@ impl Output {
             .push((name.as_ref().to_string(), Some(mdata), Ok(timings)));
     }
 
-    /// Reports a failure and adds it to this run's `Output`. If this test was tried
-    /// with some number of iterations (i.e. this was not a version mismatch or skipped
-    /// test), it should be reported also.
+    /// 报告失败并将其添加到此运行的 `Output` 中。如果此测试以某些
+    /// 迭代次数尝试过（即这不是版本不匹配或跳过的测试），也应报告。
     ///
-    /// Using the `fail!()` macro is usually more convenient.
+    /// 使用 `fail!()` 宏通常更方便。
     pub fn failure(
         &mut self,
         name: impl AsRef<str>,
@@ -199,13 +191,13 @@ impl Output {
             .push((name.as_ref().to_string(), mdata, Err(kind)));
     }
 
-    /// True if no tests executed this run.
+    /// 此次运行是否没有测试执行。
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.tests.is_empty()
     }
 
-    /// Sorts the runs in the output in the order that we want them printed.
+    /// 按我们希望的打印顺序对输出中的运行进行排序。
     pub fn sort(&mut self) {
         self.tests.sort_unstable_by(|a, b| match (a, b) {
             // Tests where we got no metadata go at the end.
@@ -225,9 +217,8 @@ impl Output {
         });
     }
 
-    /// Merges the output of two runs, appending a prefix to the results of the new run.
-    /// To be used in conjunction with `Output::blank()`, or else only some tests will have
-    /// a prefix set.
+    /// 合并两次运行的输出，为新运行的结果添加前缀。
+    /// 应与 `Output::blank()` 结合使用，否则只有部分测试会设置前缀。
     pub fn merge<'a>(&mut self, other: Self, pref_other: impl Into<Option<&'a str>>) {
         let pref = if let Some(pref) = pref_other.into() {
             "crates/".to_string() + pref + "::"
@@ -245,13 +236,12 @@ impl Output {
             .collect();
     }
 
-    /// Evaluates the performance of `self` against `baseline`. The latter is taken
-    /// as the comparison point, i.e. a positive resulting `PerfReport` means that
-    /// `self` performed better.
+    /// 评估 `self` 相对于 `baseline` 的性能。后者作为比较点，
+    /// 即正的 `PerfReport` 结果表示 `self` 表现更好。
     ///
     /// # Panics
-    /// `self` and `baseline` are assumed to have the iterations field on all
-    /// `TestMdata`s set to `Some(_)` if the `TestMdata` is present itself.
+    /// 假设 `self` 和 `baseline` 的所有 `TestMdata` 上的迭代次数字段
+    /// 在 `TestMdata` 本身存在时设置为 `Some(_)`。
     #[must_use]
     pub fn compare_perf(self, baseline: Self) -> PerfReport {
         let self_categories = self.collapse();
@@ -286,8 +276,8 @@ impl Output {
                     r_total_numerator += shift * f64::from(weight);
                     r_total_denominator += u32::from(weight);
                 }
-                // There were no runs here!
-                if r_total_denominator == 0 {
+    // There were no runs here!
+    if r_total_denominator == 0 {
                     None
                 } else {
                     let mean = r_total_numerator / f64::from(r_total_denominator);
@@ -301,8 +291,8 @@ impl Output {
         PerfReport { deltas }
     }
 
-    /// Collapses the `PerfReport` into a `HashMap` over `Importance`, with
-    /// each importance category having its tests contained.
+    /// 将 `PerfReport` 折叠为按 `Importance` 分组的 `HashMap`，
+    /// 每个重要性类别包含其测试。
     fn collapse(self) -> HashMap<Importance, CategoryInfo> {
         let mut categories = HashMap::<Importance, HashMap<String, _>>::default();
         for entry in self.tests {
@@ -392,20 +382,19 @@ impl std::fmt::Display for Output {
     }
 }
 
-/// The difference in performance between two runs within a given importance
-/// category.
+/// 给定重要性类别中两次运行之间的性能差异。
 struct PerfDelta {
-    /// The biggest improvement / least bad regression.
+    /// 最大改进 / 最小回归。
     max: f64,
-    /// The weighted average change in test times.
+    /// 测试时间的加权平均变化。
     mean: f64,
-    /// The worst regression / smallest improvement.
+    /// 最大回归 / 最小改进。
     min: f64,
 }
 
-/// Shim type for reporting all performance deltas across importance categories.
+/// 报告所有重要性类别性能差异的垫片类型。
 pub struct PerfReport {
-    /// Inner (group, diff) pairing.
+    /// 内部（组，差异）配对。
     deltas: HashMap<Importance, PerfDelta>,
 }
 

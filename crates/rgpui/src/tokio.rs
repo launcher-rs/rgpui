@@ -8,7 +8,7 @@ pub use tokio::task::JoinError;
 
 /// 初始化 Tokio 包装器，使用带有 2 个工作线程的新 Tokio 运行时。
 ///
-/// 如果需要更多线程（或在 GPUI 外部访问运行时），可以自行创建运行时
+/// 如果需要更多线程（或在 RGPUI 外部访问运行时），可以自行创建运行时
 /// 并将 Handle 传递给 `init_from_handle`。
 pub fn init(cx: &mut App) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -56,8 +56,8 @@ impl Drop for GlobalTokio {
 pub struct Tokio {}
 
 impl Tokio {
-    /// 在 Tokio 线程池上生成给定的 Future，并通过 GPUI 任务返回结果
-    /// 注意：如果 GPUI 任务被丢弃，Tokio 任务也会被取消
+    /// 在 Tokio 线程池上生成给定的 Future，并通过 RGPUI 任务返回结果
+    /// 注意：如果 RGPUI 任务被丢弃，Tokio 任务也会被取消
     pub fn spawn<C, Fut, R>(cx: &C, f: Fut) -> Task<Result<R, JoinError>>
     where
         C: AppContext,
@@ -78,8 +78,8 @@ impl Tokio {
         })
     }
 
-    /// 在 Tokio 线程池上生成给定的 Future，并通过 GPUI 任务返回 Result
-    /// 注意：如果 GPUI 任务被丢弃，Tokio 任务也会被取消
+    /// 在 Tokio 线程池上生成给定的 Future，并通过 RGPUI 任务返回 Result
+    /// 注意：如果 RGPUI 任务被丢弃，Tokio 任务也会被取消
     pub fn spawn_result<C, Fut, R>(cx: &C, f: Fut) -> Task<anyhow::Result<R>>
     where
         C: AppContext,

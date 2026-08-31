@@ -24,14 +24,14 @@
 
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
-#![allow(clippy::type_complexity)] // 回调在 GPUI 中大量使用，类型复杂度检查不适用
+#![allow(clippy::type_complexity)] // 回调在 RGPUI 中大量使用，类型复杂度检查不适用
 #![allow(clippy::collapsible_else_if)] // 平台特定代码中可能产生误报
 #![allow(unused_mut)] // 平台特定代码中可能产生误报
 
 /// 将自身 crate 重导出为 `rgpui`，使得宏展开时能正确引用
 extern crate self as rgpui;
 
-/// GPUI crate 的 manifest 目录路径，编译时由 Cargo 注入
+/// RGPUI crate 的 manifest 目录路径，编译时由 Cargo 注入
 #[doc(hidden)]
 pub static GPUI_MANIFEST_DIR: &'static str = env!("CARGO_MANIFEST_DIR");
 
@@ -65,7 +65,7 @@ mod color;
 mod dom;
 
 /// 颜色模块 - 定义 HSL、RGBA 等颜色类型及转换
-/// GPUI 默认使用的颜色常量和主题定义
+/// RGPUI 默认使用的颜色常量和主题定义
 pub mod colors;
 
 /// 主题系统 - 颜色工具、色板与主题注册机制
@@ -244,7 +244,7 @@ pub mod mouse_gestures;
 /// 滚动物理模型 - 滚动惯性（动量）、减速度与越界回弹
 pub mod scroll_physics;
 
-/// Tokio 异步运行时集成 - 在 Tokio 线程池上生成任务并通过 GPUI 任务返回结果（feature `tokio` 门控）
+/// Tokio 异步运行时集成 - 在 Tokio 线程池上生成任务并通过 RGPUI 任务返回结果（feature `tokio` 门控）
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
@@ -271,11 +271,11 @@ pub mod window_positioner;
 #[cfg(any(test, feature = "test-support"))]
 pub use proptest;
 
-/// 无障碍访问文档模块 - 描述 GPUI 的无障碍访问架构
+/// 无障碍访问文档模块 - 描述 RGPUI 的无障碍访问架构
 #[cfg(doc)]
 pub mod _accessibility;
 
-/// 所有权与数据流文档模块 - 描述 GPUI 的数据所有权模型
+/// 所有权与数据流文档模块 - 描述 RGPUI 的数据所有权模型
 #[cfg(doc)]
 pub mod _ownership_and_data_flow;
 
@@ -391,7 +391,7 @@ pub use theme::{
 
 /// 定义用于标注了 `#[rgpui::bench]` 的基准测试的 Criterion 基准测试组。
 ///
-/// 这镜像了 `criterion::criterion_group!`，使 GPUI 基准测试文件可以保持与普通
+/// 这镜像了 `criterion::criterion_group!`，使 RGPUI 基准测试文件可以保持与普通
 /// Criterion 基准测试相同的形式。
 ///
 /// [`rgpui::bench`]: crate::bench
@@ -402,9 +402,9 @@ macro_rules! bench_group {
     };
 }
 
-/// 定义 GPUI Criterion 基准测试组的入口点。
+/// 定义 RGPUI Criterion 基准测试组的入口点。
 ///
-/// 这镜像了 `criterion::criterion_main!`，使 GPUI 基准测试文件可以保持与普通
+/// 这镜像了 `criterion::criterion_main!`，使 RGPUI 基准测试文件可以保持与普通
 /// Criterion 基准测试相同的形式。
 #[macro_export]
 macro_rules! bench_main {
@@ -501,7 +501,7 @@ pub use window_ext::*;
 /// 重导出 pollster::block_on 用于在同步上下文中阻塞等待异步任务
 pub use pollster::block_on;
 
-/// 应用上下文 trait - GPUI 中最核心的 trait，允许不同的上下文类型在某些操作中互换使用。
+/// 应用上下文 trait - RGPUI 中最核心的 trait，允许不同的上下文类型在某些操作中互换使用。
 ///
 /// 该 trait 提供了以下核心能力：
 /// - **实体管理**：创建（`new`）、更新（`update_entity`）、读取（`read_entity`）实体
@@ -641,7 +641,7 @@ impl<T: 'static> Reservation<T> {
     }
 }
 
-/// 可视化上下文 trait - GPUI 中需要窗口才能运行的上下文类型。
+/// 可视化上下文 trait - RGPUI 中需要窗口才能运行的上下文类型。
 ///
 /// 该 trait 扩展了 [`AppContext`]，添加了窗口特定的操作：
 /// - 创建窗口级别的实体

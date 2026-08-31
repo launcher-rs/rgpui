@@ -1,4 +1,4 @@
-//! A clean testing API for GPUI applications.
+//! A clean testing API for RGPUI applications.
 //!
 //! `TestApp` provides a simpler alternative to `TestAppContext` with:
 //! - Automatic effect flushing after updates
@@ -33,10 +33,10 @@ use crate::{
 };
 use std::{future::Future, rc::Rc, sync::Arc, time::Duration};
 
-/// A test application context with a clean API.
+/// 一个具有简洁 API 的测试应用上下文。
 ///
-/// Unlike `TestAppContext`, `TestApp` automatically flushes effects after
-/// each update and provides simpler window management.
+/// 与 `TestAppContext` 不同，`TestApp` 在每次更新后自动刷新效果，
+/// 并提供更简单的窗口管理。
 pub struct TestApp {
     app: Rc<AppCell>,
     platform: Rc<TestPlatform>,
@@ -46,22 +46,22 @@ pub struct TestApp {
 }
 
 impl TestApp {
-    /// Create a new test application.
+    /// 创建一个新的测试应用。
     pub fn new() -> Self {
         Self::with_seed(0)
     }
 
-    /// Create a new test application with a specific random seed.
+    /// 使用指定的随机种子创建一个新的测试应用。
     pub fn with_seed(seed: u64) -> Self {
         Self::build(seed, None, Arc::new(()))
     }
 
-    /// Create a new test application with a custom text system for real font shaping.
+    /// 使用自定义文本系统创建新的测试应用，以实现真实字体排版。
     pub fn with_text_system(text_system: Arc<dyn PlatformTextSystem>) -> Self {
         Self::build(0, Some(text_system), Arc::new(()))
     }
 
-    /// Create a new test application with a custom text system and asset source.
+    /// 使用自定义文本系统和资源源创建新的测试应用。
     pub fn with_text_system_and_assets(
         text_system: Arc<dyn PlatformTextSystem>,
         asset_source: Arc<dyn crate::AssetSource>,
@@ -107,8 +107,8 @@ impl TestApp {
         }
     }
 
-    /// Run a closure with mutable access to the App context.
-    /// Automatically runs until parked after the closure completes.
+    /// 使用可变访问 App 上下文运行闭包。
+    /// 闭包完成后自动运行直到暂停。
     pub fn update<R>(&mut self, f: impl FnOnce(&mut App) -> R) -> R {
         let result = {
             let mut app = self.app.borrow_mut();
@@ -118,13 +118,13 @@ impl TestApp {
         result
     }
 
-    /// Run a closure with read-only access to the App context.
+    /// 使用只读访问 App 上下文运行闭包。
     pub fn read<R>(&self, f: impl FnOnce(&App) -> R) -> R {
         let app = self.app.borrow();
         f(&app)
     }
 
-    /// Create a new entity in the app.
+    /// 在应用中创建一个新实体。
     pub fn new_entity<T: 'static>(
         &mut self,
         build: impl FnOnce(&mut Context<T>) -> T,
@@ -132,7 +132,7 @@ impl TestApp {
         self.update(|cx| cx.new(build))
     }
 
-    /// Update an entity.
+    /// 更新一个实体。
     pub fn update_entity<T: 'static, R>(
         &mut self,
         entity: &Entity<T>,
@@ -141,7 +141,7 @@ impl TestApp {
         self.update(|cx| entity.update(cx, f))
     }
 
-    /// Read an entity.
+    /// 读取一个实体。
     pub fn read_entity<T: 'static, R>(
         &self,
         entity: &Entity<T>,
@@ -150,7 +150,7 @@ impl TestApp {
         self.read(|cx| f(entity.read(cx), cx))
     }
 
-    /// Open a test window with the given root view, using maximized bounds.
+    /// 使用给定根视图打开测试窗口，使用最大化边界框。
     pub fn open_window<V: Render + 'static>(
         &mut self,
         build_view: impl FnOnce(&mut Window, &mut Context<V>) -> V,
@@ -175,7 +175,7 @@ impl TestApp {
         }
     }
 
-    /// Open a test window with specific options.
+    /// 使用特定选项打开测试窗口。
     pub fn open_window_with_options<V: Render + 'static>(
         &mut self,
         options: WindowOptions,
@@ -194,17 +194,17 @@ impl TestApp {
         }
     }
 
-    /// Run pending tasks until there's nothing left to do.
+    /// 运行待处理的任务直到没有剩余工作。
     pub fn run_until_parked(&self) {
         self.background_executor.run_until_parked();
     }
 
-    /// Advance the simulated clock by the given duration.
+    /// 将模拟时钟推进指定的时间。
     pub fn advance_clock(&self, duration: Duration) {
         self.background_executor.advance_clock(duration);
     }
 
-    /// Spawn a future on the foreground executor.
+    /// 在前台执行器上生成一个 future。
     pub fn spawn<Fut, R>(&self, f: impl FnOnce(AsyncApp) -> Fut) -> Task<R>
     where
         Fut: Future<Output = R> + 'static,
@@ -213,7 +213,7 @@ impl TestApp {
         self.foreground_executor.spawn(f(self.to_async()))
     }
 
-    /// Spawn a future on the background executor.
+    /// 在后台执行器上生成一个 future。
     pub fn background_spawn<R>(&self, future: impl Future<Output = R> + Send + 'static) -> Task<R>
     where
         R: Send + 'static,
@@ -221,7 +221,7 @@ impl TestApp {
         self.background_executor.spawn(future)
     }
 
-    /// Get an async handle to the app.
+    /// 获取应用的异步句柄。
     pub fn to_async(&self) -> AsyncApp {
         AsyncApp {
             app: Rc::downgrade(&self.app),
@@ -230,49 +230,49 @@ impl TestApp {
         }
     }
 
-    /// Get the background executor.
+    /// 获取后台执行器。
     pub fn background_executor(&self) -> &BackgroundExecutor {
         &self.background_executor
     }
 
-    /// Get the foreground executor.
+    /// 获取前台执行器。
     pub fn foreground_executor(&self) -> &ForegroundExecutor {
         &self.foreground_executor
     }
 
-    /// Get the text system.
+    /// 获取文本系统。
     pub fn text_system(&self) -> &Arc<TextSystem> {
         &self.text_system
     }
 
-    /// Check if a global of the given type exists.
+    /// 检查是否存在给定类型的全局变量。
     pub fn has_global<G: Global>(&self) -> bool {
         self.read(|cx| cx.has_global::<G>())
     }
 
-    /// Set a global value.
+    /// 设置全局值。
     pub fn set_global<G: Global>(&mut self, global: G) {
         self.update(|cx| cx.set_global(global));
     }
 
-    /// Read a global value.
+    /// 读取全局值。
     pub fn read_global<G: Global, R>(&self, f: impl FnOnce(&G, &App) -> R) -> R {
         self.read(|cx| f(cx.global(), cx))
     }
 
-    /// Update a global value.
+    /// 更新全局值。
     pub fn update_global<G: Global, R>(&mut self, f: impl FnOnce(&mut G, &mut App) -> R) -> R {
         self.update(|cx| cx.update_global(f))
     }
 
     // 平台模拟方法
 
-    /// Write text to the simulated clipboard.
+    /// 向模拟剪贴板写入文本。
     pub fn write_to_clipboard(&self, item: ClipboardItem) {
         self.platform.write_to_clipboard(item);
     }
 
-    /// Read from the simulated clipboard.
+    /// 从模拟剪贴板读取。
     pub fn read_from_clipboard(&self) -> Option<ClipboardItem> {
         self.platform.read_from_clipboard()
     }
@@ -282,7 +282,7 @@ impl TestApp {
         self.platform.opened_url.borrow().clone()
     }
 
-    /// Check if a file path prompt is pending.
+    /// 检查是否有待处理的文件路径提示。
     pub fn did_prompt_for_new_path(&self) -> bool {
         self.platform.did_prompt_for_new_path()
     }
@@ -295,7 +295,7 @@ impl TestApp {
         self.platform.simulate_new_path_selection(select);
     }
 
-    /// Check if a prompt dialog is pending.
+    /// 检查是否有待处理的提示对话框。
     pub fn has_pending_prompt(&self) -> bool {
         self.platform.has_pending_prompt()
     }
@@ -305,7 +305,7 @@ impl TestApp {
         self.platform.simulate_prompt_answer(button);
     }
 
-    /// Get all open windows.
+    /// 获取所有打开的窗口。
     pub fn windows(&self) -> Vec<AnyWindowHandle> {
         self.read(|cx| cx.windows())
     }
@@ -317,7 +317,7 @@ impl Default for TestApp {
     }
 }
 
-/// A test window with inspection and simulation capabilities.
+/// 具有检查和模拟功能的测试窗口。
 pub struct TestAppWindow<V> {
     handle: WindowHandle<V>,
     app: Rc<AppCell>,
@@ -326,7 +326,7 @@ pub struct TestAppWindow<V> {
 }
 
 impl<V: 'static + Render> TestAppWindow<V> {
-    /// Get the window handle.
+    /// 获取窗口句柄。
     pub fn handle(&self) -> WindowHandle<V> {
         self.handle
     }
@@ -341,7 +341,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
         .expect("未找到窗口")
     }
 
-    /// Update the root view.
+    /// 更新根视图。
     pub fn update<R>(&mut self, f: impl FnOnce(&mut V, &mut Window, &mut Context<V>) -> R) -> R {
         let result = {
             let mut app = self.app.borrow_mut();
@@ -357,7 +357,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
         result
     }
 
-    /// Read the root view.
+    /// 读取根视图。
     pub fn read<R>(&self, f: impl FnOnce(&V, &App) -> R) -> R {
         let app = self.app.borrow();
         let view = self
@@ -372,7 +372,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
         f(view.read(&app), &app)
     }
 
-    /// Get the window title.
+    /// 获取窗口标题。
     pub fn title(&self) -> Option<String> {
         let app = self.app.borrow();
         app.read_window(&self.handle, |_, _cx| {
@@ -382,7 +382,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
         .unwrap()
     }
 
-    /// Simulate a keystroke.
+    /// 模拟按键。
     pub fn simulate_keystroke(&mut self, keystroke: &str) {
         let keystroke = Keystroke::parse(keystroke).unwrap();
         {
@@ -396,21 +396,21 @@ impl<V: 'static + Render> TestAppWindow<V> {
         self.background_executor.run_until_parked();
     }
 
-    /// Simulate multiple keystrokes (space-separated).
+    /// 模拟多个按键（空格分隔）。
     pub fn simulate_keystrokes(&mut self, keystrokes: &str) {
         for keystroke in keystrokes.split(' ') {
             self.simulate_keystroke(keystroke);
         }
     }
 
-    /// Simulate typing text.
+    /// 模拟输入文本。
     pub fn simulate_input(&mut self, input: &str) {
         for char in input.chars() {
             self.simulate_keystroke(&char.to_string());
         }
     }
 
-    /// Simulate a mouse move.
+    /// 模拟鼠标移动。
     pub fn simulate_mouse_move(&mut self, position: Point<Pixels>) {
         self.simulate_event(MouseMoveEvent {
             position,
@@ -419,7 +419,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
         });
     }
 
-    /// Simulate a mouse down event.
+    /// 模拟鼠标按下事件。
     pub fn simulate_mouse_down(&mut self, position: Point<Pixels>, button: MouseButton) {
         self.simulate_event(MouseDownEvent {
             position,
@@ -430,7 +430,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
         });
     }
 
-    /// Simulate a mouse up event.
+    /// 模拟鼠标释放事件。
     pub fn simulate_mouse_up(&mut self, position: Point<Pixels>, button: MouseButton) {
         self.simulate_event(MouseUpEvent {
             position,
@@ -440,13 +440,13 @@ impl<V: 'static + Render> TestAppWindow<V> {
         });
     }
 
-    /// Simulate a click at the given position.
+    /// 模拟在给定位置点击。
     pub fn simulate_click(&mut self, position: Point<Pixels>, button: MouseButton) {
         self.simulate_mouse_down(position, button);
         self.simulate_mouse_up(position, button);
     }
 
-    /// Simulate a scroll event.
+    /// 模拟滚动事件。
     pub fn simulate_scroll(&mut self, position: Point<Pixels>, delta: Point<Pixels>) {
         self.simulate_event(crate::ScrollWheelEvent {
             position,
@@ -456,7 +456,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
         });
     }
 
-    /// Simulate an input event.
+    /// 模拟输入事件。
     pub fn simulate_event<E: InputEvent>(&mut self, event: E) {
         let platform_input = event.to_platform_input();
         {
@@ -470,7 +470,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
         self.background_executor.run_until_parked();
     }
 
-    /// Simulate resizing the window.
+    /// 模拟调整窗口大小。
     pub fn simulate_resize(&mut self, size: Size<Pixels>) {
         let window_id = self.handle.window_id();
         let mut app = self.app.borrow_mut();
@@ -483,7 +483,7 @@ impl<V: 'static + Render> TestAppWindow<V> {
         self.background_executor.run_until_parked();
     }
 
-    /// Force a redraw of the window.
+    /// 强制重绘窗口。
     pub fn draw(&mut self) {
         let mut app = self.app.borrow_mut();
         let any_handle: AnyWindowHandle = self.handle.into();

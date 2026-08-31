@@ -124,7 +124,7 @@ fn create_main_window(cx: &mut App) {
         },
         |window, cx| {
             let view = cx.new(|_| TrayExample {
-                message: "Hello from GPUI Tray!".into(),
+                message: "Hello from RGPUI Tray!".into(),
             });
 
             // 拦截窗口关闭事件，隐藏到托盘而不是退出

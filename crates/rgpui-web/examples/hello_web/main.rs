@@ -345,7 +345,7 @@ impl Render for HelloWeb {
                 div()
                     .text_xl()
                     .text_color(rgb(TEXT_PRIMARY))
-                    .child("Prime Sieve — GPUI Web"),
+                    .child("Prime Sieve — RGPUI Web"),
             )
             .child(div().text_sm().text_color(rgb(TEXT_DIM)).child(format!(
                 "Background threads: {} · Chunks per run: {}",

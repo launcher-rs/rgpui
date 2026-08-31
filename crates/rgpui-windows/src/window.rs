@@ -88,7 +88,7 @@ pub struct WindowsWindowState {
     pub renderer: RefCell<DirectXRenderer>,
     /// Set after a GPU device-lost recovery so the next `draw_window` call is
     /// treated as a forced render. This guarantees the next frame both
-    /// re-enables drawing (via `mark_drawable`) and bypasses the GPUI view
+    /// re-enables drawing (via `mark_drawable`) and bypasses the RGPUI view
     /// cache, which would otherwise replay stale atlas tile references from
     /// the previous frame and panic in `DirectXAtlasState::texture`.
     pub force_render_after_recovery: Cell<bool>,
@@ -265,7 +265,7 @@ impl WindowsWindowState {
     /// get the logical size of the app's drawable area.
     ///
     /// Currently, GPUI uses the logical size of the app to handle mouse interactions (such as
-    /// whether the mouse collides with other elements of GPUI).
+    /// whether the mouse collides with other elements of RGPUI).
     fn content_size(&self) -> Size<Pixels> {
         self.logical_size.get()
     }
@@ -702,8 +702,8 @@ impl PlatformWindow for WindowsWindow {
 
     /// get the logical size of the app's drawable area.
     ///
-    /// Currently, GPUI uses the logical size of the app to handle mouse interactions (such as
-    /// whether the mouse collides with other elements of GPUI).
+    /// Currently, RGPUI uses the logical size of the app to handle mouse interactions (such as
+    /// whether the mouse collides with other elements of RGPUI).
     fn content_size(&self) -> Size<Pixels> {
         self.state.content_size()
     }

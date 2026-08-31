@@ -4,7 +4,7 @@
 //! entity's *current* window rather than the window it was in at
 //! registration time.
 //!
-//! To run:  cargo run -p gpui --example move_entity_between_windows
+//! To run:  cargo run -p rgpui --example move_entity_between_windows
 
 #![cfg_attr(target_family = "wasm", no_main)]
 

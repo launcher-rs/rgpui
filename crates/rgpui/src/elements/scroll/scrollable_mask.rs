@@ -17,7 +17,7 @@ use crate::{AxisExt, StyledExt as _};
 
 /// 只消费水平滚轮增量的水平滚动视口。
 ///
-/// GPUI 原生的 `overflow_x_scroll` 在没有垂直溢出时会把垂直滚轮输入映射为水平滚动。
+/// RGPUI 原生的 `overflow_x_scroll` 在没有垂直溢出时会把垂直滚轮输入映射为水平滚动。
 /// 该包装保持视觉裁剪与滚动偏移，同时把滚轮输入委托给 [`ScrollableMask`]，
 /// 使垂直滚轮事件可以继续冒泡到父级滚动器。
 pub fn horizontal_scroll_area(

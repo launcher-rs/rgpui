@@ -3,132 +3,126 @@ use thiserror::Error;
 
 use crate::{AnyWindowHandle, Bounds, Pixels, Point};
 
-/// Options for a parent-anchored popup window such as a menu, dropdown, context menu or tooltip.
+/// 父窗口锚定弹出窗口的选项，如菜单、下拉列表、上下文菜单或工具提示。
 ///
-/// A popup is placed relative to an anchor rectangle on its parent window rather than at an
-/// absolute screen position. The platform resolves the final position, so this works both on
-/// systems where the compositor owns window placement (Wayland) and on platforms with absolute
-/// coordinates.
+/// 弹出窗口相对于其父窗口的锚定矩形放置，而不是在绝对屏幕位置。
+/// 平台解析最终位置，因此这在合成器拥有窗口放置的系统（Wayland）和具有绝对坐标的平台上
+/// 都能工作。
 ///
-/// The popup's size comes from [`WindowOptions::window_bounds`](crate::WindowOptions), whose
-/// origin is ignored. All coordinates are in logical pixels.
+/// 弹出窗口的大小来自 [`WindowOptions::window_bounds`](crate::WindowOptions)，
+/// 其原点被忽略。所有坐标均以逻辑像素为单位。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PopupOptions {
-    /// The window the popup is anchored to.
+    /// 弹出窗口所锚定的窗口。
     pub parent: AnyWindowHandle,
 
-    /// The rectangle the popup is positioned relative to, in the parent window's coordinate
-    /// space (the same space element bounds are in). For example, a dropdown menu uses the
-    /// bounds of the button that opened it.
+    /// 弹出窗口相对定位的矩形，在父窗口的坐标空间中
+    /// （与元素边界相同的空间）。例如，下拉菜单使用打开它的按钮的边界。
     pub anchor_rect: Bounds<Pixels>,
 
-    /// Which point of [`Self::anchor_rect`] the popup is anchored to.
+    /// [`Self::anchor_rect`] 的哪个点作为弹出窗口的锚点。
     pub anchor: PopupAnchor,
 
-    /// The direction in which the popup extends away from the anchor point. A dropdown that
-    /// drops below its button anchors to [`PopupAnchor::BottomLeft`] with a gravity of
-    /// [`PopupGravity::BottomRight`] so it grows down and to the right.
+    /// 弹出窗口从锚点向外延伸的方向。下拉到其按钮下方的下拉菜单使用
+    /// [`PopupAnchor::BottomLeft`] 锚点，重力为
+    /// [`PopupGravity::BottomRight`]，使其向下向右增长。
     pub gravity: PopupGravity,
 
-    /// How the platform may adjust the popup if the requested placement would put it off-screen.
+    /// 如果请求的位置会使弹出窗口超出屏幕，平台如何调整它。
     pub constraint_adjustment: PopupConstraintAdjustment,
 
-    /// An additional offset applied to the popup after anchoring.
+    /// 锚定后应用于弹出窗口的额外偏移量。
     pub offset: Point<Pixels>,
 
-    /// Whether the popup should take an explicit input grab.
+    /// 弹出窗口是否应获取显式输入抓取。
     ///
-    /// Grabbing popups behave like menus: they take keyboard focus and are dismissed when the
-    /// user clicks outside of them or presses a dismissing key. Use it for menus and comboboxes,
-    /// not for tooltips or other passive popups.
+    /// 抓取的弹出窗口行为类似菜单：它们获取键盘焦点，当用户在其外部点击
+    /// 或按下关闭键时关闭。将其用于菜单和组合框，而不是工具提示或其他被动弹出窗口。
     ///
-    /// A grab must be requested while the triggering input is still active, in practice the
-    /// press of the mouse button that opens the popup. Open grabbing popups from a mouse-down
-    /// handler rather than a click handler, otherwise the grab is refused.
+    /// 抓取必须在触发输入仍处于活动状态时请求，实际上是在打开弹出窗口的
+    /// 鼠标按钮按下时。从 mouse-down 处理器而非 click 处理器打开抓取弹出窗口，
+    /// 否则抓取会被拒绝。
     ///
-    /// Automatic dismissal only covers input aimed at other applications. A click elsewhere in
-    /// your own application still reaches it as usual, so closing the popup in that case is up
-    /// to you. Nested grabbing popups must be closed in the reverse order they were opened.
+    /// 自动关闭仅覆盖针对其他应用程序的输入。在你自己应用程序中的其他位置点击
+    /// 仍会照常到达，因此关闭弹出窗口取决于你。嵌套的抓取弹出窗口必须按
+    /// 打开的相反顺序关闭。
     pub grab: bool,
 }
 
-/// The point of the anchor rectangle that a popup is anchored to.
+/// 弹出窗口锚定到的锚定矩形的点。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum PopupAnchor {
-    /// Anchor to the center of the anchor rectangle.
+    /// 锚定到锚定矩形的中心。
     #[default]
     Center,
-    /// Anchor to the center of the top edge.
+    /// 锚定到顶边的中心。
     Top,
-    /// Anchor to the center of the bottom edge.
+    /// 锚定到底边的中心。
     Bottom,
-    /// Anchor to the center of the left edge.
+    /// 锚定到左边的中心。
     Left,
-    /// Anchor to the center of the right edge.
+    /// 锚定到右边的中心。
     Right,
-    /// Anchor to the top-left corner.
+    /// 锚定到左上角。
     TopLeft,
-    /// Anchor to the bottom-left corner.
+    /// 锚定到左下角。
     BottomLeft,
-    /// Anchor to the top-right corner.
+    /// 锚定到右上角。
     TopRight,
-    /// Anchor to the bottom-right corner.
+    /// 锚定到右下角。
     BottomRight,
 }
 
-/// The direction in which a popup extends away from its anchor point.
+/// 弹出窗口从其锚点向外延伸的方向。
 ///
-/// For instance, a gravity of [`PopupGravity::BottomRight`] places the popup below and to the
-/// right of the anchor point.
+/// 例如，[`PopupGravity::BottomRight`] 将弹出窗口放置在锚点的下方和右侧。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum PopupGravity {
-    /// The popup is centered over the anchor point.
+    /// 弹出窗口居中于锚点上方。
     #[default]
     Center,
-    /// The popup extends upwards from the anchor point.
+    /// 弹出窗口从锚点向上延伸。
     Top,
-    /// The popup extends downwards from the anchor point.
+    /// 弹出窗口从锚点向下延伸。
     Bottom,
-    /// The popup extends to the left of the anchor point.
+    /// 弹出窗口从锚点向左延伸。
     Left,
-    /// The popup extends to the right of the anchor point.
+    /// 弹出窗口从锚点向右延伸。
     Right,
-    /// The popup extends up and to the left of the anchor point.
+    /// 弹出窗口从锚点向左上方延伸。
     TopLeft,
-    /// The popup extends down and to the left of the anchor point.
+    /// 弹出窗口从锚点向左下方延伸。
     BottomLeft,
-    /// The popup extends up and to the right of the anchor point.
+    /// 弹出窗口从锚点向右上方延伸。
     TopRight,
-    /// The popup extends down and to the right of the anchor point.
+    /// 弹出窗口从锚点向右下方延伸。
     BottomRight,
 }
 
 bitflags! {
-    /// How a popup may be adjusted by the platform if the requested placement would put it
-    /// off-screen. If no flags are set, the popup is placed exactly as requested and may be
-    /// clipped.
+    /// 如果请求的位置会使弹出窗口超出屏幕，平台如何调整它。
+    /// 如果未设置标志，弹出窗口将按请求放置，并可能被裁剪。
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
     pub struct PopupConstraintAdjustment: u32 {
-        /// The popup may be slid horizontally to stay on-screen.
+        /// 弹出窗口可以水平滑动以保持在屏幕内。
         const SLIDE_X = 1;
-        /// The popup may be slid vertically to stay on-screen.
+        /// 弹出窗口可以垂直滑动以保持在屏幕内。
         const SLIDE_Y = 2;
-        /// The popup's anchor and gravity may be flipped horizontally to stay on-screen.
+        /// 弹出窗口的锚点和重力可以水平翻转以保持在屏幕内。
         const FLIP_X = 4;
-        /// The popup's anchor and gravity may be flipped vertically to stay on-screen.
+        /// 弹出窗口的锚点和重力可以垂直翻转以保持在屏幕内。
         const FLIP_Y = 8;
-        /// The popup may be shrunk horizontally to stay on-screen.
+        /// 弹出窗口可以水平缩小以保持在屏幕内。
         const RESIZE_X = 16;
-        /// The popup may be shrunk vertically to stay on-screen.
+        /// 弹出窗口可以垂直缩小以保持在屏幕内。
         const RESIZE_Y = 32;
     }
 }
 
-/// Returned when the current platform has no native popup implementation yet.
+/// 当前平台尚无原生弹出窗口实现时返回。
 ///
-/// Native popups are separate from gpui's in-window popovers, which are drawn as elements inside
-/// an existing window. A caller that wants a popup on every platform should treat this error as
-/// a cue to fall back to that in-window rendering.
+/// 原生弹出窗口与 rgpui 的窗口内弹出层不同，后者作为元素绘制在现有窗口内。
+/// 希望在所有平台上都有弹出窗口的调用者应将此错误视为回退到该窗口内渲染的提示。
 #[derive(Debug, Error)]
 #[error("popups are not supported on this platform")]
 pub struct PopupNotSupportedError;

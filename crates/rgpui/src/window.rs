@@ -73,41 +73,36 @@ use crate::util::{
 };
 pub use prompts::*;
 
-/// Default window size used when no explicit size is provided.
+/// 未指定窗口大小时使用的默认尺寸。
 pub const DEFAULT_WINDOW_SIZE: Size<Pixels> = size(px(1536.), px(1095.));
 
-/// A 6:5 aspect ratio minimum window size to be used for functional,
-/// additional-to-main-Zed windows, like the settings and rules library windows.
+/// 6:5 宽高比的最小窗口尺寸，用于功能性附加窗口（如设置和规则库窗口）。
 pub const DEFAULT_ADDITIONAL_WINDOW_SIZE: Size<Pixels> = Size {
     width: Pixels(900.),
     height: Pixels(750.),
 };
 
-/// Represents the two different phases when dispatching events.
+/// 表示事件分发时的两个不同阶段。
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DispatchPhase {
-    /// After the capture phase comes the bubble phase, in which mouse event listeners are
-    /// invoked front to back and keyboard event listeners are invoked from the focused element
-    /// to the root of the element tree. This is the phase you'll most commonly want to use when
-    /// registering event listeners.
+    /// 在捕获阶段之后是冒泡阶段，此时鼠标事件监听器从前向后调用，
+    /// 键盘事件监听器从焦点元素向元素树根调用。注册事件监听器时通常使用此阶段。
     #[default]
     Bubble,
-    /// During the initial capture phase, mouse event listeners are invoked back to front, and keyboard
-    /// listeners are invoked from the root of the tree downward toward the focused element. This phase
-    /// is used for special purposes such as clearing the "pressed" state for click events. If
-    /// you stop event propagation during this phase, you need to know what you're doing. Handlers
-    /// outside of the immediate region may rely on detecting non-local events during this phase.
+    /// 在初始捕获阶段，鼠标事件监听器从后向前调用，键盘监听器从树根向下朝焦点元素调用。
+    /// 此阶段用于特殊目的，如清除点击事件的"按下"状态。如果在此阶段停止事件传播，
+    /// 你需要清楚自己在做什么。直接区域外的处理程序可能依赖于在此阶段检测非本地事件。
     Capture,
 }
 
 impl DispatchPhase {
-    /// Returns true if this represents the "bubble" phase.
+    /// 返回 `true` 表示这是"冒泡"阶段。
     #[inline]
     pub fn bubble(self) -> bool {
         self == DispatchPhase::Bubble
     }
 
-    /// Returns true if this represents the "capture" phase.
+    /// 返回 `true` 表示这是"捕获"阶段。
     #[inline]
     pub fn capture(self) -> bool {
         self == DispatchPhase::Capture
@@ -122,10 +117,9 @@ struct WindowInvalidatorInner {
     pub frame_dirty: FrameDirtyAccumulator,
 }
 
-/// Per-frame invalidation bookkeeping, drained at draw time and emitted to the
-/// frame profiler. Tracks when the current frame first became dirty and how
-/// many invalidations were coalesced into it. Only populated while
-/// `profiler::frame_trace_enabled()` is set.
+/// 每帧失效记录簿记，在绘制时清空并发送到帧分析器。
+/// 跟踪当前帧首次变脏的时间以及合并了多少次失效。
+/// 仅在启用 `profiler::frame_trace_enabled()` 时填充。
 #[derive(Default)]
 struct FrameDirtyAccumulator {
     dirty_at: Option<Instant>,
@@ -256,44 +250,42 @@ impl WindowFocusEvent {
     }
 }
 
-/// This is provided when subscribing for `Context::on_focus_out` events.
+/// 订阅 `Context::on_focus_out` 事件时提供。
 pub struct FocusOutEvent {
-    /// A weak focus handle representing what was blurred.
+    /// 表示失去焦点的弱焦点句柄。
     pub blurred: WeakFocusHandle,
 }
 
 slotmap::new_key_type! {
-    /// A globally unique identifier for a focusable element.
+    /// 可聚焦元素的全局唯一标识符。
     pub struct FocusId;
 }
 
 thread_local! {
-    /// Fallback arena used when no app-specific arena is active.
-    /// In production, each window draw sets CURRENT_ELEMENT_ARENA to the app's arena.
+    /// 没有应用专用 arena 时使用的后备 arena。
+    /// 在生产环境中，每次窗口绘制都会将 CURRENT_ELEMENT_ARENA 设为应用的 arena。
     pub(crate) static ELEMENT_ARENA: RefCell<Arena> = RefCell::new(Arena::new(1024 * 1024));
 
-    /// Points to the current App's element arena during draw operations.
-    /// This allows multiple test Apps to have isolated arenas, preventing
-    /// cross-session corruption when the scheduler interleaves their tasks.
+    /// 指向当前 App 的元素 arena（绘制期间）。
+    /// 允许多个测试 App 拥有独立的 arena，防止调度器交错任务时发生跨会话损坏。
     static CURRENT_ELEMENT_ARENA: Cell<Option<*const RefCell<Arena>>> = const { Cell::new(None) };
 }
 
-/// Whether a window draw is currently in progress on this thread.
+/// 此线程上当前是否正在进行窗口绘制。
 ///
-/// This holds exactly while an `ElementArenaScope` is active: nested scopes
-/// restore the previous (still set) arena pointer, so `CURRENT_ELEMENT_ARENA`
-/// is `Some` from the outermost draw's start to its end.
+/// 仅在 `ElementArenaScope` 活跃时为 `true`：嵌套作用域会恢复之前的
+/// （仍已设置的）arena 指针，因此 `CURRENT_ELEMENT_ARENA` 从最外层绘制
+/// 开始到结束期间都是 `Some`。
 ///
-/// The `on_request_frame` callback uses this to defer draw requests that
-/// arrive re-entrantly while a draw is already on the stack (e.g. via nested
-/// message pumping in the Windows window procedure), instead of running a
-/// nested draw or panicking on the already-borrowed App.
+/// `on_request_frame` 回调使用此函数来延迟在绘制已在栈上时重入到达的
+/// 绘制请求（例如通过 Windows 窗口过程中的嵌套消息泵），
+/// 而不是运行嵌套绘制或在已借用的 App 上 panic。
 fn draw_in_progress() -> bool {
     CURRENT_ELEMENT_ARENA.with(|current| current.get().is_some())
 }
 
-/// Allocates an element in the current arena. Uses the app-specific arena if one
-/// is active (during draw), otherwise falls back to the thread-local ELEMENT_ARENA.
+/// 在当前 arena 中分配元素。如果有活动的应用专用 arena（绘制期间），
+/// 则使用该 arena，否则回退到线程局部的 ELEMENT_ARENA。
 pub(crate) fn with_element_arena<R>(f: impl FnOnce(&mut Arena) -> R) -> R {
     CURRENT_ELEMENT_ARENA.with(|current| {
         if let Some(arena_ptr) = current.get() {
@@ -307,30 +299,27 @@ pub(crate) fn with_element_arena<R>(f: impl FnOnce(&mut Arena) -> R) -> R {
     })
 }
 
-/// Scope guard that sets CURRENT_ELEMENT_ARENA for the duration of a draw
-/// operation and tracks the arena's scope depth, so that a nested draw's
-/// `ArenaClearNeeded::clear` is deferred rather than freeing memory the outer
-/// draw still references (see `Arena::clear`).
+/// 作用域守卫，在绘制操作期间设置 CURRENT_ELEMENT_ARENA 并跟踪 arena 的
+/// 作用域深度，以便嵌套绘制的 `ArenaClearNeeded::clear` 被延迟，而不是释放
+/// 外层绘制仍引用的内存（参见 `Arena::clear`）。
 ///
-/// Call [`ElementArenaScope::exit`] with the same arena that was entered to
-/// obtain the [`ArenaClearNeeded`] token the draw now owes; requiring `exit`
-/// makes it impossible to request a clear before the scope has ended. The
-/// scope's teardown 鈥?restoring the thread-local and balancing `begin_scope`
-/// with `end_scope` 鈥?happens in `Drop`, so the arena's scope depth stays
-/// balanced on every path, including when a panic unwinds a draw before `exit`
-/// is reached. (If teardown lived only in `exit`, such a panic would leave the
-/// scope depth permanently elevated and defer every future clear, leaking
-/// memory unboundedly.)
+/// 使用进入时的相同 arena 调用 [`ElementArenaScope::exit`] 以获取绘制当前
+/// 欠的 [`ArenaClearNeeded`] token；要求 `exit` 使得在作用域结束前无法
+/// 请求清理。作用域的拆卸——恢复线程局部变量并用 `end_scope` 平衡
+/// `begin_scope`——在 `Drop` 中发生，因此 arena 的作用域深度在每条路径上
+/// 都保持平衡，包括 panic 在 `exit` 被到达之前展开绘制的情况。
+/// （如果拆卸仅存在于 `exit` 中，这样的 panic 会使作用域深度永久升高，
+/// 延迟每次未来的清理，导致内存无界泄漏。）
 pub(crate) struct ElementArenaScope {
-    /// The entered arena: compared against the argument in `exit`, and
-    /// dereferenced in `Drop` to end its scope (see the SAFETY note there).
+    /// 进入的 arena：在 `exit` 中与参数比较，在 `Drop` 中解引用以结束其作用域
+    /// （参见 SAFETY 说明）。
     entered: *const RefCell<Arena>,
     previous: Option<*const RefCell<Arena>>,
     exited: bool,
 }
 
 impl ElementArenaScope {
-    /// Enter a scope where element allocations use the given arena.
+    /// 进入一个元素分配使用给定 arena 的作用域。
     pub(crate) fn enter(arena: &RefCell<Arena>) -> Self {
         arena.borrow_mut().begin_scope();
         let previous = CURRENT_ELEMENT_ARENA.with(|current| {
@@ -345,14 +334,13 @@ impl ElementArenaScope {
         }
     }
 
-    /// End the scope: restores the previously-current arena and ends the
-    /// arena's clear-deferral scope. Returns the token for the arena clear the
-    /// draw now owes; producing it here makes it impossible to request a clear
-    /// before the scope has ended (which would be silently deferred forever).
+    /// 结束作用域：恢复之前活动的 arena 并结束 arena 的清理延迟作用域。
+    /// 返回绘制当前欠的 arena 清理 token；在此处生成使得在作用域结束前
+    /// 无法请求清理（否则将被永远静默延迟）。
     ///
-    /// Panics if passed a different arena than was entered: ending the scope
-    /// of the wrong arena would unbalance two arenas' scope depths, allowing
-    /// one of them to clear while a draw still references its memory.
+    /// 如果传入的 arena 与进入时不同则 panic：结束错误 arena 的作用域
+    /// 会使两个 arena 的作用域深度失衡，允许其中一个在绘制仍引用其内存时
+    /// 进行清理。
     pub(crate) fn exit(mut self, arena: &RefCell<Arena>) -> ArenaClearNeeded {
         assert!(
             std::ptr::eq(self.entered, arena),
@@ -391,31 +379,28 @@ impl Drop for ElementArenaScope {
     }
 }
 
-/// Returned when the element arena has been used and so must be cleared before the next draw.
+/// 当元素 arena 已被使用时返回，因此必须在下次绘制前清除。
 #[must_use]
 pub struct ArenaClearNeeded {
-    /// Identity of the arena that was drawn into. Only ever compared against
-    /// another pointer in `clear`; never dereferenced.
+    /// 被绘制的 arena 的标识符。仅在 `clear` 中与另一个指针比较，从不解引用。
     arena: *const RefCell<Arena>,
 }
 
 impl ArenaClearNeeded {
-    /// Create a new ArenaClearNeeded token for the App whose arena was drawn
-    /// into. Private: the only way to obtain one is [`ElementArenaScope::exit`].
+    /// 为被绘制的 App 创建新的 ArenaClearNeeded token。私有方法：获取它的唯一
+    /// 方式是 [`ElementArenaScope::exit`]。
     fn new(arena: &RefCell<Arena>) -> Self {
         Self {
             arena: arena as *const RefCell<Arena>,
         }
     }
 
-    /// Clear the element arena of the App the draw ran against. If an enclosing
-    /// draw is still in progress (this draw was nested inside it), the clear is
-    /// deferred to the enclosing draw's own `ArenaClearNeeded` so that its live
-    /// allocations aren't freed.
+    /// 清除绘制所针对的 App 的元素 arena。如果外层绘制仍在进行中
+    /// （此绘制嵌套在其内部），则清理被延迟到外层绘制自身的 `ArenaClearNeeded`，
+    /// 以确保其活动分配不会被释放。
     ///
-    /// Panics if passed a different App than the draw ran against, since
-    /// clearing another App's arena could free memory its draws still
-    /// reference.
+    /// 如果传入的 App 与绘制所针对的不同则 panic，因为清理另一个 App 的
+    /// arena 可能会释放其绘制仍引用的内存。
     pub fn clear(self, cx: &mut App) {
         assert!(
             std::ptr::eq(self.arena, &cx.element_arena),
@@ -433,27 +418,25 @@ pub(crate) struct FocusRef {
 }
 
 impl FocusId {
-    /// Obtains whether the element associated with this handle is currently focused.
+    /// 获取与此句柄关联的元素是否当前具有焦点。
     pub fn is_focused(&self, window: &Window) -> bool {
         window.focus == Some(*self)
     }
 
-    /// Obtains whether the element associated with this handle contains the focused
-    /// element or is itself focused.
+    /// 获取与此句柄关联的元素是否包含焦点元素或其自身是否具有焦点。
     pub fn contains_focused(&self, window: &Window, cx: &App) -> bool {
         window
             .focused(cx)
             .is_some_and(|focused| self.contains(focused.id, window))
     }
 
-    /// Obtains whether the element associated with this handle is contained within the
-    /// focused element or is itself focused.
+    /// 获取与此句柄关联的元素是否被包含在焦点元素内或其自身是否具有焦点。
     pub fn within_focused(&self, window: &Window, cx: &App) -> bool {
         let focused = window.focused(cx);
         focused.is_some_and(|focused| focused.id.contains(*self, window))
     }
 
-    /// Obtains whether this handle contains the given handle in the most recently rendered frame.
+    /// 获取此句柄在最近渲染帧中是否包含给定句柄。
     pub(crate) fn contains(&self, other: Self, window: &Window) -> bool {
         window
             .rendered_frame
@@ -462,13 +445,13 @@ impl FocusId {
     }
 }
 
-/// A handle which can be used to track and manipulate the focused element in a window.
+/// 用于跟踪和操作窗口中焦点元素的句柄。
 pub struct FocusHandle {
     pub(crate) id: FocusId,
     handles: Arc<FocusMap>,
-    /// The index of this element in the tab order.
+    /// 此元素在 tab 顺序中的索引。
     pub tab_index: isize,
-    /// Whether this element can be focused by tab navigation.
+    /// 此元素是否可通过 tab 导航获得焦点。
     pub tab_stop: bool,
 }
 
@@ -508,7 +491,7 @@ impl FocusHandle {
         })
     }
 
-    /// Sets the tab index of the element associated with this handle.
+    /// 设置与此句柄关联的元素的 tab 索引。
     pub fn tab_index(mut self, index: isize) -> Self {
         self.tab_index = index;
         if let Some(focus) = self.handles.write().get_mut(self.id) {
@@ -517,9 +500,9 @@ impl FocusHandle {
         self
     }
 
-    /// Sets whether the element associated with this handle is a tab stop.
+    /// 设置与此句柄关联的元素是否为 tab 停靠点。
     ///
-    /// When `false`, the element will not be included in the tab order.
+    /// 当为 `false` 时，该元素不会包含在 tab 顺序中。
     pub fn tab_stop(mut self, tab_stop: bool) -> Self {
         self.tab_stop = tab_stop;
         if let Some(focus) = self.handles.write().get_mut(self.id) {
@@ -528,7 +511,7 @@ impl FocusHandle {
         self
     }
 
-    /// Converts this focus handle into a weak variant, which does not prevent it from being released.
+    /// 将此焦点句柄转换为弱引用变体，不会阻止其被释放。
     pub fn downgrade(&self) -> WeakFocusHandle {
         WeakFocusHandle {
             id: self.id,
@@ -536,34 +519,32 @@ impl FocusHandle {
         }
     }
 
-    /// Moves the focus to the element associated with this handle.
+    /// 将焦点移动到与此句柄关联的元素。
     pub fn focus(&self, window: &mut Window, cx: &mut App) {
         window.focus(self, cx)
     }
 
-    /// Obtains whether the element associated with this handle is currently focused.
+    /// 获取与此句柄关联的元素是否当前具有焦点。
     pub fn is_focused(&self, window: &Window) -> bool {
         self.id.is_focused(window)
     }
 
-    /// Obtains whether the element associated with this handle contains the focused
-    /// element or is itself focused.
+    /// 获取与此句柄关联的元素是否包含焦点元素或其自身是否具有焦点。
     pub fn contains_focused(&self, window: &Window, cx: &App) -> bool {
         self.id.contains_focused(window, cx)
     }
 
-    /// Obtains whether the element associated with this handle is contained within the
-    /// focused element or is itself focused.
+    /// 获取与此句柄关联的元素是否被包含在焦点元素内或其自身是否具有焦点。
     pub fn within_focused(&self, window: &Window, cx: &mut App) -> bool {
         self.id.within_focused(window, cx)
     }
 
-    /// Obtains whether this handle contains the given handle in the most recently rendered frame.
+    /// 获取此句柄在最近渲染帧中是否包含给定句柄。
     pub fn contains(&self, other: &Self, window: &Window) -> bool {
         self.id.contains(other.id, window)
     }
 
-    /// Dispatch an action on the element that rendered this focus handle
+    /// 在渲染此焦点句柄的元素上分发操作。
     pub fn dispatch_action(&self, action: &dyn Action, window: &mut Window, cx: &mut App) {
         if let Some(node_id) = window
             .rendered_frame
@@ -600,7 +581,7 @@ impl Drop for FocusHandle {
     }
 }
 
-/// A weak reference to a focus handle.
+/// 焦点句柄的弱引用。
 #[derive(Clone, Debug)]
 pub struct WeakFocusHandle {
     pub(crate) id: FocusId,
@@ -608,7 +589,7 @@ pub struct WeakFocusHandle {
 }
 
 impl WeakFocusHandle {
-    /// Attempts to upgrade the [WeakFocusHandle] to a [FocusHandle].
+    /// 尝试将 [WeakFocusHandle] 升级为 [FocusHandle]。
     pub fn upgrade(&self) -> Option<FocusHandle> {
         let handles = self.handles.upgrade()?;
         FocusHandle::for_id(self.id, &handles)
@@ -635,10 +616,10 @@ impl PartialEq<WeakFocusHandle> for FocusHandle {
     }
 }
 
-/// Focusable allows users of your view to easily
-/// focus it (using window.focus_view(cx, view))
+/// Focusable 允许视图的用户轻松聚焦它
+/// （使用 window.focus_view(cx, view)）
 pub trait Focusable: 'static {
-    /// Returns the focus handle associated with this view.
+    /// 返回与此视图关联的焦点句柄。
     fn focus_handle(&self, cx: &App) -> FocusHandle;
 }
 
@@ -648,13 +629,13 @@ impl<V: Focusable> Focusable for Entity<V> {
     }
 }
 
-/// ManagedView is a view (like a Modal, Popover, Menu, etc.)
-/// where the lifecycle of the view is handled by another view.
+/// ManagedView 是一种视图（如 Modal、Popover、Menu 等），
+/// 其生命周期由另一个视图管理。
 pub trait ManagedView: Focusable + EventEmitter<DismissEvent> + Render {}
 
 impl<M: Focusable + EventEmitter<DismissEvent> + Render> ManagedView for M {}
 
-/// Emitted by implementers of [`ManagedView`] to indicate the view should be dismissed, such as when a view is presented as a modal.
+/// 由 [`ManagedView`] 的实现者发出，表示视图应被关闭，例如当视图以模态方式呈现时。
 pub struct DismissEvent;
 
 type FrameCallback = Box<dyn FnOnce(&mut Window, &mut App)>;
@@ -674,41 +655,38 @@ pub(crate) struct HitTest {
     pub(crate) hover_hitbox_count: usize,
 }
 
-/// A type of window control area that corresponds to the platform window.
+/// 对应平台窗口的窗口控制区域类型。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WindowControlArea {
-    /// An area that allows dragging of the platform window.
+    /// 允许拖动平台窗口的区域。
     Drag,
-    /// An area that allows closing of the platform window.
+    /// 允许关闭平台窗口的区域。
     Close,
-    /// An area that allows maximizing of the platform window.
+    /// 允许最大化平台窗口的区域。
     Max,
-    /// An area that allows minimizing of the platform window.
+    /// 允许最小化平台窗口的区域。
     Min,
 }
 
-/// An identifier for a [Hitbox] which also includes [HitboxBehavior].
+/// 包含 [HitboxBehavior] 的 [Hitbox] 标识符。
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct HitboxId(u64);
 
 #[cfg(feature = "test-support")]
 impl HitboxId {
-    /// A placeholder HitboxId exclusively for integration testing API's that
-    /// need a hitbox but where the value of the hitbox does not matter. The
-    /// alternative is to make the Hitbox optional but that complicates the
-    /// implementation.
+    /// 专用于集成测试 API 的占位 HitboxId，这些 API 需要 hitbox 但其值无关紧要。
+    /// 替代方案是将 hitbox 设为 Optional，但这会使实现复杂化。
     pub const fn placeholder() -> Self {
         Self(0)
     }
 }
 
 impl HitboxId {
-    /// Checks if the hitbox with this ID is currently hovered. Returns `false` during keyboard
-    /// input modality so that keyboard navigation suppresses hover highlights. Except when handling
-    /// `ScrollWheelEvent`, this is typically what you want when determining whether to handle mouse
-    /// events or paint hover styles.
+    /// 检查此 ID 的 hitbox 当前是否被悬停。在键盘输入模式期间返回 `false`，
+    /// 以便键盘导航抑制悬停高亮。除了处理 `ScrollWheelEvent` 时，这通常是
+    /// 确定是否处理鼠标事件或绘制悬停样式时所需的方法。
     ///
-    /// See [`Hitbox::is_hovered`] for details.
+    /// 详见 [`Hitbox::is_hovered`]。
     pub fn is_hovered(self, window: &Window) -> bool {
         // If this hitbox has captured the pointer, it's always considered hovered
         if window.captured_hitbox == Some(self) {
@@ -720,10 +698,9 @@ impl HitboxId {
         self.hit_test(window)
     }
 
-    /// Checks if the hitbox with this ID is currently hovered, regardless of the last
-    /// input modality used.
+    /// 检查此 ID 的 hitbox 当前是否被悬停，无论上次使用的输入模式如何。
     ///
-    /// See [`HitboxId::is_hovered`] for more details.
+    /// 详见 [`HitboxId::is_hovered`]。
     pub(crate) fn is_hovered_ignoring_last_input(self, window: &Window) -> bool {
         // If this hitbox has captured the pointer, it's always considered hovered
         if window.captured_hitbox == Some(self) {
@@ -742,10 +719,9 @@ impl HitboxId {
         false
     }
 
-    /// Checks if the hitbox with this ID contains the mouse and should handle scroll events.
-    /// Typically this should only be used when handling `ScrollWheelEvent`, and otherwise
-    /// `is_hovered` should be used. See the documentation of `Hitbox::is_hovered` for details about
-    /// this distinction.
+    /// 检查此 ID 的 hitbox 是否包含鼠标并应处理滚动事件。
+    /// 通常仅在处理 `ScrollWheelEvent` 时使用，其他情况应使用 `is_hovered`。
+    /// 详见 `Hitbox::is_hovered` 文档中关于此区别的说明。
     pub fn should_handle_scroll(self, window: &Window) -> bool {
         window.mouse_hit_test.ids.contains(&self)
     }
@@ -755,67 +731,64 @@ impl HitboxId {
     }
 }
 
-/// A rectangular region that potentially blocks hitboxes inserted prior.
-/// See [Window::insert_hitbox] for more details.
+/// 一个可能阻挡先前插入的 hitbox 的矩形区域。
+/// 详见 [Window::insert_hitbox]。
 #[derive(Clone, Debug, Deref)]
 pub struct Hitbox {
-    /// A unique identifier for the hitbox.
+    /// hitbox 的唯一标识符。
     pub id: HitboxId,
-    /// The bounds of the hitbox.
+    /// hitbox 的边界。
     #[deref]
     pub bounds: Bounds<Pixels>,
-    /// The content mask when the hitbox was inserted.
+    /// 插入 hitbox 时的内容遮罩。
     pub content_mask: ContentMask<Pixels>,
-    /// Flags that specify hitbox behavior.
+    /// 指定 hitbox 行为的标志。
     pub behavior: HitboxBehavior,
 }
 
 impl Hitbox {
-    /// Checks if the hitbox is currently hovered. Returns `false` during keyboard input modality
-    /// so that keyboard navigation suppresses hover highlights. Except when handling
-    /// `ScrollWheelEvent`, this is typically what you want when determining whether to handle mouse
-    /// events or paint hover styles.
+    /// 检查 hitbox 当前是否被悬停。在键盘输入模式期间返回 `false`，
+    /// 以便键盘导航抑制悬停高亮。除了处理 `ScrollWheelEvent` 时，这通常是
+    /// 确定是否处理鼠标事件或绘制悬停样式时所需的方法。
     ///
-    /// This can return `false` even when the hitbox contains the mouse, if a hitbox in front of
-    /// this sets `HitboxBehavior::BlockMouse` (`InteractiveElement::occlude`) or
-    /// `HitboxBehavior::BlockMouseExceptScroll` (`InteractiveElement::block_mouse_except_scroll`),
-    /// or if the current input modality is keyboard (see [`Window::last_input_was_keyboard`]).
+    /// 即使 hitbox 包含鼠标，如果其前面的 hitbox 设置了
+    /// `HitboxBehavior::BlockMouse`（`InteractiveElement::occlude`）或
+    /// `HitboxBehavior::BlockMouseExceptScroll`（`InteractiveElement::block_mouse_except_scroll`），
+    /// 或当前输入模式为键盘（参见 [`Window::last_input_was_keyboard`]），
+    /// 也可能返回 `false`。
     ///
-    /// Handling of `ScrollWheelEvent` should typically use `should_handle_scroll` instead.
-    /// Concretely, this is due to use-cases like overlays that cause the elements under to be
-    /// non-interactive while still allowing scrolling. More abstractly, this is because
-    /// `is_hovered` is about element interactions directly under the mouse - mouse moves, clicks,
-    /// hover styling, etc. In contrast, scrolling is about finding the current outer scrollable
-    /// container.
+    /// 处理 `ScrollWheelEvent` 时通常应改用 `should_handle_scroll`。
+    /// 具体来说，这是由于诸如覆盖层之类的用例，它们使下方元素不可交互的同时
+    /// 仍允许滚动。更抽象地说，这是因为 `is_hovered` 关于鼠标正下方的元素交互
+    /// ——鼠标移动、点击、悬停样式等。相比之下，滚动关于找到当前最外层的可滚动容器。
     pub fn is_hovered(&self, window: &Window) -> bool {
         self.id.is_hovered(window)
     }
 
-    /// Checks if the hitbox contains the mouse and should handle scroll events. Typically this
-    /// should only be used when handling `ScrollWheelEvent`, and otherwise `is_hovered` should be
-    /// used. See the documentation of `Hitbox::is_hovered` for details about this distinction.
+    /// 检查 hitbox 是否包含鼠标并应处理滚动事件。通常仅在处理 `ScrollWheelEvent`
+    /// 时使用，其他情况应使用 `is_hovered`。详见 `Hitbox::is_hovered` 文档。
     ///
-    /// This can return `false` even when the hitbox contains the mouse, if a hitbox in front of
-    /// this sets `HitboxBehavior::BlockMouse` (`InteractiveElement::occlude`).
+    /// 即使 hitbox 包含鼠标，如果其前面的 hitbox 设置了
+    /// `HitboxBehavior::BlockMouse`（`InteractiveElement::occlude`），也可能返回 `false`。
     pub fn should_handle_scroll(&self, window: &Window) -> bool {
         self.id.should_handle_scroll(window)
     }
 }
 
-/// How the hitbox affects mouse behavior.
+/// hitbox 如何影响鼠标行为。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum HitboxBehavior {
-    /// Normal hitbox mouse behavior, doesn't affect mouse handling for other hitboxes.
+    /// 正常的 hitbox 鼠标行为，不影响其他 hitbox 的鼠标处理。
     #[default]
     Normal,
 
-    /// All hitboxes behind this hitbox will be ignored and so will have `hitbox.is_hovered() ==
-    /// false` and `hitbox.should_handle_scroll() == false`. Typically for elements this causes
-    /// skipping of all mouse events, hover styles, and tooltips. This flag is set by
-    /// [`InteractiveElement::occlude`].
+    /// 此 hitbox 后面的所有 hitbox 将被忽略，因此 `hitbox.is_hovered() == false`
+    /// 且 `hitbox.should_handle_scroll() == false`。对于元素来说，这通常导致
+    /// 跳过所有鼠标事件、悬停样式和工具提示。此标志由
+    /// [`InteractiveElement::occlude`] 设置。
     ///
-    /// For mouse handlers that check those hitboxes, this behaves the same as registering a
-    /// bubble-phase handler for every mouse event type:
+    /// 对于检查这些 hitbox 的鼠标处理程序，这与为每种鼠标事件类型注册冒泡阶段
+    /// 处理程序行为相同：
     ///
     /// ```ignore
     /// window.on_mouse_event(move |_: &EveryMouseEventTypeHere, phase, window, cx| {
@@ -825,21 +798,18 @@ pub enum HitboxBehavior {
     /// })
     /// ```
     ///
-    /// This has effects beyond event handling - any use of hitbox checking, such as hover
-    /// styles and tooltips. These other behaviors are the main point of this mechanism. An
-    /// alternative might be to not affect mouse event handling - but this would allow
-    /// inconsistent UI where clicks and moves interact with elements that are not considered to
-    /// be hovered.
+    /// 这对事件处理之外也有影响——任何使用 hitbox 检查的地方，如悬停样式和
+    /// 工具提示。这些其他行为是此机制的主要目的。替代方案可能是不影响鼠标事件处理
+    /// ——但这会允许不一致的 UI，其中点击和移动与不被认为悬停的元素交互。
     BlockMouse,
 
-    /// All hitboxes behind this hitbox will have `hitbox.is_hovered() == false`, even when
-    /// `hitbox.should_handle_scroll() == true`. Typically for elements this causes all mouse
-    /// interaction except scroll events to be ignored - see the documentation of
-    /// [`Hitbox::is_hovered`] for details. This flag is set by
-    /// [`InteractiveElement::block_mouse_except_scroll`].
+    /// 此 hitbox 后面的所有 hitbox 将有 `hitbox.is_hovered() == false`，
+    /// 即使 `hitbox.should_handle_scroll() == true`。对于元素来说，这通常导致
+    /// 忽略除滚动事件之外的所有鼠标交互——详见 [`Hitbox::is_hovered`] 文档。
+    /// 此标志由 [`InteractiveElement::block_mouse_except_scroll`] 设置。
     ///
-    /// For mouse handlers that check those hitboxes, this behaves the same as registering a
-    /// bubble-phase handler for every mouse event type **except** `ScrollWheelEvent`:
+    /// 对于检查这些 hitbox 的鼠标处理程序，这与为每种鼠标事件类型
+    /// **除了** `ScrollWheelEvent` 注册冒泡阶段处理程序行为相同：
     ///
     /// ```ignore
     /// window.on_mouse_event(move |_: &EveryMouseEventTypeExceptScroll, phase, window, cx| {
@@ -849,24 +819,22 @@ pub enum HitboxBehavior {
     /// })
     /// ```
     ///
-    /// See the documentation of [`Hitbox::is_hovered`] for details of why `ScrollWheelEvent` is
-    /// handled differently than other mouse events. If also blocking these scroll events is
-    /// desired, then a `cx.stop_propagation()` handler like the one above can be used.
+    /// 详见 [`Hitbox::is_hovered`] 文档中关于 `ScrollWheelEvent` 为何与其他
+    /// 鼠标事件处理不同的说明。如果还需要阻止这些滚动事件，可以使用类似上面的
+    /// `cx.stop_propagation()` 处理程序。
     ///
-    /// This has effects beyond event handling - this affects any use of `is_hovered`, such as
-    /// hover styles and tooltips. These other behaviors are the main point of this mechanism.
-    /// An alternative might be to not affect mouse event handling - but this would allow
-    /// inconsistent UI where clicks and moves interact with elements that are not considered to
-    /// be hovered.
+    /// 这对事件处理之外也有影响——影响任何使用 `is_hovered` 的地方，如悬停样式和
+    /// 工具提示。这些其他行为是此机制的主要目的。替代方案可能是不影响鼠标事件处理
+    /// ——但这会允许不一致的 UI，其中点击和移动与不被认为悬停的元素交互。
     BlockMouseExceptScroll,
 }
 
-/// An identifier for a tooltip.
+/// 工具提示的标识符。
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct TooltipId(usize);
 
 impl TooltipId {
-    /// Checks if the tooltip is currently hovered.
+    /// 检查工具提示当前是否被悬停。
     pub fn is_hovered(&self, window: &Window) -> bool {
         window
             .tooltip_bounds
@@ -1084,7 +1052,7 @@ enum InputModality {
     Touch,
 }
 
-/// Holds the state for a specific window.
+/// 保存特定窗口的状态。
 pub struct Window {
     pub(crate) handle: AnyWindowHandle,
     pub(crate) invalidator: WindowInvalidator,
@@ -1097,10 +1065,9 @@ pub struct Window {
     text_system: Arc<WindowTextSystem>,
     text_rendering_mode: Rc<Cell<TextRenderingMode>>,
     rem_size: Pixels,
-    /// The stack of override values for the window's rem size.
+    /// 窗口 rem 大小的覆盖值栈。
     ///
-    /// This is used by `with_rem_size` to allow rendering an element tree with
-    /// a given rem size.
+    /// `with_rem_size` 使用此栈允许以给定的 rem 大小渲染元素树。
     rem_size_override_stack: SmallVec<[Pixels; 8]>,
     pub(crate) viewport_size: Size<Pixels>,
     layout_engine: Option<TaffyLayoutEngine>,
@@ -1135,8 +1102,8 @@ pub struct Window {
     active: Rc<Cell<bool>>,
     hovered: Rc<Cell<bool>>,
     pub(crate) needs_present: Rc<Cell<bool>>,
-    /// Tracks recent input event timestamps to determine if input is arriving at a high rate.
-    /// Used to selectively enable VRR optimization only when input rate exceeds 60fps.
+    /// 跟踪最近的输入事件时间戳以确定输入是否以高速率到达。
+    /// 仅在输入速率超过 60fps 时选择性启用 VRR 优化。
     pub(crate) input_rate_tracker: Rc<RefCell<InputRateTracker>>,
     #[cfg(feature = "input-latency-histogram")]
     input_latency_tracker: InputLatencyTracker,
@@ -1145,16 +1112,15 @@ pub struct Window {
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
     focus_enabled: bool,
-    /// Incremented every time focus moves. Used to invalidate a
-    /// pending keyboard activation state when focus changes.
+    /// 每次焦点移动时递增。用于在焦点变化时使待处理的键盘激活状态失效。
     pub(crate) focus_generation: u64,
     pending_input: Option<PendingInput>,
     pending_modifier: ModifierState,
     pub(crate) pending_input_observers: SubscriberSet<(), AnyObserver>,
     prompt: Option<RenderablePromptHandle>,
     pub(crate) client_inset: Option<Pixels>,
-    /// The hitbox that has captured the pointer, if any.
-    /// While captured, mouse events route to this hitbox regardless of hit testing.
+    /// 已捕获指针的 hitbox（如果有）。被捕获时，鼠标事件会路由到此 hitbox，
+    /// 无论命中测试结果如何。
     captured_hitbox: Option<HitboxId>,
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector: Option<Entity<Inspector>>,
@@ -1171,8 +1137,8 @@ struct ModifierState {
     saw_other_input: bool,
 }
 
-/// Tracks input event timestamps to determine if input is arriving at a high rate.
-/// Used for selective VRR (Variable Refresh Rate) optimization.
+/// 跟踪输入事件时间戳以确定输入是否以高速率到达。
+/// 用于选择性 VRR（可变刷新率）优化。
 #[derive(Clone, Debug)]
 pub(crate) struct InputRateTracker {
     timestamps: Vec<Instant>,
@@ -1216,35 +1182,31 @@ impl InputRateTracker {
     }
 }
 
-/// A point-in-time snapshot of the input-latency histograms for a window,
-/// suitable for external formatting.
+/// 窗口输入延迟直方图的时间点快照，适用于外部格式化。
 #[cfg(feature = "input-latency-histogram")]
 pub struct InputLatencySnapshot {
-    /// Histogram of input-to-frame latency samples, in nanoseconds.
+    /// 输入到帧延迟样本的直方图，单位为纳秒。
     pub latency_histogram: Histogram<u64>,
-    /// Histogram of input events coalesced per rendered frame.
+    /// 每个渲染帧合并的输入事件直方图。
     pub events_per_frame_histogram: Histogram<u64>,
-    /// Count of input events that arrived mid-draw and were excluded from
-    /// latency recording.
+    /// 在绘制期间到达并被排除在延迟记录之外的输入事件数量。
     pub mid_draw_events_dropped: u64,
 }
 
-/// Records the time between when the first input event in a frame is dispatched
-/// and when the resulting frame is presented, capturing worst-case latency when
-/// multiple events are coalesced into a single frame.
+/// 记录帧中第一个输入事件被分发到生成的帧被呈现之间的时间，
+/// 在多个事件合并为单个帧时捕获最坏情况延迟。
 #[cfg(feature = "input-latency-histogram")]
 struct InputLatencyTracker {
-    /// Timestamp of the first unrendered input event in the current frame;
-    /// cleared when a frame is presented.
+    /// 当前帧中第一个未渲染输入事件的时间戳；在帧呈现时清除。
     first_input_at: Option<Instant>,
-    /// Count of input events received since the last frame was presented.
+    /// 自上次帧呈现以来收到的输入事件数量。
     pending_input_count: u64,
-    /// Histogram of input-to-frame latency samples, in nanoseconds.
+    /// 输入到帧延迟样本的直方图，单位为纳秒。
     latency_histogram: Histogram<u64>,
-    /// Histogram of input events coalesced per rendered frame.
+    /// 每个渲染帧合并的输入事件直方图。
     events_per_frame_histogram: Histogram<u64>,
-    /// Count of input events that arrived mid-draw and were excluded from
-    /// latency recording because their effects won't appear until the next frame.
+    /// 在绘制期间到达并被排除在延迟记录之外的输入事件数量，
+    /// 因为其效果要到下一帧才会显示。
     mid_draw_events_dropped: u64,
 }
 
@@ -1262,20 +1224,19 @@ impl InputLatencyTracker {
         })
     }
 
-    /// Record that an input event was dispatched at the given time.
-    /// Only the first event's timestamp per frame is retained (worst-case latency).
+    /// 记录在给定时间分发了一个输入事件。
+    /// 每帧仅保留第一个事件的时间戳（最坏情况延迟）。
     fn record_input(&mut self, dispatch_time: Instant) {
         self.first_input_at.get_or_insert(dispatch_time);
         self.pending_input_count += 1;
     }
 
-    /// Record that an input event arrived during a draw phase and was excluded
-    /// from latency tracking.
+    /// 记录在绘制阶段期间到达并被排除在延迟跟踪之外的输入事件。
     fn record_mid_draw_input(&mut self) {
         self.mid_draw_events_dropped += 1;
     }
 
-    /// Record that a frame was presented, flushing pending latency and coalescing samples.
+    /// 记录帧已呈现，刷新待处理的延迟和合并样本。
     fn record_frame_presented(&mut self) {
         if let Some(first_input_at) = self.first_input_at.take() {
             let latency_nanos = first_input_at.elapsed().as_nanos() as u64;
@@ -1966,25 +1927,24 @@ pub struct DispatchEventResult {
     pub default_prevented: bool,
 }
 
-/// Indicates which region of the window is visible. Content falling outside of this mask will not be
-/// rendered. Currently, only rectangular content masks are supported, but we give the mask its own type
-/// to leave room to support more complex shapes in the future.
+/// 表示窗口的哪个区域是可见的。超出此遮罩的内容将不会被渲染。
+/// 目前仅支持矩形内容遮罩，但我们为遮罩定义了独立类型，以便未来支持更复杂的形状。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[repr(C)]
 pub struct ContentMask<P: Clone + Debug + Default + PartialEq> {
-    /// The bounds
+    /// 边界
     pub bounds: Bounds<P>,
 }
 
 impl ContentMask<Pixels> {
-    /// Scale the content mask's pixel units by the given scaling factor.
+    /// 按给定缩放因子缩放内容遮罩的像素单位。
     pub fn scale(&self, factor: f32) -> ContentMask<ScaledPixels> {
         ContentMask {
             bounds: self.bounds.scale(factor),
         }
     }
 
-    /// Intersect the content mask with the given content mask.
+    /// 将此内容遮罩与给定内容遮罩取交集。
     pub fn intersect(&self, other: &Self) -> Self {
         let bounds = self.bounds.intersect(&other.bounds);
         ContentMask { bounds }
@@ -2006,7 +1966,7 @@ impl Window {
         }
     }
 
-    /// Registers a callback to be invoked when the window appearance changes.
+    /// 注册窗口外观变化时调用的回调。
     pub fn observe_window_appearance(
         &self,
         mut callback: impl FnMut(&mut Window, &mut App) + 'static,
@@ -2022,7 +1982,7 @@ impl Window {
         subscription
     }
 
-    /// Registers a callback to be invoked when the window button layout changes.
+    /// 注册窗口按钮布局变化时调用的回调。
     pub fn observe_button_layout_changed(
         &self,
         mut callback: impl FnMut(&mut Window, &mut App) + 'static,
@@ -2038,7 +1998,7 @@ impl Window {
         subscription
     }
 
-    /// Replaces the root entity of the window with a new one.
+    /// 用新的根实体替换窗口的根实体。
     pub fn replace_root<E>(
         &mut self,
         cx: &mut App,
@@ -2053,7 +2013,7 @@ impl Window {
         view
     }
 
-    /// Returns the root entity of the window, if it has one.
+    /// 返回窗口的根实体（如果有）。
     pub fn root<E>(&self) -> Option<Option<Entity<E>>>
     where
         E: 'static + Render,
@@ -2063,12 +2023,12 @@ impl Window {
             .map(|view| view.clone().downcast::<E>().ok())
     }
 
-    /// Obtain a handle to the window that belongs to this context.
+    /// 获取属于此上下文的窗口句柄。
     pub fn window_handle(&self) -> AnyWindowHandle {
         self.handle
     }
 
-    /// Mark the window as dirty, scheduling it to be redrawn on the next frame.
+    /// 将窗口标记为脏，安排在下一帧重绘。
     /// 由 DOM 后端在浏览器原生滚动（可滚动容器的 `scroll` 事件）后回调：
     /// 根据事件链反查到对应的可滚动容器，把浏览器滚动位置同步回其 [`ScrollHandle`]。
     ///
@@ -2102,18 +2062,18 @@ impl Window {
         }
     }
 
-    /// Close this window.
+    /// 关闭此窗口。
     pub fn remove_window(&mut self) {
         self.removed = true;
     }
 
-    /// Obtain the currently focused [`FocusHandle`]. If no elements are focused, returns `None`.
+    /// 获取当前聚焦的 [`FocusHandle`]。如果没有元素聚焦，返回 `None`。
     pub fn focused(&self, cx: &App) -> Option<FocusHandle> {
         self.focus
             .and_then(|id| FocusHandle::for_id(id, &cx.focus_handles))
     }
 
-    /// Move focus to the element associated with the given [`FocusHandle`].
+    /// 将焦点移动到与给定 [`FocusHandle`] 关联的元素。
     pub fn focus(&mut self, handle: &FocusHandle, cx: &mut App) {
         if !self.focus_enabled || self.focus == Some(handle.id) {
             return;
@@ -2137,7 +2097,7 @@ impl Window {
         self.refresh();
     }
 
-    /// Remove focus from all elements within this context's window.
+    /// 移除此上下文窗口中所有元素的焦点。
     pub fn blur(&mut self) {
         if !self.focus_enabled {
             return;
@@ -2150,13 +2110,13 @@ impl Window {
         self.refresh();
     }
 
-    /// Blur the window and don't allow anything in it to be focused again.
+    /// 使窗口失焦并不允许其中任何元素再次获得焦点。
     pub fn disable_focus(&mut self) {
         self.blur();
         self.focus_enabled = false;
     }
 
-    /// Move focus to next tab stop.
+    /// 将焦点移动到下一个 tab 停靠点。
     pub fn focus_next(&mut self, cx: &mut App) {
         if !self.focus_enabled {
             return;
@@ -2167,7 +2127,7 @@ impl Window {
         }
     }
 
-    /// Move focus to previous tab stop.
+    /// 将焦点移动到上一个 tab 停靠点。
     pub fn focus_prev(&mut self, cx: &mut App) {
         if !self.focus_enabled {
             return;
@@ -2178,12 +2138,12 @@ impl Window {
         }
     }
 
-    /// Accessor for the text system.
+    /// 获取文本系统的访问器。
     pub fn text_system(&self) -> &Arc<WindowTextSystem> {
         &self.text_system
     }
 
-    /// The current text style. Which is composed of all the style refinements provided to `with_text_style`.
+    /// 当前文本样式。由提供给 `with_text_style` 的所有样式细化组合而成。
     pub fn text_style(&self) -> TextStyle {
         let mut style = TextStyle::default();
         for refinement in &self.text_style_stack {
@@ -2192,45 +2152,45 @@ impl Window {
         style
     }
 
-    /// Check if the platform window is maximized.
+    /// 检查平台窗口是否已最大化。
     ///
-    /// On some platforms (namely Windows) this is different than the bounds being the size of the display
+    /// 在某些平台（如 Windows）上，这与边界为显示器大小不同。
     pub fn is_maximized(&self) -> bool {
         self.platform_window.is_maximized()
     }
 
-    /// request a certain window decoration (Wayland)
+    /// 请求特定的窗口装饰（Wayland）
     pub fn request_decorations(&self, decorations: WindowDecorations) {
         self.platform_window.request_decorations(decorations);
     }
 
-    /// Set the exclusive zone for a layer-shell surface: how much screen space it
-    /// reserves so other surfaces avoid occluding it (e.g. a panel reserving space).
-    /// Positive values reserve that distance from the anchored edge, 0 lets the
-    /// surface be moved out of others' exclusive zones, and -1 ignores reserved
-    /// space and may extend under other surfaces. (Wayland layer-shell windows only)
+    /// 设置 layer-shell 表面的独占区域：它保留多少屏幕空间
+    /// 以使其他表面避免遮挡它（例如面板保留空间）。
+    /// 正值从锚定边缘保留该距离，0 允许
+    /// 表面被移出其他独占区域，-1 忽略保留
+    /// 空间并可能延伸到其他表面下方。（仅限 Wayland layer-shell 窗口）
     pub fn set_exclusive_zone(&self, zone: Pixels) {
         self.platform_window.set_exclusive_zone(zone);
     }
 
-    /// Set which anchored edge a layer-shell surface's exclusive zone applies to.
-    /// This is only needed to disambiguate a corner-anchored surface; otherwise the
-    /// edge is deduced from the anchor. The edge must be a single edge the surface
-    /// is anchored to, or it is ignored. (Wayland layer-shell windows only)
+    /// 设置 layer-shell 表面独占区域适用的锚定边缘。
+    /// 仅在角锚定表面时需要此选项；否则
+    /// 边缘从锚点推断。边缘必须是表面锚定的
+    /// 单一边缘，否则将被忽略。（仅限 Wayland layer-shell 窗口）
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     pub fn set_exclusive_edge(&self, edge: crate::layer_shell::Anchor) {
         self.platform_window.set_exclusive_edge(edge);
     }
 
-    /// Start an interactive window resize operation if this window is resizable.
+    /// 如果此窗口可调整大小，则启动交互式窗口调整大小操作。
     pub fn start_window_resize(&self, edge: ResizeEdge) {
         if self.is_resizable {
             self.platform_window.start_window_resize(edge);
         }
     }
 
-    /// Linux (wayland) only: Set the window's input region, the area that receives pointer
-    /// and touch input. Events outside it pass through to whatever is below the window.
+    /// 仅限 Linux（wayland）：设置窗口的输入区域，即接收指针
+    /// 和触摸输入的区域。其外部的事件将传递到窗口下方的内容。
     ///
     /// - `Some(rects)` restricts input to the union of `rects`, in window coordinates.
     /// - `Some(&[])` is an empty region, so the window receives no pointer or touch input.
@@ -2239,18 +2199,18 @@ impl Window {
         self.platform_window.set_input_region(region);
     }
 
-    /// Return the `WindowBounds` to indicate that how a window should be opened
-    /// after it has been closed
+    /// 返回 `WindowBounds` 以指示窗口关闭后应如何
+    /// 重新打开
     pub fn window_bounds(&self) -> WindowBounds {
         self.platform_window.window_bounds()
     }
 
-    /// Return the `WindowBounds` excluding insets (Wayland and X11)
+    /// 返回不包含内边距的 `WindowBounds`（Wayland 和 X11）
     pub fn inner_window_bounds(&self) -> WindowBounds {
         self.platform_window.inner_window_bounds()
     }
 
-    /// Dispatch the given action on the currently focused element.
+    /// 在当前聚焦的元素上分发给定操作。
     pub fn dispatch_action(&mut self, action: Box<dyn Action>, cx: &mut App) {
         let focus_id = self.focused(cx).map(|handle| handle.id);
 
@@ -2314,8 +2274,8 @@ impl Window {
             });
     }
 
-    /// Schedules the given function to be run at the end of the current effect cycle, allowing entities
-    /// that are currently on the stack to be returned to the app.
+    /// 安排给定函数在当前效果周期结束时运行，允许当前在栈上的
+    /// 实体返回到应用。
     pub fn defer(&self, cx: &mut App, f: impl FnOnce(&mut Window, &mut App) + 'static) {
         let handle = self.handle;
         cx.defer(move |cx| {
@@ -2323,9 +2283,9 @@ impl Window {
         });
     }
 
-    /// Subscribe to events emitted by a entity.
-    /// The entity to which you're subscribing must implement the [`EventEmitter`] trait.
-    /// The callback will be invoked a handle to the emitting entity, the event, and a window context for the current window.
+    /// 订阅实体发出的事件。
+    /// 你订阅的实体必须实现 [`EventEmitter`] trait。
+    /// 回调将传入发出实体的句柄、事件和当前窗口的窗口上下文。
     pub fn observe<T: 'static>(
         &mut self,
         observed: &Entity<T>,
@@ -2352,9 +2312,9 @@ impl Window {
         )
     }
 
-    /// Subscribe to events emitted by a entity.
-    /// The entity to which you're subscribing must implement the [`EventEmitter`] trait.
-    /// The callback will be invoked a handle to the emitting entity, the event, and a window context for the current window.
+    /// 订阅实体发出的事件。
+    /// 你订阅的实体必须实现 [`EventEmitter`] trait。
+    /// 回调将传入发出实体的句柄、事件和当前窗口的窗口上下文。
     pub fn subscribe<Emitter, Evt>(
         &mut self,
         entity: &Entity<Emitter>,
@@ -2389,7 +2349,7 @@ impl Window {
         )
     }
 
-    /// Register a callback to be invoked when the given `Entity` is released.
+    /// 注册一个回调，在给定 `Entity` 被释放时调用。
     pub fn observe_release<T>(
         &self,
         entity: &Entity<T>,
@@ -2412,50 +2372,50 @@ impl Window {
         subscription
     }
 
-    /// Creates an [`AsyncWindowContext`], which has a static lifetime and can be held across
-    /// await points in async code.
+    /// 创建一个 [`AsyncWindowContext`]，它具有静态生命周期，可以跨
+    /// 异步代码中的 await 点持有。
     pub fn to_async(&self, cx: &App) -> AsyncWindowContext {
         AsyncWindowContext::new_context(cx.to_async(), self.handle)
     }
 
-    /// Schedule the given closure to be run directly after the current frame is rendered.
+    /// 安排给定闭包在当前帧渲染后直接运行。
     pub fn on_next_frame(&self, callback: impl FnOnce(&mut Window, &mut App) + 'static) {
         RefCell::borrow_mut(&self.next_frame_callbacks).push(Box::new(callback));
     }
 
-    /// Returns the position of the window's top-left corner in screen coordinates.
+    /// 返回窗口左上角在屏幕坐标中的位置。
     pub fn position(&self) -> Point<Pixels> {
         self.bounds().origin
     }
 
-    /// Returns the size of the screen the window is on, or the primary screen if unavailable.
+    /// 返回窗口所在屏幕的大小，或主屏幕大小（如果不可用）。
     pub fn screen_size(&self, cx: &App) -> Option<Size<Pixels>> {
         self.display(cx)
             .or_else(|| cx.primary_display())
             .map(|d| d.bounds().size)
     }
 
-    /// Schedule a frame to be drawn on the next animation frame.
+    /// 安排在下一动画帧绘制一帧。
     ///
-    /// This is useful for elements that need to animate continuously, such as a video player or an animated GIF.
-    /// It will cause the window to redraw on the next frame, even if no other changes have occurred.
+    /// 这对于需要持续动画的元素很有用，例如视频播放器或动画 GIF。
+    /// 即使没有其他变化，它也会导致窗口在下一帧重绘。
     ///
-    /// If called from within a view, it will notify that view on the next frame. Otherwise, it will refresh the entire window.
+    /// 如果从视图内部调用，它将在下一帧通知该视图。否则，它将刷新整个窗口。
     ///
-    /// Callers driving purely decorative animations (spinners, pulses, and the
-    /// like) should prefer [`AnimationExt::with_animation`](crate::AnimationExt::with_animation),
-    /// which automatically respects [`App::reduce_motion`]. When using this
-    /// method directly for decorative motion, check [`App::reduce_motion`]
-    /// and skip the frame request when it is set.
+    /// 驱动纯装饰动画（旋转器、脉冲等）的调用者应优先使用
+    /// [`AnimationExt::with_animation`](crate::AnimationExt::with_animation)，
+    /// 它会自动遵循 [`App::reduce_motion`]。直接使用此
+    /// 方法进行装饰性动画时，应检查 [`App::reduce_motion`]
+    /// 并在设置时跳过帧请求。
     pub fn request_animation_frame(&self) {
         let entity = self.current_view();
         self.on_next_frame(move |_, cx| cx.notify(entity));
     }
 
-    /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
+    /// 运行通过 [`Self::on_next_frame`] 安排的所有回调，返回运行的数量。
     ///
-    /// Tests have no platform frame loop, so this simulates the delivery of the
-    /// next frame.
+    /// 测试没有平台帧循环，因此这模拟了
+    /// 下一帧的交付。
     #[cfg(any(test, feature = "test-support"))]
     pub fn simulate_next_frame(&mut self, cx: &mut App) -> usize {
         let callbacks = self.next_frame_callbacks.take();
@@ -2466,9 +2426,9 @@ impl Window {
         count
     }
 
-    /// Spawn the future returned by the given closure on the application thread pool.
-    /// The closure is provided a handle to the current window and an `AsyncWindowContext` for
-    /// use within your future.
+    /// 在应用程序线程池上生成给定闭包返回的 future。
+    /// 闭包会获得当前窗口的句柄和一个 `AsyncWindowContext` 供
+    /// 在你的 future 中使用。
     #[track_caller]
     pub fn spawn<AsyncFn, R>(&self, cx: &App, f: AsyncFn) -> Task<R>
     where
@@ -2482,9 +2442,9 @@ impl Window {
         })
     }
 
-    /// Spawn the future returned by the given closure on the application thread
-    /// pool, with the given priority. The closure is provided a handle to the
-    /// current window and an `AsyncWindowContext` for use within your future.
+    /// 在应用程序线程池上生成给定闭包返回的 future，
+    /// 使用给定的优先级。闭包会获得当前窗口的
+    /// 句柄和一个 `AsyncWindowContext` 供在你的 future 中使用。
     #[track_caller]
     pub fn spawn_with_priority<AsyncFn, R>(
         &self,
@@ -2503,11 +2463,11 @@ impl Window {
         })
     }
 
-    /// Notify the window that its bounds have changed.
+    /// 通知窗口其边界已更改。
     ///
-    /// This updates internal state like `viewport_size` and `scale_factor` from
-    /// the platform window, then notifies observers. Normally called automatically
-    /// by the platform's resize callback, but exposed publicly for test infrastructure.
+    /// 这会从平台窗口更新内部状态，如 `viewport_size` 和 `scale_factor`，
+    /// 然后通知观察者。通常由平台的
+    /// 调整大小回调自动调用，但公开暴露以用于测试基础设施。
     pub fn bounds_changed(&mut self, cx: &mut App) {
         self.scale_factor = self.platform_window.scale_factor();
         self.viewport_size = self.platform_window.content_size();
@@ -2521,26 +2481,26 @@ impl Window {
             .retain(&(), |callback| callback(self, cx));
     }
 
-    /// Returns the bounds of the current window in the global coordinate space, which could span across multiple displays.
+    /// 返回当前窗口在全局坐标空间中的边界，可能跨多个显示器。
     pub fn bounds(&self) -> Bounds<Pixels> {
         self.platform_window.bounds()
     }
 
-    /// Renders the current frame's scene to a texture and returns the pixel data as an RGBA image.
-    /// This does not present the frame to screen - useful for visual testing where we want
-    /// to capture what would be rendered without displaying it or requiring the window to be visible.
+    /// 将当前帧的场景渲染到纹理并返回 RGBA 格式的像素数据。
+    /// 这不会将帧呈现到屏幕——用于我们想要
+    /// 在不显示或要求窗口可见的情况下捕获渲染内容的视觉测试。
     #[cfg(any(test, feature = "test-support"))]
     pub fn render_to_image(&self) -> anyhow::Result<image::RgbaImage> {
         self.platform_window
             .render_to_image(&self.rendered_frame.scene)
     }
 
-    /// Set the content size of the window.
+    /// 设置窗口的内容大小。
     pub fn resize(&mut self, size: Size<Pixels>) {
         self.platform_window.resize(size);
     }
 
-    /// Returns whether or not the window is currently fullscreen
+    /// 返回窗口当前是否为全屏状态
     pub fn is_fullscreen(&self) -> bool {
         self.platform_window.is_fullscreen()
     }
@@ -2559,24 +2519,24 @@ impl Window {
             .retain(&(), |callback| callback(self, cx));
     }
 
-    /// Returns the appearance of the current window.
+    /// 返回当前窗口的外观。
     pub fn appearance(&self) -> WindowAppearance {
         self.appearance
     }
 
-    /// Returns the size of the drawable area within the window.
+    /// 返回窗口内可绘制区域的大小。
     pub fn viewport_size(&self) -> Size<Pixels> {
         self.viewport_size
     }
 
-    /// Returns whether this window is focused by the operating system (receiving key events).
+    /// 返回此窗口是否被操作系统聚焦（接收按键事件）。
     pub fn is_window_active(&self) -> bool {
         self.active.get()
     }
 
-    /// Returns whether this window is considered to be the window
-    /// that currently owns the mouse cursor.
-    /// On mac, this is equivalent to `is_window_active`.
+    /// 返回此窗口是否被认为是
+    /// 当前拥有鼠标光标的窗口。
+    /// 在 Mac 上，这等同于 `is_window_active`。
     pub fn is_window_hovered(&self) -> bool {
         if cfg!(any(
             target_os = "windows",
@@ -2589,95 +2549,95 @@ impl Window {
         }
     }
 
-    /// Toggle zoom on the window.
+    /// 切换窗口的缩放状态。
     pub fn zoom_window(&self) {
         self.platform_window.zoom();
     }
 
-    /// Opens the native title bar context menu, useful when implementing client side decorations (Wayland and X11)
+    /// 打开原生标题栏上下文菜单，在实现客户端装饰时很有用（Wayland 和 X11）
     pub fn show_window_menu(&self, position: Point<Pixels>) {
         self.platform_window.show_window_menu(position)
     }
 
-    /// Handle window movement for Linux and macOS.
-    /// Tells the compositor to take control of window movement (Wayland and X11)
+    /// 处理 Linux 和 macOS 的窗口移动。
+    /// 告诉合成器控制窗口移动（Wayland 和 X11）
     ///
-    /// Events may not be received during a move operation.
+    /// 在移动操作期间可能不会接收到事件。
     pub fn start_window_move(&self) {
         self.platform_window.start_window_move()
     }
 
-    /// When using client side decorations, set this to the width of the invisible decorations (Wayland and X11)
+    /// 使用客户端装饰时，将此设置为不可见装饰的宽度（Wayland 和 X11）
     pub fn set_client_inset(&mut self, inset: Pixels) {
         self.client_inset = Some(inset);
         self.platform_window.set_client_inset(inset);
     }
 
-    /// Returns the client_inset value by [`Self::set_client_inset`].
+    /// 返回 [`Self::set_client_inset`] 设置的 client_inset 值。
     pub fn client_inset(&self) -> Option<Pixels> {
         self.client_inset
     }
 
-    /// Returns whether the title bar window controls need to be rendered by the application (Wayland and X11)
+    /// 返回标题栏窗口控件是否需要由应用程序渲染（Wayland 和 X11）
     pub fn window_decorations(&self) -> Decorations {
         self.platform_window.window_decorations()
     }
 
-    /// Returns whether this window is resizable.
+    /// 返回此窗口是否可调整大小。
     pub fn is_resizable(&self) -> bool {
         self.is_resizable
     }
 
-    /// Returns whether this window is minimizable.
+    /// 返回此窗口是否可最小化。
     pub fn is_minimizable(&self) -> bool {
         self.is_minimizable
     }
 
-    /// Returns the controls supported by the platform.
+    /// 返回平台支持的控件。
     pub fn window_controls(&self) -> WindowControls {
         self.platform_window.window_controls()
     }
 
-    /// Updates the window's title at the platform level.
+    /// 在平台级别更新窗口的标题。
     pub fn set_window_title(&mut self, title: &str) {
         self.platform_window.set_title(title);
         self.a11y.set_window_title(title.to_string());
     }
 
-    /// Sets the position of the macOS traffic light buttons.
+    /// 设置 macOS 红绿灯按钮的位置。
     #[cfg(target_os = "macos")]
     pub fn set_traffic_light_position(&self, position: Point<Pixels>) {
         self.platform_window.set_traffic_light_position(position);
     }
 
-    /// Sets the application identifier.
+    /// 设置应用程序标识符。
     pub fn set_app_id(&mut self, app_id: &str) {
         self.platform_window.set_app_id(app_id);
     }
 
-    /// Sets the window background appearance.
+    /// 设置窗口背景外观。
     pub fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance) {
         self.platform_window
             .set_background_appearance(background_appearance);
     }
 
-    /// Returns the window background appearance.
+    /// 返回窗口背景外观。
     pub fn background_appearance(&self) -> WindowBackgroundAppearance {
         self.platform_window.background_appearance()
     }
 
-    /// Mark the window as dirty at the platform level.
+    /// 在平台级别将窗口标记为脏。
     pub fn set_window_edited(&mut self, edited: bool) {
         self.platform_window.set_edited(edited);
     }
 
-    /// Set the path of the file this window represents.
-    /// On macOS, this sets the window's accessibility document property (AXDocument).
+    /// 设置此窗口代表的文件路径。
+    /// 在 macOS 上，这设置窗口的辅助功能文档属性（AXDocument）。
     pub fn set_document_path(&self, path: Option<&std::path::Path>) {
         self.platform_window.set_document_path(path);
     }
 
-    /// Determine the display on which the window is visible.
+    /// 确定窗口可见的显示器。
     pub fn display(&self, cx: &App) -> Option<Rc<dyn PlatformDisplay>> {
         cx.platform
             .displays()
@@ -2685,27 +2645,27 @@ impl Window {
             .find(|display| Some(display.id()) == self.display_id)
     }
 
-    /// Show the platform character palette.
+    /// 显示平台字符调色板。
     pub fn show_character_palette(&self) {
         self.platform_window.show_character_palette();
     }
 
-    /// The scale factor of the display associated with the window. For example, it could
-    /// return 2.0 for a "retina" display, indicating that each logical pixel should actually
-    /// be rendered as two pixels on screen.
+    /// 与窗口关联的显示器的缩放因子。例如，它可能
+    /// 为"Retina"显示器返回 2.0，表示每个逻辑像素实际上
+    /// 应渲染为屏幕上的两个像素。
     pub fn scale_factor(&self) -> f32 {
         self.scale_factor
     }
 
-    /// Overrides the display scale factor for tests.
+    /// 为测试覆盖显示器缩放因子。
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_scale_factor(&mut self, scale_factor: f32) {
         self.scale_factor = scale_factor;
         self.refresh();
     }
 
-    /// The size of an em for the base font of the application. Adjusting this value allows the
-    /// UI to scale, just like zooming a web page.
+    /// 应用程序基础字体的 em 大小。调整此值允许
+    /// UI 缩放，就像缩放网页一样。
     pub fn rem_size(&self) -> Pixels {
         self.rem_size_override_stack
             .last()
@@ -2713,14 +2673,14 @@ impl Window {
             .unwrap_or(self.rem_size)
     }
 
-    /// Sets the size of an em for the base font of the application. Adjusting this value allows the
-    /// UI to scale, just like zooming a web page.
+    /// 设置应用程序基础字体的 em 大小。调整此值允许
+    /// UI 缩放，就像缩放网页一样。
     pub fn set_rem_size(&mut self, rem_size: impl Into<Pixels>) {
         self.rem_size = rem_size.into();
     }
 
-    /// Acquire a globally unique identifier for the given ElementId.
-    /// Only valid for the duration of the provided closure.
+    /// 为给定的 ElementId 获取全局唯一标识符。
+    /// 仅在提供的闭包持续期间有效。
     pub fn with_global_id<R>(
         &mut self,
         element_id: ElementId,
@@ -2733,7 +2693,7 @@ impl Window {
         })
     }
 
-    /// Calls the provided closure with the element ID pushed on the stack.
+    /// 使用压入栈的元素 ID 调用提供的闭包。
     #[inline]
     pub fn with_id<R>(
         &mut self,
@@ -2746,9 +2706,9 @@ impl Window {
         result
     }
 
-    /// Executes the provided function with the specified rem size.
+    /// 使用指定的 rem 大小执行提供的函数。
     ///
-    /// This method must only be called as part of element drawing.
+    /// 此方法只能作为元素绘制的一部分来调用。
     // This function is called in a highly recursive manner in editor
     // prepainting, make sure its inlined to reduce the stack burden
     #[inline]
@@ -2768,31 +2728,31 @@ impl Window {
         }
     }
 
-    /// The line height associated with the current text style.
+    /// 与当前文本样式关联的行高。
     pub fn line_height(&self) -> Pixels {
         self.text_style().line_height_in_pixels(self.rem_size())
     }
 
-    /// Rounds a logical value to the nearest device pixel.
+    /// 将逻辑值四舍五入到最近的设备像素。
     #[inline]
     pub fn pixel_snap(&self, value: Pixels) -> Pixels {
         px(round_to_device_pixel(value.0, self.scale_factor()) / self.scale_factor())
     }
 
-    /// f64 variant of [`Self::pixel_snap`].
+    /// [`Self::pixel_snap`] 的 f64 变体。
     #[inline]
     pub fn pixel_snap_f64(&self, value: f64) -> f64 {
         let scale_factor = f64::from(self.scale_factor());
         round_half_toward_zero_f64(value * scale_factor) / scale_factor
     }
 
-    /// Snaps a bounds' origin and size to the nearest device pixel.
+    /// 将边界框的原点和大小对齐到最近的设备像素。
     #[inline]
     pub fn pixel_snap_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
         bounds.map(|c| self.pixel_snap(c))
     }
 
-    /// Snaps a point's coordinates to the nearest device pixel.
+    /// 将点的坐标对齐到最近的设备像素。
     #[inline]
     pub fn pixel_snap_point(&self, position: Point<Pixels>) -> Point<Pixels> {
         position.map(|c| self.pixel_snap(c))
@@ -2811,7 +2771,7 @@ impl Window {
         )
     }
 
-    /// Rounds half-to-zero but clamps any non-zero input up to 1 dp so thin strokes do not disappear.
+    /// 向零舍入，但将任何非零输入钳制到至少 1 dp，以使细描边不会消失。
     #[inline]
     fn snap_stroke(&self, value: Pixels) -> ScaledPixels {
         ScaledPixels(round_stroke_to_device_pixel(value.0, self.scale_factor()))
@@ -2822,7 +2782,7 @@ impl Window {
         edges.map(|e| self.snap_stroke(*e))
     }
 
-    /// Floors the near edge and ceils the far edge, producing a strict superset of the raw region.
+    /// 近边缘向下取整，远边缘向上取整，产生原始区域的严格超集。
     #[inline]
     fn cover_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<ScaledPixels> {
         let scale_factor = self.scale_factor();
@@ -2843,18 +2803,18 @@ impl Window {
         }
     }
 
-    /// Call to prevent the default action of an event. Currently only used to prevent
-    /// parent elements from becoming focused on mouse down.
+    /// 调用以阻止事件的默认操作。目前仅用于阻止
+    /// 父元素在鼠标按下时获得焦点。
     pub fn prevent_default(&mut self) {
         self.default_prevented = true;
     }
 
-    /// Obtain whether default has been prevented for the event currently being dispatched.
+    /// 获取当前正在分发的事件的默认行为是否已被阻止。
     pub fn default_prevented(&self) -> bool {
         self.default_prevented
     }
 
-    /// Determine whether the given action is available along the dispatch path to the currently focused element.
+    /// 确定给定操作在当前聚焦元素的分发路径上是否可用。
     pub fn is_action_available(&self, action: &dyn Action, cx: &App) -> bool {
         let node_id =
             self.focus_node_id_in_rendered_frame(self.focused(cx).map(|handle| handle.id));
@@ -2863,7 +2823,7 @@ impl Window {
             .is_action_available(action, node_id)
     }
 
-    /// Determine whether the given action is available along the dispatch path to the given focus_handle.
+    /// 确定给定操作在给定 focus_handle 的分发路径上是否可用。
     pub fn is_action_available_in(&self, action: &dyn Action, focus_handle: &FocusHandle) -> bool {
         let node_id = self.focus_node_id_in_rendered_frame(Some(focus_handle.id));
         self.rendered_frame
@@ -2871,43 +2831,43 @@ impl Window {
             .is_action_available(action, node_id)
     }
 
-    /// The position of the mouse relative to the window.
+    /// 鼠标相对于窗口的位置。
     pub fn mouse_position(&self) -> Point<Pixels> {
         self.mouse_position
     }
 
-    /// Captures the pointer for the given hitbox. While captured, all mouse move and mouse up
-    /// events will be routed to listeners that check this hitbox's `is_hovered` status,
-    /// regardless of actual hit testing. This enables drag operations that continue
-    /// even when the pointer moves outside the element's bounds.
+    /// 为给定的 hitbox 捕获指针。捕获期间，所有鼠标移动和鼠标释放
+    /// 事件将路由到检查此 hitbox 的 `is_hovered` 状态的监听器，
+    /// 无论实际命中测试如何。这使得拖拽操作可以在
+    /// 指针移出元素边界时继续。
     ///
-    /// The capture is automatically released on mouse up.
+    /// 捕获会在鼠标释放时自动释放。
     pub fn capture_pointer(&mut self, hitbox_id: HitboxId) {
         self.captured_hitbox = Some(hitbox_id);
     }
 
-    /// Releases any active pointer capture.
+    /// 释放任何活动的指针捕获。
     pub fn release_pointer(&mut self) {
         self.captured_hitbox = None;
     }
 
-    /// Returns the hitbox that has captured the pointer, if any.
+    /// 返回已捕获指针的 hitbox（如果有）。
     pub fn captured_hitbox(&self) -> Option<HitboxId> {
         self.captured_hitbox
     }
 
-    /// The current state of the keyboard's modifiers
+    /// 键盘修饰键的当前状态
     pub fn modifiers(&self) -> Modifiers {
         self.modifiers
     }
 
-    /// Returns true if the last input event was keyboard-based (key press, tab navigation, etc.)
-    /// This is used for focus-visible styling to show focus indicators only for keyboard navigation.
+    /// 如果最后一个输入事件是基于键盘的（按键、tab 导航等）则返回 true
+    /// 用于焦点可见样式，仅为键盘导航显示焦点指示器。
     pub fn last_input_was_keyboard(&self) -> bool {
         self.last_input_modality == InputModality::Keyboard
     }
 
-    /// The current state of the keyboard's capslock
+    /// 键盘大写锁定的当前状态
     pub fn capslock(&self) -> Capslock {
         self.capslock
     }
@@ -2916,8 +2876,8 @@ impl Window {
         self.platform_window.completed_frame();
     }
 
-    /// Produces a new frame and assigns it to `rendered_frame`. To actually show
-    /// the contents of the new [`Scene`], use [`Self::present`].
+    /// 生成新帧并将其分配给 `rendered_frame`。要实际显示
+    /// 新 [`Scene`] 的内容，请使用 [`Self::present`]。
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
         // Drain unconditionally so a stale first-invalidation timestamp can't
@@ -3077,11 +3037,11 @@ impl Window {
         profiling::finish_frame!();
     }
 
-    /// Presents the most recently drawn frame if it hasn't been presented yet.
+    /// 如果最近绘制的帧尚未呈现，则呈现它。
     ///
-    /// Benchmarks drive drawing synchronously rather than through a platform
-    /// frame-request loop, so they call this after each measured update to
-    /// submit the frame like production presentation would.
+    /// 基准测试同步驱动绘制，而不是通过
+    /// 帧请求循环，因此它们在每次测量更新后调用此方法，
+    /// 就像生产环境呈现一样提交帧。
     #[cfg(feature = "bench")]
     pub fn present_if_needed(&mut self) {
         if self.needs_present.get() {
@@ -3089,7 +3049,7 @@ impl Window {
         }
     }
 
-    /// Returns a snapshot of the current input-latency histograms.
+    /// 返回当前输入延迟直方图的快照。
     #[cfg(feature = "input-latency-histogram")]
     pub fn input_latency_snapshot(&self) -> InputLatencySnapshot {
         self.input_latency_tracker.snapshot()
@@ -3593,9 +3553,9 @@ impl Window {
         );
     }
 
-    /// Push a text style onto the stack, and call a function with that style active.
-    /// Use [`Window::text_style`] to get the current, combined text style. This method
-    /// should only be called as part of element drawing.
+    /// 将文本样式压入栈，并在该样式激活时调用函数。
+    /// 使用 [`Window::text_style`] 获取当前组合的文本样式。此方法
+    /// 只能作为元素绘制的一部分来调用。
     pub fn with_text_style<F, R>(&mut self, style: Option<TextStyleRefinement>, f: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
@@ -3611,8 +3571,8 @@ impl Window {
         }
     }
 
-    /// Updates the cursor style at the platform level. This method should only be called
-    /// during the paint phase of element drawing.
+    /// 在平台级别更新光标样式。此方法只能
+    /// 在元素绘制的绘制阶段调用。
     pub fn set_cursor_style(&mut self, style: CursorStyle, hitbox: &Hitbox) {
         self.invalidator.debug_assert_paint();
         self.next_frame.cursor_styles.push(CursorStyleRequest {
@@ -3621,10 +3581,10 @@ impl Window {
         });
     }
 
-    /// Updates the cursor style for the entire window at the platform level. A cursor
-    /// style using this method will have precedence over any cursor style set using
-    /// `set_cursor_style`. This method should only be called during the paint
-    /// phase of element drawing.
+    /// 在平台级别更新整个窗口的光标样式。使用此方法设置的
+    /// 光标样式将优先于使用 `set_cursor_style` 设置的任何光标样式。
+    /// 此方法只能在元素绘制的
+    /// 绘制阶段调用。
     pub fn set_window_cursor_style(&mut self, style: CursorStyle) {
         self.invalidator.debug_assert_paint();
         self.next_frame.cursor_styles.push(CursorStyleRequest {
@@ -3633,8 +3593,8 @@ impl Window {
         })
     }
 
-    /// Sets a tooltip to be rendered for the upcoming frame. This method should only be called
-    /// during the paint phase of element drawing.
+    /// 设置要在下一帧渲染的工具提示。此方法只能
+    /// 在元素绘制的绘制阶段调用。
     pub fn set_tooltip(&mut self, tooltip: AnyTooltip) -> TooltipId {
         self.invalidator.debug_assert_prepaint();
         let id = TooltipId(post_inc(&mut self.next_tooltip_id.0));
@@ -3644,8 +3604,8 @@ impl Window {
         id
     }
 
-    /// Invoke the given function with the given content mask after intersecting it
-    /// with the current mask. This method should only be called during element drawing.
+    /// 与当前遮罩取交集后，使用给定的内容遮罩调用给定函数。
+    /// 此方法只能在元素绘制期间调用。
     // This function is called in a highly recursive manner in editor
     // prepainting, make sure its inlined to reduce the stack burden
     #[inline]
@@ -3666,8 +3626,8 @@ impl Window {
         }
     }
 
-    /// Updates the global element offset relative to the current offset. This is used to implement
-    /// scrolling. This method should only be called during the prepaint phase of element drawing.
+    /// 更新相对于当前偏移量的全局元素偏移量。用于实现
+    /// 滚动。此方法只能在元素绘制的预绘制阶段调用。
     pub fn with_element_offset<R>(
         &mut self,
         offset: Point<Pixels>,
@@ -3683,9 +3643,9 @@ impl Window {
         self.with_absolute_element_offset(abs_offset, f)
     }
 
-    /// Updates the global element offset based on the given offset. This is used to implement
-    /// drag handles and other manual painting of elements. This method should only be called during
-    /// the prepaint phase of element drawing.
+    /// 根据给定偏移量更新全局元素偏移量。用于实现
+    /// 拖拽手柄和其他元素的手动绘制。此方法只能在
+    /// 元素绘制的预绘制阶段调用。
     pub fn with_absolute_element_offset<R>(
         &mut self,
         offset: Point<Pixels>,
@@ -3716,11 +3676,11 @@ impl Window {
         result
     }
 
-    /// Perform prepaint on child elements in a "retryable" manner, so that any side effects
-    /// of prepaints can be discarded before prepainting again. This is used to support autoscroll
-    /// where we need to prepaint children to detect the autoscroll bounds, then adjust the
-    /// element offset and prepaint again. See [`crate::List`] for an example. This method should only be
-    /// called during the prepaint phase of element drawing.
+    /// 以"可重试"方式对子元素执行预绘制，以便任何
+    /// 预绘制的副作用可以在再次预绘制之前丢弃。用于支持自动滚动，
+    /// 我们需要预绘制子元素以检测自动滚动边界，然后调整
+    /// 元素偏移量并再次预绘制。参见 [`crate::List`] 获取示例。此方法只能
+    /// 在元素绘制的预绘制阶段调用。
     pub fn transact<T, U>(&mut self, f: impl FnOnce(&mut Self) -> Result<T, U>) -> Result<T, U> {
         self.invalidator.debug_assert_prepaint();
         let index = self.prepaint_index();
@@ -3744,28 +3704,28 @@ impl Window {
         result
     }
 
-    /// When you call this method during [`Element::prepaint`], containing elements will attempt to
-    /// scroll to cause the specified bounds to become visible. When they decide to autoscroll, they will call
-    /// [`Element::prepaint`] again with a new set of bounds. See [`crate::List`] for an example of an element
-    /// that supports this method being called on the elements it contains. This method should only be
-    /// called during the prepaint phase of element drawing.
+    /// 当你在 [`Element::prepaint`] 期间调用此方法时，包含元素将尝试
+    /// 滚动以使指定边界可见。当它们决定自动滚动时，它们会用一组
+    /// 新的边界再次调用 [`Element::prepaint`]。参见 [`crate::List`] 获取支持
+    /// 在其包含的元素上调用此方法的元素示例。此方法只能
+    /// 在元素绘制的预绘制阶段调用。
     pub fn request_autoscroll(&mut self, bounds: Bounds<Pixels>) {
         self.invalidator.debug_assert_prepaint();
         self.requested_autoscroll = Some(bounds);
     }
 
-    /// This method can be called from a containing element such as [`crate::List`] to support the autoscroll behavior
-    /// described in [`Self::request_autoscroll`].
+    /// 此方法可以从包含元素（如 [`crate::List`]）调用，以支持
+    /// [`Self::request_autoscroll`] 中描述的自动滚动行为。
     pub fn take_autoscroll(&mut self) -> Option<Bounds<Pixels>> {
         self.invalidator.debug_assert_prepaint();
         self.requested_autoscroll.take()
     }
 
-    /// Asynchronously load an asset, if the asset hasn't finished loading this will return None.
-    /// Your view will be re-drawn once the asset has finished loading.
+    /// 异步加载资源，如果资源尚未完成加载则返回 None。
+    /// 资源完成加载后，你的视图将被重绘。
     ///
-    /// Note that the multiple calls to this method will only result in one `Asset::load` call at a
-    /// time.
+    /// 注意，多次调用此方法只会产生一次 `Asset::load` 调用
+    /// 时间。
     pub fn use_asset<A: Asset>(&mut self, source: &A::Source, cx: &mut App) -> Option<A::Output> {
         let (task, is_first) = cx.fetch_asset::<A>(source);
         task.clone().now_or_never().or_else(|| {
@@ -3788,17 +3748,17 @@ impl Window {
         })
     }
 
-    /// Asynchronously load an asset, if the asset hasn't finished loading or doesn't exist this will return None.
-    /// Your view will not be re-drawn once the asset has finished loading.
+    /// 异步加载资源，如果资源尚未完成加载或不存在则返回 None。
+    /// 资源完成加载后，你的视图不会被重绘。
     ///
-    /// Note that the multiple calls to this method will only result in one `Asset::load` call at a
-    /// time.
+    /// 注意，多次调用此方法只会产生一次 `Asset::load` 调用
+    /// 时间。
     pub fn get_asset<A: Asset>(&mut self, source: &A::Source, cx: &mut App) -> Option<A::Output> {
         let (task, _) = cx.fetch_asset::<A>(source);
         task.now_or_never()
     }
-    /// Obtain the current element offset. This method should only be called during the
-    /// prepaint phase of element drawing.
+    /// 获取当前元素偏移量。此方法只能在
+    /// 元素绘制的预绘制阶段调用。
     pub fn element_offset(&self) -> Point<Pixels> {
         self.invalidator.debug_assert_prepaint();
         self.element_offset_stack
@@ -3807,15 +3767,15 @@ impl Window {
             .unwrap_or_default()
     }
 
-    /// Obtain the current element opacity. This method should only be called during the
-    /// prepaint phase of element drawing.
+    /// 获取当前元素不透明度。此方法只能在
+    /// 元素绘制的预绘制阶段调用。
     #[inline]
     pub(crate) fn element_opacity(&self) -> f32 {
         self.invalidator.debug_assert_paint_or_prepaint();
         self.element_opacity
     }
 
-    /// Obtain the current content mask. This method should only be called during element drawing.
+    /// 获取当前内容遮罩。此方法只能在元素绘制期间调用。
     pub fn content_mask(&self) -> ContentMask<Pixels> {
         self.invalidator.debug_assert_paint_or_prepaint();
         self.content_mask_stack
@@ -3829,8 +3789,8 @@ impl Window {
             })
     }
 
-    /// Provide elements in the called function with a new namespace in which their identifiers must be unique.
-    /// This can be used within a custom element to distinguish multiple sets of child elements.
+    /// 为被调用函数中的元素提供新的命名空间，其标识符必须唯一。
+    /// 可在自定义元素中使用，以区分多组子元素。
     pub fn with_element_namespace<R>(
         &mut self,
         element_id: impl Into<ElementId>,
@@ -3842,7 +3802,7 @@ impl Window {
         result
     }
 
-    /// Use a piece of state that exists as long this element is being rendered in consecutive frames.
+    /// 使用一个只要此元素在连续帧中被渲染就存在的状态。
     pub fn use_keyed_state<S: 'static>(
         &mut self,
         key: impl Into<ElementId>,
@@ -3866,9 +3826,9 @@ impl Window {
         })
     }
 
-    /// Use a piece of state that exists as long this element is being rendered in consecutive frames, without needing to specify a key
+    /// 使用一个只要此元素在连续帧中被渲染就存在的状态，无需指定键
     ///
-    /// NOTE: This method uses the location of the caller to generate an ID for this state.
+    /// 注意：此方法使用调用者的位置为此状态生成 ID。
     ///       If this is not sufficient to identify your state (e.g. you're rendering a list item),
     ///       you can provide a custom ElementID using the `use_keyed_state` method.
     #[track_caller]
@@ -3884,10 +3844,10 @@ impl Window {
         )
     }
 
-    /// Updates or initializes state for an element with the given id that lives across multiple
-    /// frames. If an element with this ID existed in the rendered frame, its state will be passed
-    /// to the given closure. The state returned by the closure will be stored so it can be referenced
-    /// when drawing the next frame. This method should only be called as part of element drawing.
+    /// 更新或初始化具有给定 ID 的元素状态，该状态跨多个
+    /// 帧存在。如果渲染帧中存在具有此 ID 的元素，其状态将被传递
+    /// 给闭包。闭包返回的状态将被存储，以便在
+    /// 绘制下一帧时引用。此方法只能作为元素绘制的一部分调用。
     pub fn with_element_state<S, R>(
         &mut self,
         global_id: &GlobalElementId,
@@ -3963,12 +3923,12 @@ impl Window {
         }
     }
 
-    /// A variant of `with_element_state` that allows the element's id to be optional. This is a convenience
-    /// method for elements where the element id may or may not be assigned. Prefer using `with_element_state`
-    /// when the element is guaranteed to have an id.
+    /// `with_element_state` 的变体，允许元素的 id 为可选。这是一个
+    /// 用于元素 id 可能被分配也可能不被分配的元素的便捷方法。优先使用 `with_element_state`
+    /// 当元素保证有 id 时。
     ///
-    /// The first option means 'no ID provided'
-    /// The second option means 'not yet initialized'
+    /// 第一个选项表示"未提供 ID"
+    /// 第二个选项表示"尚未初始化"
     pub fn with_optional_element_state<S, R>(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -3996,7 +3956,7 @@ impl Window {
         }
     }
 
-    /// Executes the given closure within the context of a tab group.
+    /// 在 tab 组上下文中执行给定闭包。
     #[inline]
     pub fn with_tab_group<R>(&mut self, index: Option<isize>, f: impl FnOnce(&mut Self) -> R) -> R {
         if let Some(index) = index {
@@ -4009,14 +3969,14 @@ impl Window {
         }
     }
 
-    /// Defers the drawing of the given element, scheduling it to be painted on top of the currently-drawn tree
-    /// at a later time. The `priority` parameter determines the drawing order relative to other deferred elements,
-    /// with higher values being drawn on top.
+    /// 延迟绘制给定元素，安排其绘制在当前绘制的树之上
+    /// 在稍后时间。`priority` 参数决定相对于其他延迟元素的绘制顺序，
+    /// 较高的值绘制在上面。
     ///
-    /// When `content_mask` is provided, the deferred element will be clipped to that region during
-    /// both prepaint and paint. When `None`, no additional clipping is applied.
+    /// 当提供 `content_mask` 时，延迟元素将在
+    /// 预绘制和绘制期间被裁剪到该区域。为 `None` 时不应用额外裁剪。
     ///
-    /// This method should only be called as part of the prepaint phase of element drawing.
+    /// 此方法只能作为元素绘制的预绘制阶段的一部分调用。
     pub fn defer_draw(
         &mut self,
         element: AnyElement,
@@ -4041,11 +4001,11 @@ impl Window {
         });
     }
 
-    /// Creates a new painting layer for the specified bounds. A "layer" is a batch
-    /// of geometry that are non-overlapping and have the same draw order. This is typically used
-    /// for performance reasons.
+    /// 为指定边界创建新的绘制层。"图层"是一批
+    /// 不重叠且具有相同绘制顺序的几何图形。通常出于
+    /// 性能原因使用。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn paint_layer<R>(&mut self, bounds: Bounds<Pixels>, f: impl FnOnce(&mut Self) -> R) -> R {
         self.invalidator.debug_assert_paint();
 
@@ -4066,11 +4026,11 @@ impl Window {
         result
     }
 
-    /// Paint the drop (non-inset) shadows from `shadows` into the scene at the current
-    /// z-index. Inset shadows are skipped; paint those with [`Self::paint_inset_shadows`]
-    /// after the element's background so they layer on top of the fill.
+    /// 将 `shadows` 中的外阴影（非内嵌）绘制到当前
+    /// z-index 的场景中。内嵌阴影会被跳过；使用 [`Self::paint_inset_shadows`] 绘制
+    /// 在元素背景之后绘制，使其叠加在填充之上。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn paint_drop_shadows(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -4104,9 +4064,9 @@ impl Window {
         }
     }
 
-    /// Paint the inset shadows from `shadows` into the scene at the current z-index. Should
-    /// be called after the element's background so the shadow layers on top of the fill.
-    /// Drop shadows are skipped; paint those with [`Self::paint_drop_shadows`] before the background.
+    /// 将 `shadows` 中的内嵌阴影绘制到当前 z-index 的场景中。应在
+    /// 元素背景之后调用，使阴影叠加在填充之上。
+    /// 外阴影会被跳过；使用 [`Self::paint_drop_shadows`] 在背景之前绘制。
     pub fn paint_inset_shadows(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -4189,15 +4149,15 @@ impl Window {
         }
     }
 
-    /// Paint one or more quads into the scene for the next frame at the current stacking context.
-    /// Quads are colored rectangular regions with an optional background, border, and corner radius.
-    /// see [`fill`], [`outline`], and [`quad`] to construct this type.
+    /// 在当前层叠上下文中将一个或多个四边形绘制到下一帧的场景中。
+    /// 四边形是带有可选背景、边框和圆角半径的着色矩形区域。
+    /// 参见 [`fill`]、[`outline`] 和 [`quad`] 来构造此类型。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     ///
-    /// Note that the `quad.corner_radii` are allowed to exceed the bounds, creating sharp corners
-    /// where the circular arcs meet. This will not display well when combined with dashed borders.
-    /// Use `Corners::clamp_radii_for_quad_size` if the radii should fit within the bounds.
+    /// 注意 `quad.corner_radii` 允许超出边界，在圆弧相交处
+    /// 创建尖角。与虚线边框组合时显示效果不佳。
+    /// 如果圆角应适合边界内，请使用 `Corners::clamp_radii_for_quad_size`。
     pub fn paint_quad(&mut self, quad: PaintQuad) {
         self.invalidator.debug_assert_paint();
 
@@ -4270,9 +4230,9 @@ impl Window {
         }
     }
 
-    /// Paint the given `Path` into the scene for the next frame at the current z-index.
+    /// 在当前 z-index 将给定的 `Path` 绘制到下一帧的场景中。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn paint_path(&mut self, mut path: Path<Pixels>, color: impl Into<Background>) {
         self.invalidator.debug_assert_paint();
 
@@ -4287,9 +4247,9 @@ impl Window {
             .insert_primitive(path.scale(scale_factor));
     }
 
-    /// Paint an underline into the scene for the next frame at the current z-index.
+    /// 在当前 z-index 将下划线绘制到下一帧的场景中。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn paint_underline(
         &mut self,
         origin: Point<Pixels>,
@@ -4322,9 +4282,9 @@ impl Window {
         });
     }
 
-    /// Paint a strikethrough into the scene for the next frame at the current z-index.
+    /// 在当前 z-index 将删除线绘制到下一帧的场景中。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn paint_strikethrough(
         &mut self,
         origin: Point<Pixels>,
@@ -4352,14 +4312,14 @@ impl Window {
         });
     }
 
-    /// Paints a monochrome (non-emoji) glyph into the scene for the next frame at the current z-index.
+    /// 在当前 z-index 将单色（非表情符号）字形绘制到下一帧的场景中。
     ///
-    /// The y component of the origin is the baseline of the glyph.
-    /// You should generally prefer to use the [`ShapedLine::paint`](crate::ShapedLine::paint) or
+    /// 原点的 y 分量是字形的基线。
+    /// 通常应优先使用 [`ShapedLine::paint`](crate::ShapedLine::paint) 或
     /// [`WrappedLine::paint`](crate::WrappedLine::paint) methods in the [`TextSystem`](crate::TextSystem).
-    /// This method is only useful if you need to paint a single glyph that has already been shaped.
+    /// 此方法仅在你需要绘制已排版的单个字形时有用。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn paint_glyph(
         &mut self,
         origin: Point<Pixels>,
@@ -4457,14 +4417,14 @@ impl Window {
         mode == TextRenderingMode::Subpixel
     }
 
-    /// Paints an emoji glyph into the scene for the next frame at the current z-index.
+    /// 在当前 z-index 将表情符号字形绘制到下一帧的场景中。
     ///
-    /// The y component of the origin is the baseline of the glyph.
-    /// You should generally prefer to use the [`ShapedLine::paint`](crate::ShapedLine::paint) or
+    /// 原点的 y 分量是字形的基线。
+    /// 通常应优先使用 [`ShapedLine::paint`](crate::ShapedLine::paint) 或
     /// [`WrappedLine::paint`](crate::WrappedLine::paint) methods in the [`TextSystem`](crate::TextSystem).
-    /// This method is only useful if you need to paint a single emoji that has already been shaped.
+    /// 此方法仅在你需要绘制已排版的单个表情符号时有用。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn paint_emoji(
         &mut self,
         origin: Point<Pixels>,
@@ -4520,9 +4480,9 @@ impl Window {
         Ok(())
     }
 
-    /// Paint a monochrome SVG into the scene for the next frame at the current stacking context.
+    /// 在当前层叠上下文中将单色 SVG 绘制到下一帧的场景中。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn paint_svg(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -4585,10 +4545,10 @@ impl Window {
         Ok(())
     }
 
-    /// Paint an image into the scene for the next frame at the current z-index.
-    /// This method will panic if the frame_index is not valid
+    /// 在当前 z-index 将图像绘制到下一帧的场景中。
+    /// 如果 frame_index 无效，此方法将 panic
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn paint_image(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -4635,9 +4595,9 @@ impl Window {
         Ok(())
     }
 
-    /// Paint a surface into the scene for the next frame at the current z-index.
+    /// 在当前 z-index 将表面绘制到下一帧的场景中。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     #[cfg(target_os = "macos")]
     pub fn paint_surface(&mut self, bounds: Bounds<Pixels>, image_buffer: CVPixelBuffer) {
         use crate::PaintSurface;
@@ -4654,7 +4614,7 @@ impl Window {
         });
     }
 
-    /// Removes an image from the sprite atlas.
+    /// 从精灵图集中移除图像。
     pub fn drop_image(&mut self, data: Arc<RenderImage>) -> Result<()> {
         for frame_index in 0..data.frame_count() {
             let params = RenderImageParams {
@@ -4668,7 +4628,7 @@ impl Window {
         Ok(())
     }
 
-    /// Returns whether every frame of an image is present in the sprite atlas.
+    /// 返回图像的每一帧是否都存在于精灵图集中。
     #[cfg(any(test, feature = "test-support"))]
     pub fn has_image_atlas_entry(&self, data: &RenderImage) -> bool {
         data.frame_count() > 0
@@ -4683,11 +4643,11 @@ impl Window {
             })
     }
 
-    /// Add a node to the layout tree for the current frame. Takes the `Style` of the element for which
-    /// layout is being requested, along with the layout ids of any children. This method is called during
-    /// calls to the [`Element::request_layout`] trait method and enables any element to participate in layout.
+    /// 为当前帧向布局树添加节点。接受请求布局的元素的 `Style`，
+    /// 以及任何子元素的布局 id。此方法在
+    /// 调用 [`Element::request_layout`] trait 方法时调用，使任何元素都能参与布局。
     ///
-    /// This method should only be called as part of the request_layout or prepaint phase of element drawing.
+    /// 此方法只能作为元素绘制的 request_layout 或预绘制阶段的一部分调用。
     #[must_use]
     pub fn request_layout(
         &mut self,
@@ -4710,14 +4670,14 @@ impl Window {
         )
     }
 
-    /// Add a node to the layout tree for the current frame. Instead of taking a `Style` and children,
-    /// this variant takes a function that is invoked during layout so you can use arbitrary logic to
-    /// determine the element's size. One place this is used internally is when measuring text.
+    /// 为当前帧向布局树添加节点。不接受 `Style` 和子元素，
+    /// 此变体接受一个在布局期间调用的函数，以便你可以使用任意逻辑
+    /// 来确定元素的大小。内部使用的一个地方是测量文本时。
     ///
-    /// The given closure is invoked at layout time with the known dimensions and available space and
-    /// returns a `Size`.
+    /// 给定的闭包在布局时使用已知尺寸和可用空间调用，
+    /// 返回一个 `Size`。
     ///
-    /// This method should only be called as part of the request_layout or prepaint phase of element drawing.
+    /// 此方法只能作为元素绘制的 request_layout 或预绘制阶段的一部分调用。
     pub fn request_measured_layout<F>(&mut self, style: Style, measure: F) -> LayoutId
     where
         F: Fn(Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App) -> Size<Pixels>
@@ -4733,11 +4693,11 @@ impl Window {
             .request_measured_layout(style, rem_size, scale_factor, measure)
     }
 
-    /// Compute the layout for the given id within the given available space.
-    /// This method is called for its side effect, typically by the framework prior to painting.
-    /// After calling it, you can request the bounds of the given layout node id or any descendant.
+    /// 在给定的可用空间内计算给定 id 的布局。
+    /// 此方法因其副作用而被调用，通常由框架在绘制之前调用。
+    /// 调用后，你可以请求给定布局节点 id 或其任何后代的边界。
     ///
-    /// This method should only be called as part of the prepaint phase of element drawing.
+    /// 此方法只能作为元素绘制的预绘制阶段的一部分调用。
     pub fn compute_layout(
         &mut self,
         layout_id: LayoutId,
@@ -4751,10 +4711,10 @@ impl Window {
         self.layout_engine = Some(layout_engine);
     }
 
-    /// Obtain the bounds computed for the given LayoutId relative to the window. This method will usually be invoked by
-    /// GPUI itself automatically in order to pass your element its `Bounds` automatically.
+    /// 获取为给定 LayoutId 计算的相对于窗口的边界。此方法通常由
+    /// RGPUI 自身自动调用，以便自动传递元素的 `Bounds`。
     ///
-    /// This method should only be called as part of element drawing.
+    /// 此方法只能作为元素绘制的一部分来调用。
     pub fn layout_bounds(&mut self, layout_id: LayoutId) -> Bounds<Pixels> {
         self.invalidator.debug_assert_prepaint();
 
@@ -4770,11 +4730,11 @@ impl Window {
         bounds
     }
 
-    /// This method should be called during `prepaint`. You can use
-    /// the returned [Hitbox] during `paint` or in an event handler
-    /// to determine whether the inserted hitbox was the topmost.
+    /// 此方法应在 `prepaint` 期间调用。你可以使用
+    /// 返回的 [Hitbox] 在 `paint` 期间或事件处理程序中
+    /// 来确定插入的 hitbox 是否是最顶层的。
     ///
-    /// This method should only be called as part of the prepaint phase of element drawing.
+    /// 此方法只能作为元素绘制的预绘制阶段的一部分调用。
     pub fn insert_hitbox(&mut self, bounds: Bounds<Pixels>, behavior: HitboxBehavior) -> Hitbox {
         self.invalidator.debug_assert_prepaint();
 
@@ -4803,27 +4763,27 @@ impl Window {
         hitbox
     }
 
-    /// Set a hitbox which will act as a control area of the platform window.
+    /// 设置一个将作为平台窗口控制区域的 hitbox。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn insert_window_control_hitbox(&mut self, area: WindowControlArea, hitbox: Hitbox) {
         self.invalidator.debug_assert_paint();
         self.next_frame.window_control_hitboxes.push((area, hitbox));
     }
 
-    /// Sets the key context for the current element. This context will be used to translate
-    /// keybindings into actions.
+    /// 设置当前元素的按键上下文。此上下文将用于
+    /// 将按键绑定转换为操作。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn set_key_context(&mut self, context: KeyContext) {
         self.invalidator.debug_assert_paint();
         self.next_frame.dispatch_tree.set_key_context(context);
     }
 
-    /// Sets the focus handle for the current element. This handle will be used to manage focus state
-    /// and keyboard event dispatch for the element.
+    /// 设置当前元素的焦点句柄。此句柄将用于管理焦点状态
+    /// 和元素的键盘事件分发。
     ///
-    /// This method should only be called as part of the prepaint phase of element drawing.
+    /// 此方法只能作为元素绘制的预绘制阶段的一部分调用。
     pub fn set_focus_handle(&mut self, focus_handle: &FocusHandle, _: &App) {
         self.invalidator.debug_assert_prepaint();
         if focus_handle.is_focused(self) {
@@ -4832,17 +4792,17 @@ impl Window {
         self.next_frame.dispatch_tree.set_focus_id(focus_handle.id);
     }
 
-    /// Sets the view id for the current element, which will be used to manage view caching.
+    /// 设置当前元素的视图 id，用于管理视图缓存。
     ///
-    /// This method should only be called as part of element prepaint. We plan on removing this
-    /// method eventually when we solve some issues that require us to construct editor elements
-    /// directly instead of always using editors via views.
+    /// 此方法只能作为元素预绘制的一部分调用。我们计划在未来
+    /// 移除此方法，当我们解决一些需要直接构建编辑器元素
+    /// 而不是总是通过视图使用编辑器的问题时。
     pub fn set_view_id(&mut self, view_id: EntityId) {
         self.invalidator.debug_assert_prepaint();
         self.next_frame.dispatch_tree.set_view_id(view_id);
     }
 
-    /// Get the entity ID for the currently rendering view
+    /// 获取当前正在渲染的视图的实体 ID
     pub fn current_view(&self) -> EntityId {
         self.invalidator.debug_assert_paint_or_prepaint();
         self.rendered_entity_stack.last().copied().unwrap()
@@ -4860,7 +4820,7 @@ impl Window {
         result
     }
 
-    /// Executes the provided function with the specified image cache.
+    /// 使用指定的图像缓存执行提供的函数。
     pub fn with_image_cache<F, R>(&mut self, image_cache: Option<AnyImageCache>, f: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
@@ -4875,12 +4835,12 @@ impl Window {
         }
     }
 
-    /// Sets an input handler, such as [`ElementInputHandler`][element_input_handler], which interfaces with the
-    /// platform to receive textual input with proper integration with concerns such
-    /// as IME interactions. This handler will be active for the upcoming frame until the following frame is
-    /// rendered.
+    /// 设置输入处理器，例如 [`ElementInputHandler`][element_input_handler]，它与
+    /// 平台接口以接收文本输入，并与 IME 交互等
+    /// 关注点适当集成。此处理器将在即将到来的帧中处于活动状态，直到下一帧
+    /// 渲染完成。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     ///
     /// [element_input_handler]: crate::ElementInputHandler
     pub fn handle_input(
@@ -4899,11 +4859,11 @@ impl Window {
         }
     }
 
-    /// Register a mouse event listener on the window for the next frame. The type of event
-    /// is determined by the first parameter of the given listener. When the next frame is rendered
-    /// the listener will be cleared.
+    /// 在窗口上注册下一帧的鼠标事件监听器。事件类型
+    /// 由给定监听器的第一个参数决定。当下一帧渲染时
+    /// 监听器将被清除。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn on_mouse_event<Event: MouseEvent>(
         &mut self,
         mut listener: impl FnMut(&Event, DispatchPhase, &mut Window, &mut App) + 'static,
@@ -4919,14 +4879,14 @@ impl Window {
         )));
     }
 
-    /// Register a key event listener on this node for the next frame. The type of event
-    /// is determined by the first parameter of the given listener. When the next frame is rendered
-    /// the listener will be cleared.
+    /// 在此节点上注册下一帧的按键事件监听器。事件类型
+    /// 由给定监听器的第一个参数决定。当下一帧渲染时
+    /// 监听器将被清除。
     ///
-    /// This is a fairly low-level method, so prefer using event handlers on elements unless you have
-    /// a specific need to register a listener yourself.
+    /// 这是一个相当底层的方法，除非你有
+    /// 自己注册监听器的特定需求，否则优先使用元素上的操作处理程序。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn on_key_event<Event: KeyEvent>(
         &mut self,
         listener: impl Fn(&Event, DispatchPhase, &mut Window, &mut App) + 'static,
@@ -4942,12 +4902,12 @@ impl Window {
         ));
     }
 
-    /// Register a modifiers changed event listener on the window for the next frame.
+    /// 在窗口上注册下一帧的修饰键更改事件监听器。
     ///
-    /// This is a fairly low-level method, so prefer using event handlers on elements unless you have
-    /// a specific need to register a global listener.
+    /// 这是一个相当底层的方法，除非你有
+    /// 注册全局监听器的特定需求，否则优先使用元素上的事件处理程序。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn on_modifiers_changed(
         &mut self,
         listener: impl Fn(&ModifiersChangedEvent, &mut Window, &mut App) + 'static,
@@ -4961,9 +4921,9 @@ impl Window {
         ));
     }
 
-    /// Register a listener to be called when the given focus handle or one of its descendants receives focus.
-    /// This does not fire if the given focus handle - or one of its descendants - was previously focused.
-    /// Returns a subscription and persists until the subscription is dropped.
+    /// 注册一个监听器，当给定的焦点句柄或其后代之一获得焦点时调用。
+    /// 如果给定的焦点句柄或其后代之前已聚焦，则不会触发。
+    /// 返回一个订阅，持续到订阅被丢弃。
     pub fn on_focus_in(
         &mut self,
         handle: &FocusHandle,
@@ -4982,8 +4942,8 @@ impl Window {
         subscription
     }
 
-    /// Register a listener to be called when the given focus handle or one of its descendants loses focus.
-    /// Returns a subscription and persists until the subscription is dropped.
+    /// 注册一个监听器，当给定的焦点句柄或其后代之一失去焦点时调用。
+    /// 返回一个订阅，持续到订阅被丢弃。
     pub fn on_focus_out(
         &mut self,
         handle: &FocusHandle,
@@ -5021,8 +4981,8 @@ impl Window {
         }
     }
 
-    /// Dispatch a given keystroke as though the user had typed it.
-    /// You can create a keystroke with Keystroke::parse("").
+    /// 就像用户输入一样分发给定的按键。
+    /// 你可以使用 Keystroke::parse("") 创建按键。
     pub fn dispatch_keystroke(&mut self, keystroke: Keystroke, cx: &mut App) -> bool {
         let keystroke = keystroke.with_simulated_ime();
         let result = self.dispatch_event(
@@ -5048,8 +5008,8 @@ impl Window {
         false
     }
 
-    /// Return a key binding string for an action, to display in the UI. Uses the highest precedence
-    /// binding for the action (last binding added to the keymap).
+    /// 返回操作的按键绑定字符串，用于在 UI 中显示。使用最高优先级
+    /// 的操作绑定（最后添加到键映射的绑定）。
     pub fn keystroke_text_for(&self, action: &dyn Action) -> String {
         self.highest_precedence_binding_for_action(action)
             .map(|binding| {
@@ -5063,7 +5023,7 @@ impl Window {
             .unwrap_or_else(|| action.name().to_string())
     }
 
-    /// Dispatch a mouse or keyboard event on the window.
+    /// 在窗口上分发鼠标或键盘事件。
     #[profiling::function]
     pub fn dispatch_event(&mut self, event: PlatformInput, cx: &mut App) -> DispatchEventResult {
         self.dispatch_event_inner(event, cx, None)
@@ -5573,7 +5533,7 @@ impl Window {
             .filter(|pending_input| pending_input.focus == self.focus)
     }
 
-    /// Determine whether a potential multi-stroke key binding is in progress on this window.
+    /// 确定此窗口上是否正在进行潜在的多按键绑定。
     pub fn has_pending_keystrokes(&self) -> bool {
         self.active_pending_input().is_some()
     }
@@ -5582,7 +5542,7 @@ impl Window {
         self.pending_input.take();
     }
 
-    /// Returns the currently pending input keystrokes that might result in a multi-stroke key binding.
+    /// 返回当前待处理的输入按键，这些按键可能导致多按键绑定。
     pub fn pending_input_keystrokes(&self) -> Option<&[Keystroke]> {
         self.active_pending_input()
             .map(|pending_input| pending_input.keystrokes.as_slice())
@@ -5759,8 +5719,8 @@ impl Window {
         }
     }
 
-    /// Register the given handler to be invoked whenever the global of the given type
-    /// is updated.
+    /// 注册给定的处理程序，每当给定类型的全局变量
+    /// 更新时调用。
     pub fn observe_global<G: Global>(
         &mut self,
         cx: &mut App,
@@ -5779,42 +5739,42 @@ impl Window {
         subscription
     }
 
-    /// Focus the current window and bring it to the foreground at the platform level.
+    /// 聚焦当前窗口并在平台级别将其带到前台。
     pub fn activate_window(&self) {
         self.platform_window.activate();
     }
 
-    /// Requests that the operating system draw attention to this window.
+    /// 请求操作系统引起对此窗口的注意。
     pub fn request_attention(&self) {
         self.platform_window.request_attention();
     }
 
-    /// Minimize the current window at the platform level.
+    /// 在平台级别最小化当前窗口。
     pub fn minimize_window(&self) {
         self.platform_window.minimize();
     }
 
-    /// Hide the window from the taskbar and screen.
+    /// 从任务栏和屏幕隐藏窗口。
     pub fn hide_window(&self) {
         self.platform_window.hide();
     }
 
-    /// Set whether the window allows mouse events to pass through to windows behind it.
+    /// 设置窗口是否允许鼠标事件传递到其后面的窗口。
     pub fn set_mouse_passthrough(&self, passthrough: bool) {
         self.platform_window.set_mouse_passthrough(passthrough);
     }
 
-    /// Set the window position in screen coordinates.
+    /// 在屏幕坐标中设置窗口位置。
     pub fn set_position(&mut self, position: Point<Pixels>) {
         self.platform_window.set_position(position);
     }
 
-    /// Toggle full screen status on the current window at the platform level.
+    /// 在平台级别切换当前窗口的全屏状态。
     pub fn toggle_fullscreen(&self) {
         self.platform_window.toggle_fullscreen();
     }
 
-    /// Updates the IME panel position suggestions for languages like japanese, chinese.
+    /// 更新 IME 面板位置建议，适用于日语、中文等语言。
     pub fn invalidate_character_coordinates(&self) {
         self.on_next_frame(|window, cx| {
             if let Some(mut input_handler) = window.platform_window.take_input_handler() {
@@ -5826,9 +5786,9 @@ impl Window {
         });
     }
 
-    /// Present a platform dialog.
-    /// The provided message will be presented, along with buttons for each answer.
-    /// When a button is clicked, the returned Receiver will receive the index of the clicked button.
+    /// 呈现平台对话框。
+    /// 将显示提供的消息以及每个答案的按钮。
+    /// 当按钮被点击时，返回的 Receiver 将接收到被点击按钮的索引。
     pub fn prompt<T>(
         &mut self,
         level: PromptLevel,
@@ -5842,7 +5802,7 @@ impl Window {
     {
         let prompt_builder = cx.prompt_builder.take();
         let Some(prompt_builder) = prompt_builder else {
-            unreachable!("Re-entrant window prompting is not supported by GPUI");
+            unreachable!("Re-entrant window prompting is not supported by RGPUI");
         };
 
         let answers = answers
@@ -5883,15 +5843,15 @@ impl Window {
         receiver
     }
 
-    /// Returns whether a prompt rendered by GPUI is currently active in this window.
+    /// 返回由 RGPUI 渲染的提示是否在此窗口中处于活动状态。
     ///
-    /// This is only true for prompts rendered in the window (see
+    /// 仅对在窗口中渲染的提示为 true（参见
     /// [`App::set_prompt_builder`]), not for platform-native prompt dialogs.
     pub fn has_active_prompt(&self) -> bool {
         self.prompt.is_some()
     }
 
-    /// Returns the current context stack.
+    /// 返回当前上下文栈。
     pub fn context_stack(&self) -> Vec<KeyContext> {
         let node_id = self.focus_node_id_in_rendered_frame(self.focus);
         let dispatch_tree = &self.rendered_frame.dispatch_tree;
@@ -5902,7 +5862,7 @@ impl Window {
             .collect()
     }
 
-    /// Returns all available actions for the focused element.
+    /// 返回聚焦元素的所有可用操作。
     pub fn available_actions(&self, cx: &App) -> Vec<Box<dyn Action>> {
         let node_id = self.focus_node_id_in_rendered_frame(self.focus);
         let mut actions = self.rendered_frame.dispatch_tree.available_actions(node_id);
@@ -5917,16 +5877,16 @@ impl Window {
         actions
     }
 
-    /// Returns key bindings that invoke an action on the currently focused element. Bindings are
-    /// returned in the order they were added. For display, the last binding should take precedence.
+    /// 返回在当前聚焦元素上调用操作的按键绑定。绑定
+    /// 按添加顺序返回。对于显示，最后一个绑定应优先。
     pub fn bindings_for_action(&self, action: &dyn Action) -> Vec<KeyBinding> {
         self.rendered_frame
             .dispatch_tree
             .bindings_for_action(action, &self.rendered_frame.dispatch_tree.context_stack)
     }
 
-    /// Returns the highest precedence key binding that invokes an action on the currently focused
-    /// element. This is more efficient than getting the last result of `bindings_for_action`.
+    /// 返回在当前聚焦元素上调用操作的最高优先级按键绑定。
+    /// 这比获取 `bindings_for_action` 的最后一个结果更高效。
     pub fn highest_precedence_binding_for_action(&self, action: &dyn Action) -> Option<KeyBinding> {
         self.rendered_frame
             .dispatch_tree
@@ -5936,7 +5896,7 @@ impl Window {
             )
     }
 
-    /// Returns the key bindings for an action in a context.
+    /// 返回上下文中操作的按键绑定。
     pub fn bindings_for_action_in_context(
         &self,
         action: &dyn Action,
@@ -5946,8 +5906,8 @@ impl Window {
         dispatch_tree.bindings_for_action(action, &[context])
     }
 
-    /// Returns the highest precedence key binding for an action in a context. This is more
-    /// efficient than getting the last result of `bindings_for_action_in_context`.
+    /// 返回上下文中操作的最高优先级按键绑定。这比
+    /// 获取 `bindings_for_action_in_context` 的最后一个结果更高效。
     pub fn highest_precedence_binding_for_action_in_context(
         &self,
         action: &dyn Action,
@@ -5957,9 +5917,9 @@ impl Window {
         dispatch_tree.highest_precedence_binding_for_action(action, &[context])
     }
 
-    /// Returns any bindings that would invoke an action on the given focus handle if it were
-    /// focused. Bindings are returned in the order they were added. For display, the last binding
-    /// should take precedence.
+    /// 返回如果给定焦点句柄被聚焦时将调用操作的任何绑定。绑定
+    /// 按添加顺序返回。对于显示，最后一个绑定
+    /// 应优先。
     pub fn bindings_for_action_in(
         &self,
         action: &dyn Action,
@@ -5972,9 +5932,9 @@ impl Window {
         dispatch_tree.bindings_for_action(action, &context_stack)
     }
 
-    /// Returns the highest precedence key binding that would invoke an action on the given focus
-    /// handle if it were focused. This is more efficient than getting the last result of
-    /// `bindings_for_action_in`.
+    /// 返回如果给定焦点句柄被聚焦时将调用操作的最高优先级
+    /// 按键绑定。这比获取
+    /// `bindings_for_action_in` 的最后一个结果更高效。
     pub fn highest_precedence_binding_for_action_in(
         &self,
         action: &dyn Action,
@@ -5985,7 +5945,7 @@ impl Window {
         dispatch_tree.highest_precedence_binding_for_action(action, &context_stack)
     }
 
-    /// Find the bindings that can follow the current input sequence for the current context stack.
+    /// 查找可以跟随当前上下文栈的当前输入序列的绑定。
     pub fn possible_bindings_for_input(&self, input: &[Keystroke]) -> Vec<KeyBinding> {
         self.rendered_frame
             .dispatch_tree
@@ -6006,7 +5966,7 @@ impl Window {
         Some(context_stack)
     }
 
-    /// Returns a generic event listener that invokes the given listener with the view and context associated with the given view handle.
+    /// 返回一个通用事件监听器，使用与给定视图句柄关联的视图和上下文调用给定监听器。
     pub fn listener_for<T: 'static, E>(
         &self,
         view: &Entity<T>,
@@ -6018,7 +5978,7 @@ impl Window {
         }
     }
 
-    /// Returns a generic handler that invokes the given handler with the view and context associated with the given view handle.
+    /// 返回一个通用处理程序，使用与给定视图句柄关联的视图和上下文调用给定处理程序。
     pub fn handler_for<E: 'static, Callback: Fn(&mut E, &mut Window, &mut Context<E>) + 'static>(
         &self,
         entity: &Entity<E>,
@@ -6030,8 +5990,8 @@ impl Window {
         }
     }
 
-    /// Register a callback that can interrupt the closing of the current window based the returned boolean.
-    /// If the callback returns false, the window won't be closed.
+    /// 注册一个回调，可以根据返回的布尔值中断当前窗口的关闭。
+    /// 如果回调返回 false，窗口将不会被关闭。
     pub fn on_window_should_close(
         &self,
         cx: &App,
@@ -6043,14 +6003,13 @@ impl Window {
         }))
     }
 
-    /// Register an action listener on this node for the next frame. The type of action
-    /// is determined by the first parameter of the given listener. When the next frame is rendered
-    /// the listener will be cleared.
+    /// 在此节点上注册下一帧的操作监听器。操作类型
+    /// 由给定监听器的第一个参数决定。当下一帧渲染时
+    /// 监听器将被清除。
     ///
-    /// This is a fairly low-level method, so prefer using action handlers on elements unless you have
-    /// a specific need to register a listener yourself.
+    /// 这是一个相当底层的方法，除非你有自己注册监听器的特定需求，否则优先使用元素上的操作处理程序。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn on_action(
         &mut self,
         action_type: TypeId,
@@ -6063,14 +6022,13 @@ impl Window {
             .on_action(action_type, Rc::new(listener));
     }
 
-    /// Register a capturing action listener on this node for the next frame if the condition is true.
-    /// The type of action is determined by the first parameter of the given listener. When the next
-    /// frame is rendered the listener will be cleared.
+    /// 如果条件为真，在此节点上注册下一帧的捕获操作监听器。
+    /// 操作类型由给定监听器的第一个参数决定。当下一帧
+    /// 渲染时监听器将被清除。
     ///
-    /// This is a fairly low-level method, so prefer using action handlers on elements unless you have
-    /// a specific need to register a listener yourself.
+    /// 这是一个相当底层的方法，除非你有自己注册监听器的特定需求，否则优先使用元素上的操作处理程序。
     ///
-    /// This method should only be called as part of the paint phase of element drawing.
+    /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
     pub fn on_action_when(
         &mut self,
         condition: bool,
@@ -6086,92 +6044,92 @@ impl Window {
         }
     }
 
-    /// Read information about the GPU backing this window.
-    /// Currently returns None on Mac and Windows.
+    /// 读取支持此窗口的 GPU 的信息。
+    /// 目前在 Mac 和 Windows 上返回 None。
     pub fn gpu_specs(&self) -> Option<GpuSpecs> {
         self.platform_window.gpu_specs()
     }
 
-    /// Perform titlebar double-click action.
-    /// This is macOS specific.
+    /// 执行标题栏双击操作。
+    /// 这是 macOS 特定的。
     pub fn titlebar_double_click(&self) {
         self.platform_window
             .titlebar_double_click(self.is_resizable, self.is_minimizable);
     }
 
-    /// Gets the window's title at the platform level.
-    /// This is macOS specific.
+    /// 在平台级别获取窗口的标题。
+    /// 这是 macOS 特定的。
     pub fn window_title(&self) -> String {
         self.platform_window.get_title()
     }
 
-    /// Returns a list of all tabbed windows and their titles.
-    /// This is macOS specific.
+    /// 返回所有标签窗口及其标题的列表。
+    /// 这是 macOS 特定的。
     pub fn tabbed_windows(&self) -> Option<Vec<SystemWindowTab>> {
         self.platform_window.tabbed_windows()
     }
 
-    /// Returns the tab bar visibility.
-    /// This is macOS specific.
+    /// 返回标签栏的可见性。
+    /// 这是 macOS 特定的。
     pub fn tab_bar_visible(&self) -> bool {
         self.platform_window.tab_bar_visible()
     }
 
-    /// Merges all open windows into a single tabbed window.
-    /// This is macOS specific.
+    /// 将所有打开的窗口合并到一个标签窗口中。
+    /// 这是 macOS 特定的。
     pub fn merge_all_windows(&self) {
         self.platform_window.merge_all_windows()
     }
 
-    /// Moves the tab to a new containing window.
-    /// This is macOS specific.
+    /// 将标签移动到新的包含窗口。
+    /// 这是 macOS 特定的。
     pub fn move_tab_to_new_window(&self) {
         self.platform_window.move_tab_to_new_window()
     }
 
-    /// Shows or hides the window tab overview.
-    /// This is macOS specific.
+    /// 显示或隐藏窗口标签概览。
+    /// 这是 macOS 特定的。
     pub fn toggle_window_tab_overview(&self) {
         self.platform_window.toggle_window_tab_overview()
     }
 
-    /// Sets the tabbing identifier for the window.
-    /// This is macOS specific.
+    /// 设置窗口的标签标识符。
+    /// 这是 macOS 特定的。
     pub fn set_tabbing_identifier(&self, tabbing_identifier: Option<String>) {
         self.platform_window
             .set_tabbing_identifier(tabbing_identifier)
     }
 
-    /// Request the OS to play an alert sound. On some platforms this is associated
-    /// with the window, for others it's just a simple global function call.
+    /// 请求操作系统播放警报声音。在某些平台上，这与
+    /// 窗口关联，对于其他平台则只是一个简单的全局函数调用。
     pub fn play_system_bell(&self) {
         self.platform_window.play_system_bell()
     }
 
-    /// Returns whether accessibility features are active for this frame,
-    /// i.e. whether assistive technology (such as a screen reader) is
-    /// connected and an accessibility tree is being built.
+    /// 返回此帧的辅助功能是否处于活动状态，
+    /// 即辅助技术（如屏幕阅读器）是否
+    /// 已连接并正在构建辅助功能树。
     ///
-    /// Use this to skip computing data during rendering that is only
-    /// observable through the accessibility tree. When accessibility is
-    /// activated, a redraw is forced, so gated work is recomputed before the
-    /// next tree update is sent to the platform.
+    /// 使用此方法跳过渲染期间仅
+    /// 通过辅助功能树可观察到的数据计算。当辅助功能
+    /// 被激活时，会强制重绘，因此门控工作会在
+    /// 下一次树更新发送到平台之前重新计算。
     ///
-    /// See the [accessibility guide](crate::_accessibility) for an overview.
+    /// 参见[辅助功能指南](crate::_accessibility)了解概述。
     pub fn is_a11y_active(&self) -> bool {
         self.a11y.is_active()
     }
 
-    /// Debug representation of the last frame's accessibility information.
+    /// 上一帧辅助功能信息的调试表示。
     pub fn debug_a11y_tree_json(&self) -> Option<String> {
         self.a11y.debug_tree_json()
     }
 
-    /// Register a listener for an accessibility action on a specific node.
-    /// The listener will be called when a screen reader requests the given
-    /// action on the node identified by `node_id`.
+    /// 为特定节点上的辅助功能操作注册监听器。
+    /// 当屏幕阅读器请求给定操作时，将调用
+    /// 由 `node_id` 标识的节点上的操作。
     ///
-    /// See the [accessibility guide](crate::_accessibility) for an overview.
+    /// 参见[辅助功能指南](crate::_accessibility)了解概述。
     pub fn on_a11y_action(
         &mut self,
         node_id: accesskit::NodeId,
@@ -6248,7 +6206,7 @@ impl Window {
         }
     }
 
-    /// Toggles the inspector mode on this window.
+    /// 切换此窗口的检查器模式。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub fn toggle_inspector(&mut self, cx: &mut App) {
         self.inspector = match self.inspector {
@@ -6258,7 +6216,7 @@ impl Window {
         self.refresh();
     }
 
-    /// Returns true if the window is in inspector mode.
+    /// 如果窗口处于检查器模式则返回 true。
     pub fn is_inspector_picking(&self, _cx: &App) -> bool {
         #[cfg(any(feature = "inspector", debug_assertions))]
         {
@@ -6269,7 +6227,7 @@ impl Window {
         false
     }
 
-    /// Executes the provided function with mutable access to an inspector state.
+    /// 使用对检查器状态的可变访问执行提供的函数。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub fn with_inspector_state<T: 'static, R>(
         &mut self,
@@ -6332,8 +6290,8 @@ impl Window {
         };
     }
 
-    /// Registers a hitbox that can be used for inspector picking mode, allowing users to select and
-    /// inspect UI elements by clicking on them.
+    /// 注册一个可用于检查器拾取模式的 hitbox，允许用户
+    /// 通过点击来选择和检查 UI 元素。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub fn insert_inspector_hitbox(
         &mut self,
@@ -6437,16 +6395,16 @@ impl Window {
         None
     }
 
-    /// For testing: set the current modifier keys state.
-    /// This does not generate any events.
+    /// 用于测试：设置当前修饰键状态。
+    /// 这不会生成任何事件。
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_modifiers(&mut self, modifiers: Modifiers) {
         self.modifiers = modifiers;
     }
 
-    /// For testing: simulate a mouse move event to the given position.
-    /// This dispatches the event through the normal event handling path,
-    /// which will trigger hover states and tooltips.
+    /// 用于测试：模拟鼠标移动事件到给定位置。
+    /// 这通过正常的事件处理路径分发事件，
+    /// 这将触发悬停状态和工具提示。
     #[cfg(any(test, feature = "test-support"))]
     pub fn simulate_mouse_move(&mut self, position: Point<Pixels>, cx: &mut App) {
         let event = PlatformInput::MouseMove(MouseMoveEvent {
@@ -6460,12 +6418,12 @@ impl Window {
 
 // #[derive(Clone, Copy, Eq, PartialEq, Hash)]
 slotmap::new_key_type! {
-    /// A unique identifier for a window.
+    /// 窗口的唯一标识符。
     pub struct WindowId;
 }
 
 impl WindowId {
-    /// Converts this window ID to a `u64`.
+    /// 将此窗口 ID 转换为 `u64`。
     pub fn as_u64(&self) -> u64 {
         self.0.as_ffi()
     }
@@ -6477,8 +6435,8 @@ impl From<u64> for WindowId {
     }
 }
 
-/// A handle to a window with a specific root view type.
-/// Note that this does not keep the window alive on its own.
+    /// 具有特定根视图类型的窗口句柄。
+    /// 注意这不会单独保持窗口存活。
 #[derive(Deref, DerefMut)]
 pub struct WindowHandle<V> {
     #[deref]
@@ -6496,8 +6454,8 @@ impl<V> Debug for WindowHandle<V> {
 }
 
 impl<V: 'static + Render> WindowHandle<V> {
-    /// Creates a new handle from a window ID.
-    /// This does not check if the root type of the window is `V`.
+    /// 从窗口 ID 创建新句柄。
+    /// 这不会检查窗口的根类型是否为 `V`。
     pub fn new(id: WindowId) -> Self {
         WindowHandle {
             any_handle: AnyWindowHandle {
@@ -6508,9 +6466,9 @@ impl<V: 'static + Render> WindowHandle<V> {
         }
     }
 
-    /// Get the root view out of this window.
+    /// 从此窗口获取根视图。
     ///
-    /// This will fail if the window is closed or if the root view's type does not match `V`.
+    /// 如果窗口已关闭或根视图的类型与 `V` 不匹配，这将失败。
     #[cfg(any(test, feature = "test-support"))]
     pub fn root<C>(&self, cx: &mut C) -> Result<Entity<V>>
     where
@@ -6522,9 +6480,9 @@ impl<V: 'static + Render> WindowHandle<V> {
         })?
     }
 
-    /// Updates the root view of this window.
+    /// 更新此窗口的根视图。
     ///
-    /// This will fail if the window has been closed or if the root view's type does not match
+    /// 如果窗口已关闭或根视图的类型不匹配，这将失败
     pub fn update<C, R>(
         &self,
         cx: &mut C,
@@ -6541,9 +6499,9 @@ impl<V: 'static + Render> WindowHandle<V> {
         })?
     }
 
-    /// Read the root view out of this window.
+    /// 从此窗口读取根视图。
     ///
-    /// This will fail if the window is closed or if the root view's type does not match `V`.
+    /// 如果窗口已关闭或根视图的类型与 `V` 不匹配，这将失败。
     pub fn read<'a>(&self, cx: &'a App) -> Result<&'a V> {
         let x = cx
             .windows
@@ -6560,9 +6518,9 @@ impl<V: 'static + Render> WindowHandle<V> {
         Ok(x.read(cx))
     }
 
-    /// Read the root view out of this window, with a callback
+    /// 通过回调从此窗口读取根视图
     ///
-    /// This will fail if the window is closed or if the root view's type does not match `V`.
+    /// 如果窗口已关闭或根视图的类型与 `V` 不匹配，这将失败。
     pub fn read_with<C, R>(&self, cx: &C, read_with: impl FnOnce(&V, &App) -> R) -> Result<R>
     where
         C: AppContext,
@@ -6570,9 +6528,9 @@ impl<V: 'static + Render> WindowHandle<V> {
         cx.read_window(self, |root_view, cx| read_with(root_view.read(cx), cx))
     }
 
-    /// Read the root view pointer off of this window.
+    /// 从此窗口读取根视图指针。
     ///
-    /// This will fail if the window is closed or if the root view's type does not match `V`.
+    /// 如果窗口已关闭或根视图的类型与 `V` 不匹配，这将失败。
     pub fn entity<C>(&self, cx: &C) -> Result<Entity<V>>
     where
         C: AppContext,
@@ -6580,10 +6538,10 @@ impl<V: 'static + Render> WindowHandle<V> {
         cx.read_window(self, |root_view, _cx| root_view)
     }
 
-    /// Check if this window is 'active'.
+    /// 检查此窗口是否为"活动"状态。
     ///
-    /// Will return `None` if the window is closed or currently
-    /// borrowed.
+    /// 如果窗口已关闭或当前
+    /// 被借用，将返回 `None`。
     pub fn is_active(&self, cx: &mut App) -> Option<bool> {
         cx.update_window(self.any_handle, |_, window, _| window.is_window_active())
             .ok()
@@ -6618,7 +6576,7 @@ impl<V: 'static> From<WindowHandle<V>> for AnyWindowHandle {
     }
 }
 
-/// A handle to a window with any root view type, which can be downcast to a window with a specific root view type.
+    /// 具有任意根视图类型的窗口句柄，可以向下转型为具有特定根视图类型的窗口。
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct AnyWindowHandle {
     pub(crate) id: WindowId,
@@ -6626,13 +6584,13 @@ pub struct AnyWindowHandle {
 }
 
 impl AnyWindowHandle {
-    /// Get the ID of this window.
+    /// 获取此窗口的 ID。
     pub fn window_id(&self) -> WindowId {
         self.id
     }
 
-    /// Attempt to convert this handle to a window handle with a specific root view type.
-    /// If the types do not match, this will return `None`.
+    /// 尝试将此句柄转换为具有特定根视图类型的窗口句柄。
+    /// 如果类型不匹配，将返回 `None`。
     pub fn downcast<T: 'static>(&self) -> Option<WindowHandle<T>> {
         if TypeId::of::<T>() == self.state_type {
             Some(WindowHandle {
@@ -6644,9 +6602,9 @@ impl AnyWindowHandle {
         }
     }
 
-    /// Updates the state of the root view of this window.
+    /// 更新此窗口根视图的状态。
     ///
-    /// This will fail if the window has been closed.
+    /// 如果窗口已关闭，这将失败。
     pub fn update<C, R>(
         self,
         cx: &mut C,
@@ -6658,9 +6616,9 @@ impl AnyWindowHandle {
         cx.update_window(self, update)
     }
 
-    /// Read the state of the root view of this window.
+    /// 读取此窗口根视图的状态。
     ///
-    /// This will fail if the window has been closed.
+    /// 如果窗口已关闭，这将失败。
     pub fn read<T, C, R>(self, cx: &C, read: impl FnOnce(Entity<T>, &App) -> R) -> Result<R>
     where
         C: AppContext,
@@ -6688,36 +6646,35 @@ impl HasDisplayHandle for Window {
     }
 }
 
-/// An identifier for an [`Element`].
+/// [`Element`] 的标识符。
 ///
-/// Can be constructed with a string, a number, or both, as well
-/// as other internal representations.
+/// 可以用字符串、数字或两者构造，以及其他内部表示。
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ElementId {
-    /// The ID of a View element
+    /// 视图元素的 ID
     View(EntityId),
-    /// An integer ID.
+    /// 整数 ID。
     Integer(u64),
-    /// A string based ID.
+    /// 基于字符串的 ID。
     Name(SharedString),
-    /// A UUID.
+    /// UUID。
     Uuid(Uuid),
-    /// An ID that's equated with a focus handle.
+    /// 与焦点句柄等同的 ID。
     FocusHandle(FocusId),
-    /// A combination of a name and an integer.
+    /// 名称和整数的组合。
     NamedInteger(SharedString, u64),
-    /// A path.
+    /// 路径。
     Path(Arc<std::path::Path>),
-    /// A code location.
+    /// 代码位置。
     CodeLocation(core::panic::Location<'static>),
-    /// A labeled child of an element.
+    /// 元素的带标签子元素。
     NamedChild(Arc<ElementId>, SharedString),
-    /// A byte array ID (used for text-anchors)
+    /// 字节数组 ID（用于文本锚点）
     OpaqueId([u8; 20]),
 }
 
 impl ElementId {
-    /// Constructs an `ElementId::NamedInteger` from a name and `usize`.
+    /// 从名称和 `usize` 构造 `ElementId::NamedInteger`。
     pub fn named_usize(name: impl Into<SharedString>, integer: usize) -> ElementId {
         Self::NamedInteger(name.into(), integer as u64)
     }
@@ -6856,26 +6813,26 @@ impl From<[u8; 20]> for ElementId {
     }
 }
 
-/// A rectangle to be rendered in the window at the given position and size.
-/// Passed as an argument [`Window::paint_quad`].
+    /// 在窗口中以给定位置和大小渲染的矩形。
+    /// 作为参数传递给 [`Window::paint_quad`]。
 #[derive(Clone, Default)]
 pub struct PaintQuad {
-    /// The bounds of the quad within the window.
+    /// 四边形在窗口中的边界。
     pub bounds: Bounds<Pixels>,
-    /// The radii of the quad's corners.
+    /// 四边形的圆角半径。
     pub corner_radii: Corners<Pixels>,
-    /// The background color of the quad.
+    /// 四边形的背景颜色。
     pub background: Background,
-    /// The widths of the quad's borders.
+    /// 四边形的边框宽度。
     pub border_widths: Edges<Pixels>,
-    /// The color of the quad's borders.
+    /// 四边形的边框颜色。
     pub border_color: Hsla,
-    /// The style of the quad's borders.
+    /// 四边形的边框样式。
     pub border_style: BorderStyle,
 }
 
 impl PaintQuad {
-    /// Sets the corner radii of the quad.
+    /// 设置四边形的圆角半径。
     pub fn corner_radii(self, corner_radii: impl Into<Corners<Pixels>>) -> Self {
         PaintQuad {
             corner_radii: corner_radii.into(),
@@ -6883,7 +6840,7 @@ impl PaintQuad {
         }
     }
 
-    /// Sets the border widths of the quad.
+    /// 设置四边形的边框宽度。
     pub fn border_widths(self, border_widths: impl Into<Edges<Pixels>>) -> Self {
         PaintQuad {
             border_widths: border_widths.into(),
@@ -6891,7 +6848,7 @@ impl PaintQuad {
         }
     }
 
-    /// Sets the border color of the quad.
+    /// 设置四边形的边框颜色。
     pub fn border_color(self, border_color: impl Into<Hsla>) -> Self {
         PaintQuad {
             border_color: border_color.into(),
@@ -6899,7 +6856,7 @@ impl PaintQuad {
         }
     }
 
-    /// Sets the background color of the quad.
+    /// 设置四边形的背景颜色。
     pub fn background(self, background: impl Into<Background>) -> Self {
         PaintQuad {
             background: background.into(),
@@ -6908,7 +6865,7 @@ impl PaintQuad {
     }
 }
 
-/// Creates a quad with the given parameters.
+    /// 使用给定参数创建四边形。
 pub fn quad(
     bounds: Bounds<Pixels>,
     corner_radii: impl Into<Corners<Pixels>>,
@@ -6927,7 +6884,7 @@ pub fn quad(
     }
 }
 
-/// Creates a filled quad with the given bounds and background color.
+    /// 使用给定边界和背景颜色创建填充四边形。
 pub fn fill(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Background>) -> PaintQuad {
     PaintQuad {
         bounds: bounds.into(),
@@ -6939,7 +6896,7 @@ pub fn fill(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Background>
     }
 }
 
-/// Creates a rectangle outline with the given bounds, border color, and a 1px border width
+    /// 使用给定边界、边框颜色和 1px 边框宽度创建矩形轮廓
 pub fn outline(
     bounds: impl Into<Bounds<Pixels>>,
     border_color: impl Into<Hsla>,
@@ -6998,11 +6955,11 @@ mod tests {
         }
     }
 
-    /// Opening a window synchronously draws it and requests an element arena
-    /// clear. When that happens from within another window's draw (here: from
-    /// an element's paint), the clear must be deferred until the outer draw
-    /// finishes, or the outer draw's arena-allocated elements would be freed
-    /// out from under it.
+    /// 打开窗口会同步绘制并请求一个元素 arena
+    /// 清理。当在另一个窗口的绘制中发生时（此处：来自
+    /// 元素的绘制），清理必须延迟到外层绘制
+    /// 完成，否则外层绘制的 arena 分配的元素将被
+    /// 释放。
     #[test]
     fn test_window_opened_during_draw_defers_arena_clear() {
         let mut cx = TestAppContext::single();
@@ -7102,9 +7059,9 @@ mod tests {
         }
     }
 
-    /// When a focus listener moves focus again (e.g. a dock forwarding focus to its
-    /// active panel), the resulting focus events must be dispatched without waiting
-    /// for an unrelated redraw of the window.
+    /// 当焦点监听器再次移动焦点时（例如停靠栏将焦点转发到其
+    /// 活动面板），产生的焦点事件必须在不等待
+    /// 不相关的窗口重绘的情况下分发。
     #[rgpui::test]
     fn test_focus_moved_by_focus_listener_is_dispatched(cx: &mut TestAppContext) {
         let b_focus_count = Rc::new(Cell::new(0));

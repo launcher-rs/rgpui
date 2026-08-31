@@ -6,7 +6,7 @@
 //!
 //! Or on Linux: `cargo run -p rgpui --features rgpui_platform/wayland,rgpui_platform/x11 --example a11y`
 //!
-//! This app uses GPUI's accessibility APIs to attach structured information to
+//! This app uses RGPUI's accessibility APIs to attach structured information to
 //! the element tree, which allows assistive technology to see and interact with
 //! the UI programmatically.
 //!

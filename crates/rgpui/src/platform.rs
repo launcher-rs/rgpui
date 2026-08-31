@@ -2,7 +2,7 @@ mod app_menu;
 mod keyboard;
 mod keystroke;
 
-/// Types for configuring parent-anchored popup windows such as menus, dropdowns and tooltips.
+/// 用于配置父窗口锚定弹出窗口的类型，如下拉菜单、弹出菜单和工具提示。
 pub mod popup;
 
 #[cfg(all(
@@ -98,8 +98,8 @@ pub use threaded_dispatcher::ThreadedDispatcher;
 pub use visual_test::VisualTestPlatform;
 
 // TODO(jk): return an enum instead of a string
-/// Return which compositor we're guessing we'll use.
-/// Does not attempt to connect to the given compositor.
+/// 返回当前使用的合成器名称（猜测），
+/// 不会尝试连接到指定的合成器。
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 #[inline]
 pub fn guess_compositor() -> &'static str {
@@ -622,26 +622,25 @@ pub trait Platform: 'static {
     fn authenticate_biometric(&self, _reason: &str, _callback: Box<dyn FnOnce(bool)>) {}
 }
 
-/// A handle to a platform's display, e.g. a monitor or laptop screen.
+/// 平台显示器句柄，代表一个物理显示器或笔记本屏幕。
 pub trait PlatformDisplay: Debug {
-    /// Get the ID for this display
+    /// 获取显示器 ID。
     fn id(&self) -> DisplayId;
 
-    /// Returns a stable identifier for this display that can be persisted and used
-    /// across system restarts.
+    /// 返回显示器的持久化唯一标识符，可在系统重启后继续使用。
     fn uuid(&self) -> Result<Uuid>;
 
-    /// Get the bounds for this display
+    /// 获取显示器的边界区域（包含任务栏/Dock 区域）。
     fn bounds(&self) -> Bounds<Pixels>;
 
-    /// Get the visible bounds for this display, excluding taskbar/dock areas.
-    /// This is the usable area where windows can be placed without being obscured.
-    /// Defaults to the full display bounds if not overridden.
+    /// 获取显示器的可见边界区域（排除任务栏/Dock 区域）。
+    /// 这是可放置窗口且不会被遮挡的可用区域。
+    /// 未覆盖时默认返回完整显示器边界。
     fn visible_bounds(&self) -> Bounds<Pixels> {
         self.bounds()
     }
 
-    /// Get the default bounds for this display to place a window
+    /// 获取显示器的默认窗口放置区域。
     fn default_bounds(&self) -> Bounds<Pixels> {
         let bounds = self.bounds();
         let center = bounds.center();
@@ -653,39 +652,38 @@ pub trait PlatformDisplay: Debug {
     }
 }
 
-/// Thermal state of the system
+/// 系统热状态
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThermalState {
-    /// System has no thermal constraints
+    /// 系统无热限制
     Nominal,
-    /// System is slightly constrained, reduce discretionary work
+    /// 系统轻微受限，应减少非必要工作
     Fair,
-    /// System is moderately constrained, reduce CPU/GPU intensive work
+    /// 系统中度受限，应减少 CPU/GPU 密集型工作
     Serious,
-    /// System is critically constrained, minimize all resource usage
+    /// 系统严重受限，应最小化所有资源使用
     Critical,
 }
 
-/// Metadata for a given [ScreenCaptureSource]
+/// 屏幕捕获源的元数据
 #[derive(Clone)]
 pub struct SourceMetadata {
-    /// Opaque identifier of this screen.
+    /// 屏幕的不透明标识符。
     pub id: u64,
-    /// Human-readable label for this source.
+    /// 人类可读的源标签。
     pub label: Option<SharedString>,
-    /// Whether this source is the main display.
+    /// 该源是否为主显示器。
     pub is_main: Option<bool>,
-    /// Video resolution of this source.
+    /// 该源的视频分辨率。
     pub resolution: Size<DevicePixels>,
 }
 
-/// A source of on-screen video content that can be captured.
+/// 可被捕获的屏幕视频内容源。
 pub trait ScreenCaptureSource {
-    /// Returns metadata for this source.
+    /// 返回该源的元数据。
     fn metadata(&self) -> Result<SourceMetadata>;
 
-    /// Start capture video from this source, invoking the given callback
-    /// with each frame.
+    /// 开始从该源捕获视频，每帧调用给定的回调函数。
     fn stream(
         &self,
         foreground_executor: &ForegroundExecutor,
@@ -693,13 +691,13 @@ pub trait ScreenCaptureSource {
     ) -> oneshot::Receiver<Result<Box<dyn ScreenCaptureStream>>>;
 }
 
-/// A video stream captured from a screen.
+/// 从屏幕捕获的视频流。
 pub trait ScreenCaptureStream {
-    /// Returns metadata for this source.
+    /// 返回该源的元数据。
     fn metadata(&self) -> Result<SourceMetadata>;
 }
 
-/// A frame of video captured from a screen.
+/// 从屏幕捕获的视频帧。
 pub struct ScreenCaptureFrame(pub PlatformScreenCaptureFrame);
 
 #[cfg(all(
@@ -884,12 +882,12 @@ impl ScreenCaptureFrame {
     }
 }
 
-/// An opaque identifier for a hardware display
+/// 硬件显示器的不透明标识符
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
 pub struct DisplayId(pub(crate) u64);
 
 impl DisplayId {
-    /// Create a new `DisplayId` from a raw platform display identifier.
+    /// 从原始平台显示器标识符创建新的 `DisplayId`。
     pub fn new(id: u64) -> Self {
         Self(id)
     }
@@ -913,66 +911,66 @@ impl Debug for DisplayId {
     }
 }
 
-/// Which part of the window to resize
+/// 窗口调整大小的边缘方向
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResizeEdge {
-    /// The top edge
+    /// 上边缘
     Top,
-    /// The top right corner
+    /// 右上角
     TopRight,
-    /// The right edge
+    /// 右边缘
     Right,
-    /// The bottom right corner
+    /// 右下角
     BottomRight,
-    /// The bottom edge
+    /// 下边缘
     Bottom,
-    /// The bottom left corner
+    /// 左下角
     BottomLeft,
-    /// The left edge
+    /// 左边缘
     Left,
-    /// The top left corner
+    /// 左上角
     TopLeft,
 }
 
-/// A type to describe the appearance of a window
+/// 描述窗口外观类型的枚举
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Default)]
 pub enum WindowDecorations {
     #[default]
-    /// Server side decorations
+    /// 服务端装饰
     Server,
-    /// Client side decorations
+    /// 客户端装饰
     Client,
 }
 
-/// A type to describe how this window is currently configured
+/// 描述窗口当前装饰配置的类型
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Default)]
 pub enum Decorations {
-    /// The window is configured to use server side decorations
+    /// 窗口配置为使用服务端装饰
     #[default]
     Server,
-    /// The window is configured to use client side decorations
+    /// 窗口配置为使用客户端装饰
     Client {
-        /// The edge tiling state
+        /// 边缘平铺状态
         tiling: Tiling,
     },
 }
 
-/// What window controls this platform supports
+/// 平台支持的窗口控件
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct WindowControls {
-    /// Whether this platform supports fullscreen
+    /// 该平台是否支持全屏
     pub fullscreen: bool,
-    /// Whether this platform supports maximize
+    /// 该平台是否支持最大化
     pub maximize: bool,
-    /// Whether this platform supports minimize
+    /// 该平台是否支持最小化
     pub minimize: bool,
-    /// Whether this platform supports a window menu
+    /// 该平台是否支持窗口菜单
     pub window_menu: bool,
 }
 
 impl Default for WindowControls {
     fn default() -> Self {
-        // Assume that we can do anything, unless told otherwise
+        // 默认假设所有功能都可用，除非另有说明
         Self {
             fullscreen: true,
             maximize: true,
@@ -982,19 +980,19 @@ impl Default for WindowControls {
     }
 }
 
-/// A window control button type used in [`WindowButtonLayout`].
+/// [`WindowButtonLayout`] 中使用的窗口控制按钮类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WindowButton {
-    /// The minimize button
+    /// 最小化按钮
     Minimize,
-    /// The maximize button
+    /// 最大化按钮
     Maximize,
-    /// The close button
+    /// 关闭按钮
     Close,
 }
 
 impl WindowButton {
-    /// Returns a stable element ID for rendering this button.
+    /// 返回该按钮渲染时使用的稳定元素 ID。
     pub fn id(&self) -> &'static str {
         match self {
             WindowButton::Minimize => "minimize",
@@ -1013,24 +1011,24 @@ impl WindowButton {
     }
 }
 
-/// Maximum number of [`WindowButton`]s per side in the titlebar.
+/// 标题栏每侧最大的 [`WindowButton`] 数量。
 pub const MAX_BUTTONS_PER_SIDE: usize = 3;
 
-/// Describes which [`WindowButton`]s appear on each side of the titlebar.
+/// 描述标题栏每侧出现的 [`WindowButton`]。
 ///
-/// On Linux, this is read from the desktop environment's configuration
-/// (e.g. GNOME's `gtk-decoration-layout` gsetting) via [`WindowButtonLayout::parse`].
+/// 在 Linux 上，此配置从桌面环境的配置中读取
+/// （例如 GNOME 的 `gtk-decoration-layout` gsetting），通过 [`WindowButtonLayout::parse`] 解析。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WindowButtonLayout {
-    /// Buttons on the left side of the titlebar.
+    /// 标题栏左侧的按钮。
     pub left: [Option<WindowButton>; MAX_BUTTONS_PER_SIDE],
-    /// Buttons on the right side of the titlebar.
+    /// 标题栏右侧的按钮。
     pub right: [Option<WindowButton>; MAX_BUTTONS_PER_SIDE],
 }
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 impl WindowButtonLayout {
-    /// Returns Zed's built-in fallback button layout for Linux titlebars.
+    /// 返回 Zed 内置的 Linux 标题栏回退按钮布局。
     pub fn linux_default() -> Self {
         Self {
             left: [None; MAX_BUTTONS_PER_SIDE],
@@ -1042,7 +1040,7 @@ impl WindowButtonLayout {
         }
     }
 
-    /// Parses a GNOME-style `button-layout` string (e.g. `"close,minimize:maximize"`).
+    /// 解析 GNOME 风格的 `button-layout` 字符串（如 `"close,minimize:maximize"`）。
     pub fn parse(layout_string: &str) -> Result<Self> {
         fn parse_side(
             s: &str,
@@ -1101,7 +1099,7 @@ impl WindowButtonLayout {
         Ok(layout)
     }
 
-    /// Formats the layout back into a GNOME-style `button-layout` string.
+    /// 将布局格式化为 GNOME 风格的 `button-layout` 字符串。
     #[cfg(test)]
     pub fn format(&self) -> String {
         fn format_side(buttons: &[Option<WindowButton>; MAX_BUTTONS_PER_SIDE]) -> String {
@@ -1121,21 +1119,21 @@ impl WindowButtonLayout {
     }
 }
 
-/// A type to describe which sides of the window are currently tiled in some way
+/// 描述窗口各边当前的平铺状态
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Default)]
 pub struct Tiling {
-    /// Whether the top edge is tiled
+    /// 上边缘是否平铺
     pub top: bool,
-    /// Whether the left edge is tiled
+    /// 左边缘是否平铺
     pub left: bool,
-    /// Whether the right edge is tiled
+    /// 右边缘是否平铺
     pub right: bool,
-    /// Whether the bottom edge is tiled
+    /// 下边缘是否平铺
     pub bottom: bool,
 }
 
 impl Tiling {
-    /// Initializes a [`Tiling`] type with all sides tiled
+    /// 创建一个所有边都平铺的 [`Tiling`] 实例。
     pub fn tiled() -> Self {
         Self {
             top: true,
@@ -1145,19 +1143,19 @@ impl Tiling {
         }
     }
 
-    /// Whether any edge is tiled
+    /// 是否有任何边缘处于平铺状态
     pub fn is_tiled(&self) -> bool {
         self.top || self.left || self.right || self.bottom
     }
 }
 
-/// Callbacks for the accessibility adapter.
+/// 辅助功能适配器的回调函数。
 pub struct A11yCallbacks {
-    /// Called when the adapter is activated (a screen reader connects).
+    /// 适配器被激活时调用（屏幕阅读器连接）。
     pub activation: Box<dyn Fn() -> Option<accesskit::TreeUpdate> + Send + 'static>,
-    /// Called when an action is requested by the screen reader.
+    /// 屏幕阅读器请求操作时调用。
     pub action: Box<dyn Fn(accesskit::ActionRequest) + Send + 'static>,
-    /// Called when the adapter is deactivated (screen reader disconnects).
+    /// 适配器被停用时调用（屏幕阅读器断开连接）。
     pub deactivation: Box<dyn Fn() + Send + 'static>,
 }
 
@@ -1433,7 +1431,7 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn set_text_content_type(&self, _content_type: Option<&'static str>) {}
 }
 
-/// A renderer for headless windows that can produce real rendered output.
+/// 无头窗口渲染器，可生成真实渲染输出。
 #[cfg(any(test, feature = "test-support"))]
 pub trait PlatformHeadlessRenderer {
     /// 渲染场景并作为 RGBA 图像返回结果
@@ -1452,8 +1450,8 @@ pub trait PlatformHeadlessRenderer {
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas>;
 }
 
-/// Type alias for runnables with metadata.
-/// Previously an enum with a single variant, now simplified to a direct type alias.
+/// 带元数据的可运行任务类型别名。
+/// 之前是单变体枚举，现在简化为直接类型别名。
 #[doc(hidden)]
 pub type RunnableVariant = Runnable<RunnableMeta>;
 
@@ -1466,8 +1464,7 @@ pub enum TasksIncluded {
     CompletedAndRunning,
 }
 
-/// This type is public so that our test macro can generate and use it, but it should not
-/// be considered part of our public API.
+/// 此类型公开是为了测试宏可以生成和使用它，但不应视为公共 API 的一部分。
 #[doc(hidden)]
 pub trait PlatformDispatcher: Send + Sync {
     fn is_main_thread(&self) -> bool;
@@ -1504,32 +1501,32 @@ pub trait PlatformDispatcher: Send + Sync {
 pub trait PlatformTextSystem: Send + Sync {
     /// 加载指定的字体数据（TTF/OTF 字节流）。
     fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()>;
-    /// Get all available font names.
+    /// 获取所有可用的字体名称。
     fn all_font_names(&self) -> Vec<String>;
-    /// Get the font ID for a font descriptor.
+    /// 根据字体描述符获取字体 ID。
     fn font_id(&self, descriptor: &Font) -> Result<FontId>;
-    /// Get metrics for a font.
+    /// 获取字体的度量信息。
     fn font_metrics(&self, font_id: FontId) -> FontMetrics;
-    /// Get typographic bounds for a glyph.
+    /// 获取字形的排版边界。
     fn typographic_bounds(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Bounds<f32>>;
-    /// Get the advance width for a glyph.
+    /// 获取字形的前进宽度。
     fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>>;
-    /// Get the glyph ID for a character.
+    /// 获取字符对应的字形 ID。
     fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId>;
-    /// Get raster bounds for a glyph.
+    /// 获取字形的光栅化边界。
     fn glyph_raster_bounds(&self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>>;
-    /// Rasterize a glyph.
+    /// 光栅化字形。
     fn rasterize_glyph(
         &self,
         params: &RenderGlyphParams,
         raster_bounds: Bounds<DevicePixels>,
     ) -> Result<(Size<DevicePixels>, Vec<u8>)>;
-    /// Layout a line of text with the given font runs.
+    /// 使用给定的字体运行（Font Run）排版一行文本。
     fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout;
-    /// Returns the recommended text rendering mode for the given font and size.
+    /// 返回给定字体和大小的推荐文本渲染模式。
     fn recommended_rendering_mode(&self, _font_id: FontId, _font_size: Pixels)
     -> TextRenderingMode;
-    /// Returns the dilation level to use for a glyph painted in the given color.
+    /// 返回以给定颜色绘制字形时使用的膨胀级别。
     fn glyph_dilation_for_color(&self, _color: Hsla) -> u8 {
         0
     }
@@ -1667,7 +1664,7 @@ impl PlatformTextSystem for NoopTextSystem {
 // Adapted from https://github.com/microsoft/terminal/blob/1283c0f5b99a2961673249fa77c6b986efb5086c/src/renderer/atlas/dwrite.cpp
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
-/// Compute gamma correction ratios for subpixel text rendering.
+/// 计算亚像素文本渲染的伽马校正比率。
 pub fn get_gamma_correction_ratios(gamma: f32) -> [f32; 4] {
     const GAMMA_INCORRECT_TARGET_RATIOS: [[f32; 4]; 13] = [
         [0.0000 / 4.0, 0.0000 / 4.0, 0.0000 / 4.0, 0.0000 / 4.0], // gamma = 1.0
@@ -1711,7 +1708,7 @@ pub enum AtlasKey {
 }
 
 impl AtlasKey {
-    /// Returns the texture kind for this atlas key.
+    /// 返回该图集键的纹理类型。
     pub fn texture_kind(&self) -> AtlasTextureKind {
         match self {
             AtlasKey::Glyph(params) => {
@@ -1802,13 +1799,13 @@ impl<T> AtlasTextureList<T> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct AtlasTile {
-    /// The texture this tile belongs to.
+    /// 该瓦片所属的纹理。
     pub texture_id: AtlasTextureId,
-    /// The unique ID of this tile within its texture.
+    /// 该瓦片在其纹理内的唯一 ID。
     pub tile_id: TileId,
-    /// Padding around the tile content in pixels.
+    /// 瓦片内容周围的像素边距。
     pub padding: u32,
-    /// The bounds of this tile within the texture.
+    /// 该瓦片在纹理中的边界区域。
     pub bounds: Bounds<DevicePixels>,
 }
 
@@ -1816,10 +1813,10 @@ pub struct AtlasTile {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct AtlasTextureId {
-    // We use u32 instead of usize for Metal Shader Language compatibility
-    /// The index of this texture in the atlas.
+    // 使用 u32 而非 usize 以兼容 Metal Shader Language
+    /// 该纹理在图集中的索引。
     pub index: u32,
-    /// The kind of content stored in this texture.
+    /// 该纹理中存储的内容类型。
     pub kind: AtlasTextureKind,
 }
 
@@ -2038,27 +2035,25 @@ impl PlatformInputHandler {
     }
 }
 
-/// A struct representing a selection in a text buffer, in UTF16 characters.
-/// This is different from a range because the head may be before the tail.
+/// 表示文本缓冲区中的选区，以 UTF16 字符为单位。
+/// 与 Range 不同，选区的头部可能在尾部之前。
 #[derive(Debug)]
 pub struct UTF16Selection {
-    /// The range of text in the document this selection corresponds to
-    /// in UTF16 characters.
+    /// 该选区对应的文档中文本的范围（以 UTF16 字符为单位）。
     pub range: Range<usize>,
-    /// Whether the head of this selection is at the start (true), or end (false)
-    /// of the range
+    /// 选区的头部是否在范围的起始位置（true）或结束位置（false）。
     pub reversed: bool,
 }
 
-/// Zed's interface for handling text input from the platform's IME system
-/// This is currently a 1:1 exposure of the NSTextInputClient API:
+/// Zed 的平台 IME 系统文本输入处理接口。
+/// 目前是 NSTextInputClient API 的 1:1 映射：
 ///
 /// <https://developer.apple.com/documentation/appkit/nstextinputclient>
 pub trait InputHandler: 'static {
-    /// Get the range of the user's currently selected text, if any
-    /// Corresponds to [selectedRange()](https://developer.apple.com/documentation/appkit/nstextinputclient/1438242-selectedrange)
+    /// 获取用户当前选中文本的范围（如果有）。
+    /// 对应 [selectedRange()](https://developer.apple.com/documentation/appkit/nstextinputclient/1438242-selectedrange)
     ///
-    /// Return value is in terms of UTF-16 characters, from 0 to the length of the document
+    /// 返回值以 UTF-16 字符为单位，范围从 0 到文档长度。
     fn selected_text_range(
         &mut self,
         ignore_disabled_input: bool,
@@ -2066,16 +2061,16 @@ pub trait InputHandler: 'static {
         cx: &mut App,
     ) -> Option<UTF16Selection>;
 
-    /// Get the range of the currently marked text, if any
-    /// Corresponds to [markedRange()](https://developer.apple.com/documentation/appkit/nstextinputclient/1438250-markedrange)
+    /// 获取当前标记（未确认）文本的范围（如果有）。
+    /// 对应 [markedRange()](https://developer.apple.com/documentation/appkit/nstextinputclient/1438250-markedrange)
     ///
-    /// Return value is in terms of UTF-16 characters, from 0 to the length of the document
+    /// 返回值以 UTF-16 字符为单位，范围从 0 到文档长度。
     fn marked_text_range(&mut self, window: &mut Window, cx: &mut App) -> Option<Range<usize>>;
 
-    /// Get the text for the given document range in UTF-16 characters
-    /// Corresponds to [attributedSubstring(forProposedRange: actualRange:)](https://developer.apple.com/documentation/appkit/nstextinputclient/1438238-attributedsubstring)
+    /// 获取给定文档范围内的文本（以 UTF-16 字符为单位）。
+    /// 对应 [attributedSubstring(forProposedRange: actualRange:)](https://developer.apple.com/documentation/appkit/nstextinputclient/1438238-attributedsubstring)
     ///
-    /// range_utf16 is in terms of UTF-16 characters
+    /// range_utf16 以 UTF-16 字符为单位。
     fn text_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -2084,10 +2079,10 @@ pub trait InputHandler: 'static {
         cx: &mut App,
     ) -> Option<String>;
 
-    /// Replace the text in the given document range with the given text
-    /// Corresponds to [insertText(_:replacementRange:)](https://developer.apple.com/documentation/appkit/nstextinputclient/1438258-inserttext)
+    /// 用给定文本替换文档中指定范围的文本。
+    /// 对应 [insertText(_:replacementRange:)](https://developer.apple.com/documentation/appkit/nstextinputclient/1438258-inserttext)
     ///
-    /// replacement_range is in terms of UTF-16 characters
+    /// replacement_range 以 UTF-16 字符为单位。
     fn replace_text_in_range(
         &mut self,
         replacement_range: Option<Range<usize>>,
@@ -2096,12 +2091,12 @@ pub trait InputHandler: 'static {
         cx: &mut App,
     );
 
-    /// Replace the text in the given document range with the given text,
-    /// and mark the given text as part of an IME 'composing' state
-    /// Corresponds to [setMarkedText(_:selectedRange:replacementRange:)](https://developer.apple.com/documentation/appkit/nstextinputclient/1438246-setmarkedtext)
+    /// 用给定文本替换文档中指定范围的文本，
+    /// 并将给定文本标记为 IME「组合」状态的一部分。
+    /// 对应 [setMarkedText(_:selectedRange:replacementRange:)](https://developer.apple.com/documentation/appkit/nstextinputclient/1438246-setmarkedtext)
     ///
-    /// range_utf16 is in terms of UTF-16 characters
-    /// new_selected_range is in terms of UTF-16 characters
+    /// range_utf16 以 UTF-16 字符为单位。
+    /// new_selected_range 以 UTF-16 字符为单位。
     fn replace_and_mark_text_in_range(
         &mut self,
         range_utf16: Option<Range<usize>>,
@@ -2111,14 +2106,14 @@ pub trait InputHandler: 'static {
         cx: &mut App,
     );
 
-    /// Remove the IME 'composing' state from the document
-    /// Corresponds to [unmarkText()](https://developer.apple.com/documentation/appkit/nstextinputclient/1438239-unmarktext)
+    /// 移除文档中的 IME「组合」状态。
+    /// 对应 [unmarkText()](https://developer.apple.com/documentation/appkit/nstextinputclient/1438239-unmarktext)
     fn unmark_text(&mut self, window: &mut Window, cx: &mut App);
 
-    /// Get the bounds of the given document range in screen coordinates
-    /// Corresponds to [firstRect(forCharacterRange:actualRange:)](https://developer.apple.com/documentation/appkit/nstextinputclient/1438240-firstrect)
+    /// 获取给定文档范围在屏幕坐标中的边界区域。
+    /// 对应 [firstRect(forCharacterRange:actualRange:)](https://developer.apple.com/documentation/appkit/nstextinputclient/1438240-firstrect)
     ///
-    /// This is used for positioning the IME candidate window
+    /// 用于定位 IME 候选窗口。
     fn bounds_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -2126,9 +2121,9 @@ pub trait InputHandler: 'static {
         cx: &mut App,
     ) -> Option<Bounds<Pixels>>;
 
-    /// Get the character offset for the given point in terms of UTF16 characters
+    /// 获取给定点在 UTF16 字符中的字符偏移量。
     ///
-    /// Corresponds to [characterIndexForPoint:](https://developer.apple.com/documentation/appkit/nstextinputclient/characterindex(for:))
+    /// 对应 [characterIndexForPoint:](https://developer.apple.com/documentation/appkit/nstextinputclient/characterindex(for:))
     fn character_index_for_point(
         &mut self,
         point: Point<Pixels>,
@@ -2136,32 +2131,30 @@ pub trait InputHandler: 'static {
         cx: &mut App,
     ) -> Option<usize>;
 
-    /// Allows a given input context to opt into getting raw key repeats instead of
-    /// sending these to the platform.
-    /// TODO: Ideally we should be able to set ApplePressAndHoldEnabled in NSUserDefaults
-    /// (which is how iTerm does it) but it doesn't seem to work for me.
+    /// 允许输入上下文选择接收原始按键重复，而非将其发送到平台。
+    /// TODO: 理想情况下应能通过 NSUserDefaults 设置 ApplePressAndHoldEnabled
+    /// （iTerm 就是这样做的），但目前似乎不生效。
     fn apple_press_and_hold_enabled(&mut self) -> bool {
         true
     }
 
-    /// Returns whether this handler is accepting text input to be inserted.
+    /// 返回此处理器是否接受要插入的文本输入。
     fn accepts_text_input(&mut self, _window: &mut Window, _cx: &mut App) -> bool {
         true
     }
 
-    /// Returns whether printable keys should be routed to the IME before keybinding
-    /// matching when a non-ASCII input source (e.g. Japanese, Korean, Chinese IME)
-    /// is active. This prevents multi-stroke keybindings like `jj` from intercepting
-    /// keys that the IME should compose.
+    /// 返回在非 ASCII 输入源（如日语、韩语、中文 IME）激活时，
+    /// 可打印按键是否应在按键绑定匹配之前先路由到 IME。
+    /// 这防止了 `jj` 等多击按键绑定拦截 IME 应该组合的按键。
     ///
-    /// Defaults to `false`. The editor overrides this based on whether it expects
-    /// character input (e.g. Vim insert mode returns `true`, normal mode returns `false`).
-    /// The terminal keeps the default `false` so that raw keys reach the terminal process.
+    /// 默认为 `false`。编辑器根据是否期望字符输入来覆盖此值
+    /// （例如 Vim 插入模式返回 `true`，正常模式返回 `false`）。
+    /// 终端保持默认的 `false`，以便原始按键到达终端进程。
     fn prefers_ime_for_printable_keys(&mut self, _window: &mut Window, _cx: &mut App) -> bool {
         false
     }
 
-    /// Set the selected text range in the input
+    /// 设置输入中的选中文本范围。
     fn set_selected_text_range(
         &mut self,
         _range_utf16: Range<usize>,
@@ -2170,74 +2163,74 @@ pub trait InputHandler: 'static {
     ) {
     }
 
-    /// Get the bounds of the element in screen coordinates
+    /// 获取元素在屏幕坐标中的边界区域。
     fn element_bounds(&mut self, _window: &mut Window, _cx: &mut App) -> Option<Bounds<Pixels>> {
         None
     }
 
-    /// Get the length of the text in UTF-16 characters
+    /// 获取文本的长度（以 UTF-16 字符为单位）。
     fn text_length_utf16(&mut self, _window: &mut Window, _cx: &mut App) -> Option<usize> {
         None
     }
 }
 
-/// The variables that can be configured when creating a new window
+/// 创建窗口时可配置的变量
 #[derive(Debug)]
 pub struct WindowOptions {
-    /// Specifies the state and bounds of the window in screen coordinates.
-    /// - `None`: Inherit the bounds.
-    /// - `Some(WindowBounds)`: Open a window with corresponding state and its restore size.
+    /// 指定窗口在屏幕坐标中的状态和边界。
+    /// - `None`：继承边界。
+    /// - `Some(WindowBounds)`：以对应的状态和恢复尺寸打开窗口。
     pub window_bounds: Option<WindowBounds>,
 
-    /// The titlebar configuration of the window
+    /// 窗口标题栏配置
     pub titlebar: Option<TitlebarOptions>,
 
-    /// Whether the window should be focused when created
+    /// 窗口创建时是否获取焦点
     pub focus: bool,
 
-    /// Whether the window should be shown when created
+    /// 窗口创建时是否显示
     pub show: bool,
 
-    /// The kind of window to create
+    /// 要创建的窗口类型
     pub kind: WindowKind,
 
-    /// Whether the window should be movable by the user
+    /// 窗口是否可被用户拖拽移动
     pub is_movable: bool,
 
-    /// Whether the window should be resizable by the user
+    /// 窗口是否可被用户调整大小
     pub is_resizable: bool,
 
-    /// Whether the window should be minimized by the user
+    /// 窗口是否可被用户最小化
     pub is_minimizable: bool,
 
-    /// The display to create the window on, if this is None,
-    /// the window will be created on the main display
+    /// 在哪个显示器上创建窗口，若为 None，
+    /// 则在主显示器上创建
     pub display_id: Option<DisplayId>,
 
-    /// The appearance of the window background.
+    /// 窗口背景外观。
     pub window_background: WindowBackgroundAppearance,
 
-    /// Application identifier of the window. Can by used by desktop environments to group applications together.
+    /// 窗口的应用标识符，桌面环境可用于将应用分组。
     pub app_id: Option<String>,
 
-    /// Window minimum size
+    /// 窗口最小尺寸
     pub window_min_size: Option<Size<Pixels>>,
 
-    /// Whether to use client or server side decorations. Wayland only
-    /// Note that this may be ignored.
+    /// 使用客户端还是服务端装饰。仅 Wayland。
+    /// 注意此设置可能被忽略。
     pub window_decorations: Option<WindowDecorations>,
 
-    /// Icon image (X11 only)
+    /// 图标图片（仅 X11）
     pub icon: Option<Arc<image::RgbaImage>>,
 
-    /// Tab group name, allows opening the window as a native tab on macOS 10.12+. Windows with the same tabbing identifier will be grouped together.
+    /// 标签页组名称，允许在 macOS 10.12+ 上以原生标签页方式打开窗口。具有相同 tabbing identifier 的窗口将被分组在一起。
     pub tabbing_identifier: Option<String>,
 
-    /// macOS only: 应用是否自行处理标题栏拖拽。当使用自定义标题栏时设置为 true，
+    /// macOS 专用：应用是否自行处理标题栏拖拽。当使用自定义标题栏时设置为 true，
     /// 使 AppKit 不拦截标题栏点击，由应用通过 `Window::start_window_move` 自行处理。
     pub app_owns_titlebar_drag: bool,
 
-    /// Windows/Linux: 是否启用鼠标事件穿透（点击穿透到后面的窗口）。
+    /// Windows/Linux：是否启用鼠标事件穿透（点击穿透到后面的窗口）。
     /// 用于桌面宠物、覆盖层等需要让鼠标点击穿透到下层窗口的场景。
     pub mouse_passthrough: bool,
 }
@@ -2293,16 +2286,16 @@ pub struct WindowParams {
     pub mouse_passthrough: bool,
 }
 
-/// Represents the status of how a window should be opened.
+/// 表示窗口打开时应处于的状态
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum WindowBounds {
-    /// Indicates that the window should open in a windowed state with the given bounds.
+    /// 表示窗口应以窗口化状态打开，使用给定的边界。
     Windowed(Bounds<Pixels>),
-    /// Indicates that the window should open in a maximized state.
-    /// The bounds provided here represent the restore size of the window.
+    /// 表示窗口应以最大化状态打开。
+    /// 此处提供的边界表示窗口的恢复尺寸。
     Maximized(Bounds<Pixels>),
-    /// Indicates that the window should open in fullscreen mode.
-    /// The bounds provided here represent the restore size of the window.
+    /// 表示窗口应以全屏模式打开。
+    /// 此处提供的边界表示窗口的恢复尺寸。
     Fullscreen(Bounds<Pixels>),
 }
 
@@ -2313,7 +2306,7 @@ impl Default for WindowBounds {
 }
 
 impl WindowBounds {
-    /// Retrieve the inner bounds
+    /// 获取内部边界
     pub fn get_bounds(&self) -> Bounds<Pixels> {
         match self {
             WindowBounds::Windowed(bounds) => *bounds,
@@ -2322,7 +2315,7 @@ impl WindowBounds {
         }
     }
 
-    /// Creates a new window bounds that centers the window on the screen.
+    /// 创建一个新的窗口边界，使窗口在屏幕上居中。
     pub fn centered(size: Size<Pixels>, cx: &App) -> Self {
         WindowBounds::Windowed(Bounds::centered(None, size, cx))
     }
@@ -2356,178 +2349,175 @@ impl Default for WindowOptions {
     }
 }
 
-/// The options that can be configured for a window's titlebar
+/// 窗口标题栏可配置的选项
 #[derive(Debug, Default)]
 pub struct TitlebarOptions {
-    /// The initial title of the window
+    /// 窗口的初始标题
     pub title: Option<SharedString>,
 
-    /// Should the default system titlebar be hidden to allow for a custom-drawn titlebar? (macOS and Windows only)
-    /// Refer to [`WindowOptions::window_decorations`] on Linux
+    /// 是否隐藏默认系统标题栏以使用自定义绘制的标题栏？（仅 macOS 和 Windows）
+    /// Linux 上请参见 [`WindowOptions::window_decorations`]
     pub appears_transparent: bool,
 
-    /// The position of the macOS traffic light buttons
+    /// macOS 红绿灯按钮的位置
     pub traffic_light_position: Option<Point<Pixels>>,
 }
 
-/// The kind of window to create
+/// 要创建的窗口类型
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WindowKind {
-    /// A normal application window
+    /// 普通应用窗口
     Normal,
 
-    /// A window that appears above all other windows, usually used for alerts or popups
-    /// use sparingly!
+    /// 出现在所有其他窗口上方的窗口，通常用于警告或弹出窗口。
+    /// 应谨慎使用！
     PopUp,
 
-    /// A parent-anchored, platform-native popup window for menus, comboboxes, context menus and
-    /// tooltips. Unlike [`WindowKind::PopUp`], it is positioned relative to a parent window.
+    /// 父窗口锚定的原生弹出窗口，用于菜单、组合框、上下文菜单和工具提示。
+    /// 与 [`WindowKind::PopUp`] 不同，它相对于父窗口定位。
     ///
-    /// The popup's size comes from [`WindowOptions::window_bounds`], whose origin is ignored.
-    /// See [`popup::PopupOptions`] for the placement options. Platforms without a native
-    /// implementation reject it with [`popup::PopupNotSupportedError`].
+    /// 弹出窗口的大小来自 [`WindowOptions::window_bounds`]，其原点被忽略。
+    /// 参见 [`popup::PopupOptions`] 了解放置选项。没有原生实现的平台
+    /// 会以 [`popup::PopupNotSupportedError`] 拒绝。
     AnchoredPopup(popup::PopupOptions),
 
-    /// A floating window that appears on top of its parent window
+    /// 出现在父窗口上方的浮动窗口
     Floating,
 
-    /// A Wayland LayerShell window, used to draw overlays or backgrounds for applications such as
-    /// docks, notifications or wallpapers.
+    /// Wayland LayerShell 窗口，用于为应用绘制覆盖层或背景，
+    /// 如 Dock、通知或壁纸。
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     LayerShell(layer_shell::LayerShellOptions),
 
-    /// A window that appears on top of its parent window and blocks interaction with it
-    /// until the modal window is closed
+    /// 出现在父窗口上方的模态窗口，阻止与父窗口的交互，
+    /// 直到模态窗口关闭
     Dialog,
 
     /// 覆盖层窗口：始终置顶、无边框、支持透明度
     Overlay,
 }
 
-/// The appearance of the window, as defined by the operating system.
+/// 窗口的外观，由操作系统定义。
 ///
-/// On macOS, this corresponds to named [`NSAppearance`](https://developer.apple.com/documentation/appkit/nsappearance)
-/// values.
+/// 在 macOS 上，这对应于命名的 [`NSAppearance`](https://developer.apple.com/documentation/appkit/nsappearance)
+/// 值。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum WindowAppearance {
-    /// A light appearance.
+    /// 亮色外观。
     ///
-    /// On macOS, this corresponds to the `aqua` appearance.
+    /// 在 macOS 上，这对应于 `aqua` 外观。
     #[default]
     Light,
 
-    /// A light appearance with vibrant colors.
+    /// 带有鲜艳颜色的亮色外观。
     ///
-    /// On macOS, this corresponds to the `NSAppearanceNameVibrantLight` appearance.
+    /// 在 macOS 上，这对应于 `NSAppearanceNameVibrantLight` 外观。
     VibrantLight,
 
-    /// A dark appearance.
+    /// 暗色外观。
     ///
-    /// On macOS, this corresponds to the `darkAqua` appearance.
+    /// 在 macOS 上，这对应于 `darkAqua` 外观。
     Dark,
 
-    /// A dark appearance with vibrant colors.
+    /// 带有鲜艳颜色的暗色外观。
     ///
-    /// On macOS, this corresponds to the `NSAppearanceNameVibrantDark` appearance.
+    /// 在 macOS 上，这对应于 `NSAppearanceNameVibrantDark` 外观。
     VibrantDark,
 }
 
-/// The appearance of the background of the window itself, when there is
-/// no content or the content is transparent.
+/// 窗口本身的背景外观，在没有内容或内容透明时显示。
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum WindowBackgroundAppearance {
-    /// Opaque.
+    /// 不透明。
     ///
-    /// This lets the window manager know that content behind this
-    /// window does not need to be drawn.
+    /// 告诉窗口管理器此窗口背后的内容不需要绘制。
     ///
-    /// Actual color depends on the system and themes should define a fully
-    /// opaque background color instead.
+    /// 实际颜色取决于系统，主题应定义完全不透明的背景色。
     #[default]
     Opaque,
-    /// Plain alpha transparency.
+    /// 纯 Alpha 透明。
     Transparent,
-    /// Transparency, but the contents behind the window are blurred.
+    /// 透明，但窗口背后的内容会被模糊。
     ///
-    /// Not always supported.
+    /// 并非总是支持。
     Blurred,
-    /// The Mica backdrop material, supported on Windows 11.
+    /// Mica 背景材质，Windows 11 支持。
     MicaBackdrop,
-    /// The Mica Alt backdrop material, supported on Windows 11.
+    /// Mica Alt 背景材质，Windows 11 支持。
     MicaAltBackdrop,
 }
 
-/// The text rendering mode to use for drawing glyphs.
+/// 绘制字形时使用的文本渲染模式。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum TextRenderingMode {
-    /// Use the platform's default text rendering mode.
+    /// 使用平台默认的文本渲染模式。
     #[default]
     PlatformDefault,
-    /// Use subpixel (ClearType-style) text rendering.
+    /// 使用亚像素（ClearType 风格）文本渲染。
     Subpixel,
-    /// Use grayscale text rendering.
+    /// 使用灰度文本渲染。
     Grayscale,
 }
 
-/// The options that can be configured for a file dialog prompt
+/// 文件对话框提示可配置的选项
 #[derive(Clone, Debug)]
 pub struct PathPromptOptions {
-    /// Should the prompt allow files to be selected?
+    /// 提示是否允许选择文件？
     pub files: bool,
-    /// Should the prompt allow directories to be selected?
+    /// 提示是否允许选择目录？
     pub directories: bool,
-    /// Should the prompt allow multiple files to be selected?
+    /// 提示是否允许多选文件？
     pub multiple: bool,
-    /// The prompt to show to a user when selecting a path
+    /// 选择路径时显示给用户的提示文本
     pub prompt: Option<SharedString>,
 }
 
-/// What kind of prompt styling to show
+/// 提示样式类型
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PromptLevel {
-    /// A prompt that is shown when the user should be notified of something
+    /// 通知用户的提示
     Info,
 
-    /// A prompt that is shown when the user needs to be warned of a potential problem
+    /// 警告用户潜在问题的提示
     Warning,
 
-    /// A prompt that is shown when a critical problem has occurred
+    /// 发生严重问题时的提示
     Critical,
 }
 
-/// Prompt Button
+/// 提示对话框按钮
 #[derive(Clone, Debug, PartialEq)]
 pub enum PromptButton {
-    /// Ok button
+    /// 确认按钮
     Ok(SharedString),
-    /// Cancel button
+    /// 取消按钮
     Cancel(SharedString),
-    /// Other button
+    /// 其他按钮
     Other(SharedString),
 }
 
 impl PromptButton {
-    /// Create a button with label
+    /// 创建带标签的按钮
     pub fn new(label: impl Into<SharedString>) -> Self {
         PromptButton::Other(label.into())
     }
 
-    /// Create an Ok button
+    /// 创建确认按钮
     pub fn ok(label: impl Into<SharedString>) -> Self {
         PromptButton::Ok(label.into())
     }
 
-    /// Create a Cancel button
+    /// 创建取消按钮
     pub fn cancel(label: impl Into<SharedString>) -> Self {
         PromptButton::Cancel(label.into())
     }
 
-    /// Returns true if this button is a cancel button.
+    /// 返回此按钮是否为取消按钮。
     pub fn is_cancel(&self) -> bool {
         matches!(self, PromptButton::Cancel(_))
     }
 
-    /// Returns the label of the button
+    /// 返回按钮的标签文本
     pub fn label(&self) -> &SharedString {
         match self {
             PromptButton::Ok(label) => label,
@@ -2547,121 +2537,121 @@ impl From<&str> for PromptButton {
     }
 }
 
-/// The style of the cursor (pointer)
+/// 光标（指针）样式
 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum CursorStyle {
-    /// The default cursor
+    /// 默认光标
     #[default]
     Arrow,
 
-    /// A text input cursor
-    /// corresponds to the CSS cursor value `text`
+    /// 文本输入光标
+    /// 对应 CSS cursor 值 `text`
     IBeam,
 
-    /// A crosshair cursor
-    /// corresponds to the CSS cursor value `crosshair`
+    /// 十字光标
+    /// 对应 CSS cursor 值 `crosshair`
     Crosshair,
 
-    /// A closed hand cursor
-    /// corresponds to the CSS cursor value `grabbing`
+    /// 闭合手型光标
+    /// 对应 CSS cursor 值 `grabbing`
     ClosedHand,
 
-    /// An open hand cursor
-    /// corresponds to the CSS cursor value `grab`
+    /// 张开手型光标
+    /// 对应 CSS cursor 值 `grab`
     OpenHand,
 
-    /// A pointing hand cursor
-    /// corresponds to the CSS cursor value `pointer`
+    /// 指向手型光标
+    /// 对应 CSS cursor 值 `pointer`
     PointingHand,
 
-    /// A resize left cursor
-    /// corresponds to the CSS cursor value `w-resize`
+    /// 向左调整大小光标
+    /// 对应 CSS cursor 值 `w-resize`
     ResizeLeft,
 
-    /// A resize right cursor
-    /// corresponds to the CSS cursor value `e-resize`
+    /// 向右调整大小光标
+    /// 对应 CSS cursor 值 `e-resize`
     ResizeRight,
 
-    /// A resize cursor to the left and right
-    /// corresponds to the CSS cursor value `ew-resize`
+    /// 左右调整大小光标
+    /// 对应 CSS cursor 值 `ew-resize`
     ResizeLeftRight,
 
-    /// A resize up cursor
-    /// corresponds to the CSS cursor value `n-resize`
+    /// 向上调整大小光标
+    /// 对应 CSS cursor 值 `n-resize`
     ResizeUp,
 
-    /// A resize down cursor
-    /// corresponds to the CSS cursor value `s-resize`
+    /// 向下调整大小光标
+    /// 对应 CSS cursor 值 `s-resize`
     ResizeDown,
 
-    /// A resize cursor directing up and down
-    /// corresponds to the CSS cursor value `ns-resize`
+    /// 上下调整大小光标
+    /// 对应 CSS cursor 值 `ns-resize`
     ResizeUpDown,
 
-    /// A resize cursor directing up-left and down-right
-    /// corresponds to the CSS cursor value `nesw-resize`
+    /// 向左上和右下调整大小光标
+    /// 对应 CSS cursor 值 `nesw-resize`
     ResizeUpLeftDownRight,
 
-    /// A resize cursor directing up-right and down-left
-    /// corresponds to the CSS cursor value `nwse-resize`
+    /// 向右上和左下调整大小光标
+    /// 对应 CSS cursor 值 `nwse-resize`
     ResizeUpRightDownLeft,
 
-    /// A cursor indicating that the item/column can be resized horizontally.
-    /// corresponds to the CSS cursor value `col-resize`
+    /// 表示可以水平调整大小的光标
+    /// 对应 CSS cursor 值 `col-resize`
     ResizeColumn,
 
-    /// A cursor indicating that the item/row can be resized vertically.
-    /// corresponds to the CSS cursor value `row-resize`
+    /// 表示可以垂直调整大小的光标
+    /// 对应 CSS cursor 值 `row-resize`
     ResizeRow,
 
-    /// A text input cursor for vertical layout
-    /// corresponds to the CSS cursor value `vertical-text`
+    /// 垂直布局的文本输入光标
+    /// 对应 CSS cursor 值 `vertical-text`
     IBeamCursorForVerticalLayout,
 
-    /// A cursor indicating that the operation is not allowed
-    /// corresponds to the CSS cursor value `not-allowed`
+    /// 表示操作不允许的光标
+    /// 对应 CSS cursor 值 `not-allowed`
     OperationNotAllowed,
 
-    /// A cursor indicating that the operation will result in a link
-    /// corresponds to the CSS cursor value `alias`
+    /// 表示操作将产生链接的光标
+    /// 对应 CSS cursor 值 `alias`
     DragLink,
 
-    /// A cursor indicating that the operation will result in a copy
-    /// corresponds to the CSS cursor value `copy`
+    /// 表示操作将产生副本的光标
+    /// 对应 CSS cursor 值 `copy`
     DragCopy,
 
-    /// A cursor indicating that the operation will result in a context menu
-    /// corresponds to the CSS cursor value `context-menu`
+    /// 表示操作将产生上下文菜单的光标
+    /// 对应 CSS cursor 值 `context-menu`
     ContextualMenu,
 }
 
-/// A clipboard item that should be copied to the clipboard
+/// 应复制到剪贴板的剪贴板项目
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClipboardItem {
-    /// The entries in this clipboard item.
+    /// 此剪贴板项目的条目。
     pub entries: Vec<ClipboardEntry>,
 }
 
-/// Either a ClipboardString or a ClipboardImage
+/// 剪贴板字符串或剪贴板图像
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ClipboardEntry {
-    /// A string entry
+    /// 字符串条目
     String(ClipboardString),
-    /// An image entry
+    /// 图像条目
     Image(Image),
-    /// A file entry
+    /// 文件条目
     ExternalPaths(crate::ExternalPaths),
 }
 
 impl ClipboardItem {
-    /// Create a new ClipboardItem::String with no associated metadata
+    /// 创建一个不带关联元数据的新 ClipboardItem::String
     pub fn new_string(text: String) -> Self {
         Self {
             entries: vec![ClipboardEntry::String(ClipboardString::new(text))],
         }
     }
 
-    /// Create a new ClipboardItem::String with the given text and associated metadata
+    /// 创建一个带有关联元数据的新 ClipboardItem::String
     pub fn new_string_with_metadata(text: String, metadata: String) -> Self {
         Self {
             entries: vec![ClipboardEntry::String(ClipboardString {
@@ -2671,7 +2661,7 @@ impl ClipboardItem {
         }
     }
 
-    /// Create a new ClipboardItem::String with the given text and associated metadata
+    /// 创建一个带有关联元数据（JSON 序列化）的新 ClipboardItem::String
     pub fn new_string_with_json_metadata<T: Serialize>(text: String, metadata: T) -> Self {
         Self {
             entries: vec![ClipboardEntry::String(
@@ -2680,15 +2670,15 @@ impl ClipboardItem {
         }
     }
 
-    /// Create a new ClipboardItem::Image with the given image with no associated metadata
+    /// 创建一个不带关联元数据的新 ClipboardItem::Image
     pub fn new_image(image: &Image) -> Self {
         Self {
             entries: vec![ClipboardEntry::Image(image.clone())],
         }
     }
 
-    /// Concatenates together all the ClipboardString entries in the item.
-    /// Returns None if there were no ClipboardString entries.
+    /// 连接项目中所有 ClipboardString 条目的文本。
+    /// 如果没有 ClipboardString 条目则返回 None。
     pub fn text(&self) -> Option<String> {
         let mut answer = String::new();
 
@@ -2716,7 +2706,7 @@ impl ClipboardItem {
         }
     }
 
-    /// If this item is one ClipboardEntry::String, returns its metadata.
+    /// 如果此项目是单个 ClipboardEntry::String，返回其元数据。
     pub fn metadata(&self) -> Option<&String> {
         match self.entries().first() {
             Some(ClipboardEntry::String(clipboard_string)) if self.entries.len() == 1 => {
@@ -2726,12 +2716,12 @@ impl ClipboardItem {
         }
     }
 
-    /// Get the item's entries
+    /// 获取项目的条目
     pub fn entries(&self) -> &[ClipboardEntry] {
         &self.entries
     }
 
-    /// Get owned versions of the item's entries
+    /// 获取项目条目的所有权版本
     pub fn into_entries(self) -> impl Iterator<Item = ClipboardEntry> {
         self.entries.into_iter()
     }
@@ -2775,15 +2765,14 @@ impl From<Image> for ClipboardItem {
     }
 }
 
-/// One of the editor's supported image formats (e.g. PNG, JPEG) - used when dealing with images in the clipboard
+/// 编辑器支持的图像格式之一（如 PNG、JPEG）- 用于处理剪贴板中的图像
 #[derive(Clone, Copy, Debug, Eq, PartialEq, EnumIter, Hash)]
 pub enum ImageFormat {
-    // Sorted from most to least likely to be pasted into an editor,
-    // which matters when we iterate through them trying to see if
-    // clipboard content matches them.
+    // 按粘贴到编辑器的可能性从高到低排序，
+    // 在遍历检查剪贴板内容是否匹配时这很重要。
     /// .png
     Png,
-    /// .jpeg or .jpg
+    /// .jpeg 或 .jpg
     Jpeg,
     /// .webp
     Webp,
@@ -2793,16 +2782,16 @@ pub enum ImageFormat {
     Svg,
     /// .bmp
     Bmp,
-    /// .tif or .tiff
+    /// .tif 或 .tiff
     Tiff,
     /// .ico
     Ico,
-    /// Netpbm image formats (.pbm, .ppm, .pgm).
+    /// Netpbm 图像格式（.pbm、.ppm、.pgm）。
     Pnm,
 }
 
 impl ImageFormat {
-    /// Returns the mime type for the ImageFormat
+    /// 返回 ImageFormat 的 MIME 类型
     pub const fn mime_type(self) -> &'static str {
         match self {
             ImageFormat::Png => "image/png",
@@ -2817,7 +2806,7 @@ impl ImageFormat {
         }
     }
 
-    /// Returns the ImageFormat for the given mime type, including known aliases.
+    /// 根据 MIME 类型返回对应的 ImageFormat，包括已知别名。
     pub fn from_mime_type(mime_type: &str) -> Option<Self> {
         use strum::IntoEnumIterator;
         Self::iter()
@@ -2825,9 +2814,9 @@ impl ImageFormat {
             .or_else(|| Self::from_mime_type_alias(mime_type))
     }
 
-    /// Non-canonical mime types that some producers use in the wild.
-    /// Unlike `mime_type()` which returns the single canonical form,
-    /// these are legacy or shortened variants we still need to recognize.
+    /// 非规范的 MIME 类型，一些生产者在实际使用中使用。
+    /// 不同于返回单一规范形式的 `mime_type()`，
+    /// 这些是我们仍需识别的遗留或缩写变体。
     fn from_mime_type_alias(mime_type: &str) -> Option<Self> {
         match mime_type {
             "image/jpg" => Some(Self::Jpeg),
@@ -2837,14 +2826,14 @@ impl ImageFormat {
     }
 }
 
-/// An image, with a format and certain bytes
+/// 图像，包含格式和字节数据
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Image {
-    /// The image format the bytes represent (e.g. PNG)
+    /// 字节数据表示的图像格式（如 PNG）
     pub format: ImageFormat,
-    /// The raw image bytes
+    /// 原始图像字节
     pub bytes: Vec<u8>,
-    /// The unique ID for the image
+    /// 图像的唯一 ID
     pub id: u64,
 }
 
@@ -2855,12 +2844,12 @@ impl Hash for Image {
 }
 
 impl Image {
-    /// An empty image containing no data
+    /// 一个不包含数据的空图像
     pub fn empty() -> Self {
         Self::from_bytes(ImageFormat::Png, Vec::new())
     }
 
-    /// Create an image from a format and bytes
+    /// 从格式和字节数据创建图像
     pub fn from_bytes(format: ImageFormat, bytes: Vec<u8>) -> Self {
         Self {
             id: hash(&bytes),
@@ -2869,12 +2858,12 @@ impl Image {
         }
     }
 
-    /// Get this image's ID
+    /// 获取图像的 ID
     pub fn id(&self) -> u64 {
         self.id
     }
 
-    /// Use the GPUI `use_asset` API to make this image renderable
+    /// 使用 RGPUI `use_asset` API 使此图像可渲染
     pub fn use_render_image(
         self: Arc<Self>,
         window: &mut Window,
@@ -2885,7 +2874,7 @@ impl Image {
             .and_then(|result| result.ok())
     }
 
-    /// Use the GPUI `get_asset` API to make this image renderable
+    /// 使用 RGPUI `get_asset` API 使此图像可渲染
     pub fn get_render_image(
         self: Arc<Self>,
         window: &mut Window,
@@ -2896,12 +2885,12 @@ impl Image {
             .and_then(|result| result.ok())
     }
 
-    /// Use the GPUI `remove_asset` API to drop this image, if possible.
+    /// 使用 RGPUI `remove_asset` API 移除此图像（如果可能）。
     pub fn remove_asset(self: Arc<Self>, cx: &mut App) {
         ImageSource::Image(self).remove_asset(cx);
     }
 
-    /// Convert the clipboard image to an `ImageData` object.
+    /// 将剪贴板图像转换为 `ImageData` 对象。
     pub fn to_image_data(&self, svg_renderer: SvgRenderer) -> Result<Arc<RenderImage>> {
         fn frames_for_image(
             bytes: &[u8],
@@ -2960,28 +2949,28 @@ impl Image {
         Ok(Arc::new(RenderImage::new(frames)))
     }
 
-    /// Get the format of the clipboard image
+    /// 获取剪贴板图像的格式
     pub fn format(&self) -> ImageFormat {
         self.format
     }
 
-    /// Get the raw bytes of the clipboard image
+    /// 获取剪贴板图像的原始字节
     pub fn bytes(&self) -> &[u8] {
         self.bytes.as_slice()
     }
 }
 
-/// A clipboard item that should be copied to the clipboard
+/// 应复制到剪贴板的剪贴板字符串项目
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClipboardString {
-    /// The text content.
+    /// 文本内容。
     pub text: String,
-    /// Optional metadata associated with this clipboard string.
+    /// 关联的可选元数据。
     pub metadata: Option<String>,
 }
 
 impl ClipboardString {
-    /// Create a new clipboard string with the given text
+    /// 创建一个新的剪贴板字符串
     pub fn new(text: String) -> Self {
         Self {
             text,
@@ -2989,24 +2978,23 @@ impl ClipboardString {
         }
     }
 
-    /// Return a new clipboard item with the metadata replaced by the given metadata,
-    /// after serializing it as JSON.
+    /// 返回一个新的剪贴板项目，其元数据通过 JSON 序列化后替换为给定值。
     pub fn with_json_metadata<T: Serialize>(mut self, metadata: T) -> Self {
         self.metadata = Some(serde_json::to_string(&metadata).unwrap());
         self
     }
 
-    /// Get the text of the clipboard string
+    /// 获取剪贴板字符串的文本
     pub fn text(&self) -> &String {
         &self.text
     }
 
-    /// Get the owned text of the clipboard string
+    /// 获取剪贴板字符串的所有权文本
     pub fn into_text(self) -> String {
         self.text
     }
 
-    /// Get the metadata of the clipboard string, formatted as JSON
+    /// 获取剪贴板字符串的元数据（JSON 格式）
     pub fn metadata_json<T>(&self) -> Option<T>
     where
         T: for<'a> Deserialize<'a>,
@@ -3016,7 +3004,7 @@ impl ClipboardString {
             .and_then(|m| serde_json::from_str(m).ok())
     }
 
-    /// Compute a hash of the given text for clipboard change detection.
+    /// 计算给定文本的哈希值，用于剪贴板变化检测。
     pub fn text_hash(text: &str) -> u64 {
         let mut hasher = SeaHasher::new();
         text.hash(&mut hasher);

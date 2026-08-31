@@ -1,9 +1,8 @@
-//! KeyDispatch is where GPUI deals with binding actions to key events.
+//! KeyDispatch 是 RGPUI 处理将动作绑定到按键事件的模块。
 //!
-//! The key pieces to making a key binding work are to define an action,
-//! implement a method that takes that action as a type parameter,
-//! and then to register the action during render on a focused node
-//! with a keymap context:
+//! 使按键绑定工作的关键步骤是：定义一个动作、
+//! 实现一个以该动作作为类型参数的方法，
+//! 然后在渲染期间使用按键映射上下文在聚焦节点上注册该动作：
 //!
 //! ```ignore
 //! actions!(editor,[Undo, Redo]);
@@ -25,9 +24,9 @@
 //! }
 //!```
 //!
-//! The keybindings themselves are managed independently by calling cx.bind_keys().
-//! (Though mostly when developing Zed itself, you just need to add a new line to
-//!  assets/keymaps/default-{platform}.json).
+//! 按键绑定本身通过调用 cx.bind_keys() 独立管理。
+//! （虽然在开发 Zed 时，通常只需要在
+//!  assets/keymaps/default-{platform}.json 中添加一行即可）。
 //!
 //! ```ignore
 //! cx.bind_keys([
@@ -36,16 +35,16 @@
 //! ])
 //! ```
 //!
-//! With all of this in place, GPUI will ensure that if you have an Editor that contains
-//! the focus, hitting cmd-z will Undo.
+//! 设置好所有这些后，GPUI 将确保如果你有一个包含
+//! 焦点的编辑器，按下 cmd-z 将执行撤销。
 //!
-//! In real apps, it is a little more complicated than this, because typically you have
-//! several nested views that each register keyboard handlers. In this case action matching
-//! bubbles up from the bottom. For example in Zed, the Workspace is the top-level view, which contains Pane's, which contain Editors. If there are conflicting keybindings defined
-//! then the Editor's bindings take precedence over the Pane's bindings, which take precedence over the Workspace.
+//! 在实际应用中，这比上面稍微复杂一些，因为通常你有
+//! 多个嵌套视图，每个视图都注册了键盘处理器。在这种情况下，动作匹配
+//! 从底部向上冒泡。例如在 Zed 中，Workspace 是顶层视图，它包含 Pane，Pane 包含 Editor。如果定义了冲突的按键绑定，
+//! 那么 Editor 的绑定优先于 Pane 的绑定，Pane 的绑定优先于 Workspace。
 //!
-//! In GPUI, keybindings are not limited to just single keystrokes, you can define
-//! sequences by separating the keys with a space:
+//! 在 RGPUI 中，按键绑定不限于单个按键，你可以通过用空格分隔按键来定义
+//! 序列：
 //!
 //!  KeyBinding::new("cmd-k left", pane::SplitLeft, Some("Pane"))
 
@@ -63,8 +62,8 @@ use std::{
     rc::Rc,
 };
 
-/// ID of a node within `DispatchTree`. Note that these are **not** stable between frames, and so a
-/// `DispatchNodeId` should only be used with the `DispatchTree` that provided it.
+/// `DispatchTree` 中节点的 ID。注意这些 ID 在帧之间**不是**稳定的，因此
+/// `DispatchNodeId` 只能与提供它的 `DispatchTree` 一起使用。
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct DispatchNodeId(usize);
 
@@ -393,11 +392,11 @@ impl DispatchTree {
         false
     }
 
-    /// Returns key bindings that invoke an action on the currently focused element. Bindings are
-    /// returned in the order they were added. For display, the last binding should take precedence.
+    /// 返回在当前聚焦元素上调用动作的按键绑定。绑定按添加顺序返回。
+    /// 用于显示时，最后一个绑定应优先。
     ///
-    /// Bindings are only included if they are the highest precedence match for their keystrokes, so
-    /// shadowed bindings are not included.
+    /// 仅当绑定是其按键序列的最高优先级匹配时才包含，因此
+    /// 被遮蔽的绑定不会包含。
     pub fn bindings_for_action(
         &self,
         action: &dyn Action,
@@ -415,8 +414,8 @@ impl DispatchTree {
             .collect()
     }
 
-    /// Returns the highest precedence binding for the given action and context stack. This is the
-    /// same as the last result of `bindings_for_action`, but more efficient than getting all bindings.
+    /// 返回给定动作和上下文栈的最高优先级绑定。这与
+    /// `bindings_for_action` 的最后一个结果相同，但比获取所有绑定更高效。
     pub fn highest_precedence_binding_for_action(
         &self,
         action: &dyn Action,
@@ -462,7 +461,7 @@ impl DispatchTree {
         (bindings, partial, context_stack)
     }
 
-    /// Find the bindings that can follow the current input sequence.
+    /// 查找可以跟随当前输入序列的绑定。
     pub fn possible_next_bindings_for_input(
         &self,
         input: &[Keystroke],
@@ -473,13 +472,13 @@ impl DispatchTree {
             .possible_next_bindings_for_input(input, context_stack)
     }
 
-    /// dispatch_key processes the keystroke
-    /// input should be set to the value of `pending` from the previous call to dispatch_key.
-    /// This returns three instructions to the input handler:
-    /// - bindings: any bindings to execute before processing this keystroke
-    /// - pending: the new set of pending keystrokes to store
-    /// - to_replay: any keystroke that had been pushed to pending, but are no-longer matched,
-    ///   these should be replayed first.
+    /// dispatch_key 处理按键输入
+    /// input 应设置为上一次调用 dispatch_key 时 `pending` 的值。
+    /// 这向输入处理器返回三个指令：
+    /// - bindings: 处理此按键前要执行的绑定
+    /// - pending: 要存储的新待处理按键集
+    /// - to_replay: 之前推送到 pending 但不再匹配的按键，
+    ///   这些应先重放。
     pub fn dispatch_key(
         &mut self,
         mut input: SmallVec<[Keystroke; 1]>,
@@ -518,8 +517,8 @@ impl DispatchTree {
         result
     }
 
-    /// If the user types a matching prefix of a binding and then waits for a timeout
-    /// flush_dispatch() converts any previously pending input to replay events.
+    /// 如果用户输入匹配绑定的前缀后等待超时，
+    /// flush_dispatch() 将任何先前待处理的输入转换为重放事件。
     pub fn flush_dispatch(
         &mut self,
         input: SmallVec<[Keystroke; 1]>,
@@ -534,7 +533,7 @@ impl DispatchTree {
         to_replay
     }
 
-    /// Converts the longest prefix of input to a replay event and returns the rest.
+    /// 将输入的最长前缀转换为重放事件并返回剩余部分。
     fn replay_prefix(
         &self,
         mut input: SmallVec<[Keystroke; 1]>,
@@ -724,14 +723,14 @@ mod tests {
         assert!(highest.is_some_and(|binding| binding.action.partial_eq(&TestAction)));
     }
 
-    /// Models the picker preview footer scenario: a picker action is bound in
-    /// `Picker > Editor`, but a base keymap binds the same chord to an editor
-    /// action in `Editor`. `Picker > Editor` and `Editor` resolve at the same
-    /// context depth, so at equal depth precedence is decided purely by load
-    /// order (later wins). Because base keymaps load after the default keymap,
-    /// the picker binding is shadowed unless it is (re)bound by an overlay that
-    /// loads after the base keymap - which is exactly what
-    /// `keymaps/specific-overrides*.json` does.
+    /// 模拟选择器预览页脚场景：一个选择器动作绑定在
+    /// `Picker > Editor` 中，但基础按键映射将相同的和弦绑定到
+    /// `Editor` 中的编辑器动作。`Picker > Editor` 和 `Editor` 在相同的
+    /// 上下文深度解析，因此在相同深度时优先级完全由加载
+    /// 顺序决定（后加载的优先）。由于基础按键映射在默认按键映射之后加载，
+    /// 选择器绑定会被遮蔽，除非它被加载在基础按键映射之后的
+    /// 覆盖层重新绑定——这正是
+    /// `keymaps/specific-overrides*.json` 所做的。
     #[test]
     fn test_overlay_after_base_restores_shadowed_picker_binding() {
         // SecondaryTestAction stands in for the editor/base action (e.g.

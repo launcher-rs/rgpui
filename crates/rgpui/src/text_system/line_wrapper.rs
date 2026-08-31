@@ -2,18 +2,18 @@ use crate::collections::HashMap;
 use crate::{FontId, Pixels, SharedString, TextRun, TextSystem, px};
 use std::{borrow::Cow, iter, sync::Arc};
 
-/// Determines whether to truncate text from the start, end, or middle.
+/// 确定从开头、结尾还是中间截断文本。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TruncateFrom {
-    /// Truncate text from the start.
+    /// 从开头截断文本。
     Start,
-    /// Truncate text from the end.
+    /// 从结尾截断文本。
     End,
-    /// Truncate text from the middle, preserving the start and end.
+    /// 从中间截断文本，保留开头和结尾。
     Middle,
 }
 
-/// The GPUI line wrapper, used to wrap lines of text to a given width.
+/// RGPUI 行包装器，用于将文本行包装到给定宽度。
 pub struct LineWrapper {
     text_system: Arc<TextSystem>,
     pub(crate) font_id: FontId,
@@ -23,7 +23,7 @@ pub struct LineWrapper {
 }
 
 impl LineWrapper {
-    /// The maximum indent that can be applied to a line.
+    /// 可应用于一行的最大缩进量。
     pub const MAX_INDENT: u32 = 256;
 
     pub(crate) fn new(font_id: FontId, font_size: Pixels, text_system: Arc<TextSystem>) -> Self {
@@ -36,7 +36,7 @@ impl LineWrapper {
         }
     }
 
-    /// Wrap a line of text to the given width with this wrapper's font and font size.
+    /// 使用此包装器的字体和字体大小将文本行包装到给定宽度。
     pub fn wrap_line<'a>(
         &'a mut self,
         fragments: &'a [LineFragment],
@@ -135,9 +135,9 @@ impl LineWrapper {
         })
     }
 
-    /// Determines if a line should be truncated based on its width.
+    /// 根据行的宽度确定是否应截断该行。
     ///
-    /// Returns the truncation index in `line`.
+    /// 返回 `line` 中的截断索引。
     pub fn should_truncate_line(
         &mut self,
         line: &str,
@@ -244,7 +244,7 @@ impl LineWrapper {
         Some((front_end_ix, back_start_ix))
     }
 
-    /// Truncate a line of text to the given width with this wrapper's font and font size.
+    /// 使用此包装器的字体和字体大小将文本行截断到给定宽度。
     pub fn truncate_line<'a>(
         &mut self,
         line: SharedString,
@@ -442,8 +442,8 @@ impl LineWrapper {
         (text, Cow::Borrowed(runs))
     }
 
-    /// Any character in this list should be treated as a word character,
-    /// meaning it can be part of a word that should not be wrapped.
+    /// 此列表中的任何字符都应被视为单词字符，
+    /// 意味着它可以是不应换行的单词的一部分。
     pub(crate) fn is_word_char(c: char) -> bool {
         // ASCII alphanumeric characters, for English, numbers: `Hello123`, etc.
         c.is_ascii_alphanumeric() ||
@@ -593,29 +593,29 @@ fn update_runs_after_middle_truncation(
     *runs = result_runs;
 }
 
-/// A fragment of a line that can be wrapped.
+/// 可以包装的行片段。
 pub enum LineFragment<'a> {
-    /// A text fragment consisting of characters.
+    /// 由字符组成的文本片段。
     Text {
-        /// The text content of the fragment.
+        /// 片段的文本内容。
         text: &'a str,
     },
-    /// A non-text element with a fixed width.
+    /// 具有固定宽度的非文本元素。
     Element {
-        /// The width of the element in pixels.
+        /// 元素的宽度（像素）。
         width: Pixels,
-        /// The UTF-8 encoded length of the element.
+        /// 元素的 UTF-8 编码长度。
         len_utf8: usize,
     },
 }
 
 impl<'a> LineFragment<'a> {
-    /// Creates a new text fragment from the given text.
+    /// 从给定文本创建新的文本片段。
     pub fn text(text: &'a str) -> Self {
         LineFragment::Text { text }
     }
 
-    /// Creates a new non-text element with the given width and UTF-8 encoded length.
+    /// 创建具有给定宽度和 UTF-8 编码长度的新非文本元素。
     pub fn element(width: Pixels, len_utf8: usize) -> Self {
         LineFragment::Element { width, len_utf8 }
     }
@@ -652,12 +652,12 @@ impl WrapBoundaryCandidate {
     }
 }
 
-/// A boundary between two lines of text.
+/// 两行文本之间的边界。
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Boundary {
-    /// The index of the last character in a line
+    /// 行中最后一个字符的索引
     pub ix: usize,
-    /// The indent of the next line.
+    /// 下一行的缩进。
     pub next_indent: u32,
 }
 

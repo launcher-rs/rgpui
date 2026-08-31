@@ -3,7 +3,7 @@ use crate::{
     Pixels, Window,
 };
 
-/// Builds a `Deferred` element, which delays the layout and paint of its child.
+/// 构建一个 `Deferred` 元素，延迟其子元素的布局和绘制。
 pub fn deferred(child: impl IntoElement) -> Deferred {
     Deferred {
         child: Some(child.into_any_element()),
@@ -11,17 +11,17 @@ pub fn deferred(child: impl IntoElement) -> Deferred {
     }
 }
 
-/// An element which delays the painting of its child until after all of
-/// its ancestors, while keeping its layout as part of the current element tree.
+/// 一个延迟子元素绘制的元素，直到所有祖先绘制完成后才绘制，
+/// 同时将其布局作为当前元素树的一部分。
 pub struct Deferred {
     child: Option<AnyElement>,
     priority: usize,
 }
 
 impl Deferred {
-    /// Sets the `priority` value of the `deferred` element, which
-    /// determines the drawing order relative to other deferred elements,
-    /// with higher values being drawn on top.
+    /// 设置 `deferred` 元素的 `priority` 值，
+    /// 决定相对于其他延迟元素的绘制顺序，
+    /// 值越高绘制在越上面。
     pub fn with_priority(mut self, priority: usize) -> Self {
         self.priority = priority;
         self
@@ -87,8 +87,8 @@ impl IntoElement for Deferred {
 }
 
 impl Deferred {
-    /// Sets a priority for the element. A higher priority conceptually means painting the element
-    /// on top of deferred draws with a lower priority (i.e. closer to the viewer).
+    /// 设置元素的优先级。优先级越高意味着在延迟绘制中
+    /// 概念上绘制在优先级较低的元素之上（即更靠近观察者）。
     pub fn priority(mut self, priority: usize) -> Self {
         self.priority = priority;
         self
@@ -145,13 +145,11 @@ mod tests {
         }
     }
 
-    /// Regression test for a crash with nested deferred draws (e.g. a popover
-    /// menu inside a popover hosted by a cached dock panel). Prepaint indices
-    /// recorded during the deferred draw rounds must index the same
-    /// `deferred_draws` vector that `reuse_prepaint` slices on the next frame;
-    /// previously they were measured against a transient per-round vector, so
-    /// reusing the panel's subtree grafted the wrong deferred draws and
-    /// panicked in the dispatch tree.
+    /// 嵌套延迟绘制（例如缓存的 dock 面板中托管的弹出窗口内的弹出菜单）
+    /// 崩溃的回归测试。延迟绘制轮次中记录的预绘制索引必须索引
+    /// `reuse_prepaint` 在下一帧切片的同一个 `deferred_draws` 向量；
+    /// 之前它们是针对每轮临时向量测量的，因此
+    /// 重用面板子树会嫁接错误的延迟绘制并在分发树中 panic。
     #[rgpui::test]
     fn test_nested_deferred_draws_with_reused_views(cx: &mut TestAppContext) {
         let window = cx.open_window(size(px(800.), px(600.)), |_, cx| {

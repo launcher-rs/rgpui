@@ -34,7 +34,7 @@ struct NodeContext {
 pub struct TaffyLayoutEngine {
     taffy: TaffyTree<NodeContext>,
     absolute_layout_bounds: FxHashMap<LayoutId, Bounds<Pixels>>,
-    /// Unrounded absolute border-box top-left per-node coordinate in device pixels.
+    /// 每个节点未舍入的绝对边框框左上角设备像素坐标。
     absolute_outer_origins: FxHashMap<LayoutId, Point<f32>>,
     computed_layouts: FxHashSet<LayoutId>,
     layout_bounds_scratch_space: Vec<LayoutId>,
@@ -111,12 +111,11 @@ impl TaffyLayoutEngine {
             .into()
     }
 
-    /// Treats any `auto` dimension of the given node's style as filling `size`.
+    /// 将给定节点样式的任何 `auto` 尺寸视为填充 `size`。
     ///
-    /// This is applied to window roots before layout so they behave like the
-    /// root element on the web, which stretches to fill the initial containing
-    /// block (the viewport) unless given an explicit size. Explicitly styled
-    /// dimensions are preserved.
+    /// 这在布局之前应用于窗口根节点，使其行为类似于 Web 上的根元素，
+    /// 除非给定显式尺寸，否则会拉伸以填充初始包含块（视口）。显式样式化的
+    /// 尺寸会被保留。
     pub fn stretch_auto_size_to_fill(
         &mut self,
         id: LayoutId,
@@ -241,7 +240,7 @@ impl TaffyLayoutEngine {
     //
     // We pixel-snap by rounding in device-pixel space, after multiplying
     // by `scale_factor`, so that snapping targets physical pixels. Bounds
-    // are divided by `scale_factor` before being returned to GPUI.
+    // are divided by `scale_factor` before being returned to RGPUI.
     //
     // Midpoints are rounded toward zero. This is a stylistic choice: a
     // 1-logical-pixel line at 150% scale should render as 1 dp rather than
@@ -338,7 +337,7 @@ impl TaffyLayoutEngine {
     }
 }
 
-/// A unique identifier for a layout node, generated when requesting a layout from Taffy
+/// 布局节点的唯一标识符，在向 Taffy 请求布局时生成。
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 #[repr(transparent)]
 pub struct LayoutId(NodeId);
@@ -632,25 +631,24 @@ where
     }
 }
 
-/// The space available for an element to be laid out in
+/// 元素可用于布局的空间
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
 pub enum AvailableSpace {
-    /// The amount of space available is the specified number of pixels
+    /// 可用空间量是指定的像素数
     Definite(Pixels),
-    /// The amount of space available is indefinite and the node should be laid out under a min-content constraint
+    /// 可用空间量是无限的，节点应在最小内容约束下布局
     #[default]
     MinContent,
-    /// The amount of space available is indefinite and the node should be laid out under a max-content constraint
+    /// 可用空间量是无限的，节点应在最大内容约束下布局
     MaxContent,
 }
 
 impl AvailableSpace {
-    /// Returns a `Size` with both width and height set to `AvailableSpace::MinContent`.
+    /// 返回宽度和高度都设置为 `AvailableSpace::MinContent` 的 `Size`。
     ///
-    /// This function is useful when you want to create a `Size` with the minimum content constraints
-    /// for both dimensions.
+    /// 当您想为两个维度创建具有最小内容约束的 `Size` 时，此函数很有用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use rgpui::AvailableSpace;

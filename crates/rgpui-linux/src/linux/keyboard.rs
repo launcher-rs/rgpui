@@ -6,7 +6,7 @@ use rgpui::{PlatformKeyboardLayout, SharedString};
 
 /// Linux 键盘布局实现。
 ///
-/// 封装键盘布局的名称信息，用于在布局切换时向 GPUI 报告当前布局。
+/// 封装键盘布局的名称信息，用于在布局切换时向 RGPUI 报告当前布局。
 #[derive(Clone)]
 pub(crate) struct LinuxKeyboardLayout {
     name: SharedString,

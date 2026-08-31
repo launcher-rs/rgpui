@@ -23,13 +23,13 @@ use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::
 
 use rgpui::CursorStyle;
 
-/// 将 GPUI 光标样式转换为 Wayland 光标形状枚举。
+/// 将 RGPUI 光标样式转换为 Wayland 光标形状枚举。
 ///
 /// 使用 `wp_cursor_shape_device_v1` 协议定义的标准光标形状。
 ///
 /// # 参数
 ///
-/// * `style` - GPUI 光标样式
+/// * `style` - RGPUI 光标样式
 pub(super) fn to_shape(style: CursorStyle) -> Shape {
     match style {
         CursorStyle::Arrow => Shape::Default,

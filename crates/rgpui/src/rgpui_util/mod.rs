@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-//! GPUI 内部工具函数。
+//! RGPUI 内部工具函数。
 
 use std::{
     env,

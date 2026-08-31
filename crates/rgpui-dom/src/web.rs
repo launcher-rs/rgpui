@@ -347,7 +347,7 @@ impl WebDomBackend {
         // 非被动注册：wheel 在 document 上默认被动（passive），无法对其
         // preventDefault（会触发 "[Intervention] Unable to preventDefault inside
         // passive event listener"）。事件委托/转发都需要阻止默认行为（wheel 交给
-        // gpui 滚动），必须显式声明 passive:false。保持冒泡阶段注册，避免
+        // rgpui 滚动），必须显式声明 passive:false。保持冒泡阶段注册，避免
         // capture+冒泡导致同一事件被本闭包触发两次。
         let options = js_sys::Object::new();
         js_sys::Reflect::set(&options, &"passive".into(), &false.into()).ok();

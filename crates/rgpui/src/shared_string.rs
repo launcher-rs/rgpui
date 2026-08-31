@@ -1,6 +1,6 @@
-//! GPUI 共享字符串类型。
+//! RGPUI 共享字符串类型。
 //!
-//! 提供 `SharedString` 类型，这是一个不可变的字符串，可以在 GPUI 任务中廉价地克隆。
+//! 提供 `SharedString` 类型，这是一个不可变的字符串，可以在 RGPUI 任务中廉价地克隆。
 //! 本质上是 `Arc<str>` 和 `&'static str` 的抽象，当前由 `SmolStr` 支持。
 
 use std::{
@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
-/// 共享字符串是 GPUI 任务中可以廉价克隆的不可变字符串。
+/// 共享字符串是 RGPUI 任务中可以廉价克隆的不可变字符串。
 /// 本质上是 `Arc<str>` 和 `&'static str` 的抽象，
 /// 当前由 [`SmolStr`] 支持。
 #[derive(Eq, PartialEq, PartialOrd, Ord, Hash, Clone)]

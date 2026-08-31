@@ -8,12 +8,12 @@ use crate::collections::{HashSet, TypeIdHashMap};
 use crate::{Action, AsKeystroke, Keystroke, Unbind, is_no_action, is_unbind};
 use smallvec::SmallVec;
 
-/// An opaque identifier of which version of the keymap is currently active.
-/// The keymap's version is changed whenever bindings are added or removed.
+/// 当前活动按键映射版本的不透明标识符。
+/// 每当添加或移除绑定时，按键映射的版本都会更改。
 #[derive(Copy, Clone, Eq, PartialEq, Default)]
 pub struct KeymapVersion(usize);
 
-/// A collection of key bindings for the user's application.
+/// 用户应用程序的按键绑定集合。
 #[derive(Default)]
 pub struct Keymap {
     bindings: Vec<KeyBinding>,
@@ -22,7 +22,7 @@ pub struct Keymap {
     version: KeymapVersion,
 }
 
-/// Index of a binding within a keymap.
+/// 按键映射中绑定的索引。
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct BindingIndex(usize);
 
@@ -47,19 +47,19 @@ fn binding_is_unbound(disabled_binding: &KeyBinding, binding: &KeyBinding) -> bo
 }
 
 impl Keymap {
-    /// Create a new keymap with the given bindings.
+    /// 使用给定绑定创建新的按键映射。
     pub fn new(bindings: Vec<KeyBinding>) -> Self {
         let mut this = Self::default();
         this.add_bindings(bindings);
         this
     }
 
-    /// Get the current version of the keymap.
+    /// 获取按键映射的当前版本。
     pub fn version(&self) -> KeymapVersion {
         self.version
     }
 
-    /// Add more bindings to the keymap.
+    /// 向按键映射添加更多绑定。
     pub fn add_bindings<T: IntoIterator<Item = KeyBinding>>(&mut self, bindings: T) {
         for binding in bindings {
             let action_id = binding.action().as_any().type_id();
@@ -77,7 +77,7 @@ impl Keymap {
         self.version.0 += 1;
     }
 
-    /// Reset this keymap to its initial state.
+    /// 将此按键映射重置为初始状态。
     pub fn clear(&mut self) {
         self.bindings.clear();
         self.binding_indices_by_action_id.clear();
@@ -85,13 +85,13 @@ impl Keymap {
         self.version.0 += 1;
     }
 
-    /// Iterate over all bindings, in the order they were added.
+    /// 按添加顺序迭代所有绑定。
     pub fn bindings(&self) -> impl DoubleEndedIterator<Item = &KeyBinding> + ExactSizeIterator {
         self.bindings.iter()
     }
 
-    /// Iterate over all bindings for the given action, in the order they were added. For display,
-    /// the last binding should take precedence.
+    /// 按添加顺序迭代给定动作的所有绑定。用于显示时，
+    /// 最后一个绑定应优先。
     pub fn bindings_for_action<'a>(
         &'a self,
         action: &'a dyn Action,
@@ -133,8 +133,8 @@ impl Keymap {
         })
     }
 
-    /// Returns all bindings that might match the input without checking context. The bindings
-    /// returned in precedence order (reverse of the order they were added to the keymap).
+    /// 返回可能匹配输入的所有绑定，不检查上下文。绑定按优先级顺序返回
+    /// （与添加到按键映射的顺序相反）。
     pub fn all_bindings_for_input(&self, input: &[Keystroke]) -> Vec<KeyBinding> {
         self.bindings()
             .rev()
@@ -147,20 +147,18 @@ impl Keymap {
             .collect()
     }
 
-    /// Returns a list of bindings that match the given input, and a boolean indicating whether or
-    /// not more bindings might match if the input was longer. Bindings are returned in precedence
-    /// order (higher precedence first, reverse of the order they were added to the keymap).
+    /// 返回匹配给定输入的绑定列表，以及一个布尔值指示如果输入更长是否可能
+    /// 匹配更多绑定。绑定按优先级顺序返回（较高优先级在先，与添加到按键映射的
+    /// 顺序相反）。
     ///
-    /// Precedence is defined by the depth in the tree (matches on the Editor take precedence over
-    /// matches on the Pane, then the Workspace, etc.). Bindings with no context are treated as the
-    /// same as the deepest context.
+    /// 优先级由树中的深度定义（在 Editor 上的匹配优先于在 Pane 上的匹配，
+    /// 然后是 Workspace 等）。没有上下文的绑定被视为与最深上下文相同。
     ///
-    /// In the case of multiple bindings at the same depth, the ones added to the keymap later take
-    /// precedence. User bindings are added after built-in bindings so that they take precedence.
+    /// 在相同深度有多个绑定的情况下，后添加到按键映射的绑定优先。
+    /// 用户绑定在内置绑定之后添加，因此它们优先。
     ///
-    /// If a user has disabled a binding with `"x": null` it will not be returned. Disabled bindings
-    /// are evaluated with the same precedence rules so you can disable a rule in a given context
-    /// only.
+    /// 如果用户通过 `"x": null` 禁用了绑定，它将不会返回。禁用的绑定
+    /// 使用相同的优先级规则进行评估，因此你可以仅在给定上下文中禁用规则。
     pub fn bindings_for_input(
         &self,
         input: &[impl AsKeystroke],
@@ -240,8 +238,8 @@ impl Keymap {
 
         (bindings, !pending.is_empty())
     }
-    /// Check if the given binding is enabled, given a certain key context.
-    /// Returns the deepest depth at which the binding matches, or None if it doesn't match.
+    /// 检查给定绑定在给定按键上下文下是否启用。
+    /// 返回绑定匹配的最深深度，如果不匹配则返回 None。
     fn binding_enabled(&self, binding: &KeyBinding, contexts: &[KeyContext]) -> Option<usize> {
         if let Some(predicate) = &binding.context_predicate {
             predicate.depth_of(contexts)
@@ -250,7 +248,7 @@ impl Keymap {
         }
     }
 
-    /// Find the bindings that can follow the current input sequence.
+    /// 查找可以跟随当前输入序列的绑定。
     pub fn possible_next_bindings_for_input(
         &self,
         input: &[Keystroke],
@@ -421,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    /// Tests for https://github.com/zed-industries/zed/issues/30259
+    /// 测试 https://github.com/zed-industries/zed/issues/30259
     fn test_multiple_keystroke_binding_disabled() {
         let bindings = [
             KeyBinding::new("space w w", ActionAlpha {}, Some("workspace")),

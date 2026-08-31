@@ -19,13 +19,13 @@ use anyhow::Result;
 use image::RgbaImage;
 use std::{future::Future, rc::Rc, sync::Arc, time::Duration};
 
-/// A cross-platform headless app context for tests that need real text shaping.
+/// 一个跨平台的无头应用上下文，用于需要真实文本排版的测试。
 ///
-/// Unlike the old `HeadlessMetalAppContext`, this works on any platform. It uses
-/// `TestPlatform` for deterministic scheduling and accepts a pluggable
-/// `PlatformTextSystem` so tests get real glyph measurements.
+/// 与旧的 `HeadlessMetalAppContext` 不同，此实现可在任何平台上工作。它使用
+/// `TestPlatform` 进行确定性调度，并接受可插拔的
+/// `PlatformTextSystem`，以便测试获得真实的字形测量。
 ///
-/// # Usage
+/// # 用法
 ///
 /// ```ignore
 /// let text_system = Arc::new(rgpui_wgpu::CosmicTextSystem::new("fallback"));
@@ -36,23 +36,23 @@ use std::{future::Future, rc::Rc, sync::Arc, time::Duration};
 /// );
 /// ```
 pub struct HeadlessAppContext {
-    /// The underlying app cell.
+    /// 底层的应用单元。
     pub app: Rc<AppCell>,
-    /// The background executor for running async tasks.
+    /// 用于运行异步任务的后台执行器。
     pub background_executor: BackgroundExecutor,
-    /// The foreground executor for running tasks on the main thread.
+    /// 用于在主线程运行任务的前台执行器。
     pub foreground_executor: ForegroundExecutor,
     dispatcher: TestDispatcher,
     text_system: Arc<TextSystem>,
 }
 
 impl HeadlessAppContext {
-    /// Creates a new headless app context with the given text system.
+    /// 使用给定文本系统创建新的无头应用上下文。
     pub fn new(platform_text_system: Arc<dyn PlatformTextSystem>) -> Self {
         Self::with_platform(platform_text_system, Arc::new(()), || None)
     }
 
-    /// Creates a new headless app context with a custom text system and asset source.
+    /// 使用自定义文本系统和资源源创建新的无头应用上下文。
     pub fn with_asset_source(
         platform_text_system: Arc<dyn PlatformTextSystem>,
         asset_source: Arc<dyn AssetSource>,
@@ -60,8 +60,8 @@ impl HeadlessAppContext {
         Self::with_platform(platform_text_system, asset_source, || None)
     }
 
-    /// Creates a new headless app context with the given text system, asset source,
-    /// and an optional renderer factory for screenshot support.
+    /// 使用给定文本系统、资源源和可选的渲染器工厂创建新的无头应用上下文，
+    /// 以支持截图功能。
     pub fn with_platform(
         platform_text_system: Arc<dyn PlatformTextSystem>,
         asset_source: Arc<dyn AssetSource>,
@@ -104,7 +104,7 @@ impl HeadlessAppContext {
         }
     }
 
-    /// Opens a window for headless rendering.
+    /// 打开一个用于无头渲染的窗口。
     pub fn open_window<V: Render + 'static>(
         &mut self,
         size: Size<Pixels>,
@@ -129,33 +129,33 @@ impl HeadlessAppContext {
         )
     }
 
-    /// Runs all pending tasks until parked.
+    /// 运行所有待处理的任务直到暂停。
     pub fn run_until_parked(&self) {
         self.dispatcher.run_until_parked();
     }
 
-    /// Advances the simulated clock.
+    /// 推进模拟时钟。
     pub fn advance_clock(&self, duration: Duration) {
         self.dispatcher.advance_clock(duration);
     }
 
-    /// Enables parking mode, allowing blocking on real I/O (e.g., async asset loading).
+    /// 启用暂停模式，允许在真实 I/O 上阻塞（例如异步资源加载）。
     pub fn allow_parking(&self) {
         self.dispatcher.allow_parking();
     }
 
-    /// Disables parking mode, returning to deterministic test execution.
+    /// 禁用暂停模式，返回确定性测试执行。
     pub fn forbid_parking(&self) {
         self.dispatcher.forbid_parking();
     }
 
-    /// Updates app state.
+    /// 更新应用状态。
     pub fn update<R>(&mut self, f: impl FnOnce(&mut App) -> R) -> R {
         let mut app = self.app.borrow_mut();
         f(&mut app)
     }
 
-    /// Updates a window and calls draw to render.
+    /// 更新窗口并调用绘制进行渲染。
     pub fn update_window<R>(
         &mut self,
         window: AnyWindowHandle,
@@ -165,26 +165,25 @@ impl HeadlessAppContext {
         app.update_window(window, f)
     }
 
-    /// Captures a screenshot from a window.
+    /// 从窗口捕获截图。
     ///
-    /// Requires that the context was created with a renderer factory that
-    /// returns `Some` via [`HeadlessAppContext::with_platform`].
+    /// 需要上下文通过 [`HeadlessAppContext::with_platform`] 使用返回 `Some` 的渲染器工厂创建。
     pub fn capture_screenshot(&mut self, window: AnyWindowHandle) -> Result<RgbaImage> {
         let mut app = self.app.borrow_mut();
         app.update_window(window, |_, window, _| window.render_to_image())?
     }
 
-    /// Returns the text system.
+    /// 返回文本系统。
     pub fn text_system(&self) -> &Arc<TextSystem> {
         &self.text_system
     }
 
-    /// Returns the background executor.
+    /// 返回后台执行器。
     pub fn background_executor(&self) -> &BackgroundExecutor {
         &self.background_executor
     }
 
-    /// Returns the foreground executor.
+    /// 返回前台执行器。
     pub fn foreground_executor(&self) -> &ForegroundExecutor {
         &self.foreground_executor
     }

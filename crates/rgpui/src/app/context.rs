@@ -17,7 +17,7 @@ use super::{App, AsyncWindowContext, Entity, KeystrokeEvent};
 
 /// 实体上下文 - 针对给定实体类型 `T` 提供专门操作的上下文。
 ///
-/// `Context<'a, T>` 是 GPUI 中最常用的上下文类型，它封装了：
+/// `Context<'a, T>` 是 RGPUI 中最常用的上下文类型，它封装了：
 /// - 对 `App` 的可变引用（通过 Deref/DerefMut 自动解引用）
 /// - 对实体的弱引用（`WeakEntity<T>`）
 ///
@@ -166,7 +166,7 @@ impl<'a, T: 'static> Context<'a, T> {
         })
     }
 
-    /// Register a callback to be invoked when GPUI releases this entity.
+    /// 注册回调，在 RGPUI 释放此实体时被调用。
     pub fn on_release(&self, on_release: impl FnOnce(&mut T, &mut App) + 'static) -> Subscription
     where
         T: 'static,
@@ -260,7 +260,7 @@ impl<'a, T: 'static> Context<'a, T> {
         })
     }
 
-    /// Tell GPUI that this entity has changed and observers of it should be notified.
+    /// 告诉 RGPUI 此实体已发生变化，其观察者应被通知。
     pub fn notify(&mut self) {
         self.app.notify(self.entity_state.entity_id);
     }
@@ -279,11 +279,11 @@ impl<'a, T: 'static> Context<'a, T> {
         self.app.spawn(async move |cx| f(this, cx).await)
     }
 
-    /// Convenience method for accessing view state in an event callback.
+    /// 在事件回调中访问视图状态的便捷方法。
     ///
-    /// Many GPUI callbacks take the form of `Fn(&E, &mut Window, &mut App)`,
-    /// but it's often useful to be able to access view state in these
-    /// callbacks. This method provides a convenient way to do so.
+    /// 许多 RGPUI 回调的形式为 `Fn(&E, &mut Window, &mut App)`，
+    /// 但在这些回调中能够访问视图状态通常很有用。此方法提供了一种
+    /// 便捷的方式来实现这一点。
     pub fn listener<E: ?Sized>(
         &self,
         f: impl Fn(&mut T, &E, &mut Window, &mut Context<T>) + 'static,
@@ -323,7 +323,7 @@ impl<'a, T: 'static> Context<'a, T> {
         window.focus(&view.focus_handle(self), self);
     }
 
-    /// Sets a given callback to be run on the next frame.
+    /// 在下一帧运行给定的回调。
     pub fn on_next_frame(
         &self,
         window: &mut Window,
@@ -335,8 +335,8 @@ impl<'a, T: 'static> Context<'a, T> {
         window.on_next_frame(move |window, cx| view.update(cx, |view, cx| f(view, window, cx)));
     }
 
-    /// Schedules the given function to be run at the end of the current effect cycle, allowing entities
-    /// that are currently on the stack to be returned to the app.
+    /// 将给定函数安排在当前效果周期结束时运行，允许当前在栈上的
+    /// 实体被返回给应用。
     pub fn defer_in(
         &mut self,
         window: &Window,
@@ -352,7 +352,7 @@ impl<'a, T: 'static> Context<'a, T> {
         });
     }
 
-    /// Observe another entity for changes to its state, as tracked by [`Context::notify`].
+    /// 观察另一个实体的状态变化，由 [`Context::notify`] 跟踪。
     pub fn observe_in<V2>(
         &mut self,
         observed: &Entity<V2>,
@@ -384,9 +384,10 @@ impl<'a, T: 'static> Context<'a, T> {
         )
     }
 
-    /// Subscribe to events emitted by another entity.
-    /// The entity to which you're subscribing must implement the [`EventEmitter`] trait.
-    /// The callback will be invoked with a reference to the current view, a handle to the emitting `Entity`, the event, a mutable reference to the `Window`, and the context for the entity.
+    /// 订阅另一个实体发出的事件。
+    /// 你订阅的实体必须实现 [`EventEmitter`] trait。
+    /// 回调会接收当前视图的引用、发出事件的 `Entity` 句柄、事件、
+    /// `Window` 的可变引用以及实体的上下文。
     pub fn subscribe_in<Emitter, Evt>(
         &mut self,
         emitter: &Entity<Emitter>,
@@ -422,10 +423,10 @@ impl<'a, T: 'static> Context<'a, T> {
         )
     }
 
-    /// Register a callback to be invoked when the view is released.
+    /// 注册回调，在视图被释放时被调用。
     ///
-    /// The callback receives a handle to the view's window. This handle may be
-    /// invalid, if the window was closed before the view was released.
+    /// 回调接收视图窗口的句柄。如果窗口在视图释放之前已关闭，
+    /// 此句柄可能无效。
     pub fn on_release_in(
         &mut self,
         window: &Window,
@@ -435,7 +436,7 @@ impl<'a, T: 'static> Context<'a, T> {
         self.app.observe_release_in(&entity, window, on_release)
     }
 
-    /// Register a callback to be invoked when the given Entity is released.
+    /// 注册回调，在给定实体被释放时被调用。
     pub fn observe_release_in<T2>(
         &self,
         observed: &Entity<T2>,
@@ -457,7 +458,7 @@ impl<'a, T: 'static> Context<'a, T> {
             })
     }
 
-    /// Register a callback to be invoked when the window is resized.
+    /// 注册回调，在窗口大小改变时被调用。
     pub fn observe_window_bounds(
         &self,
         window: &mut Window,
@@ -475,7 +476,7 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a callback to be invoked when the window is activated or deactivated.
+    /// 注册回调，在窗口被激活或停用时被调用。
     pub fn observe_window_activation(
         &self,
         window: &mut Window,
@@ -493,7 +494,7 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Registers a callback to be invoked when the window appearance changes.
+    /// 注册回调，在窗口外观改变时被调用。
     pub fn observe_window_appearance(
         &self,
         window: &mut Window,
@@ -511,7 +512,7 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Registers a callback to be invoked when the window button layout changes.
+    /// 注册回调，在窗口按钮布局改变时被调用。
     pub fn observe_button_layout_changed(
         &self,
         window: &mut Window,
@@ -529,9 +530,9 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a callback to be invoked when a keystroke is received by the application
-    /// in any window. Note that this fires after all other action and event mechanisms have resolved
-    /// and that this API will not be invoked if the event's propagation is stopped.
+    /// 注册回调，在应用程序的任何窗口接收到按键时被调用。
+    /// 注意此回调在所有其他操作和事件机制解析之后才触发，
+    /// 如果事件的传播被停止则不会调用此 API。
     pub fn observe_keystrokes(
         &mut self,
         mut f: impl FnMut(&mut T, &KeystrokeEvent, &mut Window, &mut Context<T>) + 'static,
@@ -559,7 +560,7 @@ impl<'a, T: 'static> Context<'a, T> {
         )
     }
 
-    /// Register a callback to be invoked when the window's pending input changes.
+    /// 注册回调，在窗口的待处理输入改变时被调用。
     pub fn observe_pending_input(
         &self,
         window: &mut Window,
@@ -577,8 +578,8 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a listener to be called when the given focus handle receives focus.
-    /// Returns a subscription and persists until the subscription is dropped.
+    /// 注册监听器，在给定的焦点句柄获得焦点时被调用。
+    /// 返回订阅并在订阅被 drop 之前持续有效。
     pub fn on_focus(
         &mut self,
         handle: &FocusHandle,
@@ -602,9 +603,9 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a listener to be called when the given focus handle or one of its descendants receives focus.
-    /// This does not fire if the given focus handle - or one of its descendants - was previously focused.
-    /// Returns a subscription and persists until the subscription is dropped.
+    /// 注册监听器，在给定的焦点句柄或其某个子节点获得焦点时被调用。
+    /// 如果给定的焦点句柄或其子节点之前已获得焦点则不会触发。
+    /// 返回订阅并在订阅被 drop 之前持续有效。
     pub fn on_focus_in(
         &mut self,
         handle: &FocusHandle,
@@ -626,8 +627,8 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a listener to be called when the given focus handle loses focus.
-    /// Returns a subscription and persists until the subscription is dropped.
+    /// 注册监听器，在给定的焦点句柄失去焦点时被调用。
+    /// 返回订阅并在订阅被 drop 之前持续有效。
     pub fn on_blur(
         &mut self,
         handle: &FocusHandle,
@@ -651,10 +652,10 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a listener to be called when nothing in the window has focus.
-    /// This typically happens when the node that was focused is removed from the tree,
-    /// and this callback lets you chose a default place to restore the users focus.
-    /// Returns a subscription and persists until the subscription is dropped.
+    /// 注册监听器，在窗口中没有任何元素拥有焦点时被调用。
+    /// 通常在之前获得焦点的节点从树中移除时发生，
+    /// 此回调允许你选择恢复用户焦点的默认位置。
+    /// 返回订阅并在订阅被 drop 之前持续有效。
     pub fn on_focus_lost(
         &mut self,
         window: &mut Window,
@@ -672,8 +673,8 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a listener to be called when the given focus handle or one of its descendants loses focus.
-    /// Returns a subscription and persists until the subscription is dropped.
+    /// 注册监听器，在给定的焦点句柄或其某个子节点失去焦点时被调用。
+    /// 返回订阅并在订阅被 drop 之前持续有效。
     pub fn on_focus_out(
         &mut self,
         handle: &FocusHandle,
@@ -703,10 +704,10 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Schedule a future to be run asynchronously.
-    /// The given callback is invoked with a [`WeakEntity<V>`] to avoid leaking the entity for a long-running process.
-    /// It's also given an [`AsyncWindowContext`], which can be used to access the state of the entity across await points.
-    /// The returned future will be polled on the main thread.
+    /// 调度一个未来异步运行。
+    /// 给定的回调接收 [`WeakEntity<V>`] 以避免在长时间运行的进程中泄漏实体。
+    /// 还接收 [`AsyncWindowContext`]，可用于在 await 点之间访问实体的状态。
+    /// 返回的未来将在主线程上被轮询。
     #[track_caller]
     pub fn spawn_in<AsyncFn, R>(&self, window: &Window, f: AsyncFn) -> Task<R>
     where
@@ -717,10 +718,10 @@ impl<'a, T: 'static> Context<'a, T> {
         window.spawn(self, async move |cx| f(view, cx).await)
     }
 
-    /// Schedule a future to be run asynchronously with the given priority.
-    /// The given callback is invoked with a [`WeakEntity<V>`] to avoid leaking the entity for a long-running process.
-    /// It's also given an [`AsyncWindowContext`], which can be used to access the state of the entity across await points.
-    /// The returned future will be polled on the main thread.
+    /// 调度一个未来按给定优先级异步运行。
+    /// 给定的回调接收 [`WeakEntity<V>`] 以避免在长时间运行的进程中泄漏实体。
+    /// 还接收 [`AsyncWindowContext`]，可用于在 await 点之间访问实体的状态。
+    /// 返回的未来将在主线程上被轮询。
     #[track_caller]
     pub fn spawn_in_with_priority<AsyncFn, R>(
         &self,
@@ -736,7 +737,7 @@ impl<'a, T: 'static> Context<'a, T> {
         window.spawn_with_priority(priority, self, async move |cx| f(view, cx).await)
     }
 
-    /// Register a callback to be invoked when the given global state changes.
+    /// 注册回调，在给定的全局状态改变时被调用。
     pub fn observe_global_in<G: Global>(
         &mut self,
         window: &Window,
@@ -766,7 +767,7 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a callback to be invoked when the given Action type is dispatched to the window.
+    /// 注册回调，在给定的操作类型被分派到窗口时被调用。
     pub fn on_action(
         &mut self,
         action_type: TypeId,

@@ -4,7 +4,7 @@ RGPUI 的 macOS 平台实现 crate。提供 macOS 原生 API 的封装，包括 
 
 ## 概述
 
-`rgpui_macos` 是 GPUI 图形框架在 macOS 上的底层平台适配层，通过直接调用 macOS 原生框架实现高性能的 GUI 渲染和系统交互。
+`rgpui_macos` 是 RGPUI 图形框架在 macOS 上的底层平台适配层，通过直接调用 macOS 原生框架实现高性能的 GUI 渲染和系统交互。
 
 ## macOS 专属特性
 
@@ -54,22 +54,22 @@ RGPUI 的 macOS 平台实现 crate。提供 macOS 原生 API 的封装，包括 
 
 ## 模块结构
 
-| 模块 | 说明 |
-|------|------|
+| 模块 | 说明                                        |
+|------|---------------------------------------------|
 | `platform` | macOS 平台实现，实现 `gpui::Platform` trait |
-| `window` | 原生窗口管理，包括视图、事件处理 |
-| `display` | 多显示器支持，基于 CoreGraphics |
-| `metal_renderer` | Metal GPU 渲染器 |
-| `metal_atlas` | Metal 纹理图集管理 |
-| `text_system` | Core Text 文本与字体系统 |
-| `keyboard` | 键盘布局与映射 |
-| `events` | 原生事件到 GPUI 事件的转换 |
-| `dispatcher` | GCD 任务调度器 |
-| `display_link` | 垂直同步显示链接 |
-| `pasteboard` | 系统剪贴板封装 |
-| `window_appearance` | 窗口外观（深色/浅色模式） |
-| `screen_capture` | 屏幕捕获支持（可选功能） |
-| `open_type` | OpenType 字体特性处理 |
+| `window` | 原生窗口管理，包括视图、事件处理            |
+| `display` | 多显示器支持，基于 CoreGraphics             |
+| `metal_renderer` | Metal GPU 渲染器                            |
+| `metal_atlas` | Metal 纹理图集管理                          |
+| `text_system` | Core Text 文本与字体系统                    |
+| `keyboard` | 键盘布局与映射                              |
+| `events` | 原生事件到 RGPUI 事件的转换                 |
+| `dispatcher` | GCD 任务调度器                              |
+| `display_link` | 垂直同步显示链接                            |
+| `pasteboard` | 系统剪贴板封装                              |
+| `window_appearance` | 窗口外观（深色/浅色模式）                   |
+| `screen_capture` | 屏幕捕获支持（可选功能）                    |
+| `open_type` | OpenType 字体特性处理                       |
 
 ## 系统要求
 
@@ -109,7 +109,7 @@ platform.run(Box::new(|| {
 
 ```
 ┌─────────────────────────────────────┐
-│            GPUI Core                │
+│            RGPUI Core                │
 │      (跨平台图形抽象层)              │
 └──────────────┬──────────────────────┘
                │ Platform trait

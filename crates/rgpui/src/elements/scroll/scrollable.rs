@@ -322,7 +322,7 @@ mod tests {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             // 模拟 Dialog：面板高度为 auto（由内容驱动），主体是 flex_1 + overflow_hidden，
             // 可滚动内容应赋予面板其固有高度。
-            // GPUI 窗口根元素在 auto 尺寸下会拉伸到视口，所以把 auto 高度面板放在显式视口根之下。
+            // RGPUI 窗口根元素在 auto 尺寸下会拉伸到视口，所以把 auto 高度面板放在显式视口根之下。
             div().size_full().child(
                 crate::v_flex()
                     .w(px(200.))

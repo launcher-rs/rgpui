@@ -6,63 +6,62 @@ use std::{
     ptr::NonNull,
 };
 
-/// Maximum children per internal node (R-tree style branching factor).
-/// Higher values = shorter tree = fewer cache misses, but more work per node.
+/// 内部节点最大子节点数（R-tree 风格的分支因子）。
+/// 值越高 = 树越短 = 缓存未命中越少，但每个节点的工作量越大。
 const MAX_CHILDREN: usize = 12;
 
-/// A spatial tree optimized for finding maximum ordering among intersecting bounds.
+/// 一种空间树，优化用于查找相交边界中的最大排序值。
 ///
-/// This is an R-tree variant specifically designed for the use case of assigning
-/// z-order to overlapping UI elements. Key optimizations:
-/// - Tracks the leaf with global max ordering for O(1) fast-path queries
-/// - Uses higher branching factor (4) for lower tree height
-/// - Aggressive pruning during search based on max_order metadata
+/// 这是 R-tree 的变体，专为给重叠 UI 元素分配 z-order 的用例设计。关键优化：
+/// - 跟踪具有全局最大排序值的叶节点，支持 O(1) 快速路径查询
+/// - 使用更高的分支因子（4）以降低树高度
+/// - 基于 max_order 元数据在搜索过程中进行激进剪枝
 #[derive(Debug)]
 pub(crate) struct BoundsTree<U>
 where
     U: Clone + Debug + Default + PartialEq,
 {
-    /// All nodes stored contiguously for cache efficiency.
+    /// 所有节点连续存储以提高缓存效率。
     nodes: Vec<Node<U>>,
-    /// Index of the root node, if any.
+    /// 根节点索引（如果有）。
     root: Option<usize>,
-    /// Index of the leaf with the highest ordering (for fast-path lookups).
+    /// 具有最高排序值的叶节点索引（用于快速路径查询）。
     max_leaf: Option<usize>,
-    /// Reusable stack for tree traversal during insertion.
+    /// 插入时用于树遍历的可复用栈。
     insert_path: Vec<usize>,
-    /// Reusable stack for search operations.
+    /// 搜索操作的可复用栈。
     search_stack: Vec<NonNull<Node<U>>>,
 }
 
-/// A node in the bounds tree.
+/// 边界树中的节点。
 #[derive(Debug, Clone)]
 struct Node<U>
 where
     U: Clone + Debug + Default + PartialEq,
 {
-    /// Bounding box containing this node and all descendants.
+    /// 包含此节点及其所有后代的边界框。
     bounds: Bounds<U>,
-    /// Maximum ordering value in this subtree.
+    /// 此子树中的最大排序值。
     max_order: u32,
-    /// Node-specific data.
+    /// 节点特定数据。
     kind: NodeKind,
 }
 
 #[derive(Debug, Clone)]
 enum NodeKind {
-    /// Leaf node containing actual bounds data.
+    /// 包含实际边界数据的叶节点。
     Leaf {
-        /// The ordering assigned to this bounds.
+        /// 分配给此边界的排序值。
         order: u32,
     },
-    /// Internal node with children.
+    /// 具有子节点的内部节点。
     Internal {
-        /// Indices of child nodes (2 to MAX_CHILDREN).
+        /// 子节点索引（2 到 MAX_CHILDREN）。
         children: NodeChildren,
     },
 }
 
-/// Fixed-size array for child indices, avoiding heap allocation.
+/// 用于子节点索引的固定大小数组，避免堆分配。
 #[derive(Debug, Clone)]
 struct NodeChildren {
     // Keeps an invariant where the max order child is always at the end
@@ -104,7 +103,7 @@ where
         + Half
         + Default,
 {
-    /// Clears all nodes from the tree.
+    /// 清除树中的所有节点。
     pub fn clear(&mut self) {
         self.nodes.clear();
         self.root = None;
@@ -113,10 +112,9 @@ where
         self.search_stack.clear();
     }
 
-    /// Inserts bounds into the tree and returns its assigned ordering.
+    /// 将边界插入树中并返回其分配的排序值。
     ///
-    /// The ordering is one greater than the maximum ordering of any
-    /// existing bounds that intersect with the new bounds.
+    /// 排序值是与新边界相交的任何现有边界最大排序值加一。
     pub fn insert(&mut self, new_bounds: Bounds<U>) -> u32 {
         // Find maximum ordering among intersecting bounds
         let max_intersecting = self.find_max_ordering(&new_bounds);
@@ -135,7 +133,7 @@ where
         ordering
     }
 
-    /// Finds the maximum ordering among all bounds that intersect with the query.
+    /// 查找与查询相交的所有边界中的最大排序值。
     fn find_max_ordering(&mut self, query: &Bounds<U>) -> u32 {
         let Some(root_idx) = self.root else {
             return 0;
@@ -192,8 +190,8 @@ where
         max_found
     }
 
-    /// Inserts a leaf node with the given bounds and ordering.
-    /// Returns the index of the new leaf.
+    /// 插入一个具有给定边界和排序值的叶节点。
+    /// 返回新叶节点的索引。
     fn insert_leaf(&mut self, bounds: Bounds<U>, order: u32) -> usize {
         let new_leaf_idx = self.nodes.len();
         self.nodes.push(Node {

@@ -15,18 +15,16 @@ use crate::{
 
 const MIN_THREADS: usize = 2;
 
-/// A multithreaded [`PlatformDispatcher`] for benchmarks.
+/// 用于基准测试的多线程 [`PlatformDispatcher`]。
 ///
-/// Background tasks run in parallel on a pool of worker threads and timers fire
-/// in real time on a dedicated timer thread, mirroring the production
-/// dispatchers (see `LinuxDispatcher`). Main-thread tasks are queued until the
-/// benchmark thread drains them via [`Self::run_until_idle`], since there is no
-/// platform run loop pumping them.
+/// 后台任务在工作线程池上并行运行，计时器在专用计时器线程上实时触发，
+/// 镜像生产调度器（参见 `LinuxDispatcher`）。主线程任务排队直到
+/// 基准测试线程通过 [`Self::run_until_idle`] 清空它们，因为没有
+/// 平台运行循环来泵送它们。
 ///
-/// Unlike [`TestDispatcher`](crate::TestDispatcher), which runs everything on a
-/// single thread with a virtual clock, work dispatched through this dispatcher
-/// executes with production concurrency, so wall-clock measurements reflect
-/// real parallelism.
+/// 与 [`TestDispatcher`](crate::TestDispatcher) 不同，后者在单个线程上
+/// 使用虚拟时钟运行所有内容，通过此调度器分派的工作以生产并发性执行，
+/// 因此挂钟测量反映真实的并行性。
 pub struct ThreadedDispatcher {
     background_sender: PriorityQueueSender<RunnableVariant>,
     main_sender: PriorityQueueSender<RunnableVariant>,
@@ -36,8 +34,8 @@ pub struct ThreadedDispatcher {
     main_thread_id: thread::ThreadId,
 }
 
-/// Tracks how many background and timer runnables are queued or running so
-/// [`ThreadedDispatcher::run_until_idle`] knows when to stop waiting.
+/// 跟踪有多少后台和计时器可运行对象排队或正在运行，以便
+/// [`ThreadedDispatcher::run_until_idle`] 知道何时停止等待。
 #[derive(Default)]
 struct IdleTracker {
     inflight: Mutex<usize>,
@@ -57,15 +55,15 @@ impl IdleTracker {
         }
     }
 
-    /// Returns a guard that decrements the in-flight count when dropped, so
-    /// the count stays correct even if the runnable being executed panics.
+    /// 返回一个守卫，当被丢弃时减少进行中计数，这样即使正在执行的
+    /// 可运行对象发生 panic，计数也能保持正确。
     fn decrement_on_drop(&self) -> impl Drop + '_ {
         crate::rgpui_util::defer(|| self.decrement())
     }
 
-    /// Notifies waiters while holding the in-flight lock. `run_until_idle`
-    /// re-checks its wake conditions under this lock before waiting, so the
-    /// notification can't slip between its check and its wait and be lost.
+    /// 在持有进行中锁时通知等待者。`run_until_idle`
+    /// 在等待前在此锁下重新检查其唤醒条件，因此
+    /// 通知不会在其检查和等待之间溜走而丢失。
     fn notify_under_lock(&self) {
         let _inflight = self.inflight.lock();
         self.condvar.notify_all();
@@ -120,10 +118,10 @@ impl Default for ThreadedDispatcher {
 }
 
 impl ThreadedDispatcher {
-    /// Creates a dispatcher whose main thread is the calling thread.
+    /// 创建一个主线程是调用线程的调度器。
     ///
-    /// Worker and timer threads live for the lifetime of the process; the
-    /// dispatcher is expected to be created once and reused across benchmarks.
+    /// 工作线程和计时器线程的生命周期与进程相同；
+    /// 调度器应创建一次并在多个基准测试中重用。
     pub fn new() -> Self {
         let (background_sender, background_receiver) = PriorityQueueReceiver::new();
         let (main_sender, main_receiver) = PriorityQueueReceiver::new();
@@ -210,15 +208,13 @@ impl ThreadedDispatcher {
         }
     }
 
-    /// Runs queued main thread tasks and waits until no background or timer
-    /// work is queued, running, or already due.
+    /// 运行排队的主线程任务，并等待直到没有后台或计时器
+    /// 工作排队、运行或已到期。
     ///
-    /// Timers that haven't reached their due time yet are *not* waited for:
-    /// the dispatcher runs in real time and cannot skip ahead like the
-    /// `TestDispatcher`'s virtual clock, so waiting on a future timer would
-    /// block for its full real duration. Tasks sleeping on such timers are
-    /// considered idle. Must be called on the thread that created this
-    /// dispatcher.
+    /// 尚未到达到期时间的计时器*不*等待：调度器实时运行，
+    /// 不能像 `TestDispatcher` 的虚拟时钟那样跳过，因此等待
+    /// 未来的计时器会阻塞其完整的实际持续时间。在此类计时器上
+    /// 休眠的任务被视为空闲。必须在创建此调度器的线程上调用。
     pub fn run_until_idle(&self) {
         assert!(
             self.is_main_thread(),
@@ -259,12 +255,11 @@ impl ThreadedDispatcher {
         }
     }
 
-    /// Cancels all pending timers so timers armed by one benchmark can't fire
-    /// during a later benchmark sharing this process-lifetime dispatcher.
+    /// 取消所有待处理的计时器，使一个基准测试设置的计时器不会在
+    /// 后续共享此进程生命周期调度器的基准测试中触发。
     ///
-    /// Dropping a timer runnable drops its completion sender, waking the task
-    /// awaiting the timer. Call [`Self::run_until_idle`] after this method to
-    /// drain any work that cancellation unblocks.
+    /// 丢弃计时器可运行对象会丢弃其完成发送器，唤醒等待计时器的任务。
+    /// 在此方法后调用 [`Self::run_until_idle`] 以清空取消解除阻塞的任何工作。
     pub fn cancel_pending_timers(&self) -> usize {
         let timers = {
             let mut state = self.timers.state.lock();
@@ -277,8 +272,7 @@ impl ThreadedDispatcher {
         canceled
     }
 
-    /// Describes the dispatcher's idle-tracking state, for diagnosing
-    /// benchmarks that fail to reach quiescence.
+    /// 描述调度器的空闲跟踪状态，用于诊断未能达到静止状态的基准测试。
     pub fn debug_state(&self) -> String {
         let inflight = *self.idle.inflight.lock();
         let timers = self.timers.state.lock().heap.len();

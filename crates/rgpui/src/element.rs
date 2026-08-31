@@ -1,35 +1,16 @@
-//! Elements are the workhorses of GPUI. They are responsible for laying out and painting all of
-//! the contents of a window. Elements form a tree and are laid out according to the web layout
-//! standards as implemented by [taffy](https://github.com/DioxusLabs/taffy). Most of the time,
-//! you won't need to interact with this module or these APIs directly. Elements provide their
-//! own APIs and GPUI, or other element implementation, uses the APIs in this module to convert
-//! that element tree into the pixels you see on the screen.
+//! 元素是 RGPUI 的核心组件。它们负责布局和绘制窗口的所有内容。元素形成一个树结构，并根据 [taffy](https://github.com/DioxusLabs/taffy) 实现的 Web 布局标准进行布局。大多数情况下，您不需要直接与此模块或这些 API 交互。元素提供自己的 API，RGPUI 或其他元素实现使用此模块中的 API 将元素树转换为您在屏幕上看到的像素。
 //!
-//! # Element Basics
+//! # 元素基础
 //!
-//! Elements are constructed by calling [`Render::render()`] on the root view of the window,
-//! which recursively constructs the element tree from the current state of the application,.
-//! These elements are then laid out by Taffy, and painted to the screen according to their own
-//! implementation of [`Element::paint()`]. Before the start of the next frame, the entire element
-//! tree and any callbacks they have registered with GPUI are dropped and the process repeats.
+//! 元素是通过调用窗口根视图的 [`Render::render()`] 构建的，这会从应用程序的当前状态递归地构建元素树。然后这些元素由 Taffy 进行布局，并根据它们自己的 [`Element::paint()`] 实现绘制到屏幕上。在下一帧开始之前，整个元素树及其在 RGPUI 中注册的所有回调都会被丢弃，然后过程重复。
 //!
-//! But some state is too simple and voluminous to store in every view that needs it, e.g.
-//! whether a hover has been started or not. For this, GPUI provides the [`Element::PrepaintState`], associated type.
+//! 但有些状态太简单且数量太多，无法存储在每个需要它的视图中，例如是否已开始悬停。为此，RGPUI 提供了 [`Element::PrepaintState`] 关联类型。
 //!
-//! # Implementing your own elements
+//! # 实现自己的元素
 //!
-//! Elements are intended to be the low level, imperative API to GPUI. They are responsible for upholding,
-//! or breaking, GPUI's features as they deem necessary. As an example, most GPUI elements are expected
-//! to stay in the bounds that their parent element gives them. But with [`Window::with_content_mask`],
-//! you can ignore this restriction and paint anywhere inside of the window's bounds. This is useful for overlays
-//! and popups and anything else that shows up 'on top' of other elements.
-//! With great power, comes great responsibility.
+//! 元素旨在成为 RGPUI 的底层命令式 API。它们负责维护或根据需要打破 RGPUI 的功能。例如，大多数 RGPUI 元素应保持在其父元素给定的边界内。但使用 [`Window::with_content_mask`]，您可以忽略此限制并在窗口边界内的任何位置绘制。这对于覆盖层、弹出窗口以及其他显示在其他元素“之上”的内容非常有用。能力越大，责任越大。
 //!
-//! However, most of the time, you won't need to implement your own elements. GPUI provides a number of
-//! elements that should cover most common use cases out of the box and it's recommended that you use those
-//! to construct `components`, using the [`RenderOnce`] trait and the `#[derive(IntoElement)]` macro. Only implement
-//! elements when you need to take manual control of the layout and painting process, such as when using
-//! your own custom layout algorithm or rendering a code editor.
+//! 但是，大多数情况下，您不需要实现自己的元素。RGPUI 提供了许多开箱即用的元素，应涵盖大多数常见用例，建议您使用这些元素来构建 `components`，使用 [`RenderOnce`] trait 和 `#[derive(IntoElement)]` 宏。仅在需要手动控制布局和绘制过程时才实现元素，例如使用自己的自定义布局算法或渲染代码编辑器时。
 
 #[cfg(feature = "dom-backend")]
 use crate::DomNode;
@@ -46,32 +27,29 @@ use std::{
     sync::Arc,
 };
 
-/// Implemented by types that participate in laying out and painting the contents of a window.
-/// Elements form a tree and are laid out according to web-based layout rules, as implemented by Taffy.
-/// You can create custom elements by implementing this trait, see the module-level documentation
-/// for more details.
+/// 参与窗口内容布局和绘制的类型需实现此特征。
+/// 元素形成一棵树，按照 Taffy 实现的 Web 布局规则进行布局。
+/// 可通过实现此特征创建自定义元素，详见模块文档。
 pub trait Element: 'static + IntoElement {
-    /// The type of state returned from [`Element::request_layout`]. A mutable reference to this state is subsequently
-    /// provided to [`Element::prepaint`] and [`Element::paint`].
+    /// [`Element::request_layout`] 返回的状态类型。其可变引用随后传递给
+    /// [`Element::prepaint`] 和 [`Element::paint`]。
     type RequestLayoutState: 'static;
 
-    /// The type of state returned from [`Element::prepaint`]. A mutable reference to this state is subsequently
-    /// provided to [`Element::paint`].
+    /// [`Element::prepaint`] 返回的状态类型。其可变引用随后传递给 [`Element::paint`]。
     type PrepaintState: 'static;
 
-    /// If this element has a unique identifier, return it here. This is used to track elements across frames, and
-    /// will cause a GlobalElementId to be passed to the request_layout, prepaint, and paint methods.
+    /// 如果此元素有唯一标识符，返回它。用于跨帧追踪元素，
+    /// 并将 GlobalElementId 传递给 request_layout、prepaint 和 paint 方法。
     ///
-    /// The global id can in turn be used to access state that's connected to an element with the same id across
-    /// frames. This id must be unique among children of the first containing element with an id.
+    /// 全局 id 可用于访问跨帧相同 id 元素关联的状态。
+    /// 该 id 在第一个拥有 id 的父元素的子元素中必须唯一。
     fn id(&self) -> Option<ElementId>;
 
-    /// Source location where this element was constructed, used to disambiguate elements in the
-    /// inspector and navigate to their source code.
+    /// 此元素的构造源位置，用于在检查器中区分元素并导航到其源码。
     fn source_location(&self) -> Option<&'static panic::Location<'static>>;
 
-    /// Before an element can be painted, we need to know where it's going to be and how big it is.
-    /// Use this method to request a layout from Taffy and initialize the element's state.
+    /// 绘制元素前，需要确定其位置和大小。
+    /// 使用此方法向 Taffy 请求布局并初始化元素状态。
     fn request_layout(
         &mut self,
         id: Option<&GlobalElementId>,
@@ -80,8 +58,8 @@ pub trait Element: 'static + IntoElement {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState);
 
-    /// After laying out an element, we need to commit its bounds to the current frame for hitbox
-    /// purposes. The state argument is the same state that was returned from [`Element::request_layout()`].
+    /// 布局完成后，需将其边界提交到当前帧用于命中检测。
+    /// state 参数即 [`Element::request_layout()`] 返回的状态。
     fn prepaint(
         &mut self,
         id: Option<&GlobalElementId>,
@@ -92,8 +70,8 @@ pub trait Element: 'static + IntoElement {
         cx: &mut App,
     ) -> Self::PrepaintState;
 
-    /// Once layout has been completed, this method will be called to paint the element to the screen.
-    /// The state argument is the same state that was returned from [`Element::request_layout()`].
+    /// 布局完成后，调用此方法将元素绘制到屏幕。
+    /// state 参数即 [`Element::request_layout()`] 返回的状态。
     fn paint(
         &mut self,
         id: Option<&GlobalElementId>,
@@ -105,22 +83,21 @@ pub trait Element: 'static + IntoElement {
         cx: &mut App,
     );
 
-    /// Returns the accessible role for this element, if any.
-    /// Elements that return `None` are not included in the accessibility tree.
+    /// 返回此元素的无障碍角色，若无则返回 None。
+    /// 返回 None 的元素不会包含在无障碍树中。
     ///
-    /// Note: inclusion in accessibility tree requires non-`None` [`id`][Element::id].
+    /// 注意：加入无障碍树需要 [`id`][Element::id] 返回非 None。
     ///
-    /// See the [accessibility guide](crate::_accessibility) for an overview.
+    /// 概览见[无障碍指南](crate::_accessibility)。
     fn a11y_role(&self) -> Option<accesskit::Role> {
         None
     }
 
-    /// If this element participates in the Web DOM backend, return the DOM node to register.
+    /// 如果此元素参与 Web DOM 后端，返回要注册的 DOM 节点。
     ///
-    /// 默认实现返回 `None`，即该元素不进入 DOM 树。需要映射到 DOM 的元素
-    /// （如 `Div`、文本）在 [`Element::paint`] 时基于给定布局 bounds 与当前样式
-    /// 生成一个 [`DomNode`]；DOM 层作为 canvas 之上的覆盖层渲染（v1 接受双重绘制），
-    /// 布局沿用 Taffy 结果，不依赖浏览器重排。
+    /// 默认返回 None，即不进入 DOM 树。需要映射到 DOM 的元素
+    /// （如 `Div`、文本）在 [`Element::paint`] 时基于布局 bounds 与当前样式
+    /// 生成 [`DomNode`]；DOM 层作为 canvas 覆盖层渲染，布局沿用 Taffy 结果。
     ///
     /// 见 `docs/web-dom-backend-plan.md` 与 `docs/web-dom-backend-analysis.md`。
     #[cfg(feature = "dom-backend")]
@@ -128,21 +105,19 @@ pub trait Element: 'static + IntoElement {
         None
     }
 
-    /// Write accessibility properties to the given node.
-    /// Called only when `a11y_role()` returns `Some`.
+    /// 将无障碍属性写入给定节点。
+    /// 仅在 `a11y_role()` 返回 `Some` 时调用。
     ///
-    /// See the [accessibility guide](crate::_accessibility) for an overview.
+    /// 概览见[无障碍指南](crate::_accessibility)。
     fn write_a11y_info(&self, _node: &mut accesskit::Node) {}
 
-    /// Add synthetic child nodes to an [`Element`] that has an
-    /// [`.id()`][Element::id] and a [`.role()`][Element::a11y_role].
+    /// 为拥有 [`.id()`][Element::id] 和 [`.role()`][Element::a11y_role] 的
+    /// [`Element`] 添加合成子节点。
     ///
-    /// Some elements may want to inject accessibility nodes that do not
-    /// correspond to any GPUI element. For example, a custom text field element
-    /// may want to inject synthetic child nodes for the text content.
+    /// 某些元素需要注入不对应任何 RGPUI 元素的无障碍节点。
+    /// 例如自定义文本框元素可能为文本内容注入合成子节点。
     ///
-    /// See [Synthetic children](crate::_accessibility#synthetic-children) in
-    /// the accessibility guide for more detail.
+    /// 详见无障碍指南中的[合成子节点](crate::_accessibility#synthetic-children)。
     fn a11y_synthetic_children(
         &mut self,
         _prepaint: &mut Self::PrepaintState,
@@ -150,22 +125,22 @@ pub trait Element: 'static + IntoElement {
     ) {
     }
 
-    /// Convert this element into a dynamically-typed [`AnyElement`].
+    /// 将此元素转换为动态类型的 [`AnyElement`]。
     fn into_any(self) -> AnyElement {
         AnyElement::new(self)
     }
 }
 
-/// Implemented by any type that can be converted into an element.
+/// 可转换为元素的类型需实现此特征。
 pub trait IntoElement: Sized {
-    /// The specific type of element into which the implementing type is converted.
-    /// Useful for converting other types into elements automatically, like Strings
+    /// 实现类型转换后的具体元素类型。
+    /// 用于自动将其他类型转换为元素，如 String。
     type Element: Element;
 
-    /// Convert self into a type that implements [`Element`].
+    /// 将 self 转换为实现 [`Element`] 的类型。
     fn into_element(self) -> Self::Element;
 
-    /// Convert self into a dynamically-typed [`AnyElement`].
+    /// 将 self 转换为动态类型的 [`AnyElement`]。
     fn into_any_element(self) -> AnyElement {
         self.into_element().into_any()
     }
@@ -173,10 +148,10 @@ pub trait IntoElement: Sized {
 
 impl<T: IntoElement> FluentBuilder for T {}
 
-/// An object that can be drawn to the screen. This is the trait that distinguishes "views" from
-/// other entities. Views are `Entity`'s which `impl Render` and drawn to the screen.
+/// 可绘制到屏幕的对象。此特征区分"视图"与其他实体。
+/// 视图是实现了 `Render` 并绘制到屏幕的 `Entity`。
 pub trait Render: 'static + Sized {
-    /// Render this view into an element tree.
+    /// 将此视图渲染为元素树。
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement;
 }
 
@@ -186,25 +161,21 @@ impl Render for Empty {
     }
 }
 
-/// You can derive [`IntoElement`] on any type that implements this trait.
-/// It is used to construct reusable `components` out of plain data. Think of
-/// components as a recipe for a certain pattern of elements. RenderOnce allows
-/// you to invoke this pattern, without breaking the fluent builder pattern of
-/// the element APIs.
+/// 可对实现此特征的类型派生 [`IntoElement`]。
+/// 用于从纯数据构建可复用的 `组件`。组件即特定元素模式的配方。
+/// RenderOnce 允许调用此模式，同时保持元素 API 的流式构建器风格。
 pub trait RenderOnce: 'static {
-    /// Render this component into an element tree. Note that this method
-    /// takes ownership of self, as compared to [`Render::render()`] method
-    /// which takes a mutable reference.
+    /// 将此组件渲染为元素树。注意此方法获取 self 的所有权，
+    /// 而 [`Render::render()`] 接收可变引用。
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement;
 }
 
-/// This is a helper trait to provide a uniform interface for constructing elements that
-/// can accept any number of any kind of child elements
+/// 辅助特征，为可接受任意数量和类型子元素的元素提供统一接口。
 pub trait ParentElement {
-    /// Extend this element's children with the given child elements.
+    /// 用给定子元素扩展此元素的子元素列表。
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>);
 
-    /// Add a single child element to this element.
+    /// 向此元素添加单个子元素。
     fn child(mut self, child: impl IntoElement) -> Self
     where
         Self: Sized,
@@ -213,7 +184,7 @@ pub trait ParentElement {
         self
     }
 
-    /// Add multiple child elements to this element.
+    /// 向此元素添加多个子元素。
     fn children(mut self, children: impl IntoIterator<Item = impl IntoElement>) -> Self
     where
         Self: Sized,
@@ -223,7 +194,7 @@ pub trait ParentElement {
     }
 }
 
-/// A globally unique identifier for an element, used to track state across frames.
+/// 元素的全局唯一标识符，用于跨帧追踪状态。
 #[derive(Deref, DerefMut, Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct GlobalElementId(pub(crate) Arc<[ElementId]>);
 
@@ -270,9 +241,9 @@ trait ElementObject {
     ) -> Size<Pixels>;
 }
 
-/// A wrapper around an implementer of [`Element`] that allows it to be drawn in a window.
+/// [`Element`] 实现者的包装器，使其可在窗口中绘制。
 pub struct Drawable<E: Element> {
-    /// The drawn element.
+    /// 被绘制的元素。
     pub element: E,
     phase: ElementDrawPhase<E::RequestLayoutState, E::PrepaintState>,
 }
@@ -305,7 +276,7 @@ enum ElementDrawPhase<RequestLayoutState, PrepaintState> {
     Painted,
 }
 
-/// A wrapper around an implementer of [`Element`] that allows it to be drawn in a window.
+/// [`Element`] 实现者的包装器，使其可在窗口中绘制。
 impl<E: Element> Drawable<E> {
     pub(crate) fn new(element: E) -> Self {
         Drawable {
@@ -627,7 +598,7 @@ where
     }
 }
 
-/// A dynamically typed element that can be used to store any element type.
+/// 动态类型元素，可存储任意元素类型。
 pub struct AnyElement(ArenaBox<dyn ElementObject>);
 
 impl AnyElement {
@@ -641,19 +612,19 @@ impl AnyElement {
         AnyElement(element)
     }
 
-    /// Attempt to downcast a reference to the boxed element to a specific type.
+    /// 尝试将装箱元素的引用向下转型为特定类型。
     pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T> {
         self.0.inner_element().downcast_mut::<T>()
     }
 
-    /// Request the layout ID of the element stored in this `AnyElement`.
-    /// Used for laying out child elements in a parent element.
+    /// 获取此 `AnyElement` 存储元素的布局 ID。
+    /// 用于在父元素中布局子元素。
     pub fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         self.0.request_layout(window, cx)
     }
 
-    /// Prepares the element to be painted by storing its bounds, giving it a chance to draw hitboxes and
-    /// request autoscroll before the final paint pass is confirmed.
+    /// 通过存储边界准备绘制元素，使其有机会绘制命中框
+    /// 并在最终绘制前请求自动滚动。
     pub fn prepaint(&mut self, window: &mut Window, cx: &mut App) -> Option<FocusHandle> {
         let focus_assigned = window.next_frame.focus.is_some();
 
@@ -666,12 +637,12 @@ impl AnyElement {
         None
     }
 
-    /// Paints the element stored in this `AnyElement`.
+    /// 绘制此 `AnyElement` 存储的元素。
     pub fn paint(&mut self, window: &mut Window, cx: &mut App) {
         self.0.paint(window, cx);
     }
 
-    /// Performs layout for this element within the given available space and returns its size.
+    /// 在给定可用空间内执行此元素的布局并返回其大小。
     pub fn layout_as_root(
         &mut self,
         available_space: Size<AvailableSpace>,
@@ -681,8 +652,8 @@ impl AnyElement {
         self.0.layout_as_root(available_space, window, cx)
     }
 
-    /// Prepaints this element at the given absolute origin.
-    /// If any element in the subtree beneath this element is focused, its FocusHandle is returned.
+    /// 在给定绝对原点处预绘制此元素。
+    /// 如果此元素子树中有任何元素获得焦点，返回其 FocusHandle。
     pub fn prepaint_at(
         &mut self,
         origin: Point<Pixels>,
@@ -692,8 +663,8 @@ impl AnyElement {
         window.with_absolute_element_offset(origin, |window| self.prepaint(window, cx))
     }
 
-    /// Performs layout on this element in the available space, then prepaints it at the given absolute origin.
-    /// If any element in the subtree beneath this element is focused, its FocusHandle is returned.
+    /// 在可用空间内执行此元素的布局，然后在给定绝对原点处预绘制。
+    /// 如果此元素子树中有任何元素获得焦点，返回其 FocusHandle。
     pub fn prepaint_as_root(
         &mut self,
         origin: Point<Pixels>,
@@ -767,7 +738,7 @@ impl IntoElement for AnyElement {
     }
 }
 
-/// The empty element, which renders nothing.
+/// 空元素，不渲染任何内容。
 pub struct Empty;
 
 impl IntoElement for Empty {

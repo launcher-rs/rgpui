@@ -9,7 +9,7 @@ use crate::PlatformKeyboardMapper;
 
 /// 这是一个辅助 trait，用于简化某些函数的实现
 pub trait AsKeystroke {
-    /// 返回按键的 GPUI 表示。
+    /// 返回按键的 RGPUI 表示。
     fn as_keystroke(&self) -> &Keystroke;
 }
 
@@ -34,7 +34,7 @@ pub struct Keystroke {
 /// 表示可用于键绑定并向用户显示的按键。
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct KeybindingKeystroke {
-    /// 按键的 GPUI 表示。
+    /// 按键的 RGPUI 表示。
     inner: Keystroke,
     /// 要显示的修饰键。
     #[cfg(target_os = "windows")]
@@ -297,7 +297,7 @@ impl KeybindingKeystroke {
         }
     }
 
-    /// 返回按键的 GPUI 表示。
+    /// 返回按键的 RGPUI 表示。
     pub fn inner(&self) -> &Keystroke {
         &self.inner
     }
@@ -305,7 +305,7 @@ impl KeybindingKeystroke {
     /// 返回修饰键。
     ///
     /// 平台特定行为：
-    /// - 在 macOS 和 Linux 上，此修饰键与 `inner.modifiers` 相同，即按键的 GPUI 表示。
+    /// - 在 macOS 和 Linux 上，此修饰键与 `inner.modifiers` 相同，即按键的 RGPUI 表示。
     /// - 在 Windows 上，此修饰键是显示修饰键，例如 `ctrl-@` 按键的 `inner.modifiers` 为
     /// `Modifiers::control()`，而 `display_modifiers` 为 `Modifiers::control_shift()`。
     pub fn modifiers(&self) -> &Modifiers {
@@ -322,7 +322,7 @@ impl KeybindingKeystroke {
     /// 返回键。
     ///
     /// 平台特定行为：
-    /// - 在 macOS 和 Linux 上，此键与 `inner.key` 相同，即按键的 GPUI 表示。
+    /// - 在 macOS 和 Linux 上，此键与 `inner.key` 相同，即按键的 RGPUI 表示。
     /// - 在 Windows 上，此键是显示键，例如 `ctrl-@` 按键的 `inner.key` 为 `@`，而 `display_key` 为 `2`。
     pub fn key(&self) -> &str {
         #[cfg(target_os = "windows")]

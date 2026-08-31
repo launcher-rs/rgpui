@@ -73,11 +73,11 @@ mod test_context;
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
 mod visual_test_context;
 
-/// The duration for which futures returned from [Context::on_app_quit] can run before the application fully quits.
+/// 应用完全退出前，[Context::on_app_quit] 返回的 future 可运行的最大时长。
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(200);
 
-/// Temporary(?) wrapper around [`RefCell<App>`] to help us debug any double borrows.
-/// Strongly consider removing after stabilization.
+/// [`RefCell<App>`] 的临时封装，用于调试双重借用问题。
+/// 稳定后强烈建议移除。
 #[doc(hidden)]
 pub struct AppCell {
     app: RefCell<App>,
@@ -141,39 +141,36 @@ impl Drop for AppRefMut<'_> {
     }
 }
 
-/// A reference to a GPUI application, typically constructed in the `main` function of your app.
-/// You won't interact with this type much outside of initial configuration and startup.
+/// 对 RGPUI 应用的引用，通常在应用的 `main` 函数中构建。
+/// 除初始配置和启动阶段外，你不会频繁与此类型交互。
 pub struct Application(Rc<AppCell>);
 
-/// A strong handle to an [`Application`] started with [`Application::run_embedded`].
+/// 通过 [`Application::run_embedded`] 启动的应用的强引用句柄。
 ///
-/// Dropping this handle releases the app, so an embedder must hold it for as long as the
-/// app should run. While held, it is the embedder's entry point back into GPUI each time
-/// the external run loop gives it control.
+/// 丢弃此句柄将释放应用，因此嵌入方必须持有它直到应用结束运行。
+/// 持有期间，它就是嵌入方在外部运行循环每次交还控制权时重新进入 RGPUI 的入口。
 pub struct ApplicationHandle {
     app: Rc<AppCell>,
 }
 
 impl ApplicationHandle {
-    /// Invoke `f` with the app context. Must not be called re-entrantly from code that
-    /// is already inside an update; the app state is a `RefCell` and will panic on a
-    /// double borrow.
+    /// 使用应用上下文调用 `f`。不可在已在 update 内部的代码中重入调用；
+    /// 应用状态是 `RefCell`，双重借用会 panic。
     pub fn update<R>(&self, f: impl FnOnce(&mut App) -> R) -> R {
         let cx = &mut *self.app.borrow_mut();
         f(cx)
     }
 
-    /// An [`AsyncApp`] for use across await points. It holds the app weakly; keeping the
-    /// app alive remains this handle's job.
+    /// 用于跨 await 点使用的 [`AsyncApp`]。它弱引用应用；保持应用存活仍是此句柄的职责。
     pub fn to_async(&self) -> AsyncApp {
         self.update(|cx| cx.to_async())
     }
 }
 
-/// Represents an application before it is fully launched. Once your app is
-/// configured, you'll start the app with `App::run`.
+/// 表示尚未完全启动的应用。配置完成后，
+/// 使用 `App::run` 启动应用。
 impl Application {
-    /// Builds an app with a caller-provided platform implementation.
+    /// 使用调用方提供的平台实现构建应用。
     pub fn with_platform(platform: Rc<dyn Platform>) -> Self {
         Self(App::new_app(
             platform,
@@ -182,22 +179,19 @@ impl Application {
         ))
     }
 
-    /// Builds an app with accessibility (AccessKit) integration forcibly
-    /// disabled.
+    /// 强制禁用无障碍（AccessKit）集成来构建应用。
     ///
-    /// In this mode, accessibility APIs (e.g.
-    /// [`div().role()`][crate::StatefulInteractiveElement::role]) silently
-    /// no-op.
+    /// 在此模式下，无障碍 API（如 [`div().role()`][crate::StatefulInteractiveElement::role]）
+    /// 会静默地不执行任何操作。
     ///
-    /// See the [accessibility guide](crate::_accessibility) for an overview of
-    /// the features this disables.
+    /// 参见[无障碍指南](crate::_accessibility)了解被禁用功能的概述。
     pub fn new_inaccessible(platform: Rc<dyn Platform>) -> Self {
         let this = Self::with_platform(platform);
         this.0.borrow_mut().accessibility_force_disabled = true;
         this
     }
 
-    /// Assigns the source of assets for the application.
+    /// 设置应用的资源来源。
     pub fn with_assets(self, asset_source: impl AssetSource) -> Self {
         let mut context_lock = self.0.borrow_mut();
         let asset_source = Arc::new(asset_source);
@@ -207,7 +201,7 @@ impl Application {
         self
     }
 
-    /// Sets the HTTP client for the application.
+    /// 设置应用的 HTTP 客户端。
     pub fn with_http_client(self, http_client: Arc<dyn HttpClient>) -> Self {
         let mut context_lock = self.0.borrow_mut();
         context_lock.http_client = http_client;
@@ -215,15 +209,14 @@ impl Application {
         self
     }
 
-    /// Configures when the application should automatically quit.
-    /// By default, [`QuitMode::Default`] is used.
+    /// 配置应用自动退出的时机。
+    /// 默认使用 [`QuitMode::Default`]。
     pub fn with_quit_mode(self, mode: QuitMode) -> Self {
         self.0.borrow_mut().quit_mode = mode;
         self
     }
 
-    /// Start the application. The provided callback will be called once the
-    /// app is fully launched.
+    /// 启动应用。提供的回调将在应用完全启动后被调用。
     pub fn run<F>(self, on_finish_launching: F)
     where
         F: 'static + FnOnce(&mut App),
@@ -236,14 +229,14 @@ impl Application {
         }));
     }
 
-    /// Start the application for an embedder that drives the run loop itself.
+    /// 为自行驱动运行循环的嵌入方启动应用。
     ///
-    /// On ordinary platforms `Platform::run` blocks for the lifetime of the app, and the
-    /// app state is kept alive by [`Application::run`]'s stack frame. Embedded platforms 鈥?    /// where the run loop belongs to someone else, e.g. GPUI compiled into a Wasm guest,
-    /// or a GPUI view hosted inside a foreign native application 鈥?implement
-    /// `Platform::run` to invoke the launch callback and return immediately. This method
-    /// supports that shape: it returns an [`ApplicationHandle`] that keeps the app alive
-    /// and lets the embedder re-enter it whenever the external run loop yields control.
+    /// 在普通平台上，`Platform::run` 会在应用生命周期内阻塞，应用状态由
+    /// [`Application::run`] 的栈帧保持存活。嵌入平台（即运行循环归属他方，
+    /// 例如编译为 Wasm guest 的 RGPUI，或托管在外部原生应用中的 RGPUI 视图）
+    /// 实现 `Platform::run` 时会调用启动回调后立即返回。本方法支持这种模式：
+    /// 它返回一个 [`ApplicationHandle`] 来保持应用存活，并允许嵌入方在外部运行
+    /// 循环交还控制权时重新进入应用。
     pub fn run_embedded<F>(self, on_finish_launching: F) -> ApplicationHandle
     where
         F: 'static + FnOnce(&mut App),
@@ -257,8 +250,7 @@ impl Application {
         ApplicationHandle { app: self.0 }
     }
 
-    /// Register a handler to be invoked when the platform instructs the application
-    /// to open one or more URLs.
+    /// 注册一个处理器，当平台指示应用打开一个或多个 URL 时被调用。
     pub fn on_open_urls<F>(&self, mut callback: F) -> &Self
     where
         F: 'static + FnMut(Vec<String>),
@@ -267,8 +259,8 @@ impl Application {
         self
     }
 
-    /// Invokes a handler when an already-running application is launched.
-    /// On macOS, this can occur when the application icon is double-clicked or the app is launched via the dock.
+    /// 当已运行的应用再次被启动时调用处理器。
+    /// 在 macOS 上，双击应用图标或通过 Dock 启动应用时会触发此回调。
     pub fn on_reopen<F>(&self, mut callback: F) -> &Self
     where
         F: 'static + FnMut(&mut App),
@@ -282,7 +274,7 @@ impl Application {
         self
     }
 
-    /// Invokes a handler when the system wakes from sleep.
+    /// 当系统从休眠中唤醒时调用处理器。
     pub fn on_system_wake<F>(&self, mut callback: F) -> &Self
     where
         F: 'static + FnMut(&mut App),
@@ -299,22 +291,22 @@ impl Application {
         self
     }
 
-    /// Returns a handle to the [`BackgroundExecutor`] associated with this app, which can be used to spawn futures in the background.
+    /// 返回与此应用关联的 [`BackgroundExecutor`] 句柄，可用于在后台生成 future。
     pub fn background_executor(&self) -> BackgroundExecutor {
         self.0.borrow().background_executor.clone()
     }
 
-    /// Returns a handle to the [`ForegroundExecutor`] associated with this app, which can be used to spawn futures in the foreground.
+    /// 返回与此应用关联的 [`ForegroundExecutor`] 句柄，可用于在前台生成 future。
     pub fn foreground_executor(&self) -> ForegroundExecutor {
         self.0.borrow().foreground_executor.clone()
     }
 
-    /// Returns a reference to the [`TextSystem`] associated with this app.
+    /// 返回与此应用关联的 [`TextSystem`] 引用。
     pub fn text_system(&self) -> Arc<TextSystem> {
         self.0.borrow().text_system.clone()
     }
 
-    /// Returns the file URL of the executable with the specified name in the application bundle
+    /// 返回应用 bundle 中指定名称的可执行文件的文件 URL
     pub fn path_for_auxiliary_executable(&self, name: &str) -> Result<PathBuf> {
         self.0.borrow().path_for_auxiliary_executable(name)
     }
@@ -329,30 +321,30 @@ type WindowClosedHandler = Box<dyn FnMut(&mut App, WindowId)>;
 type ReleaseListener = Box<dyn FnOnce(&mut dyn Any, &mut App) + 'static>;
 type NewEntityListener = Box<dyn FnMut(AnyEntity, &mut Option<&mut Window>, &mut App) + 'static>;
 
-/// Defines when the application should automatically quit.
+/// 定义应用自动退出的时机。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QuitMode {
-    /// Use [`QuitMode::Explicit`] on macOS and [`QuitMode::LastWindowClosed`] on other platforms.
+    /// macOS 上使用 [`QuitMode::Explicit`]，其他平台使用 [`QuitMode::LastWindowClosed`]。
     #[default]
     Default,
-    /// Quit automatically when the last window is closed.
+    /// 最后一个窗口关闭时自动退出。
     LastWindowClosed,
-    /// Quit only when requested via [`App::quit`].
+    /// 仅在通过 [`App::quit`] 请求时退出。
     Explicit,
 }
 
-/// Controls when GPUI hides the mouse cursor in response to keyboard input.
+/// 控制 RGPUI 在响应键盘输入时何时隐藏鼠标光标。
 ///
-/// Restoration on mouse motion is handled by the platform layer; this enum
-/// only describes the policy for *triggering* a hide.
+/// 鼠标移动时的恢复由平台层处理；此枚举仅描述
+/// *触发*隐藏的策略。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum CursorHideMode {
-    /// Never hide the cursor automatically.
+    /// 从不自动隐藏光标。
     Never,
-    /// Hide on character-producing key presses (typing).
+    /// 在产生字符的按键（打字）时隐藏。
     OnTyping,
-    /// Hide on character-producing key presses, *and* when a key binding
-    /// resolves to an action that consumes the keystroke.
+    /// 在产生字符的按键时隐藏，*以及*当按键绑定
+    /// 解析为消耗该按键的动作时也隐藏。
     #[default]
     OnTypingAndAction,
 }
@@ -367,7 +359,7 @@ pub struct SystemWindowTab {
 }
 
 impl SystemWindowTab {
-    /// Create a new instance of the window tab.
+    /// 创建窗口标签页的新实例。
     pub fn new(title: SharedString, handle: AnyWindowHandle) -> Self {
         Self {
             id: handle.id,
@@ -378,7 +370,7 @@ impl SystemWindowTab {
     }
 }
 
-/// A controller for managing window tabs.
+/// 管理窗口标签页的控制器。
 #[derive(Default)]
 pub struct SystemWindowTabController {
     visible: Option<bool>,
@@ -388,7 +380,7 @@ pub struct SystemWindowTabController {
 impl Global for SystemWindowTabController {}
 
 impl SystemWindowTabController {
-    /// Create a new instance of the window tab controller.
+    /// 创建窗口标签页控制器的新实例。
     pub fn new() -> Self {
         Self {
             visible: None,
@@ -396,17 +388,17 @@ impl SystemWindowTabController {
         }
     }
 
-    /// Initialize the global window tab controller.
+    /// 初始化全局窗口标签页控制器。
     pub fn init(cx: &mut App) {
         cx.set_global(SystemWindowTabController::new());
     }
 
-    /// Get all tab groups.
+    /// 获取所有标签页分组。
     pub fn tab_groups(&self) -> &FxHashMap<usize, Vec<SystemWindowTab>> {
         &self.tab_groups
     }
 
-    /// Get the next tab group window handle.
+    /// 获取下一个标签页分组的窗口句柄。
     pub fn get_next_tab_group_window(cx: &mut App, id: WindowId) -> Option<&AnyWindowHandle> {
         let controller = cx.global::<SystemWindowTabController>();
         let current_group = controller
@@ -432,7 +424,7 @@ impl SystemWindowTabController {
             })
     }
 
-    /// Get the previous tab group window handle.
+    /// 获取上一个标签页分组的窗口句柄。
     pub fn get_prev_tab_group_window(cx: &mut App, id: WindowId) -> Option<&AnyWindowHandle> {
         let controller = cx.global::<SystemWindowTabController>();
         let current_group = controller
@@ -462,14 +454,14 @@ impl SystemWindowTabController {
             })
     }
 
-    /// Get all tabs in the same window.
+    /// 获取同一窗口中的所有标签页。
     pub fn tabs(&self, id: WindowId) -> Option<&Vec<SystemWindowTab>> {
         self.tab_groups
             .values()
             .find(|tabs| tabs.iter().any(|tab| tab.id == id))
     }
 
-    /// Initialize the visibility of the system window tab controller.
+    /// 初始化系统窗口标签页控制器的可见性。
     pub fn init_visible(cx: &mut App, visible: bool) {
         let mut controller = cx.global_mut::<SystemWindowTabController>();
         if controller.visible.is_none() {
@@ -477,18 +469,18 @@ impl SystemWindowTabController {
         }
     }
 
-    /// Get the visibility of the system window tab controller.
+    /// 获取系统窗口标签页控制器的可见性。
     pub fn is_visible(&self) -> bool {
         self.visible.unwrap_or(false)
     }
 
-    /// Set the visibility of the system window tab controller.
+    /// 设置系统窗口标签页控制器的可见性。
     pub fn set_visible(cx: &mut App, visible: bool) {
         let mut controller = cx.global_mut::<SystemWindowTabController>();
         controller.visible = Some(visible);
     }
 
-    /// Update the last active of a window.
+    /// 更新窗口的最后活跃时间。
     pub fn update_last_active(cx: &mut App, id: WindowId) {
         let mut controller = cx.global_mut::<SystemWindowTabController>();
         for windows in controller.tab_groups.values_mut() {
@@ -500,7 +492,7 @@ impl SystemWindowTabController {
         }
     }
 
-    /// Update the position of a tab within its group.
+    /// 更新标签页在其分组中的位置。
     pub fn update_tab_position(cx: &mut App, id: WindowId, ix: usize) {
         let mut controller = cx.global_mut::<SystemWindowTabController>();
         for (_, windows) in controller.tab_groups.iter_mut() {
@@ -514,7 +506,7 @@ impl SystemWindowTabController {
         }
     }
 
-    /// Update the title of a tab.
+    /// 更新标签页的标题。
     pub fn update_tab_title(cx: &mut App, id: WindowId, title: SharedString) {
         let controller = cx.global::<SystemWindowTabController>();
         let tab = controller
@@ -538,7 +530,7 @@ impl SystemWindowTabController {
         }
     }
 
-    /// Insert a tab into a tab group.
+    /// 将标签页插入标签页分组。
     pub fn add_tab(cx: &mut App, id: WindowId, tabs: Vec<SystemWindowTab>) {
         let mut controller = cx.global_mut::<SystemWindowTabController>();
         let Some(tab) = tabs.iter().find(|tab| tab.id == id).cloned() else {
@@ -571,7 +563,7 @@ impl SystemWindowTabController {
         }
     }
 
-    /// Remove a tab from a tab group.
+    /// 从标签页分组中移除标签页。
     pub fn remove_tab(cx: &mut App, id: WindowId) -> Option<SystemWindowTab> {
         let mut controller = cx.global_mut::<SystemWindowTabController>();
         let mut removed_tab = None;
@@ -586,7 +578,7 @@ impl SystemWindowTabController {
         removed_tab
     }
 
-    /// Move a tab to a new tab group.
+    /// 将标签页移动到新的标签页分组。
     pub fn move_tab_to_new_window(cx: &mut App, id: WindowId) {
         let mut removed_tab = Self::remove_tab(cx, id);
         let mut controller = cx.global_mut::<SystemWindowTabController>();
@@ -597,7 +589,7 @@ impl SystemWindowTabController {
         }
     }
 
-    /// Merge all tab groups into a single group.
+    /// 将所有标签页分组合并为一个分组。
     pub fn merge_all_windows(cx: &mut App, id: WindowId) {
         let mut controller = cx.global_mut::<SystemWindowTabController>();
         let Some(initial_tabs) = controller.tabs(id) else {
@@ -615,7 +607,7 @@ impl SystemWindowTabController {
         controller.tab_groups.insert(0, all_tabs);
     }
 
-    /// Selects the next tab in the tab group in the trailing direction.
+    /// 在标签页分组中向后方向选择下一个标签页。
     pub fn select_next_tab(cx: &mut App, id: WindowId) {
         let mut controller = cx.global_mut::<SystemWindowTabController>();
         let Some(tabs) = controller.tabs(id) else {
@@ -630,7 +622,7 @@ impl SystemWindowTabController {
         });
     }
 
-    /// Selects the previous tab in the tab group in the leading direction.
+    /// 在标签页分组中向前方向选择上一个标签页。
     pub fn select_previous_tab(cx: &mut App, id: WindowId) {
         let mut controller = cx.global_mut::<SystemWindowTabController>();
         let Some(tabs) = controller.tabs(id) else {
@@ -676,9 +668,9 @@ impl GpuiMode {
     }
 }
 
-/// Contains the state of the full application, and passed as a reference to a variety of callbacks.
-/// Other [Context] derefs to this type.
-/// You need a reference to an `App` to access the state of a [Entity].
+/// 包含整个应用的状态，作为引用传递给各种回调。
+/// 其他 [Context] 通过解引用转换为此类型。
+/// 需要 `App` 的引用来访问 [Entity] 的状态。
 pub struct App {
     pub(crate) this: Weak<AppCell>,
     pub(crate) platform: Rc<dyn Platform>,
@@ -712,10 +704,10 @@ pub struct App {
     pub(crate) restart_observers: SubscriberSet<(), Handler>,
     pub(crate) window_closed_observers: SubscriberSet<(), WindowClosedHandler>,
 
-    /// Per-App element arena. This isolates element allocations between different
-    /// App instances (important for tests where multiple Apps run concurrently).
+    /// 每个 App 的元素 arena。在不同 App 实例间隔离元素分配
+    /// （对多个 App 并发运行的测试很重要）。
     pub(crate) element_arena: RefCell<Arena>,
-    /// Per-App event arena.
+    /// 每个 App 的事件 arena。
     pub(crate) event_arena: Arena,
 
     // Drop globals last. We need to ensure all tasks owned by entities and
@@ -753,10 +745,10 @@ pub struct App {
     pub(crate) mode: GpuiMode,
     pub(crate) cursor_hide_mode: CursorHideMode,
     pub(crate) reduce_motion: bool,
-    /// Origin of the shared clock that phase-locks synced repeating animations.
+    /// 共享时钟的原点，用于相位锁定同步的重复动画。
     pub(crate) synced_animation_epoch: Instant,
-    /// Whether the app was created by [`Application::new_inaccessible`]. No
-    /// accesskit APIs will be called when this flag is set.
+    /// 应用是否由 [`Application::new_inaccessible`] 创建。
+    /// 设置此标志时不会调用任何 accesskit API。
     pub(crate) accessibility_force_disabled: bool,
     flushing_effects: bool,
     pending_updates: usize,
@@ -908,34 +900,33 @@ impl App {
         self.entities.ref_counts_drop_handle()
     }
 
-    /// Captures a snapshot of all entities that currently have alive handles.
+    /// 捕获当前所有拥有存活句柄的实体的快照。
     ///
-    /// The returned [`LeakDetectorSnapshot`] can later be passed to
-    /// [`assert_no_new_leaks`](Self::assert_no_new_leaks) to verify that no
-    /// entities created after the snapshot are still alive.
+    /// 返回的 [`LeakDetectorSnapshot`] 稍后可传递给
+    /// [`assert_no_new_leaks`](Self::assert_no_new_leaks) 以验证快照之后
+    /// 创建的实体是否仍然存活。
     #[cfg(any(test, feature = "leak-detection"))]
     pub fn leak_detector_snapshot(&self) -> LeakDetectorSnapshot {
         self.entities.leak_detector_snapshot()
     }
 
-    /// Asserts that no entities created after `snapshot` still have alive handles.
+    /// 断言在 `snapshot` 之后创建的实体没有仍然存活的句柄。
     ///
-    /// Entities that were already tracked at the time of the snapshot are ignored,
-    /// even if they still have handles. Only *new* entities (those whose
-    /// `EntityId` was not present in the snapshot) are considered leaks.
+    /// 快照时已被跟踪的实体会被忽略，即使它们仍有句柄。
+    /// 只有 *新* 实体（其 `EntityId` 不在快照中）才被视为泄漏。
     ///
-    /// # Panics
+    /// # panic
     ///
-    /// Panics if any new entity handles exist. The panic message lists every
-    /// leaked entity with its type name, and includes allocation-site backtraces
-    /// when `LEAK_BACKTRACE` is set.
+    /// 如果存在新的实体句柄则 panic。panic 消息会列出每个
+    /// 泄漏实体的类型名称，当设置了 `LEAK_BACKTRACE` 时
+    /// 还会包含分配位置的回溯信息。
     #[cfg(any(test, feature = "leak-detection"))]
     pub fn assert_no_new_leaks(&self, snapshot: &LeakDetectorSnapshot) {
         self.entities.assert_no_new_leaks(snapshot)
     }
 
-    /// Quit the application gracefully. Handlers registered with [`Context::on_app_quit`]
-    /// will be given `SHUTDOWN_TIMEOUT` to complete before exiting.
+    /// 优雅地退出应用。通过 [`Context::on_app_quit`] 注册的处理器将获得
+    /// `SHUTDOWN_TIMEOUT` 的时间来完成，然后才会退出。
     pub fn shutdown(&mut self) {
         let mut futures = Vec::new();
 
@@ -960,17 +951,17 @@ impl App {
         self.quitting = false;
     }
 
-    /// Get the id of the current keyboard layout
+    /// 获取当前键盘布局的 ID。
     pub fn keyboard_layout(&self) -> &dyn PlatformKeyboardLayout {
         self.keyboard_layout.as_ref()
     }
 
-    /// Get the current keyboard mapper.
+    /// 获取当前键盘映射器。
     pub fn keyboard_mapper(&self) -> &Rc<dyn PlatformKeyboardMapper> {
         &self.keyboard_mapper
     }
 
-    /// Invokes a handler when the current keyboard layout changes
+    /// 当当前键盘布局发生变化时调用处理器
     pub fn on_keyboard_layout_change<F>(&self, mut callback: F) -> Subscription
     where
         F: 'static + FnMut(&mut App),
@@ -986,40 +977,35 @@ impl App {
         subscription
     }
 
-    /// Gracefully quit the application via the platform's standard routine.
+    /// 通过平台的标准例程优雅退出应用。
     pub fn quit(&self) {
         self.platform.quit();
     }
 
-    /// Returns the current policy for hiding the cursor in response to
-    /// keyboard input.
+    /// 返回当前响应键盘输入时隐藏光标的策略。
     pub fn cursor_hide_mode(&self) -> CursorHideMode {
         self.cursor_hide_mode
     }
 
-    /// Sets the policy controlling when GPUI hides the cursor in response
-    /// to keyboard input.
+    /// 设置 RGPUI 在响应键盘输入时隐藏光标的策略。
     pub fn set_cursor_hide_mode(&mut self, mode: CursorHideMode) {
         self.cursor_hide_mode = mode;
     }
 
-    /// Returns whether the cursor is currently visible according to the
-    /// platform. This will report `false` after a keyboard input has hidden
-    /// the cursor and the user has not yet moved the mouse to restore it.
+    /// 根据平台判断光标当前是否可见。当键盘输入隐藏了光标且
+    /// 用户尚未移动鼠标恢复时，此方法返回 `false`。
     ///
-    /// See [`App::set_cursor_hide_mode`].
+    /// 参见 [`App::set_cursor_hide_mode`]。
     pub fn is_cursor_visible(&self) -> bool {
         self.platform.is_cursor_visible()
     }
 
-    /// Returns whether non-essential animations (e.g. loading spinners) should
-    /// be rendered in a static state instead of animating.
+    /// 返回非必要动画（如加载旋转器）是否应以静态状态渲染而非动画播放。
     pub fn reduce_motion(&self) -> bool {
         self.reduce_motion
     }
 
-    /// Sets whether non-essential animations (e.g. loading spinners) should be
-    /// rendered in a static state instead of animating.
+    /// 设置非必要动画（如加载旋转器）是否应以静态状态渲染而非动画播放。
     pub fn set_reduce_motion(&mut self, reduce_motion: bool) {
         if self.reduce_motion != reduce_motion {
             self.reduce_motion = reduce_motion;
@@ -1027,8 +1013,8 @@ impl App {
         }
     }
 
-    /// Schedules all windows in the application to be redrawn. This can be called
-    /// multiple times in an update cycle and still result in a single redraw.
+    /// 调度应用中所有窗口重绘。可在更新周期内多次调用，
+    /// 仍只会产生一次重绘。
     pub fn refresh_windows(&mut self) {
         self.pending_effects.push_back(Effect::RefreshWindows);
     }
@@ -1053,7 +1039,7 @@ impl App {
         self.pending_updates -= 1;
     }
 
-    /// Arrange a callback to be invoked when the given entity calls `notify` on its respective context.
+    /// 安排一个回调，当给定实体在其对应上下文中调用 `notify` 时被调用。
     pub fn observe<W>(
         &mut self,
         entity: &Entity<W>,
@@ -1141,8 +1127,8 @@ impl App {
         )
     }
 
-    /// Arrange for the given callback to be invoked whenever the given entity emits an event of a given type.
-    /// The callback is provided a handle to the emitting entity and a reference to the emitted event.
+    /// 安排一个回调，当给定实体发出给定类型的事件时被调用。
+    /// 回调会收到发出实体的句柄和发出事件的引用。
     pub fn subscribe<T, Event>(
         &mut self,
         entity: &Entity<T>,
@@ -1194,9 +1180,9 @@ impl App {
         )
     }
 
-    /// Returns handles to all open windows in the application.
-    /// Each handle could be downcast to a handle typed for the root view of that window.
-    /// To find all windows of a given type, you could filter on
+    /// 返回应用中所有打开窗口的句柄。
+    /// 每个句柄可以向下转型为该窗口根视图的类型化句柄。
+    /// 要查找给定类型的所有窗口，可以使用 filter。
     pub fn windows(&self) -> Vec<AnyWindowHandle> {
         self.windows
             .keys()
@@ -1204,23 +1190,22 @@ impl App {
             .collect()
     }
 
-    /// Returns the window handles ordered by their appearance on screen, front to back.
+    /// 返回按屏幕上出现顺序排列的窗口句柄，从前到后。
     ///
-    /// The first window in the returned list is the active/topmost window of the application.
+    /// 返回列表中的第一个窗口是应用的活动/最顶层窗口。
     ///
-    /// This method returns None if the platform doesn't implement the method yet.
+    /// 如果平台尚未实现此方法，返回 None。
     pub fn window_stack(&self) -> Option<Vec<AnyWindowHandle>> {
         self.platform.window_stack()
     }
 
-    /// Returns a handle to the window that is currently focused at the platform level, if one exists.
+    /// 返回当前在平台级别获得焦点的窗口的句柄（如果存在）。
     pub fn active_window(&self) -> Option<AnyWindowHandle> {
         self.platform.active_window()
     }
 
-    /// Opens a new window with the given option and the root view returned by the given function.
-    /// The function is invoked with a `Window`, which can be used to interact with window-specific
-    /// functionality.
+    /// 使用给定选项和给定函数返回的根视图打开一个新窗口。
+    /// 该函数使用 `Window` 调用，可用于与窗口特定功能交互。
     pub fn open_window<V: 'static + Render>(
         &mut self,
         options: crate::WindowOptions,
@@ -1267,49 +1252,49 @@ impl App {
         })
     }
 
-    /// Instructs the platform to activate the application by bringing it to the foreground.
+    /// 指示平台通过将应用带到前台来激活应用。
     pub fn activate(&self, ignoring_other_apps: bool) {
         self.platform.activate(ignoring_other_apps);
     }
 
-    /// Hide the application at the platform level.
+    /// 在平台级别隐藏应用。
     pub fn hide(&self) {
         self.platform.hide();
     }
 
-    /// Hide other applications at the platform level.
+    /// 在平台级别隐藏其他应用。
     pub fn hide_other_apps(&self) {
         self.platform.hide_other_apps();
     }
 
-    /// Unhide other applications at the platform level.
+    /// 在平台级别取消隐藏其他应用。
     pub fn unhide_other_apps(&self) {
         self.platform.unhide_other_apps();
     }
 
-    /// Returns the list of currently active displays.
+    /// 返回当前活动显示器的列表。
     pub fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
         self.platform.displays()
     }
 
-    /// Returns the primary display that will be used for new windows.
+    /// 返回将用于新窗口的主显示器。
     pub fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
         self.platform.primary_display()
     }
 
-    /// Returns whether `screen_capture_sources` may work.
+    /// 返回 `screen_capture_sources` 是否可能工作。
     pub fn is_screen_capture_supported(&self) -> bool {
         self.platform.is_screen_capture_supported()
     }
 
-    /// Returns a list of available screen capture sources.
+    /// 返回可用屏幕捕获源的列表。
     pub fn screen_capture_sources(
         &self,
     ) -> oneshot::Receiver<Result<Vec<Rc<dyn ScreenCaptureSource>>>> {
         self.platform.screen_capture_sources()
     }
 
-    /// Returns the display with the given ID, if one exists.
+    /// 返回具有给定 ID 的显示器（如果存在）。
     pub fn find_display(&self, id: DisplayId) -> Option<Rc<dyn PlatformDisplay>> {
         self.displays()
             .iter()
@@ -1317,12 +1302,12 @@ impl App {
             .cloned()
     }
 
-    /// Returns the current thermal state of the system.
+    /// 返回系统当前的热状态。
     pub fn thermal_state(&self) -> ThermalState {
         self.platform.thermal_state()
     }
 
-    /// Invokes a handler when the thermal state changes
+    /// 当热状态发生变化时调用处理器
     pub fn on_thermal_state_change<F>(&self, mut callback: F) -> Subscription
     where
         F: 'static + FnMut(&mut App),
@@ -1338,53 +1323,53 @@ impl App {
         subscription
     }
 
-    /// Returns the appearance of the application's windows.
+    /// 返回应用窗口的外观。
     pub fn window_appearance(&self) -> WindowAppearance {
         self.platform.window_appearance()
     }
 
-    /// Returns the window button layout configuration when supported.
+    /// 返回受支持时的窗口按钮布局配置。
     pub fn button_layout(&self) -> Option<WindowButtonLayout> {
         self.platform.button_layout()
     }
 
-    /// Reads data from the platform clipboard.
+    /// 从平台剪贴板读取数据。
     pub fn read_from_clipboard(&self) -> Option<ClipboardItem> {
         self.platform.read_from_clipboard()
     }
 
-    /// Sets the text rendering mode for the application.
+    /// 设置应用的文本渲染模式。
     pub fn set_text_rendering_mode(&mut self, mode: TextRenderingMode) {
         self.text_rendering_mode.set(mode);
     }
 
-    /// Returns the current text rendering mode for the application.
+    /// 返回应用当前的文本渲染模式。
     pub fn text_rendering_mode(&self) -> TextRenderingMode {
         self.text_rendering_mode.get()
     }
 
-    /// Writes data to the platform clipboard.
+    /// 向平台剪贴板写入数据。
     pub fn write_to_clipboard(&self, item: ClipboardItem) {
         self.platform.write_to_clipboard(item)
     }
 
-    /// Reads data from the primary selection buffer.
-    /// Only available on Linux.
+    /// 从主选择缓冲区读取数据。
+    /// 仅在 Linux 上可用。
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     pub fn read_from_primary(&self) -> Option<ClipboardItem> {
         self.platform.read_from_primary()
     }
 
-    /// Writes data to the primary selection buffer.
-    /// Only available on Linux.
+    /// 向主选择缓冲区写入数据。
+    /// 仅在 Linux 上可用。
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     pub fn write_to_primary(&self, item: ClipboardItem) {
         self.platform.write_to_primary(item)
     }
 
-    /// Reads data from macOS's "Find" pasteboard.
+    /// 从 macOS 的"查找"粘贴板读取数据。
     ///
-    /// Used to share the current search string between apps.
+    /// 用于在应用之间共享当前搜索字符串。
     ///
     /// https://developer.apple.com/documentation/appkit/nspasteboard/name-swift.struct/find
     #[cfg(target_os = "macos")]
@@ -1392,9 +1377,9 @@ impl App {
         self.platform.read_from_find_pasteboard()
     }
 
-    /// Writes data to macOS's "Find" pasteboard.
+    /// 向 macOS 的"查找"粘贴板写入数据。
     ///
-    /// Used to share the current search string between apps.
+    /// 用于在应用之间共享当前搜索字符串。
     ///
     /// https://developer.apple.com/documentation/appkit/nspasteboard/name-swift.struct/find
     #[cfg(target_os = "macos")]
@@ -1402,7 +1387,7 @@ impl App {
         self.platform.write_to_find_pasteboard(item)
     }
 
-    /// Writes credentials to the platform keychain.
+    /// 向平台密钥链写入凭据。
     pub fn write_credentials(
         &self,
         url: &str,
@@ -1412,55 +1397,53 @@ impl App {
         self.platform.write_credentials(url, username, password)
     }
 
-    /// Reads credentials from the platform keychain.
+    /// 从平台密钥链读取凭据。
     pub fn read_credentials(&self, url: &str) -> Task<Result<Option<(String, Vec<u8>)>>> {
         self.platform.read_credentials(url)
     }
 
-    /// Deletes credentials from the platform keychain.
+    /// 从平台密钥链删除凭据。
     pub fn delete_credentials(&self, url: &str) -> Task<Result<()>> {
         self.platform.delete_credentials(url)
     }
 
-    /// Directs the platform's default browser to open the given URL.
+    /// 指示平台默认浏览器打开给定的 URL。
     pub fn open_url(&self, url: &str) {
         self.platform.open_url(url);
     }
 
-    /// Registers the given URL scheme (e.g. `rgpui` for `rgpui://` urls) to be
-    /// opened by the current app.
+    /// 注册给定的 URL scheme（例如 `rgpui` 用于 `rgpui://` URL）以由当前应用打开。
     ///
-    /// On some platforms (e.g. macOS) you may be able to register URL schemes
-    /// as part of app distribution, but this method exists to let you register
-    /// schemes at runtime.
+    /// 在某些平台（例如 macOS）上，你可以在应用分发时注册 URL scheme，
+    /// 但此方法允许你在运行时注册 scheme。
     pub fn register_url_scheme(&self, scheme: &str) -> Task<Result<()>> {
         self.platform.register_url_scheme(scheme)
     }
 
-    /// Returns the full pathname of the current app bundle.
+    /// 返回当前应用 bundle 的完整路径名。
     ///
-    /// Returns an error if the app is not being run from a bundle.
+    /// 如果应用不是从 bundle 运行的，则返回错误。
     pub fn app_path(&self) -> Result<PathBuf> {
         self.platform.app_path()
     }
 
-    /// On Linux, returns the name of the compositor in use.
+    /// 在 Linux 上，返回正在使用的合成器名称。
     ///
-    /// Returns an empty string on other platforms.
+    /// 在其他平台上返回空字符串。
     pub fn compositor_name(&self) -> &'static str {
         self.platform.compositor_name()
     }
 
-    /// Returns the file URL of the executable with the specified name in the application bundle
+    /// 返回应用 bundle 中指定名称的可执行文件的文件 URL
     pub fn path_for_auxiliary_executable(&self, name: &str) -> Result<PathBuf> {
         self.platform.path_for_auxiliary_executable(name)
     }
 
-    /// Displays a platform modal for selecting paths.
+    /// 显示用于选择路径的平台模态框。
     ///
-    /// When one or more paths are selected, they'll be relayed asynchronously via the returned oneshot channel.
-    /// If cancelled, a `None` will be relayed instead.
-    /// May return an error on Linux if the file picker couldn't be opened.
+    /// 当选择一个或多个路径时，它们将通过返回的 oneshot 通道异步中继。
+    /// 如果取消，则中继 `None`。
+    /// 在 Linux 上，如果无法打开文件选择器，可能返回错误。
     pub fn prompt_for_paths(
         &self,
         options: PathPromptOptions,
@@ -1468,12 +1451,12 @@ impl App {
         self.platform.prompt_for_paths(options)
     }
 
-    /// Displays a platform modal for selecting a new path where a file can be saved.
+    /// 显示用于选择新路径的平台模态框，文件可以保存到该路径。
     ///
-    /// The provided directory will be used to set the initial location.
-    /// When a path is selected, it is relayed asynchronously via the returned oneshot channel.
-    /// If cancelled, a `None` will be relayed instead.
-    /// May return an error on Linux if the file picker couldn't be opened.
+    /// 提供的目录将用于设置初始位置。
+    /// 当选择路径时，它将通过返回的 oneshot 通道异步中继。
+    /// 如果取消，则中继 `None`。
+    /// 在 Linux 上，如果无法打开文件选择器，可能返回错误。
     pub fn prompt_for_new_path(
         &self,
         directory: &Path,
@@ -1482,22 +1465,22 @@ impl App {
         self.platform.prompt_for_new_path(directory, suggested_name)
     }
 
-    /// Reveals the specified path at the platform level, such as in Finder on macOS.
+    /// 在平台级别显示指定路径，例如在 macOS 的 Finder 中。
     pub fn reveal_path(&self, path: &Path) {
         self.platform.reveal_path(path)
     }
 
-    /// Opens the specified path with the system's default application.
+    /// 使用系统默认应用程序打开指定路径。
     pub fn open_with_system(&self, path: &Path) {
         self.platform.open_with_system(path)
     }
 
-    /// Returns whether the user has configured scrollbars to auto-hide at the platform level.
+    /// 返回用户是否在平台级别配置了滚动条自动隐藏。
     pub fn should_auto_hide_scrollbars(&self) -> bool {
         self.platform.should_auto_hide_scrollbars()
     }
 
-    /// Restarts the application.
+    /// 重启应用。
     pub fn restart(&mut self) {
         self.restart_observers
             .clone()
@@ -1505,28 +1488,28 @@ impl App {
         self.platform.restart(self.restart_path.take())
     }
 
-    /// Sets the path to use when restarting the application.
+    /// 设置重启应用时使用的路径。
     pub fn set_restart_path(&mut self, path: PathBuf) {
         self.restart_path = Some(path);
     }
 
-    /// Returns the HTTP client for the application.
+    /// 返回应用的 HTTP 客户端。
     pub fn http_client(&self) -> Arc<dyn HttpClient> {
         self.http_client.clone()
     }
 
-    /// Sets the HTTP client for the application.
+    /// 设置应用的 HTTP 客户端。
     pub fn set_http_client(&mut self, new_client: Arc<dyn HttpClient>) {
         self.http_client = new_client;
     }
 
-    /// Configures when the application should automatically quit.
-    /// By default, [`QuitMode::Default`] is used.
+    /// 配置应用自动退出的时机。
+    /// 默认使用 [`QuitMode::Default`]。
     pub fn set_quit_mode(&mut self, mode: QuitMode) {
         self.quit_mode = mode;
     }
 
-    /// Returns the SVG renderer used by the application.
+    /// 返回应用使用的 SVG 渲染器。
     pub fn svg_renderer(&self) -> SvgRenderer {
         self.svg_renderer.clone()
     }
@@ -1549,9 +1532,9 @@ impl App {
         self.pending_effects.push_back(effect);
     }
 
-    /// Called at the end of [`App::update`] to complete any side effects
-    /// such as notifying observers, emitting events, etc. Effects can themselves
-    /// cause effects, so we continue looping until all effects are processed.
+    /// 在 [`App::update`] 结束时调用，以完成所有副作用，
+    /// 例如通知观察者、发出事件等。副作用本身可以产生副作用，
+    /// 因此我们持续循环直到所有副作用被处理。
     fn flush_effects(&mut self) {
         loop {
             self.release_dropped_entities();
@@ -1610,9 +1593,8 @@ impl App {
         }
     }
 
-    /// Repeatedly called during `flush_effects` to release any entities whose
-    /// reference count has become zero. We invoke any release observers before dropping
-    /// each entity.
+    /// 在 `flush_effects` 期间重复调用，以释放引用计数已变为零的实体。
+    /// 我们在丢弃每个实体之前调用所有释放观察者。
     fn release_dropped_entities(&mut self) {
         loop {
             let dropped = self.entities.take_dropped();
@@ -1632,7 +1614,7 @@ impl App {
         }
     }
 
-    /// Repeatedly called during `flush_effects` to handle a focused handle being dropped.
+    /// 在 `flush_effects` 期间重复调用，以处理被丢弃的焦点句柄。
     fn release_dropped_focus_handles(&mut self) {
         self.focus_handles
             .clone()
@@ -1722,11 +1704,9 @@ impl App {
         });
     }
 
-    /// Run `f` against the entity's *current* window 鈥?the most recently
-    /// rendered window that referenced the entity, or its creation window if
-    /// it has yet to be rendered. Returns `None` if the entity has no
-    /// current window, or if that window has been closed, or if it is
-    /// already on the update stack.
+    /// 对实体的*当前*窗口执行 `f`——即最近引用该实体的渲染窗口，
+    /// 如果尚未渲染则为其创建窗口。如果实体没有当前窗口、
+    /// 该窗口已关闭或已在更新栈上，则返回 `None`。
     pub fn with_window<R>(
         &mut self,
         entity_id: EntityId,
@@ -1799,8 +1779,8 @@ impl App {
         .context("window not found")
     }
 
-    /// Creates an `AsyncApp`, which can be cloned and has a static lifetime
-    /// so it can be held across `await` points.
+    /// 创建一个 `AsyncApp`，可以克隆且具有静态生命周期，
+    /// 因此可以跨 `await` 点持有。
     pub fn to_async(&self) -> AsyncApp {
         AsyncApp {
             app: self.this.clone(),
@@ -1809,12 +1789,12 @@ impl App {
         }
     }
 
-    /// Obtains a reference to the executor, which can be used to spawn futures.
+    /// 获取执行器的引用，可用于生成 future。
     pub fn background_executor(&self) -> &BackgroundExecutor {
         &self.background_executor
     }
 
-    /// Obtains a reference to the executor, which can be used to spawn futures.
+    /// 获取执行器的引用，可用于生成 future。
     pub fn foreground_executor(&self) -> &ForegroundExecutor {
         if self.quitting {
             panic!("Can't spawn on main thread after on_app_quit")
@@ -1822,8 +1802,8 @@ impl App {
         &self.foreground_executor
     }
 
-    /// Spawns the future returned by the given function on the main thread. The closure will be invoked
-    /// with [AsyncApp], which allows the application state to be accessed across await points.
+    /// 在主线程上生成给定函数返回的 future。闭包将使用 [AsyncApp] 调用，
+    /// 允许跨 await 点访问应用状态。
     #[track_caller]
     pub fn spawn<AsyncFn, R>(&self, f: AsyncFn) -> Task<R>
     where
@@ -1840,9 +1820,8 @@ impl App {
             .spawn(async move { f(&mut cx).await }.boxed_local())
     }
 
-    /// Spawns the future returned by the given function on the main thread with
-    /// the given priority. The closure will be invoked with [AsyncApp], which
-    /// allows the application state to be accessed across await points.
+    /// 在主线程上以给定优先级生成给定函数返回的 future。
+    /// 闭包将使用 [AsyncApp] 调用，允许跨 await 点访问应用状态。
     pub fn spawn_with_priority<AsyncFn, R>(&self, priority: Priority, f: AsyncFn) -> Task<R>
     where
         AsyncFn: AsyncFnOnce(&mut AsyncApp) -> R + 'static,
@@ -1858,30 +1837,30 @@ impl App {
             .spawn_with_priority(priority, async move { f(&mut cx).await }.boxed_local())
     }
 
-    /// Schedules the given function to be run at the end of the current effect cycle, allowing entities
-    /// that are currently on the stack to be returned to the app.
+    /// 安排给定函数在当前副作用周期结束时运行，允许当前在栈上的实体
+    /// 返回到应用。
     pub fn defer(&mut self, f: impl FnOnce(&mut App) + 'static) {
         self.push_effect(Effect::Defer {
             callback: Box::new(f),
         });
     }
 
-    /// Accessor for the application's asset source, which is provided when constructing the `App`.
+    /// 应用资源来源的访问器，在构造 `App` 时提供。
     pub fn asset_source(&self) -> &Arc<dyn AssetSource> {
         &self.asset_source
     }
 
-    /// Accessor for the text system.
+    /// 文本系统的访问器。
     pub fn text_system(&self) -> &Arc<TextSystem> {
         &self.text_system
     }
 
-    /// Check whether a global of the given type has been assigned.
+    /// 检查是否已分配给定类型的全局变量。
     pub fn has_global<G: Global>(&self) -> bool {
         self.globals_by_type.contains_key(&TypeId::of::<G>())
     }
 
-    /// Access the global of the given type. Panics if a global for that type has not been assigned.
+    /// 访问给定类型的全局变量。如果未分配该类型的全局变量则 panic。
     #[track_caller]
     pub fn global<G: Global>(&self) -> &G {
         self.globals_by_type
@@ -1890,14 +1869,14 @@ impl App {
             .unwrap_or_else(|| panic!("no state of type {} exists", type_name::<G>()))
     }
 
-    /// Access the global of the given type if a value has been assigned.
+    /// 如果已分配值，则访问给定类型的全局变量。
     pub fn try_global<G: Global>(&self) -> Option<&G> {
         self.globals_by_type
             .get(&TypeId::of::<G>())
             .map(|any_state| any_state.downcast_ref::<G>().unwrap())
     }
 
-    /// Access the global of the given type mutably. Panics if a global for that type has not been assigned.
+    /// 可变访问给定类型的全局变量。如果未分配该类型的全局变量则 panic。
     #[track_caller]
     pub fn global_mut<G: Global>(&mut self) -> &mut G {
         let global_type = TypeId::of::<G>();
@@ -1908,8 +1887,7 @@ impl App {
             .unwrap_or_else(|| panic!("no state of type {} exists", type_name::<G>()))
     }
 
-    /// Access the global of the given type mutably. A default value is assigned if a global of this type has not
-    /// yet been assigned.
+    /// 可变访问给定类型的全局变量。如果尚未分配该类型的全局变量，则分配默认值。
     pub fn default_global<G: Global + Default>(&mut self) -> &mut G {
         let global_type = TypeId::of::<G>();
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
@@ -1920,20 +1898,20 @@ impl App {
             .unwrap()
     }
 
-    /// Sets the value of the global of the given type.
+    /// 设置给定类型全局变量的值。
     pub fn set_global<G: Global>(&mut self, global: G) {
         let global_type = TypeId::of::<G>();
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
         self.globals_by_type.insert(global_type, Box::new(global));
     }
 
-    /// Clear all stored globals. Does not notify global observers.
+    /// 清除所有存储的全局变量。不通知全局观察者。
     #[cfg(any(test, feature = "test-support"))]
     pub fn clear_globals(&mut self) {
         self.globals_by_type.drain();
     }
 
-    /// Remove the global of the given type from the app context. Does not notify global observers.
+    /// 从应用上下文中移除给定类型的全局变量。不通知全局观察者。
     pub fn remove_global<G: Global>(&mut self) -> G {
         let global_type = TypeId::of::<G>();
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
@@ -1945,7 +1923,7 @@ impl App {
             .unwrap()
     }
 
-    /// Register a callback to be invoked when a global of the given type is updated.
+    /// 注册一个回调，当给定类型的全局变量被更新时调用。
     pub fn observe_global<G: Global>(
         &mut self,
         mut f: impl FnMut(&mut Self) + 'static,
@@ -1961,7 +1939,7 @@ impl App {
         subscription
     }
 
-    /// Move the global of the given type to the stack.
+    /// 将给定类型的全局变量移动到栈上。
     #[track_caller]
     pub(crate) fn lease_global<G: Global>(&mut self) -> GlobalLease<G> {
         GlobalLease::new(
@@ -1972,7 +1950,7 @@ impl App {
         )
     }
 
-    /// Restore the global of the given type after it is moved to the stack.
+    /// 将全局变量移动到栈后恢复该类型的全局变量。
     pub(crate) fn end_global_lease<G: Global>(&mut self, lease: GlobalLease<G>) {
         let global_type = TypeId::of::<G>();
 
@@ -1990,8 +1968,8 @@ impl App {
         subscription
     }
 
-    /// Arrange for the given function to be invoked whenever a view of the specified type is created.
-    /// The function will be passed a mutable reference to the view along with an appropriate context.
+    /// 安排在创建指定类型的视图时调用给定函数。
+    /// 该函数将接收视图的可变引用和适当的上下文。
     pub fn observe_new<T: 'static>(
         &self,
         on_new: impl 'static + Fn(&mut T, Option<&mut Window>, &mut Context<T>),
@@ -2011,8 +1989,7 @@ impl App {
         )
     }
 
-    /// Observe the release of a entity. The callback is invoked after the entity
-    /// has no more strong references but before it has been dropped.
+    /// 观察实体的释放。回调在实体没有更多强引用后但在丢弃前调用。
     pub fn observe_release<T>(
         &self,
         handle: &Entity<T>,
@@ -2032,8 +2009,7 @@ impl App {
         subscription
     }
 
-    /// Observe the release of a entity. The callback is invoked after the entity
-    /// has no more strong references but before it has been dropped.
+    /// 观察实体的释放。回调在实体没有更多强引用后但在丢弃前调用。
     pub fn observe_release_in<T>(
         &self,
         handle: &Entity<T>,
@@ -2049,9 +2025,9 @@ impl App {
         })
     }
 
-    /// Register a callback to be invoked when a keystroke is received by the application
-    /// in any window. Note that this fires after all other action and event mechanisms have resolved
-    /// and that this API will not be invoked if the event's propagation is stopped.
+    /// 注册一个回调，当应用在任何窗口中收到按键时调用。
+    /// 注意，此回调在所有其他动作和事件机制解析后触发，
+    /// 如果事件的传播被停止，则不会调用此 API。
     pub fn observe_keystrokes(
         &mut self,
         mut f: impl FnMut(&KeystrokeEvent, &mut Window, &mut App) + 'static,
@@ -2074,10 +2050,10 @@ impl App {
         )
     }
 
-    /// Register a callback to be invoked when a keystroke is received by the application
-    /// in any window. Note that this fires _before_ all other action and event mechanisms have resolved
-    /// unlike [`App::observe_keystrokes`] which fires after. This means that `cx.stop_propagation` calls
-    /// within interceptors will prevent action dispatch
+    /// 注册一个回调，当应用在任何窗口中收到按键时调用。
+    /// 注意，此回调在所有其他动作和事件机制解析*之前*触发，
+    /// 与 [`App::observe_keystrokes`] 在之后触发不同。
+    /// 这意味着拦截器中的 `cx.stop_propagation` 调用将阻止动作分发。
     pub fn intercept_keystrokes(
         &mut self,
         mut f: impl FnMut(&KeystrokeEvent, &mut Window, &mut App) + 'static,
@@ -2100,26 +2076,26 @@ impl App {
         )
     }
 
-    /// Register key bindings.
+    /// 注册键绑定。
     pub fn bind_keys(&mut self, bindings: impl IntoIterator<Item = KeyBinding>) {
         self.keymap.borrow_mut().add_bindings(bindings);
         self.pending_effects.push_back(Effect::RefreshWindows);
     }
 
-    /// Clear all key bindings in the app.
+    /// 清除应用中所有键绑定。
     pub fn clear_key_bindings(&mut self) {
         self.keymap.borrow_mut().clear();
         self.pending_effects.push_back(Effect::RefreshWindows);
     }
 
-    /// Get all key bindings in the app.
+    /// 获取应用中所有键绑定。
     pub fn key_bindings(&self) -> Rc<RefCell<Keymap>> {
         self.keymap.clone()
     }
 
-    /// Register a global handler for actions invoked via the keyboard. These handlers are run at
-    /// the end of the bubble phase for actions, and so will only be invoked if there are no other
-    /// handlers or if they called `cx.propagate()`.
+    /// 注册通过键盘调用动作的全局处理程序。这些处理程序在动作的
+    /// 冒泡阶段结束时运行，因此仅在没有其他处理程序或它们调用了
+    /// `cx.propagate()` 时才会被调用。
     pub fn on_action<A: Action>(
         &mut self,
         listener: impl Fn(&A, &mut Self) + 'static,
@@ -2136,23 +2112,22 @@ impl App {
         self
     }
 
-    /// Event handlers propagate events by default. Call this method to stop dispatching to
-    /// event handlers with a lower z-index (mouse) or higher in the tree (keyboard). This is
-    /// the opposite of [`Self::propagate`]. It's also possible to cancel a call to [`Self::propagate`] by
-    /// calling this method before effects are flushed.
+    /// 事件处理程序默认传播事件。调用此方法可停止向 z-index 较低（鼠标）
+    /// 或树中较高（键盘）的事件处理程序分发。这与 [`Self::propagate`] 相反。
+    /// 也可以在副作用刷新前调用此方法来取消 [`Self::propagate`] 调用。
     pub fn stop_propagation(&mut self) {
         self.propagate_event = false;
     }
 
-    /// Action handlers stop propagation by default during the bubble phase of action dispatch
-    /// dispatching to action handlers higher in the element tree. This is the opposite of
-    /// [`Self::stop_propagation`]. It's also possible to cancel a call to [`Self::stop_propagation`] by calling
-    /// this method before effects are flushed.
+    /// 动作处理程序在动作分发的冒泡阶段默认停止传播，
+    /// 不向元素树中较高的动作处理程序分发。这与
+    /// [`Self::stop_propagation`] 相反。也可以在副作用刷新前
+    /// 调用此方法来取消 [`Self::stop_propagation`] 调用。
     pub fn propagate(&mut self) {
         self.propagate_event = true;
     }
 
-    /// Build an action from some arbitrary data, typically a keymap entry.
+    /// 从一些任意数据构建动作，通常是键映射条目。
     pub fn build_action(
         &self,
         name: &str,
@@ -2161,20 +2136,19 @@ impl App {
         self.actions.build_action(name, data)
     }
 
-    /// Get all action names that have been registered. Note that registration only allows for
-    /// actions to be built dynamically, and is unrelated to binding actions in the element tree.
+    /// 获取所有已注册的动作名称。注意，注册仅允许动态构建动作，
+    /// 与在元素树中绑定动作无关。
     pub fn all_action_names(&self) -> &[&'static str] {
         self.actions.all_action_names()
     }
 
-    /// Returns key bindings that invoke the given action on the currently focused element, without
-    /// checking context. Bindings are returned in the order they were added. For display, the last
-    /// binding should take precedence.
+    /// 返回在当前焦点元素上调用给定动作的键绑定，不检查上下文。
+    /// 绑定按添加顺序返回。显示时，最后一个绑定应优先。
     pub fn all_bindings_for_input(&self, input: &[Keystroke]) -> Vec<KeyBinding> {
         RefCell::borrow(&self.keymap).all_bindings_for_input(input)
     }
 
-    /// Get all non-internal actions that have been registered, along with their schemas.
+    /// 获取所有已注册的非内部动作及其 schema。
     pub fn action_schemas(
         &self,
         generator: &mut schemars::SchemaGenerator,
@@ -2182,10 +2156,10 @@ impl App {
         self.actions.action_schemas(generator)
     }
 
-    /// Get the schema for a specific action by name.
-    /// Returns `None` if the action is not found.
-    /// Returns `Some(None)` if the action exists but has no schema.
-    /// Returns `Some(Some(schema))` if the action exists and has a schema.
+    /// 按名称获取特定动作的 schema。
+    /// 如果未找到动作则返回 `None`。
+    /// 如果动作存在但没有 schema 则返回 `Some(None)`。
+    /// 如果动作存在且有 schema 则返回 `Some(Some(schema))`。
     pub fn action_schema_by_name(
         &self,
         name: &str,
@@ -2194,23 +2168,23 @@ impl App {
         self.actions.action_schema_by_name(name, generator)
     }
 
-    /// Get a map from a deprecated action name to the canonical name.
+    /// 获取从已弃用动作名称到规范名称的映射。
     pub fn deprecated_actions_to_preferred_actions(&self) -> &HashMap<&'static str, &'static str> {
         self.actions.deprecated_aliases()
     }
 
-    /// Get a map from an action name to the deprecation messages.
+    /// 获取从动作名称到弃用消息的映射。
     pub fn action_deprecation_messages(&self) -> &HashMap<&'static str, &'static str> {
         self.actions.deprecation_messages()
     }
 
-    /// Get a map from an action name to the documentation.
+    /// 获取从动作名称到文档的映射。
     pub fn action_documentation(&self) -> &HashMap<&'static str, &'static str> {
         self.actions.documentation()
     }
 
-    /// Register a callback to be invoked when the application is about to quit.
-    /// It is not possible to cancel the quit event at this point.
+    /// 注册一个回调，当应用即将退出时调用。
+    /// 此时无法取消退出事件。
     pub fn on_app_quit<Fut>(
         &self,
         mut on_quit: impl FnMut(&mut App) -> Fut + 'static,
@@ -2229,9 +2203,9 @@ impl App {
         subscription
     }
 
-    /// Register a callback to be invoked when the application is about to restart.
+    /// 注册一个回调，当应用即将重启时调用。
     ///
-    /// These callbacks are called before any `on_app_quit` callbacks.
+    /// 这些回调在任何 `on_app_quit` 回调之前调用。
     pub fn on_app_restart(&self, mut on_restart: impl 'static + FnMut(&mut App)) -> Subscription {
         let (subscription, activate) = self.restart_observers.insert(
             (),
@@ -2244,8 +2218,8 @@ impl App {
         subscription
     }
 
-    /// Register a callback to be invoked when a window is closed
-    /// The window is no longer accessible at the point this callback is invoked.
+    /// 注册一个回调，当窗口关闭时调用。
+    /// 在调用此回调时，窗口不再可访问。
     pub fn on_window_closed(
         &self,
         mut on_closed: impl FnMut(&mut App, WindowId) + 'static,
@@ -2268,8 +2242,8 @@ impl App {
         }
     }
 
-    /// Checks if the given action is bound in the current context, as defined by the app's current focus,
-    /// the bindings in the element tree, and any global action listeners.
+    /// 检查给定动作是否在当前上下文中被绑定，由应用的当前焦点、
+    /// 元素树中的绑定和任何全局动作监听器定义。
     pub fn is_action_available(&mut self, action: &dyn Action) -> bool {
         let mut action_available = false;
         if let Some(window) = self.active_window()
@@ -2285,37 +2259,37 @@ impl App {
                 .contains_key(&action.as_any().type_id())
     }
 
-    /// Sets the menu bar for this application. This will replace any existing menu bar.
+    /// 设置此应用的菜单栏。这将替换任何现有的菜单栏。
     pub fn set_menus(&self, menus: impl IntoIterator<Item = Menu>) {
         let menus: Vec<Menu> = menus.into_iter().collect();
         self.platform.set_menus(menus, &self.keymap.borrow());
     }
 
-    /// Gets the menu bar for this application.
+    /// 获取此应用的菜单栏。
     pub fn get_menus(&self) -> Option<Vec<OwnedMenu>> {
         self.platform.get_menus()
     }
 
-    /// Sets the right click menu for the app icon in the dock
+    /// 设置 Dock 中应用图标的右键菜单
     pub fn set_dock_menu(&self, menus: Vec<MenuItem>) {
         self.platform.set_dock_menu(menus, &self.keymap.borrow())
     }
 
-    /// Performs the action associated with the given dock menu item, only used on Windows for now.
+    /// 执行与给定 Dock 菜单项关联的动作，目前仅在 Windows 上使用。
     pub fn perform_dock_menu_action(&self, action: usize) {
         self.platform.perform_dock_menu_action(action);
     }
 
-    /// Adds given path to the bottom of the list of recent paths for the application.
-    /// The list is usually shown on the application icon's context menu in the dock,
-    /// and allows to open the recent files via that context menu.
-    /// If the path is already in the list, it will be moved to the bottom of the list.
+    /// 将给定路径添加到应用最近路径列表的底部。
+    /// 该列表通常显示在 Dock 中应用图标的上下文菜单中，
+    /// 允许通过该上下文菜单打开最近的文件。
+    /// 如果路径已在列表中，它将被移动到列表底部。
     pub fn add_recent_document(&self, path: &Path) {
         self.platform.add_recent_document(path);
     }
 
-    /// Updates the jump list with the updated list of recent paths for the application, only used on Windows for now.
-    /// Note that this also sets the dock menu on Windows.
+    /// 使用更新的最近路径列表更新跳转列表，目前仅在 Windows 上使用。
+    /// 注意，这也会在 Windows 上设置 Dock 菜单。
     pub fn update_jump_list(
         &self,
         menus: Vec<MenuItem>,
@@ -2415,8 +2389,8 @@ impl App {
         }));
     }
 
-    /// Dispatch an action to the currently active window or global action handler
-    /// See [`crate::Action`] for more information on how actions work
+    /// 将动作分发到当前活动窗口或全局动作处理程序
+    /// 参见 [`crate::Action`] 了解动作如何工作的更多信息
     pub fn dispatch_action(&mut self, action: &dyn Action) {
         if let Some(active_window) = self.active_window() {
             active_window
@@ -2476,17 +2450,17 @@ impl App {
         }
     }
 
-    /// Is there currently something being dragged?
+    /// 当前是否有正在拖动的内容？
     pub fn has_active_drag(&self) -> bool {
         self.active_drag.is_some()
     }
 
-    /// Gets the cursor style of the currently active drag operation.
+    /// 获取当前活动拖动操作的光标样式。
     pub fn active_drag_cursor_style(&self) -> Option<CursorStyle> {
         self.active_drag.as_ref().and_then(|drag| drag.cursor_style)
     }
 
-    /// Stops active drag and clears any related effects.
+    /// 停止活动拖动并清除任何相关副作用。
     pub fn stop_active_drag(&mut self, window: &mut Window) -> bool {
         if self.active_drag.is_some() {
             self.active_drag = None;
@@ -2497,12 +2471,12 @@ impl App {
         }
     }
 
-    /// Takes the value of the active drag, if any (used for receiving file drops).
+    /// 获取活动拖动的值（如果有的话）（用于接收文件拖放）。
     pub fn take_active_drag_value(&mut self) -> Option<Arc<dyn std::any::Any>> {
         self.active_drag.take().map(|drag| drag.value)
     }
 
-    /// Sets the cursor style for the currently active drag operation.
+    /// 设置当前活动拖动操作的光标样式。
     pub fn set_active_drag_cursor_style(
         &mut self,
         cursor_style: CursorStyle,
@@ -2517,8 +2491,7 @@ impl App {
         }
     }
 
-    /// Set the prompt renderer for GPUI. This will replace the default or platform specific
-    /// prompts with this custom implementation.
+    /// 设置 RGPUI 的提示渲染器。这将用此自定义实现替换默认或平台特定的提示。
     pub fn set_prompt_builder(
         &mut self,
         renderer: impl Fn(
@@ -2535,21 +2508,21 @@ impl App {
         self.prompt_builder = Some(PromptBuilder::Custom(Box::new(renderer)));
     }
 
-    /// Reset the prompt builder to the default implementation.
+    /// 将提示构建器重置为默认实现。
     pub fn reset_prompt_builder(&mut self) {
         self.prompt_builder = Some(PromptBuilder::Default);
     }
 
-    /// Remove an asset from GPUI's cache
+    /// 从 RGPUI 缓存中移除资源
     pub fn remove_asset<A: Asset>(&mut self, source: &A::Source) {
         let asset_id = (TypeId::of::<A>(), hash(source));
         self.loading_assets.remove(&asset_id);
     }
 
-    /// Asynchronously load an asset, if the asset hasn't finished loading this will return None.
+    /// 异步加载资源，如果资源尚未完成加载则返回 None。
     ///
-    /// Note that the multiple calls to this method will only result in one `Asset::load` call at a
-    /// time, and the results of this call will be cached
+    /// 注意，多次调用此方法每次只会产生一次 `Asset::load` 调用，
+    /// 且该调用的结果将被缓存。
     pub fn fetch_asset<A: Asset>(&mut self, source: &A::Source) -> (Shared<Task<A::Output>>, bool) {
         let asset_id = (TypeId::of::<A>(), hash(source));
         let mut is_first = false;
@@ -2569,14 +2542,14 @@ impl App {
         (task, is_first)
     }
 
-    /// Obtain a new [`FocusHandle`], which allows you to track and manipulate the keyboard focus
-    /// for elements rendered within this window.
+    /// 获取一个新的 [`FocusHandle`]，允许你跟踪和操作
+    /// 此窗口中渲染的元素的键盘焦点。
     #[track_caller]
     pub fn focus_handle(&self) -> FocusHandle {
         FocusHandle::new(&self.focus_handles)
     }
 
-    /// Tell GPUI that an entity has changed and observers of it should be notified.
+    /// 告诉 RGPUI 实体已更改，应通知其观察者。
     pub fn notify(&mut self, entity_id: EntityId) {
         let window_invalidators = mem::take(
             self.window_invalidators_by_entity
@@ -2613,21 +2586,21 @@ impl App {
             .insert(entity_id, window_invalidators);
     }
 
-    /// Returns the name for this [`App`].
+    /// 返回此 [`App`] 的名称。
     #[cfg(any(test, feature = "test-support", debug_assertions))]
     pub fn get_name(&self) -> Option<&'static str> {
         self.name
     }
 
-    /// Returns `true` if the platform file picker supports selecting a mix of files and directories.
+    /// 如果平台文件选择器支持选择文件和目录的混合，则返回 `true`。
     pub fn can_select_mixed_files_and_dirs(&self) -> bool {
         self.platform.can_select_mixed_files_and_dirs()
     }
 
-    /// Removes an image from the sprite atlas on all windows.
+    /// 从所有窗口的精灵图集中移除图像。
     ///
-    /// If the current window is being updated, it will be removed from `App.windows`, you can use `current_window` to specify the current window.
-    /// This is a no-op if the image is not in the sprite atlas.
+    /// 如果当前窗口正在更新，它将从 `App.windows` 中移除，你可以使用 `current_window` 指定当前窗口。
+    /// 如果图像不在精灵图集中，此操作无效。
     pub fn drop_image(&mut self, image: Arc<RenderImage>, current_window: Option<&mut Window>) {
         // remove the texture from all other windows
         for window in self.windows.values_mut().flatten() {
@@ -2640,13 +2613,13 @@ impl App {
         }
     }
 
-    /// Sets the renderer for the inspector.
+    /// 设置检查器的渲染器。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub fn set_inspector_renderer(&mut self, f: crate::InspectorRenderer) {
         self.inspector_renderer = Some(f);
     }
 
-    /// Registers a renderer specific to an inspector state.
+    /// 注册特定于检查器状态的渲染器。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub fn register_inspector_element<T: 'static, R: crate::IntoElement>(
         &mut self,
@@ -2655,19 +2628,19 @@ impl App {
         self.inspector_element_registry.register(f);
     }
 
-    /// Initializes rgpui's default colors for the application.
+    /// 初始化应用的 rgpui 默认颜色。
     ///
-    /// These colors can be accessed through `cx.default_colors()`.
+    /// 这些颜色可以通过 `cx.default_colors()` 访问。
     pub fn init_colors(&mut self) {
         self.set_global(GlobalColors(Arc::new(Colors::default())));
     }
 }
 
 impl AppContext for App {
-    /// Builds an entity that is owned by the application.
+    /// 构建由应用拥有的实体。
     ///
-    /// The given function will be invoked with a [`Context`] and must return an object representing the entity. An
-    /// [`Entity`] handle will be returned, which can be used to access the entity in a context.
+    /// 给定函数将使用 [`Context`] 调用，必须返回表示实体的对象。
+    /// 将返回 [`Entity`] 句柄，可用于在上下文中访问实体。
     fn new<T: 'static>(&mut self, build_entity: impl FnOnce(&mut Context<T>) -> T) -> Entity<T> {
         self.update(|cx| {
             let slot = cx.entities.reserve();
@@ -2700,8 +2673,7 @@ impl AppContext for App {
         })
     }
 
-    /// Updates the entity referenced by the given handle. The function is passed a mutable reference to the
-    /// entity along with a `Context` for the entity.
+    /// 更新给定句柄引用的实体。函数接收实体的可变引用和实体的 `Context`。
     fn update_entity<T: 'static, R>(
         &mut self,
         handle: &Entity<T>,
@@ -2786,7 +2758,7 @@ impl AppContext for App {
     }
 }
 
-/// These effects are processed at the end of each application update cycle.
+/// 这些副作用在每个应用更新周期结束时处理。
 pub(crate) enum Effect {
     Notify {
         emitter: EntityId,
@@ -2825,7 +2797,7 @@ impl std::fmt::Debug for Effect {
     }
 }
 
-/// Wraps a global variable value during `update_global` while the value has been moved to the stack.
+/// 在 `update_global` 期间包装全局变量值，当值已移动到栈上时。
 pub(crate) struct GlobalLease<G: Global> {
     global: Box<dyn Any>,
     global_type: PhantomData<G>,
@@ -2854,49 +2826,48 @@ impl<G: Global> DerefMut for GlobalLease<G> {
     }
 }
 
-/// Contains state associated with an active drag operation, started by dragging an element
-/// within the window or by dragging into the app from the underlying platform.
+/// 包含与活动拖动操作关联的状态，通过在窗口中拖动元素
+/// 或从底层平台拖入应用来启动。
 pub struct AnyDrag {
-    /// The view used to render this drag
+    /// 用于渲染此拖动的视图
     pub view: AnyView,
 
-    /// The value of the dragged item, to be dropped
+    /// 被拖动项的值，将被拖放
     pub value: Arc<dyn Any>,
 
-    /// This is used to render the dragged item in the same place
-    /// on the original element that the drag was initiated
+    /// 用于在发起拖动的原始元素的同一位置渲染被拖动项
     pub cursor_offset: Point<Pixels>,
 
-    /// The cursor style to use while dragging
+    /// 拖动时使用的光标样式
     pub cursor_style: Option<CursorStyle>,
 }
 
-/// Contains state associated with a tooltip. You'll only need this struct if you're implementing
-/// tooltip behavior on a custom element. Otherwise, use [Div::tooltip](crate::Interactivity::tooltip).
+/// 包含与工具提示关联的状态。仅当在自定义元素上实现工具提示行为时才需要此结构体。
+/// 否则，请使用 [Div::tooltip](crate::Interactivity::tooltip)。
 #[derive(Clone)]
 pub struct AnyTooltip {
-    /// The view used to display the tooltip
+    /// 用于显示工具提示的视图
     pub view: AnyView,
 
-    /// The absolute position of the mouse when the tooltip was deployed.
+    /// 工具提示展开时鼠标的绝对位置。
     pub mouse_position: Point<Pixels>,
 
-    /// Given the bounds of the tooltip, checks whether the tooltip should still be visible and
-    /// updates its state accordingly. This is needed atop the hovered element's mouse move handler
-    /// to handle the case where the element is not painted (e.g. via use of `visible_on_hover`).
+    /// 根据工具提示的边界检查工具提示是否仍应可见，并相应地更新其状态。
+    /// 这需要在悬停元素的鼠标移动处理程序之上，以处理元素未被绘制的情况
+    /// （例如通过使用 `visible_on_hover`）。
     pub check_visible_and_update: Rc<dyn Fn(Bounds<Pixels>, &mut Window, &mut App) -> bool>,
 }
 
-/// A keystroke event, and potentially the associated action
+/// 按键事件，以及可能关联的动作
 #[derive(Debug)]
 pub struct KeystrokeEvent {
-    /// The keystroke that occurred
+    /// 发生的按键
     pub keystroke: Keystroke,
 
-    /// The action that was resolved for the keystroke, if any
+    /// 为按键解析出的动作（如果有）
     pub action: Option<Box<dyn Action>>,
 
-    /// The context stack at the time
+    /// 事件发生时的上下文栈
     pub context_stack: Vec<KeyContext>,
 }
 
@@ -2925,7 +2896,7 @@ impl HttpClient for NullHttpClient {
     }
 }
 
-/// A mutable reference to an entity owned by GPUI
+/// 对 RGPUI 拥有的实体的可变引用
 pub struct GpuiBorrow<'a, T> {
     inner: Option<Lease<T>>,
     app: &'a mut App,

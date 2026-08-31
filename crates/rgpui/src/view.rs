@@ -10,11 +10,11 @@ use anyhow::Result;
 use std::mem;
 use std::{any::TypeId, fmt, ops::Range};
 
-/// A dynamically-typed view handle that can be downcast to a specific `Entity<V>`.
+/// 可向下转型为特定 `Entity<V>` 的动态类型视图句柄。
 ///
-/// This is the type-erased counterpart to [`ViewElement`]: it holds an entity plus
-/// a function pointer to its render, and is itself a [`View`], so embedding it as an
-/// element goes through the same [`ViewElement`] machinery as any other view.
+/// 这是 [`ViewElement`] 的类型擦除对应物：它持有一个实体及其渲染函数指针，
+/// 本身也是一个 [`View`]，因此将其作为元素嵌入时会经过与任何其他视图相同的
+/// [`ViewElement`] 机制。
 #[derive(Clone, Debug)]
 pub struct AnyView {
     entity: AnyEntity,
@@ -31,16 +31,15 @@ impl<V: Render> From<Entity<V>> for AnyView {
 }
 
 impl AnyView {
-    /// Embed this view as a cached [`ViewElement`] laid out at `style`.
+    /// 将此视图嵌入为使用 `style` 布局的缓存 [`ViewElement`]。
     ///
-    /// The rendered subtree is recycled from the previous frame unless
-    /// [Context::notify] was called on the backing entity since it was rendered
-    /// (or [Window::refresh] is called, which ignores caching).
+    /// 渲染的子树将从上一帧回收，除非自渲染以来在支撑实体上调用了
+    /// [Context::notify]（或调用了 [Window::refresh]，它会忽略缓存）。
     pub fn cached(self, style: StyleRefinement) -> ViewElement<AnyView> {
         ViewElement::new(self).cached(style)
     }
 
-    /// Convert this to a weak handle.
+    /// 转换为弱句柄。
     pub fn downgrade(&self) -> AnyWeakView {
         AnyWeakView {
             entity: self.entity.downgrade(),
@@ -48,8 +47,8 @@ impl AnyView {
         }
     }
 
-    /// Convert this to a [Entity] of a specific type.
-    /// If this handle does not contain a view of the specified type, returns itself in an `Err` variant.
+    /// 转换为特定类型的 [Entity]。
+    /// 如果此句柄不包含指定类型的视图，则在 `Err` 变体中返回自身。
     pub fn downcast<T: 'static>(self) -> Result<Entity<T>, Self> {
         match self.entity.downcast() {
             Ok(entity) => Ok(entity),
@@ -60,12 +59,12 @@ impl AnyView {
         }
     }
 
-    /// Gets the [TypeId] of the underlying view.
+    /// 获取底层视图的 [TypeId]。
     pub fn entity_type(&self) -> TypeId {
         self.entity.entity_type
     }
 
-    /// The [`EntityId`] of this view.
+    /// 此视图的 [`EntityId`]。
     pub fn entity_id(&self) -> EntityId {
         self.entity.entity_id()
     }
@@ -79,9 +78,8 @@ impl PartialEq for AnyView {
 
 impl Eq for AnyView {}
 
-/// `AnyView` is the type-erased [`View`]: its `render` is a function pointer rather
-/// than a concrete type, but it participates in the reactive graph exactly like any
-/// other view via [`ViewElement`].
+/// `AnyView` 是 [`View`] 的类型擦除版本：其 `render` 是函数指针而非具体类型，
+/// 但它通过 [`ViewElement`] 与任何其他视图一样参与响应式图。
 impl View for AnyView {
     fn entity_id(&self) -> Option<EntityId> {
         Some(self.entity.entity_id())
@@ -108,14 +106,14 @@ impl IntoElement for AnyView {
     }
 }
 
-/// A weak, dynamically-typed view handle.
+/// 弱引用的动态类型视图句柄。
 pub struct AnyWeakView {
     entity: AnyWeakEntity,
     render: fn(&AnyView, &mut Window, &mut App) -> AnyElement,
 }
 
 impl AnyWeakView {
-    /// Upgrade to a strong `AnyView` handle, if the view is still alive.
+    /// 如果视图仍然存活，升级为强引用 `AnyView` 句柄。
     pub fn upgrade(&self) -> Option<AnyView> {
         let entity = self.entity.upgrade()?;
         Some(AnyView {
@@ -168,33 +166,31 @@ mod any_view {
     }
 }
 
-/// A renderable that participates in GPUI's reactive graph 鈥?the unifying model
-/// behind [`Render`] and [`RenderOnce`].
+/// 参与 RGPUI 响应式图的可渲染物 — 这是 [`Render`] 和 [`RenderOnce`] 背后的统一模型。
 ///
-/// When `entity_id()` returns `Some`, that id becomes the view's identity: it gets
-/// a unique element-id space (so internal `use_state` / `.id(..)` never collide
-/// across siblings) and `cx.notify()` on that entity re-renders only this view's
-/// subtree. `None` behaves like a stateless component.
+/// 当 `entity_id()` 返回 `Some` 时，该 id 成为视图的标识：它获得一个唯一的
+/// 元素 id 空间（因此内部的 `use_state` / `.id(..)` 不会在兄弟节点间冲突），
+/// 并且在该实体上执行 `cx.notify()` 只会重新渲染此视图的子树。
+/// `None` 的行为类似无状态组件。
 ///
-/// You rarely implement `View` directly. `Entity<T: Render>` and any `T: RenderOnce`
-/// get a blanket impl below; implement it by hand only when a component needs both
-/// parent-supplied props *and* a backing entity for identity.
+/// 很少直接实现 `View`。`Entity<T: Render>` 和任何 `T: RenderOnce`
+/// 在下面有泛型实现；仅当组件同时需要父级提供的属性*和*用于标识的支撑实体时
+/// 才需要手动实现。
 pub trait View: 'static + Sized {
-    /// This view's identity, if it has one. A view typically holds the backing
-    /// entity as a field and returns its [`EntityId`] here.
+    /// 此视图的标识（如果有的话）。视图通常将支撑实体作为字段持有，
+    /// 并在此处返回其 [`EntityId`]。
     ///
-    /// The id becomes this view's [`ElementId`], so two views keyed on the same
-    /// entity must not be rendered at the same position in the element tree
-    /// (e.g. as siblings under the same parent): their internal element state
-    /// (`use_state`, scroll offsets, etc.) would silently collide. Nesting is
-    /// fine 鈥?the id is scoped by the parent path.
+    /// 该 id 成为此视图的 [`ElementId`]，因此以同一实体为键的两个视图
+    /// 不得在元素树中的相同位置渲染（例如作为同一父节点下的子节点）：
+    /// 它们的内部元素状态（`use_state`、滚动偏移等）会静默冲突。
+    /// 嵌套是可以的 — id 由父路径限定作用域。
     fn entity_id(&self) -> Option<EntityId>;
 
-    /// Render this view into an element tree, consuming `self`.
+    /// 将此视图渲染为元素树，消耗 `self`。
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement;
 }
 
-/// A stateless component (`RenderOnce`) is a `View` with no identity.
+/// 无状态组件（`RenderOnce`）是没有标识的 `View`。
 impl<T: RenderOnce> View for T {
     fn entity_id(&self) -> Option<EntityId> {
         None
@@ -206,7 +202,7 @@ impl<T: RenderOnce> View for T {
     }
 }
 
-/// An entity that renders itself (`Render`) is a `View` keyed on its own id.
+/// 渲染自身的实体（`Render`）是以自身 id 为键的 `View`。
 impl<T: Render> View for Entity<T> {
     fn entity_id(&self) -> Option<EntityId> {
         Some(Entity::entity_id(self))
@@ -221,21 +217,19 @@ impl<T: Render> View for Entity<T> {
 }
 
 impl<T: Render> Entity<T> {
-    /// Embed this entity as a cached [`ViewElement`] laid out at `style`.
+    /// 将此实体嵌入为使用 `style` 布局的缓存 [`ViewElement`]。
     ///
-    /// The rendered subtree is reused until the entity is notified (or the
-    /// cached bounds / text style change). Caching requires a definite size:
-    /// a cached view is laid out from `style` and is *not* measured from its
-    /// contents. Use [`ViewElement::new`] (or `.child(entity)`) for the
-    /// uncached case.
+    /// 渲染的子树将被复用，直到实体收到通知（或缓存的边界/文本样式更改）。
+    /// 缓存需要确定的大小：缓存的视图从 `style` 布局，而*不是*从其内容测量。
+    /// 对于非缓存情况，请使用 [`ViewElement::new`]（或 `.child(entity)`）。
     #[track_caller]
     pub fn cached(self, style: StyleRefinement) -> ViewElement<Entity<T>> {
         ViewElement::new(self).cached(style)
     }
 }
 
-/// The element type for [`View`] implementations. Wraps a `View` and hooks it
-/// into layout, prepaint, and paint. Constructed via [`ViewElement::new`].
+/// [`View`] 实现的元素类型。包装一个 `View` 并将其挂接到布局、预绘制和绘制中。
+/// 通过 [`ViewElement::new`] 构造。
 #[doc(hidden)]
 pub struct ViewElement<V: View> {
     view: Option<V>,
@@ -246,7 +240,7 @@ pub struct ViewElement<V: View> {
 }
 
 impl<V: View> ViewElement<V> {
-    /// Wrap a [`View`] as an element.
+    /// 将 [`View`] 包装为元素。
     #[track_caller]
     pub fn new(view: V) -> Self {
         let entity_id = view.entity_id();
@@ -259,15 +253,14 @@ impl<V: View> ViewElement<V> {
         }
     }
 
-    /// Enable caching of this view's rendered subtree, laid out at `style`.
-    /// The composer supplies the layout style because caching skips rendering
-    /// the contents to measure them.
+    /// 启用此视图渲染子树的缓存，使用 `style` 布局。
+    /// 组合器提供布局样式，因为缓存会跳过渲染内容来测量它们。
     ///
-    /// Crate-private on purpose: caching is only sound for entity-backed views,
-    /// where [`Context::notify`] is the contract that busts the cache. A stateless
-    /// view has no such contract, so a frozen subtree could never be invalidated.
-    /// Reach this through [`Entity::cached`] or [`AnyView::cached`], which are
-    /// entity-backed by construction.
+    /// 有意设为 crate 私有：缓存仅对实体支撑的视图是健全的，
+    /// 其中 [`Context::notify`] 是打破缓存的契约。无状态视图没有这样的契约，
+    /// 因此冻结的子树永远无法失效。
+    /// 通过 [`Entity::cached`] 或 [`AnyView::cached`] 到达此处，
+    /// 它们在构造时就是实体支撑的。
     pub(crate) fn cached(mut self, style: StyleRefinement) -> Self {
         self.cached_style = Some(style);
         self
@@ -497,7 +490,7 @@ impl<V: View> Element for ViewElement<V> {
     }
 }
 
-/// A view that renders nothing
+/// 不渲染任何内容的视图
 pub struct EmptyView;
 
 impl Render for EmptyView {

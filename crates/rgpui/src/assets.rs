@@ -59,7 +59,7 @@ impl PartialEq for RenderImage {
 impl Eq for RenderImage {}
 
 impl RenderImage {
-    /// Create a new image from the given data.
+    /// 从给定数据创建新图像。
     pub fn new(data: impl Into<SmallVec<[Frame; 1]>>) -> Self {
         static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -70,14 +70,14 @@ impl RenderImage {
         }
     }
 
-    /// Convert this image into a byte slice.
+    /// 将此图像转换为字节切片。
     pub fn as_bytes(&self, frame_index: usize) -> Option<&[u8]> {
         self.data
             .get(frame_index)
             .map(|frame| frame.buffer().as_raw().as_slice())
     }
 
-    /// Get the size of this image, in pixels.
+    /// 获取图像尺寸（像素）。
     pub fn size(&self, frame_index: usize) -> Size<DevicePixels> {
         self.data
             .get(frame_index)
@@ -88,13 +88,13 @@ impl RenderImage {
             .unwrap_or_default()
     }
 
-    /// Get the size of this image, in pixels for display, adjusted for the scale factor.
+    /// 获取图像显示尺寸（像素），已根据缩放因子调整。
     pub(crate) fn render_size(&self, frame_index: usize) -> Size<Pixels> {
         self.size(frame_index)
             .map(|v| (v.0 as f32 / self.scale_factor).into())
     }
 
-    /// Get the delay of this frame from the previous
+    /// 获取当前帧相对于上一帧的延迟。
     pub fn delay(&self, frame_index: usize) -> Delay {
         self.data
             .get(frame_index)
@@ -102,7 +102,7 @@ impl RenderImage {
             .unwrap_or(Delay::from_numer_denom_ms(100, 1))
     }
 
-    /// Get the number of frames for this image.
+    /// 获取图像的帧数。
     pub fn frame_count(&self) -> usize {
         self.data.len()
     }

@@ -15,7 +15,7 @@
 //! # 事件处理
 //!
 //! 来自 Alacritty 的事件会在 4ms 窗口内批处理，以减少 UI 更新开销。
-//! 事件循环在 GPUI spawn 任务中运行并异步处理事件。
+//! 事件循环在 RGPUI spawn 任务中运行并异步处理事件。
 
 use std::{
     borrow::Cow, cmp, collections::VecDeque, ops::Deref, path::PathBuf, sync::Arc, time::Duration,
@@ -82,10 +82,10 @@ pub enum Event {
 
 impl EventEmitter<Event> for Terminal {}
 
-/// 通过无界通道将 Alacritty 事件桥接到 GPUI。
+/// 通过无界通道将 Alacritty 事件桥接到 RGPUI。
 ///
 /// 实现 Alacritty 的 `EventListener` trait，接收来自终端模拟器的事件
-/// 并将其转发到 GPUI 事件循环进行处理。
+/// 并将其转发到 RGPUI 事件循环进行处理。
 #[derive(Clone)]
 pub struct ZedListener(pub UnboundedSender<AlacTermEvent>);
 
@@ -112,7 +112,7 @@ enum InternalEvent {
 /// 终端尺寸管理。
 ///
 /// 处理像素边界、单元格尺寸和网格大小之间的关系。
-/// 用于 GPUI 和 Alacritty 之间的坐标转换。
+/// 用于 RGPUI 和 Alacritty 之间的坐标转换。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TerminalBounds {
     /// 单元格宽度
@@ -362,7 +362,7 @@ impl TerminalBuilder {
     /// * `shell` - 要运行的 Shell 程序（None 使用系统默认）
     /// * `env` - 额外的环境变量
     /// * `max_scroll_history_lines` - 最大滚动历史行数
-    /// * `window_id` - GPUI 窗口标识符
+    /// * `window_id` - RGPUI 窗口标识符
     /// * `cx` - 应用上下文
     pub fn new(
         working_directory: Option<PathBuf>,

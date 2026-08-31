@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, de::Error as _};
 
 use anyhow::{Error, Result, anyhow};
 
-/// Create a [`rgpui::Hsla`] color.
+/// 创建 [`rgpui::Hsla`] 颜色。
 ///
 /// - h: 0..360.0
 /// - s: 0.0..100.0
@@ -19,53 +19,53 @@ pub fn hsl(h: f32, s: f32, l: f32) -> Hsla {
 
 /// 颜色运算扩展 trait，为颜色类型提供透明度、明暗等变换能力。
 pub trait Colorize: Sized {
-    /// Returns a new color with the given opacity.
+    /// 返回具有给定不透明度的新颜色。
     ///
-    /// The opacity is a value between 0.0 and 1.0, where 0.0 is fully transparent and 1.0 is fully opaque.
+    /// 不透明度是 0.0 到 1.0 之间的值，0.0 为完全透明，1.0 为完全不透明。
     fn opacity(&self, opacity: f32) -> Self;
-    /// Returns a new color with each channel divided by the given divisor.
+    /// 返回每个通道除以给定除数的新颜色。
     ///
-    /// The divisor in range of 0.0 .. 1.0
+    /// 除数范围为 0.0 .. 1.0
     fn divide(&self, divisor: f32) -> Self;
-    /// Return inverted color
+    /// 返回反转颜色。
     fn invert(&self) -> Self;
-    /// Return inverted lightness
+    /// 返回反转亮度。
     fn invert_l(&self) -> Self;
-    /// Return a new color with the lightness increased by the given factor.
+    /// 返回亮度按给定因子增加的新颜色。
     ///
-    /// factor range: 0.0 .. 1.0
+    /// 因子范围：0.0 .. 1.0
     fn lighten(&self, amount: f32) -> Self;
-    /// Return a new color with the darkness increased by the given factor.
+    /// 返回暗度按给定因子增加的新颜色。
     ///
-    /// factor range: 0.0 .. 1.0
+    /// 因子范围：0.0 .. 1.0
     fn darken(&self, amount: f32) -> Self;
-    /// Return a new color with the same lightness and alpha but different hue and saturation.
+    /// 返回具有相同亮度和 alpha 但不同色相和饱和度的新颜色。
     fn apply(&self, base_color: Self) -> Self;
 
-    /// Mix two colors together, the `factor` is a value between 0.0 and 1.0 for first color.
+    /// 混合两种颜色，`factor` 是第一种颜色的值，范围 0.0 到 1.0。
     fn mix(&self, other: Self, factor: f32) -> Self;
-    /// Mix two colors together in Oklab color space, the `factor` is a value between 0.0 and 1.0 for first color.
+    /// 在 Oklab 颜色空间中混合两种颜色，`factor` 是第一种颜色的值，范围 0.0 到 1.0。
     ///
-    /// This is similar to CSS `color-mix(in oklab, color1 factor%, color2)`.
+    /// 类似于 CSS `color-mix(in oklab, color1 factor%, color2)`。
     fn mix_oklab(&self, other: Self, factor: f32) -> Self;
-    /// Change the `Hue` of the color by the given in range: 0.0 .. 1.0
+    /// 将颜色的 `色相` 改为给定值，范围：0.0 .. 1.0
     fn hue(&self, hue: f32) -> Self;
-    /// Change the `Saturation` of the color by the given value in range: 0.0 .. 1.0
+    /// 将颜色的 `饱和度` 改为给定值，范围：0.0 .. 1.0
     fn saturation(&self, saturation: f32) -> Self;
-    /// Change the `Lightness` of the color by the given value in range: 0.0 .. 1.0
+    /// 将颜色的 `亮度` 改为给定值，范围：0.0 .. 1.0
     fn lightness(&self, lightness: f32) -> Self;
 
-    /// Convert the color to a hex string. For example, "#F8FAFC".
+    /// 将颜色转换为十六进制字符串。例如，"#F8FAFC"。
     fn to_hex(&self) -> String;
-    /// Parse a hex string to a color.
+    /// 从十六进制字符串解析颜色。
     fn parse_hex(hex: &str) -> Result<Self>;
 }
 
-/// Helper functions for Oklab color space conversions
+/// Oklab 颜色空间转换的辅助函数
 mod oklab {
     use rgpui::Rgba;
 
-    /// Convert sRGB component to linear RGB
+    /// 将 sRGB 分量转换为线性 RGB
     #[inline]
     fn to_linear(c: f32) -> f32 {
         if c <= 0.04045 {
@@ -75,7 +75,7 @@ mod oklab {
         }
     }
 
-    /// Convert linear RGB component to sRGB
+    /// 将线性 RGB 分量转换为 sRGB
     #[inline]
     fn from_linear(c: f32) -> f32 {
         if c <= 0.0031308 {
@@ -85,7 +85,7 @@ mod oklab {
         }
     }
 
-    /// Convert RGB to Oklab color space
+    /// 将 RGB 转换为 Oklab 颜色空间
     #[allow(non_snake_case)]
     pub fn rgb_to_oklab(rgb: Rgba) -> (f32, f32, f32) {
         // sRGB to linear RGB
@@ -110,7 +110,7 @@ mod oklab {
         (L, a, b)
     }
 
-    /// Convert Oklab to RGB color space
+    /// 将 Oklab 转换为 RGB 颜色空间
     #[allow(non_snake_case)]
     pub fn oklab_to_rgb(L: f32, a: f32, b: f32) -> Rgba {
         // Oklab to LMS
@@ -189,7 +189,7 @@ impl Colorize for Hsla {
         }
     }
 
-    /// Reference:
+    /// 参考：
     /// https://github.com/bevyengine/bevy/blob/85eceb022da0326b47ac2b0d9202c9c9f01835bb/crates/bevy_color/src/hsla.rs#L112
     fn mix(&self, other: Self, factor: f32) -> Self {
         let factor = factor.clamp(0.0, 1.0);
@@ -447,7 +447,7 @@ impl TryFrom<SharedString> for ColorName {
 }
 
 impl ColorName {
-    /// Returns all available color names.
+    /// 返回所有可用的颜色名称。
     pub fn all() -> [Self; 19] {
         [
             ColorName::Neutral,
@@ -472,10 +472,10 @@ impl ColorName {
         ]
     }
 
-    /// Returns the color for the given scale.
+    /// 返回给定色阶的颜色。
     ///
-    /// The `scale` is any of `[50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]`
-    /// falls back to 500 if out of range.
+    /// `scale` 是 `[50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]` 之一，
+    /// 超出范围时回退到 500。
     pub fn scale(&self, scale: usize) -> Hsla {
         if self == &ColorName::White {
             return DEFAULT_COLORS.white.hsla;
@@ -573,7 +573,7 @@ pub(crate) struct ShadcnColor {
     pub(crate) hsla: Hsla,
 }
 
-/// Deserialize Hsla from a string in the format "210 40% 98%"
+/// 从 "210 40% 98%" 格式的字符串反序列化 Hsla。
 fn from_hsl_channel<'de, D>(deserializer: D) -> Result<Hsla, D::Error>
 where
     D: Deserializer<'de>,
@@ -631,12 +631,12 @@ macro_rules! color_methods {
 macro_rules! color_methods_inner {
     ($color:tt, $vis:vis) => {
         paste::paste! {
-            /// Get color by scale number.
+            /// 按色标编号获取颜色。
             ///
-            /// The possible scale numbers are:
+            /// 可能的色标编号为：
             /// 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950
             ///
-            /// If the scale number is not found, it will return black color.
+            /// 如果未找到色标编号，则返回黑色。
             #[inline]
             $vis fn [<$color>](scale: usize) -> Hsla {
                 if let Some(color) = DEFAULT_COLORS.$color.get(&scale) {
@@ -684,19 +684,19 @@ color_methods!(fuchsia);
 color_methods!(pink);
 color_methods!(rose);
 
-/// Try to parse the color, HEX or [Tailwind Color](https://tailwindcss.com/docs/colors) expression.
+/// 尝试解析颜色，HEX 或 [Tailwind 颜色](https://tailwindcss.com/docs/colors) 表达式。
 ///
-/// # Parameter `color` should be one string value listed below:
+/// # 参数 `color` 应为以下字符串值之一：
 ///
-/// - `#RRGGBB` - The HEX color string.
-/// - `#RRGGBBAA` - The HEX color string with alpha.
+/// - `#RRGGBB` - 十六进制颜色字符串。
+/// - `#RRGGBBAA` - 带 alpha 的十六进制颜色字符串。
 ///
-/// Or the Tailwind Color format:
+/// 或 Tailwind 颜色格式：
 ///
-/// - `name` - The color name `black`, `white`, or any other defined in `crate::color`.
-/// - `name-scale` - The color name with scale.
-/// - `name/opacity` - The color name with opacity, `opacity` should be an integer between 0 and 100.
-/// - `name-scale/opacity` - The color name with scale and opacity.
+/// - `name` - 颜色名称 `black`、`white` 或 `crate::color` 中定义的其他颜色。
+/// - `name-scale` - 带色阶的颜色名称。
+/// - `name/opacity` - 带不透明度的颜色名称，`opacity` 应为 0 到 100 之间的整数。
+/// - `name-scale/opacity` - 带色阶和不透明度的颜色名称。
 ///
 pub fn try_parse_color(color: &str) -> Result<Hsla> {
     if color.starts_with("#") {
@@ -764,10 +764,10 @@ pub fn try_parse_color(color: &str) -> Result<Hsla> {
     Ok(hsla)
 }
 
-/// Try to parse a theme background value.
+/// 尝试解析主题背景值。
 ///
-/// Supports all values accepted by [`try_parse_color`] and CSS-style two-stop
-/// `linear-gradient(...)` values.
+/// 支持 [`try_parse_color`] 接受的所有值以及 CSS 风格的双色
+/// `linear-gradient(...)` 值。
 pub fn try_parse_background(background: &str) -> Result<Background> {
     if let Ok(color) = try_parse_color(background) {
         return Ok(color.into());
@@ -777,11 +777,11 @@ pub fn try_parse_background(background: &str) -> Result<Background> {
     Ok(linear_gradient(gradient.angle, gradient.from, gradient.to))
 }
 
-/// Parse a background, clamping every color stop's alpha to at most `max`.
+/// 解析背景，将每个颜色停止点的 alpha 限制为最多 `max`。
 ///
-/// Unlike [`Background::opacity`], which scales all stops by a single factor,
-/// this caps each gradient stop independently, so a bright `to` stop (or a
-/// transparent `from` stop) can never push the rendered highlight past `max`.
+/// 与 [`Background::opacity`] 不同（它对所有停止点应用单一缩放因子），
+/// 此方法独立限制每个渐变停止点，因此明亮的 `to` 停止点（或透明的 `from` 停止点）
+/// 不会将渲染的高光推过 `max`。
 pub(crate) fn try_parse_background_clamped(background: &str, max: f32) -> Result<Background> {
     if let Ok(color) = try_parse_color(background) {
         return Ok(color.alpha(color.a.min(max)).into());

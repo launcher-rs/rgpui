@@ -151,7 +151,7 @@ impl WebWindowInner {
     }
 
     fn dispatch_input(&self, input: PlatformInput) -> Option<DispatchEventResult> {
-        // 取出回调后释放借用再调用，避免 gpui 输入回调内部再次借用 callbacks（如请求绘制）时重借。
+        // 取出回调后释放借用再调用，避免 rgpui 输入回调内部再次借用 callbacks（如请求绘制）时重借。
         let mut callback = self.callbacks.borrow_mut().input.take();
         let result = callback.as_mut().map(|callback| callback(input));
         if let Some(callback) = callback {
@@ -169,7 +169,7 @@ impl WebWindowInner {
     ///
     /// 指针事件不调用 `preventDefault`：保留浏览器原生行为（文本 span 的
     /// `user-select:text` 原生选择/复制）；wheel 仍要阻止默认滚动，避免与
-    /// gpui 自绘滚动双重滚动。
+    /// rgpui 自绘滚动双重滚动。
     pub(crate) fn dispatch_dom_event(&self, keys: Vec<rgpui::DomNodeKey>, event: web_sys::Event) {
         let event_type = event.type_();
         let input = match event_type.as_str() {
@@ -281,7 +281,7 @@ impl WebWindowInner {
             _ => return,
         };
 
-        // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+        // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 callbacks 时重借。
         let callback = self.callbacks.borrow_mut().dom_event.take();
         if let Some(mut callback) = callback {
             callback(keys, input);
@@ -293,7 +293,7 @@ impl WebWindowInner {
     /// 交给核心，反查 `ScrollHandle` 并同步滚动偏移。
     #[cfg(feature = "dom-backend")]
     pub(crate) fn dispatch_dom_scroll(&self, keys: Vec<rgpui::DomNodeKey>, left: f64, top: f64) {
-        // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+        // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 callbacks 时重借。
         let callback = self.callbacks.borrow_mut().dom_scroll.take();
         if let Some(mut callback) = callback {
             callback(keys, left, top);
@@ -724,7 +724,7 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_active = true;
             }
-            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+            // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 callbacks 时重借。
             let callback = this.callbacks.borrow_mut().active_status_change.take();
             if let Some(mut callback) = callback {
                 callback(true);
@@ -740,7 +740,7 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_active = false;
             }
-            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+            // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 callbacks 时重借。
             let callback = this.callbacks.borrow_mut().active_status_change.take();
             if let Some(mut callback) = callback {
                 callback(false);
@@ -756,7 +756,7 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_hovered = true;
             }
-            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+            // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 callbacks 时重借。
             let callback = this.callbacks.borrow_mut().hover_status_change.take();
             if let Some(mut callback) = callback {
                 callback(true);
@@ -772,7 +772,7 @@ impl WebWindowInner {
                 let mut state = this.state.borrow_mut();
                 state.is_hovered = false;
             }
-            // 取出回调后释放借用再调用，避免 gpui 回调内部再次借用 callbacks 时重借。
+            // 取出回调后释放借用再调用，避免 rgpui 回调内部再次借用 callbacks 时重借。
             let callback = this.callbacks.borrow_mut().hover_status_change.take();
             if let Some(mut callback) = callback {
                 callback(false);

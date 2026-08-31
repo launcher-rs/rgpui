@@ -8,18 +8,18 @@ use std::{
     fmt::Display,
 };
 
-/// Defines and registers unit structs that can be used as actions. For more complex data types, derive `Action`.
+/// 定义并注册可用作动作的单元结构体。对于更复杂的数据类型，请派生 `Action`。
 ///
-/// For example:
+/// 例如：
 ///
 /// ```
 /// use rgpui::actions;
 /// actions!(editor, [MoveUp, MoveDown, MoveLeft, MoveRight, Newline]);
 /// ```
 ///
-/// This will create actions with names like `editor::MoveUp`, `editor::MoveDown`, etc.
+/// 这将创建名为 `editor::MoveUp`、`editor::MoveDown` 等的动作。
 ///
-/// The namespace argument `editor` can also be omitted, though it is required for Zed actions.
+/// 命名空间参数 `editor` 也可以省略，但对于 Zed 动作是必需的。
 #[macro_export]
 macro_rules! actions {
     ($namespace:path, [ $( $(#[$attr:meta])* $name:ident),* $(,)? ]) => {
@@ -41,22 +41,22 @@ macro_rules! actions {
     };
 }
 
-/// Actions are used to implement keyboard-driven UI. When you declare an action, you can bind keys
-/// to the action in the keymap and listeners for that action in the element tree.
+/// 动作用于实现键盘驱动的 UI。声明动作后，可以在键映射中将按键绑定到该动作，
+/// 并在元素树中为该动作设置监听器。
 ///
-/// To declare a list of simple actions, you can use the actions! macro, which defines a simple unit
-/// struct action for each listed action name in the given namespace.
+/// 要声明一组简单动作，可以使用 actions! 宏，它为给定命名空间中列出的每个动作名称
+/// 定义一个简单的单元结构体动作。
 ///
 /// ```
 /// use rgpui::actions;
 /// actions!(editor, [MoveUp, MoveDown, MoveLeft, MoveRight, Newline]);
 /// ```
 ///
-/// Registering the actions with the same name will result in a panic during  `App` creation.
+/// 注册同名动作会导致 `App` 创建时 panic。
 ///
-/// # Derive Macro
+/// # 派生宏
 ///
-/// More complex data types can also be actions, by using the derive macro for `Action`:
+/// 更复杂的数据类型也可以是动作，通过为 `Action` 使用派生宏：
 ///
 /// ```
 /// use rgpui::Action;
@@ -67,35 +67,33 @@ macro_rules! actions {
 /// }
 /// ```
 ///
-/// The derive macro for `Action` requires that the type implement `Clone` and `PartialEq`. It also
-/// requires `serde::Deserialize` and `schemars::JsonSchema` unless `#[action(no_json)]` is
-/// specified. In Zed these trait impls are used to load keymaps from JSON.
+/// `Action` 的派生宏要求类型实现 `Clone` 和 `PartialEq`。它还要求
+/// `serde::Deserialize` 和 `schemars::JsonSchema`，除非指定了 `#[action(no_json)]`。
+/// 在 Zed 中，这些 trait 实现用于从 JSON 加载键映射。
 ///
-/// Multiple arguments separated by commas may be specified in `#[action(...)]`:
+/// `#[action(...)]` 中可以指定多个以逗号分隔的参数：
 ///
-/// - `namespace = some_namespace` sets the namespace. In Zed this is required.
+/// - `namespace = some_namespace` 设置命名空间。在 Zed 中这是必需的。
 ///
-/// - `name = "ActionName"` overrides the action's name. This must not contain `::`.
+/// - `name = "ActionName"` 覆盖动作名称。不能包含 `::`。
 ///
-/// - `no_json` causes the `build` method to always error and `action_json_schema` to return `None`,
-///   and allows actions not implement `serde::Serialize` and `schemars::JsonSchema`.
+/// - `no_json` 使 `build` 方法始终报错且 `action_json_schema` 返回 `None`，
+///   并允许动作不实现 `serde::Serialize` 和 `schemars::JsonSchema`。
 ///
-/// - `no_register` skips registering the action. This is useful for implementing the `Action` trait
-///   while not supporting invocation by name or JSON deserialization.
+/// - `no_register` 跳过注册动作。这在实现 `Action` trait 时不支持按名称调用
+///   或 JSON 反序列化时很有用。
 ///
-/// - `deprecated_aliases = ["editor::SomeAction"]` specifies deprecated old names for the action.
-///   These action names should *not* correspond to any actions that are registered. These old names
-///   can then still be used to refer to invoke this action. In Zed, the keymap JSON schema will
-///   accept these old names and provide warnings.
+/// - `deprecated_aliases = ["editor::SomeAction"]` 指定动作的已弃用旧名称。
+///   这些动作名称*不应*对应任何已注册的动作。这些旧名称仍可用于引用调用此动作。
+///   在 Zed 中，键映射 JSON 模式将接受这些旧名称并提供警告。
 ///
-/// - `deprecated = "Message about why this action is deprecation"` specifies a deprecation message.
-///   In Zed, the keymap JSON schema will cause this to be displayed as a warning.
+/// - `deprecated = "关于此动作弃用原因的消息"` 指定弃用消息。
+///   在 Zed 中，键映射 JSON 模式会将其显示为警告。
 ///
-/// # Manual Implementation
+/// # 手动实现
 ///
-/// If you want to control the behavior of the action trait manually, you can use the lower-level
-/// `#[register_action]` macro, which only generates the code needed to register your action before
-/// `main`.
+/// 如果想手动控制 action trait 的行为，可以使用更低级的
+/// `#[register_action]` 宏，它只生成在 `main` 之前注册动作所需的代码。
 ///
 /// ```
 /// use rgpui::{SharedString, register_action};
@@ -117,27 +115,27 @@ macro_rules! actions {
 /// register_action!(Paste);
 /// ```
 pub trait Action: Any + Send {
-    /// Clone the action into a new box
+    /// 将动作克隆到新的 Box 中
     fn boxed_clone(&self) -> Box<dyn Action>;
 
-    /// Do a partial equality check on this action and the other
+    /// 对此动作与另一个动作进行部分相等性检查
     fn partial_eq(&self, action: &dyn Action) -> bool;
 
-    /// Get the name of this action, for displaying in UI
+    /// 获取此动作的名称，用于在 UI 中显示
     fn name(&self) -> &'static str;
 
-    /// Get the name of this action type (static)
+    /// 获取此动作类型的名称（静态）
     fn name_for_type() -> &'static str
     where
         Self: Sized;
 
-    /// Build this action from a JSON value. This is used to construct actions from the keymap.
-    /// A value of `{}` will be passed for actions that don't have any parameters.
+    /// 从 JSON 值构建此动作。用于从键映射构造动作。
+    /// 对于没有参数的动作，将传递 `{}` 值。
     fn build(value: serde_json::Value) -> Result<Box<dyn Action>>
     where
         Self: Sized;
 
-    /// Optional JSON schema for the action's input data.
+    /// 动作输入数据的可选 JSON 模式。
     fn action_json_schema(_: &mut schemars::SchemaGenerator) -> Option<schemars::Schema>
     where
         Self: Sized,
@@ -145,9 +143,8 @@ pub trait Action: Any + Send {
         None
     }
 
-    /// A list of alternate, deprecated names for this action. These names can still be used to
-    /// invoke the action. In Zed, the keymap JSON schema will accept these old names and provide
-    /// warnings.
+    /// 此动作的替代已弃用名称列表。这些名称仍可用于调用该动作。
+    /// 在 Zed 中，键映射 JSON 模式将接受这些旧名称并提供警告。
     fn deprecated_aliases() -> &'static [&'static str]
     where
         Self: Sized,
@@ -155,8 +152,7 @@ pub trait Action: Any + Send {
         &[]
     }
 
-    /// Returns the deprecation message for this action, if any. In Zed, the keymap JSON schema will
-    /// cause this to be displayed as a warning.
+    /// 返回此动作的弃用消息（如果有）。在 Zed 中，键映射 JSON 模式会将其显示为警告。
     fn deprecation_message() -> Option<&'static str>
     where
         Self: Sized,
@@ -164,8 +160,8 @@ pub trait Action: Any + Send {
         None
     }
 
-    /// The documentation for this action, if any. When using the derive macro for actions
-    /// this will be automatically generated from the doc comments on the action struct.
+    /// 此动作的文档（如果有）。使用动作的派生宏时，
+    /// 这将从动作结构体上的文档注释自动生成。
     fn documentation() -> Option<&'static str>
     where
         Self: Sized,
@@ -183,27 +179,25 @@ impl std::fmt::Debug for dyn Action {
 }
 
 impl dyn Action {
-    /// Type-erase Action type.
+    /// 类型擦除 Action 类型。
     pub fn as_any(&self) -> &dyn Any {
         self as &dyn Any
     }
 }
 
-/// Error type for `Keystroke::parse`. This is used instead of `anyhow::Error` so that Zed can use
-/// markdown to display it.
+/// `Keystroke::parse` 的错误类型。使用此类型而非 `anyhow::Error`，以便 Zed 可以使用 markdown 来显示它。
 #[derive(Debug)]
 pub enum ActionBuildError {
-    /// Indicates that an action with this name has not been registered.
+    /// 表示未注册具有此名称的动作。
     NotFound {
-        /// Name of the action that was not found.
+        /// 未找到的动作名称。
         name: String,
     },
-    /// Indicates that an error occurred while building the action, typically a JSON deserialization
-    /// error.
+    /// 表示构建动作时发生错误，通常是 JSON 反序列化错误。
     BuildError {
-        /// Name of the action that was attempting to be built.
+        /// 正在尝试构建的动作名称。
         name: String,
-        /// Error that occurred while building the action.
+        /// 构建动作时发生的错误。
         error: anyhow::Error,
     },
 }
@@ -263,13 +257,13 @@ struct ActionData {
     pub json_schema: fn(&mut schemars::SchemaGenerator) -> Option<schemars::Schema>,
 }
 
-/// This type must be public so that our macros can build it in other crates.
-/// But this is an implementation detail and should not be used directly.
+/// 此类型必须是公共的，以便我们的宏可以在其他 crate 中构建它。
+/// 但这是实现细节，不应直接使用。
 #[doc(hidden)]
 pub struct MacroActionBuilder(pub fn() -> MacroActionData);
 
-/// This type must be public so that our macros can build it in other crates.
-/// But this is an implementation detail and should not be used directly.
+/// 此类型必须是公共的，以便我们的宏可以在其他 crate 中构建它。
+/// 但这是实现细节，不应直接使用。
 #[doc(hidden)]
 pub struct MacroActionData {
     pub name: &'static str,
@@ -284,7 +278,7 @@ pub struct MacroActionData {
 inventory::collect!(MacroActionBuilder);
 
 impl ActionRegistry {
-    /// Load all registered actions into the registry.
+    /// 将所有已注册的动作加载到注册表中。
     pub(crate) fn load_actions(&mut self) {
         for builder in inventory::iter::<MacroActionBuilder> {
             let action = builder.0();
@@ -334,7 +328,7 @@ impl ActionRegistry {
         }
     }
 
-    /// Construct an action based on its name and optional JSON parameters sourced from the keymap.
+    /// 根据动作名称和可选的 JSON 参数（来源于键映射）构建动作。
     pub fn build_action_type(&self, type_id: &TypeId) -> Result<Box<dyn Action>> {
         let name = self
             .names_by_type_id
@@ -348,7 +342,7 @@ impl ActionRegistry {
         self.names_by_type_id.get(type_id).copied()
     }
 
-    /// Construct an action based on its name and optional JSON parameters sourced from the keymap.
+    /// 根据动作名称和可选的 JSON 参数（来源于键映射）构建动作。
     pub fn build_action(
         &self,
         name: &str,
@@ -413,10 +407,9 @@ impl ActionRegistry {
     }
 }
 
-/// Generate a list of all the registered actions.
-/// Useful for transforming the list of available actions into a
-/// format suited for static analysis such as in validating keymaps, or
-/// generating documentation.
+/// 生成所有已注册动作的列表。
+/// 适用于将可用动作列表转换为适合静态分析的格式，
+/// 例如验证键映射或生成文档。
 pub fn generate_list_of_all_registered_actions() -> impl Iterator<Item = MacroActionData> {
     inventory::iter::<MacroActionBuilder>
         .into_iter()
@@ -431,28 +424,28 @@ mod no_action {
     actions!(
         rgpui,
         [
-            /// Action with special handling which unbinds the keybinding this is associated with,
-            /// if it is the highest precedence match.
+            /// 具有特殊处理的动作，如果它是最高优先级匹配项，
+            /// 则会解除关联的键绑定。
             NoAction
         ]
     );
 
-    /// Action with special handling which unbinds later bindings for the same keystrokes when they
-    /// dispatch the named action, regardless of that action's context.
+    /// 具有特殊处理的动作，当同一按键序列触发指定动作时，
+    /// 它会解除后续绑定，无论该动作的上下文如何。
     ///
-    /// In keymap JSON this is written as:
+    /// 在键映射 JSON 中写作：
     ///
     /// `["rgpui::Unbind", "editor::NewLine"]`
     #[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema, rgpui::Action)]
     #[action(namespace = rgpui)]
     pub struct Unbind(pub rgpui::SharedString);
 
-    /// Returns whether or not this action represents a removed key binding.
+    /// 返回此动作是否表示已移除的键绑定。
     pub fn is_no_action(action: &dyn rgpui::Action) -> bool {
         action.as_any().is::<NoAction>()
     }
 
-    /// Returns whether or not this action represents an unbind marker.
+    /// 返回此动作是否表示解除绑定标记。
     pub fn is_unbind(action: &dyn rgpui::Action) -> bool {
         action.as_any().is::<Unbind>()
     }

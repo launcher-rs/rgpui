@@ -63,8 +63,8 @@ pub fn truncate(s: &str, max_chars: usize) -> &str {
     }
 }
 
-/// Removes characters from the end of the string if its length is greater than `max_chars` and
-/// appends "..." to the string. Returns string unchanged if its length is smaller than max_chars.
+/// 如果字符串长度大于 `max_chars`，则从字符串末尾移除字符，
+/// 并在字符串末尾附加 "..."。如果字符串长度小于 max_chars，则返回不变的字符串。
 pub fn truncate_and_trailoff(s: &str, max_chars: usize) -> String {
     debug_assert!(max_chars >= 5);
 
@@ -80,8 +80,8 @@ pub fn truncate_and_trailoff(s: &str, max_chars: usize) -> String {
     }
 }
 
-/// Removes characters from the front of the string if its length is greater than `max_chars` and
-/// prepends the string with "...". Returns string unchanged if its length is smaller than max_chars.
+/// 如果字符串长度大于 `max_chars`，则从字符串开头移除字符，
+/// 并在字符串开头添加 "..."。如果字符串长度小于 max_chars，则返回不变的字符串。
 pub fn truncate_and_remove_front(s: &str, max_chars: usize) -> String {
     debug_assert!(max_chars >= 5);
 
@@ -101,9 +101,9 @@ pub fn truncate_and_remove_front(s: &str, max_chars: usize) -> String {
     }
 }
 
-/// Takes only `max_lines` from the string and, if there were more than `max_lines-1`, appends a
-/// a newline and "..." to the string, so that `max_lines` are returned.
-/// Returns string unchanged if its length is smaller than max_lines.
+/// 仅从字符串中获取 `max_lines` 行，如果超过 `max_lines-1` 行，
+/// 则在字符串末尾附加换行符和 "..."，以便返回 `max_lines` 行。
+/// 如果字符串长度小于 max_lines，则返回不变的字符串。
 pub fn truncate_lines_and_trailoff(s: &str, max_lines: usize) -> String {
     let mut lines = s.lines().take(max_lines).collect::<Vec<_>>();
     if lines.len() > max_lines - 1 {
@@ -114,8 +114,7 @@ pub fn truncate_lines_and_trailoff(s: &str, max_lines: usize) -> String {
     }
 }
 
-/// Truncates the string at a character boundary, such that the result is less than `max_bytes` in
-/// length.
+/// 在字符边界处截断字符串，使结果长度小于 `max_bytes`。
 pub fn truncate_to_byte_limit(s: &str, max_bytes: usize) -> &str {
     if s.len() < max_bytes {
         return s;
@@ -130,8 +129,8 @@ pub fn truncate_to_byte_limit(s: &str, max_bytes: usize) -> &str {
     ""
 }
 
-/// Takes a prefix of complete lines which fit within the byte limit. If the first line is longer
-/// than the limit, truncates at a character boundary.
+/// 获取适合字节限制的完整行前缀。如果第一行长于
+/// 限制，则在字符边界处截断。
 pub fn truncate_lines_to_byte_limit(s: &str, max_bytes: usize) -> &str {
     if s.len() < max_bytes {
         return s;
@@ -172,9 +171,9 @@ fn test_truncate_lines_to_byte_limit() {
     );
 }
 
-/// Extend a sorted vector with a sorted sequence of items, maintaining the vector's sort order and
-/// enforcing a maximum length. This also de-duplicates items. Sort the items according to the given callback. Before calling this,
-/// both `vec` and `new_items` should already be sorted according to the `cmp` comparator.
+/// 用已排序的项序列扩展已排序的向量，维护向量的排序顺序并
+/// 强制最大长度。这还会对项进行去重。根据给定的回调对项进行排序。调用此函数之前，
+/// `vec` 和 `new_items` 都应已根据 `cmp` 比较器排序。
 pub fn extend_sorted<T, I, F>(vec: &mut Vec<T>, new_items: I, limit: usize, mut cmp: F)
 where
     I: IntoIterator<Item = T>,
@@ -217,11 +216,10 @@ where
     items.sort_by(compare);
 }
 
-/// Prevents execution of the application with root privileges on Unix systems.
+/// 防止在 Unix 系统上以 root 权限执行应用程序。
 ///
-/// This function checks if the current process is running with root privileges
-/// and terminates the program with an error message unless explicitly allowed via the
-/// `RGPUI_ALLOW_ROOT` environment variable.
+/// 此函数检查当前进程是否以 root 权限运行，
+/// 除非通过 `RGPUI_ALLOW_ROOT` 环境变量明确允许，否则将终止程序并显示错误消息。
 #[cfg(unix)]
 pub fn prevent_root_execution() {
     let is_root = nix::unistd::geteuid().is_root();
@@ -294,7 +292,7 @@ fn load_shell_from_passwd() -> Result<()> {
     Ok(())
 }
 
-/// Returns a shell escaped path for the current rgpui executable
+/// 返回当前 rgpui 可执行文件的 shell 转义路径
 #[cfg(not(target_family = "wasm"))]
 pub fn get_shell_safe_rgpui_path(shell_kind: shell::ShellKind) -> anyhow::Result<String> {
     use anyhow::Context as _;
@@ -318,8 +316,8 @@ pub fn get_shell_safe_rgpui_path(shell_kind: shell::ShellKind) -> anyhow::Result
         .context("Failed to shell-escape rgpui executable path.")
 }
 
-/// Returns a path for the rgpui cli executable, this function
-/// should be called from the rgpui executable, not rgpui-cli.
+/// 返回 rgpui cli 可执行文件的路径，此函数
+/// 应从 rgpui 可执行文件调用，而不是 rgpui-cli。
 pub fn get_rgpui_cli_path() -> Result<PathBuf> {
     use anyhow::Context as _;
     let rgpui_path =
@@ -393,10 +391,9 @@ pub async fn load_login_shell_environment() -> Result<()> {
     Ok(())
 }
 
-/// Configures the process to start a new session, to prevent interactive shells from taking control
-/// of the terminal.
+/// 配置进程以启动新会话，防止交互式 shell 控制终端。
 ///
-/// For more details: <https://registerspill.thorstenball.com/p/how-to-lose-control-of-your-shell>
+/// 详情请参阅：<https://registerspill.thorstenball.com/p/how-to-lose-control-of-your-shell>
 pub fn set_pre_exec_to_start_new_session(
     command: &mut std::process::Command,
 ) -> &mut std::process::Command {
@@ -512,9 +509,9 @@ pub fn expanded_and_wrapped_usize_range(
     }
 }
 
-/// Yields `[i, i + 1, i - 1, i + 2, ..]`, each modulo `wrap_length` and bounded by
-/// `additional_before` and `additional_after`. If the wrapping causes overlap, duplicates are not
-/// emitted. If wrap_length is 0, nothing is yielded.
+/// 生成 `[i, i + 1, i - 1, i + 2, ..]`，每个值对 `wrap_length` 取模，
+/// 并受 `additional_before` 和 `additional_after` 限制。如果换行导致重叠，则不
+/// 发出重复项。如果 wrap_length 为 0，则不生成任何内容。
 pub fn wrapped_usize_outward_from(
     start: usize,
     additional_before: usize,
@@ -604,7 +601,7 @@ mod rng {
 #[cfg(any(test, feature = "test-support"))]
 pub use rng::RandomCharIter;
 
-/// Get an embedded file as a string.
+/// 以字符串形式获取嵌入文件。
 pub fn asset_str<A: rust_embed::RustEmbed>(path: &str) -> Cow<'static, str> {
     match A::get(path).expect(path).data {
         Cow::Borrowed(bytes) => Cow::Borrowed(std::str::from_utf8(bytes).unwrap()),
@@ -655,11 +652,10 @@ impl<T: Ord + Clone> RangeExt<T> for RangeInclusive<T> {
     }
 }
 
-/// A way to sort strings with starting numbers numerically first, falling back to alphanumeric one,
-/// case-insensitive.
+/// 一种按数字排序以数字开头的字符串的方法，回退到不区分大小写的字母数字排序。
 ///
-/// This is useful for turning regular alphanumerically sorted sequences as `1-abc, 10, 11-def, .., 2, 21-abc`
-/// into `1-abc, 2, 10, 11-def, .., 21-abc`
+/// 这对于将常规字母数字排序的序列（如 `1-abc, 10, 11-def, .., 2, 21-abc`）
+/// 转换为 `1-abc, 2, 10, 11-def, .., 21-abc` 很有用
 #[derive(Debug, PartialEq, Eq)]
 pub struct NumericPrefixWithSuffix<'a>(Option<u64>, &'a str);
 
@@ -673,8 +669,8 @@ impl<'a> NumericPrefixWithSuffix<'a> {
     }
 }
 
-/// When dealing with equality, we need to consider the case of the strings to achieve strict equality
-/// to handle cases like "a" < "A" instead of "a" == "A".
+/// 在处理相等性时，我们需要考虑字符串的大小写以实现严格相等性，
+/// 以处理 "a" < "A" 而不是 "a" == "A" 的情况。
 impl Ord for NumericPrefixWithSuffix<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self.0, other.0) {
@@ -704,8 +700,8 @@ fn emoji_regex() -> &'static Regex {
     &EMOJI_REGEX
 }
 
-/// Returns true if the given string consists of emojis only.
-/// E.g. "👨‍👩‍👧‍👧👋" will return true, but "👋!" will return false.
+/// 如果给定字符串仅由表情符号组成则返回 true。
+/// 例如 "👨‍👩‍👧‍👧👋" 将返回 true，但 "👋!" 将返回 false。
 pub fn word_consists_of_emojis(s: &str) -> bool {
     let mut prev_end = 0;
     for capture in emoji_regex().find_iter(s) {
@@ -717,8 +713,8 @@ pub fn word_consists_of_emojis(s: &str) -> bool {
     prev_end == s.len()
 }
 
-/// Similar to `str::split`, but also provides byte-offset ranges of the results. Unlike
-/// `str::split`, this is not generic on pattern types and does not return an `Iterator`.
+/// 类似于 `str::split`，但还提供结果的字节偏移范围。与
+/// `str::split` 不同，这不对模式类型进行泛型化，也不返回 `Iterator`。
 pub fn split_str_with_ranges<'s>(
     s: &'s str,
     pat: &dyn Fn(char) -> bool,
@@ -769,8 +765,8 @@ impl<O> From<anyhow::Result<O>> for ConnectionResult<O> {
     }
 }
 
-/// Normalizes a path by resolving `.` and `..` components without
-/// requiring the path to exist on disk (unlike `canonicalize`).
+/// 通过解析 `.` 和 `..` 组件来规范化路径，无需
+/// 路径存在于磁盘上（与 `canonicalize` 不同）。
 pub fn normalize_path(path: &Path) -> PathBuf {
     use std::path::Component;
     let mut components = path.components().peekable();
@@ -1180,9 +1176,9 @@ use std::{
     time::Duration,
 };
 
-/// A helper trait for building complex objects with imperative conditionals in a fluent style.
+/// 一个用于在流式风格中通过命令式条件构建复杂对象的辅助 trait。
 pub trait FluentBuilder {
-    /// Imperatively modify self with the given closure.
+    /// 使用给定的闭包以命令式方式修改自身。
     fn map<U>(self, f: impl FnOnce(Self) -> U) -> U
     where
         Self: Sized,
@@ -1190,7 +1186,7 @@ pub trait FluentBuilder {
         f(self)
     }
 
-    /// Conditionally modify self with the given closure.
+    /// 使用给定的闭包有条件地修改自身。
     fn when(self, condition: bool, then: impl FnOnce(Self) -> Self) -> Self
     where
         Self: Sized,
@@ -1198,7 +1194,7 @@ pub trait FluentBuilder {
         self.map(|this| if condition { then(this) } else { this })
     }
 
-    /// Conditionally modify self with the given closure.
+    /// 使用给定的闭包有条件地修改自身。
     fn when_else(
         self,
         condition: bool,
@@ -1211,7 +1207,7 @@ pub trait FluentBuilder {
         self.map(|this| if condition { then(this) } else { else_fn(this) })
     }
 
-    /// Conditionally unwrap and modify self with the given closure, if the given option is Some.
+    /// 如果给定的选项是 Some，则有条件地解包并使用给定的闭包修改自身。
     fn when_some<T>(self, option: Option<T>, then: impl FnOnce(Self, T) -> Self) -> Self
     where
         Self: Sized,
@@ -1224,7 +1220,7 @@ pub trait FluentBuilder {
             }
         })
     }
-    /// Conditionally unwrap and modify self with the given closure, if the given option is None.
+    /// 如果给定的选项是 None，则有条件地解包并使用给定的闭包修改自身。
     fn when_none<T>(self, option: &Option<T>, then: impl FnOnce(Self) -> Self) -> Self
     where
         Self: Sized,
@@ -1233,10 +1229,10 @@ pub trait FluentBuilder {
     }
 }
 
-/// Extensions for Future types that provide additional combinators and utilities.
+/// Future 类型的扩展，提供额外的组合器和实用程序。
 pub trait FutureExt {
-    /// Requires a Future to complete before the specified duration has elapsed.
-    /// Similar to tokio::timeout.
+    /// 要求 Future 在指定持续时间过去之前完成。
+    /// 类似于 tokio::timeout。
     fn with_timeout(self, timeout: Duration, executor: &BackgroundExecutor) -> WithTimeout<Self>
     where
         Self: Sized;
@@ -1264,7 +1260,7 @@ pub struct WithTimeout<T> {
 
 #[derive(Debug, thiserror::Error)]
 #[error("Timed out before future resolved")]
-/// Error returned by with_timeout when the timeout duration elapsed before the future resolved
+/// 当超时持续时间在 future 解决之前过去时，with_timeout 返回的错误
 pub struct Timeout;
 
 impl<T: Future> Future for WithTimeout<T> {
@@ -1283,8 +1279,8 @@ impl<T: Future> Future for WithTimeout<T> {
     }
 }
 
-/// Increment the given atomic counter if it is not zero.
-/// Return the new value of the counter.
+/// 如果给定的原子计数器不为零，则递增它。
+/// 返回计数器的新值。
 pub(crate) fn atomic_incr_if_not_zero(counter: &AtomicUsize) -> usize {
     let mut loaded = counter.load(SeqCst);
     loop {
@@ -1298,7 +1294,7 @@ pub(crate) fn atomic_incr_if_not_zero(counter: &AtomicUsize) -> usize {
     }
 }
 
-/// Rounds to the nearest integer with 0.5 ties toward zero.
+/// 将 0.5 舍入到最接近的整数，向零方向舍入。
 #[inline]
 pub(crate) fn round_half_toward_zero(value: f32) -> f32 {
     (value.abs() - 0.5).ceil().copysign(value)

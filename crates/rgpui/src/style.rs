@@ -17,7 +17,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// 使用此结构与你自己元素中的 'debug_below' 样式进行交互。
-/// 如果父元素设置了此样式，则此结构将被设置为 GPUI 中的全局值。
+/// 如果父元素设置了此样式，则此结构将被设置为 RGPUI 中的全局值。
 #[cfg(debug_assertions)]
 pub struct DebugBelow;
 
@@ -437,7 +437,7 @@ pub enum TextAlign {
     Right,
 }
 
-/// 可用于在 GPUI 中设置文本样式的属性
+/// 可用于在 RGPUI 中设置文本样式的属性
 #[derive(Refineable, Clone, Debug, PartialEq)]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TextStyle {
@@ -885,13 +885,13 @@ impl Default for Style {
     Refineable, Copy, Clone, Default, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
 )]
 pub struct UnderlineStyle {
-    /// The thickness of the underline.
+    /// 下划线的粗细。
     pub thickness: Pixels,
 
-    /// The color of the underline.
+    /// 下划线的颜色。
     pub color: Option<Hsla>,
 
-    /// Whether the underline should be wavy, like in a spell checker.
+    /// 下划线是否应为波浪形，类似拼写检查器中的样式。
     pub wavy: bool,
 }
 
@@ -900,10 +900,10 @@ pub struct UnderlineStyle {
     Refineable, Copy, Clone, Default, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
 )]
 pub struct StrikethroughStyle {
-    /// The thickness of the strikethrough.
+    /// 删除线的粗细。
     pub thickness: Pixels,
 
-    /// The color of the strikethrough.
+    /// 删除线的颜色。
     pub color: Option<Hsla>,
 }
 
@@ -1088,9 +1088,9 @@ pub fn combine_highlights(
     })
 }
 
-/// Used to control how child nodes are aligned.
-/// For Flexbox it controls alignment in the cross axis
-/// For Grid it controls alignment in the block axis
+/// 用于控制子节点的对齐方式。
+/// 对于 Flexbox，控制交叉轴中的对齐
+/// 对于 Grid，控制块轴中的对齐
 ///
 /// [MDN](https://developer.mozilla.org/en-US/docs/Web/CSS/align-items)
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]

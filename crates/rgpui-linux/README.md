@@ -4,7 +4,7 @@ RGPUI 框架的 Linux/FreeBSD 平台后端实现，支持 Wayland 和 X11 显示
 
 ## 概述
 
-`rgpui_linux` 为 GPUI 提供 Linux 和 FreeBSD 系统上的完整平台抽象层，包括窗口管理、输入处理、剪贴板、文件选择器、密钥环等核心功能。本 crate 通过特性标志（feature flags）灵活选择 Wayland 或 X11 后端，并在运行时自动检测当前会话的显示服务器类型。
+`rgpui_linux` 为 RGPUI 提供 Linux 和 FreeBSD 系统上的完整平台抽象层，包括窗口管理、输入处理、剪贴板、文件选择器、密钥环等核心功能。本 crate 通过特性标志（feature flags）灵活选择 Wayland 或 X11 后端，并在运行时自动检测当前会话的显示服务器类型。
 
 ## 功能特性
 

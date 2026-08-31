@@ -1,4 +1,4 @@
-//! 便捷工具包，重新导出 GPUI 的平台特性及 `current_platform` 构造函数，
+//! 便捷工具包，重新导出 RGPUI 的平台特性及 `current_platform` 构造函数，
 //! 使使用者无需手动编写 `#[cfg]` 条件编译代码。
 
 pub use rgpui::Platform;
@@ -92,7 +92,7 @@ mod tests {
     // 交互时会导致 SIGABRT。
     //
     // 运行这些测试请使用：
-    // cargo test -p gpui visual_test_context -- --ignored --test-threads=1
+    // cargo test -p rgpui visual_test_context -- --ignored --test-threads=1
 
     #[test]
     #[ignore] // 需要 macOS 主线程

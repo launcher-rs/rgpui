@@ -1,6 +1,6 @@
 //! Tokio 异步运行时集成示例
 //!
-//! 此示例演示如何将 Tokio 异步任务与 GPUI 应用结合使用。
+//! 此示例演示如何将 Tokio 异步任务与 RGPUI 应用结合使用。
 //! 功能包括：
 //! - 使用 `rgpui::tokio::init` 初始化 Tokio 运行时
 //! - 通过 `rgpui::Tokio::spawn` 在 Tokio 线程池上执行异步任务
@@ -172,7 +172,7 @@ impl Render for TokioExample {
                 div()
                     .text_sm()
                     .text_color(rgb(0x888888))
-                    .child("Tokio 任务在独立线程池执行，完成后通过 GPUI 调度回主线程更新界面"),
+                    .child("Tokio 任务在独立线程池执行，完成后通过 RGPUI 调度回主线程更新界面"),
             )
             .child(
                 div()

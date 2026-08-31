@@ -18,51 +18,45 @@ use std::{
     sync::Arc,
 };
 
-/// An [`Element`] that renders text.
+/// 渲染文本的 [`Element`]。
 ///
-/// In general, [`Text`] objects should be created via the [`text`] macro:
+/// 通常应通过 [`text`] 宏创建 [`Text`] 对象：
 /// ```rust
 /// # use rgpui::*;
 /// # fn render() -> impl IntoElement {
 /// div().child(text!("hello"))
 /// # }
 /// ```
-/// ## IDs and Accessibility
+/// ## ID 与无障碍性
 ///
-/// [`Text`] elements have an ID. This ID is primarily used to produce nodes in
-/// the accessibility tree, which allows the text to be visible to screen
-/// readers and other assistive technologies.
+/// [`Text`] 元素有一个 ID。此 ID 主要用于在无障碍树中生成节点，
+/// 使文本对屏幕阅读器和其他辅助技术可见。
 ///
-/// This ID is stable across frames. If the same text, with the same ID, is
-/// present in two consecutive frames, no updates are reported to the screen
-/// reader. If the text changes, but the ID stays the same, then the screen
-/// reader will be notified that a text node's content has changed. **However**,
-/// if the ID changes, then the screen reader will be notified that a node has
-/// been removed, and a new node has been added.
+/// 此 ID 在帧之间是稳定的。如果相同文本（具有相同 ID）出现在
+/// 连续两帧中，则不会向屏幕阅读器报告更新。如果文本更改但 ID 保持不变，
+/// 屏幕阅读器将收到文本节点内容已更改的通知。**但是**，
+/// 如果 ID 更改，屏幕阅读器将收到节点已删除且新节点已添加的通知。
 ///
-/// When using the [`text`] macro, each invocation of the macro will get a
-/// unique ID, derived from its position in the source code (filename, line, and
-/// column). For example:
+/// 使用 [`text`] 宏时，每次宏调用都会获得一个唯一 ID，
+/// 从其在源代码中的位置（文件名、行号和列号）派生。例如：
 /// ```rust
 /// # use rgpui::*;
 /// let x = text!("hello");
 /// let y = text!("hello");
-/// // not equal, because different `text!` invocations produced them
+/// // 不相等，因为不同的 `text!` 调用产生了它们
 /// assert_ne!(x.id(), y.id());
 ///
 /// fn make_text(s: &str) -> Text { text!(s) }
 /// let x = make_text("hello");
 /// let y = make_text("hello");
-/// // equal, because the same `text!` invocation produced them
+/// // 相等，因为相同的 `text!` 调用产生了它们
 /// assert_eq!(x.id(), y.id());
 /// ```
-/// When the contents of an invocation of [`text`] do not change, this
-/// distinction is less relevant (with the caveat that you still need to take
-/// care to ensure that duplicate IDs do not appear).
+/// 当 [`text`] 调用的内容未更改时，此区分不太相关
+/// （但需要注意确保不出现重复 ID）。
 ///
-/// However, when a [`text`] invocation's argument *does* change, you should
-/// consider whether this change should be reported as a node "updating its
-/// contents", or an old node being destroyed and a new node being created.
+/// 然而，当 [`text`] 调用的参数*确实*更改时，应考虑
+/// 此更改应报告为节点"更新其内容"，还是旧节点被销毁且新节点被创建。
 #[derive(Debug, Clone)]
 pub struct Text {
     id: Option<ElementId>,
@@ -70,42 +64,41 @@ pub struct Text {
 }
 
 impl Text {
-    /// Create a new [`Text`] element with a specific ID.
+    /// 使用特定 ID 创建一个新的 [`Text`] 元素。
     ///
-    /// If you want a unique ID to be assigned automatically, use the [`text`]
-    /// macro. The docs for [`Text`] have more detail about choosing IDs.
+    /// 如果希望自动分配唯一 ID，请使用 [`text`] 宏。
+    /// [`Text`] 的文档有关于选择 ID 的更多详情。
     #[inline]
     pub const fn new(id: ElementId, text: SharedString) -> Self {
         Self { id: Some(id), text }
     }
 
-    /// Create a new [`Text`] element that is inaccessible to screen readers.
+    /// 创建一个对屏幕阅读器不可访问的新 [`Text`] 元素。
     ///
-    /// In order for text to be accessible to screen readers, it must have an ID
-    /// provided. If you want text to be accessible, either use [`text`] to have
-    /// an ID automatically assigned, or use [`Text::new`] to manually assign an
-    /// ID.
+    /// 为了使文本对屏幕阅读器可访问，必须提供 ID。
+    /// 如果希望文本可访问，请使用 [`text`] 自动分配 ID，
+    /// 或使用 [`Text::new`] 手动分配 ID。
     ///
-    /// This function is intended for use inside custom UI components, where
-    /// accessible properties may be set on parent containers.
+    /// 此函数适用于自定义 UI 组件内部，
+    /// 其中无障碍属性可能在父容器上设置。
     #[inline]
     pub const fn new_inaccessible(text: SharedString) -> Self {
         Self { id: None, text }
     }
 
-    /// The ID of this [`Text`] element.
+    /// 此 [`Text`] 元素的 ID。
     #[inline]
     pub const fn id(&self) -> Option<&ElementId> {
         self.id.as_ref()
     }
 
-    /// Produce a new [`Text`] with the given `id`.
+    /// 使用给定的 `id` 生成新的 [`Text`]。
     pub fn with_id(mut self, id: impl Into<ElementId>) -> Self {
         self.id = Some(id.into());
         self
     }
 
-    /// The text that this [`Text`] element will display.
+    /// 此 [`Text`] 元素将显示的文本。
     #[inline]
     pub const fn text(&self) -> &SharedString {
         &self.text
@@ -125,9 +118,8 @@ impl DerefMut for Text {
     }
 }
 
-/// Trivial hash function for the location information produced by the [`text`]
-/// macro. Not covered by semver guarantees. Performance is not particularly
-/// significant because it's only used on small strings in const contexts.
+/// [`text`] 宏产生的位置信息的简单哈希函数。不在语义版本控制保证范围内。
+/// 性能不是特别重要，因为它仅在 const 上下文中用于小字符串。
 #[doc(hidden)]
 pub const fn __hash_text_macro_location_unstable_do_not_use(s: &'static str) -> u64 {
     const BASIS: u64 = 0xcbf29ce484222325;
@@ -144,7 +136,7 @@ pub const fn __hash_text_macro_location_unstable_do_not_use(s: &'static str) -> 
     hash
 }
 
-/// Create a new [`Text`] element.
+/// 创建一个新的 [`Text`] 元素。
 ///
 /// ```rust
 /// # use rgpui::*;
@@ -153,9 +145,8 @@ pub const fn __hash_text_macro_location_unstable_do_not_use(s: &'static str) -> 
 ///
 /// ```
 ///
-/// Text created with this macro is *accessible*. The macro generates an ID
-/// based on the source location. See the docs for [`Text`] for a more in-depth
-/// explanation of the significance of the ID of a [`Text`] element.
+/// 使用此宏创建的文本是*可访问的*。该宏基于源位置生成 ID。
+/// 有关 [`Text`] 元素 ID 重要性的更深入解释，请参阅 [`Text`] 的文档。
 #[macro_export]
 macro_rules! text {
     (id = $id:expr, $text:expr) => {{ $crate::Text::new($id.into(), $text.into()) }};
@@ -446,11 +437,11 @@ impl IntoElement for SharedString {
     }
 }
 
-/// Renders text with runs of different styles.
+/// 渲染带有不同样式文本段的文本。
 ///
-/// Callers are responsible for setting the correct style for each run.
-/// For text with a uniform style, you can usually avoid calling this constructor
-/// and just pass text directly.
+/// 调用者负责为每个段设置正确的样式。
+/// 对于统一样式的文本，通常可以避免调用此构造函数
+/// 而直接传递文本。
 pub struct StyledText {
     text: SharedString,
     runs: Option<Vec<TextRun>>,
@@ -465,7 +456,7 @@ pub struct StyledText {
 }
 
 impl StyledText {
-    /// Construct a new styled text element from the given string.
+    /// 从给定字符串构造新的带样式文本元素。
     pub fn new(text: impl Into<SharedString>) -> Self {
         StyledText {
             text: text.into(),
@@ -477,13 +468,13 @@ impl StyledText {
         }
     }
 
-    /// Get the layout for this element. This can be used to map indices to pixels and vice versa.
+    /// 获取此元素的布局。可用于将索引映射到像素反之亦然。
     pub fn layout(&self) -> &TextLayout {
         &self.layout
     }
 
-    /// Set the styling attributes for the given text, as well as
-    /// as any ranges of text that have had their style customized.
+    /// 设置给定文本的样式属性，
+    /// 以及任何已自定义样式的文本范围。
     pub fn with_default_highlights(
         mut self,
         default_style: &TextStyle,
@@ -497,8 +488,8 @@ impl StyledText {
         self.with_runs(runs)
     }
 
-    /// Set the styling attributes for the given text, as well as
-    /// as any ranges of text that have had their style customized.
+    /// 设置给定文本的样式属性，
+    /// 以及任何已自定义样式的文本范围。
     pub fn with_highlights(
         mut self,
         highlights: impl IntoIterator<Item = (Range<usize>, HighlightStyle)>,
@@ -546,14 +537,14 @@ impl StyledText {
         runs
     }
 
-    /// Override the font family for specific byte ranges of the text.
+    /// 覆盖特定字节范围的字体族。
     ///
-    /// This is resolved lazily at layout time, so the overrides are applied
-    /// on top of the inherited text style from the parent element.
-    /// Can be combined with [`with_highlights`](Self::with_highlights).
+    /// 这在布局时延迟解析，因此覆盖应用于
+    /// 从父元素继承的文本样式之上。
+    /// 可与 [`with_highlights`](Self::with_highlights) 组合使用。
     ///
-    /// The overrides must be sorted by range start and non-overlapping.
-    /// Each override range must fall on character boundaries.
+    /// 覆盖必须按范围起始排序且不重叠。
+    /// 每个覆盖范围必须落在字符边界上。
     pub fn with_font_family_overrides(
         mut self,
         overrides: impl IntoIterator<Item = (Range<usize>, SharedString)>,
@@ -591,7 +582,7 @@ impl StyledText {
         }
     }
 
-    /// Set the text runs for this piece of text.
+    /// 设置此文本的文本段。
     pub fn with_runs(mut self, runs: Vec<TextRun>) -> Self {
         let mut text = &*self.text;
         for run in &runs {
@@ -769,7 +760,7 @@ impl IntoElement for StyledText {
     }
 }
 
-/// The Layout for TextElement. This can be used to map indices to pixels and vice versa.
+/// TextElement 的布局。可用于将索引映射到像素反之亦然。
 #[derive(Default, Clone)]
 pub struct TextLayout(Rc<RefCell<Option<TextLayoutInner>>>);
 
@@ -1001,7 +992,7 @@ impl TextLayout {
         }
     }
 
-    /// Get the byte index into the input of the pixel position.
+    /// 获取像素位置对应的字节索引。
     pub fn index_for_position(&self, mut position: Point<Pixels>) -> Result<usize, usize> {
         let element_state = self.0.borrow();
         let element_state = element_state
@@ -1035,7 +1026,7 @@ impl TextLayout {
         Err(line_start_ix.saturating_sub(1))
     }
 
-    /// Get the pixel position for the given byte index.
+    /// 获取给定字节索引的像素位置。
     pub fn position_for_index(&self, index: usize) -> Option<Point<Pixels>> {
         let element_state = self.0.borrow();
         let element_state = element_state
@@ -1066,7 +1057,7 @@ impl TextLayout {
         None
     }
 
-    /// Retrieve the layout for the line containing the given byte index.
+    /// 获取包含给定字节索引的行的布局。
     pub fn line_layout_for_index(&self, index: usize) -> Option<Arc<WrappedLineLayout>> {
         let element_state = self.0.borrow();
         let element_state = element_state
@@ -1089,7 +1080,7 @@ impl TextLayout {
         None
     }
 
-    /// Retrieve all line layouts in source order.
+    /// 按源顺序检索所有行布局。
     pub fn line_layouts(&self) -> SmallVec<[Arc<WrappedLineLayout>; 1]> {
         self.0
             .borrow()
@@ -1101,22 +1092,22 @@ impl TextLayout {
             .collect()
     }
 
-    /// The bounds of this layout.
+    /// 此布局的边界。
     pub fn bounds(&self) -> Bounds<Pixels> {
         self.0.borrow().as_ref().unwrap().bounds.unwrap()
     }
 
-    /// The line height for this layout.
+    /// 此布局的行高。
     pub fn line_height(&self) -> Pixels {
         self.0.borrow().as_ref().unwrap().line_height
     }
 
-    /// The UTF-8 length of the underlying text.
+    /// 底层文本的 UTF-8 长度。
     pub fn len(&self) -> usize {
         self.0.borrow().as_ref().unwrap().len
     }
 
-    /// The text for this layout.
+    /// 此布局的文本。
     pub fn text(&self) -> String {
         self.0
             .borrow()
@@ -1128,7 +1119,7 @@ impl TextLayout {
             .join("\n")
     }
 
-    /// The text for this layout (with soft-wraps as newlines)
+    /// 此布局的文本（软换行符作为换行符）
     pub fn wrapped_text(&self) -> String {
         let mut accumulator = String::new();
 
@@ -1152,7 +1143,7 @@ impl TextLayout {
     }
 }
 
-/// A text element that can be interacted with.
+/// 一个可交互的文本元素。
 pub struct InteractiveText {
     element_id: ElementId,
     text: StyledText,
@@ -1177,9 +1168,9 @@ pub struct InteractiveTextState {
     active_tooltip: Rc<RefCell<Option<ActiveTooltip>>>,
 }
 
-/// InteractiveTest is a wrapper around StyledText that adds mouse interactions.
+/// InteractiveTest 是 StyledText 的包装器，添加了鼠标交互。
 impl InteractiveText {
-    /// Creates a new InteractiveText from the given text.
+    /// 从给定文本创建新的 InteractiveText。
     pub fn new(id: impl Into<ElementId>, text: StyledText) -> Self {
         Self {
             element_id: id.into(),
@@ -1192,8 +1183,7 @@ impl InteractiveText {
         }
     }
 
-    /// on_click is called when the user clicks on one of the given ranges, passing the index of
-    /// the clicked range.
+    /// 当用户点击给定范围之一时调用 on_click，传递被点击范围的索引。
     pub fn on_click(
         mut self,
         ranges: Vec<Range<usize>>,
@@ -1211,8 +1201,8 @@ impl InteractiveText {
         self
     }
 
-    /// on_hover is called when the mouse moves over a character within the text, passing the
-    /// index of the hovered character, or None if the mouse leaves the text.
+    /// 当鼠标在文本中的字符上移动时调用 on_hover，传递
+    /// 悬停字符的索引，如果鼠标离开文本则传递 None。
     pub fn on_hover(
         mut self,
         listener: impl Fn(Option<usize>, MouseMoveEvent, &mut Window, &mut App) + 'static,
@@ -1221,7 +1211,7 @@ impl InteractiveText {
         self
     }
 
-    /// tooltip lets you specify a tooltip for a given character index in the string.
+    /// tooltip 允许你为字符串中的给定字符索引指定工具提示。
     pub fn tooltip(
         mut self,
         builder: impl Fn(usize, &mut Window, &mut App) -> Option<AnyView> + 'static,

@@ -6,7 +6,7 @@ use crate::sum_tree::SumTree;
 
 use crate::{FocusHandle, FocusId};
 
-/// Represents a collection of focus handles using the tab-index APIs.
+/// 表示使用 tab-index API 的焦点句柄集合。
 #[derive(Debug)]
 pub(crate) struct TabStopMap {
     current_path: TabStopPath,
@@ -38,14 +38,14 @@ struct TabStopPath(smallvec::SmallVec<[TabIndex; 6]>);
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct TabStopNode {
-    /// Path to access the node in the tree
-    /// The final node in the list is a leaf node corresponding to an actual focus handle,
-    /// all other nodes are group nodes
+    /// 访问树中节点的路径
+    /// 列表中的最后一个节点是对应于实际焦点句柄的叶节点，
+    /// 所有其他节点都是组节点
     path: TabStopPath,
-    /// index into the backing array of nodes. Corresponds to insertion order
+    /// 节点数组的索引。对应于插入顺序
     node_insertion_index: usize,
 
-    /// Whether this node is a tab stop
+    /// 此节点是否为制表位
     tab_stop: bool,
 }
 
@@ -204,7 +204,7 @@ impl TabStopMap {
         let handle = self.insertion_history[order.node_insertion_index].focus_handle();
         debug_assert!(
             handle.is_some(),
-            "The order node did not correspond to an element, this is a GPUI bug"
+            "The order node did not correspond to an element, this is a RGPUI bug"
         );
         handle.cloned()
     }

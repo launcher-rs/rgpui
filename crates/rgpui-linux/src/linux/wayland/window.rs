@@ -759,7 +759,7 @@ impl WaylandWindowStatePtr {
     }
 
     /// 窗口的 xdg 窗口几何（surface-local 坐标）。子弹窗的锚定矩形
-    /// 相对于此坐标，而 gpui 坐标是 surface-local 的。
+    /// 相对于此坐标，而 rgpui 坐标是 surface-local 的。
     pub fn window_geometry(&self) -> Bounds<Pixels> {
         let state = self.state.borrow();
         inset_by_tiling(

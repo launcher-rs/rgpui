@@ -9,17 +9,16 @@ use crate::{
 pub use easing::*;
 use smallvec::SmallVec;
 
-/// An animation that can be applied to an element.
+/// 一个可以应用于元素的动画。
 #[derive(Clone)]
 pub struct Animation {
-    /// The amount of time for which this animation should run
+    /// 动画持续时间
     pub duration: Duration,
-    /// Whether to repeat this animation when it finishes
+    /// 动画结束后是否循环
     pub oneshot: bool,
-    /// Whether to derive the phase from a shared clock. See [`Animation::repeat_synced`].
+    /// 是否从共享时钟派生相位。参见 [`Animation::repeat_synced`]。
     pub synced: bool,
-    /// A function that takes a delta between 0 and 1 and returns a new delta
-    /// between 0 and 1 based on the given easing function.
+    /// 接受 0 到 1 之间的 delta 值，根据给定的缓动函数返回新的 delta 值。
     pub easing: Rc<dyn Fn(f32) -> f32>,
     /// 该动画每秒最多重新渲染的次数。
     /// 当为 `None` 时，动画会在每一帧重新渲染。
@@ -27,8 +26,8 @@ pub struct Animation {
 }
 
 impl Animation {
-    /// Create a new animation with the given duration.
-    /// By default the animation will only run once and will use a linear easing function.
+    /// 创建一个具有指定持续时间的新动画。
+    /// 默认情况下动画仅播放一次，并使用线性缓动函数。
     pub fn new(duration: Duration) -> Self {
         Self {
             duration,
@@ -39,22 +38,21 @@ impl Animation {
         }
     }
 
-    /// Set the animation to loop when it finishes.
+    /// 设置动画结束后循环播放。
     pub fn repeat(mut self) -> Self {
         self.oneshot = false;
         self
     }
 
-    /// Set the animation to loop when it finishes, phase-locked to a clock shared by the whole [`App`].
+    /// 设置动画结束后循环播放，并与整个 [`App`] 共享的时钟相位锁定。
     pub fn repeat_synced(mut self) -> Self {
         self.oneshot = false;
         self.synced = true;
         self
     }
 
-    /// Set the easing function to use for this animation.
-    /// The easing function will take a time delta between 0 and 1 and return a new delta
-    /// between 0 and 1
+    /// 设置此动画使用的缓动函数。
+    /// 缓动函数接受 0 到 1 之间的时间 delta 值，返回新的 delta 值。
     pub fn with_easing(mut self, easing: impl Fn(f32) -> f32 + 'static) -> Self {
         self.easing = Rc::new(easing);
         self
@@ -68,15 +66,14 @@ impl Animation {
     }
 }
 
-/// An extension trait for adding the animation wrapper to both Elements and Components
+/// 一个扩展 trait，用于为元素和组件添加动画包装器。
 ///
-/// Animations rendered through this trait automatically respect
-/// [`App::reduce_motion`](crate::App::reduce_motion): when it is set,
-/// the element is rendered in a static state (the end state for oneshot
-/// animations, the start state for repeating ones) and no animation frames are
-/// scheduled.
+/// 通过此 trait 渲染的动画会自动遵守
+/// [`App::reduce_motion`](crate::App::reduce_motion)：启用时，
+/// 元素将以静态状态渲染（单次动画显示结束状态，循环动画显示起始状态），
+/// 且不会调度动画帧。
 pub trait AnimationExt {
-    /// Render this component or element with an animation
+    /// 使用动画渲染此组件或元素
     fn with_animation(
         self,
         id: impl Into<ElementId>,
@@ -94,7 +91,7 @@ pub trait AnimationExt {
         }
     }
 
-    /// Render this component or element with a chain of animations
+    /// 使用动画链渲染此组件或元素
     fn with_animations(
         self,
         id: impl Into<ElementId>,
@@ -115,7 +112,7 @@ pub trait AnimationExt {
 
 impl<E: IntoElement + 'static> AnimationExt for E {}
 
-/// A GPUI element that applies an animation to another element
+/// 一个将动画应用于另一个元素的 RGPUI 元素
 pub struct AnimationElement<E> {
     id: ElementId,
     element: Option<E>,
@@ -134,8 +131,7 @@ impl<E: ParentElement> ParentElement for AnimationElement<E> {
 }
 
 impl<E> AnimationElement<E> {
-    /// Returns a new [`AnimationElement<E>`] after applying the given function
-    /// to the element being animated.
+    /// 对被动画的元素应用给定函数后，返回新的 [`AnimationElement<E>`]。
     pub fn map_element(mut self, f: impl FnOnce(E) -> E) -> AnimationElement<E> {
         self.element = self.element.map(f);
         self
@@ -284,17 +280,17 @@ impl<E: IntoElement + 'static> Element for AnimationElement<E> {
 mod easing {
     use std::f32::consts::PI;
 
-    /// The linear easing function, or delta itself
+    /// 线性缓动函数，即 delta 本身
     pub fn linear(delta: f32) -> f32 {
         delta
     }
 
-    /// The quadratic easing function, delta * delta
+    /// 二次缓动函数，delta * delta
     pub fn quadratic(delta: f32) -> f32 {
         delta * delta
     }
 
-    /// The quadratic ease-in-out function, which starts and ends slowly but speeds up in the middle
+    /// 二次缓入缓出函数，起始和结束较慢，中间加速
     pub fn ease_in_out(delta: f32) -> f32 {
         if delta < 0.5 {
             2.0 * delta * delta
@@ -304,12 +300,12 @@ mod easing {
         }
     }
 
-    /// The Quint ease-out function, which starts quickly and decelerates to a stop
+    /// Quint 缓出函数，起始快速后减速至停止
     pub fn ease_out_quint() -> impl Fn(f32) -> f32 {
         move |delta| 1.0 - (1.0 - delta).powi(5)
     }
 
-    /// Apply the given easing function, first in the forward direction and then in the reverse direction
+    /// 应用给定的缓动函数，先正向再反向
     pub fn bounce(easing: impl Fn(f32) -> f32) -> impl Fn(f32) -> f32 {
         move |delta| {
             if delta < 0.5 {
@@ -320,7 +316,7 @@ mod easing {
         }
     }
 
-    /// A custom easing function for pulsating alpha that slows down as it approaches 0.1
+    /// 用于脉动 alpha 值的自定义缓动函数，在接近 0.1 时减速
     pub fn pulsating_between(min: f32, max: f32) -> impl Fn(f32) -> f32 {
         let range = max - min;
 

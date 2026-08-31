@@ -18,7 +18,7 @@ use std::{
 use super::rel_path::RelPath;
 use super::rel_path::RelPathBuf;
 
-/// Returns the path to the user's home directory.
+/// 返回用户主目录的路径。
 pub fn home_dir() -> &'static PathBuf {
     static HOME_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     HOME_DIR.get_or_init(|| {
@@ -37,17 +37,15 @@ pub fn home_dir() -> &'static PathBuf {
 }
 
 pub trait PathExt {
-    /// Compacts a given file path by replacing the user's home directory
-    /// prefix with a tilde (`~`).
+    /// 通过将用户主目录前缀替换为波浪号（`~`）来压缩给定的文件路径。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// * A `PathBuf` containing the compacted file path. If the input path
-    ///   does not have the user's home directory prefix, or if we are not on
-    ///   Linux or macOS, the original path is returned unchanged.
+    /// * 包含压缩文件路径的 `PathBuf`。如果输入路径没有用户主目录前缀，
+    ///   或者我们不在 Linux 或 macOS 上，则返回原始路径不变。
     fn compact(&self) -> PathBuf;
 
-    /// Returns a file's extension or, if the file is hidden, its name without the leading dot
+    /// 返回文件的扩展名，或者如果文件是隐藏的，则返回不带前导点的文件名
     fn extension_or_hidden_file_name(&self) -> Option<&str>;
 
     fn try_from_bytes<'a>(bytes: &'a [u8]) -> anyhow::Result<Self>
@@ -81,17 +79,17 @@ pub trait PathExt {
         }
     }
 
-    /// Converts a local path to one that can be used inside of WSL.
-    /// Returns `None` if the path cannot be converted into a WSL one (network share).
+    /// 将本地路径转换为可在 WSL 中使用的路径。
+    /// 如果路径无法转换为 WSL 路径（网络共享），则返回 `None`。
     fn local_to_wsl(&self) -> Option<PathBuf>;
 
-    /// Returns a file's "full" joined collection of extensions, in the case where a file does not
-    /// just have a singular extension but instead has multiple (e.g File.tar.gz, Component.stories.tsx)
+    /// 返回文件的"完整"扩展名集合，即文件不只是有一个扩展名，
+    /// 而是有多个扩展名的情况（例如 File.tar.gz、Component.stories.tsx）
     ///
-    /// Will provide back the extensions joined together such as tar.gz or stories.tsx
+    /// 将返回连接在一起的扩展名，如 tar.gz 或 stories.tsx
     fn multiple_extensions(&self) -> Option<String>;
 
-    /// Try to make a shell-safe representation of the path.
+    /// 尝试生成路径的安全 shell 表示。
     #[cfg(not(target_family = "wasm"))]
     fn try_shell_safe(&self, shell_kind: super::shell::ShellKind) -> anyhow::Result<String>;
 }
@@ -195,13 +193,11 @@ pub fn path_ends_with(base: &Path, suffix: &Path) -> bool {
     strip_path_suffix(base, suffix).is_some()
 }
 
-/// Case-insensitive ASCII comparison of a path component to a literal
-/// folder name. macOS and Windows use case-insensitive filesystems by
-/// default, so a path like `.ZED/settings.json` resolves to the same
-/// inode as the lowercase form. A case-sensitive `==` check would miss
-/// those and let a malicious settings author bypass classifiers with
-/// unusual casing. Callers should restrict `name` to ASCII; for ASCII
-/// inputs `eq_ignore_ascii_case` is safe and stable across platforms.
+/// 路径组件与字面文件夹名称的不区分大小写 ASCII 比较。
+/// macOS 和 Windows 默认使用不区分大小写的文件系统，因此像 `.ZED/settings.json` 这样的路径
+/// 解析为与小写形式相同的 inode。区分大小写的 `==` 检查会遗漏这些，
+/// 并让恶意设置作者通过不寻常的大小写绕过分类器。调用者应将 `name` 限制为 ASCII；
+/// 对于 ASCII 输入，`eq_ignore_ascii_case` 是安全且跨平台稳定的。
 pub fn component_matches_ignore_ascii_case(component: &OsStr, name: &str) -> bool {
     component
         .to_str()
@@ -229,8 +225,8 @@ pub fn strip_path_suffix<'a>(base: &'a Path, suffix: &Path) -> Option<&'a Path> 
     None
 }
 
-/// In memory, this is identical to `Path`. On non-Windows conversions to this type are no-ops. On
-/// windows, these conversions sanitize UNC paths by removing the `\\\\?\\` prefix.
+/// 在内存中，这与 `Path` 相同。在非 Windows 上，转换为此类型是空操作。在
+/// Windows 上，这些转换通过移除 `\\\\?\\` 前缀来清理 UNC 路径。
 #[derive(Eq, PartialEq, Hash, Ord, PartialOrd)]
 #[repr(transparent)]
 pub struct SanitizedPath(Path);
@@ -597,22 +593,22 @@ impl std::fmt::Display for NormalizeError {
     }
 }
 
-/// Copied from stdlib where it's unstable.
+/// 从标准库复制，那里它是不稳定的。
 ///
-/// Normalize a path, including `..` without traversing the filesystem.
+/// 规范化路径，包括 `..` 而不遍历文件系统。
 ///
-/// Returns an error if normalization would leave leading `..` components.
+/// 如果规范化会留下前导 `..` 组件，则返回错误。
 ///
 /// <div class="warning">
 ///
-/// This function always resolves `..` to the "lexical" parent.
-/// That is "a/b/../c" will always resolve to `a/c` which can change the meaning of the path.
-/// In particular, `a/c` and `a/b/../c` are distinct on many systems because `b` may be a symbolic link, so its parent isn't `a`.
+/// 此函数始终将 `..` 解析为"词法"父级。
+/// 即 "a/b/../c" 始终解析为 `a/c`，这可能会更改路径的含义。
+/// 特别是，`a/c` 和 `a/b/../c` 在许多系统上是不同的，因为 `b` 可能是符号链接，所以其父级不是 `a`。
 ///
 /// </div>
 ///
-/// [`path::absolute`](absolute) is an alternative that preserves `..`.
-/// Or [`Path::canonicalize`] can be used to resolve any `..` by querying the filesystem.
+/// [`path::absolute`](absolute) 是保留 `..` 的替代方案。
+/// 或者可以使用 [`Path::canonicalize`] 通过查询文件系统来解析任何 `..`。
 pub fn normalize_lexically(path: &Path) -> Result<PathBuf, NormalizeError> {
     use std::path::Component;
 
@@ -661,7 +657,7 @@ pub fn normalize_lexically(path: &Path) -> Result<PathBuf, NormalizeError> {
     Ok(lexical)
 }
 
-/// A delimiter to use in `path_query:row_number:column_number` strings parsing.
+/// 在 `path_query:row_number:column_number` 字符串解析中使用的分隔符。
 pub const FILE_ROW_COLUMN_DELIMITER: char = ':';
 
 const ROW_COL_CAPTURE_REGEX: &str = r"(?xs)
@@ -686,8 +682,8 @@ const ROW_COL_CAPTURE_REGEX: &str = r"(?xs)
         \:+()()$
     )";
 
-/// A representation of a path-like string with optional row and column numbers.
-/// Matching values example: `te`, `test.rs:22`, `te:22:5`, `test.c(22)`, `test.c(22,5)`etc.
+/// 带有可选行号和列号的类路径字符串的表示。
+/// 匹配值示例：`te`、`test.rs:22`、`te:22:5`、`test.c(22)`、`test.c(22,5)` 等。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct PathWithPosition {
     pub path: PathBuf,
@@ -697,7 +693,7 @@ pub struct PathWithPosition {
 }
 
 impl PathWithPosition {
-    /// Returns a PathWithPosition from a path.
+    /// 从路径返回 PathWithPosition。
     pub fn from_path(path: PathBuf) -> Self {
         Self {
             path,
@@ -706,15 +702,15 @@ impl PathWithPosition {
         }
     }
 
-    /// Parses a string that possibly has `:row:column` or `(row, column)` suffix.
-    /// Parenthesis format is used by [MSBuild](https://learn.microsoft.com/en-us/visualstudio/msbuild/msbuild-diagnostic-format-for-tasks) compatible tools
-    /// Ignores trailing `:`s, so `test.rs:22:` is parsed as `test.rs:22`.
-    /// If the suffix parsing fails, the whole string is parsed as a path.
+    /// 解析可能具有 `:row:column` 或 `(row, column)` 后缀的字符串。
+    /// 括号格式由 [MSBuild](https://learn.microsoft.com/en-us/visualstudio/msbuild/msbuild-diagnostic-format-for-tasks) 兼容工具使用
+    /// 忽略尾部的 `:`，因此 `test.rs:22:` 解析为 `test.rs:22`。
+    /// 如果后缀解析失败，则将整个字符串解析为路径。
     ///
-    /// Be mindful that `test_file:10:1:` is a valid posix filename.
-    /// `PathWithPosition` class assumes that the ending position-like suffix is **not** part of the filename.
+    /// 请注意 `test_file:10:1:` 是有效的 posix 文件名。
+    /// `PathWithPosition` 类假定结尾的位置类后缀**不是**文件名的一部分。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use crate::util::paths::PathWithPosition;
@@ -1005,40 +1001,39 @@ impl Default for PathMatcher {
     }
 }
 
-/// Compares two sequences of consecutive digits for natural sorting.
+/// 比较两个连续数字符序列以进行自然排序。
 ///
-/// This function is a core component of natural sorting that handles numeric comparison
-/// in a way that feels natural to humans. It extracts and compares consecutive digit
-/// sequences from two iterators, handling various cases like leading zeros and very large numbers.
+/// 此函数是自然排序的核心组件，以人类感觉自然的方式处理数字比较。
+/// 它从两个迭代器中提取并比较连续的数字符序列，处理前导零和超大数字等各种情况。
 ///
-/// # Behavior
+/// # 行为
 ///
-/// The function implements the following comparison rules:
-/// 1. Different numeric values: Compares by actual numeric value (e.g., "2" < "10")
-/// 2. Leading zeros: When values are equal, longer sequence wins (e.g., "002" > "2")
-/// 3. Large numbers: Falls back to string comparison for numbers that would overflow u128
+/// 此函数实现以下比较规则：
+/// 1. 不同的数值：按实际数值比较（例如 "2" < "10"）
+/// 2. 前导零：当值相等时，较长的序列优先（例如 "002" > "2"）
+/// 3. 超大数字：对于会溢出 u128 的数字，回退到字符串比较
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```text
-/// "1" vs "2"      -> Less       (different values)
-/// "2" vs "10"     -> Less       (numeric comparison)
-/// "002" vs "2"    -> Greater    (leading zeros)
-/// "10" vs "010"   -> Less       (leading zeros)
-/// "999..." vs "1000..." -> Less (large number comparison)
+/// "1" vs "2"      -> Less       （不同的值）
+/// "2" vs "10"     -> Less       （数字比较）
+/// "002" vs "2"    -> Greater    （前导零）
+/// "10" vs "010"   -> Less       （前导零）
+/// "999..." vs "1000..." -> Less （超大数字比较）
 /// ```
 ///
-/// # Implementation Details
+/// # 实现细节
 ///
-/// 1. Extracts consecutive digits into strings
-/// 2. Compares sequence lengths for leading zero handling
-/// 3. For equal lengths, compares digit by digit
-/// 4. For different lengths:
-///    - Attempts numeric comparison first (for numbers up to 2^128 - 1)
-///    - Falls back to string comparison if numbers would overflow
+/// 1. 将连续数字符提取为字符串
+/// 2. 比较序列长度以处理前导零
+/// 3. 对于相同长度，逐位比较
+/// 4. 对于不同长度：
+///    - 首先尝试数字比较（对于最多 2^128 - 1 的数字）
+///    - 如果数字会溢出，则回退到字符串比较
 ///
-/// The function advances both iterators past their respective numeric sequences,
-/// regardless of the comparison result.
+/// 此函数将两个迭代器推进到各自的数字符序列之后，
+/// 无论比较结果如何。
 fn compare_numeric_segments<I>(
     a_iter: &mut std::iter::Peekable<I>,
     b_iter: &mut std::iter::Peekable<I>,
@@ -1094,27 +1089,27 @@ where
     }
 }
 
-/// Performs natural sorting comparison between two strings.
+/// 在两个字符串之间执行自然排序比较。
 ///
-/// Natural sorting is an ordering that handles numeric sequences in a way that matches human expectations.
-/// For example, "file2" comes before "file10" (unlike standard lexicographic sorting).
+/// 自然排序是一种以符合人类期望的方式处理数字符序列的排序。
+/// 例如，"file2" 排在 "file10" 之前（与标准字典排序不同）。
 ///
-/// # Characteristics
+/// # 特征
 ///
-/// * Case-sensitive with lowercase priority: When comparing same letters, lowercase comes before uppercase
-/// * Numbers are compared by numeric value, not character by character
-/// * Leading zeros affect ordering when numeric values are equal
-/// * Can handle numbers larger than u128::MAX (falls back to string comparison)
-/// * When strings are equal case-insensitively, lowercase is prioritized (lowercase < uppercase)
+/// * 区分大小写，小写优先：比较相同字母时，小写在大写之前
+/// * 数字按数值比较，而不是逐字符比较
+/// * 当数值相等时，前导零会影响排序
+/// * 可以处理大于 u128::MAX 的数字（回退到字符串比较）
+/// * 当字符串不区分大小写相等时，小写优先（小写 < 大写）
 ///
-/// # Algorithm
+/// # 算法
 ///
-/// The function works by:
-/// 1. Processing strings character by character in a case-insensitive manner
-/// 2. When encountering digits, treating consecutive digits as a single number
-/// 3. Comparing numbers by their numeric value rather than lexicographically
-/// 4. For non-numeric characters, using case-insensitive comparison
-/// 5. If everything is equal case-insensitively, using case-sensitive comparison as final tie-breaker
+/// 此函数的工作方式：
+/// 1. 以不区分大小写的方式逐字符处理字符串
+/// 2. 遇到数字符时，将连续数字符视为单个数字
+/// 3. 按数值比较数字，而不是字典顺序
+/// 4. 对于非数字符，使用不区分大小写的比较
+/// 5. 如果所有内容都不区分大小写相等，则使用区分大小写的比较作为最终决胜局
 pub fn natural_sort(a: &str, b: &str) -> Ordering {
     let mut a_iter = a.chars().peekable();
     let mut b_iter = b.chars().peekable();
@@ -1149,9 +1144,9 @@ pub fn natural_sort(a: &str, b: &str) -> Ordering {
     }
 }
 
-/// Case-insensitive natural sort without applying the final lowercase/uppercase tie-breaker.
-/// This is useful when comparing individual path components where we want to keep walking
-/// deeper components before deciding on casing.
+/// 不区分大小写的自然排序，不应用最终的小写/大写决胜局。
+/// 这在比较各个路径组件时很有用，我们希望在决定大小写之前
+/// 继续遍历更深的组件。
 fn natural_sort_no_tiebreak(a: &str, b: &str) -> Ordering {
     if a.eq_ignore_ascii_case(b) {
         Ordering::Equal
@@ -1184,33 +1179,33 @@ fn stem_and_extension(filename: &str) -> (Option<&str>, Option<&str>) {
     }
 }
 
-/// Controls the lexicographic sorting of file and folder names.
+/// 控制文件和文件夹名称的字典排序。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum SortOrder {
-    /// Case-insensitive natural sort with lowercase preferred in ties.
-    /// Numbers in file names are compared by value (e.g., `file2` before `file10`).
+    /// 不区分大小写的自然排序，小写在平局时优先。
+    /// 文件名中的数字按值比较（例如 `file2` 在 `file10` 之前）。
     #[default]
     Default,
-    /// Uppercase names are grouped before lowercase names, with case-insensitive
-    /// natural sort within each group. Dot-prefixed names sort before both groups.
+    /// 大写名称分组在小写名称之前，每组内进行不区分大小写的
+    /// 自然排序。点前缀名称排在两组之前。
     Upper,
-    /// Lowercase names are grouped before uppercase names, with case-insensitive
-    /// natural sort within each group. Dot-prefixed names sort before both groups.
+    /// 小写名称分组在大写名称之前，每组内进行不区分大小写的
+    /// 自然排序。点前缀名称排在两组之前。
     Lower,
-    /// Pure Unicode codepoint comparison. No case folding, no natural number sorting.
-    /// Uppercase ASCII sorts before lowercase. Accented characters sort after ASCII.
+    /// 纯 Unicode 码点比较。不进行大小写折叠，不进行自然数排序。
+    /// 大写 ASCII 排在小写之前。重音字符排在 ASCII 之后。
     Unicode,
 }
 
-/// Controls how files and directories are ordered relative to each other.
+/// 控制文件和目录的相对排序方式。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum SortMode {
-    /// Directories are listed before files at each level.
+    /// 每个级别中目录列在文件之前。
     #[default]
     DirectoriesFirst,
-    /// Files and directories are interleaved alphabetically.
+    /// 文件和目录按字母顺序交错排列。
     Mixed,
-    /// Files are listed before directories at each level.
+    /// 每个级别中文件列在目录之前。
     FilesFirst,
 }
 
@@ -1488,9 +1483,9 @@ impl WslPath {
 }
 
 pub trait UrlExt {
-    /// A version of `url::Url::to_file_path` that does platform handling based on the provided `PathStyle` instead of the host platform.
+    /// `url::Url::to_file_path` 的一个版本，根据提供的 `PathStyle` 而不是宿主平台进行平台处理。
     ///
-    /// Prefer using this over `url::Url::to_file_path` when you need to handle paths in a cross-platform way as is the case for remoting interactions.
+    /// 当您需要以跨平台方式处理路径（如远程交互的情况）时，建议使用此方法而不是 `url::Url::to_file_path`。
     fn to_file_path_ext(&self, path_style: PathStyle) -> Result<PathBuf, ()>;
 }
 

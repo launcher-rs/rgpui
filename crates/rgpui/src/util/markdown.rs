@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-/// Generates a URL-friendly slug from heading text (e.g. "Hello World" → "hello-world").
+/// 从标题文本生成 URL 友好的 slug（例如 "Hello World" → "hello-world"）。
 pub fn generate_heading_slug(text: &str) -> String {
     text.trim()
         .chars()
@@ -16,7 +16,7 @@ pub fn generate_heading_slug(text: &str) -> String {
         .collect()
 }
 
-/// Returns true if the URL starts with a URI scheme (RFC 3986 §3.1).
+/// 如果 URL 以 URI 方案开头则返回 true（RFC 3986 §3.1）。
 fn has_uri_scheme(url: &str) -> bool {
     let mut chars = url.chars();
     match chars.next() {
@@ -34,8 +34,8 @@ fn has_uri_scheme(url: &str) -> bool {
     false
 }
 
-/// Splits a relative URL into its path and `#fragment` parts.
-/// Absolute URLs are returned as-is with no fragment.
+/// 将相对 URL 分割为其路径和 `#fragment` 部分。
+/// 绝对 URL 按原样返回，没有 fragment。
 pub fn split_local_url_fragment(url: &str) -> (&str, Option<&str>) {
     if has_uri_scheme(url) {
         return (url, None);
@@ -57,7 +57,7 @@ pub fn split_local_url_fragment(url: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// Indicates that the wrapped `String` is markdown text.
+/// 表示包装的 `String` 是 markdown 文本。
 #[derive(Debug, Clone)]
 pub struct MarkdownString(pub String);
 
@@ -67,36 +67,35 @@ impl Display for MarkdownString {
     }
 }
 
-/// Escapes markdown special characters in markdown text blocks. Markdown code blocks follow
-/// different rules and `MarkdownInlineCode` or `MarkdownCodeBlock` should be used in that case.
+/// 转义 markdown 文本块中的 markdown 特殊字符。Markdown 代码块遵循
+/// 不同的规则，在这种情况下应使用 `MarkdownInlineCode` 或 `MarkdownCodeBlock`。
 ///
-/// Also escapes the following markdown extensions:
+/// 还转义以下 markdown 扩展：
 ///
-/// * `^` for superscripts
-/// * `$` for inline math
-/// * `~` for strikethrough
+/// * `^` 用于上标
+/// * `$` 用于行内数学
+/// * `~` 用于删除线
 ///
-/// Escape of some characters is unnecessary, because while they are involved in markdown syntax,
-/// the other characters involved are escaped:
+/// 某些字符的转义是不必要的，因为虽然它们参与 markdown 语法，
+/// 但参与的其他字符已被转义：
 ///
-/// * `!`, `]`, `(`, and `)` are used in link syntax, but `[` is escaped so these are parsed as
-///   plaintext.
+/// * `!`、`]`、`(` 和 `)` 用于链接语法，但 `[` 被转义，因此它们被解析为
+///   纯文本。
 ///
-/// * `;` is used in HTML entity syntax, but `&` is escaped, so they are parsed as plaintext.
+/// * `;` 用于 HTML 实体语法，但 `&` 被转义，因此它们被解析为纯文本。
 ///
-/// TODO: There is one escape this doesn't do currently. Period after numbers at the start of the
-/// line (`[0-9]*\.`) should also be escaped to avoid it being interpreted as a list item.
+/// TODO：目前有一个转义未完成。行首数字后的句点（`[0-9]*\.`）也应转义，
+/// 以避免被解释为列表项。
 pub struct MarkdownEscaped<'a>(pub &'a str);
 
-/// Implements `Display` to format markdown inline code (wrapped in backticks), handling code that
-/// contains backticks and spaces. All whitespace is treated as a single space character. For text
-/// that does not contain whitespace other than ' ', this escaping roundtrips through
-/// pulldown-cmark.
+/// 实现 `Display` 以格式化 markdown 行内代码（用反引号包裹），处理包含
+/// 反引号和空格的代码。所有空白字符都被视为单个空格字符。对于不包含
+/// 除 ' ' 之外的空白字符的文本，此转义通过 pulldown-cmark 往返。
 ///
-/// When used in tables, `|` should be escaped like `\|` in the text provided to this function.
+/// 在表中使用时，应在提供给此函数的文本中将 `|` 转义为 `\|`。
 pub struct MarkdownInlineCode<'a>(pub &'a str);
 
-/// Implements `Display` to format markdown code blocks, wrapped in 3 or more backticks as needed.
+/// 实现 `Display` 以格式化 markdown 代码块，根据需要用 3 个或更多反引号包裹。
 pub struct MarkdownCodeBlock<'a> {
     pub tag: &'a str,
     pub text: &'a str,

@@ -5,32 +5,32 @@ use crate::{
 use smallvec::SmallVec;
 use std::{any::Any, fmt::Debug, ops::Deref, path::PathBuf};
 
-/// An event from a platform input source.
+/// 来自平台输入源的事件。
 pub trait InputEvent: Sealed + 'static {
-    /// Convert this event into the platform input enum.
+    /// 将此事件转换为平台输入枚举。
     fn to_platform_input(self) -> PlatformInput;
 }
 
-/// A key event from the platform.
+/// 来自平台的按键事件。
 pub trait KeyEvent: InputEvent {}
 
-/// A mouse event from the platform.
+/// 来自平台的鼠标事件。
 pub trait MouseEvent: InputEvent {}
 
-/// A gesture event from the platform.
+/// 来自平台的手势事件。
 pub trait GestureEvent: InputEvent {}
 
-/// The key down event equivalent for the platform.
+/// 平台的按键按下事件等价类型。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct KeyDownEvent {
-    /// The keystroke that was generated.
+    /// 生成的按键输入。
     pub keystroke: Keystroke,
 
-    /// Whether the key is currently held down.
+    /// 按键当前是否处于按住状态。
     pub is_held: bool,
 
-    /// Whether to prefer character input over keybindings for this keystroke.
-    /// In some cases, like AltGr on Windows, modifiers are significant for character input.
+    /// 是否优先处理字符输入而非按键绑定。
+    /// 在某些情况下（如 Windows 上的 AltGr），修饰键对字符输入很重要。
     pub prefer_character_input: bool,
 }
 
@@ -42,10 +42,10 @@ impl InputEvent for KeyDownEvent {
 }
 impl KeyEvent for KeyDownEvent {}
 
-/// The key up event equivalent for the platform.
+/// 平台的按键释放事件等价类型。
 #[derive(Clone, Debug)]
 pub struct KeyUpEvent {
-    /// The keystroke that was released.
+    /// 释放的按键输入。
     pub keystroke: Keystroke,
 }
 
@@ -57,12 +57,12 @@ impl InputEvent for KeyUpEvent {
 }
 impl KeyEvent for KeyUpEvent {}
 
-/// The modifiers changed event equivalent for the platform.
+/// 平台的修饰键变更事件等价类型。
 #[derive(Clone, Debug, Default)]
 pub struct ModifiersChangedEvent {
-    /// The new state of the modifier keys
+    /// 修饰键的新状态
     pub modifiers: Modifiers,
-    /// The new state of the capslock key
+    /// Caps Lock 键的新状态
     pub capslock: Capslock,
 }
 
@@ -82,48 +82,46 @@ impl Deref for ModifiersChangedEvent {
     }
 }
 
-/// The phase of a touch motion event.
-/// Based on the winit enum of the same name.
+/// 触摸移动事件的阶段。
+/// 基于 winit 的同名枚举。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TouchPhase {
-    /// The touch started.
+    /// 触摸开始。
     Started,
-    /// The touch event is moving.
+    /// 触摸事件正在移动。
     #[default]
     Moved,
-    /// The touch phase has ended
+    /// 触摸阶段已结束
     Ended,
-    /// The touch was cancelled: the system took it and it will not end
-    /// normally. Consumers must fully unwind any in-progress interaction,
-    /// treating the touch as if it never committed.
+    /// 触摸被取消：系统接管了该触摸，不会正常结束。
+    /// 消费者必须完全回退任何进行中的交互，将触摸视为从未发生。
     Cancelled,
 }
 
-/// Identifies one touch (finger or stylus contact) for its lifetime, from
-/// [`TouchPhase::Started`] through [`TouchPhase::Ended`] or
-/// [`TouchPhase::Cancelled`].
+/// 标识一个触摸（手指或触控笔接触）的整个生命周期，
+/// 从 [`TouchPhase::Started`] 到 [`TouchPhase::Ended`] 或
+/// [`TouchPhase::Cancelled`]。
 ///
-/// The value is opaque and platform-defined; it is only guaranteed to be
-/// stable for the duration of the touch and unique among concurrent touches.
+/// 该值是不透明的且由平台定义；仅保证在触摸持续期间稳定，
+/// 且在并发触摸中唯一。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TouchId(pub u64);
 
-/// A raw touch event from the platform.
+/// 来自平台的原始触摸事件。
 ///
 ///
-/// Dispatch contract (core implementation pending): a touch is hit-tested
-/// once, at [`TouchPhase::Started`], occlusion-aware; all subsequent events
-/// for the same [`TouchId`] are delivered to the elements under the starting
-/// position, even after the touch moves outside them.
+/// 分发契约（核心实现待完成）：触摸仅在 [`TouchPhase::Started`] 时进行
+/// 一次命中测试，考虑遮挡；同一 [`TouchId`] 的所有后续事件都发送到
+/// 起始位置下的元素，即使触摸已移出该区域。
 #[derive(Clone, Debug, Default)]
 pub struct TouchEvent {
-    /// Which touch this event belongs to.
+    /// 此事件所属的触摸。
     pub id: TouchId,
-    /// The phase of the touch.
+    /// 触摸的阶段。
     pub phase: TouchPhase,
-    /// The position of the touch in window coordinates.
+    /// 触摸在窗口坐标中的位置。
     pub position: Point<Pixels>,
-    /// Normalized touch force in `0.0..=1.0`, if the hardware reports it.
+    /// 归一化的触摸力度，范围为 `0.0..=1.0`（如果硬件支持报告）。
     pub force: Option<f32>,
 }
 
@@ -134,22 +132,22 @@ impl InputEvent for TouchEvent {
     }
 }
 
-/// A mouse down event from the platform
+/// 来自平台的鼠标按下事件
 #[derive(Clone, Debug, Default)]
 pub struct MouseDownEvent {
-    /// Which mouse button was pressed.
+    /// 按下的鼠标按键。
     pub button: MouseButton,
 
-    /// The position of the mouse on the window.
+    /// 鼠标在窗口上的位置。
     pub position: Point<Pixels>,
 
-    /// The modifiers that were held down when the mouse was pressed.
+    /// 鼠标按下时按住的修饰键。
     pub modifiers: Modifiers,
 
-    /// The number of times the button has been clicked.
+    /// 按钮被点击的次数。
     pub click_count: usize,
 
-    /// Whether this is the first, focusing click.
+    /// 是否是首次聚焦点击。
     pub first_mouse: bool,
 }
 
@@ -162,7 +160,7 @@ impl InputEvent for MouseDownEvent {
 impl MouseEvent for MouseDownEvent {}
 
 impl MouseDownEvent {
-    /// Returns true if this mouse up event should focus the element.
+    /// 如果此鼠标按下事件应聚焦元素则返回 true。
     pub fn is_focusing(&self) -> bool {
         match self.button {
             MouseButton::Left => true,
@@ -171,19 +169,19 @@ impl MouseDownEvent {
     }
 }
 
-/// A mouse up event from the platform
+/// 来自平台的鼠标释放事件
 #[derive(Clone, Debug, Default)]
 pub struct MouseUpEvent {
-    /// Which mouse button was released.
+    /// 释放的鼠标按键。
     pub button: MouseButton,
 
-    /// The position of the mouse on the window.
+    /// 鼠标在窗口上的位置。
     pub position: Point<Pixels>,
 
-    /// The modifiers that were held down when the mouse was released.
+    /// 鼠标释放时按住的修饰键。
     pub modifiers: Modifiers,
 
-    /// The number of times the button has been clicked.
+    /// 按钮被点击的次数。
     pub click_count: usize,
 }
 
@@ -197,7 +195,7 @@ impl InputEvent for MouseUpEvent {
 impl MouseEvent for MouseUpEvent {}
 
 impl MouseUpEvent {
-    /// Returns true if this mouse up event should focus the element.
+    /// 如果此鼠标释放事件应聚焦元素则返回 true。
     pub fn is_focusing(&self) -> bool {
         match self.button {
             MouseButton::Left => true,
@@ -206,39 +204,40 @@ impl MouseUpEvent {
     }
 }
 
-/// A click event, generated when a mouse button is pressed and released.
+/// 点击事件，当鼠标按键按下并释放时生成。
 #[derive(Clone, Debug, Default)]
 pub struct MouseClickEvent {
-    /// The mouse event when the button was pressed.
+    /// 按下按钮时的鼠标事件。
     pub down: MouseDownEvent,
 
-    /// The mouse event when the button was released.
+    /// 释放按钮时的鼠标事件。
     pub up: MouseUpEvent,
 }
 
-/// The stage of a pressure click event.
+/// 压力点击事件的阶段。
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum PressureStage {
-    /// No pressure.
+    /// 无压力。
     #[default]
     Zero,
-    /// Normal click pressure.
+    /// 普通点击压力。
     Normal,
-    /// High pressure, enough to trigger a force click.
+    /// 高压力，足以触发强制点击。
     Force,
 }
 
-/// A mouse pressure event from the platform. Generated when a force-sensitive trackpad is pressed hard.
-/// Currently only implemented for macOS trackpads.
+/// 来自平台的鼠标压力事件。当用力按压力敏触摸板时生成。
+/// 目前仅在 macOS 触摸板上实现。
 #[derive(Debug, Clone, Default)]
 pub struct MousePressureEvent {
-    /// Pressure of the current stage as a float between 0 and 1
+    /// 当前阶段的压力，范围为 0 到 1 的浮点数
     pub pressure: f32,
-    /// The pressure stage of the event.
+    /// 事件的压力阶段。
     pub stage: PressureStage,
-    /// The position of the mouse on the window.
+    /// 鼠标在窗口上的位置。
     pub position: Point<Pixels>,
-    /// The modifiers that were held down when the mouse pressure changed.
+
+    /// 鼠标压力变化时按住的修饰键。
     pub modifiers: Modifiers,
 }
 
@@ -250,40 +249,39 @@ impl InputEvent for MousePressureEvent {
 }
 impl MouseEvent for MousePressureEvent {}
 
-/// A click event that was generated by a keyboard button being pressed and released.
+/// 由键盘按键按下并释放生成的点击事件。
 #[derive(Clone, Debug, Default)]
 pub struct KeyboardClickEvent {
-    /// The keyboard button that was pressed to trigger the click.
+    /// 按下以触发点击的键盘按键。
     pub button: KeyboardButton,
 
-    /// The bounds of the element that was clicked.
+    /// 被点击元素的边界。
     pub bounds: Bounds<Pixels>,
 }
 
-/// A click event that was generated by a recognized tap gesture on a touch
-/// screen.
+/// 由触摸屏上识别的轻触手势生成的点击事件。
 #[derive(Clone, Debug, Default)]
 pub struct TouchClickEvent {
-    /// The position of the tap in window coordinates.
+    /// 轻触在窗口坐标中的位置。
     pub position: Point<Pixels>,
-    /// The number of consecutive taps at this location (double tap = 2),
-    /// analogous to the mouse `click_count`.
+    /// 该位置连续轻触的次数（双击 = 2），
+    /// 类似于鼠标的 `click_count`。
     pub tap_count: usize,
-    /// Whether this was a long press rather than a tap. Long presses are
-    /// touch's secondary activation: they are delivered to aux-click
-    /// listeners alongside right clicks, not to primary click listeners.
+    /// 是否是长按而非轻触。长按是触摸的次要激活方式：
+    /// 它们与右键点击一起发送到辅助点击监听器，
+    /// 而非主点击监听器。
     pub long_press: bool,
 }
 
-/// A click event, generated when a mouse button or keyboard button is pressed and released,
-/// or when a tap gesture is recognized on a touch screen.
+/// 点击事件，当鼠标按键或键盘按键按下并释放时生成，
+/// 或当触摸屏上识别到轻触手势时生成。
 #[derive(Clone, Debug)]
 pub enum ClickEvent {
-    /// A click event trigger by a mouse button being pressed and released.
+    /// 鼠标按键按下并释放触发的点击事件。
     Mouse(MouseClickEvent),
-    /// A click event trigger by a keyboard button being pressed and released.
+    /// 键盘按键按下并释放触发的点击事件。
     Keyboard(KeyboardClickEvent),
-    /// A click event triggered by a recognized tap gesture on a touch screen.
+    /// 触摸屏上识别的轻触手势触发的点击事件。
     Touch(TouchClickEvent),
 }
 
@@ -294,10 +292,10 @@ impl Default for ClickEvent {
 }
 
 impl ClickEvent {
-    /// Returns the modifiers that were held during the click event
+    /// 返回点击事件期间按住的修饰键
     ///
-    /// `Keyboard`: The keyboard click events never have modifiers.
-    /// `Mouse`: Modifiers that were held during the mouse key up event.
+    /// `Keyboard`：键盘点击事件始终没有修饰键。
+    /// `Mouse`：鼠标按键释放事件期间按住的修饰键。
     pub fn modifiers(&self) -> Modifiers {
         match self {
             // Click events are only generated from keyboard events _without any modifiers_, so we know the modifiers are always Default
@@ -311,11 +309,11 @@ impl ClickEvent {
         }
     }
 
-    /// Returns the position of the click event
+    /// 返回点击事件的位置
     ///
-    /// `Keyboard`: The bottom left corner of the clicked hitbox
-    /// `Mouse`: The position of the mouse when the button was released.
-    /// `Touch`: The position of the tap.
+    /// `Keyboard`：被点击碰撞框的左下角
+    /// `Mouse`：按钮释放时鼠标的位置。
+    /// `Touch`：轻触的位置。
     pub fn position(&self) -> Point<Pixels> {
         match self {
             ClickEvent::Keyboard(event) => event.bounds.bottom_left(),
@@ -324,11 +322,11 @@ impl ClickEvent {
         }
     }
 
-    /// Returns the mouse position of the click event
+    /// 返回点击事件的鼠标位置
     ///
-    /// `Keyboard`: None
-    /// `Mouse`: The position of the mouse when the button was released.
-    /// `Touch`: None, touches are not mouse input and there is no cursor.
+    /// `Keyboard`：None
+    /// `Mouse`：按钮释放时鼠标的位置。
+    /// `Touch`：None，触摸不是鼠标输入且没有光标。
     pub fn mouse_position(&self) -> Option<Point<Pixels>> {
         match self {
             ClickEvent::Keyboard(_) => None,
@@ -337,10 +335,10 @@ impl ClickEvent {
         }
     }
 
-    /// Returns if this was a right click
+    /// 返回是否为右键点击
     ///
-    /// `Keyboard`: false
-    /// `Mouse`: Whether the right button was pressed and released
+    /// `Keyboard`：false
+    /// `Mouse`：右键是否被按下并释放
     pub fn is_right_click(&self) -> bool {
         match self {
             ClickEvent::Keyboard(_) => false,
@@ -351,10 +349,10 @@ impl ClickEvent {
         }
     }
 
-    /// Returns if this was a middle click
+    /// 返回是否为中键点击
     ///
-    /// `Keyboard`: false
-    /// `Mouse`: Whether the middle button was pressed and released
+    /// `Keyboard`：false
+    /// `Mouse`：中键是否被按下并释放
     pub fn is_middle_click(&self) -> bool {
         match self {
             ClickEvent::Keyboard(_) => false,
@@ -365,10 +363,9 @@ impl ClickEvent {
         }
     }
 
-    /// Returns whether the click is a secondary activation, i.e. a context
-    /// menu trigger: a right click from a mouse (macOS ctrl-clicks arrive
-    /// already converted to right clicks by the platform layer), or a long
-    /// press on a touch screen.
+    /// 返回点击是否为次要激活，即上下文菜单触发器：
+    /// 鼠标的右键点击（macOS 的 ctrl-click 已由平台层转换为右键点击），
+    /// 或触摸屏上的长按。
     pub fn is_secondary(&self) -> bool {
         match self {
             ClickEvent::Keyboard(_) => false,
@@ -379,11 +376,11 @@ impl ClickEvent {
         }
     }
 
-    /// Returns whether the click was a standard click
+    /// 返回点击是否为标准点击
     ///
-    /// `Keyboard`: Always true
-    /// `Mouse`: Left button pressed and released
-    /// `Touch`: A tap, but not a long press
+    /// `Keyboard`：始终为 true
+    /// `Mouse`：左键按下并释放
+    /// `Touch`：轻触但非长按
     pub fn standard_click(&self) -> bool {
         match self {
             ClickEvent::Keyboard(_) => true,
@@ -394,11 +391,11 @@ impl ClickEvent {
         }
     }
 
-    /// Returns whether the click focused the element
+    /// 返回点击是否聚焦了元素
     ///
-    /// `Keyboard`: false, keyboard clicks only work if an element is already focused
-    /// `Mouse`: Whether this was the first focusing click
-    /// `Touch`: false, mobile windows are already active when tappable
+    /// `Keyboard`：false，键盘点击仅在元素已聚焦时有效
+    /// `Mouse`：是否是首次聚焦点击
+    /// `Touch`：false，移动端窗口在可点击时已处于活动状态
     pub fn first_focus(&self) -> bool {
         match self {
             ClickEvent::Keyboard(_) => false,
@@ -407,11 +404,11 @@ impl ClickEvent {
         }
     }
 
-    /// Returns the click count of the click event
+    /// 返回点击事件的点击次数
     ///
-    /// `Keyboard`: Always 1
-    /// `Mouse`: Count of clicks from MouseUpEvent
-    /// `Touch`: Count of consecutive taps
+    /// `Keyboard`：始终为 1
+    /// `Mouse`：MouseUpEvent 中的点击计数
+    /// `Touch`：连续轻触次数
     pub fn click_count(&self) -> usize {
         match self {
             ClickEvent::Keyboard(_) => 1,
@@ -420,7 +417,7 @@ impl ClickEvent {
         }
     }
 
-    /// Returns whether the click event is generated by a keyboard event
+    /// 返回点击事件是否由键盘事件生成
     pub fn is_keyboard(&self) -> bool {
         match self {
             ClickEvent::Mouse(_) | ClickEvent::Touch(_) => false,
@@ -429,35 +426,35 @@ impl ClickEvent {
     }
 }
 
-/// An enum representing the keyboard button that was pressed for a click event.
+/// 表示点击事件中按下的键盘按键的枚举。
 #[derive(Hash, PartialEq, Eq, Copy, Clone, Debug, Default)]
 pub enum KeyboardButton {
-    /// Enter key was clicked
+    /// 按下了 Enter 键
     #[default]
     Enter,
-    /// Space key was clicked
+    /// 按下了空格键
     Space,
 }
 
-/// An enum representing the mouse button that was pressed.
+/// 表示按下的鼠标按键的枚举。
 #[derive(Hash, Default, PartialEq, Eq, Copy, Clone, Debug)]
 pub enum MouseButton {
-    /// The left mouse button.
+    /// 鼠标左键。
     #[default]
     Left,
 
-    /// The right mouse button.
+    /// 鼠标右键。
     Right,
 
-    /// The middle mouse button.
+    /// 鼠标中键。
     Middle,
 
-    /// A navigation button, such as back or forward.
+    /// 导航按键，如前进或后退。
     Navigate(NavigationDirection),
 }
 
 impl MouseButton {
-    /// Get all the mouse buttons in a list.
+    /// 获取所有鼠标按键的列表。
     pub fn all() -> Vec<Self> {
         vec![
             MouseButton::Left,
@@ -469,27 +466,27 @@ impl MouseButton {
     }
 }
 
-/// A navigation direction, such as back or forward.
+/// 导航方向，如前进或后退。
 #[derive(Hash, Default, PartialEq, Eq, Copy, Clone, Debug)]
 pub enum NavigationDirection {
-    /// The back button.
+    /// 后退按钮。
     #[default]
     Back,
 
-    /// The forward button.
+    /// 前进按钮。
     Forward,
 }
 
-/// A mouse move event from the platform.
+/// 来自平台的鼠标移动事件。
 #[derive(Clone, Debug, Default)]
 pub struct MouseMoveEvent {
-    /// The position of the mouse on the window.
+    /// 鼠标在窗口上的位置。
     pub position: Point<Pixels>,
 
-    /// The mouse button that was pressed, if any.
+    /// 按下的鼠标按键（如果有）。
     pub pressed_button: Option<MouseButton>,
 
-    /// The modifiers that were held down when the mouse was moved.
+    /// 鼠标移动时按住的修饰键。
     pub modifiers: Modifiers,
 }
 
@@ -502,25 +499,25 @@ impl InputEvent for MouseMoveEvent {
 impl MouseEvent for MouseMoveEvent {}
 
 impl MouseMoveEvent {
-    /// Returns true if the left mouse button is currently held down.
+    /// 如果鼠标左键当前被按住则返回 true。
     pub fn dragging(&self) -> bool {
         self.pressed_button == Some(MouseButton::Left)
     }
 }
 
-/// A mouse wheel event from the platform.
+/// 来自平台的鼠标滚轮事件。
 #[derive(Clone, Debug, Default)]
 pub struct ScrollWheelEvent {
-    /// The position of the mouse on the window.
+    /// 鼠标在窗口上的位置。
     pub position: Point<Pixels>,
 
-    /// The change in scroll wheel position for this event.
+    /// 此事件的滚轮位置变化量。
     pub delta: ScrollDelta,
 
-    /// The modifiers that were held down when the mouse was moved.
+    /// 鼠标移动时按住的修饰键。
     pub modifiers: Modifiers,
 
-    /// The phase of the touch event.
+    /// 触摸事件的阶段。
     pub touch_phase: TouchPhase,
 }
 
@@ -540,12 +537,12 @@ impl Deref for ScrollWheelEvent {
     }
 }
 
-/// The scroll delta for a scroll wheel event.
+/// 滚轮事件的滚动增量。
 #[derive(Clone, Copy, Debug)]
 pub enum ScrollDelta {
-    /// An exact scroll delta in pixels.
+    /// 以像素为单位的精确滚动增量。
     Pixels(Point<Pixels>),
-    /// An inexact scroll delta in lines.
+    /// 以行为单位的近似滚动增量。
     Lines(Point<f32>),
 }
 
@@ -555,23 +552,22 @@ impl Default for ScrollDelta {
     }
 }
 
-/// A pinch gesture event from the platform, generated when the user performs
-/// a pinch-to-zoom gesture (typically on a trackpad).
+/// 来自平台的捏合手势事件，当用户执行捏合缩放手势（通常在触摸板上）时生成。
 ///
 #[derive(Clone, Debug, Default)]
 pub struct PinchEvent {
-    /// The position of the pinch center on the window.
+    /// 捏合中心在窗口上的位置。
     pub position: Point<Pixels>,
 
-    /// The zoom delta for this event.
-    /// Positive values indicate zooming in, negative values indicate zooming out.
-    /// For example, 0.1 represents a 10% zoom increase.
+    /// 此事件的缩放增量。
+    /// 正值表示放大，负值表示缩小。
+    /// 例如，0.1 表示 10% 的缩放增加。
     pub delta: f32,
 
-    /// The modifiers that were held down during the pinch gesture.
+    /// 捏合手势期间按住的修饰键。
     pub modifiers: Modifiers,
 
-    /// The phase of the pinch gesture.
+    /// 捏合手势的阶段。
     pub phase: TouchPhase,
 }
 
@@ -593,7 +589,7 @@ impl Deref for PinchEvent {
 }
 
 impl ScrollDelta {
-    /// Returns true if this is a precise scroll delta in pixels.
+    /// 如果这是以像素为单位的精确滚动增量则返回 true。
     pub fn precise(&self) -> bool {
         match self {
             ScrollDelta::Pixels(_) => true,
@@ -601,7 +597,7 @@ impl ScrollDelta {
         }
     }
 
-    /// Converts this scroll event into exact pixels.
+    /// 将此滚动事件转换为精确像素。
     pub fn pixel_delta(&self, line_height: Pixels) -> Point<Pixels> {
         match self {
             ScrollDelta::Pixels(delta) => *delta,
@@ -609,10 +605,9 @@ impl ScrollDelta {
         }
     }
 
-    /// Combines two scroll deltas into one.
-    /// If the signs of the deltas are the same (both positive or both negative),
-    /// the deltas are added together. If the signs are opposite, the second delta
-    /// (other) is used, effectively overriding the first delta.
+    /// 将两个滚动增量合并为一个。
+    /// 如果增量符号相同（都为正或都为负），则将增量相加。
+    /// 如果符号相反，则使用第二个增量（other），有效地覆盖第一个增量。
     pub fn coalesce(self, other: ScrollDelta) -> ScrollDelta {
         match (self, other) {
             (ScrollDelta::Pixels(a), ScrollDelta::Pixels(b)) => {
@@ -652,14 +647,14 @@ impl ScrollDelta {
     }
 }
 
-/// A mouse exit event from the platform, generated when the mouse leaves the window.
+/// 来自平台的鼠标离开事件，当鼠标离开窗口时生成。
 #[derive(Clone, Debug, Default)]
 pub struct MouseExitEvent {
-    /// The position of the mouse relative to the window.
+    /// 鼠标相对于窗口的位置。
     pub position: Point<Pixels>,
-    /// The mouse button that was pressed, if any.
+    /// 按下的鼠标按键（如果有）。
     pub pressed_button: Option<MouseButton>,
-    /// The modifiers that were held down when the mouse was moved.
+    /// 鼠标移动时按住的修饰键。
     pub modifiers: Modifiers,
 }
 
@@ -680,12 +675,12 @@ impl Deref for MouseExitEvent {
     }
 }
 
-/// A collection of paths from the platform, such as from a file drop.
+/// 来自平台的路径集合，例如文件拖放时的路径。
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct ExternalPaths(pub SmallVec<[PathBuf; 2]>);
 
 impl ExternalPaths {
-    /// Convert this collection of paths into a slice.
+    /// 将此路径集合转换为切片。
     pub fn paths(&self) -> &[PathBuf] {
         &self.0
     }
@@ -698,27 +693,27 @@ impl Render for ExternalPaths {
     }
 }
 
-/// A file drop event from the platform, generated when files are dragged and dropped onto the window.
+/// 来自平台的文件拖放事件，当文件被拖放到窗口上时生成。
 #[derive(Debug, Clone)]
 pub enum FileDropEvent {
-    /// The files have entered the window.
+    /// 文件已进入窗口。
     Entered {
-        /// The position of the mouse relative to the window.
+        /// 鼠标相对于窗口的位置。
         position: Point<Pixels>,
-        /// The paths of the files that are being dragged.
+        /// 被拖动的文件路径。
         paths: ExternalPaths,
     },
-    /// The files are being dragged over the window
+    /// 文件正在窗口上被拖动
     Pending {
-        /// The position of the mouse relative to the window.
+        /// 鼠标相对于窗口的位置。
         position: Point<Pixels>,
     },
-    /// The files have been dropped onto the window.
+    /// 文件已被放置到窗口上。
     Submit {
-        /// The position of the mouse relative to the window.
+        /// 鼠标相对于窗口的位置。
         position: Point<Pixels>,
     },
-    /// The user has stopped dragging the files over the window.
+    /// 用户已停止在窗口上拖动文件。
     Exited,
 }
 
@@ -730,32 +725,32 @@ impl InputEvent for FileDropEvent {
 }
 impl MouseEvent for FileDropEvent {}
 
-/// An enum corresponding to all kinds of platform input events.
+/// 对应所有平台输入事件类型的枚举。
 #[derive(Clone, Debug)]
 pub enum PlatformInput {
-    /// A key was pressed.
+    /// 按下了一个按键。
     KeyDown(KeyDownEvent),
-    /// A key was released.
+    /// 释放了一个按键。
     KeyUp(KeyUpEvent),
-    /// The keyboard modifiers were changed.
+    /// 键盘修饰键发生了变化。
     ModifiersChanged(ModifiersChangedEvent),
-    /// The mouse was pressed.
+    /// 鼠标被按下。
     MouseDown(MouseDownEvent),
-    /// The mouse was released.
+    /// 鼠标被释放。
     MouseUp(MouseUpEvent),
-    /// Mouse pressure.
+    /// 鼠标压力。
     MousePressure(MousePressureEvent),
-    /// The mouse was moved.
+    /// 鼠标被移动。
     MouseMove(MouseMoveEvent),
-    /// The mouse exited the window.
+    /// 鼠标离开了窗口。
     MouseExited(MouseExitEvent),
-    /// The scroll wheel was used.
+    /// 使用了滚轮。
     ScrollWheel(ScrollWheelEvent),
-    /// A pinch gesture was performed.
+    /// 执行了捏合手势。
     Pinch(PinchEvent),
-    /// Files were dragged and dropped onto the window.
+    /// 文件被拖放到窗口上。
     FileDrop(FileDropEvent),
-    /// A raw touch event on a touch screen.
+    /// 触摸屏上的原始触摸事件。
     Touch(TouchEvent),
 }
 
@@ -794,7 +789,7 @@ impl PlatformInput {
         }
     }
 
-    /// Returns the touch event contained in this input, if any.
+    /// 返回此输入中包含的触摸事件（如果有）。
     pub fn touch_event(&self) -> Option<&TouchEvent> {
         match self {
             PlatformInput::Touch(event) => Some(event),

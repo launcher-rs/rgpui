@@ -19,7 +19,7 @@ const BORDER_SIZE: Pixels = px(1.0);
 const RESIZE_HIT_SIZE: Pixels = px(4.0);
 /// 窗口外框的圆角半径。
 ///
-/// GPUI 目前会将溢出的子元素裁剪为矩形内容遮罩。非零半径会圆化外框本身，
+/// RGPUI 目前会将溢出的子元素裁剪为矩形内容遮罩。非零半径会圆化外框本身，
 /// 但会留下子元素背景在角落可见，因此在存在圆角内容遮罩之前保持通用窗口
 /// 包装器为方形。
 const BORDER_RADIUS: Pixels = px(0.0);

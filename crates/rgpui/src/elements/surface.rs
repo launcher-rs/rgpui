@@ -6,10 +6,10 @@ use crate::{
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
 
-/// A source of a surface's content.
+/// surface 内容的来源。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SurfaceSource {
-    /// A macOS image buffer from CoreVideo
+    /// 来自 CoreVideo 的 macOS 图像缓冲区
     #[cfg(target_os = "macos")]
     Surface(CVPixelBuffer),
 }
@@ -21,14 +21,14 @@ impl From<CVPixelBuffer> for SurfaceSource {
     }
 }
 
-/// A surface element.
+/// 一个 surface 元素。
 pub struct Surface {
     source: SurfaceSource,
     object_fit: ObjectFit,
     style: StyleRefinement,
 }
 
-/// Create a new surface element.
+/// 创建一个新的 surface 元素。
 #[cfg(target_os = "macos")]
 pub fn surface(source: impl Into<SurfaceSource>) -> Surface {
     Surface {
@@ -39,7 +39,7 @@ pub fn surface(source: impl Into<SurfaceSource>) -> Surface {
 }
 
 impl Surface {
-    /// Set the object fit for the image.
+    /// 设置图像的对象适配方式。
     pub fn object_fit(mut self, object_fit: ObjectFit) -> Self {
         self.object_fit = object_fit;
         self

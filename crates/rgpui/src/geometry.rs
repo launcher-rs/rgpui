@@ -1,6 +1,4 @@
-//! The GPUI geometry module is a collection of types and traits that
-//! can be used to describe common units, concepts, and the relationships
-//! between them.
+//! RGPUI 几何模块，包含用于描述常用单位、概念及其关系的类型和 trait。
 
 use crate::refineable::Refineable;
 use anyhow::{Context as _, anyhow};
@@ -20,17 +18,17 @@ use taffy::prelude::{TaffyGridLine, TaffyGridSpan};
 
 use crate::{App, DisplayId};
 
-/// Axis in a 2D cartesian space.
+/// 二维笛卡尔空间中的轴。
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum Axis {
-    /// The y axis, or up and down
+    /// Y 轴，即垂直方向（上下）
     Vertical,
-    /// The x axis, or left and right
+    /// X 轴，即水平方向（左右）
     Horizontal,
 }
 
 impl Axis {
-    /// Swap this axis to the opposite axis.
+    /// 将当前轴切换到相反的轴。
     pub fn invert(self) -> Self {
         match self {
             Axis::Vertical => Axis::Horizontal,
@@ -39,29 +37,29 @@ impl Axis {
     }
 }
 
-/// A trait for accessing the given unit along a certain axis.
+/// 沿特定轴访问对应单位的 trait。
 pub trait Along {
-    /// The unit associated with this type
+    /// 与该类型关联的单位类型
     type Unit;
 
-    /// Returns the unit along the given axis.
+    /// 返回沿给定轴的单位值。
     fn along(&self, axis: Axis) -> Self::Unit;
 
-    /// Applies the given function to the unit along the given axis and returns a new value.
+    /// 对沿给定轴的单位应用给定函数，并返回新值。
     fn apply_along(&self, axis: Axis, f: impl FnOnce(Self::Unit) -> Self::Unit) -> Self;
 }
 
-/// Describes a location in a 2D cartesian space.
+/// 描述二维笛卡尔空间中的一个位置。
 ///
-/// It holds two public fields, `x` and `y`, which represent the coordinates in the space.
-/// The type `T` for the coordinates can be any type that implements `Default`, `Clone`, and `Debug`.
+/// 它包含两个公共字段 `x` 和 `y`，表示空间中的坐标。
+/// 坐标类型 `T` 可以是任何实现了 `Default`、`Clone` 和 `Debug` 的类型。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// # use rgpui::Point;
 /// let point = Point { x: 10, y: 20 };
-/// println!("{:?}", point); // Outputs: Point { x: 10, y: 20 }
+/// println!("{:?}", point); // 输出: Point { x: 10, y: 20 }
 /// ```
 #[derive(
     Refineable,
@@ -83,24 +81,24 @@ pub trait Along {
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(C)]
 pub struct Point<T: Clone + Debug + Default + PartialEq> {
-    /// The x coordinate of the point.
+    /// 点的 x 坐标。
     pub x: T,
-    /// The y coordinate of the point.
+    /// 点的 y 坐标。
     pub y: T,
 }
 
-/// Constructs a new `Point<T>` with the given x and y coordinates.
+/// 使用给定的 x 和 y 坐标构造一个新的 `Point<T>`。
 ///
-/// # Arguments
+/// # 参数
 ///
-/// * `x` - The x coordinate of the point.
-/// * `y` - The y coordinate of the point.
+/// * `x` - 点的 x 坐标。
+/// * `y` - 点的 y 坐标。
 ///
-/// # Returns
+/// # 返回值
 ///
-/// Returns a `Point<T>` with the specified coordinates.
+/// 返回一个具有指定坐标的 `Point<T>`。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use rgpui::point;
@@ -113,14 +111,14 @@ pub const fn point<T: Clone + Debug + Default + PartialEq>(x: T, y: T) -> Point<
 }
 
 impl<T: Clone + Debug + Default + PartialEq> Point<T> {
-    /// Creates a new `Point` with the specified `x` and `y` coordinates.
+    /// 使用指定的 `x` 和 `y` 坐标创建一个新的 `Point`。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `x` - The horizontal coordinate of the point.
-    /// * `y` - The vertical coordinate of the point.
+    /// * `x` - 点的水平坐标。
+    /// * `y` - 点的垂直坐标。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use rgpui::Point;
@@ -132,17 +130,16 @@ impl<T: Clone + Debug + Default + PartialEq> Point<T> {
         Self { x, y }
     }
 
-    /// Transforms the point to a `Point<U>` by applying the given function to both coordinates.
+    /// 通过对两个坐标应用给定函数，将点转换为 `Point<U>`。
     ///
-    /// This method allows for converting a `Point<T>` to a `Point<U>` by specifying a closure
-    /// that defines how to convert between the two types. The closure is applied to both the `x`
-    /// and `y` coordinates, resulting in a new point of the desired type.
+    /// 此方法允许通过指定闭包将 `Point<T>` 转换为 `Point<U>`，闭包定义了两种类型之间的转换方式。
+    /// 闭包应用于 `x` 和 `y` 坐标，生成所需类型的新点。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `f` - A closure that takes a value of type `T` and returns a value of type `U`.
+    /// * `f` - 接受类型 `T` 的值并返回类型 `U` 的值的闭包。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Point;
@@ -184,14 +181,13 @@ impl<T: Clone + Debug + Default + PartialEq> Along for Point<T> {
 }
 
 impl Point<Pixels> {
-    /// Scales the point by a given factor, which is typically derived from the resolution
-    /// of a target display to ensure proper sizing of UI elements.
+    /// 按给定因子缩放点，通常用于根据目标显示器的分辨率调整 UI 元素的大小。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `factor` - The scaling factor to apply to both the x and y coordinates.
+    /// * `factor` - 应用于 x 和 y 坐标的缩放因子。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Point, Pixels, ScaledPixels};
@@ -206,9 +202,9 @@ impl Point<Pixels> {
         }
     }
 
-    /// Calculates the Euclidean distance from the origin (0, 0) to this point.
+    /// 计算从原点 (0, 0) 到该点的欧几里得距离。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Pixels, Point};
@@ -224,7 +220,7 @@ impl<T> Point<T>
 where
     T: Sub<T, Output = T> + Clone + Debug + Default + PartialEq,
 {
-    /// Get the position of this point, relative to the given origin
+    /// 获取相对于给定原点的点位置
     pub fn relative_to(&self, origin: &Point<T>) -> Point<T> {
         point(
             self.x.clone() - origin.x.clone(),
@@ -278,13 +274,13 @@ impl<T> Point<T>
 where
     T: PartialOrd + Clone + Debug + Default + PartialEq,
 {
-    /// Returns a new point with the maximum values of each dimension from `self` and `other`.
+    /// 返回 `self` 和 `other` 中每个维度的最大值组成的新点。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `other` - A reference to another `Point` to compare with `self`.
+    /// * `other` - 要与 `self` 比较的另一个 `Point` 的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Point;
@@ -308,13 +304,13 @@ where
         }
     }
 
-    /// Returns a new point with the minimum values of each dimension from `self` and `other`.
+    /// 返回 `self` 和 `other` 中每个维度的最小值组成的新点。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `other` - A reference to another `Point` to compare with `self`.
+    /// * `other` - 要与 `self` 比较的另一个 `Point` 的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Point;
@@ -338,19 +334,17 @@ where
         }
     }
 
-    /// Clamps the point to a specified range.
+    /// 将点限制在指定范围内。
     ///
-    /// Given a minimum point and a maximum point, this method constrains the current point
-    /// such that its coordinates do not exceed the range defined by the minimum and maximum points.
-    /// If the current point's coordinates are less than the minimum, they are set to the minimum.
-    /// If they are greater than the maximum, they are set to the maximum.
+    /// 给定最小点和最大点，此方法约束当前点的坐标使其不超过最小点和最大点定义的范围。
+    /// 如果当前点的坐标小于最小值，则设为最小值；如果大于最大值，则设为最大值。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `min` - A reference to a `Point` representing the minimum allowable coordinates.
-    /// * `max` - A reference to a `Point` representing the maximum allowable coordinates.
+    /// * `min` - 表示最小允许坐标的 `Point` 的引用。
+    /// * `max` - 表示最大允许坐标的 `Point` 的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Point;
@@ -384,37 +378,37 @@ impl<T: Clone + Debug + Default + PartialEq + Display> Display for Point<T> {
     }
 }
 
-/// A structure representing a two-dimensional size with width and height in a given unit.
+/// 表示二维空间中具有宽度和高度的尺寸结构。
 ///
-/// This struct is generic over the type `T`, which can be any type that implements `Clone`, `Default`, and `Debug`.
-/// It is commonly used to specify dimensions for elements in a UI, such as a window or element.
+/// 此结构体对类型 `T` 是泛型的，`T` 可以是任何实现了 `Clone`、`Default` 和 `Debug` 的类型。
+/// 通常用于指定 UI 元素（如窗口或元素）的尺寸。
 #[derive(
     Add, Clone, Copy, Default, Deserialize, Div, Hash, Neg, PartialEq, Refineable, Serialize, Sub,
 )]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(C)]
 pub struct Size<T: Clone + Debug + Default + PartialEq> {
-    /// The width component of the size.
+    /// 尺寸的宽度分量。
     pub width: T,
-    /// The height component of the size.
+    /// 尺寸的高度分量。
     pub height: T,
 }
 
 impl<T: Clone + Debug + Default + PartialEq> Size<T> {
-    /// Create a new Size, a synonym for [`size`]
+    /// 创建一个新的 Size，是 [`size`] 的同义方法
     pub fn new(width: T, height: T) -> Self {
         size(width, height)
     }
 }
 
-/// Constructs a new `Size<T>` with the provided width and height.
+/// 使用给定的宽度和高度构造一个新的 `Size<T>`。
 ///
-/// # Arguments
+/// # 参数
 ///
-/// * `width` - The width component of the `Size`.
-/// * `height` - The height component of the `Size`.
+/// * `width` - `Size` 的宽度分量。
+/// * `height` - `Size` 的高度分量。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use rgpui::size;
@@ -433,17 +427,16 @@ impl<T> Size<T>
 where
     T: Clone + Debug + Default + PartialEq,
 {
-    /// Applies a function to the width and height of the size, producing a new `Size<U>`.
+    /// 对尺寸的宽度和高度应用函数，生成新的 `Size<U>`。
     ///
-    /// This method allows for converting a `Size<T>` to a `Size<U>` by specifying a closure
-    /// that defines how to convert between the two types. The closure is applied to both the `width`
-    /// and `height`, resulting in a new size of the desired type.
+    /// 此方法允许通过指定闭包将 `Size<T>` 转换为 `Size<U>`，闭包定义了两种类型之间的转换方式。
+    /// 闭包应用于 `width` 和 `height`，生成所需类型的新尺寸。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `f` - A closure that takes a value of type `T` and returns a value of type `U`.
+    /// * `f` - 接受类型 `T` 的值并返回类型 `U` 的值的闭包。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Size;
@@ -466,7 +459,7 @@ impl<T> Size<T>
 where
     T: Clone + Debug + Default + PartialEq + Half,
 {
-    /// Compute the center point of the size.g
+    /// 计算尺寸的中心点。
     pub fn center(&self) -> Point<T> {
         Point {
             x: self.width.half(),
@@ -476,17 +469,16 @@ where
 }
 
 impl Size<Pixels> {
-    /// Scales the size by a given factor.
+    /// 按给定因子缩放尺寸。
     ///
-    /// This method multiplies both the width and height by the provided scaling factor,
-    /// resulting in a new `Size<ScaledPixels>` that is proportionally larger or smaller
-    /// depending on the factor.
+    /// 此方法将宽度和高度乘以提供的缩放因子，生成一个新的 `Size<ScaledPixels>`，
+    /// 根据因子按比例放大或缩小。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `factor` - The scaling factor to apply to the width and height.
+    /// * `factor` - 应用于宽度和高度的缩放因子。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Size, Pixels, ScaledPixels};
@@ -515,7 +507,7 @@ where
         }
     }
 
-    /// Returns the value of this size along the given axis.
+    /// 返回沿给定轴的尺寸值。
     fn apply_along(&self, axis: Axis, f: impl FnOnce(T) -> T) -> Self {
         match axis {
             Axis::Horizontal => Size {
@@ -534,13 +526,13 @@ impl<T> Size<T>
 where
     T: PartialOrd + Clone + Debug + Default + PartialEq,
 {
-    /// Returns a new `Size` with the maximum width and height from `self` and `other`.
+    /// 返回 `self` 和 `other` 中宽度和高度的最大值组成的新 `Size`。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `other` - A reference to another `Size` to compare with `self`.
+    /// * `other` - 要与 `self` 比较的另一个 `Size` 的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Size;
@@ -564,13 +556,13 @@ where
         }
     }
 
-    /// Returns a new `Size` with the minimum width and height from `self` and `other`.
+    /// 返回 `self` 和 `other` 中宽度和高度的最小值组成的新 `Size`。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `other` - A reference to another `Size` to compare with `self`.
+    /// * `other` - 要与 `self` 比较的另一个 `Size` 的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Size;
@@ -666,14 +658,14 @@ impl From<Size<Pixels>> for Size<AbsoluteLength> {
 }
 
 impl Size<Length> {
-    /// Returns a `Size` with both width and height set to fill the available space.
+    /// 返回一个宽度和高度都设为填充可用空间的 `Size`。
     ///
-    /// This function creates a `Size` instance where both the width and height are set to `Length::Definite(DefiniteLength::Fraction(1.0))`,
-    /// which represents 100% of the available space in both dimensions.
+    /// 此函数创建一个 `Size` 实例，宽度和高度都设为 `Length::Definite(DefiniteLength::Fraction(1.0))`，
+    /// 表示两个维度都占可用空间的 100%。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A `Size<Length>` that will fill the available space when used in a layout.
+    /// 在布局中使用时将填充可用空间的 `Size<Length>`。
     pub fn full() -> Self {
         Self {
             width: relative(1.).into(),
@@ -683,15 +675,14 @@ impl Size<Length> {
 }
 
 impl Size<Length> {
-    /// Returns a `Size` with both width and height set to `auto`, which allows the layout engine to determine the size.
+    /// 返回一个宽度和高度都设为 `auto` 的 `Size`，允许布局引擎决定尺寸。
     ///
-    /// This function creates a `Size` instance where both the width and height are set to `Length::Auto`,
-    /// indicating that their size should be computed based on the layout context, such as the content size or
-    /// available space.
+    /// 此函数创建一个 `Size` 实例，宽度和高度都设为 `Length::Auto`，
+    /// 表示其尺寸应根据布局上下文（如内容大小或可用空间）来计算。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A `Size<Length>` with width and height set to `Length::Auto`.
+    /// 宽度和高度设为 `Length::Auto` 的 `Size<Length>`。
     pub fn auto() -> Self {
         Self {
             width: Length::Auto,
@@ -700,13 +691,13 @@ impl Size<Length> {
     }
 }
 
-/// Represents a rectangular area in a 2D space with an origin point and a size.
+/// 表示二维空间中的矩形区域，包含原点和尺寸。
 ///
-/// The `Bounds` struct is generic over a type `T` which represents the type of the coordinate system.
-/// The origin is represented as a `Point<T>` which defines the top left corner of the rectangle,
-/// and the size is represented as a `Size<T>` which defines the width and height of the rectangle.
+/// `Bounds` 结构体对类型 `T` 是泛型的，`T` 表示坐标系统的类型。
+/// 原点表示为 `Point<T>`，定义矩形的左上角；
+/// 尺寸表示为 `Size<T>`，定义矩形的宽度和高度。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// # use rgpui::{Bounds, Point, Size};
@@ -721,13 +712,13 @@ impl Size<Length> {
 #[refineable(Debug)]
 #[repr(C)]
 pub struct Bounds<T: Clone + Debug + Default + PartialEq> {
-    /// The origin point of this area.
+    /// 该区域的原点。
     pub origin: Point<T>,
-    /// The size of the rectangle.
+    /// 矩形的尺寸。
     pub size: Size<T>,
 }
 
-/// Create a bounds with the given origin and size
+/// 使用给定的原点和尺寸创建一个 bounds
 pub fn bounds<T: Clone + Debug + Default + PartialEq>(
     origin: Point<T>,
     size: Size<T>,
@@ -736,7 +727,7 @@ pub fn bounds<T: Clone + Debug + Default + PartialEq>(
 }
 
 impl Bounds<Pixels> {
-    /// Generate a centered bounds for the given display or primary display if none is provided
+    /// 为给定显示器或主显示器（未指定时）生成居中的 bounds
     pub fn centered(display_id: Option<DisplayId>, size: Size<Pixels>, cx: &App) -> Self {
         let display = display_id
             .and_then(|id| cx.find_display(id))
@@ -750,7 +741,7 @@ impl Bounds<Pixels> {
             })
     }
 
-    /// Generate maximized bounds for the given display or primary display if none is provided
+    /// 为给定显示器或主显示器（未指定时）生成最大化的 bounds
     pub fn maximized(display_id: Option<DisplayId>, cx: &App) -> Self {
         let display = display_id
             .and_then(|id| cx.find_display(id))
@@ -769,16 +760,16 @@ impl<T> Bounds<T>
 where
     T: Clone + Debug + Default + PartialEq,
 {
-    /// Creates a new `Bounds` with the specified origin and size.
+    /// 使用指定的原点和尺寸创建一个新的 `Bounds`。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `origin` - A `Point<T>` representing the origin of the bounds.
-    /// * `size` - A `Size<T>` representing the size of the bounds.
+    /// * `origin` - 表示 bounds 原点的 `Point<T>`。
+    /// * `size` - 表示 bounds 尺寸的 `Size<T>`。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a `Bounds<T>` that has the given origin and size.
+    /// 返回具有给定原点和尺寸的 `Bounds<T>`。
     pub fn new(origin: Point<T>, size: Size<T>) -> Self {
         Bounds { origin, size }
     }
@@ -788,22 +779,21 @@ impl<T> Bounds<T>
 where
     T: Sub<Output = T> + Clone + Debug + Default + PartialEq,
 {
-    /// Constructs a `Bounds` from two corner points: the top left and bottom right corners.
+    /// 从两个角点构造 `Bounds`：左上角和右下角。
     ///
-    /// This function calculates the origin and size of the `Bounds` based on the provided corner points.
-    /// The origin is set to the top left corner, and the size is determined by the difference between
-    /// the x and y coordinates of the bottom right and top left points.
+    /// 此函数根据提供的角点计算 `Bounds` 的原点和尺寸。
+    /// 原点设为左上角，尺寸由右下角和左上角的 x、y 坐标差值确定。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `top_left` - A `Point<T>` representing the top left corner of the rectangle.
-    /// * `bottom_right` - A `Point<T>` representing the bottom right corner of the rectangle.
+    /// * `top_left` - 表示矩形左上角的 `Point<T>`。
+    /// * `bottom_right` - 表示矩形右下角的 `Point<T>`。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a `Bounds<T>` that encompasses the area defined by the two corner points.
+    /// 返回包含两个角点定义区域的 `Bounds<T>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point};
@@ -832,8 +822,7 @@ impl<T> Bounds<T>
 where
     T: Sub<Output = T> + Half + Clone + Debug + Default + PartialEq,
 {
-    /// Constructs a `Bounds` from a corner point and size. The specified corner will be placed at
-    /// the specified origin.
+    /// 从角点和尺寸构造 `Bounds`。指定的角将放置在给定的原点处。
     pub fn from_anchor_and_size(corner: Anchor, origin: Point<T>, size: Size<T>) -> Bounds<T> {
         let origin = match corner {
             Anchor::TopLeft => origin,
@@ -875,7 +864,7 @@ impl<T> Bounds<T>
 where
     T: Sub<T, Output = T> + Half + Clone + Debug + Default + PartialEq,
 {
-    /// Creates a new bounds centered at the given point.
+    /// 创建以给定点为中心的新 bounds。
     pub fn centered_at(center: Point<T>, size: Size<T>) -> Self {
         let origin = Point {
             x: center.x - size.width.half(),
@@ -889,7 +878,7 @@ impl<T> Bounds<T>
 where
     T: Add<T, Output = T> + Half + Clone + Debug + Default + PartialEq,
 {
-    /// Returns the top center point of the bounds.
+    /// 返回 bounds 的顶部中心点。
     pub fn top_center(&self) -> Point<T> {
         Point {
             x: self.origin.x.clone() + self.size.width.half(),
@@ -897,7 +886,7 @@ where
         }
     }
 
-    /// Returns the bottom center point of the bounds.
+    /// 返回 bounds 的底部中心点。
     pub fn bottom_center(&self) -> Point<T> {
         Point {
             x: self.origin.x.clone() + self.size.width.half(),
@@ -905,7 +894,7 @@ where
         }
     }
 
-    /// Returns the left center point of the bounds.
+    /// 返回 bounds 的左侧中心点。
     pub fn left_center(&self) -> Point<T> {
         Point {
             x: self.origin.x.clone(),
@@ -913,7 +902,7 @@ where
         }
     }
 
-    /// Returns the right center point of the bounds.
+    /// 返回 bounds 的右侧中心点。
     pub fn right_center(&self) -> Point<T> {
         Point {
             x: self.origin.x.clone() + self.size.width.clone(),
@@ -926,20 +915,20 @@ impl<T> Bounds<T>
 where
     T: PartialOrd + Add<T, Output = T> + Clone + Debug + Default + PartialEq,
 {
-    /// Checks if this `Bounds` intersects with another `Bounds`.
+    /// 检查此 `Bounds` 是否与另一个 `Bounds` 相交。
     ///
-    /// Two `Bounds` instances intersect if they overlap in the 2D space they occupy.
-    /// This method checks if there is any overlapping area between the two bounds.
+    /// 两个 `Bounds` 实例相交是指它们在二维空间中存在重叠区域。
+    /// 此方法检查两个 bounds 之间是否存在任何重叠区域。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `other` - A reference to another `Bounds` to check for intersection with.
+    /// * `other` - 要检查相交的另一个 `Bounds` 的引用。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns `true` if there is any intersection between the two bounds, `false` otherwise.
+    /// 如果两个 bounds 之间存在任何相交则返回 `true`，否则返回 `false`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -956,8 +945,8 @@ where
     ///     size: Size { width: 10, height: 10 },
     /// };
     ///
-    /// assert_eq!(bounds1.intersects(&bounds2), true); // Overlapping bounds
-    /// assert_eq!(bounds1.intersects(&bounds3), false); // Non-overlapping bounds
+    /// assert_eq!(bounds1.intersects(&bounds2), true); // 重叠的 bounds
+    /// assert_eq!(bounds1.intersects(&bounds3), false); // 不重叠的 bounds
     /// ```
     pub fn intersects(&self, other: &Bounds<T>) -> bool {
         let my_lower_right = self.bottom_right();
@@ -974,17 +963,16 @@ impl<T> Bounds<T>
 where
     T: Add<T, Output = T> + Half + Clone + Debug + Default + PartialEq,
 {
-    /// Returns the center point of the bounds.
+    /// 返回 bounds 的中心点。
     ///
-    /// Calculates the center by taking the origin's x and y coordinates and adding half the width and height
-    /// of the bounds, respectively. The center is represented as a `Point<T>` where `T` is the type of the
-    /// coordinate system.
+    /// 通过取原点的 x 和 y 坐标并分别加上 bounds 宽度和高度的一半来计算中心。
+    /// 中心表示为 `Point<T>`，其中 `T` 是坐标系统的类型。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A `Point<T>` representing the center of the bounds.
+    /// 表示 bounds 中心的 `Point<T>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1007,14 +995,13 @@ impl<T> Bounds<T>
 where
     T: Add<T, Output = T> + Clone + Debug + Default + PartialEq,
 {
-    /// Calculates the half perimeter of a rectangle defined by the bounds.
+    /// 计算矩形的半周长。
     ///
-    /// The half perimeter is calculated as the sum of the width and the height of the rectangle.
-    /// This method is generic over the type `T` which must implement the `Sub` trait to allow
-    /// calculation of the width and height from the bounds' origin and size, as well as the `Add` trait
-    /// to sum the width and height for the half perimeter.
+    /// 半周长计算为矩形宽度和高度之和。
+    /// 此方法对类型 `T` 是泛型的，`T` 必须实现 `Sub` trait（用于从 bounds 的原点和尺寸计算宽度和高度）
+    /// 以及 `Add` trait（用于将宽度和高度相加得到半周长）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1034,19 +1021,18 @@ impl<T> Bounds<T>
 where
     T: Add<T, Output = T> + Sub<Output = T> + Clone + Debug + Default + PartialEq,
 {
-    /// Dilates the bounds by a specified amount in all directions.
+    /// 在所有方向上按指定量膨胀 bounds。
     ///
-    /// This method expands the bounds by the given `amount`, increasing the size
-    /// and adjusting the origin so that the bounds grow outwards equally in all directions.
-    /// The resulting bounds will have its width and height increased by twice the `amount`
-    /// (since it grows in both directions), and the origin will be moved by `-amount`
-    /// in both the x and y directions.
+    /// 此方法按给定的 `amount` 扩展 bounds，增大尺寸并调整原点，
+    /// 使 bounds 在所有方向上均匀向外扩展。
+    /// 结果 bounds 的宽度和高度将增加 `amount` 的两倍（因为在两个方向上都扩展），
+    /// 原点将在 x 和 y 方向上各移动 `-amount`。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `amount` - The amount by which to dilate the bounds.
+    /// * `amount` - 膨胀 bounds 的量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1069,7 +1055,7 @@ where
         }
     }
 
-    /// Extends the bounds different amounts in each direction.
+    /// 在每个方向上按不同量扩展 bounds。
     #[must_use]
     pub fn extend(&self, amount: Edges<T>) -> Bounds<T> {
         Bounds {
@@ -1093,9 +1079,9 @@ where
         + Default
         + PartialEq,
 {
-    /// Inset the bounds by a specified amount. Equivalent to `dilate` with the amount negated.
+    /// 按指定量内缩 bounds。等同于 `dilate` 取负值。
     ///
-    /// Note that this may panic if T does not support negative values.
+    /// 注意：如果 `T` 不支持负值，此方法可能会 panic。
     pub fn inset(&self, amount: T) -> Self {
         self.dilate(-amount)
     }
@@ -1104,21 +1090,21 @@ where
 impl<T: PartialOrd + Add<T, Output = T> + Sub<Output = T> + Clone + Debug + Default + PartialEq>
     Bounds<T>
 {
-    /// Calculates the intersection of two `Bounds` objects.
+    /// 计算两个 `Bounds` 对象的交集。
     ///
-    /// This method computes the overlapping region of two `Bounds`. If the bounds do not intersect,
-    /// the resulting `Bounds` will have a size with width and height of zero.
+    /// 此方法计算两个 `Bounds` 的重叠区域。如果 bounds 不相交，
+    /// 结果 `Bounds` 的宽度和高度将为零。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `other` - A reference to another `Bounds` to intersect with.
+    /// * `other` - 要与之相交的另一个 `Bounds` 的引用。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a `Bounds` representing the intersection area. If there is no intersection,
-    /// the returned `Bounds` will have a size with width and height of zero.
+    /// 返回表示相交区域的 `Bounds`。如果没有相交，
+    /// 返回的 `Bounds` 的宽度和高度将为零。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1146,21 +1132,21 @@ impl<T: PartialOrd + Add<T, Output = T> + Sub<Output = T> + Clone + Debug + Defa
         Self::from_corners(upper_left, bottom_right)
     }
 
-    /// Computes the union of two `Bounds`.
+    /// 计算两个 `Bounds` 的并集。
     ///
-    /// This method calculates the smallest `Bounds` that contains both the current `Bounds` and the `other` `Bounds`.
-    /// The resulting `Bounds` will have an origin that is the minimum of the origins of the two `Bounds`,
-    /// and a size that encompasses the furthest extents of both `Bounds`.
+    /// 此方法计算包含当前 `Bounds` 和 `other` `Bounds` 的最小 `Bounds`。
+    /// 结果 `Bounds` 的原点将是两个 `Bounds` 原点的最小值，
+    /// 尺寸将包含两个 `Bounds` 的最远边界。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `other` - A reference to another `Bounds` to create a union with.
+    /// * `other` - 要与之创建并集的另一个 `Bounds` 的引用。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a `Bounds` representing the union of the two `Bounds`.
+    /// 返回表示两个 `Bounds` 并集的 `Bounds`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1190,7 +1176,7 @@ impl<T> Bounds<T>
 where
     T: Add<T, Output = T> + Sub<T, Output = T> + Clone + Debug + Default + PartialEq,
 {
-    /// Computes the space available within outer bounds.
+    /// 计算外部 bounds 内的可用空间。
     pub fn space_within(&self, outer: &Self) -> Edges<T> {
         Edges {
             top: self.top() - outer.top(),
@@ -1285,49 +1271,49 @@ impl<T> Bounds<T>
 where
     T: Add<T, Output = T> + Clone + Debug + Default + PartialEq,
 {
-    /// Returns the top edge of the bounds.
+    /// 返回 bounds 的上边缘。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A value of type `T` representing the y-coordinate of the top edge of the bounds.
+    /// 类型为 `T` 的值，表示 bounds 上边缘的 y 坐标。
     pub fn top(&self) -> T {
         self.origin.y.clone()
     }
 
-    /// Returns the bottom edge of the bounds.
+    /// 返回 bounds 的下边缘。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A value of type `T` representing the y-coordinate of the bottom edge of the bounds.
+    /// 类型为 `T` 的值，表示 bounds 下边缘的 y 坐标。
     pub fn bottom(&self) -> T {
         self.origin.y.clone() + self.size.height.clone()
     }
 
-    /// Returns the left edge of the bounds.
+    /// 返回 bounds 的左边缘。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A value of type `T` representing the x-coordinate of the left edge of the bounds.
+    /// 类型为 `T` 的值，表示 bounds 左边缘的 x 坐标。
     pub fn left(&self) -> T {
         self.origin.x.clone()
     }
 
-    /// Returns the right edge of the bounds.
+    /// 返回 bounds 的右边缘。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A value of type `T` representing the x-coordinate of the right edge of the bounds.
+    /// 类型为 `T` 的值，表示 bounds 右边缘的 x 坐标。
     pub fn right(&self) -> T {
         self.origin.x.clone() + self.size.width.clone()
     }
 
-    /// Returns the top right corner point of the bounds.
+    /// 返回 bounds 的右上角点。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A `Point<T>` representing the top right corner of the bounds.
+    /// 表示 bounds 右上角的 `Point<T>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1345,13 +1331,13 @@ where
         }
     }
 
-    /// Returns the bottom right corner point of the bounds.
+    /// 返回 bounds 的右下角点。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A `Point<T>` representing the bottom right corner of the bounds.
+    /// 表示 bounds 右下角的 `Point<T>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1369,13 +1355,13 @@ where
         }
     }
 
-    /// Returns the bottom left corner point of the bounds.
+    /// 返回 bounds 的左下角点。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A `Point<T>` representing the bottom left corner of the bounds.
+    /// 表示 bounds 左下角的 `Point<T>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1398,13 +1384,13 @@ impl<T> Bounds<T>
 where
     T: Add<T, Output = T> + Half + Clone + Debug + Default + PartialEq,
 {
-    /// Returns the requested corner point of the bounds.
+    /// 返回请求的角点。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A `Point<T>` representing the corner of the bounds requested by the parameter.
+    /// 表示参数请求的 bounds 角点的 `Point<T>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use rgpui::{Bounds, Anchor, Point, Size};
@@ -1433,22 +1419,21 @@ impl<T> Bounds<T>
 where
     T: Add<T, Output = T> + PartialOrd + Clone + Debug + Default + PartialEq,
 {
-    /// Checks if the given point is within the bounds.
+    /// 检查给定的点是否在 bounds 内。
     ///
-    /// This method determines whether a point lies inside the rectangle defined by the bounds,
-    /// including the edges. The point is considered inside if its x-coordinate is greater than
-    /// or equal to the left edge and less than or equal to the right edge, and its y-coordinate
-    /// is greater than or equal to the top edge and less than or equal to the bottom edge of the bounds.
+    /// 此方法判断一个点是否位于 bounds 定义的矩形内（包括边界）。
+    /// 如果点的 x 坐标大于等于左边缘且小于等于右边缘，
+    /// y 坐标大于等于上边缘且小于等于下边缘，则认为该点在内部。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `point` - A reference to a `Point<T>` that represents the point to check.
+    /// * `point` - 要检查的 `Point<T>` 的引用。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns `true` if the point is within the bounds, `false` otherwise.
+    /// 如果点在 bounds 内则返回 `true`，否则返回 `false`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Point, Bounds, Size};
@@ -1469,21 +1454,21 @@ where
             && point.y < self.origin.y.clone() + self.size.height.clone()
     }
 
-    /// Checks if this bounds is completely contained within another bounds.
+    /// 检查此 bounds 是否完全包含在另一个 bounds 内。
     ///
-    /// This method determines whether the current bounds is entirely enclosed by the given bounds.
-    /// A bounds is considered to be contained within another if its origin (top-left corner) and
-    /// its bottom-right corner are both contained within the other bounds.
+    /// 此方法判断当前 bounds 是否完全被给定的 bounds 包围。
+    /// 如果 bounds 的原点（左上角）和右下角都包含在另一个 bounds 内，
+    /// 则认为此 bounds 被包含在另一个 bounds 内。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `other` - A reference to another `Bounds` that might contain this bounds.
+    /// * `other` - 可能包含此 bounds 的另一个 `Bounds` 的引用。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns `true` if this bounds is completely inside the other bounds, `false` otherwise.
+    /// 如果此 bounds 完全在另一个 bounds 内则返回 `true`，否则返回 `false`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1507,21 +1492,20 @@ where
         other.contains(&self.origin) && other.contains(&self.bottom_right())
     }
 
-    /// Applies a function to the origin and size of the bounds, producing a new `Bounds<U>`.
+    /// 对 bounds 的原点和尺寸应用函数，生成新的 `Bounds<U>`。
     ///
-    /// This method allows for converting a `Bounds<T>` to a `Bounds<U>` by specifying a closure
-    /// that defines how to convert between the two types. The closure is applied to the `origin` and
-    /// `size` fields, resulting in new bounds of the desired type.
+    /// 此方法允许通过指定闭包将 `Bounds<T>` 转换为 `Bounds<U>`，闭包定义了两种类型之间的转换方式。
+    /// 闭包应用于 `origin` 和 `size` 字段，生成所需类型的新 bounds。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `f` - A closure that takes a value of type `T` and returns a value of type `U`.
+    /// * `f` - 接受类型 `T` 的值并返回类型 `U` 的值的闭包。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Bounds<U>` with the origin and size mapped by the provided function.
+    /// 返回原点和尺寸通过给定函数映射后的新 `Bounds<U>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1546,9 +1530,9 @@ where
         }
     }
 
-    /// Applies a function to the origin  of the bounds, producing a new `Bounds` with the new origin
+    /// 对 bounds 的原点应用函数，生成具有新原点的新 `Bounds`
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1570,9 +1554,9 @@ where
         }
     }
 
-    /// Applies a function to the origin  of the bounds, producing a new `Bounds` with the new origin
+    /// 对 bounds 的尺寸应用函数，生成具有新尺寸的新 `Bounds`
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size};
@@ -1599,24 +1583,24 @@ impl<T> Bounds<T>
 where
     T: Add<T, Output = T> + Sub<T, Output = T> + PartialOrd + Clone + Debug + Default + PartialEq,
 {
-    /// Convert a point to the coordinate space defined by this Bounds
+    /// 将点转换为此 Bounds 定义的坐标空间
     pub fn localize(&self, point: &Point<T>) -> Option<Point<T>> {
         self.contains(point)
             .then(|| point.relative_to(&self.origin))
     }
 }
 
-/// Checks if the bounds represent an empty area.
+/// 检查 bounds 是否表示空区域。
 ///
-/// # Returns
+/// # 返回值
 ///
-/// Returns `true` if either the width or the height of the bounds is less than or equal to zero, indicating an empty area.
+/// 如果 bounds 的宽度或高度小于或等于零则返回 `true`，表示空区域。
 impl<T: PartialOrd + Clone + Debug + Default + PartialEq> Bounds<T> {
-    /// Checks if the bounds represent an empty area.
+    /// 检查 bounds 是否表示空区域。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns `true` if either the width or the height of the bounds is less than or equal to zero, indicating an empty area.
+    /// 如果 bounds 的宽度或高度小于或等于零则返回 `true`，表示空区域。
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.size.width <= T::default() || self.size.height <= T::default()
@@ -1636,7 +1620,7 @@ impl<T: Clone + Debug + Default + PartialEq + Display + Add<T, Output = T>> Disp
 }
 
 impl Size<DevicePixels> {
-    /// Converts the size from physical to logical pixels.
+    /// 将尺寸从物理像素转换为逻辑像素。
     pub fn to_pixels(self, scale_factor: f32) -> Size<Pixels> {
         size(
             px(self.width.0 as f32 / scale_factor),
@@ -1646,7 +1630,7 @@ impl Size<DevicePixels> {
 }
 
 impl Size<Pixels> {
-    /// Converts the size from logical to physical pixels.
+    /// 将尺寸从逻辑像素转换为物理像素。
     pub fn to_device_pixels(self, scale_factor: f32) -> Size<DevicePixels> {
         size(
             DevicePixels((self.width.0 * scale_factor).round() as i32),
@@ -1656,22 +1640,21 @@ impl Size<Pixels> {
 }
 
 impl Bounds<Pixels> {
-    /// Scales the bounds by a given factor, typically used to adjust for display scaling.
+    /// 按给定因子缩放 bounds，通常用于调整显示缩放。
     ///
-    /// This method multiplies the origin and size of the bounds by the provided scaling factor,
-    /// resulting in a new `Bounds<ScaledPixels>` that is proportionally larger or smaller
-    /// depending on the scaling factor. This can be used to ensure that the bounds are properly
-    /// scaled for different display densities.
+    /// 此方法将 bounds 的原点和尺寸乘以提供的缩放因子，
+    /// 生成一个新的 `Bounds<ScaledPixels>`，根据因子按比例放大或缩小。
+    /// 这可用于确保 bounds 在不同显示密度下正确缩放。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `factor` - The scaling factor to apply to the origin and size, typically the display's scaling factor.
+    /// * `factor` - 应用于原点和尺寸的缩放因子，通常是显示器的缩放因子。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Bounds<ScaledPixels>` that represents the scaled bounds.
+    /// 返回表示缩放后 bounds 的新 `Bounds<ScaledPixels>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Bounds, Point, Size, Pixels, ScaledPixels, DevicePixels};
@@ -1699,7 +1682,7 @@ impl Bounds<Pixels> {
         }
     }
 
-    /// Convert the bounds from logical pixels to physical pixels
+    /// 将 bounds 从逻辑像素转换为物理像素
     pub fn to_device_pixels(self, factor: f32) -> Bounds<DevicePixels> {
         Bounds {
             origin: point(
@@ -1712,7 +1695,7 @@ impl Bounds<Pixels> {
 }
 
 impl Bounds<DevicePixels> {
-    /// Convert the bounds from physical pixels to logical pixels
+    /// 将 bounds 从物理像素转换为逻辑像素
     pub fn to_pixels(self, scale_factor: f32) -> Bounds<Pixels> {
         Bounds {
             origin: point(
@@ -1724,11 +1707,11 @@ impl Bounds<DevicePixels> {
     }
 }
 
-/// Represents the edges of a box in a 2D space, such as padding or margin.
+/// 表示二维空间中盒子的边距，如内边距或外边距。
 ///
-/// Each field represents the size of the edge on one side of the box: `top`, `right`, `bottom`, and `left`.
+/// 每个字段表示盒子一侧的边距大小：`top`、`right`、`bottom` 和 `left`。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// # use rgpui::Edges;
@@ -1748,13 +1731,13 @@ impl Bounds<DevicePixels> {
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(C)]
 pub struct Edges<T: Clone + Debug + Default + PartialEq> {
-    /// The size of the top edge.
+    /// 上边距的大小。
     pub top: T,
-    /// The size of the right edge.
+    /// 右边距的大小。
     pub right: T,
-    /// The size of the bottom edge.
+    /// 下边距的大小。
     pub bottom: T,
-    /// The size of the left edge.
+    /// 左边距的大小。
     pub left: T,
 }
 
@@ -1790,21 +1773,20 @@ where
 impl<T: Clone + Debug + Default + PartialEq + Copy> Copy for Edges<T> {}
 
 impl<T: Clone + Debug + Default + PartialEq> Edges<T> {
-    /// Constructs `Edges` where all sides are set to the same specified value.
+    /// 构造所有边设置为相同值的 `Edges`。
     ///
-    /// This function creates an `Edges` instance with the `top`, `right`, `bottom`, and `left` fields all initialized
-    /// to the same value provided as an argument. This is useful when you want to have uniform edges around a box,
-    /// such as padding or margin with the same size on all sides.
+    /// 此函数创建一个 `Edges` 实例，`top`、`right`、`bottom` 和 `left` 字段都初始化为参数提供的相同值。
+    /// 当需要统一的边距（如所有边大小相同的内边距或外边距）时，这很有用。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `value` - The value to set for all four sides of the edges.
+    /// * `value` - 设置给四个边的值。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// An `Edges` instance with all sides set to the given value.
+    /// 所有边设置为给定值的 `Edges` 实例。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Edges;
@@ -1823,21 +1805,20 @@ impl<T: Clone + Debug + Default + PartialEq> Edges<T> {
         }
     }
 
-    /// Applies a function to each field of the `Edges`, producing a new `Edges<U>`.
+    /// 对 `Edges` 的每个字段应用函数，生成新的 `Edges<U>`。
     ///
-    /// This method allows for converting an `Edges<T>` to an `Edges<U>` by specifying a closure
-    /// that defines how to convert between the two types. The closure is applied to each field
-    /// (`top`, `right`, `bottom`, `left`), resulting in new edges of the desired type.
+    /// 此方法允许通过指定闭包将 `Edges<T>` 转换为 `Edges<U>`，闭包定义了两种类型之间的转换方式。
+    /// 闭包应用于每个字段（`top`、`right`、`bottom`、`left`），生成所需类型的新边距。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `f` - A closure that takes a reference to a value of type `T` and returns a value of type `U`.
+    /// * `f` - 接受类型 `T` 值的引用并返回类型 `U` 的值的闭包。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Edges<U>` with each field mapped by the provided function.
+    /// 返回每个字段通过给定函数映射后的新 `Edges<U>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Edges;
@@ -1857,19 +1838,19 @@ impl<T: Clone + Debug + Default + PartialEq> Edges<T> {
         }
     }
 
-    /// Checks if any of the edges satisfy a given predicate.
+    /// 检查是否有任何边满足给定的谓词。
     ///
-    /// This method applies a predicate function to each field of the `Edges` and returns `true` if any field satisfies the predicate.
+    /// 此方法将谓词函数应用于 `Edges` 的每个字段，如果任何字段满足谓词则返回 `true`。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `predicate` - A closure that takes a reference to a value of type `T` and returns a `bool`.
+    /// * `predicate` - 接受类型 `T` 值的引用并返回 `bool` 的闭包。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns `true` if the predicate returns `true` for any of the edge values, `false` otherwise.
+    /// 如果谓词对任何边值返回 `true` 则返回 `true`，否则返回 `false`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Edges;
@@ -1893,15 +1874,15 @@ impl<T: Clone + Debug + Default + PartialEq> Edges<T> {
 }
 
 impl Edges<Length> {
-    /// Sets the edges of the `Edges` struct to `auto`, which is a special value that allows the layout engine to automatically determine the size of the edges.
+    /// 将 `Edges` 结构体的边设置为 `auto`，这是一种特殊值，允许布局引擎自动确定边的大小。
     ///
-    /// This is typically used in layout contexts where the exact size of the edges is not important, or when the size should be calculated based on the content or container.
+    /// 通常在边的确切大小不重要或大小应根据内容或容器计算的布局上下文中使用。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns an `Edges<Length>` with all edges set to `Length::Auto`.
+    /// 返回所有边设置为 `Length::Auto` 的 `Edges<Length>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Edges, Length};
@@ -1920,16 +1901,16 @@ impl Edges<Length> {
         }
     }
 
-    /// Sets the edges of the `Edges` struct to zero, which means no size or thickness.
+    /// 将 `Edges` 结构体的边设置为零，表示无大小或厚度。
     ///
-    /// This is typically used when you want to specify that a box (like a padding or margin area)
-    /// should have no edges, effectively making it non-existent or invisible in layout calculations.
+    /// 通常用于指定盒子（如内边距或外边距区域）没有边距，
+    /// 使其在布局计算中不存在或不可见。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns an `Edges<Length>` with all edges set to zero length.
+    /// 返回所有边设置为零长度的 `Edges<Length>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{DefiniteLength, Edges, Length, Pixels};
@@ -1950,16 +1931,16 @@ impl Edges<Length> {
 }
 
 impl Edges<DefiniteLength> {
-    /// Sets the edges of the `Edges` struct to zero, which means no size or thickness.
+    /// 将 `Edges` 结构体的边设置为零，表示无大小或厚度。
     ///
-    /// This is typically used when you want to specify that a box (like a padding or margin area)
-    /// should have no edges, effectively making it non-existent or invisible in layout calculations.
+    /// 通常用于指定盒子（如内边距或外边距区域）没有边距，
+    /// 使其在布局计算中不存在或不可见。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns an `Edges<DefiniteLength>` with all edges set to zero length.
+    /// 返回所有边设置为零长度的 `Edges<DefiniteLength>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{px, DefiniteLength, Edges};
@@ -1978,21 +1959,21 @@ impl Edges<DefiniteLength> {
         }
     }
 
-    /// Converts the `DefiniteLength` to `Pixels` based on the parent size and the REM size.
+    /// 根据父元素尺寸和 REM 大小将 `DefiniteLength` 转换为 `Pixels`。
     ///
-    /// This method allows for a `DefiniteLength` value to be converted into pixels, taking into account
-    /// the size of the parent element (for percentage-based lengths) and the size of a rem unit (for rem-based lengths).
+    /// 此方法允许将 `DefiniteLength` 值转换为像素，考虑父元素的大小（对于百分比长度）
+    /// 和 rem 单位的大小（对于 rem 长度）。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `parent_size` - `Size<AbsoluteLength>` representing the size of the parent element.
-    /// * `rem_size` - `Pixels` representing the size of one REM unit.
+    /// * `parent_size` - 表示父元素尺寸的 `Size<AbsoluteLength>`。
+    /// * `rem_size` - 表示一个 REM 单位大小的 `Pixels`。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns an `Edges<Pixels>` representing the edges with lengths converted to pixels.
+    /// 返回长度转换为像素的 `Edges<Pixels>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Edges, DefiniteLength, px, AbsoluteLength, rems, Size};
@@ -2009,10 +1990,10 @@ impl Edges<DefiniteLength> {
     /// let rem_size = px(16.0);
     /// let edges_in_pixels = edges.to_pixels(parent_size, rem_size);
     ///
-    /// assert_eq!(edges_in_pixels.top, px(10.0)); // Absolute length in pixels
-    /// assert_eq!(edges_in_pixels.right, px(100.0)); // 50% of parent width
+    /// assert_eq!(edges_in_pixels.top, px(10.0)); // 绝对长度（像素）
+    /// assert_eq!(edges_in_pixels.right, px(100.0)); // 父宽度的 50%
     /// assert_eq!(edges_in_pixels.bottom, px(32.0)); // 2 rems
-    /// assert_eq!(edges_in_pixels.left, px(50.0)); // 25% of parent width
+    /// assert_eq!(edges_in_pixels.left, px(50.0)); // 父宽度的 25%
     /// ```
     pub fn to_pixels(self, parent_size: Size<AbsoluteLength>, rem_size: Pixels) -> Edges<Pixels> {
         Edges {
@@ -2025,16 +2006,16 @@ impl Edges<DefiniteLength> {
 }
 
 impl Edges<AbsoluteLength> {
-    /// Sets the edges of the `Edges` struct to zero, which means no size or thickness.
+    /// 将 `Edges` 结构体的边设置为零，表示无大小或厚度。
     ///
-    /// This is typically used when you want to specify that a box (like a padding or margin area)
-    /// should have no edges, effectively making it non-existent or invisible in layout calculations.
+    /// 通常用于指定盒子（如内边距或外边距区域）没有边距，
+    /// 使其在布局计算中不存在或不可见。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns an `Edges<AbsoluteLength>` with all edges set to zero length.
+    /// 返回所有边设置为零长度的 `Edges<AbsoluteLength>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{AbsoluteLength, Edges, Pixels};
@@ -2053,20 +2034,20 @@ impl Edges<AbsoluteLength> {
         }
     }
 
-    /// Converts the `AbsoluteLength` to `Pixels` based on the `rem_size`.
+    /// 根据 `rem_size` 将 `AbsoluteLength` 转换为 `Pixels`。
     ///
-    /// If the `AbsoluteLength` is already in pixels, it simply returns the corresponding `Pixels` value.
-    /// If the `AbsoluteLength` is in rems, it multiplies the number of rems by the `rem_size` to convert it to pixels.
+    /// 如果 `AbsoluteLength` 已经是像素单位，则直接返回对应的 `Pixels` 值。
+    /// 如果 `AbsoluteLength` 是 rem 单位，则将 rem 数乘以 `rem_size` 转换为像素。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `rem_size` - The size of one rem unit in pixels.
+    /// * `rem_size` - 一个 rem 单位的像素大小。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns an `Edges<Pixels>` representing the edges with lengths converted to pixels.
+    /// 返回长度转换为像素的 `Edges<Pixels>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Edges, AbsoluteLength, Pixels, px, rems};
@@ -2079,10 +2060,10 @@ impl Edges<AbsoluteLength> {
     /// let rem_size = px(16.0);
     /// let edges_in_pixels = edges.to_pixels(rem_size);
     ///
-    /// assert_eq!(edges_in_pixels.top, px(10.0)); // Already in pixels
-    /// assert_eq!(edges_in_pixels.right, px(16.0)); // 1 rem converted to pixels
-    /// assert_eq!(edges_in_pixels.bottom, px(20.0)); // Already in pixels
-    /// assert_eq!(edges_in_pixels.left, px(32.0)); // 2 rems converted to pixels
+    /// assert_eq!(edges_in_pixels.top, px(10.0)); // 已经是像素
+    /// assert_eq!(edges_in_pixels.right, px(16.0)); // 1 rem 转换为像素
+    /// assert_eq!(edges_in_pixels.bottom, px(20.0)); // 已经是像素
+    /// assert_eq!(edges_in_pixels.left, px(32.0)); // 2 rems 转换为像素
     /// ```
     pub fn to_pixels(self, rem_size: Pixels) -> Edges<Pixels> {
         Edges {
@@ -2095,19 +2076,19 @@ impl Edges<AbsoluteLength> {
 }
 
 impl Edges<Pixels> {
-    /// Scales the `Edges<Pixels>` by a given factor, returning `Edges<ScaledPixels>`.
+    /// 按给定因子缩放 `Edges<Pixels>`，返回 `Edges<ScaledPixels>`。
     ///
-    /// This method is typically used for adjusting the edge sizes for different display densities or scaling factors.
+    /// 此方法通常用于调整不同显示密度或缩放因子下的边距大小。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `factor` - The scaling factor to apply to each edge.
+    /// * `factor` - 应用于每条边的缩放因子。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Edges<ScaledPixels>` where each edge is the result of scaling the original edge by the given factor.
+    /// 返回新的 `Edges<ScaledPixels>`，其中每条边是原始边乘以给定因子的结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Edges, Pixels, ScaledPixels};
@@ -2132,11 +2113,11 @@ impl Edges<Pixels> {
         }
     }
 
-    /// Returns the maximum value of any edge.
+    /// 返回任意边的最大值。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// The maximum `Pixels` value among all four edges.
+    /// 四条边中最大的 `Pixels` 值。
     pub fn max(&self) -> Pixels {
         self.top.max(self.right).max(self.bottom).max(self.left)
     }
@@ -2160,31 +2141,31 @@ impl From<Pixels> for Edges<Pixels> {
     }
 }
 
-/// Identifies a reference point on a 2D box, used to anchor positioned elements.
+/// 标识二维盒子上的参考点，用于锚定定位元素。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Anchor {
-    /// The top left corner
+    /// 左上角
     TopLeft,
-    /// The top right corner
+    /// 右上角
     TopRight,
-    /// The bottom left corner
+    /// 左下角
     BottomLeft,
-    /// The bottom right corner
+    /// 右下角
     BottomRight,
-    /// The top center position
+    /// 顶部中心位置
     TopCenter,
-    /// The bottom center position
+    /// 底部中心位置
     BottomCenter,
-    /// The left center position
+    /// 左侧中心位置
     LeftCenter,
-    /// The right center position
+    /// 右侧中心位置
     RightCenter,
 }
 
 impl Anchor {
-    /// Returns the directly opposite corner.
+    /// 返回完全相反的角。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Anchor;
@@ -2204,9 +2185,9 @@ impl Anchor {
         }
     }
 
-    /// Returns the corner across from this corner, moving along the specified axis.
+    /// 返回沿给定轴对面的角。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Axis, Anchor};
@@ -2239,7 +2220,7 @@ impl Anchor {
         }
     }
 
-    /// Returns true if at the center.
+    /// 如果在中心位置则返回 true。
     #[inline]
     pub fn is_center(&self) -> bool {
         matches!(
@@ -2249,20 +2230,20 @@ impl Anchor {
     }
 }
 
-/// Represents the corners of a box in a 2D space, such as border radius.
+/// 表示二维空间中盒子的圆角，如边框圆角。
 ///
-/// Each field represents the size of the corner on one side of the box: `top_left`, `top_right`, `bottom_right`, and `bottom_left`.
+/// 每个字段表示盒子一侧圆角的大小：`top_left`、`top_right`、`bottom_right` 和 `bottom_left`。
 #[derive(Refineable, Clone, Default, Debug, Eq, PartialEq)]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(C)]
 pub struct Corners<T: Clone + Debug + Default + PartialEq> {
-    /// The value associated with the top left corner.
+    /// 与左上角关联的值。
     pub top_left: T,
-    /// The value associated with the top right corner.
+    /// 与右上角关联的值。
     pub top_right: T,
-    /// The value associated with the bottom right corner.
+    /// 与右下角关联的值。
     pub bottom_right: T,
-    /// The value associated with the bottom left corner.
+    /// 与左下角关联的值。
     pub bottom_left: T,
 }
 
@@ -2270,21 +2251,20 @@ impl<T> Corners<T>
 where
     T: Add<T, Output = T> + Half + Clone + Debug + Default + PartialEq,
 {
-    /// Constructs `Corners` where all sides are set to the same specified value.
+    /// 构造所有角设置为相同值的 `Corners`。
     ///
-    /// This function creates a `Corners` instance with the `top_left`, `top_right`, `bottom_right`, and `bottom_left` fields all initialized
-    /// to the same value provided as an argument. This is useful when you want to have uniform corners around a box,
-    /// such as a uniform border radius on a rectangle.
+    /// 此函数创建一个 `Corners` 实例，`top_left`、`top_right`、`bottom_right` 和 `bottom_left` 字段
+    /// 都初始化为参数提供的相同值。当需要统一的圆角（如矩形上统一的边框圆角）时，这很有用。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `value` - The value to set for all four corners.
+    /// * `value` - 设置给四个角的值。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// An `Corners` instance with all corners set to the given value.
+    /// 所有角设置为给定值的 `Corners` 实例。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::Corners;
@@ -2303,21 +2283,21 @@ where
         }
     }
 
-    /// Returns the requested corner value, supporting all eight corner positions.
+    /// 返回请求的角值，支持所有八个角位置。
     ///
-    /// For the four basic corners (TopLeft, TopRight, BottomLeft, BottomRight),
-    /// this returns the corresponding field value directly.
+    /// 对于四个基本角（TopLeft、TopRight、BottomLeft、BottomRight），
+    /// 直接返回对应的字段值。
     ///
-    /// For the center positions (TopCenter, BottomCenter, LeftCenter, RightCenter),
-    /// this calculates the average of the two adjacent corners.
+    /// 对于中心位置（TopCenter、BottomCenter、LeftCenter、RightCenter），
+    /// 计算两个相邻角的平均值。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A value of type `T` representing the corner requested by the parameter.
+    /// 表示参数请求的角的类型 `T` 的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic corner positions:
+    /// 基本角位置：
     ///
     /// ```
     /// # use rgpui::{Anchor, Corners};
@@ -2331,7 +2311,7 @@ where
     /// assert_eq!(corners.corner(Anchor::BottomRight), 40);
     /// ```
     ///
-    /// Center positions (calculated as average of adjacent corners):
+    /// 中心位置（计算为相邻角的平均值）：
     ///
     /// ```
     /// # use rgpui::{Anchor, Corners};
@@ -2362,17 +2342,17 @@ where
 }
 
 impl Corners<AbsoluteLength> {
-    /// Converts the `AbsoluteLength` to `Pixels` based on the provided rem size.
+    /// 根据提供的 rem 大小将 `AbsoluteLength` 转换为 `Pixels`。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `rem_size` - The size of one REM unit in pixels, used for conversion if the `AbsoluteLength` is in REMs.
+    /// * `rem_size` - 一个 REM 单位的像素大小，用于当 `AbsoluteLength` 为 REM 单位时的转换。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a `Corners<Pixels>` instance with each corner's length converted to pixels.
+    /// 返回每个角的长度转换为像素的 `Corners<Pixels>` 实例。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Corners, AbsoluteLength, Pixels, Rems, Size};
@@ -2386,9 +2366,9 @@ impl Corners<AbsoluteLength> {
     /// let corners_in_pixels = corners.to_pixels(rem_size);
     ///
     /// assert_eq!(corners_in_pixels.top_left, Pixels::from(15.0));
-    /// assert_eq!(corners_in_pixels.top_right, Pixels::from(16.0)); // 1 rem converted to pixels
+    /// assert_eq!(corners_in_pixels.top_right, Pixels::from(16.0)); // 1 rem 转换为像素
     /// assert_eq!(corners_in_pixels.bottom_right, Pixels::from(30.0));
-    /// assert_eq!(corners_in_pixels.bottom_left, Pixels::from(32.0)); // 2 rems converted to pixels
+    /// assert_eq!(corners_in_pixels.bottom_left, Pixels::from(32.0)); // 2 rems 转换为像素
     /// ```
     pub fn to_pixels(self, rem_size: Pixels) -> Corners<Pixels> {
         Corners {
@@ -2401,19 +2381,19 @@ impl Corners<AbsoluteLength> {
 }
 
 impl Corners<Pixels> {
-    /// Scales the `Corners<Pixels>` by a given factor, returning `Corners<ScaledPixels>`.
+    /// 按给定因子缩放 `Corners<Pixels>`，返回 `Corners<ScaledPixels>`。
     ///
-    /// This method is typically used for adjusting the corner sizes for different display densities or scaling factors.
+    /// 此方法通常用于调整不同显示密度或缩放因子下的圆角大小。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `factor` - The scaling factor to apply to each corner.
+    /// * `factor` - 应用于每个角的缩放因子。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Corners<ScaledPixels>` where each corner is the result of scaling the original corner by the given factor.
+    /// 返回新的 `Corners<ScaledPixels>`，其中每个角是原始角乘以给定因子的结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Corners, Pixels, ScaledPixels};
@@ -2439,11 +2419,11 @@ impl Corners<Pixels> {
         }
     }
 
-    /// Returns the maximum value of any corner.
+    /// 返回任意角的最大值。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// The maximum `Pixels` value among all four corners.
+    /// 四个角中最大的 `Pixels` 值。
     #[must_use]
     pub fn max(&self) -> Pixels {
         self.top_left
@@ -2454,15 +2434,15 @@ impl Corners<Pixels> {
 }
 
 impl<T: Div<f32, Output = T> + Ord + Clone + Debug + Default + PartialEq> Corners<T> {
-    /// Clamps corner radii to be less than or equal to half the shortest side of a quad.
+    /// 将圆角半径限制为不超过四边形最短边的一半。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `size` - The size of the quad which limits the size of the corner radii.
+    /// * `size` - 限制圆角半径大小的四边形尺寸。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Anchor radii values clamped to fit.
+    /// 限制后适合的圆角半径值。
     #[must_use]
     pub fn clamp_radii_for_quad_size(self, size: Size<T>) -> Corners<T> {
         let max = cmp::min(size.width, size.height) / 2.;
@@ -2476,21 +2456,20 @@ impl<T: Div<f32, Output = T> + Ord + Clone + Debug + Default + PartialEq> Corner
 }
 
 impl<T: Clone + Debug + Default + PartialEq> Corners<T> {
-    /// Applies a function to each field of the `Corners`, producing a new `Corners<U>`.
+    /// 对 `Corners` 的每个字段应用函数，生成新的 `Corners<U>`。
     ///
-    /// This method allows for converting a `Corners<T>` to a `Corners<U>` by specifying a closure
-    /// that defines how to convert between the two types. The closure is applied to each field
-    /// (`top_left`, `top_right`, `bottom_right`, `bottom_left`), resulting in new corners of the desired type.
+    /// 此方法允许通过指定闭包将 `Corners<T>` 转换为 `Corners<U>`，闭包定义了两种类型之间的转换方式。
+    /// 闭包应用于每个字段（`top_left`、`top_right`、`bottom_right`、`bottom_left`），生成所需类型的新圆角。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `f` - A closure that takes a reference to a value of type `T` and returns a value of type `U`.
+    /// * `f` - 接受类型 `T` 值的引用并返回类型 `U` 的值的闭包。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Corners<U>` with each field mapped by the provided function.
+    /// 返回每个字段通过给定函数映射后的新 `Corners<U>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{Corners, Pixels, Rems};
@@ -2575,7 +2554,7 @@ impl From<Pixels> for Corners<Pixels> {
     }
 }
 
-/// Represents an angle in Radians
+/// 表示弧度角。
 #[derive(
     Clone,
     Copy,
@@ -2595,12 +2574,12 @@ impl From<Pixels> for Corners<Pixels> {
 #[repr(transparent)]
 pub struct Radians(pub f32);
 
-/// Create a `Radian` from a raw value
+/// 从原始值创建一个 `Radians`。
 pub fn radians(value: f32) -> Radians {
     Radians(value)
 }
 
-/// A type representing a percentage value.
+/// 表示百分比值的类型。
 #[derive(
     Clone,
     Copy,
@@ -2620,7 +2599,7 @@ pub fn radians(value: f32) -> Radians {
 #[repr(transparent)]
 pub struct Percentage(pub f32);
 
-/// Generate a `Radian` from a percentage of a full circle.
+/// 从完整圆的百分比生成一个 `Radians`。
 pub fn percentage(value: f32) -> Percentage {
     debug_assert!(
         (0.0..=1.0).contains(&value),
@@ -2635,25 +2614,23 @@ impl From<Percentage> for Radians {
     }
 }
 
-/// Represents a length in pixels, the base unit of measurement in the UI framework.
+/// 表示以像素为单位的长度，UI 框架中的基本度量单位。
 ///
-/// `Pixels` is a value type that represents an absolute length in pixels, which is used
-/// for specifying sizes, positions, and distances in the UI. It is the fundamental unit
-/// of measurement for all visual elements and layout calculations.
+/// `Pixels` 是一个表示绝对像素长度的值类型，用于指定 UI 中的尺寸、位置和距离。
+/// 它是所有视觉元素和布局计算的基本度量单位。
 ///
-/// The inner value is an `f32`, allowing for sub-pixel precision which can be useful for
-/// anti-aliasing and animations. However, when applied to actual pixel grids, the value
-/// is typically rounded to the nearest integer.
+/// 内部值为 `f32`，允许亚像素精度，这在抗锯齿和动画中很有用。
+/// 但当应用于实际像素网格时，该值通常会四舍五入到最近的整数。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use rgpui::{Pixels, ScaledPixels};
 ///
-/// // Define a length of 10 pixels
+/// // 定义 10 像素的长度
 /// let length = Pixels::from(10.0);
 ///
-/// // Define a length and scale it by a factor of 2
+/// // 定义长度并按 2 倍因子缩放
 /// let scaled_length = length.scale(2.0);
 /// assert_eq!(scaled_length, ScaledPixels::from(20.0));
 /// ```
@@ -2779,96 +2756,94 @@ impl TryFrom<&'_ str> for Pixels {
 }
 
 impl Pixels {
-    /// Represents zero pixels.
+    /// 表示零像素。
     pub const ZERO: Pixels = Pixels(0.0);
-    /// The maximum value that can be represented by `Pixels`.
+    /// `Pixels` 能表示的最大值。
     pub const MAX: Pixels = Pixels(f32::MAX);
-    /// The minimum value that can be represented by `Pixels`.
+    /// `Pixels` 能表示的最小值。
     pub const MIN: Pixels = Pixels(f32::MIN);
 
-    /// Returns the raw `f32` value of this `Pixels`.
+    /// 返回此 `Pixels` 的原始 `f32` 值。
     pub fn as_f32(self) -> f32 {
         self.0
     }
 
-    /// Floors the `Pixels` value to the nearest whole number.
+    /// 将 `Pixels` 值向下取整到最近的整数。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Pixels` instance with the floored value.
+    /// 返回向下取整后的新 `Pixels` 实例。
     pub fn floor(&self) -> Self {
         Self(self.0.floor())
     }
 
-    /// Rounds the `Pixels` value to the nearest whole number.
+    /// 将 `Pixels` 值四舍五入到最近的整数。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Pixels` instance with the rounded value.
+    /// 返回四舍五入后的新 `Pixels` 实例。
     pub fn round(&self) -> Self {
         Self(self.0.round())
     }
 
-    /// Returns the ceiling of the `Pixels` value to the nearest whole number.
+    /// 将 `Pixels` 值向上取整到最近的整数。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Pixels` instance with the ceiling value.
+    /// 返回向上取整后的新 `Pixels` 实例。
     pub fn ceil(&self) -> Self {
         Self(self.0.ceil())
     }
 
-    /// Scales the `Pixels` value by a given factor, producing `ScaledPixels`.
+    /// 按给定因子缩放 `Pixels` 值，生成 `ScaledPixels`。
     ///
-    /// This method is used when adjusting pixel values for display scaling factors,
-    /// such as high DPI (dots per inch) or Retina displays, where the pixel density is higher and
-    /// thus requires scaling to maintain visual consistency and readability.
+    /// 此方法用于在显示缩放因子（如高 DPI 或 Retina 显示器）下调整像素值，
+    /// 这些显示器的像素密度更高，因此需要缩放以保持视觉一致性和可读性。
     ///
-    /// The resulting `ScaledPixels` represent the scaled value which can be used for rendering
-    /// calculations where display scaling is considered.
+    /// 结果 `ScaledPixels` 表示缩放后的值，可用于考虑显示缩放的渲染计算。
     #[must_use]
     pub fn scale(&self, factor: f32) -> ScaledPixels {
         ScaledPixels(self.0 * factor)
     }
 
-    /// Raises the `Pixels` value to a given power.
+    /// 将 `Pixels` 值提升到给定幂次。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `exponent` - The exponent to raise the `Pixels` value by.
+    /// * `exponent` - 用于提升 `Pixels` 值的指数。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `Pixels` instance with the value raised to the given exponent.
+    /// 返回提升到给定指数后的新 `Pixels` 实例。
     pub fn pow(&self, exponent: f32) -> Self {
         Self(self.0.powf(exponent))
     }
 
-    /// Returns the absolute value of the `Pixels`.
+    /// 返回 `Pixels` 的绝对值。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A new `Pixels` instance with the absolute value of the original `Pixels`.
+    /// 返回原始 `Pixels` 绝对值的新实例。
     pub fn abs(&self) -> Self {
         Self(self.0.abs())
     }
 
-    /// Returns the sign of the `Pixels` value.
+    /// 返回 `Pixels` 值的符号。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns:
-    /// * `1.0` if the value is positive
-    /// * `-1.0` if the value is negative
+    /// 返回：
+    /// * `1.0` 如果值为正
+    /// * `-1.0` 如果值为负
     pub fn signum(&self) -> f32 {
         self.0.signum()
     }
 
-    /// Returns the f64 value of `Pixels`.
+    /// 返回 `Pixels` 的 f64 值。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A f64 value of the `Pixels`.
+    /// `Pixels` 的 f64 值。
     pub fn to_f64(self) -> f64 {
         self.0 as f64
     }
@@ -2954,13 +2929,11 @@ impl From<usize> for Pixels {
     }
 }
 
-/// Represents physical pixels on the display.
+/// 表示显示设备上的物理像素。
 ///
-/// `DevicePixels` is a unit of measurement that refers to the actual pixels on a device's screen.
-/// This type is used when precise pixel manipulation is required, such as rendering graphics or
-/// interfacing with hardware that operates on the pixel level. Unlike logical pixels that may be
-/// affected by the device's scale factor, `DevicePixels` always correspond to real pixels on the
-/// display.
+/// `DevicePixels` 是一个度量单位，指设备屏幕上的实际像素。
+/// 此类型用于需要精确像素操作的场景，如渲染图形或与在像素级别操作的硬件交互。
+/// 与可能受设备缩放因子影响的逻辑像素不同，`DevicePixels` 始终对应显示设备上的真实像素。
 #[derive(
     Add,
     AddAssign,
@@ -2982,27 +2955,27 @@ impl From<usize> for Pixels {
 pub struct DevicePixels(pub i32);
 
 impl DevicePixels {
-    /// Converts the `DevicePixels` value to the number of bytes needed to represent it in memory.
+    /// 将 `DevicePixels` 值转换为内存中表示所需的字节数。
     ///
-    /// This function is useful when working with graphical data that needs to be stored in a buffer,
-    /// such as images or framebuffers, where each pixel may be represented by a specific number of bytes.
+    /// 此函数在处理需要存储在缓冲区中的图形数据时很有用，
+    /// 如图像或帧缓冲区，其中每个像素可能由特定字节数表示。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `bytes_per_pixel` - The number of bytes used to represent a single pixel.
+    /// * `bytes_per_pixel` - 表示单个像素所用的字节数。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// The number of bytes required to represent the `DevicePixels` value in memory.
+    /// 内存中表示 `DevicePixels` 值所需的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::DevicePixels;
-    /// let pixels = DevicePixels(10); // 10 device pixels
-    /// let bytes_per_pixel = 4; // Assume each pixel is represented by 4 bytes (e.g., RGBA)
+    /// let pixels = DevicePixels(10); // 10 个设备像素
+    /// let bytes_per_pixel = 4; // 假设每个像素由 4 字节表示（如 RGBA）
     /// let total_bytes = pixels.to_bytes(bytes_per_pixel);
-    /// assert_eq!(total_bytes, 40); // 10 pixels * 4 bytes/pixel = 40 bytes
+    /// assert_eq!(total_bytes, 40); // 10 像素 * 4 字节/像素 = 40 字节
     /// ```
     pub fn to_bytes(self, bytes_per_pixel: u8) -> u32 {
         self.0 as u32 * bytes_per_pixel as u32
@@ -3063,46 +3036,45 @@ impl From<usize> for DevicePixels {
     }
 }
 
-/// Represents scaled pixels that take into account the device's scale factor.
+/// 表示考虑设备缩放因子的缩放像素。
 ///
-/// `ScaledPixels` are used to ensure that UI elements appear at the correct size on devices
-/// with different pixel densities. When a device has a higher scale factor (such as Retina displays),
-/// a single logical pixel may correspond to multiple physical pixels. By using `ScaledPixels`,
-/// dimensions and positions can be specified in a way that scales appropriately across different
-/// display resolutions.
+/// `ScaledPixels` 用于确保 UI 元素在不同像素密度的设备上显示正确的大小。
+/// 当设备具有更高的缩放因子（如 Retina 显示器）时，单个逻辑像素可能对应多个物理像素。
+/// 通过使用 `ScaledPixels`，可以以适当缩放的方式指定尺寸和位置，
+/// 从而在不同显示分辨率下正确缩放。
 #[derive(Clone, Copy, Default, Add, AddAssign, Sub, SubAssign, Div, DivAssign, PartialEq)]
 #[repr(transparent)]
 pub struct ScaledPixels(pub f32);
 
 impl ScaledPixels {
-    /// Returns the raw `f32` value of this `ScaledPixels`.
+    /// 返回此 `ScaledPixels` 的原始 `f32` 值。
     pub fn as_f32(self) -> f32 {
         self.0
     }
 
-    /// Floors the `ScaledPixels` value to the nearest whole number.
+    /// 将 `ScaledPixels` 值向下取整到最近的整数。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `ScaledPixels` instance with the floored value.
+    /// 返回向下取整后的新 `ScaledPixels` 实例。
     pub fn floor(&self) -> Self {
         Self(self.0.floor())
     }
 
-    /// Rounds the `ScaledPixels` value to the nearest whole number.
+    /// 将 `ScaledPixels` 值四舍五入到最近的整数。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `ScaledPixels` instance with the rounded value.
+    /// 返回四舍五入后的新 `ScaledPixels` 实例。
     pub fn round(&self) -> Self {
         Self(self.0.round())
     }
 
-    /// Ceils the `ScaledPixels` value to the nearest whole number.
+    /// 将 `ScaledPixels` 值向上取整到最近的整数。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns a new `ScaledPixels` instance with the ceiled value.
+    /// 返回向上取整后的新 `ScaledPixels` 实例。
     pub fn ceil(&self) -> Self {
         Self(self.0.ceil())
     }
@@ -3224,27 +3196,27 @@ impl MulAssign<f32> for ScaledPixels {
     }
 }
 
-/// Represents a length in rems, a unit based on the font-size of the window, which can be assigned with [`Window::set_rem_size`][set_rem_size].
+/// 表示以 rem 为单位的长度，一种基于窗口字体大小的单位，可通过 [`Window::set_rem_size`][set_rem_size] 设置。
 ///
-/// Rems are used for defining lengths that are scalable and consistent across different UI elements.
-/// The value of `1rem` is typically equal to the font-size of the root element (often the `<html>` element in browsers),
-/// making it a flexible unit that adapts to the user's text size preferences. In this framework, `rems` serve a similar
-/// purpose, allowing for scalable and accessible design that can adjust to different display settings or user preferences.
+/// Rems 用于定义可缩放且在不同 UI 元素间保持一致的长度。
+/// `1rem` 的值通常等于根元素的字体大小（通常是浏览器中的 `<html>` 元素），
+/// 使其成为适应用户文本大小偏好的灵活单位。在此框架中，`rems` 具有类似用途，
+/// 允许可缩放和可访问的设计，可适应不同的显示设置或用户偏好。
 ///
-/// For example, if the root element's font-size is `16px`, then `1rem` equals `16px`. A length of `2rems` would then be `32px`.
+/// 例如，如果根元素的字体大小为 `16px`，则 `1rem` 等于 `16px`。`2rems` 的长度则为 `32px`。
 ///
 /// [set_rem_size]: crate::Window::set_rem_size
 #[derive(Clone, Copy, Default, Add, Sub, Mul, Div, Neg, PartialEq)]
 pub struct Rems(pub f32);
 
 impl Rems {
-    /// A length of zero.
+    /// 零长度。
     pub const ZERO: Self = Self(0.0);
-    /// Convert this Rem value to pixels.
+    /// 将此 Rem 值转换为像素。
     pub fn to_pixels(self, rem_size: Pixels) -> Pixels {
         self * rem_size
     }
-    /// Convert from pixels to Rem
+    /// 从像素转换为 Rem
     pub fn from_pixels(length: Pixels, window: &rgpui::Window) -> Self {
         Self(length / window.rem_size())
     }
@@ -3288,22 +3260,20 @@ impl TryFrom<&'_ str> for Rems {
     }
 }
 
-/// Represents an absolute length in pixels or rems.
+/// 表示以像素或 rem 为单位的绝对长度。
 ///
-/// `AbsoluteLength` can be either a fixed number of pixels, which is an absolute measurement not
-/// affected by the current font size, or a number of rems, which is relative to the font size of
-/// the root element. It is used for specifying dimensions that are either independent of or
-/// related to the typographic scale.
+/// `AbsoluteLength` 可以是固定像素数（不受当前字体大小影响的绝对度量），
+/// 或 rem 数（相对于根元素的字体大小）。用于指定独立于或与排版比例相关的尺寸。
 #[derive(Clone, Copy, Neg, PartialEq)]
 pub enum AbsoluteLength {
-    /// A length in pixels.
+    /// 以像素为单位的长度。
     Pixels(Pixels),
-    /// A length in rems.
+    /// 以 rem 为单位的长度。
     Rems(Rems),
 }
 
 impl AbsoluteLength {
-    /// Checks if the absolute length is zero.
+    /// 检查绝对长度是否为零。
     pub fn is_zero(&self) -> bool {
         match self {
             AbsoluteLength::Pixels(px) => px.0 == 0.0,
@@ -3325,17 +3295,17 @@ impl From<Rems> for AbsoluteLength {
 }
 
 impl AbsoluteLength {
-    /// Converts an `AbsoluteLength` to `Pixels` based on a given `rem_size`.
+    /// 根据给定的 `rem_size` 将 `AbsoluteLength` 转换为 `Pixels`。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `rem_size` - The size of one rem in pixels.
+    /// * `rem_size` - 一个 rem 的像素大小。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns the `AbsoluteLength` as `Pixels`.
+    /// 返回 `AbsoluteLength` 转换为 `Pixels` 的结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{AbsoluteLength, Pixels, Rems};
@@ -3353,15 +3323,15 @@ impl AbsoluteLength {
         }
     }
 
-    /// Converts an `AbsoluteLength` to `Rems` based on a given `rem_size`.
+    /// 根据给定的 `rem_size` 将 `AbsoluteLength` 转换为 `Rems`。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `rem_size` - The size of one rem in pixels.
+    /// * `rem_size` - 一个 rem 的像素大小。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns the `AbsoluteLength` as `Pixels`.
+    /// 返回 `AbsoluteLength` 转换为 `Rems` 的结果。
     pub fn to_rems(self, rem_size: Pixels) -> Rems {
         match self {
             AbsoluteLength::Pixels(pixels) => Rems(pixels.0 / rem_size.0),
@@ -3451,35 +3421,34 @@ impl Serialize for AbsoluteLength {
     }
 }
 
-/// A non-auto length that can be defined in pixels, rems, or percent of parent.
+/// 非自动长度，可用像素、rem 或父元素百分比定义。
 ///
-/// This enum represents lengths that have a specific value, as opposed to lengths that are automatically
-/// determined by the context. It includes absolute lengths in pixels or rems, and relative lengths as a
-/// fraction of the parent's size.
+/// 此枚举表示具有特定值的长度，与由上下文自动确定的长度相对。
+/// 它包括以像素或 rem 为单位的绝对长度，以及作为父元素尺寸比例的相对长度。
 #[derive(Clone, Copy, Neg, PartialEq)]
 pub enum DefiniteLength {
-    /// An absolute length specified in pixels or rems.
+    /// 以像素或 rem 为单位的绝对长度。
     Absolute(AbsoluteLength),
-    /// A relative length specified as a fraction of the parent's size, between 0 and 1.
+    /// 以父元素尺寸比例表示的相对长度，介于 0 和 1 之间。
     Fraction(f32),
 }
 
 impl DefiniteLength {
-    /// Converts the `DefiniteLength` to `Pixels` based on a given `base_size` and `rem_size`.
+    /// 根据给定的 `base_size` 和 `rem_size` 将 `DefiniteLength` 转换为 `Pixels`。
     ///
-    /// If the `DefiniteLength` is an absolute length, it will be directly converted to `Pixels`.
-    /// If it is a fraction, the fraction will be multiplied by the `base_size` to get the length in pixels.
+    /// 如果 `DefiniteLength` 是绝对长度，将直接转换为 `Pixels`。
+    /// 如果是比例值，将乘以 `base_size` 以获取像素长度。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * `base_size` - The base size in `AbsoluteLength` to which the fraction will be applied.
-    /// * `rem_size` - The size of one rem in pixels, used to convert rems to pixels.
+    /// * `base_size` - 应用比例的基准 `AbsoluteLength` 尺寸。
+    /// * `rem_size` - 一个 rem 的像素大小，用于将 rem 转换为像素。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns the `DefiniteLength` as `Pixels`.
+    /// 返回 `DefiniteLength` 转换为 `Pixels` 的结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use rgpui::{DefiniteLength, AbsoluteLength, Pixels, px, rems};
@@ -3606,12 +3575,12 @@ impl Default for DefiniteLength {
     }
 }
 
-/// A length that can be defined in pixels, rems, percent of parent, or auto.
+/// 可用像素、rem、父元素百分比或 auto 定义的长度。
 #[derive(Clone, Copy, PartialEq)]
 pub enum Length {
-    /// A definite length specified either in pixels, rems, or as a fraction of the parent's size.
+    /// 以像素、rem 或父元素尺寸比例指定的确定长度。
     Definite(DefiniteLength),
-    /// An automatic length that is determined by the context in which it is used.
+    /// 由使用上下文自动确定的自动长度。
     Auto,
 }
 
@@ -3690,64 +3659,62 @@ impl Serialize for Length {
     }
 }
 
-/// Constructs a `DefiniteLength` representing a relative fraction of a parent size.
+/// 构造表示父元素尺寸相对比例的 `DefiniteLength`。
 ///
-/// This function creates a `DefiniteLength` that is a specified fraction of a parent's dimension.
-/// The fraction should be a floating-point number between 0.0 and 1.0, where 1.0 represents 100% of the parent's size.
+/// 此函数创建一个 `DefiniteLength`，它是父元素尺寸的指定比例。
+/// 比例应为 0.0 到 1.0 之间的浮点数，其中 1.0 表示父元素尺寸的 100%。
 ///
-/// # Arguments
+/// # 参数
 ///
-/// * `fraction` - The fraction of the parent's size, between 0.0 and 1.0.
+/// * `fraction` - 父元素尺寸的比例，介于 0.0 和 1.0 之间。
 ///
-/// # Returns
+/// # 返回值
 ///
-/// A `DefiniteLength` representing the relative length as a fraction of the parent's size.
+/// 表示父元素尺寸相对比例的 `DefiniteLength`。
 pub const fn relative(fraction: f32) -> DefiniteLength {
     DefiniteLength::Fraction(fraction)
 }
 
-/// Returns the Golden Ratio, i.e. `~(1.0 + sqrt(5.0)) / 2.0`.
+/// 返回黄金比例，即 `~(1.0 + sqrt(5.0)) / 2.0`。
 pub const fn phi() -> DefiniteLength {
     relative(1.618_034)
 }
 
-/// Constructs a `Rems` value representing a length in rems.
+/// 构造表示以 rem 为单位长度的 `Rems` 值。
 ///
-/// # Arguments
+/// # 参数
 ///
-/// * `rems` - The number of rems for the length.
+/// * `rems` - 长度的 rem 数。
 ///
-/// # Returns
+/// # 返回值
 ///
-/// A `Rems` representing the specified number of rems.
+/// 表示指定 rem 数的 `Rems`。
 pub const fn rems(rems: f32) -> Rems {
     Rems(rems)
 }
 
-/// Constructs a `Pixels` value representing a length in pixels.
+/// 构造表示以像素为单位长度的 `Pixels` 值。
 ///
-/// # Arguments
+/// # 参数
 ///
-/// * `pixels` - The number of pixels for the length.
+/// * `pixels` - 长度的像素数。
 ///
-/// # Returns
+/// # 返回值
 ///
-/// A `Pixels` representing the specified number of pixels.
+/// 表示指定像素数的 `Pixels`。
 pub const fn px(pixels: f32) -> Pixels {
     Pixels(pixels)
 }
 
-/// Returns a `Length` representing an automatic length.
+/// 返回表示自动长度的 `Length`。
 ///
-/// The `auto` length is often used in layout calculations where the length should be determined
-/// by the layout context itself rather than being explicitly set. This is commonly used in CSS
-/// for properties like `width`, `height`, `margin`, `padding`, etc., where `auto` can be used
-/// to instruct the layout engine to calculate the size based on other factors like the size of the
-/// container or the intrinsic size of the content.
+/// `auto` 长度常用于布局计算中，其中长度应由布局上下文本身而非显式设置来确定。
+/// 这在 CSS 中常用于 `width`、`height`、`margin`、`padding` 等属性，
+/// 其中 `auto` 可用于指示布局引擎根据其他因素（如容器大小或内容的固有大小）来计算尺寸。
 ///
-/// # Returns
+/// # 返回值
 ///
-/// A `Length` variant set to `Auto`.
+/// 设置为 `Auto` 的 `Length` 变体。
 pub const fn auto() -> Length {
     Length::Auto
 }
@@ -3788,23 +3755,23 @@ impl From<()> for Length {
     }
 }
 
-/// A location in a grid layout.
+/// 网格布局中的位置。
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct GridLocation {
-    /// The rows this item uses within the grid.
+    /// 此项目在网格中使用的行。
     pub row: Range<GridPlacement>,
-    /// The columns this item uses within the grid.
+    /// 此项目在网格中使用的列。
     pub column: Range<GridPlacement>,
 }
 
-/// The placement of an item within a grid layout's column or row.
+/// 项目在网格布局列或行中的放置方式。
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub enum GridPlacement {
-    /// The grid line index to place this item.
+    /// 放置此项目的网格线索引。
     Line(i16),
-    /// The number of grid lines to span.
+    /// 跨越的网格线数。
     Span(u16),
-    /// Automatically determine the placement, equivalent to Span(1)
+    /// 自动确定放置方式，等同于 Span(1)
     #[default]
     Auto,
 }
@@ -3819,17 +3786,17 @@ impl From<GridPlacement> for taffy::GridPlacement {
     }
 }
 
-/// Provides a trait for types that can calculate half of their value.
+/// 提供可以计算值一半的 trait。
 ///
-/// The `Half` trait is used for types that can be evenly divided, returning a new instance of the same type
-/// representing half of the original value. This is commonly used for types that represent measurements or sizes,
-/// such as lengths or pixels, where halving is a frequent operation during layout calculations or animations.
+/// `Half` trait 用于可以被均匀分割的类型，返回表示原始值一半的同一类型的新实例。
+/// 这常用于表示度量或尺寸的类型，如长度或像素，
+/// 其中在布局计算或动画中减半是常见操作。
 pub trait Half {
-    /// Returns half of the current value.
+    /// 返回当前值的一半。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// A new instance of the implementing type, representing half of the original value.
+    /// 实现类型的新实例，表示原始值的一半。
     fn half(&self) -> Self;
 }
 
@@ -3869,18 +3836,17 @@ impl Half for Rems {
     }
 }
 
-/// A trait for checking if a value is zero.
+/// 用于检查值是否为零的 trait。
 ///
-/// This trait provides a method to determine if a value is considered to be zero.
-/// It is implemented for various numeric and length-related types where the concept
-/// of zero is applicable. This can be useful for comparisons, optimizations, or
-/// determining if an operation has a neutral effect.
+/// 此 trait 提供一种方法来确定值是否为零。
+/// 它为各种数值和长度相关类型实现了该 trait，其中零的概念是适用的。
+/// 这可用于比较、优化或确定操作是否具有中性效果。
 pub trait IsZero {
-    /// Determines if the value is zero.
+    /// 确定值是否为零。
     ///
-    /// # Returns
+    /// # 返回值
     ///
-    /// Returns `true` if the value is zero, `false` otherwise.
+    /// 如果值为零则返回 `true`，否则返回 `false`。
     fn is_zero(&self) -> bool;
 }
 

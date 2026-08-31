@@ -57,291 +57,291 @@ impl From<ThemeToken> for Fill {
     }
 }
 
-/// Theme colors used throughout the UI components.
+/// UI 组件中使用的主题颜色。
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 pub struct ThemeColor {
-    /// Used for accents such as hover background on MenuItem, ListItem, etc.
+    /// 强调色，用于 MenuItem、ListItem 等的悬停背景。
     pub accent: Hsla,
-    /// Used for accent text color.
+    /// 强调文字颜色。
     pub accent_foreground: Hsla,
-    /// Accordion background color.
+    /// 折叠面板背景颜色。
     pub accordion: Hsla,
-    /// Default background color.
+    /// 默认背景颜色。
     pub background: Hsla,
-    /// Default border color
+    /// 默认边框颜色。
     pub border: Hsla,
-    /// Default Button background color.
+    /// 默认按钮背景颜色。
     pub button: Hsla,
-    /// Default Button active background color.
+    /// 默认按钮激活背景颜色。
     pub button_active: Hsla,
-    /// Default Button text color.
+    /// 默认按钮文字颜色。
     pub button_foreground: Hsla,
-    /// Default Button hover background color.
+    /// 默认按钮悬停背景颜色。
     pub button_hover: Hsla,
-    /// Button danger background color, fallback to `danger`.
+    /// 危险按钮背景颜色，回退至 `danger`。
     pub button_danger: Hsla,
-    /// Button danger active background color, fallback to `danger_active`.
+    /// 危险按钮激活背景颜色，回退至 `danger_active`。
     pub button_danger_active: Hsla,
-    /// Button danger text color, fallback to `danger_foreground`.
+    /// 危险按钮文字颜色，回退至 `danger_foreground`。
     pub button_danger_foreground: Hsla,
-    /// Button danger hover background color, fallback to `danger_hover`.
+    /// 危险按钮悬停背景颜色，回退至 `danger_hover`。
     pub button_danger_hover: Hsla,
-    /// Button info background color, fallback to `info`.
+    /// 信息按钮背景颜色，回退至 `info`。
     pub button_info: Hsla,
-    /// Button info active background color, fallback to `info_active`.
+    /// 信息按钮激活背景颜色，回退至 `info_active`。
     pub button_info_active: Hsla,
-    /// Button info text color, fallback to `info_foreground`.
+    /// 信息按钮文字颜色，回退至 `info_foreground`。
     pub button_info_foreground: Hsla,
-    /// Button info hover background color, fallback to `info_hover`.
+    /// 信息按钮悬停背景颜色，回退至 `info_hover`。
     pub button_info_hover: Hsla,
-    /// Button primary background color, fallback to `primary`.
+    /// 主要按钮背景颜色，回退至 `primary`。
     pub button_primary: Hsla,
-    /// Button primary active background color, fallback to `primary_active`.
+    /// 主要按钮激活背景颜色，回退至 `primary_active`。
     pub button_primary_active: Hsla,
-    /// Button primary text color, fallback to `primary_foreground`.
+    /// 主要按钮文字颜色，回退至 `primary_foreground`。
     pub button_primary_foreground: Hsla,
-    /// Button primary hover background color, fallback to `primary_hover`.
+    /// 主要按钮悬停背景颜色，回退至 `primary_hover`。
     pub button_primary_hover: Hsla,
-    /// Button secondary background color, fallback to `secondary`.
+    /// 次要按钮背景颜色，回退至 `secondary`。
     pub button_secondary: Hsla,
-    /// Button secondary active background color, fallback to `secondary_active`.
+    /// 次要按钮激活背景颜色，回退至 `secondary_active`。
     pub button_secondary_active: Hsla,
-    /// Button secondary text color, fallback to `secondary_foreground`.
+    /// 次要按钮文字颜色，回退至 `secondary_foreground`。
     pub button_secondary_foreground: Hsla,
-    /// Button secondary hover background color, fallback to `secondary_hover`.
+    /// 次要按钮悬停背景颜色，回退至 `secondary_hover`。
     pub button_secondary_hover: Hsla,
-    /// Button success background color, fallback to `success`.
+    /// 成功按钮背景颜色，回退至 `success`。
     pub button_success: Hsla,
-    /// Button success active background color, fallback to `success_active`.
+    /// 成功按钮激活背景颜色，回退至 `success_active`。
     pub button_success_active: Hsla,
-    /// Button success text color, fallback to `success_foreground`.
+    /// 成功按钮文字颜色，回退至 `success_foreground`。
     pub button_success_foreground: Hsla,
-    /// Button success hover background color, fallback to `success_hover`.
+    /// 成功按钮悬停背景颜色，回退至 `success_hover`。
     pub button_success_hover: Hsla,
-    /// Button warning background color, fallback to `warning`.
+    /// 警告按钮背景颜色，回退至 `warning`。
     pub button_warning: Hsla,
-    /// Button warning active background color, fallback to `warning_active`.
+    /// 警告按钮激活背景颜色，回退至 `warning_active`。
     pub button_warning_active: Hsla,
-    /// Button warning text color, fallback to `warning_foreground`.
+    /// 警告按钮文字颜色，回退至 `warning_foreground`。
     pub button_warning_foreground: Hsla,
-    /// Button warning hover background color, fallback to `warning_hover`.
+    /// 警告按钮悬停背景颜色，回退至 `warning_hover`。
     pub button_warning_hover: Hsla,
-    /// Background color for GroupBox.
+    /// 分组框背景颜色。
     pub group_box: Hsla,
-    /// Text color for GroupBox.
+    /// 分组框文字颜色。
     pub group_box_foreground: Hsla,
-    /// Input caret color (Blinking cursor).
+    /// 输入框光标颜色（闪烁光标）。
     pub caret: Hsla,
-    /// Chart 1 color.
+    /// 图表 1 颜色。
     pub chart_1: Hsla,
-    /// Chart 2 color.
+    /// 图表 2 颜色。
     pub chart_2: Hsla,
-    /// Chart 3 color.
+    /// 图表 3 颜色。
     pub chart_3: Hsla,
-    /// Chart 4 color.
+    /// 图表 4 颜色。
     pub chart_4: Hsla,
-    /// Chart 5 color.
+    /// 图表 5 颜色。
     pub chart_5: Hsla,
-    /// Bullish color for candlestick charts (upward price movement).
+    /// K 线图阳线颜色（价格上涨）。
     pub chart_bullish: Hsla,
-    /// Bearish color for candlestick charts (downward price movement).
+    /// K 线图阴线颜色（价格下跌）。
     pub chart_bearish: Hsla,
-    /// Danger background color.
+    /// 危险背景颜色。
     pub danger: Hsla,
-    /// Danger active background color.
+    /// 危险激活背景颜色。
     pub danger_active: Hsla,
-    /// Danger text color.
+    /// 危险文字颜色。
     pub danger_foreground: Hsla,
-    /// Danger hover background color.
+    /// 危险悬停背景颜色。
     pub danger_hover: Hsla,
-    /// Description List label background color.
+    /// 描述列表标签背景颜色。
     pub description_list_label: Hsla,
-    /// Description List label foreground color.
+    /// 描述列表标签前景颜色。
     pub description_list_label_foreground: Hsla,
-    /// Drag border color.
+    /// 拖拽边框颜色。
     pub drag_border: Hsla,
-    /// Drop target background color.
+    /// 拖放目标背景颜色。
     pub drop_target: Hsla,
-    /// Default text color.
+    /// 默认文字颜色。
     pub foreground: Hsla,
-    /// Info background color.
+    /// 信息背景颜色。
     pub info: Hsla,
-    /// Info active background color.
+    /// 信息激活背景颜色。
     pub info_active: Hsla,
-    /// Info text color.
+    /// 信息文字颜色。
     pub info_foreground: Hsla,
-    /// Info hover background color.
+    /// 信息悬停背景颜色。
     pub info_hover: Hsla,
-    /// Border color for inputs such as Input, Select, etc.
+    /// 输入框（如 Input、Select 等）的边框颜色。
     pub input: Hsla,
-    /// Link text color.
+    /// 链接文字颜色。
     pub link: Hsla,
-    /// Active link text color.
+    /// 激活链接文字颜色。
     pub link_active: Hsla,
-    /// Hover link text color.
+    /// 悬停链接文字颜色。
     pub link_hover: Hsla,
-    /// Background color for List and ListItem.
+    /// 列表和列表项的背景颜色。
     pub list: Hsla,
-    /// Background color for active ListItem.
+    /// 激活列表项的背景颜色。
     pub list_active: Hsla,
-    /// Border color for active ListItem.
+    /// 激活列表项的边框颜色。
     pub list_active_border: Hsla,
-    /// Stripe background color for even ListItem.
+    /// 偶数列表项的条纹背景颜色。
     pub list_even: Hsla,
-    /// Background color for List header.
+    /// 列表头部背景颜色。
     pub list_head: Hsla,
-    /// Hover background color for ListItem.
+    /// 列表项悬停背景颜色。
     pub list_hover: Hsla,
-    /// Muted backgrounds such as Skeleton and Switch.
+    /// 柔和背景颜色，用于骨架屏和开关等。
     pub muted: Hsla,
-    /// Muted text color, as used in disabled text.
+    /// 柔和文字颜色，用于禁用文本。
     pub muted_foreground: Hsla,
-    /// Background color for Popover.
+    /// 弹出框背景颜色。
     pub popover: Hsla,
-    /// Text color for Popover.
+    /// 弹出框文字颜色。
     pub popover_foreground: Hsla,
-    /// Primary background color.
+    /// 主要背景颜色。
     pub primary: Hsla,
-    /// Active primary background color.
+    /// 主要激活背景颜色。
     pub primary_active: Hsla,
-    /// Primary text color.
+    /// 主要文字颜色。
     pub primary_foreground: Hsla,
-    /// Hover primary background color.
+    /// 主要悬停背景颜色。
     pub primary_hover: Hsla,
-    /// Progress bar background color.
+    /// 进度条背景颜色。
     pub progress_bar: Hsla,
-    /// Used for focus ring.
+    /// 用于焦点环。
     pub ring: Hsla,
-    /// Scrollbar background color.
+    /// 滚动条背景颜色。
     pub scrollbar: Hsla,
-    /// Scrollbar thumb background color.
+    /// 滚动条滑块背景颜色。
     pub scrollbar_thumb: Hsla,
-    /// Scrollbar thumb hover background color.
+    /// 滚动条滑块悬停背景颜色。
     pub scrollbar_thumb_hover: Hsla,
-    /// Secondary background color.
+    /// 次要背景颜色。
     pub secondary: Hsla,
-    /// Active secondary background color.
+    /// 次要激活背景颜色。
     pub secondary_active: Hsla,
-    /// Secondary text color, used for secondary Button text color or secondary text.
+    /// 次要文字颜色，用于次要按钮文字或次要文本。
     pub secondary_foreground: Hsla,
-    /// Hover secondary background color.
+    /// 次要悬停背景颜色。
     pub secondary_hover: Hsla,
-    /// Input selection background color.
+    /// 输入框选中背景颜色。
     pub selection: Hsla,
-    /// Sidebar background color.
+    /// 侧边栏背景颜色。
     pub sidebar: Hsla,
-    /// Sidebar accent background color.
+    /// 侧边栏强调背景颜色。
     pub sidebar_accent: Hsla,
-    /// Sidebar accent text color.
+    /// 侧边栏强调文字颜色。
     pub sidebar_accent_foreground: Hsla,
-    /// Sidebar border color.
+    /// 侧边栏边框颜色。
     pub sidebar_border: Hsla,
-    /// Sidebar text color.
+    /// 侧边栏文字颜色。
     pub sidebar_foreground: Hsla,
-    /// Sidebar primary background color.
+    /// 侧边栏主要背景颜色。
     pub sidebar_primary: Hsla,
-    /// Sidebar primary text color.
+    /// 侧边栏主要文字颜色。
     pub sidebar_primary_foreground: Hsla,
-    /// Skeleton background color.
+    /// 骨架屏背景颜色。
     pub skeleton: Hsla,
-    /// Slider bar background color.
+    /// 滑块条背景颜色。
     pub slider_bar: Hsla,
-    /// Slider thumb background color.
+    /// 滑块手柄背景颜色。
     pub slider_thumb: Hsla,
-    /// Success background color.
+    /// 成功背景颜色。
     pub success: Hsla,
-    /// Success text color.
+    /// 成功文字颜色。
     pub success_foreground: Hsla,
-    /// Success hover background color.
+    /// 成功悬停背景颜色。
     pub success_hover: Hsla,
-    /// Success active background color.
+    /// 成功激活背景颜色。
     pub success_active: Hsla,
-    /// Switch background color.
+    /// 开关背景颜色。
     pub switch: Hsla,
-    /// Switch thumb background color.
+    /// 开关手柄背景颜色。
     pub switch_thumb: Hsla,
-    /// Tab background color.
+    /// 标签页背景颜色。
     pub tab: Hsla,
-    /// Tab active background color.
+    /// 标签页激活背景颜色。
     pub tab_active: Hsla,
-    /// Tab active text color.
+    /// 标签页激活文字颜色。
     pub tab_active_foreground: Hsla,
-    /// TabBar background color.
+    /// 标签栏背景颜色。
     pub tab_bar: Hsla,
-    /// TabBar segmented background color.
+    /// 标签栏分段背景颜色。
     pub tab_bar_segmented: Hsla,
-    /// Tab text color.
+    /// 标签页文字颜色。
     pub tab_foreground: Hsla,
-    /// Table background color.
+    /// 表格背景颜色。
     pub table: Hsla,
-    /// Table active item background color.
+    /// 表格激活项背景颜色。
     pub table_active: Hsla,
-    /// Table active item border color.
+    /// 表格激活项边框颜色。
     pub table_active_border: Hsla,
-    /// Stripe background color for even TableRow.
+    /// 偶数表格行的条纹背景颜色。
     pub table_even: Hsla,
-    /// Table head background color.
+    /// 表格表头背景颜色。
     pub table_head: Hsla,
-    /// Table head text color.
+    /// 表格表头文字颜色。
     pub table_head_foreground: Hsla,
-    /// Table footer background color.
+    /// 表格表尾背景颜色。
     pub table_foot: Hsla,
-    /// Table footer text color.
+    /// 表格表尾文字颜色。
     pub table_foot_foreground: Hsla,
-    /// Table item hover background color.
+    /// 表格项悬停背景颜色。
     pub table_hover: Hsla,
-    /// Table row border color.
+    /// 表格行边框颜色。
     pub table_row_border: Hsla,
-    /// TitleBar background color, use for Window title bar.
+    /// 标题栏背景颜色，用于窗口标题栏。
     pub title_bar: Hsla,
-    /// TitleBar border color.
+    /// 标题栏边框颜色。
     pub title_bar_border: Hsla,
-    /// StatusBar background color, use for the bottom status bar.
+    /// 状态栏背景颜色，用于底部状态栏。
     pub status_bar: Hsla,
-    /// StatusBar border color.
+    /// 状态栏边框颜色。
     pub status_bar_border: Hsla,
-    /// Background color for Tiles.
+    /// 磁贴背景颜色。
     pub tiles: Hsla,
-    /// Warning background color.
+    /// 警告背景颜色。
     pub warning: Hsla,
-    /// Warning active background color.
+    /// 警告激活背景颜色。
     pub warning_active: Hsla,
-    /// Warning hover background color.
+    /// 警告悬停背景颜色。
     pub warning_hover: Hsla,
-    /// Warning foreground color.
+    /// 警告前景颜色。
     pub warning_foreground: Hsla,
-    /// Overlay background color.
+    /// 覆盖层背景颜色。
     pub overlay: Hsla,
-    /// Window border color.
+    /// 窗口边框颜色。
     ///
-    /// # Platform specific:
+    /// # 平台特定：
     ///
-    /// This is only works on Linux, other platforms we can't change the window border color.
+    /// 仅在 Linux 上有效，其他平台无法更改窗口边框颜色。
     pub window_border: Hsla,
 
-    /// The base red color.
+    /// 基础红色。
     pub red: Hsla,
-    /// The base red light color.
+    /// 基础浅红色。
     pub red_light: Hsla,
-    /// The base green color.
+    /// 基础绿色。
     pub green: Hsla,
-    /// The base green light color.
+    /// 基础浅绿色。
     pub green_light: Hsla,
-    /// The base blue color.
+    /// 基础蓝色。
     pub blue: Hsla,
-    /// The base blue light color.
+    /// 基础浅蓝色。
     pub blue_light: Hsla,
-    /// The base yellow color.
+    /// 基础黄色。
     pub yellow: Hsla,
-    /// The base yellow light color.
+    /// 基础浅黄色。
     pub yellow_light: Hsla,
-    /// The base magenta color.
+    /// 基础品红色。
     pub magenta: Hsla,
-    /// The base magenta light color.
+    /// 基础浅品红色。
     pub magenta_light: Hsla,
-    /// The base cyan color.
+    /// 基础青色。
     pub cyan: Hsla,
-    /// The base cyan light color.
+    /// 基础浅青色。
     pub cyan_light: Hsla,
 }
 
@@ -513,12 +513,12 @@ define_theme_tokens! {
 }
 
 impl ThemeColor {
-    /// Get the default light theme colors.
+    /// 获取默认浅色主题颜色。
     pub fn light() -> Arc<Self> {
         DEFAULT_THEME_COLORS[&ThemeMode::Light].0.clone()
     }
 
-    /// Get the default dark theme colors.
+    /// 获取默认深色主题颜色。
     pub fn dark() -> Arc<Self> {
         DEFAULT_THEME_COLORS[&ThemeMode::Dark].0.clone()
     }

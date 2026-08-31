@@ -45,7 +45,7 @@ pub fn derive_action(input: TokenStream) -> TokenStream {
     derive_action::derive_action(input)
 }
 
-/// 用于向 GPUI 运行时注册动作的过程宏。
+/// 用于向 RGPUI 运行时注册动作的过程宏。
 ///
 /// 当你想要手动实现 `Action` 特质时，可以使用此宏来注册动作。
 /// 通常情况下，你应该使用 `Action` 派生宏或 `actions!` 宏来代替。
@@ -91,7 +91,7 @@ pub fn derive_render(input: TokenStream) -> TokenStream {
 /// `AppContext` 派生宏 - 用于为持有 `&mut App` 的结构体生成应用上下文实现。
 ///
 /// 该宏会为标记的类型生成 `rgpui::AppContext` 特质的实现，使其能够访问和操作
-/// GPUI 应用状态，包括创建实体、更新实体、读取全局状态等。
+/// RGPUI 应用状态，包括创建实体、更新实体、读取全局状态等。
 ///
 /// 注意：必须使用 `#[app]` 属性标记持有 `&mut App` 的字段。
 ///
@@ -99,7 +99,7 @@ pub fn derive_render(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// # #[macro_use] extern crate rgpui_macros;
-/// # #[macro_use] extern crate gpui;
+/// # #[macro_use] extern crate rgpui;
 /// #[derive(AppContext)]
 /// struct MyContext<'a> {
 ///     app: &'a mut rgpui::App
@@ -131,7 +131,7 @@ pub fn derive_app_context(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// # #[macro_use] extern crate rgpui_macros;
-/// # #[macro_use] extern crate gpui;
+/// # #[macro_use] extern crate rgpui;
 /// #[derive(VisualContext)]
 /// struct MyContext<'a, 'b> {
 ///     #[app]
@@ -142,7 +142,7 @@ pub fn derive_app_context(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// # #[macro_use] extern crate rgpui_macros;
-/// # #[macro_use] extern crate gpui;
+/// # #[macro_use] extern crate rgpui;
 /// #[derive(VisualContext)]
 /// struct MyContext<'a, 'b> {
 ///     app: &'a mut rgpui::App,
@@ -177,7 +177,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
 
 /// 用于生成样式辅助函数的过程宏。
 ///
-/// 该宏由 GPUI 内部使用，用于生成样式相关的基础辅助函数，
+/// 该宏由 RGPUI 内部使用，用于生成样式相关的基础辅助函数，
 /// 包括边距、内边距、圆角等样式属性的方法生成器。
 #[proc_macro]
 #[doc(hidden)]
@@ -265,13 +265,13 @@ pub fn icon_named(input: TokenStream) -> TokenStream {
     icon_named::icon_named_impl(input)
 }
 
-/// `#[rgpui::bench]` 标注一个使用 GPUI 支持的 Criterion 基准测试。
+/// `#[rgpui::bench]` 标注一个使用 RGPUI 支持的 Criterion 基准测试。
 #[proc_macro_attribute]
 pub fn bench(args: TokenStream, function: TokenStream) -> TokenStream {
     bench::bench(args, function)
 }
 
-/// `#[rgpui::test]` 测试属性宏 - 用于注解需要 GPUI 支持的测试函数。
+/// `#[rgpui::test]` 测试属性宏 - 用于注解需要 RGPUI 支持的测试函数。
 ///
 /// 该宏支持同步和异步测试，并可以提供任意数量的 `TestAppContext` 实例。
 /// 生成的代码包含 `#[test]` 注解，因此可以与任何现有测试框架配合使用
@@ -313,7 +313,7 @@ pub fn test(args: TokenStream, function: TokenStream) -> TokenStream {
 
 /// `#[rgpui::property_test]` 属性测试宏 - 支持基于属性的测试（property-based testing）。
 ///
-/// 属性测试类似于 GPUI 随机测试，但允许测试形如"对于任何可能的 X，Y 应该成立"的断言。
+/// 属性测试类似于 RGPUI 随机测试，但允许测试形如"对于任何可能的 X，Y 应该成立"的断言。
 /// 例如：
 /// ```ignore
 /// #[rgpui::property_test]
@@ -322,7 +322,7 @@ pub fn test(args: TokenStream, function: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// 标准 GPUI 随机测试提供 `StdRng` 实例以受控方式生成随机数据。
+/// 标准 RGPUI 随机测试提供 `StdRng` 实例以受控方式生成随机数据。
 /// 属性测试具有以下额外优势：
 /// - **收缩（Shrinking）** - 测试框架理解值的"复杂度"概念，能够找到导致测试失败的"最简单值"。
 /// - **易用性/清晰度** - 测试框架会自动生成值，无需在测试体中编写生成逻辑。
@@ -330,11 +330,11 @@ pub fn test(args: TokenStream, function: TokenStream) -> TokenStream {
 ///
 /// 当所有输入都可以预先生成并保存在简单数据结构中时，属性测试效果最佳。
 /// 某些情况下这可能不可行——例如，测试需要根据当前结构状态做出随机决策。
-/// 在这种情况下，标准 GPUI 随机测试可能更合适。
+/// 在这种情况下，标准 RGPUI 随机测试可能更合适。
 ///
 /// ## 自定义随机值
 ///
-/// 该宏基于 [`#[proptest::property_test]`] 宏，但处理了一些 GPUI 特有的参数。
+/// 该宏基于 [`#[proptest::property_test]`] 宏，但处理了一些 RGPUI 特有的参数。
 /// 具体来说，`&{mut,} TestAppContext` 和 `BackgroundExecutor` 正常工作。
 /// `StdRng` 参数被**明确禁止**，因为它们会破坏收缩机制，是常见的陷阱。
 ///

@@ -5,8 +5,8 @@ use crate::{
     Style, StyleRefinement, Styled, Window,
 };
 
-/// Construct a canvas element with the given paint callback.
-/// Useful for adding short term custom drawing to a view.
+/// 使用给定的绘制回调构造画布元素。
+/// 适用于向视图添加短期自定义绘制。
 pub fn canvas<T>(
     prepaint: impl 'static + FnOnce(Bounds<Pixels>, &mut Window, &mut App) -> T,
     paint: impl 'static + FnOnce(Bounds<Pixels>, T, &mut Window, &mut App),
@@ -20,8 +20,7 @@ pub fn canvas<T>(
     }
 }
 
-/// A canvas element, meant for accessing the low level paint API without defining a whole
-/// custom element
+/// 画布元素，用于在不定义完整自定义元素的情况下访问底层绘制 API
 pub struct Canvas<T> {
     prepaint: Option<Box<dyn FnOnce(Bounds<Pixels>, &mut Window, &mut App) -> T>>,
     paint: Option<Box<dyn FnOnce(Bounds<Pixels>, T, &mut Window, &mut App)>>,

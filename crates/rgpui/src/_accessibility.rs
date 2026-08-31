@@ -1,75 +1,71 @@
-//! # Accessibility in GPUI
+//! # RGPUI 中的无障碍支持
 //!
-//! "Accessibility" refers to the ability of your application to be used by all
-//! users, regardless of disability status. There are many aspects, all important, including:
-//! - Ensuring sufficient text contrast.
-//! - Providing a mechanism to disable animations.
-//! - Providing a mechanism to increase text sizes.
-//! - etc.
+//! "无障碍"（Accessibility）是指你的应用能否被所有用户使用，
+//! 无论其是否有残障。这方面包含许多要素，都很重要，例如：
+//! - 确保足够的文本对比度。
+//! - 提供禁用动画的机制。
+//! - 提供增大文本字号的机制。
+//! - 等等。
 //!
-//! This guide is focused on **programmatic accessibility**. This allows
-//! assistive technology, such as screen readers or Braille displays, to inspect
-//! and interact with your app. Docs for contributors working on accessibility
-//! support can be found in the `a11y` module's doc comment.
+//! 本指南聚焦于**可编程无障碍**（programmatic accessibility）。它允许
+//! 辅助技术（如屏幕阅读器或盲文显示器）检查并与你的应用交互。有关
+//! 贡献者编写无障碍支持的文档，请参阅 `a11y` 模块的文档注释。
 //!
-//! GPUI integrates with [AccessKit] to provide programmatic accessibility
-//! features (referred to as simply "accessibility" for the rest of this guide).
+//! RGPUI 集成了 [AccessKit] 以提供可编程无障碍功能
+//! （本指南后续部分将其简称为"无障碍"）。
 //!
-//! A minimal example can be found in the `examples/a11y` directory.
+//! 最小示例可参见 `examples/a11y` 目录。
 //!
-//! ## Background
+//! ## 背景
 //!
-//! Accessibility support is based on two key capabilities:
-//! - Exposing information about the current UI state to assistive technology.
-//! - Responding to actions requested by assistive technology.
+//! 无障碍支持基于两项关键能力：
+//! - 将当前 UI 状态的信息暴露给辅助技术。
+//! - 响应辅助技术请求的操作。
 //!
-//! For example, a screen reader might want to announce to the user that a new
-//! button has appeared. The user may then want to use a voice control program
-//! to press that button.
+//! 例如，屏幕阅读器可能想要通知用户出现了一个新按钮，
+//! 然后用户可以通过语音控制程序来按下该按钮。
 //!
-//! ### IDs in GPUI - [`ElementId`] and [`GlobalElementId`]
+//! ### RGPUI 中的 ID — [`ElementId`] 与 [`GlobalElementId`]
 //!
-//! In GPUI, each [`Element`] can have an [`id`][Element::id]:
+//! 在 RGPUI 中，每个 [`Element`] 都可以拥有一个 [`id`][Element::id]：
 //! ```rust
 //! # use rgpui::*;
 //! let div_with_id = div().id("my-id").child(text!("hello"));
 //!
-//! // IDs are optional
+//! // ID 是可选的
 //! let div_without_id = div().child(text!("hello"));
 //! ```
 //!
-//! [`Element`]s with IDs are also assigned a [`GlobalElementId`]. This global
-//! ID is formed by composing all the non-`None` IDs of its ancestors. For
-//! example:
+//! 拥有 ID 的 [`Element`] 还会被分配一个 [`GlobalElementId`]。这个全局
+//! ID 由其所有祖先的非 `None` ID 组合而成。例如：
 //! ```rust
 //! # use rgpui::*;
 //! let inner = div().id("inner-id");
-//! let middle = div().child(inner);  // no ID
+//! let middle = div().child(inner);  // 没有 ID
 //! let outer = div().id("outer-id").child(middle);
 //! ```
-//! In this example, `inner`s global ID is (roughly speaking) `["outer-id",
-//! "inner-id"]`.
+//! 在此示例中，`inner` 的全局 ID（粗略地说）是 `["outer-id",
+//! "inner-id"]`。
 //!
-//! Since `middle` doesn't have an ID itself, it has no global ID.
+//! 由于 `middle` 本身没有 ID，因此它没有全局 ID。
 //!
-//! [`GlobalElementId`]s should be unique per-frame. Duplicate global IDs in the
-//! same frame will likely cause bugs.
+//! [`GlobalElementId`] 在每一帧中应当是唯一的。同一帧中重复的全局
+//! ID 很可能会导致错误。
 //!
-//! ### IDs and accessibility
+//! ### ID 与无障碍
 //!
-//! When GPUI renders a frame, it walks your UI tree, and finds nodes with
-//! global IDs, and informs assistive technology about this node.
+//! 当 RGPUI 渲染一帧时，它会遍历你的 UI 树，找到具有全局 ID 的节点，
+//! 并将这些节点的信息告知辅助技术。
 //!
-//! In order for nodes to be reported, they must also have a non-`None`
-//! [`role`][Element::a11y_role]. This is used to inform assistive technology
-//! what *sort* of node it is (button, label, table, etc.). You can use
-//! [`div().id(...).role()`][StatefulInteractiveElement::role] to set the role.
+//! 为了使节点被报告，它们还必须拥有非 `None` 的
+//! [`role`][Element::a11y_role]。这用于告知辅助技术该节点是*哪种类型*
+//! （按钮、标签、表格等）。你可以使用
+//! [`div().id(...).role()`][StatefulInteractiveElement::role] 来设置角色。
 //!
-//! Nodes with the same global ID *across frames* are considered to be "the
-//! same" node. For example:
+//! *跨帧*拥有相同全局 ID 的节点被视为"同一个"节点。例如：
 //! ```rust
 //! # use rgpui::*;
-//! // The UI in frame 1
+//! // 第 1 帧的 UI
 //! let frame_1 = div()
 //!     .id("parent")
 //!     .role(Role::Button)
@@ -80,59 +76,54 @@
 //!         .child(text!("hello"))
 //!     );
 //!
-//! // The UI on the next frame
+//! // 下一帧的 UI
 //! let frame_2 = div()
 //!     .id("parent")
 //!     .role(Role::Button)
 //!     .child(
 //!       div()
-//!         .id("id-2")  // <- different ID
+//!         .id("id-2")  // <- 不同的 ID
 //!         .role(Role::Label)
 //!         .child(text!("hello"))
 //!     );
 //! ```
-//! Logically, the UI has not changed. But the screen reader has no way of
-//! knowing that both child [`div`]s are "the same". So assistive technology
-//! will interpret this as one node being removed, and another node being added.
-//! This can be very disorienting for users, since announcements typically only
-//! happen when something has *meaningfully* changed.
+//! 从逻辑上看，UI 没有变化。但屏幕阅读器无法知道两个子 [`div`] 是"同一个"。
+//! 因此辅助技术会将其解释为一个节点被移除、另一个节点被添加。这可能会
+//! 令用户非常困惑，因为通知通常只在某些内容发生了*有意义的*变化时才会触发。
 //!
-//! In other words, by controlling the ID of an element, you can control whether
-//! a change to a UI element is considered meaningful. You can also control
-//! whether elements are reported to assistive technology *at all* by setting
-//! the [`role`][Element::a11y_role], since nodes with no role are not reported.
+//! 换句话说，通过控制元素的 ID，你可以控制对 UI 元素的更改是否被视为有意义的。
+//! 你还可以通过设置 [`role`][Element::a11y_role] 来控制元素是否*完全*报告给
+//! 辅助技术，因为没有角色的节点不会被报告。
 //!
-//! #### IDs and text
+//! #### ID 与文本
 //!
-//! Special care must be taken when dealing with text.
+//! 处理文本时必须特别注意。
 //!
-//! GPUI provides the [`text!`] macro, which wraps strings in the [`Text`] type,
-//! but automatically derives an ID. Usually, this is what you want. However,
-//! the way it generates its ID is subtle and perhaps surprising.
+//! RGPUI 提供了 [`text!`] 宏，它将字符串包装在 [`Text`] 类型中，
+//! 并自动派生一个 ID。通常这就是你想要的。然而，它生成 ID 的方式
+//! 可能比较微妙，甚至令人意外。
 //!
-//! The ID of an invocation of the [`text!`] macro is derived from the
-//! **location in the source code of that invocation**. For example:
+//! [`text!`] 宏调用的 ID 派生自**该调用在源代码中的位置**。例如：
 //!
 //! ```rust
 //! # use rgpui::*;
 //! let a = text!("a");
 //! let b = text!("b");
 //!
-//! // Different source locations, different IDs
+//! // 不同的源码位置，不同的 ID
 //! assert_ne!(a.id(), b.id());
 //!
-//! // However:
+//! // 但是：
 //!
 //! fn make_text(s: &str) -> Text { text!(s) }
 //!
 //! let a = make_text("a");
 //! let b = make_text("b");
 //!
-//! // Both `a` and `b` are produced by the same `text!` invocation, so the IDs
-//! // are the same
+//! // `a` 和 `b` 都由同一个 `text!` 调用产生，因此 ID 相同
 //! assert_eq!(a.id(), b.id());
 //! ```
-//! This can produce surprising behaviour. For example, this footgun:
+//! 这可能会产生令人意外的行为。例如，这个陷阱：
 //! ```rust
 //! # use rgpui::*;
 //! let todos = vec!["eat lunch", "drink water", "go to gym"];
@@ -143,20 +134,19 @@
 //! div()
 //!     .id("todo-list")
 //!     .role(Role::Document)
-//!     .children(todo_divs);  // ERROR: multiple nodes with the same global ID
+//!     .children(todo_divs);  // 错误：多个节点具有相同的全局 ID
 //! ```
 //!
-//! Here, when we map the iterator, since we have only written [`text!`] once,
-//! there is only one ID. And since they have the same ancestors and the same
-//! ID, they will have the same global ID. In release builds, this will mean
-//! some nodes get silently dropped!
+//! 这里，当我们映射迭代器时，由于我们只写了一次 [`text!`]，
+//! 因此只有一个 ID。由于它们拥有相同的祖先和相同的 ID，它们将具有
+//! 相同的全局 ID。在 release 构建中，这将导致某些节点被静默丢弃！
 //!
-//! To fix this, you can set an ID:
+//! 要修复此问题，你可以设置一个 ID：
 //! ```rust
 //! # use rgpui::*;
 //! let todos = vec!["eat lunch", "drink water", "go to gym"];
 //! let todo_divs = todos.into_iter().enumerate().map(|(index, todo)| {
-//!     text!(todo).with_id(index)  // OR `text(id = index, todo)`
+//!     text!(todo).with_id(index)  // 或者 `text(id = index, todo)`
 //! });
 //!
 //! div()
@@ -164,8 +154,8 @@
 //!     .role(Role::Document)
 //!     .children(todo_divs);
 //! ```
-//! Another possible solution is to wrap the [`text!`] in another node that
-//! *does* have a unique global ID. For example:
+//! 另一种可能的解决方案是将 [`text!`] 包装在一个*具有*唯一全局 ID 的
+//! 另一个节点中。例如：
 //! ```rust
 //! # use rgpui::*;
 //! let todos = vec!["eat lunch", "drink water", "go to gym"];
@@ -178,33 +168,29 @@
 //!     .role(Role::Document)
 //!     .children(todo_divs);
 //! ```
-//! Since the AccessKit [`NodeId`][accesskit::NodeId] is derived from the global
-//! ID, and the global ID takes into account the IDs of all ancestors, this
-//! works too.
+//! 由于 AccessKit [`NodeId`][accesskit::NodeId] 派生自全局 ID，而全局
+//! ID 会考虑所有祖先的 ID，因此这种方法同样有效。
 //!
-//! Occasionally, you will need to create a [`Text`] element with *no* ID. You
-//! can achieve this with [`Text::new_inaccessible`]. If you are creating a
-//! custom UI component (e.g. a button), you may want this so that you can set a
-//! label property on a parent [`div`] without duplicating the text in the
-//! accessibility tree.
+//! 偶尔，你需要创建一个*没有* ID 的 [`Text`] 元素。你可以通过
+//! [`Text::new_inaccessible`] 来实现。如果你正在创建自定义 UI 组件
+//! （例如一个按钮），你可能需要这样做，以便在父 [`div`] 上设置
+//! `label` 属性，而无需在无障碍树中重复文本。
 //!
-//! ### Handling actions
+//! ### 处理操作
 //!
-//! Assistive technology can dispatch actions to the UI. While many users of
-//! assistive technology use traditional input devices (e.g. a keyboard), some
-//! use more specialized systems. For example, users with limited mobility may
-//! use voice control to interact with your app.
+//! 辅助技术可以向 UI 派发操作。虽然许多辅助技术用户使用传统输入设备
+//! （如键盘），但有些人使用更专业的系统。例如，行动不便的用户可能会
+//! 使用语音控制来与你的应用交互。
 //!
-//! When a user dispatches an action, it is dispatched *to a specific node*. It
-//! is your responsibility to tell the UI elements how they should respond when
-//! a request comes in.
+//! 当用户派发一个操作时，它是*派发到特定节点*的。你有责任告知 UI
+//! 元素在收到请求时应如何响应。
 //!
-//! Note, these actions are **totally unrelated** to GPUI's [`Action`] trait.
-//! AccessKit exposes [`accesskit::Action`]. In GPUI, this is re-exported as
-//! [`AccessibleAction`].
+//! 注意，这些操作与 RGPUI 的 [`Action`] trait **完全无关**。
+//! AccessKit 暴露了 [`accesskit::Action`]。在 RGPUI 中，它被重新导出为
+//! [`AccessibleAction`]。
 //!
-//! To respond to an accessible action, use
-//! [`div().on_a11y_action()`][InteractiveElement::on_a11y_action]:
+//! 要响应无障碍操作，请使用
+//! [`div().on_a11y_action()`][InteractiveElement::on_a11y_action]：
 //! ```rust,ignore
 //! div()
 //!     .id("my-slider")
@@ -216,18 +202,17 @@
 //!     .child(my_cool_slider());
 //! ```
 //!
-//! Note that some common actions are automatically registered. For example,
-//! [`.on_click()`][StatefulInteractiveElement::on_click] adds an
-//! [`AccessibleAction::Click`] handler that calls the click handler.
+//! 注意，一些常见操作会自动注册。例如，
+//! [`.on_click()`][StatefulInteractiveElement::on_click] 会添加一个
+//! [`AccessibleAction::Click`] 处理器，该处理器会调用点击处理函数。
 //!
-//! ## Synthetic children
+//! ## 合成子节点
 //!
-//! Sometimes, a custom [`Element`] may want to appear as if it is really made
-//! of multiple nodes. For example, a totally hypothetical custom text editor
-//! element may want to have [`Role::TextInput`], while presenting children
-//! consisting of [`Role::TextRun`]s.
+//! 有时，一个自定义 [`Element`] 可能希望看起来像是由多个节点组成的。
+//! 例如，一个完全假设的自定义文本编辑器元素可能希望拥有
+//! [`Role::TextInput`]，同时呈现由 [`Role::TextRun`] 组成的子节点。
 //!
-//! This is possible using [`Element::a11y_synthetic_children`]. For example:
+//! 这可以通过 [`Element::a11y_synthetic_children`] 实现。例如：
 //! ```rust,ignore
 //! # use rgpui::*;
 //! impl Element for MyCustomTextField {
@@ -243,18 +228,18 @@
 //!         _prepaint: &mut Self::PrepaintState,
 //!         builder: &mut A11ySubtreeBuilder,
 //!     ) {
-//!         // Create the synthetic child node
+//!         // 创建合成子节点
 //!         let mut run = accesskit::Node::new(Role::TextRun);
 //!         run.set_value(self.text.clone());
 //!         run.set_character_lengths(
 //!             self.text.chars().map(|c| c.len_utf8() as u8).collect::<Vec<_>>(),
 //!         );
 //!
-//!         // Insert it as a child of `MyCustomTextField`
+//!         // 将其插入为 `MyCustomTextField` 的子节点
 //!         let run_id = builder.synthetic_node_id(0);
 //!         builder.push_child(run_id, run);
 //!
-//!         // You can also mutate the parent (i.e. the `MyCustomTextField`)
+//!         // 你还可以修改父节点（即 `MyCustomTextField`）
 //!         let caret = accesskit::TextPosition {
 //!             node: run_id,
 //!             character_index: self.cursor,
@@ -267,29 +252,24 @@
 //! }
 //! ```
 //!
-//! Notably, synthetic children are added *after* an element is
-//! [prepainted][Element::prepaint], so prepaint state can be used (for example,
-//! to determine what is visible on screen).
+//! 值得注意的是，合成子节点是在元素[预绘制][Element::prepaint]
+//! *之后*添加的，因此可以使用预绘制状态（例如，确定屏幕上哪些内容可见）。
 //!
-//! ## Further reading
+//! ## 延伸阅读
 //!
-//! Designing high-quality accessible interfaces can be challenging, in the same
-//! way that designing high-quality traditional interfaces can be. The
-//! following pages have useful information:
+//! 设计高质量的无障碍界面可能很有挑战性，就像设计高质量的传统界面一样。
+//! 以下页面包含有用的信息：
 //!
-//! - [AccessKit]: The cross-platform accessibility toolkit GPUI uses
-//!   internally.
-//! - [MDN WAI-ARIA basics][mdn-aria]: Introduction to roles, properties, and
-//!   states.
-//! - [ARIA Authoring Practices Guide][apg]: W3C patterns for accessible
-//!   widgets.
+//! - [AccessKit]：RGPUI 内部使用的跨平台无障碍工具包。
+//! - [MDN WAI-ARIA 基础][mdn-aria]：角色、属性和状态的介绍。
+//! - [ARIA 编写实践指南][apg]：W3C 无障碍组件模式。
 //!
-//! Note that, while GPUI mimics web APIs, it doesn't necessarily behave
-//! *exactly* as a web browser would with the same attributes.
+//! 注意，虽然 RGPUI 模仿了 Web API，但它的行为不一定与 Web 浏览器
+//! 在使用相同属性时*完全*一致。
 //!
 //! [AccessKit]: https://accesskit.dev/
 //! [mdn-aria]: https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Accessibility/WAI-ARIA_basics
 //! [apg]: https://www.w3.org/WAI/ARIA/apg/
 
 #[cfg(doc)]
-use crate::*; // so I don't have to qualify every type :)
+use crate::*; // 这样就不必限定每个类型了 :)

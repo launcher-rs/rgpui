@@ -18,17 +18,17 @@ fn try_parse_theme_token(value: &str) -> anyhow::Result<ThemeToken> {
     ))
 }
 
-/// Represents a theme configuration.
+/// 表示主题配置。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct ThemeSet {
-    /// The name of the theme set.
+    /// 主题集的名称。
     pub name: SharedString,
-    /// The author of the theme.
+    /// 主题的作者。
     pub author: Option<SharedString>,
-    /// The URL of the theme.
+    /// 主题的 URL。
     pub url: Option<SharedString>,
-    /// The theme list of the theme set.
+    /// 主题集的主题列表。
     #[serde(rename = "themes")]
     pub themes: Vec<ThemeConfig>,
 }
@@ -37,42 +37,42 @@ pub struct ThemeSet {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct ThemeConfig {
-    /// Whether this theme is the default theme.
+    /// 此主题是否为默认主题。
     pub is_default: bool,
-    /// The name of the theme.
+    /// 主题的名称。
     pub name: SharedString,
-    /// The mode of the theme, default is light.
+    /// 主题的模式，默认为浅色。
     pub mode: ThemeMode,
 
-    /// The base font size, default is 16.
+    /// 基础字体大小，默认为 16。
     #[serde(rename = "font.size")]
     pub font_size: Option<f32>,
-    /// The base font family, default is system font: `.SystemUIFont`.
+    /// 基础字体族，默认为系统字体：`.SystemUIFont`。
     #[serde(rename = "font.family")]
     pub font_family: Option<SharedString>,
-    /// The monospace font family, default is platform specific:
+    /// 等宽字体族，默认为平台特定：
     /// - macOS: `Menlo`
     /// - Windows: `Consolas`
     /// - Linux: `DejaVu Sans Mono`
     #[serde(rename = "mono_font.family")]
     pub mono_font_family: Option<SharedString>,
-    /// The monospace font size, default is 13.
+    /// 等宽字体大小，默认为 13。
     #[serde(rename = "mono_font.size")]
     pub mono_font_size: Option<f32>,
 
-    /// The border radius for general elements, default is 6.
+    /// 通用元素的边框半径，默认为 6。
     #[serde(rename = "radius")]
     pub radius: Option<usize>,
-    /// The border radius for large elements like Dialogs and Notifications, default is 8.
+    /// 大型元素（如对话框和通知）的边框半径，默认为 8。
     #[serde(rename = "radius.lg")]
     pub radius_lg: Option<usize>,
-    /// Set shadows in the theme, for example the Input and Button, default is true.
+    /// 在主题中设置阴影，例如输入框和按钮，默认为 true。
     #[serde(rename = "shadow")]
     pub shadow: Option<bool>,
 
-    /// The colors of the theme.
+    /// 主题的颜色。
     pub colors: ThemeConfigColors,
-    /// The highlight theme, this part is combilbility with `style` section in Zed theme.
+    /// 高亮主题，此部分与 Zed 主题中的 `style` 部分兼容。
     ///
     /// https://github.com/zed-industries/zed/blob/f50041779dcfd7a76c8aec293361c60c53f02d51/assets/themes/ayu/ayu.json#L9
     pub highlight: Option<HighlightThemeStyle>,
@@ -81,434 +81,434 @@ pub struct ThemeConfig {
 /// 主题颜色配置，覆盖 `ThemeColor` 中对应名称的颜色值。
 #[derive(Debug, Default, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct ThemeConfigColors {
-    /// Used for accents such as hover background on MenuItem, ListItem, etc.
+    /// 用于悬停背景色的强调色，如 MenuItem、ListItem 等上的悬停背景。
     #[serde(rename = "accent.background")]
     pub accent: Option<SharedString>,
-    /// Used for accent text color.
+    /// 用于强调文本颜色。
     #[serde(rename = "accent.foreground")]
     pub accent_foreground: Option<SharedString>,
-    /// Accordion background color.
+    /// 手风琴背景色。
     #[serde(rename = "accordion.background")]
     pub accordion: Option<SharedString>,
-    /// Default background color.
+    /// 默认背景色。
     #[serde(rename = "background")]
     pub background: Option<SharedString>,
-    /// Default border color
+    /// 默认边框颜色。
     #[serde(rename = "border")]
     pub border: Option<SharedString>,
-    /// Default Button background color.
+    /// 默认按钮背景色。
     #[serde(rename = "button.background")]
     pub button: Option<SharedString>,
-    /// Default Button active background color.
+    /// 默认按钮激活背景色。
     #[serde(rename = "button.active.background")]
     pub button_active: Option<SharedString>,
-    /// Default Button text color.
+    /// 默认按钮文本颜色。
     #[serde(rename = "button.foreground")]
     pub button_foreground: Option<SharedString>,
-    /// Default Button hover background color.
+    /// 默认按钮悬停背景色。
     #[serde(rename = "button.hover.background")]
     pub button_hover: Option<SharedString>,
-    /// Button danger background color, fallback to `danger`.
+    /// 危险按钮背景色，回退到 `danger`。
     #[serde(rename = "button.danger.background")]
     pub button_danger: Option<SharedString>,
-    /// Button danger active background color, fallback to `danger_active`.
+    /// 危险按钮激活背景色，回退到 `danger_active`。
     #[serde(rename = "button.danger.active.background")]
     pub button_danger_active: Option<SharedString>,
-    /// Button danger text color, fallback to `danger_foreground`.
+    /// 危险按钮文本颜色，回退到 `danger_foreground`。
     #[serde(rename = "button.danger.foreground")]
     pub button_danger_foreground: Option<SharedString>,
-    /// Button danger hover background color, fallback to `danger_hover`.
+    /// 危险按钮悬停背景色，回退到 `danger_hover`。
     #[serde(rename = "button.danger.hover.background")]
     pub button_danger_hover: Option<SharedString>,
-    /// Button info background color, fallback to `info`.
+    /// 信息按钮背景色，回退到 `info`。
     #[serde(rename = "button.info.background")]
     pub button_info: Option<SharedString>,
-    /// Button info active background color, fallback to `info_active`.
+    /// 信息按钮激活背景色，回退到 `info_active`。
     #[serde(rename = "button.info.active.background")]
     pub button_info_active: Option<SharedString>,
-    /// Button info text color, fallback to `info_foreground`.
+    /// 信息按钮文本颜色，回退到 `info_foreground`。
     #[serde(rename = "button.info.foreground")]
     pub button_info_foreground: Option<SharedString>,
-    /// Button info hover background color, fallback to `info_hover`.
+    /// 信息按钮悬停背景色，回退到 `info_hover`。
     #[serde(rename = "button.info.hover.background")]
     pub button_info_hover: Option<SharedString>,
-    /// Button primary background color, fallback to `primary`.
+    /// 主要按钮背景色，回退到 `primary`。
     #[serde(rename = "button.primary.background")]
     pub button_primary: Option<SharedString>,
-    /// Button primary active background color, fallback to `primary_active`.
+    /// 主要按钮激活背景色，回退到 `primary_active`。
     #[serde(rename = "button.primary.active.background")]
     pub button_primary_active: Option<SharedString>,
-    /// Button primary text color, fallback to `primary_foreground`.
+    /// 主要按钮文本颜色，回退到 `primary_foreground`。
     #[serde(rename = "button.primary.foreground")]
     pub button_primary_foreground: Option<SharedString>,
-    /// Button primary hover background color, fallback to `primary_hover`.
+    /// 主要按钮悬停背景色，回退到 `primary_hover`。
     #[serde(rename = "button.primary.hover.background")]
     pub button_primary_hover: Option<SharedString>,
-    /// Button secondary background color, fallback to `secondary`.
+    /// 次要按钮背景色，回退到 `secondary`。
     #[serde(rename = "button.secondary.background")]
     pub button_secondary: Option<SharedString>,
-    /// Button secondary active background color, fallback to `secondary_active`.
+    /// 次要按钮激活背景色，回退到 `secondary_active`。
     #[serde(rename = "button.secondary.active.background")]
     pub button_secondary_active: Option<SharedString>,
-    /// Button secondary text color, fallback to `secondary_foreground`.
+    /// 次要按钮文本颜色，回退到 `secondary_foreground`。
     #[serde(rename = "button.secondary.foreground")]
     pub button_secondary_foreground: Option<SharedString>,
-    /// Button secondary hover background color, fallback to `secondary_hover`.
+    /// 次要按钮悬停背景色，回退到 `secondary_hover`。
     #[serde(rename = "button.secondary.hover.background")]
     pub button_secondary_hover: Option<SharedString>,
-    /// Button success background color, fallback to `success`.
+    /// 成功按钮背景色，回退到 `success`。
     #[serde(rename = "button.success.background")]
     pub button_success: Option<SharedString>,
-    /// Button success active background color, fallback to `success_active`.
+    /// 成功按钮激活背景色，回退到 `success_active`。
     #[serde(rename = "button.success.active.background")]
     pub button_success_active: Option<SharedString>,
-    /// Button success text color, fallback to `success_foreground`.
+    /// 成功按钮文本颜色，回退到 `success_foreground`。
     #[serde(rename = "button.success.foreground")]
     pub button_success_foreground: Option<SharedString>,
-    /// Button success hover background color, fallback to `success_hover`.
+    /// 成功按钮悬停背景色，回退到 `success_hover`。
     #[serde(rename = "button.success.hover.background")]
     pub button_success_hover: Option<SharedString>,
-    /// Button warning background color, fallback to `warning`.
+    /// 警告按钮背景色，回退到 `warning`。
     #[serde(rename = "button.warning.background")]
     pub button_warning: Option<SharedString>,
-    /// Button warning active background color, fallback to `warning_active`.
+    /// 警告按钮激活背景色，回退到 `warning_active`。
     #[serde(rename = "button.warning.active.background")]
     pub button_warning_active: Option<SharedString>,
-    /// Button warning text color, fallback to `warning_foreground`.
+    /// 警告按钮文本颜色，回退到 `warning_foreground`。
     #[serde(rename = "button.warning.foreground")]
     pub button_warning_foreground: Option<SharedString>,
-    /// Button warning hover background color, fallback to `warning_hover`.
+    /// 警告按钮悬停背景色，回退到 `warning_hover`。
     #[serde(rename = "button.warning.hover.background")]
     pub button_warning_hover: Option<SharedString>,
-    /// Background color for GroupBox.
+    /// 分组框背景色。
     #[serde(rename = "group_box.background")]
     pub group_box: Option<SharedString>,
-    /// Text color for GroupBox.
+    /// 分组框文本颜色。
     #[serde(rename = "group_box.foreground")]
     pub group_box_foreground: Option<SharedString>,
-    /// Title text color for GroupBox.
+    /// 分组框标题文本颜色。
     #[serde(rename = "group_box.title.foreground")]
     pub group_box_title_foreground: Option<SharedString>,
-    /// Input caret color (Blinking cursor).
+    /// 输入框插入符颜色（闪烁光标）。
     #[serde(rename = "caret")]
     pub caret: Option<SharedString>,
-    /// Chart 1 color.
+    /// 图表 1 颜色。
     #[serde(rename = "chart.1")]
     pub chart_1: Option<SharedString>,
-    /// Chart 2 color.
+    /// 图表 2 颜色。
     #[serde(rename = "chart.2")]
     pub chart_2: Option<SharedString>,
-    /// Chart 3 color.
+    /// 图表 3 颜色。
     #[serde(rename = "chart.3")]
     pub chart_3: Option<SharedString>,
-    /// Chart 4 color.
+    /// 图表 4 颜色。
     #[serde(rename = "chart.4")]
     pub chart_4: Option<SharedString>,
-    /// Chart 5 color.
+    /// 图表 5 颜色。
     #[serde(rename = "chart.5")]
     pub chart_5: Option<SharedString>,
-    /// Bullish color for candlestick charts (upward price movement).
+    /// K 线图看涨颜色（价格上涨）。
     #[serde(rename = "chart_bullish")]
     pub chart_bullish: Option<SharedString>,
-    /// Bearish color for candlestick charts (downward price movement).
+    /// K 线图看跌颜色（价格下跌）。
     #[serde(rename = "chart_bearish")]
     pub chart_bearish: Option<SharedString>,
-    /// Danger background color.
+    /// 危险背景色。
     #[serde(rename = "danger.background")]
     pub danger: Option<SharedString>,
-    /// Danger active background color.
+    /// 危险激活背景色。
     #[serde(rename = "danger.active.background")]
     pub danger_active: Option<SharedString>,
-    /// Danger text color.
+    /// 危险文本颜色。
     #[serde(rename = "danger.foreground")]
     pub danger_foreground: Option<SharedString>,
-    /// Danger hover background color.
+    /// 危险悬停背景色。
     #[serde(rename = "danger.hover.background")]
     pub danger_hover: Option<SharedString>,
-    /// Description List label background color.
+    /// 描述列表标签背景色。
     #[serde(rename = "description_list.label.background")]
     pub description_list_label: Option<SharedString>,
-    /// Description List label foreground color.
+    /// 描述列表标签前景色。
     #[serde(rename = "description_list.label.foreground")]
     pub description_list_label_foreground: Option<SharedString>,
-    /// Drag border color.
+    /// 拖拽边框颜色。
     #[serde(rename = "drag.border")]
     pub drag_border: Option<SharedString>,
-    /// Drop target background color.
+    /// 放置目标背景色。
     #[serde(rename = "drop_target.background")]
     pub drop_target: Option<SharedString>,
-    /// Default text color.
+    /// 默认文本颜色。
     #[serde(rename = "foreground")]
     pub foreground: Option<SharedString>,
-    /// Info background color.
+    /// 信息背景色。
     #[serde(rename = "info.background")]
     pub info: Option<SharedString>,
-    /// Info active background color.
+    /// 信息激活背景色。
     #[serde(rename = "info.active.background")]
     pub info_active: Option<SharedString>,
-    /// Info text color.
+    /// 信息文本颜色。
     #[serde(rename = "info.foreground")]
     pub info_foreground: Option<SharedString>,
-    /// Info hover background color.
+    /// 信息悬停背景色。
     #[serde(rename = "info.hover.background")]
     pub info_hover: Option<SharedString>,
-    /// Border color for inputs such as Input, Select, etc.
+    /// 输入框（如 Input、Select 等）的边框颜色。
     #[serde(rename = "input.border")]
     pub input: Option<SharedString>,
-    /// Link text color.
+    /// 链接文本颜色。
     #[serde(rename = "link")]
     pub link: Option<SharedString>,
-    /// Active link text color.
+    /// 激活链接文本颜色。
     #[serde(rename = "link.active")]
     pub link_active: Option<SharedString>,
-    /// Hover link text color.
+    /// 悬停链接文本颜色。
     #[serde(rename = "link.hover")]
     pub link_hover: Option<SharedString>,
-    /// Background color for List and ListItem.
+    /// 列表和列表项的背景色。
     #[serde(rename = "list.background")]
     pub list: Option<SharedString>,
-    /// Background color for active ListItem.
+    /// 激活列表项的背景色。
     #[serde(rename = "list.active.background")]
     pub list_active: Option<SharedString>,
-    /// Border color for active ListItem.
+    /// 激活列表项的边框颜色。
     #[serde(rename = "list.active.border")]
     pub list_active_border: Option<SharedString>,
-    /// Stripe background color for even ListItem.
+    /// 偶数列表项的条纹背景色。
     #[serde(rename = "list.even.background")]
     pub list_even: Option<SharedString>,
-    /// Background color for List header.
+    /// 列表头部的背景色。
     #[serde(rename = "list.head.background")]
     pub list_head: Option<SharedString>,
-    /// Hover background color for ListItem.
+    /// 列表项的悬停背景色。
     #[serde(rename = "list.hover.background")]
     pub list_hover: Option<SharedString>,
-    /// Muted backgrounds such as Skeleton and Switch.
+    /// 柔和背景色，如骨架屏和开关。
     #[serde(rename = "muted.background")]
     pub muted: Option<SharedString>,
-    /// Muted text color, as used in disabled text.
+    /// 柔和文本颜色，用于禁用文本。
     #[serde(rename = "muted.foreground")]
     pub muted_foreground: Option<SharedString>,
-    /// Background color for Popover.
+    /// 弹出层背景色。
     #[serde(rename = "popover.background")]
     pub popover: Option<SharedString>,
-    /// Text color for Popover.
+    /// 弹出层文本颜色。
     #[serde(rename = "popover.foreground")]
     pub popover_foreground: Option<SharedString>,
-    /// Primary background color.
+    /// 主要背景色。
     #[serde(rename = "primary.background")]
     pub primary: Option<SharedString>,
-    /// Active primary background color.
+    /// 激活主要背景色。
     #[serde(rename = "primary.active.background")]
     pub primary_active: Option<SharedString>,
-    /// Primary text color.
+    /// 主要文本颜色。
     #[serde(rename = "primary.foreground")]
     pub primary_foreground: Option<SharedString>,
-    /// Hover primary background color.
+    /// 悬停主要背景色。
     #[serde(rename = "primary.hover.background")]
     pub primary_hover: Option<SharedString>,
-    /// Progress bar background color.
+    /// 进度条背景色。
     #[serde(rename = "progress.bar.background")]
     pub progress_bar: Option<SharedString>,
-    /// Used for focus ring.
+    /// 用于焦点环。
     #[serde(rename = "ring")]
     pub ring: Option<SharedString>,
-    /// Scrollbar background color.
+    /// 滚动条背景色。
     #[serde(rename = "scrollbar.background")]
     pub scrollbar: Option<SharedString>,
-    /// Scrollbar thumb background color.
+    /// 滚动条滑块背景色。
     #[serde(rename = "scrollbar.thumb.background")]
     pub scrollbar_thumb: Option<SharedString>,
-    /// Scrollbar thumb hover background color.
+    /// 滚动条滑块悬停背景色。
     #[serde(rename = "scrollbar.thumb.hover.background")]
     pub scrollbar_thumb_hover: Option<SharedString>,
-    /// Secondary background color.
+    /// 次要背景色。
     #[serde(rename = "secondary.background")]
     pub secondary: Option<SharedString>,
-    /// Active secondary background color.
+    /// 激活次要背景色。
     #[serde(rename = "secondary.active.background")]
     pub secondary_active: Option<SharedString>,
-    /// Secondary text color, used for secondary Button text color or secondary text.
+    /// 次要文本颜色，用于次要按钮文本颜色或次要文本。
     #[serde(rename = "secondary.foreground")]
     pub secondary_foreground: Option<SharedString>,
-    /// Hover secondary background color.
+    /// 悬停次要背景色。
     #[serde(rename = "secondary.hover.background")]
     pub secondary_hover: Option<SharedString>,
-    /// Input selection background color.
+    /// 输入框选中背景色。
     #[serde(rename = "selection.background")]
     pub selection: Option<SharedString>,
-    /// Sidebar background color.
+    /// 侧边栏背景色。
     #[serde(rename = "sidebar.background")]
     pub sidebar: Option<SharedString>,
-    /// Sidebar accent background color.
+    /// 侧边栏强调背景色。
     #[serde(rename = "sidebar.accent.background")]
     pub sidebar_accent: Option<SharedString>,
-    /// Sidebar accent text color.
+    /// 侧边栏强调文本颜色。
     #[serde(rename = "sidebar.accent.foreground")]
     pub sidebar_accent_foreground: Option<SharedString>,
-    /// Sidebar border color.
+    /// 侧边栏边框颜色。
     #[serde(rename = "sidebar.border")]
     pub sidebar_border: Option<SharedString>,
-    /// Sidebar text color.
+    /// 侧边栏文本颜色。
     #[serde(rename = "sidebar.foreground")]
     pub sidebar_foreground: Option<SharedString>,
-    /// Sidebar primary background color.
+    /// 侧边栏主要背景色。
     #[serde(rename = "sidebar.primary.background")]
     pub sidebar_primary: Option<SharedString>,
-    /// Sidebar primary text color.
+    /// 侧边栏主要文本颜色。
     #[serde(rename = "sidebar.primary.foreground")]
     pub sidebar_primary_foreground: Option<SharedString>,
-    /// Skeleton background color.
+    /// 骨架屏背景色。
     #[serde(rename = "skeleton.background")]
     pub skeleton: Option<SharedString>,
-    /// Slider bar background color.
+    /// 滑块条背景色。
     #[serde(rename = "slider.background")]
     pub slider_bar: Option<SharedString>,
-    /// Slider thumb background color.
+    /// 滑块滑块背景色。
     #[serde(rename = "slider.thumb.background")]
     pub slider_thumb: Option<SharedString>,
-    /// Success background color.
+    /// 成功背景色。
     #[serde(rename = "success.background")]
     pub success: Option<SharedString>,
-    /// Success text color.
+    /// 成功文本颜色。
     #[serde(rename = "success.foreground")]
     pub success_foreground: Option<SharedString>,
-    /// Success hover background color.
+    /// 成功悬停背景色。
     #[serde(rename = "success.hover.background")]
     pub success_hover: Option<SharedString>,
-    /// Success active background color.
+    /// 成功激活背景色。
     #[serde(rename = "success.active.background")]
     pub success_active: Option<SharedString>,
-    /// Switch background color.
+    /// 开关背景色。
     #[serde(rename = "switch.background")]
     pub switch: Option<SharedString>,
-    /// Switch thumb background color.
+    /// 开关滑块背景色。
     #[serde(rename = "switch.thumb.background")]
     pub switch_thumb: Option<SharedString>,
-    /// Tab background color.
+    /// 标签页背景色。
     #[serde(rename = "tab.background")]
     pub tab: Option<SharedString>,
-    /// Tab active background color.
+    /// 标签页激活背景色。
     #[serde(rename = "tab.active.background")]
     pub tab_active: Option<SharedString>,
-    /// Tab active text color.
+    /// 标签页激活文本颜色。
     #[serde(rename = "tab.active.foreground")]
     pub tab_active_foreground: Option<SharedString>,
-    /// TabBar background color.
+    /// 标签栏背景色。
     #[serde(rename = "tab_bar.background")]
     pub tab_bar: Option<SharedString>,
-    /// TabBar segmented background color.
+    /// 标签栏分段背景色。
     #[serde(rename = "tab_bar.segmented.background")]
     pub tab_bar_segmented: Option<SharedString>,
-    /// Tab text color.
+    /// 标签页文本颜色。
     #[serde(rename = "tab.foreground")]
     pub tab_foreground: Option<SharedString>,
-    /// Table background color.
+    /// 表格背景色。
     #[serde(rename = "table.background")]
     pub table: Option<SharedString>,
-    /// Table active item background color.
+    /// 表格激活项背景色。
     #[serde(rename = "table.active.background")]
     pub table_active: Option<SharedString>,
-    /// Table active item border color.
+    /// 表格激活项边框颜色。
     #[serde(rename = "table.active.border")]
     pub table_active_border: Option<SharedString>,
-    /// Stripe background color for even TableRow.
+    /// 偶数表格行的条纹背景色。
     #[serde(rename = "table.even.background")]
     pub table_even: Option<SharedString>,
-    /// Table header background color.
+    /// 表格头部背景色。
     #[serde(rename = "table.head.background")]
     pub table_head: Option<SharedString>,
-    /// Table header text color.
+    /// 表格头部文本颜色。
     #[serde(rename = "table.head.foreground")]
     pub table_head_foreground: Option<SharedString>,
-    /// Table footer background color.
+    /// 表格页脚背景色。
     #[serde(rename = "table.foot.background")]
     pub table_foot: Option<SharedString>,
-    /// Table footer text color.
+    /// 表格页脚文本颜色。
     #[serde(rename = "table.foot.foreground")]
     pub table_foot_foreground: Option<SharedString>,
-    /// Table item hover background color.
+    /// 表格项悬停背景色。
     #[serde(rename = "table.hover.background")]
     pub table_hover: Option<SharedString>,
-    /// Table row border color.
+    /// 表格行边框颜色。
     #[serde(rename = "table.row.border")]
     pub table_row_border: Option<SharedString>,
-    /// TitleBar background color, use for Window title bar.
+    /// 标题栏背景色，用于窗口标题栏。
     #[serde(rename = "title_bar.background")]
     pub title_bar: Option<SharedString>,
-    /// TitleBar border color.
+    /// 标题栏边框颜色。
     #[serde(rename = "title_bar.border")]
     pub title_bar_border: Option<SharedString>,
-    /// StatusBar background color, use for the bottom status bar.
+    /// 状态栏背景色，用于底部状态栏。
     #[serde(rename = "status_bar.background")]
     pub status_bar: Option<SharedString>,
-    /// StatusBar border color.
+    /// 状态栏边框颜色。
     #[serde(rename = "status_bar.border")]
     pub status_bar_border: Option<SharedString>,
-    /// Background color for Tiles.
+    /// 磁贴背景色。
     #[serde(rename = "tiles.background")]
     pub tiles: Option<SharedString>,
-    /// Warning background color.
+    /// 警告背景色。
     #[serde(rename = "warning.background")]
     pub warning: Option<SharedString>,
-    /// Warning active background color.
+    /// 警告激活背景色。
     #[serde(rename = "warning.active.background")]
     pub warning_active: Option<SharedString>,
-    /// Warning hover background color.
+    /// 警告悬停背景色。
     #[serde(rename = "warning.hover.background")]
     pub warning_hover: Option<SharedString>,
-    /// Warning foreground color.
+    /// 警告前景色。
     #[serde(rename = "warning.foreground")]
     pub warning_foreground: Option<SharedString>,
-    /// Overlay background color.
+    /// 覆盖层背景色。
     #[serde(rename = "overlay")]
     pub overlay: Option<SharedString>,
-    /// Window border color.
+    /// 窗口边框颜色。
     ///
-    /// # Platform specific:
+    /// # 平台特定：
     ///
-    /// This is only works on Linux, other platforms we can't change the window border color.
+    /// 此选项仅在 Linux 上有效，其他平台无法更改窗口边框颜色。
     #[serde(rename = "window.border")]
     pub window_border: Option<SharedString>,
 
-    /// Base blue color.
+    /// 基础蓝色。
     #[serde(rename = "base.blue")]
     blue: Option<String>,
-    /// Base light blue color.
+    /// 基础浅蓝色。
     #[serde(rename = "base.blue.light")]
     blue_light: Option<String>,
-    /// Base cyan color.
+    /// 基础青色。
     #[serde(rename = "base.cyan")]
     cyan: Option<String>,
-    /// Base light cyan color.
+    /// 基础浅青色。
     #[serde(rename = "base.cyan.light")]
     cyan_light: Option<String>,
-    /// Base green color.
+    /// 基础绿色。
     #[serde(rename = "base.green")]
     green: Option<String>,
-    /// Base light green color.
+    /// 基础浅绿色。
     #[serde(rename = "base.green.light")]
     green_light: Option<String>,
-    /// Base magenta color.
+    /// 基础品红色。
     #[serde(rename = "base.magenta")]
     magenta: Option<String>,
     #[serde(rename = "base.magenta.light")]
     magenta_light: Option<String>,
-    /// Base red color.
+    /// 基础红色。
     #[serde(rename = "base.red")]
     red: Option<String>,
-    /// Base light red color.
+    /// 基础浅红色。
     #[serde(rename = "base.red.light")]
     red_light: Option<String>,
-    /// Base yellow color.
+    /// 基础黄色。
     #[serde(rename = "base.yellow")]
     yellow: Option<String>,
-    /// Base light yellow color.
+    /// 基础浅黄色。
     #[serde(rename = "base.yellow.light")]
     yellow_light: Option<String>,
 }
 
 impl ThemeColor {
-    /// Create a new `ThemeColor` from a `ThemeConfig`.
+    /// 从 `ThemeConfig` 创建新的 `ThemeColor`。
     pub(crate) fn apply_config(
         &mut self,
         config: &ThemeConfig,
@@ -890,7 +890,7 @@ impl ThemeColor {
 }
 
 impl Theme {
-    /// Apply the given theme configuration to the current theme.
+    /// 将给定的主题配置应用到当前主题。
     pub fn apply_config(&mut self, config: &Rc<ThemeConfig>) {
         if config.mode.is_dark() {
             self.dark_theme = config.clone();

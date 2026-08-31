@@ -18,7 +18,7 @@ use std::{
 
 /// [`Scheduler`] 的生产实现，包装 [`PlatformDispatcher`]。
 ///
-/// 这允许 GPUI 将调度器 crate 的执行器类型与平台的
+/// 这允许 RGPUI 将调度器 crate 的执行器类型与平台的
 /// 原生调度机制一起使用（例如 macOS 上的 Grand Central Dispatch）。
 pub struct PlatformScheduler {
     dispatcher: Arc<dyn PlatformDispatcher>,

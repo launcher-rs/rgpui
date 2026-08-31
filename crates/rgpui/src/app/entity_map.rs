@@ -24,7 +24,7 @@ use std::{
 };
 
 slotmap::new_key_type! {
-    /// A unique identifier for a entity across the application.
+    /// 应用中实体的唯一标识符。
     pub struct EntityId;
 }
 
@@ -35,12 +35,12 @@ impl From<u64> for EntityId {
 }
 
 impl EntityId {
-    /// Converts this entity id to a [NonZeroU64]
+    /// 将此实体 ID 转换为 [NonZeroU64]
     pub fn as_non_zero_u64(self) -> NonZeroU64 {
         NonZeroU64::new(self.0.as_ffi()).unwrap()
     }
 
-    /// Converts this entity id to a [u64]
+    /// 将此实体 ID 转换为 [u64]
     pub fn as_u64(self) -> u64 {
         self.0.as_ffi()
     }
@@ -88,19 +88,19 @@ impl EntityMap {
         self.ref_counts.clone()
     }
 
-    /// Captures a snapshot of all entities that currently have alive handles.
+    /// 捕获当前所有具有存活句柄的实体的快照。
     ///
-    /// The returned [`LeakDetectorSnapshot`] can later be passed to
-    /// [`assert_no_new_leaks`](Self::assert_no_new_leaks) to verify that no
-    /// entities created after the snapshot are still alive.
+    /// 返回的 [`LeakDetectorSnapshot`] 可以之后传递给
+    /// [`assert_no_new_leaks`](Self::assert_no_new_leaks) 以验证
+    /// 快照之后创建的实体没有仍然存活的。
     #[cfg(any(test, feature = "leak-detection"))]
     pub fn leak_detector_snapshot(&self) -> LeakDetectorSnapshot {
         self.ref_counts.read().leak_detector.snapshot()
     }
 
-    /// Asserts that no entities created after `snapshot` still have alive handles.
+    /// 断言快照之后创建的实体没有仍然具有存活句柄的。
     ///
-    /// See [`LeakDetector::assert_no_new_leaks`] for details.
+    /// 详见 [`LeakDetector::assert_no_new_leaks`] 的文档。
     #[cfg(any(test, feature = "leak-detection"))]
     pub fn assert_no_new_leaks(&self, snapshot: &LeakDetectorSnapshot) {
         self.ref_counts
@@ -109,13 +109,13 @@ impl EntityMap {
             .assert_no_new_leaks(snapshot)
     }
 
-    /// Reserve a slot for an entity, which you can subsequently use with `insert`.
+    /// 为实体预留一个槽位，随后可使用 `insert` 将实体放入。
     pub fn reserve<T: 'static>(&self) -> Slot<T> {
         let id = self.ref_counts.write().counts.insert(1.into());
         Slot(Entity::new(id, Arc::downgrade(&self.ref_counts)))
     }
 
-    /// Insert an entity into a slot obtained by calling `reserve`.
+    /// 将实体插入通过调用 `reserve` 获取的槽位中。
     pub fn insert<T>(&mut self, slot: Slot<T>, entity: T) -> Entity<T>
     where
         T: 'static,
@@ -242,7 +242,7 @@ impl<T> Drop for Lease<T> {
 #[derive(Deref, DerefMut)]
 pub(crate) struct Slot<T>(Entity<T>);
 
-/// A dynamically typed reference to a entity, which can be downcast into a `Entity<T>`.
+/// 可以向下转型为 `Entity<T>` 的动态类型实体引用。
 pub struct AnyEntity {
     pub(crate) entity_id: EntityId,
     pub(crate) entity_type: TypeId,
@@ -273,19 +273,19 @@ impl AnyEntity {
         }
     }
 
-    /// Returns the id associated with this entity.
+    /// 返回与此实体关联的 ID。
     #[inline]
     pub fn entity_id(&self) -> EntityId {
         self.entity_id
     }
 
-    /// Returns the [TypeId] associated with this entity.
+    /// 返回与此实体关联的 [TypeId]。
     #[inline]
     pub fn entity_type(&self) -> TypeId {
         self.entity_type
     }
 
-    /// Converts this entity handle into a weak variant, which does not prevent it from being released.
+    /// 将此实体句柄转换为弱引用，弱引用不会阻止实体被释放。
     pub fn downgrade(&self) -> AnyWeakEntity {
         AnyWeakEntity {
             entity_id: self.entity_id,
@@ -294,8 +294,8 @@ impl AnyEntity {
         }
     }
 
-    /// Converts this entity handle into a strongly-typed entity handle of the given type.
-    /// If this entity handle is not of the specified type, returns itself as an error variant.
+    /// 将此实体句柄转换为给定类型的强类型实体句柄。
+    /// 如果此实体句柄不是指定类型，则返回自身作为错误变体。
     pub fn downcast<T: 'static>(self) -> Result<Entity<T>, AnyEntity> {
         if TypeId::of::<T>() == self.entity_type {
             Ok(Entity {
@@ -408,8 +408,8 @@ impl std::fmt::Debug for AnyEntity {
     }
 }
 
-/// A strong, well-typed reference to a struct which is managed
-/// by GPUI
+/// 指向由 RGPUI 管理的结构体的强类型引用。
+/// 可以向下转型为 `Entity<T>`。
 #[derive(Deref, DerefMut)]
 pub struct Entity<T> {
     #[deref]
@@ -564,7 +564,7 @@ impl<T: 'static> PartialOrd for Entity<T> {
     }
 }
 
-/// A type erased, weak reference to a entity.
+/// 指向给定类型实体的弱引用。
 #[derive(Clone)]
 pub struct AnyWeakEntity {
     pub(crate) entity_id: EntityId,
@@ -573,13 +573,13 @@ pub struct AnyWeakEntity {
 }
 
 impl AnyWeakEntity {
-    /// Get the entity ID associated with this weak reference.
+    /// 获取与此弱引用关联的实体 ID。
     #[inline]
     pub fn entity_id(&self) -> EntityId {
         self.entity_id
     }
 
-    /// Check if this weak handle can be upgraded, or if the entity has already been dropped
+    /// 检查此弱句柄是否可以升级，或者实体是否已被丢弃。
     pub fn is_upgradable(&self) -> bool {
         let ref_count = self
             .entity_ref_counts
@@ -589,7 +589,7 @@ impl AnyWeakEntity {
         ref_count > 0
     }
 
-    /// Upgrade this weak entity reference to a strong reference.
+    /// 将此弱实体引用升级为强引用。
     pub fn upgrade(&self) -> Option<AnyEntity> {
         let ref_counts = &self.entity_ref_counts.upgrade()?;
         let ref_counts = ref_counts.read();
@@ -616,23 +616,23 @@ impl AnyWeakEntity {
         })
     }
 
-    /// Asserts that the entity referenced by this weak handle has been fully released.
+    /// 断言此弱句柄引用的实体已被完全释放。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```ignore
     /// let entity = cx.new(|_| MyEntity::new());
     /// let weak = entity.downgrade();
     /// drop(entity);
     ///
-    /// // Verify the entity was released
+    /// // 验证实体已释放
     /// weak.assert_released();
     /// ```
     ///
-    /// # Debugging Leaks
+    /// # 调试泄漏
     ///
-    /// If this method panics due to leaked handles, set the `LEAK_BACKTRACE` environment
-    /// variable to see where the leaked handles were allocated:
+    /// 如果此方法因泄漏的句柄而 panic，请设置 `LEAK_BACKTRACE` 环境变量
+    /// 以查看泄漏句柄的分配位置：
     ///
     /// ```bash
     /// LEAK_BACKTRACE=1 cargo test my_test
@@ -640,9 +640,9 @@ impl AnyWeakEntity {
     ///
     /// # Panics
     ///
-    /// - Panics if any strong handles to the entity are still alive.
-    /// - Panics if the entity was recently dropped but cleanup hasn't completed yet
-    ///   (resources are retained until the end of the effect cycle).
+    /// - 如果实体的任何强句柄仍然存活则 panic。
+    /// - 如果实体最近被丢弃但清理尚未完成则 panic
+    ///   （资源会保留到效果周期结束）。
     #[cfg(any(test, feature = "leak-detection"))]
     pub fn assert_released(&self) {
         self.entity_ref_counts
@@ -664,7 +664,7 @@ impl AnyWeakEntity {
         }
     }
 
-    /// Creates a weak entity that can never be upgraded.
+    /// 创建一个永远无法升级的弱实体。
     pub fn new_invalid() -> Self {
         /// To hold the invariant that all ids are unique, and considering that slotmap
         /// increases their IDs from `0`, we can decrease ours from `u64::MAX` so these
@@ -735,7 +735,7 @@ impl PartialOrd for AnyWeakEntity {
     }
 }
 
-/// A weak reference to a entity of the given type.
+/// 指向给定类型实体的弱引用。
 #[derive(Deref, DerefMut)]
 pub struct WeakEntity<T> {
     #[deref]
@@ -763,7 +763,7 @@ impl<T> Clone for WeakEntity<T> {
 }
 
 impl<T: 'static> WeakEntity<T> {
-    /// Upgrade this weak entity reference into a strong entity reference
+    /// 将此弱实体引用升级为强实体引用。
     pub fn upgrade(&self) -> Option<Entity<T>> {
         Some(Entity {
             any_entity: self.any_entity.upgrade()?,
@@ -771,9 +771,8 @@ impl<T: 'static> WeakEntity<T> {
         })
     }
 
-    /// Updates the entity referenced by this handle with the given function if
-    /// the referenced entity still exists. Returns an error if the entity has
-    /// been released.
+    /// 如果引用的实体仍然存在，则使用给定函数更新该实体。
+    /// 如果实体已被释放则返回错误。
     pub fn update<C, R>(
         &self,
         cx: &mut C,
@@ -786,9 +785,8 @@ impl<T: 'static> WeakEntity<T> {
         Ok(cx.update_entity(&entity, update))
     }
 
-    /// Updates the entity referenced by this handle with the given function if
-    /// the referenced entity still exists, within a visual context that has a window.
-    /// Returns an error if the entity has been released.
+    /// 如果引用的实体仍然存在，则在具有窗口的可视化上下文中
+    /// 使用给定函数更新该实体。如果实体已被释放则返回错误。
     pub fn update_in<C, R>(
         &self,
         cx: &mut C,
@@ -804,9 +802,8 @@ impl<T: 'static> WeakEntity<T> {
         .context("entity has no current window")
     }
 
-    /// Reads the entity referenced by this handle with the given function if
-    /// the referenced entity still exists. Returns an error if the entity has
-    /// been released.
+    /// 如果引用的实体仍然存在，则使用给定函数读取该实体。
+    /// 如果实体已被释放则返回错误。
     pub fn read_with<C, R>(&self, cx: &C, read: impl FnOnce(&T, &App) -> R) -> Result<R>
     where
         C: AppContext,
@@ -815,7 +812,7 @@ impl<T: 'static> WeakEntity<T> {
         Ok(cx.read_entity(&entity, read))
     }
 
-    /// Create a new weak entity that can never be upgraded.
+    /// 创建一个永远无法升级的新弱实体。
     #[inline]
     pub fn new_invalid() -> Self {
         Self {

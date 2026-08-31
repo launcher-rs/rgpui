@@ -27,25 +27,25 @@ use thiserror::Error;
 
 use super::{Stateful, StatefulInteractiveElement};
 
-/// The delay before showing the loading state.
+/// 显示加载状态前的延迟。
 pub const LOADING_DELAY: Duration = Duration::from_millis(200);
 
-/// A type alias to the resource loader that the `img()` element uses.
+/// `img()` 元素使用的资源加载器的类型别名。
 ///
-/// Note: that this is only for Resources, like URLs or file paths.
-/// Custom loaders, or external images will not use this asset loader
+/// 注意：这仅适用于资源，如 URL 或文件路径。
+/// 自定义加载器或外部图像不会使用此资源加载器
 pub type ImgResourceLoader = AssetLogger<ImageAssetLoader>;
 
-/// A source of image content.
+/// 图像内容的来源。
 #[derive(Clone)]
 pub enum ImageSource {
-    /// The image content will be loaded from some resource location
+    /// 图像内容将从某个资源位置加载
     Resource(Resource),
-    /// Cached image data
+    /// 缓存的图像数据
     Render(Arc<RenderImage>),
-    /// Cached image data
+    /// 缓存的图像数据
     Image(Arc<Image>),
-    /// A custom loading function to use
+    /// 要使用的自定义加载函数
     Custom(Arc<dyn Fn(&mut Window, &mut App) -> Option<Result<Arc<RenderImage>, ImageCacheError>>>),
 }
 
@@ -124,7 +124,7 @@ where
     }
 }
 
-/// The style of an image element.
+/// 图像元素的样式。
 pub struct ImageStyle {
     grayscale: bool,
     object_fit: ObjectFit,
@@ -143,32 +143,30 @@ impl Default for ImageStyle {
     }
 }
 
-/// Style an image element.
+/// 设置图像元素的样式。
 pub trait StyledImage: Sized {
-    /// Get a mutable [ImageStyle] from the element.
+    /// 从元素获取可变的 [ImageStyle]。
     fn image_style(&mut self) -> &mut ImageStyle;
 
-    /// Set the image to be displayed in grayscale.
+    /// 设置图像以灰度显示。
     fn grayscale(mut self, grayscale: bool) -> Self {
         self.image_style().grayscale = grayscale;
         self
     }
 
-    /// Set the object fit for the image.
+    /// 设置图像的对象适配方式。
     fn object_fit(mut self, object_fit: ObjectFit) -> Self {
         self.image_style().object_fit = object_fit;
         self
     }
 
-    /// Set a fallback function that will be invoked to render an error view should
-    /// the image fail to load.
+    /// 设置回退函数，当图像加载失败时调用以渲染错误视图。
     fn with_fallback(mut self, fallback: impl Fn() -> AnyElement + 'static) -> Self {
         self.image_style().fallback = Some(Box::new(fallback));
         self
     }
 
-    /// Set a fallback function that will be invoked to render a view while the image
-    /// is still being loaded.
+    /// 设置回退函数，在图像仍在加载时调用以渲染加载视图。
     fn with_loading(mut self, loading: impl Fn() -> AnyElement + 'static) -> Self {
         self.image_style().loading = Some(Box::new(loading));
         self
@@ -187,7 +185,7 @@ impl StyledImage for Stateful<Img> {
     }
 }
 
-/// An image element.
+/// 一个图像元素。
 pub struct Img {
     interactivity: Interactivity,
     source: ImageSource,
@@ -195,7 +193,7 @@ pub struct Img {
     image_cache: Option<AnyImageCache>,
 }
 
-/// Create a new image element.
+/// 创建一个新的图像元素。
 #[track_caller]
 pub fn img(source: impl Into<ImageSource>) -> Img {
     Img {
@@ -207,7 +205,7 @@ pub fn img(source: impl Into<ImageSource>) -> Img {
 }
 
 impl Img {
-    /// A list of all format extensions currently supported by this img element
+    /// 此 img 元素当前支持的所有格式扩展名列表
     pub fn extensions() -> &'static [&'static str] {
         // This is the list in [image::ImageFormat::from_extension] + `svg`
         &[
@@ -216,15 +214,15 @@ impl Img {
         ]
     }
 
-    /// Sets the image cache for the current node.
+    /// 设置当前节点的图像缓存。
     ///
-    /// If the `image_cache` is not explicitly provided, the function will determine the image cache by:
+    /// 如果未显式提供 `image_cache`，函数将按以下方式确定图像缓存：
     ///
-    /// 1. Checking if any ancestor node of the current node contains an `ImageCacheElement`, If such a node exists, the image cache specified by that ancestor will be used.
-    /// 2. If no ancestor node contains an `ImageCacheElement`, the global image cache will be used as a fallback.
+    /// 1. 检查当前节点的任何祖先节点是否包含 `ImageCacheElement`，如果存在则使用该祖先指定的图像缓存。
+    /// 2. 如果没有祖先节点包含 `ImageCacheElement`，则使用全局图像缓存作为回退。
     ///
-    /// This mechanism provides a flexible way to manage image caching, allowing precise control when needed,
-    /// while ensuring a default behavior when no cache is explicitly specified.
+    /// 此机制提供了灵活的图像缓存管理方式，允许在需要时精确控制，
+    /// 同时在未显式指定缓存时确保默认行为。
     #[inline]
     pub fn image_cache<I: ImageCache>(self, image_cache: &Entity<I>) -> Self {
         Self {
@@ -248,14 +246,14 @@ impl DerefMut for Stateful<Img> {
     }
 }
 
-/// The image state between frames
+/// 帧之间的图像状态
 struct ImgState {
     frame_index: usize,
     last_frame_time: Option<Instant>,
     started_loading: Option<(Instant, Task<()>)>,
 }
 
-/// The image layout state between frames
+/// 帧之间的图像布局状态
 pub struct ImgLayoutState {
     frame_index: usize,
     replacement: Option<AnyElement>,
@@ -571,7 +569,7 @@ impl ImageSource {
         }
     }
 
-    /// Remove this image source from the asset system
+    /// 从资源系统中移除此图像源
     pub fn remove_asset(&self, cx: &mut App) {
         match self {
             ImageSource::Resource(resource) => {
@@ -599,7 +597,7 @@ impl Asset for ImageDecoder {
     }
 }
 
-/// An image loader for the GPUI asset system
+/// RGPUI 资源系统的图像加载器
 #[derive(Clone)]
 pub enum ImageAssetLoader {}
 
@@ -749,32 +747,32 @@ impl Asset for ImageAssetLoader {
     }
 }
 
-/// An error that can occur when interacting with the image cache.
+/// 与图像缓存交互时可能发生的错误。
 #[derive(Debug, Error, Clone)]
 pub enum ImageCacheError {
-    /// Some other kind of error occurred
+    /// 发生了其他类型的错误
     #[error("error: {0}")]
     Other(#[from] Arc<anyhow::Error>),
-    /// An error that occurred while reading the image from disk.
+    /// 从磁盘读取图像时发生的错误。
     #[error("IO error: {0}")]
     Io(Arc<std::io::Error>),
-    /// An error that occurred while processing an image.
+    /// 处理图像时发生的错误。
     #[error("unexpected http status for {uri}: {status}, body: {body}")]
     BadStatus {
-        /// The URI of the image.
+        /// 图像的 URI。
         uri: SharedUri,
-        /// The HTTP status code.
+        /// HTTP 状态码。
         status: crate::http_client::StatusCode,
-        /// The HTTP response body.
+        /// HTTP 响应体。
         body: String,
     },
-    /// An error that occurred while processing an asset.
+    /// 处理资源时发生的错误。
     #[error("asset error: {0}")]
     Asset(SharedString),
-    /// An error that occurred while processing an image.
+    /// 处理图像时发生的错误。
     #[error("image error: {0}")]
     Image(Arc<ImageError>),
-    /// An error that occurred while processing an SVG.
+    /// 处理 SVG 时发生的错误。
     #[error("svg error: {0}")]
     Usvg(Arc<usvg::Error>),
 }
@@ -818,7 +816,7 @@ mod tests {
         )))
     }
 
-    /// Overwrites the cached `frame_index` of the sibling `img` during paint.
+    /// 在绘制期间覆盖兄弟 `img` 的缓存 `frame_index`。
     fn seed_frame_index(frame_index: usize) -> impl IntoElement {
         canvas(
             |_, _, _| (),

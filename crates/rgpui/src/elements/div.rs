@@ -1,19 +1,16 @@
-//! Div is the central, reusable element that most GPUI trees will be built from.
-//! It functions as a container for other elements, and provides a number of
-//! useful features for laying out and styling its children as well as binding
-//! mouse events and action handlers. It is meant to be similar to the HTML `<div>`
-//! element, but for GPUI.
+//! Div 是核心的、可复用的元素，大多数 RGPUI 树都将基于它构建。
+//! 它作为其他元素的容器，提供了许多用于布局和样式化子元素的实用功能，
+//! 以及绑定鼠标事件和动作处理器。它的设计类似于 HTML 中的 `<div>` 元素，
+//! 但适用于 RGPUI。
 //!
-//! # Build your own div
+//! # 构建你自己的 div
 //!
-//! GPUI does not directly provide APIs for stateful, multi step events like `click`
-//! and `drag`. We want GPUI users to be able to build their own abstractions for
-//! their own needs. However, as a UI framework, we're also obliged to provide some
-//! building blocks to make the process of building your own elements easier.
-//! For this we have the [`Interactivity`] and the [`StyleRefinement`] structs, as well
-//! as several associated traits. Together, these provide the full suite of Dom-like events
-//! and Tailwind-like styling that you can use to build your own custom elements. Div is
-//! constructed by combining these two systems into an all-in-one element.
+//! RGPUI 没有直接提供有状态的、多步骤事件（如 `click` 和 `drag`）的 API。
+//! 我们希望 RGPUI 用户能够根据自己的需求构建自己的抽象。然而，作为 UI 框架，
+//! 我们也有义务提供一些构建块，使构建自定义元素的过程更加容易。为此，我们提供了
+//! [`Interactivity`] 和 [`StyleRefinement`] 结构体，以及若干相关的 trait。
+//! 它们共同提供了完整的类 Dom 事件和类 Tailwind 样式能力，你可以用它们来构建
+//! 自定义元素。Div 通过将这两个系统组合成一个全能元素来构建。
 
 use crate::PinchEvent;
 use crate::collections::HashMap;
@@ -49,29 +46,28 @@ const DRAG_THRESHOLD: f64 = 2.;
 const DEFAULT_TOOLTIP_SHOW_DELAY: Duration = Duration::from_millis(500);
 const HOVERABLE_TOOLTIP_HIDE_DELAY: Duration = Duration::from_millis(500);
 
-/// The styling information for a given group.
+/// 给定分组的样式信息。
 pub struct GroupStyle {
-    /// The identifier for this group.
+    /// 该分组的标识符。
     pub group: SharedString,
 
-    /// The specific style refinement that this group would apply
-    /// to its children.
+    /// 该分组将应用到其子元素的具体样式细化。
     pub style: Box<StyleRefinement>,
 }
 
-/// An event for when a drag is moving over this element, with the given state type.
+/// 当拖拽移动经过此元素时触发的事件，包含给定的状态类型。
 pub struct DragMoveEvent<T> {
-    /// The mouse move event that triggered this drag move event.
+    /// 触发此拖拽移动事件的鼠标移动事件。
     pub event: MouseMoveEvent,
 
-    /// The bounds of this element.
+    /// 此元素的边界矩形。
     pub bounds: Bounds<Pixels>,
     drag: PhantomData<T>,
     dragged_item: Arc<dyn Any>,
 }
 
 impl<T: 'static> DragMoveEvent<T> {
-    /// Returns the drag state for this event.
+    /// 返回此事件的拖拽状态。
     pub fn drag<'b>(&self, cx: &'b App) -> &'b T {
         cx.active_drag
             .as_ref()
@@ -79,14 +75,14 @@ impl<T: 'static> DragMoveEvent<T> {
             .expect("DragMoveEvent is only valid when the stored active drag is of the same type.")
     }
 
-    /// An item that is about to be dropped.
+    /// 即将被释放（drop）的项目。
     pub fn dragged_item(&self) -> &dyn Any {
         self.dragged_item.as_ref()
     }
 }
 
 impl Interactivity {
-    /// Create an `Interactivity`, capturing the caller location in debug mode.
+    /// 创建一个 `Interactivity`，在调试模式下捕获调用位置。
     #[cfg(any(feature = "inspector", debug_assertions))]
     #[track_caller]
     pub fn new() -> Interactivity {
@@ -96,13 +92,13 @@ impl Interactivity {
         }
     }
 
-    /// Create an `Interactivity`, capturing the caller location in debug mode.
+    /// 创建一个 `Interactivity`，在调试模式下捕获调用位置。
     #[cfg(not(any(feature = "inspector", debug_assertions)))]
     pub fn new() -> Interactivity {
         Interactivity::default()
     }
 
-    /// Gets the source location of construction. Returns `None` when not in debug mode.
+    /// 获取构造的源代码位置。非调试模式下返回 `None`。
     pub fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
         #[cfg(any(feature = "inspector", debug_assertions))]
         {
@@ -115,10 +111,10 @@ impl Interactivity {
         }
     }
 
-    /// Bind the given callback to the mouse down event for the given mouse button, during the bubble phase.
-    /// The imperative API equivalent of [`InteractiveElement::on_mouse_down`].
+    /// 在冒泡阶段将给定回调绑定到指定鼠标按钮的鼠标按下事件。
+    /// [`InteractiveElement::on_mouse_down`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to the view state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_mouse_down(
         &mut self,
         button: MouseButton,
@@ -135,10 +131,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse down event for any button, during the capture phase.
-    /// The imperative API equivalent of [`InteractiveElement::capture_any_mouse_down`].
+    /// 在捕获阶段将给定回调绑定到任意按钮的鼠标按下事件。
+    /// [`InteractiveElement::capture_any_mouse_down`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn capture_any_mouse_down(
         &mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
@@ -151,10 +147,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse down event for any button, during the bubble phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_any_mouse_down`].
+    /// 在冒泡阶段将给定回调绑定到任意按钮的鼠标按下事件。
+    /// [`InteractiveElement::on_any_mouse_down`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_any_mouse_down(
         &mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
@@ -167,10 +163,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse pressure event, during the bubble phase
-    /// the imperative API equivalent to [`InteractiveElement::on_mouse_pressure`].
+    /// 在冒泡阶段将给定回调绑定到鼠标按压事件。
+    /// [`InteractiveElement::on_mouse_pressure`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_mouse_pressure(
         &mut self,
         listener: impl Fn(&MousePressureEvent, &mut Window, &mut App) + 'static,
@@ -183,10 +179,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse pressure event, during the capture phase
-    /// the imperative API equivalent to [`InteractiveElement::on_mouse_pressure`].
+    /// 在捕获阶段将给定回调绑定到鼠标按压事件。
+    /// [`InteractiveElement::on_mouse_pressure`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn capture_mouse_pressure(
         &mut self,
         listener: impl Fn(&MousePressureEvent, &mut Window, &mut App) + 'static,
@@ -199,10 +195,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse up event for the given button, during the bubble phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_mouse_up`].
+    /// 在冒泡阶段将给定回调绑定到指定按钮的鼠标释放事件。
+    /// [`InteractiveElement::on_mouse_up`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_mouse_up(
         &mut self,
         button: MouseButton,
@@ -219,10 +215,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse up event for any button, during the capture phase.
-    /// The imperative API equivalent to [`InteractiveElement::capture_any_mouse_up`].
+    /// 在捕获阶段将给定回调绑定到任意按钮的鼠标释放事件。
+    /// [`InteractiveElement::capture_any_mouse_up`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn capture_any_mouse_up(
         &mut self,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
@@ -235,10 +231,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse up event for any button, during the bubble phase.
-    /// The imperative API equivalent to [`Interactivity::on_any_mouse_up`].
+    /// 在冒泡阶段将给定回调绑定到任意按钮的鼠标释放事件。
+    /// [`Interactivity::on_any_mouse_up`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_any_mouse_up(
         &mut self,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
@@ -251,11 +247,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse down event, on any button, during the capture phase,
-    /// when the mouse is outside of the bounds of this element.
-    /// The imperative API equivalent to [`InteractiveElement::on_mouse_down_out`].
+    /// 在捕获阶段，当鼠标位于此元素边界之外时，将给定回调绑定到任意按钮的鼠标按下事件。
+    /// [`InteractiveElement::on_mouse_down_out`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_mouse_down_out(
         &mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
@@ -268,11 +263,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse up event, for the given button, during the capture phase,
-    /// when the mouse is outside of the bounds of this element.
-    /// The imperative API equivalent to [`InteractiveElement::on_mouse_up_out`].
+    /// 在捕获阶段，当鼠标位于此元素边界之外时，将给定回调绑定到指定按钮的鼠标释放事件。
+    /// [`InteractiveElement::on_mouse_up_out`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_mouse_up_out(
         &mut self,
         button: MouseButton,
@@ -289,10 +283,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse move event, during the bubble phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_mouse_move`].
+    /// 在冒泡阶段将给定回调绑定到鼠标移动事件。
+    /// [`InteractiveElement::on_mouse_move`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_mouse_move(
         &mut self,
         listener: impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static,
@@ -305,10 +299,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse exit event, during the bubble phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_mouse_exit`].
+    /// 在冒泡阶段将给定回调绑定到鼠标离开事件。
+    /// [`InteractiveElement::on_mouse_exit`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_mouse_exit(
         &mut self,
         listener: impl Fn(&MouseExitEvent, &mut Window, &mut App) + 'static,
@@ -321,13 +315,13 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to the mouse drag event of the given type. Note that this
-    /// will be called for all move events, inside or outside of this element, as long as the
-    /// drag was started with this element under the mouse. Useful for implementing draggable
-    /// UIs that don't conform to a drag and drop style interaction, like resizing.
-    /// The imperative API equivalent to [`InteractiveElement::on_drag_move`].
+    /// 将给定回调绑定到指定类型的鼠标拖拽移动事件。注意此回调
+    /// 会在所有移动事件中被调用，无论鼠标在元素内部还是外部，只要拖拽
+    /// 是由此元素开始的。适用于实现不符合拖放交互样式的可拖拽 UI，
+    /// 例如调整大小。
+    /// [`InteractiveElement::on_drag_move`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_drag_move<T>(
         &mut self,
         listener: impl Fn(&DragMoveEvent<T>, &mut Window, &mut App) + 'static,
@@ -354,10 +348,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to scroll wheel events during the bubble phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_scroll_wheel`].
+    /// 在冒泡阶段将给定回调绑定到滚轮事件。
+    /// [`InteractiveElement::on_scroll_wheel`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_scroll_wheel(
         &mut self,
         listener: impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static,
@@ -370,9 +364,9 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to pinch gesture events during the bubble phase.
+    /// 在冒泡阶段将给定回调绑定到捏合手势事件。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_pinch(&mut self, listener: impl Fn(&PinchEvent, &mut Window, &mut App) + 'static) {
         self.pinch_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
@@ -382,9 +376,9 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to pinch gesture events during the capture phase.
+    /// 在捕获阶段将给定回调绑定到捏合手势事件。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn capture_pinch(
         &mut self,
         listener: impl Fn(&PinchEvent, &mut Window, &mut App) + 'static,
@@ -399,10 +393,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to an action dispatch during the capture phase.
-    /// The imperative API equivalent to [`InteractiveElement::capture_action`].
+    /// 在捕获阶段将给定回调绑定到动作分发。
+    /// [`InteractiveElement::capture_action`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn capture_action<A: Action>(
         &mut self,
         listener: impl Fn(&A, &mut Window, &mut App) + 'static,
@@ -420,10 +414,10 @@ impl Interactivity {
         ));
     }
 
-    /// Bind the given callback to an action dispatch during the bubble phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_action`].
+    /// 在冒泡阶段将给定回调绑定到动作分发。
+    /// [`InteractiveElement::on_action`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     #[track_caller]
     pub fn on_action<A: Action>(&mut self, listener: impl Fn(&A, &mut Window, &mut App) + 'static) {
         self.action_listeners.push((
@@ -437,12 +431,11 @@ impl Interactivity {
         ));
     }
 
-    /// Bind the given callback to an action dispatch, based on a dynamic action parameter
-    /// instead of a type parameter. Useful for component libraries that want to expose
-    /// action bindings to their users.
-    /// The imperative API equivalent to [`InteractiveElement::on_boxed_action`].
+    /// 将给定回调绑定到动作分发，基于动态动作参数而非类型参数。
+    /// 适用于希望向用户暴露动作绑定的组件库。
+    /// [`InteractiveElement::on_boxed_action`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_boxed_action(
         &mut self,
         action: &dyn Action,
@@ -459,10 +452,10 @@ impl Interactivity {
         ));
     }
 
-    /// Bind the given callback to key down events during the bubble phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_key_down`].
+    /// 在冒泡阶段将给定回调绑定到按键按下事件。
+    /// [`InteractiveElement::on_key_down`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_key_down(
         &mut self,
         listener: impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static,
@@ -475,10 +468,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to key down events during the capture phase.
-    /// The imperative API equivalent to [`InteractiveElement::capture_key_down`].
+    /// 在捕获阶段将给定回调绑定到按键按下事件。
+    /// [`InteractiveElement::capture_key_down`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn capture_key_down(
         &mut self,
         listener: impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static,
@@ -491,10 +484,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to key up events during the bubble phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_key_up`].
+    /// 在冒泡阶段将给定回调绑定到按键释放事件。
+    /// [`InteractiveElement::on_key_up`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_key_up(&mut self, listener: impl Fn(&KeyUpEvent, &mut Window, &mut App) + 'static) {
         self.key_up_listeners
             .push(Box::new(move |event, phase, window, cx| {
@@ -504,10 +497,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to key up events during the capture phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_key_up`].
+    /// 在捕获阶段将给定回调绑定到按键释放事件。
+    /// [`InteractiveElement::on_key_up`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn capture_key_up(
         &mut self,
         listener: impl Fn(&KeyUpEvent, &mut Window, &mut App) + 'static,
@@ -520,10 +513,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to modifiers changing events.
-    /// The imperative API equivalent to [`InteractiveElement::on_modifiers_changed`].
+    /// 将给定回调绑定到修饰键变更事件。
+    /// [`InteractiveElement::on_modifiers_changed`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_modifiers_changed(
         &mut self,
         listener: impl Fn(&ModifiersChangedEvent, &mut Window, &mut App) + 'static,
@@ -534,10 +527,10 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to drop events of the given type, whether or not the drag started on this element.
-    /// The imperative API equivalent to [`InteractiveElement::on_drop`].
+    /// 将给定回调绑定到指定类型的放置（drop）事件，无论拖拽是否从此元素开始。
+    /// [`InteractiveElement::on_drop`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_drop<T: 'static>(&mut self, listener: impl Fn(&T, &mut Window, &mut App) + 'static) {
         self.drop_listeners.push((
             TypeId::of::<T>(),
@@ -547,8 +540,8 @@ impl Interactivity {
         ));
     }
 
-    /// Use the given predicate to determine whether or not a drop event should be dispatched to this element.
-    /// The imperative API equivalent to [`InteractiveElement::can_drop`].
+    /// 使用给定的谓词判断是否应向此元素分发放置事件。
+    /// [`InteractiveElement::can_drop`] 的命令式 API 等价物。
     pub fn can_drop(
         &mut self,
         predicate: impl Fn(&dyn Any, &mut Window, &mut App) -> bool + 'static,
@@ -556,10 +549,10 @@ impl Interactivity {
         self.can_drop_predicate = Some(Box::new(predicate));
     }
 
-    /// Bind the given callback to click events of this element.
-    /// The imperative API equivalent to [`StatefulInteractiveElement::on_click`].
+    /// 将给定回调绑定到此元素的点击事件。
+    /// [`StatefulInteractiveElement::on_click`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_click(&mut self, listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static)
     where
         Self: Sized,
@@ -569,10 +562,10 @@ impl Interactivity {
         }));
     }
 
-    /// Bind the given callback to non-primary click events of this element.
-    /// The imperative API equivalent to [`StatefulInteractiveElement::on_aux_click`].
+    /// 将给定回调绑定到此元素的非主按钮点击事件。
+    /// [`StatefulInteractiveElement::on_aux_click`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_aux_click(&mut self, listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static)
     where
         Self: Sized,
@@ -583,12 +576,11 @@ impl Interactivity {
             }));
     }
 
-    /// On drag initiation, this callback will be used to create a new view to render the dragged value for a
-    /// drag and drop operation. This API should also be used as the equivalent of 'on drag start' with
-    /// the [`Self::on_drag_move`] API.
-    /// The imperative API equivalent to [`StatefulInteractiveElement::on_drag`].
+    /// 在拖拽启动时，此回调用于创建一个新视图来渲染拖拽值，用于拖放操作。
+    /// 此 API 也应作为 [`Self::on_drag_move`] API 的"拖拽开始"等价物使用。
+    /// [`StatefulInteractiveElement::on_drag`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_drag<T, W>(
         &mut self,
         value: T,
@@ -610,12 +602,12 @@ impl Interactivity {
         ));
     }
 
-    /// Bind the given callback on the hover start and end events of this element. Note that the boolean
-    /// passed to the callback is true when the hover starts and false when it ends.
-    /// Transitions caused by layout changes under a stationary mouse also invoke the callback.
-    /// The imperative API equivalent to [`StatefulInteractiveElement::on_hover`].
+    /// 将给定回调绑定到此元素的悬停开始和结束事件。注意传入回调的布尔值
+    /// 在悬停开始时为 true，结束时为 false。
+    /// 鼠标静止时由布局变化引起的过渡也会触发回调。
+    /// [`StatefulInteractiveElement::on_hover`] 的命令式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     pub fn on_hover(&mut self, listener: impl Fn(&bool, &mut Window, &mut App) + 'static)
     where
         Self: Sized,
@@ -627,8 +619,8 @@ impl Interactivity {
         self.hover_listener = Some(Box::new(listener));
     }
 
-    /// Use the given callback to construct a new tooltip view when the mouse hovers over this element.
-    /// The imperative API equivalent to [`StatefulInteractiveElement::tooltip`].
+    /// 使用给定回调在鼠标悬停于此元素时构建新的工具提示视图。
+    /// [`StatefulInteractiveElement::tooltip`] 的命令式 API 等价物。
     pub fn tooltip(&mut self, build_tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static)
     where
         Self: Sized,
@@ -643,9 +635,9 @@ impl Interactivity {
         });
     }
 
-    /// Use the given callback to construct a new tooltip view when the mouse hovers over this element.
-    /// The tooltip itself is also hoverable and won't disappear when the user moves the mouse into
-    /// the tooltip. The imperative API equivalent to [`StatefulInteractiveElement::hoverable_tooltip`].
+    /// 使用给定回调在鼠标悬停于此元素时构建新的工具提示视图。
+    /// 工具提示本身也可悬停，当用户将鼠标移入工具提示时不会消失。
+    /// [`StatefulInteractiveElement::hoverable_tooltip`] 的命令式 API 等价物。
     pub fn hoverable_tooltip(
         &mut self,
         build_tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
@@ -662,30 +654,30 @@ impl Interactivity {
         });
     }
 
-    /// Set the delay before this element's tooltip is shown.
-    /// The imperative API equivalent to [`StatefulInteractiveElement::tooltip_show_delay`].
+    /// 设置此元素的工具提示显示前的延迟时间。
+    /// [`StatefulInteractiveElement::tooltip_show_delay`] 的命令式 API 等价物。
     pub fn tooltip_show_delay(&mut self, delay: Duration) {
         self.tooltip_show_delay = Some(delay);
     }
 
-    /// Block the mouse from all interactions with elements behind this element's hitbox. Typically
-    /// `block_mouse_except_scroll` should be preferred.
+    /// 阻止鼠标与此元素 hitbox 后方元素的所有交互。通常应优先使用
+    /// `block_mouse_except_scroll`。
     ///
-    /// The imperative API equivalent to [`InteractiveElement::occlude`]
+    /// [`InteractiveElement::occlude`] 的命令式 API 等价物。
     pub fn occlude_mouse(&mut self) {
         self.hitbox_behavior = HitboxBehavior::BlockMouse;
     }
 
-    /// Set the bounds of this element as a window control area for the platform window.
-    /// The imperative API equivalent to [`InteractiveElement::window_control_area`]
+    /// 将此元素的边界设置为平台窗口的窗口控制区域。
+    /// [`InteractiveElement::window_control_area`] 的命令式 API 等价物。
     pub fn window_control_area(&mut self, area: WindowControlArea) {
         self.window_control = Some(area);
     }
 
-    /// Block non-scroll mouse interactions with elements behind this element's hitbox.
-    /// The imperative API equivalent to [`InteractiveElement::block_mouse_except_scroll`].
+    /// 阻止鼠标与此元素 hitbox 后方元素的非滚动交互。
+    /// [`InteractiveElement::block_mouse_except_scroll`] 的命令式 API 等价物。
     ///
-    /// See [`Hitbox::is_hovered`] for details.
+    /// 参见 [`Hitbox::is_hovered`] 了解详情。
     pub fn block_mouse_except_scroll(&mut self) {
         self.hitbox_behavior = HitboxBehavior::BlockMouseExceptScroll;
     }
@@ -695,49 +687,47 @@ impl Interactivity {
     }
 }
 
-/// A trait for elements that want to use the standard GPUI event handlers that don't
-/// require any state.
+/// 希望使用标准 RGPUI 事件处理器且不需要任何状态的元素的 trait。
 pub trait InteractiveElement: Sized {
-    /// Retrieve the interactivity state associated with this element
+    /// 获取与此元素关联的交互状态
     fn interactivity(&mut self) -> &mut Interactivity;
 
-    /// Assign this element to a group of elements that can be styled together
+    /// 将此元素分配到可一起设置样式的分组中
     fn group(mut self, group: impl Into<SharedString>) -> Self {
         self.interactivity().group = Some(group.into());
         self
     }
 
-    /// Assign this element an ID, so that it can be used with interactivity
+    /// 为元素分配 ID，使其可用于交互功能
     fn id(mut self, id: impl Into<ElementId>) -> Stateful<Self> {
         self.interactivity().element_id = Some(id.into());
 
         Stateful { element: self }
     }
 
-    /// Track the focus state of the given focus handle on this element.
-    /// If the focus handle is focused by the application, this element will
-    /// apply its focused styles.
+    /// 跟踪此元素上给定焦点句柄的焦点状态。
+    /// 如果焦点句柄被应用程序聚焦，此元素将应用其聚焦样式。
     fn track_focus(mut self, focus_handle: &FocusHandle) -> Self {
         self.interactivity().focusable = true;
         self.interactivity().tracked_focus_handle = Some(focus_handle.clone());
         self
     }
 
-    /// Set whether this element is a tab stop.
+    /// 设置此元素是否为制表停靠点。
     ///
-    /// When false, the element remains in tab-index order but cannot be reached via keyboard navigation.
-    /// Useful for container elements: focus the container, then call `window.focus_next(cx)` to focus
-    /// the first tab stop inside it while having the container element itself be unreachable via the keyboard.
-    /// Should only be used with `tab_index`.
+    /// 为 false 时，元素仍保持在制表索引顺序中，但无法通过键盘导航到达。
+    /// 适用于容器元素：聚焦容器后调用 `window.focus_next(cx)` 可聚焦容器内的
+    /// 第一个制表停靠点，同时容器元素本身通过键盘不可达。
+    /// 仅应与 `tab_index` 配合使用。
     fn tab_stop(mut self, tab_stop: bool) -> Self {
         self.interactivity().tab_stop = tab_stop;
         self
     }
 
-    /// Set index of the tab stop order, and set this node as a tab stop.
-    /// This will default the element to being a tab stop. See [`Self::tab_stop`] for more information.
-    /// This should only be used in conjunction with `tab_group`
-    /// in order to not interfere with the tab index of other elements.
+    /// 设置制表停靠顺序的索引，并将此节点设为制表停靠点。
+    /// 这将默认使元素成为制表停靠点。参见 [`Self::tab_stop`] 了解更多信息。
+    /// 仅应与 `tab_group` 配合使用，
+    /// 以免干扰其他元素的制表索引。
     fn tab_index(mut self, index: isize) -> Self {
         self.interactivity().focusable = true;
         self.interactivity().tab_index = Some(index);
@@ -745,10 +735,9 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Designate this div as a "tab group". Tab groups have their own location in the tab-index order,
-    /// but for children of the tab group, the tab index is reset to 0. This can be useful for swapping
-    /// the order of tab stops within the group, without having to renumber all the tab stops in the whole
-    /// application.
+    /// 将此 div 指定为"制表分组"。制表分组在制表索引顺序中有自己的位置，
+    /// 但对于分组的子元素，制表索引重置为 0。这在交换分组内制表停靠点顺序时
+    /// 非常有用，无需重新编号整个应用中的所有制表停靠点。
     fn tab_group(mut self) -> Self {
         self.interactivity().tab_group = true;
         if self.interactivity().tab_index.is_none() {
@@ -757,8 +746,7 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Set the keymap context for this element. This will be used to determine
-    /// which action to dispatch from the keymap.
+    /// 设置此元素的按键映射上下文。这将用于确定从按键映射分发哪个动作。
     fn key_context<C, E>(mut self, key_context: C) -> Self
     where
         C: TryInto<KeyContext, Error = E>,
@@ -770,7 +758,7 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Apply the given style to this element when the mouse hovers over it
+    /// 当鼠标悬停于此元素时应用给定样式
     fn hover(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
         debug_assert!(
             self.interactivity().hover_style.is_none(),
@@ -780,7 +768,7 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Apply the given style to this element when the mouse hovers over a group member
+    /// 当鼠标悬停于分组成员时应用给定样式
     fn group_hover(
         mut self,
         group_name: impl Into<SharedString>,
@@ -793,10 +781,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse down event for the given mouse button.
-    /// The fluent API equivalent to [`Interactivity::on_mouse_down`].
+    /// 将给定回调绑定到指定鼠标按钮的按下事件。
+    /// [`Interactivity::on_mouse_down`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to the view state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_mouse_down(
         mut self,
         button: MouseButton,
@@ -807,27 +795,27 @@ pub trait InteractiveElement: Sized {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    /// Set a key that can be used to look up this element's bounds
-    /// in the [`crate::VisualTestContext::debug_bounds`] map
-    /// This is a noop in release builds
+    /// 设置一个可用于在 [`crate::VisualTestContext::debug_bounds`] 映射中
+    /// 查找此元素边界的键。
+    /// 在 release 构建中为空操作。
     fn debug_selector(mut self, f: impl FnOnce() -> String) -> Self {
         self.interactivity().debug_selector = Some(f());
         self
     }
 
     #[cfg(not(any(test, feature = "test-support")))]
-    /// Set a key that can be used to look up this element's bounds
-    /// in the [`crate::VisualTestContext::debug_bounds`] map
-    /// This is a noop in release builds
+    /// 设置一个可用于在 [`crate::VisualTestContext::debug_bounds`] 映射中
+    /// 查找此元素边界的键。
+    /// 在 release 构建中为空操作。
     #[inline]
     fn debug_selector(self, _: impl FnOnce() -> String) -> Self {
         self
     }
 
-    /// Bind the given callback to the mouse down event for any button, during the capture phase.
-    /// The fluent API equivalent to [`Interactivity::capture_any_mouse_down`].
+    /// 在捕获阶段将给定回调绑定到任意按钮的鼠标按下事件。
+    /// [`Interactivity::capture_any_mouse_down`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn capture_any_mouse_down(
         mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
@@ -836,10 +824,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse down event for any button, during the capture phase.
-    /// The fluent API equivalent to [`Interactivity::on_any_mouse_down`].
+    /// 在捕获阶段将给定回调绑定到任意按钮的鼠标按下事件。
+    /// [`Interactivity::on_any_mouse_down`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_any_mouse_down(
         mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
@@ -848,10 +836,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse up event for the given button, during the bubble phase.
-    /// The fluent API equivalent to [`Interactivity::on_mouse_up`].
+    /// 在冒泡阶段将给定回调绑定到指定按钮的鼠标释放事件。
+    /// [`Interactivity::on_mouse_up`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_mouse_up(
         mut self,
         button: MouseButton,
@@ -861,10 +849,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse up event for any button, during the capture phase.
-    /// The fluent API equivalent to [`Interactivity::capture_any_mouse_up`].
+    /// 在捕获阶段将给定回调绑定到任意按钮的鼠标释放事件。
+    /// [`Interactivity::capture_any_mouse_up`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn capture_any_mouse_up(
         mut self,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
@@ -873,10 +861,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse pressure event, during the bubble phase
-    /// the fluent API equivalent to [`Interactivity::on_mouse_pressure`]
+    /// 在冒泡阶段将给定回调绑定到鼠标按压事件。
+    /// [`Interactivity::on_mouse_pressure`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_mouse_pressure(
         mut self,
         listener: impl Fn(&MousePressureEvent, &mut Window, &mut App) + 'static,
@@ -885,10 +873,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse pressure event, during the capture phase
-    /// the fluent API equivalent to [`Interactivity::on_mouse_pressure`]
+    /// 在捕获阶段将给定回调绑定到鼠标按压事件。
+    /// [`Interactivity::on_mouse_pressure`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn capture_mouse_pressure(
         mut self,
         listener: impl Fn(&MousePressureEvent, &mut Window, &mut App) + 'static,
@@ -897,11 +885,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse down event, on any button, during the capture phase,
-    /// when the mouse is outside of the bounds of this element.
-    /// The fluent API equivalent to [`Interactivity::on_mouse_down_out`].
+    /// 在捕获阶段，当鼠标位于此元素边界之外时，将给定回调绑定到任意按钮的鼠标按下事件。
+    /// [`Interactivity::on_mouse_down_out`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_mouse_down_out(
         mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
@@ -910,11 +897,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse up event, for the given button, during the capture phase,
-    /// when the mouse is outside of the bounds of this element.
-    /// The fluent API equivalent to [`Interactivity::on_mouse_up_out`].
+    /// 在捕获阶段，当鼠标位于此元素边界之外时，将给定回调绑定到指定按钮的鼠标释放事件。
+    /// [`Interactivity::on_mouse_up_out`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_mouse_up_out(
         mut self,
         button: MouseButton,
@@ -924,10 +910,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse move event, during the bubble phase.
-    /// The fluent API equivalent to [`Interactivity::on_mouse_move`].
+    /// 在冒泡阶段将给定回调绑定到鼠标移动事件。
+    /// [`Interactivity::on_mouse_move`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_mouse_move(
         mut self,
         listener: impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static,
@@ -936,10 +922,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse exit event, during the bubble phase.
-    /// The fluent API equivalent to [`Interactivity::on_mouse_exit`].
+    /// 在冒泡阶段将给定回调绑定到鼠标离开事件。
+    /// [`Interactivity::on_mouse_exit`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_mouse_exit(
         mut self,
         listener: impl Fn(&MouseExitEvent, &mut Window, &mut App) + 'static,
@@ -948,13 +934,13 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to the mouse drag event of the given type. Note that this
-    /// will be called for all move events, inside or outside of this element, as long as the
-    /// drag was started with this element under the mouse. Useful for implementing draggable
-    /// UIs that don't conform to a drag and drop style interaction, like resizing.
-    /// The fluent API equivalent to [`Interactivity::on_drag_move`].
+    /// 将给定回调绑定到指定类型的鼠标拖拽移动事件。注意此回调
+    /// 会在所有移动事件中被调用，无论鼠标在元素内部还是外部，只要拖拽
+    /// 是由此元素开始的。适用于实现不符合拖放交互样式的可拖拽 UI，
+    /// 例如调整大小。
+    /// [`Interactivity::on_drag_move`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_drag_move<T: 'static>(
         mut self,
         listener: impl Fn(&DragMoveEvent<T>, &mut Window, &mut App) + 'static,
@@ -963,10 +949,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to scroll wheel events during the bubble phase.
-    /// The fluent API equivalent to [`Interactivity::on_scroll_wheel`].
+    /// 在冒泡阶段将给定回调绑定到滚轮事件。
+    /// [`Interactivity::on_scroll_wheel`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_scroll_wheel(
         mut self,
         listener: impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static,
@@ -975,19 +961,19 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to pinch gesture events during the bubble phase.
-    /// The fluent API equivalent to [`Interactivity::on_pinch`].
+    /// 在冒泡阶段将给定回调绑定到捏合手势事件。
+    /// [`Interactivity::on_pinch`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_pinch(mut self, listener: impl Fn(&PinchEvent, &mut Window, &mut App) + 'static) -> Self {
         self.interactivity().on_pinch(listener);
         self
     }
 
-    /// Bind the given callback to pinch gesture events during the capture phase.
-    /// The fluent API equivalent to [`Interactivity::capture_pinch`].
+    /// 在捕获阶段将给定回调绑定到捏合手势事件。
+    /// [`Interactivity::capture_pinch`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn capture_pinch(
         mut self,
         listener: impl Fn(&PinchEvent, &mut Window, &mut App) + 'static,
@@ -995,10 +981,10 @@ pub trait InteractiveElement: Sized {
         self.interactivity().capture_pinch(listener);
         self
     }
-    /// Capture the given action, before normal action dispatch can fire.
-    /// The fluent API equivalent to [`Interactivity::capture_action`].
+    /// 在常规动作分发触发之前捕获给定动作。
+    /// [`Interactivity::capture_action`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn capture_action<A: Action>(
         mut self,
         listener: impl Fn(&A, &mut Window, &mut App) + 'static,
@@ -1007,10 +993,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to an action dispatch during the bubble phase.
-    /// The fluent API equivalent to [`Interactivity::on_action`].
+    /// 在冒泡阶段将给定回调绑定到动作分发。
+    /// [`Interactivity::on_action`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     #[track_caller]
     fn on_action<A: Action>(
         mut self,
@@ -1020,12 +1006,11 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to an action dispatch, based on a dynamic action parameter
-    /// instead of a type parameter. Useful for component libraries that want to expose
-    /// action bindings to their users.
-    /// The fluent API equivalent to [`Interactivity::on_boxed_action`].
+    /// 将给定回调绑定到动作分发，基于动态动作参数而非类型参数。
+    /// 适用于希望向用户暴露动作绑定的组件库。
+    /// [`Interactivity::on_boxed_action`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_boxed_action(
         mut self,
         action: &dyn Action,
@@ -1035,10 +1020,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to key down events during the bubble phase.
-    /// The fluent API equivalent to [`Interactivity::on_key_down`].
+    /// 在冒泡阶段将给定回调绑定到按键按下事件。
+    /// [`Interactivity::on_key_down`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_key_down(
         mut self,
         listener: impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static,
@@ -1047,10 +1032,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to key down events during the capture phase.
-    /// The fluent API equivalent to [`Interactivity::capture_key_down`].
+    /// 在捕获阶段将给定回调绑定到按键按下事件。
+    /// [`Interactivity::capture_key_down`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn capture_key_down(
         mut self,
         listener: impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static,
@@ -1059,10 +1044,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to key up events during the bubble phase.
-    /// The fluent API equivalent to [`Interactivity::on_key_up`].
+    /// 在冒泡阶段将给定回调绑定到按键释放事件。
+    /// [`Interactivity::on_key_up`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_key_up(
         mut self,
         listener: impl Fn(&KeyUpEvent, &mut Window, &mut App) + 'static,
@@ -1071,10 +1056,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to key up events during the capture phase.
-    /// The fluent API equivalent to [`Interactivity::capture_key_up`].
+    /// 在捕获阶段将给定回调绑定到按键释放事件。
+    /// [`Interactivity::capture_key_up`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn capture_key_up(
         mut self,
         listener: impl Fn(&KeyUpEvent, &mut Window, &mut App) + 'static,
@@ -1083,10 +1068,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to modifiers changing events.
-    /// The fluent API equivalent to [`Interactivity::on_modifiers_changed`].
+    /// 将给定回调绑定到修饰键变更事件。
+    /// [`Interactivity::on_modifiers_changed`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_modifiers_changed(
         mut self,
         listener: impl Fn(&ModifiersChangedEvent, &mut Window, &mut App) + 'static,
@@ -1095,7 +1080,7 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Apply the given style when the given data type is dragged over this element
+    /// 当给定数据类型被拖拽到此元素上时应用给定样式
     fn drag_over<S: 'static>(
         mut self,
         f: impl 'static + Fn(StyleRefinement, &S, &mut Window, &mut App) -> StyleRefinement,
@@ -1114,7 +1099,7 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Apply the given style when the given data type is dragged over this element's group
+    /// 当给定数据类型被拖拽到此元素的分组上时应用给定样式
     fn group_drag_over<S: 'static>(
         mut self,
         group_name: impl Into<SharedString>,
@@ -1130,10 +1115,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to drop events of the given type, whether or not the drag started on this element.
-    /// The fluent API equivalent to [`Interactivity::on_drop`].
+    /// 将给定回调绑定到指定类型的放置（drop）事件，无论拖拽是否从此元素开始。
+    /// [`Interactivity::on_drop`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_drop<T: 'static>(
         mut self,
         listener: impl Fn(&T, &mut Window, &mut App) + 'static,
@@ -1142,8 +1127,8 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Use the given predicate to determine whether or not a drop event should be dispatched to this element.
-    /// The fluent API equivalent to [`Interactivity::can_drop`].
+    /// 使用给定的谓词判断是否应向此元素分发放置事件。
+    /// [`Interactivity::can_drop`] 的流式 API 等价物。
     fn can_drop(
         mut self,
         predicate: impl Fn(&dyn Any, &mut Window, &mut App) -> bool + 'static,
@@ -1152,32 +1137,32 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Block the mouse from all interactions with elements behind this element's hitbox. Typically
-    /// `block_mouse_except_scroll` should be preferred.
-    /// The fluent API equivalent to [`Interactivity::occlude_mouse`].
+    /// 阻止鼠标与此元素 hitbox 后方元素的所有交互。通常应优先使用
+    /// `block_mouse_except_scroll`。
+    /// [`Interactivity::occlude_mouse`] 的流式 API 等价物。
     fn occlude(mut self) -> Self {
         self.interactivity().occlude_mouse();
         self
     }
 
-    /// Set the bounds of this element as a window control area for the platform window.
-    /// The fluent API equivalent to [`Interactivity::window_control_area`].
+    /// 将此元素的边界设置为平台窗口的窗口控制区域。
+    /// [`Interactivity::window_control_area`] 的流式 API 等价物。
     fn window_control_area(mut self, area: WindowControlArea) -> Self {
         self.interactivity().window_control_area(area);
         self
     }
 
-    /// Block non-scroll mouse interactions with elements behind this element's hitbox.
-    /// The fluent API equivalent to [`Interactivity::block_mouse_except_scroll`].
+    /// 阻止鼠标与此元素 hitbox 后方元素的非滚动交互。
+    /// [`Interactivity::block_mouse_except_scroll`] 的流式 API 等价物。
     ///
-    /// See [`Hitbox::is_hovered`] for details.
+    /// 参见 [`Hitbox::is_hovered`] 了解详情。
     fn block_mouse_except_scroll(mut self) -> Self {
         self.interactivity().block_mouse_except_scroll();
         self
     }
 
-    /// Set the given styles to be applied when this element, specifically, is focused.
-    /// Requires that the element is focusable. Elements can be made focusable using [`InteractiveElement::track_focus`].
+    /// 设置此元素被聚焦时应用的给定样式。
+    /// 要求元素可聚焦。可使用 [`InteractiveElement::track_focus`] 使元素可聚焦。
     fn focus(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self
     where
         Self: Sized,
@@ -1186,8 +1171,8 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Set the given styles to be applied when this element is inside another element that is focused.
-    /// Requires that the element is focusable. Elements can be made focusable using [`InteractiveElement::track_focus`].
+    /// 设置此元素位于另一个被聚焦的元素内部时应用的给定样式。
+    /// 要求元素可聚焦。可使用 [`InteractiveElement::track_focus`] 使元素可聚焦。
     fn in_focus(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self
     where
         Self: Sized,
@@ -1196,10 +1181,10 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Set the given styles to be applied when this element is focused via keyboard navigation.
-    /// This is similar to CSS's `:focus-visible` pseudo-class - it only applies when the element
-    /// is focused AND the user is navigating via keyboard (not mouse clicks).
-    /// Requires that the element is focusable. Elements can be made focusable using [`InteractiveElement::track_focus`].
+    /// 设置此元素通过键盘导航聚焦时应用的给定样式。
+    /// 类似于 CSS 的 `:focus-visible` 伪类——仅在元素被聚焦且用户通过键盘导航
+    /// （而非鼠标点击）时应用。
+    /// 要求元素可聚焦。可使用 [`InteractiveElement::track_focus`] 使元素可聚焦。
     fn focus_visible(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self
     where
         Self: Sized,
@@ -1209,12 +1194,11 @@ pub trait InteractiveElement: Sized {
     }
 }
 
-/// A trait for elements that want to use the standard GPUI interactivity features
-/// that require state.
+/// 希望使用需要状态的标准 RGPUI 交互功能的元素的 trait。
 pub trait StatefulInteractiveElement: InteractiveElement {
-    /// Set the accessible role for this element.
+    /// 设置此元素的无障碍角色。
     ///
-    /// See the [accessibility guide](crate::_accessibility) for an overview.
+    /// 参见[无障碍指南](crate::_accessibility)了解概述。
     fn role(mut self, role: accesskit::Role) -> Self {
         debug_assert!(
             role != accesskit::Role::GenericContainer,
@@ -1224,60 +1208,51 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Set the accessible label for this element.
+    /// 设置此元素的无障碍标签。
     fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.interactivity().aria.label = Some(label.into());
         self
     }
 
-    /// Set the accessible description for this element. Unlike the label (which
-    /// names the element), the description provides supplementary information
-    /// that assistive technology announces after the name, role, and value -
-    /// for example a settings subtitle or a hint.
+    /// 设置此元素的无障碍描述。与标签（命名元素）不同，描述提供辅助技术
+    /// 在名称、角色和值之后公布的补充信息——例如设置子标题或提示。
     fn aria_description(mut self, description: impl Into<SharedString>) -> Self {
         self.interactivity().aria.description = Some(description.into());
         self
     }
 
-    /// Set the keyboard shortcut(s) that activate this element, announced by
-    /// assistive technology (maps to AccessKit's `keyboard_shortcut`).
+    /// 设置激活此元素的键盘快捷键，由辅助技术公布
+    /// （映射到 AccessKit 的 `keyboard_shortcut`）。
     ///
-    /// Note that this does not create a keymap. It simply instructs assistive
-    /// technology what the keymap is.
+    /// 注意这不会创建按键映射，只是告知辅助技术按键映射是什么。
     fn aria_keyshortcuts(mut self, keyshortcuts: impl Into<SharedString>) -> Self {
         self.interactivity().aria.keyshortcuts = Some(keyshortcuts.into());
         self
     }
 
-    /// Report this element as the focused node in the accessibility tree,
-    /// overriding the element that holds real keyboard focus 鈥?but only while
-    /// one of its ancestors actually holds focus.
+    /// 将此元素报告为无障碍树中的聚焦节点，覆盖实际持有键盘焦点的元素
+    /// ——但仅在其某个祖先实际持有焦点时。
     ///
-    /// This implements the `aria-activedescendant` pattern for composite
-    /// widgets that keep keyboard focus on a container (e.g. a menu or
-    /// listbox) while a child is "selected": set this on the selected child so
-    /// assistive technology announces and highlights it as focused.
+    /// 这实现了 `aria-activedescendant` 模式，用于将键盘焦点保持在容器上
+    /// （如菜单或列表框）而子元素被"选中"的复合组件：在选中的子元素上设置
+    /// 此属性，使辅助技术将其宣布并高亮为聚焦。
     ///
-    /// The element must also have a [`role`][Self::role] (and an id) so it
-    /// produces an accessibility node. Unlike the web's container-side
-    /// `aria-activedescendant`, this is set on the descendant; GPUI honors it
-    /// only when a focused ancestor is present in the tree, so it is safe to
-    /// set unconditionally on the selected child 鈥?if the container isn't
-    /// focused, the claim is ignored.
+    /// 元素还必须有 [`role`][Self::role]（和 id），以便生成无障碍节点。
+    /// 与网页的容器端 `aria-activedescendant` 不同，这是设置在后代上的；
+    /// RGPUI 仅在树中存在聚焦祖先时才将其视为有效，因此可以无条件地设置在
+    /// 选中的子元素上——如果容器未聚焦，该声明将被忽略。
     fn aria_active_descendant(mut self) -> Self {
         self.interactivity().report_active_descendant_focus = true;
         self
     }
 
-    /// Contribute synthetic accessibility nodes 鈥?nodes that don't correspond
-    /// to any element 鈥?as children of this element's a11y node. For example,
-    /// text runs describing an editor's text content.
+    /// 贡献合成无障碍节点——不对应任何元素的节点——作为此元素无障碍节点的子节点。
+    /// 例如描述编辑器文本内容的文本运行。
     ///
-    /// The closure is called after this element is prepainted, and only if it
-    /// contributed a node to the accessibility tree (i.e. it has an id and a
-    /// [`role`][StatefulInteractiveElement::role]).
+    /// 闭包在此元素预绘制后调用，且仅在它向无障碍树贡献了节点（即有 id 和
+    /// [`role`][StatefulInteractiveElement::role]）时才调用。
     ///
-    /// See [`Element::a11y_synthetic_children`] for details.
+    /// 参见 [`Element::a11y_synthetic_children`] 了解详情。
     fn a11y_synthetic_children(
         mut self,
         f: impl FnOnce(&mut crate::A11ySubtreeBuilder) + 'static,
@@ -1286,115 +1261,112 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Set the selected state for this element.
+    /// 设置此元素的选中状态。
     fn aria_selected(mut self, selected: bool) -> Self {
         self.interactivity().aria.selected = Some(selected);
         self
     }
 
-    /// Set the expanded state for this element.
+    /// 设置此元素的展开状态。
     fn aria_expanded(mut self, expanded: bool) -> Self {
         self.interactivity().aria.expanded = Some(expanded);
         self
     }
 
-    /// Set the toggled state for this element.
+    /// 设置此元素的切换状态。
     fn aria_toggled(mut self, toggled: accesskit::Toggled) -> Self {
         self.interactivity().aria.toggled = Some(toggled);
         self
     }
 
-    /// Set the numeric value for this element.
+    /// 设置此元素的数值。
     fn aria_numeric_value(mut self, value: f64) -> Self {
         self.interactivity().aria.numeric_value = Some(value);
         self
     }
 
-    /// Set the step by which assistive technology should expect the numeric
-    /// value of this element to change (e.g. when incrementing a spin button).
+    /// 设置辅助技术应预期此元素数值变化的步长（例如递增微调按钮时）。
     fn aria_numeric_value_step(mut self, step: f64) -> Self {
         self.interactivity().aria.numeric_value_step = Some(step);
         self
     }
 
-    /// Set the string value of this element, e.g. the text content of a simple
-    /// text input.
+    /// 设置此元素的字符串值，例如简单文本输入框的文本内容。
     fn aria_value(mut self, value: impl Into<SharedString>) -> Self {
         self.interactivity().aria.value = Some(value.into());
         self
     }
 
-    /// Set the placeholder text reported to assistive technology for this
-    /// element, shown when a text input is empty.
+    /// 设置向辅助技术报告的占位符文本，在文本输入为空时显示。
     fn aria_placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.interactivity().aria.placeholder = Some(placeholder.into());
         self
     }
 
-    /// Set the minimum numeric value for this element.
+    /// 设置此元素的最小数值。
     fn aria_min_numeric_value(mut self, value: f64) -> Self {
         self.interactivity().aria.min_numeric_value = Some(value);
         self
     }
 
-    /// Set the maximum numeric value for this element.
+    /// 设置此元素的最大数值。
     fn aria_max_numeric_value(mut self, value: f64) -> Self {
         self.interactivity().aria.max_numeric_value = Some(value);
         self
     }
 
-    /// Set the orientation of this element.
+    /// 设置此元素的方向。
     fn aria_orientation(mut self, orientation: accesskit::Orientation) -> Self {
         self.interactivity().aria.orientation = Some(orientation);
         self
     }
 
-    /// Set the heading level of this element.
+    /// 设置此元素的标题级别。
     fn aria_level(mut self, level: usize) -> Self {
         self.interactivity().aria.level = Some(level);
         self
     }
 
-    /// Set the position in set of this element.
+    /// 设置此元素在集合中的位置。
     fn aria_position_in_set(mut self, position: usize) -> Self {
         self.interactivity().aria.position_in_set = Some(position);
         self
     }
 
-    /// Set the size of set for this element.
+    /// 设置此元素的集合大小。
     fn aria_size_of_set(mut self, size: usize) -> Self {
         self.interactivity().aria.size_of_set = Some(size);
         self
     }
 
-    /// Set the row index for this element.
+    /// 设置此元素的行索引。
     fn aria_row_index(mut self, index: usize) -> Self {
         self.interactivity().aria.row_index = Some(index);
         self
     }
 
-    /// Set the column index for this element.
+    /// 设置此元素的列索引。
     fn aria_column_index(mut self, index: usize) -> Self {
         self.interactivity().aria.column_index = Some(index);
         self
     }
 
-    /// Set the row count for this element.
+    /// 设置此元素的行数。
     fn aria_row_count(mut self, count: usize) -> Self {
         self.interactivity().aria.row_count = Some(count);
         self
     }
 
-    /// Set the column count for this element.
+    /// 设置此元素的列数。
     fn aria_column_count(mut self, count: usize) -> Self {
         self.interactivity().aria.column_count = Some(count);
         self
     }
 
-    /// Register a handler for an accessibility action on this element.
-    /// The handler is called when a screen reader requests the given action.
+    /// 为此元素注册无障碍动作的处理器。
+    /// 当屏幕阅读器请求给定动作时调用处理器。
     ///
-    /// See the [accessibility guide](crate::_accessibility) for an overview.
+    /// 参见[无障碍指南](crate::_accessibility)了解概述。
     fn on_a11y_action(
         mut self,
         action: accesskit::Action,
@@ -1407,26 +1379,26 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Set this element to focusable.
+    /// 将此元素设为可聚焦。
     fn focusable(mut self) -> Self {
         self.interactivity().focusable = true;
         self
     }
 
-    /// Set the overflow x and y to scroll.
+    /// 将 x 和 y 溢出设置为滚动。
     fn overflow_scroll(mut self) -> Self {
         self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
         self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
         self
     }
 
-    /// Set the overflow x to scroll.
+    /// 将 x 溢出设置为滚动。
     fn overflow_x_scroll(mut self) -> Self {
         self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
         self
     }
 
-    /// Set the overflow y to scroll.
+    /// 将 y 溢出设置为滚动。
     fn overflow_y_scroll(mut self) -> Self {
         self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
         self
@@ -1440,19 +1412,19 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Track the scroll state of this element with the given handle.
+    /// 使用给定句柄跟踪此元素的滚动状态。
     fn track_scroll(mut self, scroll_handle: &ScrollHandle) -> Self {
         self.interactivity().tracked_scroll_handle = Some(scroll_handle.clone());
         self
     }
 
-    /// Track the scroll state of this element with the given handle.
+    /// 使用给定锚点跟踪此元素的滚动状态。
     fn anchor_scroll(mut self, scroll_anchor: Option<ScrollAnchor>) -> Self {
         self.interactivity().scroll_anchor = scroll_anchor;
         self
     }
 
-    /// Set the given styles to be applied when this element is active.
+    /// 设置此元素处于激活状态时应用的给定样式。
     fn active(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self
     where
         Self: Sized,
@@ -1461,7 +1433,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Set the given styles to be applied when this element's group is active.
+    /// 设置此元素的分组处于激活状态时应用的给定样式。
     fn group_active(
         mut self,
         group_name: impl Into<SharedString>,
@@ -1477,10 +1449,10 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Bind the given callback to click events of this element.
-    /// The fluent API equivalent to [`Interactivity::on_click`].
+    /// 将给定回调绑定到此元素的点击事件。
+    /// [`Interactivity::on_click`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_click(mut self, listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self
     where
         Self: Sized,
@@ -1489,10 +1461,10 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Bind the given callback to non-primary click events of this element.
-    /// The fluent API equivalent to [`Interactivity::on_aux_click`].
+    /// 将给定回调绑定到此元素的非主按钮点击事件。
+    /// [`Interactivity::on_aux_click`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_aux_click(
         mut self,
         listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -1504,13 +1476,12 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// On drag initiation, this callback will be used to create a new view to render the dragged value for a
-    /// drag and drop operation. This API should also be used as the equivalent of 'on drag start' with
-    /// the [`InteractiveElement::on_drag_move`] API.
-    /// The callback also has access to the offset of triggering click from the origin of parent element.
-    /// The fluent API equivalent to [`Interactivity::on_drag`].
+    /// 在拖拽启动时，此回调用于创建一个新视图来渲染拖拽值，用于拖放操作。
+    /// 此 API 也应作为 [`InteractiveElement::on_drag_move`] API 的"拖拽开始"等价物使用。
+    /// 回调还可以访问触发点击相对于父元素原点的偏移量。
+    /// [`Interactivity::on_drag`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_drag<T, W>(
         mut self,
         value: T,
@@ -1525,12 +1496,12 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Bind the given callback on the hover start and end events of this element. Note that the boolean
-    /// passed to the callback is true when the hover starts and false when it ends.
-    /// Transitions caused by layout changes under a stationary mouse also invoke the callback.
-    /// The fluent API equivalent to [`Interactivity::on_hover`].
+    /// 将给定回调绑定到此元素的悬停开始和结束事件。注意传入回调的布尔值
+    /// 在悬停开始时为 true，结束时为 false。
+    /// 鼠标静止时由布局变化引起的过渡也会触发回调。
+    /// [`Interactivity::on_hover`] 的流式 API 等价物。
     ///
-    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    /// 参见 [`Context::listener`](crate::Context::listener) 了解如何从此回调访问视图状态。
     fn on_hover(mut self, listener: impl Fn(&bool, &mut Window, &mut App) + 'static) -> Self
     where
         Self: Sized,
@@ -1539,8 +1510,8 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Use the given callback to construct a new tooltip view when the mouse hovers over this element.
-    /// The fluent API equivalent to [`Interactivity::tooltip`].
+    /// 使用给定回调在鼠标悬停于此元素时构建新的工具提示视图。
+    /// [`Interactivity::tooltip`] 的流式 API 等价物。
     fn tooltip(mut self, build_tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self
     where
         Self: Sized,
@@ -1549,9 +1520,9 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Use the given callback to construct a new tooltip view when the mouse hovers over this element.
-    /// The tooltip itself is also hoverable and won't disappear when the user moves the mouse into
-    /// the tooltip. The fluent API equivalent to [`Interactivity::hoverable_tooltip`].
+    /// 使用给定回调在鼠标悬停于此元素时构建新的工具提示视图。
+    /// 工具提示本身也可悬停，当用户将鼠标移入工具提示时不会消失。
+    /// [`Interactivity::hoverable_tooltip`] 的流式 API 等价物。
     fn hoverable_tooltip(
         mut self,
         build_tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
@@ -1563,8 +1534,8 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
-    /// Set the delay before this element's tooltip is shown.
-    /// The fluent API equivalent to [`Interactivity::tooltip_show_delay`].
+    /// 设置此元素的工具提示显示前的延迟时间。
+    /// [`Interactivity::tooltip_show_delay`] 的流式 API 等价物。
     fn tooltip_show_delay(mut self, delay: Duration) -> Self
     where
         Self: Sized,
@@ -1617,7 +1588,7 @@ pub(crate) type ModifiersChangedListener =
 pub(crate) type ActionListener =
     Box<dyn Fn(&dyn Any, DispatchPhase, &mut Window, &mut App) + 'static>;
 
-/// Construct a new [`Div`] element
+/// 构建一个新的 [`Div`] 元素
 #[track_caller]
 pub fn div() -> Div {
     Div {
@@ -1629,7 +1600,7 @@ pub fn div() -> Div {
     }
 }
 
-/// A [`Div`] element, the all-in-one element for building complex UIs in GPUI
+/// [`Div`] 元素，用于在 RGPUI 中构建复杂 UI 的一体化元素
 pub struct Div {
     interactivity: Interactivity,
     children: SmallVec<[StackSafe<AnyElement>; 2]>,
@@ -1639,8 +1610,8 @@ pub struct Div {
 }
 
 impl Div {
-    /// Add a listener to be called when the children of this `Div` are prepainted.
-    /// This allows you to store the [`Bounds`] of the children for later use.
+    /// 添加一个监听器，在此 `Div` 的子元素预绘制时被调用。
+    /// 这允许你存储子元素的 [`Bounds`] 以供后续使用。
     pub fn on_children_prepainted(
         mut self,
         listener: impl Fn(Vec<Bounds<Pixels>>, &mut Window, &mut App) + 'static,
@@ -1649,20 +1620,20 @@ impl Div {
         self
     }
 
-    /// Add an image cache at the location of this div in the element tree.
+    /// 在此元素树中此 div 的位置添加图像缓存。
     pub fn image_cache(mut self, cache: impl ImageCacheProvider) -> Self {
         self.image_cache = Some(Box::new(cache));
         self
     }
 
-    /// Specify a function that determines the order in which children are prepainted.
+    /// 指定一个函数来确定子元素的预绘制顺序。
     ///
-    /// The function is called at prepaint time and should return a vector of child indices
-    /// in the desired prepaint order. Each index should appear exactly once.
+    /// 该函数在预绘制时调用，应返回一个子元素索引向量，按所需的预绘制顺序排列。
+    /// 每个索引应恰好出现一次。
     ///
-    /// This is useful when the prepaint of one child affects state that another child reads.
-    /// For example, in split editor views, the editor with an autoscroll request should
-    /// be prepainted first so its scroll position update is visible to the other editor.
+    /// 当一个子元素的预绘制影响另一个子元素读取的状态时，这非常有用。
+    /// 例如，在分割编辑器视图中，具有自动滚动请求的编辑器应先预绘制，
+    /// 使其滚动位置更新对另一个编辑器可见。
     pub fn with_dynamic_prepaint_order(
         mut self,
         order_fn: impl Fn(&mut Window, &mut App) -> SmallVec<[usize; 8]> + 'static,
@@ -1672,27 +1643,25 @@ impl Div {
     }
 }
 
-/// A frame state for a `Div` element, which contains layout IDs for its children.
+/// `Div` 元素的帧状态，包含其子元素的布局 ID。
 ///
-/// This struct is used internally by the `Div` element to manage the layout state of its children
-/// during the UI update cycle. It holds a small vector of `LayoutId` values, each corresponding to
-/// a child element of the `Div`. These IDs are used to query the layout engine for the computed
-/// bounds of the children after the layout phase is complete.
+/// 此结构体由 `Div` 元素内部使用，用于管理 UI 更新周期中子元素的布局状态。
+/// 它持有一个小型 `LayoutId` 值向量，每个值对应 `Div` 的一个子元素。
+/// 这些 ID 用于在布局阶段完成后查询布局引擎以获取子元素的计算边界。
 pub struct DivFrameState {
     child_layout_ids: SmallVec<[LayoutId; 2]>,
 }
 
-/// Interactivity state displayed an manipulated in the inspector.
+/// 在检查器中显示和操作的交互状态。
 #[derive(Clone)]
 pub struct DivInspectorState {
-    /// The inspected element's base style. This is used for both inspecting and modifying the
-    /// state. In the future it will make sense to separate the read and write, possibly tracking
-    /// the modifications.
+    /// 被检查元素的基础样式。这用于检查和修改状态。将来应分离读写，
+    /// 可能跟踪修改。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub base_style: Box<StyleRefinement>,
-    /// Inspects the bounds of the element.
+    /// 检查元素的边界。
     pub bounds: Bounds<Pixels>,
-    /// Size of the children of the element, or `bounds.size` if it has no children.
+    /// 元素子内容的大小，若无子元素则为 `bounds.size`。
     pub content_size: Size<Pixels>,
 }
 
@@ -2101,16 +2070,14 @@ pub(crate) struct AriaProperties {
     pub(crate) column_count: Option<usize>,
 }
 
-/// The interactivity struct. Powers all of the general-purpose
-/// interactivity in the `Div` element.
+/// 交互状态结构体。驱动 `Div` 元素中所有通用交互功能。
 #[derive(Default)]
 pub struct Interactivity {
-    /// The element ID of the element. In id is required to support a stateful subset of the interactivity such as on_click.
+    /// 元素的 ID。需要 ID 才能支持交互的有状态子集，如 on_click。
     pub element_id: Option<ElementId>,
-    /// Whether the element was clicked. This will only be present after layout.
+    /// 元素是否被点击。仅在布局后存在。
     pub active: Option<bool>,
-    /// Whether the element was hovered. This will only be present after paint if an hitbox
-    /// was created for the interactive element.
+    /// 元素是否被悬停。仅在绘制后存在（如果为交互元素创建了 hitbox）。
     pub hovered: Option<bool>,
     pub(crate) tooltip_id: Option<TooltipId>,
     pub(crate) content_size: Size<Pixels>,
@@ -2121,8 +2088,7 @@ pub struct Interactivity {
     pub(crate) scroll_anchor: Option<ScrollAnchor>,
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     pub(crate) group: Option<SharedString>,
-    /// The base style of the element, before any modifications are applied
-    /// by focus, active, etc.
+    /// 元素的基础样式，在聚焦、激活等修改应用之前。
     pub base_style: Box<StyleRefinement>,
     pub(crate) focus_style: Option<Box<StyleRefinement>>,
     pub(crate) in_focus_style: Option<Box<StyleRefinement>>,
@@ -2176,7 +2142,7 @@ pub struct Interactivity {
 }
 
 impl Interactivity {
-    /// Layout this element according to this interactivity state's configured styles
+    /// 根据此交互状态配置的样式布局此元素
     pub fn request_layout(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -2261,7 +2227,7 @@ impl Interactivity {
         )
     }
 
-    /// Commit the bounds of this element according to this interactivity state's configured styles.
+    /// 根据此交互状态配置的样式提交此元素的边界。
     pub fn prepaint<R>(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -2445,14 +2411,11 @@ impl Interactivity {
         }
     }
 
-    /// Paint this element according to this interactivity state's configured styles
-    /// and bind the element's mouse and keyboard events.
+    /// 根据此交互状态配置的样式绘制此元素，并绑定元素的鼠标和键盘事件。
     ///
-    /// content_size is the size of the content of the element, which may be larger than the
-    /// element's bounds if the element is scrollable.
+    /// content_size 是元素内容的大小，如果元素可滚动，可能大于元素的边界。
     ///
-    /// the final computed style will be passed to the provided function, along
-    /// with the current scroll offset
+    /// 最终计算的样式将传递给提供的函数，以及当前的滚动偏移量。
     pub fn paint(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -3297,7 +3260,7 @@ impl Interactivity {
         }
     }
 
-    /// Compute the visual style for this element, based on the current bounds and the element's state.
+    /// 根据当前边界和元素状态计算此元素的视觉样式。
     pub fn compute_style(
         &self,
         global_id: Option<&GlobalElementId>,
@@ -3313,7 +3276,7 @@ impl Interactivity {
         })
     }
 
-    /// Called from internal methods that have already called with_element_state.
+    /// 从已调用 with_element_state 的内部方法中调用。
     fn compute_style_internal(
         &self,
         hitbox: Option<&Hitbox>,
@@ -3509,8 +3472,7 @@ impl Interactivity {
     }
 }
 
-/// The per-frame state of an interactive element. Used for tracking stateful interactions like clicks
-/// and scroll offsets.
+/// 交互元素的每帧状态。用于跟踪有状态交互，如点击和滚动偏移量。
 #[derive(Default)]
 pub struct InteractiveElementState {
     pub(crate) focus_handle: Option<FocusHandle>,
@@ -3518,25 +3480,23 @@ pub struct InteractiveElementState {
     pub(crate) hover_state: Option<Rc<RefCell<ElementHoverState>>>,
     pub(crate) hover_listener_state: Option<Rc<RefCell<bool>>>,
     pub(crate) pending_mouse_down: Option<Rc<RefCell<Option<MouseDownEvent>>>>,
-    /// Set to the window's [`focus_generation`](crate::Window::focus_generation)
-    /// when an Enter/Space keydown is received while this element is focused,
-    /// recording that we are waiting for the matching keyup to fire a keyboard
-    /// click. On keyup the click only fires if the stored generation still
-    /// matches the window's current one, i.e. focus never moved during the
-    /// press (mirroring the browser clearing a control's pressed state on
-    /// blur). `None` means no activation key is pending.
+    /// 当此元素聚焦时收到 Enter/Space 按键按下时，设置为窗口的
+    /// [`focus_generation`](crate::Window::focus_generation)，记录我们正在
+    /// 等待匹配的按键释放来触发键盘点击。在按键释放时，仅当存储的生成仍匹配
+    /// 窗口当前生成时才触发点击，即焦点在按键期间未移动（镜像浏览器在失焦时
+    /// 清除控件按下状态的行为）。`None` 表示没有待处理的激活键。
     pub(crate) pending_keyboard_down: Option<Rc<RefCell<Option<u64>>>>,
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     pub(crate) active_tooltip: Option<Rc<RefCell<Option<ActiveTooltip>>>>,
 }
 
-/// Whether or not the element or a group that contains it is clicked by the mouse.
+/// 元素或包含它的分组是否被鼠标点击。
 #[derive(Copy, Clone, Default, Eq, PartialEq)]
 pub struct ElementClickedState {
-    /// True if this element's group has been clicked, false otherwise
+    /// 如果此元素的分组被点击则为 true，否则为 false
     pub group: bool,
 
-    /// True if this element has been clicked, false otherwise
+    /// 如果此元素被点击则为 true，否则为 false
     pub element: bool,
 }
 
@@ -3546,26 +3506,25 @@ impl ElementClickedState {
     }
 }
 
-/// Whether or not the element or a group that contains it is hovered.
+/// 元素或包含它的分组是否被悬停。
 #[derive(Copy, Clone, Default, Eq, PartialEq)]
 pub struct ElementHoverState {
-    /// True if this element's group is hovered, false otherwise
+    /// 如果此元素的分组被悬停则为 true，否则为 false
     pub group: bool,
 
-    /// True if this element is hovered, false otherwise
+    /// 如果此元素被悬停则为 true，否则为 false
     pub element: bool,
 }
 
 pub(crate) enum ActiveTooltip {
-    /// Currently delaying before showing the tooltip.
+    /// 当前正在延迟显示工具提示。
     WaitingForShow { _task: Task<()> },
-    /// Tooltip is visible, element was hovered or for hoverable tooltips, the tooltip was hovered.
+    /// 工具提示可见，元素被悬停或对于可悬停工具提示，工具提示被悬停。
     Visible {
         tooltip: AnyTooltip,
         is_hoverable: bool,
     },
-    /// Tooltip is visible and hoverable, but the mouse is no longer hovering. Currently delaying
-    /// before hiding it.
+    /// 工具提示可见且可悬停，但鼠标不再悬停。当前正在延迟隐藏。
     WaitingForHide {
         tooltip: AnyTooltip,
         _task: Task<()>,
@@ -3664,7 +3623,7 @@ pub(crate) fn register_tooltip_mouse_handlers(
     });
 }
 
-/// Handles displaying tooltips when an element is hovered.
+/// 处理元素悬停时的工具提示显示。
 ///
 /// 处理 tooltip 的鼠标移动事件。
 ///
@@ -3794,9 +3753,9 @@ fn handle_tooltip_mouse_move(
     }
 }
 
-/// Returns a callback which will be called by window prepaint to update tooltip visibility. The
-/// purpose of doing this logic here instead of the mouse move handler is that the mouse move
-/// handler won't get called when the element is not painted (e.g. via use of `visible_on_hover`).
+/// 返回一个回调，由窗口预绘制调用以更新工具提示可见性。
+/// 在此处而非鼠标移动处理器中执行此逻辑的原因是，当元素未被绘制时
+/// （例如使用 `visible_on_hover`），鼠标移动处理器不会被调用。
 fn handle_tooltip_check_visible_and_update(
     active_tooltip: &Rc<RefCell<Option<ActiveTooltip>>>,
     tooltip_is_hoverable: bool,
@@ -3902,7 +3861,7 @@ impl GroupHitboxes {
     }
 }
 
-/// A wrapper around an element that can store state, produced after assigning an ElementId.
+/// 可以存储状态的元素包装器，在分配 ElementId 后生成。
 pub struct Stateful<E> {
     pub(crate) element: E,
 }
@@ -4044,8 +4003,8 @@ where
     }
 }
 
-/// Represents an element that can be scrolled *to* in its parent element.
-/// Contrary to [ScrollHandle::scroll_to_active_item], an anchored element does not have to be an immediate child of the parent.
+/// 可以在父元素中滚动*到*的元素。
+/// 与 [ScrollHandle::scroll_to_active_item] 不同，锚定元素不必是父元素的直接子元素。
 #[derive(Clone)]
 pub struct ScrollAnchor {
     handle: ScrollHandle,
@@ -4053,14 +4012,14 @@ pub struct ScrollAnchor {
 }
 
 impl ScrollAnchor {
-    /// Creates a [ScrollAnchor] associated with a given [ScrollHandle].
+    /// 创建与给定 [ScrollHandle] 关联的 [ScrollAnchor]。
     pub fn for_handle(handle: ScrollHandle) -> Self {
         Self {
             handle,
             last_origin: Default::default(),
         }
     }
-    /// Request scroll to this item on the next frame.
+    /// 请求在下一帧滚动到此项。
     pub fn scroll_to(&self, window: &mut Window, _cx: &mut App) {
         let this = self.clone();
 
@@ -4096,9 +4055,8 @@ enum ScrollStrategy {
     Top,
 }
 
-/// A handle to the scrollable aspects of an element.
-/// Used for accessing scroll state, like the current scroll offset,
-/// and for mutating the scroll state, like scrolling to a specific child.
+/// 元素可滚动方面的句柄。
+/// 用于访问滚动状态（如当前滚动偏移量）和修改滚动状态（如滚动到特定子元素）。
 #[derive(Clone, Debug)]
 pub struct ScrollHandle(Rc<RefCell<ScrollHandleState>>);
 
@@ -4109,22 +4067,22 @@ impl Default for ScrollHandle {
 }
 
 impl ScrollHandle {
-    /// Construct a new scroll handle.
+    /// 构建一个新的滚动句柄。
     pub fn new() -> Self {
         Self(Rc::default())
     }
 
-    /// Get the current scroll offset.
+    /// 获取当前滚动偏移量。
     pub fn offset(&self) -> Point<Pixels> {
         *self.0.borrow().offset.borrow()
     }
 
-    /// Get the maximum scroll offset.
+    /// 获取最大滚动偏移量。
     pub fn max_offset(&self) -> Point<Pixels> {
         self.0.borrow().max_offset
     }
 
-    /// Get the top child that's scrolled into view.
+    /// 获取滚动到视图顶部的子元素索引。
     pub fn top_item(&self) -> usize {
         let state = self.0.borrow();
         let top = state.bounds.top() - state.offset.borrow().y;
@@ -4143,7 +4101,7 @@ impl ScrollHandle {
         }
     }
 
-    /// Get the bottom child that's scrolled into view.
+    /// 获取滚动到视图底部的子元素索引。
     pub fn bottom_item(&self) -> usize {
         let state = self.0.borrow();
         let bottom = state.bounds.bottom() - state.offset.borrow().y;
@@ -4162,17 +4120,17 @@ impl ScrollHandle {
         }
     }
 
-    /// Return the bounds into which this child is painted
+    /// 返回此子元素被绘制到的边界
     pub fn bounds(&self) -> Bounds<Pixels> {
         self.0.borrow().bounds
     }
 
-    /// Get the bounds for a specific child.
+    /// 获取特定子元素的边界。
     pub fn bounds_for_item(&self, ix: usize) -> Option<Bounds<Pixels>> {
         self.0.borrow().child_bounds.get(ix).cloned()
     }
 
-    /// Update [ScrollHandleState]'s active item for scrolling to in prepaint
+    /// 更新 [ScrollHandleState] 的活动项，以便在预绘制时滚动到
     pub fn scroll_to_item(&self, ix: usize) {
         let mut state = self.0.borrow_mut();
         state.active_item = Some(ScrollActiveItem {
@@ -4181,8 +4139,8 @@ impl ScrollHandle {
         });
     }
 
-    /// Update [ScrollHandleState]'s active item for scrolling to in prepaint
-    /// This scrolls the minimal amount to ensure that the child is the first visible element
+    /// 更新 [ScrollHandleState] 的活动项，以便在预绘制时滚动到
+    /// 此方法滚动最小量以确保子元素是第一个可见元素
     pub fn scroll_to_top_of_item(&self, ix: usize) {
         let mut state = self.0.borrow_mut();
         state.active_item = Some(ScrollActiveItem {
@@ -4191,9 +4149,7 @@ impl ScrollHandle {
         });
     }
 
-    /// Scrolls the minimal amount to either ensure that the child is
-    /// fully visible or the top element of the view depends on the
-    /// scroll strategy
+    /// 滚动最小量以确保子元素完全可见或视图的顶部元素取决于滚动策略
     fn scroll_to_active_item(&self) {
         let mut state = self.0.borrow_mut();
 
@@ -4242,21 +4198,20 @@ impl ScrollHandle {
         state.active_item = active_item;
     }
 
-    /// Scrolls to the bottom.
+    /// 滚动到底部。
     pub fn scroll_to_bottom(&self) {
         let mut state = self.0.borrow_mut();
         state.scroll_to_bottom = true;
     }
 
-    /// Set the offset explicitly. The offset is the distance from the top left of the
-    /// parent container to the top left of the first child.
-    /// As you scroll further down the offset becomes more negative.
+    /// 显式设置偏移量。偏移量是父容器左上角到第一个子元素左上角的距离。
+    /// 随着向下滚动，偏移量变得更负。
     pub fn set_offset(&self, mut position: Point<Pixels>) {
         let state = self.0.borrow();
         *state.offset.borrow_mut() = position;
     }
 
-    /// Get the logical scroll top, based on a child index and a pixel offset.
+    /// 获取逻辑滚动顶部，基于子元素索引和像素偏移量。
     pub fn logical_scroll_top(&self) -> (usize, Pixels) {
         let ix = self.top_item();
         let state = self.0.borrow();
@@ -4271,7 +4226,7 @@ impl ScrollHandle {
         }
     }
 
-    /// Get the logical scroll bottom, based on a child index and a pixel offset.
+    /// 获取逻辑滚动底部，基于子元素索引和像素偏移量。
     pub fn logical_scroll_bottom(&self) -> (usize, Pixels) {
         let ix = self.bottom_item();
         let state = self.0.borrow();
@@ -4286,7 +4241,7 @@ impl ScrollHandle {
         }
     }
 
-    /// Get the count of children for scrollable item.
+    /// 获取可滚动项的子元素计数。
     pub fn children_count(&self) -> usize {
         self.0.borrow().child_bounds.len()
     }
@@ -4747,8 +4702,8 @@ mod tests {
         assert_eq!(node.numeric_value_step(), Some(1.0));
     }
 
-    /// Two focusable, clickable elements ("a" and "b") used to exercise the
-    /// Enter/Space -> synthesized click press/release pairing.
+    /// 两个可聚焦、可点击的元素（"a" 和 "b"），用于测试
+    /// Enter/Space 合成点击的按下/释放配对。
     struct KeyboardActivationTest {
         focus_a: FocusHandle,
         focus_b: FocusHandle,
@@ -4803,8 +4758,8 @@ mod tests {
         (cx, window.into(), clicks, focus_a, focus_b)
     }
 
-    /// Move focus to `handle`, flush effects, then paint so the newly focused
-    /// element registers its key handlers for the next dispatched event.
+    /// 将焦点移动到 `handle`，刷新副作用，然后绘制，使新聚焦的元素
+    /// 为下一个派发事件注册其按键处理器。
     fn focus_and_draw(cx: &mut TestAppContext, window: AnyWindowHandle, handle: &FocusHandle) {
         cx.update_window(window, |_, window, cx| window.focus(handle, cx))
             .unwrap();
@@ -4839,7 +4794,7 @@ mod tests {
         .unwrap();
     }
 
-    /// Pressing and releasing Enter on the same focused element fires a click.
+    /// 在同一聚焦元素上按下并释放 Enter 会触发点击。
     #[test]
     fn keyboard_activation_fires_click_on_same_element() {
         let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
@@ -4851,10 +4806,9 @@ mod tests {
         assert_eq!(*clicks.borrow(), vec!["a"]);
     }
 
-    /// A key-down whose key-up lands on a *different* element (because focus
-    /// moved in between) must not leak a synthesized click onto the newly
-    /// focused element. This is the core regression: previously the key-up
-    /// handler fired unconditionally on whatever was focused at key-up time.
+    /// 按键按下后，如果按键释放发生在*不同的*元素上（因为焦点在此期间
+    /// 发生了移动），则不能将合成点击泄漏到新聚焦的元素上。这是核心回归：
+    /// 之前按键释放处理器会在按键释放时聚焦的元素上无条件触发。
     #[test]
     fn keyboard_activation_does_not_leak_across_focus_change() {
         let (mut cx, window, clicks, focus_a, focus_b) = setup_keyboard_activation_test();
@@ -4872,10 +4826,9 @@ mod tests {
         assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
     }
 
-    /// A keydown whose flag is left pending because focus moved away before
-    /// the keyup must not fire a click when focus later *returns* to the same
-    /// element (the menu trigger reopening case). The stamped focus generation
-    /// no longer matches, so the stale pending state is ignored.
+    /// 按键按下时标记为待定，但焦点在按键释放前移走，当焦点稍后*返回*
+    /// 到同一元素时（如菜单触发器重新打开的情况），不得触发点击。记录的
+    /// 焦点代次已不再匹配，因此过期的待定状态会被忽略。
     #[test]
     fn keyboard_activation_does_not_leak_when_focus_returns() {
         let (mut cx, window, clicks, focus_a, focus_b) = setup_keyboard_activation_test();
@@ -4894,10 +4847,10 @@ mod tests {
         assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
     }
 
-    /// A non-activation key *released* during the press must cancel the pending
-    /// activation. For the sequence escape-down, space-down, escape-up,
-    /// space-up the space forms a clean down/up pair, but the intervening
-    /// escape-up means this isn't a plain space activation, so no click fires.
+    /// 在按下期间*释放*的非激活键必须取消待定的激活。对于
+    /// escape-down、space-down、escape-up、space-up 序列，space 形成
+    /// 干净的按下/释放配对，但中间的 escape-up 意味着这不是简单的
+    /// space 激活，因此不会触发点击。
     #[test]
     fn keyboard_activation_cleared_by_intervening_key_release() {
         let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
@@ -4911,9 +4864,8 @@ mod tests {
         assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
     }
 
-    /// The flag is a single activation marker, not keyed by which activation
-    /// key was used, so a Space down paired with an Enter up on the same
-    /// element still fires a click.
+    /// 该标记是单一的激活标记，不区分使用了哪个激活键，因此
+    /// Space 按下配对同一元素上的 Enter 释放仍会触发点击。
     #[test]
     fn keyboard_activation_does_not_distinguish_space_and_enter() {
         let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
@@ -4925,8 +4877,8 @@ mod tests {
         assert_eq!(*clicks.borrow(), vec!["a"]);
     }
 
-    /// A non-activation key pressed between the activation down and up clears
-    /// the pending flag, suppressing the click.
+    /// 在激活键按下和释放之间按下的非激活键会清除待定标记，
+    /// 从而阻止点击。
     #[test]
     fn keyboard_activation_cleared_by_intervening_keydown() {
         let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
@@ -4939,8 +4891,8 @@ mod tests {
         assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
     }
 
-    /// A modified Enter (e.g. cmd-enter) is not treated as an activation key,
-    /// so it neither sets the pending flag nor fires a click on release.
+    /// 带修饰符的 Enter（如 cmd-enter）不被视为激活键，
+    /// 因此既不设置待定标记，也不会在释放时触发点击。
     #[test]
     fn keyboard_activation_ignores_modified_keys() {
         let (mut cx, window, clicks, focus_a, _focus_b) = setup_keyboard_activation_test();
@@ -4952,9 +4904,9 @@ mod tests {
         assert!(clicks.borrow().is_empty(), "clicks: {:?}", clicks.borrow());
     }
 
-    /// Two sibling tab groups, each a focusable container that is *not* itself a
-    /// tab stop and holds a single tab stop. Mirrors how the title bar and
-    /// status bar expose their controls as ARIA toolbars.
+    /// 两个同级标签页组，每个都是可聚焦的容器，*本身不是*制表位，
+    /// 且各持有一个制表位。模拟标题栏和状态栏将其控件作为
+    /// ARIA 工具栏暴露的方式。
     struct TabGroupFocus {
         group_a: FocusHandle,
         item_a: FocusHandle,
@@ -4976,9 +4928,9 @@ mod tests {
         }
     }
 
-    /// Focusing a tab-group container and pressing Tab (`focus_next`) must move
-    /// focus to the first tab stop *inside that container*, as documented on
-    /// [`InteractiveElement::tab_stop`].
+    /// 聚焦标签页组容器并按下 Tab（`focus_next`）必须将焦点移动到
+    /// *该容器内部*的第一个制表位，如 [`InteractiveElement::tab_stop`]
+    /// 所述。
     #[test]
     fn focus_next_from_tab_group_container_enters_that_group() {
         let mut cx = TestAppContext::single();

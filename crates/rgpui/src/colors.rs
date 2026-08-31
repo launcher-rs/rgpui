@@ -2,7 +2,7 @@ use crate::{App, Global, Rgba, Window, WindowAppearance, rgb};
 use std::ops::Deref;
 use std::sync::Arc;
 
-/// GPUI 的默认颜色集。
+/// RGPUI 的默认颜色集。
 ///
 /// 这些用于样式化基础组件、示例等。
 #[derive(Clone, Debug)]
@@ -90,7 +90,7 @@ impl Global for GlobalColors {}
 
 /// 实现此 trait 以允许通过 `cx.default_colors()` 全局访问 [Colors]。
 pub trait DefaultColors {
-    /// Returns the default [`Colors`]
+    /// 返回默认的 [`Colors`]
     fn default_colors(&self) -> &Arc<Colors>;
 }
 
@@ -100,7 +100,7 @@ impl DefaultColors for App {
     }
 }
 
-/// 用于样式化 GPUI 元素的基础 GPUI 颜色外观
+/// 用于样式化 RGPUI 元素的基础 RGPUI 颜色外观
 ///
 /// 根据系统当前的 [`WindowAppearance`] 而变化。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

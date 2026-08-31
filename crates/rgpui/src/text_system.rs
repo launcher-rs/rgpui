@@ -32,22 +32,22 @@ use std::{
     sync::Arc,
 };
 
-/// An opaque identifier for a specific font.
+/// 特定字体的不透明标识符。
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct FontId(pub usize);
 
-/// An opaque identifier for a specific font family.
+/// 特定字体族的不透明标识符。
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 pub struct FontFamilyId(pub usize);
 
-/// Number of subpixel glyph variants along the X axis.
+/// X 轴方向的亚像素字形变体数量。
 pub const SUBPIXEL_VARIANTS_X: u8 = 4;
 
-/// Number of subpixel glyph variants along the Y axis.
+/// Y 轴方向的亚像素字形变体数量。
 pub const SUBPIXEL_VARIANTS_Y: u8 = 1;
 
-/// The GPUI text rendering sub system.
+/// RGPUI 文本渲染子系统。
 pub struct TextSystem {
     platform_text_system: Arc<dyn PlatformTextSystem>,
     font_ids_by_font: RwLock<FxHashMap<Font, Result<FontId>>>,
@@ -59,7 +59,7 @@ pub struct TextSystem {
 }
 
 impl TextSystem {
-    /// Create a new TextSystem with the given platform text system.
+    /// 使用指定的平台文本系统创建一个新的 TextSystem。
     pub fn new(platform_text_system: Arc<dyn PlatformTextSystem>) -> Self {
         TextSystem {
             platform_text_system,
@@ -84,7 +84,7 @@ impl TextSystem {
         }
     }
 
-    /// Get a list of all available font names from the operating system.
+    /// 从操作系统获取所有可用字体名称的列表。
     pub fn all_font_names(&self) -> Vec<String> {
         let mut names = self.platform_text_system.all_font_names();
         names.extend(
@@ -98,12 +98,12 @@ impl TextSystem {
         names
     }
 
-    /// Add a font's data to the text system.
+    /// 向文本系统添加字体数据。
     pub fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()> {
         self.platform_text_system.add_fonts(fonts)
     }
 
-    /// Get the FontId for the configure font family and style.
+    /// 获取指定字体族和样式的 FontId。
     fn font_id(&self, font: &Font) -> Result<FontId> {
         fn clone_font_id_result(font_id: &Result<FontId>) -> Result<FontId> {
             match font_id {
@@ -128,7 +128,7 @@ impl TextSystem {
         }
     }
 
-    /// Get the Font for the Font Id.
+    /// 根据 FontId 获取对应的 Font。
     pub fn get_font_for_id(&self, id: FontId) -> Option<Font> {
         let lock = self.font_ids_by_font.read();
         lock.iter()
@@ -139,12 +139,11 @@ impl TextSystem {
             .next()
     }
 
-    /// Resolves the specified font, falling back to the default font stack if
-    /// the font fails to load.
+    /// 解析指定的字体，如果字体加载失败则回退到默认字体栈。
     ///
     /// # Panics
     ///
-    /// Panics if the font and none of the fallbacks can be resolved.
+    /// 如果字体和所有回退字体都无法解析，则会 panic。
     pub fn resolve_font(&self, font: &Font) -> FontId {
         if let Ok(font_id) = self.font_id(font) {
             return font_id;
@@ -165,14 +164,13 @@ impl TextSystem {
         );
     }
 
-    /// Get the bounding box for the given font and font size.
-    /// A font's bounding box is the smallest rectangle that could enclose all glyphs
-    /// in the font. superimposed over one another.
+    /// 获取指定字体和字号的边界框。
+    /// 字体的边界框是能够包含该字体中所有字形的最小矩形（将所有字形叠加在一起）。
     pub fn bounding_box(&self, font_id: FontId, font_size: Pixels) -> Bounds<Pixels> {
         self.read_metrics(font_id, |metrics| metrics.bounding_box(font_size))
     }
 
-    /// Get the typographic bounds for the given character, in the given font and size.
+    /// 获取指定字符在给定字体和字号下的排版边界。
     pub fn typographic_bounds(
         &self,
         font_id: FontId,
@@ -191,7 +189,7 @@ impl TextSystem {
         }))
     }
 
-    /// Get the advance width for the given character, in the given font and size.
+    /// 获取指定字符在给定字体和字号下的前进宽度。
     pub fn advance(&self, font_id: FontId, font_size: Pixels, ch: char) -> Result<Size<Pixels>> {
         let glyph_id = self
             .platform_text_system
@@ -220,63 +218,61 @@ impl TextSystem {
             .width
     }
 
-    /// Returns the width of an `em`.
+    /// 返回一个 `em` 的宽度。
     ///
-    /// Uses the width of the `m` character in the given font and size.
+    /// 使用给定字体和字号下 `m` 字符的宽度。
     pub fn em_width(&self, font_id: FontId, font_size: Pixels) -> Result<Pixels> {
         Ok(self.typographic_bounds(font_id, font_size, 'm')?.size.width)
     }
 
-    /// Returns the advance width of an `em`.
+    /// 返回一个 `em` 的前进宽度。
     ///
-    /// Uses the advance width of the `m` character in the given font and size.
+    /// 使用给定字体和字号下 `m` 字符的前进宽度。
     pub fn em_advance(&self, font_id: FontId, font_size: Pixels) -> Result<Pixels> {
         Ok(self.advance(font_id, font_size, 'm')?.width)
     }
 
-    /// Returns the width of an `ch`.
+    /// 返回一个 `ch` 的宽度。
     ///
-    /// Uses the width of the `0` character in the given font and size.
+    /// 使用给定字体和字号下 `0` 字符的宽度。
     pub fn ch_width(&self, font_id: FontId, font_size: Pixels) -> Result<Pixels> {
         Ok(self.typographic_bounds(font_id, font_size, '0')?.size.width)
     }
 
-    /// Returns the advance width of an `ch`.
+    /// 返回一个 `ch` 的前进宽度。
     ///
-    /// Uses the advance width of the `0` character in the given font and size.
+    /// 使用给定字体和字号下 `0` 字符的前进宽度。
     pub fn ch_advance(&self, font_id: FontId, font_size: Pixels) -> Result<Pixels> {
         Ok(self.advance(font_id, font_size, '0')?.width)
     }
 
-    /// Get the number of font size units per 'em square',
-    /// Per MDN: "an abstract square whose height is the intended distance between
-    /// lines of type in the same type size"
+    /// 获取每个 'em 方块' 的字体大小单位数，
+    /// 根据 MDN："一个抽象方块，其高度是相同字号下行间距的预期距离"
     pub fn units_per_em(&self, font_id: FontId) -> u32 {
         self.read_metrics(font_id, |metrics| metrics.units_per_em)
     }
 
-    /// Get the height of a capital letter in the given font and size.
+    /// 获取指定字体和字号下大写字母的高度。
     pub fn cap_height(&self, font_id: FontId, font_size: Pixels) -> Pixels {
         self.read_metrics(font_id, |metrics| metrics.cap_height(font_size))
     }
 
-    /// Get the height of the x character in the given font and size.
+    /// 获取指定字体和字号下 x 字符的高度。
     pub fn x_height(&self, font_id: FontId, font_size: Pixels) -> Pixels {
         self.read_metrics(font_id, |metrics| metrics.x_height(font_size))
     }
 
-    /// Get the recommended distance from the baseline for the given font
+    /// 获取指定字体的推荐基线上方距离
     pub fn ascent(&self, font_id: FontId, font_size: Pixels) -> Pixels {
         self.read_metrics(font_id, |metrics| metrics.ascent(font_size))
     }
 
-    /// Get the recommended distance below the baseline for the given font,
-    /// in single spaced text.
+    /// 获取指定字体在单倍行距文本中的推荐基线下方距离。
     pub fn descent(&self, font_id: FontId, font_size: Pixels) -> Pixels {
         self.read_metrics(font_id, |metrics| metrics.descent(font_size))
     }
 
-    /// Get the recommended baseline offset for the given font and line height.
+    /// 获取指定字体和行高的推荐基线偏移量。
     pub fn baseline_offset(
         &self,
         font_id: FontId,
@@ -303,7 +299,7 @@ impl TextSystem {
         }
     }
 
-    /// Returns a handle to a line wrapper, for the given font and font size.
+    /// 返回指定字体和字号的行包装器句柄。
     pub fn line_wrapper(self: &Arc<Self>, font: Font, font_size: Pixels) -> LineWrapperHandle {
         let lock = &mut self.wrapper_pool.lock();
         let font_id = self.resolve_font(&font);
@@ -320,7 +316,7 @@ impl TextSystem {
         }
     }
 
-    /// Get the rasterized size and location of a specific, rendered glyph.
+    /// 获取特定已渲染字形的光栅化大小和位置。
     pub(crate) fn raster_bounds(&self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>> {
         let raster_bounds = self.raster_bounds.upgradable_read();
         if let Some(bounds) = raster_bounds.get(params) {
@@ -342,13 +338,13 @@ impl TextSystem {
             .rasterize_glyph(params, raster_bounds)
     }
 
-    /// Returns the dilation level to use for a glyph painted in the given color.
+    /// 返回以给定颜色绘制字形时使用的膨胀级别。
     pub(crate) fn glyph_dilation_for_color(&self, color: Hsla) -> u8 {
         self.platform_text_system.glyph_dilation_for_color(color)
     }
 
-    /// Returns the text rendering mode recommended by the platform for the given font and size.
-    /// The return value will never be [`TextRenderingMode::PlatformDefault`].
+    /// 返回平台为给定字体和字号推荐的文本渲染模式。
+    /// 返回值永远不会是 [`TextRenderingMode::PlatformDefault`]。
     pub(crate) fn recommended_rendering_mode(
         &self,
         font_id: FontId,
@@ -359,7 +355,7 @@ impl TextSystem {
     }
 }
 
-/// The GPUI text layout subsystem.
+/// RGPUI 文本布局子系统。
 #[derive(Deref)]
 pub struct WindowTextSystem {
     line_layout_cache: LineLayoutCache,
@@ -368,7 +364,7 @@ pub struct WindowTextSystem {
 }
 
 impl WindowTextSystem {
-    /// Create a new WindowTextSystem with the given TextSystem.
+    /// 使用指定的 TextSystem 创建一个新的 WindowTextSystem。
     pub fn new(text_system: Arc<TextSystem>) -> Self {
         Self {
             line_layout_cache: LineLayoutCache::new(text_system.platform_text_system.clone()),
@@ -388,12 +384,11 @@ impl WindowTextSystem {
         self.line_layout_cache.truncate_layouts(index)
     }
 
-    /// Shape the given line, at the given font_size, for painting to the screen.
-    /// Subsets of the line can be styled independently with the `runs` parameter.
+    /// 对给定行进行排版，使用指定字号，用于屏幕绘制。
+    /// 可通过 `runs` 参数对行的子集独立设置样式。
     ///
-    /// Note that this method can only shape a single line of text. It will panic
-    /// if the text contains newlines. If you need to shape multiple lines of text,
-    /// use [`Self::shape_text`] instead.
+    /// 注意此方法只能排版单行文本。如果文本包含换行符则会 panic。
+    /// 如需排版多行文本，请使用 [`Self::shape_text`]。
     pub fn shape_line(
         &self,
         text: SharedString,
@@ -435,16 +430,16 @@ impl WindowTextSystem {
         }
     }
 
-    /// Shape the given line using a caller-provided content hash as the cache key.
+    /// 使用调用者提供的内容哈希作为缓存键对给定行进行排版。
     ///
-    /// This enables cache hits without materializing a contiguous `SharedString` for the text.
-    /// If the cache misses, `materialize_text` is invoked to produce the `SharedString` for shaping.
+    /// 这使得无需实例化连续的 `SharedString` 即可命中缓存。
+    /// 如果缓存未命中，将调用 `materialize_text` 来生成用于排版的 `SharedString`。
     ///
-    /// Contract (caller enforced):
-    /// - Same `text_hash` implies identical text content (collision risk accepted by caller).
-    /// - `text_len` should be the UTF-8 byte length of the text (helps reduce accidental collisions).
+    /// 契约（调用者保证）：
+    /// - 相同的 `text_hash` 意味着相同的文本内容（碰撞风险由调用者承担）。
+    /// - `text_len` 应为文本的 UTF-8 字节长度（有助于减少意外碰撞）。
     ///
-    /// Like [`Self::shape_line`], this must be used only for single-line text (no `\n`).
+    /// 与 [`Self::shape_line`] 一样，此方法只能用于单行文本（无 `\n`）。
     pub fn shape_line_by_hash(
         &self,
         text_hash: u64,
@@ -503,9 +498,9 @@ impl WindowTextSystem {
         }
     }
 
-    /// Shape a multi line string of text, at the given font_size, for painting to the screen.
-    /// Subsets of the text can be styled independently with the `runs` parameter.
-    /// If `wrap_width` is provided, the line breaks will be adjusted to fit within the given width.
+    /// 对多行文本字符串进行排版，使用指定字号，用于屏幕绘制。
+    /// 可通过 `runs` 参数对文本的子集独立设置样式。
+    /// 如果提供了 `wrap_width`，将调整换行以适应指定宽度。
     pub fn shape_text(
         &self,
         text: SharedString,
@@ -638,10 +633,9 @@ impl WindowTextSystem {
         self.line_layout_cache.finish_frame()
     }
 
-    /// Layout the given line of text, at the given font_size.
-    /// Subsets of the line can be styled independently with the `runs` parameter.
-    /// Generally, you should prefer to use [`Self::shape_line`] instead, which
-    /// can be painted directly.
+    /// 对给定行文本进行布局，使用指定字号。
+    /// 可通过 `runs` 参数对行的子集独立设置样式。
+    /// 通常应优先使用 [`Self::shape_line`]，它可直接用于绘制。
     pub fn layout_line(
         &self,
         text: &str,
@@ -693,7 +687,7 @@ impl WindowTextSystem {
         layout
     }
 
-    /// Returns the shaped layout width of for the given character, in the given font and size.
+    /// 返回指定字符在给定字体和字号下的排版布局宽度。
     pub fn layout_width(&self, font_id: FontId, font_size: Pixels, ch: char) -> Pixels {
         let mut buffer = [0; 4];
         let buffer: &_ = ch.encode_utf8(&mut buffer);
@@ -710,19 +704,18 @@ impl WindowTextSystem {
             .width
     }
 
-    /// Returns the shaped layout width of an `em`.
+    /// 返回一个 `em` 的排版布局宽度。
     pub fn em_layout_width(&self, font_id: FontId, font_size: Pixels) -> Pixels {
         self.layout_width(font_id, font_size, 'm')
     }
 
-    /// Probe the line layout cache using a caller-provided content hash, without allocating.
+    /// 使用调用者提供的内容哈希探测行布局缓存，无需分配内存。
     ///
-    /// Returns `Some(layout)` if the layout is already cached in either the current frame
-    /// or the previous frame. Returns `None` if it is not cached.
+    /// 如果布局已在当前帧或上一帧中缓存，则返回 `Some(layout)`。未缓存则返回 `None`。
     ///
-    /// Contract (caller enforced):
-    /// - Same `text_hash` implies identical text content (collision risk accepted by caller).
-    /// - `text_len` should be the UTF-8 byte length of the text (helps reduce accidental collisions).
+    /// 契约（调用者保证）：
+    /// - 相同的 `text_hash` 意味着相同的文本内容（碰撞风险由调用者承担）。
+    /// - `text_len` 应为文本的 UTF-8 字节长度（有助于减少意外碰撞）。
     pub fn try_layout_line_by_hash(
         &self,
         text_hash: u64,
@@ -776,14 +769,14 @@ impl WindowTextSystem {
         layout
     }
 
-    /// Layout the given line of text using a caller-provided content hash as the cache key.
+    /// 使用调用者提供的内容哈希作为缓存键对给定行文本进行布局。
     ///
-    /// This enables cache hits without materializing a contiguous `SharedString` for the text.
-    /// If the cache misses, `materialize_text` is invoked to produce the `SharedString` for shaping.
+    /// 这使得无需实例化连续的 `SharedString` 即可命中缓存。
+    /// 如果缓存未命中，将调用 `materialize_text` 来生成用于排版的 `SharedString`。
     ///
-    /// Contract (caller enforced):
-    /// - Same `text_hash` implies identical text content (collision risk accepted by caller).
-    /// - `text_len` should be the UTF-8 byte length of the text (helps reduce accidental collisions).
+    /// 契约（调用者保证）：
+    /// - 相同的 `text_hash` 意味着相同的文本内容（碰撞风险由调用者承担）。
+    /// - `text_len` 应为文本的 UTF-8 字节长度（有助于减少意外碰撞）。
     pub fn layout_line_by_hash(
         &self,
         text_hash: u64,
@@ -846,7 +839,7 @@ struct FontIdWithSize {
     font_size: Pixels,
 }
 
-/// A handle into the text system, which can be used to compute the wrapped layout of text
+/// 文本系统句柄，可用于计算文本的换行布局
 pub struct LineWrapperHandle {
     wrapper: Option<LineWrapper>,
     text_system: Arc<TextSystem>,
@@ -880,8 +873,8 @@ impl DerefMut for LineWrapperHandle {
     }
 }
 
-/// The degree of blackness or stroke thickness of a font. This value ranges from 100.0 to 900.0,
-/// with 400.0 as normal.
+/// 字体的黑度或笔画粗细程度。该值范围为 100.0 到 900.0，
+/// 400.0 为常规值。
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Serialize, Deserialize, Add, Sub, FromStr)]
 #[serde(transparent)]
 pub struct FontWeight(pub f32);
@@ -914,26 +907,26 @@ impl Hash for FontWeight {
 impl Eq for FontWeight {}
 
 impl FontWeight {
-    /// Thin weight (100), the thinnest value.
+    /// 细体 (100)，最细的值。
     pub const THIN: FontWeight = FontWeight(100.0);
-    /// Extra light weight (200).
+    /// 特细体 (200)。
     pub const EXTRA_LIGHT: FontWeight = FontWeight(200.0);
-    /// Light weight (300).
+    /// 浅细体 (300)。
     pub const LIGHT: FontWeight = FontWeight(300.0);
-    /// Normal (400).
+    /// 常规 (400)。
     pub const NORMAL: FontWeight = FontWeight(400.0);
-    /// Medium weight (500, higher than normal).
+    /// 中粗体 (500，比常规稍粗)。
     pub const MEDIUM: FontWeight = FontWeight(500.0);
-    /// Semibold weight (600).
+    /// 半粗体 (600)。
     pub const SEMIBOLD: FontWeight = FontWeight(600.0);
-    /// Bold weight (700).
+    /// 粗体 (700)。
     pub const BOLD: FontWeight = FontWeight(700.0);
-    /// Extra-bold weight (800).
+    /// 特粗体 (800)。
     pub const EXTRA_BOLD: FontWeight = FontWeight(800.0);
-    /// Black weight (900), the thickest value.
+    /// 黑体 (900)，最粗的值。
     pub const BLACK: FontWeight = FontWeight(900.0);
 
-    /// All of the font weights, in order from thinnest to thickest.
+    /// 所有字重，按从细到粗排列。
     pub const ALL: [FontWeight; 9] = [
         Self::THIN,
         Self::EXTRA_LIGHT,
@@ -964,15 +957,15 @@ impl schemars::JsonSchema for FontWeight {
     }
 }
 
-/// Allows italic or oblique faces to be selected.
+/// 允许选择斜体或倾斜字体。
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash, Default, Serialize, Deserialize, JsonSchema)]
 pub enum FontStyle {
-    /// A face that is neither italic not obliqued.
+    /// 既非斜体也非倾斜的字体。
     #[default]
     Normal,
-    /// A form that is generally cursive in nature.
+    /// 通常为草书体的字体形式。
     Italic,
-    /// A typically-sloped version of the regular face.
+    /// 常规字体的倾斜版本。
     Oblique,
 }
 
@@ -982,20 +975,20 @@ impl Display for FontStyle {
     }
 }
 
-/// A styled run of text, for use in [`crate::TextLayout`].
+/// 带样式的文本段，用于 [`crate::TextLayout`]。
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TextRun {
-    /// A number of utf8 bytes
+    /// UTF-8 字节数
     pub len: usize,
-    /// The font to use for this run.
+    /// 本段使用的字体。
     pub font: Font,
-    /// The color
+    /// 文本颜色
     pub color: Hsla,
-    /// The background color (if any)
+    /// 背景颜色（如果有）
     pub background_color: Option<Hsla>,
-    /// The underline style (if any)
+    /// 下划线样式（如果有）
     pub underline: Option<UnderlineStyle>,
-    /// The strikethrough style (if any)
+    /// 删除线样式（如果有）
     pub strikethrough: Option<StrikethroughStyle>,
 }
 
@@ -1008,7 +1001,7 @@ impl TextRun {
     }
 }
 
-/// An identifier for a specific glyph, as returned by [`WindowTextSystem::layout_line`].
+/// 特定字形的标识符，由 [`WindowTextSystem::layout_line`] 返回。
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[repr(C)]
 pub struct GlyphId(pub u32);
@@ -1051,24 +1044,24 @@ impl Hash for RenderGlyphParams {
     }
 }
 
-/// The configuration details for identifying a specific font.
+/// 用于标识特定字体的配置详情。
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Font {
-    /// The font family name.
+    /// 字体族名称。
     ///
-    /// The special name ".SystemUIFont" is used to identify the system UI font, which varies based on platform.
+    /// 特殊名称 ".SystemUIFont" 用于标识系统 UI 字体，因平台而异。
     pub family: SharedString,
 
-    /// The font features to use.
+    /// 使用的字体特性。
     pub features: FontFeatures,
 
-    /// The fallbacks fonts to use.
+    /// 使用的回退字体。
     pub fallbacks: Option<FontFallbacks>,
 
-    /// The font weight.
+    /// 字体粗细。
     pub weight: FontWeight,
 
-    /// The font style.
+    /// 字体样式。
     pub style: FontStyle,
 }
 
@@ -1078,7 +1071,7 @@ impl Default for Font {
     }
 }
 
-/// Get a [`Font`] for a given name.
+/// 根据给定名称获取 [`Font`]。
 pub fn font(family: impl Into<SharedString>) -> Font {
     Font {
         family: family.into(),
@@ -1090,96 +1083,96 @@ pub fn font(family: impl Into<SharedString>) -> Font {
 }
 
 impl Font {
-    /// Set this Font to be bold
+    /// 将此字体设为粗体
     pub fn bold(mut self) -> Self {
         self.weight = FontWeight::BOLD;
         self
     }
 
-    /// Set this Font to be italic
+    /// 将此字体设为斜体
     pub fn italic(mut self) -> Self {
         self.style = FontStyle::Italic;
         self
     }
 }
 
-/// A struct for storing font metrics.
-/// It is used to define the measurements of a typeface.
+/// 用于存储字体度量信息的结构体。
+/// 用于定义字体的度量尺寸。
 #[derive(Clone, Copy, Debug)]
 pub struct FontMetrics {
-    /// The number of font units that make up the "em square",
-    /// a scalable grid for determining the size of a typeface.
+    /// 组成 "em 方块" 的字体单位数，
+    /// 一个用于确定字体大小的可伸缩网格。
     pub units_per_em: u32,
 
-    /// The vertical distance from the baseline of the font to the top of the glyph covers.
+    /// 从字体基线到字形顶部的垂直距离。
     pub ascent: f32,
 
-    /// The vertical distance from the baseline of the font to the bottom of the glyph covers.
+    /// 从字体基线到底部的垂直距离。
     pub descent: f32,
 
-    /// The recommended additional space to add between lines of type.
+    /// 推荐的行间额外间距。
     pub line_gap: f32,
 
-    /// The suggested position of the underline.
+    /// 下划线的建议位置。
     pub underline_position: f32,
 
-    /// The suggested thickness of the underline.
+    /// 下划线的建议粗细。
     pub underline_thickness: f32,
 
-    /// The height of a capital letter measured from the baseline of the font.
+    /// 从字体基线测量的大写字母高度。
     pub cap_height: f32,
 
-    /// The height of a lowercase x.
+    /// 小写 x 的高度。
     pub x_height: f32,
 
-    /// The outer limits of the area that the font covers.
-    /// Corresponds to the xMin / xMax / yMin / yMax values in the OpenType `head` table
+    /// 字体覆盖区域的外部边界。
+    /// 对应 OpenType `head` 表中的 xMin / xMax / yMin / yMax 值
     pub bounding_box: Bounds<f32>,
 }
 
 impl FontMetrics {
-    /// Returns the vertical distance from the baseline of the font to the top of the glyph covers in pixels.
+    /// 以像素为单位返回从字体基线到字形顶部的垂直距离。
     pub fn ascent(&self, font_size: Pixels) -> Pixels {
         Pixels((self.ascent / self.units_per_em as f32) * font_size.0)
     }
 
-    /// Returns the vertical distance from the baseline of the font to the bottom of the glyph covers in pixels.
+    /// 以像素为单位返回从字体基线到底部的垂直距离。
     pub fn descent(&self, font_size: Pixels) -> Pixels {
         Pixels((self.descent / self.units_per_em as f32) * font_size.0)
     }
 
-    /// Returns the recommended additional space to add between lines of type in pixels.
+    /// 以像素为单位返回推荐的行间额外间距。
     pub fn line_gap(&self, font_size: Pixels) -> Pixels {
         Pixels((self.line_gap / self.units_per_em as f32) * font_size.0)
     }
 
-    /// Returns the suggested position of the underline in pixels.
+    /// 以像素为单位返回下划线的建议位置。
     pub fn underline_position(&self, font_size: Pixels) -> Pixels {
         Pixels((self.underline_position / self.units_per_em as f32) * font_size.0)
     }
 
-    /// Returns the suggested thickness of the underline in pixels.
+    /// 以像素为单位返回下划线的建议粗细。
     pub fn underline_thickness(&self, font_size: Pixels) -> Pixels {
         Pixels((self.underline_thickness / self.units_per_em as f32) * font_size.0)
     }
 
-    /// Returns the height of a capital letter measured from the baseline of the font in pixels.
+    /// 以像素为单位返回从字体基线测量的大写字母高度。
     pub fn cap_height(&self, font_size: Pixels) -> Pixels {
         Pixels((self.cap_height / self.units_per_em as f32) * font_size.0)
     }
 
-    /// Returns the height of a lowercase x in pixels.
+    /// 以像素为单位返回小写 x 的高度。
     pub fn x_height(&self, font_size: Pixels) -> Pixels {
         Pixels((self.x_height / self.units_per_em as f32) * font_size.0)
     }
 
-    /// Returns the outer limits of the area that the font covers in pixels.
+    /// 以像素为单位返回字体覆盖区域的外部边界。
     pub fn bounding_box(&self, font_size: Pixels) -> Bounds<Pixels> {
         (self.bounding_box / self.units_per_em as f32 * font_size.0).map(px)
     }
 }
 
-/// Maps well-known virtual font names to their concrete equivalents.
+/// 将已知的虚拟字体名称映射到其实际等效字体。
 #[allow(unused)]
 pub fn font_name_with_fallbacks<'a>(name: &'a str, system: &'a str) -> &'a str {
     // Note: the "Zed Plex" fonts were deprecated as we are not allowed to use "Plex"
@@ -1193,7 +1186,7 @@ pub fn font_name_with_fallbacks<'a>(name: &'a str, system: &'a str) -> &'a str {
     }
 }
 
-/// Like [`font_name_with_fallbacks`] but accepts and returns [`SharedString`] references.
+/// 类似 [`font_name_with_fallbacks`]，但接受和返回 [`SharedString`] 引用。
 #[allow(unused)]
 pub fn font_name_with_fallbacks_shared<'a>(
     name: &'a SharedString,

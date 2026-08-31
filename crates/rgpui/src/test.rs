@@ -1,16 +1,16 @@
-//! Test support for GPUI.
+//! RGPUI 的测试支持。
 //!
-//! GPUI provides first-class support for testing, which includes a macro to run test that rely on having a context,
-//! and a test implementation of the `ForegroundExecutor` and `BackgroundExecutor` which ensure that your tests run
-//! deterministically even in the face of arbitrary parallelism.
+//! RGPUI 为测试提供一流支持，包括一个运行依赖上下文的测试的宏，
+//! 以及 `ForegroundExecutor` 和 `BackgroundExecutor` 的测试实现，
+//! 确保即使在任意并行性的情况下，您的测试也能确定性地运行。
 //!
-//! The output of the `rgpui::test` macro is understood by other rust test runners, so you can use it with `cargo test`
-//! or `cargo-nextest`, or another runner of your choice.
+//! `rgpui::test` 宏的输出被其他 rust 测试运行器理解，因此您可以
+//! 将其与 `cargo test` 或 `cargo-nextest` 或您选择的其他运行器一起使用。
 //!
-//! To make it possible to test collaborative user interfaces (like Zed) you can ask for as many different contexts
-//! as you need.
+//! 为了使测试协作用户界面（如 Zed）成为可能，您可以根据需要请求
+//! 多个不同的上下文。
 //!
-//! ## Example
+//! ## 示例
 //!
 //! ```
 //! use rgpui;
@@ -34,12 +34,12 @@ use std::{
     pin::Pin,
 };
 
-/// Strategy injected into `#[rgpui::property_test]` tests to control the seed
-/// given to the scheduler. Doesn't shrink, since all scheduler seeds are
-/// equivalent in complexity. If `$SEED` is set, it always uses that value.
+/// 注入到 `#[rgpui::property_test]` 测试中的策略，用于控制传递给
+/// 调度器的种子。不进行收缩，因为所有调度器种子在复杂性上都是
+/// 等效的。如果设置了 `$SEED`，则始终使用该值。
 ///
-/// Note: this function is not intended to be used directly. Rather, it is
-/// public so that it can be used from the `property_test` macro.
+/// 注意：此函数不打算直接使用。而是公开的，以便可以从
+/// `property_test` 宏中使用。
 pub fn seed_strategy() -> impl Strategy<Value = u64> {
     match std::env::var("SEED") {
         Ok(val) => Just(val.parse().unwrap()).boxed(),
@@ -47,13 +47,13 @@ pub fn seed_strategy() -> impl Strategy<Value = u64> {
     }
 }
 
-/// Applies a fixed RNG seed to a proptest config so that case generation
-/// is deterministic. Uses `$SEED` if set, otherwise defaults to `0`.
-/// This bridges the GPUI `SEED` env var to proptest's RNG seed, so that
-/// a single variable controls both the scheduler seed and case generation.
+/// 将固定的 RNG 种子应用于 proptest 配置，使用例生成
+/// 是确定性的。如果设置了 `$SEED`，则使用它，否则默认为 `0`。
+/// 这将 RGPUI `SEED` 环境变量桥接到 proptest 的 RNG 种子，以便
+/// 单个变量控制调度器种子和用例生成。
 ///
-/// Note: this function is not intended to be used directly. Rather, it is
-/// public so that it can be used from the `property_test` macro.
+/// 注意：此函数不打算直接使用。而是公开的，以便可以从
+/// `property_test` 宏中使用。
 pub fn apply_seed_to_proptest_config(
     mut config: proptest::test_runner::Config,
 ) -> proptest::test_runner::Config {
@@ -65,12 +65,11 @@ pub fn apply_seed_to_proptest_config(
     config
 }
 
-/// Similar to [`run_test`], but only runs the callback once, allowing
-/// [`FnOnce`] callbacks. This is intended for use with the
-/// `rgpui::property_test` macro and generally should not be used directly.
+/// 类似于 [`run_test`]，但只运行一次回调，允许
+/// [`FnOnce`] 回调。这旨在与 `rgpui::property_test` 宏一起使用，
+/// 通常不应直接使用。
 ///
-/// Doesn't support many features of [`run_test`], since these are provided by
-/// proptest.
+/// 不支持 [`run_test`] 的许多功能，因为这些由 proptest 提供。
 pub fn run_test_once<R>(
     seed: u64,
     test_fn: Box<dyn UnwindSafe + FnOnce(TestDispatcher) -> R>,
@@ -89,9 +88,9 @@ pub fn run_test_once<R>(
     }
 }
 
-/// Run the given test function with the configured parameters.
-/// This is intended for use with the `rgpui::test` macro
-/// and generally should not be used directly.
+/// 使用配置的参数运行给定的测试函数。
+/// 这旨在与 `rgpui::test` 宏一起使用，
+/// 通常不应直接使用。
 pub fn run_test(
     num_iterations: usize,
     explicit_seeds: &[u64],
@@ -189,7 +188,7 @@ fn calculate_seeds(
     (iter, is_multiple_runs)
 }
 
-/// A test struct for converting an observation callback into a stream.
+/// 一个将观察回调转换为流的测试结构体。
 pub struct Observation<T> {
     rx: Pin<Box<async_channel::Receiver<T>>>,
     _subscription: Subscription,
@@ -206,7 +205,7 @@ impl<T: 'static> futures::Stream for Observation<T> {
     }
 }
 
-/// observe returns a stream of the change events from the given `Entity`
+/// observe 返回给定 `Entity` 的变更事件流
 pub fn observe<T: 'static>(entity: &Entity<T>, cx: &mut TestAppContext) -> Observation<()> {
     let (tx, rx) = async_channel::unbounded();
     let _subscription = cx.update(|cx| {

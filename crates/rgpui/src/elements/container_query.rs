@@ -10,23 +10,23 @@ use crate::{
     Window, relative,
 };
 
-/// Construct a container query element with the given render callback.
-/// The callback receives the size the element was assigned during layout and
-/// returns the contents to display within it.
+/// 使用给定的渲染回调构造容器查询元素。
+/// 回调接收布局期间分配给元素的大小，
+/// 并返回要在其中显示的内容。
 ///
-/// By default the element fills its parent (equivalent to `.size_full()`);
-/// use the [`Styled`] methods to size it differently. Because the contents
-/// don't exist until after layout, they cannot influence the element's size.
+/// 默认情况下元素填充其父元素（等同于 `.size_full()`）；
+/// 使用 [`Styled`] 方法以不同方式调整大小。因为内容在布局之后才存在，
+/// 所以不能影响元素的大小。
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// # use rgpui::{container_query, div, px, IntoElement, ParentElement};
 /// container_query(|size, _window, _cx| {
 ///     if size.width < px(240.) {
-///         div().child("Narrow layout")
+///         div().child("窄布局")
 ///     } else {
-///         div().child("Wide layout")
+///         div().child("宽布局")
 ///     }
 /// });
 /// ```
@@ -48,7 +48,7 @@ where
     }
 }
 
-/// A container query element, created with [`container_query`].
+/// 一个容器查询元素，由 [`container_query`] 创建。
 pub struct ContainerQuery {
     render: Option<Box<dyn FnOnce(Size<Pixels>, &mut Window, &mut App) -> AnyElement>>,
     style: StyleRefinement,

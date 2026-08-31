@@ -68,7 +68,7 @@ pub struct RenderablePromptHandle {
 }
 
 /// 使用此函数与 [App::set_prompt_builder] 结合，可强制
-/// GPUI 始终使用回退提示渲染器
+/// RGPUI 始终使用回退提示渲染器
 pub fn fallback_prompt_renderer(
     level: PromptLevel,
     message: &str,
@@ -89,7 +89,7 @@ pub fn fallback_prompt_renderer(
     handle.with_view(renderer, window, cx)
 }
 
-/// 默认的 GPUI 回退提示渲染，当平台不支持时使用
+/// 默认的 RGPUI 回退提示渲染，当平台不支持时使用
 pub struct FallbackPromptRenderer {
     _level: PromptLevel,
     message: String,

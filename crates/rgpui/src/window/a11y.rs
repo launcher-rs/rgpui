@@ -1,89 +1,89 @@
-//! Accessibility support, provided by [AccessKit][accesskit].
+//! 无障碍支持，由 [AccessKit][accesskit] 提供。
 //!
-//! There are user-facing guide-level docs [here](crate::_accessibility).
+//! 用户级指南文档请参见[此处](crate::_accessibility)。
 //!
-//! ## Architecture
+//! ## 架构
 //!
 //! ```text
-//!                              鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?  鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?//!                           鈹屸攢鈻垛攤 AccessKit Adapter (MacOS)      鈹傗梹鈹€鈻垛攤 MacOS System APIs   鈹?//!                           鈹? 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?  鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?//!                           鈹?//! 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹?  鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹? 鈹? 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?  鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?//! 鈹?GPUI 鈹傗梹鈹€鈻垛攤 AccessKit 鈹傗梹鈹€鈹尖攢鈻垛攤 AccessKit Adapter (Windows)    鈹傗梹鈹€鈻垛攤 Windows System APIs 鈹?//! 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹?  鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹? 鈹? 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?  鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?//!                           鈹?//!                           鈹? 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?  鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?//!                           鈹斺攢鈻垛攤 AccessKit Adapter (Linux)      鈹傗梹鈹€鈻垛攤 dbus                鈹?//!                              鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?  鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?//! ```
+//!                              ┌────────────────────────────────┐   ┌─────────────────────┐
+//!                           ┌─▶│ AccessKit Adapter (MacOS)      │◀─▶│ MacOS System APIs   │
+//!                           │  └────────────────────────────────┘   └─────────────────────┘
+//!                           │
+//! ┌──────┐   ┌───────────┐  │  ┌────────────────────────────────┐   ┌─────────────────────┐
+//! │ RGPUI │◀─▶│ AccessKit │◀─┼─▶│ AccessKit Adapter (Windows)    │◀─▶│ Windows System APIs │
+//! └──────┘   └───────────┘  │  └────────────────────────────────┘   └─────────────────────┘
+//!                           │
+//!                           │  ┌────────────────────────────────┐   ┌─────────────────────┐
+//!                           └─▶│ AccessKit Adapter (Linux)      │◀─▶│ dbus                │
+//!                              └────────────────────────────────┘   └─────────────────────┘
+//! ```
 //!
-//! In order for GPUI apps to be usable for people using assistive technology,
-//! we must do a few things:
-//! - Inform the system when the UI changes meaningfully. This includes:
-//!   - Reporting new/removed/changed UI elements
-//!   - *Not* reporting irrelevant UI changes, e.g. an invisible `div()` being
-//!     added.
-//!   - Reporting the appearance and capabilities of each UI element. For example:
-//!     - What does this piece of text say?
-//!     - How far along is this progress bar?
-//!     - Can this node be focused?
-//!     - Can this node have a value directly assigned? (e.g. a slider)
-//! - Allowing the system to interact with the UI by dispatching actions to
-//!   nodes. Note that AccessKit has its own [`Action`] type, which is not the
-//!   [`crate::Action`] trait.
-//! - Activate and deactivate accessibility features when requested by the
-//!   system.
+//! 为了使 RGPUI 应用能够被辅助技术用户使用，
+//! 我们需要做以下几件事：
+//! - 当 UI 发生有意义的变化时通知系统。这包括：
+//!   - 报告新增/移除/更改的 UI 元素
+//!   - *不*报告无关的 UI 变化，例如添加了一个不可见的 `div()`。
+//!   - 报告每个 UI 元素的外观和功能。例如：
+//!     - 这段文本内容是什么？
+//!     - 这个进度条加载到哪里了？
+//!     - 此节点能否获得焦点？
+//!     - 此节点能否直接赋值？（例如滑块）
+//! - 允许系统通过向节点派发操作来与 UI 交互。请注意，AccessKit 有自己的
+//!   [`Action`] 类型，它不是 [`crate::Action`] trait。
+//! - 在系统请求时激活和停用无障碍功能。
 //!
-//! Activating and deactivating at the right time is trivial, so I won't go into
-//! detail here. The other two are almost orthogonal in implementation.
+//! 在正确的时间激活和停用是微不足道的，所以我不会在这里详细说明。
+//! 另外两项在实现上几乎是正交的。
 //!
-//! The state for both lives in the [`A11y`] struct in this module.
+//! 两者的状态都存在于本模块的 [`A11y`] 结构体中。
 //!
-//! ### Reporting UI changes
+//! ### 报告 UI 变化
 //!
-//! Every frame, we build a [`TreeUpdate`] and send it to the platform-specific
-//! adapter. A [`TreeUpdate`] is a representation of a subset of the UI tree.
-//! When the adapter receives the update, it diffs it against the previous
-//! update, and calls platform-specific APIs to inform screen readers about the
-//! changes. Nodes may have been created, destroyed, or updated.
+//! 每帧，我们构建一个 [`TreeUpdate`] 并将其发送到特定平台的适配器。
+//! [`TreeUpdate`] 是 UI 树子集的表示。当适配器收到更新时，它会将
+//! 其与上一次更新进行差异比较，并调用特定平台的 API 来通知屏幕阅读器
+//! 这些变化。节点可能已被创建、销毁或更新。
 //!
-//! Each node has an ID, and this ID *should* be stable across frames. If a
-//! node's ID changes, then, from AccessKit's point of view, it is a different
-//! node.
+//! 每个节点都有一个 ID，这个 ID *应该*跨帧保持稳定。如果节点的 ID 发生了
+//! 变化，那么从 AccessKit 的角度来看，它是一个不同的节点。
 //!
-//! We derive the node ID from the [`GlobalElementId`] in
-//! [`GlobalElementId::accesskit_node_id`]. Nodes without [`GlobalElementId`]s
-//! cannot produce an AccessKit [`NodeId`], and so are not included in the
-//! accessibility tree. We try to warn when using accessibility APIs on
-//! [`div()`] without setting an ID.
+//! 我们从 [`GlobalElementId`] 的 [`GlobalElementId::accesskit_node_id`]
+//! 中派生节点 ID。没有 [`GlobalElementId`] 的节点无法产生 AccessKit [`NodeId`]，
+//! 因此不会包含在无障碍树中。当我们尝试在未设置 ID 的 [`div()`] 上使用
+//! 无障碍 API 时，会尝试发出警告。
 //!
-//! This all happens in [`Drawable::prepaint`]. The [`A11y`] struct maintains a
-//! stack of nodes during prepainting, which we can use to calculate the
-//! [`NodeId`]s, and record parent-child relationships. Once all [`Element`]s in
-//! a frame have been prepainted, we send the resulting [`TreeUpdate`] object to
-//! the adapter and the screen reader can announce the changes.
+//! 这一切都发生在 [`Drawable::prepaint`] 中。[`A11y`] 结构体在预绘制期间
+//! 维护一个节点栈，我们可以用它来计算 [`NodeId`] 并记录父子关系。
+//! 一旦一帧中的所有 [`Element`] 都已预绘制完成，我们将生成的 [`TreeUpdate`]
+//! 对象发送到适配器，屏幕阅读器就可以宣布这些变化。
 //!
-//! #### Synthetic children
+//! #### 合成子节点
 //!
-//! Additionally, some nodes can register "synthetic children" using
-//! [`Element::a11y_synthetic_children`]. Normally, one accesskit node is pushed
-//! for every [`Element`] with a role and id. However, sometimes a single
-//! element may want to produce many accesskit nodes. These extra nodes are
-//! referred to as "synthetic children" of the element providing a non-default
-//! [`Element::a11y_synthetic_children`] implementation.
+//! 此外，某些节点可以使用 [`Element::a11y_synthetic_children`] 注册
+//! "合成子节点"。通常，每个具有角色和 ID 的 [`Element`] 都会推送一个
+//! accesskit 节点。但是，有时单个元素可能想要生成多个 accesskit 节点。
+//! 这些额外节点被称为提供非默认 [`Element::a11y_synthetic_children`]
+//! 实现的元素的"合成子节点"。
 //!
-//! The user is provided a builder-style API using [`A11ySubtreeBuilder`], which
-//! allows them to create push nodes that are children of the current node, as
-//! well as modify the current node itself.
+//! 用户通过 [`A11ySubtreeBuilder`] 获得构建器风格的 API，允许他们
+//! 创建作为当前节点子节点的推送节点，以及修改当前节点本身。
 //!
-//! GPUI calls this callback *after* prepainting (and just before popping the
-//! corresponding element), since this step may need prepaint information to be
-//! available. In the future, we may want to add prepaint information more
-//! generally to [`Element::write_a11y_info`], but for now that's not necessary.
+//! RGPUI 在预绘制*之后*调用此回调（并且在弹出相应元素之前），
+//! 因为此步骤可能需要预绘制信息可用。将来，我们可能希望更广泛地
+//! 将预绘制信息添加到 [`Element::write_a11y_info`]，但目前没有必要。
 //!
-//! ### Responding to actions
+//! ### 响应操作
 //!
-//! On adapter creation, we provide a callback to the adapter, which can be used
-//! to dispatch actions. This callback forwards to [`A11y::action_listeners`], a
-//! mapping from [`NodeId`]s to action handlers (basically just `Box<dyn
-//! Fn()>`).
+//! 在适配器创建时，我们向适配器提供一个回调，可用于派发操作。此回调
+//! 转发到 [`A11y::action_listeners`]，这是一个从 [`NodeId`] 到操作处理程序
+//! （基本上就是 `Box<dyn Fn()>`）的映射。
 //!
-//! This is populated in:
-//! - [`Window::on_a11y_action`], which is called by:
-//! - [`Interactivity::paint`], which is called by:
-//! - [`StatefulInteractiveElement::on_a11y_action`], which is a public-facing API
+//! 它在以下位置填充：
+//! - [`Window::on_a11y_action`]，它被以下调用：
+//! - [`Interactivity::paint`]，它被以下调用：
+//! - [`StatefulInteractiveElement::on_a11y_action`]，这是一个面向公共的 API
 //!
-//! These are cleared at the start of a frame, and re-populated during painting.
+//! 这些在帧开始时被清除，并在绘制期间重新填充。
 //!
 //! [`NodeId`]: accesskit::NodeId
 
@@ -101,53 +101,51 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-/// The fixed AccessKit node ID used for the root of every window's a11y tree.
+/// 每个窗口无障碍树根节点的固定 AccessKit 节点 ID。
 pub(crate) const ROOT_NODE_ID: NodeId = NodeId(0);
 
-/// A listener for an accessibility action on a specific node.
+/// 特定节点上无障碍操作的监听器。
 pub(crate) type A11yActionListener =
     Box<dyn FnMut(Option<&accesskit::ActionData>, &mut Window, &mut App) + 'static>;
 
-/// Per-window accessibility state.
+/// 每窗口无障碍状态。
 ///
-/// Manages the AccessKit tree that is built each frame and the mappings
-/// needed to dispatch incoming action requests back to the right elements.
+/// 管理每帧构建的 AccessKit 树，以及将传入的操作请求
+/// 分派回正确元素所需的映射。
 pub(crate) struct A11y {
-    /// Whether accessibility has been [forcibly disabled] for this window.
+    /// 该窗口的无障碍功能是否已被[强制禁用]。
     ///
-    /// [forcibly disabled]: crate::Application::new_inaccessible
+    /// [强制禁用]: crate::Application::new_inaccessible
     force_disabled: bool,
-    /// Whether a11y features have been requested by the system.
+    /// 系统是否已请求无障碍功能。
     ///
-    /// Updated by AccessKit using callbacks provided to the adapter. Can change
-    /// halfway through a frame.
+    /// 由 AccessKit 通过提供给适配器的回调更新。
+    /// 可能在帧中途发生变化。
     active_flag: Arc<AtomicBool>,
-    /// Whether a11y features are active for *this specific frame*.
+    /// 无障碍功能在*当前帧*是否活跃。
     ///
-    /// At the start of each frame, we load [`Self::active_flag`] (using
-    /// [`Self::sync_active_flag`]) and use this to determine whether we
-    /// should construct a [`TreeUpdate`] for this frame. It's important that
-    /// this value is stable within a frame, because the builder API exposed by
-    /// this type maintains a stack of nodes and each must be pushed and popped
-    /// exactly once.
+    /// 每帧开始时，我们加载 [`Self::active_flag`]（使用
+    /// [`Self::sync_active_flag`]）并据此判断是否为该帧
+    /// 构建 [`TreeUpdate`]。该值在帧内必须保持稳定，
+    /// 因为此类型暴露的构建器 API 维护一个节点栈，
+    /// 每个节点必须恰好入栈和出栈一次。
     ///
-    /// At the end of the frame, we re-call [`Self::sync_active_flag`] to
-    /// determine whether we should actually send the finished [`TreeUpdate`].
+    /// 帧结束时，我们再次调用 [`Self::sync_active_flag`] 以判断
+    /// 是否应发送已完成的 [`TreeUpdate`]。
     active_this_frame: bool,
     pub(crate) nodes: A11yNodeBuilder,
     pub(crate) focus_ids: FxHashMap<NodeId, FocusId>,
     pub(crate) node_bounds: FxHashMap<NodeId, Bounds<Pixels>>,
     pub(crate) action_listeners: FxHashMap<NodeId, Vec<(Action, A11yActionListener)>>,
-    /// The window's title, used to label the root node so assistive
-    /// technology can tell windows apart.
+    /// 窗口标题，用于标记根节点，以便辅助技术区分不同窗口。
     window_title: Option<SharedString>,
-    /// The focus id we most recently reported as having no accessibility node,
-    /// used to log at most once per focus change rather than every frame.
+    /// 最近一次报告的没有无障碍节点的焦点 ID，
+    /// 用于每次焦点变化最多记录一次，而非每帧都记录。
     last_focus_without_node: Option<FocusId>,
-    /// Retains the last tree update (and, in debug builds, per-node provenance)
-    /// so it can be dumped via [`crate::Window::debug_a11y_tree_json`].
+    /// 保留最后一次树更新（调试构建中还包括每个节点的来源），
+    /// 以便通过 [`crate::Window::debug_a11y_tree_json`] 转储。
     debug: debug::A11yDebug,
-    /// Maps a view's [`EntityId`] to its `Render` type name
+    /// 将视图的 [`EntityId`] 映射到其 `Render` 类型名称
     #[cfg(debug_assertions)]
     pub(crate) view_type_names: FxHashMap<EntityId, &'static str>,
 }
@@ -174,11 +172,10 @@ impl A11y {
         }
     }
 
-    /// Logs (once per focus change) that the focused element is not exposed to
-    /// assistive technology because it has no accessibility node. When this
-    /// happens, screen readers fall back to announcing the whole window instead
-    /// of the focused element. The fix is to give the element both an
-    /// `.id(...)` and a `.role(...)`.
+    /// 记录（每次焦点变化一次）焦点元素未暴露给辅助技术，
+    /// 因为它没有无障碍节点。当这种情况发生时，屏幕阅读器
+    /// 会回退为播报整个窗口而非焦点元素。修复方法是为元素
+    /// 同时设置 `.id(...)` 和 `.role(...)`。
     pub(crate) fn note_focus_without_node(&mut self, focus_id: FocusId, reason: &str) {
         if self.last_focus_without_node != Some(focus_id) {
             self.last_focus_without_node = Some(focus_id);
@@ -194,10 +191,10 @@ impl A11y {
         self.window_title = Some(title.into());
     }
 
-    /// Ensures that [`Self::is_active`] returns up to date information.
+    /// 确保 [`Self::is_active`] 返回最新信息。
     ///
-    /// See the docs for [`Self::active_flag`] and [`Self::active_this_frame`]
-    /// for more commentary.
+    /// 详见 [`Self::active_flag`] 和 [`Self::active_this_frame`]
+    /// 的文档说明。
     pub(crate) fn sync_active_flag(&mut self) {
         self.active_this_frame = !self.force_disabled && self.active_flag.load(Ordering::SeqCst);
     }
@@ -210,12 +207,11 @@ impl A11y {
         self.focus_ids.insert(node_id, focus_id);
     }
 
-    /// Report `node_id` as the currently-focused node, if it is present in the
-    /// tree.
+    /// 将 `node_id` 报告为当前焦点节点（如果它存在于树中）。
     ///
-    /// Must only be called once per frame.
+    /// 每帧只能调用一次。
     pub(crate) fn set_focus(&mut self, node_id: NodeId) {
-        // A focused node must have been registered as focusable this frame.
+        // 焦点节点必须在本帧已注册为可聚焦的。
         if !self.focus_ids.contains_key(&node_id) {
             if cfg!(debug_assertions) {
                 panic!("set_focus called for a node that was not registered with set_focusable");
@@ -227,13 +223,12 @@ impl A11y {
             }
         }
         if self.nodes.has_node(node_id) {
-            // The focused element is properly exposed; reset the dedup so a
-            // later focus on a node-less element logs again.
+            // 焦点元素已正确暴露；重置去重标记，
+            // 以便后续对无节点元素的焦点再次记录。
             self.last_focus_without_node = None;
             self.nodes.set_focus(node_id);
         } else {
-            // The element registered a focus handle and an id, but never got a
-            // node because it has no role.
+            // 元素注册了焦点句柄和 ID，但因为没有角色而从未获得节点。
             if let Some(focus_id) = self.focus_ids.get(&node_id).copied() {
                 self.note_focus_without_node(focus_id, "it has an id but no role");
             }
@@ -241,8 +236,7 @@ impl A11y {
     }
 
     pub(crate) fn set_active_descendant(&mut self, node_id: NodeId) {
-        // The active descendant must be a descendant of the focused container,
-        // not the focused node itself.
+        // 活动后代必须是焦点容器的后代，而非焦点节点本身。
         if self.nodes.node_is_focused(node_id) {
             if cfg!(debug_assertions) {
                 panic!("set_active_descendant called on the focused node");
@@ -256,7 +250,7 @@ impl A11y {
         }
     }
 
-    /// Clear per-frame state and push the root node to start a new frame.
+    /// 清除每帧状态并推送根节点以开始新帧。
     pub(crate) fn begin_frame(&mut self) {
         self.focus_ids.clear();
         self.node_bounds.clear();
@@ -264,7 +258,7 @@ impl A11y {
         self.nodes.begin_frame(self.window_title.as_ref());
     }
 
-    /// Finalize the tree and produce a [`TreeUpdate`] for the platform adapter.
+    /// 完成树的构建并为平台适配器生成 [`TreeUpdate`]。
     pub(crate) fn end_frame(&mut self, frame: debug::FrameDebugInfo) -> TreeUpdate {
         let update = self.nodes.finalize();
         self.debug.capture(
@@ -284,13 +278,12 @@ impl A11y {
     }
 }
 
-/// Builder API for synthetic children. See the docs for
-/// [`Element::a11y_synthetic_children`].
+/// 合成子节点的构建器 API。详见
+/// [`Element::a11y_synthetic_children`] 的文档。
 pub struct A11ySubtreeBuilder<'a> {
     parent_id: NodeId,
     nodes: &'a mut A11yNodeBuilder,
-    /// Provenance of the real element whose `a11y_synthetic_children` is
-    /// running.
+    /// 运行 `a11y_synthetic_children` 的真实元素的来源信息。
     #[cfg(debug_assertions)]
     creator: debug::NodeCreator,
 }
@@ -311,12 +304,11 @@ impl<'a> A11ySubtreeBuilder<'a> {
         self
     }
 
-    /// Derive a [`NodeId`] for a synthetic child.
+    /// 为合成子节点派生 [`NodeId`]。
     ///
-    /// The generated ID is based on the hash of `key`, as well as the parent's
-    /// ID. This means that `key`s must be unique within the same
-    /// [`Element::a11y_synthetic_children`] call, but may be duplicated across
-    /// different calls.
+    /// 生成的 ID 基于 `key` 的哈希值以及父节点的 ID。
+    /// 这意味着 `key` 在同一次 [`Element::a11y_synthetic_children`]
+    /// 调用中必须唯一，但可以在不同调用中重复。
     pub fn synthetic_node_id(&self, key: impl Hash) -> NodeId {
         let mut hasher = std::hash::DefaultHasher::default();
         self.parent_id.0.hash(&mut hasher);
@@ -324,10 +316,10 @@ impl<'a> A11ySubtreeBuilder<'a> {
         NodeId(hasher.finish())
     }
 
-    /// Append a synthetic leaf node as a child of this element's node.
+    /// 将合成叶节点作为当前元素节点的子节点追加。
     ///
-    /// Returns `false` if a node with this id is already present in the tree,
-    /// in which case the node is discarded.
+    /// 如果树中已存在具有此 ID 的节点则返回 `false`，
+    /// 此时该节点会被丢弃。
     pub fn push_child(&mut self, id: NodeId, node: accesskit::Node) -> bool {
         let pushed = self.nodes.push_leaf(id, node);
         #[cfg(debug_assertions)]
@@ -345,7 +337,7 @@ impl<'a> A11ySubtreeBuilder<'a> {
         pushed
     }
 
-    /// A mutable reference to the parent node.
+    /// 父节点的可变引用。
     pub fn parent_node(&mut self) -> &mut accesskit::Node {
         self.nodes
             .current_node_mut()
@@ -356,17 +348,16 @@ impl<'a> A11ySubtreeBuilder<'a> {
 pub(crate) struct A11yNodeBuilder {
     ids_stack: SmallVec<[NodeId; 16]>,
     nodes_stack: SmallVec<[accesskit::Node; 16]>,
-    /// This is the exact type required by accesskit, so we can't just make it a
-    /// `HashMap<NodeId, Node>` to remove the need for `seen_ids`
+    /// 这是 accesskit 所要求的确切类型，因此我们不能简单地
+    /// 将其改为 `HashMap<NodeId, Node>` 来移除 `seen_ids` 的需要
     all_nodes: Vec<(NodeId, accesskit::Node)>,
     seen_ids: FxHashSet<NodeId>,
-    /// The node that GPUI considers focused. Note that this may be different to
-    /// what is reported to accesskit - see [`Self::active_descendant`]
+    /// RGPUI 认为已聚焦的节点。注意这可能与报告给 accesskit 的
+    /// 不同——详见 [`Self::active_descendant`]
     focus: Option<NodeId>,
-    /// If a node calls `.aria_active_descendant()`, AND an ancestor is focused,
-    /// override it as the focused node. This supports the "active descendant"
-    /// pattern, which allows a focused container to act as if a descendant is
-    /// focused.
+    /// 如果某个节点调用了 `.aria_active_descendant()`，且某个
+    /// 祖先节点已聚焦，则将其覆盖为聚焦节点。这支持"活动后代"
+    /// 模式，允许已聚焦的容器表现为其某个后代节点已聚焦。
     active_descendant: Option<NodeId>,
     #[cfg(debug_assertions)]
     node_info: FxHashMap<NodeId, debug::NodeDebugInfo>,
@@ -386,7 +377,7 @@ impl A11yNodeBuilder {
         }
     }
 
-    /// Records provenance for a node already pushed this frame. Debug builds only.
+    /// 记录本帧已推送节点的来源信息。仅限调试构建。
     #[cfg(debug_assertions)]
     pub(crate) fn record_node_info(&mut self, id: NodeId, info: debug::NodeDebugInfo) {
         self.node_info.insert(id, info);
@@ -407,10 +398,9 @@ impl A11yNodeBuilder {
         true
     }
 
-    /// Push a new node onto the stack. It becomes a child of the current
-    /// top-of-stack node.
+    /// 将新节点推入栈中。它成为当前栈顶节点的子节点。
     ///
-    /// Returns `true` if the node was successfully pushed.
+    /// 如果节点成功入栈则返回 `true`。
     pub(crate) fn push(&mut self, id: NodeId, node: accesskit::Node) -> bool {
         if !self.can_push(id) {
             return false;
@@ -424,11 +414,10 @@ impl A11yNodeBuilder {
         true
     }
 
-    /// Add a leaf node as a child of the current top-of-stack node, without
-    /// pushing it onto the stack. Semantically equivalent to a [`Self::push`]
-    /// followed by a [`Self::pop`].
+    /// 将叶节点作为当前栈顶节点的子节点添加，而不将其推入栈。
+    /// 语义上等同于 [`Self::push`] 后接 [`Self::pop`]。
     ///
-    /// Returns `true` if the node was successfully pushed.
+    /// 如果节点成功入栈则返回 `true`。
     pub(crate) fn push_leaf(&mut self, id: NodeId, node: accesskit::Node) -> bool {
         if !self.can_push(id) {
             return false;
@@ -445,8 +434,7 @@ impl A11yNodeBuilder {
         self.nodes_stack.last_mut()
     }
 
-    /// Pop the current node off the stack and finalize it into the all_nodes
-    /// list.
+    /// 将当前节点从栈中弹出并最终归入 all_nodes 列表。
     pub(crate) fn pop(&mut self) {
         debug_assert!(self.ids_stack.len() > 1, "pop would remove the root node");
 
@@ -455,7 +443,7 @@ impl A11yNodeBuilder {
         }
     }
 
-    /// Push the root node to start a new frame.
+    /// 推送根节点以开始新帧。
     fn begin_frame(&mut self, window_title: Option<&SharedString>) {
         self.all_nodes.clear();
         self.ids_stack.clear();
@@ -474,12 +462,12 @@ impl A11yNodeBuilder {
         self.active_descendant = None;
     }
 
-    /// Returns whether a node with the given ID has been pushed in this frame.
+    /// 返回本帧是否已推送具有给定 ID 的节点。
     pub(crate) fn has_node(&self, id: NodeId) -> bool {
         id == ROOT_NODE_ID || self.seen_ids.contains(&id)
     }
 
-    /// Returns whether `id` is the node currently reported as focused.
+    /// 返回 `id` 是否是当前报告为已聚焦的节点。
     pub(crate) fn node_is_focused(&self, id: NodeId) -> bool {
         self.focus == Some(id)
     }
@@ -489,8 +477,7 @@ impl A11yNodeBuilder {
             return false;
         };
 
-        // The current node is on top of the stack; everything below it is an
-        // ancestor.
+        // 当前节点在栈顶；其下方所有节点均为祖先节点。
         let ancestor_count = self.ids_stack.len().saturating_sub(1);
         self.ids_stack[..ancestor_count].contains(&focus)
     }
@@ -571,12 +558,12 @@ impl A11yNodeBuilder {
         Self::repair_tree_update(update)
     }
 
-    /// Accesskit panics on invalid [`TreeUpdate`]s. This function defensively
-    /// checks invariants that accesskit panics on, and tries to fix them.
+    /// Accesskit 在无效 [`TreeUpdate`] 上会 panic。此函数
+    /// 防御性地检查 accesskit 会 panic 的不变量，并尝试修复它们。
     fn repair_tree_update(mut update: TreeUpdate) -> TreeUpdate {
         let node_ids: FxHashSet<NodeId> = update.nodes.iter().map(|(id, _)| *id).collect();
 
-        // Focus must point to a node in the tree.
+        // 焦点必须指向树中的某个节点。
         if !node_ids.contains(&update.focus) {
             log::error!(
                 "a11y: Focused node {:?} is not in the tree ({} nodes). \
@@ -587,7 +574,7 @@ impl A11yNodeBuilder {
             update.focus = ROOT_NODE_ID;
         }
 
-        // Every child reference must point to a node in the update.
+        // 每个子引用必须指向更新中的某个节点。
         for (id, node) in &mut update.nodes {
             let has_invalid_child = node
                 .children()
@@ -620,8 +607,8 @@ impl A11yNodeBuilder {
 
 #[cfg(test)]
 mod tests {
-    // Import specific items rather than glob-importing `super`, which would pull
-    // in rgpui's own `test` attribute macro and shadow the standard one.
+    // 导入特定项而非通配符导入 `super`，因为后者会
+    // 拉入 rgpui 自身的 `test` 属性宏并遮蔽标准库的宏。
     use super::{A11y, A11yNodeBuilder, ROOT_NODE_ID};
     use crate::FocusId;
     use accesskit::{NodeId, Role};
@@ -653,8 +640,8 @@ mod tests {
         builder.set_focus(container);
         assert!(builder.push(item, test_node()));
 
-        // The item is on top of the stack; the focused container is its
-        // ancestor, so the claim is honored.
+        // item 在栈顶；已聚焦的 container 是其祖先，
+        // 因此该声明被接受。
         assert!(builder.focus_is_ancestor_of_current());
         builder.set_active_descendant(item);
 
@@ -676,8 +663,8 @@ mod tests {
         assert!(builder.push(group, test_node()));
         assert!(builder.push(item, test_node()));
 
-        // The item is a grandchild of the focused container; depth doesn't
-        // matter, the focused ancestor is still on the stack.
+        // item 是已聚焦 container 的孙节点；深度无关紧要，
+        // 已聚焦的祖先仍在栈上。
         assert!(builder.focus_is_ancestor_of_current());
         builder.set_active_descendant(item);
 
@@ -696,15 +683,15 @@ mod tests {
         let other_container = NodeId(3);
         let other_item = NodeId(4);
 
-        // First subtree holds real focus.
+        // 第一个子树持有真实焦点。
         assert!(builder.push(focused_container, test_node()));
         assert!(builder.push(focused_leaf, test_node()));
         builder.set_focus(focused_leaf);
         builder.pop(); // focused_leaf
         builder.pop(); // focused_container
 
-        // Second subtree: its item would claim the active descendant, but the
-        // focus is not on any of its ancestors, so the gate rejects it.
+        // 第二个子树：其 item 会声明活动后代，但焦点
+        // 不在其任何祖先上，因此门控拒绝了该声明。
         assert!(builder.push(other_container, test_node()));
         assert!(builder.push(other_item, test_node()));
         assert!(!builder.focus_is_ancestor_of_current());
@@ -724,8 +711,8 @@ mod tests {
         assert!(builder.push(container, test_node()));
         assert!(builder.push(item, test_node()));
 
-        // Nothing is focused (focus defaults to the root window node), so the
-        // gate rejects the claim.
+        // 未聚焦任何节点（焦点默认为根窗口节点），
+        // 因此门控拒绝了该声明。
         assert!(!builder.focus_is_ancestor_of_current());
         builder.pop();
         builder.pop();
@@ -756,20 +743,20 @@ mod tests {
         assert!(builder.push(container, test_node()));
         builder.set_focus(container);
 
-        // With the focused container itself on top, it is not its own (strict)
-        // ancestor, so the gate is false.
+        // 当已聚焦的 container 自身在栈顶时，它不是自身的
+        // （严格）祖先，因此门控为 false。
         assert!(!builder.focus_is_ancestor_of_current());
 
         assert!(builder.push(item, test_node()));
-        // Now the focused container is a strict ancestor of the item on top.
+        // 现在已聚焦的 container 是栈顶 item 的严格祖先。
         assert!(builder.focus_is_ancestor_of_current());
 
         builder.pop();
         builder.pop();
     }
 
-    // The double-claim guard panics only in debug builds; in release it falls
-    // back to last-wins with a warning.
+    // 双重声明防护仅在调试构建中 panic；在发布构建中
+    // 回退为后声明者胜出并输出警告。
     #[test]
     #[cfg_attr(
         debug_assertions,
@@ -781,8 +768,8 @@ mod tests {
         builder.set_active_descendant(NodeId(2));
     }
 
-    // Setting focus twice in one frame means two elements both claimed window
-    // focus; that panics in debug and falls back to last-wins in release.
+    // 在一帧内设置两次焦点意味着两个元素同时声明了
+    // 窗口焦点；调试构建中 panic，发布构建中回退为后设置者胜出。
     #[test]
     #[cfg_attr(
         debug_assertions,
@@ -794,8 +781,8 @@ mod tests {
         builder.set_focus(NodeId(2));
     }
 
-    // Focusing a node that was never registered as focusable is a bug: panic in
-    // debug, warn in release.
+    // 聚焦一个从未注册为可聚焦的节点是 bug：调试构建中
+    // panic，发布构建中输出警告。
     #[test]
     #[cfg_attr(
         debug_assertions,
@@ -809,8 +796,8 @@ mod tests {
         a11y.set_focus(node);
     }
 
-    // The focused node cannot also be its own active descendant: panic in
-    // debug, warn in release.
+    // 已聚焦的节点不能同时作为自身的活动后代：调试构建中
+    // panic，发布构建中输出警告。
     #[test]
     #[cfg_attr(debug_assertions, should_panic(expected = "on the focused node"))]
     fn set_active_descendant_on_focused_node() {
@@ -822,9 +809,9 @@ mod tests {
         a11y.set_active_descendant(node);
     }
 
-    // Two sibling children of a focused container both claim the active
-    // descendant (both pass the focus gate). The second claim is a bug: panic
-    // in debug, last-wins + warn in release.
+    // 已聚焦容器的两个同级子节点同时声明了活动后代
+    // （两者都通过了焦点门控）。第二次声明是 bug：调试构建中
+    // panic，发布构建中后声明者胜出并输出警告。
     #[test]
     #[cfg_attr(
         debug_assertions,
@@ -851,8 +838,8 @@ mod tests {
         a11y.nodes.pop(); // container
     }
 
-    // Node A is focused; node C (a child of the unfocused node B) claims the
-    // active descendant. The final tree must still report A as focused.
+    // 节点 A 已聚焦；节点 C（未聚焦节点 B 的子节点）声明了
+    // 活动后代。最终树仍必须将 A 报告为已聚焦。
     #[test]
     fn active_descendant_in_unfocused_subtree_keeps_real_focus() {
         let mut a11y = new_a11y();

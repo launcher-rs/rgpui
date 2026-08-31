@@ -18,25 +18,23 @@ use crate::{
     profiler::{self, FrameTiming, FrameTimingCollector},
 };
 
-/// Returns a benchmark platform backed by this thread's shared dispatcher.
+/// 返回由当前线程共享分发器支持的基准测试平台。
 ///
-/// The platform uses this thread's shared multithreaded [`ThreadedDispatcher`], so
-/// background work runs with production concurrency in real time. The dispatcher
-/// is cached per thread and reused across benchmark invocations so worker and
-/// timer threads persist for the whole process instead of being recreated for
-/// every Criterion calibration pass.
+/// 该平台使用当前线程的共享多线程 [`ThreadedDispatcher`]，因此后台任务
+/// 以生产环境的并发度实时运行。分发器按线程缓存，在多次基准测试调用间
+/// 复用，使得工作线程和定时器线程在整个进程生命周期内持续存在，
+/// 而不是在每次 Criterion 校准轮次中重新创建。
 ///
-/// Text is shaped with the provided platform text system. Benchmarks generated
-/// by `#[rgpui::bench]` use the current platform's text system, so text-heavy
-/// benchmark measurements include production shaping and glyph rasterization.
+/// 文本使用提供的平台文本系统进行排版。由 `#[rgpui::bench]` 生成的
+/// 基准测试使用当前平台的文本系统，因此文本密集型基准测试的测量结果
+/// 包含了生产环境的文本排版和字形光栅化。
 ///
-/// `headless_renderer_factory` supplies a renderer for benchmark windows, e.g.
-/// `rgpui_platform::current_headless_renderer`. When present, scenes drawn by
-/// benchmarks are rasterized through the real sprite atlas and submitted to
-/// the GPU on present, so quad/sprite regressions show up in measurements.
-/// When `None`, presenting discards the scene. Currently only macOS provides
-/// a headless renderer (Metal), so GPU submission is excluded from benchmark
-/// measurements on other platforms.
+/// `headless_renderer_factory` 为基准测试窗口提供渲染器，
+/// 例如 `rgpui_platform::current_headless_renderer`。当提供时，
+/// 基准测试绘制的场景会通过真实的精灵图集光栅化并在呈现时提交给 GPU，
+/// 因此四边形/精灵的性能回归会体现在测量结果中。
+/// 当为 `None` 时，呈现会丢弃场景。目前只有 macOS 提供无头渲染器
+///（Metal），因此其他平台的基准测试测量不包含 GPU 提交。
 pub fn bench_platform(
     headless_renderer_factory: Option<Box<dyn Fn() -> Option<Box<dyn PlatformHeadlessRenderer>>>>,
     text_system: Arc<dyn PlatformTextSystem>,
@@ -58,12 +56,12 @@ pub fn bench_platform(
     ) as Rc<dyn Platform>
 }
 
-/// Default target frame rate when a benchmark doesn't specify `fps = N`.
+/// 默认目标帧率，当基准测试未指定 `fps = N` 时使用。
 const DEFAULT_FPS: u64 = 120;
 
 const NANOS_PER_SECOND: u128 = 1_000_000_000;
 
-/// A small report produced by GPUI benchmarks.
+/// RGPUI 基准测试生成的小型报告。
 #[derive(Clone)]
 pub struct BenchReport {
     frame_snapshot: Rc<RefCell<WindowFrameSnapshot>>,
@@ -77,15 +75,15 @@ impl Default for BenchReport {
 }
 
 impl BenchReport {
-    /// Creates a report whose per-frame budget is one frame at `fps` when
-    /// counting frame budget overruns.
+    /// 创建一个报告，其每帧预算为 `fps` 对应的一帧时长，
+    /// 用于统计帧预算超支。
     pub fn with_fps(fps: u64) -> Self {
         assert!(fps > 0, "frame rate must be greater than zero");
         Self::with_frame_budget_nanos(NANOS_PER_SECOND / fps as u128)
     }
 
-    /// Creates a report that treats `frame_budget_nanos` as the per-frame budget
-    /// when counting frame budget overruns.
+    /// 创建一个报告，将 `frame_budget_nanos` 视为每帧预算，
+    /// 用于统计帧预算超支。
     pub fn with_frame_budget_nanos(frame_budget_nanos: u128) -> Self {
         Self {
             frame_snapshot: Rc::new(RefCell::new(WindowFrameSnapshot::new())),
@@ -126,10 +124,9 @@ impl BenchReport {
             .sum()
     }
 
-    /// Returns how many whole frame budgets `foreground_time` exceeded the
-    /// per frame budget by. This is a synthetic proxy for missed frames: the
-    /// benchmark harness has no vsync, so it counts how many frame deadlines
-    /// would have elapsed while the foreground thread was busy.
+    /// 返回 `foreground_time` 超出每帧预算的完整帧数。
+    /// 这是丢帧的合成代理指标：基准测试工具没有垂直同步，
+    /// 因此它计算前台线程繁忙期间有多少帧截止时间已过期。
     fn budget_overruns(&self, foreground_time: Duration) -> u64 {
         let foreground_nanos = foreground_time.as_nanos();
         if foreground_nanos <= self.frame_budget_nanos {
@@ -140,7 +137,7 @@ impl BenchReport {
         over_budget_nanos.div_ceil(self.frame_budget_nanos) as u64
     }
 
-    /// Prints this report to stderr.
+    /// 将此报告打印到 stderr。
     pub fn print(&self, benchmark_name: Option<&'static str>) {
         let frame_snapshot = self.frame_snapshot.borrow();
         if frame_snapshot.is_empty() {
@@ -225,10 +222,9 @@ fn format_duration(duration: Duration) -> String {
     format!("{:.3}ms", duration.as_secs_f64() * 1000.)
 }
 
-/// Enables frame tracing for the duration of a measurement and collects the
-/// frames recorded within it. The previous tracing state is restored on drop,
-/// so a panicking measurement doesn't leave tracing enabled for unrelated code
-/// (e.g. a later benchmark in the same process).
+/// 在测量期间启用帧追踪并收集其中记录的帧。
+/// 之前的追踪状态会在 drop 时恢复，因此 panic 的测量
+/// 不会使无关代码（如同进程中后续的基准测试）的追踪保持启用。
 struct FrameTraceScope {
     collector: FrameTimingCollector,
     was_already_enabled: bool,
@@ -257,12 +253,11 @@ impl Drop for FrameTraceScope {
     }
 }
 
-/// A GPUI app context for Criterion benchmarks.
+/// Criterion 基准测试的 RGPUI 应用上下文。
 ///
-/// `BenchAppContext` is intentionally separate from `TestAppContext`: it owns a
-/// benchmark app instance and exposes only the app/window operations needed by
-/// benchmark setup. Criterion remains responsible for the measured loop via its
-/// `Bencher` API.
+/// `BenchAppContext` 与 `TestAppContext` 是分开的：它拥有一个
+/// 基准测试应用实例，仅暴露基准测试设置所需的应用/窗口操作。
+/// Criterion 通过其 `Bencher` API 负责被测量的循环。
 #[derive(Clone)]
 pub struct BenchAppContext<'a, 'measurement> {
     app: Rc<AppCell>,
@@ -274,11 +269,11 @@ pub struct BenchAppContext<'a, 'measurement> {
 }
 
 impl<'a, 'measurement> BenchAppContext<'a, 'measurement> {
-    /// Creates a new benchmark app context backed by the provided platform.
+    /// 创建一个由提供的平台支持的新的基准测试应用上下文。
     ///
-    /// The platform's executors must be backed by a [`ThreadedDispatcher`]
-    /// (see [`bench_platform`]) so the context can drain foreground work via
-    /// [`Self::run_until_idle`]; panics otherwise.
+    /// 平台的执行器必须由 [`ThreadedDispatcher`] 支持
+    ///（参见 [`bench_platform`]），以便上下文能通过
+    /// [`Self::run_until_idle`] 排空前台任务；否则会 panic。
     pub fn new(
         platform: Rc<dyn Platform>,
         benchmark_name: Option<&'static str>,
@@ -287,11 +282,11 @@ impl<'a, 'measurement> BenchAppContext<'a, 'measurement> {
         Self::build(platform, benchmark_name, bencher, BenchReport::default())
     }
 
-    /// Creates a new benchmark app context backed by the provided platform.
+    /// 创建一个由提供的平台支持的新的基准测试应用上下文。
     ///
-    /// The platform's executors must be backed by a [`ThreadedDispatcher`]
-    /// (see [`bench_platform`]) so the context can drain foreground work via
-    /// [`Self::run_until_idle`]; panics otherwise.
+    /// 平台的执行器必须由 [`ThreadedDispatcher`] 支持
+    ///（参见 [`bench_platform`]），以便上下文能通过
+    /// [`Self::run_until_idle`] 排空前台任务；否则会 panic。
     #[doc(hidden)]
     pub fn new_with_platform_and_report(
         platform: Rc<dyn Platform>,
@@ -331,36 +326,35 @@ impl<'a, 'measurement> BenchAppContext<'a, 'measurement> {
         }
     }
 
-    /// The benchmark function name that created this context.
+    /// 创建此上下文的基准测试函数名。
     pub fn benchmark_name(&self) -> Option<&'static str> {
         self.benchmark_name
     }
 
-    /// Returns the background executor used by this benchmark app.
+    /// 返回此基准测试应用使用的后台执行器。
     pub fn background_executor(&self) -> &BackgroundExecutor {
         &self.background_executor
     }
 
-    /// Returns the foreground executor used by this benchmark app.
+    /// 返回此基准测试应用使用的前台执行器。
     pub fn foreground_executor(&self) -> &ForegroundExecutor {
         &self.foreground_executor
     }
 
-    /// Updates the app and flushes synchronous GPUI effects afterward.
+    /// 更新应用并在之后刷新同步的 RGPUI 效果。
     pub fn update<R>(&mut self, update: impl FnOnce(&mut App) -> R) -> R {
         let mut app = self.app.borrow_mut();
         app.update(update)
     }
 
-    /// Reads app state.
+    /// 读取应用状态。
     pub fn read<R>(&self, read: impl FnOnce(&App) -> R) -> R {
         let app = self.app.borrow();
         read(&app)
     }
 
-    /// Runs queued foreground tasks on this thread and waits for in flight
-    /// background work to finish. Timers that aren't due yet are not waited
-    /// for (see [`ThreadedDispatcher::run_until_idle`]).
+    /// 在当前线程上运行排队的前台任务，并等待进行中的后台任务完成。
+    /// 尚未到期的定时器不会被等待（参见 [`ThreadedDispatcher::run_until_idle`]）。
     pub fn run_until_idle(&self) {
         self.background_executor
             .dispatcher()
@@ -369,13 +363,13 @@ impl<'a, 'measurement> BenchAppContext<'a, 'measurement> {
             .run_until_idle();
     }
 
-    /// Measures a generic benchmark workload using Criterion's iteration loop.
+    /// 使用 Criterion 的迭代循环测量通用基准测试负载。
     ///
-    /// The closure is invoked once per Criterion iteration with this
-    /// benchmark app context so it can update GPUI state.
+    /// 闭包在每次 Criterion 迭代时被调用，并传入此基准测试应用上下文，
+    /// 以便它可以更新 RGPUI 状态。
     ///
-    /// Any window draws triggered by the workload are recorded into the
-    /// benchmark's frame report through the GPUI frame profiler.
+    /// 由负载触发的任何窗口绘制会通过 RGPUI 帧分析器
+    /// 记录到基准测试的帧报告中。
     pub fn bench_iter(&mut self, mut benchmark: impl FnMut(&mut Self)) {
         let bencher = self.take_bencher("bench_iter");
         let collector = FrameTraceScope::start();
@@ -385,16 +379,14 @@ impl<'a, 'measurement> BenchAppContext<'a, 'measurement> {
         self.replace_bencher(bencher);
     }
 
-    /// Measures frame latency after updating a GPUI entity in its current window.
+    /// 在当前窗口中更新 RGPUI 实体后测量帧延迟。
     ///
-    /// Each iteration runs `update` against the entity in its current window. In
-    /// bench builds, flushing the update's effects synchronously draws dirty
-    /// windows. The entity should be part of the window's render tree, such as the
-    /// root view or a child of it.
+    /// 每次迭代在实体的当前窗口中运行 `update`。在基准测试构建中，
+    /// 刷新更新的效果会同步绘制脏窗口。该实体应是窗口渲染树的一部分，
+    /// 例如根视图或其子视图。
     ///
-    /// Frame timings are collected through the GPUI frame profiler
-    /// ([`crate::profiler::record_frame_timing`]), which is enabled for the
-    /// duration of the measurement.
+    /// 帧计时通过 RGPUI 帧分析器收集
+    ///（[`crate::profiler::record_frame_timing`]），在测量期间启用。
     pub fn bench_renderer<V>(
         &mut self,
         view: Entity<V>,
@@ -435,7 +427,7 @@ impl<'a, 'measurement> BenchAppContext<'a, 'measurement> {
         self.replace_bencher(bencher);
     }
 
-    /// Adds a window with an empty root view for benchmark setup.
+    /// 添加一个带有空根视图的窗口用于基准测试设置。
     pub fn add_empty_window(&mut self) -> BenchWindowContext<'a, 'measurement> {
         let bounds = {
             let app = self.app.borrow();
@@ -477,11 +469,11 @@ impl<'a, 'measurement> BenchAppContext<'a, 'measurement> {
         );
     }
 
-    /// Runs GPUI benchmark teardown.
+    /// 运行 RGPUI 基准测试的清理工作。
     ///
-    /// Cancels any timers still armed on the shared dispatcher and drains the
-    /// work that cancellation unblocks so they can't fire during a later
-    /// benchmark; assumes no other `BenchAppContext` is live on this thread.
+    /// 取消共享分发器上仍然激活的所有定时器，并排空取消操作所解除阻塞的
+    /// 工作，使它们不会在后续基准测试中触发；假定当前线程上没有其他
+    /// `BenchAppContext` 存活。
     pub fn teardown(mut self) {
         self.run_until_idle();
         self.update(|cx| {
@@ -599,10 +591,10 @@ impl AppContext for BenchAppContext<'_, '_> {
     }
 }
 
-/// A window-specific context for GPUI benchmarks.
+/// RGPUI 基准测试的窗口专用上下文。
 ///
-/// This is separate from `VisualTestContext`; it provides access to a benchmark
-/// window without exposing test-only helpers such as input simulation.
+/// 它与 `VisualTestContext` 是分开的：它提供对基准测试窗口的访问，
+/// 但不暴露仅用于测试的辅助方法（如输入模拟）。
 #[derive(Clone)]
 pub struct BenchWindowContext<'a, 'measurement> {
     cx: BenchAppContext<'a, 'measurement>,
@@ -610,23 +602,23 @@ pub struct BenchWindowContext<'a, 'measurement> {
 }
 
 impl<'a, 'measurement> BenchWindowContext<'a, 'measurement> {
-    /// Returns the underlying benchmark app context.
+    /// 返回底层的基准测试应用上下文。
     pub fn app_context(&mut self) -> &mut BenchAppContext<'a, 'measurement> {
         &mut self.cx
     }
 
-    /// Returns the window associated with this context.
+    /// 返回与此上下文关联的窗口。
     pub fn window_handle(&self) -> AnyWindowHandle {
         self.window
     }
 
-    /// Runs queued foreground tasks on this thread and waits for in-flight
-    /// background work to finish. Pending timers are not waited for.
+    /// 在当前线程上运行排队的前台任务，并等待进行中的后台任务完成。
+    /// 待处理的定时器不会被等待。
     pub fn run_until_idle(&self) {
         self.cx.run_until_idle();
     }
 
-    /// Updates the benchmark window.
+    /// 更新基准测试窗口。
     pub fn update<R>(&mut self, update: impl FnOnce(&mut Window, &mut App) -> R) -> R {
         self.cx
             .update_window(self.window, |_, window, cx| update(window, cx))

@@ -20,7 +20,7 @@ use std::{cell::RefCell, ops::Range, rc::Rc};
 
 type RenderItemFn = dyn FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static;
 
-/// Construct a new list element
+/// 创建一个新的列表元素
 pub fn list(
     state: ListState,
     render_item: impl FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static,
@@ -33,7 +33,7 @@ pub fn list(
     }
 }
 
-/// A list element
+/// 一个列表元素
 pub struct List {
     state: ListState,
     render_item: Box<RenderItemFn>,
@@ -42,14 +42,14 @@ pub struct List {
 }
 
 impl List {
-    /// Set the sizing behavior for the list.
+    /// 设置列表的尺寸调整行为。
     pub fn with_sizing_behavior(mut self, behavior: ListSizingBehavior) -> Self {
         self.sizing_behavior = behavior;
         self
     }
 }
 
-/// The list state that views must hold on behalf of the list element.
+/// 列表视图必须为列表元素持有的状态。
 #[derive(Clone)]
 pub struct ListState(Rc<RefCell<StateInner>>);
 
@@ -75,46 +75,43 @@ struct StateInner {
     follow_state: FollowState,
 }
 
-/// Deferred scroll adjustment applied after the scroll-top item has been remeasured.
+/// 延迟滚动调整，在滚动顶部项重新测量后应用。
 ///
-/// An absolute pending scroll preserves the same pixel offset into the item, which keeps
-/// visible text stable while content is appended to or removed from that item. A
-/// proportional pending scroll preserves the same fractional position within the item,
-/// which is useful when the whole list is being resized and each item scales similarly.
+/// 绝对待处理滚动保留项内相同的像素偏移量，当内容被追加到
+/// 或从该项移除时保持可见文本稳定。比例待处理滚动保留项内
+/// 相同的比例位置，当整个列表正在调整大小且每个项类似缩放时很有用。
 #[derive(Clone)]
 enum PendingScroll {
-    /// Preserve the same pixel offset into the item after it is remeasured.
+    /// 保留项内相同的像素偏移量。
     Absolute { item_ix: usize, offset: Pixels },
-    /// Preserve the same fractional offset into the item after it is remeasured.
+    /// 保留项内相同的分数偏移量。
     Proportional(PendingScrollFraction),
 }
 
-/// Keeps track of a fractional scroll position within an item for restoration
-/// after remeasurement.
+/// 跟踪项内分数滚动位置以便重新测量后恢复。
 #[derive(Clone)]
 struct PendingScrollFraction {
-    /// The index of the item to scroll within.
+    /// 要在其中滚动的项的索引。
     item_ix: usize,
-    /// Fractional offset (0.0 to 1.0) within the item's height.
+    /// 项高度内的分数偏移量（0.0 到 1.0）。
     fraction: f32,
 }
 
-/// Determines how remeasurement preserves the scroll position when the scroll-top item
-/// changes height.
+/// 决定重新测量时如何保持滚动位置。
 enum ScrollAnchor {
-    /// Preserve the same pixel offset into the scroll-top item.
+    /// 保留滚动顶部项内相同的像素偏移量。
     Absolute,
-    /// Preserve the same fractional position within the scroll-top item.
+    /// 保留滚动顶部项内相同的比例位置。
     Proportional,
 }
 
-/// Controls whether the list automatically follows new content at the end.
+/// 控制列表是否自动跟随末尾的新内容。
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum FollowMode {
-    /// Normal scrolling 鈥?no automatic following.
+    /// 正常滚动——不自动跟随。
     #[default]
     Normal,
-    /// The list should auto-scroll along with the tail, when scrolled to bottom.
+    /// 当滚动到底部时，列表应自动跟随尾部滚动。
     Tail,
 }
 
@@ -159,47 +156,47 @@ impl FollowState {
     }
 }
 
-/// Whether the list is scrolling from top to bottom or bottom to top.
+/// 列表是从上到下还是从下到上滚动。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ListAlignment {
-    /// The list is scrolling from top to bottom, like most lists.
+    /// 列表从上到下滚动，如大多数列表。
     Top,
-    /// The list is scrolling from bottom to top, like a chat log.
+    /// 列表从下到上滚动，如聊天日志。
     Bottom,
 }
 
-/// A scroll event that has been converted to be in terms of the list's items.
+/// 已转换为列表项术语的滚动事件。
 pub struct ListScrollEvent {
-    /// The range of items currently visible in the list, after applying the scroll event.
+    /// 应用滚动事件后当前可见的项范围。
     pub visible_range: Range<usize>,
 
-    /// The number of items that are currently visible in the list, after applying the scroll event.
+    /// 应用滚动事件后当前可见的项数量。
     pub count: usize,
 
-    /// Whether the list has been scrolled.
+    /// 列表是否已滚动。
     pub is_scrolled: bool,
 
-    /// Whether the list is currently in follow-tail mode (auto-scrolling to end).
+    /// 列表当前是否处于跟随尾部模式（自动滚动到末尾）。
     pub is_following_tail: bool,
 }
 
-/// The sizing behavior to apply during layout.
+/// 布局期间应用的尺寸调整行为。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ListSizingBehavior {
-    /// The list should calculate its size based on the size of its items.
+    /// 列表应根据其项的大小计算尺寸。
     Infer,
-    /// The list should not calculate a fixed size.
+    /// 列表不应计算固定尺寸。
     #[default]
     Auto,
 }
 
-/// The measuring behavior to apply during layout.
+/// 布局期间应用的测量行为。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ListMeasuringBehavior {
-    /// Measure all items in the list.
-    /// Note: This can be expensive for the first frame in a large list.
+    /// 测量列表中的所有项。
+    /// 注意：对于大列表的第一帧来说可能开销较大。
     Measure(bool),
-    /// Only measure visible items
+    /// 仅测量可见项
     #[default]
     Visible,
 }
@@ -213,13 +210,13 @@ impl ListMeasuringBehavior {
     }
 }
 
-/// The horizontal sizing behavior to apply during layout.
+/// 布局期间应用的水平尺寸调整行为。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ListHorizontalSizingBehavior {
-    /// List items' width can never exceed the width of the list.
+    /// 列表项的宽度不能超过列表的宽度。
     #[default]
     FitList,
-    /// List items' width may go over the width of the list, if any item is wider.
+    /// 如果任何项更宽，列表项的宽度可以超过列表宽度。
     Unconstrained,
 }
 
@@ -235,7 +232,7 @@ struct ItemLayout {
     size: Size<Pixels>,
 }
 
-/// Frame state used by the [List] element after layout.
+/// [List] 元素布局后使用的帧状态。
 pub struct ListPrepaintState {
     hitbox: Hitbox,
     layout: LayoutItemsResponse,
@@ -305,12 +302,11 @@ struct Count(usize);
 struct Height(Pixels);
 
 impl ListState {
-    /// Construct a new list state, for storage on a view.
+    /// 构造一个新的列表状态，用于存储在视图上。
     ///
-    /// The overdraw parameter controls how much extra space is rendered
-    /// above and below the visible area. Elements within this area will
-    /// be measured even though they are not visible. This can help ensure
-    /// that the list doesn't flicker or pop in when scrolling.
+    /// overdraw 参数控制可见区域上方和下方渲染的额外空间量。
+    /// 此区域内的元素即使不可见也会被测量。这有助于确保
+    /// 列表在滚动时不会闪烁或突然出现。
     pub fn new(item_count: usize, alignment: ListAlignment, overdraw: Pixels) -> Self {
         let this = Self(Rc::new(RefCell::new(StateInner {
             last_layout_bounds: None,
@@ -330,28 +326,28 @@ impl ListState {
         this
     }
 
-    /// Set the list to measure all items in the list in the first layout phase.
+    /// 设置列表在第一布局阶段测量所有项。
     ///
-    /// This is useful for ensuring that the scrollbar size is correct instead of based on only rendered elements.
+    /// 这对于确保滚动条大小正确（而不是仅基于已渲染元素）很有用。
     pub fn measure_all(self) -> Self {
         self.0.borrow_mut().measuring_behavior = ListMeasuringBehavior::Measure(false);
         self
     }
 
-    /// Pre-populate every unmeasured item with a uniform height hint so the scrollbar thumb
-    /// is correctly sized from the first frame, without measuring all items up front.
+    /// 为每个未测量的项预填充统一的高度提示，使滚动条滑块
+    /// 从第一帧开始就能正确调整大小，无需预先测量所有项。
     ///
-    /// As items are actually rendered their real heights replace the hint, so the scrollbar
-    /// converges to the exact size over time. This is a cheaper alternative to [`Self::measure_all`]
-    /// for lists where items have roughly uniform heights (e.g. table rows).
+    /// 当项实际渲染时，它们的真实高度会替换提示，因此滚动条
+    /// 随时间收敛到精确大小。这是 [`Self::measure_all`] 的更廉价替代方案，
+    /// 适用于项高度大致统一的列表（如表格行）。
     pub fn with_uniform_item_height(self, height: Pixels) -> Self {
         self.apply_uniform_item_height(height);
         self
     }
 
-    /// Reset this instantiation of the list state.
+    /// 重置此列表状态实例。
     ///
-    /// Note that this will cause scroll events to be dropped until the next paint.
+    /// 注意这将导致滚动事件在下次绘制前被丢弃。
     pub fn reset(&self, element_count: usize) {
         let old_count = {
             let state = &mut *self.0.borrow_mut();
@@ -366,9 +362,8 @@ impl ListState {
         self.splice(0..old_count, element_count);
     }
 
-    /// Reset the list to `element_count` items, pre-populating every item with a
-    /// uniform height hint so the scrollbar thumb is correctly sized from the first
-    /// frame even for off-screen items.
+    /// 重置列表为 `element_count` 项，为每个项预填充统一的高度提示，
+    /// 使滚动条滑块从第一帧开始就能正确调整大小，即使对于屏幕外的项也是如此。
     pub fn reset_with_uniform_height(&self, element_count: usize, height: Pixels) {
         self.reset(element_count);
         self.apply_uniform_item_height(height);
@@ -393,22 +388,21 @@ impl ListState {
         state.items = tree;
     }
 
-    /// Remeasure all items while preserving proportional scroll position.
+    /// 重新测量所有项，同时保持比例滚动位置。
     ///
-    /// Use this when item heights may have changed (e.g., font size changes)
-    /// but the number and identity of items remains the same.
+    /// 当项高度可能已更改（如字体大小更改）时使用此方法，
+    /// 但项的数量和标识保持不变。
     pub fn remeasure(&self) {
         let count = self.item_count();
         self.remeasure_items_with_scroll_anchor(0..count, ScrollAnchor::Proportional);
     }
 
-    /// Mark items in `range` as needing remeasurement while preserving
-    /// the current scroll position. Unlike [`Self::splice`], this does
-    /// not change the number of items or blow away `logical_scroll_top`.
+    /// 将 `range` 中的项标记为需要重新测量，同时保持
+    /// 当前滚动位置。与 [`Self::splice`] 不同，此方法不会
+    /// 更改项的数量或清除 `logical_scroll_top`。
     ///
-    /// Use this when an item's content has changed and its rendered
-    /// height may be different (e.g., streaming text, tool results
-    /// loading), but the item itself still exists at the same index.
+    /// 当项的内容已更改且其渲染高度可能不同时使用此方法
+    /// （如流式文本、工具结果加载），但项本身仍在同一索引处。
     pub fn remeasure_items(&self, range: Range<usize>) {
         self.remeasure_items_with_scroll_anchor(range, ScrollAnchor::Absolute);
     }
@@ -474,13 +468,12 @@ impl ListState {
         state.measuring_behavior.reset();
     }
 
-    /// The number of items in this list.
+    /// 列表中的项数量。
     pub fn item_count(&self) -> usize {
         self.0.borrow().items.summary().count
     }
 
-    /// Whether the list is scrolled to the end, or `None` if the list is
-    /// not scrollable or the total content height is not yet known.
+    /// 列表是否已滚动到末尾，如果列表不可滚动或总内容高度尚不确定则返回 `None`。
     pub fn is_scrolled_to_end(&self) -> Option<bool> {
         let state = self.0.borrow();
         let bounds = state.last_layout_bounds?;
@@ -498,16 +491,16 @@ impl ListState {
         Some(scroll_top >= scroll_max)
     }
 
-    /// Inform the list state that the items in `old_range` have been replaced
-    /// by `count` new items that must be recalculated.
+    /// 通知列表状态 `old_range` 中的项已被
+    /// `count` 个需要重新计算的新项替换。
     pub fn splice(&self, old_range: Range<usize>, count: usize) {
         self.splice_focusable(old_range, (0..count).map(|_| None))
     }
 
-    /// Register with the list state that the items in `old_range` have been replaced
-    /// by new items. As opposed to [`Self::splice`], this method allows an iterator of optional focus handles
-    /// to be supplied to properly integrate with items in the list that can be focused. If a focused item
-    /// is scrolled out of view, the list will continue to render it to allow keyboard interaction.
+    /// 向列表状态注册 `old_range` 中的项已被新项替换。
+    /// 与 [`Self::splice`] 不同，此方法允许提供可选焦点句柄的迭代器
+    /// 以正确集成列表中可聚焦的项。如果聚焦的项滚动到视图外，
+    /// 列表将继续渲染它以允许键盘交互。
     pub fn splice_focusable(
         &self,
         old_range: Range<usize>,
@@ -548,7 +541,7 @@ impl ListState {
         }
     }
 
-    /// Set a handler that will be called when the list is scrolled.
+    /// 设置列表滚动时调用的处理程序。
     pub fn set_scroll_handler(
         &self,
         handler: impl FnMut(&ListScrollEvent, &mut Window, &mut App) + 'static,
@@ -556,12 +549,12 @@ impl ListState {
         self.0.borrow_mut().scroll_handler = Some(Box::new(handler))
     }
 
-    /// Get the current scroll offset, in terms of the list's items.
+    /// 获取当前滚动偏移量，以列表项为单位。
     pub fn logical_scroll_top(&self) -> ListOffset {
         self.0.borrow().logical_scroll_top()
     }
 
-    /// Scroll the list by the given offset
+    /// 按指定偏移量滚动列表
     pub fn scroll_by(&self, distance: Pixels) {
         if distance == px(0.) {
             return;
@@ -594,7 +587,7 @@ impl ListState {
         state.logical_scroll_top = Some(scroll_top);
     }
 
-    /// Scroll the list to the very end (past the last item).
+    /// 将列表滚动到最末尾（超过最后一项）。
     ///
     /// Unlike [`scroll_to_reveal_item`], this uses the total item count as the
     /// anchor, so the list's layout pass will walk backwards from the end and
@@ -610,10 +603,9 @@ impl ListState {
         });
     }
 
-    /// Set the follow mode for the list. In `Tail` mode, the list
-    /// will auto-scroll to the end and re-engage after the user
-    /// scrolls back to the bottom. In `Normal` mode, no automatic
-    /// following occurs.
+    /// 设置列表的跟随模式。在 `Tail` 模式下，列表
+    /// 将自动滚动到末尾，并在用户滚动回底部时重新激活。
+    /// 在 `Normal` 模式下，不发生自动跟随。
     pub fn set_follow_mode(&self, mode: FollowMode) {
         let state = &mut *self.0.borrow_mut();
 
@@ -634,8 +626,7 @@ impl ListState {
         }
     }
 
-    /// Returns whether the list is currently actively following the
-    /// tail (snapping to the end on each layout).
+    /// 返回列表当前是否正在主动跟随尾部（在每次布局时吸附到末尾）。
     pub fn is_following_tail(&self) -> bool {
         matches!(
             self.0.borrow().follow_state,
@@ -643,7 +634,7 @@ impl ListState {
         )
     }
 
-    /// Scroll the list to the given offset
+    /// 将列表滚动到指定偏移量
     pub fn scroll_to(&self, mut scroll_top: ListOffset) {
         let state = &mut *self.0.borrow_mut();
         let item_count = state.items.summary().count;
@@ -660,7 +651,7 @@ impl ListState {
         state.logical_scroll_top = Some(scroll_top);
     }
 
-    /// Scroll the list to the given item, such that the item is fully visible.
+    /// 滚动列表以显示指定项，使其完全可见。
     pub fn scroll_to_reveal_item(&self, ix: usize) {
         let state = &mut *self.0.borrow_mut();
 
@@ -693,8 +684,7 @@ impl ListState {
         state.logical_scroll_top = Some(scroll_top);
     }
 
-    /// Get the bounds for the given item in window coordinates, if it's
-    /// been rendered.
+    /// 获取给定项在窗口坐标中的边界（如果已渲染）。
     pub fn bounds_for_item(&self, ix: usize) -> Option<Bounds<Pixels>> {
         let state = &*self.0.borrow();
 
@@ -723,48 +713,48 @@ impl ListState {
         None
     }
 
-    /// Call this method when the user starts dragging the scrollbar.
+    /// 当用户开始拖动滚动条时调用此方法。
     ///
-    /// This will prevent the height reported to the scrollbar from changing during the drag
-    /// as items in the overdraw get measured, and help offset scroll position changes accordingly.
+    /// 这将防止报告给滚动条的高度在拖动期间发生变化，
+    /// 因为 overdraw 中的项会被测量，并帮助相应地偏移滚动位置更改。
     pub fn scrollbar_drag_started(&self) {
         let mut state = self.0.borrow_mut();
         state.scrollbar_drag_start_height = Some(state.items.summary().height);
     }
 
-    /// Called when the user stops dragging the scrollbar.
+    /// 当用户停止拖动滚动条时调用。
     ///
-    /// See `scrollbar_drag_started`.
+    /// 参见 `scrollbar_drag_started`。
     pub fn scrollbar_drag_ended(&self) {
         self.0.borrow_mut().scrollbar_drag_start_height.take();
     }
 
-    /// Returns `true` if the scrollbar is currently being dragged.
+    /// 如果滚动条当前正在被拖动则返回 `true`。
     ///
-    /// This is set between [`scrollbar_drag_started`](Self::scrollbar_drag_started)
-    /// and [`scrollbar_drag_ended`](Self::scrollbar_drag_ended) calls. Useful for
-    /// consumers that need to distinguish scrollbar drags from wheel/trackpad scrolls,
-    /// e.g. to suppress auto-scroll behavior during manual positioning.
+    /// 在 [`scrollbar_drag_started`](Self::scrollbar_drag_started)
+    /// 和 [`scrollbar_drag_ended`](Self::scrollbar_drag_ended) 调用之间设置。
+    /// 对于需要区分滚动条拖动和滚轮/触控板滚动的消费者很有用，
+    /// 例如在手动定位期间抑制自动滚动行为。
     pub fn is_scrollbar_dragging(&self) -> bool {
         self.0.borrow().scrollbar_drag_start_height.is_some()
     }
 
-    /// Set the offset from the scrollbar
+    /// 设置来自滚动条的偏移量
     pub fn set_offset_from_scrollbar(&self, point: Point<Pixels>) {
         self.0.borrow_mut().set_offset_from_scrollbar(point);
     }
 
-    /// Returns the maximum scroll offset according to the items we have measured.
-    /// This value remains constant while dragging to prevent the scrollbar from moving away unexpectedly.
+    /// 返回根据已测量项计算的最大滚动偏移量。
+    /// 拖动期间此值保持不变，以防止滚动条意外移动。
     pub fn max_offset_for_scrollbar(&self) -> Point<Pixels> {
         let state = self.0.borrow();
         point(Pixels::ZERO, state.max_scroll_offset())
     }
 
-    /// Returns the current scroll offset adjusted for the scrollbar.
+    /// 返回经滚动条调整后的当前滚动偏移量。
     ///
-    /// The returned offset has a negative `y` component representing
-    /// how far the content has scrolled.
+    /// 返回的偏移量具有负 `y` 分量，表示
+    /// 内容已滚动的距离。
     pub fn scroll_px_offset_for_scrollbar(&self) -> Point<Pixels> {
         let state = &self.0.borrow();
 
@@ -782,13 +772,12 @@ impl ListState {
         Point::new(px(0.), -offset)
     }
 
-    /// Return the bounds of the viewport in pixels.
+    /// 返回视口的像素边界。
     pub fn viewport_bounds(&self) -> Bounds<Pixels> {
         self.0.borrow().last_layout_bounds.unwrap_or_default()
     }
 
-    /// Returns whether the item is entirely above the viewport, or `None` if
-    /// the list has not measured enough layout to know.
+    /// 返回项是否完全在视口上方，如果列表尚未测量足够的布局则返回 `None`。
     ///
     /// A zero-height viewport still yields a definitive answer: callers may
     /// size sibling UI based on this query (potentially squeezing the list
@@ -808,8 +797,7 @@ impl ListState {
         Some(item_bounds.bottom() <= viewport_bounds.top())
     }
 
-    /// Returns whether the item is entirely below the viewport, or `None` if
-    /// the list has not measured enough layout to know.
+    /// 返回项是否完全在视口下方，如果列表尚未测量足够的布局则返回 `None`。
     ///
     /// See [`Self::item_is_above_viewport`] for why a zero-height viewport
     /// still yields a definitive answer.
@@ -829,9 +817,9 @@ impl ListState {
 }
 
 impl StateInner {
-    /// Re-anchor a pending scroll adjustment from a remeasure onto a newly set
-    /// scroll position, so it clamps to the remeasured item's new height on
-    /// the next layout instead of reverting the scroll.
+    /// 将待处理的滚动调整从重新测量重新锚定到新设置的
+    /// 滚动位置，使其在下次布局时夹紧到重新测量项的新高度
+    /// 而不是恢复滚动。
     fn rebase_pending_scroll(&mut self, scroll_top: ListOffset) {
         let Some(pending) = self.pending_scroll.take() else {
             return;
@@ -1414,13 +1402,12 @@ impl std::fmt::Debug for ListItem {
     }
 }
 
-/// An offset into the list's items, in terms of the item index and the number
-/// of pixels off the top left of the item.
+/// 列表项的偏移量，以项索引和距项左上角的像素数表示。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ListOffset {
-    /// The index of an item in the list
+    /// 列表中项的索引
     pub item_ix: usize,
-    /// The number of pixels to offset from the item index.
+    /// 距项索引的像素偏移量。
     pub offset_in_item: Pixels,
 }
 

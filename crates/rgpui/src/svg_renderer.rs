@@ -77,7 +77,7 @@ fn select_emoji_font(
     None
 }
 
-/// When rendering SVGs, we render them at twice the size to get a higher-quality result.
+/// 渲染 SVG 时，我们以两倍大小渲染以获得更高质量的结果。
 pub const SMOOTH_SVG_SCALE_FACTOR: f32 = 2.;
 
 /// SVG 渲染参数，用作精灵图集的缓存键。
@@ -90,22 +90,22 @@ pub struct RenderSvgParams {
 }
 
 #[derive(Clone)]
-/// A struct holding everything necessary to render SVGs.
+/// 包含渲染 SVG 所需一切的结构体。
 pub struct SvgRenderer {
     asset_source: Arc<dyn AssetSource>,
     usvg_options: Arc<usvg::Options<'static>>,
 }
 
-/// The size in which to render the SVG.
+/// SVG 的渲染尺寸。
 pub enum SvgSize {
-    /// An absolute size in device pixels.
+    /// 以设备像素为单位的绝对尺寸。
     Size(Size<DevicePixels>),
-    /// A scaling factor to apply to the size provided by the SVG.
+    /// 应用于 SVG 提供尺寸的缩放因子。
     ScaleFactor(f32),
 }
 
 impl SvgRenderer {
-    /// Creates a new SVG renderer with the provided asset source.
+    /// 使用提供的资产源创建新的 SVG 渲染器。
     pub fn new(asset_source: Arc<dyn AssetSource>) -> Self {
         static SYSTEM_FONT_DB: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
             let mut db = usvg::fontdb::Database::new();
@@ -171,7 +171,7 @@ impl SvgRenderer {
         }
     }
 
-    /// Renders the given bytes into an image buffer.
+    /// 将给定的字节渲染到图像缓冲区。
     pub fn render_single_frame(
         &self,
         bytes: &[u8],

@@ -144,7 +144,7 @@ impl TestScheduler {
     }
 
     /// 分配新的会话 ID 用于前台任务调度。
-    /// 这由 GPUI 的 TestDispatcher 用于将调度器实例映射到会话。
+    /// 这由 RGPUI 的 TestDispatcher 用于将调度器实例映射到会话。
     pub fn allocate_session_id(&self) -> SessionId {
         let mut state = self.state.lock();
         state.next_session_id.0 += 1;
@@ -186,7 +186,7 @@ impl TestScheduler {
     /// 执行调度器的一个 tick，处理已过期的计时器并运行
     /// 最多一个任务。如果有任何工作完成则返回 true。
     ///
-    /// 这是 GPUI 的 TestDispatcher 驱动任务执行的公共接口。
+    /// 这是 RGPUI 的 TestDispatcher 驱动任务执行的公共接口。
     pub fn tick(&self) -> bool {
         self.step_filtered(false)
     }

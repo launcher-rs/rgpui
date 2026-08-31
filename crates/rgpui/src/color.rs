@@ -290,16 +290,16 @@ impl TryFrom<&'_ str> for Rgba {
 #[derive(Default, Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Hsla {
-    /// Hue, in a range from 0 to 1
+    /// 色相，范围 0 到 1
     pub h: f32,
 
-    /// Saturation, in a range from 0 to 1
+    /// 饱和度，范围 0 到 1
     pub s: f32,
 
-    /// Lightness, in a range from 0 to 1
+    /// 亮度，范围 0 到 1
     pub l: f32,
 
-    /// Alpha, in a range from 0 to 1
+    /// 透明度，范围 0 到 1
     pub a: f32,
 }
 
@@ -309,9 +309,9 @@ mod property {
     use proptest::prelude::*;
 
     impl Hsla {
-        /// Proptest [`Strategy`] that produces opaque colors (i.e. alpha = 1).
+        /// 生成不透明颜色（即 alpha = 1）的 Proptest [`Strategy`]。
         ///
-        /// For truly arbitrary colors, use the [`Arbitrary`] implementation.
+        /// 对于真正任意的颜色，请使用 [`Arbitrary`] 实现。
         pub fn opaque_strategy() -> impl Strategy<Value = Self> {
             (0.0f32..=1.0, 0.0f32..=1.0, 0.0f32..=1.0).prop_map(|(h, s, l)| Hsla { h, s, l, a: 1. })
         }
@@ -479,7 +479,7 @@ pub const fn yellow() -> Hsla {
 }
 
 impl Hsla {
-    /// Converts this HSLA color to an RGBA color.
+    /// 将此 HSLA 颜色转换为 RGBA 颜色。
     pub fn to_rgb(self) -> Rgba {
         self.into()
     }
@@ -718,9 +718,9 @@ pub(crate) enum BackgroundTag {
 #[repr(C)]
 pub enum ColorSpace {
     #[default]
-    /// The sRGB color space.
+    /// sRGB 颜色空间。
     Srgb = 0,
-    /// The Oklab color space.
+    /// Oklab 颜色空间。
     Oklab = 1,
 }
 
@@ -743,7 +743,7 @@ pub struct Background {
     pub(crate) gradient_angle_or_pattern_height: f32,
     pub(crate) colors: [LinearColorStop; 4],
     pub(crate) stop_count: u32,
-    /// Padding for alignment for repr(C) layout.
+    /// repr(C) 布局的对齐填充。
     pad: u32,
     /// 对齐到 WGSL vec2<f32>（对齐要求 8）
     align_pad: u32,
@@ -954,9 +954,9 @@ pub fn conic_gradient(
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(C)]
 pub struct LinearColorStop {
-    /// The color of the color stop.
+    /// 颜色停止点的颜色。
     pub color: Hsla,
-    /// The percentage of the gradient, in the range 0.0 to 1.0.
+    /// 渐变百分比，范围 0.0 到 1.0。
     pub percentage: f32,
 }
 
@@ -990,7 +990,7 @@ impl Background {
         }
     }
 
-    /// Use specified color space for color interpolation.
+    /// 使用指定的颜色空间进行颜色插值。
     ///
     /// <https://developer.mozilla.org/en-US/docs/Web/CSS/color-interpolation-method>
     pub fn color_space(mut self, color_space: ColorSpace) -> Self {

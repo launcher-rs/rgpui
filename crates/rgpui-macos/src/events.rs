@@ -26,7 +26,7 @@ pub(crate) const ESCAPE_KEY: u16 = 0x1b;
 const TAB_KEY: u16 = 0x09;
 const SHIFT_TAB_KEY: u16 = 0x19;
 
-/// 将 GPUI 内部按键名称转换为 macOS 原生按键代码。
+/// 将 RGPUI 内部按键名称转换为 macOS 原生按键代码。
 pub fn key_to_native(key: &str) -> Cow<'_, str> {
     use cocoa::appkit::*;
     let code = match key {
@@ -102,7 +102,7 @@ unsafe fn read_modifiers(native_event: id) -> Modifiers {
     }
 }
 
-/// 将 macOS 原生 NSEvent 转换为 GPUI 的 `PlatformInput`。
+/// 将 macOS 原生 NSEvent 转换为 RGPUI 的 `PlatformInput`。
 ///
 /// 支持鼠标、键盘、滚轮、触摸板手势等多种事件类型。
 ///

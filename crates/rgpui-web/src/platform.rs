@@ -32,7 +32,7 @@ static BUNDLED_FONTS: &[&[u8]] = &[
     include_bytes!("../../../assets/fonts/noto-sans-sc/NotoSansSC-Regular.ttf"),
 ];
 
-/// Web 平台实现，实现 gpui 的 `Platform` trait
+/// Web 平台实现，实现 rgpui 的 `Platform` trait
 pub struct WebPlatform {
     browser_window: web_sys::Window,
     background_executor: BackgroundExecutor,

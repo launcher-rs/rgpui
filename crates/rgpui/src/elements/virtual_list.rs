@@ -120,7 +120,7 @@ impl VirtualListScrollHandle {
 
 /// 创建垂直方向的 [`VirtualList`]。
 ///
-/// 这类似于 GPUI 的 `uniform_list`，但支持两个轴。
+/// 这类似于 RGPUI 的 `uniform_list`，但支持两个轴。
 ///
 /// `item_sizes` 是每行的大小。只使用 `height`；`width` 通过测量
 /// [`VirtualList::with_item_to_measure_index`] 选中的条目来推断，默认为第一个条目。

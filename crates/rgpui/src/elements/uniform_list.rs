@@ -15,9 +15,9 @@ use std::{cell::RefCell, cmp, ops::Range, rc::Rc, usize};
 
 use super::ListHorizontalSizingBehavior;
 
-/// uniform_list provides lazy rendering for a set of items that are of uniform height.
-/// When rendered into a container with overflow-y: hidden and a fixed (or max) height,
-/// uniform_list will only render the visible subset of items.
+/// uniform_list 为一组等高元素提供延迟渲染。
+/// 当渲染到设置了 overflow-y: hidden 和固定（或最大）高度的容器中时，
+/// uniform_list 只会渲染可见子集的元素。
 #[track_caller]
 pub fn uniform_list<R>(
     id: impl Into<ElementId>,
@@ -54,7 +54,7 @@ where
     }
 }
 
-/// A list element for efficiently laying out and displaying a list of uniform-height elements.
+/// 用于高效布局和显示等高元素列表的列表元素。
 pub struct UniformList {
     item_count: usize,
     item_to_measure_index: usize,
@@ -68,33 +68,33 @@ pub struct UniformList {
     horizontal_sizing_behavior: ListHorizontalSizingBehavior,
 }
 
-/// Frame state used by the [UniformList].
+/// [UniformList] 使用的帧状态。
 pub struct UniformListFrameState {
     items: SmallVec<[AnyElement; 32]>,
     decorations: SmallVec<[AnyElement; 2]>,
 }
 
-/// A handle for controlling the scroll position of a uniform list.
-/// This should be stored in your view and passed to the uniform_list on each frame.
+/// 用于控制均匀列表滚动位置的句柄。
+/// 应将其存储在视图中，并在每帧传递给 uniform_list。
 #[derive(Clone, Debug, Default)]
 pub struct UniformListScrollHandle(pub Rc<RefCell<UniformListScrollState>>);
 
-/// Where to place the element scrolled to.
+/// 滚动元素的放置位置。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScrollStrategy {
-    /// Place the element at the top of the list's viewport.
+    /// 将元素放置在列表视口顶部。
     Top,
-    /// Attempt to place the element in the middle of the list's viewport.
-    /// May not be possible if there's not enough list items above the item scrolled to:
-    /// in this case, the element will be placed at the closest possible position.
+    /// 尝试将元素放置在列表视口中间。
+    /// 如果滚动目标上方没有足够的列表项，则无法实现：
+    /// 此时元素将放置在最近的可能位置。
     Center,
-    /// Attempt to place the element at the bottom of the list's viewport.
-    /// May not be possible if there's not enough list items above the item scrolled to:
-    /// in this case, the element will be placed at the closest possible position.
+    /// 尝试将元素放置在列表视口底部。
+    /// 如果滚动目标上方没有足够的列表项，则无法实现：
+    /// 此时元素将放置在最近的可能位置。
     Bottom,
-    /// If the element is not visible attempt to place it at:
-    /// - The top of the list's viewport if the target element is above currently visible elements.
-    /// - The bottom of the list's viewport if the target element is above currently visible elements.
+    /// 如果元素不可见，则尝试将其放置在：
+    /// - 目标元素在当前可见元素上方时，放置在列表视口顶部。
+    /// - 目标元素在当前可见元素下方时，放置在列表视口底部。
     Nearest,
 }
 
@@ -118,24 +118,23 @@ pub struct UniformListScrollState {
     pub base_handle: ScrollHandle,
     /// 待执行的延迟滚动目标。
     pub deferred_scroll_to_item: Option<DeferredScrollToItem>,
-    /// Size of the item, captured during last layout.
+    /// 上次布局时捕获的项大小。
     pub last_item_size: Option<ItemSize>,
-    /// Whether the list was vertically flipped during last layout.
+    /// 上次布局时列表是否垂直翻转。
     pub y_flipped: bool,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
-/// The size of the item and its contents.
+/// 项及其内容的大小。
 pub struct ItemSize {
-    /// The size of the item.
+    /// 项的大小。
     pub item: Size<Pixels>,
-    /// The size of the item's contents, which may be larger than the item itself,
-    /// if the item was bounded by a parent element.
+    /// 项内容的大小，当项受父元素约束时，可能大于项本身。
     pub contents: Size<Pixels>,
 }
 
 impl UniformListScrollHandle {
-    /// Create a new scroll handle to bind to a uniform list.
+    /// 创建一个绑定到均匀列表的新滚动句柄。
     pub fn new() -> Self {
         Self(Rc::new(RefCell::new(UniformListScrollState {
             base_handle: ScrollHandle::new(),
@@ -145,11 +144,10 @@ impl UniformListScrollHandle {
         })))
     }
 
-    /// Scroll the list so that the given item index is visible.
+    /// 滚动列表使指定项索引可见。
     ///
-    /// This uses non-strict scrolling: if the item is already fully visible, no scrolling occurs.
-    /// If the item is out of view, it scrolls the minimum amount to bring it into view according
-    /// to the strategy.
+    /// 使用非严格滚动：如果项已完全可见，则不执行滚动。
+    /// 如果项超出视图，则按策略滚动最小距离使其进入视图。
     pub fn scroll_to_item(&self, ix: usize, strategy: ScrollStrategy) {
         self.0.borrow_mut().deferred_scroll_to_item = Some(DeferredScrollToItem {
             item_index: ix,
@@ -159,10 +157,10 @@ impl UniformListScrollHandle {
         });
     }
 
-    /// Scroll the list so that the given item index is at scroll strategy position.
+    /// 滚动列表使指定项索引位于滚动策略位置。
     ///
-    /// This uses strict scrolling: the item will always be scrolled to match the strategy position,
-    /// even if it's already visible. Use this when you need precise positioning.
+    /// 使用严格滚动：即使项已可见，也会滚动到匹配的策略位置。
+    /// 当需要精确定位时使用此方法。
     pub fn scroll_to_item_strict(&self, ix: usize, strategy: ScrollStrategy) {
         self.0.borrow_mut().deferred_scroll_to_item = Some(DeferredScrollToItem {
             item_index: ix,
@@ -172,16 +170,14 @@ impl UniformListScrollHandle {
         });
     }
 
-    /// Scroll the list to the given item index with an offset in number of items.
+    /// 以项数偏移量滚动列表到指定项索引。
     ///
-    /// This uses non-strict scrolling: if the item is already visible within the offset region,
-    /// no scrolling occurs.
+    /// 使用非严格滚动：如果项已在偏移区域内可见，则不执行滚动。
     ///
-    /// The offset parameter shrinks the effective viewport by the specified number of items
-    /// from the corresponding edge, then applies the scroll strategy within that reduced viewport:
-    /// - `ScrollStrategy::Top`: Shrinks from top, positions item at the new top
-    /// - `ScrollStrategy::Center`: Shrinks from top, centers item in the reduced viewport
-    /// - `ScrollStrategy::Bottom`: Shrinks from bottom, positions item at the new bottom
+    /// 偏移参数从对应边缘缩小有效视口指定项数，然后在缩小的视口中应用滚动策略：
+    /// - `ScrollStrategy::Top`：从顶部缩小，将项定位在新顶部
+    /// - `ScrollStrategy::Center`：从顶部缩小，将项居中在缩小的视口中
+    /// - `ScrollStrategy::Bottom`：从底部缩小，将项定位在新底部
     pub fn scroll_to_item_with_offset(&self, ix: usize, strategy: ScrollStrategy, offset: usize) {
         self.0.borrow_mut().deferred_scroll_to_item = Some(DeferredScrollToItem {
             item_index: ix,
@@ -191,16 +187,14 @@ impl UniformListScrollHandle {
         });
     }
 
-    /// Scroll the list so that the given item index is at the exact scroll strategy position with an offset.
+    /// 滚动列表使指定项索引精确位于滚动策略位置，并带偏移量。
     ///
-    /// This uses strict scrolling: the item will always be scrolled to match the strategy position,
-    /// even if it's already visible.
+    /// 使用严格滚动：即使项已可见，也会滚动到匹配的策略位置。
     ///
-    /// The offset parameter shrinks the effective viewport by the specified number of items
-    /// from the corresponding edge, then applies the scroll strategy within that reduced viewport:
-    /// - `ScrollStrategy::Top`: Shrinks from top, positions item at the new top
-    /// - `ScrollStrategy::Center`: Shrinks from top, centers item in the reduced viewport
-    /// - `ScrollStrategy::Bottom`: Shrinks from bottom, positions item at the new bottom
+    /// 偏移参数从对应边缘缩小有效视口指定项数，然后在缩小的视口中应用滚动策略：
+    /// - `ScrollStrategy::Top`：从顶部缩小，将项定位在新顶部
+    /// - `ScrollStrategy::Center`：从顶部缩小，将项居中在缩小的视口中
+    /// - `ScrollStrategy::Bottom`：从底部缩小，将项定位在新底部
     pub fn scroll_to_item_strict_with_offset(
         &self,
         ix: usize,
@@ -215,12 +209,12 @@ impl UniformListScrollHandle {
         });
     }
 
-    /// Check if the list is flipped vertically.
+    /// 检查列表是否垂直翻转。
     pub fn y_flipped(&self) -> bool {
         self.0.borrow().y_flipped
     }
 
-    /// Get the index of the topmost visible child.
+    /// 获取最顶层可见子元素的索引。
     #[cfg(any(test, feature = "test-support"))]
     pub fn logical_scroll_top_index(&self) -> usize {
         let this = self.0.borrow();
@@ -230,7 +224,7 @@ impl UniformListScrollHandle {
             .unwrap_or_else(|| this.base_handle.logical_scroll_top().0)
     }
 
-    /// Checks if the list can be scrolled vertically.
+    /// 检查列表是否可以垂直滚动。
     pub fn is_scrollable(&self) -> bool {
         if let Some(size) = self.0.borrow().last_item_size {
             size.contents.height > size.item.height
@@ -239,8 +233,7 @@ impl UniformListScrollHandle {
         }
     }
 
-    /// Whether the list is scrolled to the end, or `None` if the list is
-    /// not scrollable.
+    /// 列表是否已滚动到底部，如果列表不可滚动则返回 `None`。
     pub fn is_scrolled_to_end(&self) -> Option<bool> {
         let state = self.0.borrow();
         let max_offset = state.base_handle.max_offset();
@@ -251,7 +244,7 @@ impl UniformListScrollHandle {
         Some(-offset.y >= max_offset.y)
     }
 
-    /// Scroll to the bottom of the list.
+    /// 滚动到列表底部。
     pub fn scroll_to_bottom(&self) {
         self.scroll_to_item(usize::MAX, ScrollStrategy::Bottom);
     }
@@ -578,11 +571,9 @@ impl IntoElement for UniformList {
     }
 }
 
-/// A decoration for a [`UniformList`]. This can be used for various things,
-/// such as rendering indent guides, or other visual effects.
+/// [`UniformList`] 的装饰物。可用于渲染缩进指南或其他视觉效果。
 pub trait UniformListDecoration {
-    /// Compute the decoration element, given the visible range of list items,
-    /// the bounds of the list, and the height of each item.
+    /// 根据可见列表项范围、列表边界和每项高度计算装饰元素。
     fn compute(
         &self,
         visible_range: Range<usize>,
@@ -621,21 +612,21 @@ impl<T: UniformListDecoration + 'static> UniformListDecoration for Entity<T> {
 }
 
 impl UniformList {
-    /// Selects a specific list item for measurement.
+    /// 选择用于测量宽度的特定列表项。
     pub fn with_width_from_item(mut self, item_index: Option<usize>) -> Self {
         self.item_to_measure_index = item_index.unwrap_or(0);
         self
     }
 
-    /// Sets the sizing behavior, similar to the `List` element.
+    /// 设置大小调整行为，类似于 `List` 元素。
     pub fn with_sizing_behavior(mut self, behavior: ListSizingBehavior) -> Self {
         self.sizing_behavior = behavior;
         self
     }
 
-    /// Sets the horizontal sizing behavior, controlling the way list items laid out horizontally.
-    /// With [`ListHorizontalSizingBehavior::Unconstrained`] behavior, every item and the list itself will
-    /// have the size of the widest item and lay out pushing the `end_slot` to the right end.
+    /// 设置水平大小调整行为，控制列表项的水平布局方式。
+    /// 使用 [`ListHorizontalSizingBehavior::Unconstrained`] 行为时，每项和列表本身将
+    /// 具有最宽项的大小，并将 `end_slot` 推向右端。
     pub fn with_horizontal_sizing_behavior(
         mut self,
         behavior: ListHorizontalSizingBehavior,
@@ -652,7 +643,7 @@ impl UniformList {
         self
     }
 
-    /// Adds a decoration element to the list.
+    /// 向列表添加装饰元素。
     pub fn with_decoration(mut self, decoration: impl UniformListDecoration + 'static) -> Self {
         self.decorations.push(Box::new(decoration));
         self
@@ -682,14 +673,14 @@ impl UniformList {
         item_to_measure.layout_as_root(available_space, window, cx)
     }
 
-    /// Track and render scroll state of this list with reference to the given scroll handle.
+    /// 跟踪并渲染此列表相对于给定滚动句柄的滚动状态。
     pub fn track_scroll(mut self, handle: &UniformListScrollHandle) -> Self {
         self.interactivity.tracked_scroll_handle = Some(handle.0.borrow().base_handle.clone());
         self.scroll_handle = Some(handle.clone());
         self
     }
 
-    /// Sets whether the list is flipped vertically, such that item 0 appears at the bottom.
+    /// 设置列表是否垂直翻转，使第 0 项显示在底部。
     pub fn y_flipped(mut self, y_flipped: bool) -> Self {
         if let Some(ref scroll_handle) = self.scroll_handle {
             let mut scroll_state = scroll_handle.0.borrow_mut();

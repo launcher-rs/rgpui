@@ -66,7 +66,7 @@ bindgen = "0.71"
 cbindgen = { version = "0.28.0", default-features = false }
 rgpui.workspace = true
 
-# When this crate is itself being tested (cargo test -p gpui_macos), its own
+# When this crate is itself being tested (cargo test -p rgpui_macos), its own
 # cfg(test) flag enables impls of test-only traits like PlatformHeadlessRenderer
 # and PlatformWindow::render_to_image. Those traits/methods only exist in rgpui
 # when rgpui's `test-support` feature is on, so we have to turn that feature on

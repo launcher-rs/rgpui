@@ -56,7 +56,7 @@ impl HelloWorld {
             }))
             .when(self.secondary_open, |this| {
                 this.child(
-                    // Now GPUI supports nested deferred!
+                    // Now RGPUI supports nested deferred!
                     deferred(
                         anchored()
                             .anchor(Anchor::TopLeft)

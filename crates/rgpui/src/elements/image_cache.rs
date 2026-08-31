@@ -10,8 +10,8 @@ use futures::{FutureExt, future::Shared};
 use smallvec::SmallVec;
 use std::{collections::HashMap, fmt, sync::Arc};
 
-/// An image cache element, all its child img elements will use the cache specified by this element.
-/// Note that this could as simple as passing an `Entity<T: ImageCache>`
+/// 一个图像缓存元素，其所有子 img 元素将使用此元素指定的缓存。
+/// 注意这可以简单地传递 `Entity<T: ImageCache>`
 pub fn image_cache(image_cache_provider: impl ImageCacheProvider) -> ImageCacheElement {
     ImageCacheElement {
         image_cache_provider: Box::new(image_cache_provider),
@@ -20,7 +20,7 @@ pub fn image_cache(image_cache_provider: impl ImageCacheProvider) -> ImageCacheE
     }
 }
 
-/// A dynamically typed image cache, which can be used to store any image cache
+/// 一个动态类型的图像缓存，可用于存储任何图像缓存
 #[derive(Clone)]
 pub struct AnyImageCache {
     image_cache: AnyEntity,
@@ -42,8 +42,8 @@ impl<I: ImageCache> From<Entity<I>> for AnyImageCache {
 }
 
 impl AnyImageCache {
-    /// Load an image given a resource
-    /// returns the result of loading the image if it has finished loading, or None if it is still loading
+    /// 加载给定资源的图像
+    /// 如果加载完成则返回加载结果，如果仍在加载则返回 None
     pub fn load(
         &self,
         resource: &Resource,
@@ -68,7 +68,7 @@ mod any_image_cache {
     }
 }
 
-/// An image cache element.
+/// 一个图像缓存元素。
 pub struct ImageCacheElement {
     image_cache_provider: Box<dyn ImageCacheProvider>,
     style: StyleRefinement,
@@ -161,14 +161,14 @@ impl Element for ImageCacheElement {
     }
 }
 
-/// An image loading task associated with an image cache.
+/// 与图像缓存关联的图像加载任务。
 pub type ImageLoadingTask = Shared<Task<Result<Arc<RenderImage>, ImageCacheError>>>;
 
-/// An image cache item
+/// 一个图像缓存项
 pub enum ImageCacheItem {
-    /// The associated image is currently loading
+    /// 关联的图像当前正在加载
     Loading(ImageLoadingTask),
-    /// This item has loaded an image.
+    /// 此项已加载图像。
     Loaded(Result<Arc<RenderImage>, ImageCacheError>),
 }
 
@@ -185,7 +185,7 @@ impl std::fmt::Debug for ImageCacheItem {
 }
 
 impl ImageCacheItem {
-    /// Attempt to get the image from the cache item.
+    /// 尝试从缓存项获取图像。
     pub fn get(&mut self) -> Option<Result<Arc<RenderImage>, ImageCacheError>> {
         match self {
             ImageCacheItem::Loading(task) => {
@@ -198,11 +198,11 @@ impl ImageCacheItem {
     }
 }
 
-/// An object that can handle the caching and unloading of images.
-/// Implementations of this trait should ensure that images are removed from all windows when they are no longer needed.
+/// 一个可处理图像缓存和卸载的对象。
+/// 此 trait 的实现应确保图像在不再需要时从所有窗口中移除。
 pub trait ImageCache: 'static {
-    /// Load an image given a resource
-    /// returns the result of loading the image if it has finished loading, or None if it is still loading
+    /// 加载给定资源的图像
+    /// 如果加载完成则返回加载结果，如果仍在加载则返回 None
     fn load(
         &mut self,
         resource: &Resource,
@@ -211,10 +211,10 @@ pub trait ImageCache: 'static {
     ) -> Option<Result<Arc<RenderImage>, ImageCacheError>>;
 }
 
-/// An object that can create an ImageCache during the render phase.
-/// See the ImageCache trait for more information.
+/// 一个可在渲染阶段创建 ImageCache 的对象。
+/// 有关更多信息，请参阅 ImageCache trait。
 pub trait ImageCacheProvider: 'static {
-    /// Called during the request_layout phase to create an ImageCache.
+    /// 在 request_layout 阶段调用以创建 ImageCache。
     fn provide(&mut self, _window: &mut Window, _cx: &mut App) -> AnyImageCache;
 }
 
@@ -224,7 +224,7 @@ impl<T: ImageCache> ImageCacheProvider for Entity<T> {
     }
 }
 
-/// An implementation of ImageCache, that uses an LRU caching strategy to unload images when the cache is full
+/// 一个 ImageCache 实现，使用 LRU 缓存策略在缓存满时卸载图像
 pub struct RetainAllImageCache(HashMap<u64, ImageCacheItem>);
 
 impl fmt::Debug for RetainAllImageCache {
@@ -236,7 +236,7 @@ impl fmt::Debug for RetainAllImageCache {
 }
 
 impl RetainAllImageCache {
-    /// Create a new image cache.
+    /// 创建一个新的图像缓存。
     #[inline]
     pub fn new(cx: &mut App) -> Entity<Self> {
         let e = cx.new(|_cx| RetainAllImageCache(HashMap::new()));
@@ -251,9 +251,9 @@ impl RetainAllImageCache {
         e
     }
 
-    /// Load an image from the given source.
+    /// 从给定源加载图像。
     ///
-    /// Returns `None` if the image is loading.
+    /// 如果图像正在加载则返回 `None`。
     pub fn load(
         &mut self,
         source: &Resource,
@@ -285,7 +285,7 @@ impl RetainAllImageCache {
         None
     }
 
-    /// Clear the image cache.
+    /// 清空图像缓存。
     pub fn clear(&mut self, window: &mut Window, cx: &mut App) {
         for (_, mut item) in std::mem::replace(&mut self.0, HashMap::new()) {
             if let Some(Ok(image)) = item.get() {
@@ -294,7 +294,7 @@ impl RetainAllImageCache {
         }
     }
 
-    /// Remove the image from the cache by the given source.
+    /// 按给定源从缓存中移除图像。
     pub fn remove(&mut self, source: &Resource, window: &mut Window, cx: &mut App) {
         let hash = hash(source);
         if let Some(mut item) = self.0.remove(&hash)
@@ -304,12 +304,12 @@ impl RetainAllImageCache {
         }
     }
 
-    /// Returns the number of images in the cache.
+    /// 返回缓存中的图像数量。
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    /// Returns true if the cache is empty.
+    /// 如果缓存为空则返回 true。
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -326,12 +326,12 @@ impl ImageCache for RetainAllImageCache {
     }
 }
 
-/// Constructs a retain-all image cache that uses the element state associated with the given ID.
+/// 构造一个保留所有的图像缓存，使用与给定 ID 关联的元素状态。
 pub fn retain_all(id: impl Into<ElementId>) -> RetainAllImageCacheProvider {
     RetainAllImageCacheProvider { id: id.into() }
 }
 
-/// A provider struct for creating a retain-all image cache inline
+/// 一个用于内联创建保留所有图像缓存的提供者结构体
 pub struct RetainAllImageCacheProvider {
     id: ElementId,
 }

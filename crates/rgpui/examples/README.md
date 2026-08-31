@@ -1,9 +1,9 @@
-# GPUI Examples
+# RGPUI Examples
 
 Examples can be run from the Zed repository root:
 
 ```sh
-cargo run -p gpui --example hello_world
+cargo run -p rgpui --example hello_world
 ```
 
 ## Feature-gated component examples
@@ -11,9 +11,9 @@ cargo run -p gpui --example hello_world
 These examples require enabling the corresponding rgpui feature:
 
 ```sh
-cargo run -p gpui --example charts --features charts
-cargo run -p gpui --example effects --features effects
-cargo run -p gpui --example qr_code --features qr-code
+cargo run -p rgpui --example charts --features charts
+cargo run -p rgpui --example effects --features effects
+cargo run -p rgpui --example qr_code --features qr-code
 ```
 
 - `charts` demonstrates the chart components (bar, line, pie, donut charts).
@@ -30,7 +30,7 @@ cargo run -p rgpui_story
 
 ## Where to start
 
-- `hello_world` shows the basic shape of a GPUI application: create an
+- `hello_world` shows the basic shape of a RGPUI application: create an
   `Application`, open a window, create a root view, and render a `div`.
 - `input` demonstrates text input, focus, selections, clipboard actions, and
   keyboard bindings.
@@ -62,7 +62,7 @@ cargo run -p rgpui_story
 
 ## Images, drawing, and animation
 
-- `animation` demonstrates GPUI animations and animated SVG transforms.
+- `animation` demonstrates RGPUI animations and animated SVG transforms.
 - `gif_viewer` shows GIF rendering.
 - `gradient` demonstrates linear gradients and color spaces.
 - `image` shows local and remote image loading, image sizing, and asset setup.
@@ -82,7 +82,7 @@ cargo run -p rgpui_story
 
 ## Specialized examples
 
-These examples are useful when working on GPUI itself, but they may not be the
+These examples are useful when working on RGPUI itself, but they may not be the
 best starting point for new applications:
 
 - `active_state_bug` is a focused active-state reproduction.

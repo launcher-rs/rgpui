@@ -367,12 +367,12 @@ pub(crate) fn convert_mouse_position(position: NSPoint, window_height: Pixels) -
     )
 }
 
-/// Stores the cursor style on the active GPUI window and invalidates its cursor rects.
+/// Stores the cursor style on the active RGPUI window and invalidates its cursor rects.
 ///
 /// # Safety
 ///
 /// This function is not thread safe. Callers must ensure this is called on the AppKit main
-/// thread because it reads the active AppKit window and updates GPUI window state associated
+/// thread because it reads the active AppKit window and updates RGPUI window state associated
 /// with Objective-C objects.
 pub(crate) unsafe fn set_active_window_cursor_style(style: CursorStyle) {
     // SAFETY: The caller guarantees AppKit main-thread access. `is_gpui_window` ensures the

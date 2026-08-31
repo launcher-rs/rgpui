@@ -1,11 +1,11 @@
 #![cfg_attr(target_family = "wasm", no_main)]
-//! Example demonstrating GPUI's testing infrastructure.
+//! Example demonstrating RGPUI's testing infrastructure.
 //!
 //! When run normally, this displays an interactive counter window.
-//! The tests below demonstrate various GPUI testing patterns.
+//! The tests below demonstrate various RGPUI testing patterns.
 //!
-//! Run the app: cargo run -p gpui --example testing
-//! Run tests:   cargo test -p gpui --example testing --features test-support
+//! Run the app: cargo run -p rgpui --example testing
+//! Run tests:   cargo test -p rgpui --example testing --features test-support
 
 use rgpui::{
     App, Bounds, Context, FocusHandle, Focusable, Render, Task, Window, WindowBounds,
@@ -218,7 +218,7 @@ mod tests {
     use rand::prelude::*;
     use rgpui::{TestAppContext, VisualTestContext};
 
-    /// Here's a basic GPUI test. Just add the macro and take a TestAppContext as an argument!
+    /// Here's a basic RGPUI test. Just add the macro and take a TestAppContext as an argument!
     ///
     /// Note that synchronous side effects run immediately after your "update*" calls complete.
     #[rgpui::test]
@@ -272,7 +272,7 @@ mod tests {
         );
     }
 
-    /// GPUI tests can also be async, simply add the async keyword before the test.
+    /// RGPUI tests can also be async, simply add the async keyword before the test.
     /// Note that the test executor is single thread, so async side effects (including
     /// background tasks) won't run until you explicitly yield control.
     #[rgpui::test]
@@ -299,7 +299,7 @@ mod tests {
     }
 
     /// Note that the test executor panics if you await a future that waits on
-    /// something outside GPUI's control, like a reading a file or network IO.
+    /// something outside RGPUI's control, like a reading a file or network IO.
     /// You should mock external systems where possible, as this feature can be used
     /// to detect potential deadlocks in your async code.
     ///
@@ -322,7 +322,7 @@ mod tests {
         assert_eq!(result, 42);
     }
 
-    /// GPUI also provides support for property testing, via the iterations flag
+    /// RGPUI also provides support for property testing, via the iterations flag
     #[rgpui::test(iterations = 10)]
     fn test_counter_random_operations(cx: &mut TestAppContext, mut rng: StdRng) {
         let window = cx.update(|cx| {
@@ -356,7 +356,7 @@ mod tests {
         );
     }
 
-    /// Now, all of those tests are good, but GPUI also provides strong support for testing distributed systems.
+    /// Now, all of those tests are good, but RGPUI also provides strong support for testing distributed systems.
     /// Let's setup a mock network and enhance the counter to send messages over it.
     mod distributed_systems {
         use std::sync::{Arc, Mutex};

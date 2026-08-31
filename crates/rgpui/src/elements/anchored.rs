@@ -9,13 +9,12 @@ use crate::{
 #[cfg(feature = "dom-backend")]
 use crate::DomNode;
 
-/// The state that the anchored element element uses to track its children.
+/// 锚定元素用于跟踪其子元素的状态。
 pub struct AnchoredState {
     child_layout_ids: SmallVec<[LayoutId; 4]>,
 }
 
-/// An anchored element that can be used to display UI that
-/// will avoid overflowing the window bounds.
+/// 一个锚定元素，可用于显示会避免超出窗口边界的 UI。
 pub struct Anchored {
     children: SmallVec<[AnyElement; 2]>,
     anchor: Anchor,
@@ -25,8 +24,8 @@ pub struct Anchored {
     offset: Option<Point<Pixels>>,
 }
 
-/// anchored gives you an element that will avoid overflowing the window bounds.
-/// Its children should have no margin to avoid measurement issues.
+/// 创建一个会避免超出窗口边界的锚定元素。
+/// 子元素不应有 margin，以避免测量问题。
 pub fn anchored() -> Anchored {
     Anchored {
         children: SmallVec::new(),
@@ -39,35 +38,35 @@ pub fn anchored() -> Anchored {
 }
 
 impl Anchored {
-    /// Sets which corner of the anchored element should be anchored to the current position.
+    /// 设置锚定元素的哪个角应锚定到当前位置。
     pub fn anchor(mut self, anchor: Anchor) -> Self {
         self.anchor = anchor;
         self
     }
 
-    /// Sets the position in window coordinates
-    /// (otherwise the location the anchored element is rendered is used)
+    /// 设置窗口坐标中的位置
+    /// （否则使用锚定元素渲染的位置）
     pub fn position(mut self, anchor: Point<Pixels>) -> Self {
         self.anchor_position = Some(anchor);
         self
     }
 
-    /// Offset the final position by this amount.
-    /// Useful when you want to anchor to an element but offset from it, such as in PopoverMenu.
+    /// 按指定量偏移最终位置。
+    /// 当需要锚定到某个元素但偏移一定距离时很有用，例如在 PopoverMenu 中。
     pub fn offset(mut self, offset: Point<Pixels>) -> Self {
         self.offset = Some(offset);
         self
     }
 
-    /// Sets the position mode for this anchored element. Local will have this
-    /// interpret its [`Anchored::position`] as relative to the parent element.
-    /// While Window will have it interpret the position as relative to the window.
+    /// 设置此锚定元素的位置模式。Local 模式将
+    /// [`Anchored::position`] 解释为相对于父元素。
+    /// Window 模式将位置解释为相对于窗口。
     pub fn position_mode(mut self, mode: AnchoredPositionMode) -> Self {
         self.position_mode = mode;
         self
     }
 
-    /// Snap to window edge instead of switching anchor corner when an overflow would occur.
+    /// 当溢出发生时，吸附到窗口边缘而不是切换锚定角。
     pub fn snap_to_window(mut self) -> Self {
         self.fit_mode = AnchoredFitMode::SnapToWindow;
         self
@@ -251,23 +250,23 @@ impl IntoElement for Anchored {
     }
 }
 
-/// Which algorithm to use when fitting the anchored element to be inside the window.
+/// 将锚定元素适配到窗口内时使用的算法。
 #[derive(Copy, Clone, PartialEq)]
 pub enum AnchoredFitMode {
-    /// Snap the anchored element to the window edge.
+    /// 将锚定元素吸附到窗口边缘。
     SnapToWindow,
-    /// Snap to window edge and leave some margins.
+    /// 吸附到窗口边缘并保留一定边距。
     SnapToWindowWithMargin(Edges<Pixels>),
-    /// Switch which corner anchor this anchored element is attached to.
+    /// 切换此锚定元素所连接的锚定角。
     SwitchAnchor,
 }
 
-/// Which algorithm to use when positioning the anchored element.
+/// 定位锚定元素时使用的算法。
 #[derive(Copy, Clone, PartialEq)]
 pub enum AnchoredPositionMode {
-    /// Position the anchored element relative to the window.
+    /// 相对于窗口定位锚定元素。
     Window,
-    /// Position the anchored element relative to its parent.
+    /// 相对于父元素定位锚定元素。
     Local,
 }
 

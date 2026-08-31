@@ -1,14 +1,12 @@
-//! Touch gesture recognition vocabulary.
+//! 触控手势识别词表。
 //!
-//! GPUI recognizes gestures from raw [`TouchEvent`](crate::TouchEvent)s in a
-//! single, portable arena in rgpui core: recognizers compete for in-flight
-//! touches, winners claim them, and losers are cancelled. Recognized gestures
-//! are surfaced through *existing* semantic events wherever possible, a tap
-//! becomes [`ClickEvent::Touch`](crate::ClickEvent), a pan becomes
-//! [`ScrollWheelEvent`](crate::ScrollWheelEvent)s carrying a
-//! [`TouchPhase`](crate::TouchPhase), and a pinch becomes
-//! [`PinchEvent`](crate::PinchEvent)s 鈥?so components written against
-//! `on_click` and scroll containers work untouched on mobile.
+//! RGPUI 在 rgpui 核心的单一可移植竞技场中识别来自原始
+//! [`TouchEvent`](crate::TouchEvent) 的手势：识别器竞争进行中的触摸，
+//! 获胜者认领，失败者被取消。识别出的手势尽可能通过*已有*的语义事件呈现，
+//! 点击变为 [`ClickEvent::Touch`](crate::ClickEvent)，平移变为携带
+//! [`TouchPhase`](crate::TouchPhase) 的 [`ScrollWheelEvent`](crate::ScrollWheelEvent)，
+//! 捏合变为 [`PinchEvent`](crate::PinchEvent)，
+//! 因此针对 `on_click` 和滚动容器编写的组件在移动端无需修改即可工作。
 
 use std::time::Duration;
 use web_time::Instant;
@@ -86,27 +84,22 @@ impl OngoingScroll {
     }
 }
 
-/// Feel constants consumed by gesture recognizers. Provided on a best-effort
-/// basis, depending on each platform's support, defaulting to GPUI's own
-/// (iOS flavored) values
+/// 手势识别器使用的体验常量。尽力提供，取决于各平台的支持，
+/// 默认使用 RGPUI 自身（iOS 风格）的值
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GestureTuning {
-    /// Distance a touch may travel before it stops being a potential tap and
-    /// becomes a pan/drag.
+    /// 触摸在不再是潜在点击并变为平移/拖动之前可以移动的距离。
     pub touch_slop: Pixels,
-    /// Maximum interval between taps for them to accumulate a tap count.
+    /// 点击之间累积点击计数的最大间隔。
     pub multi_tap_interval: Duration,
-    /// Maximum distance between taps for them to accumulate a tap count.
+    /// 点击之间累积点击计数的最大距离。
     pub multi_tap_slop: Pixels,
-    /// How long a touch must remain within [`Self::touch_slop`] to be
-    /// recognized as a long press.
+    /// 触摸必须保持在 [`Self::touch_slop`] 范围内多久才会被识别为长按。
     pub long_press_duration: Duration,
-    /// Per-millisecond decay factor applied to scroll momentum after a fling.
-    /// (`UIScrollView` uses `0.998` per millisecond for its normal
-    /// deceleration rate.)
+    /// 在快速滑动后应用于滚动动量的每毫秒衰减因子。
+    /// （`UIScrollView` 使用每毫秒 `0.998` 作为其正常减速率。）
     pub momentum_decay_per_ms: f32,
-    /// Minimum release velocity, in pixels per second, required to start
-    /// scroll momentum.
+    /// 启动滚动动量所需的最小释放速度（像素/秒）。
     pub min_fling_velocity: f32,
 }
 
@@ -123,26 +116,25 @@ impl Default for GestureTuning {
     }
 }
 
-/// The set of gesture kinds that participate in recognition.
+/// 参与识别的手势类型集合。
 ///
-/// Used by [`PlatformGestures::native_recognizers`] to declare which gestures
-/// the platform recognizes natively rather than leaving to rgpui core's
-/// portable recognizers.
+/// 由 [`PlatformGestures::native_recognizers`] 使用，用于声明平台原生识别哪些手势，
+/// 而不是留给 rgpui 核心的可移植识别器处理。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct GestureKinds {
-    /// Tap (and multi-tap), surfaced as [`ClickEvent::Touch`](crate::ClickEvent).
+    /// 点击（和多次点击），通过 [`ClickEvent::Touch`](crate::ClickEvent) 呈现。
     pub tap: bool,
-    /// Long press, surfaced as [`LongPressEvent`].
+    /// 长按，通过 [`LongPressEvent`] 呈现。
     pub long_press: bool,
-    /// Pan/scroll (including fling momentum), surfaced as
-    /// [`ScrollWheelEvent`](crate::ScrollWheelEvent)s.
+    /// 平移/滚动（包括快速滑动动量），通过
+    /// [`ScrollWheelEvent`](crate::ScrollWheelEvent) 呈现。
     pub pan: bool,
-    /// Pinch to zoom, surfaced as [`PinchEvent`](crate::PinchEvent)s.
+    /// 捏合缩放，通过 [`PinchEvent`](crate::PinchEvent) 呈现。
     pub pinch: bool,
 }
 
 impl GestureKinds {
-    /// No gestures; rgpui core's portable recognizers handle everything.
+    /// 无手势；rgpui 核心的可移植识别器处理所有手势。
     pub const NONE: Self = Self {
         tap: false,
         long_press: false,
@@ -150,7 +142,7 @@ impl GestureKinds {
         pinch: false,
     };
 
-    /// All gesture kinds.
+    /// 所有手势类型。
     pub const ALL: Self = Self {
         tap: true,
         long_press: true,
@@ -159,37 +151,34 @@ impl GestureKinds {
     };
 }
 
-/// A long-press gesture, mobile's context-menu trigger.
+/// 长按手势，移动端的右键菜单触发器。
 ///
-/// A bare long press is surfaced as a [`ClickEvent`](crate::ClickEvent) with
-/// `long_press: true`, delivered to aux-click listeners alongside right
-/// clicks. This event is the raw hook for elements that need the gesture
-/// itself (e.g. long-press to start a drag); the registration API ships
-/// together with the gesture arena.
+/// 裸长按通过 [`ClickEvent`](crate::ClickEvent) 以 `long_press: true` 呈现，
+/// 与右键点击一起传递给辅助点击监听器。此事件是需要手势本身的元素的原始钩子
+/// （例如长按开始拖动）；注册 API 与手势竞技场一起提供。
 #[derive(Clone, Debug, Default)]
 pub struct LongPressEvent {
-    /// The position of the touch that was recognized as a long press.
+    /// 被识别为长按的触摸位置。
     pub position: Point<Pixels>,
 }
 
-/// Platform gesture recognition services.
+/// 平台手势识别服务。
 ///
-/// If your mobile platform supports native gesture recognition, use this
-/// to share it with GPUI.
+/// 如果你的移动平台支持原生手势识别，使用此 trait 将其与 RGPUI 共享。
 pub trait PlatformGestures {
-    /// Feel constants for the portable recognizers on this platform.
+    /// 此平台上可移植识别器的体验常量。
     fn tuning(&self) -> GestureTuning {
         GestureTuning::default()
     }
 
-    /// The gesture kinds this platform recognizes natively.
+    /// 此平台原生识别的手势类型。
     fn native_recognizers(&self) -> GestureKinds {
         GestureKinds::NONE
     }
 }
 
-/// A no-op [`PlatformGestures`] implementation: no native recognizers and
-/// default tuning. Suitable for desktop platforms and tests.
+/// 一个空操作的 [`PlatformGestures`] 实现：无原生识别器，使用默认调优。
+/// 适用于桌面平台和测试。
 pub struct NullPlatformGestures;
 
 impl PlatformGestures for NullPlatformGestures {}
