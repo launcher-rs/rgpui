@@ -1161,12 +1161,12 @@ pub struct A11yCallbacks {
     pub deactivation: Box<dyn Fn() + Send + 'static>,
 }
 
+/// 帧请求选项，控制平台何时请求重绘。
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
-#[expect(missing_docs)]
 pub struct RequestFrameOptions {
-    /// Whether a presentation is required.
+    /// 是否需要呈现帧（提交到屏幕）。
     pub require_presentation: bool,
-    /// Force refresh of all rendering states when true.
+    /// 为 `true` 时强制刷新所有渲染状态。
     pub force_render: bool,
 }
 

@@ -3666,15 +3666,12 @@ pub(crate) fn register_tooltip_mouse_handlers(
 
 /// Handles displaying tooltips when an element is hovered.
 ///
-/// The mouse hovering logic also relies on being called from window prepaint in order to handle the
-/// case where the element the tooltip is on is not rendered - in that case its mouse listeners are
-/// also not registered. During window prepaint, the hitbox information is not available, so
-/// `check_is_hovered_during_prepaint` is used which bases the check off of the absolute bounds of
-/// the element.
+/// 处理 tooltip 的鼠标移动事件。
 ///
-/// TODO: There's a minor bug due to the use of absolute bounds while checking during prepaint - it
-/// does not know if the hitbox is occluded. In the case where a tooltip gets displayed and then
-/// gets occluded after display, it will stick around until the mouse exits the hover bounds.
+/// 在 prepaint 阶段（hitbox 信息不可用时），使用 `check_is_hovered_during_prepaint`
+/// 基于元素绝对边界判断是否悬停。由于无法获取 hitbox 信息，此方法无法检测元素是否被
+/// 其他元素遮挡（occluded）。如果 tooltip 显示后被新出现的元素遮挡，tooltip 会持续
+/// 显示直到鼠标移出悬停边界。这是已知的轻微视觉缺陷，修复需要 hitbox 遮挡检测支持。
 fn handle_tooltip_mouse_move(
     active_tooltip: &Rc<RefCell<Option<ActiveTooltip>>>,
     build_tooltip: &Rc<dyn Fn(&mut Window, &mut App) -> Option<(AnyView, bool)>>,
