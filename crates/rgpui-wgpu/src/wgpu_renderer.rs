@@ -130,8 +130,10 @@ impl WgpuResources {
 
 pub struct WgpuRenderer {
     /// Shared GPU context for device recovery coordination (unused on WASM).
+    #[allow(dead_code)]
     context: Option<GpuContext>,
     /// Compositor GPU hint for adapter selection (unused on WASM).
+    #[allow(dead_code)]
     compositor_gpu: Option<CompositorGpuHint>,
     resources: Option<WgpuResources>,
     surface_config: wgpu::SurfaceConfiguration,
