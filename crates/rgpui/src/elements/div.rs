@@ -1972,7 +1972,7 @@ impl Element for Div {
                 BackgroundTag::LinearGradient
                 | BackgroundTag::RadialGradient
                 | BackgroundTag::ConicGradient => {
-                    let count = (background.stop_count as usize).max(1).min(4);
+                    let count = (background.stop_count as usize).clamp(1, 4);
                     let stops = background.colors[..count]
                         .iter()
                         .map(|stop| (stop.color, stop.percentage))

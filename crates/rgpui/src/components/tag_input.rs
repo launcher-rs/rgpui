@@ -260,7 +260,6 @@ impl RenderOnce for TagInput {
                 .children(tags.iter().enumerate().map(|(idx, tag)| {
                     let state_for_remove = state.clone();
                     let on_change = self.on_change.clone();
-                    let disabled = disabled;
 
                     div()
                         .id(SharedString::from(format!("tag-{}", idx)))
@@ -288,7 +287,7 @@ impl RenderOnce for TagInput {
                                         state_for_remove.update(cx, |s, cx| {
                                             s.remove_tag(idx, cx);
                                             if let Some(ref handler) = on_change {
-                                                handler(&s.tags, window, &mut **cx);
+                                                handler(&s.tags, window, cx);
                                             }
                                         });
                                     })
@@ -316,7 +315,7 @@ impl RenderOnce for TagInput {
                                                 state.update(cx, |s, cx| {
                                                     if s.commit_input(window, cx) {
                                                         if let Some(ref handler) = on_change {
-                                                            handler(&s.tags, window, &mut **cx);
+                                                            handler(&s.tags, window, cx);
                                                         }
                                                     }
                                                 });
@@ -327,9 +326,9 @@ impl RenderOnce for TagInput {
                                                     if s.input.read(cx).text().len() == 0
                                                         && !s.tags.is_empty()
                                                     {
-                                                        s.remove_last_tag(cx);
+                                                         s.remove_last_tag(cx);
                                                         if let Some(ref handler) = on_change {
-                                                            handler(&s.tags, window, &mut **cx);
+                                                            handler(&s.tags, window, cx);
                                                         }
                                                         cx.stop_propagation();
                                                     }

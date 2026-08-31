@@ -25,7 +25,6 @@ pub fn scap_screen_sources(
 /// 屏幕捕获的第一帧用于确定流的大小。
 ///
 /// 在 Wayland（Linux）上，提示用户选择目标，并为其选择填充单个屏幕捕获源。
-
 struct ScapCaptureSource {
     target: scap::Display,
     size: Size<DevicePixels>,

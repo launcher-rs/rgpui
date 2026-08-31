@@ -218,7 +218,7 @@ impl RenderOnce for CodeBlock {
 }
 
 /// 对一行代码做简易分词（注释/字符串/数字/关键字/普通文本）。
-fn tokenize<'a>(line: &'a str, is_rust: bool) -> Vec<(TokenKind, &'a str)> {
+fn tokenize(line: &str, is_rust: bool) -> Vec<(TokenKind, &str)> {
     let mut tokens = Vec::new();
     let bytes = line.as_bytes();
     let len = bytes.len();

@@ -3193,7 +3193,7 @@ impl Window {
         if let Some(builder) = &mut self.dom_builder {
             static DOM_FRAME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let f = DOM_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if f % 20 == 0 {
+            if f.is_multiple_of(20) {
                 log::info!("DOM_FRAME {}", f);
             }
             let tree = builder.finish();

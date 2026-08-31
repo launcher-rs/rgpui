@@ -459,14 +459,13 @@ impl TreeState {
 impl Render for TreeState {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let render_item = self.render_item.clone();
-        let state = cx.entity().clone();
+        let state = cx.entity();
 
         div()
             .id("tree-state")
             .size_full()
             .relative()
             .context_menu({
-                let state = state.clone();
                 move |menu, window, cx: &mut Context<PopupMenu>| {
                     if state.read(cx).context_menu_builder.is_none() {
                         return menu;
