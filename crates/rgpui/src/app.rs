@@ -415,8 +415,9 @@ impl SystemWindowTabController {
             .find_map(|(group, tabs)| tabs.iter().find(|tab| tab.id == id).map(|_| group));
 
         let current_group = current_group?;
-        // TODO: `.keys()` returns arbitrary order, what does "next" mean?
+        // 按 group_id 排序确保稳定的循环顺序
         let mut group_ids: Vec<_> = controller.tab_groups.keys().collect();
+        group_ids.sort();
         let idx = group_ids.iter().position(|g| *g == current_group)?;
         let next_idx = (idx + 1) % group_ids.len();
 
@@ -440,8 +441,9 @@ impl SystemWindowTabController {
             .find_map(|(group, tabs)| tabs.iter().find(|tab| tab.id == id).map(|_| group));
 
         let current_group = current_group?;
-        // TODO: `.keys()` returns arbitrary order, what does "previous" mean?
+        // 按 group_id 排序确保稳定的循环顺序
         let mut group_ids: Vec<_> = controller.tab_groups.keys().collect();
+        group_ids.sort();
         let idx = group_ids.iter().position(|g| *g == current_group)?;
         let prev_idx = if idx == 0 {
             group_ids.len() - 1

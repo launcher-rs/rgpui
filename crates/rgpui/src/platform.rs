@@ -302,31 +302,50 @@ pub enum WindowPosition {
     },
 }
 
-#[expect(missing_docs)]
+/// 跨平台应用抽象层，由各平台 crate（rgpui-windows、rgpui-macos、rgpui-linux、rgpui-web）实现。
+///
+/// 提供应用生命周期、窗口管理、系统集成（托盘、快捷键、通知、电源等）的统一接口。
+/// 应用通过 [`rgpui_platform::application()`] 获取实现此 trait 的实例。
 pub trait Platform: 'static {
+    /// 返回后台线程执行器，用于调度异步任务。
     fn background_executor(&self) -> BackgroundExecutor;
+    /// 返回主线程执行器，用于调度需要在 UI 线程运行的任务。
     fn foreground_executor(&self) -> ForegroundExecutor;
+    /// 返回文本渲染系统实例，负责字体加载、文本布局和渲染。
     fn text_system(&self) -> Arc<dyn PlatformTextSystem>;
 
+    /// 启动应用主循环，`on_finish_launching` 在启动完成后回调。
     fn run(&self, on_finish_launching: Box<dyn 'static + FnOnce()>);
+    /// 退出应用进程。
     fn quit(&self);
+    /// 重启应用，可选指定新的二进制路径。
     fn restart(&self, binary_path: Option<PathBuf>);
+    /// 激活应用（将窗口置于前台），`ignoring_other_apps` 在 macOS 下是否忽略其他应用。
     fn activate(&self, ignoring_other_apps: bool);
+    /// 隐藏应用（macOS 下隐藏所有窗口，其他平台最小化）。
     fn hide(&self);
+    /// 隐藏当前应用以外的所有其他应用的窗口。
     fn hide_other_apps(&self);
+    /// 取消隐藏所有被 `hide_other_apps` 隐藏的应用。
     fn unhide_other_apps(&self);
 
+    /// 返回所有可用显示器的列表。
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>>;
+    /// 返回主显示器（包含任务栏/菜单栏的显示器）。
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>>;
+    /// 返回当前获得焦点的窗口句柄。
     fn active_window(&self) -> Option<AnyWindowHandle>;
+    /// 返回窗口栈（Z-order），从最顶层到最底层。
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>> {
         None
     }
 
+    /// 当前平台是否支持屏幕捕获功能。
     fn is_screen_capture_supported(&self) -> bool {
         false
     }
 
+    /// 获取可用的屏幕捕获源列表（屏幕/窗口），通过 oneshot channel 异步返回。
     fn screen_capture_sources(
         &self,
     ) -> oneshot::Receiver<anyhow::Result<Vec<Rc<dyn ScreenCaptureSource>>>> {
@@ -339,48 +358,65 @@ pub trait Platform: 'static {
         sources_rx
     }
 
+    /// 根据窗口参数创建平台原生窗口，返回 `PlatformWindow` 实例。
     fn open_window(
         &self,
         handle: AnyWindowHandle,
         options: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>>;
 
-    /// Returns the appearance of the application's windows.
+    /// 返回应用窗口的外观模式（亮色/暗色）。
     fn window_appearance(&self) -> WindowAppearance;
 
-    /// Returns the window button layout configuration when supported.
+    /// 返回窗口按钮布局配置（如 macOS 红绿灯位置、Windows 按钮顺序）。
     fn button_layout(&self) -> Option<WindowButtonLayout> {
         None
     }
 
+    /// 在系统默认浏览器中打开 URL。
     fn open_url(&self, url: &str);
+    /// 注册 URL scheme 回调，当应用通过自定义 URL scheme 打开时触发。
     fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>);
+    /// 注册自定义 URL scheme（如 `myapp://`），使系统将该 scheme 的 URL 分发到本应用。
     fn register_url_scheme(&self, url: &str) -> Task<Result<()>>;
 
+    /// 打开文件选择对话框，返回用户选择的文件路径列表。
     fn prompt_for_paths(
         &self,
         options: PathPromptOptions,
     ) -> oneshot::Receiver<Result<Option<Vec<PathBuf>>>>;
+    /// 打开文件保存对话框，返回用户指定的保存路径。
     fn prompt_for_new_path(
         &self,
         directory: &Path,
         suggested_name: Option<&str>,
     ) -> oneshot::Receiver<Result<Option<PathBuf>>>;
+    /// 文件选择对话框是否支持同时选择文件和目录。
     fn can_select_mixed_files_and_dirs(&self) -> bool;
+    /// 在系统文件管理器中显示（reveal）指定路径。
     fn reveal_path(&self, path: &Path);
+    /// 使用系统默认应用打开指定路径。
     fn open_with_system(&self, path: &Path);
 
+    /// 注册应用退出时的回调。
     fn on_quit(&self, callback: Box<dyn FnMut()>);
+    /// 注册应用从后台恢复（macOS Dock 图标点击）时的回调。
     fn on_reopen(&self, callback: Box<dyn FnMut()>);
 
+    /// 设置应用菜单栏（macOS 为全局菜单栏，其他平台为窗口菜单）。
     fn set_menus(&self, menus: Vec<Menu>, keymap: &Keymap);
+    /// 获取当前应用菜单的副本。
     fn get_menus(&self) -> Option<Vec<OwnedMenu>> {
         None
     }
 
+    /// 设置 macOS Dock 栏右键菜单。
     fn set_dock_menu(&self, menu: Vec<MenuItem>, keymap: &Keymap);
+    /// 执行 Dock 菜单中的操作。
     fn perform_dock_menu_action(&self, _action: usize) {}
+    /// 将路径添加到最近打开文档列表。
     fn add_recent_document(&self, _path: &Path) {}
+    /// 更新 Windows 跳转列表（任务栏右键菜单中的最近文档）。
     fn update_jump_list(
         &self,
         _menus: Vec<MenuItem>,
@@ -388,137 +424,173 @@ pub trait Platform: 'static {
     ) -> Task<Vec<SmallVec<[PathBuf; 2]>>> {
         Task::ready(Vec::new())
     }
+    /// 注册应用菜单操作回调，当用户点击菜单项时触发。
     fn on_app_menu_action(&self, callback: Box<dyn FnMut(&dyn Action)>);
+    /// 注册菜单即将打开时的回调（可用于动态更新菜单项状态）。
     fn on_will_open_app_menu(&self, callback: Box<dyn FnMut()>);
+    /// 注册菜单命令验证回调，返回 `false` 可禁用菜单项。
     fn on_validate_app_menu_command(&self, callback: Box<dyn FnMut(&dyn Action) -> bool>);
 
+    /// 返回系统热状态（正常、警告、临界）。
     fn thermal_state(&self) -> ThermalState;
+    /// 注册系统热状态变化回调。
     fn on_thermal_state_change(&self, callback: Box<dyn FnMut()>);
 
+    /// 返回合成器名称（如 "dwm"、"mutter"），用于诊断。
     fn compositor_name(&self) -> &'static str {
         ""
     }
+    /// 返回应用自身可执行文件的路径。
     fn app_path(&self) -> Result<PathBuf>;
+    /// 返回辅助可执行文件的路径（如子进程、插件）。
     fn path_for_auxiliary_executable(&self, name: &str) -> Result<PathBuf>;
 
+    /// 设置鼠标光标样式（箭头、手型、文本光标等）。
     fn set_cursor_style(&self, style: CursorStyle);
 
-    /// Hides the mouse cursor until the user moves the mouse over one of
-    /// this application's windows.
+    /// 隐藏鼠标光标，直到用户移动鼠标时自动恢复显示。
     fn hide_cursor_until_mouse_moves(&self);
 
-    /// Returns whether the mouse cursor is currently visible.
+    /// 返回鼠标光标当前是否可见。
     fn is_cursor_visible(&self) -> bool;
 
+    /// 是否自动隐藏滚动条（鼠标靠近时才显示）。
     fn should_auto_hide_scrollbars(&self) -> bool;
 
+    /// 从系统剪贴板读取内容。
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
+    /// 写入内容到系统剪贴板。
     fn write_to_clipboard(&self, item: ClipboardItem);
 
+    /// 从 Linux/X11 主选择区（Primary Selection）读取内容。
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     fn read_from_primary(&self) -> Option<ClipboardItem>;
+    /// 写入内容到 Linux/X11 主选择区。
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     fn write_to_primary(&self, item: ClipboardItem);
 
+    /// 从 macOS 查找粘贴板（Find Pasteboard）读取内容。
     #[cfg(target_os = "macos")]
     fn read_from_find_pasteboard(&self) -> Option<ClipboardItem>;
+    /// 写入内容到 macOS 查找粘贴板。
     #[cfg(target_os = "macos")]
-    fn write_to_find_pasteboard(&self, item: ClipboardItem);
+    fn write_from_find_pasteboard(&self, item: ClipboardItem);
 
+    /// 将凭据（URL、用户名、密码）写入系统密钥链。
     fn write_credentials(&self, url: &str, username: &str, password: &[u8]) -> Task<Result<()>>;
+    /// 从系统密钥链读取指定 URL 的凭据。
     fn read_credentials(&self, url: &str) -> Task<Result<Option<(String, Vec<u8>)>>>;
+    /// 从系统密钥链删除指定 URL 的凭据。
     fn delete_credentials(&self, url: &str) -> Task<Result<()>>;
 
+    /// 返回当前键盘布局信息。
     fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout>;
+    /// 返回键盘映射器，用于将原始按键事件转换为字符输入。
     fn keyboard_mapper(&self) -> Rc<dyn PlatformKeyboardMapper>;
+    /// 注册键盘布局变化回调（用户切换输入法/布局时触发）。
     fn on_keyboard_layout_change(&self, callback: Box<dyn FnMut()>);
 
-    // ---- 系统托盘 ----
+    /// 设置系统托盘图标、菜单和按键绑定。
     fn set_tray(&self, _tray: Tray, _menus: Option<Vec<MenuItem>>, _keymap: &Keymap) {}
+    /// 更新系统托盘图标，`None` 表示移除图标。
     fn set_tray_icon(&self, _icon: Option<&[u8]>) {}
+    /// 更新系统托盘右键菜单。
     fn set_tray_menu(&self, _menu: Vec<TrayMenuItem>) {}
+    /// 设置鼠标悬停在托盘图标上时显示的工具提示文本。
     fn set_tray_tooltip(&self, _tooltip: &str) {}
+    /// 设置托盘面板模式（Windows 下影响图标的显示行为）。
     fn set_tray_panel_mode(&self, _enabled: bool) {}
+    /// 返回系统托盘图标在屏幕上的边界矩形。
     fn get_tray_icon_bounds(&self) -> Option<Bounds<Pixels>> {
         None
     }
+    /// 注册托盘图标事件回调（单击、双击、右键等）。
     fn on_tray_icon_event(&self, _callback: Box<dyn FnMut(TrayIconEvent)>) {}
+    /// 注册托盘菜单项操作回调。
     fn on_tray_menu_action(&self, _callback: Box<dyn FnMut(SharedString)>) {}
 
-    // ---- 窗口生命周期 ----
+    /// 设置是否在所有窗口关闭后保持应用运行（仅显示托盘图标）。
     fn set_keep_alive_without_windows(&self, _keep_alive: bool) {}
 
-    // ---- 全局快捷键 ----
+    /// 注册全局系统快捷键，`id` 用于标识快捷键，`keystroke` 定义按键组合。
     fn register_global_hotkey(&self, _id: u32, _keystroke: &Keystroke) -> Result<()> {
         Ok(())
     }
+    /// 取消注册全局系统快捷键。
     fn unregister_global_hotkey(&self, _id: u32) {}
+    /// 注册全局快捷键触发回调，`id` 对应注册时的标识。
     fn on_global_hotkey(&self, _callback: Box<dyn FnMut(u32)>) {}
 
-    // ---- 通知 ----
+    /// 显示系统通知，返回 `Ok(())` 表示通知已发送。
     fn show_notification(&self, _title: &str, _body: &str) -> Result<()> {
         Ok(())
     }
 
-    // ---- 开机自启动 ----
+    /// 设置开机自启动，`app_id` 为应用唯一标识。
     fn set_auto_launch(&self, _app_id: &str, _enabled: bool) -> Result<()> {
         Ok(())
     }
+    /// 查询开机自启动是否已启用。
     fn is_auto_launch_enabled(&self, _app_id: &str) -> bool {
         false
     }
 
-    // ---- 聚焦窗口 ----
+    /// 返回当前系统中获得焦点的窗口信息（标题、进程名等）。
     fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
         None
     }
 
-    // ---- 辅助功能 ----
+    /// 返回辅助功能（Accessibility）权限状态。
     fn accessibility_status(&self) -> PermissionStatus {
         PermissionStatus::Unavailable
     }
+    /// 请求辅助功能权限（macOS 需要用户授权）。
     fn request_accessibility_permission(&self) {}
 
-    // ---- 麦克风 ----
+    /// 返回麦克风权限状态。
     fn microphone_status(&self) -> PermissionStatus {
         PermissionStatus::Unavailable
     }
+    /// 请求麦克风权限，`callback` 收到授权结果。
     fn request_microphone_permission(&self, _callback: Box<dyn FnOnce(bool)>) {}
 
-    // ---- 系统电源 ----
+    /// 注册系统电源事件回调（电池状态变化、电源插拔等）。
     fn on_system_power_event(&self, _callback: Box<dyn FnMut(SystemPowerEvent)>) {}
 
-    /// 注册系统唤醒时的回调函数
+    /// 注册系统唤醒时的回调函数。
     fn on_system_wake(&self, _callback: Box<dyn FnMut()>) {}
 
-    // ---- 电源阻止 ----
+    /// 启动电源节省阻止器（阻止系统进入睡眠），返回阻止器 ID。
     fn start_power_save_blocker(&self, _kind: PowerSaveBlockerKind) -> Option<u32> {
         None
     }
+    /// 停止指定的电源节省阻止器。
     fn stop_power_save_blocker(&self, _id: u32) {}
 
-    // ---- 系统空闲 ----
+    /// 返回系统空闲时间（自上次用户输入以来的时长）。
     fn system_idle_time(&self) -> Option<Duration> {
         None
     }
 
-    // ---- 网络 ----
+    /// 返回当前网络连接状态。
     fn network_status(&self) -> NetworkStatus {
         NetworkStatus::Connected
     }
+    /// 注册网络状态变化回调（在线/离线/连接变化）。
     fn on_network_status_change(&self, _callback: Box<dyn FnMut(NetworkStatus)>) {}
 
-    // ---- 媒体键 ----
+    /// 注册媒体键事件回调（播放/暂停/音量等）。
     fn on_media_key_event(&self, _callback: Box<dyn FnMut(MediaKeyEvent)>) {}
 
-    // ---- 用户注意力 ----
+    /// 请求用户注意力（macOS Dock 图标弹跳、Windows 任务栏闪烁）。
     fn request_user_attention(&self, _attention_type: AttentionType) {}
+    /// 取消用户注意力请求。
     fn cancel_user_attention(&self) {}
 
-    // ---- Dock 徽章 ----
+    /// 设置 macOS Dock 标签徽章文本（如未读消息数）。
     fn set_dock_badge(&self, _label: Option<&str>) {}
 
-    // ---- 上下文菜单 ----
+    /// 在指定位置显示右键上下文菜单。
     fn show_context_menu(
         &self,
         _position: Point<Pixels>,
@@ -527,14 +599,14 @@ pub trait Platform: 'static {
     ) {
     }
 
-    // ---- 原生对话框 ----
+    /// 显示系统原生对话框（如确认、警告等），返回用户选择的按钮索引。
     fn show_dialog(&self, _options: DialogOptions) -> oneshot::Receiver<usize> {
         let (tx, rx) = oneshot::channel();
         let _ = tx.send(0);
         rx
     }
 
-    // ---- 操作系统信息 ----
+    /// 返回操作系统信息（名称、版本号）。
     fn os_info(&self) -> OsInfo {
         OsInfo {
             name: String::new(),
@@ -542,10 +614,11 @@ pub trait Platform: 'static {
         }
     }
 
-    // ---- 生物识别 ----
+    /// 返回生物识别（指纹/面容 ID）硬件状态。
     fn biometric_status(&self) -> BiometricStatus {
         BiometricStatus::Unavailable
     }
+    /// 触发生物识别认证，`reason` 为提示文本，`callback` 收到认证结果。
     fn authenticate_biometric(&self, _reason: &str, _callback: Box<dyn FnOnce(bool)>) {}
 }
 
@@ -1097,21 +1170,37 @@ pub struct RequestFrameOptions {
     pub force_render: bool,
 }
 
-#[expect(missing_docs)]
+/// 平台原生窗口抽象，由各平台 crate 实现，提供窗口管理、输入、渲染等能力。
+///
+/// 通过 [`Platform::open_window`] 创建实例，通过 [`PlatformWindow`] trait 与窗口交互。
 pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
+    /// 返回窗口在屏幕上的边界矩形（包含标题栏和边框）。
     fn bounds(&self) -> Bounds<Pixels>;
+    /// 窗口是否处于最大化状态。
     fn is_maximized(&self) -> bool;
+    /// 返回窗口当前边界状态（窗口化/最大化/全屏）。
     fn window_bounds(&self) -> WindowBounds;
+    /// 返回窗口内容区域的尺寸（不含标题栏和边框）。
     fn content_size(&self) -> Size<Pixels>;
+    /// 调整窗口内容区域的尺寸。
     fn resize(&mut self, size: Size<Pixels>);
+    /// 返回窗口的显示缩放因子（如 1.0、1.5、2.0）。
     fn scale_factor(&self) -> f32;
+    /// 返回窗口当前的外观模式（亮色/暗色）。
     fn appearance(&self) -> WindowAppearance;
+    /// 返回窗口所在的显示器。
     fn display(&self) -> Option<Rc<dyn PlatformDisplay>>;
+    /// 返回鼠标光标在窗口内的位置。
     fn mouse_position(&self) -> Point<Pixels>;
+    /// 返回当前修饰键状态（Ctrl/Shift/Alt/Command）。
     fn modifiers(&self) -> Modifiers;
+    /// 返回 Caps Lock 锁定状态。
     fn capslock(&self) -> Capslock;
+    /// 设置输入处理器，用于处理 IME（输入法）组合文本。
     fn set_input_handler(&mut self, input_handler: PlatformInputHandler);
+    /// 取出并返回当前输入处理器（take 语义）。
     fn take_input_handler(&mut self) -> Option<PlatformInputHandler>;
+    /// 显示模态提示对话框，返回用户选择的按钮索引。
     fn prompt(
         &self,
         level: PromptLevel,
@@ -1119,30 +1208,55 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         detail: Option<&str>,
         answers: &[PromptButton],
     ) -> Option<oneshot::Receiver<usize>>;
+    /// 将窗口置于前台并获得焦点。
     fn activate(&self);
+    /// 窗口是否当前处于活动（获得焦点）状态。
     fn is_active(&self) -> bool;
+    /// 鼠标光标是否悬停在窗口上方。
     fn is_hovered(&self) -> bool;
+    /// 返回窗口背景外观（透明/不透明/毛玻璃）。
     fn background_appearance(&self) -> WindowBackgroundAppearance;
+    /// 设置窗口标题文本。
     fn set_title(&mut self, title: &str);
+    /// 设置窗口背景外观模式。
     fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance);
+    /// 最小化窗口。
     fn minimize(&self);
+    /// 最大化窗口（macOS 下为缩放/zoom）。
     fn zoom(&self);
+    /// 切换全屏状态。
     fn toggle_fullscreen(&self);
+    /// 窗口是否处于全屏状态。
     fn is_fullscreen(&self) -> bool;
+    /// 注册帧请求回调，平台在需要重绘时调用。
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions)>);
+    /// 注册输入事件回调，处理键盘、鼠标、触摸等事件。
     fn on_input(&self, callback: Box<dyn FnMut(PlatformInput) -> DispatchEventResult>);
+    /// 注册窗口活动状态变化回调（获得/失去焦点时触发）。
     fn on_active_status_change(&self, callback: Box<dyn FnMut(bool)>);
+    /// 注册鼠标悬停状态变化回调（进入/离开窗口时触发）。
     fn on_hover_status_change(&self, callback: Box<dyn FnMut(bool)>);
+    /// 注册窗口尺寸变化回调，参数为新尺寸和缩放因子。
     fn on_resize(&self, callback: Box<dyn FnMut(Size<Pixels>, f32)>);
+    /// 注册窗口位置变化回调。
     fn on_moved(&self, callback: Box<dyn FnMut()>);
+    /// 注册窗口关闭请求回调，返回 `false` 可阻止关闭。
     fn on_should_close(&self, callback: Box<dyn FnMut() -> bool>);
+    /// 注册窗口控件区域命中测试回调（用于自定义标题栏拖拽区域）。
     fn on_hit_test_window_control(&self, callback: Box<dyn FnMut() -> Option<WindowControlArea>>);
+    /// 注册窗口关闭回调，窗口关闭时调用。
     fn on_close(&self, callback: Box<dyn FnOnce()>);
+    /// 注册窗口外观变化回调（系统切换亮色/暗色主题时触发）。
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>);
+    /// 注册窗口按钮布局变化回调（macOS 全屏按钮位置变化等）。
     fn on_button_layout_changed(&self, _callback: Box<dyn FnMut()>) {}
+    /// 将渲染场景提交到窗口进行绘制。
     fn draw(&self, scene: &Scene);
+    /// 通知平台当前帧已完成渲染。
     fn completed_frame(&self) {}
+    /// 返回精灵图集（用于图标、表情符号等位图渲染）。
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas>;
+    /// 是否支持亚像素渲染（ClearType 文本渲染）。
     fn is_subpixel_rendering_supported(&self) -> bool;
 
     /// 该平台窗口是否支持 Web DOM 后端。
@@ -1179,113 +1293,143 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn on_dom_scroll(&self, _callback: Box<dyn FnMut(Vec<crate::DomNodeKey>, f64, f64)>) {}
 
     // macOS specific methods
+    /// 返回窗口标题文本。
     fn get_title(&self) -> String {
         String::new()
     }
+    /// 返回当前窗口的标签页组（macOS 标签页功能）。
     fn tabbed_windows(&self) -> Option<Vec<SystemWindowTab>> {
         None
     }
+    /// 标签页栏是否可见。
     fn tab_bar_visible(&self) -> bool {
         false
     }
+    /// 标记文档是否已编辑（macOS 窗口标题栏红点标记）。
     fn set_edited(&mut self, _edited: bool) {}
+    /// 设置文档路径（macOS 标题栏显示文件名）。
     fn set_document_path(&self, _path: Option<&std::path::Path>) {}
+    /// 设置 macOS 红绿灯按钮位置。
     #[cfg(target_os = "macos")]
     fn set_traffic_light_position(&self, _position: Point<Pixels>) {}
+    /// 显示系统字符面板（emoji、特殊符号）。
     fn show_character_palette(&self) {}
+    /// 处理标题栏双击事件（可自定义行为，如最大化/缩放）。
     fn titlebar_double_click(&self, _is_resizable: bool, _is_minimizable: bool) {}
+    /// 注册"将标签页移至新窗口"回调。
     fn on_move_tab_to_new_window(&self, _callback: Box<dyn FnMut()>) {}
+    /// 注册"合并所有窗口"回调。
     fn on_merge_all_windows(&self, _callback: Box<dyn FnMut()>) {}
+    /// 注册"切换到上一个标签页"回调。
     fn on_select_previous_tab(&self, _callback: Box<dyn FnMut()>) {}
+    /// 注册"切换到下一个标签页"回调。
     fn on_select_next_tab(&self, _callback: Box<dyn FnMut()>) {}
+    /// 注册"切换标签页栏可见性"回调。
     fn on_toggle_tab_bar(&self, _callback: Box<dyn FnMut()>) {}
+    /// 合并所有窗口为一个窗口的标签页。
     fn merge_all_windows(&self) {}
+    /// 将当前标签页移至新窗口。
     fn move_tab_to_new_window(&self) {}
+    /// 切换标签页总览视图（macOS Exposé 风格）。
     fn toggle_window_tab_overview(&self) {}
+    /// 设置窗口的 tabbing identifier（控制标签页分组）。
     fn set_tabbing_identifier(&self, _identifier: Option<String>) {}
 
+    /// 返回窗口的原始 HWND 句柄（仅 Windows）。
     #[cfg(target_os = "windows")]
     fn get_raw_handle(&self) -> windows::Win32::Foundation::HWND;
 
-    // Linux specific methods
+    /// 返回窗口的内部边界（Linux 下包含 CSD 装饰区域）。
     fn inner_window_bounds(&self) -> WindowBounds {
         self.window_bounds()
     }
+    /// 请求设置窗口装饰模式（客户端装饰/服务端装饰）。
     fn request_decorations(&self, _decorations: WindowDecorations) {}
+    /// 在指定位置显示窗口系统菜单（Linux 右键标题栏）。
     fn show_window_menu(&self, _position: Point<Pixels>) {}
+    /// 启动窗口拖拽移动（Linux CSD 模式下从自定义标题栏触发）。
     fn start_window_move(&self) {}
+    /// 启动窗口边缘调整大小（Linux CSD 模式下从自定义边框触发）。
     fn start_window_resize(&self, _edge: ResizeEdge) {}
+    /// 设置窗口输入区域（指定哪些区域接收鼠标事件，其余区域穿透）。
     fn set_input_region(&self, _region: Option<&[Bounds<Pixels>]>) {}
+    /// 返回当前窗口装饰类型（客户端/服务端/无装饰）。
     fn window_decorations(&self) -> Decorations {
         Decorations::Server
     }
+    /// 设置 Wayland app_id（用于窗口标识和桌面集成）。
     fn set_app_id(&mut self, _app_id: &str) {}
+    /// 映射窗口（X11 下将窗口显示到屏幕）。
     fn map_window(&mut self) -> anyhow::Result<()> {
         Ok(())
     }
+    /// 返回窗口控件信息（最小化/最大化/关闭按钮位置）。
     fn window_controls(&self) -> WindowControls {
         WindowControls::default()
     }
+    /// 设置客户端区域的内边距（Wayland layer-shell 排除区域）。
     fn set_client_inset(&self, _inset: Pixels) {}
+    /// 返回 GPU 硬件信息（设备名称、显存等）。
     fn gpu_specs(&self) -> Option<GpuSpecs>;
 
+    /// 更新输入法（IME）候选框的位置。
     fn update_ime_position(&self, _bounds: Bounds<Pixels>);
 
+    /// 播放系统提示音。
     fn play_system_bell(&self) {}
 
-    /// Initialize the accessibility adapter with callbacks.
+    /// 初始化辅助功能适配器，注册辅助功能回调。
     fn a11y_init(&self, _callbacks: A11yCallbacks) {}
 
-    /// Provide a TreeUpdate to the accessibility adapter.
+    /// 向辅助功能适配器提供无障碍树更新数据（accesskit）。
     fn a11y_tree_update(&self, _tree_update: accesskit::TreeUpdate) {}
 
-    /// Inform the adapter of updated window bounds.
+    /// 通知辅助功能适配器窗口边界已更新。
     fn a11y_update_window_bounds(&self) {}
 
+    /// 使用指定场景渲染到 RGBA 图像纹理（仅测试用途）。
     #[cfg(any(test, feature = "test-support"))]
     fn as_test(&mut self) -> Option<&mut TestWindow> {
         None
     }
 
-    /// Renders the given scene to a texture and returns the pixel data as an RGBA image.
-    /// This does not present the frame to screen - useful for visual testing where we want
-    /// to capture what would be rendered without displaying it or requiring the window to be visible.
+    /// 将给定场景渲染到纹理并返回 RGBA 像素数据（仅测试用途）。
+    /// 不会将帧呈现到屏幕，用于视觉测试。
     #[cfg(any(test, feature = "test-support"))]
     fn render_to_image(&self, _scene: &Scene) -> Result<RgbaImage> {
         anyhow::bail!("render_to_image not implemented for this platform")
     }
 
-    // ---- 窗口扩展区域（Wayland layer-shell） ----
+    /// 设置 Wayland layer-shell 独占区域大小（像素）。
     fn set_exclusive_zone(&self, _zone: Pixels) {}
+    /// 设置 Wayland layer-shell 独占边缘（顶部/底部/左侧/右侧）。
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     fn set_exclusive_edge(&self, _edge: layer_shell::Anchor) {}
 
-    // ---- 用户注意力 ----
+    /// 请求用户注意力（任务栏闪烁/弹跳，提示用户查看窗口）。
     fn request_attention(&self) {}
 
-    // ---- 窗口位置 ----
+    /// 设置窗口在屏幕上的位置。
     fn set_position(&mut self, _position: Point<Pixels>) {}
 
-    // ---- 窗口隐藏/显示 ----
+    /// 隐藏窗口（从任务栏移除，托盘模式下使用）。
     fn hide(&self) {}
 
-    // ---- 鼠标穿透 ----
+    /// 设置鼠标事件是否穿透窗口（桌面宠物/覆盖层场景）。
     fn set_mouse_passthrough(&self, _passthrough: bool) {}
 
-    // ---- 窗口扩展样式（仅 Windows） ----
+    /// 返回 Windows 窗口扩展样式（WS_EX_* 标志位）。
     fn window_extended_style(&self) -> u32 {
         0
     }
+    /// 设置 Windows 窗口扩展样式。
     fn set_window_extended_style(&self, _style: u32) {}
 
-    // ---- 标题栏可见性 ----
+    /// 设置标题栏是否可见（控制自定义标题栏/原生标题栏切换）。
     fn set_titlebar_visible(&self, _visible: bool) {}
 
-    // ---- 输入框原生内容类型（macOS 输入法提示） ----
-    ///
-    /// 设置窗口输入视图的语义内容类型（如 `password`、`email` 等），
-    /// 供系统输入法/自动填充识别。macOS 通过 `NSTextContent` 协议实现，
-    /// 其他平台为空操作。
+    /// 设置输入框的语义内容类型（如 `password`、`email`），
+    /// 供系统输入法/自动填充识别。macOS 通过 `NSTextContent` 实现，其他平台为空操作。
     fn set_text_content_type(&self, _content_type: Option<&'static str>) {}
 }
 

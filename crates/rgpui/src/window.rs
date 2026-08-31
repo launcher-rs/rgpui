@@ -1321,13 +1321,20 @@ pub(crate) struct ElementStateBox {
 }
 
 fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> WindowBounds {
-    // TODO, BUG: if you open a window with the currently active window
-    // on the stack, this will erroneously fallback to `None`
-    //
-    // TODO these should be the initial window bounds not considering maximized/fullscreen
+    // 获取当前活动窗口的初始边界（不含最大化/全屏状态），用于级联定位新窗口
     let active_window_bounds = cx
         .active_window()
-        .and_then(|w| w.update(cx, |_, window, _| window.window_bounds()).ok());
+        .and_then(|w| {
+            w.update(cx, |_, window, _| {
+                // 优先使用初始边界，避免最大化/全屏状态影响级联位置
+                match window.window_bounds() {
+                    WindowBounds::Maximized(_) | WindowBounds::Fullscreen(_) => None,
+                    bounds => Some(bounds),
+                }
+            })
+            .ok()
+        })
+        .flatten();
 
     const CASCADE_OFFSET: f32 = 25.0;
 
