@@ -23,7 +23,6 @@ smallvec = { workspace = true }
 rgpui-wgpu = { workspace = true, optional = true }
 
 [dev-dependencies]
-rgpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
 pollster = { workspace = true }
 smol = { workspace = true }
 rfd = "0.15"
