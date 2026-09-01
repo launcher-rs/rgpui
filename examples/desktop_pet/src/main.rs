@@ -38,7 +38,6 @@ use rgpui::{
     WindowOptions,              // 窗口创建选项
     div,                        // div 布局元素
     img,                        // 图片元素
-    point,                      // 创建 Point 的宏
     prelude::*,                 // 导入常用 trait 和类型
     px,                         // 创建 Pixels 的宏
     rgb,                        // 创建 RGB 颜色的宏

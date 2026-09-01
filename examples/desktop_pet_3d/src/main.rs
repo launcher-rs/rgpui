@@ -122,6 +122,7 @@ fn is_key_pressed(vk: i32) -> bool {
 #[link(name = "X11")]
 unsafe extern "C" {
     fn XOpenDisplay(display_name: *const std::ffi::c_char) -> *mut std::ffi::c_void;
+    #[allow(dead_code)]
     fn XCloseDisplay(display: *mut std::ffi::c_void) -> std::ffi::c_int;
     fn XQueryKeymap(display: *mut std::ffi::c_void, keys_return: *mut u8) -> std::ffi::c_int;
     fn XKeysymToKeycode(display: *mut std::ffi::c_void, keysym: u64) -> u32;
