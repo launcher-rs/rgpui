@@ -226,7 +226,6 @@ nix = { workspace = true, features = ["user"] }
 backtrace.workspace = true
 env_logger.workspace = true
 pretty_assertions.workspace = true
-rgpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11", "screen-capture"] }
 lyon = { version = "1.0", features = ["extra"] }
 rand.workspace = true
 criterion.workspace = true
@@ -236,7 +235,6 @@ proptest = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen = { workspace = true }
-rgpui-web.workspace = true
 
 [build-dependencies]
 embed-resource = { version = "3.0", optional = true }
