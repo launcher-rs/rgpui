@@ -177,32 +177,32 @@ impl AppContext for AsyncApp {
 }
 
 impl AsyncApp {
-    /// Schedules all windows in the application to be redrawn.
+    /// 调度应用程序中所有窗口进行重绘。
     pub fn refresh(&self) {
         let app = self.app();
         let mut lock = app.borrow_mut();
         lock.refresh_windows();
     }
 
-    /// Get an executor which can be used to spawn futures in the background.
+    /// 获取可用于在后台生成 future 的执行器。
     pub fn background_executor(&self) -> &BackgroundExecutor {
         &self.background_executor
     }
 
-    /// Get an executor which can be used to spawn futures in the foreground.
+    /// 获取可用于在前台生成 future 的执行器。
     pub fn foreground_executor(&self) -> &ForegroundExecutor {
         &self.foreground_executor
     }
 
-    /// Invoke the given function in the context of the app, then flush any effects produced during its invocation.
+    /// 在应用上下文中调用给定函数，然后刷新其执行期间产生的所有效果。
     pub fn update<R>(&self, f: impl FnOnce(&mut App) -> R) -> R {
         let app = self.app();
         let mut lock = app.borrow_mut();
         lock.update(f)
     }
 
-    /// Arrange for the given callback to be invoked whenever the given entity emits an event of a given type.
-    /// The callback is provided a handle to the emitting entity and a reference to the emitted event.
+    /// 安排给定的回调在指定实体发出给定类型的事件时被调用。
+    /// 回调接收发出实体的句柄和发出事件的引用。
     pub fn subscribe<T, Event>(
         &mut self,
         entity: &Entity<T>,
@@ -217,7 +217,7 @@ impl AsyncApp {
         lock.subscribe(entity, on_event)
     }
 
-    /// Open a window with the given options based on the root view returned by the given function.
+    /// 根据给定函数返回的根视图，使用给定选项打开窗口。
     pub fn open_window<V>(
         &self,
         options: crate::WindowOptions,
@@ -234,7 +234,7 @@ impl AsyncApp {
         lock.open_window(options, build_root_view)
     }
 
-    /// Schedule a future to be polled in the foreground.
+    /// 调度一个 future 在前台被轮询。
     #[track_caller]
     pub fn spawn<AsyncFn, R>(&self, f: AsyncFn) -> Task<R>
     where
@@ -246,25 +246,25 @@ impl AsyncApp {
             .spawn(async move { f(&mut cx).await }.boxed_local())
     }
 
-    /// Determine whether global state of the specified type has been assigned.
+    /// 确定是否已分配指定类型的全局状态。
     pub fn has_global<G: Global>(&self) -> bool {
         let app = self.app();
         let app = app.borrow_mut();
         app.has_global::<G>()
     }
 
-    /// Reads the global state of the specified type, passing it to the given callback.
+    /// 读取指定类型的全局状态，并传递给给定的回调。
     ///
-    /// Panics if no global state of the specified type has been assigned.
+    /// 如果未分配指定类型的全局状态则 panic。
     pub fn read_global<G: Global, R>(&self, read: impl FnOnce(&G, &App) -> R) -> R {
         let app = self.app();
         let app = app.borrow_mut();
         read(app.global(), &app)
     }
 
-    /// Reads the global state of the specified type, passing it to the given callback.
+    /// 读取指定类型的全局状态，并传递给给定的回调。
     ///
-    /// Similar to [`AsyncApp::read_global`], but returns an error instead of panicking
+    /// 类似于 [`AsyncApp::read_global`]，但返回错误而不是 panic。
     pub fn try_read_global<G: Global, R>(&self, read: impl FnOnce(&G, &App) -> R) -> Option<R> {
         let app = self.app();
         let app = app.borrow_mut();
@@ -274,8 +274,8 @@ impl AsyncApp {
         Some(read(app.try_global()?, &app))
     }
 
-    /// Reads the global state of the specified type, passing it to the given callback.
-    /// A default value is assigned if a global of this type has not yet been assigned.
+    /// 读取指定类型的全局状态，并传递给给定的回调。
+    /// 如果尚未分配此类型的全局，则分配一个默认值。
     pub fn read_default_global<G: Global + Default, R>(
         &self,
         read: impl FnOnce(&G, &App) -> R,
@@ -288,8 +288,8 @@ impl AsyncApp {
         read(app.global(), &app)
     }
 
-    /// A convenience method for [`App::update_global`](BorrowAppContext::update_global)
-    /// for updating the global state of the specified type.
+    /// [`App::update_global`](BorrowAppContext::update_global) 的便捷方法，
+    /// 用于更新指定类型的全局状态。
     pub fn update_global<G: Global, R>(&self, update: impl FnOnce(&mut G, &mut App) -> R) -> R {
         let app = self.app();
         let mut app = app.borrow_mut();
@@ -330,18 +330,18 @@ impl AsyncWindowContext {
         Self { app, window }
     }
 
-    /// Get the handle of the window this context is associated with.
+    /// 获取此上下文关联的窗口句柄。
     pub fn window_handle(&self) -> AnyWindowHandle {
         self.window
     }
 
-    /// A convenience method for [`App::update_window`].
+    /// [`App::update_window`] 的便捷方法。
     pub fn update<R>(&mut self, update: impl FnOnce(&mut Window, &mut App) -> R) -> Result<R> {
         self.app
             .update_window(self.window, |_, window, cx| update(window, cx))
     }
 
-    /// A convenience method for [`App::update_window`].
+    /// [`App::update_window`] 的便捷方法。
     pub fn update_root<R>(
         &mut self,
         update: impl FnOnce(AnyView, &mut Window, &mut App) -> R,
@@ -349,14 +349,14 @@ impl AsyncWindowContext {
         self.app.update_window(self.window, update)
     }
 
-    /// A convenience method for [`Window::on_next_frame`].
+    /// [`Window::on_next_frame`] 的便捷方法。
     pub fn on_next_frame(&mut self, f: impl FnOnce(&mut Window, &mut App) + 'static) {
         self.app
             .update_window(self.window, |_, window, _| window.on_next_frame(f))
             .ok();
     }
 
-    /// A convenience method for [`App::global`].
+    /// [`App::global`] 的便捷方法。
     pub fn read_global<G: Global, R>(
         &mut self,
         read: impl FnOnce(&G, &Window, &App) -> R,
@@ -365,8 +365,8 @@ impl AsyncWindowContext {
             .update_window(self.window, |_, window, cx| read(cx.global(), window, cx))
     }
 
-    /// A convenience method for [`App::update_global`](BorrowAppContext::update_global).
-    /// for updating the global state of the specified type.
+    /// [`App::update_global`](BorrowAppContext::update_global) 的便捷方法，
+    /// 用于更新指定类型的全局状态。
     pub fn update_global<G, R>(
         &mut self,
         update: impl FnOnce(&mut G, &mut Window, &mut App) -> R,

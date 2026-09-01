@@ -2,15 +2,13 @@ use schemars::{JsonSchema, transform::transform_subschemas};
 
 const DEFS_PATH: &str = "#/$defs/";
 
-/// Replaces the JSON schema definition for some type if it is in use (in the definitions list), and
-/// returns a reference to it.
+/// 替换某个类型在定义列表中的 JSON schema 定义（如果正在使用），并返回其引用。
 ///
-/// This asserts that JsonSchema::schema_name() + "2" does not exist because this indicates that
-/// there are multiple types that use this name, and unfortunately schemars APIs do not support
-/// resolving this ambiguity - see <https://github.com/GREsau/schemars/issues/449>
+/// 此处断言 `JsonSchema::schema_name() + "2"` 不存在，因为这意味着有多个类型使用了该名称，
+/// 而 schemars API 不支持解决此歧义——参见 <https://github.com/GREsau/schemars/issues/449>
 ///
-/// This takes a closure for `schema` because some settings types are not available on the remote
-/// server, and so will crash when attempting to access e.g. GlobalThemeRegistry.
+/// `schema` 参数为闭包，因为某些设置类型在远程服务器上不可用，
+/// 访问时（如 GlobalThemeRegistry）会崩溃。
 pub fn replace_subschema<T: JsonSchema>(
     generator: &mut schemars::SchemaGenerator,
     schema: impl Fn() -> schemars::Schema,
@@ -23,8 +21,7 @@ pub fn replace_subschema<T: JsonSchema>(
     schemars::Schema::new_ref(format!("{DEFS_PATH}{schema_name}"))
 }
 
-/// Adds a new JSON schema definition and returns a reference to it. **Panics** if the name is
-/// already in use.
+/// 添加新的 JSON schema 定义并返回其引用。如果名称已被使用则 **panic**。
 pub fn add_new_subschema(
     generator: &mut schemars::SchemaGenerator,
     name: &str,
@@ -35,9 +32,9 @@ pub fn add_new_subschema(
     schemars::Schema::new_ref(format!("{DEFS_PATH}{name}"))
 }
 
-/// Defaults `additionalProperties` to `true`, as if `#[schemars(deny_unknown_fields)]` was on every
-/// struct. Skips structs that have `additionalProperties` set (such as if #[serde(flatten)] is used
-/// on a map).
+/// 将 `additionalProperties` 默认为 `true`，等效于每个结构体都标注了
+/// `#[schemars(deny_unknown_fields)]`。跳过已设置 `additionalProperties` 的结构体
+///（例如使用了 `#[serde(flatten)]` 的 map）。
 #[derive(Clone)]
 pub struct DefaultDenyUnknownFields;
 
@@ -54,10 +51,10 @@ impl schemars::transform::Transform for DefaultDenyUnknownFields {
     }
 }
 
-/// Defaults `allowTrailingCommas` to `true`, for use with `json-language-server`.
-/// This can be applied to any schema that will be treated as `jsonc`.
+/// 将 `allowTrailingCommas` 默认为 `true`，供 `json-language-server` 使用。
+/// 可应用于任何将被视为 `jsonc` 的 schema。
 ///
-/// Note that this is non-recursive and only applied to the root schema.
+/// 注意：此转换非递归，仅作用于根 schema。
 #[derive(Clone)]
 pub struct AllowTrailingCommas;
 

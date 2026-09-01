@@ -276,8 +276,8 @@ impl Output {
                     r_total_numerator += shift * f64::from(weight);
                     r_total_denominator += u32::from(weight);
                 }
-    // There were no runs here!
-    if r_total_denominator == 0 {
+                // There were no runs here!
+                if r_total_denominator == 0 {
                     None
                 } else {
                     let mean = r_total_numerator / f64::from(r_total_denominator);

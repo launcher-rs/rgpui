@@ -2192,9 +2192,9 @@ impl Window {
     /// 仅限 Linux（wayland）：设置窗口的输入区域，即接收指针
     /// 和触摸输入的区域。其外部的事件将传递到窗口下方的内容。
     ///
-    /// - `Some(rects)` restricts input to the union of `rects`, in window coordinates.
-    /// - `Some(&[])` is an empty region, so the window receives no pointer or touch input.
-    /// - `None` resets the region to the default, so the whole window receives input again.
+    /// - `Some(rects)` 将输入限制为 `rects` 的并集（窗口坐标）。
+    /// - `Some(&[])` 表示空区域，窗口不接收任何指针或触摸输入。
+    /// - `None` 将区域重置为默认值，整个窗口重新接收输入。
     pub fn set_input_region(&self, region: Option<&[Bounds<Pixels>]>) {
         self.platform_window.set_input_region(region);
     }
@@ -3829,8 +3829,8 @@ impl Window {
     /// 使用一个只要此元素在连续帧中被渲染就存在的状态，无需指定键
     ///
     /// 注意：此方法使用调用者的位置为此状态生成 ID。
-    ///       If this is not sufficient to identify your state (e.g. you're rendering a list item),
-    ///       you can provide a custom ElementID using the `use_keyed_state` method.
+    ///       如果此 ID 不足以标识你的状态（例如你正在渲染列表项），
+    ///       可以使用 `use_keyed_state` 方法提供自定义 ElementID。
     #[track_caller]
     pub fn use_state<S: 'static>(
         &mut self,
@@ -4316,7 +4316,7 @@ impl Window {
     ///
     /// 原点的 y 分量是字形的基线。
     /// 通常应优先使用 [`ShapedLine::paint`](crate::ShapedLine::paint) 或
-    /// [`WrappedLine::paint`](crate::WrappedLine::paint) methods in the [`TextSystem`](crate::TextSystem).
+    /// [`WrappedLine::paint`](crate::WrappedLine::paint)（[`TextSystem`](crate::TextSystem) 中的方法）。
     /// 此方法仅在你需要绘制已排版的单个字形时有用。
     ///
     /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
@@ -4421,7 +4421,7 @@ impl Window {
     ///
     /// 原点的 y 分量是字形的基线。
     /// 通常应优先使用 [`ShapedLine::paint`](crate::ShapedLine::paint) 或
-    /// [`WrappedLine::paint`](crate::WrappedLine::paint) methods in the [`TextSystem`](crate::TextSystem).
+    /// [`WrappedLine::paint`](crate::WrappedLine::paint)（[`TextSystem`](crate::TextSystem) 中的方法）。
     /// 此方法仅在你需要绘制已排版的单个表情符号时有用。
     ///
     /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
@@ -5846,7 +5846,7 @@ impl Window {
     /// 返回由 RGPUI 渲染的提示是否在此窗口中处于活动状态。
     ///
     /// 仅对在窗口中渲染的提示为 true（参见
-    /// [`App::set_prompt_builder`]), not for platform-native prompt dialogs.
+    /// [`App::set_prompt_builder`])，不适用于平台原生提示对话框。
     pub fn has_active_prompt(&self) -> bool {
         self.prompt.is_some()
     }
@@ -6435,8 +6435,8 @@ impl From<u64> for WindowId {
     }
 }
 
-    /// 具有特定根视图类型的窗口句柄。
-    /// 注意这不会单独保持窗口存活。
+/// 具有特定根视图类型的窗口句柄。
+/// 注意这不会单独保持窗口存活。
 #[derive(Deref, DerefMut)]
 pub struct WindowHandle<V> {
     #[deref]
@@ -6576,7 +6576,7 @@ impl<V: 'static> From<WindowHandle<V>> for AnyWindowHandle {
     }
 }
 
-    /// 具有任意根视图类型的窗口句柄，可以向下转型为具有特定根视图类型的窗口。
+/// 具有任意根视图类型的窗口句柄，可以向下转型为具有特定根视图类型的窗口。
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct AnyWindowHandle {
     pub(crate) id: WindowId,
@@ -6813,8 +6813,8 @@ impl From<[u8; 20]> for ElementId {
     }
 }
 
-    /// 在窗口中以给定位置和大小渲染的矩形。
-    /// 作为参数传递给 [`Window::paint_quad`]。
+/// 在窗口中以给定位置和大小渲染的矩形。
+/// 作为参数传递给 [`Window::paint_quad`]。
 #[derive(Clone, Default)]
 pub struct PaintQuad {
     /// 四边形在窗口中的边界。
@@ -6865,7 +6865,7 @@ impl PaintQuad {
     }
 }
 
-    /// 使用给定参数创建四边形。
+/// 使用给定参数创建四边形。
 pub fn quad(
     bounds: Bounds<Pixels>,
     corner_radii: impl Into<Corners<Pixels>>,
@@ -6884,7 +6884,7 @@ pub fn quad(
     }
 }
 
-    /// 使用给定边界和背景颜色创建填充四边形。
+/// 使用给定边界和背景颜色创建填充四边形。
 pub fn fill(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Background>) -> PaintQuad {
     PaintQuad {
         bounds: bounds.into(),
@@ -6896,7 +6896,7 @@ pub fn fill(bounds: impl Into<Bounds<Pixels>>, background: impl Into<Background>
     }
 }
 
-    /// 使用给定边界、边框颜色和 1px 边框宽度创建矩形轮廓
+/// 使用给定边界、边框颜色和 1px 边框宽度创建矩形轮廓
 pub fn outline(
     bounds: impl Into<Bounds<Pixels>>,
     border_color: impl Into<Hsla>,

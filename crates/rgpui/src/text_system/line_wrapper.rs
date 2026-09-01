@@ -1521,7 +1521,7 @@ mod tests {
             "Result should end with the same last character as original"
         );
 
-        // 退化情况：预算非常窄，中间截断无法找到有效分�?仍然显示截断标记而不是返回原始的溢出文本。
+        // 特殊情况：预算过于紧张，导致中间截断无法找到有效的分割点。此时仍应显示截断后缀，而不是返回原始的溢出文本。
         let text = "abcdef";
         let runs = generate_test_runs(&[text.len()]);
         let (result, result_runs) =

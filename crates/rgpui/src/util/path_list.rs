@@ -8,19 +8,19 @@ use super::paths::SanitizedPath;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-/// A list of absolute paths, with an associated display order.
+/// 一组绝对路径，带有关联的显示顺序。
 ///
-/// Two `PathList` values are considered equal if they contain the same paths,
-/// regardless of the order in which those paths were originally provided.
+/// 如果两个 `PathList` 包含相同的路径，则认为它们相等，
+/// 与这些路径最初提供的顺序无关。
 ///
-/// The paths can be retrieved in the original order using `ordered_paths()`.
+/// 可以使用 `ordered_paths()` 按原始顺序检索路径。
 #[derive(Default, Debug, Clone)]
 pub struct PathList {
-    /// The paths, in lexicographic order.
+    /// 路径，按字典序排列。
     paths: Arc<[PathBuf]>,
-    /// The order in which the paths were provided.
+    /// 路径提供的顺序。
     ///
-    /// See `ordered_paths()` for a way to get the paths in the original order.
+    /// 参见 `ordered_paths()` 以按原始顺序获取路径。
     order: Arc<[usize]>,
 }
 
@@ -65,7 +65,7 @@ impl PathList {
         self.paths.is_empty()
     }
 
-    /// Returns a new `PathList` with the given path removed.
+    /// 返回移除指定路径后的新 `PathList`。
     pub fn without_path(&self, path_to_remove: &Path) -> PathList {
         let paths: Vec<PathBuf> = self
             .ordered_paths()
@@ -75,22 +75,22 @@ impl PathList {
         PathList::new(&paths)
     }
 
-    /// Get the paths in lexicographic order.
+    /// 按字典序获取路径。
     pub fn paths(&self) -> &[PathBuf] {
         self.paths.as_ref()
     }
 
-    /// Get the paths in the lexicographic order.
+    /// 按字典序获取路径。
     pub fn paths_owned(&self) -> Arc<[PathBuf]> {
         self.paths.clone()
     }
 
-    /// Get the order in which the paths were provided.
+    /// 获取路径提供的顺序。
     pub fn order(&self) -> &[usize] {
         self.order.as_ref()
     }
 
-    /// Get the paths in the original order.
+    /// 按原始顺序获取路径。
     pub fn ordered_paths(&self) -> impl Iterator<Item = &PathBuf> {
         self.order
             .iter()

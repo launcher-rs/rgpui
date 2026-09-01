@@ -19,13 +19,13 @@ use std::{future::Future, rc::Rc, sync::Arc, time::Duration};
 /// 因此对用户不可见，但仍由合成器完全渲染。
 #[derive(Clone)]
 pub struct VisualTestAppContext {
-    /// The underlying app cell
+    /// 底层应用单元
     pub app: Rc<AppCell>,
-    /// The background executor for running async tasks
+    /// 后台执行器，用于运行异步任务
     pub background_executor: BackgroundExecutor,
-    /// The foreground executor for running tasks on the main thread
+    /// 前台执行器，用于在主线程上运行任务
     pub foreground_executor: ForegroundExecutor,
-    /// The test dispatcher for deterministic task scheduling
+    /// 测试调度器，用于确定性任务调度
     dispatcher: TestDispatcher,
     platform: Rc<dyn Platform>,
     text_system: Arc<TextSystem>,

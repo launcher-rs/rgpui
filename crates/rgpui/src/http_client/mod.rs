@@ -126,7 +126,7 @@ pub struct HttpClientWithProxy {
 }
 
 impl HttpClientWithProxy {
-    /// Returns a new [`HttpClientWithProxy`] with the given proxy URL.
+    /// 返回带有给定代理 URL 的新 [`HttpClientWithProxy`]。
     pub fn new(client: Arc<dyn HttpClient>, proxy_url: Option<String>) -> Self {
         let proxy_url = proxy_url
             .and_then(|proxy| proxy.parse().ok())
@@ -173,7 +173,7 @@ pub struct HttpClientWithUrl {
 }
 
 impl HttpClientWithUrl {
-    /// Returns a new [`HttpClientWithUrl`] with the given base URL.
+    /// 返回带有给定基础 URL 的新 [`HttpClientWithUrl`]。
     pub fn new(
         client: Arc<dyn HttpClient>,
         base_url: impl Into<String>,

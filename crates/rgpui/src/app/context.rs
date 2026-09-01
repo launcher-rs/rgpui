@@ -224,7 +224,7 @@ impl<'a, T: 'static> Context<'a, T> {
         subscription
     }
 
-    /// Register a callback to be invoked when the application is about to restart.
+    /// 注册回调，在应用程序即将重启时被调用。
     pub fn on_app_restart(
         &self,
         mut on_restart: impl FnMut(&mut T, &mut App) + 'static,
@@ -238,8 +238,8 @@ impl<'a, T: 'static> Context<'a, T> {
         })
     }
 
-    /// Arrange for the given function to be invoked whenever the application is quit.
-    /// The future returned from this callback will be polled for up to [crate::SHUTDOWN_TIMEOUT] until the app fully quits.
+    /// 安排在应用程序退出时调用给定函数。
+    /// 此回调返回的 future 将被轮询最多 [crate::SHUTDOWN_TIMEOUT] 直到应用完全退出。
     pub fn on_app_quit<Fut>(
         &self,
         mut on_quit: impl FnMut(&mut T, &mut Context<T>) -> Fut + 'static,
@@ -784,7 +784,7 @@ impl<'a, T: 'static> Context<'a, T> {
         });
     }
 
-    /// Move focus to the current view, assuming it implements [`Focusable`].
+    /// 将焦点移动到当前视图，假设视图类型实现了 [`Focusable`]。
     pub fn focus_self(&mut self, window: &mut Window)
     where
         T: Focusable,

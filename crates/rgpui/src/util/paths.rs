@@ -742,7 +742,7 @@ impl PathWithPosition {
     /// });
     /// ```
     ///
-    /// # Expected parsing results when encounter ill-formatted inputs.
+    /// # 格式错误输入的预期解析结果。
     /// ```
     /// # use crate::util::paths::PathWithPosition;
     /// # use std::path::PathBuf;

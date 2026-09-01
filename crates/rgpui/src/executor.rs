@@ -398,7 +398,7 @@ impl<'a> Scope<'a> {
         self.executor.num_cpus()
     }
 
-    /// Spawn a future into this scope.
+    /// 将一个 future 生成到此作用域中。
     #[track_caller]
     pub fn spawn<F>(&mut self, f: F)
     where

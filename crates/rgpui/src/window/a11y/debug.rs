@@ -30,18 +30,15 @@ struct CapturedFrame {
 #[cfg(debug_assertions)]
 #[derive(Clone, Default)]
 pub(crate) struct NodeDebugInfo {
-    /// Whether the node was synthesized via
-    /// [`crate::Element::a11y_synthetic_children`] rather than created from a
-    /// real element with a role and ID.
+    /// 该节点是否通过 [`crate::Element::a11y_synthetic_children`] 合成，
+    /// 而非由具有 role 和 ID 的真实元素创建。
     pub synthetic: bool,
-    /// The type name of the `Render` view that was rendering when the node was
-    /// created.
+    /// 节点创建时正在渲染的 `Render` 视图的类型名。
     pub view: Option<&'static str>,
-    /// The [`ElementId`](crate::ElementId) of the creating element (the leaf of
-    /// its `GlobalElementId`, not the full path). For a synthetic node, this is
-    /// the real element whose `a11y_synthetic_children` produced it.
+    /// 创建元素的 [`ElementId`](crate::ElementId)（其 `GlobalElementId` 的叶节点，
+    /// 而非完整路径）。对于合成节点，这是其 `a11y_synthetic_children` 生成该节点的真实元素。
     pub element_id: Option<String>,
-    /// Source location where the creating element was constructed.
+    /// 创建元素的源代码位置。
     pub source_location: Option<&'static core::panic::Location<'static>>,
 }
 
@@ -58,10 +55,9 @@ pub(crate) struct A11yDebug {
     last_tree_update: Option<TreeUpdate>,
     last_gpui_focus: Option<NodeId>,
     last_active_descendant: Option<NodeId>,
-    /// Monotonic counter incremented on each captured frame, so a re-dump makes
-    /// it obvious whether the tree actually refreshed.
+    /// 每次捕获帧时递增的单调计数器，使得重新导出时能明显看出树是否实际刷新。
     frame_number: u64,
-    /// Metadata about the most recently captured frame.
+    /// 最近捕获帧的元数据。
     last_frame: Option<CapturedFrame>,
     #[cfg(debug_assertions)]
     last_node_info: FxHashMap<NodeId, NodeDebugInfo>,
@@ -96,8 +92,8 @@ impl A11yDebug {
         self.last_node_info = node_info.clone();
     }
 
-    /// Serialize the last tree update to a readable JSON string. Node ids are
-    /// replaced with short ephemeral ids (`a`, `b`, ..., `z`, `aa`, ...).
+    /// 将最近的树更新序列化为可读的 JSON 字符串。节点 ID 被替换为
+    /// 简短的临时 ID（`a`、`b`、...、`z`、`aa`、...）。
     pub(crate) fn to_json(&self) -> Option<String> {
         let update = self.last_tree_update.as_ref()?;
 
@@ -314,8 +310,8 @@ fn node_to_json(
     serde_json::Value::Object(map)
 }
 
-/// Maps a 0-based index to a short id in the sequence `a, b, ..., z, aa, ab,
-/// ...` (bijective base-26).
+/// 将从 0 开始的索引映射为序列 `a, b, ..., z, aa, ab, ...` 中的短 ID
+/// （双射 base-26 编码）。
 fn ephemeral_id(mut index: usize) -> String {
     let mut bytes = Vec::new();
     loop {

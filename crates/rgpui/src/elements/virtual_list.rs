@@ -298,7 +298,7 @@ impl VirtualList {
         scroll_offset
     }
 
-    /// Ref from: https://github.com/zed-industries/zed/blob/83f9f9d9e3f5914392cab9a09e3472711a1d7b38/crates/rgpui/src/elements/uniform_list.rs#L660
+    /// 参考自：https://github.com/zed-industries/zed/blob/83f9f9d9e3f5914392cab9a09e3472711a1d7b38/crates/rgpui/src/elements/uniform_list.rs#L660
     fn measure_item(
         &self,
         list_width: Option<Pixels>,

@@ -326,7 +326,7 @@ impl RenderOnce for TagInput {
                                                     if s.input.read(cx).text().len() == 0
                                                         && !s.tags.is_empty()
                                                     {
-                                                         s.remove_last_tag(cx);
+                                                        s.remove_last_tag(cx);
                                                         if let Some(ref handler) = on_change {
                                                             handler(&s.tags, window, cx);
                                                         }

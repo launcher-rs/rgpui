@@ -589,10 +589,9 @@ impl ListState {
 
     /// 将列表滚动到最末尾（超过最后一项）。
     ///
-    /// Unlike [`scroll_to_reveal_item`], this uses the total item count as the
-    /// anchor, so the list's layout pass will walk backwards from the end and
-    /// always show the bottom of the last item 鈥?even when that item is still
-    /// growing (e.g. during streaming).
+    /// 与 [`scroll_to_reveal_item`] 不同，此方法使用总项数作为锚点，
+    /// 因此列表的布局遍历会从末尾反向进行，始终显示最后一项的底部——
+    /// 即使该项仍在增长（例如流式传输期间）。
     pub fn scroll_to_end(&self) {
         let state = &mut *self.0.borrow_mut();
         let item_count = state.items.summary().count;
@@ -779,10 +778,9 @@ impl ListState {
 
     /// 返回项是否完全在视口上方，如果列表尚未测量足够的布局则返回 `None`。
     ///
-    /// A zero-height viewport still yields a definitive answer: callers may
-    /// size sibling UI based on this query (potentially squeezing the list
-    /// itself to zero height), so returning `None` in that case would make
-    /// the answer oscillate from frame to frame.
+    /// 零高度视口仍能给出确定答案：调用方可能根据此查询调整
+    /// 兄弟 UI 的尺寸（可能将列表本身压缩为零高度），
+    /// 因此在此情况下返回 `None` 会导致答案在帧间振荡。
     pub fn item_is_above_viewport(&self, ix: usize) -> Option<bool> {
         let viewport_bounds = self.0.borrow().last_layout_bounds?;
 
@@ -799,8 +797,8 @@ impl ListState {
 
     /// 返回项是否完全在视口下方，如果列表尚未测量足够的布局则返回 `None`。
     ///
-    /// See [`Self::item_is_above_viewport`] for why a zero-height viewport
-    /// still yields a definitive answer.
+    /// 参见 [`Self::item_is_above_viewport`] 了解为何零高度视口
+    /// 仍能给出确定答案。
     pub fn item_is_below_viewport(&self, ix: usize) -> Option<bool> {
         let viewport_bounds = self.0.borrow().last_layout_bounds?;
 
@@ -2565,9 +2563,9 @@ mod test {
         );
     }
 
-    /// When the user scrolls away from the bottom during follow_tail,
-    /// follow_tail suspends. If they scroll back to the bottom, the
-    /// next paint should re-engage follow_tail using fresh measurements.
+    /// 当用户在 follow_tail 期间从底部滚动离开时，
+    /// follow_tail 暂停。如果用户滚回底部，下一次绘制
+    /// 应使用新的测量重新启用 follow_tail。
     #[rgpui::test]
     fn test_follow_tail_reengages_when_scrolled_back_to_bottom(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
@@ -2621,8 +2619,8 @@ mod test {
         );
     }
 
-    /// When an item is spliced to unmeasured (0px) while follow_tail
-    /// is suspended, the re-engagement check should still work correctly
+    /// 当 follow_tail 暂停时将项拼接为未测量（0px），
+    /// 重新启用检查仍应正常工作。
     #[rgpui::test]
     fn test_follow_tail_reengagement_not_fooled_by_unmeasured_items(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();

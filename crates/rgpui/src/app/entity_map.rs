@@ -438,13 +438,13 @@ impl<T: 'static> Entity<T> {
         }
     }
 
-    /// Get the entity ID associated with this entity
+    /// 获取与此实体关联的实体 ID
     #[inline]
     pub fn entity_id(&self) -> EntityId {
         self.any_entity.entity_id
     }
 
-    /// Downgrade this entity pointer to a non-retaining weak pointer
+    /// 将此实体指针降级为不保留引用的弱指针
     #[inline]
     pub fn downgrade(&self) -> WeakEntity<T> {
         WeakEntity {
@@ -453,25 +453,25 @@ impl<T: 'static> Entity<T> {
         }
     }
 
-    /// Convert this into a dynamically typed entity.
+    /// 将此实体转换为动态类型的实体。
     #[inline]
     pub fn into_any(self) -> AnyEntity {
         self.any_entity
     }
 
-    /// Grab a reference to this entity from the context.
+    /// 从上下文中获取此实体的引用。
     #[inline]
     pub fn read<'a>(&self, cx: &'a App) -> &'a T {
         cx.entities.read(self)
     }
 
-    /// Read the entity referenced by this handle with the given function.
+    /// 使用给定函数读取此句柄引用的实体。
     #[inline]
     pub fn read_with<R, C: AppContext>(&self, cx: &C, f: impl FnOnce(&T, &App) -> R) -> R {
         cx.read_entity(self, f)
     }
 
-    /// Updates the entity referenced by this handle with the given function.
+    /// 使用给定函数更新此句柄引用的实体。
     #[inline]
     pub fn update<R, C: AppContext>(
         &self,
@@ -481,13 +481,13 @@ impl<T: 'static> Entity<T> {
         cx.update_entity(self, update)
     }
 
-    /// Updates the entity referenced by this handle with the given function.
+    /// 使用给定函数更新此句柄引用的实体。
     #[inline]
     pub fn as_mut<'a, C: AppContext>(&self, cx: &'a mut C) -> GpuiBorrow<'a, T> {
         cx.as_mut(self)
     }
 
-    /// Updates the entity referenced by this handle with the given function.
+    /// 使用给定函数更新此句柄引用的实体。
     pub fn write<C: AppContext>(&self, cx: &mut C, value: T) {
         self.update(cx, |entity, cx| {
             *entity = value;
@@ -495,9 +495,8 @@ impl<T: 'static> Entity<T> {
         })
     }
 
-    /// Updates the entity referenced by this handle with the given function if
-    /// the referenced entity still exists, within a visual context that has a window.
-    /// Returns an error if the window has been closed.
+    /// 如果引用的实体仍然存在，则使用给定函数更新该实体。
+    /// 在具有窗口的可视化上下文中执行，如果窗口已关闭则返回错误。
     #[inline]
     pub fn update_in<R, C: VisualContext>(
         &self,
@@ -666,9 +665,8 @@ impl AnyWeakEntity {
 
     /// 创建一个永远无法升级的弱实体。
     pub fn new_invalid() -> Self {
-        /// To hold the invariant that all ids are unique, and considering that slotmap
-        /// increases their IDs from `0`, we can decrease ours from `u64::MAX` so these
-        /// two will never conflict (u64 is way too large).
+        /// 为了保持所有 ID 唯一的不变量，并考虑到 slotmap 从 `0` 开始递增，
+        /// 我们可以从 `u64::MAX` 开始递减，这样两者永远不会冲突（u64 足够大）。
         static UNIQUE_NON_CONFLICTING_ID_GENERATOR: AtomicU64 = AtomicU64::new(u64::MAX);
         let entity_id = UNIQUE_NON_CONFLICTING_ID_GENERATOR.fetch_sub(1, SeqCst);
 
