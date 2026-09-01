@@ -5,6 +5,7 @@
 use rgpui::{PermissionStatus, PermissionType};
 
 /// macOS 权限查询管理器
+#[allow(dead_code)]
 pub struct MacPermissions;
 
 impl MacPermissions {
@@ -84,6 +85,7 @@ impl MacPermissions {
 }
 
 // 辅助功能 API 绑定
+#[allow(dead_code)]
 mod accessibility {
     use core_foundation::dictionary::CFDictionaryRef;
     use core_foundation::string::CFStringRef;
@@ -98,6 +100,7 @@ mod accessibility {
 }
 
 // 屏幕录制权限 API 绑定
+#[allow(dead_code)]
 mod screen_capture {
     #[link(name = "ApplicationServices", kind = "framework")]
     unsafe extern "C" {
