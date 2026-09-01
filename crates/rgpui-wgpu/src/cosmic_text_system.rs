@@ -1317,9 +1317,9 @@ mod tests {
                 !ch.is_ascii()
             }
         };
-        let text = "a瀛梑";
+        let text = "a瀛b";
         let spans = compute_run_spans(text, 0, text.len(), primary, &fb, &covers);
-        // '瀛? is 3 bytes so split is at 1 then 4.
+        // '瀛' is 3 bytes so split is at 1 then 4.
         assert_eq!(
             spans.as_slice(),
             &[
@@ -1342,7 +1342,7 @@ mod tests {
             }
         };
         // outer text has a prefix that is not part of this run.
-        let text = "xx瀛梱";
+        let text = "xx瀛x";
         let run_offset = 2;
         let run_len = text.len() - run_offset;
         let spans = compute_run_spans(text, run_offset, run_len, primary, &fb, &covers);

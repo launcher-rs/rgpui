@@ -52,6 +52,7 @@ jobs:
             libjavascriptcoregtk-4.1-dev \
             libwebkit2gtk-4.1-dev \
             libxkbcommon-dev \
+            libxkbcommon-x11-dev \
             libwayland-dev \
             libx11-dev \
             libx11-xcb-dev \

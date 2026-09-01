@@ -1719,6 +1719,11 @@ impl rgpui::PlatformHeadlessRenderer for MetalHeadlessRenderer {
         self.renderer.render_scene_to_image(scene, size)
     }
 
+    fn render_scene(&mut self, scene: &Scene, size: Size<DevicePixels>) -> anyhow::Result<()> {
+        self.renderer.render_scene_to_image(scene, size)?;
+        Ok(())
+    }
+
     fn sprite_atlas(&self) -> Arc<dyn rgpui::PlatformAtlas> {
         self.renderer.sprite_atlas().clone()
     }

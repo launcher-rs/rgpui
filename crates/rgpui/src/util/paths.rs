@@ -2532,7 +2532,6 @@ mod tests {
         );
     }
 
-    #[perf]
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn path_with_position_parse_posix_path_with_suffix() {
