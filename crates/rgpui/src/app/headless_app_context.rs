@@ -1,12 +1,12 @@
-//! Cross-platform headless app context for tests that need real text shaping.
+//! 跨平台无头应用上下文，用于需要真实文本排版的测试。
 //!
-//! This replaces the macOS-only `HeadlessMetalAppContext` with a platform-neutral
-//! implementation backed by `TestPlatform`. Tests supply a real `PlatformTextSystem`
-//! (e.g. `DirectWriteTextSystem` on Windows, `MacTextSystem` on macOS) to get
-//! accurate glyph measurements while keeping everything else deterministic.
+//! 这取代了仅限 macOS 的 `HeadlessMetalAppContext`，采用基于 `TestPlatform`
+//! 的平台中立实现。测试提供真实的 `PlatformTextSystem`（如 Windows 上的
+//! `DirectWriteTextSystem`、macOS 上的 `MacTextSystem`）以获得准确的字形
+//! 测量，同时保持其他部分的确定性。
 //!
-//! Optionally, a renderer factory can be provided to enable real GPU rendering
-//! and screenshot capture via [`HeadlessAppContext::capture_screenshot`].
+//! 可选地，可以提供渲染器工厂以启用真实 GPU 渲染和通过
+//! [`HeadlessAppContext::capture_screenshot`] 进行截图捕获。
 
 use crate::{
     AnyView, AnyWindowHandle, App, AppCell, AppContext, AssetSource, BackgroundExecutor, Bounds,

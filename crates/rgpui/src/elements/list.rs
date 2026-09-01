@@ -1,11 +1,11 @@
-//! A list element that can be used to render a large number of differently sized elements
-//! efficiently. Clients of this API need to ensure that elements outside of the scrolled
-//! area do not change their height for this element to function correctly. If your elements
-//! do change height, notify the list element via [`ListState::splice`] or [`ListState::reset`].
-//! In order to minimize re-renders, this element's state is stored intrusively
-//! on your own views, so that your code can coordinate directly with the list element's cached state.
+//! 列表元素，可高效渲染大量不同尺寸的元素。
+//! 此 API 的调用方需确保滚动区域外的元素不改变高度，
+//! 以便该元素正确运行。如果元素高度发生变化，请通过
+//! [`ListState::splice`] 或 [`ListState::reset`] 通知列表元素。
+//! 为最小化重渲染，此元素的状态以侵入式方式存储在你自己的视图上，
+//! 使你的代码可以直接与列表元素的缓存状态协调。
 //!
-//! If all of your elements are the same height, see [`crate::UniformList`] for a simpler API
+//! 如果所有元素高度相同，参见 [`crate::UniformList`] 获取更简单的 API。
 
 use crate::collections::VecDeque;
 use crate::refineable::Refineable as _;

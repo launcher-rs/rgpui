@@ -1,8 +1,7 @@
-//! A scrollable list of elements with uniform height, optimized for large lists.
-//! Rather than use the full taffy layout system, uniform_list simply measures
-//! the first element and then lays out all remaining elements in a line based on that
-//! measurement. This is much faster than the full layout system, but only works for
-//! elements with uniform height.
+//! 等高可滚动元素列表，针对大列表优化。
+//! 不使用完整的 taffy 布局系统，uniform_list 仅测量第一个元素，
+//! 然后根据该测量值将所有剩余元素按行布局。这比完整布局系统快得多，
+//! 但仅适用于等高元素。
 
 use crate::{
     AnyElement, App, AvailableSpace, Bounds, ContentMask, Element, ElementId, Entity,

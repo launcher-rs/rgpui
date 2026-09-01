@@ -1,9 +1,8 @@
-//! Developer tooling for inspecting the accessibility tree.
+//! 检查无障碍树的开发者工具。
 //!
-//! [`A11yDebug`] retains the last [`TreeUpdate`] sent to the platform adapter so
-//! it can be serialized on demand (see
-//! [`crate::Window::debug_a11y_tree_json`]). In `cfg(debug_assertions)` builds,
-//! we capture extra info.
+//! [`A11yDebug`] 保留发送给平台适配器的最后一个 [`TreeUpdate`]，
+//! 以便按需序列化（参见 [`crate::Window::debug_a11y_tree_json`]）。
+//! 在 `cfg(debug_assertions)` 构建中，会捕获额外信息。
 
 use crate::collections::FxHashMap;
 use accesskit::{Action, NodeId, TreeUpdate};

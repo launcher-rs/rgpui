@@ -1,6 +1,5 @@
-//! A container query element, in the spirit of CSS container queries.
-//! The element's own size is determined solely by its style and the space
-//! offered by its parent.
+//! 容器查询元素，灵感来源于 CSS 容器查询。
+//! 元素自身的大小仅由其样式和父元素提供的空间决定。
 
 use crate::refineable::Refineable as _;
 

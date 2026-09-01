@@ -1,11 +1,11 @@
-//! A clean testing API for RGPUI applications.
+//! RGPUI 应用的简洁测试 API。
 //!
-//! `TestApp` provides a simpler alternative to `TestAppContext` with:
-//! - Automatic effect flushing after updates
-//! - Clean window creation and inspection
-//! - Input simulation helpers
+//! `TestApp` 提供了比 `TestAppContext` 更简单的替代方案：
+//! - 更新后自动刷新 effect
+//! - 简洁的窗口创建与检查
+//! - 输入模拟辅助工具
 //!
-//! # Example
+//! # 示例
 //! ```ignore
 //! #[test]
 //! fn test_my_view() {
