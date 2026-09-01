@@ -382,6 +382,7 @@ impl WaylandClientStatePtr {
         }
     }
 
+    #[allow(dead_code)]
     pub fn ime_enabled(&self) -> Option<bool> {
         let client = self.get_client();
         client.borrow().ime_enabled

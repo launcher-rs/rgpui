@@ -25,10 +25,10 @@ use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
 use crate::linux::{LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions};
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
-    ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
-    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
-    PlatformWindow, Result, RunnableVariant, Task, ThermalState, WindowAppearance,
-    WindowButtonLayout, WindowParams,
+    ForegroundExecutor, Keystroke, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions,
+    PermissionStatus, PermissionType, Platform, PlatformDisplay, PlatformKeyboardLayout,
+    PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result, RunnableVariant, Task,
+    ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use rgpui::{Pixels, Point, px};
@@ -712,6 +712,28 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     }
 
     fn add_recent_document(&self, _path: &Path) {}
+
+    fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
+        self.global_hotkey
+            .borrow_mut()
+            .register(id as i32, keystroke)
+    }
+
+    fn unregister_global_hotkey(&self, id: u32) {
+        self.global_hotkey.borrow_mut().unregister(id as i32);
+    }
+
+    fn show_notification(&self, title: &str, body: &str) -> Result<()> {
+        self.notifications.show_notification(title, body, None)
+    }
+
+    fn accessibility_status(&self) -> PermissionStatus {
+        self.permissions.query_permission(PermissionType::Accessibility)
+    }
+
+    fn request_accessibility_permission(&self) {
+        LinuxPermissions::request_permission(PermissionType::Accessibility);
+    }
 }
 
 #[cfg(any(feature = "wayland", feature = "x11"))]

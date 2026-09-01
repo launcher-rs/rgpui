@@ -1,5 +1,5 @@
 #![cfg(target_os = "macos")]
-#![allow(deprecated, dead_code, unused_unsafe)]
+#![allow(deprecated)]
 //! RGPUI 的 macOS 平台实现。
 //!
 //! macOS 屏幕的 y 轴从屏幕底部向上延伸，

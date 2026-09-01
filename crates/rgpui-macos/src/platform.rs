@@ -1,7 +1,8 @@
 use crate::{
     BoolExt, MacDispatcher, MacDisplay, MacKeyboardLayout, MacKeyboardMapper, MacWindow,
-    events::key_to_native, ns_string, pasteboard::Pasteboard, renderer,
-    set_active_window_cursor_style,
+    auto_launch::MacAutoLaunch, events::key_to_native, focused_window, global_hotkey::MacGlobalHotkey,
+    notifications::MacNotifications, ns_string, pasteboard::Pasteboard, permissions::MacPermissions,
+    renderer, set_active_window_cursor_style,
 };
 use anyhow::{Context as _, anyhow};
 use block::ConcreteBlock;
@@ -42,11 +43,12 @@ use rgpui::util::{
     command::{new_command, new_std_command},
 };
 use rgpui::{
-    Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, ForegroundExecutor,
-    KeyContext, Keymap, Menu, MenuItem, OsMenu, OwnedMenu, PathPromptOptions, Platform,
-    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
-    PlatformWindow, Result, SystemMenuType, Task, ThermalState, WindowAppearance, WindowKind,
-    WindowParams, popup::PopupNotSupportedError,
+    Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, FocusedWindowInfo,
+    ForegroundExecutor, KeyContext, Keystroke, Keymap, Menu, MenuItem, OsMenu, OwnedMenu,
+    PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
+    PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
+    SystemMenuType, Task, ThermalState, WindowAppearance, WindowKind, WindowParams,
+    popup::PopupNotSupportedError,
 };
 use semver::Version;
 use std::{
@@ -187,6 +189,10 @@ pub(crate) struct MacPlatformState {
     keyboard_mapper: Rc<MacKeyboardMapper>,
     /// 镜像 `[NSCursor setHiddenUntilMouseMoves:]` 状态，AppKit 不公开此状态。
     cursor_visible: Arc<AtomicBool>,
+    /// 全局快捷键管理器
+    global_hotkey: MacGlobalHotkey,
+    /// 全局快捷键触发回调
+    on_global_hotkey: Option<Box<dyn FnMut(u32)>>,
 }
 
 impl MacPlatform {
@@ -235,6 +241,8 @@ impl MacPlatform {
             menus: None,
             keyboard_mapper,
             cursor_visible: Arc::new(AtomicBool::new(true)),
+            global_hotkey: MacGlobalHotkey::new(),
+            on_global_hotkey: None,
         }))
     }
 
@@ -1167,6 +1175,50 @@ impl Platform for MacPlatform {
             }
             Ok(())
         })
+    }
+
+    fn accessibility_status(&self) -> PermissionStatus {
+        MacPermissions::new().query_permission(PermissionType::Accessibility)
+    }
+
+    fn request_accessibility_permission(&self) {
+        MacPermissions::request_accessibility_permission()
+    }
+
+    fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
+        self.0.lock().global_hotkey.register(id as i32, keystroke)
+    }
+
+    fn unregister_global_hotkey(&self, id: u32) {
+        self.0.lock().global_hotkey.unregister(id as i32);
+    }
+
+    fn on_global_hotkey(&self, callback: Box<dyn FnMut(u32)>) {
+        self.0.lock().on_global_hotkey = Some(callback);
+    }
+
+    fn show_notification(&self, title: &str, body: &str) -> Result<()> {
+        MacNotifications::new().show_notification(title, body, None)
+    }
+
+    fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
+        let auto_launch = MacAutoLaunch::new();
+        let app_path = std::env::current_exe()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if enabled {
+            auto_launch.enable(app_id, &app_path)
+        } else {
+            auto_launch.disable(app_id)
+        }
+    }
+
+    fn is_auto_launch_enabled(&self, app_id: &str) -> bool {
+        MacAutoLaunch::new().is_enabled(app_id)
+    }
+
+    fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
+        focused_window::get_focused_window_info()
     }
 }
 

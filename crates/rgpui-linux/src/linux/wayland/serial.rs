@@ -57,6 +57,7 @@ impl SerialTracker {
     /// 返回指定 [`SerialKind`] 列表中的最新序列号
     ///
     /// 如果未跟踪则返回 0
+    #[allow(dead_code)]
     pub fn latest_of(&self, kinds: &[SerialKind]) -> u32 {
         kinds
             .iter()
