@@ -61,6 +61,7 @@ impl MacNotifications {
     ///
     /// # 返回
     /// 成功时返回 `Ok(())`，失败时返回错误
+    #[allow(dead_code)]
     pub fn request_permission() -> Result<()> {
         unsafe {
             let class = Class::get("NSUserNotificationCenter").unwrap();

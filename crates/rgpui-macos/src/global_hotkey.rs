@@ -10,6 +10,7 @@ use core_graphics::event::CGKeyCode;
 use rgpui::{Keystroke, Modifiers, Result};
 
 /// 下一个可用的快捷键 ID
+#[allow(dead_code)]
 static NEXT_HOTKEY_ID: AtomicU32 = AtomicU32::new(1);
 
 /// macOS 全局快捷键管理器
@@ -51,11 +52,13 @@ impl MacGlobalHotkey {
     }
 
     /// 获取下一个可用的快捷键 ID
+    #[allow(dead_code)]
     pub fn next_id() -> i32 {
         NEXT_HOTKEY_ID.fetch_add(1, Ordering::Relaxed) as i32
     }
 
     /// 将 GPUI 修饰键转换为 macOS 修饰键标志
+    #[allow(dead_code)]
     pub fn modifiers_to_nsevent(modifiers: Modifiers) -> NSEventModifierFlags {
         let mut flags = NSEventModifierFlags::empty();
 
@@ -76,6 +79,7 @@ impl MacGlobalHotkey {
     }
 
     /// 将按键转换为 macOS 虚拟键码
+    #[allow(dead_code)]
     pub fn key_to_cgkeycode(key: &str) -> CGKeyCode {
         match key {
             "f1" => 122,
