@@ -107,7 +107,6 @@ fn content_to_string(content: &TerminalContent) -> String {
         let col = cell.point.column.0;
         if row >= 0 {
             let row = row as usize;
-            let col = col;
             if row < rows && col < cols {
                 grid[row][col] = cell.c;
             }
@@ -270,7 +269,7 @@ fn platform_shell() -> Option<String> {
             return Some(path.to_string_lossy().into_owned());
         }
 
-        return Some("powershell".to_string());
+        Some("powershell".to_string())
     }
 
     #[cfg(not(windows))]
@@ -316,7 +315,6 @@ fn main() {
                 title: Some("Agent Term".into()),
                 appears_transparent: true,
                 traffic_light_position: Some(rgpui::point(px(16.0), px(16.0))),
-                ..Default::default()
             }),
             window_background: background_appearance,
             ..Default::default()
@@ -680,10 +678,11 @@ impl AgentTermApp {
             move |this, terminal, event: &Event, cx| match event {
                 Event::TitleChanged => {
                     let title = terminal.read(cx).breadcrumb_text.clone();
-                    if let Some(tab) = this.tabs.iter_mut().find(|t| t.id == tab_id) {
-                        if tab.root.first_pane_id() == pane_id && !title.is_empty() {
-                            tab.title = title.into();
-                        }
+                    if let Some(tab) = this.tabs.iter_mut().find(|t| t.id == tab_id)
+                        && tab.root.first_pane_id() == pane_id
+                        && !title.is_empty()
+                    {
+                        tab.title = title.into();
                     }
                     cx.notify();
                 }
@@ -800,12 +799,12 @@ impl AgentTermApp {
             false
         };
 
-        if should_close_tab {
-            if let Some(tab) = self.tabs.get(self.active_tab_index) {
-                let tab_id = tab.id;
-                self.close_tab_by_id(tab_id, cx);
-                return;
-            }
+        if should_close_tab
+            && let Some(tab) = self.tabs.get(self.active_tab_index)
+        {
+            let tab_id = tab.id;
+            self.close_tab_by_id(tab_id, cx);
+            return;
         }
         cx.notify();
     }
@@ -955,7 +954,7 @@ impl AgentTermApp {
         &self,
         node: &PaneNode,
         id_prefix: &str,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme();
@@ -1064,7 +1063,7 @@ impl AgentTermApp {
                         ));
                     }
                     let child_el =
-                        self.render_pane_node(child, &format!("{}-{}", id_prefix, i), window, cx);
+                        self.render_pane_node(child, &format!("{}-{}", id_prefix, i), _window, cx);
                     group = group.child(
                         div()
                             .flex_basis(DefiniteLength::Fraction(ratios[i]))
@@ -2035,12 +2034,10 @@ impl AgentTermApp {
             0.0
         };
 
-        let pane_element: Option<AnyElement> =
-            if let Some(tab) = self.tabs.get(self.active_tab_index) {
-                Some(self.render_pane_node(&tab.root, "root", window, cx))
-            } else {
-                None
-            };
+        let pane_element: Option<AnyElement> = self
+            .tabs
+            .get(self.active_tab_index)
+            .map(|tab| self.render_pane_node(&tab.root, "root", window, cx));
 
         div()
             .id("terminal-container")

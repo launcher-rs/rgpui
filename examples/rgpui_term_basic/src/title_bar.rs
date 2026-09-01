@@ -8,6 +8,9 @@ use rgpui::{
 };
 use smallvec::SmallVec;
 
+/// 关闭窗口回调类型
+type CloseCallback = Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>;
+
 pub const TITLE_BAR_HEIGHT: Pixels = px(34.);
 #[cfg(target_os = "macos")]
 const TITLE_BAR_LEFT_PADDING: Pixels = px(80.);
@@ -21,7 +24,7 @@ const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
 pub struct TitleBar {
     style: StyleRefinement,
     children: SmallVec<[AnyElement; 1]>,
-    on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
+    on_close_window: CloseCallback,
 }
 
 impl TitleBar {
@@ -45,7 +48,7 @@ enum ControlIcon {
     Restore,
     Maximize,
     Close {
-        on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
+        on_close_window: CloseCallback,
     },
 }
 
@@ -62,7 +65,7 @@ impl ControlIcon {
         Self::Maximize
     }
 
-    fn close(on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>) -> Self {
+    fn close(on_close_window: CloseCallback) -> Self {
         Self::Close { on_close_window }
     }
 
@@ -178,7 +181,7 @@ impl RenderOnce for ControlIcon {
 
 #[derive(IntoElement)]
 struct WindowControls {
-    on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
+    on_close_window: CloseCallback,
 }
 
 impl RenderOnce for WindowControls {

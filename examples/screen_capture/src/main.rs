@@ -87,21 +87,18 @@ impl ScreenCaptureExample {
                     .timer(std::time::Duration::from_millis(66))
                     .await;
 
-                if new_frame_clone.swap(false, Ordering::Relaxed) {
-                    if let Ok(mut buf) = preview_buf_clone.lock() {
-                        if let Some(frame) = buf.take() {
-                            if let Some(img) =
-                                RgbaImage::from_raw(frame.width, frame.height, frame.data)
-                            {
-                                let _ = img.save(&preview_file);
-                                this.update(cx, |view, _cx| {
-                                    view.preview_path = Some(preview_file.clone());
-                                    view.frame_count += 1;
-                                })
-                                .ok();
-                            }
-                        }
-                    }
+                if new_frame_clone.swap(false, Ordering::Relaxed)
+                    && let Ok(mut buf) = preview_buf_clone.lock()
+                    && let Some(frame) = buf.take()
+                    && let Some(img) =
+                        RgbaImage::from_raw(frame.width, frame.height, frame.data)
+                {
+                    let _ = img.save(&preview_file);
+                    this.update(cx, |view, _cx| {
+                        view.preview_path = Some(preview_file.clone());
+                        view.frame_count += 1;
+                    })
+                    .ok();
                 }
             }
         });
@@ -223,13 +220,12 @@ impl ScreenCaptureExample {
                     }
                     new_frame.store(true, Ordering::Relaxed);
 
-                    if recording_flag.load(Ordering::Relaxed) {
-                        if let Ok(guard) = recording_dir.lock() {
-                            if let Some(ref dir) = *guard {
-                                let path = dir.join(format!("frame_{:06}.png", seq));
-                                let _ = rgba.save(&path);
-                            }
-                        }
+                    if recording_flag.load(Ordering::Relaxed)
+                        && let Ok(guard) = recording_dir.lock()
+                        && let Some(ref dir) = *guard
+                    {
+                        let path = dir.join(format!("frame_{:06}.png", seq));
+                        let _ = rgba.save(&path);
                     }
                 }
             })
@@ -897,7 +893,7 @@ fn merge_frames_to_gif(dir: &Path, delay_ms: u32) -> Result<PathBuf, String> {
         .collect();
 
     encoder
-        .encode_frames(frames.into_iter())
+        .encode_frames(frames)
         .map_err(|e| format!("GIF encode failed: {}", e))?;
 
     for entry in &entries {

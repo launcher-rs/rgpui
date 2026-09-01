@@ -133,17 +133,27 @@ mod sys {
         pub reserved: u64,
     }
 
+    #[allow(dead_code)]
     pub type CVTimeStampFlags = u64;
 
+    #[allow(dead_code)]
     pub const kCVTimeStampVideoTimeValid: CVTimeStampFlags = 1 << 0;
+    #[allow(dead_code)]
     pub const kCVTimeStampHostTimeValid: CVTimeStampFlags = 1 << 1;
+    #[allow(dead_code)]
     pub const kCVTimeStampSMPTETimeValid: CVTimeStampFlags = 1 << 2;
+    #[allow(dead_code)]
     pub const kCVTimeStampVideoRefreshPeriodValid: CVTimeStampFlags = 1 << 3;
+    #[allow(dead_code)]
     pub const kCVTimeStampRateScalarValid: CVTimeStampFlags = 1 << 4;
+    #[allow(dead_code)]
     pub const kCVTimeStampTopField: CVTimeStampFlags = 1 << 16;
+    #[allow(dead_code)]
     pub const kCVTimeStampBottomField: CVTimeStampFlags = 1 << 17;
+    #[allow(dead_code)]
     pub const kCVTimeStampVideoHostTimeValid: CVTimeStampFlags =
         kCVTimeStampVideoTimeValid | kCVTimeStampHostTimeValid;
+    #[allow(dead_code)]
     pub const kCVTimeStampIsInterlaced: CVTimeStampFlags =
         kCVTimeStampTopField | kCVTimeStampBottomField;
 
@@ -161,20 +171,32 @@ mod sys {
         pub frames: i16,
     }
 
+    #[allow(dead_code)]
     pub type CVSMPTETimeType = u32;
 
+    #[allow(dead_code)]
     pub const kCVSMPTETimeType24: CVSMPTETimeType = 0;
+    #[allow(dead_code)]
     pub const kCVSMPTETimeType25: CVSMPTETimeType = 1;
+    #[allow(dead_code)]
     pub const kCVSMPTETimeType30Drop: CVSMPTETimeType = 2;
+    #[allow(dead_code)]
     pub const kCVSMPTETimeType30: CVSMPTETimeType = 3;
+    #[allow(dead_code)]
     pub const kCVSMPTETimeType2997: CVSMPTETimeType = 4;
+    #[allow(dead_code)]
     pub const kCVSMPTETimeType2997Drop: CVSMPTETimeType = 5;
+    #[allow(dead_code)]
     pub const kCVSMPTETimeType60: CVSMPTETimeType = 6;
+    #[allow(dead_code)]
     pub const kCVSMPTETimeType5994: CVSMPTETimeType = 7;
 
+    #[allow(dead_code)]
     pub type CVSMPTETimeFlags = u32;
 
+    #[allow(dead_code)]
     pub const kCVSMPTETimeValid: CVSMPTETimeFlags = 1 << 0;
+    #[allow(dead_code)]
     pub const kCVSMPTETimeRunning: CVSMPTETimeFlags = 1 << 1;
 
     pub type CVDisplayLinkOutputCallback = unsafe extern "C" fn(

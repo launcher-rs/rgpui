@@ -131,12 +131,11 @@ pub fn load_workspaces() -> Vec<WorkspaceLayout> {
     let mut workspaces = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("json") {
-            if let Ok(data) = fs::read_to_string(&path) {
-                if let Ok(ws) = serde_json::from_str::<WorkspaceLayout>(&data) {
-                    workspaces.push(ws);
-                }
-            }
+        if path.extension().and_then(|s| s.to_str()) == Some("json")
+            && let Ok(data) = fs::read_to_string(&path)
+            && let Ok(ws) = serde_json::from_str::<WorkspaceLayout>(&data)
+        {
+            workspaces.push(ws);
         }
     }
     workspaces.sort_by(|a, b| a.name.cmp(&b.name));
