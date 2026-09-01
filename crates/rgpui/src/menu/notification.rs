@@ -1,3 +1,5 @@
+//! 通知组件，用于显示各种类型的消息通知和提示。
+
 use std::{
     any::TypeId,
     borrow::Cow,

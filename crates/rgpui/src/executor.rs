@@ -1,3 +1,5 @@
+//! 执行器 —— 管理前台与后台异步任务的调度和执行。
+
 use crate::scheduler::Instant;
 use crate::scheduler::Scheduler;
 use crate::{App, PlatformDispatcher, PlatformScheduler};

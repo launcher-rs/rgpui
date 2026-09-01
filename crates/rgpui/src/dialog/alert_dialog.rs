@@ -1,3 +1,5 @@
+//! 警告对话框，用于中断用户以显示重要内容并期望回应的模态对话框。
+
 use crate::{
     AnyElement, App, ClickEvent, InteractiveElement as _, IntoElement, MouseButton, ParentElement,
     Pixels, RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _,

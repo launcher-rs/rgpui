@@ -1,3 +1,5 @@
+//! 加载动画组件，显示旋转指示器表示加载状态。
+
 use std::time::Duration;
 
 use crate::prelude::FluentBuilder as _;

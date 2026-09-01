@@ -1,3 +1,5 @@
+//! 交互元素 —— 定义键盘、鼠标、手势等平台输入事件与交互行为处理。
+
 use crate::{
     Bounds, Capslock, Context, Empty, IntoElement, Keystroke, Modifiers, Pixels, Point, Render,
     Window, point, seal::Sealed,

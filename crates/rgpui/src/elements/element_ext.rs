@@ -1,3 +1,5 @@
+//! 元素扩展 trait，为所有元素提供便捷的构建方法和交互绑定。
+
 use crate::{
     AnyElement, App, Bounds, ClickEvent, ElementSize, InteractiveElement, IntoElement,
     ParentElement, Pixels, Sizable, Stateful, Styled as _, Window, canvas,

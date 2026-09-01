@@ -1,3 +1,5 @@
+//! 对话框核心，提供模态对话框的基础框架和动画逻辑。
+
 use std::{rc::Rc, sync::LazyLock, time::Duration};
 
 use crate::{

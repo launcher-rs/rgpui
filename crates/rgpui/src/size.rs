@@ -1,3 +1,5 @@
+//! 尺寸类型：定义元素尺寸枚举与响应式尺寸工具。
+
 use serde::{Deserialize, Serialize};
 
 use crate::{Edges, Pixels, px};

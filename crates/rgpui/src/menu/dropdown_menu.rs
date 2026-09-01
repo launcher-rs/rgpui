@@ -1,3 +1,5 @@
+//! 下拉菜单，为按钮和其他交互元素提供下拉菜单支持的 trait。
+
 use std::rc::Rc;
 
 use crate::{

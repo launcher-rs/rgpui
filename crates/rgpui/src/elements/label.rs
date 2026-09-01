@@ -1,3 +1,5 @@
+//! 标签组件，支持文本高亮、选择和自定义渲染的文本元素。
+
 use std::ops::Range;
 
 use crate::prelude::FluentBuilder;

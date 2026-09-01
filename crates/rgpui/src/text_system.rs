@@ -1,3 +1,5 @@
+//! 文本系统：字体回退、字形布局、行拆分与文本测量。
+
 mod font_fallbacks;
 mod font_features;
 mod line;

@@ -1,3 +1,5 @@
+//! 菜单动作定义，包含确认、取消、导航等菜单操作的 Action 类型。
+
 use crate::Action;
 use serde::Deserialize;
 

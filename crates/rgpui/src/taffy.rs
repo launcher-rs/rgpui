@@ -1,3 +1,5 @@
+//! 布局引擎：基于 taffy 的 Flexbox / Grid 布局计算。
+
 use crate::collections::{FxHashMap, FxHashSet};
 use crate::{
     AbsoluteLength, App, Bounds, DefiniteLength, Edges, GridTemplate, Length, Pixels, Point, Size,

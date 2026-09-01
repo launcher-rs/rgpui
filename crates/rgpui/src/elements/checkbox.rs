@@ -1,3 +1,5 @@
+//! 复选框组件，支持选中、未选中和半选状态的开关控件。
+
 use std::{rc::Rc, time::Duration};
 
 use crate::prelude::FluentBuilder as _;

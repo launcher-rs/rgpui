@@ -1,3 +1,5 @@
+//! 键盘快捷键显示组件，渲染快捷键按键组合的视觉表示。
+
 use crate::prelude::FluentBuilder as _;
 use crate::{
     Action, ActiveTheme, AsKeystroke, FocusHandle, Half, IntoElement, KeyContext, Keystroke,

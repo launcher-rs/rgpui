@@ -1,3 +1,5 @@
+//! 空间索引树：基于 R-tree 的区域查询数据结构，用于命中检测。
+
 use crate::{Bounds, Half};
 use std::{
     cmp,

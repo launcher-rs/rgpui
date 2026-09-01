@@ -1,3 +1,5 @@
+//! 锚定定位元素，将子元素相对于父元素或指定锚点进行精确定位。
+
 use smallvec::SmallVec;
 
 use crate::{

@@ -1,3 +1,5 @@
+//! 路径构建器：基于 Lyon 的矢量路径构建与三角化。
+
 use anyhow::Error;
 use etagere::euclid::{Point2D, Vector2D};
 use lyon::geom::Angle;

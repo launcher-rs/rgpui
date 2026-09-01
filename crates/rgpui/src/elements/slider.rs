@@ -1,3 +1,5 @@
+//! 滑块组件，支持单值和范围选择的拖拽滑块控件。
+
 use std::ops::Range;
 
 use crate::AppContext as _;

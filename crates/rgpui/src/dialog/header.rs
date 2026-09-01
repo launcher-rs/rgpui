@@ -1,3 +1,5 @@
+//! 对话框头部区域，通常包含 DialogTitle 和 DialogDescription。
+
 use crate::{
     AnyElement, App, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window,
 };

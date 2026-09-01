@@ -1,3 +1,5 @@
+//! 工具提示组件，鼠标悬停时显示的浮动提示信息。
+
 use std::{cell::Cell, rc::Rc, time::Duration};
 
 use crate::{

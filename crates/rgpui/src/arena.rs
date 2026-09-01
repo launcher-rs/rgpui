@@ -1,3 +1,5 @@
+//! 内存竞技场：基于连续内存块的 Arena 分配器，支持批量释放。
+
 use std::{
     alloc::{self, handle_alloc_error},
     cell::Cell,

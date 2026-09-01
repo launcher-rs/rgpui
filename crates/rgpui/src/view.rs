@@ -1,3 +1,5 @@
+//! 视图系统 —— 提供 AnyView、ViewContext 等核心视图抽象与渲染管线。
+
 use crate::collections::FxHashSet;
 use crate::refineable::Refineable;
 use crate::{

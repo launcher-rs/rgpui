@@ -1,3 +1,5 @@
+//! 徽章组件，用于显示计数、状态或简短标签的角标元素。
+
 use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, AnyElement, App, ElementSize, Hsla, Icon, IntoElement, ParentElement, RenderOnce,

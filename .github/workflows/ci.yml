@@ -61,6 +61,7 @@ jobs:
             libxcb-xfixes0-dev
 
       - name: cargo fmt
+        shell: bash
         run: |
           # rgpui-linux 的 Rust 2024 edition 语法在 stable rustfmt 下解析会失败，逐 crate 检查并跳过它
           for crate in rgpui rgpui-3d rgpui-character rgpui-dom rgpui-macros rgpui-markdown rgpui-platform rgpui-term rgpui-web rgpui-wgpu rgpui-windows; do

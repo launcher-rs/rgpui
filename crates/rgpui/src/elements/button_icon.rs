@@ -1,3 +1,5 @@
+//! 按钮图标元素，为按钮提供图标或加载动画的内部组件。
+
 use crate::{
     App, ElementSize, Icon, IntoElement, RenderOnce, Sizable, Spinner, Window,
     prelude::FluentBuilder,

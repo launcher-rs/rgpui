@@ -1,3 +1,5 @@
+//! 队列数据结构：支持优先级调度的异步任务队列。
+
 use std::{
     collections::VecDeque,
     fmt,

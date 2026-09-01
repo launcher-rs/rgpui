@@ -1,3 +1,5 @@
+//! 上下文菜单，为元素添加右键菜单支持的扩展 trait 和实现。
+
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{

@@ -1,3 +1,5 @@
+//! 菜单项元素，弹窗菜单中单个菜单项的渲染和交互实现。
+
 use crate::{ActiveTheme, Disableable, StyledExt, h_flex};
 use crate::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,

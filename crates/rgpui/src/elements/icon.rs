@@ -1,3 +1,5 @@
+//! 图标组件，支持命名图标、SVG 渲染和旋转等变换效果。
+
 use crate::icon_named;
 use crate::prelude::FluentBuilder as _;
 use crate::{

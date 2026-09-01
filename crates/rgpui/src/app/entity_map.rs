@@ -1,3 +1,5 @@
+//! 实体映射，管理实体 ID 与类型安全实体之间的映射关系。
+
 use super::Context;
 use crate::collections::FxHashSet;
 #[cfg(any(test, feature = "leak-detection"))]

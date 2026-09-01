@@ -1,3 +1,5 @@
+//! 开关组件，支持开/关状态切换的滑动开关控件。
+
 use std::{rc::Rc, time::Duration};
 
 use crate::prelude::FluentBuilder as _;

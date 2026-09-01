@@ -1,3 +1,5 @@
+//! 弹出层，可由按钮或任何其他元素触发的通用弹出容器。
+
 use crate::{
     Anchor, AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,

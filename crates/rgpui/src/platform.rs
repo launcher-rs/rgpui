@@ -1,3 +1,5 @@
+//! 平台抽象层：定义 `Platform` trait 和 `PlatformWindow` trait，供各平台 crate 实现。
+
 mod app_menu;
 mod keyboard;
 mod keystroke;
@@ -474,7 +476,7 @@ pub trait Platform: 'static {
     fn read_from_find_pasteboard(&self) -> Option<ClipboardItem>;
     /// 写入内容到 macOS 查找粘贴板。
     #[cfg(target_os = "macos")]
-    fn write_from_find_pasteboard(&self, item: ClipboardItem);
+    fn write_to_find_pasteboard(&self, item: ClipboardItem);
 
     /// 将凭据（URL、用户名、密码）写入系统密钥链。
     fn write_credentials(&self, url: &str, username: &str, password: &[u8]) -> Task<Result<()>>;

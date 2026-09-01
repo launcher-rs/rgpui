@@ -1,3 +1,5 @@
+//! 动画元素，提供基础动画框架，支持弹性动画、时间驱动和帧回调。
+
 use crate::scheduler::Instant;
 use std::{cell::Cell, rc::Rc, time::Duration};
 

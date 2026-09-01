@@ -1,3 +1,5 @@
+//! 过渡动画：声明属性过渡效果，支持缓动函数与延迟。
+
 use std::{rc::Rc, time::Duration};
 
 use smallvec::SmallVec;

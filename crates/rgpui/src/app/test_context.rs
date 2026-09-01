@@ -1,3 +1,5 @@
+//! 测试上下文，为 `#[rgpui::test]` 创建的测试提供专用上下文。
+
 use crate::{
     Action, AnyView, AnyWindowHandle, App, AppCell, AppContext, AsyncApp, AvailableSpace,
     BackgroundExecutor, BorrowAppContext, Bounds, Capslock, ClipboardItem, DrawPhase, Drawable,

@@ -1,3 +1,5 @@
+//! 对话框描述元素，通常放在 DialogHeader 中提供额外上下文说明。
+
 use crate::{
     AnyElement, App, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
     StyleRefinement, Styled, Window, div,

@@ -1,3 +1,5 @@
+//! 资源类型 —— 定义图片、图标等应用程序资源的加载与表示。
+
 use crate::{DevicePixels, Pixels, Result, SharedString, Size, size};
 use smallvec::SmallVec;
 

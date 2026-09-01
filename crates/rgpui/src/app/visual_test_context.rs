@@ -1,3 +1,5 @@
+//! 可视化测试上下文，使用真实渲染捕获实际截图的测试环境。
+
 use crate::{
     Action, AnyView, AnyWindowHandle, App, AppCell, AppContext, AssetSource, BackgroundExecutor,
     Bounds, ClipboardItem, Context, Entity, EntityId, ForegroundExecutor, Global, InputEvent,

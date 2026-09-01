@@ -1,3 +1,5 @@
+//! 标签组件，用于分类标记的彩色小标签元素。
+
 use crate::prelude::FluentBuilder as _;
 use crate::{
     AbsoluteLength, ActiveTheme, AnyElement, App, ColorName, ElementSize, Hsla,

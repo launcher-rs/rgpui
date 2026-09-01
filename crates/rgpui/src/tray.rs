@@ -1,3 +1,5 @@
+//! 系统托盘：管理托盘图标、菜单与事件处理。
+
 use crate::{App, Image, MenuItem, SharedString, SvgRenderer};
 use anyhow::Result;
 use std::rc::Rc;

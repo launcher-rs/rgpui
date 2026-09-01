@@ -1,3 +1,5 @@
+//! 对话框底部区域，通常包含确认和取消等操作按钮。
+
 use crate::{
     AnyElement, App, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
     StatefulInteractiveElement, StyleRefinement, Styled, Window, div, relative,

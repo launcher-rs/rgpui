@@ -1,3 +1,5 @@
+//! 样式 trait：为元素提供链式样式设置 API。
+
 use crate::{
     self as rgpui, AbsoluteLength, AlignContent, AlignItems, AlignSelf, BlendMode, BorderStyle,
     CursorStyle, DefiniteLength, Display, Fill, FlexDirection, FlexWrap, Font, FontFeatures,

@@ -1,3 +1,5 @@
+//! 基准测试上下文，用于性能测试和帧率统计。
+
 use std::{
     cell::{OnceCell, RefCell},
     future::Future,

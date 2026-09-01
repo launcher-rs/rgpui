@@ -1,3 +1,5 @@
+//! 渲染场景：描述需要绘制的几何图元（圆角矩形、文本、阴影等）。
+
 // todo("windows"): remove
 
 use schemars::JsonSchema;
@@ -27,13 +29,21 @@ pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<DrawOrder>,
+    /// 阴影图元列表。
     pub shadows: Vec<Shadow>,
+    /// 四边形图元列表。
     pub quads: Vec<Quad>,
+    /// 矢量路径图元列表。
     pub paths: Vec<Path<ScaledPixels>>,
+    /// 下划线图元列表。
     pub underlines: Vec<Underline>,
+    /// 单色精灵图元列表。
     pub monochrome_sprites: Vec<MonochromeSprite>,
+    /// 亚像素精灵图元列表。
     pub subpixel_sprites: Vec<SubpixelSprite>,
+    /// 多色精灵图元列表。
     pub polychrome_sprites: Vec<PolychromeSprite>,
+    /// 平台原生绘制表面列表。
     pub surfaces: Vec<PaintSurface>,
 }
 
@@ -478,17 +488,29 @@ pub enum PrimitiveBatch {
 #[derive(Default, Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Quad {
+    /// 绘制顺序。
     pub order: DrawOrder,
+    /// 边框样式。
     pub border_style: BorderStyle,
+    /// 边界矩形。
     pub bounds: Bounds<ScaledPixels>,
+    /// 内容裁剪蒙版。
     pub content_mask: ContentMask<ScaledPixels>,
+    /// 背景填充。
     pub background: Background,
+    /// 边框颜色。
     pub border_color: Hsla,
+    /// 圆角半径。
     pub corner_radii: Corners<ScaledPixels>,
+    /// 边框宽度（上、右、下、左）。
     pub border_widths: Edges<ScaledPixels>,
+    /// 是否使用连续圆角（0 = 普通，1 = 连续圆角）。
     pub continuous_corners: u32,
+    /// 二维变换矩阵。
     pub transform: TransformationMatrix,
+    /// 混合模式索引。
     pub blend_mode: u32,
+    /// 8 字节对齐填充。
     pub pad_quad: u32,
 }
 
@@ -502,12 +524,19 @@ impl From<Quad> for Primitive {
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Underline {
+    /// 绘制顺序。
     pub order: DrawOrder,
+    /// 8 字节对齐填充。
     pub pad: u32, // align to 8 bytes
+    /// 边界矩形。
     pub bounds: Bounds<ScaledPixels>,
+    /// 内容裁剪蒙版。
     pub content_mask: ContentMask<ScaledPixels>,
+    /// 颜色。
     pub color: Hsla,
+    /// 线条粗细。
     pub thickness: ScaledPixels,
+    /// 是否为波浪线（0 = 直线，1 = 波浪线）。
     pub wavy: u32,
 }
 
@@ -521,16 +550,25 @@ impl From<Underline> for Primitive {
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Shadow {
+    /// 绘制顺序。
     pub order: DrawOrder,
+    /// 模糊半径。
     pub blur_radius: ScaledPixels,
+    /// 边界矩形。
     pub bounds: Bounds<ScaledPixels>,
+    /// 圆角半径。
     pub corner_radii: Corners<ScaledPixels>,
+    /// 内容裁剪蒙版。
     pub content_mask: ContentMask<ScaledPixels>,
+    /// 颜色。
     pub color: Hsla,
+    /// 元素边界。
     pub element_bounds: Bounds<ScaledPixels>,
+    /// 元素圆角半径。
     pub element_corner_radii: Corners<ScaledPixels>,
     /// 0 = 外阴影（绘制在元素外部），1 = 内阴影（绘制在元素内部）。
     pub inset: u32,
+    /// 8 字节对齐填充。
     pub pad: u32,
 }
 
@@ -677,12 +715,19 @@ impl Default for TransformationMatrix {
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct MonochromeSprite {
+    /// 绘制顺序。
     pub order: DrawOrder,
+    /// 8 字节对齐填充。
     pub pad: u32,
+    /// 边界矩形。
     pub bounds: Bounds<ScaledPixels>,
+    /// 内容裁剪蒙版。
     pub content_mask: ContentMask<ScaledPixels>,
+    /// 颜色。
     pub color: Hsla,
+    /// 图集纹理块。
     pub tile: AtlasTile,
+    /// 二维变换矩阵。
     pub transformation: TransformationMatrix,
 }
 
@@ -696,12 +741,19 @@ impl From<MonochromeSprite> for Primitive {
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct SubpixelSprite {
+    /// 绘制顺序。
     pub order: DrawOrder,
+    /// 8 字节对齐填充。
     pub pad: u32, // align to 8 bytes
+    /// 边界矩形。
     pub bounds: Bounds<ScaledPixels>,
+    /// 内容裁剪蒙版。
     pub content_mask: ContentMask<ScaledPixels>,
+    /// 颜色。
     pub color: Hsla,
+    /// 图集纹理块。
     pub tile: AtlasTile,
+    /// 二维变换矩阵。
     pub transformation: TransformationMatrix,
 }
 
@@ -715,14 +767,23 @@ impl From<SubpixelSprite> for Primitive {
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct PolychromeSprite {
+    /// 绘制顺序。
     pub order: DrawOrder,
+    /// 8 字节对齐填充。
     pub pad: u32,
+    /// 是否为灰度模式。
     pub grayscale: bool,
+    /// 不透明度。
     pub opacity: f32,
+    /// 边界矩形。
     pub bounds: Bounds<ScaledPixels>,
+    /// 内容裁剪蒙版。
     pub content_mask: ContentMask<ScaledPixels>,
+    /// 圆角半径。
     pub corner_radii: Corners<ScaledPixels>,
+    /// 图集纹理块。
     pub tile: AtlasTile,
+    /// 二维变换矩阵。
     pub transformation: TransformationMatrix,
 }
 
@@ -735,10 +796,14 @@ impl From<PolychromeSprite> for Primitive {
 /// 绘制表面 — 用于平台原生表面渲染（如 macOS CVPixelBuffer）。
 #[derive(Clone, Debug)]
 pub struct PaintSurface {
+    /// 绘制顺序。
     pub order: DrawOrder,
+    /// 边界矩形。
     pub bounds: Bounds<ScaledPixels>,
+    /// 内容裁剪蒙版。
     pub content_mask: ContentMask<ScaledPixels>,
     #[cfg(target_os = "macos")]
+    /// 平台原生图像缓冲区。
     pub image_buffer: core_video::pixel_buffer::CVPixelBuffer,
 }
 
@@ -755,11 +820,17 @@ pub struct PathId(pub usize);
 /// 由一系列顶点和控制点组成的矢量路径，支持填充和变换。
 #[derive(Clone, Debug)]
 pub struct Path<P: Clone + Debug + Default + PartialEq> {
+    /// 路径的唯一标识符。
     pub id: PathId,
+    /// 绘制顺序。
     pub order: DrawOrder,
+    /// 路径的边界矩形。
     pub bounds: Bounds<P>,
+    /// 内容裁剪蒙版。
     pub content_mask: ContentMask<P>,
+    /// 路径的顶点列表。
     pub vertices: Vec<PathVertex<P>>,
+    /// 路径填充颜色。
     pub color: Background,
     start: Point<P>,
     current: Point<P>,

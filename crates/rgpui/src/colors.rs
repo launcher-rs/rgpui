@@ -1,3 +1,5 @@
+//! 默认颜色集 —— 定义 UI 框架的主题色（亮色 / 暗色）及默认调色板。
+
 use crate::{App, Global, Rgba, Window, WindowAppearance, rgb};
 use std::ops::Deref;
 use std::sync::Arc;

@@ -1,3 +1,5 @@
+//! 单选框组件，支持互斥选择的圆形选择控件。
+
 use std::rc::Rc;
 
 use crate::elements::checkbox::checkbox_check_icon;

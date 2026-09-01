@@ -1,3 +1,5 @@
+//! 应用核心 —— 提供 App 上下文、实体生命周期管理及事件调度。
+
 use crate::scheduler::Instant;
 use std::{
     any::{TypeId, type_name},

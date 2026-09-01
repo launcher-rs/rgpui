@@ -1,3 +1,5 @@
+//! 分隔线元素，支持水平和垂直方向的视觉分隔线。
+
 use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, App, Axis, Div, Hsla, IntoElement, ParentElement, RenderOnce, SharedString,

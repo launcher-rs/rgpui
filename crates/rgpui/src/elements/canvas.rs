@@ -1,3 +1,5 @@
+//! 画布元素，提供自定义绘图回调，用于绘制任意图形内容。
+
 use crate::refineable::Refineable as _;
 
 use crate::{

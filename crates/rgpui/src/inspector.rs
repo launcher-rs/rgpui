@@ -1,3 +1,5 @@
+//! 检查器 —— 提供开发者调试工具，用于标识和检查视图元素树。
+
 /// 可检查元素的唯一标识符。
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct InspectorElementId {

@@ -1,3 +1,5 @@
+//! 菜单全局状态，存储应用菜单和延迟渲染弹层的全局信息。
+
 use crate::{App, ElementId, FocusHandle, Global, OwnedMenu};
 use std::cell::Cell;
 use std::collections::HashSet;

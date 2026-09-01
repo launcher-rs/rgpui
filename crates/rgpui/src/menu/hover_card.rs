@@ -1,3 +1,5 @@
+//! 悬停卡片，鼠标悬停到触发器上时显示内容的弹出组件。
+
 use std::{cell::Cell, rc::Rc, time::Duration};
 
 use crate::{

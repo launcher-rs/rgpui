@@ -1,3 +1,5 @@
+//! 输入处理 —— 提供 EntityInputHandler trait，支持视图级别的文本输入与编辑。
+
 use crate::{App, Bounds, Context, Entity, InputHandler, Pixels, UTF16Selection, Window};
 use std::ops::Range;
 

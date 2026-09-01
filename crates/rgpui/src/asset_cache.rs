@@ -1,3 +1,5 @@
+//! 异步资源缓存 —— 按来源（URI / 路径 / 嵌入）缓存并异步加载资源数据。
+
 use crate::{App, SharedString, SharedUri};
 use futures::{Future, TryFutureExt};
 

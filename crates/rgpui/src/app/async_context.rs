@@ -1,3 +1,5 @@
+//! 异步应用上下文，提供可在 await 点之间持有的静态生命周期异步友好接口。
+
 use crate::{
     AnyView, AnyWindowHandle, App, AppCell, AppContext, BackgroundExecutor, BorrowAppContext,
     Entity, EntityId, EventEmitter, Focusable, ForegroundExecutor, Global, GpuiBorrow,

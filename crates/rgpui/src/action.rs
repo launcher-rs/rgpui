@@ -1,3 +1,5 @@
+//! Action 系统 —— 定义和管理 UI 动作的注册、分发与序列化机制。
+
 use crate::collections::{HashMap, TypeIdHashMap};
 use anyhow::{Context as _, Result};
 pub use no_action::{NoAction, Unbind, is_no_action, is_unbind};

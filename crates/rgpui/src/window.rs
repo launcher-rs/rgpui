@@ -1,3 +1,5 @@
+//! 窗口管理：窗口创建、事件分发、渲染管线与输入处理。
+
 #[cfg(any(feature = "inspector", debug_assertions))]
 use crate::Inspector;
 use crate::{

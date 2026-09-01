@@ -1,3 +1,5 @@
+//! 对话框标题元素，显示对话框的主要标题文本。
+
 use crate::{
     AnyElement, App, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
     StyleRefinement, Styled, Window, div, relative,

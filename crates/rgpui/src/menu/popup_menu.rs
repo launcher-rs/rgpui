@@ -1,3 +1,5 @@
+//! 弹出菜单，支持导航、选择和滚动的浮动菜单组件。
+
 use crate::menu::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::menu::actions::{SelectLeft, SelectRight};
 use crate::menu::menu_item::MenuItemElement;

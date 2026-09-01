@@ -1,3 +1,5 @@
+//! 对话框内容容器，承载对话框主体内容的布局组件。
+
 use crate::{
     AnyElement, App, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window,
 };

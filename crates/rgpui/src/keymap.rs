@@ -1,3 +1,5 @@
+//! 快捷键映射：定义按键绑定与上下文匹配逻辑。
+
 mod binding;
 mod context;
 

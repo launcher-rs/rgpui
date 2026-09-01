@@ -1,3 +1,5 @@
+//! 骨架屏元素，内容加载时显示的占位动画。
+
 use std::time::Duration;
 
 use crate::StyledExt as _;

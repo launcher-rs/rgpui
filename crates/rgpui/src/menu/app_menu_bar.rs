@@ -1,3 +1,5 @@
+//! 应用菜单栏，提供应用程序顶部的菜单栏组件。
+
 use crate::{
     App, AppContext as _, ClickEvent, Context, DismissEvent, Entity, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, KeyBinding, MouseButton, OwnedMenu, ParentElement,

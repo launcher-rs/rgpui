@@ -1,3 +1,5 @@
+//! 颜色类型 —— 提供 Rgba/Hsl 等颜色表示及转换、解析功能。
+
 use anyhow::{Context as _, bail};
 use schemars::{JsonSchema, json_schema};
 use serde::{

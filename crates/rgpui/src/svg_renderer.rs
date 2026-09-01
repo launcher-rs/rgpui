@@ -1,3 +1,5 @@
+//! SVG 渲染器：加载并光栅化 SVG 资源为位图。
+
 use crate::{
     AssetSource, DevicePixels, IsZero, RenderImage, Result, SharedString, Size,
     swap_rgba_pa_to_bgra,

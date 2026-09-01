@@ -1,3 +1,5 @@
+//! 光标标记元素，下拉选择框中的箭头指示器。
+
 use crate::prelude::FluentBuilder;
 use crate::{App, ElementSize, Hsla, IntoElement, RenderOnce, Sizable, Styled, Window};
 use crate::{Icon, IconName};

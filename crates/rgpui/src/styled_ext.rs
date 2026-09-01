@@ -1,3 +1,5 @@
+//! 样式扩展：提供便捷样式方法（尺寸、颜色、间距等）的 trait 扩展。
+
 use crate::ActiveTheme;
 use crate::theme::{blue_500, green_500, pink_500, red_500, yellow_500};
 use crate::{

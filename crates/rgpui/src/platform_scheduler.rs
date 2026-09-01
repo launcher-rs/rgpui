@@ -1,3 +1,5 @@
+//! 平台调度器：将调度器任务提交到平台线程执行。
+
 use crate::scheduler::Instant;
 use crate::scheduler::{Clock, Priority, Scheduler, SessionId, SpawnTime, TestScheduler, Timer};
 use crate::{PlatformDispatcher, RunnableMeta};
