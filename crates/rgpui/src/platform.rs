@@ -1988,6 +1988,7 @@ impl PlatformInputHandler {
         }
     }
 
+    /// 获取当前选中文本的边界框。
     pub fn selected_bounds(&mut self, window: &mut Window, cx: &mut App) -> Option<Bounds<Pixels>> {
         let marked_range = self.handler.marked_text_range(window, cx);
         let selection = self.handler.selected_text_range(true, window, cx)?;
@@ -1996,6 +1997,7 @@ impl PlatformInputHandler {
         })
     }
 
+    /// 获取 IME 候选区域的边界框。
     pub fn ime_candidate_bounds(&mut self) -> Option<Bounds<Pixels>> {
         let marked_range = self.marked_text_range();
         let selection = self.selected_text_range(true)?;
@@ -2004,6 +2006,7 @@ impl PlatformInputHandler {
         })
     }
 
+    /// 根据屏幕坐标返回最近的字符索引。
     #[allow(unused)]
     pub fn character_index_for_point(&mut self, point: Point<Pixels>) -> Option<usize> {
         self.cx
@@ -2012,10 +2015,12 @@ impl PlatformInputHandler {
             .flatten()
     }
 
+    /// 查询当前是否接受文本输入。
     pub fn accepts_text_input(&mut self, window: &mut Window, cx: &mut App) -> bool {
         self.handler.accepts_text_input(window, cx)
     }
 
+    /// 查询当前是否接受文本输入（异步版本）。
     pub fn query_accepts_text_input(&mut self) -> bool {
         self.cx
             .update(|window, cx| self.handler.accepts_text_input(window, cx))

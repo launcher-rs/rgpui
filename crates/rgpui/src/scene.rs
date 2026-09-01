@@ -64,10 +64,12 @@ impl Scene {
         self.surfaces.clear();
     }
 
+    /// 返回场景中的绘制操作数量。
     pub fn len(&self) -> usize {
         self.paint_operations.len()
     }
 
+    /// 推入一个新的绘制图层，后续图元将在此图层内绘制。
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
         let order = self.primitive_bounds.insert(bounds);
         self.layer_stack.push(order);
@@ -75,11 +77,13 @@ impl Scene {
             .push(PaintOperation::StartLayer(bounds));
     }
 
+    /// 弹出当前绘制图层，返回上一层。
     pub fn pop_layer(&mut self) {
         self.layer_stack.pop();
         self.paint_operations.push(PaintOperation::EndLayer);
     }
 
+    /// 插入一个渲染图元到场景中。
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
         let mut primitive = primitive.into();
         let clipped_bounds = primitive
@@ -134,6 +138,7 @@ impl Scene {
             .push(PaintOperation::Primitive(primitive));
     }
 
+    /// 重放指定范围内的绘制操作，从另一个场景复制图元。
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
         for operation in &prev_scene.paint_operations[range] {
             match operation {
@@ -144,6 +149,7 @@ impl Scene {
         }
     }
 
+    /// 完成场景构建，按绘制顺序排序所有图元。
     pub fn finish(&mut self) {
         self.shadows.sort_by_key(|shadow| shadow.order);
         self.quads.sort_by_key(|quad| quad.order);
@@ -158,6 +164,7 @@ impl Scene {
         self.surfaces.sort_by_key(|surface| surface.order);
     }
 
+    /// 返回按绘制顺序分批的图元迭代器。
     pub fn batches(&self) -> impl Iterator<Item = PrimitiveBatch> + '_ {
         BatchIterator {
             shadows_start: 0,
@@ -235,6 +242,7 @@ impl Primitive {
         }
     }
 
+    /// 获取此图元的内容裁剪蒙版。
     pub fn content_mask(&self) -> &ContentMask<ScaledPixels> {
         match self {
             Primitive::Shadow(shadow) => &shadow.content_mask,
