@@ -690,7 +690,11 @@ impl DirectWriteState {
         let advance = [0.0];
         let offset = [DWRITE_GLYPH_OFFSET::default()];
         let glyph_run = DWRITE_GLYPH_RUN {
-            fontFace: ManuallyDrop::new(Some(unsafe { std::ptr::read(&***font.font_face) })),
+            fontFace: ManuallyDrop::new(Some(unsafe {
+                // COM 接口向上转型：IDWriteFontFace3 → IDWriteFontFace
+                // windows-rs 中所有 COM 接口共享相同的内存布局（单指针包装）
+                std::mem::transmute::<IDWriteFontFace3, IDWriteFontFace>(font.font_face.clone())
+            })),
             fontEmSize: params.font_size.as_f32(),
             glyphCount: 1,
             glyphIndices: glyph_id.as_ptr(),
@@ -922,7 +926,11 @@ impl DirectWriteState {
             ascenderOffset: glyph_bounds.origin.y.0 as f32 / params.scale_factor,
         }];
         let glyph_run = DWRITE_GLYPH_RUN {
-            fontFace: ManuallyDrop::new(Some(unsafe { std::ptr::read(&***font.font_face) })),
+            fontFace: ManuallyDrop::new(Some(unsafe {
+                // COM 接口向上转型：IDWriteFontFace3 → IDWriteFontFace
+                // windows-rs 中所有 COM 接口共享相同的内存布局（单指针包装）
+                std::mem::transmute::<IDWriteFontFace3, IDWriteFontFace>(font.font_face.clone())
+            })),
             fontEmSize: params.font_size.as_f32(),
             glyphCount: 1,
             glyphIndices: glyph_id.as_ptr(),
@@ -1850,7 +1858,10 @@ fn is_color_glyph(
     factory: &IDWriteFactory5,
 ) -> bool {
     let glyph_run = DWRITE_GLYPH_RUN {
-        fontFace: ManuallyDrop::new(Some(unsafe { std::ptr::read(&****font_face) })),
+        fontFace: ManuallyDrop::new(Some(unsafe {
+            // COM 接口向上转型：IDWriteFontFace3 → IDWriteFontFace
+            std::mem::transmute::<IDWriteFontFace3, IDWriteFontFace>(font_face.clone())
+        })),
         fontEmSize: 14.0,
         glyphCount: 1,
         glyphIndices: &(glyph_id.0 as u16),

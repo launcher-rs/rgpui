@@ -768,15 +768,26 @@ impl DirectXRenderer {
     /// 获取字体渲染信息（缓存的静态实例）
     pub(crate) fn get_font_info() -> &'static FontInfo {
         static CACHED_FONT_INFO: OnceLock<FontInfo> = OnceLock::new();
-        CACHED_FONT_INFO.get_or_init(|| unsafe {
-            let factory: IDWriteFactory5 = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED).unwrap();
-            let render_params: IDWriteRenderingParams1 =
-                factory.CreateRenderingParams().unwrap().cast().unwrap();
+        CACHED_FONT_INFO.get_or_init(|| {
+            let factory: IDWriteFactory5 =
+                unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED) }
+                    .expect("创建 DWrite 工厂失败");
+            let render_params: IDWriteRenderingParams1 = unsafe {
+                factory
+                    .CreateRenderingParams()
+                    .expect("创建渲染参数失败")
+                    .cast()
+                    .expect("渲染参数类型转换失败")
+            };
             FontInfo {
-                gamma_ratios: rgpui::get_gamma_correction_ratios(render_params.GetGamma()),
-                grayscale_enhanced_contrast: render_params.GetGrayscaleEnhancedContrast(),
-                subpixel_enhanced_contrast: render_params.GetEnhancedContrast(),
-                is_bgr: render_params.GetPixelGeometry() == DWRITE_PIXEL_GEOMETRY_BGR,
+                gamma_ratios: rgpui::get_gamma_correction_ratios(unsafe {
+                    render_params.GetGamma()
+                }),
+                grayscale_enhanced_contrast: unsafe {
+                    render_params.GetGrayscaleEnhancedContrast()
+                },
+                subpixel_enhanced_contrast: unsafe { render_params.GetEnhancedContrast() },
+                is_bgr: unsafe { render_params.GetPixelGeometry() } == DWRITE_PIXEL_GEOMETRY_BGR,
             }
         })
     }
@@ -1756,10 +1767,11 @@ pub(crate) mod shader_resources {
             let entry_point = PCSTR::from_raw(entry.as_ptr());
             let target_cstr = PCSTR::from_raw(target.as_ptr());
 
-            // really dirty trick because winapi bindings are unhappy otherwise
-            let include_handler = &std::mem::transmute::<usize, ID3DInclude>(
-                D3D_COMPILE_STANDARD_FILE_INCLUDE as usize,
-            );
+            // D3D_COMPILE_STANDARD_FILE_INCLUDE 是 windows-rs 中的 usize 常量，
+            // 需要 transmute 为 COM 接口引用。使用 transmute_copy 避免中间 usize 转换。
+            let raw = D3D_COMPILE_STANDARD_FILE_INCLUDE as *const ID3DInclude;
+            let include_handler =
+                std::mem::transmute_copy::<*const ID3DInclude, &ID3DInclude>(&raw);
 
             let ret = D3DCompileFromFile(
                 &HSTRING::from(shader_path.to_str().unwrap()),

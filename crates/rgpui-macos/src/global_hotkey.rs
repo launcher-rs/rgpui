@@ -35,10 +35,16 @@ impl MacGlobalHotkey {
     ///
     /// # 返回
     /// 成功时返回 `Ok(())`，失败时返回错误
+    ///
+    /// # 注意
+    /// 当前实现仅为存根（stub），仅记录到 HashMap 而未调用 Carbon
+    /// `RegisterEventHotKey` API。全局热键实际不会生效。
+    /// 待实现 Carbon EventManager 集成后可正常工作。
     pub fn register(&mut self, id: i32, keystroke: &Keystroke) -> Result<()> {
-        // macOS 使用 NSEvent addLocalMonitorForEvents 或 Carbon EventManager
-        // 这里简化实现，实际需要使用 Carbon API 或 NSEvent
-
+        log::warn!(
+            "macOS 全局热键注册暂未实现（存根），快捷键 {:?} 不会生效",
+            keystroke
+        );
         self.registrations.insert(id, keystroke.clone());
         Ok(())
     }

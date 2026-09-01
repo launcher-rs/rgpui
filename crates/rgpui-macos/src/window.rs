@@ -337,10 +337,9 @@ thread_local! {
 extern "C" fn view_content_type(this: &Object, _: Sel) -> id {
     let key = this as *const _ as usize;
     CONTENT_TYPES.with(|content_types| {
-        content_types
-            .borrow()
-            .get(&key)
-            .map_or(nil, |value| Retained::as_ptr(value).cast_mut().cast::<Object>())
+        content_types.borrow().get(&key).map_or(nil, |value| {
+            Retained::as_ptr(value).cast_mut().cast::<Object>()
+        })
     })
 }
 

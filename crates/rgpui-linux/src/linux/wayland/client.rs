@@ -1196,8 +1196,21 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for WaylandClientStat
                 }
                 _ => {}
             },
-            wl_registry::Event::GlobalRemove { name: _ } => {
-                // TODO: handle global removal
+            wl_registry::Event::GlobalRemove { name } => {
+                log::debug!("Wayland 全局对象被移除: name={}", name);
+                // 查找并清理对应的 wl_output / output 资源
+                let mut removed_ids = Vec::new();
+                for (id, output) in &state.wl_outputs {
+                    if output.id().protocol_id() == name {
+                        removed_ids.push(id.clone());
+                        output.release();
+                    }
+                }
+                for id in &removed_ids {
+                    state.wl_outputs.remove(id);
+                    state.in_progress_outputs.remove(id);
+                    state.outputs.remove(id);
+                }
             }
             _ => {}
         }

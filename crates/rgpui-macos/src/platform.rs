@@ -1,8 +1,8 @@
 use crate::{
     BoolExt, MacDispatcher, MacDisplay, MacKeyboardLayout, MacKeyboardMapper, MacWindow,
-    auto_launch::MacAutoLaunch, events::key_to_native, focused_window, global_hotkey::MacGlobalHotkey,
-    notifications::MacNotifications, ns_string, pasteboard::Pasteboard, permissions::MacPermissions,
-    renderer, set_active_window_cursor_style,
+    auto_launch::MacAutoLaunch, events::key_to_native, focused_window,
+    global_hotkey::MacGlobalHotkey, notifications::MacNotifications, ns_string,
+    pasteboard::Pasteboard, permissions::MacPermissions, renderer, set_active_window_cursor_style,
 };
 use anyhow::{Context as _, anyhow};
 use block::ConcreteBlock;
@@ -44,7 +44,7 @@ use rgpui::util::{
 };
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, FocusedWindowInfo,
-    ForegroundExecutor, KeyContext, Keystroke, Keymap, Menu, MenuItem, OsMenu, OwnedMenu,
+    ForegroundExecutor, KeyContext, Keymap, Keystroke, Menu, MenuItem, OsMenu, OwnedMenu,
     PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
     PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
     SystemMenuType, Task, ThermalState, WindowAppearance, WindowKind, WindowParams,

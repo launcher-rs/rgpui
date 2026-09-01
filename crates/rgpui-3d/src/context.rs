@@ -1074,7 +1074,9 @@ impl Scenix3D {
 
             let mesh_idx = mesh_gltf.index();
             let prim_start = mesh_prim_start[mesh_idx];
-            let gltf_mesh = document.meshes().nth(mesh_idx).unwrap();
+            let Some(gltf_mesh) = document.meshes().nth(mesh_idx) else {
+                continue;
+            };
 
             // 为每个 primitive 创建独立的 skinned mesh
             for (prim_i, primitive) in gltf_mesh.primitives().enumerate() {
