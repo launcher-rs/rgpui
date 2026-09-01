@@ -25,10 +25,10 @@ use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
 use crate::linux::{LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions};
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
-    ForegroundExecutor, Keystroke, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions,
-    PermissionStatus, PermissionType, Platform, PlatformDisplay, PlatformKeyboardLayout,
-    PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result, RunnableVariant, Task,
-    ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
+    FocusedWindowInfo, ForegroundExecutor, Keystroke, Keymap, Menu, MenuItem, OwnedMenu,
+    PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
+    PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
+    RunnableVariant, Task, ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use rgpui::{Pixels, Point, px};
@@ -733,6 +733,26 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
     fn request_accessibility_permission(&self) {
         LinuxPermissions::request_permission(PermissionType::Accessibility);
+    }
+
+    fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
+        let launcher = crate::linux::auto_launch::LinuxAutoLaunch::new();
+        let path = std::env::current_exe()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if enabled {
+            launcher.enable(app_id, &path)
+        } else {
+            launcher.disable(app_id)
+        }
+    }
+
+    fn is_auto_launch_enabled(&self, app_id: &str) -> bool {
+        crate::linux::auto_launch::LinuxAutoLaunch::new().is_enabled(app_id)
+    }
+
+    fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
+        crate::linux::focused_window::get_focused_window_info()
     }
 }
 
