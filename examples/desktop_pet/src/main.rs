@@ -44,6 +44,8 @@ use rgpui::{
     rgba,                       // 创建 RGBA 颜色的宏
     size,                       // 创建 Size 的宏
 };
+#[cfg(target_os = "windows")]
+use rgpui::point;
 // 从 rgpui-character 导入角色运行时和动画系统
 use rgpui_character::{
     AnimationClip,    // 动画片段（包含多个帧纹理）
