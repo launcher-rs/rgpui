@@ -69,7 +69,10 @@ jobs:
           done
 
       - name: cargo clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: |
+          for crate in rgpui rgpui-3d rgpui-character rgpui-dom rgpui-macros rgpui-markdown rgpui-platform rgpui-term rgpui-web rgpui-wgpu rgpui-windows; do
+            cargo clippy -p "$crate" -- -D warnings
+          done
 
       - name: cargo check
         run: cargo check --workspace
