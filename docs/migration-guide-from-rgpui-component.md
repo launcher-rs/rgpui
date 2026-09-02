@@ -370,15 +370,22 @@ apply_themes_from_registry(cx);
 - `gpui_component::set_locale(...)` 已删除，仅保留 `rust_i18n::set_locale(...)`。
 - `Root::new(view, cx)`（2 参数）保持不变；`Root::render_dialog_layer(window, cx)` 仍存在可用。
 
-### 9.8 Cargo.toml 本地依赖（ru_editor 当前用法）
-
-ru_editor 直接引用本地 rgpui git 仓库（而非 crates.io）：
+### 9.8 Cargo.toml 依赖示例
 
 ```toml
-rgpui          = { git = "file:///C:/code/rgpui_workspace/rgpui", branch = "dev", features = ["tokio"] }
-rgpui-platform = { git = "file:///C:/code/rgpui_workspace/rgpui", branch = "dev" }
-rgpui-term     = { git = "file:///C:/code/rgpui_workspace/rgpui", branch = "dev" }
-rgpui-markdown = { git = "file:///C:/code/rgpui_workspace/rgpui", branch = "dev" }
+rgpui          = { git = "https://github.com/launcher-rs/rgpui.git", branch = "main", features = ["tokio"] }
+rgpui-platform = { git = "https://github.com/launcher-rs/rgpui.git", branch = "main" }
+rgpui-term     = { git = "https://github.com/launcher-rs/rgpui.git", branch = "main" }
+rgpui-markdown = { git = "https://github.com/launcher-rs/rgpui.git", branch = "main" }
+```
+
+也可使用 crates.io 版本（推荐）：
+
+```toml
+rgpui          = { version = "1.0", features = ["tokio"] }
+rgpui-platform = "1.0"
+rgpui-term     = "1.0"
+rgpui-markdown = "1.0"
 ```
 
 > 由于 rgpui 依赖的 `rayon`/`indexmap` 等版本可能与上游不同，若 Cargo.lock 解析冲突，
