@@ -13,7 +13,7 @@ path = "src/rgpui_character.rs"
 doctest = false
 
 [dependencies]
-thiserror = "2.0.12"
+thiserror.workspace = true
 
 [lints]
 workspace = true

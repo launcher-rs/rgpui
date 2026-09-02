@@ -17,7 +17,7 @@ rgpui = { workspace = true }
 scenix = { version = "1.5.0", features = ["renderer", "loader"] }
 wgpu = { workspace = true }
 image = { workspace = true }
-bytemuck = "1"
+bytemuck.workspace = true
 gltf = "1.4"
 smallvec = { workspace = true }
 rgpui-wgpu = { workspace = true, optional = true }

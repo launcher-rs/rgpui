@@ -379,6 +379,44 @@ portable-pty = "0.9"
 alacritty_terminal = "0.25"
 toml = "0.8"
 
+# ---- 跨 crate 共享依赖 ----
+# 窗口原始句柄抽象
+raw-window-handle = "0.6"
+# 字体布局与字形分配
+etagere = "0.2"
+# 零开销类型转换
+bytemuck = "1"
+# JavaScript互操作绑定
+js-sys = "0.3"
+# Web API绑定
+web-sys = "0.3"
+# 路径查找器几何运算
+pathfinder_geometry = "0.5"
+# 字体塑形与光栅化
+swash = "0.2.6"
+# macOS Core Graphics绑定
+core-graphics = "0.24"
+# macOS Core Text绑定
+core-text = "21"
+# Objective-C外部类型包装
+foreign-types = "0.5"
+# Objective-C block封装
+block = "0.1"
+# Objective-C2运行时绑定
+objc2 = "0.6"
+# WASM panic错误输出到控制台
+console_error_panic_hook = "0.1.7"
+# WASM Future桥接
+wasm-bindgen-futures = "0.4"
+# Windows原生菜单栏
+muda = "0.16"
+# Windows数值类型
+windows-numerics = "0.3"
+# Windows注册表操作
+windows-registry = "0.5"
+# 高性能多生产者通道
+flume = "0.12"
+
 [workspace.dependencies.windows]
 version = "0.62"
 features = [

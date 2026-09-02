@@ -22,8 +22,8 @@ rustc-hash.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen.workspace = true
-js-sys = "0.3"
-web-sys = { version = "0.3", features = [
+js-sys.workspace = true
+web-sys = { workspace = true, features = [
     "CssStyleDeclaration",
     "Document",
     "Element",

@@ -20,16 +20,16 @@ font-kit = ["dep:font-kit"]
 [dependencies]
 rgpui.workspace = true
 anyhow.workspace = true
-bytemuck = "1"
+bytemuck.workspace = true
 cosmic-text = "0.19.0"
-etagere = "0.2"
+etagere.workspace = true
 itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 profiling.workspace = true
-raw-window-handle = "0.6"
+raw-window-handle.workspace = true
 smallvec.workspace = true
-swash = "0.2.6"
+swash.workspace = true
 wgpu.workspace = true
 unicode-segmentation.workspace = true
 unicode-bidi = "0.3"
@@ -43,9 +43,9 @@ pollster.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen.workspace = true
-wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["HtmlCanvasElement"] }
-js-sys = "0.3"
+wasm-bindgen-futures.workspace = true
+web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
+js-sys.workspace = true
 
 indexmap.workspace = true
 rustc-hash.workspace = true
