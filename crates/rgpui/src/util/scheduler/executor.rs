@@ -163,7 +163,7 @@ impl BackgroundExecutor {
         F::Output: Send + 'static,
     {
         let location = Location::caller();
-        let (tx, rx) = flume::bounded::<async_task::Runnable<RunnableMeta>>(1);
+        let (tx, rx) = crossbeam_channel::bounded::<async_task::Runnable<RunnableMeta>>(1);
 
         self.scheduler.spawn_realtime(Box::new(move || {
             while let Ok(runnable) = rx.recv() {
