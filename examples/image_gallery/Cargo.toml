@@ -1,0 +1,12 @@
+[package]
+name = "image_gallery"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rgpui = { workspace = true, features = ["reqwest"] }
+rgpui-platform.workspace = true
+futures.workspace = true
+log.workspace = true
+env_logger.workspace = true

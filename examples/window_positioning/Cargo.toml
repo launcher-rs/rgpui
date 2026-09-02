@@ -1,0 +1,9 @@
+[package]
+name = "window_positioning"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rgpui.workspace = true
+rgpui-platform.workspace = true

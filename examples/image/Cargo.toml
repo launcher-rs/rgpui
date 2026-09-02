@@ -1,0 +1,11 @@
+[package]
+name = "image_example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rgpui = { workspace = true, features = ["reqwest"] }
+rgpui-platform.workspace = true
+anyhow.workspace = true
+env_logger.workspace = true

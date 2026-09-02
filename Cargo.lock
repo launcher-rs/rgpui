@@ -5887,7 +5887,6 @@ dependencies = [
  "reqwest",
  "resvg",
  "rgpui-macros",
- "rgpui-platform",
  "rgpui-web",
  "ropey",
  "rust-embed",
@@ -6070,6 +6069,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
+ "rgpui",
  "syn 2.0.118",
 ]
 

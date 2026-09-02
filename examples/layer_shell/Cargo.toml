@@ -1,0 +1,9 @@
+[package]
+name = "layer_shell"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rgpui = { workspace = true, features = ["wayland"] }
+rgpui-platform.workspace = true

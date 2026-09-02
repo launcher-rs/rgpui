@@ -1,0 +1,10 @@
+[package]
+name = "input_latency"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rgpui = { workspace = true, features = ["input-latency-histogram"] }
+rgpui-platform.workspace = true
+hdrhistogram.workspace = true
