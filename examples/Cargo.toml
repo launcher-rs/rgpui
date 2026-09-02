@@ -1,0 +1,59 @@
+[workspace]
+members = [
+    "desktop_pet",
+    "desktop_pet_3d",
+    "extended_components",
+    "rgpui_story",
+    "rgpui_term_basic",
+    "rgpui_term_integration",
+    "screen_capture",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+publish = false
+
+# ---- rgpui 内部 crate（路径依赖）----
+[workspace.dependencies.rgpui]
+path = "../crates/rgpui"
+
+[workspace.dependencies.rgpui-platform]
+path = "../crates/rgpui-platform"
+
+[workspace.dependencies.rgpui-character]
+path = "../crates/rgpui-character"
+
+[workspace.dependencies.rgpui-3d]
+path = "../crates/rgpui-3d"
+
+[workspace.dependencies.rgpui-term]
+path = "../crates/rgpui-term"
+
+[workspace.dependencies.rgpui-markdown]
+path = "../crates/rgpui-markdown"
+
+[workspace.dependencies.rgpui-wgpu]
+path = "../crates/rgpui-wgpu"
+
+# ---- 第三方依赖 ----
+[workspace.dependencies]
+anyhow = "1.0.86"
+log = { version = "0.4", features = ["kv_unstable_serde", "serde"] }
+env_logger = "0.11"
+serde = { version = "1.0.221", features = ["derive", "rc"] }
+dirs = "6.0"
+image = "0.25.1"
+smallvec = { version = "1.6", features = ["union", "const_new"] }
+portable-pty = "0.9"
+web-sys = "0.3"
+smol = "2.0"
+cocoa = "0.26.1"
+objc = "0.2"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "allow" }
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"

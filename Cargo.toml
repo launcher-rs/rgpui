@@ -15,10 +15,9 @@ members = [
     "crates/rgpui-web",
     "crates/rgpui-wgpu",
     "crates/rgpui-windows",
-    "examples/*",
 ]
 
-exclude = []
+exclude = ["examples"]
 
 [workspace.package]
 edition = "2024"

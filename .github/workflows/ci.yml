@@ -78,6 +78,10 @@ jobs:
       - name: cargo check (examples)
         run: cargo check --workspace --examples
 
+      - name: cargo check (examples workspace)
+        working-directory: examples
+        run: cargo check --workspace
+
       - name: cargo test
         run: cargo test --workspace
 
