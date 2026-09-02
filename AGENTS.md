@@ -49,25 +49,6 @@ Get-Content -Path <file> -Encoding UTF8
 - 需要程序化解析命令输出时，优先让命令输出英文（如 `git -c core.quotepath=false diff`），
   或用 `--no-ansi` 去掉样式。
 
-## 与上游切分及组件整合战略
-
-> 这是本项目的**最高层战略**，任何重构、评审、提交都应以它为准绳。
-
-### 切分原则
-
-- **不盲目跟随上游**：Zed 的 `gpui` / `gpui-component` 属于不同团队并持续重大重构，本项目**不做同步跟踪**，只按需吸收稳定、契合自身架构的能力。
-- **自主可控**：所有 crate 均属本项目，不受上游 API 变更牵连，可按自身节奏演进。
-- **保留差异化价值**：rgpui 独有的系统集成能力（托盘、鼠标穿透、Mica、全局热键等，见「rgpui 独有的功能」）是核心竞争力，任何重构不得移除。
-
-### 整合原则
-
-- **组件整合已完成**：`docs/component-integration-plan.md` 记录的整合（地基 → 基础组件 → 复合组件 → 收尾）已全部完成，rgpui 核心自带完整基础组件库。
-- **旧 UI 库已废弃删除**：`rgpui-component`（含子工作区）、`rgpui-adabraka-ui`、`rgpui-yororen-ui`、`rgpui-webview` 已删除。`rgpui-ui` 也已完成使命并入核心（2026-08-19），其组件全部收编到核心 `components` / `animation` / `mouse_gestures` / `scroll_physics` 子模块。
-- **不常用但重要的组件放扩展库**：并非所有组件都要并入 rgpui 核心。低频使用但重要（如高重依赖、专业场景）的组件，单独做成 **rgpui UI 扩展库**（独立 crate，如已落地的 `rgpui-markdown`）存放处理，保持核心轻量。
-- **按依赖顺序、保持轻量**：先地基后组件；语法高亮（tree-sitter）、代码编辑器（rgpui-editor 预留，论证见 `docs/ui-crate-plan.md` §6.5）、markdown（已独立为 `rgpui-markdown`）等高重依赖组件**不并入核心**；已并入核心的组件按 feature 门控隔离重依赖：图表（`charts`）、纯装饰特效（`effects`）、二维码（`qr-code`，qrcode 依赖）。
-- **保留中文注释与 rgpui 风格**：并入代码沿用 rgpui 的模块组织与命名习惯，手动移植而非整文件覆盖。
-- **完整性约束**：每步完成后运行 `cargo check --workspace`，并保持下方「完整性检查清单」全绿。
-
 ## 架构与包边界
 
 ```
@@ -81,7 +62,7 @@ crates/
 ├── rgpui-character/         # 字符/文本处理
 ├── rgpui-linux/             # Linux 平台实现
 ├── rgpui-macos/             # macOS 平台实现
-├── rgpui-markdown/          # Markdown 渲染独立库（pulldown-cmark 0.12）
+├── rgpui-markdown/          # Markdown 渲染独立库（pulldown-cmark 0.13）
 ├── rgpui-macros/            # 过程宏
 ├── rgpui-platform/          # 平台选择入口，根据 cfg 选择具体平台 crate
 ├── rgpui-term/              # 终端组件
@@ -179,9 +160,31 @@ PlatformWindow trait 关键方法:
 
 ### 分支策略
 
-- **main 分支**：保护分支，只接受 PR 合并，不直接推送
-- **功能分支**：从 main 创建，命名规范 `feat/xxx`、`fix/xxx`、`refactor/xxx`
+- **main 分支**：保护分支，只接受 PR 合并，**禁止直接推送**（包括 opencode agent）
+- **功能分支**：从 main 创建，命名规范 `feat/xxx`、`fix/xxx`、`refactor/xxx`、`chore/xxx`
 - **PR 合并方式**：Squash and merge（保持 main 历史整洁）
+
+### ⚠️ Agent 行为约束
+
+**opencode agent 必须严格遵守以下规则：**
+
+1. **任何改动都必须通过 PR 流程**，即使是小修改、依赖升级、文档更新
+2. **禁止直接 `git push` 到 main**，必须先创建功能分支，再通过 PR 合并
+3. **PR 创建后等待 CI 全绿再合并**，不得跳过 CI 检查
+4. **单次 PR 只做一件事**：依赖升级、功能开发、bug 修复应分开提交
+
+```
+正确流程：
+1. git checkout -b chore/upgrade-deps
+2. 开发、提交
+3. git push -u origin chore/upgrade-deps
+4. gh pr create --title "chore(deps): upgrade dependencies" --body "..."
+5. 等待 CI 全绿
+6. gh pr merge --squash
+
+错误流程：
+git commit -m "upgrade deps" && git push  ← 禁止！
+```
 
 ### PR 流程
 
@@ -194,14 +197,22 @@ PlatformWindow trait 关键方法:
 
 ### PR 要求
 
-- **标题格式**：`feat: xxx`、`fix: xxx`、`refactor: xxx`（Conventional Commits）
+- **标题格式**：`feat: xxx`、`fix: xxx`、`refactor: xxx`、`chore: xxx`（Conventional Commits）
 - **CI 必须全绿**：fmt、clippy、check（主 workspace + examples workspace）、test 均通过
 - **代码审查**：至少一人批准（个人项目可自批）
 - **关联 Issue**：如有相关 Issue，在 PR 描述中引用
+- **PR 描述**：说明改动内容、原因、影响范围
 
 ### PR 模板
 
 项目已配置 PR 模板（`.github/pull_request_template.md`），创建 PR 时自动填充。
+
+### 违规处理
+
+如果已经直接推送到 main（如依赖升级 `cfc84e1`），采取以下措施：
+1. **不回滚**：直接推送的代码如果编译通过且测试通过，保留不回滚
+2. **后续改动走 PR**：从下一次提交开始严格执行 PR 流程
+3. **记录在案**：在 PR 描述中说明历史违规情况，保持透明
 
 ## 跨平台检查
 
@@ -264,11 +275,9 @@ CI 通过矩阵策略在三个平台分别运行，确保跨平台兼容性。
 
 rgpui 在上游 gpui 基础上增加了大量独有功能，是项目的差异化价值所在，任何重构不得移除这些功能。
 
-> 组件整合（`docs/component-integration-plan.md`）是**加法**：只把成熟组件并入 rgpui 核心，不删减下列任何独有能力。整合已完成，本清单已扩展为「平台系统能力 + 组件库」两部分。
-
 ### 组件库（rgpui 核心自带）
 
-组件整合（`docs/component-integration-plan.md`）已全部完成，`rgpui-component` 等旧 UI 库已删除，rgpui 核心自带完整基础组件库。已并入的子系统：
+rgpui 核心自带完整基础组件库。已并入的子系统：
 
 | 子系统 | 目标模块 | 关键公开类型 |
 |--------|----------|--------------|
@@ -370,19 +379,18 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 10. 所有中文注释未被删除
 11. `tray.rs` / `single_instance.rs` 模块未被删除
 12. rgpui-3d MSAA 方法存在
-13. 组件整合已全部完成，已并入的功能存在于 `rgpui` 核心（`rgpui-component` 等旧库已删除）
-14. 组件库核心模块存在：`form/`、`input_ui/`、`menu/`、`dialog/`、`list/`、`table/`、`tabs/`、`title_bar/`、`elements/scroll/`
-15. `prelude` 暴露组件扩展 trait：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、`Sizable`、`StyledExt`、`FluentBuilder`
-16. `crates/rgpui-adabraka-ui`、`crates/rgpui-yororen-ui`、`crates/rgpui-component-workspce` 已删除，workspace 不再依赖旧 UI 库
-17. `crates/rgpui-markdown` 存在，`pulldown-cmark = "0.12"` 为工作区依赖
-18. 核心 `rgpui` 存在 `charts` / `effects` / `qr-code` 三个 feature（`components/charts/` 及特效、二维码组件门控），`cargo check -p rgpui --features charts,effects,qr-code` 通过
-19. `rgpui-tokio` 已并入核心（feature `tokio` 门控，`rgpui::tokio` 模块），`crates/rgpui-tokio` 已删除，workspace 不再依赖该 crate；`cargo check -p rgpui --features tokio` 通过
-20. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
-21. `rgpui-ui` 迁移已全部完成并**已并入核心**（2026-08-19，执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter，门控于 `effects`）、显示（qr_code/sparkline/svg_renderer/image_viewer，qr_code 门控于 `qr-code`，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（mouse_gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）；`crates/rgpui-ui` 已删除，workspace 不再依赖该 crate
-22. Web DOM 后端存在：核心 `rgpui` 有 `dom-backend` feature（`src/dom.rs`，含 `DomTree`/`DomNodeKey`/`DomTreeBuilder`/`set_dom_layer_enabled`）、`crates/rgpui-dom` 存在（`reconcile`/`DomPatch`/`DomBackend`/`WebDomBackend`/`to_html`）、`rgpui-web` 已接入（`supports_dom`/`dom_tree_update`）；`cargo check -p rgpui --features dom-backend` 与 `cargo test -p rgpui-dom` 通过；用法见 `docs/web-dom-backend-usage.md`
-23. `crates/rgpui/examples/` 已删除，所有示例迁移至 `examples/` 独立 workspace（56 个示例 crate）
-24. `rgpui` 的 `[[example]]` 条目已全部删除，`rgpui-platform` dev-dependency 已移除（消除发布循环依赖）
-25. `cargo publish -p rgpui --dry-run` 通过（不再需要 `--no-verify`）
+13. 组件库核心模块存在：`form/`、`input_ui/`、`menu/`、`dialog/`、`list/`、`table/`、`tabs/`、`title_bar/`、`elements/scroll/`
+14. `prelude` 暴露组件扩展 trait：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、`Sizable`、`StyledExt`、`FluentBuilder`
+15. `crates/rgpui-adabraka-ui`、`crates/rgpui-yororen-ui`、`crates/rgpui-component-workspce` 已删除，workspace 不再依赖旧 UI 库
+16. `crates/rgpui-markdown` 存在，`pulldown-cmark = "0.13"` 为工作区依赖
+17. 核心 `rgpui` 存在 `charts` / `effects` / `qr-code` 三个 feature（`components/charts/` 及特效、二维码组件门控），`cargo check -p rgpui --features charts,effects,qr-code` 通过
+18. `rgpui-tokio` 已并入核心（feature `tokio` 门控，`rgpui::tokio` 模块），`crates/rgpui-tokio` 已删除，workspace 不再依赖该 crate；`cargo check -p rgpui --features tokio` 通过
+19. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
+20. `rgpui-ui` 迁移已全部完成并**已并入核心**（2026-08-19，执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter，门控于 `effects`）、显示（qr_code/sparkline/svg_renderer/image_viewer，qr_code 门控于 `qr-code`，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（mouse_gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）；`crates/rgpui-ui` 已删除，workspace 不再依赖该 crate
+21. Web DOM 后端存在：核心 `rgpui` 有 `dom-backend` feature（`src/dom.rs`，含 `DomTree`/`DomNodeKey`/`DomTreeBuilder`/`set_dom_layer_enabled`）、`crates/rgpui-dom` 存在（`reconcile`/`DomPatch`/`DomBackend`/`WebDomBackend`/`to_html`）、`rgpui-web` 已接入（`supports_dom`/`dom_tree_update`）；`cargo check -p rgpui --features dom-backend` 与 `cargo test -p rgpui-dom` 通过；用法见 `docs/web-dom-backend-usage.md`
+22. `crates/rgpui/examples/` 已删除，所有示例迁移至 `examples/` 独立 workspace（56 个示例 crate）
+23. `rgpui` 的 `[[example]]` 条目已全部删除，`rgpui-platform` dev-dependency 已移除（消除发布循环依赖）
+24. `cargo publish -p rgpui --dry-run` 通过（不再需要 `--no-verify`）
 
 ## Web/WASM 开发
 
