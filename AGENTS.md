@@ -88,6 +88,14 @@ crates/
 ├── rgpui-web/               # Web/WASM 平台实现
 ├── rgpui-wgpu/              # wgpu 渲染后端
 └── rgpui-windows/           # Windows 平台实现（windows-rs 绑定）
+
+examples/                    # 独立 workspace（56 个示例 crate）
+├── Cargo.toml               # workspace 配置，path deps 指向 crates/
+├── hello_world/             # 简单示例
+├── tray/                    # 托盘示例
+├── desktop_pet/             # 桌面宠物示例
+├── view_example/            # 多文件示例
+└── ...                      # 其余 52 个示例
 ```
 
 - Tokio 异步运行时集成已并入 `rgpui` 核心（feature `tokio` 门控，`rgpui::tokio` 模块），不再作为独立 crate 存在
@@ -102,11 +110,16 @@ crates/
 # 检查整个 workspace（推荐日常使用，比 build 快）
 cargo check --workspace
 
-# 构建单个示例
-cargo build --example tray
+# 检查 examples workspace
+cargo check --workspace
+# 在 examples/ 目录下执行，或指定 manifest
+cargo check --workspace --manifest-path examples/Cargo.toml
 
-# 运行示例
-cargo run --example tray
+# 构建单个示例（examples workspace）
+cargo build -p tray --manifest-path examples/Cargo.toml
+
+# 运行示例（examples workspace）
+cargo run -p tray --manifest-path examples/Cargo.toml
 
 # 运行所有测试
 cargo test --workspace
@@ -158,9 +171,37 @@ PlatformWindow trait 关键方法:
 ```
 
 ## 提交与推送规范
-- **推送前必须检查**：执行 `cargo check --workspace` 和 `cargo check --workspace --examples`，确保没有任何错误和警告
+- **推送前必须检查**：执行 `cargo check --workspace` 和 `cargo check --workspace --manifest-path examples/Cargo.toml`，确保没有任何错误和警告
 - **推送前格式化代码**: 执行 `cargo fmt` 格式化代码（注意 `rgpui-linux/src/linux/platform.rs` 有 Rust 2024 edition 解析问题，`cargo fmt` 会报错，需跳过该文件）
 - **禁止使用 `#[allow(dead_code)]`**：未使用的代码应当删除或重构，不得使用属性压制警告
+
+## PR 工作流
+
+### 分支策略
+
+- **main 分支**：保护分支，只接受 PR 合并，不直接推送
+- **功能分支**：从 main 创建，命名规范 `feat/xxx`、`fix/xxx`、`refactor/xxx`
+- **PR 合并方式**：Squash and merge（保持 main 历史整洁）
+
+### PR 流程
+
+1. 从 main 创建功能分支
+2. 在功能分支上开发、提交
+3. 推送功能分支并创建 PR
+4. CI 自动运行（fmt、clippy、check、test，三平台矩阵）
+5. CI 全部通过后，Squash 合并到 main
+6. 合并后删除功能分支
+
+### PR 要求
+
+- **标题格式**：`feat: xxx`、`fix: xxx`、`refactor: xxx`（Conventional Commits）
+- **CI 必须全绿**：fmt、clippy、check（主 workspace + examples workspace）、test 均通过
+- **代码审查**：至少一人批准（个人项目可自批）
+- **关联 Issue**：如有相关 Issue，在 PR 描述中引用
+
+### PR 模板
+
+项目已配置 PR 模板（`.github/pull_request_template.md`），创建 PR 时自动填充。
 
 ## 跨平台检查
 
@@ -203,6 +244,7 @@ cargo hack check --each-feature --workspace --ignore-private
 | 任务 | 平台 | 内容 |
 |------|------|------|
 | `check` | windows-latest / ubuntu-latest / macos-latest | `cargo check --workspace` + `cargo test --workspace` + `cargo clippy` |
+| `check (examples)` | windows-latest / ubuntu-latest / macos-latest | `cargo check --workspace`（examples workspace） |
 | `feature-check` | ubuntu-latest | `cargo hack check --each-feature`（排除已知故障的 `scap`/`screen-capture` feature） |
 | `lint` | ubuntu-latest | `cargo fmt --all --check` |
 
@@ -317,26 +359,30 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 任何重构/提交前，应检查以下内容保持完整：
 
 1. `cargo check --workspace` 通过
-2. `mouse_passthrough` 字段存在于 `WindowOptions` 和 `WindowParams`（`platform.rs`）
-3. `WindowKind::Overlay` 变体存在
-4. `PlatformWindow` trait 的所有自定义方法都在
-5. `Platform` trait 的所有自定义方法都在
-6. 托盘示例 `cargo run --example tray` 可编译
-7. 桌面宠物示例 `cargo run -p desktop_pet` / `desktop_pet_3d` 可编译
-8. `MicaBackdrop` / `MicaAltBackdrop` 枚举变体存在
-9. 所有中文注释未被删除
-10. `tray.rs` / `single_instance.rs` 模块未被删除
-11. rgpui-3d MSAA 方法存在
-12. 组件整合已全部完成，已并入的功能存在于 `rgpui` 核心（`rgpui-component` 等旧库已删除）
-13. 组件库核心模块存在：`form/`、`input_ui/`、`menu/`、`dialog/`、`list/`、`table/`、`tabs/`、`title_bar/`、`elements/scroll/`
-14. `prelude` 暴露组件扩展 trait：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、`Sizable`、`StyledExt`、`FluentBuilder`
-15. `crates/rgpui-adabraka-ui`、`crates/rgpui-yororen-ui`、`crates/rgpui-component-workspce` 已删除，workspace 不再依赖旧 UI 库
-16. `crates/rgpui-markdown` 存在，`pulldown-cmark = "0.12"` 为工作区依赖
-17. 核心 `rgpui` 存在 `charts` / `effects` / `qr-code` 三个 feature（`components/charts/` 及特效、二维码组件门控），`cargo check -p rgpui --features charts,effects,qr-code` 通过
-18. `rgpui-tokio` 已并入核心（feature `tokio` 门控，`rgpui::tokio` 模块），`crates/rgpui-tokio` 已删除，workspace 不再依赖该 crate；`cargo check -p rgpui --features tokio` 通过
-19. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
-20. `rgpui-ui` 迁移已全部完成并**已并入核心**（2026-08-19，执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter，门控于 `effects`）、显示（qr_code/sparkline/svg_renderer/image_viewer，qr_code 门控于 `qr-code`，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（mouse_gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）；`crates/rgpui-ui` 已删除，workspace 不再依赖该 crate
-21. Web DOM 后端存在：核心 `rgpui` 有 `dom-backend` feature（`src/dom.rs`，含 `DomTree`/`DomNodeKey`/`DomTreeBuilder`/`set_dom_layer_enabled`）、`crates/rgpui-dom` 存在（`reconcile`/`DomPatch`/`DomBackend`/`WebDomBackend`/`to_html`）、`rgpui-web` 已接入（`supports_dom`/`dom_tree_update`）；`cargo check -p rgpui --features dom-backend` 与 `cargo test -p rgpui-dom` 通过；用法见 `docs/web-dom-backend-usage.md`
+2. `cargo check --workspace --manifest-path examples/Cargo.toml` 通过
+3. `mouse_passthrough` 字段存在于 `WindowOptions` 和 `WindowParams`（`platform.rs`）
+4. `WindowKind::Overlay` 变体存在
+5. `PlatformWindow` trait 的所有自定义方法都在
+6. `Platform` trait 的所有自定义方法都在
+7. 托盘示例 `cargo run -p tray --manifest-path examples/Cargo.toml` 可编译
+8. 桌面宠物示例 `cargo run -p desktop_pet --manifest-path examples/Cargo.toml` / `desktop_pet_3d` 可编译
+9. `MicaBackdrop` / `MicaAltBackdrop` 枚举变体存在
+10. 所有中文注释未被删除
+11. `tray.rs` / `single_instance.rs` 模块未被删除
+12. rgpui-3d MSAA 方法存在
+13. 组件整合已全部完成，已并入的功能存在于 `rgpui` 核心（`rgpui-component` 等旧库已删除）
+14. 组件库核心模块存在：`form/`、`input_ui/`、`menu/`、`dialog/`、`list/`、`table/`、`tabs/`、`title_bar/`、`elements/scroll/`
+15. `prelude` 暴露组件扩展 trait：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、`Sizable`、`StyledExt`、`FluentBuilder`
+16. `crates/rgpui-adabraka-ui`、`crates/rgpui-yororen-ui`、`crates/rgpui-component-workspce` 已删除，workspace 不再依赖旧 UI 库
+17. `crates/rgpui-markdown` 存在，`pulldown-cmark = "0.12"` 为工作区依赖
+18. 核心 `rgpui` 存在 `charts` / `effects` / `qr-code` 三个 feature（`components/charts/` 及特效、二维码组件门控），`cargo check -p rgpui --features charts,effects,qr-code` 通过
+19. `rgpui-tokio` 已并入核心（feature `tokio` 门控，`rgpui::tokio` 模块），`crates/rgpui-tokio` 已删除，workspace 不再依赖该 crate；`cargo check -p rgpui --features tokio` 通过
+20. `rgpui-editor` 保持预留不构建，论证留档于 `docs/ui-crate-plan.md` §6.5（核心 `input_ui` 已含输入编辑器，仅缺 tree-sitter 高亮/折叠/LSP）
+21. `rgpui-ui` 迁移已全部完成并**已并入核心**（2026-08-19，执行记录见 `docs/ui-crate-plan.md` §9）：动画 13 组件、特效（aurora/confetti/particle_emitter，门控于 `effects`）、显示（qr_code/sparkline/svg_renderer/image_viewer，qr_code 门控于 `qr-code`，code_block/rich_text 放弃）、高级输入（tag_input/otp_input/hotkey_input/inline_edit）、布局（split_pane/resizable/drag_drop/sortable_list 等）、通知/命令（spotlight/app_menu/command_palette 等）、工具（mouse_gestures/scroll_physics）均已迁入；`animated_progress` 已迁；yororen keybinding 不迁移、carousel/tilt_card/magnetic_button 放弃（理由见 §9）；`crates/rgpui-ui` 已删除，workspace 不再依赖该 crate
+22. Web DOM 后端存在：核心 `rgpui` 有 `dom-backend` feature（`src/dom.rs`，含 `DomTree`/`DomNodeKey`/`DomTreeBuilder`/`set_dom_layer_enabled`）、`crates/rgpui-dom` 存在（`reconcile`/`DomPatch`/`DomBackend`/`WebDomBackend`/`to_html`）、`rgpui-web` 已接入（`supports_dom`/`dom_tree_update`）；`cargo check -p rgpui --features dom-backend` 与 `cargo test -p rgpui-dom` 通过；用法见 `docs/web-dom-backend-usage.md`
+23. `crates/rgpui/examples/` 已删除，所有示例迁移至 `examples/` 独立 workspace（56 个示例 crate）
+24. `rgpui` 的 `[[example]]` 条目已全部删除，`rgpui-platform` dev-dependency 已移除（消除发布循环依赖）
+25. `cargo publish -p rgpui --dry-run` 通过（不再需要 `--no-verify`）
 
 ## Web/WASM 开发
 
