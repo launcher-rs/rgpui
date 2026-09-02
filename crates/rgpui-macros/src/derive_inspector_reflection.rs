@@ -58,16 +58,14 @@ fn generate_reflected_trait(trait_item: ItemTrait) -> TokenStream {
 
             // 检查方法是否具有 self 或 mut self 接收器（非引用）
             // syn 3.0: Receiver 没有 reference 字段，改用 to_token_stream 检查
-            let has_valid_self_receiver = method
-                .sig
-                .inputs
-                .iter()
-                .any(|arg| matches!(arg, FnArg::Receiver(r) if {
+            let has_valid_self_receiver = method.sig.inputs.iter().any(|arg| {
+                matches!(arg, FnArg::Receiver(r) if {
                     let tokens = r.to_token_stream();
                     let s = tokens.to_string();
                     // self 或 mut self（不含 &）
                     !s.contains('&')
-                }));
+                })
+            });
 
             // 检查方法是否返回 Self
             let returns_self = match &method.sig.output {
