@@ -624,12 +624,11 @@ fn main() {
     let shared = Arc::new(Mutex::new(SharedState::new()));
     let render_shared = shared.clone();
 
-    std::thread::spawn(move || {
-        let mut ctx: Scenix3D = smol::block_on(async {
-            Scenix3D::new(RENDER_W, RENDER_H)
-                .await
-                .expect("创建 3D 上下文失败")
-        });
+    std::thread::Builder::new()
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            let mut ctx = Scenix3D::blocking_new(RENDER_W, RENDER_H)
+                .expect("创建 3D 上下文失败");
 
         ctx.set_clear_color(1.0, 1.0, 1.0, 1.0);
 
@@ -912,7 +911,7 @@ fn main() {
                 std::thread::sleep(target - frame_time);
             }
         }
-    });
+    }).expect("启动 3D 渲染线程失败");
 
     application().run(move |cx: &mut App| {
         let bounds = Bounds::centered(None, size(px(900.0), px(780.0)), cx);

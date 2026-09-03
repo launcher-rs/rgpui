@@ -362,12 +362,11 @@ fn lerp_angle(from: f32, to: f32, t: f32) -> f32 {
 // ============================================================================
 
 fn spawn_3d_render_thread(state: Arc<Mutex<SharedState>>, model_path: String) {
-    std::thread::spawn(move || {
-        let mut ctx = smol::block_on(async {
-            Scenix3D::new(RENDER_W, RENDER_H)
-                .await
-                .expect("创建 3D 上下文失败")
-        });
+    std::thread::Builder::new()
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            let mut ctx = Scenix3D::blocking_new(RENDER_W, RENDER_H)
+                .expect("创建 3D 上下文失败");
 
         let loader = scenix::GltfLoader::new();
         let mut scene = match loader.load_file(&model_path) {
@@ -493,7 +492,7 @@ fn spawn_3d_render_thread(state: Arc<Mutex<SharedState>>, model_path: String) {
                 std::thread::sleep(FRAME_TIME - elapsed);
             }
         }
-    });
+    }).expect("启动 3D 渲染线程失败");
 }
 
 // ============================================================================

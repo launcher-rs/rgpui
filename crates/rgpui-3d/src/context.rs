@@ -164,6 +164,14 @@ impl Scenix3D {
         Self::new_inner(device, queue, width, height, 1)
     }
 
+    /// 同步创建 3D 渲染上下文（推荐在非 async 上下文中使用）。
+    ///
+    /// 内部将 async future 放到堆上（`Box::pin`），避免 debug 模式下
+    /// 大型 wgpu async future + D3D11 调试层栈帧导致栈溢出（STATUS_ACCESS_VIOLATION）。
+    pub fn blocking_new(width: u32, height: u32) -> Result<Self, ScenixError> {
+        smol::block_on(Box::pin(Self::new(width, height)))
+    }
+
     /// 从已有的 wgpu 设备+队列创建（共享 rgpui 的 GPU 上下文，不创建新实例）
     ///
     /// 当 rgpui 已经创建了 wgpu 设备时使用此方法，可避免多个

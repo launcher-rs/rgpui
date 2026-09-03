@@ -20,6 +20,7 @@ image = { workspace = true }
 bytemuck.workspace = true
 gltf = "1.4"
 smallvec = { workspace = true }
+smol = { workspace = true }
 rgpui-wgpu = { workspace = true, optional = true }
 
 [dev-dependencies]
