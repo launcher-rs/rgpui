@@ -91,15 +91,22 @@ impl DirectXDevices {
 }
 
 /// 检查调试层是否可用（仅在 debug 模式下）
+///
+/// 注意：D3D11 调试层会在每次 API 调用时插入额外验证栈帧，
+/// debug 模式下 async wgpu 初始化 + 调试层栈帧容易超过 1MB 默认栈限制，
+/// 导致 STATUS_ACCESS_VIOLATION。因此即使调试层可用也默认禁用。
 #[inline]
 fn check_debug_layer_available() -> bool {
     #[cfg(debug_assertions)]
     {
-        use windows::Win32::Graphics::Dxgi::{DXGIGetDebugInterface1, IDXGIInfoQueue};
-
-        unsafe { DXGIGetDebugInterface1::<IDXGIInfoQueue>(0) }
-            .log_err()
-            .is_some()
+        if std::env::var("RGPU_D3D11_DEBUG").is_ok() {
+            use windows::Win32::Graphics::Dxgi::{DXGIGetDebugInterface1, IDXGIInfoQueue};
+            unsafe { DXGIGetDebugInterface1::<IDXGIInfoQueue>(0) }
+                .log_err()
+                .is_some()
+        } else {
+            false
+        }
     }
     #[cfg(not(debug_assertions))]
     {
