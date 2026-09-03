@@ -15,9 +15,67 @@ members = [
     "crates/rgpui-web",
     "crates/rgpui-wgpu",
     "crates/rgpui-windows",
+    # examples
+    "examples/a11y",
+    "examples/active_state_bug",
+    "examples/anchor",
+    "examples/animation",
+    "examples/charts",
+    "examples/daemon_app",
+    "examples/data_table",
+    "examples/desktop_pet",
+    "examples/desktop_pet_3d",
+    "examples/drag_drop",
+    "examples/effects",
+    "examples/extended_components",
+    "examples/focus_visible",
+    "examples/gif_viewer",
+    "examples/gradient",
+    "examples/grid_layout",
+    "examples/hello_world",
+    "examples/image",
+    "examples/image_gallery",
+    "examples/image_loading",
+    "examples/input",
+    "examples/input_latency",
+    "examples/layer_shell",
+    "examples/list_example",
+    "examples/mouse_pressure",
+    "examples/move_entity_between_windows",
+    "examples/on_window_close_quit",
+    "examples/opacity",
+    "examples/ownership_post",
+    "examples/painting",
+    "examples/paths_bench",
+    "examples/pattern",
+    "examples/popover",
+    "examples/qr_code",
+    "examples/rgpui_story",
+    "examples/rgpui_term_basic",
+    "examples/rgpui_term_integration",
+    "examples/screen_capture",
+    "examples/scrollable",
+    "examples/set_menus",
+    "examples/shadow",
+    "examples/svg",
+    "examples/tab_stop",
+    "examples/testing",
+    "examples/text",
+    "examples/text_layout",
+    "examples/text_wrapper",
+    "examples/theme",
+    "examples/tokio_example",
+    "examples/transparent",
+    "examples/tray",
+    "examples/tray_simple",
+    "examples/tree",
+    "examples/uniform_list",
+    "examples/view_example",
+    "examples/window",
+    "examples/window_movable",
+    "examples/window_positioning",
+    "examples/window_shadow",
 ]
-
-exclude = ["examples"]
 
 [workspace.package]
 edition = "2024"
@@ -195,6 +253,8 @@ uuid = { version = "1.26.0", features = ["v4", "v5", "v7", "serde"] }
 # ---- 图像处理 ----
 # 图像编解码
 image = "0.25.10"
+# 2D 图形解析（painting 示例）
+lyon = { version = "1.0", features = ["extra"] }
 
 # ---- 模式匹配与校验 ----
 # JSON Schema 生成
@@ -355,7 +415,7 @@ reqwest = { version = "0.13", features = ["json","charset","http2","multipart","
 
 # ---- Tokio 异步运行时 ----
 # 异步运行时
-tokio = { version = "1" }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "time"] }
 
 # ---- TLS ----
 # TLS 实现
