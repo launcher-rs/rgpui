@@ -6535,6 +6535,8 @@ dependencies = [
 [[package]]
 name = "scenekit"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e654ced000dd3190ee936251b70fddafa7ca7d6736d474abf17fb0517f91f72a"
 dependencies = [
  "scenekit-animato",
  "scenekit-camera",
@@ -6557,6 +6559,8 @@ dependencies = [
 [[package]]
 name = "scenekit-animato"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7be5bae672e706620fe1d4db7f73fd6f7380af42359b4f3fdd6463e2d7e2c4b0"
 dependencies = [
  "animato",
  "scenekit-camera",
@@ -6570,6 +6574,8 @@ dependencies = [
 [[package]]
 name = "scenekit-camera"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5dd1d5e10e788a947cb30afa420360f52dbb9854bfecbf24be5d8ae10f8037ef"
 dependencies = [
  "scenekit-core",
  "scenekit-input",
@@ -6579,6 +6585,8 @@ dependencies = [
 [[package]]
 name = "scenekit-core"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77427065d58089359a1983d8d9b9366f5c9c08b9ced005bedcaab6d586165844"
 dependencies = [
  "scenekit-math",
  "serde",
@@ -6587,6 +6595,8 @@ dependencies = [
 [[package]]
 name = "scenekit-helpers"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04c979fc595c4458e71a376a0daca1755cdea0093aa5fe4702c8588fe535b634"
 dependencies = [
  "scenekit-camera",
  "scenekit-core",
@@ -6598,6 +6608,8 @@ dependencies = [
 [[package]]
 name = "scenekit-input"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "709674f3c70e81b1600f092747fc5ad4e9f3d581721af3186f39e99a93c0f0b9"
 dependencies = [
  "scenekit-math",
 ]
@@ -6605,6 +6617,8 @@ dependencies = [
 [[package]]
 name = "scenekit-light"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7aa6b1d5b247f76a6c9d85a3641d90b376863aa1752275cce44e88786069d89e"
 dependencies = [
  "scenekit-core",
  "scenekit-math",
@@ -6613,6 +6627,8 @@ dependencies = [
 [[package]]
 name = "scenekit-loader"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ace9bf9c1682f69aab9e2b716825daa5f3fb681003b4d35b2d7b4f512eee374a"
 dependencies = [
  "gltf",
  "image",
@@ -6632,6 +6648,8 @@ dependencies = [
 [[package]]
 name = "scenekit-material"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8979150bc6a1d122155031f080b69afa41d23df092d67b71797ec57ad32b3fec"
 dependencies = [
  "scenekit-core",
  "scenekit-math",
@@ -6640,6 +6658,8 @@ dependencies = [
 [[package]]
 name = "scenekit-math"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30e4894f8852cc66b1583324dc60569bf3004d123459fe866002d3418b89fd09"
 dependencies = [
  "serde",
 ]
@@ -6647,6 +6667,8 @@ dependencies = [
 [[package]]
 name = "scenekit-mesh"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bf71c64e1e9893af70dfac0b3d79cb6de1a1acc4a3a881f1a4e6fc063b511ee"
 dependencies = [
  "scenekit-core",
  "scenekit-math",
@@ -6655,6 +6677,8 @@ dependencies = [
 [[package]]
 name = "scenekit-post"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "491c4063cd9407f212176a71fd7919c385031bb011430d879967fa025f609819"
 dependencies = [
  "bytemuck",
  "scenekit-core",
@@ -6665,6 +6689,8 @@ dependencies = [
 [[package]]
 name = "scenekit-raycaster"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "921113ab1111f684b7caecdd556ad39bc26474e2b1e7e85728709581add32dd5"
 dependencies = [
  "scenekit-camera",
  "scenekit-core",
@@ -6676,6 +6702,8 @@ dependencies = [
 [[package]]
 name = "scenekit-renderer"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbca619a85e879cd97337f6838eaef33cffad2c4cfc8007b28795eb5fdcc8716"
 dependencies = [
  "bytemuck",
  "raw-window-handle",
@@ -6694,6 +6722,8 @@ dependencies = [
 [[package]]
 name = "scenekit-scene"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "334eb15cc2cfdedfed2a3624c6be0ab1ab691af3fb1240430aa84f3f47aacfa6"
 dependencies = [
  "scenekit-core",
  "scenekit-math",
@@ -6703,6 +6733,8 @@ dependencies = [
 [[package]]
 name = "scenekit-texture"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e81f922c61a6cc29adfc356178bb1e05aff70adbaeef0c70d1b8f6077bc39925"
 dependencies = [
  "scenekit-core",
 ]
@@ -6710,6 +6742,8 @@ dependencies = [
 [[package]]
 name = "scenekit-wasm"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5519dfbf19096b915f2f2655f8acc57205ad7d61675c66ee3538b65ae2074e9c"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
