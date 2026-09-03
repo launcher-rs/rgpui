@@ -3,13 +3,14 @@
 fn main() {
     #[cfg(target_os = "windows")]
     {
-        // Compile HLSL shaders
-        #[cfg(not(debug_assertions))]
+        // Compile HLSL shaders — debug 和 release 都预编译，
+        // 避免 debug 模式下运行时 D3DCompileFromFile 消耗大量栈空间
+        // 导致 STATUS_ACCESS_VIOLATION（1MB 默认栈溢出）。
         compile_shaders();
     }
 }
 
-#[cfg(all(target_os = "windows", not(debug_assertions)))]
+#[cfg(target_os = "windows")]
 mod shader_compilation {
     use std::{
         fs,
@@ -238,5 +239,5 @@ mod shader_compilation {
     }
 }
 
-#[cfg(all(target_os = "windows", not(debug_assertions)))]
+#[cfg(target_os = "windows")]
 use shader_compilation::compile_shaders;

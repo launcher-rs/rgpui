@@ -1767,11 +1767,11 @@ pub(crate) mod shader_resources {
             let entry_point = PCSTR::from_raw(entry.as_ptr());
             let target_cstr = PCSTR::from_raw(target.as_ptr());
 
-            // D3D_COMPILE_STANDARD_FILE_INCLUDE 是 windows-rs 中的 usize 常量，
-            // 需要 transmute 为 COM 接口引用。使用 transmute_copy 避免中间 usize 转换。
-            let raw = D3D_COMPILE_STANDARD_FILE_INCLUDE as *const ID3DInclude;
-            let include_handler =
-                std::mem::transmute_copy::<*const ID3DInclude, &ID3DInclude>(&raw);
+            // D3D_COMPILE_STANDARD_FILE_INCLUDE 是 windows-rs 中的 usize 常量（哨兵值 (usize)-1），
+            // 需要 transmute 为 ID3DInclude 后取引用，作为 D3DCompileFromFile 的 include handler。
+            let include_handler = &std::mem::transmute::<usize, ID3DInclude>(
+                D3D_COMPILE_STANDARD_FILE_INCLUDE as usize,
+            );
 
             let ret = D3DCompileFromFile(
                 &HSTRING::from(shader_path.to_str().unwrap()),

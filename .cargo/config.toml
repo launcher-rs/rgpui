@@ -1,0 +1,5 @@
+# Windows 主线程默认栈大小仅 1MB，debug 模式下 D3D11 初始化、
+# 运行时 shader 编译、wgpu async future 等深层调用链容易溢出。
+# 通过链接器参数将主线程栈增大到 4MB。
+[target.'cfg(target_os = "windows")']
+rustflags = ["-C", "link-arg=/STACK:4194304"]

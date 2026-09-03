@@ -81,26 +81,26 @@ members = [
 edition = "2024"
 publish = true
 license = "Apache-2.0"
-version = "1.0.1"
+version = "1.0.2"
 
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.0.1"}
-rgpui = { path = "crates/rgpui", default-features = false ,version = "1.0.1"}
-rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.0.1" }
-rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.0.1" }
-rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.0.1"}
-rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.0.1"}
-rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.0.1" }
-rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.0.1" }
+rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.0.2"}
+rgpui = { path = "crates/rgpui", default-features = false ,version = "1.0.2"}
+rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.0.2" }
+rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.0.2" }
+rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.0.2"}
+rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.0.2"}
+rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.0.2" }
+rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.0.2" }
 
-rgpui-dom = { path = "crates/rgpui-dom", version = "1.0.1" }
+rgpui-dom = { path = "crates/rgpui-dom", version = "1.0.2" }
 
-rgpui-character = {path = "crates/rgpui-character",version = "1.0.1"}
-rgpui-3d = {path = "crates/rgpui-3d",version = "1.0.1"}
-rgpui-term = {path = "crates/rgpui-term", version = "1.0.1"}
-rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.0.1"}
+rgpui-character = {path = "crates/rgpui-character",version = "1.0.2"}
+rgpui-3d = {path = "crates/rgpui-3d",version = "1.0.2"}
+rgpui-term = {path = "crates/rgpui-term", version = "1.0.2"}
+rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.0.2"}
 
 
 # ---- 辅助功能（AccessKit） ----

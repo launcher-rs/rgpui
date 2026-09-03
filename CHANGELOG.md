@@ -2,7 +2,20 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
-## [1.0.0] - 2026-08-31
+## [1.0.2] - 2026-09-03
+
+### 修复
+
+- **修复 debug 模式 STATUS_ACCESS_VIOLATION 崩溃**：还原 `D3D_COMPILE_STANDARD_FILE_INCLUDE` 的 `transmute_copy` 为 `transmute`，修复 D3DCompileFromFile include handler 指针错误导致的崩溃（regression from `f6646c6`）
+- **禁用 debug 模式 D3D11 调试层**：避免调试层初始化失败导致的栈溢出
+
+### 变更
+
+- **wgpu 29 → 30 升级**：适配 `present()` → `drop(frame)`、`VertexState::buffers` 包装、`color_space` 等 breaking changes
+- **scenekit 集成**：rgpui-3d 从 scenix 迁移到 scenekit（已发布 crates.io 0.1.0）
+- **examples 合并入根 workspace**：消除嵌套 workspace，统一依赖管理
+
+## [1.0.1] - 2026-08-31
 
 ### 新增
 

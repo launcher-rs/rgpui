@@ -135,7 +135,9 @@ impl Scenix3D {
             );
         }
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.flags = desc.flags.difference(wgpu::InstanceFlags::VALIDATION);
+        let instance = wgpu::Instance::new(desc);
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
