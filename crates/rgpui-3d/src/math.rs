@@ -12,8 +12,8 @@ pub(crate) fn aligned_size<T>() -> u64 {
     ((std::mem::size_of::<T>() as u64) + 255) & !255
 }
 
-/// 将 scenix Mat4 转为 [[f32; 4]; 4]
-pub(crate) fn mat4_to_array(m: scenix::Mat4) -> [[f32; 4]; 4] {
+/// 将 scenekit Mat4 转为 [[f32; 4]; 4]
+pub(crate) fn mat4_to_array(m: scenekit::Mat4) -> [[f32; 4]; 4] {
     [
         [m.cols[0].x, m.cols[0].y, m.cols[0].z, m.cols[0].w],
         [m.cols[1].x, m.cols[1].y, m.cols[1].z, m.cols[1].w],
@@ -22,28 +22,28 @@ pub(crate) fn mat4_to_array(m: scenix::Mat4) -> [[f32; 4]; 4] {
     ]
 }
 
-/// scenix 过滤模式 → wgpu 过滤模式
-pub(crate) fn filter_to_wgpu(f: scenix::FilterMode) -> wgpu::FilterMode {
+/// scenekit 过滤模式 → wgpu 过滤模式
+pub(crate) fn filter_to_wgpu(f: scenekit::FilterMode) -> wgpu::FilterMode {
     match f {
-        scenix::FilterMode::Nearest => wgpu::FilterMode::Nearest,
-        scenix::FilterMode::Linear => wgpu::FilterMode::Linear,
+        scenekit::FilterMode::Nearest => wgpu::FilterMode::Nearest,
+        scenekit::FilterMode::Linear => wgpu::FilterMode::Linear,
     }
 }
 
-/// scenix 过滤模式 → wgpu mipmap 过滤模式
-pub(crate) fn mip_filter_to_wgpu(f: scenix::FilterMode) -> wgpu::MipmapFilterMode {
+/// scenekit 过滤模式 → wgpu mipmap 过滤模式
+pub(crate) fn mip_filter_to_wgpu(f: scenekit::FilterMode) -> wgpu::MipmapFilterMode {
     match f {
-        scenix::FilterMode::Nearest => wgpu::MipmapFilterMode::Nearest,
-        scenix::FilterMode::Linear => wgpu::MipmapFilterMode::Linear,
+        scenekit::FilterMode::Nearest => wgpu::MipmapFilterMode::Nearest,
+        scenekit::FilterMode::Linear => wgpu::MipmapFilterMode::Linear,
     }
 }
 
-/// scenix 寻址模式 → wgpu 寻址模式
-pub(crate) fn address_to_wgpu(a: scenix::AddressMode) -> wgpu::AddressMode {
+/// scenekit 寻址模式 → wgpu 寻址模式
+pub(crate) fn address_to_wgpu(a: scenekit::AddressMode) -> wgpu::AddressMode {
     match a {
-        scenix::AddressMode::Repeat => wgpu::AddressMode::Repeat,
-        scenix::AddressMode::MirrorRepeat => wgpu::AddressMode::MirrorRepeat,
-        scenix::AddressMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+        scenekit::AddressMode::Repeat => wgpu::AddressMode::Repeat,
+        scenekit::AddressMode::MirrorRepeat => wgpu::AddressMode::MirrorRepeat,
+        scenekit::AddressMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
     }
 }
 
@@ -134,19 +134,19 @@ pub(crate) fn quat_to_rot_cols(q: [f32; 4]) -> ([f32; 3], [f32; 3], [f32; 3]) {
     (col0, col1, col2)
 }
 
-/// TRS → scenix Mat4
-pub(crate) fn trs_to_mat4(t: [f32; 3], r: [f32; 4], s: [f32; 3]) -> scenix::Mat4 {
+/// TRS → scenekit Mat4
+pub(crate) fn trs_to_mat4(t: [f32; 3], r: [f32; 4], s: [f32; 3]) -> scenekit::Mat4 {
     let (rc0, rc1, rc2) = quat_to_rot_cols(r);
-    scenix::Mat4::from_cols(
-        scenix::Vec4::new(rc0[0] * s[0], rc0[1] * s[0], rc0[2] * s[0], 0.0),
-        scenix::Vec4::new(rc1[0] * s[1], rc1[1] * s[1], rc1[2] * s[1], 0.0),
-        scenix::Vec4::new(rc2[0] * s[2], rc2[1] * s[2], rc2[2] * s[2], 0.0),
-        scenix::Vec4::new(t[0], t[1], t[2], 1.0),
+    scenekit::Mat4::from_cols(
+        scenekit::Vec4::new(rc0[0] * s[0], rc0[1] * s[0], rc0[2] * s[0], 0.0),
+        scenekit::Vec4::new(rc1[0] * s[1], rc1[1] * s[1], rc1[2] * s[1], 0.0),
+        scenekit::Vec4::new(rc2[0] * s[2], rc2[1] * s[2], rc2[2] * s[2], 0.0),
+        scenekit::Vec4::new(t[0], t[1], t[2], 1.0),
     )
 }
 
-/// 4x4 矩阵乘法（scenix Mat4）
-pub(crate) fn mat4_mul(a: &scenix::Mat4, b: &scenix::Mat4) -> scenix::Mat4 {
+/// 4x4 矩阵乘法（scenekit Mat4）
+pub(crate) fn mat4_mul(a: &scenekit::Mat4, b: &scenekit::Mat4) -> scenekit::Mat4 {
     let a0 = &a.cols[0];
     let a1 = &a.cols[1];
     let a2 = &a.cols[2];
@@ -156,19 +156,19 @@ pub(crate) fn mat4_mul(a: &scenix::Mat4, b: &scenix::Mat4) -> scenix::Mat4 {
     let b2 = &b.cols[2];
     let b3 = &b.cols[3];
 
-    let mul_col = |bc: &scenix::Vec4| -> scenix::Vec4 {
-        scenix::Vec4::new(
+    let mul_col = |bc: &scenekit::Vec4| -> scenekit::Vec4 {
+        scenekit::Vec4::new(
             a0.x * bc.x + a1.x * bc.y + a2.x * bc.z + a3.x * bc.w,
             a0.y * bc.x + a1.y * bc.y + a2.y * bc.z + a3.y * bc.w,
             a0.z * bc.x + a1.z * bc.y + a2.z * bc.z + a3.z * bc.w,
             a0.w * bc.x + a1.w * bc.y + a2.w * bc.z + a3.w * bc.w,
         )
     };
-    scenix::Mat4::from_cols(mul_col(b0), mul_col(b1), mul_col(b2), mul_col(b3))
+    scenekit::Mat4::from_cols(mul_col(b0), mul_col(b1), mul_col(b2), mul_col(b3))
 }
 
-/// 将 scenix Mat4 转为 [f32; 16]（列主序，用于 GPU 上传）
-pub(crate) fn mat4_to_flat(m: &scenix::Mat4) -> [f32; 16] {
+/// 将 scenekit Mat4 转为 [f32; 16]（列主序，用于 GPU 上传）
+pub(crate) fn mat4_to_flat(m: &scenekit::Mat4) -> [f32; 16] {
     [
         m.cols[0].x,
         m.cols[0].y,
@@ -189,11 +189,11 @@ pub(crate) fn mat4_to_flat(m: &scenix::Mat4) -> [f32; 16] {
     ]
 }
 
-pub(crate) fn mat4_identity() -> scenix::Mat4 {
-    scenix::Mat4::from_cols(
-        scenix::Vec4::new(1.0, 0.0, 0.0, 0.0),
-        scenix::Vec4::new(0.0, 1.0, 0.0, 0.0),
-        scenix::Vec4::new(0.0, 0.0, 1.0, 0.0),
-        scenix::Vec4::new(0.0, 0.0, 0.0, 1.0),
+pub(crate) fn mat4_identity() -> scenekit::Mat4 {
+    scenekit::Mat4::from_cols(
+        scenekit::Vec4::new(1.0, 0.0, 0.0, 0.0),
+        scenekit::Vec4::new(0.0, 1.0, 0.0, 0.0),
+        scenekit::Vec4::new(0.0, 0.0, 1.0, 0.0),
+        scenekit::Vec4::new(0.0, 0.0, 0.0, 1.0),
     )
 }

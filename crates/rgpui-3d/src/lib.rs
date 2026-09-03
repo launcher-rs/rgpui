@@ -1,7 +1,7 @@
-//! rgpui-3d: 将 scenix 3D 渲染引擎集成到 rgpui 中。
+//! rgpui-3d: 将 scenekit 3D 渲染引擎集成到 rgpui 中。
 //!
 //! 本 crate 提供：
-//! - [`Scenix3D`]：管理 wgpu 设备、离屏渲染目标和 scenix GPU 场景资源
+//! - [`Scenix3D`]：管理 wgpu 设备、离屏渲染目标和 scenekit GPU 场景资源
 //! - [`RenderResult`]：渲染结果，包含 BGRA 像素数据和尺寸
 //! - 与 rgpui 的 `RenderImage` 转换支持
 //!
@@ -20,8 +20,8 @@
 //! let image = result.into_render_image();
 //! ```
 
-/// 重新导出 scenix 公开类型
-pub use scenix;
+/// 重新导出 scenekit 公开类型
+pub use scenekit;
 
 mod context;
 mod math;

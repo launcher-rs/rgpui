@@ -1,11 +1,11 @@
-//! rgpui + scenix 3D 模型查看器（带自动旋转）
+//! rgpui + scenekit 3D 模型查看器（带自动旋转）
 //!
 //! 从文件加载 glTF/GLB 3D 模型，支持鼠标拖拽轨道相机、滚轮缩放和自动旋转。
 //!
 //! 用法:
-//!   cargo run --example scenix_model                          # 加载默认 cat.glb
-//!   cargo run --example scenix_model -- --model 模型.glb      # 加载指定模型
-//!   cargo run --example scenix_model -- --auto-rotate         # 自动旋转
+//!   cargo run --example scenekit_model                          # 加载默认 cat.glb
+//!   cargo run --example scenekit_model -- --model 模型.glb      # 加载指定模型
+//!   cargo run --example scenekit_model -- --auto-rotate         # 自动旋转
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -16,7 +16,7 @@ use rgpui::{
     WindowOptions, div, img, prelude::*, px, rgb, size,
 };
 use rgpui_3d::Scenix3D;
-use rgpui_3d::scenix::{self, PerspectiveCamera, SceneGraph, Vec3};
+use rgpui_3d::scenekit::{self, PerspectiveCamera, SceneGraph, Vec3};
 use rgpui_platform::application;
 
 /// 渲染尺寸
@@ -100,7 +100,7 @@ impl Render for ModelView {
                     div()
                         .text_2xl()
                         .text_color(rgb(0xffffff))
-                        .child("rgpui + scenix 模型查看器"),
+                        .child("rgpui + scenekit 模型查看器"),
                 ),
             )
             .child(
@@ -231,7 +231,7 @@ fn main() {
         let info: String;
 
         if let Some(ref path) = model_path {
-            let loader = scenix::GltfLoader::new();
+            let loader = scenekit::GltfLoader::new();
             match loader.load_file(path) {
                 Ok(asset) => match ctx.register_gltf_asset(&asset) {
                     Ok(_) => {
@@ -334,7 +334,7 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 // window_background: WindowBackgroundAppearance::Transparent,
                 titlebar: Some(TitlebarOptions {
-                    title: Some("rgpui + scenix 模型查看器".into()),
+                    title: Some("rgpui + scenekit 模型查看器".into()),
                     appears_transparent: false,
                     traffic_light_position: None,
                 }),

@@ -405,6 +405,7 @@ impl WgpuContext {
             desired_maximum_frame_latency: 2,
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
+            color_space: wgpu::SurfaceColorSpace::Auto,
         };
 
         surface.configure(&device, &test_config);

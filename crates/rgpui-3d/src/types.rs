@@ -34,10 +34,10 @@ pub(crate) struct MaterialUniform {
 }
 
 impl MaterialUniform {
-    pub(crate) fn from_material(material: &scenix::RendererMaterial) -> Self {
+    pub(crate) fn from_material(material: &scenekit::RendererMaterial) -> Self {
         let color = material.preview_color();
         let has_texture = match material {
-            scenix::RendererMaterial::Pbr(pbr) => pbr.albedo_texture.is_some(),
+            scenekit::RendererMaterial::Pbr(pbr) => pbr.albedo_texture.is_some(),
             _ => false,
         };
         Self {
@@ -126,7 +126,7 @@ impl SkinnedVertex {
 
 /// CPU 端皮肤数据
 pub(crate) struct SkinData {
-    pub(crate) inverse_bind_matrices: Vec<scenix::Mat4>,
+    pub(crate) inverse_bind_matrices: Vec<scenekit::Mat4>,
     pub(crate) joint_node_indices: Vec<usize>,
 }
 

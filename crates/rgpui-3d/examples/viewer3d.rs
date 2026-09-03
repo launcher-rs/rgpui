@@ -1,6 +1,6 @@
-//! rgpui + scenix 通用 3D 模型查看器
+//! rgpui + scenekit 通用 3D 模型查看器
 //!
-//! 基于 scenix_skin.rs，支持命令行动加模型、运行时文件对话框切换模型、
+//! 基于 scenekit_skin.rs，支持命令行动加模型、运行时文件对话框切换模型、
 //! 骨骼可视化、动画控制、关节操作等完整功能。
 //!
 //! 用法:
@@ -18,7 +18,7 @@ use rgpui::{
     WindowBounds, WindowOptions, div, img, prelude::*, px, rgb, size,
 };
 use rgpui_3d::Scenix3D;
-use rgpui_3d::scenix::{self, PerspectiveCamera, SceneGraph, Vec3};
+use rgpui_3d::scenekit::{self, PerspectiveCamera, SceneGraph, Vec3};
 use rgpui_platform::application;
 
 const RENDER_W: u32 = 800;
@@ -185,12 +185,12 @@ fn draw_line(
 
 fn project_to_screen(
     pos: Vec3,
-    vp: scenix::Mat4,
+    vp: scenekit::Mat4,
     width: u32,
     height: u32,
 ) -> Option<(f32, f32, f32)> {
-    let clip = scenix::Vec4::new(pos.x, pos.y, pos.z, 1.0);
-    let clip = scenix::Vec4::new(
+    let clip = scenekit::Vec4::new(pos.x, pos.y, pos.z, 1.0);
+    let clip = scenekit::Vec4::new(
         vp.cols[0].x * clip.x
             + vp.cols[1].x * clip.y
             + vp.cols[2].x * clip.z
@@ -227,7 +227,7 @@ fn try_load_model(ctx: &mut Scenix3D, path: &str) -> (Option<SceneGraph>, String
     ctx.gpu_scene_mut().clear_materials();
     ctx.gpu_scene_mut().clear_textures();
 
-    let loader = scenix::GltfLoader::new();
+    let loader = scenekit::GltfLoader::new();
     match loader.load_file(path) {
         Ok(asset) => match ctx.register_gltf_asset(&asset) {
             Ok(_) => {
@@ -474,7 +474,7 @@ impl Render for Viewer3D {
                             };
                             if let Some(sel) = s.selected_joint {
                                 let angle = delta * 0.02;
-                                let q = scenix::Quat::from_axis_angle(Vec3::Y, angle);
+                                let q = scenekit::Quat::from_axis_angle(Vec3::Y, angle);
                                 s.pending_override = Some((sel, [q.x, q.y, q.z, q.w]));
                             } else {
                                 s.distance -= delta * 0.05;
@@ -845,7 +845,7 @@ fn main() {
             };
             ctx.set_msaa_enabled(msaa_enabled);
             if let Some((idx, q)) = pending {
-                ctx.set_joint_rotation_override(idx, scenix::Quat::new(q[0], q[1], q[2], q[3]));
+                ctx.set_joint_rotation_override(idx, scenekit::Quat::new(q[0], q[1], q[2], q[3]));
             }
             if let Some(pause) = do_pause {
                 ctx.set_animation_paused(pause);
@@ -915,12 +915,12 @@ fn main() {
                     .target(Vec3::ZERO);
 
             if let Some(ref mut scene) = loaded_model {
-                let mesh_ids: Vec<scenix::NodeId> = scene
+                let mesh_ids: Vec<scenekit::NodeId> = scene
                     .iter_depth_first()
                     .filter(|&id| {
                         scene
                             .get(id)
-                            .map_or(false, |n| matches!(n.kind, scenix::NodeKind::Mesh { .. }))
+                            .map_or(false, |n| matches!(n.kind, scenekit::NodeKind::Mesh { .. }))
                     })
                     .collect();
                 for id in mesh_ids {

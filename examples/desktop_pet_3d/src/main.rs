@@ -15,7 +15,7 @@ use rgpui::{
     rgb, size,
 };
 use rgpui_3d::Scenix3D;
-use rgpui_3d::scenix::{self, PerspectiveCamera, Quat, Transform, Vec3};
+use rgpui_3d::scenekit::{self as scenix, PerspectiveCamera, Quat, Transform, Vec3};
 use rgpui_platform::application;
 use std::borrow::Cow;
 use std::collections::HashMap;

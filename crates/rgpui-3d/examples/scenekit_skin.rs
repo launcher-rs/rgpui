@@ -7,7 +7,7 @@ use rgpui::{
     WindowBounds, WindowOptions, div, img, prelude::*, px, rgb, size,
 };
 use rgpui_3d::Scenix3D;
-use rgpui_3d::scenix::{self, PerspectiveCamera, SceneGraph, Vec3};
+use rgpui_3d::scenekit::{self, PerspectiveCamera, SceneGraph, Vec3};
 use rgpui_platform::application;
 
 const RENDER_W: u32 = 800;
@@ -162,12 +162,12 @@ fn draw_line(
 
 fn project_to_screen(
     pos: Vec3,
-    vp: scenix::Mat4,
+    vp: scenekit::Mat4,
     width: u32,
     height: u32,
 ) -> Option<(f32, f32, f32)> {
-    let clip = scenix::Vec4::new(pos.x, pos.y, pos.z, 1.0);
-    let clip = scenix::Vec4::new(
+    let clip = scenekit::Vec4::new(pos.x, pos.y, pos.z, 1.0);
+    let clip = scenekit::Vec4::new(
         vp.cols[0].x * clip.x
             + vp.cols[1].x * clip.y
             + vp.cols[2].x * clip.z
@@ -291,7 +291,7 @@ impl Render for SkinView {
                     div()
                         .text_2xl()
                         .text_color(rgb(0x222222))
-                        .child("rgpui + scenix 骨骼动画"),
+                        .child("rgpui + scenekit 骨骼动画"),
                 ),
             )
             .child(
@@ -360,7 +360,7 @@ impl Render for SkinView {
                             // 如果有选中的关节，滚轮旋转关节
                             if let Some(sel) = s.selected_joint {
                                 let angle = delta * 0.02;
-                                let q = scenix::Quat::from_axis_angle(Vec3::Y, angle);
+                                let q = scenekit::Quat::from_axis_angle(Vec3::Y, angle);
                                 s.pending_override = Some((sel, [q.x, q.y, q.z, q.w]));
                             } else {
                                 s.distance -= delta * 0.05;
@@ -638,7 +638,7 @@ fn main() {
         let mut anim_names: Vec<String> = Vec::new();
 
         if let Some(ref path) = model_path {
-            let loader = scenix::GltfLoader::new();
+            let loader = scenekit::GltfLoader::new();
             match loader.load_file(path) {
                 Ok(asset) => match ctx.register_gltf_asset(&asset) {
                     Ok(_) => {
@@ -713,7 +713,7 @@ fn main() {
                 (result, anim_switch, do_pause, show, skin)
             };
             if let Some((idx, q)) = pending {
-                ctx.set_joint_rotation_override(idx, scenix::Quat::new(q[0], q[1], q[2], q[3]));
+                ctx.set_joint_rotation_override(idx, scenekit::Quat::new(q[0], q[1], q[2], q[3]));
             }
             if let Some(pause) = do_pause {
                 ctx.set_animation_paused(pause);
@@ -786,12 +786,12 @@ fn main() {
 
             if let Some(ref mut scene) = loaded_model {
                 // 应用皮肤可见性开关
-                let mesh_ids: Vec<scenix::NodeId> = scene
+                let mesh_ids: Vec<scenekit::NodeId> = scene
                     .iter_depth_first()
                     .filter(|&id| {
                         scene
                             .get(id)
-                            .map_or(false, |n| matches!(n.kind, scenix::NodeKind::Mesh { .. }))
+                            .map_or(false, |n| matches!(n.kind, scenekit::NodeKind::Mesh { .. }))
                     })
                     .collect();
                 for id in mesh_ids {
@@ -922,7 +922,7 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("rgpui + scenix 骨骼动画".into()),
+                    title: Some("rgpui + scenekit 骨骼动画".into()),
                     appears_transparent: false,
                     traffic_light_position: None,
                 }),

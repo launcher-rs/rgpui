@@ -1,10 +1,10 @@
-//! rgpui + scenix 3D 模型查看器
+//! rgpui + scenekit 3D 模型查看器
 //!
 //! 从文件加载 glTF/GLB 3D 模型，支持鼠标拖拽轨道相机和滚轮缩放。
 //!
 //! 用法:
-//!   cargo run --example scenix_cube                          # 加载默认 cat.glb
-//!   cargo run --example scenix_cube -- --model 模型.glb      # 加载指定模型
+//!   cargo run --example scenekit_cube                          # 加载默认 cat.glb
+//!   cargo run --example scenekit_cube -- --model 模型.glb      # 加载指定模型
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -15,7 +15,7 @@ use rgpui::{
     WindowOptions, div, img, prelude::*, px, rgb, size,
 };
 use rgpui_3d::Scenix3D;
-use rgpui_3d::scenix::{self, PerspectiveCamera, SceneGraph, Vec3};
+use rgpui_3d::scenekit::{self, PerspectiveCamera, SceneGraph, Vec3};
 use rgpui_platform::application;
 
 /// 渲染尺寸
@@ -98,7 +98,7 @@ impl Render for ModelView {
                 div()
                     .text_2xl()
                     .text_color(rgb(0xffffff))
-                    .child("rgpui + scenix 3D 查看器"),
+                    .child("rgpui + scenekit 3D 查看器"),
             )
             .child(
                 div()
@@ -187,7 +187,7 @@ fn main() {
         let info: String;
 
         if let Some(ref path) = model_path {
-            let loader = scenix::GltfLoader::new();
+            let loader = scenekit::GltfLoader::new();
             match loader.load_file(path) {
                 Ok(asset) => match ctx.register_gltf_asset(&asset) {
                     Ok(_) => {
@@ -277,7 +277,7 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 // window_background: WindowBackgroundAppearance::Transparent,
                 titlebar: Some(TitlebarOptions {
-                    title: Some("rgpui + scenix 3D 查看器".into()),
+                    title: Some("rgpui + scenekit 3D 查看器".into()),
                     appears_transparent: false,
                     traffic_light_position: None,
                 }),

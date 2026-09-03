@@ -3,7 +3,7 @@ use crate::shader::{SHADER_SRC, SKIN_SHADER_SRC};
 use crate::types::*;
 use bytemuck;
 use rgpui::RenderImage;
-use scenix::{
+use scenekit::{
     Geometry, GpuError, GpuScene, MaterialId, MeshId, PackedVertex, PerspectiveCamera,
     RendererLight, RendererMaterial, SceneGraph, ScenixError, TextureId, collect_visible_draws,
     sort_opaque_front_to_back, sort_transparent_back_to_front,
@@ -36,12 +36,12 @@ impl RenderResult {
 
 /// 3D 场景渲染上下文
 ///
-/// 管理 wgpu 设备、离屏渲染目标、scenix GPU 场景资源和渲染管线。
+/// 管理 wgpu 设备、离屏渲染目标、scenekit GPU 场景资源和渲染管线。
 ///
 /// # 生命周期
 /// 1. 使用 `Scenix3D::new(width, height)` 或 `Scenix3D::new_shared(device, queue, w, h)` 创建
 /// 2. 注册网格和材质：`register_mesh()`, `register_pbr_material()` 等
-/// 3. 构建 scenix `SceneGraph`，添加 `SceneNode`
+/// 3. 构建 scenekit `SceneGraph`，添加 `SceneNode`
 /// 4. 调用 `render()` 渲染并获取像素结果
 /// 5. 将结果转为 `RenderImage` 在 rgpui 窗口中显示
 pub struct Scenix3D {
@@ -111,10 +111,10 @@ pub struct Scenix3D {
     bone_bg: wgpu::BindGroup,
 
     cached_local_trs: Vec<([f32; 3], [f32; 4], [f32; 3])>,
-    cached_global_mats: Vec<scenix::Mat4>,
+    cached_global_mats: Vec<scenekit::Mat4>,
     cached_bone_data: Vec<f32>,
 
-    joint_overrides: Vec<Option<scenix::Quat>>,
+    joint_overrides: Vec<Option<scenekit::Quat>>,
 }
 
 impl Scenix3D {
@@ -141,6 +141,7 @@ impl Scenix3D {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             })
             .await
             .map_err(|_| ScenixError::Gpu(GpuError::Init))?;
@@ -393,7 +394,7 @@ impl Scenix3D {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[PackedVertex::layout()],
+                buffers: &[Some(PackedVertex::layout())],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             primitive: wgpu::PrimitiveState {
@@ -524,7 +525,7 @@ impl Scenix3D {
             vertex: wgpu::VertexState {
                 module: &skin_shader,
                 entry_point: Some("vs_skin"),
-                buffers: &[SkinnedVertex::layout()],
+                buffers: &[Some(SkinnedVertex::layout())],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             primitive: wgpu::PrimitiveState {
@@ -718,7 +719,7 @@ impl Scenix3D {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[PackedVertex::layout()],
+                    buffers: &[Some(PackedVertex::layout())],
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 primitive: wgpu::PrimitiveState {
@@ -755,7 +756,7 @@ impl Scenix3D {
                 vertex: wgpu::VertexState {
                     module: &skin_shader,
                     entry_point: Some("vs_skin"),
-                    buffers: &[SkinnedVertex::layout()],
+                    buffers: &[Some(SkinnedVertex::layout())],
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 primitive: wgpu::PrimitiveState {
@@ -842,7 +843,7 @@ impl Scenix3D {
     pub fn register_pbr_material(
         &mut self,
         id: MaterialId,
-        material: &scenix::PbrMaterial,
+        material: &scenekit::PbrMaterial,
     ) -> Result<(), ScenixError> {
         self.gpu_scene.register_pbr_material(id, material)?;
         Ok(())
@@ -852,7 +853,7 @@ impl Scenix3D {
     pub fn register_unlit_material(
         &mut self,
         id: MaterialId,
-        material: &scenix::UnlitMaterial,
+        material: &scenekit::UnlitMaterial,
     ) -> Result<(), ScenixError> {
         self.gpu_scene.register_unlit_material(id, material)?;
         Ok(())
@@ -862,7 +863,7 @@ impl Scenix3D {
     pub fn register_lambert_material(
         &mut self,
         id: MaterialId,
-        material: &scenix::LambertMaterial,
+        material: &scenekit::LambertMaterial,
     ) -> Result<(), ScenixError> {
         self.gpu_scene.register_lambert_material(id, material)?;
         Ok(())
@@ -872,7 +873,7 @@ impl Scenix3D {
     pub fn register_toon_material(
         &mut self,
         id: MaterialId,
-        material: &scenix::ToonMaterial,
+        material: &scenekit::ToonMaterial,
     ) -> Result<(), ScenixError> {
         self.gpu_scene.register_toon_material(id, material)?;
         Ok(())
@@ -881,7 +882,7 @@ impl Scenix3D {
     /// 注册光照
     pub fn register_light(
         &mut self,
-        id: scenix::LightId,
+        id: scenekit::LightId,
         light: RendererLight,
     ) -> Result<(), ScenixError> {
         self.gpu_scene.register_light(id, light)?;
@@ -892,8 +893,8 @@ impl Scenix3D {
     pub fn register_texture(
         &mut self,
         id: TextureId,
-        texture: &scenix::Texture2D,
-        sampler: scenix::Sampler,
+        texture: &scenekit::Texture2D,
+        sampler: scenekit::Sampler,
     ) -> Result<(), ScenixError> {
         let wgpu_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("rgpui-3d.texture"),
@@ -969,7 +970,7 @@ impl Scenix3D {
     }
 
     /// 注册 glTF 资产的所有网格、材质和纹理到 GPU 场景
-    pub fn register_gltf_asset(&mut self, asset: &scenix::GltfAsset) -> Result<(), ScenixError> {
+    pub fn register_gltf_asset(&mut self, asset: &scenekit::GltfAsset) -> Result<(), ScenixError> {
         for (id, geometry) in &asset.meshes {
             self.register_mesh(*id, geometry)?;
         }
@@ -991,10 +992,10 @@ impl Scenix3D {
     pub fn load_gltf_skins(
         &mut self,
         path: &str,
-        asset: &scenix::GltfAsset,
+        asset: &scenekit::GltfAsset,
     ) -> Result<(), ScenixError> {
         let (document, buffer_data, _image_data) =
-            gltf::import(path).map_err(|_| ScenixError::Load(scenix::LoadError::Io))?;
+            gltf::import(path).map_err(|_| ScenixError::Load(scenekit::LoadError::Io))?;
 
         let gltf_nodes: Vec<gltf::Node> = document.nodes().collect();
         let mut parent_of: Vec<Option<usize>> = vec![None; gltf_nodes.len()];
@@ -1049,17 +1050,17 @@ impl Scenix3D {
             };
             let skin_index = self.skins.len();
 
-            let ibm: Vec<scenix::Mat4> = {
+            let ibm: Vec<scenekit::Mat4> = {
                 let reader = skin.reader(|buffer| Some(&buffer_data[buffer.index()].0));
                 let Some(iter) = reader.read_inverse_bind_matrices() else {
                     continue;
                 };
                 iter.map(|cols| {
-                    scenix::Mat4::from_cols(
-                        scenix::Vec4::new(cols[0][0], cols[0][1], cols[0][2], cols[0][3]),
-                        scenix::Vec4::new(cols[1][0], cols[1][1], cols[1][2], cols[1][3]),
-                        scenix::Vec4::new(cols[2][0], cols[2][1], cols[2][2], cols[2][3]),
-                        scenix::Vec4::new(cols[3][0], cols[3][1], cols[3][2], cols[3][3]),
+                    scenekit::Mat4::from_cols(
+                        scenekit::Vec4::new(cols[0][0], cols[0][1], cols[0][2], cols[0][3]),
+                        scenekit::Vec4::new(cols[1][0], cols[1][1], cols[1][2], cols[1][3]),
+                        scenekit::Vec4::new(cols[2][0], cols[2][1], cols[2][2], cols[2][3]),
+                        scenekit::Vec4::new(cols[3][0], cols[3][1], cols[3][2], cols[3][3]),
                     )
                 })
                 .collect()
@@ -1398,8 +1399,8 @@ impl Scenix3D {
 
         self.cached_global_mats.clear();
         self.cached_global_mats
-            .resize(num_joints, scenix::Mat4::IDENTITY);
-        let local_mats: Vec<scenix::Mat4> = (0..num_joints)
+            .resize(num_joints, scenekit::Mat4::IDENTITY);
+        let local_mats: Vec<scenekit::Mat4> = (0..num_joints)
             .map(|i| {
                 trs_to_mat4(
                     self.cached_local_trs[i].0,
@@ -1732,7 +1733,7 @@ impl Scenix3D {
         self.joints.get(index).and_then(|j| j.parent)
     }
     /// 获取关节的世界矩阵（需在 advance_animation 之后调用）
-    pub fn joint_world_matrix(&self, index: usize) -> Option<scenix::Mat4> {
+    pub fn joint_world_matrix(&self, index: usize) -> Option<scenekit::Mat4> {
         if index < self.cached_global_mats.len() {
             Some(self.cached_global_mats[index])
         } else {
@@ -1740,12 +1741,12 @@ impl Scenix3D {
         }
     }
     /// 获取关节的世界位置
-    pub fn joint_world_position(&self, index: usize) -> Option<scenix::Vec3> {
+    pub fn joint_world_position(&self, index: usize) -> Option<scenekit::Vec3> {
         self.joint_world_matrix(index)
-            .map(|m| scenix::Vec3::new(m.cols[3].x, m.cols[3].y, m.cols[3].z))
+            .map(|m| scenekit::Vec3::new(m.cols[3].x, m.cols[3].y, m.cols[3].z))
     }
     /// 设置关节的旋转覆盖
-    pub fn set_joint_rotation_override(&mut self, index: usize, rotation: scenix::Quat) {
+    pub fn set_joint_rotation_override(&mut self, index: usize, rotation: scenekit::Quat) {
         if index < self.joints.len() {
             if self.joint_overrides.len() <= index {
                 self.joint_overrides.resize(index + 1, None)
@@ -2072,7 +2073,7 @@ impl Scenix3D {
             .map_err(|_| ScenixError::Gpu(GpuError::Upload))?
             .map_err(|_| ScenixError::Gpu(GpuError::Upload))?;
 
-        let mapped = slice.get_mapped_range();
+        let mapped = slice.get_mapped_range().map_err(|_| ScenixError::Gpu(GpuError::Unsupported))?;
         let mut pixels = Vec::with_capacity((self.width * self.height * bpp) as usize);
         for row in 0..self.height as usize {
             let off = row * row_padded as usize;

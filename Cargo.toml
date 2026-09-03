@@ -328,7 +328,7 @@ ashpd = { version = "0.13", default-features = false, features = [
 
 # ---- GPU 渲染 ----
 # WebGPU 实现
-wgpu = { version = "29.0" }
+wgpu = { version = "30.0" }
 #wgpu = { git = "https://github.com/zed-industries/wgpu.git", rev = "357a0c56e0070480ad9daea5d2eaa83150b79e88" }
 
 # ---- 版本语义 ----

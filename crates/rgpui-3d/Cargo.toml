@@ -1,6 +1,6 @@
 [package]
 name = "rgpui-3d"
-description = "scenix 3D 渲染引擎的 rgpui 集成，支持 3D 场景渲染和合成"
+description = "scenekit 3D 渲染引擎的 rgpui 集成，支持 3D 场景渲染和合成"
 publish=true
 license = "Apache-2.0"
 version.workspace = true
@@ -9,12 +9,12 @@ repository = "https://github.com/launcher-rs/rgpui"
 
 [features]
 default = ["shared-wgpu"]
-scenix-renderer = ["scenix/renderer", "scenix/loader"]
+scenekit-renderer = ["scenekit/renderer", "scenekit/loader"]
 shared-wgpu = ["dep:rgpui-wgpu"]
 
 [dependencies]
 rgpui = { workspace = true }
-scenix = { version = "1.5.0", features = ["renderer", "loader"] }
+scenekit = { path = "../../../scenekit/crates/scenekit", features = ["renderer", "loader"] }
 wgpu = { workspace = true }
 image = { workspace = true }
 bytemuck.workspace = true
@@ -29,16 +29,16 @@ smol = { workspace = true }
 rfd = "0.17"
 
 [[example]]
-name = "scenix_cube"
-path = "examples/scenix_cube.rs"
+name = "scenekit_cube"
+path = "examples/scenekit_cube.rs"
 
 [[example]]
-name = "scenix_model"
-path = "examples/scenix_model.rs"
+name = "scenekit_model"
+path = "examples/scenekit_model.rs"
 
 [[example]]
-name = "scenix_skin"
-path = "examples/scenix_skin.rs"
+name = "scenekit_skin"
+path = "examples/scenekit_skin.rs"
 
 [lints]
 workspace = true
