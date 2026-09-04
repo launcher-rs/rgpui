@@ -17,7 +17,7 @@
 
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// 文件事件类型。
 #[derive(Debug, Clone)]
@@ -191,7 +191,7 @@ impl AsyncFileWatcher {
             );
             loop {
                 interval.tick().await;
-                let events = inner.lock().unwrap().check_changes();
+                let _events = inner.lock().unwrap().check_changes();
                 // 事件可以通过通道发送给订阅者
             }
         });

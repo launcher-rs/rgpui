@@ -2,9 +2,10 @@
 //!
 //! 提供大文件异步加载功能，避免阻塞 UI 线程。支持分块读取和取消。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ropey::Rope;
+use tokio::io::AsyncReadExt;
 
 /// 加载进度。
 pub enum LoadProgress {
@@ -75,8 +76,9 @@ impl AsyncFileLoader {
                     });
                 }
                 Err(e) => {
-                    callback(LoadProgress::Error(e.into()));
-                    return Err(e.into());
+                    let msg = e.to_string();
+                    callback(LoadProgress::Error(anyhow::anyhow!(msg.clone())));
+                    return Err(anyhow::anyhow!(msg));
                 }
             }
         }
