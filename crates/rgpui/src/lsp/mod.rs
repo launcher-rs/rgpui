@@ -20,14 +20,18 @@
 
 mod types;
 mod completions;
+mod completions_ui;
 mod hover;
 mod definitions;
 mod diagnostics;
+mod diagnostics_ui;
 mod semantic_tokens;
 
 pub use types::*;
 pub use completions::*;
+pub use completions_ui::*;
 pub use hover::*;
 pub use definitions::*;
 pub use diagnostics::*;
+pub use diagnostics_ui::*;
 pub use semantic_tokens::*;
