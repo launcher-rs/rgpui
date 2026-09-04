@@ -62,3 +62,15 @@ pub use crate::chat_ui::{ChatView, ChatState, Message, MessageGroup, MessageType
 
 // FPS 监控 HUD。
 pub use crate::fps_hud::{FpsHud, FpsHudState};
+
+// Tab 拖拽排序。
+pub use crate::tabs::tab_drag::{TabDragDrop, TabDragState, TabDragEvent, TabItem};
+
+// 国际化支持。
+pub use crate::i18n::{I18nManager, I18nText, PluralRule};
+
+// 主题热重载。
+pub use crate::theme_watcher::{ThemeWatcher, ThemeEvent, ThemeMode, ThemeColors, ThemeManager};
+
+// 块级渲染组件。
+pub use crate::block_render::{BlockRenderer, BlockElement, BlockType};

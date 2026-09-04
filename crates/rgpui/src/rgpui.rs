@@ -267,6 +267,15 @@ pub mod chat_ui;
 /// FPS 监控 HUD - 实时帧率/CPU/内存监控
 pub mod fps_hud;
 
+/// 国际化 (I18n) 支持 - 多语言文本管理和本地化
+pub mod i18n;
+
+/// 主题热重载 - 运行时主题切换和监听
+pub mod theme_watcher;
+
+/// 块级渲染组件 - 文档块级元素的渲染支持
+pub mod block_render;
+
 /// Tokio 异步运行时集成 - 在 Tokio 线程池上生成任务并通过 RGPUI 任务返回结果（feature `tokio` 门控）
 #[cfg(feature = "tokio")]
 pub mod tokio;

@@ -4,6 +4,8 @@
 mod accordion;
 /// 折叠面板组件模块 - 简单的展开/折叠容器
 mod collapsible;
+/// Tab 拖拽排序模块 - 支持 Tab 拖拽排序
+pub mod tab_drag;
 /// 标签页组件模块 - 单个 Tab 元素与变体样式
 mod tab;
 /// 标签页栏组件模块 - 包含多个 Tab 的 TabBar 与滑动指示器
