@@ -239,6 +239,13 @@ pub mod animation;
 /// 扩展组件库 - 核心没有的组件 + 动画组件/特效（原 rgpui-ui 并入）
 pub mod components;
 
+/// LSP 客户端核心 trait - 补全/悬停/定义/诊断/语义高亮（feature `lsp` 门控）
+#[cfg(feature = "lsp")]
+pub mod lsp;
+
+/// 语法高亮 trait - tree-sitter/syntect 等解析器的抽象层
+pub mod highlight;
+
 /// 树形组件 - 分层树视图（文件树、目录树等）
 pub mod tree;
 

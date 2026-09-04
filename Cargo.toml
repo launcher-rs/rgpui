@@ -82,26 +82,26 @@ members = [
 edition = "2024"
 publish = true
 license = "Apache-2.0"
-version = "1.0.2"
+version = "1.1.0"
 
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.0.2"}
-rgpui = { path = "crates/rgpui", default-features = false ,version = "1.0.2"}
-rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.0.2" }
-rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.0.2" }
-rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.0.2"}
-rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.0.2"}
-rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.0.2" }
-rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.0.2" }
+rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.1.0"}
+rgpui = { path = "crates/rgpui", default-features = false ,version = "1.1.0"}
+rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.1.0" }
+rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.1.0" }
+rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.1.0"}
+rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.1.0"}
+rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.1.0" }
+rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.1.0" }
 
-rgpui-dom = { path = "crates/rgpui-dom", version = "1.0.2" }
+rgpui-dom = { path = "crates/rgpui-dom", version = "1.1.0" }
 
-rgpui-character = {path = "crates/rgpui-character",version = "1.0.2"}
-rgpui-3d = {path = "crates/rgpui-3d",version = "1.0.2"}
-rgpui-term = {path = "crates/rgpui-term", version = "1.0.2"}
-rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.0.2"}
+rgpui-character = {path = "crates/rgpui-character",version = "1.1.0"}
+rgpui-3d = {path = "crates/rgpui-3d",version = "1.1.0"}
+rgpui-term = {path = "crates/rgpui-term", version = "1.1.0"}
+rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.1.0"}
 
 
 # ---- 辅助功能（AccessKit） ----
@@ -112,9 +112,9 @@ accesskit_windows = "0.32.1"
 
 # ---- 错误处理 ----
 # 错误处理库
-anyhow = "1.0.104"
+anyhow = "1.0"
 # 自定义错误类型派生
-thiserror = "2.0.20"
+thiserror = "2.0"
 # 堆栈回溯
 backtrace = "0.3"
 # Markdown 解析（rgpui-markdown 使用）
@@ -136,7 +136,7 @@ async-tar = "0.6"
 # 异步 zip
 async_zip = { version = "0.0.19", features = ["deflate", "deflate64"] }
 # 异步 Futures 工具
-futures = "0.3.34"
+futures = "0.3"
 # 并发 Futures 组合子
 futures-concurrency = "7.7.1"
 # 轻量级 Futures
@@ -214,7 +214,6 @@ strum = { version = "0.28", features = ["derive"] }
 # 随机数生成
 rand = "0.10"
 # 属性测试
-#proptest = { git = "https://github.com/proptest-rs/proptest", rev = "3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b", features = ["attr-macro"] }
 proptest = { version = "1.11.0",features = ["attr-macro"] }
 # 属性测试派生
 proptest-derive = "0.8.0"
@@ -267,7 +266,6 @@ url = "2.5.8"
 
 # ---- 屏幕捕获 ----
 # 跨平台屏幕捕获
-#scap = { git = "https://github.com/zed-industries/scap", rev = "4afea48c3b002197176fb19cd0f9b180dd36eaac", default-features = false, package = "zed-scap", version = "0.0.8-zed" }
 scap = { package = "scap-rs", version = "0.1",default-features = false }
 
 # ---- macOS 平台 ----
@@ -390,7 +388,6 @@ ashpd = { version = "0.13", default-features = false, features = [
 # ---- GPU 渲染 ----
 # WebGPU 实现
 wgpu = { version = "30.0" }
-#wgpu = { git = "https://github.com/zed-industries/wgpu.git", rev = "357a0c56e0070480ad9daea5d2eaa83150b79e88" }
 
 # ---- 版本语义 ----
 # 语义化版本
@@ -403,16 +400,6 @@ windows-core = "0.62"
 # ---- Reqwest HTTP 客户端 ----
 # HTTP 客户端
 reqwest = { version = "0.13", features = ["json","charset","http2","multipart","socks","stream"] }
-
-#reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "c15662463bda39148ba154100dd44d3fba5873a4", default-features = false, features = [
-#    "charset",
-#    "http2",
-#    "macos-system-configuration",
-#    "multipart",
-#    "rustls-tls-native-roots",
-#    "socks",
-#    "stream",
-#], package = "zed-reqwest", version = "0.12.15-zed" }
 
 # ---- Tokio 异步运行时 ----
 # 异步运行时

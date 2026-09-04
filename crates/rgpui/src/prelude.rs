@@ -33,3 +33,20 @@ pub use crate::mouse_gestures::{
     TapGesture,
 };
 pub use crate::scroll_physics::ScrollPhysics;
+
+// LSP 核心类型（feature `lsp` 门控）。
+#[cfg(feature = "lsp")]
+pub use crate::lsp::{
+    Completion, CompletionMenuOptions, CompletionProvider, CompletionState,
+    DefinitionLocation, DefinitionProvider, DocumentHighlight, DocumentHighlightKind,
+    DiagnosticEntry, DiagnosticsState, DiagnosticsProvider, DocumentVersion,
+    HoverContent, HoverProvider, HoverResponse, HoverState,
+    LspClient, LspState, PositionMapping,
+    SemanticTokensProvider, SemanticTokensState, SemanticTokenTypeMap,
+};
+
+// 语法高亮 trait（tree-sitter 等解析器的抽象层）。
+pub use crate::highlight::{
+    Highlighter, HighlighterFactory, HighlightStyleResolver, NoHighlightStyles,
+    TextEdit, FoldRange,
+};

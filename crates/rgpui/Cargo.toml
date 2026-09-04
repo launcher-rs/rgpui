@@ -72,6 +72,9 @@ tokio = ["dep:tokio"]
 # Web DOM 后端：DOM 树数据模型与构建器（`src/dom.rs`），以及 Element::dom 语义映射。
 # 默认关闭，桌面端完全不受影响；由 rgpui-web / rgpui-dom 启用。
 dom-backend = []
+# LSP 客户端支持：提供 Language Server Protocol 核心 trait（补全/悬停/定义/诊断/语义高亮）。
+# 默认关闭以保持核心精简，编辑器功能按需启用。
+lsp = ["dep:lsp-types"]
 
 [lib]
 path = "src/rgpui.rs"
@@ -163,6 +166,7 @@ url.workspace = true
 uuid.workspace = true
 web-time.workspace = true
 ropey.workspace = true
+lsp-types = { workspace = true, optional = true }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 unicode-segmentation = { workspace = true }
 qrcode = { workspace = true, optional = true }
