@@ -11,8 +11,9 @@
 //! ```
 
 use crate::{
-    App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Pixels, StatefulInteractiveElement, Styled,
-    Window, div, px, prelude::FluentBuilder,
+    App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Pixels,
+    StatefulInteractiveElement, Styled, Window, div, px, prelude::FluentBuilder,
+    theme::ActiveTheme,
 };
 
 /// Tab 拖拽状态。
@@ -46,13 +47,38 @@ pub struct TabItem {
 pub struct TabDragData {
     /// Tab 索引。
     pub index: usize,
+    /// Tab 标题。
+    pub title: String,
     /// 拖拽位置。
     pub position: crate::Point<Pixels>,
 }
 
 impl crate::Render for TabDragData {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
         crate::div()
+            .pl(self.position.x)
+            .pt(self.position.y)
+            .child(
+                crate::div()
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .bg(theme.tokens.popover.opacity(0.95))
+                    .border_1()
+                    .border_color(theme.tokens.primary)
+                    .rounded(theme.radius)
+                    .shadow(vec![crate::BoxShadow {
+                        color: crate::hsla(0.0, 0.0, 0.0, 0.25),
+                        offset: crate::point(px(0.0), px(4.0)),
+                        blur_radius: px(12.0),
+                        spread_radius: px(0.0),
+                        inset: false,
+                    }])
+                    .text_size(px(13.0))
+                    .text_color(theme.tokens.foreground)
+                    .font_family(theme.font_family.clone())
+                    .child(self.title.clone()),
+            )
     }
 }
 
@@ -144,14 +170,18 @@ pub struct TabStyle {
     pub normal_bg: crate::Hsla,
     /// 悬停背景色。
     pub hover_bg: crate::Hsla,
-    /// 拖拽中背景色。
+    /// 拖拽中背景色（被拖拽的 Tab）。
     pub dragging_bg: crate::Hsla,
+    /// 拖拽中背景色（悬停目标）。
+    pub drop_target_bg: crate::Hsla,
     /// 拖拽指示线颜色。
     pub indicator_color: crate::Hsla,
     /// Tab 间距。
     pub gap: Pixels,
     /// Tab 内边距。
     pub padding: (Pixels, Pixels),
+    /// Tab 圆角。
+    pub radius: Pixels,
 }
 
 impl Default for TabStyle {
@@ -160,9 +190,11 @@ impl Default for TabStyle {
             normal_bg: crate::gray_100(),
             hover_bg: crate::gray_200(),
             dragging_bg: crate::gray_300(),
+            drop_target_bg: crate::blue_50(),
             indicator_color: crate::blue_500(),
             gap: px(2.0),
-            padding: (px(12.0), px(8.0)),
+            padding: (px(12.0), px(6.0)),
+            radius: px(6.0),
         }
     }
 }
@@ -223,23 +255,34 @@ impl crate::RenderOnce for TabDragDrop {
             let state_drop = state_clone.clone();
             let on_reorder = on_reorder.clone();
             let style_clone = style.clone();
+            let tab_title = tab.title.clone();
 
             let tab_element = div()
                 .id(format!("tab-{}", idx))
                 .flex()
                 .items_center()
-                .gap(px(8.0))
+                .gap(px(6.0))
                 .px(style_clone.padding.0)
                 .py(style_clone.padding.1)
-                .rounded(px(4.0))
+                .rounded(style_clone.radius)
                 .text_sm()
-                .when(is_dragging, |el| el.opacity(0.5))
+                // 正常状态背景
+                .when(!is_dragging, |el| el.bg(style_clone.normal_bg))
+                // 拖拽中的 Tab 半透明 + 虚线边框
+                .when(is_dragging, |el| {
+                    el.bg(style_clone.dragging_bg)
+                        .opacity(0.4)
+                        .border_1()
+                        .border_dashed()
+                        .border_color(style_clone.indicator_color)
+                })
                 .child(tab.title.clone())
                 .children(if tab.closable {
                     Some(
                         div()
                             .text_xs()
                             .text_color(crate::gray_500())
+                            .hover(|el| el.text_color(crate::gray_700()))
                             .child("x"),
                     )
                 } else {
@@ -248,6 +291,7 @@ impl crate::RenderOnce for TabDragDrop {
                 .on_drag(
                     TabDragData {
                         index: idx,
+                        title: tab_title,
                         position: crate::Point::default(),
                     },
                     move |data: &TabDragData, pos, _window, cx| {
@@ -257,14 +301,15 @@ impl crate::RenderOnce for TabDragDrop {
                         });
                         cx.new(|_| TabDragData {
                             index: data.index,
+                            title: data.title.clone(),
                             position: pos,
                         })
                     },
                 )
                 .drag_over::<TabDragData>(move |style, _, _, _| {
                     style
-                        .bg(style_clone.dragging_bg)
-                        .border_t(px(2.0))
+                        .bg(style_clone.drop_target_bg)
+                        .border_l(px(3.0))
                         .border_color(style_clone.indicator_color)
                 })
                 .on_drop(move |dragged: &TabDragData, _window, cx| {
