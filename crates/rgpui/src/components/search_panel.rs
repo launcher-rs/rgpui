@@ -662,7 +662,6 @@ impl RenderOnce for SearchPanel {
                             })
                     })
                     .child({
-                        let state_entity = state_entity.clone();
                         let source = String::new();
                         ToggleButton::new("regex", options.regex)
                             .label(".*")

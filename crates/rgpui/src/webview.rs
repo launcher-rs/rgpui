@@ -169,13 +169,13 @@ impl EventEmitter<DismissEvent> for WebView {}
 
 impl Render for WebView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
+        let view = cx.entity();
 
         div()
             .track_focus(&self.focus_handle)
             .size_full()
             .child({
-                let view = cx.entity().clone();
+                let view = cx.entity();
                 canvas(
                     move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds),
                     |_, _, _, _| {},
