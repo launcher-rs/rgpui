@@ -11,10 +11,10 @@
 
 use rgpui::components::status_bar::{LspStatus, StatusBar, StatusBarState};
 use rgpui::prelude::*;
-use rgpui::tabs::tab_drag::{TabDragDrop, TabDragState, TabItem};
+use rgpui::tabs::tab_drag::{TabDragState, TabItem};
 use rgpui::{
-    Button, ButtonVariants as _, Context, Entity, InteractiveElement, IntoElement, ParentElement,
-    Render, Window, WindowOptions, div, h_flex, px, rgb, size, v_flex,
+    AnyElement, Button, ButtonVariants as _, Context, Entity, InteractiveElement, IntoElement,
+    ParentElement, Render, Window, WindowOptions, div, h_flex, px, rgb, size, v_flex,
 };
 use rgpui_platform::application;
 
@@ -32,7 +32,6 @@ struct AppConfig {
 }
 
 impl AppConfig {
-    /// 创建带有真实默认值的配置。
     fn demo() -> Self {
         Self {
             theme: "dark".to_string(),
@@ -62,7 +61,6 @@ enum NavSection {
 // 主视图
 // ============================================================================
 
-/// 应用根视图。
 struct ShowcaseApp {
     current_section: NavSection,
     i18n_locale: String,
@@ -76,14 +74,12 @@ struct ShowcaseApp {
     source_input: String,
     chat_messages: Vec<Message>,
     tab_drag_state: Entity<TabDragState>,
-    tab_drag_entity: Entity<TabDragDrop>,
     status_bar_state: Entity<StatusBarState>,
     status_bar_entity: Entity<StatusBar>,
 }
 
 impl ShowcaseApp {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        // 初始化 I18n
+    fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut i18n = I18nManager::new("zh-CN");
         let mut en = std::collections::HashMap::new();
         en.insert("greeting".to_string(), "Hello, {name}!".to_string());
@@ -95,18 +91,15 @@ impl ShowcaseApp {
         zh.insert("welcome".to_string(), "欢迎使用 rgpui！".to_string());
         i18n.load_translations_map("zh-CN", zh);
 
-        // 初始化虚拟滚动数据
         let virtual_scroll_items: Vec<String> =
             (0..100).map(|i| format!("虚拟滚动项目 #{}", i)).collect();
 
-        // 初始化聊天消息
         let chat_messages = vec![
             Message::text("你好！欢迎使用 rgpui Chat UI"),
             Message::text("这是一个消息列表组件"),
             Message::code_block("rust", "let msg = Message::text(\"hello\");"),
         ];
 
-        // 初始化 Tab 拖拽状态
         let tab_drag_state = cx.new(|_| {
             let mut state = TabDragState::default();
             state.enabled = true;
@@ -118,9 +111,7 @@ impl ShowcaseApp {
             ];
             state
         });
-        let tab_drag_entity = cx.new(|_| TabDragDrop::new(tab_drag_state.clone()));
 
-        // 初始化状态栏状态
         let status_bar_state = cx.new(|_| StatusBarState {
             line: 42,
             column: 15,
@@ -152,7 +143,6 @@ impl ShowcaseApp {
             source_input: "fn main() {\n    println!(\"Hello\");\n}".to_string(),
             chat_messages,
             tab_drag_state,
-            tab_drag_entity,
             status_bar_state,
             status_bar_entity,
         }
@@ -186,7 +176,6 @@ impl Render for ShowcaseApp {
         let chat_messages = self.chat_messages.clone();
         let block_renderer = &self.block_renderer;
         let tab_drag_state = self.tab_drag_state.clone();
-        let tab_drag_entity = self.tab_drag_entity.clone();
         let status_bar_state = self.status_bar_state.clone();
         let status_bar_entity = self.status_bar_entity.clone();
 
@@ -221,9 +210,6 @@ impl Render for ShowcaseApp {
 
         // 内容区域
         let content = match current {
-            // ------------------------------------------------------------------
-            // I18n 国际化
-            // ------------------------------------------------------------------
             NavSection::I18n => v_flex()
                 .id("i18n-section")
                 .gap(px(16.0))
@@ -267,9 +253,6 @@ impl Render for ShowcaseApp {
                     "let mut i18n = I18nManager::new(\"zh-CN\");\ni18n.load_translations_map(\"en\", en_translations);\ni18n.set_locale(\"en\");\nprintln!(\"{}\", i18n.t(\"greeting\", &[(\"name\", \"开发者\")]));",
                 )),
 
-            // ------------------------------------------------------------------
-            // ConfigStore 配置持久化
-            // ------------------------------------------------------------------
             NavSection::Config => {
                 let config_display = config.clone();
                 v_flex()
@@ -308,11 +291,7 @@ impl Render for ShowcaseApp {
                                         .py(px(4.0))
                                         .rounded(px(4.0))
                                         .bg(rgb(0xe9ecef))
-                                        .child(if config_display.auto_save {
-                                            "开启"
-                                        } else {
-                                            "关闭"
-                                        }),
+                                        .child(if config_display.auto_save { "开启" } else { "关闭" }),
                                 ),
                             ),
                     )
@@ -352,9 +331,6 @@ impl Render for ShowcaseApp {
                     ))
             }
 
-            // ------------------------------------------------------------------
-            // ThemeWatcher 主题热重载
-            // ------------------------------------------------------------------
             NavSection::Theme => v_flex()
                 .id("theme-section")
                 .gap(px(16.0))
@@ -409,15 +385,11 @@ impl Render for ShowcaseApp {
                         ),
                 )
                 .child(code_block(
-                    "let mut watcher = ThemeWatcher::new();\nwatcher.set_theme(ThemeMode::Dark);\nprintln!(\"{:?}\", watcher.current_theme());\n\nlet mut manager = ThemeManager::new();\nmanager.set_theme(ThemeMode::Dark);",
+                    "let mut watcher = ThemeWatcher::new();\nwatcher.set_theme(ThemeMode::Dark);",
                 )),
 
-            // ------------------------------------------------------------------
-            // BlockRender 块级渲染
-            // ------------------------------------------------------------------
             NavSection::BlockRender => {
                 let blocks = block_renderer.parse_markdown(&markdown_input);
-
                 v_flex()
                     .id("block-render-section")
                     .gap(px(16.0))
@@ -433,16 +405,12 @@ impl Render for ShowcaseApp {
                             })),
                     )
                     .child(code_block(
-                        "let renderer = BlockRenderer::new();\nlet blocks = renderer.parse_markdown(\"# 标题\\n\\n段落内容\");\nfor block in blocks {\n    match block.block_type {\n        BlockType::Heading(1) => { /* 渲染 h1 */ }\n        BlockType::Paragraph => { /* 渲染段落 */ }\n        _ => {}\n    }\n}",
+                        "let renderer = BlockRenderer::new();\nlet blocks = renderer.parse_markdown(\"# 标题\\n\\n**粗体** 和 *斜体*\");",
                     ))
             }
 
-            // ------------------------------------------------------------------
-            // VirtualScroll 虚拟滚动
-            // ------------------------------------------------------------------
             NavSection::VirtualScroll => {
                 let item_count = virtual_scroll_items.len();
-
                 v_flex()
                     .id("virtual-scroll-section")
                     .gap(px(16.0))
@@ -492,17 +460,12 @@ impl Render for ShowcaseApp {
                     ))
             }
 
-            // ------------------------------------------------------------------
-            // SourceMap 源码映射
-            // ------------------------------------------------------------------
             NavSection::SourceMap => {
                 let source_map = SourceMap::new("example.rs", &source_input);
                 let line_count = source_map.line_count();
-
                 let lines: Vec<String> = (1..=line_count.min(5))
                     .filter_map(|i| source_map.get_line(i).map(|l| format!("{}: {}", i, l)))
                     .collect();
-
                 v_flex()
                     .id("source-map-section")
                     .gap(px(16.0))
@@ -528,10 +491,7 @@ impl Render for ShowcaseApp {
                         "解析结果",
                         &[
                             format!("总行数: {}", line_count),
-                            format!(
-                                "搜索 'println': {} 处",
-                                source_map.search("println").len()
-                            ),
+                            format!("搜索 'println': {} 处", source_map.search("println").len()),
                         ],
                     ))
                     .child(
@@ -539,37 +499,35 @@ impl Render for ShowcaseApp {
                             .gap(px(4.0))
                             .child(div().text_sm().font_medium().child("行内容:"))
                             .children(lines.into_iter().map(|l| {
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(2.0))
-                                    .text_sm()
-                                    .child(l)
+                                div().px(px(8.0)).py(px(2.0)).text_sm().child(l)
                             })),
                     )
                     .child(code_block(
-                        "let source_map = SourceMap::new(\"main.rs\", source);\nprintln!(\"行数: {}\", source_map.line_count());\nif let Some(loc) = source_map.get_location(0) {\n    println!(\"位置: 行 {} 列 {}\", loc.line, loc.column);\n}",
+                        "let source_map = SourceMap::new(\"main.rs\", source);\nprintln!(\"行数: {}\", source_map.line_count());",
                     ))
             }
 
             // ------------------------------------------------------------------
-            // TabDrag 标签拖拽排序
+            // TabDrag 标签拖拽 — 可点击移动
             // ------------------------------------------------------------------
             NavSection::TabDrag => {
+                let tabs = tab_drag_state.read(cx).tabs.clone();
+                let tab_count = tabs.len();
                 v_flex()
                     .id("tab-drag-section")
                     .gap(px(16.0))
                     .p(px(24.0))
                     .child(section_title("TabDrag 标签拖拽排序"))
-                    .child(section_desc("支持鼠标拖拽排序的标签页组件"))
+                    .child(section_desc("点击按钮移动标签顺序，展示拖拽排序逻辑"))
                     .child(
-                        // 标签栏预览（静态展示）
+                        // 标签栏
                         h_flex()
-                            .id("tab-bar-preview")
+                            .id("tab-bar")
                             .gap(px(2.0))
                             .bg(rgb(0xf8f9fa))
                             .p(px(4.0))
                             .rounded(px(6.0))
-                            .children(tab_drag_state.read(cx).tabs.iter().enumerate().map(|(i, tab)| {
+                            .children(tabs.iter().enumerate().map(|(i, tab)| {
                                 h_flex()
                                     .id(format!("tab-{}", i))
                                     .gap(px(8.0))
@@ -580,34 +538,78 @@ impl Render for ShowcaseApp {
                                     .border(px(1.0))
                                     .border_color(rgb(0xe9ecef))
                                     .text_sm()
-                                    .child(tab.title.clone())
+                                    .child(format!("{} ({})", tab.title, i))
                                     .when(tab.closable, |el| {
-                                        el.child(
-                                            div().text_xs().text_color(rgb(0x999)).child("x"),
-                                        )
+                                        el.child(div().text_xs().text_color(rgb(0x999)).child("x"))
                                     })
                             })),
                     )
                     .child(
-                        // TabDragDrop 组件
-                        v_flex()
-                            .gap(px(4.0))
-                            .child(div().text_sm().font_medium().child("TabDragDrop 组件:"))
+                        // 操作按钮
+                        h_flex()
+                            .gap(px(8.0))
                             .child(
-                                div()
-                                    .h(px(60.0))
-                                    .rounded(px(6.0))
-                                    .border(px(1.0))
-                                    .border_color(rgb(0xe9ecef))
-                                    .child(tab_drag_entity),
+                                Button::new("move-left")
+                                    .label("左移")
+                                    .ghost()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        let state = this.tab_drag_state.read(cx);
+                                        if let Some(first_closable) = state.tabs.iter().position(|t| t.closable) {
+                                            if first_closable > 0 {
+                                                let from = first_closable;
+                                                let to = from - 1;
+                                                let _ = state;
+                                                this.tab_drag_state.update(cx, |state, _| {
+                                                    state.move_tab(from, to);
+                                                });
+                                                cx.notify();
+                                            }
+                                        }
+                                    })),
+                            )
+                            .child(
+                                Button::new("move-right")
+                                    .label("右移")
+                                    .ghost()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        let state = this.tab_drag_state.read(cx);
+                                        if let Some(first_closable) = state.tabs.iter().position(|t| t.closable) {
+                                            if first_closable < state.tabs.len() - 1 {
+                                                let from = first_closable;
+                                                let to = from + 1;
+                                                let _ = state;
+                                                this.tab_drag_state.update(cx, |state, _| {
+                                                    state.move_tab(from, to);
+                                                });
+                                                cx.notify();
+                                            }
+                                        }
+                                    })),
+                            )
+                            .child(
+                                Button::new("reset-tabs")
+                                    .label("重置")
+                                    .primary()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.tab_drag_state.update(cx, |state, _| {
+                                            state.tabs = vec![
+                                                TabItem { title: "main.rs".to_string(), id: "t1".to_string(), closable: true },
+                                                TabItem { title: "lib.rs".to_string(), id: "t2".to_string(), closable: true },
+                                                TabItem { title: "mod.rs".to_string(), id: "t3".to_string(), closable: false },
+                                                TabItem { title: "utils.rs".to_string(), id: "t4".to_string(), closable: true },
+                                            ];
+                                        });
+                                        cx.notify();
+                                    })),
                             ),
                     )
                     .child(card(
                         "拖拽状态",
                         &[
+                            format!("Tab 数量: {}", tab_count),
                             format!("已启用: {}", tab_drag_state.read(cx).enabled),
-                            format!("Tab 数量: {}", tab_drag_state.read(cx).tabs.len()),
-                            format!("正在拖拽: {}", tab_drag_state.read(cx).is_dragging()),
+                            "点击「左移」/「右移」移动第一个可关闭标签".to_string(),
+                            "TabDragDrop 组件支持鼠标拖拽排序".to_string(),
                         ],
                     ))
                     .child(code_block(
@@ -616,7 +618,7 @@ impl Render for ShowcaseApp {
             }
 
             // ------------------------------------------------------------------
-            // StatusBar 状态栏
+            // StatusBar 状态栏 — 内容区展示
             // ------------------------------------------------------------------
             NavSection::StatusBar => {
                 v_flex()
@@ -625,52 +627,29 @@ impl Render for ShowcaseApp {
                     .p(px(24.0))
                     .child(section_title("StatusBar 状态栏"))
                     .child(section_desc("显示编辑器状态信息（行列号、语言、编码、LSP 状态等）"))
-                    .child(
-                        // 状态栏组件
-                        v_flex()
-                            .gap(px(4.0))
-                            .child(div().text_sm().font_medium().child("StatusBar 组件:"))
-                            .child(status_bar_entity),
-                    )
-                    .child(
-                        // 状态详情
-                        v_flex()
-                            .gap(px(4.0))
-                            .child(div().text_sm().font_medium().child("状态详情:"))
-                            .child(card(
-                                "编辑器状态",
-                                &[
-                                    format!("行: {}, 列: {}", status_bar_state.read(cx).line, status_bar_state.read(cx).column),
-                                    format!("语言: {}", status_bar_state.read(cx).language),
-                                    format!("编码: {}", status_bar_state.read(cx).encoding),
-                                    format!("LSP: {:?}", status_bar_state.read(cx).lsp_status),
-                                    format!("错误: {}, 警告: {}, 信息: {}",
-                                        status_bar_state.read(cx).error_count,
-                                        status_bar_state.read(cx).warning_count,
-                                        status_bar_state.read(cx).info_count),
-                                    format!("Git 分支: {:?}", status_bar_state.read(cx).git_branch),
-                                ],
-                            )),
-                    )
+                    .child(card(
+                        "状态详情",
+                        &[
+                            format!("行: {}, 列: {}", status_bar_state.read(cx).line, status_bar_state.read(cx).column),
+                            format!("语言: {}", status_bar_state.read(cx).language),
+                            format!("编码: {}", status_bar_state.read(cx).encoding),
+                            format!("LSP: {:?}", status_bar_state.read(cx).lsp_status),
+                            format!("错误: {}, 警告: {}, 信息: {}",
+                                status_bar_state.read(cx).error_count,
+                                status_bar_state.read(cx).warning_count,
+                                status_bar_state.read(cx).info_count),
+                            format!("Git 分支: {:?}", status_bar_state.read(cx).git_branch),
+                        ],
+                    ))
                     .child(code_block(
                         "let status = cx.new(|_| StatusBarState {\n    line: 42,\n    column: 15,\n    language: \"Rust\".into(),\n    encoding: \"UTF-8\".into(),\n    lsp_status: LspStatus::Connected,\n    lsp_server_name: Some(\"rust-analyzer\".into()),\n    error_count: 2,\n    warning_count: 5,\n    ..Default::default()\n});\nStatusBar::new(status)",
                     ))
             }
 
-            // ------------------------------------------------------------------
-            // FpsHud 性能监控
-            // ------------------------------------------------------------------
             NavSection::FpsHud => {
                 let fps = 60.0;
                 let frame_time = 16.67;
-                let color = if fps >= 55.0 {
-                    rgb(0x28a745)
-                } else if fps >= 30.0 {
-                    rgb(0xffc107)
-                } else {
-                    rgb(0xdc3545)
-                };
-
+                let color = if fps >= 55.0 { rgb(0x28a745) } else if fps >= 30.0 { rgb(0xffc107) } else { rgb(0xdc3545) };
                 v_flex()
                     .id("fps-hud-section")
                     .gap(px(16.0))
@@ -680,60 +659,14 @@ impl Render for ShowcaseApp {
                     .child(
                         h_flex()
                             .gap(px(24.0))
-                            .child(
-                                v_flex()
-                                    .gap(px(4.0))
-                                    .child(div().text_xs().text_color(rgb(0x666)).child("FPS"))
-                                    .child(
-                                        div()
-                                            .text_3xl()
-                                            .font_bold()
-                                            .text_color(color)
-                                            .child(format!("{:.0}", fps)),
-                                    ),
-                            )
-                            .child(
-                                v_flex()
-                                    .gap(px(4.0))
-                                    .child(
-                                        div().text_xs().text_color(rgb(0x666)).child("帧时间"),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_3xl()
-                                            .font_bold()
-                                            .child(format!("{:.2}ms", frame_time)),
-                                    ),
-                            )
-                            .child(
-                                v_flex()
-                                    .gap(px(4.0))
-                                    .child(div().text_xs().text_color(rgb(0x666)).child("状态"))
-                                    .child(
-                                        div()
-                                            .text_3xl()
-                                            .font_bold()
-                                            .text_color(color)
-                                            .child("流畅"),
-                                    ),
-                            ),
+                            .child(v_flex().gap(px(4.0)).child(div().text_xs().text_color(rgb(0x666)).child("FPS")).child(div().text_3xl().font_bold().text_color(color).child(format!("{:.0}", fps))))
+                            .child(v_flex().gap(px(4.0)).child(div().text_xs().text_color(rgb(0x666)).child("帧时间")).child(div().text_3xl().font_bold().child(format!("{:.2}ms", frame_time))))
+                            .child(v_flex().gap(px(4.0)).child(div().text_xs().text_color(rgb(0x666)).child("状态")).child(div().text_3xl().font_bold().text_color(color).child("流畅"))),
                     )
-                    .child(card(
-                        "颜色规则",
-                        &[
-                            "FPS >= 55: 绿色 (流畅)".to_string(),
-                            "FPS >= 30: 黄色 (卡顿)".to_string(),
-                            "FPS < 30: 红色 (严重卡顿)".to_string(),
-                        ],
-                    ))
-                    .child(code_block(
-                        "let state = cx.new(FpsHudState::new);\nFpsHud::new(state)\n    .position(Point::new(px(10.0), px(10.0)))\n    .show_cpu(true)\n    .show_gpu(true)",
-                    ))
+                    .child(card("颜色规则", &["FPS >= 55: 绿色 (流畅)".to_string(), "FPS >= 30: 黄色 (卡顿)".to_string(), "FPS < 30: 红色 (严重卡顿)".to_string()]))
+                    .child(code_block("let state = cx.new(FpsHudState::new);\nFpsHud::new(state).position(Point::new(px(10.0), px(10.0))).show_cpu(true).show_gpu(true)"))
             }
 
-            // ------------------------------------------------------------------
-            // ChatUI 聊天组件
-            // ------------------------------------------------------------------
             NavSection::Chat => {
                 v_flex()
                     .id("chat-section")
@@ -754,51 +687,83 @@ impl Render for ShowcaseApp {
                             .children(chat_messages.iter().map(|msg| {
                                 let (bg, text_color) = match &msg.content {
                                     MessageType::Text(_) => (rgb(0xf8f9fa), rgb(0x333333)),
-                                    MessageType::CodeBlock { .. } => {
-                                        (rgb(0x282c34), rgb(0xabb2bf))
-                                    }
+                                    MessageType::CodeBlock { .. } => (rgb(0x282c34), rgb(0xabb2bf)),
                                 };
                                 let content_text = match &msg.content {
                                     MessageType::Text(s) => s.clone(),
                                     MessageType::CodeBlock { code, .. } => code.clone(),
                                 };
-                                div()
-                                    .id(msg.id.clone())
-                                    .px(px(10.0))
-                                    .py(px(6.0))
-                                    .rounded(px(6.0))
-                                    .bg(bg)
-                                    .text_sm()
-                                    .text_color(text_color)
-                                    .child(content_text)
+                                div().id(msg.id.clone()).px(px(10.0)).py(px(6.0)).rounded(px(6.0)).bg(bg).text_sm().text_color(text_color).child(content_text)
                             })),
                     )
-                    .child(card(
-                        "消息类型",
-                        &[
-                            "MessageType::Text(String) — 纯文本".to_string(),
-                            "MessageType::CodeBlock { language, code } — 代码块".to_string(),
-                            "Message::text(\"...\") — 便捷构造".to_string(),
-                            "Message::code_block(\"rust\", \"...\") — 代码构造".to_string(),
-                        ],
-                    ))
-                    .child(code_block(
-                        "let msg = Message::text(\"你好\");\nlet code = Message::code_block(\"rust\", \"fn main() {}\");\nlet group = MessageGroup { sender: \"用户\", messages: vec![msg] };",
-                    ))
+                    .child(card("消息类型", &["MessageType::Text(String) — 纯文本".to_string(), "MessageType::CodeBlock { language, code } — 代码块".to_string(), "Message::text(\"...\") — 便捷构造".to_string()]))
+                    .child(code_block("let msg = Message::text(\"你好\");\nlet code = Message::code_block(\"rust\", \"fn main() {}\");"))
             }
         };
 
-        h_flex()
+        // 主布局：导航 + 内容 + 底部状态栏
+        v_flex()
             .id("showcase-app")
             .size_full()
-            .child(nav)
-            .child(content)
+            .child(
+                h_flex()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(nav)
+                    .child(content.flex_1()),
+            )
+            .child(status_bar_entity)
     }
 }
 
 // ============================================================================
 // 辅助组件
 // ============================================================================
+
+/// 渲染内联文本（解析 **粗体** 和 *斜体*）。
+fn render_inline_text(text: &str) -> Vec<AnyElement> {
+    let mut elements = Vec::new();
+    let mut remaining = text;
+
+    while !remaining.is_empty() {
+        // 查找 ** 粗体
+        if let Some(start) = remaining.find("**") {
+            if start > 0 {
+                elements.push(div().text_sm().text_color(rgb(0x333333)).child(remaining[..start].to_string()).into_any());
+            }
+            remaining = &remaining[start + 2..];
+            if let Some(end) = remaining.find("**") {
+                let bold_text = &remaining[..end];
+                elements.push(div().text_sm().text_color(rgb(0x333333)).font_bold().child(bold_text.to_string()).into_any());
+                remaining = &remaining[end + 2..];
+            } else {
+                elements.push(div().text_sm().text_color(rgb(0x333333)).child("**".to_string()).into_any());
+                break;
+            }
+        }
+        // 查找 * 斜体
+        else if let Some(start) = remaining.find('*') {
+            if start > 0 {
+                elements.push(div().text_sm().text_color(rgb(0x333333)).child(remaining[..start].to_string()).into_any());
+            }
+            remaining = &remaining[start + 1..];
+            if let Some(end) = remaining.find('*') {
+                let italic_text = &remaining[..end];
+                elements.push(div().text_sm().text_color(rgb(0x333333)).italic().child(italic_text.to_string()).into_any());
+                remaining = &remaining[end + 1..];
+            } else {
+                elements.push(div().text_sm().text_color(rgb(0x333333)).child("*".to_string()).into_any());
+                break;
+            }
+        }
+        else {
+            elements.push(div().text_sm().text_color(rgb(0x333333)).child(remaining.to_string()).into_any());
+            break;
+        }
+    }
+
+    elements
+}
 
 /// 将 BlockElement 渲染为真实的 rgpui 样式元素。
 fn render_block_element(block: &BlockElement) -> impl IntoElement + use<> {
@@ -816,12 +781,15 @@ fn render_block_element(block: &BlockElement) -> impl IntoElement + use<> {
             };
             styled_div.child(block.content.clone())
         }
-        BlockType::Paragraph => div()
-            .id(format!("para-{}", block.content.chars().take(10).collect::<String>()))
-            .mb(px(8.0))
-            .text_sm()
-            .text_color(rgb(0x333333))
-            .child(block.content.clone()),
+        BlockType::Paragraph => {
+            let elements = render_inline_text(&block.content);
+            div()
+                .id(format!("para-{}", block.content.chars().take(10).collect::<String>()))
+                .mb(px(8.0))
+                .flex()
+                .gap(px(0.0))
+                .children(elements)
+        }
         BlockType::CodeBlock => {
             let lang = block.attributes.get("language").map(|s| s.as_str()).unwrap_or("");
             div()
@@ -833,18 +801,8 @@ fn render_block_element(block: &BlockElement) -> impl IntoElement + use<> {
                 .child(
                     v_flex()
                         .gap(px(4.0))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(rgb(0x666))
-                                .child(format!("语言: {}", lang)),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(rgb(0xabb2bf))
-                                .child(block.content.clone()),
-                        ),
+                        .child(div().text_xs().text_color(rgb(0x666)).child(format!("语言: {}", lang)))
+                        .child(div().text_sm().text_color(rgb(0xabb2bf)).child(block.content.clone())),
                 )
         }
         BlockType::Blockquote => div()
@@ -857,53 +815,25 @@ fn render_block_element(block: &BlockElement) -> impl IntoElement + use<> {
             .text_color(rgb(0x666666))
             .italic()
             .child(block.content.clone()),
-        BlockType::HorizontalRule => div()
-            .id("hr")
-            .my(px(12.0))
-            .h(px(1.0))
-            .bg(rgb(0xe9ecef)),
-        BlockType::List => div()
-            .id("list")
-            .mb(px(8.0))
-            .pl(px(16.0))
-            .text_sm()
-            .child(block.content.clone()),
+        BlockType::HorizontalRule => div().id("hr").my(px(12.0)).h(px(1.0)).bg(rgb(0xe9ecef)),
+        BlockType::List => div().id("list").mb(px(8.0)).pl(px(16.0)).text_sm().child(block.content.clone()),
         BlockType::Image => {
             let alt = block.attributes.get("alt").map(|s| s.as_str()).unwrap_or("");
-            div()
-                .id("image")
-                .mb(px(8.0))
-                .text_sm()
-                .text_color(rgb(0x666))
-                .child(format!("[图片: {}]", alt))
+            div().id("image").mb(px(8.0)).text_sm().text_color(rgb(0x666)).child(format!("[图片: {}]", alt))
         }
-        BlockType::Table => div()
-            .id("table")
-            .mb(px(8.0))
-            .text_sm()
-            .child(block.content.clone()),
-        BlockType::Custom(name) => div()
-            .id(format!("custom-{}", name))
-            .mb(px(8.0))
-            .text_sm()
-            .child(format!("[自定义块: {}]", name)),
+        BlockType::Table => div().id("table").mb(px(8.0)).text_sm().child(block.content.clone()),
+        BlockType::Custom(name) => div().id(format!("custom-{}", name)).mb(px(8.0)).text_sm().child(format!("[自定义块: {}]", name)),
     }
 }
 
-/// 区域标题。
 fn section_title(text: &str) -> impl IntoElement {
     div().text_xl().font_bold().child(text.to_string())
 }
 
-/// 区域描述。
 fn section_desc(text: &str) -> impl IntoElement {
-    div()
-        .text_sm()
-        .text_color(rgb(0x666666))
-        .child(text.to_string())
+    div().text_sm().text_color(rgb(0x666666)).child(text.to_string())
 }
 
-/// 信息卡片。
 fn card(title: &str, items: &[String]) -> impl IntoElement {
     v_flex()
         .gap(px(8.0))
@@ -914,14 +844,10 @@ fn card(title: &str, items: &[String]) -> impl IntoElement {
         .border_color(rgb(0xe9ecef))
         .child(div().text_sm().font_medium().child(title.to_string()))
         .children(items.iter().map(|item| {
-            div()
-                .text_sm()
-                .text_color(rgb(0x333333))
-                .child(item.clone())
+            div().text_sm().text_color(rgb(0x333333)).child(item.clone())
         }))
 }
 
-/// 代码块。
 fn code_block(code: &str) -> impl IntoElement {
     div()
         .rounded(px(8.0))
