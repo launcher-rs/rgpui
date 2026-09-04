@@ -1,4 +1,5 @@
 #![cfg_attr(target_family = "wasm", no_main)]
+#![allow(clippy::unexpected_cfgs)]
 
 fn run_example() {
     #[cfg(all(target_os = "linux", feature = "wayland"))]
