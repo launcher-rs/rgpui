@@ -214,6 +214,10 @@ mod form;
 /// 输入组件子系统 - 输入框、文本框、数字输入、掩码输入等
 pub mod input_ui;
 
+/// 统一初始化模块 - 聚合所有子系统的初始化调用
+mod init;
+pub use init::init_all;
+
 /// 索引路径 - 列表/表格中用于定位节、行、列的索引
 pub mod index_path;
 

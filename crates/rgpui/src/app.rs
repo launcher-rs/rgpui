@@ -2331,6 +2331,13 @@ impl App {
         self.platform.show_notification(title, body)
     }
 
+    /// 推送通知（便捷方法，触发操作系统级通知）。
+    ///
+    /// 等价于 `show_notification`，提供更具语义化的命名。
+    pub fn push_notification(&self, title: &str, message: &str) -> Result<()> {
+        self.show_notification(title, message)
+    }
+
     /// 获取托盘图标的屏幕边界坐标，用于在其下方定位窗口
     pub fn tray_icon_bounds(&self) -> Option<Bounds<Pixels>> {
         self.platform.get_tray_icon_bounds()
@@ -2359,6 +2366,52 @@ impl App {
     /// 设置应用程序是否应在没有窗口时保持运行
     pub fn set_keep_alive_without_windows(&self, keep_alive: bool) {
         self.platform.set_keep_alive_without_windows(keep_alive);
+    }
+
+    /// 最小化到托盘 —— 隐藏所有窗口（从任务栏移除）。
+    ///
+    /// 常用于点击关闭按钮时将应用最小化到系统托盘而非退出。
+    pub fn minimize_to_tray(&mut self) {
+        let windows: Vec<AnyWindowHandle> = self.windows();
+        for window in windows {
+            self.update_window(window, |_view, window, _cx| {
+                window.hide_window();
+            })
+            .ok();
+        }
+    }
+
+    /// 显示所有窗口（将所有窗口带到前台）。
+    pub fn show_all_windows(&mut self) {
+        let windows: Vec<AnyWindowHandle> = self.windows();
+        for window in windows {
+            self.update_window(window, |_view, window, _cx| {
+                window.activate_window();
+            })
+            .ok();
+        }
+    }
+
+    /// 隐藏所有窗口（从任务栏和屏幕移除）。
+    pub fn hide_all_windows(&mut self) {
+        let windows: Vec<AnyWindowHandle> = self.windows();
+        for window in windows {
+            self.update_window(window, |_view, window, _cx| {
+                window.hide_window();
+            })
+            .ok();
+        }
+    }
+
+    /// 最小化所有窗口。
+    pub fn minimize_all_windows(&mut self) {
+        let windows: Vec<AnyWindowHandle> = self.windows();
+        for window in windows {
+            self.update_window(window, |_view, window, _cx| {
+                window.minimize_window();
+            })
+            .ok();
+        }
     }
 
     /// 注册全局快捷键

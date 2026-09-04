@@ -391,6 +391,8 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 22. `crates/rgpui/examples/` 已删除，所有示例迁移至 `examples/` 独立 workspace（56 个示例 crate）
 23. `rgpui` 的 `[[example]]` 条目已全部删除，`rgpui-platform` dev-dependency 已移除（消除发布循环依赖）
 24. `cargo publish -p rgpui --dry-run` 通过（不再需要 `--no-verify`）
+25. v1.1.0-alpha 功能存在：`push_notification`（App 方法）、`init_all`（`init.rs` 模块）、`minimize_to_tray`（App 方法）、`show_all_windows` / `hide_all_windows` / `minimize_all_windows`（App 方法）、`SearchPanel`（`components/search_panel.rs`）
+26. `crates/rgpui-webview` v1.0.0 独立库存在（`WebView` + `WebViewHandle` + `load_url`/`load_html`/`forward`/`reload`/`eval_script`）
 
 ## Web/WASM 开发
 

@@ -1,0 +1,23 @@
+[package]
+name = "rgpui-webview"
+version.workspace = true
+edition.workspace = true
+publish = true
+description = "基于 wry 的 WebView 组件，用于在 rgpui 应用中嵌入网页内容"
+license.workspace = true
+repository = "https://github.com/launcher-rs/rgpui"
+
+[features]
+default = []
+inspector = ["wry/devtools"]
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow.workspace = true
+rgpui = { path = "../rgpui" }
+wry = { version = "0.53.3", package = "lb-wry" }
+
+[lints]
+workspace = true

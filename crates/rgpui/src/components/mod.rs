@@ -51,6 +51,7 @@ pub mod qr_code;
 pub mod resizable;
 #[cfg(feature = "effects")]
 pub mod ripple;
+pub mod search_panel;
 pub mod segmented_nav;
 #[cfg(feature = "effects")]
 pub mod shimmer;
@@ -113,6 +114,7 @@ pub use qr_code::*;
 pub use resizable::*;
 #[cfg(feature = "effects")]
 pub use ripple::*;
+pub use search_panel::*;
 pub use segmented_nav::*;
 #[cfg(feature = "effects")]
 pub use shimmer::*;
