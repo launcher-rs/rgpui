@@ -2,6 +2,41 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-09-04
+
+### 新增
+
+#### v1.1.0-alpha — API 增强
+- **push_notification**：App 级通知便捷 API
+- **init_all**：统一初始化所有子系统
+- **minimize_to_tray**：隐藏所有窗口到托盘
+- **全局窗口管理**：show_all_windows / hide_all_windows / minimize_all_windows
+- **SearchPanel**：搜索替换面板组件
+- **rgpui-webview 1.0**：WebView 独立库
+
+#### v1.1.0-beta — 编辑器核心能力
+- **LSP 核心 trait**：LspClient trait（15 个方法）+ 补全/悬停/定义/诊断/语义高亮子系统
+- **语法高亮 trait**：Highlighter trait + HighlightStyleResolver
+- **StatusBar 组件**：状态栏组件
+- **AsyncFileLoader**：大文件异步加载（流式进度 + 取消支持）
+- **CompletionPopup**：LSP 补全弹窗 UI
+- **DiagnosticMarkers**：LSP 诊断标记组件
+
+#### v1.1.0-rc — 桌面应用增强
+- **FileWatcher**：文件监视 API（FileWatcher/FileEvent/FileWatcherConfig）
+- **ConfigStore**：配置持久化 API（ConfigStore/加载/保存/监听）
+- **Chat UI**：聊天消息组件（ChatView/Message/MessageGroup）
+- **FPS HUD**：性能监控浮层（FpsHud/FpsHudState/CPU/内存监控）
+
+#### v1.1.0 — 高级功能
+- **Tab 拖拽排序**：TabDragDrop/TabDragState/TabDragEvent
+- **国际化支持**：I18nManager/I18nText/PluralRule
+- **主题热重载**：ThemeWatcher/ThemeEvent/ThemeManager
+- **块级渲染**：BlockRenderer/BlockElement/BlockType
+- **虚拟滚动**：VirtualScroll/VirtualScrollList/VirtualScrollConfig
+- **源码映射**：SourceMap/BidirectionalSourceMap/SourceLocation
+- **Markdown 插件**：MarkdownPlugin/PluginManager/MarkdownRenderer
+
 ## [1.0.2] - 2026-09-03
 
 ### 修复

@@ -157,9 +157,10 @@ impl BlockRenderer {
             }
 
             // 标题
-            if let Some(level) = trimmed.strip_prefix('#').map(|s| s.len() as u8) {
-                if level <= 6 {
-                    let content = trimmed.trim_start_matches('#').trim();
+            if trimmed.starts_with('#') {
+                let level = trimmed.chars().take_while(|&c| c == '#').count() as u8;
+                if level >= 1 && level <= 6 {
+                    let content = trimmed[level as usize..].trim();
                     blocks.push(BlockElement::new(BlockType::Heading(level), content));
                     continue;
                 }

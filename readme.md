@@ -18,8 +18,20 @@ rgpui 是一个跨平台 GPU 加速 UI 框架，从 [zed-industries/gpui](https:
 - **菜单**：PopupMenu、ContextMenu、DropdownMenu、Menu、MenuBar、MenuItem、HoverCard、Notification、Toast
 - **对话框**：Dialog、AlertDialog
 - **列表/表格**：List、VirtualList、Table、DataTable
-- **标签页**：Tab、TabBar、Accordion、Collapsible
-- **滚动**：Scrollable、Scrollbar、ScrollHandle
+- **标签页**：Tab、TabBar、Accordion、Collapsible、TabDragDrop（拖拽排序）
+- **滚动**：Scrollable、Scrollbar、ScrollHandle、VirtualScroll（虚拟滚动）
+- **状态栏**：StatusBar（v1.1.0）
+- **搜索**：SearchPanel（v1.1.0）
+- **聊天**：ChatView（v1.1.0）
+
+### 编辑器能力（v1.1.0）
+- **LSP 核心**：LspClient trait + 补全/悬停/定义/诊断/语义高亮子系统
+- **语法高亮**：Highlighter trait + HighlightStyleResolver
+- **补全弹窗**：CompletionPopup UI
+- **诊断标记**：DiagnosticMarkers + DiagnosticTooltip
+- **大文件加载**：AsyncFileLoader（流式进度 + 取消支持）
+- **源码映射**：SourceMap / BidirectionalSourceMap
+- **块级渲染**：BlockRenderer / BlockElement
 
 ### 系统集成
 - 系统托盘（图标、右键菜单、窗口隐藏/恢复）
@@ -29,6 +41,14 @@ rgpui 是一个跨平台 GPU 加速 UI 框架，从 [zed-industries/gpui](https:
 - 凭据管理（系统密钥链）
 - 屏幕捕获（feature-gated）
 - 电源管理、网络状态、媒体键、生物识别
+
+### 桌面增强（v1.1.0）
+- **文件监视**：FileWatcher API（实时文件变更监听）
+- **配置持久化**：ConfigStore（JSON 配置加载/保存/监听）
+- **国际化**：I18nManager（多语言支持 + 复数规则）
+- **主题热重载**：ThemeWatcher / ThemeManager（运行时主题切换）
+- **性能监控**：FPS HUD（帧率/CPU/内存实时监控）
+- **Markdown 插件**：MarkdownPlugin / PluginManager（自定义渲染扩展）
 
 ### 平台特有
 - **Windows**：Mica/Acrylic 毛玻璃、鼠标穿透、自动启动、窗口扩展样式
@@ -50,6 +70,7 @@ crates/
 ├── rgpui-platform/     # 平台选择入口
 ├── rgpui-term/         # 终端组件
 ├── rgpui-web/          # Web/WASM 平台实现
+├── rgpui-webview/      # WebView 独立库（v1.0）
 ├── rgpui-wgpu/         # wgpu 渲染后端
 └── rgpui-windows/      # Windows 平台实现
 
