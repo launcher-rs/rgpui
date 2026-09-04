@@ -37,49 +37,50 @@ pub use crate::scroll_physics::ScrollPhysics;
 // LSP 核心类型（feature `lsp` 门控）。
 #[cfg(feature = "lsp")]
 pub use crate::lsp::{
-    Completion, CompletionMenuOptions, CompletionProvider, CompletionState,
-    DefinitionLocation, DefinitionProvider, DocumentHighlight, DocumentHighlightKind,
-    DiagnosticEntry, DiagnosticsState, DiagnosticsProvider, DocumentVersion,
-    HoverContent, HoverProvider, HoverResponse, HoverState,
-    LspClient, LspState, PositionMapping,
-    SemanticTokensProvider, SemanticTokensState, SemanticTokenTypeMap,
+    Completion, CompletionMenuOptions, CompletionProvider, CompletionState, DefinitionLocation,
+    DefinitionProvider, DiagnosticEntry, DiagnosticsProvider, DiagnosticsState, DocumentHighlight,
+    DocumentHighlightKind, DocumentVersion, HoverContent, HoverProvider, HoverResponse, HoverState,
+    LspClient, LspState, PositionMapping, SemanticTokenTypeMap, SemanticTokensProvider,
+    SemanticTokensState,
 };
 
 // 语法高亮 trait（tree-sitter 等解析器的抽象层）。
 pub use crate::highlight::{
-    Highlighter, HighlighterFactory, HighlightStyleResolver, NoHighlightStyles,
-    TextEdit, FoldRange,
+    FoldRange, HighlightStyleResolver, Highlighter, HighlighterFactory, NoHighlightStyles, TextEdit,
 };
 
 // 文件监视 API。
-pub use crate::file_watcher::{FileWatcher, FileEvent, FileWatcherConfig};
+pub use crate::file_watcher::{FileEvent, FileWatcher, FileWatcherConfig};
 
 // 配置持久化 API。
 pub use crate::config_store::ConfigStore;
 
 // Chat UI 组件。
-pub use crate::chat_ui::{ChatView, ChatState, Message, MessageGroup, MessageType};
+pub use crate::chat_ui::{ChatState, ChatView, Message, MessageGroup, MessageType};
 
 // FPS 监控 HUD。
 pub use crate::fps_hud::{FpsHud, FpsHudState};
 
 // Tab 拖拽排序。
-pub use crate::tabs::tab_drag::{TabDragDrop, TabDragState, TabDragEvent, TabItem};
+pub use crate::tabs::tab_drag::{TabDragDrop, TabDragEvent, TabDragState, TabItem};
 
 // 国际化支持。
 pub use crate::i18n::{I18nManager, I18nText, PluralRule};
 
 // 主题热重载。
-pub use crate::theme_watcher::{ThemeWatcher, ThemeEvent, ThemeMode, ThemeColors, ThemeManager};
+pub use crate::theme_watcher::{ThemeColors, ThemeEvent, ThemeManager, ThemeMode, ThemeWatcher};
 
 // 块级渲染组件。
-pub use crate::block_render::{BlockRenderer, BlockElement, BlockType};
+pub use crate::block_render::{BlockElement, BlockRenderer, BlockType};
 
 // 虚拟滚动增强。
-pub use crate::virtual_scroll::{VirtualScroll, VirtualScrollState, VirtualScrollConfig, VirtualScrollDirection, VirtualScrollList};
+pub use crate::virtual_scroll::{
+    VirtualScroll, VirtualScrollConfig, VirtualScrollDirection, VirtualScrollList,
+    VirtualScrollState,
+};
 
 // 源码映射支持。
-pub use crate::source_map::{SourceMap, SourceLocation, BidirectionalSourceMap, SourceMapBuilder};
+pub use crate::source_map::{BidirectionalSourceMap, SourceLocation, SourceMap, SourceMapBuilder};
 
 // Markdown 插件扩展系统。
 pub use crate::markdown_ext::{MarkdownPlugin, MarkdownRenderer, PluginManager};

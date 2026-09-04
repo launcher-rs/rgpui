@@ -2083,7 +2083,9 @@ impl Scenix3D {
             .map_err(|_| ScenixError::Gpu(GpuError::Upload))?
             .map_err(|_| ScenixError::Gpu(GpuError::Upload))?;
 
-        let mapped = slice.get_mapped_range().map_err(|_| ScenixError::Gpu(GpuError::Unsupported))?;
+        let mapped = slice
+            .get_mapped_range()
+            .map_err(|_| ScenixError::Gpu(GpuError::Unsupported))?;
         let mut pixels = Vec::with_capacity((self.width * self.height * bpp) as usize);
         for row in 0..self.height as usize {
             let off = row * row_padded as usize;

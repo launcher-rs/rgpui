@@ -19,6 +19,8 @@
 // 导入单例模块：防止重复启动
 use rgpui::single_instance::{SingleInstance, send_activate_to_existing};
 // 从 rgpui 核心库导入 UI 框架所需的基础类型
+#[cfg(target_os = "windows")]
+use rgpui::point;
 use rgpui::{
     App,                        // 应用程序上下文
     AssetSource,                // 资源加载器 trait
@@ -44,8 +46,6 @@ use rgpui::{
     rgba,                       // 创建 RGBA 颜色的宏
     size,                       // 创建 Size 的宏
 };
-#[cfg(target_os = "windows")]
-use rgpui::point;
 // 从 rgpui-character 导入角色运行时和动画系统
 use rgpui_character::{
     AnimationClip,    // 动画片段（包含多个帧纹理）

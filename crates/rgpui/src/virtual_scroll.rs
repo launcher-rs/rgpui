@@ -9,10 +9,7 @@
 //! VirtualScroll::new(state)
 //! ```
 
-use crate::{
-    Context, Entity, IntoElement, ParentElement, Render, Styled,
-    Window, div, px,
-};
+use crate::{Context, Entity, IntoElement, ParentElement, Render, Styled, Window, div, px};
 
 /// 虚拟滚动状态。
 pub struct VirtualScrollState {
@@ -48,7 +45,8 @@ impl VirtualScrollState {
 
     /// 更新滚动偏移。
     pub fn set_scroll_offset(&mut self, offset: f32) {
-        let max_offset = (self.total_items as f32 * self.item_height - self.viewport_height).max(0.0);
+        let max_offset =
+            (self.total_items as f32 * self.item_height - self.viewport_height).max(0.0);
         self.scroll_offset = offset.clamp(0.0, max_offset);
     }
 
@@ -119,12 +117,7 @@ impl Render for VirtualScroll {
         div()
             .relative()
             .h(px(state.total_height()))
-            .child(
-                div()
-                    .absolute()
-                    .top(px(state.scroll_offset))
-                    .w_full()
-            )
+            .child(div().absolute().top(px(state.scroll_offset)).w_full())
     }
 }
 

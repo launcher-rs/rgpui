@@ -15,8 +15,8 @@
 //! });
 //! ```
 
-use std::path::{Path, PathBuf};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 #[cfg(feature = "tokio")]
 use std::sync::Mutex;
@@ -192,9 +192,7 @@ impl AsyncFileWatcher {
     pub fn start_polling(&mut self, interval_ms: u64) {
         let inner = self.inner.clone();
         let handle = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(
-                std::time::Duration::from_millis(interval_ms),
-            );
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(interval_ms));
             loop {
                 interval.tick().await;
                 // check_changes() 内部会调用注册的回调派发事件
@@ -219,14 +217,14 @@ pub mod utils {
 
     /// 获取文件最后修改时间。
     pub fn last_modified(path: &Path) -> Option<std::time::SystemTime> {
-        std::fs::metadata(path)
-            .and_then(|m| m.modified())
-            .ok()
+        std::fs::metadata(path).and_then(|m| m.modified()).ok()
     }
 
     /// 检查路径是否应该被忽略。
     pub fn should_ignore(path: &Path, patterns: &[String]) -> bool {
         let path_str = path.to_string_lossy();
-        patterns.iter().any(|pattern| path_str.contains(pattern.as_str()))
+        patterns
+            .iter()
+            .any(|pattern| path_str.contains(pattern.as_str()))
     }
 }

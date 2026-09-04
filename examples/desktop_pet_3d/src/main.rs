@@ -365,134 +365,138 @@ fn spawn_3d_render_thread(state: Arc<Mutex<SharedState>>, model_path: String) {
     std::thread::Builder::new()
         .stack_size(4 * 1024 * 1024)
         .spawn(move || {
-            let mut ctx = Scenix3D::blocking_new(RENDER_W, RENDER_H)
-                .expect("创建 3D 上下文失败");
+            let mut ctx = Scenix3D::blocking_new(RENDER_W, RENDER_H).expect("创建 3D 上下文失败");
 
-        let loader = scenix::GltfLoader::new();
-        let mut scene = match loader.load_file(&model_path) {
-            Ok(asset) => {
-                if let Err(e) = ctx.register_gltf_asset(&asset) {
-                    eprintln!("[3D] GPU 注册失败: {e}");
-                } else {
-                    match ctx.load_gltf_skins(&model_path, &asset) {
-                        Ok(_) => {
-                            let names = ctx.animation_names();
-                            eprintln!("[3D] 蒙皮加载成功，共 {} 个动画: {:?}", names.len(), names);
-                            let mut s = state.lock().unwrap();
-                            s.anim_names = names;
+            let loader = scenix::GltfLoader::new();
+            let mut scene = match loader.load_file(&model_path) {
+                Ok(asset) => {
+                    if let Err(e) = ctx.register_gltf_asset(&asset) {
+                        eprintln!("[3D] GPU 注册失败: {e}");
+                    } else {
+                        match ctx.load_gltf_skins(&model_path, &asset) {
+                            Ok(_) => {
+                                let names = ctx.animation_names();
+                                eprintln!(
+                                    "[3D] 蒙皮加载成功，共 {} 个动画: {:?}",
+                                    names.len(),
+                                    names
+                                );
+                                let mut s = state.lock().unwrap();
+                                s.anim_names = names;
+                            }
+                            Err(e) => {
+                                eprintln!("[3D] 蒙皮加载失败: {e}");
+                            }
                         }
-                        Err(e) => {
-                            eprintln!("[3D] 蒙皮加载失败: {e}");
-                        }
                     }
-                }
-                asset.scene
-            }
-            Err(e) => {
-                eprintln!("[3D] 模型加载失败: {e}");
-                return;
-            }
-        };
-
-        ctx.set_clear_color(0.0, 0.0, 0.0, 0.0);
-
-        let anim_speed = 1.0;
-        let mut frame_times: Vec<f32> = Vec::with_capacity(30);
-        let mut root_original_transforms: HashMap<scenix::NodeId, Transform> = HashMap::new();
-
-        loop {
-            let frame_start = Instant::now();
-
-            // ── 一次性读取输入 ──
-            let (orbit_x, orbit_y, distance, anim_idx, model_yaw) = {
-                let mut s = state.lock().unwrap();
-                (
-                    s.orbit_x,
-                    s.orbit_y,
-                    s.distance,
-                    s.requested_anim_index.take(),
-                    s.current_model_yaw,
-                )
-            };
-
-            // 切换动画
-            if let Some(idx) = anim_idx {
-                let anim_count = ctx.animation_names().len();
-                if idx < anim_count {
-                    ctx.set_active_animation(idx);
-                    ctx.set_animation_time(0.0);
-                    let mut s = state.lock().unwrap();
-                    s.current_anim_index = Some(idx);
-                    eprintln!("[3D] 切换到动画 {}: {}", idx, ctx.animation_names()[idx]);
-                }
-            }
-
-            // 推进动画
-            let anim_count = ctx.animation_names().len();
-            if anim_count > 0 {
-                ctx.advance_animation(FRAME_TIME.as_secs_f32() * anim_speed);
-            }
-
-            // 旋转场景根节点，使模型面向行走方向
-            let root_ids: Vec<_> = scene.roots().to_vec();
-            // 首帧保存根节点原始变换
-            for &root_id in &root_ids {
-                root_original_transforms.entry(root_id).or_insert_with(|| {
-                    scene
-                        .get(root_id)
-                        .map(|n| n.transform)
-                        .unwrap_or(Transform::IDENTITY)
-                });
-            }
-            let yaw_quat = Quat::from_axis_angle(Vec3::Y, model_yaw);
-            for &root_id in &root_ids {
-                if let Some(&orig) = root_original_transforms.get(&root_id) {
-                    let new_rotation = orig.rotation.mul_quat(yaw_quat);
-                    let _ = scene.set_local_transform(
-                        root_id,
-                        Transform::new(orig.translation, new_rotation, orig.scale),
-                    );
-                }
-            }
-
-            // 构建相机（orbit_x 控制水平旋转，模拟模型朝向）
-            let camera =
-                PerspectiveCamera::new(45.0, RENDER_W as f32 / RENDER_H as f32, 0.1, 100.0)
-                    .position(Vec3::new(
-                        distance * orbit_x.sin() * orbit_y.cos(),
-                        distance * orbit_y.sin() + 0.5,
-                        distance * orbit_x.cos() * orbit_y.cos(),
-                    ))
-                    .target(Vec3::new(0.0, -0.2, 0.0));
-
-            match ctx.render(&mut scene, &camera) {
-                Ok(render_result) => {
-                    let render_image = Arc::new(render_result.into_render_image());
-
-                    let elapsed = frame_start.elapsed().as_secs_f32();
-                    frame_times.push(elapsed);
-                    if frame_times.len() > 30 {
-                        frame_times.remove(0);
-                    }
-                    let avg_fps = frame_times.len() as f32 / frame_times.iter().sum::<f32>();
-
-                    {
-                        let mut s = state.lock().unwrap();
-                        s.render_image = Some(render_image);
-                        s.fps = avg_fps;
-                    }
+                    asset.scene
                 }
                 Err(e) => {
-                    eprintln!("[3D] 渲染错误: {e}");
+                    eprintln!("[3D] 模型加载失败: {e}");
+                    return;
+                }
+            };
+
+            ctx.set_clear_color(0.0, 0.0, 0.0, 0.0);
+
+            let anim_speed = 1.0;
+            let mut frame_times: Vec<f32> = Vec::with_capacity(30);
+            let mut root_original_transforms: HashMap<scenix::NodeId, Transform> = HashMap::new();
+
+            loop {
+                let frame_start = Instant::now();
+
+                // ── 一次性读取输入 ──
+                let (orbit_x, orbit_y, distance, anim_idx, model_yaw) = {
+                    let mut s = state.lock().unwrap();
+                    (
+                        s.orbit_x,
+                        s.orbit_y,
+                        s.distance,
+                        s.requested_anim_index.take(),
+                        s.current_model_yaw,
+                    )
+                };
+
+                // 切换动画
+                if let Some(idx) = anim_idx {
+                    let anim_count = ctx.animation_names().len();
+                    if idx < anim_count {
+                        ctx.set_active_animation(idx);
+                        ctx.set_animation_time(0.0);
+                        let mut s = state.lock().unwrap();
+                        s.current_anim_index = Some(idx);
+                        eprintln!("[3D] 切换到动画 {}: {}", idx, ctx.animation_names()[idx]);
+                    }
+                }
+
+                // 推进动画
+                let anim_count = ctx.animation_names().len();
+                if anim_count > 0 {
+                    ctx.advance_animation(FRAME_TIME.as_secs_f32() * anim_speed);
+                }
+
+                // 旋转场景根节点，使模型面向行走方向
+                let root_ids: Vec<_> = scene.roots().to_vec();
+                // 首帧保存根节点原始变换
+                for &root_id in &root_ids {
+                    root_original_transforms.entry(root_id).or_insert_with(|| {
+                        scene
+                            .get(root_id)
+                            .map(|n| n.transform)
+                            .unwrap_or(Transform::IDENTITY)
+                    });
+                }
+                let yaw_quat = Quat::from_axis_angle(Vec3::Y, model_yaw);
+                for &root_id in &root_ids {
+                    if let Some(&orig) = root_original_transforms.get(&root_id) {
+                        let new_rotation = orig.rotation.mul_quat(yaw_quat);
+                        let _ = scene.set_local_transform(
+                            root_id,
+                            Transform::new(orig.translation, new_rotation, orig.scale),
+                        );
+                    }
+                }
+
+                // 构建相机（orbit_x 控制水平旋转，模拟模型朝向）
+                let camera =
+                    PerspectiveCamera::new(45.0, RENDER_W as f32 / RENDER_H as f32, 0.1, 100.0)
+                        .position(Vec3::new(
+                            distance * orbit_x.sin() * orbit_y.cos(),
+                            distance * orbit_y.sin() + 0.5,
+                            distance * orbit_x.cos() * orbit_y.cos(),
+                        ))
+                        .target(Vec3::new(0.0, -0.2, 0.0));
+
+                match ctx.render(&mut scene, &camera) {
+                    Ok(render_result) => {
+                        let render_image = Arc::new(render_result.into_render_image());
+
+                        let elapsed = frame_start.elapsed().as_secs_f32();
+                        frame_times.push(elapsed);
+                        if frame_times.len() > 30 {
+                            frame_times.remove(0);
+                        }
+                        let avg_fps = frame_times.len() as f32 / frame_times.iter().sum::<f32>();
+
+                        {
+                            let mut s = state.lock().unwrap();
+                            s.render_image = Some(render_image);
+                            s.fps = avg_fps;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[3D] 渲染错误: {e}");
+                    }
+                }
+
+                let elapsed = frame_start.elapsed();
+                if elapsed < FRAME_TIME {
+                    std::thread::sleep(FRAME_TIME - elapsed);
                 }
             }
-
-            let elapsed = frame_start.elapsed();
-            if elapsed < FRAME_TIME {
-                std::thread::sleep(FRAME_TIME - elapsed);
-            }
-        }
-    }).expect("启动 3D 渲染线程失败");
+        })
+        .expect("启动 3D 渲染线程失败");
 }
 
 // ============================================================================

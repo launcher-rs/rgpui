@@ -7186,6 +7186,9 @@ dependencies = [
  "rgpui",
  "rgpui-markdown",
  "rgpui-platform",
+ "serde",
+ "serde_json",
+ "tempfile",
  "web-sys",
 ]
 
@@ -9853,6 +9856,15 @@ dependencies = [
  "thiserror 2.0.20",
  "windows 0.61.3",
  "windows-core 0.61.2",
+]
+
+[[package]]
+name = "webview_example"
+version = "0.1.0"
+dependencies = [
+ "lb-wry",
+ "rgpui",
+ "rgpui-platform",
 ]
 
 [[package]]

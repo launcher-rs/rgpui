@@ -2,8 +2,8 @@
 //!
 //! 本示例演示 v1.1.0 中所有新增功能的使用方法。
 
-use rgpui::prelude::*;
 use rgpui::markdown_ext::{CodeHighlightPlugin, MathPlugin, TaskListPlugin};
+use rgpui::prelude::*;
 
 // ============================================================================
 // Phase 1: API 增强
@@ -183,8 +183,8 @@ fn test_block_render() {
     println!("H2: {}", renderer.render(&h2));
 
     // 渲染代码块
-    let code = BlockElement::new(BlockType::CodeBlock, "fn main() {}")
-        .with_attr("language", "rust");
+    let code =
+        BlockElement::new(BlockType::CodeBlock, "fn main() {}").with_attr("language", "rust");
     println!("代码块: {}", renderer.render(&code));
 
     // 渲染引用
@@ -326,7 +326,11 @@ fn test_chat_ui() {
         sender: "用户".into(),
         messages: vec![msg1, msg2],
     };
-    println!("消息组: 发送者={}, 消息数={}", group.sender, group.messages.len());
+    println!(
+        "消息组: 发送者={}, 消息数={}",
+        group.sender,
+        group.messages.len()
+    );
 
     println!("✅ ChatUI 测试通过");
 }

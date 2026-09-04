@@ -1,8 +1,7 @@
 //! FPS 监控 HUD —— 实时显示帧率、CPU、内存使用情况。
 
 use crate::{
-    Context, Entity, IntoElement, ParentElement, Render, Styled, StyledExt,
-    Window, div, h_flex,
+    Context, Entity, IntoElement, ParentElement, Render, Styled, StyledExt, Window, div, h_flex,
 };
 
 /// FPS 监控状态。
@@ -109,12 +108,7 @@ impl Render for FpsHud {
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(crate::gray_400())
-                                    .child("FPS"),
-                            )
+                            .child(div().text_xs().text_color(crate::gray_400()).child("FPS"))
                             .child(
                                 div()
                                     .text_sm()
@@ -133,12 +127,7 @@ impl Render for FpsHud {
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(crate::gray_400())
-                                    .child("CPU"),
-                            )
+                            .child(div().text_xs().text_color(crate::gray_400()).child("CPU"))
                             .child(
                                 div()
                                     .text_sm()
@@ -151,12 +140,7 @@ impl Render for FpsHud {
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(crate::gray_400())
-                                    .child("MEM"),
-                            )
+                            .child(div().text_xs().text_color(crate::gray_400()).child("MEM"))
                             .child(
                                 div()
                                     .text_sm()

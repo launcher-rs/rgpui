@@ -146,7 +146,11 @@ impl I18nText {
 
     /// 获取翻译后的文本。
     pub fn translate(&self, i18n: &I18nManager) -> String {
-        let args: Vec<(&str, &str)> = self.args.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        let args: Vec<(&str, &str)> = self
+            .args
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
         i18n.t(&self.key, &args)
     }
 }

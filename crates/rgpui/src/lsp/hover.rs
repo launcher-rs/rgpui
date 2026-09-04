@@ -44,11 +44,14 @@ pub enum HoverContent {
 impl HoverResponse {
     /// 从 LSP Hover 构建。
     pub fn from_lsp(hover: Hover, offset: usize) -> Self {
-        let range = hover.range.map(|r| {
-            let start = r.start.line as usize * 100 + r.start.character as usize;
-            let end = r.end.line as usize * 100 + r.end.character as usize;
-            start..end
-        }).unwrap_or(offset..offset);
+        let range = hover
+            .range
+            .map(|r| {
+                let start = r.start.line as usize * 100 + r.start.character as usize;
+                let end = r.end.line as usize * 100 + r.end.character as usize;
+                start..end
+            })
+            .unwrap_or(offset..offset);
 
         let contents = match hover.contents {
             HoverContents::Scalar(MarkedString::String(s)) => {

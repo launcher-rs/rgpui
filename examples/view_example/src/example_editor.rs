@@ -492,8 +492,15 @@ impl Element for EditorText {
         let line_height = window.line_height();
         for (i, line) in prepaint.lines.iter().enumerate() {
             let origin = point(bounds.left(), bounds.top() + line_height * i as f32);
-            line.paint(origin, line_height, rgpui::TextAlign::Left, None, window, cx)
-                .unwrap();
+            line.paint(
+                origin,
+                line_height,
+                rgpui::TextAlign::Left,
+                None,
+                window,
+                cx,
+            )
+            .unwrap();
         }
 
         if let Some(cursor) = prepaint.cursor.take() {

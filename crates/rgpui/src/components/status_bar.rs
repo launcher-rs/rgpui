@@ -20,8 +20,8 @@
 use std::rc::Rc;
 
 use crate::{
-    App, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Window,
-    div, h_flex, px,
+    App, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Window, div,
+    h_flex, px,
 };
 
 /// 状态栏状态。
@@ -126,46 +126,20 @@ impl Render for StatusBar {
                     .unwrap_or_else(|| "LSP".into());
                 h_flex()
                     .gap_1()
-                    .child(
-                        div()
-                            .w_2()
-                            .h_2()
-                            .rounded_full()
-                            .bg(crate::green_500()),
-                    )
-                    .child(
-                        div().text_xs().child(name),
-                    )
+                    .child(div().w_2().h_2().rounded_full().bg(crate::green_500()))
+                    .child(div().text_xs().child(name))
             }
             LspStatus::Initializing => h_flex()
                 .gap_1()
-                .child(
-                    div()
-                        .w_2()
-                        .h_2()
-                        .rounded_full()
-                        .bg(crate::yellow_500()),
-                )
+                .child(div().w_2().h_2().rounded_full().bg(crate::yellow_500()))
                 .child("LSP..."),
             LspStatus::Disconnected => h_flex()
                 .gap_1()
-                .child(
-                    div()
-                        .w_2()
-                        .h_2()
-                        .rounded_full()
-                        .bg(crate::gray_500()),
-                )
+                .child(div().w_2().h_2().rounded_full().bg(crate::gray_500()))
                 .child("No LSP"),
             LspStatus::Error => h_flex()
                 .gap_1()
-                .child(
-                    div()
-                        .w_2()
-                        .h_2()
-                        .rounded_full()
-                        .bg(crate::red_500()),
-                )
+                .child(div().w_2().h_2().rounded_full().bg(crate::red_500()))
                 .child("LSP Error"),
         };
 
@@ -197,29 +171,28 @@ impl Render for StatusBar {
                     .text_xs()
                     .child(format!("Ln {}, Col {}", state.line, state.column)),
             )
-            .children(state.selection_chars.map(|chars| {
-                div()
-                    .text_xs()
-                    .child(format!("({} selected)", chars))
-            }));
+            .children(
+                state
+                    .selection_chars
+                    .map(|chars| div().text_xs().child(format!("({} selected)", chars))),
+            );
 
         let language_info = h_flex()
             .gap_2()
             .child(div().text_xs().child(state.language.clone()))
             .child(div().text_xs().child(state.encoding.clone()))
             .child(div().text_xs().child(state.line_ending.clone()))
-            .children(state.indent_info.as_ref().map(|info| {
-                div().text_xs().child(info.clone())
-            }));
+            .children(
+                state
+                    .indent_info
+                    .as_ref()
+                    .map(|info| div().text_xs().child(info.clone())),
+            );
 
         let git_info = state.git_branch.as_ref().map(|branch| {
             h_flex()
                 .gap_1()
-                .child(
-                    div()
-                        .text_xs()
-                        .child(format!(" {}", branch)),
-                )
+                .child(div().text_xs().child(format!(" {}", branch)))
         });
 
         h_flex()

@@ -90,8 +90,7 @@ impl ScreenCaptureExample {
                 if new_frame_clone.swap(false, Ordering::Relaxed)
                     && let Ok(mut buf) = preview_buf_clone.lock()
                     && let Some(frame) = buf.take()
-                    && let Some(img) =
-                        RgbaImage::from_raw(frame.width, frame.height, frame.data)
+                    && let Some(img) = RgbaImage::from_raw(frame.width, frame.height, frame.data)
                 {
                     let _ = img.save(&preview_file);
                     this.update(cx, |view, _cx| {

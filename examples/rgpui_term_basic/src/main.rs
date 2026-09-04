@@ -799,9 +799,7 @@ impl AgentTermApp {
             false
         };
 
-        if should_close_tab
-            && let Some(tab) = self.tabs.get(self.active_tab_index)
-        {
+        if should_close_tab && let Some(tab) = self.tabs.get(self.active_tab_index) {
             let tab_id = tab.id;
             self.close_tab_by_id(tab_id, cx);
             return;

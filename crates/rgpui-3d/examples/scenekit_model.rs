@@ -223,106 +223,106 @@ fn main() {
     std::thread::Builder::new()
         .stack_size(4 * 1024 * 1024)
         .spawn(move || {
-            let mut ctx = Scenix3D::blocking_new(RENDER_W, RENDER_H)
-                .expect("创建 3D 上下文失败");
+            let mut ctx = Scenix3D::blocking_new(RENDER_W, RENDER_H).expect("创建 3D 上下文失败");
 
-        let mut loaded_model: Option<SceneGraph> = None;
-        let info: String;
+            let mut loaded_model: Option<SceneGraph> = None;
+            let info: String;
 
-        if let Some(ref path) = model_path {
-            let loader = scenekit::GltfLoader::new();
-            match loader.load_file(path) {
-                Ok(asset) => match ctx.register_gltf_asset(&asset) {
-                    Ok(_) => {
-                        let name = std::path::Path::new(path)
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy();
-                        info = format!(
-                            "{} ({} 网格, {} 材质)",
-                            name,
-                            asset.meshes.len(),
-                            asset.materials.len()
-                        );
-                        loaded_model = Some(asset.scene);
-                    }
+            if let Some(ref path) = model_path {
+                let loader = scenekit::GltfLoader::new();
+                match loader.load_file(path) {
+                    Ok(asset) => match ctx.register_gltf_asset(&asset) {
+                        Ok(_) => {
+                            let name = std::path::Path::new(path)
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy();
+                            info = format!(
+                                "{} ({} 网格, {} 材质)",
+                                name,
+                                asset.meshes.len(),
+                                asset.materials.len()
+                            );
+                            loaded_model = Some(asset.scene);
+                        }
+                        Err(e) => {
+                            info = format!("GPU 注册失败: {e}");
+                        }
+                    },
                     Err(e) => {
-                        info = format!("GPU 注册失败: {e}");
+                        info = format!("加载失败: {e}");
                     }
-                },
-                Err(e) => {
-                    info = format!("加载失败: {e}");
                 }
-            }
-        } else {
-            info = "未指定模型文件（使用 --model <路径>）".into();
-        };
-
-        {
-            let mut s = render_shared.lock().unwrap();
-            s.model_info = info;
-        }
-
-        let mut frame_times: Vec<f32> = Vec::with_capacity(30);
-
-        loop {
-            let frame_start = Instant::now();
-
-            let (mut ox, oy, dist) = {
-                let s = render_shared.lock().unwrap();
-                (s.orbit_x, s.orbit_y, s.distance)
+            } else {
+                info = "未指定模型文件（使用 --model <路径>）".into();
             };
 
-            let auto_rotate = {
-                let s = render_shared.lock().unwrap();
-                s.auto_rotate
-            };
-
-            if auto_rotate {
-                ox += 0.015;
-                {
-                    let mut s = render_shared.lock().unwrap();
-                    s.orbit_x = ox;
-                }
-            }
-
-            let cam_pos = Vec3::new(
-                dist * ox.sin() * oy.cos(),
-                dist * oy.sin(),
-                dist * ox.cos() * oy.cos(),
-            );
-            let camera =
-                PerspectiveCamera::new(45.0, RENDER_W as f32 / RENDER_H as f32, 0.1, 100.0)
-                    .position(cam_pos)
-                    .target(Vec3::ZERO);
-
-            if let Some(ref mut scene) = loaded_model {
-                let result = ctx.render(scene, &camera).expect("渲染失败");
-                let render_image = Arc::new(result.into_render_image());
-                {
-                    let mut s = render_shared.lock().unwrap();
-                    s.render_image = Some(render_image);
-                }
-            }
-
-            let elapsed = frame_start.elapsed().as_secs_f32();
-            frame_times.push(elapsed);
-            if frame_times.len() > 30 {
-                frame_times.remove(0);
-            }
-            let avg_fps = frame_times.len() as f32 / frame_times.iter().sum::<f32>();
             {
                 let mut s = render_shared.lock().unwrap();
-                s.fps = avg_fps;
+                s.model_info = info;
             }
 
-            let frame_time = frame_start.elapsed();
-            let target = Duration::from_millis(50);
-            if frame_time < target {
-                std::thread::sleep(target - frame_time);
+            let mut frame_times: Vec<f32> = Vec::with_capacity(30);
+
+            loop {
+                let frame_start = Instant::now();
+
+                let (mut ox, oy, dist) = {
+                    let s = render_shared.lock().unwrap();
+                    (s.orbit_x, s.orbit_y, s.distance)
+                };
+
+                let auto_rotate = {
+                    let s = render_shared.lock().unwrap();
+                    s.auto_rotate
+                };
+
+                if auto_rotate {
+                    ox += 0.015;
+                    {
+                        let mut s = render_shared.lock().unwrap();
+                        s.orbit_x = ox;
+                    }
+                }
+
+                let cam_pos = Vec3::new(
+                    dist * ox.sin() * oy.cos(),
+                    dist * oy.sin(),
+                    dist * ox.cos() * oy.cos(),
+                );
+                let camera =
+                    PerspectiveCamera::new(45.0, RENDER_W as f32 / RENDER_H as f32, 0.1, 100.0)
+                        .position(cam_pos)
+                        .target(Vec3::ZERO);
+
+                if let Some(ref mut scene) = loaded_model {
+                    let result = ctx.render(scene, &camera).expect("渲染失败");
+                    let render_image = Arc::new(result.into_render_image());
+                    {
+                        let mut s = render_shared.lock().unwrap();
+                        s.render_image = Some(render_image);
+                    }
+                }
+
+                let elapsed = frame_start.elapsed().as_secs_f32();
+                frame_times.push(elapsed);
+                if frame_times.len() > 30 {
+                    frame_times.remove(0);
+                }
+                let avg_fps = frame_times.len() as f32 / frame_times.iter().sum::<f32>();
+                {
+                    let mut s = render_shared.lock().unwrap();
+                    s.fps = avg_fps;
+                }
+
+                let frame_time = frame_start.elapsed();
+                let target = Duration::from_millis(50);
+                if frame_time < target {
+                    std::thread::sleep(target - frame_time);
+                }
             }
-        }
-    }).expect("启动 3D 渲染线程失败");
+        })
+        .expect("启动 3D 渲染线程失败");
 
     application().run(move |cx: &mut App| {
         let bounds = Bounds::centered(None, size(px(900.0), px(720.0)), cx);

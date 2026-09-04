@@ -2,8 +2,7 @@
 
 use anyhow::Result;
 use lsp_types::{
-    InitializeParams, InitializeResult, ServerCapabilities, TextDocumentIdentifier,
-    Uri,
+    InitializeParams, InitializeResult, ServerCapabilities, TextDocumentIdentifier, Uri,
 };
 use ropey::Rope;
 

@@ -18,20 +18,20 @@
 //!
 //! 每个子系统通过 trait 解耦，应用层可按需提供实现。
 
-mod types;
 mod completions;
 mod completions_ui;
-mod hover;
 mod definitions;
 mod diagnostics;
 mod diagnostics_ui;
+mod hover;
 mod semantic_tokens;
+mod types;
 
-pub use types::*;
 pub use completions::*;
 pub use completions_ui::*;
-pub use hover::*;
 pub use definitions::*;
 pub use diagnostics::*;
 pub use diagnostics_ui::*;
+pub use hover::*;
 pub use semantic_tokens::*;
+pub use types::*;

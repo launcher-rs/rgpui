@@ -40,9 +40,7 @@ impl DiagnosticMarkersState {
     pub fn diagnostics_for_line(&self, line: u32) -> Vec<&DiagnosticEntry> {
         self.diagnostics
             .iter()
-            .filter(|d| {
-                d.range.start.line <= line && d.range.end.line >= line
-            })
+            .filter(|d| d.range.start.line <= line && d.range.end.line >= line)
             .collect()
     }
 
@@ -288,10 +286,6 @@ impl Render for DiagnosticTooltip {
                     .children(source_info)
                     .children(code_info),
             )
-            .child(
-                div()
-                    .text_sm()
-                    .child(self.diagnostic.message.clone()),
-            )
+            .child(div().text_sm().child(self.diagnostic.message.clone()))
     }
 }

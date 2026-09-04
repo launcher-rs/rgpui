@@ -1,9 +1,6 @@
 //! LSP 诊断支持。
 
-use lsp_types::{
-    Diagnostic, DiagnosticSeverity, PublishDiagnosticsParams, Uri,
-    NumberOrString,
-};
+use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, PublishDiagnosticsParams, Uri};
 
 use crate::App;
 
@@ -21,11 +18,7 @@ pub trait DiagnosticsProvider {
     }
 
     /// 订阅诊断推送。
-    fn on_diagnostics(
-        &self,
-        callback: Box<dyn Fn(PublishDiagnosticsParams)>,
-        cx: &mut App,
-    ) {
+    fn on_diagnostics(&self, callback: Box<dyn Fn(PublishDiagnosticsParams)>, cx: &mut App) {
         let _ = (callback, cx);
     }
 }

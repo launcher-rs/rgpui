@@ -10,6 +10,9 @@ anyhow.workspace = true
 rgpui = { workspace = true, features = ["charts", "effects", "qr-code", "dom-backend"] }
 rgpui-platform.workspace = true
 rgpui-markdown.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tempfile.workspace = true
 web-sys = { version = "0.3", features = ["Window", "Document"] }
 
 [lints]

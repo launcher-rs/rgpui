@@ -776,221 +776,225 @@ fn main() {
     std::thread::Builder::new()
         .stack_size(4 * 1024 * 1024)
         .spawn(move || {
-            let mut ctx = Scenix3D::blocking_new(RENDER_W, RENDER_H)
-                .expect("创建 3D 上下文失败");
+            let mut ctx = Scenix3D::blocking_new(RENDER_W, RENDER_H).expect("创建 3D 上下文失败");
 
-        ctx.set_clear_color(0.1, 0.1, 0.18, 1.0);
+            ctx.set_clear_color(0.1, 0.1, 0.18, 1.0);
 
-        let mut loaded_model: Option<SceneGraph> = None;
-        let mut info: String = "未加载模型".into();
-        let mut anim_names: Vec<String> = Vec::new();
+            let mut loaded_model: Option<SceneGraph> = None;
+            let mut info: String = "未加载模型".into();
+            let mut anim_names: Vec<String> = Vec::new();
 
-        if let Some(ref path) = model_path {
-            let (model, model_info, names) = try_load_model(&mut ctx, path);
-            loaded_model = model;
-            info = model_info;
-            anim_names.clone_from(&names);
-        }
-
-        {
-            let mut s = render_shared.lock().unwrap();
-            s.model_info = info;
-            s.anim_names = anim_names.clone();
-            s.joint_count = ctx.joint_count();
-            s.skin_count = ctx.skinned_mesh_count();
-        }
-
-        let mut frame_times: Vec<f32> = Vec::with_capacity(30);
-        let mut last_time = Instant::now();
-
-        loop {
-            let frame_start = Instant::now();
-            let dt = frame_start.duration_since(last_time).as_secs_f32();
-            last_time = frame_start;
-
-            let new_path = {
-                let mut s = render_shared.lock().unwrap();
-                s.pending_model_path.take()
-            };
-            if let Some(path) = new_path {
-                let (model, model_info, names) = try_load_model(&mut ctx, &path);
+            if let Some(ref path) = model_path {
+                let (model, model_info, names) = try_load_model(&mut ctx, path);
                 loaded_model = model;
+                info = model_info;
                 anim_names.clone_from(&names);
-                let mut s = render_shared.lock().unwrap();
-                s.model_info = model_info;
-                s.anim_names = names;
-                s.orbit_x = 0.0;
-                s.orbit_y = 0.2;
-                s.distance = 15.0;
-                s.joint_count = ctx.joint_count();
-                s.skin_count = ctx.skinned_mesh_count();
-                s.selected_joint = None;
-                s.joints_info.clear();
             }
 
-            let (pending, anim_switch, do_pause, msaa_enabled, show_skeleton, show_skin) = {
-                let mut s = render_shared.lock().unwrap();
-                let result = s.pending_override.take();
-                if s.pending_clear {
-                    ctx.clear_joint_overrides();
-                    s.pending_clear = false;
-                }
-                let anim_switch = s.pending_anim_switch.take();
-                let do_pause = s.pending_anim_pause.take();
-                let msaa = s.msaa_enabled;
-                let show = s.show_skeleton;
-                let skin = s.show_skin;
-                (result, anim_switch, do_pause, msaa, show, skin)
-            };
-            ctx.set_msaa_enabled(msaa_enabled);
-            if let Some((idx, q)) = pending {
-                ctx.set_joint_rotation_override(idx, scenekit::Quat::new(q[0], q[1], q[2], q[3]));
-            }
-            if let Some(pause) = do_pause {
-                ctx.set_animation_paused(pause);
-            }
-            if let Some(dir) = anim_switch {
-                let count = ctx.animation_names().len();
-                if count > 0 {
-                    let new_idx = (ctx.active_animation_index() as isize + dir)
-                        .rem_euclid(count as isize) as usize;
-                    ctx.set_active_animation(new_idx);
-                }
-            }
-
-            let movement = {
-                let s = render_shared.lock().unwrap();
-                (
-                    s.move_forward,
-                    s.move_backward,
-                    s.move_left,
-                    s.move_right,
-                    s.move_up,
-                    s.move_down,
-                    s.auto_rotate,
-                )
-            };
-            let move_speed = 2.0 * dt;
             {
                 let mut s = render_shared.lock().unwrap();
-                if movement.0 {
-                    s.orbit_x += move_speed * 0.5;
-                }
-                if movement.1 {
-                    s.orbit_x -= move_speed * 0.5;
-                }
-                if movement.2 {
-                    s.orbit_y += move_speed * 0.3;
-                }
-                if movement.3 {
-                    s.orbit_y -= move_speed * 0.3;
-                }
-                if movement.4 {
-                    s.distance -= move_speed * 0.5;
-                }
-                if movement.5 {
-                    s.distance += move_speed * 0.5;
-                }
-                s.orbit_y = s.orbit_y.clamp(-1.5, 1.5);
-                s.distance = s.distance.clamp(1.0, 50.0);
-                if movement.6 {
-                    s.orbit_x += 0.5 * dt;
-                }
+                s.model_info = info;
+                s.anim_names = anim_names.clone();
+                s.joint_count = ctx.joint_count();
+                s.skin_count = ctx.skinned_mesh_count();
             }
 
-            let (ox, oy, dist) = {
-                let s = render_shared.lock().unwrap();
-                (s.orbit_x, s.orbit_y, s.distance)
-            };
+            let mut frame_times: Vec<f32> = Vec::with_capacity(30);
+            let mut last_time = Instant::now();
 
-            let cam_pos = Vec3::new(
-                dist * ox.sin() * oy.cos(),
-                dist * oy.sin(),
-                dist * ox.cos() * oy.cos(),
-            );
-            let camera =
-                PerspectiveCamera::new(45.0, RENDER_W as f32 / RENDER_H as f32, 0.1, 100.0)
-                    .position(cam_pos)
-                    .target(Vec3::ZERO);
+            loop {
+                let frame_start = Instant::now();
+                let dt = frame_start.duration_since(last_time).as_secs_f32();
+                last_time = frame_start;
 
-            if let Some(ref mut scene) = loaded_model {
-                let mesh_ids: Vec<scenekit::NodeId> = scene
-                    .iter_depth_first()
-                    .filter(|&id| {
-                        scene
-                            .get(id)
-                            .map_or(false, |n| matches!(n.kind, scenekit::NodeKind::Mesh { .. }))
-                    })
-                    .collect();
-                for id in mesh_ids {
-                    if let Some(node) = scene.get_mut(id) {
-                        node.visible = show_skin;
+                let new_path = {
+                    let mut s = render_shared.lock().unwrap();
+                    s.pending_model_path.take()
+                };
+                if let Some(path) = new_path {
+                    let (model, model_info, names) = try_load_model(&mut ctx, &path);
+                    loaded_model = model;
+                    anim_names.clone_from(&names);
+                    let mut s = render_shared.lock().unwrap();
+                    s.model_info = model_info;
+                    s.anim_names = names;
+                    s.orbit_x = 0.0;
+                    s.orbit_y = 0.2;
+                    s.distance = 15.0;
+                    s.joint_count = ctx.joint_count();
+                    s.skin_count = ctx.skinned_mesh_count();
+                    s.selected_joint = None;
+                    s.joints_info.clear();
+                }
+
+                let (pending, anim_switch, do_pause, msaa_enabled, show_skeleton, show_skin) = {
+                    let mut s = render_shared.lock().unwrap();
+                    let result = s.pending_override.take();
+                    if s.pending_clear {
+                        ctx.clear_joint_overrides();
+                        s.pending_clear = false;
+                    }
+                    let anim_switch = s.pending_anim_switch.take();
+                    let do_pause = s.pending_anim_pause.take();
+                    let msaa = s.msaa_enabled;
+                    let show = s.show_skeleton;
+                    let skin = s.show_skin;
+                    (result, anim_switch, do_pause, msaa, show, skin)
+                };
+                ctx.set_msaa_enabled(msaa_enabled);
+                if let Some((idx, q)) = pending {
+                    ctx.set_joint_rotation_override(
+                        idx,
+                        scenekit::Quat::new(q[0], q[1], q[2], q[3]),
+                    );
+                }
+                if let Some(pause) = do_pause {
+                    ctx.set_animation_paused(pause);
+                }
+                if let Some(dir) = anim_switch {
+                    let count = ctx.animation_names().len();
+                    if count > 0 {
+                        let new_idx = (ctx.active_animation_index() as isize + dir)
+                            .rem_euclid(count as isize)
+                            as usize;
+                        ctx.set_active_animation(new_idx);
                     }
                 }
 
-                ctx.advance_animation(dt);
-                let result = ctx.render(scene, &camera).expect("渲染失败");
+                let movement = {
+                    let s = render_shared.lock().unwrap();
+                    (
+                        s.move_forward,
+                        s.move_backward,
+                        s.move_left,
+                        s.move_right,
+                        s.move_up,
+                        s.move_down,
+                        s.auto_rotate,
+                    )
+                };
+                let move_speed = 2.0 * dt;
+                {
+                    let mut s = render_shared.lock().unwrap();
+                    if movement.0 {
+                        s.orbit_x += move_speed * 0.5;
+                    }
+                    if movement.1 {
+                        s.orbit_x -= move_speed * 0.5;
+                    }
+                    if movement.2 {
+                        s.orbit_y += move_speed * 0.3;
+                    }
+                    if movement.3 {
+                        s.orbit_y -= move_speed * 0.3;
+                    }
+                    if movement.4 {
+                        s.distance -= move_speed * 0.5;
+                    }
+                    if movement.5 {
+                        s.distance += move_speed * 0.5;
+                    }
+                    s.orbit_y = s.orbit_y.clamp(-1.5, 1.5);
+                    s.distance = s.distance.clamp(1.0, 50.0);
+                    if movement.6 {
+                        s.orbit_x += 0.5 * dt;
+                    }
+                }
 
-                let vp = camera.view_projection();
-                let num_joints = ctx.joint_count();
-                let mut joints_info: Vec<JointScreenInfo> = Vec::new();
-                let mut pixel_data = result.data;
+                let (ox, oy, dist) = {
+                    let s = render_shared.lock().unwrap();
+                    (s.orbit_x, s.orbit_y, s.distance)
+                };
 
-                if show_skeleton {
-                    for i in 0..num_joints {
-                        if let Some(world_pos) = ctx.joint_world_position(i) {
-                            if let Some((sx, sy, depth)) =
-                                project_to_screen(world_pos, vp, RENDER_W, RENDER_H)
-                            {
-                                let base_radius = 6.0;
-                                let radius = base_radius / (1.0 + depth.abs() * 0.2);
-                                joints_info.push(JointScreenInfo {
-                                    index: i,
-                                    screen_x: sx,
-                                    screen_y: sy,
-                                });
+                let cam_pos = Vec3::new(
+                    dist * ox.sin() * oy.cos(),
+                    dist * oy.sin(),
+                    dist * ox.cos() * oy.cos(),
+                );
+                let camera =
+                    PerspectiveCamera::new(45.0, RENDER_W as f32 / RENDER_H as f32, 0.1, 100.0)
+                        .position(cam_pos)
+                        .target(Vec3::ZERO);
 
-                                let is_selected = {
-                                    let s = render_shared.lock().unwrap();
-                                    s.selected_joint == Some(i)
-                                };
-                                let col = if is_selected {
-                                    (255, 50, 50)
-                                } else {
-                                    (50, 180, 255)
-                                };
-                                draw_circle(
-                                    &mut pixel_data,
-                                    RENDER_W,
-                                    RENDER_H,
-                                    sx,
-                                    sy,
-                                    radius,
-                                    col.0,
-                                    col.1,
-                                    col.2,
-                                );
+                if let Some(ref mut scene) = loaded_model {
+                    let mesh_ids: Vec<scenekit::NodeId> = scene
+                        .iter_depth_first()
+                        .filter(|&id| {
+                            scene.get(id).map_or(false, |n| {
+                                matches!(n.kind, scenekit::NodeKind::Mesh { .. })
+                            })
+                        })
+                        .collect();
+                    for id in mesh_ids {
+                        if let Some(node) = scene.get_mut(id) {
+                            node.visible = show_skin;
+                        }
+                    }
 
-                                if let Some(parent_idx) = ctx.joint_parent(i) {
-                                    if parent_idx < num_joints {
-                                        if let Some(parent_pos) =
-                                            ctx.joint_world_position(parent_idx)
-                                        {
-                                            if let Some((px, py, _)) = project_to_screen(
-                                                parent_pos, vp, RENDER_W, RENDER_H,
-                                            ) {
-                                                draw_line(
-                                                    &mut pixel_data,
-                                                    RENDER_W,
-                                                    RENDER_H,
-                                                    sx,
-                                                    sy,
-                                                    px,
-                                                    py,
-                                                    180,
-                                                    180,
-                                                    180,
-                                                );
+                    ctx.advance_animation(dt);
+                    let result = ctx.render(scene, &camera).expect("渲染失败");
+
+                    let vp = camera.view_projection();
+                    let num_joints = ctx.joint_count();
+                    let mut joints_info: Vec<JointScreenInfo> = Vec::new();
+                    let mut pixel_data = result.data;
+
+                    if show_skeleton {
+                        for i in 0..num_joints {
+                            if let Some(world_pos) = ctx.joint_world_position(i) {
+                                if let Some((sx, sy, depth)) =
+                                    project_to_screen(world_pos, vp, RENDER_W, RENDER_H)
+                                {
+                                    let base_radius = 6.0;
+                                    let radius = base_radius / (1.0 + depth.abs() * 0.2);
+                                    joints_info.push(JointScreenInfo {
+                                        index: i,
+                                        screen_x: sx,
+                                        screen_y: sy,
+                                    });
+
+                                    let is_selected = {
+                                        let s = render_shared.lock().unwrap();
+                                        s.selected_joint == Some(i)
+                                    };
+                                    let col = if is_selected {
+                                        (255, 50, 50)
+                                    } else {
+                                        (50, 180, 255)
+                                    };
+                                    draw_circle(
+                                        &mut pixel_data,
+                                        RENDER_W,
+                                        RENDER_H,
+                                        sx,
+                                        sy,
+                                        radius,
+                                        col.0,
+                                        col.1,
+                                        col.2,
+                                    );
+
+                                    if let Some(parent_idx) = ctx.joint_parent(i) {
+                                        if parent_idx < num_joints {
+                                            if let Some(parent_pos) =
+                                                ctx.joint_world_position(parent_idx)
+                                            {
+                                                if let Some((px, py, _)) = project_to_screen(
+                                                    parent_pos, vp, RENDER_W, RENDER_H,
+                                                ) {
+                                                    draw_line(
+                                                        &mut pixel_data,
+                                                        RENDER_W,
+                                                        RENDER_H,
+                                                        sx,
+                                                        sy,
+                                                        px,
+                                                        py,
+                                                        180,
+                                                        180,
+                                                        180,
+                                                    );
+                                                }
                                             }
                                         }
                                     }
@@ -998,45 +1002,45 @@ fn main() {
                             }
                         }
                     }
+
+                    let render_image = {
+                        let img_buffer = image::RgbaImage::from_raw(RENDER_W, RENDER_H, pixel_data)
+                            .expect("无效的像素数据尺寸");
+                        let frame = image::Frame::new(img_buffer);
+                        Arc::new(RenderImage::new(smallvec::smallvec![frame]))
+                    };
+
+                    {
+                        let mut s = render_shared.lock().unwrap();
+                        s.render_image = Some(render_image);
+                        s.anim_time = ctx.animation_time();
+                        s.anim_duration = ctx.animation_duration();
+                        s.anim_speed = ctx.animation_speed();
+                        s.anim_paused = ctx.is_animation_paused();
+                        s.current_anim = ctx.active_animation_index();
+                        s.joints_info = joints_info;
+                    }
                 }
 
-                let render_image = {
-                    let img_buffer = image::RgbaImage::from_raw(RENDER_W, RENDER_H, pixel_data)
-                        .expect("无效的像素数据尺寸");
-                    let frame = image::Frame::new(img_buffer);
-                    Arc::new(RenderImage::new(smallvec::smallvec![frame]))
-                };
-
+                let elapsed = frame_start.elapsed().as_secs_f32();
+                frame_times.push(elapsed);
+                if frame_times.len() > 30 {
+                    frame_times.remove(0);
+                }
+                let avg_fps = frame_times.len() as f32 / frame_times.iter().sum::<f32>();
                 {
                     let mut s = render_shared.lock().unwrap();
-                    s.render_image = Some(render_image);
-                    s.anim_time = ctx.animation_time();
-                    s.anim_duration = ctx.animation_duration();
-                    s.anim_speed = ctx.animation_speed();
-                    s.anim_paused = ctx.is_animation_paused();
-                    s.current_anim = ctx.active_animation_index();
-                    s.joints_info = joints_info;
+                    s.fps = avg_fps;
+                }
+
+                let frame_time = frame_start.elapsed();
+                let target = Duration::from_millis(33);
+                if frame_time < target {
+                    std::thread::sleep(target - frame_time);
                 }
             }
-
-            let elapsed = frame_start.elapsed().as_secs_f32();
-            frame_times.push(elapsed);
-            if frame_times.len() > 30 {
-                frame_times.remove(0);
-            }
-            let avg_fps = frame_times.len() as f32 / frame_times.iter().sum::<f32>();
-            {
-                let mut s = render_shared.lock().unwrap();
-                s.fps = avg_fps;
-            }
-
-            let frame_time = frame_start.elapsed();
-            let target = Duration::from_millis(33);
-            if frame_time < target {
-                std::thread::sleep(target - frame_time);
-            }
-        }
-    }).expect("启动 3D 渲染线程失败");
+        })
+        .expect("启动 3D 渲染线程失败");
 
     application().run(move |cx: &mut App| {
         let bounds = Bounds::centered(None, size(px(900.0), px(830.0)), cx);

@@ -23,13 +23,27 @@ struct AppConfig {
 
 impl AppConfig {
     fn demo() -> Self {
-        Self { theme: "dark".to_string(), font_size: 14, auto_save: true, language: "zh-CN".to_string() }
+        Self {
+            theme: "dark".to_string(),
+            font_size: 14,
+            auto_save: true,
+            language: "zh-CN".to_string(),
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NavSection {
-    I18n, Config, Theme, BlockRender, VirtualScroll, SourceMap, TabDrag, StatusBar, FpsHud, Chat,
+    I18n,
+    Config,
+    Theme,
+    BlockRender,
+    VirtualScroll,
+    SourceMap,
+    TabDrag,
+    StatusBar,
+    FpsHud,
+    Chat,
 }
 
 /// 自定义状态栏状态。
@@ -49,9 +63,15 @@ struct CustomStatusBarState {
 impl Default for CustomStatusBarState {
     fn default() -> Self {
         Self {
-            line: 42, column: 15, language: "Rust".to_string(), encoding: "UTF-8".to_string(),
-            lsp_status: LspStatus::Connected, lsp_server_name: "rust-analyzer".to_string(),
-            error_count: 2, warning_count: 5, git_branch: "main".to_string(),
+            line: 42,
+            column: 15,
+            language: "Rust".to_string(),
+            encoding: "UTF-8".to_string(),
+            lsp_status: LspStatus::Connected,
+            lsp_server_name: "rust-analyzer".to_string(),
+            error_count: 2,
+            warning_count: 5,
+            git_branch: "main".to_string(),
         }
     }
 }
@@ -95,21 +115,46 @@ impl ShowcaseApp {
             let mut state = TabDragState::default();
             state.enabled = true;
             state.tabs = vec![
-                TabItem { title: "main.rs".to_string(), id: "t1".to_string(), closable: true },
-                TabItem { title: "lib.rs".to_string(), id: "t2".to_string(), closable: true },
-                TabItem { title: "mod.rs".to_string(), id: "t3".to_string(), closable: false },
-                TabItem { title: "utils.rs".to_string(), id: "t4".to_string(), closable: true },
+                TabItem {
+                    title: "main.rs".to_string(),
+                    id: "t1".to_string(),
+                    closable: true,
+                },
+                TabItem {
+                    title: "lib.rs".to_string(),
+                    id: "t2".to_string(),
+                    closable: true,
+                },
+                TabItem {
+                    title: "mod.rs".to_string(),
+                    id: "t3".to_string(),
+                    closable: false,
+                },
+                TabItem {
+                    title: "utils.rs".to_string(),
+                    id: "t4".to_string(),
+                    closable: true,
+                },
             ];
             state
         });
 
         Self {
-            current_section: NavSection::I18n, i18n_locale: "zh-CN".to_string(),
-            i18n_manager: i18n, config: AppConfig::demo(), config_store_path: None,
-            theme_mode: ThemeMode::Light, block_renderer: BlockRenderer::new(),
-            markdown_input: "# 标题\n\n这是 **粗体** 和 *斜体*\n\n## 子标题\n\n- 列表项 1\n- 列表项 2".to_string(),
-            virtual_scroll_items, source_input: "fn main() {\n    println!(\"Hello\");\n}".to_string(),
-            chat_messages, tab_drag_state, status_bar: CustomStatusBarState::default(),
+            current_section: NavSection::I18n,
+            i18n_locale: "zh-CN".to_string(),
+            i18n_manager: i18n,
+            config: AppConfig::demo(),
+            config_store_path: None,
+            theme_mode: ThemeMode::Light,
+            block_renderer: BlockRenderer::new(),
+            markdown_input:
+                "# 标题\n\n这是 **粗体** 和 *斜体*\n\n## 子标题\n\n- 列表项 1\n- 列表项 2"
+                    .to_string(),
+            virtual_scroll_items,
+            source_input: "fn main() {\n    println!(\"Hello\");\n}".to_string(),
+            chat_messages,
+            tab_drag_state,
+            status_bar: CustomStatusBarState::default(),
         }
     }
 }
@@ -117,11 +162,16 @@ impl ShowcaseApp {
 impl Render for ShowcaseApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let nav_items = [
-            (NavSection::I18n, "I18n 国际化"), (NavSection::Config, "ConfigStore 配置"),
-            (NavSection::Theme, "ThemeWatcher 主题"), (NavSection::BlockRender, "BlockRender 块渲染"),
-            (NavSection::VirtualScroll, "VirtualScroll 虚拟滚动"), (NavSection::SourceMap, "SourceMap 源码映射"),
-            (NavSection::TabDrag, "TabDrag 标签拖拽"), (NavSection::StatusBar, "StatusBar 状态栏"),
-            (NavSection::FpsHud, "FpsHud 性能监控"), (NavSection::Chat, "ChatUI 聊天"),
+            (NavSection::I18n, "I18n 国际化"),
+            (NavSection::Config, "ConfigStore 配置"),
+            (NavSection::Theme, "ThemeWatcher 主题"),
+            (NavSection::BlockRender, "BlockRender 块渲染"),
+            (NavSection::VirtualScroll, "VirtualScroll 虚拟滚动"),
+            (NavSection::SourceMap, "SourceMap 源码映射"),
+            (NavSection::TabDrag, "TabDrag 标签拖拽"),
+            (NavSection::StatusBar, "StatusBar 状态栏"),
+            (NavSection::FpsHud, "FpsHud 性能监控"),
+            (NavSection::Chat, "ChatUI 聊天"),
         ];
 
         let current = self.current_section;
@@ -139,17 +189,39 @@ impl Render for ShowcaseApp {
         let sb = self.status_bar.clone();
 
         let nav = v_flex()
-            .id("nav").w(px(200.0)).h_full().bg(rgb(0xf8f9fa))
-            .border_r(px(1.0)).border_color(rgb(0xe9ecef)).p(px(12.0)).gap(px(4.0))
-            .child(div().text_lg().font_bold().mb(px(8.0)).child("v1.1.0 功能展示"))
+            .id("nav")
+            .w(px(200.0))
+            .h_full()
+            .bg(rgb(0xf8f9fa))
+            .border_r(px(1.0))
+            .border_color(rgb(0xe9ecef))
+            .p(px(12.0))
+            .gap(px(4.0))
+            .child(
+                div()
+                    .text_lg()
+                    .font_bold()
+                    .mb(px(8.0))
+                    .child("v1.1.0 功能展示"),
+            )
             .children(nav_items.into_iter().map(|(section, label)| {
                 let is_active = current == section;
                 let label = label.to_string();
-                div().id(format!("nav-{:?}", section)).px(px(8.0)).py(px(6.0)).rounded(px(6.0)).text_sm()
-                    .when(is_active, |el| el.bg(rgb(0x0078d4)).text_color(rgb(0xffffff)))
+                div()
+                    .id(format!("nav-{:?}", section))
+                    .px(px(8.0))
+                    .py(px(6.0))
+                    .rounded(px(6.0))
+                    .text_sm()
+                    .when(is_active, |el| {
+                        el.bg(rgb(0x0078d4)).text_color(rgb(0xffffff))
+                    })
                     .when(!is_active, |el| el.hover(|el| el.bg(rgb(0xe9ecef))))
                     .child(label)
-                    .on_click(cx.listener(move |this, _, _, cx| { this.current_section = section; cx.notify(); }))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.current_section = section;
+                        cx.notify();
+                    }))
             }));
 
         let content = match current {
@@ -343,8 +415,16 @@ impl Render for ShowcaseApp {
         let status_bar = custom_status_bar(&sb);
 
         // 主布局：导航 + 内容 + 底部状态栏
-        v_flex().id("showcase-app").size_full()
-            .child(h_flex().flex_1().overflow_hidden().child(nav).child(content.flex_1()))
+        v_flex()
+            .id("showcase-app")
+            .size_full()
+            .child(
+                h_flex()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(nav)
+                    .child(content.flex_1()),
+            )
             .child(status_bar)
     }
 }
@@ -369,30 +449,71 @@ fn custom_status_bar(sb: &CustomStatusBarState) -> impl IntoElement {
 
     h_flex()
         .id("custom-status-bar")
-        .w_full().h(px(28.0)).items_center().justify_between()
+        .w_full()
+        .h(px(28.0))
+        .items_center()
+        .justify_between()
         .px(px(12.0))
-        .bg(rgb(0xf0f0f0)).border_t(px(1.0)).border_color(rgb(0xe0e0e0))
+        .bg(rgb(0xf0f0f0))
+        .border_t(px(1.0))
+        .border_color(rgb(0xe0e0e0))
         .child(
-            h_flex().items_center().gap(px(12.0))
-                .child(h_flex().items_center().gap(px(4.0))
-                    .child(div().w(px(8.0)).h(px(8.0)).rounded_full().bg(lsp_color))
-                    .child(div().text_xs().child(lsp_text)))
+            h_flex()
+                .items_center()
+                .gap(px(12.0))
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .child(div().w(px(8.0)).h(px(8.0)).rounded_full().bg(lsp_color))
+                        .child(div().text_xs().child(lsp_text)),
+                )
                 .children(if sb.error_count > 0 || sb.warning_count > 0 {
-                    Some(h_flex().items_center().gap(px(8.0))
-                        .children(if sb.error_count > 0 {
-                            Some(div().text_xs().text_color(rgb(0xdc3545)).child(format!("{} errors", sb.error_count)))
-                        } else { None })
-                        .children(if sb.warning_count > 0 {
-                            Some(div().text_xs().text_color(rgb(0xffc107)).child(format!("{} warnings", sb.warning_count)))
-                        } else { None }))
-                } else { None }),
+                    Some(
+                        h_flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .children(if sb.error_count > 0 {
+                                Some(
+                                    div()
+                                        .text_xs()
+                                        .text_color(rgb(0xdc3545))
+                                        .child(format!("{} errors", sb.error_count)),
+                                )
+                            } else {
+                                None
+                            })
+                            .children(if sb.warning_count > 0 {
+                                Some(
+                                    div()
+                                        .text_xs()
+                                        .text_color(rgb(0xffc107))
+                                        .child(format!("{} warnings", sb.warning_count)),
+                                )
+                            } else {
+                                None
+                            }),
+                    )
+                } else {
+                    None
+                }),
         )
         .child(
-            h_flex().items_center().gap(px(12.0))
-                .child(h_flex().items_center().gap(px(4.0))
-                    .child(div().text_xs().text_color(rgb(0x666)).child(" "))
-                    .child(div().text_xs().child(sb.git_branch.clone())))
-                .child(div().text_xs().child(format!("Ln {}, Col {}", sb.line, sb.column)))
+            h_flex()
+                .items_center()
+                .gap(px(12.0))
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .child(div().text_xs().text_color(rgb(0x666)).child(" "))
+                        .child(div().text_xs().child(sb.git_branch.clone())),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .child(format!("Ln {}, Col {}", sb.line, sb.column)),
+                )
                 .child(div().text_xs().child(sb.language.clone()))
                 .child(div().text_xs().child(sb.encoding.clone())),
         )
@@ -407,21 +528,64 @@ fn render_inline_text(text: &str) -> Vec<AnyElement> {
     let mut remaining = text;
     while !remaining.is_empty() {
         if let Some(start) = remaining.find("**") {
-            if start > 0 { elements.push(div().text_sm().text_color(rgb(0x333333)).child(remaining[..start].to_string()).into_any()); }
+            if start > 0 {
+                elements.push(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(0x333333))
+                        .child(remaining[..start].to_string())
+                        .into_any(),
+                );
+            }
             remaining = &remaining[start + 2..];
             if let Some(end) = remaining.find("**") {
-                elements.push(div().text_sm().text_color(rgb(0x333333)).font_bold().child(remaining[..end].to_string()).into_any());
+                elements.push(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(0x333333))
+                        .font_bold()
+                        .child(remaining[..end].to_string())
+                        .into_any(),
+                );
                 remaining = &remaining[end + 2..];
-            } else { elements.push(div().text_sm().child("**".to_string()).into_any()); break; }
+            } else {
+                elements.push(div().text_sm().child("**".to_string()).into_any());
+                break;
+            }
         } else if let Some(start) = remaining.find('*') {
-            if start > 0 { elements.push(div().text_sm().text_color(rgb(0x333333)).child(remaining[..start].to_string()).into_any()); }
+            if start > 0 {
+                elements.push(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(0x333333))
+                        .child(remaining[..start].to_string())
+                        .into_any(),
+                );
+            }
             remaining = &remaining[start + 1..];
             if let Some(end) = remaining.find('*') {
-                elements.push(div().text_sm().text_color(rgb(0x333333)).italic().child(remaining[..end].to_string()).into_any());
+                elements.push(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(0x333333))
+                        .italic()
+                        .child(remaining[..end].to_string())
+                        .into_any(),
+                );
                 remaining = &remaining[end + 1..];
-            } else { elements.push(div().text_sm().child("*".to_string()).into_any()); break; }
+            } else {
+                elements.push(div().text_sm().child("*".to_string()).into_any());
+                break;
+            }
         } else {
-            elements.push(div().text_sm().text_color(rgb(0x333333)).child(remaining.to_string()).into_any()); break;
+            elements.push(
+                div()
+                    .text_sm()
+                    .text_color(rgb(0x333333))
+                    .child(remaining.to_string())
+                    .into_any(),
+            );
+            break;
         }
     }
     elements
@@ -430,45 +594,132 @@ fn render_inline_text(text: &str) -> Vec<AnyElement> {
 fn render_block_element(block: &BlockElement) -> AnyElement {
     match &block.block_type {
         BlockType::Heading(level) => {
-            let d = div().id(format!("h-{}", block.content)).mb(px(4.0)).text_color(rgb(0x1a1a1a));
-            let d = match level { 1 => d.text_2xl().font_bold(), 2 => d.text_xl().font_semibold(), 3 => d.text_lg().font_medium(), _ => d.text_base() };
+            let d = div()
+                .id(format!("h-{}", block.content))
+                .mb(px(4.0))
+                .text_color(rgb(0x1a1a1a));
+            let d = match level {
+                1 => d.text_2xl().font_bold(),
+                2 => d.text_xl().font_semibold(),
+                3 => d.text_lg().font_medium(),
+                _ => d.text_base(),
+            };
             d.child(block.content.clone()).into_any_element()
         }
         BlockType::Paragraph => {
             let els = render_inline_text(&block.content);
-            div().id(format!("p-{}", block.content.chars().take(8).collect::<String>())).mb(px(8.0)).flex().gap(px(0.0)).children(els).into_any_element()
+            div()
+                .id(format!(
+                    "p-{}",
+                    block.content.chars().take(8).collect::<String>()
+                ))
+                .mb(px(8.0))
+                .flex()
+                .gap(px(0.0))
+                .children(els)
+                .into_any_element()
         }
         BlockType::CodeBlock => {
-            let lang = block.attributes.get("language").map(|s| s.as_str()).unwrap_or("");
-            div().id("code").mb(px(8.0)).rounded(px(6.0)).bg(rgb(0x282c34)).p(px(12.0))
-                .child(v_flex().gap(px(4.0)).child(div().text_xs().text_color(rgb(0x666)).child(format!("语言: {}", lang)))
-                    .child(div().text_sm().text_color(rgb(0xabb2bf)).child(block.content.clone()))).into_any_element()
+            let lang = block
+                .attributes
+                .get("language")
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            div()
+                .id("code")
+                .mb(px(8.0))
+                .rounded(px(6.0))
+                .bg(rgb(0x282c34))
+                .p(px(12.0))
+                .child(
+                    v_flex()
+                        .gap(px(4.0))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(0x666))
+                                .child(format!("语言: {}", lang)),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(rgb(0xabb2bf))
+                                .child(block.content.clone()),
+                        ),
+                )
+                .into_any_element()
         }
-        BlockType::Blockquote => div().id("quote").mb(px(8.0)).pl(px(12.0)).border_l(px(3.0)).border_color(rgb(0x0078d4)).text_sm().text_color(rgb(0x666)).italic().child(block.content.clone()).into_any_element(),
-        BlockType::HorizontalRule => div().id("hr").my(px(12.0)).h(px(1.0)).bg(rgb(0xe9ecef)).into_any_element(),
-        _ => div().text_sm().child(block.content.clone()).into_any_element(),
+        BlockType::Blockquote => div()
+            .id("quote")
+            .mb(px(8.0))
+            .pl(px(12.0))
+            .border_l(px(3.0))
+            .border_color(rgb(0x0078d4))
+            .text_sm()
+            .text_color(rgb(0x666))
+            .italic()
+            .child(block.content.clone())
+            .into_any_element(),
+        BlockType::HorizontalRule => div()
+            .id("hr")
+            .my(px(12.0))
+            .h(px(1.0))
+            .bg(rgb(0xe9ecef))
+            .into_any_element(),
+        _ => div()
+            .text_sm()
+            .child(block.content.clone())
+            .into_any_element(),
     }
 }
 
-fn section_title(text: &str) -> impl IntoElement { div().text_xl().font_bold().child(text.to_string()) }
-fn section_desc(text: &str) -> impl IntoElement { div().text_sm().text_color(rgb(0x666666)).child(text.to_string()) }
+fn section_title(text: &str) -> impl IntoElement {
+    div().text_xl().font_bold().child(text.to_string())
+}
+fn section_desc(text: &str) -> impl IntoElement {
+    div()
+        .text_sm()
+        .text_color(rgb(0x666666))
+        .child(text.to_string())
+}
 fn card(title: &str, items: &[String]) -> impl IntoElement {
-    v_flex().gap(px(8.0)).p(px(12.0)).rounded(px(8.0)).bg(rgb(0xffffff)).border(px(1.0)).border_color(rgb(0xe9ecef))
+    v_flex()
+        .gap(px(8.0))
+        .p(px(12.0))
+        .rounded(px(8.0))
+        .bg(rgb(0xffffff))
+        .border(px(1.0))
+        .border_color(rgb(0xe9ecef))
         .child(div().text_sm().font_medium().child(title.to_string()))
-        .children(items.iter().map(|item| div().text_sm().text_color(rgb(0x333333)).child(item.clone())))
+        .children(items.iter().map(|item| {
+            div()
+                .text_sm()
+                .text_color(rgb(0x333333))
+                .child(item.clone())
+        }))
 }
 fn code_block(code: &str) -> impl IntoElement {
-    div().rounded(px(8.0)).bg(rgb(0x282c34)).p(px(12.0)).text_sm().text_color(rgb(0xabb2bf)).child(code.to_string())
+    div()
+        .rounded(px(8.0))
+        .bg(rgb(0x282c34))
+        .p(px(12.0))
+        .text_sm()
+        .text_color(rgb(0xabb2bf))
+        .child(code.to_string())
 }
 
 fn main() {
     application().run(|cx| {
-        cx.open_window(WindowOptions {
-            window_bounds: Some(rgpui::WindowBounds::Windowed(rgpui::Bounds::new(
-                rgpui::Point::default(),
-                size(px(1000.0), px(700.0)),
-            ))),
-            ..Default::default()
-        }, |window, cx| cx.new(|cx| ShowcaseApp::new(window, cx))).unwrap();
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(rgpui::WindowBounds::Windowed(rgpui::Bounds::new(
+                    rgpui::Point::default(),
+                    size(px(1000.0), px(700.0)),
+                ))),
+                ..Default::default()
+            },
+            |window, cx| cx.new(|cx| ShowcaseApp::new(window, cx)),
+        )
+        .unwrap();
     });
 }

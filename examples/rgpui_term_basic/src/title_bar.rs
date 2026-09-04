@@ -47,9 +47,7 @@ enum ControlIcon {
     Minimize,
     Restore,
     Maximize,
-    Close {
-        on_close_window: CloseCallback,
-    },
+    Close { on_close_window: CloseCallback },
 }
 
 impl ControlIcon {

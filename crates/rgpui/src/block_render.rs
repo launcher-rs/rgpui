@@ -114,15 +114,20 @@ impl BlockRenderer {
                 format!("<p>{}</p>", block.content)
             }
             BlockType::CodeBlock => {
-                let lang = block.attributes.get("language").map(|s| s.as_str()).unwrap_or("");
-                format!("<pre><code class=\"language-{lang}\">{}</code></pre>", block.content)
+                let lang = block
+                    .attributes
+                    .get("language")
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                format!(
+                    "<pre><code class=\"language-{lang}\">{}</code></pre>",
+                    block.content
+                )
             }
             BlockType::Blockquote => {
                 format!("<blockquote>{}</blockquote>", block.content)
             }
-            BlockType::HorizontalRule => {
-                "<hr />".to_string()
-            }
+            BlockType::HorizontalRule => "<hr />".to_string(),
             BlockType::List => {
                 format!("<ul>{}</ul>", block.content)
             }
@@ -130,8 +135,16 @@ impl BlockRenderer {
                 format!("<table>{}</table>", block.content)
             }
             BlockType::Image => {
-                let src = block.attributes.get("src").map(|s| s.as_str()).unwrap_or("");
-                let alt = block.attributes.get("alt").map(|s| s.as_str()).unwrap_or("");
+                let src = block
+                    .attributes
+                    .get("src")
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                let alt = block
+                    .attributes
+                    .get("alt")
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
                 format!("<img src=\"{src}\" alt=\"{alt}\" />")
             }
             BlockType::Custom(name) => {
@@ -150,7 +163,10 @@ impl BlockRenderer {
 
             if trimmed.is_empty() {
                 if !current_paragraph.is_empty() {
-                    blocks.push(BlockElement::new(BlockType::Paragraph, current_paragraph.clone()));
+                    blocks.push(BlockElement::new(
+                        BlockType::Paragraph,
+                        current_paragraph.clone(),
+                    ));
                     current_paragraph.clear();
                 }
                 continue;
@@ -167,7 +183,10 @@ impl BlockRenderer {
             }
 
             // 水平线
-            if trimmed.starts_with("---") || trimmed.starts_with("***") || trimmed.starts_with("___") {
+            if trimmed.starts_with("---")
+                || trimmed.starts_with("***")
+                || trimmed.starts_with("___")
+            {
                 blocks.push(BlockElement::new(BlockType::HorizontalRule, ""));
                 continue;
             }
@@ -175,7 +194,8 @@ impl BlockRenderer {
             // 代码块
             if trimmed.starts_with("```") {
                 let lang = trimmed.strip_prefix("```").unwrap_or("").trim();
-                blocks.push(BlockElement::new(BlockType::CodeBlock, "").with_attr("language", lang));
+                blocks
+                    .push(BlockElement::new(BlockType::CodeBlock, "").with_attr("language", lang));
                 continue;
             }
 

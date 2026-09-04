@@ -158,9 +158,7 @@ impl CompletionState {
                     .text_edit
                     .as_ref()
                     .and_then(|edit| match edit {
-                        lsp_types::CompletionTextEdit::Edit(edit) => {
-                            Some(edit.new_text.clone())
-                        }
+                        lsp_types::CompletionTextEdit::Edit(edit) => Some(edit.new_text.clone()),
                         lsp_types::CompletionTextEdit::InsertAndReplace(edit) => {
                             Some(edit.new_text.clone())
                         }
@@ -173,9 +171,7 @@ impl CompletionState {
                     detail: item.detail.clone(),
                     documentation: item.documentation.as_ref().map(|doc| match doc {
                         lsp_types::Documentation::String(s) => s.clone(),
-                        lsp_types::Documentation::MarkupContent(content) => {
-                            content.value.clone()
-                        }
+                        lsp_types::Documentation::MarkupContent(content) => content.value.clone(),
                     }),
                     kind: item.kind,
                     score: 0.0,

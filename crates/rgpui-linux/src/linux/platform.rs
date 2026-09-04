@@ -25,7 +25,7 @@ use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
 use crate::linux::{LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions};
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
-    FocusedWindowInfo, ForegroundExecutor, Keystroke, Keymap, Menu, MenuItem, OwnedMenu,
+    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OwnedMenu,
     PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
     PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
     RunnableVariant, Task, ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
@@ -728,7 +728,8 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     }
 
     fn accessibility_status(&self) -> PermissionStatus {
-        self.permissions.query_permission(PermissionType::Accessibility)
+        self.permissions
+            .query_permission(PermissionType::Accessibility)
     }
 
     fn request_accessibility_permission(&self) {

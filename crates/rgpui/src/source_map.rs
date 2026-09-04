@@ -140,12 +140,17 @@ impl BidirectionalSourceMap {
 
     /// 添加行映射。
     pub fn add_mapping(&mut self, original_line: usize, generated_line: usize) {
-        self.original_to_generated.insert(original_line, generated_line);
-        self.generated_to_original.insert(generated_line, original_line);
+        self.original_to_generated
+            .insert(original_line, generated_line);
+        self.generated_to_original
+            .insert(generated_line, original_line);
     }
 
     /// 从原始位置获取编译后位置。
-    pub fn original_to_generated_location(&self, location: &SourceLocation) -> Option<SourceLocation> {
+    pub fn original_to_generated_location(
+        &self,
+        location: &SourceLocation,
+    ) -> Option<SourceLocation> {
         let generated_line = self.original_to_generated.get(&(location.line - 1))?;
         Some(SourceLocation {
             line: generated_line + 1,
@@ -156,7 +161,10 @@ impl BidirectionalSourceMap {
     }
 
     /// 从编译后位置获取原始位置。
-    pub fn generated_to_original_location(&self, location: &SourceLocation) -> Option<SourceLocation> {
+    pub fn generated_to_original_location(
+        &self,
+        location: &SourceLocation,
+    ) -> Option<SourceLocation> {
         let original_line = self.generated_to_original.get(&(location.line - 1))?;
         Some(SourceLocation {
             line: original_line + 1,

@@ -69,7 +69,8 @@ impl MarkdownRenderer {
 
     /// 添加自定义样式。
     pub fn add_style(&mut self, class: &str, style: &str) {
-        self.custom_styles.insert(class.to_string(), style.to_string());
+        self.custom_styles
+            .insert(class.to_string(), style.to_string());
     }
 
     /// 渲染 Markdown。
@@ -97,13 +98,19 @@ impl MarkdownRenderer {
             if let Some(level) = trimmed.strip_prefix('#').map(|s| s.len() as u8) {
                 if level <= 6 {
                     let content = trimmed.trim_start_matches('#').trim();
-                    output.push_str(&format!("<h{level}>{}</h{level}>\n", self.render_inline(content)));
+                    output.push_str(&format!(
+                        "<h{level}>{}</h{level}>\n",
+                        self.render_inline(content)
+                    ));
                     continue;
                 }
             }
 
             // 水平线
-            if trimmed.starts_with("---") || trimmed.starts_with("***") || trimmed.starts_with("___") {
+            if trimmed.starts_with("---")
+                || trimmed.starts_with("***")
+                || trimmed.starts_with("___")
+            {
                 output.push_str("<hr>\n");
                 continue;
             }
@@ -117,7 +124,10 @@ impl MarkdownRenderer {
 
             // 引用块
             if let Some(content) = trimmed.strip_prefix('>') {
-                output.push_str(&format!("<blockquote>{}</blockquote>\n", self.render_inline(content.trim())));
+                output.push_str(&format!(
+                    "<blockquote>{}</blockquote>\n",
+                    self.render_inline(content.trim())
+                ));
                 continue;
             }
 
@@ -147,7 +157,11 @@ impl MarkdownRenderer {
         output = regex_replace(&output, r"\[(.+?)\]\((.+?)\)", "<a href=\"$2\">$1</a>");
 
         // 图片
-        output = regex_replace(&output, r"!\[(.+?)\]\((.+?)\)", "<img src=\"$2\" alt=\"$1\">");
+        output = regex_replace(
+            &output,
+            r"!\[(.+?)\]\((.+?)\)",
+            "<img src=\"$2\" alt=\"$1\">",
+        );
 
         output
     }
@@ -185,7 +199,10 @@ impl PluginManager {
 
     /// 按名称查找插件。
     pub fn find_plugin(&self, name: &str) -> Option<&dyn MarkdownPlugin> {
-        self.plugins.iter().find(|p| p.name() == name).map(|p| p.as_ref())
+        self.plugins
+            .iter()
+            .find(|p| p.name() == name)
+            .map(|p| p.as_ref())
     }
 
     /// 移除插件。
@@ -223,7 +240,9 @@ impl MarkdownPlugin for CodeHighlightPlugin {
     fn render(&self, content: &str) -> Option<String> {
         if content.starts_with("```") {
             let lang = content.trim_start_matches('`').trim();
-            Some(format!("<pre><code class=\"language-{lang}\">CODE</code></pre>"))
+            Some(format!(
+                "<pre><code class=\"language-{lang}\">CODE</code></pre>"
+            ))
         } else {
             None
         }

@@ -309,10 +309,8 @@ impl SearchPanel {
     /// 创建搜索/替换面板。
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = cx.new(|_| SearchState::new());
-        let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Search..."));
-        let replace_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Replace..."));
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search..."));
+        let replace_input = cx.new(|cx| InputState::new(window, cx).placeholder("Replace..."));
         let focus_handle = cx.focus_handle();
 
         // 订阅搜索输入框变更
@@ -367,8 +365,7 @@ impl SearchPanel {
     /// 创建仅搜索（无替换）面板。
     pub fn search_only(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = cx.new(|_| SearchState::new());
-        let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Search..."));
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search..."));
         let focus_handle = cx.focus_handle();
 
         cx.subscribe(&search_input, |this, _input, event, cx| match event {
@@ -712,10 +709,7 @@ impl ToggleButton {
         self
     }
 
-    fn on_click(
-        mut self,
-        handler: impl Fn(bool, &mut Window, &mut App) + 'static,
-    ) -> Self {
+    fn on_click(mut self, handler: impl Fn(bool, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Rc::new(handler));
         self
     }
@@ -726,10 +720,7 @@ impl RenderOnce for ToggleButton {
         let on_click = self.on_click;
         let active = self.active;
 
-        let btn = Button::new(self.id)
-            .ghost()
-            .small()
-            .label(self.label);
+        let btn = Button::new(self.id).ghost().small().label(self.label);
 
         let btn = if active {
             btn.bg(cx.theme().tokens.accent.color)

@@ -1,8 +1,8 @@
 //! Chat UI 组件 —— 聊天消息展示组件。
 
 use crate::{
-    Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, StyledExt,
-    Window, div, v_flex,
+    Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, StyledExt, Window,
+    div, v_flex,
 };
 
 /// 消息类型。
@@ -112,35 +112,25 @@ impl Render for ChatView {
                     )
                     .children(group.messages.iter().map(|msg| {
                         match &msg.content {
-                            MessageType::Text(text) => {
-                                div()
-                                    .text_sm()
-                                    .text_color(crate::gray_100())
-                                    .child(text.clone())
-                            }
-                            MessageType::CodeBlock { language, code } => {
-                                v_flex()
-                                    .w_full()
-                                    .bg(crate::gray_800())
-                                    .rounded_md()
-                                    .overflow_hidden()
-                                    .child(
-                                        div()
-                                            .px_3()
-                                            .py_1()
-                                            .bg(crate::gray_700())
-                                            .text_xs()
-                                            .text_color(crate::gray_400())
-                                            .child(language.clone()),
-                                    )
-                                    .child(
-                                        div()
-                                            .px_3()
-                                            .py_2()
-                                            .text_sm()
-                                            .child(code.clone()),
-                                    )
-                            }
+                            MessageType::Text(text) => div()
+                                .text_sm()
+                                .text_color(crate::gray_100())
+                                .child(text.clone()),
+                            MessageType::CodeBlock { language, code } => v_flex()
+                                .w_full()
+                                .bg(crate::gray_800())
+                                .rounded_md()
+                                .overflow_hidden()
+                                .child(
+                                    div()
+                                        .px_3()
+                                        .py_1()
+                                        .bg(crate::gray_700())
+                                        .text_xs()
+                                        .text_color(crate::gray_400())
+                                        .child(language.clone()),
+                                )
+                                .child(div().px_3().py_2().text_sm().child(code.clone())),
                         }
                     }))
             }))

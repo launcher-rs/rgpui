@@ -13,7 +13,7 @@
 //! let webview = cx.new(|window, cx| {
 //!     let wry_webview = wry::WebViewBuilder::new()
 //!         .with_url("https://example.com")
-//!         .build_as_child(window.raw_handle())
+//!         .build_as_child(window)
 //!         .unwrap();
 //!     WebView::new(wry_webview, window, cx)
 //! });

@@ -13,6 +13,7 @@ pub mod menus;
 pub mod tables;
 pub mod tabs;
 pub mod themes;
+pub mod v1_1_features;
 
 use rgpui::{AnyView, App, Window};
 
@@ -37,5 +38,6 @@ pub fn registry() -> Vec<(&'static str, Vec<StoryItem>)> {
         ("Markdown 渲染", markdown::stories()),
         ("扩展组件", extended::stories()),
         ("主题", themes::stories()),
+        ("v1.1.0 新功能", v1_1_features::stories()),
     ]
 }

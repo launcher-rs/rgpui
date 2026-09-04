@@ -30,6 +30,7 @@ mod selection;
 mod state;
 mod word_selection;
 
+pub use async_file_loader::{AsyncFileLoader, FileLoadResult, LargeFileConfig, LoadProgress};
 pub(crate) use clear_button::clear_button;
 pub use content_type::InputContentType;
 pub use cursor::*;
@@ -45,7 +46,6 @@ pub use number_input::{NumberInput, NumberInputEvent, NumberStep};
 pub use rope_ext::{InputEdit, Point, Position, RopeExt, RopeLines};
 pub use ropey::Rope;
 pub use state::*;
-pub use async_file_loader::{AsyncFileLoader, LoadProgress, LargeFileConfig, FileLoadResult};
 
 /// 初始化输入子系统，注册全局按键绑定。
 pub fn init(cx: &mut App) {

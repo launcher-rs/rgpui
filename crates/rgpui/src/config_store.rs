@@ -31,9 +31,7 @@ impl ConfigStore {
 
     /// 创建带有自定义路径的配置存储。
     pub fn with_path(config_file: PathBuf) -> Self {
-        let config_dir = config_file.parent()
-            .unwrap_or(Path::new("."))
-            .to_path_buf();
+        let config_dir = config_file.parent().unwrap_or(Path::new(".")).to_path_buf();
 
         Self {
             config_dir,
@@ -53,7 +51,9 @@ impl ConfigStore {
     }
 
     /// 加载配置。
-    pub fn load<T: serde::de::DeserializeOwned + serde::Serialize + Default>(&mut self) -> anyhow::Result<T> {
+    pub fn load<T: serde::de::DeserializeOwned + serde::Serialize + Default>(
+        &mut self,
+    ) -> anyhow::Result<T> {
         if self.config_file.exists() {
             let content = std::fs::read_to_string(&self.config_file)?;
             self.data = serde_json::from_str(&content)?;
@@ -126,7 +126,10 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_file = temp_dir.path().join("config.json");
         let mut store = ConfigStore::with_path(config_file);
-        let config = TestConfig { name: "test".to_string(), value: 42 };
+        let config = TestConfig {
+            name: "test".to_string(),
+            value: 42,
+        };
         store.save(&config).unwrap();
         let loaded: TestConfig = store.load().unwrap();
         assert_eq!(loaded, config);

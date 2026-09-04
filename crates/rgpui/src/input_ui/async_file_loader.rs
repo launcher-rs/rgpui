@@ -36,20 +36,14 @@ impl AsyncFileLoader {
 
     /// 异步加载文件到 Rope（需要 tokio 运行时）。
     #[cfg(feature = "tokio")]
-    pub async fn load_file_async<F>(
-        path: PathBuf,
-        mut callback: F,
-    ) -> anyhow::Result<Rope>
+    pub async fn load_file_async<F>(path: PathBuf, mut callback: F) -> anyhow::Result<Rope>
     where
         F: FnMut(LoadProgress),
     {
         use tokio::fs;
 
         // 检查文件大小
-        let total_bytes = fs::metadata(&path)
-            .await
-            .ok()
-            .map(|m| m.len() as usize);
+        let total_bytes = fs::metadata(&path).await.ok().map(|m| m.len() as usize);
 
         // 报告开始读取
         callback(LoadProgress::Reading {
@@ -134,20 +128,14 @@ impl Default for LargeFileConfig {
 }
 
 /// 根据文件大小决定加载方式。
-pub fn load_file_auto(
-    path: &Path,
-    _config: &LargeFileConfig,
-) -> anyhow::Result<FileLoadResult> {
+pub fn load_file_auto(path: &Path, _config: &LargeFileConfig) -> anyhow::Result<FileLoadResult> {
     let metadata = std::fs::metadata(path)?;
     let file_size = metadata.len() as usize;
 
     let content = std::fs::read_to_string(path)?;
     let rope = Rope::from_str(&content);
 
-    Ok(FileLoadResult {
-        rope,
-        file_size,
-    })
+    Ok(FileLoadResult { rope, file_size })
 }
 
 /// 文件加载结果。

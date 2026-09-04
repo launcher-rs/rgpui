@@ -15,7 +15,7 @@ use crate::{
     StyledExt, Window, div, h_flex, px,
 };
 
-use super::completions::{Completion, CompletionState, CompletionMenuOptions};
+use super::completions::{Completion, CompletionMenuOptions, CompletionState};
 
 /// 补全弹窗状态。
 #[derive(Default)]
@@ -97,7 +97,8 @@ impl Render for CompletionPopup {
         let max_width = state.options.max_width;
         let max_items = state.options.max_visible_items.min(state.completions.len());
 
-        let items: Vec<_> = state.completions
+        let items: Vec<_> = state
+            .completions
             .iter()
             .take(max_items)
             .enumerate()
@@ -120,15 +121,10 @@ impl Render for CompletionPopup {
                         lsp_types::CompletionItemKind::TYPE_PARAMETER => "type",
                         _ => "?",
                     };
-                    div()
-                        .text_xs()
-                        .text_color(crate::gray_500())
-                        .child(name)
+                    div().text_xs().text_color(crate::gray_500()).child(name)
                 });
 
-                let label = div()
-                    .text_sm()
-                    .child(completion.label.clone());
+                let label = div().text_sm().child(completion.label.clone());
 
                 let detail = if state.options.show_detail {
                     completion.detail.as_ref().map(|d| {
