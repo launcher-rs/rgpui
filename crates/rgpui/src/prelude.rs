@@ -80,3 +80,6 @@ pub use crate::virtual_scroll::{VirtualScroll, VirtualScrollState, VirtualScroll
 
 // 源码映射支持。
 pub use crate::source_map::{SourceMap, SourceLocation, BidirectionalSourceMap, SourceMapBuilder};
+
+// Markdown 插件扩展系统。
+pub use crate::markdown_ext::{MarkdownPlugin, MarkdownRenderer, PluginManager};
