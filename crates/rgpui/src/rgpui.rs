@@ -276,6 +276,9 @@ pub mod theme_watcher;
 /// 块级渲染组件 - 文档块级元素的渲染支持
 pub mod block_render;
 
+/// 虚拟滚动增强 - 支持大量数据的高效渲染
+pub mod virtual_scroll;
+
 /// Tokio 异步运行时集成 - 在 Tokio 线程池上生成任务并通过 RGPUI 任务返回结果（feature `tokio` 门控）
 #[cfg(feature = "tokio")]
 pub mod tokio;

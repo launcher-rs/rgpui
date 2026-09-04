@@ -74,3 +74,6 @@ pub use crate::theme_watcher::{ThemeWatcher, ThemeEvent, ThemeMode, ThemeColors,
 
 // 块级渲染组件。
 pub use crate::block_render::{BlockRenderer, BlockElement, BlockType};
+
+// 虚拟滚动增强。
+pub use crate::virtual_scroll::{VirtualScroll, VirtualScrollState, VirtualScrollConfig, VirtualScrollDirection, VirtualScrollList};
