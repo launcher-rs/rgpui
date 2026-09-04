@@ -6,7 +6,7 @@
 
 use rgpui::components::status_bar::LspStatus;
 use rgpui::prelude::*;
-use rgpui::tabs::tab_drag::{TabDragState, TabItem};
+use rgpui::tabs::tab_drag::{TabDragDrop, TabDragState, TabItem};
 use rgpui::{
     AnyElement, Button, ButtonVariants as _, Context, Entity, InteractiveElement, IntoElement,
     ParentElement, Render, Window, WindowOptions, div, h_flex, px, rgb, size, v_flex,
@@ -242,16 +242,14 @@ impl Render for ShowcaseApp {
 
             NavSection::TabDrag => {
                 let tabs = tab_drag_state.read(cx).tabs.clone();
+                let tab_drag = TabDragDrop::new(tab_drag_state.clone())
+                    .on_reorder(|_tabs, _window, _cx| {
+                        println!("Tab 重新排序完成");
+                    });
                 v_flex().id("tab-drag-section").gap(px(16.0)).p(px(24.0))
                     .child(section_title("TabDrag 标签拖拽排序"))
-                    .child(section_desc("点击按钮移动标签顺序，展示 TabDragState 移动逻辑"))
-                    .child(h_flex().id("tab-bar").gap(px(2.0)).bg(rgb(0xf8f9fa)).p(px(4.0)).rounded(px(6.0))
-                        .children(tabs.iter().enumerate().map(|(i, tab)| {
-                            h_flex().id(format!("tab-{}", i)).gap(px(8.0)).px(px(12.0)).py(px(6.0)).rounded(px(4.0))
-                                .bg(rgb(0xffffff)).border(px(1.0)).border_color(rgb(0xe9ecef)).text_sm()
-                                .child(format!("{} ({})", tab.title, i))
-                                .when(tab.closable, |el| el.child(div().text_xs().text_color(rgb(0x999)).child("x")))
-                        })))
+                    .child(section_desc("拖拽 Tab 进行排序，支持 on_drag/drag_over/on_drop 事件"))
+                    .child(tab_drag)
                     .child(h_flex().gap(px(8.0))
                         .child(Button::new("move-left").label("左移").ghost().on_click(cx.listener(|this, _, _, cx| {
                             let state = this.tab_drag_state.read(cx);
@@ -273,8 +271,8 @@ impl Render for ShowcaseApp {
                                     TabItem { title: "mod.rs".to_string(), id: "t3".to_string(), closable: false },
                                     TabItem { title: "utils.rs".to_string(), id: "t4".to_string(), closable: true },
                                 ]; }); cx.notify(); }))))
-                    .child(card("拖拽状态", &[format!("Tab 数量: {}", tabs.len()), "点击「左移」/「右移」移动第一个可关闭标签".to_string()]))
-                    .child(code_block("let drag_state = cx.new(|_| TabDragState::default());\ndrag_state.update(cx, |state, _| { state.move_tab(from, to); });"))
+                    .child(card("拖拽状态", &[format!("Tab 数量: {}", tabs.len()), "拖拽 Tab 可进行排序，蓝色线条指示目标位置".to_string()]))
+                    .child(code_block("let drag_state = cx.new(|_| TabDragState::default());\nTabDragDrop::new(drag_state)\n    .on_reorder(|tabs, window, cx| { /* 处理排序 */ })"))
             }
 
             NavSection::StatusBar => {
