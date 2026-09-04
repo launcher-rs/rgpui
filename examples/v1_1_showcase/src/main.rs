@@ -9,10 +9,12 @@
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
+use rgpui::components::status_bar::{LspStatus, StatusBar, StatusBarState};
 use rgpui::prelude::*;
+use rgpui::tabs::tab_drag::{TabDragDrop, TabDragState, TabItem};
 use rgpui::{
-    Button, ButtonVariants as _, Context, InteractiveElement, IntoElement, ParentElement, Render,
-    Window, WindowOptions, div, h_flex, px, rgb, size, v_flex,
+    Button, ButtonVariants as _, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    Render, Window, WindowOptions, div, h_flex, px, rgb, size, v_flex,
 };
 use rgpui_platform::application;
 
@@ -51,6 +53,7 @@ enum NavSection {
     VirtualScroll,
     SourceMap,
     TabDrag,
+    StatusBar,
     FpsHud,
     Chat,
 }
@@ -72,10 +75,14 @@ struct ShowcaseApp {
     virtual_scroll_items: Vec<String>,
     source_input: String,
     chat_messages: Vec<Message>,
+    tab_drag_state: Entity<TabDragState>,
+    tab_drag_entity: Entity<TabDragDrop>,
+    status_bar_state: Entity<StatusBarState>,
+    status_bar_entity: Entity<StatusBar>,
 }
 
 impl ShowcaseApp {
-    fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // 初始化 I18n
         let mut i18n = I18nManager::new("zh-CN");
         let mut en = std::collections::HashMap::new();
@@ -99,11 +106,44 @@ impl ShowcaseApp {
             Message::code_block("rust", "let msg = Message::text(\"hello\");"),
         ];
 
+        // 初始化 Tab 拖拽状态
+        let tab_drag_state = cx.new(|_| {
+            let mut state = TabDragState::default();
+            state.enabled = true;
+            state.tabs = vec![
+                TabItem { title: "main.rs".to_string(), id: "t1".to_string(), closable: true },
+                TabItem { title: "lib.rs".to_string(), id: "t2".to_string(), closable: true },
+                TabItem { title: "mod.rs".to_string(), id: "t3".to_string(), closable: false },
+                TabItem { title: "utils.rs".to_string(), id: "t4".to_string(), closable: true },
+            ];
+            state
+        });
+        let tab_drag_entity = cx.new(|_| TabDragDrop::new(tab_drag_state.clone()));
+
+        // 初始化状态栏状态
+        let status_bar_state = cx.new(|_| StatusBarState {
+            line: 42,
+            column: 15,
+            selection_chars: Some(128),
+            language: "Rust".into(),
+            encoding: "UTF-8".into(),
+            line_ending: "LF".into(),
+            lsp_status: LspStatus::Connected,
+            lsp_server_name: Some("rust-analyzer".into()),
+            error_count: 2,
+            warning_count: 5,
+            info_count: 3,
+            indent_info: Some("Spaces: 4".into()),
+            git_branch: Some("main".into()),
+            custom_items: Vec::new(),
+        });
+        let status_bar_entity = cx.new(|_| StatusBar::new(status_bar_state.clone()));
+
         Self {
             current_section: NavSection::I18n,
             i18n_locale: "zh-CN".to_string(),
             i18n_manager: i18n,
-            config: AppConfig::demo(), // 使用真实默认值
+            config: AppConfig::demo(),
             config_store_path: None,
             theme_mode: ThemeMode::Light,
             block_renderer: BlockRenderer::new(),
@@ -111,6 +151,10 @@ impl ShowcaseApp {
             virtual_scroll_items,
             source_input: "fn main() {\n    println!(\"Hello\");\n}".to_string(),
             chat_messages,
+            tab_drag_state,
+            tab_drag_entity,
+            status_bar_state,
+            status_bar_entity,
         }
     }
 }
@@ -125,6 +169,7 @@ impl Render for ShowcaseApp {
             (NavSection::VirtualScroll, "VirtualScroll 虚拟滚动"),
             (NavSection::SourceMap, "SourceMap 源码映射"),
             (NavSection::TabDrag, "TabDrag 标签拖拽"),
+            (NavSection::StatusBar, "StatusBar 状态栏"),
             (NavSection::FpsHud, "FpsHud 性能监控"),
             (NavSection::Chat, "ChatUI 聊天"),
         ];
@@ -140,6 +185,10 @@ impl Render for ShowcaseApp {
         let virtual_scroll_items = self.virtual_scroll_items.clone();
         let chat_messages = self.chat_messages.clone();
         let block_renderer = &self.block_renderer;
+        let tab_drag_state = self.tab_drag_state.clone();
+        let tab_drag_entity = self.tab_drag_entity.clone();
+        let status_bar_state = self.status_bar_state.clone();
+        let status_bar_entity = self.status_bar_entity.clone();
 
         // 导航栏
         let nav = v_flex()
@@ -364,7 +413,7 @@ impl Render for ShowcaseApp {
                 )),
 
             // ------------------------------------------------------------------
-            // BlockRender 块级渲染 — 渲染为真实样式元素
+            // BlockRender 块级渲染
             // ------------------------------------------------------------------
             NavSection::BlockRender => {
                 let blocks = block_renderer.parse_markdown(&markdown_input);
@@ -389,7 +438,7 @@ impl Render for ShowcaseApp {
             }
 
             // ------------------------------------------------------------------
-            // VirtualScroll 虚拟滚动 — 可滚动
+            // VirtualScroll 虚拟滚动
             // ------------------------------------------------------------------
             NavSection::VirtualScroll => {
                 let item_count = virtual_scroll_items.len();
@@ -409,25 +458,24 @@ impl Render for ShowcaseApp {
                             .border(px(1.0))
                             .border_color(rgb(0xe9ecef))
                             .overflow_scroll()
-                    .child(
-                        // 内容高度 = item_count * 32px，产生滚动
-                        div()
-                            .id("virtual-scroll-content")
-                            .w_full()
-                            .children((0..item_count).map(|i| {
+                            .child(
                                 div()
-                                    .id(format!("vs-item-{}", i))
+                                    .id("virtual-scroll-content")
                                     .w_full()
-                                    .h(px(32.0))
-                                    .flex()
-                                    .items_center()
-                                    .px(px(12.0))
-                                    .text_sm()
-                                    .border_b(px(1.0))
-                                    .border_color(rgb(0xf0f0f0))
-                                    .when(i % 2 == 0, |el| el.bg(rgb(0xf8f9fa)))
-                                    .child(format!("{} - 项目 #{}", i, i))
-                            })),
+                                    .children((0..item_count).map(|i| {
+                                        div()
+                                            .id(format!("vs-item-{}", i))
+                                            .w_full()
+                                            .h(px(32.0))
+                                            .flex()
+                                            .items_center()
+                                            .px(px(12.0))
+                                            .text_sm()
+                                            .border_b(px(1.0))
+                                            .border_color(rgb(0xf0f0f0))
+                                            .when(i % 2 == 0, |el| el.bg(rgb(0xf8f9fa)))
+                                            .child(format!("{} - 项目 #{}", i, i))
+                                    })),
                             ),
                     )
                     .child(card(
@@ -507,8 +555,6 @@ impl Render for ShowcaseApp {
             // TabDrag 标签拖拽排序
             // ------------------------------------------------------------------
             NavSection::TabDrag => {
-                let tabs = vec![("main.rs", true), ("lib.rs", true), ("mod.rs", false)];
-
                 v_flex()
                     .id("tab-drag-section")
                     .gap(px(16.0))
@@ -516,14 +562,15 @@ impl Render for ShowcaseApp {
                     .child(section_title("TabDrag 标签拖拽排序"))
                     .child(section_desc("支持鼠标拖拽排序的标签页组件"))
                     .child(
+                        // 标签栏预览（静态展示）
                         h_flex()
-                            .id("tab-bar")
+                            .id("tab-bar-preview")
                             .gap(px(2.0))
                             .bg(rgb(0xf8f9fa))
                             .p(px(4.0))
                             .rounded(px(6.0))
-                            .children(tabs.into_iter().enumerate().map(|(i, (name, closable))| {
-                                let mut tab = h_flex()
+                            .children(tab_drag_state.read(cx).tabs.iter().enumerate().map(|(i, tab)| {
+                                h_flex()
                                     .id(format!("tab-{}", i))
                                     .gap(px(8.0))
                                     .px(px(12.0))
@@ -533,35 +580,80 @@ impl Render for ShowcaseApp {
                                     .border(px(1.0))
                                     .border_color(rgb(0xe9ecef))
                                     .text_sm()
-                                    .child(name.to_string());
-                                if closable {
-                                    tab = tab.child(
-                                        div().text_xs().text_color(rgb(0x999)).child("x"),
-                                    );
-                                }
-                                tab
+                                    .child(tab.title.clone())
+                                    .when(tab.closable, |el| {
+                                        el.child(
+                                            div().text_xs().text_color(rgb(0x999)).child("x"),
+                                        )
+                                    })
                             })),
                     )
                     .child(
-                        div()
-                            .mt(px(8.0))
-                            .p(px(8.0))
-                            .rounded(px(6.0))
-                            .bg(rgb(0xfff3cd))
-                            .text_sm()
-                            .text_color(rgb(0x856404))
-                            .child("提示: 拖拽排序需要接入 TabDragDrop 组件，此处为样式展示"),
+                        // TabDragDrop 组件
+                        v_flex()
+                            .gap(px(4.0))
+                            .child(div().text_sm().font_medium().child("TabDragDrop 组件:"))
+                            .child(
+                                div()
+                                    .h(px(60.0))
+                                    .rounded(px(6.0))
+                                    .border(px(1.0))
+                                    .border_color(rgb(0xe9ecef))
+                                    .child(tab_drag_entity),
+                            ),
                     )
                     .child(card(
-                        "Tab 配置",
+                        "拖拽状态",
                         &[
-                            "支持拖拽排序".to_string(),
-                            "可设置是否可关闭".to_string(),
-                            "支持关闭事件回调".to_string(),
+                            format!("已启用: {}", tab_drag_state.read(cx).enabled),
+                            format!("Tab 数量: {}", tab_drag_state.read(cx).tabs.len()),
+                            format!("正在拖拽: {}", tab_drag_state.read(cx).is_dragging()),
                         ],
                     ))
                     .child(code_block(
-                        "let tabs = vec![\n    TabItem { title: \"main.rs\", id: \"t1\", closable: true },\n    TabItem { title: \"lib.rs\", id: \"t2\", closable: true },\n];\nTabDragDrop::new(state).items(tabs)",
+                        "let drag_state = cx.new(|_| TabDragState::default());\ndrag_state.update(cx, |state, _| {\n    state.enabled = true;\n    state.tabs = vec![TabItem { title: \"main.rs\", id: \"t1\", closable: true }];\n});\nTabDragDrop::new(drag_state)",
+                    ))
+            }
+
+            // ------------------------------------------------------------------
+            // StatusBar 状态栏
+            // ------------------------------------------------------------------
+            NavSection::StatusBar => {
+                v_flex()
+                    .id("status-bar-section")
+                    .gap(px(16.0))
+                    .p(px(24.0))
+                    .child(section_title("StatusBar 状态栏"))
+                    .child(section_desc("显示编辑器状态信息（行列号、语言、编码、LSP 状态等）"))
+                    .child(
+                        // 状态栏组件
+                        v_flex()
+                            .gap(px(4.0))
+                            .child(div().text_sm().font_medium().child("StatusBar 组件:"))
+                            .child(status_bar_entity),
+                    )
+                    .child(
+                        // 状态详情
+                        v_flex()
+                            .gap(px(4.0))
+                            .child(div().text_sm().font_medium().child("状态详情:"))
+                            .child(card(
+                                "编辑器状态",
+                                &[
+                                    format!("行: {}, 列: {}", status_bar_state.read(cx).line, status_bar_state.read(cx).column),
+                                    format!("语言: {}", status_bar_state.read(cx).language),
+                                    format!("编码: {}", status_bar_state.read(cx).encoding),
+                                    format!("LSP: {:?}", status_bar_state.read(cx).lsp_status),
+                                    format!("错误: {}, 警告: {}, 信息: {}",
+                                        status_bar_state.read(cx).error_count,
+                                        status_bar_state.read(cx).warning_count,
+                                        status_bar_state.read(cx).info_count),
+                                    format!("Git 分支: {:?}", status_bar_state.read(cx).git_branch),
+                                ],
+                            )),
+                    )
+                    .child(code_block(
+                        "let status = cx.new(|_| StatusBarState {\n    line: 42,\n    column: 15,\n    language: \"Rust\".into(),\n    encoding: \"UTF-8\".into(),\n    lsp_status: LspStatus::Connected,\n    lsp_server_name: Some(\"rust-analyzer\".into()),\n    error_count: 2,\n    warning_count: 5,\n    ..Default::default()\n});\nStatusBar::new(status)",
                     ))
             }
 
@@ -711,19 +803,19 @@ impl Render for ShowcaseApp {
 /// 将 BlockElement 渲染为真实的 rgpui 样式元素。
 fn render_block_element(block: &BlockElement) -> impl IntoElement + use<> {
     match &block.block_type {
-    BlockType::Heading(level) => {
-        let styled_div = div()
-            .id(format!("heading-{}", block.content))
-            .mb(px(4.0))
-            .text_color(rgb(0x1a1a1a));
-        let styled_div = match level {
-            1 => styled_div.text_2xl().font_bold(),
-            2 => styled_div.text_xl().font_semibold(),
-            3 => styled_div.text_lg().font_medium(),
-            _ => styled_div.text_base(),
-        };
-        styled_div.child(block.content.clone())
-    }
+        BlockType::Heading(level) => {
+            let styled_div = div()
+                .id(format!("heading-{}", block.content))
+                .mb(px(4.0))
+                .text_color(rgb(0x1a1a1a));
+            let styled_div = match level {
+                1 => styled_div.text_2xl().font_bold(),
+                2 => styled_div.text_xl().font_semibold(),
+                3 => styled_div.text_lg().font_medium(),
+                _ => styled_div.text_base(),
+            };
+            styled_div.child(block.content.clone())
+        }
         BlockType::Paragraph => div()
             .id(format!("para-{}", block.content.chars().take(10).collect::<String>()))
             .mb(px(8.0))
