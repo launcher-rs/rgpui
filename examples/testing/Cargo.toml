@@ -10,3 +10,4 @@ rgpui-platform.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
+futures.workspace = true

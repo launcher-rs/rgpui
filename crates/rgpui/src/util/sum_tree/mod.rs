@@ -1397,7 +1397,7 @@ mod tests {
     use rand::{distr::StandardUniform, prelude::*};
     use std::cmp;
 
-    #[ctor::ctor]
+    #[ctor::ctor(unsafe)]
     fn init_logger() {
         let _ = env_logger::builder().is_test(true).try_init();
     }

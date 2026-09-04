@@ -1453,7 +1453,7 @@ dependencies = [
  "block",
  "cocoa-foundation",
  "core-foundation 0.10.1",
- "core-graphics 0.24.0",
+ "core-graphics",
  "foreign-types",
  "libc",
  "objc",
@@ -1653,19 +1653,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "core-graphics"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "064badf302c3194842cf2c5d61f56cc88e54a759313879cdf03abdd27d0c3b97"
-dependencies = [
- "bitflags 2.13.1",
- "core-foundation 0.10.1",
- "core-graphics-types 0.2.0",
- "foreign-types",
- "libc",
-]
-
-[[package]]
 name = "core-graphics-helmer-fork"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1720,20 +1707,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a593227b66cbd4007b2a050dfdd9e1d1318311409c8d600dc82ba1b15ca9c130"
 dependencies = [
  "core-foundation 0.10.1",
- "core-graphics 0.24.0",
+ "core-graphics",
  "foreign-types",
  "libc",
-]
-
-[[package]]
-name = "core-text"
-version = "22.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "333dab512ce710ca2d08574c373d246dbeac8b22769e47da4c0e72730ce442b7"
-dependencies = [
- "core-foundation 0.10.1",
- "core-graphics 0.25.0",
- "foreign-types",
 ]
 
 [[package]]
@@ -6809,8 +6785,8 @@ dependencies = [
  "command-fds",
  "core-foundation 0.10.1",
  "core-foundation-sys",
- "core-graphics 0.25.0",
- "core-text 22.0.0",
+ "core-graphics",
+ "core-text",
  "core-video",
  "criterion",
  "crossbeam-channel",
@@ -7014,8 +6990,8 @@ dependencies = [
  "cocoa",
  "core-foundation 0.10.1",
  "core-foundation-sys",
- "core-graphics 0.25.0",
- "core-text 22.0.0",
+ "core-graphics",
+ "core-text",
  "core-video",
  "ctor",
  "derive_more 2.1.1",
@@ -8725,6 +8701,7 @@ dependencies = [
 name = "testing"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "rand 0.10.2",
  "rgpui",
  "rgpui-platform",
@@ -10926,8 +10903,8 @@ dependencies = [
  "bitflags 2.13.1",
  "byteorder",
  "core-foundation 0.10.1",
- "core-graphics 0.24.0",
- "core-text 21.0.0",
+ "core-graphics",
+ "core-text",
  "dirs",
  "dwrote",
  "float-ord",

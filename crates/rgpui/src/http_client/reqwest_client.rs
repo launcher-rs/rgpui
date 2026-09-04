@@ -278,7 +278,8 @@ impl super::HttpClient for ReqwestClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{HttpClient, Url};
+    use crate::http_client::HttpClient;
+    use url::Url;
 
     use super::ReqwestClient;
 
