@@ -13,7 +13,6 @@ members = [
     "crates/rgpui-platform",
     "crates/rgpui-term",
     "crates/rgpui-web",
-    "crates/rgpui-webview",
     "crates/rgpui-wgpu",
     "crates/rgpui-windows",
     # examples

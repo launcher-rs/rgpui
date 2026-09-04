@@ -1,17 +1,17 @@
 //! WebView 组件 —— 基于 wry 的网页视图，用于在 rgpui 应用中嵌入网页内容。
 //!
-//! 本 crate 提供 [`WebView`] 和 [`WebViewHandle`] 两个核心类型：
+//! 本模块提供 [`WebView`] 和 [`WebViewHandle`] 两个核心类型：
 //! - [`WebView`] 是 rgpui 实体，管理网页视图的生命周期和布局。
 //! - [`WebViewHandle`] 是可克隆的轻量句柄，可在组件间传递以控制底层 wry WebView。
 //!
 //! # 示例
 //!
 //! ```rust,ignore
-//! use rgpui_webview::{WebView, WebViewBuilder};
+//! use rgpui::webview::{WebView, WebViewHandle};
 //!
 //! // 创建 WebView 实体
 //! let webview = cx.new(|window, cx| {
-//!     let wry_webview = WebViewBuilder::new()
+//!     let wry_webview = wry::WebViewBuilder::new()
 //!         .with_url("https://example.com")
 //!         .build_as_child(window.raw_handle())
 //!         .unwrap();
@@ -26,10 +26,11 @@ use wry::{
     dpi::{self, LogicalSize},
 };
 
-use rgpui::{
-    App, Bounds, ContentMask, DismissEvent, Element, ElementId, Entity, EventEmitter, FocusHandle,
-    Focusable, GlobalElementId, Hitbox, InteractiveElement, IntoElement, LayoutId, MouseDownEvent,
-    ParentElement as _, Pixels, Render, Size, Style, Styled as _, Window, canvas, div,
+use crate::{
+    App, Bounds, ContentMask, Context, DismissEvent, Element, ElementId, Entity, EventEmitter,
+    FocusHandle, Focusable, GlobalElementId, Hitbox, InteractiveElement, IntoElement, LayoutId,
+    MouseDownEvent, ParentElement as _, Pixels, Render, Size, Style, Styled as _, Window, canvas,
+    div,
 };
 
 /// WebView 的可克隆句柄。
@@ -167,11 +168,7 @@ impl Focusable for WebView {
 impl EventEmitter<DismissEvent> for WebView {}
 
 impl Render for WebView {
-    fn render(
-        &mut self,
-        window: &mut Window,
-        cx: &mut rgpui::Context<Self>,
-    ) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().clone();
 
         div()
@@ -186,7 +183,7 @@ impl Render for WebView {
                 .absolute()
                 .size_full()
             })
-            .child(WebViewElement::new(self.webview.clone(), view, window, cx))
+            .child(WebViewElement::new(self.webview.clone(), view, _window, cx))
     }
 }
 
@@ -233,7 +230,7 @@ impl Element for WebViewElement {
     fn request_layout(
         &mut self,
         _: Option<&GlobalElementId>,
-        _: Option<&rgpui::InspectorElementId>,
+        _: Option<&crate::InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
@@ -250,10 +247,10 @@ impl Element for WebViewElement {
     fn prepaint(
         &mut self,
         _: Option<&GlobalElementId>,
-        _: Option<&rgpui::InspectorElementId>,
+        _: Option<&crate::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
         if !self.parent.read(cx).is_visible() {
@@ -271,13 +268,13 @@ impl Element for WebViewElement {
             )),
         });
 
-        Some(window.insert_hitbox(bounds, rgpui::HitboxBehavior::Normal))
+        Some(_window.insert_hitbox(bounds, crate::HitboxBehavior::Normal))
     }
 
     fn paint(
         &mut self,
         _: Option<&GlobalElementId>,
-        _: Option<&rgpui::InspectorElementId>,
+        _: Option<&crate::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
         hitbox: &mut Self::PrepaintState,

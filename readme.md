@@ -70,7 +70,7 @@ crates/
 ├── rgpui-platform/     # 平台选择入口
 ├── rgpui-term/         # 终端组件
 ├── rgpui-web/          # Web/WASM 平台实现
-├── rgpui-webview/      # WebView 独立库（v1.0）
+├── rgpui-webview/      # WebView 独立库（v1.0）→ 已并入核心（feature `webview`）
 ├── rgpui-wgpu/         # wgpu 渲染后端
 └── rgpui-windows/      # Windows 平台实现
 

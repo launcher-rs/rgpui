@@ -75,6 +75,11 @@ dom-backend = []
 # LSP 客户端支持：提供 Language Server Protocol 核心 trait（补全/悬停/定义/诊断/语义高亮）。
 # 默认关闭以保持核心精简，编辑器功能按需启用。
 lsp = ["dep:lsp-types"]
+# WebView 组件：基于 wry 的网页视图，用于嵌入网页内容。
+# 默认关闭以保持核心精简，需要 WebView 的应用可显式开启。
+webview = ["dep:wry"]
+# WebView 检查器：为 WebView 启用 Chrome DevTools 调试工具。
+webview-inspector = ["webview", "wry/devtools"]
 
 [lib]
 path = "src/rgpui.rs"
@@ -170,6 +175,7 @@ lsp-types = { workspace = true, optional = true }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 unicode-segmentation = { workspace = true }
 qrcode = { workspace = true, optional = true }
+wry = { version = "0.53.3", package = "lb-wry", optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.4.3", features = ["wasm_js"] }

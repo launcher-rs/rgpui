@@ -6837,6 +6837,7 @@ dependencies = [
  "instant",
  "inventory",
  "itertools 0.15.0",
+ "lb-wry",
  "libc",
  "log",
  "lsp-types",
@@ -7117,15 +7118,6 @@ dependencies = [
  "wasm_thread",
  "web-sys",
  "web-time",
-]
-
-[[package]]
-name = "rgpui-webview"
-version = "1.1.0"
-dependencies = [
- "anyhow",
- "lb-wry",
- "rgpui",
 ]
 
 [[package]]

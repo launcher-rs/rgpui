@@ -83,3 +83,7 @@ pub use crate::source_map::{SourceMap, SourceLocation, BidirectionalSourceMap, S
 
 // Markdown 插件扩展系统。
 pub use crate::markdown_ext::{MarkdownPlugin, MarkdownRenderer, PluginManager};
+
+// WebView 组件（feature `webview` 门控）。
+#[cfg(feature = "webview")]
+pub use crate::webview::{WebView, WebViewHandle};

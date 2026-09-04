@@ -243,6 +243,10 @@ pub mod components;
 #[cfg(feature = "lsp")]
 pub mod lsp;
 
+/// WebView 组件 - 基于 wry 的网页视图，用于嵌入网页内容（feature `webview` 门控）
+#[cfg(feature = "webview")]
+pub mod webview;
+
 /// 语法高亮 trait - tree-sitter/syntect 等解析器的抽象层
 pub mod highlight;
 

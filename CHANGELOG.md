@@ -12,7 +12,7 @@
 - **minimize_to_tray**：隐藏所有窗口到托盘
 - **全局窗口管理**：show_all_windows / hide_all_windows / minimize_all_windows
 - **SearchPanel**：搜索替换面板组件
-- **rgpui-webview 1.0**：WebView 独立库
+- **rgpui-webview**：WebView 已并入核心（feature `webview` 门控）
 
 #### v1.1.0-beta — 编辑器核心能力
 - **LSP 核心 trait**：LspClient trait（15 个方法）+ 补全/悬停/定义/诊断/语义高亮子系统

@@ -392,7 +392,7 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 23. `rgpui` 的 `[[example]]` 条目已全部删除，`rgpui-platform` dev-dependency 已移除（消除发布循环依赖）
 24. `cargo publish -p rgpui --dry-run` 通过（不再需要 `--no-verify`）
 25. v1.1.0-alpha 功能存在：`push_notification`（App 方法）、`init_all`（`init.rs` 模块）、`minimize_to_tray`（App 方法）、`show_all_windows` / `hide_all_windows` / `minimize_all_windows`（App 方法）、`SearchPanel`（`components/search_panel.rs`）
-26. `crates/rgpui-webview` v1.0.0 独立库存在（`WebView` + `WebViewHandle` + `load_url`/`load_html`/`forward`/`reload`/`eval_script`）
+26. WebView 组件已并入核心 `rgpui`（feature `webview` 门控，`rgpui::webview` 模块）：`WebView` + `WebViewHandle` + `load_url`/`load_html`/`forward`/`reload`/`eval_script`；`crates/rgpui-webview` 已删除，workspace 不再依赖该 crate；`cargo check -p rgpui --features webview` 通过
 27. v1.1.0-beta 功能存在：`lsp` feature 门控（`LspClient` trait + 补全/悬停/定义/诊断/语义高亮子系统）、`highlight` 模块（`Highlighter` trait）、`StatusBar` 组件（`components/status_bar.rs`）
 28. v1.1.0-rc 功能存在：`file_watcher` 模块（`FileWatcher`/`FileEvent`）、`config_store` 模块（`ConfigStore`）、`chat_ui` 模块（`ChatView`/`Message`/`MessageGroup`）、`fps_hud` 模块（`FpsHud`/`FpsHudState`）
 29. v1.1.0 功能存在：`tabs/tab_drag.rs`（`TabDragDrop`/`TabDragState`）、`i18n` 模块（`I18nManager`/`I18nText`）、`theme_watcher` 模块（`ThemeWatcher`/`ThemeManager`）、`block_render` 模块（`BlockRenderer`/`BlockType`）、`virtual_scroll` 模块（`VirtualScroll`/`VirtualScrollList`）、`source_map` 模块（`SourceMap`/`SourceLocation`）、`markdown_ext` 模块（`MarkdownPlugin`/`PluginManager`）
