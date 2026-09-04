@@ -186,3 +186,59 @@ impl PluralRule {
         i18n.t(key, &[("count", &self.count.to_string())])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_i18n_manager_creation() {
+        let manager = I18nManager::new("en");
+        assert_eq!(manager.current_locale(), "en");
+    }
+
+    #[test]
+    fn test_load_translations() {
+        let mut manager = I18nManager::new("en");
+        let mut translations = HashMap::new();
+        translations.insert("hello".to_string(), "Hello".to_string());
+        translations.insert("world".to_string(), "World".to_string());
+        manager.load_translations_map("en", translations);
+        assert_eq!(manager.t("hello", &[]), "Hello");
+        assert_eq!(manager.t("world", &[]), "World");
+    }
+
+    #[test]
+    fn test_fallback_locale() {
+        let mut manager = I18nManager::new("zh-CN").with_fallback("en");
+        let mut en_translations = HashMap::new();
+        en_translations.insert("hello".to_string(), "Hello".to_string());
+        manager.load_translations_map("en", en_translations);
+        assert_eq!(manager.t("hello", &[]), "Hello");
+    }
+
+    #[test]
+    fn test_format_text() {
+        let mut manager = I18nManager::new("en");
+        let mut translations = HashMap::new();
+        translations.insert("greeting".to_string(), "Hello, {name}!".to_string());
+        manager.load_translations_map("en", translations);
+        assert_eq!(manager.t("greeting", &[("name", "World")]), "Hello, World!");
+    }
+
+    #[test]
+    fn test_set_locale() {
+        let mut manager = I18nManager::new("en");
+        manager.set_locale("zh-CN");
+        assert_eq!(manager.current_locale(), "zh-CN");
+    }
+
+    #[test]
+    fn test_plural_rule() {
+        let rule = PluralRule::new(1, "item", "items");
+        assert_eq!(rule.key(), "item");
+        let rule = PluralRule::new(5, "item", "items");
+        assert_eq!(rule.key(), "items");
+    }
+}

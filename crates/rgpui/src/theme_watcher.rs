@@ -232,3 +232,59 @@ impl Default for ThemeManager {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    #[test]
+    fn test_theme_watcher_creation() {
+        let watcher = ThemeWatcher::new();
+        assert_eq!(*watcher.current_theme(), ThemeMode::System);
+        assert!(watcher.is_enabled());
+    }
+
+    #[test]
+    fn test_set_theme() {
+        let mut watcher = ThemeWatcher::new();
+        watcher.set_theme(ThemeMode::Dark);
+        assert_eq!(*watcher.current_theme(), ThemeMode::Dark);
+    }
+
+    #[test]
+    fn test_toggle_theme() {
+        let mut watcher = ThemeWatcher::with_theme(ThemeMode::Light);
+        watcher.toggle_theme();
+        assert_eq!(*watcher.current_theme(), ThemeMode::Dark);
+    }
+
+    #[test]
+    fn test_on_change_callback() {
+        let mut watcher = ThemeWatcher::new();
+        let called = Arc::new(AtomicBool::new(false));
+        let called_clone = called.clone();
+        watcher.on_change(move |_| {
+            called_clone.store(true, Ordering::SeqCst);
+        });
+        watcher.set_theme(ThemeMode::Dark);
+        assert!(called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_theme_colors() {
+        let light = ThemeColors::light();
+        assert_eq!(light.background, "#ffffff");
+        let dark = ThemeColors::dark();
+        assert_eq!(dark.background, "#1e1e1e");
+    }
+
+    #[test]
+    fn test_theme_manager() {
+        let mut manager = ThemeManager::new();
+        assert_eq!(*manager.watcher().current_theme(), ThemeMode::System);
+        manager.set_theme(ThemeMode::Light);
+        assert_eq!(manager.colors().background, "#ffffff");
+    }
+}

@@ -199,3 +199,40 @@ impl SourceMapBuilder {
         SourceMap::new(&self.source_file, &self.lines.join("\n"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_source_map_creation() {
+        let map = SourceMap::new("test.rs", "line 1\nline 2\nline 3");
+        assert_eq!(map.line_count(), 3);
+        assert_eq!(map.source_file(), "test.rs");
+    }
+
+    #[test]
+    fn test_get_location() {
+        let map = SourceMap::new("test.txt", "hello\nworld");
+        let loc = map.get_location(0).unwrap();
+        assert_eq!(loc.line, 1);
+        assert_eq!(loc.column, 1);
+    }
+
+    #[test]
+    fn test_get_line() {
+        let map = SourceMap::new("test.rs", "line 1\nline 2\nline 3");
+        assert_eq!(map.get_line(1), Some("line 1"));
+        assert_eq!(map.get_line(2), Some("line 2"));
+        assert_eq!(map.get_line(3), Some("line 3"));
+    }
+
+    #[test]
+    fn test_search() {
+        let map = SourceMap::new("test.rs", "hello world\nfoo bar\nhello baz");
+        let results = map.search("hello");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].line, 1);
+        assert_eq!(results[1].line, 3);
+    }
+}

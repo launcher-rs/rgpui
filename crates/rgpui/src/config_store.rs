@@ -109,3 +109,35 @@ impl Default for ConfigStore {
         Self::new("rgpui_app")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default, PartialEq)]
+    struct TestConfig {
+        name: String,
+        value: i32,
+    }
+
+    #[test]
+    fn test_config_store_save_and_load() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_file = temp_dir.path().join("config.json");
+        let mut store = ConfigStore::with_path(config_file);
+        let config = TestConfig { name: "test".to_string(), value: 42 };
+        store.save(&config).unwrap();
+        let loaded: TestConfig = store.load().unwrap();
+        assert_eq!(loaded, config);
+    }
+
+    #[test]
+    fn test_config_store_load_default() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_file = temp_dir.path().join("config.json");
+        let mut store = ConfigStore::with_path(config_file);
+        let loaded: TestConfig = store.load().unwrap();
+        assert_eq!(loaded, TestConfig::default());
+    }
+}

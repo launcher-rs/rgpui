@@ -205,3 +205,32 @@ impl Default for BlockRenderer {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_paragraph_render() {
+        let renderer = BlockRenderer::new();
+        let block = BlockElement::new(BlockType::Paragraph, "Hello");
+        assert_eq!(renderer.render(&block), "<p>Hello</p>");
+    }
+
+    #[test]
+    fn test_heading_render() {
+        let renderer = BlockRenderer::new();
+        let h1 = BlockElement::new(BlockType::Heading(1), "Title");
+        assert_eq!(renderer.render(&h1), "<h1>Title</h1>");
+    }
+
+    #[test]
+    fn test_parse_markdown() {
+        let renderer = BlockRenderer::new();
+        let blocks = renderer.parse_markdown("# Title\n\nPara\n\n---");
+        assert_eq!(blocks.len(), 3);
+        assert!(matches!(blocks[0].block_type, BlockType::Heading(1)));
+        assert!(matches!(blocks[1].block_type, BlockType::Paragraph));
+        assert!(matches!(blocks[2].block_type, BlockType::HorizontalRule));
+    }
+}
