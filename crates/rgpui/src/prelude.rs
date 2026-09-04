@@ -77,3 +77,6 @@ pub use crate::block_render::{BlockRenderer, BlockElement, BlockType};
 
 // 虚拟滚动增强。
 pub use crate::virtual_scroll::{VirtualScroll, VirtualScrollState, VirtualScrollConfig, VirtualScrollDirection, VirtualScrollList};
+
+// 源码映射支持。
+pub use crate::source_map::{SourceMap, SourceLocation, BidirectionalSourceMap, SourceMapBuilder};
