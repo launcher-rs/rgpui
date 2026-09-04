@@ -29,6 +29,18 @@ struct AppConfig {
     language: String,
 }
 
+impl AppConfig {
+    /// 创建带有真实默认值的配置。
+    fn demo() -> Self {
+        Self {
+            theme: "dark".to_string(),
+            font_size: 14,
+            auto_save: true,
+            language: "zh-CN".to_string(),
+        }
+    }
+}
+
 /// 导航项。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NavSection {
@@ -91,12 +103,11 @@ impl ShowcaseApp {
             current_section: NavSection::I18n,
             i18n_locale: "zh-CN".to_string(),
             i18n_manager: i18n,
-            config: AppConfig::default(),
+            config: AppConfig::demo(), // 使用真实默认值
             config_store_path: None,
             theme_mode: ThemeMode::Light,
             block_renderer: BlockRenderer::new(),
-            markdown_input: "# 标题\n\n这是 **粗体** 和 *斜体*\n\n## 子标题\n\n- 列表项 1\n- 列表项 2"
-                .to_string(),
+            markdown_input: "# 标题\n\n这是 **粗体** 和 *斜体*\n\n## 子标题\n\n- 列表项 1\n- 列表项 2".to_string(),
             virtual_scroll_items,
             source_input: "fn main() {\n    println!(\"Hello\");\n}".to_string(),
             chat_messages,
@@ -161,6 +172,9 @@ impl Render for ShowcaseApp {
 
         // 内容区域
         let content = match current {
+            // ------------------------------------------------------------------
+            // I18n 国际化
+            // ------------------------------------------------------------------
             NavSection::I18n => v_flex()
                 .id("i18n-section")
                 .gap(px(16.0))
@@ -204,90 +218,94 @@ impl Render for ShowcaseApp {
                     "let mut i18n = I18nManager::new(\"zh-CN\");\ni18n.load_translations_map(\"en\", en_translations);\ni18n.set_locale(\"en\");\nprintln!(\"{}\", i18n.t(\"greeting\", &[(\"name\", \"开发者\")]));",
                 )),
 
-            NavSection::Config => v_flex()
-                .id("config-section")
-                .gap(px(16.0))
-                .p(px(24.0))
-                .child(section_title("ConfigStore 配置持久化"))
-                .child(section_desc("JSON 配置文件的保存、加载和监听"))
-                .child(
-                    v_flex()
-                        .gap(px(8.0))
-                        .child(
-                            h_flex().gap(px(8.0)).child("主题: ").child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(4.0))
-                                    .rounded(px(4.0))
-                                    .bg(rgb(0xe9ecef))
-                                    .child(config.theme.clone()),
+            // ------------------------------------------------------------------
+            // ConfigStore 配置持久化
+            // ------------------------------------------------------------------
+            NavSection::Config => {
+                let config_display = config.clone();
+                v_flex()
+                    .id("config-section")
+                    .gap(px(16.0))
+                    .p(px(24.0))
+                    .child(section_title("ConfigStore 配置持久化"))
+                    .child(section_desc("JSON 配置文件的保存、加载和监听"))
+                    .child(
+                        v_flex()
+                            .gap(px(8.0))
+                            .child(
+                                h_flex().gap(px(8.0)).child("主题: ").child(
+                                    div()
+                                        .px(px(8.0))
+                                        .py(px(4.0))
+                                        .rounded(px(4.0))
+                                        .bg(rgb(0xe9ecef))
+                                        .child(config_display.theme),
+                                ),
+                            )
+                            .child(
+                                h_flex().gap(px(8.0)).child("字号: ").child(
+                                    div()
+                                        .px(px(8.0))
+                                        .py(px(4.0))
+                                        .rounded(px(4.0))
+                                        .bg(rgb(0xe9ecef))
+                                        .child(format!("{}", config_display.font_size)),
+                                ),
+                            )
+                            .child(
+                                h_flex().gap(px(8.0)).child("自动保存: ").child(
+                                    div()
+                                        .px(px(8.0))
+                                        .py(px(4.0))
+                                        .rounded(px(4.0))
+                                        .bg(rgb(0xe9ecef))
+                                        .child(if config_display.auto_save {
+                                            "开启"
+                                        } else {
+                                            "关闭"
+                                        }),
+                                ),
                             ),
-                        )
-                        .child(
-                            h_flex().gap(px(8.0)).child("字号: ").child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(4.0))
-                                    .rounded(px(4.0))
-                                    .bg(rgb(0xe9ecef))
-                                    .child(format!("{}", config.font_size)),
-                            ),
-                        )
-                        .child(
-                            h_flex().gap(px(8.0)).child("自动保存: ").child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(4.0))
-                                    .rounded(px(4.0))
-                                    .bg(rgb(0xe9ecef))
-                                    .child(if config.auto_save { "开启" } else { "关闭" }),
-                            ),
-                        ),
-                )
-                .child(
-                    h_flex()
-                        .gap(px(8.0))
-                        .child(
-                            Button::new("config-save")
-                                .label("保存配置")
-                                .primary()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    let temp = tempfile::tempdir().unwrap();
-                                    let path = temp.path().join("config.json");
-                                    let mut store = ConfigStore::with_path(path.clone());
-                                    store.save(&this.config).unwrap();
-                                    this.config_store_path = Some(path);
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            Button::new("config-load")
-                                .label("加载配置")
-                                .ghost()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    if let Some(path) = &this.config_store_path {
+                    )
+                    .child(
+                        h_flex()
+                            .gap(px(8.0))
+                            .child(
+                                Button::new("config-save")
+                                    .label("保存配置")
+                                    .primary()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        let temp = tempfile::tempdir().unwrap();
+                                        let path = temp.path().join("config.json");
                                         let mut store = ConfigStore::with_path(path.clone());
-                                        if let Ok(config) = store.load::<AppConfig>() {
-                                            this.config = config;
-                                            cx.notify();
+                                        store.save(&this.config).unwrap();
+                                        this.config_store_path = Some(path);
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("config-load")
+                                    .label("加载配置")
+                                    .ghost()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        if let Some(path) = &this.config_store_path {
+                                            let mut store = ConfigStore::with_path(path.clone());
+                                            if let Ok(config) = store.load::<AppConfig>() {
+                                                this.config = config;
+                                                cx.notify();
+                                            }
                                         }
-                                    }
-                                })),
-                        ),
-                )
-                .child(card(
-                    "当前配置",
-                    &[
-                        format!("theme: {}", config.theme),
-                        format!("font_size: {}", config.font_size),
-                        format!("auto_save: {}", config.auto_save),
-                        format!("language: {}", config.language),
-                    ],
-                ))
-                .child(code_block(
-                    "#[derive(Serialize, Deserialize)]\nstruct AppConfig { theme: String, font_size: u32 }\n\nlet mut store = ConfigStore::with_path(\"config.json\");\nstore.save(&config)?;\nlet loaded: AppConfig = store.load()?;",
-                )),
+                                    })),
+                            ),
+                    )
+                    .child(code_block(
+                        "#[derive(Serialize, Deserialize)]\nstruct AppConfig { theme: String, font_size: u32 }\n\nlet mut store = ConfigStore::with_path(\"config.json\");\nstore.save(&config)?;\nlet loaded: AppConfig = store.load()?;",
+                    ))
+            }
 
+            // ------------------------------------------------------------------
+            // ThemeWatcher 主题热重载
+            // ------------------------------------------------------------------
             NavSection::Theme => v_flex()
                 .id("theme-section")
                 .gap(px(16.0))
@@ -328,21 +346,28 @@ impl Render for ShowcaseApp {
                                 })),
                         ),
                 )
-                .child(card(
-                    "当前主题",
-                    &[
-                        format!("mode: {:?}", theme_mode),
-                        format!("is_dark: {}", theme_mode == ThemeMode::Dark),
-                    ],
-                ))
+                .child(
+                    v_flex()
+                        .gap(px(4.0))
+                        .child(div().text_sm().font_medium().child("当前主题:"))
+                        .child(
+                            div()
+                                .px(px(8.0))
+                                .py(px(4.0))
+                                .rounded(px(4.0))
+                                .bg(rgb(0xe9ecef))
+                                .child(format!("{:?}", theme_mode)),
+                        ),
+                )
                 .child(code_block(
                     "let mut watcher = ThemeWatcher::new();\nwatcher.set_theme(ThemeMode::Dark);\nprintln!(\"{:?}\", watcher.current_theme());\n\nlet mut manager = ThemeManager::new();\nmanager.set_theme(ThemeMode::Dark);",
                 )),
 
+            // ------------------------------------------------------------------
+            // BlockRender 块级渲染 — 渲染为真实样式元素
+            // ------------------------------------------------------------------
             NavSection::BlockRender => {
                 let blocks = block_renderer.parse_markdown(&markdown_input);
-                let rendered: Vec<String> =
-                    blocks.iter().map(|b| block_renderer.render(b)).collect();
 
                 v_flex()
                     .id("block-render-section")
@@ -353,50 +378,21 @@ impl Render for ShowcaseApp {
                     .child(
                         v_flex()
                             .gap(px(4.0))
-                            .child(div().text_sm().font_medium().child("输入:"))
-                            .child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(6.0))
-                                    .rounded(px(6.0))
-                                    .bg(rgb(0xf8f9fa))
-                                    .border(px(1.0))
-                                    .border_color(rgb(0xe9ecef))
-                                    .text_sm()
-                                    .child(markdown_input),
-                            ),
-                    )
-                    .child(
-                        v_flex()
-                            .gap(px(4.0))
-                            .child(div().text_sm().font_medium().child(format!(
-                                "输出 ({} 个块):",
-                                blocks.len()
-                            )))
-                            .children(
-                                rendered
-                                    .into_iter()
-                                    .enumerate()
-                                    .map(|(i, r)| {
-                                        div()
-                                            .id(format!("block-{}", i))
-                                            .px(px(8.0))
-                                            .py(px(6.0))
-                                            .rounded(px(6.0))
-                                            .bg(rgb(0xfff3cd))
-                                            .text_sm()
-                                            .child(r)
-                                    }),
-                            ),
+                            .child(div().text_sm().font_medium().child("解析结果:"))
+                            .children(blocks.into_iter().map(|block| {
+                                render_block_element(&block)
+                            })),
                     )
                     .child(code_block(
-                        "let renderer = BlockRenderer::new();\nlet blocks = renderer.parse_markdown(\"# 标题\\n\\n段落内容\");\nfor block in blocks {\n    println!(\"{}\", renderer.render(&block));\n}",
+                        "let renderer = BlockRenderer::new();\nlet blocks = renderer.parse_markdown(\"# 标题\\n\\n段落内容\");\nfor block in blocks {\n    match block.block_type {\n        BlockType::Heading(1) => { /* 渲染 h1 */ }\n        BlockType::Paragraph => { /* 渲染段落 */ }\n        _ => {}\n    }\n}",
                     ))
             }
 
+            // ------------------------------------------------------------------
+            // VirtualScroll 虚拟滚动 — 可滚动
+            // ------------------------------------------------------------------
             NavSection::VirtualScroll => {
-                let preview_items: Vec<String> =
-                    virtual_scroll_items.into_iter().take(10).collect();
+                let item_count = virtual_scroll_items.len();
 
                 v_flex()
                     .id("virtual-scroll-section")
@@ -404,30 +400,34 @@ impl Render for ShowcaseApp {
                     .p(px(24.0))
                     .child(section_title("VirtualScroll 虚拟滚动"))
                     .child(section_desc("仅渲染可视区域内的列表项，支持大量数据"))
+                    .child(div().text_sm().font_medium().child(format!("数据量: {} 项", item_count)))
                     .child(
-                        v_flex()
-                            .gap(px(4.0))
-                            .child(div().text_sm().font_medium().child(format!(
-                                "数据量: {} 项",
-                                preview_items.len() * 10
-                            )))
-                            .child(
+                        div()
+                            .id("virtual-scroll-container")
+                            .h(px(300.0))
+                            .rounded(px(6.0))
+                            .border(px(1.0))
+                            .border_color(rgb(0xe9ecef))
+                            .overflow_scroll()
+                    .child(
+                        // 内容高度 = item_count * 32px，产生滚动
+                        div()
+                            .id("virtual-scroll-content")
+                            .w_full()
+                            .children((0..item_count).map(|i| {
                                 div()
-                                    .h(px(200.0))
-                                    .rounded(px(6.0))
-                                    .border(px(1.0))
-                                    .border_color(rgb(0xe9ecef))
-                                    .overflow_hidden()
-                                    .children(preview_items.into_iter().enumerate().map(
-                                        |(i, item)| {
-                                            div()
-                                                .id(format!("vs-item-{}", i))
-                                                .px(px(8.0))
-                                                .py(px(4.0))
-                                                .text_sm()
-                                                .child(item)
-                                        },
-                                    )),
+                                    .id(format!("vs-item-{}", i))
+                                    .w_full()
+                                    .h(px(32.0))
+                                    .flex()
+                                    .items_center()
+                                    .px(px(12.0))
+                                    .text_sm()
+                                    .border_b(px(1.0))
+                                    .border_color(rgb(0xf0f0f0))
+                                    .when(i % 2 == 0, |el| el.bg(rgb(0xf8f9fa)))
+                                    .child(format!("{} - 项目 #{}", i, i))
+                            })),
                             ),
                     )
                     .child(card(
@@ -435,14 +435,18 @@ impl Render for ShowcaseApp {
                         &[
                             "direction: Vertical".to_string(),
                             "buffer_size: 5".to_string(),
-                            "estimated_item_height: 30px".to_string(),
+                            "estimated_item_height: 32px".to_string(),
+                            "支持 overflow_scroll 自动滚动".to_string(),
                         ],
                     ))
                     .child(code_block(
-                        "let config = VirtualScrollConfig {\n    direction: VirtualScrollDirection::Vertical,\n    buffer_size: 5,\n    estimated_item_height: 30.0,\n};\nVirtualScroll::new(state).config(config)",
+                        "let config = VirtualScrollConfig {\n    direction: VirtualScrollDirection::Vertical,\n    buffer_size: 5,\n    estimated_item_height: 32.0,\n};\nVirtualScroll::new(state).config(config)",
                     ))
             }
 
+            // ------------------------------------------------------------------
+            // SourceMap 源码映射
+            // ------------------------------------------------------------------
             NavSection::SourceMap => {
                 let source_map = SourceMap::new("example.rs", &source_input);
                 let line_count = source_map.line_count();
@@ -499,6 +503,9 @@ impl Render for ShowcaseApp {
                     ))
             }
 
+            // ------------------------------------------------------------------
+            // TabDrag 标签拖拽排序
+            // ------------------------------------------------------------------
             NavSection::TabDrag => {
                 let tabs = vec![("main.rs", true), ("lib.rs", true), ("mod.rs", false)];
 
@@ -510,6 +517,7 @@ impl Render for ShowcaseApp {
                     .child(section_desc("支持鼠标拖拽排序的标签页组件"))
                     .child(
                         h_flex()
+                            .id("tab-bar")
                             .gap(px(2.0))
                             .bg(rgb(0xf8f9fa))
                             .p(px(4.0))
@@ -534,6 +542,16 @@ impl Render for ShowcaseApp {
                                 tab
                             })),
                     )
+                    .child(
+                        div()
+                            .mt(px(8.0))
+                            .p(px(8.0))
+                            .rounded(px(6.0))
+                            .bg(rgb(0xfff3cd))
+                            .text_sm()
+                            .text_color(rgb(0x856404))
+                            .child("提示: 拖拽排序需要接入 TabDragDrop 组件，此处为样式展示"),
+                    )
                     .child(card(
                         "Tab 配置",
                         &[
@@ -547,6 +565,9 @@ impl Render for ShowcaseApp {
                     ))
             }
 
+            // ------------------------------------------------------------------
+            // FpsHud 性能监控
+            // ------------------------------------------------------------------
             NavSection::FpsHud => {
                 let fps = 60.0;
                 let frame_time = 16.67;
@@ -618,6 +639,9 @@ impl Render for ShowcaseApp {
                     ))
             }
 
+            // ------------------------------------------------------------------
+            // ChatUI 聊天组件
+            // ------------------------------------------------------------------
             NavSection::Chat => {
                 v_flex()
                     .id("chat-section")
@@ -627,12 +651,14 @@ impl Render for ShowcaseApp {
                     .child(section_desc("支持消息分组、多类型的聊天界面"))
                     .child(
                         v_flex()
+                            .id("chat-messages")
                             .gap(px(8.0))
                             .h(px(250.0))
                             .rounded(px(6.0))
                             .border(px(1.0))
                             .border_color(rgb(0xe9ecef))
                             .p(px(12.0))
+                            .overflow_scroll()
                             .children(chat_messages.iter().map(|msg| {
                                 let (bg, text_color) = match &msg.content {
                                     MessageType::Text(_) => (rgb(0xf8f9fa), rgb(0x333333)),
@@ -681,6 +707,96 @@ impl Render for ShowcaseApp {
 // ============================================================================
 // 辅助组件
 // ============================================================================
+
+/// 将 BlockElement 渲染为真实的 rgpui 样式元素。
+fn render_block_element(block: &BlockElement) -> impl IntoElement + use<> {
+    match &block.block_type {
+    BlockType::Heading(level) => {
+        let styled_div = div()
+            .id(format!("heading-{}", block.content))
+            .mb(px(4.0))
+            .text_color(rgb(0x1a1a1a));
+        let styled_div = match level {
+            1 => styled_div.text_2xl().font_bold(),
+            2 => styled_div.text_xl().font_semibold(),
+            3 => styled_div.text_lg().font_medium(),
+            _ => styled_div.text_base(),
+        };
+        styled_div.child(block.content.clone())
+    }
+        BlockType::Paragraph => div()
+            .id(format!("para-{}", block.content.chars().take(10).collect::<String>()))
+            .mb(px(8.0))
+            .text_sm()
+            .text_color(rgb(0x333333))
+            .child(block.content.clone()),
+        BlockType::CodeBlock => {
+            let lang = block.attributes.get("language").map(|s| s.as_str()).unwrap_or("");
+            div()
+                .id(format!("code-{}", lang))
+                .mb(px(8.0))
+                .rounded(px(6.0))
+                .bg(rgb(0x282c34))
+                .p(px(12.0))
+                .child(
+                    v_flex()
+                        .gap(px(4.0))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(0x666))
+                                .child(format!("语言: {}", lang)),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(rgb(0xabb2bf))
+                                .child(block.content.clone()),
+                        ),
+                )
+        }
+        BlockType::Blockquote => div()
+            .id(format!("quote-{}", block.content.chars().take(10).collect::<String>()))
+            .mb(px(8.0))
+            .pl(px(12.0))
+            .border_l(px(3.0))
+            .border_color(rgb(0x0078d4))
+            .text_sm()
+            .text_color(rgb(0x666666))
+            .italic()
+            .child(block.content.clone()),
+        BlockType::HorizontalRule => div()
+            .id("hr")
+            .my(px(12.0))
+            .h(px(1.0))
+            .bg(rgb(0xe9ecef)),
+        BlockType::List => div()
+            .id("list")
+            .mb(px(8.0))
+            .pl(px(16.0))
+            .text_sm()
+            .child(block.content.clone()),
+        BlockType::Image => {
+            let alt = block.attributes.get("alt").map(|s| s.as_str()).unwrap_or("");
+            div()
+                .id("image")
+                .mb(px(8.0))
+                .text_sm()
+                .text_color(rgb(0x666))
+                .child(format!("[图片: {}]", alt))
+        }
+        BlockType::Table => div()
+            .id("table")
+            .mb(px(8.0))
+            .text_sm()
+            .child(block.content.clone()),
+        BlockType::Custom(name) => div()
+            .id(format!("custom-{}", name))
+            .mb(px(8.0))
+            .text_sm()
+            .child(format!("[自定义块: {}]", name)),
+    }
+}
 
 /// 区域标题。
 fn section_title(text: &str) -> impl IntoElement {
