@@ -395,6 +395,7 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 26. `crates/rgpui-webview` v1.0.0 独立库存在（`WebView` + `WebViewHandle` + `load_url`/`load_html`/`forward`/`reload`/`eval_script`）
 27. v1.1.0-beta 功能存在：`lsp` feature 门控（`LspClient` trait + 补全/悬停/定义/诊断/语义高亮子系统）、`highlight` 模块（`Highlighter` trait）、`StatusBar` 组件（`components/status_bar.rs`）
 28. v1.1.0-rc 功能存在：`file_watcher` 模块（`FileWatcher`/`FileEvent`）、`config_store` 模块（`ConfigStore`）、`chat_ui` 模块（`ChatView`/`Message`/`MessageGroup`）、`fps_hud` 模块（`FpsHud`/`FpsHudState`）
+29. v1.1.0 功能存在：`tabs/tab_drag.rs`（`TabDragDrop`/`TabDragState`）、`i18n` 模块（`I18nManager`/`I18nText`）、`theme_watcher` 模块（`ThemeWatcher`/`ThemeManager`）、`block_render` 模块（`BlockRenderer`/`BlockType`）、`virtual_scroll` 模块（`VirtualScroll`/`VirtualScrollList`）、`source_map` 模块（`SourceMap`/`SourceLocation`）、`markdown_ext` 模块（`MarkdownPlugin`/`PluginManager`）
 
 ## Web/WASM 开发
 
