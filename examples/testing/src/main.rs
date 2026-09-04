@@ -191,7 +191,7 @@ fn run_example() {
                 ..Default::default()
             },
             |window, cx| {
-                let counter = cx.new(|cx| Counter::new(cx));
+                let counter = cx.new(Counter::new);
                 counter.focus_handle(cx).focus(window, cx);
                 counter
             },

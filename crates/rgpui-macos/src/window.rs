@@ -1553,7 +1553,7 @@ impl PlatformWindow for MacWindow {
 
             if NSAppKitVersionNumber < NSAppKitVersionNumber12_0 {
                 // Whether `-[NSVisualEffectView respondsToSelector:@selector(_updateProxyLayer)]`.
-                // On macOS Catalina/Big Sur `NSVisualEffectView` doesn鈥檛 own concrete sublayers
+                // On macOS Catalina/Big Sur `NSVisualEffectView` doesn't own concrete sublayers
                 // but uses a `CAProxyLayer`. Use the legacy WindowServer API.
                 let blur_radius = if background_appearance == WindowBackgroundAppearance::Blurred {
                     80
@@ -2107,9 +2107,9 @@ extern "C" fn handle_key_up(this: &Object, _: Sel, native_event: id) {
 //  Czech (QWERTY) layout:
 //   - in vim mode `option-4`  should go to end of line (same as $)
 //  Japanese (Romaji) layout:
-//   - type `a i left down up enter enter` should create an unmarked text "鎰?
+//   - type `a i left down up enter enter` should create an unmarked text "あい"
 //   - In vim mode with `jj` bound to `vim::NormalBefore` in insert mode, typing 'j i' with
-//     Japanese IME should produce "銇? (ji), not "j銇?
+//     Japanese IME should produce "じ" (ji), not "jじ"
 
 /// Returns true if the current keyboard input source is a composition-based IME
 /// (e.g. Japanese Hiragana, Korean, Chinese Pinyin) that produces non-ASCII output.
@@ -2201,7 +2201,7 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
             // We also send printable keys to the IME first when an IME input source (e.g. Japanese,
             // Korean, Chinese) is active and the input handler accepts text input. This prevents
             // multi-stroke keybindings like `jj` from intercepting keys that the IME should compose
-            // (e.g. typing 'ji' should produce '銇?, not 'j銇?). If the IME doesn't handle the key,
+            // (e.g. typing 'ji' should produce 'じ', not 'jじ'). If the IME doesn't handle the key,
             // it calls `doCommandBySelector:` which routes it back to keybinding matching.
             let is_ime_printable_key = !is_composing
                 && key_down_event

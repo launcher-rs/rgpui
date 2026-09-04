@@ -1,17 +1,17 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
-//! View example 鈥?composing a text input from the `View` primitives.
+//! View 示例 —— 基于 `View` 原语组合文本输入组件。
 //!
-//! The whole point: a text input is deceptively complicated, and `View` makes it
-//! easy to compose one. Three pieces, each shown in its own section:
+//! 核心思路：文本输入看似简单实则复杂，`View` 让组合变得简单。
+//! 以下三个组件分别展示在独立的区块中：
 //!
-//!   * `Editor`  鈥?the workhorse entity: cursor, blink, focus, keyboard, and a
-//!                 specialized text renderer. All the hard parts live here.
-//!   * `String`  鈥?the data plane. `editor.text(cx)` / `value.read(cx)` get it out.
-//!   * `Input` / `TextArea` 鈥?the shaping layer. Each takes a `String` (and grows
-//!                 the editor internally) OR an `Editor` (so you can read the cursor).
+//! * `Editor` —— 核心实体：光标、闪烁、焦点、键盘输入以及专用文本渲染器，
+//!   所有复杂逻辑都封装在这里。
+//! * `String` —— 数据层。通过 `editor.text(cx)` / `value.read(cx)` 获取内容。
+//! * `Input` / `TextArea` —— 布局层。各自接受一个 `String`（内部自行创建 Editor）
+//!   或一个已有的 `Editor`（可读取其光标状态）。
 //!
-//! Run: `cargo run -p rgpui --example view_example`
+//! 运行方式：`cargo run -p view_example`
 
 mod example_editor;
 mod example_input;
@@ -35,8 +35,8 @@ actions!(
     [Backspace, Delete, Left, Right, Home, End, Enter, Quit]
 );
 
-/// A tiny stateless view that reads an editor's cursor and is composed *beside*
-/// the thing editing it 鈥?two views over one entity, zero wiring.
+/// 一个无状态的轻量视图，读取编辑器的光标位置并组合在编辑器旁边
+/// —— 两个视图共享同一个实体，无需额外连接。
 #[derive(IntoElement)]
 struct CursorReadout {
     editor: Entity<Editor>,
@@ -68,11 +68,11 @@ impl ViewExample {
 
 impl Render for ViewExample {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // The data plane: plain strings, allocated at the top by the hook.
+        // 数据层：纯字符串，通过 hook 在顶部分配。
         let name = window.use_state(cx, |_, _| String::new());
         let email = window.use_state(cx, |_, _| String::from("me@example.com"));
         let bio = window.use_state(cx, |_, _| String::new());
-        // Editors that own their own string internally 鈥?no extra wiring up top.
+        // 内部拥有字符串的编辑器 —— 顶部无需额外的字段。
         let notes = window.use_state(cx, |window, cx| Editor::new("multi\nline", window, cx));
         let owned = window.use_state(cx, |window, cx| Editor::new("editable", window, cx));
 
@@ -84,7 +84,7 @@ impl Render for ViewExample {
             .p(px(24.))
             .gap(px(24.))
             .child(
-                section("Inputs 鈥?from a String (cursor stays internal)")
+                section("输入框 —— 基于 String（光标在内部管理）")
                     .child(Input::new(name).width(px(320.)))
                     .child(
                         Input::new(email)
@@ -93,7 +93,7 @@ impl Render for ViewExample {
                     ),
             )
             .child(
-                section("Input 鈥?from an Editor (read its cursor beside it)").child(
+                section("输入框 —— 基于 Editor（可读取其光标）").child(
                     div()
                         .flex()
                         .items_center()
@@ -103,7 +103,7 @@ impl Render for ViewExample {
                 ),
             )
             .child(
-                section("Text areas 鈥?from a String, or from an Editor")
+                section("文本域 —— 基于 String 或 Editor")
                     .child(TextArea::new(bio, 3))
                     .child(
                         div()
@@ -122,7 +122,7 @@ impl Render for ViewExample {
     }
 }
 
-/// A labeled vertical section.
+/// 创建带标签的垂直区块。
 fn section(title: &str) -> Div {
     div().flex().flex_col().gap(px(8.)).child(
         div()

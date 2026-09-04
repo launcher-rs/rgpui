@@ -31,8 +31,8 @@ struct EffectsApp {
 
 impl EffectsApp {
     fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let confetti_state = cx.new(|cx| ConfettiState::new(cx));
-        let particle_state = cx.new(|cx| ParticleEmitterState::new(cx));
+        let confetti_state = cx.new(ConfettiState::new);
+        let particle_state = cx.new(ParticleEmitterState::new);
         Self {
             confetti_state,
             particle_state,

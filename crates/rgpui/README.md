@@ -28,8 +28,8 @@ rgpui 是 [rgpui](https://github.com/launcher-rs/rgpui) 项目的核心 crate，
 
 ```toml
 [dependencies]
-rgpui = "0.1"
-rgpui_platform = "0.1"
+rgpui = "1.0"
+rgpui_platform = "1.0"
 ```
 
 ### 最小示例

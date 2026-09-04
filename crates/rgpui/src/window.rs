@@ -350,8 +350,8 @@ impl ElementArenaScope {
         );
         self.exited = true;
         // Teardown (restoring the thread-local and ending the arena's
-        // clear-deferral scope) runs in `Drop`, which fires both here 鈥?`self`
-        // is dropped as `exit` returns, before the token reaches the caller 鈥?        // and when a panic unwinds the draw before `exit` is reached.
+        // clear-deferral scope) runs in `Drop`, which fires both here  — `self`
+        // is dropped as `exit` returns, before the token reaches the caller  —         // and when a panic unwinds the draw before `exit` is reached.
         ArenaClearNeeded::new(arena)
     }
 }
@@ -1560,7 +1560,7 @@ impl Window {
                 // bypasses the view cache.
                 //
                 // Returning here skips `complete_frame`, which on Wayland would
-                // stall the window's frame callbacks (no `surface.commit()`) 鈥?                // but calling it would hit the App borrow panic above, and this
+                // stall the window's frame callbacks (no `surface.commit()`)  —                 // but calling it would hit the App borrow panic above, and this
                 // branch is unreachable there in practice: only Windows pumps
                 // platform events (and thus requests frames) mid-draw.
                 if draw_in_progress() {

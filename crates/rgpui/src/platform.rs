@@ -1978,7 +1978,7 @@ impl PlatformInputHandler {
             }
             bounds_for_range(line_start..line_start)
         } else {
-            // No active composition 鈥?use the selection endpoint.
+            // No active composition  — use the selection endpoint.
             let offset = if selection.reversed {
                 selection.range.start
             } else {

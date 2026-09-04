@@ -59,8 +59,8 @@ impl TokioExample {
 
         // 将 JoinError 转换为 anyhow::Error，统一交给 await_task 处理
         let task = cx.spawn(async move |_, _| {
-            let result = raw_task.await.map_err(anyhow::Error::from);
-            result
+            
+            raw_task.await.map_err(anyhow::Error::from)
         });
         self.await_task(cx, task);
     }

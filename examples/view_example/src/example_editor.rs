@@ -1,4 +1,4 @@
-//! `Editor` 鈥?the workhorse entity. It owns the cursor, blink, focus, keyboard
+//! `Editor`  — the workhorse entity. It owns the cursor, blink, focus, keyboard
 //! handling, and the specialized text-shaping renderer. The *text itself* lives
 //! in a shared `Entity<String>` it's handed at construction, so the value is
 //! readable/writable from outside while the editing machinery stays in here.
@@ -50,7 +50,7 @@ impl Editor {
         // The value is shared: anything can write it while we hold a cursor into
         // it. Observe it so external writes (a) clamp the cursor back onto a char
         // boundary before the next IME round-trip can slice out of bounds, and
-        // (b) notify us, so an `editor.cached(..)` subtree re-renders 鈥?the cache
+        // (b) notify us, so an `editor.cached(..)` subtree re-renders  — the cache
         // is keyed on *our* notify, not the value's.
         let value_sub = cx.observe(&value, |this, value, cx| {
             let content = value.read(cx);
@@ -337,7 +337,7 @@ impl rgpui::Render for Editor {
 }
 
 // ---------------------------------------------------------------------------
-// EditorText 鈥?the specialized renderer: shapes the text and paints the cursor.
+// EditorText  — the specialized renderer: shapes the text and paints the cursor.
 // ---------------------------------------------------------------------------
 
 struct EditorText {

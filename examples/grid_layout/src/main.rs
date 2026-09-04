@@ -27,7 +27,7 @@ impl Render for HolyGrailExample {
                     .items_center()
             };
 
-            let header = block(rgpui::white()).child(format!("Header 鈥?{}", container_size.width));
+            let header = block(rgpui::white()).child(format!("Header  — {}", container_size.width));
             let table_of_contents = block(rgpui::red()).child("Table of contents");
             let content = block(rgpui::green()).child("Content");
             let ad = block(rgpui::blue())

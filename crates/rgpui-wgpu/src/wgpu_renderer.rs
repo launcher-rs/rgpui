@@ -1629,7 +1629,7 @@ impl WgpuRenderer {
     /// Mark the surface as unconfigured so rendering is skipped until a new
     /// surface is provided via [`replace_surface`](Self::replace_surface).
     ///
-    /// This does **not** drop the renderer 鈥?the device, queue, atlas, and
+    /// This does **not** drop the renderer  — the device, queue, atlas, and
     /// pipelines stay alive.  Use this when the native window is destroyed
     /// (e.g. Android `TerminateWindow`) but you intend to re-create the
     /// surface later without losing cached atlas textures.
@@ -1686,7 +1686,7 @@ impl WgpuRenderer {
             surface.configure(&res.device, &self.surface_config);
             res.surface = surface;
 
-            // Invalidate intermediate textures 鈥?they'll be recreated lazily.
+            // Invalidate intermediate textures  — they'll be recreated lazily.
             res.invalidate_intermediate_textures();
         }
 
@@ -1745,7 +1745,7 @@ impl WgpuRenderer {
 
             // Wait briefly for the GPU driver to stabilize, then try to
             // recreate the context without software renderers. If this fails
-            // the caller should request another frame and retry 鈥?the real GPU
+            // the caller should request another frame and retry  — the real GPU
             // may need more time to come back (e.g. after suspend/resume).
             std::thread::sleep(std::time::Duration::from_millis(350));
 

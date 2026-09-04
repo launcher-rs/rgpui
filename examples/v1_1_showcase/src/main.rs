@@ -112,31 +112,32 @@ impl ShowcaseApp {
         ];
 
         let tab_drag_state = cx.new(|_| {
-            let mut state = TabDragState::default();
-            state.enabled = true;
-            state.tabs = vec![
-                TabItem {
-                    title: "main.rs".to_string(),
-                    id: "t1".to_string(),
-                    closable: true,
-                },
-                TabItem {
-                    title: "lib.rs".to_string(),
-                    id: "t2".to_string(),
-                    closable: true,
-                },
-                TabItem {
-                    title: "mod.rs".to_string(),
-                    id: "t3".to_string(),
-                    closable: false,
-                },
-                TabItem {
-                    title: "utils.rs".to_string(),
-                    id: "t4".to_string(),
-                    closable: true,
-                },
-            ];
-            state
+            TabDragState {
+                enabled: true,
+                tabs: vec![
+                    TabItem {
+                        title: "main.rs".to_string(),
+                        id: "t1".to_string(),
+                        closable: true,
+                    },
+                    TabItem {
+                        title: "lib.rs".to_string(),
+                        id: "t2".to_string(),
+                        closable: true,
+                    },
+                    TabItem {
+                        title: "mod.rs".to_string(),
+                        id: "t3".to_string(),
+                        closable: false,
+                    },
+                    TabItem {
+                        title: "utils.rs".to_string(),
+                        id: "t4".to_string(),
+                        closable: true,
+                    },
+                ],
+                ..Default::default()
+            }
         });
 
         Self {
@@ -325,16 +326,14 @@ impl Render for ShowcaseApp {
                     .child(h_flex().gap(px(8.0))
                         .child(Button::new("move-left").label("左移").ghost().on_click(cx.listener(|this, _, _, cx| {
                             let state = this.tab_drag_state.read(cx);
-                            if let Some(first) = state.tabs.iter().position(|t| t.closable) {
-                                if first > 0 { let (from, to) = (first, first - 1); let _ = state;
-                                    this.tab_drag_state.update(cx, |s, _| s.move_tab(from, to)); cx.notify(); }
-                            } })))
+                            if let Some(first) = state.tabs.iter().position(|t| t.closable)
+                                && first > 0 { let (from, to) = (first, first - 1); let _ = state;
+                                    this.tab_drag_state.update(cx, |s, _| s.move_tab(from, to)); cx.notify(); } })))
                         .child(Button::new("move-right").label("右移").ghost().on_click(cx.listener(|this, _, _, cx| {
                             let state = this.tab_drag_state.read(cx);
-                            if let Some(first) = state.tabs.iter().position(|t| t.closable) {
-                                if first < state.tabs.len() - 1 { let (from, to) = (first, first + 1); let _ = state;
-                                    this.tab_drag_state.update(cx, |s, _| s.move_tab(from, to)); cx.notify(); }
-                            } })))
+                            if let Some(first) = state.tabs.iter().position(|t| t.closable)
+                                && first < state.tabs.len() - 1 { let (from, to) = (first, first + 1); let _ = state;
+                                    this.tab_drag_state.update(cx, |s, _| s.move_tab(from, to)); cx.notify(); } })))
                         .child(Button::new("reset-tabs").label("重置").primary().on_click(cx.listener(|this, _, _, cx| {
                             this.tab_drag_state.update(cx, |s, _| {
                                 s.tabs = vec![

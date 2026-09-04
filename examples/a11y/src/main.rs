@@ -83,7 +83,7 @@ impl Render for A11yDemo {
                     .font_weight(rgpui::FontWeight::BOLD)
                     .child(text!("Accessibility Demo")),
             )
-            // Counter 鈥?uses a SpinButton role with Increment/Decrement
+            // Counter  — uses a SpinButton role with Increment/Decrement
             // actions so screen readers can adjust the value directly.
             // Click also works via the built-in handler.
             .child(

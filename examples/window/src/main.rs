@@ -290,7 +290,7 @@ impl Render for WindowDemo {
                     PromptLevel::Info,
                     "Are you sure?",
                     None,
-                    &[PromptButton::ok("纭畾"), PromptButton::cancel("鍙栨秷")],
+                    &[PromptButton::ok("确定"), PromptButton::cancel("取消")],
                     cx,
                 );
 

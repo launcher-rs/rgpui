@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[features]
+wayland = ["rgpui/wayland"]
+
 [dependencies]
 rgpui = { workspace = true, features = ["wayland"] }
 rgpui-platform.workspace = true

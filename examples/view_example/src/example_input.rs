@@ -1,9 +1,9 @@
-//! `Input` 鈥?a single-line text input. The shaping layer over `Editor`.
+//! `Input`  — a single-line text input. The shaping layer over `Editor`.
 //!
 //! Construct it two ways, depending on how much state you want to own:
-//!   * `Input::new(value: Entity<String>)`  鈥?you hold just the string; the input
+//!   * `Input::new(value: Entity<String>)`   — you hold just the string; the input
 //!     allocates the `Editor` internally via `use_state`. Value readable, cursor hidden.
-//!   * `Input::editor(editor: Entity<Editor>)` 鈥?you hold the editor; cursor/selection
+//!   * `Input::editor(editor: Entity<Editor>)`  — you hold the editor; cursor/selection
 //!     are now yours to read and drive too.
 //!
 //! Either way the chrome is identical. Because the string (or editor) is the
