@@ -113,7 +113,7 @@ impl FileWatcher {
     pub fn check_changes(&mut self) -> Vec<FileEvent> {
         let mut events = Vec::new();
 
-        for (path, _callback) in &self.watchers {
+        for (path, callback) in &self.watchers {
             if let Ok(metadata) = std::fs::metadata(path) {
                 if let Ok(modified) = metadata.modified() {
                     let last = self.last_state.get(path).cloned();
@@ -121,7 +121,9 @@ impl FileWatcher {
 
                     if let Some(last_time) = last {
                         if modified > last_time {
-                            events.push(FileEvent::Modified(path.clone()));
+                            let event = FileEvent::Modified(path.clone());
+                            callback(event.clone());
+                            events.push(event);
                         }
                     } else {
                         // 首次监视，记录状态
@@ -130,7 +132,9 @@ impl FileWatcher {
             } else {
                 // 文件不存在，可能被删除
                 if self.last_state.contains_key(path) {
-                    events.push(FileEvent::Deleted(path.clone()));
+                    let event = FileEvent::Deleted(path.clone());
+                    callback(event.clone());
+                    events.push(event);
                     self.last_state.remove(path);
                 }
             }
@@ -193,8 +197,8 @@ impl AsyncFileWatcher {
             );
             loop {
                 interval.tick().await;
+                // check_changes() 内部会调用注册的回调派发事件
                 let _events = inner.lock().unwrap().check_changes();
-                // 事件可以通过通道发送给订阅者
             }
         });
         self._task = Some(handle);

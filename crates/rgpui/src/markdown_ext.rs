@@ -19,6 +19,8 @@
 
 use std::collections::HashMap;
 
+use regex::Regex;
+
 /// Markdown 插件 trait。
 pub trait MarkdownPlugin {
     /// 插件名称。
@@ -202,11 +204,12 @@ impl Default for PluginManager {
     }
 }
 
-/// 简单的正则替换辅助函数。
-fn regex_replace(input: &str, _pattern: &str, _replacement: &str) -> String {
-    // 简化实现：使用字符串替换
-    // 实际项目中应使用 regex crate
-    input.to_string()
+/// 正则替换辅助函数。
+fn regex_replace(input: &str, pattern: &str, replacement: &str) -> String {
+    match Regex::new(pattern) {
+        Ok(re) => re.replace_all(input, replacement).to_string(),
+        Err(_) => input.to_string(),
+    }
 }
 
 /// 内置插件：代码高亮。
