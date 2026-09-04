@@ -255,6 +255,18 @@ pub mod mouse_gestures;
 /// 滚动物理模型 - 滚动惯性（动量）、减速度与越界回弹
 pub mod scroll_physics;
 
+/// 文件监视 API - 监控文件或目录的变化
+pub mod file_watcher;
+
+/// 配置持久化 API - 应用配置的加载、保存和监听
+pub mod config_store;
+
+/// Chat UI 组件 - 聊天消息展示
+pub mod chat_ui;
+
+/// FPS 监控 HUD - 实时帧率/CPU/内存监控
+pub mod fps_hud;
+
 /// Tokio 异步运行时集成 - 在 Tokio 线程池上生成任务并通过 RGPUI 任务返回结果（feature `tokio` 门控）
 #[cfg(feature = "tokio")]
 pub mod tokio;

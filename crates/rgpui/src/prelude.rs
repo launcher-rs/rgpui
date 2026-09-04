@@ -50,3 +50,15 @@ pub use crate::highlight::{
     Highlighter, HighlighterFactory, HighlightStyleResolver, NoHighlightStyles,
     TextEdit, FoldRange,
 };
+
+// 文件监视 API。
+pub use crate::file_watcher::{FileWatcher, FileEvent, FileWatcherConfig};
+
+// 配置持久化 API。
+pub use crate::config_store::ConfigStore;
+
+// Chat UI 组件。
+pub use crate::chat_ui::{ChatView, ChatState, Message, MessageGroup, MessageType};
+
+// FPS 监控 HUD。
+pub use crate::fps_hud::{FpsHud, FpsHudState};
