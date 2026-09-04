@@ -2,9 +2,10 @@
 //!
 //! 提供大文件异步加载功能，避免阻塞 UI 线程。支持分块读取和取消。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use ropey::Rope;
+#[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 
 /// 加载进度。

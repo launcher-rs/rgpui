@@ -17,7 +17,9 @@
 
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(feature = "tokio")]
+use std::sync::Mutex;
 
 /// 文件事件类型。
 #[derive(Debug, Clone)]

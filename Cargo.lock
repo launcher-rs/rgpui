@@ -9393,6 +9393,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "v1_1_features"
+version = "0.1.0"
+dependencies = [
+ "rgpui",
+ "rgpui-platform",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "v_frame"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

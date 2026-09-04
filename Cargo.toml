@@ -76,6 +76,7 @@ members = [
     "examples/window_movable",
     "examples/window_positioning",
     "examples/window_shadow",
+    "examples/v1_1_features",
 ]
 
 [workspace.package]
