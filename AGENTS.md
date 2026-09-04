@@ -393,6 +393,7 @@ fn get_raw_handle(&self) -> HWND                               // 获取原始 H
 24. `cargo publish -p rgpui --dry-run` 通过（不再需要 `--no-verify`）
 25. v1.1.0-alpha 功能存在：`push_notification`（App 方法）、`init_all`（`init.rs` 模块）、`minimize_to_tray`（App 方法）、`show_all_windows` / `hide_all_windows` / `minimize_all_windows`（App 方法）、`SearchPanel`（`components/search_panel.rs`）
 26. `crates/rgpui-webview` v1.0.0 独立库存在（`WebView` + `WebViewHandle` + `load_url`/`load_html`/`forward`/`reload`/`eval_script`）
+27. v1.1.0-beta 功能存在：`lsp` feature 门控（`LspClient` trait + 补全/悬停/定义/诊断/语义高亮子系统）、`highlight` 模块（`Highlighter` trait）、`StatusBar` 组件（`components/status_bar.rs`）
 
 ## Web/WASM 开发
 
