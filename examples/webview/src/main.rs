@@ -36,6 +36,9 @@ impl WebViewApp {
         });
         self.webview = Some(webview_entity);
         self.current_url = url.to_string();
+        // 必须手动通知重绘：WebView 实体只有被渲染后，`prepaint`
+        // 才会把原生窗口同步到布局尺寸；否则原生窗口保持 0×0 不可见。
+        cx.notify();
     }
 }
 
