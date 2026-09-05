@@ -271,38 +271,73 @@ fn render_pie_chart(
         );
     }
 
-    let ring_width = outer_radius - inner_radius;
-    let ring_count = ((ring_width / 3.0).max(1.0) as usize).min(20);
-
     let mut container = div()
         .size(chart_size)
         .rounded(px(9999.0))
         .relative()
         .overflow_hidden();
 
-    for ring_idx in 0..ring_count {
-        let ring_radius = inner_radius + (ring_idx as f32 + 0.5) * (ring_width / ring_count as f32);
-        let circumference = std::f32::consts::TAU * ring_radius;
-        let dots_in_ring = (circumference / 4.0).max(16.0) as usize;
+    // 用矢量填充路径绘制每个扇区（实心扇形 / 环形扇环），替代点阵圆点：
+    // 点阵会在圆点之间留下缝隙（透出背景形成白点）与锯齿边缘。
+    let paint_data = PiePaintData {
+        segments: segment_data,
+        outer_radius,
+        inner_radius,
+    };
+    container = container.child(
+        canvas(
+            move |_bounds, _window, _cx| paint_data,
+            move |bounds, data, window, _cx| {
+                if bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
+                    return;
+                }
 
-        for i in 0..dots_in_ring {
-            let angle = -std::f32::consts::FRAC_PI_2
-                + (i as f32 / dots_in_ring as f32) * std::f32::consts::TAU;
-            let color = get_color_at_angle(angle, &segment_data);
-            let x = center + ring_radius * angle.cos() - 2.0;
-            let y = center + ring_radius * angle.sin() - 2.0;
+                let center_x = pixels_to_f32(bounds.left() + bounds.size.width * 0.5);
+                let center_y = pixels_to_f32(bounds.top() + bounds.size.height * 0.5);
+                // 相邻扇区略微重叠，避免抗锯齿接缝处透出背景。
+                let overlap = 0.0035;
 
-            container = container.child(
-                div()
-                    .absolute()
-                    .size(px(5.0))
-                    .rounded(px(9999.0))
-                    .bg(color)
-                    .left(px(x))
-                    .top(px(y)),
-            );
-        }
-    }
+                for &(start, sweep, color) in &data.segments {
+                    let end = start + sweep + overlap;
+                    // 按扫过弧长自适应分段，保证曲线平滑。
+                    let steps = ((sweep * data.outer_radius / 2.0).ceil() as usize).clamp(2, 256);
+
+                    let mut builder = PathBuilder::fill();
+                    if data.inner_radius <= 0.0 {
+                        builder.move_to(point(px(center_x), px(center_y)));
+                    } else {
+                        builder.move_to(point(
+                            px(center_x + data.inner_radius * start.cos()),
+                            px(center_y + data.inner_radius * start.sin()),
+                        ));
+                    }
+                    for i in 0..=steps {
+                        let t = i as f32 / steps as f32;
+                        let angle = start + (end - start) * t;
+                        builder.line_to(point(
+                            px(center_x + data.outer_radius * angle.cos()),
+                            px(center_y + data.outer_radius * angle.sin()),
+                        ));
+                    }
+                    if data.inner_radius > 0.0 {
+                        for i in (0..=steps).rev() {
+                            let t = i as f32 / steps as f32;
+                            let angle = start + (end - start) * t;
+                            builder.line_to(point(
+                                px(center_x + data.inner_radius * angle.cos()),
+                                px(center_y + data.inner_radius * angle.sin()),
+                            ));
+                        }
+                    }
+                    builder.close();
+                    if let Ok(path) = builder.build() {
+                        window.paint_path(path, color);
+                    }
+                }
+            },
+        )
+        .size_full(),
+    );
 
     if variant == PieChartVariant::Donut {
         let inner_size = inner_radius * 2.0 - 4.0;
@@ -334,25 +369,12 @@ fn render_pie_chart(
     container
 }
 
-/// 根据角度获取扇区颜色。
-fn get_color_at_angle(angle: f32, segment_data: &[(f32, f32, Hsla)]) -> Hsla {
-    let normalized_angle = if angle < -std::f32::consts::FRAC_PI_2 {
-        angle + std::f32::consts::TAU
-    } else {
-        angle
-    };
-
-    for &(start_angle, sweep_angle, color) in segment_data {
-        let end_angle = start_angle + sweep_angle;
-        if normalized_angle >= start_angle && normalized_angle < end_angle {
-            return color;
-        }
-    }
-
-    segment_data
-        .last()
-        .map(|&(_, _, c)| c)
-        .unwrap_or(hsla(0.0, 0.0, 0.5, 1.0))
+/// 饼图画布绘制数据：各扇区（起始角，扫过角，颜色）与内外半径。
+#[derive(Clone)]
+struct PiePaintData {
+    segments: Vec<(f32, f32, Hsla)>,
+    outer_radius: f32,
+    inner_radius: f32,
 }
 
 /// 渲染单扇区（整圆）。

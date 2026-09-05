@@ -17,13 +17,22 @@
 
 use rgpui::{
     ActiveTheme, App, AppContext as _, Bounds, Context, InteractiveElement, IntoElement,
-    ParentElement, Render, Styled, StyledExt, Window, WindowBounds, WindowOptions, div, h_flex, px,
-    size, v_flex,
+    ParentElement, Render, StatefulInteractiveElement as _, Styled, StyledExt, Window,
+    WindowBounds, WindowOptions, div, h_flex, px, size, v_flex,
 };
 use rgpui_platform::application;
 
 /// 输入延迟直方图示例根视图。
-struct InputLatencyExample;
+///
+/// 注意：延迟统计只记录“触发了界面更新”的输入事件（未引起重绘的
+/// 事件不会产生输入→帧呈现的延迟样本）。因此下面的演示区通过
+/// 点击计数与悬停变色保证鼠标交互每次都触发更新，从而能被统计到。
+struct InputLatencyExample {
+    /// 点击计数：点击窗口任意位置累加。
+    clicks: usize,
+    /// 演示区悬停状态：鼠标移入/移出改变外观。
+    demo_hovered: bool,
+}
 
 impl Render for InputLatencyExample {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -32,12 +41,23 @@ impl Render for InputLatencyExample {
 
         // 读取当前窗口的输入延迟统计快照。
         let snapshot = window.input_latency_snapshot();
+        let clicks = self.clicks;
+        // 悬停高亮背景：提前算好，避免在 `Stateful<Div>` 上调用其不支持的 `.when()`。
+        let demo_bg = if self.demo_hovered {
+            rgpui::hsla(0.6, 0.5, 0.5, 0.25)
+        } else {
+            rgpui::hsla(0.0, 0.0, 0.0, 0.0)
+        };
 
         v_flex()
             .id("input-latency-example")
             .size_full()
             .p(px(32.0))
             .gap(px(24.0))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.clicks += 1;
+                cx.notify();
+            }))
             .child(
                 v_flex()
                     .gap(px(8.0))
@@ -46,7 +66,9 @@ impl Render for InputLatencyExample {
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child("提示：移动鼠标或点击窗口内空白区域，观察延迟统计实时变化。"),
+                            .child(
+                                "提示：在下方演示区移动鼠标或点击窗口任意位置（已点击响应的事件才会被统计），观察延迟统计实时变化。",
+                            ),
                     ),
             )
             .child(
@@ -62,6 +84,22 @@ impl Render for InputLatencyExample {
                     .child(format!(
                         "帧绘制期间到达而被丢弃的事件：{}",
                         snapshot.mid_draw_events_dropped
+                    )),
+            )
+            .child(
+                div()
+                    .id("latency-interaction-demo")
+                    .p(px(16.0))
+                    .rounded(px(8.0))
+                    .border_1()
+                    .border_color(rgpui::hsla(0.0, 0.0, 0.5, 0.3))
+                    .bg(demo_bg)
+                    .on_hover(cx.listener(|this, hovered, _, cx| {
+                        this.demo_hovered = *hovered;
+                        cx.notify();
+                    }))
+                    .child(format!(
+                        "交互演示区：悬停会高亮，累计点击 {clicks} 次（每次点击/悬停变化都会触发重绘并被统计）",
                     )),
             )
     }
@@ -140,7 +178,12 @@ fn run_example() {
                 ))),
                 ..Default::default()
             },
-            |_window, cx| cx.new(|_| InputLatencyExample),
+            |_window, cx| {
+                cx.new(|_| InputLatencyExample {
+                    clicks: 0,
+                    demo_hovered: false,
+                })
+            },
         )
         .ok();
 

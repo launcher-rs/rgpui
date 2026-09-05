@@ -9,16 +9,54 @@ use rgpui_platform::application;
 struct SetMenus;
 
 impl Render for SetMenus {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // 将已存储的菜单读回并展示：原生菜单栏仅在 macOS 显示为系统全局菜单；
+        // 在 Windows/Linux 上 `set_menus` 只存储数据（可通过 `get_menus` 读回），
+        // 不会渲染原生菜单栏，因此这里把存储内容直接画出来作为反馈。
+        let stored = cx.get_menus().unwrap_or_default();
+
         div()
             .flex()
+            .flex_col()
             .bg(rgpui::white())
             .size_full()
-            .justify_center()
-            .items_center()
-            .text_xl()
+            .p_8()
+            .gap_4()
             .text_color(rgpui::black())
-            .child("Set Menus Example")
+            .child(div().text_xl().child("Set Menus Example"))
+            .child(
+                div()
+                    .text_sm()
+                    .child("原生应用菜单栏仅在 macOS 显示为系统全局菜单；在 Windows/Linux 上 set_menus 仅存储数据（可用 get_menus 读回），不会渲染原生菜单栏。",
+                    ),
+            )
+            .child(
+                div()
+                    .id("toggle-view-mode")
+                    .px_4()
+                    .py_2()
+                    .rounded_md()
+                    .bg(rgpui::black())
+                    .text_color(rgpui::white())
+                    .text_sm()
+                    .child("切换视图模式（List / Grid，将刷新下方读回结果）")
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        toggle_check(&ToggleCheck, cx);
+                        cx.refresh_windows();
+                    })),
+            )
+            .child(div().text_base().child(format!(
+                "已存储的顶层菜单（get_menus 读回，共 {} 个）：",
+                stored.len()
+            )))
+            .children(stored.iter().map(|menu| {
+                div().text_sm().child(format!(
+                    "· {}{}（{} 项）",
+                    menu.name,
+                    if menu.disabled { " [禁用]" } else { "" },
+                    menu.items.len()
+                ))
+            }))
     }
 }
 
