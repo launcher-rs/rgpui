@@ -153,7 +153,7 @@ serde_urlencoded.workspace = true
 sha2.workspace = true
 shlex.workspace = true
 take-until.workspace = true
-tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time"], optional = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time", "fs", "io-util"], optional = true }
 tracing.workspace = true
 unicase.workspace = true
 stacksafe.workspace = true
