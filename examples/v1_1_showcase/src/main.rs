@@ -111,33 +111,31 @@ impl ShowcaseApp {
             Message::code_block("rust", "let msg = Message::text(\"hello\");"),
         ];
 
-        let tab_drag_state = cx.new(|_| {
-            TabDragState {
-                enabled: true,
-                tabs: vec![
-                    TabItem {
-                        title: "main.rs".to_string(),
-                        id: "t1".to_string(),
-                        closable: true,
-                    },
-                    TabItem {
-                        title: "lib.rs".to_string(),
-                        id: "t2".to_string(),
-                        closable: true,
-                    },
-                    TabItem {
-                        title: "mod.rs".to_string(),
-                        id: "t3".to_string(),
-                        closable: false,
-                    },
-                    TabItem {
-                        title: "utils.rs".to_string(),
-                        id: "t4".to_string(),
-                        closable: true,
-                    },
-                ],
-                ..Default::default()
-            }
+        let tab_drag_state = cx.new(|_| TabDragState {
+            enabled: true,
+            tabs: vec![
+                TabItem {
+                    title: "main.rs".to_string(),
+                    id: "t1".to_string(),
+                    closable: true,
+                },
+                TabItem {
+                    title: "lib.rs".to_string(),
+                    id: "t2".to_string(),
+                    closable: true,
+                },
+                TabItem {
+                    title: "mod.rs".to_string(),
+                    id: "t3".to_string(),
+                    closable: false,
+                },
+                TabItem {
+                    title: "utils.rs".to_string(),
+                    id: "t4".to_string(),
+                    closable: true,
+                },
+            ],
+            ..Default::default()
         });
 
         Self {

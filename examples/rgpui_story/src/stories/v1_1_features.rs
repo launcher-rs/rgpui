@@ -859,9 +859,11 @@ impl ChatStory {
 
 impl Render for ChatStory {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let messages = [Message::text("你好！欢迎使用 rgpui Chat UI"),
+        let messages = [
+            Message::text("你好！欢迎使用 rgpui Chat UI"),
             Message::text("这是一个消息列表组件"),
-            Message::code_block("rust", "let msg = Message::text(\"hello\");")];
+            Message::code_block("rust", "let msg = Message::text(\"hello\");"),
+        ];
 
         v_flex()
             .id("chat-story")
