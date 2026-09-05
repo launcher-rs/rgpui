@@ -7,4 +7,4 @@ publish = false
 [dependencies]
 rgpui = { workspace = true, features = ["webview"] }
 rgpui-platform.workspace = true
-wry = { version = "0.53.3", package = "lb-wry" }
+wry = "0.56.1"
