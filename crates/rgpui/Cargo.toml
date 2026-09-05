@@ -175,7 +175,7 @@ lsp-types = { workspace = true, optional = true }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 unicode-segmentation = { workspace = true }
 qrcode = { workspace = true, optional = true }
-wry = { version = "0.53.3", package = "lb-wry", optional = true }
+wry = { version = "0.56.1", optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.4.3", features = ["wasm_js"] }
