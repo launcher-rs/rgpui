@@ -8942,6 +8942,7 @@ name = "tokio_example"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "reqwest",
  "rgpui",
  "rgpui-platform",
  "tokio",

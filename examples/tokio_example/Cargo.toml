@@ -5,10 +5,11 @@ edition = "2024"
 publish = false
 
 [features]
-reqwest = ["rgpui/reqwest"]
+reqwest = ["dep:reqwest", "rgpui/reqwest"]
 
 [dependencies]
 rgpui = { workspace = true, features = ["tokio"] }
 rgpui-platform.workspace = true
 anyhow.workspace = true
+reqwest = { workspace = true, optional = true }
 tokio.workspace = true
