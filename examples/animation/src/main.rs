@@ -1,6 +1,6 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use std::time::Duration;
+use mestd::time::Duration;
 
 use anyhow::Result;
 use rgpui::{
