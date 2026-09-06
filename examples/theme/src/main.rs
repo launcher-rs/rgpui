@@ -188,6 +188,9 @@ fn run_example() {
     application().run(|cx: &mut App| {
         // 初始化主题系统：注册默认主题并加载亮色模式。
         rgpui::theme::init(cx);
+        // 初始化菜单系统：主题下拉菜单（Popover/PopupMenu）依赖
+        // 菜单全局状态（GlobalState），缺失会在打开下拉菜单时 panic。
+        rgpui::menu::init(cx);
 
         cx.open_window(
             WindowOptions {

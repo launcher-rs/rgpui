@@ -10,8 +10,8 @@
 //! - （`reqwest` feature）通过 `Tokio::spawn` + `reqwest` 执行真实 HTTP 请求
 //!
 //! 运行：
-//! - 基础：cargo run -p rgpui --example tokio --features tokio
-//! - 含 HTTP 请求：cargo run -p rgpui --example tokio --features tokio,reqwest
+//! - 基础：cargo run --manifest-path examples/tokio_example/Cargo.toml
+//! - 含 HTTP 请求：cargo run --manifest-path examples/tokio_example/Cargo.toml --features reqwest
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
@@ -233,7 +233,7 @@ fn run_example() {
         // 初始化 Tokio 运行时（2 个工作线程）
         rgpui::tokio::init(cx);
 
-        let bounds = Bounds::centered(None, size(px(520.), px(320.0)), cx);
+        let bounds = Bounds::centered(None, size(px(520.), px(420.0)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
