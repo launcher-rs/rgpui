@@ -6,9 +6,11 @@ on:
   pull_request:
     branches: [dev, main]
 
-# 同一分支的推送和 PR 只保留一个运行，后到的取消先到的
+# 同一分支的推送和 PR 共用一个组，后到的取消先到的。
+# 注意不能用 github.ref：PR 事件里它是 refs/pull/N/merge，和 push 的
+# refs/heads/分支 对不上，改用 head_ref（PR 源分支）|| ref_name（push 分支）。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
