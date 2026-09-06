@@ -45,12 +45,13 @@ pub mod navigation_menu;
 pub mod notification_center;
 pub mod number_ticker;
 pub mod otp_input;
+pub mod pagination;
 #[cfg(feature = "effects")]
 pub mod particle_emitter;
-#[cfg(feature = "effects")]
 pub mod pulse_indicator;
 #[cfg(feature = "qr-code")]
 pub mod qr_code;
+pub mod rate;
 pub mod resizable;
 #[cfg(feature = "effects")]
 pub mod ripple;
@@ -65,9 +66,11 @@ pub mod sparkline;
 pub mod split_pane;
 pub mod spotlight;
 pub mod status_bar;
+pub mod steps;
 pub mod svg_renderer;
 pub mod tag_input;
 pub mod text_reveal;
+pub mod timeline;
 pub mod type_writer;
 pub mod view_router;
 pub mod waveform;
@@ -114,12 +117,14 @@ pub use otp_input::{
     OTPBackspace, OTPDelete, OTPEnd, OTPEscape, OTPHome, OTPInput, OTPInputEvent, OTPInputSize,
     OTPInputState, OTPLeft, OTPPaste, OTPRight, OTPState,
 };
+pub use pagination::*;
 #[cfg(feature = "effects")]
 pub use particle_emitter::*;
 #[cfg(feature = "effects")]
 pub use pulse_indicator::*;
 #[cfg(feature = "qr-code")]
 pub use qr_code::*;
+pub use rate::*;
 pub use resizable::*;
 #[cfg(feature = "effects")]
 pub use ripple::*;
@@ -134,9 +139,11 @@ pub use sparkline::*;
 pub use split_pane::*;
 pub use spotlight::*;
 pub use status_bar::*;
+pub use steps::*;
 pub use svg_renderer::*;
 pub use tag_input::*;
 pub use text_reveal::*;
+pub use timeline::*;
 pub use type_writer::*;
 pub use view_router::*;
 pub use waveform::*;
