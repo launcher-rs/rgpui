@@ -8,7 +8,8 @@
 use rgpui::prelude::*;
 use rgpui::{
     Button, ButtonVariants as _, Context, InteractiveElement, ParentElement, Render, Window,
-    WindowOptions, div, h_flex, px, rgb, size, v_flex, webview::WebView,
+    WindowBackgroundAppearance, WindowOptions, div, h_flex, px, rgb, size, v_flex,
+    webview::WebView,
 };
 use rgpui_platform::application;
 
@@ -90,6 +91,14 @@ impl Render for WebViewApp {
                             })),
                     )
                     .child(
+                        Button::new("load-baidu")
+                            .label("百度")
+                            .ghost()
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.create_webview("https://www.baidu.com", window, cx);
+                            })),
+                    )
+                    .child(
                         Button::new("load-html")
                             .label("加载 HTML")
                             .ghost()
@@ -139,7 +148,7 @@ impl Render for WebViewApp {
                     .w_full()
                     .when(self.webview.is_some(), |el| {
                         el.child(
-                            div()
+                            v_flex()
                                 .id("webview-wrapper")
                                 .flex_1()
                                 .w_full()
@@ -147,7 +156,11 @@ impl Render for WebViewApp {
                                     self.webview
                                         .as_ref()
                                         .map(|wv| {
-                                            div().id("webview-slot").child(wv.clone())
+                                            div()
+                                                .id("webview-slot")
+                                                .flex_1()
+                                                .w_full()
+                                                .child(wv.clone())
                                         })
                                         .unwrap_or_else(|| {
                                             div()
@@ -171,6 +184,7 @@ impl Render for WebViewApp {
                                 .flex()
                                 .items_center()
                                 .justify_center()
+                                .bg(rgb(0xffffff))
                                 .text_color(rgb(0x999))
                                 .child("点击上方按钮加载网页"),
                         )
@@ -187,6 +201,7 @@ fn main() {
                     rgpui::Point::default(),
                     size(px(900.0), px(600.0)),
                 ))),
+                window_background: WindowBackgroundAppearance::Opaque,
                 ..Default::default()
             },
             |window, cx| cx.new(|cx| WebViewApp::new(window, cx)),

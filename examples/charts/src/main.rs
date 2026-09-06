@@ -13,10 +13,7 @@
 use rgpui::components::charts::{
     BarChart, BarChartData, LineChart, LineChartPoint, LineChartSeries, PieChart, PieChartSegment,
 };
-use rgpui::{
-    App, AppContext as _, Bounds, Context, IntoElement, ParentElement, Render, Styled, Window,
-    WindowBounds, WindowOptions, div, px, size,
-};
+use rgpui::{App, AppContext as _, Bounds, Context, IntoElement, ParentElement, Render, Styled, Window, WindowBounds, WindowOptions, div, px, size, ScrollableElement};
 use rgpui_platform::application;
 
 /// 图表示例根视图：纵向排列多个图表。
@@ -54,6 +51,7 @@ impl Render for ChartsApp {
 
         div()
             .size_full()
+            .overflow_y_scrollbar()
             .p(px(24.0))
             .flex()
             .flex_col()
@@ -96,7 +94,7 @@ impl Render for ChartsApp {
 
 fn run_example() {
     application().run(|cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(900.), px(1200.0)), cx);
+        let bounds = Bounds::centered(None, size(px(900.), px(800.0)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
