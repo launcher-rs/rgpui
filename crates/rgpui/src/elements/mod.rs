@@ -1,5 +1,7 @@
+mod alert;
 mod anchored;
 mod animation;
+mod avatar;
 mod badge;
 mod button;
 mod button_icon;
@@ -32,8 +34,10 @@ mod tooltip;
 mod uniform_list;
 mod virtual_list;
 
+pub use alert::*;
 pub use anchored::*;
 pub use animation::*;
+pub use avatar::*;
 pub use badge::*;
 pub use button::*;
 pub use button_icon::*;
