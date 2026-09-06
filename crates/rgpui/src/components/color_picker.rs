@@ -134,7 +134,6 @@ impl ColorPickerState {
             cx.notify();
         }
     }
-
 }
 
 /// 读滑块单值（非单值时取 0）。
@@ -250,13 +249,7 @@ impl Render for ColorPickerState {
             .p(px(12.0))
             .gap(px(8.0))
             // 预览色块
-            .child(
-                div()
-                    .w_full()
-                    .h(px(48.0))
-                    .rounded_sm()
-                    .bg(self.color),
-            )
+            .child(div().w_full().h(px(48.0)).rounded_sm().bg(self.color))
             .child(slider_row("H", &hue, muted_foreground))
             .child(slider_row("S", &saturation, muted_foreground))
             .child(slider_row("L", &lightness, muted_foreground))

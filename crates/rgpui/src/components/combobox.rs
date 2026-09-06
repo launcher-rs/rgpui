@@ -3,7 +3,11 @@
 //! 输入框实时过滤 + 内联下拉列表（非浮层，免 `PopupMenu` 实体管理）。
 //! 状态由实体持有，父组件经 `cx.new(|cx| ComboboxState::new(window, cx))` 创建。
 
-use crate::{input_ui::{Input, InputEvent, InputState}, prelude::*, *};
+use crate::{
+    input_ui::{Input, InputEvent, InputState},
+    prelude::*,
+    *,
+};
 use std::sync::Arc;
 
 /// 可搜索下拉框状态实体。

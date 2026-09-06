@@ -96,20 +96,17 @@ impl RenderOnce for Select {
                 this
             })
             .dropdown_menu(move |menu, _, _| {
-                options
-                    .iter()
-                    .enumerate()
-                    .fold(menu, |menu, (ix, option)| {
-                        let option = option.clone();
-                        let on_change = on_change.clone();
-                        menu.item(PopupMenuItem::label(option.clone()).on_click(
-                            move |_, window, cx| {
-                                if let Some(ref cb) = on_change {
-                                    cb(ix, &option, window, cx);
-                                }
-                            },
-                        ))
-                    })
+                options.iter().enumerate().fold(menu, |menu, (ix, option)| {
+                    let option = option.clone();
+                    let on_change = on_change.clone();
+                    menu.item(PopupMenuItem::label(option.clone()).on_click(
+                        move |_, window, cx| {
+                            if let Some(ref cb) = on_change {
+                                cb(ix, &option, window, cx);
+                            }
+                        },
+                    ))
+                })
             })
     }
 }

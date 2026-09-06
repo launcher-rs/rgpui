@@ -136,12 +136,7 @@ impl RenderOnce for Alert {
                             .gap(px(2.0))
                             .child(div().text_sm().text_color(accent).child(self.title))
                             .when_some(self.body, |this, body| {
-                                this.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(muted_foreground)
-                                        .child(body),
-                                )
+                                this.child(div().text_xs().text_color(muted_foreground).child(body))
                             }),
                     ),
             )

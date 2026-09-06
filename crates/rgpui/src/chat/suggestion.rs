@@ -11,7 +11,8 @@ pub struct Suggestion {
     /// 建议文本列表。
     items: Vec<SharedString>,
     /// 选中回调（下标, 文本）。
-    on_pick: Option<Arc<dyn Fn(usize, &SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
+    on_pick:
+        Option<Arc<dyn Fn(usize, &SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 用户样式。
     style: StyleRefinement,
 }

@@ -33,8 +33,8 @@ mod tag;
 mod text;
 mod toast;
 mod toggle;
-mod typography;
 mod tooltip;
+mod typography;
 mod uniform_list;
 mod virtual_list;
 
@@ -73,7 +73,7 @@ pub use tag::*;
 pub use text::*;
 pub use toast::*;
 pub use toggle::*;
-pub use typography::*;
 pub use tooltip::*;
+pub use typography::*;
 pub use uniform_list::*;
 pub use virtual_list::*;

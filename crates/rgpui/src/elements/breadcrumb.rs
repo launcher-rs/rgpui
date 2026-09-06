@@ -76,11 +76,7 @@ impl RenderOnce for Breadcrumb {
                 let label = div()
                     .id(ix)
                     .text_sm()
-                    .text_color(if is_current {
-                        accent
-                    } else {
-                        muted_foreground
-                    })
+                    .text_color(if is_current { accent } else { muted_foreground })
                     .child(item.label.clone());
                 let label = match item.on_click {
                     Some(cb) if !is_current => label

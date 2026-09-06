@@ -155,12 +155,11 @@ impl RenderOnce for ThoughtChain {
                                 .flex_col()
                                 .flex_1()
                                 .gap(px(2.0))
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(muted_foreground)
-                                        .child(format!("{}. {}", ix + 1, step.title)),
-                                )
+                                .child(div().text_sm().text_color(muted_foreground).child(format!(
+                                    "{}. {}",
+                                    ix + 1,
+                                    step.title
+                                )))
                                 .child(
                                     div()
                                         .text_xs()

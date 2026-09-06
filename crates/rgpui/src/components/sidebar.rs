@@ -47,9 +47,8 @@ pub struct Sidebar {
     collapsed: bool,
     /// 选中回调。
     on_select: Option<Arc<dyn Fn(&SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
-    /// 折叠切换回调（参数为折叠后的状态）。
-    on_toggle_collapsed:
-        Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 折叠切换回调（参数为折叠后的状态，引用传参与 `cx.listener` 兼容）。
+    on_toggle_collapsed: Option<Arc<dyn Fn(&bool, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -110,7 +109,7 @@ impl Sidebar {
     /// 设置折叠切换回调。
     pub fn on_toggle_collapsed<F>(mut self, f: F) -> Self
     where
-        F: Fn(bool, &mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(&bool, &mut Window, &mut App) + Send + Sync + 'static,
     {
         self.on_toggle_collapsed = Some(Arc::new(f));
         self
@@ -195,7 +194,6 @@ impl RenderOnce for Sidebar {
         }
 
         if self.collapsible {
-            let collapsed = collapsed;
             let on_toggle_collapsed = self.on_toggle_collapsed;
             root = root.child(
                 div().flex_1().flex().flex_col().justify_end().child(
@@ -215,7 +213,8 @@ impl RenderOnce for Sidebar {
                                 })
                                 .on_click(move |_, window, cx| {
                                     if let Some(ref cb) = on_toggle_collapsed {
-                                        cb(!collapsed, window, cx);
+                                        let next = !collapsed;
+                                        cb(&next, window, cx);
                                     }
                                 }),
                         ),

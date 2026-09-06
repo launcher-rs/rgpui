@@ -61,7 +61,8 @@ impl RenderOnce for Toggle {
             .label(self.label)
             .map(|mut this| {
                 if pressed {
-                    this.style().refine(&StyleRefinement::default().bg(accent.opacity(0.15)));
+                    this.style()
+                        .refine(&StyleRefinement::default().bg(accent.opacity(0.15)));
                 }
                 this.style().refine(&user_style);
                 this

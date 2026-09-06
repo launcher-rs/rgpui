@@ -93,9 +93,7 @@ impl RenderOnce for Steps {
                             .text_xs()
                             .border_1()
                             .border_color(if done || active { accent } else { border })
-                            .when(done || active, |this| {
-                                this.bg(accent.opacity(0.15))
-                            })
+                            .when(done || active, |this| this.bg(accent.opacity(0.15)))
                             .text_color(if done || active {
                                 accent
                             } else {
@@ -116,19 +114,15 @@ impl RenderOnce for Steps {
                                     .child(item.title.clone()),
                             )
                             .when_some(item.description, |this, desc| {
-                                this.child(
-                                    div().text_xs().text_color(muted_foreground).child(desc),
-                                )
+                                this.child(div().text_xs().text_color(muted_foreground).child(desc))
                             }),
                     )
                     .when(ix + 1 < total, |this| {
-                        this.child(
-                            div()
-                                .flex_1()
-                                .h(px(1.0))
-                                .mt(px(12.0))
-                                .bg(if done { accent } else { border }),
-                        )
+                        this.child(div().flex_1().h(px(1.0)).mt(px(12.0)).bg(if done {
+                            accent
+                        } else {
+                            border
+                        }))
                     })
                     .into_any_element()
             }))

@@ -86,14 +86,15 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 | 子系统 | 模块 | 关键类型 |
 |--------|------|----------|
 | 滚动 | `elements/scroll/` | `Scrollable`、`Scrollbar`、`ScrollHandle` |
-| 基础元素 | `elements/` | `Button`、`Checkbox`、`Radio`、`Switch`、`Slider`、`Spinner`、`Skeleton`、`Badge`、`Tag`、`Separator`、`Kbd`、`Tooltip`、`Icon` |
+| 基础元素 | `elements/` | `Button`、`Checkbox`、`Radio`、`Switch`、`Slider`、`Spinner`、`Skeleton`、`Badge`、`Tag`、`Separator`、`Kbd`、`Tooltip`、`Icon`、`Avatar`、`Alert`、`Breadcrumb`、`Card`、`Typography`、`Toggle` |
 | 表单 | `form/` | `Form`、`Field`、`FieldBuilder` |
 | 输入 | `input_ui/` | `Input`、`MaskedInput`、`NumberInput`、`PasswordInput`、`TextArea`；`InputState::reveal_offset/reveal_range`、`TextDecorationCollection`、`Debouncer`（见 `docs/1.2.0-search-dev-plan.md`） |
-| 菜单 | `menu/` | `PopupMenu`、`ContextMenu`、`DropdownMenu`、`MenuBar`、`HoverCard`、`Notification`、`Toast` |
+| 菜单 | `menu/` | `PopupMenu`、`ContextMenu`、`DropdownMenu`、`Popconfirm`、`MenuBar`、`HoverCard`、`Notification`、`Toast` |
 | 对话框 | `dialog/` | `Dialog`、`AlertDialog`、`DialogHeader/Content/Footer`、`FocusTrapElement` |
 | 列表/表格/标签页 | `list/`、`table/`、`tabs/` | `List`、`VirtualList`、`DataTable`、`TabBar`、`Accordion` |
-| 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState` 等（`charts`/`effects`/`qr-code` feature 门控） |
+| 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState`、`Sidebar`、`Select`、`Combobox`、`DatePicker`、`ColorPicker`、`Pagination`、`Steps`、`Timeline`、`Rate` 等（`charts`/`effects`/`qr-code` feature 门控） |
 | 动画/手势/物理 | `animation/`、`mouse_gestures.rs`、`scroll_physics.rs` | `Spring`、`GestureDetector`、`ScrollPhysics` |
+| 对话（AI-chat） | `chat/` | `Message`/`MessageGroup`/`ChatView`、`Prompts`、`Suggestion`、`ThoughtChain`、`Attachments`/`FileCard`、`Sources`、`Actions`、`Sender` |
 
 `prelude` 含：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、
 `Sizable`、`StyledExt`、`FluentBuilder`。

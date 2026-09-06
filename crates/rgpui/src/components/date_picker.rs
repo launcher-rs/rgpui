@@ -117,19 +117,16 @@ impl Render for DatePickerState {
 
         let mut grid = div().flex().flex_col().gap(px(2.0));
         // 星期头
-        grid = grid.child(
-            div()
-                .flex()
-                .flex_row()
-                .children(["一", "二", "三", "四", "五", "六", "日"].iter().map(|d| {
-                    div()
-                        .w(px(28.0))
-                        .text_center()
-                        .text_xs()
-                        .text_color(muted_foreground)
-                        .child(*d)
-                })),
-        );
+        grid = grid.child(div().flex().flex_row().children(
+            ["一", "二", "三", "四", "五", "六", "日"].iter().map(|d| {
+                div()
+                    .w(px(28.0))
+                    .text_center()
+                    .text_xs()
+                    .text_color(muted_foreground)
+                    .child(*d)
+            }),
+        ));
         // 日期格（按周分行，共 42 格）
         for week in 0..6 {
             let panel = panel.clone();

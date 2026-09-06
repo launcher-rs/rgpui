@@ -115,12 +115,7 @@ impl RenderOnce for Pagination {
         for item in items {
             match item {
                 PageItem::Ellipsis => {
-                    row = row.child(
-                        div()
-                            .text_sm()
-                            .text_color(muted_foreground)
-                            .child("…"),
-                    );
+                    row = row.child(div().text_sm().text_color(muted_foreground).child("…"));
                 }
                 PageItem::Number(p) => {
                     row = row.child(page_button(

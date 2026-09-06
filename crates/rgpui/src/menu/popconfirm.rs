@@ -31,10 +31,7 @@ pub struct Popconfirm {
 
 impl Popconfirm {
     /// 创建气泡确认框。
-    pub fn new(
-        trigger_label: impl Into<SharedString>,
-        message: impl Into<SharedString>,
-    ) -> Self {
+    pub fn new(trigger_label: impl Into<SharedString>, message: impl Into<SharedString>) -> Self {
         Self {
             instance: POPCONFIRM_ID.fetch_add(1, Ordering::Relaxed),
             trigger_label: trigger_label.into(),
@@ -122,15 +119,17 @@ impl RenderOnce for Popconfirm {
                                 .ghost()
                                 .small()
                                 .label("取消")
-                                .on_click(move |_, window, cx| {
-                                    let popover = popover.clone();
-                                    popover.update(cx, |state, cx| {
-                                        state.dismiss(window, cx);
-                                    });
-                                    if let Some(ref cb) = on_cancel {
-                                        cb(window, cx);
-                                    }
-                                })
+                                .on_click(
+                                    move |_, window, cx| {
+                                        let popover = popover.clone();
+                                        popover.update(cx, |state, cx| {
+                                            state.dismiss(window, cx);
+                                        });
+                                        if let Some(ref cb) = on_cancel {
+                                            cb(window, cx);
+                                        }
+                                    },
+                                )
                             })
                             .child(
                                 Button::new(SharedString::from(format!(
@@ -138,14 +137,16 @@ impl RenderOnce for Popconfirm {
                                 )))
                                 .small()
                                 .label("确定")
-                                .on_click(move |_, window, cx| {
-                                    popover.update(cx, |state, cx| {
-                                        state.dismiss(window, cx);
-                                    });
-                                    if let Some(ref cb) = on_confirm {
-                                        cb(window, cx);
-                                    }
-                                }),
+                                .on_click(
+                                    move |_, window, cx| {
+                                        popover.update(cx, |state, cx| {
+                                            state.dismiss(window, cx);
+                                        });
+                                        if let Some(ref cb) = on_confirm {
+                                            cb(window, cx);
+                                        }
+                                    },
+                                ),
                             ),
                     )
             })

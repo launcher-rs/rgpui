@@ -2,6 +2,26 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased] - 1.2.0（开发中，分支 `feat/1.2.0`）
+
+### 新增组件
+
+- **Sidebar**：导航侧边栏（条目/选中/折叠图标栏）
+- **Select / Combobox / DatePicker / ColorPicker**：下拉选择、可搜索下拉、日历、颜色选择
+- **Avatar / Alert / Breadcrumb / Card / Typography / Toggle(+Group)**：基础元素
+- **Pagination / Steps / Timeline / Rate / Popconfirm**：导航反馈件
+- **AI-chat**（对标 AntDX，`chat/`）：`Prompts`、`Suggestion`、`ThoughtChain`、
+  `Attachments` + `FileCard`、`Sources`、`Actions`、`Sender`
+
+### 示例
+
+- 新增 `dialog` 示例（Dialog/AlertDialog/焦点陷阱）、`sidebar` 示例
+
+### 布局整理
+
+- `system/` 子系统目录；15 个公模块同名进目录（路径不变）；
+  `chat_ui` → `chat`（`chat_ui` 弃用别名，1.3.0 删除）；`rgpui.rs` 三段式分组注释
+
 ## [1.1.1] - 2026-09-06
 
 ### 修复

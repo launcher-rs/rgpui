@@ -145,18 +145,15 @@ impl Attachments {
 impl RenderOnce for Attachments {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let on_remove = self.on_remove;
-        div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap(px(6.0))
-            .children(self.items.into_iter().enumerate().map(|(ix, item)| {
+        div().flex().flex_row().flex_wrap().gap(px(6.0)).children(
+            self.items.into_iter().enumerate().map(|(ix, item)| {
                 let mut card = FileCard::new(item);
                 if let Some(ref cb) = on_remove {
                     let cb = cb.clone();
                     card = card.on_remove(move |window, cx| cb(ix, window, cx));
                 }
                 card.into_any_element()
-            }))
+            }),
+        )
     }
 }
