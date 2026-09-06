@@ -112,8 +112,6 @@ cd examples/rgpui_story && trunk serve
 ## 文档
 
 - [8 章教程](docs/rgpui-book/)
-- [组件整合指南](docs/component-integration-plan.md)
-- [从 rgpui-component 迁移](docs/migration-guide-from-rgpui-component.md)
 - [Web DOM 后端用法](docs/web-dom-backend-usage.md)
 - [开发指南](AGENTS.md)
 - [贡献指南](CONTRIBUTING.md)

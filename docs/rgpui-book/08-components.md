@@ -1,6 +1,6 @@
 # 组件库
 
-> rgpui 核心自带的完整 UI 组件库（`rgpui-component` 已删除，基础组件全部并入核心；新增组件见 `docs/ui-crate-plan.md` 的 rgpui-ui 计划）
+> rgpui 核心自带的完整 UI 组件库（`rgpui-component` 已删除，基础组件全部并入核心）
 
 ## 概览
 
@@ -146,11 +146,11 @@ let bg = cx.theme().tokens.tab_bar;        // 令牌颜色
 
 ## 扩展组件（并入核心的 rgpui-ui / rgpui-markdown）
 
-原独立 `rgpui-ui` 已**并入 rgpui 核心**（2026-08-19），高价值组件按 `docs/ui-crate-plan.md` 迁入核心 `animation` / `components` / `mouse_gestures` / `scroll_physics` 子模块：
+原独立 `rgpui-ui` 已**并入 rgpui 核心**（2026-08-19），高价值组件迁入核心 `animation` / `components` / `mouse_gestures` / `scroll_physics` 子模块：
 
 | 模块 | 内容 | 引入方式 |
 |------|------|----------|
-| `components`（默认） | 核心没有的功能性组件（动画 13 组件、显示、高级输入、布局、通知/命令、工具），详见 `docs/ui-crate-plan.md` §9 | `use rgpui::components::*`（核心自带） |
+| `components`（默认） | 核心没有的功能性组件（动画 13 组件、显示、高级输入、布局、通知/命令、工具） | `use rgpui::components::*`（核心自带） |
 | `components` `charts` feature | 图表（line/bar/area/pie/gauge/heatmap/radar/treemap/donut） | `rgpui = { features = ["charts"] }` |
 | `components` `effects` feature | 纯装饰特效（aurora/confetti/particle_emitter/ripple/shimmer/marquee/pulse_indicator） | `rgpui = { features = ["effects"] }` |
 | `components` `qr-code` feature | 二维码（qrcode 依赖） | `rgpui = { features = ["qr-code"] }` |
