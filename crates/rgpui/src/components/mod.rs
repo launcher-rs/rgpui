@@ -26,6 +26,7 @@ pub mod command_palette;
 #[cfg(feature = "effects")]
 pub mod confetti;
 pub mod countdown;
+pub mod date_picker;
 #[cfg(feature = "dom-backend")]
 mod dom_svg;
 pub mod drag_drop;
@@ -90,6 +91,7 @@ pub use command_palette::*;
 #[cfg(feature = "effects")]
 pub use confetti::*;
 pub use countdown::*;
+pub use date_picker::*;
 pub use drag_drop::*;
 pub use drawer_navigation::*;
 pub use empty_state::*;
