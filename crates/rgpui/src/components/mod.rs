@@ -21,6 +21,7 @@ pub mod app_menu;
 pub mod aurora;
 pub mod bottom_sheet;
 pub mod canvas_component;
+pub mod color_picker;
 pub mod combobox;
 pub mod command_palette;
 #[cfg(feature = "effects")]
@@ -86,6 +87,7 @@ pub use app_menu::*;
 pub use aurora::*;
 pub use bottom_sheet::*;
 pub use canvas_component::*;
+pub use color_picker::*;
 pub use combobox::*;
 pub use command_palette::*;
 #[cfg(feature = "effects")]
