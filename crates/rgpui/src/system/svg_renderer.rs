@@ -303,7 +303,7 @@ fn fix_generic_font_families(db: &mut usvg::fontdb::Database) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
     use usvg::fontdb::{Database, Family, Query};
 
     const IBM_PLEX_REGULAR: &[u8] =

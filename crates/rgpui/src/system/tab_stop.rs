@@ -220,7 +220,7 @@ impl TabStopMap {
 mod sum_tree_impl {
     use crate::sum_tree::SeekTarget;
 
-    use crate::tab_stop::{TabStopNode, TabStopPath};
+    use crate::system::tab_stop::{TabStopNode, TabStopPath};
 
     #[derive(Clone, Debug)]
     pub struct TabStopOrderNodeSummary {
