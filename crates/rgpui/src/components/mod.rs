@@ -53,6 +53,7 @@ pub mod resizable;
 pub mod ripple;
 pub mod search_panel;
 pub mod segmented_nav;
+pub mod select;
 #[cfg(feature = "effects")]
 pub mod shimmer;
 pub mod sidebar;
@@ -118,6 +119,7 @@ pub use resizable::*;
 pub use ripple::*;
 pub use search_panel::*;
 pub use segmented_nav::*;
+pub use select::*;
 #[cfg(feature = "effects")]
 pub use shimmer::*;
 pub use sidebar::*;
