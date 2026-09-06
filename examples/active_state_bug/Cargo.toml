@@ -3,6 +3,7 @@ name = "active_state_bug"
 version = "0.1.0"
 edition = "2024"
 publish = false
+description = "已知问题复现：点击按钮后 .active() 背景每隔一次粘滞不消失（待验证修复后删除）"
 
 [dependencies]
 rgpui.workspace = true

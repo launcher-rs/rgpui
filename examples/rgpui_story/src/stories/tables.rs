@@ -83,7 +83,7 @@ impl rgpui::Render for DataTableStory {
             .gap(px(8.0))
             .p(px(16.0))
             .child(section_title("数据表格（DataTable）"))
-            .child(div().child("完整的数据表格实现需要 TableDelegate 与 TableState，详见代码库中的 data_table 示例。"))
+            .child(div().child("完整的数据表格实现需要 TableDelegate 与 TableState，详见 list_showcase 的 data_table 演示（cargo run -p list_showcase --bin data_table）。"))
     }
 }
 

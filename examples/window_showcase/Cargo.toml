@@ -1,0 +1,11 @@
+[package]
+name = "window_showcase"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "窗口管理展示：窗口类型/多窗口/可移动/定位/阴影/透明/不透明度"
+
+[dependencies]
+rgpui.workspace = true
+rgpui-platform.workspace = true
+anyhow.workspace = true

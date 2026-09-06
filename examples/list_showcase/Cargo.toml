@@ -1,0 +1,11 @@
+[package]
+name = "list_showcase"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "列表与表格展示：虚拟列表/等高列表/数据表格/深层级压力测试"
+
+[dependencies]
+rgpui.workspace = true
+rgpui-platform.workspace = true
+rand.workspace = true

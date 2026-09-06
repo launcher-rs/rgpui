@@ -228,14 +228,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
-name = "anchor"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1937,15 +1929,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
-name = "data_table"
-version = "0.1.0"
-dependencies = [
- "rand 0.10.2",
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
 name = "deflate64"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2925,16 +2908,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gif_viewer"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
 name = "gimli"
 version = "0.32.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3688,32 +3661,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "image_example"
+name = "image_showcase"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "env_logger",
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
-name = "image_gallery"
-version = "0.1.0"
-dependencies = [
  "env_logger",
  "futures",
- "log",
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
-name = "image_loading"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "env_logger",
  "log",
  "rgpui",
  "rgpui-platform",
@@ -4247,9 +4200,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
-name = "list_example"
+name = "list_showcase"
 version = "0.1.0"
 dependencies = [
+ "rand 0.10.2",
  "rgpui",
  "rgpui-platform",
 ]
@@ -5195,15 +5149,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
-name = "opacity"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
 name = "open"
 version = "5.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5242,6 +5187,14 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "overlay_showcase"
+version = "0.1.0"
+dependencies = [
+ "rgpui",
+ "rgpui-platform",
 ]
 
 [[package]]
@@ -5615,14 +5568,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50596ddc09eb5ad5f75cacd40209568e66df71baf86e1499a0e99c4cff12a5a6"
 dependencies = [
  "arrayvec",
-]
-
-[[package]]
-name = "popover"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
 ]
 
 [[package]]
@@ -7707,14 +7652,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shadow"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
 name = "shared_library"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8128,15 +8065,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "svg"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
 name = "svgtypes"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8363,23 +8291,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "text"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
-name = "text_layout"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
-name = "text_wrapper"
+name = "text_showcase"
 version = "0.1.0"
 dependencies = [
  "rgpui",
@@ -8801,31 +8713,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "transparent"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
 name = "tray"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
-name = "tray_simple"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
-name = "tree"
 version = "0.1.0"
 dependencies = [
  "rgpui",
@@ -8929,14 +8817,6 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
-
-[[package]]
-name = "uniform_list"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
 
 [[package]]
 name = "untrusted"
@@ -9720,33 +9600,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
-name = "window"
+name = "window_showcase"
 version = "0.1.0"
 dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
-name = "window_movable"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
-name = "window_positioning"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
-name = "window_shadow"
-version = "0.1.0"
-dependencies = [
+ "anyhow",
  "rgpui",
  "rgpui-platform",
 ]

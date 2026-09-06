@@ -1,9 +1,9 @@
 [package]
-name = "tray"
+name = "overlay_showcase"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "系统托盘：完整托盘（图标/菜单/最小化到托盘）与最小托盘两档演示"
+description = "浮层定位展示：popover 浮层与 anchor 锚点定位"
 
 [dependencies]
 rgpui.workspace = true

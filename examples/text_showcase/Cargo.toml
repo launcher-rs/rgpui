@@ -1,9 +1,9 @@
 [package]
-name = "tray"
+name = "text_showcase"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "系统托盘：完整托盘（图标/菜单/最小化到托盘）与最小托盘两档演示"
+description = "文本展示：字体排印上下文、文本对齐与装饰、换行省略与截断"
 
 [dependencies]
 rgpui.workspace = true
