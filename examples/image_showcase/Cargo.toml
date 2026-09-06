@@ -1,0 +1,14 @@
+[package]
+name = "image_showcase"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "图片与 SVG 展示：本地/远程/资产图片、加载态与失败态、图片画廊缓存、GIF 播放、SVG 着色"
+
+[dependencies]
+rgpui = { workspace = true, features = ["reqwest"] }
+rgpui-platform.workspace = true
+anyhow.workspace = true
+env_logger.workspace = true
+futures.workspace = true
+log.workspace = true

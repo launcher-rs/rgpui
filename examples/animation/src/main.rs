@@ -33,7 +33,7 @@ impl AssetSource for Assets {
 
 const ARROW_CIRCLE_SVG: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../image/arrow_circle.svg"
+    "/../image_showcase/assets/arrow_circle.svg"
 );
 
 struct AnimationExample {}

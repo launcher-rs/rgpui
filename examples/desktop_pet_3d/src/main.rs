@@ -624,7 +624,7 @@ fn main() {
 
             // ── 托盘设置 ──
             cx.set_tray_tooltip("3D 桌面宠物");
-            let icon_bytes = include_bytes!("../../image/app-icon.png");
+            let icon_bytes = include_bytes!("../../image_showcase/assets/app-icon.png");
             cx.set_tray_icon(Some(icon_bytes.as_slice()));
             cx.set_tray_menu(build_tray_menu(&[], false));
 
