@@ -3,6 +3,7 @@ pub mod archive;
 pub mod collections;
 #[cfg(not(target_family = "wasm"))]
 pub mod command;
+pub mod debounce;
 pub mod disambiguate;
 #[cfg(not(target_family = "wasm"))]
 pub mod fs;

@@ -226,6 +226,27 @@ impl InputState {
     ///
     /// 集合按创建顺序分层；当重叠装饰设置相同的 [`HighlightStyle`] 属性时，
     /// 先创建的集合优先。调用者应避免在同一集合内产生冲突的重叠。
+    ///
+    /// 搜索场景 recipe（全部匹配标黄 + 当前匹配用选区）：
+    ///
+    /// ```ignore
+    /// use rgpui::input_ui::{TextDecoration, TextDecorationCollection};
+    ///
+    /// // 每个匹配一个装饰，背景标黄；装饰层级低于选区，当前匹配仍可用
+    /// // set_selected_range 高亮，不会互相覆盖。
+    /// let collection: TextDecorationCollection = state.create_decorations_collection(
+    ///     matches
+    ///         .iter()
+    ///         .map(|range| TextDecoration::new(range.clone(), HighlightStyle {
+    ///             background_color: Some(Hsla::yellow()),
+    ///             ..Default::default()
+    ///         }))
+    ///         .collect(),
+    ///     cx,
+    /// );
+    /// // 查询变化时刷新：collection.set(new_decorations, cx);
+    /// // 不再需要时：collection.clear(cx);
+    /// ```
     pub fn create_decorations_collection(
         &mut self,
         decorations: Vec<TextDecoration>,

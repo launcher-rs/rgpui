@@ -39,6 +39,8 @@ impl InputState {
     /// 偏移量是 UTF-8 偏移量。
     ///
     /// 确保使用 `self.next_boundary` 或 `self.previous_boundary` 获取正确偏移。
+    ///
+    /// 移动后经 `scroll_to` 自动把光标滚动到可见。
     pub(crate) fn move_to(
         &mut self,
         offset: usize,

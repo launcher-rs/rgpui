@@ -208,7 +208,7 @@ impl EntityMap {
 #[track_caller]
 fn double_lease_panic<T>(operation: &str) -> ! {
     panic!(
-        "无法在 {operation} {} 时操作，因为它正在被更新",
+        "无法在 {operation} {} 时操作，因为它正在被更新；常见原因是 subscribe/subscribe_in 回调内又 update 了同一实体，请直接使用回调的 &mut T 参数",
         std::any::type_name::<T>()
     )
 }
