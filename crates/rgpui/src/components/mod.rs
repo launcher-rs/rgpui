@@ -55,6 +55,7 @@ pub mod search_panel;
 pub mod segmented_nav;
 #[cfg(feature = "effects")]
 pub mod shimmer;
+pub mod sidebar;
 pub mod sortable_list;
 pub mod sparkline;
 pub mod split_pane;
@@ -119,6 +120,7 @@ pub use search_panel::*;
 pub use segmented_nav::*;
 #[cfg(feature = "effects")]
 pub use shimmer::*;
+pub use sidebar::*;
 pub use sortable_list::*;
 pub use sparkline::*;
 pub use split_pane::*;
