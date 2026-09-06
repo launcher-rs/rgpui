@@ -2,6 +2,24 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [1.1.1] - 2026-09-06
+
+### 修复
+
+- **WebView 空白**：DComp `CreateTargetForHwnd(hwnd, true)` 把视觉树渲染在所有子 HWND 之上，
+  WebView2 从第一天起就被遮挡；改为 `false`（`rgpui-windows/src/directx_renderer.rs`），子 HWND 自然透出
+- **WebView 示例**：补 `cx.notify()`（原生窗口否则保持 0×0）、修布局链零高、加百度入口
+- **animation 示例坏导入**：`use mestd::time::Duration`（不存在的 crate）→ `std::time::Duration`
+- **跨 crate 资产引用失效**：`animation`、`desktop_pet_3d`、`image_loading` 改指 `image_showcase/assets/`
+
+### 变更
+
+- **WebView 后端**：停更的 `lb-wry` fork → 上游 `wry 0.56.1`（API 兼容，零代码改动）
+- **示例合并**：62 → 45 个 crate（`image_showcase` / `window_showcase` / `text_showcase` /
+  `list_showcase` / `overlay_showcase` / `tray` 双 binary，一 crate 多 binary，行为零变化）
+- **示例文档**：全部 45 个示例补 `README.md`（演示说明 + 运行命令）
+- **CI**：`concurrency` group，同一分支 push + PR 只跑一次
+
 ## [1.1.0] - 2026-09-04
 
 ### 新增
