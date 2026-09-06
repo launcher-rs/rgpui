@@ -1655,6 +1655,21 @@ impl InputState {
         cx.notify();
     }
 
+    /// 滚动使给定字节偏移可见，不改变光标与选区。
+    ///
+    /// 首次布局前调用无效果（内部尚无 layout 时直接返回）。
+    /// 只想滚动、不想碰选区时用它；设置选区请用 [`Self::set_selected_range`]。
+    pub fn reveal_offset(&mut self, offset: usize, cx: &mut Context<Self>) {
+        self.scroll_to(offset, None, cx);
+    }
+
+    /// 滚动使给定区间可见（以区间起点为准），不改变光标与选区。
+    ///
+    /// 语义同 [`Self::reveal_offset`]。
+    pub fn reveal_range(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
+        self.reveal_offset(range.start, cx);
+    }
+
     pub(super) fn show_character_palette(
         &mut self,
         _: &ShowCharacterPalette,
@@ -1779,6 +1794,9 @@ impl InputState {
     }
 
     /// 使用 UTF-8 字节偏移设置选择范围。
+    ///
+    /// 设置选区会经 `move_to` → `scroll_to` 自动把光标滚动到可见，无需手动调滚动；
+    /// 只想滚动、不想改选区时请用 [`Self::reveal_offset`] / [`Self::reveal_range`]。
     pub fn set_selected_range(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
         let len = self.text.len();
         let start = range.start.min(len);

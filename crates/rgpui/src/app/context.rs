@@ -132,6 +132,10 @@ impl<'a, T: 'static> Context<'a, T> {
     }
 
     /// 从另一个实体订阅事件类型
+    ///
+    /// 注意：回调执行时订阅者实体正被可变借用（内部已包一层 `update`），
+    /// 回调内禁止再对同一实体调用 `update`/`read`，否则 panic；
+    /// 直接使用回调的第一个 `&mut T` 参数。
     pub fn subscribe<T2, Evt>(
         &mut self,
         entity: &Entity<T2>,
@@ -390,6 +394,9 @@ impl<'a, T: 'static> Context<'a, T> {
     /// 你订阅的实体必须实现 [`EventEmitter`] trait。
     /// 回调会接收当前视图的引用、发出事件的 `Entity` 句柄、事件、
     /// `Window` 的可变引用以及实体的上下文。
+    ///
+    /// 注意：同 [`Self::subscribe`]，回调内订阅者实体正被可变借用，
+    /// 禁止再 `update` 同一实体，直接使用回调的 `&mut T` 参数。
     pub fn subscribe_in<Emitter, Evt>(
         &mut self,
         emitter: &Entity<Emitter>,

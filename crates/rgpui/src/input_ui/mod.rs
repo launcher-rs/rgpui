@@ -14,7 +14,8 @@ mod change;
 mod clear_button;
 mod content_type;
 mod cursor;
-mod decorations;
+/// 文本装饰集合（Monaco 式多区间高亮），见 [`TextDecorationCollection`]。
+pub mod decorations;
 mod display_map;
 mod element;
 mod history;
@@ -34,7 +35,7 @@ pub use async_file_loader::{AsyncFileLoader, FileLoadResult, LargeFileConfig, Lo
 pub(crate) use clear_button::clear_button;
 pub use content_type::InputContentType;
 pub use cursor::*;
-pub(crate) use decorations::TextDecoration;
+pub use decorations::{TextDecoration, TextDecorationCollection};
 pub use display_map::{BufferPoint, DisplayMap, DisplayPoint, FoldRange, WrappingIndent};
 pub use history::*;
 pub use indent::TabSize;
