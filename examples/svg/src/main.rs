@@ -51,19 +51,19 @@ impl Render for SvgExample {
             .bg(rgb(0xffffff))
             .child(
                 svg()
-                    .path("svg/dragon.svg")
+                    .path("dragon.svg")
                     .size_8()
                     .text_color(rgb(0xff0000)),
             )
             .child(
                 svg()
-                    .path("svg/dragon.svg")
+                    .path("dragon.svg")
                     .size_8()
                     .text_color(rgb(0x00ff00)),
             )
             .child(
                 svg()
-                    .path("svg/dragon.svg")
+                    .path("dragon.svg")
                     .size_8()
                     .text_color(rgb(0x0000ff)),
             )
@@ -73,7 +73,7 @@ impl Render for SvgExample {
 fn run_example() {
     application()
         .with_assets(Assets {
-            base: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples"),
+            base: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
         })
         .run(|cx: &mut App| {
             let bounds = Bounds::centered(None, size(px(300.0), px(300.0)), cx);

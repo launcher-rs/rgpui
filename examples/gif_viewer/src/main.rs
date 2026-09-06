@@ -1,6 +1,6 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use rgpui::{App, Context, Render, Window, WindowOptions, div, img, prelude::*};
+use rgpui::{App, Context, Render, Window, WindowOptions, div, img, prelude::*, Bounds, size, px, WindowBounds};
 use rgpui_platform::application;
 use std::path::PathBuf;
 
@@ -28,10 +28,12 @@ impl Render for GifViewer {
 fn run_example() {
     application().run(|cx: &mut App| {
         let gif_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/image/black-cat-typing.gif");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/black-cat-typing.gif");
+        let bounds = Bounds::centered(None, size(px(800.), px(600.0)), cx);
 
         cx.open_window(
             WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
                 focus: true,
                 ..Default::default()
             },

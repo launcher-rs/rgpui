@@ -1,9 +1,6 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use rgpui::{
-    App, Bounds, ColorSpace, Context, Half, Render, Window, WindowOptions, canvas, div,
-    linear_color_stop, linear_gradient, point, prelude::*, px, size,
-};
+use rgpui::{App, Bounds, ColorSpace, Context, Half, Render, Window, WindowOptions, canvas, div, linear_color_stop, linear_gradient, point, prelude::*, px, size, ScrollableElement};
 use rgpui_platform::application;
 
 struct GradientViewer {
@@ -25,6 +22,7 @@ impl Render for GradientViewer {
         div()
             .bg(rgpui::white())
             .size_full()
+            .overflow_y_scrollbar()
             .p_4()
             .flex()
             .flex_col()
