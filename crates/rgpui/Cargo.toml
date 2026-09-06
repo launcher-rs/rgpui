@@ -245,7 +245,6 @@ proptest = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen = { workspace = true }
-rgpui-web.workspace = true
 
 [build-dependencies]
 embed-resource = { version = "3.0", optional = true }

@@ -14,6 +14,9 @@
 
 ### 变更
 
+- **发布流程除环**：删 `rgpui-macros → rgpui` 测试期 dev 依赖（3 个集成测试搬到 `rgpui/tests/`，
+  消费方已有正向依赖）、删 `rgpui → rgpui-web` 未使用的 wasm dev 依赖；
+  此后发版无需临时注释 dev 依赖，按拓扑顺序 publish 即可
 - **WebView 后端**：停更的 `lb-wry` fork → 上游 `wry 0.56.1`（API 兼容，零代码改动）
 - **示例合并**：62 → 45 个 crate（`image_showcase` / `window_showcase` / `text_showcase` /
   `list_showcase` / `overlay_showcase` / `tray` 双 binary，一 crate 多 binary，行为零变化）
