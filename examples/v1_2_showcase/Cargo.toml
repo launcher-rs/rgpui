@@ -1,0 +1,31 @@
+[package]
+name = "v1_2_showcase"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "1.2 新功能演示与手动测试：Dock/Upload/Carousel/Mermaid/聊天三件/Editor/搜索实战（含提前合入的搜索 6 项）"
+
+[[bin]]
+name = "dock"
+path = "src/bin/dock.rs"
+
+[[bin]]
+name = "components"
+path = "src/bin/components.rs"
+
+[[bin]]
+name = "chat"
+path = "src/bin/chat.rs"
+
+[[bin]]
+name = "editor"
+path = "src/bin/editor.rs"
+
+[[bin]]
+name = "search"
+path = "src/bin/search.rs"
+
+[dependencies]
+rgpui = { workspace = true, features = ["tree-sitter"] }
+rgpui-platform.workspace = true
+futures.workspace = true
