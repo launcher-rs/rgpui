@@ -99,7 +99,15 @@ impl Render for ChatDemo {
                                     sender.chars().next().unwrap_or('?').to_string();
                                 v_flex()
                                     .gap(px(2.0))
-                                    .child(div().text_xs().px(px(40.0)).child(sender))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_row()
+                                            .w_full()
+                                            .when(mine, |this| this.justify_end())
+                                            .when(!mine, |this| this.justify_start())
+                                            .child(div().text_xs().px(px(4.0)).child(sender)),
+                                    )
                                     .children(group.messages.into_iter().map(move |msg| {
                                         let text = match msg.content {
                                             MessageType::Text(text) => text,
