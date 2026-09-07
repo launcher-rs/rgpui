@@ -7,8 +7,11 @@
 //! 渲染刻意不用 Svg 元素：Svg 管道是单色 alpha 蒙版（多色压平）且字体库无 CJK；
 //! div 无旋转能力，菱形用加粗边框矩形表示。
 
+use super::CanvasComponent;
 use crate::{prelude::FluentBuilder as _, *};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 
 /// 节点形状。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -353,8 +356,8 @@ fn orient(x: f32, y: f32, direction: Direction, w: f32, h: f32) -> (f32, f32) {
     (x, y)
 }
 
-/// 解析 + 布局 + 朝向映射，返回（节点，边，宽，高）。
-fn map_geometry(source: &str) -> (Vec<MappedNode>, Vec<MappedEdge>, f32, f32) {
+/// 解析 + 布局 + 朝向映射，返回（节点，边，方向，宽，高）。
+fn map_geometry(source: &str) -> (Vec<MappedNode>, Vec<MappedEdge>, Direction, f32, f32) {
     let (direction, nodes, edges) = parse_flowchart(source);
     let placed = layout_nodes(&nodes, &edges);
     let by_id: HashMap<&str, &PlacedNode> = placed.iter().map(|p| (p.id.as_str(), p)).collect();
@@ -409,7 +412,7 @@ fn map_geometry(source: &str) -> (Vec<MappedNode>, Vec<MappedEdge>, f32, f32) {
             label: edge.label.clone(),
         });
     }
-    (mapped_nodes, mapped_edges, w, h)
+    (mapped_nodes, mapped_edges, direction, w, h)
 }
 
 /// XML 转义。
@@ -586,13 +589,16 @@ impl Styled for MermaidDiagram {
 impl RenderOnce for MermaidDiagram {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         // 注：刻意不用 Svg 元素——Svg 管道是单色 alpha 蒙版（多色压平）且
-        // 字体库无 CJK，用基础 div 全彩渲染（节点/折线/字形箭头/文本）。
+        // 字体库无 CJK，用基础 div 全彩渲染（节点/折线/矢量三角箭头/文本）。
         let theme = cx.theme();
         let fg = theme.tokens.foreground.color;
         let border = theme.tokens.border.color;
         let accent = theme.tokens.accent.color;
         let user_style = self.style;
-        let (nodes, edges, w, h) = map_geometry(&self.source);
+        let (nodes, edges, direction, w, h) = map_geometry(&self.source);
+        // 入边方向：横向布局从左右边进（箭头横向），纵向布局从上下边进（箭头纵向）。
+        // 走线与之配套：横向布局先垂直后水平，纵向布局先水平后垂直。
+        let horizontal_entry = matches!(direction, Direction::LeftRight | Direction::RightLeft);
 
         let mut root = div()
             .relative()
@@ -600,70 +606,104 @@ impl RenderOnce for MermaidDiagram {
             .h(px(h.max(1.0)))
             .overflow_hidden();
 
-        // 边：横折线（水平段 + 垂直段）+ 字形箭头 + 标签。
+        // 箭头三角顶点数据（tip 精确落在节点边上，Canvas 矢量填充；
+        // 字形箭头依赖字体且 metrics 不可控，已弃用）。
+        let mut arrows: Vec<(f32, f32, f32, f32, f32, f32)> = Vec::new();
+
+        // 边：两段折线（先走出边轴再转入边轴）+ 标签，箭头见下方三角。
         for edge in &edges {
             let (x1, y1, x2, y2) = (edge.x1, edge.y1, edge.x2, edge.y2);
-            // 水平段（y1 高度，x1→x2）。
-            if (x2 - x1).abs() >= 0.5 {
-                root = root.child(
-                    div()
-                        .absolute()
-                        .left(px(x1.min(x2)))
-                        .top(px(y1 - 1.0))
-                        .w(px((x2 - x1).abs()))
-                        .h(px(2.0))
-                        .bg(border),
-                );
-            }
-            // 垂直段（x2 处，y1→y2）。
-            if (y2 - y1).abs() >= 0.5 {
-                root = root.child(
-                    div()
-                        .absolute()
-                        .left(px(x2 - 1.0))
-                        .top(px(y1.min(y2)))
-                        .w(px(2.0))
-                        .h(px((y2 - y1).abs()))
-                        .bg(border),
-                );
-            }
-            // 箭头（按末段进入方向往回偏 8px，箭头尖刚好落在节点边上，
-            // 而不是压在边线上）。
-            let (glyph, gcx, gcy) = if (y2 - y1).abs() < 0.5 {
-                if x2 >= x1 {
-                    ("▶", x2 - 8.0, y2)
-                } else {
-                    ("◀", x2 + 8.0, y2)
+            if horizontal_entry {
+                // 先垂直（x1 处 y1→y2），再水平（y2 高度 x1→x2），水平进盒。
+                if (y2 - y1).abs() >= 0.5 {
+                    root = root.child(
+                        div()
+                            .absolute()
+                            .left(px(x1 - 1.0))
+                            .top(px(y1.min(y2)))
+                            .w(px(2.0))
+                            .h(px((y2 - y1).abs()))
+                            .bg(border),
+                    );
                 }
-            } else if y2 >= y1 {
-                ("▼", x2, y2 - 8.0)
+                if (x2 - x1).abs() >= 0.5 {
+                    root = root.child(
+                        div()
+                            .absolute()
+                            .left(px(x1.min(x2)))
+                            .top(px(y2 - 1.0))
+                            .w(px((x2 - x1).abs()))
+                            .h(px(2.0))
+                            .bg(border),
+                    );
+                }
+                // 标签：水平段中点上方（按字数估半宽，CJK 约 7px/字 @text_xs）。
+                if !edge.label.is_empty() {
+                    let label_w = edge.label.chars().count() as f32 * 7.0;
+                    root = root.child(
+                        div()
+                            .absolute()
+                            .left(px((x1 + x2) / 2.0 - label_w))
+                            .top(px(y2 - 22.0))
+                            .text_xs()
+                            .text_color(accent)
+                            .child(edge.label.clone()),
+                    );
+                }
             } else {
-                ("▲", x2, y2 + 8.0)
-            };
-            // 过短的边不画箭头，避免杂散字形。
+                // 先水平（y1 高度 x1→x2），再垂直（x2 处 y1→y2），垂直进盒。
+                if (x2 - x1).abs() >= 0.5 {
+                    root = root.child(
+                        div()
+                            .absolute()
+                            .left(px(x1.min(x2)))
+                            .top(px(y1 - 1.0))
+                            .w(px((x2 - x1).abs()))
+                            .h(px(2.0))
+                            .bg(border),
+                    );
+                }
+                if (y2 - y1).abs() >= 0.5 {
+                    root = root.child(
+                        div()
+                            .absolute()
+                            .left(px(x2 - 1.0))
+                            .top(px(y1.min(y2)))
+                            .w(px(2.0))
+                            .h(px((y2 - y1).abs()))
+                            .bg(border),
+                    );
+                }
+                // 标签：垂直段右侧中点。
+                if !edge.label.is_empty() {
+                    root = root.child(
+                        div()
+                            .absolute()
+                            .left(px(x2 + 8.0))
+                            .top(px((y1 + y2) / 2.0 - 8.0))
+                            .text_xs()
+                            .text_color(accent)
+                            .child(edge.label.clone()),
+                    );
+                }
+            }
+            // 箭头三角：tip 落在 (x2, y2)（节点边上），底边沿进入方向回退。
+            // 过短的边不画箭头，避免杂散图形。
             let edge_len = (x2 - x1).abs().max((y2 - y1).abs());
             if edge_len >= 8.0 {
-                root = root.child(
-                    div()
-                        .absolute()
-                        .left(px(gcx - 5.0))
-                        .top(px(gcy - 8.0))
-                        .text_xs()
-                        .text_color(border)
-                        .child(glyph),
-                );
-            }
-            // 边标签（中点上方）。
-            if !edge.label.is_empty() {
-                root = root.child(
-                    div()
-                        .absolute()
-                        .left(px((x1 + x2) / 2.0))
-                        .top(px((y1 + y2) / 2.0 - 20.0))
-                        .text_xs()
-                        .text_color(accent)
-                        .child(edge.label.clone()),
-                );
+                const BACK: f32 = 10.0;
+                const HALF: f32 = 5.0;
+                if horizontal_entry {
+                    if x2 >= x1 {
+                        arrows.push((x2, y2, x2 - BACK, y2 - HALF, x2 - BACK, y2 + HALF));
+                    } else {
+                        arrows.push((x2, y2, x2 + BACK, y2 - HALF, x2 + BACK, y2 + HALF));
+                    }
+                } else if y2 >= y1 {
+                    arrows.push((x2, y2, x2 - HALF, y2 - BACK, x2 + HALF, y2 - BACK));
+                } else {
+                    arrows.push((x2, y2, x2 - HALF, y2 + BACK, x2 + HALF, y2 + BACK));
+                }
             }
         }
 
@@ -692,6 +732,31 @@ impl RenderOnce for MermaidDiagram {
                 NodeShape::Diamond => box_div.border(px(2.5)).rounded_md(),
             };
             root = root.child(box_div);
+        }
+
+        // 箭头三角覆盖层（容器本地坐标 + 画布原点 = 窗口坐标）。
+        if !arrows.is_empty() {
+            let mut hasher = DefaultHasher::new();
+            self.source.as_str().hash(&mut hasher);
+            let overlay_id = format!("mermaid-arrows-{:x}", hasher.finish());
+            root = root.child(
+                CanvasComponent::new(overlay_id)
+                    .w(px(w.max(1.0)))
+                    .h(px(h.max(1.0)))
+                    .on_paint(move |bounds, window, _| {
+                        let origin = bounds.origin;
+                        for (tx, ty, ax, ay, bx, by) in &arrows {
+                            let mut builder = PathBuilder::fill();
+                            builder.move_to(point(origin.x + px(*tx), origin.y + px(*ty)));
+                            builder.line_to(point(origin.x + px(*ax), origin.y + px(*ay)));
+                            builder.line_to(point(origin.x + px(*bx), origin.y + px(*by)));
+                            builder.close();
+                            if let Ok(path) = builder.build() {
+                                window.paint_path(path, border);
+                            }
+                        }
+                    }),
+            );
         }
 
         root.map(|mut this| {
