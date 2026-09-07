@@ -28,7 +28,7 @@ use super::{
     auto_scroll::AutoScroll,
     blink_cursor::{BlinkCursor, CURSOR_WIDTH},
     change::Change,
-    decorations::{DecorationCollections, TextDecoration, TextDecorationCollection},
+    decorations::{DecorationCollections, TextDecoration, TextDecorationCollection, normalize},
     element::{EditorScrollbarSnapshot, RIGHT_MARGIN, TextElement},
     history::History,
     mask_pattern::{MaskPattern, normalize_number_input},
@@ -1692,8 +1692,9 @@ impl InputState {
         if self.highlighter.is_some() {
             self.refresh_highlight(window, cx);
         } else {
+            // 原地清空（`collection.clear` 走 entity.update，借用中调用会重入 panic）。
             if let Some(collection) = self.highlight_collection.take() {
-                collection.clear(cx);
+                collection.set_in_place(&mut self.decorations, Vec::new());
             }
             self.display_map.set_fold_candidates(Vec::new());
             cx.notify();
@@ -1719,8 +1720,12 @@ impl InputState {
             .into_iter()
             .map(|range| FoldRange::new(range.start, range.end))
             .collect();
-        if let Some(ref collection) = self.highlight_collection {
-            collection.set(decorations, cx);
+        // 原地写入（`collection.set` 走 entity.update，此处已在借用中，会重入 panic）。
+        if let Some(collection) = self.highlight_collection.clone() {
+            let decorations = normalize(&self.text, decorations);
+            if collection.set_in_place(&mut self.decorations, decorations) {
+                cx.notify();
+            }
         } else {
             self.highlight_collection = Some(self.create_decorations_collection(decorations, cx));
         }

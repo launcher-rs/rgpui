@@ -32,6 +32,18 @@ pub struct TextDecorationCollection {
 }
 
 impl TextDecorationCollection {
+    /// 在已持有 state 可变借用时替换集合内容。
+    ///
+    /// [`Self::set`] 内部走 `entity.update`，在 `InputState` 方法内（已借用中）
+    /// 调用会重入 panic；此方法直接写存储，由调用方负责 `normalize` + `notify`。
+    pub(super) fn set_in_place(
+        &self,
+        decorations: &mut DecorationCollections,
+        decorations_new: Vec<TextDecoration>,
+    ) -> bool {
+        decorations.set(self.id, decorations_new)
+    }
+
     /// 将此集合中的装饰替换为给定装饰。
     ///
     /// 对应 Monaco 的
@@ -198,7 +210,8 @@ fn adjust_range_for_edit(
     start..end
 }
 
-fn normalize(text: &Rope, decorations: Vec<TextDecoration>) -> Vec<TextDecoration> {
+/// 规范化装饰范围（裁剪到文本内，去空区间），`InputState` 原地刷新共用。
+pub(super) fn normalize(text: &Rope, decorations: Vec<TextDecoration>) -> Vec<TextDecoration> {
     decorations
         .into_iter()
         .filter_map(|decoration| {
