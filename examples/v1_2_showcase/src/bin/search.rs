@@ -1,9 +1,8 @@
 //! 搜索实战演示（#14，提前合入的 1.2 内容）：SearchPanelState 嵌入 + 跳转 +
-//! 匹配标黄（装饰 API）+ 只读滚动 + 输入防抖。
+//! 匹配标黄（装饰 API）+ 只读滚动。
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use futures::StreamExt as _;
 use rgpui::{
     App, Bounds, Context, HighlightStyle, KeyBinding, Render, Window, WindowBounds, WindowOptions,
     components::SearchPanelState,
@@ -14,12 +13,9 @@ use rgpui::{
         TextDecorationCollection, Undo,
     },
     prelude::*,
-    px, size,
-    util::debounce::Debouncer,
-    v_flex, yellow,
+    px, size, v_flex, yellow,
 };
 use rgpui_platform::application;
-use std::time::Duration;
 
 const SAMPLE: &str = "fn main() {\n    let text = \"hello rgpui\";\n    println!(\"{text}\");\n}\n\n// hello world\nfn render() {\n    draw(\"hello\");\n}\n";
 
@@ -38,10 +34,6 @@ fn offset_of(text: &str, line: usize, col: usize) -> usize {
 struct SearchDemo {
     text: rgpui::Entity<InputState>,
     panel: rgpui::Entity<SearchPanelState>,
-    query_input: rgpui::Entity<InputState>,
-    debouncer: Debouncer,
-    debounced_hits: usize,
-    last_query: String,
     highlight: Option<TextDecorationCollection>,
 }
 
@@ -148,42 +140,9 @@ impl SearchDemo {
             });
         }
 
-        // 防抖演示：查询输入 300ms 无新输入才统计一次。
-        let query_input = cx.new(|cx| InputState::new(window, cx).placeholder("防抖输入…"));
-        let (tx, mut rx) = futures::channel::mpsc::unbounded::<String>();
-        cx.subscribe(&query_input, move |this, input, event, cx| {
-            if !matches!(event, InputEvent::Change) {
-                return;
-            }
-            let query = input.read(cx).text().to_string();
-            let tx = tx.clone();
-            this.debouncer.debounce(
-                cx.background_executor(),
-                Duration::from_millis(300),
-                move || {
-                    let _ = tx.unbounded_send(query);
-                },
-            );
-        })
-        .detach();
-        cx.spawn(async move |this, cx| {
-            while let Some(query) = rx.next().await {
-                let _ = this.update(cx, |state: &mut SearchDemo, cx| {
-                    state.debounced_hits += 1;
-                    state.last_query = query;
-                    cx.notify();
-                });
-            }
-        })
-        .detach();
-
         Self {
             text,
             panel,
-            query_input,
-            debouncer: Debouncer::new(),
-            debounced_hits: 0,
-            last_query: String::new(),
             highlight: None,
         }
     }
@@ -225,8 +184,6 @@ impl SearchDemo {
 
 impl Render for SearchDemo {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let hits = self.debounced_hits;
-        let last_query = self.last_query.clone();
         h_flex()
             .size_full()
             .items_stretch()
@@ -237,26 +194,21 @@ impl Render for SearchDemo {
                     .flex_1()
                     .gap(px(8.0))
                     .child(div().text_sm().child("待搜索全文（导航跳转 + 只读滚动）"))
-                    .child(Input::new(&self.text).flex_1())
+                    .child(Input::new(&self.text).flex_1()),
+            )
+            .child(
+                v_flex()
+                    .w(px(360.0))
+                    .gap(px(8.0))
+                    .child(self.panel.clone())
                     .child(
-                        h_flex()
-                            .gap(px(8.0))
-                            .child(
-                                rgpui::Button::new("search-highlight-all")
-                                    .label("标黄全部匹配")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.highlight_all(cx);
-                                    })),
-                            )
-                            .child(Input::new(&self.query_input).w(px(200.0)))
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .child(format!("防抖触发 {hits} 次：{last_query}")),
-                            ),
+                        rgpui::Button::new("search-highlight-all")
+                            .label("标黄全部匹配")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.highlight_all(cx);
+                            })),
                     ),
             )
-            .child(div().w(px(360.0)).child(self.panel.clone()))
     }
 }
 

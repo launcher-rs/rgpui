@@ -28,4 +28,3 @@ path = "src/bin/search.rs"
 [dependencies]
 rgpui = { workspace = true, features = ["tree-sitter"] }
 rgpui-platform.workspace = true
-futures.workspace = true
