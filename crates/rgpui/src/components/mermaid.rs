@@ -1,9 +1,11 @@
-//! Mermaid 子集：`flowchart`（LR/TB/RL/BT）文本转 SVG 渲染。
+//! Mermaid 子集：`flowchart`（LR/TB/RL/BT）分层布局 + div 全彩渲染。
 //!
 //! 支持节点形状：矩形 `A[文本]`、圆角 `A(文本)`、菱形 `A{文本}`、圆形 `A((文本))`；
 //! 边：`A --> B`、`A --- B`、带标签 `A -->|文本| B`；多语句可用 `;` 分隔。
-//! 布局为简单的按深度分层（无自动避让），完整 Mermaid 语义（子图/曲线边等）明确不支持。
-//! 渲染走现有 [`Svg`] 元素（usvg 光栅化），零新渲染代码。
+//! 布局为简单的按深度分层（无自动避让），边走横折线；完整 Mermaid 语义
+//! （子图/曲线边等）明确不支持。
+//! 渲染刻意不用 Svg 元素：Svg 管道是单色 alpha 蒙版（多色压平）且字体库无 CJK；
+//! div 无旋转能力，菱形用加粗边框矩形表示。
 
 use crate::{prelude::FluentBuilder as _, *};
 use std::collections::{HashMap, HashSet};
@@ -319,6 +321,97 @@ fn layout_nodes(nodes: &[FlowNode], edges: &[FlowEdge]) -> Vec<PlacedNode> {
     placed
 }
 
+/// 映射后的节点（最终朝向下中心坐标 + 尺寸）。
+struct MappedNode {
+    cx: f32,
+    cy: f32,
+    w: f32,
+    h: f32,
+    shape: NodeShape,
+    label: String,
+}
+
+/// 映射后的边（最终朝向下的端点）。
+struct MappedEdge {
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    label: String,
+}
+
+/// 逻辑坐标 → 最终坐标（转置/镜像，与 `emit_svg` 内 map 一致）。
+fn orient(x: f32, y: f32, direction: Direction, w: f32, h: f32) -> (f32, f32) {
+    let horizontal = matches!(direction, Direction::LeftRight | Direction::RightLeft);
+    let (mut x, mut y) = if horizontal { (x, y) } else { (y, x) };
+    if matches!(direction, Direction::RightLeft) {
+        x = w - x;
+    }
+    if matches!(direction, Direction::BottomTop) {
+        y = h - y;
+    }
+    (x, y)
+}
+
+/// 解析 + 布局 + 朝向映射，返回（节点，边，宽，高）。
+fn map_geometry(source: &str) -> (Vec<MappedNode>, Vec<MappedEdge>, f32, f32) {
+    let (direction, nodes, edges) = parse_flowchart(source);
+    let placed = layout_nodes(&nodes, &edges);
+    let by_id: HashMap<&str, &PlacedNode> = placed.iter().map(|p| (p.id.as_str(), p)).collect();
+    let max_x = placed
+        .iter()
+        .map(|p| p.cx + p.w / 2.0)
+        .fold(0.0f32, f32::max);
+    let max_y = placed
+        .iter()
+        .map(|p| p.cy + p.h / 2.0)
+        .fold(0.0f32, f32::max);
+    let pad = 18.0;
+    let horizontal = matches!(direction, Direction::LeftRight | Direction::RightLeft);
+    let (w, h) = if horizontal {
+        (max_x + pad, max_y + pad)
+    } else {
+        (max_y + pad, max_x + pad)
+    };
+
+    let mapped_nodes = placed
+        .iter()
+        .map(|p| {
+            let (cx, cy) = orient(p.cx, p.cy, direction, w, h);
+            MappedNode {
+                cx,
+                cy,
+                w: p.w,
+                h: p.h,
+                shape: p.shape,
+                label: p.label.clone(),
+            }
+        })
+        .collect();
+    let mut mapped_edges = Vec::new();
+    for edge in &edges {
+        let (Some(from), Some(to)) = (by_id.get(edge.from.as_str()), by_id.get(edge.to.as_str()))
+        else {
+            continue;
+        };
+        let (x1, y1, x2, y2) = if horizontal {
+            (from.cx + from.w / 2.0, from.cy, to.cx - to.w / 2.0, to.cy)
+        } else {
+            (from.cx, from.cy + from.h / 2.0, to.cx, to.cy - to.h / 2.0)
+        };
+        let (sx1, sy1) = orient(x1, y1, direction, w, h);
+        let (sx2, sy2) = orient(x2, y2, direction, w, h);
+        mapped_edges.push(MappedEdge {
+            x1: sx1,
+            y1: sy1,
+            x2: sx2,
+            y2: sy2,
+            label: edge.label.clone(),
+        });
+    }
+    (mapped_nodes, mapped_edges, w, h)
+}
+
 /// XML 转义。
 fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -492,20 +585,110 @@ impl Styled for MermaidDiagram {
 
 impl RenderOnce for MermaidDiagram {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // 注：刻意不用 Svg 元素——Svg 管道是单色 alpha 蒙版（多色压平）且
+        // 字体库无 CJK，用基础 div 全彩渲染（节点/折线/字形箭头/文本）。
         let theme = cx.theme();
         let fg = theme.tokens.foreground.color;
         let border = theme.tokens.border.color;
         let accent = theme.tokens.accent.color;
-        let (svg_doc, w, h) = self.build(fg, border, accent);
         let user_style = self.style;
-        svg()
-            .data(svg_doc.as_bytes())
+        let (nodes, edges, w, h) = map_geometry(&self.source);
+
+        let mut root = div()
+            .relative()
             .w(px(w.max(1.0)))
             .h(px(h.max(1.0)))
-            .map(|mut this| {
-                this.style().refine(&user_style);
-                this
-            })
+            .overflow_hidden();
+
+        // 边：横折线（水平段 + 垂直段）+ 字形箭头 + 标签。
+        for edge in &edges {
+            let (x1, y1, x2, y2) = (edge.x1, edge.y1, edge.x2, edge.y2);
+            // 水平段（y1 高度，x1→x2）。
+            if (x2 - x1).abs() >= 0.5 {
+                root = root.child(
+                    div()
+                        .absolute()
+                        .left(px(x1.min(x2)))
+                        .top(px(y1 - 1.0))
+                        .w(px((x2 - x1).abs()))
+                        .h(px(2.0))
+                        .bg(border),
+                );
+            }
+            // 垂直段（x2 处，y1→y2）。
+            if (y2 - y1).abs() >= 0.5 {
+                root = root.child(
+                    div()
+                        .absolute()
+                        .left(px(x2 - 1.0))
+                        .top(px(y1.min(y2)))
+                        .w(px(2.0))
+                        .h(px((y2 - y1).abs()))
+                        .bg(border),
+                );
+            }
+            // 箭头（按末段方向）。
+            let glyph = if (y2 - y1).abs() < 0.5 {
+                if x2 >= x1 { "▶" } else { "◀" }
+            } else if y2 >= y1 {
+                "▼"
+            } else {
+                "▲"
+            };
+            root = root.child(
+                div()
+                    .absolute()
+                    .left(px(x2 - 6.0))
+                    .top(px(y2 - 9.0))
+                    .text_xs()
+                    .text_color(border)
+                    .child(glyph),
+            );
+            // 边标签（中点上方）。
+            if !edge.label.is_empty() {
+                root = root.child(
+                    div()
+                        .absolute()
+                        .left(px((x1 + x2) / 2.0))
+                        .top(px((y1 + y2) / 2.0 - 20.0))
+                        .text_xs()
+                        .text_color(accent)
+                        .child(edge.label.clone()),
+                );
+            }
+        }
+
+        // 节点（div 无旋转能力，菱形用加粗边框矩形表示，见模块文档）。
+        for node in &nodes {
+            let label = div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_sm()
+                .text_color(fg)
+                .child(node.label.clone());
+            let mut box_div = div()
+                .absolute()
+                .left(px(node.cx - node.w / 2.0))
+                .top(px(node.cy - node.h / 2.0))
+                .w(px(node.w))
+                .h(px(node.h))
+                .border_color(border)
+                .child(label);
+            box_div = match node.shape {
+                NodeShape::Rect => box_div.border(px(1.5)).rounded_md(),
+                NodeShape::Rounded => box_div.border(px(1.5)).rounded_full(),
+                NodeShape::Circle => box_div.border(px(1.5)).rounded_full(),
+                NodeShape::Diamond => box_div.border(px(2.5)).rounded_md(),
+            };
+            root = root.child(box_div);
+        }
+
+        root.map(|mut this| {
+            this.style().refine(&user_style);
+            this
+        })
     }
 }
 
