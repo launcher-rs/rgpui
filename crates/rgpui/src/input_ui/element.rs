@@ -401,7 +401,12 @@ impl TextElement {
         scroll_size: Size<Pixels>,
         _: &mut Window,
         cx: &mut App,
-    ) -> (Option<Bounds<Pixels>>, Point<Pixels>, Option<usize>) {
+    ) -> (
+        Option<Bounds<Pixels>>,
+        Point<Pixels>,
+        Option<usize>,
+        Vec<Bounds<Pixels>>,
+    ) {
         let state = self.state.read(cx);
 
         let line_height = last_layout.line_height;
@@ -463,6 +468,20 @@ impl TextElement {
         let cursor_pos = caret_for(cursor_row, cursor, state.cursor_line_end_affinity);
         let cursor_start = caret_for(sel_start_row, selected_range.start, false);
         let cursor_end = caret_for(sel_end_row, selected_range.end, false);
+
+        // 光标尺寸与延迟滚动 x（主光标与额外光标共用）。
+        let cursor_height = match state.size {
+            crate::ElementSize::Large => 1.,
+            crate::ElementSize::Small => 0.75,
+            _ => 0.85,
+        } * line_height;
+
+        // 使光标匹配延迟滚动目标（下面应用），否则文本绘制在延迟偏移
+        // 处而光标跟随光标滚动，在字段中间闪烁。
+        let cursor_scroll_x = state
+            .deferred_scroll_offset
+            .map(|offset| offset.x)
+            .unwrap_or(scroll_offset.x);
 
         let cursor_bounds = {
             let selection_changed = state.last_selected_range != Some(selected_range);
@@ -528,20 +547,6 @@ impl TextElement {
                 }
             }
 
-            // 光标边界
-            let cursor_height = match state.size {
-                crate::ElementSize::Large => 1.,
-                crate::ElementSize::Small => 0.75,
-                _ => 0.85,
-            } * line_height;
-
-            // 使光标匹配延迟滚动目标（下面应用），否则文本绘制在延迟偏移
-            // 处而光标跟随光标滚动，在字段中间闪烁。
-            let cursor_scroll_x = state
-                .deferred_scroll_offset
-                .map(|offset| offset.x)
-                .unwrap_or(scroll_offset.x);
-
             // 右对齐时，将光标钳制在 bounds 右边缘内，
             // 使其无需移动文本即可保持可见。
             let cursor_x = bounds.left() + cursor_pos.x + line_number_width + cursor_scroll_x;
@@ -559,6 +564,29 @@ impl TextElement {
             ))
         };
 
+        // 额外光标：与主光标同尺寸同滚动，不参与滚动驱动。
+        let mut extra_cursor_bounds = Vec::new();
+        if !state.masked {
+            for extra in &state.extra_selections {
+                let end = extra.end.min(state.text.len());
+                let row = state.text.offset_to_point(end).row;
+                let pos = caret_for(row, end, false);
+                let x = bounds.left() + pos.x + line_number_width + cursor_scroll_x;
+                let x = if last_layout.text_align == TextAlign::Right {
+                    x.min(bounds.right() - CURSOR_WIDTH)
+                } else {
+                    x
+                };
+                extra_cursor_bounds.push(Bounds::new(
+                    point(
+                        x,
+                        bounds.top() + pos.y + ((line_height - cursor_height) / 2.),
+                    ),
+                    size(CURSOR_WIDTH, cursor_height),
+                ));
+            }
+        }
+
         if let Some(deferred_scroll_offset) = state.deferred_scroll_offset {
             scroll_offset = deferred_scroll_offset;
         }
@@ -571,7 +599,12 @@ impl TextElement {
 
         bounds.origin = bounds.origin + scroll_offset;
 
-        (cursor_bounds, scroll_offset, current_row)
+        (
+            cursor_bounds,
+            scroll_offset,
+            current_row,
+            extra_cursor_bounds,
+        )
     }
 
     /// 将匹配范围布局为路径。
@@ -725,10 +758,10 @@ impl TextElement {
         bounds: &mut Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
-    ) -> Option<Path<Pixels>> {
+    ) -> Vec<Path<Pixels>> {
         let state = self.state.read(cx);
         if !state.focus_handle.is_focused(window) {
-            return None;
+            return Vec::new();
         }
 
         let mut selected_range = state.selected_range;
@@ -737,25 +770,47 @@ impl TextElement {
                 selected_range = (ime_marked_range.end..ime_marked_range.end).into();
             }
         }
-        if selected_range.is_empty() {
-            return None;
+
+        // 主选区 + 额外选区统一裁到可见范围，各自成 path。
+        let mut ranges = Vec::new();
+        if !selected_range.is_empty() {
+            let mut range = selected_range;
+            if state.masked {
+                range.start = masked_display_offset(&state.text, range.start);
+                range.end = masked_display_offset(&state.text, range.end);
+            }
+            let (start_ix, end_ix) = if range.start < range.end {
+                (range.start, range.end)
+            } else {
+                (range.end, range.start)
+            };
+            ranges.push(start_ix..end_ix);
+        }
+        if !state.masked {
+            for extra in &state.extra_selections {
+                if extra.is_empty() {
+                    continue;
+                }
+                let (start_ix, end_ix) = if extra.start < extra.end {
+                    (extra.start, extra.end)
+                } else {
+                    (extra.end, extra.start)
+                };
+                ranges.push(start_ix..end_ix);
+            }
         }
 
-        if state.masked {
-            selected_range.start = masked_display_offset(&state.text, selected_range.start);
-            selected_range.end = masked_display_offset(&state.text, selected_range.end);
-        }
-
-        let (start_ix, end_ix) = if selected_range.start < selected_range.end {
-            (selected_range.start, selected_range.end)
-        } else {
-            (selected_range.end, selected_range.start)
-        };
-
-        let range = start_ix.max(last_layout.visible_range_offset.start)
-            ..end_ix.min(last_layout.visible_range_offset.end);
-
-        Self::layout_match_range(range, &last_layout, bounds)
+        ranges
+            .into_iter()
+            .filter_map(|range| {
+                let clipped = range.start.max(last_layout.visible_range_offset.start)
+                    ..range.end.min(last_layout.visible_range_offset.end);
+                if clipped.is_empty() {
+                    return None;
+                }
+                Self::layout_match_range(clipped, last_layout, bounds)
+            })
+            .collect()
     }
 
     /// 计算视口中的可见行范围。
@@ -1217,9 +1272,12 @@ pub(super) struct PrepaintState {
     scroll_size: Size<Pixels>,
     cursor_bounds: Option<Bounds<Pixels>>,
     cursor_scroll_offset: Point<Pixels>,
+    /// 额外光标边界（多光标，与主光标同滚动）。
+    extra_cursor_bounds: Vec<Bounds<Pixels>>,
     /// 当前行索引（0 起始，无换行，与光标同行）。
     current_row: Option<usize>,
-    selection_path: Option<Path<Pixels>>,
+    /// 选区路径（主选区 + 额外选区）。
+    selection_paths: Vec<Path<Pixels>>,
     indent_guides_path: Option<Path<Pixels>>,
     bounds: Bounds<Pixels>,
     /// 折叠图标布局数据
@@ -1233,6 +1291,18 @@ impl PrepaintState {
             bounds.origin.y += self.cursor_scroll_offset.y;
             bounds
         })
+    }
+
+    /// 返回考虑滚动偏移后的额外光标边界。
+    fn extra_cursor_bounds_with_scroll(&self) -> Vec<Bounds<Pixels>> {
+        self.extra_cursor_bounds
+            .iter()
+            .map(|bounds| {
+                let mut bounds = *bounds;
+                bounds.origin.y += self.cursor_scroll_offset.y;
+                bounds
+            })
+            .collect()
     }
 }
 
@@ -1336,7 +1406,7 @@ impl Element for TextElement {
                         })
                     } else if let Some(last_layout) = last_layout {
                         let mut cbounds = bounds;
-                        let (cb, _, _) =
+                        let (cb, _, _, _) =
                             self.layout_cursor(&last_layout, &mut cbounds, scroll_size, window, cx);
                         cb
                     } else {
@@ -1344,7 +1414,7 @@ impl Element for TextElement {
                     }
                 } else if let Some(last_layout) = last_layout {
                     let mut cbounds = bounds;
-                    let (cb, _, _) =
+                    let (cb, _, _, _) =
                         self.layout_cursor(&last_layout, &mut cbounds, scroll_size, window, cx);
                     cb
                 } else {
@@ -1715,11 +1785,11 @@ impl Element for TextElement {
         let input_bounds = bounds;
         let original_x = bounds.origin.x;
 
-        let (cursor_bounds, cursor_scroll_offset, current_row) =
+        let (cursor_bounds, cursor_scroll_offset, current_row, extra_cursor_bounds) =
             self.layout_cursor(&last_layout, &mut bounds, scroll_size, window, cx);
         last_layout.cursor_bounds = cursor_bounds;
 
-        let selection_path = self.layout_selections(&last_layout, &mut bounds, window, cx);
+        let selection_paths = self.layout_selections(&last_layout, &mut bounds, window, cx);
 
         let state = self.state.read(cx);
         let line_numbers = if state.mode.line_number() {
@@ -1793,8 +1863,9 @@ impl Element for TextElement {
             line_numbers,
             cursor_bounds,
             cursor_scroll_offset,
+            extra_cursor_bounds,
             current_row,
-            selection_path,
+            selection_paths,
             indent_guides_path,
             fold_icon_layout,
         }
@@ -1903,9 +1974,9 @@ impl Element for TextElement {
             }
         }
 
-        // 绘制选区
+        // 绘制选区（含额外选区）
         if window.is_window_active() {
-            if let Some(path) = prepaint.selection_path.take() {
+            for path in prepaint.selection_paths.drain(..) {
                 window.paint_path(path, cx.theme().selection);
             }
         }
@@ -1938,10 +2009,13 @@ impl Element for TextElement {
             offset_y += line.size(line_height).height;
         }
 
-        // 绘制闪烁光标
+        // 绘制闪烁光标（含额外光标，同闪烁）
         if focused && show_cursor {
             if let Some(cursor_bounds) = prepaint.cursor_bounds_with_scroll() {
                 window.paint_quad(fill(cursor_bounds, cx.theme().caret));
+            }
+            for extra in prepaint.extra_cursor_bounds_with_scroll() {
+                window.paint_quad(fill(extra, cx.theme().caret));
             }
         }
 

@@ -11,7 +11,10 @@ use ropey::Rope;
 use tree_sitter::{Language, Parser, Tree};
 use tree_sitter_highlight::{Highlight, HighlightConfiguration, HighlightEvent};
 
-use crate::highlight::{FoldRange, HighlightStyle, HighlightStyleResolver, Highlighter, TextEdit};
+use crate::highlight::{
+    DocumentSymbol, FoldRange, HighlightStyle, HighlightStyleResolver, Highlighter, SymbolKind,
+    TextEdit,
+};
 use crate::theme::highlight::HIGHLIGHT_NAMES;
 use crate::{App, SharedString};
 
@@ -192,6 +195,78 @@ impl Highlighter for TreeSitterHighlighter {
     fn fold_ranges(&self, _text: &Rope) -> Vec<FoldRange> {
         self.collect_folds()
     }
+
+    fn document_symbols(&self, text: &Rope) -> Vec<DocumentSymbol> {
+        let Some(ref tree) = self.tree else {
+            return Vec::new();
+        };
+        let source = text.to_string();
+        let bytes = source.as_bytes();
+        let mut out = Vec::new();
+        let mut stack = vec![tree.root_node()];
+        while let Some(node) = stack.pop() {
+            if let Some(kind) = symbol_kind(node.kind()) {
+                let name = node
+                    .child_by_field_name("name")
+                    .and_then(|name| bytes.get(name.start_byte()..name.end_byte()))
+                    .and_then(|slice| std::str::from_utf8(slice).ok())
+                    .map(|name| name.to_string())
+                    .unwrap_or_else(|| {
+                        if kind == SymbolKind::Impl {
+                            impl_name(&node, bytes)
+                        } else {
+                            // 残缺代码里名字可能缺失，回退到语法种类名。
+                            node.kind().to_string()
+                        }
+                    });
+                let start = node.start_byte().min(source.len());
+                let end = node.end_byte().min(source.len()).max(start);
+                out.push(DocumentSymbol {
+                    kind,
+                    name: name.into(),
+                    range: start..end,
+                    start_row: source[..start].matches('\n').count(),
+                });
+            }
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                stack.push(child);
+            }
+        }
+        out.sort_by_key(|symbol| symbol.range.start);
+        out
+    }
+}
+
+/// 语法节点种类转符号种类（非符号节点返回 `None`）。
+fn symbol_kind(kind: &str) -> Option<SymbolKind> {
+    match kind {
+        "function_item" => Some(SymbolKind::Function),
+        "struct_item" => Some(SymbolKind::Struct),
+        "enum_item" => Some(SymbolKind::Enum),
+        "trait_item" => Some(SymbolKind::Trait),
+        "impl_item" => Some(SymbolKind::Impl),
+        "mod_item" => Some(SymbolKind::Module),
+        "const_item" => Some(SymbolKind::Const),
+        "static_item" => Some(SymbolKind::Static),
+        _ => None,
+    }
+}
+
+/// `impl` 块名称：被实现的类型名，取不到时为 `"impl"`。
+fn impl_name(node: &tree_sitter::Node, bytes: &[u8]) -> String {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "type_identifier" || child.kind() == "generic_type" {
+            if let Some(slice) = bytes.get(child.start_byte()..child.end_byte())
+                && let Ok(name) = std::str::from_utf8(slice)
+            {
+                // 泛型取主名（`Foo<T>` → `Foo`）。
+                return name.split('<').next().unwrap_or("impl").to_string();
+            }
+        }
+    }
+    "impl".to_string()
 }
 
 /// 创建 Rust 高亮器（`InputState::set_highlighter` 直接消费）。
@@ -244,5 +319,32 @@ mod tests {
         let text = Rope::from_str("fn main() {\n    let x = 1;\n    let y = 2;\n}\n");
         let folds = highlighter.fold_ranges(&text);
         assert!(folds.iter().any(|r| r.start == 0 && r.end >= 3));
+    }
+
+    /// 函数/结构体/模块被收进大纲（按起始偏移排序）。
+    #[test]
+    fn rust_items_collected_as_symbols() {
+        use ropey::Rope;
+        let source = "struct Point {\n    x: f32,\n}\n\nfn main() {\n    println!(\"hi\");\n}\n";
+        let mut highlighter = TreeSitterHighlighter::rust();
+        highlighter.set_source(source);
+        let text = Rope::from_str(source);
+        let symbols = highlighter.document_symbols(&text);
+        let names: Vec<(String, usize)> = symbols
+            .iter()
+            .map(|symbol| (symbol.name.to_string(), symbol.start_row))
+            .collect();
+        assert!(names.contains(&("Point".to_string(), 0)));
+        assert!(names.contains(&("main".to_string(), 4)));
+        assert!(
+            symbols
+                .iter()
+                .find(|symbol| symbol.name.as_ref() == "main")
+                .is_some_and(|symbol| symbol.kind == SymbolKind::Function)
+        );
+        // 有序。
+        for pair in symbols.windows(2) {
+            assert!(pair[0].range.start <= pair[1].range.start);
+        }
     }
 }

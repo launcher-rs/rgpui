@@ -47,6 +47,7 @@ pub struct Input {
     content_type: Option<InputContentType>,
     role: Option<Role>,
     aria_label: Option<SharedString>,
+    read_only: Option<bool>,
     context_menu_enabled: Option<bool>,
     context_menu_extra: Option<InputContextMenuBuilder>,
     context_menu_override: Option<InputContextMenuBuilder>,
@@ -91,6 +92,7 @@ impl Input {
             content_type: None,
             role: None,
             aria_label: None,
+            read_only: None,
             context_menu_enabled: None,
             context_menu_extra: None,
             context_menu_override: None,
@@ -178,6 +180,15 @@ impl Input {
     /// 设置输入框为禁用状态。
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// 设置只读模式（保持正常样式，可选可复制，不可编辑）。
+    ///
+    /// 与 [`Self::disabled`] 不同：只读不改变外观，右键菜单的复制/全选仍可用。
+    /// 设置会写入共享的 [`InputState`]（粘性，后设置的生效）。
+    pub fn read_only(mut self, read_only: bool) -> Self {
+        self.read_only = Some(read_only);
         self
     }
 
@@ -395,6 +406,10 @@ impl RenderOnce for Input {
         self.state.update(cx, |state, _| {
             state.disabled = self.disabled;
             state.size = self.size;
+            // 只读（`Input` 层粘性写入，同右键菜单配置）。
+            if let Some(read_only) = self.read_only {
+                state.read_only = read_only;
+            }
 
             // 右键菜单配置（`Input` 层是粘性写入：只在显式设置时覆盖 state 层）。
             if let Some(enabled) = self.context_menu_enabled {
@@ -508,6 +523,14 @@ impl RenderOnce for Input {
                 .on_action(window.listener_for(&self.state, InputState::cut))
                 .on_action(window.listener_for(&self.state, InputState::undo))
                 .on_action(window.listener_for(&self.state, InputState::redo))
+                .on_action(window.listener_for(&self.state, InputState::copy_line))
+                .on_action(window.listener_for(&self.state, InputState::delete_line))
+                .on_action(window.listener_for(&self.state, InputState::move_line_up))
+                .on_action(window.listener_for(&self.state, InputState::move_line_down))
+                .on_action(window.listener_for(&self.state, InputState::toggle_line_comment))
+                .on_action(window.listener_for(&self.state, InputState::join_lines))
+                .on_action(window.listener_for(&self.state, InputState::add_cursor_above))
+                .on_action(window.listener_for(&self.state, InputState::add_cursor_below))
                 .when(state.mode.is_multi_line(), |this| {
                     this.on_action(window.listener_for(&self.state, InputState::indent_inline))
                         .on_action(window.listener_for(&self.state, InputState::outdent_inline))

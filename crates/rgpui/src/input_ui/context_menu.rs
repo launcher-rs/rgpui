@@ -61,7 +61,8 @@ impl InputState {
                 snapshot.is_empty(),
                 snapshot.can_undo(),
                 snapshot.can_redo(),
-                snapshot.is_disabled(),
+                // 只读与禁用一样不可写（复制/全选仍可用）。
+                snapshot.is_disabled() || snapshot.is_read_only(),
             )
         };
         menu.menu_with_disabled("剪切", Box::new(Cut), !has_selection || disabled)

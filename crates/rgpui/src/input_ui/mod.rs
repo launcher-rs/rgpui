@@ -8,13 +8,19 @@ use crate::App;
 pub(super) const MASK_CHAR: char = '*';
 
 pub mod async_file_loader;
+/// 括号自动闭合（键入拦截），见 [`InputState::auto_close_pairs`]。
+mod auto_close;
 mod auto_scroll;
 mod blink_cursor;
+/// 括号匹配高亮，见 [`InputState::bracket_match`]。
+mod bracket_match;
 mod change;
 mod clear_button;
 mod content_type;
 /// 输入框右键菜单（默认菜单 + 用户自定义），见 [`InputContextMenuBuilder`]。
 pub mod context_menu;
+/// 当前行高亮，见 [`InputState::current_line_highlight`]。
+mod current_line;
 mod cursor;
 /// 文本装饰集合（Monaco 式多区间高亮），见 [`TextDecorationCollection`]。
 pub mod decorations;
@@ -24,9 +30,12 @@ mod history;
 mod indent;
 mod input;
 mod layout;
+mod line_ops;
 mod mask_pattern;
 mod mode;
 mod movement;
+/// 多光标多选区，见 [`InputState::has_multiple_cursors`]。
+mod multicursor;
 mod number_input;
 mod rope_ext;
 mod selection;

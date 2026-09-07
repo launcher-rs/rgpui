@@ -231,6 +231,10 @@ impl InputState {
 
     /// 对选区执行缩进。`block` 为 true 时即使无选区也缩进整行。
     pub(super) fn indent(&mut self, block: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            cx.propagate();
+            return;
+        }
         if !self.mode.is_indentable() {
             cx.propagate();
             return;
@@ -290,6 +294,10 @@ impl InputState {
 
     /// 对选区执行减少缩进。`block` 为 true 时即使无选区也减少整行缩进。
     pub(super) fn outdent(&mut self, block: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            cx.propagate();
+            return;
+        }
         if !self.mode.is_indentable() {
             cx.propagate();
             return;

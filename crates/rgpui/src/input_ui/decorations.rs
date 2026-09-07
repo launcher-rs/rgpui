@@ -32,6 +32,11 @@ pub struct TextDecorationCollection {
 }
 
 impl TextDecorationCollection {
+    /// 在已持有 state 可变借用时清空集合内容（见 [`Self::set_in_place`]）。
+    pub(super) fn clear_in_place(&self, decorations: &mut DecorationCollections) -> bool {
+        decorations.set(self.id, Vec::new())
+    }
+
     /// 在已持有 state 可变借用时替换集合内容。
     ///
     /// [`Self::set`] 内部走 `entity.update`，在 `InputState` 方法内（已借用中）

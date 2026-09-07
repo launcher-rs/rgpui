@@ -5,11 +5,11 @@
 
 use rgpui::{
     App, Bounds, Context, KeyBinding, Render, Window, WindowBounds, WindowOptions, blue,
-    components::{SearchHighlight, SearchPanelState},
+    components::SearchPanelState,
     div, green, h_flex,
     input_ui::{
-        Backspace, Copy, Cut, Delete, Enter, Escape, Input, InputEvent, InputState, MoveDown,
-        MoveEnd, MoveHome, MoveLeft, MoveRight, MoveUp, Paste, Redo, SelectAll, Undo,
+        Backspace, Copy, Cut, Delete, Enter, Escape, Input, InputState, MoveDown, MoveEnd,
+        MoveHome, MoveLeft, MoveRight, MoveUp, Paste, Redo, SelectAll, Undo,
     },
     prelude::*,
     px, size, v_flex, white, yellow,
@@ -33,7 +33,6 @@ fn offset_of(text: &str, line: usize, col: usize) -> usize {
 struct SearchDemo {
     text: rgpui::Entity<InputState>,
     panel: rgpui::Entity<SearchPanelState>,
-    marker: SearchHighlight,
 }
 
 impl SearchDemo {
@@ -44,53 +43,12 @@ impl SearchDemo {
             state
         });
 
-        // 嵌入搜索面板：导航回调直接跳选区 + 只读滚动。
-        let jump_text = text.clone();
-        let panel = cx.new(|cx| {
-            SearchPanelState::new(window, cx).on_navigate(move |line, start, end, _, cx| {
-                let offset = jump_text.read_with(cx, |state, _| {
-                    let full = state.text().to_string();
-                    let base = offset_of(&full, line, 0);
-                    (
-                        offset_of(&full, line, start) - base,
-                        offset_of(&full, line, end) - base,
-                    )
-                });
-                // 上面只读了一次文本，这里重新算基址（演示从简，两次一致）。
-                jump_text.update(cx, |state, cx| {
-                    let full = state.text().to_string();
-                    let base = offset_of(&full, line, 0);
-                    let range = base + offset.0..base + offset.1;
-                    state.set_selected_range(range.clone(), cx);
-                    state.reveal_offset(range.start, cx);
-                });
-            })
-        });
-        panel.update(cx, |panel, cx| {
-            panel.set_source(SAMPLE.to_string(), cx);
-        });
+        // 一行接通搜索：文本同步 + 匹配标黄 + 默认跳转（选区 + 只读滚动）。
+        // 导航回调未定制，attach 给默认实现；替换执行权仍在外部（见下）。
+        let panel = cx.new(|cx| SearchPanelState::new(window, cx));
+        panel.update(cx, |panel, cx| panel.attach_editor(&text, cx));
 
-        // 文本一改就同步面板 source（否则匹配/跳转/标黄按旧文本算，全错位）。
-        // 标黄走下面的面板订阅（set_source 触发 state 通知 → 自动重标）。
-        cx.subscribe(&text, move |this, _text, event, cx| {
-            if !matches!(event, InputEvent::Change) {
-                return;
-            }
-            let full = this.text.read_with(cx, |state, _| state.text().to_string());
-            this.panel.update(cx, |panel, cx| {
-                panel.set_source(full, cx);
-            });
-        })
-        .detach();
-
-        // 查询/匹配一变就按当前配色重标（默认标黄，无需手动点）。
-        let panel_state = panel.read_with(cx, |panel, _| panel.state().clone());
-        cx.observe(&panel_state, |this, _, cx| {
-            this.mark_current(cx);
-        })
-        .detach();
-
-        // 替换接线：替换当前匹配 / 全部匹配（从后往前保偏移），文本变更经上面的
+        // 替换接线：替换当前匹配 / 全部匹配（从后往前保偏移），文本变更经 attach 的
         // 订阅自动同步 source，无需手动处理。
         {
             let text = text.clone();
@@ -143,20 +101,7 @@ impl SearchDemo {
             });
         }
 
-        Self {
-            text,
-            panel,
-            marker: SearchHighlight::new(),
-        }
-    }
-
-    /// 按当前查询标黄全部匹配（默认自动标黄，配色经 `marker.set_colors` 改）。
-    fn mark_current(&mut self, cx: &mut Context<Self>) {
-        let full = self.text.read_with(cx, |state, _| state.text().to_string());
-        let matches = self
-            .panel
-            .read_with(cx, |panel, cx| panel.state().read(cx).matches().to_vec());
-        self.marker.mark(&self.text, &full, &matches, cx);
+        Self { text, panel }
     }
 }
 
@@ -188,20 +133,23 @@ impl Render for SearchDemo {
                                     .label("黄")
                                     .small()
                                     .on_click(cx.listener(|this, _, _, cx| {
-                                        this.marker.set_colors(yellow(), None);
-                                        this.mark_current(cx);
+                                        this.panel.update(cx, |panel, cx| {
+                                            panel.set_highlight_colors(yellow(), None, cx)
+                                        });
                                     })),
                             )
                             .child(rgpui::Button::new("hl-green").label("绿").small().on_click(
                                 cx.listener(|this, _, _, cx| {
-                                    this.marker.set_colors(green(), None);
-                                    this.mark_current(cx);
+                                    this.panel.update(cx, |panel, cx| {
+                                        panel.set_highlight_colors(green(), None, cx)
+                                    });
                                 }),
                             ))
                             .child(rgpui::Button::new("hl-blue").label("蓝").small().on_click(
                                 cx.listener(|this, _, _, cx| {
-                                    this.marker.set_colors(blue(), Some(white()));
-                                    this.mark_current(cx);
+                                    this.panel.update(cx, |panel, cx| {
+                                        panel.set_highlight_colors(blue(), Some(white()), cx)
+                                    });
                                 }),
                             )),
                     ),

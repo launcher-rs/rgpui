@@ -124,6 +124,22 @@ where
         &self.redos
     }
 
+    /// 将最后 `count` 条撤销条目并为同一版本。
+    ///
+    /// 多光标扇出编辑（自后向前多次写入）调它，使一次撤销整体回退，
+    /// 而不是按光标逐个回退。`count == 0` 时空操作。
+    pub(crate) fn regroup_last(&mut self, count: usize) {
+        let len = self.undos.len();
+        if count == 0 || len == 0 {
+            return;
+        }
+        let start = len.saturating_sub(count);
+        let version = self.undos[start].version();
+        for item in &mut self.undos[start..] {
+            item.set_version(version);
+        }
+    }
+
     /// 清空撤销和重做栈。
     pub fn clear(&mut self) {
         self.undos.clear();

@@ -381,6 +381,18 @@ impl SearchHighlight {
     }
 }
 
+/// 行列（字节列）转全文 UTF-8 字节偏移（钳制到行内，防错位）。
+fn byte_offset_of(source: &str, line: usize, col: usize) -> usize {
+    let mut offset = 0;
+    for (ix, part) in source.split('\n').enumerate() {
+        if ix == line {
+            return offset + col.min(part.len());
+        }
+        offset += part.len() + 1;
+    }
+    offset
+}
+
 /// 可嵌入的搜索面板实体（`Render` 版）。
 ///
 /// 父组件在自己的 `Context` 里用 `cx.new(|cx| SearchPanelState::new(window, cx))`
@@ -398,6 +410,10 @@ pub struct SearchPanelState {
     show_replace: bool,
     /// 待搜索全文（`set_source` 推送）。
     source: String,
+    /// 绑定的编辑器（`attach_editor` 设置，用于标黄与默认跳转）。
+    attached_editor: Option<Entity<InputState>>,
+    /// 绑定编辑器的匹配标黄器（延迟创建，配色可调）。
+    highlight: Option<SearchHighlight>,
     /// 有待触发的导航（Enter/上下按钮只改索引，真正的回调在 render 里拿 Window 触发）。
     pending_navigate: bool,
     /// 有待触发的替换（替换框回车时无 Window，延后到 render 里触发）。
@@ -466,6 +482,8 @@ impl SearchPanelState {
             replace_input: Some(replace_input),
             show_replace: true,
             source: String::new(),
+            attached_editor: None,
+            highlight: None,
             pending_navigate: false,
             pending_replace: false,
             on_navigate: None,
@@ -508,6 +526,8 @@ impl SearchPanelState {
             replace_input: None,
             show_replace: false,
             source: String::new(),
+            attached_editor: None,
+            highlight: None,
             pending_navigate: false,
             pending_replace: false,
             on_navigate: None,
@@ -580,6 +600,91 @@ impl SearchPanelState {
             state.set_query(query, &source);
             cx.notify();
         });
+    }
+
+    /// 绑定编辑器：一行接通“文本同步 + 匹配标黄 + 跳转导航”。
+    ///
+    /// 与 `v1_2_showcase --bin search` 的手工接线等价：
+    /// - 编辑器文本变化 → 自动 `set_source` 推送全文；
+    /// - 匹配变化 → 内部标黄器重标（默认黄底，可调 [`Self::set_highlight_colors`]）；
+    /// - 导航回调未设置时给默认跳转（选区 + 只读滚动），已有自定义不覆盖。
+    ///
+    /// 替换回调（`on_replace`/`on_replace_all`）仍由调用方按需设置，
+    /// 面板只负责搜索，替换执行权留给外部（文本归属不同，框架不代劳）。
+    pub fn attach_editor(&mut self, editor: &Entity<InputState>, cx: &mut Context<Self>) {
+        self.attached_editor = Some(editor.clone());
+        // 默认跳转：已有自定义导航回调则保留。
+        if self.on_navigate.is_none() {
+            let editor_handle = editor.clone();
+            self.on_navigate = Some(Rc::new(move |line, start, end, _, cx| {
+                let full = editor_handle.read_with(cx, |state, _| state.text().to_string());
+                let start = byte_offset_of(&full, line, start);
+                let end = byte_offset_of(&full, line, end).max(start);
+                editor_handle.update(cx, |state, cx| {
+                    state.set_selected_range(start..end, cx);
+                    state.reveal_offset(start, cx);
+                });
+            }));
+        }
+        // 文本一改就同步 source（否则匹配/标黄按旧文本算，全错位）。
+        let editor_handle = editor.clone();
+        cx.subscribe(editor, move |this, _editor, event, cx| {
+            if !matches!(event, crate::input_ui::InputEvent::Change) {
+                return;
+            }
+            let full = editor_handle.read_with(cx, |state, _| state.text().to_string());
+            this.set_source(full, cx);
+        })
+        .detach();
+        // 查询/匹配一变就重标。
+        cx.observe(&self.state.clone(), |this, _, cx| {
+            this.mark_attached(cx);
+        })
+        .detach();
+        // 初始全文 + 初始标黄。
+        let full = editor.read_with(cx, |state, _| state.text().to_string());
+        self.set_source(full, cx);
+        self.mark_attached(cx);
+    }
+
+    /// 设置标黄配色（绑定编辑器后调，下次重标生效并立即重标一次）。
+    pub fn set_highlight_colors(
+        &mut self,
+        background: Hsla,
+        foreground: Option<Hsla>,
+        cx: &mut App,
+    ) {
+        self.highlight
+            .get_or_insert_with(SearchHighlight::new)
+            .set_colors(background, foreground);
+        self.mark_attached(cx);
+    }
+
+    /// 聚焦搜索输入框（`Ctrl+F` 接线用：一行调用）。
+    pub fn focus_search_input(&self, window: &mut Window, cx: &mut App) {
+        self.search_input.update(cx, |state, cx| {
+            state.focus(window, cx);
+        });
+    }
+
+    /// 设置匹配导航回调（构建后追加/覆盖，与 builder 版 `on_replace` 类似）。
+    pub fn set_on_navigate<F>(&mut self, handler: F)
+    where
+        F: Fn(usize, usize, usize, &mut Window, &mut App) + 'static,
+    {
+        self.on_navigate = Some(Rc::new(handler));
+    }
+
+    /// 按当前匹配重标绑定的编辑器（无绑定时空操作）。
+    fn mark_attached(&mut self, cx: &mut App) {
+        let Some(editor) = self.attached_editor.clone() else {
+            return;
+        };
+        let matches = self.state.read(cx).matches().to_vec();
+        let source = self.source.clone();
+        self.highlight
+            .get_or_insert_with(SearchHighlight::new)
+            .mark(&editor, &source, &matches, cx);
     }
 
     /// 搜索输入框实体（供父组件聚焦等）。
@@ -916,5 +1021,94 @@ impl RenderOnce for ToggleButton {
                 cb(!active, window, cx);
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注意：不用 `use super::*`——父模块的 `use crate::*` 会把根导出的 `test`
+    // 宏带进来，使展开后的裸 `#[test]` 解析到自身而无限递归。
+    use super::{InputState, SearchPanelState};
+    use crate::AppContext as _;
+    use crate::{Context, Entity, IntoElement, Render, Window, div};
+
+    /// 持有编辑器 + 搜索面板的测试宿主视图。
+    struct Probe {
+        text: Entity<InputState>,
+        panel: Entity<SearchPanelState>,
+    }
+
+    impl Render for Probe {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+        }
+    }
+
+    /// 在搜索框输入查询（触发匹配重算 + 标黄）。
+    fn type_query(
+        panel: &Entity<SearchPanelState>,
+        query: &str,
+        cx: &mut crate::VisualTestContext,
+    ) {
+        cx.update(|window, cx| {
+            let input = panel.read(cx).search_input().clone();
+            input.update(cx, |state, cx| state.replace(query, window, cx));
+        });
+    }
+
+    /// 读取（匹配数，标黄数）。
+    fn match_stats(
+        panel: &Entity<SearchPanelState>,
+        cx: &mut crate::VisualTestContext,
+    ) -> (usize, usize) {
+        cx.update(|_, cx| {
+            let panel_ref = panel.read(cx);
+            let count = panel_ref.state().read(cx).match_count();
+            let highlighted = panel_ref
+                .highlight
+                .as_ref()
+                .and_then(|highlight| highlight.collection.as_ref())
+                .map(|collection| collection.get_ranges(cx).len())
+                .unwrap_or(0);
+            (count, highlighted)
+        })
+    }
+
+    #[rgpui::test]
+    fn attach_editor_syncs_source_and_highlights(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let text = cx.new(|cx| {
+                let mut state = InputState::new(window, cx).multi_line(true);
+                state.replace("hello world\nhello rgpui", window, cx);
+                state
+            });
+            let panel = cx.new(|cx| SearchPanelState::new(window, cx));
+            panel.update(cx, |panel, cx| panel.attach_editor(&text, cx));
+            Probe { text, panel }
+        });
+        let (text, panel) =
+            probe.read_with(cx, |probe, _| (probe.text.clone(), probe.panel.clone()));
+        // 在搜索框输入查询：匹配数 2，标黄 2 处。
+        type_query(&panel, "hello", cx);
+        assert_eq!(match_stats(&panel, cx), (2, 2));
+        // 文本变化自动同步 source：改后匹配数跟上。
+        cx.update(|window, cx| {
+            text.update(cx, |state, cx| {
+                state.replace_all("hello hello hello", window, cx)
+            });
+        });
+        assert_eq!(match_stats(&panel, cx), (3, 3));
+        // 默认导航：直接调回调，光标跳到第一处匹配。
+        cx.update(|window, cx| {
+            let navigate = panel
+                .read(cx)
+                .on_navigate
+                .clone()
+                .expect("attach 后应有默认导航");
+            navigate(0, 0, 5, window, cx);
+        });
+        assert_eq!(text.read_with(cx, |state, _| state.selected_range()), 0..5);
     }
 }

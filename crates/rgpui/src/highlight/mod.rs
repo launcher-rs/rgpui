@@ -78,6 +78,13 @@ pub trait Highlighter {
         let _ = range;
         self.fold_ranges(text)
     }
+
+    /// 获取文档符号大纲（函数/结构体/枚举等顶层条目，供跳转与面包屑）。
+    ///
+    /// 默认空实现；tree-sitter 后端按语法树返回。范围为 UTF-8 字节偏移。
+    fn document_symbols(&self, _text: &Rope) -> Vec<DocumentSymbol> {
+        Vec::new()
+    }
 }
 
 /// 文本编辑信息。
@@ -98,6 +105,40 @@ pub struct FoldRange {
     pub end: usize,
     /// 是否默认折叠。
     pub default_folded: bool,
+}
+
+/// 文档符号种类（大纲/面包屑展示用）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolKind {
+    /// 函数（含关联函数，暂不区分方法）。
+    Function,
+    /// 结构体。
+    Struct,
+    /// 枚举。
+    Enum,
+    /// Trait。
+    Trait,
+    /// `impl` 块（名称为被实现的类型，无名时为 `"impl"`）。
+    Impl,
+    /// 模块。
+    Module,
+    /// 常量。
+    Const,
+    /// 静态项。
+    Static,
+}
+
+/// 文档符号（单个大纲条目）。
+#[derive(Debug, Clone)]
+pub struct DocumentSymbol {
+    /// 符号种类。
+    pub kind: SymbolKind,
+    /// 符号名称。
+    pub name: SharedString,
+    /// 符号整体范围（UTF-8 字节偏移，含函数体）。
+    pub range: Range<usize>,
+    /// 符号起始行号（0-based，跳转列表展示用，免去调用方换算）。
+    pub start_row: usize,
 }
 
 /// 高亮样式解析器 trait。

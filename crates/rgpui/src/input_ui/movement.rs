@@ -50,9 +50,13 @@ impl InputState {
         let offset = offset.clamp(0, self.text.len());
         self.cursor_line_end_affinity = false;
         self.selected_range = (offset..offset).into();
+        // 纯光标移动即单选区：额外光标在这里统一坍缩（Shift+扩展走 select_to，不受影响）。
+        self.extra_selections.clear();
         self.scroll_to(offset, direction, cx);
         self.pause_blink_cursor(cx);
         self.update_preferred_column();
+        self.refresh_bracket_match(cx);
+        self.refresh_current_line(cx);
         cx.notify()
     }
 

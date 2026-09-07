@@ -105,6 +105,14 @@ actions!(
         MoveToPreviousWord,
         MoveToNextWord,
         Escape,
+        CopyLine,
+        DeleteLine,
+        MoveLineUp,
+        MoveLineDown,
+        ToggleLineComment,
+        JoinLines,
+        AddCursorAbove,
+        AddCursorBelow,
     ]
 );
 
@@ -264,6 +272,29 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("ctrl-z", Undo, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-y", Redo, Some(CONTEXT)),
+        KeyBinding::new("shift-alt-down", CopyLine, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-k", DeleteLine, Some(CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-shift-k", DeleteLine, Some(CONTEXT)),
+        KeyBinding::new("alt-up", MoveLineUp, Some(CONTEXT)),
+        KeyBinding::new("alt-down", MoveLineDown, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-/", ToggleLineComment, Some(CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-/", ToggleLineComment, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-j", JoinLines, Some(CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-j", JoinLines, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-alt-up", AddCursorAbove, Some(CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-alt-up", AddCursorAbove, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-alt-down", AddCursorBelow, Some(CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-alt-down", AddCursorBelow, Some(CONTEXT)),
     ]);
 
     number_input::init(cx);
@@ -343,6 +374,8 @@ pub struct InputState {
     /// 选择时应用其默认掩码。
     pub(super) mask_pattern_set: bool,
     pub(super) placeholder: SharedString,
+    /// 行注释符（`toggle_line_comment` 用，见 [`Self::line_comment_prefix`]）。
+    pub(super) line_comment_prefix: SharedString,
 
     /// 标记文本是否有待处理的更新。
     ///
@@ -365,6 +398,20 @@ pub struct InputState {
     pub(super) context_menu_extra: Option<InputContextMenuBuilder>,
     /// 完全接管菜单（`Input::context_menu_override` 或 state 层设置写入）。
     pub(super) context_menu_override: Option<InputContextMenuBuilder>,
+    /// 只读模式：保持正常样式，允许移动/选择/复制，拦截一切用户编辑。
+    pub(super) read_only: bool,
+    /// 括号自动闭合：`None` 为自动（多行开、单行关），`Some` 显式覆盖。
+    pub(super) auto_close_pairs: Option<bool>,
+    /// 括号匹配高亮开关（默认开，仅多行生效，见 `input_ui/bracket_match.rs`）。
+    pub(super) bracket_match_enabled: bool,
+    /// 括号匹配高亮的装饰集合（命中时持有，未命中时清空复用）。
+    pub(super) bracket_match_collection: Option<TextDecorationCollection>,
+    /// 当前行高亮开关（默认开，仅多行生效，见 `input_ui/current_line.rs`）。
+    pub(super) current_line_highlight: bool,
+    /// 当前行高亮的装饰集合。
+    pub(super) current_line_collection: Option<TextDecorationCollection>,
+    /// 主光标之外的额外光标（多光标编辑，见 `input_ui/multicursor.rs`）。
+    pub(super) extra_selections: Vec<Selection>,
 }
 
 impl EventEmitter<InputEvent> for InputState {}
@@ -447,6 +494,7 @@ impl InputState {
             deferred_scroll_offset: None,
             preferred_column: None,
             placeholder: SharedString::default(),
+            line_comment_prefix: "//".into(),
             mask_pattern: MaskPattern::default(),
             mask_pattern_set: false,
             text_align: TextAlign::Left,
@@ -462,6 +510,13 @@ impl InputState {
             context_menu_enabled: true,
             context_menu_extra: None,
             context_menu_override: None,
+            read_only: false,
+            auto_close_pairs: None,
+            bracket_match_enabled: true,
+            bracket_match_collection: None,
+            current_line_highlight: true,
+            current_line_collection: None,
+            extra_selections: Vec::new(),
         }
     }
 
@@ -583,6 +638,89 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         self.placeholder = placeholder.into();
+        cx.notify();
+    }
+
+    /// 设置行注释符（`ToggleLineComment` 用，默认 `//`）。
+    ///
+    /// 按语言设置，如 Python 传 `"#"`、Lua 传 `"--"`、Rust 传 `"//"`。
+    pub fn line_comment_prefix(mut self, prefix: impl Into<SharedString>) -> Self {
+        self.line_comment_prefix = prefix.into();
+        self
+    }
+
+    /// 设置行注释符（创建后修改）。
+    pub fn set_line_comment_prefix(
+        &mut self,
+        prefix: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+    ) {
+        self.line_comment_prefix = prefix.into();
+        cx.notify();
+    }
+
+    /// 设置只读模式（builder 版，创建时链式调用）。
+    ///
+    /// 只读保持正常样式（不像禁用那样变灰），允许移动光标/选择/复制，
+    /// 但拦截一切用户编辑（键入/粘贴/剪切/撤销/行操作/回车换行）。
+    /// 程序化写入（`insert`/`replace`/`set_value`）不受影响。
+    pub fn read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
+        self
+    }
+
+    /// 设置只读模式（创建后修改）。
+    pub fn set_read_only(&mut self, read_only: bool, cx: &mut Context<Self>) {
+        self.read_only = read_only;
+        cx.notify();
+    }
+
+    /// 是否只读。
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    /// 设置括号自动闭合（builder 版，创建时链式调用）。
+    ///
+    /// 默认自动：多行开启、单行关闭；显式传值覆盖自动规则。
+    pub fn auto_close_pairs(mut self, enabled: bool) -> Self {
+        self.auto_close_pairs = Some(enabled);
+        self
+    }
+
+    /// 设置括号自动闭合（创建后修改，传 `None` 恢复自动规则）。
+    pub fn set_auto_close_pairs(&mut self, enabled: Option<bool>, cx: &mut Context<Self>) {
+        self.auto_close_pairs = enabled;
+        cx.notify();
+    }
+
+    /// 设置括号匹配高亮开关（builder 版，创建时链式调用，默认开）。
+    pub fn bracket_match(mut self, enabled: bool) -> Self {
+        self.bracket_match_enabled = enabled;
+        self
+    }
+
+    /// 设置括号匹配高亮开关（创建后修改，关闭时立即清除高亮）。
+    pub fn set_bracket_match_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.bracket_match_enabled = enabled;
+        if !enabled {
+            self.clear_bracket_match(cx);
+        }
+        cx.notify();
+    }
+
+    /// 设置当前行高亮开关（builder 版，创建时链式调用，默认开）。
+    pub fn current_line_highlight(mut self, enabled: bool) -> Self {
+        self.current_line_highlight = enabled;
+        self
+    }
+
+    /// 设置当前行高亮开关（创建后修改，关闭时立即清除高亮）。
+    pub fn set_current_line_highlight(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.current_line_highlight = enabled;
+        if !enabled {
+            self.clear_current_line(cx);
+        }
         cx.notify();
     }
 
@@ -1092,8 +1230,9 @@ impl InputState {
     }
 
     pub(super) fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
-        self.selected_range = (0..self.text.len()).into();
-        cx.notify();
+        // 全选即单选区：先清额外光标。
+        let len = self.text.len();
+        self.set_selected_range(0..len, cx);
     }
 
     pub(super) fn select_to_start(
@@ -1301,7 +1440,52 @@ impl InputState {
         }
     }
 
+    /// 计算回车插入文本与中间行光标（电缩进）。
+    ///
+    /// - 光标前（去尾空白后）是 `{`/`[`/`(` 之一：新行多缩一级；
+    /// - 且光标后（去首空白后）是对应 `}`/`]`/`)` 之一：拆成三行，
+    ///   光标落中间行末（返回 `Some` 偏移），行尾原有文本保持不动；
+    /// - 否则普通换行（返回 `None`，光标自然落插入末尾）。
+    fn electric_newline(&self, base_indent: &str, cursor: usize) -> (String, Option<usize>) {
+        let line_start = self.start_of_line();
+        let line_end = self.end_of_line();
+        let before = self.text.slice(line_start..cursor).to_string();
+        let after = self.text.slice(cursor..line_end).to_string();
+        let opens = before
+            .trim_end()
+            .chars()
+            .next_back()
+            .is_some_and(|c| matches!(c, '{' | '[' | '('));
+        if !opens {
+            return (format!("\n{base_indent}"), None);
+        }
+        let step = self.mode.tab_size().to_string();
+        if after.trim_start().starts_with(['}', ']', ')']) {
+            let middle = cursor + 1 + base_indent.len() + step.len();
+            (
+                format!("\n{base_indent}{step}\n{base_indent}"),
+                Some(middle),
+            )
+        } else {
+            (format!("\n{base_indent}{step}"), None)
+        }
+    }
+
     pub(super) fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
+        // 多光标：每处删选区或一个边界单位。
+        if !self.extra_selections.is_empty() {
+            self.multi_delete(true, window, cx);
+            self.pause_blink_cursor(cx);
+            return;
+        }
+        // 光标夹在空括号对中间时成对删除（如 `(|)` 一次删 `()`）。
+        if self.selected_range.is_empty()
+            && let Some(pair) = super::auto_close::smart_backspace_range(self)
+        {
+            self.replace_text_in_range_silent(Some(self.range_to_utf16(&pair)), "", window, cx);
+            self.pause_blink_cursor(cx);
+            return;
+        }
         if self.selected_range.is_empty() {
             self.select_to(self.previous_boundary(self.cursor()), cx)
         }
@@ -1310,6 +1494,12 @@ impl InputState {
     }
 
     pub(super) fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
+        // 多光标：每处删选区或一个边界单位。
+        if !self.extra_selections.is_empty() {
+            self.multi_delete(false, window, cx);
+            self.pause_blink_cursor(cx);
+            return;
+        }
         if self.selected_range.is_empty() {
             self.select_to(self.next_boundary(self.cursor()), cx)
         }
@@ -1416,6 +1606,18 @@ impl InputState {
         // 提交：传播动作并发送 PressEnter，不插入换行。`Shift+Enter` 仍插入换行。
         let insert_newline = self.mode.is_multi_line() && (!self.submit_on_enter || action.shift);
 
+        // 只读时不换行，交由外部处理。
+        if insert_newline && self.read_only {
+            cx.propagate();
+            return;
+        }
+
+        // 多光标：每处换行并延续缩进。
+        if insert_newline && !self.extra_selections.is_empty() {
+            self.enter_cursors(window, cx);
+            return;
+        }
+
         if insert_newline {
             // 获取当前行缩进
             let indent = if self.mode.is_code_editor() {
@@ -1424,9 +1626,14 @@ impl InputState {
                 "".to_string()
             };
 
-            // 添加换行与缩进
-            let new_line_text = format!("\n{}", indent);
+            // 电缩进：`{` 后回车多缩一级；若光标后紧跟 `}` 则拆成三行。
+            let cursor = self.cursor();
+            let (new_line_text, middle) = self.electric_newline(&indent, cursor);
             self.replace_text_in_range_silent(None, &new_line_text, window, cx);
+            if let Some(at) = middle {
+                self.selected_range = (at..at).into();
+                self.selection_reversed = false;
+            }
             self.pause_blink_cursor(cx);
         } else {
             // 单行输入或提交式回车：仅发送事件（例如对话框确认、聊天发送）。
@@ -1440,6 +1647,10 @@ impl InputState {
     }
 
     pub(super) fn clean(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // 用户触发的清空（清除按钮/Esc），只读时不执行。
+        if self.read_only {
+            return;
+        }
         self.replace_text("", window, cx);
         self.selected_range = (0..0).into();
         self.scroll_to(0, None, cx);
@@ -1450,6 +1661,12 @@ impl InputState {
             self.unmark_text(window, cx);
         }
 
+        // 多光标优先坍缩（VS Code 行为），再走清空/传播。
+        if !self.extra_selections.is_empty() {
+            self.extra_selections.clear();
+            cx.notify();
+            return;
+        }
         if self.clean_on_escape {
             return self.clean(window, cx);
         }
@@ -1474,6 +1691,21 @@ impl InputState {
         self.selecting = true;
         let offset = self.index_for_mouse_position(event.position);
 
+        // Alt+左键：加一个多光标（仅多行可编辑输入，不启动拖选）。
+        if event.button == MouseButton::Left
+            && event.modifiers.alt
+            && self.mode.is_multi_line()
+            && !self.disabled
+            && !self.read_only
+        {
+            self.selecting = false;
+            let at = offset.min(self.text.len());
+            self.extra_selections.push(Selection::new(at, at));
+            self.normalize_extras();
+            cx.notify();
+            return;
+        }
+
         // 三击选中一行
         if event.button == MouseButton::Left && event.click_count >= 3 {
             self.select_line(offset, window, cx);
@@ -1486,8 +1718,9 @@ impl InputState {
             return;
         }
 
-        // 鼠标右键：将光标移动到该位置
+        // 鼠标右键：将光标移动到该位置（先坍缩多光标）。
         if event.button == MouseButton::Right {
+            self.clear_extra_cursors(cx);
             if !self.selected_range.contains(offset) {
                 self.move_to(offset, None, cx);
             }
@@ -1689,6 +1922,28 @@ impl InputState {
         self.reveal_offset(range.start, cx);
     }
 
+    /// 获取文档符号大纲（需高亮器实现 `document_symbols`，如 tree-sitter 后端）。
+    ///
+    /// 未设置高亮器或后端不支持时返回空。范围为全文 UTF-8 字节偏移，
+    /// 可直接用于 [`Self::goto_symbol`]。
+    pub fn document_symbols(&self) -> Vec<crate::highlight::DocumentSymbol> {
+        match self.highlighter.as_ref() {
+            Some(highlighter) => highlighter.document_symbols(&self.text),
+            None => Vec::new(),
+        }
+    }
+
+    /// 跳转到文档符号：光标落符号起始处并滚动可见。
+    pub fn goto_symbol(
+        &mut self,
+        symbol: &crate::highlight::DocumentSymbol,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = symbol.range.start.min(self.text.len());
+        self.set_selected_range(offset..offset, cx);
+        self.reveal_offset(offset, cx);
+    }
+
     /// 设置语法高亮器（如 `highlight::rust_highlighter()`，需 `--features tree-sitter`）。
     ///
     /// 设置后立即对全文刷新高亮装饰与折叠候选；后续编辑自动刷新。
@@ -1755,6 +2010,10 @@ impl InputState {
     }
 
     pub(super) fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
+        // 多光标：各选区换行拼接（全塌缩时复制各光标所在整行）。
+        if !self.extra_selections.is_empty() {
+            return self.copy_cursors(cx);
+        }
         if self.selected_range.is_empty() {
             return;
         }
@@ -1764,8 +2023,12 @@ impl InputState {
     }
 
     pub(super) fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
-        if self.selected_range.is_empty() {
+        if self.read_only || self.selected_range.is_empty() && self.extra_selections.is_empty() {
             return;
+        }
+        // 多光标：复制后删除所有光标范围。
+        if !self.extra_selections.is_empty() {
+            return self.cut_cursors(window, cx);
         }
 
         let selected_text = self.text.slice(self.selected_range).to_string();
@@ -1775,6 +2038,17 @@ impl InputState {
     }
 
     pub(super) fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            return;
+        }
+        // 多光标：每处贴全文。
+        if !self.extra_selections.is_empty() {
+            if let Some(clipboard) = cx.read_from_clipboard() {
+                let new_text = clipboard.text().unwrap_or_default();
+                self.multi_insert(&new_text, window, cx);
+            }
+            return;
+        }
         if let Some(clipboard) = cx.read_from_clipboard() {
             let new_text = clipboard.text().unwrap_or_default();
             self.replace_text_in_range_silent(None, &new_text, window, cx);
@@ -1797,6 +2071,9 @@ impl InputState {
     }
 
     pub(super) fn undo(&mut self, _: &Undo, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            return;
+        }
         self.history.ignore = true;
         if let Some(changes) = self.history.undo() {
             for change in changes {
@@ -1808,6 +2085,9 @@ impl InputState {
     }
 
     pub(super) fn redo(&mut self, _: &Redo, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            return;
+        }
         self.history.ignore = true;
         if let Some(changes) = self.history.redo() {
             for change in changes {
@@ -1991,6 +2271,8 @@ impl InputState {
         if self.selected_range.is_empty() {
             self.update_preferred_column();
         }
+        self.refresh_bracket_match(cx);
+        self.refresh_current_line(cx);
         cx.notify()
     }
 
@@ -2343,53 +2625,14 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.replace_text_in_range(range_utf16, new_text, window, cx);
-    }
-}
-
-impl EntityInputHandler for InputState {
-    fn text_for_range(
-        &mut self,
-        range_utf16: Range<usize>,
-        adjusted_range: &mut Option<Range<usize>>,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<String> {
-        let range = self.range_from_utf16(&range_utf16);
-        adjusted_range.replace(self.range_to_utf16(&range));
-        Some(self.text.slice(range).to_string())
+        self.replace_text_in_range_raw(range_utf16, new_text, window, cx);
     }
 
-    fn selected_text_range(
-        &mut self,
-        _ignore_disabled_input: bool,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<UTF16Selection> {
-        Some(UTF16Selection {
-            range: self.range_to_utf16(&self.selected_range.into()),
-            reversed: false,
-        })
-    }
-
-    fn marked_text_range(
-        &self,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<Range<usize>> {
-        self.ime_marked_range
-            .map(|range| self.range_to_utf16(&range.into()))
-    }
-
-    fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
-        self.ime_marked_range = None;
-    }
-
-    /// 替换范围内文本。
+    /// 替换范围内文本的原始实现（无只读拦截、无自动闭合）。
     ///
-    /// - 若新文本非法，则不替换。
-    /// - 若未提供 `range_utf16`，则使用当前选择范围。
-    fn replace_text_in_range(
+    /// 程序化写入（`insert`/`replace`/`set_value`/撤销/行操作等）与内部
+    /// 调用走这里；用户键入走 trait 方法 [`EntityInputHandler::replace_text_in_range`]。
+    pub(crate) fn replace_text_in_range_raw(
         &mut self,
         range_utf16: Option<Range<usize>>,
         new_text: &str,
@@ -2473,10 +2716,90 @@ impl EntityInputHandler for InputState {
         self.ime_marked_range.take();
         self.update_preferred_column();
         self.mode.update_auto_grow(&self.display_map);
+        self.refresh_bracket_match(cx);
+        self.refresh_current_line(cx);
         if self.emit_events {
             cx.emit(InputEvent::Change);
         }
         cx.notify();
+    }
+}
+
+impl EntityInputHandler for InputState {
+    fn text_for_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        adjusted_range: &mut Option<Range<usize>>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<String> {
+        let range = self.range_from_utf16(&range_utf16);
+        adjusted_range.replace(self.range_to_utf16(&range));
+        Some(self.text.slice(range).to_string())
+    }
+
+    fn selected_text_range(
+        &mut self,
+        _ignore_disabled_input: bool,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<UTF16Selection> {
+        Some(UTF16Selection {
+            range: self.range_to_utf16(&self.selected_range.into()),
+            reversed: false,
+        })
+    }
+
+    fn marked_text_range(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<Range<usize>> {
+        self.ime_marked_range
+            .map(|range| self.range_to_utf16(&range.into()))
+    }
+
+    fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
+        self.ime_marked_range = None;
+    }
+
+    /// 替换范围内文本。
+    ///
+    /// - 若新文本非法，则不替换。
+    /// - 若未提供 `range_utf16`，则使用当前选择范围。
+    ///
+    /// 用户键入入口：只读时直接返回；单个括号/引号走自动闭合。
+    /// 程序化写入请走 [`Self::replace_text_in_range_silent`]（直通 raw，不受
+    /// 只读与自动闭合影响，与 `disabled` 的处理一致）。
+    fn replace_text_in_range(
+        &mut self,
+        range_utf16: Option<Range<usize>>,
+        new_text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.read_only {
+            return;
+        }
+        // 多光标：原文插入（键入/粘贴都扇出），不走自动闭合。
+        if range_utf16.is_none()
+            && self.ime_marked_range.is_none()
+            && !self.extra_selections.is_empty()
+            && !new_text.is_empty()
+        {
+            let text = new_text.to_string();
+            self.multi_insert(&text, window, cx);
+            return;
+        }
+        if range_utf16.is_none()
+            && self.ime_marked_range.is_none()
+            && let Some(typed) = super::auto_close::single_typed_char(new_text)
+            && super::auto_close::auto_close_applies(self)
+            && super::auto_close::handle_typed_char(self, typed, window, cx)
+        {
+            return;
+        }
+        self.replace_text_in_range_raw(range_utf16, new_text, window, cx);
     }
 
     /// 标记文本为 IME 输入的临时插入。
@@ -2488,9 +2811,12 @@ impl EntityInputHandler for InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.disabled {
+        if self.disabled || self.read_only {
             return;
         }
+
+        // IME 合成期间坍缩多光标（合成只认主光标）。
+        self.clear_extra_cursors(cx);
 
         // 参见 `replace_text_in_range` 中的相同注释。
         let new_text = self.normalize_input(new_text);
@@ -2663,5 +2989,93 @@ impl Render for InputState {
         } else {
             el.into_any_element()
         }
+    }
+}
+
+#[cfg(test)]
+mod typing_behavior_tests {
+    use super::*;
+    use crate::Entity;
+
+    /// 持有输入框状态的测试宿主视图。
+    struct Probe {
+        state: Entity<InputState>,
+    }
+
+    impl crate::Render for Probe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            crate::div()
+        }
+    }
+
+    #[rgpui::test]
+    fn electric_indent_splits_brace_block(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let state = cx.new(|cx| InputState::new(window, cx).code_editor("rust"));
+            state.update(cx, |state, cx| state.replace("fn main() {\n}", window, cx));
+            Probe { state }
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        // 光标放在 `{` 后回车：拆成三行，光标落中间行末（默认缩进 2 空格）。
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| state.set_selected_range(11..11, cx));
+        });
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.enter(
+                    &Enter {
+                        secondary: false,
+                        shift: false,
+                    },
+                    window,
+                    cx,
+                )
+            });
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| (state.value().to_string(), state.cursor())),
+            ("fn main() {\n  \n}".to_string(), 14)
+        );
+    }
+
+    #[rgpui::test]
+    fn read_only_blocks_typing_but_allows_api(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let state = cx.new(|cx| InputState::new(window, cx).multi_line(true).read_only(true));
+            state.update(cx, |state, cx| state.replace("hello", window, cx));
+            Probe { state }
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        // 用户键入被拦截（走 trait 方法，与 OS 键入同路径）。
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                EntityInputHandler::replace_text_in_range(state, None, "(", window, cx);
+            });
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.value().to_string()),
+            "hello".to_string()
+        );
+        // 程序化写入不受影响。
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.insert(" world", window, cx));
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.value().to_string()),
+            "hello world".to_string()
+        );
+        // 光标移动/选择正常。
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| state.set_selected_range(0..5, cx));
+        });
+        assert!(state.read_with(cx, |state, _| state.has_selection()));
     }
 }
