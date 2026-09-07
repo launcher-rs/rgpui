@@ -210,13 +210,18 @@ fn adjust_range_for_edit(
     start..end
 }
 
-/// 规范化装饰范围（裁剪到文本内，去空区间），`InputState` 原地刷新共用。
+/// 规范化装饰范围：裁剪到文本内、去空区间，并吸附到字符边界。
+///
+/// 布局管线按字节切分 runs，范围端点落在多字节字符内部会直接 panic，
+/// 因此这里是最后防线（stale 范围、IME 合成中的中间状态都经此兜底）。
 pub(super) fn normalize(text: &Rope, decorations: Vec<TextDecoration>) -> Vec<TextDecoration> {
     decorations
         .into_iter()
         .filter_map(|decoration| {
             let range = text.clip_offset(decoration.range.start, rgpui::sum_tree::Bias::Left)
                 ..text.clip_offset(decoration.range.end, rgpui::sum_tree::Bias::Right);
+            let range = text.floor_char_boundary(range.start)
+                ..text.ceil_char_boundary(range.end).min(text.len());
             (!range.is_empty()).then_some(TextDecoration {
                 range,
                 style: decoration.style,

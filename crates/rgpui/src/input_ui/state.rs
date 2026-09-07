@@ -1721,6 +1721,8 @@ impl InputState {
             .map(|range| FoldRange::new(range.start, range.end))
             .collect();
         // 原地写入（`collection.set` 走 entity.update，此处已在借用中，会重入 panic）。
+        // normalize 兜底：stale 范围/合成中间态的错位边界在此吸附到字符边界，
+        // 否则布局按字节切分 runs 会 panic。
         if let Some(collection) = self.highlight_collection.clone() {
             let decorations = normalize(&self.text, decorations);
             if collection.set_in_place(&mut self.decorations, decorations) {
@@ -2472,7 +2474,7 @@ impl EntityInputHandler for InputState {
         range_utf16: Option<Range<usize>>,
         new_text: &str,
         new_selected_range_utf16: Option<Range<usize>>,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.disabled {
@@ -2532,6 +2534,9 @@ impl EntityInputHandler for InputState {
         self.mode.update_auto_grow(&self.display_map);
         self.history.start_grouping();
         self.push_history(&old_text, &range, new_text);
+        // IME 合成同样改变文本，高亮/折叠候选必须同步刷新，否则 stale 范围
+        // 在布局切分 runs 时可能落在多字节字符内部导致 panic。
+        self.refresh_highlight(window, cx);
         cx.notify();
     }
 
