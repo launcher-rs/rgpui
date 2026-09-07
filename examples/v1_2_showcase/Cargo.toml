@@ -25,6 +25,10 @@ path = "src/bin/editor.rs"
 name = "search"
 path = "src/bin/search.rs"
 
+[[bin]]
+name = "context_menu"
+path = "src/bin/context_menu.rs"
+
 [dependencies]
 rgpui = { workspace = true, features = ["tree-sitter"] }
 rgpui-platform.workspace = true

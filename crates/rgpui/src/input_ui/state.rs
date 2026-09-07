@@ -4,6 +4,7 @@
 //! 弹窗（诊断/悬停/上下文菜单）以及内联补全等非核心功能。
 
 use crate::highlight::{Highlighter, ThemeHighlightResolver};
+use crate::menu::ContextMenuExt as _;
 use crate::menu::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::sum_tree::Bias;
 use crate::{
@@ -28,6 +29,7 @@ use super::{
     auto_scroll::AutoScroll,
     blink_cursor::{BlinkCursor, CURSOR_WIDTH},
     change::Change,
+    context_menu::InputContextMenuBuilder,
     decorations::{DecorationCollections, TextDecoration, TextDecorationCollection, normalize},
     element::{EditorScrollbarSnapshot, RIGHT_MARGIN, TextElement},
     history::History,
@@ -357,6 +359,12 @@ pub struct InputState {
     _subscriptions: Vec<Subscription>,
 
     pub(super) auto_scroll: AutoScroll,
+    /// 右键菜单总开关（默认启用，见 `input_ui/context_menu.rs`）。
+    pub(super) context_menu_enabled: bool,
+    /// 默认菜单后的追加项（`Input::context_menu_extra` 或 state 层设置写入）。
+    pub(super) context_menu_extra: Option<InputContextMenuBuilder>,
+    /// 完全接管菜单（`Input::context_menu_override` 或 state 层设置写入）。
+    pub(super) context_menu_override: Option<InputContextMenuBuilder>,
 }
 
 impl EventEmitter<InputEvent> for InputState {}
@@ -451,6 +459,9 @@ impl InputState {
             _pending_update: false,
             cursor_line_end_affinity: false,
             auto_scroll: AutoScroll::default(),
+            context_menu_enabled: true,
+            context_menu_extra: None,
+            context_menu_override: None,
         }
     }
 
@@ -2633,12 +2644,24 @@ impl Render for InputState {
             self._pending_update = false;
         }
 
-        div()
+        let enabled = self.context_menu_enabled;
+        let state = cx.entity();
+        let el = div()
             .id("input-state")
             .flex_1()
             .when(self.mode.is_multi_line(), |this| this.h_full())
             .flex_grow_1()
             .overflow_x_hidden()
-            .child(TextElement::new(cx.entity()).placeholder(self.placeholder.clone()))
+            .child(TextElement::new(cx.entity()).placeholder(self.placeholder.clone()));
+        // 右键菜单挂在文本区上（`Input` 外层同样经此实体渲染，故单行/多行/CodeEditor 全覆盖；
+        // 前缀/后缀装饰区不触发）。配置见 `input_ui/context_menu.rs`。
+        if enabled {
+            el.context_menu(move |menu, window, cx| {
+                Self::build_context_menu(menu, &state, window, cx)
+            })
+            .into_any_element()
+        } else {
+            el.into_any_element()
+        }
     }
 }

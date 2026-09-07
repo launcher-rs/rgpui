@@ -10,4 +10,5 @@ cargo run -p v1_2_showcase --bin components  # Upload + Carousel + Mermaid + Sid
 cargo run -p v1_2_showcase --bin chat        # Bubble + MessageScroller + Marker
 cargo run -p v1_2_showcase --bin editor      # CodeEditor + tree-sitter 高亮/折叠（需 tree-sitter feature）
 cargo run -p v1_2_showcase --bin search      # SearchPanelState 嵌入 + 匹配标黄 + 替换
+cargo run -p v1_2_showcase --bin context_menu # Input 右键菜单：默认 + 追加自定义 + 完全接管 + 总开关
 ```

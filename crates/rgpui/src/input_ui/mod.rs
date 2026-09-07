@@ -13,6 +13,8 @@ mod blink_cursor;
 mod change;
 mod clear_button;
 mod content_type;
+/// 输入框右键菜单（默认菜单 + 用户自定义），见 [`InputContextMenuBuilder`]。
+pub mod context_menu;
 mod cursor;
 /// 文本装饰集合（Monaco 式多区间高亮），见 [`TextDecorationCollection`]。
 pub mod decorations;
@@ -34,6 +36,7 @@ mod word_selection;
 pub use async_file_loader::{AsyncFileLoader, FileLoadResult, LargeFileConfig, LoadProgress};
 pub(crate) use clear_button::clear_button;
 pub use content_type::InputContentType;
+pub use context_menu::InputContextMenuBuilder;
 pub use cursor::*;
 pub use decorations::{TextDecoration, TextDecorationCollection};
 pub use display_map::{BufferPoint, DisplayMap, DisplayPoint, FoldRange, WrappingIndent};

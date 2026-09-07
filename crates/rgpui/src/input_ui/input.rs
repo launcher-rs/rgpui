@@ -12,7 +12,7 @@ use crate::{
 
 use super::{
     CONTEXT, InputContentType, InputState, content_type::sync_native_content_type,
-    element::EditorScrollbar,
+    context_menu::InputContextMenuBuilder, element::EditorScrollbar,
 };
 
 /// 返回输入类组件的 `(背景, 前景)` 颜色。
@@ -47,6 +47,9 @@ pub struct Input {
     content_type: Option<InputContentType>,
     role: Option<Role>,
     aria_label: Option<SharedString>,
+    context_menu_enabled: Option<bool>,
+    context_menu_extra: Option<InputContextMenuBuilder>,
+    context_menu_override: Option<InputContextMenuBuilder>,
 }
 
 impl Sizable for Input {
@@ -88,6 +91,9 @@ impl Input {
             content_type: None,
             role: None,
             aria_label: None,
+            context_menu_enabled: None,
+            context_menu_extra: None,
+            context_menu_override: None,
         }
     }
 
@@ -178,6 +184,52 @@ impl Input {
     /// 设置输入框的 tab index，默认 0。
     pub fn tab_index(mut self, index: isize) -> Self {
         self.tab_index = index;
+        self
+    }
+
+    /// 右键菜单总开关（默认启用）。
+    ///
+    /// 关掉后右键仅移动光标，不弹菜单（只读展示、搜索框等场景用）。
+    /// 设置会写入共享的 [`InputState`]（粘性，后设置的生效）。
+    pub fn show_context_menu(mut self, show: bool) -> Self {
+        self.context_menu_enabled = Some(show);
+        self
+    }
+
+    /// 在默认右键菜单后追加自定义项（最常用）。
+    ///
+    /// 默认项（剪切/复制/粘贴/全选/撤销/重做）保留，自定义项跟在分隔符后。
+    /// 闭包签名与 [`InputState::context_menu_extra`] 一致，可读 `state` 做动态菜单。
+    pub fn context_menu_extra<F>(mut self, builder: F) -> Self
+    where
+        F: Fn(
+                crate::menu::PopupMenu,
+                Entity<InputState>,
+                &mut Window,
+                &mut App,
+            ) -> crate::menu::PopupMenu
+            + 'static,
+    {
+        self.context_menu_extra = Some(std::rc::Rc::new(builder));
+        self
+    }
+
+    /// 完全接管右键菜单（默认项不再显示）。
+    ///
+    /// 想复用默认项时在闭包里调
+    /// [`InputState::build_default_context_menu`] 拼进去，见
+    /// [`InputState::context_menu_override`]。
+    pub fn context_menu_override<F>(mut self, builder: F) -> Self
+    where
+        F: Fn(
+                crate::menu::PopupMenu,
+                Entity<InputState>,
+                &mut Window,
+                &mut App,
+            ) -> crate::menu::PopupMenu
+            + 'static,
+    {
+        self.context_menu_override = Some(std::rc::Rc::new(builder));
         self
     }
 
@@ -343,6 +395,17 @@ impl RenderOnce for Input {
         self.state.update(cx, |state, _| {
             state.disabled = self.disabled;
             state.size = self.size;
+
+            // 右键菜单配置（`Input` 层是粘性写入：只在显式设置时覆盖 state 层）。
+            if let Some(enabled) = self.context_menu_enabled {
+                state.context_menu_enabled = enabled;
+            }
+            if let Some(extra) = self.context_menu_extra.clone() {
+                state.context_menu_extra = Some(extra);
+            }
+            if let Some(builder) = self.context_menu_override.clone() {
+                state.context_menu_override = Some(builder);
+            }
 
             // 密码内容类型默认启用掩码（除非已显式设置）。
             if matches!(
