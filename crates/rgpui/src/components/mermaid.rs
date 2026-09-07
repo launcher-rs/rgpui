@@ -606,8 +606,7 @@ impl RenderOnce for MermaidDiagram {
             .h(px(h.max(1.0)))
             .overflow_hidden();
 
-        // 箭头三角顶点数据（tip 精确落在节点边上，Canvas 矢量填充；
-        // 字形箭头依赖字体且 metrics 不可控，已弃用）。
+        // 箭头三角顶点数据（tip 精确落在节点边上，Canvas 矢量填充）。
         let mut arrows: Vec<(f32, f32, f32, f32, f32, f32)> = Vec::new();
 
         // 边：两段折线（先走出边轴再转入边轴）+ 标签，箭头见下方三角。
