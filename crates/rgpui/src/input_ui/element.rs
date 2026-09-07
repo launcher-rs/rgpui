@@ -1872,17 +1872,7 @@ impl Element for TextElement {
             window.paint_path(path, cx.theme().border.opacity(0.85));
         }
 
-        // 绘制选区
-        if window.is_window_active() {
-            if let Some(path) = prepaint.selection_path.take() {
-                window.paint_path(path, cx.theme().selection);
-            }
-        }
-
-        // 绘制文本
-        let mut offset_y = invisible_top_padding;
-
-        // 滚动条偏移始终为正，从左位置开始
+        // 滚动条偏移始终为正，从左位置开始（装饰背景与文本共用）。
         let scroll_offset = if text_align == TextAlign::Right {
             (prepaint.scroll_size.width - prepaint.bounds.size.width).max(px(0.))
         } else if text_align == TextAlign::Center {
@@ -1892,6 +1882,36 @@ impl Element for TextElement {
         } else {
             px(0.)
         };
+
+        // 绘制装饰背景（搜索标黄/语法高亮块等），在选区之下、文本之下。
+        {
+            let mut bg_offset_y = invisible_top_padding;
+            for line in prepaint.last_layout.lines.iter() {
+                let p = point(
+                    origin.x + prepaint.last_layout.line_number_width + (scroll_offset),
+                    origin.y + bg_offset_y,
+                );
+                let _ = line.paint_background(
+                    p,
+                    line_height,
+                    text_align,
+                    Some(prepaint.last_layout.content_width),
+                    window,
+                    cx,
+                );
+                bg_offset_y += line.size(line_height).height;
+            }
+        }
+
+        // 绘制选区
+        if window.is_window_active() {
+            if let Some(path) = prepaint.selection_path.take() {
+                window.paint_path(path, cx.theme().selection);
+            }
+        }
+
+        // 绘制文本
+        let mut offset_y = invisible_top_padding;
 
         for (line, &buffer_line) in prepaint
             .last_layout
