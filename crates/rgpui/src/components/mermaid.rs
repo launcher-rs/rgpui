@@ -603,7 +603,6 @@ impl RenderOnce for MermaidDiagram {
         let theme = cx.theme();
         let fg = theme.tokens.foreground.color;
         let border = theme.tokens.border.color;
-        let accent = theme.tokens.accent.color;
         let user_style = self.style;
         let (nodes, edges, direction, w, h) = map_geometry(&self.source);
         // 入边方向：横向布局从左右边进（箭头横向），纵向布局从上下边进（箭头纵向）。
@@ -646,7 +645,7 @@ impl RenderOnce for MermaidDiagram {
                                 .left(px((x1 + x2) / 2.0 - label_w))
                                 .top(px(y2 - 22.0))
                                 .text_xs()
-                                .text_color(accent)
+                                .text_color(fg)
                                 .child(edge.label.clone()),
                         );
                     }
@@ -683,7 +682,7 @@ impl RenderOnce for MermaidDiagram {
                                 .left(px((x1 + x2) / 2.0 - label_w))
                                 .top(px(y2 - 22.0))
                                 .text_xs()
-                                .text_color(accent)
+                                .text_color(fg)
                                 .child(edge.label.clone()),
                         );
                     }
@@ -708,7 +707,7 @@ impl RenderOnce for MermaidDiagram {
                             .left(px(x2 + 8.0))
                             .top(px((y1 + y2) / 2.0 - 8.0))
                             .text_xs()
-                            .text_color(accent)
+                            .text_color(fg)
                             .child(edge.label.clone()),
                     );
                 }
@@ -744,7 +743,7 @@ impl RenderOnce for MermaidDiagram {
                             .left(px(x2 + 8.0))
                             .top(px((y1 + y2) / 2.0 - 8.0))
                             .text_xs()
-                            .text_color(accent)
+                            .text_color(fg)
                             .child(edge.label.clone()),
                     );
                 }
