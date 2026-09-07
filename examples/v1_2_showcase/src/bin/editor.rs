@@ -43,7 +43,7 @@ impl Render for EditorDemo {
                     .text_sm()
                     .child("Rust 高亮 + 折叠（行号栏三角）由 tree-sitter 驱动"),
             )
-            .child(div().flex_1().child(Input::new(&self.input).h_full()))
+            .child(Input::new(&self.input).flex_1())
     }
 }
 

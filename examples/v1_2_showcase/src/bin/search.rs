@@ -167,7 +167,7 @@ impl Render for SearchDemo {
                     .flex_1()
                     .gap(px(8.0))
                     .child(div().text_sm().child("待搜索全文（导航跳转 + 只读滚动）"))
-                    .child(div().flex_1().child(Input::new(&self.text).h_full()))
+                    .child(Input::new(&self.text).flex_1())
                     .child(
                         h_flex()
                             .gap(px(8.0))
