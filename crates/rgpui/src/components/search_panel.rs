@@ -7,7 +7,7 @@
 //! - 大小写敏感、全词匹配、正则表达式选项
 //! - 全部替换、替换当前匹配
 
-use crate::input_ui::{Input, InputState};
+use crate::input_ui::{Input, InputState, TextDecoration, TextDecorationCollection};
 use crate::prelude::FluentBuilder as _;
 use crate::*;
 use std::rc::Rc;
@@ -277,6 +277,107 @@ impl SearchState {
 impl Default for SearchState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// 搜索匹配标黄器：持有装饰集合句柄（增量刷新不泄漏）+ 可配色。
+///
+/// 默认黄底、文字色不变；查询变化时由调用方调 [`Self::mark`] 重标即可
+/// （通常跟在 `SearchPanelState::set_source` 后面）。
+#[derive(Clone)]
+pub struct SearchHighlight {
+    collection: Option<TextDecorationCollection>,
+    background: Hsla,
+    foreground: Option<Hsla>,
+}
+
+impl Default for SearchHighlight {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SearchHighlight {
+    /// 创建标黄器（默认黄底）。
+    pub fn new() -> Self {
+        Self {
+            collection: None,
+            background: yellow(),
+            foreground: None,
+        }
+    }
+
+    /// 设置标黄配色（背景 + 可选文字色），下次 [`Self::mark`] 生效。
+    pub fn set_colors(&mut self, background: Hsla, foreground: Option<Hsla>) {
+        self.background = background;
+        self.foreground = foreground;
+    }
+
+    /// 当前背景色。
+    pub fn background(&self) -> Hsla {
+        self.background
+    }
+
+    /// 当前文字色（`None` 表示保持原文颜色）。
+    pub fn foreground(&self) -> Option<Hsla> {
+        self.foreground
+    }
+
+    /// 标黄全部匹配。
+    ///
+    /// `source` 须与算出 `matches` 的是同一份文本（否则偏移错位）；
+    /// 已有集合时增量 `set` 刷新，无泄漏。
+    pub fn mark(
+        &mut self,
+        text: &Entity<InputState>,
+        source: &str,
+        matches: &[SearchMatch],
+        cx: &mut App,
+    ) {
+        // 行首字节偏移表（钳制到行内，避免错位 ranges）。
+        let mut line_starts = Vec::new();
+        let mut offset = 0;
+        for part in source.split('\n') {
+            line_starts.push((offset, part.len()));
+            offset += part.len() + 1;
+        }
+        let decorations: Vec<TextDecoration> = matches
+            .iter()
+            .map(|m| {
+                let (base, len) = line_starts
+                    .get(m.line)
+                    .copied()
+                    .unwrap_or((source.len(), 0));
+                let start = base + m.start_col.min(len);
+                let end = base + m.end_col.min(len).max(start - base);
+                TextDecoration::new(
+                    start..end,
+                    HighlightStyle {
+                        background_color: Some(self.background),
+                        color: self.foreground,
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect();
+        match self.collection.take() {
+            Some(collection) => {
+                collection.set(decorations, cx);
+                self.collection = Some(collection);
+            }
+            None => {
+                self.collection = Some(text.update(cx, |state, cx| {
+                    state.create_decorations_collection(decorations, cx)
+                }));
+            }
+        }
+    }
+
+    /// 清除标黄。
+    pub fn clear(&mut self, cx: &mut App) {
+        if let Some(collection) = self.collection.take() {
+            collection.clear(cx);
+        }
     }
 }
 
