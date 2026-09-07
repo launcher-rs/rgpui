@@ -23,6 +23,8 @@ struct ComponentsDemo {
     scroll: ScrollHandle,
     selected: rgpui::SharedString,
     collapsed_sections: HashSet<String>,
+    sidebar_collapsed: bool,
+    sidebar_hidden: bool,
 }
 
 impl ComponentsDemo {
@@ -35,6 +37,8 @@ impl ComponentsDemo {
             scroll: ScrollHandle::new(),
             selected: "inbox".into(),
             collapsed_sections: HashSet::new(),
+            sidebar_collapsed: false,
+            sidebar_hidden: false,
         }
     }
 }
@@ -93,45 +97,73 @@ impl Render for ComponentsDemo {
                     )
                     .child(div().text_xl().child("Mermaid（流程图）"))
                     .child(MermaidDiagram::new(MERMAID_SAMPLE))
-                    .child(div().text_xl().child("Sidebar（分组 + 角标）"))
+                    .child(div().text_xl().child("Sidebar（分组 + 角标 + 折叠/隐藏）"))
+                    .child(
+                        h_flex().gap(px(8.0)).child(
+                            rgpui::Button::new("sidebar-hide")
+                                .label(if self.sidebar_hidden {
+                                    "显示侧边栏"
+                                } else {
+                                    "隐藏侧边栏"
+                                })
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.sidebar_hidden = !this.sidebar_hidden;
+                                    cx.notify();
+                                })),
+                        ),
+                    )
                     .child(
                         h_flex()
                             .h(px(280.0))
-                            .child(
-                                Sidebar::new()
-                                    .item(
-                                        SidebarItem::new("inbox", "收件箱")
-                                            .with_icon(IconName::File)
-                                            .with_badge("12"),
-                                    )
-                                    .section(
-                                        SidebarSection::new(
-                                            "项目",
-                                            vec![
-                                                SidebarItem::new("rgpui", "rgpui").with_badge("3"),
-                                                SidebarItem::new("editor", "ru_editor"),
-                                            ],
+                            .when(!self.sidebar_hidden, |this| {
+                                let collapsed_handle = demo.clone();
+                                let section_handle = demo.clone();
+                                this.child(
+                                    Sidebar::new()
+                                        .collapsible(true)
+                                        .collapsed(self.sidebar_collapsed)
+                                        .on_toggle_collapsed(move |collapsed, _, cx| {
+                                            let collapsed = *collapsed;
+                                            collapsed_handle.update(cx, |this, _| {
+                                                this.sidebar_collapsed = collapsed;
+                                            });
+                                        })
+                                        .item(
+                                            SidebarItem::new("inbox", "收件箱")
+                                                .with_icon(IconName::File)
+                                                .with_badge("12"),
                                         )
-                                        .collapsed(collapsed.contains("项目")),
-                                    )
-                                    .selected(selected)
-                                    .on_select(cx.listener(
-                                        |this, id: &rgpui::SharedString, _, _| {
-                                            this.selected = id.clone();
-                                        },
-                                    ))
-                                    .on_toggle_section(move |title, collapsed, _, cx| {
-                                        let title = title.clone();
-                                        let collapsed = *collapsed;
-                                        demo.update(cx, |this, _| {
-                                            if collapsed {
-                                                this.collapsed_sections.insert(title.to_string());
-                                            } else {
-                                                this.collapsed_sections.remove(title.as_str());
-                                            }
-                                        });
-                                    }),
-                            )
+                                        .section(
+                                            SidebarSection::new(
+                                                "项目",
+                                                vec![
+                                                    SidebarItem::new("rgpui", "rgpui")
+                                                        .with_badge("3"),
+                                                    SidebarItem::new("editor", "ru_editor"),
+                                                ],
+                                            )
+                                            .collapsed(collapsed.contains("项目")),
+                                        )
+                                        .selected(selected)
+                                        .on_select(cx.listener(
+                                            |this, id: &rgpui::SharedString, _, _| {
+                                                this.selected = id.clone();
+                                            },
+                                        ))
+                                        .on_toggle_section(move |title, collapsed, _, cx| {
+                                            let title = title.clone();
+                                            let collapsed = *collapsed;
+                                            section_handle.update(cx, |this, _| {
+                                                if collapsed {
+                                                    this.collapsed_sections
+                                                        .insert(title.to_string());
+                                                } else {
+                                                    this.collapsed_sections.remove(title.as_str());
+                                                }
+                                            });
+                                        }),
+                                )
+                            })
                             .child(
                                 div()
                                     .flex_1()

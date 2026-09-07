@@ -3,7 +3,7 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::{
-    App, Bounds, Context, Render, Window, WindowBounds, WindowOptions,
+    App, Avatar, Bounds, Context, Render, Window, WindowBounds, WindowOptions,
     chat::{
         Bubble, BubbleSide, Marker, Message, MessageGroup, MessageScroller, MessageScrollerState,
     },
@@ -94,8 +94,12 @@ impl Render for ChatDemo {
                             .child(Marker::new("今天 09:00"))
                             .children(groups.into_iter().map(|group| {
                                 let mine = group.sender.as_str() == "我";
+                                let sender = group.sender.clone();
+                                let initial: String =
+                                    sender.chars().next().unwrap_or('?').to_string();
                                 v_flex()
                                     .gap(px(2.0))
+                                    .child(div().text_xs().px(px(40.0)).child(sender))
                                     .children(group.messages.into_iter().map(move |msg| {
                                         let text = match msg.content {
                                             MessageType::Text(text) => text,
@@ -107,6 +111,7 @@ impl Render for ChatDemo {
                                             } else {
                                                 BubbleSide::Left
                                             })
+                                            .avatar(Avatar::new(initial.clone()).size(px(28.0)))
                                             .child(div().text_sm().child(text))
                                     }))
                             })),

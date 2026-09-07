@@ -327,7 +327,7 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// 生成完整 SVG 文档（浅色字 on 深底由调用方主题色决定，见 `render_svg` 参数）。
+/// 生成完整 SVG 文档，返回（文档，宽，高）。
 fn emit_svg(
     placed: &[PlacedNode],
     edges: &[FlowEdge],
@@ -335,7 +335,7 @@ fn emit_svg(
     fg: &str,
     border: &str,
     accent: &str,
-) -> String {
+) -> (String, f32, f32) {
     let by_id: HashMap<&str, &PlacedNode> = placed.iter().map(|p| (p.id.as_str(), p)).collect();
     let max_x = placed
         .iter()
@@ -438,7 +438,7 @@ fn emit_svg(
     }
 
     svg.push_str("</svg>");
-    svg
+    (svg, w, h)
 }
 
 /// Mermaid 流程图组件（子集，见模块文档）。
@@ -459,9 +459,18 @@ impl MermaidDiagram {
 
     /// 解析 + 布局 + 生成 SVG 文档（纯函数，可单测）。
     pub fn render_svg(&self, fg: Hsla, border: Hsla, accent: Hsla) -> String {
+        self.build(fg, border, accent).0
+    }
+
+    /// 解析 + 布局，返回（SVG 文档，宽，高）。
+    fn build(&self, fg: Hsla, border: Hsla, accent: Hsla) -> (String, f32, f32) {
         let (direction, nodes, edges) = parse_flowchart(&self.source);
         if nodes.is_empty() {
-            return "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>".to_string();
+            return (
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>".to_string(),
+                0.0,
+                0.0,
+            );
         }
         let placed = layout_nodes(&nodes, &edges);
         emit_svg(
@@ -487,12 +496,16 @@ impl RenderOnce for MermaidDiagram {
         let fg = theme.tokens.foreground.color;
         let border = theme.tokens.border.color;
         let accent = theme.tokens.accent.color;
-        let svg_doc = self.render_svg(fg, border, accent);
+        let (svg_doc, w, h) = self.build(fg, border, accent);
         let user_style = self.style;
-        svg().data(svg_doc.as_bytes()).map(|mut this| {
-            this.style().refine(&user_style);
-            this
-        })
+        svg()
+            .data(svg_doc.as_bytes())
+            .w(px(w.max(1.0)))
+            .h(px(h.max(1.0)))
+            .map(|mut this| {
+                this.style().refine(&user_style);
+                this
+            })
     }
 }
 
