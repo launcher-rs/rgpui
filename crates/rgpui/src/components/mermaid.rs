@@ -627,23 +627,32 @@ impl RenderOnce for MermaidDiagram {
                         .bg(border),
                 );
             }
-            // 箭头（按末段方向）。
-            let glyph = if (y2 - y1).abs() < 0.5 {
-                if x2 >= x1 { "▶" } else { "◀" }
+            // 箭头（按末段进入方向往回偏 8px，箭头尖刚好落在节点边上，
+            // 而不是压在边线上）。
+            let (glyph, gcx, gcy) = if (y2 - y1).abs() < 0.5 {
+                if x2 >= x1 {
+                    ("▶", x2 - 8.0, y2)
+                } else {
+                    ("◀", x2 + 8.0, y2)
+                }
             } else if y2 >= y1 {
-                "▼"
+                ("▼", x2, y2 - 8.0)
             } else {
-                "▲"
+                ("▲", x2, y2 + 8.0)
             };
-            root = root.child(
-                div()
-                    .absolute()
-                    .left(px(x2 - 6.0))
-                    .top(px(y2 - 9.0))
-                    .text_xs()
-                    .text_color(border)
-                    .child(glyph),
-            );
+            // 过短的边不画箭头，避免杂散字形。
+            let edge_len = (x2 - x1).abs().max((y2 - y1).abs());
+            if edge_len >= 8.0 {
+                root = root.child(
+                    div()
+                        .absolute()
+                        .left(px(gcx - 5.0))
+                        .top(px(gcy - 8.0))
+                        .text_xs()
+                        .text_color(border)
+                        .child(glyph),
+                );
+            }
             // 边标签（中点上方）。
             if !edge.label.is_empty() {
                 root = root.child(
