@@ -28,6 +28,7 @@ use crate::collections::{FxHashMap, FxHashSet, HashMap, TypeIdHashMap, TypeIdHas
 use crate::debug_panic;
 use crate::http_client::{HttpClient, Url};
 use crate::rgpui_util::ResultExt;
+use crate::util::debounce::Debouncer;
 pub use async_context::*;
 #[cfg(feature = "bench")]
 pub use bench_context::{BenchAppContext, BenchReport, BenchWindowContext, bench_platform};
@@ -727,6 +728,8 @@ pub struct App {
     // below is plain data, the drop order is insignificant here
     pub(crate) pending_notifications: FxHashSet<EntityId>,
     pub(crate) pending_global_notifications: TypeIdHashSet,
+    /// 按 key 隔离的防抖器注册表（`App::debounce` 方法版）。
+    pub(crate) debouncers: FxHashMap<SharedString, Debouncer>,
     pub(crate) restart_path: Option<PathBuf>,
     pub(crate) layout_id_buffer: Vec<LayoutId>, // We recycle this memory across layout requests.
     pub(crate) propagate_event: bool,
@@ -817,6 +820,7 @@ impl App {
                 pending_effects: VecDeque::new(),
                 pending_notifications: FxHashSet::default(),
                 pending_global_notifications: Default::default(),
+                debouncers: FxHashMap::default(),
                 observers: SubscriberSet::new(),
                 tracked_entities: FxHashMap::default(),
                 window_invalidators_by_entity: FxHashMap::default(),
@@ -1465,6 +1469,25 @@ impl App {
         suggested_name: Option<&str>,
     ) -> oneshot::Receiver<Result<Option<PathBuf>>> {
         self.platform.prompt_for_new_path(directory, suggested_name)
+    }
+
+    /// 防抖执行一次回调：同一 `key` 连续调用只执行最后一次。
+    ///
+    /// `Context` 经 Deref 到 `App`，可直接 `cx.debounce("search", duration, callback)`。
+    /// 不同 key 相互隔离（如搜索框与自动保存各用各的 key）。
+    /// 回调在后台任务中运行，不得捕获非 `Send` 数据；写回 UI 请经 channel/Atomic
+    /// 或 `cx.update_entity`。需要独立生命周期的防抖器请直接持有 [`Debouncer`] 结构。
+    pub fn debounce(
+        &mut self,
+        key: impl Into<SharedString>,
+        duration: Duration,
+        callback: impl FnOnce() + Send + 'static,
+    ) {
+        let executor = self.background_executor.clone();
+        self.debouncers
+            .entry(key.into())
+            .or_default()
+            .debounce(&executor, duration, callback);
     }
 
     /// 在平台级别显示指定路径，例如在 macOS 的 Finder 中。

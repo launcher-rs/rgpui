@@ -1,6 +1,7 @@
 use std::ops::Range;
 
-/// 树类型 stub，替代 tree-sitter 的 Tree（rgpui 不引入 tree-sitter）。
+/// 树类型 stub：无 tree-sitter feature 时的占位（有 feature 时数据源自
+/// `highlight::TreeSitterHighlighter::fold_ranges`，经 `set_fold_candidates` 填入）。
 pub struct Tree;
 
 /// 可折叠区域的折叠范围。
@@ -28,7 +29,8 @@ impl FoldRange {
     }
 }
 
-/// 提取指定字节范围内的折叠范围 - stub 实现（无 tree-sitter，返回空）。
+/// 提取指定字节范围内的折叠范围 - stub 实现（无数据源时返回空；
+/// tree-sitter 后端经 `set_fold_candidates` 直接填候选，不走这里）。
 pub fn extract_fold_ranges_in_range(_tree: &Tree, _byte_range: Range<usize>) -> Vec<FoldRange> {
     Vec::new()
 }

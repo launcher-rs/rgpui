@@ -140,7 +140,10 @@ impl Render for ChatView {
 // AI-chat 组件（对标 AntDX）：提示词集、追问建议、思维链、附件、引用、操作行、发送框。
 pub mod actions;
 pub mod attachments;
+pub mod bubble;
+pub mod marker;
 pub mod prompts;
+pub mod scroller;
 pub mod sender;
 pub mod sources;
 pub mod suggestion;
@@ -148,7 +151,10 @@ pub mod thought_chain;
 
 pub use actions::*;
 pub use attachments::*;
+pub use bubble::*;
+pub use marker::*;
 pub use prompts::*;
+pub use scroller::*;
 pub use sender::*;
 pub use sources::*;
 pub use suggestion::*;

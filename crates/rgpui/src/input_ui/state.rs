@@ -3,6 +3,7 @@
 //! 从 rgpui-component 移植，裁剪了 LSP 集成、语法高亮、搜索面板、
 //! 弹窗（诊断/悬停/上下文菜单）以及内联补全等非核心功能。
 
+use crate::highlight::{Highlighter, ThemeHighlightResolver};
 use crate::menu::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::sum_tree::Bias;
 use crate::{
@@ -22,11 +23,12 @@ use std::ops::Range;
 use unicode_segmentation::*;
 
 use super::{
-    DisplayMap, LastLayout, MASK_CHAR, Position, RopeExt as _, Selection, WrappingIndent,
+    DisplayMap, FoldRange, LastLayout, MASK_CHAR, Position, RopeExt as _, Selection,
+    WrappingIndent,
     auto_scroll::AutoScroll,
     blink_cursor::{BlinkCursor, CURSOR_WIDTH},
     change::Change,
-    decorations::DecorationCollections,
+    decorations::{DecorationCollections, TextDecoration, TextDecorationCollection},
     element::{EditorScrollbarSnapshot, RIGHT_MARGIN, TextElement},
     history::History,
     mask_pattern::{MaskPattern, normalize_number_input},
@@ -327,6 +329,10 @@ pub struct InputState {
     pub(super) editor_scrollbar_snapshot: Cell<Option<EditorScrollbarSnapshot>>,
     pub(super) text_align: TextAlign,
     pub(super) decorations: DecorationCollections,
+    /// 语法高亮器（`set_highlighter` 设置；编辑时自动刷新高亮装饰与折叠候选）。
+    pub(super) highlighter: Option<Box<dyn Highlighter>>,
+    /// 高亮装饰集合（`refresh_highlight` 持有，编辑时增量 `set` 刷新）。
+    highlight_collection: Option<TextDecorationCollection>,
 
     /// 用于格式化输入文本的掩码模式。
     pub(crate) mask_pattern: MaskPattern,
@@ -437,6 +443,8 @@ impl InputState {
             mask_pattern_set: false,
             text_align: TextAlign::Left,
             decorations: DecorationCollections::default(),
+            highlighter: None,
+            highlight_collection: None,
             emit_events: true,
             size: ElementSize::default(),
             _subscriptions,
@@ -1670,6 +1678,55 @@ impl InputState {
         self.reveal_offset(range.start, cx);
     }
 
+    /// 设置语法高亮器（如 `highlight::rust_highlighter()`，需 `--features tree-sitter`）。
+    ///
+    /// 设置后立即对全文刷新高亮装饰与折叠候选；后续编辑自动刷新。
+    /// 传入 `None` 清除高亮（同时清空高亮装饰集合与折叠候选）。
+    pub fn set_highlighter(
+        &mut self,
+        highlighter: Option<Box<dyn Highlighter>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.highlighter = highlighter;
+        if self.highlighter.is_some() {
+            self.refresh_highlight(window, cx);
+        } else {
+            if let Some(collection) = self.highlight_collection.take() {
+                collection.clear(cx);
+            }
+            self.display_map.set_fold_candidates(Vec::new());
+            cx.notify();
+        }
+    }
+
+    /// 刷新语法高亮装饰与折叠候选（有 highlighter 时；编辑后调用）。
+    fn refresh_highlight(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(highlighter) = self.highlighter.as_mut() else {
+            return;
+        };
+        let folding = self.mode.is_folding();
+        highlighter.update(None, &self.text, folding, window, cx);
+        let resolver = ThemeHighlightResolver::from_app(cx);
+        let len = self.text.len();
+        let decorations: Vec<TextDecoration> = highlighter
+            .styles(&(0..len), &resolver)
+            .into_iter()
+            .map(|(range, style)| TextDecoration::new(range, style))
+            .collect();
+        let folds = highlighter
+            .fold_ranges(&self.text)
+            .into_iter()
+            .map(|range| FoldRange::new(range.start, range.end))
+            .collect();
+        if let Some(ref collection) = self.highlight_collection {
+            collection.set(decorations, cx);
+        } else {
+            self.highlight_collection = Some(self.create_decorations_collection(decorations, cx));
+        }
+        self.display_map.set_fold_candidates(folds);
+    }
+
     pub(super) fn show_character_palette(
         &mut self,
         _: &ShowCharacterPalette,
@@ -2318,7 +2375,7 @@ impl EntityInputHandler for InputState {
         &mut self,
         range_utf16: Option<Range<usize>>,
         new_text: &str,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.disabled {
@@ -2392,6 +2449,7 @@ impl EntityInputHandler for InputState {
             .adjust_folds_for_edit(&old_text, &range, new_text);
         self.display_map
             .on_text_changed(&self.text, &range, &Rope::from(new_text), cx);
+        self.refresh_highlight(window, cx);
 
         self.selected_range = (new_offset..new_offset).into();
         self.ime_marked_range.take();

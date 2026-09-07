@@ -1756,6 +1756,7 @@ pub trait PlatformAtlas {
     ) -> Result<Option<AtlasTile>>;
     /// 从图集中移除指定键对应的瓦片。
     fn remove(&self, key: &AtlasKey);
+    /// 测试断言用：图集是否包含指定键（默认实现恒返回 false）。
     #[cfg(any(test, feature = "test-support"))]
     fn contains(&self, _key: &AtlasKey) -> bool {
         false

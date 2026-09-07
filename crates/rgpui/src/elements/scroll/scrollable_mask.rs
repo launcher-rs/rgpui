@@ -297,7 +297,7 @@ mod tests {
         let (_, cx) = cx.add_window_view({
             let scroll_handle = scroll_handle.clone();
             move |_, _| HorizontalScrollAreaTest {
-                scroll_handle: scroll_handle.clone(),
+                scroll_handle: scroll_handle,
             }
         });
         let cx: &mut VisualTestContext = cx;
@@ -488,7 +488,7 @@ mod tests {
         let (_, cx) = cx.add_window_view({
             let scroll_handle = scroll_handle.clone();
             move |_, _| HorizontalScrollAreaTest {
-                scroll_handle: scroll_handle.clone(),
+                scroll_handle: scroll_handle,
             }
         });
         let cx: &mut VisualTestContext = cx;
@@ -514,7 +514,7 @@ mod tests {
         let (_, cx) = cx.add_window_view({
             let scroll_handle = scroll_handle.clone();
             move |_, _| HorizontalScrollAreaTest {
-                scroll_handle: scroll_handle.clone(),
+                scroll_handle: scroll_handle,
             }
         });
         let cx: &mut VisualTestContext = cx;
@@ -770,7 +770,7 @@ mod tests {
             let list_state = list_state.clone();
             move |_, _| ListWithVerticalAreaTest {
                 scroll_handle: scroll_handle.clone(),
-                list_state: list_state.clone(),
+                list_state: list_state,
             }
         });
         cx.run_until_parked();

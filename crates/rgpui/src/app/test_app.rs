@@ -75,7 +75,7 @@ impl TestApp {
         asset_source: Arc<dyn crate::AssetSource>,
     ) -> Self {
         let dispatcher = TestDispatcher::new(seed);
-        let arc_dispatcher = Arc::new(dispatcher.clone());
+        let arc_dispatcher = Arc::new(dispatcher);
         let background_executor = BackgroundExecutor::new(arc_dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(arc_dispatcher);
         let platform = match platform_text_system.clone() {

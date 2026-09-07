@@ -21,6 +21,7 @@ pub mod app_menu;
 pub mod aurora;
 pub mod bottom_sheet;
 pub mod canvas_component;
+pub mod carousel;
 pub mod color_picker;
 pub mod combobox;
 pub mod command_palette;
@@ -28,6 +29,7 @@ pub mod command_palette;
 pub mod confetti;
 pub mod countdown;
 pub mod date_picker;
+pub mod dock;
 #[cfg(feature = "dom-backend")]
 mod dom_svg;
 pub mod drag_drop;
@@ -41,6 +43,7 @@ pub mod inline_edit;
 pub mod layout_transition;
 #[cfg(feature = "effects")]
 pub mod marquee;
+pub mod mermaid;
 pub mod navigation_menu;
 pub mod notification_center;
 pub mod number_ticker;
@@ -72,6 +75,7 @@ pub mod tag_input;
 pub mod text_reveal;
 pub mod timeline;
 pub mod type_writer;
+pub mod upload;
 pub mod view_router;
 pub mod waveform;
 
@@ -90,6 +94,7 @@ pub use app_menu::*;
 pub use aurora::*;
 pub use bottom_sheet::*;
 pub use canvas_component::*;
+pub use carousel::*;
 pub use color_picker::*;
 pub use combobox::*;
 pub use command_palette::*;
@@ -97,6 +102,7 @@ pub use command_palette::*;
 pub use confetti::*;
 pub use countdown::*;
 pub use date_picker::*;
+pub use dock::*;
 pub use drag_drop::*;
 pub use drawer_navigation::*;
 pub use empty_state::*;
@@ -110,6 +116,7 @@ pub use inline_edit::{
 pub use layout_transition::*;
 #[cfg(feature = "effects")]
 pub use marquee::*;
+pub use mermaid::*;
 pub use navigation_menu::*;
 pub use notification_center::*;
 pub use number_ticker::*;
@@ -145,6 +152,7 @@ pub use tag_input::*;
 pub use text_reveal::*;
 pub use timeline::*;
 pub use type_writer::*;
+pub use upload::*;
 pub use view_router::*;
 pub use waveform::*;
 

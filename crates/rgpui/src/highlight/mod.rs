@@ -18,7 +18,16 @@ use std::ops::Range;
 
 use ropey::Rope;
 
-use crate::{App, HighlightStyle, SharedString};
+use crate::{App, HighlightStyle, SharedString, theme::ActiveTheme};
+
+/// tree-sitter 高亮/折叠后端（Rust 单语言）。
+///
+/// 编译门控：`--features tree-sitter`（默认关闭），wasm 目标下不编译。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
+pub mod tree_sitter;
+
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
+pub use tree_sitter::{TreeSitterHighlighter, rust_highlighter};
 
 /// 语法高亮 trait。
 ///
@@ -106,6 +115,32 @@ pub struct NoHighlightStyles;
 impl HighlightStyleResolver for NoHighlightStyles {
     fn style(&self, _: &str) -> Option<HighlightStyle> {
         None
+    }
+}
+
+/// 主题高亮解析器：捕获名（如 `keyword`）→ 当前主题 `SyntaxColors` 样式。
+///
+/// 供 `Highlighter::styles` 使用，主题切换后重建即可生效。
+#[derive(Debug, Clone, Default)]
+pub struct ThemeHighlightResolver {
+    colors: crate::theme::SyntaxColors,
+}
+
+impl ThemeHighlightResolver {
+    /// 由主题语法颜色表创建。
+    pub fn new(colors: crate::theme::SyntaxColors) -> Self {
+        Self { colors }
+    }
+
+    /// 由当前应用主题创建。
+    pub fn from_app(cx: &App) -> Self {
+        Self::new(cx.theme().highlight_theme.style.syntax.clone())
+    }
+}
+
+impl HighlightStyleResolver for ThemeHighlightResolver {
+    fn style(&self, name: &str) -> Option<HighlightStyle> {
+        self.colors.style(name)
     }
 }
 

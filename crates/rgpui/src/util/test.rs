@@ -6,7 +6,6 @@ pub use marked_text::*;
 
 #[cfg(feature = "test-support")]
 use git2;
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 

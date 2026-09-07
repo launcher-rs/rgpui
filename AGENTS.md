@@ -93,9 +93,9 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 | 菜单 | `menu/` | `PopupMenu`、`ContextMenu`、`DropdownMenu`、`Popconfirm`、`MenuBar`、`HoverCard`、`Notification`、`Toast` |
 | 对话框 | `dialog/` | `Dialog`、`AlertDialog`、`DialogHeader/Content/Footer`、`FocusTrapElement` |
 | 列表/表格/标签页 | `list/`、`table/`、`tabs/` | `List`、`VirtualList`、`DataTable`、`TabBar`、`Accordion` |
-| 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState`、`Sidebar`、`Select`、`Combobox`、`DatePicker`、`ColorPicker`、`Pagination`、`Steps`、`Timeline`、`Rate` 等（`charts`/`effects`/`qr-code` feature 门控） |
+| 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState`、`Sidebar`/`SidebarSection`、`Select`、`Combobox`、`DatePicker`、`ColorPicker`、`Pagination`、`Steps`、`Timeline`、`Rate`、`Upload`、`Carousel`、`MermaidDiagram`、`DockArea` 等（`charts`/`effects`/`qr-code` feature 门控） |
 | 动画/手势/物理 | `animation/`、`mouse_gestures.rs`、`scroll_physics.rs` | `Spring`、`GestureDetector`、`ScrollPhysics` |
-| 对话（AI-chat） | `chat/` | `Message`/`MessageGroup`/`ChatView`、`Prompts`、`Suggestion`、`ThoughtChain`、`Attachments`/`FileCard`、`Sources`、`Actions`、`Sender` |
+| 对话（AI-chat） | `chat/` | `Message`/`MessageGroup`/`ChatView`、`Prompts`、`Suggestion`、`ThoughtChain`、`Attachments`/`FileCard`、`Sources`、`Actions`、`Sender`、`Bubble`、`MessageScroller`、`Marker` |
 
 `prelude` 含：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、
 `Sizable`、`StyledExt`、`FluentBuilder`。

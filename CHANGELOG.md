@@ -11,7 +11,22 @@
 - **Avatar / Alert / Breadcrumb / Card / Typography / Toggle(+Group)**：基础元素
 - **Pagination / Steps / Timeline / Rate / Popconfirm**：导航反馈件
 - **AI-chat**（对标 AntDX，`chat/`）：`Prompts`、`Suggestion`、`ThoughtChain`、
-  `Attachments` + `FileCard`、`Sources`、`Actions`、`Sender`
+  `Attachments` + `FileCard`、`Sources`、`Actions`、`Sender`；
+  新增 `Bubble`（左右气泡）、`MessageScroller`（吸底 + 新消息浮标）、`Marker`（时间/未读分隔线）
+- **Dock 布局**（`components/dock.rs`）：左/右/底部/中央四区域标签页，标签拖拽跨区、
+  关闭/显隐、布局 JSON 持久化
+- **Upload**：选择区 + 文件列表 + 进度条，对接平台原生文件对话框（Web 降级）
+- **Carousel**：索引切换 + 自动播放 + 循环 + 指示器 + 滑动手势
+- **MermaidDiagram**：`flowchart` 子集（LR/TB/RL/BT，矩形/圆角/菱形/圆形/直线箭头/边标签）转 SVG
+- **Sidebar 增强**：`SidebarSection` 分组 + 可折叠 + 条目 `badge` 角标
+
+### 编辑器与输入
+
+- **`cx.debounce` 方法版**：`App` 全局防抖注册表 + key 隔离（`Debouncer` 结构版保留）
+- **tree-sitter 后端**（`--features tree-sitter`，默认关，wasm 禁用）：Rust 单语言
+  `Highlighter` 实现 + fold 数据源；`InputState::set_highlighter` 接入，
+  编辑自动刷新高亮装饰与折叠候选
+- **SearchPanel 老版删除**：RenderOnce 版删除约 370 行，`SearchPanelState` 补 `on_close` + `Styled`
 
 ### 示例
 

@@ -280,205 +280,12 @@ impl Default for SearchState {
     }
 }
 
-/// 搜索/替换面板组件。
-#[derive(IntoElement)]
-pub struct SearchPanel {
-    /// 搜索状态实体。
-    state: Entity<SearchState>,
-    /// 搜索输入框。
-    search_input: Entity<InputState>,
-    /// 替换输入框（可选）。
-    replace_input: Option<Entity<InputState>>,
-    /// 是否显示替换区域。
-    show_replace: bool,
-    /// 关闭回调。
-    on_close: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    /// 匹配导航回调（行号, 起始列, 结束列）。
-    on_navigate: Option<Rc<dyn Fn(usize, usize, usize, &mut Window, &mut App)>>,
-    /// 替换回调（查询, 替换文本）。
-    on_replace: Option<Rc<dyn Fn(String, String, &mut Window, &mut App)>>,
-    /// 全部替换回调。
-    on_replace_all: Option<Rc<dyn Fn(String, String, &mut Window, &mut App)>>,
-    /// 焦点句柄。
-    focus_handle: FocusHandle,
-    /// 用户样式。
-    style: StyleRefinement,
-}
-
-impl SearchPanel {
-    /// 创建搜索/替换面板。
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let state = cx.new(|_| SearchState::new());
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search..."));
-        let replace_input = cx.new(|cx| InputState::new(window, cx).placeholder("Replace..."));
-        let focus_handle = cx.focus_handle();
-
-        // 订阅搜索输入框变更
-        cx.subscribe(&search_input, |this, _input, event, cx| match event {
-            crate::input_ui::InputEvent::Change => {
-                let query = this.search_input.read(cx).text().to_string();
-                this.update_search(&query, cx);
-            }
-            crate::input_ui::InputEvent::PressEnter { shift, .. } => {
-                if *shift {
-                    this.navigate_prev(cx);
-                } else {
-                    this.navigate_next(cx);
-                }
-            }
-            _ => {}
-        })
-        .detach();
-
-        // 订阅替换输入框
-        {
-            let ri = replace_input.clone();
-            cx.subscribe(&ri.clone(), move |this, _input, event, cx| match event {
-                crate::input_ui::InputEvent::Change => {
-                    let replacement = ri.read(cx).text().to_string();
-                    this.state.update(cx, |state, _cx| {
-                        state.set_replacement(replacement);
-                    });
-                }
-                crate::input_ui::InputEvent::PressEnter { .. } => {
-                    this.replace_current(cx);
-                }
-                _ => {}
-            })
-            .detach();
-        }
-
-        Self {
-            state,
-            search_input,
-            replace_input: Some(replace_input),
-            show_replace: true,
-            on_close: None,
-            on_navigate: None,
-            on_replace: None,
-            on_replace_all: None,
-            focus_handle,
-            style: StyleRefinement::default(),
-        }
-    }
-
-    /// 创建仅搜索（无替换）面板。
-    pub fn search_only(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let state = cx.new(|_| SearchState::new());
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search..."));
-        let focus_handle = cx.focus_handle();
-
-        cx.subscribe(&search_input, |this, _input, event, cx| match event {
-            crate::input_ui::InputEvent::Change => {
-                let query = this.search_input.read(cx).text().to_string();
-                this.update_search(&query, cx);
-            }
-            crate::input_ui::InputEvent::PressEnter { shift, .. } => {
-                if *shift {
-                    this.navigate_prev(cx);
-                } else {
-                    this.navigate_next(cx);
-                }
-            }
-            _ => {}
-        })
-        .detach();
-
-        Self {
-            state,
-            search_input,
-            replace_input: None,
-            show_replace: false,
-            on_close: None,
-            on_navigate: None,
-            on_replace: None,
-            on_replace_all: None,
-            focus_handle,
-            style: StyleRefinement::default(),
-        }
-    }
-
-    /// 设置关闭回调。
-    pub fn on_close<F>(mut self, handler: F) -> Self
-    where
-        F: Fn(&mut Window, &mut App) + 'static,
-    {
-        self.on_close = Some(Rc::new(handler));
-        self
-    }
-
-    /// 设置匹配导航回调。
-    pub fn on_navigate<F>(mut self, handler: F) -> Self
-    where
-        F: Fn(usize, usize, usize, &mut Window, &mut App) + 'static,
-    {
-        self.on_navigate = Some(Rc::new(handler));
-        self
-    }
-
-    /// 设置替换回调。
-    pub fn on_replace<F>(mut self, handler: F) -> Self
-    where
-        F: Fn(String, String, &mut Window, &mut App) + 'static,
-    {
-        self.on_replace = Some(Rc::new(handler));
-        self
-    }
-
-    /// 设置全部替换回调。
-    pub fn on_replace_all<F>(mut self, handler: F) -> Self
-    where
-        F: Fn(String, String, &mut Window, &mut App) + 'static,
-    {
-        self.on_replace_all = Some(Rc::new(handler));
-        self
-    }
-
-    /// 更新搜索查询。
-    fn update_search(&mut self, query: &str, cx: &mut App) {
-        let source = String::new();
-        self.state.update(cx, |state, cx| {
-            state.set_query(query.to_string(), &source);
-            cx.notify();
-        });
-    }
-
-    /// 导航到下一个匹配。
-    fn navigate_next(&mut self, cx: &mut App) {
-        self.state.update(cx, |state, cx| {
-            state.next_match();
-            cx.notify();
-        });
-    }
-
-    /// 导航到上一个匹配。
-    fn navigate_prev(&mut self, cx: &mut App) {
-        self.state.update(cx, |state, cx| {
-            state.prev_match();
-            cx.notify();
-        });
-    }
-
-    /// 替换当前匹配。
-    fn replace_current(&mut self, _cx: &mut App) {
-        // 实际替换逻辑由外部通过 on_replace 回调处理
-    }
-}
-
-impl Styled for SearchPanel {
-    fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.style
-    }
-}
-
 /// 可嵌入的搜索面板实体（`Render` 版）。
 ///
-/// 与一次性的 [`SearchPanel`] 不同，本类型是可长期持有的实体：
 /// 父组件在自己的 `Context` 里用 `cx.new(|cx| SearchPanelState::new(window, cx))`
 /// 创建一次存成 `Entity`，`render` 里直接 `child(panel.clone())`。
 ///
-/// 另外修复了 [`SearchPanel`] 用空全文计算匹配的问题：调用方经
-/// [`Self::set_source`] 推送待搜索全文，查询/选项变化时用存的全文重算匹配。
+/// 查询/选项变化时用调用方经 [`Self::set_source`] 推送的全文重算匹配。
 pub struct SearchPanelState {
     /// 搜索状态实体。
     state: Entity<SearchState>,
@@ -500,8 +307,12 @@ pub struct SearchPanelState {
     on_replace: Option<Rc<dyn Fn(String, String, &mut Window, &mut App)>>,
     /// 全部替换回调。
     on_replace_all: Option<Rc<dyn Fn(String, String, &mut Window, &mut App)>>,
+    /// 关闭回调（面板自身不画关闭按钮，由父组件消费，如标题栏的 ×）。
+    on_close: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
     /// 焦点句柄。
     focus_handle: FocusHandle,
+    /// 用户样式。
+    style: StyleRefinement,
 }
 
 impl SearchPanelState {
@@ -556,7 +367,9 @@ impl SearchPanelState {
             on_navigate: None,
             on_replace: None,
             on_replace_all: None,
+            on_close: None,
             focus_handle,
+            style: StyleRefinement::default(),
         }
     }
 
@@ -593,7 +406,9 @@ impl SearchPanelState {
             on_navigate: None,
             on_replace: None,
             on_replace_all: None,
+            on_close: None,
             focus_handle,
+            style: StyleRefinement::default(),
         }
     }
 
@@ -624,6 +439,15 @@ impl SearchPanelState {
         self
     }
 
+    /// 设置关闭回调（面板自身不画关闭按钮，由父组件在需要时调用）。
+    pub fn on_close<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&mut Window, &mut App) + 'static,
+    {
+        self.on_close = Some(Rc::new(handler));
+        self
+    }
+
     /// 推送待搜索全文并用当前查询重算匹配。
     pub fn set_source(&mut self, source: String, cx: &mut App) {
         let query = self.state.read(cx).query().to_string();
@@ -644,7 +468,6 @@ impl SearchPanelState {
     pub fn state(&self) -> &Entity<SearchState> {
         &self.state
     }
-
     /// 用当前存的全文重算匹配。
     fn update_search(&mut self, query: &str, cx: &mut App) {
         let source = self.source.clone();
@@ -678,6 +501,12 @@ impl SearchPanelState {
     fn replace_current(&mut self, cx: &mut Context<Self>) {
         self.pending_replace = true;
         cx.notify();
+    }
+}
+
+impl Styled for SearchPanelState {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
     }
 }
 
@@ -895,212 +724,6 @@ impl Render for SearchPanelState {
                             })
                     })
                     .child({
-                        ToggleButton::new("regex", options.regex)
-                            .label(".*")
-                            .tooltip("Regular Expression")
-                            .on_click(move |_is_on, _, cx| {
-                                state_entity.update(cx, |state, cx| {
-                                    state.toggle_regex(&source);
-                                    cx.notify();
-                                });
-                            })
-                    }),
-            )
-    }
-}
-
-impl Focusable for SearchPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
-
-impl RenderOnce for SearchPanel {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let theme = cx.theme();
-        let state = self.state.read(cx);
-        let match_count = state.match_count();
-        let current_idx = state.current_index();
-        let has_matches = state.has_matches();
-        let options = state.options();
-
-        let radius = theme.radius;
-        let border = theme.tokens.border;
-        let muted_foreground = theme.tokens.muted_foreground;
-        let popover = theme.tokens.popover;
-
-        let state_entity = self.state.clone();
-        let search_input = self.search_input.clone();
-        let replace_input = self.replace_input.clone();
-        let on_close = self.on_close.clone();
-
-        div()
-            .flex()
-            .flex_col()
-            .w(px(360.0))
-            .bg(popover)
-            .border_1()
-            .border_color(border)
-            .rounded(radius)
-            .shadow(vec![BoxShadow {
-                color: hsla(0.0, 0.0, 0.0, 0.15),
-                offset: point(px(0.0), px(2.0)),
-                blur_radius: px(8.0),
-                spread_radius: px(0.0),
-                inset: false,
-            }])
-            .overflow_hidden()
-            .child(
-                // 搜索行
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
-                    .px(px(8.0))
-                    .py(px(6.0))
-                    .child(Input::new(&search_input).w(px(200.0)))
-                    // 匹配计数
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(muted_foreground)
-                            .child(if match_count > 0 {
-                                let idx = current_idx.map(|i| i + 1).unwrap_or(0);
-                                format!("{idx}/{match_count}")
-                            } else if !state.query().is_empty() {
-                                "No matches".to_string()
-                            } else {
-                                String::new()
-                            }),
-                    )
-                    // 上一个
-                    .child({
-                        let state_entity = state_entity.clone();
-                        Button::new("prev-match")
-                            .ghost()
-                            .small()
-                            .icon(IconName::ChevronUp)
-                            .disabled(!has_matches)
-                            .on_click(move |_, _, cx| {
-                                state_entity.update(cx, |state, cx| {
-                                    state.prev_match();
-                                    cx.notify();
-                                });
-                            })
-                    })
-                    // 下一个
-                    .child({
-                        let state_entity = state_entity.clone();
-                        Button::new("next-match")
-                            .ghost()
-                            .small()
-                            .icon(IconName::ChevronDown)
-                            .disabled(!has_matches)
-                            .on_click(move |_, _, cx| {
-                                state_entity.update(cx, |state, cx| {
-                                    state.next_match();
-                                    cx.notify();
-                                });
-                            })
-                    })
-                    // 关闭按钮
-                    .child({
-                        let on_close = on_close.clone();
-                        Button::new("close-search")
-                            .ghost()
-                            .small()
-                            .icon(IconName::Close)
-                            .on_click(move |_, _window, _cx| {
-                                if let Some(ref _cb) = on_close {
-                                    // 回调需要 Window，简化处理
-                                }
-                            })
-                    }),
-            )
-            .when(self.show_replace, |d| {
-                d.child(
-                    // 替换行
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .px(px(8.0))
-                        .py(px(4.0))
-                        .border_t_1()
-                        .border_color(border)
-                        .child({
-                            if let Some(ref replace_input) = replace_input {
-                                Input::new(replace_input).w(px(200.0)).into_any_element()
-                            } else {
-                                div().into_any_element()
-                            }
-                        })
-                        // 替换当前
-                        .child({
-                            let state_entity = state_entity.clone();
-                            Button::new("replace-current")
-                                .ghost()
-                                .small()
-                                .label("Replace")
-                                .disabled(!has_matches)
-                                .on_click(move |_, _, cx| {
-                                    state_entity.update(cx, |state, cx| {
-                                        state.next_match();
-                                        cx.notify();
-                                    });
-                                })
-                        })
-                        // 全部替换
-                        .child({
-                            Button::new("replace-all")
-                                .ghost()
-                                .small()
-                                .label("All")
-                                .disabled(!has_matches)
-                                .on_click(move |_, _, _cx| {
-                                    // 全部替换逻辑由外部处理
-                                })
-                        }),
-                )
-            })
-            .child(
-                // 选项行
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
-                    .px(px(8.0))
-                    .py(px(4.0))
-                    .border_t_1()
-                    .border_color(border)
-                    .child({
-                        let state_entity = state_entity.clone();
-                        let source = String::new();
-                        ToggleButton::new("case-sensitive", options.case_sensitive)
-                            .label("Aa")
-                            .tooltip("Case Sensitive")
-                            .on_click(move |_is_on, _, cx| {
-                                state_entity.update(cx, |state, cx| {
-                                    state.toggle_case_sensitive(&source);
-                                    cx.notify();
-                                });
-                            })
-                    })
-                    .child({
-                        let state_entity = state_entity.clone();
-                        let source = String::new();
-                        ToggleButton::new("whole-word", options.whole_word)
-                            .label("Ab")
-                            .tooltip("Whole Word")
-                            .on_click(move |_is_on, _, cx| {
-                                state_entity.update(cx, |state, cx| {
-                                    state.toggle_whole_word(&source);
-                                    cx.notify();
-                                });
-                            })
-                    })
-                    .child({
-                        let source = String::new();
                         ToggleButton::new("regex", options.regex)
                             .label(".*")
                             .tooltip("Regular Expression")
