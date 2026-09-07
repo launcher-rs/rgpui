@@ -334,13 +334,15 @@ struct MappedNode {
     label: String,
 }
 
-/// 映射后的边（最终朝向下的端点）。
+/// 映射后的边（最终朝向下的端点 + 源节点盒，盒用于直连判断）。
 struct MappedEdge {
     x1: f32,
     y1: f32,
     x2: f32,
     y2: f32,
     label: String,
+    /// 源节点盒（映射后）：左，上，右，下。
+    from_box: (f32, f32, f32, f32),
 }
 
 /// 逻辑坐标 → 最终坐标（转置/镜像，与 `emit_svg` 内 map 一致）。
@@ -404,12 +406,20 @@ fn map_geometry(source: &str) -> (Vec<MappedNode>, Vec<MappedEdge>, Direction, f
         };
         let (sx1, sy1) = orient(x1, y1, direction, w, h);
         let (sx2, sy2) = orient(x2, y2, direction, w, h);
+        // 源节点盒映射（转置/镜像下轴对齐盒仍是盒，直接映射中心+半尺寸）。
+        let (fcx, fcy) = orient(from.cx, from.cy, direction, w, h);
+        let (fbw, fbh) = if horizontal {
+            (from.w / 2.0, from.h / 2.0)
+        } else {
+            (from.h / 2.0, from.w / 2.0)
+        };
         mapped_edges.push(MappedEdge {
             x1: sx1,
             y1: sy1,
             x2: sx2,
             y2: sy2,
             label: edge.label.clone(),
+            from_box: (fcx - fbw, fcy - fbh, fcx + fbw, fcy + fbh),
         });
     }
     (mapped_nodes, mapped_edges, direction, w, h)
@@ -610,40 +620,93 @@ impl RenderOnce for MermaidDiagram {
         let mut arrows: Vec<(f32, f32, f32, f32, f32, f32)> = Vec::new();
 
         // 边：两段折线（先走出边轴再转入边轴）+ 标签，箭头见下方三角。
+        // 目标轴心落在源盒范围内时走直线（无弯）。
         for edge in &edges {
             let (x1, y1, x2, y2) = (edge.x1, edge.y1, edge.x2, edge.y2);
+            let (fl, ft, fr, fb) = edge.from_box;
             if horizontal_entry {
-                // 先垂直（x1 处 y1→y2），再水平（y2 高度 x1→x2），水平进盒。
+                // 目标行高在源盒内 → 直线进盒。
+                if y2 > ft + 4.0 && y2 < fb - 4.0 {
+                    if (x2 - x1).abs() >= 0.5 {
+                        root = root.child(
+                            div()
+                                .absolute()
+                                .left(px(x1.min(x2)))
+                                .top(px(y2 - 1.0))
+                                .w(px((x2 - x1).abs()))
+                                .h(px(2.0))
+                                .bg(border),
+                        );
+                    }
+                    if !edge.label.is_empty() {
+                        let label_w = edge.label.chars().count() as f32 * 7.0;
+                        root = root.child(
+                            div()
+                                .absolute()
+                                .left(px((x1 + x2) / 2.0 - label_w))
+                                .top(px(y2 - 22.0))
+                                .text_xs()
+                                .text_color(accent)
+                                .child(edge.label.clone()),
+                        );
+                    }
+                } else {
+                    // 先垂直（x1 处 y1→y2），再水平（y2 高度 x1→x2），水平进盒。
+                    if (y2 - y1).abs() >= 0.5 {
+                        root = root.child(
+                            div()
+                                .absolute()
+                                .left(px(x1 - 1.0))
+                                .top(px(y1.min(y2)))
+                                .w(px(2.0))
+                                .h(px((y2 - y1).abs()))
+                                .bg(border),
+                        );
+                    }
+                    if (x2 - x1).abs() >= 0.5 {
+                        root = root.child(
+                            div()
+                                .absolute()
+                                .left(px(x1.min(x2)))
+                                .top(px(y2 - 1.0))
+                                .w(px((x2 - x1).abs()))
+                                .h(px(2.0))
+                                .bg(border),
+                        );
+                    }
+                    // 标签：水平段中点上方（按字数估半宽，CJK 约 7px/字 @text_xs）。
+                    if !edge.label.is_empty() {
+                        let label_w = edge.label.chars().count() as f32 * 7.0;
+                        root = root.child(
+                            div()
+                                .absolute()
+                                .left(px((x1 + x2) / 2.0 - label_w))
+                                .top(px(y2 - 22.0))
+                                .text_xs()
+                                .text_color(accent)
+                                .child(edge.label.clone()),
+                        );
+                    }
+                }
+            } else if x2 > fl + 4.0 && x2 < fr - 4.0 {
+                // 目标列在源盒内 → 直线进盒。
                 if (y2 - y1).abs() >= 0.5 {
                     root = root.child(
                         div()
                             .absolute()
-                            .left(px(x1 - 1.0))
+                            .left(px(x2 - 1.0))
                             .top(px(y1.min(y2)))
                             .w(px(2.0))
                             .h(px((y2 - y1).abs()))
                             .bg(border),
                     );
                 }
-                if (x2 - x1).abs() >= 0.5 {
-                    root = root.child(
-                        div()
-                            .absolute()
-                            .left(px(x1.min(x2)))
-                            .top(px(y2 - 1.0))
-                            .w(px((x2 - x1).abs()))
-                            .h(px(2.0))
-                            .bg(border),
-                    );
-                }
-                // 标签：水平段中点上方（按字数估半宽，CJK 约 7px/字 @text_xs）。
                 if !edge.label.is_empty() {
-                    let label_w = edge.label.chars().count() as f32 * 7.0;
                     root = root.child(
                         div()
                             .absolute()
-                            .left(px((x1 + x2) / 2.0 - label_w))
-                            .top(px(y2 - 22.0))
+                            .left(px(x2 + 8.0))
+                            .top(px((y1 + y2) / 2.0 - 8.0))
                             .text_xs()
                             .text_color(accent)
                             .child(edge.label.clone()),
