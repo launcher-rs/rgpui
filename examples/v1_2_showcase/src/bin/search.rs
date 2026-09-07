@@ -5,10 +5,14 @@
 
 use futures::StreamExt as _;
 use rgpui::{
-    App, Bounds, Context, HighlightStyle, Render, Window, WindowBounds, WindowOptions,
+    App, Bounds, Context, HighlightStyle, KeyBinding, Render, Window, WindowBounds, WindowOptions,
     components::SearchPanelState,
     div, h_flex,
-    input_ui::{Input, InputEvent, InputState, TextDecoration, TextDecorationCollection},
+    input_ui::{
+        Backspace, Copy, Cut, Delete, Enter, Escape, Input, InputEvent, InputState, MoveDown,
+        MoveEnd, MoveHome, MoveLeft, MoveRight, MoveUp, Paste, Redo, SelectAll, TextDecoration,
+        TextDecorationCollection, Undo,
+    },
     prelude::*,
     px, size,
     util::debounce::Debouncer,
@@ -188,6 +192,32 @@ impl Render for SearchDemo {
 
 fn run_example() {
     application().run(|cx: &mut App| {
+        // 输入框编辑键位（应用级注册；secondary = macOS Cmd / 其他平台 Ctrl）。
+        cx.bind_keys([
+            KeyBinding::new("backspace", Backspace, None),
+            KeyBinding::new("delete", Delete, None),
+            KeyBinding::new("left", MoveLeft, None),
+            KeyBinding::new("right", MoveRight, None),
+            KeyBinding::new("up", MoveUp, None),
+            KeyBinding::new("down", MoveDown, None),
+            KeyBinding::new("home", MoveHome, None),
+            KeyBinding::new("end", MoveEnd, None),
+            KeyBinding::new(
+                "enter",
+                Enter {
+                    secondary: false,
+                    shift: false,
+                },
+                None,
+            ),
+            KeyBinding::new("escape", Escape, None),
+            KeyBinding::new("secondary-a", SelectAll, None),
+            KeyBinding::new("secondary-c", Copy, None),
+            KeyBinding::new("secondary-x", Cut, None),
+            KeyBinding::new("secondary-v", Paste, None),
+            KeyBinding::new("secondary-z", Undo, None),
+            KeyBinding::new("secondary-shift-z", Redo, None),
+        ]);
         let bounds = Bounds::centered(None, size(px(980.0), px(640.0)), cx);
         cx.open_window(
             WindowOptions {
