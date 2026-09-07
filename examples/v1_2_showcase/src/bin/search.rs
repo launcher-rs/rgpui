@@ -79,6 +79,75 @@ impl SearchDemo {
             panel.set_source(SAMPLE.to_string(), cx);
         });
 
+        // 文本一改就同步面板 source（否则匹配/跳转/标黄按旧文本算，全错位），
+        // 有标黄时顺带重标，保持搜/改/标三者一致。
+        cx.subscribe(&text, move |this, _text, event, cx| {
+            if !matches!(event, InputEvent::Change) {
+                return;
+            }
+            let full = this.text.read_with(cx, |state, _| state.text().to_string());
+            this.panel.update(cx, |panel, cx| {
+                panel.set_source(full, cx);
+            });
+            if this.highlight.is_some() {
+                this.highlight_all(cx);
+            }
+        })
+        .detach();
+
+        // 替换接线：替换当前匹配 / 全部匹配（从后往前保偏移），文本变更经上面的
+        // 订阅自动同步 source，无需手动处理。
+        {
+            let text = text.clone();
+            let panel_handle = panel.clone();
+            panel.update(cx, |panel, _| {
+                panel.set_on_replace(move |_, replacement, window, cx| {
+                    let full = text.read_with(cx, |state, _| state.text().to_string());
+                    let range = panel_handle.read_with(cx, |panel, cx| {
+                        panel.state().read(cx).current_match().map(|m| {
+                            let base = offset_of(&full, m.line, 0);
+                            base + m.start_col..base + m.end_col
+                        })
+                    });
+                    if let Some(range) = range {
+                        text.update(cx, |state, cx| {
+                            state.set_selected_range(range, cx);
+                            state.replace(replacement, window, cx);
+                        });
+                    }
+                });
+            });
+        }
+        {
+            let text = text.clone();
+            let panel_handle = panel.clone();
+            panel.update(cx, |panel, _| {
+                panel.set_on_replace_all(move |_, replacement, window, cx| {
+                    let full = text.read_with(cx, |state, _| state.text().to_string());
+                    let mut ranges: Vec<_> = panel_handle.read_with(cx, |panel, cx| {
+                        panel
+                            .state()
+                            .read(cx)
+                            .matches()
+                            .iter()
+                            .map(|m| {
+                                let base = offset_of(&full, m.line, 0);
+                                base + m.start_col..base + m.end_col
+                            })
+                            .collect()
+                    });
+                    // 从后往前替换，前面偏移不受影响。
+                    ranges.sort_by_key(|range| std::cmp::Reverse(range.start));
+                    text.update(cx, |state, cx| {
+                        for range in ranges {
+                            state.set_selected_range(range, cx);
+                            state.replace(replacement.clone(), window, cx);
+                        }
+                    });
+                });
+            });
+        }
+
         // 防抖演示：查询输入 300ms 无新输入才统计一次。
         let query_input = cx.new(|cx| InputState::new(window, cx).placeholder("防抖输入…"));
         let (tx, mut rx) = futures::channel::mpsc::unbounded::<String>();

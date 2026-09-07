@@ -448,6 +448,22 @@ impl SearchPanelState {
         self
     }
 
+    /// 设置替换回调（构建后追加/覆盖，与 builder 版 `on_replace` 等价）。
+    pub fn set_on_replace<F>(&mut self, handler: F)
+    where
+        F: Fn(String, String, &mut Window, &mut App) + 'static,
+    {
+        self.on_replace = Some(Rc::new(handler));
+    }
+
+    /// 设置全部替换回调（构建后追加/覆盖，与 builder 版 `on_replace_all` 等价）。
+    pub fn set_on_replace_all<F>(&mut self, handler: F)
+    where
+        F: Fn(String, String, &mut Window, &mut App) + 'static,
+    {
+        self.on_replace_all = Some(Rc::new(handler));
+    }
+
     /// 推送待搜索全文并用当前查询重算匹配。
     pub fn set_source(&mut self, source: String, cx: &mut App) {
         let query = self.state.read(cx).query().to_string();
