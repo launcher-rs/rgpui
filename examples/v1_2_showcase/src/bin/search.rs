@@ -160,6 +160,7 @@ impl Render for SearchDemo {
         let last_query = self.last_query.clone();
         h_flex()
             .size_full()
+            .items_stretch()
             .gap(px(12.0))
             .p(px(12.0))
             .child(
