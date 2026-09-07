@@ -2,6 +2,8 @@
 
 > 文档日期：2026-08-20
 > 状态：**纯 DOM 渲染模式已落地（2026-08-20）**
+>
+> 配套文档（归档）：`docs/history/web-dom-backend-plan.md`（规划）、`docs/history/web-dom-backend-analysis.md`（调研）、`docs/history/research-text-selection.md`（文本选择调研）
 
 ## 1. 两种"渲染后端"的含义
 
