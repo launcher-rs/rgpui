@@ -323,6 +323,9 @@ impl SearchPanelState {
         let replace_input = cx.new(|cx| InputState::new(window, cx).placeholder("Replace..."));
         let focus_handle = cx.focus_handle();
 
+        // 跟随搜索状态（查询/选项/匹配变化即重渲染，计数标签实时更新）。
+        cx.observe(&state, |_, _, cx| cx.notify()).detach();
+
         cx.subscribe(&search_input, |this, _input, event, cx| match event {
             crate::input_ui::InputEvent::Change => {
                 let query = this.search_input.read(cx).text().to_string();
@@ -378,6 +381,9 @@ impl SearchPanelState {
         let state = cx.new(|_| SearchState::new());
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search..."));
         let focus_handle = cx.focus_handle();
+
+        // 跟随搜索状态（查询/选项/匹配变化即重渲染，计数标签实时更新）。
+        cx.observe(&state, |_, _, cx| cx.notify()).detach();
 
         cx.subscribe(&search_input, |this, _input, event, cx| match event {
             crate::input_ui::InputEvent::Change => {

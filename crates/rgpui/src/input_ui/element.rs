@@ -1603,6 +1603,20 @@ impl Element for TextElement {
             state.masked,
         );
 
+        // 装饰背景色段（搜索标黄等）：highlight_styles 自带背景色，
+        // 透传给布局绘制；为空时保持空切片快捷路径。
+        let bg_segments: Vec<(Range<usize>, Hsla)> = highlight_styles
+            .as_ref()
+            .map(|styles| {
+                styles
+                    .iter()
+                    .filter_map(|(range, style)| {
+                        style.background_color.map(|color| (range.clone(), color))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         let runs = if let (false, Some(highlight_styles)) = (is_empty, highlight_styles) {
             let mut runs = Vec::with_capacity(highlight_styles.len() + 2);
 
@@ -1640,7 +1654,7 @@ impl Element for TextElement {
             &last_layout,
             text_size,
             &runs,
-            &[],
+            &bg_segments,
             whitespace_indicators,
             window,
         );
