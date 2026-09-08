@@ -4,9 +4,11 @@
 //! `EditorState` 只做编辑器级编排（大纲缓存/符号跳转/高亮接入），不复制文本逻辑。
 //! 文本核复用仍在（`InputState` 经 P1a 持有 `TextCore`），渲染走 `Editor` 组件。
 
+use std::ops::Range;
+
 use super::super::InputState;
 use crate::highlight::{DocumentSymbol, Highlighter};
-use crate::{App, AppContext as _, Context, Entity, Window};
+use crate::{App, AppContext as _, Context, Entity, SharedString, Window};
 
 /// 代码编辑器状态（`cx.new` 持有，`Editor` 组件消费）。
 pub struct EditorState {
@@ -63,21 +65,83 @@ impl EditorState {
             .read_with(cx, |state, _| state.text().to_string())
     }
 
+    /// 程序化写入全文（透传内部输入）。
+    ///
+    /// 不进撤销栈（打开即 undo 不清空）；多行时光标重置为起始，调用方按需再调
+    /// [`set_selected_range`](Self::set_selected_range)；大纲同步刷新（内部
+    /// `set_value` 为性能压住了 `Change` 事件，外壳在此补刷）。
+    pub fn set_value(
+        &mut self,
+        value: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.input.update(cx, |state, cx| {
+            state.set_value(value, window, cx);
+        });
+        self.refresh_outline(cx);
+    }
+
+    /// 设置选中区（外部驱动选中/跳转；透传内部输入）。
+    pub fn set_selected_range(&self, range: Range<usize>, cx: &mut App) {
+        let _ = self.input.update(cx, |state, cx| {
+            state.set_selected_range(range, cx);
+        });
+    }
+
+    /// 滚动使给定字节偏移可见，不改变光标与选区（透传内部输入）。
+    ///
+    /// 首次布局前调用无效果（内部尚无 layout 时直接返回）。
+    pub fn reveal_offset(&self, offset: usize, cx: &mut App) {
+        let _ = self.input.update(cx, |state, cx| {
+            state.reveal_offset(offset, cx);
+        });
+    }
+
+    /// 滚动使给定区间可见（以区间起点为准），不改变光标与选区（透传内部输入）。
+    pub fn reveal_range(&self, range: Range<usize>, cx: &mut App) {
+        let _ = self.input.update(cx, |state, cx| {
+            state.reveal_range(range, cx);
+        });
+    }
+
+    /// 设置只读模式（创建后修改；透传内部输入）。
+    ///
+    /// 只读保持正常样式，允许移动光标/选择/复制；程序化写入不受影响。
+    pub fn set_read_only(&self, read_only: bool, cx: &mut App) {
+        let _ = self.input.update(cx, |state, cx| {
+            state.set_read_only(read_only, cx);
+        });
+    }
+
+    /// 设置行注释符（创建后修改；透传内部输入，默认 `//`）。
+    ///
+    /// 按语言设置，如 Python 传 `"#"`、Lua 传 `"--"`。
+    pub fn set_line_comment_prefix(&self, prefix: impl Into<SharedString>, cx: &mut App) {
+        let _ = self.input.update(cx, |state, cx| {
+            state.set_line_comment_prefix(prefix, cx);
+        });
+    }
+
     /// 当前光标偏移（UTF-8 字节）。
     pub fn cursor(&self, cx: &App) -> usize {
         self.input.read_with(cx, |state, _| state.cursor())
     }
 
     /// 设置语法高亮器（如 `highlight::rust_highlighter()`），透传内部输入。
+    ///
+    /// 高亮器变化不经过 `Change` 事件，外壳在此同步刷新大纲（否则大纲停留在
+    /// 旧高亮器的结果上，直到下一次文本编辑）。
     pub fn set_highlighter(
-        &self,
+        &mut self,
         highlighter: Option<Box<dyn Highlighter>>,
         window: &mut Window,
-        cx: &mut App,
+        cx: &mut Context<Self>,
     ) {
-        let _ = self.input.update(cx, |state, cx| {
+        self.input.update(cx, |state, cx| {
             state.set_highlighter(highlighter, window, cx);
         });
+        self.refresh_outline(cx);
     }
 
     /// 大纲缓存（`refresh_outline` 维护）。
@@ -211,6 +275,97 @@ mod tests {
         assert_eq!(
             input.read_with(cx, |state, _| state.value().to_string()),
             INITIAL.to_string()
+        );
+    }
+
+    /// 测试桩高亮器（固定返回一个 `main` 符号，无需 tree-sitter feature）。
+    struct StubHighlighter;
+
+    impl crate::highlight::Highlighter for StubHighlighter {
+        fn language(&self) -> SharedString {
+            "stub".into()
+        }
+
+        fn update(
+            &mut self,
+            _edit: Option<crate::highlight::TextEdit>,
+            _text: &ropey::Rope,
+            _folding: bool,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) {
+        }
+
+        fn styles(
+            &self,
+            range: &Range<usize>,
+            _resolver: &dyn crate::highlight::HighlightStyleResolver,
+        ) -> Vec<(Range<usize>, crate::HighlightStyle)> {
+            vec![(range.clone(), crate::HighlightStyle::default())]
+        }
+
+        fn fold_ranges(&self, _text: &ropey::Rope) -> Vec<crate::highlight::FoldRange> {
+            Vec::new()
+        }
+
+        fn document_symbols(&self, _text: &ropey::Rope) -> Vec<crate::highlight::DocumentSymbol> {
+            vec![crate::highlight::DocumentSymbol {
+                kind: crate::highlight::SymbolKind::Function,
+                name: "main".into(),
+                range: 0..2,
+                start_row: 0,
+            }]
+        }
+    }
+
+    /// 设置高亮器后大纲同步刷新（高亮器变化不经过 Change，外壳补刷）。
+    #[rgpui::test]
+    fn set_highlighter_refreshes_outline(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        assert!(editor.read_with(cx, |state, _| state.outline().is_empty()));
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_highlighter(Some(Box::new(StubHighlighter)), window, cx);
+            });
+        });
+        let outline = editor.read_with(cx, |state, _| state.outline().to_vec());
+        assert_eq!(outline.len(), 1);
+        assert_eq!(outline[0].name.to_string(), "main");
+    }
+
+    /// `set_value` 程序化写入：内容替换 + 光标重置 + 大纲同步 + 不进撤销栈。
+    #[rgpui::test]
+    fn set_value_replaces_without_history(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "old\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_highlighter(Some(Box::new(StubHighlighter)), window, cx);
+                state.set_value("new\n", window, cx);
+            });
+        });
+        assert_eq!(editor.read_with(cx, |state, cx| state.text(cx)), "new\n");
+        // 多行 `set_value` 光标重置为起始。
+        assert_eq!(editor.read_with(cx, |state, cx| state.cursor(cx)), 0);
+        // 大纲随写入同步（桩返回固定符号，断言刷新通路不断言内容）。
+        assert_eq!(editor.read_with(cx, |state, _| state.outline().len()), 1);
+        // 不进撤销栈：undo 无变化。
+        let input = editor.read_with(cx, |state, _| state.input().clone());
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.undo(&crate::input_ui::Undo, window, cx)
+            });
+        });
+        assert_eq!(
+            input.read_with(cx, |state, _| state.value().to_string()),
+            "new\n"
         );
     }
 }

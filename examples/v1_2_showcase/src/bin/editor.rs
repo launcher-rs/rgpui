@@ -29,11 +29,11 @@ impl EditorDemo {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // 编辑器状态一次配好（多行 + 行号 + 折叠 + 键入体验 + 大纲订阅）。
         let editor = cx.new(|cx| EditorState::new(window, cx, SAMPLE));
-        let input = editor.read_with(cx, |state, _| state.input().clone());
-        // 高亮器经内部输入接入（`EditorState::set_highlighter` 同款透传）。
-        input.update(cx, |state, cx| {
+        editor.update(cx, |state, cx| {
+            // 高亮器经编辑器状态透传接入（大纲同步刷新）。
             state.set_highlighter(Some(rgpui::highlight::rust_highlighter()), window, cx);
         });
+        let input = editor.read_with(cx, |state, _| state.input().clone());
         let readonly = cx.new(|cx| {
             let mut state = InputState::new(window, cx).multi_line(true);
             // 初始内容不进撤销栈（与 `EditorState::new` 同理）。

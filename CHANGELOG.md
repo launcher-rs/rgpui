@@ -22,6 +22,12 @@
 
 ### 编辑器与输入
 
+- **编辑器分拆结算**（`input_ui/input/` 表单 + `input_ui/editor/` 编辑器 + `TextCore` 共享核）：
+  `EditorState`（包 `Entity<InputState>` 编排外壳 + 大纲缓存）+ `Editor` 组件（复用 `Input` +
+  状态行）；`InputMode::CodeEditor` 删除，`TextArea` 补为表单多行；差集透传
+  `set_value`/`reveal_*`/`set_read_only`/`set_line_comment_prefix`/`set_highlighter`/
+  `goto_symbol`（高亮/写入补刷大纲）；`input/state.rs` 新功能冻结
+
 - **`cx.debounce` 方法版**：`App` 全局防抖注册表 + key 隔离（`Debouncer` 结构版保留）
 - **tree-sitter 后端**（`--features tree-sitter`，默认关，wasm 禁用）：Rust 单语言
   `Highlighter` 实现 + fold 数据源；`InputState::set_highlighter` 接入，
