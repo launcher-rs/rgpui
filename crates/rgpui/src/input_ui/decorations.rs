@@ -156,7 +156,10 @@ impl DecorationCollections {
             decorations.retain_mut(|decoration| {
                 decoration.range =
                     adjust_range_for_edit(&decoration.range, edited_range, inserted_len);
-                !decoration.range.is_empty()
+                // 塌缩点保留（snippet 占位跟踪用；渲染层 `compose_decorations`
+                // 本就过滤空范围， paint 管线见不到它们；各家刷新路径重写前本就
+                // `normalize` 自洁）。倒置范围仍丢弃。
+                decoration.range.start <= decoration.range.end
             });
         }
     }
@@ -281,6 +284,23 @@ impl InputState {
         cx: &mut Context<Self>,
     ) -> TextDecorationCollection {
         let decorations = normalize(&self.core.text, decorations);
+        let id = self.core.decorations.create(decorations);
+        cx.notify();
+        TextDecorationCollection {
+            state: cx.entity().downgrade(),
+            id,
+        }
+    }
+
+    /// 创建不过规范化的装饰集合（snippet 占位用；塌缩点会被 `normalize` 丢弃）。
+    ///
+    /// 调用方保证范围端点落在字符边界上（渲染层只过滤空范围，不做边界兜底）。
+    /// 目前唯一调用方是 `editor/snippets.rs` 的隐形占位集合（默认样式零渲染）。
+    pub(super) fn create_raw_collection(
+        &mut self,
+        decorations: Vec<TextDecoration>,
+        cx: &mut Context<Self>,
+    ) -> TextDecorationCollection {
         let id = self.core.decorations.create(decorations);
         cx.notify();
         TextDecorationCollection {

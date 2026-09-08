@@ -29,8 +29,11 @@
   `goto_symbol`（高亮/写入补刷大纲）；`input/state.rs` 新功能冻结
 - **LSP 编辑器侧接线**（`editor/lsp_attach.rs`，拉模型）：`set_completion/diagnostics/hover_provider`
   注入（传输层由应用实现后注入）+ epoch 防抖触发 + 补全弹窗状态同步（`CompletionPopup::on_select`
-  点击确认）+ 诊断下划线装饰（错误波浪红/警告直线黄）；`editor` 演示页接假 provider 可点；
+  点击确认）+   诊断下划线装饰（错误波浪红/警告直线黄）；`editor` 演示页接假 provider 可点；
   `editor` feature 蕴含 `lsp`
+- **snippets 最小版**（`editor/snippets.rs`）：`$1`/`${1:缺省}`/`$0` 子集 +
+  `Tab`/`Shift-Tab` 跳转 + 补全联动（`insertTextFormat == Snippet` 即展开）；
+  占位经隐形装饰集合跟踪（`adjust_for_edit` 保留塌缩点）；`editor` 演示页可点
 
 - **`cx.debounce` 方法版**：`App` 全局防抖注册表 + key 隔离（`Debouncer` 结构版保留）
 - **tree-sitter 后端**（`--features tree-sitter`，默认关，wasm 禁用）：Rust 单语言

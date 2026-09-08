@@ -154,6 +154,7 @@ impl CompletionState {
             .into_iter()
             .take(max_items)
             .map(|item| {
+                // 插入文本回退链（LSP 语义）：textEdit.new_text → insertText → label。
                 let insert_text = item
                     .text_edit
                     .as_ref()
@@ -163,6 +164,7 @@ impl CompletionState {
                             edit.new_text.clone()
                         }
                     })
+                    .or(item.insert_text.clone())
                     .unwrap_or_else(|| item.label.clone());
 
                 Completion {

@@ -21,7 +21,8 @@ use crate::lsp::{
 };
 use crate::{App, Context, Entity, HighlightStyle, Hsla, Task, UnderlineStyle, Window, px};
 use lsp_types::{
-    CompletionContext, CompletionResponse, CompletionTriggerKind, DiagnosticSeverity, Uri,
+    CompletionContext, CompletionResponse, CompletionTriggerKind, DiagnosticSeverity,
+    InsertTextFormat, Uri,
 };
 
 use super::super::decorations::{TextDecoration, normalize};
@@ -236,7 +237,10 @@ impl EditorState {
         });
     }
 
-    /// 确认补全（默认当前选中；纯文本插入光标处，snippet 展开是 M3 的事）。
+    /// 确认补全（默认当前选中）。
+    ///
+    /// `insertTextFormat == Snippet` 的条目走 `expand_snippet`（M3 联动），
+    /// 其余纯文本插入光标处。
     pub fn accept_completion(
         &mut self,
         index: Option<usize>,
@@ -247,6 +251,11 @@ impl EditorState {
         let Some(item) = self.lsp.completion.completions.get(index).cloned() else {
             return;
         };
+        if item.lsp_item.insert_text_format == Some(InsertTextFormat::SNIPPET) {
+            self.expand_snippet(item.insert_text.as_str(), window, cx);
+            self.dismiss_completion(cx);
+            return;
+        }
         self.input.update(cx, |state, cx| {
             state.insert(item.insert_text.as_str(), window, cx);
         });

@@ -91,7 +91,7 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 | 基础元素 | `elements/` | `Button`、`Checkbox`、`Radio`、`Switch`、`Slider`、`Spinner`、`Skeleton`、`Badge`、`Tag`、`Separator`、`Kbd`、`Tooltip`、`Icon`、`Avatar`、`Alert`、`Breadcrumb`、`Card`、`Typography`、`Toggle` |
 | 表单 | `form/` | `Form`、`Field`、`FieldBuilder` |
 | 输入 | `input_ui/` | `Input`、`MaskedInput`、`NumberInput`、`PasswordInput`、`TextArea`；`InputState::reveal_offset/reveal_range`、`TextDecorationCollection`、`Debouncer`（见 `docs/1.2.0/1.2.0-dev-plan.md` §E） |
-| 编辑器 | `input_ui/editor/`（`editor` feature 门控，蕴含 `lsp`） | `EditorState`（包 `Entity<InputState>` 编排外壳 + 大纲缓存；透传 `set_value`/`reveal_*`/`set_read_only`/`set_line_comment_prefix`/`set_highlighter`/`goto_symbol`）、`Editor`（复用 `Input` + 状态行）；行操作/多光标/自动闭合/括号匹配/当前行（`impl InputState`）；LSP 接线（`lsp_attach.rs`：provider 注入 + 防抖 + 诊断下划线，见 `docs/1.2.0/1.2.0-dev-plan.md` §M） |
+| 编辑器 | `input_ui/editor/`（`editor` feature 门控，蕴含 `lsp`） | `EditorState`（包 `Entity<InputState>` 编排外壳 + 大纲缓存；透传 `set_value`/`reveal_*`/`set_read_only`/`set_line_comment_prefix`/`set_highlighter`/`goto_symbol`）、`Editor`（复用 `Input` + 状态行）；行操作/多光标/自动闭合/括号匹配/当前行（`impl InputState`）；LSP 接线（`lsp_attach.rs`：provider 注入 + 防抖 + 诊断下划线）+ 片段（`snippets.rs`：子集解析 + 会话跳转，见 `docs/1.2.0/1.2.0-dev-plan.md` §M） |
 | 菜单 | `menu/` | `PopupMenu`、`ContextMenu`、`DropdownMenu`、`Popconfirm`、`MenuBar`、`HoverCard`、`Notification`、`Toast` |
 | 对话框 | `dialog/` | `Dialog`、`AlertDialog`、`DialogHeader/Content/Footer`、`FocusTrapElement` |
 | 列表/表格/标签页 | `list/`、`table/`、`tabs/` | `List`、`VirtualList`、`DataTable`、`TabBar`、`Accordion` |

@@ -273,6 +273,27 @@ impl Render for EditorDemo {
                         ),
                 )
                 .child(
+                    h_flex()
+                        .gap(px(8.0))
+                        .items_center()
+                        .child(lsp_button(&demo, "snip-expand", "展开片段", |state, window, cx| {
+                            state.expand_snippet(
+                                "fn ${1:name}(${2:args}) {\n    $0\n}",
+                                window,
+                                cx,
+                            );
+                        }))
+                        .child(lsp_button(&demo, "snip-next", "下一占位 Tab", |state, _, cx| {
+                            state.next_placeholder(cx);
+                        }))
+                        .child(lsp_button(&demo, "snip-prev", "上一占位 S-Tab", |state, _, cx| {
+                            state.prev_placeholder(cx);
+                        }))
+                        .child(div().text_xs().child(
+                            "片段：$1/$2 跳转，$0 收尾；会话内键入只跟踪跳转（镜像/强制不做）",
+                        )),
+                )
+                .child(
                     div()
                         .relative()
                         .flex_1()

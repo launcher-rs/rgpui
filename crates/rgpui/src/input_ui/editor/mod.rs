@@ -12,6 +12,8 @@ pub(super) mod line_ops;
 /// LSP 编辑器侧接线（provider 接入 + 防抖触发 + 补全/诊断/悬停状态，M2）。
 pub(super) mod lsp_attach;
 pub(super) mod multicursor;
+/// 代码片段最小版（占位解析 + 会话跳转 + 补全联动，M3）。
+pub(super) mod snippets;
 pub(super) mod state;
 
 pub use editor_ui::Editor;

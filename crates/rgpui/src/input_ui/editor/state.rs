@@ -8,6 +8,7 @@ use std::ops::Range;
 
 use super::super::InputState;
 use super::lsp_attach::LspAttach;
+use super::snippets::SnippetSession;
 use crate::highlight::{DocumentSymbol, Highlighter};
 use crate::{App, AppContext as _, Context, Entity, SharedString, Window};
 
@@ -19,6 +20,8 @@ pub struct EditorState {
     outline: Vec<DocumentSymbol>,
     /// LSP 接入状态（provider + 补全/诊断/悬停，见 `lsp_attach.rs`）。
     pub(super) lsp: LspAttach,
+    /// 片段会话（进行中为 `Some`，见 `snippets.rs`）。
+    pub(super) snippet: Option<SnippetSession>,
 }
 
 impl EditorState {
@@ -45,6 +48,7 @@ impl EditorState {
             input,
             outline: Vec::new(),
             lsp: LspAttach::new(cx.new(|_| crate::lsp::CompletionPopupState::default())),
+            snippet: None,
         };
         this.refresh_outline(cx);
         // 文本一改就刷新大纲。
