@@ -1,12 +1,15 @@
-//! Editor 演示：CodeEditor + tree-sitter 高亮/折叠 + 行操作 + 键入体验 +
-//! 符号大纲 + 多光标（键位来自全局 `init_all` 默认注册）。
+//! Editor 演示：`EditorState` + `Editor` 组件（P3b 迁移）。
+//!
+//! 主窗格走编辑器状态（code_editor 配置/大纲缓存/符号跳转/高亮接入内聚在
+//! `EditorState` 里，渲染走 `Editor` 自带行号列号状态行）；只读窗格保留表单
+//! `Input` 做对照。tree-sitter 高亮/折叠 + 行操作 + 多光标（键位来自全局
+//! `init_all` 默认注册）。
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::{
     App, Bounds, Context, Render, Window, WindowBounds, WindowOptions, div, h_flex,
-    highlight::{DocumentSymbol, rust_highlighter},
-    input_ui::{Input, InputEvent, InputState},
+    input_ui::{Editor, EditorState, Input, InputEvent, InputState},
     prelude::*,
     px, rgb, size, v_flex,
 };
@@ -17,53 +20,44 @@ const SAMPLE: &str = "fn main() {\n    let name = \"rgpui\";\n    println!(\"hel
 const READONLY_SAMPLE: &str = "只读预览：可选可复制，不可编辑。右键菜单的剪切/粘贴/撤销自动禁用。";
 
 struct EditorDemo {
+    editor: rgpui::Entity<EditorState>,
     input: rgpui::Entity<InputState>,
     readonly: rgpui::Entity<InputState>,
-    symbols: Vec<DocumentSymbol>,
 }
 
 impl EditorDemo {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input = cx.new(|cx| {
-            let mut state = InputState::new(window, cx)
-                .code_editor("rust")
-                .auto_close_pairs(true)
-                .bracket_match(true)
-                .current_line_highlight(true)
-                .line_comment_prefix("//");
-            state.replace(SAMPLE, window, cx);
-            state.set_highlighter(Some(rust_highlighter()), window, cx);
-            state
+        // 编辑器状态一次配好（多行 + 行号 + 折叠 + 键入体验 + 大纲订阅）。
+        let editor = cx.new(|cx| EditorState::new(window, cx, "rust", SAMPLE));
+        let input = editor.read_with(cx, |state, _| state.input().clone());
+        // 高亮器经内部输入接入（`EditorState::set_highlighter` 同款透传）。
+        input.update(cx, |state, cx| {
+            state.set_highlighter(Some(rgpui::highlight::rust_highlighter()), window, cx);
         });
         let readonly = cx.new(|cx| {
             let mut state = InputState::new(window, cx).multi_line(true);
             state.replace(READONLY_SAMPLE, window, cx);
             state
         });
-        let symbols = input.read_with(cx, |state, _| state.document_symbols());
 
-        // 文本一改就刷新大纲。
-        cx.subscribe(&input, |this, _, event, cx| {
-            if !matches!(event, InputEvent::Change) {
-                return;
+        // 大纲缓存由编辑器状态维护，这里只在文本变更时重渲染。
+        cx.subscribe(&input, |_, _, event, cx| {
+            if matches!(event, InputEvent::Change) {
+                cx.notify();
             }
-            this.symbols = this
-                .input
-                .read_with(cx, |state, _| state.document_symbols());
-            cx.notify();
         })
         .detach();
 
         Self {
+            editor,
             input,
             readonly,
-            symbols,
         }
     }
 
-    fn goto(&mut self, symbol: &DocumentSymbol, cx: &mut Context<Self>) {
+    fn goto(&mut self, symbol: &rgpui::highlight::DocumentSymbol, cx: &mut Context<Self>) {
         let symbol = symbol.clone();
-        self.input.update(cx, |state, cx| {
+        self.editor.update(cx, |state, cx| {
             state.goto_symbol(&symbol, cx);
         });
     }
@@ -71,7 +65,9 @@ impl EditorDemo {
 
 impl Render for EditorDemo {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let symbols = self.symbols.clone();
+        let symbols = self
+            .editor
+            .read_with(cx, |state, _| state.outline().to_vec());
         let demo = cx.entity();
         h_flex()
             .size_full()
@@ -110,7 +106,7 @@ impl Render for EditorDemo {
                          多光标：Ctrl+Alt+↑↓加光标 Alt+点击 ｜ 键入：自动补括号/电缩进/括号匹配/当前行高亮",
                     ),
                 )
-                .child(Input::new(&self.input).flex_1())
+                .child(Editor::new(self.input.clone()).flex_1())
                 .child(div().text_xs().child("只读预览："))
                 .child(Input::new(&self.readonly).read_only(true).h(px(72.0))),
         )
