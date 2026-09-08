@@ -39,7 +39,15 @@
   `editor` 演示页可点
 - **sticky scroll**（`editor/sticky_scroll.rs`）：大纲范围包含推导嵌套栈 +
   `Editor` 顶栏面包屑（点击走 `goto_symbol`，无大纲不显示）；`Editor::new`
+  `Editor::new`
   改接 `EditorState` 实体（大纲/光标/开关一次读齐，不在 `InputState` 上冗余数据）
+- **多语言注册表**（`highlight`）：`register_highlighter`/`highlighter_for`
+ （注册表优先 → Rust 内置 → 静默降级）+ `EditorState::set_language`（高亮/大纲联动）；
+  加新语言三步文档；Rust 之外 grammar 不进；`editor` 演示页可切语言验证降级
+- **快捷键用户层**（`keymap/file.rs`）：`load_keymap_json`（注释/尾逗号可写；
+  `null` = `NoAction`；未知动作/非法按键/非法谓词报错）+ 设置页 recipe 落地
+  （`v1_2_showcase --bin keymap`：JSON 加载应用 + `HotkeyInput` 录制绑定 +
+  `bindings_for_action` 回显 + 同键异动作冲突提示）
 
 - **`cx.debounce` 方法版**：`App` 全局防抖注册表 + key 隔离（`Debouncer` 结构版保留）
 - **tree-sitter 后端**（`--features tree-sitter`，默认关，wasm 禁用）：Rust 单语言

@@ -123,6 +123,49 @@ impl rgpui::input_ui::InlayProvider for DemoInlayProvider {
     }
 }
 
+/// 演示用桩语言高亮器（注册表机制演示；真语言按三步加 grammar）。
+struct DemoLangStub;
+
+impl rgpui::highlight::Highlighter for DemoLangStub {
+    fn language(&self) -> rgpui::SharedString {
+        "demo".into()
+    }
+
+    fn update(
+        &mut self,
+        _edit: Option<rgpui::highlight::TextEdit>,
+        _text: &rgpui::input_ui::Rope,
+        _folding: bool,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+
+    fn styles(
+        &self,
+        range: &std::ops::Range<usize>,
+        _resolver: &dyn rgpui::highlight::HighlightStyleResolver,
+    ) -> Vec<(std::ops::Range<usize>, rgpui::HighlightStyle)> {
+        vec![(range.clone(), rgpui::HighlightStyle::default())]
+    }
+
+    fn fold_ranges(&self, _text: &rgpui::input_ui::Rope) -> Vec<rgpui::highlight::FoldRange> {
+        Vec::new()
+    }
+
+    fn document_symbols(
+        &self,
+        _text: &rgpui::input_ui::Rope,
+    ) -> Vec<rgpui::highlight::DocumentSymbol> {
+        vec![rgpui::highlight::DocumentSymbol {
+            kind: rgpui::highlight::SymbolKind::Function,
+            name: "Demo".into(),
+            range: 0..2,
+            start_row: 0,
+        }]
+    }
+}
+
 /// 悬停内容首条预览（演示状态行用）。
 fn hover_preview(state: &EditorState) -> String {
     let hover = state.hover_state();
@@ -177,6 +220,11 @@ impl EditorDemo {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // 编辑器状态一次配好（多行 + 行号 + 折叠 + 键入体验 + 大纲订阅）。
         let editor = cx.new(|cx| EditorState::new(window, cx, SAMPLE));
+        // 演示语言注册（注册表机制；真语言按三步加 grammar）。
+        rgpui::highlight::register_highlighter(
+            "demo",
+            Box::new(|_| Some(Box::new(DemoLangStub) as Box<dyn rgpui::highlight::Highlighter>)),
+        );
         editor.update(cx, |state, cx| {
             // 高亮器经编辑器状态透传接入（大纲同步刷新）。
             state.set_highlighter(Some(rgpui::highlight::rust_highlighter()), window, cx);
@@ -223,6 +271,12 @@ impl Render for EditorDemo {
             .read_with(cx, |state, _| state.outline().to_vec());
         let (diag_count, hover_text) = self.editor.read_with(cx, |state, _| {
             (state.diagnostics().len(), hover_preview(state))
+        });
+        let lang_text = self.editor.read_with(cx, |state, _| {
+            state
+                .language()
+                .map(|s| s.to_string())
+                .unwrap_or("纯文本".to_string())
         });
         let demo = cx.entity();
         // 补全弹窗（相对容器左上角弹出，点击行即确认插入）。
@@ -317,6 +371,26 @@ impl Render for EditorDemo {
                         .child(div().text_xs().child(
                             "片段：$1/$2 跳转，$0 收尾；会话内键入只跟踪跳转（镜像/强制不做）",
                         )),
+                )
+                .child(
+                    h_flex()
+                        .gap(px(8.0))
+                        .items_center()
+                        .child(lsp_button(&demo, "lang-rust", "语言: rust", |state, window, cx| {
+                            state.set_language("rust", window, cx);
+                        }))
+                        .child(lsp_button(&demo, "lang-demo", "语言: demo", |state, window, cx| {
+                            state.set_language("demo", window, cx);
+                        }))
+                        .child(lsp_button(
+                            &demo,
+                            "lang-unknown",
+                            "语言: 未知降级",
+                            |state, window, cx| {
+                                state.set_language("brainfuck-x", window, cx);
+                            },
+                        ))
+                        .child(div().text_xs().child(format!("当前语言：{lang_text}"))),
                 )
                 .child(
                     div()

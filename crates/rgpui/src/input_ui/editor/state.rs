@@ -27,6 +27,8 @@ pub struct EditorState {
     pub(super) inlay: InlayState,
     /// 粘性滚动开关（默认开，见 `sticky_scroll.rs`）。
     pub(super) sticky_scroll: bool,
+    /// 当前语言（`set_language` 维护；未设置/已降级为 `None`）。
+    language: Option<SharedString>,
 }
 
 impl EditorState {
@@ -56,6 +58,7 @@ impl EditorState {
             snippet: None,
             inlay: InlayState::new(),
             sticky_scroll: true,
+            language: None,
         };
         this.refresh_outline(cx);
         // 文本一改就刷新大纲。
@@ -159,6 +162,25 @@ impl EditorState {
         self.refresh_outline(cx);
     }
 
+    /// 设置语言（查注册表 + 高亮/大纲联动；未注册静默降级为纯文本）。
+    ///
+    /// 注册表见 `highlight::register_highlighter`；Rust 内置需 `--features
+    /// tree-sitter`（默认关，wasm 不可用）；1.2 不加 Rust 之外的 grammar。
+    pub fn set_language(&mut self, language: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let highlighter = crate::highlight::highlighter_for(language);
+        self.language = if highlighter.is_some() {
+            Some(language.into())
+        } else {
+            None
+        };
+        self.set_highlighter(highlighter, window, cx);
+    }
+
+    /// 当前语言（未设置/已降级为 `None`，状态行展示用）。
+    pub fn language(&self) -> Option<SharedString> {
+        self.language.clone()
+    }
+
     /// 大纲缓存（`refresh_outline` 维护）。
     pub fn outline(&self) -> &[DocumentSymbol] {
         &self.outline
@@ -214,6 +236,47 @@ mod tests {
         assert_eq!(text, "fn main() {}\n");
         let cursor = editor.read_with(cx, |state, cx| state.cursor(cx));
         assert_eq!(cursor, "fn main() {}\n".len());
+    }
+
+    /// 未注册语言静默降级（语言记 `None`，大纲为空，不 panic）。
+    #[rgpui::test]
+    fn set_language_unknown_downgrades(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_language("cobol-xyz-not-registered", window, cx);
+            });
+        });
+        assert!(editor.read_with(cx, |state, _| state.language().is_none()));
+        assert!(editor.read_with(cx, |state, _| state.outline().is_empty()));
+    }
+
+    /// Rust 语言可用（tree-sitter feature 门控）。
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
+    #[rgpui::test]
+    fn set_language_rust_available(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_language("rust", window, cx);
+            });
+        });
+        assert_eq!(
+            editor
+                .read_with(cx, |state, _| state.language())
+                .map(|s| s.to_string()),
+            Some("rust".to_string())
+        );
+        // Rust 大纲非空（tree-sitter 真解析）。
+        assert!(!editor.read_with(cx, |state, _| state.outline().is_empty()));
     }
 
     /// 无高亮器时大纲为空（不崩溃）。

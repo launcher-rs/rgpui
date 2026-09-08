@@ -29,6 +29,10 @@ path = "src/bin/search.rs"
 name = "context_menu"
 path = "src/bin/context_menu.rs"
 
+[[bin]]
+name = "keymap"
+path = "src/bin/keymap.rs"
+
 [dependencies]
 anyhow.workspace = true
 lsp-types.workspace = true

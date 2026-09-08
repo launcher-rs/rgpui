@@ -296,6 +296,8 @@ impl InputState {
     ///
     /// 调用方保证范围端点落在字符边界上（渲染层只过滤空范围，不做边界兜底）。
     /// 目前唯一调用方是 `editor/snippets.rs` 的隐形占位集合（默认样式零渲染）。
+    /// `editor` feature 门控（默认构建不用）。
+    #[cfg(feature = "editor")]
     pub(super) fn create_raw_collection(
         &mut self,
         decorations: Vec<TextDecoration>,

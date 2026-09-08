@@ -185,10 +185,45 @@ impl HighlightStyleResolver for ThemeHighlightResolver {
     }
 }
 
-/// 高亮器工厂函数。
-pub type HighlighterFactory = Box<dyn Fn(&str) -> Option<Box<dyn Highlighter>>>;
+/// 高亮器工厂（注册表用；`Send + Sync` 以便进全局注册表）。
+pub type HighlighterFactory = Box<dyn Fn(&str) -> Option<Box<dyn Highlighter>> + Send + Sync>;
 
-/// 支持的语言列表。
+/// 全局语言注册表（语言名 → 构造器；后注册覆盖先注册）。
+static HIGHLIGHTER_REGISTRY: std::sync::LazyLock<
+    std::sync::RwLock<std::collections::HashMap<&'static str, HighlighterFactory>>,
+> = std::sync::LazyLock::new(|| std::sync::RwLock::new(std::collections::HashMap::new()));
+
+/// 注册语言高亮器（`EditorState::set_language` 查表用）。
+///
+/// 新语言三步（grammar 包本身不进 1.2，按需加）：1. 加 `tree-sitter-xxx`
+/// 可选依赖 + feature 门；2. 写 `Highlighter` 实现（query 随 grammar 版本保证
+/// 有效，抄 `tree_sitter.rs` 的 Rust 实现）；3. 本函数一行注册。
+/// wasm 下 tree-sitter 整体不可用，注册了也降级（见 `highlighter_for`）。
+pub fn register_highlighter(language: &'static str, factory: HighlighterFactory) {
+    if let Ok(mut registry) = HIGHLIGHTER_REGISTRY.write() {
+        registry.insert(language, factory);
+    }
+}
+
+/// 按语言取高亮器（注册表优先 → Rust 内置（tree-sitter feature 门）→ `None`）。
+///
+/// 未注册静默降级（不 panic、不编译失败；wasm 下 Rust 内置同样不可用，
+/// 直接 `None`）。`supported_languages` 是候选名录（文档用），可用性只看本函数。
+pub fn highlighter_for(language: &str) -> Option<Box<dyn Highlighter>> {
+    if let Ok(registry) = HIGHLIGHTER_REGISTRY.read() {
+        if let Some(factory) = registry.get(language) {
+            return factory(language);
+        }
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
+    if language == "rust" {
+        return Some(rust_highlighter());
+    }
+    None
+}
+
+/// 支持的语言列表（候选名录：文档/UI 展示用，可用性以 [`highlighter_for`] 为准，
+/// 1.2 只实现 Rust，其余语言包不进）。
 pub fn supported_languages() -> Vec<&'static str> {
     vec![
         "rust",
@@ -215,4 +250,65 @@ pub fn supported_languages() -> Vec<&'static str> {
         "bash",
         "dockerfile",
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 测试桩高亮器（注册表用）。
+    struct StubHighlighter;
+
+    impl Highlighter for StubHighlighter {
+        fn language(&self) -> SharedString {
+            "test-only-x".into()
+        }
+
+        fn update(
+            &mut self,
+            _edit: Option<TextEdit>,
+            _text: &Rope,
+            _folding: bool,
+            _window: &mut crate::Window,
+            _cx: &mut App,
+        ) {
+        }
+
+        fn styles(
+            &self,
+            range: &Range<usize>,
+            _resolver: &dyn HighlightStyleResolver,
+        ) -> Vec<(Range<usize>, HighlightStyle)> {
+            vec![(range.clone(), HighlightStyle::default())]
+        }
+
+        fn fold_ranges(&self, _text: &Rope) -> Vec<FoldRange> {
+            Vec::new()
+        }
+    }
+
+    /// 未注册语言静默降级（不 panic）。
+    #[test]
+    fn unknown_language_returns_none() {
+        assert!(highlighter_for("cobol-xyz-not-registered").is_none());
+    }
+
+    /// 注册后查表命中（后注册覆盖；唯一名避免并行测试串扰）。
+    #[test]
+    fn registry_override_hits() {
+        register_highlighter(
+            "test-only-x",
+            Box::new(|_| Some(Box::new(StubHighlighter) as Box<dyn Highlighter>)),
+        );
+        let highlighter = highlighter_for("test-only-x").expect("刚注册必须命中");
+        assert_eq!(highlighter.language().to_string(), "test-only-x");
+    }
+
+    /// Rust 内置（tree-sitter feature 门控）。
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
+    #[test]
+    fn rust_builtin_available() {
+        let highlighter = highlighter_for("rust").expect("tree-sitter 下 Rust 内置可用");
+        assert_eq!(highlighter.language().to_string(), "rust");
+    }
 }

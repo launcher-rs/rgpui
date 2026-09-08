@@ -35,6 +35,8 @@ impl TempTree {
 // 将 JSON 树结构写入文件系统。
 fn write_tree(path: &Path, tree: serde_json::Value) {
     use serde_json::Value;
+    #[cfg(all(not(target_family = "wasm"), feature = "test-support"))]
+    use std::ffi::OsStr;
     use std::fs;
 
     if let Value::Object(map) = tree {
