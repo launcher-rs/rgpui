@@ -18,6 +18,8 @@ pub struct EditorState {
 
 impl EditorState {
     /// 创建编辑器状态（内部输入配好多行 + 行号 + 折叠 + 引导线 + 键入体验）。
+    ///
+    /// 初始内容走 `set_value`：不进撤销栈（打开即 undo 不清空），光标落末尾。
     pub fn new(window: &mut Window, cx: &mut Context<Self>, initial: &str) -> Self {
         let input = cx.new(|cx| {
             let mut state = InputState::new(window, cx)
@@ -29,7 +31,9 @@ impl EditorState {
                 .auto_close_pairs(true)
                 .bracket_match(true)
                 .current_line_highlight(true);
-            state.replace(initial, window, cx);
+            let end = initial.len();
+            state.set_value(initial, window, cx);
+            state.set_selected_range(end..end, cx);
             state
         });
         let mut this = Self {
@@ -164,5 +168,49 @@ mod tests {
         });
         let cursor = editor.read_with(cx, |state, cx| state.cursor(cx));
         assert_eq!(cursor, 0);
+    }
+
+    /// 初始内容不进撤销栈：打开即 undo 不得清空内容；
+    /// 同一输入 burst（1 秒分组窗内）合并为一个撤销单元。
+    #[rgpui::test]
+    fn initial_content_not_undoable(cx: &mut crate::TestAppContext) {
+        const INITIAL: &str = "fn main() {}\n";
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, INITIAL));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        let input = editor.read_with(cx, |state, _| state.input().clone());
+        // 快速连输两个字符（同一分组窗）。
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                crate::EntityInputHandler::replace_text_in_range(state, None, "a", window, cx);
+                crate::EntityInputHandler::replace_text_in_range(state, None, "b", window, cx);
+            });
+        });
+        assert_eq!(
+            input.read_with(cx, |state, _| state.value().to_string()),
+            "fn main() {}\nab".to_string()
+        );
+        // 一次 undo 回退整个 burst，初始内容保留。
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.undo(&crate::input_ui::Undo, window, cx)
+            });
+        });
+        assert_eq!(
+            input.read_with(cx, |state, _| state.value().to_string()),
+            INITIAL.to_string()
+        );
+        // 栈已空：再 undo 无变化。
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.undo(&crate::input_ui::Undo, window, cx)
+            });
+        });
+        assert_eq!(
+            input.read_with(cx, |state, _| state.value().to_string()),
+            INITIAL.to_string()
+        );
     }
 }

@@ -36,7 +36,8 @@ impl EditorDemo {
         });
         let readonly = cx.new(|cx| {
             let mut state = InputState::new(window, cx).multi_line(true);
-            state.replace(READONLY_SAMPLE, window, cx);
+            // 初始内容不进撤销栈（与 `EditorState::new` 同理）。
+            state.set_value(READONLY_SAMPLE, window, cx);
             state
         });
 

@@ -272,6 +272,28 @@ mod tests {
     }
 
     #[test]
+    fn test_group_interval_coalesces_rapid_pushes() {
+        use std::time::Duration as StdDuration;
+
+        // 20ms 分组窗：窗内连续推入属同一版本，一次 undo 整体回退。
+        let mut history: History<TabIndex> = History::new()
+            .max_undos(100)
+            .group_interval(StdDuration::from_millis(20));
+        history.push(0.into());
+        history.push(1.into());
+        let changes = history.undo().unwrap();
+        assert_eq!(changes.len(), 2);
+
+        // 超窗后推入：新版本，单独撤销。
+        std::thread::sleep(StdDuration::from_millis(50));
+        history.push(2.into());
+        let changes = history.undo().unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].tab_index, 2);
+        assert!(history.undo().is_none());
+    }
+
+    #[test]
     fn test_unique_history() {
         let mut history: History<TabIndex> = History::new().max_undos(100).unique();
 
