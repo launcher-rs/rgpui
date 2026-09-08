@@ -1640,6 +1640,8 @@ impl InputState {
         {
             if insert_newline && !self.extra_selections.is_empty() {
                 self.enter_cursors(window, cx);
+                // 换行后打断撤销分组：下一次输入自成单元，一次 undo 停在行边界。
+                self.core.history.break_group();
                 return;
             }
         }
@@ -1661,6 +1663,8 @@ impl InputState {
                 self.core.selection_reversed = false;
             }
             self.pause_blink_cursor(cx);
+            // 换行后打断撤销分组：下一次输入自成单元，一次 undo 停在行边界。
+            self.core.history.break_group();
         } else {
             // 单行输入或提交式回车：仅发送事件（例如对话框确认、聊天发送）。
             cx.propagate();
@@ -3134,5 +3138,59 @@ mod typing_behavior_tests {
             state.update(cx, |state, cx| state.set_selected_range(0..5, cx));
         });
         assert!(state.read_with(cx, |state, _| state.has_selection()));
+    }
+
+    /// 回车打断撤销分组：快输 a、回车、快输 b 全在 1 秒窗内，
+    /// 一次 undo 只回退回车后的 b（RustRover 同款行边界行为），而不是整体清空。
+    #[rgpui::test]
+    fn enter_breaks_undo_group(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let state = cx.new(|cx| InputState::new(window, cx).multi_line(true));
+            Probe { state }
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                EntityInputHandler::replace_text_in_range(state, None, "a", window, cx);
+            });
+        });
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.enter(
+                    &Enter {
+                        secondary: false,
+                        shift: false,
+                    },
+                    window,
+                    cx,
+                )
+            });
+        });
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                EntityInputHandler::replace_text_in_range(state, None, "b", window, cx);
+            });
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.value().to_string()),
+            "a\nb".to_string()
+        );
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.undo(&Undo, window, cx));
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.value().to_string()),
+            "a\n".to_string()
+        );
+        // 再 undo 回退 a + 换行（回车前的同一输入 burst）。
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.undo(&Undo, window, cx));
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.value().to_string()),
+            "".to_string()
+        );
     }
 }
