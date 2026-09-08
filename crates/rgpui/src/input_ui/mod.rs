@@ -33,6 +33,9 @@ mod cursor;
 /// 文本装饰集合（Monaco 式多区间高亮），见 [`TextDecorationCollection`]。
 pub mod decorations;
 mod display_map;
+/// 编辑器覆盖层渲染（折叠图标/多光标，`editor` feature 门控；调用方同步门控）。
+#[cfg(feature = "editor")]
+mod editor_ui;
 mod element;
 mod history;
 mod indent;

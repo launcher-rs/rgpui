@@ -4,15 +4,15 @@ use std::rc::Rc;
 
 use crate::{
     AnyElement, App, Bounds, Corners, Edges, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, Half, HighlightStyle, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _,
-    IntoElement, LayoutId, MouseButton, MouseMoveEvent, MouseUpEvent, Path, PathBuilder, Pixels,
-    Point, Position, ShapedLine, SharedString, Size, Style, Styled as _, TextAlign, TextRun,
-    TextStyle, UnderlineStyle, Window, fill, point, px, relative, size,
+    GlobalElementId, Half, HighlightStyle, Hsla, IntoElement, LayoutId, MouseButton,
+    MouseMoveEvent, MouseUpEvent, Path, PathBuilder, Pixels, Point, Position, ShapedLine,
+    SharedString, Size, Style, TextAlign, TextRun, TextStyle, UnderlineStyle, Window, fill, point,
+    px, relative, size,
 };
 use ropey::Rope;
 
+use crate::Scrollbar;
 use crate::theme::ActiveTheme as _;
-use crate::{Button, ButtonVariants as _, IconName, Scrollbar, Selectable as _, Sizable as _};
 
 #[cfg(feature = "dom-backend")]
 use crate::{DomNode, DomNodeKind, DomStyle};
@@ -25,8 +25,7 @@ use super::{
 const BOTTOM_MARGIN_ROWS: usize = 3;
 pub(super) const RIGHT_MARGIN: Pixels = px(10.);
 pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(10.);
-const FOLD_ICON_WIDTH: Pixels = px(14.);
-const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
+pub(super) const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
 
 /// 将文本装饰范围限制在可见范围内并合并样式。
 fn compose_decorations(
@@ -328,14 +327,6 @@ fn empty_bottom_height(
     }
 }
 
-/// 折叠图标布局信息。
-struct FoldIconLayout {
-    /// 行号区域命中框（用于悬停检测）
-    line_number_hitbox: Hitbox,
-    /// 每个折叠候选的 (display_row, is_folded, icon_element) 列表
-    icons: Vec<(usize, bool, crate::AnyElement)>,
-}
-
 /// 文本元素，负责渲染输入框中的文本、光标、选区、行号与折叠图标。
 pub(super) struct TextElement {
     pub(crate) state: Entity<InputState>,
@@ -564,28 +555,20 @@ impl TextElement {
             ))
         };
 
-        // 额外光标：与主光标同尺寸同滚动，不参与滚动驱动。
-        let mut extra_cursor_bounds = Vec::new();
-        if !state.masked {
-            for extra in &state.extra_selections {
-                let end = extra.end.min(state.core.text.len());
-                let row = state.core.text.offset_to_point(end).row;
-                let pos = caret_for(row, end, false);
-                let x = bounds.left() + pos.x + line_number_width + cursor_scroll_x;
-                let x = if last_layout.text_align == TextAlign::Right {
-                    x.min(bounds.right() - CURSOR_WIDTH)
-                } else {
-                    x
-                };
-                extra_cursor_bounds.push(Bounds::new(
-                    point(
-                        x,
-                        bounds.top() + pos.y + ((line_height - cursor_height) / 2.),
-                    ),
-                    size(CURSOR_WIDTH, cursor_height),
-                ));
-            }
-        }
+        // 额外光标边界（多光标，与主光标同尺寸同滚动；`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        let extra_cursor_bounds = super::editor_ui::extra_cursor_bounds(
+            state,
+            &caret_for,
+            bounds,
+            line_number_width,
+            cursor_scroll_x,
+            line_height,
+            cursor_height,
+            last_layout.text_align,
+        );
+        #[cfg(not(feature = "editor"))]
+        let extra_cursor_bounds: Vec<Bounds<Pixels>> = Vec::new();
 
         if let Some(deferred_scroll_offset) = state.deferred_scroll_offset {
             scroll_offset = deferred_scroll_offset;
@@ -984,155 +967,6 @@ impl TextElement {
         Some(WhitespaceIndicators { space, tab })
     }
 
-    /// 在 prepaint 阶段布局折叠图标命中框。
-    ///
-    /// 为折叠图标区域创建命中框，位于行号右侧。
-    fn layout_fold_icons(
-        &self,
-        origin_x: Pixels,
-        bounds: &Bounds<Pixels>,
-        last_layout: &LastLayout,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> FoldIconLayout {
-        // 第一遍：从状态收集折叠信息
-        struct FoldInfo {
-            buffer_line: usize,
-            is_folded: bool,
-            display_row: usize,
-            offset_y: Pixels,
-        }
-
-        let line_number_hitbox = window.insert_hitbox(
-            Bounds::new(
-                point(origin_x, bounds.origin.y + last_layout.visible_top),
-                size(last_layout.line_number_width, bounds.size.height),
-            ),
-            HitboxBehavior::Normal,
-        );
-
-        let mut icon_layout = FoldIconLayout {
-            line_number_hitbox,
-            icons: vec![],
-        };
-
-        let fold_infos: Vec<FoldInfo> = {
-            let state = self.state.read(cx);
-            if !state.mode.is_folding() {
-                return icon_layout;
-            }
-
-            let mut infos = Vec::with_capacity(last_layout.visible_buffer_lines.len());
-            let mut offset_y = last_layout.visible_top;
-
-            for (line, &buffer_line) in last_layout
-                .lines
-                .iter()
-                .zip(last_layout.visible_buffer_lines.iter())
-            {
-                if state.display_map.is_fold_candidate(buffer_line) {
-                    let is_folded = state.display_map.is_folded_at(buffer_line);
-                    infos.push(FoldInfo {
-                        buffer_line,
-                        is_folded,
-                        display_row: buffer_line,
-                        offset_y,
-                    });
-                }
-
-                offset_y += line.wrapped_lines.len() * last_layout.line_height;
-            }
-
-            infos
-        }; // state 在此处释放
-
-        // 第二遍：创建并预绘制图标
-        let line_height = last_layout.line_height;
-        let line_number_width =
-            last_layout.line_number_width - LINE_NUMBER_RIGHT_MARGIN - FOLD_ICON_HITBOX_WIDTH;
-        let icon_relative_pos = point(
-            (FOLD_ICON_HITBOX_WIDTH - FOLD_ICON_WIDTH).half(),
-            (line_height - FOLD_ICON_WIDTH).half(),
-        );
-
-        for (ix, info) in fold_infos.iter().enumerate() {
-            // 将折叠图标放在行号右侧。
-            // 使用 origin_x（未滚动）使图标在水平滚动时保持在沟槽中。
-            let fold_icon_bounds = Bounds::new(
-                point(
-                    origin_x + icon_relative_pos.x + line_number_width,
-                    bounds.origin.y + icon_relative_pos.y + info.offset_y,
-                ),
-                size(FOLD_ICON_HITBOX_WIDTH, line_height),
-            );
-
-            // 创建并预绘制图标
-            let mut icon = Button::new(("fold", ix))
-                .ghost()
-                .icon(if info.is_folded {
-                    IconName::ChevronRight
-                } else {
-                    IconName::ChevronDown
-                })
-                .xsmall()
-                .rounded_xs()
-                .size(FOLD_ICON_WIDTH)
-                .selected(info.is_folded)
-                .on_mouse_down(MouseButton::Left, {
-                    let state = self.state.clone();
-                    let buffer_line = info.buffer_line;
-                    move |_, _: &mut Window, cx: &mut App| {
-                        cx.stop_propagation();
-
-                        state.update(cx, |state, cx| {
-                            state.display_map.toggle_fold(buffer_line);
-                            cx.notify();
-                        });
-                    }
-                })
-                .into_any_element();
-
-            icon.prepaint_as_root(
-                fold_icon_bounds.origin,
-                fold_icon_bounds.size.into(),
-                window,
-                cx,
-            );
-
-            icon_layout
-                .icons
-                .push((info.display_row, info.is_folded, icon));
-        }
-
-        icon_layout
-    }
-
-    /// 使用预绘制命中框绘制折叠图标。
-    ///
-    /// 处理：
-    /// - 渲染折叠图标（折叠为右箭头，展开为下箭头）
-    /// - 鼠标点击切换折叠状态
-    /// - 悬停时切换光标样式
-    /// - 仅悬停或当前行时显示图标
-    fn paint_fold_icons(
-        &mut self,
-        fold_icon_layout: &mut FoldIconLayout,
-        current_row: Option<usize>,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let is_hovered = fold_icon_layout.line_number_hitbox.is_hovered(window);
-        for (display_row, is_folded, icon) in fold_icon_layout.icons.iter_mut() {
-            let is_current_line = current_row == Some(*display_row);
-
-            if !is_hovered && !is_current_line && !*is_folded {
-                continue;
-            }
-
-            icon.paint(window, cx);
-        }
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn layout_lines(
         state: &InputState,
@@ -1284,8 +1118,9 @@ pub(super) struct PrepaintState {
     selection_paths: Vec<Path<Pixels>>,
     indent_guides_path: Option<Path<Pixels>>,
     bounds: Bounds<Pixels>,
-    /// 折叠图标布局数据
-    fold_icon_layout: FoldIconLayout,
+    /// 折叠图标布局数据（`editor` feature 门控，类型见 `editor_ui`）。
+    #[cfg(feature = "editor")]
+    fold_icon_layout: super::editor_ui::FoldIconLayout,
 }
 
 impl PrepaintState {
@@ -1295,18 +1130,6 @@ impl PrepaintState {
             bounds.origin.y += self.cursor_scroll_offset.y;
             bounds
         })
-    }
-
-    /// 返回考虑滚动偏移后的额外光标边界。
-    fn extra_cursor_bounds_with_scroll(&self) -> Vec<Bounds<Pixels>> {
-        self.extra_cursor_bounds
-            .iter()
-            .map(|bounds| {
-                let mut bounds = *bounds;
-                bounds.origin.y += self.cursor_scroll_offset.y;
-                bounds
-            })
-            .collect()
     }
 }
 
@@ -1791,8 +1614,10 @@ impl Element for TextElement {
         // 计算保持光标在视图内的滚动偏移
 
         // 在 layout_cursor 用滚动偏移修改 bounds.origin 之前保存未滚动的 x。
-        // 折叠图标及其命中框必须使用此值，使其在水平滚动时保持在沟槽中。
+        // 折叠图标及其命中框必须使用此值，使其在水平滚动时保持在沟槽中
+        //（`editor` feature 门控，平时不用）。
         let input_bounds = bounds;
+        #[cfg(feature = "editor")]
         let original_x = bounds.origin.x;
 
         let (cursor_bounds, cursor_scroll_offset, current_row, extra_cursor_bounds) =
@@ -1863,8 +1688,16 @@ impl Element for TextElement {
                 cursor_scroll_offset,
                 state,
             )));
-        let fold_icon_layout =
-            self.layout_fold_icons(original_x, &bounds, &last_layout, window, cx);
+        // 折叠图标布局（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        let fold_icon_layout = super::editor_ui::layout_fold_icons(
+            &self.state,
+            original_x,
+            &bounds,
+            &last_layout,
+            window,
+            cx,
+        );
 
         PrepaintState {
             bounds,
@@ -1877,6 +1710,7 @@ impl Element for TextElement {
             current_row,
             selection_paths,
             indent_guides_path,
+            #[cfg(feature = "editor")]
             fold_icon_layout,
         }
     }
@@ -2024,7 +1858,9 @@ impl Element for TextElement {
             if let Some(cursor_bounds) = prepaint.cursor_bounds_with_scroll() {
                 window.paint_quad(fill(cursor_bounds, cx.theme().caret));
             }
-            for extra in prepaint.extra_cursor_bounds_with_scroll() {
+            for extra in &prepaint.extra_cursor_bounds {
+                let mut extra = *extra;
+                extra.origin.y += prepaint.cursor_scroll_offset.y;
                 window.paint_quad(fill(extra, cx.theme().caret));
             }
         }
@@ -2080,8 +1916,9 @@ impl Element for TextElement {
             }
         }
 
-        // 绘制折叠图标（仅悬停或当前行可见）
-        self.paint_fold_icons(
+        // 绘制折叠图标（仅悬停或当前行可见；`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        super::editor_ui::paint_fold_icons(
             &mut prepaint.fold_icon_layout,
             prepaint.current_row,
             window,
