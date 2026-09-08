@@ -18,13 +18,15 @@ pub struct EditorState {
     /// 内部输入实体（唯一真相源，代码编辑配置）。
     pub(super) input: Entity<InputState>,
     /// 大纲缓存（文本变更时刷新，`outline()` 读取）。
-    outline: Vec<DocumentSymbol>,
+    pub(super) outline: Vec<DocumentSymbol>,
     /// LSP 接入状态（provider + 补全/诊断/悬停，见 `lsp_attach.rs`）。
     pub(super) lsp: LspAttach,
     /// 片段会话（进行中为 `Some`，见 `snippets.rs`）。
     pub(super) snippet: Option<SnippetSession>,
     /// inlay 接入状态（provider，见 `inlay_hints.rs`）。
     pub(super) inlay: InlayState,
+    /// 粘性滚动开关（默认开，见 `sticky_scroll.rs`）。
+    pub(super) sticky_scroll: bool,
 }
 
 impl EditorState {
@@ -53,6 +55,7 @@ impl EditorState {
             lsp: LspAttach::new(cx.new(|_| crate::lsp::CompletionPopupState::default())),
             snippet: None,
             inlay: InlayState::new(),
+            sticky_scroll: true,
         };
         this.refresh_outline(cx);
         // 文本一改就刷新大纲。

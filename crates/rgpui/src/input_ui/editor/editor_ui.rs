@@ -8,9 +8,10 @@ use crate::prelude::FluentBuilder as _;
 use crate::styled_ext::Selectable;
 use crate::theme::ActiveTheme as _;
 use crate::{
-    App, Bounds, Button, ButtonVariants as _, Entity, Half, Hitbox, HitboxBehavior, IconName,
-    IntoElement, MouseButton, ParentElement as _, Pixels, Point, Refineable, RenderOnce,
-    Sizable as _, StyleRefinement, Styled, TextAlign, TextRun, Window, point, px, size,
+    AnyElement, App, Bounds, Button, ButtonVariants as _, Entity, Half, Hitbox, HitboxBehavior,
+    IconName, IntoElement, MouseButton, ParentElement as _, Pixels, Point, Refineable, RenderOnce,
+    Sizable as _, StatefulInteractiveElement, StyleRefinement, Styled, TextAlign, TextRun, Window,
+    div, point, px, size,
 };
 
 use super::super::blink_cursor::CURSOR_WIDTH;
@@ -19,6 +20,7 @@ use super::super::layout::LastLayout;
 use super::super::rope_ext::RopeExt as _;
 use super::super::{Input, InputState};
 use super::inlay_hints::InlayHint;
+use super::state::EditorState;
 
 /// 折叠图标本体宽度（布局与绘制共用）。
 const FOLD_ICON_WIDTH: Pixels = px(14.);
@@ -287,21 +289,23 @@ pub(crate) fn paint_inlay_hints(
     }
 }
 
-/// 代码编辑器组件：内部 `Input` 全尺寸 + 状态行（行号/列号）。
+/// 代码编辑器组件：粘性大纲顶栏 + 内部 `Input` 全尺寸 + 状态行（行号/列号）。
 ///
-/// 与表单 `Input` 的区别：`Editor` 消费 `EditorState` 的内部输入实体，
-/// 编辑器行为（行号/折叠/键入体验）由 `EditorState::new` 一次配好。
+/// 与表单 `Input` 的区别：`Editor` 消费 `EditorState`（大纲/符号跳转/高亮透传
+/// 内聚在状态里）；编辑器行为（行号/折叠/键入体验）由 `EditorState::new` 一次配好。
+/// 顶栏只在开关开且大纲栈非空时出现（固定一行，`flex_none`，不挤占编辑区滚动）；
+/// 点击面包屑走 `goto_symbol`。
 #[derive(IntoElement)]
 pub struct Editor {
-    input: Entity<InputState>,
+    editor: Entity<EditorState>,
     style: StyleRefinement,
 }
 
 impl Editor {
-    /// 由编辑器状态的内部输入实体创建（`editor.input()`）。
-    pub fn new(input: Entity<InputState>) -> Self {
+    /// 由编辑器状态创建（`cx.new(|cx| EditorState::new(...))` 的实体）。
+    pub fn new(editor: &Entity<EditorState>) -> Self {
         Self {
-            input,
+            editor: editor.clone(),
             style: StyleRefinement::default(),
         }
     }
@@ -316,17 +320,61 @@ impl Styled for Editor {
 impl RenderOnce for Editor {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         // 状态行：Ln 行， Col 列（字节列，CJK 以字节计，演示够用）。
-        let (row, col) = self.input.read_with(cx, |state, _| {
+        let (input, stack) = self.editor.read_with(cx, |state, cx| {
+            let stack = if state.sticky_scroll_enabled() {
+                state.sticky_stack(cx)
+            } else {
+                Vec::new()
+            };
+            (state.input().clone(), stack)
+        });
+        let (row, col) = input.read_with(cx, |state, _| {
             let cursor = state.cursor();
             let text = state.text();
             let row = text.offset_to_point(cursor).row;
             let col = cursor - text.line_start_offset(row);
             (row + 1, col + 1)
         });
+        // 粘性顶栏：面包屑（点击跳转符号头）。
+        let editor = self.editor.clone();
+        let sticky = (!stack.is_empty()).then(|| {
+            let mut crumbs: Vec<AnyElement> = Vec::new();
+            let last = stack.len().saturating_sub(1);
+            for (ix, symbol) in stack.into_iter().enumerate() {
+                let editor = editor.clone();
+                crumbs.push(
+                    div()
+                        .id(("sticky-crumb", ix))
+                        .cursor_pointer()
+                        .child(symbol.name.clone())
+                        .on_click(move |_, _, cx| {
+                            editor.update(cx, |state, cx| {
+                                state.goto_symbol(&symbol, cx);
+                            });
+                        })
+                        .into_any_element(),
+                );
+                if ix != last {
+                    crumbs.push(div().child("›").into_any_element());
+                }
+            }
+            div()
+                .flex_none()
+                .px(px(12.0))
+                .py(px(2.0))
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(4.0))
+                .children(crumbs)
+        });
         let user_style = self.style;
         crate::v_flex()
             .size_full()
-            .child(Input::new(&self.input).flex_1())
+            .children(sticky)
+            .child(Input::new(&input).flex_1())
             .child(
                 crate::div()
                     .flex_none()

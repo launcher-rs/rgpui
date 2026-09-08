@@ -37,6 +37,9 @@
 - **inlay hints**（`editor/inlay_hints.rs`）：`InlayProvider`（默认空）+ 防抖请求 +
   paint 阶段 overlay 灰字绘制（三不：不占布局/不进 Rope/不碰选区，只画可见行）；
   `editor` 演示页可点
+- **sticky scroll**（`editor/sticky_scroll.rs`）：大纲范围包含推导嵌套栈 +
+  `Editor` 顶栏面包屑（点击走 `goto_symbol`，无大纲不显示）；`Editor::new`
+  改接 `EditorState` 实体（大纲/光标/开关一次读齐，不在 `InputState` 上冗余数据）
 
 - **`cx.debounce` 方法版**：`App` 全局防抖注册表 + key 隔离（`Debouncer` 结构版保留）
 - **tree-sitter 后端**（`--features tree-sitter`，默认关，wasm 禁用）：Rust 单语言

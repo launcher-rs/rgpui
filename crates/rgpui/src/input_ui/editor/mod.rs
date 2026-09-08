@@ -17,6 +17,8 @@ pub(super) mod multicursor;
 /// 代码片段最小版（占位解析 + 会话跳转 + 补全联动，M3）。
 pub(super) mod snippets;
 pub(super) mod state;
+/// 粘性滚动（大纲栈顶栏，M5）。
+pub(super) mod sticky_scroll;
 
 pub use editor_ui::Editor;
 pub use inlay_hints::{InlayHint, InlayProvider};

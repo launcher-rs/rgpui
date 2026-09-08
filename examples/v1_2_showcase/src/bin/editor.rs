@@ -170,7 +170,6 @@ fn lsp_button(
 
 struct EditorDemo {
     editor: rgpui::Entity<EditorState>,
-    input: rgpui::Entity<InputState>,
     readonly: rgpui::Entity<InputState>,
 }
 
@@ -206,11 +205,7 @@ impl EditorDemo {
         })
         .detach();
 
-        Self {
-            editor,
-            input,
-            readonly,
-        }
+        Self { editor, readonly }
     }
 
     fn goto(&mut self, symbol: &rgpui::highlight::DocumentSymbol, cx: &mut Context<Self>) {
@@ -327,7 +322,7 @@ impl Render for EditorDemo {
                     div()
                         .relative()
                         .flex_1()
-                        .child(Editor::new(self.input.clone()).flex_1())
+                        .child(Editor::new(&self.editor).flex_1())
                         .child(popup_el),
                 )
                 .child(div().text_xs().child("只读预览（TextArea）："))
