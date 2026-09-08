@@ -42,7 +42,7 @@ pub use decorations::{TextDecoration, TextDecorationCollection};
 pub use display_map::{BufferPoint, DisplayMap, DisplayPoint, FoldRange, WrappingIndent};
 /// 代码编辑器状态与组件（`editor` feature 门控）。
 #[cfg(feature = "editor")]
-pub use editor::{Editor, EditorState};
+pub use editor::{Editor, EditorState, InlayHint, InlayProvider};
 pub use history::*;
 pub use indent::TabSize;
 /// 编辑器动作重导出（`editor` feature 门控）。

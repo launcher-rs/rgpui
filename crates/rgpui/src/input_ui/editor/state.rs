@@ -7,6 +7,7 @@
 use std::ops::Range;
 
 use super::super::InputState;
+use super::inlay_hints::InlayState;
 use super::lsp_attach::LspAttach;
 use super::snippets::SnippetSession;
 use crate::highlight::{DocumentSymbol, Highlighter};
@@ -22,6 +23,8 @@ pub struct EditorState {
     pub(super) lsp: LspAttach,
     /// 片段会话（进行中为 `Some`，见 `snippets.rs`）。
     pub(super) snippet: Option<SnippetSession>,
+    /// inlay 接入状态（provider，见 `inlay_hints.rs`）。
+    pub(super) inlay: InlayState,
 }
 
 impl EditorState {
@@ -49,6 +52,7 @@ impl EditorState {
             outline: Vec::new(),
             lsp: LspAttach::new(cx.new(|_| crate::lsp::CompletionPopupState::default())),
             snippet: None,
+            inlay: InlayState::new(),
         };
         this.refresh_outline(cx);
         // 文本一改就刷新大纲。

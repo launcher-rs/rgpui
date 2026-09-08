@@ -6,10 +6,11 @@
 use crate::InteractiveElement;
 use crate::prelude::FluentBuilder as _;
 use crate::styled_ext::Selectable;
+use crate::theme::ActiveTheme as _;
 use crate::{
     App, Bounds, Button, ButtonVariants as _, Entity, Half, Hitbox, HitboxBehavior, IconName,
     IntoElement, MouseButton, ParentElement as _, Pixels, Point, Refineable, RenderOnce,
-    Sizable as _, StyleRefinement, Styled, TextAlign, Window, point, px, size,
+    Sizable as _, StyleRefinement, Styled, TextAlign, TextRun, Window, point, px, size,
 };
 
 use super::super::blink_cursor::CURSOR_WIDTH;
@@ -17,6 +18,7 @@ use super::super::input::{FOLD_ICON_HITBOX_WIDTH, LINE_NUMBER_RIGHT_MARGIN};
 use super::super::layout::LastLayout;
 use super::super::rope_ext::RopeExt as _;
 use super::super::{Input, InputState};
+use super::inlay_hints::InlayHint;
 
 /// 折叠图标本体宽度（布局与绘制共用）。
 const FOLD_ICON_WIDTH: Pixels = px(14.);
@@ -202,6 +204,87 @@ pub(crate) fn extra_cursor_bounds(
         }
     }
     extra_cursor_bounds
+}
+
+/// 行内提示绘制（paint 阶段 overlay；`editor` feature 门控）。
+///
+/// 文本流之外：不占布局（换行/滚动尺寸无感）、不进 `Rope`、不碰选区与命中测试
+/// （三不）；只画可见行（不可见/折叠行跳过）；hint 文本逐帧塑形（hint 少，
+/// provider 限可见范围，M4 约束）；多行文本只取首行（`shape_line` 遇换行
+/// panic，见其文档）；越界偏移钳制到文本末尾。
+pub(crate) fn paint_inlay_hints(
+    state: &Entity<InputState>,
+    last_layout: &LastLayout,
+    text_origin: Point<Pixels>,
+    line_height: Pixels,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let (enabled, hints, text) = state.read_with(cx, |state, _| {
+        (
+            state.inlay_hints_enabled,
+            state.inlay_hints.clone(),
+            state.text().clone(),
+        )
+    });
+    if !enabled || hints.is_empty() {
+        return;
+    }
+    // 按 buffer 行分组（越界钳制）。
+    let mut by_row: std::collections::HashMap<usize, Vec<&InlayHint>> =
+        std::collections::HashMap::new();
+    for hint in &hints {
+        let offset = hint.offset.min(text.len());
+        let row = text.offset_to_point(offset).row;
+        by_row.entry(row).or_default().push(hint);
+    }
+    let style = window.text_style();
+    let font_size = style.font_size.to_pixels(window.rem_size());
+    let color = cx.theme().muted_foreground;
+    // 与文本绘制同循环（行高累加口径一致，见 element paint）。
+    let mut y = px(0.);
+    for ((line_layout, &buffer_row), &row_start) in last_layout
+        .lines
+        .iter()
+        .zip(last_layout.visible_buffer_lines.iter())
+        .zip(last_layout.visible_line_byte_offsets.iter())
+    {
+        if let Some(row_hints) = by_row.get(&buffer_row) {
+            for hint in row_hints {
+                let offset = hint.offset.min(text.len());
+                let local = offset.saturating_sub(row_start);
+                let Some(pos) = line_layout.position_for_index(local, last_layout, true) else {
+                    continue;
+                };
+                let first_line = hint.text.lines().next().unwrap_or("");
+                if first_line.is_empty() {
+                    continue;
+                }
+                let shaped = window.text_system().shape_line(
+                    first_line.to_string().into(),
+                    font_size,
+                    &[TextRun {
+                        len: first_line.len(),
+                        font: style.font(),
+                        color,
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                    }],
+                    None,
+                );
+                let _ = shaped.paint(
+                    point(text_origin.x + pos.x, text_origin.y + y + pos.y),
+                    line_height,
+                    TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                );
+            }
+        }
+        y += line_layout.size(line_height).height;
+    }
 }
 
 /// 代码编辑器组件：内部 `Input` 全尺寸 + 状态行（行号/列号）。

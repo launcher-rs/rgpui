@@ -34,6 +34,9 @@
 - **snippets 最小版**（`editor/snippets.rs`）：`$1`/`${1:缺省}`/`$0` 子集 +
   `Tab`/`Shift-Tab` 跳转 + 补全联动（`insertTextFormat == Snippet` 即展开）；
   占位经隐形装饰集合跟踪（`adjust_for_edit` 保留塌缩点）；`editor` 演示页可点
+- **inlay hints**（`editor/inlay_hints.rs`）：`InlayProvider`（默认空）+ 防抖请求 +
+  paint 阶段 overlay 灰字绘制（三不：不占布局/不进 Rope/不碰选区，只画可见行）；
+  `editor` 演示页可点
 
 - **`cx.debounce` 方法版**：`App` 全局防抖注册表 + key 隔离（`Debouncer` 结构版保留）
 - **tree-sitter 后端**（`--features tree-sitter`，默认关，wasm 禁用）：Rust 单语言

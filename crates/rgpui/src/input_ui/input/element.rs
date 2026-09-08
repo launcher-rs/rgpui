@@ -1926,6 +1926,20 @@ impl Element for TextElement {
             cx,
         );
 
+        // 绘制行内提示（文本流之外 overlay；`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        super::super::editor::editor_ui::paint_inlay_hints(
+            &self.state,
+            &prepaint.last_layout,
+            point(
+                origin.x + prepaint.last_layout.line_number_width + (scroll_offset),
+                origin.y + invisible_top_padding,
+            ),
+            line_height,
+            window,
+            cx,
+        );
+
         self.state.update(cx, |state, cx| {
             state.last_layout = Some(prepaint.last_layout.clone());
             state.last_bounds = Some(bounds);

@@ -99,6 +99,30 @@ impl HoverProvider for DemoHoverProvider {
     }
 }
 
+/// 演示用假 inlay provider：首行末尾一个类型提示。
+struct DemoInlayProvider;
+
+impl rgpui::input_ui::InlayProvider for DemoInlayProvider {
+    fn inlay_hints(
+        &self,
+        text: &rgpui::input_ui::Rope,
+        _visible: std::ops::Range<usize>,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<rgpui::input_ui::InlayHint>>> {
+        // 首行末尾（无 ropey 直接依赖，用 chars 数字节）。
+        let end: usize = text
+            .chars()
+            .take_while(|c| *c != '\n')
+            .map(|c| c.len_utf8())
+            .sum();
+        rgpui::Task::ready(Ok(vec![rgpui::input_ui::InlayHint {
+            offset: end,
+            text: ": demo".to_string(),
+        }]))
+    }
+}
+
 /// 悬停内容首条预览（演示状态行用）。
 fn hover_preview(state: &EditorState) -> String {
     let hover = state.hover_state();
@@ -162,6 +186,9 @@ impl EditorDemo {
             state.set_diagnostics_provider(Some(Rc::new(DemoDiagnosticsProvider)), cx);
             state.set_hover_provider(Some(Rc::new(DemoHoverProvider)), cx);
             state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
+            // inlay 默认开启（演示绘制；关开关即零开销）。
+            state.set_inlay_provider(Some(Rc::new(DemoInlayProvider)), cx);
+            state.set_inlay_hints_enabled(true, cx);
         });
         let input = editor.read_with(cx, |state, _| state.input().clone());
         let readonly = cx.new(|cx| {
@@ -265,6 +292,9 @@ impl Render for EditorDemo {
                         .child(lsp_button(&demo, "lsp-hover", "悬停光标处", |state, window, cx| {
                             let offset = state.cursor(cx);
                             state.request_hover(offset, window, cx);
+                        }))
+                        .child(lsp_button(&demo, "lsp-inlay", "请求 inlay", |state, window, cx| {
+                            state.request_inlay_hints(window, cx);
                         }))
                         .child(
                             div()

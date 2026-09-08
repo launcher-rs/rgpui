@@ -8,6 +8,8 @@ pub(super) mod auto_close;
 pub(super) mod bracket_match;
 pub(super) mod current_line;
 pub(super) mod editor_ui;
+/// 行内提示（provider + 请求 + 渲染源，M4）。
+pub(super) mod inlay_hints;
 pub(super) mod line_ops;
 /// LSP 编辑器侧接线（provider 接入 + 防抖触发 + 补全/诊断/悬停状态，M2）。
 pub(super) mod lsp_attach;
@@ -17,6 +19,7 @@ pub(super) mod snippets;
 pub(super) mod state;
 
 pub use editor_ui::Editor;
+pub use inlay_hints::{InlayHint, InlayProvider};
 pub use state::EditorState;
 
 // /// `input/` 动作与选择类型在 `editor/` 内的短路径（`pub(super)`，不进公开 API）。

@@ -431,6 +431,12 @@ pub struct InputState {
     /// 当前行高亮的装饰集合（`editor` feature 门控）。
     #[cfg(feature = "editor")]
     pub(crate) current_line_collection: Option<TextDecorationCollection>,
+    /// 行内提示总开关（`editor` feature 门控，默认关，见 `editor/inlay_hints.rs`）。
+    #[cfg(feature = "editor")]
+    pub(crate) inlay_hints_enabled: bool,
+    /// 已存行内提示（渲染源；`editor` feature 门控）。
+    #[cfg(feature = "editor")]
+    pub(crate) inlay_hints: Vec<super::super::editor::inlay_hints::InlayHint>,
     /// 主光标之外的额外光标（多光标编辑，见 `input_ui/multicursor.rs`；
     /// 字段常驻（读点太多），行为由 `editor` feature 门控）。
     pub(crate) extra_selections: Vec<Selection>,
@@ -540,6 +546,10 @@ impl InputState {
             current_line_highlight: true,
             #[cfg(feature = "editor")]
             current_line_collection: None,
+            #[cfg(feature = "editor")]
+            inlay_hints_enabled: false,
+            #[cfg(feature = "editor")]
+            inlay_hints: Vec::new(),
             extra_selections: Vec::new(),
         }
     }
