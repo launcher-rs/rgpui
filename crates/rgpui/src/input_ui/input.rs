@@ -506,32 +506,41 @@ impl RenderOnce for Input {
             .track_focus(&state.focus_handle.clone())
             .tab_index(self.tab_index)
             .when(!state.disabled, |this| {
-                this.on_a11y_action(AccessibleAction::SetValue, move |data, window, cx| {
-                    Self::handle_accessibility_set_value(&accessibility_state, data, window, cx);
-                })
-                .on_action(window.listener_for(&self.state, InputState::backspace))
-                .on_action(window.listener_for(&self.state, InputState::delete))
-                .on_action(
-                    window.listener_for(&self.state, InputState::delete_to_beginning_of_line),
-                )
-                .on_action(window.listener_for(&self.state, InputState::delete_to_end_of_line))
-                .on_action(window.listener_for(&self.state, InputState::delete_previous_word))
-                .on_action(window.listener_for(&self.state, InputState::delete_next_word))
-                .on_action(window.listener_for(&self.state, InputState::enter))
-                .on_action(window.listener_for(&self.state, InputState::escape))
-                .on_action(window.listener_for(&self.state, InputState::paste))
-                .on_action(window.listener_for(&self.state, InputState::cut))
-                .on_action(window.listener_for(&self.state, InputState::undo))
-                .on_action(window.listener_for(&self.state, InputState::redo))
-                .on_action(window.listener_for(&self.state, InputState::copy_line))
-                .on_action(window.listener_for(&self.state, InputState::delete_line))
-                .on_action(window.listener_for(&self.state, InputState::move_line_up))
-                .on_action(window.listener_for(&self.state, InputState::move_line_down))
-                .on_action(window.listener_for(&self.state, InputState::toggle_line_comment))
-                .on_action(window.listener_for(&self.state, InputState::join_lines))
-                .on_action(window.listener_for(&self.state, InputState::add_cursor_above))
-                .on_action(window.listener_for(&self.state, InputState::add_cursor_below))
-                .when(state.mode.is_multi_line(), |this| {
+                let this = this
+                    .on_a11y_action(AccessibleAction::SetValue, move |data, window, cx| {
+                        Self::handle_accessibility_set_value(
+                            &accessibility_state,
+                            data,
+                            window,
+                            cx,
+                        );
+                    })
+                    .on_action(window.listener_for(&self.state, InputState::backspace))
+                    .on_action(window.listener_for(&self.state, InputState::delete))
+                    .on_action(
+                        window.listener_for(&self.state, InputState::delete_to_beginning_of_line),
+                    )
+                    .on_action(window.listener_for(&self.state, InputState::delete_to_end_of_line))
+                    .on_action(window.listener_for(&self.state, InputState::delete_previous_word))
+                    .on_action(window.listener_for(&self.state, InputState::delete_next_word))
+                    .on_action(window.listener_for(&self.state, InputState::enter))
+                    .on_action(window.listener_for(&self.state, InputState::escape))
+                    .on_action(window.listener_for(&self.state, InputState::paste))
+                    .on_action(window.listener_for(&self.state, InputState::cut))
+                    .on_action(window.listener_for(&self.state, InputState::undo))
+                    .on_action(window.listener_for(&self.state, InputState::redo));
+                // 编辑器动作接线（行操作/多光标；`editor` feature 门控）。
+                #[cfg(feature = "editor")]
+                let this = this
+                    .on_action(window.listener_for(&self.state, InputState::copy_line))
+                    .on_action(window.listener_for(&self.state, InputState::delete_line))
+                    .on_action(window.listener_for(&self.state, InputState::move_line_up))
+                    .on_action(window.listener_for(&self.state, InputState::move_line_down))
+                    .on_action(window.listener_for(&self.state, InputState::toggle_line_comment))
+                    .on_action(window.listener_for(&self.state, InputState::join_lines))
+                    .on_action(window.listener_for(&self.state, InputState::add_cursor_above))
+                    .on_action(window.listener_for(&self.state, InputState::add_cursor_below));
+                this.when(state.mode.is_multi_line(), |this| {
                     this.on_action(window.listener_for(&self.state, InputState::indent_inline))
                         .on_action(window.listener_for(&self.state, InputState::outdent_inline))
                         .on_action(window.listener_for(&self.state, InputState::indent_block))

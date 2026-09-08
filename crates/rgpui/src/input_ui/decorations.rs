@@ -32,7 +32,9 @@ pub struct TextDecorationCollection {
 }
 
 impl TextDecorationCollection {
-    /// 在已持有 state 可变借用时清空集合内容（见 [`Self::set_in_place`]）。
+    /// 在已持有 state 可变借用时清空集合内容（见 [`Self::set_in_place`]；
+    /// `editor` feature 门控，调用方在高亮刷新路径）。
+    #[cfg(feature = "editor")]
     pub(super) fn clear_in_place(&self, decorations: &mut DecorationCollections) -> bool {
         decorations.set(self.id, Vec::new())
     }
@@ -40,7 +42,9 @@ impl TextDecorationCollection {
     /// 在已持有 state 可变借用时替换集合内容。
     ///
     /// [`Self::set`] 内部走 `entity.update`，在 `InputState` 方法内（已借用中）
-    /// 调用会重入 panic；此方法直接写存储，由调用方负责 `normalize` + `notify`。
+    /// 调用会重入 panic；此方法直接写存储，由调用方负责 `normalize` + `notify`
+    ///（`editor` feature 门控，调用方在高亮刷新路径）。
+    #[cfg(feature = "editor")]
     pub(super) fn set_in_place(
         &self,
         decorations: &mut DecorationCollections,

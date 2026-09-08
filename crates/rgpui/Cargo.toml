@@ -75,6 +75,9 @@ dom-backend = []
 # LSP 客户端支持：提供 Language Server Protocol 核心 trait（补全/悬停/定义/诊断/语义高亮）。
 # 默认关闭以保持核心精简，编辑器功能按需启用。
 lsp = ["dep:lsp-types"]
+# 编辑器功能：行操作/多光标/自动闭合/括号匹配/当前行/高亮接线（input_ui 下 5 个
+# 模块 + 对应方法/动作/键位）。默认关闭，纯表单构建不编译这些代码。
+editor = []
 # tree-sitter 语法高亮/折叠后端（Rust 单语言先行）：默认关闭；
 # 含 C 解析器编译，wasm 目标下代码侧硬门禁，勿在 wasm 启用。
 tree-sitter = [

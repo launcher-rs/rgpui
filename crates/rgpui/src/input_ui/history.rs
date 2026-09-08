@@ -127,7 +127,9 @@ where
     /// 将最后 `count` 条撤销条目并为同一版本。
     ///
     /// 多光标扇出编辑（自后向前多次写入）调它，使一次撤销整体回退，
-    /// 而不是按光标逐个回退。`count == 0` 时空操作。
+    /// 而不是按光标逐个回退。`count == 0` 时空操作
+    ///（`editor` feature 门控，调用方在多光标扇出路径）。
+    #[cfg(feature = "editor")]
     pub(crate) fn regroup_last(&mut self, count: usize) {
         let len = self.undos.len();
         if count == 0 || len == 0 {

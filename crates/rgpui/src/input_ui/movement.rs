@@ -55,7 +55,9 @@ impl InputState {
         self.scroll_to(offset, direction, cx);
         self.pause_blink_cursor(cx);
         self.update_preferred_column();
+        #[cfg(feature = "editor")]
         self.refresh_bracket_match(cx);
+        #[cfg(feature = "editor")]
         self.refresh_current_line(cx);
         cx.notify()
     }

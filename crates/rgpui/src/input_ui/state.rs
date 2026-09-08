@@ -3,6 +3,8 @@
 //! 从 rgpui-component 移植，裁剪了 LSP 集成、语法高亮、搜索面板、
 //! 弹窗（诊断/悬停/上下文菜单）以及内联补全等非核心功能。
 
+/// 高亮接线类型（`editor` feature 门控；默认构建不用）。
+#[cfg(feature = "editor")]
 use crate::highlight::{Highlighter, ThemeHighlightResolver};
 use crate::menu::ContextMenuExt as _;
 use crate::menu::{SelectDown, SelectLeft, SelectRight, SelectUp};
@@ -24,13 +26,12 @@ use std::ops::Range;
 use unicode_segmentation::*;
 
 use super::{
-    DisplayMap, FoldRange, LastLayout, MASK_CHAR, Position, RopeExt as _, Selection,
-    WrappingIndent,
+    DisplayMap, LastLayout, MASK_CHAR, Position, RopeExt as _, Selection, WrappingIndent,
     auto_scroll::AutoScroll,
     blink_cursor::{BlinkCursor, CURSOR_WIDTH},
     change::Change,
     context_menu::InputContextMenuBuilder,
-    decorations::{DecorationCollections, TextDecoration, TextDecorationCollection, normalize},
+    decorations::DecorationCollections,
     element::{EditorScrollbarSnapshot, RIGHT_MARGIN, TextElement},
     history::History,
     mask_pattern::{MaskPattern, normalize_number_input},
@@ -38,6 +39,12 @@ use super::{
     movement::MoveDirection,
     number_input,
     number_input::{NumberStep, StepAction},
+};
+/// 编辑器接线类型（`editor` feature 门控；默认构建不用）。
+#[cfg(feature = "editor")]
+use super::{
+    FoldRange,
+    decorations::{TextDecoration, TextDecorationCollection, normalize},
 };
 
 /// 回车动作，带修饰键信息。
@@ -105,13 +112,22 @@ actions!(
         MoveToPreviousWord,
         MoveToNextWord,
         Escape,
+        // 编辑器动作（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
         CopyLine,
+        #[cfg(feature = "editor")]
         DeleteLine,
+        #[cfg(feature = "editor")]
         MoveLineUp,
+        #[cfg(feature = "editor")]
         MoveLineDown,
+        #[cfg(feature = "editor")]
         ToggleLineComment,
+        #[cfg(feature = "editor")]
         JoinLines,
+        #[cfg(feature = "editor")]
         AddCursorAbove,
+        #[cfg(feature = "editor")]
         AddCursorBelow,
     ]
 );
@@ -138,7 +154,7 @@ pub(crate) const CONTEXT: &str = "Input";
 
 /// 初始化输入组件，注册全局按键绑定。
 pub(crate) fn init(cx: &mut App) {
-    cx.bind_keys([
+    let mut bindings = vec![
         KeyBinding::new("backspace", Backspace, Some(CONTEXT)),
         KeyBinding::new("shift-backspace", Backspace, Some(CONTEXT)),
         #[cfg(target_os = "macos")]
@@ -272,6 +288,10 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("ctrl-z", Undo, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-y", Redo, Some(CONTEXT)),
+    ];
+    // 编辑器动作键位（`editor` feature 门控）。
+    #[cfg(feature = "editor")]
+    bindings.extend([
         KeyBinding::new("shift-alt-down", CopyLine, Some(CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-k", DeleteLine, Some(CONTEXT)),
@@ -296,6 +316,7 @@ pub(crate) fn init(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-alt-down", AddCursorBelow, Some(CONTEXT)),
     ]);
+    cx.bind_keys(bindings);
 
     number_input::init(cx);
 }
@@ -362,9 +383,11 @@ pub struct InputState {
     pub(super) editor_scrollbar_snapshot: Cell<Option<EditorScrollbarSnapshot>>,
     pub(super) text_align: TextAlign,
     pub(super) decorations: DecorationCollections,
-    /// 语法高亮器（`set_highlighter` 设置；编辑时自动刷新高亮装饰与折叠候选）。
+    /// 语法高亮器（`set_highlighter` 设置；`editor` feature 门控）。
+    #[cfg(feature = "editor")]
     pub(super) highlighter: Option<Box<dyn Highlighter>>,
-    /// 高亮装饰集合（`refresh_highlight` 持有，编辑时增量 `set` 刷新）。
+    /// 高亮装饰集合（`editor` feature 门控）。
+    #[cfg(feature = "editor")]
     highlight_collection: Option<TextDecorationCollection>,
 
     /// 用于格式化输入文本的掩码模式。
@@ -374,7 +397,8 @@ pub struct InputState {
     /// 选择时应用其默认掩码。
     pub(super) mask_pattern_set: bool,
     pub(super) placeholder: SharedString,
-    /// 行注释符（`toggle_line_comment` 用，见 [`Self::line_comment_prefix`]）。
+    /// 行注释符（`editor` feature 门控）。
+    #[cfg(feature = "editor")]
     pub(super) line_comment_prefix: SharedString,
 
     /// 标记文本是否有待处理的更新。
@@ -400,17 +424,24 @@ pub struct InputState {
     pub(super) context_menu_override: Option<InputContextMenuBuilder>,
     /// 只读模式：保持正常样式，允许移动/选择/复制，拦截一切用户编辑。
     pub(super) read_only: bool,
-    /// 括号自动闭合：`None` 为自动（多行开、单行关），`Some` 显式覆盖。
+    /// 括号自动闭合：`None` 为自动（多行开、单行关），`Some` 显式覆盖
+    ///（`editor` feature 门控）。
+    #[cfg(feature = "editor")]
     pub(super) auto_close_pairs: Option<bool>,
-    /// 括号匹配高亮开关（默认开，仅多行生效，见 `input_ui/bracket_match.rs`）。
+    /// 括号匹配高亮开关（`editor` feature 门控）。
+    #[cfg(feature = "editor")]
     pub(super) bracket_match_enabled: bool,
-    /// 括号匹配高亮的装饰集合（命中时持有，未命中时清空复用）。
+    /// 括号匹配高亮的装饰集合（`editor` feature 门控）。
+    #[cfg(feature = "editor")]
     pub(super) bracket_match_collection: Option<TextDecorationCollection>,
-    /// 当前行高亮开关（默认开，仅多行生效，见 `input_ui/current_line.rs`）。
+    /// 当前行高亮开关（`editor` feature 门控）。
+    #[cfg(feature = "editor")]
     pub(super) current_line_highlight: bool,
-    /// 当前行高亮的装饰集合。
+    /// 当前行高亮的装饰集合（`editor` feature 门控）。
+    #[cfg(feature = "editor")]
     pub(super) current_line_collection: Option<TextDecorationCollection>,
-    /// 主光标之外的额外光标（多光标编辑，见 `input_ui/multicursor.rs`）。
+    /// 主光标之外的额外光标（多光标编辑，见 `input_ui/multicursor.rs`；
+    /// 字段常驻（读点太多），行为由 `editor` feature 门控）。
     pub(super) extra_selections: Vec<Selection>,
 }
 
@@ -494,12 +525,15 @@ impl InputState {
             deferred_scroll_offset: None,
             preferred_column: None,
             placeholder: SharedString::default(),
+            #[cfg(feature = "editor")]
             line_comment_prefix: "//".into(),
             mask_pattern: MaskPattern::default(),
             mask_pattern_set: false,
             text_align: TextAlign::Left,
             decorations: DecorationCollections::default(),
+            #[cfg(feature = "editor")]
             highlighter: None,
+            #[cfg(feature = "editor")]
             highlight_collection: None,
             emit_events: true,
             size: ElementSize::default(),
@@ -511,10 +545,15 @@ impl InputState {
             context_menu_extra: None,
             context_menu_override: None,
             read_only: false,
+            #[cfg(feature = "editor")]
             auto_close_pairs: None,
+            #[cfg(feature = "editor")]
             bracket_match_enabled: true,
+            #[cfg(feature = "editor")]
             bracket_match_collection: None,
+            #[cfg(feature = "editor")]
             current_line_highlight: true,
+            #[cfg(feature = "editor")]
             current_line_collection: None,
             extra_selections: Vec::new(),
         }
@@ -641,6 +680,7 @@ impl InputState {
         cx.notify();
     }
 
+    #[cfg(feature = "editor")]
     /// 设置行注释符（`ToggleLineComment` 用，默认 `//`）。
     ///
     /// 按语言设置，如 Python 传 `"#"`、Lua 传 `"--"`、Rust 传 `"//"`。
@@ -649,6 +689,7 @@ impl InputState {
         self
     }
 
+    #[cfg(feature = "editor")]
     /// 设置行注释符（创建后修改）。
     pub fn set_line_comment_prefix(
         &mut self,
@@ -680,6 +721,7 @@ impl InputState {
         self.read_only
     }
 
+    #[cfg(feature = "editor")]
     /// 设置括号自动闭合（builder 版，创建时链式调用）。
     ///
     /// 默认自动：多行开启、单行关闭；显式传值覆盖自动规则。
@@ -688,18 +730,21 @@ impl InputState {
         self
     }
 
+    #[cfg(feature = "editor")]
     /// 设置括号自动闭合（创建后修改，传 `None` 恢复自动规则）。
     pub fn set_auto_close_pairs(&mut self, enabled: Option<bool>, cx: &mut Context<Self>) {
         self.auto_close_pairs = enabled;
         cx.notify();
     }
 
+    #[cfg(feature = "editor")]
     /// 设置括号匹配高亮开关（builder 版，创建时链式调用，默认开）。
     pub fn bracket_match(mut self, enabled: bool) -> Self {
         self.bracket_match_enabled = enabled;
         self
     }
 
+    #[cfg(feature = "editor")]
     /// 设置括号匹配高亮开关（创建后修改，关闭时立即清除高亮）。
     pub fn set_bracket_match_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.bracket_match_enabled = enabled;
@@ -709,12 +754,14 @@ impl InputState {
         cx.notify();
     }
 
+    #[cfg(feature = "editor")]
     /// 设置当前行高亮开关（builder 版，创建时链式调用，默认开）。
     pub fn current_line_highlight(mut self, enabled: bool) -> Self {
         self.current_line_highlight = enabled;
         self
     }
 
+    #[cfg(feature = "editor")]
     /// 设置当前行高亮开关（创建后修改，关闭时立即清除高亮）。
     pub fn set_current_line_highlight(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.current_line_highlight = enabled;
@@ -1472,19 +1519,25 @@ impl InputState {
     }
 
     pub(super) fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
-        // 多光标：每处删选区或一个边界单位。
-        if !self.extra_selections.is_empty() {
-            self.multi_delete(true, window, cx);
-            self.pause_blink_cursor(cx);
-            return;
-        }
-        // 光标夹在空括号对中间时成对删除（如 `(|)` 一次删 `()`）。
-        if self.selected_range.is_empty()
-            && let Some(pair) = super::auto_close::smart_backspace_range(self)
+        // 多光标：每处删选区或一个边界单位（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
         {
-            self.replace_text_in_range_silent(Some(self.range_to_utf16(&pair)), "", window, cx);
-            self.pause_blink_cursor(cx);
-            return;
+            if !self.extra_selections.is_empty() {
+                self.multi_delete(true, window, cx);
+                self.pause_blink_cursor(cx);
+                return;
+            }
+        }
+        // 光标夹在空括号对中间时成对删除（如 `(|)` 一次删 `()`，`editor` 门控）。
+        #[cfg(feature = "editor")]
+        {
+            if self.selected_range.is_empty()
+                && let Some(pair) = super::auto_close::smart_backspace_range(self)
+            {
+                self.replace_text_in_range_silent(Some(self.range_to_utf16(&pair)), "", window, cx);
+                self.pause_blink_cursor(cx);
+                return;
+            }
         }
         if self.selected_range.is_empty() {
             self.select_to(self.previous_boundary(self.cursor()), cx)
@@ -1494,11 +1547,14 @@ impl InputState {
     }
 
     pub(super) fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
-        // 多光标：每处删选区或一个边界单位。
-        if !self.extra_selections.is_empty() {
-            self.multi_delete(false, window, cx);
-            self.pause_blink_cursor(cx);
-            return;
+        // 多光标：每处删选区或一个边界单位（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        {
+            if !self.extra_selections.is_empty() {
+                self.multi_delete(false, window, cx);
+                self.pause_blink_cursor(cx);
+                return;
+            }
         }
         if self.selected_range.is_empty() {
             self.select_to(self.next_boundary(self.cursor()), cx)
@@ -1612,10 +1668,13 @@ impl InputState {
             return;
         }
 
-        // 多光标：每处换行并延续缩进。
-        if insert_newline && !self.extra_selections.is_empty() {
-            self.enter_cursors(window, cx);
-            return;
+        // 多光标：每处换行并延续缩进（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        {
+            if insert_newline && !self.extra_selections.is_empty() {
+                self.enter_cursors(window, cx);
+                return;
+            }
         }
 
         if insert_newline {
@@ -1691,19 +1750,23 @@ impl InputState {
         self.selecting = true;
         let offset = self.index_for_mouse_position(event.position);
 
-        // Alt+左键：加一个多光标（仅多行可编辑输入，不启动拖选）。
-        if event.button == MouseButton::Left
-            && event.modifiers.alt
-            && self.mode.is_multi_line()
-            && !self.disabled
-            && !self.read_only
+        // Alt+左键：加一个多光标（仅多行可编辑输入，不启动拖选；
+        // `editor` feature 门控）。
+        #[cfg(feature = "editor")]
         {
-            self.selecting = false;
-            let at = offset.min(self.text.len());
-            self.extra_selections.push(Selection::new(at, at));
-            self.normalize_extras();
-            cx.notify();
-            return;
+            if event.button == MouseButton::Left
+                && event.modifiers.alt
+                && self.mode.is_multi_line()
+                && !self.disabled
+                && !self.read_only
+            {
+                self.selecting = false;
+                let at = offset.min(self.text.len());
+                self.extra_selections.push(Selection::new(at, at));
+                self.normalize_extras();
+                cx.notify();
+                return;
+            }
         }
 
         // 三击选中一行
@@ -1718,8 +1781,9 @@ impl InputState {
             return;
         }
 
-        // 鼠标右键：将光标移动到该位置（先坍缩多光标）。
+        // 鼠标右键：将光标移动到该位置（先坍缩多光标；`editor` 门控）。
         if event.button == MouseButton::Right {
+            #[cfg(feature = "editor")]
             self.clear_extra_cursors(cx);
             if !self.selected_range.contains(offset) {
                 self.move_to(offset, None, cx);
@@ -1922,6 +1986,7 @@ impl InputState {
         self.reveal_offset(range.start, cx);
     }
 
+    #[cfg(feature = "editor")]
     /// 获取文档符号大纲（需高亮器实现 `document_symbols`，如 tree-sitter 后端）。
     ///
     /// 未设置高亮器或后端不支持时返回空。范围为全文 UTF-8 字节偏移，
@@ -1933,6 +1998,7 @@ impl InputState {
         }
     }
 
+    #[cfg(feature = "editor")]
     /// 跳转到文档符号：光标落符号起始处并滚动可见。
     pub fn goto_symbol(
         &mut self,
@@ -1944,6 +2010,7 @@ impl InputState {
         self.reveal_offset(offset, cx);
     }
 
+    #[cfg(feature = "editor")]
     /// 设置语法高亮器（如 `highlight::rust_highlighter()`，需 `--features tree-sitter`）。
     ///
     /// 设置后立即对全文刷新高亮装饰与折叠候选；后续编辑自动刷新。
@@ -1967,6 +2034,7 @@ impl InputState {
         }
     }
 
+    #[cfg(feature = "editor")]
     /// 刷新语法高亮装饰与折叠候选（有 highlighter 时；编辑后调用）。
     fn refresh_highlight(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(highlighter) = self.highlighter.as_mut() else {
@@ -2010,9 +2078,12 @@ impl InputState {
     }
 
     pub(super) fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        // 多光标：各选区换行拼接（全塌缩时复制各光标所在整行）。
-        if !self.extra_selections.is_empty() {
-            return self.copy_cursors(cx);
+        // 多光标：各选区换行拼接（全塌缩时复制各光标所在整行；`editor` 门控）。
+        #[cfg(feature = "editor")]
+        {
+            if !self.extra_selections.is_empty() {
+                return self.copy_cursors(cx);
+            }
         }
         if self.selected_range.is_empty() {
             return;
@@ -2026,9 +2097,12 @@ impl InputState {
         if self.read_only || self.selected_range.is_empty() && self.extra_selections.is_empty() {
             return;
         }
-        // 多光标：复制后删除所有光标范围。
-        if !self.extra_selections.is_empty() {
-            return self.cut_cursors(window, cx);
+        // 多光标：复制后删除所有光标范围（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        {
+            if !self.extra_selections.is_empty() {
+                return self.cut_cursors(window, cx);
+            }
         }
 
         let selected_text = self.text.slice(self.selected_range).to_string();
@@ -2041,13 +2115,16 @@ impl InputState {
         if self.read_only {
             return;
         }
-        // 多光标：每处贴全文。
-        if !self.extra_selections.is_empty() {
-            if let Some(clipboard) = cx.read_from_clipboard() {
-                let new_text = clipboard.text().unwrap_or_default();
-                self.multi_insert(&new_text, window, cx);
+        // 多光标：每处贴全文（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        {
+            if !self.extra_selections.is_empty() {
+                if let Some(clipboard) = cx.read_from_clipboard() {
+                    let new_text = clipboard.text().unwrap_or_default();
+                    self.multi_insert(&new_text, window, cx);
+                }
+                return;
             }
-            return;
         }
         if let Some(clipboard) = cx.read_from_clipboard() {
             let new_text = clipboard.text().unwrap_or_default();
@@ -2271,7 +2348,9 @@ impl InputState {
         if self.selected_range.is_empty() {
             self.update_preferred_column();
         }
+        #[cfg(feature = "editor")]
         self.refresh_bracket_match(cx);
+        #[cfg(feature = "editor")]
         self.refresh_current_line(cx);
         cx.notify()
     }
@@ -2639,6 +2718,9 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // `window` 仅供高亮刷新（`editor`）；关闭时显式丢弃以免 unused 警告。
+        #[cfg(not(feature = "editor"))]
+        let _ = window;
         if self.disabled {
             return;
         }
@@ -2710,13 +2792,16 @@ impl InputState {
             .adjust_folds_for_edit(&old_text, &range, new_text);
         self.display_map
             .on_text_changed(&self.text, &range, &Rope::from(new_text), cx);
+        #[cfg(feature = "editor")]
         self.refresh_highlight(window, cx);
 
         self.selected_range = (new_offset..new_offset).into();
         self.ime_marked_range.take();
         self.update_preferred_column();
         self.mode.update_auto_grow(&self.display_map);
+        #[cfg(feature = "editor")]
         self.refresh_bracket_match(cx);
+        #[cfg(feature = "editor")]
         self.refresh_current_line(cx);
         if self.emit_events {
             cx.emit(InputEvent::Change);
@@ -2781,23 +2866,31 @@ impl EntityInputHandler for InputState {
         if self.read_only {
             return;
         }
-        // 多光标：原文插入（键入/粘贴都扇出），不走自动闭合。
-        if range_utf16.is_none()
-            && self.ime_marked_range.is_none()
-            && !self.extra_selections.is_empty()
-            && !new_text.is_empty()
+        // 多光标：原文插入（键入/粘贴都扇出），不走自动闭合
+        //（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
         {
-            let text = new_text.to_string();
-            self.multi_insert(&text, window, cx);
-            return;
+            if range_utf16.is_none()
+                && self.ime_marked_range.is_none()
+                && !self.extra_selections.is_empty()
+                && !new_text.is_empty()
+            {
+                let text = new_text.to_string();
+                self.multi_insert(&text, window, cx);
+                return;
+            }
         }
-        if range_utf16.is_none()
-            && self.ime_marked_range.is_none()
-            && let Some(typed) = super::auto_close::single_typed_char(new_text)
-            && super::auto_close::auto_close_applies(self)
-            && super::auto_close::handle_typed_char(self, typed, window, cx)
+        // 自动闭合拦截（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
         {
-            return;
+            if range_utf16.is_none()
+                && self.ime_marked_range.is_none()
+                && let Some(typed) = super::auto_close::single_typed_char(new_text)
+                && super::auto_close::auto_close_applies(self)
+                && super::auto_close::handle_typed_char(self, typed, window, cx)
+            {
+                return;
+            }
         }
         self.replace_text_in_range_raw(range_utf16, new_text, window, cx);
     }
@@ -2815,7 +2908,12 @@ impl EntityInputHandler for InputState {
             return;
         }
 
-        // IME 合成期间坍缩多光标（合成只认主光标）。
+        // `window` 仅供高亮刷新（`editor`）；关闭时显式丢弃以免 unused 警告。
+        #[cfg(not(feature = "editor"))]
+        let _ = window;
+
+        // IME 合成期间坍缩多光标（合成只认主光标；`editor` 门控）。
+        #[cfg(feature = "editor")]
         self.clear_extra_cursors(cx);
 
         // 参见 `replace_text_in_range` 中的相同注释。
@@ -2872,7 +2970,9 @@ impl EntityInputHandler for InputState {
         self.history.start_grouping();
         self.push_history(&old_text, &range, new_text);
         // IME 合成同样改变文本，高亮/折叠候选必须同步刷新，否则 stale 范围
-        // 在布局切分 runs 时可能落在多字节字符内部导致 panic。
+        // 在布局切分 runs 时可能落在多字节字符内部导致 panic
+        //（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
         self.refresh_highlight(window, cx);
         cx.notify();
     }
