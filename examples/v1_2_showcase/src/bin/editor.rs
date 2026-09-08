@@ -73,7 +73,11 @@ impl Render for EditorDemo {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let symbols = self.symbols.clone();
         let demo = cx.entity();
-        h_flex().size_full().gap(px(12.0)).p(px(12.0)).child(
+        h_flex()
+            .size_full()
+            .items_stretch()
+            .gap(px(12.0))
+            .p(px(12.0)).child(
             v_flex()
                 .w(px(220.0))
                 .gap(px(4.0))
