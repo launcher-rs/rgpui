@@ -1,92 +1,122 @@
-//! Editor 演示：CodeEditor 模式 + tree-sitter 高亮/折叠（需 `--features tree-sitter`）。
+//! Editor 演示：CodeEditor + tree-sitter 高亮/折叠 + 行操作 + 键入体验 +
+//! 符号大纲 + 多光标（键位来自全局 `init_all` 默认注册）。
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::{
-    App, Bounds, Context, KeyBinding, Render, Window, WindowBounds, WindowOptions, div,
-    highlight::rust_highlighter,
-    input_ui::{
-        AddCursorAbove, AddCursorBelow, Backspace, Copy, CopyLine, Cut, Delete, DeleteLine, Enter,
-        Escape, Input, InputState, JoinLines, MoveDown, MoveEnd, MoveHome, MoveLeft, MoveLineDown,
-        MoveLineUp, MoveRight, MoveUp, Paste, Redo, SelectAll, ToggleLineComment, Undo,
-    },
+    App, Bounds, Context, Render, Window, WindowBounds, WindowOptions, div, h_flex,
+    highlight::{DocumentSymbol, rust_highlighter},
+    input_ui::{Input, InputEvent, InputState},
     prelude::*,
-    px, size, v_flex,
+    px, rgb, size, v_flex,
 };
 use rgpui_platform::application;
 
-const SAMPLE: &str = "fn main() {\n    let name = \"rgpui\";\n    println!(\"hello, {name}\");\n}\n\nstruct Point {\n    x: f32,\n    y: f32,\n}\n";
+const SAMPLE: &str = "fn main() {\n    let name = \"rgpui\";\n    println!(\"hello, {name}\");\n}\n\nstruct Point {\n    x: f32,\n    y: f32,\n}\n\nimpl Point {\n    fn len(&self) -> f32 {\n        (self.x * self.x + self.y * self.y).sqrt()\n    }\n}\n";
+
+const READONLY_SAMPLE: &str = "只读预览：可选可复制，不可编辑。右键菜单的剪切/粘贴/撤销自动禁用。";
 
 struct EditorDemo {
     input: rgpui::Entity<InputState>,
+    readonly: rgpui::Entity<InputState>,
+    symbols: Vec<DocumentSymbol>,
 }
 
 impl EditorDemo {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| {
-            let mut state = InputState::new(window, cx).code_editor("rust");
+            let mut state = InputState::new(window, cx)
+                .code_editor("rust")
+                .auto_close_pairs(true)
+                .bracket_match(true)
+                .current_line_highlight(true)
+                .line_comment_prefix("//");
             state.replace(SAMPLE, window, cx);
             state.set_highlighter(Some(rust_highlighter()), window, cx);
             state
         });
-        Self { input }
+        let readonly = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).multi_line(true);
+            state.replace(READONLY_SAMPLE, window, cx);
+            state
+        });
+        let symbols = input.read_with(cx, |state, _| state.document_symbols());
+
+        // 文本一改就刷新大纲。
+        cx.subscribe(&input, |this, _, event, cx| {
+            if !matches!(event, InputEvent::Change) {
+                return;
+            }
+            this.symbols = this
+                .input
+                .read_with(cx, |state, _| state.document_symbols());
+            cx.notify();
+        })
+        .detach();
+
+        Self {
+            input,
+            readonly,
+            symbols,
+        }
+    }
+
+    fn goto(&mut self, symbol: &DocumentSymbol, cx: &mut Context<Self>) {
+        let symbol = symbol.clone();
+        self.input.update(cx, |state, cx| {
+            state.goto_symbol(&symbol, cx);
+        });
     }
 }
 
 impl Render for EditorDemo {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .size_full()
-            .gap(px(8.0))
-            .p(px(12.0))
-            .child(
-                div()
-                    .text_sm()
-                    .child("Rust 高亮 + 折叠（行号栏三角）由 tree-sitter 驱动"),
-            )
-            .child(Input::new(&self.input).flex_1())
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let symbols = self.symbols.clone();
+        let demo = cx.entity();
+        h_flex().size_full().gap(px(12.0)).p(px(12.0)).child(
+            v_flex()
+                .w(px(220.0))
+                .gap(px(4.0))
+                .child(div().text_sm().child("大纲（符号）"))
+                .children(symbols.into_iter().map(|symbol| {
+                    let label = format!("{} · {}行", symbol.name, symbol.start_row + 1);
+                    let demo = demo.clone();
+                    div()
+                        .id(("outline-symbol", symbol.start_row))
+                        .px(px(8.0))
+                        .py(px(4.0))
+                        .rounded_md()
+                        .cursor_pointer()
+                        .hover(|this| this.bg(rgb(0x000000).opacity(0.05)))
+                        .child(div().text_sm().child(label))
+                        .on_click(move |_, _, cx| {
+                            demo.update(cx, |this, cx| {
+                                this.goto(&symbol, cx);
+                            });
+                        })
+                })),
+        )
+        .child(
+            v_flex()
+                .flex_1()
+                .gap(px(8.0))
+                .child(
+                    div().text_xs().child(
+                        "行操作：Shift+Alt+↓复制行 Ctrl+Shift+K删行 Alt+↑↓移行 Ctrl+/注释 Ctrl+J合行 ｜ \
+                         多光标：Ctrl+Alt+↑↓加光标 Alt+点击 ｜ 键入：自动补括号/电缩进/括号匹配/当前行高亮",
+                    ),
+                )
+                .child(Input::new(&self.input).flex_1())
+                .child(div().text_xs().child("只读预览："))
+                .child(Input::new(&self.readonly).read_only(true).h(px(72.0))),
+        )
     }
 }
 
 fn run_example() {
     application().run(|cx: &mut App| {
-        // 输入框编辑键位（应用级注册；secondary = macOS Cmd / 其他平台 Ctrl）。
-        cx.bind_keys([
-            KeyBinding::new("backspace", Backspace, None),
-            KeyBinding::new("delete", Delete, None),
-            KeyBinding::new("left", MoveLeft, None),
-            KeyBinding::new("right", MoveRight, None),
-            KeyBinding::new("up", MoveUp, None),
-            KeyBinding::new("down", MoveDown, None),
-            KeyBinding::new("home", MoveHome, None),
-            KeyBinding::new("end", MoveEnd, None),
-            KeyBinding::new(
-                "enter",
-                Enter {
-                    secondary: false,
-                    shift: false,
-                },
-                None,
-            ),
-            KeyBinding::new("escape", Escape, None),
-            KeyBinding::new("secondary-a", SelectAll, None),
-            KeyBinding::new("secondary-c", Copy, None),
-            KeyBinding::new("secondary-x", Cut, None),
-            KeyBinding::new("secondary-v", Paste, None),
-            KeyBinding::new("secondary-z", Undo, None),
-            KeyBinding::new("secondary-shift-z", Redo, None),
-            // 行操作（§I，与 `Input` 上下文默认键位一致，这里显式注册以便单测外手动验证）。
-            KeyBinding::new("shift-alt-down", CopyLine, None),
-            KeyBinding::new("secondary-shift-k", DeleteLine, None),
-            KeyBinding::new("alt-up", MoveLineUp, None),
-            KeyBinding::new("alt-down", MoveLineDown, None),
-            KeyBinding::new("secondary-/", ToggleLineComment, None),
-            KeyBinding::new("secondary-j", JoinLines, None),
-            // 多光标（§L）：Alt+点击加光标，上下加光标动作，Esc 坍缩。
-            KeyBinding::new("secondary-alt-up", AddCursorAbove, None),
-            KeyBinding::new("secondary-alt-down", AddCursorBelow, None),
-        ]);
-        let bounds = Bounds::centered(None, size(px(760.0), px(560.0)), cx);
+        rgpui::init_all(cx);
+        let bounds = Bounds::centered(None, size(px(980.0), px(640.0)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),

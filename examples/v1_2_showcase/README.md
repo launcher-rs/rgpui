@@ -8,7 +8,7 @@
 cargo run -p v1_2_showcase --bin dock        # Dock 布局：四区域/标签拖拽/关闭/持久化
 cargo run -p v1_2_showcase --bin components  # Upload + Carousel + Mermaid + Sidebar 分组
 cargo run -p v1_2_showcase --bin chat        # Bubble + MessageScroller + Marker
-cargo run -p v1_2_showcase --bin editor      # CodeEditor + tree-sitter 高亮/折叠（需 tree-sitter feature）
+cargo run -p v1_2_showcase --bin editor      # CodeEditor + tree-sitter 高亮/折叠/大纲 + 行操作 + 多光标 + 只读预览
 cargo run -p v1_2_showcase --bin search      # SearchPanelState 嵌入 + 匹配标黄 + 替换
 cargo run -p v1_2_showcase --bin context_menu # Input 右键菜单：默认 + 追加自定义 + 完全接管 + 总开关
 ```

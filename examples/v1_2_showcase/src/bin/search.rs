@@ -4,13 +4,10 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::{
-    App, Bounds, Context, KeyBinding, Render, Window, WindowBounds, WindowOptions, blue,
+    App, Bounds, Context, Render, Window, WindowBounds, WindowOptions, blue,
     components::SearchPanelState,
     div, green, h_flex,
-    input_ui::{
-        Backspace, Copy, Cut, Delete, Enter, Escape, Input, InputState, MoveDown, MoveEnd,
-        MoveHome, MoveLeft, MoveRight, MoveUp, Paste, Redo, SelectAll, Undo,
-    },
+    input_ui::{Input, InputState},
     prelude::*,
     px, size, v_flex, white, yellow,
 };
@@ -159,32 +156,8 @@ impl Render for SearchDemo {
 
 fn run_example() {
     application().run(|cx: &mut App| {
-        // 输入框编辑键位（应用级注册；secondary = macOS Cmd / 其他平台 Ctrl）。
-        cx.bind_keys([
-            KeyBinding::new("backspace", Backspace, None),
-            KeyBinding::new("delete", Delete, None),
-            KeyBinding::new("left", MoveLeft, None),
-            KeyBinding::new("right", MoveRight, None),
-            KeyBinding::new("up", MoveUp, None),
-            KeyBinding::new("down", MoveDown, None),
-            KeyBinding::new("home", MoveHome, None),
-            KeyBinding::new("end", MoveEnd, None),
-            KeyBinding::new(
-                "enter",
-                Enter {
-                    secondary: false,
-                    shift: false,
-                },
-                None,
-            ),
-            KeyBinding::new("escape", Escape, None),
-            KeyBinding::new("secondary-a", SelectAll, None),
-            KeyBinding::new("secondary-c", Copy, None),
-            KeyBinding::new("secondary-x", Cut, None),
-            KeyBinding::new("secondary-v", Paste, None),
-            KeyBinding::new("secondary-z", Undo, None),
-            KeyBinding::new("secondary-shift-z", Redo, None),
-        ]);
+        // 全局默认键位（输入框编辑/行操作/多光标，平台自适应）。
+        rgpui::init_all(cx);
         let bounds = Bounds::centered(None, size(px(980.0), px(640.0)), cx);
         cx.open_window(
             WindowOptions {
