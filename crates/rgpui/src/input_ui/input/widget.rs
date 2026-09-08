@@ -461,7 +461,7 @@ impl RenderOnce for Input {
         };
 
         let (bg, _) = input_style(state.disabled, cx);
-        let bg = if state.mode.is_code_editor() {
+        let bg = if state.mode.has_editor_chrome() {
             cx.theme().editor_background()
         } else {
             bg

@@ -55,9 +55,7 @@ impl InputMode {
     #[inline]
     pub(super) fn is_indentable(&self) -> bool {
         match self {
-            InputMode::PlainText { multi_line, .. } | InputMode::CodeEditor { multi_line, .. } => {
-                *multi_line
-            }
+            InputMode::PlainText { multi_line, .. } => *multi_line,
             _ => false,
         }
     }
@@ -148,12 +146,12 @@ impl TextElement {
 }
 
 impl InputState {
-    /// 设置代码编辑器模式是否显示缩进参考线，默认 true。
+    /// 设置多行模式是否显示缩进参考线，默认 false（编辑器显式打开）。
     ///
-    /// 仅适用于 [`InputMode::CodeEditor`] 模式。
+    /// 仅多行生效（单行忽略）。
     pub fn indent_guides(mut self, indent_guides: bool) -> Self {
-        debug_assert!(self.mode.is_code_editor() && self.mode.is_multi_line());
-        if let InputMode::CodeEditor {
+        debug_assert!(self.mode.is_multi_line());
+        if let InputMode::PlainText {
             indent_guides: l, ..
         } = &mut self.mode
         {
@@ -162,17 +160,15 @@ impl InputState {
         self
     }
 
-    /// 设置代码编辑器模式是否显示缩进参考线。
-    ///
-    /// 仅适用于 [`InputMode::CodeEditor`] 模式。
+    /// 运行时设置是否显示缩进参考线，仅多行生效（单行忽略）。
     pub fn set_indent_guides(
         &mut self,
         indent_guides: bool,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        debug_assert!(self.mode.is_code_editor());
-        if let InputMode::CodeEditor {
+        debug_assert!(self.mode.is_multi_line());
+        if let InputMode::PlainText {
             indent_guides: l, ..
         } = &mut self.mode
         {
@@ -181,14 +177,11 @@ impl InputState {
         cx.notify();
     }
 
-    /// 设置输入框的制表符大小。
-    ///
-    /// 仅适用于多行的 [`InputMode::PlainText`] 与 [`InputMode::CodeEditor`] 模式。
+    /// 设置输入框的制表符大小，仅多行生效（单行/自动增长忽略）。
     pub fn tab_size(mut self, tab: TabSize) -> Self {
-        debug_assert!(self.mode.is_multi_line() || self.mode.is_code_editor());
+        debug_assert!(self.mode.is_multi_line());
         match &mut self.mode {
             InputMode::PlainText { tab: t, .. } => *t = tab,
-            InputMode::CodeEditor { tab: t, .. } => *t = tab,
             _ => {}
         }
         self

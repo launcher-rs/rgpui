@@ -17,16 +17,15 @@ pub struct EditorState {
 }
 
 impl EditorState {
-    /// 创建编辑器状态（内部输入配好多行 + 行号 + 折叠 + 键入体验）。
-    pub fn new(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        language: impl Into<crate::SharedString>,
-        initial: &str,
-    ) -> Self {
+    /// 创建编辑器状态（内部输入配好多行 + 行号 + 折叠 + 引导线 + 键入体验）。
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, initial: &str) -> Self {
         let input = cx.new(|cx| {
             let mut state = InputState::new(window, cx)
-                .code_editor(language)
+                .multi_line(true)
+                .rows(2)
+                .line_number(true)
+                .folding(true)
+                .indent_guides(true)
                 .auto_close_pairs(true)
                 .bracket_match(true)
                 .current_line_highlight(true);
@@ -124,7 +123,7 @@ mod tests {
     #[rgpui::test]
     fn editor_state_text_roundtrip(cx: &mut crate::TestAppContext) {
         let (probe, cx) = cx.add_window_view(|window, cx| {
-            let editor = cx.new(|cx| EditorState::new(window, cx, "rust", "fn main() {}\n"));
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
             Probe { state: editor }
         });
         let editor = probe.read_with(cx, |probe, _| probe.state.clone());
@@ -138,7 +137,7 @@ mod tests {
     #[rgpui::test]
     fn document_symbols_empty_without_highlighter(cx: &mut crate::TestAppContext) {
         let (probe, cx) = cx.add_window_view(|window, cx| {
-            let editor = cx.new(|cx| EditorState::new(window, cx, "rust", "fn main() {}\n"));
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
             Probe { state: editor }
         });
         let editor = probe.read_with(cx, |probe, _| probe.state.clone());
@@ -150,7 +149,7 @@ mod tests {
     #[rgpui::test]
     fn goto_symbol_moves_cursor(cx: &mut crate::TestAppContext) {
         let (probe, cx) = cx.add_window_view(|window, cx| {
-            let editor = cx.new(|cx| EditorState::new(window, cx, "rust", "fn main() {}\n"));
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
             Probe { state: editor }
         });
         let editor = probe.read_with(cx, |probe, _| probe.state.clone());

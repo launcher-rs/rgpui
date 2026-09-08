@@ -60,7 +60,9 @@ pub use input::{
     SelectToNextWordEnd, SelectToPreviousWordStart, SelectToStart, SelectToStartOfLine,
     ShowCharacterPalette, Undo,
 };
-pub use input::{InputContentType, MaskPattern, NumberInput, NumberInputEvent, NumberStep};
+pub use input::{
+    InputContentType, MaskPattern, NumberInput, NumberInputEvent, NumberStep, TextArea,
+};
 pub(crate) use layout::{LastLayout, WhitespaceIndicators};
 pub use rope_ext::{InputEdit, Point, Position, RopeExt, RopeLines};
 pub use ropey::Rope;

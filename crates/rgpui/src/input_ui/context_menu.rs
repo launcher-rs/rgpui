@@ -9,7 +9,7 @@
 //! ```ignore
 //! use rgpui::input_ui::InputState;
 //!
-//! // 1. 开关（一行关掉，CodeEditor/搜索框等只读展示场景用）。
+//! // 1. 开关（一行关掉，编辑器/搜索框等只读展示场景用）。
 //! Input::new(&state).show_context_menu(false);
 //!
 //! // 2. 追加自定义项（默认项保留，自定义项跟在分隔符后，最常用）。

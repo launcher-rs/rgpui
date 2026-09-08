@@ -10,6 +10,7 @@ pub(super) mod mask_pattern;
 pub(super) mod mode;
 pub(super) mod number_input;
 pub(super) mod state;
+pub(super) mod textarea;
 pub(super) mod widget;
 
 pub(crate) use clear_button::clear_button;
@@ -20,6 +21,7 @@ pub(crate) use element::{FOLD_ICON_HITBOX_WIDTH, LINE_NUMBER_RIGHT_MARGIN};
 pub use mask_pattern::MaskPattern;
 pub use number_input::{NumberInput, NumberInputEvent, NumberStep};
 pub use state::*;
+pub use textarea::TextArea;
 pub use widget::Input;
 pub(crate) use widget::input_style;
 

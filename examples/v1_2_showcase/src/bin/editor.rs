@@ -1,6 +1,6 @@
 //! Editor 演示：`EditorState` + `Editor` 组件（P3b 迁移）。
 //!
-//! 主窗格走编辑器状态（code_editor 配置/大纲缓存/符号跳转/高亮接入内聚在
+//! 主窗格走编辑器状态（多行 + 行号/折叠配置/大纲缓存/符号跳转/高亮接入内聚在
 //! `EditorState` 里，渲染走 `Editor` 自带行号列号状态行）；只读窗格保留表单
 //! `Input` 做对照。tree-sitter 高亮/折叠 + 行操作 + 多光标（键位来自全局
 //! `init_all` 默认注册）。
@@ -9,7 +9,7 @@
 
 use rgpui::{
     App, Bounds, Context, Render, Window, WindowBounds, WindowOptions, div, h_flex,
-    input_ui::{Editor, EditorState, Input, InputEvent, InputState},
+    input_ui::{Editor, EditorState, InputEvent, InputState, TextArea},
     prelude::*,
     px, rgb, size, v_flex,
 };
@@ -28,7 +28,7 @@ struct EditorDemo {
 impl EditorDemo {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // 编辑器状态一次配好（多行 + 行号 + 折叠 + 键入体验 + 大纲订阅）。
-        let editor = cx.new(|cx| EditorState::new(window, cx, "rust", SAMPLE));
+        let editor = cx.new(|cx| EditorState::new(window, cx, SAMPLE));
         let input = editor.read_with(cx, |state, _| state.input().clone());
         // 高亮器经内部输入接入（`EditorState::set_highlighter` 同款透传）。
         input.update(cx, |state, cx| {
@@ -107,8 +107,8 @@ impl Render for EditorDemo {
                     ),
                 )
                 .child(Editor::new(self.input.clone()).flex_1())
-                .child(div().text_xs().child("只读预览："))
-                .child(Input::new(&self.readonly).read_only(true).h(px(72.0))),
+                .child(div().text_xs().child("只读预览（TextArea）："))
+                .child(TextArea::new(&self.readonly).read_only(true)),
         )
     }
 }

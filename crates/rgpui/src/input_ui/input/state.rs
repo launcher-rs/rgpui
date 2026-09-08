@@ -558,54 +558,29 @@ impl InputState {
         self
     }
 
-    /// 设置输入框为 [`InputMode::CodeEditor`] 模式。
-    ///
-    /// 默认选项：
-    ///
-    /// - line_number: true
-    /// - tab_size: 2
-    /// - hard_tabs: false
-    /// - height: 100%
-    /// - multi_line: true
-    /// - indent_guides: true
-    ///
-    /// 代码编辑器主要用于简单的代码编辑或展示，而非功能完整的代码编辑器。
-    pub fn code_editor(mut self, language: impl Into<SharedString>) -> Self {
-        let language: SharedString = language.into();
-        self.mode = InputMode::code_editor(language);
-        self
-    }
-
-    /// 返回代码编辑器模式的语言名称，非代码编辑器模式返回 None。
-    ///
-    /// 语言名称当前仅作标识，预留用于未来接入对应的语法处理器（tree-sitter 高亮等）。
-    pub fn language(&self) -> Option<&str> {
-        self.mode.language()
-    }
-
     /// 设置占位文本。
     pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.placeholder = placeholder.into();
         self
     }
 
-    /// 设置是否启用代码折叠，仅 [`InputMode::CodeEditor`] 模式。
+    /// 设置是否启用代码折叠，仅多行生效（单行忽略）。
     ///
-    /// 默认：true
+    /// 默认：false（编辑器经 `EditorState` 显式打开）。
     pub fn folding(mut self, folding: bool) -> Self {
-        debug_assert!(self.mode.is_code_editor());
-        if let InputMode::CodeEditor { folding: f, .. } = &mut self.mode {
+        debug_assert!(self.mode.is_multi_line());
+        if let InputMode::PlainText { folding: f, .. } = &mut self.mode {
             *f = folding;
         }
         self
     }
 
-    /// 运行时设置代码折叠，仅 [`InputMode::CodeEditor`] 模式。
+    /// 运行时设置代码折叠，仅多行生效（单行忽略）。
     ///
     /// 禁用时会清除所有已存在的折叠。
     pub fn set_folding(&mut self, folding: bool, _: &mut Window, cx: &mut Context<Self>) {
-        debug_assert!(self.mode.is_code_editor());
-        if let InputMode::CodeEditor { folding: f, .. } = &mut self.mode {
+        debug_assert!(self.mode.is_multi_line());
+        if let InputMode::PlainText { folding: f, .. } = &mut self.mode {
             *f = folding;
         }
         if !folding {
@@ -614,19 +589,19 @@ impl InputState {
         cx.notify();
     }
 
-    /// 设置是否显示行号，仅 [`InputMode::CodeEditor`] 模式。
+    /// 设置是否显示行号，仅多行生效（单行忽略）。
     pub fn line_number(mut self, line_number: bool) -> Self {
-        debug_assert!(self.mode.is_code_editor() && self.mode.is_multi_line());
-        if let InputMode::CodeEditor { line_number: l, .. } = &mut self.mode {
+        debug_assert!(self.mode.is_multi_line());
+        if let InputMode::PlainText { line_number: l, .. } = &mut self.mode {
             *l = line_number;
         }
         self
     }
 
-    /// 运行时设置行号，仅 [`InputMode::CodeEditor`] 模式。
+    /// 运行时设置行号，仅多行生效（单行忽略）。
     pub fn set_line_number(&mut self, line_number: bool, _: &mut Window, cx: &mut Context<Self>) {
-        debug_assert!(self.mode.is_code_editor() && self.mode.is_multi_line());
-        if let InputMode::CodeEditor { line_number: l, .. } = &mut self.mode {
+        debug_assert!(self.mode.is_multi_line());
+        if let InputMode::PlainText { line_number: l, .. } = &mut self.mode {
             *l = line_number;
         }
         cx.notify();
@@ -639,9 +614,7 @@ impl InputState {
     /// 默认：2
     pub fn rows(mut self, rows: usize) -> Self {
         match &mut self.mode {
-            InputMode::PlainText { rows: r, .. } | InputMode::CodeEditor { rows: r, .. } => {
-                *r = rows
-            }
+            InputMode::PlainText { rows: r, .. } => *r = rows,
             InputMode::AutoGrow {
                 max_rows: max_r,
                 rows: r,
@@ -804,7 +777,7 @@ impl InputState {
         self.emit_events = true;
 
         self.reset_selection();
-        self.reset_lsp_state();
+        self.request_text_prepare();
         self.reset_scroll_to_start();
 
         self.core.history.clear();
@@ -826,7 +799,7 @@ impl InputState {
     ) {
         self.replace_text(text, window, cx);
         self.reset_selection();
-        self.reset_lsp_state();
+        self.request_text_prepare();
         self.reset_scroll_to_start();
 
         cx.notify();
@@ -894,10 +867,9 @@ impl InputState {
         }
     }
 
-    fn reset_lsp_state(&mut self) {
-        if self.mode.is_code_editor() {
-            self._pending_update = true;
-        }
+    /// 全量替换后下次 render 前重备 display_map 文本。
+    fn request_text_prepare(&mut self) {
+        self._pending_update = true;
     }
 
     fn reset_scroll_to_start(&mut self) {
@@ -1369,7 +1341,7 @@ impl InputState {
         let row = self.core.text.offset_to_point(self.cursor()).row;
         let logical_start = self.core.text.line_start_offset(row);
 
-        if self.soft_wrap && self.mode.is_code_editor() {
+        if self.soft_wrap && self.mode.is_multi_line() {
             let wrap_point = self.display_map.offset_to_wrap_display_point(self.cursor());
             if let Some(line) = self.display_map.line(row)
                 && let Some(range) = line.wrapped_lines.get(wrap_point.local_row)
@@ -1397,7 +1369,7 @@ impl InputState {
         let logical_start = self.core.text.line_start_offset(row);
         let logical_end = self.core.text.line_end_offset(row);
 
-        if self.soft_wrap && self.mode.is_code_editor() {
+        if self.soft_wrap && self.mode.is_multi_line() {
             let wrap_point = self.display_map.offset_to_wrap_display_point(self.cursor());
             if let Some(line) = self.display_map.line(row)
                 && let Some(range) = line.wrapped_lines.get(wrap_point.local_row)
@@ -1674,7 +1646,7 @@ impl InputState {
 
         if insert_newline {
             // 获取当前行缩进
-            let indent = if self.mode.is_code_editor() {
+            let indent = if self.mode.is_multi_line() {
                 self.indent_of_next_line()
             } else {
                 "".to_string()
@@ -1932,7 +1904,7 @@ impl InputState {
 
         // 将行滚入视图。使用与 `TextElement::layout_cursor` 相同的边缘间距助手，
         // 使滚动入视图的两条路径一致。
-        let edge_height = if direction.is_some() && self.mode.is_code_editor() {
+        let edge_height = if direction.is_some() && self.mode.has_editor_chrome() {
             super::element::cursor_surrounding_padding(
                 self.mode.is_auto_grow(),
                 self.cursor_surrounding_lines,
@@ -3064,7 +3036,7 @@ impl Render for InputState {
             .flex_grow_1()
             .overflow_x_hidden()
             .child(TextElement::new(cx.entity()).placeholder(self.placeholder.clone()));
-        // 右键菜单挂在文本区上（`Input` 外层同样经此实体渲染，故单行/多行/CodeEditor 全覆盖；
+        // 右键菜单挂在文本区上（`Input` 外层同样经此实体渲染，故单行/多行全覆盖；
         // 前缀/后缀装饰区不触发）。配置见 `input_ui/context_menu.rs`。
         if enabled {
             el.context_menu(move |menu, window, cx| {
@@ -3102,7 +3074,7 @@ mod typing_behavior_tests {
         cx.update(crate::input_ui::init);
         cx.update(crate::theme::init);
         let (probe, cx) = cx.add_window_view(|window, cx| {
-            let state = cx.new(|cx| InputState::new(window, cx).code_editor("rust"));
+            let state = cx.new(|cx| InputState::new(window, cx).multi_line(true));
             state.update(cx, |state, cx| state.replace("fn main() {\n}", window, cx));
             Probe { state }
         });

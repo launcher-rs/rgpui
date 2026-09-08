@@ -311,15 +311,15 @@ pub(super) fn cursor_surrounding_padding(
 
 /// 编辑区可滚动区域中最后一行下方的空余像素高度。支撑 [`InputState::scroll_beyond_last_line`]。
 ///
-/// 代码编辑器模式外为 `0`。内部 `None` 为半视口（下限 `BOTTOM_MARGIN_ROWS` 行高）；
+/// 无编辑器铬（行号/折叠）时为 `0`。内部 `None` 为半视口（下限 `BOTTOM_MARGIN_ROWS` 行高）；
 /// `Some(n)` 精确为 `n` 个行高。
 fn empty_bottom_height(
-    is_code_editor: bool,
+    editor_chrome: bool,
     override_rows: Option<usize>,
     viewport_height: Pixels,
     line_height: Pixels,
 ) -> Pixels {
-    if !is_code_editor {
+    if !editor_chrome {
         return px(0.);
     }
     match override_rows {
@@ -897,7 +897,7 @@ impl TextElement {
             );
 
             empty_line_number.width + LINE_NUMBER_RIGHT_MARGIN
-        } else if state.mode.is_code_editor() && state.mode.is_multi_line() {
+        } else if state.mode.is_multi_line() && state.mode.is_folding() {
             LINE_NUMBER_RIGHT_MARGIN
         } else {
             px(0.)
@@ -1590,7 +1590,7 @@ impl Element for TextElement {
 
         let total_wrapped_lines = state.display_map.wrap_row_count();
         let empty_bottom_height = empty_bottom_height(
-            state.mode.is_code_editor(),
+            state.mode.has_editor_chrome(),
             state.scroll_beyond_last_line,
             bounds.size.height,
             line_height,
@@ -2435,7 +2435,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_bottom_height_outside_code_editor() {
+    fn test_empty_bottom_height_without_chrome() {
         // 单行 / 纯文本 / 自动增长模式从不预留底部空白，无论是否覆盖。
         for override_rows in [None, Some(0), Some(3), Some(99)] {
             assert_eq!(
@@ -2446,7 +2446,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_bottom_height_code_editor_default() {
+    fn test_empty_bottom_height_with_chrome() {
         // `None`：约半视口，下限 `BOTTOM_MARGIN_ROWS * line_height`，
         // 使小视口上的空白区域不会坍缩到"少于几行"。
         let line_height = px(20.);
