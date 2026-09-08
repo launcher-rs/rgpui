@@ -111,7 +111,7 @@ impl TextElement {
             .iter()
             .zip(last_layout.lines.iter())
         {
-            let line = state.text.slice_line(buffer_line);
+            let line = state.core.text.slice_line(buffer_line);
             let mut current_indents = vec![];
             if line.len() > 0 {
                 let indent_count = tab_size.indent_count(&line);
@@ -241,9 +241,9 @@ impl InputState {
         };
 
         let tab_indent = self.mode.tab_size().to_string();
-        let selected_range = self.selected_range;
+        let selected_range = self.core.selected_range;
         let mut added_len = 0;
-        let is_selected = !self.selected_range.is_empty();
+        let is_selected = !self.core.selected_range.is_empty();
 
         if is_selected || block {
             let start_offset = self.start_of_line_of_selection(window, cx);
@@ -271,14 +271,14 @@ impl InputState {
             }
 
             if is_selected {
-                self.selected_range = (start_offset..selected_range.end + added_len).into();
+                self.core.selected_range = (start_offset..selected_range.end + added_len).into();
             } else {
-                self.selected_range =
+                self.core.selected_range =
                     (selected_range.start + added_len..selected_range.end + added_len).into();
             }
         } else {
             // 无选区
-            let offset = self.selected_range.start;
+            let offset = self.core.selected_range.start;
             self.replace_text_in_range_silent(
                 Some(self.range_to_utf16(&(offset..offset))),
                 &tab_indent,
@@ -287,7 +287,7 @@ impl InputState {
             );
             added_len = tab_indent.len();
 
-            self.selected_range =
+            self.core.selected_range =
                 (selected_range.start + added_len..selected_range.end + added_len).into();
         }
     }
@@ -304,9 +304,9 @@ impl InputState {
         };
 
         let tab_indent = self.mode.tab_size().to_string();
-        let selected_range = self.selected_range;
+        let selected_range = self.core.selected_range;
         let mut removed_len = 0;
-        let is_selected = !self.selected_range.is_empty();
+        let is_selected = !self.core.selected_range.is_empty();
 
         if is_selected || block {
             let start_offset = self.start_of_line_of_selection(window, cx);
@@ -339,22 +339,23 @@ impl InputState {
             }
 
             if is_selected {
-                self.selected_range =
+                self.core.selected_range =
                     (start_offset..selected_range.end.saturating_sub(removed_len)).into();
             } else {
-                self.selected_range = (selected_range.start.saturating_sub(removed_len)
+                self.core.selected_range = (selected_range.start.saturating_sub(removed_len)
                     ..selected_range.end.saturating_sub(removed_len))
                     .into();
             }
         } else {
             // 无选区
-            let start_offset = self.selected_range.start;
+            let start_offset = self.core.selected_range.start;
             let offset = self.start_of_line_of_selection(window, cx);
             let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
             // FIXME: 提升性能
             if self
+                .core
                 .text
-                .slice(offset..self.text.len())
+                .slice(offset..self.core.text.len())
                 .to_string()
                 .starts_with(tab_indent.as_ref())
             {
@@ -366,7 +367,7 @@ impl InputState {
                 );
                 removed_len = tab_indent.len();
                 let new_offset = start_offset.saturating_sub(removed_len);
-                self.selected_range = (new_offset..new_offset).into();
+                self.core.selected_range = (new_offset..new_offset).into();
             }
         }
     }

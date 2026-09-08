@@ -59,8 +59,8 @@ impl TextDecorationCollection {
     /// [`IEditorDecorationsCollection.set`](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IEditorDecorationsCollection.html#set)。
     pub fn set(&self, decorations: Vec<TextDecoration>, cx: &mut App) {
         let _ = self.state.update(cx, |state, cx| {
-            let decorations = normalize(&state.text, decorations);
-            if state.decorations.set(self.id, decorations) {
+            let decorations = normalize(&state.core.text, decorations);
+            if state.core.decorations.set(self.id, decorations) {
                 cx.notify();
             }
         });
@@ -72,8 +72,8 @@ impl TextDecorationCollection {
     /// [`IEditorDecorationsCollection.append`](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IEditorDecorationsCollection.html#append)。
     pub fn append(&self, decorations: Vec<TextDecoration>, cx: &mut App) {
         let _ = self.state.update(cx, |state, cx| {
-            let decorations = normalize(&state.text, decorations);
-            if state.decorations.append(self.id, decorations) {
+            let decorations = normalize(&state.core.text, decorations);
+            if state.core.decorations.append(self.id, decorations) {
                 cx.notify();
             }
         });
@@ -95,6 +95,7 @@ impl TextDecorationCollection {
         self.state
             .read_with(cx, |state, _| {
                 state
+                    .core
                     .decorations
                     .get(self.id)
                     .unwrap_or_default()
@@ -279,8 +280,8 @@ impl InputState {
         decorations: Vec<TextDecoration>,
         cx: &mut Context<Self>,
     ) -> TextDecorationCollection {
-        let decorations = normalize(&self.text, decorations);
-        let id = self.decorations.create(decorations);
+        let decorations = normalize(&self.core.text, decorations);
+        let id = self.core.decorations.create(decorations);
         cx.notify();
         TextDecorationCollection {
             state: cx.entity().downgrade(),

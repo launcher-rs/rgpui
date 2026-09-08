@@ -20,7 +20,7 @@ impl InputState {
             return;
         };
 
-        let point = self.text.offset_to_point(self.cursor());
+        let point = self.core.text.offset_to_point(self.cursor());
         let Some(line) = last_layout.line(point.row) else {
             self.preferred_column = None;
             return;
@@ -47,9 +47,9 @@ impl InputState {
         direction: Option<MoveDirection>,
         cx: &mut Context<Self>,
     ) {
-        let offset = offset.clamp(0, self.text.len());
+        let offset = offset.clamp(0, self.core.text.len());
         self.cursor_line_end_affinity = false;
-        self.selected_range = (offset..offset).into();
+        self.core.selected_range = (offset..offset).into();
         // 纯光标移动即单选区：额外光标在这里统一坍缩（Shift+扩展走 select_to，不受影响）。
         self.extra_selections.clear();
         self.scroll_to(offset, direction, cx);
@@ -111,7 +111,7 @@ impl InputState {
             let next_point = self
                 .display_map
                 .wrap_display_point_to_point(next_display_point);
-            let line_start_offset = self.text.line_start_offset(next_point.row);
+            let line_start_offset = self.core.text.line_start_offset(next_point.row);
 
             // 若在可见范围内，优先使用位置计算列。
             if let Some(line) = last_layout.line(next_point.row) {
@@ -126,7 +126,7 @@ impl InputState {
                 }
             } else {
                 // 不在可见范围内，直接使用列。
-                let max_line_len = self.text.slice_line(next_point.row).len();
+                let max_line_len = self.core.text.slice_line(next_point.row).len();
                 new_offset = line_start_offset + column.min(max_line_len);
             }
         }
@@ -145,19 +145,19 @@ impl InputState {
 
     pub(super) fn left(&mut self, _: &MoveLeft, _: &mut Window, cx: &mut Context<Self>) {
         self.pause_blink_cursor(cx);
-        if self.selected_range.is_empty() {
+        if self.core.selected_range.is_empty() {
             self.move_to(self.previous_boundary(self.cursor()), None, cx);
         } else {
-            self.move_to(self.selected_range.start, None, cx)
+            self.move_to(self.core.selected_range.start, None, cx)
         }
     }
 
     pub(super) fn right(&mut self, _: &MoveRight, _: &mut Window, cx: &mut Context<Self>) {
         self.pause_blink_cursor(cx);
-        if self.selected_range.is_empty() {
-            self.move_to(self.next_boundary(self.selected_range.end), None, cx);
+        if self.core.selected_range.is_empty() {
+            self.move_to(self.next_boundary(self.core.selected_range.end), None, cx);
         } else {
-            self.move_to(self.selected_range.end, None, cx)
+            self.move_to(self.core.selected_range.end, None, cx)
         }
     }
 
@@ -166,9 +166,9 @@ impl InputState {
             return;
         }
 
-        if !self.selected_range.is_empty() {
+        if !self.core.selected_range.is_empty() {
             self.move_to(
-                self.previous_boundary(self.selected_range.start.saturating_sub(1)),
+                self.previous_boundary(self.core.selected_range.start.saturating_sub(1)),
                 Some(MoveDirection::Up),
                 cx,
             );
@@ -182,9 +182,9 @@ impl InputState {
             return;
         }
 
-        if !self.selected_range.is_empty() {
+        if !self.core.selected_range.is_empty() {
             self.move_to(
-                self.next_boundary(self.selected_range.end.saturating_sub(1)),
+                self.next_boundary(self.core.selected_range.end.saturating_sub(1)),
                 Some(MoveDirection::Down),
                 cx,
             );
@@ -248,7 +248,7 @@ impl InputState {
     }
 
     pub(super) fn move_to_end(&mut self, _: &MoveToEnd, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(self.text.len(), None, cx);
+        self.move_to(self.core.text.len(), None, cx);
     }
 
     pub(super) fn move_to_previous_word(

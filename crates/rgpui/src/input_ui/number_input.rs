@@ -128,7 +128,7 @@ impl InputState {
                 // 步进后的值必须通过 `pattern`/`validate` 校验，
                 // 否则回退为发出事件交由调用方处理。
                 if self.is_valid_input(&new_value, cx) {
-                    let range = self.range_to_utf16(&(0..self.text.len()));
+                    let range = self.range_to_utf16(&(0..self.core.text.len()));
                     self.replace_text_in_range_silent(Some(range), &new_value, window, cx);
                     return;
                 }

@@ -78,20 +78,21 @@ impl InputState {
 
     /// 给每个已有光标在上下 `delta_rows` 行的同列加一个光标。
     fn add_cursors(&mut self, delta_rows: isize) {
-        let last_row = self.text.lines_len().saturating_sub(1);
-        let mut offsets: Vec<usize> = std::iter::once(self.selected_range.end)
+        let last_row = self.core.text.lines_len().saturating_sub(1);
+        let mut offsets: Vec<usize> = std::iter::once(self.core.selected_range.end)
             .chain(self.extra_selections.iter().map(|sel| sel.end))
             .collect();
         for offset in offsets.drain(..) {
-            let point = self.text.offset_to_point(offset);
-            let column = offset.saturating_sub(self.text.line_start_offset(point.row));
+            let point = self.core.text.offset_to_point(offset);
+            let column = offset.saturating_sub(self.core.text.line_start_offset(point.row));
             let target = point.row.saturating_add_signed(delta_rows).min(last_row);
             if target == point.row {
                 continue;
             }
-            let line_start = self.text.line_start_offset(target);
-            let line_len = self.text.line_end_offset(target) - line_start;
+            let line_start = self.core.text.line_start_offset(target);
+            let line_len = self.core.text.line_end_offset(target) - line_start;
             let at = self
+                .core
                 .text
                 .floor_char_boundary(line_start + column.min(line_len));
             self.extra_selections.push(super::Selection::new(at, at));
@@ -101,7 +102,7 @@ impl InputState {
 
     /// 整理额外光标：排序、合并重叠、去掉与主光标重叠的（主光标保留）。
     pub(super) fn normalize_extras(&mut self) {
-        let primary: Range<usize> = self.selected_range.into();
+        let primary: Range<usize> = self.core.selected_range.into();
         self.extra_selections.sort_by_key(|sel| sel.start);
         let mut merged: Vec<super::Selection> = Vec::new();
         for sel in self.extra_selections.drain(..) {
@@ -122,7 +123,7 @@ impl InputState {
 
     /// 所有光标范围（含主光标），按起始偏移降序（自后向前编辑用）。
     fn cursors_back_to_front(&self) -> Vec<Range<usize>> {
-        let mut all: Vec<Range<usize>> = std::iter::once(self.selected_range.into())
+        let mut all: Vec<Range<usize>> = std::iter::once(self.core.selected_range.into())
             .chain(self.extra_selections.iter().map(|sel| (*sel).into()))
             .collect();
         all.sort_by_key(|range| std::cmp::Reverse(range.start));
@@ -141,7 +142,7 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
-        let before = self.history.undos().len();
+        let before = self.core.history.undos().len();
         for (range, text) in edits.iter() {
             let old_len = range.len();
             let new_len = text.len();
@@ -163,11 +164,11 @@ impl InputState {
     fn collapse_cursors(&mut self, mut points: Vec<usize>, cx: &mut Context<Self>) {
         let mut points_iter = points.drain(..);
         let primary = points_iter.next().unwrap_or(0);
-        self.selected_range = super::Selection::new(primary, primary);
+        self.core.selected_range = super::Selection::new(primary, primary);
         self.extra_selections = points_iter
             .map(|at| super::Selection::new(at, at))
             .collect();
-        self.selection_reversed = false;
+        self.core.selection_reversed = false;
         cx.notify();
     }
 
@@ -181,7 +182,7 @@ impl InputState {
             .into_iter()
             .map(|range| (range, text.to_string()))
             .collect();
-        let mut points: Vec<usize> = std::iter::once(self.selected_range.start)
+        let mut points: Vec<usize> = std::iter::once(self.core.selected_range.start)
             .chain(self.extra_selections.iter().map(|sel| sel.start))
             .collect();
         self.apply_edits_and_track(&mut edits, &mut points, window, cx);
@@ -219,7 +220,7 @@ impl InputState {
             .into_iter()
             .map(|range| (range, String::new()))
             .collect();
-        let mut points: Vec<usize> = std::iter::once(self.selected_range.start)
+        let mut points: Vec<usize> = std::iter::once(self.core.selected_range.start)
             .chain(self.extra_selections.iter().map(|sel| sel.start))
             .collect();
         self.apply_edits_and_track(&mut edits, &mut points, window, cx);
@@ -235,16 +236,20 @@ impl InputState {
             selections
                 .iter()
                 .map(|range| {
-                    let row = self.text.offset_to_point(range.start).row;
-                    self.text
-                        .slice(self.text.line_start_offset(row)..self.text.line_end_offset(row))
+                    let row = self.core.text.offset_to_point(range.start).row;
+                    self.core
+                        .text
+                        .slice(
+                            self.core.text.line_start_offset(row)
+                                ..self.core.text.line_end_offset(row),
+                        )
                         .to_string()
                 })
                 .collect()
         } else {
             selections
                 .iter()
-                .map(|range| self.text.slice(range.clone()).to_string())
+                .map(|range| self.core.text.slice(range.clone()).to_string())
                 .collect()
         };
         cx.write_to_clipboard(ClipboardItem::new_string(parts.join("\n")));
@@ -260,7 +265,7 @@ impl InputState {
             selections
                 .iter()
                 .map(|range| {
-                    let row = self.text.offset_to_point(range.start).row;
+                    let row = self.core.text.offset_to_point(range.start).row;
                     self.block_range(row, row)
                 })
                 .collect()
@@ -273,12 +278,12 @@ impl InputState {
             .into_iter()
             .map(|range| (range, String::new()))
             .collect();
-        let mut points: Vec<usize> = std::iter::once(self.selected_range.start)
+        let mut points: Vec<usize> = std::iter::once(self.core.selected_range.start)
             .chain(self.extra_selections.iter().map(|sel| sel.start))
             .collect();
         self.apply_edits_and_track(&mut edits, &mut points, window, cx);
         // 光标落删除起点（钳制到新文本内）。
-        let len = self.text.len();
+        let len = self.core.text.len();
         let points: Vec<usize> = points.into_iter().map(|at| at.min(len)).collect();
         self.collapse_cursors(points, cx);
     }
@@ -288,11 +293,13 @@ impl InputState {
         // 先算好每处的插入文本（依赖原文本，一次算完再动手）。
         let mut edits = Vec::new();
         for range in self.cursors_back_to_front() {
-            let start = range.start.min(self.text.len());
+            let start = range.start.min(self.core.text.len());
             let line_start = self
+                .core
                 .text
-                .line_start_offset(self.text.offset_to_point(start).row);
+                .line_start_offset(self.core.text.offset_to_point(start).row);
             let indent: String = self
+                .core
                 .text
                 .slice(line_start..start)
                 .chars()
@@ -300,7 +307,7 @@ impl InputState {
                 .collect();
             edits.push((range, format!("\n{indent}")));
         }
-        let mut points: Vec<usize> = std::iter::once(self.selected_range.start)
+        let mut points: Vec<usize> = std::iter::once(self.core.selected_range.start)
             .chain(self.extra_selections.iter().map(|sel| sel.start))
             .collect();
         self.apply_edits_and_track(&mut edits, &mut points, window, cx);
@@ -310,8 +317,8 @@ impl InputState {
 
     /// 把 `before` 之后新增的历史条目并为同一版本（一次撤销整体回退）。
     fn regroup_history(&mut self, before: usize) {
-        let pushed = self.history.undos().len().saturating_sub(before);
-        self.history.regroup_last(pushed);
+        let pushed = self.core.history.undos().len().saturating_sub(before);
+        self.core.history.regroup_last(pushed);
     }
 }
 

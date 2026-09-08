@@ -101,12 +101,12 @@ impl InputState {
 
     /// 是否有非空选区（右键菜单剪切/复制的启用依据）。
     pub fn has_selection(&self) -> bool {
-        !self.selected_range.is_empty()
+        !self.core.selected_range.is_empty()
     }
 
     /// 文本是否为空（右键菜单全选的启用依据）。
     pub fn is_empty(&self) -> bool {
-        self.text.len() == 0
+        self.core.text.len() == 0
     }
 
     /// 输入框是否被禁用（右键菜单剪切/粘贴/撤销/重做的禁用依据）。
@@ -116,12 +116,12 @@ impl InputState {
 
     /// 是否可撤销（右键菜单撤销项的启用依据）。
     pub fn can_undo(&self) -> bool {
-        !self.history.undos().is_empty()
+        !self.core.history.undos().is_empty()
     }
 
     /// 是否可重做（右键菜单重做项的启用依据）。
     pub fn can_redo(&self) -> bool {
-        !self.history.redos().is_empty()
+        !self.core.history.redos().is_empty()
     }
 
     /// 右键菜单总开关（builder 版，创建时链式调用）。

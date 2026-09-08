@@ -31,9 +31,8 @@ use super::{
     blink_cursor::{BlinkCursor, CURSOR_WIDTH},
     change::Change,
     context_menu::InputContextMenuBuilder,
-    decorations::DecorationCollections,
+    core::TextCore,
     element::{EditorScrollbarSnapshot, RIGHT_MARGIN, TextElement},
-    history::History,
     mask_pattern::{MaskPattern, normalize_number_input},
     mode::InputMode,
     movement::MoveDirection,
@@ -325,21 +324,13 @@ pub(crate) fn init(cx: &mut App) {
 pub struct InputState {
     pub(super) focus_handle: FocusHandle,
     pub(super) mode: InputMode,
-    pub(super) text: Rope,
+    /// 共享文本核（文本/选区/历史/装饰/IME 标记，P1 抽核）。
+    pub(super) core: TextCore,
     pub(super) display_map: DisplayMap,
-    pub(super) history: History<Change>,
     pub(super) blink_cursor: Entity<BlinkCursor>,
     pub(super) loading: bool,
-    /// 以 UTF-8 字节数计的选择范围。
-    ///
-    /// - "Hello 世界💝" = 16
-    /// - "💝" = 4
-    pub(super) selected_range: Selection,
     /// 用于记录拖拽移动时保持的单词选择范围。
     pub(super) selected_word_range: Option<Selection>,
-    pub(super) selection_reversed: bool,
-    /// 标记范围是输入法（IME）输入时的临时插入文本。
-    pub(super) ime_marked_range: Option<Selection>,
     pub(super) last_layout: Option<LastLayout>,
     pub(super) last_cursor: Option<usize>,
     /// 输入容器边界。
@@ -382,7 +373,6 @@ pub struct InputState {
     pub(super) editor_scrollbar_paddings: Cell<Edges<Pixels>>,
     pub(super) editor_scrollbar_snapshot: Cell<Option<EditorScrollbarSnapshot>>,
     pub(super) text_align: TextAlign,
-    pub(super) decorations: DecorationCollections,
     /// 语法高亮器（`set_highlighter` 设置；`editor` feature 门控）。
     #[cfg(feature = "editor")]
     pub(super) highlighter: Option<Box<dyn Highlighter>>,
@@ -454,7 +444,6 @@ impl InputState {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle().tab_stop(true);
         let blink_cursor = cx.new(|_| BlinkCursor::new());
-        let history = History::new().group_interval(std::time::Duration::from_secs(1));
 
         let _subscriptions = vec![
             // 观察闪烁光标，以便在其变化时重绘视图。
@@ -478,18 +467,14 @@ impl InputState {
 
         Self {
             focus_handle: focus_handle.clone(),
-            text: "".into(),
+            core: TextCore::new(),
             display_map: DisplayMap::new(
                 text_style.font(),
                 text_style.font_size.to_pixels(window.rem_size()),
                 None,
             ),
             blink_cursor,
-            history,
-            selected_range: Selection::default(),
             selected_word_range: None,
-            selection_reversed: false,
-            ime_marked_range: None,
             input_bounds: Bounds::default(),
             selecting: false,
             disabled: false,
@@ -530,7 +515,6 @@ impl InputState {
             mask_pattern: MaskPattern::default(),
             mask_pattern_set: false,
             text_align: TextAlign::Left,
-            decorations: DecorationCollections::default(),
             #[cfg(feature = "editor")]
             highlighter: None,
             #[cfg(feature = "editor")]
@@ -812,17 +796,17 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.history.ignore = true;
+        self.core.history.ignore = true;
         self.emit_events = false;
         self.replace_text(value, window, cx);
-        self.history.ignore = false;
+        self.core.history.ignore = false;
         self.emit_events = true;
 
         self.reset_selection();
         self.reset_lsp_state();
         self.reset_scroll_to_start();
 
-        self.history.clear();
+        self.core.history.clear();
         cx.notify();
     }
 
@@ -861,7 +845,8 @@ impl InputState {
         let text: SharedString = text.into();
         let range_utf16 = self.range_to_utf16(&(self.cursor()..self.cursor()));
         self.replace_text_in_range_silent(Some(range_utf16), &text, window, cx);
-        self.selected_range = (self.selected_range.end..self.selected_range.end).into();
+        self.core.selected_range =
+            (self.core.selected_range.end..self.core.selected_range.end).into();
         self.disabled = was_disabled;
     }
 
@@ -878,7 +863,8 @@ impl InputState {
         self.disabled = false;
         let text: SharedString = text.into();
         self.replace_text_in_range_silent(None, &text, window, cx);
-        self.selected_range = (self.selected_range.end..self.selected_range.end).into();
+        self.core.selected_range =
+            (self.core.selected_range.end..self.core.selected_range.end).into();
         self.disabled = was_disabled;
     }
 
@@ -891,7 +877,7 @@ impl InputState {
         let was_disabled = self.disabled;
         self.disabled = false;
         let text: SharedString = text.into();
-        let range = 0..self.text.chars().map(|c| c.len_utf16()).sum();
+        let range = 0..self.core.text.chars().map(|c| c.len_utf16()).sum();
         self.replace_text_in_range_silent(Some(range), &text, window, cx);
         self.disabled = was_disabled;
     }
@@ -900,10 +886,10 @@ impl InputState {
         // 单行输入时光标置于文本末尾（与 HTML `<input>` 一致）；
         // 多行输入将选择重置为 `0..0`。
         if self.mode.is_single_line() {
-            let end = self.text.len();
-            self.selected_range = (end..end).into();
+            let end = self.core.text.len();
+            self.core.selected_range = (end..end).into();
         } else {
-            self.selected_range.clear();
+            self.core.selected_range.clear();
         }
     }
 
@@ -1188,7 +1174,7 @@ impl InputState {
     /// 设置输入框的默认值。
     pub fn default_value(mut self, value: impl Into<SharedString>) -> Self {
         let text: SharedString = value.into();
-        self.text = Rope::from(self.normalize_input(&text).as_ref());
+        self.core.text = Rope::from(self.normalize_input(&text).as_ref());
         // 注意：这里不能调用 display_map.set_text，因为它需要 cx。
         // 文本将在 element.rs 的 prepare_if_need 阶段设置。
         self._pending_update = true;
@@ -1197,7 +1183,7 @@ impl InputState {
 
     /// 返回输入框的值。
     pub fn value(&self) -> SharedString {
-        SharedString::new(self.text.to_string())
+        SharedString::new(self.core.text.to_string())
     }
 
     /// 返回输入框中被用户选中的那部分值。
@@ -1207,18 +1193,18 @@ impl InputState {
 
     /// 返回去除掩码后的值。
     pub fn unmask_value(&self) -> SharedString {
-        self.mask_pattern.unmask(&self.text.to_string()).into()
+        self.mask_pattern.unmask(&self.core.text.to_string()).into()
     }
 
     /// 返回输入框的文本 [`Rope`]。
     pub fn text(&self) -> &Rope {
-        &self.text
+        &self.core.text
     }
 
     /// 返回光标的（0 基）[`Position`]。
     pub fn cursor_position(&self) -> Position {
         let offset = self.cursor();
-        self.text.offset_to_position(offset)
+        self.core.text.offset_to_position(offset)
     }
 
     /// 设置光标的（0 基）[`Position`]。
@@ -1231,7 +1217,7 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         let position: Position = position.into();
-        let offset = self.text.position_to_offset(&position);
+        let offset = self.core.text.position_to_offset(&position);
 
         self.move_to(offset, None, cx);
         self.update_preferred_column();
@@ -1272,13 +1258,13 @@ impl InputState {
         if self.mode.is_single_line() {
             return;
         }
-        let offset = (self.end_of_line() + 1).min(self.text.len());
+        let offset = (self.end_of_line() + 1).min(self.core.text.len());
         self.select_to(self.next_boundary(offset), cx);
     }
 
     pub(super) fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         // 全选即单选区：先清额外光标。
-        let len = self.text.len();
+        let len = self.core.text.len();
         self.set_selected_range(0..len, cx);
     }
 
@@ -1297,7 +1283,7 @@ impl InputState {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let end = self.text.len();
+        let end = self.core.text.len();
         self.select_to(end, cx);
     }
 
@@ -1343,10 +1329,10 @@ impl InputState {
 
     /// 返回前一个单词的起始偏移量。
     pub(super) fn previous_start_of_word(&mut self) -> usize {
-        let offset = self.selected_range.start;
+        let offset = self.core.selected_range.start;
         let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
         // FIXME: 避免 to_string
-        let left_part = self.text.slice(0..offset).to_string();
+        let left_part = self.core.text.slice(0..offset).to_string();
 
         UnicodeSegmentation::split_word_bound_indices(left_part.as_str())
             .rfind(|(_, s)| !s.trim_start().is_empty())
@@ -1358,12 +1344,16 @@ impl InputState {
     pub(super) fn next_end_of_word(&mut self) -> usize {
         let offset = self.cursor();
         let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
-        let right_part = self.text.slice(offset..self.text.len()).to_string();
+        let right_part = self
+            .core
+            .text
+            .slice(offset..self.core.text.len())
+            .to_string();
 
         UnicodeSegmentation::split_word_bound_indices(right_part.as_str())
             .find(|(_, s)| !s.trim_start().is_empty())
             .map(|(i, s)| offset + i + s.len())
-            .unwrap_or(self.text.len())
+            .unwrap_or(self.core.text.len())
     }
 
     /// 获取光标所在行的起始字节偏移。
@@ -1375,8 +1365,8 @@ impl InputState {
             return 0;
         }
 
-        let row = self.text.offset_to_point(self.cursor()).row;
-        let logical_start = self.text.line_start_offset(row);
+        let row = self.core.text.offset_to_point(self.cursor()).row;
+        let logical_start = self.core.text.line_start_offset(row);
 
         if self.soft_wrap && self.mode.is_code_editor() {
             let wrap_point = self.display_map.offset_to_wrap_display_point(self.cursor());
@@ -1399,12 +1389,12 @@ impl InputState {
     /// 到达逻辑行末尾。
     pub(super) fn end_of_line(&self) -> usize {
         if self.mode.is_single_line() {
-            return self.text.len();
+            return self.core.text.len();
         }
 
-        let row = self.text.offset_to_point(self.cursor()).row;
-        let logical_start = self.text.line_start_offset(row);
-        let logical_end = self.text.line_end_offset(row);
+        let row = self.core.text.offset_to_point(self.cursor()).row;
+        let logical_start = self.core.text.line_start_offset(row);
+        let logical_end = self.core.text.line_end_offset(row);
 
         if self.soft_wrap && self.mode.is_code_editor() {
             let wrap_point = self.display_map.offset_to_wrap_display_point(self.cursor());
@@ -1433,9 +1423,13 @@ impl InputState {
             return 0;
         }
 
-        let mut offset =
-            self.previous_boundary(self.selected_range.start.min(self.selected_range.end));
-        if self.text.char_at(offset) == Some('\r') {
+        let mut offset = self.previous_boundary(
+            self.core
+                .selected_range
+                .start
+                .min(self.core.selected_range.end),
+        );
+        if self.core.text.char_at(offset) == Some('\r') {
             offset += 1;
         }
 
@@ -1460,7 +1454,7 @@ impl InputState {
         let mut next_indent = String::new();
         let current_line_start_pos = self.start_of_line();
         let next_line_start_pos = self.end_of_line();
-        for c in self.text.slice(current_line_start_pos..).chars() {
+        for c in self.core.text.slice(current_line_start_pos..).chars() {
             if !c.is_whitespace() {
                 break;
             }
@@ -1470,7 +1464,7 @@ impl InputState {
             current_indent.push(c);
         }
 
-        for c in self.text.slice(next_line_start_pos..).chars() {
+        for c in self.core.text.slice(next_line_start_pos..).chars() {
             if !c.is_whitespace() {
                 break;
             }
@@ -1496,8 +1490,8 @@ impl InputState {
     fn electric_newline(&self, base_indent: &str, cursor: usize) -> (String, Option<usize>) {
         let line_start = self.start_of_line();
         let line_end = self.end_of_line();
-        let before = self.text.slice(line_start..cursor).to_string();
-        let after = self.text.slice(cursor..line_end).to_string();
+        let before = self.core.text.slice(line_start..cursor).to_string();
+        let after = self.core.text.slice(cursor..line_end).to_string();
         let opens = before
             .trim_end()
             .chars()
@@ -1531,7 +1525,7 @@ impl InputState {
         // 光标夹在空括号对中间时成对删除（如 `(|)` 一次删 `()`，`editor` 门控）。
         #[cfg(feature = "editor")]
         {
-            if self.selected_range.is_empty()
+            if self.core.selected_range.is_empty()
                 && let Some(pair) = super::auto_close::smart_backspace_range(self)
             {
                 self.replace_text_in_range_silent(Some(self.range_to_utf16(&pair)), "", window, cx);
@@ -1539,7 +1533,7 @@ impl InputState {
                 return;
             }
         }
-        if self.selected_range.is_empty() {
+        if self.core.selected_range.is_empty() {
             self.select_to(self.previous_boundary(self.cursor()), cx)
         }
         self.replace_text_in_range(None, "", window, cx);
@@ -1556,7 +1550,7 @@ impl InputState {
                 return;
             }
         }
-        if self.selected_range.is_empty() {
+        if self.core.selected_range.is_empty() {
             self.select_to(self.next_boundary(self.cursor()), cx)
         }
         self.replace_text_in_range(None, "", window, cx);
@@ -1569,7 +1563,7 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.selected_range.is_empty() {
+        if !self.core.selected_range.is_empty() {
             self.replace_text_in_range(None, "", window, cx);
             self.pause_blink_cursor(cx);
             return;
@@ -1594,7 +1588,7 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.selected_range.is_empty() {
+        if !self.core.selected_range.is_empty() {
             self.replace_text_in_range(None, "", window, cx);
             self.pause_blink_cursor(cx);
             return;
@@ -1602,7 +1596,7 @@ impl InputState {
 
         let mut offset = self.end_of_line();
         if offset == self.cursor() {
-            offset = (offset + 1).clamp(0, self.text.len());
+            offset = (offset + 1).clamp(0, self.core.text.len());
         }
         self.replace_text_in_range_silent(
             Some(self.range_to_utf16(&(self.cursor()..offset))),
@@ -1619,7 +1613,7 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.selected_range.is_empty() {
+        if !self.core.selected_range.is_empty() {
             self.replace_text_in_range(None, "", window, cx);
             self.pause_blink_cursor(cx);
             return;
@@ -1641,7 +1635,7 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.selected_range.is_empty() {
+        if !self.core.selected_range.is_empty() {
             self.replace_text_in_range(None, "", window, cx);
             self.pause_blink_cursor(cx);
             return;
@@ -1690,8 +1684,8 @@ impl InputState {
             let (new_line_text, middle) = self.electric_newline(&indent, cursor);
             self.replace_text_in_range_silent(None, &new_line_text, window, cx);
             if let Some(at) = middle {
-                self.selected_range = (at..at).into();
-                self.selection_reversed = false;
+                self.core.selected_range = (at..at).into();
+                self.core.selection_reversed = false;
             }
             self.pause_blink_cursor(cx);
         } else {
@@ -1711,12 +1705,12 @@ impl InputState {
             return;
         }
         self.replace_text("", window, cx);
-        self.selected_range = (0..0).into();
+        self.core.selected_range = (0..0).into();
         self.scroll_to(0, None, cx);
     }
 
     pub(super) fn escape(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
-        if self.ime_marked_range.is_some() {
+        if self.core.ime_marked_range.is_some() {
             self.unmark_text(window, cx);
         }
 
@@ -1741,9 +1735,9 @@ impl InputState {
     ) {
         // 若存在 IME 标记范围且为空（意味着按 Esc 中止了 IME 输入），
         // 清除该标记范围。
-        if let Some(ime_marked_range) = &self.ime_marked_range {
+        if let Some(ime_marked_range) = &self.core.ime_marked_range {
             if ime_marked_range.len() == 0 {
-                self.ime_marked_range = None;
+                self.core.ime_marked_range = None;
             }
         }
 
@@ -1761,7 +1755,7 @@ impl InputState {
                 && !self.read_only
             {
                 self.selecting = false;
-                let at = offset.min(self.text.len());
+                let at = offset.min(self.core.text.len());
                 self.extra_selections.push(Selection::new(at, at));
                 self.normalize_extras();
                 cx.notify();
@@ -1785,7 +1779,7 @@ impl InputState {
         if event.button == MouseButton::Right {
             #[cfg(feature = "editor")]
             self.clear_extra_cursors(cx);
-            if !self.selected_range.contains(offset) {
+            if !self.core.selected_range.contains(offset) {
                 self.move_to(offset, None, cx);
             }
             return;
@@ -1807,8 +1801,8 @@ impl InputState {
         if event.button == MouseButton::Right {
             return;
         }
-        if self.selected_range.is_empty() {
-            self.selection_reversed = false;
+        if self.core.selected_range.is_empty() {
+            self.core.selection_reversed = false;
         }
         self.selecting = false;
         self.selected_word_range = None;
@@ -1903,7 +1897,7 @@ impl InputState {
         let was_offset = scroll_offset;
         let line_height = last_layout.line_height;
 
-        let point = self.text.offset_to_point(offset);
+        let point = self.core.text.offset_to_point(offset);
 
         let row = point.row;
 
@@ -1993,7 +1987,7 @@ impl InputState {
     /// 可直接用于 [`Self::goto_symbol`]。
     pub fn document_symbols(&self) -> Vec<crate::highlight::DocumentSymbol> {
         match self.highlighter.as_ref() {
-            Some(highlighter) => highlighter.document_symbols(&self.text),
+            Some(highlighter) => highlighter.document_symbols(&self.core.text),
             None => Vec::new(),
         }
     }
@@ -2005,7 +1999,7 @@ impl InputState {
         symbol: &crate::highlight::DocumentSymbol,
         cx: &mut Context<Self>,
     ) {
-        let offset = symbol.range.start.min(self.text.len());
+        let offset = symbol.range.start.min(self.core.text.len());
         self.set_selected_range(offset..offset, cx);
         self.reveal_offset(offset, cx);
     }
@@ -2027,7 +2021,7 @@ impl InputState {
         } else {
             // 原地清空（`collection.clear` 走 entity.update，借用中调用会重入 panic）。
             if let Some(collection) = self.highlight_collection.take() {
-                collection.set_in_place(&mut self.decorations, Vec::new());
+                collection.set_in_place(&mut self.core.decorations, Vec::new());
             }
             self.display_map.set_fold_candidates(Vec::new());
             cx.notify();
@@ -2041,16 +2035,16 @@ impl InputState {
             return;
         };
         let folding = self.mode.is_folding();
-        highlighter.update(None, &self.text, folding, window, cx);
+        highlighter.update(None, &self.core.text, folding, window, cx);
         let resolver = ThemeHighlightResolver::from_app(cx);
-        let len = self.text.len();
+        let len = self.core.text.len();
         let decorations: Vec<TextDecoration> = highlighter
             .styles(&(0..len), &resolver)
             .into_iter()
             .map(|(range, style)| TextDecoration::new(range, style))
             .collect();
         let folds = highlighter
-            .fold_ranges(&self.text)
+            .fold_ranges(&self.core.text)
             .into_iter()
             .map(|range| FoldRange::new(range.start, range.end))
             .collect();
@@ -2058,8 +2052,8 @@ impl InputState {
         // normalize 兜底：stale 范围/合成中间态的错位边界在此吸附到字符边界，
         // 否则布局按字节切分 runs 会 panic。
         if let Some(collection) = self.highlight_collection.clone() {
-            let decorations = normalize(&self.text, decorations);
-            if collection.set_in_place(&mut self.decorations, decorations) {
+            let decorations = normalize(&self.core.text, decorations);
+            if collection.set_in_place(&mut self.core.decorations, decorations) {
                 cx.notify();
             }
         } else {
@@ -2085,16 +2079,17 @@ impl InputState {
                 return self.copy_cursors(cx);
             }
         }
-        if self.selected_range.is_empty() {
+        if self.core.selected_range.is_empty() {
             return;
         }
 
-        let selected_text = self.text.slice(self.selected_range).to_string();
+        let selected_text = self.core.text.slice(self.core.selected_range).to_string();
         cx.write_to_clipboard(ClipboardItem::new_string(selected_text));
     }
 
     pub(super) fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only || self.selected_range.is_empty() && self.extra_selections.is_empty() {
+        if self.read_only || self.core.selected_range.is_empty() && self.extra_selections.is_empty()
+        {
             return;
         }
         // 多光标：复制后删除所有光标范围（`editor` feature 门控）。
@@ -2105,7 +2100,7 @@ impl InputState {
             }
         }
 
-        let selected_text = self.text.slice(self.selected_range).to_string();
+        let selected_text = self.core.text.slice(self.core.selected_range).to_string();
         cx.write_to_clipboard(ClipboardItem::new_string(selected_text));
 
         self.replace_text_in_range_silent(None, "", window, cx);
@@ -2134,7 +2129,7 @@ impl InputState {
     }
 
     fn push_history(&mut self, text: &Rope, range: &Range<usize>, new_text: &str) {
-        if self.history.ignore {
+        if self.core.history.ignore {
             return;
         }
 
@@ -2143,7 +2138,8 @@ impl InputState {
         let old_text = text.slice(range.clone()).to_string();
         let new_range = range.start..range.start + new_text.len();
 
-        self.history
+        self.core
+            .history
             .push(Change::new(range, &old_text, new_range, new_text));
     }
 
@@ -2151,43 +2147,35 @@ impl InputState {
         if self.read_only {
             return;
         }
-        self.history.ignore = true;
-        if let Some(changes) = self.history.undo() {
+        self.core.history.ignore = true;
+        if let Some(changes) = self.core.history.undo() {
             for change in changes {
                 let range_utf16 = self.range_to_utf16(&change.new_range.into());
                 self.replace_text_in_range_silent(Some(range_utf16), &change.old_text, window, cx);
             }
         }
-        self.history.ignore = false;
+        self.core.history.ignore = false;
     }
 
     pub(super) fn redo(&mut self, _: &Redo, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only {
             return;
         }
-        self.history.ignore = true;
-        if let Some(changes) = self.history.redo() {
+        self.core.history.ignore = true;
+        if let Some(changes) = self.core.history.redo() {
             for change in changes {
                 let range_utf16 = self.range_to_utf16(&change.old_range.into());
                 self.replace_text_in_range_silent(Some(range_utf16), &change.new_text, window, cx);
             }
         }
-        self.history.ignore = false;
+        self.core.history.ignore = false;
     }
 
     /// 获取光标的字节偏移。
     ///
     /// 该偏移量为 UTF-8 偏移。
     pub fn cursor(&self) -> usize {
-        if let Some(ime_marked_range) = &self.ime_marked_range {
-            return ime_marked_range.end;
-        }
-
-        if self.selection_reversed {
-            self.selected_range.start
-        } else {
-            self.selected_range.end
-        }
+        self.core.cursor()
     }
 
     /// 上次布局视口中的可见行范围，首次布局前为 `None`。
@@ -2222,7 +2210,7 @@ impl InputState {
     /// 未选择文本时范围为空（`start == end`）；此时偏移量等于 `cursor()`。
     /// 字节偏移以底层 rope 的字节单位计。
     pub fn selected_range(&self) -> std::ops::Range<usize> {
-        self.selected_range.into()
+        self.core.selected_range.into()
     }
 
     /// 使用 UTF-8 字节偏移设置选择范围。
@@ -2230,19 +2218,19 @@ impl InputState {
     /// 设置选区会经 `move_to` → `scroll_to` 自动把光标滚动到可见，无需手动调滚动；
     /// 只想滚动、不想改选区时请用 [`Self::reveal_offset`] / [`Self::reveal_range`]。
     pub fn set_selected_range(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
-        let len = self.text.len();
+        let len = self.core.text.len();
         let start = range.start.min(len);
         let end = range.end.min(len);
 
         self.move_to(start, None, cx);
-        self.selection_reversed = false;
+        self.core.selection_reversed = false;
         self.selected_word_range = None;
         self.select_to(end, cx);
     }
 
     pub(crate) fn index_for_mouse_position(&self, position: Point<Pixels>) -> usize {
         // 文本为空时总是返回 0
-        if self.text.len() == 0 {
+        if self.core.text.len() == 0 {
             return 0;
         }
 
@@ -2287,9 +2275,11 @@ impl InputState {
                 let local_index = line_layout.closest_index_for_x(pos.x, last_layout);
                 let index = line_start_offset + local_index;
                 return if self.masked {
-                    self.text.char_index_to_offset(index / MASK_CHAR.len_utf8())
+                    self.core
+                        .text
+                        .char_index_to_offset(index / MASK_CHAR.len_utf8())
                 } else {
-                    index.min(self.text.len())
+                    index.min(self.core.text.len())
                 };
             }
 
@@ -2297,14 +2287,17 @@ impl InputState {
             if let Some(local_index) = line_layout.closest_index_for_position(pos, last_layout) {
                 let index = line_start_offset + local_index;
                 return if self.masked {
-                    self.text.char_index_to_offset(index / MASK_CHAR.len_utf8())
+                    self.core
+                        .text
+                        .char_index_to_offset(index / MASK_CHAR.len_utf8())
                 } else {
-                    index.min(self.text.len())
+                    index.min(self.core.text.len())
                 };
             } else if pos.y < px(0.) {
                 // 鼠标在该行上方，返回该行起始
                 return if self.masked {
-                    self.text
+                    self.core
+                        .text
                         .char_index_to_offset(line_start_offset / MASK_CHAR.len_utf8())
                 } else {
                     line_start_offset
@@ -2315,7 +2308,7 @@ impl InputState {
         }
 
         // 鼠标在所有可见行下方，返回文本末尾
-        self.text.len()
+        self.core.text.len()
     }
 
     /// 从当前光标位置选择到给定偏移量。
@@ -2324,28 +2317,29 @@ impl InputState {
     ///
     /// 确保使用 self.next_boundary 或 self.previous_boundary 获得正确的偏移量。
     pub(crate) fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        let offset = offset.clamp(0, self.text.len());
-        if self.selection_reversed {
-            self.selected_range.start = offset
+        let offset = offset.clamp(0, self.core.text.len());
+        if self.core.selection_reversed {
+            self.core.selected_range.start = offset
         } else {
-            self.selected_range.end = offset
+            self.core.selected_range.end = offset
         };
 
-        if self.selected_range.end < self.selected_range.start {
-            self.selection_reversed = !self.selection_reversed;
-            self.selected_range = (self.selected_range.end..self.selected_range.start).into();
+        if self.core.selected_range.end < self.core.selected_range.start {
+            self.core.selection_reversed = !self.core.selection_reversed;
+            self.core.selected_range =
+                (self.core.selected_range.end..self.core.selected_range.start).into();
         }
 
         // 确保保持单词选择范围
         if let Some(word_range) = self.selected_word_range.as_ref() {
-            if self.selected_range.start > word_range.start {
-                self.selected_range.start = word_range.start;
+            if self.core.selected_range.start > word_range.start {
+                self.core.selected_range.start = word_range.start;
             }
-            if self.selected_range.end < word_range.end {
-                self.selected_range.end = word_range.end;
+            if self.core.selected_range.end < word_range.end {
+                self.core.selected_range.end = word_range.end;
             }
         }
-        if self.selected_range.is_empty() {
+        if self.core.selected_range.is_empty() {
             self.update_preferred_column();
         }
         #[cfg(feature = "editor")]
@@ -2358,18 +2352,18 @@ impl InputState {
     /// 取消当前选择的文本。
     pub fn unselect(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         let offset = self.cursor();
-        self.selected_range = (offset..offset).into();
+        self.core.selected_range = (offset..offset).into();
         cx.notify()
     }
 
     #[inline]
     pub(super) fn offset_from_utf16(&self, offset: usize) -> usize {
-        self.text.offset_utf16_to_offset(offset)
+        self.core.text.offset_utf16_to_offset(offset)
     }
 
     #[inline]
     pub(super) fn offset_to_utf16(&self, offset: usize) -> usize {
-        self.text.offset_to_offset_utf16(offset)
+        self.core.text.offset_to_offset_utf16(offset)
     }
 
     #[inline]
@@ -2385,11 +2379,11 @@ impl InputState {
     /// 若偏移量落在隐藏（折叠）行上，向后钳制到折叠头行的末尾
     /// （折叠前最后一个可见位置）。
     fn clamp_offset_to_visible_backward(&self, offset: usize) -> usize {
-        let line = self.text.offset_to_point(offset).row;
+        let line = self.core.text.offset_to_point(offset).row;
         if self.display_map.is_buffer_line_hidden(line) {
             for fold in self.display_map.folded_ranges() {
                 if line > fold.start_line && line <= fold.end_line {
-                    return self.text.line_end_offset(fold.start_line);
+                    return self.core.text.line_end_offset(fold.start_line);
                 }
             }
         }
@@ -2399,11 +2393,11 @@ impl InputState {
     /// 若偏移量落在隐藏（折叠）行上，向前钳制到折叠结束行的起点
     /// （折叠后第一个可见位置）。
     fn clamp_offset_to_visible_forward(&self, offset: usize) -> usize {
-        let line = self.text.offset_to_point(offset).row;
+        let line = self.core.text.offset_to_point(offset).row;
         if self.display_map.is_buffer_line_hidden(line) {
             for fold in self.display_map.folded_ranges() {
                 if line > fold.start_line && line <= fold.end_line {
-                    return self.text.line_start_offset(fold.end_line);
+                    return self.core.text.line_start_offset(fold.end_line);
                 }
             }
         }
@@ -2411,8 +2405,11 @@ impl InputState {
     }
 
     pub(super) fn previous_boundary(&self, offset: usize) -> usize {
-        let mut offset = self.text.clip_offset(offset.saturating_sub(1), Bias::Left);
-        if let Some(ch) = self.text.char_at(offset) {
+        let mut offset = self
+            .core
+            .text
+            .clip_offset(offset.saturating_sub(1), Bias::Left);
+        if let Some(ch) = self.core.text.char_at(offset) {
             if ch == '\r' {
                 offset -= 1;
             }
@@ -2422,8 +2419,8 @@ impl InputState {
     }
 
     pub(super) fn next_boundary(&self, offset: usize) -> usize {
-        let mut offset = self.text.clip_offset(offset + 1, Bias::Right);
-        if let Some(ch) = self.text.char_at(offset) {
+        let mut offset = self.core.text.clip_offset(offset + 1, Bias::Right);
+        if let Some(ch) = self.core.text.char_at(offset) {
             if ch == '\r' {
                 offset += 1;
             }
@@ -2495,7 +2492,7 @@ impl InputState {
             return;
         }
 
-        let range = self.range_to_utf16(&(0..self.text.len()));
+        let range = self.range_to_utf16(&(0..self.core.text.len()));
         self.replace_text_in_range_silent(Some(range), &new_text, window, cx);
     }
 
@@ -2515,7 +2512,7 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.text.len() == 0 {
+        if self.core.text.len() == 0 {
             return;
         }
 
@@ -2661,9 +2658,9 @@ impl InputState {
     }
 
     pub(super) fn selected_text(&self) -> RopeSlice<'_> {
-        let range_utf16 = self.range_to_utf16(&self.selected_range.into());
+        let range_utf16 = self.range_to_utf16(&self.core.selected_range.into());
         let range = self.range_from_utf16(&range_utf16);
-        self.text.slice(range)
+        self.core.text.slice(range)
     }
 
     /// 返回当前输入内容中给定 UTF-8 字节范围的渲染边界。
@@ -2737,22 +2734,22 @@ impl InputState {
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
-            .or(self.ime_marked_range.map(|range| {
+            .or(self.core.ime_marked_range.map(|range| {
                 let range = self.range_to_utf16(&(range.start..range.end));
                 self.range_from_utf16(&range)
             }))
-            .unwrap_or(self.selected_range.into());
+            .unwrap_or(self.core.selected_range.into());
 
-        let old_text = self.text.clone();
-        self.text.replace(range.clone(), new_text);
+        let old_text = self.core.text.clone();
+        self.core.text.replace(range.clone(), new_text);
 
-        let mut new_offset = (range.start + new_text.len()).min(self.text.len());
+        let mut new_offset = (range.start + new_text.len()).min(self.core.text.len());
 
         // 掩码是否改变了文本，例如重组分隔符或补全前导点。
         let mut mask_changed = false;
 
         if self.mode.is_single_line() {
-            let pending_text = self.text.to_string();
+            let pending_text = self.core.text.to_string();
             // 检查新文本是否合法。
             //
             // 仅在旧文本合法时拒绝该编辑，以避免陷入预先存在的非法文本
@@ -2760,14 +2757,14 @@ impl InputState {
             if !self.is_valid_input(&pending_text, cx)
                 && self.is_valid_input(&old_text.to_string(), cx)
             {
-                self.text = old_text;
+                self.core.text = old_text;
                 return;
             }
 
             if !self.mask_pattern.is_none() {
                 let mask_text = self.mask_pattern.mask(&pending_text);
                 mask_changed = mask_text.as_str() != pending_text;
-                self.text = Rope::from(mask_text.as_str());
+                self.core.text = Rope::from(mask_text.as_str());
                 let new_text_len =
                     (new_text.len() + mask_text.len()).saturating_sub(pending_text.len());
                 new_offset = (range.start + new_text_len).min(mask_text.len());
@@ -2775,28 +2772,30 @@ impl InputState {
         }
 
         if mask_changed {
-            self.decorations.clear();
+            self.core.decorations.clear();
         } else {
-            self.decorations.adjust_for_edit(&range, new_text.len());
+            self.core
+                .decorations
+                .adjust_for_edit(&range, new_text.len());
         }
         if mask_changed {
             // 基于段的撤销历史条目不再匹配掩码后的文档，
             // 改为记录整文档变更，使撤销/重做能精确恢复文本。
-            self.push_history(&old_text, &(0..old_text.len()), &self.text.to_string());
+            self.push_history(&old_text, &(0..old_text.len()), &self.core.text.to_string());
         } else {
             self.push_history(&old_text, &range, &new_text);
         }
-        self.history.end_grouping();
+        self.core.history.end_grouping();
         // 调整折叠后再更新换行映射：移除重叠折叠并移动其他折叠。
         self.display_map
             .adjust_folds_for_edit(&old_text, &range, new_text);
         self.display_map
-            .on_text_changed(&self.text, &range, &Rope::from(new_text), cx);
+            .on_text_changed(&self.core.text, &range, &Rope::from(new_text), cx);
         #[cfg(feature = "editor")]
         self.refresh_highlight(window, cx);
 
-        self.selected_range = (new_offset..new_offset).into();
-        self.ime_marked_range.take();
+        self.core.selected_range = (new_offset..new_offset).into();
+        self.core.ime_marked_range.take();
         self.update_preferred_column();
         self.mode.update_auto_grow(&self.display_map);
         #[cfg(feature = "editor")]
@@ -2820,7 +2819,7 @@ impl EntityInputHandler for InputState {
     ) -> Option<String> {
         let range = self.range_from_utf16(&range_utf16);
         adjusted_range.replace(self.range_to_utf16(&range));
-        Some(self.text.slice(range).to_string())
+        Some(self.core.text.slice(range).to_string())
     }
 
     fn selected_text_range(
@@ -2830,7 +2829,7 @@ impl EntityInputHandler for InputState {
         _cx: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
         Some(UTF16Selection {
-            range: self.range_to_utf16(&self.selected_range.into()),
+            range: self.range_to_utf16(&self.core.selected_range.into()),
             reversed: false,
         })
     }
@@ -2840,12 +2839,13 @@ impl EntityInputHandler for InputState {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<Range<usize>> {
-        self.ime_marked_range
+        self.core
+            .ime_marked_range
             .map(|range| self.range_to_utf16(&range.into()))
     }
 
     fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
-        self.ime_marked_range = None;
+        self.core.ime_marked_range = None;
     }
 
     /// 替换范围内文本。
@@ -2871,7 +2871,7 @@ impl EntityInputHandler for InputState {
         #[cfg(feature = "editor")]
         {
             if range_utf16.is_none()
-                && self.ime_marked_range.is_none()
+                && self.core.ime_marked_range.is_none()
                 && !self.extra_selections.is_empty()
                 && !new_text.is_empty()
             {
@@ -2884,7 +2884,7 @@ impl EntityInputHandler for InputState {
         #[cfg(feature = "editor")]
         {
             if range_utf16.is_none()
-                && self.ime_marked_range.is_none()
+                && self.core.ime_marked_range.is_none()
                 && let Some(typed) = super::auto_close::single_typed_char(new_text)
                 && super::auto_close::auto_close_applies(self)
                 && super::auto_close::handle_typed_char(self, typed, window, cx)
@@ -2923,40 +2923,42 @@ impl EntityInputHandler for InputState {
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
-            .or(self.ime_marked_range.map(|range| {
+            .or(self.core.ime_marked_range.map(|range| {
                 let range = self.range_to_utf16(&(range.start..range.end));
                 self.range_from_utf16(&range)
             }))
-            .unwrap_or(self.selected_range.into());
+            .unwrap_or(self.core.selected_range.into());
 
-        let old_text = self.text.clone();
-        self.text.replace(range.clone(), new_text);
+        let old_text = self.core.text.clone();
+        self.core.text.replace(range.clone(), new_text);
 
         if self.mode.is_single_line() {
-            let pending_text = self.text.to_string();
+            let pending_text = self.core.text.to_string();
             // 参见 `replace_text_in_range` 中的相同注释。
             if !self.is_valid_input(&pending_text, cx)
                 && self.is_valid_input(&old_text.to_string(), cx)
             {
-                self.text = old_text;
+                self.core.text = old_text;
                 return;
             }
         }
 
-        self.decorations.adjust_for_edit(&range, new_text.len());
+        self.core
+            .decorations
+            .adjust_for_edit(&range, new_text.len());
         // 调整折叠后再更新换行映射：移除重叠折叠并移动其他折叠。
         self.display_map
             .adjust_folds_for_edit(&old_text, &range, new_text);
         self.display_map
-            .on_text_changed(&self.text, &range, &Rope::from(new_text), cx);
+            .on_text_changed(&self.core.text, &range, &Rope::from(new_text), cx);
 
         if new_text.is_empty() {
             // 取消 IME 输入时取消选择。
-            self.selected_range = (range.start..range.start).into();
-            self.ime_marked_range = None;
+            self.core.selected_range = (range.start..range.start).into();
+            self.core.ime_marked_range = None;
         } else {
-            self.ime_marked_range = Some((range.start..range.start + new_text.len()).into());
-            self.selected_range = new_selected_range_utf16
+            self.core.ime_marked_range = Some((range.start..range.start + new_text.len()).into());
+            self.core.selected_range = new_selected_range_utf16
                 .as_ref()
                 .map(|range_utf16| {
                     let new_text = Rope::from(new_text);
@@ -2967,7 +2969,7 @@ impl EntityInputHandler for InputState {
                 .into();
         }
         self.mode.update_auto_grow(&self.display_map);
-        self.history.start_grouping();
+        self.core.history.start_grouping();
         self.push_history(&old_text, &range, new_text);
         // IME 合成同样改变文本，高亮/折叠候选必须同步刷新，否则 stale 范围
         // 在布局切分 runs 时可能落在多字节字符内部导致 panic
@@ -3066,7 +3068,7 @@ impl Focusable for InputState {
 impl Render for InputState {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self._pending_update {
-            self.display_map.ensure_text_prepared(&self.text, cx);
+            self.display_map.ensure_text_prepared(&self.core.text, cx);
             self._pending_update = false;
         }
 

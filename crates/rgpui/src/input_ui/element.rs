@@ -414,22 +414,22 @@ impl TextElement {
         let lines = &last_layout.lines;
         let line_number_width = last_layout.line_number_width;
 
-        let mut selected_range = state.selected_range;
+        let mut selected_range = state.core.selected_range;
 
-        if let Some(ime_marked_range) = &state.ime_marked_range {
+        if let Some(ime_marked_range) = &state.core.ime_marked_range {
             selected_range = (ime_marked_range.end..ime_marked_range.end).into();
         }
-        let is_selected_all = selected_range.len() == state.text.len();
+        let is_selected_all = selected_range.len() == state.core.text.len();
 
         let mut cursor = state.cursor();
         // 原始（掩码前）偏移对应的 buffer 行，用于定位光标行。
-        let cursor_row = state.text.offset_to_point(cursor).row;
-        let sel_start_row = state.text.offset_to_point(selected_range.start).row;
-        let sel_end_row = state.text.offset_to_point(selected_range.end).row;
+        let cursor_row = state.core.text.offset_to_point(cursor).row;
+        let sel_start_row = state.core.text.offset_to_point(selected_range.start).row;
+        let sel_end_row = state.core.text.offset_to_point(selected_range.end).row;
         if state.masked {
-            selected_range.start = masked_display_offset(&state.text, selected_range.start);
-            selected_range.end = masked_display_offset(&state.text, selected_range.end);
-            cursor = masked_display_offset(&state.text, cursor);
+            selected_range.start = masked_display_offset(&state.core.text, selected_range.start);
+            selected_range.end = masked_display_offset(&state.core.text, selected_range.end);
+            cursor = masked_display_offset(&state.core.text, cursor);
         }
 
         let mut scroll_offset = state.scroll_handle.offset();
@@ -526,7 +526,7 @@ impl TextElement {
                 }
 
                 // 选区反向时跟随选区起点滚动
-                if state.selection_reversed {
+                if state.core.selection_reversed {
                     if scroll_offset.x + cursor_start.x < px(0.) {
                         // 选区起点在左侧之外
                         scroll_offset.x = -cursor_start.x;
@@ -568,8 +568,8 @@ impl TextElement {
         let mut extra_cursor_bounds = Vec::new();
         if !state.masked {
             for extra in &state.extra_selections {
-                let end = extra.end.min(state.text.len());
-                let row = state.text.offset_to_point(end).row;
+                let end = extra.end.min(state.core.text.len());
+                let row = state.core.text.offset_to_point(end).row;
                 let pos = caret_for(row, end, false);
                 let x = bounds.left() + pos.x + line_number_width + cursor_scroll_x;
                 let x = if last_layout.text_align == TextAlign::Right {
@@ -764,8 +764,8 @@ impl TextElement {
             return Vec::new();
         }
 
-        let mut selected_range = state.selected_range;
-        if let Some(ime_marked_range) = &state.ime_marked_range {
+        let mut selected_range = state.core.selected_range;
+        if let Some(ime_marked_range) = &state.core.ime_marked_range {
             if !ime_marked_range.is_empty() {
                 selected_range = (ime_marked_range.end..ime_marked_range.end).into();
             }
@@ -776,8 +776,8 @@ impl TextElement {
         if !selected_range.is_empty() {
             let mut range = selected_range;
             if state.masked {
-                range.start = masked_display_offset(&state.text, range.start);
-                range.end = masked_display_offset(&state.text, range.end);
+                range.start = masked_display_offset(&state.core.text, range.start);
+                range.end = masked_display_offset(&state.core.text, range.end);
             }
             let (start_ix, end_ix) = if range.start < range.end {
                 (range.start, range.end)
@@ -1161,7 +1161,7 @@ impl TextElement {
         }
 
         // 空文本使用占位符，占位符不在 wrapper map 中。
-        if state.text.len() == 0 {
+        if state.core.text.len() == 0 {
             let placeholder_text = display_text.to_string();
             let mut placeholder_lines = SmallVec::new();
 
@@ -1256,7 +1256,11 @@ impl TextElement {
         }
 
         let _ = visible_buffer_lines;
-        compose_decoration_collections(Vec::new(), state.decorations.iter(), visible_byte_range)
+        compose_decoration_collections(
+            Vec::new(),
+            state.core.decorations.iter(),
+            visible_byte_range,
+        )
     }
 }
 
@@ -1336,7 +1340,7 @@ impl Element for TextElement {
         // 复用与 canvas 绘制一致的 display_text 计算（占位符 / 掩码 / 原文）。
         let (display, color) = {
             let state = self.state.read(cx);
-            if state.text.len() == 0 {
+            if state.core.text.len() == 0 {
                 (
                     if self.placeholder.is_empty() {
                         SharedString::default()
@@ -1347,11 +1351,15 @@ impl Element for TextElement {
                 )
             } else if state.masked {
                 (
-                    SharedString::from(MASK_CHAR.to_string().repeat(state.text.chars().count())),
+                    SharedString::from(
+                        MASK_CHAR
+                            .to_string()
+                            .repeat(state.core.text.chars().count()),
+                    ),
                     fg,
                 )
             } else {
-                (state.text.to_string().into(), fg)
+                (state.core.text.to_string().into(), fg)
             }
         };
 
@@ -1381,8 +1389,8 @@ impl Element for TextElement {
                     // 会滞后一帧，在末尾输入时光标偏移超出上一帧布局而落后一个字符。单行输入
                     // 直接按当前「显示文本」测量光标像素位置，与浏览器输入保持同步；仅当光标
                     // 位于文本末尾（无选区）时走此精确路径，光标在中间时仍用 `layout_cursor`。
-                    let at_end = state.cursor() == state.text.len()
-                        && state.selected_range.start == state.selected_range.end;
+                    let at_end = state.cursor() == state.core.text.len()
+                        && state.core.selected_range.start == state.core.selected_range.end;
                     if at_end {
                         let text_size = text_style.font_size.to_pixels(rem_size);
                         let run = TextRun {
@@ -1531,12 +1539,12 @@ impl Element for TextElement {
 
         self.state.update(cx, |state, cx| {
             state.display_map.set_font(font, text_size, cx);
-            state.display_map.ensure_text_prepared(&state.text, cx);
+            state.display_map.ensure_text_prepared(&state.core.text, cx);
         });
 
         let state = self.state.read(cx);
         let multi_line = state.mode.is_multi_line();
-        let text = state.text.clone();
+        let text = state.core.text.clone();
         let is_empty = text.len() == 0;
         let placeholder = self.placeholder.clone();
 
@@ -1594,8 +1602,9 @@ impl Element for TextElement {
 
         let (visible_range, visible_buffer_lines, visible_top) =
             self.calculate_visible_range(&state, line_height, bounds.size.height);
-        let visible_start_offset = state.text.line_start_offset(visible_range.start);
+        let visible_start_offset = state.core.text.line_start_offset(visible_range.start);
         let visible_end_offset = state
+            .core
             .text
             .line_end_offset(visible_range.end.saturating_sub(1));
 
@@ -1610,7 +1619,7 @@ impl Element for TextElement {
 
         let visible_line_byte_offsets: Vec<usize> = visible_buffer_lines
             .iter()
-            .map(|&bl| state.text.line_start_offset(bl))
+            .map(|&bl| state.core.text.line_start_offset(bl))
             .collect();
 
         // 密码输入（masked: true）时，将字节偏移转换为掩码显示字节偏移，
@@ -1669,7 +1678,7 @@ impl Element for TextElement {
 
         let ime_marked_range = ime_marked_display_range(
             &text,
-            state.ime_marked_range.as_ref().map(|m| m.start..m.end),
+            state.core.ime_marked_range.as_ref().map(|m| m.start..m.end),
             state.masked,
         );
 
@@ -1734,7 +1743,8 @@ impl Element for TextElement {
         // 2. 多行且未启用软换行。
         if state.mode.is_single_line() || !state.soft_wrap {
             let longest_row = state.display_map.longest_row();
-            let longest_line: SharedString = state.text.slice_line(longest_row).to_string().into();
+            let longest_line: SharedString =
+                state.core.text.slice_line(longest_row).to_string().into();
             longest_line_width = window
                 .text_system()
                 .shape_line(
@@ -1887,7 +1897,7 @@ impl Element for TextElement {
                 state.focus_handle.clone(),
                 state.show_cursor(window, cx),
                 state.disabled,
-                state.selected_range,
+                state.core.selected_range,
             )
         };
         let focused = focus_handle.is_focused(window);

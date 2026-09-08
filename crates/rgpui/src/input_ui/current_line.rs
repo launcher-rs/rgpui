@@ -26,8 +26,8 @@ impl InputState {
             return;
         }
         let cursor = self.cursor();
-        let row = self.text.offset_to_point(cursor).row;
-        let raw = self.text.line_start_offset(row)..self.text.line_end_offset(row);
+        let row = self.core.text.offset_to_point(cursor).row;
+        let raw = self.core.text.line_start_offset(row)..self.core.text.line_end_offset(row);
         if raw.is_empty() {
             // 空行无可见高亮，直接清空。
             self.clear_current_line(cx);
@@ -40,8 +40,8 @@ impl InputState {
         let decorations = vec![TextDecoration::new(raw, style)];
         // 原地写（借用中调 `set` 会重入 panic）。
         if let Some(collection) = self.current_line_collection.clone() {
-            let decorations = normalize(&self.text, decorations);
-            if collection.set_in_place(&mut self.decorations, decorations) {
+            let decorations = normalize(&self.core.text, decorations);
+            if collection.set_in_place(&mut self.core.decorations, decorations) {
                 cx.notify();
             }
         } else {
@@ -53,7 +53,7 @@ impl InputState {
     /// 清除当前行高亮（保留集合句柄供复用）。
     pub(super) fn clear_current_line(&mut self, cx: &mut Context<Self>) {
         if let Some(collection) = self.current_line_collection.clone() {
-            if collection.clear_in_place(&mut self.decorations) {
+            if collection.clear_in_place(&mut self.core.decorations) {
                 cx.notify();
             }
         }

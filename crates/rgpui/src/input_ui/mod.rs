@@ -23,6 +23,8 @@ mod clear_button;
 mod content_type;
 /// 输入框右键菜单（默认菜单 + 用户自定义），见 [`InputContextMenuBuilder`]。
 pub mod context_menu;
+/// 文本核心：表单与编辑器共享的文本地基（P1 抽核，见设计文档）。
+mod core;
 /// 当前行高亮，见 [`InputState::current_line_highlight`]。
 /// `editor` feature 门控。
 #[cfg(feature = "editor")]

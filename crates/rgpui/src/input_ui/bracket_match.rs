@@ -136,15 +136,15 @@ impl InputState {
             background_color: Some(bracket_color(cx)),
             ..Default::default()
         };
-        let decorations: Vec<TextDecoration> = find_bracket_match(&self.text, self.cursor())
+        let decorations: Vec<TextDecoration> = find_bracket_match(&self.core.text, self.cursor())
             .into_iter()
             .flat_map(|(a, b)| [a, b])
             .map(|range| TextDecoration::new(range, style))
             .collect();
         // 原地写（借用中调 `set` 会重入 panic，见模块文档）。
         if let Some(collection) = self.bracket_match_collection.clone() {
-            let decorations = normalize(&self.text, decorations);
-            if collection.set_in_place(&mut self.decorations, decorations) {
+            let decorations = normalize(&self.core.text, decorations);
+            if collection.set_in_place(&mut self.core.decorations, decorations) {
                 cx.notify();
             }
         } else if !decorations.is_empty() {
@@ -156,7 +156,7 @@ impl InputState {
     /// 清除括号匹配高亮（保留集合句柄供复用，原地写以兼容借用中调用）。
     pub(super) fn clear_bracket_match(&mut self, cx: &mut Context<Self>) {
         if let Some(collection) = self.bracket_match_collection.clone() {
-            if collection.clear_in_place(&mut self.decorations) {
+            if collection.clear_in_place(&mut self.core.decorations) {
                 cx.notify();
             }
         }

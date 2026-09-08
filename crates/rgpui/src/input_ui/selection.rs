@@ -13,12 +13,12 @@ impl InputState {
     ///
     /// 偏移量为 UTF-8 偏移量。
     pub(super) fn select_word(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(range) = TextSelector::word_range(&self.text, offset) else {
+        let Some(range) = TextSelector::word_range(&self.core.text, offset) else {
             return;
         };
 
-        self.selected_range = (range.start..range.end).into();
-        self.selected_word_range = Some(self.selected_range);
+        self.core.selected_range = (range.start..range.end).into();
+        self.selected_word_range = Some(self.core.selected_range);
         #[cfg(feature = "editor")]
         self.clear_extra_cursors(cx);
         cx.notify()
@@ -28,8 +28,8 @@ impl InputState {
     ///
     /// 偏移量为 UTF-8 偏移量。
     pub(super) fn select_line(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
-        let range = TextSelector::line_range(&self.text, offset);
-        self.selected_range = (range.start..range.end).into();
+        let range = TextSelector::line_range(&self.core.text, offset);
+        self.core.selected_range = (range.start..range.end).into();
         self.selected_word_range = None;
         #[cfg(feature = "editor")]
         self.clear_extra_cursors(cx);

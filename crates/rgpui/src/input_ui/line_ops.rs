@@ -27,10 +27,10 @@ impl InputState {
         self.collapse_for_line_op(cx);
         let (start_row, end_row) = self.target_rows();
         let chunk = self.rows_text(start_row, end_row);
-        let insert_at = self.text.line_end_offset(end_row);
+        let insert_at = self.core.text.line_end_offset(end_row);
         let insertion = format!("\n{chunk}");
         // 快照选区：`replace` 会把选区塌缩到插入末尾，后续位置都按快照算。
-        let sel: Range<usize> = self.selected_range.into();
+        let sel: Range<usize> = self.core.selected_range.into();
         self.replace_text_in_range_silent(
             Some(self.range_to_utf16(&(insert_at..insert_at))),
             &insertion,
@@ -39,8 +39,8 @@ impl InputState {
         );
         // 复刻块紧跟原文之后，光标/选区整体后移一个插入块。
         let shift = insertion.len();
-        self.selected_range = (sel.start + shift..sel.end + shift).into();
-        self.selection_reversed = false;
+        self.core.selected_range = (sel.start + shift..sel.end + shift).into();
+        self.core.selection_reversed = false;
         cx.notify();
     }
 
@@ -58,11 +58,15 @@ impl InputState {
         let (start_row, end_row) = self.target_rows();
         let range = self.block_range(start_row, end_row);
         self.replace_text_in_range_silent(Some(self.range_to_utf16(&range)), "", window, cx);
-        let last = self.text.lines_len().saturating_sub(1);
+        let last = self.core.text.lines_len().saturating_sub(1);
         let row = start_row.min(last);
-        let offset = self.text.line_start_offset(row).min(self.text.len());
-        self.selected_range = (offset..offset).into();
-        self.selection_reversed = false;
+        let offset = self
+            .core
+            .text
+            .line_start_offset(row)
+            .min(self.core.text.len());
+        self.core.selected_range = (offset..offset).into();
+        self.core.selection_reversed = false;
         cx.notify();
     }
 
@@ -83,9 +87,10 @@ impl InputState {
         }
         let prev = self.rows_text(start_row - 1, start_row - 1);
         let block = self.rows_text(start_row, end_row);
-        let range = self.text.line_start_offset(start_row - 1)..self.text.line_end_offset(end_row);
+        let range = self.core.text.line_start_offset(start_row - 1)
+            ..self.core.text.line_end_offset(end_row);
         let replacement = format!("{block}\n{prev}");
-        let sel: Range<usize> = self.selected_range.into();
+        let sel: Range<usize> = self.core.selected_range.into();
         self.replace_text_in_range_silent(
             Some(self.range_to_utf16(&range)),
             &replacement,
@@ -94,9 +99,9 @@ impl InputState {
         );
         // 整块上移一个“上一行 + 换行”的长度。
         let shift = prev.len() + 1;
-        self.selected_range =
+        self.core.selected_range =
             (sel.start.saturating_sub(shift)..sel.end.saturating_sub(shift)).into();
-        self.selection_reversed = false;
+        self.core.selection_reversed = false;
         cx.notify();
     }
 
@@ -117,9 +122,10 @@ impl InputState {
         }
         let next = self.rows_text(end_row + 1, end_row + 1);
         let block = self.rows_text(start_row, end_row);
-        let range = self.text.line_start_offset(start_row)..self.text.line_end_offset(end_row + 1);
+        let range = self.core.text.line_start_offset(start_row)
+            ..self.core.text.line_end_offset(end_row + 1);
         let replacement = format!("{next}\n{block}");
-        let sel: Range<usize> = self.selected_range.into();
+        let sel: Range<usize> = self.core.selected_range.into();
         self.replace_text_in_range_silent(
             Some(self.range_to_utf16(&range)),
             &replacement,
@@ -128,8 +134,8 @@ impl InputState {
         );
         // 整块下移一个“下一行 + 换行”的长度。
         let shift = next.len() + 1;
-        self.selected_range = (sel.start + shift..sel.end + shift).into();
-        self.selection_reversed = false;
+        self.core.selected_range = (sel.start + shift..sel.end + shift).into();
+        self.core.selection_reversed = false;
         cx.notify();
     }
 
@@ -152,9 +158,9 @@ impl InputState {
         // 先收集各非空行的缩进末尾与是否已注释（只读阶段，不动文本）。
         let mut rows = Vec::new();
         for row in start_row..=end_row {
-            let line_start = self.text.line_start_offset(row);
-            let line_end = self.text.line_end_offset(row);
-            let line = self.text.slice(line_start..line_end).to_string();
+            let line_start = self.core.text.line_start_offset(row);
+            let line_end = self.core.text.line_end_offset(row);
+            let line = self.core.text.slice(line_start..line_end).to_string();
             let indent_len = line.len() - line.trim_start().len();
             if line.trim().is_empty() {
                 continue;
@@ -166,15 +172,15 @@ impl InputState {
             return;
         }
         let uncomment = rows.iter().all(|(_, _, commented)| *commented);
-        let sel: Range<usize> = self.selected_range.into();
+        let sel: Range<usize> = self.core.selected_range.into();
         let mut cursor = sel.start;
         let mut sel_end = sel.end;
         // 自下而上编辑，偏移不失效；光标/选区按编辑增量跟随。
         for (row, pos, _) in rows.iter().rev() {
             if uncomment {
-                let line_start = self.text.line_start_offset(*row);
-                let line_end = self.text.line_end_offset(*row);
-                let line = self.text.slice(line_start..line_end).to_string();
+                let line_start = self.core.text.line_start_offset(*row);
+                let line_end = self.core.text.line_end_offset(*row);
+                let line = self.core.text.slice(line_start..line_end).to_string();
                 let indent_len = line.len() - line.trim_start().len();
                 let mut remove_end = *pos + prefix.len();
                 if line[indent_len + prefix.len()..].starts_with(' ') {
@@ -201,8 +207,8 @@ impl InputState {
                 sel_end = shift_for_edit(sel_end, *pos, 0, insertion.len());
             }
         }
-        self.selected_range = (cursor..sel_end).into();
-        self.selection_reversed = false;
+        self.core.selected_range = (cursor..sel_end).into();
+        self.core.selection_reversed = false;
         cx.notify();
     }
 
@@ -221,7 +227,7 @@ impl InputState {
         self.collapse_for_line_op(cx);
         let (mut start_row, mut end_row) = self.target_rows();
         let last = self.effective_line_count().saturating_sub(1);
-        if self.selected_range.is_empty() {
+        if self.core.selected_range.is_empty() {
             end_row = (start_row + 1).min(last);
         } else {
             end_row = end_row.min(last);
@@ -233,8 +239,9 @@ impl InputState {
         let mut parts = Vec::new();
         for row in start_row..=end_row {
             let line = self
+                .core
                 .text
-                .slice(self.text.line_start_offset(row)..self.text.line_end_offset(row))
+                .slice(self.core.text.line_start_offset(row)..self.core.text.line_end_offset(row))
                 .to_string();
             let trimmed = line.trim().to_string();
             if !trimmed.is_empty() || parts.is_empty() {
@@ -242,13 +249,14 @@ impl InputState {
             }
         }
         let joined = parts.join(" ");
-        let range = self.text.line_start_offset(start_row)..self.text.line_end_offset(end_row);
-        let sel: Range<usize> = self.selected_range.into();
+        let range =
+            self.core.text.line_start_offset(start_row)..self.core.text.line_end_offset(end_row);
+        let sel: Range<usize> = self.core.selected_range.into();
         self.replace_text_in_range_silent(Some(self.range_to_utf16(&range)), &joined, window, cx);
         // 光标保持原行内位置，钳制到合并后的行内。
         let cursor = sel.start.max(range.start).min(range.start + joined.len());
-        self.selected_range = (cursor..cursor).into();
-        self.selection_reversed = false;
+        self.core.selected_range = (cursor..cursor).into();
+        self.core.selection_reversed = false;
         cx.notify();
     }
 
@@ -271,19 +279,23 @@ impl InputState {
 
     /// 选区覆盖的目标行（闭区间），含选区结尾行首排除与末尾幻影行钳制。
     fn target_rows(&self) -> (usize, usize) {
-        let sel: Range<usize> = self.selected_range.into();
+        let sel: Range<usize> = self.core.selected_range.into();
         let last = self.effective_line_count().saturating_sub(1);
         let start_row = self
+            .core
             .text
-            .offset_to_point(sel.start.min(self.text.len()))
+            .offset_to_point(sel.start.min(self.core.text.len()))
             .row
             .min(last);
         let mut end_row = self
+            .core
             .text
-            .offset_to_point(sel.end.min(self.text.len()))
+            .offset_to_point(sel.end.min(self.core.text.len()))
             .row
             .min(last);
-        if !sel.is_empty() && sel.end == self.text.line_start_offset(end_row) && end_row > start_row
+        if !sel.is_empty()
+            && sel.end == self.core.text.line_start_offset(end_row)
+            && end_row > start_row
         {
             end_row -= 1;
         }
@@ -292,10 +304,10 @@ impl InputState {
 
     /// 有效行数（文档末尾的空幻影行不计入，避免移行/合并行撞上空行）。
     fn effective_line_count(&self) -> usize {
-        let count = self.text.lines_len();
+        let count = self.core.text.lines_len();
         if count > 1 {
-            let last_start = self.text.line_start_offset(count - 1);
-            if last_start == self.text.len() {
+            let last_start = self.core.text.line_start_offset(count - 1);
+            if last_start == self.core.text.len() {
                 return count - 1;
             }
         }
@@ -311,8 +323,11 @@ impl InputState {
             }
             out.push_str(
                 &self
+                    .core
                     .text
-                    .slice(self.text.line_start_offset(row)..self.text.line_end_offset(row))
+                    .slice(
+                        self.core.text.line_start_offset(row)..self.core.text.line_end_offset(row),
+                    )
                     .to_string(),
             );
         }
@@ -321,13 +336,14 @@ impl InputState {
 
     /// 目标行块的字节范围（含换行：优先吞后换行，末行吞前换行）。
     pub(super) fn block_range(&self, start_row: usize, end_row: usize) -> Range<usize> {
-        let line_count = self.text.lines_len();
+        let line_count = self.core.text.lines_len();
         if end_row + 1 < line_count {
-            self.text.line_start_offset(start_row)..self.text.line_start_offset(end_row + 1)
+            self.core.text.line_start_offset(start_row)
+                ..self.core.text.line_start_offset(end_row + 1)
         } else if start_row > 0 {
-            self.text.line_end_offset(start_row - 1)..self.text.len()
+            self.core.text.line_end_offset(start_row - 1)..self.core.text.len()
         } else {
-            0..self.text.len()
+            0..self.core.text.len()
         }
     }
 }

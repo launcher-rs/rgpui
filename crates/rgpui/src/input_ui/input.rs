@@ -447,7 +447,7 @@ impl RenderOnce for Input {
         // 因此当没有客户端监听时跳过它。
         let accessibility_value = (window.is_a11y_active()
             && Self::exposes_accessibility_value(state.masked, content_type))
-        .then(|| state.text.to_string());
+        .then(|| state.core.text.to_string());
         let focused = state.focus_handle.is_focused(window) && !state.disabled;
         if focused {
             sync_native_content_type(window, content_type, state.disabled);
@@ -477,7 +477,7 @@ impl RenderOnce for Input {
         let show_clear_button = self.cleanable
             && !state.disabled
             && !state.loading
-            && state.text.len() > 0
+            && state.core.text.len() > 0
             && state.mode.is_single_line();
         let has_suffix = suffix.is_some() || state.loading || self.mask_toggle || show_clear_button;
 

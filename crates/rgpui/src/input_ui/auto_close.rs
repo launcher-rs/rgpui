@@ -60,20 +60,20 @@ pub(super) fn handle_typed_char(
     window: &mut Window,
     cx: &mut Context<InputState>,
 ) -> bool {
-    let sel: Range<usize> = state.selected_range.into();
+    let sel: Range<usize> = state.core.selected_range.into();
     let cursor = state.cursor();
-    let next = state.text.slice(cursor..).chars().next();
+    let next = state.core.text.slice(cursor..).chars().next();
 
     // 有选区时用括号环绕选区。
     if !sel.is_empty()
         && let Some(close) = matching_closer(typed)
     {
-        let selected = state.text.slice(sel.clone()).to_string();
+        let selected = state.core.text.slice(sel.clone()).to_string();
         let replacement = format!("{typed}{selected}{close}");
         state.replace_text_in_range_raw(Some(state.range_to_utf16(&sel)), &replacement, window, cx);
         let end = sel.start + replacement.len();
-        state.selected_range = (end..end).into();
-        state.selection_reversed = false;
+        state.core.selected_range = (end..end).into();
+        state.core.selection_reversed = false;
         cx.notify();
         return true;
     }
@@ -81,8 +81,8 @@ pub(super) fn handle_typed_char(
     // 右括号且光标后是同一右括号：跳过而非插入。
     if sel.is_empty() && matching_opener(typed).is_some() && next == Some(typed) {
         let next_len = typed.len_utf8();
-        state.selected_range = (cursor + next_len..cursor + next_len).into();
-        state.selection_reversed = false;
+        state.core.selected_range = (cursor + next_len..cursor + next_len).into();
+        state.core.selection_reversed = false;
         cx.notify();
         return true;
     }
@@ -102,8 +102,8 @@ pub(super) fn handle_typed_char(
             cx,
         );
         let middle = cursor + typed.len_utf8();
-        state.selected_range = (middle..middle).into();
-        state.selection_reversed = false;
+        state.core.selected_range = (middle..middle).into();
+        state.core.selection_reversed = false;
         cx.notify();
         return true;
     }
@@ -115,12 +115,12 @@ pub(super) fn handle_typed_char(
 ///
 /// 调用方（`backspace`）：有范围则直接删并返回，否则走正常退格。
 pub(super) fn smart_backspace_range(state: &InputState) -> Option<Range<usize>> {
-    if !auto_close_applies(state) || !state.selected_range.is_empty() {
+    if !auto_close_applies(state) || !state.core.selected_range.is_empty() {
         return None;
     }
     let cursor = state.cursor();
-    let prev = state.text.slice(..cursor).chars().last()?;
-    let next = state.text.slice(cursor..).chars().next()?;
+    let prev = state.core.text.slice(..cursor).chars().last()?;
+    let next = state.core.text.slice(cursor..).chars().next()?;
     if matching_closer(prev) == Some(next) {
         Some(cursor - prev.len_utf8()..cursor + next.len_utf8())
     } else {
