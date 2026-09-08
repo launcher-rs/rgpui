@@ -29,7 +29,6 @@ use super::{
     DisplayMap, LastLayout, MASK_CHAR, Position, RopeExt as _, Selection, WrappingIndent,
     auto_scroll::AutoScroll,
     blink_cursor::{BlinkCursor, CURSOR_WIDTH},
-    change::Change,
     context_menu::InputContextMenuBuilder,
     core::TextCore,
     element::{EditorScrollbarSnapshot, RIGHT_MARGIN, TextElement},
@@ -2128,21 +2127,6 @@ impl InputState {
         }
     }
 
-    fn push_history(&mut self, text: &Rope, range: &Range<usize>, new_text: &str) {
-        if self.core.history.ignore {
-            return;
-        }
-
-        let range =
-            text.clip_offset(range.start, Bias::Left)..text.clip_offset(range.end, Bias::Right);
-        let old_text = text.slice(range.clone()).to_string();
-        let new_range = range.start..range.start + new_text.len();
-
-        self.core
-            .history
-            .push(Change::new(range, &old_text, new_range, new_text));
-    }
-
     pub(super) fn undo(&mut self, _: &Undo, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only {
             return;
@@ -2741,15 +2725,14 @@ impl InputState {
             .unwrap_or(self.core.selected_range.into());
 
         let old_text = self.core.text.clone();
-        self.core.text.replace(range.clone(), new_text);
 
-        let mut new_offset = (range.start + new_text.len()).min(self.core.text.len());
-
-        // 掩码是否改变了文本，例如重组分隔符或补全前导点。
-        let mut mask_changed = false;
-
+        // 单行校验与掩码需要替换后文本：在克隆上试算，不提交
+        //（原来是提交后回滚；等价，且无中间状态）。
+        let mut masked: Option<(SharedString, usize)> = None;
         if self.mode.is_single_line() {
-            let pending_text = self.core.text.to_string();
+            let mut trial = old_text.clone();
+            trial.replace(range.clone(), new_text);
+            let pending_text = trial.to_string();
             // 检查新文本是否合法。
             //
             // 仅在旧文本合法时拒绝该编辑，以避免陷入预先存在的非法文本
@@ -2757,35 +2740,33 @@ impl InputState {
             if !self.is_valid_input(&pending_text, cx)
                 && self.is_valid_input(&old_text.to_string(), cx)
             {
-                self.core.text = old_text;
                 return;
             }
 
             if !self.mask_pattern.is_none() {
                 let mask_text = self.mask_pattern.mask(&pending_text);
-                mask_changed = mask_text.as_str() != pending_text;
-                self.core.text = Rope::from(mask_text.as_str());
-                let new_text_len =
-                    (new_text.len() + mask_text.len()).saturating_sub(pending_text.len());
-                new_offset = (range.start + new_text_len).min(mask_text.len());
+                // 掩码是否改变了文本，例如重组分隔符或补全前导点。
+                if mask_text.as_str() != pending_text {
+                    masked = Some((mask_text, pending_text.len()));
+                }
             }
         }
 
-        if mask_changed {
+        let new_offset = if let Some((mask_text, pending_len)) = masked {
+            // 掩码改写路径（表单专用）：提交替换→重写掩码文本→清空装饰→
+            // 整文档历史（基于段的历史条目不再匹配掩码后文档）。
+            self.core.text.replace(range.clone(), new_text);
+            self.core.text = Rope::from(mask_text.as_str());
             self.core.decorations.clear();
-        } else {
+            let final_text = self.core.text.to_string();
             self.core
-                .decorations
-                .adjust_for_edit(&range, new_text.len());
-        }
-        if mask_changed {
-            // 基于段的撤销历史条目不再匹配掩码后的文档，
-            // 改为记录整文档变更，使撤销/重做能精确恢复文本。
-            self.push_history(&old_text, &(0..old_text.len()), &self.core.text.to_string());
+                .push_history(&old_text, &(0..old_text.len()), &final_text);
+            self.core.history.end_grouping();
+            let new_text_len = (new_text.len() + final_text.len()).saturating_sub(pending_len);
+            (range.start + new_text_len).min(final_text.len())
         } else {
-            self.push_history(&old_text, &range, &new_text);
-        }
-        self.core.history.end_grouping();
+            self.core.apply_replace(range.clone(), new_text)
+        };
         // 调整折叠后再更新换行映射：移除重叠折叠并移动其他折叠。
         self.display_map
             .adjust_folds_for_edit(&old_text, &range, new_text);
@@ -2970,7 +2951,7 @@ impl EntityInputHandler for InputState {
         }
         self.mode.update_auto_grow(&self.display_map);
         self.core.history.start_grouping();
-        self.push_history(&old_text, &range, new_text);
+        self.core.push_history(&old_text, &range, new_text);
         // IME 合成同样改变文本，高亮/折叠候选必须同步刷新，否则 stale 范围
         // 在布局切分 runs 时可能落在多字节字符内部导致 panic
         //（`editor` feature 门控）。

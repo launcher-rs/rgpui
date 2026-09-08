@@ -10,6 +10,9 @@ use super::change::Change;
 use super::cursor::Selection;
 use super::decorations::DecorationCollections;
 use super::history::History;
+use super::rope_ext::RopeExt as _;
+use crate::sum_tree::Bias;
+use std::ops::Range;
 
 /// 共享文本核：纯数据 + 无界面依赖的操作。
 ///
@@ -56,6 +59,38 @@ impl TextCore {
             self.selected_range.end
         }
     }
+
+    /// 记录一次撤销历史条目（`ignore` 时跳过）。
+    pub(super) fn push_history(&mut self, old_text: &Rope, range: &Range<usize>, new_text: &str) {
+        if self.history.ignore {
+            return;
+        }
+
+        let range = old_text.clip_offset(range.start, Bias::Left)
+            ..old_text.clip_offset(range.end, Bias::Right);
+        let old_snippet = old_text.slice(range.clone()).to_string();
+        let new_range = range.start..range.start + new_text.len();
+
+        self.history
+            .push(Change::new(range, &old_snippet, new_range, new_text));
+    }
+
+    /// 应用一次文本替换（正常路径；调用方已完成规范化/校验/掩码判定）。
+    ///
+    /// 做：文本替换、装饰跟随、历史记录（除非 `ignore`）、分组结束、
+    /// 选区坍缩到落点、清除 IME 标记。返回落点偏移供调用方做视图更新；
+    /// 替换前文本调用方自持有（display_map/折叠调整用）。
+    pub(super) fn apply_replace(&mut self, range: Range<usize>, new_text: &str) -> usize {
+        let old_text = self.text.clone();
+        self.text.replace(range.clone(), new_text);
+        let new_offset = (range.start + new_text.len()).min(self.text.len());
+        self.decorations.adjust_for_edit(&range, new_text.len());
+        self.push_history(&old_text, &range, new_text);
+        self.history.end_grouping();
+        self.selected_range = (new_offset..new_offset).into();
+        self.ime_marked_range.take();
+        new_offset
+    }
 }
 
 #[cfg(test)]
@@ -82,5 +117,38 @@ mod tests {
         assert_eq!(core.cursor(), 2);
         core.ime_marked_range = Some(Selection::new(1, 4));
         assert_eq!(core.cursor(), 4);
+    }
+
+    /// apply_replace：替换文本、坍缩选区、清 IME 标记、记历史。
+    #[test]
+    fn apply_replace_basic() {
+        let mut core = TextCore::new();
+        core.text = Rope::from("hello world");
+        let new_offset = core.apply_replace(6..11, "rgpui");
+        assert_eq!(core.text.to_string(), "hello rgpui");
+        assert_eq!(new_offset, 11);
+        assert_eq!(core.cursor(), 11);
+        assert!(core.ime_marked_range.is_none());
+        // 撤销回到原文（历史条目正确）。
+        let changes = core.history.undo().expect("has undo");
+        assert_eq!(changes.len(), 1);
+        let change = &changes[0];
+        let mut text = core.text.clone();
+        let range = change.new_range.start..change.new_range.end;
+        text.replace(range, &change.old_text);
+        assert_eq!(text.to_string(), "hello world");
+    }
+
+    /// push_history 的 ignore 开关：撤销路径不重复记录。
+    #[test]
+    fn push_history_respects_ignore() {
+        let mut core = TextCore::new();
+        core.text = Rope::from("abc");
+        core.history.ignore = true;
+        core.push_history(&core.text.clone(), &(1..2), "X");
+        assert!(core.history.undo().is_none());
+        core.history.ignore = false;
+        core.push_history(&core.text.clone(), &(1..2), "X");
+        assert!(core.history.undo().is_some());
     }
 }
