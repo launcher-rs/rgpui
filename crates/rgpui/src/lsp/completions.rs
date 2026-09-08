@@ -157,10 +157,10 @@ impl CompletionState {
                 let insert_text = item
                     .text_edit
                     .as_ref()
-                    .and_then(|edit| match edit {
-                        lsp_types::CompletionTextEdit::Edit(edit) => Some(edit.new_text.clone()),
+                    .map(|edit| match edit {
+                        lsp_types::CompletionTextEdit::Edit(edit) => edit.new_text.clone(),
                         lsp_types::CompletionTextEdit::InsertAndReplace(edit) => {
-                            Some(edit.new_text.clone())
+                            edit.new_text.clone()
                         }
                     })
                     .unwrap_or_else(|| item.label.clone());

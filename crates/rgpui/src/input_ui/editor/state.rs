@@ -7,15 +7,18 @@
 use std::ops::Range;
 
 use super::super::InputState;
+use super::lsp_attach::LspAttach;
 use crate::highlight::{DocumentSymbol, Highlighter};
 use crate::{App, AppContext as _, Context, Entity, SharedString, Window};
 
 /// 代码编辑器状态（`cx.new` 持有，`Editor` 组件消费）。
 pub struct EditorState {
     /// 内部输入实体（唯一真相源，代码编辑配置）。
-    input: Entity<InputState>,
+    pub(super) input: Entity<InputState>,
     /// 大纲缓存（文本变更时刷新，`outline()` 读取）。
     outline: Vec<DocumentSymbol>,
+    /// LSP 接入状态（provider + 补全/诊断/悬停，见 `lsp_attach.rs`）。
+    pub(super) lsp: LspAttach,
 }
 
 impl EditorState {
@@ -41,6 +44,7 @@ impl EditorState {
         let mut this = Self {
             input,
             outline: Vec::new(),
+            lsp: LspAttach::new(cx.new(|_| crate::lsp::CompletionPopupState::default())),
         };
         this.refresh_outline(cx);
         // 文本一改就刷新大纲。

@@ -30,5 +30,7 @@ name = "context_menu"
 path = "src/bin/context_menu.rs"
 
 [dependencies]
+anyhow.workspace = true
+lsp-types.workspace = true
 rgpui = { workspace = true, features = ["tree-sitter", "editor"] }
 rgpui-platform.workspace = true

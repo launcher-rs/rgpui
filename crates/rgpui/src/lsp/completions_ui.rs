@@ -10,9 +10,11 @@
 //! CompletionPopup::new(popup_state)
 //! ```
 
+use std::rc::Rc;
+
 use crate::{
-    Context, Entity, InteractiveElement, IntoElement, ParentElement, Pixels, Render, Styled,
-    StyledExt, Window, div, h_flex, px,
+    App, Context, Entity, InteractiveElement, IntoElement, ParentElement, Pixels, Render,
+    RenderOnce, StatefulInteractiveElement, Styled, StyledExt, Window, div, h_flex, px,
 };
 
 use super::completions::{Completion, CompletionMenuOptions, CompletionState};
@@ -75,20 +77,33 @@ impl CompletionPopupState {
 }
 
 /// 补全弹窗组件。
+#[derive(IntoElement)]
 pub struct CompletionPopup {
     state: Entity<CompletionPopupState>,
+    /// 行点击回调（参数为条目索引；应用层回写 `accept_completion`）。
+    on_select: Option<Rc<dyn Fn(usize, &mut Window, &mut App)>>,
 }
 
 impl CompletionPopup {
     /// 创建新的补全弹窗。
     pub fn new(state: Entity<CompletionPopupState>) -> Self {
-        Self { state }
+        Self {
+            state,
+            on_select: None,
+        }
+    }
+
+    /// 设置行点击回调（不设置则行不可点，仅展示）。
+    pub fn on_select(mut self, handler: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
+        self.on_select = Some(Rc::new(handler));
+        self
     }
 }
 
-impl Render for CompletionPopup {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl RenderOnce for CompletionPopup {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let state = self.state.read(cx);
+        let on_select = self.on_select.clone();
 
         if !state.visible || state.completions.is_empty() {
             return div().into_element();
@@ -104,6 +119,7 @@ impl Render for CompletionPopup {
             .enumerate()
             .map(|(i, completion)| {
                 let is_selected = i == state.selected_index;
+                let on_select = on_select.clone();
 
                 let kind_label = completion.kind.map(|k| {
                     let name = match k {
@@ -144,7 +160,8 @@ impl Render for CompletionPopup {
                     crate::gray_900()
                 };
 
-                h_flex()
+                let row = h_flex()
+                    .id(("completion-item", i))
                     .w_full()
                     .px_2()
                     .py_1()
@@ -154,7 +171,15 @@ impl Render for CompletionPopup {
                     .items_center()
                     .children(kind_label)
                     .child(label)
-                    .children(detail)
+                    .children(detail);
+                // 有回调才挂点击（纯展示时行不可点）。
+                if let Some(on_select) = on_select {
+                    row.cursor_pointer().on_click(move |_, window, cx| {
+                        on_select(i, window, cx);
+                    })
+                } else {
+                    row
+                }
             })
             .collect();
 

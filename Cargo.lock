@@ -8985,6 +8985,8 @@ dependencies = [
 name = "v1_2_showcase"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "lsp-types",
  "rgpui",
  "rgpui-platform",
 ]

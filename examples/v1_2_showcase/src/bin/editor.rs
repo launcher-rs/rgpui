@@ -3,13 +3,20 @@
 //! 主窗格走编辑器状态（多行 + 行号/折叠配置/大纲缓存/符号跳转/高亮接入内聚在
 //! `EditorState` 里，渲染走 `Editor` 自带行号列号状态行）；只读窗格保留表单
 //! `Input` 做对照。tree-sitter 高亮/折叠 + 行操作 + 多光标（键位来自全局
-//! `init_all` 默认注册）。
+//! `init_all` 默认注册）。LSP 区接三个假 provider（补全/诊断/悬停，传输层
+//! 由真应用实现后注入，见 `EditorState::set_*_provider`）。
 
 #![cfg_attr(target_family = "wasm", no_main)]
+
+use std::rc::Rc;
 
 use rgpui::{
     App, Bounds, Context, Render, Window, WindowBounds, WindowOptions, div, h_flex,
     input_ui::{Editor, EditorState, InputEvent, InputState, TextArea},
+    lsp::{
+        CompletionProvider, DiagnosticEntry, DiagnosticsProvider, HoverContent, HoverProvider,
+        HoverResponse,
+    },
     prelude::*,
     px, rgb, size, v_flex,
 };
@@ -18,6 +25,124 @@ use rgpui_platform::application;
 const SAMPLE: &str = "fn main() {\n    let name = \"rgpui\";\n    println!(\"hello, {name}\");\n}\n\nstruct Point {\n    x: f32,\n    y: f32,\n}\n\nimpl Point {\n    fn len(&self) -> f32 {\n        (self.x * self.x + self.y * self.y).sqrt()\n    }\n}\n";
 
 const READONLY_SAMPLE: &str = "只读预览：可选可复制，不可编辑。右键菜单的剪切/粘贴/撤销自动禁用。";
+
+/// 演示用假补全 provider：固定词表（真 provider 由应用实现传输后注入）。
+struct DemoCompletionProvider;
+
+impl CompletionProvider for DemoCompletionProvider {
+    fn completions(
+        &self,
+        _text: &rgpui::input_ui::Rope,
+        _offset: usize,
+        _trigger: lsp_types::CompletionContext,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<lsp_types::CompletionResponse>> {
+        rgpui::Task::ready(Ok(lsp_types::CompletionResponse::Array(
+            ["println", "print", "private", "pub", "Point"]
+                .into_iter()
+                .map(|label| lsp_types::CompletionItem {
+                    label: label.to_string(),
+                    kind: Some(lsp_types::CompletionItemKind::FUNCTION),
+                    detail: Some("演示词条".to_string()),
+                    ..Default::default()
+                })
+                .collect(),
+        )))
+    }
+}
+
+/// 演示用假诊断 provider：首行一个 warning（真 provider 按 URI 取数）。
+struct DemoDiagnosticsProvider;
+
+impl DiagnosticsProvider for DemoDiagnosticsProvider {
+    fn diagnostics(
+        &self,
+        _uri: &lsp_types::Uri,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<DiagnosticEntry>>> {
+        use lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
+        rgpui::Task::ready(Ok(vec![DiagnosticEntry::from_diagnostic(Diagnostic {
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 2),
+            },
+            severity: Some(DiagnosticSeverity::WARNING),
+            message: "演示诊断：示例警告（假 provider）".to_string(),
+            ..Default::default()
+        })]))
+    }
+}
+
+/// 演示用假悬停 provider：固定返回代码块 + 文本。
+struct DemoHoverProvider;
+
+impl HoverProvider for DemoHoverProvider {
+    fn hover(
+        &self,
+        _text: &rgpui::input_ui::Rope,
+        offset: usize,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Option<HoverResponse>>> {
+        rgpui::Task::ready(Ok(Some(HoverResponse {
+            range: offset..offset,
+            contents: vec![
+                HoverContent::CodeBlock {
+                    language: "rust".to_string(),
+                    code: "fn main()".to_string(),
+                },
+                HoverContent::Text("演示悬停：假 provider".to_string()),
+            ],
+        })))
+    }
+}
+
+/// 悬停内容首条预览（演示状态行用）。
+fn hover_preview(state: &EditorState) -> String {
+    let hover = state.hover_state();
+    if !hover.visible {
+        return "悬停：未请求".to_string();
+    }
+    let first = hover
+        .response
+        .as_ref()
+        .and_then(|r| r.contents.first())
+        .map(|c| match c {
+            HoverContent::Text(s) | HoverContent::Markdown(s) => s.clone(),
+            HoverContent::CodeBlock { code, .. } => code.clone(),
+        })
+        .unwrap_or_default();
+    format!("悬停：{first}")
+}
+
+/// LSP 操作按钮（演示用样式；`action` 操作内部 `EditorState`）。
+fn lsp_button(
+    demo: &rgpui::Entity<EditorDemo>,
+    id: &'static str,
+    label: &'static str,
+    action: impl Fn(&mut EditorState, &mut Window, &mut Context<EditorState>) + 'static,
+) -> impl IntoElement {
+    let demo = demo.clone();
+    div()
+        .id(id)
+        .px(px(10.0))
+        .py(px(4.0))
+        .rounded_md()
+        .cursor_pointer()
+        .bg(rgb(0x000000).opacity(0.05))
+        .hover(|this| this.bg(rgb(0x000000).opacity(0.1)))
+        .text_xs()
+        .child(label)
+        .on_click(move |_, window, cx| {
+            demo.update(cx, |this, cx| {
+                this.editor.update(cx, |state, cx| {
+                    action(state, window, cx);
+                });
+            });
+        })
+}
 
 struct EditorDemo {
     editor: rgpui::Entity<EditorState>,
@@ -32,6 +157,11 @@ impl EditorDemo {
         editor.update(cx, |state, cx| {
             // 高亮器经编辑器状态透传接入（大纲同步刷新）。
             state.set_highlighter(Some(rgpui::highlight::rust_highlighter()), window, cx);
+            // LSP 假 provider 注入（传输层由真应用实现后替换）。
+            state.set_completion_provider(Some(Rc::new(DemoCompletionProvider)), cx);
+            state.set_diagnostics_provider(Some(Rc::new(DemoDiagnosticsProvider)), cx);
+            state.set_hover_provider(Some(Rc::new(DemoHoverProvider)), cx);
+            state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
         });
         let input = editor.read_with(cx, |state, _| state.input().clone());
         let readonly = cx.new(|cx| {
@@ -69,7 +199,22 @@ impl Render for EditorDemo {
         let symbols = self
             .editor
             .read_with(cx, |state, _| state.outline().to_vec());
+        let (diag_count, hover_text) = self.editor.read_with(cx, |state, _| {
+            (state.diagnostics().len(), hover_preview(state))
+        });
         let demo = cx.entity();
+        // 补全弹窗（相对容器左上角弹出，点击行即确认插入）。
+        let popup = self
+            .editor
+            .read_with(cx, |state, _| state.completion_popup().clone());
+        let demo_for_popup = demo.clone();
+        let popup_el = rgpui::lsp::CompletionPopup::new(popup).on_select(move |ix, window, cx| {
+            demo_for_popup.update(cx, |this, cx| {
+                this.editor.update(cx, |state, cx| {
+                    state.accept_completion(Some(ix), window, cx);
+                });
+            });
+        });
         h_flex()
             .size_full()
             .items_stretch()
@@ -107,7 +252,33 @@ impl Render for EditorDemo {
                          多光标：Ctrl+Alt+↑↓加光标 Alt+点击 ｜ 键入：自动补括号/电缩进/括号匹配/当前行高亮",
                     ),
                 )
-                .child(Editor::new(self.input.clone()).flex_1())
+                .child(
+                    h_flex()
+                        .gap(px(8.0))
+                        .items_center()
+                        .child(lsp_button(&demo, "lsp-complete", "请求补全", |state, window, cx| {
+                            state.request_completions(window, cx);
+                        }))
+                        .child(lsp_button(&demo, "lsp-diagnostics", "请求诊断", |state, window, cx| {
+                            state.request_diagnostics(window, cx);
+                        }))
+                        .child(lsp_button(&demo, "lsp-hover", "悬停光标处", |state, window, cx| {
+                            let offset = state.cursor(cx);
+                            state.request_hover(offset, window, cx);
+                        }))
+                        .child(
+                            div()
+                                .text_xs()
+                                .child(format!("诊断 {diag_count} ｜ {hover_text}")),
+                        ),
+                )
+                .child(
+                    div()
+                        .relative()
+                        .flex_1()
+                        .child(Editor::new(self.input.clone()).flex_1())
+                        .child(popup_el),
+                )
                 .child(div().text_xs().child("只读预览（TextArea）："))
                 .child(TextArea::new(&self.readonly).read_only(true)),
         )

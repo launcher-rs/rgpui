@@ -27,6 +27,10 @@
   状态行）；`InputMode::CodeEditor` 删除，`TextArea` 补为表单多行；差集透传
   `set_value`/`reveal_*`/`set_read_only`/`set_line_comment_prefix`/`set_highlighter`/
   `goto_symbol`（高亮/写入补刷大纲）；`input/state.rs` 新功能冻结
+- **LSP 编辑器侧接线**（`editor/lsp_attach.rs`，拉模型）：`set_completion/diagnostics/hover_provider`
+  注入（传输层由应用实现后注入）+ epoch 防抖触发 + 补全弹窗状态同步（`CompletionPopup::on_select`
+  点击确认）+ 诊断下划线装饰（错误波浪红/警告直线黄）；`editor` 演示页接假 provider 可点；
+  `editor` feature 蕴含 `lsp`
 
 - **`cx.debounce` 方法版**：`App` 全局防抖注册表 + key 隔离（`Debouncer` 结构版保留）
 - **tree-sitter 后端**（`--features tree-sitter`，默认关，wasm 禁用）：Rust 单语言
