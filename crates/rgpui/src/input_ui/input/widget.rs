@@ -10,9 +10,10 @@ use crate::{
     Button, ButtonVariants as _, Selectable, Sizable, Spinner, StyleSized as _, h_flex, v_flex,
 };
 
+use super::super::context_menu::InputContextMenuBuilder;
 use super::{
     CONTEXT, InputContentType, InputState, content_type::sync_native_content_type,
-    context_menu::InputContextMenuBuilder, element::EditorScrollbar,
+    element::EditorScrollbar,
 };
 
 /// 返回输入类组件的 `(背景, 前景)` 颜色。

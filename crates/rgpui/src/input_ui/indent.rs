@@ -6,7 +6,7 @@ use ropey::RopeSlice;
 
 use super::{
     Indent, IndentInline, InputState, LastLayout, Outdent, OutdentInline, RopeExt as _,
-    element::TextElement, mode::InputMode,
+    input::element::TextElement, input::mode::InputMode,
 };
 
 /// 制表符大小设置，用于缩进计算。

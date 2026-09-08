@@ -4,8 +4,8 @@ use rgpui::sum_tree::Bias;
 use rgpui::{Context, Window};
 use ropey::Rope;
 
+use super::input::state::InputState;
 use super::rope_ext::RopeExt as _;
-use super::state::InputState;
 use super::word_selection::word_range_from_chars;
 
 impl InputState {

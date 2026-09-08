@@ -17,15 +17,16 @@ use crate::theme::ActiveTheme as _;
 #[cfg(feature = "dom-backend")]
 use crate::{DomNode, DomNodeKind, DomStyle};
 
-use super::{
-    InputState, LastLayout, MASK_CHAR, RopeExt as _, TextDecoration, WhitespaceIndicators,
-    blink_cursor::CURSOR_WIDTH, display_map::LineLayout, mode::InputMode,
+use super::super::{
+    LastLayout, MASK_CHAR, RopeExt as _, TextDecoration, WhitespaceIndicators,
+    blink_cursor::CURSOR_WIDTH, display_map::LineLayout,
 };
+use super::{InputState, mode::InputMode};
 
 const BOTTOM_MARGIN_ROWS: usize = 3;
 pub(super) const RIGHT_MARGIN: Pixels = px(10.);
-pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(10.);
-pub(super) const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
+pub(crate) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(10.);
+pub(crate) const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
 
 /// 将文本装饰范围限制在可见范围内并合并样式。
 fn compose_decorations(
@@ -328,7 +329,7 @@ fn empty_bottom_height(
 }
 
 /// 文本元素，负责渲染输入框中的文本、光标、选区、行号与折叠图标。
-pub(super) struct TextElement {
+pub(crate) struct TextElement {
     pub(crate) state: Entity<InputState>,
     placeholder: SharedString,
 }
@@ -557,7 +558,7 @@ impl TextElement {
 
         // 额外光标边界（多光标，与主光标同尺寸同滚动；`editor` feature 门控）。
         #[cfg(feature = "editor")]
-        let extra_cursor_bounds = super::editor_ui::extra_cursor_bounds(
+        let extra_cursor_bounds = super::super::editor::editor_ui::extra_cursor_bounds(
             state,
             &caret_for,
             bounds,
@@ -1099,7 +1100,7 @@ impl TextElement {
 }
 
 /// 文本元素的预绘制状态。
-pub(super) struct PrepaintState {
+pub(crate) struct PrepaintState {
     /// 整个行的布局。
     last_layout: LastLayout,
     /// 仅包含视口中可见行的行号（基于 `visible_range`）。
@@ -1120,7 +1121,7 @@ pub(super) struct PrepaintState {
     bounds: Bounds<Pixels>,
     /// 折叠图标布局数据（`editor` feature 门控，类型见 `editor_ui`）。
     #[cfg(feature = "editor")]
-    fold_icon_layout: super::editor_ui::FoldIconLayout,
+    fold_icon_layout: super::super::editor::editor_ui::FoldIconLayout,
 }
 
 impl PrepaintState {
@@ -1690,7 +1691,7 @@ impl Element for TextElement {
             )));
         // 折叠图标布局（`editor` feature 门控）。
         #[cfg(feature = "editor")]
-        let fold_icon_layout = super::editor_ui::layout_fold_icons(
+        let fold_icon_layout = super::super::editor::editor_ui::layout_fold_icons(
             &self.state,
             original_x,
             &bounds,
@@ -1918,7 +1919,7 @@ impl Element for TextElement {
 
         // 绘制折叠图标（仅悬停或当前行可见；`editor` feature 门控）。
         #[cfg(feature = "editor")]
-        super::editor_ui::paint_fold_icons(
+        super::super::editor::editor_ui::paint_fold_icons(
             &mut prepaint.fold_icon_layout,
             prepaint.current_row,
             window,

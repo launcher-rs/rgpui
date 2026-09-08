@@ -1,7 +1,7 @@
 use rgpui::SharedString;
 
-use super::TabSize;
-use super::display_map::DisplayMap;
+use super::super::TabSize;
+use super::super::display_map::DisplayMap;
 
 /// 输入模式枚举。
 ///
@@ -84,12 +84,12 @@ impl InputMode {
     }
 
     #[inline]
-    pub(super) fn is_single_line(&self) -> bool {
+    pub(crate) fn is_single_line(&self) -> bool {
         !self.is_multi_line()
     }
 
     #[inline]
-    pub(super) fn is_code_editor(&self) -> bool {
+    pub(crate) fn is_code_editor(&self) -> bool {
         matches!(self, InputMode::CodeEditor { .. })
     }
 
@@ -121,7 +121,7 @@ impl InputMode {
     }
 
     #[inline]
-    pub(super) fn is_multi_line(&self) -> bool {
+    pub(crate) fn is_multi_line(&self) -> bool {
         match self {
             InputMode::PlainText { multi_line, .. } => *multi_line,
             InputMode::CodeEditor { multi_line, .. } => *multi_line,
@@ -196,7 +196,7 @@ impl InputMode {
 
     /// 当模式是代码编辑器且 `indent_guides: true`、`multi_line: true` 时返回 true。
     #[inline]
-    pub(super) fn has_indent_guides(&self) -> bool {
+    pub(crate) fn has_indent_guides(&self) -> bool {
         match self {
             InputMode::CodeEditor {
                 indent_guides,
@@ -208,7 +208,7 @@ impl InputMode {
     }
 
     #[inline]
-    pub(super) fn tab_size(&self) -> TabSize {
+    pub(crate) fn tab_size(&self) -> TabSize {
         match self {
             InputMode::PlainText { tab, .. } => *tab,
             InputMode::CodeEditor { tab, .. } => *tab,

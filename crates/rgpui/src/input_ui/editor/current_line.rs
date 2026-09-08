@@ -9,9 +9,9 @@
 use crate::theme::ActiveTheme as _;
 use crate::{Context, HighlightStyle, Hsla};
 
-use super::RopeExt as _;
-use super::decorations::{TextDecoration, normalize};
-use super::state::InputState;
+use super::super::InputState;
+use super::super::decorations::{TextDecoration, normalize};
+use super::super::rope_ext::RopeExt as _;
 
 /// 当前行高亮的背景色（主题 accent 极低透明，弱于括号匹配）。
 fn current_line_color(cx: &crate::App) -> Hsla {
@@ -20,7 +20,7 @@ fn current_line_color(cx: &crate::App) -> Hsla {
 
 impl InputState {
     /// 按当前光标刷新当前行高亮（关闭/单行时清空）。
-    pub(super) fn refresh_current_line(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn refresh_current_line(&mut self, cx: &mut Context<Self>) {
         if !self.current_line_highlight || !self.mode.is_multi_line() {
             self.clear_current_line(cx);
             return;
@@ -51,7 +51,7 @@ impl InputState {
     }
 
     /// 清除当前行高亮（保留集合句柄供复用）。
-    pub(super) fn clear_current_line(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn clear_current_line(&mut self, cx: &mut Context<Self>) {
         if let Some(collection) = self.current_line_collection.clone() {
             if collection.clear_in_place(&mut self.core.decorations) {
                 cx.notify();

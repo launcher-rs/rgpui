@@ -4,24 +4,25 @@
 //! 无 feature 时这些代码不编译，调用方（`element.rs`）对应调用点同步门控。
 
 use crate::InteractiveElement;
+use crate::prelude::FluentBuilder as _;
 use crate::styled_ext::Selectable;
 use crate::{
     App, Bounds, Button, ButtonVariants as _, Entity, Half, Hitbox, HitboxBehavior, IconName,
-    IntoElement, MouseButton, Pixels, Point, Sizable as _, Styled as _, TextAlign, Window, point,
-    px, size,
+    IntoElement, MouseButton, ParentElement as _, Pixels, Point, Refineable, RenderOnce,
+    Sizable as _, StyleRefinement, Styled, TextAlign, Window, point, px, size,
 };
 
-use super::LastLayout;
-use super::blink_cursor::CURSOR_WIDTH;
-use super::element::{FOLD_ICON_HITBOX_WIDTH, LINE_NUMBER_RIGHT_MARGIN};
-use super::rope_ext::RopeExt as _;
-use super::state::InputState;
+use super::super::blink_cursor::CURSOR_WIDTH;
+use super::super::input::{FOLD_ICON_HITBOX_WIDTH, LINE_NUMBER_RIGHT_MARGIN};
+use super::super::layout::LastLayout;
+use super::super::rope_ext::RopeExt as _;
+use super::super::{Input, InputState};
 
 /// 折叠图标本体宽度（布局与绘制共用）。
 const FOLD_ICON_WIDTH: Pixels = px(14.);
 
 /// 折叠图标布局信息。
-pub(super) struct FoldIconLayout {
+pub(crate) struct FoldIconLayout {
     /// 行号区域命中框（用于悬停检测）
     line_number_hitbox: Hitbox,
     /// 每个折叠候选的 (display_row, is_folded, icon_element) 列表
@@ -29,7 +30,7 @@ pub(super) struct FoldIconLayout {
 }
 
 /// 布局折叠图标（第一遍收集候选，第二遍创建并预绘制图标）。
-pub(super) fn layout_fold_icons(
+pub(crate) fn layout_fold_icons(
     state: &Entity<InputState>,
     origin_x: Pixels,
     bounds: &Bounds<Pixels>,
@@ -150,7 +151,7 @@ pub(super) fn layout_fold_icons(
 }
 
 /// 绘制折叠图标（仅悬停或当前行可见）。
-pub(super) fn paint_fold_icons(
+pub(crate) fn paint_fold_icons(
     fold_icon_layout: &mut FoldIconLayout,
     current_row: Option<usize>,
     window: &mut Window,
@@ -169,7 +170,7 @@ pub(super) fn paint_fold_icons(
 }
 
 /// 计算额外光标边界（多光标，与主光标同尺寸同滚动，不参与滚动驱动）。
-pub(super) fn extra_cursor_bounds(
+pub(crate) fn extra_cursor_bounds(
     state: &InputState,
     caret_for: &dyn Fn(usize, usize, bool) -> Point<Pixels>,
     bounds: &Bounds<Pixels>,
@@ -201,4 +202,59 @@ pub(super) fn extra_cursor_bounds(
         }
     }
     extra_cursor_bounds
+}
+
+/// 代码编辑器组件：内部 `Input` 全尺寸 + 状态行（行号/列号）。
+///
+/// 与表单 `Input` 的区别：`Editor` 消费 `EditorState` 的内部输入实体，
+/// 编辑器行为（行号/折叠/键入体验）由 `EditorState::new` 一次配好。
+#[derive(IntoElement)]
+pub struct Editor {
+    input: Entity<InputState>,
+    style: StyleRefinement,
+}
+
+impl Editor {
+    /// 由编辑器状态的内部输入实体创建（`editor.input()`）。
+    pub fn new(input: Entity<InputState>) -> Self {
+        Self {
+            input,
+            style: StyleRefinement::default(),
+        }
+    }
+}
+
+impl Styled for Editor {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
+impl RenderOnce for Editor {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // 状态行：Ln 行， Col 列（字节列，CJK 以字节计，演示够用）。
+        let (row, col) = self.input.read_with(cx, |state, _| {
+            let cursor = state.cursor();
+            let text = state.text();
+            let row = text.offset_to_point(cursor).row;
+            let col = cursor - text.line_start_offset(row);
+            (row + 1, col + 1)
+        });
+        let user_style = self.style;
+        crate::v_flex()
+            .size_full()
+            .child(Input::new(&self.input).flex_1())
+            .child(
+                crate::div()
+                    .flex_none()
+                    .px(px(12.0))
+                    .py(px(4.0))
+                    .text_xs()
+                    .child(format!("Ln {row}, Col {col}")),
+            )
+            .map(|mut this| {
+                this.style().refine(&user_style);
+                this
+            })
+    }
 }

@@ -15,8 +15,8 @@ use ropey::Rope;
 use crate::theme::ActiveTheme as _;
 use crate::{Context, HighlightStyle, Hsla};
 
-use super::decorations::{TextDecoration, normalize};
-use super::state::InputState;
+use super::super::InputState;
+use super::super::decorations::{TextDecoration, normalize};
 
 /// 光标前后各扫描这么多字节（窗口切片，超出部分直接视为无匹配）。
 const SCAN_BUDGET: usize = 100_000;
@@ -37,7 +37,7 @@ fn matching_opener(close: char) -> Option<char> {
 /// 查找光标旁括号的配对项，返回 `(锚括号范围, 配对括号范围)`（UTF-8 字节偏移）。
 ///
 /// 优先光标前的括号，否则看光标处的左括号；都不是括号返回 `None`。
-pub(super) fn find_bracket_match(
+pub(crate) fn find_bracket_match(
     text: &Rope,
     cursor: usize,
 ) -> Option<(Range<usize>, Range<usize>)> {
@@ -127,7 +127,7 @@ fn bracket_color(cx: &crate::App) -> Hsla {
 
 impl InputState {
     /// 按当前光标刷新括号匹配高亮（无匹配/关闭/单行时清空）。
-    pub(super) fn refresh_bracket_match(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn refresh_bracket_match(&mut self, cx: &mut Context<Self>) {
         if !self.bracket_match_enabled || !self.mode.is_multi_line() {
             self.clear_bracket_match(cx);
             return;
@@ -154,7 +154,7 @@ impl InputState {
     }
 
     /// 清除括号匹配高亮（保留集合句柄供复用，原地写以兼容借用中调用）。
-    pub(super) fn clear_bracket_match(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn clear_bracket_match(&mut self, cx: &mut Context<Self>) {
         if let Some(collection) = self.bracket_match_collection.clone() {
             if collection.clear_in_place(&mut self.core.decorations) {
                 cx.notify();

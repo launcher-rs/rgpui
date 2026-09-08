@@ -10,12 +10,12 @@ use std::ops::Range;
 
 use crate::{Context, Window};
 
-use super::RopeExt as _;
-use super::state::InputState;
+use super::super::InputState;
+use super::super::rope_ext::RopeExt as _;
 
 impl InputState {
     /// 复制行（`CopyLine`）：在目标行下方复刻一份，光标移到复刻行的同列。
-    pub(super) fn copy_line(
+    pub(crate) fn copy_line(
         &mut self,
         _: &super::CopyLine,
         window: &mut Window,
@@ -45,7 +45,7 @@ impl InputState {
     }
 
     /// 删除行（`DeleteLine`）：删整行（含换行），光标落到替补行行首。
-    pub(super) fn delete_line(
+    pub(crate) fn delete_line(
         &mut self,
         _: &super::DeleteLine,
         window: &mut Window,
@@ -71,7 +71,7 @@ impl InputState {
     }
 
     /// 上移行（`MoveLineUp`）：与上一行交换，选区跟随。
-    pub(super) fn move_line_up(
+    pub(crate) fn move_line_up(
         &mut self,
         _: &super::MoveLineUp,
         window: &mut Window,
@@ -106,7 +106,7 @@ impl InputState {
     }
 
     /// 下移行（`MoveLineDown`）：与下一行交换，选区跟随。
-    pub(super) fn move_line_down(
+    pub(crate) fn move_line_down(
         &mut self,
         _: &super::MoveLineDown,
         window: &mut Window,
@@ -143,7 +143,7 @@ impl InputState {
     ///
     /// 注释符由 [`InputState::line_comment_prefix`] 决定（默认 `//`），
     /// 空行跳过，注释加在缩进之后（`// ` 带一个空格）。
-    pub(super) fn toggle_line_comment(
+    pub(crate) fn toggle_line_comment(
         &mut self,
         _: &super::ToggleLineComment,
         window: &mut Window,
@@ -215,7 +215,7 @@ impl InputState {
     /// 合并行（`JoinLines`）：无选区时合并光标行与下一行，否则合并覆盖行。
     ///
     /// 行尾/行首空白被清理，行间只留一个空格。
-    pub(super) fn join_lines(
+    pub(crate) fn join_lines(
         &mut self,
         _: &super::JoinLines,
         window: &mut Window,
@@ -315,7 +315,7 @@ impl InputState {
     }
 
     /// 若干整行的文本（不含换行符，`\n` 连接）。
-    pub(super) fn rows_text(&self, start_row: usize, end_row: usize) -> String {
+    pub(crate) fn rows_text(&self, start_row: usize, end_row: usize) -> String {
         let mut out = String::new();
         for row in start_row..=end_row {
             if row > start_row {
@@ -335,7 +335,7 @@ impl InputState {
     }
 
     /// 目标行块的字节范围（含换行：优先吞后换行，末行吞前换行）。
-    pub(super) fn block_range(&self, start_row: usize, end_row: usize) -> Range<usize> {
+    pub(crate) fn block_range(&self, start_row: usize, end_row: usize) -> Range<usize> {
         let line_count = self.core.text.lines_len();
         if end_row + 1 < line_count {
             self.core.text.line_start_offset(start_row)

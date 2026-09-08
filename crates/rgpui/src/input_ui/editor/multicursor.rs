@@ -16,8 +16,8 @@ use std::ops::Range;
 
 use crate::{ClipboardItem, Context, Window};
 
-use super::RopeExt as _;
-use super::state::InputState;
+use super::super::InputState;
+use super::super::rope_ext::RopeExt as _;
 
 impl InputState {
     /// 是否存在额外光标。
@@ -40,7 +40,7 @@ impl InputState {
     }
 
     /// 在主光标上方同列加一个光标（`AddCursorAbove`）。
-    pub(super) fn add_cursor_above(
+    pub(crate) fn add_cursor_above(
         &mut self,
         _: &super::AddCursorAbove,
         _: &mut Window,
@@ -54,7 +54,7 @@ impl InputState {
     }
 
     /// 在主光标下方同列加一个光标（`AddCursorBelow`）。
-    pub(super) fn add_cursor_below(
+    pub(crate) fn add_cursor_below(
         &mut self,
         _: &super::AddCursorBelow,
         _: &mut Window,
@@ -101,7 +101,7 @@ impl InputState {
     }
 
     /// 整理额外光标：排序、合并重叠、去掉与主光标重叠的（主光标保留）。
-    pub(super) fn normalize_extras(&mut self) {
+    pub(crate) fn normalize_extras(&mut self) {
         let primary: Range<usize> = self.core.selected_range.into();
         self.extra_selections.sort_by_key(|sel| sel.start);
         let mut merged: Vec<super::Selection> = Vec::new();
@@ -173,7 +173,7 @@ impl InputState {
     }
 
     /// 在所有光标处插入同一文本（键入/粘贴扇出），每处光标落插入末尾。
-    pub(super) fn multi_insert(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn multi_insert(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         if text.is_empty() {
             return;
         }
@@ -190,7 +190,7 @@ impl InputState {
     }
 
     /// 在所有光标处删除（退格/删除扇出）：有选区删选区，否则删一个边界单位。
-    pub(super) fn multi_delete(
+    pub(crate) fn multi_delete(
         &mut self,
         backward: bool,
         window: &mut Window,
@@ -228,7 +228,7 @@ impl InputState {
     }
 
     /// 多光标复制：各选区文本换行拼接；全塌缩时复制各光标所在整行。
-    pub(super) fn copy_cursors(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn copy_cursors(&mut self, cx: &mut Context<Self>) {
         let mut selections = self.cursors_back_to_front();
         selections.sort_by_key(|range| range.start);
         let all_collapsed = selections.iter().all(|range| range.is_empty());
@@ -256,7 +256,7 @@ impl InputState {
     }
 
     /// 多光标剪切：复制后删除所有光标范围（空光标删整行）。
-    pub(super) fn cut_cursors(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn cut_cursors(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.copy_cursors(cx);
         let mut selections = self.cursors_back_to_front();
         selections.sort_by_key(|range| range.start);
@@ -289,7 +289,7 @@ impl InputState {
     }
 
     /// 多光标回车：每处换行并延续该行缩进（电缩进拆行不参与，落插入末尾）。
-    pub(super) fn enter_cursors(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn enter_cursors(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // 先算好每处的插入文本（依赖原文本，一次算完再动手）。
         let mut edits = Vec::new();
         for range in self.cursors_back_to_front() {
@@ -356,7 +356,7 @@ mod tests {
             cx: &mut Context<Self>,
         ) -> impl crate::IntoElement {
             use crate::{IntoElement as _, RenderOnce as _};
-            super::super::Input::new(&self.state)
+            crate::input_ui::Input::new(&self.state)
                 .render(window, cx)
                 .into_element()
         }

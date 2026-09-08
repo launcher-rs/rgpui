@@ -450,7 +450,7 @@ pub(crate) fn normalize_number_input(text: &str) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
-    use crate::input_ui::mask_pattern::{MaskPattern, MaskToken};
+    use crate::input_ui::input::mask_pattern::{MaskPattern, MaskToken};
 
     /// 返回 Pattern 变体的 token 列表，仅测试使用。
     fn tokens(mask: &MaskPattern) -> Option<&Vec<MaskToken>> {
@@ -705,7 +705,7 @@ mod tests {
     fn test_normalize_number_input() {
         use std::borrow::Cow;
 
-        use crate::input_ui::mask_pattern::normalize_number_input;
+        use crate::input_ui::input::mask_pattern::normalize_number_input;
 
         // 快速路径：无需要规范化时不需要分配
         assert!(matches!(

@@ -8,20 +8,20 @@ use std::ops::Range;
 
 use crate::{Context, Window};
 
-use super::state::InputState;
+use super::super::InputState;
 
 /// 自动闭合的括号对（尖括号 excluded：`a < b` 这类比较会被误配）。
 const PAIRS: [(char, char); 5] = [('(', ')'), ('[', ']'), ('{', '}'), ('"', '"'), ('\'', '\'')];
 
 /// 文本恰为一个字符时返回它（键入拦截只处理单字符）。
-pub(super) fn single_typed_char(text: &str) -> Option<char> {
+pub(crate) fn single_typed_char(text: &str) -> Option<char> {
     let mut chars = text.chars();
     let first = chars.next()?;
     chars.next().is_none().then_some(first)
 }
 
 /// 自动闭合是否对当前状态生效。
-pub(super) fn auto_close_applies(state: &InputState) -> bool {
+pub(crate) fn auto_close_applies(state: &InputState) -> bool {
     if state.disabled || state.read_only || state.masked || !state.mask_pattern.is_none() {
         return false;
     }
@@ -33,7 +33,7 @@ pub(super) fn auto_close_applies(state: &InputState) -> bool {
 }
 
 /// 给定左括号找右括号。
-pub(super) fn matching_closer(open: char) -> Option<char> {
+pub(crate) fn matching_closer(open: char) -> Option<char> {
     PAIRS.iter().find(|(o, _)| *o == open).map(|(_, c)| *c)
 }
 
@@ -54,7 +54,7 @@ fn is_word_char(c: char) -> bool {
 ///
 /// 规则：有选区 + 左括号 → 环绕；右括号 + 光标后是同一右括号 → 跳过；
 /// 左括号 + 光标后非单词字符 → 补全对，光标留中间；其余插入单个。
-pub(super) fn handle_typed_char(
+pub(crate) fn handle_typed_char(
     state: &mut InputState,
     typed: char,
     window: &mut Window,
@@ -114,7 +114,7 @@ pub(super) fn handle_typed_char(
 /// 智能退格：光标夹在空括号对中间时返回待删范围（如 `(|)` → 删 `()`）。
 ///
 /// 调用方（`backspace`）：有范围则直接删并返回，否则走正常退格。
-pub(super) fn smart_backspace_range(state: &InputState) -> Option<Range<usize>> {
+pub(crate) fn smart_backspace_range(state: &InputState) -> Option<Range<usize>> {
     if !auto_close_applies(state) || !state.core.selected_range.is_empty() {
         return None;
     }

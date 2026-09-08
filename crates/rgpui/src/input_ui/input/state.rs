@@ -25,24 +25,26 @@ use std::cell::Cell;
 use std::ops::Range;
 use unicode_segmentation::*;
 
-use super::{
+use super::super::{
     DisplayMap, LastLayout, MASK_CHAR, Position, RopeExt as _, Selection, WrappingIndent,
     auto_scroll::AutoScroll,
     blink_cursor::{BlinkCursor, CURSOR_WIDTH},
     context_menu::InputContextMenuBuilder,
     core::TextCore,
-    element::{EditorScrollbarSnapshot, RIGHT_MARGIN, TextElement},
-    mask_pattern::{MaskPattern, normalize_number_input},
-    mode::InputMode,
     movement::MoveDirection,
-    number_input,
-    number_input::{NumberStep, StepAction},
 };
 /// 编辑器接线类型（`editor` feature 门控；默认构建不用）。
 #[cfg(feature = "editor")]
-use super::{
+use super::super::{
     FoldRange,
     decorations::{TextDecoration, TextDecorationCollection, normalize},
+};
+use super::{
+    element::{EditorScrollbarSnapshot, RIGHT_MARGIN, TextElement},
+    mask_pattern::{MaskPattern, normalize_number_input},
+    mode::InputMode,
+    number_input,
+    number_input::{NumberStep, StepAction},
 };
 
 /// 回车动作，带修饰键信息。
@@ -322,25 +324,25 @@ pub(crate) fn init(cx: &mut App) {
 /// InputState 用于保存 [`super::Input`] 的编辑状态。
 pub struct InputState {
     pub(super) focus_handle: FocusHandle,
-    pub(super) mode: InputMode,
+    pub(crate) mode: InputMode,
     /// 共享文本核（文本/选区/历史/装饰/IME 标记，P1 抽核）。
-    pub(super) core: TextCore,
-    pub(super) display_map: DisplayMap,
+    pub(crate) core: TextCore,
+    pub(crate) display_map: DisplayMap,
     pub(super) blink_cursor: Entity<BlinkCursor>,
     pub(super) loading: bool,
     /// 用于记录拖拽移动时保持的单词选择范围。
-    pub(super) selected_word_range: Option<Selection>,
-    pub(super) last_layout: Option<LastLayout>,
+    pub(crate) selected_word_range: Option<Selection>,
+    pub(crate) last_layout: Option<LastLayout>,
     pub(super) last_cursor: Option<usize>,
     /// 输入容器边界。
-    pub(super) input_bounds: Bounds<Pixels>,
+    pub(crate) input_bounds: Bounds<Pixels>,
     /// 文本边界。
     pub(super) last_bounds: Option<Bounds<Pixels>>,
     pub(super) last_selected_range: Option<Selection>,
     pub(super) selecting: bool,
     pub(super) size: ElementSize,
-    pub(super) disabled: bool,
-    pub(super) masked: bool,
+    pub(crate) disabled: bool,
+    pub(crate) masked: bool,
     /// 掩码状态是否被显式设置（通过 [`Self::masked`] 或 [`Self::set_masked`]），
     /// 用于让 [`Input`](super::Input) 在密码内容类型下仅在用户未显式选择时
     /// 才应用默认掩码，避免覆盖切换按钮的选择。
@@ -388,7 +390,7 @@ pub struct InputState {
     pub(super) placeholder: SharedString,
     /// 行注释符（`editor` feature 门控）。
     #[cfg(feature = "editor")]
-    pub(super) line_comment_prefix: SharedString,
+    pub(crate) line_comment_prefix: SharedString,
 
     /// 标记文本是否有待处理的更新。
     ///
@@ -401,37 +403,37 @@ pub struct InputState {
     ///
     /// 第一个元素是 x 坐标（Pixels），优先使用。
     /// 第二个元素是列（usize），回退使用。
-    pub(super) preferred_column: Option<(Pixels, usize)>,
+    pub(crate) preferred_column: Option<(Pixels, usize)>,
     _subscriptions: Vec<Subscription>,
 
     pub(super) auto_scroll: AutoScroll,
     /// 右键菜单总开关（默认启用，见 `input_ui/context_menu.rs`）。
-    pub(super) context_menu_enabled: bool,
+    pub(crate) context_menu_enabled: bool,
     /// 默认菜单后的追加项（`Input::context_menu_extra` 或 state 层设置写入）。
-    pub(super) context_menu_extra: Option<InputContextMenuBuilder>,
+    pub(crate) context_menu_extra: Option<InputContextMenuBuilder>,
     /// 完全接管菜单（`Input::context_menu_override` 或 state 层设置写入）。
-    pub(super) context_menu_override: Option<InputContextMenuBuilder>,
+    pub(crate) context_menu_override: Option<InputContextMenuBuilder>,
     /// 只读模式：保持正常样式，允许移动/选择/复制，拦截一切用户编辑。
-    pub(super) read_only: bool,
+    pub(crate) read_only: bool,
     /// 括号自动闭合：`None` 为自动（多行开、单行关），`Some` 显式覆盖
     ///（`editor` feature 门控）。
     #[cfg(feature = "editor")]
-    pub(super) auto_close_pairs: Option<bool>,
+    pub(crate) auto_close_pairs: Option<bool>,
     /// 括号匹配高亮开关（`editor` feature 门控）。
     #[cfg(feature = "editor")]
-    pub(super) bracket_match_enabled: bool,
+    pub(crate) bracket_match_enabled: bool,
     /// 括号匹配高亮的装饰集合（`editor` feature 门控）。
     #[cfg(feature = "editor")]
-    pub(super) bracket_match_collection: Option<TextDecorationCollection>,
+    pub(crate) bracket_match_collection: Option<TextDecorationCollection>,
     /// 当前行高亮开关（`editor` feature 门控）。
     #[cfg(feature = "editor")]
-    pub(super) current_line_highlight: bool,
+    pub(crate) current_line_highlight: bool,
     /// 当前行高亮的装饰集合（`editor` feature 门控）。
     #[cfg(feature = "editor")]
-    pub(super) current_line_collection: Option<TextDecorationCollection>,
+    pub(crate) current_line_collection: Option<TextDecorationCollection>,
     /// 主光标之外的额外光标（多光标编辑，见 `input_ui/multicursor.rs`；
     /// 字段常驻（读点太多），行为由 `editor` feature 门控）。
-    pub(super) extra_selections: Vec<Selection>,
+    pub(crate) extra_selections: Vec<Selection>,
 }
 
 impl EventEmitter<InputEvent> for InputState {}
@@ -1327,7 +1329,7 @@ impl InputState {
     }
 
     /// 返回前一个单词的起始偏移量。
-    pub(super) fn previous_start_of_word(&mut self) -> usize {
+    pub(crate) fn previous_start_of_word(&mut self) -> usize {
         let offset = self.core.selected_range.start;
         let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
         // FIXME: 避免 to_string
@@ -1340,7 +1342,7 @@ impl InputState {
     }
 
     /// 返回下一个单词的结束偏移量。
-    pub(super) fn next_end_of_word(&mut self) -> usize {
+    pub(crate) fn next_end_of_word(&mut self) -> usize {
         let offset = self.cursor();
         let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
         let right_part = self
@@ -1359,7 +1361,7 @@ impl InputState {
     ///
     /// 软换行激活时，第一次按键到达可视行起点，第二次（已在可视行起点）
     /// 到达逻辑行起点。
-    pub(super) fn start_of_line(&self) -> usize {
+    pub(crate) fn start_of_line(&self) -> usize {
         if self.mode.is_single_line() {
             return 0;
         }
@@ -1386,7 +1388,7 @@ impl InputState {
     ///
     /// 软换行激活时，第一次按键到达可视行末尾，第二次（已在可视行末尾）
     /// 到达逻辑行末尾。
-    pub(super) fn end_of_line(&self) -> usize {
+    pub(crate) fn end_of_line(&self) -> usize {
         if self.mode.is_single_line() {
             return self.core.text.len();
         }
@@ -1413,7 +1415,7 @@ impl InputState {
     /// 获取选择起点或终点所在行的起点（取最小值）。
     ///
     /// 即始终获取选择的第一行。
-    pub(super) fn start_of_line_of_selection(
+    pub(crate) fn start_of_line_of_selection(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1511,7 +1513,7 @@ impl InputState {
         }
     }
 
-    pub(super) fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
         // 多光标：每处删选区或一个边界单位（`editor` feature 门控）。
         #[cfg(feature = "editor")]
         {
@@ -1525,7 +1527,7 @@ impl InputState {
         #[cfg(feature = "editor")]
         {
             if self.core.selected_range.is_empty()
-                && let Some(pair) = super::auto_close::smart_backspace_range(self)
+                && let Some(pair) = super::super::editor::auto_close::smart_backspace_range(self)
             {
                 self.replace_text_in_range_silent(Some(self.range_to_utf16(&pair)), "", window, cx);
                 self.pause_blink_cursor(cx);
@@ -1708,7 +1710,7 @@ impl InputState {
         self.scroll_to(0, None, cx);
     }
 
-    pub(super) fn escape(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn escape(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
         if self.core.ime_marked_range.is_some() {
             self.unmark_text(window, cx);
         }
@@ -2127,7 +2129,7 @@ impl InputState {
         }
     }
 
-    pub(super) fn undo(&mut self, _: &Undo, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn undo(&mut self, _: &Undo, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only {
             return;
         }
@@ -2341,17 +2343,17 @@ impl InputState {
     }
 
     #[inline]
-    pub(super) fn offset_from_utf16(&self, offset: usize) -> usize {
+    pub(crate) fn offset_from_utf16(&self, offset: usize) -> usize {
         self.core.text.offset_utf16_to_offset(offset)
     }
 
     #[inline]
-    pub(super) fn offset_to_utf16(&self, offset: usize) -> usize {
+    pub(crate) fn offset_to_utf16(&self, offset: usize) -> usize {
         self.core.text.offset_to_offset_utf16(offset)
     }
 
     #[inline]
-    pub(super) fn range_to_utf16(&self, range: &Range<usize>) -> Range<usize> {
+    pub(crate) fn range_to_utf16(&self, range: &Range<usize>) -> Range<usize> {
         self.offset_to_utf16(range.start)..self.offset_to_utf16(range.end)
     }
 
@@ -2388,7 +2390,7 @@ impl InputState {
         offset
     }
 
-    pub(super) fn previous_boundary(&self, offset: usize) -> usize {
+    pub(crate) fn previous_boundary(&self, offset: usize) -> usize {
         let mut offset = self
             .core
             .text
@@ -2402,7 +2404,7 @@ impl InputState {
         self.clamp_offset_to_visible_backward(offset)
     }
 
-    pub(super) fn next_boundary(&self, offset: usize) -> usize {
+    pub(crate) fn next_boundary(&self, offset: usize) -> usize {
         let mut offset = self.core.text.clip_offset(offset + 1, Bias::Right);
         if let Some(ch) = self.core.text.char_at(offset) {
             if ch == '\r' {
@@ -2480,7 +2482,7 @@ impl InputState {
         self.replace_text_in_range_silent(Some(range), &new_text, window, cx);
     }
 
-    pub(super) fn pause_blink_cursor(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn pause_blink_cursor(&mut self, cx: &mut Context<Self>) {
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.pause(cx);
         });
@@ -2866,9 +2868,9 @@ impl EntityInputHandler for InputState {
         {
             if range_utf16.is_none()
                 && self.core.ime_marked_range.is_none()
-                && let Some(typed) = super::auto_close::single_typed_char(new_text)
-                && super::auto_close::auto_close_applies(self)
-                && super::auto_close::handle_typed_char(self, typed, window, cx)
+                && let Some(typed) = super::super::editor::auto_close::single_typed_char(new_text)
+                && super::super::editor::auto_close::auto_close_applies(self)
+                && super::super::editor::auto_close::handle_typed_char(self, typed, window, cx)
             {
                 return;
             }
