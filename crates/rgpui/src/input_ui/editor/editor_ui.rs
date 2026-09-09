@@ -18,9 +18,11 @@ use super::super::blink_cursor::CURSOR_WIDTH;
 use super::super::input::{FOLD_ICON_HITBOX_WIDTH, LINE_NUMBER_RIGHT_MARGIN};
 use super::super::layout::LastLayout;
 use super::super::rope_ext::RopeExt as _;
-use super::super::{Enter, Escape, Input, InputState, MoveDown, MoveUp};
+use super::super::{Input, InputState};
 use super::inlay_hints::InlayHint;
 use super::state::EditorState;
+use crate::input_ui::InputContextMenuBuilder;
+use crate::input_ui::{Enter, Escape, MoveDown, MoveUp};
 
 /// 折叠图标本体宽度（布局与绘制共用）。
 const FOLD_ICON_WIDTH: Pixels = px(14.);
@@ -298,6 +300,12 @@ pub(crate) fn paint_inlay_hints(
 #[derive(IntoElement)]
 pub struct Editor {
     editor: Entity<EditorState>,
+    /// 右键追加项（`Input::context_menu_extra` 透传；默认保留，跟分隔符后）。
+    context_menu_extra: Option<InputContextMenuBuilder>,
+    /// 右键完全接管（`Input::context_menu_override` 透传；默认不要）。
+    context_menu_override: Option<InputContextMenuBuilder>,
+    /// 右键总开关（`None` = 默认启用）。
+    show_context_menu: Option<bool>,
     style: StyleRefinement,
 }
 
@@ -306,8 +314,47 @@ impl Editor {
     pub fn new(editor: &Entity<EditorState>) -> Self {
         Self {
             editor: editor.clone(),
+            context_menu_extra: None,
+            context_menu_override: None,
+            show_context_menu: None,
             style: StyleRefinement::default(),
         }
+    }
+
+    /// 右键追加自定义项（透传内部 `Input`；默认菜单保留）。
+    pub fn context_menu_extra(
+        mut self,
+        builder: impl Fn(
+            crate::menu::PopupMenu,
+            Entity<InputState>,
+            &mut Window,
+            &mut App,
+        ) -> crate::menu::PopupMenu
+        + 'static,
+    ) -> Self {
+        self.context_menu_extra = Some(std::rc::Rc::new(builder));
+        self
+    }
+
+    /// 右键完全接管（透传内部 `Input`；默认菜单不要，可调默认 builder 拼回）。
+    pub fn context_menu_override(
+        mut self,
+        builder: impl Fn(
+            crate::menu::PopupMenu,
+            Entity<InputState>,
+            &mut Window,
+            &mut App,
+        ) -> crate::menu::PopupMenu
+        + 'static,
+    ) -> Self {
+        self.context_menu_override = Some(std::rc::Rc::new(builder));
+        self
+    }
+
+    /// 右键总开关（透传内部 `Input`）。
+    pub fn show_context_menu(mut self, show: bool) -> Self {
+        self.show_context_menu = Some(show);
+        self
     }
 }
 
@@ -378,6 +425,20 @@ impl RenderOnce for Editor {
                 .children(crumbs)
         });
         let user_style = self.style;
+        // 内部 Input 组装（三档右键透传；闭包包一层 Rc 转发）。
+        let mut input_el = Input::new(&input).flex_1();
+        if let Some(show) = self.show_context_menu {
+            input_el = input_el.show_context_menu(show);
+        }
+        if let Some(extra) = self.context_menu_extra {
+            input_el = input_el
+                .context_menu_extra(move |menu, state, window, cx| extra(menu, state, window, cx));
+        }
+        if let Some(override_builder) = self.context_menu_override {
+            input_el = input_el.context_menu_override(move |menu, state, window, cx| {
+                override_builder(menu, state, window, cx)
+            });
+        }
         // 缩略图浮层（相对定位盖右侧；关闭时不建元素，零开销）。
         let minimap = self
             .editor
@@ -397,7 +458,7 @@ impl RenderOnce for Editor {
                     .relative()
                     .flex()
                     .flex_1()
-                    .child(Input::new(&input).flex_1())
+                    .child(input_el)
                     .when(minimap, |this| {
                         this.child(super::minimap::render_minimap(&editor_for_minimap, cx))
                     }),

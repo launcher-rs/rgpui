@@ -1,10 +1,9 @@
-//! Editor 演示：`EditorState` + `Editor` 组件（P3b 迁移）。
+//! Editor 演示：单个 `EditorState` + `Editor` 全家桶。
 //!
-//! 主窗格走编辑器状态（多行 + 行号/折叠配置/大纲缓存/符号跳转/高亮接入内聚在
-//! `EditorState` 里，渲染走 `Editor` 自带行号列号状态行）；只读窗格保留表单
-//! `Input` 做对照。tree-sitter 高亮/折叠 + 行操作 + 多光标（键位来自全局
-//! `init_all` 默认注册）。LSP 区接三个假 provider（补全/诊断/悬停，传输层
-//! 由真应用实现后注入，见 `EditorState::set_*_provider`）。
+//! 大纲/搜索面板/右键追加档/LSP/片段/inlay/粘性顶栏/语言切换全接这一个编辑器
+//! （搜索面板 `attach_editor` 接内部输入；右键经 `Editor::context_menu_extra`
+//! 追加转大写，默认菜单开箱即用）。tree-sitter 高亮/折叠 + 行操作 + 多光标
+//!（键位来自全局 `init_all` 默认注册）。
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
@@ -14,10 +13,7 @@ use rgpui::{
     App, Bounds, Context, PopupMenuItem, Render, Switch, Window, WindowBounds, WindowOptions, blue,
     components::SearchPanelState,
     div, green, h_flex,
-    input_ui::{
-        CodeLens, CodeLensOverlay, CodeLensProvider, Editor, EditorState, Input, InputEvent,
-        InputState, TextArea,
-    },
+    input_ui::{CodeLens, CodeLensOverlay, CodeLensProvider, Editor, EditorState, InputEvent},
     lsp::{
         CompletionProvider, DiagnosticEntry, DiagnosticsProvider, HoverContent, HoverProvider,
         HoverResponse,
@@ -28,8 +24,6 @@ use rgpui::{
 use rgpui_platform::application;
 
 const SAMPLE: &str = "fn main() {\n    let name = \"rgpui\";\n    println!(\"hello, {name}\");\n}\n\nstruct Point {\n    x: f32,\n    y: f32,\n}\n\nimpl Point {\n    fn len(&self) -> f32 {\n        (self.x * self.x + self.y * self.y).sqrt()\n    }\n}\n";
-
-const READONLY_SAMPLE: &str = "只读预览：可选可复制，不可编辑。右键菜单的剪切/粘贴/撤销自动禁用。";
 
 /// 演示用假补全 provider：按光标前单词前缀过滤（真 provider 由应用实现传输后注入）。
 ///
@@ -278,9 +272,7 @@ fn lsp_button(
 
 struct EditorDemo {
     editor: rgpui::Entity<EditorState>,
-    readonly: rgpui::Entity<InputState>,
     search: rgpui::Entity<SearchPanelState>,
-    menu_demo: rgpui::Entity<InputState>,
 }
 
 /// 行列（字节列）转全文 UTF-8 字节偏移（替换接线用）。
@@ -319,12 +311,6 @@ impl EditorDemo {
             state.set_inlay_hints_enabled(true, cx);
         });
         let input = editor.read_with(cx, |state, _| state.input().clone());
-        let readonly = cx.new(|cx| {
-            let mut state = InputState::new(window, cx).multi_line(true);
-            // 初始内容不进撤销栈（与 `EditorState::new` 同理）。
-            state.set_value(READONLY_SAMPLE, window, cx);
-            state
-        });
 
         // 大纲缓存由编辑器状态维护，这里只在文本变更时重渲染。
         cx.subscribe(&input, |_, _, event, cx| {
@@ -388,23 +374,7 @@ impl EditorDemo {
             });
         }
 
-        // 右键追加档演示行（编辑器内右键=默认菜单开箱即用，此行演示 `context_menu_extra`）。
-        let menu_demo = cx.new(|cx| {
-            let mut state = InputState::new(window, cx);
-            state.set_value(
-                "选中词右键 → 转为大写（追加档；编辑器内右键即默认菜单）",
-                window,
-                cx,
-            );
-            state
-        });
-
-        Self {
-            editor,
-            readonly,
-            search,
-            menu_demo,
-        }
+        Self { editor, search }
     }
 
     fn goto(&mut self, symbol: &rgpui::highlight::DocumentSymbol, cx: &mut Context<Self>) {
@@ -618,31 +588,41 @@ impl Render for EditorDemo {
                 .child(
                     div()
                         .flex_1()
-                        .child(Editor::new(&self.editor).flex_1())
+                        .child(
+                            Editor::new(&self.editor)
+                                .flex_1()
+                                .context_menu_extra({
+                                    let upper = self
+                                        .editor
+                                        .read_with(cx, |state, _| state.input().clone());
+                                    move |menu, _, _, _| {
+                                        let upper = upper.clone();
+                                        menu.item(
+                                            PopupMenuItem::new("转为大写 UPPERCASE").on_click(
+                                                move |_, window, cx| {
+                                                    upper.update(cx, |state, cx| {
+                                                        let selected =
+                                                            state.selected_value().to_string();
+                                                        if !selected.is_empty() {
+                                                            state.replace(
+                                                                selected.to_uppercase(),
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        }
+                                                    });
+                                                },
+                                            ),
+                                        )
+                                    }
+                                }),
+                        )
                         .child(popup_el)
                         .child(lens_el),
                 )
                 .child(div().text_xs().child(
-                    "右键追加档（编辑器内右键=默认菜单；此行演示 `context_menu_extra`）：",
-                ))
-                .child({
-                    let upper = self.menu_demo.clone();
-                    Input::new(&self.menu_demo).context_menu_extra(move |menu, _, _, _| {
-                        let upper = upper.clone();
-                        menu.item(PopupMenuItem::new("转为大写 UPPERCASE").on_click(
-                            move |_, window, cx| {
-                                upper.update(cx, |state, cx| {
-                                    let selected = state.selected_value().to_string();
-                                    if !selected.is_empty() {
-                                        state.replace(selected.to_uppercase(), window, cx);
-                                    }
-                                });
-                            },
-                        ))
-                    })
-                })
-                .child(div().text_xs().child("只读预览（TextArea）："))
-                .child(TextArea::new(&self.readonly).read_only(true)),
+                    "右键=默认菜单 + 追加转大写（已集成进编辑器，无独立演示行）。",
+                )),
         )
         .child(
             v_flex()
