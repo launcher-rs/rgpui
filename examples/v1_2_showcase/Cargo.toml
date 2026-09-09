@@ -22,14 +22,6 @@ name = "editor"
 path = "src/bin/editor.rs"
 
 [[bin]]
-name = "search"
-path = "src/bin/search.rs"
-
-[[bin]]
-name = "context_menu"
-path = "src/bin/context_menu.rs"
-
-[[bin]]
 name = "keymap"
 path = "src/bin/keymap.rs"
 

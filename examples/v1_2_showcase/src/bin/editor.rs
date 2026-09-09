@@ -11,17 +11,19 @@
 use std::rc::Rc;
 
 use rgpui::{
-    App, Bounds, Context, Render, Switch, Window, WindowBounds, WindowOptions, div, h_flex,
+    App, Bounds, Context, PopupMenuItem, Render, Switch, Window, WindowBounds, WindowOptions, blue,
+    components::SearchPanelState,
+    div, green, h_flex,
     input_ui::{
-        CodeLens, CodeLensOverlay, CodeLensProvider, Editor, EditorState, InputEvent, InputState,
-        TextArea,
+        CodeLens, CodeLensOverlay, CodeLensProvider, Editor, EditorState, Input, InputEvent,
+        InputState, TextArea,
     },
     lsp::{
         CompletionProvider, DiagnosticEntry, DiagnosticsProvider, HoverContent, HoverProvider,
         HoverResponse,
     },
     prelude::*,
-    px, rgb, size, v_flex,
+    px, rgb, size, v_flex, white, yellow,
 };
 use rgpui_platform::application;
 
@@ -277,6 +279,20 @@ fn lsp_button(
 struct EditorDemo {
     editor: rgpui::Entity<EditorState>,
     readonly: rgpui::Entity<InputState>,
+    search: rgpui::Entity<SearchPanelState>,
+    menu_demo: rgpui::Entity<InputState>,
+}
+
+/// 行列（字节列）转全文 UTF-8 字节偏移（替换接线用）。
+fn offset_of(text: &str, line: usize, col: usize) -> usize {
+    let mut offset = 0;
+    for (ix, part) in text.split('\n').enumerate() {
+        if ix == line {
+            return offset + col.min(part.len());
+        }
+        offset += part.len() + 1;
+    }
+    offset
 }
 
 impl EditorDemo {
@@ -318,7 +334,77 @@ impl EditorDemo {
         })
         .detach();
 
-        Self { editor, readonly }
+        // 搜索面板：一行接通编辑器（文本同步 + 匹配标黄 + 默认跳转）。
+        let search = cx.new(|cx| SearchPanelState::new(window, cx));
+        search.update(cx, |panel, cx| panel.attach_editor(&input, cx));
+        // 替换接线（替换权在外部：当前匹配 / 全部匹配从后往前保偏移）。
+        {
+            let text = input.clone();
+            let panel_handle = search.clone();
+            search.update(cx, |panel, _| {
+                panel.set_on_replace(move |_, replacement, window, cx| {
+                    let full = text.read_with(cx, |state, _| state.text().to_string());
+                    let range = panel_handle.read_with(cx, |panel, cx| {
+                        panel.state().read(cx).current_match().map(|m| {
+                            let base = offset_of(&full, m.line, 0);
+                            base + m.start_col..base + m.end_col
+                        })
+                    });
+                    if let Some(range) = range {
+                        text.update(cx, |state, cx| {
+                            state.set_selected_range(range, cx);
+                            state.replace(replacement, window, cx);
+                        });
+                    }
+                });
+            });
+        }
+        {
+            let text = input.clone();
+            let panel_handle = search.clone();
+            search.update(cx, |panel, _| {
+                panel.set_on_replace_all(move |_, replacement, window, cx| {
+                    let full = text.read_with(cx, |state, _| state.text().to_string());
+                    let mut ranges: Vec<_> = panel_handle.read_with(cx, |panel, cx| {
+                        panel
+                            .state()
+                            .read(cx)
+                            .matches()
+                            .iter()
+                            .map(|m| {
+                                let base = offset_of(&full, m.line, 0);
+                                base + m.start_col..base + m.end_col
+                            })
+                            .collect()
+                    });
+                    ranges.sort_by_key(|range| std::cmp::Reverse(range.start));
+                    text.update(cx, |state, cx| {
+                        for range in ranges {
+                            state.set_selected_range(range, cx);
+                            state.replace(replacement.clone(), window, cx);
+                        }
+                    });
+                });
+            });
+        }
+
+        // 右键追加档演示行（编辑器内右键=默认菜单开箱即用，此行演示 `context_menu_extra`）。
+        let menu_demo = cx.new(|cx| {
+            let mut state = InputState::new(window, cx);
+            state.set_value(
+                "选中词右键 → 转为大写（追加档；编辑器内右键即默认菜单）",
+                window,
+                cx,
+            );
+            state
+        });
+
+        Self {
+            editor,
+            readonly,
+            search,
+            menu_demo,
+        }
     }
 
     fn goto(&mut self, symbol: &rgpui::highlight::DocumentSymbol, cx: &mut Context<Self>) {
@@ -536,8 +622,93 @@ impl Render for EditorDemo {
                         .child(popup_el)
                         .child(lens_el),
                 )
+                .child(div().text_xs().child(
+                    "右键追加档（编辑器内右键=默认菜单；此行演示 `context_menu_extra`）：",
+                ))
+                .child({
+                    let upper = self.menu_demo.clone();
+                    Input::new(&self.menu_demo).context_menu_extra(move |menu, _, _, _| {
+                        let upper = upper.clone();
+                        menu.item(PopupMenuItem::new("转为大写 UPPERCASE").on_click(
+                            move |_, window, cx| {
+                                upper.update(cx, |state, cx| {
+                                    let selected = state.selected_value().to_string();
+                                    if !selected.is_empty() {
+                                        state.replace(selected.to_uppercase(), window, cx);
+                                    }
+                                });
+                            },
+                        ))
+                    })
+                })
                 .child(div().text_xs().child("只读预览（TextArea）："))
                 .child(TextArea::new(&self.readonly).read_only(true)),
+        )
+        .child(
+            v_flex()
+                .w(px(300.0))
+                .gap(px(8.0))
+                .child(div().text_sm().child("搜索（接编辑器）"))
+                .child(self.search.clone())
+                .child(div().text_xs().child("标黄配色："))
+                .child(
+                    h_flex()
+                        .gap(px(8.0))
+                        .child({
+                            let demo = demo.clone();
+                            div()
+                                .id("hl-yellow")
+                                .px(px(10.0))
+                                .py(px(4.0))
+                                .rounded_md()
+                                .cursor_pointer()
+                                .text_xs()
+                                .child("黄")
+                                .on_click(move |_, _, cx| {
+                                    demo.update(cx, |this, cx| {
+                                        this.search.update(cx, |panel, cx| {
+                                            panel.set_highlight_colors(yellow(), None, cx)
+                                        });
+                                    });
+                                })
+                        })
+                        .child({
+                            let demo = demo.clone();
+                            div()
+                                .id("hl-green")
+                                .px(px(10.0))
+                                .py(px(4.0))
+                                .rounded_md()
+                                .cursor_pointer()
+                                .text_xs()
+                                .child("绿")
+                                .on_click(move |_, _, cx| {
+                                    demo.update(cx, |this, cx| {
+                                        this.search.update(cx, |panel, cx| {
+                                            panel.set_highlight_colors(green(), None, cx)
+                                        });
+                                    });
+                                })
+                        })
+                        .child({
+                            let demo = demo.clone();
+                            div()
+                                .id("hl-blue")
+                                .px(px(10.0))
+                                .py(px(4.0))
+                                .rounded_md()
+                                .cursor_pointer()
+                                .text_xs()
+                                .child("蓝")
+                                .on_click(move |_, _, cx| {
+                                    demo.update(cx, |this, cx| {
+                                        this.search.update(cx, |panel, cx| {
+                                            panel.set_highlight_colors(blue(), Some(white()), cx)
+                                        });
+                                    });
+                                })
+                        }),
+                ),
         )
     }
 }
