@@ -6,7 +6,7 @@
 
 ```text
 cargo run -p v1_2_showcase --bin dock        # Dock 布局：四区域/标签拖拽/关闭/持久化
-cargo run -p v1_2_showcase --bin components  # Upload + Carousel + Mermaid + Sidebar 分组
+cargo run -p v1_2_showcase --bin components  # Upload + Carousel + Mermaid + Sidebar 分组 + B 系列（Select/Combobox/DatePicker/ColorPicker/Avatar/Alert/Breadcrumb/Card/Typography/Pagination/Steps/Timeline/Rate/Toggle/Popconfirm）
 cargo run -p v1_2_showcase --bin chat        # Bubble + MessageScroller + Marker
 cargo run -p v1_2_showcase --bin editor      # Editor + tree-sitter 高亮/折叠/大纲 + 行操作 + 多光标 + 只读预览 + LSP 接线/片段/inlay/粘性顶栏/语言切换
 cargo run -p v1_2_showcase --bin search      # SearchPanelState 嵌入 + 匹配标黄 + 替换
