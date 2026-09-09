@@ -16,7 +16,7 @@
 use crate::DomNode;
 use crate::{
     A11ySubtreeBuilder, App, ArenaBox, AvailableSpace, Bounds, Context, DispatchNodeId, ElementId,
-    FocusHandle, InspectorElementId, LayoutId, Pixels, Point, Size, Style, Window,
+    FocusHandle, InspectorElementId, LayoutId, Pixels, Point, SharedString, Size, Style, Window,
     util::FluentBuilder, window::with_element_arena,
 };
 use derive_more::{Deref, DerefMut};
@@ -168,6 +168,27 @@ pub trait RenderOnce: 'static {
     /// 将此组件渲染为元素树。注意此方法获取 self 的所有权，
     /// 而 [`Render::render()`] 接收可变引用。
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement;
+}
+
+/// 调用点元素 ID（跨帧稳定）。
+///
+/// RenderOnce 组件每帧重建，实例计数器反而每帧都变（下拉/弹层等 keyed 状态
+/// 存不住）；默认 ID 取调用点，同调用点跨帧稳定。循环内多实例必须显式传 ID
+///（同行同列会撞车）。调用方 `new()` 标 `#[track_caller]` 后用本函数生成默认 ID；
+/// 本函数自身也标 `#[track_caller]`（位置才能穿透到用户代码，否则停在 `new()` 内部）。
+#[track_caller]
+pub(crate) fn caller_element_id(prefix: &str) -> SharedString {
+    let caller = std::panic::Location::caller();
+    let file = caller
+        .file()
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("unknown");
+    SharedString::from(format!(
+        "{prefix}-{file}:{}:{}",
+        caller.line(),
+        caller.column()
+    ))
 }
 
 /// 辅助特征，为可接受任意数量和类型子元素的元素提供统一接口。

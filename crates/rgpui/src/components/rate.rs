@@ -3,19 +3,13 @@
 //! 点击星星打分，支持半星（`allow_half` 下点击左/右半区）。状态由父持有。
 
 use crate::{prelude::*, *};
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
-
-/// Rate 实例计数器（星星元素 ID 唯一，避免同页多实例冲突）。
-static RATE_ID: AtomicU64 = AtomicU64::new(0);
+use std::sync::Arc;
 
 /// 星级评分。
 #[derive(IntoElement)]
 pub struct Rate {
-    /// 实例序号（元素 ID 前缀）。
-    instance: u64,
+    /// 实例 ID（星星元素 ID 前缀，跨帧稳定；默认调用点生成）。
+    instance: SharedString,
     /// 星星总数。
     count: usize,
     /// 当前分值（半星步进 0.5）。
@@ -31,10 +25,12 @@ pub struct Rate {
 }
 
 impl Rate {
-    /// 创建评分（默认 5 星，0 分）。
+    /// 创建评分（默认 5 星，0 分；默认 ID 取调用点，跨帧稳定；
+    /// 循环内多实例必须显式 `.id()`）。
+    #[track_caller]
     pub fn new() -> Self {
         Self {
-            instance: RATE_ID.fetch_add(1, Ordering::Relaxed),
+            instance: crate::caller_element_id("rate"),
             count: 5,
             value: 0.0,
             allow_half: false,
@@ -65,6 +61,12 @@ impl Rate {
     /// 设置只读。
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// 设置实例 ID（默认调用点生成；循环内多实例必须显式设置）。
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.instance = id.into();
         self
     }
 

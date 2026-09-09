@@ -4,13 +4,7 @@
 //! 与 `dialog/alert_dialog.rs` 的模态弹窗区分：Alert 不阻塞交互。
 
 use crate::{prelude::*, *};
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
-
-/// Alert 实例计数器（关闭按钮 ID 唯一，避免同页多实例冲突）。
-static ALERT_ID: AtomicU64 = AtomicU64::new(0);
+use std::sync::Arc;
 
 /// 提示条变体。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -46,11 +40,11 @@ pub struct Alert {
 }
 
 impl Alert {
-    /// 创建提示条。
+    /// 创建提示条（默认 ID 取调用点，跨帧稳定；循环内多实例必须显式 `.id()`）。
+    #[track_caller]
     pub fn new(title: impl Into<SharedString>) -> Self {
-        let id = ALERT_ID.fetch_add(1, Ordering::Relaxed);
         Self {
-            id: SharedString::from(format!("alert-{id}")),
+            id: crate::caller_element_id("alert"),
             variant: AlertVariant::Info,
             title: title.into(),
             body: None,
@@ -58,6 +52,12 @@ impl Alert {
             on_close: None,
             style: StyleRefinement::default(),
         }
+    }
+
+    /// 设置元素 ID（默认调用点生成；循环内多实例必须显式设置）。
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.id = id.into();
+        self
     }
 
     /// 设置变体。

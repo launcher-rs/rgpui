@@ -4,19 +4,13 @@
 //! 开关状态由 `Popover` 内部管理，确认/取消后自动关闭。
 
 use crate::{prelude::*, *};
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
-
-/// Popconfirm 实例计数器（元素 ID 唯一，避免同页多实例冲突）。
-static POPCONFIRM_ID: AtomicU64 = AtomicU64::new(0);
+use std::sync::Arc;
 
 /// 气泡确认框。
 #[derive(IntoElement)]
 pub struct Popconfirm {
-    /// 实例序号（元素 ID 前缀）。
-    instance: u64,
+    /// 实例 ID（元素 ID 前缀，跨帧稳定；默认调用点生成）。
+    instance: SharedString,
     /// 触发器按钮文本。
     trigger_label: SharedString,
     /// 确认提示文本。
@@ -30,16 +24,24 @@ pub struct Popconfirm {
 }
 
 impl Popconfirm {
-    /// 创建气泡确认框。
+    /// 创建气泡确认框（默认 ID 取调用点，跨帧稳定，弹层状态存得住；
+    /// 循环内多实例必须显式 `.id()`）。
+    #[track_caller]
     pub fn new(trigger_label: impl Into<SharedString>, message: impl Into<SharedString>) -> Self {
         Self {
-            instance: POPCONFIRM_ID.fetch_add(1, Ordering::Relaxed),
+            instance: crate::caller_element_id("popconfirm"),
             trigger_label: trigger_label.into(),
             message: message.into(),
             on_confirm: None,
             on_cancel: None,
             style: StyleRefinement::default(),
         }
+    }
+
+    /// 设置实例 ID（默认调用点生成；循环内多实例必须显式设置）。
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.instance = id.into();
+        self
     }
 
     /// 设置确认回调。

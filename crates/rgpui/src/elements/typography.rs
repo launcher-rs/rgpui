@@ -3,13 +3,7 @@
 //! 标题/正文/链接的统一样式入口，避免各处手写字号颜色。
 
 use crate::{prelude::*, *};
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
-
-/// Link 实例计数器（元素 ID 唯一，避免同页多实例冲突）。
-static LINK_ID: AtomicU64 = AtomicU64::new(0);
+use std::sync::Arc;
 
 /// 标题级别。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -138,14 +132,20 @@ pub struct Link {
 }
 
 impl Link {
-    /// 创建链接。
+    /// 创建链接（默认 ID 取调用点，跨帧稳定；循环内多实例必须显式 `.id()`）。
+    #[track_caller]
     pub fn new(text: impl Into<SharedString>) -> Self {
-        let id = LINK_ID.fetch_add(1, Ordering::Relaxed);
         Self {
-            id: SharedString::from(format!("link-{id}")),
+            id: crate::caller_element_id("link"),
             text: text.into(),
             on_click: None,
         }
+    }
+
+    /// 设置元素 ID（默认调用点生成；循环内多实例必须显式设置）。
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.id = id.into();
+        self
     }
 
     /// 设置点击回调。

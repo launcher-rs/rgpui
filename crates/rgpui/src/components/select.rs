@@ -4,13 +4,7 @@
 //! 变更回调一次配齐。触发器为普通按钮，下拉列表为 `PopupMenu`。
 
 use crate::{prelude::FluentBuilder as _, *};
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
-
-/// Select 实例计数器，用于生成默认唯一 ID（同页多实例不冲突）。
-static SELECT_ID: AtomicU64 = AtomicU64::new(0);
+use std::sync::Arc;
 
 /// 下拉选择框。
 #[derive(IntoElement)]
@@ -31,11 +25,11 @@ pub struct Select {
 }
 
 impl Select {
-    /// 创建下拉选择框。
+    /// 创建下拉选择框（默认 ID 取调用点，跨帧稳定；循环内多实例必须显式 `.id()`）。
+    #[track_caller]
     pub fn new(options: Vec<SharedString>) -> Self {
-        let id = SELECT_ID.fetch_add(1, Ordering::Relaxed);
         Self {
-            id: SharedString::from(format!("select-{id}")),
+            id: crate::caller_element_id("select"),
             options,
             selected: None,
             placeholder: "请选择".into(),
@@ -44,7 +38,7 @@ impl Select {
         }
     }
 
-    /// 设置元素 ID（默认唯一生成，多实例一般不用管）。
+    /// 设置元素 ID（默认调用点生成；循环内多实例必须显式设置）。
     pub fn id(mut self, id: impl Into<SharedString>) -> Self {
         self.id = id.into();
         self

@@ -67,6 +67,9 @@
   打字/退格/聚焦链路 3 单测
 - **默认构建门控遗漏**（CI）：`rulers` 布局、`Hsla` 导入、`vim` 上下文变量补
   feature 门；`test-support` 下 `OsStr` 缺 import
+- **RenderOnce 组件 id 每帧都变**：`Select`/`Alert`/`Popconfirm`/`Pagination`/
+  `Rate`/`Link` 默认 ID 改取调用点（`#[track_caller]`，跨帧稳定，下拉/弹层
+  状态存得住；循环内多实例必须显式 `.id()`，`Popconfirm`/`Alert` 等补 `.id()`）
 
 ### 布局整理
 

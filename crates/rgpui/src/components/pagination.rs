@@ -4,19 +4,13 @@
 //! 状态（当前页）由父持有。
 
 use crate::{prelude::*, *};
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
-
-/// Pagination 实例计数器（按钮 ID 唯一，避免同页多实例冲突）。
-static PAGINATION_ID: AtomicU64 = AtomicU64::new(0);
+use std::sync::Arc;
 
 /// 页码导航。
 #[derive(IntoElement)]
 pub struct Pagination {
-    /// 实例序号（按钮 ID 前缀）。
-    instance: u64,
+    /// 实例 ID（按钮 ID 前缀，跨帧稳定；默认调用点生成）。
+    instance: SharedString,
     /// 当前页（1 起始）。
     current: usize,
     /// 总页数。
@@ -30,16 +24,23 @@ pub struct Pagination {
 }
 
 impl Pagination {
-    /// 创建页码导航。
+    /// 创建页码导航（默认 ID 取调用点，跨帧稳定；循环内多实例必须显式 `.id()`）。
+    #[track_caller]
     pub fn new(current: usize, total: usize) -> Self {
         Self {
-            instance: PAGINATION_ID.fetch_add(1, Ordering::Relaxed),
+            instance: crate::caller_element_id("pg"),
             current: current.max(1),
             total: total.max(1),
             sibling_count: 1,
             on_change: None,
             style: StyleRefinement::default(),
         }
+    }
+
+    /// 设置实例 ID（默认调用点生成；循环内多实例必须显式设置）。
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.instance = id.into();
+        self
     }
 
     /// 设置两侧保留页码数（默认 1）。
