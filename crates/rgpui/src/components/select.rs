@@ -93,13 +93,15 @@ impl RenderOnce for Select {
                 options.iter().enumerate().fold(menu, |menu, (ix, option)| {
                     let option = option.clone();
                     let on_change = on_change.clone();
-                    menu.item(PopupMenuItem::label(option.clone()).on_click(
-                        move |_, window, cx| {
+                    // 注意：必须用 `new`（可交互 `Item`），`label()` 是非交互展示项，
+                    // `on_click` 会被静默丢弃（点选项无反应的根因）。
+                    menu.item(
+                        PopupMenuItem::new(option.clone()).on_click(move |_, window, cx| {
                             if let Some(ref cb) = on_change {
                                 cb(ix, &option, window, cx);
                             }
-                        },
-                    ))
+                        }),
+                    )
                 })
             })
     }
