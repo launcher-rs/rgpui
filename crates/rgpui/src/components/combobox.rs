@@ -28,6 +28,8 @@ pub struct ComboboxState {
     on_change: Option<Arc<dyn Fn(&[usize], &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 有待触发的变更回调（toggle 时无 Window，延后到 render 触发）。
     pending_emit: bool,
+    /// 选中后待回焦（toggle 时无 Window，延后到 render 执行）。
+    needs_focus: bool,
 }
 
 impl ComboboxState {
@@ -45,6 +47,11 @@ impl ComboboxState {
                     this.toggle_select(ix, cx);
                 }
             }
+            InputEvent::Focus => {
+                // 聚焦即展开（点输入框就有下拉，不必先打字）。
+                this.open = true;
+                cx.notify();
+            }
             _ => {}
         })
         .detach();
@@ -58,6 +65,7 @@ impl ComboboxState {
             open: false,
             on_change: None,
             pending_emit: false,
+            needs_focus: false,
         }
     }
 
@@ -126,18 +134,26 @@ impl ComboboxState {
             let _ = (cb, selected);
             self.pending_emit = true;
         }
+        // 点列表项会带走焦点，延后到 render 回焦输入框（否则 Backspace 无处可去）。
+        self.needs_focus = true;
         cx.notify();
     }
 }
 
 impl Render for ComboboxState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let input = self.input.clone();
         // 延后的变更回调：render 有 Window 后真正触发。
         if self.pending_emit {
             self.pending_emit = false;
             if let Some(ref cb) = self.on_change.clone() {
                 cb(&self.selected.clone(), window, cx);
             }
+        }
+        // 延后的回焦（选中/回车后焦点回到输入框，可继续打字/删除）。
+        if self.needs_focus {
+            self.needs_focus = false;
+            window.focus(&input.focus_handle(cx), cx);
         }
 
         let theme = cx.theme();
@@ -147,7 +163,6 @@ impl Render for ComboboxState {
         let muted_foreground = theme.tokens.muted_foreground.color;
 
         let panel = cx.entity();
-        let input = self.input.clone();
         let open = self.open && !self.filtered.is_empty();
         let selected = self.selected.clone();
         let items = self.items.clone();
@@ -201,5 +216,108 @@ impl Render for ComboboxState {
                         })),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——combobox.rs 有 `use crate::*`，会把根导出的
+    // `test` 过程宏引进作用域，遮蔽内置 `#[test]` 导致宏无限递归。
+    use super::ComboboxState;
+    use crate::input_ui::{Backspace, InputState};
+    use crate::{AppContext as _, Context, Entity, Render, Window};
+
+    /// 测试宿主视图。
+    struct Probe {
+        state: Entity<ComboboxState>,
+    }
+
+    impl Render for Probe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            crate::div()
+        }
+    }
+
+    /// 建带三项的下拉框，返回（下拉实体，输入实体）。
+    fn with_items(
+        window: &mut Window,
+        cx: &mut Context<Probe>,
+    ) -> (Entity<ComboboxState>, Entity<InputState>) {
+        let combo = cx.new(|cx| {
+            ComboboxState::new(window, cx).items(vec![
+                "apple".into(),
+                "apricot".into(),
+                "banana".into(),
+            ])
+        });
+        let input = combo.read(cx).input().clone();
+        (combo, input)
+    }
+
+    /// 打字过滤并展开（`ap` → apple/apricot）。
+    #[rgpui::test]
+    fn typing_filters_and_opens(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let (combo, _) = with_items(window, cx);
+            Probe { state: combo }
+        });
+        let combo = probe.read_with(cx, |probe, _| probe.state.clone());
+        let input = combo.read_with(cx, |state, _| state.input().clone());
+        // 与真实键入同 funnel（OS 入口），验证订阅→过滤→展开链路。
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                crate::EntityInputHandler::replace_text_in_range(state, None, "ap", window, cx);
+            });
+        });
+        let (open, filtered) = combo.read_with(cx, |state, _| (state.open, state.filtered.clone()));
+        assert!(open);
+        assert_eq!(filtered, vec![0, 1]);
+    }
+
+    /// 退格删除并重过滤（`ap` → 删 → `a`，三项全回）。
+    #[rgpui::test]
+    fn backspace_deletes_and_refilters(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let (combo, _) = with_items(window, cx);
+            Probe { state: combo }
+        });
+        let combo = probe.read_with(cx, |probe, _| probe.state.clone());
+        let input = combo.read_with(cx, |state, _| state.input().clone());
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                crate::EntityInputHandler::replace_text_in_range(state, None, "ap", window, cx);
+                state.backspace(&Backspace, window, cx);
+            });
+        });
+        let text = input.read_with(cx, |state, _| state.text().to_string());
+        assert_eq!(text, "a");
+        let filtered = combo.read_with(cx, |state, _| state.filtered.clone());
+        assert_eq!(filtered, vec![0, 1, 2]);
+    }
+
+    /// 聚焦即展开（点输入框就有下拉，不必先打字）。
+    ///
+    /// 注：此处直接发 `Focus` 事件验证订阅链路；点击→聚焦→事件的框架派发
+    /// 由渲染帧驱动，演示页手工验证。
+    #[rgpui::test]
+    fn focus_opens(cx: &mut crate::TestAppContext) {
+        use crate::input_ui::InputEvent;
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let (combo, _) = with_items(window, cx);
+            Probe { state: combo }
+        });
+        let combo = probe.read_with(cx, |probe, _| probe.state.clone());
+        let input = combo.read_with(cx, |state, _| state.input().clone());
+        assert!(!combo.read_with(cx, |state, _| state.open));
+        cx.update(|_, cx| {
+            input.update(cx, |_, cx| {
+                cx.emit(InputEvent::Focus);
+            });
+        });
+        assert!(combo.read_with(cx, |state, _| state.open));
     }
 }

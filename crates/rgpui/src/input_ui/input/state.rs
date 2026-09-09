@@ -11,12 +11,15 @@ use crate::menu::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::sum_tree::Bias;
 use crate::{
     Action, App, AppContext, Bounds, ClipboardItem, Context, Edges, ElementSize, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement as _,
-    IntoElement, KeyBinding, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, ScrollWheelEvent,
-    SharedString, Styled as _, Subscription, TextAlign, UTF16Selection, Window, div, point,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
+    KeyBinding, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement as _, Pixels, Point, Render, ScrollHandle, ScrollWheelEvent, SharedString,
+    Styled as _, Subscription, TextAlign, UTF16Selection, Window, div, point,
     prelude::FluentBuilder as _, px,
 };
+// `ruler_color` 字段类型用（`editor` feature 门控，默认构建不用）。
+#[cfg(feature = "editor")]
+use crate::Hsla;
 use regex::Regex;
 use ropey::{Rope, RopeSlice};
 use serde::Deserialize;

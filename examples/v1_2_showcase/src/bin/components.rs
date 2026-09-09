@@ -497,6 +497,8 @@ impl Render for ComponentsDemo {
 
 fn run_example() {
     application().run(|cx: &mut App| {
+        // 全局初始化（主题 + 菜单全局量/键位 + 输入/列表等；缺了 Popover 首开即 panic）。
+        rgpui::init_all(cx);
         let bounds = Bounds::centered(None, size(px(860.0), px(720.0)), cx);
         cx.open_window(
             WindowOptions {

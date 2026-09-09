@@ -150,6 +150,8 @@ impl TextElement {
     /// 视口固定（不随横向滚动，v1 约束）；空列表返回 `None`。
     /// 颜色不在此解析（prepaint 持有 state 读锁，`cx` 可变借用冲突），paint 阶段读
     /// `ruler_color`（`None` 跟主题边框色）。
+    /// `editor` feature 门控（读门控字段）。
+    #[cfg(feature = "editor")]
     pub(super) fn layout_rulers(
         &self,
         state: &InputState,

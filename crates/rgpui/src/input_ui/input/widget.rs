@@ -111,6 +111,9 @@ impl Input {
         if state.vim.enabled {
             context.add(state.vim.mode.context_id());
         }
+        // 非 editor 构建下 `state` 仅用于门控分支，显式消费以免未使用警告。
+        #[cfg(not(feature = "editor"))]
+        let _ = state;
         context
     }
 

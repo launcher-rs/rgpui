@@ -59,6 +59,15 @@
 
 - 新增 `dialog` 示例（Dialog/AlertDialog/焦点陷阱）、`sidebar` 示例
 
+### 修复
+
+- **Popover 未初始化即 panic**：`menu::GlobalState` 读写改懒创建（未调 `menu::init`
+  也能开合；键盘绑定仍需 init）；`components` 演示补 `init_all`
+- **Combobox 打不开/丢焦点**：聚焦即展开；选中（点击/回车）后回焦输入框；
+  打字/退格/聚焦链路 3 单测
+- **默认构建门控遗漏**（CI）：`rulers` 布局、`Hsla` 导入、`vim` 上下文变量补
+  feature 门；`test-support` 下 `OsStr` 缺 import
+
 ### 布局整理
 
 - `system/` 子系统目录；15 个公模块同名进目录（路径不变）；
