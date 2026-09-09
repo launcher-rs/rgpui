@@ -7,8 +7,11 @@
 use std::ops::Range;
 
 use super::super::InputState;
+use super::codelens::CodelensState;
+use super::extensions::ExtensionsState;
 use super::inlay_hints::InlayState;
 use super::lsp_attach::LspAttach;
+use super::minimap::MinimapState;
 use super::snippets::SnippetSession;
 use crate::highlight::{DocumentSymbol, Highlighter};
 use crate::{App, AppContext as _, Context, Entity, SharedString, Window};
@@ -25,6 +28,12 @@ pub struct EditorState {
     pub(super) snippet: Option<SnippetSession>,
     /// inlay 接入状态（provider，见 `inlay_hints.rs`）。
     pub(super) inlay: InlayState,
+    /// 缩略图开关状态（见 `minimap.rs`，O2，默认关）。
+    pub(super) minimap: MinimapState,
+    /// 透镜接入状态（provider + 已落位透镜，见 `codelens.rs`，O4）。
+    pub(super) codelens: CodelensState,
+    /// 扩展表 + 变更订阅表运行时状态（见 `extensions.rs`，O7）。
+    pub(super) extensions: ExtensionsState,
     /// 粘性滚动开关（默认开，见 `sticky_scroll.rs`）。
     pub(super) sticky_scroll: bool,
     /// 当前语言（`set_language` 维护；未设置/已降级为 `None`）。
@@ -57,18 +66,25 @@ impl EditorState {
             lsp: LspAttach::new(cx.new(|_| crate::lsp::CompletionPopupState::default())),
             snippet: None,
             inlay: InlayState::new(),
+            minimap: MinimapState::new(),
+            codelens: CodelensState::new(),
+            extensions: ExtensionsState::new(),
             sticky_scroll: true,
             language: None,
         };
         this.refresh_outline(cx);
-        // 文本一改就刷新大纲；自动补全开时顺带按光标前字符触发/收起补全
-        //（`subscribe_in` 带 window，`request_completions` 要 window 才能调 provider）。
+        // 文本一改：刷新大纲 → 自动补全（开关开时）→ 透镜（有 provider 即刷新）→
+        // 分发变更事件（扩展表/订阅表，O7）。
+        //（`subscribe_in` 带 window，`request_*` 与钩子要 window 才能调。）
         cx.subscribe_in(&this.input, window, move |this, _, event, window, cx| {
             if !matches!(event, crate::input_ui::InputEvent::Change) {
                 return;
             }
             this.refresh_outline(cx);
             this.maybe_auto_complete(window, cx);
+            this.request_codelenses(window, cx);
+            let edit = this.edit_event(cx);
+            this.fire_edit_event(&edit, window, cx);
         })
         .detach();
         this
@@ -131,6 +147,71 @@ impl EditorState {
     pub fn set_read_only(&self, read_only: bool, cx: &mut App) {
         let _ = self.input.update(cx, |state, cx| {
             state.set_read_only(read_only, cx);
+        });
+    }
+
+    /// 设置标尺列（字符数；空即关，O5；透传内部输入）。
+    pub fn set_rulers(&self, columns: Vec<usize>, cx: &mut App) {
+        let _ = self.input.update(cx, |state, cx| {
+            state.set_rulers(columns, cx);
+        });
+    }
+
+    /// 设置标尺颜色（`None` 跟主题边框色；透传内部输入）。
+    pub fn set_ruler_color(&self, color: Option<crate::Hsla>, cx: &mut App) {
+        let _ = self.input.update(cx, |state, cx| {
+            state.set_ruler_color(color, cx);
+        });
+    }
+
+    /// 设置括号彩虹开关（O5；透传内部输入）。
+    pub fn set_bracket_rainbow_enabled(&self, enabled: bool, cx: &mut App) {
+        let _ = self.input.update(cx, |state, cx| {
+            state.set_bracket_rainbow_enabled(enabled, cx);
+        });
+    }
+
+    /// 设置 Vim 模式开关（O3；默认关，透传内部输入）。
+    ///
+    /// 打开即进 normal、坍缩选区；关闭清前缀/锚点。vim 上下文进内部输入的
+    /// key_context（与 `Input` 同节点，后注册优先覆盖同键默认行为）。
+    pub fn set_vim_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.input.update(cx, |state, cx| {
+            state.vim.enabled = enabled;
+            state.vim.mode = super::vim::VimMode::Normal;
+            state.vim.pending = None;
+            state.vim.anchor = None;
+            if enabled {
+                let cursor = state.cursor();
+                state.move_to(cursor, None, cx);
+            }
+            cx.notify();
+        });
+        cx.notify();
+    }
+
+    /// Vim 是否启用。
+    pub fn vim_enabled(&self, cx: &App) -> bool {
+        self.input.read_with(cx, |state, _| state.vim.enabled)
+    }
+
+    /// Vim 当前模式（未启用返回 `None`，状态行指示用）。
+    pub fn vim_mode(&self, cx: &App) -> Option<super::vim::VimMode> {
+        self.input
+            .read_with(cx, |state, _| state.vim.enabled.then_some(state.vim.mode))
+    }
+
+    /// Vim 按键分发（`Editor` 的 `VimKey` 捕获调用；绑定命中即激活态，调用方吞传播）。
+    pub(crate) fn vim_key(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.input.update(cx, |state, cx| {
+            super::vim::handle_key(state, key, window, cx);
+        });
+    }
+
+    /// Vim Esc 模式切换（`capture_key_down` 调用；`Input` 自身 Esc 照跑，不吞）。
+    pub(crate) fn vim_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.input.update(cx, |state, cx| {
+            super::vim::escape_pressed(state, window, cx);
         });
     }
 

@@ -24,6 +24,49 @@ const SCAN_BUDGET: usize = 100_000;
 /// 参与匹配的括号对（与自动闭合一致，尖括号 excluded）。
 const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 
+/// 彩虹调色轮（主题自适应，按深度轮转；与匹配 accent 共存时 accent 盖顶，见 O5）。
+fn rainbow_palette(cx: &crate::App) -> [Hsla; 6] {
+    let theme = cx.theme();
+    [
+        theme.red,
+        theme.yellow,
+        theme.green,
+        theme.cyan,
+        theme.blue,
+        theme.magenta,
+    ]
+}
+
+/// 扫描窗口内全部括号的嵌套深度（`(范围, 深度)`；深度 0 起）。
+///
+/// 全局栈跨三种括号类型计数（经典彩虹语义）；落单右括号忽略（不压栈不计数）；
+/// 字符串/注释不区分（纯扫描，与匹配同款约束，文档注明）。
+pub(crate) fn rainbow_bracket_depths(text: &Rope) -> Vec<(Range<usize>, usize)> {
+    let len = text.len();
+    // 复用匹配预算：超大文件只看全文窗口，超出部分无彩虹（与匹配同款边界）。
+    let win_start = text.floor_char_boundary(0);
+    let win_end = text.ceil_char_boundary(len.min(SCAN_BUDGET)).min(len);
+    let window = text.slice(win_start..win_end).to_string();
+    let mut out = Vec::new();
+    let mut stack: Vec<char> = Vec::new();
+    let mut offset = win_start;
+    for c in window.chars() {
+        let next = offset + c.len_utf8();
+        if matching_closer(c).is_some() {
+            out.push((offset..next, stack.len()));
+            stack.push(c);
+        } else if let Some(open) = matching_opener(c) {
+            if stack.last() == Some(&open) {
+                stack.pop();
+                out.push((offset..next, stack.len()));
+            }
+            // 落单右括号：忽略（不计数，避免深度错乱）。
+        }
+        offset = next;
+    }
+    out
+}
+
 /// 给定左括号找右括号。
 fn matching_closer(open: char) -> Option<char> {
     PAIRS.iter().find(|(o, _)| *o == open).map(|(_, c)| *c)
@@ -161,6 +204,49 @@ impl InputState {
             }
         }
     }
+
+    /// 按当前文本刷新括号彩虹（关闭/单行时清空；仅文本变更后调用，光标移动不刷新）。
+    ///
+    /// 共存规则：独立集合（后于匹配集合创建，画在上层）；匹配对的 accent 底色
+    /// 仍盖在彩虹字色之上，两者均为半透明，同时开不打架。
+    pub(crate) fn refresh_bracket_rainbow(&mut self, cx: &mut Context<Self>) {
+        if !self.bracket_rainbow_enabled || !self.mode.is_multi_line() {
+            self.clear_bracket_rainbow(cx);
+            return;
+        }
+        let palette = rainbow_palette(cx);
+        let decorations: Vec<TextDecoration> = rainbow_bracket_depths(&self.core.text)
+            .into_iter()
+            .map(|(range, depth)| {
+                TextDecoration::new(
+                    range,
+                    HighlightStyle {
+                        color: Some(palette[depth % palette.len()]),
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect();
+        // 原地写（借用中调 `set` 会重入 panic，见模块文档）。
+        if let Some(collection) = self.bracket_rainbow_collection.clone() {
+            let decorations = normalize(&self.core.text, decorations);
+            if collection.set_in_place(&mut self.core.decorations, decorations) {
+                cx.notify();
+            }
+        } else if !decorations.is_empty() {
+            self.bracket_rainbow_collection =
+                Some(self.create_decorations_collection(decorations, cx));
+        }
+    }
+
+    /// 清除括号彩虹（保留集合句柄供复用）。
+    pub(crate) fn clear_bracket_rainbow(&mut self, cx: &mut Context<Self>) {
+        if let Some(collection) = self.bracket_rainbow_collection.clone() {
+            if collection.clear_in_place(&mut self.core.decorations) {
+                cx.notify();
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -254,5 +340,99 @@ mod tests {
                 .unwrap_or_default()
         });
         assert!(ranges.is_empty());
+    }
+
+    /// 彩虹深度：全局栈跨类型计数，落单右括号忽略。
+    #[test]
+    fn rainbow_depths_nested_and_stray() {
+        // `((a){b})`：`{` 在外层 `()` 内，故深度 1。
+        let depths = rainbow_bracket_depths(&Rope::from("((a){b})"));
+        let compact: Vec<(String, usize)> = depths
+            .into_iter()
+            .map(|(range, depth)| (Rope::from("((a){b})").slice(range).to_string(), depth))
+            .collect();
+        assert_eq!(
+            compact
+                .iter()
+                .map(|(text, depth)| (text.as_str(), *depth))
+                .collect::<Vec<_>>(),
+            vec![("(", 0), ("(", 1), (")", 1), ("{", 1), ("}", 1), (")", 0),]
+        );
+        // 落单右括号不计数不产出。
+        assert!(rainbow_bracket_depths(&Rope::from("a)b")).is_empty());
+        assert_eq!(rainbow_bracket_depths(&Rope::from(")(")).len(), 1);
+    }
+
+    /// 彩虹开关：打开按文本刷新集合，关闭清空（光标移动不影响）。
+    #[rgpui::test]
+    fn rainbow_toggle_refreshes_and_clears(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let state = cx.new(|cx| {
+                InputState::new(window, cx)
+                    .multi_line(true)
+                    .bracket_rainbow(true)
+            });
+            state.update(cx, |state, cx| state.replace("(a(b))", window, cx));
+            Probe { state }
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        let ranges = state.read_with(cx, |state, cx| {
+            state
+                .bracket_rainbow_collection
+                .as_ref()
+                .map(|collection| collection.get_ranges(cx))
+                .unwrap_or_default()
+        });
+        // 4 个括号全上色。
+        assert_eq!(ranges.len(), 4);
+        // 光标移动不刷新彩虹（只跟文本）。
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| state.set_selected_range(1..1, cx));
+        });
+        let ranges_after_move = state.read_with(cx, |state, cx| {
+            state
+                .bracket_rainbow_collection
+                .as_ref()
+                .map(|collection| collection.get_ranges(cx))
+                .unwrap_or_default()
+        });
+        assert_eq!(ranges_after_move, ranges);
+        // 关闭清空。
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| state.set_bracket_rainbow_enabled(false, cx));
+        });
+        let ranges = state.read_with(cx, |state, cx| {
+            state
+                .bracket_rainbow_collection
+                .as_ref()
+                .map(|collection| collection.get_ranges(cx))
+                .unwrap_or_default()
+        });
+        assert!(ranges.is_empty());
+    }
+
+    /// 标尺状态：builder 与 setter 落点（路径构建走 prepaint，渲染冒烟由示例覆盖）。
+    #[rgpui::test]
+    fn rulers_state_plumbing(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let state = cx.new(|cx| InputState::new(window, cx).multi_line(true));
+            Probe { state }
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        assert!(state.read_with(cx, |state, _| state.rulers.is_empty()));
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                state.set_rulers(vec![80, 120], cx);
+                state.set_ruler_color(Some(crate::red_400()), cx);
+            });
+        });
+        let (rulers, color) =
+            state.read_with(cx, |state, _| (state.rulers.clone(), state.ruler_color));
+        assert_eq!(rulers, vec![80, 120]);
+        assert_eq!(color, Some(crate::red_400()));
     }
 }

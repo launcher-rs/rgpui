@@ -143,6 +143,52 @@ impl TextElement {
         let path = builder.build().unwrap();
         Some(path)
     }
+
+    /// 布局标尺路径（O5）：每列一条贯穿可视高度的竖线。
+    ///
+    /// 列为字符数；x 按数字 advance 折算（等宽字体精确，变宽字体近似，文档注明）；
+    /// 视口固定（不随横向滚动，v1 约束）；空列表返回 `None`。
+    /// 颜色不在此解析（prepaint 持有 state 读锁，`cx` 可变借用冲突），paint 阶段读
+    /// `ruler_color`（`None` 跟主题边框色）。
+    pub(super) fn layout_rulers(
+        &self,
+        state: &InputState,
+        bounds: &Bounds<Pixels>,
+        last_layout: &LastLayout,
+        text_style: &TextStyle,
+        window: &mut Window,
+    ) -> Option<Path<Pixels>> {
+        if state.rulers.is_empty() {
+            return None;
+        }
+        // 数字 advance：塑形十个数字取均值（与缩进测量同款手法）。
+        let font_size = text_style.font_size.to_pixels(window.rem_size());
+        let digits = crate::SharedString::from("0123456789");
+        let shaped = window.text_system().shape_line(
+            digits,
+            font_size,
+            &[TextRun {
+                len: 10,
+                font: text_style.font(),
+                color: Hsla::default(),
+                background_color: None,
+                strikethrough: None,
+                underline: None,
+            }],
+            None,
+        );
+        let digit_advance = shaped.width() * 0.1;
+        let mut builder = PathBuilder::stroke(px(1.));
+        let height = bounds.size.height;
+        for column in &state.rulers {
+            let x = last_layout.line_number_width + digit_advance * (*column as f32);
+            builder.move_to(point(x, px(0.)));
+            builder.line_to(point(x, height));
+        }
+        builder.translate(bounds.origin);
+        let path = builder.build().unwrap();
+        Some(path)
+    }
 }
 
 impl InputState {
@@ -174,6 +220,29 @@ impl InputState {
         {
             *l = indent_guides;
         }
+        cx.notify();
+    }
+
+    #[cfg(feature = "editor")]
+    /// 设置标尺列（builder 版，字符数；空即关，O5）。
+    ///
+    /// 等宽字体精确（x 按数字 advance 折算），变宽字体近似；视口固定不随横向滚动。
+    pub fn rulers(mut self, columns: Vec<usize>) -> Self {
+        self.rulers = columns;
+        self
+    }
+
+    #[cfg(feature = "editor")]
+    /// 设置标尺列（创建后修改；空即关）。
+    pub fn set_rulers(&mut self, columns: Vec<usize>, cx: &mut Context<Self>) {
+        self.rulers = columns;
+        cx.notify();
+    }
+
+    #[cfg(feature = "editor")]
+    /// 设置标尺颜色（`None` 跟主题边框色）。
+    pub fn set_ruler_color(&mut self, color: Option<Hsla>, cx: &mut Context<Self>) {
+        self.ruler_color = color;
         cx.notify();
     }
 

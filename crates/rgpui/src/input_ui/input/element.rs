@@ -1118,6 +1118,9 @@ pub(crate) struct PrepaintState {
     /// 选区路径（主选区 + 额外选区）。
     selection_paths: Vec<Path<Pixels>>,
     indent_guides_path: Option<Path<Pixels>>,
+    /// 标尺路径（O5；`None` 即关闭；颜色 paint 阶段读 state）。
+    #[cfg(feature = "editor")]
+    rulers_path: Option<Path<Pixels>>,
     bounds: Bounds<Pixels>,
     /// 折叠图标布局数据（`editor` feature 门控，类型见 `editor_ui`）。
     #[cfg(feature = "editor")]
@@ -1680,6 +1683,8 @@ impl Element for TextElement {
 
         let indent_guides_path =
             self.layout_indent_guides(state, &bounds, &last_layout, &text_style, window);
+        #[cfg(feature = "editor")]
+        let rulers_path = self.layout_rulers(state, &bounds, &last_layout, &text_style, window);
         state
             .editor_scrollbar_snapshot
             .set(Some(EditorScrollbarSnapshot::new(
@@ -1711,6 +1716,8 @@ impl Element for TextElement {
             current_row,
             selection_paths,
             indent_guides_path,
+            #[cfg(feature = "editor")]
+            rulers_path,
             #[cfg(feature = "editor")]
             fold_icon_layout,
         }
@@ -1786,6 +1793,17 @@ impl Element for TextElement {
         // 绘制缩进参考线
         if let Some(path) = prepaint.indent_guides_path.take() {
             window.paint_path(path, cx.theme().border.opacity(0.85));
+        }
+
+        // 绘制标尺（O5；列竖线，颜色读 state，`None` 跟主题边框色）
+        #[cfg(feature = "editor")]
+        if let Some(path) = prepaint.rulers_path.take() {
+            let color = self
+                .state
+                .read(cx)
+                .ruler_color
+                .unwrap_or_else(|| cx.theme().border);
+            window.paint_path(path, color);
         }
 
         // 滚动条偏移始终为正，从左位置开始（装饰背景与文本共用）。

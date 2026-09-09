@@ -86,6 +86,16 @@ tree-sitter = [
     "dep:tree-sitter-highlight",
     "dep:tree-sitter-rust",
 ]
+# JSON 语言包（O6，独立 feature 门，蕴含 tree-sitter 地基）。
+tree-sitter-json = [
+    "tree-sitter",
+    "dep:tree-sitter-json",
+]
+# TOML 语言包（O6，独立 feature 门，蕴含 tree-sitter 地基）。
+tree-sitter-toml = [
+    "tree-sitter",
+    "dep:tree-sitter-toml-ng",
+]
 # WebView 组件：基于 wry 的网页视图，用于嵌入网页内容。
 # 默认关闭以保持核心精简，需要 WebView 的应用可显式开启。
 webview = ["dep:wry"]
@@ -190,6 +200,8 @@ wry = { version = "0.56.1", optional = true }
 tree-sitter = { version = "0.25", optional = true }
 tree-sitter-highlight = { version = "0.25", optional = true }
 tree-sitter-rust = { version = "0.24", optional = true }
+tree-sitter-json = { version = "0.24", optional = true }
+tree-sitter-toml-ng = { version = "0.7", optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.4.3", features = ["wasm_js"] }

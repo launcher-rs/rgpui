@@ -12,7 +12,10 @@ use std::rc::Rc;
 
 use rgpui::{
     App, Bounds, Context, Render, Switch, Window, WindowBounds, WindowOptions, div, h_flex,
-    input_ui::{Editor, EditorState, InputEvent, InputState, TextArea},
+    input_ui::{
+        CodeLens, CodeLensOverlay, CodeLensProvider, Editor, EditorState, InputEvent, InputState,
+        TextArea,
+    },
     lsp::{
         CompletionProvider, DiagnosticEntry, DiagnosticsProvider, HoverContent, HoverProvider,
         HoverResponse,
@@ -132,6 +135,30 @@ impl HoverProvider for DemoHoverProvider {
                 HoverContent::Text("演示悬停：假 provider".to_string()),
             ],
         })))
+    }
+}
+
+/// 演示用假透镜 provider：首行运行 + 结构体引用（点击跳光标）。
+struct DemoCodelensProvider;
+
+impl CodeLensProvider for DemoCodelensProvider {
+    fn codelenses(
+        &self,
+        _text: &rgpui::input_ui::Rope,
+        _visible: std::ops::Range<usize>,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<CodeLens>>> {
+        rgpui::Task::ready(Ok(vec![
+            CodeLens {
+                line: 0,
+                title: "▶ 运行".into(),
+            },
+            CodeLens {
+                line: 5,
+                title: "Point · 1 引用".into(),
+            },
+        ]))
     }
 }
 
@@ -268,6 +295,8 @@ impl EditorDemo {
             state.set_completion_provider(Some(Rc::new(DemoCompletionProvider)), cx);
             state.set_diagnostics_provider(Some(Rc::new(DemoDiagnosticsProvider)), cx);
             state.set_hover_provider(Some(Rc::new(DemoHoverProvider)), cx);
+            // 透镜假 provider（文本变更自动刷新，点击跳光标到透镜行）。
+            state.set_codelens_provider(Some(Rc::new(DemoCodelensProvider)), cx);
             state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
             // inlay 默认开启（演示绘制；关开关即零开销）。
             state.set_inlay_provider(Some(Rc::new(DemoInlayProvider)), cx);
@@ -317,6 +346,10 @@ impl Render for EditorDemo {
         let auto_complete = self
             .editor
             .read_with(cx, |state, _| state.auto_completion_enabled());
+        let minimap_on = self
+            .editor
+            .read_with(cx, |state, _| state.minimap_enabled());
+        let vim_on = self.editor.read_with(cx, |state, cx| state.vim_enabled(cx));
         let demo = cx.entity();
         // 自动补全开关（开后键入单词字符即弹补全，空格/换行自动收起）。
         // 补全弹窗（光标处锚定，`deferred` 浮层，点击行即确认插入）。
@@ -329,6 +362,20 @@ impl Render for EditorDemo {
                 this.editor.update(cx, |state, cx| {
                     state.accept_completion(Some(ix), window, cx);
                 });
+            });
+        });
+        // 透镜浮层（行首上方，点击跳光标到透镜行）。
+        let demo_for_lens = demo.clone();
+        let lens_el = CodeLensOverlay::new(&self.editor).on_lens(move |ix, _, cx| {
+            demo_for_lens.update(cx, |this, cx| {
+                let offset = this.editor.read_with(cx, |state, _| {
+                    state.codelenses().get(ix).map(|lens| lens.offset)
+                });
+                if let Some(offset) = offset {
+                    this.editor.update(cx, |state, cx| {
+                        state.set_selected_range(offset..offset, cx);
+                    });
+                }
             });
         });
         h_flex()
@@ -404,6 +451,37 @@ impl Render for EditorDemo {
                                 .text_xs()
                                 .child("自动：单词前缀满 2 个字符或键入 ./: 才请求，按前缀过滤，无匹配自动隐藏"),
                         )
+                        .child({
+                            let demo = demo.clone();
+                            Switch::new("minimap")
+                                .checked(minimap_on)
+                                .label("缩略图")
+                                .on_click(move |checked, _, cx| {
+                                    demo.update(cx, |this, cx| {
+                                        this.editor.update(cx, |state, cx| {
+                                            state.set_minimap_enabled(*checked, cx);
+                                        });
+                                    });
+                                })
+                        })
+                        .child({
+                            let demo = demo.clone();
+                            Switch::new("vim-mode")
+                                .checked(vim_on)
+                                .label("Vim 模式")
+                                .on_click(move |checked, _, cx| {
+                                    demo.update(cx, |this, cx| {
+                                        this.editor.update(cx, |state, cx| {
+                                            state.set_vim_enabled(*checked, cx);
+                                        });
+                                    });
+                                })
+                        })
+                        .child(
+                            div()
+                                .text_xs()
+                                .child("Vim：hjkl/wb/0/$/gg/G 移动，i/a/o/v 切换，x/dd/yy/p/u 编辑，可视 y/d"),
+                        )
                         .child(
                             div()
                                 .text_xs()
@@ -455,7 +533,8 @@ impl Render for EditorDemo {
                     div()
                         .flex_1()
                         .child(Editor::new(&self.editor).flex_1())
-                        .child(popup_el),
+                        .child(popup_el)
+                        .child(lens_el),
                 )
                 .child(div().text_xs().child("只读预览（TextArea）："))
                 .child(TextArea::new(&self.readonly).read_only(true)),

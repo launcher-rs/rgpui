@@ -100,6 +100,20 @@ impl Input {
         }
     }
 
+    /// 按键上下文（`Input` + vim 模式标识并入同一 `KeyContext`）。
+    ///
+    /// 同节点 tie 靠后注册优先：vim 绑定（`vim::init` 在 input 绑定之后注册）
+    /// 覆盖回车/退格/删除/Esc 等同键默认行为；未启用 vim 时与原来完全一致。
+    fn key_context(state: &InputState) -> crate::KeyContext {
+        let mut context = crate::KeyContext::default();
+        context.add(CONTEXT);
+        #[cfg(feature = "editor")]
+        if state.vim.enabled {
+            context.add(state.vim.mode.context_id());
+        }
+        context
+    }
+
     /// 设置无障碍标签（aria-label）。
     pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.aria_label = Some(label.into());
@@ -503,7 +517,7 @@ impl RenderOnce for Input {
             })
             .when_some(accessibility_value, |this, value| this.aria_value(value))
             .flex()
-            .key_context(CONTEXT)
+            .key_context(Self::key_context(&state))
             .track_focus(&state.focus_handle.clone())
             .tab_index(self.tab_index)
             .when(!state.disabled, |this| {

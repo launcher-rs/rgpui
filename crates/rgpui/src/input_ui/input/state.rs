@@ -11,10 +11,10 @@ use crate::menu::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::sum_tree::Bias;
 use crate::{
     Action, App, AppContext, Bounds, ClipboardItem, Context, Edges, ElementSize, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
-    KeyBinding, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement as _, Pixels, Point, Render, ScrollHandle, ScrollWheelEvent, SharedString,
-    Styled as _, Subscription, TextAlign, UTF16Selection, Window, div, point,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement as _,
+    IntoElement, KeyBinding, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, ScrollWheelEvent,
+    SharedString, Styled as _, Subscription, TextAlign, UTF16Selection, Window, div, point,
     prelude::FluentBuilder as _, px,
 };
 use regex::Regex;
@@ -425,12 +425,24 @@ pub struct InputState {
     /// 括号匹配高亮的装饰集合（`editor` feature 门控）。
     #[cfg(feature = "editor")]
     pub(crate) bracket_match_collection: Option<TextDecorationCollection>,
+    /// 括号彩虹开关（`editor` feature 门控，默认关，见 O5）。
+    #[cfg(feature = "editor")]
+    pub(crate) bracket_rainbow_enabled: bool,
+    /// 括号彩虹的装饰集合（`editor` feature 门控；后于匹配集合创建，画在上层）。
+    #[cfg(feature = "editor")]
+    pub(crate) bracket_rainbow_collection: Option<TextDecorationCollection>,
     /// 当前行高亮开关（`editor` feature 门控）。
     #[cfg(feature = "editor")]
     pub(crate) current_line_highlight: bool,
     /// 当前行高亮的装饰集合（`editor` feature 门控）。
     #[cfg(feature = "editor")]
     pub(crate) current_line_collection: Option<TextDecorationCollection>,
+    /// 标尺列（字符数；空即关，`editor` feature 门控，见 O5）。
+    #[cfg(feature = "editor")]
+    pub(crate) rulers: Vec<usize>,
+    /// 标尺颜色（`None` 跟主题边框色；`editor` feature 门控）。
+    #[cfg(feature = "editor")]
+    pub(crate) ruler_color: Option<Hsla>,
     /// 行内提示总开关（`editor` feature 门控，默认关，见 `editor/inlay_hints.rs`）。
     #[cfg(feature = "editor")]
     pub(crate) inlay_hints_enabled: bool,
@@ -440,6 +452,9 @@ pub struct InputState {
     /// 主光标之外的额外光标（多光标编辑，见 `input_ui/multicursor.rs`；
     /// 字段常驻（读点太多），行为由 `editor` feature 门控）。
     pub(crate) extra_selections: Vec<Selection>,
+    /// Vim 运行时状态（模式/前缀/锚点/寄存器；`editor` feature 门控，见 O3）。
+    #[cfg(feature = "editor")]
+    pub(crate) vim: super::super::editor::vim::VimState,
 }
 
 impl EventEmitter<InputEvent> for InputState {}
@@ -543,14 +558,24 @@ impl InputState {
             #[cfg(feature = "editor")]
             bracket_match_collection: None,
             #[cfg(feature = "editor")]
+            bracket_rainbow_enabled: false,
+            #[cfg(feature = "editor")]
+            bracket_rainbow_collection: None,
+            #[cfg(feature = "editor")]
             current_line_highlight: true,
             #[cfg(feature = "editor")]
             current_line_collection: None,
+            #[cfg(feature = "editor")]
+            rulers: Vec::new(),
+            #[cfg(feature = "editor")]
+            ruler_color: None,
             #[cfg(feature = "editor")]
             inlay_hints_enabled: false,
             #[cfg(feature = "editor")]
             inlay_hints: Vec::new(),
             extra_selections: Vec::new(),
+            #[cfg(feature = "editor")]
+            vim: super::super::editor::vim::VimState::default(),
         }
     }
 
@@ -718,6 +743,27 @@ impl InputState {
         self.bracket_match_enabled = enabled;
         if !enabled {
             self.clear_bracket_match(cx);
+        }
+        cx.notify();
+    }
+
+    #[cfg(feature = "editor")]
+    /// 设置括号彩虹开关（builder 版，创建时链式调用，默认关；O5）。
+    ///
+    /// 括号字色按嵌套深度轮转（主题调色轮）；与匹配高亮共存时匹配 accent 盖顶。
+    pub fn bracket_rainbow(mut self, enabled: bool) -> Self {
+        self.bracket_rainbow_enabled = enabled;
+        self
+    }
+
+    #[cfg(feature = "editor")]
+    /// 设置括号彩虹开关（创建后修改，关闭时立即清除；打开后按当前文本刷新）。
+    pub fn set_bracket_rainbow_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.bracket_rainbow_enabled = enabled;
+        if enabled {
+            self.refresh_bracket_rainbow(cx);
+        } else {
+            self.clear_bracket_rainbow(cx);
         }
         cx.notify();
     }
@@ -2769,6 +2815,8 @@ impl InputState {
         self.mode.update_auto_grow(&self.display_map);
         #[cfg(feature = "editor")]
         self.refresh_bracket_match(cx);
+        #[cfg(feature = "editor")]
+        self.refresh_bracket_rainbow(cx);
         #[cfg(feature = "editor")]
         self.refresh_current_line(cx);
         if self.emit_events {

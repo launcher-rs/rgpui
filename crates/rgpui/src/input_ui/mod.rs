@@ -42,7 +42,11 @@ pub use decorations::{TextDecoration, TextDecorationCollection};
 pub use display_map::{BufferPoint, DisplayMap, DisplayPoint, FoldRange, WrappingIndent};
 /// 代码编辑器状态与组件（`editor` feature 门控）。
 #[cfg(feature = "editor")]
-pub use editor::{Editor, EditorState, InlayHint, InlayProvider};
+pub use editor::{
+    CodeLens, CodeLensOverlay, CodeLensProvider, EditEvent, EditHandler, Editor, EditorExtension,
+    EditorExtensionFactory, EditorState, InlayHint, InlayProvider, ResolvedCodeLens, VimKey,
+    VimMode, editor_extension, register_editor_extension,
+};
 pub use history::*;
 pub use indent::TabSize;
 /// 编辑器动作重导出（`editor` feature 门控）。
@@ -70,4 +74,7 @@ pub use ropey::Rope;
 /// 初始化输入子系统，注册全局按键绑定。
 pub fn init(cx: &mut App) {
     input::init_input_state(cx);
+    // vim 键位后注册（同节点 tie 靠后优先，覆盖回车/退格/删除等默认行为）。
+    #[cfg(feature = "editor")]
+    editor::vim::init(cx);
 }

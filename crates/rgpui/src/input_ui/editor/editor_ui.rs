@@ -335,6 +335,13 @@ impl RenderOnce for Editor {
             let col = cursor - text.line_start_offset(row);
             (row + 1, col + 1)
         });
+        // Vim 模式指示（未启用为空，状态行不展示）。
+        let vim_indicator = self.editor.read_with(cx, |state, cx| {
+            state
+                .vim_mode(cx)
+                .map(|mode| format!(" · {}", mode.indicator()))
+                .unwrap_or_default()
+        });
         // 粘性顶栏：面包屑（点击跳转符号头）。
         let editor = self.editor.clone();
         let sticky = (!stack.is_empty()).then(|| {
@@ -371,23 +378,37 @@ impl RenderOnce for Editor {
                 .children(crumbs)
         });
         let user_style = self.style;
+        // 缩略图浮层（相对定位盖右侧；关闭时不建元素，零开销）。
+        let minimap = self
+            .editor
+            .read_with(cx, |state, _| state.minimap_enabled());
+        let editor_for_minimap = self.editor.clone();
         // 补全菜单键盘接管（捕获阶段先于内部 `Input`，菜单收起时原样放行）。
         //
         // 焦点仍在编辑器内，无需把焦点移到候选框：菜单激活时 Up/Down 改选、
         // 主回车确认、Esc 收起，并 `stop_propagation` 吞掉 `Input` 的默认行为
         //（光标移动/换行/清空选区）；`Shift`/`secondary` 回车保持换行语义。
-        let editor_for_keys = self.editor;
+        let editor_for_keys = self.editor.clone();
         crate::v_flex()
             .size_full()
             .children(sticky)
-            .child(Input::new(&input).flex_1())
+            .child(
+                div()
+                    .relative()
+                    .flex()
+                    .flex_1()
+                    .child(Input::new(&input).flex_1())
+                    .when(minimap, |this| {
+                        this.child(super::minimap::render_minimap(&editor_for_minimap, cx))
+                    }),
+            )
             .child(
                 crate::div()
                     .flex_none()
                     .px(px(12.0))
                     .py(px(4.0))
                     .text_xs()
-                    .child(format!("Ln {row}, Col {col}")),
+                    .child(format!("Ln {row}, Col {col}{vim_indicator}")),
             )
             .capture_action({
                 let editor = editor_for_keys.clone();
@@ -427,6 +448,27 @@ impl RenderOnce for Editor {
                     if editor.read(cx).completion_menu_active() {
                         editor.update(cx, |state, cx| state.dismiss_completion(cx));
                         cx.stop_propagation();
+                    }
+                }
+            })
+            // Vim 按键分发（O3；绑定命中即激活态，无条件吞传播）。
+            .capture_action({
+                let editor = self.editor.clone();
+                move |action: &super::vim::VimKey, window: &mut Window, cx: &mut App| {
+                    editor.update(cx, |state, cx| {
+                        state.vim_key(action.key.as_ref(), window, cx);
+                    });
+                    cx.stop_propagation();
+                }
+            })
+            // Vim Esc 模式切换（`Input` 自身 Esc 照跑只做折叠，不吞）。
+            .capture_key_down({
+                let editor = self.editor;
+                move |event: &crate::KeyDownEvent, window: &mut Window, cx: &mut App| {
+                    if event.keystroke.key.as_str() == "escape" {
+                        editor.update(cx, |state, cx| {
+                            state.vim_escape(window, cx);
+                        });
                     }
                 }
             })

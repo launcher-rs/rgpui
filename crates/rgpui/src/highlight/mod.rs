@@ -26,6 +26,12 @@ use crate::{App, HighlightStyle, SharedString, theme::ActiveTheme};
 #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
 pub mod tree_sitter;
 
+/// JSON 高亮器（O6，`tree-sitter-json` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-json"))]
+pub use tree_sitter::json_highlighter;
+/// TOML 高亮器（O6，`tree-sitter-toml` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-toml"))]
+pub use tree_sitter::toml_highlighter;
 #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
 pub use tree_sitter::{TreeSitterHighlighter, rust_highlighter};
 
@@ -195,7 +201,7 @@ static HIGHLIGHTER_REGISTRY: std::sync::LazyLock<
 
 /// 注册语言高亮器（`EditorState::set_language` 查表用）。
 ///
-/// 新语言三步（grammar 包本身不进 1.2，按需加）：1. 加 `tree-sitter-xxx`
+/// 新语言三步（JSON/TOML 已进 1.2，其余按需加）：1. 加 `tree-sitter-xxx`
 /// 可选依赖 + feature 门；2. 写 `Highlighter` 实现（query 随 grammar 版本保证
 /// 有效，抄 `tree_sitter.rs` 的 Rust 实现）；3. 本函数一行注册。
 /// wasm 下 tree-sitter 整体不可用，注册了也降级（见 `highlighter_for`）。
@@ -205,9 +211,9 @@ pub fn register_highlighter(language: &'static str, factory: HighlighterFactory)
     }
 }
 
-/// 按语言取高亮器（注册表优先 → Rust 内置（tree-sitter feature 门）→ `None`）。
+/// 按语言取高亮器（注册表优先 → 各语言内置（对应 feature 门）→ `None`）。
 ///
-/// 未注册静默降级（不 panic、不编译失败；wasm 下 Rust 内置同样不可用，
+/// 未注册静默降级（不 panic、不编译失败；wasm 下内置同样不可用，
 /// 直接 `None`）。`supported_languages` 是候选名录（文档用），可用性只看本函数。
 pub fn highlighter_for(language: &str) -> Option<Box<dyn Highlighter>> {
     if let Ok(registry) = HIGHLIGHTER_REGISTRY.read() {
@@ -219,11 +225,19 @@ pub fn highlighter_for(language: &str) -> Option<Box<dyn Highlighter>> {
     if language == "rust" {
         return Some(rust_highlighter());
     }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-json"))]
+    if language == "json" {
+        return Some(json_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-toml"))]
+    if language == "toml" {
+        return Some(toml_highlighter());
+    }
     None
 }
 
 /// 支持的语言列表（候选名录：文档/UI 展示用，可用性以 [`highlighter_for`] 为准，
-/// 1.2 只实现 Rust，其余语言包不进）。
+/// 1.2 实现 Rust/JSON/TOML，其余语言包不进）。
 pub fn supported_languages() -> Vec<&'static str> {
     vec![
         "rust",
@@ -310,5 +324,21 @@ mod tests {
     fn rust_builtin_available() {
         let highlighter = highlighter_for("rust").expect("tree-sitter 下 Rust 内置可用");
         assert_eq!(highlighter.language().to_string(), "rust");
+    }
+
+    /// JSON 内置（tree-sitter-json feature 门控）。
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-json"))]
+    #[test]
+    fn json_builtin_available() {
+        let highlighter = highlighter_for("json").expect("json feature 下 JSON 内置可用");
+        assert_eq!(highlighter.language().to_string(), "json");
+    }
+
+    /// TOML 内置（tree-sitter-toml feature 门控）。
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-toml"))]
+    #[test]
+    fn toml_builtin_available() {
+        let highlighter = highlighter_for("toml").expect("toml feature 下 TOML 内置可用");
+        assert_eq!(highlighter.language().to_string(), "toml");
     }
 }
