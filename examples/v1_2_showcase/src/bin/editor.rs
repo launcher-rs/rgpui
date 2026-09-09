@@ -11,7 +11,7 @@
 use std::rc::Rc;
 
 use rgpui::{
-    App, Bounds, Context, Render, Window, WindowBounds, WindowOptions, div, h_flex,
+    App, Bounds, Context, Render, Switch, Window, WindowBounds, WindowOptions, div, h_flex,
     input_ui::{Editor, EditorState, InputEvent, InputState, TextArea},
     lsp::{
         CompletionProvider, DiagnosticEntry, DiagnosticsProvider, HoverContent, HoverProvider,
@@ -26,29 +26,65 @@ const SAMPLE: &str = "fn main() {\n    let name = \"rgpui\";\n    println!(\"hel
 
 const READONLY_SAMPLE: &str = "只读预览：可选可复制，不可编辑。右键菜单的剪切/粘贴/撤销自动禁用。";
 
-/// 演示用假补全 provider：固定词表（真 provider 由应用实现传输后注入）。
+/// 演示用假补全 provider：按光标前单词前缀过滤（真 provider 由应用实现传输后注入）。
+///
+/// 无匹配时返回空列表，弹窗自动隐藏；前缀为空（如刚键入 `.`）时全量返回。
 struct DemoCompletionProvider;
+
+/// 演示词表（标签，种类，说明）。
+const DEMO_WORDS: &[(&str, lsp_types::CompletionItemKind, &str)] = &[
+    (
+        "println",
+        lsp_types::CompletionItemKind::FUNCTION,
+        "宏 · 打印换行",
+    ),
+    (
+        "print",
+        lsp_types::CompletionItemKind::FUNCTION,
+        "宏 · 打印不换行",
+    ),
+    ("private", lsp_types::CompletionItemKind::KEYWORD, "关键字"),
+    ("pub", lsp_types::CompletionItemKind::KEYWORD, "关键字"),
+    ("Point", lsp_types::CompletionItemKind::STRUCT, "演示结构体"),
+    ("len", lsp_types::CompletionItemKind::METHOD, "方法"),
+];
+
+/// 光标前连续单词（字母/数字/`_`），字节偏移与框架内 `slice` 口径一致。
+fn word_prefix_before(text: &rgpui::input_ui::Rope, offset: usize) -> String {
+    let offset = offset.min(text.len());
+    let mut start = 0;
+    let mut off = 0;
+    for ch in text.slice(..offset).chars() {
+        off += ch.len_utf8();
+        if !(ch.is_alphanumeric() || ch == '_') {
+            start = off;
+        }
+    }
+    text.slice(start..offset).to_string()
+}
 
 impl CompletionProvider for DemoCompletionProvider {
     fn completions(
         &self,
-        _text: &rgpui::input_ui::Rope,
-        _offset: usize,
+        text: &rgpui::input_ui::Rope,
+        offset: usize,
         _trigger: lsp_types::CompletionContext,
         _window: &mut Window,
         _cx: &mut App,
     ) -> rgpui::Task<anyhow::Result<lsp_types::CompletionResponse>> {
-        rgpui::Task::ready(Ok(lsp_types::CompletionResponse::Array(
-            ["println", "print", "private", "pub", "Point"]
-                .into_iter()
-                .map(|label| lsp_types::CompletionItem {
-                    label: label.to_string(),
-                    kind: Some(lsp_types::CompletionItemKind::FUNCTION),
-                    detail: Some("演示词条".to_string()),
-                    ..Default::default()
-                })
-                .collect(),
-        )))
+        // 大小写不敏感的前缀匹配；真 LSP 服务端按同样语义过滤后返回。
+        let prefix = word_prefix_before(text, offset).to_lowercase();
+        let items = DEMO_WORDS
+            .iter()
+            .filter(|(label, _, _)| prefix.is_empty() || label.to_lowercase().starts_with(&prefix))
+            .map(|(label, kind, detail)| lsp_types::CompletionItem {
+                label: label.to_string(),
+                kind: Some(*kind),
+                detail: Some(detail.to_string()),
+                ..Default::default()
+            })
+            .collect();
+        rgpui::Task::ready(Ok(lsp_types::CompletionResponse::Array(items)))
     }
 }
 
@@ -278,8 +314,12 @@ impl Render for EditorDemo {
                 .map(|s| s.to_string())
                 .unwrap_or("纯文本".to_string())
         });
+        let auto_complete = self
+            .editor
+            .read_with(cx, |state, _| state.auto_completion_enabled());
         let demo = cx.entity();
-        // 补全弹窗（相对容器左上角弹出，点击行即确认插入）。
+        // 自动补全开关（开后键入单词字符即弹补全，空格/换行自动收起）。
+        // 补全弹窗（光标处锚定，`deferred` 浮层，点击行即确认插入）。
         let popup = self
             .editor
             .read_with(cx, |state, _| state.completion_popup().clone());
@@ -325,7 +365,8 @@ impl Render for EditorDemo {
                 .child(
                     div().text_xs().child(
                         "行操作：Shift+Alt+↓复制行 Ctrl+Shift+K删行 Alt+↑↓移行 Ctrl+/注释 Ctrl+J合行 ｜ \
-                         多光标：Ctrl+Alt+↑↓加光标 Alt+点击 ｜ 键入：自动补括号/电缩进/括号匹配/当前行高亮",
+                         多光标：Ctrl+Alt+↑↓加光标 Alt+点击 ｜ 键入：自动补括号/电缩进/括号匹配/当前行高亮 ｜ \
+                         补全：↑↓改选 Enter确认 Esc收起（确认时替换光标处单词）",
                     ),
                 )
                 .child(
@@ -345,6 +386,24 @@ impl Render for EditorDemo {
                         .child(lsp_button(&demo, "lsp-inlay", "请求 inlay", |state, window, cx| {
                             state.request_inlay_hints(window, cx);
                         }))
+                        .child({
+                            let demo = demo.clone();
+                            Switch::new("auto-complete")
+                                .checked(auto_complete)
+                                .label("输入时自动补全")
+                                .on_click(move |checked, _, cx| {
+                                    demo.update(cx, |this, cx| {
+                                        this.editor.update(cx, |state, cx| {
+                                            state.set_auto_completion_enabled(*checked, cx);
+                                        });
+                                    });
+                                })
+                        })
+                        .child(
+                            div()
+                                .text_xs()
+                                .child("自动：单词前缀满 2 个字符或键入 ./: 才请求，按前缀过滤，无匹配自动隐藏"),
+                        )
                         .child(
                             div()
                                 .text_xs()
@@ -394,7 +453,6 @@ impl Render for EditorDemo {
                 )
                 .child(
                     div()
-                        .relative()
                         .flex_1()
                         .child(Editor::new(&self.editor).flex_1())
                         .child(popup_el),
@@ -408,7 +466,7 @@ impl Render for EditorDemo {
 fn run_example() {
     application().run(|cx: &mut App| {
         rgpui::init_all(cx);
-        let bounds = Bounds::centered(None, size(px(980.0), px(640.0)), cx);
+        let bounds = Bounds::centered(None, size(px(1200.0), px(800.0)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),

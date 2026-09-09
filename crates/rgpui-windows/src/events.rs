@@ -977,9 +977,13 @@ impl WindowsWindowInner {
                 None
             };
 
-        // Ctrl 键按下时：始终允许拖动窗口，覆盖鼠标穿透设置
-        // 使用 GetAsyncKeyState 而非 GetKeyState，因穿透窗口不接收焦点
-        if unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) < 0 } {
+        // 穿透窗口按住 Ctrl 时允许拖动（覆盖穿透设置，便于 overlay/桌宠移动窗口）。
+        // 仅穿透模式生效：普通窗口按住 Ctrl（如编辑器多光标/双击选词）必须保持
+        // HTCLIENT，否则客户区双击会被系统按标题栏双击处理，触发最大化/还原。
+        // 使用 GetAsyncKeyState 而非 GetKeyState，因穿透窗口不接收焦点。
+        if self.state.mouse_passthrough.get()
+            && unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) } < 0
+        {
             // 优先返回边框调整大小区域
             if let Some(hit) = in_resize_area {
                 return Some(hit);

@@ -56,6 +56,12 @@ pub(super) struct LspAttach {
     diagnostics_collection: Option<TextDecorationCollection>,
     /// 悬停状态。
     hover: HoverState,
+    /// 输入时自动请求补全（默认关；开后文本变更触发，见 `maybe_auto_complete`）。
+    auto_completion: bool,
+    /// 自动补全的单词前缀最小长度（默认 2；触发字符不受此限制）。
+    auto_min_prefix_len: usize,
+    /// 确认补全后的写入会触发一次 `Change`，此标记将其消费掉，避免弹窗刚收起又弹出。
+    auto_suppress_once: bool,
     /// 请求 epoch（防抖作废旧请求用，tooltip 同款）。
     epoch: u64,
     /// 在途请求任务（持有防取消，tooltip 同款；新请求覆盖即取消旧请求）。
@@ -75,6 +81,9 @@ impl LspAttach {
             diagnostics: Vec::new(),
             diagnostics_collection: None,
             hover: HoverState::default(),
+            auto_completion: false,
+            auto_min_prefix_len: 2,
+            auto_suppress_once: false,
             epoch: 0,
             _lsp_task: None,
         }
@@ -85,6 +94,44 @@ impl LspAttach {
         self.epoch = self.epoch.wrapping_add(1);
         self.epoch
     }
+}
+
+/// 补全单词字符（光标前后扫描与确认替换共用；`.`/`:` 是触发字符，不算词内）。
+fn is_completion_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// 光标前连续单词的起始字节偏移（确认替换与自动触发的前缀长度共用）。
+fn word_start_before(text: &ropey::Rope, cursor: usize) -> usize {
+    let mut start = 0;
+    let mut off = 0;
+    for ch in text.slice(..cursor).chars() {
+        off += ch.len_utf8();
+        if !is_completion_word_char(ch) {
+            start = off;
+        }
+    }
+    start
+}
+
+/// 光标处单词的字节范围（确认补全时整体替换，避免 `pr` + `print` 叠成 `prprint`）。
+///
+/// 后半词一并吃掉（`print|ln` 确认后不留 `ln` 尾巴，与 VSCode 默认一致）；
+/// `obj.pr` 只换 `pr`（`.` 不算词内）。
+fn word_range_at(text: &ropey::Rope, cursor: usize) -> std::ops::Range<usize> {
+    let len = text.len();
+    let cursor = cursor.min(len);
+    // 前半：最后一个非词字符之后的位置。
+    let start = word_start_before(text, cursor);
+    // 后半：遇到非词字符即停。
+    let mut end = cursor;
+    for ch in text.slice(cursor..).chars() {
+        if !is_completion_word_char(ch) {
+            break;
+        }
+        end += ch.len_utf8();
+    }
+    start..end
 }
 
 /// 诊断严重程度 → 下划线颜色。
@@ -110,6 +157,79 @@ impl EditorState {
     ) {
         self.lsp.completion_provider = provider;
         if self.lsp.completion_provider.is_none() {
+            self.dismiss_completion(cx);
+        }
+    }
+
+    /// 设置输入时是否自动请求补全（默认关；开后文本变更触发，防抖沿用补全通道）。
+    ///
+    /// 关开关时若弹窗正开着会一并收起；打开仅影响后续输入，不立即请求一次。
+    pub fn set_auto_completion_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.lsp.auto_completion = enabled;
+        if !enabled {
+            self.dismiss_completion(cx);
+        } else {
+            cx.notify();
+        }
+    }
+
+    /// 输入时是否自动请求补全。
+    pub fn auto_completion_enabled(&self) -> bool {
+        self.lsp.auto_completion
+    }
+
+    /// 设置自动补全的单词前缀最小长度（默认 2；触发字符不受此限制）。
+    ///
+    /// 键入第 1 个字母不弹、凑够长度才弹；设为 1 即恢复“任何单词输入都弹”。
+    pub fn set_auto_completion_min_prefix_len(&mut self, len: usize, cx: &mut Context<Self>) {
+        self.lsp.auto_min_prefix_len = len;
+        cx.notify();
+    }
+
+    /// 自动补全的单词前缀最小长度。
+    pub fn auto_completion_min_prefix_len(&self) -> usize {
+        self.lsp.auto_min_prefix_len
+    }
+
+    /// 文本变更后的自动补全钩子（`EditorState::new` 经 `subscribe_in` 接线，有 window）。
+    ///
+    /// 触发条件（需开关开 + 有 provider）：
+    /// - 触发字符：光标前是 `.`/`:` 或 provider 的 `trigger_characters`，立即请求；
+    /// - 单词字符：光标前连续单词长度达到最小前缀长度才请求（默认 2，单个字母不弹）。
+    /// 空格/换行等落到 else 分支：弹窗开着就收起。
+    /// 确认补全刚写入的一次变更会被 `auto_suppress_once` 吃掉，避免刚收起又弹出。
+    pub(crate) fn maybe_auto_complete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.completion_provider.clone() else {
+            return;
+        };
+        if !self.lsp.auto_completion {
+            return;
+        }
+        if self.lsp.auto_suppress_once {
+            self.lsp.auto_suppress_once = false;
+            return;
+        }
+        let (last_char, prefix_len) = self.input.read_with(cx, |state, _| {
+            // 光标是 UTF-8 字节偏移（库内 `slice` 均按字节，随 `auto_close` 同款写法）。
+            let cursor = state.cursor().min(state.text().len());
+            let text = state.text();
+            let last = text.slice(..cursor).chars().last();
+            let prefix_len = cursor - word_start_before(text, cursor);
+            (last, prefix_len)
+        });
+        let is_trigger_char = last_char.is_some_and(|c| {
+            c == '.'
+                || c == ':'
+                || provider
+                    .trigger_characters()
+                    .iter()
+                    .any(|t| *t == c.to_string())
+        });
+        let long_enough_word = last_char.is_some_and(is_completion_word_char)
+            && prefix_len >= self.lsp.auto_min_prefix_len;
+        if is_trigger_char || long_enough_word {
+            self.request_completions(window, cx);
+        } else if self.lsp.completion.visible {
             self.dismiss_completion(cx);
         }
     }
@@ -227,12 +347,24 @@ impl EditorState {
         cx.notify();
     }
 
-    /// 补全状态同步到弹窗状态（选中/可见/列表/选项全量同步）。
+    /// 补全状态同步到弹窗状态（选中/可见/列表/选项全量同步 + 光标锚点）。
+    ///
+    /// 锚点取光标处渲染边界左下角（窗口坐标，供 `CompletionPopup` 经
+    /// `deferred` + `anchored` 定位）；布局未就绪时保留上次位置，避免闪到左上角。
     fn sync_completion_popup(&self, cx: &mut App) {
         let popup = self.lsp.popup.clone();
+        let anchor = self.input.read(cx).cursor();
+        let anchor = self
+            .input
+            .read(cx)
+            .range_to_bounds(&(anchor..anchor))
+            .map(|bounds| bounds.bottom_left());
         let completion = &self.lsp.completion;
         let _ = popup.update(cx, |popup, cx| {
             popup.update_from_state(completion);
+            if let Some(anchor) = anchor {
+                popup.position = anchor;
+            }
             cx.notify();
         });
     }
@@ -240,7 +372,7 @@ impl EditorState {
     /// 确认补全（默认当前选中）。
     ///
     /// `insertTextFormat == Snippet` 的条目走 `expand_snippet`（M3 联动），
-    /// 其余纯文本插入光标处。
+    /// 其余把光标处单词整体替换为插入文本（`pr` 确认 `print` 得 `print` 而非 `prprint`）。
     pub fn accept_completion(
         &mut self,
         index: Option<usize>,
@@ -251,13 +383,20 @@ impl EditorState {
         let Some(item) = self.lsp.completion.completions.get(index).cloned() else {
             return;
         };
+        // 确认写入会触发 `Change`，先标记抑制一次，免得弹窗刚收起又被自动补全唤起。
+        self.lsp.auto_suppress_once = true;
         if item.lsp_item.insert_text_format == Some(InsertTextFormat::SNIPPET) {
             self.expand_snippet(item.insert_text.as_str(), window, cx);
             self.dismiss_completion(cx);
             return;
         }
+        let insert_text = item.insert_text.clone();
+        let word_range = self
+            .input
+            .read_with(cx, |state, _| word_range_at(state.text(), state.cursor()));
         self.input.update(cx, |state, cx| {
-            state.insert(item.insert_text.as_str(), window, cx);
+            state.set_selected_range(word_range, cx);
+            state.replace(insert_text.as_str(), window, cx);
         });
         self.dismiss_completion(cx);
     }
@@ -265,6 +404,33 @@ impl EditorState {
     /// 收起补全（清空列表 + 同步弹窗）。
     pub fn dismiss_completion(&mut self, cx: &mut Context<Self>) {
         self.lsp.completion.clear();
+        self.sync_completion_popup(cx);
+        cx.notify();
+    }
+
+    /// 补全菜单是否处于可交互状态（可见且有选中项，键盘接管的判断依据）。
+    ///
+    /// 可见性蕴含非空（`apply_completion_response` 保证），再判选中是防越界吞键。
+    pub fn completion_menu_active(&self) -> bool {
+        self.lsp.completion.visible && self.lsp.completion.selected().is_some()
+    }
+
+    /// 补全选中下一项（弹窗隐藏时无操作，供键盘上下键调用）。
+    pub fn select_next_completion(&mut self, cx: &mut Context<Self>) {
+        if !self.lsp.completion.visible {
+            return;
+        }
+        self.lsp.completion.select_next();
+        self.sync_completion_popup(cx);
+        cx.notify();
+    }
+
+    /// 补全选中上一项（弹窗隐藏时无操作，供键盘上下键调用）。
+    pub fn select_previous_completion(&mut self, cx: &mut Context<Self>) {
+        if !self.lsp.completion.visible {
+            return;
+        }
+        self.lsp.completion.select_previous();
         self.sync_completion_popup(cx);
         cx.notify();
     }
@@ -603,5 +769,275 @@ mod tests {
         });
         assert!(visible);
         assert!(text.contains("fn main"));
+    }
+
+    /// 在内部输入上模拟一次键入（走真实 `Change` 事件，自动补全经订阅触发）。
+    fn type_text(editor: &Entity<EditorState>, text: &str, cx: &mut crate::VisualTestContext) {
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                let input = state.input().clone();
+                input.update(cx, |state, cx| {
+                    crate::EntityInputHandler::replace_text_in_range(state, None, text, window, cx);
+                });
+            });
+        });
+    }
+
+    fn completion_visible(editor: &Entity<EditorState>, cx: &mut crate::VisualTestContext) -> bool {
+        editor.read_with(cx, |state, _| state.completion_state().visible)
+    }
+
+    fn selected_index(editor: &Entity<EditorState>, cx: &mut crate::VisualTestContext) -> usize {
+        editor.read_with(cx, |state, _| state.completion_state().selected_index)
+    }
+
+    /// 开关默认关：键入不触发补全。
+    #[rgpui::test]
+    fn auto_completion_off_by_default(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn "));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        assert!(!editor.read_with(cx, |state, _| state.auto_completion_enabled()));
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_completion_provider(Some(Rc::new(FakeCompletionProvider)), cx);
+            });
+        });
+        type_text(&editor, "p", cx);
+        pump(cx);
+        assert!(!completion_visible(&editor, cx));
+    }
+
+    /// 开关开时键入单词字符自动弹出，空格收起。
+    #[rgpui::test]
+    fn auto_completion_triggers_on_word_input(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn "));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_completion_provider(Some(Rc::new(FakeCompletionProvider)), cx);
+                state.set_auto_completion_enabled(true, cx);
+            });
+        });
+        assert!(editor.read_with(cx, |state, _| state.auto_completion_enabled()));
+        // 单个字母不够最小前缀长度（默认 2）：不弹。
+        type_text(&editor, "p", cx);
+        pump(cx);
+        assert!(!completion_visible(&editor, cx));
+        // 凑够 `pr` 才弹。
+        type_text(&editor, "r", cx);
+        pump(cx);
+        assert!(completion_visible(&editor, cx));
+        // 空格不是单词字符：弹窗收起。
+        type_text(&editor, " ", cx);
+        pump(cx);
+        assert!(!completion_visible(&editor, cx));
+    }
+
+    /// 触发字符不受最小前缀长度限制（`fn ` 后键入 `.` 即弹）。
+    #[rgpui::test]
+    fn auto_completion_trigger_char_ignores_threshold(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn "));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_completion_provider(Some(Rc::new(FakeCompletionProvider)), cx);
+                state.set_auto_completion_enabled(true, cx);
+            });
+        });
+        type_text(&editor, ".", cx);
+        pump(cx);
+        assert!(completion_visible(&editor, cx));
+    }
+
+    /// 最小前缀长度可配：设为 1 即恢复“任何单词输入都弹”。
+    #[rgpui::test]
+    fn auto_completion_min_prefix_len_configurable(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn "));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        assert_eq!(
+            editor.read_with(cx, |state, _| state.auto_completion_min_prefix_len()),
+            2
+        );
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_completion_provider(Some(Rc::new(FakeCompletionProvider)), cx);
+                state.set_auto_completion_enabled(true, cx);
+                state.set_auto_completion_min_prefix_len(1, cx);
+            });
+        });
+        type_text(&editor, "p", cx);
+        pump(cx);
+        assert!(completion_visible(&editor, cx));
+    }
+
+    /// 确认补全后的写入不立即重弹（抑制一次），之后键入恢复正常触发。
+    #[rgpui::test]
+    fn accept_completion_suppresses_auto_retrigger(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn "));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_completion_provider(Some(Rc::new(FakeCompletionProvider)), cx);
+                state.set_auto_completion_enabled(true, cx);
+            });
+        });
+        type_text(&editor, "pr", cx);
+        pump(cx);
+        assert!(completion_visible(&editor, cx));
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.accept_completion(None, window, cx);
+            });
+        });
+        pump(cx);
+        assert!(!completion_visible(&editor, cx));
+        // 抑制标记已消费：继续键入重新触发。
+        type_text(&editor, "x", cx);
+        pump(cx);
+        assert!(completion_visible(&editor, cx));
+    }
+
+    /// 关开关时正在展示的弹窗一并收起。
+    #[rgpui::test]
+    fn disabling_auto_completion_dismisses_popup(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn "));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_completion_provider(Some(Rc::new(FakeCompletionProvider)), cx);
+                state.request_completions(window, cx);
+            });
+        });
+        pump(cx);
+        assert!(completion_visible(&editor, cx));
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_auto_completion_enabled(false, cx);
+            });
+        });
+        assert!(!completion_visible(&editor, cx));
+    }
+
+    /// 确认补全替换光标处单词前缀（`pr` 确认 `print` 得 `print` 而非 `prprint`）。
+    #[rgpui::test]
+    fn accept_completion_replaces_word_prefix(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn pr"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_completion_provider(Some(Rc::new(FakeCompletionProvider)), cx);
+                state.request_completions(window, cx);
+            });
+        });
+        pump(cx);
+        assert!(completion_visible(&editor, cx));
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                // 首项即 `println`。
+                state.accept_completion(Some(0), window, cx);
+            });
+        });
+        assert_eq!(
+            editor.read_with(cx, |state, cx| state.text(cx)),
+            "fn println"
+        );
+        assert!(!completion_visible(&editor, cx));
+    }
+
+    /// 确认补全连后半词一起吃掉（`pr|ln` 确认 `println` 不留 `ln` 尾巴）。
+    #[rgpui::test]
+    fn accept_completion_replaces_word_suffix(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "prln"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_completion_provider(Some(Rc::new(FakeCompletionProvider)), cx);
+                state.request_completions(window, cx);
+            });
+        });
+        pump(cx);
+        // 光标移到 `pr` 之后。
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_selected_range(2..2, cx);
+            });
+        });
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.accept_completion(Some(0), window, cx);
+            });
+        });
+        assert_eq!(editor.read_with(cx, |state, cx| state.text(cx)), "println");
+    }
+
+    /// 补全选区上下移动（含首尾回绕；隐藏时无操作）。
+    #[rgpui::test]
+    fn completion_selection_moves_and_wraps(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn "));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        // 隐藏时移动无操作、不 panic。
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.select_next_completion(cx);
+                state.select_previous_completion(cx);
+            });
+        });
+        assert!(!completion_visible(&editor, cx));
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_completion_provider(Some(Rc::new(FakeCompletionProvider)), cx);
+                state.request_completions(window, cx);
+            });
+        });
+        pump(cx);
+        assert!(editor.read_with(cx, |state, _| state.completion_menu_active()));
+        assert_eq!(selected_index(&editor, cx), 0);
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.select_next_completion(cx);
+            });
+        });
+        assert_eq!(selected_index(&editor, cx), 1);
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.select_next_completion(cx);
+            });
+        });
+        // 两项回绕到 0。
+        assert_eq!(selected_index(&editor, cx), 0);
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.select_previous_completion(cx);
+            });
+        });
+        // 0 处上移回绕到末项。
+        assert_eq!(selected_index(&editor, cx), 1);
     }
 }

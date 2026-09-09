@@ -18,7 +18,7 @@ use super::super::blink_cursor::CURSOR_WIDTH;
 use super::super::input::{FOLD_ICON_HITBOX_WIDTH, LINE_NUMBER_RIGHT_MARGIN};
 use super::super::layout::LastLayout;
 use super::super::rope_ext::RopeExt as _;
-use super::super::{Input, InputState};
+use super::super::{Enter, Escape, Input, InputState, MoveDown, MoveUp};
 use super::inlay_hints::InlayHint;
 use super::state::EditorState;
 
@@ -371,6 +371,12 @@ impl RenderOnce for Editor {
                 .children(crumbs)
         });
         let user_style = self.style;
+        // 补全菜单键盘接管（捕获阶段先于内部 `Input`，菜单收起时原样放行）。
+        //
+        // 焦点仍在编辑器内，无需把焦点移到候选框：菜单激活时 Up/Down 改选、
+        // 主回车确认、Esc 收起，并 `stop_propagation` 吞掉 `Input` 的默认行为
+        //（光标移动/换行/清空选区）；`Shift`/`secondary` 回车保持换行语义。
+        let editor_for_keys = self.editor;
         crate::v_flex()
             .size_full()
             .children(sticky)
@@ -383,6 +389,47 @@ impl RenderOnce for Editor {
                     .text_xs()
                     .child(format!("Ln {row}, Col {col}")),
             )
+            .capture_action({
+                let editor = editor_for_keys.clone();
+                move |_: &MoveUp, _: &mut Window, cx: &mut App| {
+                    if editor.read(cx).completion_menu_active() {
+                        editor.update(cx, |state, cx| state.select_previous_completion(cx));
+                        cx.stop_propagation();
+                    }
+                }
+            })
+            .capture_action({
+                let editor = editor_for_keys.clone();
+                move |_: &MoveDown, _: &mut Window, cx: &mut App| {
+                    if editor.read(cx).completion_menu_active() {
+                        editor.update(cx, |state, cx| state.select_next_completion(cx));
+                        cx.stop_propagation();
+                    }
+                }
+            })
+            .capture_action({
+                let editor = editor_for_keys.clone();
+                move |action: &Enter, window: &mut Window, cx: &mut App| {
+                    if !action.secondary
+                        && !action.shift
+                        && editor.read(cx).completion_menu_active()
+                    {
+                        editor.update(cx, |state, cx| {
+                            state.accept_completion(None, window, cx);
+                        });
+                        cx.stop_propagation();
+                    }
+                }
+            })
+            .capture_action({
+                let editor = editor_for_keys;
+                move |_: &Escape, _: &mut Window, cx: &mut App| {
+                    if editor.read(cx).completion_menu_active() {
+                        editor.update(cx, |state, cx| state.dismiss_completion(cx));
+                        cx.stop_propagation();
+                    }
+                }
+            })
             .map(|mut this| {
                 this.style().refine(&user_style);
                 this

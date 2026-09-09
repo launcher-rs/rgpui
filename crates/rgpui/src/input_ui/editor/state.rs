@@ -61,12 +61,14 @@ impl EditorState {
             language: None,
         };
         this.refresh_outline(cx);
-        // 文本一改就刷新大纲。
-        cx.subscribe(&this.input, move |this, _, event, cx| {
+        // 文本一改就刷新大纲；自动补全开时顺带按光标前字符触发/收起补全
+        //（`subscribe_in` 带 window，`request_completions` 要 window 才能调 provider）。
+        cx.subscribe_in(&this.input, window, move |this, _, event, window, cx| {
             if !matches!(event, crate::input_ui::InputEvent::Change) {
                 return;
             }
             this.refresh_outline(cx);
+            this.maybe_auto_complete(window, cx);
         })
         .detach();
         this
