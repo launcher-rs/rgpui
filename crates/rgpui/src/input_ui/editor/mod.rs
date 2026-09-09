@@ -12,6 +12,8 @@ pub(super) mod current_line;
 pub(super) mod editor_ui;
 /// 编辑器扩展表 + 文本变更订阅表（O7，分拆 3.2 未落地件转正）。
 pub(super) mod extensions;
+/// 自定义 gutter 列（provider 注册 + 开关 + 渲染 overlay）。
+pub(super) mod gutter;
 /// 行内提示（provider + 请求 + 渲染源，M4）。
 pub(super) mod inlay_hints;
 pub(super) mod line_ops;
@@ -34,6 +36,7 @@ pub use extensions::{
     EditEvent, EditHandler, EditorExtension, EditorExtensionFactory, editor_extension,
     register_editor_extension,
 };
+pub use gutter::GutterMarkerBuilder;
 pub use inlay_hints::{InlayHint, InlayProvider};
 pub use state::EditorState;
 pub use vim::{VimKey, VimMode};

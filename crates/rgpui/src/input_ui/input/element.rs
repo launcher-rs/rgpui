@@ -908,6 +908,12 @@ impl TextElement {
             line_number_width += FOLD_ICON_HITBOX_WIDTH
         }
 
+        // 自定义 gutter 列宽（有启用的 provider 才占宽；行号/文本/折叠自动右移）。
+        #[cfg(feature = "editor")]
+        {
+            line_number_width += super::super::editor::gutter::gutter_column_width(state);
+        }
+
         (line_number_width, line_number_len)
     }
 
@@ -1125,6 +1131,12 @@ pub(crate) struct PrepaintState {
     /// 折叠图标布局数据（`editor` feature 门控，类型见 `editor_ui`）。
     #[cfg(feature = "editor")]
     fold_icon_layout: super::super::editor::editor_ui::FoldIconLayout,
+    /// gutter 标记布局（`editor` feature 门控，类型见 `editor/gutter`）。
+    #[cfg(feature = "editor")]
+    gutter_markers: super::super::editor::gutter::GutterMarkersLayout,
+    /// gutter 列宽（行号绘制 x 偏移用；关时 0）。
+    #[cfg(feature = "editor")]
+    gutter_width: Pixels,
 }
 
 impl PrepaintState {
@@ -1705,6 +1717,19 @@ impl Element for TextElement {
             cx,
         );
 
+        // gutter 标记布局（`editor` feature 门控；行号区最左固定格）。
+        #[cfg(feature = "editor")]
+        let gutter_markers = super::super::editor::gutter::layout_gutter_markers(
+            &self.state,
+            bounds.origin,
+            &last_layout,
+            last_layout.line_height,
+            window,
+            cx,
+        );
+        #[cfg(feature = "editor")]
+        let gutter_width = gutter_markers.width;
+
         PrepaintState {
             bounds,
             last_layout,
@@ -1720,6 +1745,10 @@ impl Element for TextElement {
             rulers_path,
             #[cfg(feature = "editor")]
             fold_icon_layout,
+            #[cfg(feature = "editor")]
+            gutter_markers,
+            #[cfg(feature = "editor")]
+            gutter_width,
         }
     }
 
@@ -1907,6 +1936,13 @@ impl Element for TextElement {
                 .iter()
                 .zip(prepaint.last_layout.visible_buffer_lines.iter())
             {
+                // gutter 列开启时行号右移（文本/折叠经加宽自动右移）。
+                #[cfg(feature = "editor")]
+                let p = point(
+                    input_bounds.origin.x + prepaint.gutter_width,
+                    origin.y + offset_y,
+                );
+                #[cfg(not(feature = "editor"))]
                 let p = point(input_bounds.origin.x, origin.y + offset_y);
                 let is_active = prepaint.current_row == Some(buffer_line);
 
@@ -1940,6 +1976,14 @@ impl Element for TextElement {
         super::super::editor::editor_ui::paint_fold_icons(
             &mut prepaint.fold_icon_layout,
             prepaint.current_row,
+            window,
+            cx,
+        );
+
+        // 绘制 gutter 标记（行号区最左；`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        super::super::editor::gutter::paint_gutter_markers(
+            &mut prepaint.gutter_markers,
             window,
             cx,
         );

@@ -452,6 +452,12 @@ pub struct InputState {
     /// 已存行内提示（渲染源；`editor` feature 门控）。
     #[cfg(feature = "editor")]
     pub(crate) inlay_hints: Vec<super::super::editor::inlay_hints::InlayHint>,
+    /// gutter 列总开关（默认关；`editor` feature 门控，见 `editor/gutter.rs`）。
+    #[cfg(feature = "editor")]
+    pub(crate) gutter_column_enabled: bool,
+    /// gutter provider 表（具名 + 独立开关；`editor` feature 门控）。
+    #[cfg(feature = "editor")]
+    pub(crate) gutter_markers: Vec<super::super::editor::gutter::GutterMarkerEntry>,
     /// 主光标之外的额外光标（多光标编辑，见 `input_ui/multicursor.rs`；
     /// 字段常驻（读点太多），行为由 `editor` feature 门控）。
     pub(crate) extra_selections: Vec<Selection>,
@@ -576,6 +582,10 @@ impl InputState {
             inlay_hints_enabled: false,
             #[cfg(feature = "editor")]
             inlay_hints: Vec::new(),
+            #[cfg(feature = "editor")]
+            gutter_column_enabled: false,
+            #[cfg(feature = "editor")]
+            gutter_markers: Vec::new(),
             extra_selections: Vec::new(),
             #[cfg(feature = "editor")]
             vim: super::super::editor::vim::VimState::default(),

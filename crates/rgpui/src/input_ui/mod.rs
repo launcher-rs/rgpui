@@ -44,8 +44,8 @@ pub use display_map::{BufferPoint, DisplayMap, DisplayPoint, FoldRange, Wrapping
 #[cfg(feature = "editor")]
 pub use editor::{
     CodeLens, CodeLensOverlay, CodeLensProvider, EditEvent, EditHandler, Editor, EditorExtension,
-    EditorExtensionFactory, EditorState, InlayHint, InlayProvider, ResolvedCodeLens, VimKey,
-    VimMode, editor_extension, register_editor_extension,
+    EditorExtensionFactory, EditorState, GutterMarkerBuilder, InlayHint, InlayProvider,
+    ResolvedCodeLens, VimKey, VimMode, editor_extension, register_editor_extension,
 };
 pub use history::*;
 pub use indent::TabSize;

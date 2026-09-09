@@ -72,6 +72,9 @@
   状态存得住；循环内多实例必须显式 `.id()`，`Popconfirm`/`Alert` 等补 `.id()`）
 - **Select 选项点不动**：下拉项误用非交互 `Label` 变体（`on_click` 被静默丢弃），
   改 `PopupMenuItem::new`（可交互 `Item`）
+- **自定义 gutter 列**（`editor/gutter.rs`）：行号左侧第三列，具名 provider
+  注册/开关（`add/remove/set_gutter_provider_enabled` + 列总开关，默认关）+
+  paint overlay 固定格绘制；`editor` 演示页 run/断点/书签三 provider 可点
 
 ### 布局整理
 

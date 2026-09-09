@@ -273,6 +273,27 @@ fn lsp_button(
 struct EditorDemo {
     editor: rgpui::Entity<EditorState>,
     search: rgpui::Entity<SearchPanelState>,
+    breakpoints: std::collections::HashSet<usize>,
+    bookmarks: std::collections::HashSet<usize>,
+    gutter_status: String,
+}
+
+/// 有序行号（gutter 状态展示用）。
+fn sorted_vec(set: &std::collections::HashSet<usize>) -> Vec<usize> {
+    let mut v: Vec<usize> = set.iter().copied().collect();
+    v.sort_unstable();
+    v
+}
+
+/// 翻转指定 gutter provider 开关（演示开关行用）。
+fn toggle_provider(state: &mut EditorState, cx: &mut Context<EditorState>, id: &str) {
+    let current = state
+        .gutter_providers(cx)
+        .into_iter()
+        .find(|(pid, _)| pid.as_ref() == id)
+        .map(|(_, enabled)| enabled)
+        .unwrap_or(true);
+    state.set_gutter_provider_enabled(id, !current, cx);
 }
 
 /// 行列（字节列）转全文 UTF-8 字节偏移（替换接线用）。
@@ -311,6 +332,129 @@ impl EditorDemo {
             state.set_inlay_hints_enabled(true, cx);
         });
         let input = editor.read_with(cx, |state, _| state.input().clone());
+
+        // gutter 三 provider（run / 断点 / 书签；总开关默认关，这里打开演示）。
+        {
+            let demo = cx.entity();
+            let text_handle = input.clone();
+            editor.update(cx, |state, cx| {
+                // run：`fn main` 行首 ▶（点后只写状态，不真跑）。
+                state.add_gutter_provider(
+                    "run",
+                    move |row, _window, cx| {
+                        // 演示量级：整文拷贝一次再取行（真应用应缓存快照，逐行读）。
+                        let is_main = text_handle.read_with(cx, |s, _| {
+                            s.text()
+                                .to_string()
+                                .lines()
+                                .nth(row)
+                                .map(|line| line.trim_start().starts_with("fn main"))
+                                .unwrap_or(false)
+                        });
+                        if !is_main {
+                            return None;
+                        }
+                        let demo = demo.clone();
+                        Some(
+                            div()
+                                .w_full()
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .id(("gutter-run", row))
+                                .cursor_pointer()
+                                .text_xs()
+                                .text_color(rgb(0x22c55e))
+                                .child("▶")
+                                .on_click(move |_, _, cx| {
+                                    demo.update(cx, |this, _| {
+                                        this.gutter_status =
+                                            format!("运行第 {} 行（演示，未真跑）", row + 1);
+                                    });
+                                })
+                                .into_any_element(),
+                        )
+                    },
+                    cx,
+                );
+            });
+        }
+        {
+            let demo = cx.entity();
+            editor.update(cx, |state, cx| {
+                // 断点：● 已设 / ○ 未设，点击切换。
+                state.add_gutter_provider(
+                    "bp",
+                    move |row, _window, cx| {
+                        let demo = demo.clone();
+                        let set = demo.read_with(cx, |this, _| this.breakpoints.contains(&row));
+                        Some(
+                            div()
+                                .w_full()
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .id(("gutter-bp", row))
+                                .cursor_pointer()
+                                .text_xs()
+                                .text_color(if set { rgb(0xef4444) } else { rgb(0x6b7280) })
+                                .child(if set { "●" } else { "○" })
+                                .on_click(move |_, _, cx| {
+                                    demo.update(cx, |this, _| {
+                                        if !this.breakpoints.remove(&row) {
+                                            this.breakpoints.insert(row);
+                                        }
+                                        this.gutter_status =
+                                            format!("断点行：{:?}", sorted_vec(&this.breakpoints));
+                                    });
+                                })
+                                .into_any_element(),
+                        )
+                    },
+                    cx,
+                );
+            });
+        }
+        {
+            let demo = cx.entity();
+            editor.update(cx, |state, cx| {
+                // 书签：⚑ 黄已设 / 灰未设，点击切换。
+                state.add_gutter_provider(
+                    "mark",
+                    move |row, _window, cx| {
+                        let demo = demo.clone();
+                        let set = demo.read_with(cx, |this, _| this.bookmarks.contains(&row));
+                        Some(
+                            div()
+                                .w_full()
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .id(("gutter-mark", row))
+                                .cursor_pointer()
+                                .text_xs()
+                                .text_color(if set { rgb(0xeab308) } else { rgb(0x6b7280) })
+                                .child("⚑")
+                                .on_click(move |_, _, cx| {
+                                    demo.update(cx, |this, _| {
+                                        if !this.bookmarks.remove(&row) {
+                                            this.bookmarks.insert(row);
+                                        }
+                                        this.gutter_status =
+                                            format!("书签行：{:?}", sorted_vec(&this.bookmarks));
+                                    });
+                                })
+                                .into_any_element(),
+                        )
+                    },
+                    cx,
+                );
+                state.set_gutter_column_enabled(true, cx);
+            });
+        }
 
         // 大纲缓存由编辑器状态维护，这里只在文本变更时重渲染。
         cx.subscribe(&input, |_, _, event, cx| {
@@ -374,7 +518,13 @@ impl EditorDemo {
             });
         }
 
-        Self { editor, search }
+        Self {
+            editor,
+            search,
+            breakpoints: std::collections::HashSet::new(),
+            bookmarks: std::collections::HashSet::new(),
+            gutter_status: "gutter：点 ○/⚑ 设断点书签，▶ 运行".to_string(),
+        }
     }
 
     fn goto(&mut self, symbol: &rgpui::highlight::DocumentSymbol, cx: &mut Context<Self>) {
@@ -584,6 +734,25 @@ impl Render for EditorDemo {
                             },
                         ))
                         .child(div().text_xs().child(format!("当前语言：{lang_text}"))),
+                )
+                .child(
+                    h_flex()
+                        .gap(px(8.0))
+                        .items_center()
+                        .child(lsp_button(&demo, "gutter-master", "gutter 开关", |state, _, cx| {
+                            let enabled = !state.gutter_column_enabled(cx);
+                            state.set_gutter_column_enabled(enabled, cx);
+                        }))
+                        .child(lsp_button(&demo, "gutter-run", "run 开关", |state, _, cx| {
+                            toggle_provider(state, cx, "run");
+                        }))
+                        .child(lsp_button(&demo, "gutter-bp", "断点 开关", |state, _, cx| {
+                            toggle_provider(state, cx, "bp");
+                        }))
+                        .child(lsp_button(&demo, "gutter-mark", "书签 开关", |state, _, cx| {
+                            toggle_provider(state, cx, "mark");
+                        }))
+                        .child(div().text_xs().child(self.gutter_status.clone())),
                 )
                 .child(
                     div()
