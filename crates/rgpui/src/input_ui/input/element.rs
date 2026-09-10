@@ -1341,7 +1341,15 @@ impl Element for TextElement {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let state = self.state.read(cx);
-        let line_height = window.line_height();
+        let text_style = window.text_style();
+        let font_size_override = state.font_size_override;
+        let text_size = font_size_override
+            .unwrap_or(text_style.font_size.to_pixels(window.rem_size()));
+        let line_height = if font_size_override.is_some() {
+            text_style.line_height.to_pixels(crate::AbsoluteLength::Pixels(text_size), window.rem_size()).round()
+        } else {
+            window.line_height()
+        };
 
         let mut style = Style::default();
         style.size.width = relative(1.).into();
@@ -1439,7 +1447,11 @@ impl Element for TextElement {
         }
 
         let state = self.state.read(cx);
-        let line_height = window.line_height();
+        let line_height = if font_size_override.is_some() {
+            text_style.line_height.to_pixels(crate::AbsoluteLength::Pixels(text_size), window.rem_size()).round()
+        } else {
+            window.line_height()
+        };
 
         let (visible_range, visible_buffer_lines, visible_top) =
             self.calculate_visible_range(&state, line_height, bounds.size.height);
@@ -1784,7 +1796,7 @@ impl Element for TextElement {
         );
 
         // 绘制多行文本
-        let line_height = window.line_height();
+        let line_height = prepaint.last_layout.line_height;
         let origin = bounds.origin;
 
         let invisible_top_padding = prepaint.last_layout.visible_top;

@@ -1888,6 +1888,11 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Ctrl/Cmd + 滚轮交给上层处理缩放，内部不消费滚动。
+        let ctrl_like = event.modifiers.control || event.modifiers.platform;
+        if ctrl_like {
+            return;
+        }
         let line_height = self
             .last_layout
             .as_ref()
