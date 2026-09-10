@@ -918,8 +918,12 @@ impl Render for EditorDemo {
                                                             .text_sm()
                                                             .child("×")
                                                             .on_click(move |_, _, cx| {
-                                                                demo.update(cx, |this, _| {
+                                                                demo.update(cx, |this, cx| {
                                                                     this.search_open = None;
+                                                                    // 关弹窗清标黄（装饰不清会一直留在编辑器上）。
+                                                                    this.search.update(cx, |panel, cx| {
+                                                                        panel.clear_highlights(cx);
+                                                                    });
                                                                 });
                                                             }),
                                                     ),
@@ -1078,6 +1082,8 @@ impl Render for EditorDemo {
                         this.search_open = Some(show_replace);
                         this.search.update(cx, |panel, cx| {
                             panel.set_show_replace(show_replace, cx);
+                            // 重开把关闭期清掉的标黄标回来。
+                            panel.refresh_highlights(cx);
                         });
                     });
                     let search = demo.read_with(cx, |this, _| this.search.clone());
@@ -1091,8 +1097,14 @@ impl Render for EditorDemo {
                     let closed = demo.read_with(cx, |this, _| {
                         this.gutter_menu.is_some() || this.search_open.is_some()
                     });
-                    demo.update(cx, |this, _| {
+                    demo.update(cx, |this, cx| {
                         this.gutter_menu = None;
+                        // Esc 关搜索弹窗同样清标黄（与 × 按钮同语义）。
+                        if this.search_open.is_some() {
+                            this.search.update(cx, |panel, cx| {
+                                panel.clear_highlights(cx);
+                            });
+                        }
                         this.search_open = None;
                     });
                     if closed {

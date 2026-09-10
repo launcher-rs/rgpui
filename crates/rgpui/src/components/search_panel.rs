@@ -202,45 +202,58 @@ impl SearchState {
     }
 
     /// 字面文本匹配（支持大小写敏感和全词匹配）。
+    ///
+    /// 多字节安全：推进下标始终落在原行字符边界上；大小写不敏感比较逐字符
+    /// 判定，避免 `to_lowercase()` 整行后字节偏移漂移（旧实现以小写串偏移
+    /// 切原行 + 按字节 `+1` 步进，中文必 panic）。
     fn find_literal_matches(&self, source: &str) -> Vec<SearchMatch> {
         let mut matches = Vec::new();
-        let query = if self.options.case_sensitive {
-            self.query.clone()
+        // 大小写不敏感时查询按字符预小写（字符序列坐标，与逐字比较对应）。
+        let query_lower: Vec<char> = if self.options.case_sensitive {
+            Vec::new()
         } else {
-            self.query.to_lowercase()
+            self.query.to_lowercase().chars().collect()
         };
 
         for (line_idx, line) in source.lines().enumerate() {
-            let search_line = if self.options.case_sensitive {
-                line.to_string()
-            } else {
-                line.to_lowercase()
-            };
-
+            let line_bytes = line.as_bytes();
+            // `start` 恒为字符边界（0 起始，每次按首字符字节数推进）。
             let mut start = 0;
-            while let Some(pos) = search_line[start..].find(&query) {
-                let absolute_pos = start + pos;
-                let match_end = absolute_pos + query.len();
-
-                // 全词匹配检查
-                if self.options.whole_word {
-                    let before_ok = absolute_pos == 0
-                        || !line.as_bytes()[absolute_pos - 1].is_ascii_alphanumeric();
-                    let after_ok = match_end >= line.len()
-                        || !line.as_bytes()[match_end].is_ascii_alphanumeric();
-                    if !before_ok || !after_ok {
-                        start = absolute_pos + 1;
-                        continue;
+            while start < line.len() {
+                let rest = &line[start..];
+                let first_len = rest.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+                let matched_len = if self.options.case_sensitive {
+                    if rest.starts_with(self.query.as_str()) {
+                        Some(self.query.len())
+                    } else {
+                        None
                     }
-                }
+                } else {
+                    literal_insensitive_prefix_len(rest, &query_lower)
+                };
 
-                matches.push(SearchMatch {
-                    line: line_idx,
-                    start_col: absolute_pos,
-                    end_col: match_end,
-                    text: line[absolute_pos..match_end].into(),
-                });
-                start = absolute_pos + 1;
+                if let Some(len) = matched_len {
+                    let match_end = start + len;
+                    // 全词匹配检查（字节下标，均已 guards 越界，`as_bytes` 索引安全）。
+                    if self.options.whole_word {
+                        let before_ok =
+                            start == 0 || !line_bytes[start - 1].is_ascii_alphanumeric();
+                        let after_ok = match_end >= line_bytes.len()
+                            || !line_bytes[match_end].is_ascii_alphanumeric();
+                        if !before_ok || !after_ok {
+                            start += first_len;
+                            continue;
+                        }
+                    }
+
+                    matches.push(SearchMatch {
+                        line: line_idx,
+                        start_col: start,
+                        end_col: match_end,
+                        text: line[start..match_end].into(),
+                    });
+                }
+                start += first_len;
             }
         }
 
@@ -391,6 +404,35 @@ fn byte_offset_of(source: &str, line: usize, col: usize) -> usize {
         offset += part.len() + 1;
     }
     offset
+}
+
+/// 大小写不敏感前缀匹配：`rest` 以 `query_lower`（已按字符小写）开头时，
+/// 返回原串中匹配部分的字节长度（小写可能改变字节数，按字符逐个累加还原）。
+/// 不匹配返回 `None`。调用方保证 `rest` 起始于字符边界。
+fn literal_insensitive_prefix_len(rest: &str, query_lower: &[char]) -> Option<usize> {
+    if query_lower.is_empty() {
+        return None;
+    }
+    let mut chars = rest.chars();
+    // 已消费的原串字节数。
+    let mut orig_consumed = 0usize;
+    // 逐查询字符消费原串字符（单个原字符小写后可能是多字符，如 `İ`）。
+    let mut qi = 0usize;
+    while qi < query_lower.len() {
+        let Some(c) = chars.next() else {
+            return None;
+        };
+        orig_consumed += c.len_utf8();
+        // 原字符小写展开后的字符序列。
+        let mut lowered = c.to_lowercase();
+        while let Some(lc) = lowered.next() {
+            if qi >= query_lower.len() || lc != query_lower[qi] {
+                return None;
+            }
+            qi += 1;
+        }
+    }
+    Some(orig_consumed)
 }
 
 /// 可嵌入的搜索面板实体（`Render` 版）。
@@ -700,6 +742,20 @@ impl SearchPanelState {
         self.highlight
             .get_or_insert_with(SearchHighlight::new)
             .mark(&editor, &source, &matches, cx);
+    }
+
+    /// 清除绑定编辑器的标黄（弹窗关闭时调；装饰集合清空，下次打开重标）。
+    ///
+    /// 只清装饰，不碰查询/匹配状态，重开弹窗标黄可恢复。
+    pub fn clear_highlights(&mut self, cx: &mut App) {
+        if let Some(highlight) = self.highlight.as_mut() {
+            highlight.clear(cx);
+        }
+    }
+
+    /// 按当前匹配重标（弹窗打开时调；关闭期被 `clear_highlights` 清掉的重标回来）。
+    pub fn refresh_highlights(&mut self, cx: &mut App) {
+        self.mark_attached(cx);
     }
 
     /// 搜索输入框实体（供父组件聚焦等）。
