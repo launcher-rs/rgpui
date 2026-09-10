@@ -413,8 +413,8 @@ impl RenderOnce for Editor {
             };
             (state.input().clone(), stack, state.sticky_position())
         });
-        // 编辑器字号覆盖：builder 优先，其次 EditorState 设置，否则清除。
-        let effective_font_size = self.font_size.or_else(|| self.editor.read(cx).font_size());
+        // 编辑器字号覆盖：builder 设置优先，否则清除。
+        let effective_font_size = self.font_size;
         input.update(cx, |state, cx| {
             state.set_font_size_override(effective_font_size, cx);
         });
