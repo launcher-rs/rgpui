@@ -1950,18 +1950,14 @@ impl Element for TextElement {
                 // 绘制活动行号背景
                 if is_active {
                     if let Some(bg_color) = active_line_color {
-                        window.paint_quad(fill(
-                            Bounds::new(
-                                p,
-                                size(
-                                    prepaint.last_layout.line_number_width
-                                        - LINE_NUMBER_RIGHT_MARGIN
-                                        - prepaint.gutter_width,
-                                    height,
-                                ),
-                            ),
-                            bg_color,
-                        ));
+                        #[cfg(feature = "editor")]
+                        let bg_width = prepaint.last_layout.line_number_width
+                            - LINE_NUMBER_RIGHT_MARGIN
+                            - prepaint.gutter_width;
+                        #[cfg(not(feature = "editor"))]
+                        let bg_width =
+                            prepaint.last_layout.line_number_width - LINE_NUMBER_RIGHT_MARGIN;
+                        window.paint_quad(fill(Bounds::new(p, size(bg_width, height)), bg_color));
                     }
                 }
 
