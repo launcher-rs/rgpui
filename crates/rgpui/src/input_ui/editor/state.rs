@@ -6,6 +6,8 @@
 
 use std::ops::Range;
 
+use crate::{App, AppContext as _, Context, Entity, Pixels, SharedString, Window, px};
+
 use super::super::InputState;
 use super::codelens::CodelensState;
 use super::extensions::ExtensionsState;
@@ -14,7 +16,6 @@ use super::lsp_attach::LspAttach;
 use super::minimap::MinimapState;
 use super::snippets::SnippetSession;
 use crate::highlight::{DocumentSymbol, Highlighter};
-use crate::{App, AppContext as _, Context, Entity, SharedString, Window};
 
 /// 代码编辑器状态（`cx.new` 持有，`Editor` 组件消费）。
 pub struct EditorState {
@@ -36,6 +37,8 @@ pub struct EditorState {
     pub(super) extensions: ExtensionsState,
     /// 粘性滚动开关（默认开，见 `sticky_scroll.rs`）。
     pub(super) sticky_scroll: bool,
+    /// 面包屑位置（默认顶部顶栏，见 `sticky_scroll.rs`）。
+    pub(super) sticky_position: super::sticky_scroll::StickyPosition,
     /// 当前语言（`set_language` 维护；未设置/已降级为 `None`）。
     language: Option<SharedString>,
 }
@@ -70,6 +73,7 @@ impl EditorState {
             codelens: CodelensState::new(),
             extensions: ExtensionsState::new(),
             sticky_scroll: true,
+            sticky_position: super::sticky_scroll::StickyPosition::Top,
             language: None,
         };
         this.refresh_outline(cx);
@@ -141,6 +145,13 @@ impl EditorState {
         });
     }
 
+    /// 设置折叠开关（透传内部输入；关闭后折叠图标与折叠区消失）。
+    pub fn set_folding(&mut self, folding: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.input.update(cx, |state, cx| {
+            state.set_folding(folding, window, cx);
+        });
+    }
+
     /// 设置只读模式（创建后修改；透传内部输入）。
     ///
     /// 只读保持正常样式，允许移动光标/选择/复制；程序化写入不受影响。
@@ -200,12 +211,54 @@ impl EditorState {
         self.input
             .read_with(cx, |state, _| state.vim.enabled.then_some(state.vim.mode))
     }
+}
 
+/// 布局调试几何（`chrome_geometry` 返回；窗口坐标系像素值）。
+#[derive(Debug, Clone, Copy)]
+pub struct ChromeGeometry {
+    /// gutter 列右缘（列关为左缘）。
+    pub gutter_end: Pixels,
+    /// 行号区右缘（含 gutter/折叠/边距）。
+    pub numbers_end: Pixels,
+    /// 折叠区右缘。
+    pub fold_end: Pixels,
+    /// 文本首 x（行首字形理论起始）。
+    pub text_start: Pixels,
+}
+
+impl EditorState {
     /// Vim 按键分发（`Editor` 的 `VimKey` 捕获调用；绑定命中即激活态，调用方吞传播）。
     pub(crate) fn vim_key(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.input.update(cx, |state, cx| {
             super::vim::handle_key(state, key, window, cx);
         });
+    }
+
+    /// 布局调试几何（布局调试开关用；窗口坐标系像素值）。
+    ///
+    /// 由上帧落盘的 `last_bounds`/`last_layout` 换算（与绘制同口径）：
+    /// gutter 右缘 / 行号区右缘 / 折叠区右缘 / 文本首 x。
+    /// 首绘前返回 `None`。
+    pub fn chrome_geometry(&self, cx: &App) -> Option<ChromeGeometry> {
+        self.input.read_with(cx, |state, _| {
+            let bounds = state.last_bounds?;
+            let layout = state.last_layout.as_ref()?;
+            let gutter = super::gutter::gutter_column_width(state);
+            let folding = state.mode.is_folding();
+            let fold_part = if folding {
+                super::super::input::FOLD_ICON_HITBOX_WIDTH
+            } else {
+                px(0.)
+            };
+            let full = layout.line_number_width;
+            let margin = super::super::input::LINE_NUMBER_RIGHT_MARGIN;
+            Some(ChromeGeometry {
+                gutter_end: bounds.origin.x + gutter,
+                numbers_end: bounds.origin.x + full - margin - fold_part,
+                fold_end: bounds.origin.x + full - margin,
+                text_start: bounds.origin.x + full,
+            })
+        })
     }
 
     /// Vim Esc 模式切换（`capture_key_down` 调用；`Input` 自身 Esc 照跑，不吞）。

@@ -43,9 +43,9 @@ pub use display_map::{BufferPoint, DisplayMap, DisplayPoint, FoldRange, Wrapping
 /// 代码编辑器状态与组件（`editor` feature 门控）。
 #[cfg(feature = "editor")]
 pub use editor::{
-    CodeLens, CodeLensOverlay, CodeLensProvider, EditEvent, EditHandler, Editor, EditorExtension,
-    EditorExtensionFactory, EditorState, GutterMarkerBuilder, InlayHint, InlayProvider,
-    ResolvedCodeLens, VimKey, VimMode, editor_extension, register_editor_extension,
+    ChromeGeometry, CodeLens, CodeLensOverlay, CodeLensProvider, EditEvent, EditHandler, Editor,
+    EditorExtension, EditorExtensionFactory, EditorState, InlayHint, InlayProvider,
+    ResolvedCodeLens, StickyPosition, VimKey, VimMode, editor_extension, register_editor_extension,
 };
 pub use history::*;
 pub use indent::TabSize;

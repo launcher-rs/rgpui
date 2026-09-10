@@ -49,6 +49,32 @@
   （`v1_2_showcase --bin keymap`：JSON 加载应用 + `HotkeyInput` 录制绑定 +
   `bindings_for_action` 回显 + 同键异动作冲突提示）
 
+- **stdio LSP 传输**（`lsp/stdio.rs`）：子进程 spawn + JSON-RPC Content-Length 收发 +
+  请求 id 路由 + 通知分发 + `StdioLspClient: LspClient` + stderr 日志透出；
+  进程异常退出在途请求全失败、不守护重启；内存 duplex 假服务端单测
+- **Minimap**（`editor/minimap.rs`）：缩略文本块 + 可视区高亮 + 点击/拖动跳转 +
+  开关（默认关）；纯 overlay 三不；大文档抽样渲染；渲染冒烟单测
+- **Vim 模式**（`editor/vim.rs`）：normal/insert/visual 三态 + hjkl/wb/0/$/gg/G 移动 +
+  i/a/o/x/dd/yy/p/u 编辑 + vim_mode 上下文谓词 + 状态行指示；默认关；
+  模式切换与核心操作单测
+- **CodeLens**（`editor/codelens.rs`）：`CodeLensProvider` trait + 行上透镜行 +
+  点击回调；overlay 层不挤占滚动；假 provider 演示 + 单测
+- **标尺 + 括号彩虹**（`editor/state.rs`）：标尺指定列竖线（可配列数/颜色，默认关）；
+  括号彩虹嵌套层级按调色轮着色（默认关，与匹配高亮共存）；各单测
+- **JSON + TOML grammar**（`tree_sitter.rs`）：按 M6 三步机制加 JSON + TOML
+  （各独立 feature 门）+ 高亮 query + document_symbols + 注册；大纲非空单测
+- **extensions + on_edit 表**（`editor/extensions.rs`）：扩展注册表 + 文本变更订阅表；
+  注册+触发单测
+
+- **StickyPosition**（`editor/sticky_scroll.rs`）：`StickyPosition::Top`/`Status` 枚举 +
+  `set_sticky_position`；面包屑可定位到状态行
+- **搜索弹窗**（`components/search_panel.rs`）：`Ctrl+F`/`Ctrl+R` 切换显示，左上浮动定位 +
+  `set_show_replace` API
+- **Gutter 菜单化**（`editor/gutter.rs`）：单 `menu` provider，右键弹出菜单
+  （断点/书签/运行），`capture_any_mouse_down` + `stop_propagation` 抑制编辑器右键菜单
+- **布局调试标尺**（`editor/state.rs`）：`chrome_geometry()` 暴露四边界 x
+  （gutter/行号/折叠/文本起始），演示页四色竖线浮层辅助定位
+
 - **`cx.debounce` 方法版**：`App` 全局防抖注册表 + key 隔离（`Debouncer` 结构版保留）
 - **tree-sitter 后端**（`--features tree-sitter`，默认关，wasm 禁用）：Rust 单语言
   `Highlighter` 实现 + fold 数据源；`InputState::set_highlighter` 接入，
@@ -61,6 +87,10 @@
 
 ### 修复
 
+- **活动行号背景溢出**（`element.rs`）：活动行的行号背景矩形宽度未减去 gutter 列宽，
+  导致右缘越过文本起点遮挡行首 1-2 个字符（宽度 `line_number_width - MARGIN`，
+  起点从 `gutter_width` 开始，溢出 `gutter_width - MARGIN` 像素）；修复：宽度减去
+  `gutter_width`
 - **Popover 未初始化即 panic**：`menu::GlobalState` 读写改懒创建（未调 `menu::init`
   也能开合；键盘绑定仍需 init）；`components` 演示补 `init_all`
 - **Combobox 打不开/丢焦点**：聚焦即展开；选中（点击/回车）后回焦输入框；

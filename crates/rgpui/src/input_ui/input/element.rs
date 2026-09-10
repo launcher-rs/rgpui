@@ -1955,7 +1955,8 @@ impl Element for TextElement {
                                 p,
                                 size(
                                     prepaint.last_layout.line_number_width
-                                        - LINE_NUMBER_RIGHT_MARGIN,
+                                        - LINE_NUMBER_RIGHT_MARGIN
+                                        - prepaint.gutter_width,
                                     height,
                                 ),
                             ),

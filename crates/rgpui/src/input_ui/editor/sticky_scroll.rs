@@ -13,6 +13,16 @@ use crate::{App, Context};
 
 use super::state::EditorState;
 
+/// 粘性面包屑位置（大纲栈展示在哪）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StickyPosition {
+    /// 顶部顶栏（默认；M5 原行为，大纲栈非空时占一行）。
+    #[default]
+    Top,
+    /// 状态行（顶栏永不出现，无高度跳变；面包屑跟在行列号后）。
+    Status,
+}
+
 impl EditorState {
     /// 当前大纲栈（包含光标的最内层链，外层在前；无大纲返回空）。
     pub fn sticky_stack(&self, cx: &App) -> Vec<crate::highlight::DocumentSymbol> {
@@ -42,6 +52,18 @@ impl EditorState {
     /// 粘性滚动是否开启。
     pub fn sticky_scroll_enabled(&self) -> bool {
         self.sticky_scroll
+    }
+
+    /// 设置面包屑位置（默认 `Top`；`Status` 时顶栏永不出现，面包屑进状态行，
+    /// 空栈与非空栈高度一致，编辑区不跳动）。
+    pub fn set_sticky_position(&mut self, position: StickyPosition, cx: &mut Context<Self>) {
+        self.sticky_position = position;
+        cx.notify();
+    }
+
+    /// 面包屑位置。
+    pub fn sticky_position(&self) -> StickyPosition {
+        self.sticky_position
     }
 }
 
@@ -170,6 +192,35 @@ mod tests {
             editor
                 .read_with(cx, |state, cx| state.sticky_stack(cx))
                 .is_empty()
+        );
+    }
+
+    /// 面包屑位置默认顶部，可切状态栏（栈数据不受位置影响）。
+    #[rgpui::test]
+    fn sticky_position_defaults_top(cx: &mut crate::TestAppContext) {
+        let editor = with_nested(cx);
+        assert_eq!(
+            editor.read_with(cx, |state, _| state.sticky_position()),
+            StickyPosition::Top
+        );
+        editor.update(cx, |state, cx| {
+            state.set_sticky_position(StickyPosition::Status, cx);
+        });
+        assert_eq!(
+            editor.read_with(cx, |state, _| state.sticky_position()),
+            StickyPosition::Status
+        );
+        // 栈照常计算（渲染层决定放顶栏还是状态行）。
+        editor.update(cx, |state, cx| {
+            state.set_selected_range(7..7, cx);
+        });
+        assert_eq!(
+            editor.read_with(cx, |state, cx| state
+                .sticky_stack(cx)
+                .iter()
+                .map(|s| s.name.to_string())
+                .collect::<Vec<_>>()),
+            vec!["Outer".to_string(), "inner".to_string()]
         );
     }
 

@@ -11,7 +11,7 @@ use crate::{
     AnyElement, App, Bounds, Button, ButtonVariants as _, Entity, Half, Hitbox, HitboxBehavior,
     IconName, IntoElement, MouseButton, ParentElement as _, Pixels, Point, Refineable, RenderOnce,
     Sizable as _, StatefulInteractiveElement, StyleRefinement, Styled, TextAlign, TextRun, Window,
-    div, point, px, size,
+    div, h_flex, point, px, size,
 };
 
 use super::super::blink_cursor::CURSOR_WIDTH;
@@ -364,16 +364,45 @@ impl Styled for Editor {
     }
 }
 
+/// 大纲栈面包屑元素（顶栏/状态行共用；点击跳转符号头）。
+fn crumb_elements(
+    editor: &Entity<EditorState>,
+    stack: Vec<crate::highlight::DocumentSymbol>,
+    id_prefix: &'static str,
+) -> Vec<AnyElement> {
+    let mut crumbs: Vec<AnyElement> = Vec::new();
+    let last = stack.len().saturating_sub(1);
+    for (ix, symbol) in stack.into_iter().enumerate() {
+        let editor = editor.clone();
+        crumbs.push(
+            div()
+                .id((id_prefix, ix))
+                .cursor_pointer()
+                .child(symbol.name.clone())
+                .on_click(move |_, _, cx| {
+                    editor.update(cx, |state, cx| {
+                        state.goto_symbol(&symbol, cx);
+                    });
+                })
+                .into_any_element(),
+        );
+        if ix != last {
+            crumbs.push(div().child("›").into_any_element());
+        }
+    }
+    crumbs
+}
+
 impl RenderOnce for Editor {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         // 状态行：Ln 行， Col 列（字节列，CJK 以字节计，演示够用）。
-        let (input, stack) = self.editor.read_with(cx, |state, cx| {
+        let (input, stack, sticky_position) = self.editor.read_with(cx, |state, cx| {
             let stack = if state.sticky_scroll_enabled() {
                 state.sticky_stack(cx)
             } else {
                 Vec::new()
             };
-            (state.input().clone(), stack)
+            (state.input().clone(), stack, state.sticky_position())
         });
         let (row, col) = input.read_with(cx, |state, _| {
             let cursor = state.cursor();
@@ -389,41 +418,30 @@ impl RenderOnce for Editor {
                 .map(|mode| format!(" · {}", mode.indicator()))
                 .unwrap_or_default()
         });
-        // 粘性顶栏：面包屑（点击跳转符号头）。
+        // 粘性顶栏：面包屑（点击跳转符号头；`Status` 位置时顶栏永不出现，
+        // 面包屑改由状态行渲染，空栈非空栈高度一致，编辑区不跳动）。
         let editor = self.editor.clone();
-        let sticky = (!stack.is_empty()).then(|| {
-            let mut crumbs: Vec<AnyElement> = Vec::new();
-            let last = stack.len().saturating_sub(1);
-            for (ix, symbol) in stack.into_iter().enumerate() {
-                let editor = editor.clone();
-                crumbs.push(
-                    div()
-                        .id(("sticky-crumb", ix))
-                        .cursor_pointer()
-                        .child(symbol.name.clone())
-                        .on_click(move |_, _, cx| {
-                            editor.update(cx, |state, cx| {
-                                state.goto_symbol(&symbol, cx);
-                            });
-                        })
-                        .into_any_element(),
-                );
-                if ix != last {
-                    crumbs.push(div().child("›").into_any_element());
-                }
-            }
-            div()
-                .flex_none()
-                .px(px(12.0))
-                .py(px(2.0))
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(4.0))
-                .children(crumbs)
-        });
+        let show_top_bar = matches!(sticky_position, super::sticky_scroll::StickyPosition::Top);
+        let muted = cx.theme().muted_foreground;
+        let (sticky, status_crumbs): (Option<AnyElement>, Vec<AnyElement>) = if show_top_bar {
+            let bar = (!stack.is_empty()).then(|| {
+                div()
+                    .flex_none()
+                    .px(px(12.0))
+                    .py(px(2.0))
+                    .text_xs()
+                    .text_color(muted)
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(4.0))
+                    .children(crumb_elements(&editor, stack, "sticky-crumb"))
+                    .into_any_element()
+            });
+            (bar, Vec::new())
+        } else {
+            (None, crumb_elements(&editor, stack, "status-crumb"))
+        };
         let user_style = self.style;
         // 内部 Input 组装（三档右键透传；闭包包一层 Rc 转发）。
         let mut input_el = Input::new(&input).flex_1();
@@ -469,7 +487,20 @@ impl RenderOnce for Editor {
                     .px(px(12.0))
                     .py(px(4.0))
                     .text_xs()
-                    .child(format!("Ln {row}, Col {col}{vim_indicator}")),
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(format!("Ln {row}, Col {col}{vim_indicator}"))
+                    .children((!status_crumbs.is_empty()).then(|| {
+                        // 状态栏面包屑（`Status` 位置；与行列号同行，高度恒定）。
+                        h_flex()
+                            .items_center()
+                            .gap(px(4.0))
+                            .child(div().text_color(muted).child("·"))
+                            .children(status_crumbs)
+                            .into_any_element()
+                    })),
             )
             .capture_action({
                 let editor = editor_for_keys.clone();

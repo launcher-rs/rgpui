@@ -675,6 +675,21 @@ impl SearchPanelState {
         self.on_navigate = Some(Rc::new(handler));
     }
 
+    /// 设置是否显示替换区域（`Ctrl+F` 关/`Ctrl+R` 开，弹窗模式用）。
+    pub fn set_show_replace(&mut self, show: bool, cx: &mut Context<Self>) {
+        self.show_replace = show;
+        // 无替换输入框的 `search_only` 构造下强制隐藏（字段与构造一致）。
+        if self.replace_input.is_none() {
+            self.show_replace = false;
+        }
+        cx.notify();
+    }
+
+    /// 是否显示替换区域。
+    pub fn show_replace(&self) -> bool {
+        self.show_replace
+    }
+
     /// 按当前匹配重标绑定的编辑器（无绑定时空操作）。
     fn mark_attached(&mut self, cx: &mut App) {
         let Some(editor) = self.attached_editor.clone() else {
@@ -1054,6 +1069,52 @@ mod tests {
             let input = panel.read(cx).search_input().clone();
             input.update(cx, |state, cx| state.replace(query, window, cx));
         });
+    }
+
+    /// 替换行显隐可切换（`Ctrl+F` 关/`Ctrl+R` 开；`search_only` 构造恒关）。
+    #[rgpui::test]
+    fn show_replace_toggles(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let panel = cx.new(|cx| SearchPanelState::new(window, cx));
+            let replace_only = cx.new(|cx| SearchPanelState::search_only(window, cx));
+            ProbeReplace {
+                panel,
+                replace_only,
+            }
+        });
+        let (panel, replace_only) = probe.read_with(cx, |probe, _| {
+            (probe.panel.clone(), probe.replace_only.clone())
+        });
+        // `new` 构造默认显示替换行。
+        assert!(panel.read_with(cx, |panel, _| panel.show_replace()));
+        cx.update(|_, cx| {
+            panel.update(cx, |panel, cx| {
+                panel.set_show_replace(false, cx);
+            });
+        });
+        assert!(!panel.read_with(cx, |panel, _| panel.show_replace()));
+        // `search_only` 构造恒关（置 true 也压回 false）。
+        assert!(!replace_only.read_with(cx, |panel, _| panel.show_replace()));
+        cx.update(|_, cx| {
+            replace_only.update(cx, |panel, cx| {
+                panel.set_show_replace(true, cx);
+            });
+        });
+        assert!(!replace_only.read_with(cx, |panel, _| panel.show_replace()));
+    }
+
+    /// 持有替换行显隐测试的面板视图。
+    struct ProbeReplace {
+        panel: Entity<SearchPanelState>,
+        replace_only: Entity<SearchPanelState>,
+    }
+
+    impl Render for ProbeReplace {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+        }
     }
 
     /// 读取（匹配数，标黄数）。

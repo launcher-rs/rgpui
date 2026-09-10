@@ -25,7 +25,7 @@ pub(super) mod multicursor;
 /// 代码片段最小版（占位解析 + 会话跳转 + 补全联动，M3）。
 pub(super) mod snippets;
 pub(super) mod state;
-/// 粘性滚动（大纲栈顶栏，M5）。
+/// 粘性滚动（大纲栈顶栏/状态栏，M5）。
 pub(super) mod sticky_scroll;
 /// Vim 模式最小可用（模式/键位/操作，O3）。
 pub(super) mod vim;
@@ -36,9 +36,10 @@ pub use extensions::{
     EditEvent, EditHandler, EditorExtension, EditorExtensionFactory, editor_extension,
     register_editor_extension,
 };
-pub use gutter::GutterMarkerBuilder;
 pub use inlay_hints::{InlayHint, InlayProvider};
+pub use state::ChromeGeometry;
 pub use state::EditorState;
+pub use sticky_scroll::StickyPosition;
 pub use vim::{VimKey, VimMode};
 
 // /// `input/` 动作与选择类型在 `editor/` 内的短路径（`pub(super)`，不进公开 API）。

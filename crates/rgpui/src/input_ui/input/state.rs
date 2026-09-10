@@ -339,8 +339,8 @@ pub struct InputState {
     pub(super) last_cursor: Option<usize>,
     /// 输入容器边界。
     pub(crate) input_bounds: Bounds<Pixels>,
-    /// 文本边界。
-    pub(super) last_bounds: Option<Bounds<Pixels>>,
+    /// 文本边界（上帧落盘；调试几何等跨模块读取用）。
+    pub(crate) last_bounds: Option<Bounds<Pixels>>,
     pub(super) last_selected_range: Option<Selection>,
     pub(super) selecting: bool,
     pub(super) size: ElementSize,
