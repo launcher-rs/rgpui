@@ -41,6 +41,8 @@ pub struct EditorState {
     pub(super) sticky_position: super::sticky_scroll::StickyPosition,
     /// 当前语言（`set_language` 维护；未设置/已降级为 `None`）。
     language: Option<SharedString>,
+    /// 编辑器字号覆盖（`None` 使用窗口默认；`Editor::font_size` 透传）。
+    font_size: Option<Pixels>,
 }
 
 impl EditorState {
@@ -75,6 +77,7 @@ impl EditorState {
             sticky_scroll: true,
             sticky_position: super::sticky_scroll::StickyPosition::Top,
             language: None,
+            font_size: None,
         };
         this.refresh_outline(cx);
         // 文本一改：刷新大纲 → 自动补全（开关开时）→ 透镜（有 provider 即刷新）→
@@ -315,6 +318,19 @@ impl EditorState {
     /// 当前语言（未设置/已降级为 `None`，状态行展示用）。
     pub fn language(&self) -> Option<SharedString> {
         self.language.clone()
+    }
+
+    /// 编辑器字号（`None` 使用窗口默认；`set_font_size` 写入）。
+    pub fn font_size(&self) -> Option<Pixels> {
+        self.font_size
+    }
+
+    /// 设置编辑器字号（覆盖窗口默认，仅影响本编辑器）。
+    pub fn set_font_size(&mut self, font_size: Option<Pixels>, cx: &mut Context<Self>) {
+        self.font_size = font_size;
+        self.input.update(cx, |state, cx| {
+            state.set_font_size_override(font_size, cx);
+        });
     }
 
     /// 大纲缓存（`refresh_outline` 维护）。

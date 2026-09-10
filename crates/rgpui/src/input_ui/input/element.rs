@@ -1202,6 +1202,7 @@ impl Element for TextElement {
             }
         };
 
+        let font_size_override = self.state.read(cx).font_size_override;
         if display.is_empty() {
             return None;
         }
@@ -1231,7 +1232,6 @@ impl Element for TextElement {
                     let at_end = state.cursor() == state.core.text.len()
                         && state.core.selected_range.start == state.core.selected_range.end;
                     if at_end {
-                        let text_size = text_style.font_size.to_pixels(rem_size);
                         let run = TextRun {
                             len: display.len(),
                             font: text_style.font(),
@@ -1246,7 +1246,7 @@ impl Element for TextElement {
                             .width;
                         let line_height = text_style
                             .line_height
-                            .to_pixels(text_style.font_size, rem_size);
+                            .to_pixels(text_size, rem_size);
                         Some(Bounds {
                             origin: point(bounds.origin.x + caret_x, bounds.origin.y),
                             size: size(CURSOR_WIDTH, line_height),
@@ -1275,7 +1275,7 @@ impl Element for TextElement {
         // 容器：输入框本身。文本与光标作为其内部子节点。
         let mut container_style = DomStyle::from_bounds(bounds);
         container_style.color = Some(color);
-        container_style.font_size = Some(text_style.font_size.to_pixels(rem_size));
+        container_style.font_size = Some(font_size_override.unwrap_or(text_style.font_size.to_pixels(rem_size)));
         container_style.font_family = Some(text_style.font_family.clone());
         container_style.font_weight = Some(text_style.font_weight);
         container_style.font_style = Some(text_style.font_style);
@@ -1289,7 +1289,7 @@ impl Element for TextElement {
         // 文本子节点（沿用 from_bounds 绝对定位，作为容器首个子节点）。
         let mut text_style2 = DomStyle::from_bounds(bounds);
         text_style2.color = Some(color);
-        text_style2.font_size = Some(text_style.font_size.to_pixels(rem_size));
+        text_style2.font_size = Some(font_size_override.unwrap_or(text_style.font_size.to_pixels(rem_size)));
         text_style2.font_family = Some(text_style.font_family.clone());
         text_style2.font_weight = Some(text_style.font_weight);
         text_style2.font_style = Some(text_style.font_style);
@@ -1374,7 +1374,9 @@ impl Element for TextElement {
     ) -> Self::PrepaintState {
         let style = window.text_style();
         let font = style.font();
-        let text_size = style.font_size.to_pixels(window.rem_size());
+        let font_size_override = self.state.read(cx).font_size_override;
+        let text_size = font_size_override
+            .unwrap_or(style.font_size.to_pixels(window.rem_size()));
 
         self.state.update(cx, |state, cx| {
             state.display_map.set_font(font, text_size, cx);

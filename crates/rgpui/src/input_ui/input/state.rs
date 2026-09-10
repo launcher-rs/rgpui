@@ -418,6 +418,8 @@ pub struct InputState {
     pub(crate) context_menu_override: Option<InputContextMenuBuilder>,
     /// 只读模式：保持正常样式，允许移动/选择/复制，拦截一切用户编辑。
     pub(crate) read_only: bool,
+    /// 字号覆盖：Editor 组件通过此字段透传缩放字号，TextElement 使用时优先于 window.text_style()。
+    pub(crate) font_size_override: Option<crate::Pixels>,
     /// 括号自动闭合：`None` 为自动（多行开、单行关），`Some` 显式覆盖
     ///（`editor` feature 门控）。
     #[cfg(feature = "editor")]
@@ -560,6 +562,7 @@ impl InputState {
             context_menu_extra: None,
             context_menu_override: None,
             read_only: false,
+            font_size_override: None,
             #[cfg(feature = "editor")]
             auto_close_pairs: None,
             #[cfg(feature = "editor")]
@@ -725,6 +728,12 @@ impl InputState {
     /// 是否只读。
     pub fn is_read_only(&self) -> bool {
         self.read_only
+    }
+
+    /// 覆盖文本渲染字号（`None` 恢复窗口默认；Editor 缩放透传用）。
+    pub fn set_font_size_override(&mut self, font_size: Option<crate::Pixels>, cx: &mut Context<Self>) {
+        self.font_size_override = font_size;
+        cx.notify();
     }
 
     #[cfg(feature = "editor")]

@@ -306,6 +306,8 @@ pub struct Editor {
     context_menu_override: Option<InputContextMenuBuilder>,
     /// 右键总开关（`None` = 默认启用）。
     show_context_menu: Option<bool>,
+    /// 编辑器字号覆盖（`None` 使用窗口默认）。
+    font_size: Option<crate::Pixels>,
     style: StyleRefinement,
 }
 
@@ -317,6 +319,7 @@ impl Editor {
             context_menu_extra: None,
             context_menu_override: None,
             show_context_menu: None,
+            font_size: None,
             style: StyleRefinement::default(),
         }
     }
@@ -354,6 +357,12 @@ impl Editor {
     /// 右键总开关（透传内部 `Input`）。
     pub fn show_context_menu(mut self, show: bool) -> Self {
         self.show_context_menu = Some(show);
+        self
+    }
+
+    /// 编辑器字号覆盖（仅影响本编辑器，不影响全局）。
+    pub fn font_size(mut self, font_size: crate::Pixels) -> Self {
+        self.font_size = Some(font_size);
         self
     }
 }
@@ -403,6 +412,11 @@ impl RenderOnce for Editor {
                 Vec::new()
             };
             (state.input().clone(), stack, state.sticky_position())
+        });
+        // 编辑器字号覆盖：builder 优先，其次 EditorState 设置，否则清除。
+        let effective_font_size = self.font_size.or_else(|| self.editor.read(cx).font_size());
+        input.update(cx, |state, cx| {
+            state.set_font_size_override(effective_font_size, cx);
         });
         let (row, col) = input.read_with(cx, |state, _| {
             let cursor = state.cursor();
