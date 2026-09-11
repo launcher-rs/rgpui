@@ -1024,7 +1024,6 @@ impl TextElement {
         }
 
         let mut lines = Vec::with_capacity(last_layout.visible_buffer_lines.len());
-        let mut run_offset = 0;
 
         for (vi, &buffer_line) in last_layout.visible_buffer_lines.iter().enumerate() {
             let line_text: String = display_text.slice_line(buffer_line).into();
@@ -1037,8 +1036,12 @@ impl TextElement {
 
             let mut wrapped_lines: SmallVec<[ShapedLine; 1]> = SmallVec::with_capacity(1);
 
+            // 行全局字节偏移必须取布局快照中的真实偏移，不能按可视行累计
+            // （折叠会隐藏中间行，累计值会小于真实偏移，导致 runs 切错位置，
+            // 多字节字符时在 DirectWrite 按字节切片直接 panic）。
+            let line_byte_offset = last_layout.visible_line_byte_offsets[vi];
             for range in &line_item.wrapped_lines {
-                let line_runs = runs_for_range(runs, run_offset, &range);
+                let line_runs = runs_for_range(runs, line_byte_offset, &range);
                 let line_runs = if bg_segments.is_empty() {
                     line_runs
                 } else {
@@ -1074,9 +1077,6 @@ impl TextElement {
                 .wrap_indent(wrap_indent)
                 .with_whitespaces(whitespace_indicators.clone());
             lines.push(line_layout);
-
-            // +1 为 `\n`
-            run_offset += line_text.len() + 1;
         }
 
         lines
@@ -1203,8 +1203,7 @@ impl Element for TextElement {
         };
 
         let font_size_override = self.state.read(cx).font_size_override;
-        let text_size = font_size_override
-            .unwrap_or(text_style.font_size.to_pixels(rem_size));
+        let text_size = font_size_override.unwrap_or(text_style.font_size.to_pixels(rem_size));
         if display.is_empty() {
             return None;
         }
@@ -1277,7 +1276,8 @@ impl Element for TextElement {
         // 容器：输入框本身。文本与光标作为其内部子节点。
         let mut container_style = DomStyle::from_bounds(bounds);
         container_style.color = Some(color);
-        container_style.font_size = Some(font_size_override.unwrap_or(text_style.font_size.to_pixels(rem_size)));
+        container_style.font_size =
+            Some(font_size_override.unwrap_or(text_style.font_size.to_pixels(rem_size)));
         container_style.font_family = Some(text_style.font_family.clone());
         container_style.font_weight = Some(text_style.font_weight);
         container_style.font_style = Some(text_style.font_style);
@@ -1291,7 +1291,8 @@ impl Element for TextElement {
         // 文本子节点（沿用 from_bounds 绝对定位，作为容器首个子节点）。
         let mut text_style2 = DomStyle::from_bounds(bounds);
         text_style2.color = Some(color);
-        text_style2.font_size = Some(font_size_override.unwrap_or(text_style.font_size.to_pixels(rem_size)));
+        text_style2.font_size =
+            Some(font_size_override.unwrap_or(text_style.font_size.to_pixels(rem_size)));
         text_style2.font_family = Some(text_style.font_family.clone());
         text_style2.font_weight = Some(text_style.font_weight);
         text_style2.font_style = Some(text_style.font_style);
@@ -1345,10 +1346,13 @@ impl Element for TextElement {
         let state = self.state.read(cx);
         let text_style = window.text_style();
         let font_size_override = state.font_size_override;
-        let text_size = font_size_override
-            .unwrap_or(text_style.font_size.to_pixels(window.rem_size()));
+        let text_size =
+            font_size_override.unwrap_or(text_style.font_size.to_pixels(window.rem_size()));
         let line_height = if font_size_override.is_some() {
-            text_style.line_height.to_pixels(crate::AbsoluteLength::Pixels(text_size), window.rem_size()).round()
+            text_style
+                .line_height
+                .to_pixels(crate::AbsoluteLength::Pixels(text_size), window.rem_size())
+                .round()
         } else {
             window.line_height()
         };
@@ -1385,8 +1389,7 @@ impl Element for TextElement {
         let style = window.text_style();
         let font = style.font();
         let font_size_override = self.state.read(cx).font_size_override;
-        let text_size = font_size_override
-            .unwrap_or(style.font_size.to_pixels(window.rem_size()));
+        let text_size = font_size_override.unwrap_or(style.font_size.to_pixels(window.rem_size()));
 
         self.state.update(cx, |state, cx| {
             state.display_map.set_font(font, text_size, cx);
@@ -1450,7 +1453,10 @@ impl Element for TextElement {
 
         let state = self.state.read(cx);
         let line_height = if font_size_override.is_some() {
-            text_style.line_height.to_pixels(crate::AbsoluteLength::Pixels(text_size), window.rem_size()).round()
+            text_style
+                .line_height
+                .to_pixels(crate::AbsoluteLength::Pixels(text_size), window.rem_size())
+                .round()
         } else {
             window.line_height()
         };
@@ -1554,6 +1560,22 @@ impl Element for TextElement {
         let runs = if let (false, Some(highlight_styles)) = (is_empty, highlight_styles) {
             let mut runs = Vec::with_capacity(highlight_styles.len() + 2);
 
+            // 高亮只覆盖可视字节区间，但行裁剪（`runs_for_range`）按全文 0 起计算，
+            // 必须用默认样式补齐可视区前后的缺口，否则滚动到底部后 runs 基址错位，
+            // 行文本空白/错乱（多字节字符时直接 panic）。
+            let visible_start = last_layout.visible_range_offset.start;
+            let visible_end = last_layout.visible_range_offset.end;
+            if visible_start > 0 {
+                runs.extend(split_run_for_ime_underline(
+                    TextRun {
+                        len: visible_start,
+                        ..run.clone()
+                    },
+                    0..visible_start,
+                    ime_marked_range.clone(),
+                    marked_run.underline,
+                ));
+            }
             for (range, style) in &highlight_styles {
                 let mut run = text_style.clone().highlight(*style).to_run(range.len());
                 if disabled {
@@ -1564,6 +1586,17 @@ impl Element for TextElement {
                     run,
                     range.clone(),
                     ime_marked_range.clone(),
+                    marked_run.underline,
+                ));
+            }
+            if visible_end < display_text.len() {
+                runs.extend(split_run_for_ime_underline(
+                    TextRun {
+                        len: display_text.len() - visible_end,
+                        ..run
+                    },
+                    visible_end..display_text.len(),
+                    ime_marked_range,
                     marked_run.underline,
                 ));
             }

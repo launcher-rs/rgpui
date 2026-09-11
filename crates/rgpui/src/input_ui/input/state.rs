@@ -629,7 +629,7 @@ impl InputState {
     /// 运行时设置代码折叠，仅多行生效（单行忽略）。
     ///
     /// 禁用时会清除所有已存在的折叠。
-    pub fn set_folding(&mut self, folding: bool, _: &mut Window, cx: &mut Context<Self>) {
+    pub fn set_folding(&mut self, folding: bool, window: &mut Window, cx: &mut Context<Self>) {
         debug_assert!(self.mode.is_multi_line());
         if let InputMode::PlainText { folding: f, .. } = &mut self.mode {
             *f = folding;
@@ -637,6 +637,13 @@ impl InputState {
         if !folding {
             self.display_map.clear_folds();
         }
+        // 启用折叠时需重新高亮以收集折叠候选区段（`editor` feature 门控）。
+        #[cfg(feature = "editor")]
+        if folding && self.highlighter.is_some() {
+            self.refresh_highlight(window, cx);
+        }
+        #[cfg(not(feature = "editor"))]
+        let _ = window;
         cx.notify();
     }
 
@@ -731,7 +738,11 @@ impl InputState {
     }
 
     /// 覆盖文本渲染字号（`None` 恢复窗口默认；Editor 缩放透传用）。
-    pub fn set_font_size_override(&mut self, font_size: Option<crate::Pixels>, cx: &mut Context<Self>) {
+    pub fn set_font_size_override(
+        &mut self,
+        font_size: Option<crate::Pixels>,
+        cx: &mut Context<Self>,
+    ) {
         self.font_size_override = font_size;
         cx.notify();
     }
@@ -2913,7 +2924,11 @@ impl EntityInputHandler for InputState {
         // Vim Normal/Visual 模式下不接受文字输入（IME 确认、直接键入等）。
         #[cfg(feature = "editor")]
         if self.vim.enabled
-            && matches!(self.vim.mode, super::super::editor::vim::VimMode::Normal | super::super::editor::vim::VimMode::Visual)
+            && matches!(
+                self.vim.mode,
+                super::super::editor::vim::VimMode::Normal
+                    | super::super::editor::vim::VimMode::Visual
+            )
             && !new_text.is_empty()
         {
             return;
@@ -2962,7 +2977,11 @@ impl EntityInputHandler for InputState {
         // Vim Normal/Visual 模式下不接受 IME 组合输入。
         #[cfg(feature = "editor")]
         if self.vim.enabled
-            && matches!(self.vim.mode, super::super::editor::vim::VimMode::Normal | super::super::editor::vim::VimMode::Visual)
+            && matches!(
+                self.vim.mode,
+                super::super::editor::vim::VimMode::Normal
+                    | super::super::editor::vim::VimMode::Visual
+            )
         {
             self.unmark_text(window, cx);
             return;

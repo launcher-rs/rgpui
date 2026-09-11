@@ -109,11 +109,41 @@ pub(crate) fn init(cx: &mut App) {
     let mut bindings = Vec::new();
     // normal：移动/操作/模式切换 + 吞键（数字/`:`/`/`/`.`）+ 覆盖键。
     for key in [
-        "h", "j", "k", "l", "w", "b", "0", "$", "G", "g",
-        "x", "i", "a", "o", "v", "y", "d", "p", "u",
-        "1", "2", "3", "4", "5", "6", "7", "8", "9",
-        ":", "/", ".",
-        "enter", "escape", "backspace", "delete",
+        "h",
+        "j",
+        "k",
+        "l",
+        "w",
+        "b",
+        "0",
+        "$",
+        "G",
+        "g",
+        "x",
+        "i",
+        "a",
+        "o",
+        "v",
+        "y",
+        "d",
+        "p",
+        "u",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        ":",
+        "/",
+        ".",
+        "enter",
+        "escape",
+        "backspace",
+        "delete",
     ] {
         bindings.push(KeyBinding::new(
             key,
@@ -123,9 +153,25 @@ pub(crate) fn init(cx: &mut App) {
     }
     // normal 兜底：未实现的字母键全部吞掉，防止穿透到 Input 变成文字输入。
     for key in [
-        "c", "e", "f", "n", "q", "r", "s", "t", "z",
-        "space", "tab", "comma", "semicolon", "quote",
-        "bracketleft", "bracketright", "backslash", "minus", "equal",
+        "c",
+        "e",
+        "f",
+        "n",
+        "q",
+        "r",
+        "s",
+        "t",
+        "z",
+        "space",
+        "tab",
+        "comma",
+        "semicolon",
+        "quote",
+        "bracketleft",
+        "bracketright",
+        "backslash",
+        "minus",
+        "equal",
     ] {
         bindings.push(KeyBinding::new(
             key,
@@ -146,7 +192,9 @@ pub(crate) fn init(cx: &mut App) {
     // insert 只绑 Esc（走 VimKey → handle_key 统一路径；其余字母键直通）。
     bindings.push(KeyBinding::new(
         "escape",
-        VimKey { key: "escape".into() },
+        VimKey {
+            key: "escape".into(),
+        },
         Some(VIM_INSERT_CONTEXT),
     ));
     cx.bind_keys(bindings);
