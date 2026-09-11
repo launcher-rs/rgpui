@@ -949,8 +949,8 @@ impl WindowsWindowInner {
         };
 
         let dpi = unsafe { GetDpiForWindow(handle) };
-        let frame_y = get_frame_thicknessx(dpi);
-        let frame_x = get_frame_thicknessy(dpi);
+        let frame_w = get_frame_thicknessx(dpi);
+        let frame_h = get_frame_thicknessy(dpi);
         let mut cursor_point = POINT {
             x: lparam.signed_loword().into(),
             y: lparam.signed_hiword().into(),
@@ -958,24 +958,42 @@ impl WindowsWindowInner {
 
         unsafe { ScreenToClient(handle, &mut cursor_point).ok().log_err() };
 
-        // 检查是否在边框调整大小区域
-        let in_resize_area =
-            if !self.state.is_maximized() && 0 <= cursor_point.y && cursor_point.y <= frame_y {
-                Some(if cursor_point.x <= 0 {
-                    HTTOPLEFT
-                } else {
-                    let mut rect = Default::default();
-                    unsafe { GetWindowRect(handle, &mut rect) }.log_err();
-                    let right = rect.right - rect.left - 1;
-                    if right - 2 * frame_x <= cursor_point.x {
-                        HTTOPRIGHT
-                    } else {
-                        HTTOP
-                    }
-                } as _)
-            } else {
-                None
+        // 检查是否在边框调整大小区域。
+        //
+        // 隐藏系统标题栏时（自定义标题栏），应用自行接管命中测试，必须处理全部
+        // 8 个方向；否则左右/底部边缘会落到 HTCLIENT，导致鼠标无双箭头光标、
+        // 无法拖拽改变窗口宽高。
+        //
+        // 坐标说明（cursor_point 已转为客户区坐标）：
+        // - WM_NCCALCSIZE 移除了顶部边框（客户区直达窗口顶部），左右/底部保留系统边框；
+        // - 左边框对应 x < 0；右边框对应 x >= 窗口宽 - 2 * 边框宽；
+        // - 顶部对应 0 <= y <= 边框高；底部对应 y >= 窗口高 - 边框高。
+        let in_resize_area = if !self.state.is_maximized() {
+            let mut window_rect = RECT::default();
+            unsafe { GetWindowRect(handle, &mut window_rect) }.log_err();
+            let window_width = window_rect.right - window_rect.left;
+            let window_height = window_rect.bottom - window_rect.top;
+
+            let on_left = cursor_point.x < 0;
+            let on_right = cursor_point.x >= window_width - 2 * frame_w;
+            let on_top = 0 <= cursor_point.y && cursor_point.y <= frame_h;
+            let on_bottom = cursor_point.y >= window_height - frame_h;
+
+            let hit = match (on_left, on_right, on_top, on_bottom) {
+                (true, _, true, _) => Some(HTTOPLEFT),
+                (_, true, true, _) => Some(HTTOPRIGHT),
+                (true, _, _, true) => Some(HTBOTTOMLEFT),
+                (_, true, _, true) => Some(HTBOTTOMRIGHT),
+                (true, _, _, _) => Some(HTLEFT),
+                (_, true, _, _) => Some(HTRIGHT),
+                (_, _, true, _) => Some(HTTOP),
+                (_, _, _, true) => Some(HTBOTTOM),
+                _ => None,
             };
+            hit.map(|hit| hit as _)
+        } else {
+            None
+        };
 
         // 穿透窗口按住 Ctrl 时允许拖动（覆盖穿透设置，便于 overlay/桌宠移动窗口）。
         // 仅穿透模式生效：普通窗口按住 Ctrl（如编辑器多光标/双击选词）必须保持
@@ -1000,7 +1018,7 @@ impl WindowsWindowInner {
 
             // 如果使用系统标题栏，标题栏区域保持可拖动
             if self.state.titlebar_visible.get() {
-                if cursor_point.y <= frame_y {
+                if cursor_point.y <= frame_h {
                     return Some(HTCAPTION as _);
                 }
             }
