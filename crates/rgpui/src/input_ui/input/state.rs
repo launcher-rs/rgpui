@@ -2910,6 +2910,14 @@ impl EntityInputHandler for InputState {
         if self.read_only {
             return;
         }
+        // Vim Normal/Visual 模式下不接受文字输入（IME 确认、直接键入等）。
+        #[cfg(feature = "editor")]
+        if self.vim.enabled
+            && matches!(self.vim.mode, super::super::editor::vim::VimMode::Normal | super::super::editor::vim::VimMode::Visual)
+            && !new_text.is_empty()
+        {
+            return;
+        }
         // 多光标：原文插入（键入/粘贴都扇出），不走自动闭合
         //（`editor` feature 门控）。
         #[cfg(feature = "editor")]
@@ -2949,6 +2957,14 @@ impl EntityInputHandler for InputState {
         cx: &mut Context<Self>,
     ) {
         if self.disabled || self.read_only {
+            return;
+        }
+        // Vim Normal/Visual 模式下不接受 IME 组合输入。
+        #[cfg(feature = "editor")]
+        if self.vim.enabled
+            && matches!(self.vim.mode, super::super::editor::vim::VimMode::Normal | super::super::editor::vim::VimMode::Visual)
+        {
+            self.unmark_text(window, cx);
             return;
         }
 

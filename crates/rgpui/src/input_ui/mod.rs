@@ -24,7 +24,7 @@ pub mod decorations;
 mod display_map;
 /// 代码编辑器子系统（`editor` feature 门控）。
 #[cfg(feature = "editor")]
-mod editor;
+pub mod editor;
 mod history;
 mod indent;
 /// 表单输入子系统。

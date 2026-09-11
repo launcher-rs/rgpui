@@ -109,41 +109,23 @@ pub(crate) fn init(cx: &mut App) {
     let mut bindings = Vec::new();
     // normal：移动/操作/模式切换 + 吞键（数字/`:`/`/`/`.`）+ 覆盖键。
     for key in [
-        "h",
-        "j",
-        "k",
-        "l",
-        "w",
-        "b",
-        "0",
-        "$",
-        "G",
-        "g",
-        "x",
-        "i",
-        "a",
-        "o",
-        "v",
-        "y",
-        "d",
-        "p",
-        "u",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        ":",
-        "/",
-        ".",
-        "enter",
-        "escape",
-        "backspace",
-        "delete",
+        "h", "j", "k", "l", "w", "b", "0", "$", "G", "g",
+        "x", "i", "a", "o", "v", "y", "d", "p", "u",
+        "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        ":", "/", ".",
+        "enter", "escape", "backspace", "delete",
+    ] {
+        bindings.push(KeyBinding::new(
+            key,
+            VimKey { key: key.into() },
+            Some(VIM_NORMAL_CONTEXT),
+        ));
+    }
+    // normal 兜底：未实现的字母键全部吞掉，防止穿透到 Input 变成文字输入。
+    for key in [
+        "c", "e", "f", "n", "q", "r", "s", "t", "z",
+        "space", "tab", "comma", "semicolon", "quote",
+        "bracketleft", "bracketright", "backslash", "minus", "equal",
     ] {
         bindings.push(KeyBinding::new(
             key,
@@ -161,8 +143,12 @@ pub(crate) fn init(cx: &mut App) {
             Some(VIM_VISUAL_CONTEXT),
         ));
     }
-    // insert 不绑字母键（键入直通）；Esc 不绑 keymap（走 `capture_key_down` 单路径，
-    // 免得与 `VimKey` 双跑；`Input` 自身 Esc 照跑，只做折叠）。
+    // insert 只绑 Esc（走 VimKey → handle_key 统一路径；其余字母键直通）。
+    bindings.push(KeyBinding::new(
+        "escape",
+        VimKey { key: "escape".into() },
+        Some(VIM_INSERT_CONTEXT),
+    ));
     cx.bind_keys(bindings);
 }
 
@@ -177,8 +163,13 @@ fn line_range(state: &InputState, row: usize) -> (usize, usize) {
     let start = text.line_start_offset(row);
     let next = text.line_start_offset(row + 1);
     // 末行无下一行：止于全文末；否则止于换行符前。
-    let end = if next > start && text.slice(next - 1..next) == "\n" {
-        next - 1
+    let end = if next > start && next <= text.len() {
+        let prev = text.floor_char_boundary(next.saturating_sub(1));
+        if text.slice(prev..next) == "\n" {
+            prev
+        } else {
+            next.min(text.len())
+        }
     } else {
         next.min(text.len())
     };
@@ -602,8 +593,14 @@ pub(crate) fn handle_key(
     match state.vim.mode {
         VimMode::Normal => normal_key(state, key, window, cx),
         VimMode::Visual => visual_key(state, key, window, cx),
-        // Insert 下字母键无绑定到不了这里；`escape` 由 Editor 捕获直调 `escape_to_normal`。
-        VimMode::Insert => false,
+        VimMode::Insert => {
+            // Insert 模式下只处理 Escape 回 Normal。
+            if key == "escape" {
+                escape_pressed(state, window, cx);
+                return true;
+            }
+            false
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use crate::{
     AnyElement, App, Bounds, Button, ButtonVariants as _, Entity, Half, Hitbox, HitboxBehavior,
     IconName, IntoElement, MouseButton, ParentElement as _, Pixels, Point, Refineable, RenderOnce,
     Sizable as _, StatefulInteractiveElement, StyleRefinement, Styled, TextAlign, TextRun, Window,
-    div, h_flex, point, px, size,
+    div, point, px, size,
 };
 
 use super::super::blink_cursor::CURSOR_WIDTH;
@@ -418,27 +418,13 @@ impl RenderOnce for Editor {
         input.update(cx, |state, cx| {
             state.set_font_size_override(effective_font_size, cx);
         });
-        let (row, col) = input.read_with(cx, |state, _| {
-            let cursor = state.cursor();
-            let text = state.text();
-            let row = text.offset_to_point(cursor).row;
-            let col = cursor - text.line_start_offset(row);
-            (row + 1, col + 1)
-        });
-        // Vim 模式指示（未启用为空，状态行不展示）。
-        let vim_indicator = self.editor.read_with(cx, |state, cx| {
-            state
-                .vim_mode(cx)
-                .map(|mode| format!(" · {}", mode.indicator()))
-                .unwrap_or_default()
-        });
         // 粘性顶栏：面包屑（点击跳转符号头；`Status` 位置时顶栏永不出现，
         // 面包屑改由状态行渲染，空栈非空栈高度一致，编辑区不跳动）。
         let editor = self.editor.clone();
         let show_top_bar = matches!(sticky_position, super::sticky_scroll::StickyPosition::Top);
         let muted = cx.theme().muted_foreground;
-        let (sticky, status_crumbs): (Option<AnyElement>, Vec<AnyElement>) = if show_top_bar {
-            let bar = (!stack.is_empty()).then(|| {
+        let sticky: Option<AnyElement> = if show_top_bar {
+            (!stack.is_empty()).then(|| {
                 div()
                     .flex_none()
                     .px(px(12.0))
@@ -451,10 +437,9 @@ impl RenderOnce for Editor {
                     .gap(px(4.0))
                     .children(crumb_elements(&editor, stack, "sticky-crumb"))
                     .into_any_element()
-            });
-            (bar, Vec::new())
+            })
         } else {
-            (None, crumb_elements(&editor, stack, "status-crumb"))
+            None
         };
         let user_style = self.style;
         // 内部 Input 组装（三档右键透传；闭包包一层 Rc 转发）。
@@ -494,27 +479,6 @@ impl RenderOnce for Editor {
                     .when(minimap, |this| {
                         this.child(super::minimap::render_minimap(&editor_for_minimap, cx))
                     }),
-            )
-            .child(
-                crate::div()
-                    .flex_none()
-                    .px(px(12.0))
-                    .py(px(4.0))
-                    .text_xs()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(6.0))
-                    .child(format!("Ln {row}, Col {col}{vim_indicator}"))
-                    .children((!status_crumbs.is_empty()).then(|| {
-                        // 状态栏面包屑（`Status` 位置；与行列号同行，高度恒定）。
-                        h_flex()
-                            .items_center()
-                            .gap(px(4.0))
-                            .child(div().text_color(muted).child("·"))
-                            .children(status_crumbs)
-                            .into_any_element()
-                    })),
             )
             .capture_action({
                 let editor = editor_for_keys.clone();
