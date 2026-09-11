@@ -514,13 +514,19 @@ impl CosmicTextSystemState {
         }
 
         let segment_font_runs = clip_font_runs(font_runs, range.clone());
+        // `range` 正常来自 `char_indices`（已是边界）；防御性吸附，
+        // 装饰 run 过期导致非边界时不 panic。
+        let start = text.floor_char_boundary(range.start.min(text.len()));
+        let end = text
+            .floor_char_boundary(range.end.min(text.len()))
+            .max(start);
         let segment =
-            self.layout_line_no_separators(&text[range.clone()], font_size, &segment_font_runs);
+            self.layout_line_no_separators(&text[start..end], font_size, &segment_font_runs);
 
         let mut segment_runs = segment.runs;
         for run in &mut segment_runs {
             for glyph in &mut run.glyphs {
-                glyph.index += range.start;
+                glyph.index += start;
                 glyph.position.x += layout.width;
             }
         }
@@ -849,6 +855,15 @@ fn compute_run_spans(
 ) -> SmallVec<[RunSpan; 4]> {
     let mut spans = SmallVec::new();
     let run_end = run_offset + run_len;
+    if run_end <= run_offset {
+        return spans;
+    }
+    // 上游 run 区间理论上落在字符边界，但装饰/字体 run 过期错位时可能不是；
+    // 吸附后再切片，正常对齐时与原逻辑等价，错位时不 panic。
+    let run_offset = text.floor_char_boundary(run_offset.min(text.len()));
+    let run_end = text
+        .floor_char_boundary(run_end.min(text.len()))
+        .max(run_offset);
     if run_end <= run_offset {
         return spans;
     }

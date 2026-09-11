@@ -309,6 +309,11 @@ fn parse_hex_color(value: &str) -> Option<Rgba> {
     if hex.len() != 6 && hex.len() != 8 {
         return None;
     }
+    // 非 ASCII（如中文）按字节切片会在字符中间 panic；hex 只可能是 ASCII，
+    // 提前拒绝，避免 `&hex[0..2]` 先崩。
+    if !hex.is_ascii() {
+        return None;
+    }
 
     let parse_byte = |chunk: &str| u8::from_str_radix(chunk, 16).ok();
     let r = parse_byte(&hex[0..2])?;

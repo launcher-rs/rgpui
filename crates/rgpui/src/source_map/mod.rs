@@ -97,18 +97,34 @@ impl SourceMap {
     }
 
     /// 搜索文本并返回位置。
+    ///
+    /// 多字节安全：`col` 恒为字符边界（按匹配首字符字节数推进，
+    /// 而非 `+1` 字节；`+1` 切在中文中间会导致 `line[col..]` panic）。
     pub fn search(&self, query: &str) -> Vec<SourceLocation> {
         let mut results = Vec::new();
+        if query.is_empty() {
+            return results;
+        }
+        // 查询首字符字节数：重叠匹配时至少推进这么多，保证落回边界。
+        let advance = query.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
         for (line_idx, line) in self.lines.iter().enumerate() {
             let mut col = 0;
-            while let Some(pos) = line[col..].find(query) {
+            while col <= line.len() {
+                let rest = line.get(col..).unwrap_or("");
+                let Some(pos) = rest.find(query) else {
+                    break;
+                };
                 results.push(SourceLocation {
                     line: line_idx + 1,
                     column: col + pos + 1,
                     source_file: Some(self.source_file.clone()),
                     name: None,
                 });
-                col += pos + 1;
+                col += pos + advance;
+                // 防御网：若仍非边界（理论不可达），吸附到下一边界。
+                while col < line.len() && !line.is_char_boundary(col) {
+                    col += 1;
+                }
             }
         }
         results

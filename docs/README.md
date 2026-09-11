@@ -1,6 +1,7 @@
 # 文档索引
 
 - **现行文档**：`rgpui-book/`（8 章教程）、`web-dom-backend-usage.md`（Web DOM 后端用法指南）、
+  `utf8-slice-safety.md`（UTF-8 切片安全：中文 panic 事故与规范）、
   `migration-guide-from-rgpui-component.md`（旧 `rgpui-component` / `rgpui-tokio` / `rgpui-ui` 用户迁移指南）。
 - **版本归档**：`1.1.0/`、`1.2.0/` —— 各版本的开发计划、设计与发布记录。已完成，仅供追溯。
 - **历史过程**：`history/` —— 已落地的战略、规划与调研文档（如上游切割、UI 库重组、DOM 后端规划）。

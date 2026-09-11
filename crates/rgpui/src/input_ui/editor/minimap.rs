@@ -83,11 +83,7 @@ pub(crate) fn minimap_rows(total_rows: usize, max_bars: usize) -> Vec<Range<usiz
 /// 每条块内最长行的字符数（与 [`minimap_rows`] 同步长；空区间为 0）。
 ///
 /// 单遍扫描（`lines()` 迭代器 O(n)），避免每行一次 `line()` 树查找。
-pub(crate) fn minimap_bar_lengths(
-    text: &Rope,
-    total_rows: usize,
-    max_bars: usize,
-) -> Vec<usize> {
+pub(crate) fn minimap_bar_lengths(text: &Rope, total_rows: usize, max_bars: usize) -> Vec<usize> {
     if total_rows == 0 {
         return vec![0];
     }
@@ -160,18 +156,21 @@ impl EditorState {
 /// 缩略图浮层（`Editor` 渲染内调用；关闭时调用方直接跳过）。
 pub(super) fn render_minimap(editor: &Entity<EditorState>, cx: &mut App) -> AnyElement {
     // 轻量读取：文本字节数 + 总行数作缓存键，命中则复用宽度（仅克隆 ≤200 个数）。
-    let (input, byte_len, total_rows, visible, cached_lengths) = editor.read_with(cx, |state, cx| {
-        let (byte_len, total, visible, cached) = state.input.read_with(cx, |input, _| {
-            let text = input.text();
-            let total = text.len_lines(LineType::LF);
-            let visible = input.visible_row_range();
-            let cached = state.minimap.bar_cache.as_ref().and_then(|(b, r, v)| {
-                (*b == text.len() && *r == total).then(|| v.clone())
+    let (input, byte_len, total_rows, visible, cached_lengths) =
+        editor.read_with(cx, |state, cx| {
+            let (byte_len, total, visible, cached) = state.input.read_with(cx, |input, _| {
+                let text = input.text();
+                let total = text.len_lines(LineType::LF);
+                let visible = input.visible_row_range();
+                let cached = state
+                    .minimap
+                    .bar_cache
+                    .as_ref()
+                    .and_then(|(b, r, v)| (*b == text.len() && *r == total).then(|| v.clone()));
+                (text.len(), total, visible, cached)
             });
-            (text.len(), total, visible, cached)
+            (state.input().clone(), byte_len, total, visible, cached)
         });
-        (state.input().clone(), byte_len, total, visible, cached)
-    });
     // 未命中：全量计算一次并静默回写缓存（不 notify，不触发渲染循环）。
     let bar_lengths = match cached_lengths {
         Some(v) => v,
@@ -245,8 +244,7 @@ pub(super) fn render_minimap(editor: &Entity<EditorState>, cx: &mut App) -> AnyE
             if event.pressed_button == Some(MouseButton::Left) {
                 // 仅当按下起始于缩略图时跟随跳转；编辑器内开始的选区拖拽
                 // 划过此处不响应，避免误滚动干扰选区。
-                let dragging =
-                    editor_for_move.read_with(cx, |state, _| state.minimap.dragging);
+                let dragging = editor_for_move.read_with(cx, |state, _| state.minimap.dragging);
                 if dragging {
                     jump_at_y_for_move(event.position.y, cx);
                 }

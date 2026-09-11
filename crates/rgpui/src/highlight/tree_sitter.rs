@@ -285,13 +285,17 @@ impl Highlighter for TreeSitterHighlighter {
                 let name = (self.symbol_name)(&node, bytes)
                     // 残缺代码里名字可能缺失，回退到语法种类名。
                     .unwrap_or_else(|| node.kind().to_string());
-                let start = node.start_byte().min(source.len());
-                let end = node.end_byte().min(source.len()).max(start);
+                // tree-sitter 给的是字节偏移，中文下直接 `source[..start]`
+                // 可能切在多字节中间而 panic；统一吸附到字符边界。
+                let start = source.floor_char_boundary(node.start_byte().min(source.len()));
+                let end = source
+                    .floor_char_boundary(node.end_byte().min(source.len()))
+                    .max(start);
                 out.push(DocumentSymbol {
                     kind,
                     name: name.into(),
                     range: start..end,
-                    start_row: source[..start].matches('\n').count(),
+                    start_row: source.get(..start).unwrap_or("").matches('\n').count(),
                 });
             }
             let mut cursor = node.walk();

@@ -531,8 +531,8 @@ pub use taffy::{AvailableSpace, LayoutId};
 pub use test::*;
 /// 重导出文本系统相关类型
 pub use text_system::*;
-/// 重导出异步工具（FutureExt、Timeout）
-pub use util::{FutureExt, Timeout};
+/// 重导出异步工具（FutureExt、Timeout）与字符串安全切片（SafeStrSlice）
+pub use util::{FutureExt, SafeStrSlice, Timeout};
 /// 重导出视图系统类型
 pub use view::*;
 /// 重导出窗口系统类型

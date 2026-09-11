@@ -219,12 +219,9 @@ impl RenderOnce for CodeBlock {
 
 /// 复制按钮 ID 前缀：按字节截断时向下对齐到字符边界，
 /// 避免切在多字节字符（如中文）中间导致 panic。
+/// 直接复用 `rgpui::SafeStrSlice::safe_prefix_until`，不本地手写循环。
 fn code_id_prefix(code: &str) -> &str {
-    let mut end = code.len().min(16);
-    while !code.is_char_boundary(end) {
-        end -= 1;
-    }
-    &code[..end]
+    code.safe_prefix_until(16)
 }
 
 /// 对一行代码做简易分词（注释/字符串/数字/关键字/普通文本）。

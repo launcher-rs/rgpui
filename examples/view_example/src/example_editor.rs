@@ -12,8 +12,9 @@ use std::time::Duration;
 
 use rgpui::{
     App, Bounds, Context, ElementInputHandler, Entity, EntityInputHandler, FocusHandle, Focusable,
-    InteractiveElement, LayoutId, PaintQuad, Pixels, ShapedLine, SharedString, Subscription, Task,
-    TextRun, UTF16Selection, Window, fill, hsla, point, prelude::*, px, relative, size,
+    InteractiveElement, LayoutId, PaintQuad, Pixels, SafeStrSlice, ShapedLine, SharedString,
+    Subscription, Task, TextRun, UTF16Selection, Window, fill, hsla, point, prelude::*, px,
+    relative, size,
 };
 use unicode_segmentation::*;
 
@@ -54,11 +55,8 @@ impl Editor {
         // is keyed on *our* notify, not the value's.
         let value_sub = cx.observe(&value, |this, value, cx| {
             let content = value.read(cx);
-            let mut cursor = this.cursor.min(content.len());
-            while cursor > 0 && !content.is_char_boundary(cursor) {
-                cursor -= 1;
-            }
-            this.cursor = cursor;
+            // 外部写入可能让光标落在字符中间，向下吸附回边界。
+            this.cursor = content.floor_char_boundary(this.cursor.min(content.len()));
             cx.notify();
         });
 
@@ -247,7 +245,7 @@ impl EntityInputHandler for Editor {
         let content = self.text(cx);
         let range = range_from_utf16(&content, &range_utf16);
         actual_range.replace(range_to_utf16(&content, &range));
-        Some(content[range].to_string())
+        Some(content.safe_slice_floor(range.start, range.end).to_string())
     }
 
     fn selected_text_range(
@@ -287,8 +285,11 @@ impl EntityInputHandler for Editor {
             .map(|r| range_from_utf16(&content, r))
             .unwrap_or(self.cursor..self.cursor);
 
-        let new_content = content[..range.start].to_owned() + new_text + &content[range.end..];
-        self.cursor = range.start + new_text.len();
+        // 输入法中间态的 range 未必落在字符边界，经 SafeStrSlice 掐头去尾，
+        // 避免中文 panic（head.len() 即吸附后的 start）。
+        let (head, tail) = content.safe_head_tail(range.start, range.end);
+        let new_content = head.to_owned() + new_text + tail;
+        self.cursor = head.len() + new_text.len();
         self.value.update(cx, |s, cx| {
             *s = new_content;
             cx.notify();

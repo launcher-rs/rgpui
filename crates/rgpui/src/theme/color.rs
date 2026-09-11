@@ -294,6 +294,11 @@ impl Colorize for Hsla {
         if len != 6 && len != 8 {
             return Err(anyhow::anyhow!("invalid hex color"));
         }
+        // 非 ASCII（如中文）按字节切片会在字符中间 panic；hex 只可能是 ASCII，
+        // 提前拒绝，避免 `&hex[0..2]` 先崩。
+        if !hex.is_ascii() {
+            return Err(anyhow::anyhow!("invalid hex color"));
+        }
 
         let r = u8::from_str_radix(&hex[0..2], 16)? as f32 / 255.;
         let g = u8::from_str_radix(&hex[2..4], 16)? as f32 / 255.;

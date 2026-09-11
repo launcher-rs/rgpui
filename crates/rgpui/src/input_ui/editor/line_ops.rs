@@ -165,7 +165,9 @@ impl InputState {
             if line.trim().is_empty() {
                 continue;
             }
-            let commented = line[indent_len..].starts_with(&prefix);
+            let commented = line
+                .get(indent_len..)
+                .is_some_and(|rest| rest.starts_with(&prefix));
             rows.push((row, line_start + indent_len, commented));
         }
         if rows.is_empty() {
@@ -183,7 +185,10 @@ impl InputState {
                 let line = self.core.text.slice(line_start..line_end).to_string();
                 let indent_len = line.len() - line.trim_start().len();
                 let mut remove_end = *pos + prefix.len();
-                if line[indent_len + prefix.len()..].starts_with(' ') {
+                let has_trailing_space = line
+                    .get(indent_len + prefix.len()..)
+                    .is_some_and(|rest| rest.starts_with(' '));
+                if has_trailing_space {
                     remove_end += 1;
                 }
                 let removed = remove_end - *pos;

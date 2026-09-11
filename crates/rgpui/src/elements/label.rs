@@ -118,34 +118,36 @@ impl Label {
         if let Some(matched) = &self.highlights_text {
             let matched_str = matched.as_str();
             if !matched_str.is_empty() {
-                let search_lower = matched_str.to_lowercase();
-                let full_text_lower = full_text.to_lowercase();
-
+                // 大小写不敏感按字符逐个比较，避免 `to_lowercase()` 整串后
+                // 字节偏移漂移（`İ` 等小写后字节数变化，旧实现以小写串偏移
+                // 切原串 + 按字节 `+1` 步进，中文必 panic，见 search_panel）。
+                let query_lower: Vec<char> = matched_str.to_lowercase().chars().collect();
                 if matched.is_prefix() {
                     // 对于前缀匹配，只检查文本是否以搜索词开头
-                    if full_text_lower.starts_with(&search_lower) {
-                        ranges.push(0..matched_str.len());
+                    if let Some(matched_len) = insensitive_prefix_len(&full_text, &query_lower) {
+                        ranges.push(0..matched_len.min(full_text.len()));
                     }
                 } else {
-                    // 对于全文匹配，查找所有出现的位置
+                    // 对于全文匹配，查找所有出现的位置（`search_start` 恒为字符边界；
+                    // 步进按首字符字节数，保留重叠匹配语义，如 `aaaa` 搜 `aa` 得 0..2/1..3/2..4）。
                     let mut search_start = 0;
-                    while let Some(pos) = full_text_lower[search_start..].find(&search_lower) {
-                        let match_start = search_start + pos;
-                        let match_end = match_start + matched_str.len();
-
-                        if match_end <= full_text.len() {
-                            ranges.push(match_start..match_end);
+                    while search_start < full_text.len() {
+                        let rest = full_text.get(search_start..).unwrap_or("");
+                        let Some(first_len) = rest.chars().next().map(|c| c.len_utf8()) else {
+                            break;
+                        };
+                        if let Some(matched_len) = insensitive_prefix_len(rest, &query_lower) {
+                            let match_start = search_start;
+                            let match_end = match_start + matched_len;
+                            if match_end <= full_text.len() {
+                                ranges.push(match_start..match_end);
+                            }
                         }
-
-                        search_start = match_start + 1;
-                        while !full_text.is_char_boundary(search_start)
-                            && search_start < full_text.len()
+                        search_start += first_len;
+                        while search_start < full_text.len()
+                            && !full_text.is_char_boundary(search_start)
                         {
                             search_start += 1;
-                        }
-
-                        if search_start >= full_text.len() {
-                            break;
                         }
                     }
                 }
@@ -198,6 +200,33 @@ impl Styled for Label {
     fn style(&mut self) -> &mut crate::StyleRefinement {
         &mut self.style
     }
+}
+
+/// 大小写不敏感前缀匹配：`rest` 以 `query_lower`（已按字符小写）开头时，
+/// 返回原串中匹配部分的字节长度（小写可能改变字节数，按字符逐个累加还原）。
+/// 与 `search_panel::literal_insensitive_prefix_len` 同款，避免整串
+/// `to_lowercase()` 后偏移漂移切错中文。
+fn insensitive_prefix_len(rest: &str, query_lower: &[char]) -> Option<usize> {
+    if query_lower.is_empty() {
+        return None;
+    }
+    let mut chars = rest.chars();
+    let mut orig_consumed = 0usize;
+    let mut qi = 0usize;
+    while qi < query_lower.len() {
+        let Some(c) = chars.next() else {
+            return None;
+        };
+        orig_consumed += c.len_utf8();
+        let mut lowered = c.to_lowercase();
+        while let Some(lc) = lowered.next() {
+            if qi >= query_lower.len() || lc != query_lower[qi] {
+                return None;
+            }
+            qi += 1;
+        }
+    }
+    Some(orig_consumed)
 }
 
 impl RenderOnce for Label {
