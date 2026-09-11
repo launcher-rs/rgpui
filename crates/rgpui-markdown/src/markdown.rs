@@ -5,6 +5,37 @@ use crate::rich_text::{
 };
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use rgpui::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::sync::Mutex;
+
+/// 解析缓存：单条目（最近一次文档全文）。
+///
+/// `Markdown::render` 每帧都会调用解析；分屏拖拽等高频重渲染场景下文本不变，
+/// 命中缓存可省去 pulldown 全文解析（大文档 debug 下可达数十毫秒）。
+/// 键为内容哈希；哈希冲突概率可忽略，且最坏情况也只是某一帧显示旧内容。
+static PARSE_CACHE: Mutex<Option<(u64, Vec<RichBlock>)>> = Mutex::new(None);
+
+/// 带单条目缓存的解析：内容不变直接复用上次结果。
+fn parse_markdown_cached(source: &str) -> Vec<RichBlock> {
+    let mut hasher = DefaultHasher::new();
+    source.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    if let Ok(guard) = PARSE_CACHE.lock() {
+        if let Some((cached_hash, blocks)) = guard.as_ref() {
+            if *cached_hash == hash {
+                return blocks.clone();
+            }
+        }
+    }
+
+    let blocks = parse_markdown_with_urls(source);
+    if let Ok(mut guard) = PARSE_CACHE.lock() {
+        *guard = Some((hash, blocks.clone()));
+    }
+    blocks
+}
 
 /// Markdown 渲染组件。
 #[derive(IntoElement)]
@@ -51,7 +82,7 @@ impl RenderOnce for Markdown {
         let theme = cx.theme();
         let base_size = self.base_font_size.unwrap_or(px(14.0));
 
-        let blocks = parse_markdown_with_urls(&self.source);
+        let blocks = parse_markdown_cached(&self.source);
         let elements = render_blocks(&blocks, base_size, &self.on_link_click, "md", theme);
 
         self.base
@@ -435,5 +466,27 @@ impl UrlTrackingBlockBuilder {
             }
         }
         self.blocks.push(block);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 显式导入：父模块 `use rgpui::*` 引入的 `test` 模块名会遮蔽内置属性。
+    use super::parse_markdown_cached;
+
+    /// 缓存正确性：相同内容复用解析结果，不同内容重新解析（含中文）。
+    #[test]
+    fn parse_cache_reuses_same_content() {
+        let doc = "# 标题\n\n段落运\n\n```rust\nfn f() {}\n```\n";
+        let first = parse_markdown_cached(doc);
+        assert!(!first.is_empty());
+        let second = parse_markdown_cached(doc);
+        assert_eq!(format!("{first:?}"), format!("{second:?}"));
+        // 不同内容必须重新解析（块数不同）。
+        let other = parse_markdown_cached("# 只有一个标题\n");
+        assert!(format!("{other:?}") != format!("{first:?}"));
+        // 切回原文仍正确。
+        let third = parse_markdown_cached(doc);
+        assert_eq!(format!("{first:?}"), format!("{third:?}"));
     }
 }
