@@ -13,11 +13,13 @@ use std::sync::Mutex;
 ///
 /// `Markdown::render` 每帧都会调用解析；分屏拖拽等高频重渲染场景下文本不变，
 /// 命中缓存可省去 pulldown 全文解析（大文档 debug 下可达数十毫秒）。
-/// 键为内容哈希；哈希冲突概率可忽略，且最坏情况也只是某一帧显示旧内容。
-static PARSE_CACHE: Mutex<Option<(u64, Vec<RichBlock>)>> = Mutex::new(None);
+/// 值用 `Arc` 共享，避免每帧深拷贝全部块字符串；键为内容哈希，冲突概率可忽略，
+/// 且最坏情况也只是某一帧显示旧内容。
+static PARSE_CACHE: Mutex<Option<(u64, std::sync::Arc<Vec<RichBlock>>)>> =
+    Mutex::new(None);
 
-/// 带单条目缓存的解析：内容不变直接复用上次结果。
-fn parse_markdown_cached(source: &str) -> Vec<RichBlock> {
+/// 带单条目缓存的解析：内容不变直接复用上次结果（`Arc` 共享，无深拷贝）。
+fn parse_markdown_cached(source: &str) -> std::sync::Arc<Vec<RichBlock>> {
     let mut hasher = DefaultHasher::new();
     source.hash(&mut hasher);
     let hash = hasher.finish();
@@ -30,11 +32,18 @@ fn parse_markdown_cached(source: &str) -> Vec<RichBlock> {
         }
     }
 
-    let blocks = parse_markdown_with_urls(source);
+    let blocks = std::sync::Arc::new(parse_markdown_with_urls(source));
     if let Ok(mut guard) = PARSE_CACHE.lock() {
         *guard = Some((hash, blocks.clone()));
     }
     blocks
+}
+
+/// 解析 Markdown 源码为富文本块（带单条目缓存）。
+///
+/// 供虚拟化等按块处理的场景使用：调用方按需渲染块区间，避免全文建树。
+pub fn parse_markdown(source: &str) -> std::sync::Arc<Vec<RichBlock>> {
+    parse_markdown_cached(source)
 }
 
 /// Markdown 渲染组件。
