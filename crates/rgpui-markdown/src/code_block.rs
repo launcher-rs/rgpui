@@ -129,7 +129,7 @@ impl RenderOnce for CodeBlock {
 
         let copy_btn = if show_copy {
             let copy_id: SharedString =
-                format!("code-block-copy-{}", &self.code[..self.code.len().min(16)]).into();
+                format!("code-block-copy-{}", code_id_prefix(&self.code)).into();
             Some(
                 div()
                     .id(copy_id)
@@ -217,7 +217,21 @@ impl RenderOnce for CodeBlock {
     }
 }
 
+/// 复制按钮 ID 前缀：按字节截断时向下对齐到字符边界，
+/// 避免切在多字节字符（如中文）中间导致 panic。
+fn code_id_prefix(code: &str) -> &str {
+    let mut end = code.len().min(16);
+    while !code.is_char_boundary(end) {
+        end -= 1;
+    }
+    &code[..end]
+}
+
 /// 对一行代码做简易分词（注释/字符串/数字/关键字/普通文本）。
+///
+/// 不变式：每次循环入口 `pos` 恒为字符边界（0 是边界；所有分支要么只推进
+/// ASCII 字节，要么落到 `"`/行尾等边界上；fallthrough 向前对齐），因此所有
+/// `&line[a..b]` 切片都是安全的。
 fn tokenize(line: &str, is_rust: bool) -> Vec<(TokenKind, &str)> {
     let mut tokens = Vec::new();
     let bytes = line.as_bytes();
@@ -225,6 +239,21 @@ fn tokenize(line: &str, is_rust: bool) -> Vec<(TokenKind, &str)> {
     let mut pos = 0;
 
     while pos < len {
+        // 防御网：若 pos 不在字符边界（理论上不可达），把所在整个字符
+        // 作为普通文本吞入并对齐，避免 panic。
+        if !line.is_char_boundary(pos) {
+            let mut start = pos;
+            while start > 0 && !line.is_char_boundary(start) {
+                start -= 1;
+            }
+            let mut end = pos + 1;
+            while end < len && !line.is_char_boundary(end) {
+                end += 1;
+            }
+            tokens.push((TokenKind::Plain, &line[start..end]));
+            pos = end;
+            continue;
+        }
         if pos + 1 < len && bytes[pos] == b'/' && bytes[pos + 1] == b'/' {
             tokens.push((TokenKind::Comment, &line[pos..]));
             return tokens;
@@ -312,8 +341,13 @@ fn tokenize(line: &str, is_rust: bool) -> Vec<(TokenKind, &str)> {
             continue;
         }
 
+        // 其余字节（ASCII 标点或多字节字符首字节）：至少吞一个字节，
+        // 若落在多字节字符中间则向前对齐到边界，保证切片安全。
         let start = pos;
         pos += 1;
+        while pos < len && !line.is_char_boundary(pos) {
+            pos += 1;
+        }
         tokens.push((TokenKind::Plain, &line[start..pos]));
     }
 
@@ -381,5 +415,52 @@ impl StatefulInteractiveElement for CodeBlock {}
 impl ParentElement for CodeBlock {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
         self.base.extend(elements)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注意：不用 `use super::*`，否则父模块 `use rgpui::*` 引入的 `test`
+    // 模块名会遮蔽内置 `#[test]` 属性，导致宏展开递归溢出。
+    use super::{code_id_prefix, tokenize};
+
+    /// ID 前缀截断必须落在字符边界（复现：字节 16 切在 `运` 中间导致 panic）。
+    #[test]
+    fn code_id_prefix_stays_on_char_boundary() {
+        // 14 个 ASCII + `运`（bytes 14..17）：旧代码 `&code[..16]` 直接 panic。
+        let code = "0123456789abcd运xyz";
+        assert_eq!(code_id_prefix(code), "0123456789abcd");
+        assert_eq!(code_id_prefix("运"), "运");
+        assert_eq!(code_id_prefix(""), "");
+        assert_eq!(code_id_prefix("short"), "short");
+        assert_eq!(code_id_prefix("0123456789abcdef"), "0123456789abcdef");
+        // 16 字节恰好是字符边界时取满。
+        assert_eq!(code_id_prefix("0123456789abcde运"), "0123456789abcde");
+    }
+
+    /// 分词永不 panic，且 tokens 拼回必须与原行完全一致（含中文注释/字符串/标识符）。
+    #[test]
+    fn tokenize_cjk_never_panics_and_is_lossless() {
+        let lines = [
+            "// 注释运",
+            "\"字符串运\"",
+            "let 变量_运1 = 运;",
+            "运",
+            "a运b",
+            "'运'",
+            "'a'",
+            "\"unterminated 运",
+            "123运456",
+            "//",
+            "",
+            "fn main() { println!(\"你好，世界\"); } // 尾注释",
+        ];
+        for line in lines {
+            for is_rust in [false, true] {
+                let tokens = tokenize(line, is_rust);
+                let joined: String = tokens.iter().map(|(_, t)| *t).collect();
+                assert_eq!(joined, line, "分词丢失内容: {line:?} (rust={is_rust})");
+            }
+        }
     }
 }
