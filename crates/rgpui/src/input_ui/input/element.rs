@@ -1203,6 +1203,8 @@ impl Element for TextElement {
         };
 
         let font_size_override = self.state.read(cx).font_size_override;
+        let text_size = font_size_override
+            .unwrap_or(text_style.font_size.to_pixels(rem_size));
         if display.is_empty() {
             return None;
         }
@@ -1246,7 +1248,7 @@ impl Element for TextElement {
                             .width;
                         let line_height = text_style
                             .line_height
-                            .to_pixels(text_size, rem_size);
+                            .to_pixels(crate::AbsoluteLength::Pixels(text_size), rem_size);
                         Some(Bounds {
                             origin: point(bounds.origin.x + caret_x, bounds.origin.y),
                             size: size(CURSOR_WIDTH, line_height),
