@@ -1451,15 +1451,6 @@ impl Element for TextElement {
             });
         }
 
-        // auto_grow 按视觉折行校正行数：首帧 rows 仍为初值（文本 set_value 时尚无宽度），
-        // 此处用当前布局宽度算出真实折行，变化则请求重布局，下一帧高度收敛，此后稳定。
-        let grow_changed = self
-            .state
-            .update(cx, |state, _| state.sync_auto_grow_rows());
-        if grow_changed {
-            cx.notify(self.state.entity_id());
-        }
-
         let state = self.state.read(cx);
         let line_height = if font_size_override.is_some() {
             text_style
