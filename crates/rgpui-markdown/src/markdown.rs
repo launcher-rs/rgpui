@@ -181,11 +181,7 @@ fn parse_markdown_with_urls(source: &str) -> (Vec<RichBlock>, Vec<Range<usize>>)
     builder.build(&events);
     let mut spans = builder.spans;
     fill_span_gaps(&mut spans, source.len());
-    debug_assert_eq!(
-        spans.len(),
-        builder.blocks.len(),
-        "块与区间必须一一对应"
-    );
+    debug_assert_eq!(spans.len(), builder.blocks.len(), "块与区间必须一一对应");
     (builder.blocks, spans)
 }
 
@@ -613,10 +609,7 @@ mod tests {
         assert_eq!(spans.last().unwrap().end, doc.len());
         for pair in spans.windows(2) {
             // 相邻块无缝隙（允许重叠：行内图片抽出的块与其段落重叠）。
-            assert!(
-                pair[1].start <= pair[0].end,
-                "块间不应有缝隙：{pair:?}"
-            );
+            assert!(pair[1].start <= pair[0].end, "块间不应有缝隙：{pair:?}");
         }
         // 每个区间都是合法 UTF-8 切片。
         for span in &spans {
