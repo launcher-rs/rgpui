@@ -609,6 +609,17 @@ impl InputState {
         self
     }
 
+    /// 按当前视觉折行同步 auto_grow 行数（element prepaint 在首帧/宽度变化后校正）。
+    /// 返回行数是否发生变化（调用方据此决定是否请求重布局）。
+    pub(crate) fn sync_auto_grow_rows(&mut self) -> bool {
+        if !self.mode.is_auto_grow() {
+            return false;
+        }
+        let before = self.mode.rows();
+        self.mode.update_auto_grow(&self.display_map);
+        before != self.mode.rows()
+    }
+
     /// 设置占位文本。
     pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.placeholder = placeholder.into();
