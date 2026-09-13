@@ -651,8 +651,14 @@ fn render_block(
         }
 
         RichBlock::BlockQuote(inner_blocks) => {
-            let children =
-                render_blocks_with(inner_blocks, base_size, on_link_click, id_prefix, theme, code_block_renderer);
+            let children = render_blocks_with(
+                inner_blocks,
+                base_size,
+                on_link_click,
+                id_prefix,
+                theme,
+                code_block_renderer,
+            );
             div()
                 .mb(px(12.0))
                 .pl(px(16.0))
@@ -725,8 +731,14 @@ fn render_block(
         } => {
             let label = title.as_deref().unwrap_or(kind.label());
             let header_text = format!("{} {}", kind.icon(), label);
-            let children =
-                render_blocks_with(blocks, base_size, on_link_click, id_prefix, theme, code_block_renderer);
+            let children = render_blocks_with(
+                blocks,
+                base_size,
+                on_link_click,
+                id_prefix,
+                theme,
+                code_block_renderer,
+            );
             let bg = match kind {
                 CalloutKind::Note => theme.tokens.info,
                 CalloutKind::Tip => theme.tokens.success,
@@ -755,20 +767,21 @@ fn render_block(
         }
 
         RichBlock::FootnoteDefinition { label, blocks } => {
-            let children =
-                render_blocks_with(blocks, base_size, on_link_click, id_prefix, theme, code_block_renderer);
+            let children = render_blocks_with(
+                blocks,
+                base_size,
+                on_link_click,
+                id_prefix,
+                theme,
+                code_block_renderer,
+            );
             div()
                 .mb(px(8.0))
                 .pl(px(16.0))
                 .border_l(px(3.0))
                 .border_color(theme.tokens.muted)
                 .text_color(theme.tokens.muted_foreground)
-                .child(
-                    div()
-                        .mb(px(4.0))
-                        .text_sm()
-                        .child(format!("[^{label}]")),
-                )
+                .child(div().mb(px(4.0)).text_sm().child(format!("[^{label}]")))
                 .children(children)
                 .into_any_element()
         }

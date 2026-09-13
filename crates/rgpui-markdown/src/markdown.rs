@@ -527,10 +527,7 @@ impl UrlTrackingBlockBuilder {
                     let label = fn_state.label;
                     let blocks = fn_state.blocks;
                     let span = self.take_pending_span(range.end);
-                    self.push_block(
-                        RichBlock::FootnoteDefinition { label, blocks },
-                        span,
-                    );
+                    self.push_block(RichBlock::FootnoteDefinition { label, blocks }, span);
                 }
             }
             _ => {}
@@ -625,7 +622,9 @@ fn detect_callouts(blocks: &mut Vec<RichBlock>) {
 
 /// 尝试从段落行内元素中解析 callout 头部：`[!TYPE] optional title`。
 /// 返回 (CalloutKind, Option<title>, 后续块起始索引)。
-fn try_parse_callout_header(inlines: &[RichInline]) -> Option<(CalloutKind, Option<String>, usize)> {
+fn try_parse_callout_header(
+    inlines: &[RichInline],
+) -> Option<(CalloutKind, Option<String>, usize)> {
     if inlines.is_empty() {
         return None;
     }
