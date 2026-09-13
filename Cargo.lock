@@ -2017,6 +2017,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dialog"
+version = "0.1.0"
+dependencies = [
+ "rgpui",
+ "rgpui-platform",
+]
+
+[[package]]
 name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6390,7 +6398,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -6501,6 +6509,11 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+ "tree-sitter",
+ "tree-sitter-highlight",
+ "tree-sitter-json",
+ "tree-sitter-rust",
+ "tree-sitter-toml-ng",
  "ttf-parser",
  "unicase",
  "unicode-segmentation",
@@ -6519,7 +6532,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-3d"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "bytemuck",
  "gltf",
@@ -6537,14 +6550,14 @@ dependencies = [
 
 [[package]]
 name = "rgpui-character"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "rgpui-dom"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "js-sys",
@@ -6557,7 +6570,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-linux"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -6604,7 +6617,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macos"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -6649,7 +6662,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macros"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -6659,7 +6672,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-markdown"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "pollster 1.0.1",
  "pulldown-cmark",
@@ -6669,7 +6682,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-platform"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "console_error_panic_hook",
  "rgpui",
@@ -6681,7 +6694,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-term"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -6701,7 +6714,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-web"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -6724,7 +6737,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-wgpu"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -6754,7 +6767,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-windows"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -7678,6 +7691,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "sidebar"
+version = "0.1.0"
+dependencies = [
+ "rgpui",
+ "rgpui-platform",
+]
+
+[[package]]
 name = "signal-hook"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7922,6 +7943,12 @@ name = "str_indices"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
+
+[[package]]
+name = "streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b2231b7c3057d5e4ad0156fb3dc807d900806020c5ffa3ee6ff2c8c76fb8520"
 
 [[package]]
 name = "strict-num"
@@ -8719,6 +8746,68 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter"
+version = "0.25.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78f873475d258561b06f1c595d93308a7ed124d9977cb26b148c2084a4a3cc87"
+dependencies = [
+ "cc",
+ "regex",
+ "regex-syntax",
+ "serde_json",
+ "streaming-iterator",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-highlight"
+version = "0.25.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adc5f880ad8d8f94e88cb81c3557024cf1a8b75e3b504c50481ed4f5a6006ff3"
+dependencies = [
+ "regex",
+ "streaming-iterator",
+ "thiserror 2.0.20",
+ "tree-sitter",
+]
+
+[[package]]
+name = "tree-sitter-json"
+version = "0.24.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d727acca406c0020cffc6cf35516764f36c8e3dc4408e5ebe2cb35a947ec471"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-language"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca0d1bf6fdd806e43ae5198f82f527056d359def39e54e67a0f478ac09dac081"
+
+[[package]]
+name = "tree-sitter-rust"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "439e577dbe07423ec2582ac62c7531120dbfccfa6e5f92406f93dd271a120e45"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-toml-ng"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9adc2c898ae49730e857d75be403da3f92bb81d8e37a2f918a08dd10de5ebb1"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8912,6 +9001,16 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "v1_2_showcase"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lsp-types",
+ "rgpui",
+ "rgpui-platform",
 ]
 
 [[package]]

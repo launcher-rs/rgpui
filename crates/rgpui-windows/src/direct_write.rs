@@ -35,6 +35,17 @@ use windows_numerics::Vector2;
 use crate::*;
 use rgpui::*;
 
+/// 按字节长度切分文本并吸附到字符边界（防 panic 兜底）。
+///
+/// 上游 runs 错位（如折叠/装饰范围过期）时，直接按字节切片会在多字节字符
+/// 中间 panic。这里把起止都钳制到文本内并向下吸附到字符边界，返回切片与
+/// 下一个偏移。正常对齐时与原逻辑等价。
+fn slice_at_char_boundary(text: &str, offset: usize, len: usize) -> (&str, usize) {
+    let start = text.floor_char_boundary(offset.min(text.len()));
+    let end = text.floor_char_boundary((start + len).min(text.len()));
+    (&text[start..end.max(start)], end.max(start))
+}
+
 #[derive(Debug)]
 struct FontInfo {
     font_family_h: HSTRING,
@@ -574,8 +585,9 @@ impl DirectWriteState {
                     f32::INFINITY,
                     f32::INFINITY,
                 )?;
-                let current_text = &text[utf8_offset..(utf8_offset + first_run.len)];
-                utf8_offset += first_run.len;
+                let (current_text, next_offset) =
+                    slice_at_char_boundary(text, utf8_offset, first_run.len);
+                utf8_offset = next_offset;
                 let current_text_utf16_length = current_text.encode_utf16().count() as u32;
                 let text_range = DWRITE_TEXT_RANGE {
                     startPosition: utf16_offset,
@@ -599,8 +611,9 @@ impl DirectWriteState {
             let mut break_ligatures = true;
             for run in &font_runs[1..] {
                 let font_info = &self.fonts[run.font_id.0];
-                let current_text = &text[utf8_offset..(utf8_offset + run.len)];
-                utf8_offset += run.len;
+                let (current_text, next_offset) =
+                    slice_at_char_boundary(text, utf8_offset, run.len);
+                utf8_offset = next_offset;
                 let current_text_utf16_length = current_text.encode_utf16().count() as u32;
 
                 let collection = &font_info.font_collection;

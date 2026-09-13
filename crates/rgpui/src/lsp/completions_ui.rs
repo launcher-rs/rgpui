@@ -10,9 +10,12 @@
 //! CompletionPopup::new(popup_state)
 //! ```
 
+use std::rc::Rc;
+
 use crate::{
-    Context, Entity, InteractiveElement, IntoElement, ParentElement, Pixels, Render, Styled,
-    StyledExt, Window, div, h_flex, px,
+    ActiveTheme as _, Anchor, App, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    Pixels, Render, RenderOnce, StatefulInteractiveElement, Styled, StyledExt, Window, anchored,
+    deferred, div, h_flex, prelude::FluentBuilder as _, px,
 };
 
 use super::completions::{Completion, CompletionMenuOptions, CompletionState};
@@ -75,27 +78,41 @@ impl CompletionPopupState {
 }
 
 /// 补全弹窗组件。
+#[derive(IntoElement)]
 pub struct CompletionPopup {
     state: Entity<CompletionPopupState>,
+    /// 行点击回调（参数为条目索引；应用层回写 `accept_completion`）。
+    on_select: Option<Rc<dyn Fn(usize, &mut Window, &mut App)>>,
 }
 
 impl CompletionPopup {
     /// 创建新的补全弹窗。
     pub fn new(state: Entity<CompletionPopupState>) -> Self {
-        Self { state }
+        Self {
+            state,
+            on_select: None,
+        }
+    }
+
+    /// 设置行点击回调（不设置则行不可点，仅展示）。
+    pub fn on_select(mut self, handler: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
+        self.on_select = Some(Rc::new(handler));
+        self
     }
 }
 
-impl Render for CompletionPopup {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl RenderOnce for CompletionPopup {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let state = self.state.read(cx);
+        let on_select = self.on_select.clone();
 
         if !state.visible || state.completions.is_empty() {
-            return div().into_element();
+            return div().into_any_element();
         }
 
         let max_width = state.options.max_width;
         let max_items = state.options.max_visible_items.min(state.completions.len());
+        let anchor_position = state.position;
 
         let items: Vec<_> = state
             .completions
@@ -104,6 +121,7 @@ impl Render for CompletionPopup {
             .enumerate()
             .map(|(i, completion)| {
                 let is_selected = i == state.selected_index;
+                let on_select = on_select.clone();
 
                 let kind_label = completion.kind.map(|k| {
                     let name = match k {
@@ -121,16 +139,22 @@ impl Render for CompletionPopup {
                         lsp_types::CompletionItemKind::TYPE_PARAMETER => "type",
                         _ => "?",
                     };
-                    div().text_xs().text_color(crate::gray_500()).child(name)
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(name)
                 });
 
-                let label = div().text_sm().child(completion.label.clone());
+                let label = div()
+                    .text_sm()
+                    .text_color(cx.theme().popover_foreground)
+                    .child(completion.label.clone());
 
                 let detail = if state.options.show_detail {
                     completion.detail.as_ref().map(|d| {
                         div()
                             .text_xs()
-                            .text_color(crate::gray_400())
+                            .text_color(cx.theme().muted_foreground)
                             .ml_auto()
                             .child(d.clone())
                     })
@@ -138,39 +162,56 @@ impl Render for CompletionPopup {
                     None
                 };
 
-                let bg = if is_selected {
-                    crate::gray_800()
-                } else {
-                    crate::gray_900()
-                };
-
-                h_flex()
+                let row = h_flex()
+                    .id(("completion-item", i))
                     .w_full()
                     .px_2()
                     .py_1()
-                    .bg(bg)
-                    .hover(|s| s.bg(crate::gray_700()))
+                    .rounded(cx.theme().radius.min(px(6.)))
                     .gap_2()
                     .items_center()
+                    .text_color(cx.theme().popover_foreground)
+                    .when(is_selected, |this| {
+                        this.bg(cx.theme().tokens.accent)
+                            .text_color(cx.theme().accent_foreground)
+                    })
+                    .hover(|s| s.bg(cx.theme().tokens.accent.opacity(0.5)))
                     .children(kind_label)
                     .child(label)
-                    .children(detail)
+                    .children(detail);
+                // 有回调才挂点击（纯展示时行不可点）。
+                if let Some(on_select) = on_select {
+                    row.cursor_pointer().on_click(move |_, window, cx| {
+                        on_select(i, window, cx);
+                    })
+                } else {
+                    row
+                }
             })
             .collect();
 
-        div()
-            .absolute()
-            .w(max_width)
-            .max_h(px(300.))
-            .bg(crate::gray_900())
-            .border_1()
-            .border_color(crate::gray_700())
-            .rounded_md()
-            .shadow_lg()
-            .overflow_hidden()
-            .flex()
-            .flex_col()
-            .children(items)
+        // 窗口坐标锚定到光标处（`EditorState` 在同步弹窗时写入 `position`），
+        // `deferred` 保证浮于编辑器之上，`snap_to_window` 防溢出。
+        deferred(
+            anchored()
+                .position(anchor_position)
+                .anchor(Anchor::TopLeft)
+                .snap_to_window_with_margin(px(8.))
+                .child(
+                    div()
+                        .w(max_width)
+                        .max_h(px(300.))
+                        .popover_style(cx)
+                        .p_1()
+                        .flex()
+                        .flex_col()
+                        .gap_y_0p5()
+                        .occlude()
+                        .children(items),
+                ),
+        )
+        .with_priority(1)
+        .into_any_element()
     }
 }
 

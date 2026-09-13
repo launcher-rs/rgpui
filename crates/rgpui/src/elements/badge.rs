@@ -200,7 +200,7 @@ mod tests {
     #[test]
     fn test_badge_variant() {
         let b = Badge::new().dot();
-        assert!(b.variant.is_icon() == false);
+        assert!(!b.variant.is_icon());
         let b2 = Badge::new().icon(crate::IconName::Bell);
         assert!(b2.variant.is_icon());
     }

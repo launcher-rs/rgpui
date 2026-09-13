@@ -95,7 +95,7 @@ docs: 为 Platform trait 补全文档注释
 
 ## 相关文档
 
-- [组件整合计划](docs/component-integration-plan.md)
-- [UI Crate 规划](docs/ui-crate-plan.md)
-- [上游切分策略](docs/upstream-separation-strategy.md)
+- [组件整合计划](docs/history/component-integration-plan.md)
+- [UI Crate 规划](docs/history/ui-crate-plan.md)
+- [上游切分策略](docs/history/upstream-separation-strategy.md)
 - [开发指南（AGENTS.md）](AGENTS.md)

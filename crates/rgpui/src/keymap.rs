@@ -2,9 +2,12 @@
 
 mod binding;
 mod context;
+/// keymap.json 文件加载（M7：`load_keymap_json`）。
+mod file;
 
 pub use binding::*;
 pub use context::*;
+pub use file::load_keymap_json;
 
 use crate::collections::{HashSet, TypeIdHashMap};
 use crate::{Action, AsKeystroke, Keystroke, Unbind, is_no_action, is_unbind};

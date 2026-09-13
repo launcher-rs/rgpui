@@ -6,7 +6,7 @@ use ropey::RopeSlice;
 
 use super::{
     Indent, IndentInline, InputState, LastLayout, Outdent, OutdentInline, RopeExt as _,
-    element::TextElement, mode::InputMode,
+    input::element::TextElement, input::mode::InputMode,
 };
 
 /// 制表符大小设置，用于缩进计算。
@@ -55,9 +55,7 @@ impl InputMode {
     #[inline]
     pub(super) fn is_indentable(&self) -> bool {
         match self {
-            InputMode::PlainText { multi_line, .. } | InputMode::CodeEditor { multi_line, .. } => {
-                *multi_line
-            }
+            InputMode::PlainText { multi_line, .. } => *multi_line,
             _ => false,
         }
     }
@@ -111,7 +109,7 @@ impl TextElement {
             .iter()
             .zip(last_layout.lines.iter())
         {
-            let line = state.text.slice_line(buffer_line);
+            let line = state.core.text.slice_line(buffer_line);
             let mut current_indents = vec![];
             if line.len() > 0 {
                 let indent_count = tab_size.indent_count(&line);
@@ -145,15 +143,63 @@ impl TextElement {
         let path = builder.build().unwrap();
         Some(path)
     }
+
+    /// 布局标尺路径（O5）：每列一条贯穿可视高度的竖线。
+    ///
+    /// 列为字符数；x 按数字 advance 折算（等宽字体精确，变宽字体近似，文档注明）；
+    /// 视口固定（不随横向滚动，v1 约束）；空列表返回 `None`。
+    /// 颜色不在此解析（prepaint 持有 state 读锁，`cx` 可变借用冲突），paint 阶段读
+    /// `ruler_color`（`None` 跟主题边框色）。
+    /// `editor` feature 门控（读门控字段）。
+    #[cfg(feature = "editor")]
+    pub(super) fn layout_rulers(
+        &self,
+        state: &InputState,
+        bounds: &Bounds<Pixels>,
+        last_layout: &LastLayout,
+        text_style: &TextStyle,
+        window: &mut Window,
+    ) -> Option<Path<Pixels>> {
+        if state.rulers.is_empty() {
+            return None;
+        }
+        // 数字 advance：塑形十个数字取均值（与缩进测量同款手法）。
+        let font_size = text_style.font_size.to_pixels(window.rem_size());
+        let digits = crate::SharedString::from("0123456789");
+        let shaped = window.text_system().shape_line(
+            digits,
+            font_size,
+            &[TextRun {
+                len: 10,
+                font: text_style.font(),
+                color: Hsla::default(),
+                background_color: None,
+                strikethrough: None,
+                underline: None,
+            }],
+            None,
+        );
+        let digit_advance = shaped.width() * 0.1;
+        let mut builder = PathBuilder::stroke(px(1.));
+        let height = bounds.size.height;
+        for column in &state.rulers {
+            let x = last_layout.line_number_width + digit_advance * (*column as f32);
+            builder.move_to(point(x, px(0.)));
+            builder.line_to(point(x, height));
+        }
+        builder.translate(bounds.origin);
+        let path = builder.build().unwrap();
+        Some(path)
+    }
 }
 
 impl InputState {
-    /// 设置代码编辑器模式是否显示缩进参考线，默认 true。
+    /// 设置多行模式是否显示缩进参考线，默认 false（编辑器显式打开）。
     ///
-    /// 仅适用于 [`InputMode::CodeEditor`] 模式。
+    /// 仅多行生效（单行忽略）。
     pub fn indent_guides(mut self, indent_guides: bool) -> Self {
-        debug_assert!(self.mode.is_code_editor() && self.mode.is_multi_line());
-        if let InputMode::CodeEditor {
+        debug_assert!(self.mode.is_multi_line());
+        if let InputMode::PlainText {
             indent_guides: l, ..
         } = &mut self.mode
         {
@@ -162,17 +208,15 @@ impl InputState {
         self
     }
 
-    /// 设置代码编辑器模式是否显示缩进参考线。
-    ///
-    /// 仅适用于 [`InputMode::CodeEditor`] 模式。
+    /// 运行时设置是否显示缩进参考线，仅多行生效（单行忽略）。
     pub fn set_indent_guides(
         &mut self,
         indent_guides: bool,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        debug_assert!(self.mode.is_code_editor());
-        if let InputMode::CodeEditor {
+        debug_assert!(self.mode.is_multi_line());
+        if let InputMode::PlainText {
             indent_guides: l, ..
         } = &mut self.mode
         {
@@ -181,14 +225,34 @@ impl InputState {
         cx.notify();
     }
 
-    /// 设置输入框的制表符大小。
+    #[cfg(feature = "editor")]
+    /// 设置标尺列（builder 版，字符数；空即关，O5）。
     ///
-    /// 仅适用于多行的 [`InputMode::PlainText`] 与 [`InputMode::CodeEditor`] 模式。
+    /// 等宽字体精确（x 按数字 advance 折算），变宽字体近似；视口固定不随横向滚动。
+    pub fn rulers(mut self, columns: Vec<usize>) -> Self {
+        self.rulers = columns;
+        self
+    }
+
+    #[cfg(feature = "editor")]
+    /// 设置标尺列（创建后修改；空即关）。
+    pub fn set_rulers(&mut self, columns: Vec<usize>, cx: &mut Context<Self>) {
+        self.rulers = columns;
+        cx.notify();
+    }
+
+    #[cfg(feature = "editor")]
+    /// 设置标尺颜色（`None` 跟主题边框色）。
+    pub fn set_ruler_color(&mut self, color: Option<Hsla>, cx: &mut Context<Self>) {
+        self.ruler_color = color;
+        cx.notify();
+    }
+
+    /// 设置输入框的制表符大小，仅多行生效（单行/自动增长忽略）。
     pub fn tab_size(mut self, tab: TabSize) -> Self {
-        debug_assert!(self.mode.is_multi_line() || self.mode.is_code_editor());
+        debug_assert!(self.mode.is_multi_line());
         match &mut self.mode {
             InputMode::PlainText { tab: t, .. } => *t = tab,
-            InputMode::CodeEditor { tab: t, .. } => *t = tab,
             _ => {}
         }
         self
@@ -231,15 +295,19 @@ impl InputState {
 
     /// 对选区执行缩进。`block` 为 true 时即使无选区也缩进整行。
     pub(super) fn indent(&mut self, block: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            cx.propagate();
+            return;
+        }
         if !self.mode.is_indentable() {
             cx.propagate();
             return;
         };
 
         let tab_indent = self.mode.tab_size().to_string();
-        let selected_range = self.selected_range;
+        let selected_range = self.core.selected_range;
         let mut added_len = 0;
-        let is_selected = !self.selected_range.is_empty();
+        let is_selected = !self.core.selected_range.is_empty();
 
         if is_selected || block {
             let start_offset = self.start_of_line_of_selection(window, cx);
@@ -267,14 +335,14 @@ impl InputState {
             }
 
             if is_selected {
-                self.selected_range = (start_offset..selected_range.end + added_len).into();
+                self.core.selected_range = (start_offset..selected_range.end + added_len).into();
             } else {
-                self.selected_range =
+                self.core.selected_range =
                     (selected_range.start + added_len..selected_range.end + added_len).into();
             }
         } else {
             // 无选区
-            let offset = self.selected_range.start;
+            let offset = self.core.selected_range.start;
             self.replace_text_in_range_silent(
                 Some(self.range_to_utf16(&(offset..offset))),
                 &tab_indent,
@@ -283,22 +351,26 @@ impl InputState {
             );
             added_len = tab_indent.len();
 
-            self.selected_range =
+            self.core.selected_range =
                 (selected_range.start + added_len..selected_range.end + added_len).into();
         }
     }
 
     /// 对选区执行减少缩进。`block` 为 true 时即使无选区也减少整行缩进。
     pub(super) fn outdent(&mut self, block: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            cx.propagate();
+            return;
+        }
         if !self.mode.is_indentable() {
             cx.propagate();
             return;
         };
 
         let tab_indent = self.mode.tab_size().to_string();
-        let selected_range = self.selected_range;
+        let selected_range = self.core.selected_range;
         let mut removed_len = 0;
-        let is_selected = !self.selected_range.is_empty();
+        let is_selected = !self.core.selected_range.is_empty();
 
         if is_selected || block {
             let start_offset = self.start_of_line_of_selection(window, cx);
@@ -331,22 +403,23 @@ impl InputState {
             }
 
             if is_selected {
-                self.selected_range =
+                self.core.selected_range =
                     (start_offset..selected_range.end.saturating_sub(removed_len)).into();
             } else {
-                self.selected_range = (selected_range.start.saturating_sub(removed_len)
+                self.core.selected_range = (selected_range.start.saturating_sub(removed_len)
                     ..selected_range.end.saturating_sub(removed_len))
                     .into();
             }
         } else {
             // 无选区
-            let start_offset = self.selected_range.start;
+            let start_offset = self.core.selected_range.start;
             let offset = self.start_of_line_of_selection(window, cx);
             let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
             // FIXME: 提升性能
             if self
+                .core
                 .text
-                .slice(offset..self.text.len())
+                .slice(offset..self.core.text.len())
                 .to_string()
                 .starts_with(tab_indent.as_ref())
             {
@@ -358,7 +431,7 @@ impl InputState {
                 );
                 removed_len = tab_indent.len();
                 let new_offset = start_offset.saturating_sub(removed_len);
-                self.selected_range = (new_offset..new_offset).into();
+                self.core.selected_range = (new_offset..new_offset).into();
             }
         }
     }

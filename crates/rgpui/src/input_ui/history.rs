@@ -124,6 +124,33 @@ where
         &self.redos
     }
 
+    /// 将最后 `count` 条撤销条目并为同一版本。
+    ///
+    /// 多光标扇出编辑（自后向前多次写入）调它，使一次撤销整体回退，
+    /// 而不是按光标逐个回退。`count == 0` 时空操作
+    ///（`editor` feature 门控，调用方在多光标扇出路径）。
+    #[cfg(feature = "editor")]
+    pub(crate) fn regroup_last(&mut self, count: usize) {
+        let len = self.undos.len();
+        if count == 0 || len == 0 {
+            return;
+        }
+        let start = len.saturating_sub(count);
+        let version = self.undos[start].version();
+        for item in &mut self.undos[start..] {
+            item.set_version(version);
+        }
+    }
+
+    /// 强制开启新撤销单元：下一次推入与之前分属不同版本。
+    ///
+    /// 回车换行后调它，使一次撤销停在行边界（RustRover 同款行为），
+    /// 而不是把 1 秒窗内的输入整体回退。
+    pub(super) fn break_group(&mut self) {
+        self.version += 1;
+        self.last_changed_at = Instant::now();
+    }
+
     /// 清空撤销和重做栈。
     pub fn clear(&mut self) {
         self.undos.clear();
@@ -251,6 +278,48 @@ mod tests {
         assert_eq!(changes[0].tab_index, 0);
 
         assert_eq!(history.undo().is_none(), true);
+    }
+
+    #[test]
+    fn test_group_interval_coalesces_rapid_pushes() {
+        use std::time::Duration as StdDuration;
+
+        // 20ms 分组窗：窗内连续推入属同一版本，一次 undo 整体回退。
+        let mut history: History<TabIndex> = History::new()
+            .max_undos(100)
+            .group_interval(StdDuration::from_millis(20));
+        history.push(0.into());
+        history.push(1.into());
+        let changes = history.undo().unwrap();
+        assert_eq!(changes.len(), 2);
+
+        // 超窗后推入：新版本，单独撤销。
+        std::thread::sleep(StdDuration::from_millis(50));
+        history.push(2.into());
+        let changes = history.undo().unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].tab_index, 2);
+        assert!(history.undo().is_none());
+    }
+
+    #[test]
+    fn test_break_group_starts_new_undo_unit() {
+        use std::time::Duration as StdDuration;
+
+        // 20ms 窗内连推本属同一版本，显式打断后各自成单元（无需 sleep，微秒级间隔远小于窗）。
+        let mut history: History<TabIndex> = History::new()
+            .max_undos(100)
+            .group_interval(StdDuration::from_millis(20));
+        history.push(0.into());
+        history.push(1.into());
+        history.break_group();
+        history.push(2.into());
+        let changes = history.undo().unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].tab_index, 2);
+        let changes = history.undo().unwrap();
+        assert_eq!(changes.len(), 2);
+        assert!(history.undo().is_none());
     }
 
     #[test]

@@ -147,6 +147,59 @@ pub fn truncate_lines_to_byte_limit(s: &str, max_bytes: usize) -> &str {
     truncate_to_byte_limit(s, max_bytes)
 }
 
+/// 安全切片扩展：统一收敛“坐标位置取子串”逻辑，杜绝中文多字节 panic。
+///
+/// 背景：`&s[a..b]` 按字节下标切片，`a/b` 落在中文/emoji 中间即 panic。
+/// 后续新增代码禁止直接 `&s[a..b]`，一律经此 trait（`get` + 边界吸附）。
+pub trait SafeStrSlice {
+    /// 按字节范围安全切片：越界或非边界返回 `None`（`str::get` 语义）。
+    fn safe_get(&self, range: Range<usize>) -> Option<&str>;
+    /// 按字节范围切片并吸附到最近字符边界，永不 panic。
+    /// `start` 向下取整，`end` 向下取整后钳制到 `len`。
+    fn safe_slice_floor(&self, start: usize, end: usize) -> &str;
+    /// `self[start..]` 的安全版：`start` 非边界时向下吸附。
+    fn safe_suffix_from(&self, start: usize) -> &str;
+    /// `self[..end]` 的安全版：`end` 非边界时向下吸附。
+    fn safe_prefix_until(&self, end: usize) -> &str;
+    /// 按起止字节偏移掐头去尾：返回 `(head, tail)`，中间段丢弃，永不 panic。
+    /// `start` 向下吸附，`end` 向下吸附后钳制到 `>= start`。
+    /// 典型用于输入法替换：`head + new_text + tail`，且 `head.len()` 即吸附后的
+    /// `start`（可直接用于光标跟随，无需另算下标）。
+    fn safe_head_tail(&self, start: usize, end: usize) -> (&str, &str);
+}
+
+impl SafeStrSlice for str {
+    fn safe_get(&self, range: Range<usize>) -> Option<&str> {
+        self.get(range)
+    }
+
+    fn safe_slice_floor(&self, start: usize, end: usize) -> &str {
+        let start = self.floor_char_boundary(start.min(self.len()));
+        let end = self.floor_char_boundary(end.min(self.len())).max(start);
+        // `floor` 保证边界，`get` 理论必中；兜底空串避免任何 panic。
+        self.get(start..end).unwrap_or("")
+    }
+
+    fn safe_suffix_from(&self, start: usize) -> &str {
+        let start = self.floor_char_boundary(start.min(self.len()));
+        self.get(start..).unwrap_or("")
+    }
+
+    fn safe_prefix_until(&self, end: usize) -> &str {
+        let end = self.floor_char_boundary(end.min(self.len()));
+        self.get(..end).unwrap_or("")
+    }
+
+    fn safe_head_tail(&self, start: usize, end: usize) -> (&str, &str) {
+        let start = self.floor_char_boundary(start.min(self.len()));
+        let end = self.floor_char_boundary(end.min(self.len())).max(start);
+        (
+            self.get(..start).unwrap_or(""),
+            self.get(end..).unwrap_or(""),
+        )
+    }
+}
+
 #[test]
 fn test_truncate_lines_to_byte_limit() {
     let text = "Line 1\nLine 2\nLine 3\nLine 4";
@@ -170,6 +223,26 @@ fn test_truncate_lines_to_byte_limit() {
         truncate_lines_to_byte_limit(text_utf8, 15),
         "Line 1\nLíne 2\n"
     );
+}
+
+/// 安全切片永不 panic：中文（3 字节）/emoji（4 字节）中间下标向下吸附，
+/// 越界钳制到 `len`，`end < start` 时吞空。
+#[test]
+fn test_safe_str_slice_never_panics_on_cjk() {
+    let s = "a运b👨c";
+    // `运` 占 bytes 1..4，`👨` 占 bytes 5..9。
+    assert!(s.get(..2).is_none());
+    assert_eq!(s.safe_prefix_until(2), "a");
+    assert_eq!(s.safe_prefix_until(4), "a运");
+    assert_eq!(s.safe_suffix_from(2), "运b👨c");
+    assert_eq!(s.safe_slice_floor(2, 6), "运b");
+    assert_eq!(s.safe_slice_floor(6, 2), "");
+    assert_eq!(s.safe_slice_floor(0, 100), s);
+    assert_eq!(s.safe_head_tail(2, 6), ("a", "👨c"));
+    // 掐掉的正是完整的字符：head.len() 即吸附后的 start。
+    let (head, tail) = s.safe_head_tail(2, 6);
+    assert_eq!(head.len(), 1);
+    assert_eq!(format!("{head}X{tail}"), "aX👨c");
 }
 
 /// 用已排序的项序列扩展已排序的向量，维护向量的排序顺序并

@@ -481,9 +481,10 @@ impl RenderOnce for Popover {
 }
 
 #[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MouseButton;
+    use crate::{AppContext as _, Entity, MouseButton};
 
     #[test]
     fn test_popover_builder_chaining() {
@@ -539,5 +540,45 @@ mod tests {
         let pos = Popover::resolved_corner(Anchor::BottomRight, bounds);
         assert_eq!(pos.x, px(300.));
         assert_eq!(pos.y, px(50.));
+    }
+
+    /// 持有弹层状态的测试宿主视图。
+    struct Probe {
+        state: Entity<PopoverState>,
+    }
+
+    impl crate::Render for Probe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            crate::div()
+        }
+    }
+
+    /// 未调 `menu::init` 时开关弹层不 panic（全局量懒创建；components 演示
+    /// 点 Select/Popconfirm 触发器实锤：`set_open` 直取全局量）。
+    #[rgpui::test]
+    fn toggle_without_init_does_not_panic(cx: &mut crate::TestAppContext) {
+        assert!(!cx.update(|cx| cx.has_global::<GlobalState>()));
+        let (probe, cx) = cx.add_window_view(|_, cx| {
+            let state = cx.new(|cx| PopoverState::new(false, cx));
+            Probe { state }
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.show(window, cx);
+            });
+        });
+        assert!(state.read_with(cx, |state, _| state.is_open()));
+        assert!(cx.cx.update(|cx| cx.has_global::<GlobalState>()));
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.dismiss(window, cx);
+            });
+        });
+        assert!(!state.read_with(cx, |state, _| state.is_open()));
     }
 }

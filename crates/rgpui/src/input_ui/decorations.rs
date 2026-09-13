@@ -32,14 +32,35 @@ pub struct TextDecorationCollection {
 }
 
 impl TextDecorationCollection {
+    /// 在已持有 state 可变借用时清空集合内容（见 [`Self::set_in_place`]；
+    /// `editor` feature 门控，调用方在高亮刷新路径）。
+    #[cfg(feature = "editor")]
+    pub(super) fn clear_in_place(&self, decorations: &mut DecorationCollections) -> bool {
+        decorations.set(self.id, Vec::new())
+    }
+
+    /// 在已持有 state 可变借用时替换集合内容。
+    ///
+    /// [`Self::set`] 内部走 `entity.update`，在 `InputState` 方法内（已借用中）
+    /// 调用会重入 panic；此方法直接写存储，由调用方负责 `normalize` + `notify`
+    ///（`editor` feature 门控，调用方在高亮刷新路径）。
+    #[cfg(feature = "editor")]
+    pub(super) fn set_in_place(
+        &self,
+        decorations: &mut DecorationCollections,
+        decorations_new: Vec<TextDecoration>,
+    ) -> bool {
+        decorations.set(self.id, decorations_new)
+    }
+
     /// 将此集合中的装饰替换为给定装饰。
     ///
     /// 对应 Monaco 的
     /// [`IEditorDecorationsCollection.set`](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IEditorDecorationsCollection.html#set)。
     pub fn set(&self, decorations: Vec<TextDecoration>, cx: &mut App) {
         let _ = self.state.update(cx, |state, cx| {
-            let decorations = normalize(&state.text, decorations);
-            if state.decorations.set(self.id, decorations) {
+            let decorations = normalize(&state.core.text, decorations);
+            if state.core.decorations.set(self.id, decorations) {
                 cx.notify();
             }
         });
@@ -51,8 +72,8 @@ impl TextDecorationCollection {
     /// [`IEditorDecorationsCollection.append`](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IEditorDecorationsCollection.html#append)。
     pub fn append(&self, decorations: Vec<TextDecoration>, cx: &mut App) {
         let _ = self.state.update(cx, |state, cx| {
-            let decorations = normalize(&state.text, decorations);
-            if state.decorations.append(self.id, decorations) {
+            let decorations = normalize(&state.core.text, decorations);
+            if state.core.decorations.append(self.id, decorations) {
                 cx.notify();
             }
         });
@@ -74,6 +95,7 @@ impl TextDecorationCollection {
         self.state
             .read_with(cx, |state, _| {
                 state
+                    .core
                     .decorations
                     .get(self.id)
                     .unwrap_or_default()
@@ -134,7 +156,10 @@ impl DecorationCollections {
             decorations.retain_mut(|decoration| {
                 decoration.range =
                     adjust_range_for_edit(&decoration.range, edited_range, inserted_len);
-                !decoration.range.is_empty()
+                // 塌缩点保留（snippet 占位跟踪用；渲染层 `compose_decorations`
+                // 本就过滤空范围， paint 管线见不到它们；各家刷新路径重写前本就
+                // `normalize` 自洁）。倒置范围仍丢弃。
+                decoration.range.start <= decoration.range.end
             });
         }
     }
@@ -198,12 +223,18 @@ fn adjust_range_for_edit(
     start..end
 }
 
-fn normalize(text: &Rope, decorations: Vec<TextDecoration>) -> Vec<TextDecoration> {
+/// 规范化装饰范围：裁剪到文本内、去空区间，并吸附到字符边界。
+///
+/// 布局管线按字节切分 runs，范围端点落在多字节字符内部会直接 panic，
+/// 因此这里是最后防线（stale 范围、IME 合成中的中间状态都经此兜底）。
+pub(super) fn normalize(text: &Rope, decorations: Vec<TextDecoration>) -> Vec<TextDecoration> {
     decorations
         .into_iter()
         .filter_map(|decoration| {
             let range = text.clip_offset(decoration.range.start, rgpui::sum_tree::Bias::Left)
                 ..text.clip_offset(decoration.range.end, rgpui::sum_tree::Bias::Right);
+            let range = text.floor_char_boundary(range.start)
+                ..text.ceil_char_boundary(range.end).min(text.len());
             (!range.is_empty()).then_some(TextDecoration {
                 range,
                 style: decoration.style,
@@ -252,8 +283,27 @@ impl InputState {
         decorations: Vec<TextDecoration>,
         cx: &mut Context<Self>,
     ) -> TextDecorationCollection {
-        let decorations = normalize(&self.text, decorations);
-        let id = self.decorations.create(decorations);
+        let decorations = normalize(&self.core.text, decorations);
+        let id = self.core.decorations.create(decorations);
+        cx.notify();
+        TextDecorationCollection {
+            state: cx.entity().downgrade(),
+            id,
+        }
+    }
+
+    /// 创建不过规范化的装饰集合（snippet 占位用；塌缩点会被 `normalize` 丢弃）。
+    ///
+    /// 调用方保证范围端点落在字符边界上（渲染层只过滤空范围，不做边界兜底）。
+    /// 目前唯一调用方是 `editor/snippets.rs` 的隐形占位集合（默认样式零渲染）。
+    /// `editor` feature 门控（默认构建不用）。
+    #[cfg(feature = "editor")]
+    pub(super) fn create_raw_collection(
+        &mut self,
+        decorations: Vec<TextDecoration>,
+        cx: &mut Context<Self>,
+    ) -> TextDecorationCollection {
+        let id = self.core.decorations.create(decorations);
         cx.notify();
         TextDecorationCollection {
             state: cx.entity().downgrade(),

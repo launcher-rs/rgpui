@@ -75,6 +75,27 @@ dom-backend = []
 # LSP 客户端支持：提供 Language Server Protocol 核心 trait（补全/悬停/定义/诊断/语义高亮）。
 # 默认关闭以保持核心精简，编辑器功能按需启用。
 lsp = ["dep:lsp-types"]
+# 编辑器功能：行操作/多光标/自动闭合/括号匹配/当前行/高亮接线（input_ui 下 5 个
+# 模块 + 对应方法/动作/键位）+ LSP 编辑器侧接线（M2 起蕴含 `lsp`）。
+# 默认关闭，纯表单构建不编译这些代码。
+editor = ["lsp"]
+# tree-sitter 语法高亮/折叠后端（Rust 单语言先行）：默认关闭；
+# 含 C 解析器编译，wasm 目标下代码侧硬门禁，勿在 wasm 启用。
+tree-sitter = [
+    "dep:tree-sitter",
+    "dep:tree-sitter-highlight",
+    "dep:tree-sitter-rust",
+]
+# JSON 语言包（O6，独立 feature 门，蕴含 tree-sitter 地基）。
+tree-sitter-json = [
+    "tree-sitter",
+    "dep:tree-sitter-json",
+]
+# TOML 语言包（O6，独立 feature 门，蕴含 tree-sitter 地基）。
+tree-sitter-toml = [
+    "tree-sitter",
+    "dep:tree-sitter-toml-ng",
+]
 # WebView 组件：基于 wry 的网页视图，用于嵌入网页内容。
 # 默认关闭以保持核心精简，需要 WebView 的应用可显式开启。
 webview = ["dep:wry"]
@@ -176,6 +197,11 @@ instant = { version = "0.1", features = ["wasm-bindgen"] }
 unicode-segmentation = { workspace = true }
 qrcode = { workspace = true, optional = true }
 wry = { version = "0.56.1", optional = true }
+tree-sitter = { version = "0.25", optional = true }
+tree-sitter-highlight = { version = "0.25", optional = true }
+tree-sitter-rust = { version = "0.24", optional = true }
+tree-sitter-json = { version = "0.24", optional = true }
+tree-sitter-toml-ng = { version = "0.7", optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.4.3", features = ["wasm_js"] }

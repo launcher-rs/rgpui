@@ -6,9 +6,9 @@ use rgpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, ElementId, ElementInputHandler, Entity,
     EntityInputHandler, FocusHandle, Focusable, GlobalElementId, KeyBinding, Keystroke, LayoutId,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point,
-    ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, WindowBounds,
-    WindowOptions, actions, black, div, fill, hsla, opaque_grey, point, prelude::*, px, relative,
-    rgb, rgba, size, white, yellow,
+    SafeStrSlice, ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window,
+    WindowBounds, WindowOptions, actions, black, div, fill, hsla, opaque_grey, point, prelude::*,
+    px, relative, rgb, rgba, size, white, yellow,
 };
 use rgpui_platform::application;
 use unicode_segmentation::*;
@@ -281,7 +281,11 @@ impl EntityInputHandler for TextInput {
     ) -> Option<String> {
         let range = self.range_from_utf16(&range_utf16);
         actual_range.replace(self.range_to_utf16(&range));
-        Some(self.content[range].to_string())
+        Some(
+            self.content
+                .safe_slice_floor(range.start, range.end)
+                .to_string(),
+        )
     }
 
     fn selected_text_range(
@@ -323,10 +327,12 @@ impl EntityInputHandler for TextInput {
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
 
-        self.content =
-            (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..])
-                .into();
-        self.selected_range = range.start + new_text.len()..range.start + new_text.len();
+        // 输入法中间态的 range 未必落在字符边界，经 SafeStrSlice 掐头去尾，
+        // 避免中文 panic（head.len() 即吸附后的 start）。
+        let (head, tail) = self.content.safe_head_tail(range.start, range.end);
+        let start = head.len();
+        self.content = (head.to_owned() + new_text + tail).into();
+        self.selected_range = start + new_text.len()..start + new_text.len();
         self.marked_range.take();
         cx.notify();
     }
@@ -345,19 +351,21 @@ impl EntityInputHandler for TextInput {
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
 
-        self.content =
-            (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..])
-                .into();
+        // 同上：SafeStrSlice 掐头去尾，避免中文 panic。
+        let (head, tail) = self.content.safe_head_tail(range.start, range.end);
+        let start = head.len();
+        let end = self.content.len() - tail.len();
+        self.content = (head.to_owned() + new_text + tail).into();
         if !new_text.is_empty() {
-            self.marked_range = Some(range.start..range.start + new_text.len());
+            self.marked_range = Some(start..start + new_text.len());
         } else {
             self.marked_range = None;
         }
         self.selected_range = new_selected_range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
-            .map(|new_range| new_range.start + range.start..new_range.end + range.end)
-            .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
+            .map(|new_range| new_range.start + start..new_range.end + end)
+            .unwrap_or_else(|| start + new_text.len()..start + new_text.len());
 
         cx.notify();
     }

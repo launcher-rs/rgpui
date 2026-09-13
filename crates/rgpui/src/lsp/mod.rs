@@ -25,6 +25,9 @@ mod diagnostics;
 mod diagnostics_ui;
 mod hover;
 mod semantic_tokens;
+/// stdio LSP 传输（O1，子进程 + JSON-RPC；wasm 无进程原语，不编译）。
+#[cfg(not(target_family = "wasm"))]
+mod stdio;
 mod types;
 
 pub use completions::*;
@@ -34,4 +37,6 @@ pub use diagnostics::*;
 pub use diagnostics_ui::*;
 pub use hover::*;
 pub use semantic_tokens::*;
+#[cfg(not(target_family = "wasm"))]
+pub use stdio::*;
 pub use types::*;

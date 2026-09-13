@@ -5,7 +5,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{ops::Deref, sync::Arc};
 
 /// 语法高亮名称列表，与 tree-sitter highlight 查询名称对应。
-pub(super) const HIGHLIGHT_NAMES: [&str; 41] = [
+pub(crate) const HIGHLIGHT_NAMES: [&str; 41] = [
     "attribute",
     "boolean",
     "comment",

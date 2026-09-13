@@ -1,0 +1,10 @@
+[package]
+name = "sidebar"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "侧边栏演示：导航切换 + 折叠 + 与内容区联动（兼作 Conversations 用法示范）"
+
+[dependencies]
+rgpui.workspace = true
+rgpui-platform.workspace = true

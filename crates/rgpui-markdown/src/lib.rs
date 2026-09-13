@@ -16,4 +16,7 @@ pub mod rich_text;
 
 pub use code_block::{CodeBlock, CodeBlockCopyState};
 pub use markdown::Markdown;
-pub use rich_text::{LinkClickHandler, ListItem, RichBlock, RichInline, TableAlignment};
+pub use rich_text::{
+    CalloutKind, CodeBlockRenderer, LinkClickHandler, ListItem, RichBlock, RichInline,
+    TableAlignment, render_blocks_with,
+};

@@ -32,13 +32,21 @@ impl GlobalState {
         }
     }
 
-    /// 获取全局状态引用
-    pub fn global(cx: &App) -> &Self {
+    /// 获取全局状态引用（未初始化时懒创建默认，避免未调 `menu::init` 即 panic）。
+    ///
+    /// 基础用法（开合/渲染）免 init；键盘绑定与应用菜单仍需 `menu::init`。
+    pub fn global(cx: &mut App) -> &Self {
+        if !cx.has_global::<Self>() {
+            cx.set_global(Self::new());
+        }
         cx.global::<Self>()
     }
 
-    /// 获取全局状态可变引用
+    /// 获取全局状态可变引用（未初始化时懒创建默认，避免未调 `menu::init` 即 panic）。
     pub fn global_mut(cx: &mut App) -> &mut Self {
+        if !cx.has_global::<Self>() {
+            cx.set_global(Self::new());
+        }
         cx.global_mut::<Self>()
     }
 
@@ -75,7 +83,7 @@ impl GlobalState {
     }
 
     /// 是否抑制窗口级文本选择。
-    pub fn is_suppress_text_selection(cx: &App) -> bool {
+    pub fn is_suppress_text_selection(cx: &mut App) -> bool {
         Self::global(cx).suppress_text_selection.get()
     }
 }

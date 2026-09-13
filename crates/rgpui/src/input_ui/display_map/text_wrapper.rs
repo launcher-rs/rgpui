@@ -778,6 +778,28 @@ impl LineLayout {
             }
         }
     }
+
+    /// 绘制行内装饰背景（搜索标黄/语法高亮块等），与 `paint` 同一批次调用。
+    pub(crate) fn paint_background(
+        &self,
+        pos: Point<Pixels>,
+        line_height: Pixels,
+        text_align: TextAlign,
+        align_width: Option<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        for (ix, line) in self.wrapped_lines.iter().enumerate() {
+            let _ = line.paint_background(
+                pos + point(self.line_indent(ix), ix * line_height),
+                line_height,
+                text_align,
+                align_width,
+                window,
+                cx,
+            );
+        }
+    }
 }
 
 #[cfg(test)]

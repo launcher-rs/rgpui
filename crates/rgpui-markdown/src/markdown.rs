@@ -1,10 +1,52 @@
 //! Markdown 渲染组件：将 Markdown 源码解析为富文本块并渲染。
 
 use crate::rich_text::{
-    LinkClickHandler, ListItem, RichBlock, RichInline, TableAlignment, render_blocks,
+    CalloutKind, LinkClickHandler, ListItem, RichBlock, RichInline, TableAlignment, render_blocks,
 };
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use rgpui::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::ops::Range;
+use std::sync::{Arc, Mutex};
+
+/// 解析缓存：单条目（最近一次文档全文 → 块列表 + 块源码区间）。
+///
+/// `Markdown::render` 每帧都会调用解析；分屏拖拽等高频重渲染场景下文本不变，
+/// 命中缓存可省去 pulldown 全文解析（大文档 debug 下可达数十毫秒）。
+/// 值用 `Arc` 共享，避免每帧深拷贝全部块字符串；键为内容哈希，冲突概率可忽略，
+/// 且最坏情况也只是某一帧显示旧内容。
+static PARSE_CACHE: Mutex<Option<(u64, Arc<(Vec<RichBlock>, Vec<Range<usize>>)>)>> =
+    Mutex::new(None);
+
+/// 带单条目缓存的解析：内容不变直接复用上次结果（`Arc` 共享，无深拷贝）。
+fn parse_markdown_cached(source: &str) -> Arc<(Vec<RichBlock>, Vec<Range<usize>>)> {
+    let mut hasher = DefaultHasher::new();
+    source.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    if let Ok(guard) = PARSE_CACHE.lock() {
+        if let Some((cached_hash, parsed)) = guard.as_ref() {
+            if *cached_hash == hash {
+                return parsed.clone();
+            }
+        }
+    }
+
+    let parsed = Arc::new(parse_markdown_with_urls(source));
+    if let Ok(mut guard) = PARSE_CACHE.lock() {
+        *guard = Some((hash, parsed.clone()));
+    }
+    parsed
+}
+
+/// 解析 Markdown 源码为富文本块 + 顶层块源码区间（带单条目缓存）。
+///
+/// 供虚拟化、WYSIWYG 块编辑等按块处理的场景使用：调用方按需渲染块区间，
+/// 用区间把编辑结果拼回全文，避免全文建树。
+pub fn parse_markdown(source: &str) -> Arc<(Vec<RichBlock>, Vec<Range<usize>>)> {
+    parse_markdown_cached(source)
+}
 
 /// Markdown 渲染组件。
 #[derive(IntoElement)]
@@ -51,8 +93,8 @@ impl RenderOnce for Markdown {
         let theme = cx.theme();
         let base_size = self.base_font_size.unwrap_or(px(14.0));
 
-        let blocks = parse_markdown_with_urls(&self.source);
-        let elements = render_blocks(&blocks, base_size, &self.on_link_click, "md", theme);
+        let parsed = parse_markdown_cached(&self.source);
+        let elements = render_blocks(&parsed.0, base_size, &self.on_link_click, "md", theme);
 
         self.base
             .flex()
@@ -125,28 +167,46 @@ struct TableState {
     in_head: bool,
 }
 
-/// 解析 Markdown 源码为富文本块列表。
-fn parse_markdown_with_urls(source: &str) -> Vec<RichBlock> {
+/// 解析 Markdown 源码为富文本块列表（含顶层块源码区间，一一对应）。
+fn parse_markdown_with_urls(source: &str) -> (Vec<RichBlock>, Vec<Range<usize>>) {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_FOOTNOTES);
 
     let parser = Parser::new_ext(source, options);
-    let events: Vec<Event> = parser.collect();
+    let events: Vec<(Event, Range<usize>)> = parser.into_offset_iter().collect();
 
     let mut builder = UrlTrackingBlockBuilder::new();
     builder.build(&events);
-    builder.blocks
+    let mut blocks = builder.blocks;
+    let mut spans = builder.spans;
+    detect_callouts(&mut blocks);
+    fill_span_gaps(&mut spans, source.len());
+    debug_assert_eq!(spans.len(), blocks.len(), "块与区间必须一一对应");
+    (blocks, spans)
+}
+
+/// 脚注定义解析状态。
+struct FootnoteState {
+    label: String,
+    blocks: Vec<RichBlock>,
 }
 
 /// Markdown 事件流 → 富文本块的构建器。
 struct UrlTrackingBlockBuilder {
     blocks: Vec<RichBlock>,
+    /// 顶层块源码区间，与 `blocks` 一一对应（push 位点同步记录，天然对齐）。
+    spans: Vec<Range<usize>>,
+    /// 当前顶层块的起始字节：块级 Start 首次出现时置位，push 时消费；
+    /// 嵌套块不覆盖外层；单事件块（Rule/行内图片）不用它，直接取自身区间。
+    pending_span_start: Option<usize>,
     inline_stack: Vec<Vec<RichInline>>,
     list_stack: Vec<ListState>,
     blockquote_depth: usize,
     blockquote_blocks: Vec<Vec<RichBlock>>,
+    footnote_stack: Vec<FootnoteState>,
     table_state: Option<TableState>,
     current_heading_level: Option<u8>,
     in_code_block: bool,
@@ -160,10 +220,13 @@ impl UrlTrackingBlockBuilder {
     fn new() -> Self {
         Self {
             blocks: Vec::new(),
+            spans: Vec::new(),
+            pending_span_start: None,
             inline_stack: Vec::new(),
             list_stack: Vec::new(),
             blockquote_depth: 0,
             blockquote_blocks: Vec::new(),
+            footnote_stack: Vec::new(),
             table_state: None,
             current_heading_level: None,
             in_code_block: false,
@@ -173,23 +236,33 @@ impl UrlTrackingBlockBuilder {
         }
     }
 
-    /// 处理全部事件。
-    fn build(&mut self, events: &[Event]) {
-        for event in events {
-            self.process_event(event);
+    /// 处理全部事件（带源码区间）。
+    fn build(&mut self, events: &[(Event<'_>, Range<usize>)]) {
+        for (event, range) in events {
+            self.process_event(event, range);
         }
     }
 
+    /// 取出待定的块起始位置（配对块用；缺失时退化为空区间，不断对齐）。
+    fn take_pending_span(&mut self, range_end: usize) -> Range<usize> {
+        let start = self.pending_span_start.take().unwrap_or(range_end);
+        start..range_end
+    }
+
     /// 处理单个事件。
-    fn process_event(&mut self, event: &Event) {
+    fn process_event(&mut self, event: &Event, range: &Range<usize>) {
         match event {
-            Event::Start(tag) => self.start_tag(tag),
-            Event::End(tag) => self.end_tag(tag),
+            Event::Start(tag) => self.start_tag(tag, range),
+            Event::End(tag) => self.end_tag(tag, range),
             Event::Text(text) => self.text(text),
             Event::Code(code) => self.push_inline(RichInline::Code(code.to_string())),
             Event::SoftBreak => self.push_inline(RichInline::Text(" ".to_string())),
             Event::HardBreak => self.push_inline(RichInline::LineBreak),
-            Event::Rule => self.push_block(RichBlock::HorizontalRule),
+            // 单事件块：区间即自身范围，不碰 pending（可能正处在外层块内部）。
+            Event::Rule => {
+                let span = range.clone();
+                self.push_block(RichBlock::HorizontalRule, span);
+            }
             Event::Html(html) => self.push_inline(RichInline::Html(html.to_string())),
             Event::TaskListMarker(checked) => {
                 if let Some(list) = self.list_stack.last_mut() {
@@ -201,7 +274,21 @@ impl UrlTrackingBlockBuilder {
     }
 
     /// 处理开始标签。
-    fn start_tag(&mut self, tag: &Tag) {
+    fn start_tag(&mut self, tag: &Tag, range: &Range<usize>) {
+        // 块级 Start 首次出现时记录区间起点（嵌套块不覆盖外层；行内标签不在集合内）。
+        match tag {
+            Tag::Paragraph
+            | Tag::Heading { .. }
+            | Tag::BlockQuote(_)
+            | Tag::CodeBlock(_)
+            | Tag::List(_)
+            | Tag::Table(_) => {
+                if self.pending_span_start.is_none() {
+                    self.pending_span_start = Some(range.start);
+                }
+            }
+            _ => {}
+        }
         match tag {
             Tag::Paragraph => {
                 self.inline_stack.push(Vec::new());
@@ -295,38 +382,55 @@ impl UrlTrackingBlockBuilder {
             Tag::TableCell => {
                 self.inline_stack.push(Vec::new());
             }
+            Tag::FootnoteDefinition(label) => {
+                self.footnote_stack.push(FootnoteState {
+                    label: label.to_string(),
+                    blocks: Vec::new(),
+                });
+                self.inline_stack.push(Vec::new());
+            }
             _ => {}
         }
     }
 
     /// 处理结束标签。
-    fn end_tag(&mut self, tag: &TagEnd) {
+    fn end_tag(&mut self, tag: &TagEnd, range: &Range<usize>) {
         match tag {
             TagEnd::Paragraph => {
                 let inlines = self.inline_stack.pop().unwrap_or_default();
-                self.push_block(RichBlock::Paragraph(inlines));
+                let span = self.take_pending_span(range.end);
+                self.push_block(RichBlock::Paragraph(inlines), span);
             }
             TagEnd::Heading(_level) => {
                 let inlines = self.inline_stack.pop().unwrap_or_default();
                 let lvl = self.current_heading_level.take().unwrap_or(1);
-                self.push_block(RichBlock::Heading {
-                    level: lvl,
-                    content: inlines,
-                });
+                let span = self.take_pending_span(range.end);
+                self.push_block(
+                    RichBlock::Heading {
+                        level: lvl,
+                        content: inlines,
+                    },
+                    span,
+                );
             }
             TagEnd::BlockQuote(_) => {
                 self.blockquote_depth -= 1;
                 let inner = self.blockquote_blocks.pop().unwrap_or_default();
-                self.push_block(RichBlock::BlockQuote(inner));
+                let span = self.take_pending_span(range.end);
+                self.push_block(RichBlock::BlockQuote(inner), span);
             }
             TagEnd::CodeBlock => {
                 self.in_code_block = false;
                 let code = std::mem::take(&mut self.code_block_content);
                 let lang = self.code_block_lang.take();
-                self.push_block(RichBlock::CodeBlock {
-                    language: lang,
-                    code,
-                });
+                let span = self.take_pending_span(range.end);
+                self.push_block(
+                    RichBlock::CodeBlock {
+                        language: lang,
+                        code,
+                    },
+                    span,
+                );
             }
             TagEnd::List(_ordered) => {
                 if let Some(list) = self.list_stack.pop() {
@@ -338,7 +442,8 @@ impl UrlTrackingBlockBuilder {
                     } else {
                         RichBlock::UnorderedList { items: list.items }
                     };
-                    self.push_block(block);
+                    let span = self.take_pending_span(range.end);
+                    self.push_block(block, span);
                 }
             }
             TagEnd::Item => {
@@ -375,15 +480,21 @@ impl UrlTrackingBlockBuilder {
                 let alt_inlines = self.inline_stack.pop().unwrap_or_default();
                 let alt = inlines_to_plain_text(&alt_inlines);
                 let url = self.url_stack.pop().unwrap_or_default();
-                self.push_block(RichBlock::Image { alt, url });
+                // 行内图片也可能抽成独立块：用自身区间，不碰外层 pending。
+                let span = range.clone();
+                self.push_block(RichBlock::Image { alt, url }, span);
             }
             TagEnd::Table => {
                 if let Some(ts) = self.table_state.take() {
-                    self.push_block(RichBlock::Table {
-                        headers: ts.headers,
-                        alignments: ts.alignments,
-                        rows: ts.rows,
-                    });
+                    let span = self.take_pending_span(range.end);
+                    self.push_block(
+                        RichBlock::Table {
+                            headers: ts.headers,
+                            alignments: ts.alignments,
+                            rows: ts.rows,
+                        },
+                        span,
+                    );
                 }
             }
             TagEnd::TableHead => {
@@ -406,6 +517,19 @@ impl UrlTrackingBlockBuilder {
                     ts.current_row.push(inlines);
                 }
             }
+            TagEnd::FootnoteDefinition => {
+                let inlines = self.inline_stack.pop().unwrap_or_default();
+                if let Some(mut fn_state) = self.footnote_stack.pop() {
+                    // 把当前行内内容作为段落加入脚注块
+                    if !inlines.is_empty() {
+                        fn_state.blocks.push(RichBlock::Paragraph(inlines));
+                    }
+                    let label = fn_state.label;
+                    let blocks = fn_state.blocks;
+                    let span = self.take_pending_span(range.end);
+                    self.push_block(RichBlock::FootnoteDefinition { label, blocks }, span);
+                }
+            }
             _ => {}
         }
     }
@@ -426,14 +550,173 @@ impl UrlTrackingBlockBuilder {
         }
     }
 
-    /// 压入块元素（区分是否在块引用内）。
-    fn push_block(&mut self, block: RichBlock) {
+    /// 压入块元素（区分是否在块引用/脚注定义内）。
+    /// 顶层块同步记录源码区间，与 `blocks` 天然对齐；引用/脚注内块不记录。
+    fn push_block(&mut self, block: RichBlock, span: Range<usize>) {
         if self.blockquote_depth > 0 {
             if let Some(blocks) = self.blockquote_blocks.last_mut() {
                 blocks.push(block);
                 return;
             }
         }
+        if let Some(fn_state) = self.footnote_stack.last_mut() {
+            fn_state.blocks.push(block);
+            return;
+        }
+        self.spans.push(span);
         self.blocks.push(block);
+    }
+}
+
+/// 块区间后处理：向前吞掉块间空白（上一块末尾→本块开头），首块扩展到 0，
+/// 末块扩展到文末。已重叠的不动（如行内图片抽出的块）。保证可编辑区域
+/// 全覆盖、无缝隙。
+fn fill_span_gaps(spans: &mut [Range<usize>], doc_len: usize) {
+    if spans.is_empty() {
+        return;
+    }
+    if spans[0].start > 0 {
+        spans[0].start = 0;
+    }
+    for ix in 1..spans.len() {
+        let prev_end = spans[ix - 1].end;
+        if prev_end < spans[ix].start {
+            spans[ix].start = prev_end;
+        }
+    }
+    if let Some(last) = spans.last_mut() {
+        if last.end < doc_len {
+            last.end = doc_len;
+        }
+    }
+}
+
+/// 检测 BlockQuote 中的 GitHub 风格 callout 模式（`> [!TYPE]`），原地替换为 Callout 块。
+fn detect_callouts(blocks: &mut Vec<RichBlock>) {
+    for block in blocks.iter_mut() {
+        match block {
+            RichBlock::BlockQuote(inner) => {
+                detect_callouts(inner);
+                if let Some(RichBlock::Paragraph(inlines)) = inner.first() {
+                    if let Some((kind, title, rest_start)) = try_parse_callout_header(inlines) {
+                        let new_inner: Vec<RichBlock> = inner[rest_start..].to_vec();
+                        // 把标题后的段落内容保留
+                        *block = RichBlock::Callout {
+                            kind,
+                            title,
+                            blocks: new_inner,
+                        };
+                    }
+                }
+            }
+            RichBlock::Callout { blocks: inner, .. } => {
+                detect_callouts(inner);
+            }
+            RichBlock::FootnoteDefinition { blocks: inner, .. } => {
+                detect_callouts(inner);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// 尝试从段落行内元素中解析 callout 头部：`[!TYPE] optional title`。
+/// 返回 (CalloutKind, Option<title>, 后续块起始索引)。
+fn try_parse_callout_header(
+    inlines: &[RichInline],
+) -> Option<(CalloutKind, Option<String>, usize)> {
+    if inlines.is_empty() {
+        return None;
+    }
+    // 只检查第一个行内文本是否包含 [!TYPE]
+    if let RichInline::Text(text) = &inlines[0] {
+        let trimmed = text.trim();
+        if let Some(rest) = trimmed.strip_prefix('[') {
+            if let Some(close) = rest.find(']') {
+                let kind_str = &rest[..close];
+                // 验证是有效的 callout 类型
+                let kind = match kind_str.to_ascii_uppercase().as_str() {
+                    "NOTE" => CalloutKind::Note,
+                    "TIP" => CalloutKind::Tip,
+                    "IMPORTANT" => CalloutKind::Important,
+                    "WARNING" => CalloutKind::Warning,
+                    "CAUTION" => CalloutKind::Caution,
+                    _ => return None,
+                };
+                let after_bracket = rest[close + 1..].trim();
+                let title = if after_bracket.is_empty() {
+                    None
+                } else {
+                    Some(after_bracket.to_string())
+                };
+                // 标题后面的段落内容从第二个行内元素开始
+                return Some((kind, title, 0));
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    // 显式导入：父模块 `use rgpui::*` 引入的 `test` 模块名会遮蔽内置属性。
+    use super::{parse_markdown_cached, parse_markdown_with_urls};
+
+    /// 缓存正确性：相同内容复用解析结果，不同内容重新解析（含中文）。
+    #[test]
+    fn parse_cache_reuses_same_content() {
+        let doc = "# 标题\n\n段落运\n\n```rust\nfn f() {}\n```\n";
+        let first = parse_markdown_cached(doc);
+        assert!(!first.0.is_empty());
+        let second = parse_markdown_cached(doc);
+        assert_eq!(format!("{first:?}"), format!("{second:?}"));
+        // 不同内容必须重新解析（块数不同）。
+        let other = parse_markdown_cached("# 只有一个标题\n");
+        assert!(format!("{other:?}") != format!("{first:?}"));
+        // 切回原文仍正确。
+        let third = parse_markdown_cached(doc);
+        assert_eq!(format!("{first:?}"), format!("{third:?}"));
+    }
+
+    /// 块与区间一一对应；区间覆盖全文、无缝隙、切片合法（含嵌套/表格/代码/图片）。
+    #[test]
+    fn block_spans_align_and_tile() {
+        let doc = concat!(
+            "# 标题一\n",
+            "\n",
+            "段落一运。\n",
+            "\n",
+            "> 引用行一\n> 引用行二\n",
+            "\n",
+            "```rust\nfn f() {}\n```\n",
+            "\n",
+            "- 列表项一\n- 列表项二\n",
+            "\n",
+            "1. 有序一\n2. 有序二\n",
+            "\n",
+            "| 甲 | 乙 |\n| --- | --- |\n| 1 | 2 |\n",
+            "\n",
+            "文字 ![图](u.png) 更多\n",
+            "\n",
+            "---\n",
+            "\n",
+            "尾段。\n",
+        );
+        let (blocks, spans) = parse_markdown_with_urls(doc);
+        assert!(!blocks.is_empty());
+        assert_eq!(spans.len(), blocks.len(), "块与区间必须一一对应");
+        // 首块从 0 开始、末块到文末、相邻块无缝隙（允许重叠：行内图片抽出）。
+        assert_eq!(spans[0].start, 0);
+        assert_eq!(spans.last().unwrap().end, doc.len());
+        for pair in spans.windows(2) {
+            // 相邻块无缝隙（允许重叠：行内图片抽出的块与其段落重叠）。
+            assert!(pair[1].start <= pair[0].end, "块间不应有缝隙：{pair:?}");
+        }
+        // 每个区间都是合法 UTF-8 切片。
+        for span in &spans {
+            assert!(doc.is_char_boundary(span.start));
+            assert!(doc.is_char_boundary(span.end));
+            let _ = &doc[span.clone()];
+        }
     }
 }

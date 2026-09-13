@@ -136,6 +136,11 @@ impl ShapedLine {
     /// - 装饰段在边界处分割；跨越边界的段被拆分为两个并调整长度。
     /// - `font_size`、`ascent` 和 `descent` 复制到两半中。
     pub fn split_at(&self, byte_index: usize) -> (ShapedLine, ShapedLine) {
+        // 中文等多字节下调用方可能传入非边界下标，直接切片会 panic；
+        // 此处统一向下吸附到字符边界，保证永不崩溃。
+        let byte_index = self
+            .text
+            .floor_char_boundary(byte_index.min(self.text.len()));
         let x_offset = self.layout.x_for_index(byte_index);
 
         // 分割字形段。单个段可能为两半贡献字形

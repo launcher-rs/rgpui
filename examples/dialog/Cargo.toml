@@ -1,0 +1,10 @@
+[package]
+name = "dialog"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "对话框演示：Dialog 打开/确认、AlertDialog 触发、焦点陷阱 Tab 循环"
+
+[dependencies]
+rgpui.workspace = true
+rgpui-platform.workspace = true

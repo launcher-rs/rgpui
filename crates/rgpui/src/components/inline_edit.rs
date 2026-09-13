@@ -423,9 +423,12 @@ impl EntityInputHandler for InlineEditState {
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
 
-        self.edit_value =
-            self.edit_value[0..range.start].to_owned() + new_text + &self.edit_value[range.end..];
-        self.selected_range = range.start + new_text.len()..range.start + new_text.len();
+        // UTF-16 转换理论上落在字符边界，但输入法中间态可能给出非边界；
+        // 经 SafeStrSlice 掐头去尾，杜绝中文 panic（head.len() 即吸附后的 start）。
+        let (head, tail) = self.edit_value.safe_head_tail(range.start, range.end);
+        let start = head.len();
+        self.edit_value = head.to_owned() + new_text + tail;
+        self.selected_range = start + new_text.len()..start + new_text.len();
         self.marked_range.take();
         cx.notify();
     }
@@ -444,18 +447,21 @@ impl EntityInputHandler for InlineEditState {
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
 
-        self.edit_value =
-            self.edit_value[0..range.start].to_owned() + new_text + &self.edit_value[range.end..];
+        // 同上：SafeStrSlice 掐头去尾，杜绝中文 panic。
+        let (head, tail) = self.edit_value.safe_head_tail(range.start, range.end);
+        let start = head.len();
+        let end = self.edit_value.len() - tail.len();
+        self.edit_value = head.to_owned() + new_text + tail;
         if !new_text.is_empty() {
-            self.marked_range = Some(range.start..range.start + new_text.len());
+            self.marked_range = Some(start..start + new_text.len());
         } else {
             self.marked_range = None;
         }
         self.selected_range = new_selected_range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
-            .map(|new_range| new_range.start + range.start..new_range.end + range.end)
-            .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
+            .map(|new_range| new_range.start + start..new_range.end + end)
+            .unwrap_or_else(|| start + new_text.len()..start + new_text.len());
 
         cx.notify();
     }

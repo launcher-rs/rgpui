@@ -35,6 +35,8 @@ extern crate self as rgpui;
 #[doc(hidden)]
 pub static GPUI_MANIFEST_DIR: &'static str = env!("CARGO_MANIFEST_DIR");
 
+// ==================== 第一部分：框架核心（应用/元素/布局/渲染/文本/平台抽象） ====================
+
 /// Action 系统 - 定义用户交互动作的序列化与分发机制
 #[macro_use]
 mod action;
@@ -174,12 +176,6 @@ mod size;
 /// 订阅系统 - 观察者模式的事件订阅与通知机制
 mod subscription;
 
-/// SVG 渲染器 - 将 SVG 路径数据光栅化为 GPU 纹理
-mod svg_renderer;
-
-/// Tab 停止位 - 文本编辑器中的 Tab 键对齐位置计算
-mod tab_stop;
-
 /// Taffy 布局引擎封装 - Flexbox 和 Grid 布局的 Rust 实现
 mod taffy;
 
@@ -193,14 +189,13 @@ mod text_system;
 /// 过渡动画系统 - Transition 组合动画、缓动函数与 Lerp 插值
 mod transition;
 
-/// 焦点陷阱 - 将 Tab 键循环限制在模态容器内（对话框、抽屉等覆盖层）
-mod focus_trap;
+/// 系统集成子系统 - 托盘、焦点陷阱、Tab 导航、窗口边框/扩展、SVG 渲染
+mod system;
+
+// ==================== 第二部分：UI 组件子系统（元素/表单/菜单/对话框/列表/扩展） ====================
 
 /// 根视图 - 窗口顶层视图，管理全局覆盖层
 mod root;
-
-/// 系统托盘 - 跨平台的系统托盘图标和菜单管理
-mod tray;
 
 /// 对话框组件 - 模态对话框与警告对话框
 mod dialog;
@@ -266,7 +261,11 @@ pub mod file_watcher;
 pub mod config_store;
 
 /// Chat UI 组件 - 聊天消息展示
-pub mod chat_ui;
+pub mod chat;
+
+/// 旧模块路径兼容（1.2.0 起 `chat_ui` 迁移到 `chat`，1.3.0 删除）。
+#[deprecated(since = "1.2.0", note = "已迁移到 rgpui::chat")]
+pub use chat as chat_ui;
 
 /// FPS 监控 HUD - 实时帧率/CPU/内存监控
 pub mod fps_hud;
@@ -297,17 +296,13 @@ pub mod tokio;
 #[allow(missing_docs)]
 pub mod util;
 
+// ==================== 第三部分：视图与窗口 ====================
+
 /// 视图系统 - 定义 View trait 和窗口视图的生命周期管理
 mod view;
 
 /// 窗口系统 - 窗口创建、管理、渲染管线和事件处理
 mod window;
-
-/// 窗口边框工具 - 计算客户端装饰窗口的内容内边距
-mod window_border;
-
-/// 窗口扩展 trait - 为 Window 添加对话框等能力
-mod window_ext;
 
 /// 窗口定位器 - 计算新窗口在屏幕上的初始位置
 pub mod window_positioner;
@@ -383,8 +378,6 @@ pub use element::*;
 pub use elements::*;
 /// 重导出执行器类型（ForegroundExecutor、BackgroundExecutor）
 pub use executor::*;
-/// 重导出焦点陷阱能力（FocusTrapElement、FocusTrapContainer）
-pub use focus_trap::*;
 /// 重导出几何类型（Point、Size、Bounds 等）
 pub use geometry::*;
 /// 重导出手势识别相关类型
@@ -396,6 +389,8 @@ pub use rgpui_macros::{
     AppContext, IntoElement, Render, VisualContext, bench, icon_named, property_test,
     register_action, test,
 };
+/// 重导出焦点陷阱能力（FocusTrapElement、FocusTrapContainer）
+pub use system::focus_trap::*;
 pub use theme::registry::DEFAULT_THEME_COLORS;
 pub use theme::{
     ActiveTheme, HighlightTheme, HighlightThemeStyle, ListSettings, NotificationSettings,
@@ -519,9 +514,15 @@ pub use size::*;
 /// 重导出订阅系统类型（Subscription、SubscriberSet 等）
 pub use subscription::*;
 /// 重导出 SVG 渲染器相关类型
-pub use svg_renderer::*;
+pub use system::svg_renderer::*;
 /// 重导出 Tab 停止位计算（crate 内部使用）
-pub(crate) use tab_stop::*;
+pub(crate) use system::tab_stop::*;
+/// 重导出系统托盘相关类型
+pub use system::tray::*;
+/// 重导出窗口边框工具
+pub use system::window_border::*;
+/// 重导出窗口扩展 trait
+pub use system::window_ext::*;
 use taffy::TaffyLayoutEngine;
 /// 重导出 Taffy 布局引擎类型（AvailableSpace、LayoutId）
 pub use taffy::{AvailableSpace, LayoutId};
@@ -530,18 +531,12 @@ pub use taffy::{AvailableSpace, LayoutId};
 pub use test::*;
 /// 重导出文本系统相关类型
 pub use text_system::*;
-/// 重导出系统托盘相关类型
-pub use tray::*;
-/// 重导出异步工具（FutureExt、Timeout）
-pub use util::{FutureExt, Timeout};
+/// 重导出异步工具（FutureExt、Timeout）与字符串安全切片（SafeStrSlice）
+pub use util::{FutureExt, SafeStrSlice, Timeout};
 /// 重导出视图系统类型
 pub use view::*;
 /// 重导出窗口系统类型
 pub use window::*;
-/// 重导出窗口边框工具
-pub use window_border::*;
-/// 重导出窗口扩展 trait
-pub use window_ext::*;
 
 /// 重导出 pollster::block_on 用于在同步上下文中阻塞等待异步任务
 pub use pollster::block_on;

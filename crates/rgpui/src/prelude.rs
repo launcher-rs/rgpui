@@ -46,7 +46,8 @@ pub use crate::lsp::{
 
 // 语法高亮 trait（tree-sitter 等解析器的抽象层）。
 pub use crate::highlight::{
-    FoldRange, HighlightStyleResolver, Highlighter, HighlighterFactory, NoHighlightStyles, TextEdit,
+    FoldRange, HighlightStyleResolver, Highlighter, HighlighterFactory, NoHighlightStyles,
+    TextEdit, ThemeHighlightResolver,
 };
 
 // 文件监视 API。

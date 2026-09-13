@@ -2,6 +2,115 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased] - 1.2.0（开发中，分支 `feat/1.2.0`）
+
+### 新增组件
+
+- **Sidebar**：导航侧边栏（条目/选中/折叠图标栏）
+- **Select / Combobox / DatePicker / ColorPicker**：下拉选择、可搜索下拉、日历、颜色选择
+- **Avatar / Alert / Breadcrumb / Card / Typography / Toggle(+Group)**：基础元素
+- **Pagination / Steps / Timeline / Rate / Popconfirm**：导航反馈件
+- **AI-chat**（对标 AntDX，`chat/`）：`Prompts`、`Suggestion`、`ThoughtChain`、
+  `Attachments` + `FileCard`、`Sources`、`Actions`、`Sender`；
+  新增 `Bubble`（左右气泡）、`MessageScroller`（吸底 + 新消息浮标）、`Marker`（时间/未读分隔线）
+- **Dock 布局**（`components/dock.rs`）：左/右/底部/中央四区域标签页，标签拖拽跨区、
+  关闭/显隐、布局 JSON 持久化
+- **Upload**：选择区 + 文件列表 + 进度条，对接平台原生文件对话框（Web 降级）
+- **Carousel**：索引切换 + 自动播放 + 循环 + 指示器 + 滑动手势
+- **MermaidDiagram**：`flowchart` 子集（LR/TB/RL/BT，矩形/圆角/菱形/圆形/直线箭头/边标签）转 SVG
+- **Sidebar 增强**：`SidebarSection` 分组 + 可折叠 + 条目 `badge` 角标
+
+### 编辑器与输入
+
+- **编辑器分拆结算**（`input_ui/input/` 表单 + `input_ui/editor/` 编辑器 + `TextCore` 共享核）：
+  `EditorState`（包 `Entity<InputState>` 编排外壳 + 大纲缓存）+ `Editor` 组件（复用 `Input` +
+  状态行）；`InputMode::CodeEditor` 删除，`TextArea` 补为表单多行；差集透传
+  `set_value`/`reveal_*`/`set_read_only`/`set_line_comment_prefix`/`set_highlighter`/
+  `goto_symbol`（高亮/写入补刷大纲）；`input/state.rs` 新功能冻结
+- **LSP 编辑器侧接线**（`editor/lsp_attach.rs`，拉模型）：`set_completion/diagnostics/hover_provider`
+  注入（传输层由应用实现后注入）+ epoch 防抖触发 + 补全弹窗状态同步（`CompletionPopup::on_select`
+  点击确认）+   诊断下划线装饰（错误波浪红/警告直线黄）；`editor` 演示页接假 provider 可点；
+  `editor` feature 蕴含 `lsp`
+- **snippets 最小版**（`editor/snippets.rs`）：`$1`/`${1:缺省}`/`$0` 子集 +
+  `Tab`/`Shift-Tab` 跳转 + 补全联动（`insertTextFormat == Snippet` 即展开）；
+  占位经隐形装饰集合跟踪（`adjust_for_edit` 保留塌缩点）；`editor` 演示页可点
+- **inlay hints**（`editor/inlay_hints.rs`）：`InlayProvider`（默认空）+ 防抖请求 +
+  paint 阶段 overlay 灰字绘制（三不：不占布局/不进 Rope/不碰选区，只画可见行）；
+  `editor` 演示页可点
+- **sticky scroll**（`editor/sticky_scroll.rs`）：大纲范围包含推导嵌套栈 +
+  `Editor` 顶栏面包屑（点击走 `goto_symbol`，无大纲不显示）；`Editor::new`
+  `Editor::new`
+  改接 `EditorState` 实体（大纲/光标/开关一次读齐，不在 `InputState` 上冗余数据）
+- **多语言注册表**（`highlight`）：`register_highlighter`/`highlighter_for`
+ （注册表优先 → Rust 内置 → 静默降级）+ `EditorState::set_language`（高亮/大纲联动）；
+  加新语言三步文档；Rust 之外 grammar 不进；`editor` 演示页可切语言验证降级
+- **快捷键用户层**（`keymap/file.rs`）：`load_keymap_json`（注释/尾逗号可写；
+  `null` = `NoAction`；未知动作/非法按键/非法谓词报错）+ 设置页 recipe 落地
+  （`v1_2_showcase --bin keymap`：JSON 加载应用 + `HotkeyInput` 录制绑定 +
+  `bindings_for_action` 回显 + 同键异动作冲突提示）
+
+- **stdio LSP 传输**（`lsp/stdio.rs`）：子进程 spawn + JSON-RPC Content-Length 收发 +
+  请求 id 路由 + 通知分发 + `StdioLspClient: LspClient` + stderr 日志透出；
+  进程异常退出在途请求全失败、不守护重启；内存 duplex 假服务端单测
+- **Minimap**（`editor/minimap.rs`）：缩略文本块 + 可视区高亮 + 点击/拖动跳转 +
+  开关（默认关）；纯 overlay 三不；大文档抽样渲染；渲染冒烟单测
+- **Vim 模式**（`editor/vim.rs`）：normal/insert/visual 三态 + hjkl/wb/0/$/gg/G 移动 +
+  i/a/o/x/dd/yy/p/u 编辑 + vim_mode 上下文谓词 + 状态行指示；默认关；
+  模式切换与核心操作单测
+- **CodeLens**（`editor/codelens.rs`）：`CodeLensProvider` trait + 行上透镜行 +
+  点击回调；overlay 层不挤占滚动；假 provider 演示 + 单测
+- **标尺 + 括号彩虹**（`editor/state.rs`）：标尺指定列竖线（可配列数/颜色，默认关）；
+  括号彩虹嵌套层级按调色轮着色（默认关，与匹配高亮共存）；各单测
+- **JSON + TOML grammar**（`tree_sitter.rs`）：按 M6 三步机制加 JSON + TOML
+  （各独立 feature 门）+ 高亮 query + document_symbols + 注册；大纲非空单测
+- **extensions + on_edit 表**（`editor/extensions.rs`）：扩展注册表 + 文本变更订阅表；
+  注册+触发单测
+
+- **StickyPosition**（`editor/sticky_scroll.rs`）：`StickyPosition::Top`/`Status` 枚举 +
+  `set_sticky_position`；面包屑可定位到状态行
+- **搜索弹窗**（`components/search_panel.rs`）：`Ctrl+F`/`Ctrl+R` 切换显示，左上浮动定位 +
+  `set_show_replace` API
+- **Gutter 菜单化**（`editor/gutter.rs`）：单 `menu` provider，右键弹出菜单
+  （断点/书签/运行），`capture_any_mouse_down` + `stop_propagation` 抑制编辑器右键菜单
+- **布局调试标尺**（`editor/state.rs`）：`chrome_geometry()` 暴露四边界 x
+  （gutter/行号/折叠/文本起始），演示页四色竖线浮层辅助定位
+
+- **`cx.debounce` 方法版**：`App` 全局防抖注册表 + key 隔离（`Debouncer` 结构版保留）
+- **tree-sitter 后端**（`--features tree-sitter`，默认关，wasm 禁用）：Rust 单语言
+  `Highlighter` 实现 + fold 数据源；`InputState::set_highlighter` 接入，
+  编辑自动刷新高亮装饰与折叠候选
+- **SearchPanel 老版删除**：RenderOnce 版删除约 370 行，`SearchPanelState` 补 `on_close` + `Styled`
+
+### 示例
+
+- 新增 `dialog` 示例（Dialog/AlertDialog/焦点陷阱）、`sidebar` 示例
+
+### 修复
+
+- **活动行号背景溢出**（`element.rs`）：活动行的行号背景矩形宽度未减去 gutter 列宽，
+  导致右缘越过文本起点遮挡行首 1-2 个字符（宽度 `line_number_width - MARGIN`，
+  起点从 `gutter_width` 开始，溢出 `gutter_width - MARGIN` 像素）；修复：宽度减去
+  `gutter_width`
+- **Popover 未初始化即 panic**：`menu::GlobalState` 读写改懒创建（未调 `menu::init`
+  也能开合；键盘绑定仍需 init）；`components` 演示补 `init_all`
+- **Combobox 打不开/丢焦点**：聚焦即展开；选中（点击/回车）后回焦输入框；
+  打字/退格/聚焦链路 3 单测
+- **默认构建门控遗漏**（CI）：`rulers` 布局、`Hsla` 导入、`vim` 上下文变量补
+  feature 门；`test-support` 下 `OsStr` 缺 import
+- **RenderOnce 组件 id 每帧都变**：`Select`/`Alert`/`Popconfirm`/`Pagination`/
+  `Rate`/`Link` 默认 ID 改取调用点（`#[track_caller]`，跨帧稳定，下拉/弹层
+  状态存得住；循环内多实例必须显式 `.id()`，`Popconfirm`/`Alert` 等补 `.id()`）
+- **Select 选项点不动**：下拉项误用非交互 `Label` 变体（`on_click` 被静默丢弃），
+  改 `PopupMenuItem::new`（可交互 `Item`）
+- **自定义 gutter 列**（`editor/gutter.rs`）：行号左侧第三列，具名 provider
+  注册/开关（`add/remove/set_gutter_provider_enabled` + 列总开关，默认关）+
+  paint overlay 固定格绘制；`editor` 演示页 run/断点/书签三 provider 可点
+
+### 布局整理
+
+- `system/` 子系统目录；15 个公模块同名进目录（路径不变）；
+  `chat_ui` → `chat`（`chat_ui` 弃用别名，1.3.0 删除）；`rgpui.rs` 三段式分组注释
+
 ## [1.1.1] - 2026-09-06
 
 ### 修复
