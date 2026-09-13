@@ -15,6 +15,61 @@ pub enum TableAlignment {
     Right,
 }
 
+/// GitHub 风格标注类型。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CalloutKind {
+    /// 提示。
+    Note,
+    /// 技巧。
+    Tip,
+    /// 重要。
+    Important,
+    /// 警告。
+    Warning,
+    /// 危险。
+    Caution,
+    /// 无特定类型（默认）。
+    Default,
+}
+
+impl CalloutKind {
+    /// 从字符串解析标注类型。
+    pub fn from_str(s: &str) -> Self {
+        match s.to_ascii_uppercase().as_str() {
+            "NOTE" => CalloutKind::Note,
+            "TIP" => CalloutKind::Tip,
+            "IMPORTANT" => CalloutKind::Important,
+            "WARNING" => CalloutKind::Warning,
+            "CAUTION" => CalloutKind::Caution,
+            _ => CalloutKind::Default,
+        }
+    }
+
+    /// 标注类型的显示名称。
+    pub fn label(&self) -> &str {
+        match self {
+            CalloutKind::Note => "Note",
+            CalloutKind::Tip => "Tip",
+            CalloutKind::Important => "Important",
+            CalloutKind::Warning => "Warning",
+            CalloutKind::Caution => "Caution",
+            CalloutKind::Default => "Note",
+        }
+    }
+
+    /// 标注类型的图标。
+    pub fn icon(&self) -> &str {
+        match self {
+            CalloutKind::Note => "\u{1f4dd}",
+            CalloutKind::Tip => "\u{1f4a1}",
+            CalloutKind::Important => "\u{26a0}\u{fe0f}",
+            CalloutKind::Warning => "\u{26a0}\u{fe0f}",
+            CalloutKind::Caution => "\u{1f6ab}",
+            CalloutKind::Default => "\u{1f4dd}",
+        }
+    }
+}
+
 /// 行内富文本元素。
 #[derive(Debug, Clone)]
 pub enum RichInline {
@@ -125,6 +180,22 @@ pub enum RichBlock {
         /// 图片地址。
         url: String,
     },
+    /// GitHub 风格的标注块（`> [!NOTE]`、`> [!TIP]` 等）。
+    Callout {
+        /// 标注类型。
+        kind: CalloutKind,
+        /// 标注标题（可选，用户自定义）。
+        title: Option<String>,
+        /// 标注内容块。
+        blocks: Vec<RichBlock>,
+    },
+    /// 脚注定义（`[^1]: content`）。
+    FootnoteDefinition {
+        /// 脚注标签。
+        label: String,
+        /// 脚注内容块。
+        blocks: Vec<RichBlock>,
+    },
 }
 
 /// 链接区域信息（文本区间 + URL）。
@@ -138,6 +209,11 @@ pub struct LinkInfo {
 
 /// 链接点击回调。
 pub type LinkClickHandler = Box<dyn Fn(&str, &mut Window, &mut App) + 'static>;
+
+/// 代码块自定义渲染回调：(language, code, base_size, theme) -> 可选自定义元素。
+/// 返回 `None` 表示走默认 CodeBlock 渲染路径。
+pub type CodeBlockRenderer =
+    Box<dyn Fn(&str, &str, Pixels, &Theme) -> Option<AnyElement> + 'static>;
 
 /// 文本展平结果。
 struct FlattenResult {
@@ -486,6 +562,18 @@ pub fn render_blocks(
     id_prefix: &str,
     theme: &Theme,
 ) -> Vec<AnyElement> {
+    render_blocks_with(blocks, base_size, on_link_click, id_prefix, theme, &None)
+}
+
+/// 渲染块列表（可指定代码块自定义渲染器）。
+pub fn render_blocks_with(
+    blocks: &[RichBlock],
+    base_size: Pixels,
+    on_link_click: &Option<LinkClickHandler>,
+    id_prefix: &str,
+    theme: &Theme,
+    code_block_renderer: &Option<CodeBlockRenderer>,
+) -> Vec<AnyElement> {
     let mut elements = Vec::new();
     let mut block_idx = 0u32;
 
@@ -497,6 +585,7 @@ pub fn render_blocks(
             id_prefix,
             &mut block_idx,
             theme,
+            code_block_renderer,
         );
         elements.push(el);
     }
@@ -512,6 +601,7 @@ fn render_block(
     id_prefix: &str,
     block_idx: &mut u32,
     theme: &Theme,
+    code_block_renderer: &Option<CodeBlockRenderer>,
 ) -> AnyElement {
     *block_idx += 1;
     let idx = *block_idx;
@@ -544,6 +634,13 @@ fn render_block(
         }
 
         RichBlock::CodeBlock { language, code } => {
+            if let Some(renderer) = code_block_renderer {
+                if let Some(lang) = language {
+                    if let Some(el) = renderer(lang, code, base_size, theme) {
+                        return el;
+                    }
+                }
+            }
             let mut cb = CodeBlock::new(code.clone())
                 .show_line_numbers(true)
                 .show_copy_button(true);
@@ -554,7 +651,8 @@ fn render_block(
         }
 
         RichBlock::BlockQuote(inner_blocks) => {
-            let children = render_blocks(inner_blocks, base_size, on_link_click, id_prefix, theme);
+            let children =
+                render_blocks_with(inner_blocks, base_size, on_link_click, id_prefix, theme, code_block_renderer);
             div()
                 .mb(px(12.0))
                 .pl(px(16.0))
@@ -619,6 +717,61 @@ fn render_block(
             .mb(px(12.0))
             .child(img(SharedString::from(url.clone())).max_w(px(600.0)))
             .into_any_element(),
+
+        RichBlock::Callout {
+            kind,
+            title,
+            blocks,
+        } => {
+            let label = title.as_deref().unwrap_or(kind.label());
+            let header_text = format!("{} {}", kind.icon(), label);
+            let children =
+                render_blocks_with(blocks, base_size, on_link_click, id_prefix, theme, code_block_renderer);
+            let bg = match kind {
+                CalloutKind::Note => theme.tokens.info,
+                CalloutKind::Tip => theme.tokens.success,
+                CalloutKind::Important => theme.tokens.warning,
+                CalloutKind::Warning => theme.tokens.warning,
+                CalloutKind::Caution => theme.tokens.danger,
+                CalloutKind::Default => theme.tokens.info,
+            };
+            div()
+                .mb(px(12.0))
+                .pl(px(16.0))
+                .pr(px(12.0))
+                .py(px(8.0))
+                .border_l(px(4.0))
+                .border_color(bg)
+                .bg(bg.opacity(0.1))
+                .child(
+                    div()
+                        .mb(px(4.0))
+                        .text_sm()
+                        .font_weight(FontWeight::BOLD)
+                        .child(header_text),
+                )
+                .children(children)
+                .into_any_element()
+        }
+
+        RichBlock::FootnoteDefinition { label, blocks } => {
+            let children =
+                render_blocks_with(blocks, base_size, on_link_click, id_prefix, theme, code_block_renderer);
+            div()
+                .mb(px(8.0))
+                .pl(px(16.0))
+                .border_l(px(3.0))
+                .border_color(theme.tokens.muted)
+                .text_color(theme.tokens.muted_foreground)
+                .child(
+                    div()
+                        .mb(px(4.0))
+                        .text_sm()
+                        .child(format!("[^{label}]")),
+                )
+                .children(children)
+                .into_any_element()
+        }
     }
 }
 

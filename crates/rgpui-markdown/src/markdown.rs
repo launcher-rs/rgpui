@@ -1,7 +1,7 @@
 //! Markdown 渲染组件：将 Markdown 源码解析为富文本块并渲染。
 
 use crate::rich_text::{
-    LinkClickHandler, ListItem, RichBlock, RichInline, TableAlignment, render_blocks,
+    CalloutKind, LinkClickHandler, ListItem, RichBlock, RichInline, TableAlignment, render_blocks,
 };
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use rgpui::*;
@@ -173,16 +173,25 @@ fn parse_markdown_with_urls(source: &str) -> (Vec<RichBlock>, Vec<Range<usize>>)
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_FOOTNOTES);
 
     let parser = Parser::new_ext(source, options);
     let events: Vec<(Event, Range<usize>)> = parser.into_offset_iter().collect();
 
     let mut builder = UrlTrackingBlockBuilder::new();
     builder.build(&events);
+    let mut blocks = builder.blocks;
     let mut spans = builder.spans;
+    detect_callouts(&mut blocks);
     fill_span_gaps(&mut spans, source.len());
-    debug_assert_eq!(spans.len(), builder.blocks.len(), "块与区间必须一一对应");
-    (builder.blocks, spans)
+    debug_assert_eq!(spans.len(), blocks.len(), "块与区间必须一一对应");
+    (blocks, spans)
+}
+
+/// 脚注定义解析状态。
+struct FootnoteState {
+    label: String,
+    blocks: Vec<RichBlock>,
 }
 
 /// Markdown 事件流 → 富文本块的构建器。
@@ -197,6 +206,7 @@ struct UrlTrackingBlockBuilder {
     list_stack: Vec<ListState>,
     blockquote_depth: usize,
     blockquote_blocks: Vec<Vec<RichBlock>>,
+    footnote_stack: Vec<FootnoteState>,
     table_state: Option<TableState>,
     current_heading_level: Option<u8>,
     in_code_block: bool,
@@ -216,6 +226,7 @@ impl UrlTrackingBlockBuilder {
             list_stack: Vec::new(),
             blockquote_depth: 0,
             blockquote_blocks: Vec::new(),
+            footnote_stack: Vec::new(),
             table_state: None,
             current_heading_level: None,
             in_code_block: false,
@@ -371,6 +382,13 @@ impl UrlTrackingBlockBuilder {
             Tag::TableCell => {
                 self.inline_stack.push(Vec::new());
             }
+            Tag::FootnoteDefinition(label) => {
+                self.footnote_stack.push(FootnoteState {
+                    label: label.to_string(),
+                    blocks: Vec::new(),
+                });
+                self.inline_stack.push(Vec::new());
+            }
             _ => {}
         }
     }
@@ -499,6 +517,22 @@ impl UrlTrackingBlockBuilder {
                     ts.current_row.push(inlines);
                 }
             }
+            TagEnd::FootnoteDefinition => {
+                let inlines = self.inline_stack.pop().unwrap_or_default();
+                if let Some(mut fn_state) = self.footnote_stack.pop() {
+                    // 把当前行内内容作为段落加入脚注块
+                    if !inlines.is_empty() {
+                        fn_state.blocks.push(RichBlock::Paragraph(inlines));
+                    }
+                    let label = fn_state.label;
+                    let blocks = fn_state.blocks;
+                    let span = self.take_pending_span(range.end);
+                    self.push_block(
+                        RichBlock::FootnoteDefinition { label, blocks },
+                        span,
+                    );
+                }
+            }
             _ => {}
         }
     }
@@ -519,14 +553,18 @@ impl UrlTrackingBlockBuilder {
         }
     }
 
-    /// 压入块元素（区分是否在块引用内）。
-    /// 顶层块同步记录源码区间，与 `blocks` 天然对齐；引用内块不记录。
+    /// 压入块元素（区分是否在块引用/脚注定义内）。
+    /// 顶层块同步记录源码区间，与 `blocks` 天然对齐；引用/脚注内块不记录。
     fn push_block(&mut self, block: RichBlock, span: Range<usize>) {
         if self.blockquote_depth > 0 {
             if let Some(blocks) = self.blockquote_blocks.last_mut() {
                 blocks.push(block);
                 return;
             }
+        }
+        if let Some(fn_state) = self.footnote_stack.last_mut() {
+            fn_state.blocks.push(block);
+            return;
         }
         self.spans.push(span);
         self.blocks.push(block);
@@ -554,6 +592,70 @@ fn fill_span_gaps(spans: &mut [Range<usize>], doc_len: usize) {
             last.end = doc_len;
         }
     }
+}
+
+/// 检测 BlockQuote 中的 GitHub 风格 callout 模式（`> [!TYPE]`），原地替换为 Callout 块。
+fn detect_callouts(blocks: &mut Vec<RichBlock>) {
+    for block in blocks.iter_mut() {
+        match block {
+            RichBlock::BlockQuote(inner) => {
+                detect_callouts(inner);
+                if let Some(RichBlock::Paragraph(inlines)) = inner.first() {
+                    if let Some((kind, title, rest_start)) = try_parse_callout_header(inlines) {
+                        let new_inner: Vec<RichBlock> = inner[rest_start..].to_vec();
+                        // 把标题后的段落内容保留
+                        *block = RichBlock::Callout {
+                            kind,
+                            title,
+                            blocks: new_inner,
+                        };
+                    }
+                }
+            }
+            RichBlock::Callout { blocks: inner, .. } => {
+                detect_callouts(inner);
+            }
+            RichBlock::FootnoteDefinition { blocks: inner, .. } => {
+                detect_callouts(inner);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// 尝试从段落行内元素中解析 callout 头部：`[!TYPE] optional title`。
+/// 返回 (CalloutKind, Option<title>, 后续块起始索引)。
+fn try_parse_callout_header(inlines: &[RichInline]) -> Option<(CalloutKind, Option<String>, usize)> {
+    if inlines.is_empty() {
+        return None;
+    }
+    // 只检查第一个行内文本是否包含 [!TYPE]
+    if let RichInline::Text(text) = &inlines[0] {
+        let trimmed = text.trim();
+        if let Some(rest) = trimmed.strip_prefix('[') {
+            if let Some(close) = rest.find(']') {
+                let kind_str = &rest[..close];
+                // 验证是有效的 callout 类型
+                let kind = match kind_str.to_ascii_uppercase().as_str() {
+                    "NOTE" => CalloutKind::Note,
+                    "TIP" => CalloutKind::Tip,
+                    "IMPORTANT" => CalloutKind::Important,
+                    "WARNING" => CalloutKind::Warning,
+                    "CAUTION" => CalloutKind::Caution,
+                    _ => return None,
+                };
+                let after_bracket = rest[close + 1..].trim();
+                let title = if after_bracket.is_empty() {
+                    None
+                } else {
+                    Some(after_bracket.to_string())
+                };
+                // 标题后面的段落内容从第二个行内元素开始
+                return Some((kind, title, 0));
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
