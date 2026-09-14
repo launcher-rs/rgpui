@@ -8,6 +8,7 @@
 //! - `transparent`：透明背景窗口
 //! - `opacity`：窗口不透明度
 //! - `shadow`：阴影样式大全
+//! - `custom_title_bar`：自定义标题栏完整用法
 
 fn main() {
     println!("window_showcase 包含以下演示（用 --bin 指定）：");
@@ -18,4 +19,5 @@ fn main() {
     println!("  cargo run -p window_showcase --bin transparent         # 透明背景窗口");
     println!("  cargo run -p window_showcase --bin opacity             # 窗口不透明度");
     println!("  cargo run -p window_showcase --bin shadow              # 阴影样式大全");
+    println!("  cargo run -p window_showcase --bin custom_title_bar  # 自定义标题栏完整用法");
 }
