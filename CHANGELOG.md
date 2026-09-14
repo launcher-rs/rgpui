@@ -2,7 +2,20 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased] - 1.2.0（开发中，分支 `feat/1.2.0`）
+## [Unreleased] - 1.2.1（开发中）
+
+### 修复
+
+- **Sidebar 选中态用错 token**（`components/sidebar.rs`，PR #18）：选中底/文字/hover/角标改用
+  `sidebar_accent` 系列（浅色 `#e5e5e5` 底 + `#171717` 字，深色配套值），浅色主题选中行恢复可读
+
+### 新增
+
+- **SidebarItem 自定义选中颜色**：`with_selected_background` / `with_selected_foreground`
+  （条目级覆盖，仅作用于本条目；未设置回退主题 token）
+- **sidebar 示例**：亮色/暗色切换 + `sidebar_accent` vs `accent` 色板 + 角标与自定义颜色演示
+
+## [1.2.0] - 2026-09-14
 
 ### 新增组件
 
@@ -19,6 +32,7 @@
 - **Carousel**：索引切换 + 自动播放 + 循环 + 指示器 + 滑动手势
 - **MermaidDiagram**：`flowchart` 子集（LR/TB/RL/BT，矩形/圆角/菱形/圆形/直线箭头/边标签）转 SVG
 - **Sidebar 增强**：`SidebarSection` 分组 + 可折叠 + 条目 `badge` 角标
+- **Tree**：无需新写（`TreeItem`/`TreeState`/`Tree` 已存在），随 `dialog`/`sidebar` 示例验证可用
 
 ### 编辑器与输入
 
@@ -39,7 +53,6 @@
   `editor` 演示页可点
 - **sticky scroll**（`editor/sticky_scroll.rs`）：大纲范围包含推导嵌套栈 +
   `Editor` 顶栏面包屑（点击走 `goto_symbol`，无大纲不显示）；`Editor::new`
-  `Editor::new`
   改接 `EditorState` 实体（大纲/光标/开关一次读齐，不在 `InputState` 上冗余数据）
 - **多语言注册表**（`highlight`）：`register_highlighter`/`highlighter_for`
  （注册表优先 → Rust 内置 → 静默降级）+ `EditorState::set_language`（高亮/大纲联动）；
@@ -80,10 +93,32 @@
   `Highlighter` 实现 + fold 数据源；`InputState::set_highlighter` 接入，
   编辑自动刷新高亮装饰与折叠候选
 - **SearchPanel 老版删除**：RenderOnce 版删除约 370 行，`SearchPanelState` 补 `on_close` + `Styled`
+- **Input 右键菜单**（`input_ui/context_menu.rs`）：默认菜单（剪切/复制/粘贴/全选/撤销/重做按状态自动禁用）+
+  三档定制（总开关/追加保留默认/接管可拼回）+ `InputState` 层同名 builder/`set_*`；
+  `editor` 演示页右键开箱即用
+- **行操作命令**（`input_ui/line_ops.rs`）：复制/删除/上移下移/注释切换/合并行 6 命令 + 默认键位 +
+  `line_comment_prefix` 可配；6 单测
+- **键入体验**：自动闭合（环绕/跳过/补对/成对退格，多行默认开）+ 只读模式（用户动作拦截、API 照常写）+
+  电缩进（`{` 加级/`{}` 拆行）+ 括号匹配高亮（accent 底色）；各单测
+- **导航阅读**：当前行高亮（独立装饰集合，仅多行默认开）+ 符号大纲
+  （`Highlighter::document_symbols`，Rust 实现函数/结构体/枚举/Trait/impl/模块/常量/静态）+
+  查找接线（`SearchPanelState::attach_editor` 文本同步/自动标黄/默认跳转 + `SearchHighlight` 三色预设）
+- **多光标多选区**：`extra_selections`（主选区不动）+ `AddCursorAbove/Below` +
+  键入/删除/粘贴/回车扇出编辑 + 并组撤销；选区 path 向量化 + 额外光标 quad
+- **撤销语义**：回车打断撤销分组 + 初始内容不进撤销栈
+- **补全体验**：光标锚定 + 主题色 + 自动开关 + 键盘接管 + 前缀替换
+- **Editor 字号覆盖**：`Editor`/`EditorState` 级别字号设置（builder 直透传 render）
+- **搜索实战补齐**（#14）：`TextDecoration` + `TextDecorationCollection` 公开导出（多区间高亮/标黄）+
+  `InputState::reveal_offset`/`reveal_range` 只读滚动（不改光标选区）
+- **Markdown 扩展**（`rgpui-markdown`）：Callout/脚注定义 + `CodeBlockRenderer` hook +
+  块级源码区间（WYSIWYG 定位拼回）+ 解析缓存（Arc 共享，高频重渲染命中）
 
 ### 示例
 
 - 新增 `dialog` 示例（Dialog/AlertDialog/焦点陷阱）、`sidebar` 示例
+- 新增 `v1_2_showcase` 示例（Dock/组件/chat/Editor/搜索 5 个演示 bin）
+- `editor` 演示迁移到 `EditorState`/`Editor`（右键菜单/查找面板/行操作/多光标键位可点；
+  原 `search`/`context_menu` 独立演示页并入）
 
 ### 修复
 
@@ -105,6 +140,15 @@
 - **自定义 gutter 列**（`editor/gutter.rs`）：行号左侧第三列，具名 provider
   注册/开关（`add/remove/set_gutter_provider_enabled` + 列总开关，默认关）+
   paint overlay 固定格绘制；`editor` 演示页 run/断点/书签三 provider 可点
+- **中文字符边界 panic 收敛**：全 workspace `SafeStrSlice` 统一收敛 + markdown 代码块 CJK 切片 +
+  IME 路径高亮刷新与装饰吸附字符边界
+- **自定义标题栏 8 方向拖拽**：边缘/边角拖拽调整窗口大小
+- **折叠崩溃与滚动空白**：折叠展开崩溃修复 + 滚动后长文本空白修复
+- **Mermaid 走线**：div 全彩渲染（替代单色 SVG 管道）+ 按入边轴走线 + 箭头回偏不压边 + 边标签前景色
+- **搜索弹窗标黄不清**：关闭后标黄残留清理
+- **Minimap 增强**：还原文形状 + 整条可点拖 + 防穿透误触（仍纯 overlay，默认关）
+- **设置页与展示页**：settings 崩溃修复 + 字号缩放行高 + gutter 折叠图标
+- **chat 发送者名对齐**：按气泡方向对齐到头像正下方
 
 ### 布局整理
 
