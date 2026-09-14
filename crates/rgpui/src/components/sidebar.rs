@@ -17,6 +17,10 @@ pub struct SidebarItem {
     pub icon: Option<Icon>,
     /// 角标（如未读数，折叠时隐藏）。
     pub badge: Option<SharedString>,
+    /// 选中时自定义底色（默认使用主题 `sidebar_accent`）。
+    pub selected_background: Option<Hsla>,
+    /// 选中时自定义文字颜色（默认使用主题 `sidebar_accent_foreground`）。
+    pub selected_foreground: Option<Hsla>,
 }
 
 impl SidebarItem {
@@ -27,6 +31,8 @@ impl SidebarItem {
             label: label.into(),
             icon: None,
             badge: None,
+            selected_background: None,
+            selected_foreground: None,
         }
     }
 
@@ -39,6 +45,18 @@ impl SidebarItem {
     /// 设置角标（如未读数）。
     pub fn with_badge(mut self, badge: impl Into<SharedString>) -> Self {
         self.badge = Some(badge.into());
+        self
+    }
+
+    /// 设置选中时的自定义底色（覆盖主题 `sidebar_accent`，仅作用于本条目）。
+    pub fn with_selected_background(mut self, color: impl Into<Hsla>) -> Self {
+        self.selected_background = Some(color.into());
+        self
+    }
+
+    /// 设置选中时的自定义文字颜色（覆盖主题 `sidebar_accent_foreground`，仅作用于本条目）。
+    pub fn with_selected_foreground(mut self, color: impl Into<Hsla>) -> Self {
+        self.selected_foreground = Some(color.into());
         self
     }
 }
@@ -199,7 +217,10 @@ impl RenderOnce for Sidebar {
         let border = theme.tokens.border;
         let muted_foreground = theme.tokens.muted_foreground;
         let popover = theme.tokens.popover;
-        let accent = theme.tokens.accent.color;
+        // 选中行使用侧栏专用 token：浅色底 #e5e5e5 + 字 #171717（深色另有配套值）。
+        // 此前误用通用 accent（浅色下为近白），15% 透明铺在白底上近乎透明，文字同色导致看不清。
+        let sidebar_accent = theme.tokens.sidebar_accent;
+        let sidebar_accent_foreground = theme.tokens.sidebar_accent_foreground;
 
         let collapsed = self.collapsible && self.collapsed;
         let selected_id = self.selected_id;
@@ -230,6 +251,11 @@ impl RenderOnce for Sidebar {
             let icon = item.icon.clone();
             let badge = item.badge.clone();
             let on_select = on_select.clone();
+            // 条目级自定义颜色优先，未设置则回退到侧栏专用主题 token。
+            let row_bg = item.selected_background.unwrap_or(sidebar_accent.color);
+            let row_fg = item
+                .selected_foreground
+                .unwrap_or(sidebar_accent_foreground.color);
             div()
                 .id(id.clone())
                 .flex()
@@ -239,9 +265,9 @@ impl RenderOnce for Sidebar {
                 .py(px(8.0))
                 .rounded_md()
                 .cursor_pointer()
-                .when(is_selected, |this| this.bg(accent.opacity(0.15)))
+                .when(is_selected, |this| this.bg(row_bg))
                 .when(!is_selected, |this| {
-                    this.hover(|this| this.bg(accent.opacity(0.08)))
+                    this.hover(|this| this.bg(row_bg.opacity(0.5)))
                 })
                 .when_some(icon, |this, icon| this.child(icon))
                 .when(!collapsed, |this| {
@@ -250,7 +276,7 @@ impl RenderOnce for Sidebar {
                             .flex_1()
                             .text_sm()
                             .text_color(if is_selected {
-                                accent
+                                row_fg
                             } else {
                                 muted_foreground.color
                             })
@@ -263,8 +289,13 @@ impl RenderOnce for Sidebar {
                             .text_xs()
                             .px(px(6.0))
                             .rounded_full()
-                            .bg(accent.opacity(0.15))
-                            .text_color(accent)
+                            // 角标与行底色拉开对比：选中行上反白，未选中行沿用本条目的强调底色。
+                            .bg(if is_selected {
+                                row_fg.opacity(0.15)
+                            } else {
+                                row_bg.opacity(0.6)
+                            })
+                            .text_color(row_fg)
                             .child(badge),
                     )
                 })
