@@ -13,5 +13,6 @@
 | `transparent` | 透明背景窗口（`WindowBackgroundAppearance::Transparent`） | `cargo run -p window_showcase --bin transparent` |
 | `opacity` | 窗口整体不透明度 | `cargo run -p window_showcase --bin opacity` |
 | `shadow` | 阴影样式大全 | `cargo run -p window_showcase --bin shadow` |
+| `custom_title_bar` | 自定义标题栏完整用法（`TitleBar::window_options` + 可交互标题栏 + 计数器 + 颜色块） | `cargo run -p window_showcase --bin custom_title_bar` |
 
 不带 `--bin` 直接 `cargo run -p window_showcase` 会打印本列表。
