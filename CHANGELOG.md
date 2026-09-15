@@ -2,6 +2,23 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [1.2.2] - 2026-09-15
+
+### 修复
+
+- **Checkbox / Radio 选中对勾缺失**（`elements/checkbox.rs`）：对勾图标此前仅设路径、
+  运行时依赖宿主 `AssetSource` 解析，未配置资源的窗口中画不出，只剩纯色底（黑框）；
+  现附带编译期嵌入字节，不依赖宿主资源；`Radio` 复用同一绘制，一并修复
+
+### 新增
+
+- **Select 下拉跟随触发器宽度**：`Popover::match_trigger_width`（默认关闭）+
+  `DropdownMenuPopover` 透传 + `PopupMenu` 菜单实体 min/max 宽度同步；
+  `Select` 默认开启，弹层卡片与选项高亮均与触发器等宽，普通操作菜单保持内容宽度
+- **form / inspector 示例**：表单组件示例（垂直/水平/网格表单、提交校验）；
+  元素检查器示例（开关面板、拾取、祖先链树、布局边界展示）
+- **window_showcase 自定义标题栏示例**（PR #20）
+
 ## [1.2.1] - 2026-09-14
 
 ### 修复
