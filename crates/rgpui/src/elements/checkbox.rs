@@ -7,7 +7,7 @@ use crate::{
     ActiveTheme, Animation, AnimationExt, AnyElement, App, ComponentText, Disableable, ElementId,
     ElementSize, FocusableExt as _, IconNamed, InteractiveElement, IntoElement, ParentElement,
     RenderOnce, Selectable, SharedString, Sizable, StatefulInteractiveElement, Styled,
-    StyledExt as _, Window, div, px, relative, rems, svg,
+    StyledExt as _, Svg, Window, div, px, relative, rems, svg,
 };
 
 /// 复选框（Checkbox）元素。
@@ -152,15 +152,10 @@ impl Sizable for Checkbox {
     }
 }
 
-pub(crate) fn checkbox_check_icon(
-    id: ElementId,
-    size: ElementSize,
-    checked: bool,
-    disabled: bool,
-    window: &mut Window,
-    cx: &mut App,
-) -> impl IntoElement {
-    let toggle_state = window.use_keyed_state(id, cx, |_, _| checked);
+/// 构建选中态对勾 Svg（纯构建部分，可单测）。
+///
+/// 对勾使用编译期嵌入字节，不依赖宿主 App 的 `AssetSource`。
+fn check_svg(size: ElementSize, checked: bool, disabled: bool, cx: &App) -> Svg {
     let color = if disabled {
         cx.theme().primary_foreground.opacity(0.5)
     } else {
@@ -180,33 +175,47 @@ pub(crate) fn checkbox_check_icon(
         })
         .text_color(color)
         .map(|this| match checked {
-            true => this.path(crate::IconName::Check.path()),
+            // 内置对勾必须附带编译期嵌入字节，不依赖宿主 App 的 AssetSource；
+            // 否则未配置资源的窗口中对勾画不出，选中态只剩纯色底（黑框）。
+            true => this
+                .path(crate::IconName::Check.path())
+                .data(crate::IconName::Check.bytes()),
             _ => this,
         })
-        .map(|this| {
-            if !disabled && checked != *toggle_state.read(cx) {
-                let duration = Duration::from_secs_f64(0.25);
-                cx.spawn({
-                    let toggle_state = toggle_state.clone();
-                    async move |cx| {
-                        cx.background_executor().timer(duration).await;
-                        _ = toggle_state.update(cx, |this, _| *this = checked);
-                    }
-                })
-                .detach();
+}
 
-                this.with_animation(
-                    ElementId::NamedInteger("toggle".into(), checked as u64),
-                    Animation::new(Duration::from_secs_f64(0.25)),
-                    move |this, delta| {
-                        this.opacity(if checked { 1.0 * delta } else { 1.0 - delta })
-                    },
-                )
-                .into_any_element()
-            } else {
-                this.into_any_element()
-            }
-        })
+pub(crate) fn checkbox_check_icon(
+    id: ElementId,
+    size: ElementSize,
+    checked: bool,
+    disabled: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl IntoElement {
+    let toggle_state = window.use_keyed_state(id, cx, |_, _| checked);
+
+    check_svg(size, checked, disabled, cx).map(|this| {
+        if !disabled && checked != *toggle_state.read(cx) {
+            let duration = Duration::from_secs_f64(0.25);
+            cx.spawn({
+                let toggle_state = toggle_state.clone();
+                async move |cx| {
+                    cx.background_executor().timer(duration).await;
+                    _ = toggle_state.update(cx, |this, _| *this = checked);
+                }
+            })
+            .detach();
+
+            this.with_animation(
+                ElementId::NamedInteger("toggle".into(), checked as u64),
+                Animation::new(Duration::from_secs_f64(0.25)),
+                move |this, delta| this.opacity(if checked { 1.0 * delta } else { 1.0 - delta }),
+            )
+            .into_any_element()
+        } else {
+            this.into_any_element()
+        }
+    })
 }
 
 impl RenderOnce for Checkbox {
@@ -334,6 +343,7 @@ impl RenderOnce for Checkbox {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TestAppContext;
 
     /// 测试复选框基本构造与标签
     #[test]
@@ -356,5 +366,23 @@ mod tests {
             .selected(true);
         assert!(cb.disabled);
         assert!(cb.is_selected());
+    }
+
+    /// 选中态对勾必须携带嵌入 SVG 字节，不依赖宿主 AssetSource。
+    ///
+    /// 回归测试：此前对勾仅设置 `path`，在未配置资源的窗口中解析失败，
+    /// 选中后只剩纯色底（黑框），对勾画不出。
+    #[rgpui::test]
+    fn checked_icon_embeds_svg_data(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::theme::init(cx);
+            assert!(!crate::IconName::Check.bytes().is_empty());
+
+            let checked = check_svg(ElementSize::Medium, true, false, cx);
+            assert!(checked.has_embedded_data());
+
+            let unchecked = check_svg(ElementSize::Medium, false, false, cx);
+            assert!(!unchecked.has_embedded_data());
+        });
     }
 }

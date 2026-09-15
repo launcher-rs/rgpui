@@ -1,0 +1,11 @@
+[package]
+name = "inspector"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "检查器示例：toggle_inspector 开关面板、拾取元素、查看源码位置与布局边界"
+
+[dependencies]
+# 开启 inspector feature 后，检查器 API 在 debug/release 下都可用。
+rgpui = { workspace = true, features = ["inspector"] }
+rgpui-platform.workspace = true

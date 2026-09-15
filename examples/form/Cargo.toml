@@ -1,0 +1,10 @@
+[package]
+name = "form"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "表单组件示例：v_form / h_form、字段校验、网格布局与常用输入控件"
+
+[dependencies]
+rgpui.workspace = true
+rgpui-platform.workspace = true

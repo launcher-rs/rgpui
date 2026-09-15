@@ -67,6 +67,14 @@ impl Svg {
         self
     }
 
+    /// 是否携带了嵌入式 SVG 数据。
+    ///
+    /// 仅测试用：断言内置图标不依赖运行时资源（宿主 `AssetSource`）。
+    #[cfg(test)]
+    pub(crate) fn has_embedded_data(&self) -> bool {
+        self.data.is_some()
+    }
+
     /// 对 SVG 元素应用变换。
     /// 注意：这不会影响元素的 hitbox 或布局，仅影响渲染效果。
     pub fn with_transformation(mut self, transformation: Transformation) -> Self {

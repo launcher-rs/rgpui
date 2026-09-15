@@ -104,5 +104,7 @@ impl RenderOnce for Select {
                     )
                 })
             })
+            // 下拉列表与触发器同宽，而不是按选项内容收缩。
+            .match_trigger_width(true)
     }
 }

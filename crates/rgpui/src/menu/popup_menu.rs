@@ -424,6 +424,16 @@ impl PopupMenu {
         self
     }
 
+    /// 设置弹窗菜单的最小宽度（实体更新用）。
+    pub(crate) fn set_min_width(&mut self, width: Pixels) {
+        self.min_width = Some(width);
+    }
+
+    /// 设置弹窗菜单的最大宽度（实体更新用）。
+    pub(crate) fn set_max_width(&mut self, width: Pixels) {
+        self.max_width = Some(width);
+    }
+
     /// 设置弹窗菜单的最大高度，默认为窗口高度的一半
     pub fn max_h(mut self, height: impl Into<Pixels>) -> Self {
         self.max_height = Some(height.into());
@@ -1479,5 +1489,19 @@ mod tests {
         );
         assert_eq!(PopupMenuItem::separator().a11y_label(), None);
         assert_eq!(PopupMenuItem::element(|_, _| div()).a11y_label(), None);
+    }
+
+    /// 实体更新式宽度设置生效（下拉跟随触发器宽度时经此同步）。
+    #[rgpui::test]
+    fn popup_menu_set_widths(cx: &mut rgpui::TestAppContext) {
+        cx.update(|cx| {
+            let menu = cx.new(|cx| PopupMenu::new(cx));
+            menu.update(cx, |menu, _| {
+                menu.set_min_width(rgpui::px(300.));
+                menu.set_max_width(rgpui::px(300.));
+            });
+            assert_eq!(menu.read(cx).min_width, Some(rgpui::px(300.)));
+            assert_eq!(menu.read(cx).max_width, Some(rgpui::px(300.)));
+        });
     }
 }

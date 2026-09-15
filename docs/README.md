@@ -4,6 +4,7 @@
   `utf8-slice-safety.md`（UTF-8 切片安全：中文 panic 事故与规范）、
   `migration-guide-from-rgpui-component.md`（旧 `rgpui-component` / `rgpui-tokio` / `rgpui-ui` 用户迁移指南）。
 - **版本归档**：`1.1.0/`、`1.2.0/` —— 各版本的开发计划、设计与发布记录。已完成，仅供追溯。
+- **进行中**：`1.3.0/` —— 检查器完善（树↔界面映射、完整元素树、面板内置化、自定义接口文档）、回调签名统一与 1.2.0 结转。
 - **历史过程**：`history/` —— 已落地的战略、规划与调研文档（如上游切割、UI 库重组、DOM 后端规划）。
   仅供追溯，内容可能已过期， release 内容以 `CHANGELOG.md` 为准。
 

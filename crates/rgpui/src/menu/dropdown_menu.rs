@@ -42,6 +42,8 @@ pub struct DropdownMenuPopover<T: Selectable + IntoElement + 'static> {
     anchor: Anchor,
     trigger: T,
     builder: Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>,
+    /// 弹出内容最小宽度是否跟随触发器宽度（见 [`Popover::match_trigger_width`]）。
+    match_trigger_width: bool,
 }
 
 impl<T> DropdownMenuPopover<T>
@@ -60,12 +62,21 @@ where
             anchor: anchor.into(),
             trigger,
             builder: Rc::new(builder),
+            match_trigger_width: false,
         }
     }
 
     /// 设置下拉菜单 Popover 的锚点角
     pub fn anchor(mut self, anchor: impl Into<Anchor>) -> Self {
         self.anchor = anchor.into();
+        self
+    }
+
+    /// 设置弹出内容最小宽度是否跟随触发器宽度，默认为 `false`
+    ///
+    /// `Select` 下拉列表应开启；普通操作菜单保持内容宽度。
+    pub fn match_trigger_width(mut self, match_width: bool) -> Self {
+        self.match_trigger_width = match_width;
         self
     }
 
@@ -89,14 +100,16 @@ where
         let builder = self.builder.clone();
         let menu_state =
             window.use_keyed_state(self.id.clone(), cx, |_, _| DropdownMenuState::default());
+        let match_trigger_width = self.match_trigger_width;
 
         Popover::new(SharedString::from(format!("popover:{}", self.id)))
             .appearance(false)
             .overlay_closable(false)
+            .match_trigger_width(match_trigger_width)
             .trigger(self.trigger)
             .trigger_style(self.style)
             .anchor(self.anchor)
-            .content(move |_, window, cx| {
+            .content(move |state, window, cx| {
                 // 特殊逻辑：只创建一次 PopupMenu 并复用。
                 // 因为此 `content` 在每次渲染时都会被调用，所以需要将菜单存储在
                 // 状态中以避免每次渲染时重新创建。
@@ -134,6 +147,16 @@ where
                         menu.clone()
                     }
                 };
+
+                // 跟随触发器宽度：菜单最小/最大宽度同步触发器，
+                // 否则外层卡片撑宽后，选项高亮仍被默认 500px 上限卡住。
+                if match_trigger_width {
+                    let width = state.trigger_width();
+                    menu.update(cx, |menu, _| {
+                        menu.set_min_width(width);
+                        menu.set_max_width(width);
+                    });
+                }
 
                 menu
             })

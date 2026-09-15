@@ -40,6 +40,11 @@ pub struct Popover {
     ///
     /// 用于修复触发器元素样式以支持 w_full 的问题。
     trigger_style: Option<StyleRefinement>,
+    /// 弹出内容最小宽度是否跟随触发器宽度。
+    ///
+    /// 开启后（如 `Select` 下拉列表），弹出层宽度至少与触发器同宽，
+    /// 而不是按内容收缩。默认为 `false`（如右键菜单保持内容宽度）。
+    match_trigger_width: bool,
     mouse_button: MouseButton,
     appearance: bool,
     overlay_closable: bool,
@@ -64,6 +69,7 @@ impl Popover {
             default_open: false,
             open: None,
             on_open_change: None,
+            match_trigger_width: false,
         }
     }
 
@@ -137,6 +143,12 @@ impl Popover {
     /// 设置点击 Popover 外部是否关闭它，默认为 `true`
     pub fn overlay_closable(mut self, closable: bool) -> Self {
         self.overlay_closable = closable;
+        self
+    }
+
+    /// 设置弹出内容最小宽度是否跟随触发器宽度，默认为 `false`
+    pub fn match_trigger_width(mut self, match_width: bool) -> Self {
+        self.match_trigger_width = match_width;
         self
     }
 
@@ -243,6 +255,13 @@ impl PopoverState {
     /// 检查 Popover 是否打开
     pub fn is_open(&self) -> bool {
         self.open
+    }
+
+    /// 返回已捕获的触发器宽度。
+    ///
+    /// 内容只在触发器边界捕获后渲染，调用时宽度必然有效。
+    pub(crate) fn trigger_width(&self) -> Pixels {
+        self.trigger_bounds.size.width
     }
 
     /// 如果 Popover 打开则关闭它
@@ -453,6 +472,11 @@ impl RenderOnce for Popover {
                 .track_focus(&focus_handle)
                 .key_context(CONTEXT)
                 .on_action(window.listener_for(&state, PopoverState::on_action_cancel))
+                // 跟随触发器宽度：触发器边界已在首次 prepaint 捕获，
+                // 内容只在捕获后渲染，此处宽度必然有效。
+                .when(self.match_trigger_width, |this| {
+                    this.min_w(trigger_bounds.size.width)
+                })
                 .when_some(self.content, |this, content| {
                     this.child(state.update(cx, |state, cx| (content)(state, window, cx)))
                 })
@@ -484,7 +508,9 @@ impl RenderOnce for Popover {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AppContext as _, Entity, MouseButton};
+    use crate::{
+        AppContext as _, Button, Entity, MouseButton, TestAppContext, VisualTestContext, px, v_flex,
+    };
 
     #[test]
     fn test_popover_builder_chaining() {
@@ -555,6 +581,70 @@ mod tests {
         ) -> impl crate::IntoElement {
             crate::div()
         }
+    }
+
+    /// 宽度跟随测试视图：纵向定宽容器内的 Popover，触发器拉满容器宽，
+    /// 内容为窄固定尺寸（无文本，避免测试字体影响）。
+    struct MatchWidthProbe {
+        match_width: bool,
+    }
+
+    impl crate::Render for MatchWidthProbe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            v_flex().w(px(300.)).child(
+                Popover::new("probe-popover")
+                    .default_open(true)
+                    .appearance(false)
+                    .match_trigger_width(self.match_width)
+                    .trigger(Button::new("probe-trigger"))
+                    .content(|_, _, _| {
+                        // 外层无定宽（随容器拉伸被测），内层窄固定块决定收缩宽度。
+                        div()
+                            .debug_selector(|| "probe-content".to_string())
+                            .child(div().w(px(40.)).h(px(20.)))
+                    }),
+            )
+        }
+    }
+
+    /// 绘制测试窗口（触发器边界首帧捕获，内容次帧渲染，故绘制两次）。
+    fn draw(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+    }
+
+    /// 开启跟随触发器宽度时，弹出内容宽度与触发器同宽（Select 窄下拉回归测试）。
+    #[rgpui::test]
+    fn match_trigger_width_matches_trigger(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        cx.update(crate::menu::init);
+        let (_, cx) = cx.add_window_view(|_, _| MatchWidthProbe { match_width: true });
+        let cx: &mut VisualTestContext = cx;
+        draw(cx);
+        draw(cx);
+
+        let content = cx.debug_bounds("probe-content").expect("弹出内容应已渲染");
+        assert_eq!(content.size.width, px(300.));
+    }
+
+    /// 默认不跟随：弹出内容按自身内容收缩。
+    #[rgpui::test]
+    fn content_shrink_wraps_by_default(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        cx.update(crate::menu::init);
+        let (_, cx) = cx.add_window_view(|_, _| MatchWidthProbe { match_width: false });
+        let cx: &mut VisualTestContext = cx;
+        draw(cx);
+        draw(cx);
+
+        let content = cx.debug_bounds("probe-content").expect("弹出内容应已渲染");
+        assert_eq!(content.size.width, px(40.));
     }
 
     /// 未调 `menu::init` 时开关弹层不 panic（全局量懒创建；components 演示
