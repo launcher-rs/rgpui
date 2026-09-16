@@ -122,13 +122,15 @@ impl TreeEntry {
     }
 }
 
-/// [`TreeState`] 在用户可见状态变化（展开/折叠）时触发的事件。
+/// [`TreeState`] 在用户可见状态变化（展开/折叠/选中）时触发的事件。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TreeEvent {
     /// 树节点被展开。
     Expanded(SharedString),
     /// 树节点被折叠。
     Collapsed(SharedString),
+    /// 树节点被鼠标点击选中（键盘移动高亮不触发，避免方向键误触打开文件类操作）。
+    Selected(SharedString),
 }
 
 impl TreeItem {
@@ -450,8 +452,12 @@ impl TreeState {
     }
 
     fn on_entry_click(&mut self, ix: usize, _: &mut Window, cx: &mut Context<Self>) {
+        let id = self.entries.get(ix).map(|entry| entry.item.id.clone());
         self.selected_ix = Some(ix);
         self.toggle_expand(ix, cx);
+        if let Some(id) = id {
+            cx.emit(TreeEvent::Selected(id));
+        }
         cx.notify();
     }
 }
@@ -828,5 +834,27 @@ mod tests {
                 TreeEvent::Expanded("src/ui".into())
             ]
         );
+    }
+
+    #[crate::test]
+    fn test_click_emits_selected_event(cx: &mut crate::TestAppContext) {
+        use super::TreeItem;
+
+        let items = vec![
+            TreeItem::new("src", "src")
+                .expanded(true)
+                .child(TreeItem::new("src/lib.rs", "lib.rs")),
+        ];
+        let state = cx.new(|cx| TreeState::new(cx).items(items));
+        let collector = cx.new(|cx| TestCollector::new(&state, cx));
+        let (_view, cx) = cx.add_window_view(|_, cx| TestCollector::new(&state, cx));
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.on_entry_click(1, window, cx);
+            });
+        });
+
+        let events = collector.read_with(cx, |c, _| c.events.borrow().clone());
+        assert_eq!(events, vec![TreeEvent::Selected("src/lib.rs".into())]);
     }
 }

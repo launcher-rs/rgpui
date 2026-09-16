@@ -14,12 +14,12 @@ use crate::{
 
 /// 标题栏的默认高度。
 pub const TITLE_BAR_HEIGHT: Pixels = px(34.);
-/// 标题栏左侧内边距。
+/// 标题栏左侧内边距（macOS 预留红绿灯位置）。
 #[cfg(target_os = "macos")]
-const TITLE_BAR_LEFT_PADDING: Pixels = px(80.);
-/// 标题栏左侧内边距。
+pub const TITLE_BAR_LEFT_PADDING: Pixels = px(80.);
+/// 标题栏左侧内边距（非 macOS 平台）。
 #[cfg(not(target_os = "macos"))]
-const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
+pub const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
 
 /// TitleBar 用于自定义标题栏的外观。
 ///

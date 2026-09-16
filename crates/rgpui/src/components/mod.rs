@@ -37,6 +37,7 @@ pub mod drawer_navigation;
 pub mod empty_state;
 pub mod expandable_card;
 pub mod hotkey_input;
+pub mod hotkey_list_input;
 pub mod image_viewer;
 pub mod infinite_scroll;
 pub mod inline_edit;
@@ -108,6 +109,7 @@ pub use drawer_navigation::*;
 pub use empty_state::*;
 pub use expandable_card::*;
 pub use hotkey_input::*;
+pub use hotkey_list_input::*;
 pub use image_viewer::*;
 pub use infinite_scroll::*;
 pub use inline_edit::{

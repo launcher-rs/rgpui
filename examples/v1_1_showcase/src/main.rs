@@ -4,7 +4,7 @@
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use rgpui::components::status_bar::LspStatus;
+use rgpui::components::status_bar::{StatusBar, StatusBarItem};
 use rgpui::prelude::*;
 use rgpui::tabs::tab_drag::{TabDragDrop, TabDragState, TabItem};
 use rgpui::{
@@ -46,6 +46,14 @@ enum NavSection {
     Chat,
 }
 
+/// 示例本地的 LSP 演示状态（框架状态栏只收条目文本，不收该枚举）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DemoLspStatus {
+    Connected,
+    Initializing,
+    Disconnected,
+}
+
 /// 自定义状态栏状态。
 #[derive(Debug, Clone)]
 struct CustomStatusBarState {
@@ -53,7 +61,7 @@ struct CustomStatusBarState {
     column: usize,
     language: String,
     encoding: String,
-    lsp_status: LspStatus,
+    lsp_status: DemoLspStatus,
     lsp_server_name: String,
     error_count: usize,
     warning_count: usize,
@@ -67,7 +75,7 @@ impl Default for CustomStatusBarState {
             column: 15,
             language: "Rust".to_string(),
             encoding: "UTF-8".to_string(),
-            lsp_status: LspStatus::Connected,
+            lsp_status: DemoLspStatus::Connected,
             lsp_server_name: "rust-analyzer".to_string(),
             error_count: 2,
             warning_count: 5,
@@ -359,10 +367,9 @@ impl Render for ShowcaseApp {
                                 this.status_bar.language = if this.status_bar.language == "Rust" { "TypeScript".to_string() } else { "Rust".to_string() }; cx.notify(); })))
                             .child(Button::new("sb-lsp").label("切换LSP").ghost().on_click(cx.listener(|this, _, _, cx| {
                                 this.status_bar.lsp_status = match this.status_bar.lsp_status {
-                                    LspStatus::Connected => LspStatus::Disconnected,
-                                    LspStatus::Disconnected => LspStatus::Initializing,
-                                    LspStatus::Initializing => LspStatus::Connected,
-                                    LspStatus::Error => LspStatus::Connected,
+                                    DemoLspStatus::Connected => DemoLspStatus::Disconnected,
+                                    DemoLspStatus::Disconnected => DemoLspStatus::Initializing,
+                                    DemoLspStatus::Initializing => DemoLspStatus::Connected,
                                 }; cx.notify(); })))
                             .child(Button::new("sb-error").label("错误+1").ghost().on_click(cx.listener(|this, _, _, cx| { this.status_bar.error_count += 1; cx.notify(); })))
                             .child(Button::new("sb-warn").label("警告+1").ghost().on_click(cx.listener(|this, _, _, cx| { this.status_bar.warning_count += 1; cx.notify(); })))
@@ -376,7 +383,7 @@ impl Render for ShowcaseApp {
                         format!("错误: {}, 警告: {}", sb.error_count, sb.warning_count),
                         format!("Git: {}", sb.git_branch),
                     ]))
-                    .child(code_block("let status = cx.new(|_| StatusBarState {\n    line: 42, column: 15,\n    language: \"Rust\".into(),\n    lsp_status: LspStatus::Connected,\n    ..Default::default()\n});\nStatusBar::new(status)"))
+                    .child(code_block("StatusBar::new()\n    .left(vec![StatusBarItem::new(\"rust-analyzer ✓\").id(\"lsp\")])\n    .right(vec![StatusBarItem::new(\"Ln 42, Col 15\").id(\"cursor\").muted(true)])"))
             }
 
             NavSection::FpsHud => {
@@ -408,8 +415,8 @@ impl Render for ShowcaseApp {
             }
         };
 
-        // 自定义状态栏（匹配白色主题）
-        let status_bar = custom_status_bar(&sb);
+        // 底部状态栏：纯值驱动，每帧由本地演示状态直接组装。
+        let status_bar = demo_status_bar(&sb);
 
         // 主布局：导航 + 内容 + 底部状态栏
         v_flex()
@@ -427,93 +434,39 @@ impl Render for ShowcaseApp {
 }
 
 // ============================================================================
-// 自定义状态栏（白色主题）
+// 演示状态栏：本地演示状态转框架状态栏条目（纯值驱动，无需同步）
 // ============================================================================
 
-fn custom_status_bar(sb: &CustomStatusBarState) -> impl IntoElement {
-    let lsp_color = match sb.lsp_status {
-        LspStatus::Connected => rgb(0x28a745),
-        LspStatus::Initializing => rgb(0xffc107),
-        LspStatus::Disconnected => rgb(0x6c757d),
-        LspStatus::Error => rgb(0xdc3545),
-    };
+/// 把本地演示状态组装为框架状态栏。
+fn demo_status_bar(sb: &CustomStatusBarState) -> StatusBar {
     let lsp_text = match sb.lsp_status {
-        LspStatus::Connected => format!("{} ✓", sb.lsp_server_name),
-        LspStatus::Initializing => "LSP...".to_string(),
-        LspStatus::Disconnected => "No LSP".to_string(),
-        LspStatus::Error => "LSP Error".to_string(),
+        DemoLspStatus::Connected => format!("{} ✓", sb.lsp_server_name),
+        DemoLspStatus::Initializing => "LSP...".to_string(),
+        DemoLspStatus::Disconnected => "No LSP".to_string(),
     };
-
-    h_flex()
-        .id("custom-status-bar")
-        .w_full()
-        .h(px(28.0))
-        .items_center()
-        .justify_between()
-        .px(px(12.0))
-        .bg(rgb(0xf0f0f0))
-        .border_t(px(1.0))
-        .border_color(rgb(0xe0e0e0))
-        .child(
-            h_flex()
-                .items_center()
-                .gap(px(12.0))
-                .child(
-                    h_flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .child(div().w(px(8.0)).h(px(8.0)).rounded_full().bg(lsp_color))
-                        .child(div().text_xs().child(lsp_text)),
-                )
-                .children(if sb.error_count > 0 || sb.warning_count > 0 {
-                    Some(
-                        h_flex()
-                            .items_center()
-                            .gap(px(8.0))
-                            .children(if sb.error_count > 0 {
-                                Some(
-                                    div()
-                                        .text_xs()
-                                        .text_color(rgb(0xdc3545))
-                                        .child(format!("{} errors", sb.error_count)),
-                                )
-                            } else {
-                                None
-                            })
-                            .children(if sb.warning_count > 0 {
-                                Some(
-                                    div()
-                                        .text_xs()
-                                        .text_color(rgb(0xffc107))
-                                        .child(format!("{} warnings", sb.warning_count)),
-                                )
-                            } else {
-                                None
-                            }),
-                    )
-                } else {
-                    None
-                }),
-        )
-        .child(
-            h_flex()
-                .items_center()
-                .gap(px(12.0))
-                .child(
-                    h_flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .child(div().text_xs().text_color(rgb(0x666)).child(" "))
-                        .child(div().text_xs().child(sb.git_branch.clone())),
-                )
-                .child(
-                    div()
-                        .text_xs()
-                        .child(format!("Ln {}, Col {}", sb.line, sb.column)),
-                )
-                .child(div().text_xs().child(sb.language.clone()))
-                .child(div().text_xs().child(sb.encoding.clone())),
-        )
+    let mut left_items = vec![StatusBarItem::new(lsp_text).id("lsp")];
+    if sb.error_count > 0 {
+        left_items.push(StatusBarItem::new(format!("{} errors", sb.error_count)).id("errors"));
+    }
+    if sb.warning_count > 0 {
+        left_items
+            .push(StatusBarItem::new(format!("{} warnings", sb.warning_count)).id("warnings"));
+    }
+    let right_items = vec![
+        StatusBarItem::new(sb.git_branch.clone())
+            .id("branch")
+            .muted(true),
+        StatusBarItem::new(format!("Ln {}, Col {}", sb.line, sb.column))
+            .id("cursor")
+            .muted(true),
+        StatusBarItem::new(sb.language.clone())
+            .id("language")
+            .muted(true),
+        StatusBarItem::new(sb.encoding.clone())
+            .id("encoding")
+            .muted(true),
+    ];
+    StatusBar::new().left(left_items).right(right_items)
 }
 
 // ============================================================================

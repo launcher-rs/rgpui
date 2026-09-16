@@ -45,6 +45,8 @@ pub enum PopupMenuItem {
         disabled: bool,
         /// 是否选中
         checked: bool,
+        /// 是否为危险操作（红色文本，常用于删除类操作）
+        danger: bool,
         /// 是否为链接项
         is_link: bool,
         /// 菜单项动作
@@ -92,6 +94,7 @@ impl PopupMenuItem {
             label: label.into(),
             disabled: false,
             checked: false,
+            danger: false,
             action: None,
             is_link: false,
             handler: None,
@@ -208,6 +211,19 @@ impl PopupMenuItem {
         self
     }
 
+    /// 设置菜单项的危险样式（红色文本，常用于删除类操作）。
+    ///
+    /// 仅适用于 [`PopupMenuItem::Item`]；悬停/选中高亮与禁用样式优先级不变。
+    pub fn danger(mut self, danger: bool) -> Self {
+        match &mut self {
+            PopupMenuItem::Item { danger: d, .. } => {
+                *d = danger;
+            }
+            _ => {}
+        }
+        self
+    }
+
     /// 为菜单项添加点击处理器
     ///
     /// 仅适用于 [`PopupMenuItem::Item`] 和 [`PopupMenuItem::ElementItem`]。
@@ -236,6 +252,7 @@ impl PopupMenuItem {
             label: label.into(),
             disabled: false,
             checked: false,
+            danger: false,
             action: None,
             is_link: true,
             handler: Some(Rc::new(move |_, _, cx| cx.open_url(&href))),
@@ -1255,6 +1272,7 @@ impl PopupMenu {
                 label,
                 action,
                 disabled,
+                danger,
                 is_link,
                 ..
             } => {
@@ -1268,6 +1286,8 @@ impl PopupMenu {
                     )
                 })
                 .disabled(*disabled)
+                // 危险项常态红色文本；悬停/选中高亮与禁用样式在元素层后应用，优先级不变。
+                .when(*danger, |this| this.text_color(cx.theme().danger))
                 .h(item_height)
                 .gap_x_1()
                 .children(Self::render_icon(
@@ -1503,5 +1523,22 @@ mod tests {
             assert_eq!(menu.read(cx).min_width, Some(rgpui::px(300.)));
             assert_eq!(menu.read(cx).max_width, Some(rgpui::px(300.)));
         });
+    }
+
+    /// 危险样式默认关闭，`danger(true)` 仅标准项生效。
+    #[rgpui::test]
+    fn popup_menu_item_danger_flag(_cx: &mut rgpui::TestAppContext) {
+        let plain = PopupMenuItem::new("Delete");
+        assert!(matches!(plain, PopupMenuItem::Item { danger: false, .. }));
+
+        let dangerous = PopupMenuItem::new("Delete").danger(true);
+        assert!(matches!(
+            dangerous,
+            PopupMenuItem::Item { danger: true, .. }
+        ));
+
+        // 非标准项忽略危险样式设置。
+        let separator = PopupMenuItem::separator().danger(true);
+        assert!(matches!(separator, PopupMenuItem::Separator));
     }
 }

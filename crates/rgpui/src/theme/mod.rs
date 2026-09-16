@@ -202,6 +202,31 @@ impl Theme {
         }
     }
 
+    /// 按注册表中的主题名称应用主题。
+    ///
+    /// 查到后按该主题的 `mode` 切换，并将其设为对应模式的当前主题；
+    /// 未知名称返回 `false`，全局主题保持不动。
+    pub fn apply_named(name: &str, window: Option<&mut Window>, cx: &mut App) -> bool {
+        let Some(config) = ThemeRegistry::global(cx).themes().get(name).cloned() else {
+            return false;
+        };
+        if !cx.has_global::<Theme>() {
+            let mut theme = Theme::default();
+            theme.light_theme = ThemeRegistry::global(cx).default_light_theme().clone();
+            theme.dark_theme = ThemeRegistry::global(cx).default_dark_theme().clone();
+            cx.set_global(theme);
+        }
+
+        let theme = cx.global_mut::<Theme>();
+        theme.mode = config.mode;
+        theme.apply_config(&config);
+
+        if let Some(window) = window {
+            window.refresh();
+        }
+        true
+    }
+
     /// 获取输入框背景色。
     ///
     /// 暗色模式下使用透明色与输入框边框混合：`cx.theme().input`，
@@ -306,5 +331,38 @@ impl From<WindowAppearance> for ThemeMode {
             WindowAppearance::Dark | WindowAppearance::VibrantDark => Self::Dark,
             WindowAppearance::Light | WindowAppearance::VibrantLight => Self::Light,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Theme, ThemeRegistry};
+
+    /// 导入包 JSON（与 `ThemeSet` 同形，`ThemeConfig` 余字段走 serde 默认）。
+    const PACK_JSON: &str = r#"{"name":"pack","themes":[
+        {"name":"Pack Dark","mode":"dark"},
+        {"name":"Pack Light","mode":"light"}
+    ]}"#;
+
+    /// 按名称应用注册表主题：切换模式并记住对应模式的当前主题；未知名称返回 false。
+    #[rgpui::test]
+    fn apply_named_applies_registered_theme(cx: &mut crate::TestAppContext) {
+        cx.update(|cx| {
+            super::registry::init(cx);
+            ThemeRegistry::global_mut(cx)
+                .load_themes_from_str(PACK_JSON)
+                .expect("fixture pack should parse");
+
+            assert!(Theme::apply_named("Pack Dark", None, cx));
+            assert!(Theme::global(cx).is_dark());
+            assert_eq!(Theme::global(cx).theme_name().as_str(), "Pack Dark");
+
+            assert!(Theme::apply_named("Pack Light", None, cx));
+            assert!(!Theme::global(cx).is_dark());
+            assert_eq!(Theme::global(cx).theme_name().as_str(), "Pack Light");
+
+            assert!(!Theme::apply_named("No Such Theme", None, cx));
+            assert_eq!(Theme::global(cx).theme_name().as_str(), "Pack Light");
+        });
     }
 }

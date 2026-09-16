@@ -1,199 +1,141 @@
-//! 状态栏组件 —— 显示编辑器状态信息（行列号、语言、编码、LSP 状态等）。
+//! 状态栏组件 —— 应用底部状态信息条（左右两组条目）。
 //!
-//! # 示例
+//! 纯值驱动：调用方每帧直接组装条目传入，无需持有实体状态，
+//! 也不需要手工做内容比对（条目以稳定 id 参与元素 diff）。
 //!
 //! ```rust,ignore
-//! use rgpui::prelude::*;
-//! use rgpui::components::status_bar::{StatusBar, StatusBarState};
+//! use rgpui::components::status_bar::{StatusBar, StatusBarItem};
 //!
-//! let status = cx.new(|_| StatusBarState {
-//!     line: 1,
-//!     column: 1,
-//!     language: "Rust".into(),
-//!     encoding: "UTF-8".into(),
-//!     ..Default::default()
-//! });
-//!
-//! StatusBar::new(status)
+//! StatusBar::new()
+//!     .left(vec![StatusBarItem::new("main").id("branch")])
+//!     .right(vec![StatusBarItem::new("Ln 42, Col 15").muted(true)])
 //! ```
 
 use std::rc::Rc;
 
-use crate::{
-    App, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Window, div,
-    h_flex, px,
-};
+use crate::*;
 
-/// 状态栏状态。
+/// 状态栏单个条目（纯文本 / 图标文本 / 可点击按钮）。
 #[derive(Clone)]
-pub struct StatusBarState {
-    /// 当前行号（1-based）。
-    pub line: usize,
-    /// 当前列号（1-based）。
-    pub column: usize,
-    /// 选区中的字符数。
-    pub selection_chars: Option<usize>,
-    /// 当前文件语言。
-    pub language: SharedString,
-    /// 文件编码。
-    pub encoding: SharedString,
-    /// 行尾序列（LF/CRLF）。
-    pub line_ending: SharedString,
-    /// LSP 连接状态。
-    pub lsp_status: LspStatus,
-    /// LSP 服务器名称。
-    pub lsp_server_name: Option<SharedString>,
-    /// 错误数量。
-    pub error_count: usize,
-    /// 警告数量。
-    pub warning_count: usize,
-    /// 信息数量。
-    pub info_count: usize,
-    /// 缩进信息（如 "Spaces: 4"）。
-    pub indent_info: Option<SharedString>,
-    /// Git 分支名称。
-    pub git_branch: Option<SharedString>,
-    /// 自定义状态项。
-    pub custom_items: Vec<StatusBarItem>,
+pub struct StatusBarItem {
+    /// 条目稳定标识（默认取显示文本；文本会随状态变化时应显式指定）。
+    pub id: SharedString,
+    /// 显示文本。
+    pub label: SharedString,
+    /// 前置图标（无则不显示）。
+    pub icon: Option<IconName>,
+    /// 悬停提示（无则不显示）。
+    pub tooltip: Option<SharedString>,
+    /// 点击回调（无则为纯文本，不响应悬停）。
+    pub on_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    /// 是否使用次前景色（纯文本类条目）。
+    pub muted: bool,
+    /// 是否处于激活态（开关类条目高亮）。
+    pub active: bool,
+    /// 是否禁用（置灰且不可点击）。
+    pub disabled: bool,
 }
 
-impl Default for StatusBarState {
-    fn default() -> Self {
+impl StatusBarItem {
+    /// 创建状态栏条目（id 默认为显示文本）。
+    pub fn new(label: impl Into<SharedString>) -> Self {
+        let label = label.into();
         Self {
-            line: 1,
-            column: 1,
-            selection_chars: None,
-            language: "Plain Text".into(),
-            encoding: "UTF-8".into(),
-            line_ending: "LF".into(),
-            lsp_status: LspStatus::Disconnected,
-            lsp_server_name: None,
-            error_count: 0,
-            warning_count: 0,
-            info_count: 0,
-            indent_info: None,
-            git_branch: None,
-            custom_items: Vec::new(),
+            id: label.clone(),
+            label,
+            icon: None,
+            tooltip: None,
+            on_click: None,
+            muted: false,
+            active: false,
+            disabled: false,
         }
+    }
+
+    /// 设置条目稳定标识（显示文本随状态变化时必须指定，否则元素状态会被复用错位）。
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.id = id.into();
+        self
+    }
+
+    /// 设置前置图标。
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    /// 设置悬停提示。
+    pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
+        self.tooltip = Some(tooltip.into());
+        self
+    }
+
+    /// 设置点击回调（设置后条目呈现按钮样式，`disabled` 时不生效）。
+    pub fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_click = Some(Rc::new(handler));
+        self
+    }
+
+    /// 设置是否使用次前景色。
+    pub fn muted(mut self, muted: bool) -> Self {
+        self.muted = muted;
+        self
+    }
+
+    /// 设置是否为激活态（开关类条目高亮）。
+    pub fn active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// 设置是否禁用（置灰且不可点击）。
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 }
 
-/// LSP 连接状态。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LspStatus {
-    /// 已连接。
-    Connected,
-    /// 正在初始化。
-    Initializing,
-    /// 已断开。
-    Disconnected,
-    /// 出错。
-    Error,
-}
-
-/// 状态栏自定义项。
-#[derive(Clone)]
-pub struct StatusBarItem {
-    /// 显示文本。
-    pub label: SharedString,
-    /// 工具提示。
-    pub tooltip: Option<SharedString>,
-    /// 点击回调。
-    pub on_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-}
-
-/// 状态栏组件。
+/// 状态栏组件（纯值驱动，直接收左右条目）。
+#[derive(IntoElement)]
 pub struct StatusBar {
-    state: Entity<StatusBarState>,
+    left_items: Vec<StatusBarItem>,
+    right_items: Vec<StatusBarItem>,
+    style: StyleRefinement,
 }
 
 impl StatusBar {
     /// 创建新的状态栏。
-    pub fn new(state: Entity<StatusBarState>) -> Self {
-        Self { state }
+    pub fn new() -> Self {
+        Self {
+            left_items: Vec::new(),
+            right_items: Vec::new(),
+            style: StyleRefinement::default(),
+        }
+    }
+
+    /// 设置左侧条目。
+    pub fn left(mut self, items: Vec<StatusBarItem>) -> Self {
+        self.left_items = items;
+        self
+    }
+
+    /// 设置右侧条目。
+    pub fn right(mut self, items: Vec<StatusBarItem>) -> Self {
+        self.right_items = items;
+        self
     }
 }
 
-impl Render for StatusBar {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.state.read(cx);
+impl Styled for StatusBar {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
 
-        let lsp_indicator = match state.lsp_status {
-            LspStatus::Connected => {
-                let name = state
-                    .lsp_server_name
-                    .clone()
-                    .unwrap_or_else(|| "LSP".into());
-                h_flex()
-                    .gap_1()
-                    .child(div().w_2().h_2().rounded_full().bg(crate::green_500()))
-                    .child(div().text_xs().child(name))
-            }
-            LspStatus::Initializing => h_flex()
-                .gap_1()
-                .child(div().w_2().h_2().rounded_full().bg(crate::yellow_500()))
-                .child("LSP..."),
-            LspStatus::Disconnected => h_flex()
-                .gap_1()
-                .child(div().w_2().h_2().rounded_full().bg(crate::gray_500()))
-                .child("No LSP"),
-            LspStatus::Error => h_flex()
-                .gap_1()
-                .child(div().w_2().h_2().rounded_full().bg(crate::red_500()))
-                .child("LSP Error"),
-        };
-
-        let diagnostics = if state.error_count > 0 || state.warning_count > 0 {
-            let mut items = Vec::new();
-            if state.error_count > 0 {
-                items.push(
-                    div()
-                        .text_xs()
-                        .child(format!("{} errors", state.error_count)),
-                );
-            }
-            if state.warning_count > 0 {
-                items.push(
-                    div()
-                        .text_xs()
-                        .child(format!("{} warnings", state.warning_count)),
-                );
-            }
-            h_flex().gap_2().children(items)
-        } else {
-            div()
-        };
-
-        let position_info = h_flex()
-            .gap_1()
-            .child(
-                div()
-                    .text_xs()
-                    .child(format!("Ln {}, Col {}", state.line, state.column)),
-            )
-            .children(
-                state
-                    .selection_chars
-                    .map(|chars| div().text_xs().child(format!("({} selected)", chars))),
-            );
-
-        let language_info = h_flex()
-            .gap_2()
-            .child(div().text_xs().child(state.language.clone()))
-            .child(div().text_xs().child(state.encoding.clone()))
-            .child(div().text_xs().child(state.line_ending.clone()))
-            .children(
-                state
-                    .indent_info
-                    .as_ref()
-                    .map(|info| div().text_xs().child(info.clone())),
-            );
-
-        let git_info = state.git_branch.as_ref().map(|branch| {
-            h_flex()
-                .gap_1()
-                .child(div().text_xs().child(format!(" {}", branch)))
-        });
+impl RenderOnce for StatusBar {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = cx.theme();
+        let user_style = self.style;
 
         h_flex()
             .w_full()
@@ -201,21 +143,138 @@ impl Render for StatusBar {
             .items_center()
             .justify_between()
             .px_2()
-            .bg(crate::gray_900())
+            .bg(theme.status_bar)
+            .border_t_1()
+            .border_color(theme.status_bar_border)
             .child(
-                h_flex()
-                    .items_center()
-                    .gap_3()
-                    .child(lsp_indicator)
-                    .child(diagnostics),
+                h_flex().items_center().gap_3().children(
+                    self.left_items
+                        .iter()
+                        .map(|item| render_status_bar_item("left", item, cx)),
+                ),
             )
             .child(
-                h_flex()
-                    .items_center()
-                    .gap_3()
-                    .children(git_info)
-                    .child(position_info)
-                    .child(language_info),
+                h_flex().items_center().gap_3().children(
+                    self.right_items
+                        .iter()
+                        .map(|item| render_status_bar_item("right", item, cx)),
+                ),
             )
+            .refine_style(&user_style)
+    }
+}
+
+/// 渲染单个状态栏条目（可点击条目呈按钮样式，否则为纯文本）。
+fn render_status_bar_item(side: &'static str, item: &StatusBarItem, cx: &mut App) -> AnyElement {
+    let theme = cx.theme();
+    let clickable = item.on_click.is_some() && !item.disabled;
+    let mut element = div()
+        .id(format!("status-bar-{side}-{}", item.id))
+        .h_full()
+        .flex()
+        .items_center()
+        .gap_1()
+        .px_2()
+        .rounded(theme.radius * 0.5)
+        .text_xs()
+        .text_color(if item.muted || item.disabled {
+            theme.muted_foreground
+        } else {
+            theme.foreground
+        });
+
+    if item.disabled {
+        element = element.opacity(0.5);
+    } else if item.active {
+        element = element.bg(theme.accent.opacity(0.15));
+    }
+
+    if let Some(icon) = item.icon.clone() {
+        element = element.child(Icon::new(icon).small());
+    }
+    element = element.child(item.label.clone());
+
+    if clickable {
+        let on_click = item.on_click.clone().expect("clickable implies handler");
+        element = element
+            .cursor_pointer()
+            .hover(|this| this.bg(theme.secondary_hover))
+            .on_click(move |_, window, cx| on_click(window, cx));
+    }
+
+    if let Some(tooltip) = item.tooltip.clone() {
+        element =
+            element.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx));
+    }
+
+    element.into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StatusBar, StatusBarItem};
+    use crate::{Context, IconName, Render, SharedString, Window};
+
+    /// 测试宿主视图。
+    struct Probe {
+        left: Vec<StatusBarItem>,
+        right: Vec<StatusBarItem>,
+    }
+
+    impl Render for Probe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            StatusBar::new()
+                .left(self.left.clone())
+                .right(self.right.clone())
+        }
+    }
+
+    /// 空状态栏左右均为空。
+    #[test]
+    fn status_bar_defaults_to_empty() {
+        let bar = StatusBar::new();
+        assert!(bar.left_items.is_empty());
+        assert!(bar.right_items.is_empty());
+    }
+
+    /// 条目默认 id 取显示文本，显式 id 覆盖它。
+    #[test]
+    fn item_id_defaults_to_label() {
+        assert_eq!(StatusBarItem::new("42").id, SharedString::from("42"));
+        assert_eq!(
+            StatusBarItem::new("42").id("cursor").id,
+            SharedString::from("cursor")
+        );
+    }
+
+    /// 各形态条目可绘制（冒烟测试）。
+    #[rgpui::test]
+    fn renders_items_without_panic(cx: &mut crate::TestAppContext) {
+        let left = vec![
+            StatusBarItem::new("main")
+                .id("branch")
+                .icon(IconName::Check)
+                .on_click(|_, _| {}),
+            StatusBarItem::new("rendered")
+                .id("mode")
+                .active(true)
+                .on_click(|_, _| {}),
+        ];
+        let right = vec![
+            StatusBarItem::new("Ln 1, Col 1").id("cursor"),
+            StatusBarItem::new("3 words")
+                .id("words")
+                .muted(true)
+                .tooltip("word count"),
+            StatusBarItem::new("off").id("off").disabled(true),
+        ];
+        let (_view, cx) = cx.add_window_view(|_, _| Probe { left, right });
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
     }
 }
