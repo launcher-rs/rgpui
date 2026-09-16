@@ -2706,6 +2706,19 @@ impl App {
         self.inspector_element_registry.register(f);
     }
 
+    /// 一键启用默认检查器面板（I3 开箱即用）。
+    ///
+    /// 注册默认面板 + `Div` 布局展示；应用入口调用本方法后，
+    /// 再调 `window.toggle_inspector(cx)` 即出完整面板，共两行。
+    /// 需自定义时以 `set_inspector_renderer` 整板替换
+    /// （可复用 `crate::default_inspector_panel` 包裹扩展），
+    /// 或以 `register_inspector_element` 按状态类型扩展。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn enable_default_inspector(&mut self) {
+        self.set_inspector_renderer(Box::new(crate::inspector_panel::default_inspector_panel));
+        self.register_inspector_element(crate::inspector_panel::render_div_inspector_state);
+    }
+
     /// 初始化应用的 rgpui 默认颜色。
     ///
     /// 这些颜色可以通过 `cx.default_colors()` 访问。

@@ -17,6 +17,37 @@ impl Into<InspectorElementId> for &InspectorElementId {
     }
 }
 
+/// 检查器元素 id 的面板展示 helpers（I2 完整树行标签/展开键）。
+#[cfg(any(feature = "inspector", debug_assertions))]
+impl InspectorElementId {
+    /// 行标签：全局路径末段 id；匿名元素退回源码文件名。
+    pub fn short_label(&self) -> String {
+        if let Some(last) = self.path.global_id.0.last() {
+            last.to_string()
+        } else {
+            self.path.source_location.file().to_string()
+        }
+    }
+
+    /// 源码位置标签（`文件:行`）。
+    pub fn source_label(&self) -> String {
+        let loc = self.path.source_location;
+        format!("{}:{}", loc.file(), loc.line())
+    }
+
+    /// 跨帧稳定键：全局路径 + 实例号 + 源码位置（展开/折叠状态用）。
+    pub fn tree_key(&self) -> String {
+        let loc = self.path.source_location;
+        format!(
+            "{}#{}@{}:{}",
+            self.path.global_id,
+            self.instance_id,
+            loc.file(),
+            loc.line()
+        )
+    }
+}
+
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use conditional::*;
 
@@ -24,7 +55,7 @@ pub use conditional::*;
 mod conditional {
     use super::*;
     use crate::collections::{FxHashMap, TypeIdHashMap};
-    use crate::{AnyElement, App, Context, Empty, IntoElement, Render, Window};
+    use crate::{AnyElement, App, Bounds, Context, Empty, IntoElement, Pixels, Render, Window};
     use std::any::{Any, TypeId};
 
     /// 由元素构造源位置限定的 `GlobalElementId`。
@@ -86,9 +117,88 @@ mod conditional {
             }
         }
 
-        pub(crate) fn select(&mut self, id: InspectorElementId, window: &mut Window) {
+        /// 选中指定元素并退出拾取模式。
+        ///
+        /// 公开给检查器面板调用（如树节点点击选中画布对应区域）；
+        /// 拾取点击路径内部同样复用此方法。
+        pub fn select(&mut self, id: InspectorElementId, window: &mut Window) {
             self.set_active_element_id(id, window);
             self.pick_depth = None;
+        }
+
+        /// 按祖先层级上移选中（I1 双向映射）。
+        ///
+        /// `levels_up` 为从当前选中元素沿全局路径上移的层数：
+        /// `0` 表示保持当前选中，`1` 为父级，依此类推。
+        /// 在当前帧 `inspector_hitboxes` 注册表中按全局路径前缀反查祖先 id，
+        /// 以 hitbox 包含关系消歧同路径多实例（取包含当前选中区域的最小祖先边界）。
+        /// 成功时复用拾取高亮绘制选中区域，返回 `true`；无选中或越界返回 `false`。
+        pub fn select_ancestor(&mut self, levels_up: usize, window: &mut Window) -> bool {
+            let Some(active_id) = self.active_element_id().cloned() else {
+                return false;
+            };
+            if levels_up == 0 {
+                return true;
+            }
+            let active_global = active_id.path.global_id.clone();
+            let active_len = active_global.0.len();
+            if levels_up > active_len {
+                return false;
+            }
+            let target_len = active_len - levels_up;
+            let target_prefix = &active_global.0[..target_len];
+
+            // 当前选中区域（优先已渲染帧，退回正在绘制帧），用于包含消歧。
+            let active_bounds = window
+                .inspector_bounds_for_id(&active_id)
+                .or_else(|| window.next_inspector_bounds_for_id(&active_id));
+
+            // 收集全局路径与目标前缀精确匹配的候选祖先。
+            let mut candidates: Vec<(InspectorElementId, crate::Bounds<crate::Pixels>)> =
+                Vec::new();
+            for frame in [&window.rendered_frame, &window.next_frame] {
+                for (hitbox_id, inspector_id) in frame.inspector_hitboxes.iter() {
+                    if inspector_id.path.global_id.0.as_ref() != target_prefix {
+                        continue;
+                    }
+                    if let Some(hitbox) =
+                        frame.hitboxes.iter().find(|hitbox| hitbox.id == *hitbox_id)
+                    {
+                        candidates.push((inspector_id.clone(), hitbox.bounds));
+                    }
+                }
+            }
+            if candidates.is_empty() {
+                return false;
+            }
+
+            // 以包含关系消歧：取包含当前选中区域的最小祖先边界；
+            // 无选中区域或无包含者时退回首个候选。
+            let chosen = if let Some(active_bounds) = active_bounds.as_ref() {
+                candidates
+                    .iter()
+                    .filter(|(_, bounds)| bounds_contains(bounds, active_bounds))
+                    .min_by(|a, b| {
+                        bounds_area(&a.1)
+                            .partial_cmp(&bounds_area(&b.1))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .map(|(id, _)| id.clone())
+            } else {
+                None
+            };
+            let chosen = chosen.unwrap_or_else(|| {
+                // 去重后取首个（同一帧可能在 rendered/next 重复出现）。
+                let mut seen = std::collections::HashSet::new();
+                candidates
+                    .into_iter()
+                    .map(|(id, _)| id)
+                    .find(|id| seen.insert(id.clone()))
+                    .expect("候选非空")
+            });
+
+            self.select(chosen, window);
+            true
         }
 
         pub(crate) fn hover(&mut self, id: InspectorElementId, window: &mut Window) {
@@ -221,6 +331,36 @@ mod conditional {
                 }),
             );
         }
+    }
+
+    /// 检查器元素树节点（I2 完整树）。
+    ///
+    /// prepaint 期按实际嵌套记录 parent→children，批量大时面板侧复用 `VirtualList`；
+    /// 检查器关闭时不记录、不存储，零额外开销。
+    #[derive(Debug, Clone, Default)]
+    pub(crate) struct InspectorTreeNode {
+        /// 父节点（根为 `None`，deferred/overlay 挂为独立根）。
+        pub(crate) parent: Option<InspectorElementId>,
+        /// 子节点（绘制顺序）。
+        pub(crate) children: Vec<InspectorElementId>,
+    }
+
+    /// 判断外层边界是否包含内层边界（含相等，允许 1px 舍入误差）。
+    fn bounds_contains(outer: &Bounds<Pixels>, inner: &Bounds<Pixels>) -> bool {
+        const EPS: f32 = 1.0;
+        let outer_right = outer.origin.x.as_f32() + outer.size.width.as_f32();
+        let outer_bottom = outer.origin.y.as_f32() + outer.size.height.as_f32();
+        let inner_right = inner.origin.x.as_f32() + inner.size.width.as_f32();
+        let inner_bottom = inner.origin.y.as_f32() + inner.size.height.as_f32();
+        outer.origin.x.as_f32() <= inner.origin.x.as_f32() + EPS
+            && outer.origin.y.as_f32() <= inner.origin.y.as_f32() + EPS
+            && outer_right + EPS >= inner_right
+            && outer_bottom + EPS >= inner_bottom
+    }
+
+    /// 边界面积（用于包含消歧时取最小祖先）。
+    fn bounds_area(bounds: &Bounds<Pixels>) -> f32 {
+        bounds.size.width.as_f32() * bounds.size.height.as_f32()
     }
 }
 

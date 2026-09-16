@@ -429,6 +429,12 @@ impl<E: Element> Drawable<E> {
                 }
 
                 let node_id = window.next_frame.dispatch_tree.push_node();
+                // 检查器完整树（I2）：prepaint 嵌套即父子关系，仅打开时记录。
+                #[cfg(any(feature = "inspector", debug_assertions))]
+                let inspector_pushed = inspector_id
+                    .as_ref()
+                    .map(|id| window.push_inspector_tree(id))
+                    .unwrap_or(false);
                 let mut prepaint = self.element.prepaint(
                     global_id.as_ref(),
                     inspector_id.as_ref(),
@@ -437,6 +443,8 @@ impl<E: Element> Drawable<E> {
                     window,
                     cx,
                 );
+                #[cfg(any(feature = "inspector", debug_assertions))]
+                window.pop_inspector_tree(inspector_pushed);
                 window.next_frame.dispatch_tree.pop_node();
 
                 // DOM 后端：元素 prepaint 完成后弹出其 DOM key，保持 DOM 栈与

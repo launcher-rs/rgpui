@@ -119,6 +119,10 @@ mod input;
 /// 检查器 - 开发调试用的 UI 检查工具
 mod inspector;
 
+/// 检查器默认面板 - 开箱即用的检查器 UI（检查器打开时可用）
+#[cfg(any(feature = "inspector", debug_assertions))]
+pub mod inspector_panel;
+
 /// 交互系统 - 定义 Focusable、ClickArea 等交互行为 trait
 mod interactive;
 
@@ -262,10 +266,6 @@ pub mod config_store;
 
 /// Chat UI 组件 - 聊天消息展示
 pub mod chat;
-
-/// 旧模块路径兼容（1.2.0 起 `chat_ui` 迁移到 `chat`，1.3.0 删除）。
-#[deprecated(since = "1.2.0", note = "已迁移到 rgpui::chat")]
-pub use chat as chat_ui;
 
 /// FPS 监控 HUD - 实时帧率/CPU/内存监控
 pub mod fps_hud;
@@ -465,6 +465,9 @@ pub use crate::refineable::*;
 pub use input::*;
 /// 重导出检查器相关类型
 pub use inspector::*;
+/// 重导出检查器默认面板（检查器打开时可用）
+#[cfg(any(feature = "inspector", debug_assertions))]
+pub use inspector_panel::{default_inspector_panel, render_div_inspector_state};
 /// 重导出交互系统相关类型（Focusable、ClickArea 等）
 pub use interactive::*;
 use key_dispatch::*;

@@ -316,7 +316,12 @@ impl<V: View> Element for ViewElement<V> {
         if let Some(entity_id) = self.entity_id {
             // Stateful path: create a reactive boundary.
             window.with_rendered_view(entity_id, |window| {
-                let caching_disabled = window.is_inspector_picking(cx);
+                // 检查器打开期间禁用视图缓存，保证树/hitbox 完整新鲜；
+                // 关闭时零额外开销（条件恒为 false）。
+                #[cfg(any(feature = "inspector", debug_assertions))]
+                let caching_disabled = window.is_inspector_open();
+                #[cfg(not(any(feature = "inspector", debug_assertions)))]
+                let caching_disabled = false;
                 match self.cached_style.as_ref() {
                     Some(style) if !caching_disabled => {
                         let mut root_style = Style::default();
@@ -377,6 +382,11 @@ impl<V: View> Element for ViewElement<V> {
                     |element_state, window| {
                         let content_mask = window.content_mask();
                         let text_style = window.text_style();
+                        // 检查器打开时禁用 prepaint 复用，保证树记录完整。
+                        #[cfg(any(feature = "inspector", debug_assertions))]
+                        let inspector_open = window.is_inspector_open();
+                        #[cfg(not(any(feature = "inspector", debug_assertions)))]
+                        let inspector_open = false;
 
                         if let Some(mut element_state) = element_state
                             && element_state.cache_key.bounds == bounds
@@ -384,6 +394,7 @@ impl<V: View> Element for ViewElement<V> {
                             && element_state.cache_key.text_style == text_style
                             && !window.dirty_views.contains(&entity_id)
                             && !window.refreshing
+                            && !inspector_open
                         {
                             let prepaint_start = window.prepaint_index();
                             window.reuse_prepaint(element_state.prepaint_range.clone());
@@ -453,7 +464,10 @@ impl<V: View> Element for ViewElement<V> {
         if let Some(entity_id) = self.entity_id {
             // Stateful path.
             window.with_rendered_view(entity_id, |window| {
-                let caching_disabled = window.is_inspector_picking(cx);
+                #[cfg(any(feature = "inspector", debug_assertions))]
+                let caching_disabled = window.is_inspector_open();
+                #[cfg(not(any(feature = "inspector", debug_assertions)))]
+                let caching_disabled = false;
                 if self.cached_style.is_some() && !caching_disabled {
                     window.with_element_state::<ViewElementState, _>(
                         global_id.unwrap(),
