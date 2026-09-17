@@ -501,31 +501,28 @@ impl RenderOnce for OTPInput {
             cx.subscribe(
                 &state_entity,
                 move |_emitter: Entity<OTPState>, event: &OTPInputEvent, cx: &mut App| {
-                    // 回调签名含 Window，经活动窗口分发
-                    // （OTP 事件源于窗口内的按键输入，触发时必有活动窗口）。
+                    // 回调签名含 Window，但订阅触发常在按键分发中（窗口正被 take），
+                    // 此时同步 update 必失败（F12 同款教训），故经 spawn 延后分发；
+                    // 无活动窗口时静默跳过。
                     let Some(window) = cx.active_window() else {
                         return;
                     };
-                    match event {
+                    let (callback, value) = match event {
                         OTPInputEvent::Change(value) => {
-                            if let Some(callback) = on_change_callback.as_ref() {
-                                let callback = callback.clone();
-                                let value = value.clone();
-                                let _ = window.update(cx, move |_, window, cx| {
-                                    callback(value, window, cx);
-                                });
-                            }
+                            (on_change_callback.clone(), value.clone())
                         }
                         OTPInputEvent::Complete(value) => {
-                            if let Some(callback) = on_complete_callback.as_ref() {
-                                let callback = callback.clone();
-                                let value = value.clone();
-                                let _ = window.update(cx, move |_, window, cx| {
-                                    callback(value, window, cx);
-                                });
-                            }
+                            (on_complete_callback.clone(), value.clone())
                         }
-                        _ => {}
+                        _ => return,
+                    };
+                    if let Some(callback) = callback {
+                        cx.spawn(async move |cx| {
+                            _ = window.update(cx, |_, window, cx| {
+                                callback(value, window, cx);
+                            });
+                        })
+                        .detach();
                     }
                 },
             )
@@ -666,5 +663,81 @@ impl RenderOnce for OTPInput {
 
         root.style().refine(&user_style);
         root
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本文件有 `use crate::*`，会把根导出的
+    // `test` 过程宏引进作用域，遮蔽内置 `#[test]` 导致宏无限递归。
+    use super::{OTPInput, OTPState};
+    use crate::{AppContext as _, Context, Entity, Render};
+    use std::sync::{Arc, Mutex};
+
+    /// 测试宿主视图（渲染带回调的 OTP 输入）。
+    struct Probe {
+        state: Entity<OTPState>,
+        fired: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Probe {
+        fn new(
+            _window: &mut crate::Window,
+            cx: &mut Context<Self>,
+            state: Entity<OTPState>,
+            fired: Arc<Mutex<Vec<String>>>,
+        ) -> Self {
+            let _ = cx;
+            Self { state, fired }
+        }
+    }
+
+    impl Render for Probe {
+        fn render(
+            &mut self,
+            _window: &mut crate::Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            let fired = self.fired.clone();
+            OTPInput::new(&self.state).on_change(move |value: String, _, _| {
+                fired.lock().unwrap().push(value);
+            })
+        }
+    }
+
+    /// 分发中触发的订阅也必须送达：订阅回调常在按键分发中运行（窗口正被 take），
+    /// 同步 update 窗口必失败，故实现经 spawn 延后；本用例复现该路径并断言送达。
+    #[rgpui::test]
+    fn otp_callbacks_fire_when_emitted_during_dispatch(cx: &mut crate::TestAppContext) {
+        let fired = Arc::new(Mutex::new(Vec::<String>::new()));
+        let state = cx.new(|cx| OTPState::new(cx, 4));
+        let state_for_probe = state.clone();
+        let fired_for_probe = fired.clone();
+        let (_view, window_cx) = cx.add_window_view(move |window, cx| {
+            Probe::new(window, cx, state_for_probe, fired_for_probe)
+        });
+        window_cx.update(|window, cx| {
+            // 测试平台的 App::activate 是空实现，直接激活窗口以设置 active_window。
+            window.activate_window();
+            // 首帧绘制注册订阅。
+            let _ = window.draw(cx);
+        });
+        // 在窗口被 take 的上下文中触发（复现按键分发路径）。
+        window_cx.update(|_, cx| {
+            state.update(cx, |state, cx| state.set_value("12", cx));
+        });
+        // 泵延后任务再断言（F12 同款：spawn 任务在后续泵送中执行）。
+        // 注：不断言精确次数——render 每帧都会 subscribe（预存泄漏，非本项范围），
+        // 这里只证明分发中触发的订阅回调有送达（旧同步实现会静默吞掉）。
+        window_cx.run_until_parked();
+        window_cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let fired = fired.lock().unwrap();
+        assert!(
+            !fired.is_empty(),
+            "分发中触发的 OTP 订阅回调被吞（同步 update 窗口必失败）"
+        );
+        assert!(fired.iter().all(|value| value == "12"));
     }
 }
