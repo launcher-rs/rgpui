@@ -16,7 +16,9 @@
 - **I3 检查面板内置化**：新增 `rgpui::inspector_panel` +
   `App::enable_default_inspector()`（两行出完整面板）；
   `examples/inspector/` 瘦身为纯默认面板演示；新增 `examples/inspector_custom/`
- （全自写面板 + 覆盖 Div 展示的 living recipe，两示例演示内容各自独立）
+ （全自写面板 + 覆盖 Div 展示的 living recipe，两示例演示内容各自独立）；
+  祖先链面板移除（完整树唯一）+ 顶栏固定 + 删调试按钮只留 F12 +
+  F12 全局绑定修复 + release 自动剥离（示例默认不开 feature）
 - **I4 自定义接口文档化**：`docs/rgpui-book/09-inspector.md` 检查器章节
   （启用/分工表/双 recipe/树与选中 API）
 
