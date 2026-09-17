@@ -638,19 +638,19 @@ mod tests {
 
         // 根 > div(id="a") > 文本1、文本2
         let a = ElementId::Name("a".into());
-        let div_key = builder.register(div_node(), true, &[a.clone()]);
-        let text1_key = builder.register(text_node("hello"), false, &[a.clone()]);
+        let div_key = builder.register(div_node(), true, std::slice::from_ref(&a));
+        let text1_key = builder.register(text_node("hello"), false, std::slice::from_ref(&a));
         builder.exit();
-        let text2_key = builder.register(text_node("world"), false, &[a.clone()]);
+        let text2_key = builder.register(text_node("world"), false, std::slice::from_ref(&a));
         builder.exit();
         builder.exit();
 
         let tree = builder.finish();
 
         // key 语义：id 元素仅由 global_id 标识；匿名兄弟在父下按 1、2 计数
-        assert_eq!(div_key, key(&[a.clone()], &[]));
-        assert_eq!(text1_key, key(&[a.clone()], &[1]));
-        assert_eq!(text2_key, key(&[a.clone()], &[2]));
+        assert_eq!(div_key, key(std::slice::from_ref(&a), &[]));
+        assert_eq!(text1_key, key(std::slice::from_ref(&a), &[1]));
+        assert_eq!(text2_key, key(std::slice::from_ref(&a), &[2]));
 
         // 父子关系
         let children = tree.children.get(&tree.root).unwrap();
@@ -674,22 +674,22 @@ mod tests {
 
         // 根 > div(id="a") > 匿名div > 文本
         let a = ElementId::Name("a".into());
-        let div_key = builder.register(div_node(), true, &[a.clone()]);
-        let anon_div = builder.register(div_node(), false, &[a.clone()]);
-        let text_key = builder.register(text_node("x"), false, &[a.clone()]);
+        let div_key = builder.register(div_node(), true, std::slice::from_ref(&a));
+        let anon_div = builder.register(div_node(), false, std::slice::from_ref(&a));
+        let text_key = builder.register(text_node("x"), false, std::slice::from_ref(&a));
         builder.exit();
         builder.exit();
 
         let tree = builder.finish();
 
         // 匿名 div 的 dom_path=[1]；其匿名子文本的 dom_path 追加为 [1,1]，与父不冲突
-        assert_eq!(anon_div, key(&[a.clone()], &[1]));
-        assert_eq!(text_key, key(&[a.clone()], &[1, 1]));
+        assert_eq!(anon_div, key(std::slice::from_ref(&a), &[1]));
+        assert_eq!(text_key, key(std::slice::from_ref(&a), &[1, 1]));
 
         let div_children = tree.children.get(&div_key).unwrap();
         assert_eq!(div_children, &vec![anon_div.clone()]);
         let anon_children = tree.children.get(&anon_div).unwrap();
-        assert_eq!(anon_children, &vec![text_key.clone()]);
+        assert_eq!(anon_children, &vec![text_key]);
     }
 
     #[test]
@@ -700,18 +700,18 @@ mod tests {
         // 根 > div(id="a") > div(id="b")
         let a = ElementId::Name("a".into());
         let b = ElementId::Name("b".into());
-        let div_a = builder.register(div_node(), true, &[a.clone()]);
+        let div_a = builder.register(div_node(), true, std::slice::from_ref(&a));
         let div_b = builder.register(div_node(), true, &[a.clone(), b.clone()]);
         builder.exit();
         builder.exit();
 
         let tree = builder.finish();
 
-        assert_eq!(div_a, key(&[a.clone()], &[]));
-        assert_eq!(div_b, key(&[a.clone(), b.clone()], &[]));
+        assert_eq!(div_a, key(std::slice::from_ref(&a), &[]));
+        assert_eq!(div_b, key(&[a, b], &[]));
         let root_children = tree.children.get(&tree.root).unwrap();
         assert_eq!(root_children, &vec![div_a.clone()]);
         let a_children = tree.children.get(&div_a).unwrap();
-        assert_eq!(a_children, &vec![div_b.clone()]);
+        assert_eq!(a_children, &vec![div_b]);
     }
 }
