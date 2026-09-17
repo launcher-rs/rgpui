@@ -54,7 +54,7 @@
   `HotkeyListInput::on_change` 由 `&[HotkeyValue]` 改按值 `Vec<HotkeyValue>`；
   `OTPInput::on_change` / `on_complete` 补 `&mut Window`
   （订阅常在按键分发中触发、同步拿不到窗口，故经 `spawn` 延后分发，
-  无活动窗口时跳过；回调不再与触发同步，见迁移指南第六节）；
+  无活动窗口时跳过；回调不再与触发同步，见迁移指南第七节）；
   `PopupMenuItem::on_click` / `Notification::on_click` / `on_close` /
   `ListItem::on_click` / `SegmentedNav::on_change` / `Command::on_select` /
   `CommandPalette::on_close` 由 `Rc` / `Box` 转 `Arc + Send + Sync`

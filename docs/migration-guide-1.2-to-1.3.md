@@ -27,7 +27,112 @@ C1 + C2（H1）两轮回调签名统一：约 30 个组件的 `on_click` / `on_c
 
 ---
 
-## 二、签名变更（按值传递 + 补参数）
+## 二、易混点详解（先看懂命名，再动手改）
+
+总原则只有一条：**方法跟着组件的性质走，不跟着需求演变走**。
+判断时问两问——（1）这个组件产出值吗？（2）值归谁所有？
+
+### Button：先点击、后想加值变更，要换方法吗？
+
+不用。`Button` 永远不产出值，所以永远是 `on_click`。
+计数器、打开对话框、提交表单——这些都是**应用**的状态，
+在点击回调里自己改就行，方法不变：
+
+```rust
+// 计数器归应用所有 → 保持 on_click，在里面改应用状态
+Button::new("add").label("+1").on_click(cx.listener(
+    |this: &mut MyView, _: &ClickEvent, _, cx| {
+        this.count += 1;
+        cx.notify();
+    },
+));
+```
+
+哪天你发现“这个按钮其实是个开关”，那说明**组件选错了**——
+换成拥有值的组件，方法自然就换了：
+
+```rust
+// 开关拥有 checked 值 → on_change(bool)，新值按值给到你
+Switch::new().checked(self.notify).on_change(cx.listener_value(
+    |this: &mut MyView, checked: bool, _, cx| {
+        this.notify = checked;
+        cx.notify();
+    },
+));
+```
+
+### Tab vs TabBar：同一次点击，两种视角
+
+这是理解整套规则最好的例子。用户点了一下“设置”页签，
+同一时刻发生两件事：单个 `Tab` 被点了（事件），
+`TabBar` 的选中下标变了（值）。所以：
+
+```rust
+TabBar::new("tabs")
+    .selected_index(self.selected)
+    // 栏拥有选中下标 → on_change(usize)
+    .on_change(cx.listener_value(|this, ix: usize, _, cx| {
+        this.selected = ix;
+        cx.notify();
+    }))
+    .child(Tab::new().label("首页"))
+    // 单个 Tab 只报告被点 → on_click(&ClickEvent)
+    .child(Tab::new().label("设置").on_click(cx.listener(
+        |_, _: &ClickEvent, _, _| { /* 偶尔需要单签特殊处理才用 */ },
+    )));
+```
+
+日常只用 `TabBar::on_change` 即可；`Tab::on_click` 留给极少数
+“某个签点击有额外动作”的场景。
+
+### BreadcrumbItem / Link：看着像“选东西”，为什么是 on_click？
+
+因为它们**不拥有值**：点完还是那个链接，组件自身没有任何状态变化。
+它们是导航触发器，不是值生产者，所以是纯点击。1.3 只是给它们补上了
+`&ClickEvent` 参数，改法是机械的——闭包首部加一个 `_,`：
+
+```rust
+// 旧：Link::new("帮助").on_click(move |_, cx| { /* … */ });
+// 新：
+Link::new("帮助").on_click(move |_, _, cx| { /* … */ });
+```
+
+### InteractiveText：明明是点击，为什么改成 on_change？
+
+反例证明规则。文本里有多个可点范围（如链接），点击产出的是
+“第几个范围”这个**索引值**，调用方靠它区分点中了哪个链接。
+有值产出 → 值变更 → 1.3 从 `on_click(ranges, …)` 改名
+`on_change(ranges, …)`（`ranges` 参数保留，它声明“哪些范围可点”）：
+
+```rust
+// 旧：InteractiveText::new(id, styled).on_click(ranges, move |idx, _, cx| { … });
+// 新：
+InteractiveText::new(id, styled).on_change(ranges, move |idx, _, cx| {
+    if let Some(url) = urls.get(idx) {
+        cx.open_url(url);
+    }
+});
+```
+
+### Command：on_select 为什么保留原名？
+
+`Command::on_select` 看似值变更，实则是**执行语义**：选中即运行命令，
+没有“新值”交给调用方（回调签名 `Fn(&mut Window, &mut App)` 连值都没有）。
+改名反而误导，所以 breaking 大版本里特意保留原名。迁移时**不要动它**，
+同理 `CommandPalette::on_close`。
+
+### 小结：决策两问
+
+1. 组件产出值吗？不产出（Button / Link / BreadcrumbItem / Tab / Command）→
+   `on_click`（或执行语义原名），需求再变也不换。
+2. 产出值？看类型：单值（bool / usize / SharedString / …）→ `on_change` 配
+   `listener_value`；双值（`Select(usize, SharedString)`、
+   `Carousel(旧下标, 新下标)`）→ `on_change` 配实体直接捕获（没有配套
+   listener 变体，见第六节）。
+
+---
+
+## 三、签名变更（按值传递 + 补参数）
 
 ### 按值传递（去引用）
 
@@ -55,7 +160,7 @@ Checkbox::new("notify").on_click(cx.listener(|this, checked: &bool, _, cx| {
     cx.notify();
 }));
 
-// 新（改名 + 按值 + listener_value，见第五节）：
+// 新（改名 + 按值 + listener_value，见第六节）：
 Checkbox::new("notify").on_change(cx.listener_value(
     |this, checked: bool, _, cx| {
         this.notify = checked;
@@ -99,7 +204,7 @@ Link::new("帮助").on_click(move |_, _, cx| { /* … */ });
 
 ---
 
-## 三、存储与线程界限（最易大面积报错的一节）
+## 四、存储与线程界限（最易大面积报错的一节）
 
 所有 `on_click` / `on_change`（及 `Command` 系）存储统一为
 `Arc<dyn Fn(…) + Send + Sync + 'static>`。**闭包若捕获了 `Rc` / `RefCell` /
@@ -128,7 +233,7 @@ Checkbox::new("x").on_change(move |checked: bool, _, _| {
 
 ---
 
-## 四、未改动的回调（仍 `Rc` / `Box`，非本次范围）
+## 五、未改动的回调（仍 `Rc` / `Box`，非本次范围）
 
 以下**没变**，不要顺手“统一”它们（类型不同，改了反而编译失败）：
 
@@ -143,7 +248,7 @@ Checkbox::new("x").on_change(move |checked: bool, _, _| {
 
 ---
 
-## 五、`listener` vs `listener_value`：看签名选
+## 六、`listener` vs `listener_value`：看签名选
 
 ```rust
 use rgpui::{Checkbox, prelude::*};
@@ -175,7 +280,7 @@ Checkbox::new("notify").checked(true).on_change(cx.listener_value(
 
 ---
 
-## 六、行为注记（签名之外的语义变化）
+## 七、行为注记（签名之外的语义变化）
 
 - **OTP 回调经 `spawn` 延后**：`OTPInput::on_change` / `on_complete`
   的触发常在按键分发中（窗口正被 take），同步 `update` 窗口必失败
@@ -206,7 +311,7 @@ StatusBar::new()
 
 ---
 
-## 七、其他 breaking 与新增（回调之外）
+## 八、其他 breaking 与新增（回调之外）
 
 - **删除 `chat_ui` 别名**（Z1）：1.2.0 已迁移到 `chat`，1.3.0 按计划删除。
   全局替换 `chat_ui` → `chat` 即可（内部已确认零引用旧路径）。
@@ -219,7 +324,7 @@ StatusBar::new()
 
 ---
 
-## 八、迁移步骤与验证
+## 九、迁移步骤与验证
 
 1. 全局替换方法名（注意同名不同义，逐处确认）：
    `Checkbox|Switch|Radio|RadioGroup|TabBar` 的 `.on_click(` →
@@ -230,7 +335,7 @@ StatusBar::new()
 2. 按第二表改闭包参数（去 `&` / 补事件参数 / 补 `Window`）。
 3. 修 `Send` 报错：`Rc`/`Cell`/`RefCell` 捕获换 `Arc<Mutex/Atomic>` 或
    `Entity`，视图回写换 `listener_value`。
-4. `StatusBarState` 相关代码按第六节重写；`chat_ui` 全局替换为 `chat`。
+4. `StatusBarState` 相关代码按第七节重写；`chat_ui` 全局替换为 `chat`。
 5. 验证（与 CI 同口径）：
 
 ```text
