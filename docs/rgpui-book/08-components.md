@@ -158,9 +158,20 @@ TabBar::new("tabs")
 2. **值变更一律 `on_change`**：`Fn(Value, &mut Window, &mut App)`，值一律按值传递
    （`bool` / `usize` / `f32` / `Hsla` / `NaiveDate` / `SharedString` / `Vec<T>`；
    `SharedString` / `Vec` 均为 Arc-backed 廉价克隆，回调同步执行无生命周期问题）。
-   注意改名项：`Checkbox` / `Switch` / `Radio` / `RadioGroup` / `TabBar` 的旧
-   `on_click` 改为 `on_change`；`Sidebar` / `Upload` / `NavigationMenu` 的旧
-   `on_select` 改为 `on_change`。`Carousel::on_change` 保留 `(旧下标, 新下标)` 双值。
+    注意改名项：`Checkbox` / `Switch` / `Radio` / `RadioGroup` / `TabBar` 的旧
+    `on_click` 改为 `on_change`；`Sidebar` / `Upload` / `NavigationMenu` 的旧
+    `on_select` 改为 `on_change`。`Carousel::on_change` 保留 `(旧下标, 新下标)` 双值。
+    C2（同版本收尾）：`InteractiveText::on_click` 改为 `on_change`（范围索引按值）；
+    `CompletionPopup::on_select` 改为 `on_change`（补全索引按值）。
+    补参数项：`Link::on_click` / `StatusBarItem::on_click` 补上 `&ClickEvent`；
+    `HotkeyInput::on_change` 由 `Option<&HotkeyValue>` 改按值 `Option<HotkeyValue>`，
+    `HotkeyListInput::on_change` 由 `&[HotkeyValue]` 改按值 `Vec<HotkeyValue>`，
+    `OTPInput::on_change` / `on_complete` 补上 `&mut Window`
+    （经活动窗口分发，事件本就源于窗口按键）。
+    存 `Arc` 项：`PopupMenuItem::on_click` / `Notification::on_click` /
+    `Notification::on_close` / `ListItem::on_click` / `SegmentedNav::on_change` /
+    `Command::on_select` / `CommandPalette::on_close` 由 `Rc` / `Box` 转 `Arc`
+    （`Command` 的 `on_select` / `on_close` 是执行语义，保留原名）。
 3. **存储统一 `Arc + Send + Sync + 'static`**（向严格方向统一，
    `Entity` 捕获不受影响）。
 

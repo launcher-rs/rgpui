@@ -45,6 +45,29 @@
 
 - **Z1**：删除 `chat_ui` deprecated 别名（1.2.0 迁移到 `chat`，按计划 1.3.0 删除）
 
+### 第二批加菜（H，breaking 一次收完）
+
+- **H1 回调残留统一（C2）**：`InteractiveText::on_click`→`on_change`（范围索引按值）；
+  `CompletionPopup::on_select`→`on_change`（补全索引按值）；
+  `Link::on_click` / `StatusBarItem::on_click` 补 `&ClickEvent`；
+  `HotkeyInput::on_change` 由 `Option<&HotkeyValue>` 改按值 `Option<HotkeyValue>`，
+  `HotkeyListInput::on_change` 由 `&[HotkeyValue]` 改按值 `Vec<HotkeyValue>`；
+  `OTPInput::on_change` / `on_complete` 补 `&mut Window`（经活动窗口分发）；
+  `PopupMenuItem::on_click` / `Notification::on_click` / `on_close` /
+  `ListItem::on_click` / `SegmentedNav::on_change` / `Command::on_select` /
+  `CommandPalette::on_close` 由 `Rc` / `Box` 转 `Arc + Send + Sync`
+  （`Command` 执行语义保留原名）；book 回调章节同步
+- **H2 全局动作 helper**：`App::on_global_action(action, keystroke, handler)`
+ （全局绑定 + 打活动窗口 + spawn 延后更新三件套，F12 沉淀；`handler` 只要求
+  `'static`）；两检查器示例改吃 helper，book 同步
+- **H3 i18n 小补强**：`I18nText::translate_global(cx)`（读全局管理器，未设置回退 key）
+- **H4**：`rgpui_story` tabs 页加静态 `Tabs` 演示
+- **H5 面板插槽化**：`InspectorPanelSlots::{header, section}` +
+  `App::set_inspector_panel_slots`（默认外皮 `default_inspector_header` /
+  `default_inspector_section` 可复用包裹；注册表状态展示不经过 section 插槽）+
+  回归测试 + book recipe
+- **H6**：新增 `examples/v1_3_showcase`（1.3 新 API 集中演示二进制）
+
 ## [1.2.2] - 2026-09-15
 
 ### 修复

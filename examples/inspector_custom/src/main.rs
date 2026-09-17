@@ -15,8 +15,7 @@
 use rgpui::input_ui::{Input, InputState};
 #[cfg(any(feature = "inspector", debug_assertions))]
 use rgpui::{
-    AnyElement, ButtonVariants as _, Div, DivInspectorState, Inspector, InspectorElementId,
-    KeyBinding, actions,
+    AnyElement, ButtonVariants as _, Div, DivInspectorState, Inspector, InspectorElementId, actions,
 };
 use rgpui::{
     App, Bounds, Button, Checkbox, Context, Entity, IntoElement, ParentElement, Render,
@@ -429,9 +428,8 @@ fn run_example() {
         rgpui::menu::init(cx);
 
         // 下面整个块仅调试版本编译：release 下无检查器代码、无 F12 绑定。
-        // F12 用全局绑定（无上下文）+ 全局监听打到活动窗口，不依赖视图焦点链。
-        // 注意监听内必须 spawn 延后更新：按键分发中窗口已被 take 出来，
-        // 同步 update_window 必失败（教训：勿用 `_ =` 吞掉 Result）。
+        // F12 用全局动作 helper（全局绑定 + 打活动窗口 + spawn 延后更新），
+        // 不依赖视图焦点链。
         #[cfg(any(feature = "inspector", debug_assertions))]
         {
             cx.enable_default_inspector();
@@ -439,16 +437,8 @@ fn run_example() {
             cx.set_inspector_renderer(Box::new(custom_inspector_panel));
             cx.register_inspector_element(custom_div_state);
 
-            cx.bind_keys([KeyBinding::new("f12", ToggleInspector, None)]);
-            cx.on_action(|_: &ToggleInspector, cx: &mut App| {
-                if let Some(window) = cx.active_window() {
-                    cx.spawn(async move |cx| {
-                        _ = window.update(cx, |_, window, cx| {
-                            window.toggle_inspector(cx);
-                        });
-                    })
-                    .detach();
-                }
+            cx.on_global_action(ToggleInspector, Some("f12"), |window, cx| {
+                window.toggle_inspector(cx);
             });
         }
 

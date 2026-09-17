@@ -576,7 +576,7 @@ impl Render for EditorDemo {
             .editor
             .read_with(cx, |state, _| state.completion_popup().clone());
         let demo_for_popup = demo.clone();
-        let popup_el = rgpui::lsp::CompletionPopup::new(popup).on_select(move |ix, window, cx| {
+        let popup_el = rgpui::lsp::CompletionPopup::new(popup).on_change(move |ix, window, cx| {
             demo_for_popup.update(cx, |this, cx| {
                 this.editor.update(cx, |state, cx| {
                     state.accept_completion(Some(ix), window, cx);

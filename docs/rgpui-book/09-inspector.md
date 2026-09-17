@@ -15,23 +15,19 @@ window.toggle_inspector(cx);
 
 F12 这类全局开关不要用带上下文绑定 + 视图 `on_action`：
 无焦点时分发路径只有 root，上下文匹配不上、冒泡也到不了视图 handler，
-面板聚焦时同样到不了（面板是独立根）。正确接法是全局绑定（无上下文）+
-全局监听打到活动窗口，监听内 spawn 延后更新（分发中窗口已被 take，
-同步 `update_window` 必失败，勿用 `_ =` 吞 Result）：
+面板聚焦时同样到不了（面板是独立根）。正确接法是全局动作 helper
+（全局绑定 + 打活动窗口 + spawn 延后更新三件套；分发中窗口已被 take，
+同步 `update_window` 必失败，故监听内 spawn 延后）：
 
 ```rust
-cx.bind_keys([KeyBinding::new("f12", ToggleInspector, None)]);
-cx.on_action(|_: &ToggleInspector, cx: &mut App| {
-    if let Some(window) = cx.active_window() {
-        cx.spawn(async move |cx| {
-            _ = window.update(cx, |_, window, cx| {
-                window.toggle_inspector(cx);
-            });
-        })
-        .detach();
-    }
+cx.on_global_action(ToggleInspector, Some("f12"), |window, cx| {
+    window.toggle_inspector(cx);
 });
 ```
+
+`App::on_global_action(action, keystroke, handler)`：`keystroke` 为 `None`
+则只监听不绑定；监听只打活动窗口（无窗口静默跳过）；`handler` 只要求
+`'static`（允许 `Rc` 捕获，分发经本地 `spawn`，不需要 `Send + Sync`）。
 
 ## 发布剥离（推荐的上线姿势）
 
@@ -72,6 +68,33 @@ release 想保留（如内部工具）：`--release --features inspector`
 |------|--------|--------|
 | `App::set_inspector_renderer` | 整板替换 | 面板整体风格/结构都要改时 |
 | `App::register_inspector_element` | 按状态类型扩展 | 只想为某种元素状态加一块展示时（如自定义元素的布局信息） |
+| `App::set_inspector_panel_slots` | 顶栏/段落换皮 | 默认面板够用、只想换顶栏或信息卡外皮时（不必整板替换） |
+
+### recipe 0：插槽换皮（顶栏/段落，不整板替换）
+
+```rust
+use rgpui::{InspectorPanelSlots, default_inspector_header, default_inspector_section};
+use std::sync::Arc;
+
+cx.enable_default_inspector();
+cx.set_inspector_panel_slots(InspectorPanelSlots {
+    // 包裹扩展：默认顶栏前加横幅；
+    // 完全自写顶栏也行（签名见 InspectorHeaderSlot）。
+    header: Some(Arc::new(|inspector, window, cx| {
+        rgpui::v_flex()
+            .child(rgpui::div().child("定制横幅"))
+            .child(default_inspector_header(inspector, window, cx))
+            .into_any_element()
+    })),
+    // 段落外皮：标题 + 正文；注册表状态展示不经过它，保持全自定义。
+    section: Some(Arc::new(|title, body| {
+        default_inspector_section(title, body)
+    })),
+});
+```
+
+不设插槽即默认外皮；`examples/inspector/` 的 `panel_slots_render_without_panic`
+即此 recipe 的回归测试。
 
 ### recipe 1：整板替换（全自写面板）
 

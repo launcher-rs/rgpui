@@ -7,10 +7,36 @@
 
 use crate::{
     AnyElement, App, Button, ButtonVariants, Context, Div, DivInspectorState, Global, Inspector,
-    InspectorElementId, IntoElement, ParentElement, Window, div, h_flex, prelude::*, px, rgb,
-    v_flex,
+    InspectorElementId, IntoElement, ParentElement, SharedString, Window, div, h_flex, prelude::*,
+    px, rgb, v_flex,
 };
 use std::collections::HashSet;
+use std::sync::Arc;
+
+/// 顶栏插槽：接管标题/状态徽标/拾取按钮/提示整块（默认见 [`default_inspector_header`]）。
+pub type InspectorHeaderSlot =
+    Arc<dyn Fn(&mut Inspector, &mut Window, &mut Context<Inspector>) -> AnyElement + Send + Sync>;
+
+/// 段落插槽：包装面板自有信息卡（标题 + 正文；默认见 [`default_inspector_section`]）。
+///
+/// 注册表状态展示（`register_inspector_element` 接入的，如 Div 布局）不经过它，
+/// 保持全自定义。
+pub type InspectorSectionSlot =
+    Arc<dyn Fn(Option<SharedString>, AnyElement) -> AnyElement + Send + Sync>;
+
+/// 默认面板插槽（H5）：不整板替换也能换顶栏/段落外皮。
+///
+/// 经 `App::set_inspector_panel_slots` 设置（`Global`，默认空即默认外皮）；
+/// `default_inspector_panel` 渲染时读取。
+#[derive(Default)]
+pub struct InspectorPanelSlots {
+    /// 顶栏插槽（`None` 走 [`default_inspector_header`]）。
+    pub header: Option<InspectorHeaderSlot>,
+    /// 段落插槽（`None` 走 [`default_inspector_section`]）。
+    pub section: Option<InspectorSectionSlot>,
+}
+
+impl Global for InspectorPanelSlots {}
 
 /// 完整树单帧最多渲染行数（超量截断并提示，面板外层已可滚动）。
 const FULL_TREE_ROW_CAP: usize = 800;
@@ -37,20 +63,11 @@ pub fn default_inspector_panel(
     window: &mut Window,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
-    let entity = cx.entity();
-    let picking = inspector.is_picking();
     // 先物化选中信息为 owned 数据，结束借用后再渲染各状态。
     let selected: Option<(String, usize)> = inspector.active_element_id().map(|id| {
         let loc = id.path.source_location;
         (format!("{}:{}", loc.file(), loc.line()), id.instance_id)
     });
-    let status = if picking {
-        "拾取中"
-    } else if selected.is_some() {
-        "已选中"
-    } else {
-        "空闲"
-    };
     // 完整树展开集：选中变化时把新选中祖先链并入已展开集（只增不重置），
     // 点完整树只会展开更多，不会塌掉浏览进度。
     let active_id: Option<InspectorElementId> = inspector.active_element_id().cloned();
@@ -74,6 +91,14 @@ pub fn default_inspector_panel(
         FULL_TREE_ROW_CAP,
     );
     let states = inspector.render_inspector_states(window, cx);
+    // 插槽：未设置走默认外皮（整板替换仍可用，只是多数定制到插槽即可）。
+    let slots = cx.try_global::<InspectorPanelSlots>();
+    let header: InspectorHeaderSlot = slots
+        .and_then(|s| s.header.clone())
+        .unwrap_or_else(|| Arc::new(default_inspector_header));
+    let section: InspectorSectionSlot = slots
+        .and_then(|s| s.section.clone())
+        .unwrap_or_else(|| Arc::new(default_inspector_section));
 
     div()
         .id("inspector-panel")
@@ -83,45 +108,7 @@ pub fn default_inspector_panel(
             v_flex()
                 .size_full()
                 // 顶栏固定（标题/状态/拾取按钮/提示）：内容再长也不滚走，拾取随时可点。
-                .child(
-                    v_flex()
-                        .flex_shrink_0()
-                        .gap(px(8.0))
-                        .p(px(12.0))
-                        .pb(px(4.0))
-                        .child(
-                            h_flex()
-                                .items_center()
-                                .justify_between()
-                                .child(div().text_lg().font_semibold().child("元素检查器"))
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .px(px(8.0))
-                                        .py(px(2.0))
-                                        .rounded_full()
-                                        .bg(rgb(0xe8f0fe))
-                                        .child(status),
-                                ),
-                        )
-                        .child(
-                            Button::new("inspector-pick")
-                                .label(if picking {
-                                    "拾取中，点击画布元素…"
-                                } else {
-                                    "拾取元素"
-                                })
-                                .primary()
-                                .on_click(move |_, _, cx| {
-                                    entity.update(cx, |inspector, _| inspector.start_picking());
-                                }),
-                        )
-                        .child(
-                            div().text_xs().text_color(rgb(0x888888)).child(
-                                "悬停高亮蓝框，点击选中元素；重叠处滚轮切换层级。拾取中时画布点击被接管，点任意元素即完成拾取。完整树行点击选中画布对应区域（橙框），箭头逐节点折叠。",
-                            ),
-                        ),
-                )
+                .child(header(inspector, window, cx))
                 // 内容区独立滚动：选中卡片/完整树/状态展示再长也不顶走顶栏。
                 .child(
                     div()
@@ -134,29 +121,93 @@ pub fn default_inspector_panel(
                                 .p(px(12.0))
                                 .pt(px(4.0))
                                 .when_some(selected, |this, (loc, instance)| {
-                                    this.child(
+                                    this.child(section(
+                                        Some("选中元素".into()),
                                         v_flex()
                                             .gap(px(2.0))
-                                            .p(px(8.0))
-                                            .rounded_md()
-                                            .bg(rgb(0xffffff))
-                                            .border_1()
-                                            .border_color(rgb(0xe0e0e0))
-                                            .child(
-                                                div().text_sm().font_semibold().child("选中元素"),
-                                            )
                                             .child(info_row("源码", loc))
-                                            .child(info_row(
-                                                "实例",
-                                                format!("#{instance}"),
-                                            )),
-                                    )
+                                            .child(info_row("实例", format!("#{instance}")))
+                                            .into_any_element(),
+                                    ))
                                 })
-                                .child(full_tree_card(tree_rows, tree_total))
+                                .child(full_tree_card(tree_rows, tree_total, &section))
                                 .children(states),
                         ),
                 ),
         )
+        .into_any_element()
+}
+
+/// 默认顶栏：标题 + 状态徽标 + 拾取按钮 + 提示（`InspectorPanelSlots::header` 的默认实现）。
+///
+/// 自定义顶栏可复用本函数包裹扩展（如前面加横幅），或完全自写。
+pub fn default_inspector_header(
+    inspector: &mut Inspector,
+    _window: &mut Window,
+    cx: &mut Context<Inspector>,
+) -> AnyElement {
+    let entity = cx.entity();
+    let picking = inspector.is_picking();
+    let status = if picking {
+        "拾取中"
+    } else if inspector.active_element_id().is_some() {
+        "已选中"
+    } else {
+        "空闲"
+    };
+    v_flex()
+        .flex_shrink_0()
+        .gap(px(8.0))
+        .p(px(12.0))
+        .pb(px(4.0))
+        .child(
+            h_flex()
+                .items_center()
+                .justify_between()
+                .child(div().text_lg().font_semibold().child("元素检查器"))
+                .child(
+                    div()
+                        .text_xs()
+                        .px(px(8.0))
+                        .py(px(2.0))
+                        .rounded_full()
+                        .bg(rgb(0xe8f0fe))
+                        .child(status),
+                ),
+        )
+        .child(
+            Button::new("inspector-pick")
+                .label(if picking {
+                    "拾取中，点击画布元素…"
+                } else {
+                    "拾取元素"
+                })
+                .primary()
+                .on_click(move |_, _, cx| {
+                    entity.update(cx, |inspector, _| inspector.start_picking());
+                }),
+        )
+        .child(
+            div().text_xs().text_color(rgb(0x888888)).child(
+                "悬停高亮蓝框，点击选中元素；重叠处滚轮切换层级。拾取中时画布点击被接管，点任意元素即完成拾取。完整树行点击选中画布对应区域（橙框），箭头逐节点折叠。",
+            ),
+        )
+        .into_any_element()
+}
+
+/// 默认段落外皮：白底圆角卡片 + 可选标题行（`InspectorPanelSlots::section` 的默认实现）。
+pub fn default_inspector_section(title: Option<SharedString>, body: AnyElement) -> AnyElement {
+    v_flex()
+        .gap(px(2.0))
+        .p(px(8.0))
+        .rounded_md()
+        .bg(rgb(0xffffff))
+        .border_1()
+        .border_color(rgb(0xe0e0e0))
+        .when_some(title, |this, title| {
+            this.child(div().text_sm().font_semibold().child(title))
+        })
+        .child(body)
         .into_any_element()
 }
 
@@ -284,15 +335,14 @@ fn snapshot_full_tree(
     (rows, total)
 }
 
-/// 完整树卡片：逐节点展开/折叠，点击行选中画布对应区域。
-fn full_tree_card(rows: Vec<FullTreeRow>, total: usize) -> impl IntoElement {
-    v_flex()
+/// 完整树卡片：逐节点展开/折叠，点击行选中画布对应区域（外皮走段落插槽）。
+fn full_tree_card(
+    rows: Vec<FullTreeRow>,
+    total: usize,
+    section: &InspectorSectionSlot,
+) -> AnyElement {
+    let body = v_flex()
         .gap(px(2.0))
-        .p(px(8.0))
-        .rounded_md()
-        .bg(rgb(0xffffff))
-        .border_1()
-        .border_color(rgb(0xe0e0e0))
         .child(
             h_flex()
                 .items_center()
@@ -355,6 +405,9 @@ fn full_tree_card(rows: Vec<FullTreeRow>, total: usize) -> impl IntoElement {
                 "… 仅展示前 {FULL_TREE_ROW_CAP} 行，收起部分节点以精简。"
             )))
         })
+        .into_any_element();
+    // 完整树自带标题行，外皮不再加标题。
+    section(None, body)
 }
 
 /// 完整树行：箭头折叠 + 名称选中，选中行橙底呼应画布高亮。

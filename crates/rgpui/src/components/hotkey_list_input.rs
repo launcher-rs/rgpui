@@ -4,7 +4,7 @@
 //! 点击空白处开始录制，按键后追加为新 chip（去重），每个 chip 自带
 //! 删除钮；`Escape` 取消录制。值类型复用 [`HotkeyValue`]。
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use super::hotkey_input::HotkeyValue;
 use crate::{prelude::FluentBuilder as _, *};
@@ -159,7 +159,7 @@ pub struct HotkeyListInput {
     /// 是否禁用。
     disabled: bool,
     /// 快捷键列表变化回调。
-    on_change: Option<Rc<dyn Fn(&[HotkeyValue], &mut Window, &mut App)>>,
+    on_change: Option<Arc<dyn Fn(Vec<HotkeyValue>, &mut Window, &mut App) + Send + Sync>>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -198,9 +198,9 @@ impl HotkeyListInput {
     /// 设置快捷键列表变化回调。
     pub fn on_change(
         mut self,
-        handler: impl Fn(&[HotkeyValue], &mut Window, &mut App) + 'static,
+        handler: impl Fn(Vec<HotkeyValue>, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.on_change = Some(Rc::new(handler));
+        self.on_change = Some(Arc::new(handler));
         self
     }
 }
@@ -297,7 +297,7 @@ impl RenderOnce for HotkeyListInput {
                             HotkeyCapture::Cancelled => cx.stop_propagation(),
                             HotkeyCapture::Appended => {
                                 if let Some(ref handler) = on_change_for_keydown {
-                                    handler(&hotkeys, window, cx);
+                                    handler(hotkeys, window, cx);
                                 }
                                 cx.stop_propagation();
                             }
@@ -329,7 +329,7 @@ impl RenderOnce for HotkeyListInput {
                                         state.hotkeys.clone()
                                     });
                                     if let Some(ref handler) = on_change_for_remove {
-                                        handler(&hotkeys, window, cx);
+                                        handler(hotkeys, window, cx);
                                     }
                                     cx.stop_propagation();
                                 })

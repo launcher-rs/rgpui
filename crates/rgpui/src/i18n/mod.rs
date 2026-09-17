@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 
-use crate::Global;
+use crate::{App, Global};
 
 /// 语言代码。
 pub type Locale = String;
@@ -211,6 +211,16 @@ impl I18nText {
             .collect();
         i18n.t(&self.key, &args)
     }
+
+    /// 用全局 `I18nManager` 翻译（`cx.set_global` 设置过才有）。
+    ///
+    /// 未设置全局管理器时回退为 key 本身（渲染不断线，多语言接入前页面可用）。
+    pub fn translate_global(&self, cx: &App) -> String {
+        match cx.try_global::<I18nManager>() {
+            Some(i18n) => self.translate(i18n),
+            None => self.key.clone(),
+        }
+    }
 }
 
 /// 复数形式支持。
@@ -344,5 +354,23 @@ mod tests {
     fn test_manager_is_global() {
         fn assert_global<T: crate::Global>() {}
         assert_global::<I18nManager>();
+    }
+
+    /// 未设全局回退 key，设置后读全局翻译。
+    #[rgpui::test]
+    fn test_translate_global_reads_manager(cx: &mut crate::TestAppContext) {
+        let text = I18nText::new("hello");
+        let fallback = cx.update(|cx| text.translate_global(cx));
+        assert_eq!(fallback, "hello");
+        cx.update(|cx| {
+            let mut manager = I18nManager::new("en");
+            manager.load_translations_map(
+                "en",
+                HashMap::from([("hello".to_string(), "Hello".to_string())]),
+            );
+            cx.set_global(manager);
+        });
+        let translated = cx.update(|cx| text.translate_global(cx));
+        assert_eq!(translated, "Hello");
     }
 }

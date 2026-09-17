@@ -11,7 +11,7 @@
 //!     .right(vec![StatusBarItem::new("Ln 42, Col 15").muted(true)])
 //! ```
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::*;
 
@@ -27,7 +27,7 @@ pub struct StatusBarItem {
     /// 悬停提示（无则不显示）。
     pub tooltip: Option<SharedString>,
     /// 点击回调（无则为纯文本，不响应悬停）。
-    pub on_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    pub on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync>>,
     /// 是否使用次前景色（纯文本类条目）。
     pub muted: bool,
     /// 是否处于激活态（开关类条目高亮）。
@@ -71,8 +71,11 @@ impl StatusBarItem {
     }
 
     /// 设置点击回调（设置后条目呈现按钮样式，`disabled` 时不生效）。
-    pub fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(handler));
+    pub fn on_click(
+        mut self,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_click = Some(Arc::new(handler));
         self
     }
 
@@ -199,7 +202,7 @@ fn render_status_bar_item(side: &'static str, item: &StatusBarItem, cx: &mut App
         element = element
             .cursor_pointer()
             .hover(|this| this.bg(theme.secondary_hover))
-            .on_click(move |_, window, cx| on_click(window, cx));
+            .on_click(move |event, window, cx| on_click(event, window, cx));
     }
 
     if let Some(tooltip) = item.tooltip.clone() {
@@ -258,11 +261,11 @@ mod tests {
             StatusBarItem::new("main")
                 .id("branch")
                 .icon(IconName::Check)
-                .on_click(|_, _| {}),
+                .on_click(|_, _, _| {}),
             StatusBarItem::new("rendered")
                 .id("mode")
                 .active(true)
-                .on_click(|_, _| {}),
+                .on_click(|_, _, _| {}),
         ];
         let right = vec![
             StatusBarItem::new("Ln 1, Col 1").id("cursor"),

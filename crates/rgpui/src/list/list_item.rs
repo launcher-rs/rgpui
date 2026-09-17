@@ -6,6 +6,7 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum ListItemMode {
@@ -32,7 +33,7 @@ pub struct ListItem {
     secondary_selected: bool,
     confirmed: bool,
     check_icon: Option<Icon>,
-    on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
+    on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
     on_mouse_down:
         HashMap<MouseButton, Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>>,
     on_mouse_enter: Option<Box<dyn Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static>>,
@@ -106,9 +107,9 @@ impl ListItem {
     /// 设置点击事件处理器。
     pub fn on_click(
         mut self,
-        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Arc::new(handler));
         self
     }
 
@@ -200,22 +201,24 @@ impl RenderOnce for ListItem {
             .justify_between()
             .refine_style(&self.style)
             .when(is_selectable, |this| {
-                this.when_some(self.on_click, |this, on_click| this.on_click(on_click))
-                    .when_some(self.on_mouse_enter, |this, on_mouse_enter| {
-                        this.on_mouse_move(move |ev, window, cx| (on_mouse_enter)(ev, window, cx))
-                    })
-                    .map(|this| {
-                        self.on_mouse_down
-                            .into_iter()
-                            .fold(this, |this, (button, handler)| {
-                                this.on_mouse_down(button, move |ev, window, cx| {
-                                    handler(ev, window, cx)
-                                })
+                this.when_some(self.on_click, |this, on_click| {
+                    this.on_click(move |event, window, cx| on_click(event, window, cx))
+                })
+                .when_some(self.on_mouse_enter, |this, on_mouse_enter| {
+                    this.on_mouse_move(move |ev, window, cx| (on_mouse_enter)(ev, window, cx))
+                })
+                .map(|this| {
+                    self.on_mouse_down
+                        .into_iter()
+                        .fold(this, |this, (button, handler)| {
+                            this.on_mouse_down(button, move |ev, window, cx| {
+                                handler(ev, window, cx)
                             })
-                    })
-                    .when(!is_active, |this| {
-                        this.hover(|this| this.bg(cx.theme().tokens.list_hover))
-                    })
+                        })
+                })
+                .when(!is_active, |this| {
+                    this.hover(|this| this.bg(cx.theme().tokens.list_hover))
+                })
             })
             .when(!is_selectable, |this| {
                 this.text_color(cx.theme().muted_foreground)

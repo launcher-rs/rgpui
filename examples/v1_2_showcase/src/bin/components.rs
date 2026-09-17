@@ -372,7 +372,7 @@ impl Render for ComponentsDemo {
                     .child(Paragraph::new("次要正文（灰）。").variant(TextVariant::Secondary))
                     .child(Link::new("点我也是面包屑").on_click({
                         let demo = demo.clone();
-                        move |_, cx| {
+                        move |_, _, cx| {
                             demo.update(cx, |this, _| {
                                 this.crumb = "链接".to_string();
                             })

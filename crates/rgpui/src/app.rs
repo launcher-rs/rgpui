@@ -2137,6 +2137,38 @@ impl App {
         self
     }
 
+    /// 注册全局动作：全局绑定 + 打到活动窗口 + spawn 延后更新三件套。
+    ///
+    /// 适用“按快捷键对活动窗口做点事”（如 F12 开关检查器）：
+    /// - `keystroke` 为 `Some("f12")` 时加一条无上下文的全局键绑定，
+    ///   `None` 则只监听不绑定；
+    /// - 监听只打活动窗口（`active_window`，无窗口时静默跳过）；
+    /// - 监听回调处于动作分发中，此时同步 `update` 活动窗口必失败，
+    ///   故经 `spawn` 延后执行 `handler`。
+    ///
+    /// `handler` 只要求 `'static`（与 [`Self::on_action`] 一致，允许 `Rc` 捕获；
+    /// 分发经本地 `spawn`，不需要 `Send + Sync`）。
+    pub fn on_global_action<A: Action>(
+        &mut self,
+        action: A,
+        keystroke: Option<&str>,
+        handler: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> &mut Self {
+        if let Some(keystroke) = keystroke {
+            self.bind_keys([KeyBinding::new(keystroke, action, None)]);
+        }
+        let handler = Arc::new(handler);
+        self.on_action(move |_: &A, cx: &mut App| {
+            if let Some(window) = cx.active_window() {
+                let handler = handler.clone();
+                cx.spawn(async move |cx| {
+                    _ = window.update(cx, |_, window, cx| handler(window, cx));
+                })
+                .detach();
+            }
+        })
+    }
+
     /// 事件处理程序默认传播事件。调用此方法可停止向 z-index 较低（鼠标）
     /// 或树中较高（键盘）的事件处理程序分发。这与 [`Self::propagate`] 相反。
     /// 也可以在副作用刷新前调用此方法来取消 [`Self::propagate`] 调用。
@@ -2717,6 +2749,18 @@ impl App {
     pub fn enable_default_inspector(&mut self) {
         self.set_inspector_renderer(Box::new(crate::inspector_panel::default_inspector_panel));
         self.register_inspector_element(crate::inspector_panel::render_div_inspector_state);
+    }
+
+    /// 设置默认检查器面板插槽（H5：换顶栏/段落外皮，不必整板替换）。
+    ///
+    /// 与 [`Self::enable_default_inspector`] 配合：先启用默认面板，再按需覆盖插槽；
+    /// 未设置的插槽走默认外皮（`default_inspector_header` / `default_inspector_section`）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn set_inspector_panel_slots(
+        &mut self,
+        slots: crate::inspector_panel::InspectorPanelSlots,
+    ) {
+        self.set_global(slots);
     }
 
     /// 初始化应用的 rgpui 默认颜色。

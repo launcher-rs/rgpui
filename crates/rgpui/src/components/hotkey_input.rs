@@ -1,6 +1,6 @@
 //! 快捷键录制输入：点击后捕获按键组合。
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::{prelude::FluentBuilder as _, *};
 
@@ -216,7 +216,7 @@ pub struct HotkeyInput {
     /// 是否禁用。
     disabled: bool,
     /// 快捷键变化回调。
-    on_change: Option<Rc<dyn Fn(Option<&HotkeyValue>, &mut Window, &mut App)>>,
+    on_change: Option<Arc<dyn Fn(Option<HotkeyValue>, &mut Window, &mut App) + Send + Sync>>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -255,9 +255,9 @@ impl HotkeyInput {
     /// 设置快捷键变化回调。
     pub fn on_change(
         mut self,
-        handler: impl Fn(Option<&HotkeyValue>, &mut Window, &mut App) + 'static,
+        handler: impl Fn(Option<HotkeyValue>, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.on_change = Some(Rc::new(handler));
+        self.on_change = Some(Arc::new(handler));
         self
     }
 }
@@ -389,7 +389,7 @@ impl RenderOnce for HotkeyInput {
                         });
                         if captured {
                             if let Some(ref handler) = on_change_for_keydown {
-                                handler(hotkey.as_ref(), window, cx);
+                                handler(hotkey, window, cx);
                             }
                             cx.stop_propagation();
                         }

@@ -17,14 +17,14 @@
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
+#[cfg(any(feature = "inspector", debug_assertions))]
+use rgpui::actions;
 use rgpui::input_ui::{Input, InputState};
 use rgpui::{
     App, Bounds, Button, Checkbox, Context, Entity, IntoElement, ParentElement, Render,
     SharedString, Switch, Window, WindowBounds, WindowOptions, div, h_flex, prelude::*, px, rgb,
     size, v_flex,
 };
-#[cfg(any(feature = "inspector", debug_assertions))]
-use rgpui::{KeyBinding, actions};
 use rgpui_platform::application;
 
 #[cfg(any(feature = "inspector", debug_assertions))]
@@ -219,23 +219,14 @@ fn run_example() {
 
         // 一行启用默认检查器面板（含 Div 布局展示注册）。
         // 下面整个块仅调试版本编译：release 下无检查器代码、无 F12 绑定。
-        // F12 用全局绑定（无上下文）+ 全局监听打到活动窗口，不依赖视图焦点链。
-        // 注意监听内必须 spawn 延后更新：按键分发中窗口已被 take 出来，
-        // 同步 update_window 必失败（教训：勿用 `_ =` 吞掉 Result）。
+        // F12 用全局动作 helper（全局绑定 + 打活动窗口 + spawn 延后更新），
+        // 不依赖视图焦点链。
         #[cfg(any(feature = "inspector", debug_assertions))]
         {
             cx.enable_default_inspector();
 
-            cx.bind_keys([KeyBinding::new("f12", ToggleInspector, None)]);
-            cx.on_action(|_: &ToggleInspector, cx: &mut App| {
-                if let Some(window) = cx.active_window() {
-                    cx.spawn(async move |cx| {
-                        _ = window.update(cx, |_, window, cx| {
-                            window.toggle_inspector(cx);
-                        });
-                    })
-                    .detach();
-                }
+            cx.on_global_action(ToggleInspector, Some("f12"), |window, cx| {
+                window.toggle_inspector(cx);
             });
         }
 
@@ -268,30 +259,22 @@ pub fn start() {
 #[cfg(test)]
 mod tests {
     use super::{InspectorDemo, ToggleInspector};
-    use rgpui::{App, KeyBinding, TestAppContext};
+    use rgpui::TestAppContext;
 
     /// F12 全局开关回归测试：无焦点时也能打开检查器。
     ///
     /// 曾用带上下文绑定 + 视图 on_action：无焦点时分发路径只有 root，
     /// 上下文匹配不上、冒泡也到不了视图 handler，F12 完全没反应。
-    /// 现用全局绑定（无上下文）+ 全局监听打到活动窗口。
+    /// 现用全局动作 helper（全局绑定 + 打活动窗口 + spawn 延后更新）。
     #[rgpui::test]
     fn f12_toggles_inspector_without_focus(cx: &mut TestAppContext) {
         use std::{cell::Cell, rc::Rc};
         let fired = Rc::new(Cell::new(false));
         let fired_clone = fired.clone();
         cx.update(|cx| {
-            cx.bind_keys([KeyBinding::new("f12", ToggleInspector, None)]);
-            cx.on_action(move |_: &ToggleInspector, cx: &mut App| {
+            cx.on_global_action(ToggleInspector, Some("f12"), move |window, cx| {
                 fired_clone.set(true);
-                if let Some(window) = cx.active_window() {
-                    cx.spawn(async move |cx| {
-                        _ = window.update(cx, |_, window, cx| {
-                            window.toggle_inspector(cx);
-                        });
-                    })
-                    .detach();
-                }
+                window.toggle_inspector(cx);
             });
         });
         let (_view, cx) = cx.add_window_view(InspectorDemo::new);
@@ -315,6 +298,45 @@ mod tests {
         cx.update(|window, cx| {
             let _ = window.draw(cx);
             assert!(!window.is_inspector_picking(cx));
+        });
+    }
+
+    /// 插槽回归测试：自定义顶栏/段落外皮走默认面板渲染不断线。
+    #[rgpui::test]
+    fn panel_slots_render_without_panic(cx: &mut TestAppContext) {
+        use rgpui::IntoElement as _;
+        use rgpui::ParentElement as _;
+        use rgpui::{InspectorPanelSlots, default_inspector_header, default_inspector_section};
+        use std::sync::Arc;
+        cx.update(|cx| {
+            cx.enable_default_inspector();
+            // 包裹扩展 recipe：默认顶栏前加横幅，段落沿用默认外皮。
+            cx.set_inspector_panel_slots(InspectorPanelSlots {
+                header: Some(Arc::new(|inspector, window, cx| {
+                    rgpui::v_flex()
+                        .child(rgpui::div().child("定制横幅"))
+                        .child(default_inspector_header(inspector, window, cx))
+                        .into_any_element()
+                })),
+                section: Some(Arc::new(|title, body| {
+                    default_inspector_section(title, body)
+                })),
+            });
+            cx.on_global_action(ToggleInspector, Some("f12"), |window, cx| {
+                window.toggle_inspector(cx);
+            });
+        });
+        let (_view, cx) = cx.add_window_view(InspectorDemo::new);
+        cx.update(|window, cx| {
+            window.activate_window();
+            let _ = window.draw(cx);
+        });
+        // 打开检查器即走插槽渲染两帧（顶栏 + 选中卡 + 完整树），不断线即过。
+        cx.simulate_keystrokes("f12");
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            assert!(window.is_inspector_picking(cx));
+            let _ = window.draw(cx);
         });
     }
 }

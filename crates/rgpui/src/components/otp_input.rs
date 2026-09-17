@@ -1,6 +1,6 @@
 //! 一次性密码（OTP）输入：多位数字格子输入。
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::{prelude::FluentBuilder as _, *};
 
@@ -355,9 +355,9 @@ pub struct OTPInput {
     /// 分隔符位置（从 1 计）。
     separator_position: Option<usize>,
     /// 值变化回调。
-    on_change: Option<Rc<dyn Fn(String, &mut App)>>,
+    on_change: Option<Arc<dyn Fn(String, &mut Window, &mut App) + Send + Sync>>,
     /// 输入完成回调。
-    on_complete: Option<Rc<dyn Fn(String, &mut App)>>,
+    on_complete: Option<Arc<dyn Fn(String, &mut Window, &mut App) + Send + Sync>>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -411,18 +411,18 @@ impl OTPInput {
     /// 设置值变化回调。
     pub fn on_change<F>(mut self, callback: F) -> Self
     where
-        F: Fn(String, &mut App) + 'static,
+        F: Fn(String, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_change = Some(Rc::new(callback));
+        self.on_change = Some(Arc::new(callback));
         self
     }
 
     /// 设置输入完成回调。
     pub fn on_complete<F>(mut self, callback: F) -> Self
     where
-        F: Fn(String, &mut App) + 'static,
+        F: Fn(String, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_complete = Some(Rc::new(callback));
+        self.on_complete = Some(Arc::new(callback));
         self
     }
 
@@ -500,18 +500,33 @@ impl RenderOnce for OTPInput {
             let state_entity = self.state.clone();
             cx.subscribe(
                 &state_entity,
-                move |_emitter: Entity<OTPState>, event: &OTPInputEvent, cx: &mut App| match event {
-                    OTPInputEvent::Change(value) => {
-                        if let Some(callback) = on_change_callback.as_ref() {
-                            callback(value.clone(), cx);
+                move |_emitter: Entity<OTPState>, event: &OTPInputEvent, cx: &mut App| {
+                    // 回调签名含 Window，经活动窗口分发
+                    // （OTP 事件源于窗口内的按键输入，触发时必有活动窗口）。
+                    let Some(window) = cx.active_window() else {
+                        return;
+                    };
+                    match event {
+                        OTPInputEvent::Change(value) => {
+                            if let Some(callback) = on_change_callback.as_ref() {
+                                let callback = callback.clone();
+                                let value = value.clone();
+                                let _ = window.update(cx, move |_, window, cx| {
+                                    callback(value, window, cx);
+                                });
+                            }
                         }
-                    }
-                    OTPInputEvent::Complete(value) => {
-                        if let Some(callback) = on_complete_callback.as_ref() {
-                            callback(value.clone(), cx);
+                        OTPInputEvent::Complete(value) => {
+                            if let Some(callback) = on_complete_callback.as_ref() {
+                                let callback = callback.clone();
+                                let value = value.clone();
+                                let _ = window.update(cx, move |_, window, cx| {
+                                    callback(value, window, cx);
+                                });
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 },
             )
             .detach();

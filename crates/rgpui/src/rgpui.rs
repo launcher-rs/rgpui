@@ -467,7 +467,10 @@ pub use input::*;
 pub use inspector::*;
 /// 重导出检查器默认面板（检查器打开时可用）
 #[cfg(any(feature = "inspector", debug_assertions))]
-pub use inspector_panel::{default_inspector_panel, render_div_inspector_state};
+pub use inspector_panel::{
+    InspectorHeaderSlot, InspectorPanelSlots, InspectorSectionSlot, default_inspector_header,
+    default_inspector_panel, default_inspector_section, render_div_inspector_state,
+};
 /// 重导出交互系统相关类型（Focusable、ClickArea 等）
 pub use interactive::*;
 use key_dispatch::*;

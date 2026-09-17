@@ -1,7 +1,7 @@
 //! 分段导航：带滑动高亮指示器的分段选择控件。
 
 use crate::{prelude::FluentBuilder as _, *};
-use std::{rc::Rc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use crate::animation::{durations, easing::easings};
 
@@ -112,7 +112,7 @@ pub struct SegmentedNav {
     /// 尺寸。
     nav_size: SegmentedNavSize,
     /// 切换回调。
-    on_change: Option<Rc<dyn Fn(SharedString, &mut Window, &mut App)>>,
+    on_change: Option<Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync>>,
     /// 指示器滑动动画时长。
     duration: Duration,
     /// 用户样式。
@@ -157,9 +157,9 @@ impl SegmentedNav {
     /// 设置切换回调。
     pub fn on_change<F>(mut self, handler: F) -> Self
     where
-        F: Fn(SharedString, &mut Window, &mut App) + 'static,
+        F: Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_change = Some(Rc::new(handler));
+        self.on_change = Some(Arc::new(handler));
         self
     }
 }

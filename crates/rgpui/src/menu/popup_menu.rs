@@ -13,7 +13,7 @@ use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, h_flex, v_fle
 use crate::{ClickEvent, Half, MouseDownEvent, OwnedMenuItem, Point, Subscription};
 use crate::{ElementSize, ScrollableElement as _, Side, StyledExt, elements::Kbd};
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 const CONTEXT: &str = "PopupMenu";
 
@@ -52,7 +52,7 @@ pub enum PopupMenuItem {
         /// 菜单项动作
         action: Option<Box<dyn Action>>,
         /// 链接项点击处理器
-        handler: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
+        handler: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync>>,
     },
     /// 自定义元素渲染的菜单项
     ElementItem {
@@ -67,7 +67,7 @@ pub enum PopupMenuItem {
         /// 自定义渲染函数
         render: Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>,
         /// 点击处理器
-        handler: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
+        handler: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync>>,
     },
     /// 打开另一个弹窗菜单的子菜单项
     ///
@@ -229,14 +229,14 @@ impl PopupMenuItem {
     /// 仅适用于 [`PopupMenuItem::Item`] 和 [`PopupMenuItem::ElementItem`]。
     pub fn on_click<F>(mut self, handler: F) -> Self
     where
-        F: Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        F: Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
     {
         match &mut self {
             PopupMenuItem::Item { handler: h, .. } => {
-                *h = Some(Rc::new(handler));
+                *h = Some(Arc::new(handler));
             }
             PopupMenuItem::ElementItem { handler: h, .. } => {
-                *h = Some(Rc::new(handler));
+                *h = Some(Arc::new(handler));
             }
             _ => {}
         }
@@ -255,7 +255,7 @@ impl PopupMenuItem {
             danger: false,
             action: None,
             is_link: true,
-            handler: Some(Rc::new(move |_, _, cx| cx.open_url(&href))),
+            handler: Some(Arc::new(move |_, _, cx| cx.open_url(&href))),
         }
     }
 
