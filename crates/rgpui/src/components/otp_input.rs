@@ -508,9 +508,7 @@ impl RenderOnce for OTPInput {
                         return;
                     };
                     let (callback, value) = match event {
-                        OTPInputEvent::Change(value) => {
-                            (on_change_callback.clone(), value.clone())
-                        }
+                        OTPInputEvent::Change(value) => (on_change_callback.clone(), value.clone()),
                         OTPInputEvent::Complete(value) => {
                             (on_complete_callback.clone(), value.clone())
                         }
