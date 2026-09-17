@@ -2,6 +2,46 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased] - 1.3.0（`feat/1.3.0` 开发中）
+
+### 检查器完善（Inspector）
+
+- **I1 树节点 ↔ 界面双向映射**：`Inspector::select` 公开 +
+  `select_ancestor(levels_up)`（全局路径前缀反查 + hitbox 包含消歧）+
+  `Window::select_inspector_ancestor`；打开期间常驻 hitbox，选中区橙框常驻高亮
+- **I2 完整元素树 + 逐节点折叠**：prepaint 嵌套记录 parent→children
+  （`Frame` 存树，面板自举暂停，关闭零开销）；`is_inspector_open` 门控视图缓存
+  与全量 Div hitbox；公开 `roots/children/parent` + `select_inspector_element` +
+  `InspectorElementId::{short_label, source_label, tree_key}`
+- **I3 检查面板内置化**：新增 `rgpui::inspector_panel` +
+  `App::enable_default_inspector()`（两行出完整面板）；
+  `examples/inspector/` 822→310 行（开关演示 + 自定义横幅 living recipe）
+- **I4 自定义接口文档化**：`docs/rgpui-book/09-inspector.md` 检查器章节
+  （启用/分工表/双 recipe/树与选中 API）
+
+### 回调签名统一（C1，breaking）
+
+- 纯点击一律 `on_click: Fn(&ClickEvent, &mut Window, &mut App)`（`BreadcrumbItem` 补事件参数）；
+  值变更一律 `on_change: Fn(Value, …)` 按值传递；存储统一 `Arc + Send + Sync`
+- 改名：`Checkbox` / `Switch` / `Radio` / `RadioGroup` / `TabBar` 的 `on_click`→`on_change`；
+  `Sidebar` / `Upload` / `NavigationMenu` 的 `on_select`→`on_change`
+- 传导：`dialog` / `alert_dialog` / `empty_state` / `notification_center` / `search_panel`
+- 新增 `Context::listener_value`（按值版 `listener`）；book 回调章节更新
+
+### 应用实战回流（G）
+
+- **G1**：`Root::open_dialog` 返回 `DialogId` + `close_dialog_by(id)` 按标识关闭
+- **G2**：book 落 App 回调回实体 recipe（直挂/Root 穿透两段式）
+- **G3**：`TreeEvent::Confirmed(id)`（Enter 文件行触发）
+- **G4**：新增值驱动 `rgpui::tabs::{Tabs, TabsItem}`（无实体静态页签）
+- **G5**：菜单位置约束记入 book（光标直接取，锚点前置计算，不硬上 API）
+- **G6**：`impl Global for I18nManager` + `load_locale_dir` + `I18nSnapshot` 快照回退
+- **G7**：`Dialog::overlay_visible(bool)` setter（裸挂出变暗背景）
+
+### 移除
+
+- **Z1**：删除 `chat_ui` deprecated 别名（1.2.0 迁移到 `chat`，按计划 1.3.0 删除）
+
 ## [1.2.2] - 2026-09-15
 
 ### 修复

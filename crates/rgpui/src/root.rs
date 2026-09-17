@@ -11,6 +11,14 @@ actions!(root, [Tab, TabPrev]);
 
 const CONTEXT: &str = "Root";
 
+/// 对话框标识（G1 按标识关闭用）。
+///
+/// `Root::open_dialog` 返回该标识，调用方凭此经
+/// [`Root::close_dialog_by`] 关闭指定对话框（栈中任意位置），
+/// 避免全局 dismiss 误关栈顶。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DialogId(u64);
+
 /// 窗口根视图 - 管理对话框层的全局状态（active_dialogs、焦点恢复等）。
 ///
 /// 对话框（Dialog）由用户视图通过 [`Root::render_dialog_layer`] 手动挂载渲染，
@@ -22,15 +30,19 @@ pub struct Root {
     view: AnyView,
     /// 活动对话框列表（栈，后进先出）
     pub(crate) active_dialogs: Vec<ActiveDialog>,
+    /// 下一个对话框标识（单调递增，关闭不回收）
+    next_dialog_id: u64,
     /// 对话框关闭动画后需要恢复的焦点句柄
     pending_focus_restore: Option<WeakFocusHandle>,
     /// 全局工具提示覆盖层实体
     pub(crate) tooltip_overlay: Entity<TooltipOverlay>,
 }
 
-/// 活动对话框 - 保存焦点句柄与构建闭包。
+/// 活动对话框 - 保存标识、焦点句柄与构建闭包。
 #[derive(Clone)]
 pub(crate) struct ActiveDialog {
+    /// 对话框标识（`open_dialog` 返回，`close_dialog_by` 消费）
+    pub(crate) id: DialogId,
     /// 对话框自身的焦点句柄
     focus_handle: FocusHandle,
     /// 打开对话框前的焦点句柄（关闭后恢复）
@@ -41,11 +53,13 @@ pub(crate) struct ActiveDialog {
 
 impl ActiveDialog {
     pub(crate) fn new(
+        id: DialogId,
         focus_handle: FocusHandle,
         previous_focused_handle: Option<WeakFocusHandle>,
         builder: impl Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
     ) -> Self {
         Self {
+            id,
             focus_handle,
             previous_focused_handle,
             builder: Rc::new(builder),
@@ -69,6 +83,7 @@ impl Root {
             style: StyleRefinement::default(),
             view: view.into(),
             active_dialogs: Vec::new(),
+            next_dialog_id: 0,
             pending_focus_restore: None,
             tooltip_overlay: cx.new(|_| TooltipOverlay::new()),
         }
@@ -175,8 +190,13 @@ impl Root {
         Some(div().children(dialogs))
     }
 
-    /// 打开一个对话框。
-    pub fn open_dialog<F>(&mut self, build: F, window: &mut Window, cx: &mut Context<'_, Root>)
+    /// 打开一个对话框，返回其标识（凭此按标识关闭）。
+    pub fn open_dialog<F>(
+        &mut self,
+        build: F,
+        window: &mut Window,
+        cx: &mut Context<'_, Root>,
+    ) -> DialogId
     where
         F: Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
     {
@@ -190,12 +210,16 @@ impl Root {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
 
+        let id = DialogId(self.next_dialog_id);
+        self.next_dialog_id += 1;
         self.active_dialogs.push(ActiveDialog::new(
+            id,
             focus_handle,
             previous_focused_handle,
             build,
         ));
         cx.notify();
+        id
     }
 
     /// 关闭对话框（立即恢复焦点）。
@@ -204,6 +228,28 @@ impl Root {
             window.focus(&handle, cx);
         }
         cx.notify();
+    }
+
+    /// 按标识关闭指定对话框（栈中任意位置）。
+    ///
+    /// 关栈顶时恢复其焦点（同 [`Self::close_dialog`]）；关下层时上层不受影响，
+    /// 焦点保持不动。找到并移除返回 `true`，未知标识返回 `false`。
+    pub fn close_dialog_by(
+        &mut self,
+        id: DialogId,
+        window: &mut Window,
+        cx: &mut Context<'_, Root>,
+    ) -> bool {
+        let Some(ix) = self.active_dialogs.iter().position(|d| d.id == id) else {
+            return false;
+        };
+        let is_top = ix + 1 == self.active_dialogs.len();
+        let dialog = self.active_dialogs.remove(ix);
+        if is_top && let Some(previous) = dialog.previous_focused_handle.and_then(|h| h.upgrade()) {
+            window.focus(&previous, cx);
+        }
+        cx.notify();
+        true
     }
 
     /// 延迟关闭对话框（等待动画结束后恢复焦点）。

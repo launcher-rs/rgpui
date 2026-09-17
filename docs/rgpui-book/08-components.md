@@ -76,7 +76,47 @@ Dialog::new("dialog")
 
 - 菜单系统位于 `menu/`：`PopupMenu`（弹出菜单）、`ContextMenu`（右键菜单）、`DropdownMenu`（下拉菜单，可挂在任意元素上）、`HoverCard`（悬浮卡片）。
 - 通知：`Notification`/`NotificationList`、`Toast`。
+- 弹出菜单构造期位置上下文（cookbook 约束，不硬上库 API）：
+  `PopupMenu::submenu` 的 `window`/`cx` 透传省不掉（构造期即建子菜单实体并接
+  父链与优先级）；需光标位置直接在构造器内调 `window.mouse_position()`；
+  需锚点（父条目 bounds）只能前置计算——构造期布局尚未发生，任何构造器都拿不到，
+  改两阶段定位得动 render 管线，代价过高。
 - 对话框：`Dialog`/`AlertDialog` 及 `DialogHeader/Content/Footer/Title/Description` 组合子组件。
+- Root 托管对话框：`window.open_dialog(cx, build)` 返回 `DialogId`，
+  `window.close_dialog_by(cx, id)` 按标识关闭栈中任意位置（上层不受影响），
+  另有 `close_dialog`（栈顶）/ `close_all_dialogs`（全部）。
+
+### App 上下文回调回视图实体（recipe，可照抄）
+
+`Dialog` 的 `content` / `footer` / `button_props` 回调只有
+`(&mut Window, &mut App)`，回视图实体不用手写 downcast 样板，
+照抄下面两段式（直挂与 Root 包装两种挂载都覆盖）：
+
+```rust
+use rgpui::{App, Entity, Root, Window};
+
+// App 上下文回调里回到 MyView 实体并更新：
+fn back_to_view(window: &mut Window, cx: &mut App) {
+    // 直挂视图走 window.root；经 Root 托管的应用穿透 Root::view。
+    let view: Option<Entity<MyView>> = window
+        .root::<MyView>()
+        .flatten()
+        .or_else(|| {
+            Root::read(window, cx)
+                .view()
+                .clone()
+                .downcast::<MyView>()
+                .ok()
+        });
+    if let Some(view) = view {
+        view.update(cx, |this, cx| {
+            // ……正常实体更新（notify 等）
+        });
+    }
+}
+```
+
+暂不加便捷 API：两段式已覆盖全部挂载形态，若后续调用点仍嫌啰嗦再收敛。
 
 ## 列表与表格
 

@@ -340,6 +340,16 @@ impl Dialog {
         self
     }
 
+    /// 设置遮罩是否实际可见（裸挂 `Dialog` 时调出变暗背景用）。
+    ///
+    /// 分工：`overlay(bool)` 声明“要不要遮罩”，本方法控制“本帧显不显示”。
+    /// 经 `Root` 托管时由对话框层自动管理（仅顶层遮罩对话框置 `true`），
+    /// 调用方无需设置；不经 `Root` 裸挂时自行置 `true` 即可得到变暗背景。
+    pub fn overlay_visible(mut self, overlay_visible: bool) -> Self {
+        self.props.overlay_visible = overlay_visible;
+        self
+    }
+
     /// 设置是否支持键盘 Esc 关闭对话框，默认为 `true`。
     pub fn keyboard(mut self, keyboard: bool) -> Self {
         self.props.keyboard = keyboard;
@@ -716,6 +726,43 @@ mod tests {
         });
 
         assert!(!has_active_dialog(cx));
+    }
+
+    /// 按标识关闭下层对话框时上层不受影响（G1 验收）。
+    #[crate::test]
+    fn close_dialog_by_id_closes_lower_leaves_upper(cx: &mut TestAppContext) {
+        let (_, cx) = setup(cx);
+        cx.run_until_parked();
+
+        let (lower, upper) = cx.update(|window, cx| {
+            let lower = window.open_dialog(cx, |dialog, _, _| dialog.title("下层"));
+            let upper = window.open_dialog(cx, |dialog, _, _| dialog.title("上层"));
+            assert_ne!(lower, upper);
+            let _ = window.draw(cx);
+            (lower, upper)
+        });
+
+        // 按标识关闭下层：返回 true，上层标识仍在栈中。
+        let closed = cx.update(|window, cx| window.close_dialog_by(cx, lower));
+        assert!(closed);
+        cx.update(|window, cx| {
+            let ids: Vec<_> = Root::read(window, cx)
+                .active_dialogs
+                .iter()
+                .map(|d| d.id)
+                .collect();
+            assert_eq!(ids, vec![upper]);
+            let _ = window.draw(cx);
+        });
+
+        // 按标识关闭上层（栈顶）：同 close_dialog，栈空。
+        let closed = cx.update(|window, cx| window.close_dialog_by(cx, upper));
+        assert!(closed);
+        assert!(!has_active_dialog(cx));
+
+        // 已关闭的标识再次关闭返回 false。
+        let closed = cx.update(|window, cx| window.close_dialog_by(cx, upper));
+        assert!(!closed);
     }
 
     /// 默认对话框按钮属性：无自定义文本、不显示取消按钮。

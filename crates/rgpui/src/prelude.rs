@@ -66,7 +66,7 @@ pub use crate::fps_hud::{FpsHud, FpsHudState};
 pub use crate::tabs::tab_drag::{TabDragDrop, TabDragEvent, TabDragState, TabItem};
 
 // 国际化支持。
-pub use crate::i18n::{I18nManager, I18nText, PluralRule};
+pub use crate::i18n::{I18nManager, I18nSnapshot, I18nText, PluralRule};
 
 // 主题热重载。
 pub use crate::theme_watcher::{ThemeColors, ThemeEvent, ThemeManager, ThemeMode, ThemeWatcher};
