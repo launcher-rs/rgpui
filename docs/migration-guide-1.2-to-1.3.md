@@ -130,6 +130,38 @@ InteractiveText::new(id, styled).on_change(ranges, move |idx, _, cx| {
    `Carousel(旧下标, 新下标)`）→ `on_change` 配实体直接捕获（没有配套
    listener 变体，见第六节）。
 
+### 附：在 Checkbox 上写 on_click 会怎样（静默坑）
+
+分两种情况：
+
+1. **迁旧代码**（闭包还是 `|checked: &bool, …|` 形状）：**直接编译报错**
+   （期望 `&ClickEvent`，拿到 `&bool`）。这是好事，照本指南改即可。
+2. **新代码手滑写成事件形状**（`move |_, _, cx| …`）：**能编译，但行为是错的**。
+   因为 `Checkbox` 实现了 `StatefulInteractiveElement`（prelude 常驻），
+   trait 自带的 `on_click` 仍可调用，它只是往点击监听链里追加一个普通监听：
+   你的回调会执行，但复选框的翻转逻辑（`handle_change` → `on_change` →
+   父组件回写 `checked`）完全绕过去了——**框永远打不上勾**；
+   且 `disabled` 时内部翻转不挂载，你的监听却照样触发。
+
+```rust
+// 错：能编译，框打不上勾（且 disabled 照样触发）
+Checkbox::new("x").label("通知").on_click(move |_, _, cx| {
+    demo.update(cx, |this, _| { this.notify = true; });
+});
+
+// 对：走 on_change，父组件回写 checked
+Checkbox::new("x").label("通知").checked(self.notify).on_change(
+    cx.listener_value(|this, checked: bool, _, cx| {
+        this.notify = checked;
+        cx.notify();
+    }),
+);
+```
+
+同理适用于 `Switch` / `Radio` / `TabBar` 等一切实现
+`StatefulInteractiveElement` 的值组件：**值组件上只用 `on_change`**，
+看到 `on_click` 能编译通过不要信，那是底层元素的通用监听。
+
 ---
 
 ## 三、签名变更（按值传递 + 补参数）
