@@ -9,15 +9,62 @@
 // 应用入口（二选一位置均可，窗口创建前调用）：
 cx.enable_default_inspector(); // 注册默认面板 + Div 布局展示
 
-// 开关面板（按钮点击 / F12 等）：
+// 开关面板（F12 等快捷键；正式 UI 不放调试按钮，检查器只走快捷键）：
 window.toggle_inspector(cx);
 ```
 
-默认面板内容：状态徽标（空闲/拾取中/已选中）、拾取按钮（悬停蓝框、点击选中、
-滚轮穿透重叠层级）、选中元素源码位置与实例号、祖先链树、完整树（逐节点折叠）、
-`Div` 布局边界与内容尺寸。选中区域在画布上以橙框常驻高亮。
+F12 这类全局开关不要用带上下文绑定 + 视图 `on_action`：
+无焦点时分发路径只有 root，上下文匹配不上、冒泡也到不了视图 handler，
+面板聚焦时同样到不了（面板是独立根）。正确接法是全局绑定（无上下文）+
+全局监听打到活动窗口，监听内 spawn 延后更新（分发中窗口已被 take，
+同步 `update_window` 必失败，勿用 `_ =` 吞 Result）：
 
-完整可运行示例见 `examples/inspector/`（`cargo run -p inspector`）。
+```rust
+cx.bind_keys([KeyBinding::new("f12", ToggleInspector, None)]);
+cx.on_action(|_: &ToggleInspector, cx: &mut App| {
+    if let Some(window) = cx.active_window() {
+        cx.spawn(async move |cx| {
+            _ = window.update(cx, |_, window, cx| {
+                window.toggle_inspector(cx);
+            });
+        })
+        .detach();
+    }
+});
+```
+
+## 发布剥离（推荐的上线姿势）
+
+库侧检查器 API 全是 `#[cfg(any(feature = "inspector", debug_assertions))]`，
+release 默认零代码。应用侧照抄三条：
+
+1. Cargo 里**不要**开 `inspector` feature（dev 靠 `debug_assertions` 自动生效）；
+2. 装配线（`enable_default_inspector` / `set_inspector_renderer` / F12 绑定）
+   用同条件 `#[cfg]` 包起来；
+3. 面板里不放“打开检查器”按钮，只留快捷键入口。
+
+如此 `cargo run` 有完整检查器，`cargo run --release` 自动剥离。
+release 想保留（如内部工具）：`--release --features inspector`
+（示例 `inspector` / `inspector_custom` 即此布局，可直接验证三种模式）。
+
+默认面板内容：状态徽标（空闲/拾取中/已选中）、拾取按钮（悬停蓝框、点击选中、
+滚轮穿透重叠层级）、选中元素源码位置与实例号、完整树（逐节点折叠，点击行选中，
+展开集只增不重置）、`Div` 布局边界与内容尺寸。选中区域在画布上以橙框常驻高亮。
+
+完整可运行示例见 `examples/inspector/`（默认面板）与
+`examples/inspector_custom/`（全自写面板：自有顶栏 + 选中卡 + 单层子节点，
+并覆盖默认 Div 布局展示），两示例演示内容各自独立
+（`cargo run -p inspector_custom`）。
+
+## 多窗口与面板位置
+
+- 检查器状态按窗口隔离：`toggle_inspector` / 拾取 / 选中 / 展开集都是
+  `Window` 级别，多窗口互不干扰（`inspector` 与 `inspector_custom` 分属两进程，
+  同进程多窗口同理）。
+- 默认面板为右侧停靠：打开时画布视口让出 30rem，内容会重排，这是预期行为。
+- 独立窗口面板暂不做：`Inspector` 实体、`inspector_hitboxes` 注册表、
+  焦点恢复链都是按窗口挂载的，独立面板窗要跨窗口实体通信 + 焦点协同，
+  代价高、收益仅是“画布不重排”，1.3.0 不纳入。
 
 ## 自定义：两个接口的分工
 
@@ -26,41 +73,24 @@ window.toggle_inspector(cx);
 | `App::set_inspector_renderer` | 整板替换 | 面板整体风格/结构都要改时 |
 | `App::register_inspector_element` | 按状态类型扩展 | 只想为某种元素状态加一块展示时（如自定义元素的布局信息） |
 
-### recipe 1：整板替换（复用默认面板 + 自定义横幅）
+### recipe 1：整板替换（全自写面板）
+
+`examples/inspector_custom/` 即此 recipe 的 living 范例：顶栏、选中卡、
+子节点列表全部自写，不复用默认面板；另以 `register_inspector_element`
+覆盖默认 Div 布局展示（同类型后注册覆盖先注册）。最小骨架：
 
 ```rust
-use rgpui::{AnyElement, Context, Inspector, IntoElement, Window, div, px, rgb, v_flex};
-
-fn custom_panel(
-    inspector: &mut Inspector,
-    window: &mut Window,
-    cx: &mut Context<Inspector>,
-) -> AnyElement {
-    div()
-        .id("my-inspector-panel")
-        .size_full()
-        .bg(rgb(0xf7f7f7))
-        .child(
-            v_flex()
-                .size_full()
-                .child(my_banner())
-                .child(
-                    div()
-                        .flex_1()
-                        .overflow_hidden()
-                        // 默认面板自带滚动，包在 flex_1 + overflow_hidden 容器里铺满剩余空间。
-                        .child(rgpui::default_inspector_panel(inspector, window, cx)),
-                ),
-        )
-        .into_any_element()
-}
-
-// 注意：先 enable（注册 Div 展示），再替换渲染器，Div 布局展示不受影响。
-cx.enable_default_inspector();
+// 自有顶栏（固定）+ 内容滚动区 + 选中卡 + 子节点列表，全自写；
+// 行点击经 window.select_inspector_element 选中画布区域，
+// Div 布局经 register_inspector_element 另行覆盖。
+// 完整实现见 examples/inspector_custom/src/main.rs。
+cx.enable_default_inspector(); // 先 enable，拿 Div 注册与全局装配
 cx.set_inspector_renderer(Box::new(custom_panel));
+cx.register_inspector_element(custom_div_state);
 ```
 
-`examples/inspector/` 即此 recipe 的 living 范例：默认面板 + 顶部自定义横幅。
+偷懒变体：整板只包一层横幅、内部复用 `rgpui::default_inspector_panel`
+（注意默认面板根带 id，直接嵌套即可，无需处理滚动）。
 
 ### recipe 2：按状态类型扩展
 

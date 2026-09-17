@@ -254,8 +254,6 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    use crate::Global;
-
     #[test]
     fn test_i18n_manager_creation() {
         let manager = I18nManager::new("en");

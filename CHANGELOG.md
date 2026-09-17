@@ -15,7 +15,8 @@
   `InspectorElementId::{short_label, source_label, tree_key}`
 - **I3 检查面板内置化**：新增 `rgpui::inspector_panel` +
   `App::enable_default_inspector()`（两行出完整面板）；
-  `examples/inspector/` 822→310 行（开关演示 + 自定义横幅 living recipe）
+  `examples/inspector/` 瘦身为纯默认面板演示；新增 `examples/inspector_custom/`
+ （全自写面板 + 覆盖 Div 展示的 living recipe，两示例演示内容各自独立）
 - **I4 自定义接口文档化**：`docs/rgpui-book/09-inspector.md` 检查器章节
   （启用/分工表/双 recipe/树与选中 API）
 
