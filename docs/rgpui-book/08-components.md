@@ -101,13 +101,50 @@ TabBar::new("tabs")
     .segmented()
     .selected_index(0)
     .children(vec![Tab::new("概览"), Tab::new("详情")])
-    .on_click(|ix, _, _| {
-        // 处理标签切换
+    .on_change(|ix, _, _| {
+        // 处理标签切换（索引按值传递）
     });
 ```
 
 - `TabBar` 支持 `Tab`/`Outline`/`Pill`/`Segmented`/`Underline` 五种变体，`Segmented`/`Pill`/`Underline` 带滑动指示器动画。
 - `Accordion`/`AccordionItem`（手风琴）与 `Collapsible`（折叠面板）。
+
+## 回调约定（命名 + 签名 + 线程界限）
+
+三条规则（1.3.0 起全组件统一，breaking，直接改不留兼容）：
+
+1. **纯点击一律 `on_click`**：`Fn(&ClickEvent, &mut Window, &mut App)`。
+   `Button`、`Tab::on_click` 本就如此；`BreadcrumbItem::on_click` 补上了事件参数。
+2. **值变更一律 `on_change`**：`Fn(Value, &mut Window, &mut App)`，值一律按值传递
+   （`bool` / `usize` / `f32` / `Hsla` / `NaiveDate` / `SharedString` / `Vec<T>`；
+   `SharedString` / `Vec` 均为 Arc-backed 廉价克隆，回调同步执行无生命周期问题）。
+   注意改名项：`Checkbox` / `Switch` / `Radio` / `RadioGroup` / `TabBar` 的旧
+   `on_click` 改为 `on_change`；`Sidebar` / `Upload` / `NavigationMenu` 的旧
+   `on_select` 改为 `on_change`。`Carousel::on_change` 保留 `(旧下标, 新下标)` 双值。
+3. **存储统一 `Arc + Send + Sync + 'static`**（向严格方向统一，
+   `Entity` 捕获不受影响）。
+
+```rust
+use rgpui::{Checkbox, prelude::*};
+
+// 值回调：bool 按值；视图状态用 listener_value 接入（见下）。
+Checkbox::new("notify").checked(true).on_change(cx.listener_value(
+    |this: &mut SettingsView, checked: bool, _, cx| {
+        this.notify = checked;
+        cx.notify();
+    },
+));
+```
+
+### `listener` vs `listener_value`：看回调签名选
+
+- `cx.listener(|this, e: &E, _, cx| …)`：**引用型事件**，配 `Fn(&E, …)` 回调
+  （`Button::on_click` 的 `&ClickEvent`、Div 点击等纯点击类）。
+- `cx.listener_value(|this, e: E, _, cx| …)`：**按值型事件**，配 `Fn(E, …)` 回调
+  （上表所有 `on_change`）。C1 之前值回调全是 `&bool`/`&usize`/`&[…]`，
+  `listener` 就够了；改按值后引用变不出 owned 值，才加了它。
+  （`processor` 也是按值的，但会透出内部返回值类型，不适配返回 `()` 的
+  `on_change`，别混用。）
 
 ## 标题栏与窗口边框
 

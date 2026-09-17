@@ -65,8 +65,7 @@ impl ComponentsDemo {
                 ])
                 .on_change({
                     let demo = demo.clone();
-                    move |selected: &[usize], _, cx| {
-                        let selected = selected.to_vec();
+                    move |selected: Vec<usize>, _, cx| {
                         demo.update(cx, |this, _| {
                             this.combo_status = format!("已选下标：{selected:?}");
                         })
@@ -190,7 +189,6 @@ impl Render for ComponentsDemo {
                                         .collapsible(true)
                                         .collapsed(self.sidebar_collapsed)
                                         .on_toggle_collapsed(move |collapsed, _, cx| {
-                                            let collapsed = *collapsed;
                                             collapsed_handle.update(cx, |this, _| {
                                                 this.sidebar_collapsed = collapsed;
                                             });
@@ -212,14 +210,12 @@ impl Render for ComponentsDemo {
                                             .collapsed(collapsed.contains("项目")),
                                         )
                                         .selected(selected)
-                                        .on_select(cx.listener(
-                                            |this, id: &rgpui::SharedString, _, _| {
-                                                this.selected = id.clone();
+                                        .on_change(cx.listener_value(
+                                            |this, id: rgpui::SharedString, _, _| {
+                                                this.selected = id;
                                             },
                                         ))
                                         .on_toggle_section(move |title, collapsed, _, cx| {
-                                            let title = title.clone();
-                                            let collapsed = *collapsed;
                                             section_handle.update(cx, |this, _| {
                                                 if collapsed {
                                                     this.collapsed_sections
@@ -249,7 +245,7 @@ impl Render for ComponentsDemo {
                                     .placeholder("选一个水果")
                                     .on_change({
                                         let demo = demo.clone();
-                                        move |ix: usize, _: &rgpui::SharedString, _, cx| {
+                                        move |ix: usize, _: rgpui::SharedString, _, cx| {
                                             demo.update(cx, |this, _| {
                                                 this.select_idx = Some(ix);
                                             })
@@ -353,7 +349,7 @@ impl Render for ComponentsDemo {
                     .child(Breadcrumb::new(vec![
                         BreadcrumbItem::new("首页").on_click({
                             let demo = demo.clone();
-                            move |_, cx| {
+                            move |_, _, cx| {
                                 demo.update(cx, |this, _| {
                                     this.crumb = "首页".to_string();
                                 })

@@ -188,9 +188,9 @@ impl Render for InspectorDemo {
                                         Checkbox::new("demo-hobby")
                                             .label("阅读")
                                             .checked(self.hobby)
-                                            .on_click(move |checked, _, cx| {
+                                            .on_change(move |checked, _, cx| {
                                                 hobby_view.update(cx, |this, cx| {
-                                                    this.hobby = *checked;
+                                                    this.hobby = checked;
                                                     cx.notify();
                                                 });
                                             }),
@@ -199,9 +199,9 @@ impl Render for InspectorDemo {
                                         Switch::new("demo-notify")
                                             .label("通知")
                                             .checked(self.notify)
-                                            .on_click(move |checked, _, cx| {
+                                            .on_change(move |checked, _, cx| {
                                                 notify_view.update(cx, |this, cx| {
-                                                    this.notify = *checked;
+                                                    this.notify = checked;
                                                     cx.notify();
                                                 });
                                             }),

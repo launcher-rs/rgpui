@@ -19,7 +19,7 @@ pub struct Select {
     placeholder: SharedString,
     /// 变更回调（索引, 值）。
     on_change:
-        Option<Arc<dyn Fn(usize, &SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
+        Option<Arc<dyn Fn(usize, SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -56,10 +56,10 @@ impl Select {
         self
     }
 
-    /// 设置变更回调。
+    /// 设置变更回调（索引与选项文本均按值传递，`SharedString` 为 Arc 廉价克隆）。
     pub fn on_change<F>(mut self, f: F) -> Self
     where
-        F: Fn(usize, &SharedString, &mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(usize, SharedString, &mut Window, &mut App) + Send + Sync + 'static,
     {
         self.on_change = Some(Arc::new(f));
         self
@@ -98,7 +98,7 @@ impl RenderOnce for Select {
                     menu.item(
                         PopupMenuItem::new(option.clone()).on_click(move |_, window, cx| {
                             if let Some(ref cb) = on_change {
-                                cb(ix, &option, window, cx);
+                                cb(ix, option.clone(), window, cx);
                             }
                         }),
                     )

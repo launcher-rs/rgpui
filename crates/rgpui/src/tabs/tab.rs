@@ -1,4 +1,4 @@
-use std::{rc::Rc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use crate::{
     Animation, AnimationExt as _, AnyElement, App, Background, ClickEvent, Div, Edges, ElementId,
@@ -426,7 +426,7 @@ pub struct Tab {
     /// [`crate::tabs::TabBar`] 指示器的动画纪元；每次切换 Tab 时递增。
     /// 用于为选中 Tab 的文字颜色渐变作键，使其与指示器滑动同步重启。
     pub(super) indicator_epoch: u64,
-    on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
+    on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl From<&'static str> for Tab {
@@ -551,9 +551,9 @@ impl Tab {
     /// 设置 Tab 的点击处理回调。
     pub fn on_click(
         mut self,
-        on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.on_click = Some(Rc::new(on_click));
+        self.on_click = Some(Arc::new(on_click));
         self
     }
 

@@ -24,8 +24,8 @@ pub struct ComboboxState {
     selected: Vec<usize>,
     /// 下拉列表是否展开。
     open: bool,
-    /// 变更回调（已选下标列表）。
-    on_change: Option<Arc<dyn Fn(&[usize], &mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 变更回调（已选下标列表，按值传递）。
+    on_change: Option<Arc<dyn Fn(Vec<usize>, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 有待触发的变更回调（toggle 时无 Window，延后到 render 触发）。
     pending_emit: bool,
     /// 选中后待回焦（toggle 时无 Window，延后到 render 执行）。
@@ -83,10 +83,10 @@ impl ComboboxState {
         self
     }
 
-    /// 设置变更回调。
+    /// 设置变更回调（已选下标列表按值传递）。
     pub fn on_change<F>(mut self, f: F) -> Self
     where
-        F: Fn(&[usize], &mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(Vec<usize>, &mut Window, &mut App) + Send + Sync + 'static,
     {
         self.on_change = Some(Arc::new(f));
         self
@@ -147,7 +147,7 @@ impl Render for ComboboxState {
         if self.pending_emit {
             self.pending_emit = false;
             if let Some(ref cb) = self.on_change.clone() {
-                cb(&self.selected.clone(), window, cx);
+                cb(self.selected.clone(), window, cx);
             }
         }
         // 延后的回焦（选中/回车后焦点回到输入框，可继续打字/删除）。

@@ -77,10 +77,10 @@ pub struct NavigationMenu<T: Clone + PartialEq + Eq + Hash + 'static> {
     selected_id: Option<T>,
     /// 展开的条目 ID 列表。
     expanded_ids: Vec<T>,
-    /// 选中回调。
-    on_select: Option<Arc<dyn Fn(&T, &mut Window, &mut App) + Send + Sync + 'static>>,
-    /// 展开/收起回调。
-    on_toggle: Option<Arc<dyn Fn(&T, bool, &mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 选中回调（条目 ID 按值传递）。
+    on_change: Option<Arc<dyn Fn(T, &mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 展开/收起回调（条目 ID 按值传递）。
+    on_toggle: Option<Arc<dyn Fn(T, bool, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -93,7 +93,7 @@ impl<T: Clone + PartialEq + Eq + Hash + 'static> NavigationMenu<T> {
             items: Vec::new(),
             selected_id: None,
             expanded_ids: Vec::new(),
-            on_select: None,
+            on_change: None,
             on_toggle: None,
             style: StyleRefinement::default(),
         }
@@ -129,19 +129,19 @@ impl<T: Clone + PartialEq + Eq + Hash + 'static> NavigationMenu<T> {
         self
     }
 
-    /// 设置选中回调。
-    pub fn on_select<F>(mut self, f: F) -> Self
+    /// 设置选中回调（条目 ID 按值传递）。
+    pub fn on_change<F>(mut self, f: F) -> Self
     where
-        F: Fn(&T, &mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(T, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_select = Some(Arc::new(f));
+        self.on_change = Some(Arc::new(f));
         self
     }
 
-    /// 设置展开/收起回调。
+    /// 设置展开/收起回调（条目 ID 按值传递）。
     pub fn on_toggle<F>(mut self, f: F) -> Self
     where
-        F: Fn(&T, bool, &mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(T, bool, &mut Window, &mut App) + Send + Sync + 'static,
     {
         self.on_toggle = Some(Arc::new(f));
         self
@@ -167,7 +167,7 @@ impl<T: Clone + PartialEq + Eq + Hash + 'static> RenderOnce for NavigationMenu<T
 
         let expanded_set: HashSet<T> = self.expanded_ids.into_iter().collect();
         let selected_id = self.selected_id;
-        let on_select = self.on_select;
+        let on_change = self.on_change;
         let on_toggle = self.on_toggle;
         let user_style = self.style;
 
@@ -189,7 +189,7 @@ impl<T: Clone + PartialEq + Eq + Hash + 'static> RenderOnce for NavigationMenu<T
                     0,
                     &expanded_set,
                     &selected_id,
-                    &on_select,
+                    &on_change,
                     &on_toggle,
                 )
             }))
@@ -209,8 +209,8 @@ fn render_menu_item<T: Clone + PartialEq + Eq + Hash + 'static>(
     depth: usize,
     expanded_set: &HashSet<T>,
     selected_id: &Option<T>,
-    on_select: &Option<Arc<dyn Fn(&T, &mut Window, &mut App) + Send + Sync + 'static>>,
-    on_toggle: &Option<Arc<dyn Fn(&T, bool, &mut Window, &mut App) + Send + Sync + 'static>>,
+    on_change: &Option<Arc<dyn Fn(T, &mut Window, &mut App) + Send + Sync + 'static>>,
+    on_toggle: &Option<Arc<dyn Fn(T, bool, &mut Window, &mut App) + Send + Sync + 'static>>,
 ) -> impl IntoElement {
     let has_children = item.has_children();
     let disabled = item.disabled;
@@ -271,7 +271,7 @@ fn render_menu_item<T: Clone + PartialEq + Eq + Hash + 'static>(
                             .when(!disabled && on_toggle.is_some(), |this: Div| {
                                 let on_toggle = on_toggle.unwrap();
                                 this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                                    on_toggle(&item_id, !is_expanded_copy, window, cx);
+                                    on_toggle(item_id.clone(), !is_expanded_copy, window, cx);
                                 })
                             })
                             .child(
@@ -303,11 +303,11 @@ fn render_menu_item<T: Clone + PartialEq + Eq + Hash + 'static>(
                         })
                         .when(!disabled, |this: Div| {
                             let item_id = item.id.clone();
-                            let on_select = on_select.clone();
+                            let on_change = on_change.clone();
 
                             this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                                if let Some(on_select) = on_select.as_ref() {
-                                    on_select(&item_id, window, cx);
+                                if let Some(on_change) = on_change.as_ref() {
+                                    on_change(item_id.clone(), window, cx);
                                 }
                             })
                         })
@@ -386,7 +386,7 @@ fn render_menu_item<T: Clone + PartialEq + Eq + Hash + 'static>(
                             depth + 1,
                             expanded_set,
                             selected_id,
-                            on_select,
+                            on_change,
                             on_toggle,
                         )
                     })),

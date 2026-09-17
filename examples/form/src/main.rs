@@ -282,9 +282,9 @@ impl Render for FormDemo {
                                         .child(Radio::new("gender-female").label("女"))
                                         .child(Radio::new("gender-unknown").label("保密"))
                                         .selected_index(gender_selected)
-                                        .on_click(move |ix, _, cx| {
+                                        .on_change(move |ix, _, cx| {
                                             gender_view.update(cx, |this, cx| {
-                                                this.gender_selected = Some(*ix);
+                                                this.gender_selected = Some(ix);
                                                 cx.notify();
                                             });
                                         }),
@@ -307,9 +307,9 @@ impl Render for FormDemo {
                                     Switch::new("form-notify")
                                         .label("接收新消息通知")
                                         .checked(self.notify)
-                                        .on_click(move |checked, _, cx| {
+                                        .on_change(move |checked, _, cx| {
                                             notify_view.update(cx, |this, cx| {
-                                                this.notify = *checked;
+                                                this.notify = checked;
                                                 cx.notify();
                                             });
                                         }),
@@ -323,9 +323,9 @@ impl Render for FormDemo {
                                             Checkbox::new("hobby-reading")
                                                 .label("阅读")
                                                 .checked(self.hobby_reading)
-                                                .on_click(move |checked, _, cx| {
+                                                .on_change(move |checked, _, cx| {
                                                     reading_view.update(cx, |this, cx| {
-                                                        this.hobby_reading = *checked;
+                                                        this.hobby_reading = checked;
                                                         cx.notify();
                                                     });
                                                 }),
@@ -334,9 +334,9 @@ impl Render for FormDemo {
                                             Checkbox::new("hobby-sports")
                                                 .label("运动")
                                                 .checked(self.hobby_sports)
-                                                .on_click(move |checked, _, cx| {
+                                                .on_change(move |checked, _, cx| {
                                                     sports_view.update(cx, |this, cx| {
-                                                        this.hobby_sports = *checked;
+                                                        this.hobby_sports = checked;
                                                         cx.notify();
                                                     });
                                                 }),
@@ -350,9 +350,9 @@ impl Render for FormDemo {
                                         Checkbox::new("form-agree")
                                             .label("我已阅读并同意用户协议")
                                             .checked(self.agree)
-                                            .on_click(move |checked, _, cx| {
+                                            .on_change(move |checked, _, cx| {
                                                 agree_view.update(cx, |this, cx| {
-                                                    this.agree = *checked;
+                                                    this.agree = checked;
                                                     cx.notify();
                                                 });
                                             }),

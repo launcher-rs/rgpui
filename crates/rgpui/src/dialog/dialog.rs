@@ -1,6 +1,6 @@
 //! 对话框核心，提供模态对话框的基础框架和动画逻辑。
 
-use std::{rc::Rc, sync::LazyLock, time::Duration};
+use std::{rc::Rc, sync::Arc, sync::LazyLock, time::Duration};
 
 use crate::{
     ActiveTheme as _, Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent,
@@ -31,9 +31,11 @@ pub struct DialogButtonProps {
     pub(crate) cancel_text: Option<SharedString>,
     pub(crate) cancel_variant: ButtonVariant,
     pub(crate) show_cancel: bool,
-    pub(crate) on_ok: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static>,
-    pub(crate) on_cancel: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static>,
-    pub(crate) on_close: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
+    pub(crate) on_ok:
+        Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) -> bool + Send + Sync + 'static>,
+    pub(crate) on_cancel:
+        Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) -> bool + Send + Sync + 'static>,
+    pub(crate) on_close: Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>,
 }
 
 impl Default for DialogButtonProps {
@@ -44,9 +46,9 @@ impl Default for DialogButtonProps {
             cancel_text: None,
             cancel_variant: ButtonVariant::default(),
             show_cancel: false,
-            on_ok: Rc::new(|_, _, _| true),
-            on_cancel: Rc::new(|_, _, _| true),
-            on_close: Rc::new(|_, _, _| {}),
+            on_ok: Arc::new(|_, _, _| true),
+            on_cancel: Arc::new(|_, _, _| true),
+            on_close: Arc::new(|_, _, _| {}),
         }
     }
 }
@@ -85,18 +87,18 @@ impl DialogButtonProps {
     /// 设置确认回调。返回 `true` 关闭对话框，返回 `false` 则不关闭。
     pub fn on_ok(
         mut self,
-        on_ok: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
+        on_ok: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + Send + Sync + 'static,
     ) -> Self {
-        self.on_ok = Rc::new(on_ok);
+        self.on_ok = Arc::new(on_ok);
         self
     }
 
     /// 设置取消回调。返回 `true` 关闭对话框，返回 `false` 则不关闭。
     pub fn on_cancel(
         mut self,
-        on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
+        on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + Send + Sync + 'static,
     ) -> Self {
-        self.on_cancel = Rc::new(on_cancel);
+        self.on_cancel = Arc::new(on_cancel);
         self
     }
 
@@ -272,16 +274,16 @@ impl Dialog {
     /// 设置对话框关闭回调，在确认或取消回调之后调用。
     pub fn on_close(
         mut self,
-        on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.button_props.on_close = Rc::new(on_close);
+        self.button_props.on_close = Arc::new(on_close);
         self
     }
 
     /// 设置对话框确认回调。返回 `true` 关闭对话框，返回 `false` 则不关闭。
     pub fn on_ok(
         mut self,
-        on_ok: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
+        on_ok: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + Send + Sync + 'static,
     ) -> Self {
         self.button_props = self.button_props.on_ok(on_ok);
         self
@@ -290,7 +292,7 @@ impl Dialog {
     /// 设置对话框取消回调。返回 `true` 关闭对话框，返回 `false` 则不关闭。
     pub fn on_cancel(
         mut self,
-        on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
+        on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + Send + Sync + 'static,
     ) -> Self {
         self.button_props = self.button_props.on_cancel(on_cancel);
         self

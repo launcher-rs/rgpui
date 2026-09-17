@@ -2,7 +2,7 @@
 
 use crate::components::empty_state::{EmptyState, EmptyStateSize};
 use crate::{prelude::FluentBuilder as _, *};
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
 /// 通知变体类型。
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
@@ -46,7 +46,7 @@ pub struct NotificationAction {
     /// 按钮标签。
     pub label: SharedString,
     /// 点击回调。
-    pub handler: Rc<dyn Fn(&mut Window, &mut App)>,
+    pub handler: Arc<dyn Fn(&mut Window, &mut App) + Send + Sync>,
 }
 
 /// 单条通知条目。
@@ -119,11 +119,11 @@ impl NotificationItem {
     pub fn action(
         mut self,
         label: impl Into<SharedString>,
-        handler: impl Fn(&mut Window, &mut App) + 'static,
+        handler: impl Fn(&mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
         self.action = Some(NotificationAction {
             label: label.into(),
-            handler: Rc::new(handler),
+            handler: Arc::new(handler),
         });
         self
     }

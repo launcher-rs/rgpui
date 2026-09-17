@@ -300,6 +300,20 @@ impl<'a, T: 'static> Context<'a, T> {
         }
     }
 
+    /// 按值事件版本的 [`Self::listener`]。
+    ///
+    /// 值变更回调（`on_change` 等）按值传递，配套使用本方法接入视图状态；
+    /// 引用型事件仍用 [`Self::listener`]。
+    pub fn listener_value<E>(
+        &self,
+        f: impl Fn(&mut T, E, &mut Window, &mut Context<T>) + 'static,
+    ) -> impl Fn(E, &mut Window, &mut App) + 'static {
+        let view = self.entity().downgrade();
+        move |e: E, window: &mut Window, cx: &mut App| {
+            view.update(cx, |view, cx| f(view, e, window, cx)).ok();
+        }
+    }
+
     /// 在闭包中生成视图状态的便捷方法。
     /// 有关更多详细信息，请参见 `listener`。
     pub fn processor<E, R>(

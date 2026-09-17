@@ -1,6 +1,6 @@
 //! 标签输入：可添加/删除多个标签的文本输入。
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::input_ui::{Input, InputState};
 use crate::{prelude::FluentBuilder as _, *};
@@ -153,8 +153,8 @@ pub struct TagInput {
     disabled: bool,
     /// 建议标签列表。
     suggestions: Vec<SharedString>,
-    /// 标签变化回调。
-    on_change: Option<Rc<dyn Fn(&[SharedString], &mut Window, &mut App)>>,
+    /// 标签变化回调（标签列表按值传递，`SharedString` 为 Arc 廉价克隆）。
+    on_change: Option<Arc<dyn Fn(Vec<SharedString>, &mut Window, &mut App) + Send + Sync>>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -190,12 +190,12 @@ impl TagInput {
         self
     }
 
-    /// 设置标签变化回调。
+    /// 设置标签变化回调（标签列表按值传递）。
     pub fn on_change(
         mut self,
-        handler: impl Fn(&[SharedString], &mut Window, &mut App) + 'static,
+        handler: impl Fn(Vec<SharedString>, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.on_change = Some(Rc::new(handler));
+        self.on_change = Some(Arc::new(handler));
         self
     }
 }
@@ -287,7 +287,7 @@ impl RenderOnce for TagInput {
                                         state_for_remove.update(cx, |s, cx| {
                                             s.remove_tag(idx, cx);
                                             if let Some(ref handler) = on_change {
-                                                handler(&s.tags, window, cx);
+                                                handler(s.tags.clone(), window, cx);
                                             }
                                         });
                                     })
@@ -315,7 +315,7 @@ impl RenderOnce for TagInput {
                                                 state.update(cx, |s, cx| {
                                                     if s.commit_input(window, cx) {
                                                         if let Some(ref handler) = on_change {
-                                                            handler(&s.tags, window, cx);
+                                                            handler(s.tags.clone(), window, cx);
                                                         }
                                                     }
                                                 });
@@ -328,7 +328,7 @@ impl RenderOnce for TagInput {
                                                     {
                                                         s.remove_last_tag(cx);
                                                         if let Some(ref handler) = on_change {
-                                                            handler(&s.tags, window, cx);
+                                                            handler(s.tags.clone(), window, cx);
                                                         }
                                                         cx.stop_propagation();
                                                     }

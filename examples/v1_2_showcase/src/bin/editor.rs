@@ -663,10 +663,10 @@ impl Render for EditorDemo {
                             Switch::new("auto-complete")
                                 .checked(auto_complete)
                                 .label("输入时自动补全")
-                                .on_click(move |checked, _, cx| {
+                                .on_change(move |checked, _, cx| {
                                     demo.update(cx, |this, cx| {
                                         this.editor.update(cx, |state, cx| {
-                                            state.set_auto_completion_enabled(*checked, cx);
+                                            state.set_auto_completion_enabled(checked, cx);
                                         });
                                     });
                                 })
@@ -681,10 +681,10 @@ impl Render for EditorDemo {
                             Switch::new("minimap")
                                 .checked(minimap_on)
                                 .label("缩略图")
-                                .on_click(move |checked, _, cx| {
+                                .on_change(move |checked, _, cx| {
                                     demo.update(cx, |this, cx| {
                                         this.editor.update(cx, |state, cx| {
-                                            state.set_minimap_enabled(*checked, cx);
+                                            state.set_minimap_enabled(checked, cx);
                                         });
                                     });
                                 })
@@ -694,10 +694,10 @@ impl Render for EditorDemo {
                             Switch::new("vim-mode")
                                 .checked(vim_on)
                                 .label("Vim 模式")
-                                .on_click(move |checked, _, cx| {
+                                .on_change(move |checked, _, cx| {
                                     demo.update(cx, |this, cx| {
                                         this.editor.update(cx, |state, cx| {
-                                            state.set_vim_enabled(*checked, cx);
+                                            state.set_vim_enabled(checked, cx);
                                         });
                                     });
                                 })
@@ -826,11 +826,11 @@ impl Render for EditorDemo {
                             Switch::new("folding")
                                 .checked(folding)
                                 .label("折叠")
-                                .on_click(move |checked, window, cx| {
+                                .on_change(move |checked, window, cx| {
                                     demo.update(cx, |this, cx| {
-                                        this.folding = *checked;
+                                        this.folding = checked;
                                         this.editor.update(cx, |state, cx| {
-                                            state.set_folding(*checked, window, cx);
+                                            state.set_folding(checked, window, cx);
                                         });
                                     });
                                 })
@@ -841,9 +841,9 @@ impl Render for EditorDemo {
                             Switch::new("debug-chrome")
                                 .checked(debug_chrome)
                                 .label("布局调试")
-                                .on_click(move |checked, _, cx| {
+                                .on_change(move |checked, _, cx| {
                                     demo.update(cx, |this, _| {
-                                        this.debug_chrome = *checked;
+                                        this.debug_chrome = checked;
                                     });
                                 })
                         })

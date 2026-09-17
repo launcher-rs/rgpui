@@ -50,8 +50,8 @@ impl rgpui::Render for TabBarStory {
                     .child(
                         TabBar::new("tabbar-default")
                             .selected_index(selected)
-                            .on_click(cx.listener(|this, ix: &usize, _, cx| {
-                                this.selected = *ix;
+                            .on_change(cx.listener_value(|this, ix: usize, _, cx| {
+                                this.selected = ix;
                                 cx.notify();
                             }))
                             .child(Tab::new().label("首页"))
@@ -63,8 +63,8 @@ impl rgpui::Render for TabBarStory {
                         TabBar::new("tabbar-pill")
                             .selected_index(selected)
                             .with_variant(TabVariant::Pill)
-                            .on_click(cx.listener(|this, ix: &usize, _, cx| {
-                                this.selected = *ix;
+                            .on_change(cx.listener_value(|this, ix: usize, _, cx| {
+                                this.selected = ix;
                                 cx.notify();
                             }))
                             .child(Tab::new().label("编辑"))

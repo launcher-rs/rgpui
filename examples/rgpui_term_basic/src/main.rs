@@ -2102,8 +2102,8 @@ impl Render for AgentTermApp {
                             )
                             .menu(true)
                             .selected_index(active_tab_index)
-                            .on_click(cx.listener(|this, ix: &usize, window, cx| {
-                                this.switch_to_tab(*ix, window, cx);
+                            .on_change(cx.listener_value(|this, ix: usize, window, cx| {
+                                this.switch_to_tab(ix, window, cx);
                             }))
                             .children(self.tabs.iter().enumerate().map(|(ix, tab)| {
                                 Tab::new().label(tab.title.clone()).suffix(

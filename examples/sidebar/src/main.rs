@@ -79,11 +79,11 @@ impl Render for SidebarDemo {
                     .selected(selected)
                     .collapsible(true)
                     .collapsed(collapsed)
-                    .on_select(cx.listener(|this, id: &SharedString, _, _| {
-                        this.selected = id.clone();
+                    .on_change(cx.listener_value(|this, id: SharedString, _, _| {
+                        this.selected = id;
                     }))
-                    .on_toggle_collapsed(cx.listener(|this, collapsed: &bool, _, _| {
-                        this.collapsed = *collapsed;
+                    .on_toggle_collapsed(cx.listener_value(|this, collapsed: bool, _, _| {
+                        this.collapsed = collapsed;
                     })),
             )
             .child(
