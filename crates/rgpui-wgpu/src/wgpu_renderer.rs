@@ -223,7 +223,11 @@ impl WgpuRenderer {
                 context.check_compatible_with_surface(&surface)?;
                 context
             }
-            None => ctx_ref.insert(WgpuContext::new(instance, &surface, compositor_gpu)?),
+            None => {
+                let context = ctx_ref.insert(WgpuContext::new(instance, &surface, compositor_gpu)?);
+                context.report_gpu_info();
+                context
+            }
         };
 
         let atlas = Arc::new(WgpuAtlas::from_context(context));

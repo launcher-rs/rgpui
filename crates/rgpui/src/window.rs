@@ -1144,6 +1144,24 @@ pub struct Window {
     /// 面板自举时暂停树记录（I2）：检查器面板自身的 prepaint 不计入被检树。
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector_tree_suspended: bool,
+    /// 运行时采样缓存（Chrome“运行”卡片数据源）：仅检查器打开时更新，关闭即停。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_fps: f64,
+    /// 上一帧耗时 EMA（毫秒），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_frame_ms: f64,
+    /// 进程 CPU 占用百分比（约 2Hz 采样缓存），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_cpu: Option<f64>,
+    /// 进程内存 MB（约 2Hz 采样缓存），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_mem_mb: Option<f64>,
+    /// 采样器内部状态（CPU 差分时钟 + 节流时间戳），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_sampler: crate::runtime_stats::RuntimeSamplerState,
+    /// 崩溃快照上次落盘时间（`last.json` 约 2 秒一写），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    crash_last_write: Option<crate::scheduler::Instant>,
     pub(crate) a11y: A11y,
     /// Web DOM 后端构建器：当平台窗口声明 `supports_dom()` 时创建，
     /// 每帧在 paint 阶段收集 DOM 节点，帧末交付给平台窗口。
@@ -1924,6 +1942,18 @@ impl Window {
             inspector_tree_stack: Vec::new(),
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector_tree_suspended: false,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_fps: 0.0,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_frame_ms: 0.0,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_cpu: None,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_mem_mb: None,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_sampler: crate::runtime_stats::RuntimeSamplerState::default(),
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            crash_last_write: None,
             a11y: A11y::new(
                 a11y_active_flag,
                 accessibility_force_disabled,
@@ -3173,6 +3203,12 @@ impl Window {
 
         #[cfg(any(feature = "inspector", debug_assertions))]
         self.paint_inspector_hitbox(cx);
+
+        #[cfg(any(feature = "inspector", debug_assertions))]
+        self.sample_runtime_if_inspecting();
+
+        #[cfg(any(feature = "inspector", debug_assertions))]
+        self.write_crash_snapshot_if_enabled(cx);
 
         // DOM 后端：结束本帧的 DOM 树收集，并把新鲜树交付给平台窗口。
         #[cfg(feature = "dom-backend")]
@@ -6258,6 +6294,207 @@ impl Window {
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub fn is_inspector_open(&self) -> bool {
         self.inspector.is_some()
+    }
+
+    /// 运行时采样（每帧调一次，内部自行门控与节流）。
+    ///
+    /// 检查器关闭直接返回（上一帧时间戳清空，避免重开时首帧 dt 爆表）；
+    /// 打开时每帧累计帧率 EMA，CPU/内存约 2Hz 采样。面板只读缓存，不测量。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) fn sample_runtime_if_inspecting(&mut self) {
+        use crate::scheduler::Instant;
+
+        if self.inspector.is_none() {
+            self.runtime_sampler.last_frame = None;
+            return;
+        }
+        let now = Instant::now();
+        if let Some(last) = self.runtime_sampler.last_frame {
+            let dt_ms = now.duration_since(last).as_secs_f64() * 1000.0;
+            if dt_ms > 0.0 && dt_ms < 10_000.0 {
+                self.runtime_frame_ms = if self.runtime_frame_ms == 0.0 {
+                    dt_ms
+                } else {
+                    self.runtime_frame_ms * 0.9 + dt_ms * 0.1
+                };
+                self.runtime_fps = if self.runtime_frame_ms > 0.0 {
+                    1000.0 / self.runtime_frame_ms
+                } else {
+                    0.0
+                };
+            }
+        }
+        self.runtime_sampler.last_frame = Some(now);
+
+        let throttle = self
+            .runtime_sampler
+            .last_sample
+            .map(|last| now.duration_since(last).as_millis() >= 500)
+            .unwrap_or(true);
+        if throttle {
+            self.runtime_sampler.last_sample = Some(now);
+            if let Some(sample) = self.runtime_sampler.clock.sample() {
+                self.runtime_cpu = Some(sample.cpu_percent);
+                self.runtime_mem_mb = Some(sample.memory_mb);
+            }
+        }
+    }
+
+    /// 采样缓存的帧率（检查器未打开时为 0）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn runtime_fps(&self) -> f64 {
+        self.runtime_fps
+    }
+
+    /// 采样缓存的上一帧耗时 EMA（毫秒）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn runtime_frame_ms(&self) -> f64 {
+        self.runtime_frame_ms
+    }
+
+    /// 采样缓存的进程 CPU 占用百分比（未采样到为 `None`）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn runtime_cpu(&self) -> Option<f64> {
+        self.runtime_cpu
+    }
+
+    /// 采样缓存的进程内存 MB（未采样到为 `None`）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn runtime_mem_mb(&self) -> Option<f64> {
+        self.runtime_mem_mb
+    }
+
+    /// 采集当前检查器快照（崩溃排查用，无选中也返回框架信息）。
+    ///
+    /// 读取已渲染帧的树/选中/hitbox 与 `App` 错误环；调用方负责落盘节流
+    /// （`draw` 内约 2 秒一写）。无检查器时返回 `None`。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn capture_inspector_snapshot(&self, cx: &App) -> Option<crate::InspectorSnapshot> {
+        use crate::InspectorSnapshot;
+
+        let inspector = self.inspector.as_ref()?;
+        let inspector = inspector.read(cx);
+        let active = inspector.active_element_id().cloned();
+
+        // hitbox 反查表（hitbox id → 边界），一次建好。
+        let mut hitbox_bounds =
+            std::collections::HashMap::<crate::HitboxId, crate::Bounds<crate::Pixels>>::new();
+        for hitbox in &self.rendered_frame.hitboxes {
+            hitbox_bounds.insert(hitbox.id, hitbox.bounds);
+        }
+        let node_of = |id: &crate::InspectorElementId| -> crate::SnapshotNode {
+            let bounds = self
+                .rendered_frame
+                .inspector_hitboxes
+                .iter()
+                .find_map(|(hitbox_id, known)| (*known == *id).then_some(*hitbox_id))
+                .and_then(|hitbox_id| hitbox_bounds.get(&hitbox_id))
+                .map(|b| {
+                    [
+                        b.origin.x.as_f32(),
+                        b.origin.y.as_f32(),
+                        b.size.width.as_f32(),
+                        b.size.height.as_f32(),
+                    ]
+                });
+            // 内容尺寸取 Div 状态（仅选中元素有；其余为空）。
+            let parent = self
+                .rendered_frame
+                .inspector_tree_nodes
+                .get(id)
+                .and_then(|node| node.parent.clone())
+                .map(|p| p.tree_key());
+            crate::SnapshotNode {
+                key: id.tree_key(),
+                label: id.short_label(),
+                source: id.source_label(),
+                instance: id.instance_id,
+                parent,
+                bounds,
+            }
+        };
+
+        // 祖先链（根在前）。
+        let mut ancestors: Vec<crate::SnapshotNode> = Vec::new();
+        if let Some(mut current) = active.clone() {
+            let mut chain = vec![current.clone()];
+            while let Some(parent) = self
+                .rendered_frame
+                .inspector_tree_nodes
+                .get(&current)
+                .and_then(|node| node.parent.clone())
+            {
+                chain.push(parent.clone());
+                current = parent;
+            }
+            chain.reverse();
+            ancestors = chain.iter().map(node_of).collect();
+        }
+
+        // 全树（按键排序保证稳定，截断 2000）。
+        let mut ids: Vec<crate::InspectorElementId> = self
+            .rendered_frame
+            .inspector_tree_nodes
+            .keys()
+            .cloned()
+            .collect();
+        ids.sort_by_key(|id| id.tree_key());
+        let tree_total = ids.len();
+        let tree: Vec<crate::SnapshotNode> =
+            ids.into_iter().take(2000).map(|id| node_of(&id)).collect();
+
+        let timestamp_millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        Some(InspectorSnapshot {
+            version: 1,
+            timestamp_millis,
+            active: active.as_ref().map(node_of),
+            ancestors,
+            tree_total,
+            tree,
+            errors: cx
+                .recent_errors()
+                .into_iter()
+                .map(|(seq, message)| (seq, message.to_string()))
+                .collect(),
+            viewport: [
+                self.viewport_size.width.as_f32(),
+                self.viewport_size.height.as_f32(),
+            ],
+        })
+    }
+
+    /// 滚动写入崩溃快照（`draw` 内调用，约 2 秒一写，原子替换 `last.json`）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) fn write_crash_snapshot_if_enabled(&mut self, cx: &mut App) {
+        use crate::scheduler::Instant;
+
+        let Some(dir) = cx.crash_recorder_dir.clone() else {
+            return;
+        };
+        if self.inspector.is_none() {
+            return;
+        }
+        let now = Instant::now();
+        let due = self
+            .crash_last_write
+            .map(|last| now.duration_since(last).as_millis() >= 2000)
+            .unwrap_or(true);
+        if !due {
+            return;
+        }
+        self.crash_last_write = Some(now);
+        if let Some(snapshot) = self.capture_inspector_snapshot(cx) {
+            if let Ok(json) = serde_json::to_string(&snapshot) {
+                _ = std::fs::create_dir_all(&dir);
+                let tmp = dir.join("last.json.tmp");
+                if std::fs::write(&tmp, json).is_ok() {
+                    _ = std::fs::rename(&tmp, dir.join("last.json"));
+                }
+            }
+        }
     }
 
     /// 检查器打开时在 prepaint 嵌套入口记录树节点，返回是否入栈。

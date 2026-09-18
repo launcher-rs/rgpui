@@ -25,6 +25,12 @@ pub struct CompositorGpuHint {
 }
 
 impl WgpuContext {
+    /// 上报适配器信息到核心 GPU 注册表（Inspector“运行”卡片读取；重复调用保持首次值）。
+    pub fn report_gpu_info(&self) {
+        let info = self.adapter.get_info();
+        rgpui::set_gpu_info(info.name, format!("{:?}", info.backend));
+    }
+
     #[cfg(not(target_family = "wasm"))]
     pub fn new(
         instance: wgpu::Instance,

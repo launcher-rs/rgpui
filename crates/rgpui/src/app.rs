@@ -730,6 +730,13 @@ pub struct App {
     pub(crate) pending_global_notifications: TypeIdHashSet,
     /// 按 key 隔离的防抖器注册表（`App::debounce` 方法版）。
     pub(crate) debouncers: FxHashMap<SharedString, Debouncer>,
+    /// 应用上报的错误环（`App::report_error` 写入，检查器“报错”卡片与崩溃快照读取；
+    /// 有界 50 条，Chrome Console 的应用内对应物）。
+    pub(crate) recent_errors: std::collections::VecDeque<(u64, SharedString)>,
+    /// 错误环序号（单调递增，关闭不回收）。
+    pub(crate) error_seq: u64,
+    /// 崩溃快照落盘目录（`App::enable_crash_recorder` 设置；`None` 关闭滚动记录）。
+    pub(crate) crash_recorder_dir: Option<std::path::PathBuf>,
     pub(crate) restart_path: Option<PathBuf>,
     pub(crate) layout_id_buffer: Vec<LayoutId>, // We recycle this memory across layout requests.
     pub(crate) propagate_event: bool,
@@ -821,6 +828,9 @@ impl App {
                 pending_notifications: FxHashSet::default(),
                 pending_global_notifications: Default::default(),
                 debouncers: FxHashMap::default(),
+                recent_errors: Default::default(),
+                error_seq: 0,
+                crash_recorder_dir: None,
                 observers: SubscriberSet::new(),
                 tracked_entities: FxHashMap::default(),
                 window_invalidators_by_entity: FxHashMap::default(),
@@ -2749,6 +2759,34 @@ impl App {
     pub fn enable_default_inspector(&mut self) {
         self.set_inspector_renderer(Box::new(crate::inspector_panel::default_inspector_panel));
         self.register_inspector_element(crate::inspector_panel::render_div_inspector_state);
+    }
+
+    /// 上报一条应用错误（写入有界错误环，最多保留 50 条）。
+    ///
+    /// 检查器“报错”卡片与崩溃快照读取此处；这是应用内 Console 的对应物——
+    /// 框架不拦截 `log`（应用自有 logger），需要进面板的错误请走本方法。
+    pub fn report_error(&mut self, message: impl Into<SharedString>) {
+        const CAP: usize = 50;
+        if self.recent_errors.len() >= CAP {
+            self.recent_errors.pop_front();
+        }
+        let seq = self.error_seq;
+        self.error_seq += 1;
+        self.recent_errors.push_back((seq, message.into()));
+    }
+
+    /// 读取错误环（序号升序）。面板与快照用；平时无额外开销（只读）。
+    pub fn recent_errors(&self) -> Vec<(u64, SharedString)> {
+        self.recent_errors.iter().cloned().collect()
+    }
+
+    /// 开启崩溃快照滚动记录（`last.json` 约 2 秒一写，原子替换）。
+    ///
+    /// 需配合 [`crate::runtime_stats::install_crash_hook`] 的 panic 日志食用：
+    /// 快照是死前状态，日志是死因。目录不存在会自动创建。
+    /// 仅检查器打开的窗口写入；关闭记录传空目录或重启应用（字段不持久化）。
+    pub fn enable_crash_recorder(&mut self, dir: impl Into<std::path::PathBuf>) {
+        self.crash_recorder_dir = Some(dir.into());
     }
 
     /// 设置默认检查器面板插槽（H5：换顶栏/段落外皮，不必整板替换）。

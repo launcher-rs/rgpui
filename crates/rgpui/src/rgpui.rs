@@ -180,6 +180,9 @@ mod size;
 /// 订阅系统 - 观察者模式的事件订阅与通知机制
 mod subscription;
 
+/// 运行时采样 - Inspector“运行”卡片的数据源（帧率/CPU/内存）与 GPU 信息注册表
+pub mod runtime_stats;
+
 /// Taffy 布局引擎封装 - Flexbox 和 Grid 布局的 Rust 实现
 mod taffy;
 
@@ -516,6 +519,8 @@ pub use index_path::*;
 pub use menu::*;
 /// 重导出根视图
 pub use root::*;
+/// 重导出运行时采样类型（GpuInfo、set_gpu_info 等）
+pub use runtime_stats::{GpuInfo, gpu_info, set_gpu_info};
 pub use size::*;
 /// 重导出订阅系统类型（Subscription、SubscriberSet 等）
 pub use subscription::*;

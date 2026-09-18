@@ -345,6 +345,50 @@ mod conditional {
         pub(crate) children: Vec<InspectorElementId>,
     }
 
+    /// 崩溃快照里的单个节点（可序列化，事后回放/排查用）。
+    #[derive(Debug, Clone, serde::Serialize)]
+    pub struct SnapshotNode {
+        /// 跨帧稳定键（同面板展开键）。
+        pub key: String,
+        /// 行标签（全局路径末段）。
+        pub label: String,
+        /// 源码位置（`文件:行`）。
+        pub source: String,
+        /// 实例号。
+        pub instance: usize,
+        /// 父节点键（根为 `None`）。
+        pub parent: Option<String>,
+        /// 边界（x/y/w/h 逻辑像素，无 hitbox 时为 `None`）。
+        pub bounds: Option<[f32; 4]>,
+    }
+
+    /// 检查器崩溃快照（滚动写入 `last.json`，死后排查用）。
+    ///
+    /// 由 [`crate::Window::capture_inspector_snapshot`] 采集，
+    /// `App::enable_crash_recorder` 开启后约 2 秒一写（原子替换），
+    /// 配合 [`crate::runtime_stats::install_crash_hook`] 的 panic 日志食用。
+    /// 注意快照随检查器门控：release 未开 `inspector` feature 时无此数据，
+    /// 此时仅 panic 日志可用。
+    #[derive(Debug, Clone, serde::Serialize)]
+    pub struct InspectorSnapshot {
+        /// 快照格式版本（当前 1）。
+        pub version: u32,
+        /// 采集时间（UNIX 毫秒）。
+        pub timestamp_millis: u64,
+        /// 当前选中。
+        pub active: Option<SnapshotNode>,
+        /// 选中祖先链（根在前）。
+        pub ancestors: Vec<SnapshotNode>,
+        /// 全树节点总数（`tree` 可能因截断少于此数）。
+        pub tree_total: usize,
+        /// 全树扁平节点（按键排序，截断 2000）。
+        pub tree: Vec<SnapshotNode>,
+        /// 错误环（序号升序）。
+        pub errors: Vec<(u64, String)>,
+        /// 视口尺寸（w/h 逻辑像素）。
+        pub viewport: [f32; 2],
+    }
+
     /// 判断外层边界是否包含内层边界（含相等，允许 1px 舍入误差）。
     fn bounds_contains(outer: &Bounds<Pixels>, inner: &Bounds<Pixels>) -> bool {
         const EPS: f32 = 1.0;
@@ -361,6 +405,67 @@ mod conditional {
     /// 边界面积（用于包含消歧时取最小祖先）。
     fn bounds_area(bounds: &Bounds<Pixels>) -> f32 {
         bounds.size.width.as_f32() * bounds.size.height.as_f32()
+    }
+
+    /// 快照采集冒烟测试（打开检查器 → 绘制 → 快照非空）。
+    #[crate::test]
+    fn capture_snapshot_smoke(cx: &mut crate::TestAppContext) {
+        use crate::{Context, IntoElement, Render, div};
+
+        struct Probe;
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+            }
+        }
+
+        let (_view, cx) = cx.add_window_view(|_, _| Probe);
+        cx.update(|window, cx| {
+            window.toggle_inspector(cx);
+            let _ = window.draw(cx);
+            let snapshot = window
+                .capture_inspector_snapshot(cx)
+                .expect("检查器打开应有快照");
+            assert_eq!(snapshot.version, 1);
+            assert!(snapshot.viewport[0] > 0.0);
+        });
+    }
+
+    /// 快照 JSON 形状回归测试（字段改名即炸，提醒同步回放侧）。
+    #[test]
+    fn snapshot_serializes_stable_shape() {
+        let snapshot = InspectorSnapshot {
+            version: 1,
+            timestamp_millis: 0,
+            active: Some(SnapshotNode {
+                key: "k".to_string(),
+                label: "l".to_string(),
+                source: "s:1".to_string(),
+                instance: 0,
+                parent: None,
+                bounds: Some([0.0, 0.0, 10.0, 10.0]),
+            }),
+            ancestors: Vec::new(),
+            tree_total: 1,
+            tree: Vec::new(),
+            errors: vec![(0, "boom".to_string())],
+            viewport: [800.0, 600.0],
+        };
+        let json = serde_json::to_string(&snapshot).unwrap();
+        for key in [
+            "version",
+            "timestamp_millis",
+            "active",
+            "ancestors",
+            "tree_total",
+            "tree",
+            "errors",
+            "viewport",
+            "bounds",
+            "source",
+        ] {
+            assert!(json.contains(key), "快照缺字段 {key}");
+        }
     }
 }
 

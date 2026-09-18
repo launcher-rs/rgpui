@@ -131,6 +131,8 @@ pub fn default_inspector_panel(
                                     ))
                                 })
                                 .child(full_tree_card(tree_rows, tree_total, &section))
+                                .child(runtime_card(window, &section))
+                                .child(error_card(cx, &section))
                                 .children(states),
                         ),
                 ),
@@ -211,8 +213,10 @@ pub fn default_inspector_section(title: Option<SharedString>, body: AnyElement) 
         .into_any_element()
 }
 
-/// 默认的 `DivInspectorState` 检查器展示：被选中 Div 的布局边界与内容尺寸。
+/// 默认的 `DivInspectorState` 检查器展示：布局边界 + 盒模型 + 已指定样式。
 ///
+/// Chrome“元素”面板的对应物：盒模型图（margin/border/padding/content +
+/// 实测尺寸）与样式列表（仅显示调用方实际写过的项，未指定的不显示）。
 /// 由 `App::enable_default_inspector` 注册；自定义面板沿用本函数即可复用该展示。
 pub fn render_div_inspector_state(
     _id: InspectorElementId,
@@ -247,6 +251,16 @@ pub fn render_div_inspector_state(
                 state.content_size.height.as_f32()
             ),
         ))
+        .child(div().text_sm().font_semibold().mt(px(4.0)).child("盒模型"))
+        .child(box_model_diagram(state))
+        .child(
+            div()
+                .text_sm()
+                .font_semibold()
+                .mt(px(4.0))
+                .child("样式（仅已指定项）"),
+        )
+        .children(specified_style_rows(&state.base_style))
 }
 
 /// 面板信息行辅助函数。
@@ -261,6 +275,169 @@ fn info_row(label: &str, value: String) -> impl IntoElement {
                 .text_color(rgb(0x333333))
                 .child(value),
         )
+}
+
+/// 盒模型示意图（Chrome Elements 面板对应物）。
+///
+/// 四层嵌套示意 + 每层实测/指定数值：margin/border/padding 为指定值
+/// （`StyleRefinement` 的 `Debug` 原样展示，未指定显示横线），
+/// 内容与边界为实测像素。几何为示意（固定视觉缩进），数字为实数。
+fn box_model_diagram(state: &DivInspectorState) -> impl IntoElement {
+    let content = format!(
+        "{:.0} × {:.0}",
+        state.content_size.width.as_f32(),
+        state.content_size.height.as_f32()
+    );
+    let border_box = format!(
+        "{:.0} × {:.0}",
+        state.bounds.size.width.as_f32(),
+        state.bounds.size.height.as_f32()
+    );
+    let style = &state.base_style;
+    v_flex()
+        .gap(px(1.0))
+        .items_center()
+        // margin 层。
+        .child(
+            v_flex()
+                .gap(px(1.0))
+                .p(px(6.0))
+                .rounded_sm()
+                .bg(rgb(0xf9cc9c))
+                .child(box_layer_label("margin", format!("{:?}", style.margin)))
+                // border 层。
+                .child(
+                    v_flex()
+                        .gap(px(1.0))
+                        .p(px(6.0))
+                        .rounded_sm()
+                        .bg(rgb(0xffe188))
+                        .child(box_layer_label(
+                            "border",
+                            format!("{:?}", style.border_widths),
+                        ))
+                        // padding 层。
+                        .child(
+                            v_flex()
+                                .gap(px(1.0))
+                                .p(px(6.0))
+                                .rounded_sm()
+                                .bg(rgb(0xc3deb7))
+                                .child(box_layer_label("padding", format!("{:?}", style.padding)))
+                                // 内容层（实测）。
+                                .child(
+                                    div()
+                                        .px(px(12.0))
+                                        .py(px(6.0))
+                                        .rounded_sm()
+                                        .bg(rgb(0xa4c5f7))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(rgb(0x333333))
+                                                .child(format!("content {content}")),
+                                        ),
+                                ),
+                        ),
+                ),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(rgb(0x888888))
+                .child(format!("border-box {border_box}（几何示意，数字为实数）")),
+        )
+}
+
+/// 盒模型层标签（层名 + 值，单行）。
+fn box_layer_label(layer: &str, value: String) -> impl IntoElement {
+    div()
+        .text_xs()
+        .text_color(rgb(0x666666))
+        .child(format!("{layer} {value}"))
+}
+
+/// 已指定样式列表（Chrome Styles 面板对应物）。
+///
+/// 只收录调用方实际写过的项（标量 `Option` 取 `Some`，复合 refinement 按子字段
+/// 逐项检查），未指定的不显示。值用 `Debug` 原样展示。
+fn specified_style_rows(style: &crate::StyleRefinement) -> Vec<AnyElement> {
+    // （属性名，值）：`Some` 才收录。
+    let mut rows: Vec<(String, String)> = Vec::new();
+    macro_rules! specified {
+        ($($field:ident),*) => {
+            $(
+                if let Some(value) = style.$field.as_ref() {
+                    rows.push((stringify!($field).to_string(), format!("{value:?}")));
+                }
+            )*
+        };
+    }
+    specified!(
+        display,
+        visibility,
+        position,
+        flex_direction,
+        flex_wrap,
+        justify_content,
+        align_items,
+        align_self,
+        flex_grow,
+        flex_shrink,
+        background
+    );
+    // 复合 refinement：子字段逐项检查（x/y、宽高、四边）。
+    macro_rules! specified_sub {
+        ($field:ident : $($sub:ident),*) => {
+            $(
+                if let Some(value) = style.$field.$sub.as_ref() {
+                    rows.push((
+                        concat!(stringify!($field), ".", stringify!($sub)).to_string(),
+                        format!("{value:?}"),
+                    ));
+                }
+            )*
+        };
+    }
+    specified_sub!(overflow: x, y);
+    specified_sub!(size: width, height);
+    specified_sub!(min_size: width, height);
+    specified_sub!(max_size: width, height);
+    specified_sub!(gap: width, height);
+    specified_sub!(margin: top, right, bottom, left);
+    specified_sub!(padding: top, right, bottom, left);
+    specified_sub!(border_widths: top, right, bottom, left);
+    specified_sub!(inset: top, right, bottom, left);
+    if rows.is_empty() {
+        return vec![
+            div()
+                .text_xs()
+                .text_color(rgb(0x888888))
+                .child("（无显式样式，全走默认值）")
+                .into_any_element(),
+        ];
+    }
+    rows.into_iter()
+        .map(|(name, value)| {
+            h_flex()
+                .gap(px(6.0))
+                .child(
+                    div()
+                        .w(px(88.0))
+                        .text_xs()
+                        .text_color(rgb(0x999999))
+                        .child(name),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_xs()
+                        .text_color(rgb(0x333333))
+                        .child(value),
+                )
+                .into_any_element()
+        })
+        .collect()
 }
 
 /// 完整树可见行快照（prepaint 记录的 parent→children，DFS 展开）。
@@ -279,6 +456,74 @@ struct FullTreeRow {
     selected: bool,
 }
 
+/// 运行卡片（Chrome“性能”面板的轻量对应物）：帧率/帧耗时/CPU/内存/GPU。
+///
+/// 数据来自采样缓存（仅检查器打开时累计，关闭即停；CPU/内存约 2Hz），
+/// 面板只读不测量。采样本身会轻微抬高 CPU 读数，看趋势别看绝对值。
+fn runtime_card(window: &Window, section: &InspectorSectionSlot) -> AnyElement {
+    let fps = window.runtime_fps();
+    let frame_ms = window.runtime_frame_ms();
+    let cpu = window
+        .runtime_cpu()
+        .map(|v| format!("{v:.1}%"))
+        .unwrap_or_else(|| "—".to_string());
+    let mem = window
+        .runtime_mem_mb()
+        .map(|v| format!("{v:.1} MB"))
+        .unwrap_or_else(|| "—".to_string());
+    let gpu = crate::runtime_stats::gpu_info()
+        .map(|g| format!("{} ({})", g.name, g.backend))
+        .unwrap_or_else(|| "未上报（渲染层未注册）".to_string());
+    section(
+        Some("运行".into()),
+        v_flex()
+            .gap(px(2.0))
+            .child(info_row("帧率", format!("{fps:.1} FPS · {frame_ms:.1} ms")))
+            .child(info_row("CPU", cpu))
+            .child(info_row("内存", mem))
+            .child(info_row("GPU", gpu))
+            .into_any_element(),
+    )
+}
+
+/// 报错卡片（Chrome Console 的应用内对应物）：`App::report_error` 上报的错误环。
+///
+/// 框架不拦截 `log`（应用自有 logger），需要进面板的错误请走 `report_error`；
+/// 同一环供崩溃快照读取，死后也有据可查。
+fn error_card(cx: &Context<Inspector>, section: &InspectorSectionSlot) -> AnyElement {
+    let errors = cx.recent_errors();
+    let body: AnyElement = if errors.is_empty() {
+        div()
+            .text_xs()
+            .text_color(rgb(0x888888))
+            .child("暂无上报错误（`App::report_error` 接入）。")
+            .into_any_element()
+    } else {
+        v_flex()
+            .gap(px(1.0))
+            .children(errors.iter().rev().take(8).map(|(seq, message)| {
+                h_flex()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .w(px(36.0))
+                            .text_xs()
+                            .text_color(rgb(0x999999))
+                            .child(format!("#{seq}")),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_xs()
+                            .text_color(rgb(0xb91c1c))
+                            .child(message.clone()),
+                    )
+                    .into_any_element()
+            }))
+            .into_any_element()
+    };
+    section(Some("报错".into()), body)
+}
 /// 收集选中元素的祖先键（含自身），用于展开集播种。
 fn ancestor_keys(window: &Window, active: &InspectorElementId) -> Vec<String> {
     let mut keys = vec![active.tree_key()];

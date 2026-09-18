@@ -17,6 +17,9 @@
   `App::enable_default_inspector()`（两行出完整面板）；
   `examples/inspector/` 瘦身为纯默认面板演示；新增 `examples/inspector_custom/`
  （全自写面板 + 覆盖 Div 展示的 living recipe，两示例演示内容各自独立）；
+  选中 Div 卡新增盒模型示意图 + 已指定样式列表；面板底部新增运行卡
+  （帧率/CPU/内存/GPU，仅打开时采样）与报错卡（`App::report_error` 错误环）；
+  崩溃快照（`InspectorSnapshot` + `last.json` 滚动落盘 + panic 日志钩子）；
   祖先链面板移除（完整树唯一）+ 顶栏固定 + 删调试按钮只留 F12 +
   F12 全局绑定修复 + release 自动剥离（示例默认不开 feature）
 - **I4 自定义接口文档化**：`docs/rgpui-book/09-inspector.md` 检查器章节
