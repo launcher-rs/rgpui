@@ -1162,6 +1162,9 @@ pub struct Window {
     /// 崩溃快照上次落盘时间（`last.json` 约 2 秒一写），同上门控。
     #[cfg(any(feature = "inspector", debug_assertions))]
     crash_last_write: Option<crate::scheduler::Instant>,
+    /// 检查器面板宽度（拖拽条调整；`None` 为默认 30rem），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    inspector_width: Option<Pixels>,
     pub(crate) a11y: A11y,
     /// Web DOM 后端构建器：当平台窗口声明 `supports_dom()` 时创建，
     /// 每帧在 paint 阶段收集 DOM 节点，帧末交付给平台窗口。
@@ -1954,6 +1957,8 @@ impl Window {
             runtime_sampler: crate::runtime_stats::RuntimeSamplerState::default(),
             #[cfg(any(feature = "inspector", debug_assertions))]
             crash_last_write: None,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            inspector_width: None,
             a11y: A11y::new(
                 a11y_active_flag,
                 accessibility_force_disabled,
@@ -3124,7 +3129,10 @@ impl Window {
             builder.begin_frame();
         }
 
-        let _inspector_width: Pixels = rems(30.0).to_pixels(self.rem_size());
+        #[cfg(any(feature = "inspector", debug_assertions))]
+        let _inspector_width: Pixels = self
+            .inspector_width
+            .unwrap_or_else(|| rems(30.0).to_pixels(self.rem_size()));
         let root_size = {
             #[cfg(any(feature = "inspector", debug_assertions))]
             {
@@ -6296,6 +6304,19 @@ impl Window {
         self.inspector.is_some()
     }
 
+    /// 检查器面板宽度（拖拽条调整过则为该值，否则 `None` 表默认 30rem）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn inspector_width(&self) -> Option<Pixels> {
+        self.inspector_width
+    }
+
+    /// 设置检查器面板宽度（`None` 回到默认 30rem；面板拖拽条内部调用）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn set_inspector_width(&mut self, width: Option<Pixels>) {
+        self.inspector_width = width;
+        self.refresh();
+    }
+
     /// 运行时采样（每帧调一次，内部自行门控与节流）。
     ///
     /// 检查器关闭直接返回（上一帧时间戳清空，避免重开时首帧 dt 爆表）；
@@ -6581,6 +6602,104 @@ impl Window {
             .inspector_tree_nodes
             .get(id)
             .and_then(|node| node.parent.clone())
+    }
+
+    /// 导出检查器树为 AI 可读文本（给 AI 看 GUI 用：一键复制或代码获取）。
+    ///
+    /// 每行一个节点：缩进表层级，含名称、实例号、源码位置、实测边界，
+    /// 当前选中标 `[*]`。全量 DFS（不受面板折叠影响），超 `max_nodes` 截断
+    /// 并注总数。样式仅选中元素有（`DivInspectorState` 只保留选中项），
+    /// 文本导出不含样式——要样式先选中再看面板/快照。
+    /// 无检查器时返回 `None`。
+    ///
+    /// ```rust,ignore
+    /// // 面板“复制树文本”按钮与外部 AI 工具都走这里：
+    /// if let Some(text) = window.inspector_tree_text(cx, 2000) {
+    ///     cx.write_to_clipboard(ClipboardItem::new_string(text));
+    /// }
+    /// ```
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn inspector_tree_text(&self, cx: &App, max_nodes: usize) -> Option<String> {
+        use std::fmt::Write as _;
+
+        if self.inspector.is_none() {
+            return None;
+        }
+        let active = self
+            .inspector
+            .as_ref()
+            .and_then(|inspector| inspector.read(cx).active_element_id().cloned());
+        let mut hitbox_bounds =
+            std::collections::HashMap::<crate::HitboxId, crate::Bounds<crate::Pixels>>::new();
+        for hitbox in &self.rendered_frame.hitboxes {
+            hitbox_bounds.insert(hitbox.id, hitbox.bounds);
+        }
+        let bounds_of = |id: &crate::InspectorElementId| {
+            self.rendered_frame
+                .inspector_hitboxes
+                .iter()
+                .find_map(|(hitbox_id, known)| (*known == *id).then_some(*hitbox_id))
+                .and_then(|hitbox_id| hitbox_bounds.get(&hitbox_id))
+                .map(|b| {
+                    format!(
+                        "{:.0}x{:.0}@({:.0},{:.0})",
+                        b.size.width.as_f32(),
+                        b.size.height.as_f32(),
+                        b.origin.x.as_f32(),
+                        b.origin.y.as_f32()
+                    )
+                })
+                .unwrap_or_else(|| "?".to_string())
+        };
+
+        let mut lines = String::new();
+        let mut total = 0usize;
+        let mut shown = 0usize;
+        let mut stack: Vec<(crate::InspectorElementId, usize)> = self
+            .inspector_tree_roots()
+            .into_iter()
+            .map(|id| (id, 0))
+            .collect();
+        stack.reverse();
+        let mut visited = 0usize;
+        while let Some((id, depth)) = stack.pop() {
+            visited += 1;
+            if visited > 20000 {
+                break;
+            }
+            total += 1;
+            if shown < max_nodes {
+                shown += 1;
+                let mark = if active.as_ref() == Some(&id) {
+                    " [*]"
+                } else {
+                    ""
+                };
+                _ = writeln!(
+                    lines,
+                    "{}- {} #{} [{}] {}{}",
+                    "  ".repeat(depth),
+                    id.short_label(),
+                    id.instance_id,
+                    id.source_label(),
+                    bounds_of(&id),
+                    mark,
+                );
+            }
+            for child in self.inspector_tree_children(&id).into_iter().rev() {
+                stack.push((child, depth + 1));
+            }
+        }
+        let mut out = format!(
+            "# 检查器树（视口 {:.0}x{:.0}，共 {total} 节点，展示 {shown}）\n",
+            self.viewport_size.width.as_f32(),
+            self.viewport_size.height.as_f32(),
+        );
+        out.push_str(&lines);
+        if total > shown {
+            _ = writeln!(out, "… 另有 {} 个节点未展示", total - shown);
+        }
+        Some(out)
     }
 
     /// 按 id 选中检查器元素（I2 完整树点击用；id 需来自当前帧树/注册表）。

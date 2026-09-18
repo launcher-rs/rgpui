@@ -58,13 +58,18 @@ release 想保留（如内部工具）：`--release --features inspector`
   `Window` 级别，多窗口互不干扰（`inspector` 与 `inspector_custom` 分属两进程，
   同进程多窗口同理）。
 - 默认面板为右侧停靠：打开时画布视口让出 30rem，内容会重排，这是预期行为。
+  左缘 8px 拖拽条可调面板宽（240px ~ 视口-240px，条外松开即结束）；
+  拖拽条是绝对定位浮层（教训：曾以 flex 兄弟节点实现，破坏了已验证的
+  顶栏固定 + 内容滚动结构，回滚为浮层后恢复）。
 - 独立窗口面板暂不做：`Inspector` 实体、`inspector_hitboxes` 注册表、
   焦点恢复链都是按窗口挂载的，独立面板窗要跨窗口实体通信 + 焦点协同，
   代价高、收益仅是“画布不重排”，1.3.0 不纳入。
 
 ## 运行卡片（帧率/CPU/内存/GPU）与开销纪律
 
-选中 Div 的布局卡往下依次是盒模型、已指定样式列表；面板底部另有两张卡：
+选中 Div 的布局卡往下依次是盒模型、已指定样式列表；面板底部另有两张卡。
+四边值走紧凑格式（上 · 右 · 下 · 左，未指定为横线），颜色走 hex
+（`#rrggbb`，半透明追加 α），超长 `Debug` 不直接上墙：
 
 - **运行**：帧率/帧耗时 EMA、进程 CPU 百分比、内存 MB、GPU 名（后端）。
   数据来自采样缓存：**仅检查器打开时**累计（关闭即停，零开销），
@@ -169,7 +174,7 @@ cx.register_inspector_element(
 
 ## 树与选中 API（面板/工具代码用）
 
-- `Inspector::select(id, window)`：选中指定元素（id 须来自当前帧树/注册表）。
+- `Inspector::select(id, window)`：选中指定元素（id 需来自当前帧树/注册表）。
 - `Inspector::select_ancestor(levels_up, window)`：从当前选中上移 `levels_up` 层
   （`0` 保持，`1` 为父级），按全局路径前缀反查 + hitbox 包含消歧同路径多实例。
 - `Window::select_inspector_ancestor(levels_up, cx)` /
@@ -177,3 +182,29 @@ cx.register_inspector_element(
 - `Window::inspector_tree_roots()` / `inspector_tree_children(id)` /
   `inspector_tree_parent(id)`：完整树（prepaint 期记录，仅打开时保留）。
 - `InspectorElementId::{short_label, source_label, tree_key}`：行标签与展开状态键。
+- `Window::{inspector_width, set_inspector_width}`：面板宽（拖拽条调用，
+  `None` 回默认 30rem）。
+
+## 喂给 AI（让 AI 看懂 GUI）
+
+面板文本不可框选（框架限制），值统一**点击复制**（打钩反馈）；
+完整树卡片另有“复制树文本（喂 AI）”按钮。程序化拿数据三选一：
+
+```rust
+// 1. 树文本（Markdown 式缩进：名称/实例/源码/实测边界，选中标 [*]，全量 DFS）：
+if let Some(text) = window.inspector_tree_text(cx, 2000) {
+    cx.write_to_clipboard(ClipboardItem::new_string(text));
+}
+
+// 2. 结构化快照（JSON 可序列化，含选中/祖先链/全树/错误环/视口）：
+if let Some(snapshot) = window.capture_inspector_snapshot(cx) {
+    let json = serde_json::to_string_pretty(&snapshot).unwrap();
+}
+
+// 3. 滚动快照文件 + panic 日志（程序死了也有据，见“崩溃快照”节）。
+```
+
+注意：样式只有选中元素有（`DivInspectorState` 只保留选中项），
+文本导出不含样式——要样式先选中再看面板/快照。实战 recipe：
+树文本（结构）+ 选中元素的样式列表（细节）一起贴给 AI，
+再加一句需求描述，改布局类任务基本一次成。

@@ -17,6 +17,11 @@
   `App::enable_default_inspector()`（两行出完整面板）；
   `examples/inspector/` 瘦身为纯默认面板演示；新增 `examples/inspector_custom/`
  （全自写面板 + 覆盖 Div 展示的 living recipe，两示例演示内容各自独立）；
+  选中 Div 卡新增盒模型示意图 + 已指定样式列表（颜色 hex 可读）；
+  值统一点击复制 + 打钩反馈；面板左缘拖拽调宽；完整树卡新增“复制树文本” +
+  `Window::inspector_tree_text`（AI 可读导出）；面板底部新增运行卡
+  （帧率/CPU/内存/GPU，仅打开时采样）与报错卡（`App::report_error` 错误环）；
+  崩溃快照（`InspectorSnapshot` + `last.json` 滚动落盘 + panic 日志钩子）；
   选中 Div 卡新增盒模型示意图 + 已指定样式列表；面板底部新增运行卡
   （帧率/CPU/内存/GPU，仅打开时采样）与报错卡（`App::report_error` 错误环）；
   崩溃快照（`InspectorSnapshot` + `last.json` 滚动落盘 + panic 日志钩子）；

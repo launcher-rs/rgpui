@@ -6,9 +6,9 @@
 //! 或按状态类型扩展（`register_inspector_element`，默认已注册 Div 展示）。
 
 use crate::{
-    AnyElement, App, Button, ButtonVariants, Context, Div, DivInspectorState, Global, Inspector,
-    InspectorElementId, IntoElement, ParentElement, SharedString, Window, div, h_flex, prelude::*,
-    px, rgb, v_flex,
+    AnyElement, App, Button, ButtonVariants, ClipboardItem, Context, Div, DivInspectorState,
+    Global, Inspector, InspectorElementId, IntoElement, ParentElement, SharedString, Window, div,
+    h_flex, prelude::*, px, rgb, v_flex,
 };
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -103,6 +103,7 @@ pub fn default_inspector_panel(
     div()
         .id("inspector-panel")
         .size_full()
+        .relative()
         .bg(rgb(0xf7f7f7))
         .child(
             v_flex()
@@ -125,19 +126,81 @@ pub fn default_inspector_panel(
                                         Some("选中元素".into()),
                                         v_flex()
                                             .gap(px(2.0))
-                                            .child(info_row("源码", loc))
-                                            .child(info_row("实例", format!("#{instance}")))
+                                            .child(info_row(cx, "源码", loc))
+                                            .child(info_row(cx, "实例", format!("#{instance}")))
                                             .into_any_element(),
                                     ))
                                 })
                                 .child(full_tree_card(tree_rows, tree_total, &section))
-                                .child(runtime_card(window, &section))
+                                .child(runtime_card(window, cx, &section))
                                 .child(error_card(cx, &section))
                                 .children(states),
                         ),
                 ),
         )
+        // 左缘拖拽条（绝对定位浮层，不参与布局，避免破坏已验证的 flex 结构）：
+        // 拖动调面板宽（240px ~ 视口-240px），松开/移出结束。放最后以保证命中在最上。
+        .child(resize_strip())
         .into_any_element()
+}
+
+/// 面板宽拖拽状态（存 App 全局；松开/移出即结束，不会卡死）。
+#[derive(Default)]
+struct InspectorResizeState {
+    dragging: bool,
+    start_x: f32,
+    start_width: f32,
+}
+
+impl Global for InspectorResizeState {}
+
+/// 左缘拖拽条（绝对定位浮层：宽 8px、全高，悬停高亮，左右拖动调面板宽）。
+fn resize_strip() -> impl IntoElement {
+    div()
+        .id("inspector-resize-strip")
+        .absolute()
+        .left_0()
+        .top_0()
+        .bottom_0()
+        .w(px(8.0))
+        .cursor_col_resize()
+        .hover(|this| this.bg(rgb(0xcccccc)))
+        .on_mouse_down(crate::MouseButton::Left, move |event, window, cx| {
+            cx.stop_propagation();
+            window.prevent_default();
+            let start_width = window
+                .inspector_width()
+                .map(|w| w.as_f32())
+                .unwrap_or_else(|| crate::rems(30.0).to_pixels(window.rem_size()).as_f32());
+            let start_x = event.position.x.as_f32();
+            cx.update_default_global::<InspectorResizeState, _>(|state, _| {
+                state.dragging = true;
+                state.start_x = start_x;
+                state.start_width = start_width;
+            });
+        })
+        .on_mouse_move(move |event, window, cx| {
+            let dragging = cx.update_default_global::<InspectorResizeState, _>(|state, _| {
+                (state.dragging, state.start_x, state.start_width)
+            });
+            if dragging.0 {
+                // 面板在右侧：往左拖（x 变小）加宽。
+                let width = dragging.2 + (dragging.1 - event.position.x.as_f32());
+                let max = (window.viewport_size.width.as_f32() - 240.0).max(280.0);
+                window.set_inspector_width(Some(px(width.clamp(240.0, max))));
+            }
+        })
+        .on_mouse_up(crate::MouseButton::Left, move |_, _, cx| {
+            cx.update_default_global::<InspectorResizeState, _>(|state, _| {
+                state.dragging = false;
+            });
+        })
+        .on_mouse_up_out(crate::MouseButton::Left, move |_, _, cx| {
+            // 条外松开同样结束拖拽，避免卡死。
+            cx.update_default_global::<InspectorResizeState, _>(|state, _| {
+                state.dragging = false;
+            });
+        })
 }
 
 /// 默认顶栏：标题 + 状态徽标 + 拾取按钮 + 提示（`InspectorPanelSlots::header` 的默认实现）。
@@ -222,7 +285,7 @@ pub fn render_div_inspector_state(
     _id: InspectorElementId,
     state: &DivInspectorState,
     _window: &mut Window,
-    _cx: &mut App,
+    cx: &mut App,
 ) -> Div {
     let bounds = state.bounds;
     v_flex()
@@ -234,6 +297,7 @@ pub fn render_div_inspector_state(
         .border_color(rgb(0xe0e0e0))
         .child(div().text_sm().font_semibold().child("布局"))
         .child(info_row(
+            cx,
             "边界",
             format!(
                 "x {:.0} · y {:.0} · w {:.0} · h {:.0}",
@@ -244,6 +308,7 @@ pub fn render_div_inspector_state(
             ),
         ))
         .child(info_row(
+            cx,
             "内容",
             format!(
                 "w {:.0} · h {:.0}",
@@ -260,14 +325,109 @@ pub fn render_div_inspector_state(
                 .mt(px(4.0))
                 .child("样式（仅已指定项）"),
         )
-        .children(specified_style_rows(&state.base_style))
+        .children(specified_style_rows(cx, &state.base_style))
 }
 
-/// 面板信息行辅助函数。
-fn info_row(label: &str, value: String) -> impl IntoElement {
+/// HSL（0..1）转 sRGB（0..255），颜色可读性用（Chrome 展示 hex 同理）。
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+    let h = h.rem_euclid(1.0);
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h * 6.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+    let (r, g, b) = match (h * 6.0) as u8 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    (
+        ((r + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((g + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((b + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+    )
+}
+
+/// Hsla 可读展示：`#rrggbb`（半透明追加 α）。
+fn format_hsla(color: &crate::Hsla) -> String {
+    let (r, g, b) = hsl_to_rgb(color.h, color.s, color.l);
+    if (color.a - 1.0).abs() < 0.005 {
+        format!("#{r:02x}{g:02x}{b:02x}")
+    } else {
+        format!("#{r:02x}{g:02x}{b:02x} · α{:.2}", color.a)
+    }
+}
+
+/// Fill 可读展示：纯色走 hex，其余原样 `Debug`。
+fn format_fill(fill: &crate::Fill) -> String {
+    match fill {
+        crate::Fill::Color(background) => match background.as_solid() {
+            Some(hsla) => format_hsla(&hsla),
+            None => format!("{fill:?}"),
+        },
+    }
+}
+
+/// 四边紧凑展示（上 · 右 · 下 · 左，未指定为横线，避免 `EdgesRefinement` 长串溢出）。
+fn edges_line<T: std::fmt::Debug>(
+    top: &Option<T>,
+    right: &Option<T>,
+    bottom: &Option<T>,
+    left: &Option<T>,
+) -> String {
+    let one = |v: &Option<T>| {
+        v.as_ref()
+            .map(|v| format!("{v:?}"))
+            .unwrap_or_else(|| "—".to_string())
+    };
+    format!(
+        "{} · {} · {} · {}",
+        one(top),
+        one(right),
+        one(bottom),
+        one(left)
+    )
+}
+
+/// 最近一次点击复制的键（打钩反馈用，存 App 全局）。
+#[derive(Default)]
+struct CopiedFlash {
+    key: String,
+}
+
+impl Global for CopiedFlash {}
+
+/// 面板信息行（值可点击复制）。
+fn info_row(cx: &mut App, label: &str, value: String) -> impl IntoElement {
     h_flex()
         .gap(px(6.0))
         .child(div().w(px(36.0)).text_xs().child(label.to_string()))
+        .child(copyable_value(cx, format!("info:{label}"), value))
+}
+
+/// 可复制的值文本（Chrome 点值复制的对应物）。
+///
+/// 面板文本不可框选（框架限制），统一点击复制 + 打钩反馈；
+/// `key` 由调用方保证同屏唯一（标签/属性名天然唯一）。
+fn copyable_value(cx: &mut App, key: String, value: String) -> AnyElement {
+    let copied = cx.update_default_global::<CopiedFlash, _>(|state, _| state.key == key);
+    let value_for_copy = value.clone();
+    h_flex()
+        .id(format!("copyable-{key}"))
+        .flex_1()
+        .items_center()
+        .gap(px(4.0))
+        .rounded_sm()
+        .cursor_pointer()
+        .hover(|this| this.bg(rgb(0xeeeeee)))
+        .on_click(move |_, window, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(value_for_copy.clone()));
+            cx.update_default_global::<CopiedFlash, _>(|state, _| {
+                state.key = key.clone();
+            });
+            window.refresh();
+        })
         .child(
             div()
                 .flex_1()
@@ -275,6 +435,10 @@ fn info_row(label: &str, value: String) -> impl IntoElement {
                 .text_color(rgb(0x333333))
                 .child(value),
         )
+        .when(copied, |this| {
+            this.child(div().text_xs().text_color(rgb(0x107c10)).child("✓"))
+        })
+        .into_any_element()
 }
 
 /// 盒模型示意图（Chrome Elements 面板对应物）。
@@ -304,7 +468,15 @@ fn box_model_diagram(state: &DivInspectorState) -> impl IntoElement {
                 .p(px(6.0))
                 .rounded_sm()
                 .bg(rgb(0xf9cc9c))
-                .child(box_layer_label("margin", format!("{:?}", style.margin)))
+                .child(box_layer_label(
+                    "margin",
+                    edges_line(
+                        &style.margin.top,
+                        &style.margin.right,
+                        &style.margin.bottom,
+                        &style.margin.left,
+                    ),
+                ))
                 // border 层。
                 .child(
                     v_flex()
@@ -314,7 +486,12 @@ fn box_model_diagram(state: &DivInspectorState) -> impl IntoElement {
                         .bg(rgb(0xffe188))
                         .child(box_layer_label(
                             "border",
-                            format!("{:?}", style.border_widths),
+                            edges_line(
+                                &style.border_widths.top,
+                                &style.border_widths.right,
+                                &style.border_widths.bottom,
+                                &style.border_widths.left,
+                            ),
                         ))
                         // padding 层。
                         .child(
@@ -323,7 +500,15 @@ fn box_model_diagram(state: &DivInspectorState) -> impl IntoElement {
                                 .p(px(6.0))
                                 .rounded_sm()
                                 .bg(rgb(0xc3deb7))
-                                .child(box_layer_label("padding", format!("{:?}", style.padding)))
+                                .child(box_layer_label(
+                                    "padding",
+                                    edges_line(
+                                        &style.padding.top,
+                                        &style.padding.right,
+                                        &style.padding.bottom,
+                                        &style.padding.left,
+                                    ),
+                                ))
                                 // 内容层（实测）。
                                 .child(
                                     div()
@@ -360,8 +545,9 @@ fn box_layer_label(layer: &str, value: String) -> impl IntoElement {
 /// 已指定样式列表（Chrome Styles 面板对应物）。
 ///
 /// 只收录调用方实际写过的项（标量 `Option` 取 `Some`，复合 refinement 按子字段
-/// 逐项检查），未指定的不显示。值用 `Debug` 原样展示。
-fn specified_style_rows(style: &crate::StyleRefinement) -> Vec<AnyElement> {
+/// 逐项检查），未指定的不显示。颜色走 hex 可读展示，其余值用 `Debug` 原样展示；
+/// 每行值可点击复制。
+fn specified_style_rows(cx: &mut App, style: &crate::StyleRefinement) -> Vec<AnyElement> {
     // （属性名，值）：`Some` 才收录。
     let mut rows: Vec<(String, String)> = Vec::new();
     macro_rules! specified {
@@ -383,9 +569,12 @@ fn specified_style_rows(style: &crate::StyleRefinement) -> Vec<AnyElement> {
         align_items,
         align_self,
         flex_grow,
-        flex_shrink,
-        background
+        flex_shrink
     );
+    // 颜色单独走 hex 可读展示。
+    if let Some(fill) = style.background.as_ref() {
+        rows.push(("background".to_string(), format_fill(fill)));
+    }
     // 复合 refinement：子字段逐项检查（x/y、宽高、四边）。
     macro_rules! specified_sub {
         ($field:ident : $($sub:ident),*) => {
@@ -423,18 +612,12 @@ fn specified_style_rows(style: &crate::StyleRefinement) -> Vec<AnyElement> {
                 .gap(px(6.0))
                 .child(
                     div()
-                        .w(px(88.0))
+                        .w(px(120.0))
                         .text_xs()
                         .text_color(rgb(0x999999))
-                        .child(name),
+                        .child(name.clone()),
                 )
-                .child(
-                    div()
-                        .flex_1()
-                        .text_xs()
-                        .text_color(rgb(0x333333))
-                        .child(value),
-                )
+                .child(copyable_value(cx, format!("style:{name}"), value))
                 .into_any_element()
         })
         .collect()
@@ -460,7 +643,7 @@ struct FullTreeRow {
 ///
 /// 数据来自采样缓存（仅检查器打开时累计，关闭即停；CPU/内存约 2Hz），
 /// 面板只读不测量。采样本身会轻微抬高 CPU 读数，看趋势别看绝对值。
-fn runtime_card(window: &Window, section: &InspectorSectionSlot) -> AnyElement {
+fn runtime_card(window: &Window, cx: &mut App, section: &InspectorSectionSlot) -> AnyElement {
     let fps = window.runtime_fps();
     let frame_ms = window.runtime_frame_ms();
     let cpu = window
@@ -478,10 +661,14 @@ fn runtime_card(window: &Window, section: &InspectorSectionSlot) -> AnyElement {
         Some("运行".into()),
         v_flex()
             .gap(px(2.0))
-            .child(info_row("帧率", format!("{fps:.1} FPS · {frame_ms:.1} ms")))
-            .child(info_row("CPU", cpu))
-            .child(info_row("内存", mem))
-            .child(info_row("GPU", gpu))
+            .child(info_row(
+                cx,
+                "帧率",
+                format!("{fps:.1} FPS · {frame_ms:.1} ms"),
+            ))
+            .child(info_row(cx, "CPU", cpu))
+            .child(info_row(cx, "内存", mem))
+            .child(info_row(cx, "GPU", gpu))
             .into_any_element(),
     )
 }
@@ -490,7 +677,7 @@ fn runtime_card(window: &Window, section: &InspectorSectionSlot) -> AnyElement {
 ///
 /// 框架不拦截 `log`（应用自有 logger），需要进面板的错误请走 `report_error`；
 /// 同一环供崩溃快照读取，死后也有据可查。
-fn error_card(cx: &Context<Inspector>, section: &InspectorSectionSlot) -> AnyElement {
+fn error_card(cx: &mut Context<Inspector>, section: &InspectorSectionSlot) -> AnyElement {
     let errors = cx.recent_errors();
     let body: AnyElement = if errors.is_empty() {
         div()
@@ -511,13 +698,11 @@ fn error_card(cx: &Context<Inspector>, section: &InspectorSectionSlot) -> AnyEle
                             .text_color(rgb(0x999999))
                             .child(format!("#{seq}")),
                     )
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_xs()
-                            .text_color(rgb(0xb91c1c))
-                            .child(message.clone()),
-                    )
+                    .child(copyable_value(
+                        cx,
+                        format!("err:{seq}"),
+                        message.to_string(),
+                    ))
                     .into_any_element()
             }))
             .into_any_element()
@@ -633,6 +818,20 @@ fn full_tree_card(
                             cx.update_default_global::<FullTreeUiState, _>(|state, _| {
                                 state.expanded.clear();
                             });
+                        }),
+                )
+                .child(
+                    div()
+                        .id("ftree-copy-text")
+                        .text_xs()
+                        .text_color(rgb(0x666666))
+                        .cursor_pointer()
+                        .child("复制树文本（喂 AI）")
+                        .on_click(|_, window, cx| {
+                            // AI 可读导出：全量 DFS，不受面板折叠影响。
+                            if let Some(text) = window.inspector_tree_text(cx, 2000) {
+                                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                            }
                         }),
                 ),
         )

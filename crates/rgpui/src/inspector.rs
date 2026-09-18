@@ -407,6 +407,28 @@ mod conditional {
         bounds.size.width.as_f32() * bounds.size.height.as_f32()
     }
 
+    /// 面板宽设置链路冒烟测试（set → draw → get，不断线）。
+    #[crate::test]
+    fn inspector_width_roundtrip(cx: &mut crate::TestAppContext) {
+        use crate::{Context, IntoElement, Render, div};
+
+        struct Probe;
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+            }
+        }
+
+        let (_view, cx) = cx.add_window_view(|_, _| Probe);
+        cx.update(|window, cx| {
+            assert!(window.inspector_width().is_none());
+            window.set_inspector_width(Some(crate::px(400.0)));
+            let _ = window.draw(cx);
+            assert_eq!(window.inspector_width(), Some(crate::px(400.0)));
+            window.set_inspector_width(None);
+            assert!(window.inspector_width().is_none());
+        });
+    }
     /// 快照采集冒烟测试（打开检查器 → 绘制 → 快照非空）。
     #[crate::test]
     fn capture_snapshot_smoke(cx: &mut crate::TestAppContext) {
@@ -428,6 +450,53 @@ mod conditional {
                 .expect("检查器打开应有快照");
             assert_eq!(snapshot.version, 1);
             assert!(snapshot.viewport[0] > 0.0);
+        });
+    }
+
+    /// 树文本导出冒烟测试（AI 可读：头部 + 节点行 + 选中标记）。
+    #[crate::test]
+    fn tree_text_marks_selected_with_source(cx: &mut crate::TestAppContext) {
+        use crate::{Context, InteractiveElement as _, IntoElement, ParentElement, Render, div};
+
+        struct Probe;
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().id("probe-root").child(div().id("probe-leaf"))
+            }
+        }
+
+        let (_view, cx) = cx.add_window_view(|_, _| Probe);
+        cx.update(|window, cx| {
+            window.toggle_inspector(cx);
+            let _ = window.draw(cx);
+            let text = window.inspector_tree_text(cx, 2000).unwrap();
+            assert!(text.contains("# 检查器树"), "缺头部：{text}");
+            assert!(text.contains("probe-leaf"), "缺叶子节点：{text}");
+            // 递归找叶子并选中，应出现选中标记。
+            fn find_leaf(
+                window: &Window,
+                id: &crate::InspectorElementId,
+            ) -> Option<crate::InspectorElementId> {
+                if id.short_label() == "probe-leaf" {
+                    return Some(id.clone());
+                }
+                window
+                    .inspector_tree_children(id)
+                    .iter()
+                    .find_map(|child| find_leaf(window, child))
+            }
+            let leaf = window
+                .inspector_tree_roots()
+                .iter()
+                .find_map(|root| find_leaf(window, root))
+                .expect("树中应有叶子");
+            assert!(window.select_inspector_element(&leaf, cx));
+            let _ = window.draw(cx);
+            let text = window.inspector_tree_text(cx, 2000).unwrap();
+            assert!(
+                text.contains("[*]") && text.contains("probe-leaf"),
+                "缺选中标记：{text}"
+            );
         });
     }
 
