@@ -102,6 +102,7 @@ pub fn default_inspector_panel(
 
     div()
         .id("inspector-panel")
+        .debug_selector(|| "inspector-panel".to_string())
         .size_full()
         .relative()
         .bg(rgb(0xf7f7f7))
@@ -114,10 +115,12 @@ pub fn default_inspector_panel(
                 .child(
                     div()
                         .id("inspector-panel-scroll")
+                        .debug_selector(|| "inspector-scroll".to_string())
                         .flex_1()
                         .overflow_scroll()
                         .child(
                             v_flex()
+                                .debug_selector(|| "inspector-content".to_string())
                                 .gap(px(8.0))
                                 .p(px(12.0))
                                 .pt(px(4.0))
@@ -158,6 +161,7 @@ impl Global for InspectorResizeState {}
 fn resize_strip() -> impl IntoElement {
     div()
         .id("inspector-resize-strip")
+        .debug_selector(|| "inspector-resize-strip".to_string())
         .absolute()
         .left_0()
         .top_0()
@@ -168,6 +172,13 @@ fn resize_strip() -> impl IntoElement {
         .on_mouse_down(crate::MouseButton::Left, move |event, window, cx| {
             cx.stop_propagation();
             window.prevent_default();
+            // 指针捕获：按下点 topmost 的 hitbox 即本条（面板最后绘制），
+            // 此后移出条外移动/松开仍路由到本条监听器，拖拽不中断；
+            // 松开时框架自动释放捕获。
+            let pressed = window.rendered_frame.hit_test(event.position);
+            if let Some(hitbox_id) = pressed.ids.first() {
+                window.capture_pointer(*hitbox_id);
+            }
             let start_width = window
                 .inspector_width()
                 .map(|w| w.as_f32())
@@ -221,6 +232,7 @@ pub fn default_inspector_header(
         "空闲"
     };
     v_flex()
+        .debug_selector(|| "inspector-header".to_string())
         .flex_shrink_0()
         .gap(px(8.0))
         .p(px(12.0))
@@ -526,12 +538,9 @@ fn box_model_diagram(state: &DivInspectorState) -> impl IntoElement {
                         ),
                 ),
         )
-        .child(
-            div()
-                .text_xs()
-                .text_color(rgb(0x888888))
-                .child(format!("border-box {border_box}（几何示意，数字为实数）")),
-        )
+        .child(div().text_xs().text_color(rgb(0x888888)).child(format!(
+            "border-box {border_box}（几何示意，数字为实数；— 表示未指定）"
+        )))
 }
 
 /// 盒模型层标签（层名 + 值，单行）。
@@ -906,4 +915,202 @@ fn full_tree_row(row: FullTreeRow) -> impl IntoElement {
                 }),
         )
         .child(div().text_xs().text_color(rgb(0x999999)).child(source))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        Context, InteractiveElement as _, IntoElement, Modifiers, MouseButton, ParentElement,
+        Render, ScrollDelta, ScrollWheelEvent, point, px,
+    };
+
+    /// 高宿主视图：60 行 id 元素，撑出超长检查树（内容必高于面板视口）。
+    struct TallHost;
+    impl Render for TallHost {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .id("tall-host")
+                .children((0..60).map(|i| div().id(format!("tall-row-{i}"))))
+        }
+    }
+
+    /// 打开检查器并绘制两帧，返回默认面板宽与布局锚点
+    /// （面板/顶栏/滚动区/内容/拖拽条）。
+    ///
+    /// 树记录只在检查器打开时发生，故先 toggle 再绘制产树，二次绘制展开全树。
+    /// 做成宏：展开后的 `VisualTestContext` 留在调用方继续做鼠标/滚轮模拟。
+    macro_rules! setup_panel {
+        ($cx:expr) => {{
+            $cx.update(|cx| {
+                crate::theme::init(cx);
+                cx.enable_default_inspector();
+            });
+            let (_view, cx) = $cx.add_window_view(|_, _| TallHost);
+            cx.update(|window, cx| {
+                window.toggle_inspector(cx);
+                let _ = window.draw(cx);
+                // 展开全部树节点，造出超长内容。
+                let mut stack = window.inspector_tree_roots();
+                let mut all = Vec::new();
+                while let Some(id) = stack.pop() {
+                    all.push(id.tree_key());
+                    stack.extend(window.inspector_tree_children(&id));
+                }
+                cx.update_default_global::<FullTreeUiState, _>(|state, _| {
+                    state.expanded = all.into_iter().collect();
+                });
+                let _ = window.draw(cx);
+            });
+            let default_width =
+                cx.update(|window, _| crate::rems(30.0).to_pixels(window.rem_size()).as_f32());
+            let panel = cx.debug_bounds("inspector-panel").unwrap();
+            let header = cx.debug_bounds("inspector-header").unwrap();
+            let scroll = cx.debug_bounds("inspector-scroll").unwrap();
+            let content = cx.debug_bounds("inspector-content").unwrap();
+            let strip = cx.debug_bounds("inspector-resize-strip").unwrap();
+            (cx, default_width, panel, header, scroll, content, strip)
+        }};
+    }
+
+    /// 顶栏钉在面板顶部，滚动区填满剩余，拖拽条与面板等高居左，内容超出视口可滚。
+    #[crate::test]
+    fn panel_layout_pins_header_and_scroll(cx: &mut crate::TestAppContext) {
+        let (_cx, _default_width, panel, header, scroll, content, strip) = setup_panel!(cx);
+        let eps = 1.0;
+        // 顶栏钉住顶部。
+        assert!(
+            (header.origin.y.as_f32() - panel.origin.y.as_f32()).abs() < eps,
+            "顶栏应钉在面板顶部：{header:?} vs {panel:?}"
+        );
+        // 滚动区从顶栏底部开始，到面板底部结束。
+        assert!(
+            (scroll.origin.y.as_f32() - (header.origin.y.as_f32() + header.size.height.as_f32()))
+                .abs()
+                < eps + 12.0,
+            "滚动区应接顶栏底部：{scroll:?} vs {header:?}"
+        );
+        assert!(
+            ((scroll.origin.y.as_f32() + scroll.size.height.as_f32())
+                - (panel.origin.y.as_f32() + panel.size.height.as_f32()))
+            .abs()
+                < eps,
+            "滚动区应填满面板剩余高度：{scroll:?} vs {panel:?}"
+        );
+        // 拖拽条居左等高。
+        assert!(
+            (strip.origin.x.as_f32() - panel.origin.x.as_f32()).abs() < eps,
+            "拖拽条应在面板左缘：{strip:?} vs {panel:?}"
+        );
+        assert!(
+            (strip.size.height.as_f32() - panel.size.height.as_f32()).abs() < eps,
+            "拖拽条应与面板等高：{strip:?} vs {panel:?}"
+        );
+        // 内容超出滚动视口（可滚）。
+        assert!(
+            content.size.height.as_f32() > scroll.size.height.as_f32(),
+            "内容应超出滚动视口：{content:?} vs {scroll:?}"
+        );
+    }
+
+    /// 滚轮滚动后顶栏位置不变（sticky 回归）。
+    #[crate::test]
+    fn wheel_keeps_header_pinned(cx: &mut crate::TestAppContext) {
+        let (cx, _default_width, _panel, header_before, scroll, _content, _strip) =
+            setup_panel!(cx);
+        let center = crate::Point {
+            x: px(scroll.origin.x.as_f32() + scroll.size.width.as_f32() / 2.0),
+            y: px(scroll.origin.y.as_f32() + scroll.size.height.as_f32() / 2.0),
+        };
+        cx.simulate_event(ScrollWheelEvent {
+            position: center,
+            delta: ScrollDelta::Lines(point(0.0f32, 5.0)),
+            modifiers: Modifiers::default(),
+            ..Default::default()
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let header_after = cx.debug_bounds("inspector-header").unwrap();
+        assert!(
+            (header_after.origin.y.as_f32() - header_before.origin.y.as_f32()).abs() < 1.0,
+            "滚轮后顶栏应钉住不动：{header_before:?} vs {header_after:?}"
+        );
+    }
+
+    /// 拖拽条拖动改面板宽（按下 → 左移 100px → 松开）。
+    #[crate::test]
+    fn drag_strip_resizes_panel(cx: &mut crate::TestAppContext) {
+        let (cx, default_width, _panel, _header, _scroll, _content, strip) = setup_panel!(cx);
+        // 新开检查器默认拾取中（鼠标事件被拾取接管）：先选中退出拾取，再拖拽。
+        cx.update(|window, cx| {
+            let roots = window.inspector_tree_roots();
+            assert!(!roots.is_empty());
+            assert!(window.select_inspector_element(&roots[0], cx));
+            assert!(!window.is_inspector_picking(cx));
+            let _ = window.draw(cx);
+        });
+        let start_x = strip.origin.x.as_f32() + strip.size.width.as_f32() / 2.0;
+        let start_y = strip.origin.y.as_f32() + strip.size.height.as_f32() / 2.0;
+        // 注意：hover 快照只在 draw 时刷新，每步事件后都补一帧（与真实主循环一致）。
+        cx.simulate_mouse_move(
+            crate::Point {
+                x: px(start_x),
+                y: px(start_y),
+            },
+            None,
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_down(
+            crate::Point {
+                x: px(start_x),
+                y: px(start_y),
+            },
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        // 条内小幅移动：验证 handler 本体（悬停完好）。
+        cx.simulate_mouse_move(
+            crate::Point {
+                x: px(start_x - 2.0),
+                y: px(start_y + 2.0),
+            },
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        // 条外大幅移动：验证指针捕获（移出条外仍跟进）。
+        cx.simulate_mouse_move(
+            crate::Point {
+                x: px(start_x - 100.0),
+                y: px(start_y),
+            },
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_up(
+            crate::Point {
+                x: px(start_x - 100.0),
+                y: px(start_y),
+            },
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.update(|window, _| {
+            let width = window
+                .inspector_width()
+                .expect("拖拽后应有自定义宽度")
+                .as_f32();
+            assert!(
+                (width - (default_width + 100.0)).abs() < 2.0,
+                "左移 100px 应加宽 100px：{width} vs {}",
+                default_width + 100.0
+            );
+        });
+    }
 }

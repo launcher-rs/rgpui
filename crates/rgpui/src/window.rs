@@ -2954,6 +2954,12 @@ impl Window {
         self.invalidator.set_dirty(false);
         self.requested_autoscroll = None;
 
+        // 每帧重置 hitbox 计数器：hitbox 注册表本就按帧清空，
+        // id 也应帧内有效——同一元素在相邻帧拿到相同 id（绘制顺序确定时）。
+        // 这是 `capture_pointer` 跨帧生效的前提（否则捕获的 id 下一帧即过期，
+        // 拖出元素即中断；另见 `InspectorResizeState` 拖拽条回归测试）。
+        self.next_hitbox_id = HitboxId(0);
+
         // Restore the previously-used input handler.
         // Place it back into a None slot (left by a previous .take()) so that
         // cached paint_range indices in reuse_paint find the handler at the

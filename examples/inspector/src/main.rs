@@ -196,6 +196,14 @@ impl Render for InspectorDemo {
                             .text_sm()
                             .text_color(rgb(0x666666))
                             .child(format!("演示按钮已点击 {} 次", self.clicks)),
+                    )
+                    // 报错演示：上报一条应用错误，检查器“报错”卡片即时可见。
+                    .child(
+                        Button::new("demo-report-error")
+                            .label("模拟上报一条错误")
+                            .on_click(move |_, _, cx| {
+                                cx.report_error("演示手动上报的错误（点一次多一条）");
+                            }),
                     ),
             )
     }
