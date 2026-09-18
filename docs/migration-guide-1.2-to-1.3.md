@@ -343,20 +343,96 @@ StatusBar::new()
 
 ---
 
-## 八、其他 breaking 与新增（回调之外）
+## 八、检查器：从手写面板到两行启用（新增为主，附带清理）
 
-- **删除 `chat_ui` 别名**（Z1）：1.2.0 已迁移到 `chat`，1.3.0 按计划删除。
-  全局替换 `chat_ui` → `chat` 即可（内部已确认零引用旧路径）。
-- 新增（无需迁移，顺带掌握）：值驱动 `rgpui::tabs::{Tabs, TabsItem}`；
-  `Root::open_dialog` 返回 `DialogId` + `close_dialog_by(id)` 按标识关闭；
-  `TreeEvent::{Selected, Confirmed}`；`I18nManager` Global +
-  `I18nText::translate_global(cx)`；`App::on_global_action` 全局动作 helper；
-  检查器默认面板（`enable_default_inspector` 两行启用）与面板插槽。
-  集中演示见 `examples/v1_3_showcase`。
+1.2 每个应用手写 `set_inspector_renderer` + 状态展示约 200 行；
+1.3 框架给了默认面板，接入只剩两行：
+
+```rust
+// 应用入口（窗口创建前调用）：
+cx.enable_default_inspector(); // 注册默认面板 + Div 布局展示
+
+// 开关面板（F12 等快捷键；正式 UI 不放调试按钮，检查器只走快捷键）：
+window.toggle_inspector(cx);
+```
+
+默认面板内容：状态徽标、拾取按钮（悬停蓝框、点击选中、滚轮穿透层级）、
+选中元素源码位置与实例号、完整树（逐节点折叠，点击行选中画布对应区域）、
+`Div` 布局边界与内容尺寸。顶栏固定（标题/拾取按钮滚不走），
+展开集只增不重置（点树不塌浏览进度）。
+
+### 自定义面板（三档，由浅入深）
+
+1. **插槽**（只换皮）：`cx.set_inspector_panel_slots` 覆盖顶栏
+   （`InspectorHeaderSlot`）或信息卡外皮（`InspectorSectionSlot`），
+   `None` 即默认。
+2. **按类型扩展**（加一块）：`cx.register_inspector_element` 为自有元素状态
+   加展示卡；同类型后注册覆盖先注册（可覆盖默认 Div 展示）。
+3. **整板替换**（全自写）：`cx.set_inspector_renderer`，行点击经
+   `window.select_inspector_element` 选中，树数据经
+   `inspector_tree_roots/children/parent` 拿，选中经
+   `Inspector::select` / `select_ancestor` 切换。
+
+ living 范例：`examples/inspector/`（默认面板）与
+ `examples/inspector_custom/`（全自写 + 覆盖 Div 展示），演示内容各自独立。
+
+### F12 全局开关（必抄的接线，三个坑）
+
+不要用带上下文绑定 + 视图 `on_action`：无焦点时分发路径只有 root，
+上下文匹配不上、冒泡也到不了视图 handler；面板聚焦时同样到不了
+（面板是独立 prepaint 根）。正确接法——全局绑定（无上下文）+
+全局监听打到活动窗口，**监听内必须 spawn 延后更新**
+（分发中窗口已被 take，同步 `update_window` 必失败，勿用 `_ =` 吞 Result）：
+
+```rust
+cx.bind_keys([KeyBinding::new("f12", ToggleInspector, None)]);
+cx.on_action(|_: &ToggleInspector, cx: &mut App| {
+    if let Some(window) = cx.active_window() {
+        cx.spawn(async move |cx| {
+            _ = window.update(cx, |_, window, cx| {
+                window.toggle_inspector(cx);
+            });
+        })
+        .detach();
+    }
+});
+```
+
+回归测试 `f12_toggles_inspector_without_focus` 覆盖无焦点路径。
+（注意测试平台的 `App::activate` 是空实现，单测里用
+`window.activate_window()` 设置活动窗口。）
+
+### 发布剥离（推荐的上线姿势）
+
+库侧检查器 API 全是 `#[cfg(any(feature = "inspector", debug_assertions))]`，
+release 默认零代码。应用侧三条：Cargo 里**不要**开 `inspector` feature
+（dev 靠 `debug_assertions` 自动生效）；装配线同条件 `#[cfg]` 包起来；
+面板里不放按钮。release 想保留（如内部工具）：
+`--release --features inspector`（两示例即此布局）。
 
 ---
 
-## 九、迁移步骤与验证
+## 九、其余新增（无需迁移，顺带掌握）
+
+- **值驱动 `rgpui::tabs::{Tabs, TabsItem}`**：`items/active/on_change`，
+  `active` 按 id 比对，与新 `StatusBar` 同模式，无实体；
+  两三个静态页签零同步代码接入（`rgpui_story` tabs 页有演示）。
+- **`Root::open_dialog` 返回 `DialogId`** + `close_dialog_by(id)` 按标识关闭
+  栈中任意位置（上层不受影响，未知 id 返回 `false`）。
+- **`TreeEvent::Confirmed(id)`**：Enter 在文件行触发（目录行仅切换展开，
+  与 `Selected` 仅点击触发对称），键盘开文件凭此实现，无需另绑动作。
+- **i18n**：`impl Global for I18nManager`（`cx.set_global` / `cx.global` 共享）+
+  `load_locale_dir`（`<locale>.json` 按文件名加载，原生平台）+
+  `I18nSnapshot` 快照/回退（`snapshot` / `restore`）+
+  `I18nText::translate_global(cx)`（读全局 manager，一行取文）。
+- **`App::on_global_action`**：全局动作 helper（F12 沉淀），封装
+  “全局绑定 + 打到活动窗口 + spawn 延后更新”三件套。
+- **检查器默认面板**（见第八节）与面板插槽。
+- 集中演示见 `examples/v1_3_showcase`。
+
+---
+
+## 十、迁移步骤与验证
 
 1. 全局替换方法名（注意同名不同义，逐处确认）：
    `Checkbox|Switch|Radio|RadioGroup|TabBar` 的 `.on_click(` →
