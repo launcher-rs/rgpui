@@ -2,6 +2,11 @@
 //!
 //! - `cx.enable_default_inspector()` 一行启用默认面板（含 Div 布局展示）
 //! - `window.toggle_inspector(cx)` 开关右侧面板（action `ToggleInspector` + F12）
+//! - 崩溃后调试：`enable_crash_recorder` + `install_crash_hook`
+//!   （`.rgpui-crash/last.json` 滚动快照 + `panic-*.log`，程序死了也有据可查）
+//! - AI 调取 GUI：演示区“崩溃快照 & AI 导出”有两个复制按钮，
+//!   即文档“喂给 AI”节的程序化入口（`inspector_tree_text` /
+//!   `capture_inspector_snapshot`），点一下剪贴板里就是 AI 可读数据。
 //!
 //! 自定义面板见兄弟示例 `inspector_custom`（全自写面板的 living 范例）。
 //!
@@ -40,6 +45,8 @@ struct InspectorDemo {
     hobby: bool,
     /// 演示按钮点击计数。
     clicks: u32,
+    /// AI 导出按钮的操作回执（复制成功/提示先开检查器）。
+    export_note: Option<String>,
 }
 
 impl InspectorDemo {
@@ -51,12 +58,20 @@ impl InspectorDemo {
             notify: true,
             hobby: false,
             clicks: 0,
+            export_note: None,
         }
     }
 
     /// 演示按钮点击计数（证明非拾取态交互正常）。
     fn on_demo_click(&mut self, cx: &mut Context<Self>) {
         self.clicks += 1;
+        cx.notify();
+    }
+
+    /// 记录 AI 导出按钮的操作回执并刷新（仅调试版本编译，随面板一同剥离）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    fn note_export(&mut self, note: String, cx: &mut Context<Self>) {
+        self.export_note = Some(note);
         cx.notify();
     }
 }
@@ -204,7 +219,10 @@ impl Render for InspectorDemo {
                             .on_click(move |_, _, cx| {
                                 cx.report_error("演示手动上报的错误（点一次多一条）");
                             }),
-                    ),
+                    )
+                    // 崩溃快照 & AI 导出：库侧能力的可点击演示
+                    // （滚动快照落盘在 run_example 里已开启，见下方）。
+                    .child(crash_ai_section(view.clone(), self.export_note.clone())),
             )
     }
 }
@@ -216,6 +234,101 @@ fn section_title(text: impl Into<SharedString> + IntoElement) -> impl IntoElemen
         .font_semibold()
         .mt(px(8.0))
         .child(text)
+}
+
+/// “崩溃快照 & AI 导出”演示区（仅调试版本编译；release 下为空行，原样剥离）。
+///
+/// 两个复制按钮即文档“喂给 AI”节的程序化入口：
+/// 树文本（`Window::inspector_tree_text`，Markdown 缩进树）与结构化快照
+/// （`Window::capture_inspector_snapshot`，JSON 可序列化）。
+/// 导出要求检查器已打开（未打开时两个 API 都返回 `None`），按钮会提示先按 F12；
+/// 崩溃落盘（`last.json` 约 2 秒一写 + `panic-*.log`）在 `run_example` 里开启，
+/// 程序死了直接读 `.rgpui-crash` 目录即可，AI 同理可读。
+#[cfg(any(feature = "inspector", debug_assertions))]
+fn crash_ai_section(view: Entity<InspectorDemo>, note: Option<String>) -> impl IntoElement {
+    let tree_view = view.clone();
+    let snapshot_view = view.clone();
+    v_flex()
+        .gap(px(8.0))
+        .child(section_title("崩溃快照 & AI 导出"))
+        .child(
+            div().text_sm().text_color(rgb(0x666666)).child(
+                "快照已开启：.rgpui-crash/last.json 约 2 秒一写（仅检查器打开时），\
+                panic 时另写 panic-*.log。崩溃后直接读这两个文件；\
+                在线调试点下面按钮，剪贴板里就是 AI 可读数据（先按 F12 打开检查器）。",
+            ),
+        )
+        .child(
+            h_flex()
+                .gap(px(12.0))
+                .child(
+                    Button::new("demo-export-tree")
+                        .label("复制树文本（AI 可读）")
+                        .on_click(move |_, window, cx| {
+                            match window.inspector_tree_text(cx, 2000) {
+                                Some(text) => {
+                                    let lines = text.lines().count();
+                                    cx.write_to_clipboard(rgpui::ClipboardItem::new_string(text));
+                                    tree_view.update(cx, |this, cx| {
+                                        this.note_export(
+                                            format!(
+                                                "已复制树文本（{lines} 行），可直接粘给 AI"
+                                            ),
+                                            cx,
+                                        );
+                                    });
+                                }
+                                None => {
+                                    tree_view.update(cx, |this, cx| {
+                                        this.note_export(
+                                            "检查器未打开：先按 F12 打开面板再导出".to_string(),
+                                            cx,
+                                        );
+                                    });
+                                }
+                            }
+                        }),
+                )
+                .child(
+                    Button::new("demo-export-snapshot")
+                        .label("复制快照 JSON（AI 可读）")
+                        .on_click(move |_, window, cx| {
+                            match window.capture_inspector_snapshot(cx) {
+                                Some(snapshot) => {
+                                    let total = snapshot.tree_total;
+                                    let json = serde_json::to_string_pretty(&snapshot)
+                                        .unwrap_or_else(|_| "{}".to_string());
+                                    cx.write_to_clipboard(rgpui::ClipboardItem::new_string(json));
+                                    snapshot_view.update(cx, |this, cx| {
+                                        this.note_export(
+                                            format!(
+                                                "已复制快照 JSON（全树 {total} 节点），可直接粘给 AI"
+                                            ),
+                                            cx,
+                                        );
+                                    });
+                                }
+                                None => {
+                                    snapshot_view.update(cx, |this, cx| {
+                                        this.note_export(
+                                            "检查器未打开：先按 F12 打开面板再导出".to_string(),
+                                            cx,
+                                        );
+                                    });
+                                }
+                            }
+                        }),
+                ),
+        )
+        .when_some(note, |this, note| {
+            this.child(div().text_sm().text_color(rgb(0x107c10)).child(note))
+        })
+}
+
+/// 发布剥离版占位：与调试版同签名，渲染空行。
+#[cfg(not(any(feature = "inspector", debug_assertions)))]
+fn crash_ai_section(_view: Entity<InspectorDemo>, _note: Option<String>) -> impl IntoElement {
+    div()
 }
 
 /// 启动示例窗口：调试版本启用默认检查器面板 + F12 快捷键（release 自动剥离）。
@@ -232,6 +345,13 @@ fn run_example() {
         #[cfg(any(feature = "inspector", debug_assertions))]
         {
             cx.enable_default_inspector();
+
+            // 崩溃后调试：滚动快照 + panic 日志（见文档 09-inspector.md“崩溃快照”节）。
+            // last.json 约 2 秒一写、原子替换（仅检查器打开的窗口写入）；
+            // panic-*.log 记录死因（负载 + 位置 + 强制回溯）。
+            // 程序死了直接读 .rgpui-crash 目录；AI 调试同理可读这两个文件。
+            cx.enable_crash_recorder(".rgpui-crash");
+            rgpui::runtime_stats::install_crash_hook(".rgpui-crash");
 
             cx.on_global_action(ToggleInspector, Some("f12"), |window, cx| {
                 window.toggle_inspector(cx);
@@ -307,6 +427,47 @@ mod tests {
             let _ = window.draw(cx);
             assert!(!window.is_inspector_picking(cx));
         });
+    }
+
+    /// AI 导出链路回归测试：检查器打开时树文本与结构化快照可用。
+    ///
+    /// 演示区两个复制按钮就是这两个调用（`inspector_tree_text` /
+    /// `capture_inspector_snapshot`）；崩溃记录器指向临时目录，
+    /// 顺带验证滚动快照落盘不断线。
+    #[rgpui::test]
+    fn ai_export_chain_works_while_inspector_open(cx: &mut TestAppContext) {
+        let dir = std::env::temp_dir().join(format!(
+            "inspector-example-crash-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        cx.update(|cx| {
+            cx.enable_crash_recorder(dir.clone());
+        });
+        let (_view, cx) = cx.add_window_view(InspectorDemo::new);
+        cx.update(|window, cx| {
+            window.toggle_inspector(cx);
+            let _ = window.draw(cx);
+            // 树文本：AI 可读，含演示根节点。
+            let text = window
+                .inspector_tree_text(cx, 2000)
+                .expect("检查器打开后应有树文本");
+            assert!(
+                text.contains("inspector-demo"),
+                "树文本应含演示根节点：{text}"
+            );
+            // 结构化快照：JSON 可序列化，全树非空。
+            let snapshot = window
+                .capture_inspector_snapshot(cx)
+                .expect("检查器打开后应有快照");
+            assert!(snapshot.tree_total > 0, "快照全树不应为空");
+            let json = serde_json::to_string(&snapshot).unwrap();
+            assert!(json.contains("tree_total"), "快照缺字段：{json}");
+        });
+        _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 插槽回归测试：自定义顶栏/段落外皮走默认面板渲染不断线。
