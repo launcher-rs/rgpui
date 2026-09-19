@@ -134,7 +134,7 @@ pub fn default_inspector_panel(
                                             .into_any_element(),
                                     ))
                                 })
-                                .child(full_tree_card(tree_rows, tree_total, &section))
+                                .child(full_tree_card(cx, tree_rows, tree_total, &section))
                                 .child(runtime_card(window, cx, &section))
                                 .child(error_card(cx, &section))
                                 .children(states),
@@ -149,13 +149,19 @@ pub fn default_inspector_panel(
 
 /// 面板宽拖拽状态（存 App 全局；松开/移出即结束，不会卡死）。
 #[derive(Default)]
-struct InspectorResizeState {
-    dragging: bool,
-    start_x: f32,
-    start_width: f32,
+pub(crate) struct InspectorResizeState {
+    pub(crate) dragging: bool,
+    pub(crate) start_x: f32,
+    pub(crate) start_width: f32,
 }
 
 impl Global for InspectorResizeState {}
+
+/// 拖拽条是否正在拖动（拾取事件分发时让路用：拖动中鼠标移到画布上也不走拾取）。
+pub(crate) fn is_inspector_resizing(cx: &App) -> bool {
+    cx.try_global::<InspectorResizeState>()
+        .is_some_and(|state| state.dragging)
+}
 
 /// 左缘拖拽条（绝对定位浮层：宽 8px、全高，悬停高亮，左右拖动调面板宽）。
 fn resize_strip() -> impl IntoElement {
@@ -646,6 +652,8 @@ struct FullTreeRow {
     expanded: bool,
     /// 是否为当前选中。
     selected: bool,
+    /// 单行复制文本（`label #实例 [源码] 实测边界`，无边界为 `?`）。
+    copy_text: String,
 }
 
 /// 运行卡片（Chrome“性能”面板的轻量对应物）：帧率/帧耗时/CPU/内存/GPU。
@@ -736,6 +744,22 @@ fn snapshot_full_tree(
     expanded: &HashSet<String>,
     cap: usize,
 ) -> (Vec<FullTreeRow>, usize) {
+    // 实测边界文本（面板单行复制用；画布 hitbox 查不到时为 `?`）。
+    let bounds_text_of = |id: &InspectorElementId| {
+        window
+            .inspector_bounds_for_id(id)
+            .or_else(|| window.next_inspector_bounds_for_id(id))
+            .map(|b| {
+                format!(
+                    "{:.0}x{:.0}@({:.0},{:.0})",
+                    b.size.width.as_f32(),
+                    b.size.height.as_f32(),
+                    b.origin.x.as_f32(),
+                    b.origin.y.as_f32()
+                )
+            })
+            .unwrap_or_else(|| "?".to_string())
+    };
     let mut rows = Vec::new();
     let mut total = 0usize;
     let mut stack: Vec<(InspectorElementId, usize)> = window
@@ -756,6 +780,13 @@ fn snapshot_full_tree(
         let key = id.tree_key();
         let is_expanded = expanded.contains(&key);
         if rows.len() < cap {
+            let copy_text = format!(
+                "{} #{} [{}] {}",
+                id.short_label(),
+                id.instance_id,
+                id.source_label(),
+                bounds_text_of(&id)
+            );
             rows.push(FullTreeRow {
                 selected: active == Some(&id),
                 id: id.clone(),
@@ -763,6 +794,7 @@ fn snapshot_full_tree(
                 depth,
                 has_children: !children.is_empty(),
                 expanded: is_expanded,
+                copy_text,
             });
         }
         if is_expanded {
@@ -776,10 +808,21 @@ fn snapshot_full_tree(
 
 /// 完整树卡片：逐节点展开/折叠，点击行选中画布对应区域（外皮走段落插槽）。
 fn full_tree_card(
+    cx: &mut App,
     rows: Vec<FullTreeRow>,
     total: usize,
     section: &InspectorSectionSlot,
 ) -> AnyElement {
+    // “复制树文本”打钩反馈（与单行复制共用 `CopiedFlash`）。
+    let copy_all_done =
+        cx.update_default_global::<CopiedFlash, _>(|state, _| state.key == "ftree-copy-all");
+    // 单行复制打钩集合：先快照，避免逐行借用 `cx`。
+    let copied_keys: HashSet<String> = cx.update_default_global::<CopiedFlash, _>(|state, _| {
+        (!state.key.is_empty())
+            .then(|| state.key.clone())
+            .into_iter()
+            .collect()
+    });
     let body = v_flex()
         .gap(px(2.0))
         .child(
@@ -835,12 +878,23 @@ fn full_tree_card(
                         .text_xs()
                         .text_color(rgb(0x666666))
                         .cursor_pointer()
-                        .child("复制树文本（喂 AI）")
-                        .on_click(|_, window, cx| {
+                        .hover(|this| this.bg(rgb(0xeeeeee)))
+                        .child(if copy_all_done {
+                            "已复制✓"
+                        } else {
+                            "复制树文本（喂 AI）"
+                        })
+                        .on_click(|event, window, cx| {
+                            cx.stop_propagation();
                             // AI 可读导出：全量 DFS，不受面板折叠影响。
                             if let Some(text) = window.inspector_tree_text(cx, 2000) {
                                 cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                cx.update_default_global::<CopiedFlash, _>(|state, _| {
+                                    state.key = "ftree-copy-all".to_string();
+                                });
+                                window.refresh();
                             }
+                            let _ = event;
                         }),
                 ),
         )
@@ -852,7 +906,10 @@ fn full_tree_card(
                     .child("暂无树数据：拾取一元素后生成（仅检查器打开时记录）。"),
             )
         })
-        .children(rows.into_iter().map(full_tree_row))
+        .children(rows.into_iter().map(|row| {
+            let copied = copied_keys.contains(&format!("ftree-copy-{}", row.key));
+            full_tree_row(row, copied)
+        }))
         .when(total > FULL_TREE_ROW_CAP, |this| {
             this.child(div().text_xs().text_color(rgb(0x888888)).child(format!(
                 "… 仅展示前 {FULL_TREE_ROW_CAP} 行，收起部分节点以精简。"
@@ -863,13 +920,17 @@ fn full_tree_card(
     section(None, body)
 }
 
-/// 完整树行：箭头折叠 + 名称选中，选中行橙底呼应画布高亮。
-fn full_tree_row(row: FullTreeRow) -> impl IntoElement {
+/// 完整树行：箭头折叠 + 名称选中 + 单行复制，选中行橙底呼应画布高亮。
+fn full_tree_row(row: FullTreeRow, copied: bool) -> impl IntoElement {
     let toggle_key = row.key.clone();
     let select_id = row.id.clone();
     let label = row.id.short_label();
     let source = row.id.source_label();
     let instance = row.id.instance_id;
+    // 单行复制文本（`label #实例 [源码] 边界`，调试时直接粘给 AI/日志）。
+    let copy_text = row.copy_text.clone();
+    let copy_key = format!("ftree-copy-{}", row.key);
+    let copy_key_for_click = copy_key.clone();
     h_flex()
         .id(format!("ftree-{}", row.key))
         .items_center()
@@ -915,6 +976,25 @@ fn full_tree_row(row: FullTreeRow) -> impl IntoElement {
                 }),
         )
         .child(div().text_xs().text_color(rgb(0x999999)).child(source))
+        // 单行复制（只复制本行，不干扰行点击选中）。
+        .child(
+            div()
+                .id(format!("ftree-copy-{copy_key}"))
+                .text_xs()
+                .text_color(if copied { rgb(0x107c10) } else { rgb(0xbbbbbb) })
+                .cursor_pointer()
+                .hover(|this| this.bg(rgb(0xeeeeee)))
+                .child(if copied { "✓" } else { "⧉" })
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    window.prevent_default();
+                    cx.write_to_clipboard(ClipboardItem::new_string(copy_text.clone()));
+                    cx.update_default_global::<CopiedFlash, _>(|state, _| {
+                        state.key = copy_key_for_click.clone();
+                    });
+                    window.refresh();
+                }),
+        )
 }
 
 #[cfg(test)]
@@ -1110,6 +1190,118 @@ mod tests {
                 (width - (default_width + 100.0)).abs() < 2.0,
                 "左移 100px 应加宽 100px：{width} vs {}",
                 default_width + 100.0
+            );
+        });
+    }
+
+    /// 拾取态下拖拽条仍可拖（不退出拾取）：打开即拾取中，直接拖左移 60px。
+    #[crate::test]
+    fn drag_strip_works_while_picking(cx: &mut crate::TestAppContext) {
+        let (cx, default_width, _panel, _header, _scroll, _content, strip) = setup_panel!(cx);
+        cx.update(|window, cx| {
+            assert!(window.is_inspector_picking(cx), "新开检查器应默认拾取中");
+        });
+        let start_x = strip.origin.x.as_f32() + strip.size.width.as_f32() / 2.0;
+        let start_y = strip.origin.y.as_f32() + strip.size.height.as_f32() / 2.0;
+        cx.simulate_mouse_move(
+            crate::Point {
+                x: px(start_x),
+                y: px(start_y),
+            },
+            None,
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_down(
+            crate::Point {
+                x: px(start_x),
+                y: px(start_y),
+            },
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_move(
+            crate::Point {
+                x: px(start_x - 60.0),
+                y: px(start_y),
+            },
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_up(
+            crate::Point {
+                x: px(start_x - 60.0),
+                y: px(start_y),
+            },
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| {
+            let width = window
+                .inspector_width()
+                .expect("拾取态拖拽后应有自定义宽度")
+                .as_f32();
+            assert!(
+                (width - (default_width + 60.0)).abs() < 2.0,
+                "拾取态左移 60px 应加宽 60px：{width} vs {}",
+                default_width + 60.0
+            );
+            assert!(window.is_inspector_picking(cx), "拖拽不应顺手退出拾取");
+        });
+    }
+
+    /// 面板区滚轮不切换拾取层级（滚面板内容，拾取深度不变）。
+    #[crate::test]
+    fn wheel_over_panel_keeps_pick_depth(cx: &mut crate::TestAppContext) {
+        let (cx, _default_width, panel, _header, scroll, _content, _strip) = setup_panel!(cx);
+        cx.update(|window, cx| {
+            assert!(window.is_inspector_picking(cx));
+        });
+        let center = crate::Point {
+            x: px(scroll.origin.x.as_f32() + scroll.size.width.as_f32() / 2.0),
+            y: px(scroll.origin.y.as_f32() + scroll.size.height.as_f32() / 2.0),
+        };
+        // 面板中心确在面板区域内（拾取让路的前提）。
+        assert!(
+            center.x.as_f32() >= panel.origin.x.as_f32(),
+            "面板滚动区中心应在面板内：{center:?} vs {panel:?}"
+        );
+        cx.simulate_event(ScrollWheelEvent {
+            position: center,
+            delta: ScrollDelta::Lines(point(0.0f32, 5.0)),
+            modifiers: Modifiers::default(),
+            ..Default::default()
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            // 滚轮落在面板上：不应触发画布拾取层级切换（active 仍空）。
+            assert!(window.is_inspector_picking(cx), "面板滚轮不应退出拾取");
+        });
+    }
+
+    /// 完整树行自带可复制文本（标签/实例/源码/边界齐全，调试可粘）。
+    #[crate::test]
+    fn full_tree_rows_carry_copy_text(cx: &mut crate::TestAppContext) {
+        let (cx, _, _, _, _, _, _) = setup_panel!(cx);
+        cx.update(|window, _| {
+            let (rows, total) =
+                snapshot_full_tree(window, None, &HashSet::new(), FULL_TREE_ROW_CAP);
+            assert!(!rows.is_empty() && total > 0, "应有树行快照");
+            let first = &rows[0];
+            assert!(
+                first.copy_text.contains(&first.id.short_label()),
+                "复制文本应含标签：{}",
+                first.copy_text
+            );
+            assert!(
+                first.copy_text.contains(&first.id.source_label()),
+                "复制文本应含源码位置：{}",
+                first.copy_text
             );
         });
     }

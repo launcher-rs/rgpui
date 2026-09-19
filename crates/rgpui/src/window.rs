@@ -5281,9 +5281,13 @@ impl Window {
         }
 
         #[cfg(any(feature = "inspector", debug_assertions))]
-        if self.is_inspector_picking(cx) {
+        if self.is_inspector_picking(cx)
+            && !crate::inspector_panel::is_inspector_resizing(cx)
+            && !self.mouse_over_inspector_panel()
+        {
             self.handle_inspector_mouse_event(event, cx);
-            // When inspector is picking, all other mouse handling is skipped.
+            // 拾取中画布点击被接管；面板区域（及拖动中）走正常派发，
+            // 否则拖拽条/树复制按钮在拾取态下全死，面板也无法交互。
             return;
         }
 
@@ -6321,6 +6325,24 @@ impl Window {
     pub fn set_inspector_width(&mut self, width: Option<Pixels>) {
         self.inspector_width = width;
         self.refresh();
+    }
+
+    /// 鼠标是否落在检查器面板区域内（拾取事件让路用）。
+    ///
+    /// 面板在右侧整高停靠（`prepaint_inspector` 按视口宽减面板宽定位），
+    /// 拾取态下该区域的点击/滚轮/拖动都走正常派发：面板按钮可点、
+    /// 拖拽条可拖、滚轮滚面板内容；画布拾取只在面板以左生效。
+    /// 面板自举不计入被检树，面板 hitbox 本来就不在拾取注册表里，
+    /// 这里只是不再吞掉面板的正常鼠标事件。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    fn mouse_over_inspector_panel(&self) -> bool {
+        if self.inspector.is_none() {
+            return false;
+        }
+        let width = self
+            .inspector_width
+            .unwrap_or_else(|| rems(30.0).to_pixels(self.rem_size()));
+        self.mouse_position.x >= self.viewport_size.width - width
     }
 
     /// 运行时采样（每帧调一次，内部自行门控与节流）。
