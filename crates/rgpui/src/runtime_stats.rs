@@ -195,7 +195,7 @@ impl CpuClock {
             }
             // SAFETY：上一步成功，结构体已初始化。
             let usage = unsafe { usage.assume_init() };
-            let to_micros = |tv: libc::timeval| tv.tv_sec * 1_000_000 + tv.tv_usec;
+            let to_micros = |tv: libc::timeval| i64::from(tv.tv_sec) * 1_000_000 + i64::from(tv.tv_usec);
             let proc_micros = to_micros(usage.ru_utime) + to_micros(usage.ru_stime);
             // macOS 的 ru_maxrss 单位是字节，Linux 是 KB。
             #[cfg(target_os = "macos")]
