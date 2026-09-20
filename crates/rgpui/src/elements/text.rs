@@ -1183,12 +1183,13 @@ impl InteractiveText {
         }
     }
 
-    /// 当用户点击给定范围之一时调用 on_click，传递被点击范围的索引。
-    pub fn on_click(
+    /// 当用户点击给定范围之一时调用 on_change，传递被点击范围的索引。
+    pub fn on_change(
         mut self,
         ranges: Vec<Range<usize>>,
-        listener: impl Fn(usize, &mut Window, &mut App) + 'static,
+        listener: impl Fn(usize, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
+        let listener = Arc::new(listener);
         self.click_listener = Some(Box::new(move |ranges, event, window, cx| {
             for (range_ix, range) in ranges.iter().enumerate() {
                 if range.contains(&event.mouse_down_index) && range.contains(&event.mouse_up_index)

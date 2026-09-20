@@ -88,6 +88,11 @@ impl WgpuContext {
             adapter.get_info().name,
             adapter.get_info().backend
         );
+        // 同步注册到核心 GPU 信息表（Inspector“运行”卡片读取；重复调用保持首次值）。
+        {
+            let info = adapter.get_info();
+            rgpui::set_gpu_info(info.name, format!("{:?}", info.backend));
+        }
 
         let device = Arc::new(device);
         let queue = Arc::new(queue);
@@ -145,6 +150,11 @@ impl WgpuContext {
             adapter.get_info().name,
             adapter.get_info().backend
         );
+        // 同上：注册到核心 GPU 信息表（WASM 平台同样上报）。
+        {
+            let info = adapter.get_info();
+            rgpui::set_gpu_info(info.name, format!("{:?}", info.backend));
+        }
 
         let device_lost = Arc::new(AtomicBool::new(false));
         let (device, queue, dual_source_blending, color_texture_format) =

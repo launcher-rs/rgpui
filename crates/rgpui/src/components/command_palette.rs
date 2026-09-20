@@ -5,7 +5,7 @@ use crate::{
     prelude::FluentBuilder as _,
     *,
 };
-use std::rc::Rc;
+use std::sync::Arc;
 
 actions!(
     command_palette,
@@ -28,7 +28,7 @@ pub struct Command {
     /// 快捷键提示文本。
     pub shortcut: Option<SharedString>,
     /// 选中执行的回调。
-    pub on_select: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    pub on_select: Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync>>,
     /// 搜索文本（小写，名称 + 描述）。
     search_text: String,
 }
@@ -81,9 +81,9 @@ impl Command {
     /// 设置选中执行的回调。
     pub fn on_select<F>(mut self, handler: F) -> Self
     where
-        F: Fn(&mut Window, &mut App) + 'static,
+        F: Fn(&mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_select = Some(Rc::new(handler));
+        self.on_select = Some(Arc::new(handler));
         self
     }
 
@@ -223,7 +223,7 @@ pub struct CommandPalette {
     /// 搜索输入框状态实体。
     search_input: Entity<InputState>,
     /// 关闭回调。
-    on_close: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    on_close: Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync>>,
     /// 焦点句柄。
     focus_handle: FocusHandle,
     /// 用户样式。
@@ -263,9 +263,9 @@ impl CommandPalette {
     /// 设置关闭回调。
     pub fn on_close<F>(mut self, handler: F) -> Self
     where
-        F: Fn(&mut Window, &mut App) + 'static,
+        F: Fn(&mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_close = Some(Rc::new(handler));
+        self.on_close = Some(Arc::new(handler));
         self
     }
 }

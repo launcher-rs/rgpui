@@ -10,7 +10,7 @@
 use crate::input_ui::{Input, InputState, TextDecoration, TextDecorationCollection};
 use crate::prelude::FluentBuilder as _;
 use crate::*;
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
 /// 搜索选项（位标志）。
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -463,9 +463,9 @@ pub struct SearchPanelState {
     /// 匹配导航回调（行号, 起始列, 结束列）。
     on_navigate: Option<Rc<dyn Fn(usize, usize, usize, &mut Window, &mut App)>>,
     /// 替换回调（查询, 替换文本）。
-    on_replace: Option<Rc<dyn Fn(String, String, &mut Window, &mut App)>>,
+    on_replace: Option<Arc<dyn Fn(String, String, &mut Window, &mut App) + Send + Sync>>,
     /// 全部替换回调。
-    on_replace_all: Option<Rc<dyn Fn(String, String, &mut Window, &mut App)>>,
+    on_replace_all: Option<Arc<dyn Fn(String, String, &mut Window, &mut App) + Send + Sync>>,
     /// 关闭回调（面板自身不画关闭按钮，由父组件消费，如标题栏的 ×）。
     on_close: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
     /// 焦点句柄。
@@ -593,18 +593,18 @@ impl SearchPanelState {
     /// 设置替换回调。
     pub fn on_replace<F>(mut self, handler: F) -> Self
     where
-        F: Fn(String, String, &mut Window, &mut App) + 'static,
+        F: Fn(String, String, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_replace = Some(Rc::new(handler));
+        self.on_replace = Some(Arc::new(handler));
         self
     }
 
     /// 设置全部替换回调。
     pub fn on_replace_all<F>(mut self, handler: F) -> Self
     where
-        F: Fn(String, String, &mut Window, &mut App) + 'static,
+        F: Fn(String, String, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_replace_all = Some(Rc::new(handler));
+        self.on_replace_all = Some(Arc::new(handler));
         self
     }
 
@@ -620,17 +620,17 @@ impl SearchPanelState {
     /// 设置替换回调（构建后追加/覆盖，与 builder 版 `on_replace` 等价）。
     pub fn set_on_replace<F>(&mut self, handler: F)
     where
-        F: Fn(String, String, &mut Window, &mut App) + 'static,
+        F: Fn(String, String, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_replace = Some(Rc::new(handler));
+        self.on_replace = Some(Arc::new(handler));
     }
 
     /// 设置全部替换回调（构建后追加/覆盖，与 builder 版 `on_replace_all` 等价）。
     pub fn set_on_replace_all<F>(&mut self, handler: F)
     where
-        F: Fn(String, String, &mut Window, &mut App) + 'static,
+        F: Fn(String, String, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_replace_all = Some(Rc::new(handler));
+        self.on_replace_all = Some(Arc::new(handler));
     }
 
     /// 推送待搜索全文并用当前查询重算匹配。
@@ -1002,7 +1002,7 @@ impl Render for SearchPanelState {
                         ToggleButton::new("case-sensitive", options.case_sensitive)
                             .label("Aa")
                             .tooltip("Case Sensitive")
-                            .on_click(move |_is_on, _, cx| {
+                            .on_change(move |_is_on, _, cx| {
                                 state_entity.update(cx, |state, cx| {
                                     state.toggle_case_sensitive(&source);
                                     cx.notify();
@@ -1015,7 +1015,7 @@ impl Render for SearchPanelState {
                         ToggleButton::new("whole-word", options.whole_word)
                             .label("Ab")
                             .tooltip("Whole Word")
-                            .on_click(move |_is_on, _, cx| {
+                            .on_change(move |_is_on, _, cx| {
                                 state_entity.update(cx, |state, cx| {
                                     state.toggle_whole_word(&source);
                                     cx.notify();
@@ -1026,7 +1026,7 @@ impl Render for SearchPanelState {
                         ToggleButton::new("regex", options.regex)
                             .label(".*")
                             .tooltip("Regular Expression")
-                            .on_click(move |_is_on, _, cx| {
+                            .on_change(move |_is_on, _, cx| {
                                 state_entity.update(cx, |state, cx| {
                                     state.toggle_regex(&source);
                                     cx.notify();
@@ -1044,7 +1044,7 @@ struct ToggleButton {
     label: SharedString,
     tooltip_text: SharedString,
     active: bool,
-    on_click: Option<Rc<dyn Fn(bool, &mut Window, &mut App)>>,
+    on_change: Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync>>,
 }
 
 impl ToggleButton {
@@ -1054,7 +1054,7 @@ impl ToggleButton {
             label: SharedString::default(),
             tooltip_text: SharedString::default(),
             active,
-            on_click: None,
+            on_change: None,
         }
     }
 
@@ -1068,15 +1068,18 @@ impl ToggleButton {
         self
     }
 
-    fn on_click(mut self, handler: impl Fn(bool, &mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(handler));
+    fn on_change(
+        mut self,
+        handler: impl Fn(bool, &mut Window, &mut App) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_change = Some(Arc::new(handler));
         self
     }
 }
 
 impl RenderOnce for ToggleButton {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let on_click = self.on_click;
+        let on_change = self.on_change;
         let active = self.active;
 
         let btn = Button::new(self.id).ghost().small().label(self.label);
@@ -1088,7 +1091,7 @@ impl RenderOnce for ToggleButton {
         };
 
         btn.on_click(move |_, window, cx| {
-            if let Some(ref cb) = on_click {
+            if let Some(ref cb) = on_change {
                 cb(!active, window, cx);
             }
         })

@@ -1,17 +1,17 @@
 //! Window 扩展 trait - 为 Window 添加对话框打开/关闭等能力。
 
 use crate::dialog::{AlertDialog, Dialog};
-use crate::{App, Root, Window};
+use crate::{App, DialogId, Root, Window};
 
 /// 为 [`Window`] 添加对话框等功能的扩展 trait。
 pub trait WindowExt: Sized {
-    /// 打开一个对话框。
-    fn open_dialog<F>(&mut self, cx: &mut App, build: F)
+    /// 打开一个对话框，返回其标识（凭此按标识关闭）。
+    fn open_dialog<F>(&mut self, cx: &mut App, build: F) -> DialogId
     where
         F: Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static;
 
-    /// 打开一个警告对话框（带便捷默认值的对话框）。
-    fn open_alert_dialog<F>(&mut self, cx: &mut App, build: F)
+    /// 打开一个警告对话框（带便捷默认值的对话框），返回其标识。
+    fn open_alert_dialog<F>(&mut self, cx: &mut App, build: F) -> DialogId
     where
         F: Fn(AlertDialog, &mut Window, &mut App) -> AlertDialog + 'static;
 
@@ -21,23 +21,28 @@ pub trait WindowExt: Sized {
     /// 关闭最后一个活动对话框。
     fn close_dialog(&mut self, cx: &mut App);
 
+    /// 按标识关闭指定对话框（栈中任意位置，上层不受影响）。
+    ///
+    /// 找到并移除返回 `true`，未知标识返回 `false`。
+    fn close_dialog_by(&mut self, cx: &mut App, id: DialogId) -> bool;
+
     /// 关闭所有活动对话框。
     fn close_all_dialogs(&mut self, cx: &mut App);
 }
 
 impl WindowExt for Window {
     #[inline]
-    fn open_dialog<F>(&mut self, cx: &mut App, build: F)
+    fn open_dialog<F>(&mut self, cx: &mut App, build: F) -> DialogId
     where
         F: Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
     {
         Root::update(self, cx, move |root, window, cx| {
-            root.open_dialog(build, window, cx);
+            root.open_dialog(build, window, cx)
         })
     }
 
     #[inline]
-    fn open_alert_dialog<F>(&mut self, cx: &mut App, build: F)
+    fn open_alert_dialog<F>(&mut self, cx: &mut App, build: F) -> DialogId
     where
         F: Fn(AlertDialog, &mut Window, &mut App) -> AlertDialog + 'static,
     {
@@ -55,6 +60,13 @@ impl WindowExt for Window {
     fn close_dialog(&mut self, cx: &mut App) {
         Root::update(self, cx, |root, window, cx| {
             root.close_dialog(window, cx);
+        })
+    }
+
+    #[inline]
+    fn close_dialog_by(&mut self, cx: &mut App, id: DialogId) -> bool {
+        Root::update(self, cx, |root, window, cx| {
+            root.close_dialog_by(id, window, cx)
         })
     }
 

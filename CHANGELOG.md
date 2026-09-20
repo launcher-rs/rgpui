@@ -2,6 +2,82 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [1.3.0] - 2026-09-20
+
+### 检查器完善（Inspector）
+
+- **I1 树节点 ↔ 界面双向映射**：`Inspector::select` 公开 +
+  `select_ancestor(levels_up)`（全局路径前缀反查 + hitbox 包含消歧）+
+  `Window::select_inspector_ancestor`；打开期间常驻 hitbox，选中区橙框常驻高亮
+- **I2 完整元素树 + 逐节点折叠**：prepaint 嵌套记录 parent→children
+  （`Frame` 存树，面板自举暂停，关闭零开销）；`is_inspector_open` 门控视图缓存
+  与全量 Div hitbox；公开 `roots/children/parent` + `select_inspector_element` +
+  `InspectorElementId::{short_label, source_label, tree_key}`
+- **I3 检查面板内置化**：新增 `rgpui::inspector_panel` +
+  `App::enable_default_inspector()`（两行出完整面板）；
+  `examples/inspector/` 瘦身为纯默认面板演示；新增 `examples/inspector_custom/`
+ （全自写面板 + 覆盖 Div 展示的 living recipe，两示例演示内容各自独立）；
+  选中 Div 卡新增盒模型示意图 + 已指定样式列表（颜色 hex 可读，
+  未指定显示 `—`）；值统一点击复制 + 打钩反馈；面板左缘拖拽调宽
+  （绝对定位浮层 + 指针捕获 + `HitboxId` 每帧重置保证跨帧有效）；
+  完整树卡新增“复制树文本” + `Window::inspector_tree_text`（AI 可读导出）；
+  面板底部新增运行卡（帧率/CPU/内存/GPU，仅打开时采样，
+  GPU 由 `WgpuContext` 构造期注册）与报错卡（`App::report_error` 错误环，
+  两示例各加“模拟上报错误”演示按钮）；
+  崩溃快照（`InspectorSnapshot` + `last.json` 滚动落盘 + panic 日志钩子）；
+  祖先链面板移除（完整树唯一）+ 顶栏固定 + 删调试按钮只留 F12 +
+  F12 全局绑定修复 + release 自动剥离（示例默认不开 feature）
+- **I4 自定义接口文档化**：`docs/rgpui-book/09-inspector.md` 检查器章节
+  （启用/分工表/双 recipe/树与选中 API）
+
+### 回调签名统一（C1，breaking）
+
+- 纯点击一律 `on_click: Fn(&ClickEvent, &mut Window, &mut App)`（`BreadcrumbItem` 补事件参数）；
+  值变更一律 `on_change: Fn(Value, …)` 按值传递；存储统一 `Arc + Send + Sync`
+- 改名：`Checkbox` / `Switch` / `Radio` / `RadioGroup` / `TabBar` 的 `on_click`→`on_change`；
+  `Sidebar` / `Upload` / `NavigationMenu` 的 `on_select`→`on_change`
+- 传导：`dialog` / `alert_dialog` / `empty_state` / `notification_center` / `search_panel`
+- 新增 `Context::listener_value`（按值版 `listener`）；book 回调章节更新
+
+### 应用实战回流（G）
+
+- **G1**：`Root::open_dialog` 返回 `DialogId` + `close_dialog_by(id)` 按标识关闭
+- **G2**：book 落 App 回调回实体 recipe（直挂/Root 穿透两段式）
+- **G3**：`TreeEvent::Confirmed(id)`（Enter 文件行触发）
+- **G4**：新增值驱动 `rgpui::tabs::{Tabs, TabsItem}`（无实体静态页签）
+- **G5**：菜单位置约束记入 book（光标直接取，锚点前置计算，不硬上 API）
+- **G6**：`impl Global for I18nManager` + `load_locale_dir` + `I18nSnapshot` 快照回退
+- **G7**：`Dialog::overlay_visible(bool)` setter（裸挂出变暗背景）
+
+### 移除
+
+- **Z1**：删除 `chat_ui` deprecated 别名（1.2.0 迁移到 `chat`，按计划 1.3.0 删除）
+
+### 第二批加菜（H，breaking 一次收完）
+
+- **H1 回调残留统一（C2）**：`InteractiveText::on_click`→`on_change`（范围索引按值）；
+  `CompletionPopup::on_select`→`on_change`（补全索引按值）；
+  `Link::on_click` / `StatusBarItem::on_click` 补 `&ClickEvent`；
+  `HotkeyInput::on_change` 由 `Option<&HotkeyValue>` 改按值 `Option<HotkeyValue>`，
+  `HotkeyListInput::on_change` 由 `&[HotkeyValue]` 改按值 `Vec<HotkeyValue>`；
+  `OTPInput::on_change` / `on_complete` 补 `&mut Window`
+  （订阅常在按键分发中触发、同步拿不到窗口，故经 `spawn` 延后分发，
+  无活动窗口时跳过；回调不再与触发同步，见迁移指南第七节）；
+  `PopupMenuItem::on_click` / `Notification::on_click` / `on_close` /
+  `ListItem::on_click` / `SegmentedNav::on_change` / `Command::on_select` /
+  `CommandPalette::on_close` 由 `Rc` / `Box` 转 `Arc + Send + Sync`
+  （`Command` 执行语义保留原名）；book 回调章节同步
+- **H2 全局动作 helper**：`App::on_global_action(action, keystroke, handler)`
+ （全局绑定 + 打活动窗口 + spawn 延后更新三件套，F12 沉淀；`handler` 只要求
+  `'static`）；两检查器示例改吃 helper，book 同步
+- **H3 i18n 小补强**：`I18nText::translate_global(cx)`（读全局管理器，未设置回退 key）
+- **H4**：`rgpui_story` tabs 页加静态 `Tabs` 演示
+- **H5 面板插槽化**：`InspectorPanelSlots::{header, section}` +
+  `App::set_inspector_panel_slots`（默认外皮 `default_inspector_header` /
+  `default_inspector_section` 可复用包裹；注册表状态展示不经过 section 插槽）+
+  回归测试 + book recipe
+- **H6**：新增 `examples/v1_3_showcase`（1.3 新 API 集中演示二进制）
+
 ## [1.2.2] - 2026-09-15
 
 ### 修复

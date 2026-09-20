@@ -119,6 +119,10 @@ mod input;
 /// 检查器 - 开发调试用的 UI 检查工具
 mod inspector;
 
+/// 检查器默认面板 - 开箱即用的检查器 UI（检查器打开时可用）
+#[cfg(any(feature = "inspector", debug_assertions))]
+pub mod inspector_panel;
+
 /// 交互系统 - 定义 Focusable、ClickArea 等交互行为 trait
 mod interactive;
 
@@ -175,6 +179,9 @@ mod size;
 
 /// 订阅系统 - 观察者模式的事件订阅与通知机制
 mod subscription;
+
+/// 运行时采样 - Inspector“运行”卡片的数据源（帧率/CPU/内存）与 GPU 信息注册表
+pub mod runtime_stats;
 
 /// Taffy 布局引擎封装 - Flexbox 和 Grid 布局的 Rust 实现
 mod taffy;
@@ -262,10 +269,6 @@ pub mod config_store;
 
 /// Chat UI 组件 - 聊天消息展示
 pub mod chat;
-
-/// 旧模块路径兼容（1.2.0 起 `chat_ui` 迁移到 `chat`，1.3.0 删除）。
-#[deprecated(since = "1.2.0", note = "已迁移到 rgpui::chat")]
-pub use chat as chat_ui;
 
 /// FPS 监控 HUD - 实时帧率/CPU/内存监控
 pub mod fps_hud;
@@ -465,6 +468,12 @@ pub use crate::refineable::*;
 pub use input::*;
 /// 重导出检查器相关类型
 pub use inspector::*;
+/// 重导出检查器默认面板（检查器打开时可用）
+#[cfg(any(feature = "inspector", debug_assertions))]
+pub use inspector_panel::{
+    InspectorHeaderSlot, InspectorPanelSlots, InspectorSectionSlot, default_inspector_header,
+    default_inspector_panel, default_inspector_section, render_div_inspector_state,
+};
 /// 重导出交互系统相关类型（Focusable、ClickArea 等）
 pub use interactive::*;
 use key_dispatch::*;
@@ -510,6 +519,8 @@ pub use index_path::*;
 pub use menu::*;
 /// 重导出根视图
 pub use root::*;
+/// 重导出运行时采样类型（GpuInfo、set_gpu_info 等）
+pub use runtime_stats::{GpuInfo, gpu_info, set_gpu_info};
 pub use size::*;
 /// 重导出订阅系统类型（Subscription、SubscriberSet 等）
 pub use subscription::*;

@@ -5,6 +5,7 @@ use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
     rc::Rc,
+    sync::Arc,
     time::Duration,
 };
 
@@ -89,8 +90,8 @@ pub struct Notification {
     autohide: bool,
     action_builder: Option<Rc<dyn Fn(&mut Self, &mut Window, &mut Context<Self>) -> Button>>,
     content_builder: Option<Rc<dyn Fn(&mut Self, &mut Window, &mut Context<Self>) -> AnyElement>>,
-    on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
-    on_close: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync>>,
+    on_close: Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync>>,
     closing: bool,
 }
 
@@ -235,9 +236,9 @@ impl Notification {
     /// 设置通知的点击回调。
     pub fn on_click(
         mut self,
-        on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.on_click = Some(Rc::new(on_click));
+        self.on_click = Some(Arc::new(on_click));
         self
     }
 
@@ -245,8 +246,11 @@ impl Notification {
     ///
     /// 在通知被任何方式关闭时触发
     /// （关闭按钮、中键点击、自动隐藏、点击处理器或程序化关闭）。
-    pub fn on_close(mut self, on_close: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_close = Some(Rc::new(on_close));
+    pub fn on_close(
+        mut self,
+        on_close: impl Fn(&mut Window, &mut App) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_close = Some(Arc::new(on_close));
         self
     }
 

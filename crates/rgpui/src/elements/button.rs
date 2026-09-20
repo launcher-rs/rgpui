@@ -1,6 +1,6 @@
 //! 按钮组件，支持多种样式、大小、图标和交互状态的可点击按钮。
 
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
 use crate::{
     ActiveTheme, AnyElement, App, ClickEvent, Colorize as _, Corners, Div, Edges, ElementId,
@@ -230,7 +230,7 @@ pub struct Button {
         Option<(Rc<Box<dyn crate::Action>>, Option<SharedString>)>,
     )>,
     tooltip_builder: Option<Rc<dyn Fn(&mut Window, &mut App) -> crate::AnyView>>,
-    on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
+    on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync>>,
     on_hover: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
     loading: bool,
     loading_icon: Option<crate::Icon>,
@@ -357,9 +357,9 @@ impl Button {
     /// 添加点击处理函数。
     pub fn on_click(
         mut self,
-        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.on_click = Some(Rc::new(handler));
+        self.on_click = Some(Arc::new(handler));
         self
     }
 

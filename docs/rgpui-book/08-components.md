@@ -76,7 +76,47 @@ Dialog::new("dialog")
 
 - 菜单系统位于 `menu/`：`PopupMenu`（弹出菜单）、`ContextMenu`（右键菜单）、`DropdownMenu`（下拉菜单，可挂在任意元素上）、`HoverCard`（悬浮卡片）。
 - 通知：`Notification`/`NotificationList`、`Toast`。
+- 弹出菜单构造期位置上下文（cookbook 约束，不硬上库 API）：
+  `PopupMenu::submenu` 的 `window`/`cx` 透传省不掉（构造期即建子菜单实体并接
+  父链与优先级）；需光标位置直接在构造器内调 `window.mouse_position()`；
+  需锚点（父条目 bounds）只能前置计算——构造期布局尚未发生，任何构造器都拿不到，
+  改两阶段定位得动 render 管线，代价过高。
 - 对话框：`Dialog`/`AlertDialog` 及 `DialogHeader/Content/Footer/Title/Description` 组合子组件。
+- Root 托管对话框：`window.open_dialog(cx, build)` 返回 `DialogId`，
+  `window.close_dialog_by(cx, id)` 按标识关闭栈中任意位置（上层不受影响），
+  另有 `close_dialog`（栈顶）/ `close_all_dialogs`（全部）。
+
+### App 上下文回调回视图实体（recipe，可照抄）
+
+`Dialog` 的 `content` / `footer` / `button_props` 回调只有
+`(&mut Window, &mut App)`，回视图实体不用手写 downcast 样板，
+照抄下面两段式（直挂与 Root 包装两种挂载都覆盖）：
+
+```rust
+use rgpui::{App, Entity, Root, Window};
+
+// App 上下文回调里回到 MyView 实体并更新：
+fn back_to_view(window: &mut Window, cx: &mut App) {
+    // 直挂视图走 window.root；经 Root 托管的应用穿透 Root::view。
+    let view: Option<Entity<MyView>> = window
+        .root::<MyView>()
+        .flatten()
+        .or_else(|| {
+            Root::read(window, cx)
+                .view()
+                .clone()
+                .downcast::<MyView>()
+                .ok()
+        });
+    if let Some(view) = view {
+        view.update(cx, |this, cx| {
+            // ……正常实体更新（notify 等）
+        });
+    }
+}
+```
+
+暂不加便捷 API：两段式已覆盖全部挂载形态，若后续调用点仍嫌啰嗦再收敛。
 
 ## 列表与表格
 
@@ -101,13 +141,61 @@ TabBar::new("tabs")
     .segmented()
     .selected_index(0)
     .children(vec![Tab::new("概览"), Tab::new("详情")])
-    .on_click(|ix, _, _| {
-        // 处理标签切换
+    .on_change(|ix, _, _| {
+        // 处理标签切换（索引按值传递）
     });
 ```
 
 - `TabBar` 支持 `Tab`/`Outline`/`Pill`/`Segmented`/`Underline` 五种变体，`Segmented`/`Pill`/`Underline` 带滑动指示器动画。
 - `Accordion`/`AccordionItem`（手风琴）与 `Collapsible`（折叠面板）。
+
+## 回调约定（命名 + 签名 + 线程界限）
+
+三条规则（1.3.0 起全组件统一，breaking，直接改不留兼容）：
+
+1. **纯点击一律 `on_click`**：`Fn(&ClickEvent, &mut Window, &mut App)`。
+   `Button`、`Tab::on_click` 本就如此；`BreadcrumbItem::on_click` 补上了事件参数。
+2. **值变更一律 `on_change`**：`Fn(Value, &mut Window, &mut App)`，值一律按值传递
+   （`bool` / `usize` / `f32` / `Hsla` / `NaiveDate` / `SharedString` / `Vec<T>`；
+   `SharedString` / `Vec` 均为 Arc-backed 廉价克隆，回调同步执行无生命周期问题）。
+    注意改名项：`Checkbox` / `Switch` / `Radio` / `RadioGroup` / `TabBar` 的旧
+    `on_click` 改为 `on_change`；`Sidebar` / `Upload` / `NavigationMenu` 的旧
+    `on_select` 改为 `on_change`。`Carousel::on_change` 保留 `(旧下标, 新下标)` 双值。
+    C2（同版本收尾）：`InteractiveText::on_click` 改为 `on_change`（范围索引按值）；
+    `CompletionPopup::on_select` 改为 `on_change`（补全索引按值）。
+    补参数项：`Link::on_click` / `StatusBarItem::on_click` 补上 `&ClickEvent`；
+    `HotkeyInput::on_change` 由 `Option<&HotkeyValue>` 改按值 `Option<HotkeyValue>`，
+    `HotkeyListInput::on_change` 由 `&[HotkeyValue]` 改按值 `Vec<HotkeyValue>`，
+    `OTPInput::on_change` / `on_complete` 补上 `&mut Window`
+    （经活动窗口分发，事件本就源于窗口按键）。
+    存 `Arc` 项：`PopupMenuItem::on_click` / `Notification::on_click` /
+    `Notification::on_close` / `ListItem::on_click` / `SegmentedNav::on_change` /
+    `Command::on_select` / `CommandPalette::on_close` 由 `Rc` / `Box` 转 `Arc`
+    （`Command` 的 `on_select` / `on_close` 是执行语义，保留原名）。
+3. **存储统一 `Arc + Send + Sync + 'static`**（向严格方向统一，
+   `Entity` 捕获不受影响）。
+
+```rust
+use rgpui::{Checkbox, prelude::*};
+
+// 值回调：bool 按值；视图状态用 listener_value 接入（见下）。
+Checkbox::new("notify").checked(true).on_change(cx.listener_value(
+    |this: &mut SettingsView, checked: bool, _, cx| {
+        this.notify = checked;
+        cx.notify();
+    },
+));
+```
+
+### `listener` vs `listener_value`：看回调签名选
+
+- `cx.listener(|this, e: &E, _, cx| …)`：**引用型事件**，配 `Fn(&E, …)` 回调
+  （`Button::on_click` 的 `&ClickEvent`、Div 点击等纯点击类）。
+- `cx.listener_value(|this, e: E, _, cx| …)`：**按值型事件**，配 `Fn(E, …)` 回调
+  （上表所有 `on_change`）。C1 之前值回调全是 `&bool`/`&usize`/`&[…]`，
+  `listener` 就够了；改按值后引用变不出 owned 值，才加了它。
+  （`processor` 也是按值的，但会透出内部返回值类型，不适配返回 `()` 的
+  `on_change`，别混用。）
 
 ## 标题栏与窗口边框
 

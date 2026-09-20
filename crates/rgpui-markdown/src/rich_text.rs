@@ -469,7 +469,7 @@ pub fn render_inlines(
         return div()
             .text_size(base_size)
             .line_height(relative(1.5))
-            .child(InteractiveText::new(id, styled).on_click(
+            .child(InteractiveText::new(id, styled).on_change(
                 click_ranges,
                 move |idx, _window, cx| {
                     if let Some(url) = urls.get(idx) {
@@ -521,7 +521,7 @@ pub fn render_inlines_with_handler(
             return div()
                 .text_size(base_size)
                 .line_height(relative(1.5))
-                .child(InteractiveText::new(id, styled).on_click(
+                .child(InteractiveText::new(id, styled).on_change(
                     click_ranges,
                     move |idx, _window, cx| {
                         if let Some(url) = urls.get(idx) {
@@ -535,7 +535,7 @@ pub fn render_inlines_with_handler(
             return div()
                 .text_size(base_size)
                 .line_height(relative(1.5))
-                .child(InteractiveText::new(id, styled).on_click(
+                .child(InteractiveText::new(id, styled).on_change(
                     click_ranges,
                     move |idx, _window, cx| {
                         if let Some(url) = urls.get(idx) {
@@ -833,7 +833,7 @@ fn render_inline_element(
             return div()
                 .text_size(base_size)
                 .line_height(relative(1.5))
-                .child(InteractiveText::new(id, styled).on_click(
+                .child(InteractiveText::new(id, styled).on_change(
                     click_ranges,
                     move |idx, _window, cx| {
                         if let Some(url) = urls.get(idx) {
@@ -847,7 +847,7 @@ fn render_inline_element(
             return div()
                 .text_size(base_size)
                 .line_height(relative(1.5))
-                .child(InteractiveText::new(id, styled).on_click(
+                .child(InteractiveText::new(id, styled).on_change(
                     click_ranges,
                     move |idx, _window, cx| {
                         if let Some(url) = urls.get(idx) {

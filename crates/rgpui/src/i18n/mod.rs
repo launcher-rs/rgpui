@@ -12,6 +12,8 @@
 
 use std::collections::HashMap;
 
+use crate::{App, Global};
+
 /// 语言代码。
 pub type Locale = String;
 
@@ -25,6 +27,9 @@ pub struct Translation {
 }
 
 /// I18n 管理器。
+///
+/// 实现 [`Global`]，应用层可经 `cx.set_global` / `cx.global::<I18nManager>()`
+/// 共享同一管理器（多应用复用同一语言目录时各设各的全局即可，避免过度设计）。
 pub struct I18nManager {
     /// 当前语言。
     current_locale: Locale,
@@ -32,6 +37,17 @@ pub struct I18nManager {
     translations: HashMap<Locale, HashMap<String, String>>,
     /// 回退语言。
     fallback_locale: Option<Locale>,
+}
+
+impl Global for I18nManager {}
+
+/// I18n 语言快照（当前语言 + 回退语言，供临时切换后回退）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct I18nSnapshot {
+    /// 快照时的当前语言。
+    pub current_locale: Locale,
+    /// 快照时的回退语言。
+    pub fallback_locale: Option<Locale>,
 }
 
 impl I18nManager {
@@ -113,6 +129,48 @@ impl I18nManager {
     pub fn available_locales(&self) -> Vec<&str> {
         self.translations.keys().map(|s| s.as_str()).collect()
     }
+
+    /// 按语言目录加载语言包（G6）。
+    ///
+    /// 目录下每个 `<locale>.json`（如 `zh-CN.json`）按文件名加载为对应语言；
+    /// 非 `.json` 与子目录跳过，JSON 解析失败返回错误。返回成功加载的语言列表。
+    /// 仅原生平台可用（WASM 无文件系统）。
+    #[cfg(not(target_family = "wasm"))]
+    pub fn load_locale_dir(
+        &mut self,
+        dir: impl AsRef<std::path::Path>,
+    ) -> anyhow::Result<Vec<Locale>> {
+        let mut loaded = Vec::new();
+        for entry in std::fs::read_dir(dir.as_ref())? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(locale) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let json = std::fs::read_to_string(&path)?;
+            self.load_translations(locale, &json)?;
+            loaded.push(locale.to_string());
+        }
+        loaded.sort();
+        Ok(loaded)
+    }
+
+    /// 保存当前语言快照（临时切换语言后凭此回退）。
+    pub fn snapshot(&self) -> I18nSnapshot {
+        I18nSnapshot {
+            current_locale: self.current_locale.clone(),
+            fallback_locale: self.fallback_locale.clone(),
+        }
+    }
+
+    /// 恢复此前保存的语言快照。
+    pub fn restore(&mut self, snapshot: I18nSnapshot) {
+        self.current_locale = snapshot.current_locale;
+        self.fallback_locale = snapshot.fallback_locale;
+    }
 }
 
 impl Default for I18nManager {
@@ -152,6 +210,16 @@ impl I18nText {
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
         i18n.t(&self.key, &args)
+    }
+
+    /// 用全局 `I18nManager` 翻译（`cx.set_global` 设置过才有）。
+    ///
+    /// 未设置全局管理器时回退为 key 本身（渲染不断线，多语言接入前页面可用）。
+    pub fn translate_global(&self, cx: &App) -> String {
+        match cx.try_global::<I18nManager>() {
+            Some(i18n) => self.translate(i18n),
+            None => self.key.clone(),
+        }
     }
 }
 
@@ -244,5 +312,65 @@ mod tests {
         assert_eq!(rule.key(), "item");
         let rule = PluralRule::new(5, "item", "items");
         assert_eq!(rule.key(), "items");
+    }
+
+    #[test]
+    fn test_snapshot_restore() {
+        let mut manager = I18nManager::new("en").with_fallback("en");
+        manager.set_locale("zh-CN");
+        let snapshot = manager.snapshot();
+        assert_eq!(snapshot.current_locale, "zh-CN");
+        manager.set_locale("ja");
+        manager.restore(snapshot);
+        assert_eq!(manager.current_locale(), "zh-CN");
+    }
+
+    #[test]
+    fn test_load_locale_dir() {
+        let dir = std::env::temp_dir().join(format!(
+            "rgpui-i18n-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("en.json"), r#"{"hello": "Hello"}"#).unwrap();
+        std::fs::write(dir.join("zh-CN.json"), r#"{"hello": "你好"}"#).unwrap();
+        std::fs::write(dir.join("README.md"), "not a locale").unwrap();
+
+        let mut manager = I18nManager::new("en");
+        let loaded = manager.load_locale_dir(&dir).unwrap();
+        assert_eq!(loaded, vec!["en".to_string(), "zh-CN".to_string()]);
+        assert_eq!(manager.t("hello", &[]), "Hello");
+        manager.set_locale("zh-CN");
+        assert_eq!(manager.t("hello", &[]), "你好");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Global 实现冒烟测试（类型级：能在泛型界限中作为 Global 使用）。
+    #[test]
+    fn test_manager_is_global() {
+        fn assert_global<T: crate::Global>() {}
+        assert_global::<I18nManager>();
+    }
+
+    /// 未设全局回退 key，设置后读全局翻译。
+    #[rgpui::test]
+    fn test_translate_global_reads_manager(cx: &mut crate::TestAppContext) {
+        let text = I18nText::new("hello");
+        let fallback = cx.update(|cx| text.translate_global(cx));
+        assert_eq!(fallback, "hello");
+        cx.update(|cx| {
+            let mut manager = I18nManager::new("en");
+            manager.load_translations_map(
+                "en",
+                HashMap::from([("hello".to_string(), "Hello".to_string())]),
+            );
+            cx.set_global(manager);
+        });
+        let translated = cx.update(|cx| text.translate_global(cx));
+        assert_eq!(translated, "Hello");
     }
 }

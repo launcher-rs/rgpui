@@ -1,7 +1,7 @@
 //! 空状态组件：无数据时的占位展示，支持图标、标题、描述与操作按钮。
 
 use crate::{prelude::FluentBuilder as _, *};
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// 空状态尺寸。
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
@@ -65,9 +65,15 @@ pub struct EmptyState {
     /// 描述。
     description: Option<SharedString>,
     /// 主操作按钮（标签 + 回调）。
-    action: Option<(SharedString, Rc<dyn Fn(&mut Window, &mut App)>)>,
+    action: Option<(
+        SharedString,
+        Arc<dyn Fn(&mut Window, &mut App) + Send + Sync>,
+    )>,
     /// 次操作按钮（标签 + 回调）。
-    secondary_action: Option<(SharedString, Rc<dyn Fn(&mut Window, &mut App)>)>,
+    secondary_action: Option<(
+        SharedString,
+        Arc<dyn Fn(&mut Window, &mut App) + Send + Sync>,
+    )>,
     /// 尺寸。
     size: EmptyStateSize,
     /// 用户样式。
@@ -105,9 +111,9 @@ impl EmptyState {
     pub fn action(
         mut self,
         label: impl Into<SharedString>,
-        handler: impl Fn(&mut Window, &mut App) + 'static,
+        handler: impl Fn(&mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.action = Some((label.into(), Rc::new(handler)));
+        self.action = Some((label.into(), Arc::new(handler)));
         self
     }
 
@@ -115,9 +121,9 @@ impl EmptyState {
     pub fn secondary_action(
         mut self,
         label: impl Into<SharedString>,
-        handler: impl Fn(&mut Window, &mut App) + 'static,
+        handler: impl Fn(&mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.secondary_action = Some((label.into(), Rc::new(handler)));
+        self.secondary_action = Some((label.into(), Arc::new(handler)));
         self
     }
 

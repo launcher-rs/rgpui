@@ -12,6 +12,7 @@
 6. [元素系统](./06-elements.md) - Element trait、布局与绘制管线
 7. [窗口管理](./07-window-management.md) - 窗口创建、视图与焦点管理
 8. [组件库](./08-components.md) - 内置 UI 组件库使用指南
+9. [元素检查器](./09-inspector.md) - 检查器启用、默认面板与自定义 recipe
 
 ## 关于 rgpui
 

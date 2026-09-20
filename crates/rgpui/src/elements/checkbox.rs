@@ -1,6 +1,6 @@
 //! 复选框组件，支持选中、未选中和半选状态的开关控件。
 
-use std::{rc::Rc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use crate::prelude::FluentBuilder as _;
 use crate::{
@@ -33,8 +33,8 @@ pub struct Checkbox {
     tab_stop: bool,
     /// Tab 索引
     tab_index: isize,
-    /// 点击事件回调
-    on_click: Option<Rc<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
+    /// 值变更回调（参数为变更后的选中状态，按值传递）
+    on_change: Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 提示文本（当前简化存储，暂不渲染）
     tooltip: Option<SharedString>,
 }
@@ -51,7 +51,7 @@ impl Checkbox {
             checked: false,
             disabled: false,
             size: ElementSize::default(),
-            on_click: None,
+            on_change: None,
             tab_stop: true,
             tab_index: 0,
             tooltip: None,
@@ -76,11 +76,14 @@ impl Checkbox {
         self
     }
 
-    /// 设置复选框的点击回调。
+    /// 设置复选框的值变更回调。
     ///
-    /// `&bool` 参数表示点击后的新选中状态。
-    pub fn on_click(mut self, handler: impl Fn(&bool, &mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(handler));
+    /// `bool` 参数表示点击后的新选中状态（按值传递）。
+    pub fn on_change(
+        mut self,
+        handler: impl Fn(bool, &mut Window, &mut App) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_change = Some(Arc::new(handler));
         self
     }
 
@@ -96,15 +99,15 @@ impl Checkbox {
         self
     }
 
-    fn handle_click(
-        on_click: &Option<Rc<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
+    fn handle_change(
+        on_change: &Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync + 'static>>,
         checked: bool,
         window: &mut Window,
         cx: &mut App,
     ) {
         let new_checked = !checked;
-        if let Some(f) = on_click {
-            (f)(&new_checked, window, cx);
+        if let Some(f) = on_change {
+            (f)(new_checked, window, cx);
         }
     }
 }
@@ -329,10 +332,10 @@ impl RenderOnce for Checkbox {
                 })
                 .when(!self.disabled, |this| {
                     this.on_click({
-                        let on_click = self.on_click.clone();
+                        let on_change = self.on_change.clone();
                         move |_, window, cx| {
                             window.prevent_default();
-                            Self::handle_click(&on_click, checked, window, cx);
+                            Self::handle_change(&on_change, checked, window, cx);
                         }
                     })
                 }),

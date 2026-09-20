@@ -1,6 +1,6 @@
 //! 快捷键录制输入：点击后捕获按键组合。
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::{prelude::FluentBuilder as _, *};
 
@@ -211,10 +211,12 @@ pub struct HotkeyInput {
     state: Entity<HotkeyInputState>,
     /// 占位文本。
     placeholder: SharedString,
+    /// 录制中提示文本。
+    recording_text: SharedString,
     /// 是否禁用。
     disabled: bool,
     /// 快捷键变化回调。
-    on_change: Option<Rc<dyn Fn(Option<&HotkeyValue>, &mut Window, &mut App)>>,
+    on_change: Option<Arc<dyn Fn(Option<HotkeyValue>, &mut Window, &mut App) + Send + Sync>>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -225,6 +227,7 @@ impl HotkeyInput {
         Self {
             state,
             placeholder: "Click to record".into(),
+            recording_text: "Press a key...".into(),
             disabled: false,
             on_change: None,
             style: StyleRefinement::default(),
@@ -237,6 +240,12 @@ impl HotkeyInput {
         self
     }
 
+    /// 设置录制中的提示文本（默认 "Press a key..."，多语言应用请覆盖）。
+    pub fn recording_text(mut self, text: impl Into<SharedString>) -> Self {
+        self.recording_text = text.into();
+        self
+    }
+
     /// 设置是否禁用。
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
@@ -246,9 +255,9 @@ impl HotkeyInput {
     /// 设置快捷键变化回调。
     pub fn on_change(
         mut self,
-        handler: impl Fn(Option<&HotkeyValue>, &mut Window, &mut App) + 'static,
+        handler: impl Fn(Option<HotkeyValue>, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
-        self.on_change = Some(Rc::new(handler));
+        self.on_change = Some(Arc::new(handler));
         self
     }
 }
@@ -271,7 +280,7 @@ impl RenderOnce for HotkeyInput {
         let is_focused = focus_handle.is_focused(window);
 
         let display_text: SharedString = if recording {
-            "Press a key...".into()
+            self.recording_text.clone()
         } else if let Some(ref hk) = hotkey {
             hk.format_display().into()
         } else {
@@ -380,7 +389,7 @@ impl RenderOnce for HotkeyInput {
                         });
                         if captured {
                             if let Some(ref handler) = on_change_for_keydown {
-                                handler(hotkey.as_ref(), window, cx);
+                                handler(hotkey, window, cx);
                             }
                             cx.stop_propagation();
                         }
@@ -397,5 +406,43 @@ impl RenderOnce for HotkeyInput {
         );
 
         root
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本文件有 `use crate::*`，会把根导出的
+    // `test` 过程宏引进作用域，遮蔽内置 `#[test]` 导致宏无限递归。
+    use super::{HotkeyInput, HotkeyInputState};
+    use crate::{AppContext as _, Context, Entity, Render, Window};
+
+    /// 测试宿主视图。
+    struct Probe {
+        state: Entity<HotkeyInputState>,
+    }
+
+    impl Render for Probe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            crate::div()
+        }
+    }
+
+    /// 录制提示语默认英文且可覆盖（多语言应用经 setter 定制）。
+    #[rgpui::test]
+    fn recording_text_defaults_and_overrides(cx: &mut crate::TestAppContext) {
+        let (probe, _) = cx.add_window_view(|_, cx| Probe {
+            state: cx.new(HotkeyInputState::new),
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        let default_text = HotkeyInput::new(state.clone()).recording_text.to_string();
+        assert_eq!(default_text, "Press a key...");
+        let custom_text = HotkeyInput::new(state)
+            .recording_text("按快捷键...")
+            .recording_text;
+        assert_eq!(custom_text.to_string(), "按快捷键...");
     }
 }

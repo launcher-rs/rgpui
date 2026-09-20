@@ -10,6 +10,8 @@ mod tab;
 mod tab_bar;
 /// Tab 拖拽排序模块 - 支持 Tab 拖拽排序
 pub mod tab_drag;
+/// 无状态页签模块 - 值驱动的静态 Tabs（与 StatusBar 同模式）
+mod tabs;
 
 /// 重导出手风琴相关类型
 pub use accordion::*;
@@ -19,3 +21,5 @@ pub use collapsible::*;
 pub use tab::*;
 /// 重导出标签页栏相关类型
 pub use tab_bar::*;
+/// 重导出无状态页签相关类型
+pub use tabs::*;

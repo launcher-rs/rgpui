@@ -5,7 +5,7 @@
 //! `Carousel::new(state).child(...)`，只渲染当前页。
 
 use crate::{prelude::FluentBuilder as _, *};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// 轮播状态实体。
@@ -22,8 +22,8 @@ pub struct CarouselState {
     pending_advance: bool,
     /// 自动播放任务是否已启动（防重复）。
     autoplay_running: bool,
-    /// 页切换回调（旧下标，新下标）。
-    on_change: Option<Rc<dyn Fn(usize, usize, &mut Window, &mut App)>>,
+    /// 页切换回调（旧下标，新下标；下标按值传递）。
+    on_change: Option<Arc<dyn Fn(usize, usize, &mut Window, &mut App) + Send + Sync>>,
 }
 
 impl CarouselState {
@@ -52,12 +52,12 @@ impl CarouselState {
         self
     }
 
-    /// 设置页切换回调。
+    /// 设置页切换回调（旧下标、新下标按值传递）。
     pub fn on_change<F>(mut self, handler: F) -> Self
     where
-        F: Fn(usize, usize, &mut Window, &mut App) + 'static,
+        F: Fn(usize, usize, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_change = Some(Rc::new(handler));
+        self.on_change = Some(Arc::new(handler));
         self
     }
 

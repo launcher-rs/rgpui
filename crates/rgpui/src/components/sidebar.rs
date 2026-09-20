@@ -102,13 +102,13 @@ pub struct Sidebar {
     collapsible: bool,
     /// 是否已折叠（仅图标栏）。
     collapsed: bool,
-    /// 选中回调。
-    on_select: Option<Arc<dyn Fn(&SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
-    /// 折叠切换回调（参数为折叠后的状态，引用传参与 `cx.listener` 兼容）。
-    on_toggle_collapsed: Option<Arc<dyn Fn(&bool, &mut Window, &mut App) + Send + Sync + 'static>>,
-    /// 分组折叠切换回调（分组标题，折叠后的状态）。
+    /// 选中回调（条目 ID 按值传递）。
+    on_change: Option<Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 折叠切换回调（参数为折叠后的状态，按值传递）。
+    on_toggle_collapsed: Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 分组折叠切换回调（分组标题，折叠后的状态；均按值传递）。
     on_toggle_section:
-        Option<Arc<dyn Fn(&SharedString, &bool, &mut Window, &mut App) + Send + Sync + 'static>>,
+        Option<Arc<dyn Fn(SharedString, bool, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -122,7 +122,7 @@ impl Sidebar {
             selected_id: None,
             collapsible: false,
             collapsed: false,
-            on_select: None,
+            on_change: None,
             on_toggle_collapsed: None,
             on_toggle_section: None,
             style: StyleRefinement::default(),
@@ -171,28 +171,28 @@ impl Sidebar {
         self
     }
 
-    /// 设置选中回调。
-    pub fn on_select<F>(mut self, f: F) -> Self
+    /// 设置选中回调（条目 ID 按值传递）。
+    pub fn on_change<F>(mut self, f: F) -> Self
     where
-        F: Fn(&SharedString, &mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_select = Some(Arc::new(f));
+        self.on_change = Some(Arc::new(f));
         self
     }
 
-    /// 设置折叠切换回调。
+    /// 设置折叠切换回调（参数为折叠后的状态，按值传递）。
     pub fn on_toggle_collapsed<F>(mut self, f: F) -> Self
     where
-        F: Fn(&bool, &mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(bool, &mut Window, &mut App) + Send + Sync + 'static,
     {
         self.on_toggle_collapsed = Some(Arc::new(f));
         self
     }
 
-    /// 设置分组折叠切换回调（分组标题，折叠后的状态）。
+    /// 设置分组折叠切换回调（分组标题，折叠后的状态；均按值传递）。
     pub fn on_toggle_section<F>(mut self, f: F) -> Self
     where
-        F: Fn(&SharedString, &bool, &mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(SharedString, bool, &mut Window, &mut App) + Send + Sync + 'static,
     {
         self.on_toggle_section = Some(Arc::new(f));
         self
@@ -224,7 +224,7 @@ impl RenderOnce for Sidebar {
 
         let collapsed = self.collapsible && self.collapsed;
         let selected_id = self.selected_id;
-        let on_select = self.on_select;
+        let on_change = self.on_change;
         let user_style = self.style;
 
         let mut root = div()
@@ -241,8 +241,8 @@ impl RenderOnce for Sidebar {
         // 条目行渲染闭包（未分组条目与分组内条目共用）。
         let item_row = |item: &SidebarItem,
                         selected_id: &Option<SharedString>,
-                        on_select: &Option<
-            Arc<dyn Fn(&SharedString, &mut Window, &mut App) + Send + Sync + 'static>,
+                        on_change: &Option<
+            Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static>,
         >,
                         collapsed: bool| {
             let is_selected = selected_id.as_ref() == Some(&item.id);
@@ -250,7 +250,7 @@ impl RenderOnce for Sidebar {
             let label = item.label.clone();
             let icon = item.icon.clone();
             let badge = item.badge.clone();
-            let on_select = on_select.clone();
+            let on_change = on_change.clone();
             // 条目级自定义颜色优先，未设置则回退到侧栏专用主题 token。
             let row_bg = item.selected_background.unwrap_or(sidebar_accent.color);
             let row_fg = item
@@ -300,14 +300,14 @@ impl RenderOnce for Sidebar {
                     )
                 })
                 .on_click(move |_, window, cx| {
-                    if let Some(ref cb) = on_select {
-                        cb(&id, window, cx);
+                    if let Some(ref cb) = on_change {
+                        cb(id.clone(), window, cx);
                     }
                 })
         };
 
         for item in &self.items {
-            root = root.child(item_row(item, &selected_id, &on_select, collapsed));
+            root = root.child(item_row(item, &selected_id, &on_change, collapsed));
         }
 
         for (section_ix, section) in self.sections.iter().enumerate() {
@@ -342,13 +342,13 @@ impl RenderOnce for Sidebar {
                     })
                     .on_click(move |_, window, cx| {
                         if let Some(ref cb) = on_toggle_section {
-                            cb(&title, &!section_collapsed, window, cx);
+                            cb(title.clone(), !section_collapsed, window, cx);
                         }
                     }),
             );
             if !section_collapsed {
                 for item in &section.items {
-                    root = root.child(item_row(item, &selected_id, &on_select, collapsed));
+                    root = root.child(item_row(item, &selected_id, &on_change, collapsed));
                 }
             }
         }
@@ -374,7 +374,7 @@ impl RenderOnce for Sidebar {
                                 .on_click(move |_, window, cx| {
                                     if let Some(ref cb) = on_toggle_collapsed {
                                         let next = !collapsed;
-                                        cb(&next, window, cx);
+                                        cb(next, window, cx);
                                     }
                                 }),
                         ),

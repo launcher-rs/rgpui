@@ -235,7 +235,7 @@ impl AlertDialog {
     /// 在 [`Self::on_action`] 或 [`Self::on_cancel`] 回调之后调用。
     pub fn on_close(
         mut self,
-        on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
         self.base = self.base.on_close(on_close);
         self
@@ -246,7 +246,7 @@ impl AlertDialog {
     /// 回调返回 `true` 时关闭对话框，返回 `false` 时不关闭。
     pub fn on_ok(
         mut self,
-        on_ok: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
+        on_ok: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + Send + Sync + 'static,
     ) -> Self {
         self.button_props = self.button_props.on_ok(on_ok);
         self
@@ -257,7 +257,7 @@ impl AlertDialog {
     /// 回调返回 `true` 时关闭对话框，返回 `false` 时不关闭。
     pub fn on_cancel(
         mut self,
-        on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
+        on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + Send + Sync + 'static,
     ) -> Self {
         self.button_props = self.button_props.on_cancel(on_cancel);
         self

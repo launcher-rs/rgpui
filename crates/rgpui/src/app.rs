@@ -730,6 +730,13 @@ pub struct App {
     pub(crate) pending_global_notifications: TypeIdHashSet,
     /// 按 key 隔离的防抖器注册表（`App::debounce` 方法版）。
     pub(crate) debouncers: FxHashMap<SharedString, Debouncer>,
+    /// 应用上报的错误环（`App::report_error` 写入，检查器“报错”卡片与崩溃快照读取；
+    /// 有界 50 条，Chrome Console 的应用内对应物）。
+    pub(crate) recent_errors: std::collections::VecDeque<(u64, SharedString)>,
+    /// 错误环序号（单调递增，关闭不回收）。
+    pub(crate) error_seq: u64,
+    /// 崩溃快照落盘目录（`App::enable_crash_recorder` 设置；`None` 关闭滚动记录）。
+    pub(crate) crash_recorder_dir: Option<std::path::PathBuf>,
     pub(crate) restart_path: Option<PathBuf>,
     pub(crate) layout_id_buffer: Vec<LayoutId>, // We recycle this memory across layout requests.
     pub(crate) propagate_event: bool,
@@ -821,6 +828,9 @@ impl App {
                 pending_notifications: FxHashSet::default(),
                 pending_global_notifications: Default::default(),
                 debouncers: FxHashMap::default(),
+                recent_errors: Default::default(),
+                error_seq: 0,
+                crash_recorder_dir: None,
                 observers: SubscriberSet::new(),
                 tracked_entities: FxHashMap::default(),
                 window_invalidators_by_entity: FxHashMap::default(),
@@ -2137,6 +2147,38 @@ impl App {
         self
     }
 
+    /// 注册全局动作：全局绑定 + 打到活动窗口 + spawn 延后更新三件套。
+    ///
+    /// 适用“按快捷键对活动窗口做点事”（如 F12 开关检查器）：
+    /// - `keystroke` 为 `Some("f12")` 时加一条无上下文的全局键绑定，
+    ///   `None` 则只监听不绑定；
+    /// - 监听只打活动窗口（`active_window`，无窗口时静默跳过）；
+    /// - 监听回调处于动作分发中，此时同步 `update` 活动窗口必失败，
+    ///   故经 `spawn` 延后执行 `handler`。
+    ///
+    /// `handler` 只要求 `'static`（与 [`Self::on_action`] 一致，允许 `Rc` 捕获；
+    /// 分发经本地 `spawn`，不需要 `Send + Sync`）。
+    pub fn on_global_action<A: Action>(
+        &mut self,
+        action: A,
+        keystroke: Option<&str>,
+        handler: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> &mut Self {
+        if let Some(keystroke) = keystroke {
+            self.bind_keys([KeyBinding::new(keystroke, action, None)]);
+        }
+        let handler = Arc::new(handler);
+        self.on_action(move |_: &A, cx: &mut App| {
+            if let Some(window) = cx.active_window() {
+                let handler = handler.clone();
+                cx.spawn(async move |cx| {
+                    _ = window.update(cx, |_, window, cx| handler(window, cx));
+                })
+                .detach();
+            }
+        })
+    }
+
     /// 事件处理程序默认传播事件。调用此方法可停止向 z-index 较低（鼠标）
     /// 或树中较高（键盘）的事件处理程序分发。这与 [`Self::propagate`] 相反。
     /// 也可以在副作用刷新前调用此方法来取消 [`Self::propagate`] 调用。
@@ -2704,6 +2746,59 @@ impl App {
         f: impl 'static + Fn(crate::InspectorElementId, &T, &mut Window, &mut App) -> R,
     ) {
         self.inspector_element_registry.register(f);
+    }
+
+    /// 一键启用默认检查器面板（I3 开箱即用）。
+    ///
+    /// 注册默认面板 + `Div` 布局展示；应用入口调用本方法后，
+    /// 再调 `window.toggle_inspector(cx)` 即出完整面板，共两行。
+    /// 需自定义时以 `set_inspector_renderer` 整板替换
+    /// （可复用 `crate::default_inspector_panel` 包裹扩展），
+    /// 或以 `register_inspector_element` 按状态类型扩展。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn enable_default_inspector(&mut self) {
+        self.set_inspector_renderer(Box::new(crate::inspector_panel::default_inspector_panel));
+        self.register_inspector_element(crate::inspector_panel::render_div_inspector_state);
+    }
+
+    /// 上报一条应用错误（写入有界错误环，最多保留 50 条）。
+    ///
+    /// 检查器“报错”卡片与崩溃快照读取此处；这是应用内 Console 的对应物——
+    /// 框架不拦截 `log`（应用自有 logger），需要进面板的错误请走本方法。
+    pub fn report_error(&mut self, message: impl Into<SharedString>) {
+        const CAP: usize = 50;
+        if self.recent_errors.len() >= CAP {
+            self.recent_errors.pop_front();
+        }
+        let seq = self.error_seq;
+        self.error_seq += 1;
+        self.recent_errors.push_back((seq, message.into()));
+    }
+
+    /// 读取错误环（序号升序）。面板与快照用；平时无额外开销（只读）。
+    pub fn recent_errors(&self) -> Vec<(u64, SharedString)> {
+        self.recent_errors.iter().cloned().collect()
+    }
+
+    /// 开启崩溃快照滚动记录（`last.json` 约 2 秒一写，原子替换）。
+    ///
+    /// 需配合 [`crate::runtime_stats::install_crash_hook`] 的 panic 日志食用：
+    /// 快照是死前状态，日志是死因。目录不存在会自动创建。
+    /// 仅检查器打开的窗口写入；关闭记录传空目录或重启应用（字段不持久化）。
+    pub fn enable_crash_recorder(&mut self, dir: impl Into<std::path::PathBuf>) {
+        self.crash_recorder_dir = Some(dir.into());
+    }
+
+    /// 设置默认检查器面板插槽（H5：换顶栏/段落外皮，不必整板替换）。
+    ///
+    /// 与 [`Self::enable_default_inspector`] 配合：先启用默认面板，再按需覆盖插槽；
+    /// 未设置的插槽走默认外皮（`default_inspector_header` / `default_inspector_section`）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn set_inspector_panel_slots(
+        &mut self,
+        slots: crate::inspector_panel::InspectorPanelSlots,
+    ) {
+        self.set_global(slots);
     }
 
     /// 初始化应用的 rgpui 默认颜色。

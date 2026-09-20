@@ -5,7 +5,18 @@ edition = "2024"
 publish = false
 description = "检查器示例：toggle_inspector 开关面板、拾取元素、查看源码位置与布局边界"
 
+[features]
+# 透传库的 inspector feature：release 下如需保留检查器（如内部工具），
+# 用 `cargo run -p inspector --release --features inspector` 开启。
+inspector = ["rgpui/inspector"]
+
 [dependencies]
-# 开启 inspector feature 后，检查器 API 在 debug/release 下都可用。
-rgpui = { workspace = true, features = ["inspector"] }
+# 默认不开 inspector feature：dev 下靠 debug_assertions 自动生效，
+# release 下检查器代码自动剥离（这就是推荐的上线姿势）。
+rgpui.workspace = true
 rgpui-platform.workspace = true
+# 快照 JSON 导出演示用（“复制快照 JSON”按钮序列化 InspectorSnapshot）。
+serde_json.workspace = true
+
+[dev-dependencies]
+rgpui = { workspace = true, features = ["test-support"] }

@@ -1,0 +1,17 @@
+[package]
+name = "inspector_custom"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "检查器示例：全自写自定义面板 + 覆盖 Div 布局展示"
+
+[features]
+# 透传库的 inspector feature：release 下如需保留检查器（如内部工具），
+# 用 `cargo run -p inspector_custom --release --features inspector` 开启。
+inspector = ["rgpui/inspector"]
+
+[dependencies]
+# 默认不开 inspector feature：dev 下靠 debug_assertions 自动生效，
+# release 下检查器代码自动剥离（这就是推荐的上线姿势）。
+rgpui.workspace = true
+rgpui-platform.workspace = true

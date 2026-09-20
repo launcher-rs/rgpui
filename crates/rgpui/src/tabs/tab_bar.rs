@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use crate::{
     Anchor, Animation, AnimationExt as _, AnyElement, App, Background, Bounds, Div, Edges,
@@ -50,7 +50,7 @@ pub struct TabBar {
     variant: TabVariant,
     size: ElementSize,
     menu: bool,
-    on_click: Option<Rc<dyn Fn(&usize, &mut Window, &mut App) + 'static>>,
+    on_change: Option<Arc<dyn Fn(usize, &mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl TabBar {
@@ -69,7 +69,7 @@ impl TabBar {
             size: ElementSize::default(),
             last_empty_space: div().w_3().into_any_element(),
             selected_index: None,
-            on_click: None,
+            on_change: None,
             menu: false,
         }
     }
@@ -152,14 +152,14 @@ impl TabBar {
         self
     }
 
-    /// 设置 TabBar 的点击回调，第一个参数是被点击 Tab 的索引。
+    /// 设置 TabBar 的值变更回调，参数是被选中 Tab 的索引（按值传递）。
     ///
     /// 设置后，子元素的 on_click 将被忽略。
-    pub fn on_click<F>(mut self, on_click: F) -> Self
+    pub fn on_change<F>(mut self, on_change: F) -> Self
     where
-        F: Fn(&usize, &mut Window, &mut App) + 'static,
+        F: Fn(usize, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_click = Some(Rc::new(on_click));
+        self.on_change = Some(Arc::new(on_change));
         self
     }
 
@@ -412,7 +412,7 @@ impl RenderOnce for TabBar {
         let has_suffix_or_menu = self.suffix.is_some() || self.menu;
         let mut item_metas: Vec<(Option<SharedString>, Option<Icon>, bool)> = Vec::new();
         let selected_index = self.selected_index;
-        let on_click = self.on_click.clone();
+        let on_change = self.on_change.clone();
 
         self.base
             .role(Role::TabList)
@@ -477,8 +477,8 @@ impl RenderOnce for TabBar {
                                 .when_some(self.selected_index, |this, selected_ix| {
                                     this.selected(selected_ix == ix)
                                 })
-                                .when_some(self.on_click.clone(), move |this, on_click| {
-                                    this.on_click(move |_, window, cx| on_click(&ix, window, cx))
+                                .when_some(self.on_change.clone(), move |this, on_change| {
+                                    this.on_click(move |_, window, cx| on_change(ix, window, cx))
                                 });
 
                             if let Some(ref rc) = bounds_rc {
@@ -518,9 +518,9 @@ impl RenderOnce for TabBar {
                                 this = this.item(
                                     base.checked(selected_index == Some(ix))
                                         .disabled(*disabled)
-                                        .when_some(on_click.clone(), |this, on_click| {
+                                        .when_some(on_change.clone(), |this, on_change| {
                                             this.on_click(move |_, window, cx| {
-                                                on_click(&ix, window, cx)
+                                                on_change(ix, window, cx)
                                             })
                                         }),
                                 );

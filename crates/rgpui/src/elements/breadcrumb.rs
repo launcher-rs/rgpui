@@ -10,8 +10,8 @@ use std::sync::Arc;
 pub struct BreadcrumbItem {
     /// 标签。
     pub label: SharedString,
-    /// 点击回调（无则不可点）。
-    pub on_click: Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 点击回调（无则不可点，事件参数与其他纯点击回调一致）。
+    pub on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl BreadcrumbItem {
@@ -23,10 +23,10 @@ impl BreadcrumbItem {
         }
     }
 
-    /// 设置点击回调（可点的中间项）。
+    /// 设置点击回调（可点的中间项，签名与其他纯点击回调一致）。
     pub fn on_click<F>(mut self, f: F) -> Self
     where
-        F: Fn(&mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
     {
         self.on_click = Some(Arc::new(f));
         self
@@ -81,7 +81,7 @@ impl RenderOnce for Breadcrumb {
                 let label = match item.on_click {
                     Some(cb) if !is_current => label
                         .cursor_pointer()
-                        .on_click(move |_, window, cx| cb(window, cx))
+                        .on_click(move |event, window, cx| cb(event, window, cx))
                         .into_any_element(),
                     _ => label.into_any_element(),
                 };

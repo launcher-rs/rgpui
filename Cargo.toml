@@ -16,82 +16,31 @@ members = [
     "crates/rgpui-wgpu",
     "crates/rgpui-windows",
     # examples
-    "examples/a11y",
-    "examples/active_state_bug",
-    "examples/animation",
-    "examples/charts",
-    "examples/daemon_app",
-    "examples/desktop_pet",
-    "examples/desktop_pet_3d",
-    "examples/dialog",
-    "examples/drag_drop",
-    "examples/effects",
-    "examples/extended_components",
-    "examples/focus_visible",
-    "examples/form",
-    "examples/gradient",
-    "examples/grid_layout",
-    "examples/hello_world",
-    "examples/image_showcase",
-    "examples/input",
-    "examples/input_latency",
-    "examples/inspector",
-    "examples/layer_shell",
-    "examples/list_showcase",
-    "examples/mouse_pressure",
-    "examples/move_entity_between_windows",
-    "examples/on_window_close_quit",
-    "examples/ownership_post",
-    "examples/painting",
-    "examples/paths_bench",
-    "examples/pattern",
-    "examples/overlay_showcase",
-    "examples/qr_code",
-    "examples/rgpui_story",
-    "examples/rgpui_term_basic",
-    "examples/rgpui_term_integration",
-    "examples/screen_capture",
-    "examples/scrollable",
-    "examples/set_menus",
-    "examples/sidebar",
-    "examples/tab_stop",
-    "examples/testing",
-    "examples/text_showcase",
-    "examples/theme",
-    "examples/tokio_example",
-    "examples/tray",
-    "examples/view_example",
-    "examples/window_showcase",
-    "examples/v1_1_features",
-    "examples/v1_1_showcase",
-    "examples/v1_2_showcase",
-    "examples/webview",
+    "examples/*",
 ]
 
 [workspace.package]
 edition = "2024"
 publish = true
 license = "Apache-2.0"
-version = "1.2.2"
+version = "1.3.0"
 
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.2.2"}
-rgpui = { path = "crates/rgpui", default-features = false ,version = "1.2.2"}
-rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.2.2" }
-rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.2.2" }
-rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.2.2"}
-rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.2.2"}
-rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.2.2" }
-rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.2.2" }
-
-rgpui-dom = { path = "crates/rgpui-dom", version = "1.2.2" }
-
-rgpui-character = {path = "crates/rgpui-character",version = "1.2.2"}
-rgpui-3d = {path = "crates/rgpui-3d",version = "1.2.2"}
-rgpui-term = {path = "crates/rgpui-term", version = "1.2.2"}
-rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.2.2"}
+rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.3.0"}
+rgpui = { path = "crates/rgpui", default-features = false ,version = "1.3.0"}
+rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.3.0" }
+rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.3.0" }
+rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.3.0"}
+rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.3.0"}
+rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.3.0" }
+rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.3.0" }
+rgpui-dom = { path = "crates/rgpui-dom", version = "1.3.0" }
+rgpui-character = {path = "crates/rgpui-character",version = "1.3.0"}
+rgpui-3d = {path = "crates/rgpui-3d",version = "1.3.0"}
+rgpui-term = {path = "crates/rgpui-term", version = "1.3.0"}
+rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.3.0"}
 
 
 # ---- 辅助功能（AccessKit） ----

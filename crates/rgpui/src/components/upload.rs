@@ -7,7 +7,7 @@
 use super::AnimatedProgress;
 use crate::{prelude::FluentBuilder as _, *};
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// 单个待上传文件。
 #[derive(Clone)]
@@ -62,8 +62,8 @@ pub struct UploadState {
     directories: bool,
     /// 对话框提示文本。
     prompt: Option<SharedString>,
-    /// 选择回调（订阅回调无 Window，延后到 render 里触发）。
-    on_select: Option<Rc<dyn Fn(&[PathBuf], &mut Window, &mut App)>>,
+    /// 选择回调（订阅回调无 Window，延后到 render 里触发；路径按值传递）。
+    on_change: Option<Arc<dyn Fn(Vec<PathBuf>, &mut Window, &mut App) + Send + Sync>>,
     /// 待触发的选择（render 里消费）。
     pending_select: bool,
     /// 用户样式。
@@ -78,7 +78,7 @@ impl UploadState {
             multiple: true,
             directories: false,
             prompt: None,
-            on_select: None,
+            on_change: None,
             pending_select: false,
             style: StyleRefinement::default(),
         }
@@ -102,12 +102,12 @@ impl UploadState {
         self
     }
 
-    /// 设置选择回调（用户选完文件后触发，参数为本次选中的路径）。
-    pub fn on_select<F>(mut self, handler: F) -> Self
+    /// 设置选择回调（用户选完文件后触发，参数为本次选中的路径，按值传递）。
+    pub fn on_change<F>(mut self, handler: F) -> Self
     where
-        F: Fn(&[PathBuf], &mut Window, &mut App) + 'static,
+        F: Fn(Vec<PathBuf>, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_select = Some(Rc::new(handler));
+        self.on_change = Some(Arc::new(handler));
         self
     }
 
@@ -185,11 +185,11 @@ impl Render for UploadState {
         // 延后触发选择回调（订阅上下文无 Window）。
         if self.pending_select {
             self.pending_select = false;
-            if let Some(ref cb) = self.on_select {
+            if let Some(ref cb) = self.on_change {
                 let paths: Vec<PathBuf> = self.files.iter().map(|f| f.path.clone()).collect();
                 // render 中借用规则：先取回调与数据再调用，避免重入借用。
                 let cb = cb.clone();
-                cb(&paths, window, cx);
+                cb(paths, window, cx);
             }
         }
 

@@ -1,6 +1,6 @@
 //! 开关组件，支持开/关状态切换的滑动开关控件。
 
-use std::{rc::Rc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use crate::prelude::FluentBuilder as _;
 use crate::{
@@ -25,8 +25,8 @@ pub struct Switch {
     label: Option<ComponentText>,
     /// 标签所在侧
     label_side: Side,
-    /// 点击回调
-    on_click: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
+    /// 值变更回调（参数为变更后的选中状态，按值传递）
+    on_change: Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 尺寸
     size: ElementSize,
     /// 选中时的背景色
@@ -45,7 +45,7 @@ impl Switch {
             checked: false,
             disabled: false,
             label: None,
-            on_click: None,
+            on_change: None,
             label_side: Side::Right,
             size: ElementSize::Medium,
             color: None,
@@ -65,12 +65,12 @@ impl Switch {
         self
     }
 
-    /// 添加 Switch 的点击回调。
-    pub fn on_click<F>(mut self, handler: F) -> Self
+    /// 添加 Switch 的值变更回调（参数为变更后的选中状态，按值传递）。
+    pub fn on_change<F>(mut self, handler: F) -> Self
     where
-        F: Fn(&bool, &mut Window, &mut App) + 'static,
+        F: Fn(bool, &mut Window, &mut App) + Send + Sync + 'static,
     {
-        self.on_click = Some(Rc::new(handler));
+        self.on_change = Some(Arc::new(handler));
         self
     }
 
@@ -110,7 +110,7 @@ impl Disableable for Switch {
 impl RenderOnce for Switch {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
-        let on_click = self.on_click.clone();
+        let on_change = self.on_change.clone();
         let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
 
         let checked_bg = self
@@ -229,16 +229,16 @@ impl RenderOnce for Switch {
                     ))
                 })
                 .when_some(
-                    on_click
+                    on_change
                         .as_ref()
                         .map(|c| c.clone())
                         .filter(|_| !self.disabled),
-                    |this, on_click| {
+                    |this, on_change| {
                         let toggle_state = toggle_state.clone();
                         this.on_mouse_down(crate::MouseButton::Left, move |_, window, cx| {
                             cx.stop_propagation();
                             _ = toggle_state.update(cx, |this, _| *this = checked);
-                            on_click(&!checked, window, cx);
+                            on_change(!checked, window, cx);
                         })
                     },
                 ),

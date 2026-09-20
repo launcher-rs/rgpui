@@ -893,6 +893,12 @@ pub(crate) struct Frame {
     pub(crate) next_inspector_instance_ids: FxHashMap<Rc<crate::InspectorElementPath>, usize>,
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub(crate) inspector_hitboxes: FxHashMap<HitboxId, crate::InspectorElementId>,
+    /// 检查器元素树节点（I2）：prepaint 期记录，关闭即空。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) inspector_tree_nodes: FxHashMap<crate::InspectorElementId, crate::InspectorTreeNode>,
+    /// 检查器元素树根（绘制顺序，deferred/overlay 为独立根）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) inspector_tree_roots: Vec<crate::InspectorElementId>,
     #[cfg(feature = "dom-backend")]
     pub(crate) dom_key_hitboxes: FxHashMap<crate::DomNodeKey, Vec<HitboxId>>,
     /// DOM 模式下可滚动容器（`overflow: scroll` 的 div）的 key → `ScrollHandle` 映射。
@@ -948,6 +954,10 @@ impl Frame {
 
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector_hitboxes: FxHashMap::default(),
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            inspector_tree_nodes: FxHashMap::default(),
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            inspector_tree_roots: Vec::new(),
             #[cfg(feature = "dom-backend")]
             dom_key_hitboxes: FxHashMap::default(),
             #[cfg(feature = "dom-backend")]
@@ -980,6 +990,8 @@ impl Frame {
         {
             self.next_inspector_instance_ids.clear();
             self.inspector_hitboxes.clear();
+            self.inspector_tree_nodes.clear();
+            self.inspector_tree_roots.clear();
         }
 
         #[cfg(feature = "dom-backend")]
@@ -1126,6 +1138,33 @@ pub struct Window {
     captured_hitbox: Option<HitboxId>,
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector: Option<Entity<Inspector>>,
+    /// 检查器树记录栈（I2）：prepaint 嵌套压栈，paint 结束弹栈；关闭时保持空。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    inspector_tree_stack: Vec<crate::InspectorElementId>,
+    /// 面板自举时暂停树记录（I2）：检查器面板自身的 prepaint 不计入被检树。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    inspector_tree_suspended: bool,
+    /// 运行时采样缓存（Chrome“运行”卡片数据源）：仅检查器打开时更新，关闭即停。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_fps: f64,
+    /// 上一帧耗时 EMA（毫秒），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_frame_ms: f64,
+    /// 进程 CPU 占用百分比（约 2Hz 采样缓存），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_cpu: Option<f64>,
+    /// 进程内存 MB（约 2Hz 采样缓存），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_mem_mb: Option<f64>,
+    /// 采样器内部状态（CPU 差分时钟 + 节流时间戳），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    runtime_sampler: crate::runtime_stats::RuntimeSamplerState,
+    /// 崩溃快照上次落盘时间（`last.json` 约 2 秒一写），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    crash_last_write: Option<crate::scheduler::Instant>,
+    /// 检查器面板宽度（拖拽条调整；`None` 为默认 30rem），同上门控。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    inspector_width: Option<Pixels>,
     pub(crate) a11y: A11y,
     /// Web DOM 后端构建器：当平台窗口声明 `supports_dom()` 时创建，
     /// 每帧在 paint 阶段收集 DOM 节点，帧末交付给平台窗口。
@@ -1902,6 +1941,24 @@ impl Window {
             captured_hitbox: None,
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector: None,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            inspector_tree_stack: Vec::new(),
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            inspector_tree_suspended: false,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_fps: 0.0,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_frame_ms: 0.0,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_cpu: None,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_mem_mb: None,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            runtime_sampler: crate::runtime_stats::RuntimeSamplerState::default(),
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            crash_last_write: None,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            inspector_width: None,
             a11y: A11y::new(
                 a11y_active_flag,
                 accessibility_force_disabled,
@@ -2897,6 +2954,12 @@ impl Window {
         self.invalidator.set_dirty(false);
         self.requested_autoscroll = None;
 
+        // 每帧重置 hitbox 计数器：hitbox 注册表本就按帧清空，
+        // id 也应帧内有效——同一元素在相邻帧拿到相同 id（绘制顺序确定时）。
+        // 这是 `capture_pointer` 跨帧生效的前提（否则捕获的 id 下一帧即过期，
+        // 拖出元素即中断；另见 `InspectorResizeState` 拖拽条回归测试）。
+        self.next_hitbox_id = HitboxId(0);
+
         // Restore the previously-used input handler.
         // Place it back into a None slot (left by a previous .take()) so that
         // cached paint_range indices in reuse_paint find the handler at the
@@ -3072,7 +3135,10 @@ impl Window {
             builder.begin_frame();
         }
 
-        let _inspector_width: Pixels = rems(30.0).to_pixels(self.rem_size());
+        #[cfg(any(feature = "inspector", debug_assertions))]
+        let _inspector_width: Pixels = self
+            .inspector_width
+            .unwrap_or_else(|| rems(30.0).to_pixels(self.rem_size()));
         let root_size = {
             #[cfg(any(feature = "inspector", debug_assertions))]
             {
@@ -3151,6 +3217,12 @@ impl Window {
 
         #[cfg(any(feature = "inspector", debug_assertions))]
         self.paint_inspector_hitbox(cx);
+
+        #[cfg(any(feature = "inspector", debug_assertions))]
+        self.sample_runtime_if_inspecting();
+
+        #[cfg(any(feature = "inspector", debug_assertions))]
+        self.write_crash_snapshot_if_enabled(cx);
 
         // DOM 后端：结束本帧的 DOM 树收集，并把新鲜树交付给平台窗口。
         #[cfg(feature = "dom-backend")]
@@ -5209,9 +5281,13 @@ impl Window {
         }
 
         #[cfg(any(feature = "inspector", debug_assertions))]
-        if self.is_inspector_picking(cx) {
+        if self.is_inspector_picking(cx)
+            && !crate::inspector_panel::is_inspector_resizing(cx)
+            && !self.mouse_over_inspector_panel()
+        {
             self.handle_inspector_mouse_event(event, cx);
-            // When inspector is picking, all other mouse handling is skipped.
+            // 拾取中画布点击被接管；面板区域（及拖动中）走正常派发，
+            // 否则拖拽条/树复制按钮在拾取态下全死，面板也无法交互。
             return;
         }
 
@@ -6229,6 +6305,465 @@ impl Window {
         false
     }
 
+    /// 检查器面板是否打开（I2：树记录与视图缓存禁用的门控）。
+    ///
+    /// 打开期间 prepaint 记录 parent→children 映射与常驻 hitbox，
+    /// 关闭时不记录、不存储，零额外开销。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn is_inspector_open(&self) -> bool {
+        self.inspector.is_some()
+    }
+
+    /// 检查器面板宽度（拖拽条调整过则为该值，否则 `None` 表默认 30rem）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn inspector_width(&self) -> Option<Pixels> {
+        self.inspector_width
+    }
+
+    /// 设置检查器面板宽度（`None` 回到默认 30rem；面板拖拽条内部调用）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn set_inspector_width(&mut self, width: Option<Pixels>) {
+        self.inspector_width = width;
+        self.refresh();
+    }
+
+    /// 鼠标是否落在检查器面板区域内（拾取事件让路用）。
+    ///
+    /// 面板在右侧整高停靠（`prepaint_inspector` 按视口宽减面板宽定位），
+    /// 拾取态下该区域的点击/滚轮/拖动都走正常派发：面板按钮可点、
+    /// 拖拽条可拖、滚轮滚面板内容；画布拾取只在面板以左生效。
+    /// 面板自举不计入被检树，面板 hitbox 本来就不在拾取注册表里，
+    /// 这里只是不再吞掉面板的正常鼠标事件。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    fn mouse_over_inspector_panel(&self) -> bool {
+        if self.inspector.is_none() {
+            return false;
+        }
+        let width = self
+            .inspector_width
+            .unwrap_or_else(|| rems(30.0).to_pixels(self.rem_size()));
+        self.mouse_position.x >= self.viewport_size.width - width
+    }
+
+    /// 运行时采样（每帧调一次，内部自行门控与节流）。
+    ///
+    /// 检查器关闭直接返回（上一帧时间戳清空，避免重开时首帧 dt 爆表）；
+    /// 打开时每帧累计帧率 EMA，CPU/内存约 2Hz 采样。面板只读缓存，不测量。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) fn sample_runtime_if_inspecting(&mut self) {
+        use crate::scheduler::Instant;
+
+        if self.inspector.is_none() {
+            self.runtime_sampler.last_frame = None;
+            return;
+        }
+        let now = Instant::now();
+        if let Some(last) = self.runtime_sampler.last_frame {
+            let dt_ms = now.duration_since(last).as_secs_f64() * 1000.0;
+            if dt_ms > 0.0 && dt_ms < 10_000.0 {
+                self.runtime_frame_ms = if self.runtime_frame_ms == 0.0 {
+                    dt_ms
+                } else {
+                    self.runtime_frame_ms * 0.9 + dt_ms * 0.1
+                };
+                self.runtime_fps = if self.runtime_frame_ms > 0.0 {
+                    1000.0 / self.runtime_frame_ms
+                } else {
+                    0.0
+                };
+            }
+        }
+        self.runtime_sampler.last_frame = Some(now);
+
+        let throttle = self
+            .runtime_sampler
+            .last_sample
+            .map(|last| now.duration_since(last).as_millis() >= 500)
+            .unwrap_or(true);
+        if throttle {
+            self.runtime_sampler.last_sample = Some(now);
+            if let Some(sample) = self.runtime_sampler.clock.sample() {
+                self.runtime_cpu = Some(sample.cpu_percent);
+                self.runtime_mem_mb = Some(sample.memory_mb);
+            }
+        }
+    }
+
+    /// 采样缓存的帧率（检查器未打开时为 0）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn runtime_fps(&self) -> f64 {
+        self.runtime_fps
+    }
+
+    /// 采样缓存的上一帧耗时 EMA（毫秒）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn runtime_frame_ms(&self) -> f64 {
+        self.runtime_frame_ms
+    }
+
+    /// 采样缓存的进程 CPU 占用百分比（未采样到为 `None`）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn runtime_cpu(&self) -> Option<f64> {
+        self.runtime_cpu
+    }
+
+    /// 采样缓存的进程内存 MB（未采样到为 `None`）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn runtime_mem_mb(&self) -> Option<f64> {
+        self.runtime_mem_mb
+    }
+
+    /// 采集当前检查器快照（崩溃排查用，无选中也返回框架信息）。
+    ///
+    /// 读取已渲染帧的树/选中/hitbox 与 `App` 错误环；调用方负责落盘节流
+    /// （`draw` 内约 2 秒一写）。无检查器时返回 `None`。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn capture_inspector_snapshot(&self, cx: &App) -> Option<crate::InspectorSnapshot> {
+        use crate::InspectorSnapshot;
+
+        let inspector = self.inspector.as_ref()?;
+        let inspector = inspector.read(cx);
+        let active = inspector.active_element_id().cloned();
+
+        // hitbox 反查表（hitbox id → 边界），一次建好。
+        let mut hitbox_bounds =
+            std::collections::HashMap::<crate::HitboxId, crate::Bounds<crate::Pixels>>::new();
+        for hitbox in &self.rendered_frame.hitboxes {
+            hitbox_bounds.insert(hitbox.id, hitbox.bounds);
+        }
+        let node_of = |id: &crate::InspectorElementId| -> crate::SnapshotNode {
+            let bounds = self
+                .rendered_frame
+                .inspector_hitboxes
+                .iter()
+                .find_map(|(hitbox_id, known)| (*known == *id).then_some(*hitbox_id))
+                .and_then(|hitbox_id| hitbox_bounds.get(&hitbox_id))
+                .map(|b| {
+                    [
+                        b.origin.x.as_f32(),
+                        b.origin.y.as_f32(),
+                        b.size.width.as_f32(),
+                        b.size.height.as_f32(),
+                    ]
+                });
+            // 内容尺寸取 Div 状态（仅选中元素有；其余为空）。
+            let parent = self
+                .rendered_frame
+                .inspector_tree_nodes
+                .get(id)
+                .and_then(|node| node.parent.clone())
+                .map(|p| p.tree_key());
+            crate::SnapshotNode {
+                key: id.tree_key(),
+                label: id.short_label(),
+                source: id.source_label(),
+                instance: id.instance_id,
+                parent,
+                bounds,
+            }
+        };
+
+        // 祖先链（根在前）。
+        let mut ancestors: Vec<crate::SnapshotNode> = Vec::new();
+        if let Some(mut current) = active.clone() {
+            let mut chain = vec![current.clone()];
+            while let Some(parent) = self
+                .rendered_frame
+                .inspector_tree_nodes
+                .get(&current)
+                .and_then(|node| node.parent.clone())
+            {
+                chain.push(parent.clone());
+                current = parent;
+            }
+            chain.reverse();
+            ancestors = chain.iter().map(node_of).collect();
+        }
+
+        // 全树（按键排序保证稳定，截断 2000）。
+        let mut ids: Vec<crate::InspectorElementId> = self
+            .rendered_frame
+            .inspector_tree_nodes
+            .keys()
+            .cloned()
+            .collect();
+        ids.sort_by_key(|id| id.tree_key());
+        let tree_total = ids.len();
+        let tree: Vec<crate::SnapshotNode> =
+            ids.into_iter().take(2000).map(|id| node_of(&id)).collect();
+
+        let timestamp_millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        Some(InspectorSnapshot {
+            version: 1,
+            timestamp_millis,
+            active: active.as_ref().map(node_of),
+            ancestors,
+            tree_total,
+            tree,
+            errors: cx
+                .recent_errors()
+                .into_iter()
+                .map(|(seq, message)| (seq, message.to_string()))
+                .collect(),
+            viewport: [
+                self.viewport_size.width.as_f32(),
+                self.viewport_size.height.as_f32(),
+            ],
+        })
+    }
+
+    /// 滚动写入崩溃快照（`draw` 内调用，约 2 秒一写，原子替换 `last.json`）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) fn write_crash_snapshot_if_enabled(&mut self, cx: &mut App) {
+        use crate::scheduler::Instant;
+
+        let Some(dir) = cx.crash_recorder_dir.clone() else {
+            return;
+        };
+        if self.inspector.is_none() {
+            return;
+        }
+        let now = Instant::now();
+        let due = self
+            .crash_last_write
+            .map(|last| now.duration_since(last).as_millis() >= 2000)
+            .unwrap_or(true);
+        if !due {
+            return;
+        }
+        self.crash_last_write = Some(now);
+        if let Some(snapshot) = self.capture_inspector_snapshot(cx) {
+            if let Ok(json) = serde_json::to_string(&snapshot) {
+                _ = std::fs::create_dir_all(&dir);
+                let tmp = dir.join("last.json.tmp");
+                if std::fs::write(&tmp, json).is_ok() {
+                    _ = std::fs::rename(&tmp, dir.join("last.json"));
+                }
+            }
+        }
+    }
+
+    /// 检查器打开时在 prepaint 嵌套入口记录树节点，返回是否入栈。
+    ///
+    /// 仅检查器打开且元素带 `inspector_id` 时记录；调用方需在
+    /// prepaint 返回后以同一 id 调用 [`Self::pop_inspector_tree`] 弹栈。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) fn push_inspector_tree(&mut self, id: &crate::InspectorElementId) -> bool {
+        self.invalidator.debug_assert_paint_or_prepaint();
+        if self.inspector.is_none() || self.inspector_tree_suspended {
+            return false;
+        }
+        let parent = self.inspector_tree_stack.last().cloned();
+        let entry = self
+            .next_frame
+            .inspector_tree_nodes
+            .entry(id.clone())
+            .or_default();
+        // 同一元素跨不同父级复用（如 deferred 重挂）时保留首次父级，
+        // 避免子节点被重复追加。
+        if let Some(parent) = parent.clone()
+            && entry.parent.is_none()
+        {
+            entry.parent = Some(parent);
+        }
+        if let Some(parent) = parent {
+            if let Some(parent_node) = self.next_frame.inspector_tree_nodes.get_mut(&parent) {
+                if !parent_node.children.contains(id) {
+                    parent_node.children.push(id.clone());
+                }
+            } else {
+                self.next_frame.inspector_tree_nodes.insert(
+                    parent.clone(),
+                    crate::InspectorTreeNode {
+                        parent: None,
+                        children: vec![id.clone()],
+                    },
+                );
+                if !self.next_frame.inspector_tree_roots.contains(&parent) {
+                    self.next_frame.inspector_tree_roots.push(parent);
+                }
+            }
+        } else if !self.next_frame.inspector_tree_roots.contains(id) {
+            self.next_frame.inspector_tree_roots.push(id.clone());
+        }
+        self.inspector_tree_stack.push(id.clone());
+        true
+    }
+
+    /// 与 [`Self::push_inspector_tree`] 配对的弹栈。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) fn pop_inspector_tree(&mut self, pushed: bool) {
+        if pushed {
+            self.inspector_tree_stack.pop();
+        }
+    }
+
+    /// 已渲染帧的检查器树根（绘制顺序）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn inspector_tree_roots(&self) -> Vec<crate::InspectorElementId> {
+        self.rendered_frame.inspector_tree_roots.clone()
+    }
+
+    /// 已渲染帧中指定节点的子节点（绘制顺序），无节点时为空。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn inspector_tree_children(
+        &self,
+        id: &crate::InspectorElementId,
+    ) -> Vec<crate::InspectorElementId> {
+        self.rendered_frame
+            .inspector_tree_nodes
+            .get(id)
+            .map(|node| node.children.clone())
+            .unwrap_or_default()
+    }
+
+    /// 已渲染帧中指定节点的父节点（I2 完整树自动展开祖先链用）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn inspector_tree_parent(
+        &self,
+        id: &crate::InspectorElementId,
+    ) -> Option<crate::InspectorElementId> {
+        self.rendered_frame
+            .inspector_tree_nodes
+            .get(id)
+            .and_then(|node| node.parent.clone())
+    }
+
+    /// 导出检查器树为 AI 可读文本（给 AI 看 GUI 用：一键复制或代码获取）。
+    ///
+    /// 每行一个节点：缩进表层级，含名称、实例号、源码位置、实测边界，
+    /// 当前选中标 `[*]`。全量 DFS（不受面板折叠影响），超 `max_nodes` 截断
+    /// 并注总数。样式仅选中元素有（`DivInspectorState` 只保留选中项），
+    /// 文本导出不含样式——要样式先选中再看面板/快照。
+    /// 无检查器时返回 `None`。
+    ///
+    /// ```rust,ignore
+    /// // 面板“复制树文本”按钮与外部 AI 工具都走这里：
+    /// if let Some(text) = window.inspector_tree_text(cx, 2000) {
+    ///     cx.write_to_clipboard(ClipboardItem::new_string(text));
+    /// }
+    /// ```
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn inspector_tree_text(&self, cx: &App, max_nodes: usize) -> Option<String> {
+        use std::fmt::Write as _;
+
+        if self.inspector.is_none() {
+            return None;
+        }
+        let active = self
+            .inspector
+            .as_ref()
+            .and_then(|inspector| inspector.read(cx).active_element_id().cloned());
+        let mut hitbox_bounds =
+            std::collections::HashMap::<crate::HitboxId, crate::Bounds<crate::Pixels>>::new();
+        for hitbox in &self.rendered_frame.hitboxes {
+            hitbox_bounds.insert(hitbox.id, hitbox.bounds);
+        }
+        let bounds_of = |id: &crate::InspectorElementId| {
+            self.rendered_frame
+                .inspector_hitboxes
+                .iter()
+                .find_map(|(hitbox_id, known)| (*known == *id).then_some(*hitbox_id))
+                .and_then(|hitbox_id| hitbox_bounds.get(&hitbox_id))
+                .map(|b| {
+                    format!(
+                        "{:.0}x{:.0}@({:.0},{:.0})",
+                        b.size.width.as_f32(),
+                        b.size.height.as_f32(),
+                        b.origin.x.as_f32(),
+                        b.origin.y.as_f32()
+                    )
+                })
+                .unwrap_or_else(|| "?".to_string())
+        };
+
+        let mut lines = String::new();
+        let mut total = 0usize;
+        let mut shown = 0usize;
+        let mut stack: Vec<(crate::InspectorElementId, usize)> = self
+            .inspector_tree_roots()
+            .into_iter()
+            .map(|id| (id, 0))
+            .collect();
+        stack.reverse();
+        let mut visited = 0usize;
+        while let Some((id, depth)) = stack.pop() {
+            visited += 1;
+            if visited > 20000 {
+                break;
+            }
+            total += 1;
+            if shown < max_nodes {
+                shown += 1;
+                let mark = if active.as_ref() == Some(&id) {
+                    " [*]"
+                } else {
+                    ""
+                };
+                _ = writeln!(
+                    lines,
+                    "{}- {} #{} [{}] {}{}",
+                    "  ".repeat(depth),
+                    id.short_label(),
+                    id.instance_id,
+                    id.source_label(),
+                    bounds_of(&id),
+                    mark,
+                );
+            }
+            for child in self.inspector_tree_children(&id).into_iter().rev() {
+                stack.push((child, depth + 1));
+            }
+        }
+        let mut out = format!(
+            "# 检查器树（视口 {:.0}x{:.0}，共 {total} 节点，展示 {shown}）\n",
+            self.viewport_size.width.as_f32(),
+            self.viewport_size.height.as_f32(),
+        );
+        out.push_str(&lines);
+        if total > shown {
+            _ = writeln!(out, "… 另有 {} 个节点未展示", total - shown);
+        }
+        Some(out)
+    }
+
+    /// 按 id 选中检查器元素（I2 完整树点击用；id 需来自当前帧树/注册表）。
+    ///
+    /// 成功返回 `true`；无检查器或 id 未知返回 `false`。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn select_inspector_element(
+        &mut self,
+        id: &crate::InspectorElementId,
+        cx: &mut App,
+    ) -> bool {
+        let known = self.rendered_frame.inspector_tree_nodes.contains_key(id)
+            || self.next_frame.inspector_tree_nodes.contains_key(id)
+            || self
+                .rendered_frame
+                .inspector_hitboxes
+                .values()
+                .any(|known| known == id)
+            || self
+                .next_frame
+                .inspector_hitboxes
+                .values()
+                .any(|known| known == id);
+        if !known {
+            return false;
+        }
+        let Some(inspector) = self.inspector.clone() else {
+            return false;
+        };
+        let id = id.clone();
+        inspector.update(cx, |inspector, _| {
+            inspector.select(id, self);
+        });
+        true
+    }
+
     /// 使用对检查器状态的可变访问执行提供的函数。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub fn with_inspector_state<T: 'static, R>(
@@ -6272,12 +6807,16 @@ impl Window {
     fn prepaint_inspector(&mut self, inspector_width: Pixels, cx: &mut App) -> Option<AnyElement> {
         if let Some(inspector) = self.inspector.take() {
             let mut inspector_element = AnyView::from(inspector.clone()).into_any_element();
+            // 面板自举不计入被检树，避免自我递归。
+            self.inspector_tree_suspended = true;
             inspector_element.prepaint_as_root(
                 point(self.viewport_size.width - inspector_width, px(0.0)),
                 size(inspector_width, self.viewport_size.height).into(),
                 self,
                 cx,
             );
+            self.inspector_tree_suspended = false;
+            self.inspector_tree_stack.clear();
             self.inspector = Some(inspector);
             Some(inspector_element)
         } else {
@@ -6294,15 +6833,18 @@ impl Window {
 
     /// 注册一个可用于检查器拾取模式的 hitbox，允许用户
     /// 通过点击来选择和检查 UI 元素。
+    ///
+    /// 检查器打开期间常驻记录（关闭即无开销），供树节点反查祖先 id
+    /// 与选中高亮使用；拾取悬停仅在拾取模式下生效。
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub fn insert_inspector_hitbox(
         &mut self,
         hitbox_id: HitboxId,
         inspector_id: Option<&crate::InspectorElementId>,
-        cx: &App,
+        _cx: &App,
     ) {
         self.invalidator.debug_assert_paint_or_prepaint();
-        if !self.is_inspector_picking(cx) {
+        if self.inspector.is_none() {
             return;
         }
         if let Some(inspector_id) = inspector_id {
@@ -6312,10 +6854,78 @@ impl Window {
         }
     }
 
+    /// 已渲染帧中指定检查器元素的边界（I1 双向映射的包含消歧用）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) fn inspector_bounds_for_id(
+        &self,
+        id: &crate::InspectorElementId,
+    ) -> Option<Bounds<Pixels>> {
+        let hitbox_id =
+            self.rendered_frame.inspector_hitboxes.iter().find_map(
+                |(hitbox_id, inspector_id)| (*inspector_id == *id).then_some(*hitbox_id),
+            )?;
+        self.rendered_frame
+            .hitboxes
+            .iter()
+            .find(|hitbox| hitbox.id == hitbox_id)
+            .map(|hitbox| hitbox.bounds)
+    }
+
+    /// 正在绘制帧中指定检查器元素的边界（回退查找用）。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) fn next_inspector_bounds_for_id(
+        &self,
+        id: &crate::InspectorElementId,
+    ) -> Option<Bounds<Pixels>> {
+        let hitbox_id = self
+            .next_frame
+            .inspector_hitboxes
+            .iter()
+            .find_map(|(hitbox_id, inspector_id)| (*inspector_id == *id).then_some(*hitbox_id))?;
+        self.next_frame
+            .hitboxes
+            .iter()
+            .find(|hitbox| hitbox.id == hitbox_id)
+            .map(|hitbox| hitbox.bounds)
+    }
+
+    /// 从检查器面板按祖先层级上移选中（I1 双向映射便捷入口）。
+    ///
+    /// `levels_up` 语义同 [`crate::Inspector::select_ancestor`]；
+    /// 成功返回 `true`，无检查器/无选中/越界返回 `false`。
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub fn select_inspector_ancestor(&mut self, levels_up: usize, cx: &mut App) -> bool {
+        let Some(inspector) = self.inspector.clone() else {
+            return false;
+        };
+        inspector.update(cx, |inspector, _| {
+            inspector.select_ancestor(levels_up, self)
+        })
+    }
+
     #[cfg(any(feature = "inspector", debug_assertions))]
     fn paint_inspector_hitbox(&mut self, cx: &App) {
         if let Some(inspector) = self.inspector.as_ref() {
             let inspector = inspector.read(cx);
+            // 选中区域常驻高亮（橙色，复用拾取高亮绘制），拾取悬停（蓝色）叠加其上。
+            if let Some(active_id) = inspector.active_element_id().cloned() {
+                let selected = self
+                    .next_frame
+                    .inspector_hitboxes
+                    .iter()
+                    .find_map(|(hitbox_id, inspector_id)| {
+                        (*inspector_id == active_id).then_some(*hitbox_id)
+                    })
+                    .and_then(|hitbox_id| {
+                        self.next_frame
+                            .hitboxes
+                            .iter()
+                            .find(|hitbox| hitbox.id == hitbox_id)
+                    });
+                if let Some(hitbox) = selected {
+                    self.paint_quad(crate::fill(hitbox.bounds, crate::rgba(0xf59e0b66)));
+                }
+            }
             if let Some((hitbox_id, _)) = self.hovered_inspector_hitbox(inspector, &self.next_frame)
                 && let Some(hitbox) = self
                     .next_frame

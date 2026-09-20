@@ -1,7 +1,7 @@
 //! 标签页与折叠示例：标签栏、折叠面板、手风琴。
 
 use rgpui::prelude::*;
-use rgpui::tabs::{Accordion, Collapsible, Tab, TabBar, TabVariant};
+use rgpui::tabs::{Accordion, Collapsible, Tab, TabBar, TabVariant, Tabs, TabsItem};
 use rgpui::{Button, Context, IntoElement, ParentElement, Styled, Window, div, px, v_flex};
 
 use super::StoryItem;
@@ -12,6 +12,10 @@ pub fn stories() -> Vec<StoryItem> {
         StoryItem {
             title: "标签栏",
             build: |_, cx| cx.new(|cx| TabBarStory::new(cx)).into(),
+        },
+        StoryItem {
+            title: "静态页签",
+            build: |_, cx| cx.new(|cx| StaticTabsStory::new(cx)).into(),
         },
         StoryItem {
             title: "手风琴",
@@ -50,8 +54,8 @@ impl rgpui::Render for TabBarStory {
                     .child(
                         TabBar::new("tabbar-default")
                             .selected_index(selected)
-                            .on_click(cx.listener(|this, ix: &usize, _, cx| {
-                                this.selected = *ix;
+                            .on_change(cx.listener_value(|this, ix: usize, _, cx| {
+                                this.selected = ix;
                                 cx.notify();
                             }))
                             .child(Tab::new().label("首页"))
@@ -63,8 +67,8 @@ impl rgpui::Render for TabBarStory {
                         TabBar::new("tabbar-pill")
                             .selected_index(selected)
                             .with_variant(TabVariant::Pill)
-                            .on_click(cx.listener(|this, ix: &usize, _, cx| {
-                                this.selected = *ix;
+                            .on_change(cx.listener_value(|this, ix: usize, _, cx| {
+                                this.selected = ix;
                                 cx.notify();
                             }))
                             .child(Tab::new().label("编辑"))
@@ -72,6 +76,48 @@ impl rgpui::Render for TabBarStory {
                             .child(Tab::new().label("导出")),
                     ),
             )
+    }
+}
+
+/// 静态页签示例视图（无状态 Tabs：值驱动，选中 id 存在本地即可）。
+struct StaticTabsStory {
+    /// 当前选中的页签 id。
+    active: Option<rgpui::SharedString>,
+}
+
+impl StaticTabsStory {
+    fn new(_cx: &mut Context<Self>) -> Self {
+        Self {
+            active: Some("home".into()),
+        }
+    }
+}
+
+impl rgpui::Render for StaticTabsStory {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .id("static-tabs-story")
+            .gap(px(8.0))
+            .p(px(16.0))
+            .child(section_title("静态页签（Tabs，无实体）"))
+            .child(
+                Tabs::new(vec![
+                    TabsItem::new("home", "首页"),
+                    TabsItem::new("settings", "设置"),
+                    TabsItem::new("export", "导出").disabled(true),
+                ])
+                .active(self.active.clone())
+                .on_change(cx.listener_value(
+                    |this, id: rgpui::SharedString, _, cx| {
+                        this.active = Some(id);
+                        cx.notify();
+                    },
+                )),
+            )
+            .child(div().text_sm().child(format!(
+                "当前选中：{}",
+                self.active.as_deref().unwrap_or("无")
+            )))
     }
 }
 

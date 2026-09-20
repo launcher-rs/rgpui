@@ -4,7 +4,7 @@
 //! [`DiagnosticsProvider`] / [`HoverProvider`]，传输层自理）后注入
 //! `EditorState`；触发经 epoch 防抖（`cx.spawn_in` + 后台 timer，tooltip 同款，
 //! 旧请求自动作废）；诊断经内部输入的独立装饰集合下划线渲染；补全状态同步到
-//! `CompletionPopupState`（应用渲染 `CompletionPopup`，`on_select` 回写确认）。
+//! `CompletionPopupState`（应用渲染 `CompletionPopup`，`on_change` 回写确认）。
 //!
 //! 边界（文档注明即契约）：推送模型不接（`on_diagnostics` 回调无 cx，进不了 UI
 //! 线程，provider 侧需自行缓存、由拉模型取走）；LSP 行列按 UTF-8 字节列换算

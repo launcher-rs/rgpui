@@ -57,7 +57,7 @@ pub use crate::file_watcher::{FileEvent, FileWatcher, FileWatcherConfig};
 pub use crate::config_store::ConfigStore;
 
 // Chat UI 组件。
-pub use crate::chat_ui::{ChatState, ChatView, Message, MessageGroup, MessageType};
+pub use crate::chat::{ChatState, ChatView, Message, MessageGroup, MessageType};
 
 // FPS 监控 HUD。
 pub use crate::fps_hud::{FpsHud, FpsHudState};
@@ -66,7 +66,7 @@ pub use crate::fps_hud::{FpsHud, FpsHudState};
 pub use crate::tabs::tab_drag::{TabDragDrop, TabDragEvent, TabDragState, TabItem};
 
 // 国际化支持。
-pub use crate::i18n::{I18nManager, I18nText, PluralRule};
+pub use crate::i18n::{I18nManager, I18nSnapshot, I18nText, PluralRule};
 
 // 主题热重载。
 pub use crate::theme_watcher::{ThemeColors, ThemeEvent, ThemeManager, ThemeMode, ThemeWatcher};

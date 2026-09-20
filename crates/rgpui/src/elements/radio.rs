@@ -1,6 +1,6 @@
 //! 单选框组件，支持互斥选择的圆形选择控件。
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::elements::checkbox::checkbox_check_icon;
 use crate::prelude::FluentBuilder as _;
@@ -36,8 +36,8 @@ pub struct Radio {
     tab_index: isize,
     /// 尺寸
     size: ElementSize,
-    /// 点击事件回调
-    on_click: Option<Rc<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
+    /// 值变更回调（参数为变更后的选中状态，按值传递）
+    on_change: Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 提示文本（当前简化存储，暂不渲染）
     tooltip: Option<SharedString>,
 }
@@ -56,7 +56,7 @@ impl Radio {
             tab_index: 0,
             tab_stop: true,
             size: ElementSize::default(),
-            on_click: None,
+            on_change: None,
             tooltip: None,
         }
     }
@@ -97,23 +97,26 @@ impl Radio {
         self
     }
 
-    /// 添加 Radio 的点击回调。
+    /// 添加 Radio 的值变更回调。
     ///
-    /// `&bool` 参数表示点击后的**新选中状态**。
-    pub fn on_click(mut self, handler: impl Fn(&bool, &mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(handler));
+    /// `bool` 参数表示点击后的**新选中状态**（按值传递）。
+    pub fn on_change(
+        mut self,
+        handler: impl Fn(bool, &mut Window, &mut App) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_change = Some(Arc::new(handler));
         self
     }
 
-    fn handle_click(
-        on_click: &Option<Rc<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
+    fn handle_change(
+        on_change: &Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync + 'static>>,
         checked: bool,
         window: &mut Window,
         cx: &mut App,
     ) {
         let new_checked = !checked;
-        if let Some(f) = on_click {
-            (f)(&new_checked, window, cx);
+        if let Some(f) = on_change {
+            (f)(new_checked, window, cx);
         }
     }
 }
@@ -277,10 +280,10 @@ impl RenderOnce for Radio {
                 })
                 .when(!self.disabled, |this| {
                     this.on_click({
-                        let on_click = self.on_click.clone();
+                        let on_change = self.on_change.clone();
                         move |_, window, cx| {
                             window.prevent_default();
-                            Self::handle_click(&on_click, checked, window, cx);
+                            Self::handle_change(&on_change, checked, window, cx);
                         }
                     })
                 }),
@@ -303,8 +306,8 @@ pub struct RadioGroup {
     selected_index: Option<usize>,
     /// 是否禁用
     disabled: bool,
-    /// 选中索引变化回调
-    on_click: Option<Rc<dyn Fn(&usize, &mut Window, &mut App) + 'static>>,
+    /// 选中索引变化回调（参数为选中的索引，按值传递）
+    on_change: Option<Arc<dyn Fn(usize, &mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl RadioGroup {
@@ -313,7 +316,7 @@ impl RadioGroup {
         Self {
             id: id.into(),
             style: StyleRefinement::default().flex_1(),
-            on_click: None,
+            on_change: None,
             layout: Axis::Vertical,
             selected_index: None,
             disabled: false,
@@ -339,9 +342,12 @@ impl RadioGroup {
 
     /// 添加选中索引变化回调。
     ///
-    /// `&usize` 参数表示选中的索引。
-    pub fn on_click(mut self, handler: impl Fn(&usize, &mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(handler));
+    /// `usize` 参数表示选中的索引（按值传递）。
+    pub fn on_change(
+        mut self,
+        handler: impl Fn(usize, &mut Window, &mut App) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_change = Some(Arc::new(handler));
         self
     }
 
@@ -378,7 +384,7 @@ impl Styled for RadioGroup {
 
 impl RenderOnce for RadioGroup {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let on_click = self.on_click;
+        let on_change = self.on_change;
         let disabled = self.disabled;
         let selected_ix = self.selected_index;
 
@@ -398,10 +404,10 @@ impl RenderOnce for RadioGroup {
 
                     radio.id = ix.into();
                     radio.disabled(disabled).checked(checked).when_some(
-                        on_click.clone(),
-                        |this, on_click| {
-                            this.on_click(move |_, window, cx| {
-                                on_click(&ix, window, cx);
+                        on_change.clone(),
+                        |this, on_change| {
+                            this.on_change(move |_, window, cx| {
+                                on_change(ix, window, cx);
                             })
                         },
                     )

@@ -2329,7 +2329,14 @@ impl Interactivity {
     }
 
     fn should_insert_hitbox(&self, style: &Style, window: &Window, cx: &App) -> bool {
+        // 检查器打开期间所有 Div 常驻 hitbox，供树反查与选中高亮使用；
+        // 拾取模式同样包含在内（open 蕴含 picking 场景）。
+        #[cfg(any(feature = "inspector", debug_assertions))]
+        let inspector_active = window.is_inspector_open() || window.is_inspector_picking(cx);
+        #[cfg(not(any(feature = "inspector", debug_assertions)))]
+        let inspector_active = window.is_inspector_picking(cx);
         self.hitbox_behavior != HitboxBehavior::Normal
+            || inspector_active
             || self.window_control.is_some()
             || style.mouse_cursor.is_some()
             || self.group.is_some()
@@ -2350,7 +2357,6 @@ impl Interactivity {
             || self.drag_listener.is_some()
             || !self.drop_listeners.is_empty()
             || self.tooltip_builder.is_some()
-            || window.is_inspector_picking(cx)
     }
 
     fn clamp_scroll_position(

@@ -128,7 +128,7 @@ pub struct Link {
     /// 文本。
     text: SharedString,
     /// 点击回调。
-    on_click: Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync + 'static>>,
+    on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl Link {
@@ -151,7 +151,7 @@ impl Link {
     /// 设置点击回调。
     pub fn on_click<F>(mut self, f: F) -> Self
     where
-        F: Fn(&mut Window, &mut App) + Send + Sync + 'static,
+        F: Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
     {
         self.on_click = Some(Arc::new(f));
         self
@@ -169,7 +169,7 @@ impl RenderOnce for Link {
             .cursor_pointer()
             .child(self.text)
             .when_some(self.on_click, |this, cb| {
-                this.on_click(move |_, window, cx| cb(window, cx))
+                this.on_click(move |event, window, cx| cb(event, window, cx))
             })
     }
 }
