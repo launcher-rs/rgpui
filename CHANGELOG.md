@@ -2,7 +2,7 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased] - 1.3.0（`feat/1.3.0` 开发中）
+## [1.3.0] - 2026-09-20
 
 ### 检查器完善（Inspector）
 
