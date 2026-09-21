@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           # rgpui-linux 的 Rust 2024 edition 语法在 stable rustfmt 下解析会失败，逐 crate 检查并跳过它
-          for crate in rgpui rgpui-3d rgpui-character rgpui-dom rgpui-macros rgpui-markdown rgpui-platform rgpui-term rgpui-web rgpui-wgpu rgpui-windows; do
+          for crate in rgpui rgpui-3d rgpui-android rgpui-character rgpui-dom rgpui-ios rgpui-macros rgpui-markdown rgpui-platform rgpui-term rgpui-web rgpui-wgpu rgpui-windows; do
             cargo fmt -p "$crate" -- --check
           done
 
@@ -91,4 +91,48 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace
+
+  # 1.4.0 移动端：只查编译（cargo check）+ 主机单测，不跑 GPU 单测
+  # （runner 软件渲染，真机行为以 adb 实测为准）。
+  # 注意：iOS target 的依赖链含 psm（构建脚本要调 xcrun），只能在 macOS
+  # runner 上 check；Android check 在 ubuntu 上即可。APK 组装（cargo-ndk +
+  # Gradle）记 M2（本地以真机 NDK/Gradle 先验证通过后再进 CI）。
+  mobile-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo check (android lib)
+        run: cargo check -p rgpui-android --target aarch64-linux-android
+
+      - name: cargo check (example android)
+        run: cargo check -p hello_mobile --target aarch64-linux-android
+
+      - name: cargo test (mobile crates, host)
+        run: cargo test -p rgpui-platform -p rgpui-android -p rgpui-ios
+
+  mobile-ios:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo check (ios lib)
+        run: cargo check -p rgpui-ios --target aarch64-apple-ios
+
+      - name: cargo check (example ios)
+        run: cargo check -p hello_mobile --target aarch64-apple-ios
 

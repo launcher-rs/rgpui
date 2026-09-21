@@ -1,6 +1,9 @@
 //! 便捷工具包，重新导出 RGPUI 的平台特性及 `current_platform` 构造函数，
 //! 使使用者无需手动编写 `#[cfg]` 条件编译代码。
 
+pub mod mobile;
+
+pub use mobile::{DEFAULT_PLATFORM, TargetPlatform, target_platform};
 pub use rgpui::Platform;
 
 use std::rc::Rc;
@@ -61,6 +64,16 @@ pub fn current_platform(headless: bool) -> Rc<dyn Platform> {
     {
         let _ = headless;
         Rc::new(rgpui_web::WebPlatform::new(true))
+    }
+
+    #[cfg(target_os = "android")]
+    {
+        rgpui_android::current_platform(headless)
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        rgpui_ios::current_platform(headless)
     }
 }
 

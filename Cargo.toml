@@ -4,8 +4,10 @@ resolver = "3"
 members = [
     "crates/rgpui",
     "crates/rgpui-3d",
+    "crates/rgpui-android",
     "crates/rgpui-character",
     "crates/rgpui-dom",
+    "crates/rgpui-ios",
     "crates/rgpui-linux",
     "crates/rgpui-macos",
     "crates/rgpui-macros",
@@ -37,6 +39,8 @@ rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version =
 rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.3.0" }
 rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.3.0" }
 rgpui-dom = { path = "crates/rgpui-dom", version = "1.3.0" }
+rgpui-android = { path = "crates/rgpui-android", default-features = false, version = "1.3.0" }
+rgpui-ios = { path = "crates/rgpui-ios", default-features = false, version = "1.3.0" }
 rgpui-character = {path = "crates/rgpui-character",version = "1.3.0"}
 rgpui-3d = {path = "crates/rgpui-3d",version = "1.3.0"}
 rgpui-term = {path = "crates/rgpui-term", version = "1.3.0"}

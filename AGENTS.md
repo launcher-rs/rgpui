@@ -72,8 +72,10 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
   版本分支完成后再开一个 PR 合入 main。
 - `gh pr create / merge --squash`；CI 全绿再合并；等 CI 时不要反复 push 刷运行。
 - CI（`.github/workflows/ci.yml`）：三平台矩阵，跑 fmt（逐库）+ clippy
- （`--workspace --lib --bins -D warnings`）+ check + test；同分支 push/PR 共用
-  concurrency 组，后触发自动取消先触发的。
+ （`--workspace --lib --bins -D warnings`）+ check + test；另有移动端双 job：
+  `mobile-android`（ubuntu，Android target check + 移动端主机单测）与
+  `mobile-ios`（macOS，iOS target check，`psm` 构建脚本依赖 `xcrun`）；
+  同分支 push/PR 共用 concurrency 组，后触发自动取消先触发的。
 
 ## 跨平台注意
 
@@ -125,7 +127,7 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 2. `mouse_passthrough`（`WindowOptions`/`WindowParams`）、`WindowKind::Overlay`、
    Mica 变体、`tray.rs` / `single_instance.rs` 都在
 3. `Platform` / `PlatformWindow` 自有方法都在（对照上表）
-4. `tray`、`desktop_pet`（`_3d`）示例可编译
+4. `tray`、`desktop_pet`（`_3d`）、`hello_mobile` 示例可编译
 5. 中文注释未被删除；无 `#[allow(dead_code)]`
 6. 组件子系统目录都在（`form input_ui menu dialog list table tabs title_bar elements/scroll`）
 7. `crates/rgpui-ui`、`rgpui-tokio` 等旧 crate 未复活；`rgpui-markdown` 在，
@@ -134,6 +136,9 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
    `dom-backend`（+ `cargo test -p rgpui-dom`）
 9. `cargo publish -p rgpui --dry-run --registry crates-io` 通过
 10. 发布要求无 dev 循环依赖（测试放消费方 `tests/`，见 1.1.1 教训）
+11. 移动端：`rgpui-android` / `rgpui-ios` 在，`rgpui-platform::mobile`
+    的 `TargetPlatform` 分支齐全，`hello_mobile` 可 check；
+    扩展新平台照 `docs/1.4.0/1.4.0-dev-plan.md` §7.3 加 crate（不塞单 crate）
 
 ## Web/WASM 开发
 

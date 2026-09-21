@@ -1,0 +1,33 @@
+[package]
+name = "rgpui-ios"
+version.workspace = true
+edition.workspace = true
+publish = true
+description = "iOS 平台实现预留（1.4.0 结构桩，真机实现见 M4）"
+license = "Apache-2.0"
+repository = "https://github.com/launcher-rs/rgpui"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/rgpui_ios.rs"
+
+[features]
+default = []
+
+[dependencies]
+rgpui.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+raw-window-handle.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# 仅供 Windows 主机编译桩窗口的 get_raw_handle 签名，真机不用。
+windows = { workspace = true }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"

@@ -39,3 +39,9 @@ rgpui-linux.workspace = true
 [target.'cfg(target_family = "wasm")'.dependencies]
 rgpui-web = { workspace = true, default-features = false }
 console_error_panic_hook.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+rgpui-android.workspace = true
+
+[target.'cfg(target_os = "ios")'.dependencies]
+rgpui-ios.workspace = true

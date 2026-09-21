@@ -1273,7 +1273,7 @@ impl WgpuRenderer {
             self.resources()
                 .queue
                 .submit(std::iter::once(encoder.finish()));
-            drop(frame);
+            self.resources().queue.present(frame);
             return true;
         }
     }
