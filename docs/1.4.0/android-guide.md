@@ -209,6 +209,10 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 # 小写 -p 会被当成 cargo 包名而报 unknown package）
 cargo ndk -t arm64-v8a -P 31 -o android/app/src/main/jniLibs build -p hello_mobile
 
+# strip debug 符号（debug .so 511 MB → 75 MB，不 strip 的 APK 会超 1 GB）
+$ndk = "$env:LOCALAPPDATA\Android\Sdk\ndk\27.0.12077973"
+& "$ndk\toolchains\llvm\prebuilt\windows-x86_64\bin\llvm-strip.exe" --strip-debug android/app/src/main/jniLibs/arm64-v8a/libhello_mobile.so
+
 # 打包 + 安装 + 看日志
 cd android; ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
@@ -226,8 +230,9 @@ adb logcat -s hello_mobile
   然后 `cargo ndk ... build --release -p hello_mobile` +
   `./gradlew assembleRelease`（`minifyEnabled=false`，Rust 符号不受 R8 影响，
   开了也减不了体积，反而可能误杀 NativeActivity 引用，保持关闭）。
-- 体积预期：debug APK 约 500MB（`.so` 未 strip，含 wgpu 全符号），
-  仅用于本机调试；release + strip 后回落到正常量级，不要被 debug 包吓到。
+- 体积预期：debug .so 未 strip 约 511 MB（含 wgpu 全符号），
+  strip 后 ~75 MB，debug APK ~75 MB；仅用于本机调试；
+  release + `strip = true` + LTO 后回落到正常量级。
 
 ## 9. 安装运行与日志
 

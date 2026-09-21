@@ -23,10 +23,9 @@ android {
         versionCode = 1
         versionName = "1.4.0"
 
-        // 真机 arm64-v8a 必打；x86_64 供模拟器调试（release 可去掉减体积，
-        // 见 docs/1.4.0/android-guide.md）。
+        // 只打 arm64-v8a（真机）；模拟器调试时临时加回 x86_64。
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("arm64-v8a")
         }
     }
 
