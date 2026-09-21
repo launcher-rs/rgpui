@@ -190,8 +190,24 @@ bitflags = "2.13.1"
 uuid = { version = "1.26.0", features = ["v4", "v5", "v7", "serde"] }
 
 # ---- 图像处理 ----
-# 图像编解码
-image = "0.25.10"
+# 图像编解码（默认关闭 avif：纯解码的 UI 框架无需为 rav1e 这套 AV1 编码器链
+# 买单，需要 AVIF 解码的应用可开启 rgpui 的 `image-avif` 特性按需加回）
+image = { version = "0.25.10", default-features = false, features = [
+    "bmp",
+    "dds",
+    "exr",
+    "ff",
+    "gif",
+    "hdr",
+    "ico",
+    "jpeg",
+    "png",
+    "pnm",
+    "qoi",
+    "tga",
+    "tiff",
+    "webp",
+] }
 # 2D 图形解析（painting 示例）
 lyon = { version = "1.0", features = ["extra"] }
 
@@ -405,12 +421,15 @@ crossbeam-channel = "0.5"
 
 [workspace.dependencies.windows]
 version = "0.62"
+# 体积裁剪说明：只保留代码实际引用的命名空间（见各平台 crate 的 `use windows::`）。
+# 已移除未使用的：Foundation_Numerics、Globalization_DateTimeFormatting、
+# Storage_Search、Storage_Streams、System_Threading（WinRT 版）、
+# Win32_Graphics_Imaging、Win32_Networking_WinSock、Win32_Security_Cryptography、
+# Win32_Storage_FileSystem、Win32_System_Console、Win32_System_IO、
+# Win32_System_Pipes、Win32_System_RestartManager、Win32_System_Variant、
+# Win32_System_WinRT。Fxc/Hlsl 仅 debug_assertions 下编译 shader 用，
+# 但 `cargo test` 需要，予以保留。
 features = [
-    "Foundation_Numerics",
-    "Globalization_DateTimeFormatting",
-    "Storage_Search",
-    "Storage_Streams",
-    "System_Threading",
     "UI_ViewManagement",
     "Wdk_System_SystemServices",
     "Win32_Foundation",
@@ -425,30 +444,20 @@ features = [
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
     "Win32_Graphics_Gdi",
-    "Win32_Graphics_Imaging",
     "Win32_Graphics_Hlsl",
-    "Win32_Networking_WinSock",
     "Win32_Security",
     "Win32_Security_Credentials",
-    "Win32_Security_Cryptography",
-    "Win32_Storage_FileSystem",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
-    "Win32_System_Console",
-    "Win32_System_Diagnostics_Debug",
     "Win32_System_DataExchange",
-    "Win32_System_IO",
+    "Win32_System_Diagnostics_Debug",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_System_Performance",
-    "Win32_System_Pipes",
-    "Win32_System_RestartManager",
     "Win32_System_SystemInformation",
     "Win32_System_SystemServices",
     "Win32_System_Threading",
-    "Win32_System_Variant",
-    "Win32_System_WinRT",
     "Win32_UI_Controls",
     "Win32_UI_HiDpi",
     "Win32_UI_Input_Ime",
@@ -517,6 +526,25 @@ ignored = [
     "documented",
     "sea-orm-macros",
 ]
+
+# ==================== 体积优化 ====================
+# 基线：examples/hello_world release 约 11.4MB（480+ 个 crate，多为 image 全格式
+# 解码/resvg/async 全家桶/windows 绑定）。以下配置在不改任何 API 的前提下瘦身。
+[profile.release]
+# 去掉二进制中的符号表（Windows 下 PDB 照常单独生成，不影响崩溃上报）。
+strip = true
+# Thin LTO：跨 crate 内联 + 死代码消除显著减小体积，增量编译代价可接受。
+lto = "thin"
+# 单 codegen 单元：更好内联，配合 LTO 进一步压缩。
+codegen-units = 1
+
+# 发版安装包专用：在 release 基础上改用体积优先优化，构建更慢，只用于打安装包。
+[profile.size]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
 
 
 

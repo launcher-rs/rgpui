@@ -55,7 +55,9 @@ screen-capture = [
 # Windows 应用清单：通过 embed-resource 嵌入 windows.manifest 等资源。
 windows-manifest = ["dep:embed-resource"]
 # 输入延迟直方图：用 hdrhistogram 统计窗口输入事件处理延迟。
-input-latency-histogram = []
+# 代码侧早已用 `#[cfg(feature = "input-latency-histogram")]` 门控，
+# 这里把依赖改为可选，默认构建不再链接 hdrhistogram。
+input-latency-histogram = ["dep:hdrhistogram"]
 # 内嵌额外主题表（自 rgpui-component 主题整合而来，37 套，约 178KB）。
 # 默认关闭以保持核心二进制精简，需要多主题的应用程序可显式开启。
 bundled-themes = []
@@ -66,6 +68,9 @@ charts = []
 effects = []
 # 二维码组件（引入 qrcode 依赖）。默认关闭。
 qr-code = ["dep:qrcode"]
+# AVIF 图片解码：默认关闭以减体积（image 的 avif 特性会引入 rav1e 整套 AV1
+# 编码器链，对只做解码的 UI 框架是纯负担）。需要时显式开启。
+image-avif = ["image/avif"]
 # Tokio 异步运行时集成（自 rgpui-tokio 并入，约 120 行薄封装）。
 # 默认关闭以保持核心精简，需要 tokio 异步能力的应用可显式开启。
 tokio = ["dep:tokio"]
@@ -181,7 +186,7 @@ stacksafe.workspace = true
 strum.workspace = true
 taffy = "=0.10.1"
 thiserror.workspace = true
-hdrhistogram = { workspace = true }
+hdrhistogram = { workspace = true, optional = true }
 waker-fn = "1.2.0"
 lyon = "1.0"
 pin-project = "1.1.13"
@@ -249,7 +254,8 @@ scap = { workspace = true, optional = true }
 
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { workspace=true, features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_System_Power", "Win32_System_ProcessStatus"] }
+# 仅保留本 crate 实际引用的命名空间（HWND/互斥体/进程状态），其余走 workspace 特性表统一提供。
+windows = { workspace=true, features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_ProcessStatus"] }
 tendril = "0.5.1"
 
 [target.'cfg(unix)'.dependencies]

@@ -206,6 +206,8 @@ pub fn img(source: impl Into<ImageSource>) -> Img {
 
 impl Img {
     /// 此 img 元素当前支持的所有格式扩展名列表
+    ///
+    /// 注意：`avif` 解码默认关闭以减体积，需要时开启 `rgpui` 的 `image-avif` 特性。
     pub fn extensions() -> &'static [&'static str] {
         // This is the list in [image::ImageFormat::from_extension] + `svg`
         &[
