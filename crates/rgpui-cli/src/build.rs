@@ -3,13 +3,18 @@ use console::style;
 use std::path::Path;
 use std::process::Command;
 
+use crate::config::Config;
+
 /// `cargo rgpui build` — cargo ndk → llvm-strip → gradlew assembleDebug
-pub fn run(release: bool) -> Result<()> {
+pub fn run(release: bool, cfg: &Config) -> Result<()> {
     // 找到项目名（当前目录的 Cargo.toml 中的 name）
     let manifest = std::fs::read_to_string("Cargo.toml")
         .context("当前目录找不到 Cargo.toml，请在 rgpui 项目根目录运行")?;
     let name = extract_crate_name(&manifest).context("Cargo.toml 中找不到 [package] name")?;
     let lib_name = name.replace('-', "_");
+    let abi = cfg.primary_abi();
+    let platform_api = cfg.platform_api().to_string();
+    let do_strip = cfg.strip();
 
     let build_type = if release { "release" } else { "debug" };
     let gradle_task = if release {
@@ -19,28 +24,31 @@ pub fn run(release: bool) -> Result<()> {
     };
 
     println!(
-        "{} 构建 {} ({})...",
+        "{} 构建 {} ({}, abi={}, strip={})...",
         style("🔨").cyan(),
         style(&name).bold(),
-        build_type
+        build_type,
+        abi,
+        do_strip
     );
 
     // Step 1: cargo ndk build
     println!("\n{} Step 1/3: cargo ndk build", style("▸").cyan());
     let mut ndk_args = vec![
-        "-t",
-        "arm64-v8a",
-        "-P",
-        "31",
-        "-o",
-        "android/app/src/main/jniLibs",
+        "ndk".to_string(),
+        "-t".to_string(),
+        abi.clone(),
+        "-P".to_string(),
+        platform_api.clone(),
+        "-o".to_string(),
+        "android/app/src/main/jniLibs".to_string(),
+        "build".to_string(),
     ];
-    ndk_args.push("build");
     if release {
-        ndk_args.push("--release");
+        ndk_args.push("--release".to_string());
     }
-    ndk_args.push("-p");
-    ndk_args.push(&name);
+    ndk_args.push("-p".to_string());
+    ndk_args.push(name.clone());
 
     let status = Command::new("cargo")
         .args(&ndk_args)
@@ -52,9 +60,11 @@ pub fn run(release: bool) -> Result<()> {
 
     // Step 2: strip debug symbols
     println!("\n{} Step 2/3: strip debug symbols", style("▸").cyan());
-    let so_path = format!("android/app/src/main/jniLibs/arm64-v8a/lib{}.so", lib_name);
+    let so_path = format!("android/app/src/main/jniLibs/{}/lib{}.so", abi, lib_name);
 
-    if Path::new(&so_path).exists() {
+    if !do_strip {
+        println!("  {} strip 已按配置关闭", style("→").dim());
+    } else if Path::new(&so_path).exists() {
         if let Some(strip_bin) = find_llvm_strip() {
             let status = Command::new(&strip_bin)
                 .args(["--strip-debug", &so_path])

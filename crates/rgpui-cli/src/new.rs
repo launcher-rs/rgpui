@@ -3,8 +3,10 @@ use console::style;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::config::Config;
+
 /// `cargo rgpui new <name>` — 创建新的 rgpui 移动端项目。
-pub fn run(name: &str) -> Result<()> {
+pub fn run(name: &str, cfg: &Config) -> Result<()> {
     // 校验项目名
     if !is_valid_crate_name(name) {
         anyhow::bail!(
@@ -18,7 +20,7 @@ pub fn run(name: &str) -> Result<()> {
         anyhow::bail!("目录 '{}' 已存在，请换个名字或先删除", name);
     }
 
-    let package_id = format!("com.example.{}", name.replace('-', "_"));
+    let package_id = format!("{}{}", cfg.package_prefix(), name.replace('-', "_"));
     let lib_name = name.replace('-', "_");
 
     println!("{} 创建项目 {} ...", style("📦").cyan(), style(name).bold());
@@ -36,7 +38,7 @@ pub fn run(name: &str) -> Result<()> {
     }
 
     // 生成所有文件
-    write_file(&project_dir.join("Cargo.toml"), &cargo_toml(name))?;
+    write_file(&project_dir.join("Cargo.toml"), &cargo_toml(name, cfg))?;
     write_file(&project_dir.join("src/lib.rs"), &lib_rs(name, &lib_name))?;
     write_file(&project_dir.join("src/main.rs"), &main_rs(name))?;
     write_file(
@@ -49,7 +51,7 @@ pub fn run(name: &str) -> Result<()> {
     )?;
     write_file(
         &project_dir.join("android/app/build.gradle.kts"),
-        &app_build_gradle(&package_id),
+        &app_build_gradle(&package_id, cfg),
     )?;
     write_file(
         &project_dir.join("android/app/src/main/AndroidManifest.xml"),
@@ -81,6 +83,28 @@ pub fn run(name: &str) -> Result<()> {
         KEYSTORE_PROPERTIES_EXAMPLE,
     )?;
 
+    // 生成项目级 rgpui.toml（把本次生效配置固化下来，便于后续自定义）
+    let project_cfg = Config {
+        project: crate::config::ProjectConfig {
+            git: Some(cfg.git().to_string()),
+            branch: Some(cfg.branch().to_string()),
+            package_prefix: Some(cfg.package_prefix().to_string()),
+            edition: Some(cfg.edition().to_string()),
+        },
+        android: crate::config::AndroidConfig {
+            abis: Some(cfg.abis()),
+            min_sdk: Some(cfg.min_sdk()),
+            compile_sdk: Some(cfg.compile_sdk()),
+            target_sdk: Some(cfg.target_sdk()),
+            platform_api: Some(cfg.platform_api()),
+            strip: Some(cfg.strip()),
+        },
+    };
+    write_file(
+        &project_dir.join(crate::config::PROJECT_CONFIG_FILE),
+        &toml::to_string_pretty(&project_cfg).expect("配置序列化不可能失败"),
+    )?;
+
     // 复制二进制模板（gradlew / gradle-wrapper.jar）
     let template_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/templates/android");
     copy_file(
@@ -97,7 +121,7 @@ pub fn run(name: &str) -> Result<()> {
     )?;
 
     // 防错校验
-    validate_project(&project_dir, name, &lib_name, &package_id)?;
+    validate_project(&project_dir, name, &lib_name, &package_id, cfg)?;
 
     println!(
         "\n{} 项目 {} 已创建！\n",
@@ -136,7 +160,13 @@ fn is_valid_crate_name(name: &str) -> bool {
 }
 
 /// 校验关键不变量
-fn validate_project(dir: &Path, _name: &str, lib_name: &str, package_id: &str) -> Result<()> {
+fn validate_project(
+    dir: &Path,
+    _name: &str,
+    lib_name: &str,
+    package_id: &str,
+    cfg: &Config,
+) -> Result<()> {
     let mut errors = Vec::new();
 
     // 1. lib_name 必须一致
@@ -166,14 +196,21 @@ fn validate_project(dir: &Path, _name: &str, lib_name: &str, package_id: &str) -
         ));
     }
 
-    // 4. minSdk >= 26
-    if !app_gradle.contains("minSdk = 26") {
-        errors.push("minSdk 必须 >= 26（rgpui-android 要求）".into());
+    // 4. minSdk >= 26（配置允许覆盖，但下限不变）
+    if cfg.min_sdk() < 26 {
+        errors.push("min_sdk 必须 >= 26（rgpui-android 要求）".into());
+    }
+    if !app_gradle.contains(&format!("minSdk = {}", cfg.min_sdk())) {
+        errors.push(format!(
+            "build.gradle.kts minSdk 与配置 {} 不匹配",
+            cfg.min_sdk()
+        ));
     }
 
-    // 5. abiFilters 包含 arm64-v8a
-    if !app_gradle.contains("arm64-v8a") {
-        errors.push("abiFilters 必须包含 arm64-v8a".into());
+    // 5. abiFilters 必须包含配置的主 ABI
+    let primary = cfg.primary_abi();
+    if !app_gradle.contains(&primary) {
+        errors.push(format!("abiFilters 必须包含 {}", primary));
     }
 
     if errors.is_empty() {
@@ -192,12 +229,15 @@ fn validate_project(dir: &Path, _name: &str, lib_name: &str, package_id: &str) -
 
 // ── 模板内容 ────────────────────────────────────────────────────────────────
 
-fn cargo_toml(name: &str) -> String {
+fn cargo_toml(name: &str, cfg: &Config) -> String {
+    let git = cfg.git();
+    let branch = cfg.branch();
+    let edition = cfg.edition();
     format!(
         r#"[package]
 name = "{name}"
 version = "0.1.0"
-edition = "2024"
+edition = "{edition}"
 publish = false
 
 [lib]
@@ -210,17 +250,17 @@ name = "{name}"
 path = "src/main.rs"
 
 [dependencies]
-rgpui = {{ git = "https://github.com/launcher-rs/rgpui.git", branch = "feat/1.4.0" }}
-rgpui-platform = {{ git = "https://github.com/launcher-rs/rgpui.git", branch = "feat/1.4.0" }}
+rgpui = {{ git = "{git}", branch = "{branch}" }}
+rgpui-platform = {{ git = "{git}", branch = "{branch}" }}
 log = "0.4"
 
 [target.'cfg(target_os = "android")'.dependencies]
-rgpui-android = {{ git = "https://github.com/launcher-rs/rgpui.git", branch = "feat/1.4.0" }}
+rgpui-android = {{ git = "{git}", branch = "{branch}" }}
 android-activity = {{ version = "0.6", features = ["native-activity"] }}
 android_logger = "0.15"
 
 [target.'cfg(target_os = "ios")'.dependencies]
-rgpui-ios = {{ git = "https://github.com/launcher-rs/rgpui.git", branch = "feat/1.4.0" }}
+rgpui-ios = {{ git = "{git}", branch = "{branch}" }}
 "#
     )
 }
@@ -351,7 +391,16 @@ include(":app")
     )
 }
 
-fn app_build_gradle(package_id: &str) -> String {
+fn app_build_gradle(package_id: &str, cfg: &Config) -> String {
+    let abis = cfg
+        .abis()
+        .iter()
+        .map(|a| format!("\"{}\"", a))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let min_sdk = cfg.min_sdk();
+    let compile_sdk = cfg.compile_sdk();
+    let target_sdk = cfg.target_sdk();
     format!(
         r#"import java.util.Properties
 
@@ -368,17 +417,17 @@ val hasReleaseKey = keystoreProps.containsKey("storeFile")
 
 android {{
     namespace = "{package_id}"
-    compileSdk = 34
+    compileSdk = {compile_sdk}
 
     defaultConfig {{
         applicationId = "{package_id}"
-        minSdk = 26
-        targetSdk = 34
+        minSdk = {min_sdk}
+        targetSdk = {target_sdk}
         versionCode = 1
         versionName = "0.1.0"
 
         ndk {{
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf({abis})
         }}
     }}
 

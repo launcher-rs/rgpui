@@ -323,39 +323,37 @@ fn check_llvm_strip() -> Check {
 
 fn check_device() -> Check {
     let name = "设备连接";
-    match run_cmd_trim("adb", &["devices"]) {
-        Some(out) => {
-            let devices: Vec<&str> = out
-                .lines()
-                .skip(1)
-                .filter(|l| l.contains("\tdevice"))
-                .collect();
-            if devices.is_empty() {
-                Check {
-                    name,
-                    ok: false,
-                    detail: "无设备连接".into(),
-                    fix: Some("开启 USB 调试并连接设备，然后 adb devices 确认".into()),
-                }
-            } else {
-                let detail = devices
-                    .iter()
-                    .map(|l| l.split('\t').next().unwrap_or("?"))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                Check {
-                    name,
-                    ok: true,
-                    detail,
-                    fix: None,
-                }
-            }
-        }
-        None => Check {
+    let Some(out) = crate::adb::adb_output(&["devices"]) else {
+        return Check {
             name,
             ok: false,
             detail: "adb 未找到".into(),
-            fix: Some("确保 ANDROID_HOME/platform-tools 在 PATH 中".into()),
-        },
+            fix: Some("安装 platform-tools 或设置 ANDROID_HOME".into()),
+        };
+    };
+    let devices: Vec<&str> = out
+        .lines()
+        .skip(1)
+        .filter(|l| l.contains('\t') && l.contains("device"))
+        .collect();
+    if devices.is_empty() {
+        Check {
+            name,
+            ok: false,
+            detail: "无设备连接".into(),
+            fix: Some("开启 USB 调试并连接设备，然后 adb devices 确认".into()),
+        }
+    } else {
+        let detail = devices
+            .iter()
+            .map(|l| l.split('\t').next().unwrap_or("?"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Check {
+            name,
+            ok: true,
+            detail,
+            fix: None,
+        }
     }
 }
