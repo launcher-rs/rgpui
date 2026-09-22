@@ -214,8 +214,7 @@ impl Img {
         // This is the list in [image::ImageFormat::from_extension] + `svg`
         #[allow(unused_mut)]
         let mut exts = vec![
-            "jpg", "jpeg", "png", "gif", "webp", "bmp", "ico",
-            "pbm", "pam", "ppm", "pgm", "svg",
+            "jpg", "jpeg", "png", "gif", "webp", "bmp", "ico", "pbm", "pam", "ppm", "pgm", "svg",
         ];
         #[cfg(feature = "image-avif")]
         exts.push("avif");
