@@ -10,14 +10,14 @@ use crate::{
     EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
     Hsla, InputHandler, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke,
     KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent, MonochromeSprite,
-    MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas,
-    PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point, PolychromeSprite,
+    MouseButton, MouseEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas,
+    PlatformDisplay,     PlatformInput, PlatformInputHandler, PlatformWindow, Point, PolychromeSprite,
     Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams, RenderImage,
     RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
     StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRenderingMode, TextStyle,
-    TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
+    TextStyleRefinement, ThermalState, TouchPhase, TransformationMatrix, Underline, UnderlineStyle,
     WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
     WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, rems,
     root::Root, size, transparent_black,
@@ -5237,6 +5237,42 @@ impl Window {
             self.dispatch_mouse_event(any_mouse_event, cx, dom_keys.as_deref());
         } else if let Some(any_key_event) = event.keyboard_event() {
             self.dispatch_key_event(any_key_event, cx);
+        } else if let Some(touch_event) = event.touch_event() {
+            // 触摸转鼠标：让 on_click 等鼠标监听器在触摸设备上也能响应。
+            let position = touch_event.position;
+            match touch_event.phase {
+                TouchPhase::Started => {
+                    let mouse_down = MouseDownEvent {
+                        button: MouseButton::Left,
+                        position,
+                        modifiers: Modifiers::default(),
+                        click_count: 1,
+                        first_mouse: false,
+                    };
+                    self.mouse_position = position;
+                    self.dispatch_mouse_event(&mouse_down, cx, dom_keys.as_deref());
+                }
+                TouchPhase::Moved => {
+                    let mouse_move = MouseMoveEvent {
+                        position,
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Modifiers::default(),
+                    };
+                    self.mouse_position = position;
+                    self.dispatch_mouse_event(&mouse_move, cx, dom_keys.as_deref());
+                }
+                TouchPhase::Ended => {
+                    let mouse_up = MouseUpEvent {
+                        button: MouseButton::Left,
+                        position,
+                        modifiers: Modifiers::default(),
+                        click_count: 1,
+                    };
+                    self.mouse_position = position;
+                    self.dispatch_mouse_event(&mouse_up, cx, dom_keys.as_deref());
+                }
+                TouchPhase::Cancelled => {}
+            }
         }
 
         if self.invalidator.update_count() > update_count_before {
