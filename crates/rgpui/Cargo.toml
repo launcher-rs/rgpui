@@ -285,6 +285,7 @@ nix = { workspace = true, features = ["user"] }
 [dev-dependencies]
 backtrace.workspace = true
 env_logger.workspace = true
+postage.workspace = true
 pretty_assertions.workspace = true
 lyon = { version = "1.0", features = ["extra"] }
 rand.workspace = true
