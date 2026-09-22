@@ -10,7 +10,7 @@
 | 能力 | 状态 |
 |------|------|
 | 出包 + 安装 + 启动不崩 + `logcat` 日志 | ✅ M1 已有 |
-| 首帧渲染 / 触摸 / 按键明文 / 安全区 / 深浅色 | ✅ M2 代码已落地，**待真机验证**（本机有设备按 §8–§9 走一遍） |
+| 首帧渲染 / 触摸 / 按键明文 / 安全区 / 深浅色 | ✅ M2 代码已落地，✅ 已真机验证（Samsung Note8 API 28，返回键修复见 commit `58077ab`） |
 | 状态栏样式 / 剪贴板 JNI / 通知 / 文件选择 | 部分落地：`SystemChromeStyle` + 剪贴板 + `open_url` ✅（M3 前半，见 §10.1）；通知/文件选择待办 |
 | IME 组合串（预编辑/上屏回调） | 未接（M3 后半，随自定义 Activity；M2 只有按键明文） |
 | `cargo check --target aarch64-linux-android`（CI） | ✅ |
@@ -309,7 +309,8 @@ cx.open_url("https://example.com");
 - **CI 能验什么？** `mobile-android` job（ubuntu）在
   `aarch64-linux-android` 上 `cargo check`（`.github/workflows/ci.yml`），
   只查编译不跑 GPU 单测（软件渲染 runner 跑真 GPU case 会挂，见 1.3.0 已知问题）。
-  APK 组装（`cargo-ndk` + Gradle）记 M2，本地真机验证通过后才进 CI。
+   APK 组装（`cargo-ndk` + Gradle）已进 CI（`android-apk` job，见 M2-6），
+   本地真机验证（Samsung Note8 API 28）已通过。
 - **Play 要求 64 位？** 2019 年起新应用必须含 64 位 `.so`，`arm64-v8a` 必打，
   只打 `armeabi-v7a` 会被拒。
 - **`adb install` 报签名冲突？** 换了电脑/删了 debug.keystore，卸载重装。

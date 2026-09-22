@@ -202,6 +202,26 @@ impl Platform for IosPlatform {
 
     fn write_to_clipboard(&self, _item: ClipboardItem) {}
 
+    /// 从 Linux 主选择区读取（M1 桩：iOS 无主选择区，宿主机 check 用）。
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn read_from_primary(&self) -> Option<ClipboardItem> {
+        None
+    }
+
+    /// 写入 Linux 主选择区（M1 桩：无操作）。
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn write_to_primary(&self, _item: ClipboardItem) {}
+
+    /// 从 macOS 查找粘贴板读取（M1 桩：宿主机 check 用）。
+    #[cfg(target_os = "macos")]
+    fn read_from_find_pasteboard(&self) -> Option<ClipboardItem> {
+        None
+    }
+
+    /// 写入 macOS 查找粘贴板（M1 桩：无操作）。
+    #[cfg(target_os = "macos")]
+    fn write_to_find_pasteboard(&self, _item: ClipboardItem) {}
+
     fn write_credentials(
         &self,
         _url: &str,

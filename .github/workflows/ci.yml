@@ -108,6 +108,19 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Set up Android SDK + NDK
+        uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: true
+          # action 默认含已废弃的 "tools" 包，sdkmanager 会失败，只装 platform-tools。
+          packages: platform-tools
+
+      - name: Resolve NDK path + toolchain PATH
+        # 依赖的构建脚本（cc-rs）要调 aarch64-linux-android-clang，无 NDK 会失败。
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_ROOT" >> "$GITHUB_ENV"
+          echo "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
       - name: cargo check (android lib)
         run: cargo check -p rgpui-android --target aarch64-linux-android
 

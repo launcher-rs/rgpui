@@ -530,6 +530,30 @@ impl Platform for SharedPlatform {
         self.inner.write_to_clipboard(item)
     }
 
+    /// 从 Linux 主选择区读取（宿主机 check 用，透传内部实现）。
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn read_from_primary(&self) -> Option<ClipboardItem> {
+        self.inner.read_from_primary()
+    }
+
+    /// 写入 Linux 主选择区（宿主机 check 用，透传内部实现）。
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn write_to_primary(&self, item: ClipboardItem) {
+        self.inner.write_to_primary(item)
+    }
+
+    /// 从 macOS 查找粘贴板读取（宿主机 check 用，透传内部实现）。
+    #[cfg(target_os = "macos")]
+    fn read_from_find_pasteboard(&self) -> Option<ClipboardItem> {
+        self.inner.read_from_find_pasteboard()
+    }
+
+    /// 写入 macOS 查找粘贴板（宿主机 check 用，透传内部实现）。
+    #[cfg(target_os = "macos")]
+    fn write_to_find_pasteboard(&self, item: ClipboardItem) {
+        self.inner.write_to_find_pasteboard(item)
+    }
+
     fn write_credentials(
         &self,
         url: &str,
@@ -796,6 +820,26 @@ impl Platform for AndroidPlatform {
             *self.clipboard.lock() = Some(text);
         }
     }
+
+    /// 从 Linux 主选择区读取（宿主机 check 用桩：无主选择区）。
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn read_from_primary(&self) -> Option<ClipboardItem> {
+        None
+    }
+
+    /// 写入 Linux 主选择区（宿主机 check 用桩：无操作）。
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn write_to_primary(&self, _item: ClipboardItem) {}
+
+    /// 从 macOS 查找粘贴板读取（宿主机 check 用桩：无查找粘贴板）。
+    #[cfg(target_os = "macos")]
+    fn read_from_find_pasteboard(&self) -> Option<ClipboardItem> {
+        None
+    }
+
+    /// 写入 macOS 查找粘贴板（宿主机 check 用桩：无操作）。
+    #[cfg(target_os = "macos")]
+    fn write_to_find_pasteboard(&self, _item: ClipboardItem) {}
 
     fn write_credentials(
         &self,
