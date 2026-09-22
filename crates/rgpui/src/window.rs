@@ -19,9 +19,11 @@ use crate::{
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRenderingMode, TextStyle,
     TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
     WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
-    WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, rems,
-    root::Root, size, transparent_black,
-};
+     WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px,
+     root::Root, size, transparent_black,
+ };
+ #[cfg(any(feature = "inspector", debug_assertions))]
+ use super::rems;
 
 use crate::collections::{FxHashMap, FxHashSet};
 use crate::refineable::Refineable;
