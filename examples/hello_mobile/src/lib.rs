@@ -32,11 +32,7 @@ impl Render for HelloMobile {
             .text_color(rgb(0xffffff))
             .child(div().text_3xl().child(format!("Hello, {platform}!")))
             .child(div().text_lg().child(subtitle))
-            .child(
-                div()
-                    .text_xl()
-                    .child(format!("触摸 / 点击次数: {taps}")),
-            )
+            .child(div().text_xl().child(format!("触摸 / 点击次数: {taps}")))
             .child(
                 div()
                     .id("tap-target")

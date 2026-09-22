@@ -6,6 +6,7 @@ members = [
     "crates/rgpui-3d",
     "crates/rgpui-android",
     "crates/rgpui-character",
+    "crates/rgpui-cli",
     "crates/rgpui-dom",
     "crates/rgpui-ios",
     "crates/rgpui-linux",
