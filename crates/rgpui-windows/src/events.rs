@@ -764,9 +764,20 @@ impl WindowsWindowInner {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> Option<isize> {
-        // 无边框窗口：整个窗口都是客户区，没有非客户区
-        if self.client_decorations {
-            return Some(0);
+        // 自定义标题栏（client_decorations）：顶部直达客户区（无系统标题栏），
+        // 左右/底部保留系统边框——DWM 需要非客户区才能裁剪圆角。
+        if self.client_decorations && !self.state.is_fullscreen() && wparam.0 != 0 {
+            unsafe {
+                let params = lparam.0 as *mut NCCALCSIZE_PARAMS;
+                let saved_top = (*params).rgrc[0].top;
+                let result = DefWindowProcW(handle, WM_NCCALCSIZE, wparam, lparam);
+                (*params).rgrc[0].top = saved_top;
+                if self.state.is_maximized() {
+                    let dpi = GetDpiForWindow(handle);
+                    (*params).rgrc[0].top += get_frame_thicknessx(dpi);
+                }
+                return Some(result.0 as isize);
+            }
         }
 
         if self.state.titlebar_visible.get() || self.state.is_fullscreen() || wparam.0 == 0 {

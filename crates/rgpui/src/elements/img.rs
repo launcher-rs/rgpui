@@ -206,12 +206,34 @@ pub fn img(source: impl Into<ImageSource>) -> Img {
 
 impl Img {
     /// 此 img 元素当前支持的所有格式扩展名列表
+    ///
+    /// 注意：`avif`/`dds`/`exr`/`ff`/`hdr`/`tga`/`tiff`/`qoi` 解码默认关闭以减体积，
+    /// 需要时开启 `rgpui` 的 `image-avif`/`image-dds`/`image-exr`/`image-ff`/
+    /// `image-hdr`/`image-tga`/`image-tiff`/`image-qoi` 特性按需加回。
     pub fn extensions() -> &'static [&'static str] {
         // This is the list in [image::ImageFormat::from_extension] + `svg`
-        &[
-            "avif", "jpg", "jpeg", "png", "gif", "webp", "tif", "tiff", "tga", "dds", "bmp", "ico",
-            "hdr", "exr", "pbm", "pam", "ppm", "pgm", "ff", "farbfeld", "qoi", "svg",
-        ]
+        #[allow(unused_mut)]
+        let mut exts = vec![
+            "jpg", "jpeg", "png", "gif", "webp", "bmp", "ico", "pbm", "pam", "ppm", "pgm", "svg",
+        ];
+        #[cfg(feature = "image-avif")]
+        exts.push("avif");
+        #[cfg(feature = "image-dds")]
+        exts.push("dds");
+        #[cfg(feature = "image-exr")]
+        exts.push("exr");
+        #[cfg(feature = "image-ff")]
+        exts.extend_from_slice(&["ff", "farbfeld"]);
+        #[cfg(feature = "image-hdr")]
+        exts.push("hdr");
+        #[cfg(feature = "image-tga")]
+        exts.push("tga");
+        #[cfg(feature = "image-tiff")]
+        exts.extend_from_slice(&["tif", "tiff"]);
+        #[cfg(feature = "image-qoi")]
+        exts.push("qoi");
+        // Box::leak 把 Vec 泄漏为 &'static，后续调用零开销
+        Box::leak(exts.into_boxed_slice())
     }
 
     /// 设置当前节点的图像缓存。

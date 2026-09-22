@@ -2944,7 +2944,16 @@ impl Image {
             ImageFormat::Jpeg => frames_for_image(&self.bytes, image::ImageFormat::Jpeg)?,
             ImageFormat::Webp => frames_for_image(&self.bytes, image::ImageFormat::WebP)?,
             ImageFormat::Bmp => frames_for_image(&self.bytes, image::ImageFormat::Bmp)?,
-            ImageFormat::Tiff => frames_for_image(&self.bytes, image::ImageFormat::Tiff)?,
+            ImageFormat::Tiff => {
+                #[cfg(feature = "image-tiff")]
+                {
+                    frames_for_image(&self.bytes, image::ImageFormat::Tiff)?
+                }
+                #[cfg(not(feature = "image-tiff"))]
+                {
+                    anyhow::bail!("TIFF format not enabled, enable `image-tiff` feature")
+                }
+            }
             ImageFormat::Ico => frames_for_image(&self.bytes, image::ImageFormat::Ico)?,
             ImageFormat::Svg => {
                 return svg_renderer

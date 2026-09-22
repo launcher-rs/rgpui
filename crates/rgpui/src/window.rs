@@ -1,6 +1,8 @@
 //! 窗口管理：窗口创建、事件分发、渲染管线与输入处理。
 
 #[cfg(any(feature = "inspector", debug_assertions))]
+use super::rems;
+#[cfg(any(feature = "inspector", debug_assertions))]
 use crate::Inspector;
 use crate::{
     Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset,
@@ -19,8 +21,8 @@ use crate::{
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRenderingMode, TextStyle,
     TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
     WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
-    WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, rems,
-    root::Root, size, transparent_black,
+    WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, root::Root,
+    size, transparent_black,
 };
 
 use crate::collections::{FxHashMap, FxHashSet};

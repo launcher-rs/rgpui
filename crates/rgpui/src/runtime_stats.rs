@@ -90,12 +90,14 @@ fn panic_payload(info: &std::panic::PanicHookInfo) -> String {
 }
 
 /// 单次进程采样结果（CPU 百分比 + 内存 MB），失败返回 `None`（面板显示横线）。
+#[cfg(any(feature = "inspector", debug_assertions))]
 pub(crate) struct ProcessSample {
     pub(crate) cpu_percent: f64,
     pub(crate) memory_mb: f64,
 }
 
 /// 采样器内部状态（`Window` 持有，面板只读缓存值）。
+#[cfg(any(feature = "inspector", debug_assertions))]
 #[derive(Default)]
 pub(crate) struct RuntimeSamplerState {
     pub(crate) clock: CpuClock,
@@ -104,6 +106,7 @@ pub(crate) struct RuntimeSamplerState {
 }
 
 /// CPU 时钟默认值（`CpuClock::new` 需在运行时求核数，不适合 `Default`）。
+#[cfg(any(feature = "inspector", debug_assertions))]
 impl Default for CpuClock {
     fn default() -> Self {
         Self::new()
@@ -111,6 +114,7 @@ impl Default for CpuClock {
 }
 
 /// 上次 CPU 时间（100ns 或微秒，平台相关），调用方持有以算差分。
+#[cfg(any(feature = "inspector", debug_assertions))]
 pub(crate) struct CpuClock {
     #[cfg(target_os = "windows")]
     prev_proc_100ns: u64,
@@ -121,6 +125,7 @@ pub(crate) struct CpuClock {
     num_cpus: f64,
 }
 
+#[cfg(any(feature = "inspector", debug_assertions))]
 impl CpuClock {
     pub(crate) fn new() -> Self {
         Self {
