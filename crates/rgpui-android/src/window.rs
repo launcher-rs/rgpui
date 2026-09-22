@@ -65,8 +65,8 @@ impl SafeAreaInsets {
 pub type RequestFrameCallback = Box<dyn FnMut() + Send + 'static>;
 /// 触摸点回调。
 pub type TouchCallback = Box<dyn FnMut(TouchPoint) + Send + 'static>;
-/// 按键事件回调。
-pub type KeyCallback = Box<dyn FnMut(AndroidKeyEvent) + Send + 'static>;
+/// 按键事件回调；返回值表示事件是否被应用消费（用于放行系统默认处理）。
+pub type KeyCallback = Box<dyn FnMut(AndroidKeyEvent) -> bool + Send + 'static>;
 /// 尺寸变化回调（设备像素尺寸 + 缩放；仅真机存槽）。
 pub type ResizeCallback = Box<dyn FnMut(Size<DevicePixels>, f32) + Send + 'static>;
 /// 深浅色变化回调（参数为本地外观，`AndroidPlatformWindow` 再映射核心外观）。
@@ -360,15 +360,18 @@ impl AndroidWindow {
         }
     }
 
-    /// 投递按键事件。
-    pub fn handle_key_event(&self, event: AndroidKeyEvent) {
+    /// 投递按键事件；返回是否被应用消费。
+    pub fn handle_key_event(&self, event: AndroidKeyEvent) -> bool {
         let callback = { self.state.lock().key_callback.take() };
         if let Some(mut callback) = callback {
-            callback(event);
+            let consumed = callback(event);
             let mut state = self.state.lock();
             if state.key_callback.is_none() {
                 state.key_callback = Some(callback);
             }
+            consumed
+        } else {
+            false
         }
     }
 }
@@ -1124,6 +1127,8 @@ impl PlatformWindow for AndroidPlatformWindow {
         // 再按 keystroke 发 KeyDown/KeyUp。
         {
             let shared = Arc::clone(&shared);
+            // 返回键 DOWN 的消费结果，配对进 UP，避免 DOWN 已被消费而 UP 触发系统退出。
+            let mut back_down_consumed = false;
             self.window
                 .on_key_event(Box::new(move |key_event: AndroidKeyEvent| {
                     if key_event.action == AKEY_EVENT_ACTION_DOWN {
@@ -1158,7 +1163,7 @@ impl PlatformWindow for AndroidPlatformWindow {
                         key_event.unicode_char,
                     ) {
                         Some(keystroke) => keystroke,
-                        None => return,
+                        None => return false,
                     };
                     let event = if key_event.action == AKEY_EVENT_ACTION_DOWN {
                         PlatformInput::KeyDown(rgpui::KeyDownEvent {
@@ -1169,9 +1174,23 @@ impl PlatformWindow for AndroidPlatformWindow {
                     } else if key_event.action == AKEY_EVENT_ACTION_UP {
                         PlatformInput::KeyUp(rgpui::KeyUpEvent { keystroke })
                     } else {
-                        return;
+                        return false;
                     };
-                    shared.lock()(event);
+                    let result = shared.lock()(event);
+                    // 应用是否消费了该按键（阻止系统默认处理，如 Android 返回键退出）。
+                    let consumed = result.default_prevented || !result.propagate;
+                    if key_event.key_code == super::keyboard::AKEYCODE_BACK {
+                        if key_event.action == AKEY_EVENT_ACTION_DOWN {
+                            back_down_consumed = consumed;
+                            consumed
+                        } else {
+                            let paired = back_down_consumed || consumed;
+                            back_down_consumed = false;
+                            paired
+                        }
+                    } else {
+                        consumed
+                    }
                 }));
         }
     }

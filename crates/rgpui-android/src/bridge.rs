@@ -584,13 +584,19 @@ fn process_input_events(app: &AndroidApp) {
                     let code: u32 = key_event.key_code().into();
                     let meta: u32 = key_event.meta_state().0;
                     let unicode = unicode_char_for_key_event(code as i32, action, meta as i32);
-                    window.handle_key_event(AndroidKeyEvent {
+                    let consumed = window.handle_key_event(AndroidKeyEvent {
                         key_code: code as i32,
                         action,
                         meta_state: meta as i32,
                         unicode_char: unicode,
                     });
-                    android_activity::InputStatus::Handled
+                    // 返回键未被应用消费时放行系统默认处理（退出到桌面）；
+                    // 其余按键恒视为已消费，保持既有文本输入行为。
+                    if code as i32 == super::keyboard::AKEYCODE_BACK && !consumed {
+                        android_activity::InputStatus::Unhandled
+                    } else {
+                        android_activity::InputStatus::Handled
+                    }
                 }
                 _ => android_activity::InputStatus::Unhandled,
             }
