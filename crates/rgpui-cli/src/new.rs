@@ -111,6 +111,16 @@ pub fn run(name: &str, cfg: &Config) -> Result<()> {
         &template_dir.join("gradlew"),
         &project_dir.join("android/gradlew"),
     )?;
+    // gradlew 必须可执行：模板在 git 里是 644（Windows 无 +x 概念），
+    // 不显式 chmod 的话生成工程在 Linux/macOS 下 `./android/gradlew` 会 Permission denied。
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(
+            &project_dir.join("android/gradlew"),
+            std::fs::Permissions::from_mode(0o755),
+        )?;
+    }
     copy_file(
         &template_dir.join("gradlew.bat"),
         &project_dir.join("android/gradlew.bat"),

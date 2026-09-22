@@ -315,6 +315,13 @@ mod looper_glue {
                 !looper.is_null(),
                 "AndroidDispatcher 必须在 Android 主线程构造"
             );
+            // 持有 looper 引用计数：拥有线程退出后 looper 才析构；
+            // 分发器 Drop 时先注销再释放，保证注销永远落在活 looper 上
+            // （返回键退出后同进程重进，旧线程已死，不持有会导致
+            // `ALooper_removeFd` 碰已销毁 mutex 直接 SIGABRT）。
+            unsafe {
+                ndk_sys::ALooper_acquire(looper as *mut ndk_sys::ALooper);
+            };
             let mut fds = [0 as RawFd; 2];
             assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0, "唤醒管创建失败");
             for fd in fds {
@@ -367,7 +374,7 @@ mod looper_glue {
     }
 
     impl Drop for AndroidDispatcher {
-        /// 注销 looper 并关闭唤醒管。
+        /// 注销 looper 并关闭唤醒管，最后释放 looper 引用。
         fn drop(&mut self) {
             self.shutdown.store(true, Ordering::SeqCst);
             if !self.looper.is_null() {
@@ -381,6 +388,12 @@ mod looper_glue {
             for fd in [self.wake_read_fd, self.wake_write_fd] {
                 if fd >= 0 {
                     unsafe { libc::close(fd) };
+                }
+            }
+            // 与构造时的 acquire 配对：looper 至此才允许析构。
+            if !self.looper.is_null() {
+                unsafe {
+                    ndk_sys::ALooper_release(self.looper as *mut ndk_sys::ALooper);
                 }
             }
         }

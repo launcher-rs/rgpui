@@ -62,6 +62,11 @@ mod real {
     pub(crate) fn install() {
         // SAFETY：纯查询调用线程 looper。
         let looper = unsafe { ndk_sys::ALooper_forThread() };
+        // 先清旧进程/旧 Activity 残留的帧需求，再换新 looper：
+        // 残留需求会叫醒已销毁的旧 looper（FORTIFY abort）。
+        POST_REQUESTED.store(false, Ordering::Release);
+        FRAME_DUE.store(false, Ordering::Release);
+        OFF_THREAD_DEMAND.store(false, Ordering::Release);
         MAIN_LOOPER.store(looper, Ordering::Release);
 
         let has_choreographer = *VSYNC_THREAD.get_or_init(spawn_vsync_thread);

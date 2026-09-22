@@ -5,7 +5,7 @@ use crate::config::Config;
 
 /// `cargo rgpui run` — adb install + start + logcat
 pub fn run(release: bool, cfg: &Config) -> Result<()> {
-    let package_name = crate::install::package_name(cfg)?;
+    let package_name = crate::install::package_name(cfg, release)?;
     let activity = format!("{}/android.app.NativeActivity", package_name);
     // logcat 过滤 tag = crate 名（android_logger 默认用 crate 名做 tag）
     let log_tag = crate::install::crate_name()?;

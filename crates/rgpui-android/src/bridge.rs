@@ -15,6 +15,7 @@
 use android_activity::{AndroidApp, MainEvent, PollEvent};
 use jni::JavaVM;
 use jni::objects::{JObject, JString, JValue};
+use parking_lot::RwLock;
 use rgpui::{Platform, WindowAppearance};
 use std::{
     ffi::c_void,
@@ -56,36 +57,40 @@ static INIT_WINDOW_DONE: AtomicBool = AtomicBool::new(false);
 
 // ── 全局状态 ─────────────────────────────────────────────────────────────────
 
-/// `android_main` 存的 `AndroidApp`（此后只读）。
-static ANDROID_APP: OnceLock<AndroidApp> = OnceLock::new();
+/// `android_main` 存的 `AndroidApp`（每次 Activity 重建都更新，只读用）。
+static ANDROID_APP: RwLock<Option<AndroidApp>> = RwLock::new(None);
 
-/// 进程级 `AndroidPlatform`（`init_platform` 装一次）。
-static PLATFORM: OnceLock<Arc<AndroidPlatform>> = OnceLock::new();
+/// 进程级 `AndroidPlatform`（每次 Activity 重建都换新，旧实例释放时注销 looper）。
+static PLATFORM: RwLock<Option<Arc<AndroidPlatform>>> = RwLock::new(None);
 
 /// JVM 包装（`JavaVM::from_raw` 包一次，多线程复用）。
 static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
 /// 取已存的 `AndroidApp`（初始化前为空）。
 pub fn android_app() -> Option<AndroidApp> {
-    ANDROID_APP.get().cloned()
+    ANDROID_APP.read().clone()
 }
 
-/// 取全局平台（初始化前为空）。
-pub fn platform() -> Option<&'static Arc<AndroidPlatform>> {
-    PLATFORM.get()
+/// 取全局平台（初始化前为空；返回克隆，调用方持有期间旧平台不释放）。
+pub fn platform() -> Option<Arc<AndroidPlatform>> {
+    locked_platform()
+}
+
+/// 取当前全局平台（内部用，读锁下克隆）。
+fn locked_platform() -> Option<Arc<AndroidPlatform>> {
+    PLATFORM.read().clone()
 }
 
 /// 取 `Application::with_platform` 要的共享平台包装。
 pub fn shared_platform() -> Option<SharedPlatform> {
-    PLATFORM
-        .get()
-        .map(|platform| SharedPlatform::new(Arc::clone(platform)))
+    locked_platform().map(|platform| SharedPlatform::new(platform))
 }
 
 /// JVM 裸指针（`platform.rs` 的 JNI 调用用）。
 pub fn java_vm() -> *mut c_void {
     ANDROID_APP
-        .get()
+        .read()
+        .as_ref()
         .map(|app| app.vm_as_ptr())
         .unwrap_or(std::ptr::null_mut())
 }
@@ -93,7 +98,8 @@ pub fn java_vm() -> *mut c_void {
 /// Activity 的 JNI 全局引用（`android-activity` 保证进程期有效）。
 pub fn activity_as_ptr() -> *mut c_void {
     ANDROID_APP
-        .get()
+        .read()
+        .as_ref()
         .map(|app| app.activity_as_ptr())
         .unwrap_or(std::ptr::null_mut())
 }
@@ -233,18 +239,19 @@ pub fn install_panic_hook() {
     }));
 }
 
-/// 存 `AndroidApp` 并建全局平台（`android_main` 调一次，返回平台供注册回调）。
-pub fn init_platform(app: &AndroidApp) -> &'static Arc<AndroidPlatform> {
-    let _ = ANDROID_APP.set(app.clone());
+/// 存 `AndroidApp` 并建全局平台（每次 `android_main` 都调：返回键退出后
+/// 进程还在，同进程重进会起新 native 线程，必须换新平台——旧平台绑定的
+/// 线程/looper 已随旧 Activity 销毁，复用会在 `App` 主线程断言处 panic）。
+pub fn init_platform(app: &AndroidApp) -> Arc<AndroidPlatform> {
+    *ANDROID_APP.write() = Some(app.clone());
     log::info!("init_platform：AndroidApp 已存");
     let platform = Arc::new(AndroidPlatform::new(false));
     log::info!("init_platform：AndroidPlatform 已建");
-    if PLATFORM.set(Arc::clone(&platform)).is_err() {
-        log::warn!("PLATFORM 重复初始化");
+    let old = PLATFORM.write().replace(platform.clone());
+    if old.is_some() {
+        log::info!("init_platform：Activity 重建，旧平台已替换（Drop 注销 looper）");
     }
-    PLATFORM
-        .get()
-        .unwrap_or_else(|| panic!("PLATFORM 应已就绪"))
+    platform
 }
 
 // ── 主循环 ───────────────────────────────────────────────────────────────────
@@ -257,7 +264,7 @@ pub fn run_event_loop(app: &AndroidApp) {
     let mut app_is_active = false;
 
     loop {
-        if let Some(platform) = PLATFORM.get() {
+        if let Some(platform) = locked_platform() {
             if platform.should_quit() {
                 log::info!("run_event_loop：平台要求退出");
                 break;
@@ -268,9 +275,7 @@ pub fn run_event_loop(app: &AndroidApp) {
         // 阻塞等事：生命周期命令、输入、主任务、vsync 回调；
         // 超时只兜延后任务与无 choreographer 的挂钟。
         let timeout = frame_source::poll_timeout(
-            PLATFORM
-                .get()
-                .and_then(|platform| platform.next_delayed_due()),
+            locked_platform().and_then(|platform| platform.next_delayed_due()),
             INIT_WINDOW_DONE.load(Ordering::Relaxed) && app_is_active,
         );
         app.poll_events(Some(timeout), |event| match event {
@@ -280,7 +285,7 @@ pub fn run_event_loop(app: &AndroidApp) {
 
         // 延迟生命周期消化（`poll_events` 返回后，无锁竞争）。
         drain_pending_lifecycle(app);
-        if let Some(platform) = PLATFORM.get() {
+        if let Some(platform) = locked_platform() {
             if let Some(window) = platform.primary_window() {
                 let is_active = window.is_active();
                 if is_active != app_is_active {
@@ -294,7 +299,7 @@ pub fn run_event_loop(app: &AndroidApp) {
         invoke_deferred_init_callbacks();
 
         // 渲染：可画且节拍器欠帧才 tick GPUI 一次。
-        if let Some(platform) = PLATFORM.get() {
+        if let Some(platform) = locked_platform() {
             if INIT_WINDOW_DONE.load(Ordering::Relaxed) && app_is_active {
                 let ran = platform.flush_main_thread_tasks();
                 if ran > 0 {
@@ -330,7 +335,7 @@ fn drain_pending_lifecycle(app: &AndroidApp) {
     if TERM_WINDOW_PENDING.swap(false, Ordering::Relaxed) {
         log::info!("lifecycle：TerminateWindow");
         INIT_WINDOW_DONE.store(false, Ordering::Relaxed);
-        if let Some(platform) = PLATFORM.get() {
+        if let Some(platform) = locked_platform() {
             if let Some(window) = platform.primary_window() {
                 window.term_window();
             }
@@ -340,7 +345,7 @@ fn drain_pending_lifecycle(app: &AndroidApp) {
 
     if INIT_WINDOW_PENDING.swap(false, Ordering::Relaxed) {
         log::info!("lifecycle：InitWindow");
-        if let Some(platform) = PLATFORM.get() {
+        if let Some(platform) = locked_platform() {
             if let Some(native_window) = app.native_window() {
                 let (width, height) = (native_window.width(), native_window.height());
                 log::info!("InitWindow：{width}×{height}");
@@ -387,7 +392,7 @@ fn drain_pending_lifecycle(app: &AndroidApp) {
     }
 
     if WINDOW_RESIZED_PENDING.swap(false, Ordering::Relaxed) {
-        if let Some(platform) = PLATFORM.get() {
+        if let Some(platform) = locked_platform() {
             if let Some(window) = platform.primary_window() {
                 window.handle_resize();
                 let rect = app.content_rect();
@@ -402,7 +407,7 @@ fn drain_pending_lifecycle(app: &AndroidApp) {
     }
 
     if CONFIG_CHANGED_PENDING.swap(false, Ordering::Relaxed) {
-        if let Some(platform) = PLATFORM.get() {
+        if let Some(platform) = locked_platform() {
             platform.notify_keyboard_layout_change();
             if let Some(window) = platform.primary_window() {
                 apply_system_appearance(&window);
@@ -412,7 +417,7 @@ fn drain_pending_lifecycle(app: &AndroidApp) {
 
     if PAUSE_PENDING.swap(false, Ordering::Relaxed) {
         log::info!("lifecycle：Pause");
-        if let Some(platform) = PLATFORM.get() {
+        if let Some(platform) = locked_platform() {
             platform.did_enter_background();
             if let Some(window) = platform.primary_window() {
                 window.set_active(false);
@@ -422,7 +427,7 @@ fn drain_pending_lifecycle(app: &AndroidApp) {
 
     if RESUME_PENDING.swap(false, Ordering::Relaxed) {
         log::info!("lifecycle：Resume");
-        if let Some(platform) = PLATFORM.get() {
+        if let Some(platform) = locked_platform() {
             platform.did_become_active();
             if let Some(window) = platform.primary_window() {
                 window.set_active(true);
@@ -445,7 +450,7 @@ fn invoke_deferred_init_callbacks() {
     if INIT_WINDOW_DONE.load(Ordering::Relaxed) {
         return;
     }
-    let Some(platform) = PLATFORM.get() else {
+    let Some(platform) = locked_platform() else {
         return;
     };
     if platform.primary_window().is_none() {
@@ -501,7 +506,7 @@ fn handle_main_event(event: MainEvent<'_>) {
         }
         MainEvent::Destroy => {
             log::info!("lifecycle：Destroy");
-            if let Some(platform) = PLATFORM.get() {
+            if let Some(platform) = locked_platform() {
                 platform.quit();
             }
         }
@@ -522,7 +527,7 @@ const ACTION_CANCEL: u32 = 3;
 
 /// 耗尽输入队列喂窗口（每批输入补一帧需求，触摸采样才跟手）。
 fn process_input_events(app: &AndroidApp) {
-    let Some(platform) = PLATFORM.get() else {
+    let Some(platform) = locked_platform() else {
         return;
     };
     let Some(window) = platform.primary_window() else {

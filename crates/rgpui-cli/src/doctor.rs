@@ -64,7 +64,10 @@ fn run_cmd(cmd: &str, args: &[&str]) -> Option<String> {
         .ok()
         .and_then(|o| {
             if o.status.success() {
-                String::from_utf8(o.stdout).ok()
+                // 部分工具（如 `java -version`）把版本信息打到 stderr，一并合并后再判断。
+                let mut out = String::from_utf8_lossy(&o.stdout).into_owned();
+                out.push_str(&String::from_utf8_lossy(&o.stderr));
+                Some(out)
             } else {
                 None
             }

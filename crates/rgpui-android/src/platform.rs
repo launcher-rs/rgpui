@@ -59,7 +59,7 @@ pub struct AndroidPlatform {
 }
 
 // SAFETY：`gpu_context`（`Rc`）的 GPU 活全在主线程，永不逃逸；
-// `Send` 只为 `Arc<AndroidPlatform>` 进全局 `OnceLock`。
+// `Send` 只为 `Arc<AndroidPlatform>` 进全局 `RwLock`。
 unsafe impl Send for AndroidPlatform {}
 unsafe impl Sync for AndroidPlatform {}
 
