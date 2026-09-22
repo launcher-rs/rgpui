@@ -91,7 +91,7 @@ postage = { version = "0.5", features = ["futures-traits"] }
 # 序列化/反序列化框架
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 # JSON 处理
-serde_json = { version = "1.0.151", features = ["preserve_order", "raw_value"] }
+serde_json = { version = "1.0.151", features = ["preserve_order"] }
 # 宽松 JSON 解析
 serde_json_lenient = { version = "0.2", features = ["preserve_order", "raw_value"] }
 # URL 编码序列化
@@ -187,24 +187,18 @@ parking_lot = "0.12.5"
 # 位标志宏
 bitflags = "2.13.1"
 # UUID 生成
-uuid = { version = "1.26.0", features = ["v4", "v5", "v7", "serde"] }
+uuid = { version = "1.26.0", features = ["v4", "serde"] }
 
 # ---- 图像处理 ----
 # 图像编解码（默认关闭 avif：纯解码的 UI 框架无需为 rav1e 这套 AV1 编码器链
 # 买单，需要 AVIF 解码的应用可开启 rgpui 的 `image-avif` 特性按需加回）
 image = { version = "0.25.10", default-features = false, features = [
     "bmp",
-    "dds",
-    "exr",
-    "ff",
     "gif",
-    "hdr",
     "ico",
     "jpeg",
     "png",
     "pnm",
-    "qoi",
-    "tga",
     "tiff",
     "webp",
 ] }

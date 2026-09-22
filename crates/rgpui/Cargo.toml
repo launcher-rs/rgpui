@@ -71,6 +71,18 @@ qr-code = ["dep:qrcode"]
 # AVIF 图片解码：默认关闭以减体积（image 的 avif 特性会引入 rav1e 整套 AV1
 # 编码器链，对只做解码的 UI 框架是纯负担）。需要时显式开启。
 image-avif = ["image/avif"]
+# DDS 图片解码（DirectDraw Surface）。默认关闭，桌面 UI 极少使用。
+image-dds = ["image/dds"]
+# EXR 图片解码（OpenEXR 高动态范围）。默认关闭，拉入 half/num-complex 等重型依赖。
+image-exr = ["image/exr"]
+# Farbfeld 图片解码。默认关闭。
+image-ff = ["image/ff"]
+# HDR 图片解码（Radiance HDR）。默认关闭。
+image-hdr = ["image/hdr"]
+# TGA 图片解码（Targa）。默认关闭。
+image-tga = ["image/tga"]
+# QOI 图片解码（Quite OK Image）。默认关闭。
+image-qoi = ["image/qoi"]
 # Tokio 异步运行时集成（自 rgpui-tokio 并入，约 120 行薄封装）。
 # 默认关闭以保持核心精简，需要 tokio 异步能力的应用可显式开启。
 tokio = ["dep:tokio"]
