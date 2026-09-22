@@ -5,7 +5,9 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use async_compression::futures::bufread::{BzDecoder, GzipDecoder};
+#[cfg(feature = "bzip2-decompress")]
+use async_compression::futures::bufread::BzDecoder;
+use async_compression::futures::bufread::GzipDecoder;
 use futures::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWrite, io::BufReader};
 use sha2::{Digest, Sha256};
 
@@ -184,7 +186,12 @@ async fn stream_response_archive(
 ) -> Result<()> {
     match asset_kind {
         AssetKind::TarGz => extract_tar_gz(destination_path, url, response).await?,
+        #[cfg(feature = "bzip2-decompress")]
         AssetKind::TarBz2 => extract_tar_bz2(destination_path, url, response).await?,
+        #[cfg(not(feature = "bzip2-decompress"))]
+        AssetKind::TarBz2 => {
+            anyhow::bail!("bzip2 decompression not enabled, enable `bzip2-decompress` feature")
+        }
         AssetKind::Gz => extract_gz(destination_path, url, response).await?,
         AssetKind::Zip => {
             crate::util::archive::extract_zip(destination_path, response).await?;
@@ -202,7 +209,12 @@ async fn stream_file_archive(
 ) -> Result<()> {
     match asset_kind {
         AssetKind::TarGz => extract_tar_gz(destination_path, url, file_archive).await?,
+        #[cfg(feature = "bzip2-decompress")]
         AssetKind::TarBz2 => extract_tar_bz2(destination_path, url, file_archive).await?,
+        #[cfg(not(feature = "bzip2-decompress"))]
+        AssetKind::TarBz2 => {
+            anyhow::bail!("bzip2 decompression not enabled, enable `bzip2-decompress` feature")
+        }
         AssetKind::Gz => extract_gz(destination_path, url, file_archive).await?,
         #[cfg(not(windows))]
         AssetKind::Zip => {
@@ -228,6 +240,7 @@ async fn extract_tar_gz(
 }
 
 /// 解压 tar.bz2 归档
+#[cfg(feature = "bzip2-decompress")]
 async fn extract_tar_bz2(
     destination_path: &Path,
     url: &str,

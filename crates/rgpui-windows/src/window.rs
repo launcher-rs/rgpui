@@ -498,8 +498,14 @@ impl WindowsWindow {
                 (WS_EX_TOPMOST | WS_EX_TOOLWINDOW, WS_POPUP)
             }
             _ if params.app_owns_titlebar_drag => {
-                // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框
-                (WS_EX_APPWINDOW, WS_POPUP)
+                // 自定义标题栏：保留 WS_THICKFRAME 使 DWM 绘制圆角（Win11），
+                // 非客户区由 WM_NCCALCSIZE 处理（顶部直达客户区，左右/底部保留
+                // 薄边框供 DWM 裁剪圆角），呈现无边框外观。
+                let mut dwstyle = WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX;
+                if params.is_minimizable {
+                    dwstyle |= WS_MINIMIZEBOX;
+                }
+                (WS_EX_APPWINDOW, dwstyle)
             }
             _ => {
                 let mut dwstyle = WS_SYSMENU;
@@ -595,6 +601,10 @@ impl WindowsWindow {
         register_drag_drop(&this)?;
         set_non_rude_hwnd(hwnd, true);
         configure_dwm_dark_mode(hwnd, appearance);
+        // 自定义标题栏窗口显式设置 Win11 圆角（DComp 窗口 DWM 不自动裁剪）
+        if client_decorations {
+            set_dwm_corner_round(hwnd);
+        }
         this.state.border_offset.update(hwnd)?;
         let placement = retrieve_window_placement(
             hwnd,
@@ -1727,6 +1737,21 @@ fn retrieve_window_placement(
     let bounds = bounds.to_device_pixels(scale_factor);
     placement.rcNormalPosition = calculate_window_rect(bounds, border_offset);
     Ok(placement)
+}
+
+/// 设置窗口四角为 Win11 圆角（DWMWA_WINDOW_CORNER_PREFERENCE = ROUND）。
+/// 自定义标题栏窗口因 DirectComposition（WS_EX_NOREDIRECTIONBITMAP）
+/// 不会被 DWM 自动裁剪，需显式声明。
+fn set_dwm_corner_round(hwnd: HWND) {
+    unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &DWMWCP_ROUND.0 as *const _ as _,
+            std::mem::size_of_val(&DWMWCP_ROUND.0) as u32,
+        )
+        .log_err();
+    }
 }
 
 fn dwm_set_window_composition_attribute(hwnd: HWND, backdrop_type: u32) {
