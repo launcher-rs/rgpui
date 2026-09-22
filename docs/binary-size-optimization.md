@@ -5,8 +5,8 @@
 >
 > | 构建 | 优化前 | 优化后 | 说明 |
 > |------|--------|--------|------|
-> | `release`（日常） | 11.41 MB | 9.38 MB | `-18%`，默认 `cargo build --release` 直接受益 |
-> | `size`（打安装包） | — | 6.19 MB | 相对基线 `-46%`，见 §4 |
+> | `release`（日常） | 11.41 MB | 8.92 MB | `-22%`，默认 `cargo build --release` 直接受益 |
+> | `size`（打安装包） | — | 5.97 MB | 相对基线 `-48%`，见 §4 |
 
 本文记录 rgpui 体积问题的**分析方法**、已落地的**优化手段**、当前体积**构成**，以及将来可做/难做/不做的优化点。目标是让任何人都能复现归因过程，而不是只记住几个数字。
 
@@ -85,8 +85,8 @@ codegen-units = 1
 strip = true
 ```
 
-- 日常开发/CI 继续用 `release`：构建快，体积 9.38MB。
-- 发版打安装包用 `cargo build --profile size -p <pkg>`：构建慢（约 7–10 分钟），体积 6.19MB。
+- 日常开发/CI 继续用 `release`：构建快，体积 8.92MB。
+- 发版打安装包用 `cargo build --profile size -p <pkg>`：构建慢（约 7–10 分钟），体积 5.97MB。
 - 刻意没开 `panic = "abort"`：会改变 panic 捕获语义，async 执行器相关代码有风险，省的几百 KB 不值得。
 
 ### 2.2 `image` 去掉 `avif`，加 `image-avif` 开关
@@ -107,12 +107,12 @@ strip = true
 - 保留项里注意两个特例：`Fxc`/`Hlsl` 只在 `debug_assertions` 下编译 shader 用，但 `cargo test` 需要，必须保留；`accesskit_windows`、`muda` 等第三方 crate 自己拉的特性（如 `Accessibility`、`Variant`）不受我们裁剪影响，属正常统一。
 - `rgpui` 直连的 `windows` 依赖同步去掉没用到的 `Win32_Security`、`Win32_System_Power`（全文 grep 确认无引用）。
 
-### 2.5 `image` 去掉 dds/exr/ff/hdr/tga/qoi，加 opt-in 特性
+### 2.5 `image` 去掉 dds/exr/ff/hdr/tga/qoi/tiff，加 opt-in 特性
 
-- workspace 的 `image` 特性从 14 种格式精简为 8 种（bmp/gif/ico/jpeg/png/pnm/tiff/webp），拿掉的 6 种在桌面 UI 里极为罕见。
-- `rgpui` 新增 6 个 opt-in 特性：`image-dds`、`image-exr`、`image-ff`、`image-hdr`、`image-tga`、`image-qoi`（对应 `image/dds` 等），需要时显式开启。
+- workspace 的 `image` 特性从 14 种格式精简为 7 种（bmp/gif/ico/jpeg/png/pnm/webp），拿掉的 7 种在桌面 UI 里极为罕见。
+- `rgpui` 新增 7 个 opt-in 特性：`image-dds`、`image-exr`、`image-ff`、`image-hdr`、`image-tga`、`image-tiff`、`image-qoi`（对应 `image/dds` 等），需要时显式开启。
 - `Img::extensions()` 改为动态构建，按 `#[cfg(feature = "image-xxx")]` 条件追加扩展名。
-- 消除的重型依赖：exr 拉入的 `num-complex`/`zune-inflate`/`raw-cpuid`/`miniz_oxide`（第二份副本）等 ~8 个 crate。
+- 消除的重型依赖：exr 拉入的 `num-complex`/`zune-inflate`/`raw-cpuid`/`miniz_oxide`（第二份副本）等 ~8 个 crate，以及 tiff 拉入的 `fax`/`half`/`weezl`。
 
 ### 2.6 `uuid` 去掉 v5/v7
 
@@ -125,7 +125,47 @@ strip = true
 
 - 全仓库无 `RawValue` 引用，该 feature 完全未使用，直接删除。
 
-## 3. 当前体积构成（6.19MB 里是什么）
+### 2.8 `url` 去掉 IDNA（Unicode 国际化域名）
+
+- `url` 从默认特性改为 `default-features = false, features = ["std"]`，移除 IDNA 支持。
+- IDNA 拉入 `idna` → `idna_adapter` → `icu_normalizer`/`icu_properties` 等 ~15 个 crate（Unicode 数据表），桌面 UI 几乎不需要国际化域名解析。
+- 消除的依赖链：`idna`/`idna_adapter`/`icu_normalizer`/`icu_normalizer_data`/`icu_properties`/`icu_properties_data`/`icu_collections`/`icu_provider`/`icu_locale_core`/`zerovec`/`zerotrie`/`litemap`/`yoke`/`zerofrom` 等。
+
+### 2.9 `async-compression` bzip2 改为 opt-in
+
+- workspace `async-compression` 移除 `bzip2` feature，保留 `gzip` + `futures-io`。
+- `rgpui` 新增 `bzip2-decompress = ["async-compression/bzip2"]` 特性，需要解压 `.tar.bz2` 的应用显式开启。
+- `github_download.rs` 中 `BzDecoder` 和 `extract_tar_bz2` 用 `#[cfg(feature = "bzip2-decompress")]` 门控，未启用时返回清晰错误。
+- 消除 `libbz2-rs-sys`（完整 bzip2 C 库）。
+
+### 2.10 `image` 去掉 tiff，加 `image-tiff` opt-in
+
+- workspace `image` 移除 `tiff` feature，格式从 8 种精简为 7 种。
+- `rgpui` 新增 `image-tiff = ["image/tiff"]` 特性。
+- `Img::extensions()` 和 `platform.rs` 的 `to_image_data()` 中 `ImageFormat::Tiff` 分支均用 `#[cfg(feature = "image-tiff")]` 门控。
+- 消除 `tiff` → `fax`/`half`/`weezl` 依赖链。
+
+### 2.11 `log` 去掉 kv/serde 特性
+
+- `log` 从 `features = ["kv_unstable_serde", "serde"]` 改为无额外 feature。
+- `kv_unstable_serde` 拉入 `kv-log-macro`/`value-bag`/`value-bag-serde1`/`erased-serde`/`serde_fmt` 等结构化日志基础设施，全仓库零引用。
+
+### 2.12 `serde_json_lenient` 去掉 `raw_value`
+
+- 与 §2.7 同理，`serde_json_lenient` 的 `raw_value` feature 完全未使用，移除。
+
+### 2.13 `postage` 移到 dev-dependencies
+
+- `postage` 仅在 `test_context.rs`（已 behind `#[cfg(any(test, feature = "test-support"))]`）中使用。
+- 从 `rgpui` 的 `[dependencies]` 移到 `[dev-dependencies]`，`test-support` feature 中加 `dep:postage`。
+- 生产构建不再链接 `postage` 及其 `crossbeam-queue`/`futures` 重导出。
+
+### 2.14 `async_zip` 去掉 `deflate64`
+
+- `async_zip` 从 `features = ["deflate", "deflate64"]` 精简为 `features = ["deflate"]`。
+- DEFLATE64 压缩在 zip 文件中极为罕见，标准 DEFLATE 覆盖 >99.9% 场景。
+
+## 3. 当前体积构成（5.97MB 里是什么）
 
 按"动它的代价"排序，剩下的全是真实链接的代码：
 
@@ -134,8 +174,8 @@ strip = true
 | D3D11/DirectWrite/DComp 渲染路径 | Windows GPU 渲染核心 | 不能，立身之本 |
 | resvg + tiny-skia + fontdb | SVG 渲染 | 很难，SVG 是核心能力 |
 | 字体栈（swash/skrifa/read-fonts） | 文本塑形/光栅化 | 不能 |
-| image 剩余 8 种解码 | 图片解码 | 已精简，剩余为核心格式 |
-| icu + url + idna | `Url` 类型等 | 动即 API 破坏，不做 |
+| image 剩余 7 种解码 | 图片解码 | 已精简，剩余为核心格式 |
+| url（无 IDNA） | URL 解析 | 已去掉 IDNA，剩余为核心功能 |
 | regex unicode 表 | `\p{Emoji}` 等需要 unicode 支持 | 裁了就错，不做 |
 | async 全家桶（smol/async-std/tar/zip） | 命令执行、压缩包、调度 | 架构级依赖，见 §5.1 |
 | backtrace + object/gimli | `TestScheduler` 帧级回溯 | 做不了，见 §5.2 |
@@ -152,27 +192,31 @@ Get-ChildItem -LiteralPath "target\size" -Filter "<your_app>.exe" |
     Select-Object Name, Length
 ```
 
-经验值：6.19MB 的 exe 经安装包工具（NSIS/WiX）的 LZMA 压缩后约 3–3.5MB。**觉得安装包大时，先看压缩选项，再看二进制**，前者往往更有效。
+经验值：5.97MB 的 exe 经安装包工具（NSIS/WiX）的 LZMA 压缩后约 3–3.5MB。**觉得安装包大时，先看压缩选项，再看二进制**，前者往往更有效。
 
 ## 5. 将来的优化点
 
-### 5.1 可做：`async-compression` bzip2 feature-gate（预计 50–150KB）
+### 5.1 可做：async 解压栈 feature-gate（预计 200–400KB）
 
-`BzDecoder` 仅在 `github_download.rs` 中用于解压 `.tar.bz2` 自更新包。可以去掉 `bzip2` feature（gzip 仍被 `async_zip` 间接依赖）。更进一步，整个 async 压缩/解压栈（async-std/smol/async-tar/async-compression/async_zip/async-fs）可以 feature-gate 为 `downloader`，不过改动较大，需要 `github_download` 和 `archive` 模块整体走 cfg。
+整个 async 压缩/解压栈（async-std/smol/async-tar/async-compression/async_zip/async-fs）可以 feature-gate 为 `downloader`，不过改动较大，需要 `github_download` 和 `archive` 模块整体走 cfg。
 
 ### 5.2 难做：`backtrace`（预计 300–600KB，明确不建议）
 
 `TestScheduler` 是公开 API，`pending_traces: BTreeMap<TraceId, Backtrace>` 和 `exclude_wakers_from_trace` 用到了 `backtrace` crate 独有的帧级 API（`BacktraceFrame` 转换），`std::backtrace` 没有对等能力。用 `test-support` 门控会改变公开 API 形状。结论：保留，_async 诊断链_的代价。
 
-### 5.3 不做（记录决策，免得后人重踩）
+### 5.3 难做：`schemars` feature-gate（预计 100–300KB）
+
+`schemars` 的 `JsonSchema` derive 深度集成在 rgpui 类型系统中（100+ 处），feature-gate 需要在所有 derive 上加 `#[cfg(feature = "json-schema")]`，改动量大但收益可观。
+
+### 5.4 不做（记录决策，免得后人重踩）
 
 - `panic = "abort"`：省 unwind 表，但改变 panic 语义，async 执行器风险。
 - `regex` 去 unicode：`\p{Emoji}` 等正则会直接错。
-- `url`/`icu`：`Url` 在公开 API 里，动即破坏。
+- `url` 完全移除：`Url` 在公开 API 里，动即破坏。
 - `hdrhistogram` 结构体字段门控：已经做完了（本轮 §2.3）。
 - UPX 加壳：省体积但触发杀软误报，且影响启动速度，安装包场景不如 LZMA 实在。
 
-### 5.4 流程建议：CI 体积门禁
+### 5.5 流程建议：CI 体积门禁
 
 建议在 CI 里加一条（`hello_world`，`size` profile）：
 
@@ -183,4 +227,4 @@ Get-ChildItem -LiteralPath "target\size" -Filter "<your_app>.exe" |
     if ($size -gt 8MB) { throw "体积回归：$size bytes" }
 ```
 
-阈值按 6.19MB 现状上浮 20–30%（8MB），只防回归、不卡正常演进。注意 `size` 构建约 7–10 分钟，建议放独立 job，别塞进主矩阵里拖慢反馈。
+阈值按 5.97MB 现状上浮 30%（8MB），只防回归、不卡正常演进。注意 `size` 构建约 7–10 分钟，建议放独立 job，别塞进主矩阵里拖慢反馈。

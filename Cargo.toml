@@ -69,11 +69,11 @@ async-fs = "2.2"
 # 异步任务调度
 async-task = "4.7"
 # 异步压缩
-async-compression = { version = "0.4", features = ["bzip2", "gzip", "futures-io"] }
+async-compression = { version = "0.4", features = ["gzip", "futures-io"] }
 # 异步 tar 归档
 async-tar = "0.6"
 # 异步 zip
-async_zip = { version = "0.0.19", features = ["deflate", "deflate64"] }
+async_zip = { version = "0.0.19", features = ["deflate"] }
 # 异步 Futures 工具
 futures = "0.3"
 # 并发 Futures 组合子
@@ -93,7 +93,7 @@ serde = { version = "1.0.229", features = ["derive", "rc"] }
 # JSON 处理
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
 # 宽松 JSON 解析
-serde_json_lenient = { version = "0.2", features = ["preserve_order", "raw_value"] }
+serde_json_lenient = { version = "0.2", features = ["preserve_order"] }
 # URL 编码序列化
 serde_urlencoded = "0.7"
 # 保持插入顺序的哈希表
@@ -113,7 +113,7 @@ web-time = "1.1.0"
 
 # ---- 日志、追踪与性能分析 ----
 # 日志门面
-log = { version = "0.4", features = ["kv_unstable_serde", "serde"] }
+log = "0.4"
 # 环境配置日志后端
 env_logger = "0.11"
 # 结构化追踪
@@ -199,7 +199,6 @@ image = { version = "0.25.10", default-features = false, features = [
     "jpeg",
     "png",
     "pnm",
-    "tiff",
     "webp",
 ] }
 # 2D 图形解析（painting 示例）
@@ -211,7 +210,7 @@ schemars = { version = "1.2.2", features = ["indexmap2"] }
 
 # ---- URL 处理 ----
 # URL 解析
-url = "2.5.8"
+url = { version = "2.5.8", default-features = false, features = ["std"] }
 
 # ---- 屏幕捕获 ----
 # 跨平台屏幕捕获

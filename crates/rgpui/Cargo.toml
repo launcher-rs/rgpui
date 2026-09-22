@@ -26,6 +26,7 @@ test-support = [
     "x11",
     "proptest",
     "dep:git2",
+    "dep:postage",
 ]
 # 元素检查器：为元素/窗口附加调试信息（默认 debug_assertions 下也启用）。
 inspector = ["rgpui-macros/inspector"]
@@ -81,11 +82,16 @@ image-ff = ["image/ff"]
 image-hdr = ["image/hdr"]
 # TGA 图片解码（Targa）。默认关闭。
 image-tga = ["image/tga"]
+# TIFF 图片解码。默认关闭，拉入 fax/half 等依赖。
+image-tiff = ["image/tiff"]
 # QOI 图片解码（Quite OK Image）。默认关闭。
 image-qoi = ["image/qoi"]
 # Tokio 异步运行时集成（自 rgpui-tokio 并入，约 120 行薄封装）。
 # 默认关闭以保持核心精简，需要 tokio 异步能力的应用可显式开启。
 tokio = ["dep:tokio"]
+# Bzip2 解压支持：用于 GitHub 二进制下载中 .tar.bz2 归档的解压。
+# 默认关闭以省去 libbz2-rs-sys C 库体积，需要时显式开启。
+bzip2-decompress = ["async-compression/bzip2"]
 # Web DOM 后端：DOM 树数据模型与构建器（`src/dom.rs`），以及 Element::dom 语义映射。
 # 默认关闭，桌面端完全不受影响；由 rgpui-web / rgpui-dom 启用。
 dom-backend = []
@@ -146,7 +152,7 @@ num_cpus = "1.17"
 once_cell = "1.21.4"
 parking = "2.2.1"
 parking_lot.workspace = true
-postage.workspace = true
+postage = { workspace = true, optional = true }
 proptest = { workspace = true, optional = true }
 chrono.workspace = true
 profiling.workspace = true
