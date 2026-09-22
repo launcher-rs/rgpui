@@ -117,7 +117,7 @@ pub fn run(name: &str, cfg: &Config) -> Result<()> {
     {
         use std::os::unix::fs::PermissionsExt as _;
         std::fs::set_permissions(
-            &project_dir.join("android/gradlew"),
+            project_dir.join("android/gradlew"),
             std::fs::Permissions::from_mode(0o755),
         )?;
     }
