@@ -498,8 +498,13 @@ impl WindowsWindow {
                 (WS_EX_TOPMOST | WS_EX_TOOLWINDOW, WS_POPUP)
             }
             _ if params.app_owns_titlebar_drag => {
-                // 无边框窗口：使用 WS_POPUP 样式，DWM 不会绘制边框
-                (WS_EX_APPWINDOW, WS_POPUP)
+                // 自定义标题栏：使用 WS_THICKFRAME 保留 DWM 圆角（Win11），
+                // 由 WM_NCCALCSIZE 返回 0 移除可见边框，实现无边框效果。
+                let mut dwstyle = WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX;
+                if params.is_minimizable {
+                    dwstyle |= WS_MINIMIZEBOX;
+                }
+                (WS_EX_APPWINDOW, dwstyle)
             }
             _ => {
                 let mut dwstyle = WS_SYSMENU;
