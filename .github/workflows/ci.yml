@@ -95,8 +95,7 @@ jobs:
   # 1.4.0 移动端：只查编译（cargo check）+ 主机单测，不跑 GPU 单测
   # （runner 软件渲染，真机行为以 adb 实测为准）。
   # 注意：iOS target 的依赖链含 psm（构建脚本要调 xcrun），只能在 macOS
-  # runner 上 check；Android check 在 ubuntu 上即可。APK 组装（cargo-ndk +
-  # Gradle）记 M2（本地以真机 NDK/Gradle 先验证通过后再进 CI）。
+  # runner 上 check；Android check 在 ubuntu 上即可。APK 组装见 android-apk。
   mobile-android:
     runs-on: ubuntu-latest
 
@@ -117,6 +116,64 @@ jobs:
 
       - name: cargo test (mobile crates, host)
         run: cargo test -p rgpui-platform -p rgpui-android -p rgpui-ios
+
+  # 1.4.0 APK 组装（cargo-ndk + Gradle + artifact 上传）；
+  # 打包步骤见 docs/1.4.0/android-guide.md §8。
+  android-apk:
+    runs-on: ubuntu-latest
+    needs: mobile-android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Set up Android SDK + NDK
+        uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: true
+          # action 默认含已废弃的 "tools" 包，sdkmanager 会失败，只装 platform-tools。
+          packages: platform-tools
+
+      - name: Resolve NDK path
+        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_ROOT" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build Rust shared library via cargo-ndk
+        # cargo-ndk 4.x 平台 flag 是大写 -P（小写会被当包名）。
+        run: >
+          cargo ndk -t arm64-v8a -P 31
+          -o examples/hello_mobile/android/app/src/main/jniLibs
+          build -p hello_mobile
+
+      - name: Strip debug symbols
+        # 未 strip 的 debug .so 约 500MB，strip 后 ~75MB（见 android-guide §8）。
+        run: |
+          strip_bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          "$strip_bin" --strip-debug examples/hello_mobile/android/app/src/main/jniLibs/arm64-v8a/libhello_mobile.so
+
+      - name: Assemble debug APK
+        working-directory: examples/hello_mobile/android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hello-mobile-debug.apk
+          path: examples/hello_mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
 
   mobile-ios:
     runs-on: macos-latest

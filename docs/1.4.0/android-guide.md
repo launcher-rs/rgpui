@@ -14,7 +14,8 @@
 | 状态栏样式 / 剪贴板 JNI / 通知 / 文件选择 | 部分落地：`SystemChromeStyle` + 剪贴板 + `open_url` ✅（M3 前半，见 §10.1）；通知/文件选择待办 |
 | IME 组合串（预编辑/上屏回调） | 未接（M3 后半，随自定义 Activity；M2 只有按键明文） |
 | `cargo check --target aarch64-linux-android`（CI） | ✅ |
-| `cargo check --target ... --tests`（含真机模块单测编译检查） | ✅ 本地可跑，CI 待 M2-6 一并接入 |
+| `cargo check --target ... --tests`（含真机模块单测编译检查） | ✅ 本地可跑，CI `mobile-android` 已接 |
+| APK 组装（cargo-ndk + Gradle + artifact 上传） | ✅ CI `android-apk` job（依赖 `mobile-android`） |
 
 ## 1. 环境准备（一次配好）
 
