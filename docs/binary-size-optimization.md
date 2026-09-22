@@ -77,7 +77,7 @@ strip = true          # 去符号表；PDB 照常单独生成，不影响崩溃�
 lto = "thin"          # 跨 crate 内联 + 死代码消除，增量代价可接受
 codegen-units = 1     # 更好内联，配合 LTO 压缩
 
-[size]
+[profile.size]
 inherits = "release"
 opt-level = "z"       # 体积优先，构建更慢，只用于打安装包
 lto = true            # fat LTO
