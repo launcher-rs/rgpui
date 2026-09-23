@@ -256,9 +256,11 @@ adb shell am start -n com.example.hellomobile/.debug/android.app.NativeActivity 
 Java UI 线程只做“收事件 → 进队列”，渲染线程 draining（双入口的
 `host` 模式在 M3 候选，M1/M2 只有 `android-activity` 单路径）。
 
-- 拿 `AndroidApp`：`bridge::android_app()`（`OnceLock` 存一份，
-  应用层不要自己再存）。JVM/Activity 指针同理（`java_vm()` /
-  `activity_as_ptr()`），`platform.rs` 的 JNI 调用都经这几个口。
+- 拿 `AndroidApp`：`bridge::android_app()`（`RwLock` 存一份，每次
+  Activity 重建都更新，应用层不要自己再存——返回键退出后同进程重进
+  会换新 `AndroidApp`，存旧的等于拿已销毁 Activity）。
+  JVM/Activity 指针同理（`java_vm()` / `activity_as_ptr()`），
+  `platform.rs` 的 JNI 调用都经这几个口。
 - Rust 调 Java（JNI）：经 `bridge::with_env` 拿 `Env`，
   从 UI 线程调应用类必须走 `Activity.getClassLoader().loadClass()`
   （`FindClass` 用系统类加载器，找不到应用类，参考实现已踩坑）。
@@ -291,6 +293,35 @@ cx.open_url("https://example.com");
 
 注意：`set_system_chrome` 内部有同值跳过缓存，每帧调也无妨；
 剪贴板读在真机失败时自动回退进程内缓存（读自己刚写的值一定命中）。
+
+### 10.2 系统 API 调用规范（M3-7，振动器/电量已落地）
+
+新系统能力按四步接（以振动器为例，电量同理）：
+
+1. **`bridge.rs` 加 JNI 小件**：经 `with_env`（当前线程自动
+   attach/detach）→ `activity(env)` → `getSystemService("vibrator")` →
+   按 `jni_sig!` 调方法；每次调用后 `exception_clear()`，出错回
+   `Err(String)`，外层只记 `log::warn`，绝不 panic。
+   服务对象为 `Vibrator`，`VibrationEffect.createOneShot(ms, amplitude)`
+   需要 API 26+（minSdk 恰为 26）；普通权限 `VIBRATE` 声明即授，
+   记得同时加到 `hello_mobile` 与 CLI 模板的 `AndroidManifest.xml`。
+2. **`Platform` trait 加方法**（`platform.rs`）：如 `vibrate(&self, ms)` /
+   `battery_status(&self) -> BatteryStatus`；类型（如 `BatteryStatus`）
+   放 `platform.rs`，经 `pub use platform::*` 全 crate 可见。
+3. **三端同步**：windows/macos/linux/web/ios 写桩
+   （振动无操作、电量 `BatteryStatus::unknown()`）；android 的
+   `SharedPlatform` 透传、`AndroidPlatform` 实装（真机走 JNI，
+   主机 `#[cfg(not(target_os = "android"))]` 回退）；
+   别漏 `test/platform.rs`（`vibrate` 录制时长向量，单测可断言）与
+   `visual_test.rs`（透传）。
+4. **应用层经 `cx` 调用**（`App::vibrate` / `App::battery_status`，
+   照 `open_url` 模式）：`cx.vibrate(30)`；电量读一次存视图里，
+   不要每帧 JNI（见 `hello_mobile` 的 `battery` 字段）。
+
+```rust
+cx.vibrate(30); // 短振 30ms（桌面端无操作）
+let battery = cx.battery_status(); // level_percent: Option<u8>, charging: bool
+```
 
 ## 11. 移动端 UI 约束（cookbook，写应用前读一遍）
 

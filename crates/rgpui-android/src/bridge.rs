@@ -928,7 +928,6 @@ pub fn write_clipboard_android(text: &str) {
 }
 
 // ── 系统打开链接（`ACTION_VIEW`） ─────────────────────────────────────────────
-
 /// 用系统默认应用打开 URL（浏览器/商店等按 scheme 分发）。
 pub fn open_url_android(url: &str) {
     let result = with_env(|env| {
@@ -978,4 +977,145 @@ pub fn open_url_android(url: &str) {
     if let Err(error) = result {
         log::warn!("open_url({url}) 失败：{error}");
     }
+}
+
+// ── 振动器（`Vibrator`） ───────────────────────────────────────────────────────
+// 需要 `android.permission.VIBRATE`（普通权限，声明即授，不用动态申请）。
+
+/// 取 `Vibrator` 服务对象。
+fn vibrator<'local>(env: &mut jni::Env<'local>) -> Result<JObject<'local>, String> {
+    let activity_obj = activity(env)?;
+    let service = env
+        .new_string("vibrator")
+        .map_err(|error| error.to_string())?;
+    let manager = env
+        .call_method(
+            &activity_obj,
+            jni::jni_str!("getSystemService"),
+            jni::jni_sig!("(Ljava/lang/String;)Ljava/lang/Object;"),
+            &[JValue::Object(&service)],
+        )
+        .and_then(|value| value.l())
+        .map_err(|error| {
+            env.exception_clear();
+            error.to_string()
+        })?;
+    if manager.is_null() {
+        return Err("振动服务为空".into());
+    }
+    Ok(manager)
+}
+
+/// 触发一次短振动（`VibrationEffect.createOneShot`，API 26+；失败只记日志）。
+pub fn vibrate_android(duration_ms: u64) {
+    let result = with_env(|env| {
+        let vibrator = vibrator(env)?;
+        // `VibrationEffect.DEFAULT_AMPLITUDE`（-1 表系统默认）。
+        let amplitude = env
+            .get_static_field(
+                jni::jni_str!("android/os/VibrationEffect"),
+                jni::jni_str!("DEFAULT_AMPLITUDE"),
+                jni::jni_sig!("I"),
+            )
+            .and_then(|value| value.i())
+            .map_err(|error| {
+                env.exception_clear();
+                error.to_string()
+            })?;
+        let effect = env
+            .call_static_method(
+                jni::jni_str!("android/os/VibrationEffect"),
+                jni::jni_str!("createOneShot"),
+                jni::jni_sig!("(JI)Landroid/os/VibrationEffect;"),
+                &[JValue::Long(duration_ms as i64), JValue::Int(amplitude)],
+            )
+            .and_then(|value| value.l())
+            .map_err(|error| {
+                env.exception_clear();
+                error.to_string()
+            })?;
+        let _ = env.call_method(
+            &vibrator,
+            jni::jni_str!("vibrate"),
+            jni::jni_sig!("(Landroid/os/VibrationEffect;)V"),
+            &[JValue::Object(&effect)],
+        );
+        env.exception_clear();
+        Ok(())
+    });
+    if let Err(error) = result {
+        log::warn!("振动失败：{error}");
+    }
+}
+
+// ── 电池状态（粘性广播 `ACTION_BATTERY_CHANGED`） ──────────────────────────────
+
+/// 读电池电量百分比与充电状态（读不到给未知）。
+pub fn battery_status_android() -> rgpui::BatteryStatus {
+    with_env(|env| {
+        let activity_obj = activity(env)?;
+        let action = env
+            .new_string("android.intent.action.BATTERY_CHANGED")
+            .map_err(|error| error.to_string())?;
+        let filter = env
+            .new_object(
+                jni::jni_str!("android/content/IntentFilter"),
+                jni::jni_sig!("(Ljava/lang/String;)V"),
+                &[JValue::Object(&action)],
+            )
+            .map_err(|error| {
+                env.exception_clear();
+                error.to_string()
+            })?;
+        // 传 null receiver 取粘性广播的最新 Intent（不同步注册）。
+        let intent = env
+            .call_method(
+                &activity_obj,
+                jni::jni_str!("registerReceiver"),
+                jni::jni_sig!(
+                    "(Landroid/content/BroadcastReceiver;Landroid/content/IntentFilter;)Landroid/content/Intent;"
+                ),
+                &[JValue::Object(&JObject::null()), JValue::Object(&filter)],
+            )
+            .and_then(|value| value.l())
+            .map_err(|error| {
+                env.exception_clear();
+                error.to_string()
+            })?;
+        if intent.is_null() {
+            return Err("电池广播为空".into());
+        }
+        let mut int_extra = |name: &str| -> Result<i32, String> {
+            let key = env.new_string(name).map_err(|error| error.to_string())?;
+            env.call_method(
+                &intent,
+                jni::jni_str!("getIntExtra"),
+                jni::jni_sig!("(Ljava/lang/String;I)I"),
+                &[JValue::Object(&key), JValue::Int(-1)],
+            )
+            .and_then(|value| value.i())
+            .map_err(|error| {
+                env.exception_clear();
+                error.to_string()
+            })
+        };
+        let level = int_extra("level")?;
+        let scale = int_extra("scale")?;
+        let status = int_extra("status")?;
+        let level_percent = if level >= 0 && scale > 0 {
+            Some((level * 100 / scale).clamp(0, 100) as u8)
+        } else {
+            None
+        };
+        // `BatteryManager.BATTERY_STATUS_CHARGING = 2`，`BATTERY_STATUS_FULL = 5`。
+        let charging = status == 2 || status == 5;
+        Ok(rgpui::BatteryStatus {
+            level_percent,
+            charging,
+        })
+    })
+    .unwrap_or_else(|error| {
+        log::warn!("电池状态读取失败：{error}");
+        rgpui::BatteryStatus::unknown()
+    })
 }

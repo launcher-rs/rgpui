@@ -5,10 +5,10 @@
 //! M2 单 `android-activity` 路径；字体走系统目录 + CBDT Emoji 兜底。
 
 use rgpui::{
-    Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, ForegroundExecutor,
-    Keymap, Menu, MenuItem, PathPromptOptions, Platform, PlatformDisplay, PlatformKeyboardLayout,
-    PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Task, ThermalState,
-    WindowAppearance, WindowParams,
+    Action, AnyWindowHandle, BackgroundExecutor, BatteryStatus, ClipboardItem, CursorStyle,
+    ForegroundExecutor, Keymap, Menu, MenuItem, PathPromptOptions, Platform, PlatformDisplay,
+    PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Task,
+    ThermalState, WindowAppearance, WindowParams,
 };
 use rgpui_wgpu::CosmicTextSystem;
 use std::cell::RefCell;
@@ -554,6 +554,16 @@ impl Platform for SharedPlatform {
         self.inner.write_to_find_pasteboard(item)
     }
 
+    /// 触发振动（透传内部实现）。
+    fn vibrate(&self, duration_ms: u64) {
+        self.inner.vibrate(duration_ms)
+    }
+
+    /// 读取电池状态（透传内部实现）。
+    fn battery_status(&self) -> BatteryStatus {
+        self.inner.battery_status()
+    }
+
     fn write_credentials(
         &self,
         url: &str,
@@ -841,6 +851,30 @@ impl Platform for AndroidPlatform {
     #[cfg(target_os = "macos")]
     fn write_to_find_pasteboard(&self, _item: ClipboardItem) {}
 
+    /// 触发一次短振动（真机走 `Vibrator`，主机空操作）。
+    fn vibrate(&self, duration_ms: u64) {
+        #[cfg(target_os = "android")]
+        {
+            super::bridge::vibrate_android(duration_ms);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = duration_ms;
+        }
+    }
+
+    /// 读取电池状态（真机走粘性广播，主机恒为未知）。
+    fn battery_status(&self) -> BatteryStatus {
+        #[cfg(target_os = "android")]
+        {
+            super::bridge::battery_status_android()
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            BatteryStatus::unknown()
+        }
+    }
+
     fn write_credentials(
         &self,
         _url: &str,
@@ -880,5 +914,21 @@ impl Platform for AndroidPlatform {
         *self.keyboard_layout_callback.lock() = Some(unsafe {
             std::mem::transmute::<Box<dyn FnMut()>, Box<dyn FnMut() + Send>>(callback)
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 宿主振动/电量回退：无操作 + 未知（真机路径只在设备上走）。
+    #[test]
+    fn vibrate_and_battery_host_fallback() {
+        let platform = AndroidPlatform::new(true);
+        platform.vibrate(30);
+        let battery = platform.battery_status();
+        assert_eq!(battery, rgpui::BatteryStatus::unknown());
+        assert_eq!(battery.level_percent, None);
+        assert!(!battery.charging);
     }
 }

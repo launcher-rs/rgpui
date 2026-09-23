@@ -377,6 +377,10 @@ pub trait Platform: 'static {
 
     /// 在系统默认浏览器中打开 URL。
     fn open_url(&self, url: &str);
+    /// 触发一次短振动（移动端触觉反馈；桌面端无操作）。
+    fn vibrate(&self, duration_ms: u64);
+    /// 读取电池状态（移动端实装；桌面端恒为未知）。
+    fn battery_status(&self) -> BatteryStatus;
     /// 注册 URL scheme 回调，当应用通过自定义 URL scheme 打开时触发。
     fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>);
     /// 注册自定义 URL scheme（如 `myapp://`），使系统将该 scheme 的 URL 分发到本应用。
@@ -2732,6 +2736,25 @@ impl ClipboardItem {
     /// 获取项目条目的所有权版本
     pub fn into_entries(self) -> impl Iterator<Item = ClipboardEntry> {
         self.entries.into_iter()
+    }
+}
+
+/// 电池状态（移动端 `BatteryManager` 读数；桌面端恒为未知）。
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BatteryStatus {
+    /// 电量百分比（0–100；读不到时为 `None`）。
+    pub level_percent: Option<u8>,
+    /// 是否正在充电（含已充满）。
+    pub charging: bool,
+}
+
+impl BatteryStatus {
+    /// 未知状态（桌面端/读取失败的回退值）。
+    pub fn unknown() -> Self {
+        Self {
+            level_percent: None,
+            charging: false,
+        }
     }
 }
 

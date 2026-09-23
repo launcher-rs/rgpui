@@ -2,8 +2,10 @@
 <!-- hello_mobile 最小 Android 宿主：NativeActivity 直载 Rust .so，无 Java 代码。 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 按需增减：网络 / 振动 / 通知等权限在 M3 包生态接入时再加 -->
+    <!-- 按需增减：网络 / 通知等权限在 M3 包生态接入时再加 -->
     <!-- <uses-permission android:name="android.permission.INTERNET" /> -->
+    <!-- 振动器（普通权限，声明即授）：cx.vibrate 用 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:label="HelloMobile"

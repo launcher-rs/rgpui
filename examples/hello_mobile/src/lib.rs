@@ -3,13 +3,16 @@
 //! 平台差异只收敛在入口函数（`main.rs` / `android_main` / iOS 导出函数），
 //! 视图代码经 [`rgpui_platform::target_platform`] 做运行时分支，不写 `#[cfg]`。
 
-use rgpui::{App, Context, Window, div, prelude::*, px, rgb};
+use rgpui::{App, BatteryStatus, Context, Window, div, prelude::*, px, rgb};
 use rgpui_platform::target_platform;
 
-/// 移动端问候视图（展示当前平台 + 点击计数验证触摸输入）。
+/// 移动端冒烟视图：展示当前平台 + 点按计数（顺带验证触摸→点击）+
+/// 电池状态（M3-7 系统 API 示例：点击时短振并刷新电量）。
 pub struct HelloMobile {
-    /// 点击/触摸计数，用于验证输入是否工作。
+    /// 点按/触摸计数（验证点击是否送达）。
     taps: u32,
+    /// 电池状态（点击时刷新，避免每帧 JNI）。
+    battery: BatteryStatus,
 }
 
 impl Render for HelloMobile {
@@ -33,6 +36,7 @@ impl Render for HelloMobile {
             .child(div().text_3xl().child(format!("Hello, {platform}!")))
             .child(div().text_lg().child(subtitle))
             .child(div().text_xl().child(format!("触摸 / 点击次数: {taps}")))
+            .child(div().text_lg().child(battery_line(&self.battery)))
             .child(
                 div()
                     .id("tap-target")
@@ -48,17 +52,42 @@ impl Render for HelloMobile {
                     .child("点我")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.taps += 1;
-                        log::info!("hello_mobile: tap count = {}", this.taps);
+                        // M3-7 系统 API 实测：短振 30ms 并刷新电量。
+                        cx.vibrate(30);
+                        this.battery = cx.battery_status();
+                        log::info!(
+                            "hello_mobile: tap count = {}, battery = {:?}",
+                            this.taps,
+                            this.battery
+                        );
                         cx.notify();
                     })),
             )
     }
 }
 
+/// 电池状态展示行（未知时显示横线，桌面端恒为未知）。
+fn battery_line(battery: &BatteryStatus) -> String {
+    match battery.level_percent {
+        Some(percent) => {
+            let state = if battery.charging {
+                "充电中"
+            } else {
+                "未充电"
+            };
+            format!("电池: {percent}%（{state}）")
+        }
+        None => "电池: --".to_string(),
+    }
+}
+
 /// 打开主窗口（桌面与移动端共用；移动端全屏，窗口 bounds 传空）。
 pub fn open_main_window(cx: &mut App) {
     cx.open_window(rgpui::WindowOptions::default(), |_, cx| {
-        cx.new(|_| HelloMobile { taps: 0 })
+        cx.new(|cx| HelloMobile {
+            taps: 0,
+            battery: cx.battery_status(),
+        })
     })
     .expect("打开主窗口失败");
     cx.activate(true);

@@ -24,8 +24,8 @@ use xkbcommon::xkb::{self, Keycode, Keysym, State};
 use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
 use crate::linux::{LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions};
 use rgpui::{
-    Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
-    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OwnedMenu,
+    Action, AnyWindowHandle, BackgroundExecutor, BatteryStatus, ClipboardItem, CursorStyle,
+    DisplayId, FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OwnedMenu,
     PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
     PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
     RunnableVariant, Task, ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
@@ -382,6 +382,14 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
     fn open_url(&self, url: &str) {
         self.inner.open_uri(url);
+    }
+
+    /// 触发振动（桌面端无操作）。
+    fn vibrate(&self, _duration_ms: u64) {}
+
+    /// 读取电池状态（桌面端恒为未知）。
+    fn battery_status(&self) -> BatteryStatus {
+        BatteryStatus::unknown()
     }
 
     fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>) {

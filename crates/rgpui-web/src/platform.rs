@@ -5,10 +5,11 @@ use crate::window::WebWindow;
 use anyhow::Result;
 use futures::channel::oneshot;
 use rgpui::{
-    Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DummyKeyboardMapper,
-    ForegroundExecutor, Keymap, Menu, MenuItem, PathPromptOptions, Platform, PlatformDisplay,
-    PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Task,
-    ThermalState, WindowAppearance, WindowKind, WindowParams, popup::PopupNotSupportedError,
+    Action, AnyWindowHandle, BackgroundExecutor, BatteryStatus, ClipboardItem, CursorStyle,
+    DummyKeyboardMapper, ForegroundExecutor, Keymap, Menu, MenuItem, PathPromptOptions, Platform,
+    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
+    PlatformWindow, Task, ThermalState, WindowAppearance, WindowKind, WindowParams,
+    popup::PopupNotSupportedError,
 };
 use rgpui_wgpu::WgpuContext;
 use std::{
@@ -212,6 +213,14 @@ impl Platform for WebPlatform {
 
     fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>) {
         self.callbacks.borrow_mut().open_urls = Some(callback);
+    }
+
+    /// 触发振动（Web 端暂不支持，走无操作）。
+    fn vibrate(&self, _duration_ms: u64) {}
+
+    /// 读取电池状态（Web 端暂不支持，恒为未知）。
+    fn battery_status(&self) -> BatteryStatus {
+        BatteryStatus::unknown()
     }
 
     fn register_url_scheme(&self, _url: &str) -> Task<Result<()>> {

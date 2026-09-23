@@ -48,9 +48,9 @@ pub use visual_test_context::*;
 use crate::InspectorElementRegistry;
 use crate::{
     Action, ActionBuildError, ActionRegistry, Any, AnyView, AnyWindowHandle, AppContext, Arena,
-    ArenaBox, Asset, AssetSource, BackgroundExecutor, Bounds, ClipboardItem, CursorStyle,
-    DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, ForegroundExecutor, Global,
-    KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu, MenuItem, OwnedMenu,
+    ArenaBox, Asset, AssetSource, BackgroundExecutor, BatteryStatus, Bounds, ClipboardItem,
+    CursorStyle, DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, ForegroundExecutor,
+    Global, KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu, MenuItem, OwnedMenu,
     PathPromptOptions, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
     PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton, PromptHandle,
     PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation, ScreenCaptureSource,
@@ -1426,6 +1426,16 @@ impl App {
     /// 指示平台默认浏览器打开给定的 URL。
     pub fn open_url(&self, url: &str) {
         self.platform.open_url(url);
+    }
+
+    /// 触发一次短振动（移动端触觉反馈；桌面端无操作）。
+    pub fn vibrate(&self, duration_ms: u64) {
+        self.platform.vibrate(duration_ms);
+    }
+
+    /// 读取电池状态（移动端实装；桌面端恒为未知）。
+    pub fn battery_status(&self) -> BatteryStatus {
+        self.platform.battery_status()
     }
 
     /// 注册给定的 URL scheme（例如 `rgpui` 用于 `rgpui://` URL）以由当前应用打开。

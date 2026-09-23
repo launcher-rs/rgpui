@@ -4,10 +4,10 @@
 //! iOS 特有依赖一律 `cfg(target_os = "ios")` 门控。
 
 use rgpui::{
-    Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, ForegroundExecutor,
-    Keymap, Menu, MenuItem, NoopTextSystem, PathPromptOptions, Platform, PlatformDisplay,
-    PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Task,
-    ThermalState, WindowAppearance, WindowParams,
+    Action, AnyWindowHandle, BackgroundExecutor, BatteryStatus, ClipboardItem, CursorStyle,
+    ForegroundExecutor, Keymap, Menu, MenuItem, NoopTextSystem, PathPromptOptions, Platform,
+    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
+    PlatformWindow, Task, ThermalState, WindowAppearance, WindowParams,
 };
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -201,6 +201,14 @@ impl Platform for IosPlatform {
     }
 
     fn write_to_clipboard(&self, _item: ClipboardItem) {}
+
+    /// 触发振动（M1 桩：M4 随真实现接 `AudioToolbox`）。
+    fn vibrate(&self, _duration_ms: u64) {}
+
+    /// 读取电池状态（M1 桩：恒为未知）。
+    fn battery_status(&self) -> BatteryStatus {
+        BatteryStatus::unknown()
+    }
 
     /// 从 Linux 主选择区读取（M1 桩：iOS 无主选择区，宿主机 check 用）。
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]

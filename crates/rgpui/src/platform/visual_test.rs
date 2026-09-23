@@ -7,10 +7,10 @@
 
 use crate::ScreenCaptureSource;
 use crate::{
-    AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, ForegroundExecutor, Keymap,
-    Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform, PlatformDisplay,
-    PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Task,
-    TestDispatcher, WindowAppearance, WindowParams,
+    AnyWindowHandle, BackgroundExecutor, BatteryStatus, ClipboardItem, CursorStyle,
+    ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
+    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
+    PlatformWindow, Task, TestDispatcher, WindowAppearance, WindowParams,
 };
 use anyhow::Result;
 use futures::channel::oneshot;
@@ -136,6 +136,14 @@ impl Platform for VisualTestPlatform {
     }
 
     fn on_open_urls(&self, _callback: Box<dyn FnMut(Vec<String>)>) {}
+
+    fn vibrate(&self, duration_ms: u64) {
+        self.platform.vibrate(duration_ms)
+    }
+
+    fn battery_status(&self) -> BatteryStatus {
+        self.platform.battery_status()
+    }
 
     fn register_url_scheme(&self, _url: &str) -> Task<Result<()>> {
         Task::ready(Ok(()))

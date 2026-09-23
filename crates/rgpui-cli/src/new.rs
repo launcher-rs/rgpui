@@ -479,6 +479,8 @@ fn android_manifest(lib_name: &str, display_name: &str) -> String {
     format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 振动器（普通权限，声明即授）：cx.vibrate 用 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application
         android:label="{display_name}"
         android:icon="@mipmap/ic_launcher"

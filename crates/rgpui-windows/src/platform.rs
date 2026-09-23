@@ -615,6 +615,14 @@ impl Platform for WindowsPlatform {
         self.inner.state.callbacks.open_urls.set(Some(callback));
     }
 
+    /// 触发振动（桌面端无操作）。
+    fn vibrate(&self, _duration_ms: u64) {}
+
+    /// 读取电池状态（桌面端恒为未知）。
+    fn battery_status(&self) -> BatteryStatus {
+        BatteryStatus::unknown()
+    }
+
     fn prompt_for_paths(
         &self,
         options: PathPromptOptions,

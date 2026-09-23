@@ -43,9 +43,9 @@ use rgpui::util::{
     command::{new_command, new_std_command},
 };
 use rgpui::{
-    Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, FocusedWindowInfo,
-    ForegroundExecutor, KeyContext, Keymap, Keystroke, Menu, MenuItem, OsMenu, OwnedMenu,
-    PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
+    Action, AnyWindowHandle, BackgroundExecutor, BatteryStatus, ClipboardItem, CursorStyle,
+    FocusedWindowInfo, ForegroundExecutor, KeyContext, Keymap, Keystroke, Menu, MenuItem, OsMenu,
+    OwnedMenu, PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
     PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
     SystemMenuType, Task, ThermalState, WindowAppearance, WindowKind, WindowParams,
     popup::PopupNotSupportedError,
@@ -692,6 +692,14 @@ impl Platform for MacPlatform {
             let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
             msg_send![workspace, openURL: url]
         }
+    }
+
+    /// 触发振动（桌面端无操作）。
+    fn vibrate(&self, _duration_ms: u64) {}
+
+    /// 读取电池状态（桌面端恒为未知）。
+    fn battery_status(&self) -> BatteryStatus {
+        BatteryStatus::unknown()
     }
 
     fn register_url_scheme(&self, scheme: &str) -> Task<anyhow::Result<()>> {
