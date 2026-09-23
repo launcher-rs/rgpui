@@ -1,8 +1,8 @@
 //! 交互元素 —— 定义键盘、鼠标、手势等平台输入事件与交互行为处理。
 
 use crate::{
-    Bounds, Capslock, Context, Empty, IntoElement, Keystroke, Modifiers, Pixels, Point, Render,
-    Window, point, seal::Sealed,
+    Bounds, Capslock, Context, Empty, ImeEvent, IntoElement, Keystroke, Modifiers, Pixels, Point,
+    Render, Window, point, seal::Sealed,
 };
 use smallvec::SmallVec;
 use std::{any::Any, fmt::Debug, ops::Deref, path::PathBuf};
@@ -754,6 +754,8 @@ pub enum PlatformInput {
     FileDrop(FileDropEvent),
     /// 触摸屏上的原始触摸事件。
     Touch(TouchEvent),
+    /// 输入法编辑器组合事件（移动端 `InputConnection` 透传）。
+    Ime(ImeEvent),
 }
 
 impl PlatformInput {
@@ -771,6 +773,7 @@ impl PlatformInput {
             PlatformInput::Pinch(event) => Some(event),
             PlatformInput::FileDrop(event) => Some(event),
             PlatformInput::Touch(_) => None,
+            PlatformInput::Ime(_) => None,
         }
     }
 
@@ -788,6 +791,7 @@ impl PlatformInput {
             PlatformInput::Pinch(_) => None,
             PlatformInput::FileDrop(_) => None,
             PlatformInput::Touch(_) => None,
+            PlatformInput::Ime(_) => None,
         }
     }
 
@@ -795,6 +799,14 @@ impl PlatformInput {
     pub fn touch_event(&self) -> Option<&TouchEvent> {
         match self {
             PlatformInput::Touch(event) => Some(event),
+            _ => None,
+        }
+    }
+
+    /// 返回此输入中包含的 IME 事件（如果有）。
+    pub fn ime_event(&self) -> Option<&ImeEvent> {
+        match self {
+            PlatformInput::Ime(event) => Some(event),
             _ => None,
         }
     }

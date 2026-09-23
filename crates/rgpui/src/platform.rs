@@ -1856,12 +1856,34 @@ impl From<TileId> for etagere::AllocId {
     }
 }
 
+/// 输入法编辑器（IME）组合事件（移动端 `InputConnection` / 桌面 IME 统一通道）。
+#[derive(Clone, Debug)]
+pub enum ImeEvent {
+    /// 提交确定文本（替换当前选区）。
+    Commit(String),
+    /// 设置组合串（未确认，下划线显示）。
+    SetComposing {
+        /// 组合串文本。
+        text: String,
+        /// IME 的 `newCursor` 语义（>0 相对组合尾 -1，<=0 相对组合头）。
+        cursor: i32,
+    },
+    /// 结束组合（确认当前组合串）。
+    FinishComposing,
+    /// 删除光标前后文本（UTF-16 单位，超界由实现钳制）。
+    DeleteSurrounding {
+        /// 光标前删除数。
+        before: i32,
+        /// 光标后删除数。
+        after: i32,
+    },
+}
+
 /// 平台输入处理器，封装异步窗口上下文和文本输入回调，处理选区、标记文本等 IME 操作。
 pub struct PlatformInputHandler {
     cx: AsyncWindowContext,
     handler: Box<dyn InputHandler>,
 }
-
 impl PlatformInputHandler {
     /// 创建新的输入处理器。
     pub fn new(cx: AsyncWindowContext, handler: Box<dyn InputHandler>) -> Self {
@@ -1955,6 +1977,60 @@ impl PlatformInputHandler {
     /// 直接分发文本输入（绕过 IME 组合流程）。
     pub fn dispatch_input(&mut self, input: &str, window: &mut Window, cx: &mut App) {
         self.handler.replace_text_in_range(None, input, window, cx);
+    }
+
+    /// 直接应用 IME 组合事件（调用方已持有 `window`/`cx` 时用，如窗口事件分发内部；
+    /// 不经过 `AsyncWindowContext::update`，在 App 已借出时后者会静默失败）。
+    pub fn apply_ime_event(&mut self, event: &ImeEvent, window: &mut Window, cx: &mut App) {
+        match event {
+            ImeEvent::Commit(text) => {
+                self.handler.replace_text_in_range(None, text, window, cx);
+            }
+            ImeEvent::SetComposing { text, cursor } => {
+                let composing_len = text.encode_utf16().count();
+                // 组合锚点取当前选区头；`newCursor` 语义：>0 相对组合尾 -1，
+                // <=0 相对组合头（Android `setComposingText` 文档）。
+                let anchor = self
+                    .handler
+                    .selected_text_range(false, window, cx)
+                    .map(|selection| selection.range.start)
+                    .unwrap_or(0);
+                let caret = if *cursor > 0 {
+                    anchor + composing_len.saturating_sub(1) + *cursor as usize
+                } else {
+                    anchor.saturating_sub(cursor.unsigned_abs() as usize)
+                };
+                let caret = caret.min(anchor + composing_len);
+                self.handler.replace_and_mark_text_in_range(
+                    None,
+                    text,
+                    Some(caret..caret),
+                    window,
+                    cx,
+                );
+            }
+            ImeEvent::FinishComposing => {
+                self.handler.unmark_text(window, cx);
+            }
+            ImeEvent::DeleteSurrounding { before, after } => {
+                if let Some(selection) = self.handler.selected_text_range(false, window, cx) {
+                    let full_len = self
+                        .handler
+                        .text_for_range(0..usize::MAX, &mut None, window, cx)
+                        .map(|text| text.encode_utf16().count())
+                        .unwrap_or(selection.range.end);
+                    let start = selection
+                        .range
+                        .start
+                        .saturating_sub((*before).max(0) as usize);
+                    let end = (selection.range.end + (*after).max(0) as usize).min(full_len);
+                    if start < end {
+                        self.handler
+                            .replace_text_in_range(Some(start..end), "", window, cx);
+                    }
+                }
+            }
+        }
     }
 
     /// 计算 IME 候选框的屏幕位置（基于标记文本范围和选区位置）。

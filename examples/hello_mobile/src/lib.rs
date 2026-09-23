@@ -3,16 +3,18 @@
 //! 平台差异只收敛在入口函数（`main.rs` / `android_main` / iOS 导出函数），
 //! 视图代码经 [`rgpui_platform::target_platform`] 做运行时分支，不写 `#[cfg]`。
 
-use rgpui::{App, BatteryStatus, Context, Window, div, prelude::*, px, rgb};
+use rgpui::input_ui::{Input, InputState};
+use rgpui::{App, BatteryStatus, Context, Entity, Window, div, prelude::*, px, rgb};
 use rgpui_platform::target_platform;
 
 /// 移动端冒烟视图：展示当前平台 + 点按计数（顺带验证触摸→点击）+
-/// 电池状态（M3-7 系统 API 示例：点击时短振并刷新电量）。
+/// 电池状态（M3-7 系统 API 示例：点击时短振并刷新电量）+
+/// 输入框（M3-2 输入法 testbed：拼音组词真机可 typing）。
 pub struct HelloMobile {
     /// 点按/触摸计数（验证点击是否送达）。
     taps: u32,
-    /// 电池状态（点击时刷新，避免每帧 JNI）。
-    battery: BatteryStatus,
+    /// 输入法 testbed 输入框。
+    input: Entity<InputState>,
 }
 
 impl Render for HelloMobile {
@@ -36,7 +38,37 @@ impl Render for HelloMobile {
             .child(div().text_3xl().child(format!("Hello, {platform}!")))
             .child(div().text_lg().child(subtitle))
             .child(div().text_xl().child(format!("触摸 / 点击次数: {taps}")))
-            .child(div().text_lg().child(battery_line(&self.battery)))
+            .child(div().text_lg().child(battery_line(&cx.battery_status())))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap_2()
+                    .items_center()
+                    // 根视图是白字，输入框底白：显式深色否则白字看不见。
+                    .child(
+                        div()
+                            .w(px(220.0))
+                            .child(Input::new(&self.input).text_color(rgb(0x111111))),
+                    )
+                    // 键盘按钮：输入框获焦后点此弹软键盘（桌面端为空操作）。
+                    .child(
+                        div()
+                            .id("keyboard-button")
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .w(px(64.0))
+                            .h(px(48.0))
+                            .rounded_lg()
+                            .bg(rgb(0x10b981))
+                            .text_color(rgb(0xffffff))
+                            .child("⌨️")
+                            .on_click(cx.listener(|_, _, _, _| {
+                                show_keyboard();
+                            })),
+                    ),
+            )
             .child(
                 div()
                     .id("tap-target")
@@ -52,13 +84,13 @@ impl Render for HelloMobile {
                     .child("点我")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.taps += 1;
-                        // M3-7 系统 API 实测：短振 30ms 并刷新电量。
+                        // M3-7 系统 API 实测：短振 30ms。
                         cx.vibrate(30);
-                        this.battery = cx.battery_status();
                         log::info!(
-                            "hello_mobile: tap count = {}, battery = {:?}",
+                            "hello_mobile: tap count = {}, battery = {:?}, input = {:?}",
                             this.taps,
-                            this.battery
+                            cx.battery_status(),
+                            this.input.read(cx).value().to_string()
                         );
                         cx.notify();
                     })),
@@ -83,14 +115,18 @@ fn battery_line(battery: &BatteryStatus) -> String {
 
 /// 打开主窗口（桌面与移动端共用；移动端全屏，窗口 bounds 传空）。
 pub fn open_main_window(cx: &mut App) {
-    cx.open_window(rgpui::WindowOptions::default(), |_, cx| {
-        cx.new(|cx| HelloMobile {
-            taps: 0,
-            battery: cx.battery_status(),
-        })
+    cx.open_window(rgpui::WindowOptions::default(), |window, cx| {
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder("在此输入（拼音可组词）"));
+        cx.new(|cx| HelloMobile { taps: 0, input })
     })
     .expect("打开主窗口失败");
     cx.activate(true);
+}
+
+/// 弹出软键盘（仅 Android 真机；桌面端为空操作）。
+fn show_keyboard() {
+    #[cfg(target_os = "android")]
+    rgpui_android::show_keyboard();
 }
 
 // ── Android 入口 ─────────────────────────────────────────────────────────────

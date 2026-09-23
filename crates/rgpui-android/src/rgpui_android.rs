@@ -10,6 +10,8 @@ pub mod dispatcher;
 pub mod display;
 pub mod fling_guard;
 pub mod gestures;
+#[cfg(target_os = "android")]
+pub mod ime;
 pub mod keyboard;
 pub mod platform;
 pub mod platform_view;
@@ -166,6 +168,8 @@ pub fn show_keyboard() {
 pub fn show_keyboard_with_type(keyboard_type: KeyboardType) {
     #[cfg(target_os = "android")]
     {
+        // 类型存档供 `EditorInfo` 取；真机重弹键盘时 `onCreateInputConnection` 生效。
+        ime::set_input_type(keyboard_type);
         bridge::show_keyboard_android(keyboard_type);
     }
     #[cfg(not(target_os = "android"))]

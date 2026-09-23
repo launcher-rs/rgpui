@@ -118,6 +118,16 @@ fn java_vm_safe() -> Result<&'static JavaVM, String> {
     Ok(JAVA_VM.get_or_init(|| unsafe { JavaVM::from_raw(ptr as *mut jni::sys::JavaVM) }))
 }
 
+/// 在 JNI 入口（Java UI 线程）跑闭包：只做入队/读值等轻活，
+/// 异常转日志；panic 由 `with_env` 截获，不会 unwind 进 JVM 保进程不 abort。
+pub(crate) fn run_jni(raw_env: *mut jni::sys::JNIEnv, task: impl FnOnce(&mut jni::Env)) {
+    let mut unowned = unsafe { jni::JNIEnv::from_raw(raw_env) };
+    let _ = unowned.with_env(|env| {
+        task(env);
+        Ok::<(), jni::errors::Error>(())
+    });
+}
+
 /// 在当前线程附着 JVM 跑闭包（未附着则自动 detach）。
 pub fn with_env<T>(task: impl FnOnce(&mut jni::Env) -> Result<T, String>) -> Result<T, String> {
     let vm = java_vm_safe()?;
@@ -194,23 +204,41 @@ pub fn is_dark_mode() -> bool {
 // 自定义 `GpuiInputActivity` 的 `InputConnection` 组合串记 M3；
 // M2 用系统输入法开关 + 按键事件明文（见 `window.rs` 的键盘分支）。
 
-/// 弹出软键盘（`show_soft_input`，无窗口时记日志不管）。
-///
-/// `keyboard_type` 在 `NativeActivity` 下无处可设（系统输入法自己定），
-/// 记 M3 随自定义 Activity 接 `InputType`；M2 先保证能弹。
+/// 弹出软键盘（调自家 Activity 的 `showKeyboard`：挂输入视图 + 聚焦 + 显键盘；
+/// 不走 `android-activity` 的 helper，那条路不经过 `GpuiInputView` 就没有组合串）。
 pub fn show_keyboard_android(keyboard_type: super::KeyboardType) {
     let _ = keyboard_type;
-    match android_app() {
-        Some(app) => app.show_soft_input(true),
-        None => log::warn!("软键盘弹出失败：无 AndroidApp"),
+    let result = with_env(|env| {
+        let activity_obj = activity(env)?;
+        let _ = env.call_method(
+            &activity_obj,
+            jni::jni_str!("showKeyboard"),
+            jni::jni_sig!("()V"),
+            &[],
+        );
+        env.exception_clear();
+        Ok(())
+    });
+    if let Err(error) = result {
+        log::warn!("软键盘弹出失败：{error}");
     }
 }
 
-/// 收起软键盘。
+/// 收起软键盘（调自家 Activity 的 `hideKeyboard`）。
 pub fn hide_keyboard_android() {
-    match android_app() {
-        Some(app) => app.hide_soft_input(true),
-        None => log::warn!("软键盘收起失败：无 AndroidApp"),
+    let result = with_env(|env| {
+        let activity_obj = activity(env)?;
+        let _ = env.call_method(
+            &activity_obj,
+            jni::jni_str!("hideKeyboard"),
+            jni::jni_sig!("()V"),
+            &[],
+        );
+        env.exception_clear();
+        Ok(())
+    });
+    if let Err(error) = result {
+        log::warn!("软键盘收起失败：{error}");
     }
 }
 
@@ -296,6 +324,7 @@ pub fn run_event_loop(app: &AndroidApp) {
         }
 
         process_input_events(app);
+        drain_ime_ops();
         invoke_deferred_init_callbacks();
 
         // 渲染：可画且节拍器欠帧才 tick GPUI 一次。
@@ -319,6 +348,21 @@ pub fn run_event_loop(app: &AndroidApp) {
         }
     }
     log::info!("run_event_loop：出主循环");
+}
+
+/// 消化 IME 操作队列（主循环调；经窗口回调交核心，无窗即丢）。
+fn drain_ime_ops() {
+    let ops = super::ime::take_ime_ops();
+    if ops.is_empty() {
+        return;
+    }
+    log::debug!("ime：消化 {} 个操作", ops.len());
+    let Some(window) = locked_platform().and_then(|platform| platform.primary_window()) else {
+        return;
+    };
+    for op in ops {
+        window.handle_ime(op);
+    }
 }
 
 /// 消化延迟生命周期标记（`InitWindow` 建窗/`TermWindow` 卸面等）。
@@ -1050,8 +1094,51 @@ pub fn vibrate_android(duration_ms: u64) {
 
 // ── 电池状态（粘性广播 `ACTION_BATTERY_CHANGED`） ──────────────────────────────
 
-/// 读电池电量百分比与充电状态（读不到给未知）。
+/// 电池状态缓存（广播接收器推送更新；读不到时回退即时粘性广播）。
+static BATTERY_CACHE: std::sync::Mutex<Option<rgpui::BatteryStatus>> = std::sync::Mutex::new(None);
+
+/// 由原始读数算电池状态（读不到给未知）。
+fn battery_from_raw(level: i32, scale: i32, status: i32) -> rgpui::BatteryStatus {
+    let level_percent = if level >= 0 && scale > 0 {
+        Some((level * 100 / scale).clamp(0, 100) as u8)
+    } else {
+        None
+    };
+    // `BatteryManager.BATTERY_STATUS_CHARGING = 2`，`BATTERY_STATUS_FULL = 5`。
+    let charging = status == 2 || status == 5;
+    rgpui::BatteryStatus {
+        level_percent,
+        charging,
+    }
+}
+
+/// 存一份电池状态（广播推送用；存完置脏帧，重绘时界面即刷新）。
+fn store_battery_status(status: rgpui::BatteryStatus) {
+    if let Ok(mut cache) = BATTERY_CACHE.lock() {
+        *cache = Some(status);
+    }
+    super::mark_text_input_dirty();
+}
+
+/// 电池广播推送（Java `GpuiInputActivity` 的 receiver 调；只存取脏，不拿窗口锁）。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn Java_rs_rgpui_GpuiInputActivity_nativeBatteryChanged(
+    _env: *mut jni::sys::JNIEnv,
+    _class: jni::sys::jobject,
+    level: jni::sys::jint,
+    scale: jni::sys::jint,
+    status: jni::sys::jint,
+) {
+    store_battery_status(battery_from_raw(level, scale, status));
+}
+
+/// 读电池电量百分比与充电状态（缓存命中直接回；未命中读一次粘性广播播种）。
 pub fn battery_status_android() -> rgpui::BatteryStatus {
+    if let Ok(cache) = BATTERY_CACHE.lock() {
+        if let Some(status) = *cache {
+            return status;
+        }
+    }
     with_env(|env| {
         let activity_obj = activity(env)?;
         let action = env
@@ -1102,17 +1189,9 @@ pub fn battery_status_android() -> rgpui::BatteryStatus {
         let level = int_extra("level")?;
         let scale = int_extra("scale")?;
         let status = int_extra("status")?;
-        let level_percent = if level >= 0 && scale > 0 {
-            Some((level * 100 / scale).clamp(0, 100) as u8)
-        } else {
-            None
-        };
-        // `BatteryManager.BATTERY_STATUS_CHARGING = 2`，`BATTERY_STATUS_FULL = 5`。
-        let charging = status == 2 || status == 5;
-        Ok(rgpui::BatteryStatus {
-            level_percent,
-            charging,
-        })
+        let battery = battery_from_raw(level, scale, status);
+        store_battery_status(battery);
+        Ok(battery)
     })
     .unwrap_or_else(|error| {
         log::warn!("电池状态读取失败：{error}");

@@ -129,6 +129,32 @@ pub fn run(name: &str, cfg: &Config) -> Result<()> {
         &template_dir.join("gradle/wrapper/gradle-wrapper.jar"),
         &project_dir.join("android/gradle/wrapper/gradle-wrapper.jar"),
     )?;
+    // 输入法 Activity（含 InputConnection，包名固定 rs.rgpui 与 JNI 对应）
+    copy_file(
+        &template_dir.join("app/src/main/java/rs/rgpui/GpuiInputActivity.java"),
+        &project_dir.join("android/app/src/main/java/rs/rgpui/GpuiInputActivity.java"),
+    )?;
+    // 模板里 .so 名是占位符，换成真实 lib 名（ClassLoader 登记用，不换则启动即崩）。
+    {
+        let activity_java =
+            project_dir.join("android/app/src/main/java/rs/rgpui/GpuiInputActivity.java");
+        let content = fs::read_to_string(&activity_java)?;
+        if !content.contains("__RGPUI_LIB_NAME__") {
+            anyhow::bail!("模板损坏：GpuiInputActivity.java 缺少 __RGPUI_LIB_NAME__ 占位符");
+        }
+        fs::write(
+            activity_java,
+            content.replace("__RGPUI_LIB_NAME__", lib_name.as_str()),
+        )?;
+    }
+    copy_file(
+        &template_dir.join("app/src/main/java/rs/rgpui/GpuiInputView.java"),
+        &project_dir.join("android/app/src/main/java/rs/rgpui/GpuiInputView.java"),
+    )?;
+    copy_file(
+        &template_dir.join("app/src/main/java/rs/rgpui/GpuiInputConnection.java"),
+        &project_dir.join("android/app/src/main/java/rs/rgpui/GpuiInputConnection.java"),
+    )?;
 
     // 防错校验
     validate_project(&project_dir, name, &lib_name, &package_id, cfg)?;
@@ -188,13 +214,27 @@ fn validate_project(
         ));
     }
 
-    // 2. AndroidManifest lib_name 必须一致
+    // 2. AndroidManifest lib_name 必须一致，且 Activity 必须是输入法子类
     let manifest = fs::read_to_string(dir.join("android/app/src/main/AndroidManifest.xml"))?;
     if !manifest.contains(&format!("android:value=\"{}\"", lib_name)) {
         errors.push(format!(
             "AndroidManifest.xml lib_name '{}' 与 Cargo.toml crate name 不匹配",
             lib_name
         ));
+    }
+    if !manifest.contains("android:name=\"rs.rgpui.GpuiInputActivity\"") {
+        errors.push(
+            "AndroidManifest.xml 必须用 rs.rgpui.GpuiInputActivity（含 InputConnection）".into(),
+        );
+    }
+    for java in [
+        "android/app/src/main/java/rs/rgpui/GpuiInputActivity.java",
+        "android/app/src/main/java/rs/rgpui/GpuiInputView.java",
+        "android/app/src/main/java/rs/rgpui/GpuiInputConnection.java",
+    ] {
+        if !dir.join(java).exists() {
+            errors.push(format!("缺输入法 Java 文件：{java}"));
+        }
     }
 
     // 3. namespace == applicationId
@@ -225,7 +265,7 @@ fn validate_project(
 
     if errors.is_empty() {
         println!(
-            "  {} 防错校验通过（lib_name / packageId / minSdk / abiFilters）",
+            "  {} 防错校验通过（lib_name / packageId / minSdk / abiFilters / 输入法 Activity）",
             style("✓").green()
         );
         Ok(())
@@ -490,7 +530,7 @@ fn android_manifest(lib_name: &str, display_name: &str) -> String {
         android:supportsRtl="true"
         android:resizeableActivity="true">
         <activity
-            android:name="android.app.NativeActivity"
+            android:name="rs.rgpui.GpuiInputActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|density|uiMode"

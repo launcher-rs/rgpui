@@ -16,7 +16,7 @@
         android:supportsRtl="true"
         android:resizeableActivity="true">
         <activity
-            android:name="android.app.NativeActivity"
+            android:name="rs.rgpui.GpuiInputActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|density|uiMode"

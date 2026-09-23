@@ -67,6 +67,8 @@ pub type RequestFrameCallback = Box<dyn FnMut() + Send + 'static>;
 pub type TouchCallback = Box<dyn FnMut(TouchPoint) + Send + 'static>;
 /// 按键事件回调；返回值表示事件是否被应用消费（用于放行系统默认处理）。
 pub type KeyCallback = Box<dyn FnMut(AndroidKeyEvent) -> bool + Send + 'static>;
+/// IME 组合回调（`InputConnection` 操作进队后，主循环消化经此交核心）。
+pub type ImeCallback = Box<dyn FnMut(rgpui::ImeEvent) + Send + 'static>;
 /// 尺寸变化回调（设备像素尺寸 + 缩放；仅真机存槽）。
 pub type ResizeCallback = Box<dyn FnMut(Size<DevicePixels>, f32) + Send + 'static>;
 /// 深浅色变化回调（参数为本地外观，`AndroidPlatformWindow` 再映射核心外观）。
@@ -121,6 +123,8 @@ struct WindowState {
     request_frame_callback: Option<RequestFrameCallback>,
     touch_callback: Option<TouchCallback>,
     key_callback: Option<KeyCallback>,
+    /// IME 组合回调（`bridge` 主循环消化队列经此交核心）。
+    ime_callback: Option<ImeCallback>,
     /// 尺寸回调（真机 `WINDOW_RESIZED`/重建时触发；主机单 surface 无来源）。
     #[cfg(target_os = "android")]
     resize_callback: Option<ResizeCallback>,
@@ -175,6 +179,7 @@ impl AndroidWindow {
             request_frame_callback: None,
             touch_callback: None,
             key_callback: None,
+            ime_callback: None,
             #[cfg(target_os = "android")]
             resize_callback: None,
             appearance_callback: None,
@@ -311,6 +316,11 @@ impl AndroidWindow {
         self.state.lock().key_callback = Some(callback);
     }
 
+    /// 注册 IME 组合回调。
+    pub fn on_ime(&self, callback: ImeCallback) {
+        self.state.lock().ime_callback = Some(callback);
+    }
+
     /// 注册尺寸回调（真机存槽；主机单 surface 无尺寸来源，直接丢弃）。
     pub fn on_resize(&self, callback: ResizeCallback) {
         #[cfg(target_os = "android")]
@@ -372,6 +382,20 @@ impl AndroidWindow {
             consumed
         } else {
             false
+        }
+    }
+
+    /// 投递 IME 组合事件（无回调即丢并记日志）。
+    pub fn handle_ime(&self, event: rgpui::ImeEvent) {
+        let callback = { self.state.lock().ime_callback.take() };
+        if let Some(mut callback) = callback {
+            callback(event);
+            let mut state = self.state.lock();
+            if state.ime_callback.is_none() {
+                state.ime_callback = Some(callback);
+            }
+        } else {
+            log::warn!("IME 事件被丢弃（输入回调未注册）");
         }
     }
 }
@@ -510,6 +534,7 @@ mod native {
                 request_frame_callback: None,
                 touch_callback: None,
                 key_callback: None,
+                ime_callback: None,
                 resize_callback: None,
                 appearance_callback: None,
                 active_status_callback: None,
@@ -1192,6 +1217,14 @@ impl PlatformWindow for AndroidPlatformWindow {
                         consumed
                     }
                 }));
+        }
+
+        // IME 组合：队列消化经此进核心分发（`Window::dispatch_ime_event`）。
+        {
+            let shared = Arc::clone(&shared);
+            self.window.on_ime(Box::new(move |event: rgpui::ImeEvent| {
+                let _ = shared.lock()(PlatformInput::Ime(event));
+            }));
         }
     }
 

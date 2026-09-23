@@ -10,11 +10,11 @@ use crate::{
     Context, Corners, CursorHideMode, CursorStyle, Decorations, DevicePixels,
     DispatchActionListener, DispatchNodeId, DispatchTree, DisplayId, Edges, Effect, Entity,
     EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
-    Hsla, InputHandler, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke,
-    KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent, MonochromeSprite,
-    MouseButton, MouseDownEvent, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, Pixels,
-    PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
-    PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
+    Hsla, ImeEvent, InputHandler, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent,
+    Keystroke, KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent,
+    MonochromeSprite, MouseButton, MouseDownEvent, MouseEvent, MouseMoveEvent, MouseUpEvent, Path,
+    Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow,
+    Point, PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
     RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
     StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
@@ -5084,6 +5084,20 @@ impl Window {
         false
     }
 
+    /// 应用输入法组合事件到当前聚焦的输入框（移动端 `InputConnection` 通道）。
+    ///
+    /// 照 `dispatch_keystroke` 的 take/restore 模式：无聚焦输入框时直接丢弃。
+    pub fn dispatch_ime_event(&mut self, event: &ImeEvent, cx: &mut App) {
+        let Some(mut input_handler) = self.platform_window.take_input_handler() else {
+            log::debug!("ime：无聚焦输入框，丢弃 {event:?}");
+            return;
+        };
+        log::debug!("ime：应用 {event:?}");
+        input_handler.apply_ime_event(event, self, cx);
+        self.platform_window.set_input_handler(input_handler);
+        cx.propagate_event = false;
+    }
+
     /// 返回操作的按键绑定字符串，用于在 UI 中显示。使用最高优先级
     /// 的操作绑定（最后添加到键映射的绑定）。
     pub fn keystroke_text_for(&self, action: &dyn Action) -> String {
@@ -5232,6 +5246,7 @@ impl Window {
                 }
             },
             PlatformInput::Touch(touch) => PlatformInput::Touch(touch),
+            PlatformInput::Ime(ime) => PlatformInput::Ime(ime),
             PlatformInput::KeyDown(_) | PlatformInput::KeyUp(_) => event,
         };
 
@@ -5239,6 +5254,8 @@ impl Window {
             self.dispatch_mouse_event(any_mouse_event, cx, dom_keys.as_deref());
         } else if let Some(any_key_event) = event.keyboard_event() {
             self.dispatch_key_event(any_key_event, cx);
+        } else if let Some(ime_event) = event.ime_event() {
+            self.dispatch_ime_event(ime_event, cx);
         } else if let Some(touch_event) = event.touch_event() {
             // 触摸转鼠标：让 on_click 等鼠标监听器在触摸设备上也能响应。
             let position = touch_event.position;

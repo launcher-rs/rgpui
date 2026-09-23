@@ -323,6 +323,43 @@ cx.vibrate(30); // 短振 30ms（桌面端无操作）
 let battery = cx.battery_status(); // level_percent: Option<u8>, charging: bool
 ```
 
+### 10.3 输入法组合串（M3-2a，自定义 Activity）
+
+`NativeActivity` 给不了 `InputConnection`（`onCreateInputConnection`
+是 `View` 的方法，`Activity` 根本没有——javac 实证），中文拼音组词
+必须自带 Activity + View，照 Godot/SDL 思路：
+
+- `rs.rgpui.GpuiInputActivity(NativeActivity)`：挂 1px 的
+  `GpuiInputView`，`showKeyboard/hideKeyboard`（`runOnUiThread` 切线程），
+  电池广播接收器也在此。包名固定与 `applicationId` 无关。
+- `rs.rgpui.GpuiInputView(View)`：`onCheckIsTextEditor() == true`（绑定前提），
+  `onCreateInputConnection` 填 `EditorInfo`（`inputType` 经 JNI 问 Rust
+  的键盘类型）并返回 `GpuiInputConnection`。
+- `rs.rgpui.GpuiInputConnection(BaseInputConnection)`：提交方向全量透传
+  JNI（组词/提交/删环绕/按键/动作）；查询方向现阶段回空（M3-2b 接快照）。
+-manifest 的 activity 必须指 `rs.rgpui.GpuiInputActivity`
+ （CLI 模板同改；`cargo rgpui run` 的启动组件也同步改了）。
+
+Rust 侧三段式（线程规则见 `ime.rs` 模块头）：
+
+1. JNI 入口（Java UI 线程）只入队（`IME_OPS`）+ 叫醒主循环，
+   经 `bridge::run_jni`（异常转日志 + panic 截获，不 unwind 进 JVM）。
+   注意：`.so` 是 framework 经 `loadNativeCode` 直载的，不走
+   ClassLoader 登记，JNI 按名解析看不见符号——Activity 静态块里
+   `System.loadLibrary("<lib名>")` 再登记一次（CLI 模板用
+   `__RGPUI_LIB_NAME__` 占位符，`new` 时替换，缺失直接报错）。
+2. 主循环 `drain_ime_ops` 取出，经 `AndroidWindow::handle_ime` →
+   `input_callback` 合成 `PlatformInput::Ime` 交核心。
+3. 核心 `Window::dispatch_ime_event` take/restore 输入处理器，
+   经新增的 `PlatformInputHandler::apply_ime_event` 直调
+   `InputHandler`（必须直调：便捷方法走 `AsyncWindowContext::update`，
+   在 App 已借出时 `try_borrow` 失败会静默丢弃——联调血泪）。
+
+联调教训（实现都对但屏上无字时查这两处）：白字白底——根视图
+`.text_color(白)` 会继承进输入框，暗底白框必须给 `Input` 显式深色；
+增量构建的旧 `.so` 曾多次污染验证（`NO_CERTIFICATES` / 符号缺失），
+真机测试前认准 `mergeDebugNativeLibs` 重跑或直接 `clean`。
+
 ## 11. 移动端 UI 约束（cookbook，写应用前读一遍）
 
 - 无悬停：`hover` 样式不能是唯一信息通道；点击目标 ≥ 44pt。
