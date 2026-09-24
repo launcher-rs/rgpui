@@ -683,6 +683,11 @@ mod native {
                     ));
                     state.renderer = Some(renderer);
                 }
+                // 尺寸真变了必须补一帧：否则合成器继续拉伸旧缓冲（旋转实证）。
+                #[cfg(target_os = "android")]
+                {
+                    super::super::frame_source::schedule_frame();
+                }
                 (width, height, state.scale_factor)
             };
             fire_resize(self, width, height, scale);
@@ -1260,6 +1265,13 @@ impl PlatformWindow for AndroidPlatformWindow {
                 unsafe { std::mem::transmute(callback) };
             let send_callback = Arc::new(Mutex::new(send_callback));
             self.window.on_resize(Box::new(move |device_size, scale| {
+                log::info!(
+                    "resize 回调：设备 {}×{} scale={scale} → 逻辑 {}×{}",
+                    device_size.width.0,
+                    device_size.height.0,
+                    device_size.width.0 as f32 / scale,
+                    device_size.height.0 as f32 / scale,
+                );
                 send_callback.lock()(
                     size(
                         px(device_size.width.0 as f32 / scale),
