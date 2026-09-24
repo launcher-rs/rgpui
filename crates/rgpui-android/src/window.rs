@@ -693,6 +693,17 @@ mod native {
             self.state.lock().renderer.is_some()
         }
 
+        /// 当前记录的 surface 尺寸（设备像素，看门狗对账用）。
+        pub fn surface_size(&self) -> (i32, i32) {
+            let state = self.state.lock();
+            (state.width, state.height)
+        }
+
+        /// 当前记录的 surface 对象地址（看门狗判断换面用）。
+        pub fn surface_addr(&self) -> usize {
+            self.state.lock().surface_window_addr
+        }
+
         /// 渲染器精灵图集（surface 卸掉时为空）。
         pub fn sprite_atlas(&self) -> Option<Arc<dyn PlatformAtlas>> {
             let state = self.state.lock();

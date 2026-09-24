@@ -313,6 +313,8 @@ pub fn run_event_loop(app: &AndroidApp) {
 
         // 延迟生命周期消化（`poll_events` 返回后，无锁竞争）。
         drain_pending_lifecycle(app);
+        // 静默尺寸对账：旋转等场景 glue 可能零事件，每轮自查自愈。
+        watch_window_size(app);
         if let Some(platform) = locked_platform() {
             if let Some(window) = platform.primary_window() {
                 let is_active = window.is_active();
@@ -365,6 +367,77 @@ fn drain_ime_ops() {
     }
 }
 
+/// 挂载原生窗口（`InitWindow` 与静默换面共用；首窗开新、旧窗重挂）。
+fn attach_native_window(
+    app: &AndroidApp,
+    platform: &Arc<AndroidPlatform>,
+    native_window: ndk::native_window::NativeWindow,
+) {
+    let (width, height) = (native_window.width(), native_window.height());
+    log::info!("InitWindow：{width}×{height}");
+    platform.update_primary_display(&native_window, &app.asset_manager());
+    let scale = platform
+        .primary_display()
+        .map(|display| display.scale_factor())
+        .unwrap_or(2.0);
+    if let Some(existing) = platform.primary_window() {
+        let gpu = platform.gpu_context();
+        match existing.init_window(native_window, gpu) {
+            Ok(()) => log::info!("旧窗 surface 已重挂"),
+            Err(error) => log::error!("surface 重挂失败：{error:#}"),
+        }
+        existing.handle_resize();
+        let rect = app.content_rect();
+        existing.update_safe_area_from_content_rect(rect.left, rect.top, rect.right, rect.bottom);
+        apply_system_appearance(&existing);
+        INIT_WINDOW_DONE.store(true, Ordering::Relaxed);
+    } else {
+        match platform.open_window(native_window, scale, false) {
+            Ok(window) => {
+                log::info!("首窗已开 scale={scale:.1}");
+                let rect = app.content_rect();
+                window.update_safe_area_from_content_rect(
+                    rect.left,
+                    rect.top,
+                    rect.right,
+                    rect.bottom,
+                );
+                apply_system_appearance(&window);
+            }
+            Err(error) => log::error!("开窗失败：{error:#}"),
+        }
+    }
+}
+
+/// 静默尺寸对账（旋转时 glue 可能零事件）：surface 对象换了走重挂，
+/// 同对象尺寸变了走重配 + 安全区更新；都对上则直接返回。
+fn watch_window_size(app: &AndroidApp) {
+    let Some(platform) = locked_platform() else {
+        return;
+    };
+    let Some(window) = platform.primary_window() else {
+        return;
+    };
+    let Some(native) = app.native_window() else {
+        return;
+    };
+    let incoming = native.ptr().as_ptr() as usize;
+    if incoming != window.surface_addr() {
+        log::info!("尺寸对账：surface 已换，重走挂载流程");
+        attach_native_window(app, &platform, native);
+        return;
+    }
+    let (width, height) = (native.width(), native.height());
+    let (known_width, known_height) = window.surface_size();
+    if width == known_width && height == known_height {
+        return;
+    }
+    log::info!("尺寸对账：同面缩放 {known_width}×{known_height} → {width}×{height}");
+    window.handle_resize();
+    let rect = app.content_rect();
+    window.update_safe_area_from_content_rect(rect.left, rect.top, rect.right, rect.bottom);
+}
+
 /// 消化延迟生命周期标记（`InitWindow` 建窗/`TermWindow` 卸面等）。
 fn drain_pending_lifecycle(app: &AndroidApp) {
     // 每次处理后排空一次 Java 侧新到的命令（防 UI 线程 condvar 久等 ANR）。
@@ -391,45 +464,7 @@ fn drain_pending_lifecycle(app: &AndroidApp) {
         log::info!("lifecycle：InitWindow");
         if let Some(platform) = locked_platform() {
             if let Some(native_window) = app.native_window() {
-                let (width, height) = (native_window.width(), native_window.height());
-                log::info!("InitWindow：{width}×{height}");
-                platform.update_primary_display(&native_window, &app.asset_manager());
-                let scale = platform
-                    .primary_display()
-                    .map(|display| display.scale_factor())
-                    .unwrap_or(2.0);
-                if let Some(existing) = platform.primary_window() {
-                    let gpu = platform.gpu_context();
-                    match existing.init_window(native_window, gpu) {
-                        Ok(()) => log::info!("旧窗 surface 已重挂"),
-                        Err(error) => log::error!("surface 重挂失败：{error:#}"),
-                    }
-                    existing.handle_resize();
-                    let rect = app.content_rect();
-                    existing.update_safe_area_from_content_rect(
-                        rect.left,
-                        rect.top,
-                        rect.right,
-                        rect.bottom,
-                    );
-                    apply_system_appearance(&existing);
-                    INIT_WINDOW_DONE.store(true, Ordering::Relaxed);
-                } else {
-                    match platform.open_window(native_window, scale, false) {
-                        Ok(window) => {
-                            log::info!("首窗已开 scale={scale:.1}");
-                            let rect = app.content_rect();
-                            window.update_safe_area_from_content_rect(
-                                rect.left,
-                                rect.top,
-                                rect.right,
-                                rect.bottom,
-                            );
-                            apply_system_appearance(&window);
-                        }
-                        Err(error) => log::error!("开窗失败：{error:#}"),
-                    }
-                }
+                attach_native_window(app, &platform, native_window);
             }
         }
         drain(app);
