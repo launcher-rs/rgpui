@@ -12,7 +12,7 @@
 //! - 任何写路径（`global_mut` / `set_global` / `remove_global` / 租借归还）递增。
 
 use crate::EntityId;
-use std::any::TypeId;
+use std::{any::TypeId, cell::Cell, rc::Rc};
 
 /// 单调递增的版本号：每次“可能改变渲染结果”的写入递增一次。
 ///
@@ -40,6 +40,8 @@ pub(crate) struct DependencyRecorder {
     entities: Vec<(EntityId, Generation)>,
     /// 读过的全局及其读取方式。
     globals: Vec<(TypeId, GlobalRead)>,
+    /// 读过的实体外共享状态（滚动句柄、列表状态）及其当时的版本号。
+    states: Vec<(StateVersion, u64)>,
 }
 
 impl DependencyRecorder {
@@ -69,11 +71,44 @@ impl DependencyRecorder {
         self.globals.push((global_type, read));
     }
 
+    /// 记录一次实体外共享状态读取。
+    pub(crate) fn record_state(&mut self, version: &StateVersion) {
+        self.states.push((version.clone(), version.get()));
+    }
+
     /// 结束记录，生成不可变的依赖快照。
     pub(crate) fn finish(self) -> DependencySet {
         DependencySet {
             entities: self.entities,
             globals: self.globals,
+            states: self.states,
+        }
+    }
+}
+
+/// 实体外共享状态的版本号：滚动句柄、列表状态等。
+///
+/// `Rc` 共享保证句柄克隆看到同一计数器；`Cell` 允许无 `App` 上下文的
+/// 读路径（如 `ScrollHandle::offset`）同样打戳而不引入借用分歧。
+/// 递增即“渲染结果可能变化”，只减不增的刷新（如每帧重建子边界）不得递增。
+#[derive(Clone, Default, Debug)]
+pub(crate) struct StateVersion(Rc<Cell<u64>>);
+
+impl StateVersion {
+    /// 读取当前版本号。
+    pub(crate) fn get(&self) -> u64 {
+        self.0.get()
+    }
+
+    /// 标记状态已变化。
+    pub(crate) fn bump(&self) {
+        self.0.set(self.0.get().wrapping_add(1));
+    }
+
+    /// 可能未实际变化的写入：变化才递增（如 `set_offset` 写入相同值）。
+    pub(crate) fn bump_if(&self, changed: bool) {
+        if changed {
+            self.bump();
         }
     }
 }
@@ -96,13 +131,16 @@ pub(crate) struct DependencySet {
     entities: Vec<(EntityId, Generation)>,
     /// 绘制时读过的全局及其读取方式。
     globals: Vec<(TypeId, GlobalRead)>,
+    /// 绘制时读过的实体外共享状态及其版本号（`Rc` 共享，查询无需外部表）。
+    states: Vec<(StateVersion, u64)>,
 }
 
 impl DependencySet {
-    /// 合并另一快照（实体与全局记录器分别收集后汇总）。
+    /// 合并另一快照（实体、全局与共享状态记录器分别收集后汇总）。
     pub(crate) fn merge(&mut self, other: DependencySet) {
         self.entities.extend(other.entities);
         self.globals.extend(other.globals);
+        self.states.extend(other.states);
     }
 
     /// 判定快照是否过期。
@@ -110,7 +148,8 @@ impl DependencySet {
     /// - 实体：当前版本号与记录不一致即过期；实体已消失（查不到版本号）
     ///   按过期处理（视图持有失效实体本就该重建）；
     /// - 全局值读取：版本号不一致或全局已消失即过期；
-    /// - 存在性记录：存在与否翻转才过期，值写入不影响。
+    /// - 存在性记录：存在与否翻转才过期，值写入不影响；
+    /// - 共享状态：计数器变化即过期（自包含查询，无需外部表）。
     pub(crate) fn is_stale(
         &self,
         entity_generation: &impl Fn(EntityId) -> Option<Generation>,
@@ -129,6 +168,10 @@ impl DependencySet {
                     GlobalRead::Absent => current.is_some(),
                 }
             })
+            || self
+                .states
+                .iter()
+                .any(|(version, recorded)| version.get() != *recorded)
     }
 }
 
@@ -199,6 +242,28 @@ mod tests {
         let mut merged = DependencySet::default();
         merged.merge(recorder.finish());
         assert!(merged.is_stale(&no_entities, &no_globals));
+    }
+
+    /// 共享状态：递增即过期；`bump_if(false)` 保持新鲜；克隆句柄共享计数器。
+    #[test]
+    fn state_version_stales_on_bump() {
+        let version = StateVersion::default();
+        let alias = version.clone();
+        assert_eq!(version.get(), alias.get());
+
+        let mut recorder = DependencyRecorder::new();
+        recorder.record_state(&version);
+        let snapshot = recorder.finish();
+
+        let no_entities = |_: EntityId| None;
+        let no_globals = |_: TypeId| None;
+        assert!(!snapshot.is_stale(&no_entities, &no_globals));
+
+        version.bump_if(false);
+        assert!(!snapshot.is_stale(&no_entities, &no_globals));
+
+        alias.bump();
+        assert!(snapshot.is_stale(&no_entities, &no_globals));
     }
 
     /// 真实 `App` 路径：记录读集 → 无写入新鲜 → 实体/全局写入分别过期。

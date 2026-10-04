@@ -154,6 +154,8 @@ impl UniformListScrollHandle {
             offset: 0,
             scroll_strict: false,
         });
+        // Retained P1b：延迟滚动意图即递增（应用发生在 prepaint，不另递增）。
+        self.0.borrow().base_handle.version().bump();
     }
 
     /// 滚动列表使指定项索引位于滚动策略位置。
@@ -167,6 +169,7 @@ impl UniformListScrollHandle {
             offset: 0,
             scroll_strict: true,
         });
+        self.0.borrow().base_handle.version().bump();
     }
 
     /// 以项数偏移量滚动列表到指定项索引。
@@ -184,6 +187,7 @@ impl UniformListScrollHandle {
             offset,
             scroll_strict: false,
         });
+        self.0.borrow().base_handle.version().bump();
     }
 
     /// 滚动列表使指定项索引精确位于滚动策略位置，并带偏移量。
@@ -206,6 +210,7 @@ impl UniformListScrollHandle {
             offset,
             scroll_strict: true,
         });
+        self.0.borrow().base_handle.version().bump();
     }
 
     /// 检查列表是否垂直翻转。

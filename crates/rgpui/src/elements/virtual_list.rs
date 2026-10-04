@@ -109,6 +109,8 @@ impl VirtualListScrollHandle {
             offset,
             scroll_strict: false,
         });
+        // Retained P1b：延迟滚动意图即递增（应用发生在 prepaint，不另递增）。
+        self.base_handle.version().bump();
     }
 
     /// 滚动到列表底部。

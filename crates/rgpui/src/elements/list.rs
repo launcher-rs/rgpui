@@ -73,6 +73,8 @@ struct StateInner {
     measuring_behavior: ListMeasuringBehavior,
     pending_scroll: Option<PendingScroll>,
     follow_state: FollowState,
+    /// 共享状态版本号（Retained P1b）：语义写入递增；prepaint 内部应用待定滚动不另递增。
+    version: crate::fast::dependencies::StateVersion,
 }
 
 /// 延迟滚动调整，在滚动顶部项重新测量后应用。
@@ -321,6 +323,7 @@ impl ListState {
             measuring_behavior: ListMeasuringBehavior::default(),
             pending_scroll: None,
             follow_state: FollowState::default(),
+            version: crate::fast::dependencies::StateVersion::default(),
         })));
         this.splice(0..0, item_count);
         this
@@ -330,7 +333,11 @@ impl ListState {
     ///
     /// 这对于确保滚动条大小正确（而不是仅基于已渲染元素）很有用。
     pub fn measure_all(self) -> Self {
-        self.0.borrow_mut().measuring_behavior = ListMeasuringBehavior::Measure(false);
+        {
+            let mut state = self.0.borrow_mut();
+            state.measuring_behavior = ListMeasuringBehavior::Measure(false);
+            state.version.bump();
+        }
         self
     }
 
@@ -386,6 +393,7 @@ impl ListState {
         let mut tree = SumTree::default();
         tree.extend(new_items, ());
         state.items = tree;
+        state.version.bump();
     }
 
     /// 重新测量所有项，同时保持比例滚动位置。
@@ -466,6 +474,7 @@ impl ListState {
         };
         state.items = new_items;
         state.measuring_behavior.reset();
+        state.version.bump();
     }
 
     /// 列表中的项数量。
@@ -539,6 +548,8 @@ impl ListState {
                 *item_ix = *item_ix - (old_range.end - old_range.start) + spliced_count;
             }
         }
+        // Retained P1b：内容替换即递增（`reset` 经此路径一并覆盖）。
+        state.version.bump();
     }
 
     /// 设置列表滚动时调用的处理程序。
@@ -585,6 +596,7 @@ impl ListState {
         drop(cursor);
         state.rebase_pending_scroll(scroll_top);
         state.logical_scroll_top = Some(scroll_top);
+        state.version.bump();
     }
 
     /// 将列表滚动到最末尾（超过最后一项）。
@@ -600,6 +612,7 @@ impl ListState {
             item_ix: item_count,
             offset_in_item: px(0.),
         });
+        state.version.bump();
     }
 
     /// 设置列表的跟随模式。在 `Tail` 模式下，列表
@@ -623,6 +636,7 @@ impl ListState {
                 }
             }
         }
+        state.version.bump();
     }
 
     /// 返回列表当前是否正在主动跟随尾部（在每次布局时吸附到末尾）。
@@ -648,6 +662,7 @@ impl ListState {
 
         state.rebase_pending_scroll(scroll_top);
         state.logical_scroll_top = Some(scroll_top);
+        state.version.bump();
     }
 
     /// 滚动列表以显示指定项，使其完全可见。
@@ -681,6 +696,7 @@ impl ListState {
 
         state.rebase_pending_scroll(scroll_top);
         state.logical_scroll_top = Some(scroll_top);
+        state.version.bump();
     }
 
     /// 获取给定项在窗口坐标中的边界（如果已渲染）。
@@ -719,13 +735,16 @@ impl ListState {
     pub fn scrollbar_drag_started(&self) {
         let mut state = self.0.borrow_mut();
         state.scrollbar_drag_start_height = Some(state.items.summary().height);
+        state.version.bump();
     }
 
     /// 当用户停止拖动滚动条时调用。
     ///
     /// 参见 `scrollbar_drag_started`。
     pub fn scrollbar_drag_ended(&self) {
-        self.0.borrow_mut().scrollbar_drag_start_height.take();
+        let mut state = self.0.borrow_mut();
+        state.scrollbar_drag_start_height.take();
+        state.version.bump();
     }
 
     /// 如果滚动条当前正在被拖动则返回 `true`。
@@ -1342,6 +1361,8 @@ impl StateInner {
     // Scrollbar support
 
     fn set_offset_from_scrollbar(&mut self, point: Point<Pixels>) {
+        // Retained P1b：滚动条拖动意图即递增（拖动每帧 notify，本就重建；开销一致）。
+        self.version.bump();
         let Some(bounds) = self.last_layout_bounds else {
             return;
         };
@@ -1506,6 +1527,8 @@ impl Element for List {
     ) -> ListPrepaintState {
         let state = &mut *self.state.0.borrow_mut();
         state.reset = false;
+        // Retained P1b：列表绘制即记录其共享版本号；内容／滚动变化使引用视图过期。
+        cx.note_state_read(&state.version);
 
         let mut style = Style::default();
         style.refine(&self.style);

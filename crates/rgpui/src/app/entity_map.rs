@@ -59,8 +59,9 @@ pub(crate) struct EntityMap {
     pub accessed_entities: RefCell<FxHashSet<EntityId>>,
     /// 实体版本号（Retained 依赖追踪 P1）：`lease`（更新）递增，`read` 按当前记录器打戳。
     generations: SecondaryMap<EntityId, crate::fast::dependencies::Generation>,
-    /// 当前依赖记录器（P2 绘制包装时装配；平时为 None，读路径只多一次空判断）。
-    recorder: RefCell<Option<crate::fast::dependencies::DependencyRecorder>>,
+    /// 当前依赖记录器栈（P2 绘制包装时装配；平时为空，读路径只多一次空判断）。
+    /// 栈而非单个：嵌套视图各自记录，互不覆盖。
+    recorders: RefCell<Vec<crate::fast::dependencies::DependencyRecorder>>,
     ref_counts: Arc<RwLock<EntityRefCounts>>,
 }
 
@@ -78,7 +79,7 @@ impl EntityMap {
             entities: SecondaryMap::new(),
             accessed_entities: RefCell::new(FxHashSet::default()),
             generations: SecondaryMap::new(),
-            recorder: RefCell::new(None),
+            recorders: RefCell::new(Vec::new()),
             ref_counts: Arc::new(RwLock::new(EntityRefCounts {
                 counts: SlotMap::with_key(),
                 dropped_entity_ids: Vec::new(),
@@ -179,7 +180,7 @@ impl EntityMap {
         accessed_entities.insert(entity.entity_id);
 
         // Retained 依赖追踪 P1 读 hook：记录期打戳 `(id, generation)`；平时只多一次空判断。
-        if let Some(recorder) = self.recorder.borrow_mut().as_mut() {
+        if let Some(recorder) = self.recorders.borrow_mut().last_mut() {
             let generation = self
                 .generations
                 .get(entity.entity_id)
@@ -216,14 +217,16 @@ impl EntityMap {
         self.generations.get(id).copied()
     }
 
-    /// 开始一次实体依赖记录（P2 绘制包装调用；重复开始会替换旧记录器）。
+    /// 开始一次实体依赖记录（压栈；P2 绘制包装调用。嵌套视图各自独立记录）。
     pub(crate) fn begin_dependency_recording(&self) {
-        *self.recorder.borrow_mut() = Some(crate::fast::dependencies::DependencyRecorder::new());
+        self.recorders
+            .borrow_mut()
+            .push(crate::fast::dependencies::DependencyRecorder::new());
     }
 
-    /// 结束实体依赖记录并返回快照；未开始时返回空快照。
+    /// 结束最近一次实体依赖记录并返回快照；栈空时返回空快照。
     pub(crate) fn end_dependency_recording(&self) -> crate::fast::dependencies::DependencySet {
-        match self.recorder.borrow_mut().take() {
+        match self.recorders.borrow_mut().pop() {
             Some(recorder) => recorder.finish(),
             None => crate::fast::dependencies::DependencySet::default(),
         }

@@ -720,9 +720,9 @@ pub struct App {
     pub(crate) globals_by_type: TypeIdHashMap<Box<dyn Any>>,
     /// 全局版本号（Retained 依赖追踪 P1）：任何写路径递增，读路径按当前记录器打戳。
     pub(crate) global_generations: TypeIdHashMap<crate::fast::dependencies::Generation>,
-    /// 当前全局依赖记录器（`&self` 读路径打戳用 interior mutability；平时为 None）。
-    pub(crate) global_recorder: RefCell<Option<crate::fast::dependencies::DependencyRecorder>>,
-
+    /// 当前全局依赖记录器栈（`&self` 读路径打戳用 interior mutability；平时为空）。
+    /// 与实体记录器同步压栈／弹栈，嵌套视图各自独立记录。
+    pub(crate) global_recorders: RefCell<Vec<crate::fast::dependencies::DependencyRecorder>>,
     // assets
     pub(crate) loading_assets: FxHashMap<(TypeId, u64), Box<dyn Any>>,
     asset_source: Arc<dyn AssetSource>,
@@ -819,7 +819,7 @@ impl App {
                 http_client,
                 globals_by_type: Default::default(),
                 global_generations: Default::default(),
-                global_recorder: RefCell::new(None),
+                global_recorders: RefCell::new(Vec::new()),
                 entities,
                 new_entity_observers: SubscriberSet::new(),
                 windows: SlotMap::with_key(),
@@ -1900,7 +1900,7 @@ impl App {
     pub fn has_global<G: Global>(&self) -> bool {
         let present = self.globals_by_type.contains_key(&TypeId::of::<G>());
         // Retained 依赖追踪 P1 读 hook：只记录存在性，值写入不影响此记录。
-        if let Some(recorder) = self.global_recorder.borrow_mut().as_mut() {
+        if let Some(recorder) = self.global_recorders.borrow_mut().last_mut() {
             recorder.record_global_presence(TypeId::of::<G>(), present);
         }
         present
@@ -1910,7 +1910,7 @@ impl App {
     #[track_caller]
     pub fn global<G: Global>(&self) -> &G {
         // Retained 依赖追踪 P1 读 hook：记录值读取时的版本号。
-        if let Some(recorder) = self.global_recorder.borrow_mut().as_mut() {
+        if let Some(recorder) = self.global_recorders.borrow_mut().last_mut() {
             recorder.record_global(TypeId::of::<G>(), self.global_generation_or_initial::<G>());
         }
         self.globals_by_type
@@ -1926,7 +1926,7 @@ impl App {
             .get(&TypeId::of::<G>())
             .map(|any_state| any_state.downcast_ref::<G>().unwrap());
         // Retained 依赖追踪 P1 读 hook：有值记版本号，无值记不存在。
-        if let Some(recorder) = self.global_recorder.borrow_mut().as_mut() {
+        if let Some(recorder) = self.global_recorders.borrow_mut().last_mut() {
             if global.is_some() {
                 recorder.record_global(TypeId::of::<G>(), self.global_generation_or_initial::<G>());
             } else {
@@ -2065,20 +2065,28 @@ impl App {
         self.entities.entity_generation(id)
     }
 
-    /// 开始一次依赖记录（实体 + 全局同时装配；P2 绘制包装调用）。
+    /// 开始一次依赖记录（实体 + 全局同步压栈；P2 绘制包装调用）。
     pub(crate) fn begin_dependency_recording(&self) {
         self.entities.begin_dependency_recording();
-        *self.global_recorder.borrow_mut() =
-            Some(crate::fast::dependencies::DependencyRecorder::new());
+        self.global_recorders
+            .borrow_mut()
+            .push(crate::fast::dependencies::DependencyRecorder::new());
     }
 
-    /// 结束依赖记录并返回合并快照；未开始时返回空快照。
+    /// 结束依赖记录并返回合并快照；栈空时返回空快照。
     pub(crate) fn end_dependency_recording(&self) -> crate::fast::dependencies::DependencySet {
         let mut set = self.entities.end_dependency_recording();
-        if let Some(recorder) = self.global_recorder.borrow_mut().take() {
+        if let Some(recorder) = self.global_recorders.borrow_mut().pop() {
             set.merge(recorder.finish());
         }
         set
+    }
+
+    /// 记录一次实体外共享状态读取（滚动句柄、列表状态；打戳到栈顶记录器）。
+    pub(crate) fn note_state_read(&self, version: &crate::fast::dependencies::StateVersion) {
+        if let Some(recorder) = self.global_recorders.borrow_mut().last_mut() {
+            recorder.record_state(version);
+        }
     }
 
     pub(crate) fn new_entity_observer(
