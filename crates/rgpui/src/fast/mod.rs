@@ -10,6 +10,7 @@
 //! 量化对比建立基线口径；视图复用 / splice / 布局保留 / 文本测量 / 滚动层
 //! 按阶段逐个落子，每个阶段自带 oracle 式正确性校验。
 
+pub(crate) mod dependencies;
 pub(crate) mod stats;
 
 pub(crate) use stats::FrameStats;

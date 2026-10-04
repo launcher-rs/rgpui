@@ -718,6 +718,10 @@ pub struct App {
     // the tokio runtime. As any task attempting to spawn a blocking tokio task,
     // might panic.
     pub(crate) globals_by_type: TypeIdHashMap<Box<dyn Any>>,
+    /// 全局版本号（Retained 依赖追踪 P1）：任何写路径递增，读路径按当前记录器打戳。
+    pub(crate) global_generations: TypeIdHashMap<crate::fast::dependencies::Generation>,
+    /// 当前全局依赖记录器（`&self` 读路径打戳用 interior mutability；平时为 None）。
+    pub(crate) global_recorder: RefCell<Option<crate::fast::dependencies::DependencyRecorder>>,
 
     // assets
     pub(crate) loading_assets: FxHashMap<(TypeId, u64), Box<dyn Any>>,
@@ -814,6 +818,8 @@ impl App {
                 asset_source,
                 http_client,
                 globals_by_type: Default::default(),
+                global_generations: Default::default(),
+                global_recorder: RefCell::new(None),
                 entities,
                 new_entity_observers: SubscriberSet::new(),
                 windows: SlotMap::with_key(),
@@ -1892,12 +1898,21 @@ impl App {
 
     /// 检查是否已分配给定类型的全局变量。
     pub fn has_global<G: Global>(&self) -> bool {
-        self.globals_by_type.contains_key(&TypeId::of::<G>())
+        let present = self.globals_by_type.contains_key(&TypeId::of::<G>());
+        // Retained 依赖追踪 P1 读 hook：只记录存在性，值写入不影响此记录。
+        if let Some(recorder) = self.global_recorder.borrow_mut().as_mut() {
+            recorder.record_global_presence(TypeId::of::<G>(), present);
+        }
+        present
     }
 
     /// 访问给定类型的全局变量。如果未分配该类型的全局变量则 panic。
     #[track_caller]
     pub fn global<G: Global>(&self) -> &G {
+        // Retained 依赖追踪 P1 读 hook：记录值读取时的版本号。
+        if let Some(recorder) = self.global_recorder.borrow_mut().as_mut() {
+            recorder.record_global(TypeId::of::<G>(), self.global_generation_or_initial::<G>());
+        }
         self.globals_by_type
             .get(&TypeId::of::<G>())
             .map(|any_state| any_state.downcast_ref::<G>().unwrap())
@@ -1906,9 +1921,19 @@ impl App {
 
     /// 如果已分配值，则访问给定类型的全局变量。
     pub fn try_global<G: Global>(&self) -> Option<&G> {
-        self.globals_by_type
+        let global = self
+            .globals_by_type
             .get(&TypeId::of::<G>())
-            .map(|any_state| any_state.downcast_ref::<G>().unwrap())
+            .map(|any_state| any_state.downcast_ref::<G>().unwrap());
+        // Retained 依赖追踪 P1 读 hook：有值记版本号，无值记不存在。
+        if let Some(recorder) = self.global_recorder.borrow_mut().as_mut() {
+            if global.is_some() {
+                recorder.record_global(TypeId::of::<G>(), self.global_generation_or_initial::<G>());
+            } else {
+                recorder.record_global_presence(TypeId::of::<G>(), false);
+            }
+        }
+        global
     }
 
     /// 可变访问给定类型的全局变量。如果未分配该类型的全局变量则 panic。
@@ -1916,6 +1941,7 @@ impl App {
     pub fn global_mut<G: Global>(&mut self) -> &mut G {
         let global_type = TypeId::of::<G>();
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
+        self.bump_global_generation(global_type);
         self.globals_by_type
             .get_mut(&global_type)
             .and_then(|any_state| any_state.downcast_mut::<G>())
@@ -1926,6 +1952,7 @@ impl App {
     pub fn default_global<G: Global + Default>(&mut self) -> &mut G {
         let global_type = TypeId::of::<G>();
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
+        self.bump_global_generation(global_type);
         self.globals_by_type
             .entry(global_type)
             .or_insert_with(|| Box::<G>::default())
@@ -1937,6 +1964,7 @@ impl App {
     pub fn set_global<G: Global>(&mut self, global: G) {
         let global_type = TypeId::of::<G>();
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
+        self.bump_global_generation(global_type);
         self.globals_by_type.insert(global_type, Box::new(global));
     }
 
@@ -1944,12 +1972,15 @@ impl App {
     #[cfg(any(test, feature = "test-support"))]
     pub fn clear_globals(&mut self) {
         self.globals_by_type.drain();
+        // 版本号一并清空：存量快照查不到版本号即按过期处理。
+        self.global_generations.clear();
     }
 
     /// 从应用上下文中移除给定类型的全局变量。不通知全局观察者。
     pub fn remove_global<G: Global>(&mut self) -> G {
         let global_type = TypeId::of::<G>();
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
+        self.bump_global_generation(global_type);
         *self
             .globals_by_type
             .remove(&global_type)
@@ -1990,7 +2021,64 @@ impl App {
         let global_type = TypeId::of::<G>();
 
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
+        self.bump_global_generation(global_type);
         self.globals_by_type.insert(global_type, lease.global);
+    }
+
+    /// 递增指定全局的版本号（Retained 依赖追踪 P1 写路径 hook）。
+    fn bump_global_generation(&mut self, global_type: TypeId) {
+        let bumped = self
+            .global_generations
+            .get(&global_type)
+            .copied()
+            .unwrap_or_else(crate::fast::dependencies::Generation::initial)
+            .bumped();
+        self.global_generations.insert(global_type, bumped);
+    }
+
+    /// 查询全局当前版本号（从未写入返回初始版本；依赖记录打戳用）。
+    fn global_generation_or_initial<G: Global>(&self) -> crate::fast::dependencies::Generation {
+        self.global_generation::<G>()
+            .unwrap_or_else(crate::fast::dependencies::Generation::initial)
+    }
+
+    /// 查询全局当前版本号（从未写入或已移除返回 `None`；快照过期判定用）。
+    pub(crate) fn global_generation<G: Global>(
+        &self,
+    ) -> Option<crate::fast::dependencies::Generation> {
+        self.global_generations.get(&TypeId::of::<G>()).copied()
+    }
+
+    /// 按类型擦除查询全局版本号（依赖快照过期判定闭包用）。
+    pub(crate) fn global_generation_by_type(
+        &self,
+        global_type: TypeId,
+    ) -> Option<crate::fast::dependencies::Generation> {
+        self.global_generations.get(&global_type).copied()
+    }
+
+    /// 查询实体当前版本号（依赖快照过期判定闭包用）。
+    pub(crate) fn entity_generation(
+        &self,
+        id: EntityId,
+    ) -> Option<crate::fast::dependencies::Generation> {
+        self.entities.entity_generation(id)
+    }
+
+    /// 开始一次依赖记录（实体 + 全局同时装配；P2 绘制包装调用）。
+    pub(crate) fn begin_dependency_recording(&self) {
+        self.entities.begin_dependency_recording();
+        *self.global_recorder.borrow_mut() =
+            Some(crate::fast::dependencies::DependencyRecorder::new());
+    }
+
+    /// 结束依赖记录并返回合并快照；未开始时返回空快照。
+    pub(crate) fn end_dependency_recording(&self) -> crate::fast::dependencies::DependencySet {
+        let mut set = self.entities.end_dependency_recording();
+        if let Some(recorder) = self.global_recorder.borrow_mut().take() {
+            set.merge(recorder.finish());
+        }
+        set
     }
 
     pub(crate) fn new_entity_observer(

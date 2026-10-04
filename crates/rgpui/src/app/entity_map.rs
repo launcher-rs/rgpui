@@ -57,6 +57,10 @@ impl Display for EntityId {
 pub(crate) struct EntityMap {
     entities: SecondaryMap<EntityId, Box<dyn Any>>,
     pub accessed_entities: RefCell<FxHashSet<EntityId>>,
+    /// 实体版本号（Retained 依赖追踪 P1）：`lease`（更新）递增，`read` 按当前记录器打戳。
+    generations: SecondaryMap<EntityId, crate::fast::dependencies::Generation>,
+    /// 当前依赖记录器（P2 绘制包装时装配；平时为 None，读路径只多一次空判断）。
+    recorder: RefCell<Option<crate::fast::dependencies::DependencyRecorder>>,
     ref_counts: Arc<RwLock<EntityRefCounts>>,
 }
 
@@ -73,6 +77,8 @@ impl EntityMap {
         Self {
             entities: SecondaryMap::new(),
             accessed_entities: RefCell::new(FxHashSet::default()),
+            generations: SecondaryMap::new(),
+            recorder: RefCell::new(None),
             ref_counts: Arc::new(RwLock::new(EntityRefCounts {
                 counts: SlotMap::with_key(),
                 dropped_entity_ids: Vec::new(),
@@ -127,6 +133,10 @@ impl EntityMap {
 
         let handle = slot.0;
         self.entities.insert(handle.entity_id, Box::new(entity));
+        self.generations.insert(
+            handle.entity_id,
+            crate::fast::dependencies::Generation::initial(),
+        );
         handle
     }
 
@@ -136,6 +146,15 @@ impl EntityMap {
         self.assert_valid_context(pointer);
         let mut accessed_entities = self.accessed_entities.get_mut();
         accessed_entities.insert(pointer.entity_id);
+
+        // Retained 依赖追踪 P1 写 hook：更新即递增版本号（与 `notify` 是否调用无关）。
+        let bumped = self
+            .generations
+            .get(pointer.entity_id)
+            .copied()
+            .unwrap_or_else(crate::fast::dependencies::Generation::initial)
+            .bumped();
+        self.generations.insert(pointer.entity_id, bumped);
 
         let entity = Some(
             self.entities
@@ -159,6 +178,16 @@ impl EntityMap {
         let mut accessed_entities = self.accessed_entities.borrow_mut();
         accessed_entities.insert(entity.entity_id);
 
+        // Retained 依赖追踪 P1 读 hook：记录期打戳 `(id, generation)`；平时只多一次空判断。
+        if let Some(recorder) = self.recorder.borrow_mut().as_mut() {
+            let generation = self
+                .generations
+                .get(entity.entity_id)
+                .copied()
+                .unwrap_or_else(crate::fast::dependencies::Generation::initial);
+            recorder.record_entity(entity.entity_id, generation);
+        }
+
         self.entities
             .get(entity.entity_id)
             .and_then(|entity| entity.downcast_ref())
@@ -177,6 +206,27 @@ impl EntityMap {
         self.accessed_entities
             .get_mut()
             .extend(entities.iter().copied());
+    }
+
+    /// 查询实体当前版本号（依赖快照过期判定用；实体不存在返回 `None`）。
+    pub(crate) fn entity_generation(
+        &self,
+        id: EntityId,
+    ) -> Option<crate::fast::dependencies::Generation> {
+        self.generations.get(id).copied()
+    }
+
+    /// 开始一次实体依赖记录（P2 绘制包装调用；重复开始会替换旧记录器）。
+    pub(crate) fn begin_dependency_recording(&self) {
+        *self.recorder.borrow_mut() = Some(crate::fast::dependencies::DependencyRecorder::new());
+    }
+
+    /// 结束实体依赖记录并返回快照；未开始时返回空快照。
+    pub(crate) fn end_dependency_recording(&self) -> crate::fast::dependencies::DependencySet {
+        match self.recorder.borrow_mut().take() {
+            Some(recorder) => recorder.finish(),
+            None => crate::fast::dependencies::DependencySet::default(),
+        }
     }
 
     pub fn clear_accessed(&mut self) {

@@ -282,6 +282,9 @@ struct ViewElementState {
     paint_range: Range<PaintIndex>,
     cache_key: ViewElementCacheKey,
     accessed_entities: FxHashSet<EntityId>,
+    /// 上次绘制记录的依赖快照（Retained P1）：读过的实体／全局变化即旁路复用。
+    /// 只会多重建、不会复用过期帧；paint 阶段读取 P2 再纳入。
+    dependencies: crate::fast::dependencies::DependencySet,
 }
 
 struct ViewElementCacheKey {
@@ -395,6 +398,11 @@ impl<V: View> Element for ViewElement<V> {
                             && !window.dirty_views.contains(&entity_id)
                             && !window.refreshing
                             && !inspector_open
+                            // Retained P1：读过的实体／全局变化即重建（保守：只多重建不少）。
+                            && !element_state.dependencies.is_stale(
+                                &|id| cx.entity_generation(id),
+                                &|global_type| cx.global_generation_by_type(global_type),
+                            )
                         {
                             let prepaint_start = window.prepaint_index();
                             window.reuse_prepaint(element_state.prepaint_range.clone());
@@ -408,6 +416,8 @@ impl<V: View> Element for ViewElement<V> {
 
                         let refreshing = mem::replace(&mut window.refreshing, true);
                         let prepaint_start = window.prepaint_index();
+                        // Retained P1：绘制前后开关依赖记录（request_layout／paint 阶段 P2 再纳入）。
+                        cx.begin_dependency_recording();
                         let (mut element, accessed_entities) = cx.detect_accessed_entities(|cx| {
                             let mut element = self
                                 .view
@@ -419,6 +429,7 @@ impl<V: View> Element for ViewElement<V> {
                             element.prepaint_at(bounds.origin, window, cx);
                             element
                         });
+                        let dependencies = cx.end_dependency_recording();
 
                         let prepaint_end = window.prepaint_index();
                         window.refreshing = refreshing;
@@ -427,6 +438,7 @@ impl<V: View> Element for ViewElement<V> {
                             Some(element),
                             ViewElementState {
                                 accessed_entities,
+                                dependencies,
                                 prepaint_range: prepaint_start..prepaint_end,
                                 paint_range: PaintIndex::default()..PaintIndex::default(),
                                 cache_key: ViewElementCacheKey {
