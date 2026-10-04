@@ -1098,6 +1098,8 @@ pub struct Window {
     pub(crate) image_cache_stack: Vec<AnyImageCache>,
     pub(crate) rendered_frame: Frame,
     pub(crate) next_frame: Frame,
+    /// Retained 实验帧统计：只记录帧数与 draw 段耗时，不改变任何绘制行为。
+    pub(crate) fast_stats: crate::fast::FrameStats,
     next_hitbox_id: HitboxId,
     pub(crate) next_tooltip_id: TooltipId,
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
@@ -1905,6 +1907,7 @@ impl Window {
             requested_autoscroll: None,
             rendered_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             next_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
+            fast_stats: crate::fast::FrameStats::new(),
             next_frame_callbacks,
             next_hitbox_id: HitboxId(0),
             next_tooltip_id: TooltipId::default(),
@@ -2979,8 +2982,17 @@ impl Window {
                 self.rendered_frame.input_handlers.push(Some(input_handler));
             }
         }
+        // Retained 实验 hook：记录 draw 段耗时作为量化基线；`MEASUREMENTS` 开启时输出单行快照。
+        let fast_draw_started = Instant::now();
         if !cx.mode.skip_drawing() {
             self.draw_roots(cx);
+        }
+        self.fast_stats.record_draw(
+            fast_draw_started.elapsed(),
+            crate::fast::retention_enabled(),
+        );
+        if crate::fast::measurements_enabled() {
+            log::info!("{}", self.fast_stats.snapshot());
         }
         self.dirty_views.clear();
         self.next_frame.window_active = self.active.get();
