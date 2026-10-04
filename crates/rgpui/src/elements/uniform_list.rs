@@ -10,7 +10,7 @@ use crate::{
     StyleRefinement, Styled, Window, point, px, size,
 };
 use smallvec::SmallVec;
-use std::{cell::RefCell, cmp, ops::Range, rc::Rc, usize};
+use std::{cell::RefCell, cmp, ops::Range, rc::Rc};
 
 use super::ListHorizontalSizingBehavior;
 

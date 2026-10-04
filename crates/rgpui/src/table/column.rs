@@ -1,5 +1,3 @@
-use std::f32;
-
 use crate::{
     Bounds, Context, Edges, Empty, EntityId, IntoElement, ParentElement as _, Pixels, Render,
     SharedString, Styled as _, TextAlign, Window, div, prelude::FluentBuilder, px,
