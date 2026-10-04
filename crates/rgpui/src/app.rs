@@ -2074,11 +2074,18 @@ impl App {
     }
 
     /// 结束依赖记录并返回合并快照；栈空时返回空快照。
+    ///
+    /// 结束时把子快照并入父记录器：父视图复用判定须包含嵌套视图的读取，
+    /// 否则后代变化而父复用会吞掉子树更新（P2a 保守重建；splice 优化是 P2b 的事）。
     pub(crate) fn end_dependency_recording(&self) -> crate::fast::dependencies::DependencySet {
         let mut set = self.entities.end_dependency_recording();
         if let Some(recorder) = self.global_recorders.borrow_mut().pop() {
             set.merge(recorder.finish());
         }
+        if let Some(parent) = self.global_recorders.borrow_mut().last_mut() {
+            parent.absorb_shared(&set);
+        }
+        self.entities.absorb_entities_into_parent(&set);
         set
     }
 

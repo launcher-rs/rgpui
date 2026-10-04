@@ -890,7 +890,7 @@ pub(crate) struct Frame {
     pub(crate) tooltip_requests: Vec<Option<TooltipRequest>>,
     pub(crate) cursor_styles: Vec<CursorStyleRequest>,
     #[cfg(any(test, feature = "test-support"))]
-    pub(crate) debug_bounds: FxHashMap<String, Bounds<Pixels>>,
+    pub(crate) debug_bounds_log: Vec<(String, Bounds<Pixels>)>,
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub(crate) next_inspector_instance_ids: FxHashMap<Rc<crate::InspectorElementPath>, usize>,
     #[cfg(any(feature = "inspector", debug_assertions))]
@@ -929,6 +929,8 @@ pub(crate) struct PaintIndex {
     accessed_element_states_index: usize,
     tab_handle_index: usize,
     line_layout_index: LineLayoutIndex,
+    #[cfg(any(test, feature = "test-support"))]
+    debug_bounds_index: usize,
 }
 
 impl Frame {
@@ -949,7 +951,7 @@ impl Frame {
             cursor_styles: Vec::new(),
 
             #[cfg(any(test, feature = "test-support"))]
-            debug_bounds: FxHashMap::default(),
+            debug_bounds_log: Vec::new(),
 
             #[cfg(any(feature = "inspector", debug_assertions))]
             next_inspector_instance_ids: FxHashMap::default(),
@@ -985,7 +987,7 @@ impl Frame {
 
         #[cfg(any(test, feature = "test-support"))]
         {
-            self.debug_bounds.clear();
+            self.debug_bounds_log.clear();
         }
 
         #[cfg(any(feature = "inspector", debug_assertions))]
@@ -1001,6 +1003,19 @@ impl Frame {
             self.dom_key_hitboxes.clear();
             self.dom_scroll_handles.clear();
         }
+    }
+
+    /// 按选择器查询调试边界（后写入覆盖先写入）。
+    ///
+    /// 日志为追加式：Retained 复用直接拷贝上帧区间，重建视图的写入覆盖在后，
+    /// 故复用帧与重绘帧查询结果一致。
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn debug_bounds(&self, selector: &str) -> Option<Bounds<Pixels>> {
+        self.debug_bounds_log
+            .iter()
+            .rev()
+            .find(|(key, _)| key == selector)
+            .map(|(_, bounds)| *bounds)
     }
 
     pub(crate) fn cursor_style(&self, window: &Window) -> Option<CursorStyle> {
@@ -1146,8 +1161,10 @@ pub struct Window {
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector_tree_stack: Vec<crate::InspectorElementId>,
     /// 面板自举时暂停树记录（I2）：检查器面板自身的 prepaint 不计入被检树。
+    /// 复用门控亦读取它：`prepaint_inspector` 会暂存 `inspector`（`is_open` 瞬时为假），
+    /// 悬挂期仍须禁用复用，否则面板视图复用过期帧。
     #[cfg(any(feature = "inspector", debug_assertions))]
-    inspector_tree_suspended: bool,
+    pub(crate) inspector_tree_suspended: bool,
     /// 运行时采样缓存（Chrome“运行”卡片数据源）：仅检查器打开时更新，关闭即停。
     #[cfg(any(feature = "inspector", debug_assertions))]
     runtime_fps: f64,
@@ -3600,6 +3617,8 @@ impl Window {
             accessed_element_states_index: self.next_frame.accessed_element_states.len(),
             tab_handle_index: self.next_frame.tab_stops.paint_index(),
             line_layout_index: self.text_system.layout_index(),
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: self.next_frame.debug_bounds_log.len(),
         }
     }
 
@@ -3638,6 +3657,14 @@ impl Window {
         self.next_frame.scene.replay(
             range.start.scene_index..range.end.scene_index,
             &self.rendered_frame.scene,
+        );
+        // Retained：调试边界随 paint 区间拷贝（重建视图的写入覆盖在后）。
+        #[cfg(any(test, feature = "test-support"))]
+        self.next_frame.debug_bounds_log.extend(
+            self.rendered_frame.debug_bounds_log
+                [range.start.debug_bounds_index..range.end.debug_bounds_index]
+                .iter()
+                .cloned(),
         );
     }
 

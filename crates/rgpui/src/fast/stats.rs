@@ -20,6 +20,10 @@ pub(crate) struct FrameStats {
     max_draw: Duration,
     /// 记录上一帧时保留总开关的状态（用于区分基线与 Retained 数据）。
     retention_on: bool,
+    /// 复用上帧输出的视图数（P2a：全部状态视图）。
+    views_reused: u64,
+    /// 重新绘制的视图数。
+    views_rebuilt: u64,
 }
 
 impl FrameStats {
@@ -31,6 +35,8 @@ impl FrameStats {
             last_draw: Duration::ZERO,
             max_draw: Duration::ZERO,
             retention_on: super::retention_enabled(),
+            views_reused: 0,
+            views_rebuilt: 0,
         }
     }
 
@@ -41,6 +47,16 @@ impl FrameStats {
         self.last_draw = elapsed;
         self.max_draw = self.max_draw.max(elapsed);
         self.retention_on = retention_on;
+    }
+
+    /// 记录一次视图复用（上帧输出直接重放）。
+    pub(crate) fn note_view_reused(&mut self) {
+        self.views_reused += 1;
+    }
+
+    /// 记录一次视图重建（重新渲染／布局／绘制）。
+    pub(crate) fn note_view_rebuilt(&mut self) {
+        self.views_rebuilt += 1;
     }
 
     /// 生成当前快照（测量输出与基准测试的统一读取口）。
@@ -56,6 +72,8 @@ impl FrameStats {
             avg_ms,
             max_ms: self.max_draw.as_secs_f64() * 1000.0,
             retention_on: self.retention_on,
+            views_reused: self.views_reused,
+            views_rebuilt: self.views_rebuilt,
         }
     }
 }
@@ -73,6 +91,10 @@ pub(crate) struct FrameStatsSnapshot {
     pub(crate) max_ms: f64,
     /// 记录时保留总开关是否开启。
     pub(crate) retention_on: bool,
+    /// 复用上帧输出的视图数。
+    pub(crate) views_reused: u64,
+    /// 重新绘制的视图数。
+    pub(crate) views_rebuilt: u64,
 }
 
 impl fmt::Display for FrameStatsSnapshot {
@@ -80,12 +102,14 @@ impl fmt::Display for FrameStatsSnapshot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "[fast] frames={} last={:.3}ms avg={:.3}ms max={:.3}ms retention={}",
+            "[fast] frames={} last={:.3}ms avg={:.3}ms max={:.3}ms retention={} reused={} rebuilt={}",
             self.frames,
             self.last_ms,
             self.avg_ms,
             self.max_ms,
-            if self.retention_on { "on" } else { "off" }
+            if self.retention_on { "on" } else { "off" },
+            self.views_reused,
+            self.views_rebuilt
         )
     }
 }
@@ -100,12 +124,17 @@ mod tests {
         let mut stats = FrameStats::new();
         stats.record_draw(Duration::from_millis(2), false);
         stats.record_draw(Duration::from_millis(4), false);
+        stats.note_view_reused();
+        stats.note_view_rebuilt();
+        stats.note_view_rebuilt();
         let snapshot = stats.snapshot();
         assert_eq!(snapshot.frames, 2);
         assert!((snapshot.avg_ms - 3.0).abs() < f64::EPSILON);
         assert!((snapshot.last_ms - 4.0).abs() < f64::EPSILON);
         assert!((snapshot.max_ms - 4.0).abs() < f64::EPSILON);
         assert!(!snapshot.retention_on);
+        assert_eq!(snapshot.views_reused, 1);
+        assert_eq!(snapshot.views_rebuilt, 2);
         assert!(format!("{snapshot}").contains("retention=off"));
     }
 }

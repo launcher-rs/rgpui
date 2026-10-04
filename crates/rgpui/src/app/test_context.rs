@@ -865,7 +865,7 @@ impl VisualTestContext {
 
     /// debug_bounds 返回具有给定选择器的元素的边界框。
     pub fn debug_bounds(&mut self, selector: &'static str) -> Option<Bounds<Pixels>> {
-        self.update(|window, _| window.rendered_frame.debug_bounds.get(selector).copied())
+        self.update(|window, _| window.rendered_frame.debug_bounds(selector))
     }
 
     /// 将元素绘制到窗口。用于模拟事件或操作

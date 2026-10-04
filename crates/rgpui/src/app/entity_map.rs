@@ -148,7 +148,9 @@ impl EntityMap {
         let mut accessed_entities = self.accessed_entities.get_mut();
         accessed_entities.insert(pointer.entity_id);
 
-        // Retained 依赖追踪 P1 写 hook：更新即递增版本号（与 `notify` 是否调用无关）。
+        // Retained 依赖追踪写 hook：任何更新（绘制内外）递增版本号。
+        // 渲染自身的 lease 同样递增；视图不记录自身（自增殖每帧可见会恒脏），
+        // 外部无 `notify` 更新靠读取方记录（`read` 打戳）捕获。
         let bumped = self
             .generations
             .get(pointer.entity_id)
@@ -229,6 +231,16 @@ impl EntityMap {
         match self.recorders.borrow_mut().pop() {
             Some(recorder) => recorder.finish(),
             None => crate::fast::dependencies::DependencySet::default(),
+        }
+    }
+
+    /// 把子快照的实体部分并入父记录器（嵌套视图向上 Merkle 化；见 `App::end_dependency_recording`）。
+    pub(crate) fn absorb_entities_into_parent(
+        &self,
+        set: &crate::fast::dependencies::DependencySet,
+    ) {
+        if let Some(parent) = self.recorders.borrow_mut().last_mut() {
+            parent.absorb_entities(set);
         }
     }
 

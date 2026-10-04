@@ -5,7 +5,8 @@
 //! 本模块只提供版本号类型、记录器与过期判定，不持有任何应用状态。
 //!
 //! 语义（与后续 P2 复用直接对应）：
-//! - 实体：`read` 记录 `(id, generation)`；`update`（`lease` 路径）递增；
+//! - 实体：`read` 记录 `(id, generation)`；任何 `update`（`lease` 路径）递增，
+//!   绘制内外一致；视图不记录自身（渲染自增殖每帧可见会恒脏，靠 `notify` 链），
 //!   记录后 generation 变化即过期；
 //! - 全局：`global` / `try_global` 记录 `(type, generation)`；`has_global`
 //!   只记录存在性（存在与否变化才过期，值写入不影响）；
@@ -74,6 +75,17 @@ impl DependencyRecorder {
     /// 记录一次实体外共享状态读取。
     pub(crate) fn record_state(&mut self, version: &StateVersion) {
         self.states.push((version.clone(), version.get()));
+    }
+
+    /// 并入子快照的实体部分（父视图复用判定须包含嵌套视图的读取，P2a）。
+    pub(crate) fn absorb_entities(&mut self, set: &DependencySet) {
+        self.entities.extend(set.entities.iter().copied());
+    }
+
+    /// 并入子快照的全局与共享状态部分（同上）。
+    pub(crate) fn absorb_shared(&mut self, set: &DependencySet) {
+        self.globals.extend(set.globals.iter().copied());
+        self.states.extend(set.states.iter().cloned());
     }
 
     /// 结束记录，生成不可变的依赖快照。

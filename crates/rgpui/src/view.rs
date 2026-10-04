@@ -237,6 +237,10 @@ pub struct ViewElement<V: View> {
     view: Option<V>,
     entity_id: Option<EntityId>,
     cached_style: Option<StyleRefinement>,
+    /// 布局阶段记录的访问集（Retained P2a）：供 prepaint 存入元素状态，复用时重放。
+    pending_accessed_entities: Option<FxHashSet<EntityId>>,
+    /// 布局阶段记录的依赖快照（Retained P2a）：与 prepaint／paint 期记录合并后存储。
+    pending_dependencies: Option<crate::fast::dependencies::DependencySet>,
     #[cfg(debug_assertions)]
     source: &'static core::panic::Location<'static>,
 }
@@ -250,6 +254,8 @@ impl<V: View> ViewElement<V> {
             entity_id,
             cached_style: None,
             view: Some(view),
+            pending_accessed_entities: None,
+            pending_dependencies: None,
             #[cfg(debug_assertions)]
             source: core::panic::Location::caller(),
         }
@@ -333,13 +339,23 @@ impl<V: View> Element for ViewElement<V> {
                         (layout_id, None)
                     }
                     _ => {
-                        let mut element = self
-                            .view
-                            .take()
-                            .unwrap()
-                            .render(window, cx)
-                            .into_any_element();
-                        let layout_id = element.request_layout(window, cx);
+                        // Retained P2a：渲染期同步记录访问集与依赖快照，
+                        // 供 prepaint 复用判定与元素状态存储。
+                        cx.begin_dependency_recording();
+                        let ((element, layout_id), accessed_entities) = cx
+                            .detect_accessed_entities(|cx| {
+                                let mut element = self
+                                    .view
+                                    .take()
+                                    .unwrap()
+                                    .render(window, cx)
+                                    .into_any_element();
+                                let layout_id = element.request_layout(window, cx);
+                                (element, layout_id)
+                            });
+                        let dependencies = cx.end_dependency_recording();
+                        self.pending_accessed_entities = Some(accessed_entities);
+                        self.pending_dependencies = Some(dependencies);
                         (layout_id, Some(element))
                     }
                 }
@@ -375,48 +391,90 @@ impl<V: View> Element for ViewElement<V> {
             // Stateful path.
             window.set_view_id(entity_id);
             window.with_rendered_view(entity_id, |window| {
-                if let Some(mut element) = element.take() {
-                    element.prepaint(window, cx);
-                    return Some(element);
-                }
-
+                let prepaint_start = window.prepaint_index();
                 window.with_element_state::<ViewElementState, _>(
                     global_id.unwrap(),
-                    |element_state, window| {
+                    |mut element_state, window| {
                         let content_mask = window.content_mask();
                         let text_style = window.text_style();
                         // 检查器打开时禁用 prepaint 复用，保证树记录完整。
+                        // 面板自举期（`inspector` 暂存、`suspended` 置位）同样禁用：
+                        // 此时 `is_open` 瞬时为假，不补门会复用过期面板帧。
                         #[cfg(any(feature = "inspector", debug_assertions))]
-                        let inspector_open = window.is_inspector_open();
+                        let inspector_reuse_disabled =
+                            window.is_inspector_open() || window.inspector_tree_suspended;
                         #[cfg(not(any(feature = "inspector", debug_assertions)))]
-                        let inspector_open = false;
+                        let inspector_reuse_disabled = false;
 
-                        if let Some(mut element_state) = element_state
-                            && element_state.cache_key.bounds == bounds
-                            && element_state.cache_key.content_mask == content_mask
-                            && element_state.cache_key.text_style == text_style
+                        // Retained P2a：干净视图复用上帧输出，
+                        // 无论本帧是否渲染（非缓存视图照常渲染，仅输出被丢弃）。
+                        if let Some(state) = element_state.as_mut()
+                            && state.cache_key.bounds == bounds
+                            && state.cache_key.content_mask == content_mask
+                            && state.cache_key.text_style == text_style
                             && !window.dirty_views.contains(&entity_id)
                             && !window.refreshing
-                            && !inspector_open
-                            // Retained P1：读过的实体／全局变化即重建（保守：只多重建不少）。
-                            && !element_state.dependencies.is_stale(
+                            && !inspector_reuse_disabled
+                            // 无障碍激活时禁用复用（焦点／树 bookkeeping 在绘制期，跳过即过期）。
+                            && !window.a11y.is_active()
+                            && !state.dependencies.is_stale(
                                 &|id| cx.entity_generation(id),
                                 &|global_type| cx.global_generation_by_type(global_type),
                             )
                         {
-                            let prepaint_start = window.prepaint_index();
+                            // 丢弃本帧渲染产物（布局树本帧末清空，无残留）。
+                            let _ = element.take();
+                            self.pending_accessed_entities = None;
+                            self.pending_dependencies = None;
+                            let mut element_state = element_state.unwrap();
                             window.reuse_prepaint(element_state.prepaint_range.clone());
                             cx.entities
                                 .extend_accessed(&element_state.accessed_entities);
                             let prepaint_end = window.prepaint_index();
                             element_state.prepaint_range = prepaint_start..prepaint_end;
+                            window.fast_stats.note_view_reused();
 
                             return (None, element_state);
                         }
 
+                        window.fast_stats.note_view_rebuilt();
+                        if let Some(mut element) = element.take() {
+                            // 布局阶段已渲染并布局：直接 prepaint，
+                            // 并把布局阶段记录与本阶段记录合并后存储。
+                            let accessed_entities =
+                                self.pending_accessed_entities.take().unwrap_or_default();
+                            let mut dependencies =
+                                self.pending_dependencies.take().unwrap_or_default();
+                            cx.begin_dependency_recording();
+                            element.prepaint(window, cx);
+                            dependencies.merge(cx.end_dependency_recording());
+                            let prepaint_end = window.prepaint_index();
+                            let mut element_state =
+                                element_state.unwrap_or_else(|| ViewElementState {
+                                    accessed_entities: FxHashSet::default(),
+                                    dependencies: crate::fast::dependencies::DependencySet::default(
+                                    ),
+                                    prepaint_range: prepaint_start.clone()..prepaint_end.clone(),
+                                    paint_range: PaintIndex::default()..PaintIndex::default(),
+                                    cache_key: ViewElementCacheKey {
+                                        bounds,
+                                        content_mask,
+                                        text_style: text_style.clone(),
+                                    },
+                                });
+                            element_state.accessed_entities = accessed_entities;
+                            element_state.dependencies = dependencies;
+                            element_state.prepaint_range = prepaint_start..prepaint_end;
+                            element_state.cache_key = ViewElementCacheKey {
+                                bounds,
+                                content_mask,
+                                text_style,
+                            };
+                            return (Some(element), element_state);
+                        }
+
                         let refreshing = mem::replace(&mut window.refreshing, true);
-                        let prepaint_start = window.prepaint_index();
-                        // Retained P1：绘制前后开关依赖记录（request_layout／paint 阶段 P2 再纳入）。
+                        // Retained P1：绘制前后开关依赖记录。
                         cx.begin_dependency_recording();
                         let (mut element, accessed_entities) = cx.detect_accessed_entities(|cx| {
                             let mut element = self
@@ -502,8 +560,36 @@ impl<V: View> Element for ViewElement<V> {
                             ((), element_state)
                         },
                     )
+                } else if let Some(mut fresh) = element.take() {
+                    // 非缓存视图新鲜绘制：记录 paint 区间并存入元素状态，
+                    // 把 paint 期读取并入快照（三阶段记录闭环）。
+                    let paint_start = window.paint_index();
+                    cx.begin_dependency_recording();
+                    fresh.paint(window, cx);
+                    let paint_reads = cx.end_dependency_recording();
+                    let paint_end = window.paint_index();
+                    window.with_element_state::<ViewElementState, _>(
+                        global_id.unwrap(),
+                        |element_state, _window| {
+                            let mut element_state = element_state.unwrap();
+                            element_state.paint_range = paint_start..paint_end;
+                            element_state.dependencies.merge(paint_reads);
+                            (Some(fresh), element_state)
+                        },
+                    );
                 } else {
-                    element.as_mut().unwrap().paint(window, cx);
+                    // prepaint 已复用：重放 paint 区间。
+                    window.with_element_state::<ViewElementState, _>(
+                        global_id.unwrap(),
+                        |element_state, window| {
+                            let mut element_state = element_state.unwrap();
+                            let paint_start = window.paint_index();
+                            window.reuse_paint(element_state.paint_range.clone());
+                            let paint_end = window.paint_index();
+                            element_state.paint_range = paint_start..paint_end;
+                            ((), element_state)
+                        },
+                    );
                 }
             });
         } else {
@@ -524,5 +610,43 @@ pub struct EmptyView;
 impl Render for EmptyView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         Empty
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AppContext, ParentElement, SharedString, TestAppContext, div};
+
+    /// 静态探针视图：无实体／全局读取，帧间恒定。
+    struct StaticProbe;
+
+    impl Render for StaticProbe {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div().child(SharedString::from("static"))
+        }
+    }
+
+    /// 无变化第二帧复用视图输出（P2a 验收：复用计数增长见证）。
+    #[test]
+    fn static_view_reused_across_frames() {
+        let mut test_app = TestAppContext::single();
+        let window = test_app.add_window(|_, _| StaticProbe);
+        let any_window = window.into();
+
+        let draw = |test_app: &mut TestAppContext| {
+            test_app
+                .update_window(any_window, |_, window, cx| {
+                    window.draw(cx).clear(cx);
+                    window.fast_stats.snapshot()
+                })
+                .unwrap()
+        };
+
+        let first = draw(&mut test_app);
+        assert!(first.views_rebuilt > 0);
+        let second = draw(&mut test_app);
+        // 静态帧必有复用（窗口创建时可能已绘制过首帧，故不断言绝对值，只看增量）。
+        assert!(second.views_reused > first.views_reused);
     }
 }

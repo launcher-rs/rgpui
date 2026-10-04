@@ -931,6 +931,9 @@ impl StateInner {
             self.follow_state.stop_following();
         }
 
+        // Retained P1b：滚轮滚动意图即递增（事件派发期，绘制外）。
+        self.version.bump();
+
         if let Some(handler) = self.scroll_handler.as_mut() {
             let visible_range = Self::visible_range(&self.items, height, scroll_top);
             handler(
@@ -1398,7 +1401,7 @@ impl StateInner {
             self.pending_scroll = None;
             self.logical_scroll_top = None;
         } else {
-            let (start, _, _) =
+            let (start, ..) =
                 self.items
                     .find::<ListItemSummary, _>((), &Height(new_scroll_top), Bias::Right);
 
