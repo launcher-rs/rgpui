@@ -395,6 +395,12 @@ pub(crate) struct LineLayoutCache {
     platform_text_system: Arc<dyn PlatformTextSystem>,
 }
 
+/// 将复用区间钳位到实际长度（空帧后上帧日志可能更短甚至为空）。
+fn clamped_len(len: usize, start: usize, end: usize) -> std::ops::Range<usize> {
+    let start = start.min(len);
+    start..end.clamp(start, len)
+}
+
 #[derive(Default)]
 struct FrameCache {
     lines: FxHashMap<Arc<CacheKey>, Arc<LineLayout>>,
@@ -445,38 +451,60 @@ impl LineLayoutCache {
         let mut previous_frame = &mut *self.previous_frame.lock();
         let mut current_frame = &mut *self.current_frame.write();
 
-        for key in &previous_frame.used_lines[range.start.lines_index..range.end.lines_index] {
-            if let Some((key, line)) = previous_frame.lines.remove_entry(key) {
+        // 区间钳位：全空复用帧后上帧日志为空，非零起始区间会越界；
+        // 缺失的布局由按键查找按需搬运（见 `layout_line` 的上帧回退），此处跳过即可。
+        // 仅移动成功才记账：同一键在 prepaint／paint 被复用两次时不再重复压入，
+        // 否则已用日志无界增长且区间持续漂移。
+        let lines = clamped_len(
+            previous_frame.used_lines.len(),
+            range.start.lines_index,
+            range.end.lines_index,
+        );
+        for index in lines {
+            let key = previous_frame.used_lines[index].clone();
+            if let Some((key, line)) = previous_frame.lines.remove_entry(&key) {
+                current_frame.used_lines.push(key.clone());
                 current_frame.lines.insert(key, line);
             }
-            current_frame.used_lines.push(key.clone());
         }
 
-        for key in &previous_frame.used_wrapped_lines
-            [range.start.wrapped_lines_index..range.end.wrapped_lines_index]
-        {
-            if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
+        let wrapped = clamped_len(
+            previous_frame.used_wrapped_lines.len(),
+            range.start.wrapped_lines_index,
+            range.end.wrapped_lines_index,
+        );
+        for index in wrapped {
+            let key = previous_frame.used_wrapped_lines[index].clone();
+            if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(&key) {
+                current_frame.used_wrapped_lines.push(key.clone());
                 current_frame.wrapped_lines.insert(key, line);
             }
-            current_frame.used_wrapped_lines.push(key.clone());
         }
 
-        for key in &previous_frame.used_lines_by_hash
-            [range.start.lines_by_hash_index..range.end.lines_by_hash_index]
-        {
-            if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(key) {
+        let by_hash = clamped_len(
+            previous_frame.used_lines_by_hash.len(),
+            range.start.lines_by_hash_index,
+            range.end.lines_by_hash_index,
+        );
+        for index in by_hash {
+            let key = previous_frame.used_lines_by_hash[index].clone();
+            if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(&key) {
+                current_frame.used_lines_by_hash.push(key.clone());
                 current_frame.lines_by_hash.insert(key, line);
             }
-            current_frame.used_lines_by_hash.push(key.clone());
         }
 
-        for key in &previous_frame.used_wrapped_lines_by_hash
-            [range.start.wrapped_lines_by_hash_index..range.end.wrapped_lines_by_hash_index]
-        {
-            if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(key) {
+        let wrapped_hash = clamped_len(
+            previous_frame.used_wrapped_lines_by_hash.len(),
+            range.start.wrapped_lines_by_hash_index,
+            range.end.wrapped_lines_by_hash_index,
+        );
+        for index in wrapped_hash {
+            let key = previous_frame.used_wrapped_lines_by_hash[index].clone();
+            if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(&key) {
+                current_frame.used_wrapped_lines_by_hash.push(key.clone());
                 current_frame.wrapped_lines_by_hash.insert(key, line);
             }
-            current_frame.used_wrapped_lines_by_hash.push(key.clone());
         }
     }
 

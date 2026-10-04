@@ -1115,6 +1115,9 @@ pub struct Window {
     pub(crate) next_frame: Frame,
     /// Retained 实验帧统计：只记录帧数与 draw 段耗时，不改变任何绘制行为。
     pub(crate) fast_stats: crate::fast::FrameStats,
+    /// 本窗口保留开关覆盖（Retained P2c oracle 用；`None` 跟随全局开关）。
+    /// `Some(false)` 即逐帧全量重建，是“从零绘制”的对照基线。
+    retention_override: Option<bool>,
     next_hitbox_id: HitboxId,
     pub(crate) next_tooltip_id: TooltipId,
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
@@ -1925,6 +1928,7 @@ impl Window {
             rendered_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             next_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             fast_stats: crate::fast::FrameStats::new(),
+            retention_override: None,
             next_frame_callbacks,
             next_hitbox_id: HitboxId(0),
             next_tooltip_id: TooltipId::default(),
@@ -2141,6 +2145,21 @@ impl Window {
             self.refreshing = true;
             self.invalidator.set_dirty(true);
         }
+    }
+
+    /// 设置本窗口保留开关覆盖（Retained P2c oracle 用，仅测试）。
+    ///
+    /// `None`（默认）跟随 `RGPUI_VIEW_RETENTION` 全局开关；
+    /// `Some(false)` 关闭复用，逐帧全量重建，作为 oracle 对照基线。
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn set_retention_override(&mut self, enabled: Option<bool>) {
+        self.retention_override = enabled;
+    }
+
+    /// 本窗口保留是否生效（覆盖优先，否则全局开关）。
+    pub(crate) fn retention_enabled(&self) -> bool {
+        self.retention_override
+            .unwrap_or_else(crate::fast::retention_enabled)
     }
 
     /// 关闭此窗口。

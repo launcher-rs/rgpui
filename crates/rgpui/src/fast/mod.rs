@@ -15,6 +15,9 @@ pub(crate) mod stats;
 
 pub(crate) use stats::FrameStats;
 
+#[cfg(test)]
+mod tests;
+
 use std::sync::OnceLock;
 
 /// 读取保留总开关（只解析一次，进程内缓存）。

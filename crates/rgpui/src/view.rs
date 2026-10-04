@@ -415,6 +415,8 @@ impl<V: View> Element for ViewElement<V> {
                             && !window.dirty_views.contains(&entity_id)
                             && !window.refreshing
                             && !inspector_reuse_disabled
+                            // 总开关关闭即全量重建（oracle 对照基线；默认跟随环境变量）。
+                            && window.retention_enabled()
                             // 无障碍激活时禁用复用（焦点／树 bookkeeping 在绘制期，跳过即过期）。
                             && !window.a11y.is_active()
                             && !state.dependencies.is_stale(
