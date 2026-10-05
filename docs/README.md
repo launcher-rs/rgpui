@@ -1,6 +1,7 @@
 # 文档索引
 
 - **现行文档**：`rgpui-book/`（8 章教程）、`web-dom-backend-usage.md`（Web DOM 后端用法指南）、
+  `retained-mode.md`（保留模式：实验分支的行为变化、实测收益与应用层契约）、
   `utf8-slice-safety.md`（UTF-8 切片安全：中文 panic 事故与规范）、
   `migration-guide-from-rgpui-component.md`（旧 `rgpui-component` / `rgpui-tokio` / `rgpui-ui` 用户迁移指南）、
   `migration-guide-1.2-to-1.3.md`（1.2→1.3 迁移指南，回调签名统一为主）。
