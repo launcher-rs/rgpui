@@ -1,19 +1,20 @@
 # Retained Mode（保留模式）
 
-> 状态：实验分支 `feat/retained-mode`，未合入 `main`。本文描述该分支相对 `main`
-> 的行为变化、实测收益与应用层契约。数字来自 headless release 基准（见 §5），
+> 状态：已合入 `main`（PR #23，squash）。本文描述保留模式相对合入前的行为变化、
+> 实测收益与应用层契约。数字来自 headless release 基准（见 §5），
 > 与机器有关，读趋势不读绝对值。
 
 ## 1. 背景：原来每一帧都在全量重做
 
-`main` 的绘制是 immediate mode：每一帧走完三个阶段——
+合入前，绘制是 immediate mode：每一帧走完三个阶段——
 
 1. **request_layout**：渲染所有视图（含 `render()`），申请布局；
 2. **prepaint**：计算布局、放置元素、注册 hitbox／dispatch／监听器；
 3. **paint**：把图元写入场景交给 GPU。
 
 即使只有一个标签的文本变了，整棵树三个阶段全部重跑，开销随场景规模线性增长。
-上游 GPUI 唯一的例外是显式 `cached` 视图。本分支借鉴 `temp/gpui-fast` 的思路，
+上游 GPUI 唯一的例外是显式 `cached` 视图。实现时借鉴 `temp/gpui-fast` 的思路
+（该目录 gitignored，仅作分析参照，不参与构建），
 把“干净子树直接复用上帧输出”做成框架默认行为，无需应用逐个标注 `cached`。
 
 ## 2. 做了什么
@@ -83,8 +84,13 @@
   无脏数据）。参考上游 gpui-fast做法，彻底修复需在窗口读路径挂记录器，改造成本高，
   暂列为已知问题。
 
-开关：`RGPUI_VIEW_RETENTION=0`（兼容 `GPUI_VIEW_RETENTION=0`）全局关闭；
-测试可用 `window.set_retention_override(Some(false))` 对单窗关闭（oracle 对照基线用法）。
+开关：默认开启，无需改应用代码。`RGPUI_VIEW_RETENTION=0`（兼容 `GPUI_VIEW_RETENTION=0`）
+可全局关闭；测试可用 `window.set_retention_override(Some(false))` 对单窗关闭
+（oracle 对照基线用法）。
+
+验证生效：设 `rgpui_MEASUREMENTS=1`（或 `ZED_MEASUREMENTS=1`）再跑，日志里会有
+`[fast] ... reused=N rebuilt=M ...` 单行快照，看 `reused` 是否随静止帧增长；
+严格对照跑两次（开／关环境变量）对比帧耗时即可。
 
 公有 API 变更（仅一处）：`Window::request_measured_layout` 新增文本指纹／状态交还
 参数（P3a 文本 carry 所需），返回值变为 `(LayoutId, Option<TextLayout>)`；
