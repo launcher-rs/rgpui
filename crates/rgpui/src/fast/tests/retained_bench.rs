@@ -56,7 +56,7 @@ impl Render for BenchRoot {
 }
 
 /// 一档测量：每帧通知前 `changed` 个面板，交替绘制 A（增量）B（全量），
-/// 返回双方均值毫秒与双方（复用累计，重建累计）。
+/// 返回双方均值毫秒与双方本档增量（绘制次数，复用累计，重建累计）。
 fn measure_row(
     test_app: &mut TestAppContext,
     any_a: crate::AnyWindowHandle,
@@ -64,7 +64,9 @@ fn measure_row(
     panels_a: &[Entity<BenchPanel>],
     panels_b: &[Entity<BenchPanel>],
     changed: usize,
-) -> (f64, f64, (u64, u64), (u64, u64)) {
+) -> (f64, f64, (u64, u64, u64), (u64, u64, u64)) {
+    let stats_before_a = window_stats(test_app, any_a);
+    let stats_before_b = window_stats(test_app, any_b);
     // 预热（不计时）。
     for _ in 0..WARMUP_FRAMES {
         test_app.update(|cx| {
@@ -90,18 +92,32 @@ fn measure_row(
             nanos_a += draw_window(test_app, any_a);
         }
     }
-    let stats_a = test_app
-        .update_window(any_a, |_, window, _| window.fast_stats.snapshot())
-        .unwrap();
-    let stats_b = test_app
-        .update_window(any_b, |_, window, _| window.fast_stats.snapshot())
-        .unwrap();
+    let stats_after_a = window_stats(test_app, any_a);
+    let stats_after_b = window_stats(test_app, any_b);
     (
         nanos_a as f64 / MEASURED_FRAMES as f64 / 1_000_000.0,
         nanos_b as f64 / MEASURED_FRAMES as f64 / 1_000_000.0,
-        (stats_a.views_reused, stats_a.views_rebuilt),
-        (stats_b.views_reused, stats_b.views_rebuilt),
+        (
+            stats_after_a.frames - stats_before_a.frames,
+            stats_after_a.views_reused - stats_before_a.views_reused,
+            stats_after_a.views_rebuilt - stats_before_a.views_rebuilt,
+        ),
+        (
+            stats_after_b.frames - stats_before_b.frames,
+            stats_after_b.views_reused - stats_before_b.views_reused,
+            stats_after_b.views_rebuilt - stats_before_b.views_rebuilt,
+        ),
     )
+}
+
+/// 读取一窗累计帧统计快照。
+fn window_stats(
+    test_app: &mut TestAppContext,
+    window: crate::AnyWindowHandle,
+) -> crate::fast::stats::FrameStatsSnapshot {
+    test_app
+        .update_window(window, |_, window, _| window.fast_stats.snapshot())
+        .unwrap()
 }
 
 /// 通知前 `changed` 个面板（`tick` 推进 + `notify`）。
@@ -166,7 +182,7 @@ fn dashboard_retained_vs_from_scratch() {
 
     println!("panels={PANELS} labels={LABELS} frames={MEASURED_FRAMES} (release, headless)");
     println!(
-        "changed/frame | retained avg | from-scratch avg | delta | A(reused,rebuilt) | B(reused,rebuilt)"
+        "changed/frame | retained avg | from-scratch avg | delta | A(draws,reused,rebuilt) | B(draws,reused,rebuilt)"
     );
     for changed in [0, 1, 6, PANELS] {
         let (retained_ms, baseline_ms, stats_a, stats_b) =
