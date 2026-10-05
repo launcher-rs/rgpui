@@ -1808,6 +1808,9 @@ impl Element for Div {
 
         if let Some(scroll_handle) = self.interactivity.tracked_scroll_handle.as_ref() {
             scroll_handle.scroll_to_active_item();
+            // Retained P1b：滚动容器绘制即记录其共享版本号；偏移变化使引用视图过期。
+            // 子边界等每帧刷新不递增版本号（`ScrollHandleState::version` 约定）。
+            cx.note_state_read(&scroll_handle.version());
         }
 
         self.interactivity.prepaint(
@@ -2445,8 +2448,8 @@ impl Interactivity {
                 if let Some(debug_selector) = &self.debug_selector {
                     window
                         .next_frame
-                        .debug_bounds
-                        .insert(debug_selector.clone(), bounds);
+                        .debug_bounds_log
+                        .push((debug_selector.clone(), bounds));
                 }
 
                 self.paint_hover_group_handler(window, cx);
@@ -4046,6 +4049,8 @@ struct ScrollHandleState {
     scroll_to_bottom: bool,
     overflow: Point<Overflow>,
     active_item: Option<ScrollActiveItem>,
+    /// 共享状态版本号（Retained P1b）：语义写入递增；每帧重建子边界等刷新不递增。
+    version: crate::fast::dependencies::StateVersion,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -4081,6 +4086,11 @@ impl ScrollHandle {
     /// 获取当前滚动偏移量。
     pub fn offset(&self) -> Point<Pixels> {
         *self.0.borrow().offset.borrow()
+    }
+
+    /// 获取共享状态版本号（Retained 依赖追踪用；记录后递增即视图过期）。
+    pub(crate) fn version(&self) -> crate::fast::dependencies::StateVersion {
+        self.0.borrow().version.clone()
     }
 
     /// 获取最大滚动偏移量。
@@ -4139,6 +4149,7 @@ impl ScrollHandle {
     /// 更新 [ScrollHandleState] 的活动项，以便在预绘制时滚动到
     pub fn scroll_to_item(&self, ix: usize) {
         let mut state = self.0.borrow_mut();
+        state.version.bump();
         state.active_item = Some(ScrollActiveItem {
             index: ix,
             strategy: ScrollStrategy::default(),
@@ -4149,6 +4160,7 @@ impl ScrollHandle {
     /// 此方法滚动最小量以确保子元素是第一个可见元素
     pub fn scroll_to_top_of_item(&self, ix: usize) {
         let mut state = self.0.borrow_mut();
+        state.version.bump();
         state.active_item = Some(ScrollActiveItem {
             index: ix,
             strategy: ScrollStrategy::Top,
@@ -4207,6 +4219,7 @@ impl ScrollHandle {
     /// 滚动到底部。
     pub fn scroll_to_bottom(&self) {
         let mut state = self.0.borrow_mut();
+        state.version.bump();
         state.scroll_to_bottom = true;
     }
 
@@ -4214,6 +4227,8 @@ impl ScrollHandle {
     /// 随着向下滚动，偏移量变得更负。
     pub fn set_offset(&self, mut position: Point<Pixels>) {
         let state = self.0.borrow();
+        // 相同值写入不递增：调用方常在每帧同步偏移量，无变化即无过期。
+        state.version.bump_if(*state.offset.borrow() != position);
         *state.offset.borrow_mut() = position;
     }
 
@@ -4406,6 +4421,27 @@ mod tests {
         handle.scroll_to_active_item();
 
         assert_eq!(handle.offset().y, px(-25.));
+    }
+
+    /// Retained P1b：语义写入递增版本号，相同值写入与 prepaint 应用不递增。
+    #[test]
+    fn scroll_handle_version_bumps_on_semantic_writes() {
+        let handle = ScrollHandle::new();
+        let baseline = handle.version().get();
+
+        // 初始偏移即原点：相同值写入不递增。
+        handle.set_offset(Point::default());
+        assert_eq!(handle.version().get(), baseline);
+
+        handle.set_offset(point(px(0.), px(-10.)));
+        assert_eq!(handle.version().get(), baseline + 1);
+
+        handle.scroll_to_bottom();
+        assert_eq!(handle.version().get(), baseline + 2);
+
+        // prepaint 应用待定滚动是意图的落实，不另递增。
+        handle.scroll_to_active_item();
+        assert_eq!(handle.version().get(), baseline + 2);
     }
 
     fn setup_tooltip_owner_test(

@@ -109,6 +109,8 @@ impl VirtualListScrollHandle {
             offset,
             scroll_strict: false,
         });
+        // Retained P1b：延迟滚动意图即递增（应用发生在 prepaint，不另递增）。
+        self.base_handle.version().bump();
     }
 
     /// 滚动到列表底部。
@@ -447,65 +449,72 @@ impl Element for VirtualList {
                 );
 
                 let axis = self.axis;
-                let layout_id =
-                    match self.sizing_behavior {
-                        ListSizingBehavior::Infer => {
-                            window.with_text_style(style.text_style().cloned(), |window| {
-                                let size_layout = size_layout.clone();
+                let layout_id = match self.sizing_behavior {
+                    ListSizingBehavior::Infer => {
+                        window.with_text_style(style.text_style().cloned(), |window| {
+                            let size_layout = size_layout.clone();
 
-                                window.request_measured_layout(style, {
-                                    move |known_dimensions, available_space, _, _| {
-                                        let mut size = Size::default();
-                                        if axis.is_horizontal() {
-                                            size.width = known_dimensions.width.unwrap_or(
-                                                match available_space.width {
-                                                    AvailableSpace::Definite(x) => x,
-                                                    AvailableSpace::MinContent
-                                                    | AvailableSpace::MaxContent => {
-                                                        size_layout.content_size.width
-                                                    }
-                                                },
-                                            );
-                                            size.height = known_dimensions.width.unwrap_or(
-                                                match available_space.height {
-                                                    AvailableSpace::Definite(x) => x,
-                                                    AvailableSpace::MinContent
-                                                    | AvailableSpace::MaxContent => {
-                                                        size_layout.content_size.height
-                                                    }
-                                                },
-                                            );
-                                        } else {
-                                            size.width = known_dimensions.width.unwrap_or(
-                                                match available_space.width {
-                                                    AvailableSpace::Definite(x) => x,
-                                                    AvailableSpace::MinContent
-                                                    | AvailableSpace::MaxContent => {
-                                                        size_layout.content_size.width
-                                                    }
-                                                },
-                                            );
-                                            size.height = known_dimensions.height.unwrap_or(
-                                                match available_space.height {
-                                                    AvailableSpace::Definite(x) => x,
-                                                    AvailableSpace::MinContent
-                                                    | AvailableSpace::MaxContent => {
-                                                        size_layout.content_size.height
-                                                    }
-                                                },
-                                            );
+                            window
+                                .request_measured_layout(
+                                    style,
+                                    // 非文本测量：输入不可指纹化，永不 carry（仅复用节点壳）。
+                                    None,
+                                    None,
+                                    {
+                                        move |known_dimensions, available_space, _, _| {
+                                            let mut size = Size::default();
+                                            if axis.is_horizontal() {
+                                                size.width = known_dimensions.width.unwrap_or(
+                                                    match available_space.width {
+                                                        AvailableSpace::Definite(x) => x,
+                                                        AvailableSpace::MinContent
+                                                        | AvailableSpace::MaxContent => {
+                                                            size_layout.content_size.width
+                                                        }
+                                                    },
+                                                );
+                                                size.height = known_dimensions.width.unwrap_or(
+                                                    match available_space.height {
+                                                        AvailableSpace::Definite(x) => x,
+                                                        AvailableSpace::MinContent
+                                                        | AvailableSpace::MaxContent => {
+                                                            size_layout.content_size.height
+                                                        }
+                                                    },
+                                                );
+                                            } else {
+                                                size.width = known_dimensions.width.unwrap_or(
+                                                    match available_space.width {
+                                                        AvailableSpace::Definite(x) => x,
+                                                        AvailableSpace::MinContent
+                                                        | AvailableSpace::MaxContent => {
+                                                            size_layout.content_size.width
+                                                        }
+                                                    },
+                                                );
+                                                size.height = known_dimensions.height.unwrap_or(
+                                                    match available_space.height {
+                                                        AvailableSpace::Definite(x) => x,
+                                                        AvailableSpace::MinContent
+                                                        | AvailableSpace::MaxContent => {
+                                                            size_layout.content_size.height
+                                                        }
+                                                    },
+                                                );
+                                            }
+
+                                            size
                                         }
-
-                                        size
-                                    }
-                                })
-                            })
-                        }
-                        ListSizingBehavior::Auto => window
-                            .with_text_style(style.text_style().cloned(), |window| {
-                                window.request_layout(style, None, cx)
-                            }),
-                    };
+                                    },
+                                )
+                                .0
+                        })
+                    }
+                    ListSizingBehavior::Auto => window
+                        .with_text_style(style.text_style().cloned(), |window| {
+                            window.request_layout(style, None, cx)
+                        }),
+                };
 
                 layout_id
             },

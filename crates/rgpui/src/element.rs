@@ -309,10 +309,18 @@ impl<E: Element> Drawable<E> {
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         match mem::take(&mut self.phase) {
             ElementDrawPhase::Start => {
-                let global_id = self.element.id().map(|element_id| {
+                let element_id = self.element.id();
+                let global_id = element_id.clone().map(|element_id| {
                     window.element_id_stack.push(element_id);
                     GlobalElementId(Arc::from(&*window.element_id_stack))
                 });
+
+                // Retained P3a：布局键压栈（有 id 按 id，无 id 按同级序号），
+                // 引擎按此键复用上帧 Taffy 节点；与 `end_layout_node` 配对。
+                // 保留关闭时跳过（逃生路径零开销；引擎走旧行为）。
+                if window.retention_enabled() {
+                    window.begin_layout_node(element_id.as_ref());
+                }
 
                 let inspector_id;
                 #[cfg(any(feature = "inspector", debug_assertions))]
@@ -336,6 +344,9 @@ impl<E: Element> Drawable<E> {
                     window,
                     cx,
                 );
+                if window.retention_enabled() {
+                    window.end_layout_node();
+                }
 
                 if global_id.is_some() {
                     window.element_id_stack.pop();

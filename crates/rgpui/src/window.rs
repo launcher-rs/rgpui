@@ -890,7 +890,7 @@ pub(crate) struct Frame {
     pub(crate) tooltip_requests: Vec<Option<TooltipRequest>>,
     pub(crate) cursor_styles: Vec<CursorStyleRequest>,
     #[cfg(any(test, feature = "test-support"))]
-    pub(crate) debug_bounds: FxHashMap<String, Bounds<Pixels>>,
+    pub(crate) debug_bounds_log: Vec<(String, Bounds<Pixels>)>,
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub(crate) next_inspector_instance_ids: FxHashMap<Rc<crate::InspectorElementPath>, usize>,
     #[cfg(any(feature = "inspector", debug_assertions))]
@@ -929,6 +929,8 @@ pub(crate) struct PaintIndex {
     accessed_element_states_index: usize,
     tab_handle_index: usize,
     line_layout_index: LineLayoutIndex,
+    #[cfg(any(test, feature = "test-support"))]
+    debug_bounds_index: usize,
 }
 
 impl Frame {
@@ -949,7 +951,7 @@ impl Frame {
             cursor_styles: Vec::new(),
 
             #[cfg(any(test, feature = "test-support"))]
-            debug_bounds: FxHashMap::default(),
+            debug_bounds_log: Vec::new(),
 
             #[cfg(any(feature = "inspector", debug_assertions))]
             next_inspector_instance_ids: FxHashMap::default(),
@@ -985,7 +987,7 @@ impl Frame {
 
         #[cfg(any(test, feature = "test-support"))]
         {
-            self.debug_bounds.clear();
+            self.debug_bounds_log.clear();
         }
 
         #[cfg(any(feature = "inspector", debug_assertions))]
@@ -1001,6 +1003,19 @@ impl Frame {
             self.dom_key_hitboxes.clear();
             self.dom_scroll_handles.clear();
         }
+    }
+
+    /// 按选择器查询调试边界（后写入覆盖先写入）。
+    ///
+    /// 日志为追加式：Retained 复用直接拷贝上帧区间，重建视图的写入覆盖在后，
+    /// 故复用帧与重绘帧查询结果一致。
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn debug_bounds(&self, selector: &str) -> Option<Bounds<Pixels>> {
+        self.debug_bounds_log
+            .iter()
+            .rev()
+            .find(|(key, _)| key == selector)
+            .map(|(_, bounds)| *bounds)
     }
 
     pub(crate) fn cursor_style(&self, window: &Window) -> Option<CursorStyle> {
@@ -1098,6 +1113,15 @@ pub struct Window {
     pub(crate) image_cache_stack: Vec<AnyImageCache>,
     pub(crate) rendered_frame: Frame,
     pub(crate) next_frame: Frame,
+    /// Retained 实验帧统计：只记录帧数与 draw 段耗时，不改变任何绘制行为。
+    pub(crate) fast_stats: crate::fast::FrameStats,
+    /// draw() 单调帧序号（Retained 范围守卫：只信任上一帧记录的区间）。
+    pub(crate) frame_seq: u64,
+    /// 布局键栈（Retained P3a）：随元素请求节点压栈／弹栈，跨帧稳定。
+    pub(crate) window_layout: crate::fast::layout_key::WindowLayout,
+    /// 本窗口保留开关覆盖（Retained P2c oracle 用；`None` 跟随全局开关）。
+    /// `Some(false)` 即逐帧全量重建，是“从零绘制”的对照基线。
+    retention_override: Option<bool>,
     next_hitbox_id: HitboxId,
     pub(crate) next_tooltip_id: TooltipId,
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
@@ -1144,8 +1168,10 @@ pub struct Window {
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector_tree_stack: Vec<crate::InspectorElementId>,
     /// 面板自举时暂停树记录（I2）：检查器面板自身的 prepaint 不计入被检树。
+    /// 复用门控亦读取它：`prepaint_inspector` 会暂存 `inspector`（`is_open` 瞬时为假），
+    /// 悬挂期仍须禁用复用，否则面板视图复用过期帧。
     #[cfg(any(feature = "inspector", debug_assertions))]
-    inspector_tree_suspended: bool,
+    pub(crate) inspector_tree_suspended: bool,
     /// 运行时采样缓存（Chrome“运行”卡片数据源）：仅检查器打开时更新，关闭即停。
     #[cfg(any(feature = "inspector", debug_assertions))]
     runtime_fps: f64,
@@ -1905,6 +1931,10 @@ impl Window {
             requested_autoscroll: None,
             rendered_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             next_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
+            fast_stats: crate::fast::FrameStats::new(),
+            frame_seq: 0,
+            window_layout: crate::fast::layout_key::WindowLayout::new(),
+            retention_override: None,
             next_frame_callbacks,
             next_hitbox_id: HitboxId(0),
             next_tooltip_id: TooltipId::default(),
@@ -2121,6 +2151,31 @@ impl Window {
             self.refreshing = true;
             self.invalidator.set_dirty(true);
         }
+    }
+
+    /// 设置本窗口保留开关覆盖（Retained P2c oracle 用，仅测试）。
+    ///
+    /// `None`（默认）跟随 `RGPUI_VIEW_RETENTION` 全局开关；
+    /// `Some(false)` 关闭复用，逐帧全量重建，作为 oracle 对照基线。
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn set_retention_override(&mut self, enabled: Option<bool>) {
+        self.retention_override = enabled;
+    }
+
+    /// 本窗口保留是否生效（覆盖优先，否则全局开关）。
+    pub(crate) fn retention_enabled(&self) -> bool {
+        self.retention_override
+            .unwrap_or_else(crate::fast::retention_enabled)
+    }
+
+    /// 进入一个元素的布局节点请求（Retained P3a 路径键压栈；`Drawable` 配对调用）。
+    pub(crate) fn begin_layout_node(&mut self, id: Option<&crate::ElementId>) {
+        self.window_layout.begin_node(id);
+    }
+
+    /// 退出一个元素的布局节点请求。
+    pub(crate) fn end_layout_node(&mut self) {
+        self.window_layout.end_node();
     }
 
     /// 关闭此窗口。
@@ -2941,6 +2996,8 @@ impl Window {
     /// 新 [`Scene`] 的内容，请使用 [`Self::present`]。
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // Retained 范围守卫的帧序号（只信任上一帧记录的区间；合成 helper 不经此递增）。
+        self.frame_seq = self.frame_seq.wrapping_add(1);
         // Drain unconditionally so a stale first-invalidation timestamp can't
         // leak into a later frame across enable/disable of frame tracing.
         let frame_dirty = self.invalidator.take_frame_dirty();
@@ -2979,8 +3036,17 @@ impl Window {
                 self.rendered_frame.input_handlers.push(Some(input_handler));
             }
         }
+        // Retained 实验 hook：记录 draw 段耗时作为量化基线；`MEASUREMENTS` 开启时输出单行快照。
+        let fast_draw_started = Instant::now();
         if !cx.mode.skip_drawing() {
             self.draw_roots(cx);
+        }
+        self.fast_stats.record_draw(
+            fast_draw_started.elapsed(),
+            crate::fast::retention_enabled(),
+        );
+        if crate::fast::measurements_enabled() {
+            log::info!("{}", self.fast_stats.snapshot());
         }
         self.dirty_views.clear();
         self.next_frame.window_active = self.active.get();
@@ -3000,10 +3066,17 @@ impl Window {
             self.platform_window.set_input_handler(input_handler);
         }
 
-        self.layout_engine.as_mut().unwrap().clear();
+        // Retained P3a：布局树跨帧保留，帧末只释放无人认领节点（替代整树清空），
+        // 并把本帧节点统计记入帧统计（量化口径）。关闭时恢复旧行为。
+        let retain = self.retention_enabled();
+        let layout_stats = self.layout_engine.as_mut().unwrap().end_frame(retain);
+        self.fast_stats.note_layout_nodes(
+            layout_stats.reused_clean,
+            layout_stats.rewritten,
+            layout_stats.allocated,
+        );
         self.text_system().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
-
         self.invalidator.set_phase(DrawPhase::Focus);
         let previous_focus_path = self.rendered_frame.focus_path();
         let previous_window_active = self.rendered_frame.window_active;
@@ -3588,6 +3661,8 @@ impl Window {
             accessed_element_states_index: self.next_frame.accessed_element_states.len(),
             tab_handle_index: self.next_frame.tab_stops.paint_index(),
             line_layout_index: self.text_system.layout_index(),
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: self.next_frame.debug_bounds_log.len(),
         }
     }
 
@@ -3626,6 +3701,14 @@ impl Window {
         self.next_frame.scene.replay(
             range.start.scene_index..range.end.scene_index,
             &self.rendered_frame.scene,
+        );
+        // Retained：调试边界随 paint 区间拷贝（重建视图的写入覆盖在后）。
+        #[cfg(any(test, feature = "test-support"))]
+        self.next_frame.debug_bounds_log.extend(
+            self.rendered_frame.debug_bounds_log
+                [range.start.debug_bounds_index..range.end.debug_bounds_index]
+                .iter()
+                .cloned(),
         );
     }
 
@@ -4737,12 +4820,16 @@ impl Window {
         cx.layout_id_buffer.extend(children);
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let key = self.window_layout.current_key();
+        let retain = self.retention_enabled();
 
         self.layout_engine.as_mut().unwrap().request_layout(
             style,
             rem_size,
             scale_factor,
             &cx.layout_id_buffer,
+            key,
+            retain,
         )
     }
 
@@ -4754,7 +4841,16 @@ impl Window {
     /// 返回一个 `Size`。
     ///
     /// 此方法只能作为元素绘制的 request_layout 或预绘制阶段的一部分调用。
-    pub fn request_measured_layout<F>(&mut self, style: Style, measure: F) -> LayoutId
+    ///
+    /// 不需要文本测量复用的调用方走 [`Window::request_measured_layout_simple`]，
+    /// 签名与 retained-mode 改动前一致。
+    pub fn request_measured_layout<F>(
+        &mut self,
+        style: Style,
+        fingerprint: Option<u64>,
+        text_state: Option<crate::TextLayout>,
+        measure: F,
+    ) -> (LayoutId, Option<crate::TextLayout>)
     where
         F: Fn(Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App) -> Size<Pixels>
             + 'static,
@@ -4763,10 +4859,33 @@ impl Window {
 
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let key = self.window_layout.current_key();
+        let retain = self.retention_enabled();
         self.layout_engine
             .as_mut()
             .unwrap()
-            .request_measured_layout(style, rem_size, scale_factor, measure)
+            .request_measured_layout(
+                style,
+                rem_size,
+                scale_factor,
+                fingerprint,
+                text_state,
+                measure,
+                key,
+                retain,
+            )
+    }
+
+    /// 不带文本测量复用的布局申请（`request_measured_layout` 的旧签名兼容入口）。
+    ///
+    /// 行为与 retained-mode 改动前一致：不提供测量指纹、不交还文本状态。
+    /// 此方法只能作为元素绘制的 request_layout 或预绘制阶段的一部分调用。
+    pub fn request_measured_layout_simple<F>(&mut self, style: Style, measure: F) -> LayoutId
+    where
+        F: Fn(Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App) -> Size<Pixels>
+            + 'static,
+    {
+        self.request_measured_layout(style, None, None, measure).0
     }
 
     /// 在给定的可用空间内计算给定 id 的布局。

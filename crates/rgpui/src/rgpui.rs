@@ -301,6 +301,9 @@ pub mod util;
 
 // ==================== 第三部分：视图与窗口 ====================
 
+/// Retained Mode 实验区 - 增量帧渲染统一收敛于此，管线文件仅保留 hook（见 `fast/mod.rs`）
+pub(crate) mod fast;
+
 /// 视图系统 - 定义 View trait 和窗口视图的生命周期管理
 mod view;
 

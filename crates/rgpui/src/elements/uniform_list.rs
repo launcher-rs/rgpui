@@ -10,7 +10,7 @@ use crate::{
     StyleRefinement, Styled, Window, point, px, size,
 };
 use smallvec::SmallVec;
-use std::{cell::RefCell, cmp, ops::Range, rc::Rc, usize};
+use std::{cell::RefCell, cmp, ops::Range, rc::Rc};
 
 use super::ListHorizontalSizingBehavior;
 
@@ -154,6 +154,8 @@ impl UniformListScrollHandle {
             offset: 0,
             scroll_strict: false,
         });
+        // Retained P1b：延迟滚动意图即递增（应用发生在 prepaint，不另递增）。
+        self.0.borrow().base_handle.version().bump();
     }
 
     /// 滚动列表使指定项索引位于滚动策略位置。
@@ -167,6 +169,7 @@ impl UniformListScrollHandle {
             offset: 0,
             scroll_strict: true,
         });
+        self.0.borrow().base_handle.version().bump();
     }
 
     /// 以项数偏移量滚动列表到指定项索引。
@@ -184,6 +187,7 @@ impl UniformListScrollHandle {
             offset,
             scroll_strict: false,
         });
+        self.0.borrow().base_handle.version().bump();
     }
 
     /// 滚动列表使指定项索引精确位于滚动策略位置，并带偏移量。
@@ -206,6 +210,7 @@ impl UniformListScrollHandle {
             offset,
             scroll_strict: true,
         });
+        self.0.borrow().base_handle.version().bump();
     }
 
     /// 检查列表是否垂直翻转。
@@ -284,27 +289,33 @@ impl Element for UniformList {
             |style, window, cx| match self.sizing_behavior {
                 ListSizingBehavior::Infer => {
                     window.with_text_style(style.text_style().cloned(), |window| {
-                        window.request_measured_layout(
-                            style,
-                            move |known_dimensions, available_space, _window, _cx| {
-                                let desired_height = item_size.height * max_items;
-                                let width = known_dimensions.width.unwrap_or(match available_space
-                                    .width
-                                {
-                                    AvailableSpace::Definite(x) => x,
-                                    AvailableSpace::MinContent | AvailableSpace::MaxContent => {
-                                        item_size.width
-                                    }
-                                });
-                                let height = match available_space.height {
-                                    AvailableSpace::Definite(height) => desired_height.min(height),
-                                    AvailableSpace::MinContent | AvailableSpace::MaxContent => {
-                                        desired_height
-                                    }
-                                };
-                                size(width, height)
-                            },
-                        )
+                        window
+                            .request_measured_layout(
+                                style,
+                                // 非文本测量：输入不可指纹化，永不 carry（仅复用节点壳）。
+                                None,
+                                None,
+                                move |known_dimensions, available_space, _window, _cx| {
+                                    let desired_height = item_size.height * max_items;
+                                    let width = known_dimensions.width.unwrap_or(
+                                        match available_space.width {
+                                            AvailableSpace::Definite(x) => x,
+                                            AvailableSpace::MinContent
+                                            | AvailableSpace::MaxContent => item_size.width,
+                                        },
+                                    );
+                                    let height = match available_space.height {
+                                        AvailableSpace::Definite(height) => {
+                                            desired_height.min(height)
+                                        }
+                                        AvailableSpace::MinContent | AvailableSpace::MaxContent => {
+                                            desired_height
+                                        }
+                                    };
+                                    size(width, height)
+                                },
+                            )
+                            .0
                     })
                 }
                 ListSizingBehavior::Auto => window
