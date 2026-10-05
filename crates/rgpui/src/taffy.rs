@@ -33,6 +33,34 @@ type NodeMeasureFn = StackSafe<
 struct NodeContext {
     measure: NodeMeasureFn,
 }
+
+/// 跨帧保留的布局节点记录（P3a）。
+///
+/// 节点按 [`LayoutKey`](crate::fast::layout_key::LayoutKey) 复用：
+/// 命中后仍全量比对样式与子节点（正确性不依赖键）；
+/// 测量节点另比对测量指纹（文本 carry）。
+struct RetainedNode {
+    node: NodeId,
+    children: Vec<NodeId>,
+    /// 测量指纹（`request_measured_layout` 调用方提供；`None` 永不 carry）。
+    measure_fingerprint: Option<u64>,
+    /// 是否带测量闭包（种类切换时重写上下文）。
+    has_measure: bool,
+    /// 上次测量的文本状态（carry 时交还调用方，使新元素直接持有旧测量）。
+    measured_state: Option<crate::TextLayout>,
+}
+
+/// 一帧布局保留统计（帧末汇总入 `FrameStats`，量化口径）。
+#[derive(Default)]
+pub(crate) struct LayoutFrameStats {
+    /// 无写入复用（样式／子节点／测量全命中，Taffy 缓存保留）。
+    pub(crate) reused_clean: u64,
+    /// 命中但改写（样式或子节点或测量变化，仅省分配）。
+    pub(crate) rewritten: u64,
+    /// 新分配（含同键二次使用的临时节点）。
+    pub(crate) allocated: u64,
+}
+
 pub struct TaffyLayoutEngine {
     taffy: TaffyTree<NodeContext>,
     absolute_layout_bounds: FxHashMap<LayoutId, Bounds<Pixels>>,
@@ -40,6 +68,19 @@ pub struct TaffyLayoutEngine {
     absolute_outer_origins: FxHashMap<LayoutId, Point<f32>>,
     computed_layouts: FxHashSet<LayoutId>,
     layout_bounds_scratch_space: Vec<LayoutId>,
+    /// 路径键 → 保留节点（跨帧常驻；`end_frame` 释放无人认领者）。
+    retained: FxHashMap<crate::fast::layout_key::LayoutKey, RetainedNode>,
+    /// 本帧已认领的键（同键二次请求走临时节点）。
+    claimed: FxHashSet<crate::fast::layout_key::LayoutKey>,
+    /// 本帧临时节点（同键二次使用；帧末释放）。
+    transient: Vec<NodeId>,
+    /// 帧是否已开（首个请求时开；跳过绘制的帧不开也不释放）。
+    frame_open: bool,
+    /// 各计算根上次的可用空间（空间变化而样式不变时仍须致脏，否则读缓存旧尺寸）。
+    last_spaces: FxHashMap<LayoutId, Size<AvailableSpace>>,
+    layout_nodes_reused: u64,
+    layout_nodes_rewritten: u64,
+    layout_nodes_allocated: u64,
 }
 
 const EXPECT_MESSAGE: &str = "we should avoid taffy layout errors by construction if possible";
@@ -54,14 +95,82 @@ impl TaffyLayoutEngine {
             absolute_outer_origins: FxHashMap::default(),
             computed_layouts: FxHashSet::default(),
             layout_bounds_scratch_space: Vec::new(),
+            retained: FxHashMap::default(),
+            claimed: FxHashSet::default(),
+            transient: Vec::new(),
+            frame_open: false,
+            last_spaces: FxHashMap::default(),
+            layout_nodes_reused: 0,
+            layout_nodes_rewritten: 0,
+            layout_nodes_allocated: 0,
         }
     }
 
-    pub fn clear(&mut self) {
-        self.taffy.clear();
+    /// 开始一帧的布局请求收集（首个请求时惰性调用亦可）。
+    ///
+    /// 只重置认领集、计算标记与备注缓存；Taffy 树与保留节点跨帧常驻。
+    /// `LayoutId` 跨帧稳定，故备注缓存必须每帧清空，否则读到上帧边界。
+    pub fn begin_frame(&mut self) {
+        self.claimed.clear();
+        self.computed_layouts.clear();
         self.absolute_layout_bounds.clear();
         self.absolute_outer_origins.clear();
-        self.computed_layouts.clear();
+        self.layout_nodes_reused = 0;
+        self.layout_nodes_rewritten = 0;
+        self.layout_nodes_allocated = 0;
+        self.frame_open = true;
+    }
+
+    /// 结束一帧：释放无人认领的保留节点与临时节点，返回本帧统计。
+    ///
+    /// 未开帧时直接返回零统计（跳过绘制的帧不释放任何节点）。
+    /// 保留关闭时恢复旧行为（整树清空，零逐节点开销；基准诚实）。
+    pub fn end_frame(&mut self, retain: bool) -> LayoutFrameStats {
+        if !self.frame_open {
+            return LayoutFrameStats::default();
+        }
+        if !retain {
+            self.taffy.clear();
+            self.retained.clear();
+            self.transient.clear();
+            self.claimed.clear();
+            self.last_spaces.clear();
+            self.frame_open = false;
+            return LayoutFrameStats {
+                reused_clean: 0,
+                rewritten: 0,
+                allocated: self.layout_nodes_allocated,
+            };
+        }
+        let mut removed = Vec::new();
+        self.retained.retain(|key, retained| {
+            if self.claimed.contains(key) {
+                true
+            } else {
+                removed.push(retained.node);
+                false
+            }
+        });
+        for node in removed {
+            self.taffy.remove(node).expect(EXPECT_MESSAGE);
+        }
+        for node in self.transient.drain(..) {
+            self.taffy.remove(node).expect(EXPECT_MESSAGE);
+        }
+        self.claimed.clear();
+        self.frame_open = false;
+        LayoutFrameStats {
+            reused_clean: self.layout_nodes_reused,
+            rewritten: self.layout_nodes_rewritten,
+            allocated: self.layout_nodes_allocated,
+        }
+    }
+
+    /// 确保帧已开（请求入口调用）。
+    fn ensure_frame_open(&mut self) {
+        if !self.frame_open {
+            self.begin_frame();
+        }
     }
 
     pub fn request_layout(
@@ -70,21 +179,104 @@ impl TaffyLayoutEngine {
         rem_size: Pixels,
         scale_factor: f32,
         children: &[LayoutId],
+        key: crate::fast::layout_key::LayoutKey,
+        retain: bool,
     ) -> LayoutId {
+        self.ensure_frame_open();
         let taffy_style = style.to_taffy(rem_size, scale_factor);
 
-        if children.is_empty() {
-            self.taffy
-                .new_leaf(taffy_style)
-                .expect(EXPECT_MESSAGE)
-                .into()
-        } else {
-            self.taffy
-                // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
-                .new_with_children(taffy_style, LayoutId::to_taffy_slice(children))
-                .expect(EXPECT_MESSAGE)
-                .into()
+        // 保留关闭：旧行为（每帧新分配，帧末整树清空；不跟踪临时节点）。
+        // 注意 `children_nodes` 在此之后才构造：关闭路径沿用零分配切片。
+        if !retain {
+            let node = if children.is_empty() {
+                self.taffy.new_leaf(taffy_style)
+            } else {
+                self.taffy.new_with_children(
+                    taffy_style,
+                    // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
+                    LayoutId::to_taffy_slice(children),
+                )
+            }
+            .expect(EXPECT_MESSAGE);
+            self.layout_nodes_allocated += 1;
+            return LayoutId::from(node);
         }
+
+        let children_nodes: Vec<NodeId> = children.iter().map(|id| NodeId::from(*id)).collect();
+
+        // 同键本帧第二次使用：分配临时节点（帧末释放；内容正确、仅无保留）。
+        if !self.claimed.insert(key) {
+            let node = if children_nodes.is_empty() {
+                self.taffy.new_leaf(taffy_style)
+            } else {
+                self.taffy.new_with_children(
+                    taffy_style,
+                    // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
+                    LayoutId::to_taffy_slice(children),
+                )
+            }
+            .expect(EXPECT_MESSAGE);
+            self.transient.push(node);
+            self.layout_nodes_allocated += 1;
+            return LayoutId::from(node);
+        }
+
+        if let Some(retained) = self.retained.get_mut(&key) {
+            let node = retained.node;
+            let mut clean = true;
+            // 样式比对：不写即不脏，Taffy 布局缓存保留（核心收益）。
+            if self.taffy.style(node).expect(EXPECT_MESSAGE) != &taffy_style {
+                self.taffy
+                    .set_style(node, taffy_style)
+                    .expect(EXPECT_MESSAGE);
+                clean = false;
+            }
+            if retained.children != children_nodes {
+                self.taffy
+                    .set_children(node, &children_nodes)
+                    .expect(EXPECT_MESSAGE);
+                retained.children = children_nodes;
+                clean = false;
+            }
+            // 之前是测量节点、现在不是：清除上下文（致脏，正确）。
+            if retained.has_measure {
+                self.taffy
+                    .set_node_context(node, None)
+                    .expect(EXPECT_MESSAGE);
+                retained.has_measure = false;
+                retained.measure_fingerprint = None;
+                clean = false;
+            }
+            if clean {
+                self.layout_nodes_reused += 1;
+            } else {
+                self.layout_nodes_rewritten += 1;
+            }
+            return LayoutId::from(node);
+        }
+
+        let node = if children_nodes.is_empty() {
+            self.taffy.new_leaf(taffy_style)
+        } else {
+            self.taffy.new_with_children(
+                taffy_style,
+                // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
+                LayoutId::to_taffy_slice(children),
+            )
+        }
+        .expect(EXPECT_MESSAGE);
+        self.retained.insert(
+            key,
+            RetainedNode {
+                node,
+                children: children_nodes,
+                measure_fingerprint: None,
+                has_measure: false,
+                measured_state: None,
+            },
+        );
+        self.layout_nodes_allocated += 1;
+        LayoutId::from(node)
     }
 
     pub fn request_measured_layout(
@@ -92,6 +284,8 @@ impl TaffyLayoutEngine {
         style: Style,
         rem_size: Pixels,
         scale_factor: f32,
+        fingerprint: Option<u64>,
+        text_state: Option<crate::TextLayout>,
         measure: impl FnMut(
             Size<Option<Pixels>>,
             Size<AvailableSpace>,
@@ -99,18 +293,106 @@ impl TaffyLayoutEngine {
             &mut App,
         ) -> Size<Pixels>
         + 'static,
-    ) -> LayoutId {
+        key: crate::fast::layout_key::LayoutKey,
+        retain: bool,
+    ) -> (LayoutId, Option<crate::TextLayout>) {
+        self.ensure_frame_open();
         let taffy_style = style.to_taffy(rem_size, scale_factor);
 
-        self.taffy
+        // 保留关闭：旧行为（每帧新分配，帧末整树清空；不跟踪临时节点）。
+        if !retain {
+            let node = self
+                .taffy
+                .new_leaf_with_context(
+                    taffy_style,
+                    NodeContext {
+                        measure: StackSafe::new(Box::new(measure)),
+                    },
+                )
+                .expect(EXPECT_MESSAGE);
+            self.layout_nodes_allocated += 1;
+            return (LayoutId::from(node), None);
+        }
+
+        // 同键本帧第二次使用：分配临时节点（帧末释放）。
+        if !self.claimed.insert(key) {
+            let node = self
+                .taffy
+                .new_leaf_with_context(
+                    taffy_style,
+                    NodeContext {
+                        measure: StackSafe::new(Box::new(measure)),
+                    },
+                )
+                .expect(EXPECT_MESSAGE);
+            self.transient.push(node);
+            self.layout_nodes_allocated += 1;
+            return (LayoutId::from(node), None);
+        }
+
+        if let Some(retained) = self.retained.get_mut(&key) {
+            let node = retained.node;
+            // 文本 carry：指纹俱在且相等 → 不碰闭包，节点保持干净，
+            // 并把上次测量的文本状态交还调用方（新元素直接持有旧测量）。
+            let carried = match (fingerprint, retained.measure_fingerprint) {
+                (Some(new), Some(old)) if new == old => retained.measured_state.clone(),
+                _ => None,
+            };
+            let mut clean = carried.is_some();
+            if self.taffy.style(node).expect(EXPECT_MESSAGE) != &taffy_style {
+                self.taffy
+                    .set_style(node, taffy_style)
+                    .expect(EXPECT_MESSAGE);
+                clean = false;
+            }
+            if !retained.children.is_empty() {
+                self.taffy.set_children(node, &[]).expect(EXPECT_MESSAGE);
+                retained.children = Vec::new();
+                clean = false;
+            }
+            if carried.is_none() {
+                self.taffy
+                    .set_node_context(
+                        node,
+                        Some(NodeContext {
+                            measure: StackSafe::new(Box::new(measure)),
+                        }),
+                    )
+                    .expect(EXPECT_MESSAGE);
+                retained.measure_fingerprint = fingerprint;
+                retained.measured_state = text_state;
+                retained.has_measure = true;
+                clean = false;
+            }
+            if clean {
+                self.layout_nodes_reused += 1;
+            } else {
+                self.layout_nodes_rewritten += 1;
+            }
+            return (LayoutId::from(node), carried);
+        }
+
+        let node = self
+            .taffy
             .new_leaf_with_context(
                 taffy_style,
                 NodeContext {
                     measure: StackSafe::new(Box::new(measure)),
                 },
             )
-            .expect(EXPECT_MESSAGE)
-            .into()
+            .expect(EXPECT_MESSAGE);
+        self.retained.insert(
+            key,
+            RetainedNode {
+                node,
+                children: Vec::new(),
+                measure_fingerprint: fingerprint,
+                has_measure: true,
+                measured_state: text_state,
+            },
+        );
+        self.layout_nodes_allocated += 1;
+        (LayoutId::from(node), None)
     }
 
     /// 将给定节点样式的任何 `auto` 尺寸视为填充 `size`。
@@ -130,16 +412,19 @@ impl TaffyLayoutEngine {
         if !stretch_width && !stretch_height {
             return;
         }
-        let mut style = style.clone();
+        let mut stretched = style.clone();
         if stretch_width {
-            style.size.width =
+            stretched.size.width =
                 taffy::style::Dimension::length(round_to_device_pixel(size.width.0, scale_factor));
         }
         if stretch_height {
-            style.size.height =
+            stretched.size.height =
                 taffy::style::Dimension::length(round_to_device_pixel(size.height.0, scale_factor));
         }
-        self.taffy.set_style(id.0, style).expect(EXPECT_MESSAGE);
+        // Retained：样式不变不写，否则每帧致脏根节点、布局缓存全废。
+        if stretched != *style {
+            self.taffy.set_style(id.0, stretched).expect(EXPECT_MESSAGE);
+        }
     }
 
     // Used to understand performance
@@ -161,6 +446,17 @@ impl TaffyLayoutEngine {
         // for (a, b) in self.get_edges(id)? {
         // }
         //
+
+        // Taffy 缓存不感知可用空间变化：空间变化而样式不变时仍须致脏，
+        // 否则读到旧尺寸下的缓存布局（窗口缩放场景）。
+        let space_changed = self
+            .last_spaces
+            .get(&id)
+            .is_none_or(|last| *last != available_space);
+        if space_changed {
+            self.taffy.mark_dirty(id.into()).expect(EXPECT_MESSAGE);
+            self.last_spaces.insert(id, available_space);
+        }
 
         if !self.computed_layouts.insert(id) {
             let stack = &mut self.layout_bounds_scratch_space;

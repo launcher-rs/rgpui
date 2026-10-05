@@ -11,6 +11,7 @@
 //! 按阶段逐个落子，每个阶段自带 oracle 式正确性校验。
 
 pub(crate) mod dependencies;
+pub(crate) mod layout_key;
 pub(crate) mod stats;
 
 pub(crate) use stats::FrameStats;

@@ -1115,6 +1115,8 @@ pub struct Window {
     pub(crate) next_frame: Frame,
     /// Retained 实验帧统计：只记录帧数与 draw 段耗时，不改变任何绘制行为。
     pub(crate) fast_stats: crate::fast::FrameStats,
+    /// 布局键栈（Retained P3a）：随元素请求节点压栈／弹栈，跨帧稳定。
+    pub(crate) window_layout: crate::fast::layout_key::WindowLayout,
     /// 本窗口保留开关覆盖（Retained P2c oracle 用；`None` 跟随全局开关）。
     /// `Some(false)` 即逐帧全量重建，是“从零绘制”的对照基线。
     retention_override: Option<bool>,
@@ -1928,6 +1930,7 @@ impl Window {
             rendered_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             next_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             fast_stats: crate::fast::FrameStats::new(),
+            window_layout: crate::fast::layout_key::WindowLayout::new(),
             retention_override: None,
             next_frame_callbacks,
             next_hitbox_id: HitboxId(0),
@@ -2160,6 +2163,16 @@ impl Window {
     pub(crate) fn retention_enabled(&self) -> bool {
         self.retention_override
             .unwrap_or_else(crate::fast::retention_enabled)
+    }
+
+    /// 进入一个元素的布局节点请求（Retained P3a 路径键压栈；`Drawable` 配对调用）。
+    pub(crate) fn begin_layout_node(&mut self, id: Option<&crate::ElementId>) {
+        self.window_layout.begin_node(id);
+    }
+
+    /// 退出一个元素的布局节点请求。
+    pub(crate) fn end_layout_node(&mut self) {
+        self.window_layout.end_node();
     }
 
     /// 关闭此窗口。
@@ -3048,10 +3061,17 @@ impl Window {
             self.platform_window.set_input_handler(input_handler);
         }
 
-        self.layout_engine.as_mut().unwrap().clear();
+        // Retained P3a：布局树跨帧保留，帧末只释放无人认领节点（替代整树清空），
+        // 并把本帧节点统计记入帧统计（量化口径）。关闭时恢复旧行为。
+        let retain = self.retention_enabled();
+        let layout_stats = self.layout_engine.as_mut().unwrap().end_frame(retain);
+        self.fast_stats.note_layout_nodes(
+            layout_stats.reused_clean,
+            layout_stats.rewritten,
+            layout_stats.allocated,
+        );
         self.text_system().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
-
         self.invalidator.set_phase(DrawPhase::Focus);
         let previous_focus_path = self.rendered_frame.focus_path();
         let previous_window_active = self.rendered_frame.window_active;
@@ -4795,12 +4815,16 @@ impl Window {
         cx.layout_id_buffer.extend(children);
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let key = self.window_layout.current_key();
+        let retain = self.retention_enabled();
 
         self.layout_engine.as_mut().unwrap().request_layout(
             style,
             rem_size,
             scale_factor,
             &cx.layout_id_buffer,
+            key,
+            retain,
         )
     }
 
@@ -4812,7 +4836,13 @@ impl Window {
     /// 返回一个 `Size`。
     ///
     /// 此方法只能作为元素绘制的 request_layout 或预绘制阶段的一部分调用。
-    pub fn request_measured_layout<F>(&mut self, style: Style, measure: F) -> LayoutId
+    pub fn request_measured_layout<F>(
+        &mut self,
+        style: Style,
+        fingerprint: Option<u64>,
+        text_state: Option<crate::TextLayout>,
+        measure: F,
+    ) -> (LayoutId, Option<crate::TextLayout>)
     where
         F: Fn(Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App) -> Size<Pixels>
             + 'static,
@@ -4821,10 +4851,21 @@ impl Window {
 
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let key = self.window_layout.current_key();
+        let retain = self.retention_enabled();
         self.layout_engine
             .as_mut()
             .unwrap()
-            .request_measured_layout(style, rem_size, scale_factor, measure)
+            .request_measured_layout(
+                style,
+                rem_size,
+                scale_factor,
+                fingerprint,
+                text_state,
+                measure,
+                key,
+                retain,
+            )
     }
 
     /// 在给定的可用空间内计算给定 id 的布局。

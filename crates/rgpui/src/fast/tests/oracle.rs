@@ -257,6 +257,11 @@ fn retained_matches_from_scratch() {
     let (_, rebuilt) = draw_both(&mut test_app, any_a, any_b, "splice");
     assert!(rebuilt > rebuilt_before, "splice 后 A 窗未重建");
 
+    // 窗口缩放（覆盖 stretch 改写与可用空间致脏路径）。
+    test_app.simulate_window_resize(any_a, size(px(900.), px(700.)));
+    test_app.simulate_window_resize(any_b, size(px(900.), px(700.)));
+    draw_both(&mut test_app, any_a, any_b, "resize");
+
     // 收尾静止帧 + 非空洞断言：A 确实复用过。
     let (reused_after, _) = draw_both(&mut test_app, any_a, any_b, "static-end");
     assert!(

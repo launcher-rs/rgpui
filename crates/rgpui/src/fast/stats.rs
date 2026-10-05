@@ -24,6 +24,12 @@ pub(crate) struct FrameStats {
     views_reused: u64,
     /// 重新绘制的视图数。
     views_rebuilt: u64,
+    /// 无写入复用的布局节点数（P3a：样式／子节点／测量全命中）。
+    layout_nodes_reused: u64,
+    /// 命中但改写的布局节点数（仅省分配）。
+    layout_nodes_rewritten: u64,
+    /// 新分配的布局节点数（含临时节点）。
+    layout_nodes_allocated: u64,
 }
 
 impl FrameStats {
@@ -37,6 +43,9 @@ impl FrameStats {
             retention_on: super::retention_enabled(),
             views_reused: 0,
             views_rebuilt: 0,
+            layout_nodes_reused: 0,
+            layout_nodes_rewritten: 0,
+            layout_nodes_allocated: 0,
         }
     }
 
@@ -59,6 +68,13 @@ impl FrameStats {
         self.views_rebuilt += 1;
     }
 
+    /// 记录一帧布局节点统计（Retained P3a：帧末汇总）。
+    pub(crate) fn note_layout_nodes(&mut self, reused: u64, rewritten: u64, allocated: u64) {
+        self.layout_nodes_reused += reused;
+        self.layout_nodes_rewritten += rewritten;
+        self.layout_nodes_allocated += allocated;
+    }
+
     /// 生成当前快照（测量输出与基准测试的统一读取口）。
     pub(crate) fn snapshot(&self) -> FrameStatsSnapshot {
         let avg_ms = if self.frames == 0 {
@@ -74,6 +90,9 @@ impl FrameStats {
             retention_on: self.retention_on,
             views_reused: self.views_reused,
             views_rebuilt: self.views_rebuilt,
+            layout_nodes_reused: self.layout_nodes_reused,
+            layout_nodes_rewritten: self.layout_nodes_rewritten,
+            layout_nodes_allocated: self.layout_nodes_allocated,
         }
     }
 }
@@ -95,6 +114,12 @@ pub(crate) struct FrameStatsSnapshot {
     pub(crate) views_reused: u64,
     /// 重新绘制的视图数。
     pub(crate) views_rebuilt: u64,
+    /// 无写入复用的布局节点数。
+    pub(crate) layout_nodes_reused: u64,
+    /// 命中但改写的布局节点数。
+    pub(crate) layout_nodes_rewritten: u64,
+    /// 新分配的布局节点数。
+    pub(crate) layout_nodes_allocated: u64,
 }
 
 impl fmt::Display for FrameStatsSnapshot {
@@ -102,14 +127,17 @@ impl fmt::Display for FrameStatsSnapshot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "[fast] frames={} last={:.3}ms avg={:.3}ms max={:.3}ms retention={} reused={} rebuilt={}",
+            "[fast] frames={} last={:.3}ms avg={:.3}ms max={:.3}ms retention={} reused={} rebuilt={} layout(reused/rewrote/alloc)={}/{}/{}",
             self.frames,
             self.last_ms,
             self.avg_ms,
             self.max_ms,
             if self.retention_on { "on" } else { "off" },
             self.views_reused,
-            self.views_rebuilt
+            self.views_rebuilt,
+            self.layout_nodes_reused,
+            self.layout_nodes_rewritten,
+            self.layout_nodes_allocated
         )
     }
 }
