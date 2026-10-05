@@ -84,9 +84,16 @@
   无脏数据）。gpui-fast 中的做法是在窗口读路径挂记录器，改造成本高，
   暂列为已知问题。
 
-开关：默认开启，无需改应用代码。`RGPUI_VIEW_RETENTION=0`（兼容 `GPUI_VIEW_RETENTION=0`）
-可全局关闭；测试可用 `window.set_retention_override(Some(false))` 对单窗关闭
-（oracle 对照基线用法）。
+## 开关：开启与关闭
+
+- **默认开启**，无需改应用代码，也无需调用任何 API。
+- **全局关闭**：设置环境变量 `RGPUI_VIEW_RETENTION=0`（`0`／`false`／`no`／`off`
+  均可；兼容 gpui-fast 的 `GPUI_VIEW_RETENTION`，`RGPUI_` 优先）。
+  开关在进程启动时解析一次并缓存，改动需重启进程。
+- **重新开启**：取消该环境变量即可（默认值即开启）。
+- **单窗强制开关**：`window.set_retention_override(Some(false))` 关闭／
+  `Some(true)` 开启、`None` 跟随全局。注意该方法仅 crate 内部测试可见
+  （oracle 对照基线用），应用层只能用环境变量做全局开关。
 
 验证生效：设 `rgpui_MEASUREMENTS=1`（或 `ZED_MEASUREMENTS=1`）再跑，日志里会有
 `[fast] ... reused=N rebuilt=M ...` 单行快照，看 `reused` 是否随静止帧增长；
