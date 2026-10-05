@@ -13,8 +13,8 @@
 3. **paint**：把图元写入场景交给 GPU。
 
 即使只有一个标签的文本变了，整棵树三个阶段全部重跑，开销随场景规模线性增长。
-上游 GPUI 唯一的例外是显式 `cached` 视图。实现时借鉴 `temp/gpui-fast` 的思路
-（该目录 gitignored，仅作分析参照，不参与构建），
+上游 GPUI 唯一的例外是显式 `cached` 视图。实现时借鉴 gpui-fast
+（https://github.com/longbridge/gpui-fast）的思路，
 把“干净子树直接复用上帧输出”做成框架默认行为，无需应用逐个标注 `cached`。
 
 ## 2. 做了什么
@@ -81,7 +81,7 @@
 - **悬停变化走 `notify`**：hover 切换通知所在视图重建，复用不受影响。
 - **已知缺口**：render 期直接读 `window.mouse_position()`／`modifiers()` 的视图，
   在“鼠标动了、但绘制由别处触发”的按需绘制中，输出可能滞后一帧（下一次重建即自纠正，
-  无脏数据）。参考上游 gpui-fast做法，彻底修复需在窗口读路径挂记录器，改造成本高，
+  无脏数据）。gpui-fast 中的做法是在窗口读路径挂记录器，改造成本高，
   暂列为已知问题。
 
 开关：默认开启，无需改应用代码。`RGPUI_VIEW_RETENTION=0`（兼容 `GPUI_VIEW_RETENTION=0`）
