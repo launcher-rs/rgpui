@@ -86,6 +86,12 @@
 开关：`RGPUI_VIEW_RETENTION=0`（兼容 `GPUI_VIEW_RETENTION=0`）全局关闭；
 测试可用 `window.set_retention_override(Some(false))` 对单窗关闭（oracle 对照基线用法）。
 
+公有 API 变更（仅一处）：`Window::request_measured_layout` 新增文本指纹／状态交还
+参数（P3a 文本 carry 所需），返回值变为 `(LayoutId, Option<TextLayout>)`；
+不需要文本复用的调用方走新增的 `Window::request_measured_layout_simple`，
+签名与改动前一致。仓库内调用方（`text`／`list`／`uniform_list`／`virtual_list`）
+已全部迁移，示例全编译通过。
+
 ## 5. 如何复现测量
 
 ```sh

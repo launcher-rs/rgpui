@@ -4841,6 +4841,9 @@ impl Window {
     /// 返回一个 `Size`。
     ///
     /// 此方法只能作为元素绘制的 request_layout 或预绘制阶段的一部分调用。
+    ///
+    /// 不需要文本测量复用的调用方走 [`Window::request_measured_layout_simple`]，
+    /// 签名与 retained-mode 改动前一致。
     pub fn request_measured_layout<F>(
         &mut self,
         style: Style,
@@ -4871,6 +4874,18 @@ impl Window {
                 key,
                 retain,
             )
+    }
+
+    /// 不带文本测量复用的布局申请（`request_measured_layout` 的旧签名兼容入口）。
+    ///
+    /// 行为与 retained-mode 改动前一致：不提供测量指纹、不交还文本状态。
+    /// 此方法只能作为元素绘制的 request_layout 或预绘制阶段的一部分调用。
+    pub fn request_measured_layout_simple<F>(&mut self, style: Style, measure: F) -> LayoutId
+    where
+        F: Fn(Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App) -> Size<Pixels>
+            + 'static,
+    {
+        self.request_measured_layout(style, None, None, measure).0
     }
 
     /// 在给定的可用空间内计算给定 id 的布局。
