@@ -294,6 +294,9 @@ struct ViewElementState {
     /// 记录帧序号（Retained 范围守卫）：复用要求 `frame_seq + 1 == 当前帧`，
     /// 即区间必须来自上一帧；缺席一帧即重建。
     frame_seq: u64,
+    /// 记录焦点代际（Retained 焦点守卫）：`focus`/`blur` 即重建，
+    /// 保证 `is_focused` 门控的处理器注册与聚焦外观不过期。
+    focus_generation: u64,
 }
 
 struct ViewElementCacheKey {
@@ -419,7 +422,14 @@ impl<V: View> Element for ViewElement<V> {
                             && state.cache_key.content_mask == content_mask
                             && state.cache_key.text_style == text_style
                             && !window.dirty_views.contains(&entity_id)
+                            // 全量重执行门：`refresh()` 语义即要求重跑（滚动偏移等
+                            // Rc 状态不经过代际系统，prepaint 期 processor 亦只在
+                            // 重建时执行），refresh-draw 不复用。
                             && !window.refreshing
+                            // 焦点守卫：`is_focused` 门控的处理器注册只在渲染期发生，
+                            // 且 draw 期内 `focus()` 不置 refreshing 旗（见 keyboard
+                            // activation 回归）；代际变化即重建。
+                            && state.focus_generation == window.focus_generation
                             && !inspector_reuse_disabled
                             // 总开关关闭即全量重建（oracle 对照基线；默认跟随环境变量）。
                             && window.retention_enabled()
@@ -473,11 +483,13 @@ impl<V: View> Element for ViewElement<V> {
                                         text_style: text_style.clone(),
                                     },
                                     frame_seq: window.frame_seq,
+                                    focus_generation: window.focus_generation,
                                 });
                             element_state.accessed_entities = accessed_entities;
                             element_state.dependencies = dependencies;
                             element_state.prepaint_range = prepaint_start..prepaint_end;
                             element_state.frame_seq = window.frame_seq;
+                            element_state.focus_generation = window.focus_generation;
                             element_state.cache_key = ViewElementCacheKey {
                                 bounds,
                                 content_mask,
@@ -518,6 +530,7 @@ impl<V: View> Element for ViewElement<V> {
                                     text_style,
                                 },
                                 frame_seq: window.frame_seq,
+                                focus_generation: window.focus_generation,
                             },
                         )
                     },
