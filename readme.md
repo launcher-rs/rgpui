@@ -1,5 +1,10 @@
 # rgpui
 
+[![CI](https://github.com/launcher-rs/rgpui/actions/workflows/ci.yml/badge.svg)](https://github.com/launcher-rs/rgpui/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/rgpui)](https://crates.io/crates/rgpui)
+[![Docs.rs](https://docs.rs/rgpui/badge.svg)](https://docs.rs/rgpui)
+[![License](https://img.shields.io/crates/l/rgpui)](https://github.com/launcher-rs/rgpui/blob/main/LICENSE)
+
 rgpui 是一个独立演进的 GPU 加速跨平台 UI 框架，支持 Windows、macOS、Linux（X11/Wayland）和 Web/WASM。
 
 ## 功能特性

@@ -2,6 +2,20 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 保留模式（Retained Mode）
+
+- 干净子树默认复用上帧输出（无需逐个标注 `cached`），60 面板 × 64 标签仪表盘
+  headless release 基准提升约六成；Taffy 布局节点跨帧保留＋文本测量 carry
+- `Window::request_measured_layout` 新增文本指纹／状态交还参数，不需要文本复用的
+  调用方走新增的 `Window::request_measured_layout_simple`（旧签名）
+- 详见 `docs/retained-mode.md`（行为变化、应用层契约、开关与验证方法）
+
+### 版本统一
+
+- 全 workspace crate（含 `rgpui-wgpu`，原 `1.3.1`）统一继承 workspace 版本 `1.4.0`
+
 ## [1.3.0] - 2026-09-20
 
 ### 检查器完善（Inspector）
