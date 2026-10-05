@@ -2,7 +2,7 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.4.0] - 2026-10-05
 
 ### 保留模式（Retained Mode）
 
