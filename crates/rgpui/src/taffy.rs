@@ -72,6 +72,8 @@ pub struct TaffyLayoutEngine {
     retained: FxHashMap<crate::fast::layout_key::LayoutKey, RetainedNode>,
     /// 本帧已认领的键（同键二次请求走临时节点）。
     claimed: FxHashSet<crate::fast::layout_key::LayoutKey>,
+    /// 本帧已认领的节点（sweep 存活依据）。
+    claimed_nodes: FxHashSet<NodeId>,
     /// 本帧临时节点（同键二次使用；帧末释放）。
     transient: Vec<NodeId>,
     /// 帧是否已开（首个请求时开；跳过绘制的帧不开也不释放）。
@@ -97,6 +99,7 @@ impl TaffyLayoutEngine {
             layout_bounds_scratch_space: Vec::new(),
             retained: FxHashMap::default(),
             claimed: FxHashSet::default(),
+            claimed_nodes: FxHashSet::default(),
             transient: Vec::new(),
             frame_open: false,
             last_spaces: FxHashMap::default(),
@@ -112,6 +115,7 @@ impl TaffyLayoutEngine {
     /// `LayoutId` 跨帧稳定，故备注缓存必须每帧清空，否则读到上帧边界。
     pub fn begin_frame(&mut self) {
         self.claimed.clear();
+        self.claimed_nodes.clear();
         self.computed_layouts.clear();
         self.absolute_layout_bounds.clear();
         self.absolute_outer_origins.clear();
@@ -134,6 +138,7 @@ impl TaffyLayoutEngine {
             self.retained.clear();
             self.transient.clear();
             self.claimed.clear();
+            self.claimed_nodes.clear();
             self.last_spaces.clear();
             self.frame_open = false;
             return LayoutFrameStats {
@@ -143,13 +148,12 @@ impl TaffyLayoutEngine {
             };
         }
         let mut removed = Vec::new();
-        self.retained.retain(|key, retained| {
-            if self.claimed.contains(key) {
-                true
-            } else {
-                removed.push(retained.node);
-                false
+        self.retained.retain(|_, retained| {
+            if self.claimed_nodes.contains(&retained.node) {
+                return true;
             }
+            removed.push(retained.node);
+            false
         });
         for node in removed {
             self.taffy.remove(node).expect(EXPECT_MESSAGE);
@@ -158,6 +162,7 @@ impl TaffyLayoutEngine {
             self.taffy.remove(node).expect(EXPECT_MESSAGE);
         }
         self.claimed.clear();
+        self.claimed_nodes.clear();
         self.frame_open = false;
         LayoutFrameStats {
             reused_clean: self.layout_nodes_reused,
@@ -223,6 +228,7 @@ impl TaffyLayoutEngine {
 
         if let Some(retained) = self.retained.get_mut(&key) {
             let node = retained.node;
+            self.claimed_nodes.insert(node);
             let mut clean = true;
             // 样式比对：不写即不脏，Taffy 布局缓存保留（核心收益）。
             if self.taffy.style(node).expect(EXPECT_MESSAGE) != &taffy_style {
@@ -265,6 +271,7 @@ impl TaffyLayoutEngine {
             )
         }
         .expect(EXPECT_MESSAGE);
+        self.claimed_nodes.insert(node);
         self.retained.insert(
             key,
             RetainedNode {
@@ -332,6 +339,7 @@ impl TaffyLayoutEngine {
 
         if let Some(retained) = self.retained.get_mut(&key) {
             let node = retained.node;
+            self.claimed_nodes.insert(node);
             // 文本 carry：指纹俱在且相等 → 不碰闭包，节点保持干净，
             // 并把上次测量的文本状态交还调用方（新元素直接持有旧测量）。
             let carried = match (fingerprint, retained.measure_fingerprint) {
@@ -381,6 +389,7 @@ impl TaffyLayoutEngine {
                 },
             )
             .expect(EXPECT_MESSAGE);
+        self.claimed_nodes.insert(node);
         self.retained.insert(
             key,
             RetainedNode {

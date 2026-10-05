@@ -291,6 +291,9 @@ struct ViewElementState {
     /// 上次绘制记录的依赖快照（Retained P1）：读过的实体／全局变化即旁路复用。
     /// 只会多重建、不会复用过期帧；paint 阶段读取 P2 再纳入。
     dependencies: crate::fast::dependencies::DependencySet,
+    /// 记录帧序号（Retained 范围守卫）：复用要求 `frame_seq + 1 == 当前帧`，
+    /// 即区间必须来自上一帧；缺席一帧即重建。
+    frame_seq: u64,
 }
 
 struct ViewElementCacheKey {
@@ -341,6 +344,9 @@ impl<V: View> Element for ViewElement<V> {
                     _ => {
                         // Retained P2a：渲染期同步记录访问集与依赖快照，
                         // 供 prepaint 复用判定与元素状态存储。
+                        // 注：曾尝试干净视图跳过 render（P3b），但 render 附带不可判定的
+                        // 副作用（定时器泵、keyed-state 生命周期、Rc 簿记），回退为始终渲染；
+                        // prepaint／paint 复用与布局保留仍然生效。
                         cx.begin_dependency_recording();
                         let ((element, layout_id), accessed_entities) = cx
                             .detect_accessed_entities(|cx| {
@@ -419,6 +425,8 @@ impl<V: View> Element for ViewElement<V> {
                             && window.retention_enabled()
                             // 无障碍激活时禁用复用（焦点／树 bookkeeping 在绘制期，跳过即过期）。
                             && !window.a11y.is_active()
+                            // 范围守卫：区间必须来自上一帧（缺席一帧即重建）。
+                            && state.frame_seq.wrapping_add(1) == window.frame_seq
                             && !state.dependencies.is_stale(
                                 &|id| cx.entity_generation(id),
                                 &|global_type| cx.global_generation_by_type(global_type),
@@ -434,6 +442,7 @@ impl<V: View> Element for ViewElement<V> {
                                 .extend_accessed(&element_state.accessed_entities);
                             let prepaint_end = window.prepaint_index();
                             element_state.prepaint_range = prepaint_start..prepaint_end;
+                            element_state.frame_seq = window.frame_seq;
                             window.fast_stats.note_view_reused();
 
                             return (None, element_state);
@@ -463,10 +472,12 @@ impl<V: View> Element for ViewElement<V> {
                                         content_mask,
                                         text_style: text_style.clone(),
                                     },
+                                    frame_seq: window.frame_seq,
                                 });
                             element_state.accessed_entities = accessed_entities;
                             element_state.dependencies = dependencies;
                             element_state.prepaint_range = prepaint_start..prepaint_end;
+                            element_state.frame_seq = window.frame_seq;
                             element_state.cache_key = ViewElementCacheKey {
                                 bounds,
                                 content_mask,
@@ -506,6 +517,7 @@ impl<V: View> Element for ViewElement<V> {
                                     content_mask,
                                     text_style,
                                 },
+                                frame_seq: window.frame_seq,
                             },
                         )
                     },

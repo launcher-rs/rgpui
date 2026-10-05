@@ -1115,6 +1115,8 @@ pub struct Window {
     pub(crate) next_frame: Frame,
     /// Retained 实验帧统计：只记录帧数与 draw 段耗时，不改变任何绘制行为。
     pub(crate) fast_stats: crate::fast::FrameStats,
+    /// draw() 单调帧序号（Retained 范围守卫：只信任上一帧记录的区间）。
+    pub(crate) frame_seq: u64,
     /// 布局键栈（Retained P3a）：随元素请求节点压栈／弹栈，跨帧稳定。
     pub(crate) window_layout: crate::fast::layout_key::WindowLayout,
     /// 本窗口保留开关覆盖（Retained P2c oracle 用；`None` 跟随全局开关）。
@@ -1930,6 +1932,7 @@ impl Window {
             rendered_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             next_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             fast_stats: crate::fast::FrameStats::new(),
+            frame_seq: 0,
             window_layout: crate::fast::layout_key::WindowLayout::new(),
             retention_override: None,
             next_frame_callbacks,
@@ -2993,6 +2996,8 @@ impl Window {
     /// 新 [`Scene`] 的内容，请使用 [`Self::present`]。
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // Retained 范围守卫的帧序号（只信任上一帧记录的区间；合成 helper 不经此递增）。
+        self.frame_seq = self.frame_seq.wrapping_add(1);
         // Drain unconditionally so a stale first-invalidation timestamp can't
         // leak into a later frame across enable/disable of frame tracing.
         let frame_dirty = self.invalidator.take_frame_dirty();
