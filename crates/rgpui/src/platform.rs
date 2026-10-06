@@ -2292,6 +2292,10 @@ pub struct WindowParams {
     /// Windows/Linux: 是否启用鼠标事件穿透（点击穿透到后面的窗口）。
     /// 覆盖层窗口需要此选项让鼠标事件穿透到底层窗口。
     pub mouse_passthrough: bool,
+
+    /// 窗口背景外观。X11 需要在创建窗口时据此选择 24 位不透明 visual 还是
+    /// 32 位 ARGB visual，窗口创建之后无法再更换 visual。
+    pub window_background: WindowBackgroundAppearance,
 }
 
 /// 表示窗口打开时应处于的状态

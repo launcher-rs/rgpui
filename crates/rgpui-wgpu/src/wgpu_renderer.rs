@@ -1273,7 +1273,11 @@ impl WgpuRenderer {
             self.resources()
                 .queue
                 .submit(std::iter::once(encoder.finish()));
-            drop(frame);
+            // 必须显式 present：wgpu 30 起，未 present 就 drop 的交换链帧会触发
+            // texture_discard 整帧作废（Linux 上表现为窗口完全没有内容）
+            drop(frame_view);
+            let resources = self.resources();
+            resources.queue.present(frame);
             return true;
         }
     }

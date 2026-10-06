@@ -455,12 +455,20 @@ impl X11WindowState {
 
         let visual_set = find_visuals(xcb, x_screen_index);
 
-        let visual = match visual_set.transparent {
-            Some(visual) => visual,
-            None => {
-                log::warn!("Unable to find a transparent visual",);
-                visual_set.inherit
+        // 只有需要透明合成的窗口才用 32 位 ARGB visual：不透明窗口用 ARGB 时交换链
+        // 写入的 alpha 为 0，合成器会把整个窗口当作透明而看不到任何内容
+        let needs_alpha = params.window_background != WindowBackgroundAppearance::Opaque
+            || params.kind == WindowKind::Overlay;
+        let visual = if needs_alpha {
+            match visual_set.transparent {
+                Some(visual) => visual,
+                None => {
+                    log::warn!("Unable to find a transparent visual",);
+                    visual_set.inherit
+                }
             }
+        } else {
+            visual_set.opaque.unwrap_or(visual_set.inherit)
         };
         log::info!("Using {:?}", visual);
 

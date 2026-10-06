@@ -224,7 +224,10 @@ impl WgpuContext {
     pub fn instance(display: Box<dyn wgpu::wgt::WgpuHasDisplayHandle>) -> wgpu::Instance {
         wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
-            flags: wgpu::InstanceFlags::default(),
+            // 允许暴露未通过 Vulkan 一致性测试的驱动（如 Mesa lavapipe/llvmpipe 软件渲染），
+            // 否则在无独立显卡的虚拟机上会枚举不到任何适配器
+            flags: wgpu::InstanceFlags::default()
+                | wgpu::InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER,
             backend_options: wgpu::BackendOptions::default(),
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
             display: Some(display),
