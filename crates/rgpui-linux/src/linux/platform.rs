@@ -23,6 +23,15 @@ use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
 use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
 use crate::linux::{LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions};
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use crate::linux::{
+    SniShared, TrayEvent, TrayHandle, convert_menu_items_to_tray, icon_pixmap_from_bytes,
+    pixmap_from_rgba_bytes, tray_sni,
+};
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use futures::channel::mpsc;
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use parking_lot::Mutex;
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
     FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OwnedMenu,
@@ -32,6 +41,8 @@ use rgpui::{
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use rgpui::{Pixels, Point, px};
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use rgpui::{SharedString, Tray, TrayIconEvent, TrayMenuItem};
 
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const SCROLL_LINES: f32 = 3.0;
@@ -113,6 +124,10 @@ pub(crate) struct PlatformHandlers {
     pub(crate) validate_app_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
     pub(crate) system_wake: Option<Box<dyn FnMut()>>,
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) tray_icon_event: Option<Box<dyn FnMut(TrayIconEvent)>>,
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) tray_menu_action: Option<Box<dyn FnMut(SharedString)>>,
 }
 
 pub(crate) struct LinuxCommon {
@@ -127,6 +142,15 @@ pub(crate) struct LinuxCommon {
     pub(crate) menus: Vec<OwnedMenu>,
     wake_sender: Sender<()>,
     wake_listener_started: bool,
+    /// 托盘状态句柄，首次调用托盘 API 时惰性创建
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    tray: Option<TrayHandle>,
+    /// 托盘事件回主线程的发送端
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    tray_events: Sender<TrayEvent>,
+    /// 托盘事件接收端，交由平台客户端注册进事件循环
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    tray_event_source: Option<calloop::channel::Channel<TrayEvent>>,
 }
 
 impl LinuxCommon {
@@ -139,6 +163,8 @@ impl LinuxCommon {
     ) {
         let (main_sender, main_receiver) = PriorityQueueCalloopReceiver::new();
         let (wake_sender, wake_receiver) = calloop::channel::channel();
+        #[cfg(any(feature = "wayland", feature = "x11"))]
+        let (tray_events, tray_event_source) = calloop::channel::channel();
 
         #[cfg(any(feature = "wayland", feature = "x11"))]
         let text_system = Arc::new(crate::linux::CosmicTextSystem::new("IBM Plex Sans"));
@@ -163,6 +189,12 @@ impl LinuxCommon {
             menus: Vec::new(),
             wake_sender,
             wake_listener_started: false,
+            #[cfg(any(feature = "wayland", feature = "x11"))]
+            tray: None,
+            #[cfg(any(feature = "wayland", feature = "x11"))]
+            tray_events,
+            #[cfg(any(feature = "wayland", feature = "x11"))]
+            tray_event_source: Some(tray_event_source),
         };
 
         (common, main_receiver, wake_receiver)
@@ -190,6 +222,40 @@ impl LinuxCommon {
             callback();
             self.callbacks.system_wake = Some(callback);
         }
+    }
+
+    /// 取走托盘事件接收端，供平台客户端注册进各自的事件循环
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) fn take_tray_event_source(
+        &mut self,
+    ) -> Option<calloop::channel::Channel<TrayEvent>> {
+        self.tray_event_source.take()
+    }
+
+    /// 惰性创建托盘共享状态，并在后台执行器上启动 DBus 服务
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn tray(&mut self) -> TrayHandle {
+        if let Some(handle) = &self.tray {
+            return handle.clone();
+        }
+
+        let (commands_tx, commands_rx) = mpsc::unbounded();
+        let shared = Arc::new(Mutex::new(SniShared::new()));
+        let handle = TrayHandle {
+            shared: shared.clone(),
+            commands: commands_tx,
+        };
+
+        self.background_executor
+            .spawn(tray_sni::serve(
+                shared,
+                commands_rx,
+                self.tray_events.clone(),
+            ))
+            .detach();
+
+        self.tray = Some(handle.clone());
+        handle
     }
 }
 
@@ -250,6 +316,75 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn on_keyboard_layout_change(&self, callback: Box<dyn FnMut()>) {
         self.inner
             .with_common(|common| common.callbacks.keyboard_layout_change = Some(callback));
+    }
+
+    /// 设置系统托盘图标与菜单（旧的 Tray API，图标已在上层渲染为原始 RGBA）
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray(&self, tray: Tray, menus: Option<Vec<MenuItem>>, _keymap: &Keymap) {
+        self.inner.with_common(|common| {
+            let handle = common.tray();
+            if let Some(icon_data) = &tray.icon_data
+                && let Some(pixmap) =
+                    pixmap_from_rgba_bytes(&icon_data.data, icon_data.width, icon_data.height)
+            {
+                handle.set_icon_pixmap(pixmap);
+            }
+            if let Some(tooltip) = &tray.tooltip {
+                handle.set_tooltip(tooltip);
+            }
+            let items = menus
+                .as_ref()
+                .map(|menus| convert_menu_items_to_tray(menus))
+                .unwrap_or_default();
+            handle.set_menu(&items);
+        });
+    }
+
+    /// 设置托盘图标，接受 PNG/ICO 等字节；`None` 表示清空图标
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray_icon(&self, icon: Option<&[u8]>) {
+        self.inner.with_common(|common| {
+            let pixmap = icon.and_then(icon_pixmap_from_bytes).unwrap_or_default();
+            common.tray().set_icon_pixmap(pixmap);
+        });
+    }
+
+    /// 设置托盘右键菜单
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray_menu(&self, menu: Vec<TrayMenuItem>) {
+        self.inner
+            .with_common(|common| common.tray().set_menu(&menu));
+    }
+
+    /// 设置托盘工具提示
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray_tooltip(&self, tooltip: &str) {
+        self.inner
+            .with_common(|common| common.tray().set_tooltip(tooltip));
+    }
+
+    /// 设置面板模式：启用时左键直接触发图标事件而不是弹出菜单
+    ///
+    /// SNI 用 `ItemIsMenu` 表达相反语义；Ubuntu 的主机会忽略该属性，
+    /// 始终在左键时弹出菜单。
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray_panel_mode(&self, enabled: bool) {
+        self.inner
+            .with_common(|common| common.tray().set_item_is_menu(!enabled));
+    }
+
+    /// 注册托盘图标事件回调
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn on_tray_icon_event(&self, callback: Box<dyn FnMut(TrayIconEvent)>) {
+        self.inner
+            .with_common(|common| common.callbacks.tray_icon_event = Some(callback));
+    }
+
+    /// 注册托盘菜单项点击回调
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn on_tray_menu_action(&self, callback: Box<dyn FnMut(SharedString)>) {
+        self.inner
+            .with_common(|common| common.callbacks.tray_menu_action = Some(callback));
     }
 
     fn on_thermal_state_change(&self, _callback: Box<dyn FnMut()>) {}

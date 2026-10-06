@@ -49,9 +49,10 @@ use super::{
 };
 
 use crate::linux::{
-    DEFAULT_CURSOR_ICON_NAME, LinuxClient, capslock_from_xkb, cursor_style_to_icon_names,
-    get_xkb_compose_state, is_within_click_distance, keystroke_from_xkb,
-    keystroke_underlying_dead_key, log_cursor_icon_warning, modifiers_from_xkb, open_uri_internal,
+    DEFAULT_CURSOR_ICON_NAME, LinuxClient, TrayEventSource, capslock_from_xkb,
+    cursor_style_to_icon_names, dispatch_tray_event, get_xkb_compose_state,
+    is_within_click_distance, keystroke_from_xkb, keystroke_underlying_dead_key,
+    log_cursor_icon_warning, modifiers_from_xkb, open_uri_internal,
     platform::{DOUBLE_CLICK_INTERVAL, SCROLL_LINES},
     reveal_path_internal,
     xdg_desktop_portal::{Event as XDPEvent, XDPEventSource},
@@ -309,7 +310,7 @@ impl X11Client {
     pub(crate) fn new() -> anyhow::Result<Self> {
         let event_loop = EventLoop::try_new()?;
 
-        let (common, main_receiver, wake_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let (mut common, main_receiver, wake_receiver) = LinuxCommon::new(event_loop.get_signal());
 
         let handle = event_loop.handle();
 
@@ -344,6 +345,19 @@ impl X11Client {
             .map_err(|err| {
                 anyhow!("Failed to initialize event loop handling of wake events: {err:?}")
             })?;
+
+        if let Some(tray_event_source) = common.take_tray_event_source() {
+            handle
+                .insert_source(TrayEventSource::new(tray_event_source), {
+                    move |event, _, client: &mut X11Client| {
+                        let state = client.0.clone();
+                        dispatch_tray_event(event, &mut |f| f(&mut state.borrow_mut().common));
+                    }
+                })
+                .map_err(|err| {
+                    anyhow!("Failed to initialize event loop handling of tray events: {err:?}")
+                })?;
+        }
 
         let (xcb_connection, x_root_index) = XCBConnection::connect(None)?;
         xcb_connection.prefetch_extension_information(xkb::X11_EXTENSION_NAME)?;

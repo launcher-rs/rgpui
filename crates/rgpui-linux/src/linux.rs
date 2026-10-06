@@ -9,6 +9,10 @@ mod permissions;
 mod platform;
 #[cfg(any(feature = "wayland", feature = "x11"))]
 mod text_system;
+#[cfg(any(feature = "wayland", feature = "x11"))]
+mod tray;
+#[cfg(any(feature = "wayland", feature = "x11"))]
+mod tray_sni;
 #[cfg(feature = "wayland")]
 mod wayland;
 #[cfg(feature = "x11")]
@@ -26,6 +30,8 @@ pub(crate) use permissions::*;
 pub use platform::*;
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) use text_system::*;
+#[cfg(any(feature = "wayland", feature = "x11"))]
+pub(crate) use tray::*;
 #[cfg(feature = "wayland")]
 pub(crate) use wayland::*;
 #[cfg(feature = "x11")]

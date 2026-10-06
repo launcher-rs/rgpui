@@ -81,9 +81,10 @@ use super::{
 
 use crate::linux::{
     DOUBLE_CLICK_INTERVAL, LinuxClient, LinuxCommon, LinuxKeyboardLayout, PIPE_READ_TIMEOUT,
-    SCROLL_LINES, capslock_from_xkb, cursor_style_to_icon_names, get_xkb_compose_state,
-    is_within_click_distance, keystroke_from_xkb, keystroke_underlying_dead_key,
-    modifiers_from_xkb, open_uri_internal, read_fd_with_timeout, reveal_path_internal,
+    SCROLL_LINES, TrayEventSource, capslock_from_xkb, cursor_style_to_icon_names,
+    dispatch_tray_event, get_xkb_compose_state, is_within_click_distance, keystroke_from_xkb,
+    keystroke_underlying_dead_key, modifiers_from_xkb, open_uri_internal, read_fd_with_timeout,
+    reveal_path_internal,
     wayland::{
         clipboard::{Clipboard, DataOffer, FILE_LIST_MIME_TYPE, TEXT_MIME_TYPES},
         cursor::Cursor,
@@ -605,7 +606,7 @@ impl WaylandClient {
 
         let event_loop = EventLoop::<WaylandClientStatePtr>::try_new().unwrap();
 
-        let (common, main_receiver, wake_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let (mut common, main_receiver, wake_receiver) = LinuxCommon::new(event_loop.get_signal());
 
         let handle = event_loop.handle();
         handle
@@ -635,6 +636,17 @@ impl WaylandClient {
                 },
             )
             .unwrap();
+
+        if let Some(tray_event_source) = common.take_tray_event_source() {
+            handle
+                .insert_source(TrayEventSource::new(tray_event_source), {
+                    move |event, _, client: &mut WaylandClientStatePtr| {
+                        let state = client.get_client();
+                        dispatch_tray_event(event, &mut |f| f(&mut state.borrow_mut().common));
+                    }
+                })
+                .unwrap();
+        }
 
         let compositor_gpu = detect_compositor_gpu();
         let gpu_context = Rc::new(RefCell::new(None));
