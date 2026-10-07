@@ -45,7 +45,7 @@
 | P1 | Inspector（F12）在 Linux 是否可用 | **已验证可用**（见 §2.4） |
 | P2 | 窗口启动后 ~130 ms 纯黑，然后才出画面 | **已定位，未修**（见 §2.5） |
 | P1 | GL 后端在老 Mesa 上不可用（wgpu-hal 只认 `EGL_EXT_platform_xcb`） | 已定位，上游兼容问题（见 §3.4） |
-| P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **通知、全局热键已改真实现并验证**（`4f782cb1fa`、`d5e4819376`，见 §4.2）；权限、应用菜单待实现 |
+| P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **通知、全局热键、权限查询已改真实现并验证**（`4f782cb1fa`、`d5e4819376`、`7fa8b7bf47`，见 §4.2）；仅剩应用菜单 |
 | P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **`os_info` / `system_idle_time` 已实现**（`d6f6a4c598`）；其余待分诊（见 §4.3） |
 | P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；其余待实现 |
 | P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | 待实现（见 §4.1 末） |
@@ -547,6 +547,42 @@ pub fn register(&mut self, id: i32, keystroke: &Keystroke) -> Result<()> {
 - `:24-27` Accessibility **恒返回 `Granted`**（实际 AT-SPI 由 `atspi` 控制，可用 portal/AT-SPI 判断）
 - `:38-42` ScreenCapture 恒返回 `NotDetermined`（应走 `xdg_desktop_portal.rs` 里的 portal）
 
+> **已修复**（`7fa8b7bf47`）：改成按「本机此刻能不能真的做成这件事」如实判定，
+> Linux 上三类权限各有不同口径：
+>
+> | 权限 | X11 会话 | Wayland 会话 |
+> |------|----------|--------------|
+> | Accessibility | AT-SPI 栈在跑才 `Granted`；`NO_AT_BRIDGE=1` → `Denied`；探测失败 → `Unavailable` | 同左（与显示协议无关，只看会话总线上的 AT-SPI） |
+> | ScreenCapture | `Granted`（X11 协议无按客户端的屏幕访问控制） | 有 `org.freedesktop.portal.ScreenCast` → `NotDetermined`（授权发生在真正建会话时）；门户没实现 → `Unavailable` |
+> | InputMonitoring | `Granted`（根窗口 `GrabKey` 无需授权，§4.2-2 就靠它） | 有 `GlobalShortcuts` 门户 → `NotDetermined`；否则 `Unavailable` |
+>
+> - AT-SPI 判定分两步：会话总线 `org.a11y.Bus.GetAddress` 拿到辅助功能总线地址，
+>   再连上该总线调用 `org.a11y.atspi.Registry.GetRegisteredEvents`。
+>   **只查第一步会误判**：本机 `toolkit-accessibility=false` 时 `GetAddress` 依然返回地址，
+>   注册表进程是否活着必须到那条私有总线上问；
+> - 门户接口可用性用根对象 `/org/freedesktop/portal/desktop` 的一次 `Introspect`
+>   判 XML 里有无 `interface name="…"`，**不必为 `ashpd` 打开 `screencast` /
+>   `global_shortcuts` feature**（那些模块带来的会话/授权类型这里用不上）；
+> - 用 `Properties.Get(<接口>, "Version")` 也能区分，但错误串受本地化影响（本机
+> 「No such interface」/「No such property」），Introspect 更稳；
+> - `request_permission` 不再只留一行「不需要权限」的日志：先如实回报当前状态，
+>   再给出可执行指引（Linux 没有应用侧权限弹窗）。
+>
+> 验证（`linux::permissions::tests::query_permissions_in_live_session`，`#[ignore]`，
+> 需真实会话总线；`cargo test -p rgpui-linux -- --ignored --nocapture permissions`）：
+>
+> ```
+> 本机 X11 会话                Accessibility=Granted ScreenCapture=Granted InputMonitoring=Granted
+> NO_AT_BRIDGE=1               Accessibility=Denied
+> WAYLAND_DISPLAY=wayland-0    ScreenCapture=NotDetermined（门户有 ScreenCast）
+>                              InputMonitoring=Unavailable（22.04 门户无 GlobalShortcuts）
+> DBUS_SESSION_BUS_ADDRESS=坏  Accessibility=Unavailable（如实降级）
+> ```
+>
+> **顺带记录**：`ashpd` 0.13 有 `desktop::global_shortcuts::GlobalShortcuts`（门户
+> `org.freedesktop.portal.GlobalShortcuts`），这是 **Wayland 上做全局热键的正路**，
+> 本机 portal 未实现该接口；§4.2-2 目前对 Wayland 返回「不支持」是如实的，将来要补就走这条。
+
 **4) 应用菜单** — `crates/rgpui-linux/src/linux/platform.rs:584-596`
 
 - `set_menus` 只把菜单存进 `common.menus`，**没有任何 UI 展示**
@@ -774,6 +810,20 @@ xinput test-xi2 --root | grep -A2 KeyPress
 # 验证 urgency 提醒（§4.4）：客户端自发 _NET_WM_STATE 无效，要看 WM_HINTS
 xprop -id <WID> WM_HINTS      # 应出现 "The urgency hint bit is set"
 
+# 验证权限查询（§4.2-3）：常规测试不跑，需要真实会话总线
+cargo test -p rgpui-linux -- --ignored --nocapture permissions
+# 负路径靠环境变量造
+NO_AT_BRIDGE=1                → Accessibility=Denied
+WAYLAND_DISPLAY=wayland-0     → ScreenCapture=NotDetermined / InputMonitoring=Unavailable
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/nonexistent → Accessibility=Unavailable
+# 手工对照 AT-SPI 两步探测（只查第一步会误判：toolkit-accessibility=false 时地址照样返回）
+gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.a11y.Bus.GetAddress
+gdbus call --address '<上一步返回的地址>' --dest org.a11y.atspi.Registry \
+  --object-path /org/a11y/atspi/registry --method org.a11y.atspi.Registry.GetRegisteredEvents
+# 门户接口可用性（别用 Properties.Get 的错误串判断，受本地化影响）
+gdbus introspect --session --dest org.freedesktop.portal.Desktop \
+  --object-path /org/freedesktop/portal/desktop --xml | grep -o 'interface name="[^"]*"'
+
 # 进程清理：用精确名，别用 -f 匹配路径（会杀掉自己所在的 shell，exit 143）
 pkill -x tray ; pkill -x inspector
 
@@ -795,9 +845,10 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
 
 渲染、tray、以及 §4.2/§4.4/§4.6 的一批缺陷已收口，剩下按「用户能感知 → 只有开发者感知」排序：
 
-1. ~~**§4.2 三处假实现改成真实现**~~ —— 通知（`4f782cb1fa`）与全局热键（`d5e4819376`）已改真实现
-   并本机验证；**仅剩权限查询（§4.2-3）**：Accessibility 恒 `Granted`、
-   ScreenCapture 恒 `NotDetermined`，且 `on_global_hotkey` 一类「静默成功」已改成如实报错。
+1. ~~**§4.2 三处假实现改成真实现**~~ —— 通知（`4f782cb1fa`）、全局热键（`d5e4819376`）、
+   权限查询（`7fa8b7bf47`）都已改真实现并本机验证。
+   **§4.2 仅剩应用菜单（§4.2-4）**：`set_menus` 存进 `common.menus` 后无人消费，
+   三个 app-menu 回调全仓库无调用点，`set_dock_menu` 还是 `// todo(linux)`。
 2. ~~**§4.4 补 X11 都缺的窗口方法**：`request_attention`、`get_title`~~ —— 已实现（`4f782cb1fa`）。
    剩余：`set_mouse_passthrough`（X11 Shape / Wayland input region）、X11 的 `set_input_region`、
    Wayland 的 `map_window`、`render_to_image`、`set_exclusive_zone`/`set_exclusive_edge`。
