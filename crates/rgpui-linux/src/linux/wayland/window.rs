@@ -714,6 +714,8 @@ impl WaylandWindow {
             .as_ref()
             .map(|viewporter| viewporter.get_viewport(&surface, &globals.qh, ()));
 
+        // params 随后会被移交进窗口状态，先取出穿透意图
+        let mouse_passthrough = params.mouse_passthrough;
         let this = Self(WaylandWindowStatePtr {
             state: Rc::new(RefCell::new(WaylandWindowState::new(
                 handle,
@@ -733,6 +735,10 @@ impl WaylandWindow {
 
         // Kick things off
         surface.commit();
+
+        if mouse_passthrough {
+            this.set_mouse_passthrough(true);
+        }
 
         Ok((this, surface.id()))
     }
@@ -1743,6 +1749,16 @@ impl PlatformWindow for WaylandWindow {
                 state.client.get_serial(SerialKind::MousePress),
                 edge.to_xdg(),
             )
+        }
+    }
+
+    /// 鼠标穿透：Wayland 没有 X Shape 那样的独立扩展，
+    /// 「空输入区域」就是通用做法 —— 窗口照常合成显示，事件落到下层
+    fn set_mouse_passthrough(&self, passthrough: bool) {
+        if passthrough {
+            self.set_input_region(Some(&[]));
+        } else {
+            self.set_input_region(None);
         }
     }
 

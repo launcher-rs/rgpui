@@ -31,7 +31,7 @@ use x11rb::{
         AtomEnum, ChangeWindowAttributesAux, ClientMessageData, ClientMessageEvent,
         ConnectionExt as _, EventMask, Visibility,
     },
-    protocol::{Event, dri3, randr, render, xinput, xkb, xproto},
+    protocol::{Event, dri3, randr, render, shape, xinput, xkb, xproto},
     resource_manager::Database,
     wrapper::ConnectionExt as _,
     xcb_ffi::XCBConnection,
@@ -388,6 +388,9 @@ impl X11Client {
         xcb_connection.prefetch_extension_information(randr::X11_EXTENSION_NAME)?;
         xcb_connection.prefetch_extension_information(render::X11_EXTENSION_NAME)?;
         xcb_connection.prefetch_extension_information(xinput::X11_EXTENSION_NAME)?;
+        // Shape 扩展用于输入区域（鼠标穿透），旧 X server 上可能不存在，
+        // 使用时按「拿不到扩展信息就不发请求」处理
+        xcb_connection.prefetch_extension_information(shape::X11_EXTENSION_NAME)?;
 
         // Announce to X server that XInput up to 2.4 is supported.
         // Version 2.4 is needed for gesture events (GesturePinchBegin/Update/End).

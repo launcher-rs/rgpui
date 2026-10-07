@@ -21,6 +21,7 @@ use x11rb::{
     errors::ConnectionError,
     properties::WmSizeHints,
     protocol::{
+        shape::{self, ConnectionExt as _},
         sync,
         xinput::{self, ConnectionExt as _},
         xproto::{self, ClientMessageEvent, ConnectionExt, TranslateCoordinatesReply},
@@ -948,6 +949,9 @@ impl X11Window {
         supports_xinput_gestures: bool,
         is_bgr: bool,
     ) -> anyhow::Result<Self> {
+        // X11 没有「创建时即穿透」的窗口属性，只能建完窗立刻清空输入区域，
+        // 所以这个意图要在 params 被移交给 X11WindowState 之前先取出来
+        let mouse_passthrough = params.mouse_passthrough;
         let ptr = X11WindowStatePtr {
             state: Rc::new(RefCell::new(X11WindowState::new(
                 handle,
@@ -975,7 +979,12 @@ impl X11Window {
         let state = ptr.state.borrow_mut();
         ptr.set_wm_properties(state)?;
 
-        Ok(Self(ptr))
+        let window = Self(ptr);
+        if mouse_passthrough {
+            window.set_mouse_passthrough(true);
+        }
+
+        Ok(window)
     }
 
     fn set_wm_hints<C: Display + Send + Sync + 'static, F: FnOnce() -> C>(
@@ -1074,6 +1083,17 @@ impl X11Window {
         }
 
         String::from_utf8(reply.value).ok()
+    }
+
+    /// Shape 扩展在精简的 X server 上可能不存在；缺了就只能放弃穿透，
+    /// 因为 ShapeReq 会被服务端以 BadMatch 拒绝
+    fn has_shape_extension(&self) -> bool {
+        self.0
+            .xcb
+            .extension_information(shape::X11_EXTENSION_NAME)
+            .ok()
+            .flatten()
+            .is_some()
     }
 }
 
@@ -1742,6 +1762,81 @@ impl PlatformWindow for X11Window {
             self.0.xcb.unmap_window(self.0.x_window),
         )
         .log_err();
+    }
+
+    /// 鼠标穿透：把 Shape 的输入区域设为空，窗口照常显示但事件落到下层窗口
+    fn set_mouse_passthrough(&self, passthrough: bool) {
+        if passthrough {
+            self.set_input_region(Some(&[]));
+        } else {
+            self.set_input_region(None);
+        }
+    }
+
+    /// `None` 恢复「整个窗口接收输入」（把输入区域重设为窗口外形），
+    /// `Some(rects)` 只让这些矩形接收输入、其余区域穿透
+    fn set_input_region(&self, region: Option<&[Bounds<Pixels>]>) {
+        if !self.has_shape_extension() {
+            log::debug!("X server 未提供 Shape 扩展，鼠标穿透与输入区域不可用");
+            return;
+        }
+
+        match region {
+            // 用 BOUNDING（窗口外形）重设，省掉一次 GetGeometry 往返去问窗口尺寸
+            None => {
+                check_reply(
+                    || "X11 ShapeCombine on input region failed.",
+                    self.0.xcb.shape_combine(
+                        shape::SO::SET,
+                        shape::SK::INPUT,
+                        shape::SK::BOUNDING,
+                        self.0.x_window,
+                        0,
+                        0,
+                        self.0.x_window,
+                    ),
+                )
+                .log_err();
+            }
+            Some(rects) => {
+                let rects = rects
+                    .iter()
+                    .map(|item| {
+                        let origin = item.origin;
+                        let size = item.size;
+                        xproto::Rectangle {
+                            x: f32::from(origin.x)
+                                .round()
+                                .clamp(i16::MIN as f32, i16::MAX as f32)
+                                as i16,
+                            y: f32::from(origin.y)
+                                .round()
+                                .clamp(i16::MIN as f32, i16::MAX as f32)
+                                as i16,
+                            width: f32::from(size.width).round().clamp(0.0, u16::MAX as f32) as u16,
+                            height: f32::from(size.height).round().clamp(0.0, u16::MAX as f32)
+                                as u16,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                check_reply(
+                    || "X11 ShapeRectangles on input region failed.",
+                    self.0.xcb.shape_rectangles(
+                        shape::SO::SET,
+                        shape::SK::INPUT,
+                        xproto::ClipOrdering::UNSORTED,
+                        self.0.x_window,
+                        0,
+                        0,
+                        &rects,
+                    ),
+                )
+                .log_err();
+            }
+        }
+
+        xcb_flush(&self.0.xcb);
     }
 
     fn zoom(&self) {
