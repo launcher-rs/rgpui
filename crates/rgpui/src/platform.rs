@@ -1452,6 +1452,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn set_window_extended_style(&self, _style: u32) {}
 
     /// 设置标题栏是否可见（控制自定义标题栏/原生标题栏切换）。
+    ///
+    /// Windows 切换标准窗口样式，X11 清零 Motif `_MOTIF_WM_HINTS` 的装饰位（整个原生
+    /// 框架消失）；Wayland 没有对应协议，macOS 侧未实现，两者都是空操作。
     fn set_titlebar_visible(&self, _visible: bool) {}
 
     /// 设置输入框的语义内容类型（如 `password`、`email`），

@@ -2281,6 +2281,18 @@ impl Window {
         self.platform_window.request_decorations(decorations);
     }
 
+    /// 显示或隐藏原生标题栏。
+    ///
+    /// - Windows：切换标准窗口样式（隐藏时改用 `WS_POPUP`，同时不再显示任务栏图标）。
+    /// - X11：写 Motif `_MOTIF_WM_HINTS` 的装饰位。mutter 之类只判断装饰位是否为 0，
+    ///   单个 `MWM_DECOR_TITLE` 位它不理，所以隐藏时是整个原生框架都没了，与 Windows
+    ///   的语义一致；客户端装饰下服务端本来不画标题栏，因此没有效果。
+    /// - Wayland：没有对应协议，空操作；macOS 侧同样未实现。客户端装饰下标题栏由应用
+    ///   自己画，要隐藏得在 UI 里去掉 `TitleBar`。
+    pub fn set_titlebar_visible(&self, visible: bool) {
+        self.platform_window.set_titlebar_visible(visible);
+    }
+
     /// 为这个窗口保留多少屏幕空间（逻辑像素），其他窗口不会压到它上面。
     /// Wayland 用 layer-shell 的 `exclusive_zone`，X11 用 EWMH strut，口径一致：
     /// 从 `set_exclusive_edge` 指定的屏幕边缘起保留这条区域，贴边面板传面板高度。

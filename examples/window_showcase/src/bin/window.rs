@@ -88,7 +88,10 @@ impl Render for SubWindow {
     }
 }
 
-struct WindowDemo {}
+struct WindowDemo {
+    /// 原生标题栏当前是否可见，驱动按钮文案与下一次切换的目标值
+    titlebar_visible: bool,
+}
 
 impl Render for WindowDemo {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -248,6 +251,21 @@ impl Render for WindowDemo {
                 )
                 .unwrap();
             }))
+            .child({
+                let entity = cx.entity();
+                let label = if self.titlebar_visible {
+                    "Hide Titlebar"
+                } else {
+                    "Show Titlebar"
+                };
+                button(label, move |window, app| {
+                    let visible = entity.update(app, |demo, _| {
+                        demo.titlebar_visible = !demo.titlebar_visible;
+                        demo.titlebar_visible
+                    });
+                    window.set_titlebar_visible(visible);
+                })
+            })
             .child(button("Hide Application", |window, cx| {
                 cx.hide();
 
@@ -324,7 +342,9 @@ fn run_example() {
                     })
                     .detach();
 
-                    WindowDemo {}
+                    WindowDemo {
+                        titlebar_visible: true,
+                    }
                 })
             },
         )

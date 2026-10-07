@@ -201,6 +201,28 @@ fn strut_partial(
     Some(strut)
 }
 
+/// `_MOTIF_WM_HINTS` 第一个值（hints mask）：声明本属性要改装饰
+const MWM_HINTS_DECORATIONS: u32 = 1 << 1;
+/// Motif 的装饰位：`MWM_DECOR_ALL` 是「其余位没置 1 的项全都要」的简写。
+/// 单个装饰项（如 `MWM_DECOR_TITLE`）在这里用不上 —— mutter 只判断「decorations
+/// 为 0 就完全不加框架」，个别位它不理，所以隐藏时清零整个字段，效果是去掉原生框架，
+/// 与 Windows 实现（`WS_POPUP`，无 caption 无 thickframe）口径一致
+const MWM_DECOR_ALL: u32 = 1 << 0;
+
+/// 合成 `_MOTIF_WM_HINTS` 的 5 个值：hints、functions、decorations、input_mode、status。
+///
+/// functions 填 0 表示不动 WM 功能位；客户端装饰下服务端本来什么都不画，
+/// 装饰位保持 0，标题栏可见性对它没有意义。
+fn motif_hints(decorations: WindowDecorations, titlebar_visible: bool) -> [u32; 5] {
+    let bits = match decorations {
+        WindowDecorations::Client => 0,
+        WindowDecorations::Server if titlebar_visible => MWM_DECOR_ALL,
+        WindowDecorations::Server => 0,
+    };
+
+    [MWM_HINTS_DECORATIONS, 0, bits, 0, 0]
+}
+
 #[derive(Debug)]
 struct EdgeConstraints {
     top_tiled: bool,
@@ -357,6 +379,8 @@ pub struct X11WindowState {
     fullscreen: bool,
     client_side_decorations_supported: bool,
     decorations: WindowDecorations,
+    /// 原生标题栏是否可见；只影响服务端装饰下的 Motif 装饰位
+    titlebar_visible: bool,
     edge_constraints: Option<EdgeConstraints>,
     /// 独占区域宽度（逻辑像素），非正值表示不保留
     exclusive_zone: Pixels,
@@ -933,6 +957,7 @@ impl X11WindowState {
                 destroyed: false,
                 client_side_decorations_supported,
                 decorations: WindowDecorations::Server,
+                titlebar_visible: true,
                 last_insets: [0, 0, 0, 0],
                 edge_constraints: None,
                 exclusive_zone,
@@ -1495,6 +1520,33 @@ impl X11WindowStatePtr {
         };
 
         self.set_strut(strut_partial(edge, origin, size, zone));
+    }
+
+    /// 把当前的装饰模式与标题栏可见性合成后写入 `_MOTIF_WM_HINTS`。
+    /// Motif 只认这一份属性，`request_decorations` 与 `set_titlebar_visible`
+    /// 改的是同一个字段，所以两边都必须走这里重新合成，否则后写的会覆盖先写的
+    fn apply_motif_hints(&self, state: &X11WindowState) -> bool {
+        let hints_data = motif_hints(state.decorations, state.titlebar_visible);
+
+        let Some(()) = check_reply(
+            || "X11 ChangeProperty for _MOTIF_WM_HINTS failed.",
+            self.xcb.change_property(
+                xproto::PropMode::REPLACE,
+                self.x_window,
+                state.atoms._MOTIF_WM_HINTS,
+                state.atoms._MOTIF_WM_HINTS,
+                size_of::<u32>() as u8 * 8,
+                5,
+                bytemuck::cast_slice::<u32, u8>(&hints_data),
+            ),
+        )
+        .log_err() else {
+            return false;
+        };
+
+        // 运行时改装饰靠属性变更通知驱动 WM 重新摆框，得让请求真的发出去
+        xcb_flush(&self.xcb);
+        true
     }
 
     pub fn set_bounds(&self, bounds: Bounds<i32>) -> anyhow::Result<()> {
@@ -2267,46 +2319,37 @@ impl PlatformWindow for X11Window {
         }
 
         // https://github.com/rust-windowing/winit/blob/master/src/platform_impl/linux/x11/util/hint.rs#L53-L87
-        let hints_data: [u32; 5] = match decorations {
-            WindowDecorations::Server => [1 << 1, 0, 1, 0, 0],
-            WindowDecorations::Client => [1 << 1, 0, 0, 0, 0],
-        };
+        // 装饰模式与标题栏可见性共用同一份 Motif 属性，先落到状态里再整体合成
+        let previous = state.decorations;
+        state.decorations = decorations;
 
-        let success = check_reply(
-            || "X11 ChangeProperty for _MOTIF_WM_HINTS failed.",
-            self.0.xcb.change_property(
-                xproto::PropMode::REPLACE,
-                self.0.x_window,
-                state.atoms._MOTIF_WM_HINTS,
-                state.atoms._MOTIF_WM_HINTS,
-                size_of::<u32>() as u8 * 8,
-                5,
-                bytemuck::cast_slice::<u32, u8>(&hints_data),
-            ),
-        )
-        .log_err();
-
-        let Some(()) = success else {
+        if !self.0.apply_motif_hints(&state) {
+            state.decorations = previous;
             return;
-        };
-
-        match decorations {
-            WindowDecorations::Server => {
-                state.decorations = WindowDecorations::Server;
-                let is_transparent = state.is_transparent();
-                state.renderer.update_transparency(is_transparent);
-            }
-            WindowDecorations::Client => {
-                state.decorations = WindowDecorations::Client;
-                let is_transparent = state.is_transparent();
-                state.renderer.update_transparency(is_transparent);
-            }
         }
+
+        let is_transparent = state.is_transparent();
+        state.renderer.update_transparency(is_transparent);
 
         drop(state);
         let mut callbacks = self.0.callbacks.borrow_mut();
         if let Some(appearance_changed) = callbacks.appearance_changed.as_mut() {
             appearance_changed();
+        }
+    }
+
+    /// X11 上用 Motif 的装饰位隐藏/恢复原生框架：装饰位清零，窗口仍是 WM 管理的
+    /// 普通窗口，随时可以再写回 `MWM_DECOR_ALL` 恢复。
+    /// 客户端装饰下服务端本来就不画标题栏，这个请求没有可改的东西
+    fn set_titlebar_visible(&self, visible: bool) {
+        let mut state = self.0.state.borrow_mut();
+        if state.titlebar_visible == visible {
+            return;
+        }
+
+        state.titlebar_visible = visible;
+        if !self.0.apply_motif_hints(&state) {
+            state.titlebar_visible = !visible;
         }
     }
 
@@ -2429,5 +2472,33 @@ mod tests {
         assert_eq!(single_edge(Anchor::TOP), Some(Anchor::TOP));
         assert_eq!(single_edge(Anchor::TOP | Anchor::LEFT), None);
         assert_eq!(single_edge(Anchor::empty()), None);
+    }
+
+    #[test]
+    fn motif_hints_keep_all_decorations_while_titlebar_visible() {
+        // 没主动隐藏标题栏时，写出的属性与实现本方法之前完全一致
+        assert_eq!(
+            motif_hints(WindowDecorations::Server, true),
+            [MWM_HINTS_DECORATIONS, 0, MWM_DECOR_ALL, 0, 0]
+        );
+    }
+
+    #[test]
+    fn motif_hints_clear_decoration_bits_when_titlebar_hidden() {
+        // 隐藏标题栏 = 清空装饰位：mutter 只判断装饰位是否为 0，个别装饰位它不理
+        assert_eq!(
+            motif_hints(WindowDecorations::Server, false),
+            [MWM_HINTS_DECORATIONS, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn motif_hints_ask_for_no_decorations_under_csd() {
+        for titlebar_visible in [true, false] {
+            assert_eq!(
+                motif_hints(WindowDecorations::Client, titlebar_visible),
+                [MWM_HINTS_DECORATIONS, 0, 0, 0, 0]
+            );
+        }
     }
 }
