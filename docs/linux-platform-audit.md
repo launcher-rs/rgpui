@@ -38,6 +38,7 @@
 | `4bc8c9c744` | `feat(linux)`：电源事件（`PrepareForSleep` 两分支）+ 休眠/息屏抑制（login1 `Inhibit`）接回 `App`，阻止器改成 `Drop` 即释放的句柄 |
 | `7d4ec3fdec` | `feat(linux)`：独占区域 —— X11 写 EWMH strut（`WindowKind::LayerShell` → DOCK 窗口），Wayland 补 layer-shell 运行时请求 |
 | `a05578a672` | `feat(linux)`：`set_titlebar_visible` —— X11 写 Motif `_MOTIF_WM_HINTS` 装饰位，核心层补 `Window` 包装（Windows 那份实现此前无人可调） |
+| `70ae4bb64c` | `feat(linux)`：离屏 wgpu 渲染器 + 像素回读 —— `render_to_image` / `PlatformHeadlessRenderer` / `current_headless_renderer` 整条截图链路打通，离屏适配器选择改成「真的回读一次」筛驱动（本机 lavapipe 不回读）；顺带把 `set_retention_override` 的 cfg 收到与调用点一致（见 §2.6） |
 
 最需要记住的一句话（未变）：
 
@@ -65,13 +66,13 @@
 | P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **§4.2 已全部收口**：通知（`4f782cb1fa`）、全局热键（`d5e4819376`）、权限查询（`7fa8b7bf47`）、应用菜单（`0da9515122`，见 §4.2-4）。其中「`set_menus` 只存不显示」定性为**非缺陷**（Windows 同口径） |
 | P1 | **`App` 没有注册入口** → 三个应用菜单回调（action / will-open / validate）应用侧根本登记不了；Linux 旧 `set_tray` 又把菜单项自带的 `Action` 丢掉 | **已修复并验证**（`0da9515122`，见 §4.2-4）：`App` 补三个包装，Linux 记下「标识 → 动作」表并经 `app_menu_action` 派发，与 Windows 托盘菜单同口径 |
 | P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）、电源事件 + 休眠/息屏抑制（`4bc8c9c744`，见 §4.3）**；剩约 16 个**大多是「应用层调不到」的死接口**，分诊见 §4.3 + §4.8 |
-| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；`set_mouse_passthrough` + X11 `set_input_region` **已实现**（`223061c8bc`，见 §4.4）；`set_exclusive_zone` / `set_exclusive_edge` **已实现并本机验证**（`7d4ec3fdec`，见 §4.4）；`set_titlebar_visible` **X11 已实现并本机验证**（`a05578a672`，见 §4.4）；其余（Wayland `map_window`、`render_to_image`）待实现 |
+| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；`set_mouse_passthrough` + X11 `set_input_region` **已实现**（`223061c8bc`，见 §4.4）；`set_exclusive_zone` / `set_exclusive_edge` **已实现并本机验证**（`7d4ec3fdec`，见 §4.4）；`set_titlebar_visible` **X11 已实现并本机验证**（`a05578a672`，见 §4.4）；`render_to_image` + Linux 无头渲染器 **已实现并本机验证**（见 §2.6）；其余：Wayland `map_window` |
 | P1 | `WindowOptions.mouse_passthrough` 在 X11 被完全忽略 —— 桌面宠物类窗口只能靠 Wayland | **已修复**（`223061c8bc`）：X Shape 空输入区域，`ShapeGetRectangles` 回读 `INPUT[]`（0 rect）实测；Wayland 侧补 `set_mouse_passthrough`（仅编译验证） |
 | P1 | **`App` 完全没有包装平台能力方法** → 已实现的 `os_info` / 权限判定等应用层根本调不到 | **已修复并验证**（`e00ddd95aa`，见 §4.8）：权限收敛为 `check_permission`/`request_permission`，8 个能力接回 `App` |
 | P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | **已修复并 A/B 验证**（`4bb1e1b3a2`）：状态收回核心层，平台侧方法删除（见 §4.1 末） |
 | P2 | `cargo check --workspace` 被 webview 示例阻塞（缺 glib/gtk/webkit 系统库） | 待处理（见 §4.5） |
 | P2 | rgpui 无日志初始化入口，wgpu/GPU 诊断信息全部丢失 | **已实现**（`rgpui::init_logging()`，`3fcaa73c98`，见 §4.6） |
-| P3 | Inspector 面板显示「帧率 0.0 FPS · 0.0 ms」 | 待查（见 §2.4） |
+| P3 | Inspector 面板显示「帧率 0.0 FPS · 0.0 ms」 | 待查（见 §2.4）。§2.6 打通的是**离屏**回读，活窗口 swapchain 的读回是另一件事，本项**未解决** |
 | P3 | X11 窗口没有 `WM_NAME`，`wmctrl -l` 显示 `N/A` | **非平台缺陷**：`set_title` 一直会写 `WM_NAME`/`_NET_WM_NAME`，是示例没传标题（见 §2.4） |
 | — | 仓库路径含 `C:` 导致 cargo 构建失败；RDP 共享盘 I/O 极慢 | 环境问题 |
 
@@ -298,6 +299,96 @@ release 把 250 ms 压到 131 ms 但**不归零**，说明它不是性能问题�
 - **彻底**：把 `map_window()` 推迟到首帧提交之后。动的是**全平台共用路径**，
   Windows/macOS/Wayland 的映射时机都会变，风险面大，应单独评估而非顺手改。
 
+### 2.6 [P1·已修] Linux 没有可用的离屏渲染器 —— 截图 / 视觉测试整条链路缺失
+
+**修前的状态**：`PlatformWindow::render_to_image` 与 `PlatformHeadlessRenderer` 在核心层
+挂 `#[cfg(any(test, feature = "test-support"))]`，macOS 有 Metal 实现，Linux 两边都没有；
+`rgpui_platform::current_headless_renderer()` 在非 macOS 恒返回 `None`，
+于是 `HeadlessAppContext::capture_screenshot` 在 Linux 上永远拿不到像素（§4.4 表里
+`render_to_image` 一行、§2.4 的 Inspector 帧率都指到这里）。
+
+**本次实现**（全部只在 `test-support` 下编译，不影响正常构建）：
+
+| 位置 | 内容 |
+|------|------|
+| `rgpui-wgpu/src/wgpu_context.rs` | `WgpuContext::new_headless()` —— 不建 surface 的离屏上下文；`select_adapter_and_device` 的 surface 参数改成 `Option`，无 surface 时走新增的 `try_adapter_offscreen`（建设备 + **真实回读探测** `probe_offscreen_readback`）；离屏上下文**不**注册进 `shared_context`（它随测试窗口一起销毁，不该被后续真实窗口捡走） |
+| `rgpui-wgpu/src/wgpu_renderer.rs` | `WgpuResources.surface` 变 `Option<Surface>`；`new_internal` 按有无 surface 分支选格式/alpha/呈现模式；`WgpuRenderer::new_headless(size, transparent)`；回读拆成 `render_scene_to_pixels`（取当前 surface 尺寸）与 `render_scene_to_pixels_at(scene, size)`（离屏任意尺寸，内部先 `update_drawable_size`，保证视口全局参数与目标纹理一致）；`draw` / `update_drawable_size` / `update_transparency` / `replace_surface` / `recover` 全部加 surface 判空 |
+| `rgpui-wgpu/src/wgpu_headless.rs`（新） | `WgpuHeadlessRenderer` 实现 `PlatformHeadlessRenderer`（`render_scene` / `render_scene_to_image` / `sprite_atlas`） |
+| `rgpui-linux` | `current_headless_renderer()` 工厂；X11 与 Wayland 的 `PlatformWindow::render_to_image` |
+| `rgpui-platform` | `current_headless_renderer()` 补 Linux 分支；feature 转发 `rgpui-linux/test-support` |
+| feature 转发 | `rgpui-wgpu/test-support = ["rgpui/test-support"]` + `image` 依赖；`rgpui-linux/test-support` 转发 `rgpui-wgpu?/test-support` |
+| 测试 | `crates/rgpui-platform/tests/headless_renderer.rs` —— 白底红方块走完整链路（`HeadlessAppContext` 开窗口 → `Window::draw` → `capture_screenshot` → 统计像素） |
+
+**关键障碍与实测证据：软件 Vulkan（lavapipe）不会退休 `MAP_READ` 提交。**
+把同一份「16×16 清空 → 拷进 `MAP_READ` 缓冲 → `map_async`」配方分别跑在两个适配器上：
+
+```
+llvmpipe (LLVM 13.0.1) backend=Gl      poll: Ok(QueueEmpty)，30–51µs，回调触发 true
+llvmpipe (LLVM 13.0.1) backend=Vulkan  poll(Wait): Err(Timeout)，用时 ~1ms（不是等满超时），
+                                        回调触发 false；把 deadline 放到 60 秒、
+                                        自旋 15 000 000+ 次仍不退休，GPU 错误列表为空
+```
+
+即本机 Mesa 22.0.1 的 lavapipe 上，`device.poll(PollType::Wait{timeout: Some(_)})` **立即返回
+`Timeout` 且不推进围栏**，`map_async` 的回调因此永不触发；这不是「慢」——同机 GL 后端
+同一配方微秒级完成。之前评估里「lavapipe 只是慢，十几毫秒能退休」的说法在本机
+不可复现，实测判据以上表为准。
+
+由此定的口径：**离屏上下文不能只按「能否建设备」选适配器**，必须真的回读一次。
+`probe_offscreen_readback` 就是这一步，实测日志：
+
+```
+Found 2 GPU adapter(s):
+  - llvmpipe (…) backend=Vulkan, type=Cpu
+  - llvmpipe (…) backend=Gl,     type=Cpu
+Testing adapter: llvmpipe (…) (Vulkan)...
+  Adapter llvmpipe (…) (Vulkan) failed: 离屏回读探测失败: 等待回读超时，这台驱动不支持同步回读, trying next...   ← 3.03s
+Testing adapter: llvmpipe (…) (Gl)...
+Selected GPU (passed configuration test): llvmpipe (…) (Gl)                                                    ← 41ms
+```
+
+代价是被拒的适配器每个要白等 3 秒（一次性、每个离屏上下文一次），换来的是
+「挑中的驱动一定能回读」，截图路径不会再挂死。`render_scene_to_pixels_at` 里的等待
+因此只用 `PollType::Poll` 自旋（不用 `Wait`），并用 20 秒 deadline 兜底。
+
+端到端结果（`DISPLAY=:10.0`，无窗口）：
+
+```
+$ RUST_LOG=info cargo test -p rgpui-platform --features test-support --test headless_renderer -- --nocapture
+test headless_renderer_captures_painted_pixels ... ok
+test result: ok. 1 passed; 0 failed
+```
+
+场景提交耗时 592ms（llvmpipe 首次 JIT 编译着色器），此后回读一次 poll 即完成。
+
+**顺带修掉的两处构建门禁**（都是让 `--features test-support --all-targets -D warnings`
+能跑起来的前提）：
+
+1. **`cfg(test)` 不能当作「rgpui 开了 test-support」用**。平台实现最初写
+   `#[cfg(any(test, feature = "test-support"))]`，在 `cargo clippy -p rgpui-linux --all-targets`
+   （不带 feature）时报 `E0407: method render_to_image is not a member of trait PlatformWindow` ——
+   `cfg(test)` 只影响**本 crate** 的 test target，核心层的 trait 方法本身挂的是
+   `#[cfg(any(test, feature = "test-support"))]`，rgpui 没开 feature 时方法根本不存在。
+   正确写法只有一个：**`#[cfg(feature = "test-support")]`**（X11、Wayland、`rgpui_wgpu.rs`
+   的模块门控同此）。集成测试文件也一样，要 `#![cfg(all(…, feature = "test-support"))]`，
+   否则不带 feature 的 `cargo test --workspace` 会因找不到 `HeadlessAppContext` 而红。
+2. **`Window::set_retention_override` 的 cfg 比它的调用点宽**（`rgpui/src/window.rs:2161`）。
+   方法挂 `#[cfg(any(test, feature = "test-support"))]`，而唯二两个调用点在
+   `src/fast/tests/`（只挂 `#[cfg(test)]`）。于是只要 rgpui 带 `test-support` 编 lib
+   （`cfg(test)` 为假）就成了 dead code，在 `-D warnings` 下是硬错误 —— 这条**先于本次改动
+   就存在**，任何 crate 转发 `rgpui/test-support` 都会撞上。已按「cfg 与实际用户一致」收窄为
+   `#[cfg(test)]`（方法注释本就写着「仅测试」），不是加 `#[allow(dead_code)]`。
+
+**仍未验证 / 边界**：
+
+- X11、Wayland 的 `PlatformWindow::render_to_image`（真窗口路径）**只做了编译验证**。
+  它读的是屏幕上正在显示的那一帧，尺寸取 surface 配置；在事件循环里同步调用它，
+  交换链提交要等主线程让出才能退休，因此**主线程内阻塞调用会等到 deadline 报错**，
+  这条限制如实保留（要截图请用无头渲染器）。
+- Wayland 侧连编译验证都只覆盖到 `--features wayland` 组合，本机无 Wayland 会话。
+- §2.4 的 Inspector 帧率恒 0 **没有**随本次改动解决：那是活窗口 swapchain 的读回问题，
+  与这里的离屏路径不是同一件事。
+
 ---
 
 ## 三、[已修复] 画面完全不上屏 —— 含一次误诊记录
@@ -375,6 +466,12 @@ ERROR rgpui_wgpu::wgpu_renderer] GPU error during frame (failure 1 of 10): Valid
 `strings 驱动库 | grep` 找到一句匹配的诊断串只证明「驱动里有这段代码」，不证明「它被执行了」。
 
 ### 3.4 仍然成立的连带发现：GL 后端在本机完全不可用（降级路径失效）
+
+> ⚠️ **本节标题过强，已更正**：GL 后端**不能给 X11 窗口建 EGL window surface**，
+> 但**离屏（surfaceless）渲染完全可用**。§2.6 的 Linux 无头渲染器最终选中的就是
+> `backend=Gl` 的 llvmpipe（Vulkan/lavapipe 因为在 3 秒内不退休 `MAP_READ` 提交被探测筛掉），
+> 从创建设备到出像素实测 41 ms。所以本机真正没有可用备胎的是**回读**这件事，
+> 而不是 GL 本身；「GL 不可用」的范围只限呈现路径。
 
 这一条与 §3.3 的误诊无关，**仍然有效**：Vulkan 之外没有可用的降级后端。
 
@@ -772,7 +869,7 @@ write_to_find_pasteboard
 | `set_mouse_passthrough` | ✅ | ✅ | ✅ | **已实现**（`223061c8bc`）：X11 走 Shape 输入区域，Wayland 走空 `wl_region`（见下方口径） |
 | `set_input_region` | ✅ | ✅ | ✅ | X11 已补齐（`223061c8bc`），Wayland 原本就有 |
 | `set_exclusive_zone` / `set_exclusive_edge` | ✅ | ✅ | ✅ | **已实现**（`7d4ec3fdec`）：X11 写 EWMH strut，Wayland 走 layer-shell 运行时请求（口径见下） |
-| `render_to_image` | ❌ | ❌ | ✅ | 截图/测试 |
+| `render_to_image` | ✅ | ✅ | ✅ | **已实现**（离屏渲染器 + 回读探测，口径与实测见 §2.6）；两个后端都**只有编译验证**，活窗口路径在主线程内同步调用会等不到 swapchain 提交退休 |
 | `map_window` | ✅ | ❌ | ✅ | Wayland 缺失 |
 | `set_titlebar_visible` | ✅ | ❌ | ✅ | **X11 已实现并本机验证**（`a05578a672`）：Motif `_MOTIF_WM_HINTS` 装饰位清零（口径见下）；Wayland 无对应协议，核心层此前没有 `Window` 包装 |
 | `window_extended_style` / `set_window_extended_style` | ❌ | ❌ | — | Windows 专属语义 |
@@ -1105,8 +1202,12 @@ is_auto_launch_enabled(app_id)        focused_window_info()
    —— **此条已被 §3.3 推翻，删除。** 无 DRI3 的 xrdp 会话下画面完全正常。
    仍然成立的部分：本会话是**软件渲染**，性能远低于原生，所以 §2.5(a) 那段启动耗时会夸大。
 5. **Mesa 是 Ubuntu 22.04 的 22.x**，EGL 只公布 `EGL_MESA_platform_xcb`，
-   导致 wgpu-hal 的 GL 后端在本机不可用（§3.4）→ **没有 GL 降级备胎**，
-   只能走 lavapipe Vulkan。不阻塞功能，但排查后端选择问题时少一条对照路径。
+   导致 wgpu-hal 的 GL 后端**无法为 X11 窗口建 EGL surface**（§3.4）→ 呈现路径没有 GL 备胎，
+   活窗口只能走 lavapipe Vulkan。不阻塞功能，但排查后端选择问题时少一条对照路径。
+   **更正**：GL 后端在**离屏（surfaceless）**下正常工作，§2.6 的回读探测最终选中的正是它；
+   真正「不可用」的是 lavapipe Vulkan 的同步回读（`MAP_READ` 提交 3 秒内不退休），
+   不是 GL。两条都要记下：`lavapipe is not a conformant vulkan implementation` 这条
+   stderr 警告本身**不影响**创建与呈现，只影响 `map_async` 退休。
 6. **GNOME 面板无法用 `xwd` 截图**：gnome-shell 面板是 GL 合成的，
    抓 root 或抓 gjs stage 窗口都是全黑；`org.gnome.Shell.Screenshot` 返回 `AccessDenied`。
    → 验证 tray 图标只能靠**协议级证据**（`RegisteredStatusNotifierItems`、
@@ -1126,6 +1227,25 @@ cargo tree -p hello_world -f "{p} [{f}]" --target-dir /tmp/rgpui-target | grep r
 
 # 打开日志看 GPU 适配器探测（示例已调 rgpui::init_logging()，见 §4.6）
 RUST_LOG=info,wgpu_hal=debug ./hello_world
+
+# 验证 §2.6 的离屏渲染链路（不建窗口，纯 CPU/GPU 出像素）
+CARGO_TARGET_DIR=/home/abc/rgpui-target cargo test -p rgpui-platform --features test-support
+# 要看适配器是怎么被筛的就加日志与 --nocapture（测试本身不初始化日志，
+# 临时在测试开头加一行 rgpui::init_logging() 再跑，看完删掉）：
+#   RUST_LOG=info cargo test -p rgpui-platform --features test-support \
+#       --test headless_renderer -- --nocapture
+# 期望：Vulkan/lavapipe 被「离屏回读探测」在 3 秒后拒绝，接着选中 Gl/llvmpipe，测试绿
+# 反证（判定「到底是驱动不回读，还是我们等错」）：同一份 16×16 清空+拷贝+map_async
+#   在 backend=Gl 上 poll 返回 Ok(QueueEmpty)（30–51µs），
+#   在 backend=Vulkan 上 Wait 立刻返回 Err(Timeout)（~1ms，不等满超时），60 秒自旋、
+#   以及换用 Poll 探测 3 秒都不退休
+
+# test-support 这条链路是跨 crate 的，门禁要按组合跑（不带 feature 也会红，见 §2.6 末）
+for spec in rgpui rgpui-wgpu rgpui-linux rgpui-platform; do
+  for feat in "" "--features test-support"; do
+    cargo clippy -p "$spec" $feat --all-targets -- -D warnings
+  done
+done
 
 # 确认窗口真的创建了（不是只看进程活着）
 xprop -root _NET_CLIENT_LIST | grep -o "0x[0-9a-f]*"   # 逐个查 _NET_WM_PID
@@ -1314,7 +1434,7 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
 2. ~~**§4.4 补 X11 都缺的窗口方法**：`request_attention`、`get_title`~~ —— 已实现（`4f782cb1fa`）。
    ~~`set_mouse_passthrough`（X11 Shape / Wayland input region）与 X11 的 `set_input_region`~~ ——
    已实现并本机回读验证（`223061c8bc`，口径与证据见 §4.4）。
-   剩余：Wayland 的 `map_window`、`render_to_image`。
+   剩余：Wayland 的 `map_window`。
    ~~`set_exclusive_zone` / `set_exclusive_edge`~~ —— 已实现（`7d4ec3fdec`）：X11 走 EWMH
    strut（`WindowKind::LayerShell` → DOCK 窗口），Wayland 补运行时请求，
    `layer_shell` 示例是两通用同一套代码的调用点；口径与本机证据见 §4.4 末。
@@ -1322,6 +1442,8 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
    顺带补上核心层缺失的 `Window` 包装（Windows 那份实现此前无人可调）；
    Wayland 无对应协议，如实留空。§4.4 里 `get_raw_handle` 一行也已更正 ——
    该方法在核心层就挂着 `#[cfg(target_os = "windows")]`，Linux 上不存在，不是缺口。
+   ~~`render_to_image`~~ —— 已随 §2.6 实现（离屏渲染器 + X11/Wayland 的 `PlatformWindow::render_to_image`），
+   但**运行时只验证了离屏那条**；`map_window` 的 Wayland 分支仍未实现（仅编译验证）。
 3. ~~**§4.1 末 / §4.3 的 `set_keep_alive_without_windows`**~~ —— 跨平台缺陷，已修（`4bb1e1b3a2`）：
    状态收回核心层并改掉 `app.rs` 的退出判据，`Platform` 侧方法与 Windows 的
    `AtomicBool` 一并删除。本机 A/B 验证见 §4.1 末。
@@ -1344,9 +1466,13 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
    仍然**先做 App 侧 API 设计再动 Linux**（§4.8 的口径：只补平台实现会产出调不到的代码）。
    （`system_idle_time`、`os_info` 已随 `d6f6a4c598` 完成，`network_status` 已随 §4.7 完成，
    窗口级提醒见 §4.4）
-9. **§2.4 遗留 + §4.4 的 `render_to_image`** —— Inspector 帧率恒 0 与截图能力都卡在同一个
-   前置条件：需要 **lavapipe 软渲染下可回读的 surface**（本机 vulkan 只有软件驱动，
-   §2.2/§3.4）。属于「只有开发者感知」，但一旦打通能同时解决两项，值得排在窗口方法之前。
+9. ~~**§2.4 遗留 + §4.4 的 `render_to_image`**~~ —— 截图能力已随 §2.6 打通（离屏渲染器 +
+   `MAP_READ` 回读），**Inspector 帧率恒 0 仍未解决**。
+   这一节原先的判断是「两项卡在同一个前置条件：需要 lavapipe 软渲染下可回读的 surface」，
+   实测**前提是错的**：本机 lavapipe（软件 Vulkan）根本没有可回读的提交（`MAP_READ` 永不退休，
+   §2.6 的上表），能回读的是 GL 后端的 llvmpipe。所以解法是**让离屏上下文按「能否真的回读」
+   选适配器**（Vulkan 被探测拒掉 → 落 GL），而不是等 lavapipe 变得可回读。
+   帧率那半属于活窗口 swapchain 的读回，与离屏路径不同事，仍待查。
 10. **§3.4** 记录 wgpu-hal / 老 Mesa 兼容问题（已降为 P3），评估是否向上游提 issue。
 11. **Wayland 会话复测** —— 不再是渲染验证的阻塞项，但用于覆盖 Wayland 专属分支
     （§2.3 的 `hide`/`activate` 语义、§4.4 缺失的 `map_window`、§4.4 新加的
