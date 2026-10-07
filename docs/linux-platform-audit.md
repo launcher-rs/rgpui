@@ -21,13 +21,17 @@
 | `fef831e901` | `docs(linux)`：本审计文档 |
 | `ac83e85218` | `fix(linux)`：关闭主窗口后托盘「显示窗口」无响应 |
 | `35f4d730ed` | `chore`：忽略 `.qoder` 本地配置目录 |
-| `4f782cb1fa` | `fix(linux)`：通知改真实现（portal）+ `get_title` + X11 urgency 提醒 |
-| `3fcaa73c98` | `feat(core)`：`rgpui::init_logging()` 日志初始化入口 |
+| `4f782cb1fa` | `feat(linux)`：通知走门户实现 + `get_title` + X11 urgency 提醒 |
+| `0fc55633cc` | `docs(linux)`：更正误诊并补记修复 |
+| `3fcaa73c98` | `feat(rgpui)`：`rgpui::init_logging()` 日志初始化入口 |
 | `d6f6a4c598` | `feat(linux)`：`os_info` 与 `system_idle_time` |
 | `d5e4819376` | `fix(linux)`：全局热键真正 GrabKey + `on_global_hotkey` 派发 |
 | `7fa8b7bf47` | `fix(linux)`：权限查询改真实现（AT-SPI 两步探测 + portal 接口盘点） |
+| `ae8da6ba4c` / `bf8bb36c0a` | `docs(linux)`：同步状态、补 Linux 构建前置与权限判定口径 |
 | `4bb1e1b3a2` | `fix(core)`：`keep_alive_without_windows` 状态收回核心层 |
 | `651a94a618` | `feat(linux)`：`network_status`（门户优先 + `/sys/class/net` 兜底） |
+| `abafc85668` | `docs(linux)`：§4.7 与 keep-alive 修复记录，更正 §4.3 调用方结论 |
+| `e00ddd95aa` | `feat(core)`：权限/系统信息/自启动等能力接回 `App`，权限收敛为统一入口 |
 
 最需要记住的一句话（未变）：
 
@@ -53,8 +57,9 @@
 | P2 | 窗口启动后 ~130 ms 纯黑，然后才出画面 | **已定位，未修**（见 §2.5） |
 | P1 | GL 后端在老 Mesa 上不可用（wgpu-hal 只认 `EGL_EXT_platform_xcb`） | 已定位，上游兼容问题（见 §3.4） |
 | P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **通知、全局热键、权限查询已改真实现并验证**（`4f782cb1fa`、`d5e4819376`、`7fa8b7bf47`，见 §4.2）；仅剩应用菜单 |
-| P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）**，剩约 19 个待分诊（见 §4.3） |
+| P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）**；剩约 19 个**大多是「应用层调不到」的死接口**，分诊见 §4.3 + §4.8 |
 | P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；其余待实现 |
+| P1 | **`App` 完全没有包装平台能力方法** → 已实现的 `os_info` / 权限判定等应用层根本调不到 | **已修复并验证**（`e00ddd95aa`，见 §4.8）：权限收敛为 `check_permission`/`request_permission`，8 个能力接回 `App` |
 | P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | **已修复并 A/B 验证**（`4bb1e1b3a2`）：状态收回核心层，平台侧方法删除（见 §4.1 末） |
 | P2 | `cargo check --workspace` 被 webview 示例阻塞（缺 glib/gtk/webkit 系统库） | 待处理（见 §4.5） |
 | P2 | rgpui 无日志初始化入口，wgpu/GPU 诊断信息全部丢失 | **已实现**（`rgpui::init_logging()`，`3fcaa73c98`，见 §4.6） |
@@ -653,15 +658,20 @@ stop_power_save_blocker       update_jump_list         write_to_find_pasteboard
 > 这里的 `show_context_menu` 指 `Platform` 的同名方法；
 > `crates/rgpui/src/input_ui/context_menu.rs:308` 那处是**元素**的 `show_context_menu`，
 > 与平台方法无关，别混为一谈。
-**分诊建议**：
 
-- 可用 Linux 等价物实现：`on_network_status_change`（门户 `NetworkMonitor` 的 `changed` 信号，
+**分诊建议**（前提见 §4.8：这些方法**在 `App` 上没有包装**，
+只补 Linux 实现等于写一份应用调不到的代码，所以每一条都要「API 形状 + App 包装 + 调用点」一起做）：
+
+- 可实现，但先要定 App 侧 API：`on_network_status_change`（门户 `NetworkMonitor` 的 `changed` 信号，
   需要像 tray 那样把事件路由回主线程再派发）、
   `on_system_power_event`（`login1`，`platform.rs` 已有 `PrepareForSleep` 监听可复用）、
-  `microphone_status` / `request_microphone_permission`（portal）、
-  `start/stop_power_save_blocker`（portal `Inhibit`，本机会话已确认该接口存在）
+  `start/stop_power_save_blocker`（`login1` 的 `Inhibit` 是**持有 fd 即生效**，
+  返回 `Option<u32>` 让应用自己记 ID 的形状不合适，应改成 `Drop` 即释放的句柄）、
+  `microphone_status` / `request_microphone_permission`（portal `Camera`/`Device`；
+  这两个保留特例方法是因为带 `FnOnce(bool)` 回调，见 §4.8）
 - 已实现：`on_global_hotkey`（§4.2-2）、`os_info`、`system_idle_time`
   （`org.freedesktop.ScreenSaver` 与 Mutter `IdleMonitor` 依次探测）、`network_status`（§4.7）、
+  权限查询/请求（`check_permission` / `request_permission`，§4.2-3 + §4.8）、
   `set_keep_alive_without_windows`（§4.1 末）
 - 平台语义上不需要，保持默认即可：`set_dock_badge`、`update_jump_list`、
   `perform_dock_menu_action`、`read/write_from_find_pasteboard`、`biometric_status`、
@@ -793,6 +803,66 @@ portal 调用）**在原生平台上一条都看不到** —— 这次排障被�
 > ```
 >
 > 活体测试为 `#[ignore]`：无头 CI 上没有会话总线，跑它会误报。
+
+### 4.8 [P1] 平台能力在应用层没有调用点 —— **已修复**（`e00ddd95aa`）
+
+排查 §4.2-3 / §4.3 时发现一个比「没实现」更根本的问题：
+**`App` 对这批能力一个包装方法都没有**，而 `App::platform` 是私有字段。
+于是 `os_info`、`system_idle_time`、`network_status`、`accessibility_status`、
+`set_auto_launch`、`is_auto_launch_enabled`、`focused_window_info` 即使在三平台都实现了，
+**应用代码也一行都调不到** —— 与 §4.1 末的 keep-alive 是同一类缺陷的两个方向：
+那边是「存了没人读」，这边是「实现了没人能调」。
+
+> 由此定一条口径（**已写进 AGENTS.md 的「平台 trait 自有 API」**），
+> 后续补 `Platform` 方法时同样适用：
+> **补一个平台方法，就必须同时给 `App` 包装 + 一个真实调用点（示例或核心逻辑）**。
+> 只往 `rgpui-linux` 里加实现，产出的正是本节批评的东西。
+
+**已接回应用层**（`crates/rgpui/src/app.rs`）：
+
+```
+check_permission(PermissionType)      request_permission(PermissionType)
+os_info()                             system_idle_time()
+network_status()                      set_auto_launch(app_id, enabled)
+is_auto_launch_enabled(app_id)        focused_window_info()
+```
+
+权限改成**统一入口**而不是逐类别加方法：
+
+- 原来只有 `accessibility_status` / `request_accessibility_permission` 这一对特例，
+  `PermissionType::ScreenCapture` / `InputMonitoring` 在 macOS 与 Linux 里都写好了判定，
+  却**没有任何 trait 方法能问它们** —— 特例方法的毛病就在于每加一个类别都要再补一对；
+- 现在 `check_permission(kind)` / `request_permission(kind)` 覆盖整个 `PermissionType`，
+  特例对删除，macOS / Windows / Linux 三处实现同步改造（Windows 无按应用授权模型，返回 `Granted`；
+  macOS 只有辅助功能有弹窗，其余交给 TCC 首次使用时自动询问）；
+- `request_microphone_permission` **保留**为特例：它带 `FnOnce(bool)` 回调，
+  与 `request_permission` 的「触发即返回」形状不同，且 `PermissionType` 里没有麦克风类别。
+
+顺带修掉一个潜伏编译错误：`rgpui-macos/src/permissions.rs` 的非 macOS 分支返回
+`PermissionStatus::Unknown`，而该枚举根本没有这个变体 —— 因为整条分支在
+`#[cfg(not(target_os = "macos"))]` 下、三个平台都不编译它，所以一直没暴露。
+
+**刻意没动**的（缺的是 App 侧 API 设计，不是 Linux 实现）：
+`start/stop_power_save_blocker`、`on_system_power_event`、`on_network_status_change`、
+`on_media_key_event`、`microphone_status`、`biometric_status` / `authenticate_biometric`、
+`request/cancel_user_attention`、`set_dock_badge`、`show_dialog`、`show_context_menu`。
+例如电源阻止器返回 `Option<u32>` 让应用自己记 ID 去停止，这个形状本身就值得先改
+（更合理的是给出一个 `Drop` 即释放的句柄），在 Linux 上实现它只会多一份没人调的代码。
+
+> **本机实测**（`DISPLAY=:10.0 daemon_app` 启动输出，见 §六）：
+>
+> ```
+> OS: Ubuntu 22.04 LTS (Jammy Jellyfish)
+> Network: Connected
+> Idle: Some(1)
+> Permission Accessibility: Granted
+> Permission ScreenCapture: Granted
+> Permission InputMonitoring: Granted
+> Auto launch enabled: false
+> ```
+>
+> 负路径同样如实（证明不是常量转发）：`NO_AT_BRIDGE=1` 下
+> `Permission Accessibility: Denied`，其余两项不变。
 
 ---
 
@@ -929,6 +999,11 @@ RUST_LOG=info ./daemon_app &
 # 用托盘菜单事件关掉最后一个窗口，进程应仍存活；再触发 Quit 项才退出
 pkill -x daemon_app
 
+# 验证平台能力在应用层可达（§4.8）：daemon_app 启动即打印查询结果
+DISPLAY=:10.0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus ./daemon_app 2>&1 | head -8
+# 负路径证明不是常量转发
+NO_AT_BRIDGE=1 ./daemon_app 2>&1 | grep Permission   # Accessibility=Denied，其余不变
+
 # 进程清理：用精确名，别用 -f 匹配路径（会杀掉自己所在的 shell，exit 143）
 pkill -x tray ; pkill -x inspector
 
@@ -948,7 +1023,7 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
 
 ## 七、后续建议顺序
 
-渲染、tray、以及 §4.2/§4.4/§4.6 的一批缺陷已收口，剩下按「用户能感知 → 只有开发者感知」排序：
+渲染、tray、以及 §4.2/§4.4/§4.6/§4.8 的一批缺陷已收口，剩下按「用户能感知 → 只有开发者感知」排序：
 
 1. ~~**§4.2 三处假实现改成真实现**~~ —— 通知（`4f782cb1fa`）、全局热键（`d5e4819376`）、
    权限查询（`7fa8b7bf47`）都已改真实现并本机验证。
@@ -965,16 +1040,21 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
    当前用户指示：先不做。
 5. ~~**§4.6 日志入口**~~ —— 已提供 `rgpui::init_logging()`（`3fcaa73c98`），
    示例与排障命令均已用上（见 §六）。
-6. **§2.4 的两个 P3** —— Inspector 的 FPS 恒 0（面板可信度问题）、示例未传窗口标题
-   （平台侧 `set_title`/`WM_NAME` 已确认正常，见 §2.4）。
+6. ~~**§2.4 的两个 P3**~~ —— 示例未传窗口标题一项已定性为**非平台缺陷**（见 §2.4 与本节第 9 项）；
+   Inspector 帧率恒 0 归并到第 9 项一起处理。
 7. ~~**§4.5 文档补 Linux 构建前置包**~~ —— AGENTS.md 已加「Linux 端构建前置」小节，
    写明 `apt install` 列表，以及未装这些库时实际可行的验证范围
    （`-p rgpui-linux --all-targets` + `cargo fmt -p rgpui-linux`），
    并明确它**不能替代** `cargo check --workspace`。
-8. **§4.3 分诊表**里「可用 Linux 等价物实现」的
-   `on_system_power_event` / `microphone_status` / `start|stop_power_save_blocker`；
+8. **§4.3 分诊表**剩下的 `on_system_power_event` / `microphone_status` /
+   `start|stop_power_save_blocker` / `on_network_status_change` ——
+   **先做 App 侧 API 设计再动 Linux**（§4.8 的口径：只补平台实现会产出调不到的代码）。
+   其中电源阻止器的 `Option<u32>` 返回值应改为 `Drop` 即释放的句柄。
    （`system_idle_time`、`os_info` 已随 `d6f6a4c598` 完成，`network_status` 已随 §4.7 完成，
    窗口级提醒见 §4.4）
-9. **§3.4** 记录 wgpu-hal / 老 Mesa 兼容问题（已降为 P3），评估是否向上游提 issue。
-10. **Wayland 会话复测** —— 不再是渲染验证的阻塞项，但用于覆盖 Wayland 专属分支
+9. **§2.4 遗留 + §4.4 的 `render_to_image`** —— Inspector 帧率恒 0 与截图能力都卡在同一个
+   前置条件：需要 **lavapipe 软渲染下可回读的 surface**（本机 vulkan 只有软件驱动，
+   §2.2/§3.4）。属于「只有开发者感知」，但一旦打通能同时解决两项，值得排在窗口方法之前。
+10. **§3.4** 记录 wgpu-hal / 老 Mesa 兼容问题（已降为 P3），评估是否向上游提 issue。
+11. **Wayland 会话复测** —— 不再是渲染验证的阻塞项，但用于覆盖 Wayland 专属分支
     （§2.3 的 `hide`/`activate` 语义、§4.4 缺失的 `map_window`）仍有独立价值。
