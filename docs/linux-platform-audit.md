@@ -32,6 +32,8 @@
 | `651a94a618` | `feat(linux)`：`network_status`（门户优先 + `/sys/class/net` 兜底） |
 | `abafc85668` | `docs(linux)`：§4.7 与 keep-alive 修复记录，更正 §4.3 调用方结论 |
 | `e00ddd95aa` | `feat(core)`：权限/系统信息/自启动等能力接回 `App`，权限收敛为统一入口 |
+| `79e93b058d` | `docs(linux)`：§4.8 记录 + AGENTS.md 口径 |
+| `223061c8bc` | `feat(linux)`：X11 鼠标穿透 / 输入区域（X Shape）+ Wayland `set_mouse_passthrough` |
 
 最需要记住的一句话（未变）：
 
@@ -58,7 +60,8 @@
 | P1 | GL 后端在老 Mesa 上不可用（wgpu-hal 只认 `EGL_EXT_platform_xcb`） | 已定位，上游兼容问题（见 §3.4） |
 | P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **通知、全局热键、权限查询已改真实现并验证**（`4f782cb1fa`、`d5e4819376`、`7fa8b7bf47`，见 §4.2）；仅剩应用菜单 |
 | P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）**；剩约 19 个**大多是「应用层调不到」的死接口**，分诊见 §4.3 + §4.8 |
-| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；其余待实现 |
+| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；`set_mouse_passthrough` + X11 `set_input_region` **已实现**（`223061c8bc`，见 §4.4）；其余（`map_window`、`render_to_image`、exclusive zone）待实现 |
+| P1 | `WindowOptions.mouse_passthrough` 在 X11 被完全忽略 —— 桌面宠物类窗口只能靠 Wayland | **已修复**（`223061c8bc`）：X Shape 空输入区域，`ShapeGetRectangles` 回读 `INPUT[]`（0 rect）实测；Wayland 侧补 `set_mouse_passthrough`（仅编译验证） |
 | P1 | **`App` 完全没有包装平台能力方法** → 已实现的 `os_info` / 权限判定等应用层根本调不到 | **已修复并验证**（`e00ddd95aa`，见 §4.8）：权限收敛为 `check_permission`/`request_permission`，8 个能力接回 `App` |
 | P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | **已修复并 A/B 验证**（`4bb1e1b3a2`）：状态收回核心层，平台侧方法删除（见 §4.1 末） |
 | P2 | `cargo check --workspace` 被 webview 示例阻塞（缺 glib/gtk/webkit 系统库） | 待处理（见 §4.5） |
@@ -687,8 +690,8 @@ stop_power_save_blocker       update_jump_list         write_to_find_pasteboard
 | `activate` | ⚠️ | ✅ | ✅ | **X11 已修**（§2.3：先 map 再 `_NET_ACTIVE_WINDOW`）；Wayland 用 xdg-activation token |
 | `request_attention` | ✅ | ❌ | ✅ | **X11 已实现**（`4f782cb1fa`）：写 ICCCM `WM_HINTS` urgency 位。Wayland 侧没有「客户端请求提醒」的协议入口，要做得靠 portal `org.freedesktop.portal.Notify` 之类的通知替代 |
 | `get_title` | ✅ | ✅ | ✅ | **已实现**（`4f782cb1fa`）：优先 `_NET_WM_NAME`（UTF-8），回退 `WM_NAME`（STRING）。无头后端早就有（见下方备注） |
-| `set_mouse_passthrough` | ❌ | ❌ | ✅ | X11 可用 Shape 扩展 |
-| `set_input_region` | ❌ | ✅ | ✅ | X11 缺失，Wayland 已实现 |
+| `set_mouse_passthrough` | ✅ | ✅ | ✅ | **已实现**（`223061c8bc`）：X11 走 Shape 输入区域，Wayland 走空 `wl_region`（见下方口径） |
+| `set_input_region` | ✅ | ✅ | ✅ | X11 已补齐（`223061c8bc`），Wayland 原本就有 |
 | `set_exclusive_zone` / `set_exclusive_edge` | ❌ | ❌ | ✅ | 层叠 shell 面板区域 |
 | `render_to_image` | ❌ | ❌ | ✅ | 截图/测试 |
 | `map_window` | ✅ | ❌ | ✅ | Wayland 缺失 |
@@ -710,6 +713,46 @@ stop_power_save_blocker       update_jump_list         write_to_find_pasteboard
   `xdotool set_window --urgency 1` 一致：`xprop` 出现 `WmHints(... urgency ...)`，
   即 "The urgency hint bit is set"；
 - 提醒是**一次性**的：WM 在窗口被激活后自行清位，因此不需要 `cancel_user_attention` 的实现。
+
+**鼠标穿透 / 输入区域的实现口径**（`223061c8bc`）：
+
+- **X11**：Shape 扩展的 INPUT 形状决定事件路由。`ShapeRectangles(operation=SET, kind=INPUT,
+  rectangles=[])` 即空输入区域 —— 窗口照常合成显示，事件落到下层；恢复用
+  `ShapeCombine(SET, INPUT, BOUNDING, win, 0, 0, win)`，省掉一次 `GetGeometry` 往返去问窗口尺寸；
+  局部热区就传矩形列表（`Bounds<Pixels>` → `xproto::Rectangle`，`i16`/`u16` 夹紧）。
+- X11 **没有**「创建时即穿透」的窗口属性，所以 `WindowOptions.mouse_passthrough` 的意图要在
+  `params` 被移交进 `X11WindowState` 之前取出，建完窗、`set_wm_properties` 之后立刻应用。
+- Shape 是**可选扩展**：客户端启动时 `prefetch_extension_information(shape::X11_EXTENSION_NAME)`，
+  窗口侧用 `extension_information(...).ok().flatten().is_some()` 判定；缺扩展只记一条 debug 日志、
+  不发请求（否则服务端以 `BadMatch` 拒绝）。
+- **Wayland**：没有对应扩展，「空 `wl_region`」就是通用做法；`set_input_region(None)` = 无限区域
+  （整个 surface）。穿透意图同样在 `WaylandWindow::new` 里先取出，在首个 `surface.commit()` 之后应用；
+  region 在 `commit` 之后立即 `destroy()` 是安全的（请求已排队，服务端按顺序处理）。
+
+**验证**（`DISPLAY=:10.0` 同一 xrdp 会话里同时跑 `desktop_pet`（`mouse_passthrough: true`，
+窗口 `0x3000001`）与 `hello_world`（不穿透，`0x2a00001`），再用 x11rb 写约 30 行探针回读
+`ShapeGetRectangles`；探针是仓库外的临时 crate，`x11rb = { version = "0.13.2", features = ["shape"] }`）：
+
+```
+0x03000001 320x320+524+224  BOUNDING[320x320+0+0]  INPUT[]                  (0 rect)   ← 穿透生效，外形未变
+0x02a00001 500x500+10+45    BOUNDING[500x500+0+0]  INPUT[500x500+0+0]       (1 rect)   ← 对照组
+mode=restore  → INPUT[320x320+0+0]     mode=partial → INPUT[100x100+50+50]  mode=empty → INPUT[]
+```
+
+未修时叠加窗口的 INPUT 会回落到外形（`ShapeGetRectangles` 对**未整形**窗口返回 BOUNDING 的内容），
+也就是 `restore` 那一行的 320x320 —— 所以「0 rect vs 1 rect」是这次改动造成的真实差异，不是环境噪声。
+三种请求形式（空列表 / BOUNDING 重设 / 单矩形）逐条对应实现里的三条分支，都实测有效。
+
+**事件路由本身没能在本机实测**：xrdp 会话里 `xdotool click` 的坐标会被 `xrdpMouse` 绝对设备回弹
+（`xev -id 0x2a00001` 收得到 `EnterNotify`/`FocusIn`，却收不到任何 `ButtonPress`），而
+GNOME/mutter 的全屏合成覆盖窗又让 `xdotool getmouselocation` 在叠加窗区域恒返回 `0x240000a`。
+INPUT 形状控制事件路由是 X 协议规范语义，回读形状即为充分证据。
+
+Wayland 侧本次**只有编译验证**（`cargo clippy -p rgpui-linux --no-default-features --features wayland
+--all-targets -- -D warnings` 干净），本机没有 Wayland 会话；空 region 的语义与 X11 空 INPUT 同构。
+另：`--no-default-features --features x11` 这一变体有 `PIPE_READ_TIMEOUT` /
+`read_fd_with_timeout` / portal `CursorTheme`/`CursorSize` 四条 dead-code 报错，
+**属改动前既有**（这些项只在 Wayland 路径被读），与穿透无关，CI 也不构建该组合。
 
 ### 4.5 [P2] workspace 构建在 Linux 上被 webview 示例阻塞
 
@@ -968,6 +1011,21 @@ xinput test-xi2 --root | grep -A2 KeyPress
 # 验证 urgency 提醒（§4.4）：客户端自发 _NET_WM_STATE 无效，要看 WM_HINTS
 xprop -id <WID> WM_HINTS      # 应出现 "The urgency hint bit is set"
 
+# 验证鼠标穿透（§4.4）：回读 X Shape 的 INPUT 形状，别试图用合成点击去证明
+# 本机 xrdp 会话里 xdotool click 的坐标会被 xrdpMouse 绝对设备回弹：
+#   xev -id <WID> 只收得到 EnterNotify/FocusIn，永远收不到 ButtonPress；
+#   xdotool getmouselocation 在叠加窗区恒返回 mutter 的合成覆盖窗（本机 0x240000a）。
+#   （xev 的 -id 模式不打印 banner，别把「没输出」当成「没跑起来」）
+# 探针是仓库外的临时 crate（/tmp/xshape）：x11rb = { version = "0.13", features = ["shape"] }，
+# 核心就三个调用 —— get_geometry / shape_get_rectangles(id, SK::BOUNDING|SK::INPUT)
+DISPLAY=:10.0 /tmp/xshape-target/debug/xshape 0x3000001 0x2a00001
+#   穿透窗口：BOUNDING[320x320+0+0] INPUT[]（0 rect）；普通窗口：INPUT[500x500+0+0]
+#   未整形窗口 ShapeGetRectangles(INPUT) 会回落成外形，即「修复前」的样子，所以 0 vs 1 是真差异
+# 三种请求形式逐条对应实现分支：empty / restore(shape_combine BOUNDING) / partial(单矩形)
+/tmp/xshape-target/debug/xshape mode=restore 0x3000001     # → INPUT[320x320+0+0]
+/tmp/xshape-target/debug/xshape mode=partial 0x3000001     # → INPUT[100x100+50+50]
+/tmp/xshape-target/debug/xshape mode=empty   0x3000001     # → INPUT[]
+
 # 验证权限查询（§4.2-3）：常规测试不跑，需要真实会话总线
 cargo test -p rgpui-linux -- --ignored --nocapture permissions
 # 负路径靠环境变量造
@@ -1030,8 +1088,9 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
    **§4.2 仅剩应用菜单（§4.2-4）**：`set_menus` 存进 `common.menus` 后无人消费，
    三个 app-menu 回调全仓库无调用点，`set_dock_menu` 还是 `// todo(linux)`。
 2. ~~**§4.4 补 X11 都缺的窗口方法**：`request_attention`、`get_title`~~ —— 已实现（`4f782cb1fa`）。
-   剩余：`set_mouse_passthrough`（X11 Shape / Wayland input region）、X11 的 `set_input_region`、
-   Wayland 的 `map_window`、`render_to_image`、`set_exclusive_zone`/`set_exclusive_edge`。
+   ~~`set_mouse_passthrough`（X11 Shape / Wayland input region）与 X11 的 `set_input_region`~~ ——
+   已实现并本机回读验证（`223061c8bc`，口径与证据见 §4.4）。
+   剩余：Wayland 的 `map_window`、`render_to_image`、`set_exclusive_zone`/`set_exclusive_edge`。
 3. ~~**§4.1 末 / §4.3 的 `set_keep_alive_without_windows`**~~ —— 跨平台缺陷，已修（`4bb1e1b3a2`）：
    状态收回核心层并改掉 `app.rs` 的退出判据，`Platform` 侧方法与 Windows 的
    `AtomicBool` 一并删除。本机 A/B 验证见 §4.1 末。
@@ -1057,4 +1116,5 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
    §2.2/§3.4）。属于「只有开发者感知」，但一旦打通能同时解决两项，值得排在窗口方法之前。
 10. **§3.4** 记录 wgpu-hal / 老 Mesa 兼容问题（已降为 P3），评估是否向上游提 issue。
 11. **Wayland 会话复测** —— 不再是渲染验证的阻塞项，但用于覆盖 Wayland 专属分支
-    （§2.3 的 `hide`/`activate` 语义、§4.4 缺失的 `map_window`）仍有独立价值。
+    （§2.3 的 `hide`/`activate` 语义、§4.4 缺失的 `map_window`、§4.4 新加的
+    `set_mouse_passthrough`（本机只有 X11 会话可实测，Wayland 侧仅编译验证））仍有独立价值。
