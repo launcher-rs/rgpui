@@ -2184,6 +2184,18 @@ impl PlatformWindow for X11Window {
         inner.renderer.sprite_atlas().clone()
     }
 
+    /// 把当前帧的场景离屏渲染并回读像素（仅测试用途，不呈现）。
+    ///
+    /// 与屏幕共用同一套 wgpu 编码路径，尺寸取窗口当前的 surface 配置；窗口必须已经映射
+    /// 且尺寸非 0，否则拿不到可写的 surface。
+    #[cfg(feature = "test-support")]
+    fn render_to_image(&self, scene: &Scene) -> anyhow::Result<image::RgbaImage> {
+        let mut inner = self.0.state.borrow_mut();
+        let (width, height, pixels) = inner.renderer.render_scene_to_pixels(scene)?;
+        image::RgbaImage::from_raw(width, height, pixels)
+            .ok_or_else(|| anyhow!("回读像素与 {width}x{height} 尺寸不符"))
+    }
+
     fn show_window_menu(&self, position: Point<Pixels>) {
         let state = self.0.state.borrow();
 

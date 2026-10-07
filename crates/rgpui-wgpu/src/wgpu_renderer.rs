@@ -105,7 +105,8 @@ pub type GpuContext = Rc<RefCell<Option<WgpuContext>>>;
 struct WgpuResources {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-    surface: wgpu::Surface<'static>,
+    /// 无头（离屏）渲染器没有 surface，只有窗口渲染器才有。
+    surface: Option<wgpu::Surface<'static>>,
     pipelines: WgpuPipelines,
     bind_group_layouts: WgpuBindGroupLayouts,
     atlas_sampler: wgpu::Sampler,
@@ -231,7 +232,7 @@ impl WgpuRenderer {
         Self::new_internal(
             Some(Rc::clone(&gpu_context)),
             context,
-            surface,
+            Some(surface),
             config,
             compositor_gpu,
             atlas,
@@ -251,59 +252,122 @@ impl WgpuRenderer {
 
         let atlas = Arc::new(WgpuAtlas::from_context(context));
 
-        Self::new_internal(None, context, surface, config, None, atlas)
+        Self::new_internal(None, context, Some(surface), config, None, atlas)
+    }
+
+    /// 创建**离屏**渲染器：目标不是窗口，而是一次次回读的纹理。
+    ///
+    /// 自己建一个没有 surface 的 [`WgpuContext`] 并托管在 `context` 字段里，
+    /// 因此调用方不需要（也无法）让它在渲染器之外失效。没有 surface 意味着
+    /// `draw`/`replace_surface` 这类要往屏幕上呈现的方法都不能用。
+    #[cfg(not(target_family = "wasm"))]
+    pub fn new_headless(size: Size<DevicePixels>, transparent: bool) -> anyhow::Result<Self> {
+        let context = WgpuContext::new_headless()?;
+        let atlas = Arc::new(WgpuAtlas::from_context(&context));
+        let gpu_context: GpuContext = Rc::new(RefCell::new(Some(context)));
+        let config = WgpuSurfaceConfig {
+            size,
+            transparent,
+            preferred_present_mode: None,
+        };
+        let borrowed = gpu_context.borrow();
+        let context = borrowed.as_ref().expect("无头上下文刚建好，一定在");
+        Self::new_internal(
+            Some(Rc::clone(&gpu_context)),
+            context,
+            None,
+            config,
+            None,
+            atlas,
+        )
     }
 
     fn new_internal(
         gpu_context: Option<GpuContext>,
         context: &WgpuContext,
-        surface: wgpu::Surface<'static>,
+        surface: Option<wgpu::Surface<'static>>,
         config: WgpuSurfaceConfig,
         compositor_gpu: Option<CompositorGpuHint>,
         atlas: Arc<WgpuAtlas>,
     ) -> anyhow::Result<Self> {
-        let surface_caps = surface.get_capabilities(&context.adapter);
         let preferred_formats = [
             wgpu::TextureFormat::Bgra8Unorm,
             wgpu::TextureFormat::Rgba8Unorm,
         ];
-        let surface_format = preferred_formats
-            .iter()
-            .find(|f| surface_caps.formats.contains(f))
-            .copied()
-            .or_else(|| surface_caps.formats.iter().find(|f| !f.is_srgb()).copied())
-            .or_else(|| surface_caps.formats.first().copied())
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Surface reports no supported texture formats for adapter {:?}",
-                    context.adapter.get_info().name
-                )
-            })?;
+        let pick_format = |available: &[wgpu::TextureFormat]| -> Option<wgpu::TextureFormat> {
+            preferred_formats
+                .iter()
+                .find(|f| available.contains(f))
+                .copied()
+                .or_else(|| available.iter().find(|f| !f.is_srgb()).copied())
+                .or_else(|| available.first().copied())
+        };
 
-        let pick_alpha_mode =
-            |preferences: &[wgpu::CompositeAlphaMode]| -> anyhow::Result<wgpu::CompositeAlphaMode> {
-                preferences
-                    .iter()
-                    .find(|p| surface_caps.alpha_modes.contains(p))
-                    .copied()
-                    .or_else(|| surface_caps.alpha_modes.first().copied())
-                    .ok_or_else(|| {
+        let (surface_format, transparent_alpha_mode, opaque_alpha_mode, present_mode) =
+            match &surface {
+                Some(surface) => {
+                    let surface_caps = surface.get_capabilities(&context.adapter);
+                    let surface_format = pick_format(&surface_caps.formats).ok_or_else(|| {
                         anyhow::anyhow!(
-                            "Surface reports no supported alpha modes for adapter {:?}",
+                            "Surface reports no supported texture formats for adapter {:?}",
                             context.adapter.get_info().name
                         )
-                    })
+                    })?;
+
+                    let pick_alpha_mode =
+                        |preferences: &[wgpu::CompositeAlphaMode]| -> anyhow::Result<
+                            wgpu::CompositeAlphaMode,
+                        > {
+                            preferences
+                                .iter()
+                                .find(|p| surface_caps.alpha_modes.contains(p))
+                                .copied()
+                                .or_else(|| surface_caps.alpha_modes.first().copied())
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Surface reports no supported alpha modes for adapter {:?}",
+                                        context.adapter.get_info().name
+                                    )
+                                })
+                        };
+
+                    (
+                        surface_format,
+                        pick_alpha_mode(&[
+                            wgpu::CompositeAlphaMode::PreMultiplied,
+                            wgpu::CompositeAlphaMode::Inherit,
+                        ])?,
+                        pick_alpha_mode(&[
+                            wgpu::CompositeAlphaMode::Opaque,
+                            wgpu::CompositeAlphaMode::Inherit,
+                        ])?,
+                        config
+                            .preferred_present_mode
+                            .filter(|mode| surface_caps.present_modes.contains(mode))
+                            .unwrap_or(wgpu::PresentMode::Fifo),
+                    )
+                }
+                // 离屏没有 surface 可问：按适配器能不能把该格式当渲染目标来选，
+                // alpha 与呈现模式取窗口路径本来就会选到的那两个值
+                None => {
+                    let renderable = preferred_formats
+                        .into_iter()
+                        .find(|format| {
+                            context
+                                .adapter
+                                .get_texture_format_features(*format)
+                                .allowed_usages
+                                .contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+                        })
+                        .unwrap_or_else(|| context.color_texture_format());
+                    (
+                        renderable,
+                        wgpu::CompositeAlphaMode::PreMultiplied,
+                        wgpu::CompositeAlphaMode::Opaque,
+                        wgpu::PresentMode::Fifo,
+                    )
+                }
             };
-
-        let transparent_alpha_mode = pick_alpha_mode(&[
-            wgpu::CompositeAlphaMode::PreMultiplied,
-            wgpu::CompositeAlphaMode::Inherit,
-        ])?;
-
-        let opaque_alpha_mode = pick_alpha_mode(&[
-            wgpu::CompositeAlphaMode::Opaque,
-            wgpu::CompositeAlphaMode::Inherit,
-        ])?;
 
         let alpha_mode = if config.transparent {
             transparent_alpha_mode
@@ -332,10 +396,7 @@ impl WgpuRenderer {
             format: surface_format,
             width: clamped_width.max(1),
             height: clamped_height.max(1),
-            present_mode: config
-                .preferred_present_mode
-                .filter(|mode| surface_caps.present_modes.contains(mode))
-                .unwrap_or(wgpu::PresentMode::Fifo),
+            present_mode,
             desired_maximum_frame_latency: 2,
             alpha_mode,
             view_formats: vec![],
@@ -343,7 +404,9 @@ impl WgpuRenderer {
         };
         // Configure the surface immediately. The adapter selection process already validated
         // that this adapter can successfully configure this surface.
-        surface.configure(&context.device, &surface_config);
+        if let Some(surface) = &surface {
+            surface.configure(&context.device, &surface_config);
+        }
 
         let queue = Arc::clone(&context.queue);
         let dual_source_blending = context.supports_dual_source_blending();
@@ -922,9 +985,9 @@ impl WgpuRenderer {
                 texture.destroy();
             }
 
-            resources
-                .surface
-                .configure(&resources.device, &surface_config);
+            if let Some(surface) = resources.surface.as_ref() {
+                surface.configure(&resources.device, &surface_config);
+            }
 
             // Invalidate intermediate textures - they will be lazily recreated
             // in draw() after we confirm the surface is healthy. This avoids
@@ -980,9 +1043,9 @@ impl WgpuRenderer {
             let Some(resources) = self.resources.as_mut() else {
                 return;
             };
-            resources
-                .surface
-                .configure(&resources.device, &surface_config);
+            if let Some(surface) = resources.surface.as_ref() {
+                surface.configure(&resources.device, &surface_config);
+            }
             resources.pipelines = Self::create_pipelines(
                 &resources.device,
                 &resources.bind_group_layouts,
@@ -1057,24 +1120,30 @@ impl WgpuRenderer {
 
         self.atlas.before_frame();
 
-        let frame = match self.resources().surface.get_current_texture() {
+        let frame = match self
+            .resources()
+            .surface
+            .as_ref()
+            .expect("无头渲染器没有呈现目标，只能走离屏路径")
+            .get_current_texture()
+        {
             wgpu::CurrentSurfaceTexture::Success(frame) => frame,
             wgpu::CurrentSurfaceTexture::Suboptimal(frame) => {
                 // Textures must be destroyed before the surface can be reconfigured.
                 drop(frame);
                 let surface_config = self.surface_config.clone();
                 let resources = self.resources_mut();
-                resources
-                    .surface
-                    .configure(&resources.device, &surface_config);
+                if let Some(surface) = resources.surface.as_ref() {
+                    surface.configure(&resources.device, &surface_config);
+                }
                 return false;
             }
             wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
                 let surface_config = self.surface_config.clone();
                 let resources = self.resources_mut();
-                resources
-                    .surface
-                    .configure(&resources.device, &surface_config);
+                if let Some(surface) = resources.surface.as_ref() {
+                    surface.configure(&resources.device, &surface_config);
+                }
                 return false;
             }
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
@@ -1094,6 +1163,25 @@ impl WgpuRenderer {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
+        let submitted = self.render_scene_to_view(scene, &frame_view);
+        drop(frame_view);
+        if submitted {
+            // 必须显式 present：wgpu 30 起，未 present 就 drop 的交换链帧会触发
+            // texture_discard 整帧作废（Linux 上表现为窗口完全没有内容）
+            let resources = self.resources();
+            resources.queue.present(frame);
+        } else {
+            drop(frame);
+        }
+        true
+    }
+
+    /// 把场景编码进给定目标纹理视图并提交，**不**呈现。
+    ///
+    /// 屏幕帧与离屏回读共用这一条路径：全局参数、中间纹理、实例缓冲的溢出重试必须完全
+    /// 一致，否则「截出来的图」和「屏上看到的」会对不上。返回 `false` 表示实例缓冲已经
+    /// 长到上限、这一帧被放弃。
+    fn render_scene_to_view(&mut self, scene: &Scene, target_view: &wgpu::TextureView) -> bool {
         let gamma_params = GammaParams {
             gamma_ratios: self.rendering_params.gamma_ratios,
             grayscale_enhanced_contrast: self.rendering_params.grayscale_enhanced_contrast,
@@ -1156,7 +1244,7 @@ impl WgpuRenderer {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("main_pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &frame_view,
+                        view: target_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
@@ -1195,7 +1283,7 @@ impl WgpuRenderer {
                             pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                                 label: Some("main_pass_continued"),
                                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                    view: &frame_view,
+                                    view: target_view,
                                     resolve_target: None,
                                     ops: wgpu::Operations {
                                         load: wgpu::LoadOp::Load,
@@ -1263,8 +1351,7 @@ impl WgpuRenderer {
                         "instance buffer size grew too large: {}",
                         self.instance_buffer_capacity
                     );
-                    drop(frame);
-                    return true;
+                    return false;
                 }
                 self.grow_instance_buffer();
                 continue;
@@ -1273,13 +1360,168 @@ impl WgpuRenderer {
             self.resources()
                 .queue
                 .submit(std::iter::once(encoder.finish()));
-            // 必须显式 present：wgpu 30 起，未 present 就 drop 的交换链帧会触发
-            // texture_discard 整帧作废（Linux 上表现为窗口完全没有内容）
-            drop(frame_view);
-            let resources = self.resources();
-            resources.queue.present(frame);
             return true;
         }
+    }
+
+    /// 把场景渲染到离屏纹理并回读像素，返回 `(宽, 高, RGBA8 像素)`，**不**呈现到屏幕。
+    ///
+    /// 目标尺寸取当前 surface 配置，也就是「屏幕上正在显示的这一帧」。
+    /// 编码路径与 `draw` 完全相同（`render_scene_to_view`），只是目标换成带 `COPY_SRC`
+    /// 的纹理，随后把这张纹理拷进 `MAP_READ` 缓冲并等待 GPU 完成。
+    ///
+    /// 注意：这是**活窗口**路径，本机只做过编译验证。它要求 GPU 队列能在调用者阻塞期间
+    /// 退休提交，而主线程阻塞时交换链帧通常要等事件循环释放，所以同步调用可能等不到完成
+    /// （边界与实测记录见 `docs/linux-platform-audit.md` §2.6 末）；要稳定出图请用无头渲染器。
+    pub fn render_scene_to_pixels(&mut self, scene: &Scene) -> anyhow::Result<(u32, u32, Vec<u8>)> {
+        if !self.surface_configured {
+            anyhow::bail!("surface 未配置，无法离屏渲染");
+        }
+        let size = Size {
+            width: DevicePixels(self.surface_config.width as i32),
+            height: DevicePixels(self.surface_config.height as i32),
+        };
+        self.render_scene_to_pixels_at(scene, size)
+    }
+
+    /// 按指定尺寸离屏渲染并回读像素，供无头渲染器使用。
+    ///
+    /// 尺寸与当前配置不同时，会走和窗口缩放一样的重建路径（销毁并延迟重建中间纹理），
+    /// 保证全局参数里的视口尺寸与目标纹理一致。
+    pub fn render_scene_to_pixels_at(
+        &mut self,
+        scene: &Scene,
+        size: Size<DevicePixels>,
+    ) -> anyhow::Result<(u32, u32, Vec<u8>)> {
+        self.update_drawable_size(size);
+        let width = self.surface_config.width;
+        let height = self.surface_config.height;
+        let format = self.surface_config.format;
+        if width == 0 || height == 0 {
+            anyhow::bail!("渲染目标尺寸为 0，无法回读像素");
+        }
+
+        // 与 draw 同口径：先把图集里待上传的条目刷进纹理，否则这一帧的图形是空的
+        self.atlas.before_frame();
+        self.ensure_intermediate_textures();
+
+        // 后面要在 &mut self 之外等 GPU，先把 device/queue 的句柄取出来
+        let (device, queue) = {
+            let resources = self.resources();
+            (resources.device.clone(), resources.queue.clone())
+        };
+
+        let target = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("render_to_image_target"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
+        if !self.render_scene_to_view(scene, &target_view) {
+            anyhow::bail!("场景渲染被放弃（实例缓冲已达上限）");
+        }
+        drop(target_view);
+
+        // 回读每行按 COPY_BYTES_PER_ROW_ALIGNMENT 对齐，尾部填充字节要跳过
+        let bytes_per_row = width as usize * 4;
+        let aligned_bytes_per_row =
+            (bytes_per_row as u64).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64);
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("render_to_image_readback"),
+            size: aligned_bytes_per_row * height as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("render_to_image_copy"),
+        });
+        encoder.copy_texture_to_buffer(
+            target.as_image_copy(),
+            wgpu::TexelCopyBufferInfoBase {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(aligned_bytes_per_row as u32),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = sender.send(result);
+            });
+        // 回读缓冲要等这笔拷贝跑完才有内容，而 map_async 的回调只在 poll 期间触发。
+        // 用 `PollType::Poll` 自旋而不是 `Wait{timeout}`：本机实测 GL/llvmpipe 上 Poll 一次
+        // 即退休；lavapipe（软件 Vulkan）上 `Wait` 会立刻返回 `Timeout` 且不推进围栏，
+        // `Poll` 自旋 60 秒也收不上来 —— 这种驱动在离屏上下文创建时就被
+        // `WgpuContext::probe_offscreen_readback` 筛掉了，这里的 deadline 只兜住之后的意外。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            match receiver.try_recv() {
+                Ok(result) => {
+                    result.map_err(|error| anyhow::anyhow!("映射回读缓冲失败: {error:?}"))?;
+                    break;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    anyhow::bail!("回读回调没有触发");
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    if std::time::Instant::now() >= deadline {
+                        let last_error = self.last_error.lock().unwrap().clone();
+                        anyhow::bail!(
+                            "等待回读超时（适配器 {:?} {:?}），GPU 错误: {last_error:?}",
+                            self.adapter_info.name,
+                            self.adapter_info.backend
+                        );
+                    }
+                    device.poll(wgpu::PollType::Poll)?;
+                }
+            }
+        }
+
+        // Vulkan 的首选 surface 格式是 B8G8R8A8，而 RGBA8 像素要的是 R G B A，按实际格式换序
+        let is_bgr = matches!(
+            format,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+        );
+        let mapped = readback
+            .slice(..)
+            .get_mapped_range()
+            .map_err(|error| anyhow::anyhow!("读取回读缓冲失败: {error:?}"))?;
+        let mut pixels = vec![0u8; bytes_per_row * height as usize];
+        for row in 0..height as usize {
+            let src = &mapped[row * aligned_bytes_per_row as usize..][..bytes_per_row];
+            let dst = &mut pixels[row * bytes_per_row..][..bytes_per_row];
+            if is_bgr {
+                for (out, input) in dst.chunks_exact_mut(4).zip(src.chunks_exact(4)) {
+                    out.copy_from_slice(&[input[2], input[1], input[0], input[3]]);
+                }
+            } else {
+                dst.copy_from_slice(src);
+            }
+        }
+        drop(mapped);
+        readback.unmap();
+
+        Ok((width, height, pixels))
     }
 
     fn draw_quads(
@@ -1688,7 +1930,7 @@ impl WgpuRenderer {
                 .as_mut()
                 .expect("GPU resources not available");
             surface.configure(&res.device, &self.surface_config);
-            res.surface = surface;
+            res.surface = Some(surface);
 
             // Invalidate intermediate textures  — they'll be recreated lazily.
             res.invalidate_intermediate_textures();
@@ -1783,7 +2025,7 @@ impl WgpuRenderer {
         *self = Self::new_internal(
             Some(gpu_context.clone()),
             context,
-            surface,
+            Some(surface),
             config,
             self.compositor_gpu,
             self.atlas.clone(),

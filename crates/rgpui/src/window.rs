@@ -2158,7 +2158,7 @@ impl Window {
     ///
     /// `None`（默认）跟随 `RGPUI_VIEW_RETENTION` 全局开关；
     /// `Some(false)` 关闭复用，逐帧全量重建，作为 oracle 对照基线。
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn set_retention_override(&mut self, enabled: Option<bool>) {
         self.retention_override = enabled;
     }

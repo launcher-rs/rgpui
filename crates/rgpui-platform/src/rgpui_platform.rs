@@ -74,7 +74,12 @@ pub fn current_headless_renderer() -> Option<Box<dyn rgpui::PlatformHeadlessRend
         ))
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    {
+        rgpui_linux::current_headless_renderer()
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "freebsd")))]
     {
         None
     }

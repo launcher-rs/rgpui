@@ -16,7 +16,7 @@ path = "src/rgpui_linux.rs"
 
 [features]
 default = ["wayland", "x11"]
-test-support = ["rgpui/test-support"]
+test-support = ["rgpui/test-support", "rgpui-wgpu?/test-support"]
 wayland = [
     "bitflags",
     "rgpui-wgpu",

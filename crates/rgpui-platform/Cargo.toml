@@ -17,7 +17,9 @@ path = "src/rgpui_platform.rs"
 default = []
 multithreaded = ["rgpui-web/multithreaded"]
 font-kit = ["rgpui-macos/font-kit"]
-test-support = ["rgpui/test-support", "rgpui-macos/test-support"]
+# test-support 要把各平台 crate 一起带上：平台侧的 render_to_image 等窗口方法
+# 挂在各自 crate 的同名 feature 上，只转发 rgpui/test-support 会让「核心要、平台没编进来」
+test-support = ["rgpui/test-support", "rgpui-macos/test-support", "rgpui-linux/test-support"]
 screen-capture = ["rgpui/screen-capture", "rgpui-macos/screen-capture", "rgpui-windows/screen-capture", "rgpui-linux/screen-capture"]
 runtime_shaders = ["rgpui-macos/runtime_shaders"]
 wayland = ["rgpui-linux/wayland"]

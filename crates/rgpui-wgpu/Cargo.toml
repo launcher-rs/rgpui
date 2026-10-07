@@ -16,6 +16,8 @@ path = "src/rgpui_wgpu.rs"
 [features]
 default = []
 font-kit = ["dep:font-kit"]
+# 无头渲染器要实现核心层的 PlatformHeadlessRenderer，那个 trait 本身挂在这个 feature 上
+test-support = ["rgpui/test-support"]
 
 [dependencies]
 rgpui.workspace = true
@@ -23,6 +25,7 @@ anyhow.workspace = true
 bytemuck.workspace = true
 cosmic-text = "0.19.0"
 etagere.workspace = true
+image.workspace = true
 itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true

@@ -1720,6 +1720,18 @@ impl PlatformWindow for WaylandWindow {
         state.renderer.sprite_atlas().clone()
     }
 
+    /// 把当前帧的场景离屏渲染并回读像素（仅测试用途，不呈现）。
+    ///
+    /// 与 X11 走的是 `WgpuRenderer` 里同一条编码路径；尺寸取当前 surface 配置，
+    /// 所以 surface 尚未配置（窗口还没拿到首帧尺寸）时会直接返回错误。
+    #[cfg(feature = "test-support")]
+    fn render_to_image(&self, scene: &Scene) -> anyhow::Result<image::RgbaImage> {
+        let mut state = self.borrow_mut();
+        let (width, height, pixels) = state.renderer.render_scene_to_pixels(scene)?;
+        image::RgbaImage::from_raw(width, height, pixels)
+            .ok_or_else(|| anyhow::anyhow!("回读像素与 {width}x{height} 尺寸不符"))
+    }
+
     fn show_window_menu(&self, position: Point<Pixels>) {
         let state = self.borrow();
         let serial = state.client.get_serial(SerialKind::MousePress);
