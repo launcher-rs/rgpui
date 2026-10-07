@@ -1533,6 +1533,15 @@ impl PlatformWindow for X11Window {
     }
 
     fn activate(&self) {
+        // hide() 撤下的窗口 WM_STATE 会变成 Withdrawn，合成器不再管理它，
+        // 单发 _NET_ACTIVE_WINDOW 会被忽略；先重新 map 才能恢复。窗口已可见时
+        // MapWindow 是空操作。
+        check_reply(
+            || "X11 MapWindow on activate failed.",
+            self.0.xcb.map_window(self.0.x_window),
+        )
+        .log_err();
+
         let data = [1, xproto::Time::CURRENT_TIME.into(), 0, 0, 0];
         let message = xproto::ClientMessageEvent::new(
             32,
