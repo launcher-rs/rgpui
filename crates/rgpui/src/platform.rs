@@ -511,9 +511,6 @@ pub trait Platform: 'static {
     /// 注册托盘菜单项操作回调。
     fn on_tray_menu_action(&self, _callback: Box<dyn FnMut(SharedString)>) {}
 
-    /// 设置是否在所有窗口关闭后保持应用运行（仅显示托盘图标）。
-    fn set_keep_alive_without_windows(&self, _keep_alive: bool) {}
-
     /// 注册全局系统快捷键，`id` 用于标识快捷键，`keystroke` 定义按键组合。
     fn register_global_hotkey(&self, _id: u32, _keystroke: &Keystroke) -> Result<()> {
         Ok(())

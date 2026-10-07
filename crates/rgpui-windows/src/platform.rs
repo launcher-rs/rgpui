@@ -85,8 +85,6 @@ pub(crate) struct WindowsPlatformState {
     global_hotkey: RefCell<WindowsGlobalHotkey>,
     // 新增：全局快捷键回调
     global_hotkey_callback: RefCell<Option<Box<dyn FnMut(u32)>>>,
-    // 新增：无窗口保持运行标志
-    keep_alive_without_windows: AtomicBool,
 }
 
 #[derive(Default)]
@@ -119,7 +117,6 @@ impl WindowsPlatformState {
             tray_menu_action_callback: RefCell::new(None),
             global_hotkey: RefCell::new(WindowsGlobalHotkey::new()),
             global_hotkey_callback: RefCell::new(None),
-            keep_alive_without_windows: AtomicBool::new(false),
         }
     }
 }
@@ -784,13 +781,6 @@ impl Platform for WindowsPlatform {
     /// 注册托盘菜单项点击事件回调
     fn on_tray_menu_action(&self, callback: Box<dyn FnMut(SharedString)>) {
         *self.inner.state.tray_menu_action_callback.borrow_mut() = Some(callback);
-    }
-
-    fn set_keep_alive_without_windows(&self, keep_alive: bool) {
-        self.inner
-            .state
-            .keep_alive_without_windows
-            .store(keep_alive, Ordering::Release);
     }
 
     /// 注册全局快捷键

@@ -769,6 +769,11 @@ pub struct App {
     flushing_effects: bool,
     pending_updates: usize,
     quit_mode: QuitMode,
+    /// 没有窗口时是否保持运行，由 [`App::set_keep_alive_without_windows`] 设置。
+    ///
+    /// 判据必须在核心层读得到：窗口全部关闭后的自动退出发生在 `App` 里，
+    /// 只把这个意图交给平台（平台侧存了却没人读）等于没生效。
+    keep_alive_without_windows: Cell<bool>,
     quitting: bool,
 
     // We need to ensure the leak detector drops last, after all tasks, callbacks and things have been dropped.
@@ -860,6 +865,7 @@ impl App {
                 #[cfg(any(feature = "inspector", debug_assertions))]
                 inspector_element_registry: InspectorElementRegistry::default(),
                 quit_mode: QuitMode::default(),
+                keep_alive_without_windows: Cell::new(false),
                 quitting: false,
                 cursor_hide_mode: CursorHideMode::default(),
                 reduce_motion: false,
@@ -1799,11 +1805,14 @@ impl App {
                         true
                     });
 
-                    let quit_on_empty = match cx.quit_mode {
-                        QuitMode::Explicit => false,
-                        QuitMode::LastWindowClosed => true,
-                        QuitMode::Default => cfg!(not(target_os = "macos")),
-                    };
+                    // 「没有窗口也要活着」优先于任何自动退出模式，
+                    // 这是驻留托盘 / 后台服务型应用的典型诉求。
+                    let quit_on_empty = !cx.keep_alive_without_windows.get()
+                        && match cx.quit_mode {
+                            QuitMode::Explicit => false,
+                            QuitMode::LastWindowClosed => true,
+                            QuitMode::Default => cfg!(not(target_os = "macos")),
+                        };
 
                     if quit_on_empty && cx.windows.is_empty() {
                         cx.quit();
@@ -2532,8 +2541,11 @@ impl App {
     }
 
     /// 设置应用程序是否应在没有窗口时保持运行
+    ///
+    /// 状态存在核心层：窗口全部关闭后的自动退出判据就在 `App` 里，
+    /// 交给平台保存只会变成一个没人读的标志。
     pub fn set_keep_alive_without_windows(&self, keep_alive: bool) {
-        self.platform.set_keep_alive_without_windows(keep_alive);
+        self.keep_alive_without_windows.set(keep_alive);
     }
 
     /// 最小化到托盘 —— 隐藏所有窗口（从任务栏移除）。
