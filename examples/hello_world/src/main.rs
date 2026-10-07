@@ -110,6 +110,8 @@ fn run_example() {
 
 #[cfg(not(target_family = "wasm"))]
 fn main() {
+    // 诊断时用 RUST_LOG=info,wgpu_hal=debug 运行，可看到 GPU 适配器探测等内部日志
+    rgpui::init_logging();
     run_example();
 }
 
