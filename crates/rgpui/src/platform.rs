@@ -153,6 +153,12 @@ pub enum PowerSaveBlockerKind {
     PreventDisplaySleep,
 }
 
+/// 电源阻止器句柄：由平台实现，内部持有系统资源，`Drop` 即取消抑制。
+///
+/// 见 [`Platform::start_power_save_blocker`]：留着返回值抑制就在，丢弃它立刻恢复
+/// 系统的省电策略。刻意不给 `stop()` / 阻止器 ID —— 平台按 ID 保存句柄正是泄漏的源头。
+pub trait PowerSaveBlocker: Send {}
+
 /// 操作系统信息
 #[derive(Debug, Clone)]
 pub struct OsInfo {
@@ -559,18 +565,25 @@ pub trait Platform: 'static {
     /// 请求麦克风权限，`callback` 收到授权结果。
     fn request_microphone_permission(&self, _callback: Box<dyn FnOnce(bool)>) {}
 
-    /// 注册系统电源事件回调（电池状态变化、电源插拔等）。
+    /// 注册系统电源事件回调（系统即将睡眠 / 已从睡眠唤醒）。
     fn on_system_power_event(&self, _callback: Box<dyn FnMut(SystemPowerEvent)>) {}
 
     /// 注册系统唤醒时的回调函数。
     fn on_system_wake(&self, _callback: Box<dyn FnMut()>) {}
 
-    /// 启动电源节省阻止器（阻止系统进入睡眠），返回阻止器 ID。
-    fn start_power_save_blocker(&self, _kind: PowerSaveBlockerKind) -> Option<u32> {
+    /// 启动电源阻止器：阻止系统休眠或息屏。
+    ///
+    /// 返回的句柄**持有即生效、`Drop` 即释放**，所以没有配套的
+    /// `stop_power_save_blocker(id)` —— 「返回 ID、再按 ID 停止」的形状会把底层
+    /// 资源（Linux 上是 logind `Inhibit` 返回的 fifo fd）泄漏在平台内部，
+    /// 进程退出前抑制一直挂着，应用忘没忘停都无人知晓。
+    /// 平台不支持或判定通道不可达时返回 `None`，不要假装阻止成功。
+    fn start_power_save_blocker(
+        &self,
+        _kind: PowerSaveBlockerKind,
+    ) -> Option<Box<dyn PowerSaveBlocker>> {
         None
     }
-    /// 停止指定的电源节省阻止器。
-    fn stop_power_save_blocker(&self, _id: u32) {}
 
     /// 返回系统空闲时间（自上次用户输入以来的时长）。
     fn system_idle_time(&self) -> Option<Duration> {

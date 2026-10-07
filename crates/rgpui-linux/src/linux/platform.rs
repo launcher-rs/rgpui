@@ -37,11 +37,13 @@ use rgpui::{
     FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, NetworkStatus,
     OsInfo, OwnedMenu, PathPromptOptions, PermissionStatus, PermissionType, Platform,
     PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
-    PlatformWindow, Result, RunnableVariant, Task, ThermalState, WindowAppearance,
-    WindowButtonLayout, WindowParams,
+    PlatformWindow, Result, RunnableVariant, SystemPowerEvent, Task, ThermalState,
+    WindowAppearance, WindowButtonLayout, WindowParams,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use rgpui::{Pixels, Point, px};
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use rgpui::{PowerSaveBlocker, PowerSaveBlockerKind};
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use rgpui::{SharedString, Tray, TrayIconEvent, TrayMenuItem};
 
@@ -152,6 +154,9 @@ pub(crate) struct PlatformHandlers {
     pub(crate) app_menu_action: Option<Box<dyn FnMut(&dyn Action)>>,
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
     pub(crate) system_wake: Option<Box<dyn FnMut()>>,
+    /// 系统电源事件回调（即将睡眠 / 已唤醒），仅 login1 会话可派发
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) system_power_event: Option<Box<dyn FnMut(SystemPowerEvent)>>,
     /// 全局热键触发回调（仅 X11 后端会派发）
     #[cfg(feature = "x11")]
     pub(crate) global_hotkey: Option<Box<dyn FnMut(u32)>>,
@@ -171,8 +176,9 @@ pub(crate) struct LinuxCommon {
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
     pub(crate) menus: Vec<OwnedMenu>,
-    wake_sender: Sender<()>,
-    wake_listener_started: bool,
+    /// 电源事件（即将睡眠 / 已唤醒）回主线程的发送端
+    power_sender: Sender<SystemPowerEvent>,
+    power_listener_started: bool,
     /// 托盘状态句柄，首次调用托盘 API 时惰性创建
     #[cfg(any(feature = "wayland", feature = "x11"))]
     tray: Option<TrayHandle>,
@@ -194,10 +200,10 @@ impl LinuxCommon {
     ) -> (
         Self,
         PriorityQueueCalloopReceiver<RunnableVariant>,
-        calloop::channel::Channel<()>,
+        calloop::channel::Channel<SystemPowerEvent>,
     ) {
         let (main_sender, main_receiver) = PriorityQueueCalloopReceiver::new();
-        let (wake_sender, wake_receiver) = calloop::channel::channel();
+        let (power_sender, power_receiver) = calloop::channel::channel();
         #[cfg(any(feature = "wayland", feature = "x11"))]
         let (tray_events, tray_event_source) = calloop::channel::channel();
 
@@ -222,8 +228,8 @@ impl LinuxCommon {
             callbacks,
             signal,
             menus: Vec::new(),
-            wake_sender,
-            wake_listener_started: false,
+            power_sender,
+            power_listener_started: false,
             #[cfg(any(feature = "wayland", feature = "x11"))]
             tray: None,
             #[cfg(any(feature = "wayland", feature = "x11"))]
@@ -234,28 +240,41 @@ impl LinuxCommon {
             tray_event_source: Some(tray_event_source),
         };
 
-        (common, main_receiver, wake_receiver)
+        (common, main_receiver, power_receiver)
     }
 
-    pub(crate) fn start_wake_listener(&mut self) {
-        if !self.wake_listener_started {
-            #[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
+    /// 启动 login1 电源事件监听；只启一次，睡眠与唤醒两类事件都走这一条通道
+    pub(crate) fn start_power_listener(&mut self) {
+        if !self.power_listener_started {
+            #[cfg(any(feature = "wayland", feature = "x11"))]
             smol::spawn({
-                let wake_sender = self.wake_sender.clone();
+                let power_sender = self.power_sender.clone();
                 async move {
-                    if let Err(error) = listen_for_system_wake(wake_sender).await {
-                        log::debug!("failed to listen for system wake events: {error:?}");
+                    if let Err(error) =
+                        crate::linux::power::listen_for_system_power(power_sender).await
+                    {
+                        // 监听挂了之后电源/唤醒事件不会再来，应用侧无处察觉，原因只能记在这里
+                        log::warn!("监听系统电源事件失败，电源事件将不再送达: {error:#}");
                     }
                 }
             })
             .detach();
 
-            self.wake_listener_started = true;
+            self.power_listener_started = true;
         }
     }
 
-    pub(crate) fn handle_system_wake(&mut self) {
-        if let Some(mut callback) = self.callbacks.system_wake.take() {
+    /// 把电源事件派发给应用：`WakeUp` 同时触发 `on_system_wake` 的回调
+    pub(crate) fn handle_system_power_event(&mut self, event: SystemPowerEvent) {
+        #[cfg(any(feature = "wayland", feature = "x11"))]
+        if let Some(mut callback) = self.callbacks.system_power_event.take() {
+            callback(event);
+            self.callbacks.system_power_event = Some(callback);
+        }
+
+        if event == SystemPowerEvent::WakeUp
+            && let Some(mut callback) = self.callbacks.system_wake.take()
+        {
             callback();
             self.callbacks.system_wake = Some(callback);
         }
@@ -294,30 +313,6 @@ impl LinuxCommon {
         self.tray = Some(handle.clone());
         handle
     }
-}
-
-#[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
-async fn listen_for_system_wake(wake_sender: Sender<()>) -> anyhow::Result<()> {
-    use futures::StreamExt as _;
-
-    let connection = ashpd::zbus::Connection::system().await?;
-    let proxy = ashpd::zbus::Proxy::new(
-        &connection,
-        "org.freedesktop.login1",
-        "/org/freedesktop/login1",
-        "org.freedesktop.login1.Manager",
-    )
-    .await?;
-    let mut sleep_events = proxy.receive_signal("PrepareForSleep").await?;
-
-    while let Some(message) = sleep_events.next().await {
-        let sleeping = message.body().deserialize::<bool>()?;
-        if !sleeping {
-            wake_sender.send(()).ok();
-        }
-    }
-
-    Ok(())
 }
 
 pub(crate) struct LinuxPlatform<P> {
@@ -732,8 +727,36 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn on_system_wake(&self, callback: Box<dyn FnMut()>) {
         self.inner.with_common(|common| {
             common.callbacks.system_wake = Some(callback);
-            common.start_wake_listener();
+            common.start_power_listener();
         });
+    }
+
+    /// 注册系统电源事件回调：Linux 上的事件源是 login1 的 `PrepareForSleep` 信号，
+    /// 信号参数为真是「即将睡眠」（还可以收尾），为假是「已唤醒」
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn on_system_power_event(&self, callback: Box<dyn FnMut(SystemPowerEvent)>) {
+        self.inner.with_common(|common| {
+            common.callbacks.system_power_event = Some(callback);
+            common.start_power_listener();
+        });
+    }
+
+    /// 阻止系统休眠/息屏：向 login1 `Inhibit` 申请抑制，把返回的 fifo fd
+    /// 封成句柄交给调用方 —— fd 开着抑制就在，句柄 Drop 即恢复
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn start_power_save_blocker(
+        &self,
+        kind: PowerSaveBlockerKind,
+    ) -> Option<Box<dyn PowerSaveBlocker>> {
+        match crate::linux::power::inhibit(kind) {
+            Ok(blocker) => Some(blocker),
+            Err(error) => {
+                // 抑制被拒（polkit、无 login1 等）只有调用方拿到 `None` 这一个信号，
+                // 原因记在这里，否则排查时什么也看不见
+                log::warn!("申请电源抑制失败，未阻止系统省电: {error:#}");
+                None
+            }
+        }
     }
 
     /// 注册菜单命令回调：Linux 上的触发源是用旧 `set_tray` API 随菜单项带过来的
@@ -1475,6 +1498,42 @@ mod tests {
             zero,
             Point::new(px(5.0), px(5.1))
         ),);
+    }
+
+    /// 电源事件的派发口径：两类事件都送给 `on_system_power_event`，
+    /// 只有「已唤醒」才额外触发 `on_system_wake`
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    #[test]
+    fn power_events_route_to_power_and_wake_callbacks() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let event_loop = calloop::EventLoop::<()>::try_new().unwrap();
+        let (mut common, _main_events, _power_events) = LinuxCommon::new(event_loop.get_signal());
+
+        let seen = Rc::new(RefCell::new(Vec::new()));
+        let wake_count = Rc::new(RefCell::new(0));
+        {
+            let seen = seen.clone();
+            common.callbacks.system_power_event = Some(Box::new(move |event| {
+                seen.borrow_mut().push(event);
+            }));
+        }
+        {
+            let wake_count = wake_count.clone();
+            common.callbacks.system_wake = Some(Box::new(move || {
+                *wake_count.borrow_mut() += 1;
+            }));
+        }
+
+        common.handle_system_power_event(SystemPowerEvent::Sleep);
+        common.handle_system_power_event(SystemPowerEvent::WakeUp);
+
+        assert_eq!(
+            *seen.borrow(),
+            vec![SystemPowerEvent::Sleep, SystemPowerEvent::WakeUp]
+        );
+        assert_eq!(*wake_count.borrow(), 1, "即将睡眠不该触发唤醒回调");
     }
 }
 

@@ -53,11 +53,12 @@ use crate::{
     ForegroundExecutor, Global, KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu,
     MenuItem, NetworkStatus, OsInfo, OwnedMenu, PathPromptOptions, PermissionStatus,
     PermissionType, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
-    PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton, PromptHandle,
-    PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation, ScreenCaptureSource,
-    SharedString, SubscriberSet, Subscription, SvgRenderer, Task, TextRenderingMode, TextSystem,
-    ThermalState, Tray, TrayIconEvent, TrayMenuItem, Window, WindowAppearance, WindowButtonLayout,
-    WindowHandle, WindowId, WindowInvalidator,
+    PlatformKeyboardMapper, Point, PowerSaveBlocker, PowerSaveBlockerKind, Priority, PromptBuilder,
+    PromptButton, PromptHandle, PromptLevel, Render, RenderImage, RenderablePromptHandle,
+    Reservation, ScreenCaptureSource, SharedString, SubscriberSet, Subscription, SvgRenderer,
+    SystemPowerEvent, Task, TextRenderingMode, TextSystem, ThermalState, Tray, TrayIconEvent,
+    TrayMenuItem, Window, WindowAppearance, WindowButtonLayout, WindowHandle, WindowId,
+    WindowInvalidator,
     colors::{Colors, GlobalColors},
     hash, init_app_menus,
     root::Root,
@@ -2617,6 +2618,34 @@ impl App {
     /// 返回当前网络连接状态。
     pub fn network_status(&self) -> NetworkStatus {
         self.platform.network_status()
+    }
+
+    /// 注册系统电源事件回调（即将睡眠 / 已唤醒）。
+    ///
+    /// 「即将睡眠」是平台给应用的收尾窗口：此刻还在事件循环里，可以落盘或释放资源；
+    /// 「已唤醒」用来恢复那些在睡眠期间失效的状态（例如计时器、连接）。
+    /// 与 [`App::on_system_wake`] 的区别是本回调两种事件都能收到。
+    pub fn on_system_power_event(
+        &self,
+        mut callback: impl FnMut(SystemPowerEvent, &mut App) + 'static,
+    ) {
+        let this = self.this.clone();
+        self.platform.on_system_power_event(Box::new(move |event| {
+            if let Some(app) = this.upgrade() {
+                callback(event, &mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 阻止系统休眠或息屏；返回的句柄**持有即生效、`Drop` 即恢复**。
+    ///
+    /// 平台不支持或系统服务不可达时返回 `None`。句柄要放在应用能控制生命周期的地方
+    /// （字段、`Cell<Option<..>>`），不要靠「按 ID 停止」——那样底层资源会一直泄漏。
+    pub fn start_power_save_blocker(
+        &self,
+        kind: PowerSaveBlockerKind,
+    ) -> Option<Box<dyn PowerSaveBlocker>> {
+        self.platform.start_power_save_blocker(kind)
     }
 
     /// 设置开机自启动，`app_id` 为应用标识。

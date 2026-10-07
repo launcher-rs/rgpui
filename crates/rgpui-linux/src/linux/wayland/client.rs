@@ -606,7 +606,7 @@ impl WaylandClient {
 
         let event_loop = EventLoop::<WaylandClientStatePtr>::try_new().unwrap();
 
-        let (mut common, main_receiver, wake_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let (mut common, main_receiver, power_receiver) = LinuxCommon::new(event_loop.get_signal());
 
         let handle = event_loop.handle();
         handle
@@ -628,10 +628,14 @@ impl WaylandClient {
 
         handle
             .insert_source(
-                wake_receiver,
+                power_receiver,
                 |event, _, client: &mut WaylandClientStatePtr| {
-                    if let calloop::channel::Event::Msg(()) = event {
-                        client.get_client().borrow_mut().common.handle_system_wake();
+                    if let calloop::channel::Event::Msg(power_event) = event {
+                        client
+                            .get_client()
+                            .borrow_mut()
+                            .common
+                            .handle_system_power_event(power_event);
                     }
                 },
             )
@@ -640,7 +644,7 @@ impl WaylandClient {
         if let Some(tray_event_source) = common.take_tray_event_source() {
             handle
                 .insert_source(TrayEventSource::new(tray_event_source), {
-                    move |event, _, client: &mut WaylandClientStatePtr| {
+                    |event, _, client: &mut WaylandClientStatePtr| {
                         let state = client.get_client();
                         dispatch_tray_event(event, &mut |f| f(&mut state.borrow_mut().common));
                     }

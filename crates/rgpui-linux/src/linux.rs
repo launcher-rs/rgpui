@@ -6,6 +6,9 @@ mod keyboard;
 mod notifications;
 mod permissions;
 mod platform;
+// 电源能力走 login1（ashpd/zbus），而 ashpd 只在带窗口后端的 feature 下才启用
+#[cfg(any(feature = "wayland", feature = "x11"))]
+mod power;
 mod system_info;
 #[cfg(any(feature = "wayland", feature = "x11"))]
 mod text_system;
