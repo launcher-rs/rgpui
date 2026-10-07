@@ -2425,7 +2425,7 @@ mod tests {
     }
 
     #[test]
-    fn single_edge_only_accepts_one_bit() {
+    fn strut_edge_must_be_single_bit() {
         assert_eq!(single_edge(Anchor::TOP), Some(Anchor::TOP));
         assert_eq!(single_edge(Anchor::TOP | Anchor::LEFT), None);
         assert_eq!(single_edge(Anchor::empty()), None);
