@@ -142,5 +142,7 @@ fn create_main_window(cx: &mut App) {
 }
 
 fn main() {
+    // 诊断时用 RUST_LOG=debug 运行，可看到托盘注册等内部日志
+    rgpui::init_logging();
     run_example();
 }

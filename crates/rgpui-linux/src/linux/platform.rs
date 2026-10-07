@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     env,
     path::{Path, PathBuf},
     rc::Rc,
@@ -22,7 +21,7 @@ use rgpui::{ResultExt as _, util::command::new_std_command};
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
 use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
-use crate::linux::{LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions};
+use crate::linux::{LinuxNotifications, LinuxPermissions};
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use crate::linux::{
     SniShared, TrayEvent, TrayHandle, convert_menu_items_to_tray, icon_pixmap_from_bytes,
@@ -106,6 +105,35 @@ pub(crate) trait LinuxClient {
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>>;
     fn run(&self);
 
+    /// 在系统范围注册热键，只有 X11 后端能真正做到（根窗口 GrabKey）
+    fn register_global_hotkey(&self, _id: u32, _keystroke: &Keystroke) -> Result<()> {
+        anyhow::bail!("当前 Linux 后端不支持注册全局热键")
+    }
+
+    /// 注销系统范围的热键
+    fn unregister_global_hotkey(&self, _id: u32) {}
+
+    /// 派发全局热键触发事件
+    ///
+    /// 回调里常会调用 `update_window`、`quit` 等再次借用客户端状态的 API，所以必须
+    /// 先把回调取出并释放借用，执行完再放回。`with_common` 由调用方提供，
+    /// 只允许短暂借用状态。
+    #[cfg(feature = "x11")]
+    fn dispatch_global_hotkey(&self, id: u32) {
+        let mut callback = None;
+        self.with_common(|common| {
+            callback = common.callbacks.global_hotkey.take();
+        });
+
+        if let Some(callback) = callback.as_mut() {
+            callback(id);
+        }
+
+        self.with_common(|common| {
+            common.callbacks.global_hotkey = callback;
+        });
+    }
+
     #[cfg(any(feature = "wayland", feature = "x11"))]
     fn window_identifier(
         &self,
@@ -124,6 +152,9 @@ pub(crate) struct PlatformHandlers {
     pub(crate) validate_app_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
     pub(crate) system_wake: Option<Box<dyn FnMut()>>,
+    /// 全局热键触发回调（仅 X11 后端会派发）
+    #[cfg(feature = "x11")]
+    pub(crate) global_hotkey: Option<Box<dyn FnMut(u32)>>,
     #[cfg(any(feature = "wayland", feature = "x11"))]
     pub(crate) tray_icon_event: Option<Box<dyn FnMut(TrayIconEvent)>>,
     #[cfg(any(feature = "wayland", feature = "x11"))]
@@ -285,7 +316,6 @@ async fn listen_for_system_wake(wake_sender: Sender<()>) -> anyhow::Result<()> {
 
 pub(crate) struct LinuxPlatform<P> {
     pub(crate) inner: P,
-    pub(crate) global_hotkey: RefCell<LinuxGlobalHotkey>,
     pub(crate) notifications: LinuxNotifications,
     pub(crate) permissions: LinuxPermissions,
 }
@@ -849,13 +879,20 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn add_recent_document(&self, _path: &Path) {}
 
     fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
-        self.global_hotkey
-            .borrow_mut()
-            .register(id as i32, keystroke)
+        self.inner.register_global_hotkey(id, keystroke)
     }
 
     fn unregister_global_hotkey(&self, id: u32) {
-        self.global_hotkey.borrow_mut().unregister(id as i32);
+        self.inner.unregister_global_hotkey(id);
+    }
+
+    /// 注册全局热键回调
+    ///
+    /// 只有 X11 后端能派发该事件，其余后端不安装回调（注册已经返回错误）。
+    #[cfg(feature = "x11")]
+    fn on_global_hotkey(&self, callback: Box<dyn FnMut(u32)>) {
+        self.inner
+            .with_common(|common| common.callbacks.global_hotkey = Some(callback));
     }
 
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
