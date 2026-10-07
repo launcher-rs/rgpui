@@ -10,7 +10,8 @@ use calloop::{EventSource, Poll, PostAction, Readiness, Token, TokenFactory};
 use futures::channel::mpsc;
 use image::RgbaImage;
 use parking_lot::Mutex;
-use rgpui::{MenuItem, SharedString, TrayIconEvent, TrayMenuItem};
+use rgpui::{Action, MenuItem, SharedString, TrayIconEvent, TrayMenuItem};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// SNI `IconPixmap` 属性：每项为 `(宽, 高, ARGB32 大端字节)`
@@ -50,9 +51,18 @@ pub(crate) fn dispatch_tray_event(
 ) {
     let mut icon_callback: Option<Box<dyn FnMut(TrayIconEvent)>> = None;
     let mut menu_callback: Option<Box<dyn FnMut(SharedString)>> = None;
+    let mut app_menu_callback: Option<Box<dyn FnMut(&dyn Action)>> = None;
+    let mut legacy_action: Option<Box<dyn Action>> = None;
     with_common(&mut |common| {
         icon_callback = common.callbacks.tray_icon_event.take();
         menu_callback = common.callbacks.tray_menu_action.take();
+        app_menu_callback = common.callbacks.app_menu_action.take();
+        if let TrayEvent::MenuAction(id) = &event {
+            legacy_action = common
+                .tray_menu_actions
+                .get(id)
+                .map(|action| action.boxed_clone());
+        }
     });
 
     match event {
@@ -61,16 +71,27 @@ pub(crate) fn dispatch_tray_event(
                 callback(icon_event);
             }
         }
-        TrayEvent::MenuAction(id) => {
-            if let Some(callback) = menu_callback.as_mut() {
-                callback(id);
+        // 旧 API 的菜单项自带 Action → 走 app_menu_action；新 API 的标识 → 走 tray_menu_action
+        TrayEvent::MenuAction(id) => match legacy_action {
+            Some(action) => {
+                if let Some(callback) = app_menu_callback.as_mut() {
+                    callback(&*action);
+                } else {
+                    log::debug!("托盘菜单项 {id} 带有动作，但应用没注册 on_app_menu_action");
+                }
             }
-        }
+            None => {
+                if let Some(callback) = menu_callback.as_mut() {
+                    callback(id);
+                }
+            }
+        },
     }
 
     with_common(&mut |common| {
         common.callbacks.tray_icon_event = icon_callback.take();
         common.callbacks.tray_menu_action = menu_callback.take();
+        common.callbacks.app_menu_action = app_menu_callback.take();
     });
 }
 
@@ -401,4 +422,67 @@ pub(crate) fn convert_menu_items_to_tray(items: &[MenuItem]) -> Vec<TrayMenuItem
             _ => None,
         })
         .collect()
+}
+
+/// 收集旧 `MenuItem` API 自带的动作，键与 [`convert_menu_items_to_tray`] 生成的菜单项
+/// 标识一致；点击时据此找回动作，交给 `on_app_menu_action` 回调（与 Windows 同口径）
+pub(crate) fn collect_tray_menu_actions(
+    items: &[MenuItem],
+) -> HashMap<SharedString, Box<dyn Action>> {
+    let mut actions = HashMap::default();
+    collect_tray_menu_actions_into(items, &mut actions);
+    actions
+}
+
+/// 递归收集菜单项动作，子菜单一并展开
+fn collect_tray_menu_actions_into(
+    items: &[MenuItem],
+    out: &mut HashMap<SharedString, Box<dyn Action>>,
+) {
+    for item in items {
+        match item {
+            MenuItem::Action { name, action, .. } => {
+                out.insert(name.clone(), action.boxed_clone());
+            }
+            MenuItem::Submenu(menu) => collect_tray_menu_actions_into(&menu.items, out),
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rgpui::{Menu, NoAction};
+
+    /// 递归收集 `convert_menu_items_to_tray` 产出的菜单项标识
+    fn ids_of(items: &[TrayMenuItem]) -> Vec<SharedString> {
+        items
+            .iter()
+            .flat_map(|item| match item {
+                TrayMenuItem::Action { id, .. } => vec![id.clone()],
+                TrayMenuItem::Submenu { items, .. } => ids_of(items),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    /// 点击派发是按标识找回动作的，所以两份转换的结果必须严格对齐，
+    /// 否则菜单项显示出来却点了没反应
+    #[test]
+    fn legacy_menu_ids_and_actions_stay_in_sync() {
+        let items = vec![
+            MenuItem::action("Ping", NoAction),
+            MenuItem::separator(),
+            MenuItem::submenu(Menu::new("Nested").items([MenuItem::action("Pong", NoAction)])),
+        ];
+        let actions = collect_tray_menu_actions(&items);
+        let ids = ids_of(&convert_menu_items_to_tray(&items));
+
+        assert_eq!(ids.len(), 2, "子菜单项也要出现在转换结果里");
+        assert_eq!(actions.len(), ids.len());
+        for id in &ids {
+            assert!(actions.contains_key(id), "标识 {id} 没有对应动作");
+        }
+    }
 }

@@ -3,7 +3,7 @@ name = "tray"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "系统托盘：完整托盘（图标/菜单/最小化到托盘）与最小托盘两档演示"
+description = "系统托盘：完整托盘（图标/菜单/最小化到托盘）、最小托盘、以及自带 Action 的旧 API 菜单三档演示"
 
 [dependencies]
 rgpui.workspace = true

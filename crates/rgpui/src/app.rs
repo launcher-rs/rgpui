@@ -2450,6 +2450,48 @@ impl App {
         self.platform.get_menus()
     }
 
+    /// 注册菜单项动作的执行回调。
+    ///
+    /// 回调由平台在原生命令到达时调用：macOS 是全局菜单项被选中，Windows 是托盘菜单
+    /// 与任务栏跳转列表项被选中，Linux 是用 `set_tray`（旧 API）随菜单项带过去的动作被点击。
+    /// 需要「菜单项 → 动作」这条路走通的场景都注册这里；框架自身的
+    /// `menu::MenuBar` 组件走常规 action 派发，不经过本回调。
+    pub fn on_app_menu_action(&self, mut callback: impl FnMut(&dyn Action, &mut App) + 'static) {
+        let this = self.this.clone();
+        self.platform.on_app_menu_action(Box::new(move |action| {
+            if let Some(app) = this.upgrade() {
+                callback(action, &mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 注册「菜单即将打开」回调，可据此重建菜单内容再让主机取用。
+    ///
+    /// 目前只有 macOS 会触发（Windows/Linux 没有对应的原生事件源）。
+    pub fn on_will_open_app_menu(&self, mut callback: impl FnMut(&mut App) + 'static) {
+        let this = self.this.clone();
+        self.platform.on_will_open_app_menu(Box::new(move || {
+            if let Some(app) = this.upgrade() {
+                callback(&mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 注册菜单项可用性校验回调，返回 `false` 会禁用对应菜单项。
+    ///
+    /// 目前只有 macOS 会触发（Windows/Linux 没有对应的原生事件源）。
+    pub fn on_validate_app_menu_command(
+        &self,
+        mut callback: impl FnMut(&dyn Action, &mut App) -> bool + 'static,
+    ) {
+        let this = self.this.clone();
+        self.platform
+            .on_validate_app_menu_command(Box::new(move |action| match this.upgrade() {
+                Some(app) => callback(action, &mut app.borrow_mut()),
+                None => true,
+            }));
+    }
+
     /// 设置 Dock 中应用图标的右键菜单
     pub fn set_dock_menu(&self, menus: Vec<MenuItem>) {
         self.platform.set_dock_menu(menus, &self.keymap.borrow())

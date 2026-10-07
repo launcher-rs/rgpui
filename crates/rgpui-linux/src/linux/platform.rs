@@ -1,16 +1,17 @@
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use std::{
+    collections::HashMap,
+    ffi::OsString,
+    fs::File,
+    io::Read as _,
+    os::fd::{AsFd, AsRawFd},
+};
 use std::{
     env,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
     time::Duration,
-};
-#[cfg(any(feature = "wayland", feature = "x11"))]
-use std::{
-    ffi::OsString,
-    fs::File,
-    io::Read as _,
-    os::fd::{AsFd, AsRawFd},
 };
 
 use anyhow::{Context as _, anyhow};
@@ -24,8 +25,8 @@ use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
 use crate::linux::{LinuxNotifications, LinuxPermissions};
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use crate::linux::{
-    SniShared, TrayEvent, TrayHandle, convert_menu_items_to_tray, icon_pixmap_from_bytes,
-    pixmap_from_rgba_bytes, tray_sni,
+    SniShared, TrayEvent, TrayHandle, collect_tray_menu_actions, convert_menu_items_to_tray,
+    icon_pixmap_from_bytes, pixmap_from_rgba_bytes, tray_sni,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use futures::channel::mpsc;
@@ -149,8 +150,6 @@ pub(crate) struct PlatformHandlers {
     pub(crate) quit: Option<Box<dyn FnMut()>>,
     pub(crate) reopen: Option<Box<dyn FnMut()>>,
     pub(crate) app_menu_action: Option<Box<dyn FnMut(&dyn Action)>>,
-    pub(crate) will_open_app_menu: Option<Box<dyn FnMut()>>,
-    pub(crate) validate_app_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
     pub(crate) system_wake: Option<Box<dyn FnMut()>>,
     /// 全局热键触发回调（仅 X11 后端会派发）
@@ -180,6 +179,10 @@ pub(crate) struct LinuxCommon {
     /// 托盘事件回主线程的发送端
     #[cfg(any(feature = "wayland", feature = "x11"))]
     tray_events: Sender<TrayEvent>,
+    /// 旧 `set_tray` API 随菜单项带过来的动作，按菜单项标识索引；
+    /// 点击时经 `app_menu_action` 派发（与 Windows 的托盘菜单口径一致）
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) tray_menu_actions: HashMap<SharedString, Box<dyn Action>>,
     /// 托盘事件接收端，交由平台客户端注册进事件循环
     #[cfg(any(feature = "wayland", feature = "x11"))]
     tray_event_source: Option<calloop::channel::Channel<TrayEvent>>,
@@ -223,6 +226,8 @@ impl LinuxCommon {
             wake_listener_started: false,
             #[cfg(any(feature = "wayland", feature = "x11"))]
             tray: None,
+            #[cfg(any(feature = "wayland", feature = "x11"))]
+            tray_menu_actions: HashMap::default(),
             #[cfg(any(feature = "wayland", feature = "x11"))]
             tray_events,
             #[cfg(any(feature = "wayland", feature = "x11"))]
@@ -367,6 +372,12 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
                 .as_ref()
                 .map(|menus| convert_menu_items_to_tray(menus))
                 .unwrap_or_default();
+            // 旧 API 的菜单项自带 Action，记下「标识 → 动作」供点击时经 app_menu_action 派发；
+            // 换成新 API（set_tray_menu）时这份表必须清空，否则会派发已不存在的项
+            common.tray_menu_actions = menus
+                .as_ref()
+                .map(|menus| collect_tray_menu_actions(menus))
+                .unwrap_or_default();
             handle.set_menu(&items);
         });
     }
@@ -383,8 +394,10 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     /// 设置托盘右键菜单
     #[cfg(any(feature = "wayland", feature = "x11"))]
     fn set_tray_menu(&self, menu: Vec<TrayMenuItem>) {
-        self.inner
-            .with_common(|common| common.tray().set_menu(&menu));
+        self.inner.with_common(|common| {
+            common.tray_menu_actions.clear();
+            common.tray().set_menu(&menu);
+        });
     }
 
     /// 设置托盘工具提示
@@ -723,23 +736,19 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         });
     }
 
+    /// 注册菜单命令回调：Linux 上的触发源是用旧 `set_tray` API 随菜单项带过来的
+    /// `Action` 被点击（与 Windows 的托盘菜单口径一致）
     fn on_app_menu_action(&self, callback: Box<dyn FnMut(&dyn Action)>) {
         self.inner.with_common(|common| {
             common.callbacks.app_menu_action = Some(callback);
         });
     }
 
-    fn on_will_open_app_menu(&self, callback: Box<dyn FnMut()>) {
-        self.inner.with_common(|common| {
-            common.callbacks.will_open_app_menu = Some(callback);
-        });
-    }
+    /// Linux 没有「菜单即将打开」这一原生事件源：dbusmenu 只有整份布局重建
+    /// （`set_tray_menu`）这种刷新方式，没有逐项校验，所以这两个回调无处触发。
+    fn on_will_open_app_menu(&self, _callback: Box<dyn FnMut()>) {}
 
-    fn on_validate_app_menu_command(&self, callback: Box<dyn FnMut(&dyn Action) -> bool>) {
-        self.inner.with_common(|common| {
-            common.callbacks.validate_app_menu_command = Some(callback);
-        });
-    }
+    fn on_validate_app_menu_command(&self, _callback: Box<dyn FnMut(&dyn Action) -> bool>) {}
 
     fn app_path(&self) -> Result<PathBuf> {
         // get the path of the executable of the current process
@@ -757,9 +766,10 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         self.inner.with_common(|common| Some(common.menus.clone()))
     }
 
-    fn set_dock_menu(&self, _menu: Vec<MenuItem>, _keymap: &Keymap) {
-        // todo(linux)
-    }
+    /// Linux 桌面没有「任务栏右键跳转列表」这类协议：GNOME/mutter 与 Wayland 合成器
+    /// 都不暴露 dock 上下文菜单接口，KDE 的 Docklet/TaskRunner 只在其自家 shell 里可用。
+    /// 与其收下菜单再假装会显示，不如如实为空 —— 需要这类菜单请用托盘菜单（§4.1）。
+    fn set_dock_menu(&self, _menu: Vec<MenuItem>, _keymap: &Keymap) {}
 
     fn path_for_auxiliary_executable(&self, _name: &str) -> Result<PathBuf> {
         Err(anyhow::Error::msg(
@@ -1444,7 +1454,7 @@ pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<rgpui_wgpu::Com
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "wayland", feature = "x11")))]
 mod tests {
     use super::*;
     use rgpui::{Point, px};
