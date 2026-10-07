@@ -36,8 +36,8 @@ use rgpui::{
     PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
     PromptButton, PromptLevel, RequestFrameOptions, ResizeEdge, Scene, Size, Tiling,
     WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowControls,
-    WindowDecorations, WindowKind, WindowParams, layer_shell::LayerShellNotSupportedError,
-    popup::PopupOptions, px, size,
+    WindowDecorations, WindowKind, WindowParams, layer_shell::Anchor,
+    layer_shell::LayerShellNotSupportedError, popup::PopupOptions, px, size,
 };
 use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig, wgpu};
 
@@ -1784,6 +1784,30 @@ impl PlatformWindow for WaylandWindow {
                 wl_region.destroy();
             }
         }
+        state.surface.commit();
+    }
+
+    /// 运行时改 layer-shell 的 `exclusive_zone`：只对 layer-shell 窗口有意义，
+    /// 其他窗口类型没有该协议对象，直接跳过
+    fn set_exclusive_zone(&self, zone: Pixels) {
+        let state = self.borrow();
+        let Some(layer_surface) = state.surface_state.layer_surface() else {
+            log::debug!("独占区域只对 layer-shell 窗口有效，当前窗口不是该类型");
+            return;
+        };
+        layer_surface.set_exclusive_zone(f32::from(zone) as i32);
+        state.surface.commit();
+    }
+
+    /// 独占区域作用的边缘。合成器自己校验「必须是单一边缘」，
+    /// 非法值由合成器忽略，这里只负责把请求发出去并提交
+    fn set_exclusive_edge(&self, edge: Anchor) {
+        let state = self.borrow();
+        let Some(layer_surface) = state.surface_state.layer_surface() else {
+            log::debug!("独占边缘只对 layer-shell 窗口有效，当前窗口不是该类型");
+            return;
+        };
+        layer_surface.set_exclusive_edge(super::layer_shell::wayland_anchor(edge));
         state.surface.commit();
     }
 

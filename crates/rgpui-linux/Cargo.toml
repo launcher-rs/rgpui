@@ -45,6 +45,9 @@ x11 = [
     "x11-clipboard",
     "filedescriptor",
     "open",
+    # 核心层的 X11 语义（后端选择、EWMH strut）都挂在这个 feature 上，
+    # 不转发就会造出「平台是 X11、核心以为没有 X11」的组合
+    "rgpui/x11",
     "scap?/x11",
 ]
 screen-capture = [

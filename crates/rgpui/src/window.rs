@@ -2281,20 +2281,17 @@ impl Window {
         self.platform_window.request_decorations(decorations);
     }
 
-    /// 设置 layer-shell 表面的独占区域：它保留多少屏幕空间
-    /// 以使其他表面避免遮挡它（例如面板保留空间）。
-    /// 正值从锚定边缘保留该距离，0 允许
-    /// 表面被移出其他独占区域，-1 忽略保留
-    /// 空间并可能延伸到其他表面下方。（仅限 Wayland layer-shell 窗口）
+    /// 为这个窗口保留多少屏幕空间（逻辑像素），其他窗口不会压到它上面。
+    /// Wayland 用 layer-shell 的 `exclusive_zone`，X11 用 EWMH strut，口径一致：
+    /// 从 `set_exclusive_edge` 指定的屏幕边缘起保留这条区域，贴边面板传面板高度。
+    /// 非正值表示不保留；只对面板类窗口（layer-shell / DOCK）有意义。
     pub fn set_exclusive_zone(&self, zone: Pixels) {
         self.platform_window.set_exclusive_zone(zone);
     }
 
-    /// 设置 layer-shell 表面独占区域适用的锚定边缘。
-    /// 仅在角锚定表面时需要此选项；否则
-    /// 边缘从锚点推断。边缘必须是表面锚定的
-    /// 单一边缘，否则将被忽略。（仅限 Wayland layer-shell 窗口）
-    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    /// 指定独占区域作用于哪条屏幕边缘，必须是单一边缘（TOP/BOTTOM/LEFT/RIGHT 之一），
+    /// 否则会被忽略。Wayland 只在角锚定表面上需要它，X11 的 strut 则必须靠它确定保留哪条边。
+    #[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
     pub fn set_exclusive_edge(&self, edge: crate::layer_shell::Anchor) {
         self.platform_window.set_exclusive_edge(edge);
     }

@@ -13,8 +13,9 @@ pub mod popup;
 ))]
 mod threaded_dispatcher;
 
-/// Wayland Layer Shell 支持 — 允许窗口作为覆盖层、面板或桌面背景渲染。
-#[cfg(all(target_os = "linux", feature = "wayland"))]
+/// Linux 面板窗口的参数 —— Wayland 直接映射成 layer-shell 请求，
+/// X11 映射成 DOCK 窗口 + EWMH strut，所以两个后端都要能用这些类型。
+#[cfg(target_os = "linux")]
 pub mod layer_shell;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -1416,10 +1417,19 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         anyhow::bail!("render_to_image not implemented for this platform")
     }
 
-    /// 设置 Wayland layer-shell 独占区域大小（像素）。
+    /// 为窗口保留多少屏幕空间（逻辑像素），使其他窗口不遮挡它。
+    ///
+    /// Wayland 走 layer-shell 的 `set_exclusive_zone`，X11 走 EWMH strut
+    /// （`_NET_WM_STRUT_PARTIAL`）；两边口径一致：从 `set_exclusive_edge` 指定的
+    /// 屏幕边缘起，往外保留这么宽的一条区域，贴边面板取面板自身高度即可。
+    /// 非正值表示不保留。只有面板类窗口（layer-shell / DOCK）设置才有意义。
     fn set_exclusive_zone(&self, _zone: Pixels) {}
-    /// 设置 Wayland layer-shell 独占边缘（顶部/底部/左侧/右侧）。
-    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    /// 指定 [`Self::set_exclusive_zone`] 作用于哪条屏幕边缘，必须是单一边缘
+    /// （`TOP` / `BOTTOM` / `LEFT` / `RIGHT` 之一），多bit会被忽略。
+    ///
+    /// Wayland 只在角锚定表面上需要它，其余情况边缘由锚点推断；X11 的 strut
+    /// 没有「保留哪条边」的默认推断，必须先确定边缘才会写入。
+    #[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
     fn set_exclusive_edge(&self, _edge: layer_shell::Anchor) {}
 
     /// 请求用户注意力（任务栏闪烁/弹跳，提示用户查看窗口）。
@@ -2412,9 +2422,9 @@ pub enum WindowKind {
     /// 出现在父窗口上方的浮动窗口
     Floating,
 
-    /// Wayland LayerShell 窗口，用于为应用绘制覆盖层或背景，
-    /// 如 Dock、通知或壁纸。
-    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    /// Linux 面板窗口：Wayland 上是 layer-shell 表面，X11 上是 DOCK 窗口 + strut，
+    /// 用于覆盖层、面板、桌面背景一类不跟普通窗口抢位置的场景。
+    #[cfg(target_os = "linux")]
     LayerShell(layer_shell::LayerShellOptions),
 
     /// 出现在父窗口上方的模态窗口，阻止与父窗口的交互，
