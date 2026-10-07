@@ -34,6 +34,7 @@
 | `e00ddd95aa` | `feat(core)`：权限/系统信息/自启动等能力接回 `App`，权限收敛为统一入口 |
 | `79e93b058d` | `docs(linux)`：§4.8 记录 + AGENTS.md 口径 |
 | `223061c8bc` | `feat(linux)`：X11 鼠标穿透 / 输入区域（X Shape）+ Wayland `set_mouse_passthrough` |
+| `0da9515122` | `feat(linux)`：`App` 补三个应用菜单回调注册入口 + Linux 旧 `set_tray` 菜单动作经 `app_menu_action` 派发 |
 
 最需要记住的一句话（未变）：
 
@@ -58,7 +59,8 @@
 | P1 | Inspector（F12）在 Linux 是否可用 | **已验证可用**（见 §2.4） |
 | P2 | 窗口启动后 ~130 ms 纯黑，然后才出画面 | **已定位，未修**（见 §2.5） |
 | P1 | GL 后端在老 Mesa 上不可用（wgpu-hal 只认 `EGL_EXT_platform_xcb`） | 已定位，上游兼容问题（见 §3.4） |
-| P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **通知、全局热键、权限查询已改真实现并验证**（`4f782cb1fa`、`d5e4819376`、`7fa8b7bf47`，见 §4.2）；仅剩应用菜单 |
+| P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **§4.2 已全部收口**：通知（`4f782cb1fa`）、全局热键（`d5e4819376`）、权限查询（`7fa8b7bf47`）、应用菜单（`0da9515122`，见 §4.2-4）。其中「`set_menus` 只存不显示」定性为**非缺陷**（Windows 同口径） |
+| P1 | **`App` 没有注册入口** → 三个应用菜单回调（action / will-open / validate）应用侧根本登记不了；Linux 旧 `set_tray` 又把菜单项自带的 `Action` 丢掉 | **已修复并验证**（`0da9515122`，见 §4.2-4）：`App` 补三个包装，Linux 记下「标识 → 动作」表并经 `app_menu_action` 派发，与 Windows 托盘菜单同口径 |
 | P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）**；剩约 19 个**大多是「应用层调不到」的死接口**，分诊见 §4.3 + §4.8 |
 | P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；`set_mouse_passthrough` + X11 `set_input_region` **已实现**（`223061c8bc`，见 §4.4）；其余（`map_window`、`render_to_image`、exclusive zone）待实现 |
 | P1 | `WindowOptions.mouse_passthrough` 在 X11 被完全忽略 —— 桌面宠物类窗口只能靠 Wayland | **已修复**（`223061c8bc`）：X Shape 空输入区域，`ShapeGetRectangles` 回读 `INPUT[]`（0 rect）实测；Wayland 侧补 `set_mouse_passthrough`（仅编译验证） |
@@ -443,9 +445,9 @@ calloop EventSource ◀──calloop channel──  emit PropertiesChanged / Lay
 
 | 方法 | 状态 | 说明 |
 |------|:----:|------|
-| `set_tray` | ✅ | 首次调用惰性建共享状态并 spawn `serve()` |
+| `set_tray` | ✅ | 首次调用惰性建共享状态并 spawn `serve()`；旧 API 菜单项自带的 `Action` 经 `app_menu_action` 派发（`0da9515122`，见 §4.2-4） |
 | `set_tray_icon` | ✅ | 光栅化后 resize 出 **22 / 44** 两档，转 **ARGB32 大端 + 直通 alpha** |
-| `set_tray_menu` | ✅ | dbusmenu 布局，支持分隔线 / 子菜单 / checkmark |
+| `set_tray_menu` | ✅ | dbusmenu 布局，支持分隔线 / 子菜单 / checkmark；调用时清掉旧 API 的动作表 |
 | `set_tray_tooltip` | ✅ | 协议已实现，但见下方 Ubuntu host 怪癖 5 |
 | `set_tray_panel_mode` | ⚠️ | 映射为 `ItemIsMenu`，Ubuntu host 会忽略 |
 | `get_tray_icon_bounds` | — | 恒 `None`（SNI 无坐标 API，**协议限制，不是没实现**） |
@@ -628,6 +630,44 @@ pub fn register(&mut self, id: i32, keystroke: &Keystroke) -> Result<()> {
 - `on_app_menu_action` / `on_will_open_app_menu` / `on_validate_app_menu_command`（`:560-575`）
   把回调存进 `common.callbacks` 后，**全仓库没有任何地方调用它们**
 - `set_dock_menu` 就一行 `// todo(linux)`
+
+> **已修**（`0da9515122`）：三条里只有一条是真缺陷，先把口径分清 ——
+>
+> - **`set_menus` 只存不显示不是缺陷**：Linux 和 Windows 都没有原生全局菜单栏（只有 macOS
+>   的 NSMenu 会渲染），框架内的菜单条是 `menu::MenuBar` 组件、走常规 action 派发，不经平台层。
+>   Windows 侧同样是纯存储，所以这里只把「存储语义」如实化，不改行为。
+> - **真缺陷 A：`App` 上根本没有注册入口**。三个回调在 `Platform` trait 里有方法，`App` 却
+>   一个都没包装（§4.8 那一类问题的又一实例），应用侧无论如何都登记不了 ——
+>   这也解释了「全仓库没有任何地方调用它们」：不是平台忘了调，是压根没人能注册。
+> - **真缺陷 B：旧 `App::set_tray(Tray, Option<Vec<MenuItem>>)` 随菜单项带过来的 `Action` 被丢掉**。
+>   `MenuItem::Action { name, action }` 里的 `Box<dyn Action>` 在 `convert_menu_items_to_tray`
+>   转换时只留下 `id = name`，点击只会走 `on_tray_menu_action(id)`；而 Windows 上同一条菜单
+>   命令是经 `app_menu_action` 派发动作的（`rgpui-windows/src/platform.rs` 的 `WM_COMMAND`
+>   托盘分支）—— 同一份示例代码在两个平台上语义不同。
+> - 修法：`App` 补 `on_app_menu_action` / `on_will_open_app_menu` /
+>   `on_validate_app_menu_command` 三个包装（AGENTS.md 要求「加 `Platform` 方法必须同时加
+>   `App` 包装 + 一个真实调用点」，调用点为 `set_menus` 示例的 `cx.on_app_menu_action`）；
+>   Linux 侧 `set_tray` 用 `collect_tray_menu_actions` 记下「标识 → 动作」表（子菜单一起收），
+>   点击时优先查表并经 `app_menu_action` 派发，查不到才回落 `tray_menu_action(id)`；
+>   新 API `set_tray_menu` 会清空这份表，避免派发已经不存在的项。
+>   两份转换的一致性由 `linux::tray::tests::legacy_menu_ids_and_actions_stay_in_sync` 固定。
+> - `on_will_open_app_menu` / `on_validate_app_menu_command` 在 Linux **如实留空**：dbusmenu
+>   只有整份布局重建这一种刷新方式，`about_to_show` 直接返回 `false`（`tray_sni.rs:228`），
+>   既没有「菜单即将打开」事件源也没有逐项校验。`set_dock_menu` 同理 —— GNOME/mutter 与
+>   Wayland 合成器都不暴露 dock 上下文菜单接口，需要这类菜单请用托盘菜单（§4.1）。
+>   原先这两个回调在 `PlatformHandlers` 里存着从不读，字段一并删除。
+>
+> 验证（本机 X11 会话，先按 §六 取到 SNI 名，再对 `GetLayout` 里的 id 发 `Event`）：
+>
+> ```
+> 旧 API（cargo run -p tray --bin tray_menu_action）
+>   GetLayout → 1=Greet 2=separator 3=Quit
+>   Event 1 "clicked" → 日志 "Menu action: Greet"（走 on_app_menu_action）
+>   Event 3 "clicked" → 进程退出
+> 新 API（--bin tray_simple，回归检查，确认改动没夺走 on_tray_menu_action 的路）
+>   Event 1 "clicked" → "Menu action: hello"；Event 3 → "Menu action: quit" 后退出
+> set_menus 示例：注册 on_app_menu_action 后正常启动，无回归
+> ```
 
 ### 4.3 [P1] 约 19 个 `Platform` 方法在 Linux 上是静默 no-op
 
@@ -975,6 +1015,13 @@ gdbus call --session --dest <应用总线名> --object-path /StatusNotifierItem/
 gdbus call --session --dest <应用总线名> --object-path /StatusNotifierItem/Menu \
   --method com.canonical.dbusmenu.Event -- <id> "clicked" "<''>" 0
 
+# <应用总线名> 不是 pid，也没注册 well-known name：先在 ListNames 里挑出新出现的 :1.N，
+# 再用 GetConnectionUnixProcessID 对上进程；一个进程可能占两条名字（谁能答 GetLayout 谁是菜单）
+gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+  --method org.freedesktop.DBus.ListNames
+gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+  --method org.freedesktop.DBus.GetConnectionUnixProcessID ':1.686'
+
 # 手工驱动 SNI 动作（绕开无法截图的面板）
 gdbus call … --method org.kde.StatusNotifierItem.Activate 0 0
 # 用菜单项驱动「开窗口 → 关窗口 → 再开」来验 §2.3 与 §4.1 末的 keep-alive：
@@ -1085,8 +1132,11 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
 
 1. ~~**§4.2 三处假实现改成真实现**~~ —— 通知（`4f782cb1fa`）、全局热键（`d5e4819376`）、
    权限查询（`7fa8b7bf47`）都已改真实现并本机验证。
-   **§4.2 仅剩应用菜单（§4.2-4）**：`set_menus` 存进 `common.menus` 后无人消费，
-   三个 app-menu 回调全仓库无调用点，`set_dock_menu` 还是 `// todo(linux)`。
+   ~~**§4.2 仅剩应用菜单（§4.2-4）**~~ —— 已收口（`0da9515122`）：`set_menus` 纯存储定性为
+   **非缺陷**（Windows 同口径，只有 macOS 渲染原生菜单）；真缺陷是 `App` 侧没有注册入口 +
+   Linux 旧 `set_tray` 丢掉菜单项自带的 `Action`，两处都已修并本机验证；
+   `will_open`/`validate`/`set_dock_menu` 在 Linux 无原生事件源，如实留空。
+   **§4.2 至此全部收口。**
 2. ~~**§4.4 补 X11 都缺的窗口方法**：`request_attention`、`get_title`~~ —— 已实现（`4f782cb1fa`）。
    ~~`set_mouse_passthrough`（X11 Shape / Wayland input region）与 X11 的 `set_input_region`~~ ——
    已实现并本机回读验证（`223061c8bc`，口径与证据见 §4.4）。
