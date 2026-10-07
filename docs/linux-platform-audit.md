@@ -21,6 +21,13 @@
 | `fef831e901` | `docs(linux)`：本审计文档 |
 | `ac83e85218` | `fix(linux)`：关闭主窗口后托盘「显示窗口」无响应 |
 | `35f4d730ed` | `chore`：忽略 `.qoder` 本地配置目录 |
+| `4f782cb1fa` | `fix(linux)`：通知改真实现（portal）+ `get_title` + X11 urgency 提醒 |
+| `3fcaa73c98` | `feat(core)`：`rgpui::init_logging()` 日志初始化入口 |
+| `d6f6a4c598` | `feat(linux)`：`os_info` 与 `system_idle_time` |
+| `d5e4819376` | `fix(linux)`：全局热键真正 GrabKey + `on_global_hotkey` 派发 |
+| `7fa8b7bf47` | `fix(linux)`：权限查询改真实现（AT-SPI 两步探测 + portal 接口盘点） |
+| `4bb1e1b3a2` | `fix(core)`：`keep_alive_without_windows` 状态收回核心层 |
+| `651a94a618` | `feat(linux)`：`network_status`（门户优先 + `/sys/class/net` 兜底） |
 
 最需要记住的一句话（未变）：
 
@@ -46,9 +53,9 @@
 | P2 | 窗口启动后 ~130 ms 纯黑，然后才出画面 | **已定位，未修**（见 §2.5） |
 | P1 | GL 后端在老 Mesa 上不可用（wgpu-hal 只认 `EGL_EXT_platform_xcb`） | 已定位，上游兼容问题（见 §3.4） |
 | P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **通知、全局热键、权限查询已改真实现并验证**（`4f782cb1fa`、`d5e4819376`、`7fa8b7bf47`，见 §4.2）；仅剩应用菜单 |
-| P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **`os_info` / `system_idle_time` 已实现**（`d6f6a4c598`）；其余待分诊（见 §4.3） |
+| P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）**，剩约 19 个待分诊（见 §4.3） |
 | P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；其余待实现 |
-| P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | 待实现（见 §4.1 末） |
+| P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | **已修复并 A/B 验证**（`4bb1e1b3a2`）：状态收回核心层，平台侧方法删除（见 §4.1 末） |
 | P2 | `cargo check --workspace` 被 webview 示例阻塞（缺 glib/gtk/webkit 系统库） | 待处理（见 §4.5） |
 | P2 | rgpui 无日志初始化入口，wgpu/GPU 诊断信息全部丢失 | **已实现**（`rgpui::init_logging()`，`3fcaa73c98`，见 §4.6） |
 | P3 | Inspector 面板显示「帧率 0.0 FPS · 0.0 ms」 | 待查（见 §2.4） |
@@ -474,7 +481,7 @@ $ gdbus call … com.canonical.dbusmenu.Event <id> "clicked" '' 0   # 触发回�
 改成 `dispatch_tray_event`（先把回调 take 出来 → 释放借用 → 调用 → 再放回），
 沿用既有 `handle_keyboard_layout_change`（`x11/client.rs:1528-1542`）的惯用法。
 
-**本节遗留（独立缺陷，未随 tray 一起改）**：
+**本节遗留（独立缺陷，未随 tray 一起改）**——下列行号是「修复前」位置，已被 `4bb1e1b3a2` 删除或改写：
 
 `set_keep_alive_without_windows`（`crates/rgpui/src/platform.rs:515`）**全链路 write-only**：
 core 里没有读取方，`app.rs:2535` 只转发给平台，连 Windows 实现也只是
@@ -488,6 +495,30 @@ if quit_on_empty && cx.windows.is_empty() { cx.quit(); }
 
 它只在**窗口关闭**时触发。所以 `tray_simple`（未开窗口）目前靠事件循环「碰巧」挡住不退出；
 但任何「先开窗再全关掉以驻留托盘」的应用都会退出。这是**跨平台缺陷，不是 Linux 特有**。
+
+> **已修复**（`4bb1e1b3a2`）：把状态收回核心层，不再让平台存一个没人读的标志。
+> `App` 增加 `keep_alive_without_windows: Cell<bool>`（setter 是 `&self`，用 `Cell` 够用），
+> 自动退出判据直接读它；`Platform::set_keep_alive_without_windows` 与 Windows 侧那个
+> 只 `store` 从不 `load` 的 `AtomicBool` 一并删除 —— 跨平台缺陷一次改到位，
+> 不是「只动 Linux 然后照样无效」。
+>
+> ```rust
+> // 「没有窗口也要活着」优先于任何自动退出模式
+> let quit_on_empty = !cx.keep_alive_without_windows.get()
+>     && match cx.quit_mode {
+>         QuitMode::Explicit => false,
+>         QuitMode::LastWindowClosed => true,
+>         QuitMode::Default => cfg!(not(target_os = "macos")),
+>     };
+> ```
+>
+> 验证（本机 X11 会话，走托盘菜单开窗口，见 §六 的 dbusmenu 驱动法）：
+>
+> - `daemon_app`（已 `set_keep_alive_without_windows(true)`）→ 菜单 `Settings` 开窗
+>   → `wmctrl -i -c` 关掉最后一个窗口 → **进程存活**，`xdotool search --pid` 返回 0 个窗口；
+> - 对照组 `hello_world`（未设该标志）关掉窗口 → 进程退出（说明不是一律不退出）；
+> - 菜单 `Quit` 仍能退出（显式 `cx.quit()` 路径不受这条判据影响）。
+
 
 ### 4.2 [P1] 假实现 —— 返回成功，但什么都没做
 
@@ -590,39 +621,48 @@ pub fn register(&mut self, id: i32, keystroke: &Keystroke) -> Result<()> {
   把回调存进 `common.callbacks` 后，**全仓库没有任何地方调用它们**
 - `set_dock_menu` 就一行 `// todo(linux)`
 
-### 4.3 [P1] 约 21 个 `Platform` 方法在 Linux 上是静默 no-op
+### 4.3 [P1] 约 19 个 `Platform` 方法在 Linux 上是静默 no-op
 
 对比 `crates/rgpui/src/platform.rs`（有默认空实现）与 `crates/rgpui-linux/src/linux/platform.rs`，
-Linux 缺失（**tray 8 件套已随 §4.1 移出；`os_info`、`system_idle_time`（`d6f6a4c598`）与
-`on_global_hotkey`（`d5e4819376`）已实现并移出此列表**）：
+Linux 缺失（**tray 8 件套已随 §4.1 移出；`os_info`、`system_idle_time`（`d6f6a4c598`）、
+`on_global_hotkey`（`d5e4819376`）、权限查询（`7fa8b7bf47`）已实现；`network_status` 已实现（`651a94a618`，见 §4.7；
+`set_keep_alive_without_windows` 按 §4.1 末改为「状态收回核心层」，平台侧方法已删除**）：
 
 ```
 authenticate_biometric        biometric_status         cancel_user_attention
-id                            microphone_status        network_status
-on_media_key_event            on_network_status_change
-on_system_power_event         perform_dock_menu_action read_from_find_pasteboard
+id                            microphone_status        on_media_key_event
+on_network_status_change      on_system_power_event
+perform_dock_menu_action      read_from_find_pasteboard
 request_microphone_permission request_user_attention   set_dock_badge
-set_keep_alive_without_windows show_context_menu       show_dialog
-start_power_save_blocker      stop_power_save_blocker  update_jump_list
-write_to_find_pasteboard
+show_context_menu             show_dialog              start_power_save_blocker
+stop_power_save_blocker       update_jump_list         write_to_find_pasteboard
 ```
 
-其中**核心层确实会调用**的（其余为 macOS/Windows 专属或仅面向应用层）：
+其中**核心层自己会调用**的：**一个都没有**。逐个核实后的结论（此前记为
+「`read/write_from_find_pasteboard`、`update_jump_list`、`perform_dock_menu_action`
+会被核心调用」是**不准确的**，已更正）：
 
-```
-set_keep_alive_without_windows、
-read/write_from_find_pasteboard、update_jump_list、perform_dock_menu_action
-```
+- `read/write_from_find_pasteboard`：`App` 侧的入口本身带 `#[cfg(target_os = "macos")]`
+  （`crates/rgpui/src/app.rs:1403`、`:1413`），Linux 上根本不可达；
+- `update_jump_list` / `perform_dock_menu_action` / `set_dock_badge`：只有 `App` 的公开方法
+  在转调平台（`app.rs:2458`、`:2472`），核心内部无调用点，仅 Windows 自己用
+  （`rgpui-windows/src/platform.rs:304`）；
+- 其余（`show_dialog`、`show_context_menu`、`on_media_key_event`、
+  `on_network_status_change` 等）同样是「应用不调用就什么都不发生」。
 
+> 这里的 `show_context_menu` 指 `Platform` 的同名方法；
+> `crates/rgpui/src/input_ui/context_menu.rs:308` 那处是**元素**的 `show_context_menu`，
+> 与平台方法无关，别混为一谈。
 **分诊建议**：
 
-- 必须实现：`set_keep_alive_without_windows`（注意这是 §4.1 末所述的**跨平台**缺陷，
-  改 Linux 一处不够）
-- 可用 Linux 等价物实现：`network_status` / `on_network_status_change`（portal `NetworkMonitor`）、
+- 可用 Linux 等价物实现：`on_network_status_change`（门户 `NetworkMonitor` 的 `changed` 信号，
+  需要像 tray 那样把事件路由回主线程再派发）、
   `on_system_power_event`（`login1`，`platform.rs` 已有 `PrepareForSleep` 监听可复用）、
   `microphone_status` / `request_microphone_permission`（portal）、
-  `start/stop_power_save_blocker`（`Inhibit` 或 portal）
-- 已实现：`on_global_hotkey`（§4.2-2）、`os_info`、`system_idle_time`（`/proc` + X11 screen saver）
+  `start/stop_power_save_blocker`（portal `Inhibit`，本机会话已确认该接口存在）
+- 已实现：`on_global_hotkey`（§4.2-2）、`os_info`、`system_idle_time`
+  （`org.freedesktop.ScreenSaver` 与 Mutter `IdleMonitor` 依次探测）、`network_status`（§4.7）、
+  `set_keep_alive_without_windows`（§4.1 末）
 - 平台语义上不需要，保持默认即可：`set_dock_badge`、`update_jump_list`、
   `perform_dock_menu_action`、`read/write_from_find_pasteboard`、`biometric_status`、
   `authenticate_biometric`、`request_user_attention` / `cancel_user_attention`
@@ -716,6 +756,44 @@ portal 调用）**在原生平台上一条都看不到** —— 这次排障被�
 >
 > 排障时用 `RUST_LOG=debug` 运行即可看到 §3.4 的后端选择、§4.2 的 portal/GrabKey 调用过程。
 
+### 4.7 [P1] `network_status` —— **已实现**（`651a94a618`，门户优先 + `/sys/class/net` 兜底）
+
+核心层 `Platform::network_status` 在 Linux 上原本是静默 no-op（返回默认值），
+调用方拿到的「网络状态」与真实链路无关。现已实现于
+`crates/rgpui-linux/src/linux/system_info.rs`，`platform.rs` 的
+`network_status()` 只做转发。
+
+**两级取数**：
+
+1. **portal `org.freedesktop.portal.NetworkMonitor`**（`/org/freedesktop/portal/desktop`）
+   —— 先 `GetAvailable`，再 `GetConnectivity`。连通性档位来自 NetworkManager：
+
+   ```
+   0 未知、1 无到互联网的线路由、2 强制门户、3 有限连通、4 完整连通
+   ```
+
+   映射为 `NetworkStatus`：`0 | 4 => Connected`、`1..=3 => ConnectedBelowRequired`、
+   其余 `Connected`（`GetAvailable` 为 false 直接 `Disconnected`）。
+   `0`（未知）按 `Connected` 处理是**刻意的**：门户说「有网卡可用」但没说「探到了什么」，
+   此时报 `ConnectedBelowRequired` 会让调用方误判成「被门户劫持」，
+   而它原本就是 §4.3 说的「假实现」行为，不如按可用上报。
+
+2. **`/sys/class/net/*/operstate` 兜底** —— 跳过 `lo`，任一网卡 `up` 即 `Connected`。
+   这条路径**只能回答「有没有 UP 的网卡」**，没有连通性探测能力，
+   因此永远不会给出 `ConnectedBelowRequired`；这是设计上的取舍，不是漏实现。
+
+取数次序是「门户可用就用门户，任一 D-Bus 调用失败即整体回落到 sysfs」——
+`DBUS_SESSION_BUS_ADDRESS` 被指到坏地址时不会拖垮整个查询。
+
+> **本机实测**（`cargo test -p rgpui-linux -- --ignored --nocapture network`）：
+>
+> ```
+> 正常会话            network_status() => Connected / sysfs_network_status() => Connected
+> DBUS_SESSION_BUS_ADDRESS=坏  走 sysfs => Connected（门户路径静默失败，不影响结果）
+> ```
+>
+> 活体测试为 `#[ignore]`：无头 CI 上没有会话总线，跑它会误报。
+
 ---
 
 ## 五、环境问题（非 rgpui 代码缺陷）
@@ -772,14 +850,24 @@ xprop -root _NET_SYSTEM_TRAY_S0                          # XEmbed 宿主（本�
 # SNI 端到端
 gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher \
   --method org.kde.StatusNotifierWatcher.RegisteredStatusNotifierItems
+# 注意：这是个**属性**不是方法，按方法调会 UnknownMethod
+gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher \
+  --method org.freedesktop.DBus.Properties.Get org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems
 gdbus call --session --dest <应用总线名> --object-path /StatusNotifierItem/Menu \
   --method org.kde.StatusNotifierItem... # 注意负数参数要用 -- 分隔
-# dbusmenu 的 data 参数类型是 v 不是 av：传 '' 而不是 []
-gdbus call … com.canonical.dbusmenu.GetLayout 0 -1 []
-gdbus call … com.canonical.dbusmenu.Event <id> "clicked" '' 0
+# dbusmenu 的 data 参数类型是 v 不是 av：传 '<>' 包起来的 ''，且第 4 个 u 参数是裸数字
+# （写成 "" 会被静默忽略，写成 "u 0" 报 Error parsing parameter 4 of type "u"）
+gdbus call --session --dest <应用总线名> --object-path /StatusNotifierItem/Menu \
+  --method com.canonical.dbusmenu.GetLayout -- 0 -1 "[]"
+gdbus call --session --dest <应用总线名> --object-path /StatusNotifierItem/Menu \
+  --method com.canonical.dbusmenu.Event -- <id> "clicked" "<''>" 0
 
 # 手工驱动 SNI 动作（绕开无法截图的面板）
 gdbus call … --method org.kde.StatusNotifierItem.Activate 0 0
+# 用菜单项驱动「开窗口 → 关窗口 → 再开」来验 §2.3 与 §4.1 末的 keep-alive：
+# GetLayout 里拿到 Show Overlay / Quit 的 id，逐个 Event 触发，
+# 用 _NET_CLIENT_LIST 增量 + xdotool search --pid <PID> 找新窗口
+# （rgpui 窗口没有 WM_CLASS/_NET_WM_PID 之外的属性，wmctrl -l 显示 N/A）
 
 # 验证「关闭后恢复」：先看 WM 状态，再触发托盘项，再看状态
 wmctrl -i -c <WID>                 # 模拟关闭
@@ -824,6 +912,23 @@ gdbus call --address '<上一步返回的地址>' --dest org.a11y.atspi.Registry
 gdbus introspect --session --dest org.freedesktop.portal.Desktop \
   --object-path /org/freedesktop/portal/desktop --xml | grep -o 'interface name="[^"]*"'
 
+# 验证网络状态（§4.7）：门户路径 + sysfs 兜底都会打印
+cargo test -p rgpui-linux -- --ignored --nocapture network
+# 对照门户返回值与兜底结果
+gdbus call --session --dest org.freedesktop.portal.Desktop --object-path /org/freedesktop/portal/desktop \
+  --method org.freedesktop.portal.NetworkMonitor.GetAvailable
+gdbus call --session --dest org.freedesktop.portal.Desktop --object-path /org/freedesktop/portal/desktop \
+  --method org.freedesktop.portal.NetworkMonitor.GetConnectivity
+# 造坏总线：应静默回落到 sysfs，结果依旧可用
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/nonexistent \
+  cargo test -p rgpui-linux -- --ignored --nocapture network
+cat /sys/class/net/*/operstate        # 兜底路径只看这个
+
+# 验证 keep-alive（§4.1 末）：daemon_app 关完窗口不退，hello_world 关完即退
+RUST_LOG=info ./daemon_app &
+# 用托盘菜单事件关掉最后一个窗口，进程应仍存活；再触发 Quit 项才退出
+pkill -x daemon_app
+
 # 进程清理：用精确名，别用 -f 匹配路径（会杀掉自己所在的 shell，exit 143）
 pkill -x tray ; pkill -x inspector
 
@@ -852,8 +957,9 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
 2. ~~**§4.4 补 X11 都缺的窗口方法**：`request_attention`、`get_title`~~ —— 已实现（`4f782cb1fa`）。
    剩余：`set_mouse_passthrough`（X11 Shape / Wayland input region）、X11 的 `set_input_region`、
    Wayland 的 `map_window`、`render_to_image`、`set_exclusive_zone`/`set_exclusive_edge`。
-3. **§4.1 末 / §4.3 的 `set_keep_alive_without_windows`** —— 跨平台缺陷，
-   需要同时改 `app.rs:1802-1810` 的退出判据，不能只动 Linux。
+3. ~~**§4.1 末 / §4.3 的 `set_keep_alive_without_windows`**~~ —— 跨平台缺陷，已修（`4bb1e1b3a2`）：
+   状态收回核心层并改掉 `app.rs` 的退出判据，`Platform` 侧方法与 Windows 的
+   `AtomicBool` 一并删除。本机 A/B 验证见 §4.1 末。
 4. **§2.5 启动黑屏（b）** —— 按轻量方案给 `win_aux` 补 `background_pixel`；
    彻底方案（推迟 `map_window` 到首帧 present）**单独评估**，因为是全平台路径。
    当前用户指示：先不做。
@@ -861,11 +967,14 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
    示例与排障命令均已用上（见 §六）。
 6. **§2.4 的两个 P3** —— Inspector 的 FPS 恒 0（面板可信度问题）、示例未传窗口标题
    （平台侧 `set_title`/`WM_NAME` 已确认正常，见 §2.4）。
-7. **§4.5 文档补 Linux 构建前置包**，并把 AGENTS.md 的「提交前 `cargo check --workspace`」
-   在 Linux 端的实际可行范围写清楚（当前只能到 `-p rgpui-linux`）。
-8. **§4.3 分诊表**里「可用 Linux 等价物实现」的 `network_status` /
-   `on_system_power_event` / `microphone_status`；
-   （`system_idle_time`、`os_info` 已随 `d6f6a4c598` 完成，窗口级提醒见 §4.4）
+7. ~~**§4.5 文档补 Linux 构建前置包**~~ —— AGENTS.md 已加「Linux 端构建前置」小节，
+   写明 `apt install` 列表，以及未装这些库时实际可行的验证范围
+   （`-p rgpui-linux --all-targets` + `cargo fmt -p rgpui-linux`），
+   并明确它**不能替代** `cargo check --workspace`。
+8. **§4.3 分诊表**里「可用 Linux 等价物实现」的
+   `on_system_power_event` / `microphone_status` / `start|stop_power_save_blocker`；
+   （`system_idle_time`、`os_info` 已随 `d6f6a4c598` 完成，`network_status` 已随 §4.7 完成，
+   窗口级提醒见 §4.4）
 9. **§3.4** 记录 wgpu-hal / 老 Mesa 兼容问题（已降为 P3），评估是否向上游提 issue。
 10. **Wayland 会话复测** —— 不再是渲染验证的阻塞项，但用于覆盖 Wayland 专属分支
     （§2.3 的 `hide`/`activate` 语义、§4.4 缺失的 `map_window`）仍有独立价值。
