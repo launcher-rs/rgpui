@@ -33,10 +33,11 @@ use futures::channel::mpsc;
 use parking_lot::Mutex;
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
-    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OsInfo, OwnedMenu,
-    PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
-    PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
-    RunnableVariant, Task, ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
+    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, NetworkStatus,
+    OsInfo, OwnedMenu, PathPromptOptions, PermissionStatus, PermissionType, Platform,
+    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
+    PlatformWindow, Result, RunnableVariant, Task, ThermalState, WindowAppearance,
+    WindowButtonLayout, WindowParams,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use rgpui::{Pixels, Point, px};
@@ -905,6 +906,10 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
     fn system_idle_time(&self) -> Option<Duration> {
         crate::linux::system_info::system_idle_time()
+    }
+
+    fn network_status(&self) -> NetworkStatus {
+        crate::linux::system_info::network_status()
     }
 
     fn accessibility_status(&self) -> PermissionStatus {
