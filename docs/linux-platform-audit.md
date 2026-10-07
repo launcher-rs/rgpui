@@ -36,6 +36,7 @@
 | `223061c8bc` | `feat(linux)`：X11 鼠标穿透 / 输入区域（X Shape）+ Wayland `set_mouse_passthrough` |
 | `0da9515122` | `feat(linux)`：`App` 补三个应用菜单回调注册入口 + Linux 旧 `set_tray` 菜单动作经 `app_menu_action` 派发 |
 | `4bc8c9c744` | `feat(linux)`：电源事件（`PrepareForSleep` 两分支）+ 休眠/息屏抑制（login1 `Inhibit`）接回 `App`，阻止器改成 `Drop` 即释放的句柄 |
+| `7d4ec3fdec` | `feat(linux)`：独占区域 —— X11 写 EWMH strut（`WindowKind::LayerShell` → DOCK 窗口），Wayland 补 layer-shell 运行时请求 |
 
 最需要记住的一句话（未变）：
 
@@ -63,7 +64,7 @@
 | P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **§4.2 已全部收口**：通知（`4f782cb1fa`）、全局热键（`d5e4819376`）、权限查询（`7fa8b7bf47`）、应用菜单（`0da9515122`，见 §4.2-4）。其中「`set_menus` 只存不显示」定性为**非缺陷**（Windows 同口径） |
 | P1 | **`App` 没有注册入口** → 三个应用菜单回调（action / will-open / validate）应用侧根本登记不了；Linux 旧 `set_tray` 又把菜单项自带的 `Action` 丢掉 | **已修复并验证**（`0da9515122`，见 §4.2-4）：`App` 补三个包装，Linux 记下「标识 → 动作」表并经 `app_menu_action` 派发，与 Windows 托盘菜单同口径 |
 | P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）、电源事件 + 休眠/息屏抑制（`4bc8c9c744`，见 §4.3）**；剩约 16 个**大多是「应用层调不到」的死接口**，分诊见 §4.3 + §4.8 |
-| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；`set_mouse_passthrough` + X11 `set_input_region` **已实现**（`223061c8bc`，见 §4.4）；其余（`map_window`、`render_to_image`、exclusive zone）待实现 |
+| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；`set_mouse_passthrough` + X11 `set_input_region` **已实现**（`223061c8bc`，见 §4.4）；`set_exclusive_zone` / `set_exclusive_edge` **已实现并本机验证**（`7d4ec3fdec`，见 §4.4）；其余（Wayland `map_window`、`render_to_image`）待实现 |
 | P1 | `WindowOptions.mouse_passthrough` 在 X11 被完全忽略 —— 桌面宠物类窗口只能靠 Wayland | **已修复**（`223061c8bc`）：X Shape 空输入区域，`ShapeGetRectangles` 回读 `INPUT[]`（0 rect）实测；Wayland 侧补 `set_mouse_passthrough`（仅编译验证） |
 | P1 | **`App` 完全没有包装平台能力方法** → 已实现的 `os_info` / 权限判定等应用层根本调不到 | **已修复并验证**（`e00ddd95aa`，见 §4.8）：权限收敛为 `check_permission`/`request_permission`，8 个能力接回 `App` |
 | P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | **已修复并 A/B 验证**（`4bb1e1b3a2`）：状态收回核心层，平台侧方法删除（见 §4.1 末） |
@@ -769,7 +770,7 @@ write_to_find_pasteboard
 | `get_title` | ✅ | ✅ | ✅ | **已实现**（`4f782cb1fa`）：优先 `_NET_WM_NAME`（UTF-8），回退 `WM_NAME`（STRING）。无头后端早就有（见下方备注） |
 | `set_mouse_passthrough` | ✅ | ✅ | ✅ | **已实现**（`223061c8bc`）：X11 走 Shape 输入区域，Wayland 走空 `wl_region`（见下方口径） |
 | `set_input_region` | ✅ | ✅ | ✅ | X11 已补齐（`223061c8bc`），Wayland 原本就有 |
-| `set_exclusive_zone` / `set_exclusive_edge` | ❌ | ❌ | ✅ | 层叠 shell 面板区域 |
+| `set_exclusive_zone` / `set_exclusive_edge` | ✅ | ✅ | ✅ | **已实现**（`7d4ec3fdec`）：X11 写 EWMH strut，Wayland 走 layer-shell 运行时请求（口径见下） |
 | `render_to_image` | ❌ | ❌ | ✅ | 截图/测试 |
 | `map_window` | ✅ | ❌ | ✅ | Wayland 缺失 |
 | `set_titlebar_visible` | ❌ | ❌ | — | X11 可用 MWM hints |
@@ -830,6 +831,63 @@ Wayland 侧本次**只有编译验证**（`cargo clippy -p rgpui-linux --no-defa
 另：`--no-default-features --features x11` 这一变体有 `PIPE_READ_TIMEOUT` /
 `read_fd_with_timeout` / portal `CursorTheme`/`CursorSize` 四条 dead-code 报错，
 **属改动前既有**（这些项只在 Wayland 路径被读），与穿透无关，CI 也不构建该组合。
+（`7d4ec3fdec` 之后该组合仍只有这四条 —— 独占区域没有引入新问题。）
+
+**独占区域的实现口径**（`7d4ec3fdec`，本机 mutter 实测）：
+
+两个后端共用「从指定屏幕边缘起，让出 `zone` 宽的一条区域（**含窗口自身**）」这一
+Wayland 口径（wlr layer-shell 明确写了 exclusive zone 包含表面几何），所以贴边面板
+直接传面板高度；`zone` 非正一律视为「不让出空间」。
+
+- **X11**：EWMH strut。`_NET_WM_STRUT_PARTIAL`（12 值：left、right、top、bottom、
+  四条边的 `*_start`/`*_end` 跨度）带跨度，多屏时只有窗口所在那块屏幕被切；
+  `_NET_WM_STRUT`（4 值）同步写，给只认老属性的 WM 兜底。条带宽度和跨度都是**物理像素**。
+  - 窗口必须**被 WM 接管**：override-redirect 的窗口 WM 根本不管，strut 无人执行 ——
+    所以 `WindowKind::LayerShell` 在 X11 上只做 DOCK 类型（`_NET_WM_WINDOW_TYPE_DOCK` +
+    `_NET_WM_STATE_ABOVE`），沿用 Overlay 的形态但不设 `override_redirect`；
+    mutter 会自动补 `SKIP_TASKBAR`/`SKIP_PAGER`/`STICKY`。
+  - strut 必须知道保留**哪条边**，Wayland 还能从锚点推断、X11 不能：所以
+    `set_exclusive_edge` 只接受单 bit 的 `Anchor`（多 bit 记 warn 并忽略），
+    边缘没确定前 `apply_strut` 直接返回，一个属性都不发。
+  - 跨度（`*_start`/`*_end`）的起点取 `TranslateCoordinates(窗口 → root)`，不用 configure
+    事件里的 `x`/`y` —— WM reparent 加装饰框架后那个值是相对父窗口的，按它算出来的跨度
+    会整体偏掉一个框架宽度（条带宽度本身按 `zone` 算，不受影响）。
+  - 每次 `ConfigureNotify`（`set_bounds`）都重算并覆写，否则窗口挪走后屏幕上留着过期的保留区。
+  - `zone <= 0` 走 `DeleteProperty` 把两个属性都删掉。
+- **Wayland**：`layer_surface.set_exclusive_zone` / `set_exclusive_edge` 两个运行时请求，
+  提交前判空 —— 非 layer-shell 窗口没有这个协议对象，跳过并记 debug；非法边缘交给合成器忽略。
+- **核心层**：`set_exclusive_edge` 的 cfg 从 `wayland` 放宽到 `any(wayland, x11)`（X11 也
+  需要它），`platform/layer_shell.rs` 与 `WindowKind::LayerShell` 从 `wayland` 放开到整个
+  `target_os = "linux"` —— 里面的类型全是纯数据，X11 现在也读它们。顺带补上
+  `rgpui-linux` 的 `x11` feature 对 `rgpui/x11` 的转发：**没转发时核心层的
+  `guess_compositor()` 读不到 `DISPLAY`**，X11-only 的构建会自己挑到 Headless 后端。
+- **调用点**：`examples/layer_shell`（顶部面板，锚 LEFT|RIGHT|TOP、离边 20、高 200，
+  运行时 `set_exclusive_edge(TOP)` + `set_exclusive_zone(px(220.))`）。它原先是
+  Wayland-only（`panic!` 退出），现在两个后端都跑同一段代码。
+
+**验证**（`DISPLAY=:10.0`，1364x768 单屏）：
+
+```
+基线                 _NET_WORKAREA = 74, 27, 1290, 741
+面板起来（zone=220）  _NET_WM_WINDOW_TYPE = _NET_WM_WINDOW_TYPE_DOCK
+                    _NET_WM_STRUT        = 0, 0, 220, 0
+                    _NET_WM_STRUT_PARTIAL= 0, 0, 220, 0, 0, 0, 0, 0, 2, 501, 0, 0
+                    窗口绝对位置 500x200+2+20 → top_start_x=2、top_end_x=501（闭区间序号）
+                    _NET_WORKAREA = 74, 220, 1290, 548      ← 让出顶部 220，mutter 照做
+面板关掉后            _NET_WORKAREA = 74, 27, 1290, 741      ← 恢复
+普通窗口（对照组）     _NET_WM_STRUT(_PARTIAL): not found     ← 没设边缘时一个属性都不发
+zone=0（同一窗口）    两个属性都不存在，_NET_WORKAREA 停在 27 —— DeleteProperty 生效
+```
+
+条带按「离屏幕边缘多远」算，不跟着窗口跑：X11 上如果 WM 不按请求位置摆放面板，
+让出的区域可能与面板本身不重合（示例请求 (0,20)，mutter 对 DOCK 就是照请求摆的，
+实测绝对位置 `+2+20`，那个 `+2` 是既有的创建期偏移 hack，不是 strut 的问题）。
+
+Wayland 侧本次同样**只有编译验证**（`cargo clippy -p rgpui-linux --no-default-features
+--features wayland --all-targets -- -D warnings` 干净），本机没有 Wayland 会话；
+两个请求与创建期用的是同一个 `ZwlrLayerSurfaceV1`，`set_exclusive_edge` 在创建路径上
+早已存在并能编译。数学口径另有 `cargo test -p rgpui-linux --lib strut` 四条单测兜住
+（跨度闭区间、非正 zone 撤销、多 bit 边缘被拒）。
 
 ### 4.5 [P2] workspace 构建在 Linux 上被 webview 示例阻塞
 
@@ -1115,6 +1173,20 @@ DISPLAY=:10.0 /tmp/xshape-target/debug/xshape 0x3000001 0x2a00001
 /tmp/xshape-target/debug/xshape mode=partial 0x3000001     # → INPUT[100x100+50+50]
 /tmp/xshape-target/debug/xshape mode=empty   0x3000001     # → INPUT[]
 
+# 验证独占区域（§4.4）：回读 strut 属性，再用 _NET_WORKAREA 的前后差证明 WM 真的让了位
+env -u WAYLAND_DISPLAY DISPLAY=:10.0 RUST_LOG=info /tmp/rgpui-target/debug/layer_shell &
+# 面板传的是 titlebar: None → 没有 WM_NAME，只能按 WM_CLASS 在 _NET_CLIENT_LIST 里找：
+for w in $(xprop -root _NET_CLIENT_LIST | sed 's/.*# //; s/,//g'); do
+  xprop -notype -id $w WM_CLASS 2>/dev/null | grep -q layer-shell-example && echo "$w"
+done
+xprop -notype -id <WID> _NET_WM_STRUT _NET_WM_STRUT_PARTIAL _NET_WM_WINDOW_TYPE
+xwininfo -id <WID> | grep -E 'Absolute|Width|Height'   # 跨度要对绝对位置算（闭区间序号）
+xprop -root _NET_WORKAREA                              # 起面板前 / 之后 / pkill 之后各读一次
+# 对照组：普通窗口的两个 strut 属性都是 not found（没定边缘时一个请求都不发）；
+# 撤销档（zone<=0）看 DeleteProperty 是否生效 —— 把示例里的 zone 临时改成 px(0.) 重跑，
+# 属性应消失且 _NET_WORKAREA 与基线一致
+cargo test -p rgpui-linux --lib strut                  # 条带/跨度/撤销/单边的数学口径
+
 # 验证权限查询（§4.2-3）：常规测试不跑，需要真实会话总线
 cargo test -p rgpui-linux -- --ignored --nocapture permissions
 # 负路径靠环境变量造
@@ -1194,7 +1266,10 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
 2. ~~**§4.4 补 X11 都缺的窗口方法**：`request_attention`、`get_title`~~ —— 已实现（`4f782cb1fa`）。
    ~~`set_mouse_passthrough`（X11 Shape / Wayland input region）与 X11 的 `set_input_region`~~ ——
    已实现并本机回读验证（`223061c8bc`，口径与证据见 §4.4）。
-   剩余：Wayland 的 `map_window`、`render_to_image`、`set_exclusive_zone`/`set_exclusive_edge`。
+   剩余：Wayland 的 `map_window`、`render_to_image`。
+   ~~`set_exclusive_zone` / `set_exclusive_edge`~~ —— 已实现（`7d4ec3fdec`）：X11 走 EWMH
+   strut（`WindowKind::LayerShell` → DOCK 窗口），Wayland 补运行时请求，
+   `layer_shell` 示例是两通用同一套代码的调用点；口径与本机证据见 §4.4 末。
 3. ~~**§4.1 末 / §4.3 的 `set_keep_alive_without_windows`**~~ —— 跨平台缺陷，已修（`4bb1e1b3a2`）：
    状态收回核心层并改掉 `app.rs` 的退出判据，`Platform` 侧方法与 Windows 的
    `AtomicBool` 一并删除。本机 A/B 验证见 §4.1 末。
