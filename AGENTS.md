@@ -81,6 +81,22 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 - `cargo hack check --each-feature` 可用；`scap` / `screen-capture` feature
   已知编译失败（`zed-scap` 与 `windows-capture` API 不兼容），不要启用。
 
+### Linux 端构建前置
+
+`examples/webview` 启用 `rgpui/webview` → `wry` → `webkit2gtk` → `gtk` → `glib-sys`，
+缺系统库时 `cargo check --workspace` 会卡在 `glib-sys` 的 build script
+（`The system library 'glib-2.0' ... was not found`），连带 CI 用的
+`cargo clippy --workspace --lib --bins` 一起失败。先装齐：
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
+```
+
+装不了（无授权/无网络）时，Linux 端的实际可验证范围是
+`cargo check/clippy -p rgpui-linux --all-targets -- -D warnings` + `cargo fmt -p rgpui-linux`，
+**这不能替代 `cargo check --workspace`**，跨 crate 影响要靠 CI 矩阵兜住。
+`x11rb` 是纯 Rust，不需要 `libx11-dev`。诊断日志用 `rgpui::init_logging()` + `RUST_LOG`。
+
 ## rgpui 独有功能（重构不得移除）
 
 ### 组件库索引

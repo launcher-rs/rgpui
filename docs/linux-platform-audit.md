@@ -45,14 +45,14 @@
 | P1 | Inspector（F12）在 Linux 是否可用 | **已验证可用**（见 §2.4） |
 | P2 | 窗口启动后 ~130 ms 纯黑，然后才出画面 | **已定位，未修**（见 §2.5） |
 | P1 | GL 后端在老 Mesa 上不可用（wgpu-hal 只认 `EGL_EXT_platform_xcb`） | 已定位，上游兼容问题（见 §3.4） |
-| P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | 待实现（见 §4.2） |
-| P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | 待分诊（见 §4.3） |
-| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | 待实现（见 §4.4） |
+| P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **通知、全局热键已改真实现并验证**（`4f782cb1fa`、`d5e4819376`，见 §4.2）；权限、应用菜单待实现 |
+| P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **`os_info` / `system_idle_time` 已实现**（`d6f6a4c598`）；其余待分诊（见 §4.3） |
+| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；其余待实现 |
 | P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | 待实现（见 §4.1 末） |
 | P2 | `cargo check --workspace` 被 webview 示例阻塞（缺 glib/gtk/webkit 系统库） | 待处理（见 §4.5） |
-| P2 | rgpui 无日志初始化入口，wgpu/GPU 诊断信息全部丢失 | 待处理（见 §4.6） |
+| P2 | rgpui 无日志初始化入口，wgpu/GPU 诊断信息全部丢失 | **已实现**（`rgpui::init_logging()`，`3fcaa73c98`，见 §4.6） |
 | P3 | Inspector 面板显示「帧率 0.0 FPS · 0.0 ms」 | 待查（见 §2.4） |
-| P3 | X11 窗口没有 `WM_NAME`，`wmctrl -l` 显示 `N/A` | 待查（见 §2.4） |
+| P3 | X11 窗口没有 `WM_NAME`，`wmctrl -l` 显示 `N/A` | **非平台缺陷**：`set_title` 一直会写 `WM_NAME`/`_NET_WM_NAME`，是示例没传标题（见 §2.4） |
 | — | 仓库路径含 `C:` 导致 cargo 构建失败；RDP 共享盘 I/O 极慢 | 环境问题 |
 
 ---
@@ -502,6 +502,12 @@ pub fn show_notification(&self, title: &str, body: &str, _icon: Option<&str>) ->
 }
 ```
 
+> **已修复**（`4f782cb1fa`）：改走 XDG 门户 `org.freedesktop.portal.Notification`
+> （复用已在依赖里的 `ashpd`，未新增 crate），图标名经 `Icon::with_names` 传入，
+> `pollster::block_on` 在主线程安全（zbus 的 async-io 后端自带执行器线程）。
+> 无头构建（既非 x11 也非 wayland）直接 `bail!`，不再假装成功。
+> 验证：本机 portal 实测收到通知；`RUST_LOG=debug` 可见调用过程（见 §4.6）。
+
 **2) 全局热键** — `crates/rgpui-linux/src/linux/global_hotkey.rs:31-45`
 
 ```rust
@@ -516,6 +522,26 @@ pub fn register(&mut self, id: i32, keystroke: &Keystroke) -> Result<()> {
 （`crates/rgpui/src/platform.rs:512`）在 Linux 上根本没覆盖 → **注册返回 Ok，按键永远无反应**。
 `platform.rs:716-724` 的 `register_global_hotkey` / `unregister_global_hotkey` 因此是空转。
 
+> **已修复**（`d5e4819376`）：该假实现文件删除，改由 `LinuxClient` trait 承担 ——
+> X11 后端用**根窗口 `GrabKey`** 真正注册，并覆盖 `on_global_hotkey` 完成派发：
+>
+> - 注册时先在根窗口订阅 `KeyPress`（`GrabKey` 只登记被动抓取，抓取激活后产生的事件
+>   仍按抓取窗口自身的事件掩码过滤，根窗口默认没订阅 → 不补就永远收不到）；
+> - **锁定键组合必须一起抓**：`GrabKey` 的修饰键掩码是精确匹配，事件里多出的
+>   CapsLock（`0x02`）/ NumLock（`0x10`）/ ScrollLock（`0x80`）任一位都会让匹配失败，
+>   所以除基础组合外再抓这 3 位的全部 7 种非空叠加组合；查表前把锁定键位剥掉。
+>   锁定组合被抓其它应用占用只降级为 `debug` 日志，基础组合失败才如实报「已被其它应用占用」；
+> - 按键名反查键码复用 `keystroke_from_xkb`（同一份 keymap 反扫 8..=255），
+>   保证注册侧与事件侧命名口径一致；
+> - 根窗口的按键有两种：抓取命中的热键与普通透传按键，后者必须丢弃，否则会当成焦点窗口的
+>   按键重复派发一次；
+> - Wayland / 无头后端用 `LinuxClient` 默认实现返回「不支持」错误而非静默 `Ok`，
+>   该契约由 `headless::client::tests::headless_backend_rejects_global_hotkey` 固定。
+>
+> 验证：`daemon_app`（`cmd-shift-k`，id=1）+ `xdotool key --clearmodifiers super+shift+k`
+> → 回调打印一次；`xset numlock on` / `capslock on` 后仍触发；未注册的
+> `super+alt+shift+k` 不触发。
+
 **3) 权限查询** — `crates/rgpui-linux/src/linux/permissions.rs`
 
 - `:24-27` Accessibility **恒返回 `Granted`**（实际 AT-SPI 由 `atspi` 控制，可用 portal/AT-SPI 判断）
@@ -528,49 +554,53 @@ pub fn register(&mut self, id: i32, keystroke: &Keystroke) -> Result<()> {
   把回调存进 `common.callbacks` 后，**全仓库没有任何地方调用它们**
 - `set_dock_menu` 就一行 `// todo(linux)`
 
-### 4.3 [P1] 约 24 个 `Platform` 方法在 Linux 上是静默 no-op
+### 4.3 [P1] 约 21 个 `Platform` 方法在 Linux 上是静默 no-op
 
 对比 `crates/rgpui/src/platform.rs`（有默认空实现）与 `crates/rgpui-linux/src/linux/platform.rs`，
-Linux 缺失（**tray 8 件套已随 §4.1 移出此列表**）：
+Linux 缺失（**tray 8 件套已随 §4.1 移出；`os_info`、`system_idle_time`（`d6f6a4c598`）与
+`on_global_hotkey`（`d5e4819376`）已实现并移出此列表**）：
 
 ```
 authenticate_biometric        biometric_status         cancel_user_attention
 id                            microphone_status        network_status
-on_global_hotkey              on_media_key_event       on_network_status_change
-on_system_power_event         os_info                  perform_dock_menu_action
-read_from_find_pasteboard     request_microphone_permission
-request_user_attention        set_dock_badge           set_keep_alive_without_windows
-show_context_menu             show_dialog              start_power_save_blocker
-stop_power_save_blocker       system_idle_time         update_jump_list
+on_media_key_event            on_network_status_change
+on_system_power_event         perform_dock_menu_action read_from_find_pasteboard
+request_microphone_permission request_user_attention   set_dock_badge
+set_keep_alive_without_windows show_context_menu       show_dialog
+start_power_save_blocker      stop_power_save_blocker  update_jump_list
 write_to_find_pasteboard
 ```
 
 其中**核心层确实会调用**的（其余为 macOS/Windows 专属或仅面向应用层）：
 
 ```
-set_keep_alive_without_windows、on_global_hotkey、
+set_keep_alive_without_windows、
 read/write_from_find_pasteboard、update_jump_list、perform_dock_menu_action
 ```
 
 **分诊建议**：
 
-- 必须实现：`on_global_hotkey`（+ `global_hotkey.rs` 真正注册）、`set_keep_alive_without_windows`
-  （注意这是 §4.1 末所述的**跨平台**缺陷，改 Linux 一处不够）
-- 可用 Linux 等价物实现：`network_status`（portal / `NetworkManager`）、`system_idle_time`
-  （`org.freedesktop.ScreenSaver`）、`on_system_power_event`（`login1`，`platform.rs:196` 已有
-  `PrepareForSleep` 监听可复用）、`microphone_status`（portal）、`request_user_attention`
-  （X11 `_NET_WM_STATE_DEMANDS_ATTENTION`）
+- 必须实现：`set_keep_alive_without_windows`（注意这是 §4.1 末所述的**跨平台**缺陷，
+  改 Linux 一处不够）
+- 可用 Linux 等价物实现：`network_status` / `on_network_status_change`（portal `NetworkMonitor`）、
+  `on_system_power_event`（`login1`，`platform.rs` 已有 `PrepareForSleep` 监听可复用）、
+  `microphone_status` / `request_microphone_permission`（portal）、
+  `start/stop_power_save_blocker`（`Inhibit` 或 portal）
+- 已实现：`on_global_hotkey`（§4.2-2）、`os_info`、`system_idle_time`（`/proc` + X11 screen saver）
 - 平台语义上不需要，保持默认即可：`set_dock_badge`、`update_jump_list`、
-  `perform_dock_menu_action`、`read/write_from_find_pasteboard`、`biometric_status`
-- 需要决定是否返回「不支持」而非静默成功：`show_dialog`、`show_context_menu`、`os_info`
+  `perform_dock_menu_action`、`read/write_from_find_pasteboard`、`biometric_status`、
+  `authenticate_biometric`、`request_user_attention` / `cancel_user_attention`
+  （窗口级提醒已由 `PlatformWindow::request_attention` 承担，见 §4.4）
+- 需要决定是否返回「不支持」而非静默成功：`show_dialog`、`show_context_menu`、
+  `on_media_key_event`
 
 ### 4.4 [P1] 窗口层（`PlatformWindow`）方法缺失
 
 | 方法 | X11 | Wayland | 核心层是否调用 | 说明 |
 |------|:---:|:-------:|:---:|------|
 | `activate` | ⚠️ | ✅ | ✅ | **X11 已修**（§2.3：先 map 再 `_NET_ACTIVE_WINDOW`）；Wayland 用 xdg-activation token |
-| `request_attention` | ❌ | ❌ | ✅ | 任务栏提醒，X11 可用原子实现 |
-| `get_title` | ❌ | ❌ | ✅ | 标题读取；与 §2.4 的「窗口无 `WM_NAME`」同源 |
+| `request_attention` | ✅ | ❌ | ✅ | **X11 已实现**（`4f782cb1fa`）：写 ICCCM `WM_HINTS` urgency 位。Wayland 侧没有「客户端请求提醒」的协议入口，要做得靠 portal `org.freedesktop.portal.Notify` 之类的通知替代 |
+| `get_title` | ✅ | ✅ | ✅ | **已实现**（`4f782cb1fa`）：优先 `_NET_WM_NAME`（UTF-8），回退 `WM_NAME`（STRING）。无头后端早就有（见下方备注） |
 | `set_mouse_passthrough` | ❌ | ❌ | ✅ | X11 可用 Shape 扩展 |
 | `set_input_region` | ❌ | ✅ | ✅ | X11 缺失，Wayland 已实现 |
 | `set_exclusive_zone` / `set_exclusive_edge` | ❌ | ❌ | ✅ | 层叠 shell 面板区域 |
@@ -582,7 +612,18 @@ read/write_from_find_pasteboard、update_jump_list、perform_dock_menu_action
 | `set_edited` / `set_document_path` / `set_traffic_light_position` / tab 系列 / `show_character_palette` / `titlebar_double_click` / `window_controls` | ❌ | ❌ | ✅ | **macOS/Windows 专属**，有 trait 默认实现，属正常 |
 | `supports_dom` / `dom_tree_update` / `on_dom_event` / `on_dom_scroll` | ❌ | ❌ | ✅ | 仅 `rgpui-web` 实现（`crates/rgpui-web/src/window.rs:746`），Linux 不需要 |
 
-> `headless/window.rs:174` 有 `get_title`，X11/Wayland 反而没有 —— 实现分布不一致。
+> ~~`headless/window.rs:174` 有 `get_title`，X11/Wayland 反而没有 —— 实现分布不一致。~~
+> 已补齐（`4f782cb1fa`），三个后端都有 `get_title`。
+
+**`request_attention` 的 X11 实现口径**（本机 mutter 实测，照此实现否则不生效）：
+
+- 客户端**自发** `_NET_WM_STATE` 客户端消息请求 `_NET_WM_STATE_DEMANDS_ATTENTION` 无效 ——
+  该状态是「WM 设置、客户端只读」，mutter 直接忽略，`xprop` 里始终不出现该原子；
+- 正规入口是 ICCCM 的 `WM_HINTS` urgency 位（`WmHints::new()` + `urgency_hint = Some(true)`，
+  同时保留 `input` / `initial_state`，别把已有字段清空），行为与
+  `xdotool set_window --urgency 1` 一致：`xprop` 出现 `WmHints(... urgency ...)`，
+  即 "The urgency hint bit is set"；
+- 提醒是**一次性**的：WM 在窗口被激活后自行清位，因此不需要 `cancel_user_attention` 的实现。
 
 ### 4.5 [P2] workspace 构建在 Linux 上被 webview 示例阻塞
 
@@ -612,14 +653,32 @@ OK      xkbcommon                                        （x11rb 为纯 Rust，
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 ```
 
-### 4.6 [P2] rgpui 没有日志初始化入口
+### 4.6 [P2] rgpui 没有日志初始化入口 —— **已修复**（`3fcaa73c98`）
 
-全仓库只有 `crates/rgpui-web/src/logging.rs:37` 有 `log::set_logger`。
+~~全仓库只有 `crates/rgpui-web/src/logging.rs:37` 有 `log::set_logger`。~~
 `rgpui-wgpu` / `rgpui-linux` 里大量 `log::info!/debug!`（GPU 适配器选择、X11 初始化、
 portal 调用）**在原生平台上一条都看不到** —— 这次排障被迫临时给示例加 `env_logger` 才拿到关键日志。
 §3.4 的 GL 降级失效、§2.5 的黑屏定位都因此变难。
 
-建议提供 `rgpui::init_logger()` 之类的公开入口，或在示例模板中统一接入。
+> **已实现**：`rgpui::init_logging()`（`crates/rgpui/src/logging.rs:137`，核心层无新增依赖 ——
+> 直接用 `std` 写 stderr，不引入 `env_logger`）。
+>
+> - 级别取自 `RUST_LOG`，支持 `info` 与 `warn,rgpui_wgpu=debug` 这类按 crate 放开的写法；
+>   未设置时只输出 `error`，不给正常运行刷屏；
+> - **可重复调用**（后续调用被忽略），所以放在 `main` 第一行是安全的；
+> - 已有输出器时不抢它的级别设置 —— `rgpui-web` 的 `set_logger` 仍优先，Web 侧行为不变。
+>
+> 用法（示例已在 `main` 开头接入，如 `examples/hello_world/src/main.rs:113`、
+> `examples/tray/src/main.rs`）：
+>
+> ```rust
+> fn main() {
+>     rgpui::init_logging();
+>     rgpui_platform::application().run(|cx| { ... });
+> }
+> ```
+>
+> 排障时用 `RUST_LOG=debug` 运行即可看到 §3.4 的后端选择、§4.2 的 portal/GrabKey 调用过程。
 
 ---
 
@@ -661,7 +720,7 @@ portal 调用）**在原生平台上一条都看不到** —— 这次排障被�
 # 检查某个示例解析出的后端 feature（修复前是 []）
 cargo tree -p hello_world -f "{p} [{f}]" --target-dir /tmp/rgpui-target | grep rgpui-linux
 
-# 打开日志看 GPU 适配器探测（需示例临时接入 env_logger，见 §4.6）
+# 打开日志看 GPU 适配器探测（示例已调 rgpui::init_logging()，见 §4.6）
 RUST_LOG=info,wgpu_hal=debug ./hello_world
 
 # 确认窗口真的创建了（不是只看进程活着）
@@ -701,6 +760,20 @@ xwd -id <WID> -out /tmp/w.xwd
 # 黑屏/首帧时序量化（§2.5）：轮询 _NET_CLIENT_LIST 找新窗口 → xwininfo → xwd 统计黑色占比
 python3 /tmp/blackprobe4.py /tmp/rgpui-target-release/release/tray
 
+# 验证全局热键（§4.2-2）：注入按键并观察回调日志
+RUST_LOG=info ./daemon_app &
+xdotool key --clearmodifiers super+shift+k        # --clearmodifiers 避免 xdotool 自己带 modifiers
+# 锁定键必须单独测（GrabKey 掩码精确匹配，这是最容易漏的一类）
+xdotool key Num_Lock && xset q | grep -i numlock   # xset numlock on 在本机不可用
+xdotool key Caps_Lock
+# 反证：未注册的组合不应触发
+xdotool key --clearmodifiers super+alt+shift+k
+# 按键是否真到了服务器（xev 在根窗口上抓不到事件，别用它）
+xinput test-xi2 --root | grep -A2 KeyPress
+
+# 验证 urgency 提醒（§4.4）：客户端自发 _NET_WM_STATE 无效，要看 WM_HINTS
+xprop -id <WID> WM_HINTS      # 应出现 "The urgency hint bit is set"
+
 # 进程清理：用精确名，别用 -f 匹配路径（会杀掉自己所在的 shell，exit 143）
 pkill -x tray ; pkill -x inspector
 
@@ -720,24 +793,28 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
 
 ## 七、后续建议顺序
 
-渲染与 tray 两条主线已收口，剩下按「用户能感知 → 只有开发者感知」排序：
+渲染、tray、以及 §4.2/§4.4/§4.6 的一批缺陷已收口，剩下按「用户能感知 → 只有开发者感知」排序：
 
-1. **§4.2 三处假实现改成真实现**，或至少改成返回明确的「不支持」错误
-   —— 这是当前唯一「应用以为成功了、实际什么都没发生」的一类，最容易埋坑。
-   优先全局热键（`global_hotkey.rs` 真正注册 + 覆盖 `on_global_hotkey`）与通知（notify / portal）。
-2. **§4.4 补 X11 都缺的窗口方法**：`request_attention`、`get_title`（顺带解决 §2.4 的
-   窗口无 `WM_NAME`）、`set_mouse_passthrough`、X11 的 `set_input_region`、Wayland 的 `map_window`。
+1. ~~**§4.2 三处假实现改成真实现**~~ —— 通知（`4f782cb1fa`）与全局热键（`d5e4819376`）已改真实现
+   并本机验证；**仅剩权限查询（§4.2-3）**：Accessibility 恒 `Granted`、
+   ScreenCapture 恒 `NotDetermined`，且 `on_global_hotkey` 一类「静默成功」已改成如实报错。
+2. ~~**§4.4 补 X11 都缺的窗口方法**：`request_attention`、`get_title`~~ —— 已实现（`4f782cb1fa`）。
+   剩余：`set_mouse_passthrough`（X11 Shape / Wayland input region）、X11 的 `set_input_region`、
+   Wayland 的 `map_window`、`render_to_image`、`set_exclusive_zone`/`set_exclusive_edge`。
 3. **§4.1 末 / §4.3 的 `set_keep_alive_without_windows`** —— 跨平台缺陷，
    需要同时改 `app.rs:1802-1810` 的退出判据，不能只动 Linux。
 4. **§2.5 启动黑屏（b）** —— 按轻量方案给 `win_aux` 补 `background_pixel`；
    彻底方案（推迟 `map_window` 到首帧 present）**单独评估**，因为是全平台路径。
    当前用户指示：先不做。
-5. **§4.6 日志入口** —— 成本很低、后续所有 Linux 排障都依赖它，建议早做。
-6. **§2.4 的两个 P3** —— Inspector 的 FPS 恒 0（面板可信度问题）、窗口标题缺失。
+5. ~~**§4.6 日志入口**~~ —— 已提供 `rgpui::init_logging()`（`3fcaa73c98`），
+   示例与排障命令均已用上（见 §六）。
+6. **§2.4 的两个 P3** —— Inspector 的 FPS 恒 0（面板可信度问题）、示例未传窗口标题
+   （平台侧 `set_title`/`WM_NAME` 已确认正常，见 §2.4）。
 7. **§4.5 文档补 Linux 构建前置包**，并把 AGENTS.md 的「提交前 `cargo check --workspace`」
    在 Linux 端的实际可行范围写清楚（当前只能到 `-p rgpui-linux`）。
-8. **§4.3 分诊表**里「可用 Linux 等价物实现」的 `network_status` / `system_idle_time` /
-   `on_system_power_event` / `microphone_status` / `request_user_attention`。
+8. **§4.3 分诊表**里「可用 Linux 等价物实现」的 `network_status` /
+   `on_system_power_event` / `microphone_status`；
+   （`system_idle_time`、`os_info` 已随 `d6f6a4c598` 完成，窗口级提醒见 §4.4）
 9. **§3.4** 记录 wgpu-hal / 老 Mesa 兼容问题（已降为 P3），评估是否向上游提 issue。
 10. **Wayland 会话复测** —— 不再是渲染验证的阻塞项，但用于覆盖 Wayland 专属分支
     （§2.3 的 `hide`/`activate` 语义、§4.4 缺失的 `map_window`）仍有独立价值。
