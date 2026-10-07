@@ -37,6 +37,7 @@
 | `0da9515122` | `feat(linux)`：`App` 补三个应用菜单回调注册入口 + Linux 旧 `set_tray` 菜单动作经 `app_menu_action` 派发 |
 | `4bc8c9c744` | `feat(linux)`：电源事件（`PrepareForSleep` 两分支）+ 休眠/息屏抑制（login1 `Inhibit`）接回 `App`，阻止器改成 `Drop` 即释放的句柄 |
 | `7d4ec3fdec` | `feat(linux)`：独占区域 —— X11 写 EWMH strut（`WindowKind::LayerShell` → DOCK 窗口），Wayland 补 layer-shell 运行时请求 |
+| `a05578a672` | `feat(linux)`：`set_titlebar_visible` —— X11 写 Motif `_MOTIF_WM_HINTS` 装饰位，核心层补 `Window` 包装（Windows 那份实现此前无人可调） |
 
 最需要记住的一句话（未变）：
 
@@ -64,7 +65,7 @@
 | P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **§4.2 已全部收口**：通知（`4f782cb1fa`）、全局热键（`d5e4819376`）、权限查询（`7fa8b7bf47`）、应用菜单（`0da9515122`，见 §4.2-4）。其中「`set_menus` 只存不显示」定性为**非缺陷**（Windows 同口径） |
 | P1 | **`App` 没有注册入口** → 三个应用菜单回调（action / will-open / validate）应用侧根本登记不了；Linux 旧 `set_tray` 又把菜单项自带的 `Action` 丢掉 | **已修复并验证**（`0da9515122`，见 §4.2-4）：`App` 补三个包装，Linux 记下「标识 → 动作」表并经 `app_menu_action` 派发，与 Windows 托盘菜单同口径 |
 | P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）、电源事件 + 休眠/息屏抑制（`4bc8c9c744`，见 §4.3）**；剩约 16 个**大多是「应用层调不到」的死接口**，分诊见 §4.3 + §4.8 |
-| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；`set_mouse_passthrough` + X11 `set_input_region` **已实现**（`223061c8bc`，见 §4.4）；`set_exclusive_zone` / `set_exclusive_edge` **已实现并本机验证**（`7d4ec3fdec`，见 §4.4）；其余（Wayland `map_window`、`render_to_image`）待实现 |
+| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；`set_mouse_passthrough` + X11 `set_input_region` **已实现**（`223061c8bc`，见 §4.4）；`set_exclusive_zone` / `set_exclusive_edge` **已实现并本机验证**（`7d4ec3fdec`，见 §4.4）；`set_titlebar_visible` **X11 已实现并本机验证**（`a05578a672`，见 §4.4）；其余（Wayland `map_window`、`render_to_image`）待实现 |
 | P1 | `WindowOptions.mouse_passthrough` 在 X11 被完全忽略 —— 桌面宠物类窗口只能靠 Wayland | **已修复**（`223061c8bc`）：X Shape 空输入区域，`ShapeGetRectangles` 回读 `INPUT[]`（0 rect）实测；Wayland 侧补 `set_mouse_passthrough`（仅编译验证） |
 | P1 | **`App` 完全没有包装平台能力方法** → 已实现的 `os_info` / 权限判定等应用层根本调不到 | **已修复并验证**（`e00ddd95aa`，见 §4.8）：权限收敛为 `check_permission`/`request_permission`，8 个能力接回 `App` |
 | P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | **已修复并 A/B 验证**（`4bb1e1b3a2`）：状态收回核心层，平台侧方法删除（见 §4.1 末） |
@@ -773,9 +774,9 @@ write_to_find_pasteboard
 | `set_exclusive_zone` / `set_exclusive_edge` | ✅ | ✅ | ✅ | **已实现**（`7d4ec3fdec`）：X11 写 EWMH strut，Wayland 走 layer-shell 运行时请求（口径见下） |
 | `render_to_image` | ❌ | ❌ | ✅ | 截图/测试 |
 | `map_window` | ✅ | ❌ | ✅ | Wayland 缺失 |
-| `set_titlebar_visible` | ❌ | ❌ | — | X11 可用 MWM hints |
+| `set_titlebar_visible` | ✅ | ❌ | ✅ | **X11 已实现并本机验证**（`a05578a672`）：Motif `_MOTIF_WM_HINTS` 装饰位清零（口径见下）；Wayland 无对应协议，核心层此前没有 `Window` 包装 |
 | `window_extended_style` / `set_window_extended_style` | ❌ | ❌ | — | Windows 专属语义 |
-| `get_raw_handle` | ❌ | ❌ | — | 需决定 Linux 上的返回形态 |
+| `get_raw_handle` | — | — | — | 不是缺口：核心层这个方法本身挂 `#[cfg(target_os = "windows")]`（`platform.rs:1356`，返回 `HWND`），Linux 上根本不存在这个方法 |
 | `set_edited` / `set_document_path` / `set_traffic_light_position` / tab 系列 / `show_character_palette` / `titlebar_double_click` / `window_controls` | ❌ | ❌ | ✅ | **macOS/Windows 专属**，有 trait 默认实现，属正常 |
 | `supports_dom` / `dom_tree_update` / `on_dom_event` / `on_dom_scroll` | ❌ | ❌ | ✅ | 仅 `rgpui-web` 实现（`crates/rgpui-web/src/window.rs:746`），Linux 不需要 |
 
@@ -888,6 +889,42 @@ Wayland 侧本次同样**只有编译验证**（`cargo clippy -p rgpui-linux --n
 两个请求与创建期用的是同一个 `ZwlrLayerSurfaceV1`，`set_exclusive_edge` 在创建路径上
 早已存在并能编译。数学口径另有 `cargo test -p rgpui-linux --lib strut` 四条单测兜住
 （跨度闭区间、非正 zone 撤销、多 bit 边缘被拒）。
+
+**标题栏可见性的实现口径**（`a05578a672`，本机 mutter 实测）：
+
+`PlatformWindow::set_titlebar_visible` 在 Windows 上早就有实现，但**核心层没有 `Window`
+包装**，属于「实现了调不到」（与 §4.8 记的 `os_info` 同一类）；X11/Wayland 则是完全没有。
+本次补齐核心层包装 + X11 实现，`window_showcase` 的 `window` 示例加切换按钮作调用点。
+
+- **X11**：Motif `_MOTIF_WM_HINTS`（5 个值：hints、functions、decorations、input_mode、
+  status）。装饰模式（Server/Client）与标题栏可见性写的是**同一个属性**，所以两者都经
+  `apply_motif_hints` 从状态重新合成，谁后写都不会把谁覆盖掉；写失败时把状态回滚，
+  不留「状态说隐藏、属性还是原样」的假象。写完 `xcb_flush`，运行时改装饰靠属性变更通知
+  驱动 WM 重新摆框。
+- **隐藏 = 清零整个 decorations 字段，不是只摘 `MWM_DECOR_TITLE`**。Motif 规范允许按位
+  保留（边框、缩放把手、菜单/最小化/最大化），但 mutter 只判断该字段是否为 0，个别位它
+  不理 —— 实测把 bits 写成 `0x76`（全项去掉标题）窗口位置纹丝不动，写成 `0x0` 框架当场
+  消失。清零的语义还与 Windows 对齐（Windows 隐藏时切 `WS_POPUP`，连 `WS_THICKFRAME`
+  一起去掉）。
+- **客户端装饰下这个请求没有可改的东西**：服务端本来就不画标题栏（`decorations` 一直是 0），
+  标题栏是 `TitleBar` 元素画的，要隐藏得在 UI 层做。
+- **Wayland**：没有对应协议，走 trait 默认空操作（macOS 同样未实现）。
+
+**验证**（`DISPLAY=:10.0`，同一个 420x280 窗口，服务端装饰）：
+
+```
+映射后              _MOTIF_WM_HINTS = 0x2, 0x0, 0x1, 0x0, 0x0   窗口绝对 Y=64
+set_titlebar_visible(false)  _MOTIF_WM_HINTS = 0x2, 0x0, 0x0, 0x0, 0x0   绝对 Y=27
+set_titlebar_visible(true)   _MOTIF_WM_HINTS = 0x2, 0x0, 0x1, 0x0, 0x0   绝对 Y=64
+再次 false           0x0 / 绝对 Y=27                             ← 可逆，无需重新映射
+（对照）只摘标题位    _MOTIF_WM_HINTS = 0x2, 0x0, 0x76, 0x0, 0x0   绝对 Y 不变 ← mutter 不理
+```
+
+`_NET_FRAME_EXTENTS` 全程停在 `0, 0, 37, 0` —— mutter 改了框架但不更新这个属性，
+**别拿它当判据**，看窗口绝对 Y 是否挪了一个标题栏高度（这里 37 px）。
+数学口径由 `cargo test -p rgpui-linux --lib motif` 三条单测兜住（可见时与改动前逐字节一致、
+隐藏时装饰位清零、CSD 下两种可见性都是 0）；示例按钮那条路径由 `cargo check -p window_showcase`
+覆盖，运行时切换是临时探针（同一个 `Window::set_titlebar_visible`）驱动的，探针用完即删。
 
 ### 4.5 [P2] workspace 构建在 Linux 上被 webview 示例阻塞
 
@@ -1187,6 +1224,17 @@ xprop -root _NET_WORKAREA                              # 起面板前 / 之后 /
 # 属性应消失且 _NET_WORKAREA 与基线一致
 cargo test -p rgpui-linux --lib strut                  # 条带/跨度/撤销/单边的数学口径
 
+# 验证标题栏可见性（§4.4）：回读 Motif 装饰位 + 看窗口绝对 Y 是否挪了一个标题栏高度
+env -u WAYLAND_DISPLAY DISPLAY=:10.0 /home/abc/rgpui-target/debug/window  &   # 点 "Hide Titlebar"
+xprop -notype -id <WID> _MOTIF_WM_HINTS _NET_FRAME_EXTENTS
+xwininfo -id <WID> -frame | grep 'Absolute upper-left Y'
+# 判据是**绝对 Y**，不是 _NET_FRAME_EXTENTS —— mutter 拆了框架但不更新那个属性（恒 0,0,37,0）；
+# 装饰位 0x1（ALL）↔ 0x0 时 Y 在 64/27 之间来回，0x76（只摘标题位）时 Y 不动
+# 按钮要点鼠标，本机没有截图/坐标定位手段（import/maim 都没装），运行时切换用一次性探针 bin
+# （window_showcase/src/bin/tmp_*.rs，定时器驱动，验完删）。两个坑：
+#   1) window.spawn(..) 返回的 Task **丢掉就被取消** —— 必须 .detach()，否则探针静默不执行；
+#   2) /tmp 会被清（本次 /tmp/rgpui-target 就没了），target-dir 换到 /home/abc/rgpui-target
+
 # 验证权限查询（§4.2-3）：常规测试不跑，需要真实会话总线
 cargo test -p rgpui-linux -- --ignored --nocapture permissions
 # 负路径靠环境变量造
@@ -1270,6 +1318,10 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
    ~~`set_exclusive_zone` / `set_exclusive_edge`~~ —— 已实现（`7d4ec3fdec`）：X11 走 EWMH
    strut（`WindowKind::LayerShell` → DOCK 窗口），Wayland 补运行时请求，
    `layer_shell` 示例是两通用同一套代码的调用点；口径与本机证据见 §4.4 末。
+   ~~`set_titlebar_visible`~~ —— X11 已实现并本机验证（`a05578a672`）：Motif 装饰位清零，
+   顺带补上核心层缺失的 `Window` 包装（Windows 那份实现此前无人可调）；
+   Wayland 无对应协议，如实留空。§4.4 里 `get_raw_handle` 一行也已更正 ——
+   该方法在核心层就挂着 `#[cfg(target_os = "windows")]`，Linux 上不存在，不是缺口。
 3. ~~**§4.1 末 / §4.3 的 `set_keep_alive_without_windows`**~~ —— 跨平台缺陷，已修（`4bb1e1b3a2`）：
    状态收回核心层并改掉 `app.rs` 的退出判据，`Platform` 侧方法与 Windows 的
    `AtomicBool` 一并删除。本机 A/B 验证见 §4.1 末。
