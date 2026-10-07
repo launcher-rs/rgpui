@@ -900,25 +900,29 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         self.notifications.show_notification(title, body, None)
     }
 
+    /// 返回操作系统名称/版本与发行版标识
     fn os_info(&self) -> OsInfo {
         crate::linux::system_info::os_info()
     }
 
+    /// 返回系统空闲时长：X11 走 screen saver 信息，Wayland 依次探 ScreenSaver 与 Mutter IdleMonitor
     fn system_idle_time(&self) -> Option<Duration> {
         crate::linux::system_info::system_idle_time()
     }
 
+    /// 返回网络状态：门户 `NetworkMonitor` 优先，取不到时回落到 `/sys/class/net`
     fn network_status(&self) -> NetworkStatus {
         crate::linux::system_info::network_status()
     }
 
-    fn accessibility_status(&self) -> PermissionStatus {
-        self.permissions
-            .query_permission(PermissionType::Accessibility)
+    /// 查询权限状态：辅助功能实测 AT-SPI 栈，屏幕录制/输入监控按显示服务器与门户能力判定
+    fn check_permission(&self, kind: PermissionType) -> PermissionStatus {
+        self.permissions.query_permission(kind)
     }
 
-    fn request_accessibility_permission(&self) {
-        LinuxPermissions::request_permission(PermissionType::Accessibility);
+    /// 请求权限：Linux 没有系统授权弹窗，改为输出当前会话下可操作的引导
+    fn request_permission(&self, kind: PermissionType) {
+        LinuxPermissions::request_permission(kind);
     }
 
     fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {

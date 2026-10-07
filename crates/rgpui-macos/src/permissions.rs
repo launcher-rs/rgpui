@@ -54,7 +54,7 @@ impl MacPermissions {
         }
 
         #[cfg(not(target_os = "macos"))]
-        PermissionStatus::Unknown
+        PermissionStatus::Unavailable
     }
 
     /// 检查输入监控权限

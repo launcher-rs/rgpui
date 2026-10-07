@@ -820,13 +820,13 @@ impl Platform for WindowsPlatform {
         crate::get_focused_window_info()
     }
 
-    /// 获取辅助功能权限状态（Windows 默认授予）
-    fn accessibility_status(&self) -> PermissionStatus {
+    /// 获取权限状态（Windows 没有按应用的这类授权模型，一律视为已授予）
+    fn check_permission(&self, _kind: PermissionType) -> PermissionStatus {
         PermissionStatus::Granted
     }
 
-    /// 请求辅助功能权限（Windows 无需请求）
-    fn request_accessibility_permission(&self) {}
+    /// 请求权限（Windows 无对应弹窗，无需请求）
+    fn request_permission(&self, _kind: PermissionType) {}
 
     /// 获取麦克风权限状态（Windows 默认授予）
     fn microphone_status(&self) -> PermissionStatus {

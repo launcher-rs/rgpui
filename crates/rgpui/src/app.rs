@@ -49,9 +49,10 @@ use crate::InspectorElementRegistry;
 use crate::{
     Action, ActionBuildError, ActionRegistry, Any, AnyView, AnyWindowHandle, AppContext, Arena,
     ArenaBox, Asset, AssetSource, BackgroundExecutor, Bounds, ClipboardItem, CursorStyle,
-    DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, ForegroundExecutor, Global,
-    KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu, MenuItem, OwnedMenu,
-    PathPromptOptions, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
+    DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, FocusedWindowInfo,
+    ForegroundExecutor, Global, KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu,
+    MenuItem, NetworkStatus, OsInfo, OwnedMenu, PathPromptOptions, PermissionStatus,
+    PermissionType, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
     PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton, PromptHandle,
     PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation, ScreenCaptureSource,
     SharedString, SubscriberSet, Subscription, SvgRenderer, Task, TextRenderingMode, TextSystem,
@@ -2546,6 +2547,49 @@ impl App {
     /// 交给平台保存只会变成一个没人读的标志。
     pub fn set_keep_alive_without_windows(&self, keep_alive: bool) {
         self.keep_alive_without_windows.set(keep_alive);
+    }
+
+    /// 查询系统权限状态（辅助功能 / 屏幕录制 / 输入监控）。
+    ///
+    /// 返回 [`PermissionStatus::Unavailable`] 表示系统根本没有这一类别的授权概念，
+    /// 或判定通道不可达 —— 与 `Granted` 是两回事，调用方不要按「拿不到就当有」处理。
+    pub fn check_permission(&self, kind: PermissionType) -> PermissionStatus {
+        self.platform.check_permission(kind)
+    }
+
+    /// 请求系统权限：有授权弹窗的类别会触发弹窗，其余类别输出可操作的引导日志。
+    pub fn request_permission(&self, kind: PermissionType) {
+        self.platform.request_permission(kind);
+    }
+
+    /// 返回操作系统名称与版本号。
+    pub fn os_info(&self) -> OsInfo {
+        self.platform.os_info()
+    }
+
+    /// 返回系统空闲时长（自上次用户输入以来），无法判定时为 `None`。
+    pub fn system_idle_time(&self) -> Option<Duration> {
+        self.platform.system_idle_time()
+    }
+
+    /// 返回当前网络连接状态。
+    pub fn network_status(&self) -> NetworkStatus {
+        self.platform.network_status()
+    }
+
+    /// 设置开机自启动，`app_id` 为应用标识。
+    pub fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
+        self.platform.set_auto_launch(app_id, enabled)
+    }
+
+    /// 查询开机自启动是否已启用。
+    pub fn is_auto_launch_enabled(&self, app_id: &str) -> bool {
+        self.platform.is_auto_launch_enabled(app_id)
+    }
+
+    /// 返回当前系统中获得焦点的窗口信息（跨进程，需系统辅助功能授权）。
+    pub fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
+        self.platform.focused_window_info()
     }
 
     /// 最小化到托盘 —— 隐藏所有窗口（从任务栏移除）。

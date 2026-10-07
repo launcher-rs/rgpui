@@ -539,12 +539,18 @@ pub trait Platform: 'static {
         None
     }
 
-    /// 返回辅助功能（Accessibility）权限状态。
-    fn accessibility_status(&self) -> PermissionStatus {
+    /// 查询指定类别的系统权限状态。
+    ///
+    /// 这是权限类别的统一入口：`PermissionType` 里的每一项都要能问，
+    /// 不要再为单个类别增设 `xxx_status` 特例方法 —— 特例只会让某一平台
+    /// 已经做好的判定逻辑在应用层根本没有调用点。
+    /// 无法判定（系统没有这个概念、或总线/服务不可达）时返回
+    /// [`PermissionStatus::Unavailable`]，不要返回 `Granted` 假装可用。
+    fn check_permission(&self, _kind: PermissionType) -> PermissionStatus {
         PermissionStatus::Unavailable
     }
-    /// 请求辅助功能权限（macOS 需要用户授权）。
-    fn request_accessibility_permission(&self) {}
+    /// 请求指定类别的系统权限：有系统授权弹窗的就弹窗，没有的会输出可操作的引导日志。
+    fn request_permission(&self, _kind: PermissionType) {}
 
     /// 返回麦克风权限状态。
     fn microphone_status(&self) -> PermissionStatus {

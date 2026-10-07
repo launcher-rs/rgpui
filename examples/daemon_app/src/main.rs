@@ -1,6 +1,6 @@
 use rgpui::single_instance::{SingleInstance, send_activate_to_existing};
 use rgpui::{
-    App, Bounds, Context, Keystroke, TrayIconEvent, TrayMenuItem, Window,
+    App, Bounds, Context, Keystroke, PermissionType, TrayIconEvent, TrayMenuItem, Window,
     WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, prelude::*, px, rgb,
     rgba, size,
 };
@@ -98,6 +98,7 @@ fn main() {
 
         setup_tray(cx);
         setup_global_hotkey(cx);
+        log_capabilities(cx);
 
         let _ = cx.show_notification("Daemon App", "Application started in background");
 
@@ -163,6 +164,25 @@ fn setup_global_hotkey(cx: &mut App) {
             eprintln!("Global hotkey triggered (Cmd+Shift+K)");
         }
     });
+}
+
+/// 打印当前平台的能力查询结果，用于确认这些 API 在应用层真的可达
+fn log_capabilities(cx: &App) {
+    let os = cx.os_info();
+    eprintln!("OS: {} {}", os.name, os.version);
+    eprintln!("Network: {:?}", cx.network_status());
+    eprintln!(
+        "Idle: {:?}",
+        cx.system_idle_time().map(|idle| idle.as_secs())
+    );
+    for kind in [
+        PermissionType::Accessibility,
+        PermissionType::ScreenCapture,
+        PermissionType::InputMonitoring,
+    ] {
+        eprintln!("Permission {kind:?}: {:?}", cx.check_permission(kind));
+    }
+    eprintln!("Auto launch enabled: {}", cx.is_auto_launch_enabled(APP_ID));
 }
 
 fn open_overlay(cx: &mut App) {

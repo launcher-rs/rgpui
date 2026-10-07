@@ -1177,12 +1177,16 @@ impl Platform for MacPlatform {
         })
     }
 
-    fn accessibility_status(&self) -> PermissionStatus {
-        MacPermissions::new().query_permission(PermissionType::Accessibility)
+    /// 查询权限状态：三类权限都按 TCC 实测
+    fn check_permission(&self, kind: PermissionType) -> PermissionStatus {
+        MacPermissions::new().query_permission(kind)
     }
 
-    fn request_accessibility_permission(&self) {
-        MacPermissions::request_accessibility_permission()
+    /// 请求权限：仅辅助功能有系统弹窗，屏幕录制/输入监控由 TCC 在首次使用时自动询问
+    fn request_permission(&self, kind: PermissionType) {
+        if matches!(kind, PermissionType::Accessibility) {
+            MacPermissions::request_accessibility_permission()
+        }
     }
 
     fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
