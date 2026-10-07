@@ -1,7 +1,7 @@
 # Linux 平台问题审计清单
 
 > 分支：`fix/linux-platform-issues`
-> 审计日期：2026-10-06
+> 首次审计：2026-10-06 最近更新：2026-10-07
 > 审计环境：Hyper-V 虚拟机 + Ubuntu 22.04 + GNOME + **xrdp 远程桌面会话**（`Xorg :10 -config xrdp/xorg.conf`）
 > 对照基准：`Platform` / `PlatformWindow` trait（`crates/rgpui/src/platform.rs`）与 `rgpui-linux` 的实现差异
 
@@ -9,34 +9,51 @@
 
 ## 一、摘要
 
-在 Linux 上，rgpui 存在 **2 个已修复的致命问题**、**1 个已定位的画面问题**、
-以及 **1 个功能缺失（tray）+ 一批静默失效的 API**。
+**渲染已经正常，tray 已经可用，Inspector 已经可用。** 剩下的是一批「返回成功但什么都没做」
+的假实现和静默 no-op 的 API。
 
-最需要记住的一句话：
+已修复并提交：
+
+| 提交 | 内容 |
+|------|------|
+| `fcf70ad9f4` | `fix(linux)`：画面完全不上屏（present 缺失 + ARGB visual 误用 + feature 未开） |
+| `0cd71c3ddf` | `feat(linux)`：系统托盘（StatusNotifierItem + dbusmenu） |
+| `fef831e901` | `docs(linux)`：本审计文档 |
+| `ac83e85218` | `fix(linux)`：关闭主窗口后托盘「显示窗口」无响应 |
+| `35f4d730ed` | `chore`：忽略 `.qoder` 本地配置目录 |
+
+最需要记住的一句话（未变）：
 
 > **Linux 是唯一被 feature 门控「默认关死」的平台。** Windows 的 `rgpui-windows` 后端无条件编译，
 > 所以同样的依赖声明在 Windows 正常、在 Linux 静默退化成 Headless —— 这正是「Windows 基本正常、
 > Linux 很多不正常」的根本原因。
 
-第二句要记住的：
+第二句要记住的（**本次修正**）：
 
-> **xrdp 会话下永远看不到画面，因为 xrdp/Xephyr 都没有 DRI3，而 Mesa 的 Vulkan 呈现强制依赖 DRI3。**
-> 这是环境限制，不是 rgpui 的 bug —— 换 Wayland 或原生 Xorg 才能验证渲染。
+> ~~xrdp 会话下永远看不到画面，因为没有 DRI3，Mesa 的 Vulkan 呈现强制依赖 DRI3。~~
+> **这个结论是误诊，见 §3.3。** 真相是 rgpui 自己的 wgpu 呈现路径漏了显式 `present()`，
+> 加上 X11 无条件选 32 位 ARGB visual 导致合成器把整个窗口当透明。
+> **xrdp 会话（无 DRI3）下画面完全正常**，本机的渲染验证不需要换 Wayland。
 
 | 级别 | 问题 | 状态 |
 |------|------|------|
-| P0 | Linux 窗口后端 feature 未启用 → 无窗口无报错 | **已修复并验证** |
-| P0 | 软件 Vulkan 驱动被 wgpu 判为「非一致性」而隐藏 → 无 GPU 适配器 | **已修复并验证** |
-| P0 | 窗口能打开但画面永远不上屏 → **根因已定位：X server 缺 DRI3** | **已定位为环境限制**（见 §3） |
+| P0 | Linux 窗口后端 feature 未启用 → 无窗口无报错 | **已修复并验证**（`fcf70ad9f4`，见 §2.1） |
+| P0 | 软件 Vulkan 驱动被 wgpu 判为「非一致性」而隐藏 → 无 GPU 适配器 | **已修复并验证**（`fcf70ad9f4`，见 §2.2） |
+| P0 | 窗口能打开但画面永远不上屏 | **已修复并验证**（`fcf70ad9f4`，见 §3；~~环境限制~~ 为误诊） |
+| P1 | tray 8 个 API 在 Linux 完全未实现 | **已实现并验证**（`0cd71c3ddf`，见 §4.1） |
+| P1 | 关闭主窗口后托盘「显示窗口」无反应 | **已修复并验证**（`ac83e85218`，见 §2.3） |
+| P1 | Inspector（F12）在 Linux 是否可用 | **已验证可用**（见 §2.4） |
+| P2 | 窗口启动后 ~130 ms 纯黑，然后才出画面 | **已定位，未修**（见 §2.5） |
 | P1 | GL 后端在老 Mesa 上不可用（wgpu-hal 只认 `EGL_EXT_platform_xcb`） | 已定位，上游兼容问题（见 §3.4） |
-| P1 | tray 8 个 API 在 Linux 完全未实现 | 待实现 |
-| P1 | 通知 / 全局热键 / 权限是「假实现」——返回成功但什么都没做 | 待实现 |
-| P1 | 32 个 `Platform` 方法在 Linux 上静默 no-op | 待分诊 |
-| P1 | X11/Wayland 窗口缺失 `request_attention` 等方法 | 待实现 |
-| P2 | `cargo check --workspace` 被 webview 示例阻塞（缺 glib/gtk/webkit 系统库） | 待处理 |
-| P2 | rgpui 无日志初始化入口，wgpu/GPU 诊断信息全部丢失 | 待处理 |
+| P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | 待实现（见 §4.2） |
+| P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | 待分诊（见 §4.3） |
+| P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | 待实现（见 §4.4） |
+| P1 | `set_keep_alive_without_windows` 全链路 write-only（含 Windows） | 待实现（见 §4.1 末） |
+| P2 | `cargo check --workspace` 被 webview 示例阻塞（缺 glib/gtk/webkit 系统库） | 待处理（见 §4.5） |
+| P2 | rgpui 无日志初始化入口，wgpu/GPU 诊断信息全部丢失 | 待处理（见 §4.6） |
+| P3 | Inspector 面板显示「帧率 0.0 FPS · 0.0 ms」 | 待查（见 §2.4） |
+| P3 | X11 窗口没有 `WM_NAME`，`wmctrl -l` 显示 `N/A` | 待查（见 §2.4） |
 | — | 仓库路径含 `C:` 导致 cargo 构建失败；RDP 共享盘 I/O 极慢 | 环境问题 |
-| — | xrdp 会话无 DRI3、EGL 缺驱动 → 无法在本会话看到渲染 | 环境问题 |
 
 ---
 
@@ -123,7 +140,7 @@ DEBUG wgpu_hal::vulkan::adapter] Adapter is not Vulkan compliant, hiding adapter
 ```
 
 Vulkan 适配器**其实被找到了**，只是因为 Mesa 的 lavapipe 没有申报 Vulkan 一致性测试版本而被丢弃；
-剩下的 GL 后端又因下节的 EGL 问题无法配置表面 → 最终 0 个适配器。
+剩下的 GL 后端又因 §3.4 的 EGL 问题无法配置表面 → 最终 0 个适配器。
 
 **修复**（`crates/rgpui-wgpu/src/wgpu_context.rs:226`）：
 
@@ -145,20 +162,136 @@ Refreshing every 20ms                       ← 渲染循环启动
 
 > ⚠️ 该 flag 的语义是「允许使用未通过 Vulkan 一致性测试的驱动」。对 VM/CI/无独显机器上的
 > 软件渲染是必要开关；若担心掩盖真实驱动问题，可考虑仅在枚举不到任何其它适配器时再带此 flag
-> 重试一次（见 §5 建议）。
+> 重试一次。
+
+### 2.3 [P1] 关闭主窗口后，托盘「显示窗口」无反应
+
+**症状**（用户实测）：主窗口**最小化**后托盘菜单点「显示窗口」能恢复；主窗口**关闭**后点同一项
+**毫无反应**。
+
+**根因**：不是 tray 的问题，是 X11/EWMH 语义差异。
+
+| 路径 | 调用 | WM 眼中的状态 | 后续 `_NET_ACTIVE_WINDOW` |
+|------|------|--------------|--------------------------|
+| 最小化 | `X11Window::minimize()`（`x11/window.rs:1654`）发 `WM_CHANGE_STATE` + `WINDOW_ICONIC_STATE` | **Iconic**，仍在 WM 管理内 | ✅ 生效 |
+| 关闭/隐藏 | `X11Window::hide()`（`x11/window.rs:1675`）就是 `unmap_window` | **Withdrawn**，mutter **停止管理该窗口** | ❌ 被直接忽略 |
+
+ICCCM 语义：对受管顶层窗口 `UnmapWindow` → `WM_STATE = Withdrawn`，WM 放弃管理。
+`activate()` 原本只发 `_NET_ACTIVE_WINDOW` 客户端消息 + `set_input_focus`，
+对一个 Withdrawn 窗口两者都是空转。
+
+**修复**（`crates/rgpui-linux/src/linux/x11/window.rs`，`activate()` 开头）：
+
+```rust
+// hide() 撤下的窗口 WM_STATE 会变成 Withdrawn，合成器不再管理它，
+// 单发 _NET_ACTIVE_WINDOW 会被忽略；先重新 map 才能恢复。窗口已可见时
+// MapWindow 是空操作。
+check_reply(
+    || "X11 MapWindow on activate failed.",
+    self.0.xcb.map_window(self.0.x_window),
+)
+.log_err();
+```
+
+对已可见窗口 `MapWindow` 是空操作，所以原路径无回归。**Wayland 无此问题**：
+`wayland/window.rs:1582` 的 `hide()` 是 `toplevel.set_minimized()`，永远是 Iconic 而非 Withdrawn。
+
+**验证**：
+
+```
+# 关闭 → 恢复
+$ wmctrl -i -c 0x2600001
+  Map State: IsUnMapped      window state: Withdrawn      # 修复前卡在这里
+$ gdbus call --session --dest <SNI名> --object-path /StatusNotifierItem/Menu \
+    --method com.canonical.dbusmenu.Event <id> "clicked" '' 0   # 触发「显示窗口」
+  Map State: IsViewable      window state: Normal         # 修复后
+  → /tmp/traywin.png 内容正确渲染（"Hello from RGPUI Tray!"）
+
+# 最小化 → 恢复（回归检查）
+$ xdotool windowminimize 0x2600001     # window state: Iconic
+  同样恢复为 IsViewable / Normal
+```
+
+### 2.4 [验证] Inspector 在 Linux 可用
+
+`/tmp/rgpui-target/debug/inspector` 启动后 `xdotool key <WID> F12`，36.7% 像素发生变化，
+面板**完整渲染**（截图 `/tmp/insp_after.png`）：
+
+- 标题「元素检查器」+「拾取中」徽标，黑色横幅「拾取中，点击画布元素…」
+- 「完整树 … N 个节点」
+- 「运行」区：帧率 / CPU / 内存 / GPU —— GPU 一行如实报
+  `llvmpipe (LLVM 13.0.1, 256 bits) (Vulkan)`，与 §2.2 的适配器选择日志一致
+- 「报错 / 暂无上报错误」，以及示例内容（红/绿/蓝盒、嵌套目标、可拾取输入框、开关、计数按钮）
+
+**结论：Inspector 在 Linux 可以正常用于排障。**
+
+顺带发现两个独立缺陷（尚未排查，P3）：
+
+1. 面板显示 **帧率 0.0 FPS · 0.0 ms** —— FPS 计数器在 Linux 上疑似没接上，
+   而渲染循环日志明明在 `Refreshing every 20ms`。排障时会误导「是不是根本没在渲染」。
+2. rgpui 的 X11 窗口在 X 树里是 `(has no name)`、`wmctrl -l` 显示 `N/A` ——
+   没有设 `WM_NAME` / `_NET_WM_NAME`。这与 §4.4 的 `get_title` 缺失同源，
+   并且让「按标题/按 pid 定位窗口」的脚本手段不好用。
+
+### 2.5 [P2·未修] 窗口启动后有约 130 ms 纯黑
+
+**症状**：窗口出现时是全黑的，随后才刷出内容。
+
+**量化**（同一探针 `/tmp/blackprobe4.py`：轮询 `_NET_CLIENT_LIST` 找新窗口 → `xwininfo` 判
+viewable → `xwd` 抓像素统计黑色占比；同一台 VM、同一 xrdp 会话）：
+
+| 构建 | 进程启动 → 窗口可见 | 窗口可见 → 首帧内容（黑屏） |
+|------|-------------------|--------------------------|
+| debug | **1.491 s** | **0.250 s** |
+| release | **0.202 s** | **0.131 s** |
+
+```
+=== RELEASE ===
+t= 0.202s  窗口 0x2e00001 变为 IsViewable
+t= 0.202s  black=100.0%  -> black
+t= 0.333s  black=  0.0%  -> clean
+黑屏时长 = 0.131s
+```
+
+**结论：这是两段性质完全不同的耗时，必须拆开看。**
+
+**（a）「窗口迟迟不出现」≈ 纯性能问题，主因是 debug 构建。**
+1.49 s → 0.20 s，**7.4 倍**差距。VM 无硬件 GPU，只有 llvmpipe/lavapipe 软件 Vulkan，
+字体栅格化、shader 编译、首帧提交全在 CPU 上，所以软件渲染 + debug 双重放大这一段。
+但它不是「黑屏」——窗口根本还没出现。
+
+**（b）真正可见的纯黑 ≈ 结构性缺陷，与优化等级无关。**
+release 把 250 ms 压到 131 ms 但**不归零**，说明它不是性能问题。两个原因叠加：
+
+1. `crates/rgpui/src/window.rs:1905` —— `Window::new` 里直接
+   `platform_window.map_window().unwrap()`，此时**一帧都还没渲染**；
+2. `crates/rgpui-linux/src/linux/x11/window.rs:487-502` 的 `win_aux` 只设了
+   `border_pixel` / `colormap` / `override_redirect` / `event_mask`，
+   **没有设 `background_pixel`** → X server 用默认黑色填充暴露区域，
+   合成器在这段窗口期拿到的就是纯黑。
+
+**可选修法（尚未决定，用户当前指示「先不管」）**：
+
+- **轻量**：`win_aux` 补 `background_pixel`（按 `WindowParams.window_background`，
+  §2 修复后 visual 选择已依赖该字段）。只改 `rgpui-linux`，Windows/macOS/Wayland 零影响，
+  把「黑闪」变成「主题底色一闪」。
+- **彻底**：把 `map_window()` 推迟到首帧提交之后。动的是**全平台共用路径**，
+  Windows/macOS/Wayland 的映射时机都会变，风险面大，应单独评估而非顺手改。
 
 ---
 
-## 三、[P0] 窗口能开但画面永远到不了屏幕上（已定位）
+## 三、[已修复] 画面完全不上屏 —— 含一次误诊记录
+
+保留本节是因为**误诊过程本身有价值**：证据链看起来很完整、结论是错的。
 
 ### 3.1 现象
 
-完成 §2 两个修复后，窗口正常创建、进入渲染循环，但**屏幕上是透明的、没有任何内容**
+完成 §2.1/§2.2 两个修复后，窗口正常创建、进入渲染循环，但**屏幕上是透明的、没有任何内容**
 （用户原话：「测试是透明窗口，而且没有内容」）。
 
-### 3.2 证据链
+### 3.2 当时观察到的证据（真实，但被错误归因）
 
-**（1）渲染管线本身是正常的。** 在 `WgpuRenderer::draw()` 里临时插桩（诊断代码已回滚）：
+**（1）渲染管线看似正常。** 在 `WgpuRenderer::draw()` 里临时插桩（诊断代码已回滚）：
 
 ```
 DEBUG-draw: 取帧成功，继续绘制
@@ -166,76 +299,64 @@ DEBUG-draw: 场景规模 quads=64 paths=0 shadows=2 underlines=0 mono_sprites=0
 DEBUG-draw: 本帧已提交并释放 surface 纹理（触发呈现）
 ```
 
-`get_current_texture()` 成功、场景非空（64 个 quad + 2 个阴影）、
-`queue.submit()` 完成、`SurfaceTexture` drop（即触发 present）完成，**全程零 wgpu 错误**。
+`get_current_texture()` 成功、场景非空、`queue.submit()` 完成、`SurfaceTexture` drop 完成，
+**全程零 wgpu 错误**。
 
-**（2）但 X 缓冲里什么都没有。** 用 `xwd` 抓窗口后按原始字节统计：
+**（2）X 缓冲里什么都没有。** `xwd` 抓窗口按原始字节统计：
 
 ```
-resize 前：非零像素 766 / 250000 (0.3%)，全在首两行，取值为 01010101 / 02020202 …
-           → 典型的未初始化显存残渣，不是渲染结果
+resize 前：非零像素 766 / 250000 (0.3%)，全在首两行，取值 01010101 / 02020202 …
+           → 未初始化显存残渣，不是渲染结果
 resize 后：非零像素 20398 / 270400，且 96.3% 的像素 alpha = 0
-           → 仍然不含 hello_world 的灰底 0x505050 与六个色块
 ```
 
-即**提交的帧从未到达 X11 drawable**。窗口对合成器而言 alpha=0，所以显示为透明。
-
-**（3）GPU 提交根本没完成。** 打开日志后，resize 时立刻暴露：
+**（3）GPU 提交超时。**
 
 ```
 WARN  rgpui_wgpu::wgpu_renderer] Failed to poll device during resize: Timeout
 ERROR rgpui_wgpu::wgpu_renderer] GPU error during frame (failure 1 of 10): Validation Error
-    Caused by:
-      In Surface::configure
-        Failed to wait for GPU to come idle before reconfiguring the Surface
+    In Surface::configure → Failed to wait for GPU to come idle before reconfiguring the Surface
 ```
 
-`device.poll(PollType::Wait { timeout: None })` 超时 —— **首帧的队列提交永远没有 signalled**，
-present 因此永远不发生。
+**（4）换 Xephyr 复现，现象逐条一致** → 排除了 mutter/合成器/WM 因素。这一步是对的，
+但它把嫌疑范围错误地收缩到了「X server 本身」。
 
-**（4）换 X 服务器复现，排除 WM/合成器因素。** 在同一台机器上另起一个
-`Xephyr :11`（X.Org 1.21.1.3、无 WM、无合成器、扩展表完全不同）跑同一个 `hello_world`：
+### 3.3 当时的结论（**误诊**）与真相
 
-```
-Failed to poll device during resize: Timeout
-In Surface::configure → Failed to wait for GPU to come idle
-两次 draw 之后窗口内容依旧未变（alpha 非零仅 0.1%）
-```
+**误诊结论**：xrdp Xorg 与 Xephyr 都没有 DRI3，而
+`strings /usr/lib/x86_64-linux-gnu/libvulkan_lvp.so` 里有
+`vulkan: No DRI3 support detected - required for presentation`，
+于是判定「Mesa 的 Vulkan WSI 无法在无 DRI3 的 X server 上呈现 → 环境限制，改代码没用」。
 
-两个 X server 现象**逐条一致** → 不是 mutter/合成器/WM 的问题。
+**这条结论错在两点：**
 
-### 3.3 根因：X 服务器没有 DRI3，Mesa 的 Vulkan WSI 无法呈现
+1. **DRI3 缺失是真实事实，但它不是本机画面为空的原因。** 同一台机器、同一个 xrdp 会话
+   （扩展表里依旧没有 DRI3），修完下面两处后画面**完全正常**。
+2. 它把结论导向「环境问题、不可修」，从而**停止了对 rgpui 自身 present 路径的排查** ——
+   而恰恰是这条路径上有两个真 bug。当时 `poll Timeout` 其实是「帧从未被 present、
+   交换链图像一直被占用」的**结果**，被我当成了「present 走不通」的**证据**（因果倒置）。
 
-两个 X server 的扩展表都**没有 DRI3**（xrdp Xorg 有 DRI2+Present，Xephyr 只有 Present）。
-直接在 Mesa 的 Vulkan 驱动库里找到了它自己的诊断串：
+**真正的根因（`fcf70ad9f4`，三处独立缺陷叠加）：**
 
-```
-$ strings /usr/lib/x86_64-linux-gnu/libvulkan_lvp.so | grep -i dri3
-xcb_dri3_query_version
-xcb_dri3_open
-xcb_dri3_pixmap_from_buffers
-DRI3
-vulkan: No DRI3 support detected - required for presentation
-Note: you can probably enable DRI3 in your Xorg config
-```
+1. **`rgpui-wgpu` 提交命令缓冲后直接 drop 交换链帧，从未显式 `present()`。**
+   wgpu 30 起 `SurfaceTexture` 未显式 present 即 drop 会调用 `texture_discard`，**整帧作废**。
+   Windows 走 `directx_renderer::present`、macOS 走 `drawable.present`，**只有 wgpu 路径漏了**。
+   → 这一条解释 3.2(1)(2)(3) 全部现象：零错误、缓冲无内容、提交永远不空闲。
+2. **X11 建窗时无条件选 32 位 ARGB visual。** 不透明窗口在该 visual 上交换链写入的 alpha 为 0
+   → 合成器把整个窗口当透明。改为按 `WindowParams.window_background` 选 visual
+   （新增字段，由 `WindowOptions` 传入；`WindowKind::Overlay` 仍用 ARGB）。
+   → 这一条解释「除标题栏外全透明」的观感和 3.2(2) 的 96.3% alpha=0。
+   注意：visual 建窗后不可更换，所以运行时切换背景外观只影响交换链 alpha 模式。
+3. **feature 未开启**（即 §2.1）。
 
-**Mesa 明确要求 DRI3 才能做 present。** 缺失时 `vkAcquireNextImageKHR` 照常返回
-（所以 wgpu 侧看不到任何错误、`get_current_texture()` 成功），但呈现链路走不通，
-队列提交无法完成 → `poll` 超时 → 屏幕无内容。这与 3.2 的每一条证据都吻合。
+**教训（写在这里防止重犯）**：
+「换 X server 现象一致」只能排除 WM，**不能证明是 X server 的锅** ——
+如果 bug 在应用侧的 present 路径上，换任何 X server 都会一样。
+`strings 驱动库 | grep` 找到一句匹配的诊断串只证明「驱动里有这段代码」，不证明「它被执行了」。
 
-**定性：环境限制，不是 rgpui 代码缺陷。** 本测试会话是 xrdp 提供的虚拟显示
-（`Xorg :10 -config xrdp/xorg.conf`，驱动 `xrdpdev`），天然没有 DRI3；
-`Xephyr` 这类嵌套 X server 同样没有。xrdp 会话下**无法**通过改 rgpui 代码看到画面。
+### 3.4 仍然成立的连带发现：GL 后端在本机完全不可用（降级路径失效）
 
-**要看到画面，需要满足以下任一条件**：
-1. **Wayland 会话**（`VK_KHR_wayland_surface` 走 dmabuf，不依赖 DRI3）—— 首选验证路径；
-2. 用 `modesetting` 驱动跑在真实 `/dev/dri/card0`（本机 `hyperv_drm` 已加载）上的原生 Xorg，
-   由其提供 DRI3；
-3. 任何提供 DRI3 的 X 服务器。
-
-### 3.4 连带发现：GL 后端在本机也完全不可用（降级路径失效）
-
-既然 Vulkan 走不通，自然要问「为什么不能降级到 GL」。答案是 **GL 也起不来**：
+这一条与 §3.3 的误诊无关，**仍然有效**：Vulkan 之外没有可用的降级后端。
 
 ```
 Testing adapter: llvmpipe (…) (Gl)...
@@ -259,9 +380,8 @@ $ 只有: EGL_EXT_platform_base / EGL_EXT_platform_device / EGL_EXT_platform_x
   没有: EGL_EXT_platform_xcb      ← wgpu-hal 只认这个
 ```
 
-于是匹配落空 → 走 `EGL_MESA_platform_surfaceless` 平台 →
-`WindowKind::Unknown` → 无法为 X11 窗口创建 EGL window surface
-→ surface format 列表为空 → GL adapter 被直接判死。
+于是匹配落空 → 走 `EGL_MESA_platform_surfaceless` 平台 → `WindowKind::Unknown`
+→ 无法为 X11 窗口创建 EGL window surface → surface format 列表为空 → GL adapter 被直接判死。
 
 附带两个相关事实：
 
@@ -270,73 +390,104 @@ $ 只有: EGL_EXT_platform_base / EGL_EXT_platform_device / EGL_EXT_platform_x
   加上该变量后 EGL 初始化成功，但 surface format 问题依旧 → **GL 仍然不可用**。
 - rgpui 侧的句柄是正确的（`XcbWindowHandle` + `XcbDisplayHandle`，
   见 `crates/rgpui-linux/src/linux/x11/window.rs:322-369`），**问题在 wgpu-hal 的扩展名匹配**
-  —— 属于上游兼容性缺陷（对老 Mesa），可在审计/上游 issue 中记录；
-  rgpui 侧可考虑的缓解是记录并暴露后端选择日志，方便用户诊断。
+  —— 属于上游兼容性缺陷（对老 Mesa）。
+  rgpui 侧可考虑的缓解：记录并暴露后端选择日志（与 §4.6 的日志入口是同一诉求）。
+
+> ⚠️ 实际影响比原先评估的小：既然 Vulkan 路径在 §3.3 修好后正常工作，
+> GL 不可用只意味着**少了一个降级备胎**，不再阻塞任何功能。优先级 P1 → P3。
 
 ### 3.5 本节待办
 
-1. **在 Wayland 会话下复测 `hello_world`** —— 这是唯一能在不换机器的前提下看到画面的路径，
-   也是判定 §3.3 结论的最终交叉验证。
-2. 若 Wayland 正常 → 在 `docs/` 中写明「Linux X11 需要 DRI3，xrdp/嵌套 X server 不支持，
-   请用 Wayland 或原生 Xorg」。
-3. 若 Wayland 也异常 → 才需要回头排查 rgpui 的 present 路径
-   （重点：`alpha_mode` 选择、首帧提交时机）。
-4. 记录 §3.4 的 wgpu-hal/老 Mesa 兼容问题，评估是否向上游提 issue。
+1. ~~在 Wayland 会话下复测 `hello_world`~~ —— 已无必要（X11 下画面已正常）。
+   Wayland 复测仍有独立价值（验证 §2.3 的 Wayland 分支与 `map_window` 缺失），但不再是阻塞项。
+2. 记录 §3.4 的 wgpu-hal / 老 Mesa 兼容问题，评估是否向上游提 issue（现为 P3）。
 
 ---
 
 ## 四、功能缺失与假实现
 
-### 4.1 [P1] tray 在 Linux 上完全没有实现
+### 4.1 [已实现] tray —— StatusNotifierItem + dbusmenu
 
-`grep -rn tray crates/rgpui-linux/` → **0 匹配**。
+`crates/rgpui-linux/src/linux/tray.rs`（数据层，主线程）+
+`tray_sni.rs`（DBus 服务，后台线程），提交 `0cd71c3ddf`。
+**零新依赖**：zbus 5.19 / zvariant 5.15 经 `ashpd::zbus` 公开 re-export 传递而来；
+`image` / `parking_lot` / `futures` / `smol` / `calloop` 都已在 `rgpui-linux` 无条件依赖里。
 
-`crates/rgpui/src/platform.rs:496-512` 中 tray 全部 8 个方法都是默认空实现，
-`rgpui-linux` 一个都没有覆盖，因此调用**静默无效果、回调永不触发**：
-
-| 方法 | 行号 | 表现 |
-|------|------|------|
-| `set_tray` | 496 | 静默忽略 |
-| `set_tray_icon` | 498 | 图标不显示 |
-| `set_tray_menu` | 500 | 菜单不显示 |
-| `set_tray_tooltip` | 502 | 无效 |
-| `set_tray_panel_mode` | 504 | 无效 |
-| `get_tray_icon_bounds` | 506 | 恒 `None` |
-| `on_tray_icon_event` | 510 | 回调永不触发 |
-| `on_tray_menu_action` | 512 | 回调永不触发 |
-
-连带 `set_keep_alive_without_windows`（`:515`）也是 no-op，
-`examples/tray/src/bin/tray_simple.rs:14` 正依赖它。
-
-**实现路线（已确定：StatusNotifierItem via zbus）**，环境已验证可行：
+架构与线程约定：
 
 ```
-$ dbus-send --session ... ListNames | grep -i statusnotifier
-      string "org.kde.StatusNotifierWatcher"                    ← GNOME Shell 提供宿主
-      string "org.fcitx.Fcitx5.StatusNotifierItem-33656-4"      ← 同协议应用正常显示
-
-$ xprop -root _NET_SYSTEM_TRAY_S0
-_NET_SYSTEM_TRAY_S0:  not found                                  ← XEmbed 老式托盘无宿主
+主线程                                     后台线程（BackgroundExecutor + smol/zbus）
+LinuxPlatform::set_tray*  ──mpsc 命令──▶  tray_sni::serve()
+calloop EventSource ◀──calloop channel──  emit PropertiesChanged / LayoutUpdated
 ```
 
-- ✅ SNI 宿主存在 → SNI 路线可行；`ashpd` 已依赖 `zbus`，无需引入重型新依赖
-- ❌ XEmbed（`_NET_SYSTEM_TRAY`）无宿主 → 走 XEmbed 的实现必然失败
-- 桌面：`XDG_CURRENT_DESKTOP=ubuntu:GNOME`，面板进程仅 `gnome-shell`
+共享状态 `Arc<parking_lot::Mutex<SniShared>>`；**任何持锁区间都不跨 `.await`**
+（`MutexGuard` 是 `!Send`，而 `BackgroundExecutor::spawn` 要求 `Future: Send`）。
 
-**修复 §2 后 tray 示例的实测行为**：进程能起来并阻塞在 `LinuxClient::run` 的事件循环里
-（`timeout` 返回 124，说明进程存活），**但托盘图标不出现、菜单不可用、只能 kill 结束**。
-即保活是「碰巧」由事件循环挡住的 —— `set_keep_alive_without_windows`
-（`crates/rgpui/src/platform.rs:515`）本身仍是 no-op，全仓库**只有写入、没有任何读取点**
-（`crates/rgpui/src/app.rs:2535` 只是转发给平台）。
-真正的「无窗口自动退出」逻辑在 `crates/rgpui/src/app.rs:1802-1810`：
+8 个 `Platform` 方法的覆盖情况：
+
+| 方法 | 状态 | 说明 |
+|------|:----:|------|
+| `set_tray` | ✅ | 首次调用惰性建共享状态并 spawn `serve()` |
+| `set_tray_icon` | ✅ | 光栅化后 resize 出 **22 / 44** 两档，转 **ARGB32 大端 + 直通 alpha** |
+| `set_tray_menu` | ✅ | dbusmenu 布局，支持分隔线 / 子菜单 / checkmark |
+| `set_tray_tooltip` | ✅ | 协议已实现，但见下方 Ubuntu host 怪癖 5 |
+| `set_tray_panel_mode` | ⚠️ | 映射为 `ItemIsMenu`，Ubuntu host 会忽略 |
+| `get_tray_icon_bounds` | — | 恒 `None`（SNI 无坐标 API，**协议限制，不是没实现**） |
+| `on_tray_icon_event` | ✅ | Activate / SecondaryActivate / ContextMenu / scroll |
+| `on_tray_menu_action` | ✅ | dbusmenu `Event(id, "clicked", …)` 路由回主线程 |
+
+**验证**（本机 GNOME/ubuntu-appindicators，协议级证据）：
+
+```
+# 1. 注册进了 watcher 列表
+$ gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher \
+    --method org.kde.StatusNotifierWatcher.RegisteredStatusNotifierItems
+  → 含本应用条目
+
+# 2. gnome-shell 主动来拉菜单（不是我们自己发的调用）
+$ dbus-monitor …   # 观察到 shell 侧发起 GetLayout / AboutToShow
+
+# 3. 图标像素回读一致
+IconPixmap a(iiay) → 解出 /tmp/sni_22.png 与 /tmp/sni_44.png，与原图相符
+
+# 4. 点击路由
+$ gdbus call … com.canonical.dbusmenu.GetLayout 0 -1 []     # 布局结构正确
+$ gdbus call … com.canonical.dbusmenu.Event <id> "clicked" '' 0   # 触发回调
+```
+
+**实现期间踩到的 Ubuntu host 怪癖**（照此实现，否则图标不出现或事件丢失）：
+
+1. `Id` 必须非空；2. `Status` 大小写敏感，`"Passive"` 会隐藏图标 → 默认 `"Active"`；
+3. dbusmenu `toggle-type` 必须是 `"checkmark"`，且 `toggle-state` 是 **int**；
+4. `GetLayout` 必须**忽略 `propertyNames` 过滤**、返回完整属性字典；
+   子菜单靠 `children-display = "submenu"` 判定；
+5. Ubuntu 的 ToolTip 渲染在扩展里是**注释掉的** —— 不要期待 tooltip 显示；
+6. 左键打开菜单，只有**双击**左键才触发 `Activate`；右键永不产出 `LeftClick`；
+7. `IconPixmap` 为 ARGB32 **大端 + 直通（非预乘）alpha**，且不要直发 512×512 原图；
+8. 用对象路径注册 `RegisterStatusNotifierItem("/StatusNotifierItem")`，不需要 well-known name；
+9. **没有** `UnregisterStatusNotifierItem` —— 清理方式就是 drop 掉 `Connection`；
+10. watcher 不在时监听 `NameOwnerChanged` 重试注册。
+
+**顺带修掉的真实缺陷**：托盘回调（如「退出」里的 `cx.quit()`）会
+`RefCell already borrowed` panic —— calloop 回调持有客户端状态的 `borrow_mut()` 跨过了用户回调。
+改成 `dispatch_tray_event`（先把回调 take 出来 → 释放借用 → 调用 → 再放回），
+沿用既有 `handle_keyboard_layout_change`（`x11/client.rs:1528-1542`）的惯用法。
+
+**本节遗留（独立缺陷，未随 tray 一起改）**：
+
+`set_keep_alive_without_windows`（`crates/rgpui/src/platform.rs:515`）**全链路 write-only**：
+core 里没有读取方，`app.rs:2535` 只转发给平台，连 Windows 实现也只是
+`AtomicBool::store`（`rgpui-windows/src/platform.rs:789-793`）而从不 load。
+真正的「无窗口自动退出」在 `app.rs:1802-1810`：
 
 ```rust
 QuitMode::Default => cfg!(not(target_os = "macos")),   // Linux = true
 if quit_on_empty && cx.windows.is_empty() { cx.quit(); }
 ```
 
-它只在**窗口关闭**时触发，因此当前未开窗口的 tray 示例不会命中；但任何
-「先开窗再全关掉以驻留托盘」的应用都会因此退出 —— 实现 tray 时必须一并处理。
+它只在**窗口关闭**时触发。所以 `tray_simple`（未开窗口）目前靠事件循环「碰巧」挡住不退出；
+但任何「先开窗再全关掉以驻留托盘」的应用都会退出。这是**跨平台缺陷，不是 Linux 特有**。
 
 ### 4.2 [P1] 假实现 —— 返回成功，但什么都没做
 
@@ -377,35 +528,34 @@ pub fn register(&mut self, id: i32, keystroke: &Keystroke) -> Result<()> {
   把回调存进 `common.callbacks` 后，**全仓库没有任何地方调用它们**
 - `set_dock_menu` 就一行 `// todo(linux)`
 
-### 4.3 [P1] 32 个 `Platform` 方法在 Linux 上是静默 no-op
+### 4.3 [P1] 约 24 个 `Platform` 方法在 Linux 上是静默 no-op
 
 对比 `crates/rgpui/src/platform.rs`（有默认空实现）与 `crates/rgpui-linux/src/linux/platform.rs`，
-Linux 缺失：
+Linux 缺失（**tray 8 件套已随 §4.1 移出此列表**）：
 
 ```
 authenticate_biometric        biometric_status         cancel_user_attention
-get_tray_icon_bounds          id                       microphone_status
-network_status                on_global_hotkey         on_media_key_event
-on_network_status_change      on_system_power_event    on_tray_icon_event
-on_tray_menu_action           os_info                  perform_dock_menu_action
+id                            microphone_status        network_status
+on_global_hotkey              on_media_key_event       on_network_status_change
+on_system_power_event         os_info                  perform_dock_menu_action
 read_from_find_pasteboard     request_microphone_permission
 request_user_attention        set_dock_badge           set_keep_alive_without_windows
-set_tray                      set_tray_icon            set_tray_menu
-set_tray_panel_mode           set_tray_tooltip         show_context_menu
-show_dialog                   start_power_save_blocker stop_power_save_blocker
-system_idle_time              update_jump_list         write_to_find_pasteboard
+show_context_menu             show_dialog              start_power_save_blocker
+stop_power_save_blocker       system_idle_time         update_jump_list
+write_to_find_pasteboard
 ```
 
-其中**核心层确实会调用**的 14 个（其余为 macOS/Windows 专属或仅面向应用层）：
+其中**核心层确实会调用**的（其余为 macOS/Windows 专属或仅面向应用层）：
 
 ```
-tray 8 件套、set_keep_alive_without_windows、on_global_hotkey、
+set_keep_alive_without_windows、on_global_hotkey、
 read/write_from_find_pasteboard、update_jump_list、perform_dock_menu_action
 ```
 
 **分诊建议**：
 
-- 必须实现：`set_keep_alive_without_windows`、`on_global_hotkey`、tray 8 件套
+- 必须实现：`on_global_hotkey`（+ `global_hotkey.rs` 真正注册）、`set_keep_alive_without_windows`
+  （注意这是 §4.1 末所述的**跨平台**缺陷，改 Linux 一处不够）
 - 可用 Linux 等价物实现：`network_status`（portal / `NetworkManager`）、`system_idle_time`
   （`org.freedesktop.ScreenSaver`）、`on_system_power_event`（`login1`，`platform.rs:196` 已有
   `PrepareForSleep` 监听可复用）、`microphone_status`（portal）、`request_user_attention`
@@ -418,8 +568,9 @@ read/write_from_find_pasteboard、update_jump_list、perform_dock_menu_action
 
 | 方法 | X11 | Wayland | 核心层是否调用 | 说明 |
 |------|:---:|:-------:|:---:|------|
+| `activate` | ⚠️ | ✅ | ✅ | **X11 已修**（§2.3：先 map 再 `_NET_ACTIVE_WINDOW`）；Wayland 用 xdg-activation token |
 | `request_attention` | ❌ | ❌ | ✅ | 任务栏提醒，X11 可用原子实现 |
-| `get_title` | ❌ | ❌ | ✅ | 标题读取 |
+| `get_title` | ❌ | ❌ | ✅ | 标题读取；与 §2.4 的「窗口无 `WM_NAME`」同源 |
 | `set_mouse_passthrough` | ❌ | ❌ | ✅ | X11 可用 Shape 扩展 |
 | `set_input_region` | ❌ | ✅ | ✅ | X11 缺失，Wayland 已实现 |
 | `set_exclusive_zone` / `set_exclusive_edge` | ❌ | ❌ | ✅ | 层叠 shell 面板区域 |
@@ -450,7 +601,12 @@ OK      xkbcommon                                        （x11rb 为纯 Rust，
 ```
 
 影响：`cargo check --workspace`、`cargo clippy --workspace --lib --bins -D warnings`
-（CI 的 Linux 作业）都会失败。需要在开发文档中写明 Linux 构建前置包：
+（CI 的 Linux 作业）都会失败。**这也是本次 tray / activate 改动没能跑 AGENTS.md
+要求的 `cargo check --workspace` 的原因** —— 只跑了
+`cargo check/clippy -p rgpui-linux --all-targets -- -D warnings` + `cargo fmt -p rgpui-linux`，
+需要系统库（要用户授权 `apt install`）才能补齐这一项。
+
+需要在开发文档中写明 Linux 构建前置包：
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
@@ -461,6 +617,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 全仓库只有 `crates/rgpui-web/src/logging.rs:37` 有 `log::set_logger`。
 `rgpui-wgpu` / `rgpui-linux` 里大量 `log::info!/debug!`（GPU 适配器选择、X11 初始化、
 portal 调用）**在原生平台上一条都看不到** —— 这次排障被迫临时给示例加 `env_logger` 才拿到关键日志。
+§3.4 的 GL 降级失效、§2.5 的黑屏定位都因此变难。
 
 建议提供 `rgpui::init_logger()` 之类的公开入口，或在示例模板中统一接入。
 
@@ -468,71 +625,119 @@ portal 调用）**在原生平台上一条都看不到** —— 这次排障被�
 
 ## 五、环境问题（非 rgpui 代码缺陷）
 
-这些是本机/本仓库环境的限制，会干扰开发与验证，但不改代码也绕不开：
-
 1. **仓库路径含冒号**：`/home/abc/shared-drives/C:/code/...`
    cargo 拼接 `LD_LIBRARY_PATH` 时用 `:` 作分隔符，直接报错
    `path segment contains separator ':'`。
-   绕过方式：`CARGO_TARGET_DIR` 指到无冒号路径（本次用 `/tmp/opencode/rgpui-target`）。
+   绕过方式：`--target-dir` 指到无冒号路径（本次用 `/tmp/rgpui-target`、
+   release 对照用 `/tmp/rgpui-target-release`）。
 2. **源码在 RDP 共享盘上**（`xrdp-chansrv`），`du -sh target` 都会挂住，
-   编译产物必须放本地盘；读源码也偏慢，全量构建约 2.5 分钟。
-3. **换行符噪音**：工作区 242 个文件因 CRLF↔LF 被标为 modified（29875 增 / 29875 删）。
-   排查改动请用 `git diff --ignore-cr-at-eol`；提交在 Windows 端进行。
-4. **会话为 xrdp 虚拟显示，没有 DRI3** → Vulkan 无法 present，屏幕上看不到任何画面。
-   详见 §3.3。这是本机验证渲染时最大的障碍：**当前会话只能验证「窗口开没开」，
-   验证不了「画面对不对」**。必须换 Wayland 或原生 Xorg 才能验证渲染结果。
+   编译产物必须放本地盘；读源码也偏慢，全量构建约 2.5 分钟（release 约 5 分钟）。
+   **FUSE 还有个新发现的坑**：`git add` 后 `git diff --cached` 可能读不到刚写入的索引
+   （`git status` 显示干净但 HEAD 已含改动），提交后要用 `git log` / `git show` 核实，
+   别急着重复提交。
+3. **换行符噪音**：工作区约 242 个文件因 CRLF↔LF 被标为 modified（29875 增 / 29875 删）。
+   排查改动请用 `git diff --ignore-cr-at-eol`（注意 `git status` **不支持**该选项）；
+   **只 stage 具体文件名，绝不用 `git add -A`**；提交在 Windows 端进行。
+4. ~~**会话为 xrdp 虚拟显示，没有 DRI3 → Vulkan 无法 present，屏幕上看不到任何画面**~~
+   —— **此条已被 §3.3 推翻，删除。** 无 DRI3 的 xrdp 会话下画面完全正常。
+   仍然成立的部分：本会话是**软件渲染**，性能远低于原生，所以 §2.5(a) 那段启动耗时会夸大。
 5. **Mesa 是 Ubuntu 22.04 的 22.x**，EGL 只公布 `EGL_MESA_platform_xcb`，
-   导致 wgpu-hal 的 GL 后端在本机不可用（§3.4），Vulkan/GL 两条路在本会话都不通。
+   导致 wgpu-hal 的 GL 后端在本机不可用（§3.4）→ **没有 GL 降级备胎**，
+   只能走 lavapipe Vulkan。不阻塞功能，但排查后端选择问题时少一条对照路径。
+6. **GNOME 面板无法用 `xwd` 截图**：gnome-shell 面板是 GL 合成的，
+   抓 root 或抓 gjs stage 窗口都是全黑；`org.gnome.Shell.Screenshot` 返回 `AccessDenied`。
+   → 验证 tray 图标只能靠**协议级证据**（`RegisteredStatusNotifierItems`、
+   `dbus-monitor` 观察 shell 主动调用、`IconPixmap` 回读解码），见 §4.1。
+   **应用窗口可以正常抓**（`xwd -id <WID>`）。
 
 ---
 
 ## 六、验证方法备忘
 
 ```bash
-# 检查某个示例解析出的后端 feature（修复前是 []）
-CARGO_TARGET_DIR=/tmp/opencode/rgpui-target cargo tree -p hello_world -f "{p} [{f}]" | grep rgpui-linux
+# 所有 cargo 命令都要带无冒号的 target-dir
+--target-dir /tmp/rgpui-target
 
-# 打开日志看 GPU 适配器探测（需示例临时接入 env_logger）
+# 检查某个示例解析出的后端 feature（修复前是 []）
+cargo tree -p hello_world -f "{p} [{f}]" --target-dir /tmp/rgpui-target | grep rgpui-linux
+
+# 打开日志看 GPU 适配器探测（需示例临时接入 env_logger，见 §4.6）
 RUST_LOG=info,wgpu_hal=debug ./hello_world
 
 # 确认窗口真的创建了（不是只看进程活着）
 xprop -root _NET_CLIENT_LIST | grep -o "0x[0-9a-f]*"   # 逐个查 _NET_WM_PID
 xwininfo -id <WID>                                      # Map State 应为 IsViewable
+wmctrl -l                                               # 注意：rgpui 窗口显示 N/A（§2.4）
 
 # 判断是否有托盘宿主
 dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply \
   /org/freedesktop/DBus org.freedesktop.DBus.ListNames | grep -i statusnotifier
-xprop -root _NET_SYSTEM_TRAY_S0                          # XEmbed 宿主
-xdpyinfo | grep -ioE "DRI3|Present"                      # 软渲染呈现能力
+xprop -root _NET_SYSTEM_TRAY_S0                          # XEmbed 宿主（本机无）
 
-# 确认当前 X server 到底有没有 DRI3（决定 Vulkan 能不能呈现）
-xdpyinfo | sed -n '/number of extensions/,/^$/p'
-strings /usr/lib/x86_64-linux-gnu/libvulkan_lvp.so | grep -i "DRI3"
+# SNI 端到端
+gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher \
+  --method org.kde.StatusNotifierWatcher.RegisteredStatusNotifierItems
+gdbus call --session --dest <应用总线名> --object-path /StatusNotifierItem/Menu \
+  --method org.kde.StatusNotifierItem... # 注意负数参数要用 -- 分隔
+# dbusmenu 的 data 参数类型是 v 不是 av：传 '' 而不是 []
+gdbus call … com.canonical.dbusmenu.GetLayout 0 -1 []
+gdbus call … com.canonical.dbusmenu.Event <id> "clicked" '' 0
+
+# 手工驱动 SNI 动作（绕开无法截图的面板）
+gdbus call … --method org.kde.StatusNotifierItem.Activate 0 0
+
+# 验证「关闭后恢复」：先看 WM 状态，再触发托盘项，再看状态
+wmctrl -i -c <WID>                 # 模拟关闭
+xprop -id <WID> WM_STATE           # Withdrawn = 修复前会卡住
+xwininfo -id <WID>                 # 修复后应回到 IsViewable / Normal
 
 # 抓窗口像素做量化分析（xwd 文件头 25 个 CARD32，数据在窗口名补 4 字节对齐之后）
 xwd -id <WID> -out /tmp/w.xwd
 # 用 python 解析 bits_per_pixel / bytes_per_line，统计非零像素数与 alpha 非零占比；
 # 非零占比接近 0 且出现 01010101/02020202 递增值 = 未初始化显存，即从未 present。
+# 性能注意：纯 Python 逐像素遍历 1364x768 会超过 120s 工具超时，
+# 改用 Image.frombuffer(..., 'BGRX', ...)（/tmp/xwd2png.py、/tmp/blackprobe4.py）。
+
+# 黑屏/首帧时序量化（§2.5）：轮询 _NET_CLIENT_LIST 找新窗口 → xwininfo → xwd 统计黑色占比
+python3 /tmp/blackprobe4.py /tmp/rgpui-target-release/release/tray
+
+# 进程清理：用精确名，别用 -f 匹配路径（会杀掉自己所在的 shell，exit 143）
+pkill -x tray ; pkill -x inspector
 
 # 换一个 X server 做对照（排除 WM/合成器因素）
 Xephyr :11 -screen 700x700x32 &      # 无 WM、无合成器、扩展表不同
 # 注意：Xephyr 里没有 EWMH，找窗口要用 xdotool search --pid <PID>，不是 _NET_CLIENT_LIST
+# 也注意：这条对照实验只能排除 WM，不能证明是 X server 的问题（§3.3 的教训）
 
 # 检查 EGL client extensions 是否含 wgpu-hal 需要的 XCB 平台
 RUST_LOG=debug ./hello_world 2>&1 | awk '/Client extensions: \[/,/\]/'
+
+# DRI3 检查（保留，但**别再据此判定画面能否呈现**，见 §3.3）
+xdpyinfo | sed -n '/number of extensions/,/^$/p'
 ```
 
 ---
 
 ## 七、后续建议顺序
 
-1. **换 Wayland 会话复测 `hello_world`** —— 这是判定 §3 结论的最终交叉验证，
-   也是当前唯一能看到画面的路径。xrdp/X11 下已确认无法呈现（缺 DRI3）。
-2. 实现 tray（StatusNotifierItem via zbus），同时补 `set_keep_alive_without_windows`
-3. 把 §4.2 的三处假实现改成真实现，或至少改成返回明确的「不支持」错误
-4. 按 §4.3 分诊表补 `on_global_hotkey`、`network_status` 等
-5. 补 §4.4 中 X11/Wayland 都缺的 `request_attention`、`get_title`、`set_mouse_passthrough`
-6. 文档补 Linux 构建前置包（§4.5）与日志入口（§4.6）
-7. 记录 §3.4 的 wgpu-hal / 老 Mesa 兼容问题，评估向上游提 issue
-8. 在 `docs/` 中写明 Linux 渲染前提：**X11 需要 DRI3，xrdp / 嵌套 X server 不支持，
-   请用 Wayland 或原生 Xorg**
+渲染与 tray 两条主线已收口，剩下按「用户能感知 → 只有开发者感知」排序：
+
+1. **§4.2 三处假实现改成真实现**，或至少改成返回明确的「不支持」错误
+   —— 这是当前唯一「应用以为成功了、实际什么都没发生」的一类，最容易埋坑。
+   优先全局热键（`global_hotkey.rs` 真正注册 + 覆盖 `on_global_hotkey`）与通知（notify / portal）。
+2. **§4.4 补 X11 都缺的窗口方法**：`request_attention`、`get_title`（顺带解决 §2.4 的
+   窗口无 `WM_NAME`）、`set_mouse_passthrough`、X11 的 `set_input_region`、Wayland 的 `map_window`。
+3. **§4.1 末 / §4.3 的 `set_keep_alive_without_windows`** —— 跨平台缺陷，
+   需要同时改 `app.rs:1802-1810` 的退出判据，不能只动 Linux。
+4. **§2.5 启动黑屏（b）** —— 按轻量方案给 `win_aux` 补 `background_pixel`；
+   彻底方案（推迟 `map_window` 到首帧 present）**单独评估**，因为是全平台路径。
+   当前用户指示：先不做。
+5. **§4.6 日志入口** —— 成本很低、后续所有 Linux 排障都依赖它，建议早做。
+6. **§2.4 的两个 P3** —— Inspector 的 FPS 恒 0（面板可信度问题）、窗口标题缺失。
+7. **§4.5 文档补 Linux 构建前置包**，并把 AGENTS.md 的「提交前 `cargo check --workspace`」
+   在 Linux 端的实际可行范围写清楚（当前只能到 `-p rgpui-linux`）。
+8. **§4.3 分诊表**里「可用 Linux 等价物实现」的 `network_status` / `system_idle_time` /
+   `on_system_power_event` / `microphone_status` / `request_user_attention`。
+9. **§3.4** 记录 wgpu-hal / 老 Mesa 兼容问题（已降为 P3），评估是否向上游提 issue。
+10. **Wayland 会话复测** —— 不再是渲染验证的阻塞项，但用于覆盖 Wayland 专属分支
+    （§2.3 的 `hide`/`activate` 语义、§4.4 缺失的 `map_window`）仍有独立价值。
