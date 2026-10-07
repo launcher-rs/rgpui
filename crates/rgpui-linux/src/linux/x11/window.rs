@@ -1058,6 +1058,23 @@ impl X11Window {
         xcb_flush(&self.0.xcb);
         Ok(())
     }
+
+    /// 读取窗口的一个字符串型原子属性，属性不存在或不是合法 UTF-8 时返回 `None`
+    fn get_string_property(&self, property: u32, kind: u32) -> Option<String> {
+        let reply = get_reply(
+            || "X11 GetProperty for window title failed.",
+            self.0
+                .xcb
+                .get_property(false, self.0.x_window, property, kind, 0, u32::MAX),
+        )
+        .log_err()?;
+
+        if reply.value_len == 0 {
+            return None;
+        }
+
+        String::from_utf8(reply.value).ok()
+    }
 }
 
 impl X11WindowStatePtr {
@@ -1599,6 +1616,44 @@ impl PlatformWindow for X11Window {
                 self.0.state.borrow().atoms.UTF8_STRING,
                 title.as_bytes(),
             ),
+        )
+        .log_err();
+        xcb_flush(&self.0.xcb);
+    }
+
+    fn get_title(&self) -> String {
+        // _NET_WM_NAME 是 EWMH 规定的 UTF-8 标题，优先读它；
+        // 没有再回退到 ICCCM 的 WM_NAME（STRING）。
+        let (net_wm_name, utf8_string) = {
+            let state = self.0.state.borrow();
+            (state.atoms._NET_WM_NAME, state.atoms.UTF8_STRING)
+        };
+
+        self.get_string_property(net_wm_name, utf8_string)
+            .or_else(|| {
+                self.get_string_property(
+                    u32::from(xproto::AtomEnum::WM_NAME),
+                    u32::from(xproto::AtomEnum::STRING),
+                )
+            })
+            .unwrap_or_default()
+    }
+
+    fn request_attention(&self) {
+        // ICCCM 的 WM_HINTS urgency 位是 X11 上「请求用户注意」的正规入口，
+        // 行为与 `xdotool set_window --urgency 1` 一致（本机实测两者都能让
+        // xprop 出现 "The urgency hint bit is set"）。
+        // EWMH 的 _NET_WM_STATE_DEMANDS_ATTENTION 是「WM 设置、客户端只读」的状态，
+        // 客户端自发 _NET_WM_STATE 客户端消息去要这个原子时 mutter 会直接忽略
+        // （本机实测：_NET_WM_STATE 始终不出现该原子）。
+        let mut hints = x11rb::properties::WmHints::new();
+        hints.input = Some(true);
+        hints.initial_state = Some(x11rb::properties::WmHintsState::Normal);
+        hints.urgent = true;
+
+        check_reply(
+            || "X11 ChangeProperty on WM_HINTS for urgency failed.",
+            hints.set(&self.0.xcb, self.0.x_window),
         )
         .log_err();
         xcb_flush(&self.0.xcb);

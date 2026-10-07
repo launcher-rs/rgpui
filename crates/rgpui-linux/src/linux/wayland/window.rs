@@ -99,6 +99,8 @@ pub struct WaylandWindowState {
     children: FxHashMap<ObjectId, bool>,
     pub surface: wl_surface::WlSurface,
     app_id: Option<String>,
+    /// 客户端侧保存的窗口标题；Wayland 协议不提供读取，只能自己记
+    title: String,
     appearance: WindowAppearance,
     blur: Option<org_kde_kwin_blur::OrgKdeKwinBlur>,
     viewport: Option<wp_viewport::WpViewport>,
@@ -521,9 +523,12 @@ impl WaylandWindowState {
             WgpuRenderer::new(gpu_context, &raw_window, config, compositor_gpu)?
         };
 
+        // Wayland 没有读取标题的请求，标题只能由客户端自己留着，get_title 才拿得到
+        let mut title = String::new();
         if let WaylandSurfaceState::Xdg(ref xdg_state) = surface_state {
             if let Some(titlebar) = options.titlebar.and_then(|titlebar| titlebar.title) {
-                xdg_state.toplevel.set_title(titlebar.to_string());
+                title = titlebar.to_string();
+                xdg_state.toplevel.set_title(title.clone());
             }
             // 根据 GPU 的最大纹理尺寸设置最大窗口大小
             // 这可以防止窗口被调整为大于 GPU 可渲染的尺寸
@@ -540,6 +545,7 @@ impl WaylandWindowState {
             children: FxHashMap::default(),
             surface,
             app_id: None,
+            title,
             blur: None,
             viewport,
             globals,
@@ -1540,9 +1546,14 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn set_title(&mut self, title: &str) {
+        self.borrow_mut().title = title.to_owned();
         if let Some(toplevel) = self.borrow().surface_state.toplevel() {
             toplevel.set_title(title.to_string());
         }
+    }
+
+    fn get_title(&self) -> String {
+        self.borrow().title.clone()
     }
 
     fn set_app_id(&mut self, app_id: &str) {
