@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
+    time::Duration,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use std::{
@@ -11,7 +12,6 @@ use std::{
     fs::File,
     io::Read as _,
     os::fd::{AsFd, AsRawFd},
-    time::Duration,
 };
 
 use anyhow::{Context as _, anyhow};
@@ -34,7 +34,7 @@ use futures::channel::mpsc;
 use parking_lot::Mutex;
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
-    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OwnedMenu,
+    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OsInfo, OwnedMenu,
     PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
     PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
     RunnableVariant, Task, ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
@@ -860,6 +860,14 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
         self.notifications.show_notification(title, body, None)
+    }
+
+    fn os_info(&self) -> OsInfo {
+        crate::linux::system_info::os_info()
+    }
+
+    fn system_idle_time(&self) -> Option<Duration> {
+        crate::linux::system_info::system_idle_time()
     }
 
     fn accessibility_status(&self) -> PermissionStatus {
