@@ -35,6 +35,7 @@
 | `79e93b058d` | `docs(linux)`：§4.8 记录 + AGENTS.md 口径 |
 | `223061c8bc` | `feat(linux)`：X11 鼠标穿透 / 输入区域（X Shape）+ Wayland `set_mouse_passthrough` |
 | `0da9515122` | `feat(linux)`：`App` 补三个应用菜单回调注册入口 + Linux 旧 `set_tray` 菜单动作经 `app_menu_action` 派发 |
+| `4bc8c9c744` | `feat(linux)`：电源事件（`PrepareForSleep` 两分支）+ 休眠/息屏抑制（login1 `Inhibit`）接回 `App`，阻止器改成 `Drop` 即释放的句柄 |
 
 最需要记住的一句话（未变）：
 
@@ -61,7 +62,7 @@
 | P1 | GL 后端在老 Mesa 上不可用（wgpu-hal 只认 `EGL_EXT_platform_xcb`） | 已定位，上游兼容问题（见 §3.4） |
 | P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **§4.2 已全部收口**：通知（`4f782cb1fa`）、全局热键（`d5e4819376`）、权限查询（`7fa8b7bf47`）、应用菜单（`0da9515122`，见 §4.2-4）。其中「`set_menus` 只存不显示」定性为**非缺陷**（Windows 同口径） |
 | P1 | **`App` 没有注册入口** → 三个应用菜单回调（action / will-open / validate）应用侧根本登记不了；Linux 旧 `set_tray` 又把菜单项自带的 `Action` 丢掉 | **已修复并验证**（`0da9515122`，见 §4.2-4）：`App` 补三个包装，Linux 记下「标识 → 动作」表并经 `app_menu_action` 派发，与 Windows 托盘菜单同口径 |
-| P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）**；剩约 19 个**大多是「应用层调不到」的死接口**，分诊见 §4.3 + §4.8 |
+| P1 | 约 24 个 `Platform` 方法在 Linux 上静默 no-op | **已实现 `os_info` / `system_idle_time`（`d6f6a4c598`）、权限查询（`7fa8b7bf47`）、`network_status`（`651a94a618`，见 §4.7）、电源事件 + 休眠/息屏抑制（`4bc8c9c744`，见 §4.3）**；剩约 16 个**大多是「应用层调不到」的死接口**，分诊见 §4.3 + §4.8 |
 | P1 | X11/Wayland 窗口缺失 `request_attention`、`get_title` 等方法 | **`get_title` / `request_attention` 已实现并验证**（`4f782cb1fa`，见 §4.4）；`set_mouse_passthrough` + X11 `set_input_region` **已实现**（`223061c8bc`，见 §4.4）；其余（`map_window`、`render_to_image`、exclusive zone）待实现 |
 | P1 | `WindowOptions.mouse_passthrough` 在 X11 被完全忽略 —— 桌面宠物类窗口只能靠 Wayland | **已修复**（`223061c8bc`）：X Shape 空输入区域，`ShapeGetRectangles` 回读 `INPUT[]`（0 rect）实测；Wayland 侧补 `set_mouse_passthrough`（仅编译验证） |
 | P1 | **`App` 完全没有包装平台能力方法** → 已实现的 `os_info` / 权限判定等应用层根本调不到 | **已修复并验证**（`e00ddd95aa`，见 §4.8）：权限收敛为 `check_permission`/`request_permission`，8 个能力接回 `App` |
@@ -669,21 +670,21 @@ pub fn register(&mut self, id: i32, keystroke: &Keystroke) -> Result<()> {
 > set_menus 示例：注册 on_app_menu_action 后正常启动，无回归
 > ```
 
-### 4.3 [P1] 约 19 个 `Platform` 方法在 Linux 上是静默 no-op
+### 4.3 [P1] 剩 16 个 `Platform` 方法在 Linux 上是静默 no-op
 
 对比 `crates/rgpui/src/platform.rs`（有默认空实现）与 `crates/rgpui-linux/src/linux/platform.rs`，
 Linux 缺失（**tray 8 件套已随 §4.1 移出；`os_info`、`system_idle_time`（`d6f6a4c598`）、
 `on_global_hotkey`（`d5e4819376`）、权限查询（`7fa8b7bf47`）已实现；`network_status` 已实现（`651a94a618`，见 §4.7；
+`on_system_power_event` + `start_power_save_blocker` 已实现（`4bc8c9c744`，见本节末）；
 `set_keep_alive_without_windows` 按 §4.1 末改为「状态收回核心层」，平台侧方法已删除**）：
 
 ```
 authenticate_biometric        biometric_status         cancel_user_attention
 id                            microphone_status        on_media_key_event
-on_network_status_change      on_system_power_event
-perform_dock_menu_action      read_from_find_pasteboard
+on_network_status_change      perform_dock_menu_action read_from_find_pasteboard
 request_microphone_permission request_user_attention   set_dock_badge
-show_context_menu             show_dialog              start_power_save_blocker
-stop_power_save_blocker       update_jump_list         write_to_find_pasteboard
+show_context_menu             show_dialog              update_jump_list
+write_to_find_pasteboard
 ```
 
 其中**核心层自己会调用**的：**一个都没有**。逐个核实后的结论（此前记为
@@ -707,13 +708,11 @@ stop_power_save_blocker       update_jump_list         write_to_find_pasteboard
 
 - 可实现，但先要定 App 侧 API：`on_network_status_change`（门户 `NetworkMonitor` 的 `changed` 信号，
   需要像 tray 那样把事件路由回主线程再派发）、
-  `on_system_power_event`（`login1`，`platform.rs` 已有 `PrepareForSleep` 监听可复用）、
-  `start/stop_power_save_blocker`（`login1` 的 `Inhibit` 是**持有 fd 即生效**，
-  返回 `Option<u32>` 让应用自己记 ID 的形状不合适，应改成 `Drop` 即释放的句柄）、
   `microphone_status` / `request_microphone_permission`（portal `Camera`/`Device`；
   这两个保留特例方法是因为带 `FnOnce(bool)` 回调，见 §4.8）
 - 已实现：`on_global_hotkey`（§4.2-2）、`os_info`、`system_idle_time`
   （`org.freedesktop.ScreenSaver` 与 Mutter `IdleMonitor` 依次探测）、`network_status`（§4.7）、
+  电源事件 + 电源阻止器（`4bc8c9c744`，见下）、
   权限查询/请求（`check_permission` / `request_permission`，§4.2-3 + §4.8）、
   `set_keep_alive_without_windows`（§4.1 末）
 - 平台语义上不需要，保持默认即可：`set_dock_badge`、`update_jump_list`、
@@ -722,6 +721,44 @@ stop_power_save_blocker       update_jump_list         write_to_find_pasteboard
   （窗口级提醒已由 `PlatformWindow::request_attention` 承担，见 §4.4）
 - 需要决定是否返回「不支持」而非静默成功：`show_dialog`、`show_context_menu`、
   `on_media_key_event`
+
+> **电源两项已实现**（`4bc8c9c744`）。按 §4.8 的口径一起做完了「API 形状 + `App` 包装 + 调用点」：
+>
+> - **形状**：`Platform::start_power_save_blocker(kind) -> Option<Box<dyn PowerSaveBlocker>>`，
+>   `PowerSaveBlocker` 是个只作标记的 `Send` trait，**持有即生效、`Drop` 即释放**；
+>   `stop_power_save_blocker(id)` 从 trait **删除**。理由不是风格：login1 `Inhibit` 返回的
+>   fifo fd **本身就是抑制凭证**，「返回 ID、再按 ID 停」等于要平台内部记一份「ID → fd」的账，
+>   应用忘没忘停都没人知道，抑制一直挂到进程退出。旧的 `Option<u32>` 形状就是这个坑。
+>   Windows / macOS 都没实现过这两个方法（走 trait 默认实现），删改无外部影响。
+> - **`App` 包装**：`on_system_power_event`（`SystemPowerEvent`，「即将睡眠」/「已唤醒」两类都到）
+>   与 `start_power_save_blocker`；调用点在 `daemon_app` 的托盘菜单（三项：阻止休眠 / 阻止息屏 / 取消）。
+> - **Linux 实现**（`crates/rgpui-linux/src/linux/power.rs`）：`PreventSleep` → `what="sleep"`、
+>   `PreventDisplaySleep` → `what="idle"`，mode 恒 `block`，`who` 取当前可执行文件名
+>   （`systemd-inhibit --list` 的 WHO 列即它）。事件监听把原来只取 `!sleeping` 一支的
+>   `PrepareForSleep` 订阅收进 `power.rs`，两个分支都派发，`WakeUp` 额外触发 `on_system_wake`
+>   —— 电源事件与唤醒事件**共用一条通道、只启一次监听**。
+> - **实测**（VM X11 会话）：托盘点「阻止息屏」→ `systemd-inhibit --list` 出现
+>   `daemon_app 1000 abc <PID> daemon_app idle rgpui 应用请求阻止系统息屏 block`；
+>   点「取消电源阻止」→ 条目立刻消失（句柄 Drop 关掉 fd）。
+> - **`PreventSleep` 在本机被拒不是代码问题**：返回
+>   `org.freedesktop.DBus.Error.AccessDenied: Permission denied`，而官方
+>   `systemd-inhibit --what=sleep --mode=block true` 同样 `Failed to inhibit: Access denied`。
+>   `org.freedesktop.login1.inhibit-block-sleep` 的默认档是 `allow_any=no`（`allow_active`/`allow_inactive`
+>   才是 `yes`），本机发起调用的进程位于 `user@1000.service/app.slice/…vte-spawn-*.scope`，
+>   polkit 取不到登录会话（`sd_pid_get_session` 落空）就按 `allow_any` 判。
+>   同一条调用换 `what=idle`（`allow_any=yes`）立刻成功，正是上面实测通过的那条。
+>   有 polkit agent 的本地桌面会话会走交互授权，届时该抑制能拿到。
+> - **`PreventDisplaySleep` 的边界要说清**：`idle` 抑制管的是 **logind 的空闲动作**，
+>   合成器（Mutter/gsd-power）自家的 DPMS 息屏策略不受它约束；要连屏幕一起保住还得走显示服务器接口。
+> - **未实测的一项**：`Sleep` / `WakeUp` 的实链路要真让 VM 睡眠，会连 xrdp 会话一起挂掉，故没做。
+>   派发本身有单测 `power_events_route_to_power_and_wake_callbacks`（两类事件都进
+>   `on_system_power_event`，只有 `WakeUp` 追加触发 `on_system_wake`）；信号源与修复前
+>   `on_system_wake` 用的是同一条 `PrepareForSleep`，只是原先丢掉了 `sleeping == true` 那一支。
+> - **失败原因从 `debug` 提到 `warn`**：应用侧能感知的只有 `None`（或从此收不到事件），
+>   日志里再没有原因就无从排查；上面那条 `AccessDenied` 就是靠这条 WARN 看到的。
+>   排查时用 `RUST_LOG=warn`（默认级别是 `error`，见 §4.6）。
+> - **headless 不带电源能力**：`ashpd` 是 `wayland` / `x11` feature 才启用的可选依赖，
+>   所以 `mod power` 与两个 override 一起门控 —— 与修复前「headless 下 wake 监听不启动」一致。
 
 ### 4.4 [P1] 窗口层（`PlatformWindow`）方法缺失
 
@@ -838,7 +875,8 @@ portal 调用）**在原生平台上一条都看不到** —— 这次排障被�
 > - 已有输出器时不抢它的级别设置 —— `rgpui-web` 的 `set_logger` 仍优先，Web 侧行为不变。
 >
 > 用法（示例已在 `main` 开头接入，如 `examples/hello_world/src/main.rs:113`、
-> `examples/tray/src/main.rs`）：
+> `examples/tray/src/main.rs`、`examples/daemon_app/src/main.rs`——
+> §4.3 电源抑制被 polkit 拒的原因就是靠它在 `RUST_LOG=warn` 下现形的）：
 >
 > ```rust
 > fn main() {
@@ -926,11 +964,15 @@ is_auto_launch_enabled(app_id)        focused_window_info()
 `#[cfg(not(target_os = "macos"))]` 下、三个平台都不编译它，所以一直没暴露。
 
 **刻意没动**的（缺的是 App 侧 API 设计，不是 Linux 实现）：
-`start/stop_power_save_blocker`、`on_system_power_event`、`on_network_status_change`、
+`on_network_status_change`、
 `on_media_key_event`、`microphone_status`、`biometric_status` / `authenticate_biometric`、
 `request/cancel_user_attention`、`set_dock_badge`、`show_dialog`、`show_context_menu`。
 例如电源阻止器返回 `Option<u32>` 让应用自己记 ID 去停止，这个形状本身就值得先改
 （更合理的是给出一个 `Drop` 即释放的句柄），在 Linux 上实现它只会多一份没人调的代码。
+
+> 上面点到的电源两项已按这条口径完成（`4bc8c9c744`）：`PowerSaveBlocker` 句柄 +
+> `App::start_power_save_blocker` / `App::on_system_power_event` + `daemon_app` 调用点，
+> `stop_power_save_blocker` 一并从 trait 删除，实现与实测见 §4.3 末。
 
 > **本机实测**（`DISPLAY=:10.0 daemon_app` 启动输出，见 §六）：
 >
@@ -1109,6 +1151,18 @@ DISPLAY=:10.0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus ./daemon_app
 # 负路径证明不是常量转发
 NO_AT_BRIDGE=1 ./daemon_app 2>&1 | grep Permission   # Accessibility=Denied，其余不变
 
+# 验证电源事件与阻止器（§4.3）：托盘项驱动，login1 侧对照
+RUST_LOG=warn DISPLAY=:10.0 ./daemon_app 2>&1 | tee /tmp/daemon_app.log   # 抑制被拒的原因只出现在这里
+#   GetLayout 里的菜单项 id（本机：4=阻止系统休眠 5=阻止息屏 6=取消电源阻止）逐个 Event 触发
+systemd-inhibit --no-pager --list     # 按住时应有 daemon_app … idle … block；取消后立刻消失
+# 对照官方 CLI，判定它是环境限制而非代码问题的两条关键证据
+systemd-inhibit --what=idle  --who=probe --why=probe --mode=block sleep 3   # 成功
+systemd-inhibit --what=sleep --who=probe --why=probe --mode=block true      # Failed to inhibit: Access denied
+# 被拒的档位：allow_any=no 而会话又映射不到登录会话时按这一档判
+grep -A6 'inhibit-block-sleep\|inhibit-block-idle' /usr/share/polkit-1/actions/org.freedesktop.login1.policy
+# PrepareForSleep 的实链路不实测（会让 VM 真睡眠、断掉 xrdp 会话），派发口径靠单测：
+cargo test -p rgpui-linux --lib power_events_route
+
 # 进程清理：用精确名，别用 -f 匹配路径（会杀掉自己所在的 shell，exit 143）
 pkill -x tray ; pkill -x inspector
 
@@ -1155,10 +1209,12 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
    写明 `apt install` 列表，以及未装这些库时实际可行的验证范围
    （`-p rgpui-linux --all-targets` + `cargo fmt -p rgpui-linux`），
    并明确它**不能替代** `cargo check --workspace`。
-8. **§4.3 分诊表**剩下的 `on_system_power_event` / `microphone_status` /
-   `start|stop_power_save_blocker` / `on_network_status_change` ——
-   **先做 App 侧 API 设计再动 Linux**（§4.8 的口径：只补平台实现会产出调不到的代码）。
-   其中电源阻止器的 `Option<u32>` 返回值应改为 `Drop` 即释放的句柄。
+8. ~~**§4.3 分诊表**剩下的 `on_system_power_event` / `start|stop_power_save_blocker`~~ ——
+   已实现（`4bc8c9c744`）：阻止器按预判改成 `Drop` 即释放的句柄并删掉 `stop_power_save_blocker`，
+   `App` 补两个包装，`daemon_app` 托盘项是调用点；息屏抑制本机实测通过，
+   休眠抑制被 polkit 拒（与官方 CLI 同样被拒，口径见 §4.3 末）。
+   **剩下** `microphone_status` / `request_microphone_permission` 与 `on_network_status_change` ——
+   仍然**先做 App 侧 API 设计再动 Linux**（§4.8 的口径：只补平台实现会产出调不到的代码）。
    （`system_idle_time`、`os_info` 已随 `d6f6a4c598` 完成，`network_status` 已随 §4.7 完成，
    窗口级提醒见 §4.4）
 9. **§2.4 遗留 + §4.4 的 `render_to_image`** —— Inspector 帧率恒 0 与截图能力都卡在同一个
