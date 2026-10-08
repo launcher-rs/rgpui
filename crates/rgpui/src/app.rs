@@ -49,14 +49,16 @@ use crate::InspectorElementRegistry;
 use crate::{
     Action, ActionBuildError, ActionRegistry, Any, AnyView, AnyWindowHandle, AppContext, Arena,
     ArenaBox, Asset, AssetSource, BackgroundExecutor, Bounds, ClipboardItem, CursorStyle,
-    DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, ForegroundExecutor, Global,
-    KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu, MenuItem, OwnedMenu,
-    PathPromptOptions, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
-    PlatformKeyboardMapper, Point, Priority, PromptBuilder, PromptButton, PromptHandle,
-    PromptLevel, Render, RenderImage, RenderablePromptHandle, Reservation, ScreenCaptureSource,
-    SharedString, SubscriberSet, Subscription, SvgRenderer, Task, TextRenderingMode, TextSystem,
-    ThermalState, Tray, TrayIconEvent, TrayMenuItem, Window, WindowAppearance, WindowButtonLayout,
-    WindowHandle, WindowId, WindowInvalidator,
+    DispatchPhase, DisplayId, EventEmitter, FocusHandle, FocusMap, FocusedWindowInfo,
+    ForegroundExecutor, Global, KeyBinding, KeyContext, Keymap, Keystroke, LayoutId, Menu,
+    MenuItem, NetworkStatus, OsInfo, OwnedMenu, PathPromptOptions, PermissionStatus,
+    PermissionType, Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout,
+    PlatformKeyboardMapper, Point, PowerSaveBlocker, PowerSaveBlockerKind, Priority, PromptBuilder,
+    PromptButton, PromptHandle, PromptLevel, Render, RenderImage, RenderablePromptHandle,
+    Reservation, ScreenCaptureSource, SharedString, SubscriberSet, Subscription, SvgRenderer,
+    SystemPowerEvent, Task, TextRenderingMode, TextSystem, ThermalState, Tray, TrayIconEvent,
+    TrayMenuItem, Window, WindowAppearance, WindowButtonLayout, WindowHandle, WindowId,
+    WindowInvalidator,
     colors::{Colors, GlobalColors},
     hash, init_app_menus,
     root::Root,
@@ -769,6 +771,11 @@ pub struct App {
     flushing_effects: bool,
     pending_updates: usize,
     quit_mode: QuitMode,
+    /// 没有窗口时是否保持运行，由 [`App::set_keep_alive_without_windows`] 设置。
+    ///
+    /// 判据必须在核心层读得到：窗口全部关闭后的自动退出发生在 `App` 里，
+    /// 只把这个意图交给平台（平台侧存了却没人读）等于没生效。
+    keep_alive_without_windows: Cell<bool>,
     quitting: bool,
 
     // We need to ensure the leak detector drops last, after all tasks, callbacks and things have been dropped.
@@ -860,6 +867,7 @@ impl App {
                 #[cfg(any(feature = "inspector", debug_assertions))]
                 inspector_element_registry: InspectorElementRegistry::default(),
                 quit_mode: QuitMode::default(),
+                keep_alive_without_windows: Cell::new(false),
                 quitting: false,
                 cursor_hide_mode: CursorHideMode::default(),
                 reduce_motion: false,
@@ -1799,11 +1807,14 @@ impl App {
                         true
                     });
 
-                    let quit_on_empty = match cx.quit_mode {
-                        QuitMode::Explicit => false,
-                        QuitMode::LastWindowClosed => true,
-                        QuitMode::Default => cfg!(not(target_os = "macos")),
-                    };
+                    // 「没有窗口也要活着」优先于任何自动退出模式，
+                    // 这是驻留托盘 / 后台服务型应用的典型诉求。
+                    let quit_on_empty = !cx.keep_alive_without_windows.get()
+                        && match cx.quit_mode {
+                            QuitMode::Explicit => false,
+                            QuitMode::LastWindowClosed => true,
+                            QuitMode::Default => cfg!(not(target_os = "macos")),
+                        };
 
                     if quit_on_empty && cx.windows.is_empty() {
                         cx.quit();
@@ -2440,6 +2451,48 @@ impl App {
         self.platform.get_menus()
     }
 
+    /// 注册菜单项动作的执行回调。
+    ///
+    /// 回调由平台在原生命令到达时调用：macOS 是全局菜单项被选中，Windows 是托盘菜单
+    /// 与任务栏跳转列表项被选中，Linux 是用 `set_tray`（旧 API）随菜单项带过去的动作被点击。
+    /// 需要「菜单项 → 动作」这条路走通的场景都注册这里；框架自身的
+    /// `menu::MenuBar` 组件走常规 action 派发，不经过本回调。
+    pub fn on_app_menu_action(&self, mut callback: impl FnMut(&dyn Action, &mut App) + 'static) {
+        let this = self.this.clone();
+        self.platform.on_app_menu_action(Box::new(move |action| {
+            if let Some(app) = this.upgrade() {
+                callback(action, &mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 注册「菜单即将打开」回调，可据此重建菜单内容再让主机取用。
+    ///
+    /// 目前只有 macOS 会触发（Windows/Linux 没有对应的原生事件源）。
+    pub fn on_will_open_app_menu(&self, mut callback: impl FnMut(&mut App) + 'static) {
+        let this = self.this.clone();
+        self.platform.on_will_open_app_menu(Box::new(move || {
+            if let Some(app) = this.upgrade() {
+                callback(&mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 注册菜单项可用性校验回调，返回 `false` 会禁用对应菜单项。
+    ///
+    /// 目前只有 macOS 会触发（Windows/Linux 没有对应的原生事件源）。
+    pub fn on_validate_app_menu_command(
+        &self,
+        mut callback: impl FnMut(&dyn Action, &mut App) -> bool + 'static,
+    ) {
+        let this = self.this.clone();
+        self.platform
+            .on_validate_app_menu_command(Box::new(move |action| match this.upgrade() {
+                Some(app) => callback(action, &mut app.borrow_mut()),
+                None => true,
+            }));
+    }
+
     /// 设置 Dock 中应用图标的右键菜单
     pub fn set_dock_menu(&self, menus: Vec<MenuItem>) {
         self.platform.set_dock_menu(menus, &self.keymap.borrow())
@@ -2532,8 +2585,82 @@ impl App {
     }
 
     /// 设置应用程序是否应在没有窗口时保持运行
+    ///
+    /// 状态存在核心层：窗口全部关闭后的自动退出判据就在 `App` 里，
+    /// 交给平台保存只会变成一个没人读的标志。
     pub fn set_keep_alive_without_windows(&self, keep_alive: bool) {
-        self.platform.set_keep_alive_without_windows(keep_alive);
+        self.keep_alive_without_windows.set(keep_alive);
+    }
+
+    /// 查询系统权限状态（辅助功能 / 屏幕录制 / 输入监控）。
+    ///
+    /// 返回 [`PermissionStatus::Unavailable`] 表示系统根本没有这一类别的授权概念，
+    /// 或判定通道不可达 —— 与 `Granted` 是两回事，调用方不要按「拿不到就当有」处理。
+    pub fn check_permission(&self, kind: PermissionType) -> PermissionStatus {
+        self.platform.check_permission(kind)
+    }
+
+    /// 请求系统权限：有授权弹窗的类别会触发弹窗，其余类别输出可操作的引导日志。
+    pub fn request_permission(&self, kind: PermissionType) {
+        self.platform.request_permission(kind);
+    }
+
+    /// 返回操作系统名称与版本号。
+    pub fn os_info(&self) -> OsInfo {
+        self.platform.os_info()
+    }
+
+    /// 返回系统空闲时长（自上次用户输入以来），无法判定时为 `None`。
+    pub fn system_idle_time(&self) -> Option<Duration> {
+        self.platform.system_idle_time()
+    }
+
+    /// 返回当前网络连接状态。
+    pub fn network_status(&self) -> NetworkStatus {
+        self.platform.network_status()
+    }
+
+    /// 注册系统电源事件回调（即将睡眠 / 已唤醒）。
+    ///
+    /// 「即将睡眠」是平台给应用的收尾窗口：此刻还在事件循环里，可以落盘或释放资源；
+    /// 「已唤醒」用来恢复那些在睡眠期间失效的状态（例如计时器、连接）。
+    /// 与 [`App::on_system_wake`] 的区别是本回调两种事件都能收到。
+    pub fn on_system_power_event(
+        &self,
+        mut callback: impl FnMut(SystemPowerEvent, &mut App) + 'static,
+    ) {
+        let this = self.this.clone();
+        self.platform.on_system_power_event(Box::new(move |event| {
+            if let Some(app) = this.upgrade() {
+                callback(event, &mut app.borrow_mut());
+            }
+        }));
+    }
+
+    /// 阻止系统休眠或息屏；返回的句柄**持有即生效、`Drop` 即恢复**。
+    ///
+    /// 平台不支持或系统服务不可达时返回 `None`。句柄要放在应用能控制生命周期的地方
+    /// （字段、`Cell<Option<..>>`），不要靠「按 ID 停止」——那样底层资源会一直泄漏。
+    pub fn start_power_save_blocker(
+        &self,
+        kind: PowerSaveBlockerKind,
+    ) -> Option<Box<dyn PowerSaveBlocker>> {
+        self.platform.start_power_save_blocker(kind)
+    }
+
+    /// 设置开机自启动，`app_id` 为应用标识。
+    pub fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
+        self.platform.set_auto_launch(app_id, enabled)
+    }
+
+    /// 查询开机自启动是否已启用。
+    pub fn is_auto_launch_enabled(&self, app_id: &str) -> bool {
+        self.platform.is_auto_launch_enabled(app_id)
+    }
+
+    /// 返回当前系统中获得焦点的窗口信息（跨进程，需系统辅助功能授权）。
+    pub fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
+        self.platform.focused_window_info()
     }
 
     /// 最小化到托盘 —— 隐藏所有窗口（从任务栏移除）。

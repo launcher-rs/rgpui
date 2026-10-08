@@ -423,6 +423,8 @@ version = "0.62"
 # Win32_System_WinRT。Fxc/Hlsl 仅 debug_assertions 下编译 shader 用，
 # 但 `cargo test` 需要，予以保留。
 features = [
+    "Data_Xml_Dom",
+    "UI_Notifications",
     "UI_ViewManagement",
     "Wdk_System_SystemServices",
     "Win32_Foundation",

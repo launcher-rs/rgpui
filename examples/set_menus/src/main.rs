@@ -70,6 +70,9 @@ fn run_example() {
         // by the `MenuItem::action` in the menu bar
         cx.on_action(quit);
         cx.on_action(toggle_check);
+        // 原生菜单项动作的落点：macOS 全局菜单被选中、Windows 托盘/跳转列表被点击、
+        // Linux 用旧 set_tray API 随菜单项带过去的 Action 被点击
+        cx.on_app_menu_action(|action, cx| cx.dispatch_action(action));
         // Add menu items
         set_app_menus(cx);
         cx.open_window(WindowOptions::default(), |_, cx| cx.new(|_| SetMenus {}))

@@ -81,6 +81,22 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 - `cargo hack check --each-feature` 可用；`scap` / `screen-capture` feature
   已知编译失败（`zed-scap` 与 `windows-capture` API 不兼容），不要启用。
 
+### Linux 端构建前置
+
+`examples/webview` 启用 `rgpui/webview` → `wry` → `webkit2gtk` → `gtk` → `glib-sys`，
+缺系统库时 `cargo check --workspace` 会卡在 `glib-sys` 的 build script
+（`The system library 'glib-2.0' ... was not found`），连带 CI 用的
+`cargo clippy --workspace --lib --bins` 一起失败。先装齐：
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
+```
+
+装不了（无授权/无网络）时，Linux 端的实际可验证范围是
+`cargo check/clippy -p rgpui-linux --all-targets -- -D warnings` + `cargo fmt -p rgpui-linux`，
+**这不能替代 `cargo check --workspace`**，跨 crate 影响要靠 CI 矩阵兜住。
+`x11rb` 是纯 Rust，不需要 `libx11-dev`。诊断日志用 `rgpui::init_logging()` + `RUST_LOG`。
+
 ## rgpui 独有功能（重构不得移除）
 
 ### 组件库索引
@@ -107,10 +123,18 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 `PlatformWindow`：`hide`、`set_mouse_passthrough`、`set_position`、
 `window_extended_style` / `set_window_extended_style`、`set_titlebar_visible`、
 `set_input_region`、`request_attention`、`get_raw_handle`。
-`Platform` 约 35+ 自有方法：托盘 8 件套、全局热键、通知、电源、辅助功能/网络/
-媒体键/系统信息/生物识别/Dock/上下文菜单/原生弹窗/无窗口保活，另
-`WindowOptions.mouse_passthrough`、`WindowKind::Overlay`、Mica 材质、
+`Platform` 约 35+ 自有方法：托盘 8 件套、全局热键、通知、电源、权限（统一走
+`check_permission` / `request_permission`，类别见 `PermissionType`）、
+麦克风与生物识别（仍是特例：请求带回调、`PermissionType` 无对应类别，生物识别有自有
+`BiometricStatus`）、网络、媒体键、系统信息、Dock、上下文菜单、原生弹窗；
+另 `WindowOptions.mouse_passthrough`、`WindowKind::Overlay`、Mica 材质、
 `tray.rs` / `single_instance.rs`。
+
+**加 `Platform` 方法必须同时加 `App` 包装 + 一个真实调用点**（示例或核心逻辑）。
+`App::platform` 是私有字段，没有 `App` 包装的能力应用层一行都调不到 ——
+`set_keep_alive_without_windows`（存了没人读）与 `os_info`/权限查询（实现了没人调）
+两起缺陷都是这一条没做到导致的。权限类能力统一走
+`App::check_permission(PermissionType)` / `request_permission(kind)`，不要再为单个类别加特例方法。
 
 ### rgpui-windows 特有
 

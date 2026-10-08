@@ -31,7 +31,7 @@ use x11rb::{
         AtomEnum, ChangeWindowAttributesAux, ClientMessageData, ClientMessageEvent,
         ConnectionExt as _, EventMask, Visibility,
     },
-    protocol::{Event, dri3, randr, render, xinput, xkb, xproto},
+    protocol::{Event, dri3, randr, render, shape, xinput, xkb, xproto},
     resource_manager::Database,
     wrapper::ConnectionExt as _,
     xcb_ffi::XCBConnection,
@@ -49,9 +49,10 @@ use super::{
 };
 
 use crate::linux::{
-    DEFAULT_CURSOR_ICON_NAME, LinuxClient, capslock_from_xkb, cursor_style_to_icon_names,
-    get_xkb_compose_state, is_within_click_distance, keystroke_from_xkb,
-    keystroke_underlying_dead_key, log_cursor_icon_warning, modifiers_from_xkb, open_uri_internal,
+    DEFAULT_CURSOR_ICON_NAME, LinuxClient, TrayEventSource, capslock_from_xkb,
+    cursor_style_to_icon_names, dispatch_tray_event, get_xkb_compose_state,
+    is_within_click_distance, keystroke_from_xkb, keystroke_underlying_dead_key,
+    log_cursor_icon_warning, modifiers_from_xkb, open_uri_internal,
     platform::{DOUBLE_CLICK_INTERVAL, SCROLL_LINES},
     reveal_path_internal,
     xdg_desktop_portal::{Event as XDPEvent, XDPEventSource},
@@ -78,6 +79,26 @@ pub(crate) const XINPUT_ALL_DEVICES: xinput::DeviceId = 0;
 pub(crate) const XINPUT_ALL_DEVICE_GROUPS: xinput::DeviceId = 1;
 
 const GPUI_X11_SCALE_FACTOR_ENV: &str = "GPUI_X11_SCALE_FACTOR";
+
+/// X11 事件状态里的锁定键位：Lock（CapsLock）、Mod2（NumLock）、Mod5（ScrollLock）
+///
+/// 数值须与 `xproto::KeyButMask` 的对应常量一致，由下方测试保证。
+const GLOBAL_HOTKEY_LOCK_MODIFIERS: u16 = 0x02 | 0x10 | 0x80;
+
+/// 锁定键的全部非空组合
+///
+/// `GrabKey` 的修饰键掩码是**精确匹配**：事件里多出一个锁定键位就匹配不上，
+/// 所以除了基础组合，还得把这 7 种锁定键叠加组合一起抓取，热键才不会被
+/// CapsLock/NumLock/ScrollLock 的状态影响。
+const GLOBAL_HOTKEY_LOCK_COMBINATIONS: [u16; 7] = [
+    0x02,
+    0x10,
+    0x80,
+    0x02 | 0x10,
+    0x02 | 0x80,
+    0x10 | 0x80,
+    GLOBAL_HOTKEY_LOCK_MODIFIERS,
+];
 
 pub(crate) struct WindowRef {
     window: X11WindowStatePtr,
@@ -222,6 +243,10 @@ pub struct X11ClientState {
     pub(crate) clipboard: Clipboard,
     pub(crate) clipboard_item: Option<ClipboardItem>,
     pub(crate) xdnd_state: Xdnd,
+    /// 已注册的全局热键：id -> (keycode, 修饰键掩码)，注销时按此重建抓取组合
+    pub(crate) global_hotkeys: HashMap<u32, (u8, u16)>,
+    /// (keycode, 去掉锁定键的修饰键掩码) -> id，供根窗口按键事件反查
+    pub(crate) global_hotkey_index: HashMap<(u8, u16), u32>,
 }
 
 #[derive(Clone)]
@@ -309,7 +334,7 @@ impl X11Client {
     pub(crate) fn new() -> anyhow::Result<Self> {
         let event_loop = EventLoop::try_new()?;
 
-        let (common, main_receiver, wake_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let (mut common, main_receiver, power_receiver) = LinuxCommon::new(event_loop.get_signal());
 
         let handle = event_loop.handle();
 
@@ -336,20 +361,40 @@ impl X11Client {
             })?;
 
         handle
-            .insert_source(wake_receiver, |event, _, client: &mut X11Client| {
-                if let calloop::channel::Event::Msg(()) = event {
-                    client.0.borrow_mut().common.handle_system_wake();
+            .insert_source(power_receiver, |event, _, client: &mut X11Client| {
+                if let calloop::channel::Event::Msg(power_event) = event {
+                    client
+                        .0
+                        .borrow_mut()
+                        .common
+                        .handle_system_power_event(power_event);
                 }
             })
             .map_err(|err| {
                 anyhow!("Failed to initialize event loop handling of wake events: {err:?}")
             })?;
 
+        if let Some(tray_event_source) = common.take_tray_event_source() {
+            handle
+                .insert_source(TrayEventSource::new(tray_event_source), {
+                    |event, _, client: &mut X11Client| {
+                        let state = client.0.clone();
+                        dispatch_tray_event(event, &mut |f| f(&mut state.borrow_mut().common));
+                    }
+                })
+                .map_err(|err| {
+                    anyhow!("Failed to initialize event loop handling of tray events: {err:?}")
+                })?;
+        }
+
         let (xcb_connection, x_root_index) = XCBConnection::connect(None)?;
         xcb_connection.prefetch_extension_information(xkb::X11_EXTENSION_NAME)?;
         xcb_connection.prefetch_extension_information(randr::X11_EXTENSION_NAME)?;
         xcb_connection.prefetch_extension_information(render::X11_EXTENSION_NAME)?;
         xcb_connection.prefetch_extension_information(xinput::X11_EXTENSION_NAME)?;
+        // Shape 扩展用于输入区域（鼠标穿透），旧 X server 上可能不存在，
+        // 使用时按「拿不到扩展信息就不发请求」处理
+        xcb_connection.prefetch_extension_information(shape::X11_EXTENSION_NAME)?;
 
         // Announce to X server that XInput up to 2.4 is supported.
         // Version 2.4 is needed for gesture events (GesturePinchBegin/Update/End).
@@ -559,6 +604,8 @@ impl X11Client {
             clipboard,
             clipboard_item: None,
             xdnd_state: Xdnd::default(),
+            global_hotkeys: HashMap::default(),
+            global_hotkey_index: HashMap::default(),
         }))))
     }
 
@@ -1051,6 +1098,26 @@ impl X11Client {
                 }
             }
             Event::KeyPress(event) => {
+                // 根窗口上报的按键有两种：抓取命中的热键，以及透传到根窗口的普通按键。
+                // 后者必须丢弃，否则会当成焦点窗口的按键重复派发一次。
+                {
+                    let state = self.0.borrow();
+                    let root = state.xcb_connection.setup().roots[state.x_root_index].root;
+                    if event.event == root {
+                        // 查表用去掉锁定键位的掩码：抓取时已覆盖锁定键的全部组合
+                        let modifiers = u16::from(event.state) & !GLOBAL_HOTKEY_LOCK_MODIFIERS;
+                        let matched = state
+                            .global_hotkey_index
+                            .get(&(event.detail, modifiers))
+                            .copied();
+                        drop(state);
+                        if let Some(id) = matched {
+                            self.dispatch_global_hotkey(id);
+                        }
+                        return Some(());
+                    }
+                }
+
                 let window = self.get_window(event.event)?;
                 let mut state = self.0.borrow_mut();
 
@@ -1864,6 +1931,70 @@ impl LinuxClient for X11Client {
             .map(|window| window.window.x_window as u64)
             .map(|x_window| std::future::ready(Some(WindowIdentifier::from_xid(x_window))))
             .unwrap_or(std::future::ready(None))
+    }
+
+    /// 用根窗口 GrabKey 注册系统级热键
+    fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> anyhow::Result<()> {
+        let mut state = self.0.borrow_mut();
+        let root = state.xcb_connection.setup().roots[state.x_root_index].root;
+
+        // 同一个 id 重新注册要先撤掉旧组合，否则会残留一次抓取
+        if let Some((old_keycode, old_modifiers)) = state.global_hotkeys.remove(&id) {
+            state
+                .global_hotkey_index
+                .remove(&(old_keycode, old_modifiers));
+            for lock in GLOBAL_HOTKEY_LOCK_COMBINATIONS {
+                ungrab_global_key(
+                    &state.xcb_connection,
+                    root,
+                    old_keycode,
+                    old_modifiers | lock,
+                );
+            }
+        }
+
+        let keycode = keycode_for_key(&state.xkb, &keystroke.key)
+            .with_context(|| format!("无法把按键 {:?} 映射成 X11 键码", keystroke.key))?;
+        let modifiers = modifiers_to_x11_mask(keystroke.modifiers);
+        select_root_key_presses(&state.xcb_connection, root)?;
+
+        // 基础组合失败说明键位已被其它客户端占用（BadAccess），必须如实报错
+        grab_global_key(&state.xcb_connection, root, keycode, modifiers)
+            .with_context(|| format!("全局热键 {:?} 已被其它应用占用", keystroke))?;
+        let mut masks = vec![modifiers];
+        for lock in GLOBAL_HOTKEY_LOCK_COMBINATIONS {
+            let mask = modifiers | lock;
+            // 锁定键组合被占用不影响热键在其它锁定状态下可用，只记录日志
+            match grab_global_key(&state.xcb_connection, root, keycode, mask) {
+                Ok(()) => masks.push(mask),
+                Err(err) => log::debug!("抓取全局热键的锁定键组合 {mask:#06b} 失败: {err:#}"),
+            }
+        }
+
+        xcb_flush(&state.xcb_connection);
+        state.global_hotkeys.insert(id, (keycode, modifiers));
+        for mask in masks {
+            state.global_hotkey_index.insert((keycode, mask), id);
+        }
+
+        Ok(())
+    }
+
+    /// 注销系统级热键，撤掉它的全部抓取组合
+    fn unregister_global_hotkey(&self, id: u32) {
+        let mut state = self.0.borrow_mut();
+        let Some((keycode, modifiers)) = state.global_hotkeys.remove(&id) else {
+            return;
+        };
+
+        let root = state.xcb_connection.setup().roots[state.x_root_index].root;
+        state.global_hotkey_index.remove(&(keycode, modifiers));
+        for lock in GLOBAL_HOTKEY_LOCK_COMBINATIONS {
+            let mask = modifiers | lock;
+            state.global_hotkey_index.remove(&(keycode, mask));
+            ungrab_global_key(&state.xcb_connection, root, keycode, mask);
+        }
+        xcb_flush(&state.xcb_connection);
     }
 }
 
@@ -2770,6 +2901,103 @@ fn valid_scale_factor(scale_factor: f32) -> bool {
     scale_factor.is_sign_positive() && scale_factor.is_normal()
 }
 
+/// 按键名反查 X11 键码
+///
+/// 平台层只有键码 → 按键名（[`keystroke_from_xkb`]）的单向映射，而热键注册拿到的是
+/// 名字（`cmd-shift-k` 里的 `k`），因此用同一份 keymap 在无修饰键状态下反扫一遍，
+/// 保证两边的命名口径完全一致。
+fn keycode_for_key(xkb: &xkbc::State, key: &str) -> Option<u8> {
+    let keymap = xkb.get_keymap();
+    let state = xkbc::State::new(&keymap);
+
+    (8..=255u8).find(|&raw| {
+        let keycode = xkbc::Keycode::new(raw as u32);
+        // 先跳过 keymap 里没有符号的键码，避免把无关键码误判成目标按键
+        state.key_get_one_sym(keycode) != xkbc::Keysym::NoSymbol
+            && keystroke_from_xkb(&state, Modifiers::default(), keycode).key == key
+    })
+}
+
+/// 把 GPUI 修饰键转成 X11 的修饰键掩码
+fn modifiers_to_x11_mask(modifiers: Modifiers) -> u16 {
+    let mut mask = 0u16;
+    if modifiers.shift {
+        mask |= u16::from(xproto::KeyButMask::SHIFT);
+    }
+    if modifiers.control {
+        mask |= u16::from(xproto::KeyButMask::CONTROL);
+    }
+    if modifiers.alt {
+        mask |= u16::from(xproto::KeyButMask::MOD1);
+    }
+    // Linux 上 platform（"cmd"）就是 Super 键，对应 Mod4
+    if modifiers.platform {
+        mask |= u16::from(xproto::KeyButMask::MOD4);
+    }
+    mask
+}
+
+/// 在根窗口抓取一对「键码 + 修饰键」组合
+fn grab_global_key(
+    xcb_connection: &XCBConnection,
+    root: xproto::Window,
+    keycode: u8,
+    modifiers: u16,
+) -> anyhow::Result<()> {
+    check_reply(
+        || "X11 GrabKey on the root window failed.",
+        xcb_connection.grab_key(
+            false,
+            root,
+            xproto::ModMask::from(modifiers),
+            keycode,
+            xproto::GrabMode::ASYNC,
+            xproto::GrabMode::ASYNC,
+        ),
+    )
+}
+
+/// 撤销一次抓取
+///
+/// 注销路径不能因为 `BadMatch`（组合本就没抓到）中断，失败只记录日志。
+fn ungrab_global_key(
+    xcb_connection: &XCBConnection,
+    root: xproto::Window,
+    keycode: u8,
+    modifiers: u16,
+) {
+    check_reply(
+        || "X11 UngrabKey on the root window failed.",
+        xcb_connection.ungrab_key(keycode, root, xproto::ModMask::from(modifiers)),
+    )
+    .log_err();
+}
+
+/// 让根窗口开始上报按键事件
+///
+/// `GrabKey` 只是登记被动抓取，激活后产生的 `KeyPress` 仍要按抓取窗口（根窗口）自己
+/// 的事件掩码过滤；根窗口默认没有订阅 KeyPress，不补上就永远收不到热键。
+/// 掩码只做「或」运算，其它客户端选择的位保持不变；注销后不必撤回，多余的根窗口按键
+/// 事件会在事件分发处被丢弃。
+fn select_root_key_presses(
+    xcb_connection: &XCBConnection,
+    root: xproto::Window,
+) -> anyhow::Result<()> {
+    let attributes = get_reply(
+        || "X11 GetWindowAttributes on the root window failed.",
+        xcb_connection.get_window_attributes(root),
+    )?;
+
+    check_reply(
+        || "X11 ChangeWindowAttributes on the root window event mask failed.",
+        xcb_connection.change_window_attributes(
+            root,
+            &ChangeWindowAttributesAux::new()
+                .event_mask(attributes.your_event_mask | EventMask::KEY_PRESS),
+        ),
+    )
+}
+
 #[inline]
 fn xkb_state_for_key_event(xkb: &xkbc::State, event_state: xproto::KeyButMask) -> xkbc::State {
     let keymap = xkb.get_keymap();
@@ -2841,6 +3069,63 @@ mod tests {
         }
 
         panic!("test keymap should support a non-locked secondary layout");
+    }
+
+    #[test]
+    fn global_hotkey_lock_constants_match_x11_masks() {
+        let expected = u16::from(
+            xproto::KeyButMask::LOCK | xproto::KeyButMask::MOD2 | xproto::KeyButMask::MOD5,
+        );
+        assert_eq!(GLOBAL_HOTKEY_LOCK_MODIFIERS, expected);
+
+        // 七个组合必须是锁定键位的全部非空子集，且互不重复
+        let mut seen = HashSet::new();
+        let mut union = 0u16;
+        for combination in GLOBAL_HOTKEY_LOCK_COMBINATIONS {
+            assert_ne!(combination, 0, "抓取组合不应为空");
+            assert_eq!(
+                combination & !GLOBAL_HOTKEY_LOCK_MODIFIERS,
+                0,
+                "抓取组合 {combination:#06b} 含锁定键位以外的位"
+            );
+            assert!(seen.insert(combination), "抓取组合 {combination:#06b} 重复");
+            union |= combination;
+        }
+        assert_eq!(GLOBAL_HOTKEY_LOCK_COMBINATIONS.len(), 7);
+        assert_eq!(union, GLOBAL_HOTKEY_LOCK_MODIFIERS);
+    }
+
+    #[test]
+    fn global_hotkey_modifier_mask_uses_x11_modifiers() {
+        let mask = modifiers_to_x11_mask(Modifiers {
+            control: true,
+            alt: true,
+            shift: true,
+            platform: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            mask,
+            u16::from(
+                xproto::KeyButMask::CONTROL
+                    | xproto::KeyButMask::MOD1
+                    | xproto::KeyButMask::SHIFT
+                    | xproto::KeyButMask::MOD4
+            )
+        );
+        assert_eq!(modifiers_to_x11_mask(Modifiers::default()), 0);
+    }
+
+    #[test]
+    fn global_hotkey_keycode_matches_keystroke_naming() {
+        let state = xkbc::State::new(&test_keymap("us"));
+
+        // 与 keystroke_from_xkb 同一口径：字母、符号、功能键都能反查
+        assert_eq!(keycode_for_key(&state, "a"), Some(38));
+        assert_eq!(keycode_for_key(&state, "k"), Some(45));
+        assert_eq!(keycode_for_key(&state, "f1"), Some(67));
+        assert_eq!(keycode_for_key(&state, "space"), Some(65));
+        assert_eq!(keycode_for_key(&state, "not_a_key"), None);
     }
 
     #[test]

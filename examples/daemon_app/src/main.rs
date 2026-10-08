@@ -1,12 +1,17 @@
 use rgpui::single_instance::{SingleInstance, send_activate_to_existing};
 use rgpui::{
-    App, Bounds, Context, Keystroke, TrayIconEvent, TrayMenuItem, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, prelude::*, px, rgb,
-    rgba, size,
+    App, Bounds, Context, Keystroke, PermissionType, PowerSaveBlocker, PowerSaveBlockerKind,
+    SystemPowerEvent, TrayIconEvent, TrayMenuItem, Window, WindowBackgroundAppearance,
+    WindowBounds, WindowKind, WindowOptions, div, prelude::*, px, rgb, rgba, size,
 };
 use rgpui_platform::application;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 const APP_ID: &str = "com.example.daemon-app";
+
+/// 电源抑制句柄：留着它抑制就在，`Drop` 即恢复系统的省电策略
+type Inhibitor = Rc<RefCell<Option<Box<dyn PowerSaveBlocker>>>>;
 
 struct OverlayView;
 
@@ -84,6 +89,9 @@ impl Render for SettingsView {
 }
 
 fn main() {
+    // 诊断时用 RUST_LOG=debug 运行，可看到电源抑制等内部日志
+    rgpui::init_logging();
+
     let _instance = match SingleInstance::acquire(APP_ID) {
         Ok(instance) => instance,
         Err(_) => {
@@ -96,8 +104,10 @@ fn main() {
     application().run(|cx: &mut App| {
         cx.set_keep_alive_without_windows(true);
 
-        setup_tray(cx);
+        let inhibitor = setup_power(cx);
+        setup_tray(cx, inhibitor);
         setup_global_hotkey(cx);
+        log_capabilities(cx);
 
         let _ = cx.show_notification("Daemon App", "Application started in background");
 
@@ -105,7 +115,7 @@ fn main() {
     });
 }
 
-fn setup_tray(cx: &mut App) {
+fn setup_tray(cx: &mut App, inhibitor: Inhibitor) {
     cx.set_tray_tooltip("Daemon App");
 
     cx.set_tray_menu(vec![
@@ -116,6 +126,19 @@ fn setup_tray(cx: &mut App) {
         TrayMenuItem::Action {
             label: "Settings".into(),
             id: "settings".into(),
+        },
+        TrayMenuItem::Separator,
+        TrayMenuItem::Action {
+            label: "阻止系统休眠".into(),
+            id: "inhibit_sleep".into(),
+        },
+        TrayMenuItem::Action {
+            label: "阻止息屏".into(),
+            id: "inhibit_display".into(),
+        },
+        TrayMenuItem::Action {
+            label: "取消电源阻止".into(),
+            id: "release_inhibit".into(),
         },
         TrayMenuItem::Separator,
         TrayMenuItem::Action {
@@ -136,7 +159,8 @@ fn setup_tray(cx: &mut App) {
         }
     });
 
-    cx.on_tray_menu_action(|id, cx| match id.as_ref() {
+    let menu_inhibitor = inhibitor;
+    cx.on_tray_menu_action(move |id, cx| match id.as_ref() {
         "show_overlay" => {
             open_overlay(cx);
             cx.activate(true);
@@ -145,11 +169,65 @@ fn setup_tray(cx: &mut App) {
             open_settings(cx);
             cx.activate(true);
         }
+        // 阻止器只在这里被持有：菜单项按下才申请，取消项把句柄丢回去 ——
+        // 句柄 Drop 时底层 fd 关闭，系统立刻恢复原来的省电策略。
+        // 演示用的是同一个格子：换一种抑制会先丢掉前一种的句柄
+        "inhibit_sleep" => {
+            if menu_inhibitor.borrow().is_none() {
+                let blocker = cx.start_power_save_blocker(PowerSaveBlockerKind::PreventSleep);
+                match blocker {
+                    Some(blocker) => {
+                        eprintln!("已阻止系统休眠（systemd-inhibit --list 可见本条抑制）");
+                        *menu_inhibitor.borrow_mut() = Some(blocker);
+                    }
+                    None => eprintln!("平台未能阻止系统休眠"),
+                }
+            }
+        }
+        "inhibit_display" => {
+            if menu_inhibitor.borrow().is_none() {
+                let blocker =
+                    cx.start_power_save_blocker(PowerSaveBlockerKind::PreventDisplaySleep);
+                match blocker {
+                    Some(blocker) => {
+                        eprintln!("已阻止息屏（systemd-inhibit --list 可见本条抑制）");
+                        *menu_inhibitor.borrow_mut() = Some(blocker);
+                    }
+                    None => eprintln!("平台未能阻止息屏"),
+                }
+            }
+        }
+        "release_inhibit" => {
+            if menu_inhibitor.borrow_mut().take().is_some() {
+                eprintln!("已取消电源阻止");
+            }
+        }
         "quit" => {
             cx.quit();
         }
         _ => {}
     });
+}
+
+/// 注册系统电源事件回调，并交出保存抑制句柄的位置
+///
+/// 事件源是 login1 的 `PrepareForSleep` 信号：参数为真表示「即将睡眠」，此刻还在
+/// 事件循环里，是应用收尾的窗口；为假表示「已唤醒」。
+fn setup_power(cx: &mut App) -> Inhibitor {
+    let inhibitor: Inhibitor = Rc::new(RefCell::new(None));
+    let held = inhibitor.clone();
+    cx.on_system_power_event(move |event, _cx| match event {
+        SystemPowerEvent::Sleep => {
+            eprintln!(
+                "系统即将睡眠，抑制句柄是否仍持有: {}",
+                held.borrow().is_some()
+            );
+        }
+        SystemPowerEvent::WakeUp => {
+            eprintln!("系统已唤醒");
+        }
+    });
+    inhibitor
 }
 
 fn setup_global_hotkey(cx: &mut App) {
@@ -163,6 +241,25 @@ fn setup_global_hotkey(cx: &mut App) {
             eprintln!("Global hotkey triggered (Cmd+Shift+K)");
         }
     });
+}
+
+/// 打印当前平台的能力查询结果，用于确认这些 API 在应用层真的可达
+fn log_capabilities(cx: &App) {
+    let os = cx.os_info();
+    eprintln!("OS: {} {}", os.name, os.version);
+    eprintln!("Network: {:?}", cx.network_status());
+    eprintln!(
+        "Idle: {:?}",
+        cx.system_idle_time().map(|idle| idle.as_secs())
+    );
+    for kind in [
+        PermissionType::Accessibility,
+        PermissionType::ScreenCapture,
+        PermissionType::InputMonitoring,
+    ] {
+        eprintln!("Permission {kind:?}: {:?}", cx.check_permission(kind));
+    }
+    eprintln!("Auto launch enabled: {}", cx.is_auto_launch_enabled(APP_ID));
 }
 
 fn open_overlay(cx: &mut App) {

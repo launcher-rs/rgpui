@@ -7,10 +7,15 @@ pub mod shared_context;
 mod wgpu_atlas;
 /// wgpu GPU 上下文封装
 mod wgpu_context;
+/// 无头（离屏）渲染器，供视觉测试与基准测试使用
+#[cfg(all(not(target_family = "wasm"), feature = "test-support"))]
+mod wgpu_headless;
 /// wgpu 渲染器实现
 mod wgpu_renderer;
 pub use cosmic_text_system::*;
 pub use wgpu;
 pub use wgpu_atlas::*;
 pub use wgpu_context::*;
+#[cfg(all(not(target_family = "wasm"), feature = "test-support"))]
+pub use wgpu_headless::WgpuHeadlessRenderer;
 pub use wgpu_renderer::{GpuContext, WgpuRenderer, WgpuSurfaceConfig};

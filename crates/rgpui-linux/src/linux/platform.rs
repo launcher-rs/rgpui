@@ -1,16 +1,16 @@
-use std::{
-    cell::RefCell,
-    env,
-    path::{Path, PathBuf},
-    rc::Rc,
-    sync::Arc,
-};
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use std::{
+    collections::HashMap,
     ffi::OsString,
     fs::File,
     io::Read as _,
     os::fd::{AsFd, AsRawFd},
+};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::Arc,
     time::Duration,
 };
 
@@ -22,16 +22,30 @@ use rgpui::{ResultExt as _, util::command::new_std_command};
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
 use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
-use crate::linux::{LinuxGlobalHotkey, LinuxNotifications, LinuxPermissions};
+use crate::linux::{LinuxNotifications, LinuxPermissions};
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use crate::linux::{
+    SniShared, TrayEvent, TrayHandle, collect_tray_menu_actions, convert_menu_items_to_tray,
+    icon_pixmap_from_bytes, pixmap_from_rgba_bytes, tray_sni,
+};
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use futures::channel::mpsc;
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use parking_lot::Mutex;
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
-    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, OwnedMenu,
-    PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
-    PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
-    RunnableVariant, Task, ThermalState, WindowAppearance, WindowButtonLayout, WindowParams,
+    FocusedWindowInfo, ForegroundExecutor, Keymap, Keystroke, Menu, MenuItem, NetworkStatus,
+    OsInfo, OwnedMenu, PathPromptOptions, PermissionStatus, PermissionType, Platform,
+    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
+    PlatformWindow, Result, RunnableVariant, SystemPowerEvent, Task, ThermalState,
+    WindowAppearance, WindowButtonLayout, WindowParams,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use rgpui::{Pixels, Point, px};
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use rgpui::{PowerSaveBlocker, PowerSaveBlockerKind};
+#[cfg(any(feature = "wayland", feature = "x11"))]
+use rgpui::{SharedString, Tray, TrayIconEvent, TrayMenuItem};
 
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const SCROLL_LINES: f32 = 3.0;
@@ -95,6 +109,35 @@ pub(crate) trait LinuxClient {
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>>;
     fn run(&self);
 
+    /// 在系统范围注册热键，只有 X11 后端能真正做到（根窗口 GrabKey）
+    fn register_global_hotkey(&self, _id: u32, _keystroke: &Keystroke) -> Result<()> {
+        anyhow::bail!("当前 Linux 后端不支持注册全局热键")
+    }
+
+    /// 注销系统范围的热键
+    fn unregister_global_hotkey(&self, _id: u32) {}
+
+    /// 派发全局热键触发事件
+    ///
+    /// 回调里常会调用 `update_window`、`quit` 等再次借用客户端状态的 API，所以必须
+    /// 先把回调取出并释放借用，执行完再放回。`with_common` 由调用方提供，
+    /// 只允许短暂借用状态。
+    #[cfg(feature = "x11")]
+    fn dispatch_global_hotkey(&self, id: u32) {
+        let mut callback = None;
+        self.with_common(|common| {
+            callback = common.callbacks.global_hotkey.take();
+        });
+
+        if let Some(callback) = callback.as_mut() {
+            callback(id);
+        }
+
+        self.with_common(|common| {
+            common.callbacks.global_hotkey = callback;
+        });
+    }
+
     #[cfg(any(feature = "wayland", feature = "x11"))]
     fn window_identifier(
         &self,
@@ -109,10 +152,18 @@ pub(crate) struct PlatformHandlers {
     pub(crate) quit: Option<Box<dyn FnMut()>>,
     pub(crate) reopen: Option<Box<dyn FnMut()>>,
     pub(crate) app_menu_action: Option<Box<dyn FnMut(&dyn Action)>>,
-    pub(crate) will_open_app_menu: Option<Box<dyn FnMut()>>,
-    pub(crate) validate_app_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
     pub(crate) system_wake: Option<Box<dyn FnMut()>>,
+    /// 系统电源事件回调（即将睡眠 / 已唤醒），仅 login1 会话可派发
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) system_power_event: Option<Box<dyn FnMut(SystemPowerEvent)>>,
+    /// 全局热键触发回调（仅 X11 后端会派发）
+    #[cfg(feature = "x11")]
+    pub(crate) global_hotkey: Option<Box<dyn FnMut(u32)>>,
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) tray_icon_event: Option<Box<dyn FnMut(TrayIconEvent)>>,
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) tray_menu_action: Option<Box<dyn FnMut(SharedString)>>,
 }
 
 pub(crate) struct LinuxCommon {
@@ -125,8 +176,22 @@ pub(crate) struct LinuxCommon {
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
     pub(crate) menus: Vec<OwnedMenu>,
-    wake_sender: Sender<()>,
-    wake_listener_started: bool,
+    /// 电源事件（即将睡眠 / 已唤醒）回主线程的发送端
+    power_sender: Sender<SystemPowerEvent>,
+    power_listener_started: bool,
+    /// 托盘状态句柄，首次调用托盘 API 时惰性创建
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    tray: Option<TrayHandle>,
+    /// 托盘事件回主线程的发送端
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    tray_events: Sender<TrayEvent>,
+    /// 旧 `set_tray` API 随菜单项带过来的动作，按菜单项标识索引；
+    /// 点击时经 `app_menu_action` 派发（与 Windows 的托盘菜单口径一致）
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) tray_menu_actions: HashMap<SharedString, Box<dyn Action>>,
+    /// 托盘事件接收端，交由平台客户端注册进事件循环
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    tray_event_source: Option<calloop::channel::Channel<TrayEvent>>,
 }
 
 impl LinuxCommon {
@@ -135,10 +200,12 @@ impl LinuxCommon {
     ) -> (
         Self,
         PriorityQueueCalloopReceiver<RunnableVariant>,
-        calloop::channel::Channel<()>,
+        calloop::channel::Channel<SystemPowerEvent>,
     ) {
         let (main_sender, main_receiver) = PriorityQueueCalloopReceiver::new();
-        let (wake_sender, wake_receiver) = calloop::channel::channel();
+        let (power_sender, power_receiver) = calloop::channel::channel();
+        #[cfg(any(feature = "wayland", feature = "x11"))]
+        let (tray_events, tray_event_source) = calloop::channel::channel();
 
         #[cfg(any(feature = "wayland", feature = "x11"))]
         let text_system = Arc::new(crate::linux::CosmicTextSystem::new("IBM Plex Sans"));
@@ -161,65 +228,95 @@ impl LinuxCommon {
             callbacks,
             signal,
             menus: Vec::new(),
-            wake_sender,
-            wake_listener_started: false,
+            power_sender,
+            power_listener_started: false,
+            #[cfg(any(feature = "wayland", feature = "x11"))]
+            tray: None,
+            #[cfg(any(feature = "wayland", feature = "x11"))]
+            tray_menu_actions: HashMap::default(),
+            #[cfg(any(feature = "wayland", feature = "x11"))]
+            tray_events,
+            #[cfg(any(feature = "wayland", feature = "x11"))]
+            tray_event_source: Some(tray_event_source),
         };
 
-        (common, main_receiver, wake_receiver)
+        (common, main_receiver, power_receiver)
     }
 
-    pub(crate) fn start_wake_listener(&mut self) {
-        if !self.wake_listener_started {
-            #[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
+    /// 启动 login1 电源事件监听；只启一次，睡眠与唤醒两类事件都走这一条通道
+    pub(crate) fn start_power_listener(&mut self) {
+        if !self.power_listener_started {
+            #[cfg(any(feature = "wayland", feature = "x11"))]
             smol::spawn({
-                let wake_sender = self.wake_sender.clone();
+                let power_sender = self.power_sender.clone();
                 async move {
-                    if let Err(error) = listen_for_system_wake(wake_sender).await {
-                        log::debug!("failed to listen for system wake events: {error:?}");
+                    if let Err(error) =
+                        crate::linux::power::listen_for_system_power(power_sender).await
+                    {
+                        // 监听挂了之后电源/唤醒事件不会再来，应用侧无处察觉，原因只能记在这里
+                        log::warn!("监听系统电源事件失败，电源事件将不再送达: {error:#}");
                     }
                 }
             })
             .detach();
 
-            self.wake_listener_started = true;
+            self.power_listener_started = true;
         }
     }
 
-    pub(crate) fn handle_system_wake(&mut self) {
-        if let Some(mut callback) = self.callbacks.system_wake.take() {
+    /// 把电源事件派发给应用：`WakeUp` 同时触发 `on_system_wake` 的回调
+    pub(crate) fn handle_system_power_event(&mut self, event: SystemPowerEvent) {
+        #[cfg(any(feature = "wayland", feature = "x11"))]
+        if let Some(mut callback) = self.callbacks.system_power_event.take() {
+            callback(event);
+            self.callbacks.system_power_event = Some(callback);
+        }
+
+        if event == SystemPowerEvent::WakeUp
+            && let Some(mut callback) = self.callbacks.system_wake.take()
+        {
             callback();
             self.callbacks.system_wake = Some(callback);
         }
     }
-}
 
-#[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
-async fn listen_for_system_wake(wake_sender: Sender<()>) -> anyhow::Result<()> {
-    use futures::StreamExt as _;
-
-    let connection = ashpd::zbus::Connection::system().await?;
-    let proxy = ashpd::zbus::Proxy::new(
-        &connection,
-        "org.freedesktop.login1",
-        "/org/freedesktop/login1",
-        "org.freedesktop.login1.Manager",
-    )
-    .await?;
-    let mut sleep_events = proxy.receive_signal("PrepareForSleep").await?;
-
-    while let Some(message) = sleep_events.next().await {
-        let sleeping = message.body().deserialize::<bool>()?;
-        if !sleeping {
-            wake_sender.send(()).ok();
-        }
+    /// 取走托盘事件接收端，供平台客户端注册进各自的事件循环
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) fn take_tray_event_source(
+        &mut self,
+    ) -> Option<calloop::channel::Channel<TrayEvent>> {
+        self.tray_event_source.take()
     }
 
-    Ok(())
+    /// 惰性创建托盘共享状态，并在后台执行器上启动 DBus 服务
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn tray(&mut self) -> TrayHandle {
+        if let Some(handle) = &self.tray {
+            return handle.clone();
+        }
+
+        let (commands_tx, commands_rx) = mpsc::unbounded();
+        let shared = Arc::new(Mutex::new(SniShared::new()));
+        let handle = TrayHandle {
+            shared: shared.clone(),
+            commands: commands_tx,
+        };
+
+        self.background_executor
+            .spawn(tray_sni::serve(
+                shared,
+                commands_rx,
+                self.tray_events.clone(),
+            ))
+            .detach();
+
+        self.tray = Some(handle.clone());
+        handle
+    }
 }
 
 pub(crate) struct LinuxPlatform<P> {
     pub(crate) inner: P,
-    pub(crate) global_hotkey: RefCell<LinuxGlobalHotkey>,
     pub(crate) notifications: LinuxNotifications,
     pub(crate) permissions: LinuxPermissions,
 }
@@ -250,6 +347,83 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn on_keyboard_layout_change(&self, callback: Box<dyn FnMut()>) {
         self.inner
             .with_common(|common| common.callbacks.keyboard_layout_change = Some(callback));
+    }
+
+    /// 设置系统托盘图标与菜单（旧的 Tray API，图标已在上层渲染为原始 RGBA）
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray(&self, tray: Tray, menus: Option<Vec<MenuItem>>, _keymap: &Keymap) {
+        self.inner.with_common(|common| {
+            let handle = common.tray();
+            if let Some(icon_data) = &tray.icon_data
+                && let Some(pixmap) =
+                    pixmap_from_rgba_bytes(&icon_data.data, icon_data.width, icon_data.height)
+            {
+                handle.set_icon_pixmap(pixmap);
+            }
+            if let Some(tooltip) = &tray.tooltip {
+                handle.set_tooltip(tooltip);
+            }
+            let items = menus
+                .as_ref()
+                .map(|menus| convert_menu_items_to_tray(menus))
+                .unwrap_or_default();
+            // 旧 API 的菜单项自带 Action，记下「标识 → 动作」供点击时经 app_menu_action 派发；
+            // 换成新 API（set_tray_menu）时这份表必须清空，否则会派发已不存在的项
+            common.tray_menu_actions = menus
+                .as_ref()
+                .map(|menus| collect_tray_menu_actions(menus))
+                .unwrap_or_default();
+            handle.set_menu(&items);
+        });
+    }
+
+    /// 设置托盘图标，接受 PNG/ICO 等字节；`None` 表示清空图标
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray_icon(&self, icon: Option<&[u8]>) {
+        self.inner.with_common(|common| {
+            let pixmap = icon.and_then(icon_pixmap_from_bytes).unwrap_or_default();
+            common.tray().set_icon_pixmap(pixmap);
+        });
+    }
+
+    /// 设置托盘右键菜单
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray_menu(&self, menu: Vec<TrayMenuItem>) {
+        self.inner.with_common(|common| {
+            common.tray_menu_actions.clear();
+            common.tray().set_menu(&menu);
+        });
+    }
+
+    /// 设置托盘工具提示
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray_tooltip(&self, tooltip: &str) {
+        self.inner
+            .with_common(|common| common.tray().set_tooltip(tooltip));
+    }
+
+    /// 设置面板模式：启用时左键直接触发图标事件而不是弹出菜单
+    ///
+    /// SNI 用 `ItemIsMenu` 表达相反语义；Ubuntu 的主机会忽略该属性，
+    /// 始终在左键时弹出菜单。
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn set_tray_panel_mode(&self, enabled: bool) {
+        self.inner
+            .with_common(|common| common.tray().set_item_is_menu(!enabled));
+    }
+
+    /// 注册托盘图标事件回调
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn on_tray_icon_event(&self, callback: Box<dyn FnMut(TrayIconEvent)>) {
+        self.inner
+            .with_common(|common| common.callbacks.tray_icon_event = Some(callback));
+    }
+
+    /// 注册托盘菜单项点击回调
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn on_tray_menu_action(&self, callback: Box<dyn FnMut(SharedString)>) {
+        self.inner
+            .with_common(|common| common.callbacks.tray_menu_action = Some(callback));
     }
 
     fn on_thermal_state_change(&self, _callback: Box<dyn FnMut()>) {}
@@ -553,27 +727,51 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn on_system_wake(&self, callback: Box<dyn FnMut()>) {
         self.inner.with_common(|common| {
             common.callbacks.system_wake = Some(callback);
-            common.start_wake_listener();
+            common.start_power_listener();
         });
     }
 
+    /// 注册系统电源事件回调：Linux 上的事件源是 login1 的 `PrepareForSleep` 信号，
+    /// 信号参数为真是「即将睡眠」（还可以收尾），为假是「已唤醒」
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn on_system_power_event(&self, callback: Box<dyn FnMut(SystemPowerEvent)>) {
+        self.inner.with_common(|common| {
+            common.callbacks.system_power_event = Some(callback);
+            common.start_power_listener();
+        });
+    }
+
+    /// 阻止系统休眠/息屏：向 login1 `Inhibit` 申请抑制，把返回的 fifo fd
+    /// 封成句柄交给调用方 —— fd 开着抑制就在，句柄 Drop 即恢复
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    fn start_power_save_blocker(
+        &self,
+        kind: PowerSaveBlockerKind,
+    ) -> Option<Box<dyn PowerSaveBlocker>> {
+        match crate::linux::power::inhibit(kind) {
+            Ok(blocker) => Some(blocker),
+            Err(error) => {
+                // 抑制被拒（polkit、无 login1 等）只有调用方拿到 `None` 这一个信号，
+                // 原因记在这里，否则排查时什么也看不见
+                log::warn!("申请电源抑制失败，未阻止系统省电: {error:#}");
+                None
+            }
+        }
+    }
+
+    /// 注册菜单命令回调：Linux 上的触发源是用旧 `set_tray` API 随菜单项带过来的
+    /// `Action` 被点击（与 Windows 的托盘菜单口径一致）
     fn on_app_menu_action(&self, callback: Box<dyn FnMut(&dyn Action)>) {
         self.inner.with_common(|common| {
             common.callbacks.app_menu_action = Some(callback);
         });
     }
 
-    fn on_will_open_app_menu(&self, callback: Box<dyn FnMut()>) {
-        self.inner.with_common(|common| {
-            common.callbacks.will_open_app_menu = Some(callback);
-        });
-    }
+    /// Linux 没有「菜单即将打开」这一原生事件源：dbusmenu 只有整份布局重建
+    /// （`set_tray_menu`）这种刷新方式，没有逐项校验，所以这两个回调无处触发。
+    fn on_will_open_app_menu(&self, _callback: Box<dyn FnMut()>) {}
 
-    fn on_validate_app_menu_command(&self, callback: Box<dyn FnMut(&dyn Action) -> bool>) {
-        self.inner.with_common(|common| {
-            common.callbacks.validate_app_menu_command = Some(callback);
-        });
-    }
+    fn on_validate_app_menu_command(&self, _callback: Box<dyn FnMut(&dyn Action) -> bool>) {}
 
     fn app_path(&self) -> Result<PathBuf> {
         // get the path of the executable of the current process
@@ -591,9 +789,10 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         self.inner.with_common(|common| Some(common.menus.clone()))
     }
 
-    fn set_dock_menu(&self, _menu: Vec<MenuItem>, _keymap: &Keymap) {
-        // todo(linux)
-    }
+    /// Linux 桌面没有「任务栏右键跳转列表」这类协议：GNOME/mutter 与 Wayland 合成器
+    /// 都不暴露 dock 上下文菜单接口，KDE 的 Docklet/TaskRunner 只在其自家 shell 里可用。
+    /// 与其收下菜单再假装会显示，不如如实为空 —— 需要这类菜单请用托盘菜单（§4.1）。
+    fn set_dock_menu(&self, _menu: Vec<MenuItem>, _keymap: &Keymap) {}
 
     fn path_for_auxiliary_executable(&self, _name: &str) -> Result<PathBuf> {
         Err(anyhow::Error::msg(
@@ -714,26 +913,49 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     fn add_recent_document(&self, _path: &Path) {}
 
     fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
-        self.global_hotkey
-            .borrow_mut()
-            .register(id as i32, keystroke)
+        self.inner.register_global_hotkey(id, keystroke)
     }
 
     fn unregister_global_hotkey(&self, id: u32) {
-        self.global_hotkey.borrow_mut().unregister(id as i32);
+        self.inner.unregister_global_hotkey(id);
+    }
+
+    /// 注册全局热键回调
+    ///
+    /// 只有 X11 后端能派发该事件，其余后端不安装回调（注册已经返回错误）。
+    #[cfg(feature = "x11")]
+    fn on_global_hotkey(&self, callback: Box<dyn FnMut(u32)>) {
+        self.inner
+            .with_common(|common| common.callbacks.global_hotkey = Some(callback));
     }
 
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
         self.notifications.show_notification(title, body, None)
     }
 
-    fn accessibility_status(&self) -> PermissionStatus {
-        self.permissions
-            .query_permission(PermissionType::Accessibility)
+    /// 返回操作系统名称/版本与发行版标识
+    fn os_info(&self) -> OsInfo {
+        crate::linux::system_info::os_info()
     }
 
-    fn request_accessibility_permission(&self) {
-        LinuxPermissions::request_permission(PermissionType::Accessibility);
+    /// 返回系统空闲时长：X11 走 screen saver 信息，Wayland 依次探 ScreenSaver 与 Mutter IdleMonitor
+    fn system_idle_time(&self) -> Option<Duration> {
+        crate::linux::system_info::system_idle_time()
+    }
+
+    /// 返回网络状态：门户 `NetworkMonitor` 优先，取不到时回落到 `/sys/class/net`
+    fn network_status(&self) -> NetworkStatus {
+        crate::linux::system_info::network_status()
+    }
+
+    /// 查询权限状态：辅助功能实测 AT-SPI 栈，屏幕录制/输入监控按显示服务器与门户能力判定
+    fn check_permission(&self, kind: PermissionType) -> PermissionStatus {
+        self.permissions.query_permission(kind)
+    }
+
+    /// 请求权限：Linux 没有系统授权弹窗，改为输出当前会话下可操作的引导
+    fn request_permission(&self, kind: PermissionType) {
+        LinuxPermissions::request_permission(kind);
     }
 
     fn set_auto_launch(&self, app_id: &str, enabled: bool) -> Result<()> {
@@ -1255,7 +1477,7 @@ pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<rgpui_wgpu::Com
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "wayland", feature = "x11")))]
 mod tests {
     use super::*;
     use rgpui::{Point, px};
@@ -1276,6 +1498,42 @@ mod tests {
             zero,
             Point::new(px(5.0), px(5.1))
         ),);
+    }
+
+    /// 电源事件的派发口径：两类事件都送给 `on_system_power_event`，
+    /// 只有「已唤醒」才额外触发 `on_system_wake`
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    #[test]
+    fn power_events_route_to_power_and_wake_callbacks() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let event_loop = calloop::EventLoop::<()>::try_new().unwrap();
+        let (mut common, _main_events, _power_events) = LinuxCommon::new(event_loop.get_signal());
+
+        let seen = Rc::new(RefCell::new(Vec::new()));
+        let wake_count = Rc::new(RefCell::new(0));
+        {
+            let seen = seen.clone();
+            common.callbacks.system_power_event = Some(Box::new(move |event| {
+                seen.borrow_mut().push(event);
+            }));
+        }
+        {
+            let wake_count = wake_count.clone();
+            common.callbacks.system_wake = Some(Box::new(move || {
+                *wake_count.borrow_mut() += 1;
+            }));
+        }
+
+        common.handle_system_power_event(SystemPowerEvent::Sleep);
+        common.handle_system_power_event(SystemPowerEvent::WakeUp);
+
+        assert_eq!(
+            *seen.borrow(),
+            vec![SystemPowerEvent::Sleep, SystemPowerEvent::WakeUp]
+        );
+        assert_eq!(*wake_count.borrow(), 1, "即将睡眠不该触发唤醒回调");
     }
 }
 

@@ -14,6 +14,7 @@ use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig};
 use raw_window_handle as rwh;
 use rgpui::ResultExt;
 use rgpui::collections::FxHashSet;
+use rgpui::layer_shell::Anchor;
 use rgpui::maybe;
 use x11rb::{
     connection::Connection,
@@ -21,6 +22,7 @@ use x11rb::{
     errors::ConnectionError,
     properties::WmSizeHints,
     protocol::{
+        shape::{self, ConnectionExt as _},
         sync,
         xinput::{self, ConnectionExt as _},
         xproto::{self, ClientMessageEvent, ConnectionExt, TranslateCoordinatesReply},
@@ -80,6 +82,8 @@ x11rb::atom_manager! {
         _NET_WM_WINDOW_TYPE_NOTIFICATION,
         _NET_WM_WINDOW_TYPE_DIALOG,
         _NET_WM_WINDOW_TYPE_DOCK,
+        _NET_WM_STRUT,
+        _NET_WM_STRUT_PARTIAL,
         _NET_WM_WINDOW_OPACITY,
         _NET_WM_SYNC,
         _NET_SUPPORTED,
@@ -141,6 +145,82 @@ fn resize_edge_to_moveresize(edge: ResizeEdge) -> u32 {
         ResizeEdge::BottomLeft => 6,
         ResizeEdge::Left => 7,
     }
+}
+
+/// strut 只能保留一条边，而 `Anchor` 允许任意组合（例如左右都锚定的横向面板），
+/// 组合起来就无从判断保留哪条，此时返回 `None`
+fn single_edge(edge: Anchor) -> Option<Anchor> {
+    (edge.bits().count_ones() == 1).then_some(edge)
+}
+
+/// 算出 EWMH `_NET_WM_STRUT_PARTIAL` 的 12 个值，顺序为 left、right、top、bottom、
+/// left_start_y、left_end_y、right_start_y、right_end_y、top_start_x、top_end_x、
+/// bottom_start_x、bottom_end_x，全部物理像素。
+///
+/// 口径与 Wayland layer-shell 一致：`zone` 是从指定的屏幕边缘起保留的条带宽度（含窗口
+/// 自身），所以贴边面板直接传面板尺寸。`zone` 非正、或边缘不是单一边缘时返回 `None`
+/// —— 由调用方删除属性。四个跨度（start/end）取窗口在垂直轴上的闭区间，多屏时
+/// 只有窗口所在的那块屏幕会被让出空间。
+fn strut_partial(
+    edge: Anchor,
+    origin: Point<i32>,
+    size: Size<u32>,
+    zone: u32,
+) -> Option<[u32; 12]> {
+    if zone == 0 {
+        return None;
+    }
+
+    let x = u32::try_from(origin.x).unwrap_or(0);
+    let y = u32::try_from(origin.y).unwrap_or(0);
+    // 规范里跨度是闭区间的像素序号，所以末端要减 1
+    let far_x = x.saturating_add(size.width).saturating_sub(1);
+    let far_y = y.saturating_add(size.height).saturating_sub(1);
+
+    let mut strut = [0; 12];
+    if edge == Anchor::LEFT {
+        strut[0] = zone;
+        strut[4] = y;
+        strut[5] = far_y;
+    } else if edge == Anchor::RIGHT {
+        strut[1] = zone;
+        strut[6] = y;
+        strut[7] = far_y;
+    } else if edge == Anchor::TOP {
+        strut[2] = zone;
+        strut[8] = x;
+        strut[9] = far_x;
+    } else if edge == Anchor::BOTTOM {
+        strut[3] = zone;
+        strut[10] = x;
+        strut[11] = far_x;
+    } else {
+        return None;
+    }
+
+    Some(strut)
+}
+
+/// `_MOTIF_WM_HINTS` 第一个值（hints mask）：声明本属性要改装饰
+const MWM_HINTS_DECORATIONS: u32 = 1 << 1;
+/// Motif 的装饰位：`MWM_DECOR_ALL` 是「其余位没置 1 的项全都要」的简写。
+/// 单个装饰项（如 `MWM_DECOR_TITLE`）在这里用不上 —— mutter 只判断「decorations
+/// 为 0 就完全不加框架」，个别位它不理，所以隐藏时清零整个字段，效果是去掉原生框架，
+/// 与 Windows 实现（`WS_POPUP`，无 caption 无 thickframe）口径一致
+const MWM_DECOR_ALL: u32 = 1 << 0;
+
+/// 合成 `_MOTIF_WM_HINTS` 的 5 个值：hints、functions、decorations、input_mode、status。
+///
+/// functions 填 0 表示不动 WM 功能位；客户端装饰下服务端本来什么都不画，
+/// 装饰位保持 0，标题栏可见性对它没有意义。
+fn motif_hints(decorations: WindowDecorations, titlebar_visible: bool) -> [u32; 5] {
+    let bits = match decorations {
+        WindowDecorations::Client => 0,
+        WindowDecorations::Server if titlebar_visible => MWM_DECOR_ALL,
+        WindowDecorations::Server => 0,
+    };
+
+    [MWM_HINTS_DECORATIONS, 0, bits, 0, 0]
 }
 
 #[derive(Debug)]
@@ -299,7 +379,13 @@ pub struct X11WindowState {
     fullscreen: bool,
     client_side_decorations_supported: bool,
     decorations: WindowDecorations,
+    /// 原生标题栏是否可见；只影响服务端装饰下的 Motif 装饰位
+    titlebar_visible: bool,
     edge_constraints: Option<EdgeConstraints>,
+    /// 独占区域宽度（逻辑像素），非正值表示不保留
+    exclusive_zone: Pixels,
+    /// 独占区域作用于哪条屏幕边缘；X11 strut 必须知道边，`None` 时不写属性
+    exclusive_edge: Option<Anchor>,
     pub handle: AnyWindowHandle,
     last_insets: [u32; 4],
     accesskit_adapter: Option<accesskit_unix::Adapter>,
@@ -455,12 +541,20 @@ impl X11WindowState {
 
         let visual_set = find_visuals(xcb, x_screen_index);
 
-        let visual = match visual_set.transparent {
-            Some(visual) => visual,
-            None => {
-                log::warn!("Unable to find a transparent visual",);
-                visual_set.inherit
+        // 只有需要透明合成的窗口才用 32 位 ARGB visual：不透明窗口用 ARGB 时交换链
+        // 写入的 alpha 为 0，合成器会把整个窗口当作透明而看不到任何内容
+        let needs_alpha = params.window_background != WindowBackgroundAppearance::Opaque
+            || params.kind == WindowKind::Overlay;
+        let visual = if needs_alpha {
+            match visual_set.transparent {
+                Some(visual) => visual,
+                None => {
+                    log::warn!("Unable to find a transparent visual",);
+                    visual_set.inherit
+                }
             }
+        } else {
+            visual_set.opaque.unwrap_or(visual_set.inherit)
         };
         log::info!("Using {:?}", visual);
 
@@ -654,8 +748,10 @@ impl X11WindowState {
                 )?;
             }
 
-            // 处理 Overlay 窗口
-            if let WindowKind::Overlay = &params.kind {
+            // 处理 Overlay 与 LayerShell 窗口：X11 上面板类窗口的对应形态是 DOCK ——
+            // 不进任务栏、常驻最上层。注意 DOCK 必须保持被 WM 接管（不能
+            // override_redirect），否则 WM 收不到这个窗口，strut 也就无人执行
+            if matches!(params.kind, WindowKind::Overlay | WindowKind::LayerShell(_)) {
                 // 设置窗口类型为 DOCK（覆盖层）
                 check_reply(
                     || "X11 ChangeProperty32 setting window type for overlay failed.",
@@ -820,6 +916,20 @@ impl X11WindowState {
 
             let display = Rc::new(X11Display::new(xcb, scale_factor, x_screen_index)?);
 
+            // layer-shell 选项里的独占区域在 X11 上就是 strut；边缘没显式给出时
+            // 从锚点推断（只有单 bit 锚点才推断得出来）。首次 ConfigureNotify
+            // 会应用它，这里不必额外发请求
+            let (exclusive_zone, exclusive_edge) = match &params.kind {
+                WindowKind::LayerShell(options) => (
+                    options.exclusive_zone.unwrap_or(px(0.)),
+                    options
+                        .exclusive_edge
+                        .and_then(single_edge)
+                        .or_else(|| single_edge(options.anchor)),
+                ),
+                _ => (px(0.), None),
+            };
+
             Ok(Self {
                 parent,
                 children: FxHashSet::default(),
@@ -847,8 +957,11 @@ impl X11WindowState {
                 destroyed: false,
                 client_side_decorations_supported,
                 decorations: WindowDecorations::Server,
+                titlebar_visible: true,
                 last_insets: [0, 0, 0, 0],
                 edge_constraints: None,
+                exclusive_zone,
+                exclusive_edge,
                 counter_id: sync_request_counter,
                 last_sync_counter: None,
                 accesskit_adapter: None,
@@ -940,6 +1053,9 @@ impl X11Window {
         supports_xinput_gestures: bool,
         is_bgr: bool,
     ) -> anyhow::Result<Self> {
+        // X11 没有「创建时即穿透」的窗口属性，只能建完窗立刻清空输入区域，
+        // 所以这个意图要在 params 被移交给 X11WindowState 之前先取出来
+        let mouse_passthrough = params.mouse_passthrough;
         let ptr = X11WindowStatePtr {
             state: Rc::new(RefCell::new(X11WindowState::new(
                 handle,
@@ -967,7 +1083,12 @@ impl X11Window {
         let state = ptr.state.borrow_mut();
         ptr.set_wm_properties(state)?;
 
-        Ok(Self(ptr))
+        let window = Self(ptr);
+        if mouse_passthrough {
+            window.set_mouse_passthrough(true);
+        }
+
+        Ok(window)
     }
 
     fn set_wm_hints<C: Display + Send + Sync + 'static, F: FnOnce() -> C>(
@@ -1049,6 +1170,34 @@ impl X11Window {
 
         xcb_flush(&self.0.xcb);
         Ok(())
+    }
+
+    /// 读取窗口的一个字符串型原子属性，属性不存在或不是合法 UTF-8 时返回 `None`
+    fn get_string_property(&self, property: u32, kind: u32) -> Option<String> {
+        let reply = get_reply(
+            || "X11 GetProperty for window title failed.",
+            self.0
+                .xcb
+                .get_property(false, self.0.x_window, property, kind, 0, u32::MAX),
+        )
+        .log_err()?;
+
+        if reply.value_len == 0 {
+            return None;
+        }
+
+        String::from_utf8(reply.value).ok()
+    }
+
+    /// Shape 扩展在精简的 X server 上可能不存在；缺了就只能放弃穿透，
+    /// 因为 ShapeReq 会被服务端以 BadMatch 拒绝
+    fn has_shape_extension(&self) -> bool {
+        self.0
+            .xcb
+            .extension_information(shape::X11_EXTENSION_NAME)
+            .ok()
+            .flatten()
+            .is_some()
     }
 }
 
@@ -1283,6 +1432,123 @@ impl X11WindowStatePtr {
         bounds.map(|b| b.scale(scale_factor))
     }
 
+    /// 窗口左上角在 root 坐标系中的物理像素位置。WM 可能 reparent 窗口（加装饰框架），
+    /// 此时 configure 事件里的 origin 是相对父窗口的，而 strut 按 root 坐标解释
+    fn origin_in_root(&self) -> Option<Point<i32>> {
+        let root = self.state.borrow().x_root_window;
+        get_reply(
+            || "X11 TranslateCoordinates for strut failed.",
+            self.xcb.translate_coordinates(self.x_window, root, 0, 0),
+        )
+        .log_err()
+        .map(|reply| Point {
+            x: reply.dst_x.into(),
+            y: reply.dst_y.into(),
+        })
+    }
+
+    /// 写入或清除 strut 属性。两个都写：`_NET_WM_STRUT_PARTIAL` 带跨度（多屏才准），
+    /// `_NET_WM_STRUT` 留给只认 4 个值的老 WM 兜底
+    fn set_strut(&self, strut: Option<[u32; 12]>) {
+        let state = self.state.borrow();
+        match strut {
+            Some(strut) => {
+                check_reply(
+                    || "X11 ChangeProperty32 for _NET_WM_STRUT failed.",
+                    self.xcb.change_property32(
+                        xproto::PropMode::REPLACE,
+                        self.x_window,
+                        state.atoms._NET_WM_STRUT,
+                        xproto::AtomEnum::CARDINAL,
+                        &strut[..4],
+                    ),
+                )
+                .log_err();
+                check_reply(
+                    || "X11 ChangeProperty32 for _NET_WM_STRUT_PARTIAL failed.",
+                    self.xcb.change_property32(
+                        xproto::PropMode::REPLACE,
+                        self.x_window,
+                        state.atoms._NET_WM_STRUT_PARTIAL,
+                        xproto::AtomEnum::CARDINAL,
+                        &strut,
+                    ),
+                )
+                .log_err();
+            }
+            None => {
+                for (name, atom) in [
+                    ("_NET_WM_STRUT", state.atoms._NET_WM_STRUT),
+                    ("_NET_WM_STRUT_PARTIAL", state.atoms._NET_WM_STRUT_PARTIAL),
+                ] {
+                    check_reply(
+                        || format!("X11 DeleteProperty for {name} failed."),
+                        self.xcb.delete_property(self.x_window, atom),
+                    )
+                    .log_err();
+                }
+            }
+        }
+
+        xcb_flush(&self.xcb);
+    }
+
+    /// 按当前 `exclusive_zone` / `exclusive_edge` 刷新 strut。窗口移动或改变大小后
+    /// 跨度就变了，必须重算，否则屏幕上会留下与窗口不对齐的保留区域
+    fn apply_strut(&self) {
+        let (zone, edge, scale_factor, size) = {
+            let state = self.state.borrow();
+            // 没确定边缘的窗口本来就没有 strut，不必发请求
+            let Some(edge) = state.exclusive_edge else {
+                return;
+            };
+            (
+                state.exclusive_zone,
+                edge,
+                state.scale_factor,
+                state.bounds.size,
+            )
+        };
+
+        let Some(origin) = self.origin_in_root() else {
+            return;
+        };
+        let zone = (f32::from(zone) * scale_factor).round().max(0.0) as u32;
+        let size = Size {
+            width: (f32::from(size.width) * scale_factor).round().max(0.0) as u32,
+            height: (f32::from(size.height) * scale_factor).round().max(0.0) as u32,
+        };
+
+        self.set_strut(strut_partial(edge, origin, size, zone));
+    }
+
+    /// 把当前的装饰模式与标题栏可见性合成后写入 `_MOTIF_WM_HINTS`。
+    /// Motif 只认这一份属性，`request_decorations` 与 `set_titlebar_visible`
+    /// 改的是同一个字段，所以两边都必须走这里重新合成，否则后写的会覆盖先写的
+    fn apply_motif_hints(&self, state: &X11WindowState) -> bool {
+        let hints_data = motif_hints(state.decorations, state.titlebar_visible);
+
+        let Some(()) = check_reply(
+            || "X11 ChangeProperty for _MOTIF_WM_HINTS failed.",
+            self.xcb.change_property(
+                xproto::PropMode::REPLACE,
+                self.x_window,
+                state.atoms._MOTIF_WM_HINTS,
+                state.atoms._MOTIF_WM_HINTS,
+                size_of::<u32>() as u8 * 8,
+                5,
+                bytemuck::cast_slice::<u32, u8>(&hints_data),
+            ),
+        )
+        .log_err() else {
+            return false;
+        };
+
+        // 运行时改装饰靠属性变更通知驱动 WM 重新摆框，得让请求真的发出去
+        xcb_flush(&self.xcb);
+        true
+    }
+
     pub fn set_bounds(&self, bounds: Bounds<i32>) -> anyhow::Result<()> {
         let (is_resize, content_size, scale_factor) = {
             let mut state = self.state.borrow_mut();
@@ -1319,6 +1585,10 @@ impl X11WindowStatePtr {
         if !is_resize && let Some(ref mut fun) = callbacks.moved {
             fun();
         }
+        drop(callbacks);
+
+        // 面板类的 strut 依赖窗口位置与尺寸，configure 一到就要跟着刷新
+        self.apply_strut();
 
         Ok(())
     }
@@ -1525,6 +1795,15 @@ impl PlatformWindow for X11Window {
     }
 
     fn activate(&self) {
+        // hide() 撤下的窗口 WM_STATE 会变成 Withdrawn，合成器不再管理它，
+        // 单发 _NET_ACTIVE_WINDOW 会被忽略；先重新 map 才能恢复。窗口已可见时
+        // MapWindow 是空操作。
+        check_reply(
+            || "X11 MapWindow on activate failed.",
+            self.0.xcb.map_window(self.0.x_window),
+        )
+        .log_err();
+
         let data = [1, xproto::Time::CURRENT_TIME.into(), 0, 0, 0];
         let message = xproto::ClientMessageEvent::new(
             32,
@@ -1582,6 +1861,44 @@ impl PlatformWindow for X11Window {
                 self.0.state.borrow().atoms.UTF8_STRING,
                 title.as_bytes(),
             ),
+        )
+        .log_err();
+        xcb_flush(&self.0.xcb);
+    }
+
+    fn get_title(&self) -> String {
+        // _NET_WM_NAME 是 EWMH 规定的 UTF-8 标题，优先读它；
+        // 没有再回退到 ICCCM 的 WM_NAME（STRING）。
+        let (net_wm_name, utf8_string) = {
+            let state = self.0.state.borrow();
+            (state.atoms._NET_WM_NAME, state.atoms.UTF8_STRING)
+        };
+
+        self.get_string_property(net_wm_name, utf8_string)
+            .or_else(|| {
+                self.get_string_property(
+                    u32::from(xproto::AtomEnum::WM_NAME),
+                    u32::from(xproto::AtomEnum::STRING),
+                )
+            })
+            .unwrap_or_default()
+    }
+
+    fn request_attention(&self) {
+        // ICCCM 的 WM_HINTS urgency 位是 X11 上「请求用户注意」的正规入口，
+        // 行为与 `xdotool set_window --urgency 1` 一致（本机实测两者都能让
+        // xprop 出现 "The urgency hint bit is set"）。
+        // EWMH 的 _NET_WM_STATE_DEMANDS_ATTENTION 是「WM 设置、客户端只读」的状态，
+        // 客户端自发 _NET_WM_STATE 客户端消息去要这个原子时 mutter 会直接忽略
+        // （本机实测：_NET_WM_STATE 始终不出现该原子）。
+        let mut hints = x11rb::properties::WmHints::new();
+        hints.input = Some(true);
+        hints.initial_state = Some(x11rb::properties::WmHintsState::Normal);
+        hints.urgent = true;
+
+        check_reply(
+            || "X11 ChangeProperty on WM_HINTS for urgency failed.",
+            hints.set(&self.0.xcb, self.0.x_window),
         )
         .log_err();
         xcb_flush(&self.0.xcb);
@@ -1670,6 +1987,97 @@ impl PlatformWindow for X11Window {
             self.0.xcb.unmap_window(self.0.x_window),
         )
         .log_err();
+    }
+
+    /// 鼠标穿透：把 Shape 的输入区域设为空，窗口照常显示但事件落到下层窗口
+    fn set_mouse_passthrough(&self, passthrough: bool) {
+        if passthrough {
+            self.set_input_region(Some(&[]));
+        } else {
+            self.set_input_region(None);
+        }
+    }
+
+    /// `None` 恢复「整个窗口接收输入」（把输入区域重设为窗口外形），
+    /// `Some(rects)` 只让这些矩形接收输入、其余区域穿透
+    fn set_input_region(&self, region: Option<&[Bounds<Pixels>]>) {
+        if !self.has_shape_extension() {
+            log::debug!("X server 未提供 Shape 扩展，鼠标穿透与输入区域不可用");
+            return;
+        }
+
+        match region {
+            // 用 BOUNDING（窗口外形）重设，省掉一次 GetGeometry 往返去问窗口尺寸
+            None => {
+                check_reply(
+                    || "X11 ShapeCombine on input region failed.",
+                    self.0.xcb.shape_combine(
+                        shape::SO::SET,
+                        shape::SK::INPUT,
+                        shape::SK::BOUNDING,
+                        self.0.x_window,
+                        0,
+                        0,
+                        self.0.x_window,
+                    ),
+                )
+                .log_err();
+            }
+            Some(rects) => {
+                let rects = rects
+                    .iter()
+                    .map(|item| {
+                        let origin = item.origin;
+                        let size = item.size;
+                        xproto::Rectangle {
+                            x: f32::from(origin.x)
+                                .round()
+                                .clamp(i16::MIN as f32, i16::MAX as f32)
+                                as i16,
+                            y: f32::from(origin.y)
+                                .round()
+                                .clamp(i16::MIN as f32, i16::MAX as f32)
+                                as i16,
+                            width: f32::from(size.width).round().clamp(0.0, u16::MAX as f32) as u16,
+                            height: f32::from(size.height).round().clamp(0.0, u16::MAX as f32)
+                                as u16,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                check_reply(
+                    || "X11 ShapeRectangles on input region failed.",
+                    self.0.xcb.shape_rectangles(
+                        shape::SO::SET,
+                        shape::SK::INPUT,
+                        xproto::ClipOrdering::UNSORTED,
+                        self.0.x_window,
+                        0,
+                        0,
+                        &rects,
+                    ),
+                )
+                .log_err();
+            }
+        }
+
+        xcb_flush(&self.0.xcb);
+    }
+
+    /// X11 上没有 layer-shell 协议，独占区域用 EWMH strut 表达（见 `apply_strut`）
+    fn set_exclusive_zone(&self, zone: Pixels) {
+        self.0.state.borrow_mut().exclusive_zone = zone;
+        self.0.apply_strut();
+    }
+
+    /// 边缘必须先于宽度确定：strut 得知道保留哪一条边。给的是组合锚点时不改动已有边缘
+    fn set_exclusive_edge(&self, edge: Anchor) {
+        let Some(single) = single_edge(edge) else {
+            log::warn!("独占区域只能作用于单一边缘，{edge:?} 无法确定边，已忽略");
+            return;
+        };
+        self.0.state.borrow_mut().exclusive_edge = Some(single);
+        self.0.apply_strut();
     }
 
     fn zoom(&self) {
@@ -1774,6 +2182,18 @@ impl PlatformWindow for X11Window {
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         let inner = self.0.state.borrow();
         inner.renderer.sprite_atlas().clone()
+    }
+
+    /// 把当前帧的场景离屏渲染并回读像素（仅测试用途，不呈现）。
+    ///
+    /// 与屏幕共用同一套 wgpu 编码路径，尺寸取窗口当前的 surface 配置；窗口必须已经映射
+    /// 且尺寸非 0，否则拿不到可写的 surface。
+    #[cfg(feature = "test-support")]
+    fn render_to_image(&self, scene: &Scene) -> anyhow::Result<image::RgbaImage> {
+        let mut inner = self.0.state.borrow_mut();
+        let (width, height, pixels) = inner.renderer.render_scene_to_pixels(scene)?;
+        image::RgbaImage::from_raw(width, height, pixels)
+            .ok_or_else(|| anyhow!("回读像素与 {width}x{height} 尺寸不符"))
     }
 
     fn show_window_menu(&self, position: Point<Pixels>) {
@@ -1911,46 +2331,37 @@ impl PlatformWindow for X11Window {
         }
 
         // https://github.com/rust-windowing/winit/blob/master/src/platform_impl/linux/x11/util/hint.rs#L53-L87
-        let hints_data: [u32; 5] = match decorations {
-            WindowDecorations::Server => [1 << 1, 0, 1, 0, 0],
-            WindowDecorations::Client => [1 << 1, 0, 0, 0, 0],
-        };
+        // 装饰模式与标题栏可见性共用同一份 Motif 属性，先落到状态里再整体合成
+        let previous = state.decorations;
+        state.decorations = decorations;
 
-        let success = check_reply(
-            || "X11 ChangeProperty for _MOTIF_WM_HINTS failed.",
-            self.0.xcb.change_property(
-                xproto::PropMode::REPLACE,
-                self.0.x_window,
-                state.atoms._MOTIF_WM_HINTS,
-                state.atoms._MOTIF_WM_HINTS,
-                size_of::<u32>() as u8 * 8,
-                5,
-                bytemuck::cast_slice::<u32, u8>(&hints_data),
-            ),
-        )
-        .log_err();
-
-        let Some(()) = success else {
+        if !self.0.apply_motif_hints(&state) {
+            state.decorations = previous;
             return;
-        };
-
-        match decorations {
-            WindowDecorations::Server => {
-                state.decorations = WindowDecorations::Server;
-                let is_transparent = state.is_transparent();
-                state.renderer.update_transparency(is_transparent);
-            }
-            WindowDecorations::Client => {
-                state.decorations = WindowDecorations::Client;
-                let is_transparent = state.is_transparent();
-                state.renderer.update_transparency(is_transparent);
-            }
         }
+
+        let is_transparent = state.is_transparent();
+        state.renderer.update_transparency(is_transparent);
 
         drop(state);
         let mut callbacks = self.0.callbacks.borrow_mut();
         if let Some(appearance_changed) = callbacks.appearance_changed.as_mut() {
             appearance_changed();
+        }
+    }
+
+    /// X11 上用 Motif 的装饰位隐藏/恢复原生框架：装饰位清零，窗口仍是 WM 管理的
+    /// 普通窗口，随时可以再写回 `MWM_DECOR_ALL` 恢复。
+    /// 客户端装饰下服务端本来就不画标题栏，这个请求没有可改的东西
+    fn set_titlebar_visible(&self, visible: bool) {
+        let mut state = self.0.state.borrow_mut();
+        if state.titlebar_visible == visible {
+            return;
+        }
+
+        state.titlebar_visible = visible;
+        if !self.0.apply_motif_hints(&state) {
+            state.titlebar_visible = !visible;
         }
     }
 
@@ -2019,6 +2430,87 @@ impl PlatformWindow for X11Window {
 
         if let Some(adapter) = state.accesskit_adapter.as_mut() {
             adapter.set_root_window_bounds(outer, inner);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn size(width: u32, height: u32) -> Size<u32> {
+        Size { width, height }
+    }
+
+    #[test]
+    fn bottom_strut_reserves_zone_and_spans_window_width() {
+        let strut =
+            strut_partial(Anchor::BOTTOM, Point { x: 0, y: 800 }, size(1024, 100), 100).unwrap();
+
+        // left、right、top 不该被碰到；bottom 从屏幕下边缘起算
+        assert_eq!(&strut[..3], &[0, 0, 0]);
+        assert_eq!(strut[3], 100);
+        // 跨度是闭区间的像素序号
+        assert_eq!(&strut[4..10], &[0; 6]);
+        assert_eq!(&strut[10..], &[0, 1023]);
+    }
+
+    #[test]
+    fn left_strut_spans_window_height() {
+        let strut = strut_partial(Anchor::LEFT, Point { x: 0, y: 100 }, size(60, 400), 60).unwrap();
+
+        assert_eq!(strut[0], 60);
+        assert_eq!(&strut[4..6], &[100, 499]);
+    }
+
+    #[test]
+    fn negative_or_multi_edge_yields_no_strut() {
+        // zone 非正：调用方据此删除属性
+        assert!(strut_partial(Anchor::TOP, Point { x: 0, y: 0 }, size(10, 10), 0).is_none());
+        // 左右都锚定时判断不出保留哪条边
+        assert!(
+            strut_partial(
+                Anchor::LEFT | Anchor::RIGHT,
+                Point { x: 0, y: 0 },
+                size(10, 10),
+                10
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn strut_edge_must_be_single_bit() {
+        assert_eq!(single_edge(Anchor::TOP), Some(Anchor::TOP));
+        assert_eq!(single_edge(Anchor::TOP | Anchor::LEFT), None);
+        assert_eq!(single_edge(Anchor::empty()), None);
+    }
+
+    #[test]
+    fn motif_hints_keep_all_decorations_while_titlebar_visible() {
+        // 没主动隐藏标题栏时，写出的属性与实现本方法之前完全一致
+        assert_eq!(
+            motif_hints(WindowDecorations::Server, true),
+            [MWM_HINTS_DECORATIONS, 0, MWM_DECOR_ALL, 0, 0]
+        );
+    }
+
+    #[test]
+    fn motif_hints_clear_decoration_bits_when_titlebar_hidden() {
+        // 隐藏标题栏 = 清空装饰位：mutter 只判断装饰位是否为 0，个别装饰位它不理
+        assert_eq!(
+            motif_hints(WindowDecorations::Server, false),
+            [MWM_HINTS_DECORATIONS, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn motif_hints_ask_for_no_decorations_under_csd() {
+        for titlebar_visible in [true, false] {
+            assert_eq!(
+                motif_hints(WindowDecorations::Client, titlebar_visible),
+                [MWM_HINTS_DECORATIONS, 0, 0, 0, 0]
+            );
         }
     }
 }

@@ -16,7 +16,7 @@ path = "src/rgpui_linux.rs"
 
 [features]
 default = ["wayland", "x11"]
-test-support = ["rgpui/test-support"]
+test-support = ["rgpui/test-support", "rgpui-wgpu?/test-support"]
 wayland = [
     "bitflags",
     "rgpui-wgpu",
@@ -45,6 +45,9 @@ x11 = [
     "x11-clipboard",
     "filedescriptor",
     "open",
+    # 核心层的 X11 语义（后端选择、EWMH strut）都挂在这个 feature 上，
+    # 不转发就会造出「平台是 X11、核心以为没有 X11」的组合
+    "rgpui/x11",
     "scap?/x11",
 ]
 screen-capture = [
@@ -125,6 +128,7 @@ x11rb = { version = "0.13.2", features = [
     "resource_manager",
     "sync",
     "dri3",
+    "shape",
 ], optional = true }
 # WARNING: If you change this, you must also publish a new version of zed-xim to crates.io
 xim = { git = "https://github.com/zed-industries/xim-rs.git", rev = "16f35a2c881b815a2b6cdfd6687988e84f8447d8", features = [

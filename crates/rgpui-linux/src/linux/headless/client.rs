@@ -25,7 +25,7 @@ impl HeadlessClient {
     pub(crate) fn new() -> Self {
         let event_loop = EventLoop::try_new().unwrap();
 
-        let (common, main_receiver, wake_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let (common, main_receiver, power_receiver) = LinuxCommon::new(event_loop.get_signal());
 
         let handle = event_loop.handle();
 
@@ -38,9 +38,9 @@ impl HeadlessClient {
             .ok();
 
         handle
-            .insert_source(wake_receiver, |event, _, client: &mut HeadlessClient| {
-                if let calloop::channel::Event::Msg(()) = event {
-                    client.with_common(|common| common.handle_system_wake());
+            .insert_source(power_receiver, |event, _, client: &mut HeadlessClient| {
+                if let calloop::channel::Event::Msg(power_event) = event {
+                    client.with_common(|common| common.handle_system_power_event(power_event));
                 }
             })
             .ok();
@@ -139,5 +139,29 @@ impl LinuxClient for HeadlessClient {
             .expect("App is already running");
 
         event_loop.run(None, &mut self.clone(), |_| {}).log_err();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rgpui::Keystroke;
+
+    use super::*;
+
+    /// 无头后端没有显示服务器可抓取，注册全局热键必须如实报错而不是假装成功
+    #[test]
+    fn headless_backend_rejects_global_hotkey() {
+        let client = HeadlessClient::new();
+        let keystroke = Keystroke::parse("cmd-shift-k").unwrap();
+
+        let err = client
+            .register_global_hotkey(1, &keystroke)
+            .expect_err("无头后端不应接受全局热键注册");
+        assert!(
+            err.to_string().contains("不支持"),
+            "错误信息应说明后端不支持：{err}"
+        );
+
+        client.unregister_global_hotkey(1);
     }
 }

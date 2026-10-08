@@ -36,8 +36,8 @@ use rgpui::{
     PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
     PromptButton, PromptLevel, RequestFrameOptions, ResizeEdge, Scene, Size, Tiling,
     WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowControls,
-    WindowDecorations, WindowKind, WindowParams, layer_shell::LayerShellNotSupportedError,
-    popup::PopupOptions, px, size,
+    WindowDecorations, WindowKind, WindowParams, layer_shell::Anchor,
+    layer_shell::LayerShellNotSupportedError, popup::PopupOptions, px, size,
 };
 use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig, wgpu};
 
@@ -99,6 +99,8 @@ pub struct WaylandWindowState {
     children: FxHashMap<ObjectId, bool>,
     pub surface: wl_surface::WlSurface,
     app_id: Option<String>,
+    /// 客户端侧保存的窗口标题；Wayland 协议不提供读取，只能自己记
+    title: String,
     appearance: WindowAppearance,
     blur: Option<org_kde_kwin_blur::OrgKdeKwinBlur>,
     viewport: Option<wp_viewport::WpViewport>,
@@ -521,9 +523,12 @@ impl WaylandWindowState {
             WgpuRenderer::new(gpu_context, &raw_window, config, compositor_gpu)?
         };
 
+        // Wayland 没有读取标题的请求，标题只能由客户端自己留着，get_title 才拿得到
+        let mut title = String::new();
         if let WaylandSurfaceState::Xdg(ref xdg_state) = surface_state {
             if let Some(titlebar) = options.titlebar.and_then(|titlebar| titlebar.title) {
-                xdg_state.toplevel.set_title(titlebar.to_string());
+                title = titlebar.to_string();
+                xdg_state.toplevel.set_title(title.clone());
             }
             // 根据 GPU 的最大纹理尺寸设置最大窗口大小
             // 这可以防止窗口被调整为大于 GPU 可渲染的尺寸
@@ -540,6 +545,7 @@ impl WaylandWindowState {
             children: FxHashMap::default(),
             surface,
             app_id: None,
+            title,
             blur: None,
             viewport,
             globals,
@@ -708,6 +714,8 @@ impl WaylandWindow {
             .as_ref()
             .map(|viewporter| viewporter.get_viewport(&surface, &globals.qh, ()));
 
+        // params 随后会被移交进窗口状态，先取出穿透意图
+        let mouse_passthrough = params.mouse_passthrough;
         let this = Self(WaylandWindowStatePtr {
             state: Rc::new(RefCell::new(WaylandWindowState::new(
                 handle,
@@ -727,6 +735,10 @@ impl WaylandWindow {
 
         // Kick things off
         surface.commit();
+
+        if mouse_passthrough {
+            this.set_mouse_passthrough(true);
+        }
 
         Ok((this, surface.id()))
     }
@@ -1540,9 +1552,14 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn set_title(&mut self, title: &str) {
+        self.borrow_mut().title = title.to_owned();
         if let Some(toplevel) = self.borrow().surface_state.toplevel() {
             toplevel.set_title(title.to_string());
         }
+    }
+
+    fn get_title(&self) -> String {
+        self.borrow().title.clone()
     }
 
     fn set_app_id(&mut self, app_id: &str) {
@@ -1703,6 +1720,18 @@ impl PlatformWindow for WaylandWindow {
         state.renderer.sprite_atlas().clone()
     }
 
+    /// 把当前帧的场景离屏渲染并回读像素（仅测试用途，不呈现）。
+    ///
+    /// 与 X11 走的是 `WgpuRenderer` 里同一条编码路径；尺寸取当前 surface 配置，
+    /// 所以 surface 尚未配置（窗口还没拿到首帧尺寸）时会直接返回错误。
+    #[cfg(feature = "test-support")]
+    fn render_to_image(&self, scene: &Scene) -> anyhow::Result<image::RgbaImage> {
+        let mut state = self.borrow_mut();
+        let (width, height, pixels) = state.renderer.render_scene_to_pixels(scene)?;
+        image::RgbaImage::from_raw(width, height, pixels)
+            .ok_or_else(|| anyhow::anyhow!("回读像素与 {width}x{height} 尺寸不符"))
+    }
+
     fn show_window_menu(&self, position: Point<Pixels>) {
         let state = self.borrow();
         let serial = state.client.get_serial(SerialKind::MousePress);
@@ -1735,6 +1764,16 @@ impl PlatformWindow for WaylandWindow {
         }
     }
 
+    /// 鼠标穿透：Wayland 没有 X Shape 那样的独立扩展，
+    /// 「空输入区域」就是通用做法 —— 窗口照常合成显示，事件落到下层
+    fn set_mouse_passthrough(&self, passthrough: bool) {
+        if passthrough {
+            self.set_input_region(Some(&[]));
+        } else {
+            self.set_input_region(None);
+        }
+    }
+
     fn set_input_region(&self, region: Option<&[rgpui::Bounds<rgpui::Pixels>]>) {
         let state = self.borrow();
         match region {
@@ -1757,6 +1796,30 @@ impl PlatformWindow for WaylandWindow {
                 wl_region.destroy();
             }
         }
+        state.surface.commit();
+    }
+
+    /// 运行时改 layer-shell 的 `exclusive_zone`：只对 layer-shell 窗口有意义，
+    /// 其他窗口类型没有该协议对象，直接跳过
+    fn set_exclusive_zone(&self, zone: Pixels) {
+        let state = self.borrow();
+        let Some(layer_surface) = state.surface_state.layer_surface() else {
+            log::debug!("独占区域只对 layer-shell 窗口有效，当前窗口不是该类型");
+            return;
+        };
+        layer_surface.set_exclusive_zone(f32::from(zone) as i32);
+        state.surface.commit();
+    }
+
+    /// 独占区域作用的边缘。合成器自己校验「必须是单一边缘」，
+    /// 非法值由合成器忽略，这里只负责把请求发出去并提交
+    fn set_exclusive_edge(&self, edge: Anchor) {
+        let state = self.borrow();
+        let Some(layer_surface) = state.surface_state.layer_surface() else {
+            log::debug!("独占边缘只对 layer-shell 窗口有效，当前窗口不是该类型");
+            return;
+        };
+        layer_surface.set_exclusive_edge(super::layer_shell::wayland_anchor(edge));
         state.surface.commit();
     }
 

@@ -8,7 +8,7 @@ use crate::{
 use crate::{
     AnyElement, App, ClickEvent, Decorations, Hsla, InteractiveElement, IntoElement, MouseButton,
     ParentElement, Pixels, RenderOnce, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    TitlebarOptions, Window, WindowControlArea, WindowOptions, div, point,
+    TitlebarOptions, Window, WindowControlArea, WindowDecorations, WindowOptions, div, point,
     prelude::FluentBuilder as _, px,
 };
 
@@ -64,7 +64,7 @@ impl TitleBar {
     /// };
     /// ```
     pub fn window_options() -> WindowOptions {
-        WindowOptions {
+        let mut options = WindowOptions {
             titlebar: Some(Self::title_bar_options()),
             // 标题栏自行绘制并通过 `start_window_move` 移动窗口，
             // 因此 AppKit 不得将其视为系统窗口移动区域。否则 macOS
@@ -72,7 +72,14 @@ impl TitleBar {
             // 并在消除双击歧义期间延迟标题栏点击。
             app_owns_titlebar_drag: true,
             ..Default::default()
+        };
+        // `appears_transparent` 只在 macOS/Windows 生效；Linux 上系统框架
+        // 由 `window_decorations` 决定，不请求客户端装饰的话 WM 会继续绘制
+        // 原生标题栏，与自绘的 TitleBar 重复显示。
+        if cfg!(target_os = "linux") {
+            options.window_decorations = Some(WindowDecorations::Client);
         }
+        options
     }
 
     /// 为关闭窗口事件添加自定义处理，默认为 None，此时点击 X 按钮将调用 `window.remove_window()`。

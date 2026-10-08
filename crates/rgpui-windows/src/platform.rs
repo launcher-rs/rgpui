@@ -85,8 +85,6 @@ pub(crate) struct WindowsPlatformState {
     global_hotkey: RefCell<WindowsGlobalHotkey>,
     // 新增：全局快捷键回调
     global_hotkey_callback: RefCell<Option<Box<dyn FnMut(u32)>>>,
-    // 新增：无窗口保持运行标志
-    keep_alive_without_windows: AtomicBool,
 }
 
 #[derive(Default)]
@@ -119,7 +117,6 @@ impl WindowsPlatformState {
             tray_menu_action_callback: RefCell::new(None),
             global_hotkey: RefCell::new(WindowsGlobalHotkey::new()),
             global_hotkey_callback: RefCell::new(None),
-            keep_alive_without_windows: AtomicBool::new(false),
         }
     }
 }
@@ -786,13 +783,6 @@ impl Platform for WindowsPlatform {
         *self.inner.state.tray_menu_action_callback.borrow_mut() = Some(callback);
     }
 
-    fn set_keep_alive_without_windows(&self, keep_alive: bool) {
-        self.inner
-            .state
-            .keep_alive_without_windows
-            .store(keep_alive, Ordering::Release);
-    }
-
     /// 注册全局快捷键
     fn register_global_hotkey(&self, id: u32, keystroke: &Keystroke) -> Result<()> {
         let mut hotkey = self.inner.state.global_hotkey.borrow_mut();
@@ -812,7 +802,7 @@ impl Platform for WindowsPlatform {
 
     /// 显示系统原生通知
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
-        show_balloon_notification(self.handle, title, body)
+        show_toast_notification(title, body)
     }
 
     /// 设置开机自启动
@@ -830,13 +820,13 @@ impl Platform for WindowsPlatform {
         crate::get_focused_window_info()
     }
 
-    /// 获取辅助功能权限状态（Windows 默认授予）
-    fn accessibility_status(&self) -> PermissionStatus {
+    /// 获取权限状态（Windows 没有按应用的这类授权模型，一律视为已授予）
+    fn check_permission(&self, _kind: PermissionType) -> PermissionStatus {
         PermissionStatus::Granted
     }
 
-    /// 请求辅助功能权限（Windows 无需请求）
-    fn request_accessibility_permission(&self) {}
+    /// 请求权限（Windows 无对应弹窗，无需请求）
+    fn request_permission(&self, _kind: PermissionType) {}
 
     /// 获取麦克风权限状态（Windows 默认授予）
     fn microphone_status(&self) -> PermissionStatus {

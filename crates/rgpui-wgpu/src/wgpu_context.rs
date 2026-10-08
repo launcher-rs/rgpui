@@ -31,7 +31,7 @@ impl WgpuContext {
         surface: &wgpu::Surface<'_>,
         compositor_gpu: Option<CompositorGpuHint>,
     ) -> anyhow::Result<Self> {
-        Self::new_with_options(instance, surface, compositor_gpu, false)
+        Self::new_with_options(instance, Some(surface), compositor_gpu, false)
     }
 
     #[cfg(not(target_family = "wasm"))]
@@ -40,13 +40,32 @@ impl WgpuContext {
         surface: &wgpu::Surface<'_>,
         compositor_gpu: Option<CompositorGpuHint>,
     ) -> anyhow::Result<Self> {
-        Self::new_with_options(instance, surface, compositor_gpu, true)
+        Self::new_with_options(instance, Some(surface), compositor_gpu, true)
+    }
+
+    /// 创建**没有 surface** 的离屏上下文，用于无头渲染与视觉测试。
+    ///
+    /// 窗口路径靠「实际配置一次 surface」来判定适配器兼容性，离屏没有显示器可问，
+    /// 只能退到「能建出设备即可」；因此软件渲染（lavapipe/llvmpipe）在这里是保留的，
+    /// 无头环境往往只有它。
+    #[cfg(not(target_family = "wasm"))]
+    pub fn new_headless() -> anyhow::Result<Self> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
+            // 与窗口路径同理：不开这个标志，Mesa 软件驱动会被直接过滤掉
+            flags: wgpu::InstanceFlags::default()
+                | wgpu::InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER,
+            backend_options: wgpu::BackendOptions::default(),
+            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+            display: None,
+        });
+        Self::new_with_options(instance, None, None, false)
     }
 
     #[cfg(not(target_family = "wasm"))]
     fn new_with_options(
         instance: wgpu::Instance,
-        surface: &wgpu::Surface<'_>,
+        surface: Option<&wgpu::Surface<'_>>,
         compositor_gpu: Option<CompositorGpuHint>,
         reject_software: bool,
     ) -> anyhow::Result<Self> {
@@ -98,8 +117,11 @@ impl WgpuContext {
         let queue = Arc::new(queue);
 
         // 注册到共享上下文，供 rgpui-3d 等第三方渲染器复用
+        // 离屏上下文不注册：它随时可能随测试窗口一起销毁，不该被后续真实窗口捡走
         #[cfg(not(target_family = "wasm"))]
-        crate::shared_context::register(instance.clone(), device.clone(), queue.clone());
+        if surface.is_some() {
+            crate::shared_context::register(instance.clone(), device.clone(), queue.clone());
+        }
 
         Ok(Self {
             instance,
@@ -224,7 +246,10 @@ impl WgpuContext {
     pub fn instance(display: Box<dyn wgpu::wgt::WgpuHasDisplayHandle>) -> wgpu::Instance {
         wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
-            flags: wgpu::InstanceFlags::default(),
+            // 允许暴露未通过 Vulkan 一致性测试的驱动（如 Mesa lavapipe/llvmpipe 软件渲染），
+            // 否则在无独立显卡的虚拟机上会枚举不到任何适配器
+            flags: wgpu::InstanceFlags::default()
+                | wgpu::InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER,
             backend_options: wgpu::BackendOptions::default(),
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
             display: Some(display),
@@ -247,16 +272,17 @@ impl WgpuContext {
         Ok(())
     }
 
-    /// 选择适配器并创建设备，测试表面是否可以实际配置。
-    /// 这是在混合 GPU 系统上确定兼容性的唯一可靠方法，
-    /// 适配器可能通过 get_capabilities() 报告表面兼容性，
-    /// 但在实际配置时失败（例如 NVIDIA 报告支持 Vulkan Wayland，
-    /// 但因为 Wayland 合成器运行在 Intel GPU 上而失败）。
+    /// 选择适配器并创建设备。
+    ///
+    /// 有 surface 时「实际配置一次」是判定兼容性的唯一可靠办法——适配器可能通过
+    /// `get_capabilities()` 报告兼容，但真正 configure 时失败（例如 NVIDIA 报告支持
+    /// Vulkan Wayland，而合成器跑在 Intel GPU 上）。没有 surface 时只能退到
+    /// 「能建出设备即可」。
     #[cfg(not(target_family = "wasm"))]
     async fn select_adapter_and_device(
         instance: &wgpu::Instance,
         device_id_filter: Option<u32>,
-        surface: &wgpu::Surface<'_>,
+        surface: Option<&wgpu::Surface<'_>>,
         compositor_gpu: Option<&CompositorGpuHint>,
         reject_software: bool,
     ) -> anyhow::Result<(
@@ -360,7 +386,11 @@ impl WgpuContext {
 
             log::info!("Testing adapter: {} ({:?})...", info.name, info.backend);
 
-            match Self::try_adapter_with_surface(&adapter, surface).await {
+            let attempt = match surface {
+                Some(surface) => Self::try_adapter_with_surface(&adapter, surface).await,
+                None => Self::try_adapter_offscreen(&adapter).await,
+            };
+            match attempt {
                 Ok((device, queue, dual_source_blending, color_atlas_texture_format)) => {
                     log::info!(
                         "Selected GPU (passed configuration test): {} ({:?})",
@@ -386,7 +416,123 @@ impl WgpuContext {
             }
         }
 
-        anyhow::bail!("No GPU adapter found that can configure the display surface")
+        anyhow::bail!(
+            "No GPU adapter found that can {}",
+            if surface.is_some() {
+                "configure the display surface"
+            } else {
+                "create an offscreen device"
+            }
+        )
+    }
+
+    /// 离屏（无表面）适配器的兼容性测试：先建设备，再真的渲染一帧并回读像素。
+    ///
+    /// 只验证「能否建设备」是不够的：本机实测 Mesa 的 lavapipe（Vulkan 软件实现）在
+    /// `PollType::Wait{timeout}` 下提交围栏不会推进，而 GL 后端的 llvmpipe 正常。
+    /// 这里用一次真实的回读把不支持同步回读的驱动筛掉，避免截图路径永久卡住。
+    #[cfg(not(target_family = "wasm"))]
+    async fn try_adapter_offscreen(
+        adapter: &wgpu::Adapter,
+    ) -> anyhow::Result<(wgpu::Device, wgpu::Queue, bool, TextureFormat)> {
+        let (device, queue, dual_source_blending, color_texture_format) =
+            Self::create_device(adapter).await?;
+        Self::probe_offscreen_readback(&device, &queue)
+            .map_err(|error| anyhow::anyhow!("离屏回读探测失败: {error:#}"))?;
+        Ok((device, queue, dual_source_blending, color_texture_format))
+    }
+
+    /// 渲染一次 16×16 的清空并回读，验证这台驱动真的会退休 `MAP_READ` 提交。
+    ///
+    /// 等待只用 `PollType::Poll` 自旋：`Wait{timeout}` 在本机 lavapipe 上立即返回
+    /// `Timeout` 且不推进围栏（详见 `docs/linux-platform-audit.md` §2.6）。
+    #[cfg(not(target_family = "wasm"))]
+    fn probe_offscreen_readback(device: &wgpu::Device, queue: &wgpu::Queue) -> anyhow::Result<()> {
+        const SIZE: u32 = 16;
+        let bytes_per_row: u32 = (SIZE * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let extent = wgpu::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("readback_probe_target"),
+            size: extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("readback_probe_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                ..Default::default()
+            });
+        }
+        drop(view);
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("readback_probe_buffer"),
+            size: u64::from(bytes_per_row) * SIZE as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfoBase {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bytes_per_row),
+                    rows_per_image: Some(SIZE),
+                },
+            },
+            extent,
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = sender.send(result);
+            });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        loop {
+            match receiver.try_recv() {
+                Ok(result) => {
+                    result.map_err(|error| anyhow::anyhow!("映射探测缓冲失败: {error:?}"))?;
+                    break;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    anyhow::bail!("回读回调没有触发");
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    if std::time::Instant::now() >= deadline {
+                        anyhow::bail!("等待回读超时，这台驱动不支持同步回读");
+                    }
+                    device.poll(wgpu::PollType::Poll)?;
+                }
+            }
+        }
+        readback.unmap();
+        Ok(())
     }
 
     /// 尝试使用适配器与表面，创建设备并测试配置。

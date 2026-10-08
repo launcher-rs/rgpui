@@ -525,4 +525,104 @@ mod tests {
             vec![0x30, 0x20, 0x10, 0x40, 0xCC, 0xBB, 0xAA, 0xDD]
         );
     }
+
+    /// 「纹理 → MAP_READ 缓冲 → 回读」在真实驱动上能否跑通的最小复现。
+    ///
+    /// 刻意不建 surface、不做渲染 pass：如果这里都卡住，问题出在回读写法本身，
+    /// 与窗口的交换链无关。需要 GPU，故 `#[ignore]`，本机用
+    /// `cargo test -p rgpui-wgpu --lib -- --ignored --nocapture readback` 跑。
+    #[test]
+    #[ignore = "需要可用 GPU"]
+    fn texture_readback_via_map_async_completes() -> anyhow::Result<()> {
+        let (device, queue) = test_device_and_queue()?;
+
+        // bytes_per_row 必须是 COPY_BYTES_PER_ROW_ALIGNMENT(256) 的整数倍，取 64 像素宽
+        let width = 64u32;
+        let height = 2u32;
+        let extent = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("readback_src"),
+            size: extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8Unorm,
+            usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let src: Vec<u8> = (0..width * height)
+            .flat_map(|i| [i as u8, 0, 0, 255])
+            .collect();
+        queue.write_texture(
+            texture.as_image_copy(),
+            &src,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            extent,
+        );
+
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("readback_dst"),
+            size: (width * height * 4) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("readback_copy"),
+        });
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfoBase {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width * 4),
+                    rows_per_image: Some(height),
+                },
+            },
+            extent,
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = sender.send(result);
+            });
+        // 只用 `PollType::Poll` 自旋等回调：`Wait` 在软件渲染上可能立刻返回 `Timeout`
+        // 且不推进围栏（见 `WgpuContext::probe_offscreen_readback` 的说明）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match receiver.try_recv() {
+                Ok(result) => {
+                    result.map_err(|error| anyhow::anyhow!("{error}"))?;
+                    break;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    anyhow::bail!("回读回调没有触发");
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    if std::time::Instant::now() >= deadline {
+                        anyhow::bail!("等待回读超时");
+                    }
+                    device.poll(wgpu::PollType::Poll)?;
+                }
+            }
+        }
+
+        let mapped = readback.slice(..).get_mapped_range()?;
+        let bytes = mapped.to_vec();
+        drop(mapped);
+        readback.unmap();
+        assert_eq!(bytes, src);
+        Ok(())
+    }
 }

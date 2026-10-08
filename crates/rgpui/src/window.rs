@@ -28,7 +28,7 @@ use crate::{
 use crate::collections::{FxHashMap, FxHashSet};
 use crate::refineable::Refineable;
 use crate::rgpui_util::post_inc;
-use crate::rgpui_util::{ResultExt, measure};
+use crate::rgpui_util::{ResultExt, log_err, measure};
 use crate::scheduler::Instant;
 use anyhow::{Context as _, Result, anyhow};
 #[cfg(target_os = "macos")]
@@ -47,7 +47,7 @@ use smallvec::SmallVec;
 use std::{
     any::{Any, TypeId},
     borrow::Cow,
-    cell::{Cell, RefCell},
+    cell::{BorrowMutError, Cell, RefCell},
     cmp,
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
@@ -286,6 +286,28 @@ thread_local! {
 /// 而不是运行嵌套绘制或在已借用的 App 上 panic。
 fn draw_in_progress() -> bool {
     CURRENT_ELEMENT_ARENA.with(|current| current.get().is_some())
+}
+
+/// 记录平台回调里的更新失败，但把「App 已被借用」当作预期内的重入
+///
+/// Windows 在窗口过程中嵌套泵消息（见 `rgpui-windows` 的
+/// `run_foreground_task`），此时 `RefCell<App>` 往往还在上层调用的借用期内，
+/// `Entity::update` 会以 `BorrowMutError` 失败。这类回调是逐事件重试的
+/// （下一帧、下一次命中测试都会再来），跳过即可；一律按 ERROR 记录会把
+/// 真正的故障淹没在刷屏里。非重入错误仍按 `log_err` 的级别记录。
+#[track_caller]
+fn skip_if_app_borrowed<T>(result: Result<T>) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(err) if err.downcast_ref::<BorrowMutError>().is_some() => {
+            log::debug!("App 已被借用，跳过本次重入的平台回调");
+            None
+        }
+        Err(err) => {
+            log_err(&err);
+            None
+        }
+    }
 }
 
 /// 在当前 arena 中分配元素。如果有活动的应用专用 arena（绘制期间），
@@ -1475,6 +1497,7 @@ impl Window {
                 window_min_size,
                 app_id: app_id.clone(),
                 icon,
+                window_background,
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
             },
@@ -1641,9 +1664,8 @@ impl Window {
                 let force_render =
                     mem::take(&mut deferred_force_render) || request_frame_options.force_render;
 
-                let thermal_state = handle
-                    .update(&mut cx, |_, _, cx| cx.thermal_state())
-                    .log_err();
+                let thermal_state =
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, _, cx| cx.thermal_state()));
 
                 // Throttle frame rate based on conditions:
                 // - Thermal pressure (Serious/Critical): cap to ~60fps
@@ -1672,9 +1694,9 @@ impl Window {
                         // On Wayland, `surface.frame()` was already called to request the
                         // next frame callback, so we must call `surface.commit()` (via
                         // `complete_frame`) or the compositor won't send another callback.
-                        handle
-                            .update(&mut cx, |_, window, _| window.complete_frame())
-                            .log_err();
+                        skip_if_app_borrowed(
+                            handle.update(&mut cx, |_, window, _| window.complete_frame()),
+                        );
                         return;
                     }
                 }
@@ -1682,13 +1704,11 @@ impl Window {
 
                 let next_frame_callbacks = next_frame_callbacks.take();
                 if !next_frame_callbacks.is_empty() {
-                    handle
-                        .update(&mut cx, |_, window, cx| {
-                            for callback in next_frame_callbacks {
-                                callback(window, cx);
-                            }
-                        })
-                        .log_err();
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, cx| {
+                        for callback in next_frame_callbacks {
+                            callback(window, cx);
+                        }
+                    }));
                 }
 
                 // Keep presenting if input was recently arriving at a high rate (>= 60fps).
@@ -1700,30 +1720,24 @@ impl Window {
 
                 if invalidator.is_dirty() || force_render {
                     measure("frame duration", || {
-                        handle
-                            .update(&mut cx, |_, window, cx| {
-                                if force_render {
-                                    // Bypass cached view reuse so we don't replay stale
-                                    // atlas tile references after a GPU device recovery.
-                                    window.refresh();
-                                }
-                                let arena_clear_needed = window.draw(cx);
-                                window.present();
-                                arena_clear_needed.clear(cx);
-                            })
-                            .log_err();
+                        skip_if_app_borrowed(handle.update(&mut cx, |_, window, cx| {
+                            if force_render {
+                                // Bypass cached view reuse so we don't replay stale
+                                // atlas tile references after a GPU device recovery.
+                                window.refresh();
+                            }
+                            let arena_clear_needed = window.draw(cx);
+                            window.present();
+                            arena_clear_needed.clear(cx);
+                        }));
                     })
                 } else if needs_present {
-                    handle
-                        .update(&mut cx, |_, window, _| window.present())
-                        .log_err();
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, _| window.present()));
                 }
 
-                handle
-                    .update(&mut cx, |_, window, _| {
-                        window.complete_frame();
-                    })
-                    .log_err();
+                skip_if_app_borrowed(
+                    handle.update(&mut cx, |_, window, _| window.complete_frame()),
+                );
             }
         }));
         platform_window.on_resize(Box::new({
@@ -1832,17 +1846,15 @@ impl Window {
         platform_window.on_hit_test_window_control({
             let mut cx = cx.to_async();
             Box::new(move || {
-                handle
-                    .update(&mut cx, |_, window, _cx| {
-                        for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
-                            if window.mouse_hit_test.ids.contains(&hitbox.id) {
-                                return Some(*area);
-                            }
+                skip_if_app_borrowed(handle.update(&mut cx, |_, window, _cx| {
+                    for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
+                        if window.mouse_hit_test.ids.contains(&hitbox.id) {
+                            return Some(*area);
                         }
-                        None
-                    })
-                    .log_err()
-                    .unwrap_or(None)
+                    }
+                    None
+                }))
+                .unwrap_or(None)
             })
         });
         platform_window.on_move_tab_to_new_window({
@@ -2157,7 +2169,7 @@ impl Window {
     ///
     /// `None`（默认）跟随 `RGPUI_VIEW_RETENTION` 全局开关；
     /// `Some(false)` 关闭复用，逐帧全量重建，作为 oracle 对照基线。
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn set_retention_override(&mut self, enabled: Option<bool>) {
         self.retention_override = enabled;
     }
@@ -2280,20 +2292,29 @@ impl Window {
         self.platform_window.request_decorations(decorations);
     }
 
-    /// 设置 layer-shell 表面的独占区域：它保留多少屏幕空间
-    /// 以使其他表面避免遮挡它（例如面板保留空间）。
-    /// 正值从锚定边缘保留该距离，0 允许
-    /// 表面被移出其他独占区域，-1 忽略保留
-    /// 空间并可能延伸到其他表面下方。（仅限 Wayland layer-shell 窗口）
+    /// 显示或隐藏原生标题栏。
+    ///
+    /// - Windows：切换标准窗口样式（隐藏时改用 `WS_POPUP`，同时不再显示任务栏图标）。
+    /// - X11：写 Motif `_MOTIF_WM_HINTS` 的装饰位。mutter 之类只判断装饰位是否为 0，
+    ///   单个 `MWM_DECOR_TITLE` 位它不理，所以隐藏时是整个原生框架都没了，与 Windows
+    ///   的语义一致；客户端装饰下服务端本来不画标题栏，因此没有效果。
+    /// - Wayland：没有对应协议，空操作；macOS 侧同样未实现。客户端装饰下标题栏由应用
+    ///   自己画，要隐藏得在 UI 里去掉 `TitleBar`。
+    pub fn set_titlebar_visible(&self, visible: bool) {
+        self.platform_window.set_titlebar_visible(visible);
+    }
+
+    /// 为这个窗口保留多少屏幕空间（逻辑像素），其他窗口不会压到它上面。
+    /// Wayland 用 layer-shell 的 `exclusive_zone`，X11 用 EWMH strut，口径一致：
+    /// 从 `set_exclusive_edge` 指定的屏幕边缘起保留这条区域，贴边面板传面板高度。
+    /// 非正值表示不保留；只对面板类窗口（layer-shell / DOCK）有意义。
     pub fn set_exclusive_zone(&self, zone: Pixels) {
         self.platform_window.set_exclusive_zone(zone);
     }
 
-    /// 设置 layer-shell 表面独占区域适用的锚定边缘。
-    /// 仅在角锚定表面时需要此选项；否则
-    /// 边缘从锚点推断。边缘必须是表面锚定的
-    /// 单一边缘，否则将被忽略。（仅限 Wayland layer-shell 窗口）
-    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    /// 指定独占区域作用于哪条屏幕边缘，必须是单一边缘（TOP/BOTTOM/LEFT/RIGHT 之一），
+    /// 否则会被忽略。Wayland 只在角锚定表面上需要它，X11 的 strut 则必须靠它确定保留哪条边。
+    #[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
     pub fn set_exclusive_edge(&self, edge: crate::layer_shell::Anchor) {
         self.platform_window.set_exclusive_edge(edge);
     }

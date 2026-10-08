@@ -220,6 +220,10 @@ pub mod input_ui;
 mod init;
 pub use init::init_all;
 
+/// 日志模块 - 提供 stderr 日志输出器的初始化入口
+mod logging;
+pub use logging::init_logging;
+
 /// 索引路径 - 列表/表格中用于定位节、行、列的索引
 pub mod index_path;
 

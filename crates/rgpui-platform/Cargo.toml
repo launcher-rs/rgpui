@@ -17,7 +17,9 @@ path = "src/rgpui_platform.rs"
 default = []
 multithreaded = ["rgpui-web/multithreaded"]
 font-kit = ["rgpui-macos/font-kit"]
-test-support = ["rgpui/test-support", "rgpui-macos/test-support"]
+# test-support 要把各平台 crate 一起带上：平台侧的 render_to_image 等窗口方法
+# 挂在各自 crate 的同名 feature 上，只转发 rgpui/test-support 会让「核心要、平台没编进来」
+test-support = ["rgpui/test-support", "rgpui-macos/test-support", "rgpui-linux/test-support"]
 screen-capture = ["rgpui/screen-capture", "rgpui-macos/screen-capture", "rgpui-windows/screen-capture", "rgpui-linux/screen-capture"]
 runtime_shaders = ["rgpui-macos/runtime_shaders"]
 wayland = ["rgpui-linux/wayland"]
@@ -34,7 +36,12 @@ rgpui-windows.workspace = true
 rgpui = { workspace = true, features = ["windows-manifest"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
-rgpui-linux.workspace = true
+# 必须显式开启 rgpui-linux 的窗口后端：workspace 依赖声明了 default-features = false，
+# 若不在此开启，Linux 上会编译出无 X11/Wayland 的空后端，程序静默回落到 Headless，
+# 既不创建窗口也不报错。同时开启 rgpui 的 wayland/x11，否则 guess_compositor()
+# 读不到 DISPLAY/WAYLAND_DISPLAY 而恒返回 "Headless"。
+rgpui-linux = { workspace = true, features = ["wayland", "x11"] }
+rgpui = { workspace = true, features = ["wayland", "x11"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 rgpui-web = { workspace = true, default-features = false }

@@ -13,8 +13,9 @@ pub mod popup;
 ))]
 mod threaded_dispatcher;
 
-/// Wayland Layer Shell 支持 — 允许窗口作为覆盖层、面板或桌面背景渲染。
-#[cfg(all(target_os = "linux", feature = "wayland"))]
+/// Linux 面板窗口的参数 —— Wayland 直接映射成 layer-shell 请求，
+/// X11 映射成 DOCK 窗口 + EWMH strut，所以两个后端都要能用这些类型。
+#[cfg(target_os = "linux")]
 pub mod layer_shell;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -152,6 +153,12 @@ pub enum PowerSaveBlockerKind {
     /// 阻止屏幕关闭
     PreventDisplaySleep,
 }
+
+/// 电源阻止器句柄：由平台实现，内部持有系统资源，`Drop` 即取消抑制。
+///
+/// 见 [`Platform::start_power_save_blocker`]：留着返回值抑制就在，丢弃它立刻恢复
+/// 系统的省电策略。刻意不给 `stop()` / 阻止器 ID —— 平台按 ID 保存句柄正是泄漏的源头。
+pub trait PowerSaveBlocker: Send {}
 
 /// 操作系统信息
 #[derive(Debug, Clone)]
@@ -511,9 +518,6 @@ pub trait Platform: 'static {
     /// 注册托盘菜单项操作回调。
     fn on_tray_menu_action(&self, _callback: Box<dyn FnMut(SharedString)>) {}
 
-    /// 设置是否在所有窗口关闭后保持应用运行（仅显示托盘图标）。
-    fn set_keep_alive_without_windows(&self, _keep_alive: bool) {}
-
     /// 注册全局系统快捷键，`id` 用于标识快捷键，`keystroke` 定义按键组合。
     fn register_global_hotkey(&self, _id: u32, _keystroke: &Keystroke) -> Result<()> {
         Ok(())
@@ -542,12 +546,18 @@ pub trait Platform: 'static {
         None
     }
 
-    /// 返回辅助功能（Accessibility）权限状态。
-    fn accessibility_status(&self) -> PermissionStatus {
+    /// 查询指定类别的系统权限状态。
+    ///
+    /// 这是权限类别的统一入口：`PermissionType` 里的每一项都要能问，
+    /// 不要再为单个类别增设 `xxx_status` 特例方法 —— 特例只会让某一平台
+    /// 已经做好的判定逻辑在应用层根本没有调用点。
+    /// 无法判定（系统没有这个概念、或总线/服务不可达）时返回
+    /// [`PermissionStatus::Unavailable`]，不要返回 `Granted` 假装可用。
+    fn check_permission(&self, _kind: PermissionType) -> PermissionStatus {
         PermissionStatus::Unavailable
     }
-    /// 请求辅助功能权限（macOS 需要用户授权）。
-    fn request_accessibility_permission(&self) {}
+    /// 请求指定类别的系统权限：有系统授权弹窗的就弹窗，没有的会输出可操作的引导日志。
+    fn request_permission(&self, _kind: PermissionType) {}
 
     /// 返回麦克风权限状态。
     fn microphone_status(&self) -> PermissionStatus {
@@ -556,18 +566,25 @@ pub trait Platform: 'static {
     /// 请求麦克风权限，`callback` 收到授权结果。
     fn request_microphone_permission(&self, _callback: Box<dyn FnOnce(bool)>) {}
 
-    /// 注册系统电源事件回调（电池状态变化、电源插拔等）。
+    /// 注册系统电源事件回调（系统即将睡眠 / 已从睡眠唤醒）。
     fn on_system_power_event(&self, _callback: Box<dyn FnMut(SystemPowerEvent)>) {}
 
     /// 注册系统唤醒时的回调函数。
     fn on_system_wake(&self, _callback: Box<dyn FnMut()>) {}
 
-    /// 启动电源节省阻止器（阻止系统进入睡眠），返回阻止器 ID。
-    fn start_power_save_blocker(&self, _kind: PowerSaveBlockerKind) -> Option<u32> {
+    /// 启动电源阻止器：阻止系统休眠或息屏。
+    ///
+    /// 返回的句柄**持有即生效、`Drop` 即释放**，所以没有配套的
+    /// `stop_power_save_blocker(id)` —— 「返回 ID、再按 ID 停止」的形状会把底层
+    /// 资源（Linux 上是 logind `Inhibit` 返回的 fifo fd）泄漏在平台内部，
+    /// 进程退出前抑制一直挂着，应用忘没忘停都无人知晓。
+    /// 平台不支持或判定通道不可达时返回 `None`，不要假装阻止成功。
+    fn start_power_save_blocker(
+        &self,
+        _kind: PowerSaveBlockerKind,
+    ) -> Option<Box<dyn PowerSaveBlocker>> {
         None
     }
-    /// 停止指定的电源节省阻止器。
-    fn stop_power_save_blocker(&self, _id: u32) {}
 
     /// 返回系统空闲时间（自上次用户输入以来的时长）。
     fn system_idle_time(&self) -> Option<Duration> {
@@ -1400,10 +1417,19 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         anyhow::bail!("render_to_image not implemented for this platform")
     }
 
-    /// 设置 Wayland layer-shell 独占区域大小（像素）。
+    /// 为窗口保留多少屏幕空间（逻辑像素），使其他窗口不遮挡它。
+    ///
+    /// Wayland 走 layer-shell 的 `set_exclusive_zone`，X11 走 EWMH strut
+    /// （`_NET_WM_STRUT_PARTIAL`）；两边口径一致：从 `set_exclusive_edge` 指定的
+    /// 屏幕边缘起，往外保留这么宽的一条区域，贴边面板取面板自身高度即可。
+    /// 非正值表示不保留。只有面板类窗口（layer-shell / DOCK）设置才有意义。
     fn set_exclusive_zone(&self, _zone: Pixels) {}
-    /// 设置 Wayland layer-shell 独占边缘（顶部/底部/左侧/右侧）。
-    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    /// 指定 [`Self::set_exclusive_zone`] 作用于哪条屏幕边缘，必须是单一边缘
+    /// （`TOP` / `BOTTOM` / `LEFT` / `RIGHT` 之一），多bit会被忽略。
+    ///
+    /// Wayland 只在角锚定表面上需要它，其余情况边缘由锚点推断；X11 的 strut
+    /// 没有「保留哪条边」的默认推断，必须先确定边缘才会写入。
+    #[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
     fn set_exclusive_edge(&self, _edge: layer_shell::Anchor) {}
 
     /// 请求用户注意力（任务栏闪烁/弹跳，提示用户查看窗口）。
@@ -1426,6 +1452,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn set_window_extended_style(&self, _style: u32) {}
 
     /// 设置标题栏是否可见（控制自定义标题栏/原生标题栏切换）。
+    ///
+    /// Windows 切换标准窗口样式，X11 清零 Motif `_MOTIF_WM_HINTS` 的装饰位（整个原生
+    /// 框架消失）；Wayland 没有对应协议，macOS 侧未实现，两者都是空操作。
     fn set_titlebar_visible(&self, _visible: bool) {}
 
     /// 设置输入框的语义内容类型（如 `password`、`email`），
@@ -2292,6 +2321,10 @@ pub struct WindowParams {
     /// Windows/Linux: 是否启用鼠标事件穿透（点击穿透到后面的窗口）。
     /// 覆盖层窗口需要此选项让鼠标事件穿透到底层窗口。
     pub mouse_passthrough: bool,
+
+    /// 窗口背景外观。X11 需要在创建窗口时据此选择 24 位不透明 visual 还是
+    /// 32 位 ARGB visual，窗口创建之后无法再更换 visual。
+    pub window_background: WindowBackgroundAppearance,
 }
 
 /// 表示窗口打开时应处于的状态
@@ -2392,9 +2425,9 @@ pub enum WindowKind {
     /// 出现在父窗口上方的浮动窗口
     Floating,
 
-    /// Wayland LayerShell 窗口，用于为应用绘制覆盖层或背景，
-    /// 如 Dock、通知或壁纸。
-    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    /// Linux 面板窗口：Wayland 上是 layer-shell 表面，X11 上是 DOCK 窗口 + strut，
+    /// 用于覆盖层、面板、桌面背景一类不跟普通窗口抢位置的场景。
+    #[cfg(target_os = "linux")]
     LayerShell(layer_shell::LayerShellOptions),
 
     /// 出现在父窗口上方的模态窗口，阻止与父窗口的交互，
