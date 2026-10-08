@@ -28,7 +28,7 @@ use crate::{
 use crate::collections::{FxHashMap, FxHashSet};
 use crate::refineable::Refineable;
 use crate::rgpui_util::post_inc;
-use crate::rgpui_util::{ResultExt, measure};
+use crate::rgpui_util::{ResultExt, log_err, measure};
 use crate::scheduler::Instant;
 use anyhow::{Context as _, Result, anyhow};
 #[cfg(target_os = "macos")]
@@ -47,7 +47,7 @@ use smallvec::SmallVec;
 use std::{
     any::{Any, TypeId},
     borrow::Cow,
-    cell::{Cell, RefCell},
+    cell::{BorrowMutError, Cell, RefCell},
     cmp,
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
@@ -286,6 +286,28 @@ thread_local! {
 /// 而不是运行嵌套绘制或在已借用的 App 上 panic。
 fn draw_in_progress() -> bool {
     CURRENT_ELEMENT_ARENA.with(|current| current.get().is_some())
+}
+
+/// 记录平台回调里的更新失败，但把「App 已被借用」当作预期内的重入
+///
+/// Windows 在窗口过程中嵌套泵消息（见 `rgpui-windows` 的
+/// `run_foreground_task`），此时 `RefCell<App>` 往往还在上层调用的借用期内，
+/// `Entity::update` 会以 `BorrowMutError` 失败。这类回调是逐事件重试的
+/// （下一帧、下一次命中测试都会再来），跳过即可；一律按 ERROR 记录会把
+/// 真正的故障淹没在刷屏里。非重入错误仍按 `log_err` 的级别记录。
+#[track_caller]
+fn skip_if_app_borrowed<T>(result: Result<T>) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(err) if err.downcast_ref::<BorrowMutError>().is_some() => {
+            log::debug!("App 已被借用，跳过本次重入的平台回调");
+            None
+        }
+        Err(err) => {
+            log_err(&err);
+            None
+        }
+    }
 }
 
 /// 在当前 arena 中分配元素。如果有活动的应用专用 arena（绘制期间），
@@ -1642,9 +1664,8 @@ impl Window {
                 let force_render =
                     mem::take(&mut deferred_force_render) || request_frame_options.force_render;
 
-                let thermal_state = handle
-                    .update(&mut cx, |_, _, cx| cx.thermal_state())
-                    .log_err();
+                let thermal_state =
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, _, cx| cx.thermal_state()));
 
                 // Throttle frame rate based on conditions:
                 // - Thermal pressure (Serious/Critical): cap to ~60fps
@@ -1673,9 +1694,9 @@ impl Window {
                         // On Wayland, `surface.frame()` was already called to request the
                         // next frame callback, so we must call `surface.commit()` (via
                         // `complete_frame`) or the compositor won't send another callback.
-                        handle
-                            .update(&mut cx, |_, window, _| window.complete_frame())
-                            .log_err();
+                        skip_if_app_borrowed(
+                            handle.update(&mut cx, |_, window, _| window.complete_frame()),
+                        );
                         return;
                     }
                 }
@@ -1683,13 +1704,11 @@ impl Window {
 
                 let next_frame_callbacks = next_frame_callbacks.take();
                 if !next_frame_callbacks.is_empty() {
-                    handle
-                        .update(&mut cx, |_, window, cx| {
-                            for callback in next_frame_callbacks {
-                                callback(window, cx);
-                            }
-                        })
-                        .log_err();
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, cx| {
+                        for callback in next_frame_callbacks {
+                            callback(window, cx);
+                        }
+                    }));
                 }
 
                 // Keep presenting if input was recently arriving at a high rate (>= 60fps).
@@ -1701,30 +1720,24 @@ impl Window {
 
                 if invalidator.is_dirty() || force_render {
                     measure("frame duration", || {
-                        handle
-                            .update(&mut cx, |_, window, cx| {
-                                if force_render {
-                                    // Bypass cached view reuse so we don't replay stale
-                                    // atlas tile references after a GPU device recovery.
-                                    window.refresh();
-                                }
-                                let arena_clear_needed = window.draw(cx);
-                                window.present();
-                                arena_clear_needed.clear(cx);
-                            })
-                            .log_err();
+                        skip_if_app_borrowed(handle.update(&mut cx, |_, window, cx| {
+                            if force_render {
+                                // Bypass cached view reuse so we don't replay stale
+                                // atlas tile references after a GPU device recovery.
+                                window.refresh();
+                            }
+                            let arena_clear_needed = window.draw(cx);
+                            window.present();
+                            arena_clear_needed.clear(cx);
+                        }));
                     })
                 } else if needs_present {
-                    handle
-                        .update(&mut cx, |_, window, _| window.present())
-                        .log_err();
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, _| window.present()));
                 }
 
-                handle
-                    .update(&mut cx, |_, window, _| {
-                        window.complete_frame();
-                    })
-                    .log_err();
+                skip_if_app_borrowed(
+                    handle.update(&mut cx, |_, window, _| window.complete_frame()),
+                );
             }
         }));
         platform_window.on_resize(Box::new({
@@ -1833,17 +1846,15 @@ impl Window {
         platform_window.on_hit_test_window_control({
             let mut cx = cx.to_async();
             Box::new(move || {
-                handle
-                    .update(&mut cx, |_, window, _cx| {
-                        for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
-                            if window.mouse_hit_test.ids.contains(&hitbox.id) {
-                                return Some(*area);
-                            }
+                skip_if_app_borrowed(handle.update(&mut cx, |_, window, _cx| {
+                    for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
+                        if window.mouse_hit_test.ids.contains(&hitbox.id) {
+                            return Some(*area);
                         }
-                        None
-                    })
-                    .log_err()
-                    .unwrap_or(None)
+                    }
+                    None
+                }))
+                .unwrap_or(None)
             })
         });
         platform_window.on_move_tab_to_new_window({
