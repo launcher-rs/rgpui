@@ -1,8 +1,8 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::{
-    App, Bounds, Context, SharedString, Window, WindowBounds, WindowOptions, div, prelude::*, px,
-    rgb, size,
+    App, Bounds, Context, SharedString, TitlebarOptions, Window, WindowBounds, WindowOptions, div,
+    prelude::*, px, rgb, size,
 };
 use rgpui_platform::application;
 
@@ -95,6 +95,12 @@ fn run_example() {
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                // 通过 titlebar 选项设置标题栏显示的名称（WM_NAME），
+                // Windows/macOS/Linux 各平台均生效
+                titlebar: Some(TitlebarOptions {
+                    title: Some("Hello World - rgpui".into()),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             |_, cx| {
