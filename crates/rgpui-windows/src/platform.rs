@@ -802,7 +802,7 @@ impl Platform for WindowsPlatform {
 
     /// 显示系统原生通知
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
-        show_balloon_notification(self.handle, title, body)
+        show_toast_notification(title, body)
     }
 
     /// 设置开机自启动
