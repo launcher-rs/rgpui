@@ -1,7 +1,7 @@
 # Linux 平台问题审计清单
 
 > 分支：`fix/linux-platform-issues`
-> 首次审计：2026-10-06 最近更新：2026-10-07
+> 首次审计：2026-10-06 最近更新：2026-10-08
 > 审计环境：Hyper-V 虚拟机 + Ubuntu 22.04 + GNOME + **xrdp 远程桌面会话**（`Xorg :10 -config xrdp/xorg.conf`）
 > 对照基准：`Platform` / `PlatformWindow` trait（`crates/rgpui/src/platform.rs`）与 `rgpui-linux` 的实现差异
 
@@ -39,6 +39,7 @@
 | `7d4ec3fdec` | `feat(linux)`：独占区域 —— X11 写 EWMH strut（`WindowKind::LayerShell` → DOCK 窗口），Wayland 补 layer-shell 运行时请求 |
 | `a05578a672` | `feat(linux)`：`set_titlebar_visible` —— X11 写 Motif `_MOTIF_WM_HINTS` 装饰位，核心层补 `Window` 包装（Windows 那份实现此前无人可调） |
 | `70ae4bb64c` | `feat(linux)`：离屏 wgpu 渲染器 + 像素回读 —— `render_to_image` / `PlatformHeadlessRenderer` / `current_headless_renderer` 整条截图链路打通，离屏适配器选择改成「真的回读一次」筛驱动（本机 lavapipe 不回读）；顺带把 `set_retention_override` 的 cfg 收到与调用点一致（见 §2.6） |
+| `bcf5873087` | `fix(linux)`：X11 四项修复 —— ① visual 选择加「合成器在场」判据、`WindowKind::Overlay` 不再硬绑 32 位 ARGB（修 Rupix 全屏选区浮层整层不可见，见 §3.5）；② `win_aux` 补 `background_pixel`，首帧前的暴露区由纯黑改为主题底色（§2.5，空窗期本身仍在）；③ 尊重 `WindowParams::show == false`，`map_window()` 吞掉创建期那次无条件映射（§2.7）；④ EWMH 帧同步握手 —— `WM_PROTOCOLS` 补 `_NET_WM_SYNC_REQUEST_PROTOCOL` + `draw()` 每帧回写 counter（§2.8）。附新增探针 `overlay_probe` |
 
 最需要记住的一句话（未变）：
 
@@ -58,10 +59,13 @@
 | P0 | Linux 窗口后端 feature 未启用 → 无窗口无报错 | **已修复并验证**（`fcf70ad9f4`，见 §2.1） |
 | P0 | 软件 Vulkan 驱动被 wgpu 判为「非一致性」而隐藏 → 无 GPU 适配器 | **已修复并验证**（`fcf70ad9f4`，见 §2.2） |
 | P0 | 窗口能打开但画面永远不上屏 | **已修复并验证**（`fcf70ad9f4`，见 §3；~~环境限制~~ 为误诊） |
+| P0 | **不透明 / 全屏浮层（`WindowKind::Overlay`）在 X11 上整层不可见** —— Rupix 区域截图的遮罩层与选区框全看不到，Windows 正常 | **已修复并验证**（visual 选择加合成器判据 + 应用侧改请求 `Opaque`，见 §3.5） |
 | P1 | tray 8 个 API 在 Linux 完全未实现 | **已实现并验证**（`0cd71c3ddf`，见 §4.1） |
 | P1 | 关闭主窗口后托盘「显示窗口」无反应 | **已修复并验证**（`ac83e85218`，见 §2.3） |
 | P1 | Inspector（F12）在 Linux 是否可用 | **已验证可用**（见 §2.4） |
-| P2 | 窗口启动后 ~130 ms 纯黑，然后才出画面 | **已定位，未修**（见 §2.5） |
+| P2 | 窗口启动后 ~130 ms 纯黑，然后才出画面 | **黑已修**（改为主题底色，见 §2.5）；**空窗期本身未修**，需推迟 `map_window()` |
+| P1 | `WindowOptions.show = false` 在 X11 被完全忽略 —— 「启动即隐藏到托盘」的 tray 类应用必然闪一下主窗口 | **已修复并验证**（见 §2.7） |
+| P1 | EWMH 帧同步握手不完整：`WM_PROTOCOLS` 只挂 `_NET_WM_SYNC_REQUEST`（应为 `…_PROTOCOL`），且 counter 只在 `set_bounds()` 里回写 → 不发 resize 事件的合成器永远收不到「本帧已完成」 | **已修复**（见 §2.8）。诚实标注：本机 mutter 在该 xrdp 会话下**一条 `_NET_WM_SYNC_REQUEST` 都不发**，这条路径没被本机触发，只有协议口径与编译验证 |
 | P1 | GL 后端在老 Mesa 上不可用（wgpu-hal 只认 `EGL_EXT_platform_xcb`） | 已定位，上游兼容问题（见 §3.4） |
 | P1 | 通知 / 全局热键 / 权限 / 应用菜单是「假实现」——返回成功但什么都没做 | **§4.2 已全部收口**：通知（`4f782cb1fa`）、全局热键（`d5e4819376`）、权限查询（`7fa8b7bf47`）、应用菜单（`0da9515122`，见 §4.2-4）。其中「`set_menus` 只存不显示」定性为**非缺陷**（Windows 同口径） |
 | P1 | **`App` 没有注册入口** → 三个应用菜单回调（action / will-open / validate）应用侧根本登记不了；Linux 旧 `set_tray` 又把菜单项自带的 `Action` 丢掉 | **已修复并验证**（`0da9515122`，见 §4.2-4）：`App` 补三个包装，Linux 记下「标识 → 动作」表并经 `app_menu_action` 派发，与 Windows 托盘菜单同口径 |
@@ -254,7 +258,7 @@ $ xdotool windowminimize 0x2600001     # window state: Iconic
    没有设 `WM_NAME` / `_NET_WM_NAME`。这与 §4.4 的 `get_title` 缺失同源，
    并且让「按标题/按 pid 定位窗口」的脚本手段不好用。
 
-### 2.5 [P2·未修] 窗口启动后有约 130 ms 纯黑
+### 2.5 [P2·已修「黑」，未修「空窗期」] 窗口启动后有约 130 ms 纯黑
 
 **症状**：窗口出现时是全黑的，随后才刷出内容。
 
@@ -291,13 +295,48 @@ release 把 250 ms 压到 131 ms 但**不归零**，说明它不是性能问题�
    **没有设 `background_pixel`** → X server 用默认黑色填充暴露区域，
    合成器在这段窗口期拿到的就是纯黑。
 
-**可选修法（尚未决定，用户当前指示「先不管」）**：
+**可选修法（当时的两条，现已按「轻量」那条落地）**：
 
 - **轻量**：`win_aux` 补 `background_pixel`（按 `WindowParams.window_background`，
   §2 修复后 visual 选择已依赖该字段）。只改 `rgpui-linux`，Windows/macOS/Wayland 零影响，
-  把「黑闪」变成「主题底色一闪」。
+  把「黑闪」变成「主题底色一闪」。← **已采用**
 - **彻底**：把 `map_window()` 推迟到首帧提交之后。动的是**全平台共用路径**，
-  Windows/macOS/Wayland 的映射时机都会变，风险面大，应单独评估而非顺手改。
+  Windows/macOS/Wayland 的映射时机都会变，风险面大，应单独评估而非顺手改。← **未动**
+
+**修复内容**（`crates/rgpui-linux/src/linux/x11/window.rs:631-648`）：`win_aux` 新增
+`background_pixel`，取值与 §3.5 的 visual 判定同一条逻辑：
+
+| 情形 | `background_pixel` | 理由 |
+|------|-------------------|------|
+| 真的走 ARGB visual（`needs_alpha`） | `0`（全透明黑） | 首帧之前窗口区域透出桌面，比透出黑色底色符合预期 |
+| 不透明 + 浅色外观 | `0x00FFFFFF` | X pixval 是 **0x00RRGGBB**，`0xFFFFFF` 会被当成纯蓝；这是白底的正确写法 |
+| 不透明 + 深色外观 | `visual_set.black_pixel` | 与原行为一致，只是显式写出 |
+
+**修复后实测（口径更正）**：先前用「黑色占比」判首帧的探针不可信 —— 底色一旦不是黑色，
+`black=0%` 会被误判成「内容已出」。改用 `/tmp/redgap.py`（同法抓窗口缓冲，分别统计
+红/白/黑占比，以「红 > 50%」为「内容已出」），A/B 同一个 binary、同一 xrdp 会话、debug：
+
+| 构建 | IsViewable 时的缓冲 | 窗口可见 → 首帧内容 |
+|------|--------------------|--------------------|
+| 不写 `background_pixel`（修复前行为） | **black 99.3%** | 1.239 s **纯黑** |
+| 写 `background_pixel`（本次） | **white 100%** | 1.141 s **主题底色**，黑色 0% |
+
+```
+# 修复后
+t= 1.202s  IsViewable
+t= 1.202s  red=  0.0% white=100.0% black=  0.0%
+t= 2.343s  red= 97.9% white=  0.0% black=  0.0%  -> 内容
+# 去掉 background_pixel 的 A/B
+t= 1.438s  IsViewable
+t= 1.438s  red=  0.0% white=  0.7% black= 99.3%
+t= 2.677s  red= 97.9%  -> 内容
+```
+
+**如实结论：本修复消除的是「黑」，不是「空窗期」。** 窗口从可见到首帧内容之间仍有约
+1.1 s（debug；上表 release 为 0.131 s）的空白期，那属于 (a) 类性能问题（软件渲染 +
+debug 的字体栅格化 / shader 编译）叠上「`map_window()` 早于首帧」这个结构性原因 ——
+要真正归零得走上面「彻底」那条路线（推迟映射），本次**没有**动它。
+另注：深色外观下 `background_pixel` 仍取 `black_pixel`，观感与修前一致，这条改动只对浅色外观生效。
 
 ### 2.6 [P1·已修] Linux 没有可用的离屏渲染器 —— 截图 / 视觉测试整条链路缺失
 
@@ -389,6 +428,56 @@ test result: ok. 1 passed; 0 failed
 - §2.4 的 Inspector 帧率恒 0 **没有**随本次改动解决：那是活窗口 swapchain 的读回问题，
   与这里的离屏路径不是同一件事。
 
+### 2.7 [P1·已修] `WindowOptions.show = false` 在 X11 被完全忽略
+
+**症状（来自 Rupix）**：Windows 上启动后主窗口不出现、只在托盘；Linux 上启动直接把设置窗口
+甩在桌面上。两边用的是同一句 `show: false`（`rupix/src/main.rs`）。
+
+**根因**：核心层 `Window::new`（`crates/rgpui/src/window.rs:1905`）在创建平台窗口后
+**无条件** `platform_window.map_window().unwrap()`，`WindowParams::show` 只在
+`Window::activate`/`center` 之类的后续路径里被看；X11 的 `map_window()` 又是直接
+`xcb.map_window`，没有任何前置条件 —— 于是 `show=false` 的窗口照样在第一帧前被映射出来。
+
+**修复**（`x11/window.rs:2010-2024`）：`X11WindowState` 新增 `starts_hidden: bool`
+（建窗时取 `!params.show`），`map_window()` 开头用 `std::mem::take` 把它读走并清空：
+
+- 只有**创建期那一次**无条件映射被吞掉（`take` 保证后续调用不再受影响）；
+- 恢复路径不受影响：`X11WindowState::activate()`（`:1799`）自己发 `xcb.map_window`，
+  这正是 Rupix 托盘「显示窗口」走的 `Window::activate_window()`；
+- 另一个真实映射入口 `Window::ensure_window_exists` 路径同样在创建之后，不受影响。
+
+**实测**（探针 `overlay_probe fl_hid`：`window_background: Opaque` + `show: false`）：
+
+```
+$ xwininfo -id 0x…   →  Map State: IsUnMapped
+屏幕红像素 = 0        （探针的红色满屏 Div 从未上屏，即窗口确实没出现）
+```
+
+回归：`fl_op` / `ov_op`（`show: true`）仍是 `IsViewable` 且像素正常，说明吞映射没有把
+正常显示路径一起吞掉。**Wayland 侧未改**（本机没有 Wayland 会话可验，不猜）。
+
+### 2.8 [P1·已修] EWMH 帧同步握手不完整（`…_PROTOCOL` + 每帧回写 counter）
+
+两处独立的协议缺陷叠在一起：
+
+1. **申报错原子。** EWMH 规定 `WM_PROTOCOLS` 里挂的是 `_NET_WM_SYNC_REQUEST_PROTOCOL`
+   （协议名），client message 的 `detail` 才是 `_NET_WM_SYNC_REQUEST`（消息）。
+   原实现只挂了后者 → 严格按 EWMH 判读的合成器认为本窗口不支持帧同步，
+   `_NET_WM_SYNC_REQUEST_COUNTER` 那个 SYNC 计数器从此没人理。
+   → 现补 `_NET_WM_SYNC_REQUEST_PROTOCOL`（`x11/window.rs:78`、`:860-867`）。
+2. **counter 只在 resize 时回写。** `last_sync_counter` 原先仅在 `set_bounds()`
+   （`:1654-1659`）里写回 SYNC counter。窗口从创建到出内容期间没有任何 configure 事件
+   （启动即固定尺寸、或全屏浮层本来就固定）→ 请求值永不写回 counter →
+   启用帧同步的合成器一直沿用旧缓冲，**「新帧画完了但 WM 不认」在观感上等同于「不上屏」**。
+   → 现在 `draw()` 提交后跟着实际出帧节奏回写并 `xcb_flush`（`:2277-2293`），
+   `set_bounds()` 里那次保留（resize 期间的时序仍需要它）。
+   回写用 `ignore_error()` 而非 `check_reply`，避免每帧多一次同步往返。
+
+**诚实标注**：本机 mutter 在这个 xrdp 会话下**一条 `_NET_WM_SYNC_REQUEST` client message
+都没有发过**（`xev` 抓窗口事件核对），所以这条路径在本机没有被真实触发，修的是
+「协议口径 + 握手时机」，验证方式为编译/clippy/fmt 通过 + EWMH 文本比对。
+在 KDE / GNOME X11 正常会话等会发同步请求的环境下值得复测。
+
 ---
 
 ## 三、[已修复] 画面完全不上屏 —— 含一次误诊记录
@@ -458,6 +547,10 @@ ERROR rgpui_wgpu::wgpu_renderer] GPU error during frame (failure 1 of 10): Valid
    （新增字段，由 `WindowOptions` 传入；`WindowKind::Overlay` 仍用 ARGB）。
    → 这一条解释「除标题栏外全透明」的观感和 3.2(2) 的 96.3% alpha=0。
    注意：visual 建窗后不可更换，所以运行时切换背景外观只影响交换链 alpha 模式。
+   > ⚠️ **本节口径已被 §3.5 推翻的部分**：「`WindowKind::Overlay` 仍用 ARGB」是错的 ——
+   > Overlay 是否需要窗口级 alpha 跟它的层级语义无关，这条硬编码让**所有** Overlay 窗口
+   > （包括铺满整屏不透明内容的截图浮层）在「32 位窗口不出像素」的机器上集体不可见。
+   > 现在的判据是「请求非 Opaque **且** 存在 32 位 visual **且** 合成器在场」，见 §3.5。
 3. **feature 未开启**（即 §2.1）。
 
 **教训（写在这里防止重犯）**：
@@ -513,7 +606,64 @@ $ 只有: EGL_EXT_platform_base / EGL_EXT_platform_device / EGL_EXT_platform_x
 > ⚠️ 实际影响比原先评估的小：既然 Vulkan 路径在 §3.3 修好后正常工作，
 > GL 不可用只意味着**少了一个降级备胎**，不再阻塞任何功能。优先级 P1 → P3。
 
-### 3.5 本节待办
+### 3.5 [P0·已修] 全屏浮层整层不可见 —— §3.3 那条「Overlay 仍用 ARGB」的补完
+
+**症状（来自 Rupix）**：区域截图时全屏看不到遮罩层、拖拽时看不到选区矩形，Windows 一切正常。
+Rupix 的浮层是 `kind: WindowKind::Overlay` + `window_background: Transparent` +
+`WindowBounds::Fullscreen`，即 §3.3 修复时被**刻意保留走 32 位 ARGB visual** 的那一类窗口。
+
+**判定路径**（新增可复跑探针 `examples/window_showcase/src/bin/overlay_probe.rs`，
+内容为「满屏红 + 一块 200px 绿方」，纯色最容易判可见性）：
+
+| 模式 | `xwininfo` 深度 | 屏幕像素（`xwd -root` 统计） | 结论 |
+|------|----------------|------------------------------|------|
+| `ov_tr`（Overlay + Transparent） | **32** | 红 0 / 绿 0 | **整层不可见** |
+| `ov_op`（Overlay + Opaque） | **24** | 红 517320 / 绿 517320 | **完全正常** |
+| `fl_tr`（普通窗口 + Transparent） | 32 | 红 0 / 绿 0 | 同样不可见 |
+| `fl_op`（普通窗口 + Opaque） | 24 | 红 468376 / 绿 468376 | 正常 |
+
+`ov_tr` 与 `ov_op` 之间**只差 visual 深度**：`WindowKind::Overlay`、`override_redirect`、
+event mask、渲染路径全部相同。另外用 `GetImage` 直读窗口自身缓冲（`/tmp/getimg`）：
+depth-32 窗口的缓冲在**多次运行之间、以及改变交换链 alpha 模式之后都逐字节一致**，
+即**根本没有任何像素被呈现进 32 位窗口**；同一份渲染代码在 depth-24 窗口里填得满满当当。
+
+**这既是环境问题，也是代码问题，两边都要记：**
+
+- 环境侧：本机是 xrdp Xorg + 软件 Vulkan（lavapipe，无 DRI3）。这台 X server 上
+  depth-32 window 的呈现路径拿不到像素 —— 属于 §五 那一类，不是 rgpui 能修的。
+- 代码侧（真缺陷）：rgpui 把「`WindowKind::Overlay`」直接等同于「必须 ARGB」，
+  于是**应用无论是否需要窗口级透明，只要用了 Overlay 就必然落进这条死路**；
+  同时 ARGB 判据里**没有检查合成器是否在场**（没有 CM，Alpha 通道根本没人合成，
+  选了 ARGB 只会得到一个「什么都看不见」的窗口）。
+
+**修复（rgpui，`crates/rgpui-linux/src/linux/x11/window.rs`）**：
+
+1. 新增 `compositing_manager_running()`（`:340`）—— 按 EWMH 约定查
+   `_NET_WM_CM_S<screen>` 这个 selection 有没有主人。本机实测 owner = `0x600011`
+   （mutter 在跑），**所以「没有合成器」不是本机的病因**，但这条判据对无 CM 的桌面
+   （裸 X、某些 VNC/嵌入式会话）是必要的：那种环境下 ARGB 窗口同样不可见。
+2. visual 选择改成三条与（`:601-613`）：
+   `needs_alpha = 请求的背景不是 Opaque && 服务器存在 32 位 visual && 合成器在场`。
+   任一条件不满足就回退 `visual_set.opaque`，并把 `effective_background` 记成 `Opaque`，
+   保证「窗口实际有没有 alpha 通道」与「渲染器/交换链的 alpha 模式」自洽。
+3. `alpha_visual_active` 存入窗口状态（`:421`、`:1040`），`set_background_appearance()`
+   在窗口没有 alpha visual 时把后续的「透明」请求一并降级为 `Opaque`（`:2028-2036`）——
+   原实现允许运行时把 24 位窗口配成 PreMultiplied 交换链，两者不一致。
+4. 初始 surface 配置的 `transparent` 由硬编码 `false` 改为 `needs_alpha`（`:947`）——
+   合法的透明窗口在建窗期曾是不透明交换链，要等一次 `update_transparency` 才纠正过来。
+
+**修复（Rupix，跨仓库）**：`src/overlay.rs`、`src/picker.rs` 两个全屏窗口把
+`window_background` 从 `Transparent` 改成 `Opaque`。它们是「铺一张冻结的整屏截图」的浮层，
+**本来就不需要窗口级透明**，透明只是让它们在这台 X server 上不可见的原因。
+
+**验证**：`ov_op` / `fl_op` 均为 depth 24 且红绿像素齐满；Rupix 侧在本机无法端到端跑
+（缺 `libx11-dev`，见 §五），需在构建机上重装一遍依赖后复跑。
+
+**遗留（如实标注）**：真正需要逐像素 alpha 的窗口，在这台 xrdp + 软件 Vulkan 机器上
+**仍然不可见** —— 这条死路在环境侧。rgpui 现在的行为是「该用 alpha 时才用，
+用不了就明确退回不透明」，不再让不透明窗口陪葬。
+
+### 3.6 本节待办
 
 1. ~~在 Wayland 会话下复测 `hello_world`~~ —— 已无必要（X11 下画面已正常）。
    Wayland 复测仍有独立价值（验证 §2.3 的 Wayland 分支与 `map_window` 缺失），但不再是阻塞项。
@@ -1251,6 +1401,20 @@ done
 xprop -root _NET_CLIENT_LIST | grep -o "0x[0-9a-f]*"   # 逐个查 _NET_WM_PID
 xwininfo -id <WID>                                      # Map State 应为 IsViewable
 wmctrl -l                                               # 注意：rgpui 窗口显示 N/A（§2.4）
+
+# §3.5 / §2.7 的可见性与隐藏启动回归（探针纯色最好判；mode 见 overlay_probe.rs 顶部注释）
+CARGO_TARGET_DIR=/home/abc/rgpui-target cargo run -p window_showcase --bin overlay_probe -- ov_op
+# 用与主线程不同的进程抓像素，别用截屏工具（会被 GNOME 面板那条坑，见 §五 6）
+WID=$(xdotool search --pid $(pgrep -f 'overlay_probe ov_op' | head -1) | tail -1)
+xwininfo -id $WID | grep -E "Depth|Map State"           # ov_op 期望 Depth 24 / IsViewable
+xwd -id $WID -silent -out /tmp/w.xwd                    # PIL 解析：hdr[4]宽 hdr[5]高 hdr[8]bpp
+                                                      # 数据取末尾 bpp/8*宽*高 字节，再统计红/绿占比
+# 期望：ov_op 红=绿=517320；fl_op 468376/468376；fl_hid IsUnMapped 且红=0；
+#      ov_tr/fl_tr 在本机 Depth 32 且红=0（环境限制，见 §3.5 遗留）
+
+# §2.5 空窗期时长（轮询新窗口 → xwininfo 判 viewable → xwd 抓窗口缓冲统计红/白/黑占比）
+python3 /tmp/redgap.py <binary> <mode>                  # 期望：IsViewable 时 white=100%（底色）、black=0%
+# 别用「黑色占比归零」当「出内容」的判据 —— 底色不是黑色时那样会误判，必须盯红（内容色）占比
 
 # 判断是否有托盘宿主
 dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply \

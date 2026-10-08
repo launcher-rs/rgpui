@@ -2,6 +2,38 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Linux / X11：窗口可见性与启动行为（Rupix 反馈，详见 `docs/linux-platform-audit.md` §3.5 / §2.5 / §2.7 / §2.8）
+
+- **不透明窗口不再被强制走 32 位 ARGB visual**：visual 选择改成三条与 —— 请求的背景非
+  `Opaque`、X 服务器存在 32 位 visual、且合成管理器在场；任一不满足即回退不透明 visual。
+  `WindowKind::Overlay` 不再单独等同于 ARGB（此前 Rupix 的全屏选区浮层在 Linux 上整层不可见
+  即由此而来）
+- 新增 `compositing_manager_running()`：按 EWMH 查 `_NET_WM_CM_S<screen>` selection 有没有主人，
+  无合成器的会话下窗口级 alpha 没有意义，不再选 ARGB
+- 窗口实际没有 alpha visual 时，运行时 `set_background_appearance` 的「透明」请求一并降级为
+  `Opaque`，避免交换链 alpha 模式与真实 visual 不一致；初始 surface 配置的 `transparent`
+  由硬编码 `false` 改为跟随 `needs_alpha`
+- **启动黑闪改为主题底色**：`win_aux` 补 `background_pixel`（透明窗口 → 0，浅色外观 →
+  `0x00FFFFFF`，深色外观 → `black_pixel`），首帧之前的暴露区不再由 X server 填纯黑。
+  A/B 同一 binary 实测：窗口可见时缓冲由 `black 99.3%` 变成 `white 100%`。
+  如实标注：消除的是「黑」，**「窗口已可见但还没内容」的空窗期本身没动** —— 那需要把
+  `map_window()` 推迟到首帧提交之后（全平台共用路径，另案评估）
+- **尊重 `WindowOptions::show == false`**：X11 `map_window()` 吞掉核心创建流程那一次无条件映射
+  （`starts_hidden` 用 `take` 读走，只影响创建期），「启动即隐藏到托盘」在 X11 生效；
+  托盘「显示窗口」走的 `activate()` 自带 `xcb.map_window`，不受影响
+- **EWMH 帧同步握手补完**：`WM_PROTOCOLS` 改挂协议原子 `_NET_WM_SYNC_REQUEST_PROTOCOL`
+  （原先只挂了作为 client message 的 `_NET_WM_SYNC_REQUEST`，严格按 EWMH 判读的合成器不认），
+  并把 SYNC counter 的回写从「只在 `set_bounds()`」扩展到「每次 `draw()` 提交后」
+  （`ignore_error()` + `xcb_flush`，不增加每帧同步往返）—— 固定尺寸、不发 resize 事件的窗口
+  也能完成握手
+- 新增探针 `examples/window_showcase/src/bin/overlay_probe.rs`：Overlay/普通窗口 ×
+  透明/不透明背景 × `show` 的可见性回归判据（纯色满屏 + 方块，`xwd`/`GetImage` 直接统计）
+
+> 已知环境限制：本机 xrdp Xorg + 软件 Vulkan（无 DRI3）会话下，**32 位窗口收不到任何呈现**，
+> 真正需要逐像素 alpha 的窗口在该机上仍不可见；本次修复保证不透明窗口不再陪葬。
+
 ## [1.4.0] - 2026-10-05
 
 ### 保留模式（Retained Mode）
