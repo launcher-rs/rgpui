@@ -41,6 +41,33 @@
 > 已知环境限制：本机 xrdp Xorg + 软件 Vulkan（无 DRI3）会话下，**32 位窗口收不到任何呈现**，
 > 真正需要逐像素 alpha 的窗口在该机上仍不可见；本次修复保证不透明窗口不再陪葬。
 
+## [1.4.1] - 2026-10-08
+
+### Linux 平台能力补齐
+
+- 系统托盘：StatusNotifierItem + dbusmenu 实现，应用菜单回调与旧 `set_tray` 的菜单动作
+  接回派发；修复关闭主窗口后托盘「显示窗口」无响应
+- 窗口：X11 用 Motif 装饰位实现 `set_titlebar_visible`；X11 EWMH strut 与 Wayland 运行时
+  exclusive zone 实现独占区域；X11 鼠标穿透与输入区域（Wayland 补齐
+  `set_mouse_passthrough`）；修复 X11 窗口内容完全不上屏
+- `Platform` 能力：`network_status`、`os_info`、`system_idle_time`、X11
+  `request_attention`、全局热键真正注册到显示服务器、电源事件与休眠/息屏抑制接回 `App`
+- 权限查询改为如实探测 AT-SPI 与门户能力；`keep_alive_without_windows` 的状态收回核心层
+- 离屏 wgpu 渲染器打通截图与视觉测试链路（按能否回读选适配器）
+
+### 核心
+
+- 新增 `rgpui::init_logging()` 日志入口
+- 权限与系统信息能力补上应用层调用点（此前实现了但 `App` 侧一行都调不到）
+
+### Windows
+
+- 原生通知改用 WinRT toast：原 `Shell_NotifyIconW(NIM_MODIFY)` 未先 `NIM_ADD` 托盘图标，
+  调用必然失败；应用名必须写在 AUMID 键的 `DisplayName` 值里，写在默认值上时通知会落库
+  但不渲染横幅
+- 平台回调重入（Windows 在窗口过程里嵌套泵消息，`RefCell<App>` 还在借用期内）降级为
+  debug 日志并跳过本次回调，不再刷 `RefCell already borrowed`
+
 ## [1.4.0] - 2026-10-05
 
 ### 保留模式（Retained Mode）

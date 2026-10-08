@@ -6408,7 +6408,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -6542,7 +6542,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-3d"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "bytemuck",
  "gltf",
@@ -6560,14 +6560,14 @@ dependencies = [
 
 [[package]]
 name = "rgpui-character"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "rgpui-dom"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "js-sys",
@@ -6627,7 +6627,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macos"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -6672,7 +6672,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macros"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -6682,7 +6682,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-markdown"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "pollster 1.0.1",
  "pulldown-cmark",
@@ -6692,7 +6692,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-platform"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "console_error_panic_hook",
  "rgpui",
@@ -6704,7 +6704,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-term"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -6724,7 +6724,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-web"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -6747,7 +6747,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-wgpu"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -6778,7 +6778,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-windows"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "accesskit",
  "accesskit_windows",
