@@ -1,6 +1,9 @@
 [package]
 name = "rgpui-linux"
-version.workspace = true
+# 临时偏离「全 workspace 版本统一」约定：本次只发布 Linux 后端的 X11 修复，
+# 其余 crate 源码与已发布的 1.4.1 完全一致，无需重新发版。
+# 下一次发版时请把此处改回 `version.workspace = true`，让版本号重新跟随 workspace。
+version = "1.4.2"
 edition.workspace = true
 publish = true
 description = "Linux 平台实现"

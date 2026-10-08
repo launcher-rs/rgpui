@@ -75,6 +75,7 @@ x11rb::atom_manager! {
         _NET_WM_STATE_SYNC,
         _NET_ACTIVE_WINDOW,
         _NET_WM_SYNC_REQUEST,
+        _NET_WM_SYNC_REQUEST_PROTOCOL,
         _NET_WM_SYNC_REQUEST_COUNTER,
         _NET_WM_BYPASS_COMPOSITOR,
         _NET_WM_MOVERESIZE,
@@ -324,6 +325,52 @@ fn find_visuals(xcb: &XCBConnection, screen_index: usize) -> VisualSet {
     set
 }
 
+/// 这台 X 服务器上是否真的有合成管理器在跑。
+///
+/// 判据是 EWMH 约定的 `_NET_WM_CM_S<screen>` 这个 selection 是否被某个客户端持有：合成器
+/// 启动时会 claim 它。没有合成器时 32 位 ARGB visual 的 alpha 通道不会被混合，透明窗口
+/// 会画成"什么都看不见"，因此这类环境必须退回不透明 visual。
+///
+/// # 参数
+/// - `xcb`: XCB 连接
+/// - `screen_index`: 屏幕序号
+///
+/// # 返回
+/// 查询链路任何一步失败都按"没有合成器"处理，宁可画成不透明也不让窗口消失。
+fn compositing_manager_running(xcb: &XCBConnection, screen_index: usize) -> bool {
+    let name = format!("_NET_WM_CM_S{screen_index}");
+    let atom = match xcb.intern_atom(false, name.as_bytes()) {
+        Ok(cookie) => match cookie.reply() {
+            Ok(reply) => reply.atom,
+            Err(err) => {
+                log::warn!("查询 {name} atom 失败: {err}");
+                return false;
+            }
+        },
+        Err(err) => {
+            log::warn!("intern {name} 失败: {err}");
+            return false;
+        }
+    };
+    // 名字都不存在，说明这台服务器上没有合成管理器注册
+    if atom == 0 {
+        return false;
+    }
+    match xcb.get_selection_owner(atom) {
+        Ok(cookie) => match cookie.reply() {
+            Ok(owner) => owner.owner != 0,
+            Err(err) => {
+                log::warn!("查询 {name} owner 失败: {err}");
+                false
+            }
+        },
+        Err(err) => {
+            log::warn!("get_selection_owner({name}) 失败: {err}");
+            false
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct RawWindow {
     connection: *mut c_void,
@@ -370,9 +417,14 @@ pub struct X11WindowState {
     input_handler: Option<PlatformInputHandler>,
     appearance: WindowAppearance,
     background_appearance: WindowBackgroundAppearance,
+    /// 本次创建是否用上了带 alpha 的 32 位 visual；false 表示窗口已降级为不透明渲染
+    alpha_visual_active: bool,
     maximized_vertical: bool,
     maximized_horizontal: bool,
     hidden: bool,
+    /// 创建时 `WindowParams::show == false`：核心会无条件调用一次 `map_window()`，
+    /// 用它吞掉这首次映射，实现与 Windows 后端一致的隐藏启动。
+    starts_hidden: bool,
     active: bool,
     hovered: bool,
     pub(crate) force_render_after_recovery: bool,
@@ -541,22 +593,28 @@ impl X11WindowState {
 
         let visual_set = find_visuals(xcb, x_screen_index);
 
-        // 只有需要透明合成的窗口才用 32 位 ARGB visual：不透明窗口用 ARGB 时交换链
-        // 写入的 alpha 为 0，合成器会把整个窗口当作透明而看不到任何内容
+        // 逐像素 alpha 只有在「应用确实要求透明」且「这台 X 服务器能把 alpha 合成出来」
+        // 时才可用，其余情况一律退回 24 位 visual 按不透明渲染：
+        // - 不透明窗口（包括 Overlay 这类只要悬浮、不要半透明的窗口）用 ARGB visual 时，
+        //   交换链写入的 alpha 恒为 0，合成器会把整扇窗口判成全透明，屏幕上什么都不显示；
+        // - 没有合成管理器在跑时，ARGB 的 alpha 根本不会被混合，透明窗口同样画不出来。
         let needs_alpha = params.window_background != WindowBackgroundAppearance::Opaque
-            || params.kind == WindowKind::Overlay;
+            && visual_set.transparent.is_some()
+            && compositing_manager_running(xcb, x_screen_index);
         let visual = if needs_alpha {
-            match visual_set.transparent {
-                Some(visual) => visual,
-                None => {
-                    log::warn!("Unable to find a transparent visual",);
-                    visual_set.inherit
-                }
-            }
+            visual_set.transparent.unwrap_or(visual_set.inherit)
         } else {
             visual_set.opaque.unwrap_or(visual_set.inherit)
         };
         log::info!("Using {:?}", visual);
+        // visual 决定了窗口能不能带 alpha，据此把"背景外观"降级：核心（Root）与渲染器都
+        // 以 background_appearance 判断要不要绘制底色，必须与实际 visual 保持一致，
+        // 否则透明请求落在 24 位 visual 上会得到一片黑底
+        let effective_background = if needs_alpha {
+            params.window_background
+        } else {
+            WindowBackgroundAppearance::Opaque
+        };
 
         let colormap = if visual.colormap != 0 {
             visual.colormap
@@ -570,9 +628,26 @@ impl X11WindowState {
             id
         };
 
+        // 首帧提交之前，X server 用 background_pixel 填充暴露区域；不给就是默认黑，
+        // 于是窗口"已经可见"到"画出内容"之间会插入一段肉眼可见的纯黑（审计 §2.5）。
+        // 按外观挑一个贴近底色的初始值，把黑闪变成"底色一闪"；带 alpha 的窗口必须
+        // 保持全透明初始像素，否则会先闪出一块不透明底色。
+        let background_pixel = if needs_alpha {
+            0
+        } else if matches!(
+            appearance,
+            WindowAppearance::Light | WindowAppearance::VibrantLight
+        ) {
+            // 本 visual 固定 R=0xFF0000 / G=0xFF00 / B=0xFF，白色即 0x00FFFFFF
+            0x00FF_FFFF
+        } else {
+            visual_set.black_pixel
+        };
+
         let win_aux = xproto::CreateWindowAux::new()
             // https://stackoverflow.com/questions/43218127/x11-xlib-xcb-creating-a-window-requires-border-pixel-if-specifying-colormap-wh
             .border_pixel(visual_set.black_pixel)
+            .background_pixel(background_pixel)
             .colormap(colormap)
             .override_redirect(
                 matches!(params.kind, WindowKind::PopUp | WindowKind::Overlay) as u32,
@@ -784,7 +859,14 @@ impl X11WindowState {
                     x_window,
                     atoms.WM_PROTOCOLS,
                     xproto::AtomEnum::ATOM,
-                    &[atoms.WM_DELETE_WINDOW, atoms._NET_WM_SYNC_REQUEST],
+                    // 帧同步协议按 EWMH 要用 `_NET_WM_SYNC_REQUEST_PROTOCOL` 申报；只挂
+                    // `_NET_WM_SYNC_REQUEST` 的话合成器不会发 request，我们也就永远等不到
+                    // 该回写 counter 的时机（保留旧项以兼容按它判定的 WM）
+                    &[
+                        atoms.WM_DELETE_WINDOW,
+                        atoms._NET_WM_SYNC_REQUEST,
+                        atoms._NET_WM_SYNC_REQUEST_PROTOCOL,
+                    ],
                 ),
             )?;
 
@@ -861,10 +943,10 @@ impl X11WindowState {
                     // 注意：这必须在 GPU 初始化之后完成，否则
                     // 尺寸会立即失效
                     size: query_render_extent(xcb, x_window)?,
-                    // 我们将其设置为透明，即使我们有客户端装饰，
-                    // 因为这些似乎在 X11 上即使没有 `true` 也能工作
-                    // 如果窗口外观改变，那么渲染器也会更新
-                    transparent: false,
+                    // 首次配置就按窗口实际外观选定 alpha 模式：透明窗口若先按不透明
+                    // 配置，头几帧写进 ARGB visual 的 alpha 是 0，合成器判为全透明，
+                    // 上屏瞬间会闪一下空白
+                    transparent: needs_alpha,
                     preferred_present_mode: None,
                 };
                 WgpuRenderer::new(gpu_context, &raw_window, config, compositor_gpu)?
@@ -951,9 +1033,13 @@ impl X11WindowState {
                 maximized_vertical: false,
                 maximized_horizontal: false,
                 hidden: false,
+                // show=false 的窗口不该在创建时被映射，等应用后续 activate/show 再上屏
+                starts_hidden: !params.show,
                 appearance,
                 handle,
-                background_appearance: WindowBackgroundAppearance::Opaque,
+                background_appearance: effective_background,
+                // 记下实际用上的 visual 是否带 alpha，后续外观请求据此降级
+                alpha_visual_active: needs_alpha,
                 destroyed: false,
                 client_side_decorations_supported,
                 decorations: WindowDecorations::Server,
@@ -1924,6 +2010,14 @@ impl PlatformWindow for X11Window {
     }
 
     fn map_window(&mut self) -> anyhow::Result<()> {
+        // show=false 的窗口：核心创建流程会无条件调用一次 map_window()，这里把它拦下，
+        // 否则"启动即隐藏到托盘"在 X11 上失效（首帧会闪出窗口）。后续 activate() 与
+        // 显式显示路径仍会真正映射。
+        let starts_hidden = std::mem::take(&mut self.0.state.borrow_mut().starts_hidden);
+        if starts_hidden {
+            return Ok(());
+        }
+
         check_reply(
             || "X11 MapWindow failed.",
             self.0.xcb.map_window(self.0.x_window),
@@ -1933,6 +2027,13 @@ impl PlatformWindow for X11Window {
 
     fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance) {
         let mut state = self.0.state.borrow_mut();
+        // 窗口创建时若没拿到带 alpha 的 visual，就一直是按不透明渲染的；此时必须把
+        // 后续的"透明"请求一并降级，否则 root 不绘底色、渲染器与实际 visual 不一致
+        let background_appearance = if state.alpha_visual_active {
+            background_appearance
+        } else {
+            WindowBackgroundAppearance::Opaque
+        };
         state.background_appearance = background_appearance;
         let transparent = state.is_transparent();
         state.renderer.update_transparency(transparent);
@@ -2176,6 +2277,21 @@ impl PlatformWindow for X11Window {
 
         if inner.renderer.needs_redraw() {
             inner.force_render_after_recovery = true;
+        }
+
+        // 启用帧同步的合成器（发过 _NET_WM_SYNC_REQUEST 的）会一直沿用它上次取到的缓冲，
+        // 直到我们把该 request 值写回 counter 才认这一帧。此前只在 set_bounds() 里补写，
+        // 窗口不发生 resize 就永远不 flush，新帧被判为未完成、屏幕上留着旧的空白缓冲。
+        // 这里跟着实际出帧节奏回写，握手不再依赖偶然的 configure 事件。
+        if let Some(value) = inner.last_sync_counter.take() {
+            // ignore_error 只登记不回等，避免每帧多一次同步往返
+            if let Err(err) =
+                sync::set_counter(&self.0.xcb, inner.counter_id, value).map(|r| r.ignore_error())
+            {
+                log::warn!("X11 sync SetCounter failed: {err}");
+            }
+            // 这批请求必须立刻送出去，否则合成器收不到完成信号，本帧依旧不被采用
+            xcb_flush(&self.0.xcb);
         }
     }
 
