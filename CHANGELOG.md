@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-09
+
+> 本次只发布 `rgpui-linux` 一个 crate：X11 后端修复全部落在该 crate 内，其余 crate 的源码与
+> 已发布的 1.4.1 逐字节一致，重新发版没有意义。因此 `crates/rgpui-linux/Cargo.toml` 暂时写死
+> `version = "1.4.2"`，跳出了「全 workspace 版本统一」的约定，**下次发版需改回
+> `version.workspace = true`**。下游按 `cargo update -p rgpui-linux` 单独取用即可。
+
 ### Linux / X11：窗口可见性与启动行为（Rupix 反馈，详见 `docs/linux-platform-audit.md` §3.5 / §2.5 / §2.7 / §2.8）
 
 - **不透明窗口不再被强制走 32 位 ARGB visual**：visual 选择改成三条与 —— 请求的背景非

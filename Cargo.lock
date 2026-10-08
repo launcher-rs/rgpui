@@ -6580,7 +6580,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-linux"
-version = "1.4.0"
+version = "1.4.2"
 dependencies = [
  "accesskit",
  "accesskit_unix",
