@@ -370,7 +370,7 @@ impl EditorState {
         });
         let mut offsets = offsets;
         // 倒序应用：靠前编辑的字节位置不受后面改动影响。
-        offsets.sort_by(|a, b| b.0.start.cmp(&a.0.start));
+        offsets.sort_by_key(|a| std::cmp::Reverse(a.0.start));
         for (range, new_text) in offsets {
             self.input.update(cx, |state, cx| {
                 state.set_selected_range(range, cx);
@@ -490,7 +490,7 @@ mod tests {
     use crate::{AppContext as _, Render};
     use std::time::Duration;
 
-    /// 持有编辑器状态的测试宿主视图。
+    /// 持有编辑器状态的测试宿主视图（渲染 `Editor`，使内部 `Input` 参与布局）。
     struct Probe {
         state: Entity<EditorState>,
     }
@@ -498,10 +498,13 @@ mod tests {
     impl Render for Probe {
         fn render(
             &mut self,
-            _window: &mut Window,
-            _cx: &mut Context<Self>,
+            window: &mut Window,
+            cx: &mut Context<Self>,
         ) -> impl crate::IntoElement {
-            crate::div()
+            use crate::{IntoElement as _, RenderOnce as _};
+            super::super::Editor::new(&self.state)
+                .render(window, cx)
+                .into_element()
         }
     }
 
@@ -551,6 +554,8 @@ mod tests {
     fn probe_with_provider<'a>(
         cx: &'a mut crate::TestAppContext,
     ) -> (Entity<EditorState>, &'a mut crate::VisualTestContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
         let (probe, cx) = cx.add_window_view(|window, cx| {
             let editor = cx.new(|cx| {
                 let mut state = EditorState::new(window, cx, "fn foo() {}");
@@ -560,6 +565,10 @@ mod tests {
             Probe { state: editor }
         });
         let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        // 强制绘制一帧，使内部 `Input` 落盘 `last_layout`，请求锚点可取。
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
         (editor, cx)
     }
 

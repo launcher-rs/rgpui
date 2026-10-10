@@ -543,7 +543,7 @@ impl RenderOnce for Editor {
             })
             // 快速修复开关（`Alt+Enter`：开着收起，关着按选区请求）。
             .capture_action({
-                let editor = editor_for_keys.clone();
+                let editor = editor_for_keys;
                 move |_: &ToggleCodeActions, window: &mut Window, cx: &mut App| {
                     editor.update(cx, |state, cx| state.toggle_code_actions(window, cx));
                     cx.stop_propagation();

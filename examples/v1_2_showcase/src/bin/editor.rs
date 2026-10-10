@@ -188,17 +188,19 @@ impl CodeActionProvider for DemoCodeActionProvider {
         let position =
             |offset: usize| rgpui::lsp::PositionMapping::offset_to_position(text, offset);
         let uri: Uri = "file:///demo.rs".parse().unwrap();
-        let action =
-            |title: &str, kind: CodeActionKind, edits: Vec<TextEdit>, preferred| CodeAction {
-                title: title.to_string(),
-                kind: Some(kind),
-                edit: Some(WorkspaceEdit {
-                    changes: Some(std::collections::HashMap::from([(uri.clone(), edits)])),
-                    ..Default::default()
-                }),
-                is_preferred: preferred,
+        let action = |title: &str,
+                      kind: CodeActionKind,
+                      edits: Vec<TextEdit>,
+                      preferred: Option<bool>| CodeAction {
+            title: title.to_string(),
+            kind: Some(kind),
+            edit: Some(WorkspaceEdit {
+                changes: Some(std::collections::HashMap::from([(uri.clone(), edits)])),
                 ..Default::default()
-            };
+            }),
+            is_preferred: preferred,
+            ..Default::default()
+        };
         let mut actions = vec![action(
             "行首加注释",
             CodeActionKind::REFACTOR,
@@ -206,7 +208,7 @@ impl CodeActionProvider for DemoCodeActionProvider {
                 range: Range::new(position(line_start), position(line_start)),
                 new_text: "// ".to_string(),
             }],
-            false,
+            None,
         )];
         if start != end {
             actions.push(action(
@@ -216,7 +218,7 @@ impl CodeActionProvider for DemoCodeActionProvider {
                     range: Range::new(position(start), position(end)),
                     new_text: "demo".to_string(),
                 }],
-                false,
+                None,
             ));
         }
         // 有诊断时给一条首选修复：在诊断末尾标注（演示 `is_preferred` 默认选中）。
