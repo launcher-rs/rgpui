@@ -681,6 +681,18 @@ impl Platform for MacPlatform {
         }
     }
 
+    fn reduce_motion_enabled(&self) -> bool {
+        // 对应「系统设置 → 辅助功能 → 显示 → 减少动态效果」。
+        unsafe {
+            let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+            if workspace.is_null() {
+                return false;
+            }
+            let reduce: BOOL = msg_send![workspace, accessibilityDisplayShouldReduceMotion];
+            reduce == YES
+        }
+    }
+
     fn open_url(&self, url: &str) {
         unsafe {
             let ns_url = NSURL::alloc(nil).initWithString_(ns_string(url));

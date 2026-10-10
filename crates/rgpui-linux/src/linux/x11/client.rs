@@ -545,6 +545,9 @@ impl X11Client {
                             window.window.set_button_layout();
                         }
                     }
+                    XDPEvent::ReduceMotion(reduce_motion) => {
+                        client.with_common(|common| common.reduce_motion = reduce_motion);
+                    }
                     XDPEvent::CursorTheme(_) | XDPEvent::CursorSize(_) => {
                         // 无操作，X11 为我们管理这些
                     }

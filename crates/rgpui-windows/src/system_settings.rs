@@ -1,13 +1,31 @@
 use std::{
     cell::Cell,
-    ffi::{c_uint, c_void},
+    ffi::{c_int, c_uint, c_void},
 };
 
 use ::rgpui::util::ResultExt;
 use windows::Win32::UI::WindowsAndMessaging::{
-    SPI_GETWHEELSCROLLCHARS, SPI_GETWHEELSCROLLLINES, SYSTEM_PARAMETERS_INFO_ACTION,
-    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
+    SPI_GETCLIENTAREAANIMATION, SPI_GETWHEELSCROLLCHARS, SPI_GETWHEELSCROLLLINES,
+    SYSTEM_PARAMETERS_INFO_ACTION, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
 };
+
+/// 读取系统「窗口内动画」开关（`SPI_GETCLIENTAREAANIMATION`）。
+///
+/// 它对应「设置 → 辅助功能 → 视觉效果 → 动画效果」，取反即为「减少动态效果」。
+/// 读取失败时返回 `true`（保持动画），不把「拿不到设置」误判成用户请求减少动画。
+pub(crate) fn client_area_animation_enabled() -> bool {
+    let mut enabled = c_int::default();
+    let result = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some((&mut enabled) as *mut c_int as *mut c_void),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS::default(),
+        )
+    };
+
+    result.log_err().is_some() && enabled != 0
+}
 
 /// Windows settings pulled from SystemParametersInfo
 /// https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow

@@ -9,6 +9,7 @@ use std::ops::Range;
 use crate::{App, AppContext as _, Context, Entity, Pixels, SharedString, Window, px};
 
 use super::super::InputState;
+use super::code_actions::CodeActionsState;
 use super::codelens::CodelensState;
 use super::extensions::ExtensionsState;
 use super::inlay_hints::InlayState;
@@ -33,6 +34,8 @@ pub struct EditorState {
     pub(super) minimap: MinimapState,
     /// 透镜接入状态（provider + 已落位透镜，见 `codelens.rs`，O4）。
     pub(super) codelens: CodelensState,
+    /// 快速修复接入状态（provider + 菜单，见 `code_actions.rs`）。
+    pub(super) code_actions: CodeActionsState,
     /// 扩展表 + 变更订阅表运行时状态（见 `extensions.rs`，O7）。
     pub(super) extensions: ExtensionsState,
     /// 粘性滚动开关（默认开，见 `sticky_scroll.rs`）。
@@ -73,6 +76,7 @@ impl EditorState {
             inlay: InlayState::new(),
             minimap: MinimapState::new(),
             codelens: CodelensState::new(),
+            code_actions: CodeActionsState::new(),
             extensions: ExtensionsState::new(),
             sticky_scroll: true,
             sticky_position: super::sticky_scroll::StickyPosition::Top,
@@ -81,6 +85,7 @@ impl EditorState {
         };
         this.refresh_outline(cx);
         // 文本一改：刷新大纲 → 自动补全（开关开时）→ 透镜（有 provider 即刷新）→
+        // 收起修复菜单（列表按旧文本算的，留着就是僵尸）→
         // 分发变更事件（扩展表/订阅表，O7）。
         //（`subscribe_in` 带 window，`request_*` 与钩子要 window 才能调。）
         cx.subscribe_in(&this.input, window, move |this, _, event, window, cx| {
@@ -90,6 +95,7 @@ impl EditorState {
             this.refresh_outline(cx);
             this.maybe_auto_complete(window, cx);
             this.request_codelenses(window, cx);
+            this.dismiss_code_actions(cx);
             let edit = this.edit_event(cx);
             this.fire_edit_event(&edit, window, cx);
         })

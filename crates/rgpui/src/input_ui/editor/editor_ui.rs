@@ -19,6 +19,8 @@ use super::super::input::{FOLD_ICON_HITBOX_WIDTH, LINE_NUMBER_RIGHT_MARGIN};
 use super::super::layout::LastLayout;
 use super::super::rope_ext::RopeExt as _;
 use super::super::{Input, InputState};
+use super::ToggleCodeActions;
+use super::code_actions::render_code_action_menu;
 use super::inlay_hints::InlayHint;
 use super::state::EditorState;
 use crate::input_ui::InputContextMenuBuilder;
@@ -467,6 +469,7 @@ impl RenderOnce for Editor {
         // 主回车确认、Esc 收起，并 `stop_propagation` 吞掉 `Input` 的默认行为
         //（光标移动/换行/清空选区）；`Shift`/`secondary` 回车保持换行语义。
         let editor_for_keys = self.editor.clone();
+        let editor_for_menu = self.editor.clone();
         crate::v_flex()
             .size_full()
             .children(sticky)
@@ -478,13 +481,19 @@ impl RenderOnce for Editor {
                     .child(input_el)
                     .when(minimap, |this| {
                         this.child(super::minimap::render_minimap(&editor_for_minimap, cx))
-                    }),
+                    })
+                    // 快速修复菜单（`Editor` 自带浮层，不可见时无元素）。
+                    .children(render_code_action_menu(&editor_for_menu, cx)),
             )
             .capture_action({
                 let editor = editor_for_keys.clone();
                 move |_: &MoveUp, _: &mut Window, cx: &mut App| {
+                    // 补全菜单优先（同时只会开一个，防御性排序）。
                     if editor.read(cx).completion_menu_active() {
                         editor.update(cx, |state, cx| state.select_previous_completion(cx));
+                        cx.stop_propagation();
+                    } else if editor.read(cx).code_action_menu_active() {
+                        editor.update(cx, |state, cx| state.select_previous_code_action(cx));
                         cx.stop_propagation();
                     }
                 }
@@ -495,30 +504,49 @@ impl RenderOnce for Editor {
                     if editor.read(cx).completion_menu_active() {
                         editor.update(cx, |state, cx| state.select_next_completion(cx));
                         cx.stop_propagation();
+                    } else if editor.read(cx).code_action_menu_active() {
+                        editor.update(cx, |state, cx| state.select_next_code_action(cx));
+                        cx.stop_propagation();
                     }
                 }
             })
             .capture_action({
                 let editor = editor_for_keys.clone();
                 move |action: &Enter, window: &mut Window, cx: &mut App| {
-                    if !action.secondary
-                        && !action.shift
-                        && editor.read(cx).completion_menu_active()
-                    {
+                    if action.secondary || action.shift {
+                        return;
+                    }
+                    if editor.read(cx).completion_menu_active() {
                         editor.update(cx, |state, cx| {
                             state.accept_completion(None, window, cx);
+                        });
+                        cx.stop_propagation();
+                    } else if editor.read(cx).code_action_menu_active() {
+                        editor.update(cx, |state, cx| {
+                            state.accept_code_action(None, window, cx);
                         });
                         cx.stop_propagation();
                     }
                 }
             })
             .capture_action({
-                let editor = editor_for_keys;
+                let editor = editor_for_keys.clone();
                 move |_: &Escape, _: &mut Window, cx: &mut App| {
                     if editor.read(cx).completion_menu_active() {
                         editor.update(cx, |state, cx| state.dismiss_completion(cx));
                         cx.stop_propagation();
+                    } else if editor.read(cx).code_action_menu_active() {
+                        editor.update(cx, |state, cx| state.dismiss_code_actions(cx));
+                        cx.stop_propagation();
                     }
+                }
+            })
+            // 快速修复开关（`Alt+Enter`：开着收起，关着按选区请求）。
+            .capture_action({
+                let editor = editor_for_keys.clone();
+                move |_: &ToggleCodeActions, window: &mut Window, cx: &mut App| {
+                    editor.update(cx, |state, cx| state.toggle_code_actions(window, cx));
+                    cx.stop_propagation();
                 }
             })
             // Vim 按键分发（O3；绑定命中即激活态，无条件吞传播）。

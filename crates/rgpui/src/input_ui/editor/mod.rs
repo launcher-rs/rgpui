@@ -6,6 +6,8 @@
 /// 子模块仅限 `input_ui` 内部经 `editor::` 路径引用（`pub(super)`），公开 API 走下方重导出。
 pub(super) mod auto_close;
 pub(super) mod bracket_match;
+/// 快速修复（provider + 请求 + 菜单浮层 + 编辑应用）。
+pub(super) mod code_actions;
 /// 行透镜（provider + 请求 + 浮层，O4）。
 pub(super) mod codelens;
 pub(super) mod current_line;
@@ -30,6 +32,7 @@ pub(super) mod sticky_scroll;
 /// Vim 模式最小可用（模式/键位/操作，O3）。
 pub(super) mod vim;
 
+pub use code_actions::CodeActionProvider;
 pub use codelens::{CodeLens, CodeLensOverlay, CodeLensProvider, ResolvedCodeLens};
 pub use editor_ui::Editor;
 pub use extensions::{
@@ -47,6 +50,6 @@ pub(super) use super::{
     Selection,
     input::{
         AddCursorAbove, AddCursorBelow, CopyLine, DeleteLine, JoinLines, MoveLineDown, MoveLineUp,
-        ToggleLineComment,
+        ToggleCodeActions, ToggleLineComment,
     },
 };

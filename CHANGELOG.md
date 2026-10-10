@@ -4,6 +4,41 @@
 
 ## [Unreleased]
 
+### 无障碍：尊重系统「减少动态效果」设置
+
+- `Platform` 新增 `reduce_motion_enabled()`，四平台各自读取系统设置：Windows
+  `SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)`（对应「设置 → 辅助功能 →
+  视觉效果 → 动画效果」）、macOS `NSWorkspace.accessibilityDisplayShouldReduceMotion`、
+  Linux 经 XDG 桌面门户读 `org.freedesktop.appearance` 的 `animations-disabled`，
+  桌面环境未实现该键时回退 GNOME `org.gnome.desktop.interface` 的 `enable-animations`
+  （语义相反）并取反、Web `prefers-reduced-motion: reduce`
+- 此前 `App::reduce_motion` 只有 `elements/animation.rs` 与 `elements/img.rs` 在读，
+  `set_reduce_motion` 全仓仅测试调用 —— 即系统设置从来没人写进核心层。现在每次创建
+  窗口都会同步一次平台值，这是平台值进入核心层的唯一路径
+- 新增 `App::set_reduce_motion` 的覆盖语义：应用一旦显式设置过，后续创建窗口不再被
+  系统值改写（`App::reduce_motion_override`）；不加这层锁，应用的手动选择会被每个新
+  窗口冲掉，`test_reduce_motion_renders_single_static_frame` 正是如此失败的
+- 如实标注限制：Linux 门户值是异步送达的，若首个窗口创建早于门户回包，本窗口按默认
+  （动画开启）渲染，后续窗口才跟随系统；Windows/macOS 的实时切换需重开窗口生效
+
+### 编辑器：接通 Code Action（快速修复）
+
+- 新增 `input_ui::editor::code_actions`：`CodeActionProvider` trait（默认空实现）+
+  `EditorState` 侧 `set_code_action_provider` / `request_code_actions` /
+  `toggle_code_actions` / `accept_code_action` / `dismiss_code_actions` /
+  `select_next_code_action` / `select_previous_code_action` / `code_action_menu_active`
+- 此前 `LspClient::code_actions` 与 stdio 传输都在，全仓零调用点 —— 补的是编辑器侧
+  接线，不是新传输能力；修复菜单浮层由 `Editor` 自带渲染，应用注入 provider 即可用
+- 键位：新增 `ToggleCodeActions` 动作绑 `Alt+Enter`；菜单激活时 ↑↓ 改选、Enter 应用、
+  Esc 收起（与补全菜单共用捕获通道，补全优先）；文本变更即收起，不留僵尸菜单
+- 编辑应用只认**当前文档**：按起始偏移倒序落笔，LSP 行列按 UTF-8 字节列换算，
+  应用后光标回原位；多文件 `documentChanges` 中别家文件、文件创建/重命名/删除操作、
+  命令型动作（只有 `command` 没有 `edit`）均不执行，v1 边界已在模块头注明
+- 新增 `EditorState::document_uri()` 访问器（修复应用按 URI 挑本文档的编辑）
+- **状态：进行中**——`cargo test -p rgpui --features editor code_action` 四条用例当前失败
+  （测试窗口未绘制，取不到光标锚点，请求被自身拦下），修法与复核清单见
+  `docs/1.4.2/gpui-kit-borrow-plan.md` §四；全绿前不随版本发布
+
 ## [1.4.2] - 2026-10-09
 
 > 本次只发布 `rgpui-linux` 一个 crate：X11 后端修复全部落在该 crate 内，其余 crate 的源码与

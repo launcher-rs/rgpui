@@ -262,10 +262,15 @@ impl EditorState {
         }
     }
 
-    /// 设置当前文档 URI（诊断请求按 URI 取数）。
+    /// 当前文档 URI（诊断请求按 URI 取数）。
     pub fn set_document_uri(&mut self, uri: Option<Uri>, cx: &mut Context<Self>) {
         self.lsp.document_uri = uri;
         cx.notify();
+    }
+
+    /// 当前文档 URI（修复应用按 URI 挑属于本文档的编辑）。
+    pub fn document_uri(&self) -> Option<&Uri> {
+        self.lsp.document_uri.as_ref()
     }
 
     /// 当前补全状态（列表/选中/可见，应用层按需读取）。

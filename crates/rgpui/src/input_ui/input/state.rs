@@ -129,6 +129,8 @@ actions!(
         #[cfg(feature = "editor")]
         JoinLines,
         #[cfg(feature = "editor")]
+        ToggleCodeActions,
+        #[cfg(feature = "editor")]
         AddCursorAbove,
         #[cfg(feature = "editor")]
         AddCursorBelow,
@@ -310,6 +312,8 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("cmd-j", JoinLines, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-j", JoinLines, Some(CONTEXT)),
+        // 快速修复菜单（VSCode 同款 `Alt+Enter`）。
+        KeyBinding::new("alt-enter", ToggleCodeActions, Some(CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-alt-up", AddCursorAbove, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]

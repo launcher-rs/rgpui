@@ -714,6 +714,12 @@ impl WaylandClient {
                             client.cursor.set_size(size);
                         }
                     }
+                    XDPEvent::ReduceMotion(reduce_motion) => {
+                        if let Some(client) = client.0.upgrade() {
+                            let mut client = client.borrow_mut();
+                            client.common.reduce_motion = reduce_motion;
+                        }
+                    }
                 }
             })
             .unwrap();

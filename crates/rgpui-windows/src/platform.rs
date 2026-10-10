@@ -594,6 +594,10 @@ impl Platform for WindowsPlatform {
         system_appearance().log_err().unwrap_or_default()
     }
 
+    fn reduce_motion_enabled(&self) -> bool {
+        !crate::client_area_animation_enabled()
+    }
+
     fn open_url(&self, url: &str) {
         if url.is_empty() {
             return;

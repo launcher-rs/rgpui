@@ -377,6 +377,14 @@ pub trait Platform: 'static {
     /// 返回应用窗口的外观模式（亮色/暗色）。
     fn window_appearance(&self) -> WindowAppearance;
 
+    /// 返回系统是否开启了「减少动态效果」无障碍设置。
+    ///
+    /// 默认 `false`，即未覆写的平台保持动画开启；核心层由
+    /// [`App::reduce_motion`](crate::App::reduce_motion) 消费此值。
+    fn reduce_motion_enabled(&self) -> bool {
+        false
+    }
+
     /// 返回窗口按钮布局配置（如 macOS 红绿灯位置、Windows 按钮顺序）。
     fn button_layout(&self) -> Option<WindowButtonLayout> {
         None

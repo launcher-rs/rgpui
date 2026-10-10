@@ -15,8 +15,8 @@ use rgpui::{
     components::SearchPanelState,
     deferred, div, green, h_flex,
     input_ui::{
-        CodeLens, CodeLensOverlay, CodeLensProvider, Editor, EditorState, InputEvent,
-        StickyPosition,
+        CodeActionProvider, CodeLens, CodeLensOverlay, CodeLensProvider, Editor, EditorState,
+        InputEvent, StickyPosition,
     },
     lsp::{
         CompletionProvider, DiagnosticEntry, DiagnosticsProvider, HoverContent, HoverProvider,
@@ -155,6 +155,89 @@ impl CodeLensProvider for DemoCodelensProvider {
             line: 5,
             title: "Point · 1 引用".into(),
         }]))
+    }
+}
+
+/// 演示用假修复 provider：行首加注释 / 选区替换 / 首条诊断标注。
+///
+/// 编辑目标 URI 与 `set_document_uri` 一致（对不上号的文档框架不写）。
+struct DemoCodeActionProvider;
+
+impl CodeActionProvider for DemoCodeActionProvider {
+    fn code_actions(
+        &self,
+        text: &rgpui::input_ui::Rope,
+        range: std::ops::Range<usize>,
+        diagnostics: Vec<lsp_types::Diagnostic>,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<lsp_types::CodeActionOrCommand>>> {
+        use lsp_types::{CodeAction, CodeActionKind, Range, TextEdit, Uri, WorkspaceEdit};
+        let len = text.len();
+        let start = range.start.min(len);
+        let end = range.end.min(len);
+        // 选区所在行行首字节偏移（无 ropey 直接依赖，逐字符扫换行）。
+        let mut line_start = 0;
+        let mut off = 0;
+        for ch in text.slice(..start).chars() {
+            off += ch.len_utf8();
+            if ch == '\n' {
+                line_start = off;
+            }
+        }
+        let position =
+            |offset: usize| rgpui::lsp::PositionMapping::offset_to_position(text, offset);
+        let uri: Uri = "file:///demo.rs".parse().unwrap();
+        let action =
+            |title: &str, kind: CodeActionKind, edits: Vec<TextEdit>, preferred| CodeAction {
+                title: title.to_string(),
+                kind: Some(kind),
+                edit: Some(WorkspaceEdit {
+                    changes: Some(std::collections::HashMap::from([(uri.clone(), edits)])),
+                    ..Default::default()
+                }),
+                is_preferred: preferred,
+                ..Default::default()
+            };
+        let mut actions = vec![action(
+            "行首加注释",
+            CodeActionKind::REFACTOR,
+            vec![TextEdit {
+                range: Range::new(position(line_start), position(line_start)),
+                new_text: "// ".to_string(),
+            }],
+            false,
+        )];
+        if start != end {
+            actions.push(action(
+                "选区替换为 demo",
+                CodeActionKind::REFACTOR,
+                vec![TextEdit {
+                    range: Range::new(position(start), position(end)),
+                    new_text: "demo".to_string(),
+                }],
+                false,
+            ));
+        }
+        // 有诊断时给一条首选修复：在诊断末尾标注（演示 `is_preferred` 默认选中）。
+        if let Some(first) = diagnostics.first() {
+            actions.insert(
+                0,
+                action(
+                    "标注首条诊断",
+                    CodeActionKind::QUICKFIX,
+                    vec![TextEdit {
+                        range: Range::new(first.range.end, first.range.end),
+                        new_text: " /* 已标注 */".to_string(),
+                    }],
+                    Some(true),
+                ),
+            );
+        }
+        rgpui::Task::ready(Ok(actions
+            .into_iter()
+            .map(lsp_types::CodeActionOrCommand::CodeAction)
+            .collect()))
     }
 }
 
@@ -371,6 +454,8 @@ impl EditorDemo {
             // 透镜假 provider（文本变更自动刷新，点击跳光标到透镜行）。
             state.set_codelens_provider(Some(Rc::new(DemoCodelensProvider)), cx);
             state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
+            // 快速修复：`Alt+Enter` 弹菜单（菜单浮层由 `Editor` 自带渲染）。
+            state.set_code_action_provider(Some(Rc::new(DemoCodeActionProvider)), cx);
             // inlay 默认开启（演示绘制；关开关即零开销）。
             state.set_inlay_provider(Some(Rc::new(DemoInlayProvider)), cx);
             state.set_inlay_hints_enabled(true, cx);
@@ -637,7 +722,8 @@ impl Render for EditorDemo {
                 .child(
                     div().text_xs().child(
                         "键入：自动补括号/电缩进/括号匹配/当前行高亮 ｜ \
-                         补全：↑↓改选 Enter确认 Esc收起（确认时替换光标处单词）",
+                         补全：↑↓改选 Enter确认 Esc收起（确认时替换光标处单词）｜ \
+                         修复：Alt+Enter 弹菜单，↑↓改选 Enter应用 Esc收起",
                     ),
                 )
                 .child(

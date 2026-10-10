@@ -204,6 +204,14 @@ impl Platform for WebPlatform {
         }
     }
 
+    fn reduce_motion_enabled(&self) -> bool {
+        self.browser_window
+            .match_media("(prefers-reduced-motion: reduce)")
+            .ok()
+            .flatten()
+            .is_some_and(|media_query| media_query.matches())
+    }
+
     fn open_url(&self, url: &str) {
         if let Err(error) = self.browser_window.open_with_url(url) {
             log::warn!("Failed to open URL '{url}': {error:?}");
