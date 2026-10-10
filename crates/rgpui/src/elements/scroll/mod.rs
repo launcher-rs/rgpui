@@ -5,13 +5,16 @@
 //! - [`Scrollbar`]：悬停/拖动/自动淡出的滚动条。
 //! - [`ScrollableMask`]：滚轮事件遮罩，用于嵌套滚动器的轴分发。
 //! - [`AutoScroll`]：拖拽选区时的定时自动滚动。
+//! - [`Overscroll`]：越界回弹包装（`ScrollPhysics` 的生产调用点）。
 
 mod auto_scroll;
+mod overscroll;
 mod scrollable;
 mod scrollable_mask;
 mod scrollbar;
 
 pub use auto_scroll::AutoScroll;
+pub use overscroll::Overscroll;
 pub use scrollable::*;
 pub use scrollable_mask::*;
 pub use scrollbar::*;

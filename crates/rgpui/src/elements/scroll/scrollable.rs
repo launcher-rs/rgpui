@@ -4,7 +4,7 @@ use std::{panic::Location, rc::Rc};
 
 use crate::StyledExt;
 
-use super::{Scrollbar, ScrollbarAxis, ScrollbarHandle};
+use super::{Overscroll, Scrollbar, ScrollbarAxis, ScrollbarHandle};
 use crate::{
     App, Div, Element, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
     ScrollHandle, Stateful, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,
@@ -69,6 +69,8 @@ pub struct Scrollable<E: InteractiveElement + Styled + ParentElement + Element> 
     id: ElementId,
     element: E,
     axis: ScrollbarAxis,
+    /// 越界回弹（默认关；开后滚动区包一层 [`Overscroll`]，到边拉伸松手回弹）。
+    overscroll: bool,
 }
 
 impl<E> Scrollable<E>
@@ -81,7 +83,14 @@ where
             id: caller_id(),
             element,
             axis: axis.into(),
+            overscroll: false,
         }
+    }
+
+    /// 开启越界回弹（`reduce_motion` 下自动退化为普通滚动区）。
+    pub fn overscroll(mut self, enabled: bool) -> Self {
+        self.overscroll = enabled;
+        self
     }
 }
 
@@ -152,6 +161,12 @@ where
             // 单轴区域上 rgpui 会把另一轴的增量映射到本轴，导致纯水平手势触发垂直滚动。
             .restrict_scroll_to_axis()
             .child(content);
+        // 越界回弹（opt-in）：与滚动区共享跟踪句柄做边缘判定，只加视觉位移。
+        let scroll_area = if self.overscroll {
+            Overscroll::new(scroll_area, &scroll_handle, self.axis).into_any_element()
+        } else {
+            scroll_area.into_any_element()
+        };
 
         div()
             .id(root_id)
