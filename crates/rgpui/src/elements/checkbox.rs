@@ -6,8 +6,8 @@ use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, Animation, AnimationExt, AnyElement, App, ComponentText, Disableable, ElementId,
     ElementSize, FocusableExt as _, IconNamed, InteractiveElement, IntoElement, ParentElement,
-    RenderOnce, Selectable, SharedString, Sizable, StatefulInteractiveElement, Styled,
-    StyledExt as _, Svg, Window, div, px, relative, rems, svg,
+    RenderOnce, Role, Selectable, SharedString, Sizable, StatefulInteractiveElement, Styled,
+    StyledExt as _, Svg, Toggled, Window, div, px, relative, rems, svg,
 };
 
 /// 复选框（Checkbox）元素。
@@ -223,6 +223,16 @@ pub(crate) fn checkbox_check_icon(
 
 impl RenderOnce for Checkbox {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        div().child(self.render_box(window, cx))
+    }
+}
+
+impl Checkbox {
+    /// 复选框主体（带无障碍标注的内层盒子）。
+    ///
+    /// 抽成独立方法以便单测直断 role/label/toggled，不经过外层包裹 `div`；
+    /// 渲染树与原来完全一致（外层仍包一层 `div`）。
+    fn render_box(self, window: &mut Window, cx: &mut App) -> crate::Stateful<crate::Div> {
         let checked = self.checked;
 
         let focus_handle = window
@@ -243,103 +253,111 @@ impl RenderOnce for Checkbox {
         };
         let radius = cx.theme().radius.min(px(4.));
 
-        div().child(
-            self.base
-                .id(self.id.clone())
-                .when(!self.disabled, |this| {
-                    this.track_focus(
-                        &focus_handle
-                            .tab_stop(self.tab_stop)
-                            .tab_index(self.tab_index),
-                    )
-                })
-                .h_flex()
-                .gap_2()
-                .items_start()
-                .line_height(relative(1.))
-                .text_color(cx.theme().foreground)
-                .map(|this| match self.size {
-                    ElementSize::XSmall => this.text_xs(),
-                    ElementSize::Small => this.text_sm(),
-                    ElementSize::Medium => this.text_base(),
-                    ElementSize::Large => this.text_lg(),
-                    _ => this,
-                })
-                .when(self.disabled, |this| {
-                    this.text_color(cx.theme().muted_foreground)
-                })
-                .rounded(cx.theme().radius * 0.5)
-                .focus_ring(is_focused, px(2.), window, cx)
-                .refine_style(&self.style)
-                .child(
-                    div()
-                        .relative()
-                        .map(|this| match self.size {
-                            ElementSize::XSmall => this.size_3(),
-                            ElementSize::Small => this.size_3p5(),
-                            ElementSize::Medium => this.size_4(),
-                            ElementSize::Large => this.size(rems(1.125)),
-                            _ => this.size_4(),
-                        })
-                        .flex_shrink_0()
-                        .border_1()
-                        .border_color(color)
-                        .rounded(radius)
-                        .when(cx.theme().shadow && !self.disabled, |this| this.shadow_xs())
-                        .map(|this| match checked {
-                            false => this.bg(cx.theme().input_background()),
-                            true if self.disabled => this.bg(color),
-                            true => this.bg(cx.theme().tokens.primary),
-                        })
-                        .child(checkbox_check_icon(
-                            self.id,
-                            self.size,
-                            checked,
-                            self.disabled,
-                            window,
-                            cx,
-                        )),
+        self.base
+            .id(self.id.clone())
+            .role(Role::CheckBox)
+            .aria_toggled(if checked {
+                Toggled::True
+            } else {
+                Toggled::False
+            })
+            .when_some(
+                self.label.as_ref().map(|l| l.get_text(cx)),
+                |this, label| this.aria_label(label),
+            )
+            .when(!self.disabled, |this| {
+                this.track_focus(
+                    &focus_handle
+                        .tab_stop(self.tab_stop)
+                        .tab_index(self.tab_index),
                 )
-                .when(self.label.is_some() || !self.children.is_empty(), |this| {
-                    this.child(
-                        crate::v_flex()
-                            .flex_1()
-                            .overflow_hidden()
-                            .line_height(relative(1.2))
-                            .gap_1()
-                            .map(|this| {
-                                if let Some(label) = self.label {
-                                    this.child(
-                                        div()
-                                            .size_full()
-                                            .text_color(cx.theme().foreground)
-                                            .when(self.disabled, |this| {
-                                                this.text_color(cx.theme().muted_foreground)
-                                            })
-                                            .line_height(relative(1.))
-                                            .child(label),
-                                    )
-                                } else {
-                                    this
-                                }
-                            })
-                            .children(self.children),
-                    )
-                })
-                .on_mouse_down(crate::MouseButton::Left, |_, window, _| {
-                    // 避免在鼠标按下时获得焦点
-                    window.prevent_default();
-                })
-                .when(!self.disabled, |this| {
-                    this.on_click({
-                        let on_change = self.on_change.clone();
-                        move |_, window, cx| {
-                            window.prevent_default();
-                            Self::handle_change(&on_change, checked, window, cx);
-                        }
+            })
+            .h_flex()
+            .gap_2()
+            .items_start()
+            .line_height(relative(1.))
+            .text_color(cx.theme().foreground)
+            .map(|this| match self.size {
+                ElementSize::XSmall => this.text_xs(),
+                ElementSize::Small => this.text_sm(),
+                ElementSize::Medium => this.text_base(),
+                ElementSize::Large => this.text_lg(),
+                _ => this,
+            })
+            .when(self.disabled, |this| {
+                this.text_color(cx.theme().muted_foreground)
+            })
+            .rounded(cx.theme().radius * 0.5)
+            .focus_ring(is_focused, px(2.), window, cx)
+            .refine_style(&self.style)
+            .child(
+                div()
+                    .relative()
+                    .map(|this| match self.size {
+                        ElementSize::XSmall => this.size_3(),
+                        ElementSize::Small => this.size_3p5(),
+                        ElementSize::Medium => this.size_4(),
+                        ElementSize::Large => this.size(rems(1.125)),
+                        _ => this.size_4(),
                     })
-                }),
-        )
+                    .flex_shrink_0()
+                    .border_1()
+                    .border_color(color)
+                    .rounded(radius)
+                    .when(cx.theme().shadow && !self.disabled, |this| this.shadow_xs())
+                    .map(|this| match checked {
+                        false => this.bg(cx.theme().input_background()),
+                        true if self.disabled => this.bg(color),
+                        true => this.bg(cx.theme().tokens.primary),
+                    })
+                    .child(checkbox_check_icon(
+                        self.id,
+                        self.size,
+                        checked,
+                        self.disabled,
+                        window,
+                        cx,
+                    )),
+            )
+            .when(self.label.is_some() || !self.children.is_empty(), |this| {
+                this.child(
+                    crate::v_flex()
+                        .flex_1()
+                        .overflow_hidden()
+                        .line_height(relative(1.2))
+                        .gap_1()
+                        .map(|this| {
+                            if let Some(label) = self.label {
+                                this.child(
+                                    div()
+                                        .size_full()
+                                        .text_color(cx.theme().foreground)
+                                        .when(self.disabled, |this| {
+                                            this.text_color(cx.theme().muted_foreground)
+                                        })
+                                        .line_height(relative(1.))
+                                        .child(label),
+                                )
+                            } else {
+                                this
+                            }
+                        })
+                        .children(self.children),
+                )
+            })
+            .on_mouse_down(crate::MouseButton::Left, |_, window, _| {
+                // 避免在鼠标按下时获得焦点
+                window.prevent_default();
+            })
+            .when(!self.disabled, |this| {
+                this.on_click({
+                    let on_change = self.on_change.clone();
+                    move |_, window, cx| {
+                        window.prevent_default();
+                        Self::handle_change(&on_change, checked, window, cx);
+                    }
+                })
+            })
     }
 }
 
@@ -369,6 +387,56 @@ mod tests {
             .selected(true);
         assert!(cb.disabled);
         assert!(cb.is_selected());
+    }
+
+    /// 无障碍标注：role/label/toggled/点击动作（gpui-kit 同款口径）。
+    #[rgpui::test]
+    fn checkbox_a11y_role_label_and_toggle(cx: &mut TestAppContext) {
+        use crate::{Element as _, IntoElement as _, Render, canvas};
+        use std::sync::{Arc, Mutex};
+
+        type Captured = Arc<Mutex<Option<[accesskit::Node; 3]>>>;
+        struct Probe {
+            captured: Captured,
+        }
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                let captured = self.captured.clone();
+                canvas(
+                    move |_, window, cx| {
+                        let mut info = |checkbox: Checkbox| {
+                            let el = checkbox.render_box(window, cx).into_element();
+                            assert_eq!(el.a11y_role(), Some(Role::CheckBox));
+                            let mut node = accesskit::Node::new(Role::CheckBox);
+                            el.write_a11y_info(&mut node);
+                            node
+                        };
+                        *captured.lock().unwrap() = Some([
+                            info(Checkbox::new("unchecked").label("记住我")),
+                            info(Checkbox::new("checked").checked(true)),
+                            info(Checkbox::new("disabled").disabled(true)),
+                        ]);
+                    },
+                    |_, _, _, _| {},
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let captured: Captured = Arc::new(Mutex::new(None));
+        let result = captured.clone();
+        let (_, cx) = cx.add_window_view(move |_, _| Probe { captured });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let [unchecked, checked, disabled] = result.lock().unwrap().take().unwrap();
+        assert_eq!(unchecked.label(), Some("记住我"));
+        assert_eq!(unchecked.toggled(), Some(Toggled::False));
+        assert!(unchecked.supports_action(accesskit::Action::Click));
+        assert_eq!(checked.toggled(), Some(Toggled::True));
+        assert!(checked.supports_action(accesskit::Action::Click));
+        // 禁用态不挂点击：辅助技术不提供激活动作。
+        assert!(!disabled.supports_action(accesskit::Action::Click));
     }
 
     /// 选中态对勾必须携带嵌入 SVG 字节，不依赖宿主 AssetSource。

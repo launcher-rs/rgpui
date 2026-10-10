@@ -6,9 +6,9 @@ use crate::elements::checkbox::checkbox_check_icon;
 use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, AnyElement, App, Axis, ComponentText, Disableable, ElementId, ElementSize,
-    FocusableExt as _, InteractiveElement, IntoElement, ParentElement, RenderOnce, Selectable,
-    SharedString, Sizable, StatefulInteractiveElement, StyleRefinement, Styled, StyledExt as _,
-    Window, div, h_flex, px, relative, rems, v_flex,
+    FocusableExt as _, InteractiveElement, IntoElement, Orientation, ParentElement, RenderOnce,
+    Role, Selectable, SharedString, Sizable, StatefulInteractiveElement, StyleRefinement, Styled,
+    StyledExt as _, Toggled, Window, div, h_flex, px, relative, rems, v_flex,
 };
 
 /// 单选按钮（Radio）元素。
@@ -185,6 +185,16 @@ impl From<String> for Radio {
 
 impl RenderOnce for Radio {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        div().child(self.render_box(window, cx))
+    }
+}
+
+impl Radio {
+    /// 单选框主体（带无障碍标注的内层盒子）。
+    ///
+    /// 抽成独立方法以便单测直断 role/label/toggled，不经过外层包裹 `div`；
+    /// 渲染树与原来完全一致（外层仍包一层 `div`）。
+    fn render_box(self, window: &mut Window, cx: &mut App) -> crate::Stateful<crate::Div> {
         let checked = self.checked;
         let focus_handle = window
             .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
@@ -205,89 +215,99 @@ impl RenderOnce for Radio {
         };
 
         // 包裹一个 flex 以修复 Radio 的 inline 显示
-        div().child(
-            self.base
-                .id(self.id.clone())
-                .when(!self.disabled, |this| {
-                    this.track_focus(
-                        &focus_handle
-                            .tab_stop(self.tab_stop)
-                            .tab_index(self.tab_index),
-                    )
-                })
-                .h_flex()
-                .gap_x_2()
-                .text_color(cx.theme().foreground)
-                .items_start()
-                .line_height(relative(1.))
-                .rounded(cx.theme().radius * 0.5)
-                .focus_ring(is_focused, px(2.), window, cx)
-                .map(|this| match self.size {
-                    ElementSize::XSmall => this.text_xs(),
-                    ElementSize::Small => this.text_sm(),
-                    ElementSize::Medium => this.text_base(),
-                    ElementSize::Large => this.text_lg(),
-                    _ => this,
-                })
-                .refine_style(&self.style)
-                .child(
-                    div()
-                        .relative()
-                        .map(|this| match self.size {
-                            ElementSize::XSmall => this.size_3(),
-                            ElementSize::Small => this.size_3p5(),
-                            ElementSize::Medium => this.size_4(),
-                            ElementSize::Large => this.size(rems(1.125)),
-                            _ => this.size_4(),
-                        })
-                        .flex_shrink_0()
-                        .rounded_full()
-                        .border_1()
-                        .border_color(border_color)
-                        .when(cx.theme().shadow && !disabled, |this| this.shadow_xs())
-                        .map(|this| match self.checked {
-                            false => this.bg(cx.theme().input_background()),
-                            true if disabled => this.bg(bg),
-                            true => this.bg(cx.theme().tokens.primary),
-                        })
-                        .child(checkbox_check_icon(
-                            self.id, self.size, checked, disabled, window, cx,
-                        )),
+        self.base
+            .id(self.id.clone())
+            .role(Role::RadioButton)
+            .aria_toggled(if checked {
+                Toggled::True
+            } else {
+                Toggled::False
+            })
+            // 单选兼具"切换"与"选中"语义，不同辅助技术各读一种，两边都报。
+            .aria_selected(checked)
+            .when_some(
+                self.label.as_ref().map(|l| l.get_text(cx)),
+                |this, label| this.aria_label(label),
+            )
+            .when(!self.disabled, |this| {
+                this.track_focus(
+                    &focus_handle
+                        .tab_stop(self.tab_stop)
+                        .tab_index(self.tab_index),
                 )
-                .when(!self.children.is_empty() || self.label.is_some(), |this| {
-                    this.child(
-                        v_flex()
-                            .w_full()
-                            .line_height(relative(1.2))
-                            .gap_1()
-                            .when_some(self.label, |this, label| {
-                                this.child(
-                                    div()
-                                        .size_full()
-                                        .line_height(relative(1.))
-                                        .when(self.disabled, |this| {
-                                            this.text_color(cx.theme().muted_foreground)
-                                        })
-                                        .child(label),
-                                )
-                            })
-                            .children(self.children),
-                    )
-                })
-                .on_mouse_down(crate::MouseButton::Left, |_, window, _| {
-                    // 避免在鼠标按下时获得焦点
-                    window.prevent_default();
-                })
-                .when(!self.disabled, |this| {
-                    this.on_click({
-                        let on_change = self.on_change.clone();
-                        move |_, window, cx| {
-                            window.prevent_default();
-                            Self::handle_change(&on_change, checked, window, cx);
-                        }
+            })
+            .h_flex()
+            .gap_x_2()
+            .text_color(cx.theme().foreground)
+            .items_start()
+            .line_height(relative(1.))
+            .rounded(cx.theme().radius * 0.5)
+            .focus_ring(is_focused, px(2.), window, cx)
+            .map(|this| match self.size {
+                ElementSize::XSmall => this.text_xs(),
+                ElementSize::Small => this.text_sm(),
+                ElementSize::Medium => this.text_base(),
+                ElementSize::Large => this.text_lg(),
+                _ => this,
+            })
+            .refine_style(&self.style)
+            .child(
+                div()
+                    .relative()
+                    .map(|this| match self.size {
+                        ElementSize::XSmall => this.size_3(),
+                        ElementSize::Small => this.size_3p5(),
+                        ElementSize::Medium => this.size_4(),
+                        ElementSize::Large => this.size(rems(1.125)),
+                        _ => this.size_4(),
                     })
-                }),
-        )
+                    .flex_shrink_0()
+                    .rounded_full()
+                    .border_1()
+                    .border_color(border_color)
+                    .when(cx.theme().shadow && !disabled, |this| this.shadow_xs())
+                    .map(|this| match self.checked {
+                        false => this.bg(cx.theme().input_background()),
+                        true if disabled => this.bg(bg),
+                        true => this.bg(cx.theme().tokens.primary),
+                    })
+                    .child(checkbox_check_icon(
+                        self.id, self.size, checked, disabled, window, cx,
+                    )),
+            )
+            .when(!self.children.is_empty() || self.label.is_some(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .line_height(relative(1.2))
+                        .gap_1()
+                        .when_some(self.label, |this, label| {
+                            this.child(
+                                div()
+                                    .size_full()
+                                    .line_height(relative(1.))
+                                    .when(self.disabled, |this| {
+                                        this.text_color(cx.theme().muted_foreground)
+                                    })
+                                    .child(label),
+                            )
+                        })
+                        .children(self.children),
+                )
+            })
+            .on_mouse_down(crate::MouseButton::Left, |_, window, _| {
+                // 避免在鼠标按下时获得焦点
+                window.prevent_default();
+            })
+            .when(!self.disabled, |this| {
+                this.on_click({
+                    let on_change = self.on_change.clone();
+                    move |_, window, cx| {
+                        window.prevent_default();
+                        Self::handle_change(&on_change, checked, window, cx);
+                    }
+                })
+            })
     }
 }
 
@@ -394,7 +414,13 @@ impl RenderOnce for RadioGroup {
             h_flex().w_full().flex_wrap()
         };
 
-        let mut container = div().id(self.id);
+        let mut container = div().id(self.id).role(Role::RadioGroup).aria_orientation(
+            if self.layout == Axis::Vertical {
+                Orientation::Vertical
+            } else {
+                Orientation::Horizontal
+            },
+        );
         *container.style() = self.style;
 
         container.child(
@@ -449,5 +475,56 @@ mod tests {
         assert_eq!(group.radios.len(), 2);
         assert_eq!(group.selected_index, Some(1));
         assert_eq!(group.layout, Axis::Horizontal);
+    }
+
+    /// 无障碍标注：role/label/toggled+selected/点击动作（gpui-kit 同款口径）。
+    #[rgpui::test]
+    fn radio_a11y_role_state_and_action(cx: &mut crate::TestAppContext) {
+        use crate::{Element as _, IntoElement as _, Render, canvas};
+        use std::sync::{Arc, Mutex};
+
+        type Captured = Arc<Mutex<Option<accesskit::Node>>>;
+        struct Probe(Captured);
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                let captured = self.0.clone();
+                canvas(
+                    move |_, window, cx| {
+                        let el = Radio::new("choice")
+                            .label("选项 A")
+                            .checked(true)
+                            .render_box(window, cx)
+                            .into_element();
+                        assert_eq!(el.a11y_role(), Some(Role::RadioButton));
+                        let mut node = accesskit::Node::new(Role::RadioButton);
+                        el.write_a11y_info(&mut node);
+                        *captured.lock().unwrap() = Some(node);
+                    },
+                    |_, _, _, _| {},
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let captured: Captured = Arc::new(Mutex::new(None));
+        let result = captured.clone();
+        let (_, cx) = cx.add_window_view(move |_, _| Probe(captured));
+        cx.update(|window, cx| {
+            // 分组容器纯构建即可断言（`RadioGroup::render` 内无窗口状态调用）。
+            let group = RadioGroup::horizontal("group")
+                .render(window, cx)
+                .into_element();
+            assert_eq!(group.a11y_role(), Some(Role::RadioGroup));
+            let mut group_node = accesskit::Node::new(Role::RadioGroup);
+            group.write_a11y_info(&mut group_node);
+            assert_eq!(group_node.orientation(), Some(Orientation::Horizontal));
+
+            let _ = window.draw(cx);
+        });
+        let node = result.lock().unwrap().take().unwrap();
+        assert_eq!(node.label(), Some("选项 A"));
+        assert_eq!(node.toggled(), Some(Toggled::True));
+        assert_eq!(node.is_selected(), Some(true));
+        assert!(node.supports_action(accesskit::Action::Click));
     }
 }

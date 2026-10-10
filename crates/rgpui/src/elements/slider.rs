@@ -8,10 +8,11 @@ use crate::ElementExt as _;
 use crate::StyledExt as _;
 use crate::prelude::FluentBuilder as _;
 use crate::{
-    ActiveTheme, Along, App, Axis, Background, Bounds, Corners, DefiniteLength, DragMoveEvent,
-    Empty, Entity, EntityId, EventEmitter, InteractiveElement, IntoElement, IsZero, MouseButton,
-    MouseDownEvent, ParentElement as _, Pixels, Point, Render, RenderOnce,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div, h_flex, px, relative,
+    AccessibleAction, ActiveTheme, Along, App, Axis, Background, Bounds, Corners, DefiniteLength,
+    DragMoveEvent, Empty, Entity, EntityId, EventEmitter, InteractiveElement, IntoElement, IsZero,
+    MouseButton, MouseDownEvent, Orientation, ParentElement as _, Pixels, Point, Render,
+    RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    h_flex, px, relative,
 };
 
 /// 拖动缩略图的标识。
@@ -299,6 +300,21 @@ impl SliderState {
         self.value
     }
 
+    /// 获取滑块的最小值（无障碍数值播报用）。
+    pub fn min_value(&self) -> f32 {
+        self.min
+    }
+
+    /// 获取滑块的最大值（无障碍数值播报用）。
+    pub fn max_value(&self) -> f32 {
+        self.max
+    }
+
+    /// 获取滑块的步长（无障碍递增/递减动作用）。
+    pub fn step_value(&self) -> f32 {
+        self.step
+    }
+
     /// 将 0.0 到 1.0 之间的值转换为最小值和最大值之间的值，取决于刻度模式。
     fn percentage_to_value(&self, percentage: f32) -> f32 {
         match self.scale {
@@ -526,6 +542,14 @@ impl RenderOnce for Slider {
         let state = self.state.read(cx);
         let is_range = state.value().is_range();
         let percentage = state.percentage.clone();
+        // 无障碍侧只读快照（`state` 借用随即结束，后面还要 `self.state` 注册监听）。
+        let (value, min, max, step) = (
+            state.value().end() as f64,
+            state.min_value() as f64,
+            state.max_value() as f64,
+            state.step_value(),
+        );
+        let slider_state = self.state.clone();
         let bar_start = relative(percentage.start);
         let bar_end = relative(1. - percentage.end);
         let rem_size = window.rem_size();
@@ -571,6 +595,36 @@ impl RenderOnce for Slider {
 
         div()
             .id(("slider", self.state.entity_id()))
+            .role(Role::Slider)
+            .aria_numeric_value(value)
+            .aria_min_numeric_value(min)
+            .aria_max_numeric_value(max)
+            .aria_numeric_value_step(step as f64)
+            .aria_orientation(if axis.is_vertical() {
+                Orientation::Vertical
+            } else {
+                Orientation::Horizontal
+            })
+            .on_a11y_action(AccessibleAction::Increment, {
+                let state = slider_state.clone();
+                move |_, window, cx| {
+                    state.update(cx, |state, cx| {
+                        let value =
+                            (state.value().end() + state.step_value()).min(state.max_value());
+                        state.set_value(value, window, cx);
+                    });
+                }
+            })
+            .on_a11y_action(AccessibleAction::Decrement, {
+                let state = slider_state;
+                move |_, window, cx| {
+                    state.update(cx, |state, cx| {
+                        let value =
+                            (state.value().end() - state.step_value()).max(state.min_value());
+                        state.set_value(value, window, cx);
+                    });
+                }
+            })
             .flex()
             .flex_1()
             .items_center()
@@ -734,5 +788,59 @@ mod tests {
         assert_eq!(state.value(), SliderValue::Single(5.0));
         assert_eq!(state.min, 0.0);
         assert_eq!(state.max, 10.0);
+    }
+
+    /// 无障碍标注：role/数值/范围/步长/方向/递增递减动作（gpui-kit 同款口径）。
+    #[rgpui::test]
+    fn slider_a11y_role_value_and_actions(cx: &mut crate::TestAppContext) {
+        use crate::{Element as _, IntoElement as _, Render, canvas};
+        use std::sync::{Arc, Mutex};
+
+        type Captured = Arc<Mutex<Option<accesskit::Node>>>;
+        struct Probe {
+            captured: Captured,
+            state: Entity<SliderState>,
+        }
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                let captured = self.captured.clone();
+                let state = self.state.clone();
+                canvas(
+                    move |_, window, cx| {
+                        let el = Slider::new(&state).render(window, cx).into_element();
+                        assert_eq!(el.a11y_role(), Some(Role::Slider));
+                        let mut node = accesskit::Node::new(Role::Slider);
+                        el.write_a11y_info(&mut node);
+                        *captured.lock().unwrap() = Some(node);
+                    },
+                    |_, _, _, _| {},
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let captured: Captured = Arc::new(Mutex::new(None));
+        let result = captured.clone();
+        let (_, cx) = cx.add_window_view(move |_, cx| {
+            let state = cx.new(|_| {
+                SliderState::new()
+                    .min(0.0)
+                    .max(10.0)
+                    .step(2.0)
+                    .default_value(4.0)
+            });
+            Probe { captured, state }
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let node = result.lock().unwrap().take().unwrap();
+        assert_eq!(node.numeric_value(), Some(4.0));
+        assert_eq!(node.min_numeric_value(), Some(0.0));
+        assert_eq!(node.max_numeric_value(), Some(10.0));
+        assert_eq!(node.numeric_value_step(), Some(2.0));
+        assert_eq!(node.orientation(), Some(Orientation::Horizontal));
+        assert!(node.supports_action(accesskit::Action::Increment));
+        assert!(node.supports_action(accesskit::Action::Decrement));
     }
 }
