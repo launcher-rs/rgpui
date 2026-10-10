@@ -405,15 +405,42 @@ mod tests {
     use rgpui::{ImageId, RenderImageParams};
     use std::sync::Arc;
 
+    /// 测试用后端选择（`RGPUI_TEST_BACKENDS=dx12|vulkan|gl` 可强制指定）。
+    ///
+    /// Windows 固定走 DX12：无头机上 Intel Vulkan 驱动在 `request_device` 里
+    /// 直接段错误（进程都保不住，失败重试也没用），而同块卡走 DX12（有独显
+    /// 直连、无头时 WARP 软光栅）正常；CI 的 Windows runner 同样靠 DX12/WARP。
+    /// Linux/macOS 保持 `all()`（CI 现状全绿，不动）。
+    fn test_backends() -> wgpu::Backends {
+        if let Some(backends) =
+            std::env::var("RGPUI_TEST_BACKENDS")
+                .ok()
+                .and_then(|s| match s.as_str() {
+                    "dx12" => Some(wgpu::Backends::DX12),
+                    "vulkan" => Some(wgpu::Backends::VULKAN),
+                    "gl" => Some(wgpu::Backends::GL),
+                    _ => None,
+                })
+        {
+            return backends;
+        }
+        if cfg!(target_os = "windows") {
+            wgpu::Backends::DX12
+        } else {
+            wgpu::Backends::all()
+        }
+    }
+
     fn test_device_and_queue() -> anyhow::Result<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
         block_on(async {
             let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-                backends: wgpu::Backends::all(),
+                backends: test_backends(),
                 flags: wgpu::InstanceFlags::default(),
                 backend_options: wgpu::BackendOptions::default(),
                 memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
                 display: None,
             });
+            eprintln!("[dbg] requesting adapter");
             let adapter = instance
                 .request_adapter(&wgpu::RequestAdapterOptions {
                     power_preference: wgpu::PowerPreference::LowPower,

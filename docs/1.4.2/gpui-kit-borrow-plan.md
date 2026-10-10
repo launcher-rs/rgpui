@@ -20,11 +20,11 @@
 
 | # | 项 | 状态 | 说明 |
 |---|----|------|------|
-| 1 | a11y 标注补齐（checkbox / radio / slider 等） | **未做** | 基础设施 rgpui 已有（`write_a11y_info` / `A11ySubtreeBuilder`），实测已标注文件 **7** 个（gpui-kit base 为 31）；纯增量，另开 PR |
+| 1 | a11y 标注补齐（checkbox / radio / slider 等） | **已做** | `CheckBox` / `RadioButton`+`RadioGroup` / `Slider` 四件，gpui-kit 同款口径，详见新§七 |
 | 2 | 尊重系统「减少动态效果」 | **已做** | 四平台读取 + 核心层写入点，详见下节 |
-| 3 | 编辑器接通 Code Action | **进行中** | 模块 + 键盘 + 浮层 + 示例调用点已落地；四个单测当前**未过**，详见下节"当前卡点" |
-| 4 | `scroll_physics` 接进滚动层 | **未做** |  Overscroll 拉伸回弹；参考 gpui-kit `base/src/scroll_bounce.rs`（1058 行，挂 touch + OngoingScroll），rgpui 侧只有 `scroll_physics.rs` 没人调 |
-| 5 | CI 卫生（typos / cargo-machete / `.rustfmt.toml` / feature 组合矩阵 / "Platform 方法必须有调用点"检查） | **未做** | 另开 PR；最后一项是针对本仓库反复出现的"实现了没人调"缺陷 |
+| 3 | 编辑器接通 Code Action | **已做** | 模块 + 键盘 + 浮层 + 示例调用点已落地；四个单测已过，详见下节 |
+| 4 | `scroll_physics` 接进滚动层 | **已做** | opt-in `Overscroll` 包装 + `Scrollable::overscroll`，只做视觉位移，详见新§八 |
+| 5 | CI 卫生（typos / cargo-machete / feature 组合矩阵 / "Platform 方法必须有调用点"检查） | **已做** | 缺 `.rustfmt.toml`（故意不加，见§九）；另顺手删掉 13 个无调用点死方法 |
 
 明确**不借鉴**：`base`/`component` crate 物理拆分、gpui-shell（QuickJS）、分版本文档站、
 headless UI 测试层、PaneTree dock 引擎（只抄概念不抄体量）、自动更新与打包。
@@ -56,7 +56,7 @@ headless UI 测试层、PaneTree dock 引擎（只抄概念不抄体量）、自
 （`test_reduce_motion_renders_single_static_frame` 失败）——加 override 锁修复，
 本地 `cargo test -p rgpui` 638 passed。
 
-## 四、第 3 项：Code Action（已接线，收尾中）
+## 四、第 3 项：Code Action（已完成）
 
 **根因**：`LspClient::code_actions`（`lsp/types.rs:101`）与 stdio 传输
 （`lsp/stdio.rs:544`）**都在**，缺的是编辑器侧调用点——全仓 0 处调用。
@@ -97,32 +97,112 @@ headless UI 测试层、PaneTree dock 引擎（只抄概念不抄体量）、自
 - 布局未就绪（首绘前）请求直接忽略，避免菜单弹到左上角。
 - 诊断反查为 LSP 形态时 `code` 以字符串回传，数字编码原形丢失。
 
-**当前卡点（本次推送未完成的部分）**：
+**收尾记录（卡点已解）**：
 
-- `cargo test -p rgpui --features editor --lib code_action` 四条全红：
-  `code_action_request_shows_menu` / `code_action_accept_edits_text` /
-  `code_action_disconnect_clears` / `code_action_text_change_dismisses`。
-- 症状一致——请求后 `code_action_menu_active()` 仍为 `false`，菜单从没弹开过。
-- 判断：`request_code_actions` 先取光标处布局边界当锚点，**取不到就 return**
-  （防首绘前弹到左上角）。`cx.add_window_view` 建的测试窗口在显式绘制前
-  `last_layout` 为空，于是请求被自己拦掉。实现路径大概率是对的，是测试没 draw。
-- 修法（下次第一件事）：测试里先 `cx.draw()`（`VisualTestContext` 有）再请求；
-  顺手确认 `Probe` 视图把 `Editor` 挂进渲染树——现在 `Probe::render` 只返回空 `div`，
-  内部 `Input` 根本没参与布局，这可能才是 `last_layout` 为空的真因。
-  两条都验证后，`cargo test -p rgpui` 全绿再进 PR。
-- 其余待办：`cargo check --workspace` / `cargo fmt --all` / 改动包 clippy 复跑；
-  CHANGELOG 第 3 项条目已写但**未经全绿验证**，合入前复核。
+- 症状：`cargo test -p rgpui --features editor --lib code_action` 四条全红，
+  请求后 `code_action_menu_active()` 仍为 `false`。根因是 `request_code_actions`
+  先取光标处布局边界当锚点、取不到就 return（防首绘前弹到左上角），而
+  `cx.add_window_view` 建的测试窗口在显式绘制前 `last_layout` 为空；且 `Probe::render`
+  只返回空 `div`，内部 `Input` 根本没参与布局。
+- 修法（已落地）：测试 `Probe` 改为渲染 `Editor`（minimap 测试同款
+  `Editor::new(&state).render(window, cx).into_element()`），`probe_with_provider`
+  里加 `input_ui::init` + `theme::init` 并经 `cx.update(|window, cx| window.draw(cx))`
+  强制绘制一帧后再请求。注意 `VisualTestContext` 没有无参 `draw()`，
+  正确姿势是 `window.draw(cx)`（`input/widget.rs` 的 a11y 测试即此写法）。
+- 顺手修：`cargo check --workspace` 暴露示例 `editor.rs` 的 `is_preferred` 类型错
+  （闭包参数缺 `Option<bool>` 标注，两处 `false` 改 `None`）；`cargo clippy -p
+  v1_2_showcase`（该特性组合才编译到 editor 模块）报 `sort_by` 改 `sort_by_key` +
+  `editor_ui.rs` 末次 `clone` 改 move。`cargo test -p rgpui --lib` 638 passed，
+  `cargo check --workspace`、`cargo fmt --all`、两包 clippy 全绿。
 
-## 五、第 4 项：scroll_physics（未开始）
+## 五、第 4 项：scroll_physics（已完成）
 
-- 现状：`rgpui/src/scroll_physics.rs` 有 `ScrollPhysics` 实现，滚动层零调用。
-- 目标：overscroll 拉伸 + 回弹接到 `elements/scroll/`，触摸与滚轮两条路径。
-- 参考：gpui-kit `crates/base/src/scroll_bounce.rs`（1058 行，挂在 touch 事件 +
-  `OngoingScroll` 上）——**只借思路，不搬体量**，rgpui 已有自己的滚动元素与物理模块。
-- 风险：改滚动层牵动所有可滚动组件，需要三平台矩阵验证；本项建议单独 PR。
+- 现状曾是：`scroll_physics.rs` 有 `ScrollPhysics` 实现，滚动层零调用。
+- 落地（opt-in，只做视觉位移，不动逻辑钳制）：
+  - 新文件 `elements/scroll/overscroll.rs`：`Overscroll<E>` 包装器，根为
+    `size_full` + `relative` 偏移 `div`；状态 `Rc<RefCell>`（抄 `scrollbar.rs`
+    的 `ScrollbarState` 模板，滚轮监听里只有 `&mut App`），经
+    `use_keyed_state` 跨帧存活。
+  - 物理即 `ScrollPhysics` 本体：每轴一个，边界 `[0, 0]`，位置即视觉位移。
+    冒泡监听里内层已先消费，用"钳制后逻辑位没动"判定到边（事件时刻的偏移是
+    瞬时超界值，下次 prepaint 才钳回——此前按原始偏移判定永远到不了边）；
+    到边且增量指向界外时 `apply_delta(增量×0.35)` 并钳制 ±96px。
+  - 回弹：render 里 `settling()` 为真即 `tick(1/60)` 一帧 +
+    `request_animation_frame()`，收敛自动停；`reduce_motion` 下跳过拉伸
+    （与第 2 项联动，gpui-kit 同款语义）。
+  - `Scrollable::overscroll(bool)`（默认关，零行为变化）把滚动区包一层，
+    共享跟踪句柄做边缘判定；`gradient` 示例开了一处当真实调用点。
+  - 触摸与滚轮走同一条 `ScrollWheelEvent` 路径（触摸以带 `touch_phase` 的
+    滚轮事件呈现）；`Cancelled` 直接清零。
+- v1 边界（模块头注明）：固定步长回弹；无方向锁/动量抑制；逻辑滚回去时视觉
+  直接清零（有一帧跳变，以后再做跟手释放）；包装根固定 `size_full`。
+- 测试：`overscroll_pulls_and_settles`（拉伸→方向/上限→300 帧归位）、
+  `overscroll_disabled_by_default`、`overscroll_keeps_normal_scroll`
+  （逻辑位移不被回弹吃掉）。注意测试里逐帧推进必须经
+  `window.simulate_next_frame` 交付 `request_animation_frame` 回调，
+  光 `window.draw` 的话 view 不脏、render 不重跑（踩坑记录）。
+- 踩坑记录：初版按事件时刻原始偏移判定到边，内层瞬时超界（如 +50）导致
+  `moved` 恒为真，拉伸永远触发不了——打印 `offset/max` 一眼看到。
 
-## 六、验证口径
+## 六、第 1 项：a11y 标注补齐（已完成）
 
-- Windows 本机：`cargo check --workspace`、`cargo test -p rgpui`、改动包 clippy、`cargo fmt --all`。
-- macOS / Linux / Web 的 `cfg` 代码本机不编译，靠 CI 三平台矩阵兜（AGENTS.md 已注明）。
+- 口径照抄 gpui-kit（`temp/gpui-kit/crates/base/src/{checkbox,radio,radio_group,slider}.rs`）：
+  - `Checkbox`：`Role::CheckBox` + `aria_toggled` + label；禁用态不挂点击，
+    辅助技术就不提供激活动作（与 gpui-kit 断言一致）。
+  - `Radio`：`Role::RadioButton` + `aria_toggled` + `aria_selected`（gpui-kit
+    注释：不同辅助技术各读一种，两边都报）+ label；`RadioGroup` 容器报
+    `Role::RadioGroup` + 布局方向。
+  - `Slider`：`Role::Slider` + 数值/最小/最大/步长 + 方向 +
+    `Increment`/`Decrement` 动作（按步长改值，走 `set_value`）。
+- 新增 `SliderState::min_value/max_value/step_value` 取值器（gpui-kit 同名，
+  避开 builder 风格的 `min/max/step`  setters）。
+- 渲染树零变化：checkbox/radio 只是把原来外层 `div().child(内层链)` 拆成
+  `render() → div().child(render_box())`，`render_box` 返回带标注的内层盒子，
+  单测直断 role/label/toggled 不必钻树。
+- 测试写法抄 gpui-kit：`canvas` 探针 + `window.draw`（直接调 render 会撞
+  `current_view()` 的 prepaint/paint 断言，`use_keyed_state` 要渲染栈）。
+- `Switch` 本来就有，`Toggle` 包 `Button` 间接继承，都不动。
+
+## 七、第 5 项：CI 卫生（已完成）
+
+- `typos`：根 `_typos.toml`（`scap/ags/lod/tme/ptd/nd/ba/numer/sur` 九个
+  人工核对过的合法词 + `temp/*`、`target/*` 排除）+ CI hygiene job。
+  落地时顺手修了三处拼写（directx_renderer 注释、sticky_scroll 注释、screen_capture 注释）。
+- `cargo-machete`：CI hygiene job；落地把 13 个死依赖全删了
+  （`rgpui-dom` 的 anyhow/log、`rgpui-term` 的 parking_lot/portable-pty/
+  smallvec/thiserror，以及 6 个示例包的零散依赖），本地复跑干净。
+- feature 组合：CI 矩阵 job 内加 `cargo check -p rgpui --features
+  editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter,tree-sitter-json,tree-sitter-toml`
+  （三平台）+ `webview`（仅 Linux，要系统库）+ `cargo test -p rgpui-dom`。
+  `scap`/`screen-capture` 照 AGENTS.md 不加（已知编译失败）。
+- "Platform 方法必须有调用点"：`.github/scripts/check_platform_calls.py`
+  （1.6s）+ CI hygiene job + 空 allowlist。口径是"除定义行外至少一处调用"
+  （包装/core 内调/示例/后端内调都算，`temp/` 不算）。
+  - triage 干掉了 13 个无调用点死方法 + 5 个连带孤儿类型
+    （`AttentionType`/`DialogOptions`/`DialogType`/`BiometricStatus`/`MediaKeyEvent`）：
+    麦克风 ×2、生物识别 ×2、媒体键、网络回调、注意力 ×2（真接线走
+    `PlatformWindow::request_attention`，不是这俩）、Dock 徽章、原生弹窗、
+    扩展样式 ×2、`a11y_update_window_bounds`（含 x11 那段 30 行实现）。
+    全是当年批量补 trait 凑完整性塞进来的（`git log -S` 可查），从没人调。
+  - `get_raw_handle` 一度误删：Windows `open_window` 登记 HWND 时真在调，
+    属于后端内部正当调用——已恢复，检查语义也因此从"后端不算"改成
+    "定义行不算"，并补了该条注释。
+  - AGENTS.md 平台 API 清单同步更新（删掉已删项；麦克风/生物识别特例条款
+    作废——特例方法本身已删，统一权限口径现在完全成立）。
+- `.rustfmt.toml` 故意不加：加了等于全仓重排，噪音巨大；现有逐包
+  `cargo fmt --check` 已够用。
+- 计划外附带：全量验证时发现无头 Windows 上 `rgpui-wgpu` 测试进程崩溃
+  （`STATUS_ACCESS_VIOLATION`，干净树同样复现，非本分支引入）。二分到
+  `wgpu_atlas` 两测试 → `test_device_and_queue` → `request_device` 内：
+  本机 Intel 核显走 Vulkan 即崩，走 DX12 正常。修法：测试 helper 在 Windows
+  固定 `Backends::DX12`，其它平台不动（CI 全绿处不 churn），另留
+  `RGPUI_TEST_BACKENDS` 环境变量逃生口。26 passed。
+
+## 八、验证口径
+
+- Windows 本机：`cargo check --workspace`（根 + examples 双 workspace）、
+  `cargo test -p rgpui --lib`（644 passed）、改动包 clippy、`cargo fmt --all`、
+  `typos` / `cargo machete` / `check_platform_calls.py` 全绿。
+- macOS / Linux 的 `cfg` 代码（macOS 后端、Linux x11/wayland 删除点）本机不编译，
+  靠 CI 三平台矩阵兜（AGENTS.md 已注明）；feature 组合 CI 覆盖见§七。
 - 分支 `feat/a11y-motion-and-code-action`，main 受保护，合入走 PR（Squash + Conventional Commits）。

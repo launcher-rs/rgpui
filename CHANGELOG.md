@@ -35,9 +35,41 @@
   应用后光标回原位；多文件 `documentChanges` 中别家文件、文件创建/重命名/删除操作、
   命令型动作（只有 `command` 没有 `edit`）均不执行，v1 边界已在模块头注明
 - 新增 `EditorState::document_uri()` 访问器（修复应用按 URI 挑本文档的编辑）
-- **状态：进行中**——`cargo test -p rgpui --features editor code_action` 四条用例当前失败
-  （测试窗口未绘制，取不到光标锚点，请求被自身拦下），修法与复核清单见
-  `docs/1.4.2/gpui-kit-borrow-plan.md` §四；全绿前不随版本发布
+- 调用点：`examples/v1_2_showcase/src/bin/editor.rs` 的 `DemoCodeActionProvider`
+  （行首加注释 / 选区替换 / 有诊断时首选标注）；`cargo test -p rgpui --lib`
+  全绿（含 4 条 code_action 用例），`cargo check --workspace` 与改动包
+  clippy 全绿，验证细节见 `docs/1.4.2/gpui-kit-borrow-plan.md` §四
+
+### 无障碍：基础组件标注补齐
+
+- `Checkbox` 报 `CheckBox` + 切换态 + 标签，`Radio` 报 `RadioButton` +
+  切换态 + 选中态 + 标签，`RadioGroup` 容器报 `RadioGroup` + 布局方向，
+  `Slider` 报 `Slider` + 数值/范围/步长/方向 + 递增递减动作（口径照抄 gpui-kit）。
+- 新增 `SliderState::min_value/max_value/step_value` 取值器；渲染树零变化。
+- `Switch` 本来就有，`Toggle` 经 `Button` 间接继承，都不动。
+
+### 滚动：越界回弹接进滚动层
+
+- 新增 `elements/scroll::Overscroll` 包装器 + `Scrollable::overscroll(bool)`
+  （默认关）：逻辑位保持钳制，只做视觉位移；物理直接用既有 `ScrollPhysics`
+  （每轴一个，边界 `[0, 0]`），该模块至此有了生产调用点。
+- 触摸与滚轮走同一条 `ScrollWheelEvent` 路径；`reduce_motion` 下自动退化。
+- 调用点：`examples/gradient` 开了一处；v1 边界见模块头注释。
+
+### CI 卫生与死代码清理
+
+- CI 新增 hygiene job（ubuntu 单跑）：`typos`（根 `_typos.toml`）、
+  `cargo machete`、`check_platform_calls.py`；矩阵 job 加 feature 组合检查
+  （`editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter*` 三平台 +
+  `webview` 仅 Linux）与 `cargo test -p rgpui-dom`。
+- `.rustfmt.toml` 故意不加（等于全仓重排），逐包 `fmt --check` 已够。
+- 删掉 13 个无调用点的 `Platform`/`PlatformWindow` 死方法及 5 个连带孤儿类型
+  （麦克风/生物识别特例、媒体键、网络回调、注意力、Dock 徽章、原生弹窗、
+  扩展样式、`a11y_update_window_bounds`），以及 `cargo-machete` 报的 13 个死依赖；
+  `get_raw_handle` 核实为后端内部正当调用后保留。AGENTS.md 平台清单同步更新。
+- 另修无头 Windows 上 `rgpui-wgpu` 测试进程崩溃：Intel Vulkan 驱动在
+  `request_device` 里段错误，测试 helper 在 Windows 改走 DX12（同块卡正常，
+  无头时 WARP 兜底），Linux/macOS 不动；`RGPUI_TEST_BACKENDS` 可强制后端。
 
 ## [1.4.2] - 2026-10-09
 
