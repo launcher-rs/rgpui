@@ -16,8 +16,6 @@ doctest = false
 
 [dependencies]
 rgpui = { workspace = true, features = ["dom-backend"] }
-anyhow.workspace = true
-log.workspace = true
 rustc-hash.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]

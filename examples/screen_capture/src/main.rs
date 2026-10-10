@@ -852,7 +852,7 @@ impl FpsCounter {
     }
 }
 
-/// Merge frame PNGs in a directory into a GIF
+/// Merge frame PNG files in a directory into a GIF
 fn merge_frames_to_gif(dir: &Path, delay_ms: u32) -> Result<PathBuf, String> {
     let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
         .map_err(|e| format!("Failed to read recording dir: {}", e))?

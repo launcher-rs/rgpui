@@ -5,6 +5,5 @@ edition = "2024"
 publish = false
 
 [dependencies]
-anyhow.workspace = true
 rgpui.workspace = true
 rgpui-platform.workspace = true

@@ -1911,10 +1911,6 @@ impl PlatformWindow for WaylandWindow {
             adapter.update_if_active(|| tree_update);
         }
     }
-
-    fn a11y_update_window_bounds(&self) {
-        // Wayland doesn't expose window position, so this is a no-op
-    }
 }
 
 fn update_window(mut state: RefMut<WaylandWindowState>) {

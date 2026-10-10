@@ -8,5 +8,4 @@ publish = false
 rgpui.workspace = true
 rgpui-platform.workspace = true
 serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
 tempfile.workspace = true

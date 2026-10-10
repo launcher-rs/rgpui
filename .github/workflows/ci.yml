@@ -89,6 +89,44 @@ jobs:
         working-directory: examples
         run: cargo check --workspace
 
+      - name: cargo check (feature combos)
+        # 纯 Rust 组合三平台都跑；需要系统库的 webview 只在 Linux 跑
+        #（macOS/Windows 的 webview 依赖各平台 SDK，不在 CI 里装）。
+        # 注意别加 scap/screen-capture：已知编译失败（AGENTS.md）。
+        run: |
+          cargo check -p rgpui --features editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter,tree-sitter-json,tree-sitter-toml
+
+      - name: cargo check (webview)
+        if: runner.os == 'Linux'
+        run: cargo check -p rgpui --features webview
+
+      - name: cargo test (rgpui-dom)
+        run: cargo test -p rgpui-dom
+
       - name: cargo test
         run: cargo test --workspace
+
+  # 平台无关的卫生检查，只跑一次（ubuntu），不进三平台矩阵。
+  hygiene:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: typos
+        uses: crate-ci/typos@v1
+
+      - name: cargo machete
+        run: |
+          cargo install cargo-machete --locked
+          cargo machete
+
+      - name: Platform methods must have callers
+        # 加 Platform/PlatformWindow 方法必须同时有真实调用点，
+        # 否则就是"实现了没人调"。存量例外见同目录 allowlist。
+        run: python3 .github/scripts/check_platform_calls.py
 

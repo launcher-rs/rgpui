@@ -6,7 +6,7 @@
 //!
 //! 落点（M1 冻结的后果）：`Editor` 直接消费 `Entity<EditorState>`（大纲缓存在
 //! 外壳手里），渲染顶栏读 `sticky_stack`，点击走 `goto_symbol`——不在内部
-//! `InputState` 上 duplicat 数据、不碰 `input/`。
+//! `InputState` 上 duplicate 数据、不碰 `input/`。
 //! 无大纲（无高亮器）= 不显示，不报错；高度固定一行，`flex_none` 不挤占编辑区。
 
 use crate::{App, Context};

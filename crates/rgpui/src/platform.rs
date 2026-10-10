@@ -214,59 +214,6 @@ pub enum NetworkStatus {
     Connected,
 }
 
-/// 媒体键事件
-#[derive(Debug, Clone)]
-pub struct MediaKeyEvent {
-    /// 键码
-    pub key_code: u16,
-}
-
-/// 生物识别状态
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BiometricStatus {
-    /// 不可用
-    Unavailable,
-    /// 已解锁
-    Unlocked,
-    /// 已锁定
-    Locked,
-}
-
-/// 用户注意力请求类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AttentionType {
-    /// 请求非关键性注意（如弹跳 Dock 图标一次）
-    Informational,
-    /// 请求关键性注意（如弹跳 Dock 图标直到被激活）
-    Critical,
-}
-
-/// 对话框选项
-#[derive(Debug, Clone)]
-pub struct DialogOptions {
-    /// 对话框类型
-    pub dialog_type: DialogType,
-    /// 对话框标题
-    pub title: String,
-    /// 对话框消息
-    pub message: String,
-    /// 确认按钮文本
-    pub confirm_label: Option<String>,
-    /// 取消按钮文本
-    pub cancel_label: Option<String>,
-}
-
-/// 对话框类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DialogType {
-    /// 信息提示
-    Info,
-    /// 警告
-    Warning,
-    /// 错误
-    Error,
-}
-
 /// 聚焦窗口信息
 #[derive(Debug, Clone)]
 pub struct FocusedWindowInfo {
@@ -567,13 +514,6 @@ pub trait Platform: 'static {
     /// 请求指定类别的系统权限：有系统授权弹窗的就弹窗，没有的会输出可操作的引导日志。
     fn request_permission(&self, _kind: PermissionType) {}
 
-    /// 返回麦克风权限状态。
-    fn microphone_status(&self) -> PermissionStatus {
-        PermissionStatus::Unavailable
-    }
-    /// 请求麦克风权限，`callback` 收到授权结果。
-    fn request_microphone_permission(&self, _callback: Box<dyn FnOnce(bool)>) {}
-
     /// 注册系统电源事件回调（系统即将睡眠 / 已从睡眠唤醒）。
     fn on_system_power_event(&self, _callback: Box<dyn FnMut(SystemPowerEvent)>) {}
 
@@ -603,19 +543,6 @@ pub trait Platform: 'static {
     fn network_status(&self) -> NetworkStatus {
         NetworkStatus::Connected
     }
-    /// 注册网络状态变化回调（在线/离线/连接变化）。
-    fn on_network_status_change(&self, _callback: Box<dyn FnMut(NetworkStatus)>) {}
-
-    /// 注册媒体键事件回调（播放/暂停/音量等）。
-    fn on_media_key_event(&self, _callback: Box<dyn FnMut(MediaKeyEvent)>) {}
-
-    /// 请求用户注意力（macOS Dock 图标弹跳、Windows 任务栏闪烁）。
-    fn request_user_attention(&self, _attention_type: AttentionType) {}
-    /// 取消用户注意力请求。
-    fn cancel_user_attention(&self) {}
-
-    /// 设置 macOS Dock 标签徽章文本（如未读消息数）。
-    fn set_dock_badge(&self, _label: Option<&str>) {}
 
     /// 在指定位置显示右键上下文菜单。
     fn show_context_menu(
@@ -626,13 +553,6 @@ pub trait Platform: 'static {
     ) {
     }
 
-    /// 显示系统原生对话框（如确认、警告等），返回用户选择的按钮索引。
-    fn show_dialog(&self, _options: DialogOptions) -> oneshot::Receiver<usize> {
-        let (tx, rx) = oneshot::channel();
-        let _ = tx.send(0);
-        rx
-    }
-
     /// 返回操作系统信息（名称、版本号）。
     fn os_info(&self) -> OsInfo {
         OsInfo {
@@ -640,13 +560,6 @@ pub trait Platform: 'static {
             version: String::new(),
         }
     }
-
-    /// 返回生物识别（指纹/面容 ID）硬件状态。
-    fn biometric_status(&self) -> BiometricStatus {
-        BiometricStatus::Unavailable
-    }
-    /// 触发生物识别认证，`reason` 为提示文本，`callback` 收到认证结果。
-    fn authenticate_biometric(&self, _reason: &str, _callback: Box<dyn FnOnce(bool)>) {}
 }
 
 /// 平台显示器句柄，代表一个物理显示器或笔记本屏幕。
@@ -1360,7 +1273,7 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 设置窗口的 tabbing identifier（控制标签页分组）。
     fn set_tabbing_identifier(&self, _identifier: Option<String>) {}
 
-    /// 返回窗口的原始 HWND 句柄（仅 Windows）。
+    /// 返回窗口的原始 HWND 句柄（仅 Windows；后端 `open_window` 登记用）。
     #[cfg(target_os = "windows")]
     fn get_raw_handle(&self) -> windows::Win32::Foundation::HWND;
 
@@ -1409,9 +1322,6 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 向辅助功能适配器提供无障碍树更新数据（accesskit）。
     fn a11y_tree_update(&self, _tree_update: accesskit::TreeUpdate) {}
 
-    /// 通知辅助功能适配器窗口边界已更新。
-    fn a11y_update_window_bounds(&self) {}
-
     /// 使用指定场景渲染到 RGBA 图像纹理（仅测试用途）。
     #[cfg(any(test, feature = "test-support"))]
     fn as_test(&mut self) -> Option<&mut TestWindow> {
@@ -1451,13 +1361,6 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
 
     /// 设置鼠标事件是否穿透窗口（桌面宠物/覆盖层场景）。
     fn set_mouse_passthrough(&self, _passthrough: bool) {}
-
-    /// 返回 Windows 窗口扩展样式（WS_EX_* 标志位）。
-    fn window_extended_style(&self) -> u32 {
-        0
-    }
-    /// 设置 Windows 窗口扩展样式。
-    fn set_window_extended_style(&self, _style: u32) {}
 
     /// 设置标题栏是否可见（控制自定义标题栏/原生标题栏切换）。
     ///

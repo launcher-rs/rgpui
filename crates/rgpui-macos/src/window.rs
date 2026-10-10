@@ -1910,10 +1910,6 @@ impl PlatformWindow for MacWindow {
         }
     }
 
-    fn a11y_update_window_bounds(&self) {
-        // macOS handles window bounds tracking automatically via NSAccessibility.
-    }
-
     fn set_text_content_type(&self, content_type: Option<&'static str>) {
         let view = self.0.lock().native_view.as_ptr();
         let ns_content_type = content_type.map(|s| unsafe { ns_string(s) });

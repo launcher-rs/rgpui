@@ -13,9 +13,7 @@ log.workspace = true
 rgpui-term.workspace = true
 rgpui.workspace = true
 rgpui-platform.workspace = true
-portable-pty.workspace = true
 smallvec = "1"
-env_logger = "0.11"
 serde.workspace = true
 dirs.workspace = true
 

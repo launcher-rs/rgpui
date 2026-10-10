@@ -1,0 +1,20 @@
+# 拼写检查配置（CI `typos` 步骤用；本地 `cargo install typos-cli` 后直接 `typos`）。
+#
+# 词表均为人工核对过的合法领域词，误删前先 `typos` 复查：
+# scap —— 屏幕捕获 crate 名（`zed-scap`）；ags —— AMD GPU Services（`amd_ags_x64.dll`）；
+# lod —— DirectX `MaxLOD`（细节层次）；tme —— Win32 `TME_LEAVE`（`TRACKMOUSEEVENT`）；
+# ptd —— Win32 结构体字段；nd —— 3d 示例闭包变量；ba —— 十六进制提交哈希片段；
+# numer —— mach `timebase_info.numer`（Apple API 字段）；sur —— macOS "Big Sur" 版本名。
+[files]
+extend-exclude = ["temp/*", "target/*"]
+
+[default.extend-words]
+scap = "scap"
+ags = "ags"
+lod = "lod"
+tme = "tme"
+ptd = "ptd"
+nd = "nd"
+ba = "ba"
+numer = "numer"
+sur = "sur"
