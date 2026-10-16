@@ -93,6 +93,17 @@
   滚动会清掉另一轴已拉出的视觉位移。改为按轴独立判定；`Cancelled`/`reduce_motion`
   清零位移后按需补一次重绘
 
+### 主题：自定义主题目录加载与热重载
+
+- `ThemeRegistry` 此前有 `themes_dir` 字段（默认 `./themes`）但**存了从不读**。
+  现在 `theme::init` 在目录存在时启动即加载其中所有 `*.json`（`ThemeSet` 同形），
+  并启动轮询监视（700ms，`mtime`/大小变化即重载）；重载经 `set_global` 触发全局
+  观察者，重新应用当前主题并刷新所有窗口
+- 新增公开 API：`ThemeRegistry::{themes_dir, set_themes_dir, load_themes_from_dir,
+  reload_themes_from_dir, watch_themes_dir}`；目录内同名主题以文件内容覆盖内置主题，
+  单个文件解析失败只跳过该文件并 `tracing::warn`，不影响其余文件
+- 目录扫描在后台执行器、重载在前台切换，不阻塞 UI；Web 平台无文件系统，自动跳过
+
 ## [1.4.2] - 2026-10-09
 
 > 本次只发布 `rgpui-linux` 一个 crate：X11 后端修复全部落在该 crate 内，其余 crate 的源码与
