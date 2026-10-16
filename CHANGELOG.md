@@ -9,7 +9,8 @@
 - `Platform` 新增 `reduce_motion_enabled()`，四平台各自读取系统设置：Windows
   `SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)`（对应「设置 → 辅助功能 →
   视觉效果 → 动画效果」）、macOS `NSWorkspace.accessibilityDisplayShouldReduceMotion`、
-  Linux 经 XDG 桌面门户读 `org.freedesktop.appearance` 的 `animations-disabled`，
+  Linux 经 XDG 桌面门户读 `org.freedesktop.appearance` 的 `reduced-motion`（`u`，
+  1 表示减少），
   桌面环境未实现该键时回退 GNOME `org.gnome.desktop.interface` 的 `enable-animations`
   （语义相反）并取反、Web `prefers-reduced-motion: reduce`
 - 此前 `App::reduce_motion` 只有 `elements/animation.rs` 与 `elements/img.rs` 在读，
@@ -73,6 +74,24 @@
 - 另修无头 Windows 上 `rgpui-wgpu` 测试进程崩溃：Intel Vulkan 驱动在
   `request_device` 里段错误，测试 helper 在 Windows 改走 DX12（同块卡正常，
   无头时 WARP 兜底），Linux/macOS 不动；`RGPUI_TEST_BACKENDS` 可强制后端。
+
+### 审查修正（1.4.2 合入后的回归排查）
+
+- **Linux「减少动态效果」此前读的门户键名不存在**：代码读的是
+  `org.freedesktop.appearance`/`animations-disabled`（`bool`），门户规范里只有
+  `reduced-motion`（`u`，0/1）。KDE/Sway 等只实现门户的桌面因此完全读不到，
+  只有 GNOME 回退生效。读取与变更订阅一并改成 `reduced-motion`
+- **Windows 读取失败被反向判定**：`SPI_GETCLIENTAREAANIMATION` 调用失败时被当成
+  「用户要求减少动画」，全站动画被静默关闭（与函数注释相反）。改为失败即保持动画
+- **编辑器 Code Action 僵尸菜单**：`dismiss_code_actions` 在菜单不可见时早退、
+  跳过 epoch 作废，而请求在途期正是该状态；打字后旧请求回来仍会弹出用旧文本算出的
+  菜单。改为无条件作废在途请求
+- **Slider 无障碍增减不发事件**：a11y `Increment`/`Decrement` 只调 `set_value`，
+  漏发 `SliderEvent::Change`，订阅方（如 color_picker 的颜色预览）不跟随更新；
+  与拖动路径对齐补发
+- **越界回弹两轴互相清拉伸**：`Both` 轴下两轴共用「逻辑位是否动了」判定，一轴逻辑
+  滚动会清掉另一轴已拉出的视觉位移。改为按轴独立判定；`Cancelled`/`reduce_motion`
+  清零位移后按需补一次重绘
 
 ## [1.4.2] - 2026-10-09
 

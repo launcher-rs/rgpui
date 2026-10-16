@@ -133,25 +133,27 @@ impl XDPEventSource {
                         .detach();
                 }
 
-                if let Ok(mut animations_changed) = settings
-                    .receive_setting_changed_with_args::<bool>(
+                // 门户规范里该键是 `org.freedesktop.appearance` / `reduced-motion`（`u`）：
+                // 0 = 无偏好，1 = 减少动态效果；未实现该键的桌面环境会返回错误。
+                if let Ok(mut reduce_motion_changed) = settings
+                    .receive_setting_changed_with_args::<u32>(
                         "org.freedesktop.appearance",
-                        "animations-disabled",
+                        "reduced-motion",
                     )
                     .await
                 {
                     let sender = sender.clone();
                     background
                         .spawn(async move {
-                            while let Some(disabled) = animations_changed.next().await {
-                                sender.send(Event::ReduceMotion(disabled?))?;
+                            while let Some(reduced) = reduce_motion_changed.next().await {
+                                sender.send(Event::ReduceMotion(reduced? != 0))?;
                             }
                             anyhow::Ok(())
                         })
                         .detach();
                 }
 
-                // 桌面环境未实现门户 `animations-disabled` 时，初值走 GNOME
+                // 桌面环境未实现门户 `reduced-motion` 时，初值走 GNOME
                 // `enable-animations` 回退（语义相反）；变更订阅同样补一条，
                 // 否则 GNOME 上运行时改设置只改了初值路径、收不到事件。
                 if let Ok(mut animations_enabled) = settings
@@ -248,18 +250,19 @@ fn window_appearance_from_color_scheme(cs: ColorScheme) -> WindowAppearance {
 
 /// 读取「减少动态效果」设置。
 ///
-/// 优先取门户 `org.freedesktop.appearance` 的 `animations-disabled`（并非所有
-/// 桌面环境都实现该键）；取不到时回退 GNOME 的 `enable-animations`（语义相反）。
-/// 两者都读不到时返回 `None`，由调用方保持平台侧默认值（动画开启）。
+/// 优先取门户 `org.freedesktop.appearance` 的 `reduced-motion`（`u`：0 表示无偏好，
+/// 1 表示减少；并非所有桌面环境都实现该键）；取不到时回退 GNOME 的
+/// `enable-animations`（语义相反）。两者都读不到时返回 `None`，由调用方保持平台侧
+/// 默认值（动画开启）。
 ///
 /// 注：该值只在创建窗口时被核心层读取（`App::sync_reduce_motion_from_platform`），
 /// 因此下面的变更事件只影响其后新建的窗口，不热切换已开窗口。
 async fn read_reduce_motion(settings: &Settings) -> Option<bool> {
-    if let Ok(disabled) = settings
-        .read::<bool>("org.freedesktop.appearance", "animations-disabled")
+    if let Ok(reduced) = settings
+        .read::<u32>("org.freedesktop.appearance", "reduced-motion")
         .await
     {
-        return Some(disabled);
+        return Some(reduced != 0);
     }
 
     settings
