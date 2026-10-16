@@ -125,6 +125,39 @@
   `.theme-schema.json` 做补全、校验；`ThemeSet`/`ThemeConfig` 等此前已派生
   `JsonSchema`，缺的只是生成入口
 
+### 组件：FPS 监控 HUD 自带采样
+
+- `FpsHudState` 从「数据全靠调用方手填」变为自带采样：新增 `record_frame(now)`
+  按相邻帧 `Instant` 间隔算瞬时帧率，经指数移动平均（系数 0.1）平滑后写入，
+  并维护最近 60 条历史（`average_fps()` 可取均值）；首帧只记时间戳
+- 新增 `FpsHudState::new()`、`reset_sampling()`；`toggle()` 隐藏时同时重置计时，
+  避免重新显示时把隐藏期间算成一帧超长间隔
+- `FpsHud` 新增 `position(Point)`（默认贴右上角）、`show_cpu` / `show_memory`、
+  `continuous(bool)`（默认开：每帧请求下一帧以保证读数实时跳动；关掉则只在应用
+  自然重绘时采样）
+- 面板改用主题令牌（`popover` / `popover_foreground` / `muted_foreground` /
+  `border` / `radius`）配色，浅色主题下同样可读
+- **如实标注限制**：rgpui 不内置按平台采集 CPU/GPU/内存，CPU/内存两行默认关闭，
+  需调用方经 `update_cpu` / `update_memory` 喂值后再 `show_cpu(true)` /
+  `show_memory(true)`（gpui-kit `crates/fps` 的按平台采集属独立特性，本次未移植）
+
+### 调试：帧覆盖层（`debug_overlay`）
+
+- 新增 `debug_overlay` 模块（移植自上游 `gpui`）：把帧耗时读数**直接写进 `Scene`**，
+  绕过布局、文本与失效机制 —— 不参与元素树、不产生文本图元，因此常驻显示也
+  不会自我驱动成新的绘制来源（这正是它不会引起无限帧循环的原因）
+- 读数用一套 5x7 点阵字形绘制（把每行连续点亮的单元格合并成单个四边形），面板
+  固定在右上角；显示模式为「隐藏 → 最小（最近一帧耗时）→ 完整（CUR / 1% / 10% /
+  MAX / FRAMES）」三级
+- `Window` 新增 `debug_overlay_mode()` / `set_debug_overlay_mode()` /
+  `cycle_debug_overlay()` / `reset_debug_overlay_stats()` /
+  `is_debug_overlay_enabled()`；未启用时 `draw()` 内零开销（不取时间戳、不画图元）
+- 图元只在本帧 `swap` 之后追加进 `rendered_frame.scene`：若画进 `next_frame`，会被
+  `reuse_paint` 的区间重放复制到下一帧，导致重复与索引错位（已在代码注释注明）
+- 调用点：`examples/inspector` 绑定 F11 循环切换（与检查器解耦，release 也保留）
+- 迁移了上游全部 6 条用例 + 1 条「只插四边形、不产生文本精灵」的落地校验；
+  `cargo test -p rgpui --lib` / `cargo test -p inspector` 全绿
+
 ## [1.4.2] - 2026-10-09
 
 > 本次只发布 `rgpui-linux` 一个 crate：X11 后端修复全部落在该 crate 内，其余 crate 的源码与

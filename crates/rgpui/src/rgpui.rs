@@ -274,6 +274,9 @@ pub mod config_store;
 /// Chat UI 组件 - 聊天消息展示
 pub mod chat;
 
+/// 调试帧覆盖层 - 把帧耗时直接画进场景（绕过布局/文本/失效机制）
+pub mod debug_overlay;
+
 /// FPS 监控 HUD - 实时帧率/CPU/内存监控
 pub mod fps_hud;
 
@@ -471,6 +474,8 @@ pub use shared_string::*;
 // rgpui_util::Deferred 与 elements 中的 Deferred 冲突，因此不直接导出 rgpui_util 中的 Deferred
 /// 重导出精化类型（Refined、Incomplete 等部分初始化类型）
 pub use crate::refineable::*;
+/// 重导出性能分析工具
+pub use debug_overlay::DebugFrameOverlayMode;
 /// 重导出输入事件相关类型
 pub use input::*;
 /// 重导出检查器相关类型
@@ -490,7 +495,6 @@ pub use keymap::*;
 pub use path_builder::*;
 /// 重导出平台抽象层相关类型
 pub use platform::*;
-/// 重导出性能分析工具
 pub use profiler::*;
 /// 重导出优先级队列类型（仅 Windows/Linux/WASM）
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]

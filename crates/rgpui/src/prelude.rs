@@ -60,6 +60,7 @@ pub use crate::config_store::ConfigStore;
 pub use crate::chat::{ChatState, ChatView, Message, MessageGroup, MessageType};
 
 // FPS 监控 HUD。
+pub use crate::debug_overlay::DebugFrameOverlayMode;
 pub use crate::fps_hud::{FpsHud, FpsHudState};
 
 // Tab 拖拽排序。
