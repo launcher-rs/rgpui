@@ -302,10 +302,13 @@ impl EditorState {
 
     /// 收起修复菜单（清空列表 + epoch 作废在途请求；本就空着时不触发重绘）。
     pub fn dismiss_code_actions(&mut self, cx: &mut Context<Self>) {
+        // 先无条件作废在途请求：请求期间 `actions` 为空且 `visible` 为假，若跟着
+        // 下面的早退一起跳过 `next_epoch()`，那份用旧文本算出的结果回来时 epoch
+        // 仍然匹配，会照常弹出一份"僵尸菜单"。
+        self.code_actions.next_epoch();
         if self.code_actions.actions.is_empty() && !self.code_actions.visible {
             return;
         }
-        self.code_actions.next_epoch();
         self.code_actions.clear();
         cx.notify();
     }

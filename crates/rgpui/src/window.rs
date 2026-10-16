@@ -1137,6 +1137,8 @@ pub struct Window {
     pub(crate) next_frame: Frame,
     /// Retained 实验帧统计：只记录帧数与 draw 段耗时，不改变任何绘制行为。
     pub(crate) fast_stats: crate::fast::FrameStats,
+    /// 调试帧覆盖层：把帧耗时直接画进场景（默认隐藏，零开销）。
+    pub(crate) debug_overlay: crate::debug_overlay::DebugFrameOverlay,
     /// draw() 单调帧序号（Retained 范围守卫：只信任上一帧记录的区间）。
     pub(crate) frame_seq: u64,
     /// 布局键栈（Retained P3a）：随元素请求节点压栈／弹栈，跨帧稳定。
@@ -1944,6 +1946,7 @@ impl Window {
             rendered_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             next_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
             fast_stats: crate::fast::FrameStats::new(),
+            debug_overlay: crate::debug_overlay::DebugFrameOverlay::new(),
             frame_seq: 0,
             window_layout: crate::fast::layout_key::WindowLayout::new(),
             retention_override: None,
@@ -3023,6 +3026,8 @@ impl Window {
         // leak into a later frame across enable/disable of frame tracing.
         let frame_dirty = self.invalidator.take_frame_dirty();
         let draw_started_at = profiler::frame_trace_enabled().then(Instant::now);
+        // 调试帧覆盖层：启用时记录本帧 draw 段耗时，未启用则完全零开销。
+        let overlay_draw_start = self.debug_overlay.is_enabled().then(Instant::now);
 
         // Set up the per-App arena for element allocation during this draw.
         // This ensures that multiple test Apps have isolated arenas.
@@ -3103,6 +3108,15 @@ impl Window {
         let previous_window_active = self.rendered_frame.window_active;
         mem::swap(&mut self.rendered_frame, &mut self.next_frame);
         self.next_frame.clear();
+        // 调试帧覆盖层：把读数直接追加进已完成的本帧场景。它不经布局与文本系统，
+        // 因而不触发失效、也不会成为新的绘制来源；追加的图元 order 递增，天然画在最上层。
+        // 注意必须在本帧 swap 之后、clear 之后追加：若画进 next_frame 会被
+        // `reuse_paint` 的区间重放复制到下一帧，导致重复与索引错位。
+        self.debug_overlay.paint(
+            &mut self.rendered_frame.scene,
+            self.viewport_size,
+            self.scale_factor,
+        );
         let current_focus_path = self.rendered_frame.focus_path();
         let current_window_active = self.rendered_frame.window_active;
         let mut focus_before_listeners = self.focus;
@@ -3160,6 +3174,11 @@ impl Window {
                 draw_start,
                 draw_end: Instant::now(),
             });
+        }
+
+        // 记录本帧 draw 段耗时（在绘制之后记录，故覆盖层显示的是上一帧的耗时）。
+        if let Some(overlay_start) = overlay_draw_start {
+            self.debug_overlay.record_frame(overlay_start.elapsed());
         }
 
         // Exit the scope to obtain the arena-clear token this draw owes; the
@@ -6424,6 +6443,38 @@ impl Window {
                 );
             }
         }
+    }
+
+    /// 返回调试帧覆盖层的当前显示模式。
+    pub fn debug_overlay_mode(&self) -> crate::debug_overlay::DebugFrameOverlayMode {
+        self.debug_overlay.mode()
+    }
+
+    /// 设置调试帧覆盖层的显示模式，并请求重绘使改动立即生效。
+    pub fn set_debug_overlay_mode(&mut self, mode: crate::debug_overlay::DebugFrameOverlayMode) {
+        self.debug_overlay.set_mode(mode);
+        self.refresh();
+    }
+
+    /// 在「隐藏 → 最小 → 完整」之间循环切换调试帧覆盖层。
+    ///
+    /// 覆盖层把帧耗时直接画进场景（绕过布局、文本与失效机制），常驻显示也不会
+    /// 触发新的绘制请求，因此不会自我驱动成死循环。开启后立即请求一次重绘。
+    pub fn cycle_debug_overlay(&mut self) {
+        let next = self.debug_overlay.mode().next();
+        self.debug_overlay.set_mode(next);
+        self.refresh();
+    }
+
+    /// 清空调试帧覆盖层的耗时样本（累计帧数保留），并请求重绘。
+    pub fn reset_debug_overlay_stats(&mut self) {
+        self.debug_overlay.reset_stats();
+        self.refresh();
+    }
+
+    /// 调试帧覆盖层当前是否可见（非隐藏模式）。
+    pub fn is_debug_overlay_enabled(&self) -> bool {
+        self.debug_overlay.is_enabled()
     }
 
     /// 切换此窗口的检查器模式。

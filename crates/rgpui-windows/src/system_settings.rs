@@ -24,7 +24,9 @@ pub(crate) fn client_area_animation_enabled() -> bool {
         )
     };
 
-    result.log_err().is_some() && enabled != 0
+    // 读取失败（`log_err()` 为 `None`）时按「保持动画」处理，不把「拿不到设置」
+    // 误判成用户请求减少动画。
+    result.log_err().map(|_| enabled != 0).unwrap_or(true)
 }
 
 /// Windows settings pulled from SystemParametersInfo

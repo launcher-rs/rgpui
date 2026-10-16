@@ -2,6 +2,8 @@
 //!
 //! - `cx.enable_default_inspector()` 一行启用默认面板（含 Div 布局展示）
 //! - `window.toggle_inspector(cx)` 开关右侧面板（action `ToggleInspector` + F12）
+//! - `window.cycle_debug_overlay()` 循环切换调试帧覆盖层（action `CycleDebugOverlay` + F11）
+//!   实测帧耗时直接画进场景（右上角点阵读数），不经布局/文本系统
 //! - 崩溃后调试：`enable_crash_recorder` + `install_crash_hook`
 //!   （`.rgpui-crash/last.json` 滚动快照 + `panic-*.log`，程序死了也有据可查）
 //! - AI 调取 GUI：演示区“崩溃快照 & AI 导出”有两个复制按钮，
@@ -22,7 +24,6 @@
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
-#[cfg(any(feature = "inspector", debug_assertions))]
 use rgpui::actions;
 use rgpui::input_ui::{Input, InputState};
 use rgpui::{
@@ -34,6 +35,9 @@ use rgpui_platform::application;
 
 #[cfg(any(feature = "inspector", debug_assertions))]
 actions!(inspector_demo, [ToggleInspector]);
+
+// 调试帧覆盖层开关（与检查器无关，release 也保留）。
+actions!(inspector_demo_debug, [CycleDebugOverlay]);
 
 /// 检查器演示根视图，持有演示区的输入状态与点击计数。
 struct InspectorDemo {
@@ -94,7 +98,7 @@ impl Render for InspectorDemo {
                     .child(div().text_2xl().child("元素检查器示例（默认面板）"))
                     .child(
                         div().text_sm().text_color(rgb(0x666666)).child(
-                            "按 F12 打开右侧检查器面板；点「拾取元素」后悬停看蓝框、点击选中、滚轮穿透重叠层级。（正式 UI 不放调试按钮，检查器只走快捷键）",
+                            "按 F12 打开右侧检查器面板；按 F11 循环切换右上角调试帧覆盖层（隐藏→耗时→百分位）。点「拾取元素」后悬停看蓝框、点击选中、滚轮穿透重叠层级。（正式 UI 不放调试按钮，检查器只走快捷键）",
                         ),
                     )
                     // 拾取目标：色块。
@@ -358,6 +362,12 @@ fn run_example() {
             });
         }
 
+        // 调试帧覆盖层：F11 在「隐藏 → 最小 → 完整」之间循环切换。
+        // 与检查器无关，release 构建同样保留（未启用时不画任何图元，零开销）。
+        cx.on_global_action(CycleDebugOverlay, Some("f11"), |window, _cx| {
+            window.cycle_debug_overlay();
+        });
+
         let bounds = Bounds::centered(None, size(px(1100.0), px(700.0)), cx);
         cx.open_window(
             WindowOptions {
@@ -386,7 +396,7 @@ pub fn start() {
 
 #[cfg(test)]
 mod tests {
-    use super::{InspectorDemo, ToggleInspector};
+    use super::{CycleDebugOverlay, InspectorDemo, ToggleInspector};
     use rgpui::TestAppContext;
 
     /// F12 全局开关回归测试：无焦点时也能打开检查器。
@@ -429,8 +439,50 @@ mod tests {
         });
     }
 
-    /// AI 导出链路回归测试：检查器打开时树文本与结构化快照可用。
+    /// F11 循环切换调试帧覆盖层（全局动作，与检查器解耦）。
     ///
+    /// 覆盖层把帧耗时直接画进场景，因此这里同时验证「开关状态」与
+    /// 「开启后 draw 仍能正常出帧」（`draw` 内部会把读数追加进本帧场景）。
+    #[rgpui::test]
+    fn f11_cycles_debug_overlay(cx: &mut TestAppContext) {
+        use rgpui::DebugFrameOverlayMode;
+        cx.update(|cx| {
+            cx.on_global_action(CycleDebugOverlay, Some("f11"), |window, _cx| {
+                window.cycle_debug_overlay();
+            });
+        });
+        let (_view, cx) = cx.add_window_view(InspectorDemo::new);
+        cx.update(|window, cx| {
+            window.activate_window();
+            assert_eq!(window.debug_overlay_mode(), DebugFrameOverlayMode::Hidden);
+            let _ = window.draw(cx);
+        });
+
+        // 无焦点直按 F11：进入「最小」。
+        cx.simulate_keystrokes("f11");
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            assert_eq!(window.debug_overlay_mode(), DebugFrameOverlayMode::Minimal);
+            assert!(window.is_debug_overlay_enabled());
+        });
+
+        // 再按两次：完整 → 隐藏。
+        cx.simulate_keystrokes("f11");
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            assert_eq!(window.debug_overlay_mode(), DebugFrameOverlayMode::Full);
+        });
+        cx.simulate_keystrokes("f11");
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            assert_eq!(window.debug_overlay_mode(), DebugFrameOverlayMode::Hidden);
+            assert!(!window.is_debug_overlay_enabled());
+            // 重置统计不应 panic（样本此时已空）。
+            window.reset_debug_overlay_stats();
+        });
+    }
+
+    /// AI 导出链路回归测试：检查器打开时树文本与结构化快照可用。
     /// 演示区两个复制按钮就是这两个调用（`inspector_tree_text` /
     /// `capture_inspector_snapshot`）；崩溃记录器指向临时目录，
     /// 顺带验证滚动快照落盘不断线。

@@ -614,6 +614,9 @@ impl RenderOnce for Slider {
                             let value =
                                 (state.value().end() + state.step_value()).min(state.max_value());
                             state.set_value(value, window, cx);
+                            // 与拖动路径同款：改值后必须发 `Change`，否则订阅方
+                            // （如 color_picker 的颜色预览）不会跟随更新。
+                            cx.emit(SliderEvent::Change(state.value()));
                         });
                     }
                 })
@@ -624,6 +627,7 @@ impl RenderOnce for Slider {
                             let value =
                                 (state.value().end() - state.step_value()).max(state.min_value());
                             state.set_value(value, window, cx);
+                            cx.emit(SliderEvent::Change(state.value()));
                         });
                     }
                 })

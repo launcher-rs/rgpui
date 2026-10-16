@@ -2,14 +2,15 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.5.0] - 2026-10-16
 
 ### 无障碍：尊重系统「减少动态效果」设置
 
 - `Platform` 新增 `reduce_motion_enabled()`，四平台各自读取系统设置：Windows
   `SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)`（对应「设置 → 辅助功能 →
   视觉效果 → 动画效果」）、macOS `NSWorkspace.accessibilityDisplayShouldReduceMotion`、
-  Linux 经 XDG 桌面门户读 `org.freedesktop.appearance` 的 `animations-disabled`，
+  Linux 经 XDG 桌面门户读 `org.freedesktop.appearance` 的 `reduced-motion`（`u`，
+  1 表示减少），
   桌面环境未实现该键时回退 GNOME `org.gnome.desktop.interface` 的 `enable-animations`
   （语义相反）并取反、Web `prefers-reduced-motion: reduce`
 - 此前 `App::reduce_motion` 只有 `elements/animation.rs` 与 `elements/img.rs` 在读，
@@ -73,6 +74,89 @@
 - 另修无头 Windows 上 `rgpui-wgpu` 测试进程崩溃：Intel Vulkan 驱动在
   `request_device` 里段错误，测试 helper 在 Windows 改走 DX12（同块卡正常，
   无头时 WARP 兜底），Linux/macOS 不动；`RGPUI_TEST_BACKENDS` 可强制后端。
+
+### 审查修正（1.4.2 合入后的回归排查）
+
+- **Linux「减少动态效果」此前读的门户键名不存在**：代码读的是
+  `org.freedesktop.appearance`/`animations-disabled`（`bool`），门户规范里只有
+  `reduced-motion`（`u`，0/1）。KDE/Sway 等只实现门户的桌面因此完全读不到，
+  只有 GNOME 回退生效。读取与变更订阅一并改成 `reduced-motion`
+- **Windows 读取失败被反向判定**：`SPI_GETCLIENTAREAANIMATION` 调用失败时被当成
+  「用户要求减少动画」，全站动画被静默关闭（与函数注释相反）。改为失败即保持动画
+- **编辑器 Code Action 僵尸菜单**：`dismiss_code_actions` 在菜单不可见时早退、
+  跳过 epoch 作废，而请求在途期正是该状态；打字后旧请求回来仍会弹出用旧文本算出的
+  菜单。改为无条件作废在途请求
+- **Slider 无障碍增减不发事件**：a11y `Increment`/`Decrement` 只调 `set_value`，
+  漏发 `SliderEvent::Change`，订阅方（如 color_picker 的颜色预览）不跟随更新；
+  与拖动路径对齐补发
+- **越界回弹两轴互相清拉伸**：`Both` 轴下两轴共用「逻辑位是否动了」判定，一轴逻辑
+  滚动会清掉另一轴已拉出的视觉位移。改为按轴独立判定；`Cancelled`/`reduce_motion`
+  清零位移后按需补一次重绘
+
+### 主题：自定义主题目录加载与热重载
+
+- `ThemeRegistry` 此前有 `themes_dir` 字段（默认 `./themes`）但**存了从不读**。
+  现在 `theme::init` 在目录存在时启动即加载其中所有 `*.json`（`ThemeSet` 同形），
+  并启动轮询监视（700ms，`mtime`/大小变化即重载）；重载经 `set_global` 触发全局
+  观察者，重新应用当前主题并刷新所有窗口
+- 新增公开 API：`ThemeRegistry::{themes_dir, set_themes_dir, load_themes_from_dir,
+  reload_themes_from_dir, watch_themes_dir}`；目录内同名主题以文件内容覆盖内置主题，
+  单个文件解析失败只跳过该文件并 `tracing::warn`，不影响其余文件
+- 目录扫描在后台执行器、重载在前台切换，不阻塞 UI；Web 平台无文件系统，自动跳过
+
+### 小组件补齐：GroupBox / DescriptionList / Clipboard
+
+- 新增 `GroupBox`（`GroupBoxVariant` + `GroupBoxVariants`）：带可选标题与页脚的
+  内容分组容器，`Normal`/`Fill`/`Outline` 三态；主题令牌 `tokens.group_box`、
+  `group_box_foreground`、`muted_foreground`、`border` 此前已定义却无用武之地
+- 新增 `DescriptionList` / `DescriptionItem` / `DescriptionText`：水平（默认 3 列，
+  可设标签宽与列跨度）与垂直两种布局的「标签/值」列表；令牌
+  `tokens.description_list_label`、`description_list_label_foreground` 落地
+- 新增 `Clipboard`：一键复制图标按钮，点击经 `App::write_to_clipboard` 写入系统
+  剪贴板，2 秒内显示对勾后自动恢复；支持 `value` / `value_fn` / `on_copied` /
+  `tooltip` / `aria_label` 与尺寸
+- `Button` 新增 `aria_label`：图标按钮没有可见标签，此前无障碍名只能由 `label`
+  派生，纯图标按钮因此无名；现在可显式提供，未设置时仍回退 `label`
+
+### 主题：JSON Schema 生成
+
+- 新增 `theme::theme_json_schema()`（`ThemeSet` 的 JSON Schema 字符串）与
+  `theme::write_theme_json_schema(path)`，供编辑器与主题作者生成
+  `.theme-schema.json` 做补全、校验；`ThemeSet`/`ThemeConfig` 等此前已派生
+  `JsonSchema`，缺的只是生成入口
+
+### 组件：FPS 监控 HUD 自带采样
+
+- `FpsHudState` 从「数据全靠调用方手填」变为自带采样：新增 `record_frame(now)`
+  按相邻帧 `Instant` 间隔算瞬时帧率，经指数移动平均（系数 0.1）平滑后写入，
+  并维护最近 60 条历史（`average_fps()` 可取均值）；首帧只记时间戳
+- 新增 `FpsHudState::new()`、`reset_sampling()`；`toggle()` 隐藏时同时重置计时，
+  避免重新显示时把隐藏期间算成一帧超长间隔
+- `FpsHud` 新增 `position(Point)`（默认贴右上角）、`show_cpu` / `show_memory`、
+  `continuous(bool)`（默认开：每帧请求下一帧以保证读数实时跳动；关掉则只在应用
+  自然重绘时采样）
+- 面板改用主题令牌（`popover` / `popover_foreground` / `muted_foreground` /
+  `border` / `radius`）配色，浅色主题下同样可读
+- **如实标注限制**：rgpui 不内置按平台采集 CPU/GPU/内存，CPU/内存两行默认关闭，
+  需调用方经 `update_cpu` / `update_memory` 喂值后再 `show_cpu(true)` /
+  `show_memory(true)`（gpui-kit `crates/fps` 的按平台采集属独立特性，本次未移植）
+
+### 调试：帧覆盖层（`debug_overlay`）
+
+- 新增 `debug_overlay` 模块（移植自上游 `gpui`）：把帧耗时读数**直接写进 `Scene`**，
+  绕过布局、文本与失效机制 —— 不参与元素树、不产生文本图元，因此常驻显示也
+  不会自我驱动成新的绘制来源（这正是它不会引起无限帧循环的原因）
+- 读数用一套 5x7 点阵字形绘制（把每行连续点亮的单元格合并成单个四边形），面板
+  固定在右上角；显示模式为「隐藏 → 最小（最近一帧耗时）→ 完整（CUR / 1% / 10% /
+  MAX / FRAMES）」三级
+- `Window` 新增 `debug_overlay_mode()` / `set_debug_overlay_mode()` /
+  `cycle_debug_overlay()` / `reset_debug_overlay_stats()` /
+  `is_debug_overlay_enabled()`；未启用时 `draw()` 内零开销（不取时间戳、不画图元）
+- 图元只在本帧 `swap` 之后追加进 `rendered_frame.scene`：若画进 `next_frame`，会被
+  `reuse_paint` 的区间重放复制到下一帧，导致重复与索引错位（已在代码注释注明）
+- 调用点：`examples/inspector` 绑定 F11 循环切换（与检查器解耦，release 也保留）
+- 迁移了上游全部 6 条用例 + 1 条「只插四边形、不产生文本精灵」的落地校验；
+  `cargo test -p rgpui --lib` / `cargo test -p inspector` 全绿
 
 ## [1.4.2] - 2026-10-09
 

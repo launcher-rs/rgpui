@@ -43,7 +43,7 @@ headless UI 测试层、PaneTree dock 引擎（只抄概念不抄体量）、自
     `client_area_animation_enabled`，读取失败按"保持动画"处理，不误判成用户要求减动）。
   - macOS：`NSWorkspace.accessibilityDisplayShouldReduceMotion`。
   - Web：`match_media("(prefers-reduced-motion: reduce)")`。
-  - Linux：XDG 门户 `org.freedesktop.appearance`/`animations-disabled`，
+  - Linux：XDG 门户 `org.freedesktop.appearance`/`reduced-motion`（`u`，1 表示减少），
     缺失时回退 GNOME `enable-animations`；门户事件新增 `Event::ReduceMotion`，
     x11 / wayland 两个 client 各接一条臂写入 `LinuxCommon::reduce_motion`。
 - 核心层写入点：`App::sync_reduce_motion_from_platform()`（私有），**每次创建窗口时调用**；

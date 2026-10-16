@@ -69,12 +69,18 @@ impl OverscrollState {
     }
 
     /// 清空位移与速度（`reduce_motion` / `Cancelled` 时瞬时归位，不要动画）。
-    fn clear(&self) {
+    /// 返回是否确有残留被清掉（有才需重绘）。
+    fn clear(&self) -> bool {
         let mut inner = self.0.borrow_mut();
+        let had = inner.x.position() != 0.0
+            || inner.x.is_moving()
+            || inner.y.position() != 0.0
+            || inner.y.is_moving();
         inner.x.set_position(0.0);
         inner.x.stop();
         inner.y.set_position(0.0);
         inner.y.stop();
+        had
     }
 
     /// 推进一帧回弹。
@@ -98,15 +104,18 @@ impl OverscrollState {
             offset.x.clamp(-max.x, px(0.)),
             offset.y.clamp(-max.y, px(0.)),
         );
-        let moved = clamped != inner.last_offset;
+        // 两轴各判各的「逻辑位是否动了」：合并成一个布尔会让一轴的逻辑滚动把
+        // 另一轴已拉出的视觉位移一起清零（`Both` 轴下表现为回弹中途跳变）。
+        let moved_x = clamped.x != inner.last_offset.x;
+        let moved_y = clamped.y != inner.last_offset.y;
         inner.last_offset = clamped;
 
         let mut changed = false;
         if axis.has_horizontal() {
-            changed |= Self::pull_axis(&mut inner.x, delta.x, clamped.x, max.x, moved);
+            changed |= Self::pull_axis(&mut inner.x, delta.x, clamped.x, max.x, moved_x);
         }
         if axis.has_vertical() {
-            changed |= Self::pull_axis(&mut inner.y, delta.y, clamped.y, max.y, moved);
+            changed |= Self::pull_axis(&mut inner.y, delta.y, clamped.y, max.y, moved_y);
         }
         changed
     }
@@ -196,12 +205,17 @@ where
             .top(visual.y)
             .on_scroll_wheel(move |event, window, cx| {
                 if event.touch_phase == TouchPhase::Cancelled {
-                    state.clear();
-                    cx.notify(view);
+                    if state.clear() {
+                        cx.notify(view);
+                    }
                     return;
                 }
                 if cx.reduce_motion() {
-                    state.clear();
+                    // 系统要求减少动态时不拉伸；清掉可能残留的位移并补一次重绘，
+                    // 否则运行时刚打开开关时画面会停留在旧偏移上。
+                    if state.clear() {
+                        cx.notify(view);
+                    }
                     return;
                 }
                 let delta = event.delta.pixel_delta(window.line_height());
