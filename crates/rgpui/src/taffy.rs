@@ -36,8 +36,8 @@ struct NodeContext {
 
 /// 跨帧保留的布局节点记录（P3a）。
 ///
-/// 节点按 [`LayoutKey`](crate::fast::layout_key::LayoutKey) 复用：
-/// 命中后仍全量比对样式与子节点（正确性不依赖键）；
+/// 节点按 [`LayoutSlot`](crate::fast::layout_key::LayoutSlot)（路径键 + 本帧出现
+/// 序号）复用：命中后仍全量比对样式与子节点（正确性不依赖键）；
 /// 测量节点另比对测量指纹（文本 carry）。
 struct RetainedNode {
     node: NodeId,
@@ -57,7 +57,7 @@ pub(crate) struct LayoutFrameStats {
     pub(crate) reused_clean: u64,
     /// 命中但改写（样式或子节点或测量变化，仅省分配）。
     pub(crate) rewritten: u64,
-    /// 新分配（含同键二次使用的临时节点）。
+    /// 新分配（含同键重复请求新开的槽位）。
     pub(crate) allocated: u64,
 }
 
@@ -68,14 +68,18 @@ pub struct TaffyLayoutEngine {
     absolute_outer_origins: FxHashMap<LayoutId, Point<f32>>,
     computed_layouts: FxHashSet<LayoutId>,
     layout_bounds_scratch_space: Vec<LayoutId>,
-    /// 路径键 → 保留节点（跨帧常驻；`end_frame` 释放无人认领者）。
-    retained: FxHashMap<crate::fast::layout_key::LayoutKey, RetainedNode>,
-    /// 本帧已认领的键（同键二次请求走临时节点）。
-    claimed: FxHashSet<crate::fast::layout_key::LayoutKey>,
+    /// 槽位 → 保留节点（跨帧常驻；`end_frame` 释放无人认领者）。
+    ///
+    /// 槽位是路径键 + 本帧出现序号：同一条路径一帧内被请求多次时各占一个槽位、
+    /// 各持一个节点（见
+    /// [`LayoutSlot`](crate::fast::layout_key::LayoutSlot)）。这样第二次请求不会
+    /// 复用或共享第一次的节点 —— 共享会让 Taffy 里出现双父残留，错位与 panic
+    /// 都源自那里。
+    retained: FxHashMap<crate::fast::layout_key::LayoutSlot, RetainedNode>,
+    /// 本帧各路径键已出现的次数（`begin_frame` 清空，用于分配出现序号）。
+    occurrences: FxHashMap<crate::fast::layout_key::LayoutKey, u32>,
     /// 本帧已认领的节点（sweep 存活依据）。
     claimed_nodes: FxHashSet<NodeId>,
-    /// 本帧临时节点（同键二次使用；帧末释放）。
-    transient: Vec<NodeId>,
     /// 帧是否已开（首个请求时开；跳过绘制的帧不开也不释放）。
     frame_open: bool,
     /// 各计算根上次的可用空间（空间变化而样式不变时仍须致脏，否则读缓存旧尺寸）。
@@ -98,9 +102,8 @@ impl TaffyLayoutEngine {
             computed_layouts: FxHashSet::default(),
             layout_bounds_scratch_space: Vec::new(),
             retained: FxHashMap::default(),
-            claimed: FxHashSet::default(),
+            occurrences: FxHashMap::default(),
             claimed_nodes: FxHashSet::default(),
-            transient: Vec::new(),
             frame_open: false,
             last_spaces: FxHashMap::default(),
             layout_nodes_reused: 0,
@@ -111,10 +114,10 @@ impl TaffyLayoutEngine {
 
     /// 开始一帧的布局请求收集（首个请求时惰性调用亦可）。
     ///
-    /// 只重置认领集、计算标记与备注缓存；Taffy 树与保留节点跨帧常驻。
+    /// 只重置出现序号、认领集、计算标记与备注缓存；Taffy 树与保留节点跨帧常驻。
     /// `LayoutId` 跨帧稳定，故备注缓存必须每帧清空，否则读到上帧边界。
     pub fn begin_frame(&mut self) {
-        self.claimed.clear();
+        self.occurrences.clear();
         self.claimed_nodes.clear();
         self.computed_layouts.clear();
         self.absolute_layout_bounds.clear();
@@ -125,7 +128,7 @@ impl TaffyLayoutEngine {
         self.frame_open = true;
     }
 
-    /// 结束一帧：释放无人认领的保留节点与临时节点，返回本帧统计。
+    /// 结束一帧：释放无人认领的保留节点，返回本帧统计。
     ///
     /// 未开帧时直接返回零统计（跳过绘制的帧不释放任何节点）。
     /// 保留关闭时恢复旧行为（整树清空，零逐节点开销；基准诚实）。
@@ -136,9 +139,8 @@ impl TaffyLayoutEngine {
         if !retain {
             self.taffy.clear();
             self.retained.clear();
-            self.transient.clear();
-            self.claimed.clear();
             self.claimed_nodes.clear();
+            self.occurrences.clear();
             self.last_spaces.clear();
             self.frame_open = false;
             return LayoutFrameStats {
@@ -147,22 +149,47 @@ impl TaffyLayoutEngine {
                 allocated: self.layout_nodes_allocated,
             };
         }
-        let mut removed = Vec::new();
+
+        // 收出无人认领的保留节点，并按【先子后父】顺序删除。
+        //
+        // `TaffyTree::remove` 会把被删节点的子节点 parent 指针清空，并按
+        // `parents[node]` 把自己从父节点的 `children` 列表里摘除。一致树上父先子后
+        // 同样成立，但一旦树里出现「父节点的 children 列表里挂着已删子节点」的残留
+        // （历史缺陷：同键第二次请求会 `new_with_children` 抢走第一次的子节点），
+        // 删除父节点时就会在 `self.parents[child] = None` 处索引到已失效的键而 panic。
+        // 先子后父让这种残留在删到子节点时就自行解体，顺序也不再取决于哈希遍历次序。
+        let mut doomed = Vec::new();
         self.retained.retain(|_, retained| {
             if self.claimed_nodes.contains(&retained.node) {
                 return true;
             }
-            removed.push(retained.node);
+            doomed.push(retained.node);
             false
         });
-        for node in removed {
+        let doomed_set: FxHashSet<NodeId> = doomed.iter().copied().collect();
+        let mut ordered = Vec::with_capacity(doomed.len());
+        let mut visited = FxHashSet::default();
+        let mut stack: Vec<(NodeId, bool)> = doomed.iter().map(|node| (*node, false)).collect();
+        while let Some((node, expanded)) = stack.pop() {
+            // 第二趟（expanded）才落盘，保证子节点先于父节点。
+            if expanded {
+                if visited.insert(node) {
+                    ordered.push(node);
+                }
+                continue;
+            }
+            stack.push((node, true));
+            for child in self.taffy.children(node).expect(EXPECT_MESSAGE) {
+                if doomed_set.contains(&child) {
+                    stack.push((child, false));
+                }
+            }
+        }
+        for node in ordered {
             self.taffy.remove(node).expect(EXPECT_MESSAGE);
         }
-        for node in self.transient.drain(..) {
-            self.taffy.remove(node).expect(EXPECT_MESSAGE);
-        }
-        self.claimed.clear();
         self.claimed_nodes.clear();
+        self.occurrences.clear();
         self.frame_open = false;
         LayoutFrameStats {
             reused_clean: self.layout_nodes_reused,
@@ -178,6 +205,70 @@ impl TaffyLayoutEngine {
         }
     }
 
+    /// 取本帧给定路径键的下一个槽位（同键重复请求各占一个）。
+    ///
+    /// 除首次出现外，`occurrence > 0` 说明元素树里两处共享了同一个 `ElementId`：
+    /// 最常见的是默认 id 取自调用点的组件（`caller_element_id`）被放进循环、又没显式
+    /// 传 id。布局侧已按槽位分开，不会再损坏 Taffy 树；但 id 撞车通常同时意味着
+    /// keyed state 与命中测试取错实例，故用 debug 日志点出来，便于应用方定位。
+    fn next_slot(
+        &mut self,
+        key: crate::fast::layout_key::LayoutKey,
+    ) -> crate::fast::layout_key::LayoutSlot {
+        let occurrence = self.occurrences.entry(key).or_insert(0);
+        let slot = crate::fast::layout_key::LayoutSlot::new(key, *occurrence);
+        *occurrence += 1;
+        if slot.occurrence() > 0 {
+            log::debug!(
+                "同帧内布局键重复：{slot:?}（元素树里两处共享同一路径，通常是组件默认 id 进了循环而未显式传 id）"
+            );
+        }
+        slot
+    }
+
+    /// 把已挂在别的父节点上的子节点摘下来（正常路径不会走到）。
+    ///
+    /// `taffy::new_with_children` 只改写子节点的 parent 指针，不会把子节点从旧父节点
+    /// 的 `children` 列表里摘除，所以挂载前必须自己做一次。留双父残留的后果见
+    /// [`LayoutSlot`] 的文档。
+    fn detach_if_parented(&mut self, child: NodeId) {
+        let Some(old_parent) = self.taffy.parent(child) else {
+            return;
+        };
+        log::debug!(
+            "布局节点 {child:?} 被重复挂载，先从其旧父节点 {old_parent:?} 摘除，避免 Taffy 树出现双父残留"
+        );
+        // 直接调 `remove_child` 会在「旧父节点的列表里没有这个子节点」时自身 panic，
+        // 这里改成先查位置（`children` 返回克隆，仅这条异常路径上付出分配）。
+        if let Ok(siblings) = self.taffy.children(old_parent)
+            && let Some(index) = siblings.iter().position(|sibling| *sibling == child)
+        {
+            let _ = self.taffy.remove_child_at_index(old_parent, index);
+        }
+    }
+
+    /// 新建一个布局节点并挂上给定子节点。
+    ///
+    /// 调用点只有两处：槽位首次出现、以及保留关闭时的每帧新分配；两种情况下子节点
+    /// 都应当是本帧新建、尚无父节点的节点。挂载前仍统一做一次
+    /// [`detach_if_parented`](Self::detach_if_parented)，把「双父残留」从
+    /// 「依赖调用方不漏」变成「结构上不可能」。
+    fn new_node(&mut self, style: taffy::style::Style, children: &[LayoutId]) -> NodeId {
+        for child in children {
+            self.detach_if_parented((*child).into());
+        }
+        if children.is_empty() {
+            self.taffy.new_leaf(style)
+        } else {
+            self.taffy.new_with_children(
+                style,
+                // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
+                LayoutId::to_taffy_slice(children),
+            )
+        }
+        .expect(EXPECT_MESSAGE)
+    }
+
     pub fn request_layout(
         &mut self,
         style: Style,
@@ -190,43 +281,18 @@ impl TaffyLayoutEngine {
         self.ensure_frame_open();
         let taffy_style = style.to_taffy(rem_size, scale_factor);
 
-        // 保留关闭：旧行为（每帧新分配，帧末整树清空；不跟踪临时节点）。
+        // 保留关闭：旧行为（每帧新分配，帧末整树清空；不跟踪槽位）。
         // 注意 `children_nodes` 在此之后才构造：关闭路径沿用零分配切片。
         if !retain {
-            let node = if children.is_empty() {
-                self.taffy.new_leaf(taffy_style)
-            } else {
-                self.taffy.new_with_children(
-                    taffy_style,
-                    // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
-                    LayoutId::to_taffy_slice(children),
-                )
-            }
-            .expect(EXPECT_MESSAGE);
+            let node = self.new_node(taffy_style, children);
             self.layout_nodes_allocated += 1;
             return LayoutId::from(node);
         }
 
         let children_nodes: Vec<NodeId> = children.iter().map(|id| NodeId::from(*id)).collect();
+        let slot = self.next_slot(key);
 
-        // 同键本帧第二次使用：分配临时节点（帧末释放；内容正确、仅无保留）。
-        if !self.claimed.insert(key) {
-            let node = if children_nodes.is_empty() {
-                self.taffy.new_leaf(taffy_style)
-            } else {
-                self.taffy.new_with_children(
-                    taffy_style,
-                    // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
-                    LayoutId::to_taffy_slice(children),
-                )
-            }
-            .expect(EXPECT_MESSAGE);
-            self.transient.push(node);
-            self.layout_nodes_allocated += 1;
-            return LayoutId::from(node);
-        }
-
-        if let Some(retained) = self.retained.get_mut(&key) {
+        if let Some(retained) = self.retained.get_mut(&slot) {
             let node = retained.node;
             self.claimed_nodes.insert(node);
             let mut clean = true;
@@ -261,19 +327,10 @@ impl TaffyLayoutEngine {
             return LayoutId::from(node);
         }
 
-        let node = if children_nodes.is_empty() {
-            self.taffy.new_leaf(taffy_style)
-        } else {
-            self.taffy.new_with_children(
-                taffy_style,
-                // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
-                LayoutId::to_taffy_slice(children),
-            )
-        }
-        .expect(EXPECT_MESSAGE);
+        let node = self.new_node(taffy_style, children);
         self.claimed_nodes.insert(node);
         self.retained.insert(
-            key,
+            slot,
             RetainedNode {
                 node,
                 children: children_nodes,
@@ -306,7 +363,7 @@ impl TaffyLayoutEngine {
         self.ensure_frame_open();
         let taffy_style = style.to_taffy(rem_size, scale_factor);
 
-        // 保留关闭：旧行为（每帧新分配，帧末整树清空；不跟踪临时节点）。
+        // 保留关闭：旧行为（每帧新分配，帧末整树清空；不跟踪槽位）。
         if !retain {
             let node = self
                 .taffy
@@ -321,23 +378,9 @@ impl TaffyLayoutEngine {
             return (LayoutId::from(node), None);
         }
 
-        // 同键本帧第二次使用：分配临时节点（帧末释放）。
-        if !self.claimed.insert(key) {
-            let node = self
-                .taffy
-                .new_leaf_with_context(
-                    taffy_style,
-                    NodeContext {
-                        measure: StackSafe::new(Box::new(measure)),
-                    },
-                )
-                .expect(EXPECT_MESSAGE);
-            self.transient.push(node);
-            self.layout_nodes_allocated += 1;
-            return (LayoutId::from(node), None);
-        }
+        let slot = self.next_slot(key);
 
-        if let Some(retained) = self.retained.get_mut(&key) {
+        if let Some(retained) = self.retained.get_mut(&slot) {
             let node = retained.node;
             self.claimed_nodes.insert(node);
             // 文本 carry：指纹俱在且相等 → 不碰闭包，节点保持干净，
@@ -391,7 +434,7 @@ impl TaffyLayoutEngine {
             .expect(EXPECT_MESSAGE);
         self.claimed_nodes.insert(node);
         self.retained.insert(
-            key,
+            slot,
             RetainedNode {
                 node,
                 children: Vec::new(),
@@ -1009,6 +1052,100 @@ impl From<Size<Pixels>> for Size<AvailableSpace> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 请求一帧：同一条「父 → 子」路径出现两次（模拟同帧两处元素共享 `ElementId`），
+    /// 两次各带自己的子节点，返回 `(父A, 子A, 父B, 子B)`。
+    fn request_duplicated_frame(
+        engine: &mut TaffyLayoutEngine,
+        keys: &mut crate::fast::layout_key::WindowLayout,
+        style: &Style,
+    ) -> (LayoutId, LayoutId, LayoutId, LayoutId) {
+        let mut occurrence =
+            |engine: &mut TaffyLayoutEngine, keys: &mut crate::fast::layout_key::WindowLayout| {
+                let parent_key = keys.begin_node(None);
+                let child_key = keys.begin_node(None);
+                let child =
+                    engine.request_layout(style.clone(), Pixels(16.0), 1.0, &[], child_key, true);
+                keys.end_node();
+                let parent = engine.request_layout(
+                    style.clone(),
+                    Pixels(16.0),
+                    1.0,
+                    &[child],
+                    parent_key,
+                    true,
+                );
+                keys.end_node();
+                (parent, child)
+            };
+        let (parent_a, child_a) = occurrence(engine, keys);
+        let (parent_b, child_b) = occurrence(engine, keys);
+        (parent_a, child_a, parent_b, child_b)
+    }
+
+    /// 同键重复请求必须各占一个槽位：节点不复用、子节点不共享、且都跨帧保留。
+    ///
+    /// 回归 1.4 的保留式布局缺陷。旧实现把同键的第二次请求做成「临时节点」：它与
+    /// 第一次共享子节点时，`new_with_children` 只把子节点的 parent 指针改指到临时节点，
+    /// 第一次的父节点 `children` 列表里仍留着这个子节点，帧末删临时节点又把子节点清成
+    /// 无父（`layout_bounds` 随即把它当成根节点、子树整体错位），再往后清理父节点就在
+    /// taffy 的 `parents[child] = None` 处索引到失效键而 panic（`invalid SlotMap key used`）。
+    #[test]
+    fn duplicated_layout_key_uses_its_own_slot() {
+        let mut engine = TaffyLayoutEngine::new();
+        let mut keys = crate::fast::layout_key::WindowLayout::new();
+        let style = Style::default();
+
+        // 帧 1：一条「父 → 子」路径，全部新分配。
+        engine.begin_frame();
+        let parent_key = keys.begin_node(None);
+        let child_key = keys.begin_node(None);
+        let child = engine.request_layout(style.clone(), Pixels(16.0), 1.0, &[], child_key, true);
+        keys.end_node();
+        let parent =
+            engine.request_layout(style.clone(), Pixels(16.0), 1.0, &[child], parent_key, true);
+        keys.end_node();
+        let first = engine.end_frame(true);
+        assert_eq!(first.allocated, 2);
+        assert_eq!(engine.taffy.parent(child.into()), Some(parent.into()));
+
+        // 帧 2：同一条路径出现两次（两处元素共享同一个 `ElementId`）。
+        engine.begin_frame();
+        keys.begin_frame();
+        let (parent_a, child_a, parent_b, child_b) =
+            request_duplicated_frame(&mut engine, &mut keys, &style);
+        let second = engine.end_frame(true);
+
+        assert_eq!(second.reused_clean, 2, "第一次出现应命中上帧槽位");
+        assert_eq!(second.allocated, 2, "第二次出现应新开槽位");
+        assert_eq!(second.rewritten, 0);
+        assert_eq!(parent_a, parent);
+        assert_eq!(child_a, child);
+        assert_ne!(parent_b, parent_a, "同键两次请求必须是两个节点");
+        assert_ne!(child_b, child_a, "同键两次请求必须是两个节点");
+        // 子节点的父指针必须仍指向自己的父节点 —— 错位的根因就在这里。
+        assert_eq!(engine.taffy.parent(child_a.into()), Some(parent_a.into()));
+        assert_eq!(engine.taffy.parent(child_b.into()), Some(parent_b.into()));
+        // 两次请求的节点都要活到帧末：旧实现的第二次是临时节点，这里只会剩 2 个。
+        assert_eq!(engine.taffy.total_node_count(), 4);
+
+        // 帧 3：同样的重复结构再现，四个槽位全部无写入复用（旧实现每帧重开并丢弃两个节点）。
+        engine.begin_frame();
+        keys.begin_frame();
+        let _ = request_duplicated_frame(&mut engine, &mut keys, &style);
+        let third = engine.end_frame(true);
+        assert_eq!(third.reused_clean, 4);
+        assert_eq!(third.allocated, 0);
+        assert_eq!(third.rewritten, 0);
+
+        // 帧 4：整条路径消失，四个节点按先子后父清理，不得 panic。
+        engine.begin_frame();
+        keys.begin_frame();
+        let swept = engine.end_frame(true);
+        assert_eq!(swept.reused_clean, 0);
+        assert!(engine.retained.is_empty());
+        assert_eq!(engine.taffy.total_node_count(), 0);
+    }
 
     #[test]
     fn border_widths_to_taffy_use_stroke_snapping() {

@@ -13,6 +13,41 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct LayoutKey(u64);
 
+/// 本帧内第 n 次使用的路径键（[`LayoutKey`] + 出现序号）。
+///
+/// 同一帧里同一条元素路径可能被请求多次：两处元素共享同一个 `ElementId`
+/// （最常见的是把默认 id 取自调用点 `caller_element_id` 的组件放进循环、又没显式
+/// 传 id，见 `Element::id` 文档），或同一元素的 `request_layout` 里连开两个节点。
+///
+/// 多次请求必须落到**两个** Taffy 节点：Taffy 里一个节点只能有一个父节点，而
+/// `TaffyTree::new_with_children`（taffy 0.10 `taffy_tree.rs:598`）只把子节点的
+/// parent 指针改指到新节点，**不会**把子节点从旧父节点的 `children` 列表里摘掉。
+/// 让第二次请求复用第一次的节点、或与它共享子节点，都会留下「旧父节点仍列着这个
+/// 子节点」的残留：先表现为 `layout_bounds` 把这个子节点当成根节点、子树整体错位
+/// （内容画到容器外），之后清理节点时在 `TaffyTree::remove` 的
+/// `parents[child] = None` 处索引到已失效的 SlotMap 键而 panic
+/// （`invalid SlotMap key used`）。
+///
+/// 出现序号把多次请求分成各自独立、可跨帧复用的槽位：元素树结构稳定时序号也稳定，
+/// 每个槽位完整复用（比一次性临时节点更省）；序号漂移只带来重建，不会错位。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) struct LayoutSlot {
+    key: LayoutKey,
+    occurrence: u32,
+}
+
+impl LayoutSlot {
+    /// 由路径键与本帧内的出现序号（从 0 起）构造槽位。
+    pub(crate) fn new(key: LayoutKey, occurrence: u32) -> Self {
+        Self { key, occurrence }
+    }
+
+    /// 本帧内的出现序号（0 为首次；大于 0 表示该路径本帧被重复请求）。
+    pub(crate) fn occurrence(&self) -> u32 {
+        self.occurrence
+    }
+}
+
 /// 根种子（栈底常驻帧的键，永不弹出）。
 const ROOT_SEED: u64 = 0x9e37_79b9_7f4a_7c15;
 
@@ -32,12 +67,22 @@ pub(crate) struct WindowLayout {
 impl WindowLayout {
     /// 创建带根种子帧的空栈。
     pub(crate) fn new() -> Self {
-        Self {
-            stack: vec![LayoutFrame {
-                key: LayoutKey(ROOT_SEED),
-                child_index: 0,
-            }],
-        }
+        let mut layout = Self { stack: Vec::new() };
+        layout.begin_frame();
+        layout
+    }
+
+    /// 帧开始：键栈复位为只有根种子帧的一帧。
+    ///
+    /// 根种子帧的同级序号只在本帧内有意义。若不复位，它会跨帧累加，使根级无 id
+    /// 元素的键每帧都变、保留节点永不命中（同时每帧多删一次旧节点）；
+    /// 顺带兜住上一帧若有未配对的压栈残留。
+    pub(crate) fn begin_frame(&mut self) {
+        self.stack.clear();
+        self.stack.push(LayoutFrame {
+            key: LayoutKey(ROOT_SEED),
+            child_index: 0,
+        });
     }
 
     /// 进入一个元素的布局请求，返回其路径键。
@@ -189,5 +234,43 @@ mod tests {
         let again = layout.begin_node(Some(&view_id));
         layout.end_node();
         assert_eq!(first, again);
+    }
+
+    /// 根种子帧的同级序号按帧复位：根级无 id 元素跨帧复用同一个键。
+    #[test]
+    fn frame_reset_keeps_root_level_keys_stable() {
+        let mut layout = WindowLayout::new();
+
+        let frame_one = layout.begin_node(None);
+        layout.end_node();
+
+        layout.begin_frame();
+        let frame_two = layout.begin_node(None);
+        layout.end_node();
+        assert_eq!(
+            frame_one, frame_two,
+            "帧复位后根级无 id 元素必须得到同一个键，否则保留节点永不命中"
+        );
+
+        // 同一帧内仍按同级序号区分。
+        layout.begin_frame();
+        let sibling_a = layout.begin_node(None);
+        layout.end_node();
+        let sibling_b = layout.begin_node(None);
+        layout.end_node();
+        assert_ne!(sibling_a, sibling_b);
+    }
+
+    /// 出现序号区分同键的多次使用，序号相同的槽位相等（跨帧可复用）。
+    #[test]
+    fn slots_distinguish_repeated_use() {
+        let key = LayoutKey(ROOT_SEED);
+        let first = LayoutSlot::new(key, 0);
+        let repeated = LayoutSlot::new(key, 1);
+
+        assert_ne!(first, repeated);
+        assert_eq!(first.occurrence(), 0);
+        assert_eq!(repeated.occurrence(), 1);
+        assert_eq!(first, LayoutSlot::new(key, 0));
     }
 }

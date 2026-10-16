@@ -2193,6 +2193,11 @@ impl Window {
         self.window_layout.end_node();
     }
 
+    /// 帧开始：复位布局键栈（根种子帧的同级序号须按帧清零）。
+    pub(crate) fn begin_layout_frame(&mut self) {
+        self.window_layout.begin_frame();
+    }
+
     /// 关闭此窗口。
     pub fn remove_window(&mut self) {
         self.removed = true;
@@ -3065,6 +3070,8 @@ impl Window {
         // Retained 实验 hook：记录 draw 段耗时作为量化基线；`MEASUREMENTS` 开启时输出单行快照。
         let fast_draw_started = Instant::now();
         if !cx.mode.skip_drawing() {
+            // Retained P3a：布局键栈按帧复位（根种子帧的同级序号只在本帧有意义）。
+            self.begin_layout_frame();
             self.draw_roots(cx);
         }
         self.fast_stats.record_draw(
