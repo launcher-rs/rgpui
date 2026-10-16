@@ -213,6 +213,7 @@ pub struct Button {
     style: StyleRefinement,
     icon: Option<ButtonIcon>,
     label: Option<SharedString>,
+    aria_label: Option<SharedString>,
     children: Vec<AnyElement>,
     disabled: bool,
     pub(crate) selected: bool,
@@ -258,6 +259,7 @@ impl Button {
             style: StyleRefinement::default(),
             icon: None,
             label: None,
+            aria_label: None,
             disabled: false,
             selected: false,
             toggled: None,
@@ -310,6 +312,15 @@ impl Button {
     /// 设置按钮标签，如果未设置标签，则按钮为图标按钮模式。
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+
+    /// 设置无障碍名称（屏幕阅读器朗读的名字）。
+    ///
+    /// 未设置时回退到 [`label`](Self::label)；图标按钮没有可见标签，应当用此方法
+    /// 提供一个名称（tooltip 只是提示，不能代替名称）。
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
         self
     }
 
@@ -502,9 +513,10 @@ impl RenderOnce for Button {
             } else {
                 Role::Button
             })
-            .when_some(self.label.as_ref(), |this, label| {
-                this.aria_label(label.clone())
-            })
+            .when_some(
+                self.aria_label.clone().or_else(|| self.label.clone()),
+                |this, label| this.aria_label(label),
+            )
             .when_some(self.toggled, |this, toggled| {
                 this.aria_toggled(if toggled {
                     crate::accesskit::Toggled::True

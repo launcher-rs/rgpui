@@ -104,6 +104,20 @@
   单个文件解析失败只跳过该文件并 `tracing::warn`，不影响其余文件
 - 目录扫描在后台执行器、重载在前台切换，不阻塞 UI；Web 平台无文件系统，自动跳过
 
+### 小组件补齐：GroupBox / DescriptionList / Clipboard
+
+- 新增 `GroupBox`（`GroupBoxVariant` + `GroupBoxVariants`）：带可选标题与页脚的
+  内容分组容器，`Normal`/`Fill`/`Outline` 三态；主题令牌 `tokens.group_box`、
+  `group_box_foreground`、`muted_foreground`、`border` 此前已定义却无用武之地
+- 新增 `DescriptionList` / `DescriptionItem` / `DescriptionText`：水平（默认 3 列，
+  可设标签宽与列跨度）与垂直两种布局的「标签/值」列表；令牌
+  `tokens.description_list_label`、`description_list_label_foreground` 落地
+- 新增 `Clipboard`：一键复制图标按钮，点击经 `App::write_to_clipboard` 写入系统
+  剪贴板，2 秒内显示对勾后自动恢复；支持 `value` / `value_fn` / `on_copied` /
+  `tooltip` / `aria_label` 与尺寸
+- `Button` 新增 `aria_label`：图标按钮没有可见标签，此前无障碍名只能由 `label`
+  派生，纯图标按钮因此无名；现在可显式提供，未设置时仍回退 `label`
+
 ### 主题：JSON Schema 生成
 
 - 新增 `theme::theme_json_schema()`（`ThemeSet` 的 JSON Schema 字符串）与
