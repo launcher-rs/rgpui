@@ -4,6 +4,76 @@
 
 ## [Unreleased]
 
+### 无障碍：尊重系统「减少动态效果」设置
+
+- `Platform` 新增 `reduce_motion_enabled()`，四平台各自读取系统设置：Windows
+  `SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)`（对应「设置 → 辅助功能 →
+  视觉效果 → 动画效果」）、macOS `NSWorkspace.accessibilityDisplayShouldReduceMotion`、
+  Linux 经 XDG 桌面门户读 `org.freedesktop.appearance` 的 `animations-disabled`，
+  桌面环境未实现该键时回退 GNOME `org.gnome.desktop.interface` 的 `enable-animations`
+  （语义相反）并取反、Web `prefers-reduced-motion: reduce`
+- 此前 `App::reduce_motion` 只有 `elements/animation.rs` 与 `elements/img.rs` 在读，
+  `set_reduce_motion` 全仓仅测试调用 —— 即系统设置从来没人写进核心层。现在每次创建
+  窗口都会同步一次平台值，这是平台值进入核心层的唯一路径
+- 新增 `App::set_reduce_motion` 的覆盖语义：应用一旦显式设置过，后续创建窗口不再被
+  系统值改写（`App::reduce_motion_override`）；不加这层锁，应用的手动选择会被每个新
+  窗口冲掉，`test_reduce_motion_renders_single_static_frame` 正是如此失败的
+- 如实标注限制：Linux 门户值是异步送达的，若首个窗口创建早于门户回包，本窗口按默认
+  （动画开启）渲染，后续窗口才跟随系统；Windows/macOS 的实时切换需重开窗口生效
+
+### 编辑器：接通 Code Action（快速修复）
+
+- 新增 `input_ui::editor::code_actions`：`CodeActionProvider` trait（默认空实现）+
+  `EditorState` 侧 `set_code_action_provider` / `request_code_actions` /
+  `toggle_code_actions` / `accept_code_action` / `dismiss_code_actions` /
+  `select_next_code_action` / `select_previous_code_action` / `code_action_menu_active`
+- 此前 `LspClient::code_actions` 与 stdio 传输都在，全仓零调用点 —— 补的是编辑器侧
+  接线，不是新传输能力；修复菜单浮层由 `Editor` 自带渲染，应用注入 provider 即可用
+- 键位：新增 `ToggleCodeActions` 动作绑 `Alt+Enter`；菜单激活时 ↑↓ 改选、Enter 应用、
+  Esc 收起（与补全菜单共用捕获通道，补全优先）；文本变更即收起，不留僵尸菜单
+- 编辑应用只认**当前文档**：按起始偏移倒序落笔，LSP 行列按 UTF-8 字节列换算，
+  应用后光标回原位；多文件 `documentChanges` 中别家文件、文件创建/重命名/删除操作、
+  命令型动作（只有 `command` 没有 `edit`）均不执行，v1 边界已在模块头注明
+- 程序化写入同样发 `Change`：应用时逐段抑制一次自动补全（`accept_completion`
+  同款），避免插入文本刚好命中触发条件就在写入处弹出补全菜单
+- 新增 `EditorState::document_uri()` 访问器（修复应用按 URI 挑本文档的编辑）
+- 调用点：`examples/v1_2_showcase/src/bin/editor.rs` 的 `DemoCodeActionProvider`
+  （行首加注释 / 选区替换 / 有诊断时首选标注）；`cargo test -p rgpui --lib`
+  全绿（含 4 条 code_action 用例），`cargo check --workspace` 与改动包
+  clippy 全绿，验证细节见 `docs/1.4.2/gpui-kit-borrow-plan.md` §四
+
+### 无障碍：基础组件标注补齐
+
+- `Checkbox` 报 `CheckBox` + 切换态 + 标签，`Radio` 报 `RadioButton` +
+  切换态 + 选中态 + 标签，`RadioGroup` 容器报 `RadioGroup` + 布局方向，
+  `Slider` 报 `Slider` + 数值/范围/步长/方向 + 递增递减动作，禁用态不挂增减
+  （辅助技术拿不到改值入口，与 checkbox/radio 同款口径，照抄 gpui-kit）。
+- 新增 `SliderState::min_value/max_value/step_value` 取值器；渲染树零变化。
+- `Switch` 本来就有，`Toggle` 经 `Button` 间接继承，都不动。
+
+### 滚动：越界回弹接进滚动层
+
+- 新增 `elements/scroll::Overscroll` 包装器 + `Scrollable::overscroll(bool)`
+  （默认关）：逻辑位保持钳制，只做视觉位移；物理直接用既有 `ScrollPhysics`
+  （每轴一个，边界 `[0, 0]`），该模块至此有了生产调用点。
+- 触摸与滚轮走同一条 `ScrollWheelEvent` 路径；`reduce_motion` 下自动退化。
+- 调用点：`examples/gradient` 开了一处；v1 边界见模块头注释。
+
+### CI 卫生与死代码清理
+
+- CI 新增 hygiene job（ubuntu 单跑）：`typos`（根 `_typos.toml`）、
+  `cargo machete`、`check_platform_calls.py`；矩阵 job 加 feature 组合检查
+  （`editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter*` 三平台 +
+  `webview` 仅 Linux）与 `cargo test -p rgpui-dom`。
+- `.rustfmt.toml` 故意不加（等于全仓重排），逐包 `fmt --check` 已够。
+- 删掉 13 个无调用点的 `Platform`/`PlatformWindow` 死方法及 5 个连带孤儿类型
+  （麦克风/生物识别特例、媒体键、网络回调、注意力、Dock 徽章、原生弹窗、
+  扩展样式、`a11y_update_window_bounds`），以及 `cargo-machete` 报的 13 个死依赖；
+  `get_raw_handle` 核实为后端内部正当调用后保留。AGENTS.md 平台清单同步更新。
+- 另修无头 Windows 上 `rgpui-wgpu` 测试进程崩溃：Intel Vulkan 驱动在
+  `request_device` 里段错误，测试 helper 在 Windows 改走 DX12（同块卡正常，
+  无头时 WARP 兜底），Linux/macOS 不动；`RGPUI_TEST_BACKENDS` 可强制后端。
+
 ## [1.4.2] - 2026-10-09
 
 > 本次只发布 `rgpui-linux` 一个 crate：X11 后端修复全部落在该 crate 内，其余 crate 的源码与

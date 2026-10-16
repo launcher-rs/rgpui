@@ -763,6 +763,9 @@ pub struct App {
     pub(crate) mode: GpuiMode,
     pub(crate) cursor_hide_mode: CursorHideMode,
     pub(crate) reduce_motion: bool,
+    /// 应用是否已通过 [`App::set_reduce_motion`] 显式指定过减少动态效果。
+    /// 置位后不再被平台（系统无障碍设置）的值改写。
+    pub(crate) reduce_motion_override: bool,
     /// 共享时钟的原点，用于相位锁定同步的重复动画。
     pub(crate) synced_animation_epoch: Instant,
     /// 应用是否由 [`Application::new_inaccessible`] 创建。
@@ -871,6 +874,7 @@ impl App {
                 quitting: false,
                 cursor_hide_mode: CursorHideMode::default(),
                 reduce_motion: false,
+                reduce_motion_override: false,
                 synced_animation_epoch,
                 accessibility_force_disabled: false,
 
@@ -1036,7 +1040,27 @@ impl App {
     }
 
     /// 设置非必要动画（如加载旋转器）是否应以静态状态渲染而非动画播放。
+    ///
+    /// 一旦调用过，本值即视为应用的显式决定，后续创建窗口不会再被系统
+    /// 「减少动态效果」设置改写；若想让应用跟随系统，改用
+    /// [`App::reduce_motion`] 读取即可，平台值会在每次创建窗口时同步进来。
     pub fn set_reduce_motion(&mut self, reduce_motion: bool) {
+        self.reduce_motion_override = true;
+        if self.reduce_motion != reduce_motion {
+            self.reduce_motion = reduce_motion;
+            self.refresh_windows();
+        }
+    }
+
+    /// 从平台读取系统「减少动态效果」设置并同步进来。
+    ///
+    /// 应用已显式指定过（见 [`App::set_reduce_motion`]）时不做任何事。
+    /// 由窗口创建流程调用，这是平台值进入核心层的唯一路径。
+    fn sync_reduce_motion_from_platform(&mut self) {
+        if self.reduce_motion_override {
+            return;
+        }
+        let reduce_motion = self.platform.reduce_motion_enabled();
         if self.reduce_motion != reduce_motion {
             self.reduce_motion = reduce_motion;
             self.refresh_windows();
@@ -1261,6 +1285,9 @@ impl App {
                         cx.new(|cx| Root::new(root_view, cx)).into()
                     };
                     window.root.replace(root_view);
+                    // 系统「减少动态效果」设置的写入点：装饰性动画元素在绘制期读
+                    // `App::reduce_motion`，此前无人赋值，故在每次创建窗口时同步一次平台值。
+                    cx.sync_reduce_motion_from_platform();
                     window.defer(cx, |window: &mut Window, cx| window.appearance_changed(cx));
 
                     // allow a window to draw at least once before returning

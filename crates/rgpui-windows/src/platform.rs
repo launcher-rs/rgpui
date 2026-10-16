@@ -594,6 +594,10 @@ impl Platform for WindowsPlatform {
         system_appearance().log_err().unwrap_or_default()
     }
 
+    fn reduce_motion_enabled(&self) -> bool {
+        !crate::client_area_animation_enabled()
+    }
+
     fn open_url(&self, url: &str) {
         if url.is_empty() {
             return;
@@ -827,16 +831,6 @@ impl Platform for WindowsPlatform {
 
     /// 请求权限（Windows 无对应弹窗，无需请求）
     fn request_permission(&self, _kind: PermissionType) {}
-
-    /// 获取麦克风权限状态（Windows 默认授予）
-    fn microphone_status(&self) -> PermissionStatus {
-        PermissionStatus::Granted
-    }
-
-    /// 请求麦克风权限（Windows 无需请求）
-    fn request_microphone_permission(&self, callback: Box<dyn FnOnce(bool)>) {
-        callback(true);
-    }
 
     fn on_app_menu_action(&self, callback: Box<dyn FnMut(&dyn Action)>) {
         self.inner

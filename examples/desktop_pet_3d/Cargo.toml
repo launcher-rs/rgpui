@@ -9,5 +9,4 @@ anyhow.workspace = true
 rgpui.workspace = true
 rgpui-platform.workspace = true
 rgpui-3d.workspace = true
-rgpui-character.workspace = true
 smol.workspace = true

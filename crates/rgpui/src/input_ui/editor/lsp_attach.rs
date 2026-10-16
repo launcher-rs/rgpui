@@ -234,6 +234,15 @@ impl EditorState {
         }
     }
 
+    /// 标记「紧随其后的一次文本变更不要触发自动补全」。
+    ///
+    /// 与 [`EditorState::accept_completion`] 同款：程序化写入（如应用 Code Action）
+    /// 也会发 `Change`，不抑制的话，若写入文本刚好命中触发条件（末字符是单词且
+    /// 前缀够长、或触发字符），会在写入处立刻弹出补全。多段编辑应每段写入前各调一次。
+    pub(super) fn suppress_auto_complete_once(&mut self) {
+        self.lsp.auto_suppress_once = true;
+    }
+
     /// 设置诊断 provider（应用实现传输后注入；传 `None` 断开并清空诊断）。
     pub fn set_diagnostics_provider(
         &mut self,
@@ -262,10 +271,15 @@ impl EditorState {
         }
     }
 
-    /// 设置当前文档 URI（诊断请求按 URI 取数）。
+    /// 当前文档 URI（诊断请求按 URI 取数）。
     pub fn set_document_uri(&mut self, uri: Option<Uri>, cx: &mut Context<Self>) {
         self.lsp.document_uri = uri;
         cx.notify();
+    }
+
+    /// 当前文档 URI（修复应用按 URI 挑属于本文档的编辑）。
+    pub fn document_uri(&self) -> Option<&Uri> {
+        self.lsp.document_uri.as_ref()
     }
 
     /// 当前补全状态（列表/选中/可见，应用层按需读取）。

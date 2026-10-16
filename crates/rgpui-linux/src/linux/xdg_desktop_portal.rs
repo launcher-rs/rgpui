@@ -19,6 +19,8 @@ pub enum Event {
     CursorSize(u32),
     /// 窗口按钮布局变化
     ButtonLayout(String),
+    /// 系统「减少动态效果」无障碍设置变化
+    ReduceMotion(bool),
 }
 
 /// XDG 桌面门户事件源
@@ -29,7 +31,7 @@ pub struct XDPEventSource {
 impl XDPEventSource {
     /// 创建新的 XDP 事件源
     ///
-    /// 订阅桌面门户设置变化，包括颜色方案、光标主题、光标大小和按钮布局
+    /// 订阅桌面门户设置变化，包括颜色方案、光标主题、光标大小、按钮布局和减少动态效果
     ///
     /// # 参数
     ///
@@ -68,6 +70,10 @@ impl XDPEventSource {
                     .await
                 {
                     sender.send(Event::ButtonLayout(initial_layout))?;
+                }
+
+                if let Some(reduce_motion) = read_reduce_motion(&settings).await {
+                    sender.send(Event::ReduceMotion(reduce_motion))?;
                 }
 
                 if let Ok(mut cursor_theme_changed) = settings
@@ -121,6 +127,45 @@ impl XDPEventSource {
                             while let Some(layout) = button_layout_changed.next().await {
                                 let layout = layout?;
                                 sender.send(Event::ButtonLayout(layout))?;
+                            }
+                            anyhow::Ok(())
+                        })
+                        .detach();
+                }
+
+                if let Ok(mut animations_changed) = settings
+                    .receive_setting_changed_with_args::<bool>(
+                        "org.freedesktop.appearance",
+                        "animations-disabled",
+                    )
+                    .await
+                {
+                    let sender = sender.clone();
+                    background
+                        .spawn(async move {
+                            while let Some(disabled) = animations_changed.next().await {
+                                sender.send(Event::ReduceMotion(disabled?))?;
+                            }
+                            anyhow::Ok(())
+                        })
+                        .detach();
+                }
+
+                // 桌面环境未实现门户 `animations-disabled` 时，初值走 GNOME
+                // `enable-animations` 回退（语义相反）；变更订阅同样补一条，
+                // 否则 GNOME 上运行时改设置只改了初值路径、收不到事件。
+                if let Ok(mut animations_enabled) = settings
+                    .receive_setting_changed_with_args::<bool>(
+                        "org.gnome.desktop.interface",
+                        "enable-animations",
+                    )
+                    .await
+                {
+                    let sender = sender.clone();
+                    background
+                        .spawn(async move {
+                            while let Some(enabled) = animations_enabled.next().await {
+                                sender.send(Event::ReduceMotion(!enabled?))?;
                             }
                             anyhow::Ok(())
                         })
@@ -199,4 +244,27 @@ fn window_appearance_from_color_scheme(cs: ColorScheme) -> WindowAppearance {
         ColorScheme::PreferLight => WindowAppearance::Light,
         ColorScheme::NoPreference => WindowAppearance::Light,
     }
+}
+
+/// 读取「减少动态效果」设置。
+///
+/// 优先取门户 `org.freedesktop.appearance` 的 `animations-disabled`（并非所有
+/// 桌面环境都实现该键）；取不到时回退 GNOME 的 `enable-animations`（语义相反）。
+/// 两者都读不到时返回 `None`，由调用方保持平台侧默认值（动画开启）。
+///
+/// 注：该值只在创建窗口时被核心层读取（`App::sync_reduce_motion_from_platform`），
+/// 因此下面的变更事件只影响其后新建的窗口，不热切换已开窗口。
+async fn read_reduce_motion(settings: &Settings) -> Option<bool> {
+    if let Ok(disabled) = settings
+        .read::<bool>("org.freedesktop.appearance", "animations-disabled")
+        .await
+    {
+        return Some(disabled);
+    }
+
+    settings
+        .read::<bool>("org.gnome.desktop.interface", "enable-animations")
+        .await
+        .ok()
+        .map(|animations| !animations)
 }

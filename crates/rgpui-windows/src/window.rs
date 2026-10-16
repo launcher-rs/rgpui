@@ -1157,10 +1157,6 @@ impl PlatformWindow for WindowsWindow {
         }
     }
 
-    fn a11y_update_window_bounds(&self) {
-        // Windows UIA handles window bounds tracking automatically.
-    }
-
     /// 开始由系统接管的窗口拖动
     fn start_window_move(&self) {
         unsafe {
@@ -1184,31 +1180,6 @@ impl PlatformWindow for WindowsWindow {
     fn set_mouse_passthrough(&self, passthrough: bool) {
         self.0.state.mouse_passthrough.set(passthrough);
         self.0.sync_mouse_passthrough_style(passthrough);
-    }
-
-    /// 获取窗口扩展样式（GWL_EXSTYLE）
-    fn window_extended_style(&self) -> u32 {
-        unsafe { get_window_long(self.0.hwnd, GWL_EXSTYLE) as u32 }
-    }
-
-    /// 设置窗口扩展样式（GWL_EXSTYLE）
-    ///
-    /// 设置后调用 `SetWindowPos` 刷新窗口以应用更改。
-    /// 可用于调试，调用者负责确保样式的合法性。
-    fn set_window_extended_style(&self, style: u32) {
-        unsafe {
-            set_window_long(self.0.hwnd, GWL_EXSTYLE, style as isize);
-            SetWindowPos(
-                self.0.hwnd,
-                None,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
-            )
-            .log_err();
-        }
     }
 
     /// 设置标题栏和边框是否可见

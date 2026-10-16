@@ -26,6 +26,7 @@ impl Render for GradientViewer {
             .bg(rgpui::white())
             .size_full()
             .overflow_y_scrollbar()
+            .overscroll(true)
             .p_4()
             .flex()
             .flex_col()

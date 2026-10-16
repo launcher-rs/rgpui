@@ -171,6 +171,8 @@ pub(crate) struct LinuxCommon {
     pub(crate) foreground_executor: ForegroundExecutor,
     pub(crate) text_system: Arc<dyn PlatformTextSystem>,
     pub(crate) appearance: WindowAppearance,
+    /// 系统「减少动态效果」设置，由 XDG 桌面门户事件更新；默认 `false`（动画开启）
+    pub(crate) reduce_motion: bool,
     pub(crate) auto_hide_scrollbars: bool,
     pub(crate) button_layout: WindowButtonLayout,
     pub(crate) callbacks: PlatformHandlers,
@@ -223,6 +225,7 @@ impl LinuxCommon {
             foreground_executor: ForegroundExecutor::new(dispatcher),
             text_system,
             appearance: WindowAppearance::Light,
+            reduce_motion: false,
             auto_hide_scrollbars: false,
             button_layout: WindowButtonLayout::linux_default(),
             callbacks,
@@ -884,6 +887,10 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
     fn window_appearance(&self) -> WindowAppearance {
         self.inner.with_common(|common| common.appearance)
+    }
+
+    fn reduce_motion_enabled(&self) -> bool {
+        self.inner.with_common(|common| common.reduce_motion)
     }
 
     fn button_layout(&self) -> Option<WindowButtonLayout> {
