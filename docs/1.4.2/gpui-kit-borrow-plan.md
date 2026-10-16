@@ -205,10 +205,8 @@ headless UI 测试层、PaneTree dock 引擎（只抄概念不抄体量）、自
   `typos` / `cargo machete` / `check_platform_calls.py` 全绿。
 - macOS / Linux 的 `cfg` 代码（macOS 后端、Linux x11/wayland 删除点）本机不编译，
   靠 CI 三平台矩阵兜（AGENTS.md 已注明）；feature 组合 CI 覆盖见§七。
-- 例外：**Web 未被任何 CI 覆盖**。`rgpui-web` 是 `#![cfg(target_family = "wasm")]`，
-  三平台矩阵都是原生 target，没有 wasm job，所以第 2 项 Web 侧的
-  `reduce_motion_enabled`（`match_media`）本分支未被构建过 —— 写法按 `web-sys`
-  的 `Window::match_media` / `MediaQueryList::matches()` 写的，需要单独
-  `cargo check -p rgpui-web --target wasm32-unknown-unknown`（nightly）才能验证，
-  当前作为已知缺口记录。
+- Web 侧：`rgpui-web` 是 `#![cfg(target_family = "wasm")]`，三平台原生矩阵看不到它，
+  故 CI 另加一个 `wasm` job（nightly + `wasm32-unknown-unknown`）跑
+  `cargo check -p rgpui-web --target wasm32-unknown-unknown`，覆盖第 2 项 Web 的
+  `reduce_motion_enabled`（`Window::match_media` / `MediaQueryList::matches()`）。
 - 分支 `feat/a11y-motion-and-code-action`，main 受保护，合入走 PR（Squash + Conventional Commits）。

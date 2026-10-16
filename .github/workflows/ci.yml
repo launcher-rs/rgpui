@@ -106,6 +106,23 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
+  # Web/WASM 独立 job：rgpui-web 是 `#![cfg(target_family = "wasm")]`，
+  # 三平台原生矩阵看不到它，必须单独用 nightly + wasm32 目标类型检查。
+  wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo check (rgpui-web, wasm)
+        run: cargo check -p rgpui-web --target wasm32-unknown-unknown
+
   # 平台无关的卫生检查，只跑一次（ubuntu），不进三平台矩阵。
   hygiene:
     runs-on: ubuntu-latest
