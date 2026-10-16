@@ -28,7 +28,7 @@ pub(crate) struct FrameStats {
     layout_nodes_reused: u64,
     /// 命中但改写的布局节点数（仅省分配）。
     layout_nodes_rewritten: u64,
-    /// 新分配的布局节点数（含临时节点）。
+    /// 新分配的布局节点数（含同键重复请求新开的槽位）。
     layout_nodes_allocated: u64,
 }
 

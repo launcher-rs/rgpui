@@ -27,8 +27,8 @@
 | P2a | `ViewElement` prepaint／paint 复用：命中即丢弃本帧渲染产物，重放上帧区间（hitbox、dispatch 子树、监听器、场景、文本布局、调试边界） |
 | P2c | oracle 对等校验（双窗逐帧比对 `Scene`＋hitbox＋调试边界）＋ `retention_override` 开关 |
 | P2d | headless 双窗对照基准（60 面板 × 64 标签仪表盘，见 §5） |
-| P3a | Taffy 布局节点跨帧保留（路径键 `LayoutKey`，样式／子节点／测量三重比对，命中即不写，Taffy 自身缓存存活）＋ 文本测量 carry（指纹一致直接交还旧测量） |
-| 加固 | `frame_seq` 范围守卫（只信任上一帧区间）、sweep 按认领节点存活、`focus_generation` 焦点守卫 |
+| P3a | Taffy 布局节点跨帧保留（路径槽位 `LayoutSlot` = 路径键 + 本帧出现序号，样式／子节点／测量三重比对，命中即不写，Taffy 自身缓存存活）＋ 文本测量 carry（指纹一致直接交还旧测量） |
+| 加固 | `frame_seq` 范围守卫（只信任上一帧区间）、sweep 按认领节点存活（先子后父）、`focus_generation` 焦点守卫、布局键栈按帧复位、挂载前摘除已挂父的子节点 |
 
 复用判定链（`crates/rgpui/src/view.rs`，全真才复用，只会多重建、不会复用过期帧）：
 
@@ -83,6 +83,14 @@
   在“鼠标动了、但绘制由别处触发”的按需绘制中，输出可能滞后一帧（下一次重建即自纠正，
   无脏数据）。gpui-fast 中的做法是在窗口读路径挂记录器，改造成本高，
   暂列为已知问题。
+- **同一帧内同一路径多次请求是合法的**：同一 `ElementId` 在同一父节点下出现两次
+  （典型来源：默认 id 取自调用点的组件被放进循环、又没显式传 id，见
+  `element::caller_element_id` 的文档）会得到相同的路径键。布局侧按**出现序号**把两次
+  请求分成两个独立槽位（`LayoutSlot`），各持一个 Taffy 节点并各自跨帧复用：一个 Taffy
+  节点只能有一个父节点，让两次请求共享节点／子树就会在 taffy 里留下「父节点的 children
+  列表仍列着已改嫁的子节点」的残留，先表现为子树整体错位、之后在清理时 panic
+  （`invalid SlotMap key used`）。id 撞车通常同时意味着 keyed state 与命中测试取错实例，
+  属应用侧缺陷，故 debug 级日志会点出重复的槽位（`RUST_LOG=debug` 可见）。
 
 ## 开关：开启与关闭
 
@@ -133,12 +141,13 @@ cargo test -p rgpui --lib
 ## 7. 代码地图
 
 - `crates/rgpui/src/fast/` —— `mod.rs`（开关 discipline）、`dependencies.rs`（代际／记录器／
-  快照判定）、`layout_key.rs`（路径键）、`stats.rs`（帧统计）、`tests/oracle.rs`（对等）、
+  快照判定）、`layout_key.rs`（路径键 + 槽位 + 帧复位）、`stats.rs`（帧统计）、
+  `tests/oracle.rs`（对等）、`tests/duplicate_key.rs`（同键重复回归）、
   `tests/retained_bench.rs`（基准）。
 - `crates/rgpui/src/view.rs` —— `ViewElementState`（区间＋依赖＋帧序号＋焦点代际）、
   复用判定链、重放／重建两分支。
-- `crates/rgpui/src/taffy.rs` —— `TaffyLayoutEngine` 节点保留／指纹／认领／sweep、
-  `measure_fingerprint` 文本 carry。
+- `crates/rgpui/src/taffy.rs` —— `TaffyLayoutEngine` 节点保留／指纹／认领／sweep
+  （先子后父）、`measure_fingerprint` 文本 carry。
 - `crates/rgpui/src/window.rs` —— `frame_seq`、`fast_stats`、`reuse_prepaint`／`reuse_paint`
-  区间重放、`retention_override`。
+  区间重放、`retention_override`、`begin_layout_frame`（布局键栈按帧复位）。
 - `crates/rgpui/src/element.rs` —— `Drawable::request_layout` 统一钩点。

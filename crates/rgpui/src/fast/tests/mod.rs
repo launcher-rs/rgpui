@@ -8,5 +8,6 @@
 //! cached 视图契约统一）；被读取的实体无 `notify` 更新也必须可见（generation
 //! 捕获）。故 oracle 只含这两种，不含“更新自身而不 notify”（该情形要求 notify）。
 
+mod duplicate_key;
 mod oracle;
 mod retained_bench;

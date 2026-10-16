@@ -4,6 +4,34 @@
 
 ## [1.5.0] - 2026-10-16
 
+### 保留式布局：修复同键重复请求导致的偶发错位与 panic
+
+- 症状（下游 rucode 报回，1.4.0／1.5.0 均中）：保留模式默认开启时，界面某块内容整体
+  上移、盖住标题栏，随后偶发 `invalid SlotMap key used` panic，栈顶为
+  `TaffyLayoutEngine::end_frame` ← `Window::draw`。
+- 根因：同一帧里两处元素路径相同时（同一 `ElementId` 在同一父节点下出现两次，最常见
+  来源是默认 id 取自调用点的组件被放进循环却没显式传 id），旧实现把第二次请求做成
+  「临时节点」并与第一次共享子节点。`taffy::new_with_children` 只把子节点的 parent
+  指针改指到新节点、**不**把它从旧父节点的 `children` 列表里摘掉，于是留下「旧父节点
+  仍列着这个子节点」的残留：`layout_bounds` 先把该子节点当成根节点（子树整体错位），
+  之后清理节点时在 `TaffyTree::remove` 的 `parents[child] = None` 处索引到已失效的
+  Key 而 panic（顺序取决于哈希遍历次序，故表现为偶发）。
+- 修法：路径键升级为**路径槽位**（`fast::layout_key::LayoutSlot` = 路径键 + 本帧出现
+  序号）。同键多次请求各占一个槽位、各持一个 Taffy 节点，互不复用、互不共享子节点，
+  且**各自跨帧复用**（旧实现的临时节点每帧重开重删，纯属浪费）。删除 `claimed` /
+  `transient` 临时节点机制。
+- 同时加固三处：① 新建节点挂子节点前先按 taffy 口径把已挂父的子节点摘除
+  （把「不留双父残留」从“依赖调用方不漏”变成结构保证）；② 帧末 sweep 改为按认领节点
+  先子后父删除，清理顺序不再取决于哈希遍历次序；③ 布局键栈按帧复位
+  （`Window::begin_layout_frame`）——根种子帧的同级序号此前跨帧累加，导致根级无 id
+  元素的键每帧都变、保留永远命中不上。
+- 同键重复请求属应用侧 id 撞车（也意味着 keyed state／命中测试会取错实例），但布局
+  不再因此损坏：`RUST_LOG=debug` 会点出重复的槽位，便于定位调用点。
+- 回归：新增 `taffy::tests::duplicated_layout_key_uses_its_own_slot`（引擎级：两次请求
+  两个节点、父指针不丢、四槽位跨帧复用、消失后先子后父清理不 panic）与
+  `fast::tests::duplicate_key`（元素级：两处同 id 兄弟连绘三帧，场景逐帧一致、子元素
+  不错位、静止帧零新分配）。两条用例在旧实现下均失败。
+
 ### 无障碍：尊重系统「减少动态效果」设置
 
 - `Platform` 新增 `reduce_motion_enabled()`，四平台各自读取系统设置：Windows
