@@ -34,6 +34,8 @@
 - 编辑应用只认**当前文档**：按起始偏移倒序落笔，LSP 行列按 UTF-8 字节列换算，
   应用后光标回原位；多文件 `documentChanges` 中别家文件、文件创建/重命名/删除操作、
   命令型动作（只有 `command` 没有 `edit`）均不执行，v1 边界已在模块头注明
+- 程序化写入同样发 `Change`：应用时逐段抑制一次自动补全（`accept_completion`
+  同款），避免插入文本刚好命中触发条件就在写入处弹出补全菜单
 - 新增 `EditorState::document_uri()` 访问器（修复应用按 URI 挑本文档的编辑）
 - 调用点：`examples/v1_2_showcase/src/bin/editor.rs` 的 `DemoCodeActionProvider`
   （行首加注释 / 选区替换 / 有诊断时首选标注）；`cargo test -p rgpui --lib`
@@ -44,7 +46,8 @@
 
 - `Checkbox` 报 `CheckBox` + 切换态 + 标签，`Radio` 报 `RadioButton` +
   切换态 + 选中态 + 标签，`RadioGroup` 容器报 `RadioGroup` + 布局方向，
-  `Slider` 报 `Slider` + 数值/范围/步长/方向 + 递增递减动作（口径照抄 gpui-kit）。
+  `Slider` 报 `Slider` + 数值/范围/步长/方向 + 递增递减动作，禁用态不挂增减
+  （辅助技术拿不到改值入口，与 checkbox/radio 同款口径，照抄 gpui-kit）。
 - 新增 `SliderState::min_value/max_value/step_value` 取值器；渲染树零变化。
 - `Switch` 本来就有，`Toggle` 经 `Button` 间接继承，都不动。
 

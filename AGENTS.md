@@ -125,7 +125,8 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 `get_raw_handle`（仅 Windows，后端 `open_window` 登记 HWND 用）。
 `Platform` 约 35+ 自有方法：托盘 8 件套、全局热键、通知、电源、权限（统一走
 `check_permission` / `request_permission`，类别见 `PermissionType`）、
-网络状态、系统信息、Dock 菜单、上下文菜单；
+网络状态、系统信息、Dock 菜单、上下文菜单、`reduce_motion_enabled`（系统「减少
+动态效果」，四平台各自读取，核心层每次建窗同步一次）；
 另 `WindowOptions.mouse_passthrough`、`WindowKind::Overlay`、Mica 材质、
 `tray.rs` / `single_instance.rs`。
 

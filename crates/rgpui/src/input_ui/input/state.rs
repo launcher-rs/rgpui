@@ -312,7 +312,7 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("cmd-j", JoinLines, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-j", JoinLines, Some(CONTEXT)),
-        // 快速修复菜单（VSCode 同款 `Alt+Enter`）。
+        // 快速修复菜单（`Alt+Enter`，IntelliJ 系同款；VSCode 是 Ctrl+. / Cmd+.）。
         KeyBinding::new("alt-enter", ToggleCodeActions, Some(CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-alt-up", AddCursorAbove, Some(CONTEXT)),

@@ -440,7 +440,6 @@ mod tests {
                 memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
                 display: None,
             });
-            eprintln!("[dbg] requesting adapter");
             let adapter = instance
                 .request_adapter(&wgpu::RequestAdapterOptions {
                     power_preference: wgpu::PowerPreference::LowPower,

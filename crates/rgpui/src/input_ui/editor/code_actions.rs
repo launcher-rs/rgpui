@@ -372,6 +372,10 @@ impl EditorState {
         // 倒序应用：靠前编辑的字节位置不受后面改动影响。
         offsets.sort_by_key(|a| std::cmp::Reverse(a.0.start));
         for (range, new_text) in offsets {
+            // 程序化写入同样会发 `Change`：不抑制的话，插入文本末字符命中触发条件
+            //（如 "bar" 这样的单词、或 `.`/`:`）会立刻弹出补全。逐段写入各消一次，
+            // 与 `accept_completion` 同款。
+            self.suppress_auto_complete_once();
             self.input.update(cx, |state, cx| {
                 state.set_selected_range(range, cx);
                 state.replace(new_text, window, cx);

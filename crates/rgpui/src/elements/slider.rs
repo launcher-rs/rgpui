@@ -605,25 +605,28 @@ impl RenderOnce for Slider {
             } else {
                 Orientation::Horizontal
             })
-            .on_a11y_action(AccessibleAction::Increment, {
-                let state = slider_state.clone();
-                move |_, window, cx| {
-                    state.update(cx, |state, cx| {
-                        let value =
-                            (state.value().end() + state.step_value()).min(state.max_value());
-                        state.set_value(value, window, cx);
-                    });
-                }
-            })
-            .on_a11y_action(AccessibleAction::Decrement, {
-                let state = slider_state;
-                move |_, window, cx| {
-                    state.update(cx, |state, cx| {
-                        let value =
-                            (state.value().end() - state.step_value()).max(state.min_value());
-                        state.set_value(value, window, cx);
-                    });
-                }
+            // 禁用态不挂增减动作：辅助技术就不提供改值入口（与 checkbox/radio 同款口径）。
+            .when(!self.disabled, |this| {
+                this.on_a11y_action(AccessibleAction::Increment, {
+                    let state = slider_state.clone();
+                    move |_, window, cx| {
+                        state.update(cx, |state, cx| {
+                            let value =
+                                (state.value().end() + state.step_value()).min(state.max_value());
+                            state.set_value(value, window, cx);
+                        });
+                    }
+                })
+                .on_a11y_action(AccessibleAction::Decrement, {
+                    let state = slider_state;
+                    move |_, window, cx| {
+                        state.update(cx, |state, cx| {
+                            let value =
+                                (state.value().end() - state.step_value()).max(state.min_value());
+                            state.set_value(value, window, cx);
+                        });
+                    }
+                })
             })
             .flex()
             .flex_1()
@@ -842,5 +845,51 @@ mod tests {
         assert_eq!(node.orientation(), Some(Orientation::Horizontal));
         assert!(node.supports_action(accesskit::Action::Increment));
         assert!(node.supports_action(accesskit::Action::Decrement));
+    }
+
+    /// 禁用态不暴露增减动作（辅助技术拿不到改值入口）；数值/范围照旧播报。
+    #[rgpui::test]
+    fn slider_disabled_omits_actions(cx: &mut crate::TestAppContext) {
+        use crate::{Element as _, IntoElement as _, Render, canvas};
+        use std::sync::{Arc, Mutex};
+
+        type Captured = Arc<Mutex<Option<accesskit::Node>>>;
+        struct Probe {
+            captured: Captured,
+            state: Entity<SliderState>,
+        }
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                let captured = self.captured.clone();
+                let state = self.state.clone();
+                canvas(
+                    move |_, window, cx| {
+                        let el = Slider::new(&state)
+                            .disabled(true)
+                            .render(window, cx)
+                            .into_element();
+                        let mut node = accesskit::Node::new(Role::Slider);
+                        el.write_a11y_info(&mut node);
+                        *captured.lock().unwrap() = Some(node);
+                    },
+                    |_, _, _, _| {},
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let captured: Captured = Arc::new(Mutex::new(None));
+        let result = captured.clone();
+        let (_, cx) = cx.add_window_view(move |_, cx| {
+            let state = cx.new(|_| SliderState::new().min(0.0).max(10.0).default_value(4.0));
+            Probe { captured, state }
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let node = result.lock().unwrap().take().unwrap();
+        assert_eq!(node.numeric_value(), Some(4.0));
+        assert!(!node.supports_action(accesskit::Action::Increment));
+        assert!(!node.supports_action(accesskit::Action::Decrement));
     }
 }
