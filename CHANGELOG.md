@@ -104,6 +104,13 @@
   单个文件解析失败只跳过该文件并 `tracing::warn`，不影响其余文件
 - 目录扫描在后台执行器、重载在前台切换，不阻塞 UI；Web 平台无文件系统，自动跳过
 
+### 主题：JSON Schema 生成
+
+- 新增 `theme::theme_json_schema()`（`ThemeSet` 的 JSON Schema 字符串）与
+  `theme::write_theme_json_schema(path)`，供编辑器与主题作者生成
+  `.theme-schema.json` 做补全、校验；`ThemeSet`/`ThemeConfig` 等此前已派生
+  `JsonSchema`，缺的只是生成入口
+
 ## [1.4.2] - 2026-10-09
 
 > 本次只发布 `rgpui-linux` 一个 crate：X11 后端修复全部落在该 crate 内，其余 crate 的源码与

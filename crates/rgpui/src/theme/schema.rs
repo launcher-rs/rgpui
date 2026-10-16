@@ -939,12 +939,38 @@ impl Theme {
     }
 }
 
+/// 主题文件（[`ThemeSet`]）的 JSON Schema 字符串。
+///
+/// 生成一次即可供编辑器与主题作者做补全、校验；建议写入 `.theme-schema.json`，
+/// 并在主题文件顶部用 `"$schema": "./.theme-schema.json"` 指向它。
+/// `ThemeSet` / `ThemeConfig` 等均派生 `JsonSchema`，未知字段沿用解析时的宽容口径。
+pub fn theme_json_schema() -> String {
+    let schema = schemars::schema_for!(ThemeSet);
+    serde_json::to_string_pretty(&schema).expect("主题 JSON Schema 序列化不应失败")
+}
+
+/// 将主题 JSON Schema 写入指定路径（如 `.theme-schema.json`）。
+pub fn write_theme_json_schema(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+    std::fs::write(path, theme_json_schema())
+}
+
 #[cfg(test)]
 mod tests {
     use rgpui::{linear_color_stop, linear_gradient};
 
     use crate::theme::color::{blue_600, red_500};
     use crate::{Theme, ThemeConfig, ThemeMode, try_parse_color};
+
+    /// 主题 JSON Schema 可生成且为合法 JSON 对象。
+    #[test]
+    fn test_theme_json_schema_is_valid_json_object() {
+        let schema = super::theme_json_schema();
+        let value: serde_json::Value =
+            serde_json::from_str(&schema).expect("主题 schema 应为合法 JSON");
+        assert!(value.is_object());
+        // 应覆盖主题集的核心字段。
+        assert!(value.to_string().contains("themes"));
+    }
 
     #[test]
     fn test_apply_config_preserves_gradient_background_and_solid_color_fallback() {
