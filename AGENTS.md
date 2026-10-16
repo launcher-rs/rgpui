@@ -66,8 +66,10 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 - 提交前：`cargo check --workspace` + `cargo fmt --all` + 相关包 clippy，无错误警告。
 - **禁止 `#[allow(dead_code)]`**，无用代码删除或重构。
 - 开发阶段废弃代码直接删除，不留 `#[deprecated]` 兼容（不为未发布的 API 做兼容）。
-- main 受保护，**合入 main 的改动走 PR**（分支命名 `feat|fix|refactor|chore/xxx`，
-  Squash 合并，标题 Conventional Commits）。
+- **合入 main 的改动走 PR**（分支命名 `feat|fix|refactor|chore/xxx`，Squash 合并，
+  标题 Conventional Commits）。`main` **未开** GitHub 分支保护（单人维护、主动去掉），
+  所以规则靠自觉：**必须等 CI 全绿再合**。注意无保护时 `gh pr merge --squash --auto`
+  不会等待检查、会立刻合并，别用 `--auto`。
   版本开发分支（如 `feat/1.2.0`）上直接提交推送，**不为合入版本分支开中间 PR**；
   版本分支完成后再开一个 PR 合入 main。
 - `gh pr create / merge --squash`；CI 全绿再合并；等 CI 时不要反复 push 刷运行。
