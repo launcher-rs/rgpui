@@ -6680,7 +6680,6 @@ name = "rgpui-web"
 version = "1.4.1"
 dependencies = [
  "anyhow",
- "console_error_panic_hook",
  "futures",
  "js-sys",
  "log",

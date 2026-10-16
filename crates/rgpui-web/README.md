@@ -35,7 +35,8 @@ RGPUI 框架的 WebAssembly 平台实现，使用 `web-sys` API 与浏览器环�
 - **MediaQueryList**：媒体查询监听（如暗色模式检测）
 - **Storage API**：本地存储持久化
 - **Fetch API**：通过 `web-sys` 的 HTTP 请求支持
-- **console_error_panic_hook**：将 Rust panic 输出到浏览器控制台
+- **日志**：`init_logging` 将 Rust `log` 输出转发到浏览器控制台（panic hook 由
+  `rgpui-platform::web_init` 安装，见下）
 
 ## 系统要求
 
@@ -75,15 +76,16 @@ rgpui-web/
 ```rust
 use rgpui_web::WebPlatform;
 
-// 初始化 panic hook，将 Rust panic 输出到浏览器控制台
-console_error_panic_hook::set_once();
-
 // 创建 Web 平台实例
 let platform = WebPlatform::new();
 
 // 平台会自动设置 WebGPU 渲染器和浏览器事件监听
 // 应用将渲染到 HtmlCanvasElement 上
 ```
+
+日志与 panic hook：推荐在 wasm 入口调用 `rgpui_platform::web_init()`，它会安装
+panic hook（rust panic 输出到浏览器控制台）并初始化日志系统；直接使用本 crate 时
+也可自行调用 `rgpui_web::init_logging()`。
 
 ### 编译为 WebAssembly
 
