@@ -164,7 +164,28 @@ P0 第二件（Ribbon 框架）已落地，直接建立在命令注册表之上�
 > 尚未实现（待后续 P1）：SplitButton、Gallery、ComboBox、折叠态交互、
 > 以及 QAT/Mini toolbar、KeyTips、Backstage 等 Ribbon 系控件。
 
-## 八、结论
+## 八、P0 落地：视口 Viewport（已实现）
+
+P0 第三件（视口）已落地，提供所有「画布/页视图/网格」共用的坐标系统与交互辅助。
+
+- **模块**：`crates/rgpui/src/viewport.rs`（`rgpui::viewport::*`，不进根 glob）
+  - `Viewport`：纯数据（`Copy`），持有 `zoom` + 文档原点偏移 `offset` 与缩放上下限。
+  - **坐标映射**：`screen_to_document` / `document_to_screen` / `document_size_to_screen`
+    （约定 `screen = document * zoom + offset`）。
+  - **缩放**：`set_zoom_at(zoom, anchor)`（锚点对应的文档坐标不变）、`zoom_by_at`、
+    `zoom_in_at` / `zoom_out_at`（步进 `ZOOM_STEP`）；`with_zoom_limits` 夹取上下限。
+  - **平移/安置**：`pan_by(delta)`、`center(document, view)`、`fit(document, view, padding)`。
+  - **滚轮**：`apply_wheel(&ScrollWheelEvent, line_height)`（`Ctrl/⌘` 以光标为中心缩放，
+    否则平移）。
+- **示例**：`examples/showcase/src/bin/viewport.rs`（`cargo run -p showcase --bin viewport`），
+  A4 页视图：`canvas` 自绘，滚轮缩放/平移 + 左键拖拽平移 + 缩小/放大/100%/适应窗口。
+- **测试**：`viewport::tests`（7：单位映射、缩放往返、平移、锚点缩放、上下限、fit/center）。
+
+> 说明：rgpui 元素层不支持对任意子树施加仿射变换（仅 `Svg` 有 `Transformation`），
+> 因此视口按「坐标映射 + 调用方自绘」设计：整页放缩建议用 `canvas` 绘制，
+> 需要真正缩放控件子树的应用自行按 `document_size_to_screen` 换算尺寸。
+
+## 九、结论
 
 - storytold 已证明「纯 Rust、引擎优先、UI 可换」路线可行，**rgpui 完全可以作为其 UI 基座**；
 - 真正的缺口不在渲染/布局（rgpui 有），而在 **Office 特征 UI（Ribbon 系）** 与
