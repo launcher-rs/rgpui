@@ -38,6 +38,7 @@ pub struct CommandDescriptor {
     category: Option<SharedString>,
     description: Option<SharedString>,
     default_keystrokes: Vec<SharedString>,
+    keytip: Option<SharedString>,
 }
 
 impl CommandDescriptor {
@@ -49,6 +50,7 @@ impl CommandDescriptor {
             category: None,
             description: None,
             default_keystrokes: Vec::new(),
+            keytip: None,
         }
     }
 
@@ -80,6 +82,15 @@ impl CommandDescriptor {
         self
     }
 
+    /// 设置按键提示（KeyTips，如 `"P"` 或 `"HO"`）。
+    ///
+    /// 供功能区的 Alt/F10 按键导航（见 [`crate::ribbon`]）使用；
+    /// 未设置时功能区会退化为从标签的首个 ASCII 字母派生。
+    pub fn with_keytip(mut self, keytip: impl Into<SharedString>) -> Self {
+        self.keytip = Some(keytip.into());
+        self
+    }
+
     /// 命令 id（与动作名称一致）。
     pub fn id(&self) -> &SharedString {
         &self.id
@@ -103,6 +114,11 @@ impl CommandDescriptor {
     /// 默认快捷键（展示用）。
     pub fn default_keystrokes(&self) -> &[SharedString] {
         &self.default_keystrokes
+    }
+
+    /// 按键提示（KeyTips，展示用）。
+    pub fn keytip(&self) -> Option<&SharedString> {
+        self.keytip.as_ref()
     }
 }
 
