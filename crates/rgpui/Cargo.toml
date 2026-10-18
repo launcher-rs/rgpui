@@ -102,6 +102,13 @@ lsp = ["dep:lsp-types"]
 # 模块 + 对应方法/动作/键位）+ LSP 编辑器侧接线（M2 起蕴含 `lsp`）。
 # 默认关闭，纯表单构建不编译这些代码。
 editor = ["lsp"]
+# Ribbon 套件基座：命令注册表（`commands.rs`）+ Ribbon（`ribbon.rs`）+ 按键提示
+# （`keytips.rs`）+ 快速访问工具栏（`qat.rs`），以及命令面板的注册表接线。
+# 供需要「命令化 UI + 功能区」的应用复用；普通应用不必开启。
+ribbon = []
+# 视口与标尺基座：画布视口（`viewport.rs`）+ 刻度/对齐参考线（`guides.rs`）。
+# 供需要可缩放画布、标尺、对齐吸附的应用复用；普通应用不必开启。
+viewport = []
 # tree-sitter 语法高亮/折叠后端（Rust 单语言先行）：默认关闭；
 # 含 C 解析器编译，wasm 目标下代码侧硬门禁，勿在 wasm 启用。
 tree-sitter = [

@@ -42,6 +42,8 @@ pub static GPUI_MANIFEST_DIR: &'static str = env!("CARGO_MANIFEST_DIR");
 mod action;
 
 /// 命令注册表 - 在 Action 之上附加 UI 元数据，供功能区/命令面板/CLI/MCP 按 id 统一分发
+/// （`ribbon` feature 门控，默认关闭）
+#[cfg(feature = "ribbon")]
 pub mod commands;
 
 /// 应用核心模块 - 包含 App 主结构体、Context、EntityMap 等
@@ -78,7 +80,8 @@ pub mod theme;
 
 /// 组件文本类型 - 轻量文本封装，供组件库使用
 pub mod component_text;
-/// 重导出命令注册表类型
+/// 重导出命令注册表类型（`ribbon` feature）
+#[cfg(feature = "ribbon")]
 pub use commands::{CommandDescriptor, CommandRegistry};
 /// 重导出组件文本类型
 pub use component_text::{ComponentText, ComponentTextViewStyle};
@@ -244,17 +247,20 @@ pub mod tabs;
 /// 标题栏子系统 - 自定义标题栏、窗口控制按钮与客户端装饰边框
 pub mod title_bar;
 
-/// Ribbon 功能区 - 数据驱动的 Office 风格功能区，命令按 id 绑定到命令注册表
+#[cfg(feature = "ribbon")]
+pub mod keytips;
+#[cfg(feature = "ribbon")]
+pub mod qat;
+/// Ribbon 套件基座：Ribbon + 按键提示 + 快速访问工具栏，
+/// 由 `ribbon` feature 门控（普通应用不开启时不参与编译）。
+#[cfg(feature = "ribbon")]
 pub mod ribbon;
 
-/// 按键提示（KeyTips） - 逐层按键导航的徽标元素与解析工具
-pub mod keytips;
-
-/// 视口 - 可缩放/平移画布的屏幕↔文档坐标映射与交互辅助
-pub mod viewport;
-
-/// 标尺刻度与对齐参考线/吸附 - 纯计算工具库
+#[cfg(feature = "viewport")]
 pub mod guides;
+/// 视口与标尺基座：画布视口 + 刻度/对齐参考线，由 `viewport` feature 门控。
+#[cfg(feature = "viewport")]
+pub mod viewport;
 
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;

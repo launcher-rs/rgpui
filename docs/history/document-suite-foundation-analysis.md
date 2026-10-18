@@ -1,9 +1,9 @@
-# rgpui 做 Office 套件的基础缺口分析
+# rgpui 做文档/表格/演示套件的基础缺口分析
 
-> 调研文档。参考 `temp/storytold` 下 4 个「用 egui 复刻 Office/Adobe」的 Rust 项目，
-> 梳理 rgpui 作为 UI 基座要落地 Office 类应用的前置能力：哪些要**开发**（框架缺组件/能力）、
+> 调研文档。参考 `temp/storytold` 下 4 个「用 egui 复刻生产力套件/Adobe」的 Rust 项目，
+> 梳理 rgpui 作为 UI 基座要落地文档/表格/演示类应用的前置能力：哪些要**开发**（框架缺组件/能力）、
 > 哪些要**借鉴**（工程范式）、哪些**不该进框架**（领域/引擎职责）。
-> 目的：在做 Office 之前先把地基打牢，避免重复造轮子。
+> 目的：在动手做套件之前先把地基打牢，避免重复造轮子。
 
 ## 一、参考对象：storytold
 
@@ -47,7 +47,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 `tray`/`webview`/`tokio`、平台层（accesskit 无障碍树、原生菜单 `set_menus`、多窗口
 `open_window`、剪贴板 `ClipboardItem`/`ExternalPaths`、文件拖放 `FileDropEvent`）、WASM 后端。
 
-**结论**：rgpui 是「通用 UI 框架」，Office 所需的**特征组件（Ribbon 系）与文档/画布类能力基本缺席**；
+**结论**：rgpui 是「通用 UI 框架」，套件类应用所需的**特征组件（Ribbon 系）与文档/画布类能力基本缺席**；
 文本层缺 RTL/CJK 深度；这些正是要补的地基。
 
 ## 三、UI 原语缺口矩阵
@@ -72,7 +72,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker` | 增强 |
 | **富剪贴板 payload** | `system_clipboard.rs` | 只有 text/image/路径 | 扩展 `ClipboardItem` |
 
-### B. 现有能力需增强（有但不敷 Office 用）
+### B. 现有能力需增强（有但不敷套件用）
 
 | 维度 | rgpui 现状 | 缺口 |
 |---|---|---|
@@ -141,6 +141,11 @@ P0 第一件（命令注册表）已落地，作为其余 P0 件（Ribbon/视口
 > 说明：命令 id 即动作名称，因此注册表与既有 Action 系统零冲突、零迁移成本；
 > 图标/放置位置（Ribbon tab/group/QAT）字段待 Ribbon 落地时再加。
 
+> **feature 门控**：套件基座整体是可选能力，普通应用不需要时不必编译。
+> `ribbon` feature 门控 `commands.rs` / `ribbon.rs` / `keytips.rs` / `qat.rs` 与命令面板的
+> 注册表接线；`viewport` feature 门控 `viewport.rs` / `guides.rs`。二者默认关闭，
+> 示例 crate `showcase` 默认开启（保证 workspace check/test 覆盖），CI 另跑 feature 组合检查。
+
 ## 七、P0 落地：Ribbon 框架（已实现）
 
 P0 第二件（Ribbon 框架）已落地，直接建立在命令注册表之上：命令项按**命令 id**绑定，
@@ -162,7 +167,7 @@ P0 第二件（Ribbon 框架）已落地，直接建立在命令注册表之上�
 - **测试**：`ribbon::tests`（5：状态默认值、标签回退×3、绘制与切换选项卡冒烟）。
 
 > 尚未实现（待后续 P1）：SplitButton、Gallery、ComboBox、折叠态交互、
-> 以及 QAT/Mini toolbar、Backstage 等 Ribbon 系控件（按键提示见下文 §十）。
+> 以及 Mini toolbar、Backstage 等 Ribbon 系控件（按键提示见 §十，快速访问工具栏见 §十一）。
 
 ## 八、P0 落地：视口 Viewport（已实现）
 
@@ -225,10 +230,28 @@ P1 第一件（按键提示）已落地，补齐 Ribbon 系的键盘可达性：
 - **测试**：`keytips::tests`（7：单键/多字符前缀/精确优先/跳过空/大小写/可见性/派生）
   + `ribbon` 提示流程测试（选项卡选择、命令派发、Esc 退出、注册表提示优先）。
 
-## 十一、结论
+## 十一、P1 落地：快速访问工具栏 QAT（已实现）
+
+P1 第二件（快速访问工具栏）已落地：一排按**命令 id** 绑定的紧凑图标按钮，
+可放在标题栏、Ribbon 之上或状态栏，点击统一经 `App::dispatch_command` 派发。
+
+- **模块**：`crates/rgpui/src/qat.rs`（`rgpui::qat::*`，不进根 glob）
+  - `QuickAccessToolbar`：`new()` + `item(impl Into<QatItem>)` / `items(..)` 构建，
+    横向 `h_flex` 排列，图标按钮 + 分组分隔符。
+  - `QatItem`：`Button(QatButton)` / `Separator`，构造器 `QatItem::button(id)` /
+    `QatItem::separator()`。
+  - `QatButton`：`new(command)`（命令 id）+ `label(..)`（覆盖注册表标签）/ `icon(IconName)`。
+  - 标签来源：显式覆盖 > 注册表 `CommandRegistry::label_for(id)` > 命令 id 本身。
+- **注册表配套**：`CommandRegistry::label_for(id)`（未登记时回退为 id），
+  Ribbon / QAT / 菜单等按 id 绑定的 UI 共用。
+- **示例**：`examples/showcase/src/bin/qat.rs`（`cargo run -p showcase --bin qat`），
+  顶部 QAT（保存/撤销/重做/分隔/查找/设置）+ 等价普通按钮 + 最近派发回显。
+- **测试**：`qat::tests`（3：标签覆盖优先、注册表/ id 回退、零交互绘制）。
+
+## 十二、结论
 
 - storytold 已证明「纯 Rust、引擎优先、UI 可换」路线可行，**rgpui 完全可以作为其 UI 基座**；
-- 真正的缺口不在渲染/布局（rgpui 有），而在 **Office 特征 UI（Ribbon 系）** 与
+- 真正的缺口不在渲染/布局（rgpui 有），而在 **套件特征 UI（Ribbon 系）** 与
   **文档/画布/网格类控件**，以及**命令注册表**这一贯穿全栈的骨架；
-- 建议先落 P0「命令 + Ribbon + 视口 + 标尺/参考线」，它们被四个应用共享，且是 Office 的
+- 建议先落 P0「命令 + Ribbon + 视口 + 标尺/参考线」，它们被四个应用共享，且是套件应用的
   身份特征；引擎类能力一律留在应用层。

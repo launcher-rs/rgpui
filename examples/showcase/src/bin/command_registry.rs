@@ -1,7 +1,7 @@
 //! command registry 演示：`register_command!` 登记命令元数据 → `CommandRegistry` 读取 →
 //! 点击按 id 派发（`App::dispatch_command`）→ 视图 `on_action` 处理。
 //!
-//! 展示了 Office 类应用「一切皆命令」的骨架：UI、快捷键、命令面板、CLI、MCP 共用同一份
+//! 展示了套件类应用「一切皆命令」的骨架：UI、快捷键、命令面板、CLI、MCP 共用同一份
 //! 命令表，按 id 分发，与具体前端解耦。
 
 #![cfg_attr(target_family = "wasm", no_main)]

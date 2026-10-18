@@ -116,7 +116,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 | 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState`、`Sidebar`/`SidebarSection`、`Select`、`Combobox`、`DatePicker`、`ColorPicker`、`Pagination`、`Steps`、`Timeline`、`Rate`、`Upload`、`Carousel`、`MermaidDiagram`、`DockArea` 等（`charts`/`effects`/`qr-code` feature 门控） |
 | 动画/手势/物理 | `animation/`、`mouse_gestures.rs`、`scroll_physics.rs` | `Spring`、`GestureDetector`、`ScrollPhysics` |
 | 对话（AI-chat） | `chat/` | `Message`/`MessageGroup`/`ChatView`、`Prompts`、`Suggestion`、`ThoughtChain`、`Attachments`/`FileCard`、`Sources`、`Actions`、`Sender`、`Bubble`、`MessageScroller`、`Marker` |
-| 命令/功能区/画布（Office 基座） | `commands.rs`、`ribbon.rs`、`keytips.rs`、`viewport.rs`、`guides.rs` | `CommandDescriptor`/`CommandRegistry`/`register_command!`/`App::dispatch_command`、`Ribbon`/`RibbonState`/`RibbonTab`/`RibbonGroup`/`RibbonItem`、`KeyTip`/`KeyTipScope`/`resolve_key`、`Viewport`、`ruler_ticks`/`align` |
+| 应用套件基座（`ribbon` / `viewport` feature，默认关闭） | `commands.rs`、`ribbon.rs`、`keytips.rs`、`qat.rs`、`viewport.rs`、`guides.rs` | `CommandDescriptor`/`CommandRegistry`/`register_command!`/`App::dispatch_command`/`label_for`、`Ribbon`/`RibbonState`/`RibbonTab`/`RibbonGroup`/`RibbonItem`、`KeyTip`/`KeyTipScope`/`resolve_key`、`QuickAccessToolbar`/`QatItem`/`QatButton`、`Viewport`、`ruler_ticks`/`align` |
 
 `prelude` 含：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、
 `Sizable`、`StyledExt`、`FluentBuilder`。
@@ -155,11 +155,12 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 4. `tray`、`desktop_pet`（`_3d`）示例可编译
 5. 中文注释未被删除；无 `#[allow(dead_code)]`
 6. 组件子系统目录都在（`form input_ui menu dialog list table tabs title_bar elements/scroll`）
-7. Office 基座模块都在（`commands.rs` / `ribbon.rs` / `keytips.rs` / `viewport.rs` / `guides.rs`）
+7. 应用套件基座模块都在（`commands.rs` / `ribbon.rs` / `keytips.rs` / `qat.rs` /
+   `viewport.rs` / `guides.rs`），且 `ribbon`、`viewport` feature 开关两侧都能编译
 8. `crates/rgpui-ui`、`rgpui-tokio` 等旧 crate 未复活；`rgpui-markdown` 在，
    `pulldown-cmark = "0.13"`
 9. feature 组合按需通过：`charts,effects,qr-code` / `tokio` / `webview` /
-   `dom-backend`（+ `cargo test -p rgpui-dom`）
+   `dom-backend`（+ `cargo test -p rgpui-dom`）/ `ribbon,viewport`
 10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过
 11. 发布要求无 dev 循环依赖（测试放消费方 `tests/`，见 1.1.1 教训）
 

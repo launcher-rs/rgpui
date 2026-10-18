@@ -1,4 +1,4 @@
-//! Ribbon 功能区 —— 数据驱动的 Office 风格功能区。
+//! Ribbon 功能区 —— 数据驱动的套件风格功能区。
 //!
 //! 命令项按 **命令 id** 绑定到 [`CommandRegistry`](crate::CommandRegistry)：
 //! 标签/快捷键未显式指定时从注册表读取，点击时经
@@ -210,7 +210,7 @@ impl RibbonState {
                         cx.notify();
                     }
                     KeyTipMatch::None => {
-                        // 命中不到命令时，回退尝试切换到其它选项卡（Office 行为）。
+                        // 命中不到命令时，回退尝试切换到其它选项卡（功能区常见行为）。
                         if let KeyTipMatch::Match(index) = resolve_key("", key, tab_keytips) {
                             self.active_tab = index;
                         }
@@ -248,7 +248,7 @@ impl RibbonState {
                             commands.push((keytip, toggle.command.clone()));
                         }
                     }
-                    // 下拉按钮的提示键激活其默认（首项）命令，与 Office 的分裂按钮一致。
+                    // 下拉按钮的提示键激活其默认（首项）命令，与分裂按钮的行为一致。
                     RibbonItem::Dropdown(dropdown) => {
                         if let (Some(keytip), Some(default)) =
                             (dropdown_keytip(dropdown), dropdown.items.first())

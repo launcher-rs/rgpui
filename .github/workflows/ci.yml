@@ -99,7 +99,7 @@ jobs:
         #（macOS/Windows 的 webview 依赖各平台 SDK，不在 CI 里装）。
         # 注意别加 scap/screen-capture：已知编译失败（AGENTS.md）。
         run: |
-          cargo check -p rgpui --features editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter,tree-sitter-json,tree-sitter-toml
+          cargo check -p rgpui --features editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter,tree-sitter-json,tree-sitter-toml,ribbon,viewport
 
       - name: cargo check (webview)
         if: runner.os == 'Linux'

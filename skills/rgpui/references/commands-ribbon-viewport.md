@@ -1,14 +1,17 @@
-# 命令注册表 / Ribbon / 视口 / 标尺参考线
+# 命令注册表 / Ribbon / 快速访问工具栏 / 视口 / 标尺参考线
 
-为 Office 类应用（文档/表格/演示）补齐的四个共享基座。均不进根 glob，
+为文档/表格/演示类应用补齐的套件基座。均由 feature 门控，均不进根 glob，
 按 `rgpui::<模块>::*` 使用：
 
-- `rgpui::commands` — 命令注册表（UI 元数据 + 按 id 派发）
-- `rgpui::ribbon` — 数据驱动 Ribbon 功能区
-- `rgpui::viewport` — 屏幕 ↔ 文档坐标映射与缩放/平移
-- `rgpui::guides` — 标尺刻度 + 对齐参考线/吸附
+- `rgpui::commands` — 命令注册表（UI 元数据 + 按 id 派发，feature `ribbon`）
+- `rgpui::ribbon` — 数据驱动 Ribbon 功能区（feature `ribbon`）
+- `rgpui::keytips` — 按键提示解析与徽标（feature `ribbon`）
+- `rgpui::qat` — 快速访问工具栏（feature `ribbon`）
+- `rgpui::viewport` — 屏幕 ↔ 文档坐标映射与缩放/平移（feature `viewport`）
+- `rgpui::guides` — 标尺刻度 + 对齐参考线/吸附（feature `viewport`）
 
-示例：`cargo run -p showcase --bin {command_registry,ribbon,viewport,ruler}`。
+启用：`rgpui = { features = ["ribbon", "viewport"] }`（默认关闭，普通应用不必开启）。
+示例：`cargo run -p showcase --bin {command_registry,ribbon,qat,viewport,ruler}`。
 
 ---
 
@@ -123,7 +126,30 @@ RibbonTab::new("home", "开始").keytip("H").group(
 );
 ```
 
-> 尚未实现：SplitButton、Gallery、ComboBox、折叠态交互、QAT/Mini toolbar、Backstage。
+> 尚未实现：SplitButton、Gallery、ComboBox、折叠态交互、Mini toolbar、Backstage。
+
+---
+
+## 2b. 快速访问工具栏（`rgpui::qat`）
+
+一排按**命令 id** 绑定的紧凑图标按钮，通常置于标题栏或 Ribbon 之上；点击统一经
+`App::dispatch_command` 派发。
+
+```rust
+use rgpui::qat::{QatItem, QuickAccessToolbar};
+use rgpui::IconName;
+
+QuickAccessToolbar::new()
+    .item(QatItem::button("app::Save").icon(IconName::Check))
+    .item(QatItem::button("app::Undo").icon(IconName::Undo))
+    .item(QatItem::separator())
+    .item(QatItem::button("app::Search").label("查找"))   // 覆盖注册表标签
+```
+
+- `QuickAccessToolbar::new()` + `item(impl Into<QatItem>)` / `items(..)`。
+- `QatItem`：`Button(QatButton)` / `Separator`（`QatItem::button` / `QatItem::separator`）。
+- `QatButton`：`new(command)` + `label(..)` / `icon(IconName)`。
+- 标签来源：显式覆盖 > `CommandRegistry::label_for(id)` > 命令 id 本身。
 
 ---
 
