@@ -75,7 +75,7 @@ use rgpui::ribbon::{Ribbon, RibbonContext, RibbonGroup, RibbonItem, RibbonState,
 use rgpui::{IconName, rgb};
 
 // 状态是 Entity；父视图需 observe 以便切换选项卡时重绘。
-let state = cx.new(|_| RibbonState::new());
+let state = cx.new(RibbonState::new);
 cx.observe(&state, |_, _, cx| cx.notify()).detach();
 
 Ribbon::new(&state, vec![
@@ -96,16 +96,34 @@ Ribbon::new(&state, vec![
 
 要点：
 
-- `RibbonState`：`new()`/`active_tab()`/`set_active_tab(index, cx)`，`Default` = 第 0 个。
+- `RibbonState`：`new(cx)`/`active_tab()`/`set_active_tab(index, cx)`（默认第 0 个）；
+  另持 `FocusHandle` 与按键提示状态，并提供 `show_keytips`/`hide_keytips`/
+  `toggle_keytips`/`handle_key`。
 - `RibbonGroup`：底部显示组名；连续小按钮自动聚成每列 ≤3 的竖列。
 - `RibbonItem` 枚举 `Button`/`Toggle`/`Dropdown`/`Separator`，构造器
   `RibbonItem::{button,toggle,dropdown,separator}`（返回描述符，`impl Into<RibbonItem>`）。
-- `RibbonButton`（`label`/`icon`/`large`）、`RibbonToggle`（`label`/`icon`/`checked`，
-  checked 状态由调用方维护）、`RibbonDropdown`（`label`/`icon`/`item`/`large`）
-  + `RibbonDropdownItem`（`command`/`label`）。
+- `RibbonButton`（`label`/`icon`/`large`/`keytip`）、`RibbonToggle`（`label`/`icon`/
+  `checked`/`keytip`，checked 状态由调用方维护）、`RibbonDropdown`（`label`/`icon`/
+  `item`/`large`/`keytip`）+ `RibbonDropdownItem`（`command`/`label`）。
+- `RibbonTab::{keytip}` 设置选项卡按键提示。
 - `Ribbon::new(&Entity<RibbonState>, Vec<RibbonTab>).collapsed(bool)`，`RenderOnce` 元素。
 
-> 尚未实现：SplitButton、Gallery、ComboBox、折叠态交互、QAT/Mini toolbar、KeyTips、Backstage。
+### 按键提示（KeyTips）
+
+`rgpui::init_all`（或 `rgpui::ribbon::init`）会绑定 `Alt`/`F10`。功能区根节点带
+`key_context("Ribbon")`；获得焦点后按键提示模式先显示选项卡提示、再显示命令提示。
+提示键来源：显式覆盖 > `CommandDescriptor::with_keytip` 登记 > 标签首个 ASCII 字母派生。
+`CommandDescriptor::keytip()` 可查询。纯解析工具在 `rgpui::keytips`
+（`KeyTipScope`/`KeyTipMatch`/`resolve_key`/`KeyTip`）。
+
+```rust
+CommandDescriptor::new("app::Paste", "粘贴").with_keytip("V");
+RibbonTab::new("home", "开始").keytip("H").group(
+    RibbonGroup::new("剪贴板").item(RibbonItem::button("app::Paste")),
+);
+```
+
+> 尚未实现：SplitButton、Gallery、ComboBox、折叠态交互、QAT/Mini toolbar、Backstage。
 
 ---
 

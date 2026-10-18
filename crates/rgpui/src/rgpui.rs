@@ -247,6 +247,9 @@ pub mod title_bar;
 /// Ribbon 功能区 - 数据驱动的 Office 风格功能区，命令按 id 绑定到命令注册表
 pub mod ribbon;
 
+/// 按键提示（KeyTips） - 逐层按键导航的徽标元素与解析工具
+pub mod keytips;
+
 /// 视口 - 可缩放/平移画布的屏幕↔文档坐标映射与交互辅助
 pub mod viewport;
 

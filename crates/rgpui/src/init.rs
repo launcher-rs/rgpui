@@ -28,6 +28,7 @@ pub fn init_all(cx: &mut App) {
     crate::table::init(cx);
     crate::tree::init(cx);
     crate::components::init(cx);
+    crate::ribbon::init(cx);
     #[cfg(feature = "tokio")]
     crate::tokio::init(cx);
 }

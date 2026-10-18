@@ -162,7 +162,7 @@ P0 第二件（Ribbon 框架）已落地，直接建立在命令注册表之上�
 - **测试**：`ribbon::tests`（5：状态默认值、标签回退×3、绘制与切换选项卡冒烟）。
 
 > 尚未实现（待后续 P1）：SplitButton、Gallery、ComboBox、折叠态交互、
-> 以及 QAT/Mini toolbar、KeyTips、Backstage 等 Ribbon 系控件。
+> 以及 QAT/Mini toolbar、Backstage 等 Ribbon 系控件（按键提示见下文 §十）。
 
 ## 八、P0 落地：视口 Viewport（已实现）
 
@@ -201,7 +201,31 @@ P0 第四件（标尺/参考线）已落地，为纯计算工具库（无状态�
   顶部标尺刻度 + 拖拽两个方块互相吸附并显示红色参考线（`Ctrl/⌘` + 滚轮缩放标尺）。
 - **测试**：`guides::tests`（8：步长、刻度、零缩放、左边缘/最小偏移/超阈值/额外参考线/双轴吸附）。
 
-## 十、结论
+## 十、P1 落地：按键提示 KeyTips（已实现）
+
+P1 第一件（按键提示）已落地，补齐 Ribbon 系的键盘可达性：`Alt`/`F10` 后
+先选选项卡、再选命令，全部走命令注册表派发。
+
+- **模块**：
+  - `crates/rgpui/src/keytips.rs`（`rgpui::keytips::*`，不进根 glob）：
+    - `KeyTipScope`（Hidden/Tabs/Controls）与 `KeyTipMatch`（Match/Pending/None）；
+    - `resolve_key(prefix, key, keytips)`：逐层解析，支持 `H` → `O` 这类多字符提示；
+    - `keytip_visible`、`derive_keytip`（取标签首个 ASCII 字母/数字，中文标签不派生）；
+    - `KeyTip`：提示小徽标元素（`RenderOnce`）。
+  - `crates/rgpui/src/ribbon.rs`：`RibbonState` 增持 `FocusHandle` 与提示状态，
+    提供 `show_keytips` / `hide_keytips` / `toggle_keytips` / `handle_key`；
+    `Ribbon` 根节点 `track_focus` + `key_context("Ribbon")` + `on_action(ToggleKeyTips)`
+    + `on_key_down`，并在选项卡/按钮/下拉/切换上渲染徽标；
+    `ribbon::init` 绑定 `Alt`/`F10`（已并入 `init_all`）。
+  - `crates/rgpui/src/commands.rs`：`CommandDescriptor::with_keytip` / `keytip()`，
+    让提示键与标签/快捷键同源登记。
+- **提示键来源**：显式覆盖 > 注册表登记 > 从标签首个 ASCII 字母派生。
+- **示例**：`examples/showcase/src/bin/ribbon.rs`（`cargo run -p showcase --bin ribbon`），
+  已为命令/选项卡登记提示键，按 `Alt`/`F10` 演示逐层键盘导航。
+- **测试**：`keytips::tests`（7：单键/多字符前缀/精确优先/跳过空/大小写/可见性/派生）
+  + `ribbon` 提示流程测试（选项卡选择、命令派发、Esc 退出、注册表提示优先）。
+
+## 十一、结论
 
 - storytold 已证明「纯 Rust、引擎优先、UI 可换」路线可行，**rgpui 完全可以作为其 UI 基座**；
 - 真正的缺口不在渲染/布局（rgpui 有），而在 **Office 特征 UI（Ribbon 系）** 与
