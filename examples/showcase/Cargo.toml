@@ -244,6 +244,11 @@ path = "src/bin/qat.rs"
 required-features = ["ribbon"]
 
 [[bin]]
+name = "mini_toolbar"
+path = "src/bin/mini_toolbar.rs"
+required-features = ["ribbon"]
+
+[[bin]]
 name = "viewport"
 path = "src/bin/viewport.rs"
 required-features = ["viewport"]
