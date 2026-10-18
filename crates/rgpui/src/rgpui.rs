@@ -250,6 +250,9 @@ pub mod ribbon;
 /// 视口 - 可缩放/平移画布的屏幕↔文档坐标映射与交互辅助
 pub mod viewport;
 
+/// 标尺刻度与对齐参考线/吸附 - 纯计算工具库
+pub mod guides;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 

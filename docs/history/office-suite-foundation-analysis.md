@@ -185,7 +185,23 @@ P0 第三件（视口）已落地，提供所有「画布/页视图/网格」共
 > 因此视口按「坐标映射 + 调用方自绘」设计：整页放缩建议用 `canvas` 绘制，
 > 需要真正缩放控件子树的应用自行按 `document_size_to_screen` 换算尺寸。
 
-## 九、结论
+## 九、P0 落地：标尺 + 对齐参考线/吸附（已实现）
+
+P0 第四件（标尺/参考线）已落地，为纯计算工具库（无状态、无渲染），
+页面/网格/画布控件共用同一套刻度与吸附规则。
+
+- **模块**：`crates/rgpui/src/guides.rs`（`rgpui::guides::*`，不进根 glob）
+  - **标尺**：`nice_step(min)` 取「好看」步长（1/2/5 × 10ⁿ）；
+    `ruler_ticks(range, zoom, min_spacing_px)` 返回 `RulerTicks { step, ticks }`。
+  - **吸附**：`align(moving, others, extra_x, extra_y, threshold) -> SnapResult`，
+    按左/中/右与上/中/下六个锚点吸附到其它矩形或自由参考线，每轴取偏移最小的候选；
+    返回位移修正 `offset` 与需绘制的 `Guide { axis, position, anchor }`。
+  - 类型：`GuideAxis`（Vertical/Horizontal）、`Anchor`（Start/Center/End）、`Guide`、`SnapResult`。
+- **示例**：`examples/showcase/src/bin/ruler.rs`（`cargo run -p showcase --bin ruler`），
+  顶部标尺刻度 + 拖拽两个方块互相吸附并显示红色参考线（`Ctrl/⌘` + 滚轮缩放标尺）。
+- **测试**：`guides::tests`（8：步长、刻度、零缩放、左边缘/最小偏移/超阈值/额外参考线/双轴吸附）。
+
+## 十、结论
 
 - storytold 已证明「纯 Rust、引擎优先、UI 可换」路线可行，**rgpui 完全可以作为其 UI 基座**；
 - 真正的缺口不在渲染/布局（rgpui 有），而在 **Office 特征 UI（Ribbon 系）** 与

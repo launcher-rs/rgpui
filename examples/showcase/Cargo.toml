@@ -235,6 +235,10 @@ name = "viewport"
 path = "src/bin/viewport.rs"
 
 [[bin]]
+name = "ruler"
+path = "src/bin/ruler.rs"
+
+[[bin]]
 name = "dock"
 path = "src/bin/dock.rs"
 
