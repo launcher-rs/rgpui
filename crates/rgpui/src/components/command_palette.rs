@@ -87,6 +87,28 @@ impl Command {
         self
     }
 
+    /// 从命令注册表的描述符构建面板条目；选中时按 id 构建并派发对应动作。
+    ///
+    /// 动作无参时以 `None` 派发（见 [`App::dispatch_command`](crate::App::dispatch_command)）。
+    pub fn from_descriptor(descriptor: &crate::commands::CommandDescriptor) -> Self {
+        let mut command = Command::new(descriptor.id().clone(), descriptor.label().clone());
+        if let Some(description) = descriptor.description() {
+            command = command.description(description.clone());
+        }
+        if let Some(category) = descriptor.category() {
+            command = command.category(category.clone());
+        }
+        if let Some(shortcut) = descriptor.default_keystrokes().first() {
+            command = command.shortcut(shortcut.clone());
+        }
+        let id = descriptor.id().clone();
+        command.on_select(move |_window, cx| {
+            if let Err(error) = cx.dispatch_command(&id, None) {
+                log::warn!("命令面板：执行命令 `{id}` 失败：{error}");
+            }
+        })
+    }
+
     /// 判断命令是否匹配查询。
     pub fn matches(&self, query: &str) -> bool {
         if query.is_empty() {
@@ -152,6 +174,16 @@ impl CommandPaletteState {
             selected_index: 0,
             recent_commands: Vec::new(),
         }
+    }
+
+    /// 从全局命令注册表构建状态。
+    pub fn from_registry() -> Self {
+        Self::new(
+            crate::commands::CommandRegistry::global()
+                .iter()
+                .map(Command::from_descriptor)
+                .collect(),
+        )
     }
 
     /// 更新搜索关键字并重新过滤命令。
@@ -258,6 +290,18 @@ impl CommandPalette {
             focus_handle,
             style: StyleRefinement::default(),
         }
+    }
+
+    /// 从全局命令注册表创建命令面板。
+    pub fn from_registry(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new(
+            window,
+            cx,
+            crate::commands::CommandRegistry::global()
+                .iter()
+                .map(Command::from_descriptor)
+                .collect(),
+        )
     }
 
     /// 设置关闭回调。
@@ -531,4 +575,22 @@ fn render_command_item(command: Command, selected: bool, theme: &crate::Theme) -
                 )
                 .into_any_element()
         }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CommandPaletteState;
+
+    /// 面板状态可从全局命令注册表构建，并列出已登记的命令。
+    #[test]
+    fn palette_state_from_registry_lists_commands() {
+        let state = CommandPaletteState::from_registry();
+        assert!(!state.filtered_commands().is_empty());
+        assert!(
+            state
+                .filtered_commands()
+                .iter()
+                .any(|command| command.id.as_ref() == "rgpui_test::Open")
+        );
+    }
 }

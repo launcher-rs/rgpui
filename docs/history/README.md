@@ -11,3 +11,4 @@
 | `research-text-selection.md` | 文本选择功能研究报告（DOM 后端规划的支撑材料） |
 | `web-dom-backend-analysis.md` | Web DOM 后端深入分析（dioxus / topcoat / Flutter Web 调研） |
 | `web-dom-backend-plan.md` | Web DOM 后端规划，已落地（2026-08-20 纯 DOM 渲染模式） |
+| `office-suite-foundation-analysis.md` | Office 套件基础缺口分析 + P0 路线（命令注册表 / Ribbon / 视口 / 标尺·参考线已落地） |
