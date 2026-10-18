@@ -227,6 +227,10 @@ name = "command_registry"
 path = "src/bin/command_registry.rs"
 
 [[bin]]
+name = "ribbon"
+path = "src/bin/ribbon.rs"
+
+[[bin]]
 name = "dock"
 path = "src/bin/dock.rs"
 

@@ -244,6 +244,9 @@ pub mod tabs;
 /// 标题栏子系统 - 自定义标题栏、窗口控制按钮与客户端装饰边框
 pub mod title_bar;
 
+/// Ribbon 功能区 - 数据驱动的 Office 风格功能区，命令按 id 绑定到命令注册表
+pub mod ribbon;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 

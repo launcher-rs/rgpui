@@ -141,7 +141,30 @@ P0 第一件（命令注册表）已落地，作为其余 P0 件（Ribbon/视口
 > 说明：命令 id 即动作名称，因此注册表与既有 Action 系统零冲突、零迁移成本；
 > 图标/放置位置（Ribbon tab/group/QAT）字段待 Ribbon 落地时再加。
 
-## 七、结论
+## 七、P0 落地：Ribbon 框架（已实现）
+
+P0 第二件（Ribbon 框架）已落地，直接建立在命令注册表之上：命令项按**命令 id**绑定，
+标签/快捷键未显式指定时从注册表读取，点击统一经 `App::dispatch_command` 派发。
+
+- **模块**：`crates/rgpui/src/ribbon.rs`（`rgpui::ribbon::*`，不进根 glob，避免与用户命名冲突）
+  - `RibbonState`：激活选项卡索引（`new`/`active_tab`/`set_active_tab(index, cx)`），
+    为 `Entity`，父视图应 `observe` 它以在切换时重绘。
+  - `RibbonTab`：`new(id, label).group(..).context(..)`。
+  - `RibbonGroup`：`new(label).item(impl Into<RibbonItem>)`，底部显示组名。
+  - `RibbonItem`：枚举 `Button`/`Toggle`/`Dropdown`/`Separator`，构造器
+    `RibbonItem::button/toggle/dropdown/separator`；`RibbonButton`（`label`/`icon`/`large`）、
+    `RibbonToggle`（`label`/`icon`/`checked`）、`RibbonDropdown`（`label`/`icon`/`item`/`large`）。
+  - `Ribbon`：`new(&Entity<RibbonState>, Vec<RibbonTab>).collapsed(bool)`，`RenderOnce` 元素；
+    选项卡条 + 激活 tab 内容；连续小按钮自动聚成每列 ≤3 的竖列。
+  - `RibbonContext`：上下文选项卡的强调色（`new(label, color: impl Into<Hsla>)`）。
+- **示例**：`examples/showcase/src/bin/ribbon.rs`（`cargo run -p showcase --bin ribbon`），
+  含两个选项卡、大/小按钮、切换按钮、下拉按钮与上下文选项卡。
+- **测试**：`ribbon::tests`（5：状态默认值、标签回退×3、绘制与切换选项卡冒烟）。
+
+> 尚未实现（待后续 P1）：SplitButton、Gallery、ComboBox、折叠态交互、
+> 以及 QAT/Mini toolbar、KeyTips、Backstage 等 Ribbon 系控件。
+
+## 八、结论
 
 - storytold 已证明「纯 Rust、引擎优先、UI 可换」路线可行，**rgpui 完全可以作为其 UI 基座**；
 - 真正的缺口不在渲染/布局（rgpui 有），而在 **Office 特征 UI（Ribbon 系）** 与
