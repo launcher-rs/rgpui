@@ -289,22 +289,21 @@ impl SelectableText {
         window: &mut Window,
         cx: &mut App
     ) {
-        // 从文本布局计算选择边界
-        let selection_rects = text_layout.rects_for_range(
-            selection.start..selection.end
+        // 从起止字符的屏幕位置构造选择矩形（单行示例）
+        let (Some(start), Some(end)) = (
+            text_layout.position_for_index(selection.start),
+            text_layout.position_for_index(selection.end),
+        ) else {
+            return;
+        };
+
+        let selection_bounds = Bounds::new(
+            point(bounds.left() + start.x, bounds.top() + start.y),
+            size(end.x - start.x, text_layout.line_height()),
         );
 
         // 绘制选择背景
-        for rect in selection_rects {
-            window.paint_quad(paint_quad(
-                Bounds::new(
-                    point(bounds.left() + rect.origin.x, bounds.top() + rect.origin.y),
-                    rect.size
-                ),
-                Anchor::default(),
-                cx.theme().selection_background,
-            ));
-        }
+        window.paint_quad(fill(selection_bounds, cx.theme().selection));
     }
 
     fn position_to_index(
@@ -317,7 +316,10 @@ impl SelectableText {
             position.x - bounds.left(),
             position.y - bounds.top()
         );
-        text_layout.index_for_position(relative_pos)
+        // index_for_position 返回 Result：Err(最近索引)
+        text_layout
+            .index_for_position(relative_pos)
+            .unwrap_or_else(|closest| closest)
     }
 }
 ```
@@ -329,7 +331,7 @@ impl SelectableText {
 ```rust
 pub struct ComplexElement {
     id: ElementId,
-    children: Vec<Box<dyn Element<RequestLayoutState = (), PrepaintState = ()>>>,
+    children: Vec<AnyElement>,
     scrollable: bool,
     scroll_offset: Point<Pixels>,
 }
@@ -393,15 +395,15 @@ impl Element for ComplexElement {
         let layout_id = window.request_layout(
             Style {
                 flex_direction: FlexDirection::Column,
-                gap: px(8.),
+                gap: size(px(8.), px(8.)).into(),
                 size: Size {
-                    width: relative(1.0),
+                    width: relative(1.0).into(),
                     height: if self.scrollable {
                         // 可滚动的固定高度
-                        px(400.)
+                        px(400.).into()
                     } else {
                         // 不可滚动的自动高度
-                        total_height
+                        total_height.into()
                     },
                 },
                 ..default()
@@ -473,10 +475,13 @@ impl Element for ComplexElement {
         cx: &mut App
     ) {
         // 绘制背景
-        window.paint_quad(paint_quad(
+        window.paint_quad(quad(
             bounds,
-            Anchor::all(px(4.)),
+            Corners::all(px(4.)),
             cx.theme().background,
+            Edges::all(px(0.)),
+            transparent_black(),
+            BorderStyle::default(),
         ));
 
         // 仅绘制可见的子元素
@@ -560,21 +565,20 @@ impl ComplexElement {
             point(bounds.right() - scrollbar_width, bounds.top()),
             size(scrollbar_width, visible_height)
         );
-        window.paint_quad(paint_quad(
-            track_bounds,
-            Anchor::default(),
-            cx.theme().scrollbar_track,
-        ));
+        window.paint_quad(fill(track_bounds, cx.theme().scrollbar));
 
         // 绘制滚动条滑块
         let thumb_bounds = Bounds::new(
             point(bounds.right() - scrollbar_width, bounds.top() + thumb_y),
             size(scrollbar_width, thumb_height)
         );
-        window.paint_quad(paint_quad(
+        window.paint_quad(quad(
             thumb_bounds,
-            Anchor::all(px(4.)),
+            Corners::all(px(4.)),
             cx.theme().scrollbar_thumb,
+            Edges::all(px(0.)),
+            transparent_black(),
+            BorderStyle::default(),
         ));
     }
 }
@@ -590,9 +594,10 @@ fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoE
         .child(SimpleText {
             id: ElementId::Name("code-text".into()),
             text: "fn main() { println!(\"Hello\"); }".into(),
+            // 高亮样式通常来自主题 / 语法解析器；此处用主题颜色构造
             highlights: vec![
-                (0..2, HighlightStyle::keyword()),
-                (3..7, HighlightStyle::function()),
+                (0..2, HighlightStyle::color(cx.theme().blue)),
+                (3..7, HighlightStyle::color(cx.theme().green)),
             ],
         })
 }
@@ -616,9 +621,9 @@ fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoE
 
 ```rust
 fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-    let children: Vec<Box<dyn Element<_, _>>> = self.items
+    let children: Vec<AnyElement> = self.items
         .iter()
-        .map(|item| Box::new(div().child(item.name.clone())) as Box<_>)
+        .map(|item| div().child(item.name.clone()).into_any_element())
         .collect();
 
     div()

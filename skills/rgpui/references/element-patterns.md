@@ -30,7 +30,7 @@ impl Element for TextElement {
         -> (LayoutId, StyledText)
     {
         let styled_text = StyledText::new(self.text.clone())
-            .with_style(self.style);
+            .with_default_highlights(&self.style, []);
         let (layout_id, _) = styled_text.request_layout(None, None, window, cx);
         (layout_id, styled_text)
     }

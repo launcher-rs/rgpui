@@ -5,7 +5,7 @@ rgpui 提供全面的测试框架，允许你测试 UI 组件、异步操作和�
 
 ### 规则
 
-- 如果测试不需要窗口或渲染，可以避免使用 `[rgpui::test]` 和 `TestAppContext`，只需编写简单的 rust 测试。
+- 如果测试不需要窗口或渲染，可以避免使用 `#[rgpui::test]` 和 `TestAppContext`，只需编写简单的 rust 测试。
 
 ## 核心测试基础设施
 

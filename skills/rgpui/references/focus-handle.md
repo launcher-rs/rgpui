@@ -41,7 +41,7 @@ impl Render for FocusableComponent {
             .child("可聚焦内容")
     }
 
-    fn on_enter(&mut self, _: &Enter, cx: &mut Context<Self>) {
+    fn on_enter(&mut self, _: &Enter, _window: &mut Window, cx: &mut Context<Self>) {
         // 聚焦时处理 Enter 键
         cx.notify();
     }
@@ -52,16 +52,16 @@ impl Render for FocusableComponent {
 
 ```rust
 impl MyComponent {
-    fn focus(&mut self, cx: &mut Context<Self>) {
-        self.focus_handle.focus(cx);
+    fn focus(&self, window: &mut Window, cx: &mut App) {
+        self.focus_handle.focus(window, cx);
     }
 
-    fn is_focused(&self, cx: &App) -> bool {
-        self.focus_handle.is_focused(cx)
+    fn is_focused(&self, window: &Window) -> bool {
+        self.focus_handle.is_focused(window)
     }
 
-    fn blur(&mut self, cx: &mut Context<Self>) {
-        cx.blur();
+    fn blur(&self, window: &mut Window) {
+        window.blur();
     }
 }
 ```
@@ -70,35 +70,46 @@ impl MyComponent {
 
 ### 处理焦点变化
 
-```rust
-impl Render for MyInput {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let is_focused = self.focus_handle.is_focused(cx);
+元素构建器上**没有** `.on_focus()` / `.on_blur()`；改用 `Context::on_focus` /
+`Context::on_blur` 注册回调，并把返回的 `Subscription` 保存下来：
 
-        div()
-            .track_focus(&self.focus_handle)
-            .on_focus(cx.listener(|this, _event, cx| {
-                this.on_focus(cx);
-            }))
-            .on_blur(cx.listener(|this, _event, cx| {
-                this.on_blur(cx);
-            }))
-            .when(is_focused, |el| {
-                el.bg(cx.theme().focused_background)
-            })
-            .child(self.render_content())
-    }
+```rust
+struct MyInput {
+    focus_handle: FocusHandle,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl MyInput {
-    fn on_focus(&mut self, cx: &mut Context<Self>) {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let focus_handle = cx.focus_handle();
+        let _subscriptions = vec![
+            cx.on_focus(&focus_handle, window, Self::handle_focus),
+            cx.on_blur(&focus_handle, window, Self::handle_blur),
+        ];
+        Self { focus_handle, _subscriptions }
+    }
+
+    fn handle_focus(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         // 处理获得焦点
         cx.notify();
     }
 
-    fn on_blur(&mut self, cx: &mut Context<Self>) {
+    fn handle_blur(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         // 处理失去焦点
         cx.notify();
+    }
+}
+
+impl Render for MyInput {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_focused = self.focus_handle.is_focused(window);
+
+        div()
+            .track_focus(&self.focus_handle)
+            .when(is_focused, |el| {
+                el.bg(cx.theme().list_active)
+            })
+            .child(self.render_content())
     }
 }
 ```
@@ -126,15 +137,15 @@ div()
 
 ```rust
 impl Container {
-    fn focus_first(&mut self, cx: &mut Context<Self>) {
+    fn focus_first(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(first) = self.children.first() {
             first.update(cx, |child, cx| {
-                child.focus_handle.focus(cx);
+                child.focus_handle.focus(window, cx);
             });
         }
     }
 
-    fn focus_next(&mut self, cx: &mut Context<Self>) {
+    fn focus_next(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
         // 自定义焦点导航逻辑
     }
 }
@@ -146,11 +157,11 @@ impl Container {
 
 ```rust
 impl MyDialog {
-    fn new(cx: &mut Context<Self>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
 
         // 创建时聚焦
-        focus_handle.focus(cx);
+        focus_handle.focus(window, cx);
 
         Self { focus_handle }
     }
@@ -164,7 +175,7 @@ impl Modal {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, cx| {
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 if event.key == Key::Tab {
                     // 保持焦点在模态框内
                     this.focus_next_in_modal(cx);
@@ -180,14 +191,16 @@ impl Modal {
 
 ```rust
 impl Searchable {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn activate_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search_active = true;
+        // 直接聚焦；不在 render 中改焦点
+        self.focus_handle.focus(window, cx);
+        cx.notify();
+    }
+
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .track_focus(&self.focus_handle)
-            .when(self.search_active, |el| {
-                el.on_mount(cx.listener(|this, _, cx| {
-                    this.focus_handle.focus(cx);
-                }))
-            })
             .child(self.search_input())
     }
 }
@@ -207,11 +220,12 @@ input()
 ### ✅ 提供视觉焦点指示器
 
 ```rust
-let is_focused = self.focus_handle.is_focused(cx);
+let is_focused = self.focus_handle.is_focused(window);
 
 div()
     .when(is_focused, |el| {
-        el.border_color(cx.theme().focused_border)
+        // StyledExt::focused_border 用主题 ring 色绘制 1px 焦点边框
+        el.focused_border(cx)
     })
 ```
 

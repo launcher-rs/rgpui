@@ -43,16 +43,16 @@ impl Render for Editor {
 }
 
 impl Editor {
-    fn move_up(&mut self, _: &MoveUp, cx: &mut Context<Self>) {
+    fn move_up(&mut self, _: &MoveUp, _window: &mut Window, cx: &mut Context<Self>) {
         // 处理向上移动
         cx.notify();
     }
 
-    fn move_down(&mut self, _: &MoveDown, cx: &mut Context<Self>) {
+    fn move_down(&mut self, _: &MoveDown, _window: &mut Window, cx: &mut Context<Self>) {
         cx.notify();
     }
 
-    fn save(&mut self, _: &Save, cx: &mut Context<Self>) {
+    fn save(&mut self, _: &Save, _window: &mut Window, cx: &mut Context<Self>) {
         // 保存逻辑
         cx.notify();
     }
@@ -62,7 +62,7 @@ impl Editor {
 ### 带参数的操作
 
 ```rust
-#[derive(Clone, PartialEq, Action, Deserialize)]
+#[derive(Clone, PartialEq, Action, Deserialize, schemars::JsonSchema)]
 #[action(namespace = editor)]
 pub struct InsertText {
     pub text: String,
@@ -162,7 +162,7 @@ actions!([
 ```rust
 // ✅ 好：正确的处理函数命名
 impl MyComponent {
-    fn on_action_save(&mut self, _: &Save, cx: &mut Context<Self>) {
+    fn on_action_save(&mut self, _: &Save, _window: &mut Window, cx: &mut Context<Self>) {
         // 处理保存
         cx.notify();
     }

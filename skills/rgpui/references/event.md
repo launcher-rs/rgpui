@@ -107,16 +107,19 @@ impl Child {
 ### 2. 全局事件广播
 
 ```rust
+// 注意：WeakEntity<T> 要求 T: Sized，不能用 `WeakEntity<dyn Listener>`。
+// 若需类型擦除，改用 `AnyWeakEntity` + `AnyEntity::downcast`。
 struct EventBus {
-    listeners: Vec<WeakEntity<dyn Listener>>,
+    listeners: Vec<WeakEntity<Listener>>,
 }
 
 impl EventBus {
-    fn broadcast(&mut self, event: GlobalEvent, cx: &mut Context<Self>) {
+    fn broadcast(&mut self, event: GlobalEvent, cx: &mut App) {
         self.listeners.retain(|weak| {
             weak.update(cx, |listener, cx| {
                 listener.on_event(&event, cx);
-            }).is_ok()
+            })
+            .is_ok()
         });
     }
 }
@@ -180,10 +183,12 @@ let _sub = cx.observe_window_activation(window, |this, window, cx| {
 ## observe_global
 
 ```rust
-cx.observe_global::<Theme>(|cx| {
+cx.observe_global::<Theme>(|this, cx| {
     cx.notify(); // 主题变化时重新渲染
 });
 ```
+
+> `Context::observe_global` 的回调是 `|this, cx|`；`App::observe_global` 才是单参数 `|cx|`。
 
 ## 订阅生命周期
 

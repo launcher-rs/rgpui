@@ -247,7 +247,10 @@ window.set_cursor_style(CursorStyle::ResizeLeftRight, &hitbox);
 fn request_layout(&mut self, .., window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
     let layout_id = window.request_layout(
         Style {
-            size: size(px(200.), px(100.)),
+            size: Size {
+                width: px(200.).into(),
+                height: px(100.).into(),
+            },
             ..default()
         },
         vec![], // 没有子元素
@@ -271,10 +274,10 @@ fn request_layout(&mut self, .., window: &mut Window, cx: &mut App)
 
     let layout_id = window.request_layout(
         Style {
-            size: size(
-                text_bounds.width() + padding * 2.,
-                text_bounds.height() + padding * 2.,
-            ),
+            size: Size {
+                width: (text_bounds.width() + padding * 2.).into(),
+                height: (text_bounds.height() + padding * 2.).into(),
+            },
             ..default()
         },
         vec![],
@@ -296,17 +299,17 @@ fn request_layout(&mut self, .., window: &mut Window, cx: &mut App)
     let mut child_layout_ids = Vec::new();
 
     for child in &mut self.children {
-        let (layout_id, _) = child.request_layout(window, cx);
+        let (layout_id, _) = child.request_layout(None, None, window, cx);
         child_layout_ids.push(layout_id);
     }
 
     let layout_id = window.request_layout(
         Style {
             flex_direction: FlexDirection::Row,
-            gap: px(8.),
+            gap: size(px(8.), px(8.)).into(),
             size: Size {
-                width: relative(1.0),  // 填充父级宽度
-                height: auto(),        // 自动高度
+                width: relative(1.0).into(),  // 填充父级宽度
+                height: auto(),               // 自动高度
             },
             ..default()
         },
@@ -322,27 +325,25 @@ fn request_layout(&mut self, .., window: &mut Window, cx: &mut App)
 
 ### 优雅降级
 
-优雅地处理错误，不要 panic：
+优雅地处理错误，不要 panic。注意 `Element::request_layout` 返回
+`(LayoutId, State)`，**不是** `Result`，因此失败要在内部处理并回退：
 
 ```rust
 fn request_layout(&mut self, .., window: &mut Window, cx: &mut App)
     -> (LayoutId, Option<TextLayout>)
 {
     // 尝试创建样式化文本
-    match StyledText::new(self.text.clone()).request_layout(None, None, window, cx) {
-        Ok((layout_id, text_layout)) => {
-            (layout_id, Some(text_layout))
-        }
-        Err(e) => {
-            // 记录错误
-            eprintln!("Failed to layout text: {}", e);
-
-            // 回退到简单文本
-            let fallback_text = StyledText::new("(Error loading text)".into());
-            let (layout_id, _) = fallback_text.request_layout(None, None, window, cx);
-            (layout_id, None)
-        }
+    let mut styled_text = StyledText::new(self.text.clone());
+    if self.text.len() > MAX_TEXT_LEN {
+        // 记录并回退到简短占位文本
+        eprintln!("text too long, falling back");
+        styled_text = StyledText::new("(Error loading text)");
+        let (layout_id, _) = styled_text.request_layout(None, None, window, cx);
+        return (layout_id, None);
     }
+
+    let (layout_id, _) = styled_text.request_layout(None, None, window, cx);
+    (layout_id, Some(styled_text.layout().clone()))
 }
 ```
 

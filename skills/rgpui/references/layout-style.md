@@ -75,7 +75,7 @@ div()
 ```rust
 div()
     .w(px(300.))
-    .bg(cx.theme().surface)
+    .bg(cx.theme().background)
     .rounded(px(8.))
     .shadow_md()
     .p(px(16.))
@@ -147,9 +147,10 @@ div()
 
 ## h_flex / v_flex 辅助函数
 
-rgpui 提供简写辅助函数（从 `rgpui` 的 prelude 导入）：
+rgpui 提供简写辅助函数（是 crate 根的自由函数，**不在** `prelude` 中，需 `use rgpui::{h_flex, v_flex};`）：
 
 ```rust
+use rgpui::{h_flex, v_flex};
 use rgpui::prelude::*;
 
 // h_flex() = div().flex().flex_row().items_center()
@@ -193,11 +194,19 @@ rgpui 提供 Tailwind 风格的间距/尺寸简写：
 ## Overflow 与滚动
 
 ```rust
+// overflow_hidden / overflow_x_hidden 属于 Styled，直接可用
 div()
     .overflow_hidden()          // 裁剪内容
     .overflow_x_hidden()        // 裁剪水平
+
+// overflow_scroll 属于 StatefulInteractiveElement，需要先 .id(...) 变成 Stateful<Div>
+div()
+    .id("scroll-box")
+    .overflow_scroll()          // 两个轴都可滚动
+
+// 需要滚动条时用 ScrollableElement（可直接用于 div）
+div()
     .overflow_y_scrollbar()     // y 轴显示滚动条
-    .overflow_scroll()          // 两个轴都滚动
 ```
 
 ## 绝对定位
@@ -247,13 +256,16 @@ rgpui 的通用 `Styled` API **不**提供 `z_index(...)` 方法。
 
 ```rust
 div()
-    .bg(cx.theme().surface)
+    .bg(cx.theme().background)
     .text_color(cx.theme().foreground)
     .border_color(cx.theme().border)
     .when(is_hovered, |el| {
-        el.bg(cx.theme().hover)
+        el.bg(cx.theme().list_hover)
     })
 ```
+
+> `ThemeColor` 没有 `surface` / `hover` 字段；常用的是 `background`、`accent`、
+> `list_hover`、`border`、`foreground`、`ring`、`popover` 等。
 
 ## 条件样式
 

@@ -66,24 +66,29 @@ impl MyComponent {
 ```rust
 impl MyComponent {
     fn process_file(&mut self, cx: &mut Context<Self>) {
-        let entity = cx.entity().downgrade();
+        cx.spawn(async move |this, cx| {
+            // 后台线程跑 CPU 密集型工作，前台任务 await 其结果
+            let result = cx
+                .background_spawn(async move {
+                    // 在后台线程上运行，CPU 密集型
+                    heavy_computation().await
+                })
+                .await;
 
-        cx.background_spawn(async move {
-            // 在后台线程上运行，CPU 密集型
-            let result = heavy_computation().await;
-            result
-        })
-        .then(cx.spawn(move |result, cx| {
-            // 回到前台更新 UI
-            entity.update(cx, |state, cx| {
+            // 回到 UI 线程更新实体
+            this.update(cx, |state, cx| {
                 state.result = result;
                 cx.notify();
-            }).ok();
-        }))
+            })
+            .ok();
+        })
         .detach();
     }
 }
 ```
+
+> `Task` **没有** `.then(...)`。要在后台结果就绪后更新 UI，就在同一个前台任务里
+> `await` 那个后台任务，再 `this.update(...)`。
 
 ### 任务管理
 
@@ -97,7 +102,9 @@ impl MyView {
         let _task = cx.spawn(async move |this, cx: &mut AsyncApp| {
             // 任务在 drop 时自动取消
             loop {
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                cx.background_executor()
+                    .timer(Duration::from_secs(1))
+                    .await;
                 this.update(cx, |state, cx| {
                     state.tick();
                     cx.notify();
@@ -128,15 +135,14 @@ cx.spawn(async move |this, cx: &mut AsyncApp| {
 ### 2. 后台计算 + UI 更新
 
 ```rust
-cx.background_spawn(async move {
-    heavy_work()
-})
-.then(cx.spawn(move |this, cx: &mut AsyncApp| {
+cx.spawn(async move |this, cx| {
+    let result = cx.background_spawn(async move { heavy_work() }).await;
     this.update(cx, |state, cx| {
         state.result = result;
         cx.notify();
-    }).ok();
-}))
+    })
+    .ok();
+})
 .detach();
 ```
 
@@ -145,7 +151,9 @@ cx.background_spawn(async move {
 ```rust
 cx.spawn(async move |this, cx: &mut AsyncApp| {
     loop {
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        cx.background_executor()
+            .timer(Duration::from_secs(5))
+            .await;
         this.update(cx, |state, cx| {
             state.tick();
             cx.notify();
@@ -208,16 +216,16 @@ cx.background_spawn(async move {
 });
 ```
 
-### ✅ 应该：使用前台任务或链式调用
+### ✅ 应该：在同一前台任务里 await 后台结果
 
 ```rust
-// ✅ 正确：与前台任务链式调用
-cx.background_spawn(async move { data })
-    .then(cx.spawn(move |data, cx| {
-        entity.update(cx, |state, cx| {
-            state.data = data;
-            cx.notify();
-        }).ok();
-    }))
-    .detach();
+// ✅ 正确：前台任务中 await 后台任务，再更新实体
+cx.spawn(async move |_, cx| {
+    let data = cx.background_spawn(async move { data }).await;
+    entity.update(cx, |state, cx| {
+        state.data = data;
+        cx.notify();
+    }).ok();
+})
+.detach();
 ```

@@ -4,7 +4,7 @@
 
 ## Element Trait 结构
 
-`Element` trait 需要实现三个关联类型和五个方法：
+`Element` trait 需要实现两个关联类型（`RequestLayoutState`、`PrepaintState`）和五个方法：
 
 ```rust
 pub trait Element: 'static + IntoElement {
@@ -231,9 +231,12 @@ div()
 ```rust
 let layout_id = window.request_layout(
     Style {
-        size: size(px(200.), px(100.)),
-        flex: Flex::Column,
-        gap: px(8.),
+        size: Size {
+            width: px(200.).into(),
+            height: px(100.).into(),
+        },
+        flex_direction: FlexDirection::Column,
+        gap: size(px(8.), px(8.)).into(),
         ..default()
     },
     vec![child1_layout_id, child2_layout_id],
@@ -270,11 +273,12 @@ bounds.center()  // 中心点
 ### 创建 Hitbox
 
 ```rust
-// 普通 hitbox（阻止事件传递）
+// 默认 hitbox：参与悬停 / 滚动 / 光标处理
 let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
 
-// 透明 hitbox（允许事件传递到下面的元素）
-let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Transparent);
+// 阻挡鼠标的 hitbox：is_hovered() == false、不处理滚动，
+// 用于拦截其覆盖区域下的鼠标事件（见 InteractiveElement::occlude）
+let hitbox = window.insert_hitbox(bounds, HitboxBehavior::BlockMouse);
 ```
 
 ### 使用 Hitbox

@@ -103,7 +103,7 @@ impl MyComponent {
     fn load_data(&self, cx: &mut Context<Self>) -> Task<i32> {
         cx.spawn(async move |this, cx| {
             // 模拟异步工作
-            this.update(cx, |comp, _| comp.loading = true).await;
+            this.update(cx, |comp, _| comp.loading = true).ok();
             // 返回结果
             42
         })
@@ -114,7 +114,7 @@ impl MyComponent {
             // 后台工作
             this.update(cx, |comp, _| {
                 comp.value += 10;
-            }).await;
+            }).ok();
         }).detach();
     }
 }
@@ -157,7 +157,7 @@ impl MyComponent {
             this.update(cx, |comp, cx| {
                 comp.action_performed = true;
                 cx.notify();
-            }).await;
+            }).ok();
         }).detach();
     }
 }

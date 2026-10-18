@@ -124,7 +124,7 @@ entity.update(cx, |state, inner_cx| {
 嵌套的 `entity.update(cx, …)` 调用是危险的。默认做法是：**不要嵌套它们**。
 
 **同一实体 → 始终 panic。**  
-GPUI 在更新或渲染传递期间锁定实体。重新进入同一锁会立即 panic：
+rgpui 在更新或渲染传递期间锁定实体。重新进入同一锁会立即 panic：
 
 ```
 cannot update … while it is already being updated

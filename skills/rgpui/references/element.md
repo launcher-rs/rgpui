@@ -31,7 +31,13 @@ impl Element for MyElement {
         -> (LayoutId, Self::RequestLayoutState)
     {
         let layout_id = window.request_layout(
-            Style { size: size(px(200.), px(100.)), ..default() },
+            Style {
+                size: Size {
+                    width: px(200.).into(),
+                    height: px(100.).into(),
+                },
+                ..default()
+            },
             vec![],
             cx
         );
@@ -50,7 +56,14 @@ impl Element for MyElement {
     fn paint(&mut self, .., bounds: Bounds<Pixels>, layout: &mut Self::RequestLayoutState,
              paint_state: &mut Self::PrepaintState, window: &mut Window, cx: &mut App)
     {
-        window.paint_quad(paint_quad(bounds, Anchor::all(px(4.)), cx.theme().background));
+        window.paint_quad(quad(
+            bounds,
+            Corners::all(px(4.)),
+            cx.theme().background,
+            Edges::all(px(0.)),
+            transparent_black(),
+            BorderStyle::default(),
+        ));
 
         window.on_mouse_event({
             let hitbox = paint_state.hitbox.clone();

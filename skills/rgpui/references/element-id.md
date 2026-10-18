@@ -20,12 +20,23 @@ div().id(ElementId::from(idx))  // 显式
 ## 接受的类型
 
 ```rust
-impl Into<ElementId> for &str      // "my-id"
-impl Into<ElementId> for String    // String::from("my-id")
-impl Into<ElementId> for usize     // 0, 1, 2, ...
-impl Into<ElementId> for u64
-impl Into<ElementId> for SharedString
+impl From<&'static str> for ElementId   // "my-id"（必须是 'static）
+impl From<String> for ElementId         // String::from("my-id")
+impl From<Arc<str>> for ElementId
+impl From<SharedString> for ElementId
+impl From<usize> for ElementId          // 0, 1, 2, ...
+impl From<i32> for ElementId
+impl From<Uuid> for ElementId
+impl From<&FocusHandle> for ElementId   // 直接复用焦点句柄
+// 复合形式：父级名 + 数字 id，避免同名冲突
+impl From<(&'static str, EntityId)> for ElementId
+impl From<(&'static str, usize)> for ElementId
+impl From<(&'static str, u64)> for ElementId
+impl From<(&'static str, u32)> for ElementId
+impl From<(SharedString, usize)> for ElementId
 ```
+
+> 注意：**没有** `From<u64>`。要传整数用 `usize`/`i32`，或写成 `(name, 42u64)`。
 
 ## 唯一性规则
 
@@ -90,6 +101,6 @@ for (i, item) in items.iter().enumerate() {
 }
 
 // 使用描述性 ID 用于调试
-Input::new("search-input")
-Select::new("country-select")
+div().id("search-input")
+Button::new("country-select").label("Select")
 ```

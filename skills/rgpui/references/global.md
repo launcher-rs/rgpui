@@ -28,7 +28,7 @@ impl Global for AppSettings {}
 
 ```rust
 fn main() {
-    let app = Application::new();
+    let app = rgpui_platform::application();
     app.run(|cx: &mut App| {
         // 设置全局变量
         cx.set_global(AppSettings {
@@ -124,7 +124,7 @@ impl MyComponent {
         let registry = cx.global::<ServiceRegistry>();
         let client = registry.http_client.clone();
 
-        cx.spawn(async move |cx| {
+        cx.spawn(async move |_this, cx| {
             let data = client.get("api/data").await?;
             // 处理数据...
             Ok::<_, anyhow::Error>(())

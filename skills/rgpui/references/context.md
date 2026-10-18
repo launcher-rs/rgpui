@@ -23,9 +23,9 @@ impl MyComponent {
         self.value = 42;
         cx.notify(); // 触发重新渲染
 
-        // 生成异步任务
-        cx.spawn(async move |cx| {
-            // 异步工作
+        // 生成异步任务（闭包首个参数是 WeakEntity<Self>）
+        cx.spawn(async move |this, cx| {
+            // 异步工作；经 this.update(cx, ...) 访问自身状态
         }).detach();
 
         // 获取当前实体
@@ -38,14 +38,14 @@ impl MyComponent {
 
 ```rust
 fn main() {
-    let app = Application::new();
+    let app = rgpui_platform::application();
     app.run(|cx: &mut App| {
         // 创建实体
         let entity = cx.new(|cx| MyState::default());
 
         // 打开窗口
         cx.open_window(WindowOptions::default(), |window, cx| {
-            cx.new(|cx| Root::new(view, window, cx))
+            cx.new(|cx| Root::new(view, cx))
         });
     });
 }
@@ -57,7 +57,7 @@ fn main() {
 impl Render for MyView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // 窗口操作
-        let is_focused = window.is_window_focused();
+        let is_focused = window.is_window_active();
         let bounds = window.bounds();
 
         div().child("Content")
@@ -120,7 +120,7 @@ cx.subscribe(&entity, |this, source, event, cx| {
 
 ```rust
 // 窗口状态
-let focused = window.is_window_focused();
+let focused = window.is_window_active();
 let bounds = window.bounds();
 let scale = window.scale_factor();
 
@@ -131,8 +131,8 @@ window.remove_window();
 ### 异步操作
 
 ```rust
-// 生成前台任务
-cx.spawn(async move |cx| {
+// 生成前台任务（Context 版：首个参数为 WeakEntity<Self>）
+cx.spawn(async move |this, cx| {
     // 带实体访问的异步工作
 }).detach();
 
@@ -220,11 +220,13 @@ let _sub = cx.observe_window_activation(window, |this, window, cx| {
 当全局值变化时响应：
 
 ```rust
-cx.observe_global::<Theme>(|cx| {
+cx.observe_global::<Theme>(|this, cx| {
     // 主题变化 — 响应
     cx.notify();
 });
 ```
+
+> `Context::observe_global` 的回调是 `|this, cx|`；`App::observe_global` 才是单参数 `|cx|`。
 
 ## defer 和 defer_in
 

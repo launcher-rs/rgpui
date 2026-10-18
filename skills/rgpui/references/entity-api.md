@@ -115,7 +115,7 @@ my_entity.update(cx, |state, cx| {
 
 ```rust
 my_entity.update_in(cx, |state, window, cx| {
-    state.focused = window.is_window_focused();
+    state.focused = window.is_window_active();
     cx.notify();
 });
 ```
