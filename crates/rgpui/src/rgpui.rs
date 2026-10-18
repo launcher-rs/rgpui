@@ -41,6 +41,9 @@ pub static GPUI_MANIFEST_DIR: &'static str = env!("CARGO_MANIFEST_DIR");
 #[macro_use]
 mod action;
 
+/// 命令注册表 - 在 Action 之上附加 UI 元数据，供功能区/命令面板/CLI/MCP 按 id 统一分发
+pub mod commands;
+
 /// 应用核心模块 - 包含 App 主结构体、Context、EntityMap 等
 mod app;
 
@@ -75,6 +78,8 @@ pub mod theme;
 
 /// 组件文本类型 - 轻量文本封装，供组件库使用
 pub mod component_text;
+/// 重导出命令注册表类型
+pub use commands::{CommandDescriptor, CommandRegistry};
 /// 重导出组件文本类型
 pub use component_text::{ComponentText, ComponentTextViewStyle};
 

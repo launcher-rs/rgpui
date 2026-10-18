@@ -221,6 +221,11 @@ required-features = ["editor"]
 name = "keymap"
 path = "src/bin/keymap.rs"
 
+# ---------- 命令 / 动作 ----------
+[[bin]]
+name = "command_registry"
+path = "src/bin/command_registry.rs"
+
 [[bin]]
 name = "dock"
 path = "src/bin/dock.rs"
