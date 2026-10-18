@@ -33,6 +33,12 @@ rgpui 是一个独立演进的 GPU 加速跨平台 UI 框架，支持 Windows、
 - **选择器**：Select、Combobox、DatePicker、ColorPicker、Rate
 - **其他**：Carousel、Upload、TagInput、Skeleton、Kbd
 
+### Office 应用基座
+- **命令注册表**：`CommandDescriptor` / `CommandRegistry`（inventory 全局单例）/ `register_command!` / `App::dispatch_command`，命令面板已接入（`CommandPaletteState::from_registry`）
+- **Ribbon 功能区**：数据驱动 选项卡/分组/大·小·切换·下拉按钮/上下文选项卡，命令按 id 绑定、点击统一派发
+- **视口**：`Viewport` 屏幕↔文档坐标映射、锚点缩放、平移、`fit`/`center`、滚轮交互
+- **标尺 + 对齐参考线/吸附**：`ruler_ticks` 刻度与 `align` 六锚点吸附（产出参考线）
+
 ### 编辑器能力
 - **编辑器核心**：EditorState + Editor 组件（右键菜单/查找/行操作/多光标可点）
 - **LSP 接线**：补全/悬停/诊断注入 + 防抖触发 + 诊断下划线
