@@ -29,6 +29,9 @@
 //!     ),
 //! ])
 //! ```
+//!
+//! 下拉按钮依赖菜单系统（弹出菜单），应用需调用 [`rgpui::init_all`](crate::init_all)
+//! 或 [`rgpui::menu::init`](crate::menu::init) 完成初始化。
 
 use crate::util::FluentBuilder as _;
 use crate::{
