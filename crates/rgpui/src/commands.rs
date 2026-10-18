@@ -198,6 +198,15 @@ impl CommandRegistry {
         self.by_id.contains_key(id)
     }
 
+    /// 命令显示标签；未登记时回退为命令 id 本身。
+    ///
+    /// Ribbon / 快速访问工具栏 / 菜单等按 id 绑定命令的 UI 用它取默认标签。
+    pub fn label_for(&self, id: &str) -> SharedString {
+        self.get(id)
+            .map(|descriptor| descriptor.label().clone())
+            .unwrap_or_else(|| SharedString::from(id))
+    }
+
     /// 迭代全部命令（已按分类/标签排序）。
     pub fn iter(&self) -> impl Iterator<Item = &CommandDescriptor> {
         self.descriptors.iter()

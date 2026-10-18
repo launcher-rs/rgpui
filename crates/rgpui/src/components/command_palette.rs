@@ -90,6 +90,7 @@ impl Command {
     /// 从命令注册表的描述符构建面板条目；选中时按 id 构建并派发对应动作。
     ///
     /// 动作无参时以 `None` 派发（见 [`App::dispatch_command`](crate::App::dispatch_command)）。
+    #[cfg(feature = "ribbon")]
     pub fn from_descriptor(descriptor: &crate::commands::CommandDescriptor) -> Self {
         let mut command = Command::new(descriptor.id().clone(), descriptor.label().clone());
         if let Some(description) = descriptor.description() {
@@ -176,7 +177,8 @@ impl CommandPaletteState {
         }
     }
 
-    /// 从全局命令注册表构建状态。
+    /// 从全局命令注册表构建状态（`ribbon` feature）。
+    #[cfg(feature = "ribbon")]
     pub fn from_registry() -> Self {
         Self::new(
             crate::commands::CommandRegistry::global()
@@ -292,7 +294,8 @@ impl CommandPalette {
         }
     }
 
-    /// 从全局命令注册表创建命令面板。
+    /// 从全局命令注册表创建命令面板（`ribbon` feature）。
+    #[cfg(feature = "ribbon")]
     pub fn from_registry(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self::new(
             window,
@@ -583,6 +586,7 @@ mod tests {
 
     /// 面板状态可从全局命令注册表构建，并列出已登记的命令。
     #[test]
+    #[cfg(feature = "ribbon")]
     fn palette_state_from_registry_lists_commands() {
         let state = CommandPaletteState::from_registry();
         assert!(!state.filtered_commands().is_empty());

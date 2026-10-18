@@ -88,12 +88,13 @@ cargo run -p showcase --bin <名称>
 | `dock` | 停靠面板布局 | `cargo run -p showcase --bin dock` |
 | `chat` | AI 对话视图（ChatView 等） | `cargo run -p showcase --bin chat` |
 
-### 命令 / 功能区 / 画布（Office 基座）
+### 应用套件基座（`ribbon` / `viewport` feature）
 
 | bin | 说明 | 运行 |
 |-----|------|------|
 | `command_registry` | 命令注册表：按 id 派发 + 命令面板接入 | `cargo run -p showcase --bin command_registry` |
 | `ribbon` | Ribbon 功能区（选项卡 / 分组 / 大·小·切换·下拉按钮 / 上下文选项卡）+ Alt/F10 按键提示 | `cargo run -p showcase --bin ribbon` |
+| `qat` | 快速访问工具栏（QAT）：按命令 id 绑定的紧凑图标按钮条 | `cargo run -p showcase --bin qat` |
 | `viewport` | 视口：可缩放/平移的 A4 文档页视图（屏幕↔文档坐标映射） | `cargo run -p showcase --bin viewport` |
 | `ruler` | 标尺刻度 + 拖拽方块吸附并显示参考线 | `cargo run -p showcase --bin ruler` |
 
