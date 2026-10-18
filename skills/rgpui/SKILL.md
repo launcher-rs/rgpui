@@ -10,7 +10,7 @@ description: rgpui 框架知识，涵盖操作/快捷键、异步/后台任务�
 | 主题 | 文件 | 何时加载 |
 |------|------|---------|
 | 操作与快捷键 | [action.md](references/action.md) | `actions!`、`bind_keys`、`on_action`、`key_context` |
-| 命令/Ribbon/QAT/迷你工具栏/视口/标尺 | [commands-ribbon-viewport.md](references/commands-ribbon-viewport.md) | `CommandRegistry`、`Ribbon` 功能区 + `KeyTips` 按键提示 + `QuickAccessToolbar`/`MiniToolbar`、`Viewport` 缩放平移、`ruler_ticks`/`align`（`ribbon`/`viewport` feature） |
+| 命令/Ribbon/QAT/迷你工具栏/应用菜单/视口/标尺 | [commands-ribbon-viewport.md](references/commands-ribbon-viewport.md) | `CommandRegistry`、`Ribbon` 功能区 + `KeyTips` 按键提示 + `QuickAccessToolbar`/`MiniToolbar`/`Backstage`、`Viewport` 缩放平移、`ruler_ticks`/`align`（`ribbon`/`viewport` feature） |
 | 异步与后台任务 | [async.md](references/async.md) | `cx.spawn`、`background_spawn`、`Task`、异步 I/O |
 | 上下文管理 | [context.md](references/context.md) | `App`、`Window`、`Context<T>`、`AsyncApp` |
 | 自定义元素（底层） | [element.md](references/element.md) | `Element` trait、`request_layout`、`prepaint`、`paint` |

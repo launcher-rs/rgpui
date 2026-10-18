@@ -8,11 +8,12 @@
 - `rgpui::keytips` — 按键提示解析与徽标（feature `ribbon`）
 - `rgpui::qat` — 快速访问工具栏（feature `ribbon`）
 - `rgpui::mini_toolbar` — 选中后就近浮出的迷你工具栏（feature `ribbon`）
+- `rgpui::backstage` — 覆盖整窗的应用菜单/文件面板（feature `ribbon`）
 - `rgpui::viewport` — 屏幕 ↔ 文档坐标映射与缩放/平移（feature `viewport`）
 - `rgpui::guides` — 标尺刻度 + 对齐参考线/吸附（feature `viewport`）
 
 启用：`rgpui = { features = ["ribbon", "viewport"] }`（默认关闭，普通应用不必开启）。
-示例：`cargo run -p showcase --bin {command_registry,ribbon,qat,mini_toolbar,viewport,ruler}`。
+示例：`cargo run -p showcase --bin {command_registry,ribbon,qat,mini_toolbar,backstage,viewport,ruler}`。
 
 ---
 
@@ -127,7 +128,7 @@ RibbonTab::new("home", "开始").keytip("H").group(
 );
 ```
 
-> 尚未实现：SplitButton、Gallery、ComboBox、折叠态交互、Backstage。
+> 尚未实现：SplitButton、Gallery、ComboBox、折叠态交互（应用菜单见 2d）。
 
 ---
 
@@ -177,6 +178,40 @@ div().relative().size_full().child(
   （不调用 `at` 则按流式元素渲染）。
 - 表面为 `popover_style`（popover 底 + 边框 + 阴影 + 圆角）；何时/在哪出现由调用方决定。
 - QAT/迷你工具栏按钮按下会 `stop_propagation`，不会打断父级拖拽选择。
+
+---
+
+## 2d. 应用菜单（`rgpui::backstage`）
+
+覆盖整窗的「文件」面板：左侧页面导航 + 右侧内容，页面既可是自定义内容，
+也可是**一条命令**（点击即派发并关闭）。
+
+```rust
+use rgpui::backstage::{Backstage, BackstageState, BackstageTab};
+use rgpui::{IconName, div};
+
+// 状态与页面列表通常建在视图的 `new` 里；`Backstage` 每帧渲染时构造。
+let state = cx.new(BackstageState::new);
+
+// 关闭态渲染为空元素；父容器需 relative()。
+div().relative().size_full().child(
+    Backstage::new(&state, vec![
+        BackstageTab::new("new", "新建").icon(IconName::Plus)
+            .content(|_window, _cx| div().child("模板列表").into_any_element()),
+        BackstageTab::new("save", "保存").icon(IconName::Check)
+            .command("app::Save"),
+    ]),
+)
+```
+
+- `BackstageState`（`Entity`）：`open` / `close` / `toggle` / `is_open`、
+  `active` / `set_active(index)`、`focus_handle`。
+- `BackstageTab`：`new(id, label)` + `icon(IconName)`；`command(id)` 与
+  `content(Fn(&mut Window, &mut App) -> AnyElement)` **互斥**（后设置者生效）。
+- `Backstage::new(&state, tabs)` + `sidebar_width(Pixels)`。
+- **打开时要自己交付焦点**：`window.focus(&state.read(cx).focus_handle(), cx)`，
+  否则 `Esc` 关不掉（面板靠 `track_focus` + `key_context("Backstage")` 接收按键）。
+- 不提供全局快捷键（避免与 KeyTips / 应用键位冲突），入口按钮由调用方给。
 
 ---
 

@@ -249,6 +249,11 @@ path = "src/bin/mini_toolbar.rs"
 required-features = ["ribbon"]
 
 [[bin]]
+name = "backstage"
+path = "src/bin/backstage.rs"
+required-features = ["ribbon"]
+
+[[bin]]
 name = "viewport"
 path = "src/bin/viewport.rs"
 required-features = ["viewport"]

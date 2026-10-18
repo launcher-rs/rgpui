@@ -106,8 +106,9 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 3. **视口 Viewport**：可缩放/平移的画布容器 + 屏幕↔文档坐标映射（供页视图与网格共用）。
 4. **标尺 + 对齐参考线/吸附**：通用工具库。
 
-**P1 特征控件**：KeyTips（已落地 §十）、QAT / Mini toolbar（已落地 §十一、§十二）、Backstage、
-公式栏、电子表格网格、文档页视图、画布对象工具、富剪贴板、富文本/文档编辑控件雏形、Ink。
+**P1 特征控件**：KeyTips（已落地 §十）、QAT / Mini toolbar（已落地 §十一、§十二）、
+Backstage（已落地 §十三）、公式栏、电子表格网格、文档页视图、画布对象工具、富剪贴板、
+富文本/文档编辑控件雏形、Ink。
 
 **P2 深度**：缩略图/排序、动画时间线、取色器增强、任务窗格/MDI、a11y 画布语义、
 bidi/RTL 与 CJK 排版。
@@ -166,8 +167,9 @@ P0 第二件（Ribbon 框架）已落地，直接建立在命令注册表之上�
   含两个选项卡、大/小按钮、切换按钮、下拉按钮与上下文选项卡。
 - **测试**：`ribbon::tests`（5：状态默认值、标签回退×3、绘制与切换选项卡冒烟）。
 
-> 尚未实现（待后续 P1）：SplitButton、Gallery、ComboBox、折叠态交互、Backstage
-> 等 Ribbon 系控件（按键提示见 §十，快速访问工具栏见 §十一，迷你工具栏见 §十二）。
+> 尚未实现（待后续 P1）：SplitButton、Gallery、ComboBox、折叠态交互
+> 等 Ribbon 系控件（按键提示见 §十，快速访问工具栏见 §十一，迷你工具栏见 §十二，
+> 应用菜单见 §十三）。
 
 ## 八、P0 落地：视口 Viewport（已实现）
 
@@ -265,7 +267,28 @@ P1 第三件（迷你工具栏）已落地：选中文本/对象时就近浮出�
   在「文档」上拖动选择 → 就近浮出 B/I/U/高亮/复制，按钮切换状态并在状态条回显；`Esc` 取消选择。
 - **测试**：`mini_toolbar::tests`（2：流式渲染、绝对定位渲染）。
 
-## 十三、结论
+## 十三、P1 落地：应用菜单 Backstage（已实现）
+
+P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，左侧页面导航 + 右侧内容面板，
+把「新建 / 打开 / 打印 / 选项 / 关于」这类**不属于任何功能区选项卡**的入口收进一处。
+
+- **模块**：`crates/rgpui/src/backstage.rs`（`rgpui::backstage::*`，不进根 glob）
+  - `BackstageState`：`Entity` 状态，`open`/`close`/`toggle`/`is_open` + `active`/`set_active`
+    + `focus_handle`。
+  - `BackstageTab`：`new(id, label)` + `icon(IconName)`；两种互斥模式——
+    `command(id)`（点击后经 `App::dispatch_command` 派发并关闭）与
+    `content(Fn(&mut Window, &mut App) -> AnyElement)`（自定义内容页）。
+  - `Backstage`：`new(&Entity<BackstageState>, Vec<BackstageTab>)` + `sidebar_width`；
+    `RenderOnce`，关闭态渲染为空元素，打开态铺满父容器（父容器需 `relative()`）。
+  - `Esc` 关闭：面板根节点 `track_focus` + `key_context("Backstage")`，
+    打开时由调用方 `window.focus(...)` 交付焦点。
+- **边界**：不做页面内容的业务实现（模板列表、设置表单由应用层提供），
+  也不加全局快捷键绑定（避免与 KeyTips / 应用自身键位冲突），入口由调用方提供。
+- **示例**：`examples/showcase/src/bin/backstage.rs`（`cargo run -p showcase --bin backstage`），
+  顶栏「文件」按钮展开面板，六个页面覆盖内容页与命令页，模板点击回写主视图。
+- **测试**：`backstage::tests`（2：状态开关与页面切换、关闭态为空 / 打开态可绘制）。
+
+## 十四、结论
 
 - storytold 已证明「纯 Rust、引擎优先、UI 可换」路线可行，**rgpui 完全可以作为其 UI 基座**；
 - 真正的缺口不在渲染/布局（rgpui 有），而在 **套件特征 UI（Ribbon 系）** 与
