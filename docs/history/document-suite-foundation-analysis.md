@@ -106,8 +106,8 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 3. **视口 Viewport**：可缩放/平移的画布容器 + 屏幕↔文档坐标映射（供页视图与网格共用）。
 4. **标尺 + 对齐参考线/吸附**：通用工具库。
 
-**P1 特征控件**：KeyTips、QAT/Mini toolbar、Backstage、公式栏、电子表格网格、文档页视图、
-画布对象工具、富剪贴板、富文本/文档编辑控件雏形、Ink。
+**P1 特征控件**：KeyTips（已落地 §十）、QAT / Mini toolbar（已落地 §十一、§十二）、Backstage、
+公式栏、电子表格网格、文档页视图、画布对象工具、富剪贴板、富文本/文档编辑控件雏形、Ink。
 
 **P2 深度**：缩略图/排序、动画时间线、取色器增强、任务窗格/MDI、a11y 画布语义、
 bidi/RTL 与 CJK 排版。
@@ -166,8 +166,8 @@ P0 第二件（Ribbon 框架）已落地，直接建立在命令注册表之上�
   含两个选项卡、大/小按钮、切换按钮、下拉按钮与上下文选项卡。
 - **测试**：`ribbon::tests`（5：状态默认值、标签回退×3、绘制与切换选项卡冒烟）。
 
-> 尚未实现（待后续 P1）：SplitButton、Gallery、ComboBox、折叠态交互、
-> 以及 Mini toolbar、Backstage 等 Ribbon 系控件（按键提示见 §十，快速访问工具栏见 §十一）。
+> 尚未实现（待后续 P1）：SplitButton、Gallery、ComboBox、折叠态交互、Backstage
+> 等 Ribbon 系控件（按键提示见 §十，快速访问工具栏见 §十一，迷你工具栏见 §十二）。
 
 ## 八、P0 落地：视口 Viewport（已实现）
 
@@ -248,7 +248,24 @@ P1 第二件（快速访问工具栏）已落地：一排按**命令 id** 绑定
   顶部 QAT（保存/撤销/重做/分隔/查找/设置）+ 等价普通按钮 + 最近派发回显。
 - **测试**：`qat::tests`（3：标签覆盖优先、注册表/ id 回退、零交互绘制）。
 
-## 十二、结论
+## 十二、P1 落地：迷你工具栏 MiniToolbar（已实现）
+
+P1 第三件（迷你工具栏）已落地：选中文本/对象时就近浮出的紧凑命令条，与 QAT
+共用 [`QatItem`] 与命令派发链路，仅多出「表面样式 + 绝对定位落点」。
+
+- **模块**：`crates/rgpui/src/mini_toolbar.rs`（`rgpui::mini_toolbar::*`，不进根 glob）
+  - `MiniToolbar`：`new()` + `item(impl Into<QatItem>)` / `items(..)`；`RenderOnce` 元素。
+  - `at(Point<Pixels>)`：以绝对定位钉在父容器坐标（父容器需 `relative()`）；
+    不调用则按普通流式元素渲染，由调用方自行布局。
+  - 表面样式复用 `StyledExt::popover_style`（popover 底 + 边框 + 阴影 + 圆角）。
+  - 项渲染与 QAT 共享 `qat::render_item`（按钮 / 分隔符）。
+- **配套**：QAT 按钮按下时终止冒泡（`cx.stop_propagation()`），
+  使浮动工具条上的点击不会打断父级的拖拽选择手势。
+- **示例**：`examples/showcase/src/bin/mini_toolbar.rs`（`cargo run -p showcase --bin mini_toolbar`），
+  在「文档」上拖动选择 → 就近浮出 B/I/U/高亮/复制，按钮切换状态并在状态条回显；`Esc` 取消选择。
+- **测试**：`mini_toolbar::tests`（2：流式渲染、绝对定位渲染）。
+
+## 十三、结论
 
 - storytold 已证明「纯 Rust、引擎优先、UI 可换」路线可行，**rgpui 完全可以作为其 UI 基座**；
 - 真正的缺口不在渲染/布局（rgpui 有），而在 **套件特征 UI（Ribbon 系）** 与

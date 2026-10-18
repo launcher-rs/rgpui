@@ -7,11 +7,12 @@
 - `rgpui::ribbon` — 数据驱动 Ribbon 功能区（feature `ribbon`）
 - `rgpui::keytips` — 按键提示解析与徽标（feature `ribbon`）
 - `rgpui::qat` — 快速访问工具栏（feature `ribbon`）
+- `rgpui::mini_toolbar` — 选中后就近浮出的迷你工具栏（feature `ribbon`）
 - `rgpui::viewport` — 屏幕 ↔ 文档坐标映射与缩放/平移（feature `viewport`）
 - `rgpui::guides` — 标尺刻度 + 对齐参考线/吸附（feature `viewport`）
 
 启用：`rgpui = { features = ["ribbon", "viewport"] }`（默认关闭，普通应用不必开启）。
-示例：`cargo run -p showcase --bin {command_registry,ribbon,qat,viewport,ruler}`。
+示例：`cargo run -p showcase --bin {command_registry,ribbon,qat,mini_toolbar,viewport,ruler}`。
 
 ---
 
@@ -126,7 +127,7 @@ RibbonTab::new("home", "开始").keytip("H").group(
 );
 ```
 
-> 尚未实现：SplitButton、Gallery、ComboBox、折叠态交互、Mini toolbar、Backstage。
+> 尚未实现：SplitButton、Gallery、ComboBox、折叠态交互、Backstage。
 
 ---
 
@@ -150,6 +151,32 @@ QuickAccessToolbar::new()
 - `QatItem`：`Button(QatButton)` / `Separator`（`QatItem::button` / `QatItem::separator`）。
 - `QatButton`：`new(command)` + `label(..)` / `icon(IconName)`。
 - 标签来源：显式覆盖 > `CommandRegistry::label_for(id)` > 命令 id 本身。
+
+---
+
+## 2c. 迷你工具栏（`rgpui::mini_toolbar`）
+
+选中文本/对象时就近浮出的紧凑命令条，项与 QAT 完全同源（`QatItem`）。
+
+```rust
+use rgpui::mini_toolbar::MiniToolbar;
+use rgpui::qat::QatItem;
+use rgpui::{IconName, point, px};
+
+// 父容器需 relative()；at 用父容器坐标绝对定位。
+div().relative().size_full().child(
+    MiniToolbar::new()
+        .at(point(px(120.0), px(64.0)))
+        .item(QatItem::button("app::Bold").label("B"))
+        .item(QatItem::separator())
+        .item(QatItem::button("app::Copy").icon(IconName::Copy)),
+)
+```
+
+- `MiniToolbar::new()` + `item(impl Into<QatItem>)` / `items(..)` / `at(Point<Pixels>)`
+  （不调用 `at` 则按流式元素渲染）。
+- 表面为 `popover_style`（popover 底 + 边框 + 阴影 + 圆角）；何时/在哪出现由调用方决定。
+- QAT/迷你工具栏按钮按下会 `stop_propagation`，不会打断父级拖拽选择。
 
 ---
 

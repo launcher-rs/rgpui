@@ -19,9 +19,9 @@
 
 use crate::util::FluentBuilder as _;
 use crate::{
-    ActiveTheme as _, App, Icon, IconName, InteractiveElement as _, IntoElement, ParentElement,
-    RenderOnce, SharedString, Sizable as _, StatefulInteractiveElement as _, Styled, Window, div,
-    h_flex, px,
+    ActiveTheme as _, App, Icon, IconName, InteractiveElement as _, IntoElement, MouseButton,
+    ParentElement, RenderOnce, SharedString, Sizable as _, StatefulInteractiveElement as _, Styled,
+    Window, div, h_flex, px,
 };
 
 /// 快速访问工具栏中的一个项。
@@ -111,24 +111,25 @@ impl QuickAccessToolbar {
 
 impl RenderOnce for QuickAccessToolbar {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let theme = cx.theme();
-
         h_flex()
             .items_center()
             .gap(px(2.0))
             .px(px(4.0))
             .py(px(2.0))
-            .children(self.items.into_iter().map(|item| {
-                match item {
-                    QatItem::Button(button) => render_button(&button, cx).into_any_element(),
-                    QatItem::Separator => div()
-                        .w(px(1.0))
-                        .h(px(16.0))
-                        .mx(px(2.0))
-                        .bg(theme.border)
-                        .into_any_element(),
-                }
-            }))
+            .children(self.items.iter().map(|item| render_item(item, cx)))
+    }
+}
+
+/// 渲染单个 QAT 项（QAT 与迷你工具栏共用）。
+pub(crate) fn render_item(item: &QatItem, cx: &App) -> crate::AnyElement {
+    match item {
+        QatItem::Button(button) => render_button(button, cx).into_any_element(),
+        QatItem::Separator => div()
+            .w(px(1.0))
+            .h(px(16.0))
+            .mx(px(2.0))
+            .bg(cx.theme().border)
+            .into_any_element(),
     }
 }
 
@@ -173,6 +174,10 @@ fn render_button(button: &QatButton, cx: &App) -> impl IntoElement {
             this.child(Icon::new(icon).with_size(px(14.0)).text_color(foreground))
         })
         .child(label)
+        // 按钮按下时终止冒泡：避免父级的拖拽选择/拖动手势被工具按钮打断。
+        .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+            cx.stop_propagation();
+        })
         .on_click(dispatch(&button.command))
 }
 

@@ -250,8 +250,10 @@ pub mod title_bar;
 #[cfg(feature = "ribbon")]
 pub mod keytips;
 #[cfg(feature = "ribbon")]
+pub mod mini_toolbar;
+#[cfg(feature = "ribbon")]
 pub mod qat;
-/// Ribbon 套件基座：Ribbon + 按键提示 + 快速访问工具栏，
+/// Ribbon 套件基座：Ribbon + 按键提示 + 快速访问工具栏 + 迷你工具栏，
 /// 由 `ribbon` feature 门控（普通应用不开启时不参与编译）。
 #[cfg(feature = "ribbon")]
 pub mod ribbon;
