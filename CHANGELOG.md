@@ -4,6 +4,19 @@
 
 ## [1.5.0] - 2026-10-16
 
+### 示例目录重构：核心示例按功能独立成 bin
+
+- 删除按版本号组织的 `v1_1_features` / `v1_1_showcase` / `v1_2_showcase` /
+  `v1_3_showcase`；新增 `examples/showcase` 单一包：**一个功能一个 bin**
+  （`cargo run -p showcase --bin <名称>`）。高频能力（i18n、editor、markdown、
+  tabs、tree、chat、dock、keymap、status_bar、fps_hud、component_gallery 等）
+  都有独立命名、便于检索的示例，不再埋在版本导航里。
+- 顶层 `examples/` 由 49 个 crate 精简为 17 个；重依赖/平台相关示例（webview、
+  term、3d、screen_capture、layer_shell、tokio、tray 及各类 `*_showcase`）保持独立。
+- 新增 `examples/README.md` 作为示例索引（分类 + 一句话说明 + 运行命令）；带
+  feature 的 bin（charts/effects/qr-code/input-latency/editor）用 `required-features`
+  门控，CI 增加 `cargo check -p showcase --all-features` 覆盖。
+
 ### 保留式布局：修复同键重复请求导致的偶发错位与 panic
 
 - 症状（下游 rucode 报回，1.4.0／1.5.0 均中）：保留模式默认开启时，界面某块内容整体

@@ -523,7 +523,7 @@ ignored = [
 ]
 
 # ==================== 体积优化 ====================
-# 基线：examples/hello_world release 约 11.4MB（480+ 个 crate，多为 image 全格式
+# 基线：showcase 的 hello_world bin（cargo run -p showcase --bin hello_world）release 约 11.4MB（480+ 个 crate，多为 image 全格式
 # 解码/resvg/async 全家桶/windows 绑定）。以下配置在不改任何 API 的前提下瘦身。
 [profile.release]
 # 去掉二进制中的符号表（Windows 下 PDB 照常单独生成，不影响崩溃上报）。

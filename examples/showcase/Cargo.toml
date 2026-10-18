@@ -1,0 +1,231 @@
+[package]
+name = "showcase"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "rgpui 核心组件与能力示例集合，按功能一个 bin（cargo run -p showcase --bin <名称>）"
+
+# 显式登记全部 bin：带 feature 门控的 bin 需要 required-features，故关闭自动发现。
+autobins = false
+
+[dependencies]
+rgpui.workspace = true
+rgpui-platform.workspace = true
+anyhow.workspace = true
+env_logger.workspace = true
+log.workspace = true
+serde_json.workspace = true
+unicode-segmentation.workspace = true
+lyon.workspace = true
+hdrhistogram = { workspace = true, optional = true }
+lsp-types = { workspace = true, optional = true }
+
+[dev-dependencies]
+rgpui = { workspace = true, features = ["test-support"] }
+rand.workspace = true
+futures.workspace = true
+
+[features]
+default = []
+# 图表组件（BarChart/LineChart/PieChart 等）。
+charts = ["rgpui/charts"]
+# 封装动效（Aurora/Confetti/Marquee/Ripple/Shimmer 等）。
+effects = ["rgpui/effects"]
+# 二维码组件。
+qr-code = ["rgpui/qr-code"]
+# 输入延迟直方图统计。
+input-latency = ["rgpui/input-latency-histogram", "dep:hdrhistogram"]
+# 编辑器（含 tree-sitter 高亮、LSP、片段、inlay 等）。
+editor = ["rgpui/editor", "rgpui/tree-sitter", "dep:lsp-types"]
+# 元素检查器（release 下需要显式开启）。
+inspector = ["rgpui/inspector"]
+
+# ---------- 通用 ----------
+[[bin]]
+name = "hello_world"
+path = "src/bin/hello_world.rs"
+
+[[bin]]
+name = "a11y"
+path = "src/bin/a11y.rs"
+
+[[bin]]
+name = "active_state_bug"
+path = "src/bin/active_state_bug.rs"
+
+[[bin]]
+name = "animation"
+path = "src/bin/animation.rs"
+
+[[bin]]
+name = "daemon_app"
+path = "src/bin/daemon_app.rs"
+
+[[bin]]
+name = "theme"
+path = "src/bin/theme.rs"
+
+# ---------- 组件 ----------
+[[bin]]
+name = "form"
+path = "src/bin/form.rs"
+
+[[bin]]
+name = "input"
+path = "src/bin/input.rs"
+
+[[bin]]
+name = "extended_components"
+path = "src/bin/extended_components.rs"
+
+[[bin]]
+name = "dialog"
+path = "src/bin/dialog.rs"
+
+[[bin]]
+name = "sidebar"
+path = "src/bin/sidebar.rs"
+
+[[bin]]
+name = "scrollable"
+path = "src/bin/scrollable.rs"
+
+[[bin]]
+name = "grid_layout"
+path = "src/bin/grid_layout.rs"
+
+[[bin]]
+name = "gradient"
+path = "src/bin/gradient.rs"
+
+[[bin]]
+name = "pattern"
+path = "src/bin/pattern.rs"
+
+[[bin]]
+name = "painting"
+path = "src/bin/painting.rs"
+
+[[bin]]
+name = "charts"
+path = "src/bin/charts.rs"
+required-features = ["charts"]
+
+[[bin]]
+name = "effects"
+path = "src/bin/effects.rs"
+required-features = ["effects"]
+
+[[bin]]
+name = "qr_code"
+path = "src/bin/qr_code.rs"
+required-features = ["qr-code"]
+
+# ---------- 交互与事件 ----------
+[[bin]]
+name = "drag_drop"
+path = "src/bin/drag_drop.rs"
+
+[[bin]]
+name = "focus_visible"
+path = "src/bin/focus_visible.rs"
+
+[[bin]]
+name = "tab_stop"
+path = "src/bin/tab_stop.rs"
+
+[[bin]]
+name = "mouse_pressure"
+path = "src/bin/mouse_pressure.rs"
+
+[[bin]]
+name = "move_entity_between_windows"
+path = "src/bin/move_entity_between_windows.rs"
+
+[[bin]]
+name = "on_window_close_quit"
+path = "src/bin/on_window_close_quit.rs"
+
+[[bin]]
+name = "ownership_post"
+path = "src/bin/ownership_post.rs"
+
+[[bin]]
+name = "set_menus"
+path = "src/bin/set_menus.rs"
+
+[[bin]]
+name = "native_notification"
+path = "src/bin/native_notification.rs"
+
+# ---------- 性能与调试 ----------
+[[bin]]
+name = "input_latency"
+path = "src/bin/input_latency.rs"
+required-features = ["input-latency"]
+
+[[bin]]
+name = "paths_bench"
+path = "src/bin/paths_bench.rs"
+
+[[bin]]
+name = "inspector"
+path = "src/bin/inspector.rs"
+
+[[bin]]
+name = "inspector_custom"
+path = "src/bin/inspector_custom.rs"
+
+# ---------- 测试基建 ----------
+[[bin]]
+name = "testing"
+path = "src/bin/testing.rs"
+
+# ---------- 国际化 ----------
+[[bin]]
+name = "i18n"
+path = "src/bin/i18n.rs"
+
+# ---------- 富文本 / 结构化展示 ----------
+[[bin]]
+name = "markdown"
+path = "src/bin/markdown.rs"
+
+[[bin]]
+name = "tabs"
+path = "src/bin/tabs.rs"
+
+[[bin]]
+name = "tree"
+path = "src/bin/tree.rs"
+
+[[bin]]
+name = "status_bar"
+path = "src/bin/status_bar.rs"
+
+[[bin]]
+name = "fps_hud"
+path = "src/bin/fps_hud.rs"
+
+[[bin]]
+name = "component_gallery"
+path = "src/bin/component_gallery.rs"
+
+# ---------- 编辑器 / 工作区 ----------
+[[bin]]
+name = "editor"
+path = "src/bin/editor.rs"
+required-features = ["editor"]
+
+[[bin]]
+name = "keymap"
+path = "src/bin/keymap.rs"
+
+[[bin]]
+name = "dock"
+path = "src/bin/dock.rs"
+
+[[bin]]
+name = "chat"
+path = "src/bin/chat.rs"
+

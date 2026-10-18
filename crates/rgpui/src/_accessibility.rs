@@ -14,7 +14,7 @@
 //! RGPUI 集成了 [AccessKit] 以提供可编程无障碍功能
 //! （本指南后续部分将其简称为"无障碍"）。
 //!
-//! 最小示例可参见 `examples/a11y` 目录。
+//! 最小示例可参见 `showcase` 的 `a11y` bin（`cargo run -p showcase --bin a11y`）。
 //!
 //! ## 背景
 //!

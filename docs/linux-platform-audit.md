@@ -86,7 +86,7 @@
 
 ### 2.1 [P0] Linux 窗口后端根本没有被编译进来
 
-**症状**：`cargo run -p hello_world` 退出码 0，无窗口、无输出、无任何报错。
+**症状**：`cargo run -p showcase --bin hello_world` 退出码 0，无窗口、无输出、无任何报错。
 `tray_simple` 打印一行 `Tray should be visible now.` 后一直挂着。
 
 **根因链**（每一环都已核实）：
@@ -1216,8 +1216,8 @@ portal 调用）**在原生平台上一条都看不到** —— 这次排障被�
 > - **可重复调用**（后续调用被忽略），所以放在 `main` 第一行是安全的；
 > - 已有输出器时不抢它的级别设置 —— `rgpui-web` 的 `set_logger` 仍优先，Web 侧行为不变。
 >
-> 用法（示例已在 `main` 开头接入，如 `examples/hello_world/src/main.rs:113`、
-> `examples/tray/src/main.rs`、`examples/daemon_app/src/main.rs`——
+> 用法（示例已在 `main` 开头接入，如 `showcase` 的 `hello_world` bin、
+> `examples/tray/src/main.rs`、`showcase` 的 `daemon_app` bin——
 > §4.3 电源抑制被 polkit 拒的原因就是靠它在 `RUST_LOG=warn` 下现形的）：
 >
 > ```rust

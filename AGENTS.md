@@ -29,7 +29,7 @@ rgpui（核心：框架 + 基础组件 + 扩展组件/动画/手势/滚动物理
   ├── rgpui-markdown（独立 Markdown 库）└── rgpui-term / rgpui-3d（专业集成库）
 
 crates/                 # 12 个库 crate（rgpui / rgpui-{3d,character,linux,macos,macros,markdown,platform,term,web,wgpu,windows}）
-examples/               # 45 个示例 crate（同根 workspace；showcase 用多 binary，如 image_showcase --bin image）
+examples/               # 17 个示例 crate（同根 workspace；showcase 为核心示例集合，一个功能一个 bin，见 examples/README.md）
 ```
 
 - `rgpui/src/platform.rs` 定义 `Platform` / `PlatformWindow` trait；示例经

@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           # rgpui-linux 的 Rust 2024 edition 语法在 stable rustfmt 下解析会失败，逐 crate 检查并跳过它
-          for crate in rgpui rgpui-3d rgpui-character rgpui-dom rgpui-macros rgpui-markdown rgpui-platform rgpui-term rgpui-web rgpui-wgpu rgpui-windows; do
+          for crate in rgpui rgpui-3d rgpui-character rgpui-dom rgpui-macros rgpui-markdown rgpui-platform rgpui-term rgpui-web rgpui-wgpu rgpui-windows showcase; do
             cargo fmt -p "$crate" -- --check
           done
 
@@ -88,6 +88,11 @@ jobs:
       - name: cargo check (examples workspace)
         working-directory: examples
         run: cargo check --workspace
+
+      - name: cargo check (showcase all features)
+        # showcase 里带 required-features 的 bin（charts/effects/qr-code/
+        # input-latency/editor/inspector）默认不参与 workspace check，这里显式全开。
+        run: cargo check -p showcase --all-features
 
       - name: cargo check (feature combos)
         # 纯 Rust 组合三平台都跑；需要系统库的 webview 只在 Linux 跑

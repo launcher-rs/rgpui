@@ -47,10 +47,10 @@ release 想保留（如内部工具）：`--release --features inspector`
 滚轮穿透重叠层级）、选中元素源码位置与实例号、完整树（逐节点折叠，点击行选中，
 展开集只增不重置）、`Div` 布局边界与内容尺寸。选中区域在画布上以橙框常驻高亮。
 
-完整可运行示例见 `examples/inspector/`（默认面板）与
-`examples/inspector_custom/`（全自写面板：自有顶栏 + 选中卡 + 单层子节点，
-并覆盖默认 Div 布局展示），两示例演示内容各自独立
-（`cargo run -p inspector_custom`）。
+完整可运行示例见 `showcase` 的 `inspector`（默认面板）与
+`inspector_custom`（全自写面板：自有顶栏 + 选中卡 + 单层子节点，
+并覆盖默认 Div 布局展示）两个 bin，演示内容各自独立
+（`cargo run -p showcase --bin inspector_custom`）。
 
 ## 多窗口与面板位置
 
@@ -130,12 +130,12 @@ cx.set_inspector_panel_slots(InspectorPanelSlots {
 });
 ```
 
-不设插槽即默认外皮；`examples/inspector/` 的 `panel_slots_render_without_panic`
-即此 recipe 的回归测试。
+不设插槽即默认外皮；`showcase` 的 `inspector` bin 内
+`panel_slots_render_without_panic` 即此 recipe 的回归测试。
 
 ### recipe 1：整板替换（全自写面板）
 
-`examples/inspector_custom/` 即此 recipe 的 living 范例：顶栏、选中卡、
+`showcase` 的 `inspector_custom` bin 即此 recipe 的 living 范例：顶栏、选中卡、
 子节点列表全部自写，不复用默认面板；另以 `register_inspector_element`
 覆盖默认 Div 布局展示（同类型后注册覆盖先注册）。最小骨架：
 
@@ -143,7 +143,7 @@ cx.set_inspector_panel_slots(InspectorPanelSlots {
 // 自有顶栏（固定）+ 内容滚动区 + 选中卡 + 子节点列表，全自写；
 // 行点击经 window.select_inspector_element 选中画布区域，
 // Div 布局经 register_inspector_element 另行覆盖。
-// 完整实现见 examples/inspector_custom/src/main.rs。
+// 完整实现见 examples/showcase/src/bin/inspector_custom.rs。
 cx.enable_default_inspector(); // 先 enable，拿 Div 注册与全局装配
 cx.set_inspector_renderer(Box::new(custom_panel));
 cx.register_inspector_element(custom_div_state);

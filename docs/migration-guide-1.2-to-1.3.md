@@ -373,8 +373,9 @@ window.toggle_inspector(cx);
    `inspector_tree_roots/children/parent` 拿，选中经
    `Inspector::select` / `select_ancestor` 切换。
 
- living 范例：`examples/inspector/`（默认面板）与
- `examples/inspector_custom/`（全自写 + 覆盖 Div 展示），演示内容各自独立。
+ living 范例：`showcase` 的 `inspector`（默认面板）与
+ `inspector_custom`（全自写 + 覆盖 Div 展示）两个 bin
+ （`cargo run -p showcase --bin inspector` / `--bin inspector_custom`），演示内容各自独立。
 
 ### F12 全局开关（必抄的接线，三个坑）
 
@@ -428,7 +429,7 @@ release 默认零代码。应用侧三条：Cargo 里**不要**开 `inspector` f
 - **`App::on_global_action`**：全局动作 helper（F12 沉淀），封装
   “全局绑定 + 打到活动窗口 + spawn 延后更新”三件套。
 - **检查器默认面板**（见第八节）与面板插槽。
-- 集中演示见 `examples/v1_3_showcase`。
+- 集中演示见 `showcase` 的各功能 bin（如 `cargo run -p showcase --bin component_gallery`）。
 
 ---
 
@@ -451,5 +452,5 @@ cargo check --workspace --all-targets
 cargo fmt --all
 cargo clippy --workspace --lib --bins -- -D warnings
 cargo test --workspace --lib
-cargo run -p v1_3_showcase   # 对照新 API 行为
+cargo run -p showcase --bin component_gallery   # 对照新 API 行为
 ```

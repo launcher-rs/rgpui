@@ -165,11 +165,11 @@ pub trait SafeStrSlice {
 |------|------|
 | `rgpui::theme::color::parse_hex`、`rgpui-term::parse_hex_color` | **修**：长度门控后仍可能切到非 ASCII，增加 `is_ascii()` 提前拒绝（否则返回 `Err`/`None` 之前先 panic） |
 | `rgpui-wgpu::compute_run_spans`、`shape_segment` | **加固**：`run_offset/run_end`、`range` 入口 `floor_char_boundary` 吸附（含字形 `index` 重基配对修正）；正常对齐时与原逻辑等价 |
-| `examples/input`、`examples/view_example` 的 `text_for_range` / `replace_*` | **修**：与核心 `inline_edit` 同款 `floor` + `get` 拼接（含 `marked_range`/`selected_range` 跟随修正） |
+| `showcase` 的 `input` bin、`examples/view_example` 的 `text_for_range` / `replace_*` | **修**：与核心 `inline_edit` 同款 `floor` + `get` 拼接（含 `marked_range`/`selected_range` 跟随修正） |
 | `rgpui-term::strip_prompt`（`trimmed[pos+1..]`） | 安全：`pos` 来自 ASCII 分隔符的 `rfind`/`find`，`+1` 恒为边界 |
 | `rgpui-macos::StringIndexConverter`（`text[utf8_ix..]`） | 安全：`utf8_ix` 从 0 起按 `char_indices` 累加，恒为边界 |
 | `rgpui-windows::direct_write::slice_at_char_boundary` | 已有吸附兜底，本次仅对照确认 |
-| `v1_1_showcase` / `rgpui_story::v1_1_features` 的 `remaining[..start]` / `&remaining[start+2..]` | 安全：`start/end` 来自 `"**"`/`'*'`（ASCII）的 `find`，`+1/+2` 恒为边界 |
+| `rgpui_story::v1_1_features` 的 `remaining[..start]` / `&remaining[start+2..]` | 安全：`start/end` 来自 `"**"`/`'*'`（ASCII）的 `find`，`+1/+2` 恒为边界 |
 | `desktop_pet_3d` 的 `anim_id[5..]` | 安全：`starts_with("anim_")` 门控，`5` 为 ASCII 前缀边界 |
 | `command_palette` / `combobox` / `rgpui_term_basic` 的 `to_lowercase().contains/starts_with` | 安全：自有小写串内比较，不把偏移用回原串（与 §4 反模式 2 的区别） |
 | `img` 的 `body.truncate(first_line.len())` | 安全：`first_line` 是 `body` 的行前缀 + `trim_end`，恒为边界 |
@@ -182,7 +182,7 @@ pub trait SafeStrSlice {
 | 位置 | 动作 |
 |------|------|
 | `rgpui::inline_edit` 的两处替换拼接 | `floor` + `get` 手写版改为 `safe_head_tail`（`head.len()` 即吸附后的 `start`） |
-| `examples/input` 的 `text_for_range` / 两处替换 | 改为 `safe_slice_floor` / `safe_head_tail` |
+| `showcase` 的 `input` bin `text_for_range` / 两处替换 | 改为 `safe_slice_floor` / `safe_head_tail` |
 | `examples/view_example` 的 `text_for_range` / 替换 / 外部写入钳制 | 改为 `safe_slice_floor` / `safe_head_tail` / `floor_char_boundary`（原 `while !is_char_boundary` 循环删除） |
 | `rgpui-wgpu`、`direct_write` 的 `floor_char_boundary` | 保留：std 标准工具即规范写法，无手写循环，无需改 |
 

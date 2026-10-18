@@ -1,7 +1,7 @@
 # rgpui 二进制体积优化指南
 
 > 文档日期：2026-09-22
-> 基线：`examples/hello_world`，Windows x86_64 MSVC，`cargo build --release`
+> 基线：`showcase` 的 `hello_world` bin（`cargo run -p showcase --bin hello_world`），Windows x86_64 MSVC，`cargo build --release`
 >
 > | 构建 | 优化前 | 优化后 | 说明 |
 > |------|--------|--------|------|
@@ -99,7 +99,7 @@ strip = true
 ### 2.3 `hdrhistogram` 改为可选依赖
 
 - `input-latency-histogram = ["dep:hdrhistogram"]`，代码零改动（门控早就在）。
-- 唯一开启该特性的 `examples/input_latency` 检查通过。
+- 唯一开启该特性的 `showcase` 的 `input_latency` bin 检查通过。
 
 ### 2.4 `windows` 特性表 52 → 37
 

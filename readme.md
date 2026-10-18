@@ -93,19 +93,20 @@ crates/
 ├── rgpui-wgpu/         # wgpu 渲染后端
 └── rgpui-windows/      # Windows 平台实现
 
-examples/               # 45+ 示例（showcase 类多 binary）
-├── v1_3_showcase/      # v1.3 新 API 集中演示
-├── v1_2_showcase/      # v1.2 组件演示
-├── inspector/          # 检查器默认面板
-├── inspector_custom/   # 检查器自定义面板
-├── dialog/             # Dialog/AlertDialog/焦点陷阱
-├── sidebar/            # 侧边栏（亮/暗切换）
+examples/               # 示例（索引见 examples/README.md）
+├── showcase/           # 核心示例集合：一个功能一个 bin
+│                       #   i18n / editor / markdown / tabs / tree / chat
+│                       #   / dock / keymap / form / input / dialog / ...
+├── image_showcase/     # 图片加载/查看
+├── list_showcase/      # 列表/虚拟列表
+├── text_showcase/      # 文本/编辑
+├── overlay_showcase/   # 浮层/Overlay
+├── window_showcase/    # 窗口能力
 ├── rgpui_story/        # 组件 Storybook
 ├── desktop_pet/        # 桌面宠物（托盘、单实例）
-├── image_showcase/     # 图片加载/查看
-├── input/              # 输入组件
-├── form/               # 表单组件
-├── ...                 # 更多见 examples/ 目录
+├── tray/               # 系统托盘
+├── webview/            # WebView 集成
+├── ...                 # 更多见 examples/README.md
 ```
 
 ## 开发命令
@@ -116,7 +117,7 @@ cargo test --workspace             # 全量测试
 cargo test -p rgpui                # 单包测试
 cargo clippy -p <pkg> --all-targets -- -D warnings  # lint
 cargo fmt --all                    # 格式化
-cargo run -p <pkg>                 # 运行示例
+cargo run -p showcase --bin <名称>   # 运行核心示例（见 examples/README.md）
 ```
 
 ## 文档
