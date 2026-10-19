@@ -105,6 +105,7 @@ cargo run -p showcase --bin <名称>
 | `ink` | Ink 笔迹：钢笔 / 荧光笔落笔，橡皮擦除，套索框选 + 撤销 / 清空 | `cargo run -p showcase --bin ink` |
 | `sorter` | 缩略图排序器：拖拽重排（插入指示线）+ 缩放 + 多选 + 键盘导航 | `cargo run -p showcase --bin sorter` |
 | `timeline` | 动画时间线：多轨关键帧编辑（标尺 / 关键帧拖拽 / 播放头），实时驱动预览方块 | `cargo run -p showcase --bin timeline` |
+| `color_picker` | 取色器增强：主题色板 / 最近颜色快捷色块 + 独立命名色阶色板，点击即应用 | `cargo run -p showcase --bin color_picker` |
 | `formula_bar` | 公式栏：名称框 + `fx` + 公式输入，绑定迷你单元格模型 | `cargo run -p showcase --bin formula_bar` |
 | `sheet_grid` | 电子表格网格：行列头 + 虚拟化单元格 + 矩形选区 + 填充柄，配合公式栏 | `cargo run -p showcase --bin sheet_grid` |
 | `page_view` | 文档页视图：多页 A4 分页画布 + 页眉页脚，配合视口缩放/平移 | `cargo run -p showcase --bin page_view` |

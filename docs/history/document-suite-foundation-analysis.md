@@ -69,7 +69,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | **Ink / 笔迹层**（pen/highlighter/eraser/lasso） | `ink.rs` | 无 | P1 |
 | **缩略图 / 排序器** | `thumbs.rs`/`sorter.rs` | 无 | P2（已落地，见 §二十三） |
 | **动画时间线** | `animtimeline.rs` | 无 | P2（已落地，见 §二十四） |
-| **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker` | 增强 |
+| **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker`（已增强，见 §二十五；吸管缓做） | 增强 |
 | **富剪贴板 payload** | `system_clipboard.rs` | 只有 text/image/路径（已扩展，见 §二十） | 扩展 `ClipboardItem` |
 
 ### B. 现有能力需增强（有但不敷套件用）
@@ -110,8 +110,8 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格（§十七）、文档页视图（§十八）、
 画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink（§二十二）。
 
-**P2 深度**：缩略图/排序（§二十三）、动画时间线（§二十四）、取色器增强、任务窗格/MDI、a11y 画布语义、
-bidi/RTL 与 CJK 排版。
+**P2 深度**：缩略图/排序（§二十三）、动画时间线（§二十四）、取色器增强（§二十五）、任务窗格/MDI、
+a11y 画布语义、bidi/RTL 与 CJK 排版。
 
 **横向工程范式（可立即引入）**
 - control channel（JSON-line TCP + key）+ MCP server 集成；
@@ -593,5 +593,42 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 
 **本版暂缓**（后续增补）：垂直滚动与轨道折叠 / 重排、关键帧值曲线编辑器（当前只编辑时间）、
 多选关键帧与框选、轨道静音 / 独奏、音视频波形与对齐吸附、播放时钟内置到控件（现由应用推进 `advance`）。
+
+## 二十五、P2 落地：色板 / 取色器增强（核心，无 feature 门控）
+
+`crates/rgpui/src/components/color_palette.rs` —— 面向「选一个预设色」的**色块网格**元素，并
+用它给既有 `ColorPicker` 补上**主题色板**与**最近颜色**两组快捷色块。原取色器只有三滑块 + hex，
+改一个由主题驱动的颜色要手抄十六进制；本版本把「当前主题的语义色」和「刚用过的颜色」铺成一格一格，
+点一下即应用。
+
+- **元素**：`ColorPalette`（`#[derive(IntoElement)]`，自动换行的等尺寸色块网格）。
+  `new(id)`（id 需父级内唯一，用作子元素标识）/`colors`/`selected`/`swatch_size`/`gap`；
+  点击回调 `on_select(F)` 或共享回调 `on_select_arc(Arc)`（同一份回调可复用给多个色板）。
+  选中色块加描边、悬停变描边色，全部走主题令牌（`border`/`ring`）。
+- **色板来源**：
+  - `theme_palette(cx)`：当前主题的语义色（`primary`/`primary_hover`/`secondary`/`accent`/
+    `danger`/`success`/`warning`/`info`/`link`/`red`/`green`/`blue`/`yellow`/`cyan`/
+    `foreground`/`muted`/`border`/`ring`），换主题即换色板；
+  - `color_name_palette(scale)`：`ColorName::all()`（19 个命名色）在指定色阶
+    （`50`…`950`，越界回退 500）下的色板，供「调色盘」式取色。
+- **最近颜色**：纯函数 `push_recent(&mut Vec<Hsla>, color, limit) -> bool`（去重、置顶、截断到
+  `limit`，已在首位且未超限时返回 `false` 供调用方决定是否重绘），上限常量 `RECENT_COLORS_LIMIT`（12）。
+- **取色器增强**（`components/color_picker.rs`）：
+  - 新增字段与 API：`show_palette(bool)`（builder，默认显示）、`recent_limit(usize)`（最小 1）、
+    `recents()`、`push_recent(color, cx)`、`clear_recents(cx)`、`set_color(color, window, cx)`
+    （同步三滑块 + hex + 触发 `on_change`；滑块步长 1 只作近似指示，颜色以传入值为准）。
+  - 渲染：预览块 / 三滑块 / hex 输入之后追加「主题色」与「最近」两段色板；点击色块即应用并记入
+    最近颜色；hex 输入框回车视为提交，把当前颜色记入最近颜色；应用也可显式 `push_recent`（如对话框
+    点「确定」时）。最近颜色为空时不渲染该段。
+- **示例**：`examples/showcase/src/bin/color_picker.rs`（左：带色板的取色器 + 「记录当前颜色 /
+  清空最近」按钮；右：预览卡（按亮度自动选前景色）+ 独立命名色阶色板，点击直接应用到取色器）。
+- **测试**：`color_palette::tests` 3 项（最近颜色去重置顶 / 截断 / 重复无变化；命名色阶色板与
+  `ColorName::all()` 一一对应且色阶回退；主题色板含语义色并完成一次真实绘制）+ `color_picker::tests`
+  1 项（最近颜色去重置顶、`set_color` 同步当前颜色、`clear_recents`、`recent_limit` 下限与
+  `show_palette` builder）。
+
+**本版暂缓**（后续增补）：吸管取色（屏幕捕获）：`scap` / `screen-capture` feature 与
+`zed-scap`、`windows-capture` API 不兼容，编译失败，故整块延后；取色器色域（RGB/HSV 面板 +
+色环）与多色板自定义收藏。
 
 
