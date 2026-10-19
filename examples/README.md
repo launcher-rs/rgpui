@@ -88,7 +88,7 @@ cargo run -p showcase --bin <名称>
 | `dock` | 停靠面板布局 | `cargo run -p showcase --bin dock` |
 | `chat` | AI 对话视图（ChatView 等） | `cargo run -p showcase --bin chat` |
 
-### 应用套件基座（`ribbon` / `viewport` / `spreadsheet` feature）
+### 应用套件基座（`ribbon` / `viewport` / `spreadsheet` / `document` feature）
 
 | bin | 说明 | 运行 |
 |-----|------|------|
@@ -101,6 +101,7 @@ cargo run -p showcase --bin <名称>
 | `ruler` | 标尺刻度 + 拖拽方块吸附并显示参考线 | `cargo run -p showcase --bin ruler` |
 | `formula_bar` | 公式栏：名称框 + `fx` + 公式输入，绑定迷你单元格模型 | `cargo run -p showcase --bin formula_bar` |
 | `sheet_grid` | 电子表格网格：行列头 + 虚拟化单元格 + 矩形选区 + 填充柄，配合公式栏 | `cargo run -p showcase --bin sheet_grid` |
+| `page_view` | 文档页视图：多页 A4 分页画布 + 页眉页脚，配合视口缩放/平移 | `cargo run -p showcase --bin page_view` |
 
 ## 独立示例 crate
 

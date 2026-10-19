@@ -377,3 +377,29 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 **本版暂缓**（后续增补）：可变行高（`uniform_list` 要求等高，需换布局策略）、
 冻结行列（对应 `DataTable` 的固定列）、单元格内联编辑器（编辑器留在应用层，
 框架仅以 `EditRequested`/`editing` 暴露意图）。
+
+## 十八、P1 落地：文档页视图 PageView（`document` feature）
+
+新增 feature `document`（蕴含 `viewport`），首个落地模块
+`crates/rgpui/src/page_view.rs` —— 面向文字处理/排版应用的「分页视口」：
+按纸张/边距/页眉页脚/页间距在**文档坐标**里纵向排布纸页，屏幕映射复用
+[`Viewport`]，**分页/断行算法留在应用层**（见 §四）。
+
+- **`PageSize`**：`width`/`height`（px，96 dpi），常量 `A4_PORTRAIT`（794×1123）、
+  `A4_LANDSCAPE`、`LETTER_PORTRAIT`；`landscape`/`portrait` 互换宽高、`to_size`。
+- **`PageMargins`**：四边像素，常量 `NORMAL`（1in）/`NARROW`（0.5in）/`WIDE`（1.5in）。
+- **`PageSetup`**：`size` + `margins` + `header_height` + `footer_height` + `gap`（默认
+  A4 纵向 + 常规边距 + 48/48 + 24）。
+- **`PageLayout`**（纯几何、可比较）：`new(setup, page_count)`；导出
+  `page_stride`、`page_rect(page)`（整页）、`header_rect`/`footer_rect`/`content_rect`
+  （页眉/页脚/正文区，文档坐标）、`document_size()`（含页间距不含末页后间距）、
+  `page_at(document)`（命中页，间距归上一页、越界为 `None`）。
+- **`PageView<L>` 元素**：`new(layout, viewport, labels)`，`PageLabels` trait 提供
+  `header`/`footer` 文本（`()` 为默认空实现）；`.content_guide(bool)` 描边正文区
+  （默认开）、`.area_guide(bool)` 描边页眉页脚区。纸页为白底 + 边框的绝对定位 div，
+  子元素按 `viewport` 换算到屏幕后落位，故缩放时纸与页眉页脚同步。
+- **示例**：`examples/showcase/src/bin/page_view.rs`（三页 A4 文档，正文按
+  `content_rect` 叠加、字号随缩放同步；滚轮 Ctrl/⌘ 缩放、拖拽平移、适应窗口）。
+- **测试**：6 项（默认设置、横纵互换、整页排布、内容区内缩、文档总尺寸、命中判定）。
+
+**本版暂缓**（后续增补）：多列/对开页排布、真实分页（需应用侧断行）、页面缩略图。

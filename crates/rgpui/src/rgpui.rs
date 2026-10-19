@@ -274,6 +274,11 @@ pub mod formula_bar;
 #[cfg(feature = "spreadsheet")]
 pub mod sheet_grid;
 
+/// 文档套件基座：分页画布（页尺寸/页边距/页眉页脚 + 屏幕映射），
+/// 由 `document` feature 门控（蕴含 `viewport`）。
+#[cfg(feature = "document")]
+pub mod page_view;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 
