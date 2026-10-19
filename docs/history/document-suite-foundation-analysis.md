@@ -167,9 +167,7 @@ P0 第二件（Ribbon 框架）已落地，直接建立在命令注册表之上�
   含两个选项卡、大/小按钮、切换按钮、下拉按钮与上下文选项卡。
 - **测试**：`ribbon::tests`（5：状态默认值、标签回退×3、绘制与切换选项卡冒烟）。
 
-> 尚未实现（待后续 P1）：SplitButton、Gallery、ComboBox、折叠态交互
-> 等 Ribbon 系控件（按键提示见 §十，快速访问工具栏见 §十一，迷你工具栏见 §十二，
-> 应用菜单见 §十三）。
+> Ribbon 系控件已补齐：SplitButton / Gallery / ComboBox / 折叠态交互（见 §十五）。
 
 ## 八、P0 落地：视口 Viewport（已实现）
 
@@ -295,3 +293,27 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   **文档/画布/网格类控件**，以及**命令注册表**这一贯穿全栈的骨架；
 - 建议先落 P0「命令 + Ribbon + 视口 + 标尺/参考线」，它们被四个应用共享，且是套件应用的
   身份特征；引擎类能力一律留在应用层。
+
+## 十五、P1 落地：Ribbon 扩展控件（SplitButton / Gallery / ComboBox / 折叠）
+
+在既有 Ribbon 框架上补齐四类 Office 常用控件，仍以命令 id 为唯一绑定方式：
+
+- **分裂按钮 SplitButton**（`RibbonItem::split(command)`）：
+  - 主区域派发主命令，右侧下箭头展开附加项（`RibbonDropdownItem`）；
+  - 支持 `.label/.icon/.large/.keytip/.item(..)`；大按钮时主区域复用大按钮样式。
+- **库 Gallery**（`RibbonItem::gallery(label)`）：
+  - 触发按钮展开图标网格（`.columns(n)`，默认 4）；点击单元格派发其命令并关闭弹层；
+  - `RibbonGalleryItem::new(command).label(..).icon(..).selected(..)`，选中项带强调边框。
+- **组合框 ComboBox**（`RibbonItem::combobox(id)`）：
+  - 只读下拉：展示当前值（`.selected(index)` / `.placeholder(..)`），选中项派发其命令；
+  - `.width(px)` 固定宽度，`.item(RibbonComboBoxItem::new(command))` 追加选项。
+- **折叠态交互**：
+  - `RibbonState::is_collapsed` / `set_collapsed` / `toggle_collapsed`；
+  - 选项卡条右侧渲染折叠开关（展开朝上、折叠朝下）；
+  - 折叠态下点击选项卡会 `activate_tab` 自动展开并切换。
+- **按键提示**：三类新控件均纳入 `control_commands`——分裂按钮命中主命令、
+  库命中首项、组合框命中当前选中项（无选中取首项）。
+
+- **示例**：`examples/showcase/src/bin/ribbon.rs` 增补分裂粘贴、样式库、插入组合框。
+- **测试**：新增 4 项（折叠切换与选项卡展开、新控件按键提示、库/组合框提示回退、
+  分裂按钮构建），`ribbon::tests` 共 12 项。

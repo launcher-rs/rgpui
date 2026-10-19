@@ -4,7 +4,8 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::ribbon::{
-    Ribbon, RibbonContext, RibbonDropdownItem, RibbonGroup, RibbonItem, RibbonState, RibbonTab,
+    Ribbon, RibbonComboBoxItem, RibbonContext, RibbonDropdownItem, RibbonGalleryItem, RibbonGroup,
+    RibbonItem, RibbonState, RibbonTab,
 };
 use rgpui::{
     App, Bounds, CommandDescriptor, Context, FocusHandle, IconName, Render, Window, WindowBounds,
@@ -14,7 +15,20 @@ use rgpui_platform::application;
 
 actions!(
     demo,
-    [Paste, Cut, Copy, Bold, InsertTable, InsertPicture, Settings]
+    [
+        Paste,
+        PasteSpecial,
+        Cut,
+        Copy,
+        Bold,
+        InsertTable,
+        InsertPicture,
+        InsertChart,
+        StyleNormal,
+        StyleTitle,
+        StyleEmphasis,
+        Settings
+    ]
 );
 
 /// 「粘贴」命令。
@@ -23,6 +37,10 @@ fn cmd_paste() -> CommandDescriptor {
         .with_category("剪贴板")
         .with_keystroke("ctrl-v")
         .with_keytip("V")
+}
+/// 「选择性粘贴」命令（粘贴分裂按钮的下拉项）。
+fn cmd_paste_special() -> CommandDescriptor {
+    CommandDescriptor::new("demo::PasteSpecial", "选择性粘贴").with_category("剪贴板")
 }
 /// 「剪切」命令。
 fn cmd_cut() -> CommandDescriptor {
@@ -42,6 +60,18 @@ fn cmd_bold() -> CommandDescriptor {
         .with_category("字体")
         .with_keytip("B")
 }
+/// 「常规样式」命令（样式库项）。
+fn cmd_style_normal() -> CommandDescriptor {
+    CommandDescriptor::new("demo::StyleNormal", "常规").with_category("样式")
+}
+/// 「标题样式」命令（样式库项）。
+fn cmd_style_title() -> CommandDescriptor {
+    CommandDescriptor::new("demo::StyleTitle", "标题").with_category("样式")
+}
+/// 「强调样式」命令（样式库项）。
+fn cmd_style_emphasis() -> CommandDescriptor {
+    CommandDescriptor::new("demo::StyleEmphasis", "强调").with_category("样式")
+}
 /// 「插入表格」命令。
 fn cmd_insert_table() -> CommandDescriptor {
     CommandDescriptor::new("demo::InsertTable", "表格")
@@ -54,6 +84,10 @@ fn cmd_insert_picture() -> CommandDescriptor {
         .with_category("插入")
         .with_keytip("P")
 }
+/// 「插入图表」命令（插入组合框项）。
+fn cmd_insert_chart() -> CommandDescriptor {
+    CommandDescriptor::new("demo::InsertChart", "图表").with_category("插入")
+}
 /// 「设置」命令。
 fn cmd_settings() -> CommandDescriptor {
     CommandDescriptor::new("demo::Settings", "设置")
@@ -62,11 +96,16 @@ fn cmd_settings() -> CommandDescriptor {
 }
 
 register_command!(cmd_paste);
+register_command!(cmd_paste_special);
 register_command!(cmd_cut);
 register_command!(cmd_copy);
 register_command!(cmd_bold);
+register_command!(cmd_style_normal);
+register_command!(cmd_style_title);
+register_command!(cmd_style_emphasis);
 register_command!(cmd_insert_table);
 register_command!(cmd_insert_picture);
+register_command!(cmd_insert_chart);
 register_command!(cmd_settings);
 
 /// 演示视图。
@@ -106,10 +145,15 @@ impl Render for RibbonDemo {
                 .group(
                     RibbonGroup::new("剪贴板")
                         .item(
-                            RibbonItem::button("demo::Paste")
+                            RibbonItem::split("demo::Paste")
                                 .label("粘贴")
+                                .keytip("V")
                                 .icon(IconName::Copy)
-                                .large(),
+                                .large()
+                                .item(
+                                    RibbonDropdownItem::new("demo::PasteSpecial")
+                                        .label("选择性粘贴"),
+                                ),
                         )
                         .item(
                             RibbonItem::button("demo::Cut")
@@ -136,15 +180,49 @@ impl Render for RibbonDemo {
                                 .icon(IconName::Plus)
                                 .item(RibbonDropdownItem::new("demo::InsertPicture"))
                                 .item(RibbonDropdownItem::new("demo::Settings")),
+                        )
+                        .item(
+                            RibbonItem::combobox("insert-kind")
+                                .keytip("K")
+                                .width(96.0)
+                                .selected(0)
+                                .placeholder("插入")
+                                .item(RibbonComboBoxItem::new("demo::InsertTable").label("表格"))
+                                .item(RibbonComboBoxItem::new("demo::InsertPicture").label("图片"))
+                                .item(RibbonComboBoxItem::new("demo::InsertChart").label("图表")),
                         ),
                 )
                 .group(
-                    RibbonGroup::new("字体").item(
-                        RibbonItem::toggle("demo::Bold")
-                            .label("加粗")
-                            .icon(IconName::Palette)
-                            .checked(self.bold),
-                    ),
+                    RibbonGroup::new("样式")
+                        .item(
+                            RibbonItem::gallery("样式库")
+                                .keytip("G")
+                                .columns(2)
+                                .large()
+                                .icon(IconName::Palette)
+                                .item(
+                                    RibbonGalleryItem::new("demo::StyleNormal")
+                                        .label("常规")
+                                        .icon(IconName::File)
+                                        .selected(true),
+                                )
+                                .item(
+                                    RibbonGalleryItem::new("demo::StyleTitle")
+                                        .label("标题")
+                                        .icon(IconName::Star),
+                                )
+                                .item(
+                                    RibbonGalleryItem::new("demo::StyleEmphasis")
+                                        .label("强调")
+                                        .icon(IconName::Palette),
+                                ),
+                        )
+                        .item(
+                            RibbonItem::toggle("demo::Bold")
+                                .label("加粗")
+                                .icon(IconName::Palette)
+                                .checked(self.bold),
+                        ),
                 ),
             RibbonTab::new("insert", "插入")
                 .keytip("N")
@@ -170,6 +248,7 @@ impl Render for RibbonDemo {
                 }),
             )
             .on_action(cx.listener(|this, _: &Paste, _, cx| this.record("粘贴", cx)))
+            .on_action(cx.listener(|this, _: &PasteSpecial, _, cx| this.record("选择性粘贴", cx)))
             .on_action(cx.listener(|this, _: &Cut, _, cx| this.record("剪切", cx)))
             .on_action(cx.listener(|this, _: &Copy, _, cx| this.record("复制", cx)))
             .on_action(cx.listener(|this, _: &Bold, _, cx| {
@@ -177,8 +256,12 @@ impl Render for RibbonDemo {
                 this.bold = bold;
                 this.record("加粗", cx);
             }))
+            .on_action(cx.listener(|this, _: &StyleNormal, _, cx| this.record("常规样式", cx)))
+            .on_action(cx.listener(|this, _: &StyleTitle, _, cx| this.record("标题样式", cx)))
+            .on_action(cx.listener(|this, _: &StyleEmphasis, _, cx| this.record("强调样式", cx)))
             .on_action(cx.listener(|this, _: &InsertTable, _, cx| this.record("插入表格", cx)))
             .on_action(cx.listener(|this, _: &InsertPicture, _, cx| this.record("插入图片", cx)))
+            .on_action(cx.listener(|this, _: &InsertChart, _, cx| this.record("插入图表", cx)))
             .on_action(cx.listener(|this, _: &Settings, _, cx| this.record("设置", cx)))
             .size_full()
             .bg(rgpui::rgb(0xffffff))
