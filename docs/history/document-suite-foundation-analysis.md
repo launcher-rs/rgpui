@@ -403,3 +403,30 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **测试**：6 项（默认设置、横纵互换、整页排布、内容区内缩、文档总尺寸、命中判定）。
 
 **本版暂缓**（后续增补）：多列/对开页排布、真实分页（需应用侧断行）、页面缩略图。
+
+## 十九、P1 落地：画布对象工具 object_toolkit（`viewport` feature）
+
+`crates/rgpui/src/object_toolkit.rs` —— 面向绘图/画布编辑器的「对象操作 toolkit」：
+以**文档坐标**矩形为对象边界，提供选区手柄、缩放、旋转、对齐与分布的纯几何函数，
+屏幕映射复用 [`Viewport`]；`SelectionHandles` 元素把选区描边与 9 个手柄画到画布上。
+
+- **`ResizeHandle`**：8 向缩放手柄 + `Rotate`；常量 `RESIZE`（8）/`ALL`（9），
+  `is_rotate()`、`opposite()`。
+- **几何函数**（均以文档坐标）：
+  - `handle_point(rect, handle)` 手柄位置（旋转手柄在顶边上方 `ROTATE_HANDLE_DISTANCE`）；
+  - `hit_handle(rect, point, tolerance)` 命中判定（旋转手柄最后判定）；
+  - `resize_bounds(rect, handle, pointer, min_size)` 按手柄缩放，保留对侧锚点、尺寸不小于
+    `min_size`（旋转手柄原样返回）；
+  - `rotate_point(p, center, angle)` / `angle_between(center, from, to)` 绕点旋转与角度差；
+  - `union_bounds(rects)` 外接矩形；
+  - `align(rects, AlignMode)` 六种对齐（左/水平居中/右/顶/垂直居中/底）；
+  - `distribute(rects, axis)` 沿轴等间距分布（≥3 个，两端不动）。
+- **`SelectionHandles` 元素**：`new(selection, viewport)`，`handle_size(px)`、`rotate(bool)`；
+  选区描边 + 手柄方块，缩放/平移时同步。
+- **示例**：`examples/showcase/src/bin/canvas_objects.rs`（三张卡片：点选/拖动/手柄缩放/
+  旋转手柄旋转 + 左·居中·右对齐与水平分布）。
+- **测试**：9 项（手柄位置、命中容差、缩放锚点与最小尺寸、对侧手柄、绕点旋转、
+  角度差、外接矩形、对齐、分布）。
+
+**本版暂缓**（后续增补）：多选框选（marquee）、旋转后手柄跟随、吸附/参考线联动
+（已有 `guides`）、图层顺序调整。

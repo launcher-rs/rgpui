@@ -267,6 +267,11 @@ name = "ruler"
 path = "src/bin/ruler.rs"
 required-features = ["viewport"]
 
+[[bin]]
+name = "canvas_objects"
+path = "src/bin/canvas_objects.rs"
+required-features = ["viewport"]
+
 # ---------- 电子表格基座（spreadsheet feature） ----------
 [[bin]]
 name = "formula_bar"

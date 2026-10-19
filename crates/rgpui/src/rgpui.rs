@@ -262,6 +262,9 @@ pub mod ribbon;
 
 #[cfg(feature = "viewport")]
 pub mod guides;
+/// 画布对象工具：选区手柄 / 缩放 / 旋转 / 对齐分布，由 `viewport` feature 门控。
+#[cfg(feature = "viewport")]
+pub mod object_toolkit;
 /// 视口与标尺基座：画布视口 + 刻度/对齐参考线，由 `viewport` feature 门控。
 #[cfg(feature = "viewport")]
 pub mod viewport;
