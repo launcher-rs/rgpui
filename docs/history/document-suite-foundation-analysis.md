@@ -68,7 +68,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | **画布对象工具**（选择/多选框/缩放手柄/旋转手柄/对齐） | `objects.rs`/`crop.rs` | 无 | 新增对象操作 toolkit |
 | **Ink / 笔迹层**（pen/highlighter/eraser/lasso） | `ink.rs` | 无 | P1 |
 | **缩略图 / 排序器** | `thumbs.rs`/`sorter.rs` | 无 | P2（已落地，见 §二十三） |
-| **动画时间线** | `animtimeline.rs` | 无 | P2 |
+| **动画时间线** | `animtimeline.rs` | 无 | P2（已落地，见 §二十四） |
 | **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker` | 增强 |
 | **富剪贴板 payload** | `system_clipboard.rs` | 只有 text/image/路径（已扩展，见 §二十） | 扩展 `ClipboardItem` |
 
@@ -110,7 +110,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格（§十七）、文档页视图（§十八）、
 画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink（§二十二）。
 
-**P2 深度**：缩略图/排序（§二十三）、动画时间线、取色器增强、任务窗格/MDI、a11y 画布语义、
+**P2 深度**：缩略图/排序（§二十三）、动画时间线（§二十四）、取色器增强、任务窗格/MDI、a11y 画布语义、
 bidi/RTL 与 CJK 排版。
 
 **横向工程范式（可立即引入）**
@@ -558,4 +558,40 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 
 **本版暂缓**（后续增补）：拖拽到边缘自动滚动、多选整组拖动（现只移动被抓取的一项）、
 拖拽实时预览（现为原格半透明 + 指示线）、虚拟化（大数量缩略图全量渲染）、章节分组折叠。
+
+## 二十四、P2 落地：动画时间线（核心，无 feature 门控）
+
+`crates/rgpui/src/anim_timeline.rs` —— 面向动效 / 关键帧动画的**多轨时间线编辑器**：时间标尺 +
+多条轨道 + 关键帧 + 可拖拽播放头。纯数据模型负责关键帧存储与求值，控件负责标尺刻度、命中测试、
+拖拽与播放头；轨道可直接转成运行时的进度式 `KeyframeAnimation`，编辑完即交给元素动画播放。
+
+- **数据模型**：`Keyframe { time, value }`（时间非负）；`Interpolation`（`Linear`/`Hold`/`Smooth`）；
+  `Track { name, keyframes, interpolation }`；`Timeline { tracks }`。
+- **轨道运算**：`normalize`（排序 + 同时间合并，保留最后一个）、`set_keyframe`（同时间覆盖并返回
+  是否新增）、`remove_keyframe`、`keyframe_index_at(time, tolerance)`、`move_keyframe`（移动后重新
+  排序并返回新下标）、`duration`、`value_at`（首帧前 / 末帧后保持端点值）；`Timeline::add_track`/
+  `remove_track`/`duration`（各轨最大值）/`values_at`。
+- **运行时桥接**：`Track::to_keyframe_animation(id, duration)` 把绝对秒映射到进度 0~1（端点值显式
+  写入，覆盖 `KeyframeAnimation::new` 自带的首尾帧）。
+- **控件**：`TimelineState`（`Entity` 承载）+ `TimelineView`（`key_context("AnimTimeline")` + 焦点 +
+  指针 / 滚轮 / 键盘事件）。播放头 `set_time`（吸附后夹取非负）/`advance(dt)`（循环回绕或停在末尾
+  并停止）；`play`/`pause`/`toggle_play`/`set_looping`；`set_px_per_second`/`zoom_by`/`set_scroll`/
+  `set_fps`/`snapped`；`select_keyframe`/`clear_selection`/`remove_selected_keyframe`。
+- **交互**：`hit_test` 把局部坐标映射为 `TimelineHit`（`Ruler`/`Keyframe`/`Track`/`None`）；标尺拖拽
+  移动播放头、关键帧拖拽改时间（吸附）、轨道空白双击抛 `KeyframeRequested`、`Ctrl/Cmd + 滚轮`以指针
+  为锚缩放、滚轮平移；键盘 `Space` 播放/暂停、方向键按帧步进（`Shift` 1s）、`Home`/`End`、`Delete`
+  删除关键帧、`+`/`-` 缩放。
+- **事件**：`TimelineEvent::{TimeChanged, SelectionChanged, KeyframeMoved, KeyframeRequested,
+  KeyframeRemoved, PlaybackChanged}`。
+- **纯几何**：`time_to_x`/`x_to_time`、`snap_time`、`ruler_step`（1/2/5×10ⁿ 整齐步长）、
+  `format_time`（`1.20s` / `1:02.5`）、`clamp_px_per_second`。
+- **示例**：`examples/showcase/src/bin/timeline.rs`（三轨：位置 X / 缩放 / 透明度；工具条含播放、
+  回到开头、加/删关键帧、缩放、吸附开关；预览方块由三条轨道的当前值驱动，播放时后台按 1/60s 推进）。
+- **测试**：`anim_timeline::tests` 9 项（归一化与去重、三种插值求值、命中 / 移动 / 删除关键帧、
+  时间映射与吸附 / 缩放夹取 / 标尺步长 / 时间格式化、总时长与当前值、进度式动画转换、播放头推进与
+  循环 / 播放状态、缩放滚动吸附与选中删除、命中测试坐标映射）。
+
+**本版暂缓**（后续增补）：垂直滚动与轨道折叠 / 重排、关键帧值曲线编辑器（当前只编辑时间）、
+多选关键帧与框选、轨道静音 / 独奏、音视频波形与对齐吸附、播放时钟内置到控件（现由应用推进 `advance`）。
+
 

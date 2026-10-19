@@ -251,6 +251,11 @@ path = "src/bin/ink.rs"
 name = "sorter"
 path = "src/bin/sorter.rs"
 
+# ---------- 动画时间线（核心 API，无需 feature） ----------
+[[bin]]
+name = "timeline"
+path = "src/bin/timeline.rs"
+
 # ---------- 套件基座（ribbon / viewport feature） ----------
 [[bin]]
 name = "command_registry"

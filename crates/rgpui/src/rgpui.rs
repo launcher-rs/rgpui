@@ -291,6 +291,9 @@ pub mod ink;
 /// 缩略图排序器：可拖拽重排的缩略图网格（幻灯片 / 页面 / 图片），核心，无 feature 门控。
 pub mod sorter;
 
+/// 动画时间线：多轨关键帧编辑器（标尺 + 轨道 + 关键帧 + 播放头），核心，无 feature 门控。
+pub mod anim_timeline;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 
