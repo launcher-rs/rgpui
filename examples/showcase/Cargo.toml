@@ -246,6 +246,11 @@ path = "src/bin/rich_text.rs"
 name = "ink"
 path = "src/bin/ink.rs"
 
+# ---------- 缩略图排序器（核心 API，无需 feature） ----------
+[[bin]]
+name = "sorter"
+path = "src/bin/sorter.rs"
+
 # ---------- 套件基座（ribbon / viewport feature） ----------
 [[bin]]
 name = "command_registry"

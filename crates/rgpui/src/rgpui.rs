@@ -288,6 +288,9 @@ pub mod rich_text;
 /// Ink 笔迹层：墨迹笔画模型 / 编辑操作（擦除 / 套索 / 抽稀）与绘制元素（核心，无 feature 门控）。
 pub mod ink;
 
+/// 缩略图排序器：可拖拽重排的缩略图网格（幻灯片 / 页面 / 图片），核心，无 feature 门控。
+pub mod sorter;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 

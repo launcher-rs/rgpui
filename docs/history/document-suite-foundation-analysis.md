@@ -67,7 +67,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | **对齐参考线 Guides/吸附** | `guides.rs` | 无 | 新增对齐/吸附工具库 |
 | **画布对象工具**（选择/多选框/缩放手柄/旋转手柄/对齐） | `objects.rs`/`crop.rs` | 无 | 新增对象操作 toolkit |
 | **Ink / 笔迹层**（pen/highlighter/eraser/lasso） | `ink.rs` | 无 | P1 |
-| **缩略图 / 排序器** | `thumbs.rs`/`sorter.rs` | 无 | P2 |
+| **缩略图 / 排序器** | `thumbs.rs`/`sorter.rs` | 无 | P2（已落地，见 §二十三） |
 | **动画时间线** | `animtimeline.rs` | 无 | P2 |
 | **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker` | 增强 |
 | **富剪贴板 payload** | `system_clipboard.rs` | 只有 text/image/路径（已扩展，见 §二十） | 扩展 `ClipboardItem` |
@@ -110,7 +110,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格（§十七）、文档页视图（§十八）、
 画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink（§二十二）。
 
-**P2 深度**：缩略图/排序、动画时间线、取色器增强、任务窗格/MDI、a11y 画布语义、
+**P2 深度**：缩略图/排序（§二十三）、动画时间线、取色器增强、任务窗格/MDI、a11y 画布语义、
 bidi/RTL 与 CJK 排版。
 
 **横向工程范式（可立即引入）**
@@ -527,3 +527,35 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 
 **本版暂缓**（后续增补）：逐段压感变宽（现为等宽描边）、压感/倾角曲线拟合、笔迹分图层与
 橡皮的局部切割、触摸/数位板事件接入（现由指针事件驱动）。
+
+## 二十三、P2 落地：缩略图排序器（核心，无 feature 门控）
+
+`crates/rgpui/src/sorter.rs` —— 面向幻灯片 / 页面 / 图片的**可拖拽重排缩略图网格**：等尺寸
+网格自动换行、单选 / 范围选择 / 多选、缩放、键盘导航，以及拖拽重排（拖拽中在插入位置画一条
+指示线）。框架只负责控件与交互，缩略图内容与项目顺序由应用通过 `SorterDelegate` 提供；重排
+只抛出事件，真正移动数据由应用完成。
+
+- **委托**：`SorterDelegate { count, aspect_ratio（默认 16:9）, render_item }`，`render_item`
+  渲染填充单元格的任意内容，获得 `selected` 选中态与 `&mut Context<SorterState<Self>>`。
+- **状态与元素**：`SorterState::new(delegate, cx)`（`Entity` 承载）+ `Sorter::new(&entity)`
+  薄包装元素（`key_context("Sorter")` + 焦点 + 键盘 / 鼠标释放）。
+- **选择**：`select`/`toggle`/`select_range`/`select_all`/`clear_selection`、`selected`/
+  `primary`/`is_selected`/`selection_len`，全部经 `SorterEvent::SelectionChanged` 上报。
+- **拖拽重排**：`begin_drag`/`set_drop_slot`/`update_drag(pointer)`/`finish_drag`/`cancel_drag`；
+  鼠标按下进入拖拽并顺带完成选择（`Shift` 范围选、`Ctrl/Cmd` 切换多选），移动时按缓存的单元格
+  边界求插入槽，释放时经 `SorterEvent::Reorder { from, to }` 上报。
+- **视图配置**：`set_zoom`/`zoom_by`（夹取 `MIN_ZOOM..=MAX_ZOOM`）、`set_show_index`（序号角标）、
+  `set_base_width`/`set_gap`、`scroll_to_item`（键盘导航自动滚入视野）；内部 `ScrollHandle` +
+  `Scrollbar`。
+- **键盘**：方向键按列数移动（`columns` 由可用宽度换算）、`Shift` 扩展、`Home`/`End`、
+  `Ctrl/Cmd+A` 全选、`Enter`/`Space` 抛 `Activate`、`Delete`/`Backspace` 抛 `Delete`。
+- **纯几何**：`clamp_zoom`/`normalize_aspect_ratio`、`cell_size`、`grid_columns`、`drop_slot`、
+  `move_dest`（源位置自身或紧随其后视为无位移）。
+- **示例**：`examples/showcase/src/bin/sorter.rs`（12 张彩色幻灯片卡 + 工具条：缩小/放大/新建/
+  删除选中；重排后按事件真正调整 `slides` 顺序）。
+- **测试**：`sorter::tests` 8 项（缩放夹取与宽高比归一化、单元格尺寸、换行列数、插入槽中线判定、
+  移动目标换算、选择三种变体与越界忽略、拖拽重排 / 无位移 / 取消、视图配置）。
+
+**本版暂缓**（后续增补）：拖拽到边缘自动滚动、多选整组拖动（现只移动被抓取的一项）、
+拖拽实时预览（现为原格半透明 + 指示线）、虚拟化（大数量缩略图全量渲染）、章节分组折叠。
+
