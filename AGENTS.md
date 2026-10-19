@@ -116,7 +116,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 | 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState`、`Sidebar`/`SidebarSection`、`Select`、`Combobox`、`DatePicker`、`ColorPicker`、`Pagination`、`Steps`、`Timeline`、`Rate`、`Upload`、`Carousel`、`MermaidDiagram`、`DockArea` 等（`charts`/`effects`/`qr-code` feature 门控） |
 | 动画/手势/物理 | `animation/`、`mouse_gestures.rs`、`scroll_physics.rs` | `Spring`、`GestureDetector`、`ScrollPhysics` |
 | 对话（AI-chat） | `chat/` | `Message`/`MessageGroup`/`ChatView`、`Prompts`、`Suggestion`、`ThoughtChain`、`Attachments`/`FileCard`、`Sources`、`Actions`、`Sender`、`Bubble`、`MessageScroller`、`Marker` |
-| 应用套件基座（`ribbon` / `viewport` / `spreadsheet` feature，默认关闭） | `commands.rs`、`ribbon.rs`、`keytips.rs`、`qat.rs`、`mini_toolbar.rs`、`backstage.rs`、`viewport.rs`、`guides.rs`、`formula_bar.rs` | `CommandDescriptor`/`CommandRegistry`/`register_command!`/`App::dispatch_command`/`label_for`、`Ribbon`/`RibbonState`/`RibbonTab`/`RibbonGroup`/`RibbonItem`/`RibbonSplitButton`/`RibbonGallery`/`RibbonComboBox`、`KeyTip`/`KeyTipScope`/`resolve_key`、`QuickAccessToolbar`/`QatItem`/`QatButton`、`MiniToolbar`、`Backstage`/`BackstageState`/`BackstageTab`、`Viewport`、`ruler_ticks`/`align`、`FormulaBar`/`FormulaBarState`/`FormulaBarEvent`（`spreadsheet`） |
+| 应用套件基座（`ribbon` / `viewport` / `spreadsheet` feature，默认关闭） | `commands.rs`、`ribbon.rs`、`keytips.rs`、`qat.rs`、`mini_toolbar.rs`、`backstage.rs`、`viewport.rs`、`guides.rs`、`formula_bar.rs`、`sheet_grid.rs` | `CommandDescriptor`/`CommandRegistry`/`register_command!`/`App::dispatch_command`/`label_for`、`Ribbon`/`RibbonState`/`RibbonTab`/`RibbonGroup`/`RibbonItem`/`RibbonSplitButton`/`RibbonGallery`/`RibbonComboBox`、`KeyTip`/`KeyTipScope`/`resolve_key`、`QuickAccessToolbar`/`QatItem`/`QatButton`、`MiniToolbar`、`Backstage`/`BackstageState`/`BackstageTab`、`Viewport`、`ruler_ticks`/`align`、`FormulaBar`/`FormulaBarState`/`FormulaBarEvent`（`spreadsheet`）、`SheetGrid`/`SheetGridState`/`SheetGridEvent`/`SheetDelegate`/`CellRef`/`CellRange`/`column_label`（`spreadsheet`） |
 
 `prelude` 含：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、
 `Sizable`、`StyledExt`、`FluentBuilder`。
@@ -156,7 +156,8 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 5. 中文注释未被删除；无 `#[allow(dead_code)]`
 6. 组件子系统目录都在（`form input_ui menu dialog list table tabs title_bar elements/scroll`）
 7. 应用套件基座模块都在（`commands.rs` / `ribbon.rs` / `keytips.rs` / `qat.rs` /
-   `mini_toolbar.rs` / `backstage.rs` / `viewport.rs` / `guides.rs` / `formula_bar.rs`），且
+   `mini_toolbar.rs` / `backstage.rs` / `viewport.rs` / `guides.rs` / `formula_bar.rs` /
+   `sheet_grid.rs`），且
    `ribbon`、`viewport`、`spreadsheet` feature 开关两侧都能编译
 8. `crates/rgpui-ui`、`rgpui-tokio` 等旧 crate 未复活；`rgpui-markdown` 在，
    `pulldown-cmark = "0.13"`

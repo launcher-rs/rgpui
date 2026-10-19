@@ -340,3 +340,40 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 
 后续「网格 + 文档页 + 画布对象 + 富文本/墨迹」等文档套件能力继续在
 `spreadsheet`（或独立 feature）下落，均遵循「框架出控件与状态、引擎留应用层」。
+
+## 十七、P1 落地：电子表格网格 SheetGrid（`spreadsheet` feature）
+
+`crates/rgpui/src/sheet_grid.rs` —— 面向电子表格/日历/甘特等「二维单元格」场景的
+专用网格：左上角为 `A1` 原点，**行列双轴虚拟化**（海量行列只渲染可见范围），支持
+矩形选区与填充柄。与 [`DataTable`] 的区别：DataTable 面向「列定义 + 数据行」，
+本控件面向「A/B/C 列 + 1/2/3 行」的电子表格语义，并把数据/公式计算留在应用层。
+
+- **坐标与选区**：`CellRef { row, col }`（0 起）；`CellRange { anchor, cursor }`
+  归一化端点（`min/max/rows/cols/height/width/len/contains/clamp`）；
+  `column_label(col)` 纯函数（`0 -> A`、`25 -> Z`、`26 -> AA`）。
+- **`SheetDelegate`**：`rows_count`/`cols_count` + 可选 `column_label`/`row_label`/
+  `column_width`/`row_height`（统一行高，默认 24px）/`text`（供默认渲染与公式栏同步）/
+  `render_cell`（默认渲染 `text`）。
+- **`SheetGridState<D>`**：持有委托、`selection`、垂直（`uniform_list`）与水平
+  （`h_virtual_list`，共享同一 `VirtualListScrollHandle`，列头为水平滚动驱动）两套
+  滚动句柄、焦点、边界缓存。方法：`delegate/delegate_mut`、`selection/active_cell`、
+  `set_selection/set_active_cell/select_row/select_col/select_all/move_active`、
+  `editing/set_editing`、`scroll_to_cell`、`refresh`（重新读取行列数并夹取选区）。
+- **`SheetGridEvent`**：`SelectionChanged(CellRange)`、`EditRequested(CellRef)`、
+  `Clear(CellRange)`、`Fill { source, target }`、`HeaderClicked { col, row }`。
+- **交互**：鼠标拖拽扩展选区、`Shift` 点击扩展；方向键 / `Shift`+方向 /
+  `PageUp/PageDown`（按可视行数翻页）/ `Tab` / `Home` / `End` / `Ctrl+A` /
+  `Ctrl+Home·End` 移动或全选；双击 / `Enter` / `F2` 请求编辑；
+  `Delete`/`Backspace` 请求清空；行列头点击整行/整列；右下角填充柄拖拽填充。
+  键盘在根元素 `on_key_down` 处理（不注册 Action），指针释放用
+  `capture_any_mouse_up` 结束拖拽/填充。
+- **`SheetGrid<D>` 元素**：`new(&Entity<SheetGridState<D>>)`，薄包装
+  `key_context("SheetGrid")` + `track_focus` + 键盘/鼠标释放处理。
+- **示例**：`examples/showcase/src/bin/sheet_grid.rs`（`SheetGrid` + `FormulaBar`
+  绑定 8×6 迷你表格：选区同步公式栏、公式回车写回、填充柄复制）。
+- **测试**：7 项（列标签映射、选区归一化/包含/夹取、读取行列数、选区夹取与事件、
+  行列头事件、移动/扩展/全选、编辑态更新）。
+
+**本版暂缓**（后续增补）：可变行高（`uniform_list` 要求等高，需换布局策略）、
+冻结行列（对应 `DataTable` 的固定列）、单元格内联编辑器（编辑器留在应用层，
+框架仅以 `EditRequested`/`editing` 暴露意图）。

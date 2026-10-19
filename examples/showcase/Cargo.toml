@@ -272,6 +272,11 @@ path = "src/bin/formula_bar.rs"
 required-features = ["spreadsheet"]
 
 [[bin]]
+name = "sheet_grid"
+path = "src/bin/sheet_grid.rs"
+required-features = ["spreadsheet"]
+
+[[bin]]
 name = "dock"
 path = "src/bin/dock.rs"
 
