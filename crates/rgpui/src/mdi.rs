@@ -8,6 +8,10 @@
 //! [`MdiArea`] 元素承担：正文内容经 `body` 回调按窗口 id 现渲染，因此状态不持有视图，
 //! 应用可随时增删文档而无需重建 MDI 区域。
 //!
+//! **宿主需观察状态**：`MdiArea` 只是薄壳，窗口几何的变化经 `MdiState` 通知，宿主视图
+//! 必须 `cx.observe(&mdi, |_, _, cx| cx.notify())`（或订阅 [`MdiEvent`]）才能在拖拽 /
+//! 缩放 / 排布时实时重绘。
+//!
 //! ```
 //! use rgpui::{div, prelude::*, px, size, Bounds, WindowBounds, WindowOptions};
 //! use rgpui::mdi::{MdiArea, MdiState};
@@ -1111,6 +1115,9 @@ impl EventEmitter<MdiEvent> for MdiState {}
 
 /// MDI 区域元素：渲染子窗口框架（标题栏 + 正文 + 按钮 + 缩放边），并把指针 / 键盘
 /// 事件转发给 [`MdiState`]。
+///
+/// 本元素只是薄壳，宿主视图需观察 [`MdiState`]（`cx.observe`）或订阅 [`MdiEvent`]，
+/// 才能在拖拽 / 排布等几何变化时实时重绘。
 #[derive(IntoElement)]
 pub struct MdiArea {
     /// 状态实体。
@@ -1328,7 +1335,7 @@ impl RenderOnce for MdiArea {
 }
 
 /// 缩放边 / 角命中矩形（局部坐标）：四条边 + 四个角。
-fn resize_edge_rects(rect: Bounds<Pixels>) -> Vec<(ResizeEdge, Bounds<Pixels>)> {
+pub fn resize_edge_rects(rect: Bounds<Pixels>) -> Vec<(ResizeEdge, Bounds<Pixels>)> {
     let t = px(RESIZE_HANDLE);
     let (x, y) = (rect.origin.x, rect.origin.y);
     let (w, h) = (rect.size.width, rect.size.height);

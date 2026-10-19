@@ -40,6 +40,9 @@ impl MdiApp {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mdi = cx.new(MdiState::new);
 
+        // MDI 元素只负责画与转发事件，几何变化要靠宿主观察状态来触发重绘。
+        cx.observe(&mdi, |_this, _mdi, cx| cx.notify()).detach();
+
         cx.subscribe_in(
             &mdi,
             window,
