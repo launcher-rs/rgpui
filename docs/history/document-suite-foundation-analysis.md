@@ -70,6 +70,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | **缩略图 / 排序器** | `thumbs.rs`/`sorter.rs` | 无 | P2（已落地，见 §二十三） |
 | **动画时间线** | `animtimeline.rs` | 无 | P2（已落地，见 §二十四） |
 | **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker`（已增强，见 §二十五；吸管缓做） | 增强 |
+| **多文档界面 MDI**（子文档窗/层叠/平铺/最小化） | `doc_window.rs`/`dock.rs` | 有 `DockArea`（面板树） | P2（已落地，见 §二十六） |
 | **富剪贴板 payload** | `system_clipboard.rs` | 只有 text/image/路径（已扩展，见 §二十） | 扩展 `ClipboardItem` |
 
 ### B. 现有能力需增强（有但不敷套件用）
@@ -83,7 +84,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | 无障碍 | accesskit 树 + action | 缺把画布/网格内容暴露为语义节点的工具 |
 | i18n | `i18n`（文本） | 缺 RTL 布局镜像 |
 | 命令系统 | `Action`（序列化+分发） | 缺**命令注册表 + ribbon 位置/快捷键/参数元数据 + 动态 enabled** |
-| 多窗格 | `DockArea`/`SplitPane` | 缺文档窗口(MDI)/任务窗格模式 |
+| 多窗格 | `DockArea`/`SplitPane` | 缺文档窗口(MDI)/任务窗格模式（MDI 已落地，见 §二十六；任务窗格待补） |
 
 > `wordcraft` 的 `ui-parity.md` 明示了目标 UI 需求：Ribbon tabs/groups/split/gallery/
 > contextual、key tips(Alt/F10)、backstage/File tab、命令面板、各式对话框、任务窗格、标尺、
@@ -110,8 +111,8 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格（§十七）、文档页视图（§十八）、
 画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink（§二十二）。
 
-**P2 深度**：缩略图/排序（§二十三）、动画时间线（§二十四）、取色器增强（§二十五）、任务窗格/MDI、
-a11y 画布语义、bidi/RTL 与 CJK 排版。
+**P2 深度**：缩略图/排序（§二十三）、动画时间线（§二十四）、取色器增强（§二十五）、
+MDI 文档多窗（§二十六）、任务窗格、a11y 画布语义、bidi/RTL 与 CJK 排版。
 
 **横向工程范式（可立即引入）**
 - control channel（JSON-line TCP + key）+ MCP server 集成；
@@ -630,5 +631,55 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 **本版暂缓**（后续增补）：吸管取色（屏幕捕获）：`scap` / `screen-capture` feature 与
 `zed-scap`、`windows-capture` API 不兼容，编译失败，故整块延后；取色器色域（RGB/HSV 面板 +
 色环）与多色板自定义收藏。
+
+## 二十六、P2 落地：多文档界面 MDI（核心，无 feature 门控）
+
+`crates/rgpui/src/mdi.rs` —— 经典**多文档界面**：一块 MDI 区域内并列多个**子文档窗口**，
+每个子窗口带标题栏（最小化 / 最大化 / 关闭）、八向缩放边框与可交互正文；支持层叠 / 平铺排布、
+最小化图标条、z 序激活与键盘循环切换。与既有 `DockArea`（停靠面板树）/ `SplitPane`（分割）
+互补：那两个解决「面板布局」，本模块解决「同一区域内多个文档窗」。
+
+状态 [`MdiState`] 只持有**几何与元数据**（不持有视图），正文由 [`MdiArea::body`] 回调按窗口
+id 现渲染，因此应用可随时增删文档、换主题、重排而无需重建 MDI 区域。
+
+- **数据**：`MdiWindow { id, title, bounds, state, restore_bounds, closable/minimizable/maximizable }`
+  （`windows` 按 z 序后 → 前存放，末尾在最上层，激活即「移到末尾」，无需单独 z 字段）；
+  `WindowState { Normal, Minimized, Maximized }`；`MdiWindowFlags`（能力开关，默认全开）；
+  `MdiFrame`（渲染快照：id / 标题 / 矩形 / 是否最小化 / 最大化 / 激活 / 三个能力位）。
+- **操作**：`open`/`open_with`（返回 id，自动激活并抛 `MdiEvent::Opened`）、`close`/`close_active`/
+  `close_all`、`activate`（提到最前 + `Activated`）、`cycle(forward)`（沿 z 序遍历，`Ctrl+Tab` 用）、
+  `minimize`/`maximize`/`restore`/`toggle_maximize`（均抛 `StateChanged`）、`move_by`/`set_bounds`
+  （夹取到可见范围）、`arrange(layout)`、`hit_test`、`rect_of`/`layout`/`get`/`windows`/`active`。
+  builder：`with_min_size`/`with_cascade_offset`/`with_tile_gap`。
+- **排布**（纯函数，可单测）：`cascade_rects`（错开层叠，尺寸取区域 60%×70%，越出右下角后回绕
+  成第二圈）、`tile_rects`（`horizontal` 真为左右并排、假为上下堆叠，带间隔等分）、
+  `clamp_rect`（不小于最小尺寸，且始终保留 [`MIN_VISIBLE`] 宽度与整条标题栏可见）、
+  `icon_rect`（最小化图标沿底部自左向右排列）。区域未知时 `arrange` 先挂起（`pending_layout`），
+  待视图预绘制拿到区域后一次性铺开；首次拿到区域还会把「区域未知期间开出的窗口」自动层叠，
+  并随区域变化把普通窗口夹回可见范围。
+- **命中与拖拽**：`MdiHit { None, TitleBar, Body, Icon, Button{id,button}, Resize{id,edge} }`；
+  `resize_edge_at`（角优先于边，6px 命中带）、`title_button_rects`（自右向左关闭 / 最大化 /
+  最小化，28px 宽）、`resize_bounds`（按边 / 角缩放，拖左 / 上边时以右 / 下边为锚保证最小尺寸）。
+  指针按下 → 激活并起拖拽会话（移动 / 缩放 / 按住按钮三类）；移动 / 缩放实时写回几何；
+  释放时若仍命中同一按钮才执行（避免「按下后滑走仍触发」）。拖拽中每次变更只 `notify`，
+  不做布局重排。
+- **元素**：`MdiArea::new(&state).body(|id, window, cx| …)` —— 渲染每个窗口的标题栏（激活态
+  用主题 `secondary` + `primary` 描边）、正文、标题栏按钮与 8 个缩放命中块（仅设光标，点击统一
+  由容器命中测试处理，避免按钮吞掉拖拽）；最小化窗口渲染为底部图标（点击还原）；
+  `on_prepaint` 同步区域、`on_mouse_down`/`on_mouse_move`/`capture_any_mouse_up` 转发指针、
+  `track_focus` + `key_context("Mdi")` + `on_key_down` 处理键盘。`Arc<dyn Fn(…)>` 承载正文回调，
+  元素本身不带泛型参数，便于 `#[derive(IntoElement)]`。
+- **键盘**：`Ctrl+Tab` / `Ctrl+Shift+Tab`、`Ctrl+F6` / `Ctrl+Shift+F6` 循环切换；`Ctrl+F4` 关闭
+  激活窗口；`Ctrl+M` 最小化激活窗口；`Esc` 取消当前拖拽。
+- **示例**：`examples/showcase/src/bin/mdi.rs`（新建 / 只读视图 / 层叠 / 水平平铺 / 垂直平铺 /
+  全部最小化 / 关闭全部；窗口正文内嵌按钮验证「正文可交互 + 点击自动激活」）。
+- **测试**：12 项 —— 纯几何 5 项（层叠与平铺落在区域内且铺满、夹取最小尺寸与标题栏可见、
+  边 / 角判定与最小尺寸回退、标题栏按钮右对齐与图标条从左排列）；状态 7 项（打开 / 激活 / 关闭
+  的 z 序与事件、最小化 / 最大化 / 还原矩形语义、能力开关禁用按钮、指针拖拽移动 + 缩放 + 按钮
+  关闭、平铺 / 层叠排布且最小化不参与、无区域时排布挂起、键盘循环 / 最小化 / 还原 / 关闭、
+  `move_by`/`set_bounds` 夹取）。
+
+**本版暂缓**（后续增补）：任务窗格模式（可停靠 / 可浮动的侧边任务窗格）、窗口吸附到区域边缘 /
+相互磁吸、拖拽最小化图标、多显示器跨屏拖拽、MDI 内标签页组（Tabbed MDI）。
 
 
