@@ -16,8 +16,15 @@ use strum::IntoEnumIterator as _;
 
 use crate::ns_string;
 use rgpui::{
-    ClipboardEntry, ClipboardItem, ClipboardString, ExternalPaths, Image, ImageFormat, hash,
+    ClipboardEntry, ClipboardFormat, ClipboardItem, ClipboardString, ExternalPaths, Image,
+    ImageFormat, hash,
 };
+
+/// rgpui 在 macOS 粘贴板上读写的富负载类型（MIME ↔ UTI）。
+const RICH_PASTEBOARD_TYPES: &[(&str, &str)] = &[
+    (ClipboardFormat::HTML, "public.html"),
+    (ClipboardFormat::RTF, "public.rtf"),
+];
 
 pub struct Pasteboard {
     inner: id,
@@ -49,6 +56,8 @@ impl Pasteboard {
 
     pub fn read(&self) -> Option<ClipboardItem> {
         unsafe {
+            let mut entries = Vec::new();
+
             // 首先检查文件路径
             let filenames = NSPasteboard::propertyListForType(self.inner, NSFilenamesPboardType);
             if filenames != nil && NSArray::count(filenames) > 0 {
@@ -59,34 +68,41 @@ impl Pasteboard {
                     paths.push(PathBuf::from(path));
                 }
                 if !paths.is_empty() {
-                    let mut entries = vec![ClipboardEntry::ExternalPaths(ExternalPaths(paths))];
-
-                    // 同时包含字符串表示，以便文本编辑器可以
-                    // 将路径作为文本粘贴。
-                    if let Some(string_item) = self.read_string_from_pasteboard() {
-                        entries.push(string_item);
-                    }
-
-                    return Some(ClipboardItem { entries });
+                    entries.push(ClipboardEntry::ExternalPaths(ExternalPaths(paths)));
                 }
             }
 
-            // 接下来，检查纯字符串。
+            // 其次检查纯字符串
             if let Some(string_entry) = self.read_string_from_pasteboard() {
-                return Some(ClipboardItem {
-                    entries: vec![string_entry],
-                });
+                entries.push(string_entry);
             }
 
-            // 最后，尝试各种支持的图像类型。
-            for format in ImageFormat::iter() {
-                if let Some(item) = self.read_image(format) {
-                    return Some(item);
+            // 富负载（HTML / RTF）与纯文本并存，供不同目标程序择一取用。
+            for &(mime_type, uti) in RICH_PASTEBOARD_TYPES {
+                let type_ = ns_string(uti);
+                if let Some(bytes) = self.data_for_type(type_) {
+                    entries.push(ClipboardEntry::Format(ClipboardFormat::new(
+                        mime_type,
+                        bytes.to_vec(),
+                    )));
                 }
+            }
+
+            // 最后，只有没有任何文本/富负载时才尝试各种支持的图像类型。
+            if entries.is_empty() {
+                for format in ImageFormat::iter() {
+                    if let Some(item) = self.read_image(format) {
+                        return Some(item);
+                    }
+                }
+            }
+
+            if entries.is_empty() {
+                None
+            } else {
+                Some(ClipboardItem { entries })
             }
         }
-
-        None
     }
 
     fn read_image(&self, format: ImageFormat) -> Option<ClipboardItem> {
@@ -164,53 +180,55 @@ impl Pasteboard {
 
     pub fn write(&self, item: ClipboardItem) {
         unsafe {
-            match item.entries.as_slice() {
-                [] => {
-                    // 写入空的条目列表只会清除剪贴板。
-                    self.inner.clearContents();
-                }
-                [ClipboardEntry::String(string)] => {
-                    self.write_plaintext(string);
-                }
-                [ClipboardEntry::Image(image)] => {
-                    self.write_image(image);
-                }
-                [ClipboardEntry::ExternalPaths(_)] => {}
-                _ => {
-                    // Agus NB：当我们有多个条目时，目前只将字符串条目写入剪贴板。
-                    //
-                    // 这是我重构外部剪贴板代码之前的现有行为：
-                    // https://github.com/zed-industries/zed/blob/65f7412a0265552b06ce122655369d6cc7381dd6/crates/gpui/src/platform/mac/platform.rs#L1060-L1110
-                    //
-                    // 注意 `any_images` 始终为 `false`。我们应该修复这个问题，但这与重构无关。
+            self.inner.clearContents();
+            if item.entries.is_empty() {
+                // 写入空的条目列表只会清除剪贴板。
+                return;
+            }
 
-                    let mut combined = ClipboardString {
-                        text: String::new(),
-                        metadata: None,
-                    };
+            // 多段纯文本合并成一份，元数据取第一段的；富负载/图像各自按类型写入。
+            let mut plain = ClipboardString {
+                text: String::new(),
+                metadata: None,
+            };
+            let mut has_plain = false;
 
-                    for entry in item.entries {
-                        match entry {
-                            ClipboardEntry::String(text) => {
-                                combined.text.push_str(&text.text());
-                                if combined.metadata.is_none() {
-                                    combined.metadata = text.metadata;
-                                }
-                            }
-                            _ => {}
+            for entry in &item.entries {
+                match entry {
+                    ClipboardEntry::String(string) => {
+                        if !has_plain {
+                            plain.metadata = string.metadata.clone();
                         }
+                        plain.text.push_str(&string.text);
+                        has_plain = true;
                     }
-
-                    self.write_plaintext(&combined);
+                    ClipboardEntry::Image(image) => self.write_image(image),
+                    ClipboardEntry::ExternalPaths(_) => {}
+                    ClipboardEntry::Format(format) => self.write_format(format),
                 }
             }
+
+            if has_plain {
+                self.write_plaintext(&plain);
+            }
+        }
+    }
+
+    /// 写入一份富负载；MIME 类型经 [`pasteboard_type_for_mime`] 映射到 UTI。
+    fn write_format(&self, format: &ClipboardFormat) {
+        unsafe {
+            let type_ = pasteboard_type_for_mime(&format.mime_type);
+            let bytes = NSData::dataWithBytes_length_(
+                nil,
+                format.bytes.as_ptr() as *const c_void,
+                format.bytes.len() as u64,
+            );
+            self.inner.setData_forType(bytes, type_);
         }
     }
 
     fn write_plaintext(&self, string: &ClipboardString) {
         unsafe {
-            self.inner.clearContents();
-
             let text_bytes = NSData::dataWithBytes_length_(
                 nil,
                 string.text.as_ptr() as *const c_void,
@@ -241,8 +259,6 @@ impl Pasteboard {
 
     unsafe fn write_image(&self, image: &Image) {
         unsafe {
-            self.inner.clearContents();
-
             let bytes = NSData::dataWithBytes_length_(
                 nil,
                 image.bytes.as_ptr() as *const c_void,
@@ -252,6 +268,16 @@ impl Pasteboard {
             self.inner
                 .setData_forType(bytes, Into::<UTType>::into(image.format).inner_mut());
         }
+    }
+}
+
+/// 把 MIME 类型映射到对应的 macOS 粘贴板 UTI；未知类型按 MIME 字符串注册。
+unsafe fn pasteboard_type_for_mime(mime_type: &str) -> id {
+    match mime_type {
+        ClipboardFormat::HTML => unsafe { ns_string("public.html") },
+        ClipboardFormat::RTF => unsafe { ns_string("public.rtf") },
+        ClipboardFormat::PLAIN_TEXT => NSPasteboardTypeString,
+        other => unsafe { ns_string(other) },
     }
 }
 

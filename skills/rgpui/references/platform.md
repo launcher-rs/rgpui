@@ -45,7 +45,7 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 | 菜单 | `set_menus`(:371)、`get_menus`(:373)、`set_dock_menu`(:378)、`perform_dock_menu_action`(:380)、`add_recent_document`(:382)、`update_jump_list`(:384)、`on_app_menu_action`(:392)、`on_will_open_app_menu`(:394)、`on_validate_app_menu_command`(:396) |
 | 电源/热 | `thermal_state`(:399)、`on_thermal_state_change`(:401)、`on_system_power_event`(:518)、`on_system_wake`(:521)、`start_power_save_blocker`(:530)、`system_idle_time`(:538) |
 | 系统信息 | `os_info`(:557)、`focused_window_info`(:500)、`network_status`(:543)、`compositor_name`(:404)、`app_path`(:408) |
-| 剪贴板 | `read_from_clipboard`/`write_to_clipboard`(:425/:427)、`read_from_primary`/`write_to_primary`(:431/:434)、`read_from_find_pasteboard`/`write_to_find_pasteboard`(:438/:441) |
+| 剪贴板 | `read_from_clipboard`/`write_to_clipboard`(:425/:427)、`read_from_primary`/`write_to_primary`(:431/:434)、`read_from_find_pasteboard`/`write_to_find_pasteboard`(:438/:441)；富负载用 `ClipboardEntry::Format(ClipboardFormat)`（`new_html`/`new_rtf`/`new_with_format`，MIME 常量 `ClipboardFormat::HTML` 等，读取 `text`/`html`/`rtf`/`format`/`formats`） |
 | 凭据 | `write_credentials`/`read_credentials`/`delete_credentials`(:444/:446/:448) |
 | 键盘 | `keyboard_layout`(:451)、`keyboard_mapper`(:453)、`on_keyboard_layout_change`(:455) |
 | 托盘 | `set_tray`(:458)、`set_tray_icon`(:460)、`set_tray_menu`(:462)、`set_tray_tooltip`(:464)、`set_tray_panel_mode`(:466)、`get_tray_icon_bounds`(:468)、`on_tray_icon_event`(:472)、`on_tray_menu_action`(:474) |

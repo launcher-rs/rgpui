@@ -1042,6 +1042,9 @@ impl LinuxClient for WaylandClient {
             for mime_type in TEXT_MIME_TYPES {
                 data_source.offer(mime_type.to_string());
             }
+            for mime_type in state.clipboard.rich_mime_types_primary() {
+                data_source.offer(mime_type);
+            }
             data_source.offer(state.clipboard.self_mime());
             primary_selection.set_selection(Some(&data_source), serial);
         }
@@ -1061,6 +1064,9 @@ impl LinuxClient for WaylandClient {
             let data_source = data_device_manager.create_data_source(&state.globals.qh, ());
             for mime_type in TEXT_MIME_TYPES {
                 data_source.offer(mime_type.to_string());
+            }
+            for mime_type in state.clipboard.rich_mime_types() {
+                data_source.offer(mime_type);
             }
             data_source.offer(state.clipboard.self_mime());
             data_device.set_selection(Some(&data_source), serial);

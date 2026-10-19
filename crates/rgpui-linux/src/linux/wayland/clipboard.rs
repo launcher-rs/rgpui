@@ -14,11 +14,13 @@ use crate::linux::{
     WaylandClientStatePtr,
     platform::{PIPE_READ_TIMEOUT, read_fd_with_timeout},
 };
-use rgpui::{ClipboardEntry, ClipboardItem, Image, ImageFormat, hash};
+use rgpui::{ClipboardEntry, ClipboardFormat, ClipboardItem, Image, ImageFormat, hash};
 
 /// Text mime types that we'll offer to other programs.
 pub(crate) const TEXT_MIME_TYPES: [&str; 3] =
     ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"];
+/// 富负载 mime 类型（HTML / RTF），读写时与文本并列参与协商。
+pub(crate) const RICH_MIME_TYPES: [&str; 2] = [ClipboardFormat::HTML, ClipboardFormat::RTF];
 pub(crate) const FILE_LIST_MIME_TYPE: &str = "text/uri-list";
 
 /// Text mime types that we'll accept from other programs.
@@ -120,6 +122,43 @@ impl<T: ReceiveData> DataOffer<T> {
         Some(ClipboardItem::new_string(result))
     }
 
+    fn read_format(&self, connection: &Connection, mime_type: &str) -> Option<ClipboardItem> {
+        if !self.has_mime_type(mime_type) {
+            return None;
+        }
+        let bytes = self.read_bytes(connection, mime_type)?;
+        Some(ClipboardItem {
+            entries: vec![ClipboardEntry::Format(ClipboardFormat::new(
+                mime_type, bytes,
+            ))],
+        })
+    }
+
+    /// 读取该 offer 的全部内容：文本、富负载（HTML/RTF），都没有时才退到图像。
+    fn read_item(&self, connection: &Connection) -> Option<ClipboardItem> {
+        let mut entries = Vec::new();
+
+        if let Some(item) = self.read_text(connection) {
+            entries.extend(item.entries);
+        }
+        for mime_type in RICH_MIME_TYPES {
+            if let Some(item) = self.read_format(connection, mime_type) {
+                entries.extend(item.entries);
+            }
+        }
+        if entries.is_empty()
+            && let Some(item) = self.read_image(connection)
+        {
+            entries.extend(item.entries);
+        }
+
+        if entries.is_empty() {
+            None
+        } else {
+            Some(ClipboardItem { entries })
+        }
+    }
+
     fn read_image(&self, connection: &Connection) -> Option<ClipboardItem> {
         for format in ImageFormat::iter() {
             let mime_type = format.mime_type();
@@ -180,19 +219,45 @@ impl Clipboard {
         self.self_mime.clone()
     }
 
-    pub fn send(&self, _mime_type: String, fd: OwnedFd) {
-        if let Some(text) = self.contents.as_ref().and_then(|contents| contents.text()) {
-            self.send_internal(fd, text.as_bytes().to_owned());
+    /// 当前剪贴板内容携带的富负载 mime 类型（供数据源对外 offer）。
+    pub fn rich_mime_types(&self) -> Vec<String> {
+        Self::mime_types_of(&self.contents)
+    }
+
+    /// 当前主选择内容携带的富负载 mime 类型。
+    pub fn rich_mime_types_primary(&self) -> Vec<String> {
+        Self::mime_types_of(&self.primary_contents)
+    }
+
+    fn mime_types_of(contents: &Option<ClipboardItem>) -> Vec<String> {
+        contents
+            .as_ref()
+            .map(|contents| {
+                contents
+                    .formats()
+                    .map(|format| format.mime_type.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn send(&self, mime_type: String, fd: OwnedFd) {
+        if let Some(contents) = self.contents.as_ref() {
+            if let Some(format) = contents.format(&mime_type) {
+                self.send_internal(fd, format.bytes.clone());
+            } else if let Some(text) = contents.text() {
+                self.send_internal(fd, text.into_bytes());
+            }
         }
     }
 
-    pub fn send_primary(&self, _mime_type: String, fd: OwnedFd) {
-        if let Some(text) = self
-            .primary_contents
-            .as_ref()
-            .and_then(|contents| contents.text())
-        {
-            self.send_internal(fd, text.as_bytes().to_owned());
+    pub fn send_primary(&self, mime_type: String, fd: OwnedFd) {
+        if let Some(contents) = self.primary_contents.as_ref() {
+            if let Some(format) = contents.format(&mime_type) {
+                self.send_internal(fd, format.bytes.clone());
+            } else if let Some(text) = contents.text() {
+                self.send_internal(fd, text.into_bytes());
+            }
         }
     }
 
@@ -206,9 +271,7 @@ impl Clipboard {
             return self.contents.clone();
         }
 
-        let item = offer
-            .read_text(&self.connection)
-            .or_else(|| offer.read_image(&self.connection))?;
+        let item = offer.read_item(&self.connection)?;
 
         self.cached_read = Some(item.clone());
         Some(item)
@@ -224,9 +287,7 @@ impl Clipboard {
             return self.primary_contents.clone();
         }
 
-        let item = offer
-            .read_text(&self.connection)
-            .or_else(|| offer.read_image(&self.connection))?;
+        let item = offer.read_item(&self.connection)?;
 
         self.cached_primary_read = Some(item.clone());
         Some(item)

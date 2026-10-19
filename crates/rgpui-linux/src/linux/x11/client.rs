@@ -1810,8 +1810,8 @@ impl LinuxClient for X11Client {
         let state = self.0.borrow_mut();
         state
             .clipboard
-            .set_text(
-                std::borrow::Cow::Owned(item.text().unwrap_or_default()),
+            .set_item(
+                &item,
                 clipboard::ClipboardKind::Primary,
                 clipboard::WaitConfig::None,
             )
@@ -1823,8 +1823,8 @@ impl LinuxClient for X11Client {
         let mut state = self.0.borrow_mut();
         state
             .clipboard
-            .set_text(
-                std::borrow::Cow::Owned(item.text().unwrap_or_default()),
+            .set_item(
+                &item,
                 clipboard::ClipboardKind::Clipboard,
                 clipboard::WaitConfig::None,
             )
@@ -1837,7 +1837,7 @@ impl LinuxClient for X11Client {
         let state = self.0.borrow_mut();
         state
             .clipboard
-            .get_any(clipboard::ClipboardKind::Primary)
+            .get_item(clipboard::ClipboardKind::Primary)
             .context("X11: Failed to read from clipboard (primary)")
             .log_with_level(log::Level::Debug)
     }
@@ -1854,7 +1854,7 @@ impl LinuxClient for X11Client {
         }
         state
             .clipboard
-            .get_any(clipboard::ClipboardKind::Clipboard)
+            .get_item(clipboard::ClipboardKind::Clipboard)
             .context("X11: Failed to read from clipboard (clipboard)")
             .log_with_level(log::Level::Debug)
     }

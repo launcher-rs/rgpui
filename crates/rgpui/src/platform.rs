@@ -2577,6 +2577,54 @@ pub enum CursorStyle {
     ContextualMenu,
 }
 
+/// 一份带 MIME 类型的剪贴板原始负载。
+///
+/// 用于 HTML / RTF / CSV / 应用自定义格式等 [`ClipboardEntry::String`] 无法表达的富负载。
+/// 平台层负责把它映射到原生剪贴板格式（Windows 注册格式、macOS UTType、Linux MIME atom）。
+/// 一份 [`ClipboardItem`] 通常同时携带纯文本条目与富负载条目，供不同目标程序择一取用。
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClipboardFormat {
+    /// 负载的 MIME 类型（参见同名常量，如 [`ClipboardFormat::HTML`]）。
+    pub mime_type: String,
+    /// 与 MIME 类型对应的原始字节。
+    pub bytes: Vec<u8>,
+}
+
+impl ClipboardFormat {
+    /// 纯文本（UTF-8）。
+    pub const PLAIN_TEXT: &'static str = "text/plain";
+    /// HTML 片段。平台层写盘时按需补全 `CF_HTML` / 完整文档外壳。
+    pub const HTML: &'static str = "text/html";
+    /// RTF 富文本。
+    pub const RTF: &'static str = "text/rtf";
+    /// Markdown。
+    pub const MARKDOWN: &'static str = "text/markdown";
+    /// 逗号分隔值。
+    pub const CSV: &'static str = "text/csv";
+    /// 制表符分隔值。
+    pub const TSV: &'static str = "text/tab-separated-values";
+    /// URI 列表（每行一个）。
+    pub const URI_LIST: &'static str = "text/uri-list";
+
+    /// 以 MIME 类型与原始字节创建。
+    pub fn new(mime_type: impl Into<String>, bytes: Vec<u8>) -> Self {
+        Self {
+            mime_type: mime_type.into(),
+            bytes,
+        }
+    }
+
+    /// 以 MIME 类型与 UTF-8 文本创建。
+    pub fn new_text(mime_type: impl Into<String>, text: impl Into<String>) -> Self {
+        Self::new(mime_type, text.into().into_bytes())
+    }
+
+    /// 负载是否为合法 UTF-8；是则返回其文本。
+    pub fn text(&self) -> Option<&str> {
+        std::str::from_utf8(&self.bytes).ok()
+    }
+}
+
 /// 应复制到剪贴板的剪贴板项目
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClipboardItem {
@@ -2593,6 +2641,8 @@ pub enum ClipboardEntry {
     Image(Image),
     /// 文件条目
     ExternalPaths(crate::ExternalPaths),
+    /// 带 MIME 类型的富负载条目（HTML / RTF / CSV / 自定义格式）。
+    Format(ClipboardFormat),
 }
 
 impl ClipboardItem {
@@ -2627,6 +2677,55 @@ impl ClipboardItem {
         Self {
             entries: vec![ClipboardEntry::Image(image.clone())],
         }
+    }
+
+    /// 创建一个「纯文本 + HTML」项目。
+    ///
+    /// `plain_text` 为 `Some` 时作为降级表示排在前面，不支持 HTML 的目标程序取到纯文本；
+    /// HTML 片段本身不含 `CF_HTML` 头，由平台层在写入时补全。
+    pub fn new_html(html: impl Into<String>, plain_text: Option<String>) -> Self {
+        let mut entries = Vec::with_capacity(2);
+        if let Some(text) = plain_text {
+            entries.push(ClipboardEntry::String(ClipboardString::new(text)));
+        }
+        entries.push(ClipboardEntry::Format(ClipboardFormat::new_text(
+            ClipboardFormat::HTML,
+            html,
+        )));
+        Self { entries }
+    }
+
+    /// 创建一个「纯文本 + RTF」项目。语义同 [`ClipboardItem::new_html`]。
+    pub fn new_rtf(rtf: impl Into<String>, plain_text: Option<String>) -> Self {
+        let mut entries = Vec::with_capacity(2);
+        if let Some(text) = plain_text {
+            entries.push(ClipboardEntry::String(ClipboardString::new(text)));
+        }
+        entries.push(ClipboardEntry::Format(ClipboardFormat::new_text(
+            ClipboardFormat::RTF,
+            rtf,
+        )));
+        Self { entries }
+    }
+
+    /// 创建一个仅含单个富负载的项目。
+    pub fn new_with_format(format: ClipboardFormat) -> Self {
+        Self {
+            entries: vec![ClipboardEntry::Format(format)],
+        }
+    }
+
+    /// 追加一段纯文本条目并返回自身。
+    pub fn with_string(mut self, text: impl Into<String>) -> Self {
+        self.entries
+            .push(ClipboardEntry::String(ClipboardString::new(text.into())));
+        self
+    }
+
+    /// 追加一个富负载条目并返回自身。
+    pub fn with_format(mut self, format: ClipboardFormat) -> Self {
+        self.entries.push(ClipboardEntry::Format(format));
+        self
     }
 
     /// 连接项目中所有 ClipboardString 条目的文本。
@@ -2677,6 +2776,32 @@ impl ClipboardItem {
     pub fn into_entries(self) -> impl Iterator<Item = ClipboardEntry> {
         self.entries.into_iter()
     }
+
+    /// 查找指定 MIME 类型的富负载。
+    pub fn format(&self, mime_type: &str) -> Option<&ClipboardFormat> {
+        self.entries.iter().find_map(|entry| match entry {
+            ClipboardEntry::Format(format) if format.mime_type == mime_type => Some(format),
+            _ => None,
+        })
+    }
+
+    /// 遍历项目中的所有富负载条目。
+    pub fn formats(&self) -> impl Iterator<Item = &ClipboardFormat> {
+        self.entries.iter().filter_map(|entry| match entry {
+            ClipboardEntry::Format(format) => Some(format),
+            _ => None,
+        })
+    }
+
+    /// HTML 富负载（[`ClipboardFormat::HTML`]）的文本。
+    pub fn html(&self) -> Option<&str> {
+        self.format(ClipboardFormat::HTML)?.text()
+    }
+
+    /// RTF 富负载（[`ClipboardFormat::RTF`]）的文本。
+    pub fn rtf(&self) -> Option<&str> {
+        self.format(ClipboardFormat::RTF)?.text()
+    }
 }
 
 impl From<ClipboardString> for ClipboardEntry {
@@ -2697,6 +2822,12 @@ impl From<Image> for ClipboardEntry {
     }
 }
 
+impl From<ClipboardFormat> for ClipboardEntry {
+    fn from(value: ClipboardFormat) -> Self {
+        Self::Format(value)
+    }
+}
+
 impl From<ClipboardEntry> for ClipboardItem {
     fn from(value: ClipboardEntry) -> Self {
         Self {
@@ -2714,6 +2845,69 @@ impl From<String> for ClipboardItem {
 impl From<Image> for ClipboardItem {
     fn from(value: Image) -> Self {
         Self::from(ClipboardEntry::from(value))
+    }
+}
+
+impl From<ClipboardFormat> for ClipboardItem {
+    fn from(value: ClipboardFormat) -> Self {
+        Self::from(ClipboardEntry::from(value))
+    }
+}
+
+#[cfg(test)]
+mod clipboard_tests {
+    use super::*;
+
+    /// 纯文本 + HTML 项目同时暴露两种表示。
+    #[test]
+    fn html_item_exposes_text_and_html() {
+        let item = ClipboardItem::new_html("<b>Hi</b>", Some("Hi".to_string()));
+        assert_eq!(item.text().as_deref(), Some("Hi"));
+        assert_eq!(item.html(), Some("<b>Hi</b>"));
+        assert_eq!(item.rtf(), None);
+        assert_eq!(item.formats().count(), 1);
+    }
+
+    /// 纯文本 + RTF 项目。
+    #[test]
+    fn rtf_item_exposes_rtf() {
+        let item = ClipboardItem::new_rtf(r"{\rtf1 hi}", Some("hi".to_string()));
+        assert_eq!(item.text().as_deref(), Some("hi"));
+        assert_eq!(item.rtf(), Some(r"{\rtf1 hi}"));
+    }
+
+    /// 无纯文本时只保留富负载，`text()` 返回 None。
+    #[test]
+    fn format_only_item_has_no_plain_text() {
+        let item = ClipboardItem::new_with_format(ClipboardFormat::new_text(
+            ClipboardFormat::CSV,
+            "a,b\n1,2",
+        ));
+        assert_eq!(item.text(), None);
+        assert_eq!(
+            item.format(ClipboardFormat::CSV)
+                .and_then(ClipboardFormat::text),
+            Some("a,b\n1,2")
+        );
+    }
+
+    /// 二进制负载不是合法 UTF-8 时 `text()` 返回 None。
+    #[test]
+    fn non_utf8_format_has_no_text() {
+        let format = ClipboardFormat::new("application/octet-stream", vec![0xff, 0xfe]);
+        assert_eq!(format.text(), None);
+        assert_eq!(format.mime_type, "application/octet-stream");
+    }
+
+    /// 构建器按序追加条目。
+    #[test]
+    fn builder_appends_entries_in_order() {
+        let item = ClipboardItem::new_string("plain".to_string()).with_format(
+            ClipboardFormat::new_text(ClipboardFormat::HTML, "<i>plain</i>"),
+        );
+        assert_eq!(item.entries.len(), 2);
+        assert!(matches!(item.entries[0], ClipboardEntry::String(_)));
+        assert!(matches!(item.entries[1], ClipboardEntry::Format(_)));
     }
 }
 

@@ -19,10 +19,32 @@ use windows::Win32::{
 use windows::core::{Owned, PCWSTR};
 
 use rgpui::{
-    ClipboardEntry, ClipboardItem, ClipboardString, ExternalPaths, Image, ImageFormat, hash,
+    ClipboardEntry, ClipboardFormat, ClipboardItem, ClipboardString, ExternalPaths, Image,
+    ImageFormat, hash,
 };
 
 const DRAGDROP_GET_FILES_COUNT: u32 = 0xFFFFFFFF;
+
+/// rgpui 会在 Windows 剪贴板上读写的富负载格式（注册格式名 ↔ MIME 类型）。
+///
+/// 「HTML Format」是 Windows 的事实标准（`CF_HTML`），别名 `text/html`；
+/// 其余名称与 MIME 同名，可直接注册。
+const RICH_FORMATS: &[(&str, &str)] = &[
+    ("HTML Format", ClipboardFormat::HTML),
+    ("Rich Text Format", ClipboardFormat::RTF),
+    ("text/csv", ClipboardFormat::CSV),
+    ("text/markdown", ClipboardFormat::MARKDOWN),
+    ("text/tab-separated-values", ClipboardFormat::TSV),
+    ("text/uri-list", ClipboardFormat::URI_LIST),
+];
+
+/// 富负载格式名 → 注册的 Windows 剪贴板格式 id。
+static RICH_FORMAT_IDS: LazyLock<Vec<(u32, &'static str)>> = LazyLock::new(|| {
+    RICH_FORMATS
+        .iter()
+        .map(|(name, mime)| (register_clipboard_format_str(name), *mime))
+        .collect()
+});
 
 static CLIPBOARD_HASH_FORMAT: LazyLock<u32> =
     LazyLock::new(|| register_clipboard_format(windows::core::w!("GPUI internal text hash")));
@@ -62,6 +84,21 @@ fn register_clipboard_format(format: PCWSTR) -> u32 {
     ret
 }
 
+/// 按格式名（运行时字符串）注册剪贴板格式。
+fn register_clipboard_format_str(name: &str) -> u32 {
+    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+    register_clipboard_format(PCWSTR(wide.as_ptr()))
+}
+
+/// 查富负载 MIME 类型对应的 Windows 注册格式 id（含 HTML/RTF 的 Windows 别名）。
+fn rich_format_id(mime_type: &str) -> u32 {
+    RICH_FORMAT_IDS
+        .iter()
+        .find(|(_, mime)| *mime == mime_type)
+        .map(|(id, _)| *id)
+        .unwrap_or_else(|| register_clipboard_format_str(mime_type))
+}
+
 fn get_clipboard_data(format: u32) -> Option<LockedGlobal> {
     let global = HGLOBAL(unsafe { GetClipboardData(format).ok() }?.0);
     LockedGlobal::lock(global)
@@ -79,6 +116,7 @@ pub(crate) fn write_to_clipboard(item: ClipboardItem) {
                 ClipboardEntry::String(string) => write_string(string)?,
                 ClipboardEntry::Image(image) => write_image(image)?,
                 ClipboardEntry::ExternalPaths(_) => {}
+                ClipboardEntry::Format(format) => write_format(format)?,
             }
         }
         Ok(())
@@ -120,11 +158,94 @@ pub(crate) fn read_from_clipboard() -> Option<ClipboardItem> {
         }
     }
 
+    // 富负载（HTML / RTF / CSV…）统一排在纯文本与图像之后，读取顺序稳定。
+    for (id, mime_type) in RICH_FORMAT_IDS.iter() {
+        if let Some(entry) = read_rich_format(*id, mime_type) {
+            entries.push(entry);
+        }
+    }
+
     if entries.is_empty() {
         log_unsupported_clipboard_formats();
         return None;
     }
     Some(ClipboardItem { entries })
+}
+
+/// 写入一份富负载；`text/html` 需按 `CF_HTML` 规范补全文档外壳。
+fn write_format(format: &ClipboardFormat) -> Result<()> {
+    let id = rich_format_id(&format.mime_type);
+    if format.mime_type == ClipboardFormat::HTML {
+        let wrapped = wrap_cf_html(format.text().unwrap_or_default());
+        set_clipboard_bytes(&wrapped, id)?;
+    } else {
+        set_clipboard_bytes(&format.bytes, id)?;
+    }
+    Ok(())
+}
+
+/// 读取一份富负载；HTML 按 `CF_HTML` 规范解出片段。
+fn read_rich_format(id: u32, mime_type: &str) -> Option<ClipboardEntry> {
+    let locked = get_clipboard_data(id)?;
+    let bytes = locked.as_bytes();
+    let bytes = if mime_type == ClipboardFormat::HTML {
+        unwrap_cf_html(bytes)?.to_vec()
+    } else {
+        bytes.to_vec()
+    };
+    Some(ClipboardEntry::Format(ClipboardFormat::new(
+        mime_type, bytes,
+    )))
+}
+
+/// 片段前的固定标记（写入时使用，`StartFragment` 指向它之后）。
+const CF_HTML_PREFIX: &str = "<html><body><!--StartFragment-->";
+/// 片段后的固定标记。
+const CF_HTML_SUFFIX: &str = "<!--EndFragment--></body></html>";
+
+/// 把裸 HTML 片段包成 Windows 的 `CF_HTML`（"HTML Format"）文档。
+fn wrap_cf_html(fragment: &str) -> Vec<u8> {
+    /// 渲染 `CF_HTML` 头：四个偏移量固定 10 位十进制，头部字节长度与取值无关。
+    fn render(
+        start_html: usize,
+        end_html: usize,
+        start_fragment: usize,
+        end_fragment: usize,
+    ) -> String {
+        format!(
+            "Version:0.9\r\nStartHTML:{start_html:010}\r\nEndHTML:{end_html:010}\r\n\
+StartFragment:{start_fragment:010}\r\nEndFragment:{end_fragment:010}\r\n"
+        )
+    }
+
+    let start_html = render(0, 0, 0, 0).len();
+    let start_fragment = start_html + CF_HTML_PREFIX.len();
+    let end_fragment = start_fragment + fragment.len();
+    let end_html = end_fragment + CF_HTML_SUFFIX.len();
+
+    let mut out = render(start_html, end_html, start_fragment, end_fragment).into_bytes();
+    out.extend_from_slice(CF_HTML_PREFIX.as_bytes());
+    out.extend_from_slice(fragment.as_bytes());
+    out.extend_from_slice(CF_HTML_SUFFIX.as_bytes());
+    out
+}
+
+/// 从 `CF_HTML` 文档中解出片段；缺少标记时按整段返回。
+fn unwrap_cf_html(bytes: &[u8]) -> Option<&[u8]> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let start = cf_html_offset(text, "StartFragment:")?;
+    let end = cf_html_offset(text, "EndFragment:")?;
+    if start > end || end > bytes.len() {
+        return None;
+    }
+    Some(&bytes[start..end])
+}
+
+/// 解析 `CF_HTML` 头中某个偏移量字段（紧跟在字段名后的十进制数字）。
+fn cf_html_offset(header: &str, field: &str) -> Option<usize> {
+    let rest = &header[header.find(field)? + field.len()..];
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
 }
 
 pub(crate) fn with_file_names<F>(hdrop: HDROP, mut f: F)
@@ -384,5 +505,35 @@ impl LockedGlobal {
 impl Drop for LockedGlobal {
     fn drop(&mut self) {
         unsafe { GlobalUnlock(self.global).ok() };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cf_html_round_trip() {
+        let fragment = "<b>hello</b> &amp; <i>world</i>";
+        let wrapped = wrap_cf_html(fragment);
+        let text = std::str::from_utf8(&wrapped).unwrap();
+        assert!(text.starts_with("Version:0.9\r\n"));
+        assert_eq!(unwrap_cf_html(&wrapped).unwrap(), fragment.as_bytes());
+    }
+
+    #[test]
+    fn cf_html_offsets_are_consistent() {
+        let wrapped = wrap_cf_html("abc");
+        let text = std::str::from_utf8(&wrapped).unwrap();
+        let start_html = cf_html_offset(text, "StartHTML:").unwrap();
+        let start_fragment = cf_html_offset(text, "StartFragment:").unwrap();
+        let end_fragment = cf_html_offset(text, "EndFragment:").unwrap();
+        assert_eq!(&text[start_html..start_html + 6], "<html>");
+        assert_eq!(&wrapped[start_fragment..end_fragment], b"abc");
+    }
+
+    #[test]
+    fn cf_html_missing_markers_falls_back_to_none() {
+        assert!(unwrap_cf_html(b"no markers here").is_none());
     }
 }

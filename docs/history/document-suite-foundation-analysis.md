@@ -70,7 +70,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | **缩略图 / 排序器** | `thumbs.rs`/`sorter.rs` | 无 | P2 |
 | **动画时间线** | `animtimeline.rs` | 无 | P2 |
 | **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker` | 增强 |
-| **富剪贴板 payload** | `system_clipboard.rs` | 只有 text/image/路径 | 扩展 `ClipboardItem` |
+| **富剪贴板 payload** | `system_clipboard.rs` | 只有 text/image/路径（已扩展，见 §二十） | 扩展 `ClipboardItem` |
 
 ### B. 现有能力需增强（有但不敷套件用）
 
@@ -107,8 +107,8 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 4. **标尺 + 对齐参考线/吸附**：通用工具库。
 
 **P1 特征控件**：KeyTips（已落地 §十）、QAT / Mini toolbar（已落地 §十一、§十二）、
-Backstage（已落地 §十三）、公式栏、电子表格网格、文档页视图、画布对象工具、富剪贴板、
-富文本/文档编辑控件雏形、Ink。
+Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格（§十七）、文档页视图（§十八）、
+画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形、Ink。
 
 **P2 深度**：缩略图/排序、动画时间线、取色器增强、任务窗格/MDI、a11y 画布语义、
 bidi/RTL 与 CJK 排版。
@@ -430,3 +430,38 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 
 **本版暂缓**（后续增补）：多选框选（marquee）、旋转后手柄跟随、吸附/参考线联动
 （已有 `guides`）、图层顺序调整。
+
+## 二十、P1 落地：富剪贴板 payload（核心，无 feature 门控）
+
+`crates/rgpui/src/platform.rs` —— 在既有 `ClipboardItem`（纯文本/图像/文件路径）之上，
+新增**带 MIME 类型的富负载**，让「一次复制、多种表示」成为一等能力：应用复制一段
+带格式内容时同时写入纯文本与 HTML/RTF，不同目标程序各取所需；粘贴时能读回剪贴板上
+所有可用格式。
+
+- **`ClipboardFormat`**：`mime_type: String` + `bytes: Vec<u8>`，构造
+  `new(mime, bytes)` / `new_text(mime, text)`，读取 `text()`（非 UTF-8 返回 `None`）。
+  常用 MIME 常量：`PLAIN_TEXT`/`HTML`/`RTF`/`MARKDOWN`/`CSV`/`TSV`/`URI_LIST`。
+- **`ClipboardEntry::Format(ClipboardFormat)`**：与既有 `String`/`Image`/`ExternalPaths`
+  并列的第四种条目；新增 `From<ClipboardFormat>` 转换。
+- **`ClipboardItem` 构造/读取**：`new_html(html, plain)`、`new_rtf(rtf, plain)`、
+  `new_with_format`、`with_string`/`with_format`；`format(mime)`、`formats()`、`html()`、
+  `rtf()`、`text()`。
+- **平台映射**：
+  - Windows（`rgpui-windows/src/clipboard.rs`）：`text/html` ↔ `CF_HTML`（"HTML Format"，
+    写入时按规范拼 `Version/StartHTML/EndHTML/StartFragment/EndFragment` 头，读取时按偏移量
+    解出片段）；`text/rtf` ↔ "Rich Text Format"；其余 MIME 以同名注册格式读写。
+  - macOS（`rgpui-macos/src/pasteboard.rs`）：`text/html` ↔ `public.html`、
+    `text/rtf` ↔ `public.rtf`，未知 MIME 按字符串注册 UTI；`write` 改为逐条目写入
+    （原先多条目只写纯文本）。
+  - Linux X11（`linux/x11/clipboard.rs`）：`set_item`/`get_item` 把整份项目写成多个
+    TARGETS（纯文本、HTML/RTF、图像），自定义 MIME 运行时 `intern_atom` 并缓存；
+    Wayland（`linux/wayland/clipboard.rs`）：数据源按内容 offer 富 MIME，`send` 按请求的
+    MIME 回送对应字节。
+- **示例**：`examples/showcase/src/bin/rich_clipboard.rs`（复制 HTML/RTF/CSV 三种项目，
+  粘贴后列出剪贴板上每种格式与预览）。
+- **测试**：`platform::clipboard_tests` 5 项（HTML/RTF/仅格式/非 UTF-8/构建器顺序）；
+  `rgpui-windows::clipboard` 3 项（`CF_HTML` 往返、偏移量一致、缺标记返回 `None`）；
+  `rgpui-windows::platform::tests::test_clipboard` 增加 HTML/RTF 经真实系统剪贴板往返。
+
+**本版暂缓**（后续增补）：多条目 HTML 解析（表格/样式 → 文档模型，属应用层）、
+剪贴板变化监听、Linux 主选择缓冲的富负载。

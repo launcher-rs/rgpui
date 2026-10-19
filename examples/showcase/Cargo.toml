@@ -231,6 +231,11 @@ required-features = ["editor"]
 name = "keymap"
 path = "src/bin/keymap.rs"
 
+# ---------- 富剪贴板（核心 API，无需 feature） ----------
+[[bin]]
+name = "rich_clipboard"
+path = "src/bin/rich_clipboard.rs"
+
 # ---------- 套件基座（ribbon / viewport feature） ----------
 [[bin]]
 name = "command_registry"

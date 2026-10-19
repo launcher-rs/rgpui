@@ -1734,5 +1734,15 @@ mod tests {
         let item = ClipboardItem::new_string_with_json_metadata("abcdef".to_string(), vec![3, 4]);
         write_to_clipboard(item.clone());
         assert_eq!(read_from_clipboard(), Some(item));
+
+        // HTML 富负载经 `CF_HTML` 包装后仍能原样读回。
+        let item = ClipboardItem::new_html("<b>你好</b>".to_string(), Some("你好".to_string()));
+        write_to_clipboard(item.clone());
+        assert_eq!(read_from_clipboard(), Some(item));
+
+        // RTF 富负载往返。
+        let item = ClipboardItem::new_rtf(r"{\rtf1 hi}".to_string(), Some("hi".to_string()));
+        write_to_clipboard(item.clone());
+        assert_eq!(read_from_clipboard(), Some(item));
     }
 }
