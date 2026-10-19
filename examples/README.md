@@ -101,6 +101,7 @@ cargo run -p showcase --bin <名称>
 | `ruler` | 标尺刻度 + 拖拽方块吸附并显示参考线 | `cargo run -p showcase --bin ruler` |
 | `canvas_objects` | 画布对象工具：选区 / 缩放手柄 / 旋转手柄 / 对齐 / 分布 | `cargo run -p showcase --bin canvas_objects` |
 | `rich_clipboard` | 富剪贴板：同时写入纯文本 + HTML/RTF/CSV，粘贴后列出剪贴板上的所有格式 | `cargo run -p showcase --bin rich_clipboard` |
+| `rich_text` | 富文本：段落 + 行内运行模型，选区套用粗体/斜体/下划线/删除线/颜色，HTML 双向转换 + 剪贴板对接 | `cargo run -p showcase --bin rich_text` |
 | `formula_bar` | 公式栏：名称框 + `fx` + 公式输入，绑定迷你单元格模型 | `cargo run -p showcase --bin formula_bar` |
 | `sheet_grid` | 电子表格网格：行列头 + 虚拟化单元格 + 矩形选区 + 填充柄，配合公式栏 | `cargo run -p showcase --bin sheet_grid` |
 | `page_view` | 文档页视图：多页 A4 分页画布 + 页眉页脚，配合视口缩放/平移 | `cargo run -p showcase --bin page_view` |

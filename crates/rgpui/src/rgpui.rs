@@ -282,6 +282,9 @@ pub mod sheet_grid;
 #[cfg(feature = "document")]
 pub mod page_view;
 
+/// 富文本文档模型（段落 + 行内运行）与只读渲染元素（核心，无 feature 门控）。
+pub mod rich_text;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 

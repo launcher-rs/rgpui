@@ -108,7 +108,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 
 **P1 特征控件**：KeyTips（已落地 §十）、QAT / Mini toolbar（已落地 §十一、§十二）、
 Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格（§十七）、文档页视图（§十八）、
-画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形、Ink。
+画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink。
 
 **P2 深度**：缩略图/排序、动画时间线、取色器增强、任务窗格/MDI、a11y 画布语义、
 bidi/RTL 与 CJK 排版。
@@ -465,3 +465,36 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 
 **本版暂缓**（后续增补）：多条目 HTML 解析（表格/样式 → 文档模型，属应用层）、
 剪贴板变化监听、Linux 主选择缓冲的富负载。
+
+## 二十一、P1 落地：富文本 / 文档编辑控件雏形（核心，无 feature 门控）
+
+`crates/rgpui/src/rich_text.rs` —— 面向文档/文字处理应用的**最小编排外壳**：把「段落
+（`Paragraph`）+ 行内富文本运行（`Run`）」建模成一等文档类型，并提供字符坐标下的编辑
+操作与 HTML 往返，让 WordCraft/DeckCraft 这类应用不必各自造一套模型。渲染侧提供只读
+元素 `RichText`，编辑控件（光标/选区/IME）仍由应用用既有输入组件拼接。
+
+- **文档模型**：`RichTextDoc { paragraphs }`；`Paragraph { style: ParagraphStyle, runs }`；
+  `Run { text, props: RunProps }`。`RunProps`（`Copy`）含 `bold`/`italic`/`underline`/
+  `strikethrough`/`color: Option<Hsla>`，构造器 `new`/`bold`/`italic`/`underline`/
+  `strikethrough`/`color`/`is_plain`。`ParagraphStyle` 含 `align: TextAlign`、`indent`
+  （0..=8 级）、`list: ListKind`（`None`/`Bullet`/`Number`）。
+- **字符坐标编辑**：`locate(index)` 把平面字符索引映射到 `(段落, 段内偏移)`（段落间分隔符
+  各计一个字符）；`insert_text`（含 `\n` 自动拆段）、`delete`（跨段自动合并）、
+  `split_paragraph`/`merge_paragraph`、`apply_props(range, f)`（跨运行/跨段按选区拆分后逐段
+  应用）、`normalize`（合并同属性相邻运行）、`char_len`/`plain_text`/`is_empty`。
+- **序列化**：`from_plain_text`/`plain_text`（`\n` 连接）；`to_html`/`from_html`
+  （`<p>`/`<ul>`/`<ol>`/`<li>` + `<b>`/`<i>`/`<u>`/`<s>` + `style` 中的
+  `color`/`text-align`/`margin-left`/`font-weight`/`font-style`/`text-decoration`）；
+  解析有 `MAX_HTML`/`MAX_PARAS`/`MAX_RUNS` 上限，非规范实体按原样保留；可直接对接富剪贴板
+  `ClipboardItem::new_html(doc.to_html(), Some(doc.plain_text()))`。
+- **渲染元素**：`RichText::new(doc)` 逐段落编译成 `StyledText`（行内属性映射到 `TextRun` 的
+  字体粗细/斜体/下划线/删除线/颜色），按段落 `text_align` 与缩进排版，列表段以
+  「• 」/「N. 」标记开头；`RenderOnce` + `From<RichTextDoc>`。
+- **示例**：`examples/showcase/src/bin/rich_text.rs`（样例文档 + 按词命中套用样式 + 对齐/
+  列表切换 + 复制为 HTML / 从剪贴板反解析）。
+- **测试**：`rich_text::tests` 12 项（纯文本往返、段中插字拆运行、插换行拆段、跨段删除合并、
+  拆/并段、跨段应用样式、HTML 往返含转义/下划线/删除线/颜色/列表/对齐/浏览器片段、空与超长
+  HTML 拒绝、`normalize` 合并与保底一段）。
+
+**本版暂缓**（后续增补）：节（section）/分栏、表格、批注、修订、脚注尾注、项目符号字体与
+层级样式、可编辑光标与选区（现为只读渲染）。
