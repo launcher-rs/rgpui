@@ -189,6 +189,9 @@ fn text_align_to_css(align: TextAlign) -> &'static str {
         TextAlign::Left => "left",
         TextAlign::Center => "center",
         TextAlign::Right => "right",
+        // 浏览器按文本方向解析 `start` / `end`（RTL 文本自动右对齐）。
+        TextAlign::Start => "start",
+        TextAlign::End => "end",
     }
 }
 

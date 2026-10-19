@@ -774,6 +774,9 @@ fn paragraph_css(style: &ParagraphStyle) -> String {
     match style.align {
         TextAlign::Center => css.push_str("text-align:center"),
         TextAlign::Right => css.push_str("text-align:right"),
+        // CSS 的 `start` / `end` 由浏览器按文本方向解析，导出 HTML 时可直接透传。
+        TextAlign::Start => css.push_str("text-align:start"),
+        TextAlign::End => css.push_str("text-align:end"),
         TextAlign::Left => {}
     }
     if style.indent > 0 {

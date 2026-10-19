@@ -231,6 +231,7 @@ web-time.workspace = true
 ropey.workspace = true
 lsp-types = { workspace = true, optional = true }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
+unicode-bidi = "0.3"
 unicode-segmentation = { workspace = true }
 qrcode = { workspace = true, optional = true }
 wry = { version = "0.56.1", optional = true }

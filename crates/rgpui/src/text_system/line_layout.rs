@@ -170,7 +170,11 @@ impl LineLayout {
                     last_candidate_x = x;
                 }
             } else {
-                if ch != ' ' && first_non_whitespace_ix.is_some() {
+                // 与 `LineWrapper::wrap_line` 同规则：CJK 可逐字换行，但须遵守东亚禁则。
+                if ch != ' '
+                    && first_non_whitespace_ix.is_some()
+                    && crate::line_break::can_break_between(prev_ch, ch)
+                {
                     last_candidate_ix = Some(boundary);
                     last_candidate_x = x;
                 }

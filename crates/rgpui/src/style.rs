@@ -6,6 +6,7 @@ use std::{
     ops::Range,
 };
 
+use crate::bidi::TextDirection;
 use crate::collections::HashSet;
 use crate::refineable::Refineable;
 use crate::{
@@ -437,6 +438,43 @@ pub enum TextAlign {
 
     /// 将文本对齐到元素的右侧
     Right,
+
+    /// 对齐到文本的**起始边**：按段落基准方向解析（LTR 段落为左、RTL 段落为右）。
+    ///
+    /// 段落方向由 [`TextDirection::resolve`](crate::bidi::TextDirection::resolve) 从文本
+    /// 自身推出（HTML `dir=auto` 口径），中英混排与 RTL 文本因此都能「向起始边对齐」，
+    /// 而不必由应用判断该用左还是右。
+    Start,
+
+    /// 对齐到文本的**结束边**：LTR 段落为右、RTL 段落为左。
+    End,
+}
+
+impl TextAlign {
+    /// 把 `Start` / `End` 解析成绝对方向（`Left` / `Right`）。
+    ///
+    /// `Left` / `Center` / `Right` 原样返回；`Start` / `End` 依 `direction` 翻转。
+    /// 文本行绘制时以**段落自身**的方向调用本方法，因此同一份布局在 LTR / RTL
+    /// 文本下呈现相反的对齐。
+    pub fn resolve(self, direction: TextDirection) -> TextAlign {
+        match self {
+            TextAlign::Start => {
+                if direction.is_rtl() {
+                    TextAlign::Right
+                } else {
+                    TextAlign::Left
+                }
+            }
+            TextAlign::End => {
+                if direction.is_rtl() {
+                    TextAlign::Left
+                } else {
+                    TextAlign::Right
+                }
+            }
+            TextAlign::Left | TextAlign::Center | TextAlign::Right => self,
+        }
+    }
 }
 
 /// 可用于在 RGPUI 中设置文本样式的属性

@@ -1,3 +1,4 @@
+use crate::bidi::TextDirection;
 use crate::{
     App, Bounds, DevicePixels, Half, Hsla, LineLayout, Pixels, Point, RenderGlyphParams, Result,
     ShapedGlyph, ShapedRun, SharedString, StrikethroughStyle, TextAlign, UnderlineStyle, Window,
@@ -87,6 +88,9 @@ impl ShapedLine {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<()> {
+        // `Start` / `End` 依赖段落基准方向（HTML `dir=auto` 口径），在此解析成绝对方向。
+        let align = align.resolve(TextDirection::resolve(&self.text));
+
         paint_line(
             origin,
             &self.layout,
@@ -112,6 +116,9 @@ impl ShapedLine {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<()> {
+        // `Start` / `End` 依赖段落基准方向（HTML `dir=auto` 口径），在此解析成绝对方向。
+        let align = align.resolve(TextDirection::resolve(&self.text));
+
         paint_line_background(
             origin,
             &self.layout,
@@ -302,6 +309,9 @@ impl WrappedLine {
             None => self.layout.wrap_width,
         };
 
+        // `Start` / `End` 依赖段落基准方向（HTML `dir=auto` 口径），在此解析成绝对方向。
+        let align = align.resolve(TextDirection::resolve(&self.text));
+
         paint_line(
             origin,
             &self.layout.unwrapped_layout,
@@ -331,6 +341,9 @@ impl WrappedLine {
             Some(bounds) => Some(bounds.size.width),
             None => self.layout.wrap_width,
         };
+
+        // `Start` / `End` 依赖段落基准方向（HTML `dir=auto` 口径），在此解析成绝对方向。
+        let align = align.resolve(TextDirection::resolve(&self.text));
 
         paint_line_background(
             origin,
@@ -763,6 +776,10 @@ fn aligned_origin_x(
         TextAlign::Left => origin.x,
         TextAlign::Center => (origin.x * 2.0 + align_width - line_width) / 2.0,
         TextAlign::Right => origin.x + align_width - line_width,
+        // 绘制入口（`ShapedLine::paint` 等）已按段落方向把 `Start` / `End` 解析成
+        // 绝对方向；这里按 LTR 兜底，保证直接调用者不会 panic。
+        TextAlign::Start => origin.x,
+        TextAlign::End => origin.x + align_width - line_width,
     }
 }
 

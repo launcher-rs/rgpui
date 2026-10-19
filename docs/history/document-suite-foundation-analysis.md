@@ -78,12 +78,12 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 
 | 维度 | rgpui 现状 | 缺口 |
 |---|---|---|
-| 文本/排版 | `text_system`（wrap/truncate、font-fallbacks/features、font-kit） | **无 bidi/RTL**（未依赖 `unicode-bidi`）、无 CJK 深度（拼音指南/纵横/文档网格）、无段落/分页布局、无 inline 域/对象 |
+| 文本/排版 | `text_system`（wrap/truncate、font-fallbacks/features、font-kit）+ `bidi`（段落基准方向 / start·end 对齐）+ `line_break`（CJK 禁则） | 缺核心层 UBA 字形重排（依赖平台 shaping）、拼音指南/纵横排版/文档网格、段落/分页布局、inline 域/对象 |
 | 富文本编辑 | `input_ui` + `editor`（面向代码） | 缺文档模型（段落/节/表/批注/修订） |
 | 表格 | `table::DataTable`（数据网格） | 缺电子表格的单元格/公式/循环引用模型 |
 | 变换/缩放 | 元素级 `with_transformation` | 缺「可缩放平移视口」控件与屏幕↔文档坐标映射 |
 | 无障碍 | accesskit 树 + action | 缺把画布/网格内容暴露为语义节点的工具（已落地，见 §二十八） |
-| i18n | `i18n`（文本） | 缺 RTL 布局镜像 |
+| i18n | `i18n`（文本） | 缺 RTL 布局镜像（文本层已具备基准方向与 start/end 对齐，见 §二十九） |
 | 命令系统 | `Action`（序列化+分发） | 缺**命令注册表 + ribbon 位置/快捷键/参数元数据 + 动态 enabled** |
 | 多窗格 | `DockArea`/`SplitPane` | 缺文档窗口(MDI)/任务窗格模式（均已落地，见 §二十六、§二十七） |
 
@@ -113,7 +113,8 @@ Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格
 画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink（§二十二）。
 
 **P2 深度**：缩略图/排序（§二十三）、动画时间线（§二十四）、取色器增强（§二十五）、
-MDI 文档多窗（§二十六）、任务窗格（§二十七）、画布语义（§二十八）、bidi/RTL 与 CJK 排版。
+MDI 文档多窗（§二十六）、任务窗格（§二十七）、画布语义（§二十八）、国际文本
+（bidi + 东亚禁则，§二十九）。
 
 **横向工程范式（可立即引入）**
 - control channel（JSON-line TCP + key）+ MCP server 集成；
@@ -756,5 +757,52 @@ MDI 内标签页组（Tabbed MDI）。
 **本版暂缓**（后续增补）：把 `InkLayer` / `PageView` / `SheetGrid` 等既有自绘组件接到本模块
 （当前只有示例消费）、行 / 列（表格）语义与 `Role::Cell` 的 `row_index`/`column_index` 扩展、
 虚拟滚动下的语义节点裁剪与 `ScrollIntoView`。
+
+## 二十九、P2 落地：国际文本 —— bidi 与东亚禁则（核心，无 feature 门控）
+
+`crates/rgpui/src/bidi.rs` + `crates/rgpui/src/line_break.rs` —— 中西文混排最要紧的两件事：
+**方向**与**断行**。此前核心层两者都没有：没有「这段文字是 LTR 还是 RTL」的概念（`TextAlign`
+只有绝对方向的 `Left`/`Center`/`Right`），CJK 换行点也不遵守禁则，于是句号会跑到行首、
+开引号会留在行末。
+
+- **段落基准方向（`bidi.rs`）**：`TextDirection`（`Ltr` / `Rtl`）+ `TextDirection::resolve`
+  （HTML `dir=auto` 口径 = UBA 的 P2 / P3 规则：取**首个强方向字符**，全段没有强方向字符时
+  按 LTR 处理 —— 所以「纯阿拉伯数字」与浏览器一致地回退为 LTR，而不是让人误以为它是 RTL）；
+  `TextDirection::is_rtl`；`strong_direction` / `is_rtl_char`（UBA 的 `L` / `R` / `AL` 三类，
+  基于 `unicode-bidi` 的字符表，方向标记 `LRM` / `RLM` / `ALM` 自然落在其中）。纯 ASCII
+  文本走快速路径直接判 LTR。
+- **`start` / `end` 对齐**：`TextAlign` 新增 `Start` / `End` 变体 + `TextAlign::resolve(TextDirection)`
+  （`Start` 在 LTR 段落解析为 `Left`、RTL 段落为 `Right`，`End` 相反；绝对方向原样返回）。
+  解析点在**绘制入口**（`ShapedLine::paint` / `paint_background` 与 `WrappedLine::paint` /
+  `paint_background`），方向取自**该行文本自身** —— 同一份布局在 LTR / RTL 段落上呈现相反的
+  对齐，应用不必自己判断该用左还是右。其他消费方各自补臂：`rich_text` 导出 HTML 透传
+  `text-align:start|end`，DOM 后端映射为 CSS `start` / `end`（浏览器按文字方向解析，RTL 文本
+  自动右对齐），输入框内部按 LTR 处理（不做段落重排），`aligned_origin_x` 兜底按 LTR。
+- **东亚禁则（`line_break.rs`）**：`BreakClass` + `break_class`（汉字 / 假名 / 小写假名 /
+  长音符 / 句读闭标点 / 开括号开引号 / 谚文 / 单词 / 空白 / 其他）、`is_line_start_prohibited`
+  （行首禁则）、`is_line_end_prohibited`（行末禁则）、`is_no_break`（胶连字符：不换行空格、
+  词连接符、零宽连字…）、`can_break_between`（判定入口）、`is_ideographic`。规则**只覆盖
+  CJK 与全角标点**，不改半角 ASCII 标点的既有行为（`can_break_between('a', ')') == true`），
+  避免动到英文排版。
+- **接入换行**：`LineWrapper::wrap_line`（字符级候选断点）与
+  `LineLayout::compute_wrap_boundaries`（字形级候选断点）在设置候选点时调用
+  `can_break_between(prev, cur)` **否决**不合规的断点 —— 于是 `。` 不再跑到行首、`「` 不再
+  留在行末；当禁则导致无处可断时仍回退成硬断（与 CSS 溢出行为一致，宁可溢出也不违禁则）。
+- **字形重排**（UBA 的完整实现：逐 run 方向 + 视觉序）仍属平台 shaping 的职责：Web /
+  cosmic-text 后端内部已用 `unicode-bidi`，Windows DirectWrite 后端把整行交给
+  `IDWriteTextLayout` 自行重排。核心层负责的是「方向是谁」与「断在哪」。
+- **示例**：`examples/showcase/src/bin/intl_text.rs`（方向判定表 + 每项的首个强方向字符、
+  `Left`/`Start`/`End`/`Right` 在 RTL 文本上的对照、窄容器里的禁则换行、`can_break_between`
+  与 `break_class` 速查表）。
+- **测试**：11 项 —— `bidi` 5 项（首个强方向字符 / 弱方向字符不决定方向 / 方向标记为强方向 /
+  `start`·`end` 随方向翻转 / RTL 字符判定）、`line_break` 5 项（字符分类 / 禁则集合不动 ASCII /
+  断行判定（禁则 + 胶连）/ 胶连字符集合 / 表意文字范围），另在 `line_wrapper` 增加 1 项
+  换行集成测试（句号不起行、开引号不收行、汉字正常断行）。
+
+**本版暂缓**（后续增补）：核心层的 UBA 重排与视觉序（需要逐 run 方向贯通 shaping）、
+`TextStyle::text_direction` / 元素 `dir` 属性的**显式**方向覆盖（当前只有 `dir=auto` 式自动
+解析）、镜像字符表（`unicode-bidi-mirroring`）、行首标点悬挂（hanging punctuation / 追い出し）、
+纵向排版（`writing-mode: vertical-rl`）、CJK 的标点挤压与文档网格，以及**应用外壳的 RTL 镜像**
+（滚动条侧、图标方向、整体布局方向）。
 
 

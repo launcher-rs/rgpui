@@ -61,9 +61,10 @@ impl LastLayout {
     /// 获取给定行宽的对齐偏移。
     pub(super) fn alignment_offset(&self, line_width: Pixels) -> Pixels {
         match self.text_align {
-            TextAlign::Left => px(0.),
+            // 输入框不做段落方向重排，`Start` / `End` 按 LTR 处理。
+            TextAlign::Left | TextAlign::Start => px(0.),
             TextAlign::Center => (self.content_width - line_width).half().max(px(0.)),
-            TextAlign::Right => (self.content_width - line_width).max(px(0.)),
+            TextAlign::Right | TextAlign::End => (self.content_width - line_width).max(px(0.)),
         }
     }
 }

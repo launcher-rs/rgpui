@@ -6262,6 +6262,7 @@ dependencies = [
  "tree-sitter-toml-ng",
  "ttf-parser",
  "unicase",
+ "unicode-bidi",
  "unicode-segmentation",
  "url",
  "usvg",

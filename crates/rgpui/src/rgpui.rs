@@ -303,6 +303,12 @@ pub mod task_pane;
 /// 画布语义：把自绘对象（单元格 / 页元素 / 笔迹…）发布给辅助技术，核心，无 feature 门控。
 pub mod canvas_a11y;
 
+/// 双向文字（bidi）：段落基准方向解析（HTML `dir=auto` 口径）与 `start` / `end` 对齐规则，核心，无 feature 门控。
+pub mod bidi;
+
+/// 东亚断行（禁则 / kinsoku）：CJK 换行点的行首 / 行末禁则与胶连字符规则，核心，无 feature 门控。
+pub mod line_break;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 

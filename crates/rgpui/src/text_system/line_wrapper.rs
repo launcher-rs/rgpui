@@ -72,7 +72,11 @@ impl LineWrapper {
                             }
                         } else {
                             // CJK may not be space separated, e.g.: `Hello world你好世界`
-                            if c != ' ' && first_non_whitespace_ix.is_some() {
+                            // 但要遵守东亚禁则：`。` 不可起行、`「` 不可收行、胶连字符两侧不可断。
+                            if c != ' '
+                                && first_non_whitespace_ix.is_some()
+                                && crate::line_break::can_break_between(prev_c, c)
+                            {
                                 last_candidate_ix = ix;
                                 last_candidate_width = width;
                             }
@@ -1549,6 +1553,42 @@ mod tests {
             "Sum of run lengths ({}) should equal result byte length ({})",
             total_run_len,
             result.len()
+        );
+    }
+
+    // 东亚禁则：CJK 逐字换行时避开行首禁则与行末禁则。
+    // 无禁则时会把换行点放在 `。` / `「` 的另一侧，正是中西文混排最常见的排版错误。
+    #[test]
+    fn test_wrap_line_cjk_kinsoku() {
+        let mut wrapper = build_wrapper();
+        let char_width = wrapper.width_for_char('你');
+        // 3.5 个字符宽：第 4 个字符处必须换行。
+        let wrap_width = char_width * 3.5;
+
+        // 行首禁则：`。` 不可起行 —— 换行点被推到 `世` 之前
+        // （无禁则时会断在 `。` 之前，让句号跑到行首）。
+        assert_eq!(
+            wrapper
+                .wrap_line(&[LineFragment::text("你好。世界")], wrap_width)
+                .collect::<Vec<_>>(),
+            &[Boundary::new(9, 0)]
+        );
+
+        // 行末禁则：`「` 不可收行 —— 换行点被拉回 `「` 之前
+        // （无禁则时会断在 `世` 之前，让开引号留在行末）。
+        assert_eq!(
+            wrapper
+                .wrap_line(&[LineFragment::text("你好「世界")], wrap_width)
+                .collect::<Vec<_>>(),
+            &[Boundary::new(6, 0)]
+        );
+
+        // 汉字之间正常断行不受影响（每行 3 个字符 + 缩进对齐，共两个换行点）。
+        assert_eq!(
+            wrapper
+                .wrap_line(&[LineFragment::text("你好世界你好世界")], wrap_width)
+                .collect::<Vec<_>>(),
+            &[Boundary::new(9, 0), Boundary::new(18, 0)]
         );
     }
 }
