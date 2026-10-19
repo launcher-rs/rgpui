@@ -285,6 +285,9 @@ pub mod page_view;
 /// 富文本文档模型（段落 + 行内运行）与只读渲染元素（核心，无 feature 门控）。
 pub mod rich_text;
 
+/// Ink 笔迹层：墨迹笔画模型 / 编辑操作（擦除 / 套索 / 抽稀）与绘制元素（核心，无 feature 门控）。
+pub mod ink;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 

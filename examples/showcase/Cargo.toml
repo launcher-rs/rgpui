@@ -241,6 +241,11 @@ path = "src/bin/rich_clipboard.rs"
 name = "rich_text"
 path = "src/bin/rich_text.rs"
 
+# ---------- Ink 笔迹（核心 API，无需 feature） ----------
+[[bin]]
+name = "ink"
+path = "src/bin/ink.rs"
+
 # ---------- 套件基座（ribbon / viewport feature） ----------
 [[bin]]
 name = "command_registry"

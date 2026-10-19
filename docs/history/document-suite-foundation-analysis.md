@@ -108,7 +108,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 
 **P1 特征控件**：KeyTips（已落地 §十）、QAT / Mini toolbar（已落地 §十一、§十二）、
 Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格（§十七）、文档页视图（§十八）、
-画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink。
+画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink（§二十二）。
 
 **P2 深度**：缩略图/排序、动画时间线、取色器增强、任务窗格/MDI、a11y 画布语义、
 bidi/RTL 与 CJK 排版。
@@ -498,3 +498,32 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 
 **本版暂缓**（后续增补）：节（section）/分栏、表格、批注、修订、脚注尾注、项目符号字体与
 层级样式、可编辑光标与选区（现为只读渲染）。
+
+## 二十二、P1 落地：Ink 笔迹层（核心，无 feature 门控）
+
+`crates/rgpui/src/ink.rs` —— 面向白板 / 手写批注 / 手绘应用的**墨迹层**：以「采样点序列 +
+画笔样式」为笔画，按工具编辑整个墨迹层；提供纯几何工具与把笔画平滑成路径的构建器，绘制由
+`InkLayerElement` 承担。
+
+- **模型**：`InkTool`（`Pen`/`Highlighter`/`Eraser`/`Lasso`）；`InkStyle { tool, color,
+  width }`（`pen`/`highlighter`/`effective_color`，荧光笔叠加 `HIGHLIGHTER_ALPHA`）；
+  `InkPoint { position, pressure }`；`Stroke { points, style }`；
+  `InkLayer { strokes, pending }`。
+- **落笔编辑**：`begin_stroke`/`begin_stroke_with_pressure`、`extend_stroke`（移动不足
+  `MIN_SAMPLE_DISTANCE` 的点丢弃）、`end_stroke`/`cancel_stroke`、`undo`/`clear`/`is_drawing`。
+- **选择与擦除**：`erase_at(center, radius)`（删除与圆相交的笔画）、`hit_test(position,
+  tolerance)`（最近笔画）、`lasso(polygon)`（返回框选笔画索引）、`remove(&[indices])`、
+  `bounds()`（全部笔画并集）、`simplify(tolerance)`（Douglas–Peucker 抽稀）。
+- **纯几何**：`point_segment_distance`、`point_in_polygon`（射线法）、`polygon_bounds`、
+  `simplify_points`；`stroke_path(points, width)` 用**中点二次贝塞尔**平滑折线（圆头/圆角），
+  单点渲染成圆点。
+- **绘制元素**：`InkLayerElement::new(layer)` + `.highlight(indices)`（套索选中以主题色重绘）
+  + `.lasso(polygon)`（虚线套索框），逐笔画 `window.paint_path`，铺满父容器。
+- **示例**：`examples/showcase/src/bin/ink.rs`（画布层 + 工具条：钢笔/荧光笔/橡皮/套索、
+  撤销、删除选中、清空）。
+- **测试**：`ink::tests` 11 项（落笔-提交-撤销、最小间距过滤、取消落笔、按半径擦除、套索
+  选择与删除、命中判定、包围盒并集、抽稀保留共线/拐点、几何工具、路径构建与荧光笔透明度、
+  压感夹取）。
+
+**本版暂缓**（后续增补）：逐段压感变宽（现为等宽描边）、压感/倾角曲线拟合、笔迹分图层与
+橡皮的局部切割、触摸/数位板事件接入（现由指针事件驱动）。
