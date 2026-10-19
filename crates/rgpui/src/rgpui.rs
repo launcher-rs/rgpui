@@ -300,6 +300,9 @@ pub mod mdi;
 /// 任务窗格：可停靠 / 可浮动的侧边面板（标题栏拖拽 / 内缘改宽 / 关闭），核心，无 feature 门控。
 pub mod task_pane;
 
+/// 画布语义：把自绘对象（单元格 / 页元素 / 笔迹…）发布给辅助技术，核心，无 feature 门控。
+pub mod canvas_a11y;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 

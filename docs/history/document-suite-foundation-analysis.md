@@ -82,7 +82,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | 富文本编辑 | `input_ui` + `editor`（面向代码） | 缺文档模型（段落/节/表/批注/修订） |
 | 表格 | `table::DataTable`（数据网格） | 缺电子表格的单元格/公式/循环引用模型 |
 | 变换/缩放 | 元素级 `with_transformation` | 缺「可缩放平移视口」控件与屏幕↔文档坐标映射 |
-| 无障碍 | accesskit 树 + action | 缺把画布/网格内容暴露为语义节点的工具 |
+| 无障碍 | accesskit 树 + action | 缺把画布/网格内容暴露为语义节点的工具（已落地，见 §二十八） |
 | i18n | `i18n`（文本） | 缺 RTL 布局镜像 |
 | 命令系统 | `Action`（序列化+分发） | 缺**命令注册表 + ribbon 位置/快捷键/参数元数据 + 动态 enabled** |
 | 多窗格 | `DockArea`/`SplitPane` | 缺文档窗口(MDI)/任务窗格模式（均已落地，见 §二十六、§二十七） |
@@ -113,7 +113,7 @@ Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格
 画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink（§二十二）。
 
 **P2 深度**：缩略图/排序（§二十三）、动画时间线（§二十四）、取色器增强（§二十五）、
-MDI 文档多窗（§二十六）、任务窗格（§二十七）、a11y 画布语义、bidi/RTL 与 CJK 排版。
+MDI 文档多窗（§二十六）、任务窗格（§二十七）、画布语义（§二十八）、bidi/RTL 与 CJK 排版。
 
 **横向工程范式（可立即引入）**
 - control channel（JSON-line TCP + key）+ MCP server 集成；
@@ -717,5 +717,44 @@ MDI 内标签页组（Tabbed MDI）。
 
 **本版暂缓**（后续增补）：多窗格并列（一屏多个任务窗格）、窗格吸附 / 自动隐藏（鼠标滑出收起）、
 页签式窗格组、窗格内滚动位置记忆。
+
+## 二十八、P2 落地：画布语义（核心，无 feature 门控）
+
+`crates/rgpui/src/canvas_a11y.rs` —— 把自绘（canvas）内容暴露给辅助技术。自绘组件用
+`Window::paint_*` 直接画像素，元素树里只有**一个**叶子节点，屏幕阅读器看不到「一格单元格」
+「一笔笔迹」；本模块补上这段，并顺带让上游遗留的
+`Element::a11y_synthetic_children`（此前**没有生产调用点**）有了真正的消费方。
+
+- **模型**：`CanvasNodeId`（u64，应用自定义的稳定 id）、`CanvasNode`（`role`/`label`/
+  `bounds`（画布局部坐标）/`value`/`description`/`disabled`/`selected`/`focused`/`actions`，
+  builder 式构造 + 就地 setter）、`CanvasSemantics`（按绘制顺序存放的节点集合，含
+  `with_row_tolerance`）。
+- **纯几何 / 顺序**：`reading_order_indices`（**两趟**：先整体按 y，再逐行按 x —— 避免用带
+  容差的比较函数做排序，那种比较不满足全序、标准库可能 panic）、`node_at_point`
+  （**逆绘制序** = 后画者在上）、`next_in_order`（两端环绕）、`window_bounds`
+  （局部 → 窗口坐标）；`CanvasSemantics::hit_test`/`reading_order`/`first_in_reading_order`/
+  `next_in_reading_order`/`index_of`/`get_mut`。
+- **无障碍桥**：`accesskit_node`（名称 / 值 / 说明 / `selected` / `disabled` / 动作位集 /
+  矩形 —— 矩形按**缩放因子**换算成 AccessKit 要求的物理像素）；
+  `push_canvas_a11y(builder, semantics, canvas_origin)`（在 `a11y_synthetic_children` 里把每个
+  节点发布为合成子节点；标记为焦点的节点同时写父节点的 `active_descendant`）；
+  `register_canvas_a11y_actions(window, global_id, semantics, handler)`（在 `paint` 里为每个
+  「节点 × 动作」登记监听器，把辅助技术的 `Click`/`Focus`/… 路由回应用）。
+- **框架补齐**：`A11ySubtreeBuilder::push_child_with_bounds`（合成节点也进本帧的
+  「节点 → 矩形」表，于是内置的 `Click` 回退——向节点中心合成一次鼠标点击——对画布对象同样
+  生效）、`A11ySubtreeBuilder::scale_factor`、自由函数 `synthetic_child_node_id`
+  （在 `paint` 里复算与发布侧一致的合成子节点 id）、`A11y::scale_factor` 每帧同步。
+- **元素接线**：`elements/canvas.rs` 的 [`Canvas`] 增加 `.id(..)` / `.a11y(role, semantics)` /
+  `.a11y_label(..)` / `.on_canvas_a11y_action(..)`；`Element::id`/`a11y_role`/`write_a11y_info`/
+  `a11y_synthetic_children` 全部接上，预绘制记下画布原点供发布时换算。
+- **示例**：`examples/showcase/src/bin/canvas_a11y.rs`（六个自绘卡片 / 圆形；指针点击、键盘
+  ← → ↑ ↓ / `Home` / `End` / `Enter` / `Esc`、无障碍动作三条路径等价；工具栏显示阅读顺序）。
+- **测试**：7 项 —— 阅读顺序分行与导航环绕、命中测试（后画者在上 / 半开边界）、局部 → 窗口
+  矩形、AccessKit 节点映射（状态 / 动作 / 物理像素矩形）、集合维护，以及 `window::a11y` 侧
+  的桥接测试（合成子节点带矩形发布 + 焦点对象成为容器 active descendant）。
+
+**本版暂缓**（后续增补）：把 `InkLayer` / `PageView` / `SheetGrid` 等既有自绘组件接到本模块
+（当前只有示例消费）、行 / 列（表格）语义与 `Role::Cell` 的 `row_index`/`column_index` 扩展、
+虚拟滚动下的语义节点裁剪与 `ScrollIntoView`。
 
 

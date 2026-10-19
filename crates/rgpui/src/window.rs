@@ -66,7 +66,7 @@ use uuid::Uuid;
 pub(crate) mod a11y;
 mod prompts;
 
-pub use a11y::A11ySubtreeBuilder;
+pub use a11y::{A11ySubtreeBuilder, synthetic_child_node_id};
 
 use self::a11y::A11y;
 #[cfg(not(target_family = "wasm"))]
@@ -3247,6 +3247,8 @@ impl Window {
         self.tooltip_bounds.take();
 
         self.a11y.sync_active_flag();
+        let scale_factor = self.scale_factor();
+        self.a11y.scale_factor = scale_factor;
         if self.a11y.is_active() {
             self.a11y.begin_frame();
         }

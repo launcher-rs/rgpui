@@ -271,6 +271,11 @@ path = "src/bin/mdi.rs"
 name = "task_pane"
 path = "src/bin/task_pane.rs"
 
+# ---------- 画布语义（核心 API，无需 feature） ----------
+[[bin]]
+name = "canvas_a11y"
+path = "src/bin/canvas_a11y.rs"
+
 # ---------- 套件基座（ribbon / viewport feature） ----------
 [[bin]]
 name = "command_registry"
