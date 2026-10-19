@@ -317,3 +317,26 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **示例**：`examples/showcase/src/bin/ribbon.rs` 增补分裂粘贴、样式库、插入组合框。
 - **测试**：新增 4 项（折叠切换与选项卡展开、新控件按键提示、库/组合框提示回退、
   分裂按钮构建），`ribbon::tests` 共 12 项。
+
+## 十六、P1 落地：公式栏 FormulaBar（`spreadsheet` feature）
+
+新增独立 feature `spreadsheet`，首个落地模块 `crates/rgpui/src/formula_bar.rs` ——
+电子表格编辑器顶部公式栏（名称框 + 取消/提交 + `fx` + 公式输入 + 展开），
+**只负责编辑与事件转发，不含单元格逻辑**（引擎留在应用层）：
+
+- **`FormulaBarState`**：持有两个 [`InputState`] 实体（名称框单行、公式框多行
+  `auto_grow(1,6)`，均 `submit_on_enter(true)`），`new(window, cx)` 内 `subscribe_in`
+  转发回车事件；方法 `name/formula`（读）、`set_name/set_formula/clear_formula`
+  （写）、`expanded/set_expanded/toggle_expanded`（展开态）。
+- **`FormulaBarEvent`**：`NameSubmit(SharedString)`（名称框回车，值去首尾空白）、
+  `FormulaSubmit(SharedString)`（公式框回车或点 ✓）、`Cancel`（`Esc` 或点 ✕）、
+  `InsertFunction`（点 `fx`）。
+- **`FormulaBar` 元素**：`new(&Entity<FormulaBarState>)`，可调 `name_width`、
+  `show_name_box`/`show_controls`/`show_function`/`show_expand`；根挂
+  `key_context("FormulaBar")` + `on_key_down`（`Esc` 冒泡转 `Cancel`）。
+- **示例**：`examples/showcase/src/bin/formula_bar.rs`（绑定 4×5 迷你单元格模型，
+  名称框输入引用跳转、公式框回车写入、`fx` 插入 `=SUM(`、`Esc` 回退）。
+- **测试**：5 项（名称/公式读写、展开切换、回车转发名称/公式、`Esc` 取消）。
+
+后续「网格 + 文档页 + 画布对象 + 富文本/墨迹」等文档套件能力继续在
+`spreadsheet`（或独立 feature）下落，均遵循「框架出控件与状态、引擎留应用层」。

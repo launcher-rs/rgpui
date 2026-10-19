@@ -109,6 +109,9 @@ ribbon = []
 # 视口与标尺基座：画布视口（`viewport.rs`）+ 刻度/对齐参考线（`guides.rs`）。
 # 供需要可缩放画布、标尺、对齐吸附的应用复用；普通应用不必开启。
 viewport = []
+# 电子表格基座：公式栏（`formula_bar.rs`，名称框 + fx + 公式输入）。
+# 供电子表格/公式类应用复用；普通应用不必开启。
+spreadsheet = []
 # tree-sitter 语法高亮/折叠后端（Rust 单语言先行）：默认关闭；
 # 含 C 解析器编译，wasm 目标下代码侧硬门禁，勿在 wasm 启用。
 tree-sitter = [

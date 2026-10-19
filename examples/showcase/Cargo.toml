@@ -28,11 +28,13 @@ futures.workspace = true
 [features]
 # showcase 覆盖全部组件与能力，套件基座默认开启，保证 workspace 的
 # check/test 都会编译并测试这些模块。
-default = ["ribbon", "viewport"]
+default = ["ribbon", "viewport", "spreadsheet"]
 # Ribbon 套件基座组件（命令注册表 / Ribbon / 按键提示 / 快速访问工具栏）。
 ribbon = ["rgpui/ribbon"]
 # 视口与标尺基座组件（画布视口 / 刻度与对齐参考线）。
 viewport = ["rgpui/viewport"]
+# 电子表格基座组件（公式栏）。
+spreadsheet = ["rgpui/spreadsheet"]
 # 图表组件（BarChart/LineChart/PieChart 等）。
 charts = ["rgpui/charts"]
 # 封装动效（Aurora/Confetti/Marquee/Ripple/Shimmer 等）。
@@ -262,6 +264,12 @@ required-features = ["viewport"]
 name = "ruler"
 path = "src/bin/ruler.rs"
 required-features = ["viewport"]
+
+# ---------- 电子表格基座（spreadsheet feature） ----------
+[[bin]]
+name = "formula_bar"
+path = "src/bin/formula_bar.rs"
+required-features = ["spreadsheet"]
 
 [[bin]]
 name = "dock"

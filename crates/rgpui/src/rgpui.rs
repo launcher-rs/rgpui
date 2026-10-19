@@ -266,6 +266,10 @@ pub mod guides;
 #[cfg(feature = "viewport")]
 pub mod viewport;
 
+/// 电子表格基座：公式栏（名称框 + fx + 公式输入），由 `spreadsheet` feature 门控。
+#[cfg(feature = "spreadsheet")]
+pub mod formula_bar;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 
