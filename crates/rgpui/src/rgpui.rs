@@ -297,6 +297,9 @@ pub mod anim_timeline;
 /// 多文档界面（MDI）：MDI 区域 + 子文档窗口（标题栏 / 最小化 / 最大化 / 缩放 / 排布），核心，无 feature 门控。
 pub mod mdi;
 
+/// 任务窗格：可停靠 / 可浮动的侧边面板（标题栏拖拽 / 内缘改宽 / 关闭），核心，无 feature 门控。
+pub mod task_pane;
+
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
 pub mod animation;
 

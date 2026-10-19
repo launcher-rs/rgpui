@@ -71,6 +71,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | **动画时间线** | `animtimeline.rs` | 无 | P2（已落地，见 §二十四） |
 | **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker`（已增强，见 §二十五；吸管缓做） | 增强 |
 | **多文档界面 MDI**（子文档窗/层叠/平铺/最小化） | `doc_window.rs`/`dock.rs` | 有 `DockArea`（面板树） | P2（已落地，见 §二十六） |
+| **任务窗格**（可停靠 / 可浮动侧边面板） | `dock.rs` | 有 `SplitPane`（分割） | P2（已落地，见 §二十七） |
 | **富剪贴板 payload** | `system_clipboard.rs` | 只有 text/image/路径（已扩展，见 §二十） | 扩展 `ClipboardItem` |
 
 ### B. 现有能力需增强（有但不敷套件用）
@@ -84,7 +85,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | 无障碍 | accesskit 树 + action | 缺把画布/网格内容暴露为语义节点的工具 |
 | i18n | `i18n`（文本） | 缺 RTL 布局镜像 |
 | 命令系统 | `Action`（序列化+分发） | 缺**命令注册表 + ribbon 位置/快捷键/参数元数据 + 动态 enabled** |
-| 多窗格 | `DockArea`/`SplitPane` | 缺文档窗口(MDI)/任务窗格模式（MDI 已落地，见 §二十六；任务窗格待补） |
+| 多窗格 | `DockArea`/`SplitPane` | 缺文档窗口(MDI)/任务窗格模式（均已落地，见 §二十六、§二十七） |
 
 > `wordcraft` 的 `ui-parity.md` 明示了目标 UI 需求：Ribbon tabs/groups/split/gallery/
 > contextual、key tips(Alt/F10)、backstage/File tab、命令面板、各式对话框、任务窗格、标尺、
@@ -112,7 +113,7 @@ Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格
 画布对象工具（§十九）、富剪贴板（§二十）、富文本/文档编辑控件雏形（§二十一）、Ink（§二十二）。
 
 **P2 深度**：缩略图/排序（§二十三）、动画时间线（§二十四）、取色器增强（§二十五）、
-MDI 文档多窗（§二十六）、任务窗格、a11y 画布语义、bidi/RTL 与 CJK 排版。
+MDI 文档多窗（§二十六）、任务窗格（§二十七）、a11y 画布语义、bidi/RTL 与 CJK 排版。
 
 **横向工程范式（可立即引入）**
 - control channel（JSON-line TCP + key）+ MCP server 集成；
@@ -679,7 +680,42 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   关闭、平铺 / 层叠排布且最小化不参与、无区域时排布挂起、键盘循环 / 最小化 / 还原 / 关闭、
   `move_by`/`set_bounds` 夹取）。
 
-**本版暂缓**（后续增补）：任务窗格模式（可停靠 / 可浮动的侧边任务窗格）、窗口吸附到区域边缘 /
-相互磁吸、拖拽最小化图标、多显示器跨屏拖拽、MDI 内标签页组（Tabbed MDI）。
+**本版暂缓**（后续增补）：窗口吸附到区域边缘 / 相互磁吸、拖拽最小化图标、多显示器跨屏拖拽、
+MDI 内标签页组（Tabbed MDI）。
+
+## 二十七、P2 落地：任务窗格（核心，无 feature 门控）
+
+`crates/rgpui/src/task_pane.rs` —— 可停靠 / 可浮动的**侧边任务窗格**：默认贴在父容器左 /
+右缘、占据固定宽度（内缘一条拖拽把手可改宽）；切到浮动态变成一块可拖动标题栏、八向缩放的
+窗格。与既有 `DockArea`（面板树）/ `SplitPane`（分割）互补：那两个是容器级布局，本模块是
+「单个可停靠 / 可浮动的属性面板」，正是 WordCraft 的 task pane 需求。
+
+- **数据**：`TaskPaneSide { Left, Right }`（`grip_edge`：左停靠把手在右缘、右停靠把手在左缘）；
+  `TaskPaneState`（侧 / 宽度 / 最小最大宽度 / 可见 / 浮动 / 浮动矩形 / `closable` / 窗格窗口矩形 /
+  拖拽会话 / `FocusHandle`）；`TaskPaneHit { None, TitleBar, Close, Grip, Resize(edge), Body }`；
+  `TaskPaneEvent { VisibilityChanged, SideChanged, WidthChanged, FloatingChanged }`。
+- **操作**：`show`/`hide`/`toggle`/`set_visible`、`set_side`、`set_width`（夹取）、`set_closable`、
+  `float(bounds)` / `dock` / `toggle_float(parent)`（浮动时贴父容器右下角内侧）、`set_rect`
+  （预绘制回写）、`hit_test`、`on_pointer_down/move/up`、`on_key_down`（`Esc` 取消拖拽）。
+  builder：`with_side`/`with_width`/`with_width_range`/`with_visible`/`with_closable`。
+- **纯几何**：`clamp_width`（非有限值回落最小宽）、`resize_width`（拖左缘取负号 → 向左变宽）、
+  `grip_rect`、`close_button_rect`、`floating_default_bounds`；浮动态的八向缩放直接复用
+  `mdi` 的 `resize_edge_at`/`resize_edge_rects`/`resize_bounds`（`resize_edge_rects` 因此提为 pub）。
+- **元素**：`TaskPane::new(&state).title(…).body(|window, cx| …)` —— 停靠态是流式子元素
+  （`flex_none` + 固定宽 + `h_full` + 内缘边框 + 内缘把手），浮动态是 `absolute` 子元素
+  （**父容器须为定位祖先** `relative()`）+ 八向缩放块；把手 / 按钮只设光标，命中与拖拽统一由
+  容器层处理（与 MDI 同构，避免子元素吞掉拖拽）。`on_prepaint` 回写窗格矩形，指针 / 键盘事件
+  经 `window.listener_for` 转发给状态；命中优先顺序：缩放边 / 角 → 内缘把手 → 关闭按钮 →
+  标题栏 → 正文。
+- **键盘**：`Esc` 取消当前拖拽。
+- **示例**：`examples/showcase/src/bin/task_pane.rs`（显示 / 隐藏、停靠左 / 右、浮动 / 回停靠、
+  加宽 / 收窄、关闭按钮开关；正文实时读取窗格宽度与停靠侧）。
+- **测试**：8 项 —— 纯几何 2 项（宽度夹取与内缘拖拽换算、把手 / 关闭按钮 / 浮动默认矩形）；
+  状态 6 项（显隐 / 换侧 / 改宽事件、浮动 / 停靠切换与最小浮动尺寸、停靠态两向把手拖拽改宽、
+  浮动态标题栏平移 + 右下角缩放、关闭按钮「按下后滑走不触发」、真实绘制回写矩形且隐藏 / 浮动
+  两态均可渲染）。
+
+**本版暂缓**（后续增补）：多窗格并列（一屏多个任务窗格）、窗格吸附 / 自动隐藏（鼠标滑出收起）、
+页签式窗格组、窗格内滚动位置记忆。
 
 
