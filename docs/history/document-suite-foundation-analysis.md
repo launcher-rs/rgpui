@@ -618,7 +618,9 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 拖拽与播放头；轨道可直接转成运行时的进度式 `KeyframeAnimation`，编辑完即交给元素动画播放。
 
 - **数据模型**：`Keyframe { time, value }`（时间非负）；`Interpolation`（`Linear`/`Hold`/`Smooth`）；
-  `Track { name, keyframes, interpolation }`；`Timeline { tracks }`。
+  `Track { name, keyframes, interpolation, collapsed }`（`collapsed` 折叠时行高缩为
+  `COLLAPSED_TRACK_HEIGHT`，`row_height` 取当前行高，`with_collapsed`/`set_collapsed` 设置）；
+  `Timeline { tracks }`。
 - **轨道运算**：`normalize`（排序 + 同时间合并，保留最后一个）、`set_keyframe`（同时间覆盖并返回
   是否新增）、`remove_keyframe`、`keyframe_index_at(time, tolerance)`、`move_keyframe`（移动后重新
   排序并返回新下标）、`duration`、`value_at`（首帧前 / 末帧后保持端点值）；`Timeline::add_track`/
@@ -630,26 +632,29 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   并停止）；`play`/`pause`/`toggle_play`/`set_looping`；`set_px_per_second`/`zoom_by`/`set_scroll`/
   `set_fps`/`snapped`；`select_keyframe`/`clear_selection`/`remove_selected_keyframe`；
   纵向 `vscroll`/`set_vscroll`（夹取到 `0..=max_vscroll()`）/`max_vscroll`/`scroll_to_track`；
-  轨道 `move_track`（选中项与拖动中的关键帧跟随移动）。
+  轨道 `move_track`（选中项与拖动中的关键帧跟随移动）、`toggle_track_collapsed`（行高变化后夹回
+  纵向偏移）、`tracks_height`/`track_top`（按各行实际高度累加的轨道区几何）。
 - **交互**：`hit_test` 把局部坐标映射为 `TimelineHit`（`Ruler`/`Keyframe`/`Track`/`None`，行号按
-  `vscroll` 换算成内容坐标）；标尺拖拽移动播放头、关键帧拖拽改时间（吸附）、轨道空白双击抛
-  `KeyframeRequested`、`Ctrl/Cmd + 滚轮`以指针为锚缩放；`Shift + 滚轮`纵向滚动轨道，其余滚轮
-  水平平移时间轴；键盘 `Space` 播放/暂停、方向键按帧步进（`Shift` 1s）、`Home`/`End`、
-  `Delete` 删除关键帧、`+`/`-` 缩放。轨道与标签放进以标尺下沿为顶的裁剪容器，滚动时不会盖住
-  标尺；`on_prepaint` 在窗口缩小时把 `vscroll` 夹回可滚动范围。
+  `vscroll` 换算成内容坐标后逐行累加行高定位，折叠行整行算轨道空白）；标尺拖拽移动播放头、
+  关键帧拖拽改时间（吸附）、轨道空白双击抛 `KeyframeRequested`、`Ctrl/Cmd + 滚轮`以指针为锚
+  缩放；`Shift + 滚轮`纵向滚动轨道，其余滚轮水平平移时间轴；点轨道名前的箭头折叠 / 展开轨道
+  （点标签列不清空关键帧选择）；键盘 `Space` 播放/暂停、方向键按帧步进（`Shift` 1s）、
+  `Home`/`End`、`Delete` 删除关键帧、`+`/`-` 缩放。轨道与标签放进以标尺下沿为顶的裁剪容器，
+  滚动时不会盖住标尺；`on_prepaint` 在窗口缩小时把 `vscroll` 夹回可滚动范围。
 - **事件**：`TimelineEvent::{TimeChanged, SelectionChanged, KeyframeMoved, KeyframeRequested,
-  KeyframeRemoved, PlaybackChanged, TrackMoved}`。
+  KeyframeRemoved, PlaybackChanged, TrackMoved, TrackCollapsed}`。
 - **纯几何**：`time_to_x`/`x_to_time`、`snap_time`、`ruler_step`（1/2/5×10ⁿ 整齐步长）、
   `format_time`（`1.20s` / `1:02.5`）、`clamp_px_per_second`。
 - **示例**：`examples/showcase/src/bin/timeline.rs`（六轨：位置 X / 缩放 / 透明度 / 旋转 / 模糊 /
   颜色，后三轨把轨道区撑到需要纵向滚动；工具条含播放、回到开头、加/删关键帧、缩放、吸附开关、
-  轨道上移 / 下移；预览方块由前三条轨道的当前值驱动，播放时后台按 1/60s 推进）。
-- **测试**：`anim_timeline::tests` 12 项（归一化与去重、三种插值求值、命中 / 移动 / 删除关键帧、
+  轨道上移 / 下移 / 折叠；预览方块由前三条轨道的当前值驱动，播放时后台按 1/60s 推进）。
+- **测试**：`anim_timeline::tests` 14 项（归一化与去重、三种插值求值、命中 / 移动 / 删除关键帧、
   时间映射与吸附 / 缩放夹取 / 标尺步长 / 时间格式化、总时长与当前值、进度式动画转换、播放头推进与
   循环 / 播放状态、缩放滚动吸附与选中删除、命中测试坐标映射、模型层轨道重排（目标夹取 / 原地不动）、
-  状态层轨道重排（选中跟随 + `TrackMoved`）、纵向滚动（内容坐标命中 / 夹取 / 滚入视野）。
+  状态层轨道重排（选中跟随 + `TrackMoved`）、纵向滚动（内容坐标命中 / 夹取 / 滚入视野）、
+  折叠行高与状态切换、折叠后行位 / 命中 / 可滚动范围 / `TrackCollapsed`）。
 
-**本版暂缓**（后续增补）：轨道折叠、关键帧值曲线编辑器（当前只编辑时间）、多选关键帧与框选、
+**本版暂缓**（后续增补）：关键帧值曲线编辑器（当前只编辑时间）、多选关键帧与框选、
 轨道静音 / 独奏、音视频波形与对齐吸附、播放时钟内置到控件（现由应用推进 `advance`）。
 
 ## 二十五、P2 落地：色板 / 取色器增强（核心，无 feature 门控）
@@ -951,11 +956,11 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | 画布对象工具 `object_toolkit` | `handle_point_rotated` / `hit_handle_rotated`（旋转后控制点）、`marquee_bounds` / `marquee_hits` + `MarqueeMode`（框选/交叉框选） |
 | MDI `mdi` | `snap_rect` / `snap_active` / `with_snap`（拖动松手吸附到工作区边/中线）；`MdiLayout::Tabbed` 页签式（见 §二十六） |
 | 页视图 `page_view` | `PageArrangement`（单页 / 双页 / 双页封面）与 `page_slot` 等栅格几何 |
-| 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`） |
+| 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`）、轨道折叠（`Track::collapsed` / `row_height` / `with_collapsed` / `set_collapsed`、`tracks_height` / `track_top` / `toggle_track_collapsed`、`TrackCollapsed`、折叠箭头） |
 | 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`） |
 | Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二）、逐段压感变宽（`pressure_width` / `stroke_paths` / `extend_stroke_with_pressure`） |
 
-仍未做（保持暂缓）：时间线轨道折叠 / 值曲线、任务窗格多窗格并列与页签组、
+仍未做（保持暂缓）：时间线值曲线、任务窗格多窗格并列与页签组、
 富文本分节 / 表格 / 批注 / 脚注、画布语义与自绘组件接线、bidi 视觉重排、
 取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 

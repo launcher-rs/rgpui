@@ -28,8 +28,8 @@ use crate::{
     ActiveTheme as _, AnyElement, App, Bounds, Context, ElementExt as _, Entity, EventEmitter,
     FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render,
-    RenderOnce, ScrollDelta, ScrollWheelEvent, SharedString, Styled as _, Window, div, point,
-    prelude::FluentBuilder as _, px,
+    RenderOnce, ScrollDelta, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Window, div, point, prelude::FluentBuilder as _, px,
 };
 
 use crate::animation::KeyframeAnimation;
@@ -38,6 +38,8 @@ use crate::animation::KeyframeAnimation;
 pub const RULER_HEIGHT: Pixels = px(24.0);
 /// 每条轨道行高（像素）。
 pub const TRACK_HEIGHT: Pixels = px(24.0);
+/// 折叠后的轨道行高（像素）。
+pub const COLLAPSED_TRACK_HEIGHT: Pixels = px(12.0);
 /// 左侧轨道名列宽度（像素）。
 pub const LABEL_WIDTH: Pixels = px(96.0);
 /// 关键帧命中半径（像素）。
@@ -100,7 +102,7 @@ impl Interpolation {
     }
 }
 
-/// 一条轨道：名称 + 关键帧（按时间升序、时间唯一）+ 插值方式。
+/// 一条轨道：名称 + 关键帧（按时间升序、时间唯一）+ 插值方式 + 折叠状态。
 #[derive(Clone, Debug)]
 pub struct Track {
     /// 轨道名称。
@@ -109,6 +111,8 @@ pub struct Track {
     pub keyframes: Vec<Keyframe>,
     /// 插值方式。
     pub interpolation: Interpolation,
+    /// 是否折叠（行高缩为 [`COLLAPSED_TRACK_HEIGHT`]，不绘制关键帧）。
+    pub collapsed: bool,
 }
 
 impl Track {
@@ -118,6 +122,7 @@ impl Track {
             name: name.into(),
             keyframes: Vec::new(),
             interpolation: Interpolation::Linear,
+            collapsed: false,
         }
     }
 
@@ -133,6 +138,30 @@ impl Track {
     pub fn with_interpolation(mut self, interpolation: Interpolation) -> Self {
         self.interpolation = interpolation;
         self
+    }
+
+    /// 设置初始折叠状态。
+    pub fn with_collapsed(mut self, collapsed: bool) -> Self {
+        self.collapsed = collapsed;
+        self
+    }
+
+    /// 设置折叠状态，返回是否变化。
+    pub fn set_collapsed(&mut self, collapsed: bool) -> bool {
+        if self.collapsed == collapsed {
+            return false;
+        }
+        self.collapsed = collapsed;
+        true
+    }
+
+    /// 当前行高：折叠时为 [`COLLAPSED_TRACK_HEIGHT`]，否则 [`TRACK_HEIGHT`]。
+    pub fn row_height(&self) -> Pixels {
+        if self.collapsed {
+            COLLAPSED_TRACK_HEIGHT
+        } else {
+            TRACK_HEIGHT
+        }
     }
 
     /// 关键帧数量。
@@ -482,6 +511,13 @@ pub enum TimelineEvent {
         /// 移动后的下标。
         to: usize,
     },
+    /// 轨道折叠 / 展开。
+    TrackCollapsed {
+        /// 轨道下标。
+        index: usize,
+        /// 是否折叠。
+        collapsed: bool,
+    },
 }
 
 /// 时间线控件状态：数据模型 + 播放头 + 缩放 / 滚动 / 选择。
@@ -683,8 +719,7 @@ impl TimelineState {
     /// 纵向可滚动范围（轨道总高超出可视高度的部分）。
     pub fn max_vscroll(&self) -> f32 {
         let visible = (self.bounds.size.height - RULER_HEIGHT).as_f32().max(0.0);
-        let total = TRACK_HEIGHT.as_f32() * self.timeline.len() as f32;
-        (total - visible).max(0.0)
+        (self.tracks_height() - visible).max(0.0)
     }
 
     /// 设置垂直滚动偏移（夹取到 `0..=max_vscroll()`）。
@@ -700,17 +735,36 @@ impl TimelineState {
         }
     }
 
+    /// 轨道区内容总高（折叠轨道按 [`COLLAPSED_TRACK_HEIGHT`] 计）。
+    pub fn tracks_height(&self) -> f32 {
+        self.timeline
+            .tracks()
+            .iter()
+            .map(|track| track.row_height().as_f32())
+            .sum()
+    }
+
+    /// 轨道 `index` 顶部在轨道区内容坐标里的位置（未减 `vscroll`）。
+    pub fn track_top(&self, index: usize) -> f32 {
+        self.timeline
+            .tracks()
+            .iter()
+            .take(index)
+            .map(|track| track.row_height().as_f32())
+            .sum()
+    }
+
     /// 把某条轨道滚入可视区（已可见时不动）。
     pub fn scroll_to_track(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index >= self.timeline.len() {
+        let Some(track) = self.timeline.track(index) else {
             return;
-        }
+        };
         let visible = (self.bounds.size.height - RULER_HEIGHT).as_f32().max(0.0);
         if visible <= 0.0 {
             return;
         }
-        let height = TRACK_HEIGHT.as_f32();
-        let top = height * index as f32;
+        let height = track.row_height().as_f32();
+        let top = self.track_top(index);
         let bottom = top + height;
         let next = if top < self.vscroll {
             top
@@ -720,6 +774,23 @@ impl TimelineState {
             return;
         };
         self.set_vscroll(next, cx);
+    }
+
+    /// 折叠 / 展开轨道（折叠后行高缩小、不绘制关键帧），返回是否变化。
+    pub fn toggle_track_collapsed(&mut self, index: usize, cx: &mut Context<Self>) -> bool {
+        let Some(track) = self.timeline.track_mut(index) else {
+            return false;
+        };
+        let collapsed = !track.collapsed;
+        if !track.set_collapsed(collapsed) {
+            return false;
+        }
+        // 行高变化后把纵向偏移夹回可滚动范围。
+        let max = self.max_vscroll();
+        self.vscroll = self.vscroll.min(max);
+        cx.emit(TimelineEvent::TrackCollapsed { index, collapsed });
+        cx.notify();
+        true
     }
 
     /// 调整轨道顺序，选中项与拖动中的关键帧跟随移动。
@@ -837,16 +908,29 @@ impl TimelineState {
         if local.y < RULER_HEIGHT {
             return TimelineHit::Ruler;
         }
-        // 轨道区随垂直滚动偏移平移：先换算成内容坐标再取行号。
+        // 轨道区随垂直滚动偏移平移：先换算成内容坐标，再按各行实际高度找行。
         let y = (local.y - RULER_HEIGHT).as_f32() + self.vscroll;
-        let row = (y / TRACK_HEIGHT.as_f32()).floor();
-        if !row.is_finite() || row < 0.0 {
+        if !y.is_finite() || y < 0.0 {
             return TimelineHit::None;
         }
-        let track = row as usize;
-        let Some(timeline_track) = self.timeline.track(track) else {
+        let mut top = 0.0;
+        let mut track = None;
+        for (index, candidate) in self.timeline.tracks().iter().enumerate() {
+            let height = candidate.row_height().as_f32();
+            if y < top + height {
+                track = Some(index);
+                break;
+            }
+            top += height;
+        }
+        let Some(track) = track else {
             return TimelineHit::None;
         };
+        let timeline_track = &self.timeline.tracks()[track];
+        if timeline_track.collapsed {
+            // 折叠轨道不绘制关键帧，整行都算轨道空白。
+            return TimelineHit::Track { track };
+        }
         let time = x_to_time(x.as_f32(), self.px_per_second, self.scroll);
         let tolerance = KEYFRAME_HIT_RADIUS.as_f32() / self.px_per_second;
         match timeline_track.keyframe_index_at(time, tolerance) {
@@ -894,7 +978,12 @@ impl TimelineState {
                     self.selected_track = Some(track);
                 }
             }
-            TimelineHit::None => self.clear_selection(cx),
+            // 左侧轨道名列的点击（折叠箭头 / 名称）不清空选择。
+            TimelineHit::None => {
+                if local.x >= LABEL_WIDTH {
+                    self.clear_selection(cx);
+                }
+            }
         }
     }
 
@@ -1057,42 +1146,47 @@ impl TimelineState {
         let selected = self.selected_track == Some(index);
         let track = &self.timeline.tracks()[index];
         let is_empty = track.is_empty();
+        let collapsed = track.collapsed;
+        let height = track.row_height();
+        let top = self.track_top(index);
 
         let mut markers: Vec<AnyElement> = Vec::with_capacity(track.len());
-        for (kf_index, keyframe) in track.keyframes.iter().enumerate() {
-            let x = time_to_x(keyframe.time, self.px_per_second, self.scroll);
-            let is_selected =
-                self.selected_track == Some(index) && self.selected_keyframe == Some(kf_index);
-            markers.push(
-                div()
-                    .absolute()
-                    .left(px(x - KEYFRAME_SIZE.as_f32() * 0.5))
-                    .top(px((TRACK_HEIGHT.as_f32() - KEYFRAME_SIZE.as_f32()) * 0.5))
-                    .w(KEYFRAME_SIZE)
-                    .h(KEYFRAME_SIZE)
-                    .rounded_sm()
-                    .bg(if is_selected {
-                        accent
-                    } else {
-                        muted_foreground
-                    })
-                    .border_2()
-                    .border_color(if is_selected { accent } else { border })
-                    .into_any_element(),
-            );
+        if !collapsed {
+            for (kf_index, keyframe) in track.keyframes.iter().enumerate() {
+                let x = time_to_x(keyframe.time, self.px_per_second, self.scroll);
+                let is_selected =
+                    self.selected_track == Some(index) && self.selected_keyframe == Some(kf_index);
+                markers.push(
+                    div()
+                        .absolute()
+                        .left(px(x - KEYFRAME_SIZE.as_f32() * 0.5))
+                        .top(px((TRACK_HEIGHT.as_f32() - KEYFRAME_SIZE.as_f32()) * 0.5))
+                        .w(KEYFRAME_SIZE)
+                        .h(KEYFRAME_SIZE)
+                        .rounded_sm()
+                        .bg(if is_selected {
+                            accent
+                        } else {
+                            muted_foreground
+                        })
+                        .border_2()
+                        .border_color(if is_selected { accent } else { border })
+                        .into_any_element(),
+                );
+            }
         }
 
         div()
             .absolute()
             .left(LABEL_WIDTH)
-            .top(TRACK_HEIGHT * index as f32 - px(self.vscroll))
+            .top(px(top - self.vscroll))
             .right_0()
-            .h(TRACK_HEIGHT)
+            .h(height)
             .overflow_hidden()
             .border_b_1()
             .border_color(border)
             .when(selected, |this| this.bg(selected_bg))
-            .when(is_empty, |this| {
+            .when(is_empty && !collapsed, |this| {
                 this.child(
                     div()
                         .absolute()
@@ -1120,13 +1214,14 @@ impl Focusable for TimelineState {
 }
 
 impl Render for TimelineState {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let border = theme.border;
         let accent = theme.primary;
         let muted_foreground = theme.muted_foreground;
         let selected_bg = theme.secondary;
         let background = theme.background;
+        let state = cx.entity();
 
         let ruler = self.render_ruler(border, muted_foreground);
         let tracks: Vec<AnyElement> = (0..self.timeline.len())
@@ -1138,19 +1233,39 @@ impl Render for TimelineState {
             .iter()
             .enumerate()
             .map(|(index, track)| {
+                let height = track.row_height();
                 div()
                     .absolute()
                     .left_0()
-                    .top(TRACK_HEIGHT * index as f32 - px(self.vscroll))
+                    .top(px(self.track_top(index) - self.vscroll))
                     .w(LABEL_WIDTH)
-                    .h(TRACK_HEIGHT)
+                    .h(height)
                     .px_2()
                     .flex()
                     .items_center()
+                    .gap_1()
                     .overflow_hidden()
                     .border_b_1()
                     .border_color(border)
                     .text_xs()
+                    .child(
+                        // 折叠箭头：点按切换该轨道折叠（不选择关键帧）。
+                        div()
+                            .id(("timeline-collapse", index))
+                            .flex_none()
+                            .w(px(14.0))
+                            .flex()
+                            .justify_center()
+                            .text_color(muted_foreground)
+                            .cursor_pointer()
+                            .child(if track.collapsed { "▸" } else { "▾" })
+                            .on_click(window.listener_for(
+                                &state,
+                                move |state, _event, _window, cx| {
+                                    state.toggle_track_collapsed(index, cx);
+                                },
+                            )),
+                    )
                     .child(track.name.clone())
                     .into_any_element()
             })
@@ -1287,9 +1402,10 @@ impl RenderOnce for TimelineView {
 mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
     use super::{
-        DEFAULT_PX_PER_SECOND, Interpolation, Keyframe, MAX_PX_PER_SECOND, MIN_PX_PER_SECOND,
-        Timeline, TimelineEvent, TimelineHit, TimelineState, TimelineView, Track,
-        clamp_px_per_second, format_time, ruler_step, snap_time, time_to_x, x_to_time,
+        COLLAPSED_TRACK_HEIGHT, DEFAULT_PX_PER_SECOND, Interpolation, Keyframe, MAX_PX_PER_SECOND,
+        MIN_PX_PER_SECOND, TRACK_HEIGHT, Timeline, TimelineEvent, TimelineHit, TimelineState,
+        TimelineView, Track, clamp_px_per_second, format_time, ruler_step, snap_time, time_to_x,
+        x_to_time,
     };
     use crate::{
         AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement as _, Render,
@@ -1718,5 +1834,82 @@ mod tests {
         assert_eq!(out_of_range, 12.0);
         assert_eq!(wide_max, 0.0);
         assert_eq!(wide, 0.0);
+    }
+
+    /// 轨道折叠状态与行高：默认展开，`set_collapsed` 只在变化时返回 `true`。
+    #[test]
+    fn track_collapse_changes_row_height() {
+        let mut track = Track::new("t");
+        assert!(!track.collapsed);
+        assert_eq!(track.row_height(), TRACK_HEIGHT);
+
+        // `with_collapsed` 是构造期设置。
+        let folded = Track::new("f").with_collapsed(true);
+        assert!(folded.collapsed);
+        assert_eq!(folded.row_height(), COLLAPSED_TRACK_HEIGHT);
+
+        // 首次切换生效，同样状态不算变化。
+        assert!(track.set_collapsed(true));
+        assert_eq!(track.row_height(), COLLAPSED_TRACK_HEIGHT);
+        assert!(!track.set_collapsed(true));
+        assert!(track.set_collapsed(false));
+        assert_eq!(track.row_height(), TRACK_HEIGHT);
+    }
+
+    /// 折叠轨道：行高缩小、后续轨道上移、折叠行不命中关键帧，并抛出 `TrackCollapsed`。
+    #[rgpui::test]
+    fn collapse_track_shifts_rows_and_hits(cx: &mut crate::TestAppContext) {
+        let (state, events, mut cx) = setup(cx);
+
+        let (before, collapsed, tops, height, folded_hit, next_hit, max, expanded_tops, out) = cx
+            .update(|_, cx| {
+                state.update(cx, |state, cx| {
+                    state
+                        .timeline_mut()
+                        .add_track(Track::with_keyframes("缩放", vec![Keyframe::new(0.0, 1.0)]));
+                    state.bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), px(60.0)));
+                    let before = state.track_top(1);
+                    let collapsed = state.toggle_track_collapsed(0, cx);
+                    let tops = (state.track_top(0), state.track_top(1), state.track_top(2));
+                    let height = state.tracks_height();
+                    // 折叠行压在首条轨道的第二个关键帧（x=256）上，仍算轨道空白。
+                    let folded_hit = state.hit_test(point(px(256.0), px(30.0)));
+                    // 折叠后第二行从内容坐标 12 开始：y=24+13 落在第二行。
+                    let next_hit = state.hit_test(point(px(136.0), px(37.0)));
+                    let max = state.max_vscroll();
+                    state.toggle_track_collapsed(0, cx);
+                    let expanded_tops = (state.track_top(1), state.tracks_height());
+                    let out = state.toggle_track_collapsed(9, cx);
+                    (
+                        before,
+                        collapsed,
+                        tops,
+                        height,
+                        folded_hit,
+                        next_hit,
+                        max,
+                        expanded_tops,
+                        out,
+                    )
+                })
+            });
+
+        assert_eq!(before, 24.0);
+        assert!(collapsed);
+        assert_eq!(tops, (0.0, 12.0, 36.0));
+        assert_eq!(height, 60.0);
+        assert_eq!(folded_hit, TimelineHit::Track { track: 0 });
+        assert_eq!(next_hit, TimelineHit::Track { track: 1 });
+        // 可视 36px，总高 60 → 最多滚 24px。
+        assert_eq!(max, 24.0);
+        assert_eq!(expanded_tops, (24.0, 72.0));
+        assert!(!out);
+        assert!(events.borrow().iter().any(|event| matches!(
+            event,
+            TimelineEvent::TrackCollapsed {
+                index: 0,
+                collapsed: true
+            }
+        )));
     }
 }

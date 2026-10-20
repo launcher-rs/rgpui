@@ -3,8 +3,8 @@
 //! 演示 `anim_timeline`：多轨关键帧时间线（标尺刻度 + 关键帧方块 + 播放头）。
 //! 拖拽标尺移动播放头，拖拽关键帧改时间，双击轨道空白处新增关键帧（值取当前插值），
 //! `Delete` 删除选中关键帧，`Ctrl/Cmd + 滚轮` 缩放、`Shift + 滚轮` 纵向滚动轨道、滚轮平移
-//! 时间轴。三轨的值实时驱动右侧预览方块（位置 / 缩放 / 透明度），播放头播放时按 `1/60s`
-//! 步进推进。
+//! 时间轴，点轨道名前的箭头折叠 / 展开轨道。三轨的值实时驱动右侧预览方块（位置 / 缩放 /
+//! 透明度），播放头播放时按 `1/60s` 步进推进。
 //!
 //! 运行：`cargo run -p showcase --bin timeline`
 
@@ -105,6 +105,14 @@ impl TimelineApp {
                 TimelineEvent::SelectionChanged { .. } => {}
                 TimelineEvent::TrackMoved { from, to } => {
                     this.status = format!("轨道 {} 移到第 {} 位", from + 1, to + 1).into();
+                }
+                TimelineEvent::TrackCollapsed { index, collapsed } => {
+                    this.status = if *collapsed {
+                        format!("轨道 {} 已折叠", index + 1)
+                    } else {
+                        format!("轨道 {} 已展开", index + 1)
+                    }
+                    .into();
                 }
             },
         )
@@ -210,6 +218,13 @@ impl TimelineApp {
             .update(cx, |state, cx| state.move_track(from, target as usize, cx));
     }
 
+    /// 折叠 / 展开选中的轨道（未选中时处理第一条）。
+    fn toggle_collapse(&mut self, cx: &mut Context<Self>) {
+        let index = self.state.read(cx).selection().0.unwrap_or(0);
+        self.state
+            .update(cx, |state, cx| state.toggle_track_collapsed(index, cx));
+    }
+
     /// 播放头处三条轨道的值（位置 / 缩放 / 透明度）。
     fn values(&self, cx: &Context<Self>) -> (f32, f32, f32) {
         let state = self.state.read(cx);
@@ -290,6 +305,9 @@ impl Render for TimelineApp {
                             cx.listener(|this, _event, _window, cx| this.move_track(1, cx)),
                         ),
                     )
+                    .child(Button::new("track-fold").label("折叠轨道").on_click(
+                        cx.listener(|this, _event, _window, cx| this.toggle_collapse(cx)),
+                    ))
                     .child(
                         Button::new("toggle-snap")
                             .label(if snapping {

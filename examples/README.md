@@ -105,7 +105,7 @@ cargo run -p showcase --bin <名称>
 | `rich_text` | 富文本：段落 + 行内运行模型，选区套用粗体/斜体/下划线/删除线/颜色，HTML 双向转换 + 剪贴板对接 | `cargo run -p showcase --bin rich_text` |
 | `ink` | Ink 笔迹：钢笔 / 荧光笔落笔（可开压感变宽），橡皮擦除，套索框选 + 撤销 / 清空 + 多图层 | `cargo run -p showcase --bin ink` |
 | `sorter` | 缩略图排序器：拖拽重排（插入指示线）+ 缩放 + 多选 + 键盘导航 | `cargo run -p showcase --bin sorter` |
-| `timeline` | 动画时间线：多轨关键帧编辑（标尺 / 关键帧拖拽 / 播放头 / 纵向滚动 / 轨道重排），实时驱动预览方块 | `cargo run -p showcase --bin timeline` |
+| `timeline` | 动画时间线：多轨关键帧编辑（标尺 / 关键帧拖拽 / 播放头 / 纵向滚动 / 轨道重排 / 轨道折叠），实时驱动预览方块 | `cargo run -p showcase --bin timeline` |
 | `color_picker` | 取色器增强：主题色板 / 最近颜色快捷色块 + 独立命名色阶色板，点击即应用 | `cargo run -p showcase --bin color_picker` |
 | `mdi` | 多文档界面：子窗口标题栏 / 最小化 / 最大化 / 八向缩放 + 层叠与平铺排布 | `cargo run -p showcase --bin mdi` |
 | `task_pane` | 任务窗格：可停靠 / 可浮动侧边面板（内缘拖拽改宽 / 标题栏拖动 / ✕ 关闭 / 自动隐藏） | `cargo run -p showcase --bin task_pane` |
