@@ -52,19 +52,36 @@ cargo fmt --all                    # 提交前格式化
 workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`、
 `redundant_clone`、`disallowed_methods`；`style` 为 `allow`。
 
+根目录 `clippy.toml` 允许测试代码用 `unwrap` / `expect` / `panic!`（断言失败就是要炸）。
+生产代码按模块收紧：`rgpui.rs` 里 24 个套件模块声明带
+`#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`，
+新增代码在这些模块里用 `unwrap` 会直接编译失败；其余历史模块按同一口径逐步迁移。
+
 ## 托盘与窗口隐藏
 
 - 类型：`TrayMenuItem` / `TrayIconEvent`（`rgpui::tray`）；App 方法：
   `set_tray_icon/menu/tooltip`、`on_tray_menu_action`、`on_tray_icon_event`。
 - Windows 实现：`rgpui-windows/src/tray.rs`（`Shell_NotifyIconW`）+
   `platform.rs`（`WM_GPUI_TRAY_ICON` / `WM_COMMAND`）。
+- macOS 实现：`rgpui-macos/src/tray.rs`（`NSStatusItem` + `NSMenu`，图标按 18×18 点）；
+  菜单挂在状态栏按钮的 action 上而不是 `NSStatusItem.setMenu:`，这样点击事件与菜单
+  能同时工作；只设菜单没设图标时用 SF Symbol 齿轮兜底。
+- Linux 实现：`rgpui-linux/src/linux/tray.rs` + `tray_sni.rs`（StatusNotifierItem，
+  X11 / Wayland 共用）。
 - `hide_window()`（任务栏移除）vs `minimize_window()`（保留任务栏图标）；
-  托盘恢复用 `activate_window()`。图标接受 PNG/ICO 字节。
+  托盘恢复用 `activate_window()`。图标接受 PNG/ICO 字节（macOS 只认 NSImage 支持的
+  格式，ICO 会记警告并留空）。
+- Linux 的应用级 `Platform::activate/hide`：X11 发 EWMH `_NET_ACTIVE_WINDOW`
+  （先 map 回被 `hide()` 撤下的窗口，否则窗管会忽略），Wayland 走 xdg-activation
+  （合成器可拒绝）；`hide()` 在 X11 是 unmap、Wayland 是最小化。`hide_other_apps` /
+  `unhide_other_apps` 在 Linux 没有对应协议能力，保留空实现。
 
 ## 提交与 PR 规范
 
 - 提交前：`cargo check --workspace` + `cargo fmt --all` + 相关包 clippy，无错误警告。
-- **禁止 `#[allow(dead_code)]`**，无用代码删除或重构。
+- **禁止 `#[allow(dead_code)]`**，无用代码删除或重构。平台专属字段仅在部分目标上使用
+  时，用 `#[cfg_attr(<目标>, allow(dead_code))]` 精确限定（只对不编译其用途的目标生效），
+  不得整块放宽。
 - 开发阶段废弃代码直接删除，不留 `#[deprecated]` 兼容（不为未发布的 API 做兼容）。
 - **合入 main 的改动走 PR**（分支命名 `feat|fix|refactor|chore/xxx`，Squash 合并，
   标题 Conventional Commits）。`main` **未开** GitHub 分支保护（单人维护、主动去掉），
@@ -116,7 +133,20 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 | 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState`、`Sidebar`/`SidebarSection`、`Select`、`Combobox`、`DatePicker`、`ColorPicker`、`Pagination`、`Steps`、`Timeline`、`Rate`、`Upload`、`Carousel`、`MermaidDiagram`、`DockArea` 等（`charts`/`effects`/`qr-code` feature 门控） |
 | 动画/手势/物理 | `animation/`、`mouse_gestures.rs`、`scroll_physics.rs` | `Spring`、`GestureDetector`、`ScrollPhysics` |
 | 对话（AI-chat） | `chat/` | `Message`/`MessageGroup`/`ChatView`、`Prompts`、`Suggestion`、`ThoughtChain`、`Attachments`/`FileCard`、`Sources`、`Actions`、`Sender`、`Bubble`、`MessageScroller`、`Marker` |
-| 应用套件基座（`ribbon` / `viewport` feature，默认关闭） | `commands.rs`、`ribbon.rs`、`keytips.rs`、`qat.rs`、`mini_toolbar.rs`、`backstage.rs`、`viewport.rs`、`guides.rs` | `CommandDescriptor`/`CommandRegistry`/`register_command!`/`App::dispatch_command`/`label_for`、`Ribbon`/`RibbonState`/`RibbonTab`/`RibbonGroup`/`RibbonItem`、`KeyTip`/`KeyTipScope`/`resolve_key`、`QuickAccessToolbar`/`QatItem`/`QatButton`、`MiniToolbar`、`Backstage`/`BackstageState`/`BackstageTab`、`Viewport`、`ruler_ticks`/`align` |
+| 剪贴板（核心，无 feature 门控） | `platform.rs`（`Platform::read/write_to_clipboard`，各平台 `clipboard.rs`/`pasteboard.rs`） | `ClipboardItem`/`ClipboardEntry`/`ClipboardString`/`ClipboardFormat`；富负载条目 `ClipboardEntry::Format`（HTML/RTF/CSV/自定义 MIME，MIME 常量见 `ClipboardFormat::{HTML,RTF,PLAIN_TEXT,CSV,TSV,MARKDOWN,URI_LIST}`），构造器 `new_html`/`new_rtf`/`new_with_format`/`with_string`/`with_format`，读取 `text`/`html`/`rtf`/`format`/`formats` |
+| 富文本（核心，无 feature 门控） | `rich_text.rs` | 文档模型 `RichTextDoc`/`Paragraph`/`Run`/`RunProps`/`ParagraphStyle`/`ListKind`；字符坐标编辑 `insert_text`/`delete`/`split_paragraph`/`merge_paragraph`/`apply_props`/`normalize`/`locate`；纯文本 `plain_text`/`from_plain_text`，HTML 双向 `to_html`/`from_html`（含列表/对齐/颜色）；只读渲染元素 `RichText`（映射到 `StyledText`/`TextRun`） |
+| Ink 笔迹（核心，无 feature 门控） | `ink.rs` | `InkLayer`/`Stroke`/`InkPoint`/`InkStyle`/`InkTool`（Pen/Highlighter/Eraser/Lasso）；`begin_stroke`/`begin_stroke_with_pressure`/`extend_stroke`/`extend_stroke_with_pressure`/`end_stroke`/`cancel_stroke`/`undo`/`clear`、`erase_at`/`hit_test`/`lasso`/`remove`/`simplify`/`bounds`/`semantics`；多图层 `InkDocument`/`InkDocumentLayer`（`layers`/`layer`/`visible_layers`/`active`/`set_active`/`add_layer`/`remove_layer`/`move_layer`/`set_visible`/`set_locked`/`set_opacity`/`is_editable`/`fade`，编辑落在激活层）；几何 `point_segment_distance`/`point_in_polygon`/`polygon_bounds`/`simplify_points`（Douglas–Peucker）/`stroke_path`/`pressure_width`/`stroke_paths`（逐段压感变宽）；绘制元素 `InkLayerElement`（`.highlight`/`.lasso`/`.opacity`/`.a11y`，笔画经画布语义暴露给辅助技术） |
+| 缩略图排序器（核心，无 feature 门控） | `sorter.rs` | `Sorter`/`SorterState`/`SorterDelegate`/`SorterEvent`；`select`/`toggle`/`select_range`/`select_all`/`clear_selection`、`begin_drag`/`set_drop_slot`/`update_drag`/`drag_autoscroll`/`finish_drag`/`cancel_drag`、`set_zoom`/`zoom_by`/`scroll_to_item`；几何 `cell_size`/`grid_columns`/`drop_slot`/`move_dest`/`move_group_dest`/`autoscroll_velocity`/`clamp_zoom`/`normalize_aspect_ratio` |
+| 动画时间线（核心，无 feature 门控） | `anim_timeline.rs` | 模型 `Timeline`/`Track`/`Keyframe`/`Interpolation`（`Linear`/`Hold`/`Smooth`）；`normalize`/`set_keyframe`/`remove_keyframe`/`keyframe_index_at`/`move_keyframe`/`duration`/`value_at`/`to_keyframe_animation`、`Track` 的 `collapsed`/`row_height`/`with_collapsed`/`set_collapsed`、`Timeline` 的 `add_track`/`remove_track`/`move_track`/`duration`/`values_at`；控件 `TimelineState`/`TimelineView`/`TimelineEvent`/`TimelineHit`（`set_time`/`advance`/`play`/`pause`/`toggle_play`/`set_looping`、`set_px_per_second`/`zoom_by`/`set_scroll`/`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track`/`tracks_height`/`track_top`/`set_fps`/`snapped`、`select_keyframe`/`remove_selected_keyframe`/`move_track`/`toggle_track_collapsed`/`hit_test`）；几何 `time_to_x`/`x_to_time`/`snap_time`/`ruler_step`/`format_time`/`clamp_px_per_second` |
+| 色板（核心，无 feature 门控） | `components/color_palette.rs` | `ColorPalette`（`new`/`colors`/`selected`/`swatch_size`/`gap`/`on_select`/`on_select_arc`）；`theme_palette`（主题语义色）/`color_name_palette`（命名色阶）/`push_recent`（最近颜色去重置顶 + 截断）；`ColorPickerState` 增强：`show_palette`/`recent_limit`/`recents`/`push_recent`/`clear_recents`/`set_color`（吸管因屏幕捕获不可用而缓做） |
+| 多文档界面 MDI（核心，无 feature 门控） | `mdi.rs` | `MdiState`/`MdiArea`/`MdiEvent`/`MdiWindow`/`MdiFrame`/`MdiTab`/`MdiHit`/`MdiLayout`/`MdiWindowFlags`/`WindowState`/`WindowButton`/`ResizeEdge`；`open`/`open_with`/`close`/`close_active`/`close_all`/`activate`/`cycle`/`minimize`/`maximize`/`restore`/`toggle_maximize`/`move_by`/`snap_active`/`set_bounds`/`arrange`/`hit_test`/`is_tabbed`/`tabs`/`tab_bar_rect`/`tabbed_content_rect`；几何 `cascade_rects`/`tile_rects`/`tab_rects`/`tab_at`/`clamp_rect`/`snap_rect`/`icon_rect`/`title_button_rects`/`resize_edge_at`/`resize_edge_rects`/`resize_bounds`（`with_snap` 打开后 `on_pointer_up` 自动吸附；`MdiLayout::Tabbed` 页签式只渲染激活窗口） |
+| 任务窗格（核心，无 feature 门控） | `task_pane.rs` | `TaskPaneState`/`TaskPane`/`TaskPaneEvent`/`TaskPaneHit`/`TaskPaneSide`；`show`/`hide`/`toggle`/`set_visible`/`set_side`/`set_width`/`set_closable`/`with_tabs`/`set_tabs`/`tabs`/`active_tab`/`active_tab_title`/`set_active_tab`/`cycle_tab`/`tab_rects`/`tab_at`/`float`/`dock`/`toggle_float`/`set_rect`/`set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`/`hit_test`/`on_pointer_*`/`on_key_down`（`Esc` 取消拖拽、`Ctrl+Tab` 切页签）；自动隐藏收起为 `RAIL_WIDTH` 竖排标题轨道、悬停展开；页签组（激活页签高亮下划线，`TaskPaneEvent::TabSelected`）；几何 `clamp_width`/`resize_width`/`grip_rect`/`close_button_rect`/`tab_rects`/`floating_default_bounds`（浮动态复用 `mdi` 的 `ResizeEdge`/`resize_bounds`/`resize_edge_rects`） |
+| 画布语义（核心，无 feature 门控） | `canvas_a11y.rs`（+ `elements/canvas.rs` 接线） | `CanvasNodeId`/`CanvasNode`/`CanvasSemantics`/`CanvasActionHandler`；`CanvasNode::{new,with_value,with_description,disabled,selected,focused,with_action,with_actions,set_*}`、`CanvasSemantics::{new,push,extend,clear,get,get_mut,index_of,hit_test,reading_order,first_in_reading_order,next_in_reading_order,window_bounds,with_row_tolerance}`；几何 `reading_order_indices`/`node_at_point`/`next_in_order`/`window_bounds`；无障碍桥 `accesskit_node`/`push_canvas_a11y`/`register_canvas_a11y_actions`（框架侧 `A11ySubtreeBuilder::{push_child_with_bounds,scale_factor}`、`synthetic_child_node_id`）；元素 `Canvas::{id,a11y,a11y_label,on_canvas_a11y_action}` |
+| 双向文字 bidi（核心，无 feature 门控） | `bidi.rs`（+ `style.rs` 的 `TextAlign`、`text_system/line.rs` 绘制入口、`rgpui-dom` CSS 映射） | `TextDirection`（`Ltr`/`Rtl`）、`TextDirection::{resolve,is_rtl,for_locale}`（`resolve` 为 HTML `dir=auto` 口径：首个强方向字符，无强方向字符回退 LTR；`for_locale` 按语言标签给基准方向）、`primary_language`/`is_rtl_locale`（CLDR 常用 RTL 语言、主语言子标签、大小写不敏感）、`strong_direction`/`is_rtl_char`（UBA `L`/`R`/`AL`，基于 `unicode-bidi`）；`TextAlign::{Start,End}` + `TextAlign::resolve(TextDirection)`（按段落自身方向在绘制入口解析；`rich_text`/DOM 后端分别透传 `text-align:start\|end`） |
+| 东亚断行禁则（核心，无 feature 门控） | `line_break.rs`（+ `text_system/line_wrapper.rs`、`text_system/line_layout.rs` 接线） | `BreakClass`/`break_class`、`is_ideographic`、`is_line_start_prohibited`（行首禁则）/`is_line_end_prohibited`（行末禁则）/`is_no_break`（胶连字符）/`can_break_between`；两条换行路径在候选断点处按禁则否决（不改半角 ASCII 标点行为） |
+| 应用套件基座（`ribbon` / `viewport` / `spreadsheet` / `document` / `control-channel` feature；`commands.rs` 为核心，其余默认关闭） | `commands.rs`、`ribbon.rs`、`keytips.rs`、`qat.rs`、`mini_toolbar.rs`、`backstage.rs`、`viewport.rs`、`guides.rs`、`formula_bar.rs`、`sheet_grid.rs`、`page_view.rs`、`object_toolkit.rs`、`control_channel.rs`、`mcp.rs` | `CommandDescriptor`/`CommandRegistry`/`register_command!`/`App::dispatch_command`/`label_for`/`CommandRegistry::validate`、`Ribbon`/`RibbonState`/`RibbonTab`/`RibbonGroup`/`RibbonItem`/`RibbonSplitButton`/`RibbonGallery`/`RibbonComboBox`、`KeyTip`/`KeyTipScope`/`resolve_key`、`QuickAccessToolbar`/`QatItem`/`QatButton`、`MiniToolbar`、`Backstage`/`BackstageState`/`BackstageTab`、`Viewport`、`ruler_ticks`/`align`、`FormulaBar`/`FormulaBarState`/`FormulaBarEvent`（`spreadsheet`）、`SheetGrid`/`SheetGridState`/`SheetGridEvent`/`SheetDelegate`/`CellRef`/`CellRange`/`column_label`（`spreadsheet`）、`PageView`/`PageLayout`/`PageSetup`/`PageSize`/`PageMargins`/`PageArrangement`/`PageLabels`（`document`）、`ResizeHandle`/`SelectionHandles`/`AlignMode`/`handle_point`/`handle_point_rotated`/`hit_handle`/`hit_handle_rotated`/`marquee_bounds`/`marquee_hits`/`MarqueeMode`/`resize_bounds`/`rotate_point`/`angle_between`/`union_bounds`/`align`/`distribute`（`viewport`）、`ControlChannel`/`ControlChannelOptions`/`App::start_control_channel`/`McpServer`/`tool_name`（`control-channel`） |
+| 国际化 i18n（核心，无 feature 门控） | `i18n/mod.rs`（+ `bidi.rs` 的语言方向查表） | `I18nManager`（`new`/`with_fallback`/`load_translations`/`load_translations_map`/`load_locale_dir`/`t`/`set_locale`/`available_locales`/`snapshot`/`restore`）、`Locale`/`Translation`/`I18nSnapshot`；`direction`/`is_rtl`（语言标签 → 基准方向，走 `TextDirection::for_locale`）、`validate`（目录审计：空目录 / 当前或回退语言未加载 / 逐语言缺 key）；`bidi::primary_language`/`is_rtl_locale` |
+| 终端（`rgpui-term` 独立 crate） | `terminal.rs`、`terminal_element.rs`、`terminal_view.rs` | `Terminal`/`TerminalView`；IME 中文/日文输入：组合文本存 `Terminal::ime_composition`（`set_ime_composition`/`ime_composition`），`TerminalInputHandler` 按 UTF-16 区间（`utf16_slice`）应答 `marked_text_range`/`text_for_range`，组合期间在光标处画下划线预览（`LayoutState::composition`），`replace_text_in_range` 上屏到 PTY；组合期间 `on_key_down` 不直送终端 |
 
 `prelude` 含：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、
 `Sizable`、`StyledExt`、`FluentBuilder`。
@@ -131,7 +161,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 网络状态、系统信息、Dock 菜单、上下文菜单、`reduce_motion_enabled`（系统「减少
 动态效果」，四平台各自读取，核心层每次建窗同步一次）；
 另 `WindowOptions.mouse_passthrough`、`WindowKind::Overlay`、Mica 材质、
-`tray.rs` / `single_instance.rs`。
+`tray.rs` / `single_instance/mod.rs`。
 
 **加 `Platform` 方法必须同时加 `App` 包装 + 一个真实调用点**（示例或核心逻辑）。
 `App::platform` 是私有字段，没有 `App` 包装的能力应用层一行都调不到 ——
@@ -150,20 +180,25 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 
 1. `cargo check --workspace` 通过
 2. `mouse_passthrough`（`WindowOptions`/`WindowParams`）、`WindowKind::Overlay`、
-   Mica 变体、`tray.rs` / `single_instance.rs` 都在
+   Mica 变体、`tray.rs` / `single_instance/mod.rs` 都在
 3. `Platform` / `PlatformWindow` 自有方法都在（对照上表）
 4. `tray`、`desktop_pet`（`_3d`）示例可编译
 5. 中文注释未被删除；无 `#[allow(dead_code)]`
 6. 组件子系统目录都在（`form input_ui menu dialog list table tabs title_bar elements/scroll`）
-7. 应用套件基座模块都在（`commands.rs` / `ribbon.rs` / `keytips.rs` / `qat.rs` /
-   `mini_toolbar.rs` / `backstage.rs` / `viewport.rs` / `guides.rs`），且 `ribbon`、
-   `viewport` feature 开关两侧都能编译
+7. 应用套件基座模块都在（`commands.rs`（核心）/ `ribbon.rs` / `keytips.rs` / `qat.rs` /
+   `mini_toolbar.rs` / `backstage.rs` / `viewport.rs` / `guides.rs` / `formula_bar.rs` /
+   `sheet_grid.rs` / `page_view.rs` / `object_toolkit.rs` / `control_channel.rs` / `mcp.rs`），且
+   `ribbon`、`viewport`、`spreadsheet`、`document`、`control-channel` feature 开关两侧都能编译
 8. `crates/rgpui-ui`、`rgpui-tokio` 等旧 crate 未复活；`rgpui-markdown` 在，
    `pulldown-cmark = "0.13"`
-9. feature 组合按需通过：`charts,effects,qr-code` / `tokio` / `webview` /
-   `dom-backend`（+ `cargo test -p rgpui-dom`）/ `ribbon,viewport`
+9. feature 组合按需通过：`charts,effects,qr-code` / `tokio` / `control-channel` / `webview` /
+   `dom-backend`（+ `cargo test -p rgpui-dom`）/ `ribbon,viewport` / `spreadsheet` /
+   `document`
 10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过
 11. 发布要求无 dev 循环依赖（测试放消费方 `tests/`，见 1.1.1 教训）
+12. 命令清单 gate 通过（`CommandRegistry::validate()` 为空）；改控制通道 / MCP 后跑
+    `cargo test -p rgpui --features control-channel --lib` 与
+    `cargo test -p showcase --bin automation`
 
 ## Web/WASM 开发
 

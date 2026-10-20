@@ -19,7 +19,6 @@
 // https://freedesktop.org/wiki/ClipboardManager/
 
 use std::{
-    borrow::Cow,
     cell::RefCell,
     collections::{HashMap, hash_map::Entry},
     sync::{
@@ -47,7 +46,9 @@ use x11rb::{
     wrapper::ConnectionExt as _,
 };
 
-use rgpui::{ClipboardItem, Image, ImageFormat, hash};
+use rgpui::{
+    ClipboardEntry, ClipboardFormat, ClipboardItem, ClipboardString, Image, ImageFormat, hash,
+};
 use strum::IntoEnumIterator;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -76,6 +77,10 @@ x11rb::atom_manager! {
         // See: https://tronche.com/gui/x/icccm/sec-2.html#s-2.6.2
         TEXT,
         TEXT_MIME_UNKNOWN: b"text/plain",
+
+        // 富负载 MIME（HTML / RTF）；其余 MIME 类型运行时按需 intern。
+        HTML__MIME: b"text/html",
+        RTF__MIME: b"text/rtf",
 
         // HTML: b"text/html",
         // URI_LIST: b"text/uri-list",
@@ -137,6 +142,9 @@ struct Inner {
     clipboard: Selection,
     primary: Selection,
     secondary: Selection,
+
+    /// 运行时按 MIME 类型注册的 atom 缓存（固定 atom 之外的自定义格式）。
+    mime_atoms: Mutex<HashMap<String, Atom>>,
 
     handover_state: Mutex<ManagerHandoverState>,
     handover_cv: Condvar,
@@ -224,10 +232,35 @@ impl Inner {
             clipboard: Selection::default(),
             primary: Selection::default(),
             secondary: Selection::default(),
+            mime_atoms: Mutex::new(HashMap::new()),
             handover_state: Mutex::new(ManagerHandoverState::Idle),
             handover_cv: Condvar::new(),
             serve_stopped: AtomicBool::new(false),
         })
+    }
+
+    /// 返回 MIME 类型对应的 atom：内置类型用固定 atom，其余运行时 intern 并缓存。
+    fn mime_atom(&self, mime_type: &str) -> Result<Atom> {
+        match mime_type {
+            ClipboardFormat::HTML => return Ok(self.atoms.HTML__MIME),
+            ClipboardFormat::RTF => return Ok(self.atoms.RTF__MIME),
+            ClipboardFormat::PLAIN_TEXT => return Ok(self.atoms.UTF8_MIME_0),
+            _ => {}
+        }
+        let mut cache = self.mime_atoms.lock();
+        if let Some(atom) = cache.get(mime_type) {
+            return Ok(*atom);
+        }
+        let atom = self
+            .server
+            .conn
+            .intern_atom(false, mime_type.as_bytes())
+            .map_err(into_unknown)?
+            .reply()
+            .map_err(into_unknown)?
+            .atom;
+        cache.insert(mime_type.to_string(), atom);
+        Ok(atom)
     }
 
     fn write(
@@ -975,19 +1008,6 @@ impl Clipboard {
         Ok(Self { inner: ctx })
     }
 
-    pub(crate) fn set_text(
-        &self,
-        message: Cow<'_, str>,
-        selection: ClipboardKind,
-        wait: WaitConfig,
-    ) -> Result<()> {
-        let data = vec![ClipboardData {
-            bytes: message.into_owned().into_bytes(),
-            format: self.inner.atoms.UTF8_STRING,
-        }];
-        self.inner.write(data, selection, wait)
-    }
-
     fn image_format_atom(&self, format: ImageFormat) -> Atom {
         match format {
             ImageFormat::Png => self.inner.atoms.PNG__MIME,
@@ -1002,25 +1022,39 @@ impl Clipboard {
         }
     }
 
-    #[allow(unused)]
-    pub(crate) fn set_image(
+    /// 把整份 [`ClipboardItem`] 写入选择：纯文本、富负载、图像各自成为一个目标格式。
+    pub(crate) fn set_item(
         &self,
-        image: Image,
+        item: &ClipboardItem,
         selection: ClipboardKind,
         wait: WaitConfig,
     ) -> Result<()> {
-        let format = self.image_format_atom(image.format);
-        let data = vec![ClipboardData {
-            bytes: image.bytes,
-            format: self.inner.atoms.PNG__MIME,
-        }];
+        let mut data = Vec::new();
+        for entry in item.entries() {
+            match entry {
+                ClipboardEntry::String(string) => data.push(ClipboardData {
+                    bytes: string.text.clone().into_bytes(),
+                    format: self.inner.atoms.UTF8_STRING,
+                }),
+                ClipboardEntry::Format(format) => {
+                    let atom = self.inner.mime_atom(&format.mime_type)?;
+                    data.push(ClipboardData {
+                        bytes: format.bytes.clone(),
+                        format: atom,
+                    });
+                }
+                ClipboardEntry::Image(image) => data.push(ClipboardData {
+                    bytes: image.bytes.clone(),
+                    format: self.image_format_atom(image.format),
+                }),
+                ClipboardEntry::ExternalPaths(_) => {}
+            }
+        }
         self.inner.write(data, selection, wait)
     }
 
-    pub(crate) fn get_any(&self, selection: ClipboardKind) -> Result<ClipboardItem> {
-        let image_entries = ImageFormat::iter()
-            .map(|format| (self.image_format_atom(format), format))
-            .collect::<Vec<_>>();
+    pub(crate) fn get_item(&self, selection: ClipboardKind) -> Result<ClipboardItem> {
+        let mut entries = Vec::new();
 
         let text_format_atoms: &[Atom] = &[
             self.inner.atoms.UTF8_STRING,
@@ -1031,39 +1065,47 @@ impl Clipboard {
             self.inner.atoms.TEXT_MIME_UNKNOWN,
         ];
 
-        // image formats first, as they are more specific, and read will return the first
-        // format that the contents can be converted to
-        let mut format_atoms = Vec::with_capacity(image_entries.len() + text_format_atoms.len());
-        format_atoms.extend(image_entries.iter().map(|(atom, _)| *atom));
-        format_atoms.extend_from_slice(text_format_atoms);
+        if let Ok(result) = self.inner.read(text_format_atoms, selection) {
+            let text = if result.format == self.inner.atoms.STRING {
+                // ISO Latin-1
+                // See: https://stackoverflow.com/questions/28169745/what-are-the-options-to-convert-iso-8859-1-latin-1-to-a-string-utf-8
+                result.bytes.into_iter().map(|c| c as char).collect()
+            } else {
+                String::from_utf8(result.bytes).map_err(|_| Error::ConversionFailure)?
+            };
+            entries.push(ClipboardEntry::String(ClipboardString::new(text)));
+        }
 
-        let result = self.inner.read(&format_atoms, selection)?;
-
-        log::trace!(
-            "read clipboard as format {:?}",
-            self.inner.atom_name(result.format)
-        );
-
-        for (format_atom, image_format) in image_entries {
-            if result.format == format_atom {
-                let bytes = result.bytes;
-                let id = hash(&bytes);
-                return Ok(ClipboardItem::new_image(&Image {
-                    id,
-                    format: image_format,
-                    bytes,
-                }));
+        // 富负载：HTML / RTF
+        for (atom, mime_type) in [
+            (self.inner.atoms.HTML__MIME, ClipboardFormat::HTML),
+            (self.inner.atoms.RTF__MIME, ClipboardFormat::RTF),
+        ] {
+            if let Ok(result) = self.inner.read(&[atom], selection) {
+                entries.push(ClipboardEntry::Format(ClipboardFormat::new(
+                    mime_type,
+                    result.bytes,
+                )));
             }
         }
 
-        let text = if result.format == self.inner.atoms.STRING {
-            // ISO Latin-1
-            // See: https://stackoverflow.com/questions/28169745/what-are-the-options-to-convert-iso-8859-1-latin-1-to-a-string-utf-8
-            result.bytes.into_iter().map(|c| c as char).collect()
-        } else {
-            String::from_utf8(result.bytes).map_err(|_| Error::ConversionFailure)?
-        };
-        Ok(ClipboardItem::new_string(text))
+        // 只有没有任何文本/富负载时才尝试图像。
+        if entries.is_empty() {
+            for format in ImageFormat::iter() {
+                let atom = self.image_format_atom(format);
+                if let Ok(result) = self.inner.read(&[atom], selection) {
+                    let bytes = result.bytes;
+                    let id = hash(&bytes);
+                    entries.push(ClipboardEntry::Image(Image { id, format, bytes }));
+                    break;
+                }
+            }
+        }
+
+        if entries.is_empty() {
+            return Err(Error::ContentNotAvailable);
+        }
+        Ok(ClipboardItem { entries })
     }
 
     pub fn is_owner(&self, selection: ClipboardKind) -> bool {

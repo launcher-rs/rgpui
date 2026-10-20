@@ -582,6 +582,7 @@ fn render_command_item(command: Command, selected: bool, theme: &crate::Theme) -
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "ribbon")]
     use super::CommandPaletteState;
 
     /// 面板状态可从全局命令注册表构建，并列出已登记的命令。

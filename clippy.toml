@@ -1,0 +1,8 @@
+# Clippy 配置（工作区根，所有成员 crate 共用）。
+#
+# 测试代码里的 `unwrap` / `expect` / `panic!` 正是想要的失败方式（断言失败就该炸），
+# 不需要为了满足 lint 改写成 `match`。生产代码的收紧按模块推进：
+# 见 `crates/rgpui/src/rgpui.rs` 里带 `#[deny(clippy::unwrap_used, ...)]` 的模块声明。
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

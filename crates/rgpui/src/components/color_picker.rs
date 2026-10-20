@@ -1,7 +1,11 @@
 //! 颜色选择器。
 //!
-//! 色相/饱和度/明度三滑块 + hex 输入 + 预览色块，变更经 `on_change(Hsla)` 回调。
+//! 色相/饱和度/明度三滑块 + hex 输入 + 预览色块，外加**主题色板**与**最近颜色**
+//! 两组快捷色块（[`ColorPalette`]），变更经 `on_change(Hsla)` 回调。
 //! 状态由实体持有，父组件经 `cx.new(|cx| ColorPickerState::new(window, cx))` 创建。
+//!
+//! 最近颜色的记录时机：点击色板色块、在 hex 输入框按下回车，或应用显式调用
+//! [`ColorPickerState::push_recent`]（如对话框点「确定」时）。
 
 use crate::{
     input_ui::{Input, InputState},
@@ -28,6 +32,12 @@ pub struct ColorPickerState {
     pending_emit: bool,
     /// hex 输入框待同步（`set_value` 需要 Window，延后到 render 执行）。
     hex_dirty: bool,
+    /// 最近使用的颜色（去重置顶，上限 `recent_limit`）。
+    recents: Vec<Hsla>,
+    /// 最近颜色上限。
+    recent_limit: usize,
+    /// 是否显示主题色板与最近颜色。
+    show_palette: bool,
 }
 
 impl ColorPickerState {
@@ -70,6 +80,11 @@ impl ColorPickerState {
             crate::input_ui::InputEvent::Change => {
                 this.recompute_from_hex(cx);
             }
+            // 回车视为「提交当前颜色」，记入最近颜色。
+            crate::input_ui::InputEvent::PressEnter { .. } => {
+                let color = this.color;
+                this.push_recent(color, cx);
+            }
             _ => {}
         })
         .detach();
@@ -83,6 +98,9 @@ impl ColorPickerState {
             on_change: None,
             pending_emit: false,
             hex_dirty: true,
+            recents: Vec::new(),
+            recent_limit: RECENT_COLORS_LIMIT,
+            show_palette: true,
         }
     }
 
@@ -101,9 +119,68 @@ impl ColorPickerState {
         self
     }
 
+    /// 设置是否显示主题色板与最近颜色（默认显示）。
+    pub fn show_palette(mut self, show: bool) -> Self {
+        self.show_palette = show;
+        self
+    }
+
+    /// 设置最近颜色上限（最小 1，默认 [`RECENT_COLORS_LIMIT`]）。
+    pub fn recent_limit(mut self, limit: usize) -> Self {
+        self.recent_limit = limit.max(1);
+        self
+    }
+
     /// 当前颜色。
     pub fn color_value(&self) -> Hsla {
         self.color
+    }
+
+    /// 最近使用的颜色（最新的在前）。
+    pub fn recents(&self) -> &[Hsla] {
+        &self.recents
+    }
+
+    /// 把颜色记入最近颜色（去重置顶 + 截断），返回列表是否发生变化。
+    pub fn push_recent(&mut self, color: Hsla, cx: &mut Context<Self>) -> bool {
+        let changed = push_recent(&mut self.recents, color, self.recent_limit);
+        if changed {
+            cx.notify();
+        }
+        changed
+    }
+
+    /// 清空最近颜色。
+    pub fn clear_recents(&mut self, cx: &mut Context<Self>) {
+        if !self.recents.is_empty() {
+            self.recents.clear();
+            cx.notify();
+        }
+    }
+
+    /// 直接应用一个颜色：同步三滑块与 hex，并触发 `on_change`。
+    ///
+    /// 滑块步长为 1，只作近似指示；颜色以传入值为准（避免色阶量化改变取值）。
+    pub fn set_color(&mut self, color: Hsla, window: &mut Window, cx: &mut Context<Self>) {
+        self.hue.update(cx, |slider, cx| {
+            slider.set_value(color.h * 360.0, window, cx)
+        });
+        self.saturation.update(cx, |slider, cx| {
+            slider.set_value(color.s * 100.0, window, cx)
+        });
+        self.lightness.update(cx, |slider, cx| {
+            slider.set_value(color.l * 100.0, window, cx)
+        });
+        self.color = color;
+        self.hex_dirty = true;
+        self.pending_emit = true;
+        cx.notify();
+    }
+
+    /// 点击色板色块：应用颜色并记入最近颜色。
+    fn apply_swatch(&mut self, color: Hsla, window: &mut Window, cx: &mut Context<Self>) {
+        self.set_color(color, window, cx);
+        self.push_recent(color, cx);
     }
 
     /// 从三滑块重算颜色。
@@ -238,6 +315,41 @@ impl Render for ColorPickerState {
         let lightness = self.lightness.clone();
         let hex_input = self.hex_input.clone();
 
+        // 主题色板 + 最近颜色：共用同一个回调（应用颜色 + 记入最近）。
+        let palette_block = if self.show_palette {
+            let handler: Arc<dyn Fn(Hsla, &mut Window, &mut App) + 'static> = {
+                let picker = cx.entity();
+                Arc::new(move |color, window, cx| {
+                    picker.update(cx, |picker, cx| picker.apply_swatch(color, window, cx));
+                })
+            };
+            let current = self.color;
+            let mut block = div()
+                .flex()
+                .flex_col()
+                .gap(px(6.0))
+                .child(section_label("主题色", muted_foreground))
+                .child(
+                    ColorPalette::new("color-picker-theme")
+                        .colors(theme_palette(cx))
+                        .swatch_size(16.0)
+                        .selected(Some(current))
+                        .on_select_arc(handler.clone()),
+                );
+            if !self.recents.is_empty() {
+                block = block.child(section_label("最近", muted_foreground)).child(
+                    ColorPalette::new("color-picker-recent")
+                        .colors(self.recents.clone())
+                        .swatch_size(16.0)
+                        .selected(Some(current))
+                        .on_select_arc(handler),
+                );
+            }
+            Some(block.into_any_element())
+        } else {
+            None
+        };
+
         div()
             .flex()
             .flex_col()
@@ -254,7 +366,13 @@ impl Render for ColorPickerState {
             .child(slider_row("S", &saturation, muted_foreground))
             .child(slider_row("L", &lightness, muted_foreground))
             .child(Input::new(&hex_input).w_full())
+            .when_some(palette_block, |this, block| this.child(block))
     }
+}
+
+/// 小节标签（小号灰色文本）。
+fn section_label(label: &'static str, muted_foreground: Hsla) -> impl IntoElement {
+    div().text_xs().text_color(muted_foreground).child(label)
 }
 
 /// 单行滑块（标签 + 滑块）。
@@ -276,4 +394,78 @@ fn slider_row(
                 .child(label),
         )
         .child(div().flex_1().child(Slider::new(state).horizontal()))
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::ColorPickerState;
+    use crate::{
+        AppContext as _, Context, Entity, IntoElement, Render, TestAppContext, Window, div, hsla,
+    };
+
+    /// 取色器测试宿主（仅用于拿到带 Window 的测试上下文）。
+    struct Probe;
+
+    impl Render for Probe {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+        }
+    }
+
+    /// 最近颜色去重置顶，`set_color` 同步当前颜色，`recent_limit` 生效。
+    #[rgpui::test]
+    fn recents_and_set_color(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        let (_probe, cx) = cx.add_window_view(|_window, _cx| Probe);
+        let picker: Entity<ColorPickerState> =
+            cx.update(|window, cx| cx.new(|cx| ColorPickerState::new(window, cx)));
+
+        // 初始无最近颜色，默认显示色板。
+        assert!(picker.read_with(cx, |state, _| state.recents().is_empty()));
+
+        let a = hsla(0.0, 0.5, 0.5, 1.0);
+        let b = hsla(0.6, 0.5, 0.5, 1.0);
+        cx.update(|_, cx| {
+            picker.update(cx, |state, cx| {
+                assert!(state.push_recent(a, cx));
+                assert!(state.push_recent(b, cx));
+                // 已在首位：无变化。
+                assert!(!state.push_recent(b, cx));
+            });
+        });
+        assert_eq!(
+            picker.read_with(cx, |state, _| state.recents().to_vec()),
+            vec![b, a]
+        );
+
+        // 应用颜色：当前颜色同步，滑块与 hex 延后到 render 同步（此处只查颜色）。
+        cx.update(|window, cx| {
+            picker.update(cx, |state, cx| state.set_color(a, window, cx));
+        });
+        assert_eq!(picker.read_with(cx, |state, _| state.color_value()), a);
+
+        // 清空最近颜色。
+        cx.update(|_, cx| picker.update(cx, |state, cx| state.clear_recents(cx)));
+        assert!(picker.read_with(cx, |state, _| state.recents().is_empty()));
+
+        // 上限最小为 1（传 0 按 1 处理），并可通过 builder 关闭色板。
+        let limited: Entity<ColorPickerState> = cx.update(|window, cx| {
+            cx.new(|cx| {
+                ColorPickerState::new(window, cx)
+                    .recent_limit(0)
+                    .show_palette(false)
+            })
+        });
+        cx.update(|_, cx| {
+            limited.update(cx, |state, cx| {
+                state.push_recent(a, cx);
+                state.push_recent(b, cx);
+            });
+        });
+        assert_eq!(
+            limited.read_with(cx, |state, _| state.recents().to_vec()),
+            vec![b]
+        );
+    }
 }

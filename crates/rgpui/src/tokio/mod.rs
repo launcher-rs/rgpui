@@ -52,6 +52,13 @@ impl Drop for GlobalTokio {
     }
 }
 
+/// 是否已经初始化 Tokio 运行时。
+///
+/// 控制通道等能力会在缺失时自动补一次 [`init`]，避免调用方必须先记得初始化。
+pub fn is_initialized(cx: &App) -> bool {
+    cx.try_global::<GlobalTokio>().is_some()
+}
+
 /// Tokio 异步任务包装器
 pub struct Tokio {}
 

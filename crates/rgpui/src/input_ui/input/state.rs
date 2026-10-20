@@ -1982,8 +1982,9 @@ impl InputState {
         // 右对齐使用 0 边距：光标指示器在 layout_cursor 中被钳制在边界内，
         // 因此在此处移动文本会导致首次点击的视觉跳跃。
         let safety_margin = match last_layout.text_align {
-            TextAlign::Left => RIGHT_MARGIN,
-            TextAlign::Right => px(0.),
+            // 输入框不做段落方向重排，`Start` / `End` 按 LTR 处理。
+            TextAlign::Left | TextAlign::Start => RIGHT_MARGIN,
+            TextAlign::Right | TextAlign::End => px(0.),
             TextAlign::Center => CURSOR_WIDTH,
         };
         if let Some(line) = last_layout

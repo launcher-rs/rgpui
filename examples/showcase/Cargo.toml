@@ -28,11 +28,17 @@ futures.workspace = true
 [features]
 # showcase 覆盖全部组件与能力，套件基座默认开启，保证 workspace 的
 # check/test 都会编译并测试这些模块。
-default = ["ribbon", "viewport"]
+default = ["ribbon", "viewport", "spreadsheet", "document", "control-channel"]
 # Ribbon 套件基座组件（命令注册表 / Ribbon / 按键提示 / 快速访问工具栏）。
 ribbon = ["rgpui/ribbon"]
 # 视口与标尺基座组件（画布视口 / 刻度与对齐参考线）。
 viewport = ["rgpui/viewport"]
+# 电子表格基座组件（公式栏 / 电子表格网格）。
+spreadsheet = ["rgpui/spreadsheet"]
+# 文档套件基座组件（分页画布）。
+document = ["rgpui/document"]
+# 控制通道 + MCP 服务端（外部自动化 / AI 客户端调命令）。
+control-channel = ["rgpui/control-channel"]
 # 图表组件（BarChart/LineChart/PieChart 等）。
 charts = ["rgpui/charts"]
 # 封装动效（Aurora/Confetti/Marquee/Ripple/Shimmer 等）。
@@ -227,11 +233,67 @@ required-features = ["editor"]
 name = "keymap"
 path = "src/bin/keymap.rs"
 
+# ---------- 富剪贴板（核心 API，无需 feature） ----------
+[[bin]]
+name = "rich_clipboard"
+path = "src/bin/rich_clipboard.rs"
+
+# ---------- 富文本（核心 API，无需 feature） ----------
+[[bin]]
+name = "rich_text"
+path = "src/bin/rich_text.rs"
+
+# ---------- Ink 笔迹（核心 API，无需 feature） ----------
+[[bin]]
+name = "ink"
+path = "src/bin/ink.rs"
+
+# ---------- 缩略图排序器（核心 API，无需 feature） ----------
+[[bin]]
+name = "sorter"
+path = "src/bin/sorter.rs"
+
+# ---------- 动画时间线（核心 API，无需 feature） ----------
+[[bin]]
+name = "timeline"
+path = "src/bin/timeline.rs"
+
+# ---------- 取色器增强（核心 API，无需 feature） ----------
+[[bin]]
+name = "color_picker"
+path = "src/bin/color_picker.rs"
+
+# ---------- 多文档界面（核心 API，无需 feature） ----------
+[[bin]]
+name = "mdi"
+path = "src/bin/mdi.rs"
+
+# ---------- 任务窗格（核心 API，无需 feature） ----------
+[[bin]]
+name = "task_pane"
+path = "src/bin/task_pane.rs"
+
+# ---------- 画布语义（核心 API，无需 feature） ----------
+[[bin]]
+name = "canvas_a11y"
+path = "src/bin/canvas_a11y.rs"
+
+# ---------- 国际文本排版（核心 API，无需 feature） ----------
+[[bin]]
+name = "intl_text"
+path = "src/bin/intl_text.rs"
+
 # ---------- 套件基座（ribbon / viewport feature） ----------
 [[bin]]
 name = "command_registry"
 path = "src/bin/command_registry.rs"
 required-features = ["ribbon"]
+
+# ---------- 控制通道 / MCP（control-channel feature） ----------
+[[bin]]
+name = "automation"
+path = "src/bin/automation.rs"
+required-features = ["control-channel"]
 
 [[bin]]
 name = "ribbon"
@@ -262,6 +324,28 @@ required-features = ["viewport"]
 name = "ruler"
 path = "src/bin/ruler.rs"
 required-features = ["viewport"]
+
+[[bin]]
+name = "canvas_objects"
+path = "src/bin/canvas_objects.rs"
+required-features = ["viewport"]
+
+# ---------- 电子表格基座（spreadsheet feature） ----------
+[[bin]]
+name = "formula_bar"
+path = "src/bin/formula_bar.rs"
+required-features = ["spreadsheet"]
+
+[[bin]]
+name = "sheet_grid"
+path = "src/bin/sheet_grid.rs"
+required-features = ["spreadsheet"]
+
+# ---------- 文档套件基座（document feature） ----------
+[[bin]]
+name = "page_view"
+path = "src/bin/page_view.rs"
+required-features = ["document"]
 
 [[bin]]
 name = "dock"

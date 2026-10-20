@@ -10,7 +10,10 @@
 //! `Ribbon`（[`RibbonState`] 实体 + 若干 [`RibbonTab`]）
 //!  → `RibbonTab`（上下文选项卡可选 + 若干 [`RibbonGroup`]）
 //!  → `RibbonGroup`（若干 [`RibbonItem`]）
-//!  → [`RibbonItem`]：大按钮 / 小按钮 / 切换按钮 / 下拉按钮 / 分隔符。
+//!  → [`RibbonItem`]：大按钮 / 小按钮 / 切换按钮 / 下拉按钮 / 分裂按钮 / 库 / 组合框 / 分隔符。
+//!
+//! 选项卡条右侧带折叠开关（展开态朝上、折叠态朝下）；折叠态下点击选项卡会自动展开
+//! 并切换。
 //!
 //! ## 用法
 //!
@@ -76,19 +79,21 @@ pub fn init(cx: &mut App) {
     ]);
 }
 
-/// 功能区状态：当前激活的选项卡索引与按键提示状态。
+/// 功能区状态：当前激活的选项卡索引、折叠态与按键提示状态。
 pub struct RibbonState {
     active_tab: usize,
+    collapsed: bool,
     keytip_scope: KeyTipScope,
     keytip_pending: String,
     focus_handle: FocusHandle,
 }
 
 impl RibbonState {
-    /// 创建状态（默认选中第 0 个选项卡、按键提示未激活）。
+    /// 创建状态（默认选中第 0 个选项卡、展开、按键提示未激活）。
     pub fn new(cx: &mut crate::Context<Self>) -> Self {
         Self {
             active_tab: 0,
+            collapsed: false,
             keytip_scope: KeyTipScope::Hidden,
             keytip_pending: String::new(),
             focus_handle: cx.focus_handle(),
@@ -106,6 +111,34 @@ impl RibbonState {
             self.active_tab = index;
             cx.notify();
         }
+    }
+
+    /// 点击选项卡：切换激活项，并在折叠态下顺带展开功能区（Office 行为）。
+    pub fn activate_tab(&mut self, index: usize, cx: &mut crate::Context<Self>) {
+        if self.active_tab == index && !self.collapsed {
+            return;
+        }
+        self.active_tab = index;
+        self.collapsed = false;
+        cx.notify();
+    }
+
+    /// 功能区是否处于折叠态（仅显示选项卡条）。
+    pub fn is_collapsed(&self) -> bool {
+        self.collapsed
+    }
+
+    /// 设置折叠态并通知订阅者。
+    pub fn set_collapsed(&mut self, collapsed: bool, cx: &mut crate::Context<Self>) {
+        if self.collapsed != collapsed {
+            self.collapsed = collapsed;
+            cx.notify();
+        }
+    }
+
+    /// 在展开 / 折叠之间切换。
+    pub fn toggle_collapsed(&mut self, cx: &mut crate::Context<Self>) {
+        self.set_collapsed(!self.collapsed, cx);
     }
 
     /// 功能区根节点的焦点句柄（按键提示需要焦点才能接收按键）。
@@ -256,6 +289,34 @@ impl RibbonState {
                             commands.push((keytip, default.command.clone()));
                         }
                     }
+                    // 分裂按钮的提示键激活主命令。
+                    RibbonItem::Split(split) => {
+                        if let Some(keytip) =
+                            item_keytip(&split.command, &split.label, &split.keytip)
+                        {
+                            commands.push((keytip, split.command.clone()));
+                        }
+                    }
+                    // 库的提示键激活首个库项。
+                    RibbonItem::Gallery(gallery) => {
+                        if let (Some(keytip), Some(first)) =
+                            (gallery_keytip(gallery), gallery.items.first())
+                        {
+                            commands.push((keytip, first.command.clone()));
+                        }
+                    }
+                    // 组合框的提示键激活当前选中项（无选中时取首项）。
+                    RibbonItem::ComboBox(combo) => {
+                        if let Some(keytip) = combo_keytip(combo) {
+                            let selected = combo
+                                .selected
+                                .and_then(|ix| combo.items.get(ix))
+                                .or_else(|| combo.items.first());
+                            if let Some(item) = selected {
+                                commands.push((keytip, item.command.clone()));
+                            }
+                        }
+                    }
                     RibbonItem::Separator => {}
                 }
             }
@@ -350,6 +411,12 @@ pub enum RibbonItem {
     Toggle(RibbonToggle),
     /// 下拉按钮。
     Dropdown(RibbonDropdown),
+    /// 分裂按钮（主命令 + 下拉附加项）。
+    Split(RibbonSplitButton),
+    /// 库（弹出网格供选择）。
+    Gallery(RibbonGallery),
+    /// 组合框（当前值 + 下拉选项列表）。
+    ComboBox(RibbonComboBox),
     /// 分组内分隔符。
     Separator,
 }
@@ -368,6 +435,21 @@ impl RibbonItem {
     /// 创建下拉按钮。
     pub fn dropdown(label: impl Into<SharedString>) -> RibbonDropdown {
         RibbonDropdown::new(label)
+    }
+
+    /// 创建分裂按钮（绑定主命令）。
+    pub fn split(command: impl Into<SharedString>) -> RibbonSplitButton {
+        RibbonSplitButton::new(command)
+    }
+
+    /// 创建库（`label` 为触发按钮文案）。
+    pub fn gallery(label: impl Into<SharedString>) -> RibbonGallery {
+        RibbonGallery::new(label)
+    }
+
+    /// 创建组合框（`id` 为稳定元素 id）。
+    pub fn combobox(id: impl Into<SharedString>) -> RibbonComboBox {
+        RibbonComboBox::new(id)
     }
 
     /// 创建分隔符。
@@ -554,38 +636,288 @@ impl From<RibbonDropdown> for RibbonItem {
     }
 }
 
+/// 分裂按钮：主区域派发主命令，右侧（或下方）下拉箭头展开附加项。
+///
+/// 与 Office 的「分裂按钮 / 拆分按钮」一致：直接点击走常用命令，点箭头取更多
+/// 变体；两者共用同一个命令 id 绑定与派发链路。
+pub struct RibbonSplitButton {
+    command: SharedString,
+    label: Option<SharedString>,
+    icon: Option<IconName>,
+    large: bool,
+    keytip: Option<SharedString>,
+    items: Vec<RibbonDropdownItem>,
+}
+
+impl RibbonSplitButton {
+    /// 创建分裂按钮，绑定主命令 id。
+    pub fn new(command: impl Into<SharedString>) -> Self {
+        Self {
+            command: command.into(),
+            label: None,
+            icon: None,
+            large: false,
+            keytip: None,
+            items: Vec::new(),
+        }
+    }
+
+    /// 覆盖显示标签（默认取注册表标签）。
+    pub fn label(mut self, label: impl Into<SharedString>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+
+    /// 设置图标。
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    /// 渲染为大按钮。
+    pub fn large(mut self) -> Self {
+        self.large = true;
+        self
+    }
+
+    /// 追加一个下拉附加项。
+    pub fn item(mut self, item: RibbonDropdownItem) -> Self {
+        self.items.push(item);
+        self
+    }
+
+    /// 覆盖按键提示（默认取注册表提示或从标签派生，命中时执行主命令）。
+    pub fn keytip(mut self, keytip: impl Into<SharedString>) -> Self {
+        self.keytip = Some(keytip.into());
+        self
+    }
+}
+
+impl From<RibbonSplitButton> for RibbonItem {
+    fn from(value: RibbonSplitButton) -> Self {
+        RibbonItem::Split(value)
+    }
+}
+
+/// 库中的一项（图标 + 标签，可标记选中）。
+pub struct RibbonGalleryItem {
+    command: SharedString,
+    label: Option<SharedString>,
+    icon: Option<IconName>,
+    selected: bool,
+}
+
+impl RibbonGalleryItem {
+    /// 创建库项，绑定命令 id。
+    pub fn new(command: impl Into<SharedString>) -> Self {
+        Self {
+            command: command.into(),
+            label: None,
+            icon: None,
+            selected: false,
+        }
+    }
+
+    /// 覆盖显示标签。
+    pub fn label(mut self, label: impl Into<SharedString>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+
+    /// 设置图标。
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    /// 标记为当前选中项（绘制强调边框）。
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
+}
+
+/// 库：触发按钮展开一个图标网格，点击任一项派发其命令。
+///
+/// 对应 Office 的「库 / Gallery」（如样式库、形状库）。网格以弹出菜单承载，
+/// 点击单元格后自动关闭弹出层。
+pub struct RibbonGallery {
+    label: SharedString,
+    icon: Option<IconName>,
+    items: Vec<RibbonGalleryItem>,
+    columns: usize,
+    large: bool,
+    keytip: Option<SharedString>,
+}
+
+impl RibbonGallery {
+    /// 创建库（`label` 为触发按钮文案）。
+    pub fn new(label: impl Into<SharedString>) -> Self {
+        Self {
+            label: label.into(),
+            icon: None,
+            items: Vec::new(),
+            columns: 4,
+            large: false,
+            keytip: None,
+        }
+    }
+
+    /// 设置触发按钮图标。
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    /// 追加一个库项。
+    pub fn item(mut self, item: RibbonGalleryItem) -> Self {
+        self.items.push(item);
+        self
+    }
+
+    /// 设置网格列数（默认 4）。
+    pub fn columns(mut self, columns: usize) -> Self {
+        self.columns = columns.max(1);
+        self
+    }
+
+    /// 渲染为大按钮（默认小按钮）。
+    pub fn large(mut self) -> Self {
+        self.large = true;
+        self
+    }
+
+    /// 覆盖按键提示（默认从标签派生，命中时执行首个库项）。
+    pub fn keytip(mut self, keytip: impl Into<SharedString>) -> Self {
+        self.keytip = Some(keytip.into());
+        self
+    }
+}
+
+impl From<RibbonGallery> for RibbonItem {
+    fn from(value: RibbonGallery) -> Self {
+        RibbonItem::Gallery(value)
+    }
+}
+
+/// 组合框中的一项。
+pub struct RibbonComboBoxItem {
+    command: SharedString,
+    label: Option<SharedString>,
+}
+
+impl RibbonComboBoxItem {
+    /// 创建组合框项，绑定命令 id。
+    pub fn new(command: impl Into<SharedString>) -> Self {
+        Self {
+            command: command.into(),
+            label: None,
+        }
+    }
+
+    /// 覆盖显示标签。
+    pub fn label(mut self, label: impl Into<SharedString>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+}
+
+/// 组合框：展示当前值，下拉选择后派发对应命令。
+///
+/// 对应 Office 的字号 / 样式组合框。当前为「只读下拉」形态：每一项绑定命令 id，
+/// 选中即派发，显示文本取选中项标签（或占位符）。
+pub struct RibbonComboBox {
+    id: SharedString,
+    placeholder: SharedString,
+    selected: Option<usize>,
+    items: Vec<RibbonComboBoxItem>,
+    width: Option<f32>,
+    large: bool,
+    keytip: Option<SharedString>,
+}
+
+impl RibbonComboBox {
+    /// 创建组合框（`id` 需在当前功能区范围内唯一）。
+    pub fn new(id: impl Into<SharedString>) -> Self {
+        Self {
+            id: id.into(),
+            placeholder: SharedString::from("请选择"),
+            selected: None,
+            items: Vec::new(),
+            width: None,
+            large: false,
+            keytip: None,
+        }
+    }
+
+    /// 追加一个选项。
+    pub fn item(mut self, item: RibbonComboBoxItem) -> Self {
+        self.items.push(item);
+        self
+    }
+
+    /// 设置选中项索引。
+    pub fn selected(mut self, index: usize) -> Self {
+        self.selected = Some(index);
+        self
+    }
+
+    /// 设置无选中时的占位文本。
+    pub fn placeholder(mut self, text: impl Into<SharedString>) -> Self {
+        self.placeholder = text.into();
+        self
+    }
+
+    /// 设置固定宽度（像素）。
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = Some(width);
+        self
+    }
+
+    /// 渲染为大按钮（默认小按钮）。
+    pub fn large(mut self) -> Self {
+        self.large = true;
+        self
+    }
+
+    /// 覆盖按键提示（默认从选中项标签派生，命中时执行选中项命令）。
+    pub fn keytip(mut self, keytip: impl Into<SharedString>) -> Self {
+        self.keytip = Some(keytip.into());
+        self
+    }
+}
+
+impl From<RibbonComboBox> for RibbonItem {
+    fn from(value: RibbonComboBox) -> Self {
+        RibbonItem::ComboBox(value)
+    }
+}
+
 /// 功能区元素。
 #[derive(IntoElement)]
 pub struct Ribbon {
     state: Entity<RibbonState>,
     tabs: Vec<RibbonTab>,
-    collapsed: bool,
 }
 
 impl Ribbon {
-    /// 创建功能区（`state` 建议由父视图 `observe`，切换选项卡时重绘）。
+    /// 创建功能区（`state` 建议由父视图 `observe`，切换选项卡/折叠时重绘）。
     pub fn new(state: &Entity<RibbonState>, tabs: Vec<RibbonTab>) -> Self {
         Self {
             state: state.clone(),
             tabs,
-            collapsed: false,
         }
-    }
-
-    /// 设置折叠态（仅显示选项卡条）。
-    pub fn collapsed(mut self, collapsed: bool) -> Self {
-        self.collapsed = collapsed;
-        self
     }
 }
 
 impl RenderOnce for Ribbon {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
-        let (active_tab, scope, pending, focus_handle) = {
+        let (active_tab, collapsed, scope, pending, focus_handle) = {
             let state = self.state.read(cx);
             (
                 state.active_tab(),
+                state.is_collapsed(),
                 state.keytip_scope(),
                 state.keytip_pending().to_string(),
                 state.focus_handle().clone(),
@@ -595,7 +927,7 @@ impl RenderOnce for Ribbon {
         let show_control_keytips = scope == KeyTipScope::Controls;
 
         let tabs = self.tabs;
-        let state = self.state.clone();
+        let state = self.state;
 
         let tab_keytips: Vec<SharedString> = tabs.iter().map(tab_keytip).collect();
         let control_commands = RibbonState::control_commands(tabs.get(active_tab));
@@ -618,11 +950,13 @@ impl RenderOnce for Ribbon {
                     &pending,
                     cx,
                 )
-            }));
+            }))
+            // 选项卡条右侧的折叠开关（展开时朝上、折叠时朝下）。
+            .child(render_collapse_toggle(&state, collapsed, cx));
 
         let mut ribbon = v_flex().w_full().bg(theme.background).child(tab_strip);
 
-        if !self.collapsed {
+        if !collapsed {
             if let Some(tab) = tabs.get(active_tab) {
                 let body = h_flex()
                     .w_full()
@@ -710,7 +1044,37 @@ fn render_tab(
         .child(label)
         .when_some(badge, |this, badge| this.child(badge))
         .on_click(move |_event, _window, cx| {
-            state.update(cx, |state, cx| state.set_active_tab(index, cx));
+            state.update(cx, |state, cx| state.activate_tab(index, cx));
+        })
+}
+
+/// 渲染选项卡条右侧的折叠开关：展开态显示朝上箭头（点击折叠），
+/// 折叠态显示朝下箭头（点击展开）。
+fn render_collapse_toggle(
+    state: &Entity<RibbonState>,
+    collapsed: bool,
+    cx: &App,
+) -> impl IntoElement {
+    let theme = cx.theme();
+    let state = state.clone();
+    let icon = if collapsed {
+        IconName::ChevronDown
+    } else {
+        IconName::ChevronUp
+    };
+    h_flex()
+        .ml_auto()
+        .id("ribbon-collapse-toggle")
+        .items_center()
+        .justify_center()
+        .size(px(22.0))
+        .rounded_md()
+        .cursor_pointer()
+        .text_color(theme.muted_foreground)
+        .hover(|style| style.bg(theme.muted).text_color(theme.foreground))
+        .child(Icon::new(icon).with_size(px(14.0)))
+        .on_click(move |_event, _window, cx| {
+            state.update(cx, |state, cx| state.toggle_collapsed(cx));
         })
 }
 
@@ -795,6 +1159,19 @@ fn render_group_items(
                 elements
                     .push(render_dropdown(dropdown, show_keytips, pending, cx).into_any_element());
             }
+            RibbonItem::Split(split) => {
+                flush_column(&mut elements, &mut small_column);
+                elements.push(render_split(split, show_keytips, pending, cx).into_any_element());
+            }
+            RibbonItem::Gallery(gallery) => {
+                flush_column(&mut elements, &mut small_column);
+                elements
+                    .push(render_gallery(gallery, show_keytips, pending, cx).into_any_element());
+            }
+            RibbonItem::ComboBox(combo) => {
+                flush_column(&mut elements, &mut small_column);
+                elements.push(render_combo(combo, show_keytips, pending, cx).into_any_element());
+            }
             RibbonItem::Separator => {
                 flush_column(&mut elements, &mut small_column);
                 let theme = cx.theme();
@@ -868,6 +1245,31 @@ fn dropdown_keytip(dropdown: &RibbonDropdown) -> Option<SharedString> {
         .keytip
         .clone()
         .or_else(|| derive_keytip(&dropdown.label))
+}
+
+/// 库的按键提示（显式覆盖优先，其次从触发按钮标签派生）。
+fn gallery_keytip(gallery: &RibbonGallery) -> Option<SharedString> {
+    gallery
+        .keytip
+        .clone()
+        .or_else(|| derive_keytip(&gallery.label))
+}
+
+/// 组合框的按键提示：显式覆盖 > 当前项注册表提示 > 从当前项标签派生。
+fn combo_keytip(combo: &RibbonComboBox) -> Option<SharedString> {
+    if let Some(keytip) = &combo.keytip {
+        return Some(keytip.clone());
+    }
+    let current = combo
+        .selected
+        .and_then(|ix| combo.items.get(ix))
+        .or_else(|| combo.items.first())?;
+    if let Some(descriptor) = crate::CommandRegistry::global().get(&current.command) {
+        if let Some(keytip) = descriptor.keytip() {
+            return Some(keytip.clone());
+        }
+    }
+    derive_keytip(&command_label(&current.command, &current.label))
 }
 
 /// 在按键提示模式下，为匹配当前前缀的提示生成徽标。
@@ -1041,16 +1443,232 @@ fn render_dropdown(
         .when_some(badge, |this, badge| this.child(badge))
 }
 
+/// 渲染一个分裂按钮：主区域派发主命令 + 右侧下拉箭头展开附加项。
+fn render_split(
+    split: &RibbonSplitButton,
+    show_keytips: bool,
+    pending: &str,
+    cx: &App,
+) -> impl IntoElement {
+    // 主区域直接复用普通按钮的渲染（含大/小与按键提示徽标）。
+    let main_button = RibbonButton {
+        command: split.command.clone(),
+        label: split.label.clone(),
+        icon: split.icon.clone(),
+        large: split.large,
+        keytip: split.keytip.clone(),
+    };
+    let main = if split.large {
+        render_large_button(&main_button, show_keytips, pending, cx).into_any_element()
+    } else {
+        render_small_button(&main_button, show_keytips, pending, cx)
+    };
+
+    let items: Vec<(SharedString, SharedString)> = split
+        .items
+        .iter()
+        .map(|item| {
+            (
+                item.command.clone(),
+                command_label(&item.command, &item.label),
+            )
+        })
+        .collect();
+
+    let caret = crate::Button::new(SharedString::from(format!(
+        "ribbon-split-{}-caret",
+        split.command
+    )))
+    .compact()
+    .icon(IconName::ChevronDown)
+    .dropdown_menu(move |menu, _window, _cx| {
+        let mut menu = menu;
+        for (command, label) in &items {
+            let command = command.clone();
+            menu = menu.item(crate::PopupMenuItem::new(label.clone()).on_click(
+                move |_event, _window, cx| {
+                    let _ = cx.dispatch_command(&command, None);
+                },
+            ));
+        }
+        menu
+    });
+
+    h_flex()
+        .items_center()
+        .gap(px(1.0))
+        .child(main)
+        .child(caret)
+}
+
+/// 渲染一个库：触发按钮展开图标网格，点击单元格派发其命令。
+fn render_gallery(
+    gallery: &RibbonGallery,
+    show_keytips: bool,
+    pending: &str,
+    _cx: &App,
+) -> impl IntoElement {
+    let label = gallery.label.clone();
+    let badge = gallery_keytip(gallery)
+        .and_then(|keytip| keytip_badge(&keytip, pending, show_keytips, None));
+    let columns = gallery.columns;
+    let items: std::rc::Rc<Vec<GalleryEntry>> = std::rc::Rc::new(
+        gallery
+            .items
+            .iter()
+            .map(|item| GalleryEntry {
+                command: item.command.clone(),
+                label: command_label(&item.command, &item.label),
+                icon: item.icon.clone(),
+                selected: item.selected,
+            })
+            .collect(),
+    );
+
+    let mut trigger = crate::Button::new(SharedString::from(format!(
+        "ribbon-gallery-{}",
+        gallery.label
+    )))
+    .label(label);
+
+    if let Some(icon) = gallery.icon.clone() {
+        trigger = trigger.icon(icon);
+    }
+
+    let trigger = trigger.dropdown_menu(move |menu, _window, _cx| {
+        let items = items.clone();
+        menu.max_w(px(320.0))
+            .item(crate::PopupMenuItem::element(move |_window, cx| {
+                gallery_grid(&items, columns, cx)
+            }))
+    });
+
+    h_flex()
+        .items_center()
+        .gap(px(4.0))
+        .child(trigger)
+        .when_some(badge, |this, badge| this.child(badge))
+}
+
+/// 库网格中的一项（渲染用的展开数据）。
+struct GalleryEntry {
+    command: SharedString,
+    label: SharedString,
+    icon: Option<IconName>,
+    selected: bool,
+}
+
+/// 构建库的图标网格（点击单元格派发对应命令，并冒泡到弹出项以关闭弹层）。
+fn gallery_grid(items: &[GalleryEntry], columns: usize, cx: &App) -> crate::AnyElement {
+    let theme = cx.theme();
+    let mut grid = v_flex().gap(px(4.0));
+
+    for chunk in items.chunks(columns.max(1)) {
+        let mut row = h_flex().gap(px(4.0));
+        for entry in chunk {
+            let command = entry.command.clone();
+            let mut cell = v_flex()
+                .id(entry.command.clone())
+                .w(px(72.0))
+                .items_center()
+                .gap(px(2.0))
+                .p(px(4.0))
+                .rounded_md()
+                .cursor_pointer()
+                .when(entry.selected, |this| {
+                    this.border_1().border_color(theme.accent)
+                })
+                .hover(|style| style.bg(theme.muted));
+            if let Some(icon) = entry.icon.clone() {
+                cell = cell.child(Icon::new(icon).with_size(px(20.0)));
+            }
+            cell = cell.child(
+                div()
+                    .text_size(px(10.0))
+                    .text_center()
+                    .child(entry.label.clone()),
+            );
+            row = row.child(cell.on_click(move |_event, _window, cx| {
+                let _ = cx.dispatch_command(&command, None);
+            }));
+        }
+        grid = grid.child(row);
+    }
+
+    grid.into_any_element()
+}
+
+/// 渲染一个组合框：展示当前值，下拉选择后派发对应命令。
+fn render_combo(
+    combo: &RibbonComboBox,
+    show_keytips: bool,
+    pending: &str,
+    _cx: &App,
+) -> impl IntoElement {
+    let current = combo
+        .selected
+        .and_then(|ix| combo.items.get(ix))
+        .map(|item| command_label(&item.command, &item.label))
+        .unwrap_or_else(|| combo.placeholder.clone());
+    let badge =
+        combo_keytip(combo).and_then(|keytip| keytip_badge(&keytip, pending, show_keytips, None));
+    let selected = combo.selected;
+    let items: Vec<(SharedString, SharedString)> = combo
+        .items
+        .iter()
+        .map(|item| {
+            (
+                item.command.clone(),
+                command_label(&item.command, &item.label),
+            )
+        })
+        .collect();
+
+    let mut trigger = crate::Button::new(SharedString::from(format!("ribbon-combo-{}", combo.id)))
+        .label(current)
+        .icon(IconName::ChevronsUpDown);
+
+    if let Some(width) = combo.width {
+        trigger = trigger.w(px(width));
+    }
+
+    let trigger = trigger.dropdown_menu(move |menu, _window, _cx| {
+        let mut menu = menu;
+        for (index, (command, label)) in items.iter().enumerate() {
+            let command = command.clone();
+            menu = menu.item(
+                crate::PopupMenuItem::new(label.clone())
+                    .checked(selected == Some(index))
+                    .on_click(move |_event, _window, cx| {
+                        let _ = cx.dispatch_command(&command, None);
+                    }),
+            );
+        }
+        menu
+    });
+
+    h_flex()
+        .items_center()
+        .gap(px(4.0))
+        .child(trigger)
+        .when_some(badge, |this, badge| this.child(badge))
+}
+
 #[cfg(test)]
 mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
-    use super::{Ribbon, RibbonGroup, RibbonItem, RibbonState, RibbonTab, command_label};
+    use super::{
+        Ribbon, RibbonComboBox, RibbonComboBoxItem, RibbonGallery, RibbonGalleryItem, RibbonGroup,
+        RibbonItem, RibbonSplitButton, RibbonState, RibbonTab, command_label,
+    };
     use crate::keytips::KeyTipScope;
     use crate::{AppContext as _, Context, Entity, IntoElement, Render, SharedString, Window};
 
     /// 供按键提示测试使用的、登记了提示键的命令。
     fn demo_save() -> crate::CommandDescriptor {
-        crate::CommandDescriptor::new("rgpui_test::RibbonSave", "保存").with_keytip("S")
+        crate::CommandDescriptor::new("rgpui_test::RibbonSave", "保存")
+            .with_category("测试")
+            .with_keytip("S")
     }
 
     crate::register_command!(demo_save);
@@ -1071,6 +1689,25 @@ mod tests {
                                 RibbonItem::button("rgpui_test::Open")
                                     .label("打开")
                                     .keytip("O"),
+                            )
+                            .item(
+                                RibbonItem::split("rgpui_test::RibbonSave")
+                                    .label("保存")
+                                    .keytip("S")
+                                    .item(super::RibbonDropdownItem::new("rgpui_test::Quit")),
+                            )
+                            .item(
+                                RibbonItem::gallery("样式")
+                                    .keytip("Y")
+                                    .columns(2)
+                                    .item(RibbonGalleryItem::new("rgpui_test::Open").selected(true))
+                                    .item(RibbonGalleryItem::new("rgpui_test::Quit")),
+                            )
+                            .item(
+                                RibbonItem::combobox("size")
+                                    .selected(0)
+                                    .placeholder("字号")
+                                    .item(RibbonComboBoxItem::new("rgpui_test::Open")),
                             )
                             .item(RibbonItem::separator()),
                     ),
@@ -1236,5 +1873,100 @@ mod tests {
             state.read_with(cx, |state, _| state.keytip_scope()),
             KeyTipScope::Hidden
         );
+    }
+
+    /// 折叠态默认关闭；切换后生效；折叠态下点击选项卡会展开并切换。
+    #[rgpui::test]
+    fn collapse_toggles_and_tab_click_expands(cx: &mut crate::TestAppContext) {
+        let (view, cx) = cx.add_window_view(|_window, cx| {
+            let state = cx.new(|cx| RibbonState::new(cx));
+            cx.observe(&state, |_, _, cx| cx.notify()).detach();
+            Probe { state }
+        });
+        let state = view.read_with(cx, |probe, _| probe.state.clone());
+
+        assert!(!state.read_with(cx, |state, _| state.is_collapsed()));
+        state.update(cx, |state, cx| state.toggle_collapsed(cx));
+        assert!(state.read_with(cx, |state, _| state.is_collapsed()));
+
+        // 折叠态下点击（激活）第二个选项卡：切换并展开。
+        state.update(cx, |state, cx| state.activate_tab(1, cx));
+        assert_eq!(state.read_with(cx, |state, _| state.active_tab()), 1);
+        assert!(!state.read_with(cx, |state, _| state.is_collapsed()));
+
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+    }
+
+    /// 分裂 / 库 / 组合框均参与按键提示导航，命中其默认命令。
+    #[test]
+    fn control_commands_include_split_gallery_combo() {
+        let tabs = [RibbonTab::new("home", "开始").group(
+            RibbonGroup::new("组")
+                .item(
+                    RibbonItem::split("rgpui_test::RibbonSave")
+                        .label("保存")
+                        .keytip("S")
+                        .item(super::RibbonDropdownItem::new("rgpui_test::Quit")),
+                )
+                .item(
+                    RibbonItem::gallery("样式")
+                        .keytip("Y")
+                        .item(RibbonGalleryItem::new("rgpui_test::Open")),
+                )
+                .item(
+                    RibbonItem::combobox("size")
+                        .keytip("Z")
+                        .selected(1)
+                        .item(RibbonComboBoxItem::new("rgpui_test::Open"))
+                        .item(RibbonComboBoxItem::new("rgpui_test::Quit")),
+                ),
+        )];
+        let controls = RibbonState::control_commands(tabs.first());
+
+        // 分裂按钮命中主命令、库命中首项、组合框命中当前选中项。
+        assert!(controls.contains(&(
+            SharedString::from("S"),
+            SharedString::from("rgpui_test::RibbonSave")
+        )));
+        assert!(controls.contains(&(
+            SharedString::from("Y"),
+            SharedString::from("rgpui_test::Open")
+        )));
+        assert!(controls.contains(&(
+            SharedString::from("Z"),
+            SharedString::from("rgpui_test::Quit")
+        )));
+    }
+
+    /// 库 / 组合框的提示键：显式覆盖优先，其次从标签派生。
+    #[test]
+    fn gallery_and_combo_keytip_fallback() {
+        let gallery = RibbonGallery::new("Styles").item(RibbonGalleryItem::new("rgpui_test::Open"));
+        assert_eq!(super::gallery_keytip(&gallery).as_deref(), Some("S"));
+
+        // 组合框优先取当前项注册表提示（demo_save 登记了 "S"）。
+        let combo = RibbonComboBox::new("size")
+            .selected(0)
+            .item(RibbonComboBoxItem::new("rgpui_test::RibbonSave"));
+        assert_eq!(super::combo_keytip(&combo).as_deref(), Some("S"));
+
+        // 显式覆盖优先级最高。
+        let combo = combo.keytip("K");
+        assert_eq!(super::combo_keytip(&combo).as_deref(), Some("K"));
+    }
+
+    /// 分裂按钮由主按钮与下拉箭头组成，且携带附加项。
+    #[test]
+    fn split_button_builders() {
+        let split = RibbonSplitButton::new("rgpui_test::RibbonSave")
+            .label("保存")
+            .large()
+            .item(super::RibbonDropdownItem::new("rgpui_test::Quit"));
+        assert!(split.large);
+        assert_eq!(split.items.len(), 1);
+        let item: RibbonItem = split.into();
+        assert!(matches!(item, RibbonItem::Split(_)));
     }
 }

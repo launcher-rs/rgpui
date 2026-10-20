@@ -3,6 +3,7 @@ use crate::{
     auto_launch::MacAutoLaunch, events::key_to_native, focused_window,
     global_hotkey::MacGlobalHotkey, notifications::MacNotifications, ns_string,
     pasteboard::Pasteboard, permissions::MacPermissions, renderer, set_active_window_cursor_style,
+    tray::MacTray,
 };
 use anyhow::{Context as _, anyhow};
 use block::ConcreteBlock;
@@ -47,8 +48,8 @@ use rgpui::{
     ForegroundExecutor, KeyContext, Keymap, Keystroke, Menu, MenuItem, OsMenu, OwnedMenu,
     PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
     PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
-    SystemMenuType, Task, ThermalState, WindowAppearance, WindowKind, WindowParams,
-    popup::PopupNotSupportedError,
+    SharedString, SystemMenuType, Task, ThermalState, TrayIconEvent, TrayMenuItem,
+    WindowAppearance, WindowKind, WindowParams, popup::PopupNotSupportedError,
 };
 use semver::Version;
 use std::{
@@ -193,6 +194,12 @@ pub(crate) struct MacPlatformState {
     global_hotkey: MacGlobalHotkey,
     /// 全局快捷键触发回调
     on_global_hotkey: Option<Box<dyn FnMut(u32)>>,
+    /// 菜单栏状态栏图标（托盘）
+    tray: Option<MacTray>,
+    /// 托盘图标点击回调
+    tray_icon_event_callback: Option<Box<dyn FnMut(TrayIconEvent)>>,
+    /// 托盘菜单项回调（菜单项 id）
+    tray_menu_action_callback: Option<Box<dyn FnMut(SharedString)>>,
 }
 
 impl MacPlatform {
@@ -243,7 +250,41 @@ impl MacPlatform {
             cursor_visible: Arc::new(AtomicBool::new(true)),
             global_hotkey: MacGlobalHotkey::new(),
             on_global_hotkey: None,
+            tray: None,
+            tray_icon_event_callback: None,
+            tray_menu_action_callback: None,
         }))
+    }
+
+    /// 处理状态栏图标点击：先派发事件，再弹菜单。
+    ///
+    /// 回调与弹菜单都不持锁：应用可能在回调里回头调平台方法（隐藏窗口、激活窗口……），
+    /// 菜单项点击也会在 AppKit 的模态循环里再进平台层；持锁会死锁。
+    pub(crate) fn handle_tray_icon_event(&self, event: TrayIconEvent) {
+        let callback = self.0.lock().tray_icon_event_callback.take();
+        if let Some(mut callback) = callback {
+            callback(event);
+            self.0.lock().tray_icon_event_callback = Some(callback);
+        }
+
+        let anchor = self
+            .0
+            .lock()
+            .tray
+            .as_ref()
+            .and_then(|tray| tray.menu_anchor());
+        if let Some((status_item, menu)) = anchor {
+            crate::tray::pop_up_menu(status_item, menu);
+        }
+    }
+
+    /// 处理状态栏菜单项点击：把菜单项 id 交给应用。
+    pub(crate) fn handle_tray_menu_action(&self, id: SharedString) {
+        let callback = self.0.lock().tray_menu_action_callback.take();
+        if let Some(mut callback) = callback {
+            callback(id);
+            self.0.lock().tray_menu_action_callback = Some(callback);
+        }
     }
 
     unsafe fn create_menu_bar(
@@ -1211,6 +1252,38 @@ impl Platform for MacPlatform {
 
     fn on_global_hotkey(&self, callback: Box<dyn FnMut(u32)>) {
         self.0.lock().on_global_hotkey = Some(callback);
+    }
+
+    fn set_tray_icon(&self, icon: Option<&[u8]>) {
+        let mut state = self.0.lock();
+        let tray = state
+            .tray
+            .get_or_insert_with(|| MacTray::new(self as *const Self as *mut c_void));
+        tray.set_icon(icon);
+    }
+
+    fn set_tray_menu(&self, menu: Vec<TrayMenuItem>) {
+        let mut state = self.0.lock();
+        let tray = state
+            .tray
+            .get_or_insert_with(|| MacTray::new(self as *const Self as *mut c_void));
+        tray.set_menu(menu);
+    }
+
+    fn set_tray_tooltip(&self, tooltip: &str) {
+        let mut state = self.0.lock();
+        let tray = state
+            .tray
+            .get_or_insert_with(|| MacTray::new(self as *const Self as *mut c_void));
+        tray.set_tooltip(tooltip);
+    }
+
+    fn on_tray_icon_event(&self, callback: Box<dyn FnMut(TrayIconEvent)>) {
+        self.0.lock().tray_icon_event_callback = Some(callback);
+    }
+
+    fn on_tray_menu_action(&self, callback: Box<dyn FnMut(SharedString)>) {
+        self.0.lock().tray_menu_action_callback = Some(callback);
     }
 
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {

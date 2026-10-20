@@ -176,6 +176,16 @@ impl CommandRegistry {
 
         let mut by_id: HashMap<SharedString, usize> = HashMap::default();
         for (index, descriptor) in descriptors.iter().enumerate() {
+            // 同一 id 登记两次会让功能区 / 命令面板 / 控制通道看到不一致的命令：
+            // `by_id` 只认第一条（inventory 的遍历顺序不保证），重复项保留在清单里
+            // 由 `validate()` 报出来 —— 启动时记一条错误，CI 上的 gate 测试会失败。
+            if by_id.contains_key(&descriptor.id) {
+                log::error!(
+                    "命令 id `{}` 重复登记，已忽略后一条（`register_command!` 只能登记一次）",
+                    descriptor.id
+                );
+                continue;
+            }
             by_id.insert(descriptor.id.clone(), index);
         }
 
@@ -233,6 +243,42 @@ impl CommandRegistry {
     /// 注册表是否为空。
     pub fn is_empty(&self) -> bool {
         self.descriptors.is_empty()
+    }
+
+    /// 校验注册表自洽性，返回问题清单（空表示通过）。
+    ///
+    /// 检查项：id 非空且唯一、标签非空、分类非空、默认快捷键可解析。
+    /// 这是「命令清单」的 gate：应用在自己的测试里
+    /// `assert!(CommandRegistry::global().validate().is_empty())`，
+    /// 就能在 CI 上拦住「漏填分类 / 快捷键写错 / 重复登记」这类
+    /// 只有点到 UI 才会暴露的问题（控制通道的 `commands.list` 复用同一份元数据）。
+    pub fn validate(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for descriptor in &self.descriptors {
+            let id = descriptor.id();
+            if id.as_ref().is_empty() {
+                problems.push("存在空命令 id".to_string());
+            }
+            if !seen.insert(id.clone()) {
+                problems.push(format!("命令 id 重复：{id}"));
+            }
+            if descriptor.label().as_ref().is_empty() {
+                problems.push(format!("命令 `{id}` 缺少标签"));
+            }
+            if descriptor
+                .category()
+                .is_none_or(|category| category.as_ref().is_empty())
+            {
+                problems.push(format!("命令 `{id}` 缺少分类"));
+            }
+            for keystroke in descriptor.default_keystrokes() {
+                if crate::Keystroke::parse(keystroke).is_err() {
+                    problems.push(format!("命令 `{id}` 的快捷键 `{keystroke}` 无法解析"));
+                }
+            }
+        }
+        problems
     }
 }
 
@@ -313,5 +359,12 @@ mod tests {
         let registry = CommandRegistry::global();
         assert!(registry.get("rgpui_test::Missing").is_none());
         assert!(!registry.contains("rgpui_test::Missing"));
+    }
+
+    /// gate：全局命令清单自洽（id 唯一、标签/分类非空、快捷键可解析）。
+    #[test]
+    fn registry_passes_validation() {
+        let problems = CommandRegistry::global().validate();
+        assert!(problems.is_empty(), "命令清单存在问题：{problems:?}");
     }
 }

@@ -88,17 +88,32 @@ cargo run -p showcase --bin <名称>
 | `dock` | 停靠面板布局 | `cargo run -p showcase --bin dock` |
 | `chat` | AI 对话视图（ChatView 等） | `cargo run -p showcase --bin chat` |
 
-### 应用套件基座（`ribbon` / `viewport` feature）
+### 应用套件基座（`ribbon` / `viewport` / `spreadsheet` / `document` / `control-channel` feature）
 
 | bin | 说明 | 运行 |
 |-----|------|------|
 | `command_registry` | 命令注册表：按 id 派发 + 命令面板接入 | `cargo run -p showcase --bin command_registry` |
+| `automation` | 控制通道 / MCP：本机 TCP（JSON-RPC + 密钥）与 stdio MCP 工具调用同一套命令 | `cargo run -p showcase --bin automation`（加 `--mcp` 开 MCP） |
 | `ribbon` | Ribbon 功能区（选项卡 / 分组 / 大·小·切换·下拉按钮 / 上下文选项卡）+ Alt/F10 按键提示 | `cargo run -p showcase --bin ribbon` |
 | `qat` | 快速访问工具栏（QAT）：按命令 id 绑定的紧凑图标按钮条 | `cargo run -p showcase --bin qat` |
 | `mini_toolbar` | 迷你工具栏：拖动选择后就近浮出命令条（B/I/U/高亮/复制） | `cargo run -p showcase --bin mini_toolbar` |
 | `backstage` | 应用菜单：覆盖整窗的文件面板（左导航 + 内容页/命令页） | `cargo run -p showcase --bin backstage` |
 | `viewport` | 视口：可缩放/平移的 A4 文档页视图（屏幕↔文档坐标映射） | `cargo run -p showcase --bin viewport` |
 | `ruler` | 标尺刻度 + 拖拽方块吸附并显示参考线 | `cargo run -p showcase --bin ruler` |
+| `canvas_objects` | 画布对象工具：选区 / 缩放手柄 / 旋转手柄 / 对齐 / 分布 | `cargo run -p showcase --bin canvas_objects` |
+| `rich_clipboard` | 富剪贴板：同时写入纯文本 + HTML/RTF/CSV，粘贴后列出剪贴板上的所有格式 | `cargo run -p showcase --bin rich_clipboard` |
+| `rich_text` | 富文本：段落 + 行内运行模型，选区套用粗体/斜体/下划线/删除线/颜色，HTML 双向转换 + 剪贴板对接 | `cargo run -p showcase --bin rich_text` |
+| `ink` | Ink 笔迹：钢笔 / 荧光笔落笔（可开压感变宽），橡皮擦除，套索框选 + 撤销 / 清空 + 多图层 | `cargo run -p showcase --bin ink` |
+| `sorter` | 缩略图排序器：拖拽重排（插入指示线）+ 缩放 + 多选 + 键盘导航 | `cargo run -p showcase --bin sorter` |
+| `timeline` | 动画时间线：多轨关键帧编辑（标尺 / 关键帧拖拽 / 播放头 / 纵向滚动 / 轨道重排 / 轨道折叠），实时驱动预览方块 | `cargo run -p showcase --bin timeline` |
+| `color_picker` | 取色器增强：主题色板 / 最近颜色快捷色块 + 独立命名色阶色板，点击即应用 | `cargo run -p showcase --bin color_picker` |
+| `mdi` | 多文档界面：子窗口标题栏 / 最小化 / 最大化 / 八向缩放 + 层叠与平铺排布 | `cargo run -p showcase --bin mdi` |
+| `task_pane` | 任务窗格：可停靠 / 可浮动侧边面板（内缘拖拽改宽 / 标题栏拖动 / ✕ 关闭 / 自动隐藏 / 页签组） | `cargo run -p showcase --bin task_pane` |
+| `canvas_a11y` | 画布语义：自绘对象暴露给辅助技术（合成子节点 / 阅读顺序 / 键盘与无障碍动作） | `cargo run -p showcase --bin canvas_a11y` |
+| `intl_text` | 国际文本排版：段落基准方向（`dir=auto`）与 `start`/`end` 对齐 + CJK 行首/行末禁则换行 | `cargo run -p showcase --bin intl_text` |
+| `formula_bar` | 公式栏：名称框 + `fx` + 公式输入，绑定迷你单元格模型 | `cargo run -p showcase --bin formula_bar` |
+| `sheet_grid` | 电子表格网格：行列头 + 虚拟化单元格 + 矩形选区 + 填充柄，配合公式栏 | `cargo run -p showcase --bin sheet_grid` |
+| `page_view` | 文档页视图：多页 A4 分页画布 + 页眉页脚，配合视口缩放/平移 | `cargo run -p showcase --bin page_view` |
 
 ## 独立示例 crate
 

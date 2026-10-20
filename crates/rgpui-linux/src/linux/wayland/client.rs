@@ -1042,6 +1042,9 @@ impl LinuxClient for WaylandClient {
             for mime_type in TEXT_MIME_TYPES {
                 data_source.offer(mime_type.to_string());
             }
+            for mime_type in state.clipboard.rich_mime_types_primary() {
+                data_source.offer(mime_type);
+            }
             data_source.offer(state.clipboard.self_mime());
             primary_selection.set_selection(Some(&data_source), serial);
         }
@@ -1061,6 +1064,9 @@ impl LinuxClient for WaylandClient {
             let data_source = data_device_manager.create_data_source(&state.globals.qh, ());
             for mime_type in TEXT_MIME_TYPES {
                 data_source.offer(mime_type.to_string());
+            }
+            for mime_type in state.clipboard.rich_mime_types() {
+                data_source.offer(mime_type);
             }
             data_source.offer(state.clipboard.self_mime());
             data_device.set_selection(Some(&data_source), serial);
@@ -1085,6 +1091,31 @@ impl LinuxClient for WaylandClient {
 
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>> {
         None
+    }
+
+    fn activate_app(&self) {
+        // 最近交互过的窗口优先（键盘焦点），没有焦点就任取一个；
+        // 是否真的激活由合成器决定，Wayland 不允许应用强行抢焦点。
+        let window = {
+            let state = self.0.borrow();
+            state
+                .keyboard_focused_window
+                .clone()
+                .or_else(|| state.windows.values().next().cloned())
+        };
+        if let Some(window) = window {
+            window.request_activation();
+        }
+    }
+
+    fn hide_app(&self) {
+        let windows = {
+            let state = self.0.borrow();
+            state.windows.values().cloned().collect::<Vec<_>>()
+        };
+        for window in windows {
+            window.minimize_window();
+        }
     }
 
     fn compositor_name(&self) -> &'static str {

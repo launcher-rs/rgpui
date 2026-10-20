@@ -117,6 +117,17 @@ pub(crate) trait LinuxClient {
     /// 注销系统范围的热键
     fn unregister_global_hotkey(&self, _id: u32) {}
 
+    /// 激活应用：把最近使用的窗口提到前台。
+    ///
+    /// X11 走 EWMH `_NET_ACTIVE_WINDOW`；Wayland 请求 xdg-activation 令牌，
+    /// 合成器可以拒绝（Wayland 不允许应用强行抢焦点）。
+    fn activate_app(&self) {}
+
+    /// 隐藏应用的全部窗口。
+    ///
+    /// X11 取消映射（之后 `activate_app` 能把窗口重新 map 回来）；Wayland 只能最小化。
+    fn hide_app(&self) {}
+
     /// 派发全局热键触发事件
     ///
     /// 回调里常会调用 `update_window`、`quit` 等再次借用客户端状态的 API，所以必须
@@ -506,19 +517,23 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     }
 
     fn activate(&self, _ignoring_other_apps: bool) {
-        log::info!("activate is not implemented on Linux, ignoring the call")
+        // Linux 没有「忽略其他应用」这个概念，参数忽略；
+        // X11 发 _NET_ACTIVE_WINDOW，Wayland 请求激活令牌（可被合成器拒绝）
+        self.inner.activate_app()
     }
 
     fn hide(&self) {
-        log::info!("hide is not implemented on Linux, ignoring the call")
+        // 隐藏本应用的全部窗口：X11 取消映射，Wayland 最小化
+        self.inner.hide_app()
     }
 
     fn hide_other_apps(&self) {
-        log::info!("hide_other_apps is not implemented on Linux, ignoring the call")
+        // X11 / Wayland 都没有「隐藏其他应用」的协议能力（macOS 的
+        // NSApplication.hideOtherApplications 是独有 API），保留为空操作
     }
 
     fn unhide_other_apps(&self) {
-        log::info!("unhide_other_apps is not implemented on Linux, ignoring the call")
+        // 同上：没有隐藏过其他应用，也就无从恢复
     }
 
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {

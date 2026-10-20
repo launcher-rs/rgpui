@@ -171,6 +171,12 @@ impl TerminalView {
     fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         self.clear_bell(cx);
 
+        // IME 组合期间按键归输入法（候选上下翻、确认、取消），不能直送 PTY；
+        // 上屏文本由 `TerminalInputHandler::replace_text_in_range` 写入。
+        if self.terminal.read(cx).ime_composition().is_some() {
+            return;
+        }
+
         let handled = self.terminal.update(cx, |terminal, _| {
             terminal.try_keystroke(&event.keystroke, false)
         });

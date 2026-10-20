@@ -137,6 +137,8 @@ pub(crate) struct A11y {
     pub(crate) focus_ids: FxHashMap<NodeId, FocusId>,
     pub(crate) node_bounds: FxHashMap<NodeId, Bounds<Pixels>>,
     pub(crate) action_listeners: FxHashMap<NodeId, Vec<(Action, A11yActionListener)>>,
+    /// 本帧缩放因子：AccessKit 报告物理像素，元素几何是逻辑像素。
+    pub(crate) scale_factor: f32,
     /// 窗口标题，用于标记根节点，以便辅助技术区分不同窗口。
     window_title: Option<SharedString>,
     /// 最近一次报告的没有无障碍节点的焦点 ID，
@@ -164,6 +166,7 @@ impl A11y {
             focus_ids: FxHashMap::default(),
             node_bounds: FxHashMap::default(),
             action_listeners: FxHashMap::default(),
+            scale_factor: 1.0,
             window_title,
             last_focus_without_node: None,
             debug: debug::A11yDebug::default(),
@@ -283,16 +286,39 @@ impl A11y {
 pub struct A11ySubtreeBuilder<'a> {
     parent_id: NodeId,
     nodes: &'a mut A11yNodeBuilder,
+    /// 每帧复用的「节点 → 窗口坐标矩形」表，供内置动作回退（如 `Click` 命中中心）使用。
+    node_bounds: &'a mut FxHashMap<NodeId, Bounds<Pixels>>,
+    /// 本帧的缩放因子：AccessKit 报告的坐标是物理像素。
+    scale_factor: f32,
     /// 运行 `a11y_synthetic_children` 的真实元素的来源信息。
     #[cfg(debug_assertions)]
     creator: debug::NodeCreator,
 }
 
+/// 派生合成子节点的 [`NodeId`]（与 [`A11ySubtreeBuilder::synthetic_node_id`] 同源）。
+///
+/// 合成子节点的 ID 由父节点 ID 与 `key` 的哈希派生，因此自定义元素在
+/// [`Element::paint`] 中为合成子节点登记无障碍动作监听器时，可以用本函数
+/// 复算出与 [`Element::a11y_synthetic_children`] 完全一致的 ID。
+pub fn synthetic_child_node_id(parent: NodeId, key: impl Hash) -> NodeId {
+    let mut hasher = std::hash::DefaultHasher::default();
+    parent.0.hash(&mut hasher);
+    key.hash(&mut hasher);
+    NodeId(hasher.finish())
+}
+
 impl<'a> A11ySubtreeBuilder<'a> {
-    pub(crate) fn new(parent_id: NodeId, nodes: &'a mut A11yNodeBuilder) -> Self {
+    pub(crate) fn new(
+        parent_id: NodeId,
+        nodes: &'a mut A11yNodeBuilder,
+        node_bounds: &'a mut FxHashMap<NodeId, Bounds<Pixels>>,
+        scale_factor: f32,
+    ) -> Self {
         Self {
             parent_id,
             nodes,
+            node_bounds,
+            scale_factor,
             #[cfg(debug_assertions)]
             creator: debug::NodeCreator::default(),
         }
@@ -310,10 +336,13 @@ impl<'a> A11ySubtreeBuilder<'a> {
     /// 这意味着 `key` 在同一次 [`Element::a11y_synthetic_children`]
     /// 调用中必须唯一，但可以在不同调用中重复。
     pub fn synthetic_node_id(&self, key: impl Hash) -> NodeId {
-        let mut hasher = std::hash::DefaultHasher::default();
-        self.parent_id.0.hash(&mut hasher);
-        key.hash(&mut hasher);
-        NodeId(hasher.finish())
+        synthetic_child_node_id(self.parent_id, key)
+    }
+
+    /// 本帧的缩放因子。AccessKit 的坐标以物理像素报告，
+    /// 而元素几何是逻辑像素，据此换算。
+    pub fn scale_factor(&self) -> f32 {
+        self.scale_factor
     }
 
     /// 将合成叶节点作为当前元素节点的子节点追加。
@@ -342,6 +371,24 @@ impl<'a> A11ySubtreeBuilder<'a> {
         self.nodes
             .current_node_mut()
             .expect("A11ySubtreeBuilder exists only while its element's node is on the stack")
+    }
+
+    /// 追加合成叶节点，并登记其在窗口坐标下的 `bounds`。
+    ///
+    /// 与 [`Self::push_child`] 相同，但额外把矩形登记进本帧的「节点 → 矩形」表，
+    /// 使内置动作回退（例如向节点中心合成一次 [`accesskit::Action::Click`]）
+    /// 也能作用于合成节点 —— 合成节点不对应任何真实元素，否则无处可查其位置。
+    pub fn push_child_with_bounds(
+        &mut self,
+        id: NodeId,
+        node: accesskit::Node,
+        bounds: Bounds<Pixels>,
+    ) -> bool {
+        let pushed = self.push_child(id, node);
+        if pushed {
+            self.node_bounds.insert(id, bounds);
+        }
+        pushed
     }
 }
 
@@ -860,5 +907,80 @@ mod tests {
 
         let update = a11y.end_frame(Default::default());
         assert_eq!(update.focus, a);
+    }
+
+    // 画布语义：合成子节点带窗口坐标矩形发布（内置 `Click` 回退据此定位），
+    // 标记为焦点的对象同时成为容器的 active descendant。
+    #[test]
+    fn canvas_semantics_publish_synthetic_children_with_bounds() {
+        use super::A11ySubtreeBuilder;
+        use crate::canvas_a11y::{CanvasNode, CanvasSemantics, push_canvas_a11y};
+        use crate::collections::FxHashMap;
+        use crate::{Bounds, point, px, size};
+
+        let mut nodes = new_builder();
+        let canvas = NodeId(10);
+        assert!(nodes.push(canvas, test_node()));
+
+        let mut semantics = CanvasSemantics::new();
+        semantics.push(CanvasNode::new(
+            1,
+            Role::GraphicsObject,
+            "对象甲",
+            Bounds::new(point(px(10.0), px(20.0)), size(px(30.0), px(40.0))),
+        ));
+        semantics.push(
+            CanvasNode::new(
+                2,
+                Role::GraphicsObject,
+                "对象乙",
+                Bounds::new(point(px(50.0), px(20.0)), size(px(30.0), px(40.0))),
+            )
+            .focused(true),
+        );
+
+        let mut bounds = FxHashMap::default();
+        let pushed = {
+            // 缩放因子 2.0：AccessKit 节点矩形按物理像素报告。
+            let mut builder = A11ySubtreeBuilder::new(canvas, &mut nodes, &mut bounds, 2.0);
+            push_canvas_a11y(&mut builder, &semantics, point(px(100.0), px(200.0)))
+        };
+        assert_eq!(pushed, vec![1, 2]);
+
+        // 第二个对象：窗口坐标 = 画布原点 + 局部坐标 (50, 20)。
+        // 注意 key 是 `CanvasNodeId`（u64），字面量要显式标注类型，否则哈希不同。
+        let child = super::synthetic_child_node_id(canvas, 2u64);
+        assert_eq!(
+            bounds.get(&child).copied(),
+            Some(Bounds::new(
+                point(px(150.0), px(220.0)),
+                size(px(30.0), px(40.0))
+            ))
+        );
+
+        nodes.pop(); // canvas
+        let update = nodes.finalize();
+
+        let container = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == canvas)
+            .map(|(_, node)| node)
+            .expect("容器节点应在树中");
+        assert_eq!(container.active_descendant(), Some(child));
+
+        let child_node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == child)
+            .map(|(_, node)| node)
+            .expect("合成子节点应在树中");
+        assert_eq!(child_node.role(), Role::GraphicsObject);
+        assert_eq!(child_node.label(), Some("对象乙"));
+        let rect = child_node.bounds().expect("应带矩形");
+        assert_eq!(
+            (rect.x0, rect.y0, rect.x1, rect.y1),
+            (300.0, 440.0, 360.0, 520.0)
+        );
     }
 }

@@ -1,10 +1,24 @@
 //! 画布元素，提供自定义绘图回调，用于绘制任意图形内容。
+//!
+//! 画布上的内容不属于元素树，屏幕阅读器默认看不到。需要暴露自绘对象时，
+//! 用 [`.id(..)`][Canvas::id] + [`.a11y(..)`][Canvas::a11y] 声明
+//! [画布语义](crate::canvas_a11y)：每个 [`CanvasNode`](crate::canvas_a11y::CanvasNode)
+//! 会作为合成子节点写入
+//! 无障碍树（带矩形，可被辅助技术定位 / 点击），语义节点上的动作经
+//! [`.on_canvas_a11y_action(..)`][Canvas::on_canvas_a11y_action] 回到应用。
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use accesskit::{Action, ActionData, Role};
+
+use crate::canvas_a11y::{CanvasActionHandler, CanvasNodeId, CanvasSemantics};
+use crate::canvas_a11y::{push_canvas_a11y, register_canvas_a11y_actions};
 use crate::refineable::Refineable as _;
 
 use crate::{
     App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, Pixels,
-    Style, StyleRefinement, Styled, Window,
+    Point, SharedString, Style, StyleRefinement, Styled, Window,
 };
 
 /// 使用给定的绘制回调构造画布元素。
@@ -19,7 +33,25 @@ pub fn canvas<T>(
         #[cfg(feature = "dom-backend")]
         dom_impl: None,
         style: StyleRefinement::default(),
+        id: None,
+        a11y: None,
+        origin: Point::default(),
     }
+}
+
+/// 画布的无障碍配置：角色 / 名称 / 本帧语义节点 / 动作处理。
+///
+/// 由 [`.a11y(..)`][Canvas::a11y] 建立；[`.a11y_label(..)`][Canvas::a11y_label]
+/// 与 [`.on_canvas_a11y_action(..)`][Canvas::on_canvas_a11y_action] 只补字段。
+struct CanvasA11y {
+    /// 画布自身的无障碍角色。
+    role: Role,
+    /// 画布自身的无障碍名称。
+    label: Option<SharedString>,
+    /// 本帧的语义节点（应用每帧重建）。
+    semantics: CanvasSemantics,
+    /// 语义节点上的无障碍动作处理。
+    on_action: Option<CanvasActionHandler>,
 }
 
 /// 画布元素，用于在不定义完整自定义元素的情况下访问底层绘制 API
@@ -32,6 +64,12 @@ pub struct Canvas<T> {
     #[cfg(feature = "dom-backend")]
     dom_impl: Option<Box<dyn Fn(Bounds<Pixels>, &mut Window, &mut App) -> Option<crate::DomNode>>>,
     style: StyleRefinement,
+    /// 无障碍：元素 id（进入无障碍树、挂合成子节点的前提）。
+    id: Option<ElementId>,
+    /// 无障碍：角色 / 名称 / 语义节点 / 动作处理。
+    a11y: Option<CanvasA11y>,
+    /// 最近一次预绘制的画布原点（语义节点是局部坐标，发布时需换算）。
+    origin: Point<Pixels>,
 }
 
 impl<T: 'static> Canvas<T> {
@@ -46,6 +84,66 @@ impl<T: 'static> Canvas<T> {
     ) -> Self {
         self.dom_impl = Some(Box::new(f));
         self
+    }
+
+    /// 设置元素 id。
+    ///
+    /// 只有带 id 的元素才会被分配 [`GlobalElementId`]，也才能把画布语义写进
+    /// 无障碍树 —— 因此 [`a11y`][Self::a11y] 需要配合本方法使用。
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// 声明画布的无障碍角色与本帧的语义节点。
+    ///
+    /// `semantics` 是应用对本帧画布上自绘对象的描述（见 [`CanvasSemantics`]）；
+    /// 每个节点会作为画布元素的合成子节点发布。需要先 [`.id(..)`][Self::id]。
+    pub fn a11y(mut self, role: Role, semantics: CanvasSemantics) -> Self {
+        let existing = self.a11y.take();
+        self.a11y = Some(CanvasA11y {
+            role,
+            label: existing.as_ref().and_then(|a11y| a11y.label.clone()),
+            semantics,
+            on_action: existing.and_then(|a11y| a11y.on_action),
+        });
+        self
+    }
+
+    /// 设置画布自身的无障碍名称（辅助技术播报的容器名）。
+    ///
+    /// 尚未调用 [`a11y`][Self::a11y] 时以 [`Role::Canvas`] 建立配置。
+    pub fn a11y_label(mut self, label: impl Into<SharedString>) -> Self {
+        let a11y = self.a11y.get_or_insert_with(CanvasA11y::default);
+        a11y.label = Some(label.into());
+        self
+    }
+
+    /// 处理语义节点上的无障碍动作。
+    ///
+    /// 闭包收到被操作节点的 [`CanvasNodeId`] 与 [`Action`]（以及 AccessKit 附带的
+    /// [`ActionData`]），可据此更新应用状态（移动焦点、选中对象、改数值…）。
+    /// 只有节点自己声明过的动作
+    /// （[`CanvasNode::with_action`](crate::canvas_a11y::CanvasNode::with_action)）才会被派发。
+    pub fn on_canvas_a11y_action(
+        mut self,
+        handler: impl FnMut(CanvasNodeId, Action, Option<&ActionData>, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        let handler: CanvasActionHandler = Rc::new(RefCell::new(handler));
+        let a11y = self.a11y.get_or_insert_with(CanvasA11y::default);
+        a11y.on_action = Some(handler);
+        self
+    }
+}
+
+impl Default for CanvasA11y {
+    fn default() -> Self {
+        Self {
+            role: Role::Canvas,
+            label: None,
+            semantics: CanvasSemantics::new(),
+            on_action: None,
+        }
     }
 }
 
@@ -62,7 +160,7 @@ impl<T: 'static> Element for Canvas<T> {
     type PrepaintState = Option<T>;
 
     fn id(&self) -> Option<ElementId> {
-        None
+        self.id.clone()
     }
 
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
@@ -91,12 +189,14 @@ impl<T: 'static> Element for Canvas<T> {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<T> {
+        // 记下画布原点：语义节点是画布局部坐标，发布合成子节点时要换算成窗口坐标。
+        self.origin = bounds.origin;
         Some(self.prepaint.take().unwrap()(bounds, window, cx))
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
+        id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         style: &mut Style,
@@ -105,9 +205,41 @@ impl<T: 'static> Element for Canvas<T> {
         cx: &mut App,
     ) {
         let prepaint = prepaint.take().unwrap();
+        let paint = self.paint.take().unwrap();
+
+        // 无障碍：登记语义节点上的动作监听器。先于自绘完成，避免与绘制闭包争借用。
+        if window.is_a11y_active()
+            && let (Some(global_id), Some(a11y)) = (id, self.a11y.as_ref())
+            && let Some(handler) = a11y.on_action.clone()
+        {
+            register_canvas_a11y_actions(window, global_id, &a11y.semantics, handler);
+        }
+
         style.paint(bounds, window, cx, |window, cx| {
-            (self.paint.take().unwrap())(bounds, prepaint, window, cx)
+            paint(bounds, prepaint, window, cx)
         });
+    }
+
+    fn a11y_role(&self) -> Option<Role> {
+        self.a11y.as_ref().map(|a11y| a11y.role)
+    }
+
+    fn write_a11y_info(&self, node: &mut accesskit::Node) {
+        if let Some(a11y) = &self.a11y
+            && let Some(label) = &a11y.label
+        {
+            node.set_label(label.to_string());
+        }
+    }
+
+    fn a11y_synthetic_children(
+        &mut self,
+        _prepaint: &mut Self::PrepaintState,
+        builder: &mut crate::A11ySubtreeBuilder,
+    ) {
+        if let Some(a11y) = &self.a11y {
+            push_canvas_a11y(builder, &a11y.semantics, self.origin);
+        }
     }
 
     /// 返回可选的自绘 DOM 节点（图表/波形/SVG 等在纯 DOM 模式下的显示）。

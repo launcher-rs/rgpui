@@ -1810,8 +1810,8 @@ impl LinuxClient for X11Client {
         let state = self.0.borrow_mut();
         state
             .clipboard
-            .set_text(
-                std::borrow::Cow::Owned(item.text().unwrap_or_default()),
+            .set_item(
+                &item,
                 clipboard::ClipboardKind::Primary,
                 clipboard::WaitConfig::None,
             )
@@ -1823,8 +1823,8 @@ impl LinuxClient for X11Client {
         let mut state = self.0.borrow_mut();
         state
             .clipboard
-            .set_text(
-                std::borrow::Cow::Owned(item.text().unwrap_or_default()),
+            .set_item(
+                &item,
                 clipboard::ClipboardKind::Clipboard,
                 clipboard::WaitConfig::None,
             )
@@ -1837,7 +1837,7 @@ impl LinuxClient for X11Client {
         let state = self.0.borrow_mut();
         state
             .clipboard
-            .get_any(clipboard::ClipboardKind::Primary)
+            .get_item(clipboard::ClipboardKind::Primary)
             .context("X11: Failed to read from clipboard (primary)")
             .log_with_level(log::Level::Debug)
     }
@@ -1854,7 +1854,7 @@ impl LinuxClient for X11Client {
         }
         state
             .clipboard
-            .get_any(clipboard::ClipboardKind::Clipboard)
+            .get_item(clipboard::ClipboardKind::Clipboard)
             .context("X11: Failed to read from clipboard (clipboard)")
             .log_with_level(log::Level::Debug)
     }
@@ -1882,6 +1882,63 @@ impl LinuxClient for X11Client {
                 .get(&focused_window)
                 .map(|window| window.handle())
         })
+    }
+
+    fn activate_app(&self) {
+        let state = self.0.borrow();
+        // 最近用过的窗口优先：当前键盘焦点窗口，否则任取一个
+        let Some(x_window) = state
+            .keyboard_focused_window
+            .filter(|window| state.windows.contains_key(window))
+            .or_else(|| state.windows.keys().next().copied())
+        else {
+            return;
+        };
+
+        // 与 X11Window::activate 同一套：`hide()` 撤下的窗口 WM_STATE 变成 Withdrawn，
+        // 窗管会忽略单发的 _NET_ACTIVE_WINDOW，所以先 map 回来（已可见时是空操作）。
+        check_reply(
+            || "X11 MapWindow on activate_app failed.",
+            state.xcb_connection.map_window(x_window),
+        )
+        .log_err();
+
+        let root = state.xcb_connection.setup().roots[state.x_root_index].root;
+        let data = [1, xproto::Time::CURRENT_TIME.into(), 0, 0, 0];
+        let message =
+            xproto::ClientMessageEvent::new(32, x_window, state.atoms._NET_ACTIVE_WINDOW, data);
+        check_reply(
+            || "X11 _NET_ACTIVE_WINDOW on activate_app failed.",
+            state.xcb_connection.send_event(
+                false,
+                root,
+                xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+                message,
+            ),
+        )
+        .log_err();
+        check_reply(
+            || "X11 SetInputFocus on activate_app failed.",
+            state.xcb_connection.set_input_focus(
+                xproto::InputFocus::POINTER_ROOT,
+                x_window,
+                xproto::Time::CURRENT_TIME,
+            ),
+        )
+        .log_err();
+        state.xcb_connection.flush().log_err();
+    }
+
+    fn hide_app(&self) {
+        let state = self.0.borrow();
+        for x_window in state.windows.keys() {
+            check_reply(
+                || "X11 UnmapWindow on hide_app failed.",
+                state.xcb_connection.unmap_window(*x_window),
+            )
+            .log_err();
+        }
+        state.xcb_connection.flush().log_err();
     }
 
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>> {

@@ -332,6 +332,18 @@ impl DirectXRenderer {
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
+        self.draw_into(scene, background_appearance)?;
+        self.present()
+    }
+
+    /// 把场景画进当前绑定的渲染目标，但不提交（`Present`）。
+    ///
+    /// 上屏与离屏读回共用这一段：差别只在渲染目标是谁、以及最后要不要 `Present`。
+    fn draw_into(
+        &mut self,
+        scene: &Scene,
+        background_appearance: WindowBackgroundAppearance,
+    ) -> Result<()> {
         if self.skip_draws {
             // skip drawing this frame, we just recovered from a device lost event
             // and so likely do not have the textures anymore that are required for drawing
@@ -378,7 +390,66 @@ impl DirectXRenderer {
                 scene.surfaces.len(),
             ))?;
         }
-        self.present()
+        Ok(())
+    }
+
+    /// 把场景离屏渲染成 RGBA 像素（视觉测试 / 导出用）。
+    ///
+    /// 换一张与窗口同尺寸、同格式的离屏渲染目标，再走一遍 [`Self::draw_into`]，
+    /// 因此**不会**把这一帧提交到屏幕，也不影响窗口当前显示的内容；读回后把窗口的
+    /// 渲染目标原样换回去。顶点缓冲与字形图集仍复用窗口那份渲染器资源，
+    /// 所以像素结果与上屏路径一致。
+    #[cfg(feature = "test-support")]
+    pub(crate) fn render_to_image(
+        &mut self,
+        scene: &Scene,
+        background_appearance: WindowBackgroundAppearance,
+    ) -> Result<image::RgbaImage> {
+        if self.skip_draws {
+            anyhow::bail!("渲染器刚从设备丢失中恢复，本次不能离屏渲染");
+        }
+
+        let width = self.width.max(1);
+        let height = self.height.max(1);
+        let devices = self.devices.clone().context("devices missing")?;
+
+        let target = create_offscreen_render_target(&devices.device, width, height)?;
+        let mut target_view = None;
+        unsafe {
+            devices
+                .device
+                .CreateRenderTargetView(&target, None, Some(&mut target_view))?
+        };
+        let target_view = target_view.context("创建离屏渲染目标视图失败")?;
+
+        // 换成离屏目标：`draw_paths_from_intermediate` 恢复主目标时读的也是
+        // `resources.render_target_view`，所以整条绘制链路（含路径的中间纹理回贴）
+        // 都会落到离屏目标上。
+        let (previous_target, previous_view) = {
+            let resources = self.resources.as_mut().context("resources missing")?;
+            (
+                resources.render_target.replace(target.clone()),
+                resources.render_target_view.replace(target_view),
+            )
+        };
+
+        let result = self.draw_into(scene, background_appearance).and_then(|()| {
+            read_render_target(
+                &devices.device,
+                &devices.device_context,
+                &target,
+                width,
+                height,
+            )
+        });
+
+        // 无论成功与否都把窗口的渲染目标换回去，别让后续正常绘制画到离屏纹理上。
+        if let Some(resources) = self.resources.as_mut() {
+            resources.render_target = previous_target;
+            resources.render_target_view = previous_view;
+        }
+
+        result
     }
 
     /// 调整渲染器大小以匹配新的窗口尺寸
@@ -1323,6 +1394,91 @@ fn create_render_target_and_its_view(
     Ok((render_target, render_target_view))
 }
 
+/// 创建离屏渲染目标（与交换链同格式，默认用途，可作渲染目标）。
+#[cfg(any(test, feature = "test-support"))]
+#[inline]
+fn create_offscreen_render_target(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+) -> Result<ID3D11Texture2D> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: RENDER_TARGET_FORMAT,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+        CPUAccessFlags: 0,
+        MiscFlags: 0,
+    };
+    let mut texture = None;
+    unsafe { device.CreateTexture2D(&desc, None, Some(&mut texture))? };
+    texture.context("创建离屏渲染目标纹理失败")
+}
+
+/// 把离屏渲染目标读回成 RGBA8 像素（源格式是 BGRA，这里交换 R / B 通道）。
+///
+/// 默认用途的纹理不能直接 `Map`：先 `CopyResource` 到
+/// `D3D11_USAGE_STAGING` + `CPU_ACCESS_READ` 的副本，再按行（行跨度是 `RowPitch`，
+/// 通常大于 `width * 4`）拷进紧密排布的像素缓冲。
+#[cfg(any(test, feature = "test-support"))]
+fn read_render_target(
+    device: &ID3D11Device,
+    device_context: &ID3D11DeviceContext,
+    render_target: &ID3D11Texture2D,
+    width: u32,
+    height: u32,
+) -> Result<image::RgbaImage> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: RENDER_TARGET_FORMAT,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_STAGING,
+        BindFlags: 0,
+        CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+        MiscFlags: 0,
+    };
+    let mut staging = None;
+    unsafe { device.CreateTexture2D(&desc, None, Some(&mut staging))? };
+    let staging = staging.context("创建读回纹理失败")?;
+
+    unsafe { device_context.CopyResource(&staging, render_target) };
+
+    let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+    unsafe { device_context.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
+
+    let mut pixels = vec![0u8; width as usize * height as usize * 4];
+    for row in 0..height as usize {
+        let source_row = unsafe { (mapped.pData as *const u8).add(row * mapped.RowPitch as usize) };
+        for column in 0..width as usize {
+            let source = unsafe { source_row.add(column * 4) };
+            let offset = (row * width as usize + column) * 4;
+            unsafe {
+                pixels[offset] = *source.add(2);
+                pixels[offset + 1] = *source.add(1);
+                pixels[offset + 2] = *source;
+                pixels[offset + 3] = *source.add(3);
+            }
+        }
+    }
+
+    unsafe { device_context.Unmap(&staging, 0) };
+
+    image::RgbaImage::from_raw(width, height, pixels).context("读回像素尺寸与图像不符")
+}
+
 #[inline]
 fn create_path_intermediate_texture(
     device: &ID3D11Device,
@@ -2008,5 +2164,64 @@ mod dxgi {
             (number >> 16) & 0xFFFF,
             number & 0xFFFF
         ))
+    }
+}
+
+#[cfg(test)]
+mod readback_tests {
+    use super::{create_offscreen_render_target, read_render_target};
+    use windows::Win32::Foundation::HMODULE;
+    use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_WARP;
+    use windows::Win32::Graphics::Direct3D11::{
+        D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device,
+        ID3D11DeviceContext,
+    };
+
+    /// 用 WARP 软件设备跑测试：CI 的 Windows runner 没有独立显卡也能工作，
+    /// 连 WARP 都建不起来（极少数环境）就跳过，不把环境问题变成回归噪声。
+    fn create_warp_device() -> Option<(ID3D11Device, ID3D11DeviceContext)> {
+        let mut device: Option<ID3D11Device> = None;
+        let mut device_context: Option<ID3D11DeviceContext> = None;
+        unsafe {
+            D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_WARP,
+                HMODULE::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                None,
+                D3D11_SDK_VERSION,
+                Some(&mut device),
+                None,
+                Some(&mut device_context),
+            )
+        }
+        .ok()?;
+        Some((device?, device_context?))
+    }
+
+    /// 离屏目标读回：通道顺序（BGRA -> RGBA）与尺寸都要对。
+    ///
+    /// 这条覆盖 `render_to_image` 的后半段（建离屏目标 -> 复制到 staging -> Map 读回），
+    /// 用纯红做断言可以顺便验出「忘了交换 R / B」的错误 —— 绿色是对称的，测不出来。
+    #[test]
+    fn offscreen_target_reads_back_bgra_as_rgba() {
+        let Some((device, device_context)) = create_warp_device() else {
+            return;
+        };
+
+        let target = create_offscreen_render_target(&device, 4, 3).expect("离屏渲染目标应能创建");
+        let mut view = None;
+        unsafe { device.CreateRenderTargetView(&target, None, Some(&mut view)) }
+            .expect("渲染目标视图应能创建");
+        let view = view.expect("渲染目标视图不能为空");
+        unsafe { device_context.ClearRenderTargetView(&view, &[1.0, 0.0, 0.0, 1.0]) };
+
+        let image = read_render_target(&device, &device_context, &target, 4, 3)
+            .expect("离屏目标应能读回像素");
+
+        assert_eq!(image.dimensions(), (4, 3));
+        for pixel in image.pixels() {
+            assert_eq!(pixel.0, [255, 0, 0, 255], "读回的像素应是红色且通道不串");
+        }
     }
 }

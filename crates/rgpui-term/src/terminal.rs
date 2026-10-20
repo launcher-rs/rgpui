@@ -484,6 +484,7 @@ impl TerminalBuilder {
                 middlewares: Vec::new(),
                 event_loop_task: Task::ready(Ok(())),
                 block_tracker: BlockTracker::new(),
+                ime_composition: None,
             };
 
             Ok(TerminalBuilder {
@@ -586,6 +587,8 @@ pub struct Terminal {
     event_loop_task: Task<Result<(), anyhow::Error>>,
     /// 代码块跟踪器
     block_tracker: BlockTracker,
+    /// IME 组合中（尚未上屏）的文本；`None` 表示没有正在进行的组合
+    ime_composition: Option<String>,
 }
 
 impl Terminal {
@@ -684,6 +687,18 @@ impl Terminal {
         if !text.is_empty() {
             self.input_with_origin(text.as_bytes().to_vec(), InputOrigin::Text);
         }
+    }
+
+    /// 设置 IME 组合文本（`None` 表示组合结束）。
+    ///
+    /// 组合文本只做预览，不上屏；上屏由 [`Self::input_text`] 完成。
+    pub fn set_ime_composition(&mut self, text: Option<String>) {
+        self.ime_composition = text;
+    }
+
+    /// 当前 IME 组合文本（用于在光标处预览）。
+    pub fn ime_composition(&self) -> Option<&str> {
+        self.ime_composition.as_deref()
     }
 
     /// 粘贴文本到终端。

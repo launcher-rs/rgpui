@@ -482,8 +482,9 @@ impl TextElement {
                 // 右对齐使用 0 边距：光标被单独钳制在边界内，
                 // 因此我们从不针对边界光标滚动文本，避免首次点击跳变。
                 let safety_margin = match last_layout.text_align {
-                    TextAlign::Left => RIGHT_MARGIN,
-                    TextAlign::Right => px(0.),
+                    // 输入框不做段落方向重排，`Start` / `End` 按 LTR 处理。
+                    TextAlign::Left | TextAlign::Start => RIGHT_MARGIN,
+                    TextAlign::Right | TextAlign::End => px(0.),
                     TextAlign::Center => CURSOR_WIDTH,
                 };
 

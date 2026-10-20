@@ -480,6 +480,8 @@ impl<E: Element> Drawable<E> {
                         let mut builder = A11ySubtreeBuilder::new(
                             global_id.accesskit_node_id(),
                             &mut window.a11y.nodes,
+                            &mut window.a11y.node_bounds,
+                            window.a11y.scale_factor,
                         );
                         #[cfg(debug_assertions)]
                         {
