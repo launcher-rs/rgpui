@@ -52,6 +52,8 @@ pub struct LayoutState {
     polygon_fragments: Vec<PolygonFragment>,
     selection_rects: Vec<LayoutRect>,
     cursor: Option<CursorLayout>,
+    /// IME 组合预览：已排版好的文本 + 相对元素原点的位置（画在光标处）
+    composition: Option<(ShapedLine, Point<Pixels>)>,
     background_color: Hsla,
     foreground_color: Hsla,
     dimensions: TerminalBounds,
@@ -1518,6 +1520,33 @@ impl Element for TerminalElement {
             )
         };
 
+        // IME 组合预览：贴在光标格上，下划线表示「还没上屏」
+        let composition = cursor_layout.as_ref().and_then(|cursor_layout| {
+            let composition = self.terminal.read(cx).ime_composition()?.to_owned();
+            if composition.is_empty() {
+                return None;
+            }
+
+            let len = composition.len();
+            let line = window.text_system().shape_line(
+                composition.into(),
+                font_pixels,
+                &[TextRun {
+                    len,
+                    font: text_style.font.clone(),
+                    color: text_style.foreground,
+                    underline: Some(UnderlineStyle {
+                        thickness: px(1.0),
+                        color: Some(text_style.foreground),
+                        wavy: false,
+                    }),
+                    ..Default::default()
+                }],
+                None,
+            );
+            Some((line, cursor_layout.origin))
+        });
+
         LayoutState {
             _hitbox: hitbox,
             batched_text_runs,
@@ -1526,6 +1555,7 @@ impl Element for TerminalElement {
             polygon_fragments,
             selection_rects,
             cursor: cursor_layout,
+            composition,
             background_color,
             foreground_color,
             dimensions,
@@ -1580,6 +1610,18 @@ impl Element for TerminalElement {
                 && let Some(cursor) = &layout.cursor
             {
                 cursor.paint(origin, window, cx);
+            }
+
+            // IME 组合预览画在光标之上，保证块状光标下也看得见
+            if let Some((line, position)) = &layout.composition {
+                let _ = line.paint(
+                    origin + *position,
+                    layout.dimensions.line_height,
+                    rgpui::TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                );
             }
 
             // Paint scrollbar on top of terminal content
@@ -1816,20 +1858,27 @@ impl InputHandler for TerminalInputHandler {
     fn marked_text_range(
         &mut self,
         _window: &mut Window,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> Option<std::ops::Range<usize>> {
-        // No IME composition support for now
-        None
+        // 终端没有可编辑缓冲区，组合文本永远是一段前缀
+        self.terminal
+            .read(cx)
+            .ime_composition()
+            .filter(|text| !text.is_empty())
+            .map(|text| 0..text.encode_utf16().count())
     }
 
     fn text_for_range(
         &mut self,
-        _range: std::ops::Range<usize>,
-        _actual_range: &mut Option<std::ops::Range<usize>>,
+        range: std::ops::Range<usize>,
+        actual_range: &mut Option<std::ops::Range<usize>>,
         _window: &mut Window,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> Option<String> {
-        None
+        let composition = self.terminal.read(cx).ime_composition()?.to_owned();
+        let (actual, text) = utf16_slice(&composition, range);
+        *actual_range = Some(actual);
+        Some(text)
     }
 
     fn replace_text_in_range(
@@ -1839,25 +1888,40 @@ impl InputHandler for TerminalInputHandler {
         _window: &mut Window,
         cx: &mut App,
     ) {
-        // Send the typed text to the terminal
-        self.terminal.update(cx, |terminal, _| {
+        // 上屏：清掉组合预览，把文本送进 PTY
+        self.terminal.update(cx, |terminal, cx| {
+            terminal.set_ime_composition(None);
             terminal.input_text(text);
+            cx.notify();
         });
     }
 
     fn replace_and_mark_text_in_range(
         &mut self,
         _range_utf16: Option<std::ops::Range<usize>>,
-        _new_text: &str,
-        _new_marked_range: Option<std::ops::Range<usize>>,
+        new_text: &str,
+        new_marked_range: Option<std::ops::Range<usize>>,
         _window: &mut Window,
-        _cx: &mut App,
+        cx: &mut App,
     ) {
-        // IME composition - not implemented yet
+        self.terminal.update(cx, |terminal, cx| {
+            if new_marked_range.is_some() {
+                // 组合中：只更新预览，等 unmark / replace_text 再上屏
+                terminal.set_ime_composition(Some(new_text.to_owned()));
+            } else {
+                terminal.set_ime_composition(None);
+                terminal.input_text(new_text);
+            }
+            cx.notify();
+        });
     }
 
-    fn unmark_text(&mut self, _window: &mut Window, _cx: &mut App) {
-        // IME - not implemented yet
+    fn unmark_text(&mut self, _window: &mut Window, cx: &mut App) {
+        // 组合结束但没有提交（例如按 Esc 取消）：丢掉预览
+        self.terminal.update(cx, |terminal, cx| {
+            terminal.set_ime_composition(None);
+            cx.notify();
+        });
     }
 
     fn bounds_for_range(
@@ -1880,9 +1944,44 @@ impl InputHandler for TerminalInputHandler {
     }
 }
 
+/// 按 UTF-16 下标截取字符串，返回（实际生效的区间, 截出的文本）。
+///
+/// IME 回调给的是 UTF-16 下标，组合文本里可能含 BMP 之外的字符（一个字符占两个
+/// 码元）；越界区间要夹回范围内，否则截断代理对会得到替换字符。
+fn utf16_slice(text: &str, range: std::ops::Range<usize>) -> (std::ops::Range<usize>, String) {
+    let utf16: Vec<u16> = text.encode_utf16().collect();
+    let start = range.start.min(utf16.len());
+    let end = range.end.clamp(start, utf16.len());
+    (start..end, String::from_utf16_lossy(&utf16[start..end]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn utf16_slice_handles_ascii_and_bmp() {
+        assert_eq!(utf16_slice("abc", 0..2), (0..2, "ab".to_string()));
+        // 中文在 BMP 内，每个字占一个 UTF-16 码元
+        assert_eq!(utf16_slice("中文输入", 1..3), (1..3, "文输".to_string()));
+    }
+
+    #[test]
+    fn utf16_slice_keeps_surrogate_pairs() {
+        // “🦀” 占两个 UTF-16 码元，整段请求应原样返回
+        assert_eq!(utf16_slice("a🦀b", 1..3), (1..3, "🦀".to_string()));
+        // 只截半个代理对时退化成替换字符，不能 panic
+        assert_eq!(utf16_slice("a🦀b", 1..2), (1..2, "\u{fffd}".to_string()));
+    }
+
+    #[test]
+    fn utf16_slice_clamps_out_of_range() {
+        assert_eq!(utf16_slice("ab", 1..99), (1..2, "b".to_string()));
+        assert_eq!(utf16_slice("ab", 99..120), (2..2, String::new()));
+        // 反向区间按空区间处理
+        let (start, end) = (2, 1);
+        assert_eq!(utf16_slice("ab", start..end), (2..2, String::new()));
+    }
 
     #[test]
     fn test_convert_named_colors_returns_valid_hsla() {
