@@ -105,10 +105,10 @@ cargo run -p showcase --bin <名称>
 | `rich_text` | 富文本：段落 + 行内运行模型，选区套用粗体/斜体/下划线/删除线/颜色，HTML 双向转换 + 剪贴板对接 | `cargo run -p showcase --bin rich_text` |
 | `ink` | Ink 笔迹：钢笔 / 荧光笔落笔，橡皮擦除，套索框选 + 撤销 / 清空 | `cargo run -p showcase --bin ink` |
 | `sorter` | 缩略图排序器：拖拽重排（插入指示线）+ 缩放 + 多选 + 键盘导航 | `cargo run -p showcase --bin sorter` |
-| `timeline` | 动画时间线：多轨关键帧编辑（标尺 / 关键帧拖拽 / 播放头），实时驱动预览方块 | `cargo run -p showcase --bin timeline` |
+| `timeline` | 动画时间线：多轨关键帧编辑（标尺 / 关键帧拖拽 / 播放头 / 纵向滚动 / 轨道重排），实时驱动预览方块 | `cargo run -p showcase --bin timeline` |
 | `color_picker` | 取色器增强：主题色板 / 最近颜色快捷色块 + 独立命名色阶色板，点击即应用 | `cargo run -p showcase --bin color_picker` |
 | `mdi` | 多文档界面：子窗口标题栏 / 最小化 / 最大化 / 八向缩放 + 层叠与平铺排布 | `cargo run -p showcase --bin mdi` |
-| `task_pane` | 任务窗格：可停靠 / 可浮动侧边面板（内缘拖拽改宽 / 标题栏拖动 / ✕ 关闭） | `cargo run -p showcase --bin task_pane` |
+| `task_pane` | 任务窗格：可停靠 / 可浮动侧边面板（内缘拖拽改宽 / 标题栏拖动 / ✕ 关闭 / 自动隐藏） | `cargo run -p showcase --bin task_pane` |
 | `canvas_a11y` | 画布语义：自绘对象暴露给辅助技术（合成子节点 / 阅读顺序 / 键盘与无障碍动作） | `cargo run -p showcase --bin canvas_a11y` |
 | `intl_text` | 国际文本排版：段落基准方向（`dir=auto`）与 `start`/`end` 对齐 + CJK 行首/行末禁则换行 | `cargo run -p showcase --bin intl_text` |
 | `formula_bar` | 公式栏：名称框 + `fx` + 公式输入，绑定迷你单元格模型 | `cargo run -p showcase --bin formula_bar` |
