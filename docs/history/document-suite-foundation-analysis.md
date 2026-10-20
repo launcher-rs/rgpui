@@ -700,7 +700,8 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   最小化 / 还原 / 关闭、`move_by`/`set_bounds` 夹取、活动窗口吸附到边缘）。
 - **吸附**：`snap_rect(rect, targets, threshold)` 把边/中线吸到工作区或邻窗的边/中线（每轴取
   最近一条，严格小于阈值才生效）；`MdiState::snap_active(threshold, cx)` 在松手时对活动窗口
-  套用一次。
+  套用一次，`MdiState::with_snap(threshold)` 打开后由 `on_pointer_up` 在拖动移动结束自动调用
+  （示例用 6px）。
 
 **本版暂缓**（后续增补）：拖拽最小化图标、多显示器跨屏拖拽、MDI 内标签页组（Tabbed MDI）。
 

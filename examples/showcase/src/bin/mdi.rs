@@ -38,7 +38,8 @@ struct MdiApp {
 impl MdiApp {
     /// 创建示例应用并订阅 MDI 事件。
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mdi = cx.new(MdiState::new);
+        // 拖动松手时吸附到工作区/邻窗边缘（6px 内）
+        let mdi = cx.new(|cx| MdiState::new(cx).with_snap(px(6.0)));
 
         // MDI 元素只负责画与转发事件，几何变化要靠宿主观察状态来触发重绘。
         cx.observe(&mdi, |_this, _mdi, cx| cx.notify()).detach();
@@ -62,7 +63,7 @@ impl MdiApp {
             mdi,
             clicks: HashMap::new(),
             next_index: 0,
-            status: "拖拽标题栏移动 · 拖拽边框缩放 · 双击标题栏最大化".into(),
+            status: "拖拽标题栏移动（松手吸附边缘）· 拖拽边框缩放 · 双击标题栏最大化".into(),
         };
         // 初始铺开三个文档，方便一眼看到层叠效果。
         for name in ["季度报告", "预算表", "会议纪要"] {

@@ -542,6 +542,8 @@ pub struct MdiState {
     cascade_offset: Pixels,
     /// 平铺间隔。
     tile_gap: Pixels,
+    /// 拖动结束时的吸附阈值（`None` 表示不吸附）。
+    snap_threshold: Option<Pixels>,
     /// 尚未取得区域时挂起的排布请求。
     pending_layout: Option<MdiLayout>,
     /// 拖拽会话。
@@ -561,6 +563,7 @@ impl MdiState {
             min_size: MIN_WINDOW_SIZE,
             cascade_offset: CASCADE_OFFSET,
             tile_gap: px(6.0),
+            snap_threshold: None,
             pending_layout: None,
             drag: None,
             focus_handle: cx.focus_handle(),
@@ -582,6 +585,12 @@ impl MdiState {
     /// 设置平铺间隔。
     pub fn with_tile_gap(mut self, gap: Pixels) -> Self {
         self.tile_gap = gap.max(px(0.0));
+        self
+    }
+
+    /// 开启拖动结束时的边缘吸附（`threshold` 内吸到工作区/邻窗边缘）。
+    pub fn with_snap(mut self, threshold: Pixels) -> Self {
+        self.snap_threshold = Some(threshold.max(px(0.0)));
         self
     }
 
@@ -990,7 +999,8 @@ impl MdiState {
         }
     }
 
-    /// 指针释放（`local` 为局部坐标）：命中同一标题栏按钮时执行对应操作。
+    /// 指针释放（`local` 为局部坐标）：命中同一标题栏按钮时执行对应操作；
+    /// 拖动移动结束时按 [`Self::with_snap`] 的设置做一次边缘吸附。
     pub fn on_pointer_up(&mut self, local: Point<Pixels>, cx: &mut Context<Self>) {
         let Some(drag) = self.drag.take() else {
             return;
@@ -1007,6 +1017,10 @@ impl MdiState {
                 WindowButton::Minimize => self.minimize(drag.id, cx),
                 WindowButton::Maximize => self.toggle_maximize(drag.id, cx),
             };
+        }
+        // 拖动移动松手时吸附（缩放/按钮不作为吸附触发点）
+        if let (DragKind::Move, Some(threshold)) = (drag.kind, self.snap_threshold) {
+            self.snap_active(threshold, cx);
         }
         cx.notify();
     }
