@@ -920,4 +920,54 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 **本版暂缓**：全 crate 的 `unwrap` / `expect` 迁移（约 1200 处，需按子系统分批）、
 `unimplemented` 纳入 workspace deny、`TextStyle::text_direction` 显式方向与外壳 RTL 镜像。
 
+## 三十二、收尾：暂缓功能补齐与完整性审计
+
+### 补齐的暂缓项
+
+| 模块 | 本轮新增 |
+|------|----------|
+| 缩略图排序器 `sorter` | `autoscroll_velocity`（指针贴边/越界时按距离给速度）、`drag_autoscroll`（拖拽中按速度推进滚动偏移）、`move_group_dest`（多选整组移动的目标槽位）、`SorterEvent::ReorderMany` |
+| 画布对象工具 `object_toolkit` | `handle_point_rotated` / `hit_handle_rotated`（旋转后控制点）、`marquee_bounds` / `marquee_hits` + `MarqueeMode`（框选/交叉框选） |
+| MDI `mdi` | `snap_rect` / `snap_active` / `with_snap`（拖动松手吸附到工作区边/中线）；`MdiLayout::Tabbed` 页签式（见 §二十六） |
+| 页视图 `page_view` | `PageArrangement`（单页 / 双页 / 双页封面）与 `page_slot` 等栅格几何 |
+| Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二） |
+
+仍未做（保持暂缓）：时间线垂直滚动 / 轨道折叠 / 值曲线、任务窗格多栏与自动隐藏、
+富文本分节 / 表格 / 批注 / 脚注、笔迹逐段压感变宽、画布语义与自绘组件接线、bidi 视觉重排、
+取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
+
+### AGENTS 完整性检查清单（12 项）逐条结果
+
+1. `cargo check --workspace` 通过（含全部示例）。
+2. `mouse_passthrough`、`WindowKind::Overlay`、Mica 变体、`tray.rs`、
+   `single_instance/`（目录模块）都在。
+3. `Platform` / `PlatformWindow` 自有方法本轮只增未删（新增 `render_to_image`、
+   Linux `activate`/`hide`、终端 IME 等）。
+4. `tray`、`desktop_pet`、`desktop_pet_3d` 随 workspace check 编译通过。
+5. 中文注释保留；`#[allow(dead_code)]` **清零**：
+   - macOS `display_link.rs` 删掉未使用的 `CVTimeStampFlags` / `CVSMPTETimeType` /
+     `CVSMPTETimeFlags` 常量组；
+   - macOS `global_hotkey.rs` 删掉未使用的 `NEXT_HOTKEY_ID` / `next_id` /
+     `modifiers_to_nsevent` / `key_to_cgkeycode` 与配套 bitflags；
+   - macOS `notifications.rs` 删掉未使用的 `request_permission`（权限统一走 `Platform`）；
+   - web `WebEventListeners` 用 `Drop` 显式清空闭包，替代 `allow`（字段确实「只持有不读取」）；
+   - wgpu 两个恢复字段只在非 WASM 使用，改为 `#[cfg_attr(target_family = "wasm", allow(dead_code))]`。
+   AGENTS 规则同步为「平台专属字段用 `cfg_attr` 精确限定，不得整块放宽」。
+6. 组件子系统目录齐全（`form` / `input_ui` / `menu` / `dialog` / `list` / `table` /
+   `tabs` / `title_bar` / `elements`（含 `scroll`））。
+7. 应用套件基座模块齐全，`ribbon` / `viewport` / `spreadsheet` / `document` /
+   `control-channel` 开关两侧都能编译。
+8. 未复活 `rgpui-ui` / `rgpui-tokio`；`rgpui-markdown` 在，`pulldown-cmark = "0.13"`。
+9. feature 组合逐个 `cargo check -p rgpui --features …` 通过：
+   `charts,effects,qr-code` / `tokio,control-channel` / `ribbon,viewport` /
+   `spreadsheet` / `document` / `webview`；`cargo test -p rgpui-dom` 15 项通过。
+10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过。
+11. 无 dev 循环依赖（测试放在消费方 `tests/`）。
+12. 命令清单 gate：`CommandRegistry::validate()` 为空；`cargo test -p showcase --bin automation`
+    通过。
+
+已知波动（与本轮改动无关）：`util::scheduler::tests::test_nondeterministic_wake_allowed_with_parking`
+单跑约 45 秒，`cargo test --workspace` 并行满载时会触发其内部 15 秒 park 超时断言，
+重跑即过；属既有 flaky 用例。
+
 

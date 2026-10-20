@@ -79,7 +79,9 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 ## 提交与 PR 规范
 
 - 提交前：`cargo check --workspace` + `cargo fmt --all` + 相关包 clippy，无错误警告。
-- **禁止 `#[allow(dead_code)]`**，无用代码删除或重构。
+- **禁止 `#[allow(dead_code)]`**，无用代码删除或重构。平台专属字段仅在部分目标上使用
+  时，用 `#[cfg_attr(<目标>, allow(dead_code))]` 精确限定（只对不编译其用途的目标生效），
+  不得整块放宽。
 - 开发阶段废弃代码直接删除，不留 `#[deprecated]` 兼容（不为未发布的 API 做兼容）。
 - **合入 main 的改动走 PR**（分支命名 `feat|fix|refactor|chore/xxx`，Squash 合并，
   标题 Conventional Commits）。`main` **未开** GitHub 分支保护（单人维护、主动去掉），
@@ -159,7 +161,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 网络状态、系统信息、Dock 菜单、上下文菜单、`reduce_motion_enabled`（系统「减少
 动态效果」，四平台各自读取，核心层每次建窗同步一次）；
 另 `WindowOptions.mouse_passthrough`、`WindowKind::Overlay`、Mica 材质、
-`tray.rs` / `single_instance.rs`。
+`tray.rs` / `single_instance/mod.rs`。
 
 **加 `Platform` 方法必须同时加 `App` 包装 + 一个真实调用点**（示例或核心逻辑）。
 `App::platform` 是私有字段，没有 `App` 包装的能力应用层一行都调不到 ——
@@ -178,7 +180,7 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 
 1. `cargo check --workspace` 通过
 2. `mouse_passthrough`（`WindowOptions`/`WindowParams`）、`WindowKind::Overlay`、
-   Mica 变体、`tray.rs` / `single_instance.rs` 都在
+   Mica 变体、`tray.rs` / `single_instance/mod.rs` 都在
 3. `Platform` / `PlatformWindow` 自有方法都在（对照上表）
 4. `tray`、`desktop_pet`（`_3d`）示例可编译
 5. 中文注释未被删除；无 `#[allow(dead_code)]`

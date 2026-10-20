@@ -14,8 +14,14 @@ use crate::window::WebWindowInner;
 /// Web 平台事件监听器集合，持有所有注册的 DOM 事件回调
 pub struct WebEventListeners {
     /// 持有 Closure 对象的所有权，防止 JS 侧 drop 后触发 "closure invoked after being dropped" panic
-    #[allow(dead_code)]
     closures: Vec<Closure<dyn FnMut(JsValue)>>,
+}
+
+impl Drop for WebEventListeners {
+    fn drop(&mut self) {
+        // 释放前显式清空，确保回调对象在 JS 侧仍存活时被有序回收。
+        self.closures.clear();
+    }
 }
 
 /// 鼠标点击状态跟踪器，用于计算双击等多击事件
