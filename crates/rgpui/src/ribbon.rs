@@ -1666,7 +1666,9 @@ mod tests {
 
     /// 供按键提示测试使用的、登记了提示键的命令。
     fn demo_save() -> crate::CommandDescriptor {
-        crate::CommandDescriptor::new("rgpui_test::RibbonSave", "保存").with_keytip("S")
+        crate::CommandDescriptor::new("rgpui_test::RibbonSave", "保存")
+            .with_category("测试")
+            .with_keytip("S")
     }
 
     crate::register_command!(demo_save);
