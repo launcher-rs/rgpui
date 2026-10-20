@@ -824,7 +824,15 @@ impl RenderOnce for TaskPane {
                 .overflow_hidden()
                 .bg(background)
                 .text_xs()
-                .child(div().text_color(title_text).child("‹"))
+                .child(
+                    div()
+                        .text_color(title_text)
+                        .child(if side == TaskPaneSide::Left {
+                            "›"
+                        } else {
+                            "‹"
+                        }),
+                )
                 .child(
                     div()
                         .flex()
