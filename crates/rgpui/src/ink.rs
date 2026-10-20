@@ -879,8 +879,16 @@ pub fn stroke_paths(points: &[InkPoint], width: Pixels) -> Vec<Path<Pixels>> {
 }
 
 /// 绘制一条笔画（带压感时按段绘制，否则一条平滑路径）。
+///
+/// 半透明笔画（荧光笔、整层不透明度）仍走等宽单路径：逐段圆头在接缝处叠加会加深颜色，
+/// 出现「串珠」；等宽荧光笔也更接近真实马克笔。
 fn paint_stroke(window: &mut Window, points: &[InkPoint], width: Pixels, color: Hsla) {
-    for path in stroke_paths(points, width) {
+    let paths: Vec<Path<Pixels>> = if color.a >= 1.0 {
+        stroke_paths(points, width)
+    } else {
+        stroke_path(points, width).into_iter().collect()
+    };
+    for path in paths {
         window.paint_path(path, color);
     }
 }

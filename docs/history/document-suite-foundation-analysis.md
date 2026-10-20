@@ -546,7 +546,8 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **压感变宽**：`pressure_width(base, pressure)` 把压感 0..=1 映射到基础宽度的
   `MIN_PRESSURE_SCALE`（0.35）..=1 倍；`stroke_paths(points, width)` 在压感非全满时按线段拆分，
   每段宽度取两端压感均值（圆头圆角自然衔接），压感全为 1（鼠标）或点数 ≤ 2 时退化为单条平滑
-  `stroke_path`，不增加绘制开销。`InkLayerElement` 内部按 `stroke_paths` 逐条绘制。
+  `stroke_path`，不增加绘制开销。`InkLayerElement` 内部按 `stroke_paths` 逐条绘制；半透明笔画
+  （荧光笔 / 整层不透明度）仍走等宽单路径，避免逐段圆头在接缝处叠加出「串珠」加深。
 - **绘制元素**：`InkLayerElement::new(layer)` + `.highlight(indices)`（套索选中以主题色重绘）
   + `.lasso(polygon)`（虚线套索框）+ `.opacity(f32)`（整层不透明度，夹取 `0..=1`），逐笔画
   `window.paint_path`，铺满父容器。
