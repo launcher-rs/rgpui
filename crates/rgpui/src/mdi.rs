@@ -350,6 +350,59 @@ pub fn clamp_rect(rect: Bounds<Pixels>, area: Bounds<Pixels>, min: Size<Pixels>)
     Bounds::new(point(x, y), size(width, height))
 }
 
+/// 拖动时的边缘吸附：把矩形的边/中线吸到候选矩形（工作区或邻窗）的边/中线上。
+///
+/// 每个轴只取最近的一条候选线，位移必须**严格小于** `threshold` 才生效；返回吸附后的
+/// 矩形（尺寸不变）。应用可在拖动过程中用它算预览位置，松手时再落到最终位置。
+pub fn snap_rect(
+    rect: Bounds<Pixels>,
+    targets: &[Bounds<Pixels>],
+    threshold: Pixels,
+) -> Bounds<Pixels> {
+    let left = rect.origin.x.as_f32();
+    let top = rect.origin.y.as_f32();
+    let width = rect.size.width.as_f32();
+    let height = rect.size.height.as_f32();
+    let x_lines = [left, left + width, left + width / 2.0];
+    let y_lines = [top, top + height, top + height / 2.0];
+
+    let mut best_x = threshold.as_f32();
+    let mut dx = 0.0;
+    let mut best_y = threshold.as_f32();
+    let mut dy = 0.0;
+
+    for target in targets {
+        let t_left = target.origin.x.as_f32();
+        let t_top = target.origin.y.as_f32();
+        let t_width = target.size.width.as_f32();
+        let t_height = target.size.height.as_f32();
+
+        for candidate in [t_left, t_left + t_width, t_left + t_width / 2.0] {
+            for line in x_lines {
+                let delta = candidate - line;
+                if delta.abs() < best_x {
+                    best_x = delta.abs();
+                    dx = delta;
+                }
+            }
+        }
+        for candidate in [t_top, t_top + t_height, t_top + t_height / 2.0] {
+            for line in y_lines {
+                let delta = candidate - line;
+                if delta.abs() < best_y {
+                    best_y = delta.abs();
+                    dy = delta;
+                }
+            }
+        }
+    }
+
+    Bounds::new(
+        point(rect.origin.x + px(dx), rect.origin.y + px(dy)),
+        rect.size,
+    )
+}
+
 /// 最小化图标矩形：沿区域底部从左到右依次排列（序号为最小化窗口的先后次序）。
 pub fn icon_rect(area: Bounds<Pixels>, index: usize) -> Bounds<Pixels> {
     let width = ICON_WIDTH.min(area.size.width);
@@ -712,6 +765,34 @@ impl MdiState {
         };
         let bounds = Bounds::new(window.bounds.origin + delta, window.bounds.size);
         self.set_bounds(id, bounds, cx)
+    }
+
+    /// 让活动窗口吸附到工作区边缘与其他普通窗口的边缘（`threshold` 内）。
+    ///
+    /// 典型用法是拖动结束时调一次；拖动过程中可以先用 [`snap_rect`] 算预览位置。
+    /// 返回窗口位置是否真的发生了变化。
+    pub fn snap_active(&mut self, threshold: Pixels, cx: &mut Context<Self>) -> bool {
+        let Some(active) = self.active() else {
+            return false;
+        };
+        let Some(rect) = self.rect_of(active) else {
+            return false;
+        };
+
+        // 候选线：工作区边界 + 其余普通窗口（最小化/最大化窗口不参与）
+        let mut targets = vec![self.local_area()];
+        targets.extend(
+            self.windows
+                .iter()
+                .filter(|window| window.id != active && window.state == WindowState::Normal)
+                .map(|window| window.bounds),
+        );
+
+        let snapped = snap_rect(rect, &targets, threshold);
+        if snapped == rect {
+            return false;
+        }
+        self.set_bounds(active, snapped, cx)
     }
 
     /// 最小化窗口。
@@ -1381,7 +1462,7 @@ mod tests {
         CASCADE_OFFSET, MIN_WINDOW_SIZE, MdiArea, MdiEvent, MdiHit, MdiLayout, MdiState, MdiWindow,
         MdiWindowFlags, ResizeEdge, TITLE_BAR_HEIGHT, TITLE_BUTTON_WIDTH, WindowButton,
         WindowState, cascade_rects, clamp_rect, icon_rect, resize_bounds, resize_edge_at,
-        tile_rects, title_button_rects,
+        snap_rect, tile_rects, title_button_rects,
     };
     use crate::{
         AppContext as _, Bounds, Context, Entity, IntoElement, KeyDownEvent, Keystroke, Modifiers,
@@ -1909,5 +1990,59 @@ mod tests {
         // 挪动后标题栏仍在区域内。
         let moved = state.read_with(cx, |state, _| origin_of(state.get(id).unwrap()));
         assert_eq!(moved, point(px(40.0), px(50.0)));
+    }
+
+    /// 吸附：阈值内吸到最近的边/中线，超阈值保持原样。
+    #[test]
+    fn snap_rect_snaps_within_threshold() {
+        let area = area();
+        let window = Bounds::new(point(px(100.0), px(100.0)), size(px(200.0), px(100.0)));
+
+        // 左边缘离工作区左边界 3px → 吸到 0
+        let near_left = Bounds::new(point(px(3.0), px(100.0)), window.size);
+        assert_eq!(snap_rect(near_left, &[area], px(4.0)).origin.x, px(0.0));
+
+        // 右边缘离工作区右边界 3px → 吸到 600
+        let near_right = Bounds::new(point(px(597.0), px(100.0)), window.size);
+        assert_eq!(snap_rect(near_right, &[area], px(4.0)).origin.x, px(600.0));
+
+        // 距离 5px 超过阈值 4px → 不动
+        let far = Bounds::new(point(px(5.0), px(100.0)), window.size);
+        assert_eq!(snap_rect(far, &[area], px(4.0)), far);
+
+        // 不在任何候选线附近 → 原样返回
+        assert_eq!(snap_rect(window, &[area], px(4.0)), window);
+    }
+
+    /// 活动窗口吸附到工作区边缘，无位移时不产生变化。
+    #[rgpui::test]
+    fn snap_active_pulls_window_to_edge(cx: &mut TestAppContext) {
+        let (state, _events, cx) = setup(cx);
+        let id = cx.update(|_, cx| state.update(cx, |state, cx| state.open("一", cx)));
+        let rect = state.read_with(cx, |state, _| state.rect_of(id).unwrap());
+
+        // 挪到离左边界 3px 处再吸附
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                state.set_bounds(
+                    id,
+                    Bounds::new(point(px(3.0), rect.origin.y), rect.size),
+                    cx,
+                )
+            })
+        });
+        let moved = cx.update(|_, cx| state.update(cx, |state, cx| state.snap_active(px(4.0), cx)));
+        assert!(moved);
+        assert_eq!(
+            state
+                .read_with(cx, |state, _| state.rect_of(id).unwrap())
+                .origin
+                .x,
+            px(0.0)
+        );
+
+        // 已经贴边：再吸附一次没有位移
+        let again = cx.update(|_, cx| state.update(cx, |state, cx| state.snap_active(px(4.0), cx)));
+        assert!(!again);
     }
 }
