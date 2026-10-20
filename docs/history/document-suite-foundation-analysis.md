@@ -763,16 +763,23 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
 「单个可停靠 / 可浮动的属性面板」，正是 WordCraft 的 task pane 需求。
 
 - **数据**：`TaskPaneSide { Left, Right }`（`grip_edge`：左停靠把手在右缘、右停靠把手在左缘）；
-  `TaskPaneState`（侧 / 宽度 / 最小最大宽度 / 可见 / 浮动 / 浮动矩形 / `closable` / 自动隐藏
-  `auto_hide` / 收起 `collapsed` / 悬停 `hovered` / 窗格窗口矩形 / 拖拽会话 / `FocusHandle`）；
-  `TaskPaneHit { None, TitleBar, Close, Grip, Resize(edge), Body }`；
-  `TaskPaneEvent { VisibilityChanged, SideChanged, WidthChanged, FloatingChanged, Collapsed }`。
+  `TaskPaneState`（侧 / 宽度 / 最小最大宽度 / 可见 / 浮动 / 浮动矩形 / `closable` / 页签
+  `tabs` / 激活页签 `active_tab` / 自动隐藏 `auto_hide` / 收起 `collapsed` / 悬停 `hovered` /
+  窗格窗口矩形 / 拖拽会话 / `FocusHandle`）；
+  `TaskPaneHit { None, TitleBar, Tab(index), Close, Grip, Resize(edge), Body }`；
+  `TaskPaneEvent { VisibilityChanged, SideChanged, WidthChanged, FloatingChanged, Collapsed, TabSelected }`。
 - **操作**：`show`/`hide`/`toggle`/`set_visible`、`set_side`、`set_width`（夹取）、`set_closable`、
   `float(bounds)` / `dock` / `toggle_float(parent)`（浮动时贴父容器右下角内侧）、`set_rect`
   （预绘制回写）、`set_auto_hide` / `is_auto_hide`、`is_collapsed` / `set_collapsed` /
   `toggle_collapsed`、`set_hovered`（元素 `on_hover` 调用）、`effective_width`（收起时为
-  `RAIL_WIDTH`）、`hit_test`、`on_pointer_down/move/up`、`on_key_down`（`Esc` 取消拖拽）。
-  builder：`with_side`/`with_width`/`with_width_range`/`with_visible`/`with_closable`。
+  `RAIL_WIDTH`）、`hit_test`、`on_pointer_down/move/up`、`on_key_down`（`Esc` 取消拖拽、
+  `Ctrl+Tab` / `Ctrl+Shift+Tab` 循环切页签）。
+  builder：`with_side`/`with_width`/`with_width_range`/`with_visible`/`with_closable`/`with_tabs`。
+- **页签组**：`set_tabs`（列表变化时激活下标夹回）、`tabs`/`active_tab`/`active_tab_title`、
+  `set_active_tab`（越界 / 同值返回 `false`，变化时抛 `TabSelected`）、`cycle_tab(delta)`（循环）、
+  `tab_rects` / `tab_at`（页签几何与命中：标题栏内等宽平铺，右侧预留关闭按钮宽度，左起
+  `TITLE_PADDING`）。标题栏有页签时渲染页签组（激活页签高亮并带下划线，正文由应用按激活页签
+  切换），否则显示单个 `title`；收起轨道的竖排标题优先显示激活页签标题。
 - **自动隐藏**：停靠态鼠标移出后收起为 `RAIL_WIDTH`（28px）宽的竖排标题轨道，移入即展开；
   收起时整条按 `TitleBar` 命中（不提供关闭 / 缩放），点轨道可展开（关闭自动隐藏后手动收起时
   的恢复入口），正文回调**不执行**；浮动态、隐藏态与关闭自动隐藏时保持展开，`dock()` /
@@ -782,20 +789,23 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   `mdi` 的 `resize_edge_at`/`resize_edge_rects`/`resize_bounds`（`resize_edge_rects` 因此提为 pub）。
 - **元素**：`TaskPane::new(&state).title(…).body(|window, cx| …)` —— 停靠态是流式子元素
   （`flex_none` + 固定宽 + `h_full` + 内缘边框 + 内缘把手），浮动态是 `absolute` 子元素
-  （**父容器须为定位祖先** `relative()`）+ 八向缩放块；把手 / 按钮只设光标，命中与拖拽统一由
-  容器层处理（与 MDI 同构，避免子元素吞掉拖拽）。`on_prepaint` 回写窗格矩形，指针 / 键盘事件
-  经 `window.listener_for` 转发给状态，`on_hover` 维护悬停态；命中优先顺序：缩放边 / 角 →
-  内缘把手 → 关闭按钮 → 标题栏 → 正文（收起时直接 `TitleBar`）。
-- **键盘**：`Esc` 取消当前拖拽。
+  （**父容器须为定位祖先** `relative()`）+ 八向缩放块；把手 / 按钮 / 页签只设光标，命中与拖拽
+  统一由容器层处理（与 MDI 同构，避免子元素吞掉拖拽）。`on_prepaint` 回写窗格矩形，指针 /
+  键盘事件经 `window.listener_for` 转发给状态（页签点击在按下时直接 `set_active_tab`，不入
+  拖拽会话），`on_hover` 维护悬停态；命中优先顺序：缩放边 / 角 → 内缘把手 → 关闭按钮 →
+  页签 → 标题栏 → 正文（收起时直接 `TitleBar`）。
+- **键盘**：`Esc` 取消当前拖拽；`Ctrl+Tab` / `Ctrl+Shift+Tab` 循环切页签。
 - **示例**：`examples/showcase/src/bin/task_pane.rs`（显示 / 隐藏、停靠左 / 右、浮动 / 回停靠、
-  加宽 / 收窄、关闭按钮开关、自动隐藏开关；正文实时读取窗格宽度与停靠侧）。
-- **测试**：9 项 —— 纯几何 2 项（宽度夹取与内缘拖拽换算、把手 / 关闭按钮 / 浮动默认矩形）；
-  状态 6 项（显隐 / 换侧 / 改宽事件、浮动 / 停靠切换与最小浮动尺寸、停靠态两向把手拖拽改宽、
-  浮动态标题栏平移 + 右下角缩放、关闭按钮「按下后滑走不触发」、真实绘制回写矩形且隐藏 / 浮动
-  两态均可渲染）；自动隐藏 1 项（悬停展开 / 移出收起、收起态命中与有效宽度、浮动与关闭自动
-  隐藏时保持展开、`Collapsed` 事件）。
+  加宽 / 收窄、关闭按钮开关、自动隐藏开关、下一个页签；标题栏是「属性 / 大纲」页签组，正文
+  实时读取窗格宽度与停靠侧并随页签切换内容）。
+- **测试**：11 项 —— 纯几何 3 项（宽度夹取与内缘拖拽换算、把手 / 关闭按钮 / 浮动默认矩形、
+  页签等宽平铺与右侧预留）；状态 6 项（显隐 / 换侧 / 改宽事件、浮动 / 停靠切换与最小浮动尺寸、
+  停靠态两向把手拖拽改宽、浮动态标题栏平移 + 右下角缩放、关闭按钮「按下后滑走不触发」、
+  真实绘制回写矩形且隐藏 / 浮动两态均可渲染）；自动隐藏 1 项（悬停展开 / 移出收起、收起态
+  命中与有效宽度、浮动与关闭自动隐藏时保持展开、`Collapsed` 事件）；页签 1 项（点击命中 /
+  关闭按钮优先 / 事件 / 循环切换 / 越界与缩减夹取）。
 
-**本版暂缓**（后续增补）：多窗格并列（一屏多个任务窗格）、页签式窗格组、窗格内滚动位置记忆。
+**本版暂缓**（后续增补）：多窗格并列（一屏多个任务窗格）、窗格内滚动位置记忆。
 
 ## 二十八、P2 落地：画布语义（核心，无 feature 门控）
 
@@ -957,10 +967,10 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | MDI `mdi` | `snap_rect` / `snap_active` / `with_snap`（拖动松手吸附到工作区边/中线）；`MdiLayout::Tabbed` 页签式（见 §二十六） |
 | 页视图 `page_view` | `PageArrangement`（单页 / 双页 / 双页封面）与 `page_slot` 等栅格几何 |
 | 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`）、轨道折叠（`Track::collapsed` / `row_height` / `with_collapsed` / `set_collapsed`、`tracks_height` / `track_top` / `toggle_track_collapsed`、`TrackCollapsed`、折叠箭头） |
-| 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`） |
+| 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`）、页签组（`tabs`/`active_tab`/`with_tabs`/`set_tabs`/`set_active_tab`/`cycle_tab`/`tab_rects`/`tab_at`、`TaskPaneHit::Tab`、`TaskPaneEvent::TabSelected`） |
 | Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二）、逐段压感变宽（`pressure_width` / `stroke_paths` / `extend_stroke_with_pressure`） |
 
-仍未做（保持暂缓）：时间线值曲线、任务窗格多窗格并列与页签组、
+仍未做（保持暂缓）：时间线值曲线、任务窗格多窗格并列、
 富文本分节 / 表格 / 批注 / 脚注、画布语义与自绘组件接线、bidi 视觉重排、
 取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 

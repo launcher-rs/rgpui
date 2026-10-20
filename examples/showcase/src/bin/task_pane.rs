@@ -1,9 +1,10 @@
 //! 任务窗格示例
 //!
 //! 演示 `task_pane`：右侧停靠的任务窗格（标题栏 + 正文 + 内缘拖拽把手 + 关闭按钮）。
-//! 拖动内缘把手改宽，`✕` 关闭，工具栏可切换停靠侧 / 浮动 / 显隐；打开「自动隐藏」后
-//! 鼠标移出收起成竖排标题轨道、移入展开。浮动态变成一块可自由拖动标题栏、八向缩放的
-//! 窗格（复用 MDI 的缩放几何）。窗格正文实时读取状态，展示宽度 / 停靠侧 / 浮动状态。
+//! 拖动内缘把手改宽，`✕` 关闭，工具栏可切换停靠侧 / 浮动 / 显隐；标题栏是「属性 / 大纲」
+//! 页签组（点击页签或 `Ctrl+Tab` 切换，正文随之换页）；打开「自动隐藏」后鼠标移出收起成
+//! 竖排标题轨道、移入展开。浮动态变成一块可自由拖动标题栏、八向缩放的窗格（复用 MDI 的
+//! 缩放几何）。窗格正文实时读取状态，展示宽度 / 停靠侧 / 浮动状态。
 //!
 //! 运行：`cargo run -p showcase --bin task_pane`
 
@@ -30,6 +31,7 @@ impl TaskPaneApp {
             TaskPaneState::new(cx)
                 .with_side(TaskPaneSide::Right)
                 .with_width(px(300.0))
+                .with_tabs(["属性", "大纲"])
         });
 
         // 窗格元素只负责画与转发事件，几何变化要靠宿主观察状态来触发重绘。
@@ -48,6 +50,11 @@ impl TaskPaneApp {
                     TaskPaneEvent::FloatingChanged(false) => "回到停靠态".into(),
                     TaskPaneEvent::Collapsed(true) => "窗格收起（悬停展开）".into(),
                     TaskPaneEvent::Collapsed(false) => "窗格展开".into(),
+                    TaskPaneEvent::TabSelected(index) => format!(
+                        "切到「{}」页签",
+                        ["属性", "大纲"].get(*index).copied().unwrap_or("?")
+                    )
+                    .into(),
                 };
                 cx.notify();
             },
@@ -56,7 +63,7 @@ impl TaskPaneApp {
 
         Self {
             pane,
-            status: "拖动内缘把手改宽 · ✕ 关闭 · 工具栏可换侧 / 浮动".into(),
+            status: "拖动内缘把手改宽 · ✕ 关闭 · 点标题栏页签切换正文".into(),
         }
     }
 
@@ -92,11 +99,16 @@ impl Render for TaskPaneApp {
             });
         let status = self.status.clone();
 
-        // 正文：实时读取窗格状态（宽度 / 停靠侧 / 浮动态）。
+        // 正文：按当前页签渲染属性行或大纲。
         let pane_for_body = self.pane.clone();
         let body = move |_window: &mut Window, cx: &mut App| -> AnyElement {
-            let (width, side, floating) = pane_for_body.read_with(cx, |pane, _| {
-                (pane.width(), pane.side(), pane.is_floating())
+            let (width, side, floating, active) = pane_for_body.read_with(cx, |pane, _| {
+                (
+                    pane.width(),
+                    pane.side(),
+                    pane.is_floating(),
+                    pane.active_tab(),
+                )
             });
             let theme = cx.theme();
             let muted = theme.muted_foreground;
@@ -114,9 +126,33 @@ impl Render for TaskPaneApp {
                     .child(div().text_color(muted).child(label))
                     .child(div().text_color(foreground).child(value))
             };
-            v_flex()
-                .gap_1()
-                .p_3()
+            let container = v_flex().gap_1().p_3();
+            if active == 1 {
+                return container
+                    .child(div().text_xs().text_color(muted).child("文档大纲"))
+                    .children(
+                        ["一、概述", "二、页面设置", "三、停靠与浮动", "四、自动隐藏"].map(
+                            |label| {
+                                div()
+                                    .py_1()
+                                    .border_b_1()
+                                    .border_color(border)
+                                    .text_sm()
+                                    .text_color(foreground)
+                                    .child(label)
+                            },
+                        ),
+                    )
+                    .child(
+                        div()
+                            .pt_2()
+                            .text_xs()
+                            .text_color(muted)
+                            .child("点击标题栏页签或按 Ctrl+Tab 切换。"),
+                    )
+                    .into_any_element();
+            }
+            container
                 .child(div().text_xs().text_color(muted).child("页面设置"))
                 .child(row("宽度", format!("{width:.0}")))
                 .child(row(
@@ -162,7 +198,7 @@ impl Render for TaskPaneApp {
                         .p_3()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child("拖动窗格内缘的细条改宽 · 点标题栏右侧 ✕ 关闭 · 工具栏可切到浮动态"),
+                        .child("拖动窗格内缘的细条改宽 · 点标题栏页签切换属性 / 大纲 · 工具栏可切到浮动态"),
                 ),
         );
 
@@ -264,6 +300,13 @@ impl Render for TaskPaneApp {
                                     let next = !pane.is_auto_hide();
                                     pane.set_auto_hide(next, cx);
                                 });
+                            })),
+                    )
+                    .child(
+                        Button::new("next-tab")
+                            .label("下一个页签")
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.pane.update(cx, |pane, cx| pane.cycle_tab(1, cx));
                             })),
                     )
                     .child(div().text_sm().child(format!(

@@ -40,7 +40,7 @@ use crate::{
     EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
     RenderOnce, SharedString, Size, StatefulInteractiveElement as _, Styled as _, Window, div,
-    point, px, size,
+    point, prelude::FluentBuilder as _, px, size,
 };
 
 /// 标题栏高度。
@@ -61,6 +61,8 @@ pub const MIN_FLOATING_SIZE: Size<Pixels> = size(px(160.0), px(120.0));
 pub const FLOATING_MARGIN: Pixels = px(12.0);
 /// 自动隐藏收起后的轨道宽度。
 pub const RAIL_WIDTH: Pixels = px(28.0);
+/// 标题栏左右内边距（与 `px_2` 一致，页签几何按同一口径计算）。
+pub const TITLE_PADDING: Pixels = px(8.0);
 
 /// 停靠侧。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +90,8 @@ pub enum TaskPaneHit {
     None,
     /// 标题栏空白处（浮动态可拖动）。
     TitleBar,
+    /// 页签（下标）。
+    Tab(usize),
     /// 关闭按钮。
     Close,
     /// 内缘把手（停靠态改宽）。
@@ -111,6 +115,8 @@ pub enum TaskPaneEvent {
     FloatingChanged(bool),
     /// 自动隐藏的收起 / 展开状态变化。
     Collapsed(bool),
+    /// 切换页签（下标）。
+    TabSelected(usize),
 }
 
 /// 把宽度夹取到 `min..=max`；非有限值回落为 `min`。
@@ -158,6 +164,24 @@ pub fn close_button_rect(rect: Bounds<Pixels>) -> Bounds<Pixels> {
         ),
         size(CLOSE_BUTTON_WIDTH, TITLE_HEIGHT),
     )
+}
+
+/// 页签矩形（标题栏内等宽平铺，右侧预留关闭按钮宽度；局部坐标）。
+pub fn tab_rects(rect: Bounds<Pixels>, count: usize) -> Vec<Bounds<Pixels>> {
+    let left = rect.origin.x + TITLE_PADDING;
+    let right = rect.origin.x + rect.size.width - CLOSE_BUTTON_WIDTH;
+    if count == 0 || right <= left {
+        return Vec::new();
+    }
+    let width = (right - left).as_f32() / count as f32;
+    (0..count)
+        .map(|index| {
+            Bounds::new(
+                point(left + px(width * index as f32), rect.origin.y),
+                size(px(width), TITLE_HEIGHT),
+            )
+        })
+        .collect()
 }
 
 /// 浮动窗格的默认矩形：贴在父容器右下角内侧（父容器坐标）。
@@ -221,6 +245,10 @@ pub struct TaskPaneState {
     collapsed: bool,
     /// 鼠标是否停在窗格上（由元素 `on_hover` 维护）。
     hovered: bool,
+    /// 页签标题（非空时标题栏渲染为页签组）。
+    tabs: Vec<SharedString>,
+    /// 当前激活页签下标。
+    active_tab: usize,
     /// 最近一次预绘制写入的窗格窗口矩形。
     rect: Bounds<Pixels>,
     /// 拖拽会话。
@@ -244,6 +272,8 @@ impl TaskPaneState {
             auto_hide: false,
             collapsed: false,
             hovered: false,
+            tabs: Vec::new(),
+            active_tab: 0,
             rect: Bounds::default(),
             drag: None,
             focus_handle: cx.focus_handle(),
@@ -282,6 +312,13 @@ impl TaskPaneState {
         self
     }
 
+    /// 设置初始页签标题（非空时标题栏渲染为页签组，正文由应用按激活页签切换）。
+    pub fn with_tabs<T: Into<SharedString>>(mut self, tabs: impl IntoIterator<Item = T>) -> Self {
+        self.tabs = tabs.into_iter().map(Into::into).collect();
+        self.active_tab = self.active_tab.min(self.tabs.len().saturating_sub(1));
+        self
+    }
+
     /// 当前停靠侧。
     pub fn side(&self) -> TaskPaneSide {
         self.side
@@ -310,6 +347,21 @@ impl TaskPaneState {
     /// 是否显示关闭按钮。
     pub fn is_closable(&self) -> bool {
         self.closable
+    }
+
+    /// 页签标题（空表示标题栏显示单个标题）。
+    pub fn tabs(&self) -> &[SharedString] {
+        &self.tabs
+    }
+
+    /// 当前激活页签下标。
+    pub fn active_tab(&self) -> usize {
+        self.active_tab
+    }
+
+    /// 当前激活页签标题（无页签时为 `None`）。
+    pub fn active_tab_title(&self) -> Option<&SharedString> {
+        self.tabs.get(self.active_tab)
     }
 
     /// 浮动矩形（父容器坐标）。
@@ -438,6 +490,59 @@ impl TaskPaneState {
         true
     }
 
+    /// 设置页签列表（非空时标题栏渲染为页签组），激活下标越界时夹回。
+    pub fn set_tabs(&mut self, tabs: Vec<SharedString>, cx: &mut Context<Self>) -> bool {
+        if self.tabs == tabs {
+            return false;
+        }
+        self.tabs = tabs;
+        self.active_tab = self.active_tab.min(self.tabs.len().saturating_sub(1));
+        cx.notify();
+        true
+    }
+
+    /// 选中页签（越界或已是当前页签返回 `false`）。
+    pub fn set_active_tab(&mut self, index: usize, cx: &mut Context<Self>) -> bool {
+        if index >= self.tabs.len() || index == self.active_tab {
+            return false;
+        }
+        self.active_tab = index;
+        cx.emit(TaskPaneEvent::TabSelected(index));
+        cx.notify();
+        true
+    }
+
+    /// 按 `delta` 循环切换页签（`Ctrl+Tab` / `Ctrl+Shift+Tab`）。
+    pub fn cycle_tab(&mut self, delta: isize, cx: &mut Context<Self>) -> bool {
+        let len = self.tabs.len();
+        if len == 0 {
+            return false;
+        }
+        let next = (self.active_tab as isize + delta).rem_euclid(len as isize) as usize;
+        self.set_active_tab(next, cx)
+    }
+
+    /// 页签矩形（局部坐标）。
+    pub fn tab_rects(&self) -> Vec<Bounds<Pixels>> {
+        tab_rects(self.local_rect(), self.tabs.len())
+    }
+
+    /// 指针落在哪个页签上（`pointer` 为窗口坐标；关闭按钮优先）。
+    pub fn tab_at(&self, pointer: Point<Pixels>) -> Option<usize> {
+        if !self.visible || self.collapsed {
+            return None;
+        }
+        let rect = self.local_rect();
+        let local = pointer - self.rect.origin;
+        if !rect.contains(&local) || local.y - rect.origin.y > TITLE_HEIGHT {
+            return None;
+        }
+        if self.closable && close_button_rect(rect).contains(&local) {
+            return None;
+        }
+        self.tab_rects().iter().position(|tab| tab.contains(&local))
+    }
+
     /// 切换停靠侧。
     pub fn set_side(&mut self, side: TaskPaneSide, cx: &mut Context<Self>) -> bool {
         if self.side == side {
@@ -556,6 +661,9 @@ impl TaskPaneState {
         if self.closable && close_button_rect(rect).contains(&local) {
             return TaskPaneHit::Close;
         }
+        if let Some(index) = self.tab_at(pointer) {
+            return TaskPaneHit::Tab(index);
+        }
         if local.y - rect.origin.y <= TITLE_HEIGHT {
             return TaskPaneHit::TitleBar;
         }
@@ -565,7 +673,7 @@ impl TaskPaneState {
     /// 指针按下（`pointer` 为窗口坐标）。
     pub fn on_pointer_down(&mut self, pointer: Point<Pixels>) {
         let kind = match self.hit_test(pointer) {
-            TaskPaneHit::None | TaskPaneHit::Body => {
+            TaskPaneHit::None | TaskPaneHit::Body | TaskPaneHit::Tab(_) => {
                 self.drag = None;
                 return;
             }
@@ -644,9 +752,17 @@ impl TaskPaneState {
         }
     }
 
-    /// 键盘：`Esc` 取消当前拖拽。
+    /// 键盘：`Esc` 取消当前拖拽，`Ctrl+Tab` / `Ctrl+Shift+Tab` 循环切换页签。
     pub fn on_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        if event.keystroke.key.eq_ignore_ascii_case("escape") && self.drag.take().is_some() {
+        let key = event.keystroke.key.to_ascii_lowercase();
+        let modifiers = event.keystroke.modifiers;
+        if key == "tab" && modifiers.control {
+            if self.cycle_tab(if modifiers.shift { -1 } else { 1 }, cx) {
+                cx.stop_propagation();
+            }
+            return;
+        }
+        if key == "escape" && self.drag.take().is_some() {
             cx.stop_propagation();
             cx.notify();
         }
@@ -713,14 +829,18 @@ impl RenderOnce for TaskPane {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let Self { state, title, body } = self;
         let theme = cx.theme();
-        let (visible, floating, closable, collapsed) = state.read_with(cx, |state, _| {
-            (
-                state.visible,
-                state.floating,
-                state.closable,
-                state.collapsed,
-            )
-        });
+        let (visible, floating, closable, collapsed, tabs, active_tab, tab_rects) = state
+            .read_with(cx, |state, _| {
+                (
+                    state.visible,
+                    state.floating,
+                    state.closable,
+                    state.collapsed,
+                    state.tabs.clone(),
+                    state.active_tab,
+                    state.tab_rects(),
+                )
+            });
         if !visible {
             return div().into_any_element();
         }
@@ -734,8 +854,12 @@ impl RenderOnce for TaskPane {
         let foreground = theme.foreground;
         let title_text = theme.muted_foreground;
         let hover = theme.muted;
-        // 轨道态竖排标题在标题栏消费 `title` 之前留一份。
-        let rail_title = title.clone();
+        // 轨道态竖排标题在标题栏消费 `title` 之前留一份（有页签时优先显示激活页签）。
+        let rail_title = tabs
+            .get(active_tab)
+            .cloned()
+            .unwrap_or_else(|| title.clone());
+        let accent = theme.primary;
 
         let local = Bounds::new(
             point(px(0.0), px(0.0)),
@@ -803,14 +927,48 @@ impl RenderOnce for TaskPane {
             .bg(title_background)
             .border_b_1()
             .border_color(border)
-            .child(
+            // 有页签时标题栏只作背景，页签单元格覆盖在它之上。
+            .when(tabs.is_empty(), |this| {
+                this.child(
+                    div()
+                        .flex_1()
+                        .overflow_hidden()
+                        .text_sm()
+                        .text_color(foreground)
+                        .child(title.clone()),
+                )
+            });
+
+        // 页签：几何与 `TaskPaneState::tab_at` 同源，点击由容器命中测试统一分发。
+        let tab_cells: Vec<AnyElement> = tabs
+            .iter()
+            .enumerate()
+            .map(|(index, tab)| {
+                let Some(rect) = tab_rects.get(index).copied() else {
+                    return div().into_any_element();
+                };
+                let active = index == active_tab;
                 div()
-                    .flex_1()
+                    .absolute()
+                    .left(rect.origin.x)
+                    .top(rect.origin.y)
+                    .w(rect.size.width)
+                    .h(rect.size.height)
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .overflow_hidden()
-                    .text_sm()
-                    .text_color(foreground)
-                    .child(title),
-            );
+                    .text_xs()
+                    .text_color(if active { foreground } else { title_text })
+                    .cursor_pointer()
+                    .when(active, |this| {
+                        this.bg(background).border_b_2().border_color(accent)
+                    })
+                    .hover(move |style| style.bg(hover))
+                    .child(tab.clone())
+                    .into_any_element()
+            })
+            .collect();
 
         let inner = if collapsed {
             // 轨道态：竖排标题 + 展开提示，不渲染正文与按钮。
@@ -857,6 +1015,7 @@ impl RenderOnce for TaskPane {
                 .bg(background)
                 .child(title_bar)
                 .child(div().flex_1().overflow_hidden().child(content))
+                .children(tab_cells)
                 .children(handles)
                 .children(close)
                 .into_any_element()
@@ -905,7 +1064,12 @@ impl RenderOnce for TaskPane {
         )
         .on_mouse_down(
             MouseButton::Left,
-            window.listener_for(&state, |state, event: &MouseDownEvent, _window, _cx| {
+            window.listener_for(&state, |state, event: &MouseDownEvent, _window, cx| {
+                // 页签点击即切换（不走拖拽会话）。
+                if let TaskPaneHit::Tab(index) = state.hit_test(event.position) {
+                    state.set_active_tab(index, cx);
+                    return;
+                }
                 state.on_pointer_down(event.position);
             }),
         )
@@ -935,13 +1099,14 @@ mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
     use super::{
         CLOSE_BUTTON_WIDTH, DEFAULT_WIDTH, MAX_WIDTH, MIN_FLOATING_SIZE, MIN_WIDTH, RAIL_WIDTH,
-        TITLE_HEIGHT, TaskPane, TaskPaneEvent, TaskPaneHit, TaskPaneSide, TaskPaneState,
-        clamp_width, close_button_rect, floating_default_bounds, grip_rect, resize_width,
+        TITLE_HEIGHT, TITLE_PADDING, TaskPane, TaskPaneEvent, TaskPaneHit, TaskPaneSide,
+        TaskPaneState, clamp_width, close_button_rect, floating_default_bounds, grip_rect,
+        resize_width, tab_rects,
     };
     use crate::mdi::ResizeEdge;
     use crate::{
-        AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement as _, Render,
-        Styled as _, TestAppContext, Window, div, point, px, size,
+        AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement as _, Pixels, Point,
+        Render, Styled as _, TestAppContext, Window, div, point, px, size,
     };
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -1412,5 +1577,105 @@ mod tests {
         let log = probe.read_with(cx, |probe, _| probe.log.borrow().clone());
         assert!(log.contains(&TaskPaneEvent::Collapsed(true)));
         assert!(log.contains(&TaskPaneEvent::Collapsed(false)));
+    }
+
+    /// 页签几何：等宽平铺标题栏、右侧预留关闭按钮。
+    #[test]
+    fn tab_rects_tile_title_bar() {
+        let rect = Bounds::new(point(px(0.0), px(0.0)), size(px(260.0), px(400.0)));
+        let rects = tab_rects(rect, 3);
+        assert_eq!(rects.len(), 3);
+        // 左起 8px，右到 260-24=236，三格等宽。
+        assert_eq!(rects[0].origin.x, TITLE_PADDING);
+        let expected = (236.0 - 8.0) / 3.0;
+        assert!((rects[0].size.width.as_f32() - expected).abs() < 1e-4);
+        assert_eq!(rects[2].origin.x + rects[2].size.width, px(236.0));
+        assert_eq!(rects[1].origin.y, px(0.0));
+        assert_eq!(rects[1].size.height, TITLE_HEIGHT);
+
+        // 没有页签 / 宽度不够时不产出矩形。
+        assert!(tab_rects(rect, 0).is_empty());
+        let narrow = Bounds::new(point(px(0.0), px(0.0)), size(px(20.0), px(400.0)));
+        assert!(tab_rects(narrow, 2).is_empty());
+    }
+
+    /// 页签选择：点击命中、事件、循环切换、越界与关闭按钮优先。
+    #[rgpui::test]
+    fn select_tabs_by_hit_test(cx: &mut TestAppContext) {
+        let probe = cx.update(|cx| cx.new(Probe::new));
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        let rect = Bounds::new(point(px(100.0), px(100.0)), size(px(300.0), px(500.0)));
+        cx.update(|cx| {
+            state.update(cx, |state, cx| {
+                state.set_rect(rect, cx);
+                state.set_tabs(vec!["大纲".into(), "属性".into(), "历史".into()], cx);
+            })
+        });
+
+        // 等宽三格：108 + 89.33 的步长（窗口坐标再加 100 偏移）。
+        let width = (300.0 - 8.0 - 24.0) / 3.0;
+        let centers: Vec<Point<Pixels>> = (0..3)
+            .map(|index| point(px(100.0 + 8.0 + width * (index as f32 + 0.5)), px(110.0)))
+            .collect();
+        for (index, center) in centers.iter().enumerate() {
+            assert_eq!(
+                state.read_with(cx, |state, _| state.hit_test(*center)),
+                TaskPaneHit::Tab(index)
+            );
+            assert_eq!(
+                state.read_with(cx, |state, _| state.tab_at(*center)),
+                Some(index)
+            );
+        }
+
+        // 关闭按钮优先于页签，非标题栏区域不算页签。
+        let close = close_button_rect(rect);
+        assert_eq!(
+            state.read_with(cx, |state, _| state.hit_test(close.center())),
+            TaskPaneHit::Close
+        );
+        assert_eq!(
+            state.read_with(cx, |state, _| state
+                .tab_at(point(close.center().x, px(300.0)))),
+            None
+        );
+        assert_eq!(
+            state.read_with(cx, |state, _| state.tab_at(point(px(300.0), px(300.0)))),
+            None
+        );
+
+        // 点击第二个页签：切换 + 事件；重复选择不返回变化。
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.set_active_tab(1, cx))));
+        assert!(!cx.update(|cx| state.update(cx, |state, cx| state.set_active_tab(1, cx))));
+        assert!(!cx.update(|cx| state.update(cx, |state, cx| state.set_active_tab(9, cx))));
+        assert_eq!(state.read_with(cx, |state, _| state.active_tab()), 1);
+        assert_eq!(
+            state.read_with(cx, |state, _| state.active_tab_title().cloned()),
+            Some("属性".into())
+        );
+
+        // 循环切换：从 1 前进到 2，再前进回绕到 0，后退回到 2。
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.cycle_tab(1, cx))));
+        assert_eq!(state.read_with(cx, |state, _| state.active_tab()), 2);
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.cycle_tab(1, cx))));
+        assert_eq!(state.read_with(cx, |state, _| state.active_tab()), 0);
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.cycle_tab(-1, cx))));
+        assert_eq!(state.read_with(cx, |state, _| state.active_tab()), 2);
+
+        // 缩减页签时激活下标夹回；同列表不算变化。
+        assert!(
+            cx.update(|cx| state.update(cx, |state, cx| state.set_tabs(vec!["大纲".into()], cx)))
+        );
+        assert_eq!(state.read_with(cx, |state, _| state.active_tab()), 0);
+        assert!(
+            !cx.update(|cx| state.update(cx, |state, cx| state.set_tabs(vec!["大纲".into()], cx)))
+        );
+        // 无页签时循环切换无事发生。
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.set_tabs(Vec::new(), cx))));
+        assert!(!cx.update(|cx| state.update(cx, |state, cx| state.cycle_tab(1, cx))));
+
+        let log = probe.read_with(cx, |probe, _| probe.log.borrow().clone());
+        assert!(log.contains(&TaskPaneEvent::TabSelected(1)));
+        assert!(log.contains(&TaskPaneEvent::TabSelected(2)));
     }
 }
