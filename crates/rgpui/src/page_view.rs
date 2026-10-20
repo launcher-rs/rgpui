@@ -1,18 +1,20 @@
 //! 文档页视图 —— 分页画布几何 + 纸页外观（页边距 / 页眉页脚）。
 //!
 //! 面向文字处理/排版类应用的「分页视口」：给定纸张尺寸、页边距、页眉页脚高度与页间距，
-//! 按页数在**文档坐标**里纵向排布纸页，并导出每页的整页 / 页眉 / 页脚 / 正文内容矩形；
+//! 按页数在**文档坐标**里排布纸页（默认单列纵向，可切对开 / 封面对开），
+//! 并导出每页的整页 / 页眉 / 页脚 / 正文内容矩形；
 //! 屏幕映射交给 [`Viewport`]（缩放 + 平移）。框架只出几何与纸页外观，
 //! **分页/断行算法留在应用层**（见参考分析的「不该进框架」一节）。
 //!
 //! ## 用法
 //!
 //! ```ignore
-//! use rgpui::page_view::{PageLayout, PageSetup, PageView};
+//! use rgpui::page_view::{PageArrangement, PageLayout, PageSetup, PageView};
 //! use rgpui::viewport::Viewport;
 //!
 //! let setup = PageSetup::default();
-//! let layout = PageLayout::new(setup, /* 页数 */ 3);
+//! let layout = PageLayout::new(setup, /* 页数 */ 3)
+//!     .with_arrangement(PageArrangement::TwoUpCover);
 //! let viewport = Viewport::new();
 //!
 //! // 视图中：PageView 只画纸页与页眉页脚，正文由应用按 layout.content_rect(i) 叠加。
@@ -137,17 +139,44 @@ impl Default for PageSetup {
     }
 }
 
-/// 分页布局（文档坐标；单列纵向排布）。
+/// 页面的排布方式。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum PageArrangement {
+    /// 单列纵向（默认）。
+    #[default]
+    Single,
+    /// 对开：每行两页（0-1、2-3 ……）。
+    TwoUp,
+    /// 对开且封面单独一页（书籍排版：封面在右，其后 1-2、3-4 ……）。
+    TwoUpCover,
+}
+
+impl PageArrangement {
+    /// 每行页数（列数）。
+    pub fn columns(self) -> usize {
+        match self {
+            Self::Single => 1,
+            Self::TwoUp | Self::TwoUpCover => 2,
+        }
+    }
+}
+
+/// 分页布局（文档坐标；默认单列纵向，可切对开排布）。
 #[derive(Clone, Debug, PartialEq)]
 pub struct PageLayout {
     setup: PageSetup,
     page_count: usize,
+    arrangement: PageArrangement,
 }
 
 impl PageLayout {
-    /// 依设置与页数创建布局。
+    /// 依设置与页数创建布局（单列纵向）。
     pub fn new(setup: PageSetup, page_count: usize) -> Self {
-        Self { setup, page_count }
+        Self {
+            setup,
+            page_count,
+            arrangement: PageArrangement::Single,
+        }
     }
 
     /// 分页设置。
@@ -160,15 +189,65 @@ impl PageLayout {
         self.page_count
     }
 
+    /// 页面排布方式。
+    pub fn arrangement(&self) -> PageArrangement {
+        self.arrangement
+    }
+
+    /// 切换页面排布方式（单列 / 对开 / 封面对开）。
+    pub fn with_arrangement(mut self, arrangement: PageArrangement) -> Self {
+        self.arrangement = arrangement;
+        self
+    }
+
     /// 页间距（页高 + 页间距）。
     pub fn page_stride(&self) -> Pixels {
         self.setup.size.height + self.setup.gap
     }
 
+    /// 列间距（页宽 + 页间距）。
+    pub fn column_stride(&self) -> Pixels {
+        self.setup.size.width + self.setup.gap
+    }
+
+    /// 页在网格里的位置（行, 列）。
+    ///
+    /// 封面对开时封面单独占首行右列（书脊在左），其后按两页一行顺延。
+    pub fn page_slot(&self, page: usize) -> (usize, usize) {
+        match self.arrangement {
+            PageArrangement::Single => (page, 0),
+            PageArrangement::TwoUp => (page / 2, page % 2),
+            PageArrangement::TwoUpCover => {
+                if page == 0 {
+                    (0, 1)
+                } else {
+                    let index = page - 1;
+                    (index / 2 + 1, index % 2)
+                }
+            }
+        }
+    }
+
+    /// 网格行数（空文档为 0）。
+    pub fn row_count(&self) -> usize {
+        if self.page_count == 0 {
+            return 0;
+        }
+        match self.arrangement {
+            PageArrangement::Single => self.page_count,
+            PageArrangement::TwoUp => self.page_count.div_ceil(2),
+            PageArrangement::TwoUpCover => 1 + (self.page_count - 1).div_ceil(2),
+        }
+    }
+
     /// 第 `page` 页的整页矩形（文档坐标）。
     pub fn page_rect(&self, page: usize) -> Bounds<Pixels> {
+        let (row, column) = self.page_slot(page);
         Bounds::new(
-            point(px(0.0), self.page_stride() * page as f32),
+            point(
+                self.column_stride() * column as f32,
+                self.page_stride() * row as f32,
+            ),
             self.setup.size.to_size(),
         )
     }
@@ -227,24 +306,46 @@ impl PageLayout {
         if self.page_count == 0 {
             return size(self.setup.size.width, px(0.0));
         }
-        let height = self.page_stride() * self.page_count as f32 - self.setup.gap;
-        size(self.setup.size.width, height.max(px(0.0)))
+        let rows = self.row_count();
+        let columns = self.arrangement.columns();
+        let width = self.column_stride() * columns as f32 - self.setup.gap;
+        let height = self.page_stride() * rows as f32 - self.setup.gap;
+        size(width.max(px(0.0)), height.max(px(0.0)))
     }
 
-    /// 命中页（文档坐标，页间距内的点归上一页；越界返回 `None`）。
+    /// 命中页（文档坐标，页间距内的点归上一页/左页；越界或空白格返回 `None`）。
     pub fn page_at(&self, document: Point<Pixels>) -> Option<usize> {
-        if self.page_count == 0 || document.x < px(0.0) || document.x >= self.setup.size.width {
+        if self.page_count == 0 || document.x < px(0.0) || document.y < px(0.0) {
             return None;
         }
         let stride = self.page_stride();
-        if stride <= px(0.0) {
+        let column_stride = self.column_stride();
+        if stride <= px(0.0) || column_stride <= px(0.0) {
             return None;
         }
-        let page = (document.y / stride).floor();
-        if page < 0.0 || page as usize >= self.page_count {
+        let row = (document.y / stride).floor();
+        let column = (document.x / column_stride).floor();
+        if row < 0.0 || column < 0.0 {
             return None;
         }
-        Some(page as usize)
+        let (row, column) = (row as usize, column as usize);
+        // 由网格位置反推页码；封面对开的首行左格是空白。
+        let page = match self.arrangement {
+            PageArrangement::Single => row,
+            PageArrangement::TwoUp => row * 2 + column,
+            PageArrangement::TwoUpCover => {
+                if row == 0 {
+                    if column == 1 { 0 } else { return None }
+                } else {
+                    1 + (row - 1) * 2 + column
+                }
+            }
+        };
+        // 行尾不满一页时多出的格子不归属任何页。
+        if page >= self.page_count || self.page_slot(page) != (row, column) {
+            return None;
+        }
+        Some(page)
     }
 }
 
@@ -429,7 +530,7 @@ impl<L: PageLabels> RenderOnce for PageView<L> {
 #[cfg(test)]
 mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
-    use super::{PageLayout, PageMargins, PageSetup, PageSize};
+    use super::{PageArrangement, PageLayout, PageMargins, PageSetup, PageSize};
     use crate::{point, px, size};
 
     /// 默认设置为 A4 纵向 + 常规边距。
@@ -508,5 +609,71 @@ mod tests {
         // 空文档。
         let empty = PageLayout::new(PageSetup::default(), 0);
         assert_eq!(empty.page_at(point(px(10.0), px(10.0))), None);
+    }
+
+    /// 对开排布：同一行左右两页，下一行回到左列。
+    #[test]
+    fn two_up_places_pages_side_by_side() {
+        let layout =
+            PageLayout::new(PageSetup::default(), 4).with_arrangement(PageArrangement::TwoUp);
+        assert_eq!(layout.arrangement(), PageArrangement::TwoUp);
+        assert_eq!(layout.column_stride(), px(818.0));
+        assert_eq!(layout.page_slot(0), (0, 0));
+        assert_eq!(layout.page_slot(1), (0, 1));
+        assert_eq!(layout.page_slot(3), (1, 1));
+        assert_eq!(layout.page_rect(1).origin, point(px(818.0), px(0.0)));
+        assert_eq!(layout.page_rect(2).origin, point(px(0.0), px(1147.0)));
+        // 宽 = 两页 + 一个页间距；高 = 两行 + 一个页间距。
+        assert_eq!(layout.row_count(), 2);
+        assert_eq!(layout.document_size(), size(px(1612.0), px(2270.0)));
+
+        // 命中：左右两页各自命中，页间距归左页 / 上一行。
+        assert_eq!(layout.page_at(point(px(400.0), px(50.0))), Some(0));
+        assert_eq!(layout.page_at(point(px(900.0), px(50.0))), Some(1));
+        assert_eq!(layout.page_at(point(px(800.0), px(50.0))), Some(0));
+        assert_eq!(layout.page_at(point(px(900.0), px(1200.0))), Some(3));
+        assert_eq!(layout.page_at(point(px(400.0), px(1200.0))), Some(2));
+        // 行尾不满一页时多出的格子不归属任何页。
+        let odd = PageLayout::new(PageSetup::default(), 3).with_arrangement(PageArrangement::TwoUp);
+        assert_eq!(odd.row_count(), 2);
+        assert_eq!(odd.page_at(point(px(900.0), px(1200.0))), None);
+    }
+
+    /// 封面对开：封面单独占首行右列，其后两页一行顺延。
+    #[test]
+    fn two_up_cover_keeps_cover_alone() {
+        let layout =
+            PageLayout::new(PageSetup::default(), 4).with_arrangement(PageArrangement::TwoUpCover);
+        assert_eq!(layout.page_slot(0), (0, 1));
+        assert_eq!(layout.page_slot(1), (1, 0));
+        assert_eq!(layout.page_slot(2), (1, 1));
+        assert_eq!(layout.page_slot(3), (2, 0));
+        assert_eq!(layout.row_count(), 3);
+        assert_eq!(
+            layout.page_rect(0).origin,
+            point(px(818.0), px(0.0)),
+            "封面靠右（书脊在左）"
+        );
+        assert_eq!(layout.page_rect(1).origin, point(px(0.0), px(1147.0)));
+        // 高 = 三行 + 两个页间距。
+        assert_eq!(layout.document_size(), size(px(1612.0), px(3417.0)));
+
+        // 首行左格是空白。
+        assert_eq!(layout.page_at(point(px(400.0), px(50.0))), None);
+        assert_eq!(layout.page_at(point(px(900.0), px(50.0))), Some(0));
+        assert_eq!(layout.page_at(point(px(400.0), px(1200.0))), Some(1));
+        assert_eq!(layout.page_at(point(px(900.0), px(1200.0))), Some(2));
+
+        // 只有一页时首行右列恰好是封面，行数仍为 1。
+        let single =
+            PageLayout::new(PageSetup::default(), 1).with_arrangement(PageArrangement::TwoUpCover);
+        assert_eq!(single.row_count(), 1);
+        assert_eq!(single.page_at(point(px(900.0), px(50.0))), Some(0));
+        assert_eq!(single.page_at(point(px(400.0), px(50.0))), None);
+        // 空文档行数为 0，且不带页间距。
+        let empty =
+            PageLayout::new(PageSetup::default(), 0).with_arrangement(PageArrangement::TwoUpCover);
+        assert_eq!(empty.row_count(), 0);
+        assert_eq!(empty.document_size(), size(px(794.0), px(0.0)));
     }
 }

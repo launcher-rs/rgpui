@@ -1,12 +1,12 @@
 //! 文档页视图演示：`PageView` 分页画布 + `Viewport` 缩放/平移。
 //!
-//! 三页 A4 文档纵向排布，`PageView` 绘制纸页与页眉页脚，正文按
-//! `PageLayout::content_rect` 导出的矩形叠加（字号随缩放同步）。滚轮 `Ctrl/⌘`
-//! 以光标为中心缩放、否则平移；左键拖拽平移；工具栏可缩小/放大/100%/适应窗口。
+//! 三页 A4 文档排布（单页 / 对开 / 封面对开可切），`PageView` 绘制纸页与页眉页脚，
+//! 正文按 `PageLayout::content_rect` 导出的矩形叠加（字号随缩放同步）。滚轮 `Ctrl/⌘`
+//! 以光标为中心缩放、否则平移；左键拖拽平移；工具栏可缩小/放大/100%/适应窗口/切换排布。
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
-use rgpui::page_view::{PageLabels, PageLayout, PageSetup, PageView};
+use rgpui::page_view::{PageArrangement, PageLabels, PageLayout, PageSetup, PageView};
 use rgpui::viewport::Viewport;
 use rgpui::{
     App, Bounds, Button, Context, FocusHandle, IntoElement, MouseButton, MouseDownEvent,
@@ -18,6 +18,22 @@ use rgpui_platform::application;
 
 /// 演示页数。
 const PAGE_COUNT: usize = 3;
+
+/// 排布方式的循环顺序（按钮依次切换）。
+const ARRANGEMENTS: [PageArrangement; 3] = [
+    PageArrangement::Single,
+    PageArrangement::TwoUp,
+    PageArrangement::TwoUpCover,
+];
+
+/// 排布方式的中文标签。
+fn arrangement_label(arrangement: PageArrangement) -> &'static str {
+    match arrangement {
+        PageArrangement::Single => "单页",
+        PageArrangement::TwoUp => "对开",
+        PageArrangement::TwoUpCover => "封面对开",
+    }
+}
 
 /// 页眉页脚文本。
 struct DocLabels {
@@ -49,7 +65,8 @@ fn page_text(page: usize) -> &'static str {
             "坐标系统\n\n\
               screen = document × zoom + offset。\n\n\
               滚轮 Ctrl/⌘ 以光标为锚点缩放；普通滚轮平移；左键拖拽亦可平移。\n\n\
-              页与页之间保留 gap 间距，命中判定 page_at 会把间距内的点归给上一页。"
+              页与页之间保留 gap 间距，命中判定 page_at 会把间距内的点归给上一页；\
+              对开排布（TwoUp / 封面对开 TwoUpCover）下每行两页，但分页/断行仍由应用决定。"
         }
         _ => {
             "内容区\n\n\
@@ -65,6 +82,8 @@ fn page_text(page: usize) -> &'static str {
 struct PageViewDemo {
     /// 分页布局。
     layout: PageLayout,
+    /// 当前页面排布方式。
+    arrangement: PageArrangement,
     /// 视口（缩放 + 平移）。
     viewport: Viewport,
     /// 焦点句柄。
@@ -83,9 +102,11 @@ impl PageViewDemo {
     /// 创建演示视图。
     fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let setup = PageSetup::default();
-        let layout = PageLayout::new(setup, PAGE_COUNT);
+        let arrangement = PageArrangement::Single;
+        let layout = PageLayout::new(setup, PAGE_COUNT).with_arrangement(arrangement);
         Self {
             layout,
+            arrangement,
             viewport: Viewport::new()
                 .with_zoom(0.55)
                 .with_offset(px_point(120.0, 16.0)),
@@ -191,11 +212,32 @@ impl Render for PageViewDemo {
                             })),
                     )
                     .child(
+                        Button::new("pv-arrangement")
+                            .label(format!("排布：{}", arrangement_label(self.arrangement)))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                // 依固定顺序循环，并同步重建布局（排布影响文档尺寸与命中）。
+                                let index = match this.arrangement {
+                                    PageArrangement::Single => 0,
+                                    PageArrangement::TwoUp => 1,
+                                    PageArrangement::TwoUpCover => 2,
+                                };
+                                let next = ARRANGEMENTS[(index + 1) % ARRANGEMENTS.len()];
+                                this.arrangement = next;
+                                this.layout = this.layout.clone().with_arrangement(next);
+                                cx.notify();
+                            })),
+                    )
+                    .child(
                         div()
                             .ml_auto()
                             .text_xs()
                             .text_color(rgb(0x64748b))
-                            .child(format!("缩放 {:.0}% · {} 页", zoom * 100.0, PAGE_COUNT)),
+                            .child(format!(
+                                "缩放 {:.0}% · {} 页 · {} 行",
+                                zoom * 100.0,
+                                self.layout.page_count(),
+                                self.layout.row_count()
+                            )),
                     ),
             )
             .child(

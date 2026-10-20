@@ -393,7 +393,8 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 
 新增 feature `document`（蕴含 `viewport`），首个落地模块
 `crates/rgpui/src/page_view.rs` —— 面向文字处理/排版应用的「分页视口」：
-按纸张/边距/页眉页脚/页间距在**文档坐标**里纵向排布纸页，屏幕映射复用
+按纸张/边距/页眉页脚/页间距在**文档坐标**里排布纸页（默认单列纵向，可切对开 /
+封面对开），屏幕映射复用
 [`Viewport`]，**分页/断行算法留在应用层**（见 §四）。
 
 - **`PageSize`**：`width`/`height`（px，96 dpi），常量 `A4_PORTRAIT`（794×1123）、
@@ -401,19 +402,28 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **`PageMargins`**：四边像素，常量 `NORMAL`（1in）/`NARROW`（0.5in）/`WIDE`（1.5in）。
 - **`PageSetup`**：`size` + `margins` + `header_height` + `footer_height` + `gap`（默认
   A4 纵向 + 常规边距 + 48/48 + 24）。
+- **`PageArrangement`**（本版增补）：`Single`（单列纵向，默认）/`TwoUp`（对开，每行
+  两页）/`TwoUpCover`（封面对开，封面单独占首行右列，其后 1-2、3-4 ……）；
+  `columns()` 给每行页数。`PageLayout::with_arrangement(arrangement)` 切换，
+  `arrangement()` 读回。
 - **`PageLayout`**（纯几何、可比较）：`new(setup, page_count)`；导出
-  `page_stride`、`page_rect(page)`（整页）、`header_rect`/`footer_rect`/`content_rect`
-  （页眉/页脚/正文区，文档坐标）、`document_size()`（含页间距不含末页后间距）、
-  `page_at(document)`（命中页，间距归上一页、越界为 `None`）。
+  `page_stride`、`column_stride`（页宽 + 页间距）、`page_slot(page)`（网格行/列）、
+  `row_count`、`page_rect(page)`（整页）、`header_rect`/`footer_rect`/`content_rect`
+  （页眉/页脚/正文区，文档坐标）、`document_size()`（含页间距不含末页后间距，
+  宽 = 列数 × 页宽 + 间距）、`page_at(document)`（命中页，间距归上一页/左页、
+  空白格与越界为 `None`）。
 - **`PageView<L>` 元素**：`new(layout, viewport, labels)`，`PageLabels` trait 提供
   `header`/`footer` 文本（`()` 为默认空实现）；`.content_guide(bool)` 描边正文区
   （默认开）、`.area_guide(bool)` 描边页眉页脚区。纸页为白底 + 边框的绝对定位 div，
-  子元素按 `viewport` 换算到屏幕后落位，故缩放时纸与页眉页脚同步。
+  子元素按 `viewport` 换算到屏幕后落位，故缩放时纸与页眉页脚同步；纸页位置全部
+  取自 `page_rect`，切换排布后自动跟随。
 - **示例**：`examples/showcase/src/bin/page_view.rs`（三页 A4 文档，正文按
-  `content_rect` 叠加、字号随缩放同步；滚轮 Ctrl/⌘ 缩放、拖拽平移、适应窗口）。
-- **测试**：6 项（默认设置、横纵互换、整页排布、内容区内缩、文档总尺寸、命中判定）。
+  `content_rect` 叠加、字号随缩放同步；滚轮 Ctrl/⌘ 缩放、拖拽平移、适应窗口；
+  工具栏「排布」按钮在 单页 / 对开 / 封面对开 之间循环）。
+- **测试**：8 项（默认设置、横纵互换、整页排布、内容区内缩、文档总尺寸、命中判定、
+  对开排布、封面对开）。
 
-**本版暂缓**（后续增补）：多列/对开页排布、真实分页（需应用侧断行）、页面缩略图。
+**本版暂缓**（后续增补）：真实分页（需应用侧断行）、页面缩略图。
 
 ## 十九、P1 落地：画布对象工具 object_toolkit（`viewport` feature）
 
