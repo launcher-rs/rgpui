@@ -260,6 +260,8 @@ impl Render for InkApp {
                     .opacity(layer.opacity)
                     .highlight(highlight)
                     .lasso(lasso)
+                    // 每层把笔画暴露给辅助技术（画布合成子节点，播报点数 / 工具）。
+                    .a11y(("ink-layer", index), layer.name.clone())
                     .into_any_element()
             })
             .collect();

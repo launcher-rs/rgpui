@@ -549,8 +549,12 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   `stroke_path`，不增加绘制开销。`InkLayerElement` 内部按 `stroke_paths` 逐条绘制；半透明笔画
   （荧光笔 / 整层不透明度）仍走等宽单路径，避免逐段圆头在接缝处叠加出「串珠」加深。
 - **绘制元素**：`InkLayerElement::new(layer)` + `.highlight(indices)`（套索选中以主题色重绘）
-  + `.lasso(polygon)`（虚线套索框）+ `.opacity(f32)`（整层不透明度，夹取 `0..=1`），逐笔画
-  `window.paint_path`，铺满父容器。
+  + `.lasso(polygon)`（虚线套索框）+ `.opacity(f32)`（整层不透明度，夹取 `0..=1`）
+  + `.a11y(id, label)`（把笔画暴露给辅助技术），逐笔画 `window.paint_path`，铺满父容器。
+- **无障碍**：`InkLayer::semantics()` 每笔生成一个 `Role::GraphicsObject` 节点（节点 id =
+  笔画下标 + 1，值 = 点数，说明 = 工具与笔宽，包围盒按笔宽一半外扩以便单点笔画也能命中与
+  排序）；绘制元素 `.a11y(..)` 后经由 `canvas_a11y` 发布为画布的合成子节点，高亮笔画标记为
+  选中，阅读顺序按行 / x 排列。
 - **多图层文档**：`InkDocumentLayer { name, layer, visible, locked, opacity }`
   （`is_editable` = 可见且未锁定、`fade(color)` 把不透明度乘到颜色上）；`InkDocument`
   按数组自底向上叠放，编辑落在激活图层：`layers`/`layer(idx)`/`visible_layers`/
@@ -565,11 +569,12 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **示例**：`examples/showcase/src/bin/ink.rs`（画布层 + 工具条：钢笔/荧光笔/橡皮/套索、
   撤销、删除选中、清空、压感笔开关（鼠标输入按轨迹长度合成压感）；新建 / 切换 / 隐藏 /
   锁定图层）。
-- **测试**：`ink::tests` 18 项（原有 11 项：落笔-提交-撤销、最小间距过滤、取消落笔、按半径
+- **测试**：`ink::tests` 19 项（原有 11 项：落笔-提交-撤销、最小间距过滤、取消落笔、按半径
   擦除、套索选择与删除、命中判定、包围盒并集、抽稀保留共线/拐点、几何工具、路径构建与
   荧光笔透明度、压感夹取；压感 1 项：宽度映射夹取 + 逐段拆分 + 压感采样保留；图层 6 项：
   默认单层、编辑跟随激活层且锁定/隐藏不可落笔、增删移动后的激活下标、隐藏/锁定层不参与
-  命中擦除包围盒、不透明度夹取与淡化、套索与跨层删除、隐藏层跳过）。
+  命中擦除包围盒、不透明度夹取与淡化、套索与跨层删除、隐藏层跳过；无障碍 1 项：节点 id /
+  点数 / 工具 / 外扩包围盒 / 阅读顺序）。
 
 **本版暂缓**（后续增补）：压感/倾角曲线拟合（现为压感均值线性映射）、
 橡皮的局部切割、触摸/数位板事件接入（现由指针事件驱动）。
@@ -968,10 +973,10 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | 页视图 `page_view` | `PageArrangement`（单页 / 双页 / 双页封面）与 `page_slot` 等栅格几何 |
 | 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`）、轨道折叠（`Track::collapsed` / `row_height` / `with_collapsed` / `set_collapsed`、`tracks_height` / `track_top` / `toggle_track_collapsed`、`TrackCollapsed`、折叠箭头） |
 | 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`）、页签组（`tabs`/`active_tab`/`with_tabs`/`set_tabs`/`set_active_tab`/`cycle_tab`/`tab_rects`/`tab_at`、`TaskPaneHit::Tab`、`TaskPaneEvent::TabSelected`） |
-| Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二）、逐段压感变宽（`pressure_width` / `stroke_paths` / `extend_stroke_with_pressure`） |
+| Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二）、逐段压感变宽（`pressure_width` / `stroke_paths` / `extend_stroke_with_pressure`）、画布语义接线（`InkLayer::semantics` / `InkLayerElement::a11y`，每笔一个 `GraphicsObject` 节点） |
 
 仍未做（保持暂缓）：时间线值曲线、任务窗格多窗格并列、
-富文本分节 / 表格 / 批注 / 脚注、画布语义与自绘组件接线、bidi 视觉重排、
+富文本分节 / 表格 / 批注 / 脚注、更多自绘组件接线画布语义（图表 / 波形等）、bidi 视觉重排、
 取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 
 ### AGENTS 完整性检查清单（12 项）逐条结果

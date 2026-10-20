@@ -24,16 +24,18 @@
 //!     .map(|(_, layer)| InkLayerElement::new(layer.layer.clone()).opacity(layer.opacity));
 //! ```
 //!
-//! **本版暂缓**（后续增补）：逐段压感变宽（现为等宽描边）、压感/倾角曲线拟合、
-//! 平滑重采样（Catmull-Rom 已用二次贝塞尔近似）、橡皮的局部切割、
-//! 触摸/数位板事件接入（现由 [`crate::Platform`] 的指针事件驱动）。
+//! **本版暂缓**（后续增补）：压感/倾角曲线拟合、平滑重采样（Catmull-Rom 已用二次贝塞尔近似）、
+//! 橡皮的局部切割、触摸/数位板事件接入（现由 [`crate::Platform`] 的指针事件驱动）。
 
 use lyon::path::{LineCap, LineJoin};
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{
-    ActiveTheme as _, App, Bounds, Hsla, IntoElement, Path, PathBuilder, PathStyle, Pixels, Point,
-    RenderOnce, SharedString, StrokeOptions, Styled as _, Window, canvas, point, px, size,
+    ActiveTheme as _, App, Bounds, ElementId, Hsla, IntoElement, Path, PathBuilder, PathStyle,
+    Pixels, Point, RenderOnce, SharedString, StrokeOptions, Styled as _, Window, canvas, point, px,
+    size,
 };
+use accesskit::Role;
 
 /// 采样最小间距：鼠标移动事件比采样更密，移动不足该距离的点被丢弃。
 pub const MIN_SAMPLE_DISTANCE: Pixels = px(0.75);
@@ -309,6 +311,20 @@ impl InkLayer {
             }
         }
         result
+    }
+
+    /// 本层笔画的画布语义：每笔一个 `GraphicsObject` 节点（节点 id = 笔画下标 + 1）。
+    ///
+    /// 坐标是画布局部坐标；交给 [`InkLayerElement::a11y`] 后由画布桥接为合成子节点，
+    /// 屏幕阅读器按阅读顺序播报「笔画 N、点数、工具、选中态」。
+    pub fn semantics(&self) -> CanvasSemantics {
+        let mut semantics = CanvasSemantics::new();
+        for (index, stroke) in self.strokes.iter().enumerate() {
+            if let Some(node) = stroke_semantics(index, stroke) {
+                semantics.push(node);
+            }
+        }
+        semantics
     }
 
     /// 橡皮：删除与给定圆相交的笔画，返回删除数量。
@@ -721,6 +737,8 @@ pub struct InkLayerElement {
     lasso: Vec<Point<Pixels>>,
     /// 整层不透明度（`0..=1`）。
     opacity: f32,
+    /// 无障碍配置：元素 id + 画布名称（开启后每笔发布一个语义节点）。
+    a11y: Option<(ElementId, SharedString)>,
 }
 
 impl InkLayerElement {
@@ -731,7 +749,16 @@ impl InkLayerElement {
             highlight: Vec::new(),
             lasso: Vec::new(),
             opacity: 1.0,
+            a11y: None,
         }
+    }
+
+    /// 把笔画暴露给辅助技术（每笔一个 `GraphicsObject` 节点，播报点数 / 工具 / 选中态）。
+    ///
+    /// `id` 是画布元素自身的标识（合成子节点的容器）；同一图层跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
+        self
     }
 
     /// 设置整层不透明度（夹取到 `0..=1`，用于多图层文档的图层透明度）。
@@ -764,8 +791,19 @@ impl RenderOnce for InkLayerElement {
         let highlight = self.highlight;
         let lasso = self.lasso;
         let opacity = self.opacity;
+        let a11y = self.a11y;
 
-        canvas(
+        // 无障碍语义在绘制前建立（笔画顺序 = 节点顺序），高亮笔画标记为选中。
+        let mut semantics = a11y.as_ref().map(|_| layer.semantics());
+        if let Some(semantics) = semantics.as_mut() {
+            for &index in &highlight {
+                if let Some(node) = semantics.get_mut(index as u64 + 1) {
+                    node.set_selected(true);
+                }
+            }
+        }
+
+        let element = canvas(
             |_bounds, _window, _cx| {},
             move |_bounds, _state, window, _cx| {
                 // 先画普通笔画，再画高亮笔画，保证选中项在最上层。
@@ -803,8 +841,44 @@ impl RenderOnce for InkLayerElement {
                 }
             },
         )
-        .size_full()
+        .size_full();
+
+        match (a11y, semantics) {
+            (Some((id, label)), Some(semantics)) => element
+                .id(id)
+                .a11y(Role::Canvas, semantics)
+                .a11y_label(label),
+            _ => element,
+        }
     }
+}
+
+/// 单条笔画的语义节点：包围盒按笔宽外扩（单点 / 细笔画的零尺寸盒也能被命中与排序）。
+fn stroke_semantics(index: usize, stroke: &Stroke) -> Option<CanvasNode> {
+    let bounds = stroke.bounds()?;
+    let pad = stroke.style.width * 0.5;
+    let bounds = Bounds::new(
+        point(bounds.origin.x - pad, bounds.origin.y - pad),
+        size(
+            bounds.size.width + stroke.style.width,
+            bounds.size.height + stroke.style.width,
+        ),
+    );
+    let tool = if stroke.style.is_highlighter() {
+        "荧光笔"
+    } else {
+        "钢笔"
+    };
+    Some(
+        CanvasNode::new(
+            index as u64 + 1,
+            Role::GraphicsObject,
+            format!("笔画 {}", index + 1),
+            bounds,
+        )
+        .with_value(format!("{} 个点", stroke.points.len()))
+        .with_description(format!("{tool} · 宽 {:.0}px", stroke.style.width.as_f32())),
+    )
 }
 
 /// 把采样点平滑成路径：中点二次贝塞尔（每段以中点为界，控制点取原采样点）。
@@ -1398,5 +1472,45 @@ mod tests {
         assert_eq!(doc.lasso(&square), vec![(0, 0)]);
         assert!(doc.set_visible(0, false));
         assert!(doc.lasso(&square).is_empty());
+    }
+
+    /// 画布语义：每笔一个节点、id 稳定、点数 / 工具写入、包围盒按笔宽外扩、按阅读顺序排列。
+    #[test]
+    fn stroke_semantics_expose_points_and_tool() {
+        let mut layer = InkLayer::new();
+        layer.begin_stroke(pt(20.0, 10.0), pen());
+        layer.extend_stroke(pt(30.0, 10.0));
+        layer.end_stroke();
+        layer.begin_stroke(
+            pt(2.0, 10.0),
+            InkStyle::highlighter(hsla(0.15, 0.9, 0.6, 1.0), px(12.0)),
+        );
+        layer.end_stroke();
+
+        let semantics = layer.semantics();
+        assert_eq!(semantics.len(), 2);
+        let first = semantics.get(1).unwrap();
+        assert_eq!(first.label().as_ref(), "笔画 1");
+        assert_eq!(first.value().map(|value| value.as_ref()), Some("2 个点"));
+        assert!(
+            first
+                .description()
+                .is_some_and(|text| text.as_ref().contains("钢笔"))
+        );
+        // 包围盒按笔宽一半外扩：x 20..30、宽 3 → 18.5..31.5。
+        assert_eq!(first.bounds().origin, pt(18.5, 8.5));
+        assert_eq!(first.bounds().size, size(px(13.0), px(3.0)));
+
+        // 单点荧光笔也能得到非零包围盒。
+        let second = semantics.get(2).unwrap();
+        assert_eq!(second.bounds().size, size(px(12.0), px(12.0)));
+        assert!(
+            second
+                .description()
+                .is_some_and(|text| text.as_ref().contains("荧光笔"))
+        );
+
+        // 阅读顺序按 x：第二笔在最左，先播报。
+        assert_eq!(semantics.reading_order(), vec![2, 1]);
     }
 }
