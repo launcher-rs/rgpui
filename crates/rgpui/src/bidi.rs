@@ -56,6 +56,18 @@ impl TextDirection {
     pub fn is_rtl(self) -> bool {
         matches!(self, TextDirection::Rtl)
     }
+
+    /// 语言标签的默认段落方向（`"ar-EG"` → RTL，`"zh-CN"` → LTR）。
+    ///
+    /// 供 i18n 层在「没有具体文本可判定」时给出基准方向，例如空输入框、
+    /// 整段数字，或外壳（滚动条侧、图标方向）需要按语言翻转的场合。
+    pub fn for_locale(locale: &str) -> Self {
+        if is_rtl_locale(locale) {
+            TextDirection::Rtl
+        } else {
+            TextDirection::Ltr
+        }
+    }
 }
 
 /// 字符的强方向（UBA 的 `L` / `R` / `AL` 三类）。弱方向与中性字符返回 `None`。
@@ -75,6 +87,31 @@ pub fn strong_direction(c: char) -> Option<TextDirection> {
 /// 字符是否属于 RTL 文字（`R` / `AL` 类：希伯来、阿拉伯、叙利亚…）。
 pub fn is_rtl_char(c: char) -> bool {
     matches!(strong_direction(c), Some(TextDirection::Rtl))
+}
+
+/// 语言标签的主语言子标签（`"ar-EG"` / `"ar_EG"` → `"ar"`）。
+///
+/// 只取第一个子标签，不解析书写系统子标签（如 `"az-Arab"` 仍按 `"az"` 判为 LTR）——
+/// 那种场合应由应用显式传入方向，而不是猜。
+pub fn primary_language(locale: &str) -> &str {
+    locale.split(['-', '_']).next().unwrap_or(locale)
+}
+
+/// 该语言是否默认从右到左书写（CLDR 常用 RTL 语言，非穷举）。
+///
+/// 只看主语言子标签、大小写不敏感：`"ar"`、`"ar-EG"`、`"AR_eg"` 都是 RTL。
+/// 覆盖阿拉伯语、希伯来语、波斯语、乌尔都语、普什图语、库尔德语（索拉尼）、
+/// 信德语、维吾尔语、迪维希语、叙利亚语、恩科语、意第绪语等常用 RTL 语言；
+/// 历史代码 `iw`（希伯来语）/ `ji`（意第绪语）一并认。
+pub fn is_rtl_locale(locale: &str) -> bool {
+    const RTL_LANGUAGES: &[&str] = &[
+        "ar", "arc", "ckb", "dv", "fa", "he", "iw", "ji", "khw", "ks", "nqo", "prs", "ps", "sd",
+        "skr", "syr", "ug", "ur", "yi",
+    ];
+    let primary = primary_language(locale);
+    RTL_LANGUAGES
+        .iter()
+        .any(|language| language.eq_ignore_ascii_case(primary))
 }
 
 #[cfg(test)]
@@ -150,5 +187,31 @@ mod tests {
         assert!(!is_rtl_char('1'));
         assert_eq!(TextDirection::Rtl.is_rtl(), true);
         assert_eq!(TextDirection::Ltr.is_rtl(), false);
+    }
+
+    // 语言标签 → 默认方向：只看主语言子标签、大小写不敏感。
+    #[test]
+    fn locale_direction_lookup() {
+        use super::{is_rtl_locale, primary_language};
+
+        assert_eq!(TextDirection::for_locale("ar"), TextDirection::Rtl);
+        assert_eq!(TextDirection::for_locale("ar-EG"), TextDirection::Rtl);
+        assert_eq!(TextDirection::for_locale("AR_eg"), TextDirection::Rtl);
+        assert_eq!(TextDirection::for_locale("he-IL"), TextDirection::Rtl);
+        assert_eq!(TextDirection::for_locale("fa-IR"), TextDirection::Rtl);
+        assert_eq!(TextDirection::for_locale("ur-PK"), TextDirection::Rtl);
+        assert_eq!(TextDirection::for_locale("ckb-IQ"), TextDirection::Rtl);
+        // 历史代码仍然认。
+        assert!(is_rtl_locale("iw"));
+        assert!(is_rtl_locale("ji"));
+
+        assert_eq!(TextDirection::for_locale("zh-CN"), TextDirection::Ltr);
+        assert_eq!(TextDirection::for_locale("ja-JP"), TextDirection::Ltr);
+        assert_eq!(TextDirection::for_locale("en-US"), TextDirection::Ltr);
+        assert_eq!(TextDirection::for_locale(""), TextDirection::Ltr);
+
+        assert_eq!(primary_language("zh-Hant-TW"), "zh");
+        assert_eq!(primary_language("ar_EG"), "ar");
+        assert_eq!(primary_language(""), "");
     }
 }

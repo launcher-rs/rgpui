@@ -116,12 +116,15 @@ Backstage（已落地 §十三）、公式栏（§十六）、电子表格网格
 MDI 文档多窗（§二十六）、任务窗格（§二十七）、画布语义（§二十八）、国际文本
 （bidi + 东亚禁则，§二十九）。
 
-**横向工程范式（可立即引入）**
-- control channel（JSON-line TCP + key）+ MCP server 集成；
-- 无头渲染/截图 API（不抢焦点的场景捕获）；
-- 命令/功能 parity 清单 + gate 测试；
-- 生产 crate 加 `deny(clippy::unwrap_used, expect_used, panic, todo, unimplemented)`；
-- i18n catalog 审计 + RTL 镜像。
+**横向工程范式**
+- ✅ control channel（JSON-RPC 2.0 over TCP + key）+ MCP server 集成（§三十）；
+- 无头渲染/截图 API（不抢焦点的场景捕获）—— 已有 `HeadlessAppContext` +
+  `Window::render_to_image`（`cfg(any(test, feature = "test-support"))`），尚缺公开的非 test API；
+- ✅ 命令/功能 parity 清单 + gate 测试（`CommandRegistry::validate`，§三十一）；
+- ⏳ 生产 crate 加 `deny(clippy::unwrap_used, expect_used, panic, todo, unimplemented)` ——
+  按模块收紧，已覆盖 24 个套件模块（§三十一），全 crate 迁移未完成；
+- ⏳ i18n catalog 审计 + RTL 镜像 —— catalog 审计与语言方向已落地（§三十一），
+  外壳/图标镜像未做。
 
 ## 六、P0 落地：命令注册表（已实现）
 
@@ -131,7 +134,8 @@ P0 第一件（命令注册表）已落地，作为其余 P0 件（Ribbon/视口
   - `CommandDescriptor`：命令 UI 元数据（`id`/`label`/`category`/`description`/`default_keystrokes`），
     构建方法 `with_category` / `with_description` / `with_keystroke(s)`，读取用同名 getter。
   - `CommandRegistry`：inventory 自动收集的全局单例（`CommandRegistry::global()`），
-    按「分类 → 标签」排序，提供 `get`/`contains`/`iter`/`categories`/`len`。
+    按「分类 → 标签」排序，提供 `get`/`contains`/`iter`/`categories`/`len`，
+    以及 `validate()`（清单自洽校验：id 唯一、标签/分类非空、快捷键可解析）。
   - `register_command!(fn_name)`：登记一个 `fn() -> CommandDescriptor` 函数项
     （inventory const 约束，不接受闭包）。
   - `App::dispatch_command(id, params)`：按 id 用 `App::build_action` 构建动作再
@@ -146,9 +150,11 @@ P0 第一件（命令注册表）已落地，作为其余 P0 件（Ribbon/视口
 > 图标/放置位置（Ribbon tab/group/QAT）字段待 Ribbon 落地时再加。
 
 > **feature 门控**：套件基座整体是可选能力，普通应用不需要时不必编译。
-> `ribbon` feature 门控 `commands.rs` / `ribbon.rs` / `keytips.rs` / `qat.rs` 与命令面板的
-> 注册表接线；`viewport` feature 门控 `viewport.rs` / `guides.rs`。二者默认关闭，
-> 示例 crate `showcase` 默认开启（保证 workspace check/test 覆盖），CI 另跑 feature 组合检查。
+> `ribbon` feature 门控 `ribbon.rs` / `keytips.rs` / `qat.rs` / `mini_toolbar.rs` / `backstage.rs`
+> 与命令面板的注册表接线；`viewport` feature 门控 `viewport.rs` / `guides.rs` / `object_toolkit.rs`；
+> `spreadsheet` / `document` feature 门控对应套件。命令注册表 `commands.rs` 是**核心**
+> （UI 与外部自动化的共同底座，不随 feature 开关）。前两组默认关闭，示例 crate `showcase`
+> 默认开启（保证 workspace check/test 覆盖），CI 另跑 feature 组合检查。
 
 ## 七、P0 落地：Ribbon 框架（已实现）
 
@@ -804,5 +810,68 @@ MDI 内标签页组（Tabbed MDI）。
 解析）、镜像字符表（`unicode-bidi-mirroring`）、行首标点悬挂（hanging punctuation / 追い出し）、
 纵向排版（`writing-mode: vertical-rl`）、CJK 的标点挤压与文档网格，以及**应用外壳的 RTL 镜像**
 （滚动条侧、图标方向、整体布局方向）。
+
+> 语言层面的方向与目录审计见 §三十一：`TextDirection::for_locale`（语言标签 → 默认方向）与
+> `I18nManager::direction/validate`。外壳镜像仍未做。
+
+## 三十、横向工程范式落地：控制通道 + MCP（`control-channel` feature）
+
+`crates/rgpui/src/control_channel.rs` + `crates/rgpui/src/mcp.rs` —— 命令注册表的**外部前端**。
+此前「命令 id 统一分发」只覆盖 UI / 快捷键 / 命令面板，CLI、脚本、AI agent 无路可走。
+
+- **传输**：本机回环 TCP + 换行分隔的 JSON-RPC 2.0；每条请求带 `key`（默认随机 32 位十六进制，
+  也可自定）。`ControlChannelOptions` 可配 `bind_addr` / `key` / `max_connections`（默认 4）。
+- **线程模型**：TCP 读写在 Tokio 线程池（`rgpui::tokio`）上跑，动作派发必须回主线程 ——
+  请求经 `RpcDispatcher` 投递到前台执行器的任务，由它调用 `App::dispatch_command`，
+  结果再经 oneshot 送回连接。主线程无需任何加锁。
+- **方法表**：`ping`、`app.info`（版本/平台/命令数/窗口数/焦点窗口）、`commands.list`、
+  `commands.get`、`command.dispatch`（`{id, params}`）、`window.list`，以及 MCP 的
+  `initialize` / `tools/list` / `tools/call`。错误码沿用 JSON-RPC（`-32700` 解析失败、
+  `-32601` 未知方法、`-32602` 参数错误、`-32000` 派发失败、`-32001` 密钥不匹配）。
+- **MCP 服务端**：stdio 传输最小子集（`initialize` / `tools/list` / `tools/call`）。
+  一个命令 = 一个工具：工具名 = 命令 id 把 `[A-Za-z0-9_-]` 之外字符换成 `_` 并截断 64 字符
+  （`editor::Save` → `editor__Save`），`inputSchema` 取自动作 JSON Schema
+  （`App::action_schemas`），转义撞名时按 `_2` / `_3` 消歧（`tools/list` 与 `tools/call`
+  共用同一套结果）；执行失败按 MCP 约定以 `isError: true` 回报，而不是 JSON-RPC 错误。
+  协议版本支持 `2024-11-05` / `2025-03-26` / `2025-06-18`（回显客户端版本，未知则回最新）。
+- **入口**：`ControlChannel::start(cx, options)` / `App::start_control_channel(options)`、
+  `McpServer::start_stdio(cx)`；句柄丢弃即停止（accept 任务与前台风泵任务一起取消）。
+  未初始化 Tokio 时自动补一次 `rgpui::tokio::init`。
+- **示例**：`examples/showcase/src/bin/automation.rs` —— 控制台打印 `RGPUI_CONTROL_CHANNEL` /
+  `RGPUI_CONTROL_KEY`（`--mcp` 时改打 stderr，保证 stdout 只有 JSON-RPC），窗口里显示地址、
+  密钥与计数器；外部 `command.dispatch` 或 MCP `tools/call` 都能实时改计数。
+- **测试**：19 项 —— 控制通道 9 项（密钥 / ping / 通知无回复 / 未知方法 / `commands.list` /
+  `commands.get` 未知 id / 派发未知命令 / `app.info` / `window.list`），MCP 10 项
+  （版本回显与回退 / 工具名转义与消歧 / 工具清单 / 未知工具 / 工具执行失败 / 通知 /
+  非 MCP 方法透传 / 工具名唯一）。另用真实进程做过端到端验证：TCP 七种请求 + MCP stdio 三步握手。
+
+**本版暂缓**：TLS / 远程绑定（当前只建议回环）、订阅式推送（事件流 / `resources` 能力）、
+MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审计日志。
+
+## 三十一、横向工程范式落地：命令清单 gate + 目录审计 + lint 收紧
+
+三件「让缺口不再复发」的小工程：
+
+- **命令清单 gate**：`CommandRegistry::validate()` 返回问题清单（空 = 通过）：id 非空且唯一、
+  标签非空、分类非空、默认快捷键可被 `Keystroke::parse` 解析。重复 id 在 `load()` 时只保留
+  第一条（`by_id`）并记 `log::error!`，重复项仍留在清单里由 `validate()` 报出 ——
+  应用在自己的测试里 `assert!(CommandRegistry::global().validate().is_empty())` 即可把
+  「漏填分类 / 快捷键拼错 / 重复登记」挡在 CI 上（示例见 `automation` bin 的 `#[cfg(test)]`）。
+- **i18n 目录审计与语言方向**：`I18nManager::validate()` 以所有语言 key 的并集为基准逐语言
+  报缺失项（并检查当前语言 / 回退语言是否已加载，输出顺序稳定）；`TextDirection::for_locale`
+  + `primary_language` + `is_rtl_locale` 提供「语言标签 → 默认方向」（CLDR 常用 RTL 语言，
+  主语言子标签、大小写不敏感、认 `iw` / `ji` 历史代码），`I18nManager::direction/is_rtl`
+  据此给出基准方向。示例 `intl_text` 增加「语言标签 → 方向 + 目录审计」小节。
+- **生产代码 lint 收紧（按模块）**：新增 `clippy.toml`（测试内允许 `unwrap` / `expect` /
+  `panic!`），并对 24 个套件模块在 `rgpui.rs` 的模块声明处加
+  `#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`
+  （`commands` / `control_channel` / `mcp` / `bidi` / `line_break` / `i18n` / `rich_text` /
+  `ink` / `sorter` / `anim_timeline` / `mdi` / `task_pane` / `canvas_a11y` / `viewport` /
+  `guides` / `object_toolkit` / `formula_bar` / `sheet_grid` / `page_view` / `ribbon` /
+  `keytips` / `qat` / `mini_toolbar` / `backstage`）。收紧只进不退：这些模块新增的
+  `unwrap` 会直接编译失败；其余历史模块按同一口径逐步迁移。
+
+**本版暂缓**：全 crate 的 `unwrap` / `expect` 迁移（约 1200 处，需按子系统分批）、
+`unimplemented` 纳入 workspace deny、`TextStyle::text_direction` 显式方向与外壳 RTL 镜像。
 
 

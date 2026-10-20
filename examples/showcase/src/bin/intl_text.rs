@@ -7,6 +7,8 @@
 //!   靠右 / 靠左，不必让应用自己判断。
 //! - `rgpui::line_break`：CJK 逐字换行时的行首 / 行末禁则（禁则 / kinsoku）与胶连
 //!   字符规则 —— `。` 不再跑到行首、`「` 不再留在行末。
+//! - `rgpui::i18n`：语言标签 → 默认方向（`TextDirection::for_locale`），以及语言包
+//!   缺 key 审计（`I18nManager::validate`）。
 //!
 //! 运行：`cargo run -p showcase --bin intl_text`
 //!
@@ -16,7 +18,10 @@
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
+use std::collections::HashMap;
+
 use rgpui::bidi::{TextDirection, is_rtl_char, strong_direction};
+use rgpui::i18n::I18nManager;
 use rgpui::line_break::{break_class, can_break_between};
 use rgpui::{
     App, Bounds, Context, IntoElement, ParentElement, Pixels, Render, SharedString, Styled as _,
@@ -385,6 +390,73 @@ fn class_section(cx: &App) -> impl IntoElement {
     )
 }
 
+/// 「语言与语言包」小节：语言标签 → 默认方向 + 语言包缺 key 审计。
+fn i18n_section(cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    let locales = [
+        "zh-CN", "en-US", "ja-JP", "ar-EG", "he-IL", "fa-IR", "ur-PK",
+    ];
+    let rows = locales.into_iter().map(|locale| {
+        let direction = TextDirection::for_locale(locale);
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_3()
+            .child(div().w(px(80.0)).font_family("monospace").child(locale))
+            .child(
+                div()
+                    .w(px(48.0))
+                    .text_xs()
+                    .text_color(if direction.is_rtl() {
+                        theme.danger
+                    } else {
+                        theme.success
+                    })
+                    .child(if direction.is_rtl() { "RTL" } else { "LTR" }),
+            )
+            .child(div().text_xs().text_color(theme.muted_foreground).child(
+                if direction.is_rtl() {
+                    "外壳应镜像：滚动条在左、图标方向翻转"
+                } else {
+                    "按 LTR 排版"
+                },
+            ))
+    });
+
+    // 故意让 en 少一个 key，`validate` 会把它列出来。
+    let mut i18n = I18nManager::new("zh-CN").with_fallback("en");
+    i18n.load_translations_map(
+        "zh-CN",
+        HashMap::from([
+            ("hello".to_string(), "你好".to_string()),
+            ("bye".to_string(), "再见".to_string()),
+        ]),
+    );
+    i18n.load_translations_map(
+        "en",
+        HashMap::from([("hello".to_string(), "Hello".to_string())]),
+    );
+    let problems = i18n.validate();
+
+    section(
+        "语言标签 → 默认方向；语言包审计（en 故意缺一个 key）",
+        div()
+            .v_flex()
+            .gap_3()
+            .child(div().v_flex().gap_1().children(rows))
+            .child(div().h(px(1.0)).bg(theme.border))
+            .child(
+                div().v_flex().gap_1().children(
+                    problems
+                        .into_iter()
+                        .map(|problem| div().text_xs().text_color(theme.danger).child(problem)),
+                ),
+            ),
+        cx,
+    )
+}
+
 impl Render for IntlTextDemo {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
@@ -420,7 +492,8 @@ impl Render for IntlTextDemo {
                     .child(direction_section(cx))
                     .child(align_section(cx))
                     .child(kinsoku_section(cx))
-                    .child(class_section(cx)),
+                    .child(class_section(cx))
+                    .child(i18n_section(cx)),
             )
     }
 }

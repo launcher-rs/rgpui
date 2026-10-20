@@ -89,6 +89,10 @@ image-qoi = ["image/qoi"]
 # Tokio 异步运行时集成（自 rgpui-tokio 并入，约 120 行薄封装）。
 # 默认关闭以保持核心精简，需要 tokio 异步能力的应用可显式开启。
 tokio = ["dep:tokio"]
+# 控制通道 + MCP 服务端：本机 JSON-RPC over TCP（密钥鉴权）把命令注册表暴露给
+# CLI / 脚本 / 外部自动化，同一张方法表以 MCP stdio 形式供 AI 客户端调用。
+# 隐含 `tokio`（TCP 监听跑在 Tokio 线程池，动作派发回主线程）。
+control-channel = ["tokio", "tokio/net"]
 # Bzip2 解压支持：用于 GitHub 二进制下载中 .tar.bz2 归档的解压。
 # 默认关闭以省去 libbz2-rs-sys C 库体积，需要时显式开启。
 bzip2-decompress = ["async-compression/bzip2"]
@@ -102,8 +106,9 @@ lsp = ["dep:lsp-types"]
 # 模块 + 对应方法/动作/键位）+ LSP 编辑器侧接线（M2 起蕴含 `lsp`）。
 # 默认关闭，纯表单构建不编译这些代码。
 editor = ["lsp"]
-# Ribbon 套件基座：命令注册表（`commands.rs`）+ Ribbon（`ribbon.rs`）+ 按键提示
-# （`keytips.rs`）+ 快速访问工具栏（`qat.rs`），以及命令面板的注册表接线。
+# Ribbon 套件基座：Ribbon（`ribbon.rs`）+ 按键提示（`keytips.rs`）+
+# 快速访问工具栏（`qat.rs`），以及命令面板的注册表接线
+# （命令注册表 `commands.rs` 是核心，不随本 feature 开关）。
 # 供需要「命令化 UI + 功能区」的应用复用；普通应用不必开启。
 ribbon = []
 # 视口与标尺基座：画布视口（`viewport.rs`）+ 刻度/对齐参考线（`guides.rs`）。

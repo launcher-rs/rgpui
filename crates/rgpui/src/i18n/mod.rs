@@ -171,6 +171,63 @@ impl I18nManager {
         self.current_locale = snapshot.current_locale;
         self.fallback_locale = snapshot.fallback_locale;
     }
+
+    /// 当前语言的默认文字方向（阿拉伯语 / 希伯来语等为 RTL）。
+    ///
+    /// 供排版入口在没有具体文本可判定时使用：空输入框、整段数字，或外壳
+    /// （滚动条侧、图标方向）按语言翻转；有具体文本时仍以
+    /// [`TextDirection::resolve`](crate::bidi::TextDirection::resolve) 的 `dir=auto` 为准。
+    pub fn direction(&self) -> crate::bidi::TextDirection {
+        crate::bidi::TextDirection::for_locale(&self.current_locale)
+    }
+
+    /// 当前语言是否从右到左书写。
+    pub fn is_rtl(&self) -> bool {
+        self.direction().is_rtl()
+    }
+
+    /// 审计语言包，返回问题清单（空表示通过）。
+    ///
+    /// 检查项：
+    /// - 是否加载了任何语言包；
+    /// - 当前语言是否已加载（否则 `t()` 会回退或直接吐 key）；
+    /// - 以所有语言 key 的并集为基准，逐语言报缺失的 key。
+    ///
+    /// 应用在自己的测试里 `assert!(i18n.validate().is_empty())` 即可把
+    /// 「翻译漏词」挡在 CI 上，而不是等界面出现英文原串才发现。
+    pub fn validate(&self) -> Vec<String> {
+        if self.translations.is_empty() {
+            return vec!["没有加载任何语言包".to_string()];
+        }
+
+        let mut problems = Vec::new();
+        if !self.translations.contains_key(&self.current_locale) {
+            problems.push(format!("当前语言 `{}` 尚未加载", self.current_locale));
+        }
+        if let Some(fallback) = &self.fallback_locale
+            && !self.translations.contains_key(fallback)
+        {
+            problems.push(format!("回退语言 `{fallback}` 尚未加载"));
+        }
+
+        // key 并集 + 语言名都排序，保证问题清单稳定（测试可断言顺序）。
+        let all_keys: std::collections::BTreeSet<&str> = self
+            .translations
+            .values()
+            .flat_map(|entries| entries.keys().map(String::as_str))
+            .collect();
+        let mut locales: Vec<&Locale> = self.translations.keys().collect();
+        locales.sort();
+        for locale in locales {
+            let entries = &self.translations[locale];
+            for key in &all_keys {
+                if !entries.contains_key(*key) {
+                    problems.push(format!("语言 `{locale}` 缺少 key `{key}`"));
+                }
+            }
+        }
+        problems
+    }
 }
 
 impl Default for I18nManager {
@@ -372,5 +429,68 @@ mod tests {
         });
         let translated = cx.update(|cx| text.translate_global(cx));
         assert_eq!(translated, "Hello");
+    }
+
+    // 语言包齐全时审计通过；缺 key 时逐条报出。
+    #[test]
+    fn validate_reports_missing_keys() {
+        let mut manager = I18nManager::new("zh-CN").with_fallback("en");
+        manager.load_translations_map(
+            "zh-CN",
+            HashMap::from([
+                ("hello".to_string(), "你好".to_string()),
+                ("bye".to_string(), "再见".to_string()),
+            ]),
+        );
+        manager.load_translations_map(
+            "en",
+            HashMap::from([
+                ("hello".to_string(), "Hello".to_string()),
+                ("bye".to_string(), "Bye".to_string()),
+            ]),
+        );
+        assert!(manager.validate().is_empty());
+
+        manager.load_translations_map(
+            "en",
+            HashMap::from([("hello".to_string(), "Hello".to_string())]),
+        );
+        assert_eq!(
+            manager.validate(),
+            vec!["语言 `en` 缺少 key `bye`".to_string()]
+        );
+    }
+
+    // 当前语言 / 回退语言未加载、以及空目录都要报出来。
+    #[test]
+    fn validate_reports_unloaded_locales() {
+        let empty = I18nManager::new("en");
+        assert_eq!(empty.validate(), vec!["没有加载任何语言包".to_string()]);
+
+        let mut manager = I18nManager::new("ja").with_fallback("en");
+        manager.load_translations_map(
+            "zh-CN",
+            HashMap::from([("hello".to_string(), "你好".to_string())]),
+        );
+        let problems = manager.validate();
+        assert!(problems.contains(&"当前语言 `ja` 尚未加载".to_string()));
+        assert!(problems.contains(&"回退语言 `en` 尚未加载".to_string()));
+    }
+
+    // 语言方向：阿拉伯语 / 希伯来语为 RTL，中文 / 英文为 LTR。
+    #[test]
+    fn locale_direction() {
+        use crate::bidi::TextDirection;
+
+        let mut manager = I18nManager::new("ar-EG");
+        assert!(manager.is_rtl());
+        assert_eq!(manager.direction(), TextDirection::Rtl);
+
+        manager.set_locale("he");
+        assert!(manager.is_rtl());
+
+        manager.set_locale("zh-CN");
+        assert!(!manager.is_rtl());
+        assert_eq!(manager.direction(), TextDirection::Ltr);
     }
 }

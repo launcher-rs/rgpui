@@ -297,7 +297,8 @@ pub fn distribute(rects: &[Bounds<Pixels>], axis: Axis) -> Vec<Bounds<Pixels>> {
     });
 
     let first_start = start_of(&rects[order[0]]).as_f32();
-    let last = &rects[*order.last().unwrap()];
+    // `rects.len() >= 3` 已在函数入口保证，`order` 与它等长。
+    let last = &rects[order[order.len() - 1]];
     let last_end = start_of(last).as_f32() + size_of(last).as_f32();
     let total_size: f32 = order.iter().map(|i| size_of(&rects[*i]).as_f32()).sum();
     let gap = (last_end - first_start - total_size) / (order.len() - 1) as f32;
