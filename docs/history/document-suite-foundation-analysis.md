@@ -633,8 +633,8 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   轨道 `move_track`（选中项与拖动中的关键帧跟随移动）。
 - **交互**：`hit_test` 把局部坐标映射为 `TimelineHit`（`Ruler`/`Keyframe`/`Track`/`None`，行号按
   `vscroll` 换算成内容坐标）；标尺拖拽移动播放头、关键帧拖拽改时间（吸附）、轨道空白双击抛
-  `KeyframeRequested`、`Ctrl/Cmd + 滚轮`以指针为锚缩放；`Shift + 滚轮`或轨道溢出时的滚轮纵向
-  滚动，其余滚轮水平平移；键盘 `Space` 播放/暂停、方向键按帧步进（`Shift` 1s）、`Home`/`End`、
+  `KeyframeRequested`、`Ctrl/Cmd + 滚轮`以指针为锚缩放；`Shift + 滚轮`纵向滚动轨道，其余滚轮
+  水平平移时间轴；键盘 `Space` 播放/暂停、方向键按帧步进（`Shift` 1s）、`Home`/`End`、
   `Delete` 删除关键帧、`+`/`-` 缩放。轨道与标签放进以标尺下沿为顶的裁剪容器，滚动时不会盖住
   标尺；`on_prepaint` 在窗口缩小时把 `vscroll` 夹回可滚动范围。
 - **事件**：`TimelineEvent::{TimeChanged, SelectionChanged, KeyframeMoved, KeyframeRequested,

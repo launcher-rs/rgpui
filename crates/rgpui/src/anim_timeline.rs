@@ -933,7 +933,7 @@ impl TimelineState {
         }
     }
 
-    /// 滚轮：`Ctrl/Cmd` 缩放；`Shift` 或轨道区溢出时纵向滚动；其余水平平移。
+    /// 滚轮：`Ctrl/Cmd` 缩放；`Shift` 纵向滚动轨道；其余水平平移时间轴。
     fn on_wheel(&mut self, event: &ScrollWheelEvent, local: Point<Pixels>, cx: &mut Context<Self>) {
         let delta = match event.delta {
             ScrollDelta::Pixels(delta) => delta,
@@ -952,18 +952,16 @@ impl TimelineState {
             }
             return;
         }
-        // 纵向优先：按住 Shift，或轨道多到溢出且滚轮没有横向分量时滚动轨道。
-        let vertical = event.modifiers.shift
-            || (delta.y != px(0.0) && delta.x == px(0.0) && self.max_vscroll() > 0.0);
-        if vertical {
+        // 横向平移是时间线的主操作（与视频编辑器一致），纵向轨道滚动走 `Shift + 滚轮`。
+        if event.modifiers.shift {
             if delta.y != px(0.0) {
                 self.set_vscroll(self.vscroll + delta.y.as_f32(), cx);
             }
-        } else {
-            let pan = if delta.x != px(0.0) { delta.x } else { delta.y };
-            let scroll = self.scroll - pan.as_f32() / self.px_per_second;
-            self.set_scroll(scroll, cx);
+            return;
         }
+        let pan = if delta.x != px(0.0) { delta.x } else { delta.y };
+        let scroll = self.scroll - pan.as_f32() / self.px_per_second;
+        self.set_scroll(scroll, cx);
     }
 
     /// 键盘：空格播放/暂停、方向键移动播放头、Home/End 首尾、Delete 删除关键帧、± 缩放。
