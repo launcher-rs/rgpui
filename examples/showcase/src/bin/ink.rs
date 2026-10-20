@@ -3,9 +3,12 @@
 //! 演示 `ink` 墨迹层：鼠标拖拽用钢笔 / 荧光笔落笔，橡皮按半径擦除，套索框选后删除；
 //! 另含撤销与清空。笔画以中点二次贝塞尔平滑绘制，荧光笔叠加半透明。
 //!
+//! 多图层：`InkDocument` 管理图层（新增 / 切换 / 隐藏 / 锁定），编辑落在激活图层，
+//! 可见层逐层绘制并把图层不透明度传给 `InkLayerElement`。
+//!
 //! 运行：`cargo run -p showcase --bin ink`
 
-use rgpui::ink::{InkLayer, InkLayerElement, InkStyle, InkTool};
+use rgpui::ink::{InkDocument, InkLayerElement, InkStyle, InkTool};
 use rgpui::{
     App, Bounds, Button, Context, IntoElement, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     ParentElement, Pixels, Point, Render, SharedString, Styled as _, TitlebarOptions, Window,
@@ -22,14 +25,14 @@ const ERASER_RADIUS: Pixels = px(14.0);
 
 /// Ink 示例应用。
 struct InkApp {
-    /// 墨迹层。
-    layer: InkLayer,
+    /// 多图层墨迹文档。
+    doc: InkDocument,
     /// 当前工具。
     tool: InkTool,
     /// 进行中的套索多边形。
     lasso: Vec<Point<Pixels>>,
-    /// 套索选中的笔画索引。
-    selected: Vec<usize>,
+    /// 套索选中的 `(图层, 笔画)`。
+    selected: Vec<(usize, usize)>,
     /// 是否处于落笔状态。
     drawing: bool,
     /// 状态提示。
@@ -40,7 +43,7 @@ impl InkApp {
     /// 创建示例应用。
     fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
         Self {
-            layer: InkLayer::new(),
+            doc: InkDocument::new(),
             tool: InkTool::Pen,
             lasso: Vec::new(),
             selected: Vec::new(),
@@ -64,9 +67,13 @@ impl InkApp {
         self.drawing = true;
         self.selected.clear();
         match self.tool {
-            InkTool::Pen | InkTool::Highlighter => self.layer.begin_stroke(position, self.style()),
+            InkTool::Pen | InkTool::Highlighter => {
+                if !self.doc.begin_stroke(position, self.style()) {
+                    self.status = "当前图层已隐藏或锁定，无法落笔".into();
+                }
+            }
             InkTool::Eraser => {
-                let removed = self.layer.erase_at(position, ERASER_RADIUS);
+                let removed = self.doc.erase_at(position, ERASER_RADIUS);
                 self.status = format!("擦除 {removed} 条笔画").into();
             }
             InkTool::Lasso => self.lasso = vec![position],
@@ -80,9 +87,11 @@ impl InkApp {
             return;
         }
         match self.tool {
-            InkTool::Pen | InkTool::Highlighter => self.layer.extend_stroke(position),
+            InkTool::Pen | InkTool::Highlighter => {
+                self.doc.extend_stroke(position);
+            }
             InkTool::Eraser => {
-                self.layer.erase_at(position, ERASER_RADIUS);
+                self.doc.erase_at(position, ERASER_RADIUS);
             }
             InkTool::Lasso => self.lasso.push(position),
         }
@@ -97,10 +106,10 @@ impl InkApp {
         self.drawing = false;
         match self.tool {
             InkTool::Pen | InkTool::Highlighter => {
-                self.layer.end_stroke();
+                self.doc.end_stroke();
             }
             InkTool::Lasso => {
-                self.selected = self.layer.lasso(&self.lasso);
+                self.selected = self.doc.lasso(&self.lasso);
                 self.status = format!("套索选中 {} 条笔画", self.selected.len()).into();
                 self.lasso.clear();
             }
@@ -116,32 +125,74 @@ impl InkApp {
         cx.notify();
     }
 
-    /// 删除选中的笔画。
+    /// 删除选中的笔画（跨图层，锁定 / 隐藏层跳过）。
     fn delete_selected(&mut self, cx: &mut Context<Self>) {
         let count = self.selected.len();
-        self.layer.remove(&self.selected);
+        self.doc.remove(&self.selected);
         self.selected.clear();
         self.status = format!("删除 {count} 条选中笔画").into();
         cx.notify();
     }
 
-    /// 撤销最近一条笔画。
+    /// 撤销激活图层最近一条笔画。
     fn undo(&mut self, cx: &mut Context<Self>) {
         self.selected.clear();
-        let undone = self.layer.undo();
+        let undone = self.doc.undo();
         self.status = if undone {
             "已撤销一条笔画".into()
         } else {
-            "没有可撤销的笔画".into()
+            "激活图层没有可撤销的笔画".into()
         };
         cx.notify();
     }
 
-    /// 清空。
+    /// 清空激活图层。
     fn clear(&mut self, cx: &mut Context<Self>) {
-        self.layer.clear();
+        self.doc.clear();
         self.selected.clear();
-        self.status = "已清空".into();
+        self.status = "已清空激活图层".into();
+        cx.notify();
+    }
+
+    /// 新建图层并激活。
+    fn add_layer(&mut self, cx: &mut Context<Self>) {
+        let name = format!("图层 {}", self.doc.layer_count() + 1);
+        let index = self.doc.add_layer(name);
+        self.status = format!("新建图层 #{}", index + 1).into();
+        cx.notify();
+    }
+
+    /// 切换到下一图层。
+    fn next_layer(&mut self, cx: &mut Context<Self>) {
+        let next = (self.doc.active_index() + 1) % self.doc.layer_count();
+        self.doc.set_active(next);
+        self.status = format!("激活图层 #{}", next + 1).into();
+        cx.notify();
+    }
+
+    /// 隐藏 / 显示激活图层。
+    fn toggle_visible(&mut self, cx: &mut Context<Self>) {
+        let index = self.doc.active_index();
+        let visible = !self.doc.active().visible;
+        self.doc.set_visible(index, visible);
+        self.status = if visible {
+            "显示激活图层".into()
+        } else {
+            "隐藏激活图层".into()
+        };
+        cx.notify();
+    }
+
+    /// 锁定 / 解锁激活图层。
+    fn toggle_locked(&mut self, cx: &mut Context<Self>) {
+        let index = self.doc.active_index();
+        let locked = !self.doc.active().locked;
+        self.doc.set_locked(index, locked);
+        self.status = if locked {
+            "锁定激活图层".into()
+        } else {
+            "解锁激活图层".into()
+        };
         cx.notify();
     }
 }
@@ -156,6 +207,40 @@ impl Render for InkApp {
                 }))
         };
 
+        let active = self.doc.active_index();
+        let layer_count = self.doc.layer_count();
+        // 可见图层逐层绘制：套索只画在激活层，高亮按层过滤。
+        let layer_elements: Vec<rgpui::AnyElement> = self
+            .doc
+            .visible_layers()
+            .map(|(index, layer)| {
+                let highlight = self
+                    .selected
+                    .iter()
+                    .filter(|(selected_layer, _)| *selected_layer == index)
+                    .map(|(_, stroke)| *stroke)
+                    .collect();
+                let lasso = if index == active {
+                    self.lasso.clone()
+                } else {
+                    Vec::new()
+                };
+                InkLayerElement::new(layer.layer.clone())
+                    .opacity(layer.opacity)
+                    .highlight(highlight)
+                    .lasso(lasso)
+                    .into_any_element()
+            })
+            .collect();
+        let active_layer = self.doc.active().clone();
+        let active_strokes = active_layer.layer.strokes.len();
+        let selected_count = self.selected.len();
+        let selected_label = if self.selected.is_empty() {
+            String::new()
+        } else {
+            format!(" · 选中 {selected_count}")
+        };
+
         div()
             .relative()
             .size_full()
@@ -168,11 +253,7 @@ impl Render for InkApp {
                     .top_0()
                     .left_0()
                     .size_full()
-                    .child(
-                        InkLayerElement::new(self.layer.clone())
-                            .highlight(self.selected.clone())
-                            .lasso(self.lasso.clone()),
-                    )
+                    .children(layer_elements)
                     .on_mouse_down(
                         rgpui::MouseButton::Left,
                         cx.listener(|this, ev: &MouseDownEvent, _window, cx| {
@@ -224,11 +305,42 @@ impl Render for InkApp {
                                 ),
                             ),
                     )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .flex_wrap()
+                            .gap_2()
+                            .child(Button::new("add-layer").label("新建图层").on_click(
+                                cx.listener(|this, _event, _window, cx| this.add_layer(cx)),
+                            ))
+                            .child(Button::new("next-layer").label("切换图层").on_click(
+                                cx.listener(|this, _event, _window, cx| this.next_layer(cx)),
+                            ))
+                            .child(Button::new("toggle-visible").label("隐藏/显示").on_click(
+                                cx.listener(|this, _event, _window, cx| {
+                                    this.toggle_visible(cx);
+                                }),
+                            ))
+                            .child(Button::new("toggle-locked").label("锁定/解锁").on_click(
+                                cx.listener(|this, _event, _window, cx| {
+                                    this.toggle_locked(cx);
+                                }),
+                            )),
+                    )
                     .child(div().text_sm().child(self.status.clone()))
                     .child(div().text_xs().child(format!(
-                        "笔画数：{} · 选中：{}",
-                        self.layer.strokes.len(),
-                        self.selected.len()
+                        "图层 {}/{}（{}）· 激活层笔画 {} · 可见层 {}{}",
+                        active + 1,
+                        layer_count,
+                        if active_layer.visible {
+                            "可见"
+                        } else {
+                            "隐藏"
+                        },
+                        active_strokes,
+                        self.doc.visible_layers().count(),
+                        selected_label,
                     ))),
             )
     }

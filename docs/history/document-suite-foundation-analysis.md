@@ -543,14 +543,27 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   `simplify_points`；`stroke_path(points, width)` 用**中点二次贝塞尔**平滑折线（圆头/圆角），
   单点渲染成圆点。
 - **绘制元素**：`InkLayerElement::new(layer)` + `.highlight(indices)`（套索选中以主题色重绘）
-  + `.lasso(polygon)`（虚线套索框），逐笔画 `window.paint_path`，铺满父容器。
+  + `.lasso(polygon)`（虚线套索框）+ `.opacity(f32)`（整层不透明度，夹取 `0..=1`），逐笔画
+  `window.paint_path`，铺满父容器。
+- **多图层文档**：`InkDocumentLayer { name, layer, visible, locked, opacity }`
+  （`is_editable` = 可见且未锁定、`fade(color)` 把不透明度乘到颜色上）；`InkDocument`
+  按数组自底向上叠放，编辑落在激活图层：`layers`/`layer(idx)`/`visible_layers`/
+  `layer_count`/`active_index`/`active`、`set_active`/`add_layer`/`remove_layer`（至少留一层）/
+  `move_layer`（激活下标跟随）、`set_visible`/`set_locked`/`set_opacity`；
+  绘制 `begin_stroke`/`begin_stroke_with_pressure`/`extend_stroke`/`end_stroke`/`cancel_stroke`、
+  `undo`/`clear`/`simplify`（限激活层且可编辑），`erase_at`/`remove`（跨全部可编辑层）、
+  `hit_test`（自顶向下首个可见层）、`lasso`（返回 `(图层, 笔画)`）、`bounds`（可见层并集）。
+  应用逐层创建 `InkLayerElement::new(layer.layer.clone()).opacity(layer.opacity)` 叠加，
+  隐藏层跳过即可。
 - **示例**：`examples/showcase/src/bin/ink.rs`（画布层 + 工具条：钢笔/荧光笔/橡皮/套索、
-  撤销、删除选中、清空）。
-- **测试**：`ink::tests` 11 项（落笔-提交-撤销、最小间距过滤、取消落笔、按半径擦除、套索
-  选择与删除、命中判定、包围盒并集、抽稀保留共线/拐点、几何工具、路径构建与荧光笔透明度、
-  压感夹取）。
+  撤销、删除选中、清空；新建 / 切换 / 隐藏 / 锁定图层）。
+- **测试**：`ink::tests` 17 项（原有 11 项：落笔-提交-撤销、最小间距过滤、取消落笔、按半径
+  擦除、套索选择与删除、命中判定、包围盒并集、抽稀保留共线/拐点、几何工具、路径构建与
+  荧光笔透明度、压感夹取；图层 6 项：默认单层、编辑跟随激活层且锁定/隐藏不可落笔、
+  增删移动后的激活下标、隐藏/锁定层不参与命中擦除包围盒、不透明度夹取与淡化、套索与跨层
+  删除、隐藏层跳过）。
 
-**本版暂缓**（后续增补）：逐段压感变宽（现为等宽描边）、压感/倾角曲线拟合、笔迹分图层与
+**本版暂缓**（后续增补）：逐段压感变宽（现为等宽描边）、压感/倾角曲线拟合、
 橡皮的局部切割、触摸/数位板事件接入（现由指针事件驱动）。
 
 ## 二十三、P2 落地：缩略图排序器（核心，无 feature 门控）

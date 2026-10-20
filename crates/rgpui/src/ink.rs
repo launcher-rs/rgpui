@@ -2,32 +2,37 @@
 //!
 //! 面向白板 / 手写批注 / 手绘应用的**墨迹层**：以「采样点序列 + 画笔样式」为笔画
 //! （[`Stroke`]），按工具（钢笔 / 荧光笔 / 橡皮 / 套索）编辑一整个 [`InkLayer`]：
-//! 落笔-移动-抬笔生成笔画、按半径擦除、套索选择、撤销等；并提供**纯几何**工具函数
+//! 落笔-移动-抬笔生成笔画、按半径擦除、套索选择、撤销等；多图层文档用 [`InkDocument`]
+//! 组织（可见 / 锁定 / 不透明度 / 叠放顺序，编辑落在激活图层）；并提供**纯几何**工具函数
 //! （点到线段距离、点在多边形内、Douglas–Peucker 抽稀）与把笔画平滑成 [`crate::Path`]
 //! 的构建器。渲染由 [`InkLayerElement`] 承担（逐笔画 `window.paint_path`）。
 //!
 //! ## 用法
 //!
 //! ```ignore
-//! use rgpui::ink::{InkLayer, InkLayerElement, InkStyle};
+//! use rgpui::ink::{InkDocument, InkLayer, InkLayerElement, InkStyle};
 //! use rgpui::{hsla, px};
 //!
-//! let mut layer = InkLayer::new();
-//! layer.begin_stroke(point, InkStyle::pen(hsla(0.6, 0.8, 0.4, 1.0), px(3.0)));
-//! layer.extend_stroke(point2);
-//! layer.end_stroke();
-//! let element = InkLayerElement::new(layer);
+//! let mut doc = InkDocument::new();
+//! doc.add_layer("批注");
+//! doc.begin_stroke(point, InkStyle::pen(hsla(0.6, 0.8, 0.4, 1.0), px(3.0)));
+//! doc.extend_stroke(point2);
+//! doc.end_stroke();
+//! // 逐层绘制：隐藏层跳过，图层透明度传给元素。
+//! let elements = doc
+//!     .visible_layers()
+//!     .map(|(_, layer)| InkLayerElement::new(layer.layer.clone()).opacity(layer.opacity));
 //! ```
 //!
 //! **本版暂缓**（后续增补）：逐段压感变宽（现为等宽描边）、压感/倾角曲线拟合、
-//! 平滑重采样（Catmull-Rom 已用二次贝塞尔近似）、笔迹分图层与橡皮的局部切割、
+//! 平滑重采样（Catmull-Rom 已用二次贝塞尔近似）、橡皮的局部切割、
 //! 触摸/数位板事件接入（现由 [`crate::Platform`] 的指针事件驱动）。
 
 use lyon::path::{LineCap, LineJoin};
 
 use crate::{
     ActiveTheme as _, App, Bounds, Hsla, IntoElement, Path, PathBuilder, PathStyle, Pixels, Point,
-    RenderOnce, StrokeOptions, Styled as _, Window, canvas, point, px, size,
+    RenderOnce, SharedString, StrokeOptions, Styled as _, Window, canvas, point, px, size,
 };
 
 /// 采样最小间距：鼠标移动事件比采样更密，移动不足该距离的点被丢弃。
@@ -356,6 +361,341 @@ impl InkLayer {
     }
 }
 
+/// 墨迹文档中的一层：墨迹 + 显示 / 编辑属性。
+#[derive(Clone, Debug)]
+pub struct InkDocumentLayer {
+    /// 图层名。
+    pub name: SharedString,
+    /// 该层的墨迹。
+    pub layer: InkLayer,
+    /// 是否可见（隐藏层不参与绘制、命中与擦除）。
+    pub visible: bool,
+    /// 是否锁定（锁定层不可编辑，但仍可选择 / 命中）。
+    pub locked: bool,
+    /// 不透明度（`0..=1`，渲染时乘到笔画颜色上）。
+    pub opacity: f32,
+}
+
+impl InkDocumentLayer {
+    /// 新建可见、未锁定、完全不透明的图层。
+    pub fn new(name: impl Into<SharedString>) -> Self {
+        Self {
+            name: name.into(),
+            layer: InkLayer::new(),
+            visible: true,
+            locked: false,
+            opacity: 1.0,
+        }
+    }
+
+    /// 是否可编辑（可见且未锁定）。
+    pub fn is_editable(&self) -> bool {
+        self.visible && !self.locked
+    }
+
+    /// 把本层的不透明度乘到颜色上（供渲染使用）。
+    pub fn fade(&self, color: Hsla) -> Hsla {
+        color.opacity(self.opacity)
+    }
+}
+
+/// 多图层墨迹文档：数组顺序自底向上叠放，编辑落在激活图层。
+///
+/// 只负责图层结构与编辑路由（可见 / 锁定 / 不透明度 / 叠放顺序）；绘制由应用逐层创建
+/// [`InkLayerElement`]（`.opacity(layer.opacity)`）叠加，隐藏层跳过即可。
+#[derive(Clone, Debug)]
+pub struct InkDocument {
+    /// 图层（自底向上）。
+    layers: Vec<InkDocumentLayer>,
+    /// 激活图层下标。
+    active: usize,
+}
+
+impl Default for InkDocument {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl InkDocument {
+    /// 新建只含一层「图层 1」的文档。
+    pub fn new() -> Self {
+        Self {
+            layers: vec![InkDocumentLayer::new("图层 1")],
+            active: 0,
+        }
+    }
+
+    /// 全部图层（自底向上）。
+    pub fn layers(&self) -> &[InkDocumentLayer] {
+        &self.layers
+    }
+
+    /// 图层数量。
+    pub fn layer_count(&self) -> usize {
+        self.layers.len()
+    }
+
+    /// 激活图层下标。
+    pub fn active_index(&self) -> usize {
+        self.active
+    }
+
+    /// 激活图层。
+    pub fn active(&self) -> &InkDocumentLayer {
+        &self.layers[self.active]
+    }
+
+    /// 按索引取图层。
+    pub fn layer(&self, index: usize) -> Option<&InkDocumentLayer> {
+        self.layers.get(index)
+    }
+
+    /// 可见图层（自底向上，带下标），供应用逐层绘制。
+    pub fn visible_layers(&self) -> impl Iterator<Item = (usize, &InkDocumentLayer)> {
+        self.layers
+            .iter()
+            .enumerate()
+            .filter(|(_, layer)| layer.visible)
+    }
+
+    /// 切换激活图层。
+    pub fn set_active(&mut self, index: usize) -> bool {
+        if index >= self.layers.len() || index == self.active {
+            return false;
+        }
+        self.active = index;
+        true
+    }
+
+    /// 在最上方新增一层并激活，返回其下标。
+    pub fn add_layer(&mut self, name: impl Into<SharedString>) -> usize {
+        self.layers.push(InkDocumentLayer::new(name));
+        self.active = self.layers.len() - 1;
+        self.active
+    }
+
+    /// 删除图层（至少保留一层），并修正激活下标。
+    pub fn remove_layer(&mut self, index: usize) -> bool {
+        if index >= self.layers.len() || self.layers.len() <= 1 {
+            return false;
+        }
+        self.layers.remove(index);
+        if index < self.active {
+            self.active -= 1;
+        } else if index == self.active {
+            self.active = self.active.min(self.layers.len() - 1);
+        }
+        true
+    }
+
+    /// 调整叠放顺序（`to` 为移除后的目标下标，越界自动夹取）。
+    pub fn move_layer(&mut self, from: usize, to: usize) -> bool {
+        if from >= self.layers.len() {
+            return false;
+        }
+        let to = to.min(self.layers.len() - 1);
+        if from == to {
+            return false;
+        }
+        let layer = self.layers.remove(from);
+        self.layers.insert(to, layer);
+        // 激活下标跟随被移动的图层。
+        if self.active == from {
+            self.active = to;
+        } else if from < self.active && to >= self.active {
+            self.active -= 1;
+        } else if from > self.active && to <= self.active {
+            self.active += 1;
+        }
+        true
+    }
+
+    /// 设置图层可见性。
+    pub fn set_visible(&mut self, index: usize, visible: bool) -> bool {
+        match self.layers.get_mut(index) {
+            Some(layer) if layer.visible != visible => {
+                layer.visible = visible;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 设置图层锁定。
+    pub fn set_locked(&mut self, index: usize, locked: bool) -> bool {
+        match self.layers.get_mut(index) {
+            Some(layer) if layer.locked != locked => {
+                layer.locked = locked;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 设置图层不透明度（夹取到 `0..=1`，非有限值按 0 处理）。
+    pub fn set_opacity(&mut self, index: usize, opacity: f32) -> bool {
+        let opacity = if opacity.is_finite() {
+            opacity.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        match self.layers.get_mut(index) {
+            Some(layer) if layer.opacity != opacity => {
+                layer.opacity = opacity;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 在激活图层落笔（隐藏 / 锁定时返回 `false`）。
+    pub fn begin_stroke(&mut self, position: Point<Pixels>, style: InkStyle) -> bool {
+        let layer = &mut self.layers[self.active];
+        if !layer.is_editable() {
+            return false;
+        }
+        layer.layer.begin_stroke(position, style);
+        true
+    }
+
+    /// 在激活图层落笔并记录压感。
+    pub fn begin_stroke_with_pressure(
+        &mut self,
+        position: Point<Pixels>,
+        pressure: f32,
+        style: InkStyle,
+    ) -> bool {
+        let layer = &mut self.layers[self.active];
+        if !layer.is_editable() {
+            return false;
+        }
+        layer
+            .layer
+            .begin_stroke_with_pressure(position, pressure, style);
+        true
+    }
+
+    /// 延长激活图层的进行中笔画。
+    pub fn extend_stroke(&mut self, position: Point<Pixels>) -> bool {
+        let layer = &mut self.layers[self.active];
+        if !layer.is_editable() || !layer.layer.is_drawing() {
+            return false;
+        }
+        layer.layer.extend_stroke(position);
+        true
+    }
+
+    /// 结束激活图层的进行中笔画（是否有笔画被提交）。
+    pub fn end_stroke(&mut self) -> bool {
+        let layer = &mut self.layers[self.active];
+        layer.is_editable() && layer.layer.end_stroke()
+    }
+
+    /// 丢弃激活图层的进行中笔画。
+    pub fn cancel_stroke(&mut self) -> bool {
+        let layer = &mut self.layers[self.active];
+        if !layer.is_editable() || !layer.layer.is_drawing() {
+            return false;
+        }
+        layer.layer.cancel_stroke();
+        true
+    }
+
+    /// 撤销激活图层最后一笔（锁定 / 隐藏时无效）。
+    pub fn undo(&mut self) -> bool {
+        let layer = &mut self.layers[self.active];
+        layer.is_editable() && layer.layer.undo()
+    }
+
+    /// 清空激活图层（锁定 / 隐藏时无效）。
+    pub fn clear(&mut self) -> bool {
+        let layer = &mut self.layers[self.active];
+        if !layer.is_editable() || layer.layer.is_empty() {
+            return false;
+        }
+        layer.layer.clear();
+        true
+    }
+
+    /// 对所有可编辑图层按半径擦除，返回删除的笔画总数。
+    pub fn erase_at(&mut self, center: Point<Pixels>, radius: Pixels) -> usize {
+        self.layers
+            .iter_mut()
+            .filter(|layer| layer.is_editable())
+            .map(|layer| layer.layer.erase_at(center, radius))
+            .sum()
+    }
+
+    /// 命中最近的笔画（自顶向下取第一个可见层），返回 `(图层下标, 笔画下标)`。
+    pub fn hit_test(&self, position: Point<Pixels>, tolerance: Pixels) -> Option<(usize, usize)> {
+        self.layers
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(_, layer)| layer.visible)
+            .find_map(|(index, layer)| {
+                layer
+                    .layer
+                    .hit_test(position, tolerance)
+                    .map(|stroke| (index, stroke))
+            })
+    }
+
+    /// 套索选择：返回所有可见层中被框住的 `(图层下标, 笔画下标)`。
+    pub fn lasso(&self, polygon: &[Point<Pixels>]) -> Vec<(usize, usize)> {
+        self.layers
+            .iter()
+            .enumerate()
+            .filter(|(_, layer)| layer.visible)
+            .flat_map(|(index, layer)| {
+                layer
+                    .layer
+                    .lasso(polygon)
+                    .into_iter()
+                    .map(move |stroke| (index, stroke))
+            })
+            .collect()
+    }
+
+    /// 删除给定 `(图层下标, 笔画下标)` 的笔画（隐藏 / 锁定层跳过）。
+    pub fn remove(&mut self, indices: &[(usize, usize)]) {
+        let mut per_layer: Vec<Vec<usize>> = vec![Vec::new(); self.layers.len()];
+        for &(layer, stroke) in indices {
+            if let Some(slot) = per_layer.get_mut(layer) {
+                slot.push(stroke);
+            }
+        }
+        for (layer, strokes) in self.layers.iter_mut().zip(per_layer) {
+            if layer.is_editable() && !strokes.is_empty() {
+                layer.layer.remove(&strokes);
+            }
+        }
+    }
+
+    /// 所有可见图层的包围盒并集。
+    pub fn bounds(&self) -> Option<Bounds<Pixels>> {
+        self.layers
+            .iter()
+            .filter(|layer| layer.visible)
+            .filter_map(|layer| layer.layer.bounds())
+            .reduce(|acc, bounds| {
+                let left = acc.origin.x.min(bounds.origin.x);
+                let top = acc.origin.y.min(bounds.origin.y);
+                let right =
+                    (acc.origin.x + acc.size.width).max(bounds.origin.x + bounds.size.width);
+                let bottom =
+                    (acc.origin.y + acc.size.height).max(bounds.origin.y + bounds.size.height);
+                Bounds::new(point(left, top), size(right - left, bottom - top))
+            })
+    }
+
+    /// 对激活图层抽稀。
+    pub fn simplify(&mut self, tolerance: Pixels) {
+        self.layers[self.active].layer.simplify(tolerance);
+    }
+}
+
 /// 墨迹层绘制元素：逐笔画描边，可高亮选中笔画并绘制套索选区。
 #[derive(IntoElement)]
 pub struct InkLayerElement {
@@ -365,6 +705,8 @@ pub struct InkLayerElement {
     highlight: Vec<usize>,
     /// 进行中的套索多边形。
     lasso: Vec<Point<Pixels>>,
+    /// 整层不透明度（`0..=1`）。
+    opacity: f32,
 }
 
 impl InkLayerElement {
@@ -374,7 +716,18 @@ impl InkLayerElement {
             layer,
             highlight: Vec::new(),
             lasso: Vec::new(),
+            opacity: 1.0,
         }
+    }
+
+    /// 设置整层不透明度（夹取到 `0..=1`，用于多图层文档的图层透明度）。
+    pub fn opacity(mut self, opacity: f32) -> Self {
+        self.opacity = if opacity.is_finite() {
+            opacity.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        self
     }
 
     /// 设置要高亮的笔画索引。
@@ -396,6 +749,7 @@ impl RenderOnce for InkLayerElement {
         let layer = self.layer;
         let highlight = self.highlight;
         let lasso = self.lasso;
+        let opacity = self.opacity;
 
         canvas(
             |_bounds, _window, _cx| {},
@@ -406,20 +760,20 @@ impl RenderOnce for InkLayerElement {
                         continue;
                     }
                     if let Some(path) = stroke_path(&stroke.points, stroke.style.width) {
-                        window.paint_path(path, stroke.style.effective_color());
+                        window.paint_path(path, stroke.style.effective_color().opacity(opacity));
                     }
                 }
                 for &index in &highlight {
                     if let Some(stroke) = layer.strokes.get(index)
                         && let Some(path) = stroke_path(&stroke.points, stroke.style.width)
                     {
-                        window.paint_path(path, accent);
+                        window.paint_path(path, accent.opacity(opacity));
                     }
                 }
                 if let Some(pending) = layer.pending()
                     && let Some(path) = stroke_path(&pending.points, pending.style.width)
                 {
-                    window.paint_path(path, pending.style.effective_color());
+                    window.paint_path(path, pending.style.effective_color().opacity(opacity));
                 }
                 if let Some(path) = polygon_path(&lasso, LASSO_STROKE_WIDTH) {
                     window.paint_path(path, accent);
@@ -754,5 +1108,178 @@ mod tests {
         let p = InkPoint::with_pressure(pt(0.0, 0.0), -1.0);
         assert_eq!(p.pressure, 0.0);
         assert_eq!(InkPoint::new(pt(0.0, 0.0)).pressure, 1.0);
+    }
+
+    /// 在给定图层画一条水平短线（起点 `x`）。
+    fn draw_on(doc: &mut InkDocument, layer: usize, x: f32) {
+        doc.set_active(layer);
+        assert!(doc.begin_stroke(pt(x, 0.0), pen()));
+        assert!(doc.extend_stroke(pt(x + 10.0, 0.0)));
+        assert!(doc.end_stroke());
+    }
+
+    /// 新文档只有一层「图层 1」且激活。
+    #[test]
+    fn document_starts_with_one_layer() {
+        let doc = InkDocument::new();
+        assert_eq!(doc.layer_count(), 1);
+        assert_eq!(doc.active_index(), 0);
+        assert_eq!(doc.active().name.as_ref(), "图层 1");
+        assert!(doc.active().is_editable());
+        assert_eq!(doc.visible_layers().count(), 1);
+        assert!(doc.bounds().is_none());
+        assert_eq!(InkDocument::default().layer_count(), 1);
+    }
+
+    /// 落笔与编辑只作用在激活图层。
+    #[test]
+    fn drawing_and_editing_follow_active_layer() {
+        let mut doc = InkDocument::new();
+        let index = doc.add_layer("批注");
+        assert_eq!(index, 1);
+        assert_eq!(doc.active_index(), 1);
+
+        draw_on(&mut doc, 1, 0.0);
+        assert_eq!(doc.layer(0).unwrap().layer.strokes.len(), 0);
+        assert_eq!(doc.layer(1).unwrap().layer.strokes.len(), 1);
+
+        // 撤销只动激活层。
+        assert!(doc.undo());
+        assert!(doc.layer(1).unwrap().layer.is_empty());
+
+        draw_on(&mut doc, 0, 20.0);
+        assert_eq!(doc.layer(0).unwrap().layer.strokes.len(), 1);
+        assert!(doc.clear());
+        assert!(doc.layer(0).unwrap().layer.is_empty());
+        assert!(!doc.clear());
+
+        // 锁定 / 隐藏后不可落笔。
+        assert!(doc.set_active(1));
+        assert!(doc.set_locked(1, true));
+        assert!(!doc.begin_stroke(pt(0.0, 0.0), pen()));
+        assert!(!doc.extend_stroke(pt(5.0, 0.0)));
+        assert!(!doc.end_stroke());
+        assert!(!doc.cancel_stroke());
+        assert!(!doc.undo());
+        assert!(doc.set_visible(1, false));
+        assert!(!doc.begin_stroke(pt(0.0, 0.0), pen()));
+    }
+
+    /// 新增 / 删除 / 移动图层时激活下标跟随。
+    #[test]
+    fn layer_order_removal_and_active_tracking() {
+        let mut doc = InkDocument::new();
+        doc.add_layer("b");
+        doc.add_layer("c");
+        assert_eq!(doc.active_index(), 2);
+
+        // 把顶层 c 移到最底：激活跟随被移动的图层。
+        assert!(doc.move_layer(2, 0));
+        assert_eq!(doc.active_index(), 0);
+        assert_eq!(doc.active().name.as_ref(), "c");
+
+        // 把 c 移回顶层：激活跟随被移动的图层。
+        assert!(doc.move_layer(0, 2));
+        assert_eq!(doc.active_index(), 2);
+        assert_eq!(doc.active().name.as_ref(), "c");
+
+        // 删除激活图层后接管同下标（此时是 c）。
+        assert!(doc.remove_layer(1));
+        assert_eq!(doc.layer_count(), 2);
+        assert_eq!(doc.active().name.as_ref(), "c");
+
+        // 删除激活层以下的图层，激活下标左移。
+        assert!(doc.remove_layer(0));
+        assert_eq!(doc.active_index(), 0);
+        // 最后一层不可删除。
+        assert!(!doc.remove_layer(0));
+        assert!(!doc.move_layer(0, 0));
+        assert!(!doc.move_layer(5, 0));
+        assert!(!doc.set_active(3));
+    }
+
+    /// 隐藏层不参与命中 / 擦除 / 包围盒，锁定层不参与擦除。
+    #[test]
+    fn hidden_and_locked_layers_are_excluded() {
+        let mut doc = InkDocument::new();
+        doc.add_layer("上层");
+        draw_on(&mut doc, 0, 0.0);
+        draw_on(&mut doc, 1, 100.0);
+
+        // 命中自顶向下取第一个可见层。
+        assert_eq!(doc.hit_test(pt(105.0, 0.0), px(2.0)), Some((1, 0)));
+        assert_eq!(doc.hit_test(pt(5.0, 0.0), px(2.0)), Some((0, 0)));
+        assert_eq!(doc.hit_test(pt(50.0, 50.0), px(2.0)), None);
+
+        // 包围盒覆盖两层。
+        let bounds = doc.bounds().unwrap();
+        assert_eq!(bounds.origin, pt(0.0, 0.0));
+        assert_eq!(bounds.size, crate::size(px(110.0), px(0.0)));
+
+        // 隐藏上层后命中落到下层，包围盒缩回。
+        assert!(doc.set_visible(1, false));
+        assert_eq!(doc.hit_test(pt(105.0, 0.0), px(2.0)), None);
+        assert_eq!(doc.bounds().unwrap().size, crate::size(px(10.0), px(0.0)));
+        assert_eq!(doc.visible_layers().count(), 1);
+        // 隐藏层的笔画不会被擦除。
+        assert_eq!(doc.erase_at(pt(105.0, 0.0), px(3.0)), 0);
+        assert_eq!(doc.layer(1).unwrap().layer.strokes.len(), 1);
+
+        // 锁定层不可擦除。
+        assert!(doc.set_locked(0, true));
+        assert_eq!(doc.erase_at(pt(5.0, 0.0), px(3.0)), 0);
+        assert_eq!(doc.layer(0).unwrap().layer.strokes.len(), 1);
+        assert!(doc.set_locked(0, false));
+        assert_eq!(doc.erase_at(pt(5.0, 0.0), px(3.0)), 1);
+    }
+
+    /// 图层不透明度夹取到 `0..=1`，非有限值按 0 处理。
+    #[test]
+    fn opacity_clamped_and_faded() {
+        let mut doc = InkDocument::new();
+        let base = hsla(0.2, 0.9, 0.5, 1.0);
+        assert_eq!(doc.layer(0).unwrap().fade(base).a, 1.0);
+
+        assert!(doc.set_opacity(0, 0.5));
+        assert_eq!(doc.layer(0).unwrap().opacity, 0.5);
+        assert!((doc.layer(0).unwrap().fade(base).a - 0.5).abs() < 1e-6);
+
+        assert!(doc.set_opacity(0, 2.0));
+        assert_eq!(doc.layer(0).unwrap().opacity, 1.0);
+        assert!(doc.set_opacity(0, -1.0));
+        assert_eq!(doc.layer(0).unwrap().opacity, 0.0);
+        assert!(doc.set_opacity(0, 1.0));
+        assert!(doc.set_opacity(0, f32::NAN));
+        assert_eq!(doc.layer(0).unwrap().opacity, 0.0);
+
+        assert!(!doc.set_opacity(9, 0.5));
+        assert!(!doc.set_opacity(0, 0.0));
+        assert!(!doc.set_visible(9, false));
+        assert!(!doc.set_locked(9, true));
+    }
+
+    /// 套索跨图层返回 `(图层, 笔画)`，隐藏层被跳过。
+    #[test]
+    fn lasso_spans_visible_layers() {
+        let mut doc = InkDocument::new();
+        doc.add_layer("上层");
+        draw_on(&mut doc, 0, 10.0);
+        draw_on(&mut doc, 1, 80.0);
+
+        let square = [pt(0.0, -5.0), pt(40.0, -5.0), pt(40.0, 5.0), pt(0.0, 5.0)];
+        assert_eq!(doc.lasso(&square), vec![(0, 0)]);
+        // 跨层删除：锁定层跳过。
+        assert!(doc.set_locked(1, true));
+        doc.remove(&[(0, 0), (1, 0)]);
+        assert!(doc.layer(0).unwrap().layer.is_empty());
+        assert_eq!(doc.layer(1).unwrap().layer.strokes.len(), 1);
+        assert!(doc.set_locked(1, false));
+        assert!(doc.lasso(&square).is_empty());
+
+        // 隐藏层不参与套索。
+        draw_on(&mut doc, 0, 10.0);
+        assert_eq!(doc.lasso(&square), vec![(0, 0)]);
+        assert!(doc.set_visible(0, false));
+        assert!(doc.lasso(&square).is_empty());
     }
 }
