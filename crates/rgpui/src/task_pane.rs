@@ -1400,6 +1400,14 @@ mod tests {
         assert!(!cx.update(|cx| state.update(cx, |state, cx| state.set_hovered(true, cx))));
         assert!(!state.read_with(cx, |state, _| state.is_collapsed()));
 
+        // 关闭自动隐藏后手动收起：悬停不会展开，需要显式点击（`set_collapsed(false)`）。
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.set_collapsed(true, cx))));
+        assert!(state.read_with(cx, |state, _| state.is_collapsed()));
+        assert!(!cx.update(|cx| state.update(cx, |state, cx| state.set_hovered(false, cx))));
+        assert!(state.read_with(cx, |state, _| state.is_collapsed()));
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.set_collapsed(false, cx))));
+        assert!(!state.read_with(cx, |state, _| state.is_collapsed()));
+
         // 收起 / 展开事件成对出现。
         let log = probe.read_with(cx, |probe, _| probe.log.borrow().clone());
         assert!(log.contains(&TaskPaneEvent::Collapsed(true)));
