@@ -100,6 +100,24 @@ impl SorterApp {
                     });
                     this.status = format!("把第 {} 页移动到第 {} 位", from + 1, to + 1).into();
                 }
+                SorterEvent::ReorderMany { from, to } => {
+                    state.update(cx, |state, cx| {
+                        let slides = &mut state.delegate_mut().slides;
+                        // 先按原索引抽出整组，再整组插入到落位索引
+                        let len = slides.len();
+                        let moved: Vec<_> = from
+                            .iter()
+                            .rev()
+                            .filter(|index| **index < len)
+                            .map(|index| slides.remove(*index))
+                            .collect();
+                        for (offset, slide) in moved.into_iter().rev().enumerate() {
+                            slides.insert(to + offset, slide);
+                        }
+                        cx.notify();
+                    });
+                    this.status = format!("整组移动 {} 页到第 {} 位", from.len(), to + 1).into();
+                }
                 SorterEvent::SelectionChanged(indices) => {
                     this.status = format!("选中 {} 项", indices.len()).into();
                 }

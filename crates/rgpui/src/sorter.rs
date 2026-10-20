@@ -3,7 +3,9 @@
 //! 面向「一堆等尺寸缩略图 + 拖拽重排」的场景：自动换行网格、单选 / 范围选择 /
 //! 多选、缩放、键盘导航，以及**拖拽重排**（拖拽过程中在插入位置画一条指示线）。
 //! 框架只负责控件与交互，缩略图内容与项目顺序由应用通过 [`SorterDelegate`] 提供；
-//! 重排只抛出 [`SorterEvent::Reorder`]，真正移动数据由应用完成（见下方示例）。
+//! 重排只抛出 [`SorterEvent::Reorder`]（多选拖动时是 [`SorterEvent::ReorderMany`]），
+//! 真正移动数据由应用完成（见下方示例）。拖到视口上下边缘的自动滚动由
+//! [`SorterState::drag_autoscroll`] 提供逻辑，应用按帧驱动即可。
 //!
 //! 与 [`DataTable`](crate::DataTable) / [`VirtualList`](crate::VirtualList) 的区别：
 //! 后两者面向「有序行」且不提供重排，本控件面向「二维缩略图墙」并提供拖拽重排、
@@ -70,6 +72,10 @@ pub const MIN_ZOOM: f32 = 0.4;
 pub const MAX_ZOOM: f32 = 2.5;
 /// 默认单元格宽高比（16:9）。
 pub const DEFAULT_ASPECT_RATIO: f32 = 16.0 / 9.0;
+/// 拖拽自动滚动的触边距离（距视口上下边缘多少像素内开始滚动）。
+pub const AUTOSCROLL_EDGE: Pixels = px(48.0);
+/// 拖拽自动滚动的最快速度（每帧滚动多少像素，贴着边缘时取到）。
+pub const AUTOSCROLL_MAX_SPEED: Pixels = px(18.0);
 
 /// 把缩放系数夹取到 [`MIN_ZOOM`]..=[`MAX_ZOOM`]，非有限值回落为 `1.0`。
 pub fn clamp_zoom(zoom: f32) -> f32 {
@@ -142,6 +148,51 @@ pub fn move_dest(from: usize, slot: usize) -> Option<usize> {
     }
 }
 
+/// 拖拽到视口上下边缘时的自动滚动速度（每帧像素，正数向下、负数向上）。
+///
+/// 指针进入距边缘 `edge` 的带状区域后开始滚动，越贴近边缘越快，贴边时取到
+/// `max_speed`；不在边缘区域时返回 0。自动滚动由应用按帧重复调用
+/// [`SorterState::drag_autoscroll`] 驱动，组件本身不持有定时器。
+pub fn autoscroll_velocity(
+    pointer_y: Pixels,
+    viewport: Bounds<Pixels>,
+    edge: Pixels,
+    max_speed: Pixels,
+) -> Pixels {
+    let top = viewport.origin.y.as_f32();
+    let bottom = top + viewport.size.height.as_f32();
+    let edge = edge.as_f32().max(1.0);
+    let max_speed = max_speed.as_f32();
+    let y = pointer_y.as_f32();
+
+    if y < top + edge {
+        let intensity = ((top + edge - y) / edge).clamp(0.0, 1.0);
+        px(-max_speed * intensity)
+    } else if y > bottom - edge {
+        let intensity = ((y - (bottom - edge)) / edge).clamp(0.0, 1.0);
+        px(max_speed * intensity)
+    } else {
+        px(0.0)
+    }
+}
+
+/// 多选整组拖动：把插入槽换算成「整组落位后的起始索引」。
+///
+/// `selected` 必须升序且非空。槽位落在选中集合首项之后、末项及其后一位之前时返回
+/// `None`：整组拖回自己身上没有意义。返回值是**抽走选中项之后**的列表里，整组第一项
+/// 应处的索引。
+pub fn move_group_dest(selected: &[usize], slot: usize) -> Option<usize> {
+    let first = *selected.first()?;
+    let last = *selected.last()?;
+    if slot == first || (slot > first && slot <= last + 1) {
+        return None;
+    }
+
+    // 目标槽前面的选中项会被抽走，落位索引要相应前移
+    let removed_before = selected.iter().filter(|&&index| index < slot).count();
+    Some(slot - removed_before)
+}
+
 /// 排序器抛出的事件（应用经 `subscribe` 接收）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SorterEvent {
@@ -152,6 +203,15 @@ pub enum SorterEvent {
         /// 拖拽源索引。
         from: usize,
         /// 移动后的目标索引。
+        to: usize,
+    },
+    /// 请求整组重排：把 `from` 里的项目（升序）整体移动到 `to` 起始的位置。
+    ///
+    /// 应用按「先按索引升序抽出这些项目，再插入到 `to`」的方式重排数据。
+    ReorderMany {
+        /// 整组项目的原索引，升序。
+        from: Vec<usize>,
+        /// 抽走后的列表中，整组第一项的目标索引。
         to: usize,
     },
     /// 激活某一项（双击 / `Enter` / `Space`）。
@@ -433,13 +493,47 @@ impl<D: SorterDelegate> SorterState<D> {
         self.set_drop_slot(slot, cx);
     }
 
-    /// 结束拖拽：位移有效时抛出 [`SorterEvent::Reorder`]。
+    /// 拖拽边缘自动滚动：按指针位置滚动视口，返回本帧的滚动增量。
+    ///
+    /// 应用在拖拽期间用前台定时器每帧调用一次；返回 [`px(0.0)`] 表示指针不在边缘
+    /// 区域，可以停掉定时器。滚动后顺带重算插入槽。
+    pub fn drag_autoscroll(&mut self, pointer: Point<Pixels>, cx: &mut Context<Self>) -> Pixels {
+        if self.dragging.is_none() {
+            return px(0.0);
+        }
+
+        let delta = autoscroll_velocity(
+            pointer.y,
+            self.bounds,
+            AUTOSCROLL_EDGE,
+            AUTOSCROLL_MAX_SPEED,
+        );
+        if delta == px(0.0) {
+            return delta;
+        }
+
+        let mut offset = self.scroll.offset();
+        offset.y = offset.y + delta;
+        self.scroll.set_offset(offset);
+        self.update_drag(pointer, cx);
+        cx.notify();
+        delta
+    }
+
+    /// 结束拖拽：位移有效时抛出 [`SorterEvent::Reorder`]；拖的是多选中的一项时
+    /// 抛 [`SorterEvent::ReorderMany`]，整组一起移动。
     pub fn finish_drag(&mut self, cx: &mut Context<Self>) {
         let Some(from) = self.dragging.take() else {
             return;
         };
         let slot = self.hover_slot.take().unwrap_or(from);
-        if let Some(to) = move_dest(from, slot) {
+
+        if self.selected.len() > 1 && self.selected.contains(&from) {
+            let indices: Vec<usize> = self.selected.iter().copied().collect();
+            if let Some(to) = move_group_dest(&indices, slot) {
+                cx.emit(SorterEvent::ReorderMany { from: indices, to });
+            }
+        } else if let Some(to) = move_dest(from, slot) {
             cx.emit(SorterEvent::Reorder { from, to });
         }
         cx.notify();
@@ -796,7 +890,8 @@ mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
     use super::{
         DEFAULT_ASPECT_RATIO, MAX_ZOOM, MIN_ZOOM, Sorter, SorterDelegate, SorterEvent, SorterState,
-        cell_size, clamp_zoom, drop_slot, grid_columns, move_dest, normalize_aspect_ratio,
+        autoscroll_velocity, cell_size, clamp_zoom, drop_slot, grid_columns, move_dest,
+        move_group_dest, normalize_aspect_ratio,
     };
     use crate::{
         App, AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement as _, Render,
@@ -933,6 +1028,47 @@ mod tests {
         assert_eq!(move_dest(0, 4), Some(3));
     }
 
+    /// 拖到视口上下边缘才自动滚动，越贴边越快。
+    #[test]
+    fn autoscroll_only_near_edges() {
+        let viewport = Bounds {
+            origin: point(px(0.0), px(0.0)),
+            size: size(px(400.0), px(300.0)),
+        };
+
+        // 视口中间：不滚
+        assert_eq!(
+            autoscroll_velocity(px(150.0), viewport, px(48.0), px(18.0)),
+            px(0.0)
+        );
+        // 贴上边缘：向上滚，越贴越快，贴边取到上限
+        let near_top = autoscroll_velocity(px(10.0), viewport, px(48.0), px(18.0));
+        let above_top = autoscroll_velocity(px(-20.0), viewport, px(48.0), px(18.0));
+        assert!(near_top < px(0.0));
+        assert!(near_top > above_top);
+        assert_eq!(above_top, px(-18.0));
+        // 贴下边缘：向下滚
+        assert_eq!(
+            autoscroll_velocity(px(320.0), viewport, px(48.0), px(18.0)),
+            px(18.0)
+        );
+    }
+
+    /// 整组落位：抽走选中项后索引前移，拖回自己身上不产生位移。
+    #[test]
+    fn group_dest_compacts_before_slot() {
+        // [1, 2] 拖到槽 4：抽走两项后落位索引变成 2
+        assert_eq!(move_group_dest(&[1, 2], 4), Some(2));
+        // 拖到最前
+        assert_eq!(move_group_dest(&[3, 4], 0), Some(0));
+        // 拖回自己区间：无位移
+        assert_eq!(move_group_dest(&[1, 2], 1), None);
+        assert_eq!(move_group_dest(&[1, 2], 2), None);
+        assert_eq!(move_group_dest(&[1, 2], 3), None);
+        // 空选择没有落位
+        assert_eq!(move_group_dest(&[], 0), None);
+    }
+
     /// 单选 / 范围 / 多选 / 全选都抛出 `SelectionChanged`。
     #[rgpui::test]
     fn selection_variants_emit_changes(cx: &mut crate::TestAppContext) {
@@ -1017,6 +1153,36 @@ mod tests {
             })
         });
         assert!(events.borrow().is_empty());
+    }
+
+    /// 拖的是多选中的一项时整组移动，抛 `ReorderMany`。
+    #[rgpui::test]
+    fn drag_multi_selection_emits_reorder_many(cx: &mut crate::TestAppContext) {
+        let (state, events, mut cx) = setup(cx);
+
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                state.toggle(1, cx);
+                state.toggle(2, cx);
+            })
+        });
+        events.borrow_mut().clear();
+
+        // 抓取选中项之一拖到末尾：整组 [1, 2] 落到抽走两项后的索引 3
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                state.begin_drag(2, cx);
+                state.set_drop_slot(5, cx);
+                state.finish_drag(cx);
+            })
+        });
+        assert_eq!(
+            events.borrow().as_slice(),
+            [SorterEvent::ReorderMany {
+                from: vec![1, 2],
+                to: 3
+            }]
+        );
     }
 
     /// 缩放 / 序号显示 / 间距的可配置性。
