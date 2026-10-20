@@ -750,13 +750,19 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
 「单个可停靠 / 可浮动的属性面板」，正是 WordCraft 的 task pane 需求。
 
 - **数据**：`TaskPaneSide { Left, Right }`（`grip_edge`：左停靠把手在右缘、右停靠把手在左缘）；
-  `TaskPaneState`（侧 / 宽度 / 最小最大宽度 / 可见 / 浮动 / 浮动矩形 / `closable` / 窗格窗口矩形 /
-  拖拽会话 / `FocusHandle`）；`TaskPaneHit { None, TitleBar, Close, Grip, Resize(edge), Body }`；
-  `TaskPaneEvent { VisibilityChanged, SideChanged, WidthChanged, FloatingChanged }`。
+  `TaskPaneState`（侧 / 宽度 / 最小最大宽度 / 可见 / 浮动 / 浮动矩形 / `closable` / 自动隐藏
+  `auto_hide` / 收起 `collapsed` / 悬停 `hovered` / 窗格窗口矩形 / 拖拽会话 / `FocusHandle`）；
+  `TaskPaneHit { None, TitleBar, Close, Grip, Resize(edge), Body }`；
+  `TaskPaneEvent { VisibilityChanged, SideChanged, WidthChanged, FloatingChanged, Collapsed }`。
 - **操作**：`show`/`hide`/`toggle`/`set_visible`、`set_side`、`set_width`（夹取）、`set_closable`、
   `float(bounds)` / `dock` / `toggle_float(parent)`（浮动时贴父容器右下角内侧）、`set_rect`
-  （预绘制回写）、`hit_test`、`on_pointer_down/move/up`、`on_key_down`（`Esc` 取消拖拽）。
+  （预绘制回写）、`set_auto_hide` / `is_auto_hide`、`is_collapsed` / `set_collapsed` /
+  `toggle_collapsed`、`set_hovered`（元素 `on_hover` 调用）、`effective_width`（收起时为
+  `RAIL_WIDTH`）、`hit_test`、`on_pointer_down/move/up`、`on_key_down`（`Esc` 取消拖拽）。
   builder：`with_side`/`with_width`/`with_width_range`/`with_visible`/`with_closable`。
+- **自动隐藏**：停靠态鼠标移出后收起为 `RAIL_WIDTH`（28px）宽的竖排标题轨道，移入即展开；
+  收起时整条按 `TitleBar` 命中（不提供关闭 / 缩放），正文回调**不执行**；浮动态、隐藏态与
+  关闭自动隐藏时保持展开，`dock()` / `set_visible(true)` 会按当前悬停状态重新套用。
 - **纯几何**：`clamp_width`（非有限值回落最小宽）、`resize_width`（拖左缘取负号 → 向左变宽）、
   `grip_rect`、`close_button_rect`、`floating_default_bounds`；浮动态的八向缩放直接复用
   `mdi` 的 `resize_edge_at`/`resize_edge_rects`/`resize_bounds`（`resize_edge_rects` 因此提为 pub）。
@@ -764,18 +770,18 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   （`flex_none` + 固定宽 + `h_full` + 内缘边框 + 内缘把手），浮动态是 `absolute` 子元素
   （**父容器须为定位祖先** `relative()`）+ 八向缩放块；把手 / 按钮只设光标，命中与拖拽统一由
   容器层处理（与 MDI 同构，避免子元素吞掉拖拽）。`on_prepaint` 回写窗格矩形，指针 / 键盘事件
-  经 `window.listener_for` 转发给状态；命中优先顺序：缩放边 / 角 → 内缘把手 → 关闭按钮 →
-  标题栏 → 正文。
+  经 `window.listener_for` 转发给状态，`on_hover` 维护悬停态；命中优先顺序：缩放边 / 角 →
+  内缘把手 → 关闭按钮 → 标题栏 → 正文（收起时直接 `TitleBar`）。
 - **键盘**：`Esc` 取消当前拖拽。
 - **示例**：`examples/showcase/src/bin/task_pane.rs`（显示 / 隐藏、停靠左 / 右、浮动 / 回停靠、
-  加宽 / 收窄、关闭按钮开关；正文实时读取窗格宽度与停靠侧）。
-- **测试**：8 项 —— 纯几何 2 项（宽度夹取与内缘拖拽换算、把手 / 关闭按钮 / 浮动默认矩形）；
+  加宽 / 收窄、关闭按钮开关、自动隐藏开关；正文实时读取窗格宽度与停靠侧）。
+- **测试**：9 项 —— 纯几何 2 项（宽度夹取与内缘拖拽换算、把手 / 关闭按钮 / 浮动默认矩形）；
   状态 6 项（显隐 / 换侧 / 改宽事件、浮动 / 停靠切换与最小浮动尺寸、停靠态两向把手拖拽改宽、
   浮动态标题栏平移 + 右下角缩放、关闭按钮「按下后滑走不触发」、真实绘制回写矩形且隐藏 / 浮动
-  两态均可渲染）。
+  两态均可渲染）；自动隐藏 1 项（悬停展开 / 移出收起、收起态命中与有效宽度、浮动与关闭自动
+  隐藏时保持展开、`Collapsed` 事件）。
 
-**本版暂缓**（后续增补）：多窗格并列（一屏多个任务窗格）、窗格吸附 / 自动隐藏（鼠标滑出收起）、
-页签式窗格组、窗格内滚动位置记忆。
+**本版暂缓**（后续增补）：多窗格并列（一屏多个任务窗格）、页签式窗格组、窗格内滚动位置记忆。
 
 ## 二十八、P2 落地：画布语义（核心，无 feature 门控）
 
@@ -937,9 +943,10 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | MDI `mdi` | `snap_rect` / `snap_active` / `with_snap`（拖动松手吸附到工作区边/中线）；`MdiLayout::Tabbed` 页签式（见 §二十六） |
 | 页视图 `page_view` | `PageArrangement`（单页 / 双页 / 双页封面）与 `page_slot` 等栅格几何 |
 | 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`） |
+| 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`） |
 | Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二） |
 
-仍未做（保持暂缓）：时间线轨道折叠 / 值曲线、任务窗格多栏与自动隐藏、
+仍未做（保持暂缓）：时间线轨道折叠 / 值曲线、任务窗格多窗格并列与页签组、
 富文本分节 / 表格 / 批注 / 脚注、笔迹逐段压感变宽、画布语义与自绘组件接线、bidi 视觉重排、
 取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 

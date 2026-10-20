@@ -39,7 +39,8 @@ use crate::{
     ActiveTheme as _, AnyElement, App, Bounds, Context, CursorStyle, ElementExt as _, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
-    RenderOnce, SharedString, Size, Styled as _, Window, div, point, px, size,
+    RenderOnce, SharedString, Size, StatefulInteractiveElement as _, Styled as _, Window, div,
+    point, px, size,
 };
 
 /// 标题栏高度。
@@ -58,6 +59,8 @@ pub const CLOSE_BUTTON_WIDTH: Pixels = px(24.0);
 pub const MIN_FLOATING_SIZE: Size<Pixels> = size(px(160.0), px(120.0));
 /// 浮动窗格默认与父容器边缘的留白。
 pub const FLOATING_MARGIN: Pixels = px(12.0);
+/// 自动隐藏收起后的轨道宽度。
+pub const RAIL_WIDTH: Pixels = px(28.0);
 
 /// 停靠侧。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +109,8 @@ pub enum TaskPaneEvent {
     WidthChanged(Pixels),
     /// 浮动 / 停靠切换。
     FloatingChanged(bool),
+    /// 自动隐藏的收起 / 展开状态变化。
+    Collapsed(bool),
 }
 
 /// 把宽度夹取到 `min..=max`；非有限值回落为 `min`。
@@ -210,6 +215,12 @@ pub struct TaskPaneState {
     floating_bounds: Bounds<Pixels>,
     /// 是否显示关闭按钮。
     closable: bool,
+    /// 是否启用自动隐藏（停靠态鼠标移出后收起为轨道）。
+    auto_hide: bool,
+    /// 是否收起为轨道。
+    collapsed: bool,
+    /// 鼠标是否停在窗格上（由元素 `on_hover` 维护）。
+    hovered: bool,
     /// 最近一次预绘制写入的窗格窗口矩形。
     rect: Bounds<Pixels>,
     /// 拖拽会话。
@@ -230,6 +241,9 @@ impl TaskPaneState {
             floating: false,
             floating_bounds: Bounds::default(),
             closable: true,
+            auto_hide: false,
+            collapsed: false,
+            hovered: false,
             rect: Bounds::default(),
             drag: None,
             focus_handle: cx.focus_handle(),
@@ -331,10 +345,87 @@ impl TaskPaneState {
         self.visible = visible;
         if !visible {
             self.drag = None;
+        } else if self.auto_hide && !self.floating && !self.hovered {
+            // 重新显示时按自动隐藏规则先收起。
+            self.collapsed = true;
         }
         cx.emit(TaskPaneEvent::VisibilityChanged(visible));
         cx.notify();
         true
+    }
+
+    /// 是否启用自动隐藏。
+    pub fn is_auto_hide(&self) -> bool {
+        self.auto_hide
+    }
+
+    /// 设置自动隐藏（关闭时立即展开；开启时若鼠标不在窗格上则收起）。
+    pub fn set_auto_hide(&mut self, auto_hide: bool, cx: &mut Context<Self>) -> bool {
+        if self.auto_hide == auto_hide {
+            return false;
+        }
+        self.auto_hide = auto_hide;
+        self.auto_hide_changed(cx);
+        cx.notify();
+        true
+    }
+
+    /// 是否收起为轨道。
+    pub fn is_collapsed(&self) -> bool {
+        self.collapsed
+    }
+
+    /// 收起 / 展开（自动隐藏关闭时也可手动切换）。
+    pub fn set_collapsed(&mut self, collapsed: bool, cx: &mut Context<Self>) -> bool {
+        if self.collapsed == collapsed {
+            return false;
+        }
+        self.collapsed = collapsed;
+        if collapsed {
+            self.drag = None;
+        }
+        cx.emit(TaskPaneEvent::Collapsed(collapsed));
+        cx.notify();
+        true
+    }
+
+    /// 切换收起 / 展开。
+    pub fn toggle_collapsed(&mut self, cx: &mut Context<Self>) -> bool {
+        self.set_collapsed(!self.collapsed, cx)
+    }
+
+    /// 鼠标进出窗格（元素 `on_hover` 调用）：自动隐藏时移入展开、移出收起。
+    pub fn set_hovered(&mut self, hovered: bool, cx: &mut Context<Self>) -> bool {
+        if self.hovered == hovered {
+            return false;
+        }
+        self.hovered = hovered;
+        if self.auto_hide && !self.floating {
+            self.auto_hide_changed(cx);
+            return true;
+        }
+        false
+    }
+
+    /// 当前实际占用的宽度（收起时是轨道宽度）。
+    pub fn effective_width(&self) -> Pixels {
+        if self.collapsed {
+            RAIL_WIDTH
+        } else {
+            self.width
+        }
+    }
+
+    /// 按自动隐藏规则同步收起状态（浮动 / 隐藏时始终展开）。
+    fn auto_hide_changed(&mut self, cx: &mut Context<Self>) {
+        let collapsed = self.auto_hide && self.visible && !self.floating && !self.hovered;
+        if self.collapsed != collapsed {
+            self.collapsed = collapsed;
+            if collapsed {
+                self.drag = None;
+            }
+            cx.emit(TaskPaneEvent::Collapsed(collapsed));
+        }
     }
 
     /// 设置是否显示关闭按钮。
@@ -385,6 +476,8 @@ impl TaskPaneState {
         if !self.visible {
             self.visible = true;
         }
+        // 浮动态不参与自动隐藏，总是展开。
+        self.expand_on_float(cx);
         cx.emit(TaskPaneEvent::FloatingChanged(true));
         cx.notify();
         true
@@ -397,9 +490,19 @@ impl TaskPaneState {
         }
         self.floating = false;
         self.drag = None;
+        // 停靠后重新套用自动隐藏（鼠标不在窗格上则收起）。
+        self.auto_hide_changed(cx);
         cx.emit(TaskPaneEvent::FloatingChanged(false));
         cx.notify();
         true
+    }
+
+    /// 浮动态展开并清除收起状态。
+    fn expand_on_float(&mut self, cx: &mut Context<Self>) {
+        if self.collapsed {
+            self.collapsed = false;
+            cx.emit(TaskPaneEvent::Collapsed(false));
+        }
     }
 
     /// 在浮动与停靠之间切换（浮动时贴在 `parent` 右下角内侧）。
@@ -435,6 +538,10 @@ impl TaskPaneState {
         let rect = self.local_rect();
         if !rect.contains(&local) {
             return TaskPaneHit::None;
+        }
+        // 收起为轨道：整条按标题栏处理（悬停即展开，不提供按钮 / 缩放）。
+        if self.collapsed {
+            return TaskPaneHit::TitleBar;
         }
         if self.floating {
             if let Some(edge) = resize_edge_at(rect, local) {
@@ -606,14 +713,19 @@ impl RenderOnce for TaskPane {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let Self { state, title, body } = self;
         let theme = cx.theme();
-        let (visible, floating, closable) = state.read_with(cx, |state, _| {
-            (state.visible, state.floating, state.closable)
+        let (visible, floating, closable, collapsed) = state.read_with(cx, |state, _| {
+            (
+                state.visible,
+                state.floating,
+                state.closable,
+                state.collapsed,
+            )
         });
         if !visible {
             return div().into_any_element();
         }
         let (side, width, bounds) = state.read_with(cx, |state, _| {
-            (state.side, state.width, state.floating_bounds)
+            (state.side, state.effective_width(), state.floating_bounds)
         });
 
         let background = theme.tokens.popover;
@@ -622,6 +734,8 @@ impl RenderOnce for TaskPane {
         let foreground = theme.foreground;
         let title_text = theme.muted_foreground;
         let hover = theme.muted;
+        // 轨道态竖排标题在标题栏消费 `title` 之前留一份。
+        let rail_title = title.clone();
 
         let local = Bounds::new(
             point(px(0.0), px(0.0)),
@@ -629,7 +743,9 @@ impl RenderOnce for TaskPane {
         );
 
         // 停靠态内缘把手 / 浮动态八向缩放块（只设光标，点击由容器命中测试统一处理）。
-        let handles: Vec<AnyElement> = if floating {
+        let handles: Vec<AnyElement> = if collapsed {
+            Vec::new()
+        } else if floating {
             resize_edge_rects(local)
                 .into_iter()
                 .map(|(edge, rect)| {
@@ -657,7 +773,7 @@ impl RenderOnce for TaskPane {
             ]
         };
 
-        let close = closable.then(|| {
+        let close = (closable && !collapsed).then(|| {
             let rect = close_button_rect(local);
             div()
                 .id(("task-pane-close", state.entity_id()))
@@ -696,18 +812,42 @@ impl RenderOnce for TaskPane {
                     .child(title),
             );
 
-        let content = body(window, cx);
-
-        let inner = div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .overflow_hidden()
-            .bg(background)
-            .child(title_bar)
-            .child(div().flex_1().overflow_hidden().child(content))
-            .children(handles)
-            .children(close);
+        let inner = if collapsed {
+            // 轨道态：竖排标题 + 展开提示，不渲染正文与按钮。
+            div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap_1()
+                .py_2()
+                .size_full()
+                .overflow_hidden()
+                .bg(background)
+                .text_xs()
+                .child(div().text_color(title_text).child("‹"))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .text_color(foreground)
+                        .children(rail_title.chars().map(|ch| div().child(ch.to_string()))),
+                )
+                .into_any_element()
+        } else {
+            let content = body(window, cx);
+            div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .overflow_hidden()
+                .bg(background)
+                .child(title_bar)
+                .child(div().flex_1().overflow_hidden().child(content))
+                .children(handles)
+                .children(close)
+                .into_any_element()
+        };
 
         let root = if floating {
             div()
@@ -767,6 +907,11 @@ impl RenderOnce for TaskPane {
                 state.on_pointer_up(event.position, cx);
             },
         ))
+        .on_hover(
+            window.listener_for(&state, |state, hovered: &bool, _window, cx| {
+                state.set_hovered(*hovered, cx);
+            }),
+        )
         .child(inner)
         .into_any_element()
     }
@@ -776,9 +921,9 @@ impl RenderOnce for TaskPane {
 mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
     use super::{
-        CLOSE_BUTTON_WIDTH, DEFAULT_WIDTH, MAX_WIDTH, MIN_FLOATING_SIZE, MIN_WIDTH, TITLE_HEIGHT,
-        TaskPane, TaskPaneEvent, TaskPaneHit, TaskPaneSide, TaskPaneState, clamp_width,
-        close_button_rect, floating_default_bounds, grip_rect, resize_width,
+        CLOSE_BUTTON_WIDTH, DEFAULT_WIDTH, MAX_WIDTH, MIN_FLOATING_SIZE, MIN_WIDTH, RAIL_WIDTH,
+        TITLE_HEIGHT, TaskPane, TaskPaneEvent, TaskPaneHit, TaskPaneSide, TaskPaneState,
+        clamp_width, close_button_rect, floating_default_bounds, grip_rect, resize_width,
     };
     use crate::mdi::ResizeEdge;
     use crate::{
@@ -1183,5 +1328,68 @@ mod tests {
             let _ = window.draw(cx);
         });
         assert!(state.read_with(&*cx, |state, _| state.is_floating()));
+    }
+
+    /// 自动隐藏：悬停展开、移出收起；浮动与关闭自动隐藏时保持展开。
+    #[rgpui::test]
+    fn auto_hide_collapses_and_hover_expands(cx: &mut TestAppContext) {
+        let probe = cx.update(|cx| cx.new(Probe::new));
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        let rect = Bounds::new(point(px(0.0), px(0.0)), size(px(260.0), px(500.0)));
+        cx.update(|cx| state.update(cx, |state, cx| state.set_rect(rect, cx)));
+
+        // 默认展开、未启用自动隐藏。
+        assert!(!state.read_with(cx, |state, _| state.is_auto_hide()));
+        assert!(!state.read_with(cx, |state, _| state.is_collapsed()));
+        assert_eq!(
+            state.read_with(cx, |state, _| state.effective_width()),
+            DEFAULT_WIDTH
+        );
+
+        // 启用后鼠标不在窗格上 → 收起为轨道。
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.set_auto_hide(true, cx))));
+        assert!(state.read_with(cx, |state, _| state.is_collapsed()));
+        assert_eq!(
+            state.read_with(cx, |state, _| state.effective_width()),
+            RAIL_WIDTH
+        );
+        // 收起态整条按标题栏命中，不提供关闭 / 缩放。
+        assert_eq!(
+            state.read_with(cx, |state, _| state.hit_test(point(px(10.0), px(10.0)))),
+            TaskPaneHit::TitleBar
+        );
+        assert_eq!(
+            state.read_with(cx, |state, _| state
+                .hit_test(close_button_rect(rect).center())),
+            TaskPaneHit::TitleBar
+        );
+
+        // 悬停展开、移出收起；重复设置同一状态不返回变化。
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.set_hovered(true, cx))));
+        assert!(!state.read_with(cx, |state, _| state.is_collapsed()));
+        assert!(!cx.update(|cx| state.update(cx, |state, cx| state.set_hovered(true, cx))));
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.set_hovered(false, cx))));
+        assert!(state.read_with(cx, |state, _| state.is_collapsed()));
+
+        // 浮动时忽略自动隐藏，回到停靠后重新收起。
+        cx.update(|cx| state.update(cx, |state, cx| state.float(rect, cx)));
+        assert!(!state.read_with(cx, |state, _| state.is_collapsed()));
+        assert_eq!(
+            state.read_with(cx, |state, _| state.effective_width()),
+            DEFAULT_WIDTH
+        );
+        cx.update(|cx| state.update(cx, |state, cx| state.dock(cx)));
+        assert!(state.read_with(cx, |state, _| state.is_collapsed()));
+
+        // 关闭自动隐藏 → 立即展开，悬停不再改变收起状态。
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.set_auto_hide(false, cx))));
+        assert!(!state.read_with(cx, |state, _| state.is_collapsed()));
+        assert!(!cx.update(|cx| state.update(cx, |state, cx| state.set_hovered(true, cx))));
+        assert!(!state.read_with(cx, |state, _| state.is_collapsed()));
+
+        // 收起 / 展开事件成对出现。
+        let log = probe.read_with(cx, |probe, _| probe.log.borrow().clone());
+        assert!(log.contains(&TaskPaneEvent::Collapsed(true)));
+        assert!(log.contains(&TaskPaneEvent::Collapsed(false)));
     }
 }

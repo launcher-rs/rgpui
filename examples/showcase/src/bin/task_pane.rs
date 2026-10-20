@@ -1,9 +1,9 @@
 //! 任务窗格示例
 //!
 //! 演示 `task_pane`：右侧停靠的任务窗格（标题栏 + 正文 + 内缘拖拽把手 + 关闭按钮）。
-//! 拖动内缘把手改宽，`✕` 关闭，工具栏可切换停靠侧 / 浮动 / 显隐。浮动态变成一块可自由
-//! 拖动标题栏、八向缩放的窗格（复用 MDI 的缩放几何）。窗格正文实时读取状态，展示宽度 /
-//! 停靠侧 / 浮动状态。
+//! 拖动内缘把手改宽，`✕` 关闭，工具栏可切换停靠侧 / 浮动 / 显隐；打开「自动隐藏」后
+//! 鼠标移出收起成竖排标题轨道、移入展开。浮动态变成一块可自由拖动标题栏、八向缩放的
+//! 窗格（复用 MDI 的缩放几何）。窗格正文实时读取状态，展示宽度 / 停靠侧 / 浮动状态。
 //!
 //! 运行：`cargo run -p showcase --bin task_pane`
 
@@ -46,6 +46,8 @@ impl TaskPaneApp {
                     TaskPaneEvent::WidthChanged(width) => format!("窗格宽 {width:.0}").into(),
                     TaskPaneEvent::FloatingChanged(true) => "切到浮动态".into(),
                     TaskPaneEvent::FloatingChanged(false) => "回到停靠态".into(),
+                    TaskPaneEvent::Collapsed(true) => "窗格收起（悬停展开）".into(),
+                    TaskPaneEvent::Collapsed(false) => "窗格展开".into(),
                 };
                 cx.notify();
             },
@@ -76,15 +78,18 @@ impl TaskPaneApp {
 
 impl Render for TaskPaneApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (visible, side, width, floating, closable) = self.pane.read_with(cx, |pane, _| {
-            (
-                pane.is_visible(),
-                pane.side(),
-                pane.width(),
-                pane.is_floating(),
-                pane.is_closable(),
-            )
-        });
+        let (visible, side, width, floating, closable, auto_hide, collapsed) =
+            self.pane.read_with(cx, |pane, _| {
+                (
+                    pane.is_visible(),
+                    pane.side(),
+                    pane.width(),
+                    pane.is_floating(),
+                    pane.is_closable(),
+                    pane.is_auto_hide(),
+                    pane.is_collapsed(),
+                )
+            });
         let status = self.status.clone();
 
         // 正文：实时读取窗格状态（宽度 / 停靠侧 / 浮动态）。
@@ -247,10 +252,25 @@ impl Render for TaskPaneApp {
                                 });
                             })),
                     )
+                    .child(
+                        Button::new("auto-hide")
+                            .label(if auto_hide {
+                                "自动隐藏：开"
+                            } else {
+                                "自动隐藏：关"
+                            })
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.pane.update(cx, |pane, cx| {
+                                    let next = !pane.is_auto_hide();
+                                    pane.set_auto_hide(next, cx);
+                                });
+                            })),
+                    )
                     .child(div().text_sm().child(format!(
-                        "宽 {width:.0} · {}{} · {status}",
+                        "宽 {width:.0} · {}{}{} · {status}",
                         if floating { "浮动" } else { "停靠" },
-                        if visible { "" } else { " · 已隐藏" }
+                        if visible { "" } else { " · 已隐藏" },
+                        if collapsed { " · 已收起" } else { "" }
                     ))),
             )
             .child(row)
