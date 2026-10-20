@@ -2,8 +2,9 @@
 //!
 //! 演示 `anim_timeline`：多轨关键帧时间线（标尺刻度 + 关键帧方块 + 播放头）。
 //! 拖拽标尺移动播放头，拖拽关键帧改时间，双击轨道空白处新增关键帧（值取当前插值），
-//! `Delete` 删除选中关键帧，`Ctrl/Cmd + 滚轮` 缩放、滚轮平移。三轨的值实时驱动右侧
-//! 预览方块（位置 / 缩放 / 透明度），播放头播放时按 `1/60s` 步进推进。
+//! `Delete` 删除选中关键帧，`Ctrl/Cmd + 滚轮` 缩放；轨道溢出时滚轮纵向滚动（`Shift` 可强制
+//! 纵向），否则滚轮平移时间轴。三轨的值实时驱动右侧预览方块（位置 / 缩放 / 透明度），
+//! 播放头播放时按 `1/60s` 步进推进。
 //!
 //! 运行：`cargo run -p showcase --bin timeline`
 
@@ -42,6 +43,16 @@ fn demo_timeline() -> Timeline {
                 Keyframe::new(2.0, 0.6),
             ],
         ),
+        // 后三条只用来把轨道区撑到需要纵向滚动，预览方块不读取。
+        Track::with_keyframes(
+            "旋转",
+            vec![Keyframe::new(0.0, 0.0), Keyframe::new(2.0, 90.0)],
+        ),
+        Track::with_keyframes(
+            "模糊",
+            vec![Keyframe::new(0.0, 0.0), Keyframe::new(2.0, 8.0)],
+        ),
+        Track::new("颜色"),
     ])
 }
 
@@ -92,6 +103,9 @@ impl TimelineApp {
                     this.status = format!("播放头 {:.2} 秒", time).into();
                 }
                 TimelineEvent::SelectionChanged { .. } => {}
+                TimelineEvent::TrackMoved { from, to } => {
+                    this.status = format!("轨道 {} 移到第 {} 位", from + 1, to + 1).into();
+                }
             },
         )
         .detach();
@@ -181,6 +195,21 @@ impl TimelineApp {
         self.state.read(cx).duration()
     }
 
+    /// 上移 / 下移选中的轨道（未选中时移动第一条）。
+    fn move_track(&mut self, delta: isize, cx: &mut Context<Self>) {
+        let (from, count) = {
+            let state = self.state.read(cx);
+            (state.selection().0.unwrap_or(0), state.timeline().len())
+        };
+        let target = from as isize + delta;
+        if target < 0 || target >= count as isize {
+            self.status = "轨道已在边界".into();
+            return;
+        }
+        self.state
+            .update(cx, |state, cx| state.move_track(from, target as usize, cx));
+    }
+
     /// 播放头处三条轨道的值（位置 / 缩放 / 透明度）。
     fn values(&self, cx: &Context<Self>) -> (f32, f32, f32) {
         let state = self.state.read(cx);
@@ -251,6 +280,16 @@ impl Render for TimelineApp {
                             state.update(cx, |state, cx| state.zoom_by(0.8, cx));
                         },
                     )))
+                    .child(
+                        Button::new("track-up").label("轨道上移").on_click(
+                            cx.listener(|this, _event, _window, cx| this.move_track(-1, cx)),
+                        ),
+                    )
+                    .child(
+                        Button::new("track-down").label("轨道下移").on_click(
+                            cx.listener(|this, _event, _window, cx| this.move_track(1, cx)),
+                        ),
+                    )
                     .child(
                         Button::new("toggle-snap")
                             .label(if snapping {

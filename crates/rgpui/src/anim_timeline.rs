@@ -319,6 +319,20 @@ impl Timeline {
         }
     }
 
+    /// 调整轨道顺序（`to` 为移除后的目标下标，越界自动夹取），返回是否移动。
+    pub fn move_track(&mut self, from: usize, to: usize) -> bool {
+        if from >= self.tracks.len() {
+            return false;
+        }
+        let to = to.min(self.tracks.len() - 1);
+        if from == to {
+            return false;
+        }
+        let track = self.tracks.remove(from);
+        self.tracks.insert(to, track);
+        true
+    }
+
     /// 轨道数量。
     pub fn len(&self) -> usize {
         self.tracks.len()
@@ -461,6 +475,13 @@ pub enum TimelineEvent {
     },
     /// 播放 / 暂停状态切换。
     PlaybackChanged(bool),
+    /// 轨道顺序变化（`to` 为移动后的下标）。
+    TrackMoved {
+        /// 原下标。
+        from: usize,
+        /// 移动后的下标。
+        to: usize,
+    },
 }
 
 /// 时间线控件状态：数据模型 + 播放头 + 缩放 / 滚动 / 选择。
@@ -473,6 +494,8 @@ pub struct TimelineState {
     px_per_second: f32,
     /// 水平滚动偏移（秒）。
     scroll: f32,
+    /// 垂直滚动偏移（像素，轨道区）。
+    vscroll: f32,
     /// 吸附帧率（`<= 0` 表示关闭吸附）。
     fps: f32,
     /// 是否播放中（推进由应用调用 [`Self::advance`] 驱动）。
@@ -501,6 +524,7 @@ impl TimelineState {
             time: 0.0,
             px_per_second: DEFAULT_PX_PER_SECOND,
             scroll: 0.0,
+            vscroll: 0.0,
             fps: DEFAULT_FPS,
             playing: false,
             looping: true,
@@ -651,6 +675,80 @@ impl TimelineState {
         }
     }
 
+    /// 垂直滚动偏移（像素，轨道区）。
+    pub fn vscroll(&self) -> f32 {
+        self.vscroll
+    }
+
+    /// 纵向可滚动范围（轨道总高超出可视高度的部分）。
+    pub fn max_vscroll(&self) -> f32 {
+        let visible = (self.bounds.size.height - RULER_HEIGHT).as_f32().max(0.0);
+        let total = TRACK_HEIGHT.as_f32() * self.timeline.len() as f32;
+        (total - visible).max(0.0)
+    }
+
+    /// 设置垂直滚动偏移（夹取到 `0..=max_vscroll()`）。
+    pub fn set_vscroll(&mut self, vscroll: f32, cx: &mut Context<Self>) {
+        let vscroll = if vscroll.is_finite() {
+            vscroll.clamp(0.0, self.max_vscroll())
+        } else {
+            0.0
+        };
+        if (self.vscroll - vscroll).abs() > 0.5 {
+            self.vscroll = vscroll;
+            cx.notify();
+        }
+    }
+
+    /// 把某条轨道滚入可视区（已可见时不动）。
+    pub fn scroll_to_track(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index >= self.timeline.len() {
+            return;
+        }
+        let visible = (self.bounds.size.height - RULER_HEIGHT).as_f32().max(0.0);
+        if visible <= 0.0 {
+            return;
+        }
+        let height = TRACK_HEIGHT.as_f32();
+        let top = height * index as f32;
+        let bottom = top + height;
+        let next = if top < self.vscroll {
+            top
+        } else if bottom > self.vscroll + visible {
+            bottom - visible
+        } else {
+            return;
+        };
+        self.set_vscroll(next, cx);
+    }
+
+    /// 调整轨道顺序，选中项与拖动中的关键帧跟随移动。
+    pub fn move_track(&mut self, from: usize, to: usize, cx: &mut Context<Self>) -> bool {
+        if !self.timeline.move_track(from, to) {
+            return false;
+        }
+        let to = to.min(self.timeline.len().saturating_sub(1));
+        if let Some(selected) = self.selected_track {
+            self.selected_track = Some(if selected == from {
+                to
+            } else if from < selected && to >= selected {
+                selected - 1
+            } else if from > selected && to <= selected {
+                selected + 1
+            } else {
+                selected
+            });
+        }
+        if let Some((track, keyframe)) = self.dragging
+            && track == from
+        {
+            self.dragging = Some((to, keyframe));
+        }
+        cx.emit(TimelineEvent::TrackMoved { from, to });
+        cx.notify();
+        true
+    }
+
     /// 吸附帧率（`<= 0` 表示关闭吸附）。
     pub fn fps(&self) -> f32 {
         self.fps
@@ -739,7 +837,9 @@ impl TimelineState {
         if local.y < RULER_HEIGHT {
             return TimelineHit::Ruler;
         }
-        let row = ((local.y - RULER_HEIGHT).as_f32() / TRACK_HEIGHT.as_f32()).floor();
+        // 轨道区随垂直滚动偏移平移：先换算成内容坐标再取行号。
+        let y = (local.y - RULER_HEIGHT).as_f32() + self.vscroll;
+        let row = (y / TRACK_HEIGHT.as_f32()).floor();
         if !row.is_finite() || row < 0.0 {
             return TimelineHit::None;
         }
@@ -833,7 +933,7 @@ impl TimelineState {
         }
     }
 
-    /// 滚轮：`Ctrl/Cmd` 缩放，否则水平平移。
+    /// 滚轮：`Ctrl/Cmd` 缩放；`Shift` 或轨道区溢出时纵向滚动；其余水平平移。
     fn on_wheel(&mut self, event: &ScrollWheelEvent, local: Point<Pixels>, cx: &mut Context<Self>) {
         let delta = match event.delta {
             ScrollDelta::Pixels(delta) => delta,
@@ -849,6 +949,15 @@ impl TimelineState {
                 // 保持指针下的时间不动。
                 self.scroll = (anchor_time - anchor_x / next).max(0.0);
                 cx.notify();
+            }
+            return;
+        }
+        // 纵向优先：按住 Shift，或轨道多到溢出且滚轮没有横向分量时滚动轨道。
+        let vertical = event.modifiers.shift
+            || (delta.y != px(0.0) && delta.x == px(0.0) && self.max_vscroll() > 0.0);
+        if vertical {
+            if delta.y != px(0.0) {
+                self.set_vscroll(self.vscroll + delta.y.as_f32(), cx);
             }
         } else {
             let pan = if delta.x != px(0.0) { delta.x } else { delta.y };
@@ -978,7 +1087,7 @@ impl TimelineState {
         div()
             .absolute()
             .left(LABEL_WIDTH)
-            .top(RULER_HEIGHT + TRACK_HEIGHT * index as f32)
+            .top(TRACK_HEIGHT * index as f32 - px(self.vscroll))
             .right_0()
             .h(TRACK_HEIGHT)
             .overflow_hidden()
@@ -1034,7 +1143,7 @@ impl Render for TimelineState {
                 div()
                     .absolute()
                     .left_0()
-                    .top(RULER_HEIGHT + TRACK_HEIGHT * index as f32)
+                    .top(TRACK_HEIGHT * index as f32 - px(self.vscroll))
                     .w(LABEL_WIDTH)
                     .h(TRACK_HEIGHT)
                     .px_2()
@@ -1048,6 +1157,18 @@ impl Render for TimelineState {
                     .into_any_element()
             })
             .collect();
+
+        // 轨道区裁剪容器：滚动时行不会盖住标尺或越出底部。
+        let lane = div()
+            .absolute()
+            .left_0()
+            .top(RULER_HEIGHT)
+            .right_0()
+            .bottom_0()
+            .overflow_hidden()
+            .children(tracks)
+            .children(labels)
+            .into_any_element();
 
         // 播放头：整条竖线 + 标尺上的手柄。
         let playhead_x = time_to_x(self.time, self.px_per_second, self.scroll);
@@ -1078,7 +1199,11 @@ impl Render for TimelineState {
             .on_prepaint({
                 let state = cx.entity();
                 move |bounds, _window, cx| {
-                    state.update(cx, |state, _| state.bounds = bounds);
+                    state.update(cx, |state, _| {
+                        state.bounds = bounds;
+                        // 视口变小后把偏移夹回可滚动范围。
+                        state.vscroll = state.vscroll.min(state.max_vscroll());
+                    });
                 }
             })
             .child(
@@ -1092,8 +1217,7 @@ impl Render for TimelineState {
                     .border_color(border),
             )
             .child(ruler)
-            .children(tracks)
-            .children(labels)
+            .child(lane)
             .child(playhead)
             .child(handle)
     }
@@ -1170,8 +1294,8 @@ mod tests {
         clamp_px_per_second, format_time, ruler_step, snap_time, time_to_x, x_to_time,
     };
     use crate::{
-        AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-        Window, div, point, px,
+        AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement as _, Render,
+        Styled as _, Window, div, point, px, size,
     };
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -1495,5 +1619,106 @@ mod tests {
             state.read_with(cx, |state, _| state.hit_test(point(px(200.0), px(400.0)))),
             TimelineHit::None
         );
+    }
+
+    /// 模型层移动轨道：目标下标越界夹取，原地不动返回 `false`。
+    #[test]
+    fn timeline_move_track_clamps_destination() {
+        let mut timeline = demo_timeline();
+        assert!(timeline.move_track(0, 99));
+        assert_eq!(timeline.track(0).unwrap().name.as_ref(), "透明度");
+        assert!(!timeline.move_track(9, 0));
+        assert!(!timeline.move_track(0, 0));
+    }
+
+    /// 状态层移动轨道：选中项与拖动中的关键帧跟随，并抛出 `TrackMoved`。
+    #[rgpui::test]
+    fn move_track_reorders_and_keeps_selection(cx: &mut crate::TestAppContext) {
+        let (state, events, mut cx) = setup(cx);
+
+        let moved = cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                state.select_keyframe(1, 0, cx);
+                state.move_track(1, 0, cx)
+            })
+        });
+        assert!(moved);
+        let names: Vec<String> = state.read_with(cx, |state, _| {
+            state
+                .timeline()
+                .tracks()
+                .iter()
+                .map(|track| track.name.to_string())
+                .collect()
+        });
+        assert_eq!(names, vec!["透明度".to_string(), "位置".to_string()]);
+        assert_eq!(
+            state.read_with(cx, |state, _| state.selection()),
+            (Some(0), Some(0))
+        );
+        assert!(
+            events
+                .borrow()
+                .iter()
+                .any(|event| matches!(event, TimelineEvent::TrackMoved { from: 1, to: 0 }))
+        );
+
+        assert!(!cx.update(|_, cx| state.update(cx, |state, cx| state.move_track(5, 0, cx))));
+        assert!(!cx.update(|_, cx| state.update(cx, |state, cx| state.move_track(0, 0, cx))));
+    }
+
+    /// 纵向滚动：按内容坐标命中、夹取到可滚动范围、把轨道滚入视野。
+    #[rgpui::test]
+    fn vertical_scroll_maps_rows_and_clamps(cx: &mut crate::TestAppContext) {
+        let (state, _events, mut cx) = setup(cx);
+
+        // 几何断言都在同一次更新内完成：绘制会把 `bounds` 写回真实窗口尺寸。
+        let (max, clamped, keyframe, track_row, top, bottom, out_of_range, wide_max, wide) = cx
+            .update(|_, cx| {
+                state.update(cx, |state, cx| {
+                    // 视口高度 60：轨道区 36px（1.5 行），总高 48 → 最多滚 12px。
+                    state.bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), px(60.0)));
+                    let max = state.max_vscroll();
+                    state.set_vscroll(100.0, cx);
+                    let clamped = state.vscroll();
+                    // 滚动后第一行上移：y=30 仍在第一行，y=40 落到第二行。
+                    let keyframe = state.hit_test(point(px(256.0), px(30.0)));
+                    let track_row = state.hit_test(point(px(136.0), px(40.0)));
+                    // 滚入视野：第一行回顶、第二行露底。
+                    state.scroll_to_track(0, cx);
+                    let top = state.vscroll();
+                    state.scroll_to_track(1, cx);
+                    let bottom = state.vscroll();
+                    // 越界下标不动。
+                    state.scroll_to_track(9, cx);
+                    let out_of_range = state.vscroll();
+                    // 视口足够高时不可滚动。
+                    state.bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), px(600.0)));
+                    let wide_max = state.max_vscroll();
+                    state.set_vscroll(30.0, cx);
+                    let wide = state.vscroll();
+                    (
+                        max,
+                        clamped,
+                        keyframe,
+                        track_row,
+                        top,
+                        bottom,
+                        out_of_range,
+                        wide_max,
+                        wide,
+                    )
+                })
+            });
+
+        assert_eq!(max, 12.0);
+        assert_eq!(clamped, 12.0);
+        assert_eq!(keyframe, TimelineHit::Keyframe { track: 0, index: 1 });
+        assert_eq!(track_row, TimelineHit::Track { track: 1 });
+        assert_eq!(top, 0.0);
+        assert_eq!(bottom, 12.0);
+        assert_eq!(out_of_range, 12.0);
+        assert_eq!(wide_max, 0.0);
+        assert_eq!(wide, 0.0);
     }
 }

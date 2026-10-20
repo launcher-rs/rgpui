@@ -614,29 +614,35 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **轨道运算**：`normalize`（排序 + 同时间合并，保留最后一个）、`set_keyframe`（同时间覆盖并返回
   是否新增）、`remove_keyframe`、`keyframe_index_at(time, tolerance)`、`move_keyframe`（移动后重新
   排序并返回新下标）、`duration`、`value_at`（首帧前 / 末帧后保持端点值）；`Timeline::add_track`/
-  `remove_track`/`duration`（各轨最大值）/`values_at`。
+  `remove_track`/`move_track`（目标下标越界夹取）/`duration`（各轨最大值）/`values_at`。
 - **运行时桥接**：`Track::to_keyframe_animation(id, duration)` 把绝对秒映射到进度 0~1（端点值显式
   写入，覆盖 `KeyframeAnimation::new` 自带的首尾帧）。
 - **控件**：`TimelineState`（`Entity` 承载）+ `TimelineView`（`key_context("AnimTimeline")` + 焦点 +
   指针 / 滚轮 / 键盘事件）。播放头 `set_time`（吸附后夹取非负）/`advance(dt)`（循环回绕或停在末尾
   并停止）；`play`/`pause`/`toggle_play`/`set_looping`；`set_px_per_second`/`zoom_by`/`set_scroll`/
-  `set_fps`/`snapped`；`select_keyframe`/`clear_selection`/`remove_selected_keyframe`。
-- **交互**：`hit_test` 把局部坐标映射为 `TimelineHit`（`Ruler`/`Keyframe`/`Track`/`None`）；标尺拖拽
-  移动播放头、关键帧拖拽改时间（吸附）、轨道空白双击抛 `KeyframeRequested`、`Ctrl/Cmd + 滚轮`以指针
-  为锚缩放、滚轮平移；键盘 `Space` 播放/暂停、方向键按帧步进（`Shift` 1s）、`Home`/`End`、`Delete`
-  删除关键帧、`+`/`-` 缩放。
+  `set_fps`/`snapped`；`select_keyframe`/`clear_selection`/`remove_selected_keyframe`；
+  纵向 `vscroll`/`set_vscroll`（夹取到 `0..=max_vscroll()`）/`max_vscroll`/`scroll_to_track`；
+  轨道 `move_track`（选中项与拖动中的关键帧跟随移动）。
+- **交互**：`hit_test` 把局部坐标映射为 `TimelineHit`（`Ruler`/`Keyframe`/`Track`/`None`，行号按
+  `vscroll` 换算成内容坐标）；标尺拖拽移动播放头、关键帧拖拽改时间（吸附）、轨道空白双击抛
+  `KeyframeRequested`、`Ctrl/Cmd + 滚轮`以指针为锚缩放；`Shift + 滚轮`或轨道溢出时的滚轮纵向
+  滚动，其余滚轮水平平移；键盘 `Space` 播放/暂停、方向键按帧步进（`Shift` 1s）、`Home`/`End`、
+  `Delete` 删除关键帧、`+`/`-` 缩放。轨道与标签放进以标尺下沿为顶的裁剪容器，滚动时不会盖住
+  标尺；`on_prepaint` 在窗口缩小时把 `vscroll` 夹回可滚动范围。
 - **事件**：`TimelineEvent::{TimeChanged, SelectionChanged, KeyframeMoved, KeyframeRequested,
-  KeyframeRemoved, PlaybackChanged}`。
+  KeyframeRemoved, PlaybackChanged, TrackMoved}`。
 - **纯几何**：`time_to_x`/`x_to_time`、`snap_time`、`ruler_step`（1/2/5×10ⁿ 整齐步长）、
   `format_time`（`1.20s` / `1:02.5`）、`clamp_px_per_second`。
-- **示例**：`examples/showcase/src/bin/timeline.rs`（三轨：位置 X / 缩放 / 透明度；工具条含播放、
-  回到开头、加/删关键帧、缩放、吸附开关；预览方块由三条轨道的当前值驱动，播放时后台按 1/60s 推进）。
-- **测试**：`anim_timeline::tests` 9 项（归一化与去重、三种插值求值、命中 / 移动 / 删除关键帧、
+- **示例**：`examples/showcase/src/bin/timeline.rs`（六轨：位置 X / 缩放 / 透明度 / 旋转 / 模糊 /
+  颜色，后三轨把轨道区撑到需要纵向滚动；工具条含播放、回到开头、加/删关键帧、缩放、吸附开关、
+  轨道上移 / 下移；预览方块由前三条轨道的当前值驱动，播放时后台按 1/60s 推进）。
+- **测试**：`anim_timeline::tests` 12 项（归一化与去重、三种插值求值、命中 / 移动 / 删除关键帧、
   时间映射与吸附 / 缩放夹取 / 标尺步长 / 时间格式化、总时长与当前值、进度式动画转换、播放头推进与
-  循环 / 播放状态、缩放滚动吸附与选中删除、命中测试坐标映射）。
+  循环 / 播放状态、缩放滚动吸附与选中删除、命中测试坐标映射、模型层轨道重排（目标夹取 / 原地不动）、
+  状态层轨道重排（选中跟随 + `TrackMoved`）、纵向滚动（内容坐标命中 / 夹取 / 滚入视野）。
 
-**本版暂缓**（后续增补）：垂直滚动与轨道折叠 / 重排、关键帧值曲线编辑器（当前只编辑时间）、
-多选关键帧与框选、轨道静音 / 独奏、音视频波形与对齐吸附、播放时钟内置到控件（现由应用推进 `advance`）。
+**本版暂缓**（后续增补）：轨道折叠、关键帧值曲线编辑器（当前只编辑时间）、多选关键帧与框选、
+轨道静音 / 独奏、音视频波形与对齐吸附、播放时钟内置到控件（现由应用推进 `advance`）。
 
 ## 二十五、P2 落地：色板 / 取色器增强（核心，无 feature 门控）
 
@@ -930,9 +936,10 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | 画布对象工具 `object_toolkit` | `handle_point_rotated` / `hit_handle_rotated`（旋转后控制点）、`marquee_bounds` / `marquee_hits` + `MarqueeMode`（框选/交叉框选） |
 | MDI `mdi` | `snap_rect` / `snap_active` / `with_snap`（拖动松手吸附到工作区边/中线）；`MdiLayout::Tabbed` 页签式（见 §二十六） |
 | 页视图 `page_view` | `PageArrangement`（单页 / 双页 / 双页封面）与 `page_slot` 等栅格几何 |
+| 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`） |
 | Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二） |
 
-仍未做（保持暂缓）：时间线垂直滚动 / 轨道折叠 / 值曲线、任务窗格多栏与自动隐藏、
+仍未做（保持暂缓）：时间线轨道折叠 / 值曲线、任务窗格多栏与自动隐藏、
 富文本分节 / 表格 / 批注 / 脚注、笔迹逐段压感变宽、画布语义与自绘组件接线、bidi 视觉重排、
 取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 
