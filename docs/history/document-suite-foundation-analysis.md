@@ -769,8 +769,9 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   `RAIL_WIDTH`）、`hit_test`、`on_pointer_down/move/up`、`on_key_down`（`Esc` 取消拖拽）。
   builder：`with_side`/`with_width`/`with_width_range`/`with_visible`/`with_closable`。
 - **自动隐藏**：停靠态鼠标移出后收起为 `RAIL_WIDTH`（28px）宽的竖排标题轨道，移入即展开；
-  收起时整条按 `TitleBar` 命中（不提供关闭 / 缩放），正文回调**不执行**；浮动态、隐藏态与
-  关闭自动隐藏时保持展开，`dock()` / `set_visible(true)` 会按当前悬停状态重新套用。
+  收起时整条按 `TitleBar` 命中（不提供关闭 / 缩放），点轨道可展开（关闭自动隐藏后手动收起时
+  的恢复入口），正文回调**不执行**；浮动态、隐藏态与关闭自动隐藏时保持展开，`dock()` /
+  `set_visible(true)` 会按当前悬停状态重新套用。
 - **纯几何**：`clamp_width`（非有限值回落最小宽）、`resize_width`（拖左缘取负号 → 向左变宽）、
   `grip_rect`、`close_button_rect`、`floating_default_bounds`；浮动态的八向缩放直接复用
   `mdi` 的 `resize_edge_at`/`resize_edge_rects`/`resize_bounds`（`resize_edge_rects` 因此提为 pub）。

@@ -841,6 +841,11 @@ impl RenderOnce for TaskPane {
                         .text_color(foreground)
                         .children(rail_title.chars().map(|ch| div().child(ch.to_string()))),
                 )
+                // 手动收起（自动隐藏关闭）时点轨道展开；自动隐藏开启时鼠标移入即展开。
+                .id(("task-pane-rail", state.entity_id()))
+                .on_click(window.listener_for(&state, |state, _event, _window, cx| {
+                    state.set_collapsed(false, cx);
+                }))
                 .into_any_element()
         } else {
             let content = body(window, cx);
