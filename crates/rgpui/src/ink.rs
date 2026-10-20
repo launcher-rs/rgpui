@@ -41,6 +41,8 @@ pub const MIN_SAMPLE_DISTANCE: Pixels = px(0.75);
 pub const HIGHLIGHTER_ALPHA: f32 = 0.35;
 /// 套索选区描边的宽度。
 pub const LASSO_STROKE_WIDTH: Pixels = px(1.5);
+/// 压感 0 时的笔画宽度下限（相对基础宽度的比例）。
+pub const MIN_PRESSURE_SCALE: f32 = 0.35;
 
 /// 墨迹工具。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,13 +252,20 @@ impl InkLayer {
 
     /// 继续移动：追加采样点（移动不足 [`MIN_SAMPLE_DISTANCE`] 时忽略）。
     pub fn extend_stroke(&mut self, position: Point<Pixels>) {
+        self.extend_stroke_with_pressure(position, 1.0);
+    }
+
+    /// 带压感继续移动：追加采样点（移动不足 [`MIN_SAMPLE_DISTANCE`] 时忽略）。
+    pub fn extend_stroke_with_pressure(&mut self, position: Point<Pixels>, pressure: f32) {
         if let Some(pending) = &mut self.pending {
             let far_enough = pending
                 .points
                 .last()
                 .is_none_or(|last| distance(last.position, position) >= MIN_SAMPLE_DISTANCE.0);
             if far_enough {
-                pending.points.push(InkPoint::new(position));
+                pending
+                    .points
+                    .push(InkPoint::with_pressure(position, pressure));
             }
         }
     }
@@ -578,11 +587,16 @@ impl InkDocument {
 
     /// 延长激活图层的进行中笔画。
     pub fn extend_stroke(&mut self, position: Point<Pixels>) -> bool {
+        self.extend_stroke_with_pressure(position, 1.0)
+    }
+
+    /// 带压感延长激活图层的进行中笔画。
+    pub fn extend_stroke_with_pressure(&mut self, position: Point<Pixels>, pressure: f32) -> bool {
         let layer = &mut self.layers[self.active];
         if !layer.is_editable() || !layer.layer.is_drawing() {
             return false;
         }
-        layer.layer.extend_stroke(position);
+        layer.layer.extend_stroke_with_pressure(position, pressure);
         true
     }
 
@@ -759,21 +773,30 @@ impl RenderOnce for InkLayerElement {
                     if highlight.contains(&index) {
                         continue;
                     }
-                    if let Some(path) = stroke_path(&stroke.points, stroke.style.width) {
-                        window.paint_path(path, stroke.style.effective_color().opacity(opacity));
-                    }
+                    paint_stroke(
+                        window,
+                        &stroke.points,
+                        stroke.style.width,
+                        stroke.style.effective_color().opacity(opacity),
+                    );
                 }
                 for &index in &highlight {
-                    if let Some(stroke) = layer.strokes.get(index)
-                        && let Some(path) = stroke_path(&stroke.points, stroke.style.width)
-                    {
-                        window.paint_path(path, accent.opacity(opacity));
+                    if let Some(stroke) = layer.strokes.get(index) {
+                        paint_stroke(
+                            window,
+                            &stroke.points,
+                            stroke.style.width,
+                            accent.opacity(opacity),
+                        );
                     }
                 }
-                if let Some(pending) = layer.pending()
-                    && let Some(path) = stroke_path(&pending.points, pending.style.width)
-                {
-                    window.paint_path(path, pending.style.effective_color().opacity(opacity));
+                if let Some(pending) = layer.pending() {
+                    paint_stroke(
+                        window,
+                        &pending.points,
+                        pending.style.width,
+                        pending.style.effective_color().opacity(opacity),
+                    );
                 }
                 if let Some(path) = polygon_path(&lasso, LASSO_STROKE_WIDTH) {
                     window.paint_path(path, accent);
@@ -811,6 +834,55 @@ pub fn stroke_path(points: &[InkPoint], width: Pixels) -> Option<Path<Pixels>> {
         }
     }
     builder.build().ok()
+}
+
+/// 按压感缩放的笔画宽度：`pressure` 0..=1 线性映射到基础宽度的
+/// [`MIN_PRESSURE_SCALE`]..=1 倍（非有限值按满压处理）。
+pub fn pressure_width(base: Pixels, pressure: f32) -> Pixels {
+    let pressure = if pressure.is_finite() {
+        pressure.clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    base * (MIN_PRESSURE_SCALE + (1.0 - MIN_PRESSURE_SCALE) * pressure)
+}
+
+/// 逐段路径：每段按两端压感均值缩放宽度（圆头圆角衔接）。
+///
+/// 压感全为 `1.0`（鼠标输入）或点数不超过 2 时退化为单条平滑的 [`stroke_path`]，
+/// 不产生额外开销；带压感时按线段拆分，相邻段靠圆头自然衔接。
+pub fn stroke_paths(points: &[InkPoint], width: Pixels) -> Vec<Path<Pixels>> {
+    if points.is_empty() {
+        return Vec::new();
+    }
+    let uniform = points
+        .iter()
+        .all(|point| (point.pressure - 1.0).abs() < f32::EPSILON);
+    if points.len() <= 2 || uniform {
+        return stroke_path(points, width).into_iter().collect();
+    }
+    let mut paths = Vec::with_capacity(points.len() - 1);
+    for pair in points.windows(2) {
+        let segment = pressure_width(width, (pair[0].pressure + pair[1].pressure) * 0.5);
+        let options = StrokeOptions::default()
+            .with_line_width(segment.0)
+            .with_line_cap(LineCap::Round)
+            .with_line_join(LineJoin::Round);
+        let mut builder = PathBuilder::stroke(segment).with_style(PathStyle::Stroke(options));
+        builder.move_to(pair[0].position);
+        builder.line_to(pair[1].position);
+        if let Ok(path) = builder.build() {
+            paths.push(path);
+        }
+    }
+    paths
+}
+
+/// 绘制一条笔画（带压感时按段绘制，否则一条平滑路径）。
+fn paint_stroke(window: &mut Window, points: &[InkPoint], width: Pixels, color: Hsla) {
+    for path in stroke_paths(points, width) {
+        window.paint_path(path, color);
+    }
 }
 
 /// 构造套索多边形路径（闭合、虚线）。
@@ -1108,6 +1180,43 @@ mod tests {
         let p = InkPoint::with_pressure(pt(0.0, 0.0), -1.0);
         assert_eq!(p.pressure, 0.0);
         assert_eq!(InkPoint::new(pt(0.0, 0.0)).pressure, 1.0);
+    }
+
+    /// 压感宽度映射与逐段拆分：满压退化为单条平滑路径。
+    #[test]
+    fn pressure_width_and_segmented_paths() {
+        // 满压 = 基础宽度，零压 = 下限，越界 / 非有限值被夹取。
+        assert_eq!(pressure_width(px(10.0), 1.0), px(10.0));
+        assert_eq!(pressure_width(px(10.0), 0.0), px(10.0 * MIN_PRESSURE_SCALE));
+        assert_eq!(pressure_width(px(10.0), 2.0), px(10.0));
+        assert_eq!(
+            pressure_width(px(10.0), -3.0),
+            px(10.0 * MIN_PRESSURE_SCALE)
+        );
+        assert_eq!(pressure_width(px(10.0), f32::NAN), px(10.0));
+
+        let uniform: Vec<InkPoint> = (0..5)
+            .map(|i| InkPoint::new(pt(i as f32 * 4.0, 0.0)))
+            .collect();
+        assert_eq!(stroke_paths(&uniform, px(2.0)).len(), 1);
+        assert!(stroke_paths(&[], px(2.0)).is_empty());
+        assert_eq!(stroke_paths(&uniform[..1], px(2.0)).len(), 1);
+
+        // 带压感：逐段一条路径，段数 = 点数 - 1。
+        let tapered: Vec<InkPoint> = (0..4)
+            .map(|i| InkPoint::with_pressure(pt(i as f32 * 4.0, 0.0), 0.2 + 0.2 * i as f32))
+            .collect();
+        let paths = stroke_paths(&tapered, px(8.0));
+        assert_eq!(paths.len(), 3);
+
+        // 压感继续移动会保留压力值，普通移动恒为满压。
+        let mut layer = InkLayer::new();
+        layer.begin_stroke(pt(0.0, 0.0), pen());
+        layer.extend_stroke_with_pressure(pt(5.0, 0.0), 0.25);
+        layer.extend_stroke(pt(10.0, 0.0));
+        let pending = layer.pending().expect("笔画应处于进行中");
+        assert_eq!(pending.points[1].pressure, 0.25);
+        assert_eq!(pending.points[2].pressure, 1.0);
     }
 
     /// 在给定图层画一条水平短线（起点 `x`）。

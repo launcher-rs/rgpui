@@ -1,7 +1,8 @@
 //! Ink 笔迹示例
 //!
 //! 演示 `ink` 墨迹层：鼠标拖拽用钢笔 / 荧光笔落笔，橡皮按半径擦除，套索框选后删除；
-//! 另含撤销与清空。笔画以中点二次贝塞尔平滑绘制，荧光笔叠加半透明。
+//! 另含撤销与清空。笔画以中点二次贝塞尔平滑绘制，荧光笔叠加半透明；打开「压感笔」后
+//! 按轨迹长度合成压感，笔画逐段变宽（真实数位板压感走同一接口）。
 //!
 //! 多图层：`InkDocument` 管理图层（新增 / 切换 / 隐藏 / 锁定），编辑落在激活图层，
 //! 可见层逐层绘制并把图层不透明度传给 `InkLayerElement`。
@@ -35,6 +36,10 @@ struct InkApp {
     selected: Vec<(usize, usize)>,
     /// 是否处于落笔状态。
     drawing: bool,
+    /// 是否用合成压感绘制（演示逐段变宽）。
+    pressure: bool,
+    /// 本次笔画的起点（用来算合成压感）。
+    stroke_origin: Option<Point<Pixels>>,
     /// 状态提示。
     status: SharedString,
 }
@@ -48,6 +53,8 @@ impl InkApp {
             lasso: Vec::new(),
             selected: Vec::new(),
             drawing: false,
+            pressure: false,
+            stroke_origin: None,
             status: "拖拽绘制 · 切换工具试试橡皮与套索".into(),
         }
     }
@@ -66,9 +73,16 @@ impl InkApp {
     fn on_down(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
         self.drawing = true;
         self.selected.clear();
+        self.stroke_origin = Some(position);
         match self.tool {
             InkTool::Pen | InkTool::Highlighter => {
-                if !self.doc.begin_stroke(position, self.style()) {
+                let started = if self.pressure {
+                    self.doc
+                        .begin_stroke_with_pressure(position, 0.35, self.style())
+                } else {
+                    self.doc.begin_stroke(position, self.style())
+                };
+                if !started {
                     self.status = "当前图层已隐藏或锁定，无法落笔".into();
                 }
             }
@@ -81,6 +95,17 @@ impl InkApp {
         cx.notify();
     }
 
+    /// 合成本次采样的压感：沿笔画长度做正弦起伏，便于观察逐段变宽。
+    fn synthetic_pressure(&self, position: Point<Pixels>) -> f32 {
+        let Some(origin) = self.stroke_origin else {
+            return 1.0;
+        };
+        let dx = (position.x - origin.x).as_f32();
+        let dy = (position.y - origin.y).as_f32();
+        let distance = (dx * dx + dy * dy).sqrt();
+        0.25 + 0.75 * (0.5 + 0.5 * (distance / 45.0).sin())
+    }
+
     /// 拖拽中。
     fn on_move(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
         if !self.drawing {
@@ -88,7 +113,12 @@ impl InkApp {
         }
         match self.tool {
             InkTool::Pen | InkTool::Highlighter => {
-                self.doc.extend_stroke(position);
+                if self.pressure {
+                    let pressure = self.synthetic_pressure(position);
+                    self.doc.extend_stroke_with_pressure(position, pressure);
+                } else {
+                    self.doc.extend_stroke(position);
+                }
             }
             InkTool::Eraser => {
                 self.doc.erase_at(position, ERASER_RADIUS);
@@ -100,6 +130,7 @@ impl InkApp {
 
     /// 抬笔。
     fn on_up(&mut self, cx: &mut Context<Self>) {
+        self.stroke_origin = None;
         if !self.drawing {
             return;
         }
@@ -289,6 +320,23 @@ impl Render for InkApp {
                             ))
                             .child(tool_button("tool-eraser", "橡皮", InkTool::Eraser))
                             .child(tool_button("tool-lasso", "套索", InkTool::Lasso))
+                            .child(
+                                Button::new("pressure")
+                                    .label(if self.pressure {
+                                        "压感笔：开"
+                                    } else {
+                                        "压感笔：关"
+                                    })
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
+                                        this.pressure = !this.pressure;
+                                        this.status = if this.pressure {
+                                            "压感笔：笔画按合成压感逐段变宽".into()
+                                        } else {
+                                            "压感笔：固定宽度".into()
+                                        };
+                                        cx.notify();
+                                    })),
+                            )
                             .child(Button::new("undo").label("撤销").on_click(cx.listener(
                                 |this, _event, _window, cx| {
                                     this.undo(cx);

@@ -534,14 +534,19 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   width }`（`pen`/`highlighter`/`effective_color`，荧光笔叠加 `HIGHLIGHTER_ALPHA`）；
   `InkPoint { position, pressure }`；`Stroke { points, style }`；
   `InkLayer { strokes, pending }`。
-- **落笔编辑**：`begin_stroke`/`begin_stroke_with_pressure`、`extend_stroke`（移动不足
-  `MIN_SAMPLE_DISTANCE` 的点丢弃）、`end_stroke`/`cancel_stroke`、`undo`/`clear`/`is_drawing`。
+- **落笔编辑**：`begin_stroke`/`begin_stroke_with_pressure`、`extend_stroke`/
+  `extend_stroke_with_pressure`（移动不足 `MIN_SAMPLE_DISTANCE` 的点丢弃）、`end_stroke`/
+  `cancel_stroke`、`undo`/`clear`/`is_drawing`。
 - **选择与擦除**：`erase_at(center, radius)`（删除与圆相交的笔画）、`hit_test(position,
   tolerance)`（最近笔画）、`lasso(polygon)`（返回框选笔画索引）、`remove(&[indices])`、
   `bounds()`（全部笔画并集）、`simplify(tolerance)`（Douglas–Peucker 抽稀）。
 - **纯几何**：`point_segment_distance`、`point_in_polygon`（射线法）、`polygon_bounds`、
   `simplify_points`；`stroke_path(points, width)` 用**中点二次贝塞尔**平滑折线（圆头/圆角），
   单点渲染成圆点。
+- **压感变宽**：`pressure_width(base, pressure)` 把压感 0..=1 映射到基础宽度的
+  `MIN_PRESSURE_SCALE`（0.35）..=1 倍；`stroke_paths(points, width)` 在压感非全满时按线段拆分，
+  每段宽度取两端压感均值（圆头圆角自然衔接），压感全为 1（鼠标）或点数 ≤ 2 时退化为单条平滑
+  `stroke_path`，不增加绘制开销。`InkLayerElement` 内部按 `stroke_paths` 逐条绘制。
 - **绘制元素**：`InkLayerElement::new(layer)` + `.highlight(indices)`（套索选中以主题色重绘）
   + `.lasso(polygon)`（虚线套索框）+ `.opacity(f32)`（整层不透明度，夹取 `0..=1`），逐笔画
   `window.paint_path`，铺满父容器。
@@ -550,20 +555,22 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   按数组自底向上叠放，编辑落在激活图层：`layers`/`layer(idx)`/`visible_layers`/
   `layer_count`/`active_index`/`active`、`set_active`/`add_layer`/`remove_layer`（至少留一层）/
   `move_layer`（激活下标跟随）、`set_visible`/`set_locked`/`set_opacity`；
-  绘制 `begin_stroke`/`begin_stroke_with_pressure`/`extend_stroke`/`end_stroke`/`cancel_stroke`、
+  绘制 `begin_stroke`/`begin_stroke_with_pressure`/`extend_stroke`/`extend_stroke_with_pressure`/
+  `end_stroke`/`cancel_stroke`、
   `undo`/`clear`/`simplify`（限激活层且可编辑），`erase_at`/`remove`（跨全部可编辑层）、
   `hit_test`（自顶向下首个可见层）、`lasso`（返回 `(图层, 笔画)`）、`bounds`（可见层并集）。
   应用逐层创建 `InkLayerElement::new(layer.layer.clone()).opacity(layer.opacity)` 叠加，
   隐藏层跳过即可。
 - **示例**：`examples/showcase/src/bin/ink.rs`（画布层 + 工具条：钢笔/荧光笔/橡皮/套索、
-  撤销、删除选中、清空；新建 / 切换 / 隐藏 / 锁定图层）。
-- **测试**：`ink::tests` 17 项（原有 11 项：落笔-提交-撤销、最小间距过滤、取消落笔、按半径
+  撤销、删除选中、清空、压感笔开关（鼠标输入按轨迹长度合成压感）；新建 / 切换 / 隐藏 /
+  锁定图层）。
+- **测试**：`ink::tests` 18 项（原有 11 项：落笔-提交-撤销、最小间距过滤、取消落笔、按半径
   擦除、套索选择与删除、命中判定、包围盒并集、抽稀保留共线/拐点、几何工具、路径构建与
-  荧光笔透明度、压感夹取；图层 6 项：默认单层、编辑跟随激活层且锁定/隐藏不可落笔、
-  增删移动后的激活下标、隐藏/锁定层不参与命中擦除包围盒、不透明度夹取与淡化、套索与跨层
-  删除、隐藏层跳过）。
+  荧光笔透明度、压感夹取；压感 1 项：宽度映射夹取 + 逐段拆分 + 压感采样保留；图层 6 项：
+  默认单层、编辑跟随激活层且锁定/隐藏不可落笔、增删移动后的激活下标、隐藏/锁定层不参与
+  命中擦除包围盒、不透明度夹取与淡化、套索与跨层删除、隐藏层跳过）。
 
-**本版暂缓**（后续增补）：逐段压感变宽（现为等宽描边）、压感/倾角曲线拟合、
+**本版暂缓**（后续增补）：压感/倾角曲线拟合（现为压感均值线性映射）、
 橡皮的局部切割、触摸/数位板事件接入（现由指针事件驱动）。
 
 ## 二十三、P2 落地：缩略图排序器（核心，无 feature 门控）
@@ -944,10 +951,10 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | 页视图 `page_view` | `PageArrangement`（单页 / 双页 / 双页封面）与 `page_slot` 等栅格几何 |
 | 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`） |
 | 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`） |
-| Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二） |
+| Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二）、逐段压感变宽（`pressure_width` / `stroke_paths` / `extend_stroke_with_pressure`） |
 
 仍未做（保持暂缓）：时间线轨道折叠 / 值曲线、任务窗格多窗格并列与页签组、
-富文本分节 / 表格 / 批注 / 脚注、笔迹逐段压感变宽、画布语义与自绘组件接线、bidi 视觉重排、
+富文本分节 / 表格 / 批注 / 脚注、画布语义与自绘组件接线、bidi 视觉重排、
 取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 
 ### AGENTS 完整性检查清单（12 项）逐条结果
