@@ -430,17 +430,21 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
     `min_size`（旋转手柄原样返回）；
   - `rotate_point(p, center, angle)` / `angle_between(center, from, to)` 绕点旋转与角度差；
   - `union_bounds(rects)` 外接矩形；
+  - `handle_point_rotated(rect, angle, handle)` / `hit_handle_rotated(rect, angle, point, tol)`
+    旋转后的手柄位置与命中（把点反向旋转回局部坐标再判定，看到哪点得到哪）；
+  - `marquee_bounds(start, current)` 框选矩形（两端点归一化）、
+    `marquee_hits(objects, marquee, MarqueeMode)` 框选命中（`Intersect` 相交即选 /
+    `Contain` 完全包住），保持输入顺序；
   - `align(rects, AlignMode)` 六种对齐（左/水平居中/右/顶/垂直居中/底）；
   - `distribute(rects, axis)` 沿轴等间距分布（≥3 个，两端不动）。
 - **`SelectionHandles` 元素**：`new(selection, viewport)`，`handle_size(px)`、`rotate(bool)`；
-  选区描边 + 手柄方块，缩放/平移时同步。
+  选区描边 + 手柄方块，缩放/平移时同步（旋转态请用上面的 `*_rotated` 几何自绘）。
 - **示例**：`examples/showcase/src/bin/canvas_objects.rs`（三张卡片：点选/拖动/手柄缩放/
   旋转手柄旋转 + 左·居中·右对齐与水平分布）。
-- **测试**：9 项（手柄位置、命中容差、缩放锚点与最小尺寸、对侧手柄、绕点旋转、
-  角度差、外接矩形、对齐、分布）。
+- **测试**：12 项（手柄位置、命中容差、缩放锚点与最小尺寸、对侧手柄、绕点旋转、
+  角度差、旋转手柄跟随、外接矩形、框选归一化与两种口径、对齐、分布）。
 
-**本版暂缓**（后续增补）：多选框选（marquee）、旋转后手柄跟随、吸附/参考线联动
-（已有 `guides`）、图层顺序调整。
+**本版暂缓**（后续增补）：吸附/参考线联动（已有 `guides`）、图层顺序调整。
 
 ## 二十、P1 落地：富剪贴板 payload（核心，无 feature 门控）
 

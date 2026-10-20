@@ -5,6 +5,9 @@
 //! 等纯几何函数；屏幕映射复用 [`Viewport`]。另附 [`SelectionHandles`] 元素，
 //! 直接把选区描边与 9 个手柄画到画布上（供应用叠在内容之上）。
 //!
+//! 旋转过的对象用 [`handle_point_rotated`] / [`hit_handle_rotated`] 让手柄跟着转；
+//! 从空白处拖拽的多选框用 [`marquee_bounds`] + [`marquee_hits`]（相交 / 完全包含两种口径）。
+//!
 //! ## 用法
 //!
 //! ```ignore
@@ -133,6 +136,34 @@ pub fn hit_handle(
     })
 }
 
+/// 旋转后的手柄位置：把轴对齐的 [`handle_point`] 绕选区中心旋转 `angle` 弧度。
+///
+/// 元素旋转后手柄要跟着转，否则命中区域会和看到的框错位。
+pub fn handle_point_rotated(
+    rect: Bounds<Pixels>,
+    angle: f32,
+    handle: ResizeHandle,
+) -> Point<Pixels> {
+    rotate_point(handle_point(rect, handle), rect.center(), angle)
+}
+
+/// 旋转状态下的命中判定：先把指针反向旋转回选区局部坐标，再走 [`hit_handle`]。
+///
+/// 与 [`handle_point_rotated`] 配对使用，保证「看到的框」和「点得到的框」一致。
+pub fn hit_handle_rotated(
+    rect: Bounds<Pixels>,
+    angle: f32,
+    document_point: Point<Pixels>,
+    tolerance: Pixels,
+) -> Option<ResizeHandle> {
+    let center = rect.center();
+    hit_handle(
+        rect,
+        rotate_point(document_point, center, -angle),
+        tolerance,
+    )
+}
+
 /// 按手柄把 `pointer` 拖到的位置缩放 `rect`：保留对侧锚点，尺寸不小于 `min_size`。
 ///
 /// 旋转手柄不改变矩形（返回原值）；中边手柄仅改一个轴向。
@@ -221,6 +252,47 @@ pub fn union_bounds(rects: &[Bounds<Pixels>]) -> Option<Bounds<Pixels>> {
         point(left, top),
         size(right - left, bottom - top),
     ))
+}
+
+/// 框选的矩形：把按下点与当前点整理成左上角 + 尺寸（向左上拖也成立）。
+pub fn marquee_bounds(start: Point<Pixels>, current: Point<Pixels>) -> Bounds<Pixels> {
+    Bounds::new(
+        point(start.x.min(current.x), start.y.min(current.y)),
+        size((current.x - start.x).abs(), (current.y - start.y).abs()),
+    )
+}
+
+/// 框选判定口径。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MarqueeMode {
+    /// 与框选矩形相交即选中（默认，符合从空白处拖拽的直觉）。
+    #[default]
+    Intersect,
+    /// 必须被框选矩形完全包住才选中（严格口径，适合「框住才动」的场景）。
+    Contain,
+}
+
+/// 框选命中的对象索引（保持输入顺序）。
+pub fn marquee_hits(
+    objects: &[Bounds<Pixels>],
+    marquee: Bounds<Pixels>,
+    mode: MarqueeMode,
+) -> Vec<usize> {
+    objects
+        .iter()
+        .enumerate()
+        .filter(|(_, bounds)| match mode {
+            MarqueeMode::Intersect => bounds.intersects(&marquee),
+            MarqueeMode::Contain => {
+                marquee.origin.x <= bounds.origin.x
+                    && marquee.origin.y <= bounds.origin.y
+                    && bounds.origin.x + bounds.size.width <= marquee.origin.x + marquee.size.width
+                    && bounds.origin.y + bounds.size.height
+                        <= marquee.origin.y + marquee.size.height
+            }
+        })
+        .map(|(index, _)| index)
+        .collect()
 }
 
 /// 对齐方式（相对选区的外接矩形）。
@@ -406,7 +478,8 @@ impl RenderOnce for SelectionHandles {
 mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
     use super::{
-        AlignMode, ResizeHandle, align, angle_between, distribute, handle_point, hit_handle,
+        AlignMode, MarqueeMode, ResizeHandle, align, angle_between, distribute, handle_point,
+        handle_point_rotated, hit_handle, hit_handle_rotated, marquee_bounds, marquee_hits,
         resize_bounds, rotate_point, union_bounds,
     };
     use crate::{Axis, Bounds, Pixels, point, px, size};
@@ -518,6 +591,70 @@ mod tests {
         let center = point(px(0.0), px(0.0));
         let angle = angle_between(center, point(px(10.0), px(0.0)), point(px(0.0), px(10.0)));
         assert!((angle - std::f32::consts::FRAC_PI_2).abs() < 0.001);
+    }
+
+    /// 框选矩形把两端点整理成左上角 + 正尺寸，向左上拖结果一致。
+    #[test]
+    fn marquee_bounds_normalizes_drag_direction() {
+        let forward = marquee_bounds(point(px(10.0), px(20.0)), point(px(60.0), px(80.0)));
+        let backward = marquee_bounds(point(px(60.0), px(80.0)), point(px(10.0), px(20.0)));
+
+        assert_eq!(forward, backward);
+        assert_eq!(forward.origin, point(px(10.0), px(20.0)));
+        assert_eq!(forward.size, size(px(50.0), px(60.0)));
+        // 原地点击：退化成零尺寸矩形
+        let zero = marquee_bounds(point(px(5.0), px(5.0)), point(px(5.0), px(5.0)));
+        assert!(zero.is_empty());
+    }
+
+    /// 框选两种口径：相交即选 vs 必须完全包住。
+    #[test]
+    fn marquee_hits_supports_intersect_and_contain() {
+        let objects = [
+            rect(0.0, 0.0, 40.0, 40.0),
+            rect(30.0, 30.0, 40.0, 40.0),
+            rect(200.0, 200.0, 10.0, 10.0),
+        ];
+        let marquee = rect(20.0, 20.0, 30.0, 30.0);
+
+        // 0 与 1 都和框相交，2 完全在外面
+        assert_eq!(
+            marquee_hits(&objects, marquee, MarqueeMode::Intersect),
+            vec![0, 1]
+        );
+        // 没有对象被完全包住
+        assert!(marquee_hits(&objects, marquee, MarqueeMode::Contain).is_empty());
+        // 放大框后两者都能完全包住（2 仍在外）
+        let wide = rect(0.0, 0.0, 100.0, 100.0);
+        assert_eq!(
+            marquee_hits(&objects, wide, MarqueeMode::Contain),
+            vec![0, 1]
+        );
+    }
+
+    /// 旋转后手柄跟着转：位置绕中心旋转，命中判定同步跟随。
+    #[test]
+    fn rotated_handles_follow_selection() {
+        let selection = rect(0.0, 0.0, 100.0, 50.0);
+        let angle = std::f32::consts::FRAC_PI_2;
+
+        // 不旋转时与轴对齐版本完全一致
+        assert_eq!(
+            handle_point_rotated(selection, 0.0, ResizeHandle::TopLeft),
+            handle_point(selection, ResizeHandle::TopLeft)
+        );
+
+        // 转 90° 后左上角离开原位，转到 (75, -25)
+        let rotated = handle_point_rotated(selection, angle, ResizeHandle::TopLeft);
+        assert!((rotated.x.as_f32() - 75.0).abs() < 0.001);
+        assert!((rotated.y.as_f32() + 25.0).abs() < 0.001);
+
+        // 在新位置上点得到同一个手柄；用轴对齐判定则点不到
+        assert_eq!(
+            hit_handle_rotated(selection, angle, rotated, px(1.0)),
+            Some(ResizeHandle::TopLeft)
+        );
+        assert_eq!(hit_handle(selection, rotated, px(1.0)), None);
     }
 
     /// 外接矩形。
