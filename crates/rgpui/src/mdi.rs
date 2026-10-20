@@ -56,6 +56,10 @@ pub const ICON_BAR_HEIGHT: Pixels = px(28.0);
 pub const ICON_WIDTH: Pixels = px(150.0);
 /// 标题栏按钮宽度。
 pub const TITLE_BUTTON_WIDTH: Pixels = px(28.0);
+/// 标签页条高度（页签式排布）。
+pub const TAB_BAR_HEIGHT: Pixels = px(28.0);
+/// 页签上关闭按钮的命中宽度。
+pub const TAB_CLOSE_WIDTH: Pixels = px(18.0);
 /// 拖拽时至少保留在区域内的标题栏宽度（像素）。
 pub const MIN_VISIBLE: Pixels = px(60.0);
 
@@ -79,6 +83,8 @@ pub enum MdiLayout {
     TileHorizontal,
     /// 垂直平铺：上下堆叠，各占满宽度。
     TileVertical,
+    /// 页签式：顶部标签条 + 仅显示激活窗口的正文区（其余窗口隐藏）。
+    Tabbed,
 }
 
 /// 缩放边 / 角。
@@ -186,6 +192,8 @@ pub enum MdiHit {
         /// 边 / 角。
         edge: ResizeEdge,
     },
+    /// 命中页签（页签式排布时的标签条）。
+    Tab(u64),
 }
 
 /// MDI 事件。
@@ -411,6 +419,43 @@ pub fn icon_rect(area: Bounds<Pixels>, index: usize) -> Bounds<Pixels> {
     Bounds::new(point(x, y), size(width, ICON_BAR_HEIGHT))
 }
 
+/// 标签页快照（页签式排布时由 [`MdiState::tabs`] 下发）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct MdiTab {
+    /// 窗口 id。
+    pub id: u64,
+    /// 标题。
+    pub title: SharedString,
+    /// 页签矩形（局部坐标）。
+    pub rect: Bounds<Pixels>,
+    /// 是否当前激活。
+    pub active: bool,
+    /// 是否可关闭。
+    pub closable: bool,
+}
+
+/// 页签矩形：标签条内等分（数量为 0 或条高为 0 时返回空）。
+pub fn tab_rects(bar: Bounds<Pixels>, count: usize) -> Vec<Bounds<Pixels>> {
+    if count == 0 || bar.size.width <= px(0.0) || bar.size.height <= px(0.0) {
+        return Vec::new();
+    }
+    let width = bar.size.width.as_f32() / count as f32;
+    (0..count)
+        .map(|index| {
+            Bounds::new(
+                point(bar.origin.x + px(width * index as f32), bar.origin.y),
+                size(px(width), bar.size.height),
+            )
+        })
+        .collect()
+}
+
+/// 命中页签序号（`pointer` 为局部坐标；未命中标签条返回 `None`）。
+pub fn tab_at(bar: Bounds<Pixels>, count: usize, pointer: Point<Pixels>) -> Option<usize> {
+    let rects = tab_rects(bar, count);
+    rects.iter().position(|rect| rect.contains(&pointer))
+}
+
 /// 标题栏按钮矩形：自右向左依次为关闭 / 最大化 / 最小化。
 pub fn title_button_rects(rect: Bounds<Pixels>) -> [(WindowButton, Bounds<Pixels>); 3] {
     [
@@ -544,6 +589,8 @@ pub struct MdiState {
     tile_gap: Pixels,
     /// 拖动结束时的吸附阈值（`None` 表示不吸附）。
     snap_threshold: Option<Pixels>,
+    /// 是否处于页签式排布。
+    tabbed: bool,
     /// 尚未取得区域时挂起的排布请求。
     pending_layout: Option<MdiLayout>,
     /// 拖拽会话。
@@ -564,6 +611,7 @@ impl MdiState {
             cascade_offset: CASCADE_OFFSET,
             tile_gap: px(6.0),
             snap_threshold: None,
+            tabbed: false,
             pending_layout: None,
             drag: None,
             focus_handle: cx.focus_handle(),
@@ -624,15 +672,70 @@ impl MdiState {
         self.area
     }
 
+    /// 是否处于页签式排布（顶部标签条 + 只显示激活窗口）。
+    pub fn is_tabbed(&self) -> bool {
+        self.tabbed
+    }
+
+    /// 标签条矩形（局部坐标）：贴在区域顶部，高度 [`TAB_BAR_HEIGHT`]。
+    pub fn tab_bar_rect(&self) -> Bounds<Pixels> {
+        let local = self.local_area();
+        Bounds::new(local.origin, size(local.size.width, TAB_BAR_HEIGHT))
+    }
+
+    /// 页签式正文区（局部坐标）：标签条以下铺满。
+    pub fn tabbed_content_rect(&self) -> Bounds<Pixels> {
+        let local = self.local_area();
+        Bounds::new(
+            local.origin + point(px(0.0), TAB_BAR_HEIGHT),
+            size(
+                local.size.width,
+                (local.size.height - TAB_BAR_HEIGHT).max(px(0.0)),
+            ),
+        )
+    }
+
+    /// 页签快照（按 id 升序即创建顺序；非页签式排布时为空）。
+    pub fn tabs(&self) -> Vec<MdiTab> {
+        if !self.tabbed {
+            return Vec::new();
+        }
+        let mut windows: Vec<&MdiWindow> = self
+            .windows
+            .iter()
+            .filter(|window| window.state != WindowState::Minimized)
+            .collect();
+        windows.sort_by_key(|window| window.id);
+        let rects = tab_rects(self.tab_bar_rect(), windows.len());
+        windows
+            .into_iter()
+            .zip(rects)
+            .map(|(window, rect)| MdiTab {
+                id: window.id,
+                title: window.title.clone(),
+                rect,
+                active: self.active == Some(window.id),
+                closable: window.closable,
+            })
+            .collect()
+    }
+
     /// 某个窗口的当前矩形（局部坐标）：最大化铺满区域、最小化落在底部图标条。
     pub fn rect_of(&self, id: u64) -> Option<Bounds<Pixels>> {
         self.get(id).and_then(|window| self.rect_in(window))
     }
 
     /// 渲染快照（后 → 前，末尾在最上层）。
+    ///
+    /// 页签式排布下只下发激活窗口（与最小化图标），其余窗口被标签页遮住。
     pub fn layout(&self) -> Vec<MdiFrame> {
         self.windows
             .iter()
+            .filter(|window| {
+                !self.tabbed
+                    || window.state == WindowState::Minimized
+                    || self.active == Some(window.id)
+            })
             .map(|window| MdiFrame {
                 id: window.id,
                 title: window.title.clone(),
@@ -685,7 +788,13 @@ impl MdiState {
         };
         self.windows.remove(index);
         if self.active == Some(id) {
-            self.active = self.windows.last().map(|window| window.id);
+            // 页签式下优先接管下一个未最小化的窗口（最小化的窗口只在底部图标条）。
+            self.active = self
+                .windows
+                .iter()
+                .rev()
+                .find(|window| !self.tabbed || window.state != WindowState::Minimized)
+                .map(|window| window.id);
         }
         if self.drag.map(|drag| drag.id) == Some(id) {
             self.drag = None;
@@ -852,6 +961,9 @@ impl MdiState {
         if first && !self.windows.is_empty() {
             let layout = self.pending_layout.take().unwrap_or(MdiLayout::Cascade);
             changed = self.apply_layout(layout);
+        } else if self.tabbed {
+            // 页签式：区域变化后重新铺满正文区（不做最小尺寸夹取）。
+            changed = self.apply_layout(MdiLayout::Tabbed);
         } else {
             let local = self.local_area();
             let min = self.min_size;
@@ -873,7 +985,34 @@ impl MdiState {
 
     /// 命中测试（`pointer` 为局部坐标）。
     pub fn hit_test(&self, pointer: Point<Pixels>) -> MdiHit {
+        // 页签式排布：标签条优先（标签位于窗口之上）。
+        if self.tabbed {
+            let tabs = self.tabs();
+            if let Some(index) = tab_at(self.tab_bar_rect(), tabs.len(), pointer) {
+                let tab = &tabs[index];
+                let close = Bounds::new(
+                    point(
+                        tab.rect.origin.x + tab.rect.size.width - TAB_CLOSE_WIDTH,
+                        tab.rect.origin.y,
+                    ),
+                    size(TAB_CLOSE_WIDTH, tab.rect.size.height),
+                );
+                if tab.closable && close.contains(&pointer) {
+                    return MdiHit::Button {
+                        id: tab.id,
+                        button: WindowButton::Close,
+                    };
+                }
+                return MdiHit::Tab(tab.id);
+            }
+        }
         for window in self.windows.iter().rev() {
+            if self.tabbed
+                && window.state != WindowState::Minimized
+                && self.active != Some(window.id)
+            {
+                continue;
+            }
             let Some(rect) = self.rect_in(window) else {
                 continue;
             };
@@ -884,6 +1023,7 @@ impl MdiState {
                 return MdiHit::Icon(window.id);
             }
             if window.state == WindowState::Normal
+                && !self.tabbed
                 && let Some(edge) = resize_edge_at(rect, pointer)
             {
                 return MdiHit::Resize {
@@ -926,7 +1066,10 @@ impl MdiState {
                     self.toggle_maximize(id, cx);
                     return;
                 }
-                if let Some(rect) = self.rect_of(id) {
+                // 页签式排布下窗口铺满正文区，拖动会破坏版式。
+                if !self.tabbed
+                    && let Some(rect) = self.rect_of(id)
+                {
                     self.drag = Some(DragSession {
                         id,
                         kind: DragKind::Move,
@@ -934,6 +1077,10 @@ impl MdiState {
                         start_rect: rect,
                     });
                 }
+            }
+            MdiHit::Tab(id) => {
+                self.drag = None;
+                self.activate(id, cx);
             }
             MdiHit::Body(id) => {
                 self.drag = None;
@@ -1077,7 +1224,13 @@ impl MdiState {
     /// 某个窗口的当前矩形。
     fn rect_in(&self, window: &MdiWindow) -> Option<Bounds<Pixels>> {
         match window.state {
-            WindowState::Normal => Some(window.bounds),
+            WindowState::Normal => {
+                if self.tabbed {
+                    Some(self.tabbed_content_rect())
+                } else {
+                    Some(window.bounds)
+                }
+            }
             WindowState::Maximized => Some(self.local_area()),
             WindowState::Minimized => {
                 let index = self.icon_index(window.id)?;
@@ -1128,6 +1281,10 @@ impl MdiState {
 
     /// 切换窗口状态。
     fn set_state(&mut self, id: u64, state: WindowState, cx: &mut Context<Self>) -> bool {
+        // 页签式下窗口已铺满正文区，最大化没有意义。
+        if self.tabbed && state == WindowState::Maximized {
+            return false;
+        }
         let local = self.local_area();
         let min = self.min_size;
         let Some(window) = self.windows.iter_mut().find(|window| window.id == id) else {
@@ -1151,6 +1308,19 @@ impl MdiState {
         window.state = state;
         cx.emit(MdiEvent::StateChanged(id));
         cx.notify();
+        // 页签式下最小化激活窗口后，把标签切到下一个可用窗口。
+        if self.tabbed
+            && state == WindowState::Minimized
+            && self.active == Some(id)
+            && let Some(next) = self
+                .windows
+                .iter()
+                .rev()
+                .find(|window| window.state != WindowState::Minimized)
+                .map(|window| window.id)
+        {
+            self.activate(next, cx);
+        }
         true
     }
 
@@ -1174,8 +1344,11 @@ impl MdiState {
             MdiLayout::Cascade => cascade_rects(area, ids.len(), self.cascade_offset),
             MdiLayout::TileHorizontal => tile_rects(area, ids.len(), true, self.tile_gap),
             MdiLayout::TileVertical => tile_rects(area, ids.len(), false, self.tile_gap),
+            // 页签式：所有窗口铺满正文区，只有激活的那个被渲染出来。
+            MdiLayout::Tabbed => vec![self.tabbed_content_rect(); ids.len()],
         };
-        let mut changed = false;
+        let mut changed = self.tabbed != (layout == MdiLayout::Tabbed);
+        self.tabbed = layout == MdiLayout::Tabbed;
         for (id, rect) in ids.into_iter().zip(rects) {
             if let Some(window) = self.windows.iter_mut().find(|window| window.id == id) {
                 if window.state == WindowState::Maximized || window.bounds != rect {
@@ -1245,6 +1418,8 @@ impl RenderOnce for MdiArea {
         let Self { state, body } = self;
         let focus_handle = state.read(cx).focus_handle(cx);
         let frames = state.read(cx).layout();
+        let tabbed = state.read(cx).is_tabbed();
+        let tabs = state.read(cx).tabs();
         let theme = cx.theme();
         let border = theme.border;
         let primary = theme.primary;
@@ -1253,6 +1428,7 @@ impl RenderOnce for MdiArea {
         let foreground = theme.foreground;
         let muted_foreground = theme.muted_foreground;
         let surface = theme.tokens.popover;
+        let background = theme.background;
 
         let children: Vec<AnyElement> = frames
             .into_iter()
@@ -1322,8 +1498,8 @@ impl RenderOnce for MdiArea {
                     })
                     .collect();
 
-                // 八向缩放边框（最大化时不可缩放）。
-                let handles: Vec<AnyElement> = if frame.maximized {
+                // 八向缩放边框（最大化或页签式时不可缩放）。
+                let handles: Vec<AnyElement> = if frame.maximized || tabbed {
                     Vec::new()
                 } else {
                     resize_edge_rects(frame.rect)
@@ -1385,6 +1561,44 @@ impl RenderOnce for MdiArea {
             })
             .collect();
 
+        // 页签条：绝对定位在窗口之上，点击统一由容器命中测试处理。
+        let tab_children: Vec<AnyElement> = tabs
+            .into_iter()
+            .map(|tab| {
+                let tab_bg = if tab.active { background } else { muted };
+                let tab_fg = if tab.active {
+                    foreground
+                } else {
+                    muted_foreground
+                };
+                let mut el = div()
+                    .id(("mdi-tab", tab.id))
+                    .absolute()
+                    .left(tab.rect.origin.x)
+                    .top(tab.rect.origin.y)
+                    .w(tab.rect.size.width)
+                    .h(tab.rect.size.height)
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_1()
+                    .px_2()
+                    .bg(tab_bg)
+                    .border_r_1()
+                    .border_b_1()
+                    .border_color(if tab.active { primary } else { border })
+                    .text_xs()
+                    .text_color(tab_fg)
+                    .overflow_hidden()
+                    .cursor_pointer()
+                    .child(div().flex_1().overflow_hidden().child(tab.title));
+                if tab.closable {
+                    el = el.child(div().flex_none().px_1().child("✕"));
+                }
+                el.into_any_element()
+            })
+            .collect();
+
         div()
             .id(("mdi-area", state.entity_id()))
             .key_context("Mdi")
@@ -1426,6 +1640,7 @@ impl RenderOnce for MdiArea {
                 },
             ))
             .children(children)
+            .children(tab_children)
     }
 }
 
@@ -2058,5 +2273,79 @@ mod tests {
         // 已经贴边：再吸附一次没有位移
         let again = cx.update(|_, cx| state.update(cx, |state, cx| state.snap_active(px(4.0), cx)));
         assert!(!again);
+    }
+
+    /// 页签条等分，命中落在对应页签。
+    #[test]
+    fn tab_rects_split_bar_evenly() {
+        let bar = Bounds::new(point(px(0.0), px(0.0)), size(px(300.0), px(28.0)));
+        let rects = super::tab_rects(bar, 3);
+        assert_eq!(rects.len(), 3);
+        assert_eq!(rects[0].size.width, px(100.0));
+        assert_eq!(rects[2].origin.x, px(200.0));
+        assert_eq!(super::tab_at(bar, 3, point(px(150.0), px(10.0))), Some(1));
+        assert_eq!(super::tab_at(bar, 0, point(px(10.0), px(10.0))), None);
+        // 标签条以外不命中。
+        assert_eq!(super::tab_at(bar, 3, point(px(10.0), px(40.0))), None);
+        assert!(super::tab_rects(Bounds::default(), 2).is_empty());
+    }
+
+    /// 页签式排布：标签条置顶、只显示激活窗口、点击标签切换、最小化后自动切换。
+    #[rgpui::test]
+    fn tabbed_layout_shows_only_active(cx: &mut TestAppContext) {
+        let (state, _events, cx) = setup(cx);
+        let a = cx.update(|_, cx| state.update(cx, |state, cx| state.open("一", cx)));
+        let b = cx.update(|_, cx| state.update(cx, |state, cx| state.open("二", cx)));
+
+        let changed =
+            cx.update(|_, cx| state.update(cx, |state, cx| state.arrange(MdiLayout::Tabbed, cx)));
+        assert!(changed);
+
+        let (tabbed, tabs, frames) = state.read_with(cx, |state, _| {
+            (state.is_tabbed(), state.tabs(), state.layout())
+        });
+        assert!(tabbed);
+        // 标签按创建顺序排列，等宽。
+        assert_eq!(tabs.len(), 2);
+        assert_eq!((tabs[0].id, tabs[1].id), (a, b));
+        assert_eq!(tabs[0].rect.size.width, tabs[1].rect.size.width);
+        assert!(!tabs[0].active && tabs[1].active);
+        // 只有激活窗口进入渲染快照。
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].id, b);
+
+        // 两个窗口都铺满标签条以下的正文区。
+        let content = state.read_with(cx, |state, _| state.tabbed_content_rect());
+        assert_eq!(content.origin.y, super::TAB_BAR_HEIGHT);
+        assert_eq!(
+            state.read_with(cx, |state, _| state.rect_of(a).unwrap()),
+            content
+        );
+
+        // 点击第一个标签切换激活。
+        let tab_a = state.read_with(cx, |state, _| state.tabs()[0].rect.center());
+        assert_eq!(
+            state.read_with(cx, |state, _| state.hit_test(tab_a)),
+            MdiHit::Tab(a)
+        );
+        cx.update(|_, cx| state.update(cx, |state, cx| state.on_pointer_down(tab_a, 1, cx)));
+        assert_eq!(state.read_with(cx, |state, _| state.active()), Some(a));
+        assert_eq!(state.read_with(cx, |state, _| state.layout()[0].id), a);
+        // 正文命中仍是 Body（页签式不产生缩放/拖动）。
+        assert_eq!(
+            state.read_with(cx, |state, _| state.hit_test(content.center())),
+            MdiHit::Body(a)
+        );
+        assert!(!cx.update(|_, cx| state.update(cx, |state, cx| state.maximize(a, cx))));
+
+        // 最小化激活窗口后自动切到下一个未最小化窗口，并从标签条移除。
+        cx.update(|_, cx| state.update(cx, |state, cx| state.minimize(a, cx)));
+        assert_eq!(state.read_with(cx, |state, _| state.active()), Some(b));
+        assert_eq!(state.read_with(cx, |state, _| state.tabs().len()), 1);
+
+        // 切回层叠：退出页签式，标签条清空。
+        cx.update(|_, cx| state.update(cx, |state, cx| state.arrange(MdiLayout::Cascade, cx)));
+        assert!(!state.read_with(cx, |state, _| state.is_tabbed()));
+        assert!(state.read_with(cx, |state, _| state.tabs().is_empty()));
     }
 }

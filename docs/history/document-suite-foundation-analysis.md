@@ -687,7 +687,7 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   `icon_rect`（最小化图标沿底部自左向右排列）。区域未知时 `arrange` 先挂起（`pending_layout`），
   待视图预绘制拿到区域后一次性铺开；首次拿到区域还会把「区域未知期间开出的窗口」自动层叠，
   并随区域变化把普通窗口夹回可见范围。
-- **命中与拖拽**：`MdiHit { None, TitleBar, Body, Icon, Button{id,button}, Resize{id,edge} }`；
+- **命中与拖拽**：`MdiHit { None, TitleBar, Body, Icon, Button{id,button}, Resize{id,edge}, Tab(id) }`；
   `resize_edge_at`（角优先于边，6px 命中带）、`title_button_rects`（自右向左关闭 / 最大化 /
   最小化，28px 宽）、`resize_bounds`（按边 / 角缩放，拖左 / 上边时以右 / 下边为锚保证最小尺寸）。
   指针按下 → 激活并起拖拽会话（移动 / 缩放 / 按住按钮三类）；移动 / 缩放实时写回几何；
@@ -702,18 +702,26 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
 - **键盘**：`Ctrl+Tab` / `Ctrl+Shift+Tab`、`Ctrl+F6` / `Ctrl+Shift+F6` 循环切换；`Ctrl+F4` 关闭
   激活窗口；`Ctrl+M` 最小化激活窗口；`Esc` 取消当前拖拽。
 - **示例**：`examples/showcase/src/bin/mdi.rs`（新建 / 只读视图 / 层叠 / 水平平铺 / 垂直平铺 /
-  全部最小化 / 关闭全部；窗口正文内嵌按钮验证「正文可交互 + 点击自动激活」）。
-- **测试**：14 项 —— 纯几何 6 项（层叠与平铺落在区域内且铺满、夹取最小尺寸与标题栏可见、
-  边 / 角判定与最小尺寸回退、标题栏按钮右对齐与图标条从左排列、吸附阈值内吸到边/中线）；状态
-  8 项（打开 / 激活 / 关闭的 z 序与事件、最小化 / 最大化 / 还原矩形语义、能力开关禁用按钮、
-  指针拖拽移动 + 缩放 + 按钮关闭、平铺 / 层叠排布且最小化不参与、无区域时排布挂起、键盘循环 /
-  最小化 / 还原 / 关闭、`move_by`/`set_bounds` 夹取、活动窗口吸附到边缘）。
+  页签 / 全部最小化 / 关闭全部；窗口正文内嵌按钮验证「正文可交互 + 点击自动激活」）。
+- **测试**：16 项 —— 纯几何 7 项（层叠与平铺落在区域内且铺满、夹取最小尺寸与标题栏可见、
+  边 / 角判定与最小尺寸回退、标题栏按钮右对齐与图标条从左排列、吸附阈值内吸到边/中线、
+  页签条等分与命中）；状态 9 项（打开 / 激活 / 关闭的 z 序与事件、最小化 / 最大化 / 还原矩形语义、
+  能力开关禁用按钮、指针拖拽移动 + 缩放 + 按钮关闭、平铺 / 层叠排布且最小化不参与、无区域时
+  排布挂起、键盘循环 / 最小化 / 还原 / 关闭、`move_by`/`set_bounds` 夹取、活动窗口吸附到边缘、
+  页签式只渲染激活窗口且点击标签切换）。
 - **吸附**：`snap_rect(rect, targets, threshold)` 把边/中线吸到工作区或邻窗的边/中线（每轴取
   最近一条，严格小于阈值才生效）；`MdiState::snap_active(threshold, cx)` 在松手时对活动窗口
   套用一次，`MdiState::with_snap(threshold)` 打开后由 `on_pointer_up` 在拖动移动结束自动调用
   （示例用 6px）。
+- **页签式（Tabbed MDI）**：`MdiLayout::Tabbed` —— 顶部 `TAB_BAR_HEIGHT`（28px）标签条等分，
+  其下正文区铺满；`MdiState::is_tabbed`/`tabs()`（`MdiTab { id, title, rect, active, closable }`，
+  按创建顺序）、`tab_bar_rect`/`tabbed_content_rect`，几何 `tab_rects(bar, count)`/`tab_at`。
+  `rect_in` 让普通窗口统一落在正文区，`layout()` 只下发激活窗口（最小化图标仍照常），
+  `hit_test` 先判标签条（关闭区 `TAB_CLOSE_WIDTH` 命中为 `MdiHit::Button{Close}`，否则
+  `MdiHit::Tab`），页签式下不产生缩放 / 拖动命中、`maximize` 为空操作；关闭或最小化激活窗口
+  后自动切到下一个未最小化窗口。`MdiArea` 在窗口之上绘制标签条（激活标签用主题 `primary` 描边）。
 
-**本版暂缓**（后续增补）：拖拽最小化图标、多显示器跨屏拖拽、MDI 内标签页组（Tabbed MDI）。
+**本版暂缓**（后续增补）：拖拽最小化图标、多显示器跨屏拖拽。
 
 ## 二十七、P2 落地：任务窗格（核心，无 feature 门控）
 

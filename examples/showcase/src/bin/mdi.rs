@@ -2,7 +2,7 @@
 //!
 //! 演示 `mdi`：一块 MDI 区域内并列多个子文档窗口。每个窗口带标题栏（最小化 / 最大化 /
 //! 关闭）与八向缩放边框；拖拽标题栏移动、拖拽边框缩放、双击标题栏切换最大化、
-//! 最小化的窗口缩为底部图标条。工具栏提供新建 / 层叠 / 平铺 / 全部最小化 / 关闭全部，
+//! 最小化的窗口缩为底部图标条。工具栏提供新建 / 层叠 / 平铺 / 页签 / 全部最小化 / 关闭全部，
 //! 激活窗口内按 `Ctrl+Tab`（或 `Ctrl+F6`）循环切换、`Ctrl+F4` 关闭、`Ctrl+M` 最小化。
 //! 窗口正文里放了一个按钮，用来验证「正文可交互 + 点击自动激活窗口」。
 //!
@@ -105,6 +105,7 @@ impl MdiApp {
             MdiLayout::Cascade => "层叠排布".into(),
             MdiLayout::TileHorizontal => "水平平铺".into(),
             MdiLayout::TileVertical => "垂直平铺".into(),
+            MdiLayout::Tabbed => "页签式（点击标签切换）".into(),
         };
     }
 
@@ -217,6 +218,11 @@ impl Render for MdiApp {
                                 this.arrange(MdiLayout::TileVertical, cx)
                             })),
                     )
+                    .child(Button::new("tabbed").label("页签").on_click(
+                        cx.listener(|this, _event, _window, cx| {
+                            this.arrange(MdiLayout::Tabbed, cx)
+                        }),
+                    ))
                     .child(
                         Button::new("minimize-all").label("全部最小化").on_click(
                             cx.listener(|this, _event, _window, cx| this.minimize_all(cx)),
