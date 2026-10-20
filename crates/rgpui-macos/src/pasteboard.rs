@@ -276,7 +276,10 @@ unsafe fn pasteboard_type_for_mime(mime_type: &str) -> id {
     match mime_type {
         ClipboardFormat::HTML => unsafe { ns_string("public.html") },
         ClipboardFormat::RTF => unsafe { ns_string("public.rtf") },
-        ClipboardFormat::PLAIN_TEXT => NSPasteboardTypeString,
+        // `NSPasteboardTypeString` 是 extern static，读取本身需要 unsafe 块；
+        // Rust 2024 的 `unsafe_op_in_unsafe_fn` 不再把 `unsafe fn` 的函数体整体当作
+        // unsafe 上下文，所以这里必须显式写 `unsafe`。
+        ClipboardFormat::PLAIN_TEXT => unsafe { NSPasteboardTypeString },
         other => unsafe { ns_string(other) },
     }
 }
