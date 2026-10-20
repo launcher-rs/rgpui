@@ -490,7 +490,7 @@ mod tests {
     fn key_must_match() {
         let request = json!({ "jsonrpc": "2.0", "id": 1, "key": "abc", "method": "ping" });
         assert!(authorized(&request, "abc"));
-        assert!(!authorized(&request, "abd"));
+        assert!(!authorized(&request, "xyz"));
         assert!(!authorized(&json!({ "id": 1, "method": "ping" }), "abc"));
     }
 

@@ -132,7 +132,7 @@ impl MacTray {
         unsafe {
             let target: id = msg_send![target_class(), alloc];
             let target: id = msg_send![target, init];
-            (&mut *(target as *mut Object)).set_ivar(MAC_PLATFORM_IVAR, platform);
+            (&mut *target).set_ivar(MAC_PLATFORM_IVAR, platform);
             Self {
                 target,
                 status_item: None,
@@ -345,7 +345,7 @@ unsafe fn create_menu_item(item: &TrayMenuItem, target: id) -> id {
                 let _: id = msg_send![separator, retain];
                 separator
             }
-            TrayMenuItem::Action { label, id } => unsafe {
+            TrayMenuItem::Action { label, id } => {
                 let menu_item: id = msg_send![class!(NSMenuItem), alloc];
                 let menu_item: id = msg_send![
                     menu_item,
@@ -356,8 +356,8 @@ unsafe fn create_menu_item(item: &TrayMenuItem, target: id) -> id {
                 let _: () = msg_send![menu_item, setTarget: target];
                 let _: () = msg_send![menu_item, setRepresentedObject: ns_string(id)];
                 menu_item
-            },
-            TrayMenuItem::Toggle { label, checked, id } => unsafe {
+            }
+            TrayMenuItem::Toggle { label, checked, id } => {
                 let menu_item: id = msg_send![class!(NSMenuItem), alloc];
                 let menu_item: id = msg_send![
                     menu_item,
@@ -369,8 +369,8 @@ unsafe fn create_menu_item(item: &TrayMenuItem, target: id) -> id {
                 let _: () = msg_send![menu_item, setRepresentedObject: ns_string(id)];
                 let _: () = msg_send![menu_item, setState: if *checked { 1i64 } else { 0i64 }];
                 menu_item
-            },
-            TrayMenuItem::Submenu { label, items } => unsafe {
+            }
+            TrayMenuItem::Submenu { label, items } => {
                 let submenu: id = msg_send![class!(NSMenu), alloc];
                 let submenu: id = msg_send![submenu, init];
                 let _: () = msg_send![submenu, setAutoenablesItems: NO];
@@ -390,7 +390,7 @@ unsafe fn create_menu_item(item: &TrayMenuItem, target: id) -> id {
                 let _: () = msg_send![menu_item, setSubmenu: submenu];
                 let _: () = msg_send![submenu, release];
                 menu_item
-            },
+            }
         }
     }
 }
