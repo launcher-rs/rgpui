@@ -781,6 +781,31 @@ impl WaylandWindowStatePtr {
         )
     }
 
+    /// 请求合成器激活本窗口（xdg-activation 令牌）。
+    ///
+    /// 合成器有权拒绝（比如没有可用的用户输入序列号）；即使被拒，KWin / Mutter
+    /// 也会用 app_id 在任务栏上提示「有应用想抢焦点」。
+    pub(crate) fn request_activation(&self) {
+        let state = self.state.borrow();
+        if let (Some(activation), Some(app_id)) = (&state.globals.activation, state.app_id.clone())
+        {
+            state.client.set_pending_activation(state.surface.id());
+            let token = activation.get_activation_token(&state.globals.qh, ());
+            let serial = state.client.get_serial(SerialKind::MousePress);
+            token.set_app_id(app_id);
+            token.set_serial(serial, &state.globals.seat);
+            token.set_surface(&state.surface);
+            token.commit();
+        }
+    }
+
+    /// 最小化本窗口（Wayland 没有「取消映射」以外的隐藏手段，隐藏即最小化）。
+    pub(crate) fn minimize_window(&self) {
+        if let Some(toplevel) = self.state.borrow().surface_state.toplevel() {
+            toplevel.set_minimized();
+        }
+    }
+
     /// 检查两个指针是否指向同一状态
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.state, &other.state)
@@ -1529,18 +1554,7 @@ impl PlatformWindow for WaylandWindow {
     fn activate(&self) {
         // 尝试请求激活令牌。即使激活很可能被拒绝，
         // KWin 和 Mutter 也可以使用 app_id 以视觉方式指示我们正在请求关注
-        let state = self.borrow();
-        if let (Some(activation), Some(app_id)) = (&state.globals.activation, state.app_id.clone())
-        {
-            state.client.set_pending_activation(state.surface.id());
-            let token = activation.get_activation_token(&state.globals.qh, ());
-            // 序列号在这里并不真正重要，因为激活很可能被拒绝
-            let serial = state.client.get_serial(SerialKind::MousePress);
-            token.set_app_id(app_id);
-            token.set_serial(serial, &state.globals.seat);
-            token.set_surface(&state.surface);
-            token.commit();
-        }
+        self.0.request_activation();
     }
 
     fn is_active(&self) -> bool {
@@ -1591,15 +1605,12 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn minimize(&self) {
-        if let Some(toplevel) = self.borrow().surface_state.toplevel() {
-            toplevel.set_minimized();
-        }
+        self.0.minimize_window();
     }
 
     fn hide(&self) {
-        if let Some(toplevel) = self.borrow().surface_state.toplevel() {
-            toplevel.set_minimized();
-        }
+        // Wayland 协议没有「不显示但保留」的手段，隐藏等同于最小化
+        self.0.minimize_window();
     }
 
     fn zoom(&self) {

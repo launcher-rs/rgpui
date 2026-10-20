@@ -1093,6 +1093,31 @@ impl LinuxClient for WaylandClient {
         None
     }
 
+    fn activate_app(&self) {
+        // 最近交互过的窗口优先（键盘焦点），没有焦点就任取一个；
+        // 是否真的激活由合成器决定，Wayland 不允许应用强行抢焦点。
+        let window = {
+            let state = self.0.borrow();
+            state
+                .keyboard_focused_window
+                .clone()
+                .or_else(|| state.windows.values().next().cloned())
+        };
+        if let Some(window) = window {
+            window.request_activation();
+        }
+    }
+
+    fn hide_app(&self) {
+        let windows = {
+            let state = self.0.borrow();
+            state.windows.values().cloned().collect::<Vec<_>>()
+        };
+        for window in windows {
+            window.minimize_window();
+        }
+    }
+
     fn compositor_name(&self) -> &'static str {
         "Wayland"
     }

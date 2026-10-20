@@ -63,8 +63,18 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
   `set_tray_icon/menu/tooltip`、`on_tray_menu_action`、`on_tray_icon_event`。
 - Windows 实现：`rgpui-windows/src/tray.rs`（`Shell_NotifyIconW`）+
   `platform.rs`（`WM_GPUI_TRAY_ICON` / `WM_COMMAND`）。
+- macOS 实现：`rgpui-macos/src/tray.rs`（`NSStatusItem` + `NSMenu`，图标按 18×18 点）；
+  菜单挂在状态栏按钮的 action 上而不是 `NSStatusItem.setMenu:`，这样点击事件与菜单
+  能同时工作；只设菜单没设图标时用 SF Symbol 齿轮兜底。
+- Linux 实现：`rgpui-linux/src/linux/tray.rs` + `tray_sni.rs`（StatusNotifierItem，
+  X11 / Wayland 共用）。
 - `hide_window()`（任务栏移除）vs `minimize_window()`（保留任务栏图标）；
-  托盘恢复用 `activate_window()`。图标接受 PNG/ICO 字节。
+  托盘恢复用 `activate_window()`。图标接受 PNG/ICO 字节（macOS 只认 NSImage 支持的
+  格式，ICO 会记警告并留空）。
+- Linux 的应用级 `Platform::activate/hide`：X11 发 EWMH `_NET_ACTIVE_WINDOW`
+  （先 map 回被 `hide()` 撤下的窗口，否则窗管会忽略），Wayland 走 xdg-activation
+  （合成器可拒绝）；`hide()` 在 X11 是 unmap、Wayland 是最小化。`hide_other_apps` /
+  `unhide_other_apps` 在 Linux 没有对应协议能力，保留空实现。
 
 ## 提交与 PR 规范
 

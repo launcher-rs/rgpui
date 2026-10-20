@@ -119,7 +119,9 @@ MDI 文档多窗（§二十六）、任务窗格（§二十七）、画布语义
 **横向工程范式**
 - ✅ control channel（JSON-RPC 2.0 over TCP + key）+ MCP server 集成（§三十）；
 - 无头渲染/截图 API（不抢焦点的场景捕获）—— 已有 `HeadlessAppContext` +
-  `Window::render_to_image`（`cfg(any(test, feature = "test-support"))`），尚缺公开的非 test API；
+  `Window::render_to_image`（`test-support` 门控）：Linux 走 wgpu 离屏纹理，Windows 走
+  D3D11 离屏渲染目标（临时换 target → 重画 → `CopyResource` 到 staging → Map 读回 →
+  换回，BGRA→RGBA），macOS 尚未实现；
 - ✅ 命令/功能 parity 清单 + gate 测试（`CommandRegistry::validate`，§三十一）；
 - ⏳ 生产 crate 加 `deny(clippy::unwrap_used, expect_used, panic, todo, unimplemented)` ——
   按模块收紧，已覆盖 24 个套件模块（§三十一），全 crate 迁移未完成；
