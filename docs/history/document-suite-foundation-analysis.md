@@ -1713,3 +1713,21 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 
 - `cargo test -p rgpui --lib exports_markdown`：1 passed（标题 / 引用 / 样式 / 链接 / 表格都按预期导出）。
 
+## 五十七、增补：核心富文本的查找高亮
+
+`find` 此前只给区间，渲染层不体现「命中在哪」。本轮把命中区间接到渲染上：
+
+- `RichText::highlight_ranges(ranges)`：传入**文档级字符区间**（可直接用
+  `RichTextDoc::find` 的结果），渲染为搜索高亮（主题 warning 浅底），与批注背景分层
+  互不干扰。
+- HTML 序列化不受影响（查找命中只是渲染态，HTML 里不额外标记）。
+
+### 示例
+
+showcase 与 story 的富文本页都加了「查找并高亮『加粗』」按钮（命中数显示在状态行）。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：821 passed + 1 ignored（新增用例覆盖导出与往返；查找高亮为
+  渲染态，由示例页展示）。
+

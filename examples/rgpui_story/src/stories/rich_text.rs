@@ -27,6 +27,8 @@ struct RichTextStory {
     status: SharedString,
     /// 指向自身的句柄（供回调更新状态）。
     handle: Entity<Self>,
+    /// 查找命中的字符区间（渲染为搜索高亮）。
+    highlight: Vec<std::ops::Range<usize>>,
 }
 
 impl RichTextStory {
@@ -38,6 +40,7 @@ impl RichTextStory {
             doc,
             status: "点击批注或链接可收到回调；「加粗」/「替换」可用撤销重做回退。".into(),
             handle: cx.entity(),
+            highlight: Vec::new(),
         }
     }
 
@@ -52,6 +55,13 @@ impl RichTextStory {
         } else {
             self.status = format!("未在文档中找到「{label}」").into();
         }
+        cx.notify();
+    }
+
+    /// 查找「加粗」并高亮命中区间。
+    fn find_and_highlight(&mut self, cx: &mut Context<Self>) {
+        self.highlight = self.doc.find("加粗", true);
+        self.status = format!("命中 {} 处「加粗」", self.highlight.len()).into();
         cx.notify();
     }
 
@@ -98,6 +108,14 @@ impl Render for RichTextStory {
             );
         }
         buttons = buttons
+            .child(
+                rgpui::Button::new("rich-find")
+                    .label("查找并高亮「加粗」")
+                    .on_click({
+                        let handle = handle.clone();
+                        move |_, _, cx| handle.update(cx, |this, cx| this.find_and_highlight(cx))
+                    }),
+            )
             .child(rgpui::Button::new("rich-undo").label("撤销").on_click({
                 let handle = handle.clone();
                 move |_, _, cx| handle.update(cx, |this, cx| this.undo(cx))
@@ -133,6 +151,7 @@ impl Render for RichTextStory {
                     .border_color(cx.theme().border)
                     .child(
                         RichText::new(self.doc.clone())
+                            .highlight_ranges(self.highlight.clone())
                             .base_font_size(px(14.0))
                             .on_annotation_click(move |id, _window, cx| {
                                 annotation_handle.update(cx, |this, cx| {

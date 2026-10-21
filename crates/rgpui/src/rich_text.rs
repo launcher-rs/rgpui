@@ -1905,6 +1905,10 @@ fn push_paragraph_html(
                     escape_html(out, &piece);
                     out.push_str("</sup>");
                 }
+                // 查找命中：只是渲染高亮，HTML 里不额外标记。
+                Some((SpanKind::Highlight, _)) => {
+                    escape_html(out, &piece);
+                }
                 None => {
                     escape_html(out, &piece);
                 }
@@ -2321,6 +2325,8 @@ pub struct RichText {
     on_link_click: Option<Arc<dyn Fn(&str, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 基础字号（`None` 表示继承外层字号；标题按级别倍率放大）。
     base_font_size: Option<Pixels>,
+    /// 查找命中区间（文档级字符区间；渲染为搜索高亮）。
+    highlight_ranges: Vec<Range<usize>>,
 }
 
 impl RichText {
@@ -2331,6 +2337,7 @@ impl RichText {
             on_annotation_click: None,
             on_link_click: None,
             base_font_size: None,
+            highlight_ranges: Vec::new(),
         }
     }
 
@@ -2354,6 +2361,14 @@ impl RichText {
         handler: impl Fn(&str, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
         self.on_link_click = Some(Arc::new(handler));
+        self
+    }
+
+    /// 设置查找命中区间（文档级字符区间；渲染为搜索高亮）。
+    ///
+    /// 区间可用 [`RichTextDoc::find`] 的结果直接传入。
+    pub fn highlight_ranges(mut self, ranges: Vec<Range<usize>>) -> Self {
+        self.highlight_ranges = ranges;
         self
     }
 
@@ -2394,6 +2409,8 @@ impl RenderOnce for RichText {
         // 修订配色：插入用主色，删除用弱化前景色。
         let insert_color = theme.tokens.primary.color;
         let delete_color = theme.tokens.muted_foreground.color;
+        // 查找命中高亮（主题 warning 浅底）。
+        let highlight_bg = theme.tokens.warning.opacity(0.3);
         // 标题基准字号：显式设置优先，否则取窗口默认文本字号（rem 字号无法换算时留空）。
         let base_px = self
             .base_font_size
@@ -2470,7 +2487,19 @@ impl RenderOnce for RichText {
                     None
                 }
             };
-            let spans = collect_spans(&self.doc, doc_offset, para.char_len());
+            let mut spans = collect_spans(&self.doc, doc_offset, para.char_len());
+            // 查找命中区间（文档级 → 段内）。
+            for range in &self.highlight_ranges {
+                let start = range.start.max(doc_offset);
+                let end = range.end.min(doc_offset + para.char_len());
+                if start < end {
+                    spans.push(Span {
+                        range: (start - doc_offset)..(end - doc_offset),
+                        kind: SpanKind::Highlight,
+                        id: 0,
+                    });
+                }
+            }
             let heading = para.style.heading;
             let built = build_paragraph(
                 para,
@@ -2484,6 +2513,7 @@ impl RenderOnce for RichText {
                 link_color,
                 insert_color,
                 delete_color,
+                highlight_bg,
                 heading.is_some(),
             );
             let styled = StyledText::new(built.text).with_runs(built.runs);
@@ -2557,6 +2587,8 @@ enum SpanKind {
     Annotation,
     /// 脚注引用标记（主题色）。
     Footnote,
+    /// 查找命中区间（搜索高亮）。
+    Highlight,
 }
 
 /// 段落内的高亮区间（段内字符偏移，左闭右开）。
@@ -2829,6 +2861,7 @@ fn build_paragraph(
     link_color: Hsla,
     insert_color: Hsla,
     delete_color: Hsla,
+    highlight_bg: Hsla,
     bold_all: bool,
 ) -> ParagraphBuild {
     let mut text = String::new();
@@ -2892,6 +2925,9 @@ fn build_paragraph(
                 }
                 Some((SpanKind::Footnote, _)) => {
                     color = footnote_color;
+                }
+                Some((SpanKind::Highlight, _)) => {
+                    background_color = Some(highlight_bg);
                 }
                 None => {}
             }
