@@ -1020,7 +1020,7 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 仍未做（保持暂缓）：富文本分节 / 表格 / 批注 / 脚注、
 bidi 视觉重排、取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 
-> 备注：此前暂缓的「更多自绘组件接线画布语义」至此收官——canva 绘制的图表家族已全部接入
+> 备注：此前暂缓的「更多自绘组件接线画布语义」至此收官——canvas 绘制的图表家族已全部接入
 > （走势图 / 波形 / 饼 / 仪表盘 / 雷达 / 树图 / 折线 / 面积 / 通用坐标轴），
 > div 点阵渲染的 `DonutChart` / `Heatmap` / `BarChart` 与 div / 虚拟列表渲染的
 > `SheetGrid` / `PageView` 原生进入无障碍树，画布语义接线对其不适用
