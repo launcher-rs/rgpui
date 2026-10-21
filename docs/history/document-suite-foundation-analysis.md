@@ -1575,3 +1575,20 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 - `cargo test -p rgpui --features editor --lib lsp_attach`：16 passed（新增 1 项：
   定义跳转把光标移到目标偏移，结果同时可供应用层渲染）。
 
+## 五十、增补：LSP 签名提示
+
+- 新增 `crate::lsp::SignatureHelpProvider`（`signature_help(text, offset, …)` →
+  `Option<SignatureHelp>`）与状态 `crate::lsp::SignatureHelpState`（响应 + 激活签名 / 参数 +
+  可见性）。
+- `EditorState` 新增 `set_signature_help_provider`（注入 / 断开）、
+  `request_signature_help`（请求，epoch 防抖）、`signature_help_state`（应用层读状态渲染浮层）。
+- 示例：`examples/showcase/src/bin/editor.rs` 注入假签名提示 provider 并加「签名提示（LSP）」按钮。
+
+至此 LSP 客户端 trait 里的主要请求（补全 / 悬停 / 诊断 / 格式化 / 重命名 / 定义引用 /
+签名提示）在编辑器侧都有了触发入口。
+
+### 验证
+
+- `cargo test -p rgpui --features editor --lib lsp_attach`：17 passed（新增 1 项：
+  签名提示请求的结果写入状态）。
+

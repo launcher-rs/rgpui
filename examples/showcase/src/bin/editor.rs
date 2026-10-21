@@ -21,6 +21,7 @@ use rgpui::{
     lsp::{
         CompletionProvider, DefinitionProvider, DiagnosticEntry, DiagnosticsProvider,
         FormattingProvider, HoverContent, HoverProvider, HoverResponse, RenameProvider,
+        SignatureHelpProvider,
     },
     prelude::*,
     px, rgb, size, v_flex, white, yellow,
@@ -94,6 +95,29 @@ impl CompletionProvider for DemoCompletionProvider {
 /// 演示用假诊断 provider：首行一个 warning（真 provider 按 URI 取数）。
 struct DemoDiagnosticsProvider;
 
+/// 假签名提示 provider：返回一个固定签名。
+struct DemoSignatureHelpProvider;
+
+impl SignatureHelpProvider for DemoSignatureHelpProvider {
+    fn signature_help(
+        &self,
+        _text: &rgpui::input_ui::Rope,
+        _offset: usize,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Option<lsp_types::SignatureHelp>>> {
+        rgpui::Task::ready(Ok(Some(lsp_types::SignatureHelp {
+            signatures: vec![lsp_types::SignatureInformation {
+                label: "fn add(a: i32, b: i32) -> i32".to_string(),
+                documentation: None,
+                parameters: None,
+                active_parameter: None,
+            }],
+            active_signature: Some(0),
+            active_parameter: None,
+        })))
+    }
+}
 /// 假定义 provider：把光标处的词当作定义（跳到文档开头）。
 struct DemoDefinitionProvider;
 
@@ -611,6 +635,7 @@ impl EditorDemo {
             state.set_formatting_provider(Some(Rc::new(DemoFormattingProvider)), cx);
             state.set_rename_provider(Some(Rc::new(DemoRenameProvider)), cx);
             state.set_definition_provider(Some(Rc::new(DemoDefinitionProvider)), cx);
+            state.set_signature_help_provider(Some(Rc::new(DemoSignatureHelpProvider)), cx);
             // 透镜假 provider（文本变更自动刷新，点击跳光标到透镜行）。
             state.set_codelens_provider(Some(Rc::new(DemoCodelensProvider)), cx);
             state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
@@ -1036,6 +1061,14 @@ impl Render for EditorDemo {
                             "跳转定义（LSP）",
                             |state, window, cx| {
                                 state.goto_definition(window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "signature-help",
+                            "签名提示（LSP）",
+                            |state, window, cx| {
+                                state.request_signature_help(window, cx);
                             },
                         ))
                         .child(lsp_button(

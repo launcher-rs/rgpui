@@ -18,7 +18,7 @@ use std::time::Duration;
 use crate::lsp::{
     CompletionPopupState, CompletionProvider, CompletionState, DefinitionProvider, DefinitionState,
     DiagnosticEntry, DiagnosticsProvider, FormattingProvider, HoverProvider, HoverState,
-    PositionMapping, RenameProvider,
+    PositionMapping, RenameProvider, SignatureHelpProvider, SignatureHelpState,
 };
 use crate::{
     App, Context, Entity, HighlightStyle, Hsla, SharedString, Task, UnderlineStyle, Window, px,
@@ -56,6 +56,10 @@ pub(super) struct LspAttach {
     definition_provider: Option<Rc<dyn DefinitionProvider>>,
     /// 定义 / 引用跳转结果（最近一次请求）。
     definition: DefinitionState,
+    /// 签名提示 provider（应用注入，传输自理）。
+    signature_help_provider: Option<Rc<dyn SignatureHelpProvider>>,
+    /// 签名提示状态（最近一次请求；应用层渲染浮层）。
+    signature_help: SignatureHelpState,
     /// 当前文档 URI（诊断请求按 URI 取数，未设置时不请求）。
     document_uri: Option<Uri>,
     /// 补全状态（选中/可见/列表）。
@@ -91,6 +95,8 @@ impl LspAttach {
             rename_provider: None,
             definition_provider: None,
             definition: DefinitionState::default(),
+            signature_help_provider: None,
+            signature_help: SignatureHelpState::default(),
             document_uri: None,
             completion: CompletionState::default(),
             popup,
@@ -298,6 +304,67 @@ impl EditorState {
             self.lsp.next_epoch();
             cx.notify();
         }
+    }
+
+    /// 设置签名提示 provider（应用实现传输后注入；传 `None` 断开）。
+    pub fn set_signature_help_provider(
+        &mut self,
+        provider: Option<Rc<dyn SignatureHelpProvider>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.signature_help_provider = provider;
+        if self.lsp.signature_help_provider.is_none() {
+            self.lsp.next_epoch();
+            self.lsp.signature_help.clear();
+            cx.notify();
+        }
+    }
+
+    /// 签名提示状态（最近一次请求；应用层渲染浮层）。
+    pub fn signature_help_state(&self) -> &SignatureHelpState {
+        &self.lsp.signature_help
+    }
+
+    /// 请求签名提示（结果写入状态，浮层由应用渲染）。
+    pub fn request_signature_help(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.signature_help_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.signature_help(&text, offset, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, _window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                match response {
+                    Ok(Some(response)) => {
+                        this.lsp.signature_help.response = Some(response);
+                        this.lsp.signature_help.active_signature = None;
+                        this.lsp.signature_help.active_parameter = None;
+                        this.lsp.signature_help.visible = true;
+                        cx.notify();
+                    }
+                    Ok(None) => {
+                        this.lsp.signature_help.clear();
+                        cx.notify();
+                    }
+                    Err(_) => {}
+                }
+            });
+        }));
     }
 
     /// 设置定义 / 引用 provider（应用实现传输后注入；传 `None` 断开）。
@@ -1001,6 +1068,53 @@ mod tests {
         // 结果同时保留给应用层渲染。
         let locations = editor.read_with(cx, |state, _| state.definition_locations().len());
         assert_eq!(locations, 1);
+    }
+    /// 假签名提示 provider：返回一个固定签名。
+    struct FakeSignatureHelpProvider;
+
+    impl SignatureHelpProvider for FakeSignatureHelpProvider {
+        fn signature_help(
+            &self,
+            _text: &ropey::Rope,
+            _offset: usize,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Option<lsp_types::SignatureHelp>>> {
+            Task::ready(Ok(Some(lsp_types::SignatureHelp {
+                signatures: vec![lsp_types::SignatureInformation {
+                    label: "fn add(a: i32, b: i32) -> i32".to_string(),
+                    documentation: None,
+                    parameters: None,
+                    active_parameter: None,
+                }],
+                active_signature: Some(0),
+                active_parameter: None,
+            })))
+        }
+    }
+
+    /// 签名提示请求：结果写入状态（应用层渲染浮层）。
+    #[rgpui::test]
+    fn request_signature_help_fills_state(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "add(1, 2)\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_signature_help_provider(
+                    Some(std::rc::Rc::new(FakeSignatureHelpProvider)),
+                    cx,
+                );
+                state.request_signature_help(window, cx);
+            });
+        });
+        cx.run_until_parked();
+        let state = editor.read_with(cx, |state, _| state.signature_help_state().clone());
+        assert!(state.visible);
+        let response = state.response.expect("签名提示");
+        assert_eq!(response.signatures.len(), 1);
     }
     /// 假补全 provider（固定返回 `println` / `print` 两个条目）。
     struct FakeCompletionProvider;
