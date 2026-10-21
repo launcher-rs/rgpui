@@ -488,8 +488,10 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   `rgpui-windows::clipboard` 3 项（`CF_HTML` 往返、偏移量一致、缺标记返回 `None`）；
   `rgpui-windows::platform::tests::test_clipboard` 增加 HTML/RTF 经真实系统剪贴板往返。
 
-**本版暂缓**（后续增补）：多条目 HTML 解析（表格/样式 → 文档模型，属应用层）、
-剪贴板变化监听、Linux 主选择缓冲的富负载。
+**本版暂缓**（后续增补）：剪贴板变化监听、Linux 主选择缓冲的富负载。
+
+> 更新：核心富文本的 HTML 解析已能还原表格 / 节（见 §五十五），应用层据此把富剪贴板
+> 载荷转成文档模型。
 
 ## 二十一、P1 落地：富文本 / 文档编辑控件雏形（核心，无 feature 门控）
 
@@ -521,8 +523,11 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   拆/并段、跨段应用样式、HTML 往返含转义/下划线/删除线/颜色/列表/对齐/浏览器片段、空与超长
   HTML 拒绝、`normalize` 合并与保底一段）。
 
-**本版暂缓**（后续增补）：节（section）/分栏、表格、批注、修订、脚注尾注、项目符号字体与
-层级样式、可编辑光标与选区（现为只读渲染）。
+**本版暂缓**（后续增补）：脚注尾注（endnote）、项目符号字体与层级样式、
+可编辑光标与选区（现为只读渲染）。
+
+> 更新：节 / 分栏（`RichSection`）、表格（`RichTable`）、批注（`Annotation`）、脚注
+> （`Footnote`）、修订标记（`RunProps.inserted` / `deleted`）均已落地，见 §五十二～§五十四。
 
 ## 二十二、P1 落地：Ink 笔迹层（核心，无 feature 门控）
 
@@ -576,8 +581,11 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   命中擦除包围盒、不透明度夹取与淡化、套索与跨层删除、隐藏层跳过；无障碍 1 项：节点 id /
   点数 / 工具 / 外扩包围盒 / 阅读顺序）。
 
-**本版暂缓**（后续增补）：压感/倾角曲线拟合（现为压感均值线性映射）、
-橡皮的局部切割、触摸/数位板事件接入（现由指针事件驱动）。
+**本版暂缓**（后续增补）：倾角（tilt）拟合（模型尚无倾角字段）、橡皮的局部切割、
+触摸 / 数位板事件接入（现由指针事件驱动）。
+
+> 更新：压感曲线拟合（`smooth_pressure`）与 Catmull-Rom 曲线平滑（`catmull_rom_path`）
+> 已落地，见 §五十八。
 
 ## 二十三、P2 落地：缩略图排序器（核心，无 feature 门控）
 
@@ -613,8 +621,9 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   移动目标换算、边缘自动滚动、整组落位、选择三种变体与越界忽略、拖拽重排 / 无位移 / 取消、
   视图配置）。
 
-**本版暂缓**（后续增补）：拖拽实时预览（现为原格半透明 + 指示线）、虚拟化（大数量缩略图
-全量渲染）、章节分组折叠。
+**本版暂缓**（后续增补）：虚拟化（大数量缩略图全量渲染）、章节分组折叠。
+
+> 更新：拖拽实时预览（跟随指针的半透明副本）已落地，见 §六十。
 
 ## 二十四、P2 落地：动画时间线（核心，无 feature 门控）
 
@@ -673,8 +682,11 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   `TrackMoved`）、纵向滚动（内容坐标命中 / 夹取 / 滚入视野）、折叠行高与状态切换、
   折叠后行位 / 命中 / 可滚动范围 / `TrackCollapsed`）。
 
-**本版暂缓**（后续增补）：值曲线的手柄拖拽与曲线预设（当前曲线随关键帧值实时重绘）、多选关键帧
-与框选、轨道静音 / 独奏、音视频波形与对齐吸附、播放时钟内置到控件（现由应用推进 `advance`）。
+**本版暂缓**（后续增补）：多选关键帧与框选、轨道静音 / 独奏、音视频波形与对齐吸附、
+播放时钟内置到控件（现由应用推进 `advance`）。
+
+> 更新：值曲线的手柄拖拽此前**已实现**（状态里本就有 `dragging` / `set_keyframe_value`）；
+> 曲线预设（`EaseIn` / `EaseOut` / `EaseInOut`）已落地，见 §六十。
 
 ## 二十五、P2 落地：色板 / 取色器增强（核心，无 feature 门控）
 
@@ -709,9 +721,10 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   1 项（最近颜色去重置顶、`set_color` 同步当前颜色、`clear_recents`、`recent_limit` 下限与
   `show_palette` builder）。
 
-**本版暂缓**（后续增补）：吸管取色（屏幕捕获）：`scap` / `screen-capture` feature 与
-`zed-scap`、`windows-capture` API 不兼容，编译失败，故整块延后；取色器色域（RGB/HSV 面板 +
-色环）与多色板自定义收藏。（吸管已于 §三十三 解锁 `screen-capture` 后增补落地。）
+**本版暂缓**（后续增补）：取色器色域（RGB/HSV 面板 + 色环）与多色板自定义收藏。
+
+> 更新：吸管取色（屏幕捕获）已于 §三十三 落地（`screen-capture` feature 门控的
+> `crate::eyedropper`，`ColorPickerState::begin_eyedropper` 接线）。
 
 ## 二十六、P2 落地：多文档界面 MDI（核心，无 feature 门控）
 
@@ -886,8 +899,10 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   组件侧另有走势图 / 波形摘要节点 2 项 + 图表摘要节点 7 项（饼 / 仪表盘 / 雷达 / 树图 /
   折线 / 面积 / 通用坐标轴，`charts` feature 门控）。
 
-**本版暂缓**（后续增补）：`Role::Cell` 行 / 列语义（`row_index`/`column_index`）与
-虚拟滚动下的语义节点裁剪 / `ScrollIntoView`。注：`SheetGrid` / `PageView` 本身全部经
+**本版暂缓**（后续增补）：虚拟滚动下的语义节点裁剪 / `ScrollIntoView`。
+
+> 更新：`Role::Cell` 行 / 列语义已落地（`DataTable` / `SheetGrid` 的 `Role` 与
+> `aria_row_index` / `aria_column_index`），见 §五十九。注：`SheetGrid` / `PageView` 本身全部经
 div / 虚拟列表渲染、原生进入无障碍树（单元格还带 `sheet-cell:{r}:{c}` 元素 id），
 **画布语义接线不适用** —— 后续方向是给这些 div 标注结构化语义，而非画布语义。
 
@@ -1764,4 +1779,85 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 
 - `cargo test -p rgpui --lib a11y_role_and_indices`：1 passed（角色与行列索引写入
   AccessKit 节点）。
+
+## 六十、增补：排序器拖拽实时预览 + 时间线缓动插值预设
+
+### 排序器：拖拽实时预览
+
+此前拖拽时只有「原格半透明 + 插入指示线」，看不到被拖项跟手移动。本轮补上预览：
+
+- 状态新增 `drag_position`（拖拽期间的指针位置，窗口坐标）：`update_drag` 记录，
+  `finish_drag` / `cancel_drag` 清空。
+- 渲染：拖拽中在指针位置画一份半透明副本（等尺寸、主题主色描边），随指针移动。
+
+### 时间线：缓动插值预设
+
+§二十六 暂缓项里的「曲线预设」落地（值曲线的手柄拖拽此前**已实现** —— 状态里本就有
+`dragging` / `set_keyframe_value`，本轮核对后修正文档口径）：
+
+- `Interpolation` 新增 `EaseIn` / `EaseOut` / `EaseInOut`（CSS 标准缓动曲线），
+  `ease(t)` 按曲线映射进度；新增 `label()` 给中文名（UI 展示用）。
+- 状态新增 `set_track_interpolation(index, interpolation, cx)`：改轨道插值并抛出
+  `TimelineEvent::TrackInterpolation`。
+- 示例：showcase 的 `timeline` 演示页加「插值：…」按钮组（作用于选中轨道，当前插值
+  用主题主色标出）。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：826 passed + 1 ignored（新增 3 项：拖拽指针位置记录与
+  清理、缓动曲线取值、设置轨道插值与事件）。
+## 六十一、增补：任务窗格跨侧拖拽停靠
+
+§二十七 暂缓项「跨侧拖拽停靠（把窗格从一侧拖到另一侧）」落地（另一项「窗格内滚动位置
+记忆」属应用层：面板内容由应用提供，滚动状态也在应用侧，故不占框架）。
+
+- 状态新增 `parent_bounds`（父容器矩形，窗口坐标）+ `set_parent_bounds(bounds, cx)`：
+  停靠态把手越过父容器中线时换边停靠。
+- 拖拽中：停靠态把手（外缘）被拖过父容器中线 → 调 `set_side` 换边（抛出
+  `TaskPaneEvent::SideChanged`），并**重置拖拽基线**（宽度继续跟随指针，不跳变）。
+- 示例：showcase 的 `task_pane` 演示页把窗口视口作为父容器矩形传给状态，状态栏提示
+  「把把手拖过窗口中线可换边停靠」。
+
+### 验证
+
+- `cargo test -p rgpui --lib docked_grip_drag_crosses`：1 passed（把手越过中线换边、再拖回
+  换回）。
+## 六十二、增补：Ink 橡皮的局部切割
+
+§二十二 暂缓项「橡皮的局部切割」落地：此前橡皮只能整笔删除（`erase_at`）。
+
+- `InkLayer::erase_local(center, radius) -> usize`：剪掉落在圆内的**采样点**，笔画被切成
+  前后两段（残留不足两点的段视为整段被擦除）；返回被剪掉的点数。
+- `InkDocument::erase_local`：逐个可编辑图层应用（与 `erase_at` 的图层策略一致）。
+- 示例：showcase 的 `ink` 演示页加「橡皮：局部 / 整笔」切换按钮，状态栏显示擦除的点数 /
+  笔画数。
+
+### 验证
+
+- `cargo test -p rgpui --lib erase_local`：1 passed（中段被剪 → 笔画切成两段，端点正确）。
+## 六十三、增补：动画时间线的多选关键帧与框选
+
+§二十四 暂缓项「多选关键帧与框选」落地：
+
+- 状态新增 `multi_keyframes`（附加多选集合，仅对当前轨道有效）：
+  - `toggle_keyframe_selection(track, index, cx)`：Ctrl / Cmd 点击切换附加选中；换轨道时
+    落到新轨道的主选中项并清空集合；
+  - `selected_keyframe_indices()`：主选中项在前、其余按升序；
+  - `is_keyframe_selected(track, keyframe)`：主项或附加项均算选中（渲染高亮用）；
+  - `remove_selected_keyframes(cx)`：删除全部选中（逐个抛 `KeyframeRemoved`）。
+- 交互：关键帧上 **Ctrl / Cmd 点击**切换多选（不进入拖拽）；Delete / Backspace 键删除
+  全部选中（此前只删主选中项）。
+- 指针事件：`on_pointer_down` 增加 `modifiers` 参数（其它调用点传 `Modifiers::default()`）。
+
+### 框选
+
+- 状态新增 `box_select`（轨道 + 锚点 + 当前位置，行局部坐标）与 `box_selecting()` 查询。
+- 交互：轨道内空白处**按下并拖拽**即框选（框内关键帧全选、框外清除，拖动过程中实时
+  更新）；双击仍是「请求新增关键帧」；释放后保留选中、矩形消失。
+- 渲染：框选矩形画在轨道行内（主题主色描边 + 浅底）。
+
+### 验证
+
+- `cargo test -p rgpui --lib multi_select_keyframes`：1 passed（切换附加选中、取消、批量删除）。
+- `cargo test -p rgpui --lib box_select_picks`：1 passed（框内关键帧全选、框外清除、释放后保留）。
 

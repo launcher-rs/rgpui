@@ -32,6 +32,8 @@ struct InkApp {
     tool: InkTool,
     /// 进行中的套索多边形。
     lasso: Vec<Point<Pixels>>,
+    /// 橡皮是否局部擦除（false = 整笔擦除）。
+    local_erase: bool,
     /// 套索选中的 `(图层, 笔画)`。
     selected: Vec<(usize, usize)>,
     /// 是否处于落笔状态。
@@ -50,6 +52,7 @@ impl InkApp {
         Self {
             doc: InkDocument::new(),
             tool: InkTool::Pen,
+            local_erase: false,
             lasso: Vec::new(),
             selected: Vec::new(),
             drawing: false,
@@ -87,8 +90,14 @@ impl InkApp {
                 }
             }
             InkTool::Eraser => {
-                let removed = self.doc.erase_at(position, ERASER_RADIUS);
-                self.status = format!("擦除 {removed} 条笔画").into();
+                if self.local_erase {
+                    // 局部擦除：只剪掉圆内的采样点，笔画被切成两段。
+                    let removed = self.doc.erase_local(position, ERASER_RADIUS);
+                    self.status = format!("局部擦除 {removed} 个采样点").into();
+                } else {
+                    let removed = self.doc.erase_at(position, ERASER_RADIUS);
+                    self.status = format!("擦除 {removed} 条笔画").into();
+                }
             }
             InkTool::Lasso => self.lasso = vec![position],
         }
@@ -336,6 +345,18 @@ impl Render for InkApp {
                                         } else {
                                             "压感笔：固定宽度".into()
                                         };
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("local-erase")
+                                    .label(if self.local_erase {
+                                        "橡皮：局部"
+                                    } else {
+                                        "橡皮：整笔"
+                                    })
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
+                                        this.local_erase = !this.local_erase;
                                         cx.notify();
                                     })),
                             )

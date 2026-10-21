@@ -255,6 +255,8 @@ pub struct TaskPaneState {
     active_tab: usize,
     /// 最近一次预绘制写入的窗格窗口矩形。
     rect: Bounds<Pixels>,
+    /// 父容器矩形（窗口坐标）：停靠态把手越过父容器中线时换边停靠。
+    parent_bounds: Bounds<Pixels>,
     /// 拖拽会话。
     drag: Option<PaneDrag>,
     /// 焦点句柄。
@@ -279,9 +281,19 @@ impl TaskPaneState {
             tabs: Vec::new(),
             active_tab: 0,
             rect: Bounds::default(),
+            parent_bounds: Bounds::default(),
             drag: None,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    /// 设置父容器矩形（窗口坐标）。停靠态拖拽把手越过父容器中线时换边停靠。
+    pub fn set_parent_bounds(&mut self, bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
+        if self.parent_bounds == bounds {
+            return;
+        }
+        self.parent_bounds = bounds;
+        cx.notify();
     }
 
     /// 设置初始停靠侧。
@@ -726,6 +738,19 @@ impl TaskPaneState {
                     self.floating_bounds = bounds;
                     cx.notify();
                 } else {
+                    // 停靠态：把手拖过父容器中线 → 换边停靠（宽度继续跟随指针）。
+                    if self.cross_side_at(pointer.x) {
+                        let next = match self.side() {
+                            TaskPaneSide::Left => TaskPaneSide::Right,
+                            TaskPaneSide::Right => TaskPaneSide::Left,
+                        };
+                        self.set_side(next, cx);
+                        // 换边后重置拖拽基线，避免宽度跳变。
+                        if let Some(drag) = self.drag.as_mut() {
+                            drag.start_width = self.width;
+                            drag.start_pointer = pointer;
+                        }
+                    }
                     let width = resize_width(
                         drag.start_width,
                         edge,
@@ -742,6 +767,19 @@ impl TaskPaneState {
                 }
             }
             PaneDragKind::Close => {}
+        }
+    }
+
+    /// 停靠态把手是否已越过父容器中线（`pointer_x` 为窗口坐标）。
+    fn cross_side_at(&self, pointer_x: Pixels) -> bool {
+        let parent = self.parent_bounds;
+        if parent.size.width <= px(0.0) {
+            return false;
+        }
+        let mid = parent.origin.x + parent.size.width / 2.0;
+        match self.side() {
+            TaskPaneSide::Left => pointer_x > mid,
+            TaskPaneSide::Right => pointer_x < mid,
         }
     }
 
@@ -1613,6 +1651,55 @@ mod tests {
         assert!(log.contains(&TaskPaneEvent::FloatingChanged(false)));
     }
 
+    /// 停靠态：把手拖过父容器中线 → 换边停靠。
+    #[rgpui::test]
+    fn docked_grip_drag_crosses_to_other_side(cx: &mut TestAppContext) {
+        let probe = cx.update(|cx| cx.new(Probe::new));
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        // 父容器宽 1000px（中线在 500），窗格右停靠（把手在左缘）。
+        let parent = Bounds::new(point(px(0.0), px(0.0)), size(px(1000.0), px(500.0)));
+        cx.update(|cx| {
+            state.update(cx, |state, cx| {
+                state.set_rect(
+                    Bounds::new(point(px(740.0), px(0.0)), size(px(260.0), px(500.0))),
+                    cx,
+                );
+                state.set_parent_bounds(parent, cx);
+            })
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.side()),
+            TaskPaneSide::Right
+        );
+
+        // 抓住左缘把手往左拖过中线 → 换到左停靠。
+        let grip = point(px(742.0), px(250.0));
+        assert_eq!(
+            state.read_with(cx, |state, _| state.hit_test(grip)),
+            TaskPaneHit::Grip
+        );
+        cx.update(|cx| {
+            state.update(cx, |state, cx| {
+                state.on_pointer_down(grip);
+                state.on_pointer_move(point(px(200.0), px(250.0)), cx);
+            })
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.side()),
+            TaskPaneSide::Left
+        );
+
+        // 再往右拖过中线 → 换回右停靠。
+        cx.update(|cx| {
+            state.update(cx, |state, cx| {
+                state.on_pointer_move(point(px(800.0), px(250.0)), cx);
+            })
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.side()),
+            TaskPaneSide::Right
+        );
+    }
     /// 停靠态：拖动内缘把手改宽（左停靠为右缘，右停靠为左缘）。
     #[rgpui::test]
     fn docked_grip_drag_resizes_width(cx: &mut TestAppContext) {
