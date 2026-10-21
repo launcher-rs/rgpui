@@ -14,6 +14,8 @@ workspace = true
 default = []
 # LaTeX 公式渲染：解析 → 排版 → SVG → 光栅化（纯 Rust，无系统依赖）
 latex = ["dep:ratex-parser", "dep:ratex-layout", "dep:ratex-svg"]
+# Mermaid 图表渲染：SVG → 光栅化（纯 Rust，无系统依赖）
+mermaid = ["dep:mermaid-rs-renderer"]
 
 [dependencies]
 rgpui = { workspace = true }
@@ -21,6 +23,7 @@ pulldown-cmark = { workspace = true }
 ratex-parser = { workspace = true, optional = true }
 ratex-layout = { workspace = true, optional = true }
 ratex-svg = { workspace = true, optional = true }
+mermaid-rs-renderer = { workspace = true, optional = true }
 
 [dev-dependencies]
 pollster = { workspace = true }

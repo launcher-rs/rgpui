@@ -855,6 +855,13 @@ fn render_block(
                     }
                 }
             }
+            // Mermaid 围栏：渲染成图表（`mermaid` feature；失败则退回代码块）。
+            #[cfg(feature = "mermaid")]
+            if crate::mermaid::is_mermaid_language(language.as_deref())
+                && let Some(el) = render_mermaid_element(code, theme, svg)
+            {
+                return el;
+            }
             let mut cb = CodeBlock::new(code.clone())
                 .show_line_numbers(true)
                 .show_copy_button(true);
@@ -1103,6 +1110,37 @@ fn render_inline_element(
         .line_height(relative(1.5))
         .child(styled)
         .into_any_element()
+}
+
+/// 渲染 Mermaid 图表元素（渲染失败时返回 `None`，由调用方降级为代码块）。
+#[cfg(feature = "mermaid")]
+fn render_mermaid_element(
+    source: &str,
+    theme: &Theme,
+    svg: Option<&SvgRenderer>,
+) -> Option<AnyElement> {
+    let renderer = svg?;
+    // 图表配色跟随主题深浅（背景亮度低于阈值按深色主题）。
+    let background = Rgba::from(theme.background);
+    let luminance = 0.299 * background.r + 0.587 * background.g + 0.114 * background.b;
+    let dark = luminance < 0.5;
+    let image = crate::mermaid::mermaid_image(source, renderer, dark)?;
+    // 超出最大宽度时按比例缩放（图片是 2 倍超采样，缩放后仍清晰）。
+    const MAX_WIDTH: f32 = 600.0;
+    let (width, height) = if image.width.as_f32() > MAX_WIDTH {
+        let scale = MAX_WIDTH / image.width.as_f32();
+        (px(MAX_WIDTH), px(image.height.as_f32() * scale))
+    } else {
+        (image.width, image.height)
+    };
+    Some(
+        div()
+            .mb(px(12.0))
+            .flex()
+            .justify_center()
+            .child(img(image.image).w(width).h(height))
+            .into_any_element(),
+    )
 }
 
 /// 渲染列表项（支持嵌套）。
