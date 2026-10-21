@@ -240,12 +240,16 @@ struct InlineFlattener {
     text_color: Hsla,
     link_color: Hsla,
     code_bg: Hsla,
+    /// 已勾选任务项的文本色（变暗）。
+    muted_color: Hsla,
     bold: bool,
     italic: bool,
     strikethrough: bool,
     in_link: Option<String>,
     color_override: Option<Hsla>,
     bg_override: Option<Hsla>,
+    /// 任务列表已勾选：文本加删除线并变暗。
+    done: bool,
 }
 
 impl InlineFlattener {
@@ -266,13 +270,22 @@ impl InlineFlattener {
             text_color,
             link_color,
             code_bg,
+            muted_color: text_color,
             bold: false,
             italic: false,
             strikethrough: false,
             in_link: None,
             color_override: None,
             bg_override: None,
+            done: false,
         }
+    }
+
+    /// 标记为已勾选的任务项（文本加删除线并变暗）。
+    fn with_done(mut self, done: bool, muted_color: Hsla) -> Self {
+        self.done = done;
+        self.muted_color = muted_color;
+        self
     }
 
     /// 执行展平。
@@ -400,6 +413,9 @@ impl InlineFlattener {
             self.link_color
         } else if let Some(c) = self.color_override {
             c
+        } else if self.done {
+            // 已勾选的任务项文本变暗。
+            self.muted_color
         } else {
             self.text_color
         };
@@ -414,10 +430,14 @@ impl InlineFlattener {
             None
         };
 
-        let strikethrough = if self.strikethrough {
+        let strikethrough = if self.strikethrough || self.done {
             Some(StrikethroughStyle {
                 thickness: px(1.0),
-                color: Some(self.text_color),
+                color: Some(if self.done {
+                    self.muted_color
+                } else {
+                    self.text_color
+                }),
             })
         } else {
             None
@@ -502,6 +522,7 @@ fn render_math_segments(
     element_id: Option<ElementId>,
     theme: &Theme,
     svg: Option<&SvgRenderer>,
+    done: bool,
 ) -> AnyElement {
     // 段落内多段文本需要各自唯一的元素 id（否则无障碍树出现重名节点）。
     let base_name = match &element_id {
@@ -531,6 +552,7 @@ fn render_math_segments(
                     id,
                     theme,
                     svg,
+                    done,
                 ));
             }
             InlineSegment::Math(source) => {
@@ -602,9 +624,16 @@ pub fn render_inlines_with_svg(
 ) -> AnyElement {
     // 含公式时按段渲染：文本段沿用原路径，公式段渲染成图片。
     if let Some(segments) = split_math_segments_if_any(inlines) {
-        return render_math_segments(segments, base_size, link_handler, element_id, theme, svg);
+        return render_math_segments(
+            segments,
+            base_size,
+            link_handler,
+            element_id,
+            theme,
+            svg,
+            false,
+        );
     }
-
     let font_family = theme.font_family.clone();
     let font_mono = theme.mono_font_family.clone();
     let text_color = theme.tokens.foreground.color;
@@ -822,6 +851,7 @@ fn render_block(
                 Some(id),
                 theme,
                 svg,
+                false,
             );
             div().mb(px(12.0)).child(el).into_any_element()
         }
@@ -837,8 +867,15 @@ fn render_block(
                 _ => px(12.0),
             };
 
-            let el =
-                render_inline_element(content, size, on_link_click.as_ref(), Some(id), theme, svg);
+            let el = render_inline_element(
+                content,
+                size,
+                on_link_click.as_ref(),
+                Some(id),
+                theme,
+                svg,
+                false,
+            );
             div()
                 .mt(top_margin)
                 .mb(px(8.0))
@@ -1048,12 +1085,20 @@ fn render_inline_element(
     element_id: Option<ElementId>,
     theme: &Theme,
     svg: Option<&SvgRenderer>,
+    done: bool,
 ) -> AnyElement {
     // 含公式时按段渲染：文本段沿用原路径，公式段渲染成图片。
     if let Some(segments) = split_math_segments_if_any(inlines) {
-        return render_math_segments(segments, base_size, link_handler, element_id, theme, svg);
+        return render_math_segments(
+            segments,
+            base_size,
+            link_handler,
+            element_id,
+            theme,
+            svg,
+            done,
+        );
     }
-
     let font_family = theme.font_family.clone();
     let font_mono = theme.mono_font_family.clone();
     let text_color = theme.tokens.foreground.color;
@@ -1061,6 +1106,7 @@ fn render_inline_element(
     let code_bg = theme.tokens.muted.opacity(0.3);
 
     let flattened = InlineFlattener::new(font_family, font_mono, text_color, link_color, code_bg)
+        .with_done(done, theme.tokens.muted_foreground.color)
         .flatten(inlines);
 
     if flattened.text.is_empty() {
@@ -1161,19 +1207,60 @@ fn render_list_items(
         *block_idx += 1;
         let idx = *block_idx;
 
-        let bullet = if let Some(checked) = item.checked {
-            if checked {
-                SharedString::from("[x] ")
-            } else {
-                SharedString::from("[ ] ")
+        // 任务列表项用真复选框，其余用文本标记（• / 1.）。
+        let marker: Option<AnyElement> = match item.checked {
+            Some(checked) => Some(
+                div()
+                    .flex_shrink_0()
+                    .w(px(24.0))
+                    .flex()
+                    .items_center()
+                    .child(
+                        div()
+                            .w(px(12.0))
+                            .h(px(12.0))
+                            .rounded(px(3.0))
+                            .border_1()
+                            .border_color(if checked {
+                                theme.tokens.primary.color
+                            } else {
+                                theme.tokens.border.color
+                            })
+                            .bg(if checked {
+                                theme.tokens.primary.color
+                            } else {
+                                theme.tokens.background.color
+                            })
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_xs()
+                            .text_color(theme.tokens.background.color)
+                            .child(if checked { "✓" } else { "" }),
+                    )
+                    .into_any_element(),
+            ),
+            None => {
+                let text = if ordered {
+                    format!("{}. ", start + i as u64)
+                } else {
+                    "\u{2022} ".to_string()
+                };
+                Some(
+                    div()
+                        .flex_shrink_0()
+                        .w(px(24.0))
+                        .text_size(base_size)
+                        .text_color(theme.tokens.muted_foreground.color)
+                        .child(text)
+                        .into_any_element(),
+                )
             }
-        } else if ordered {
-            SharedString::from(format!("{}. ", start + i as u64))
-        } else {
-            SharedString::from("\u{2022} ")
         };
 
         let id = ElementId::Name(format!("{}-li-{}", id_prefix, idx).into());
+        // 已勾选的任务项文本加删除线 + 变暗。
+        let done = item.checked.unwrap_or(false);
         let content_el = render_inline_element(
             &item.content,
             base_size,
@@ -1181,6 +1268,7 @@ fn render_list_items(
             Some(id),
             theme,
             svg,
+            done,
         );
 
         let row = div()
@@ -1188,14 +1276,7 @@ fn render_list_items(
             .flex_row()
             .pl(px(20.0))
             .mb(px(4.0))
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .w(px(24.0))
-                    .text_size(base_size)
-                    .text_color(theme.tokens.muted_foreground)
-                    .child(bullet),
-            )
+            .child(marker.unwrap_or_else(|| div().flex_shrink_0().w(px(24.0)).into_any_element()))
             .child(div().flex_1().child(content_el));
 
         elements.push(row.into_any_element());
@@ -1263,6 +1344,7 @@ fn render_table(
                 Some(id),
                 theme,
                 svg,
+                false,
             );
             let mut cell = div()
                 .flex_1()
@@ -1306,6 +1388,7 @@ fn render_table(
                 Some(id),
                 theme,
                 svg,
+                false,
             );
             let mut cell = div()
                 .flex_1()
@@ -1328,4 +1411,41 @@ fn render_table(
     }
 
     table.into_any_element()
+}
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::{InlineFlattener, RichInline};
+    use rgpui::{SharedString, hsla};
+
+    /// 任务列表已勾选：文本加删除线并变暗；未勾选时保持原样。
+    #[test]
+    fn done_items_are_struck_through_and_muted() {
+        let muted = hsla(0.0, 0.0, 0.5, 1.0);
+        let text = hsla(0.0, 0.0, 0.9, 1.0);
+        let inlines = [RichInline::Text("已完成".to_string())];
+
+        let done = InlineFlattener::new(
+            SharedString::from("mono"),
+            SharedString::from("mono"),
+            text,
+            text,
+            hsla(0.0, 0.0, 0.2, 0.3),
+        )
+        .with_done(true, muted)
+        .flatten(&inlines);
+        assert!(done.runs[0].strikethrough.is_some());
+        assert_eq!(done.runs[0].color, muted);
+
+        let plain = InlineFlattener::new(
+            SharedString::from("mono"),
+            SharedString::from("mono"),
+            text,
+            text,
+            hsla(0.0, 0.0, 0.2, 0.3),
+        )
+        .flatten(&inlines);
+        assert!(plain.runs[0].strikethrough.is_none());
+        assert_eq!(plain.runs[0].color, text);
+    }
 }

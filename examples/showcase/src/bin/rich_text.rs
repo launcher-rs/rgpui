@@ -178,6 +178,18 @@ impl RichTextApp {
         }
         cx.notify();
     }
+
+    /// 查找并替换全部命中。
+    fn replace_all(&mut self, needle: &str, with: &str, cx: &mut Context<Self>) {
+        let hits = self.doc.find(needle, true);
+        let count = self.doc.replace_all(needle, with, true);
+        self.status = format!("把「{needle}」替换为「{with}」：命中 {} 处", count).into();
+        cx.notify();
+        // 命中数为 0 时提示未找到。
+        if hits.is_empty() {
+            self.status = format!("未找到「{needle}」").into();
+        }
+    }
 }
 
 impl Render for RichTextApp {
@@ -259,6 +271,16 @@ impl Render for RichTextApp {
                         let handle = handle.clone();
                         move |_event, _window, cx| {
                             handle.update(cx, |this, cx| this.remove_first_footnote(cx))
+                        }
+                    }),
+            )
+            .child(
+                Button::new("replace-all")
+                    .label("替换「项目符号」→「条目」")
+                    .on_click({
+                        let handle = handle.clone();
+                        move |_event, _window, cx| {
+                            handle.update(cx, |this, cx| this.replace_all("项目符号", "条目", cx))
                         }
                     }),
             )
@@ -367,6 +389,7 @@ fn sample_doc() -> RichTextDoc {
 
     let mut title = Paragraph::default();
     title.style.align = TextAlign::Center;
+    title.style.heading = Some(1);
     title.runs = vec![Run::with("rgpui 富文本原型", RunProps::new().bold())];
 
     let body = Paragraph {

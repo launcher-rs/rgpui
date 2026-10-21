@@ -28,9 +28,9 @@ use std::sync::Arc;
 
 use crate::prelude::ActiveTheme as _;
 use crate::{
-    App, ElementId, Hsla, InteractiveText, IntoElement, ParentElement as _, RenderOnce, Rgba,
-    StrikethroughStyle, Styled as _, StyledText, TextAlign, TextRun, UnderlineStyle, Window, div,
-    px, v_flex,
+    App, ElementId, Hsla, InteractiveText, IntoElement, ParentElement as _, Pixels, RenderOnce,
+    Rgba, StrikethroughStyle, Styled as _, StyledText, TextAlign, TextRun, UnderlineStyle, Window,
+    div, px, v_flex,
 };
 
 /// 单次解析 HTML 的字节上限（防御恶意片段）。
@@ -113,7 +113,7 @@ pub enum ListKind {
     Number,
 }
 
-/// 段落级样式：对齐、缩进层级、列表标记。
+/// 段落级样式：对齐、缩进层级、列表标记、标题级别。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ParagraphStyle {
     /// 水平对齐。
@@ -122,12 +122,20 @@ pub struct ParagraphStyle {
     pub indent: u8,
     /// 列表标记。
     pub list: ListKind,
+    /// 标题级别（1–6；`None` 表示普通段落）。
+    pub heading: Option<u8>,
 }
 
 impl ParagraphStyle {
     /// 设置缩进层级（自动夹取到 0..=8）。
     pub fn indent(mut self, level: u8) -> Self {
         self.indent = level.min(MAX_INDENT);
+        self
+    }
+
+    /// 设置标题级别（自动夹取到 1..=6）。
+    pub fn heading(mut self, level: u8) -> Self {
+        self.heading = Some(level.clamp(1, 6));
         self
     }
 }
@@ -307,6 +315,17 @@ pub struct Footnote {
     pub text: String,
 }
 
+/// 文档统计（字符数 / 段落数 / 行数）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DocStats {
+    /// 字符数（不含段落分隔符）。
+    pub chars: usize,
+    /// 段落数。
+    pub paragraphs: usize,
+    /// 行数（段落内换行另计）。
+    pub lines: usize,
+}
+
 /// 富文本文档：段落序列。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RichTextDoc {
@@ -451,6 +470,85 @@ impl RichTextDoc {
             id += 1;
         }
         id
+    }
+
+    /// 查找子串，返回全部命中的**字符**区间（按起点升序）。
+    ///
+    /// `case_sensitive` 为 `false` 时按字符做大小写无关比较。
+    pub fn find(&self, needle: &str, case_sensitive: bool) -> Vec<Range<usize>> {
+        if needle.is_empty() {
+            return Vec::new();
+        }
+        let haystack: Vec<char> = self.plain_text().chars().collect();
+        let pattern: Vec<char> = needle.chars().collect();
+        if pattern.len() > haystack.len() {
+            return Vec::new();
+        }
+        let matches_char = |a: char, b: char| -> bool {
+            if case_sensitive {
+                a == b
+            } else {
+                a.to_lowercase().eq(b.to_lowercase())
+            }
+        };
+        let mut out = Vec::new();
+        for start in 0..=haystack.len() - pattern.len() {
+            if haystack[start..start + pattern.len()]
+                .iter()
+                .zip(&pattern)
+                .all(|(a, b)| matches_char(*a, *b))
+            {
+                out.push(start..start + pattern.len());
+            }
+        }
+        out
+    }
+
+    /// 替换全部命中，返回替换次数。
+    ///
+    /// 替换文本沿用命中区间的行内属性；批注 / 脚注区间随编辑自动平移。
+    pub fn replace_all(&mut self, needle: &str, with: &str, case_sensitive: bool) -> usize {
+        let matches = self.find(needle, case_sensitive);
+        if matches.is_empty() {
+            return 0;
+        }
+        // 从后往前替换：前面的命中偏移不受影响。
+        for range in matches.iter().rev() {
+            let props = self.props_at(range.start).unwrap_or_default();
+            self.delete(range.clone());
+            self.insert_text(range.start, with, props);
+        }
+        matches.len()
+    }
+
+    /// 取某字符位置的行内属性（越界或段落分隔符返回 `None`）。
+    pub fn props_at(&self, index: usize) -> Option<RunProps> {
+        let (para_index, offset) = self.locate(index);
+        let para = self.paragraphs.get(para_index)?;
+        let mut remaining = offset;
+        for run in &para.runs {
+            let len = run.char_len();
+            if remaining < len {
+                return Some(run.props);
+            }
+            remaining -= len;
+        }
+        None
+    }
+
+    /// 文档统计（字符数 / 段落数 / 行数）。
+    pub fn stats(&self) -> DocStats {
+        let mut lines = 0usize;
+        let mut chars = 0usize;
+        for para in &self.paragraphs {
+            lines += para.text().matches('\n').count() + 1;
+            chars += para.char_len();
+        }
+        DocStats {
+            chars,
+            paragraphs: self.paragraphs.len(),
+            lines,
+        }
     }
 
     /// 把字符索引映射到 `(段落索引, 段内偏移)`；越界时归到末段末尾。
@@ -670,7 +768,13 @@ impl RichTextDoc {
             let spans = collect_spans(self, offsets[i], self.paragraphs[i].char_len());
             match kind {
                 ListKind::None => {
-                    out.push_str("<p");
+                    // 标题段落用 `<h1>`…`<h6>`，其余用 `<p>`。
+                    let tag = match self.paragraphs[i].style.heading {
+                        Some(level) => format!("h{}", level.clamp(1, 6)),
+                        None => "p".to_string(),
+                    };
+                    out.push('<');
+                    out.push_str(&tag);
                     let css = paragraph_css(&self.paragraphs[i].style);
                     if !css.is_empty() {
                         out.push_str(" style=\"");
@@ -679,7 +783,9 @@ impl RichTextDoc {
                     }
                     out.push('>');
                     push_paragraph_html(&mut out, &self.paragraphs[i], &spans, self);
-                    out.push_str("</p>");
+                    out.push_str("</");
+                    out.push_str(&tag);
+                    out.push('>');
                     i += 1;
                 }
                 ListKind::Bullet | ListKind::Number => {
@@ -779,6 +885,12 @@ impl RichTextDoc {
                         }
                         _ => {
                             if is_block(&name) {
+                                // 标题标签闭合时给承载标题文本的段落记级别。
+                                if let Some(level) = heading_level(&name)
+                                    && let Some(para) = paragraphs.last_mut()
+                                {
+                                    para.style.heading = Some(level);
+                                }
                                 new_paragraph(&mut paragraphs, list);
                             }
                             let kind = tag_kind(&name);
@@ -1299,6 +1411,20 @@ fn is_block(name: &str) -> bool {
     )
 }
 
+/// 标题标签名（`h1`…`h6`）转级别；其余标签返回 `None`。
+fn heading_level(name: &str) -> Option<u8> {
+    let level = name.strip_prefix('h')?;
+    match level {
+        "1" => Some(1),
+        "2" => Some(2),
+        "3" => Some(3),
+        "4" => Some(4),
+        "5" => Some(5),
+        "6" => Some(6),
+        _ => None,
+    }
+}
+
 /// 读取标签中某个布尔/字符串属性（带引号）的值。
 fn attr<'a>(tag: &'a str, key: &str) -> Option<&'a str> {
     let lower = tag.to_ascii_lowercase();
@@ -1385,6 +1511,8 @@ pub struct RichText {
     doc: RichTextDoc,
     /// 批注点击回调（批注 id → 回调）。
     on_annotation_click: Option<Arc<dyn Fn(u32, &mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 基础字号（`None` 表示继承外层字号；标题按级别倍率放大）。
+    base_font_size: Option<Pixels>,
 }
 
 impl RichText {
@@ -1393,6 +1521,7 @@ impl RichText {
         Self {
             doc,
             on_annotation_click: None,
+            base_font_size: None,
         }
     }
 
@@ -1409,6 +1538,24 @@ impl RichText {
         self.on_annotation_click = Some(Arc::new(handler));
         self
     }
+
+    /// 设置基础字号（标题按级别倍率放大；未设置时标题沿用外层字号，仅加粗）。
+    pub fn base_font_size(mut self, size: Pixels) -> Self {
+        self.base_font_size = Some(size);
+        self
+    }
+}
+
+/// 标题级别的字号倍率。
+fn heading_scale(level: u8) -> f32 {
+    match level {
+        1 => 1.8,
+        2 => 1.5,
+        3 => 1.3,
+        4 => 1.15,
+        5 => 1.05,
+        _ => 1.0,
+    }
 }
 
 impl From<RichTextDoc> for RichText {
@@ -1424,6 +1571,13 @@ impl RenderOnce for RichText {
         // 批注背景色与脚注标记色（跟随主题）。
         let annotation_bg = theme.tokens.warning.opacity(0.28);
         let footnote_color = theme.tokens.primary.color;
+        // 标题基准字号：显式设置优先，否则取窗口默认文本字号（rem 字号无法换算时留空）。
+        let base_px = self
+            .base_font_size
+            .or_else(|| match window.text_style().font_size {
+                crate::AbsoluteLength::Pixels(px) => Some(px),
+                crate::AbsoluteLength::Rems(_) => None,
+            });
         let mut column = v_flex().w_full().gap_1();
         let mut number = 0usize;
         // 当前段落的文档级起始字符偏移（区间换算用）。
@@ -1445,6 +1599,7 @@ impl RenderOnce for RichText {
                 }
             };
             let spans = collect_spans(&self.doc, doc_offset, para.char_len());
+            let heading = para.style.heading;
             let (text, runs, annotation_ranges) = build_paragraph(
                 para,
                 &base,
@@ -1452,6 +1607,7 @@ impl RenderOnce for RichText {
                 &spans,
                 annotation_bg,
                 footnote_color,
+                heading.is_some(),
             );
             let styled = StyledText::new(text).with_runs(runs);
             // 有批注且注册了回调时，批注高亮可点击（回传批注 id）。
@@ -1476,13 +1632,15 @@ impl RenderOnce for RichText {
                 }
                 _ => styled.into_any_element(),
             };
-            column = column.child(
-                div()
-                    .w_full()
-                    .text_align(para.style.align)
-                    .pl(px(f32::from(para.style.indent) * INDENT_PX))
-                    .child(content),
-            );
+            let mut paragraph = div()
+                .w_full()
+                .text_align(para.style.align)
+                .pl(px(f32::from(para.style.indent) * INDENT_PX));
+            // 标题段落按级别放大字号（基准字号取显式设置或窗口默认值）。
+            if let (Some(level), Some(base_px)) = (heading, base_px) {
+                paragraph = paragraph.text_size(px(base_px.as_f32() * heading_scale(level)));
+            }
+            column = column.child(paragraph.child(content));
             doc_offset += para.char_len() + 1;
         }
 
@@ -1602,6 +1760,7 @@ fn build_paragraph(
     spans: &[Span],
     annotation_bg: Hsla,
     footnote_color: Hsla,
+    bold_all: bool,
 ) -> (String, Vec<TextRun>, Vec<(Range<usize>, u32)>) {
     let mut text = String::new();
     let mut runs = Vec::new();
@@ -1630,7 +1789,7 @@ fn build_paragraph(
                 continue;
             }
             let mut font = base.font();
-            if run.props.bold {
+            if run.props.bold || bold_all {
                 font = font.bold();
             }
             if run.props.italic {
@@ -1945,5 +2104,64 @@ mod tests {
         let footnote = parsed.footnote(footnote_id).expect("脚注");
         assert_eq!(footnote.text, "脚注内容");
         assert_eq!(footnote.range, 11..12);
+    }
+
+    /// 查找：命中区间按字符计，大小写可选。
+    #[test]
+    fn find_returns_character_ranges() {
+        let doc = RichTextDoc::from_plain_text("hello HELLO world");
+        let hits = doc.find("hello", true);
+        assert_eq!(hits, vec![0..5]);
+        let insensitive = doc.find("hello", false);
+        assert_eq!(insensitive, vec![0..5, 6..11]);
+        assert!(doc.find("", true).is_empty());
+    }
+
+    /// 替换全部：文本替换 + 命中区间的行内属性沿用。
+    #[test]
+    fn replace_all_updates_text_and_keeps_props() {
+        let mut doc = RichTextDoc::from_plain_text("aaa bbb aaa");
+        doc.apply_props(0..3, |props| props.bold = true);
+        let count = doc.replace_all("aaa", "x", true);
+        assert_eq!(count, 2);
+        assert_eq!(doc.plain_text(), "x bbb x");
+        // 替换文本沿用原区间的属性。
+        assert!(doc.props_at(0).is_some_and(|props| props.bold));
+    }
+
+    /// 替换后批注区间随编辑平移。
+    #[test]
+    fn replace_all_keeps_annotation_ranges_aligned() {
+        let mut doc = RichTextDoc::from_plain_text("hello world");
+        doc.add_annotation(6..11, "宾语");
+        doc.replace_all("hello", "hi", true);
+        // 文本变短，批注区间随之后移。
+        assert_eq!(doc.plain_text(), "hi world");
+        let annotation = doc.annotations.first().expect("批注");
+        assert_eq!(annotation.range, 3..8);
+    }
+
+    /// 文档统计：字符 / 段落 / 行。
+    #[test]
+    fn stats_counts_chars_paragraphs_and_lines() {
+        let doc = RichTextDoc::from_plain_text("第一段\n第二段\n\n第四段");
+        let stats = doc.stats();
+        assert_eq!(stats.paragraphs, 4);
+        assert_eq!(stats.chars, "第一段第二段第四段".chars().count());
+        assert_eq!(stats.lines, 4);
+    }
+
+    /// 标题级别往返：`<h1>`/`<h2>` 解析后保留级别，序列化时还原。
+    #[test]
+    fn html_heading_levels_round_trip() {
+        let doc = RichTextDoc::from_html("<h1>一级</h1><p>正文</p><h2>二级</h2>").expect("解析");
+        assert_eq!(doc.paragraphs.len(), 3);
+        assert_eq!(doc.paragraphs[0].style.heading, Some(1));
+        assert_eq!(doc.paragraphs[1].style.heading, None);
+        assert_eq!(doc.paragraphs[2].style.heading, Some(2));
+        let html = doc.to_html();
+        assert!(html.contains("<h1>一级</h1>"));
+        assert!(html.contains("<p>正文</p>"));
+        assert!(html.contains("<h2>二级</h2>"));
     }
 }
