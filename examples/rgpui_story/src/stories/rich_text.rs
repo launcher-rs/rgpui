@@ -201,6 +201,37 @@ fn sample_doc() -> RichTextDoc {
     doc.paragraphs.push(footnote);
     doc.insert_footnote(4, "*", "示例脚注：文末脚注内容。");
 
+    // 表格（单元格复用段落）。
+    doc.add_table(
+        &["能力", "状态"],
+        &[
+            vec!["撤销 / 重做", "已支持"],
+            vec!["链接 / 批注 / 脚注", "已支持"],
+        ],
+        vec![
+            rgpui::rich_text::TableAlign::Left,
+            rgpui::rich_text::TableAlign::Center,
+        ],
+    );
+
+    // 修订标记：插入为主色下划线，删除为删除线变暗。
+    let revised = Paragraph::new("这一段演示修订：插入与删除。");
+    doc.paragraphs.push(revised);
+    doc.mark_inserted(0..4);
+    doc.mark_deleted(10..13);
+
+    // 分栏节（段落复用，按栏数排布）。
+    doc.add_section(
+        &[
+            "左栏第一段。",
+            "左栏第二段。",
+            "右栏第一段。",
+            "右栏第二段。",
+        ],
+        2,
+        Some("分栏小节"),
+    );
+
     doc
 }
 

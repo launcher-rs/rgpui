@@ -1623,3 +1623,62 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 
 - `cargo test -p rgpui --features editor --lib semantic`：2 passed（token 解码与样式解析）。
 
+## 五十二、增补：核心富文本的表格
+
+§三十二 仍未做清单里的「富文本表格」。难点是核心模型是**段落序列 + 字符坐标**——
+直接引入块级表格会打破字符索引语义。本轮的做法是**表格不引入新的文本空间**：
+
+- **模型** `RichTable { header, rows, alignments }`：单元格存**段落索引**（不是文本副本），
+  因此单元格内容就是普通段落：字符坐标编辑、批注 / 脚注区间、行内样式对表格内文本同样生效。
+  对齐方式 `TableAlign`（左 / 中 / 右）。
+- **接口** `RichTextDoc::add_table(header, rows, alignments) -> usize`（按「表头 → 数据行」
+  建段落并登记表格，返回表格索引）、`table(index)`。
+- **渲染**：表格出现在其**首个单元格段落**所在位置（其余单元格段落不再单独输出）；
+  表头加粗 + 浅底，单元格按列对齐，表格整体圆角边框。
+- **HTML**：输出 `<table>` + `<tr>` / `<th>` / `<td>`（单元格段落不再单独输出 `<p>`）。
+  （HTML → 表格的解析暂不做，解析侧仍按普通段落处理。）
+
+### 示例
+
+`examples/showcase/src/bin/rich_text.rs` 与 `examples/rgppui_story` 的「富文本」页都补了
+一张两列表格。
+
+### 验证
+
+- `cargo test -p rgpui --lib table_cells`：1 passed（单元格复用段落 + HTML 输出为表格）。
+
+## 五十三、增补：核心富文本的节 / 分栏
+
+§三十二 清单里「节（section）/分栏」的落地。与表格同理，**节不引入新的文本空间**：
+
+- **模型** `RichSection { paragraphs, columns, title }`：节内段落复用文档段落（段落索引），
+  `columns` 为分栏数（1 = 不分栏，上限 4），`title` 为可选节标题。
+- **接口** `RichTextDoc::add_section(paragraphs, columns, title) -> usize`、`section(index)`。
+- **渲染**：节出现在其**首个段落**所在位置（节内段落不再单独输出）；多栏时段落按
+  「列序轮流」分配到各栏（`index % columns`），单栏时与普通段落同款。
+- **HTML**：输出 `<section>`（标题为 `<h3>`），节内段落按 `<p>` 输出。
+
+### 验证
+
+- `cargo test -p rgpui --lib section_reuses`：1 passed（段落复用 + 分栏夹取 + HTML 输出）。
+
+## 五十四、增补：核心富文本的修订标记（tracked changes）
+
+§三十二 清单里的「修订」落地。做法是**在行内属性上打标记**（不引入新的文本空间）：
+
+- `RunProps` 新增 `inserted` / `deleted` 两个标记（+ builder `inserted()` / `deleted()`）。
+- 接口：
+  - `mark_inserted(range)`：标记为修订插入（渲染为主色 + 下划线）；
+  - `mark_deleted(range)`：标记为修订删除（**文本保留在文档里**，渲染为删除线 + 变暗）；
+  - `clear_revisions(range)`：清除标记；
+  - `effective_text()`：不含删除内容的文本（复制 / 导出用；`plain_text()` 仍是模型原文）。
+- HTML：插入输出 `<ins>`、删除输出 `<del>`。
+- 示例：showcase 与 story 的富文本页都加了「插入 / 删除」演示段。
+
+至此 §三十二 富文本清单（分节 / 分栏 / 表格 / 批注 / 脚注 / 修订）全部落地。
+
+### 验证
+
+- `cargo test -p rgpui --lib revisions_mark`：1 passed（标记落到运行上 + 有效文本排除删除内容 +
+  HTML `<ins>` / `<del>`）。
+

@@ -28,9 +28,9 @@ use std::sync::Arc;
 
 use crate::prelude::ActiveTheme as _;
 use crate::{
-    App, ElementId, Hsla, InteractiveText, IntoElement, ParentElement as _, Pixels, RenderOnce,
-    Rgba, SharedString, StrikethroughStyle, Styled as _, StyledText, TextAlign, TextRun,
-    UnderlineStyle, Window, div, px, relative, v_flex,
+    AnyElement, App, Div, ElementId, FontWeight, Hsla, InteractiveText, IntoElement,
+    ParentElement as _, Pixels, RenderOnce, Rgba, SharedString, StrikethroughStyle, Styled as _,
+    StyledText, TextAlign, TextRun, Theme, UnderlineStyle, Window, div, px, relative, v_flex,
 };
 
 /// 单次解析 HTML 的字节上限（防御恶意片段）。
@@ -44,7 +44,7 @@ const INDENT_PX: f32 = 24.0;
 /// 缩进的最大层级。
 const MAX_INDENT: u8 = 8;
 
-/// 行内富文本属性：粗体/斜体/下划线/删除线/行内代码 + 可选前景色。
+/// 行内富文本属性：粗体/斜体/下划线/删除线/行内代码 + 修订标记 + 可选前景色。
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RunProps {
     /// 是否粗体。
@@ -57,6 +57,10 @@ pub struct RunProps {
     pub strikethrough: bool,
     /// 是否行内代码（等宽字体 + 浅底）。
     pub code: bool,
+    /// 是否为修订插入（渲染为主色 + 下划线）。
+    pub inserted: bool,
+    /// 是否为修订删除（渲染为删除线 + 变暗；文本仍留在文档里）。
+    pub deleted: bool,
     /// 前景色覆盖；`None` 表示跟随主题/父级。
     pub color: Option<Hsla>,
 }
@@ -94,6 +98,18 @@ impl RunProps {
     /// 置为行内代码。
     pub fn code(mut self) -> Self {
         self.code = true;
+        self
+    }
+
+    /// 置为修订插入（主色 + 下划线）。
+    pub fn inserted(mut self) -> Self {
+        self.inserted = true;
+        self
+    }
+
+    /// 置为修订删除（删除线 + 变暗；文本仍留在文档里）。
+    pub fn deleted(mut self) -> Self {
+        self.deleted = true;
         self
     }
 
@@ -444,6 +460,49 @@ pub struct DocStats {
     pub lines: usize,
 }
 
+/// 表格列对齐方式。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TableAlign {
+    /// 左对齐。
+    #[default]
+    Left,
+    /// 居中。
+    Center,
+    /// 右对齐。
+    Right,
+}
+
+/// 表格：单元格内容复用文档段落（段落索引即单元格位置）。
+///
+/// 表格不引入新的文本空间——单元格就是普通段落，因此字符坐标编辑、批注 / 脚注区间
+/// 等既有机制对表格内文本同样生效。渲染时表格出现在其**首个单元格段落**的位置。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RichTable {
+    /// 表头行的单元格段落索引。
+    pub header: Vec<usize>,
+    /// 数据行的单元格段落索引。
+    pub rows: Vec<Vec<usize>>,
+    /// 各列对齐方式（与列数一致；缺省左对齐）。
+    pub alignments: Vec<TableAlign>,
+}
+
+/// 文档节：一组段落 + 分栏排版。
+///
+/// 与表格同理，节内段落复用文档段落（不引入新的文本空间）：节出现在其**首个段落**
+/// 所在位置，其余段落不再单独输出。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RichSection {
+    /// 节内段落索引（按顺序）。
+    pub paragraphs: Vec<usize>,
+    /// 分栏数（1 表示不分栏；上限见 `MAX_SECTION_COLUMNS`）。
+    pub columns: u8,
+    /// 节标题（可选，渲染在栏上方）。
+    pub title: Option<String>,
+}
+
+/// 分栏数上限（超出按此夹取）。
+const MAX_SECTION_COLUMNS: u8 = 4;
+
 /// 富文本文档：段落序列。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RichTextDoc {
@@ -453,6 +512,10 @@ pub struct RichTextDoc {
     pub annotations: Vec<Annotation>,
     /// 脚注列表（正文引用点 + 文末脚注文本）。
     pub footnotes: Vec<Footnote>,
+    /// 表格列表（单元格复用段落；渲染时按首个单元格段落的位置插入）。
+    pub tables: Vec<RichTable>,
+    /// 节列表（段落复用；渲染时按首个段落的位置插入，可分栏）。
+    pub sections: Vec<RichSection>,
 }
 
 impl RichTextDoc {
@@ -462,6 +525,8 @@ impl RichTextDoc {
             paragraphs: vec![Paragraph::default()],
             annotations: Vec::new(),
             footnotes: Vec::new(),
+            tables: Vec::new(),
+            sections: Vec::new(),
         }
     }
 
@@ -471,6 +536,8 @@ impl RichTextDoc {
             paragraphs: text.split('\n').map(Paragraph::new).collect(),
             annotations: Vec::new(),
             footnotes: Vec::new(),
+            tables: Vec::new(),
+            sections: Vec::new(),
         }
     }
 
@@ -570,6 +637,100 @@ impl RichTextDoc {
         // 引用标记是正文普通字符，一并删除（其余区间随之平移）。
         self.delete(range);
         true
+    }
+
+    /// 追加表格：单元格文本按「表头 → 数据行」建段落，返回表格索引。
+    ///
+    /// 单元格是普通段落（可继续编辑，字符坐标与批注 / 脚注区间同样生效）；
+    /// 表格渲染在其首个单元格段落所在的位置。
+    pub fn add_table(
+        &mut self,
+        header: &[&str],
+        rows: &[Vec<&str>],
+        alignments: Vec<TableAlign>,
+    ) -> usize {
+        let mut table = RichTable {
+            header: Vec::new(),
+            rows: Vec::new(),
+            alignments,
+        };
+        for cell in header {
+            table.header.push(self.paragraphs.len());
+            self.paragraphs.push(Paragraph::new(cell));
+        }
+        for row in rows {
+            let mut indices = Vec::with_capacity(row.len());
+            for cell in row {
+                indices.push(self.paragraphs.len());
+                self.paragraphs.push(Paragraph::new(cell));
+            }
+            table.rows.push(indices);
+        }
+        self.tables.push(table);
+        self.tables.len() - 1
+    }
+
+    /// 标记区间为修订插入（渲染为主色 + 下划线）。
+    pub fn mark_inserted(&mut self, range: Range<usize>) {
+        self.apply_props(range, |props| props.inserted = true);
+    }
+
+    /// 标记区间为修订删除（文本保留在文档里，渲染为删除线 + 变暗）。
+    pub fn mark_deleted(&mut self, range: Range<usize>) {
+        self.apply_props(range, |props| props.deleted = true);
+    }
+
+    /// 清除区间上的修订标记。
+    pub fn clear_revisions(&mut self, range: Range<usize>) {
+        self.apply_props(range, |props| {
+            props.inserted = false;
+            props.deleted = false;
+        });
+    }
+
+    /// 有效文本（不含修订删除的内容；复制 / 导出用）。
+    pub fn effective_text(&self) -> String {
+        let mut out = String::new();
+        for (index, para) in self.paragraphs.iter().enumerate() {
+            if index > 0 {
+                out.push('\n');
+            }
+            for run in &para.runs {
+                if run.props.deleted {
+                    continue;
+                }
+                out.push_str(&run.text);
+            }
+        }
+        out
+    }
+
+    /// 取表格（按索引）。
+    pub fn table(&self, index: usize) -> Option<&RichTable> {
+        self.tables.get(index)
+    }
+
+    /// 追加文档节：段落按顺序建段并登记，返回节索引。
+    ///
+    /// `columns` 为分栏数（1 表示不分栏，上限 4）；`title` 为节标题（可选）。
+    /// 节内段落复用文档段落，出现在其首个段落所在位置。
+    pub fn add_section(&mut self, paragraphs: &[&str], columns: u8, title: Option<&str>) -> usize {
+        let mut section = RichSection {
+            paragraphs: Vec::new(),
+            columns: columns.clamp(1, MAX_SECTION_COLUMNS),
+            title: title.map(|title| title.to_string()),
+        };
+        for text in paragraphs {
+            section.paragraphs.push(self.paragraphs.len());
+            self.paragraphs.push(Paragraph::new(text));
+        }
+        self.sections.push(section);
+        self.sections.len() - 1
+    }
+
+    /// 取节（按索引）。
+    pub fn section(&self, index: usize) -> Option<&RichSection> {
+        self.sections.get(index)
     }
 
     /// 下一个批注 id（从 1 开始，跳过已用编号）。
@@ -883,7 +1044,72 @@ impl RichTextDoc {
             offsets.push(acc);
             acc += para.char_len() + 1;
         }
+        // 表格归属：首个单元格段落即表格插入点，其余单元格段落由表格输出。
+        let mut table_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut table_cells: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        for (table_index, table) in self.tables.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in table.header.iter().chain(table.rows.iter().flatten()) {
+                table_cells.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                table_at.insert(first, table_index);
+            }
+        }
+
+        // 节归属：首个段落即插入点，其余段落由节输出。
+        let mut section_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut section_paragraphs: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
+        for (section_index, section) in self.sections.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in &section.paragraphs {
+                section_paragraphs.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                section_at.insert(first, section_index);
+            }
+        }
+
         while i < self.paragraphs.len() {
+            // 节：整节输出一次（节内段落不再单独输出）。
+            if let Some(section_index) = section_at.get(&i) {
+                let section = &self.sections[*section_index];
+                out.push_str("<section>");
+                if let Some(title) = &section.title {
+                    out.push_str("<h3>");
+                    escape_html(&mut out, title);
+                    out.push_str("</h3>");
+                }
+                for para_index in &section.paragraphs {
+                    if let Some(para) = self.paragraphs.get(*para_index) {
+                        let spans: Vec<Span> = Vec::new();
+                        push_paragraph_html(&mut out, para, &spans, Some(self));
+                    }
+                }
+                out.push_str("</section>");
+                while i < self.paragraphs.len() && section_paragraphs.contains(&i) {
+                    i += 1;
+                }
+                continue;
+            }
+            // 表格：整表输出一次（单元格段落不再单独输出）。
+            if let Some(table_index) = table_at.get(&i) {
+                push_table_html(
+                    &mut out,
+                    &self.tables[*table_index],
+                    &self.paragraphs,
+                    &offsets,
+                );
+                while i < self.paragraphs.len() && table_cells.contains(&i) {
+                    i += 1;
+                }
+                continue;
+            }
             let kind = self.paragraphs[i].style.list;
             let spans = collect_spans(self, offsets[i], self.paragraphs[i].char_len());
             // 连续的引用段落合并为一个 `<blockquote>`。
@@ -909,7 +1135,7 @@ impl RichTextDoc {
                     out.push('>');
                     while i < self.paragraphs.len() && self.paragraphs[i].style.list == kind {
                         out.push_str("<li>");
-                        push_paragraph_html(&mut out, &self.paragraphs[i], &spans, self);
+                        push_paragraph_html(&mut out, &self.paragraphs[i], &spans, Some(self));
                         out.push_str("</li>");
                         i += 1;
                     }
@@ -1147,6 +1373,8 @@ impl RichTextDoc {
                         underline: style.underline,
                         strikethrough: style.strikethrough,
                         code: style.code,
+                        inserted: false,
+                        deleted: false,
                         color: style.color,
                     },
                     link,
@@ -1196,6 +1424,8 @@ impl RichTextDoc {
             paragraphs,
             annotations,
             footnotes,
+            tables: Vec::new(),
+            sections: Vec::new(),
         })
     }
 }
@@ -1274,6 +1504,42 @@ fn split_runs(runs: Vec<Run>, offset: usize) -> (Vec<Run>, Vec<Run>) {
 }
 
 /// 追加一个段落的行内 HTML（不含外层 `<p>`/`<li>`）。
+/// 输出表格 HTML（`<table>` + 表头行 + 数据行）。
+fn push_table_html(
+    out: &mut String,
+    table: &RichTable,
+    paragraphs: &[Paragraph],
+    offsets: &[usize],
+) {
+    out.push_str("<table>");
+    if !table.header.is_empty() {
+        out.push_str("<tr>");
+        for para_index in &table.header {
+            out.push_str("<th>");
+            if let Some(para) = paragraphs.get(*para_index) {
+                let spans: Vec<Span> = Vec::new();
+                let _ = offsets;
+                push_paragraph_html(out, para, &spans, None);
+            }
+            out.push_str("</th>");
+        }
+        out.push_str("</tr>");
+    }
+    for row_indices in &table.rows {
+        out.push_str("<tr>");
+        for para_index in row_indices {
+            out.push_str("<td>");
+            if let Some(para) = paragraphs.get(*para_index) {
+                let spans: Vec<Span> = Vec::new();
+                push_paragraph_html(out, para, &spans, None);
+            }
+            out.push_str("</td>");
+        }
+        out.push_str("</tr>");
+    }
+    out.push_str("</table>");
+}
+
 /// 输出一个段落的 HTML（`<p>` / `<h1>`…`<h6>` + 内联样式 + 内容）。
 fn push_paragraph_block(out: &mut String, para: &Paragraph, spans: &[Span], doc: &RichTextDoc) {
     let tag = match para.style.heading {
@@ -1289,14 +1555,19 @@ fn push_paragraph_block(out: &mut String, para: &Paragraph, spans: &[Span], doc:
         out.push('"');
     }
     out.push('>');
-    push_paragraph_html(out, para, spans, doc);
+    push_paragraph_html(out, para, spans, Some(doc));
     out.push_str("</");
     out.push_str(&tag);
     out.push('>');
 }
 
 /// 输出一段段落 HTML；批注 / 脚注区间按 `<mark>` / `<sup>` 包裹。
-fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: &RichTextDoc) {
+fn push_paragraph_html(
+    out: &mut String,
+    para: &Paragraph,
+    spans: &[Span],
+    doc: Option<&RichTextDoc>,
+) {
     let mut run_offset = 0usize;
     for run in &para.runs {
         let (open, close) = run_tags(&run.props);
@@ -1311,7 +1582,7 @@ fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: 
             match span {
                 Some((SpanKind::Annotation, id)) => {
                     let note = doc
-                        .annotation(id)
+                        .and_then(|doc| doc.annotation(id))
                         .map(|item| item.note.clone())
                         .unwrap_or_default();
                     out.push_str(&format!("<mark data-annotation=\"{id}\" data-note=\""));
@@ -1322,7 +1593,7 @@ fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: 
                 }
                 Some((SpanKind::Footnote, id)) => {
                     let text = doc
-                        .footnote(id)
+                        .and_then(|doc| doc.footnote(id))
                         .map(|item| item.text.clone())
                         .unwrap_or_default();
                     out.push_str(&format!("<sup data-footnote=\"{id}\" data-text=\""));
@@ -1377,6 +1648,14 @@ fn run_tags(props: &RunProps) -> (String, String) {
     if props.strikethrough {
         open.push_str("<s>");
         close.insert_str(0, "</s>");
+    }
+    if props.inserted {
+        open.push_str("<ins>");
+        close.insert_str(0, "</ins>");
+    }
+    if props.deleted {
+        open.push_str("<del>");
+        close.insert_str(0, "</del>");
     }
     if props.code {
         open.push_str("<code>");
@@ -1809,6 +2088,9 @@ impl RenderOnce for RichText {
         let footnote_color = theme.tokens.primary.color;
         // 链接颜色（主题主色）。
         let link_color = theme.tokens.primary.color;
+        // 修订配色：插入用主色，删除用弱化前景色。
+        let insert_color = theme.tokens.primary.color;
+        let delete_color = theme.tokens.muted_foreground.color;
         // 标题基准字号：显式设置优先，否则取窗口默认文本字号（rem 字号无法换算时留空）。
         let base_px = self
             .base_font_size
@@ -1821,7 +2103,56 @@ impl RenderOnce for RichText {
         // 当前段落的文档级起始字符偏移（区间换算用）。
         let mut doc_offset = 0usize;
 
-        for para in &self.doc.paragraphs {
+        // 表格归属：首个单元格段落即表格插入点，其余单元格段落由表格渲染。
+        let mut table_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut table_cells: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        for (table_index, table) in self.doc.tables.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in table.header.iter().chain(table.rows.iter().flatten()) {
+                table_cells.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                table_at.insert(first, table_index);
+            }
+        }
+
+        // 节归属：首个段落即插入点，其余段落由节渲染。
+        let mut section_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut section_paragraphs: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
+        for (section_index, section) in self.doc.sections.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in &section.paragraphs {
+                section_paragraphs.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                section_at.insert(first, section_index);
+            }
+        }
+
+        for (para_index, para) in self.doc.paragraphs.iter().enumerate() {
+            // 节插在首个段落处（内部按分栏排布）。
+            if let Some(section_index) = section_at.get(&para_index) {
+                let section = &self.doc.sections[*section_index];
+                column = column.child(render_section(&self.doc, section, &base, &theme));
+            }
+            if section_paragraphs.contains(&para_index) {
+                // 节内段落由节渲染，正文不再单独输出。
+                continue;
+            }
+            // 表格插在首个单元格段落处。
+            if let Some(table_index) = table_at.get(&para_index) {
+                let table = &self.doc.tables[*table_index];
+                column = column.child(render_table(&self.doc, table, &base, &theme));
+            }
+            if table_cells.contains(&para_index) {
+                // 单元格段落由表格渲染，正文不再单独输出。
+                continue;
+            }
             let marker = match para.style.list {
                 ListKind::Bullet => {
                     number = 0;
@@ -1848,6 +2179,8 @@ impl RenderOnce for RichText {
                 annotation_bg,
                 footnote_color,
                 link_color,
+                insert_color,
+                delete_color,
                 heading.is_some(),
             );
             let styled = StyledText::new(built.text).with_runs(built.runs);
@@ -2015,6 +2348,168 @@ fn split_run_by_spans(
     out
 }
 
+/// 渲染文档节（标题 + 分栏排布；单栏时与普通段落同款）。
+fn render_section(
+    doc: &RichTextDoc,
+    section: &RichSection,
+    base: &crate::TextStyle,
+    _theme: &Theme,
+) -> AnyElement {
+    let mut block = div().w_full().mb(px(12.0));
+    if let Some(title) = &section.title {
+        block = block.child(
+            div()
+                .mb(px(4.0))
+                .text_sm()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title.clone()),
+        );
+    }
+    let columns = section.columns.max(1) as usize;
+    if columns == 1 {
+        // 单栏：段落依次输出。
+        let mut column = div().flex().flex_col().gap(px(6.0));
+        for para_index in &section.paragraphs {
+            if let Some(para) = doc.paragraphs.get(*para_index) {
+                let (text, runs) = build_cell_runs(para, base);
+                column = column.child(StyledText::new(text).with_runs(runs));
+            }
+        }
+        return block.child(column).into_any_element();
+    }
+    // 多栏：段落按列序轮流分配。
+    let mut row = div().flex().flex_row().gap(px(16.0));
+    for col in 0..columns {
+        let mut column = div().flex_1().min_w_0().flex().flex_col().gap(px(6.0));
+        for (index, para_index) in section.paragraphs.iter().enumerate() {
+            if index % columns != col {
+                continue;
+            }
+            if let Some(para) = doc.paragraphs.get(*para_index) {
+                let (text, runs) = build_cell_runs(para, base);
+                column = column.child(StyledText::new(text).with_runs(runs));
+            }
+        }
+        row = row.child(column);
+    }
+    block.child(row).into_any_element()
+}
+/// 渲染表格（单元格内容取对应段落）。
+fn render_table(
+    doc: &RichTextDoc,
+    table: &RichTable,
+    base: &crate::TextStyle,
+    theme: &Theme,
+) -> AnyElement {
+    let mut table_el = div()
+        .w_full()
+        .mb(px(12.0))
+        .rounded(theme.radius)
+        .border_1()
+        .border_color(theme.tokens.border)
+        .overflow_hidden();
+    if !table.header.is_empty() {
+        let mut row = div().flex().flex_row().bg(theme.tokens.muted.opacity(0.3));
+        for (col, para_index) in table.header.iter().enumerate() {
+            row = row.child(render_table_cell(
+                doc,
+                *para_index,
+                table,
+                col,
+                base,
+                theme,
+                true,
+            ));
+        }
+        table_el = table_el.child(row);
+    }
+    for row_indices in &table.rows {
+        let mut row = div().flex().flex_row();
+        for (col, para_index) in row_indices.iter().enumerate() {
+            row = row.child(render_table_cell(
+                doc,
+                *para_index,
+                table,
+                col,
+                base,
+                theme,
+                false,
+            ));
+        }
+        table_el = table_el.child(row);
+    }
+    table_el.into_any_element()
+}
+
+/// 渲染表格单元格（内容为对应段落的行内文本）。
+fn render_table_cell(
+    doc: &RichTextDoc,
+    para_index: usize,
+    table: &RichTable,
+    col: usize,
+    base: &crate::TextStyle,
+    theme: &Theme,
+    header: bool,
+) -> Div {
+    let (text, runs) = match doc.paragraphs.get(para_index) {
+        Some(para) => build_cell_runs(para, base),
+        None => (String::new(), Vec::new()),
+    };
+    let mut cell = div()
+        .flex_1()
+        .px(px(12.0))
+        .py(px(8.0))
+        .border_b_1()
+        .border_color(theme.tokens.border);
+    cell = match table.alignments.get(col).copied().unwrap_or_default() {
+        TableAlign::Center => cell.items_center(),
+        TableAlign::Right => cell.items_end(),
+        TableAlign::Left => cell,
+    };
+    if header {
+        cell = cell.font_weight(FontWeight::SEMIBOLD);
+    }
+    cell.child(StyledText::new(text).with_runs(runs))
+}
+
+/// 把单元格段落编译成 `(文本, 运行)`（不含列表标记与批注区间）。
+fn build_cell_runs(para: &Paragraph, base: &crate::TextStyle) -> (String, Vec<TextRun>) {
+    let mut text = String::new();
+    let mut runs = Vec::new();
+    for run in &para.runs {
+        if run.text.is_empty() {
+            continue;
+        }
+        let mut font = base.font();
+        if run.props.bold {
+            font = font.bold();
+        }
+        if run.props.italic {
+            font = font.italic();
+        }
+        let color = run.props.color.unwrap_or(base.color);
+        let underline = (run.props.underline || run.props.inserted).then(|| UnderlineStyle {
+            thickness: px(1.0),
+            color: Some(color),
+            wavy: false,
+        });
+        let strikethrough =
+            (run.props.strikethrough || run.props.deleted).then(|| StrikethroughStyle {
+                thickness: px(1.0),
+                color: Some(color),
+            });
+        runs.push(TextRun {
+            len: run.text.len(),
+            font,
+            color,
+            background_color: None,
+            underline,
+            strikethrough,
+        });
+        text.push_str(&run.text);
+    }
+    (text, runs)
+}
 /// 把段落编译成 `(文本, 运行, 批注点击区间)`，可选的列表标记作为首个运行。
 ///
 /// `spans` 是段内高亮区间（批注背景 / 脚注标记），会按其边界切分运行；
@@ -2029,6 +2524,8 @@ fn build_paragraph(
     annotation_bg: Hsla,
     footnote_color: Hsla,
     link_color: Hsla,
+    insert_color: Hsla,
+    delete_color: Hsla,
     bold_all: bool,
 ) -> ParagraphBuild {
     let mut text = String::new();
@@ -2079,6 +2576,13 @@ fn build_paragraph(
             if is_link {
                 color = link_color;
             }
+            // 修订：插入为主色 + 下划线；删除为变暗 + 删除线。
+            if run.props.inserted {
+                color = insert_color;
+            }
+            if run.props.deleted {
+                color = delete_color;
+            }
             match kind {
                 Some((SpanKind::Annotation, _)) => {
                     background_color = Some(annotation_bg);
@@ -2088,15 +2592,17 @@ fn build_paragraph(
                 }
                 None => {}
             }
-            let underline = (run.props.underline || is_link).then(|| UnderlineStyle {
-                thickness: px(1.0),
-                color: Some(color),
-                wavy: false,
-            });
-            let strikethrough = run.props.strikethrough.then(|| StrikethroughStyle {
-                thickness: px(1.0),
-                color: Some(color),
-            });
+            let underline =
+                (run.props.underline || is_link || run.props.inserted).then(|| UnderlineStyle {
+                    thickness: px(1.0),
+                    color: Some(color),
+                    wavy: false,
+                });
+            let strikethrough =
+                (run.props.strikethrough || run.props.deleted).then(|| StrikethroughStyle {
+                    thickness: px(1.0),
+                    color: Some(color),
+                });
             runs.push(TextRun {
                 len: piece.len(),
                 font,
@@ -2328,6 +2834,8 @@ mod tests {
             paragraphs: Vec::new(),
             annotations: Vec::new(),
             footnotes: Vec::new(),
+            tables: Vec::new(),
+            sections: Vec::new(),
         };
         doc.normalize();
         assert_eq!(doc.paragraphs.len(), 1);
@@ -2571,6 +3079,68 @@ mod tests {
         assert!(html.contains("引用内容"));
     }
 
+    /// 修订标记：插入 / 删除区间 + 有效文本（不含删除内容）+ HTML `<ins>` / `<del>`。
+    #[test]
+    fn revisions_mark_ranges_and_exclude_deleted_text() {
+        let mut doc = RichTextDoc::from_plain_text("hello world");
+        doc.mark_inserted(0..5);
+        doc.mark_deleted(6..11);
+        let runs = &doc.paragraphs[0].runs;
+        assert!(runs.iter().any(|run| run.props.inserted));
+        assert!(runs.iter().any(|run| run.props.deleted));
+        // 有效文本不含删除内容（复制 / 导出用）。
+        assert_eq!(doc.effective_text(), "hello ");
+        // HTML 输出 ins / del。
+        let html = doc.to_html();
+        assert!(html.contains("<ins>"));
+        assert!(html.contains("<del>"));
+        // 清除标记后恢复完整文本。
+        doc.clear_revisions(0..11);
+        assert_eq!(doc.effective_text(), "hello world");
+    }
+    /// 文档节：段落复用 + 分栏 + HTML 输出。
+    #[test]
+    fn section_reuses_paragraphs_and_columns() {
+        let mut doc = RichTextDoc::new();
+        let index = doc.add_section(&["第一栏", "第二栏"], 2, Some("小节"));
+        assert_eq!(index, 0);
+        let first_para = doc.section(0).expect("节").paragraphs[0];
+        assert_eq!(doc.section(0).expect("节").columns, 2);
+        assert_eq!(doc.section(0).expect("节").paragraphs.len(), 2);
+        // 分栏数上限夹取。
+        doc.add_section(&["x"], 9, None);
+        assert_eq!(doc.section(1).expect("节").columns, MAX_SECTION_COLUMNS);
+        // 段落确实落在文档里。
+        assert_eq!(doc.paragraphs[first_para].text(), "第一栏");
+        // HTML 输出为 section。
+        let html = doc.to_html();
+        assert!(html.contains("<section>"));
+        assert!(html.contains("小节"));
+    }
+    /// 表格：单元格复用段落（可编辑），HTML 输出为 `<table>`。
+    #[test]
+    fn table_cells_reuse_paragraphs() {
+        let mut doc = RichTextDoc::new();
+        let index = doc.add_table(
+            &["列一", "列二"],
+            &[vec!["甲", "乙"]],
+            vec![TableAlign::Left, TableAlign::Center],
+        );
+        assert_eq!(index, 0);
+        let table = doc.table(0).expect("表格");
+        assert_eq!(table.header.len(), 2);
+        assert_eq!(table.rows.len(), 1);
+        assert_eq!(table.rows[0].len(), 2);
+        // 单元格内容就是文档段落（字符坐标与批注区间同样生效）。
+        let first_cell = table.header[0];
+        assert_eq!(doc.paragraphs[first_cell].text(), "列一");
+        assert_eq!(doc.paragraphs[table.rows[0][1]].text(), "乙");
+        // HTML 输出为表格。
+        let html = doc.to_html();
+        assert!(html.contains("<table>"));
+        assert!(html.contains("列一"));
+        assert!(html.contains("<th>"));
+    }
     /// 行内代码往返：`<code>` 解析出行内代码属性，序列化还原。
     #[test]
     fn inline_code_round_trip() {
