@@ -69,7 +69,7 @@ Draggable/DropZone…，`charts`/`effects`/`qr-code` 门控）、`animation`/`mo
 | **Ink / 笔迹层**（pen/highlighter/eraser/lasso） | `ink.rs` | 无 | P1 |
 | **缩略图 / 排序器** | `thumbs.rs`/`sorter.rs` | 无 | P2（已落地，见 §二十三） |
 | **动画时间线** | `animtimeline.rs` | 无 | P2（已落地，见 §二十四） |
-| **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker`（已增强，见 §二十五；吸管缓做） | 增强 |
+| **取色器增强**（吸管/最近颜色/主题色板） | `eyedropper.rs`/`fillui.rs` | 有 `ColorPicker`（已增强，见 §二十五；吸管已落地，见 §三十三） | 增强 |
 | **多文档界面 MDI**（子文档窗/层叠/平铺/最小化） | `doc_window.rs`/`dock.rs` | 有 `DockArea`（面板树） | P2（已落地，见 §二十六） |
 | **任务窗格**（可停靠 / 可浮动侧边面板） | `dock.rs` | 有 `SplitPane`（分割） | P2（已落地，见 §二十七） |
 | **富剪贴板 payload** | `system_clipboard.rs` | 只有 text/image/路径（已扩展，见 §二十） | 扩展 `ClipboardItem` |
@@ -711,7 +711,7 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 
 **本版暂缓**（后续增补）：吸管取色（屏幕捕获）：`scap` / `screen-capture` feature 与
 `zed-scap`、`windows-capture` API 不兼容，编译失败，故整块延后；取色器色域（RGB/HSV 面板 +
-色环）与多色板自定义收藏。
+色环）与多色板自定义收藏。（吸管已于 §三十三 解锁 `screen-capture` 后增补落地。）
 
 ## 二十六、P2 落地：多文档界面 MDI（核心，无 feature 门控）
 
@@ -1017,8 +1017,8 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | 走势图 / 波形 `sparkline` `waveform` | 画布语义接线（`Sparkline::a11y` / `Waveform::a11y` 整体摘要节点：点数 / 极值 / 峰值 / 播放进度）、`CanvasSemantics::fill_empty_bounds`（零尺寸摘要节点按画布大小发布）、`CanvasNode::with_bounds`/`set_bounds` |
 | 仪表盘图表 `components/charts`（`charts` feature） | 画布语义接线：`Gauge::a11y` / `PieChart::a11y`（含 `Donut` 变体）/ `RadarChart::a11y` / `TreeMap::a11y` / `LineChart::a11y` / `AreaChart::a11y` / `Chart::a11y` 各自发布一个整体摘要节点（扇区占比 / 进度 / 轴值 / 顶层占比 / 逐系列极值，零值剔除、超长截断）；div 点阵渲染的 `DonutChart` / `Heatmap` / `BarChart` 本身有子节点，无需接线 |
 
-仍未做（保持暂缓）：富文本分节 / 表格 / 批注 / 脚注、
-bidi 视觉重排、取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
+仍未做（保持暂缓）：富文本分节 / 表格 / 批注 / 脚注、bidi 视觉重排
+（取色器吸管已于 §三十三 增补落地）。
 
 > 备注：此前暂缓的「更多自绘组件接线画布语义」至此收官——canvas 绘制的图表家族已全部接入
 > （走势图 / 波形 / 饼 / 仪表盘 / 雷达 / 树图 / 折线 / 面积 / 通用坐标轴），
@@ -1059,5 +1059,46 @@ bidi 视觉重排、取色器吸管（屏幕捕获，`scap` feature 与 `windows
 已知波动（与本轮改动无关）：`util::scheduler::tests::test_nondeterministic_wake_allowed_with_parking`
 单跑约 45 秒，`cargo test --workspace` 并行满载时会触发其内部 15 秒 park 超时断言，
 重跑即过；属既有 flaky 用例。
+
+## 三十三、增补：屏幕取色（吸管，`screen-capture` feature 门控）
+
+此前吸管因「`screen-capture` feature 已知编译失败」整块暂缓（§二十五）。实测该阻塞已过期：
+feature 在 Windows 本地编译通过（AGENTS 的「不要启用」记录系历史结论，已更正），于是把
+rucap 里成熟的取色浮层移植进 rgpui。
+
+### 流程（rgpui 侧无单帧 API，故「截一张图」= 推流取首帧后立即停流）
+
+1. `open_eyedropper(cx, on_result)`：不支持屏幕捕获时直接回 `Failed`；否则主线程拿到
+   捕获源 oneshot 接收端 + 前台 / 后台执行器句柄，`App::spawn` 起前台异步任务。
+2. 选主显示器源（`SourceMetadata::is_main`，取不到回退第一个源）→ `source.stream` 推流，
+   捕获线程回调把首帧 `frame.to_rgba()` 存进共享槽位（`Mutex<Option<Arc<RgbaImage>>>` +
+   `AtomicBool`，只留第一帧）。
+3. 等待推流启动（最多 5 秒，50ms 轮询）→ 显式 `drop(stream)` 停流 → 全程**留在内存**，不落盘。
+4. RGBA → BGRA（与 rgpui img 解码口径一致）构造 `RenderImage`，回主线程开全屏冻结浮层：
+   `WindowKind::Overlay` + `WindowBounds::Fullscreen(主屏 bounds)` + `Opaque` 背景（X11 上
+   alpha 合成不可用会导致 ARGB 浮层整体不可见，与 rucap 区域截图浮层同规格）。
+5. 浮层视图：冻结帧 1:1 铺满 + 十字线 + 9×9 放大镜（`canvas` 逐格绘制，中心格白描边，
+   面板贴光标右下越界翻左上）+ 顶部 HEX/RGB 信息条；坐标严格按「视图逻辑像素 × 缩放比 =
+   图片物理像素」换算。左键 `Picked(Hsla)`，右键 / `Esc` `Cancelled`；结果回调
+   `Fn(EyedropperResult, &mut App)` 恰好一次（视图侧 `finished` 标志防重复）。
+
+### 接线
+
+- 新模块 `crates/rgpui/src/eyedropper.rs`（feature 门控，`#[deny(unwrap/expect/panic)]`）：
+  `open_eyedropper` + `EyedropperResult`（`Picked(Hsla)` / `Cancelled` / `Failed(SharedString)`）；
+  纯函数 `sample_at` / `rgb_to_hex` / `mag_cell`（放大镜越界钳制）随模块带 2 项测试。
+- `ColorPickerState`（feature 门控接线）：新增 `pending_pick: Option<Hsla>` 私有字段 + 
+  `begin_eyedropper`（weak 回写 `pending_pick` + `notify`）+ 取色面板「屏幕取色」小按钮；
+  render 侧在滑块同步前先 `take()` `pending_pick` → `set_color` + `push_recent`
+  （取色回调运行在浮层上下文，没有来源窗口的 `&mut Window`，与 `hex_dirty` 同一套延后机制）。
+- feature 关闭时字段 / 方法 / 按钮整块消失，取色器行为与之前完全一致。
+
+### 验证
+
+- `cargo check -p rgpui --features screen-capture --lib` 与默认 feature 侧均通过；
+  `cargo clippy` 双侧 `-D warnings` 通过。
+- `cargo test -p rgpui --features screen-capture --lib` 802 passed + 1 ignored（含
+  `eyedropper::tests` 2 项：采样越界与 HEX 格式、放大镜角落钳制）。
+- `cargo check --workspace` 通过；`cargo fmt --all` 无变更。
 
 

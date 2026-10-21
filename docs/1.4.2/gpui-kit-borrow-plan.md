@@ -174,7 +174,8 @@ headless UI 测试层、PaneTree dock 引擎（只抄概念不抄体量）、自
 - feature 组合：CI 矩阵 job 内加 `cargo check -p rgpui --features
   editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter,tree-sitter-json,tree-sitter-toml`
   （三平台）+ `webview`（仅 Linux，要系统库）+ `cargo test -p rgpui-dom`。
-  `scap`/`screen-capture` 照 AGENTS.md 不加（已知编译失败）。
+  `scap`/`screen-capture` 照当时 AGENTS.md 结论不加（已知编译失败；该结论其后已过期，
+  feature 于 §三十三 吸管批次解锁）。
 - "Platform 方法必须有调用点"：`.github/scripts/check_platform_calls.py`
   （1.6s）+ CI hygiene job + 空 allowlist。口径是"除定义行外至少一处调用"
   （包装/core 内调/示例/后端内调都算，`temp/` 不算）。

@@ -38,6 +38,10 @@ pub struct ColorPickerState {
     recent_limit: usize,
     /// 是否显示主题色板与最近颜色。
     show_palette: bool,
+    /// 吸管待应用的颜色（取色回调运行在浮层上下文，没有来源窗口的 `&mut Window`，
+    /// 延后到 render 时经 [`Self::set_color`] 应用，与 `hex_dirty` 同一套延后机制）。
+    #[cfg(feature = "screen-capture")]
+    pending_pick: Option<Hsla>,
 }
 
 impl ColorPickerState {
@@ -101,6 +105,8 @@ impl ColorPickerState {
             recents: Vec::new(),
             recent_limit: RECENT_COLORS_LIMIT,
             show_palette: true,
+            #[cfg(feature = "screen-capture")]
+            pending_pick: None,
         }
     }
 
@@ -156,6 +162,23 @@ impl ColorPickerState {
             self.recents.clear();
             cx.notify();
         }
+    }
+
+    /// 启动屏幕取色（吸管，`screen-capture` feature 门控）：抓主屏首帧打开
+    /// 全屏冻结浮层，选中颜色写回 `pending_pick`，由下一次 render 应用
+    /// （见字段注释）。
+    #[cfg(feature = "screen-capture")]
+    pub fn begin_eyedropper(&mut self, cx: &mut Context<Self>) {
+        let picker = cx.entity().downgrade();
+        crate::eyedropper::open_eyedropper(cx, move |result, cx| {
+            if let crate::eyedropper::EyedropperResult::Picked(color) = result {
+                // 来源选择器已被释放（弹层已关 / 应用退出）时丢弃结果即可。
+                let _ = picker.update(cx, |state, cx| {
+                    state.pending_pick = Some(color);
+                    cx.notify();
+                });
+            }
+        });
     }
 
     /// 直接应用一个颜色：同步三滑块与 hex，并触发 `on_change`。
@@ -281,6 +304,14 @@ fn hsla_to_rgb(color: Hsla) -> (f32, f32, f32) {
 
 impl Render for ColorPickerState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // 延后的吸管颜色：取色回调没有来源窗口，延后到本次 render 应用（此时窗口可用）。
+        // set_color 内部会置 pending_emit / hex_dirty，由下方两个延后块接着处理。
+        #[cfg(feature = "screen-capture")]
+        if let Some(color) = self.pending_pick.take() {
+            self.set_color(color, window, cx);
+            self.push_recent(color, cx);
+        }
+
         // 延后的 hex 同步：set_value 需要 Window。
         if self.hex_dirty {
             self.hex_dirty = false;
@@ -350,6 +381,23 @@ impl Render for ColorPickerState {
             None
         };
 
+        // 吸管：启动屏幕取色流程（`screen-capture` feature 门控；未启用时不渲染该行）。
+        #[cfg(feature = "screen-capture")]
+        let eyedropper_row = {
+            let picker = cx.entity();
+            Some(
+                Button::new("color-picker-eyedropper")
+                    .label("屏幕取色")
+                    .small()
+                    .on_click(move |_, _, cx| {
+                        picker.update(cx, |picker, cx| picker.begin_eyedropper(cx));
+                    })
+                    .into_any_element(),
+            )
+        };
+        #[cfg(not(feature = "screen-capture"))]
+        let eyedropper_row: Option<AnyElement> = None;
+
         div()
             .flex()
             .flex_col()
@@ -366,6 +414,7 @@ impl Render for ColorPickerState {
             .child(slider_row("S", &saturation, muted_foreground))
             .child(slider_row("L", &lightness, muted_foreground))
             .child(Input::new(&hex_input).w_full())
+            .when_some(eyedropper_row, |this, row| this.child(row))
             .when_some(palette_block, |this, block| this.child(block))
     }
 }
