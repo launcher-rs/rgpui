@@ -692,6 +692,17 @@ pub trait InteractiveElement: Sized {
     /// 获取与此元素关联的交互状态
     fn interactivity(&mut self) -> &mut Interactivity;
 
+    /// 设置此元素的无障碍角色。
+    ///
+    /// 参见[无障碍指南](crate::_accessibility)了解概述。
+    fn role(mut self, role: accesskit::Role) -> Self {
+        debug_assert!(
+            role != accesskit::Role::GenericContainer,
+            "GenericContainer is filtered out of the a11y tree and has no effect"
+        );
+        self.interactivity().override_role = Some(role);
+        self
+    }
     /// 将此元素分配到可一起设置样式的分组中
     fn group(mut self, group: impl Into<SharedString>) -> Self {
         self.interactivity().group = Some(group.into());
@@ -1196,18 +1207,6 @@ pub trait InteractiveElement: Sized {
 
 /// 希望使用需要状态的标准 RGPUI 交互功能的元素的 trait。
 pub trait StatefulInteractiveElement: InteractiveElement {
-    /// 设置此元素的无障碍角色。
-    ///
-    /// 参见[无障碍指南](crate::_accessibility)了解概述。
-    fn role(mut self, role: accesskit::Role) -> Self {
-        debug_assert!(
-            role != accesskit::Role::GenericContainer,
-            "GenericContainer is filtered out of the a11y tree and has no effect"
-        );
-        self.interactivity().override_role = Some(role);
-        self
-    }
-
     /// 设置此元素的无障碍标签。
     fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.interactivity().aria.label = Some(label.into());
@@ -4277,6 +4276,21 @@ mod tests {
     };
     use std::rc::Weak;
 
+    /// 无障碍语义：角色与行列索引写入 AccessKit 节点。
+    #[test]
+    fn a11y_role_and_indices_are_written() {
+        use accesskit::Node;
+        let element = div()
+            .id("cell")
+            .role(accesskit::Role::Cell)
+            .aria_row_index(2)
+            .aria_column_index(3);
+        assert_eq!(element.a11y_role(), Some(accesskit::Role::Cell));
+        let mut node = Node::new(accesskit::Role::GenericContainer);
+        element.write_a11y_info(&mut node);
+        assert_eq!(node.row_index(), Some(2));
+        assert_eq!(node.column_index(), Some(3));
+    }
     struct TestTooltipView;
 
     impl Render for TestTooltipView {

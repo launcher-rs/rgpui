@@ -5,8 +5,8 @@ use std::{rc::Rc, sync::Arc, sync::LazyLock, time::Duration};
 use crate::{
     ActiveTheme as _, Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent,
     Edges, FocusHandle, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
-    Point, RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement,
-    Styled, Window, WindowControlArea, anchored, div, hsla, point, prelude::FluentBuilder, px,
+    Point, RenderOnce, Role, SharedString, StyleRefinement, Styled, Window, WindowControlArea,
+    anchored, div, hsla, point, prelude::FluentBuilder, px,
 };
 
 use crate::{

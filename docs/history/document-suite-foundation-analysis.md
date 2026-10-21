@@ -1746,3 +1746,20 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 - `cargo test -p rgpui --lib ink`：新增 2 项（Catmull-Rom 路径覆盖全部采样点；压感曲线
   整形与越界处理）。
 
+## 五十九、增补：表格的结构化无障碍语义
+
+§二十八 暂缓项「`Role::Cell` 行 / 列语义」的落地（画布语义不适用于表格这类 div 渲染，
+改为给 div 标注结构化语义）：
+
+- `div` 的 `role()` 从 `StatefulInteractiveElement` 上移到 `InteractiveElement`
+  （任何 div 都能标角色；`GenericContainer` 仍被过滤 ✓）。
+- `DataTable`：根节点 `Role::Table`；数据行 `Role::Row`；单元格 `Role::Cell` +
+  `aria_row_index` / `aria_column_index`；行号列 `Role::RowHeader`；表头列
+  `Role::ColumnHeader`。
+- 行列索引同时覆盖「左侧固定列」与「滚动区」两条渲染路径 ✓。
+
+### 验证
+
+- `cargo test -p rgpui --lib a11y_role_and_indices`：1 passed（角色与行列索引写入
+  AccessKit 节点）。
+

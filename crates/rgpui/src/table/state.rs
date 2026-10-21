@@ -1367,6 +1367,9 @@ where
             .bg(cx.theme().tokens.table_head)
             .flex_shrink_0()
             .table_cell_size(self.options.size)
+            // 无障碍语义：行号列是 RowHeader。
+            .role(accesskit::Role::RowHeader)
+            .aria_row_index(row_ix)
             .when(!is_head, |this| {
                 this.when(self.row_selectable, |this| {
                     this.on_click(cx.listener(move |table, _, _window, cx| {
@@ -1802,6 +1805,8 @@ where
             tr.h_flex()
                 .w_full()
                 .h(row_height)
+                // 无障碍语义：行。
+                .role(accesskit::Role::Row)
                 .when(need_render_border, |this| {
                     this.border_b_1().border_color(cx.theme().table_row_border)
                 })
@@ -1838,6 +1843,9 @@ where
                                             .child(
                                                 self.render_cell(Some(row_ix), col_ix, window, cx)
                                                     .id(format!("table-cell:{}:{}", row_ix, col_ix))
+                                                    .role(accesskit::Role::Cell)
+                                                    .aria_row_index(row_ix)
+                                                    .aria_column_index(col_ix)
                                                     .relative()
                                                     .child(self.measure_render_td(
                                                         row_ix, col_ix, window, cx,
@@ -1943,6 +1951,9 @@ where
                                                 table
                                                     .render_cell(Some(row_ix), col_ix, window, cx)
                                                     .id(format!("table-cell-{}:{}", row_ix, col_ix))
+                                                    .role(accesskit::Role::Cell)
+                                                    .aria_row_index(row_ix)
+                                                    .aria_column_index(col_ix)
                                                     .relative()
                                                     .child(table.measure_render_td(
                                                         row_ix, col_ix, window, cx,

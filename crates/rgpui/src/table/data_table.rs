@@ -152,6 +152,8 @@ where
         div()
             .id("table")
             .size_full()
+            // 无障碍语义：表格根节点。
+            .role(accesskit::Role::Table)
             .key_context(CONTEXT)
             .track_focus(&focus_handle)
             .on_action(window.listener_for(&self.state, TableState::action_cancel))
