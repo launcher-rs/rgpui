@@ -1503,6 +1503,12 @@ HTML 双向：`from_html` 解析 `line-height` / `margin-top`，`to_html` 输出
 对应 showcase 的 `editor` feature 追加启用 `tree-sitter-json` / `tree-sitter-toml` /
 `tree-sitter-javascript` / `tree-sitter-python` / `tree-sitter-go` 语言包。
 
+### 组件库新增「富文本」页
+
+`examples/rgppui_story` 新增「富文本」页（`stories/rich_text.rs`），集中展示本轮富文本
+能力：标题级别、行内样式（粗 / 斜 / 下划线 / 删除线 / 行内代码）、链接（可点击回传地址）、
+引用块、行高与段前距、批注（可点击回传 id）、脚注引用，以及撤销 / 重做按钮。
+
 ### 验证
 
 - `cargo test -p rgpui --lib rich_text`：27 passed（新增 1 项：行内代码往返）。
