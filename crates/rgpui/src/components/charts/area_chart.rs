@@ -1,6 +1,8 @@
 //! 面积图组件（叠加/堆叠两种模式）。
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
+use accesskit::Role;
 
 /// 默认系列配色。
 const CHART_COLORS: [u32; 8] = [
@@ -178,7 +180,53 @@ pub struct AreaChart {
     x_labels: Vec<SharedString>,
     y_label_count: usize,
     fill_opacity: f32,
+    /// 无障碍配置：元素 id + 画布名称（开启后发布一个整体摘要节点）。
+    a11y: Option<(ElementId, SharedString)>,
     style: StyleRefinement,
+}
+
+/// 面积图整体语义：一个零尺寸摘要节点（发布时由画布填充整块区域）。
+///
+/// 摘要按系列列出点数与 y 极值（最多 4 个系列）；堆叠模式的数值为普通（非累计）值。
+fn area_chart_semantics(series: &[AreaChartSeries], label: &SharedString) -> CanvasSemantics {
+    let non_empty: Vec<&AreaChartSeries> = series.iter().filter(|s| !s.points.is_empty()).collect();
+    let total_points: usize = non_empty.iter().map(|s| s.points.len()).sum();
+
+    let summary = if non_empty.is_empty() {
+        "暂无数据".to_string()
+    } else {
+        format!("{} 个面积系列 · 共 {total_points} 点", non_empty.len())
+    };
+
+    let mut parts = Vec::new();
+    for s in non_empty.iter().take(4) {
+        let y_min = s.points.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+        let y_max = s
+            .points
+            .iter()
+            .map(|p| p.1)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let last = s.points[s.points.len() - 1].1;
+        parts.push(format!(
+            "{}：最新 {} · 最低 {} · 最高 {}（{} 点）",
+            s.label,
+            format_value(last),
+            format_value(y_min),
+            format_value(y_max),
+            s.points.len()
+        ));
+    }
+    if non_empty.len() > 4 {
+        parts.push(format!("等 {} 个面积系列", non_empty.len()));
+    }
+
+    let mut semantics = CanvasSemantics::new();
+    semantics.push(
+        CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+            .with_value(summary)
+            .with_description(parts.join("；")),
+    );
+    semantics
 }
 
 impl AreaChart {
@@ -195,6 +243,7 @@ impl AreaChart {
             x_labels: Vec::new(),
             y_label_count: 5,
             fill_opacity: 0.25,
+            a11y: None,
             style: StyleRefinement::default(),
         }
     }
@@ -270,6 +319,15 @@ impl AreaChart {
         self.fill_opacity = opacity.clamp(0.0, 1.0);
         self
     }
+
+    /// 把系列数据暴露给辅助技术：发布一个整体摘要节点（系列数 / 总点数 +
+    /// 逐系列 y 极值），节点矩形在发布时按画布大小填充。
+    ///
+    /// `id` 是画布元素自身的标识，同一图表跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
+        self
+    }
 }
 
 impl Styled for AreaChart {
@@ -327,6 +385,11 @@ impl RenderOnce for AreaChart {
             fill_opacity: self.fill_opacity,
         };
 
+        let a11y = self.a11y;
+        let semantics = a11y
+            .as_ref()
+            .map(|(_, label)| area_chart_semantics(&series_for_legend, label));
+
         div()
             .flex()
             .flex_col()
@@ -341,8 +404,8 @@ impl RenderOnce for AreaChart {
                     .h(chart_h)
                     .w_full()
                     .relative()
-                    .child(
-                        canvas(
+                    .child({
+                        let mut chart = canvas(
                             move |_bounds, _window, _cx| paint_data,
                             move |bounds, data, window, _cx| {
                                 if bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
@@ -525,8 +588,17 @@ impl RenderOnce for AreaChart {
                                 }
                             },
                         )
-                        .size_full(),
-                    )
+                        .size_full();
+
+                        // 无障碍：整块图表一个摘要节点（零尺寸，由画布按实际大小填充）。
+                        if let (Some((id, label)), Some(semantics)) = (a11y, semantics) {
+                            chart = chart
+                                .id(id)
+                                .a11y(Role::GraphicsObject, semantics)
+                                .a11y_label(label);
+                        }
+                        chart
+                    })
                     .when(self.show_y_axis, |this| {
                         this.children(y_labels.iter().enumerate().map(|(i, label)| {
                             let tick_count = y_labels.len().saturating_sub(1).max(1);
@@ -588,5 +660,50 @@ impl RenderOnce for AreaChart {
                         })),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::{AreaChartSeries, area_chart_semantics};
+    use crate::{Bounds, SharedString};
+
+    /// 无障碍摘要：系列数 / 总点数 + 逐系列 y 极值（小数值走两位小数格式）。
+    #[test]
+    fn area_chart_a11y_summary() {
+        let label: SharedString = "流量构成".into();
+        let series = vec![
+            AreaChartSeries::new("直接流量", vec![(0.0, 800.0), (1.0, 650.0), (2.0, 910.0)]),
+            AreaChartSeries::new("搜索", vec![(0.0, 400.0), (1.0, 520.0)]),
+            AreaChartSeries::new("空系列", vec![]),
+        ];
+        let semantics = area_chart_semantics(&series, &label);
+        assert_eq!(semantics.len(), 1);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(node.label().to_string(), "流量构成");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("2 个面积系列 · 共 5 点".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("直接流量：最新 910 · 最低 650 · 最高 910（3 点）；搜索：最新 520 · 最低 400 · 最高 520（2 点）".to_string())
+        );
+        // 零尺寸：发布时由画布按实际大小填充。
+        assert_eq!(node.bounds(), Bounds::default());
+
+        // 小数值（< 1）用两位小数格式。
+        let small = AreaChartSeries::new("比率", vec![(0.0, 0.5), (1.0, 0.25)]);
+        let small = area_chart_semantics(&[small], &label);
+        let node = small.get(1).expect("摘要节点");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("1 个面积系列 · 共 2 点".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("比率：最新 0.25 · 最低 0.25 · 最高 0.50（2 点）".to_string())
+        );
     }
 }

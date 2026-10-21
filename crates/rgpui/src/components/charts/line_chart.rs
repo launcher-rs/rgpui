@@ -1,6 +1,8 @@
 //! 折线图组件。
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
+use accesskit::Role;
 
 /// 默认系列配色。
 const CHART_COLORS: [u32; 8] = [
@@ -163,7 +165,53 @@ pub struct LineChart {
     y_max: Option<f64>,
     smooth: bool,
     show_legend: bool,
+    /// 无障碍配置：元素 id + 画布名称（开启后发布一个整体摘要节点）。
+    a11y: Option<(ElementId, SharedString)>,
     style: StyleRefinement,
+}
+
+/// 折线图整体语义：一个零尺寸摘要节点（发布时由画布填充整块区域）。
+///
+/// 摘要按折线数 / 总点数 + 逐系列列出 y 极值（最多 4 个系列）。
+fn line_chart_semantics(series: &[LineChartSeries], label: &SharedString) -> CanvasSemantics {
+    let non_empty: Vec<&LineChartSeries> = series.iter().filter(|s| !s.points.is_empty()).collect();
+    let total_points: usize = non_empty.iter().map(|s| s.points.len()).sum();
+
+    let summary = if non_empty.is_empty() {
+        "暂无数据".to_string()
+    } else {
+        format!("{} 条折线 · 共 {total_points} 点", non_empty.len())
+    };
+
+    let mut parts = Vec::new();
+    for s in non_empty.iter().take(4) {
+        let y_min = s.points.iter().map(|p| p.y).fold(f64::INFINITY, f64::min);
+        let y_max = s
+            .points
+            .iter()
+            .map(|p| p.y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let last = s.points[s.points.len() - 1].y;
+        parts.push(format!(
+            "{}：最新 {} · 最低 {} · 最高 {}（{} 点）",
+            s.name,
+            format_y_value(last),
+            format_y_value(y_min),
+            format_y_value(y_max),
+            s.points.len()
+        ));
+    }
+    if non_empty.len() > 4 {
+        parts.push(format!("等 {} 条折线", non_empty.len()));
+    }
+
+    let mut semantics = CanvasSemantics::new();
+    semantics.push(
+        CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+            .with_value(summary)
+            .with_description(parts.join("；")),
+    );
+    semantics
 }
 
 impl LineChart {
@@ -179,6 +227,7 @@ impl LineChart {
             y_max: None,
             smooth: false,
             show_legend: true,
+            a11y: None,
             style: StyleRefinement::default(),
         }
     }
@@ -230,6 +279,15 @@ impl LineChart {
         self.show_legend = show;
         self
     }
+
+    /// 把系列数据暴露给辅助技术：发布一个整体摘要节点（折线数 / 总点数 +
+    /// 逐系列 y 极值），节点矩形在发布时按画布大小填充。
+    ///
+    /// `id` 是画布元素自身的标识，同一图表跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
+        self
+    }
 }
 
 impl Styled for LineChart {
@@ -276,6 +334,11 @@ impl RenderOnce for LineChart {
         let y_min = self.y_min;
         let y_max = self.y_max;
         let x_axis_labels = self.x_axis_labels.clone();
+
+        let a11y = self.a11y;
+        let semantics = a11y
+            .as_ref()
+            .map(|(_, label)| line_chart_semantics(&self.series, label));
 
         let grid_color: Hsla = theme.tokens.border.color;
         let text_color = theme.tokens.muted_foreground;
@@ -328,8 +391,8 @@ impl RenderOnce for LineChart {
                     .flex_1()
                     .min_h(px(200.0))
                     .relative()
-                    .child(
-                        canvas(
+                    .child({
+                        let mut chart = canvas(
                             move |_bounds, _window, _cx| paint_data,
                             move |bounds, paint_data, window, _cx| {
                                 if bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
@@ -461,8 +524,17 @@ impl RenderOnce for LineChart {
                                 }
                             },
                         )
-                        .size_full(),
-                    )
+                        .size_full();
+
+                        // 无障碍：整块图表一个摘要节点（零尺寸，由画布按实际大小填充）。
+                        if let (Some((id, label)), Some(semantics)) = (a11y, semantics) {
+                            chart = chart
+                                .id(id)
+                                .a11y(Role::GraphicsObject, semantics)
+                                .a11y_label(label);
+                        }
+                        chart
+                    })
                     .when(show_y_axis, |this| {
                         this.children(y_labels.iter().enumerate().map(|(i, label)| {
                             let top_percent = (i as f32 / 5.0) * 100.0;
@@ -518,5 +590,57 @@ impl RenderOnce for LineChart {
                         })),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::{LineChartPoint, LineChartSeries, line_chart_semantics};
+    use crate::{Bounds, SharedString};
+
+    /// 无障碍摘要：折线数 / 总点数 + 逐系列 y 极值（空系列不计、空数据退化）。
+    #[test]
+    fn line_chart_a11y_summary() {
+        let label: SharedString = "周销量".into();
+        let series = vec![
+            LineChartSeries::new(
+                "手机",
+                vec![
+                    LineChartPoint::new(0.0, 120.0),
+                    LineChartPoint::new(1.0, 95.0),
+                    LineChartPoint::new(2.0, 140.0),
+                ],
+            ),
+            LineChartSeries::new(
+                "耳机",
+                vec![
+                    LineChartPoint::new(0.0, 30.0),
+                    LineChartPoint::new(1.0, 45.0),
+                ],
+            ),
+            LineChartSeries::new("空系列", vec![]),
+        ];
+        let semantics = line_chart_semantics(&series, &label);
+        assert_eq!(semantics.len(), 1);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(node.label().to_string(), "周销量");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("2 条折线 · 共 5 点".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("手机：最新 140 · 最低 95 · 最高 140（3 点）；耳机：最新 45 · 最低 30 · 最高 45（2 点）".to_string())
+        );
+        // 零尺寸：发布时由画布按实际大小填充。
+        assert_eq!(node.bounds(), Bounds::default());
+
+        let empty = line_chart_semantics(&[], &label);
+        let node = empty.get(1).expect("摘要节点");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("暂无数据".to_string())
+        );
     }
 }
