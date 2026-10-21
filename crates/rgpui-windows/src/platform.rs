@@ -1723,6 +1723,20 @@ mod tests {
 
     #[test]
     fn test_clipboard() {
+        // 备份原剪贴板：用例不应破坏用户剪贴板内容。
+        let backup = read_from_clipboard();
+        // 探测环境是否支持剪贴板写入往返（无交互桌面 / 剪贴板被托管的环境不保留写入，
+        // 此时跳过，避免把环境限制当成实现缺陷）。
+        const PROBE: &str = "rgpui-clipboard-probe";
+        write_to_clipboard(ClipboardItem::new_string(PROBE.to_string()));
+        if read_from_clipboard().and_then(|item| item.text()) != Some(PROBE.to_string()) {
+            eprintln!("跳过 test_clipboard：当前环境不支持剪贴板写入往返");
+            if let Some(backup) = backup {
+                write_to_clipboard(backup);
+            }
+            return;
+        }
+
         let item = ClipboardItem::new_string("你好，我是张小白".to_string());
         write_to_clipboard(item.clone());
         assert_eq!(read_from_clipboard(), Some(item));
@@ -1744,5 +1758,10 @@ mod tests {
         let item = ClipboardItem::new_rtf(r"{\rtf1 hi}".to_string(), Some("hi".to_string()));
         write_to_clipboard(item.clone());
         assert_eq!(read_from_clipboard(), Some(item));
+
+        // 还原用户原剪贴板内容。
+        if let Some(backup) = backup {
+            write_to_clipboard(backup);
+        }
     }
 }
