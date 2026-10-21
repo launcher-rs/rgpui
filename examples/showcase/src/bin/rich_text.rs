@@ -486,6 +486,18 @@ fn sample_doc() -> RichTextDoc {
     }
     let len = doc.char_len();
     doc.insert_footnote(len, "*", "脚注示例：文末脚注内容");
+    // 分栏节（段落复用，按栏数排布）。
+    doc.add_section(
+        &[
+            "左栏第一段。",
+            "左栏第二段。",
+            "右栏第一段。",
+            "右栏第二段。",
+        ],
+        2,
+        Some("分栏小节"),
+    );
+
     doc
 }
 

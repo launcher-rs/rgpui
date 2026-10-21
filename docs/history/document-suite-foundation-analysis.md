@@ -1647,3 +1647,18 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 
 - `cargo test -p rgpui --lib table_cells`：1 passed（单元格复用段落 + HTML 输出为表格）。
 
+## 五十三、增补：核心富文本的节 / 分栏
+
+§三十二 清单里「节（section）/分栏」的落地。与表格同理，**节不引入新的文本空间**：
+
+- **模型** `RichSection { paragraphs, columns, title }`：节内段落复用文档段落（段落索引），
+  `columns` 为分栏数（1 = 不分栏，上限 4），`title` 为可选节标题。
+- **接口** `RichTextDoc::add_section(paragraphs, columns, title) -> usize`、`section(index)`。
+- **渲染**：节出现在其**首个段落**所在位置（节内段落不再单独输出）；多栏时段落按
+  「列序轮流」分配到各栏（`index % columns`），单栏时与普通段落同款。
+- **HTML**：输出 `<section>`（标题为 `<h3>`），节内段落按 `<p>` 输出。
+
+### 验证
+
+- `cargo test -p rgpui --lib section_reuses`：1 passed（段落复用 + 分栏夹取 + HTML 输出）。
+

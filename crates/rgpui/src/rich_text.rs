@@ -470,6 +470,23 @@ pub struct RichTable {
     pub alignments: Vec<TableAlign>,
 }
 
+/// 文档节：一组段落 + 分栏排版。
+///
+/// 与表格同理，节内段落复用文档段落（不引入新的文本空间）：节出现在其**首个段落**
+/// 所在位置，其余段落不再单独输出。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RichSection {
+    /// 节内段落索引（按顺序）。
+    pub paragraphs: Vec<usize>,
+    /// 分栏数（1 表示不分栏；上限见 `MAX_SECTION_COLUMNS`）。
+    pub columns: u8,
+    /// 节标题（可选，渲染在栏上方）。
+    pub title: Option<String>,
+}
+
+/// 分栏数上限（超出按此夹取）。
+const MAX_SECTION_COLUMNS: u8 = 4;
+
 /// 富文本文档：段落序列。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RichTextDoc {
@@ -481,6 +498,8 @@ pub struct RichTextDoc {
     pub footnotes: Vec<Footnote>,
     /// 表格列表（单元格复用段落；渲染时按首个单元格段落的位置插入）。
     pub tables: Vec<RichTable>,
+    /// 节列表（段落复用；渲染时按首个段落的位置插入，可分栏）。
+    pub sections: Vec<RichSection>,
 }
 
 impl RichTextDoc {
@@ -491,6 +510,7 @@ impl RichTextDoc {
             annotations: Vec::new(),
             footnotes: Vec::new(),
             tables: Vec::new(),
+            sections: Vec::new(),
         }
     }
 
@@ -501,6 +521,7 @@ impl RichTextDoc {
             annotations: Vec::new(),
             footnotes: Vec::new(),
             tables: Vec::new(),
+            sections: Vec::new(),
         }
     }
 
@@ -636,6 +657,29 @@ impl RichTextDoc {
     /// 取表格（按索引）。
     pub fn table(&self, index: usize) -> Option<&RichTable> {
         self.tables.get(index)
+    }
+
+    /// 追加文档节：段落按顺序建段并登记，返回节索引。
+    ///
+    /// `columns` 为分栏数（1 表示不分栏，上限 4）；`title` 为节标题（可选）。
+    /// 节内段落复用文档段落，出现在其首个段落所在位置。
+    pub fn add_section(&mut self, paragraphs: &[&str], columns: u8, title: Option<&str>) -> usize {
+        let mut section = RichSection {
+            paragraphs: Vec::new(),
+            columns: columns.clamp(1, MAX_SECTION_COLUMNS),
+            title: title.map(|title| title.to_string()),
+        };
+        for text in paragraphs {
+            section.paragraphs.push(self.paragraphs.len());
+            self.paragraphs.push(Paragraph::new(text));
+        }
+        self.sections.push(section);
+        self.sections.len() - 1
+    }
+
+    /// 取节（按索引）。
+    pub fn section(&self, index: usize) -> Option<&RichSection> {
+        self.sections.get(index)
     }
 
     /// 下一个批注 id（从 1 开始，跳过已用编号）。
@@ -964,7 +1008,44 @@ impl RichTextDoc {
             }
         }
 
+        // 节归属：首个段落即插入点，其余段落由节输出。
+        let mut section_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut section_paragraphs: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
+        for (section_index, section) in self.sections.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in &section.paragraphs {
+                section_paragraphs.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                section_at.insert(first, section_index);
+            }
+        }
+
         while i < self.paragraphs.len() {
+            // 节：整节输出一次（节内段落不再单独输出）。
+            if let Some(section_index) = section_at.get(&i) {
+                let section = &self.sections[*section_index];
+                out.push_str("<section>");
+                if let Some(title) = &section.title {
+                    out.push_str("<h3>");
+                    escape_html(&mut out, title);
+                    out.push_str("</h3>");
+                }
+                for para_index in &section.paragraphs {
+                    if let Some(para) = self.paragraphs.get(*para_index) {
+                        let spans: Vec<Span> = Vec::new();
+                        push_paragraph_html(&mut out, para, &spans, Some(self));
+                    }
+                }
+                out.push_str("</section>");
+                while i < self.paragraphs.len() && section_paragraphs.contains(&i) {
+                    i += 1;
+                }
+                continue;
+            }
             // 表格：整表输出一次（单元格段落不再单独输出）。
             if let Some(table_index) = table_at.get(&i) {
                 push_table_html(
@@ -1291,6 +1372,7 @@ impl RichTextDoc {
             annotations,
             footnotes,
             tables: Vec::new(),
+            sections: Vec::new(),
         })
     }
 }
@@ -1972,7 +2054,32 @@ impl RenderOnce for RichText {
             }
         }
 
+        // 节归属：首个段落即插入点，其余段落由节渲染。
+        let mut section_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut section_paragraphs: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
+        for (section_index, section) in self.doc.sections.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in &section.paragraphs {
+                section_paragraphs.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                section_at.insert(first, section_index);
+            }
+        }
+
         for (para_index, para) in self.doc.paragraphs.iter().enumerate() {
+            // 节插在首个段落处（内部按分栏排布）。
+            if let Some(section_index) = section_at.get(&para_index) {
+                let section = &self.doc.sections[*section_index];
+                column = column.child(render_section(&self.doc, section, &base, &theme));
+            }
+            if section_paragraphs.contains(&para_index) {
+                // 节内段落由节渲染，正文不再单独输出。
+                continue;
+            }
             // 表格插在首个单元格段落处。
             if let Some(table_index) = table_at.get(&para_index) {
                 let table = &self.doc.tables[*table_index];
@@ -2175,6 +2282,52 @@ fn split_run_by_spans(
     out
 }
 
+/// 渲染文档节（标题 + 分栏排布；单栏时与普通段落同款）。
+fn render_section(
+    doc: &RichTextDoc,
+    section: &RichSection,
+    base: &crate::TextStyle,
+    _theme: &Theme,
+) -> AnyElement {
+    let mut block = div().w_full().mb(px(12.0));
+    if let Some(title) = &section.title {
+        block = block.child(
+            div()
+                .mb(px(4.0))
+                .text_sm()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title.clone()),
+        );
+    }
+    let columns = section.columns.max(1) as usize;
+    if columns == 1 {
+        // 单栏：段落依次输出。
+        let mut column = div().flex().flex_col().gap(px(6.0));
+        for para_index in &section.paragraphs {
+            if let Some(para) = doc.paragraphs.get(*para_index) {
+                let (text, runs) = build_cell_runs(para, base);
+                column = column.child(StyledText::new(text).with_runs(runs));
+            }
+        }
+        return block.child(column).into_any_element();
+    }
+    // 多栏：段落按列序轮流分配。
+    let mut row = div().flex().flex_row().gap(px(16.0));
+    for col in 0..columns {
+        let mut column = div().flex_1().min_w_0().flex().flex_col().gap(px(6.0));
+        for (index, para_index) in section.paragraphs.iter().enumerate() {
+            if index % columns != col {
+                continue;
+            }
+            if let Some(para) = doc.paragraphs.get(*para_index) {
+                let (text, runs) = build_cell_runs(para, base);
+                column = column.child(StyledText::new(text).with_runs(runs));
+            }
+        }
+        row = row.child(column);
+    }
+    block.child(row).into_any_element()
+}
 /// 渲染表格（单元格内容取对应段落）。
 fn render_table(
     doc: &RichTextDoc,
@@ -2604,6 +2757,7 @@ mod tests {
             annotations: Vec::new(),
             footnotes: Vec::new(),
             tables: Vec::new(),
+            sections: Vec::new(),
         };
         doc.normalize();
         assert_eq!(doc.paragraphs.len(), 1);
@@ -2847,6 +3001,25 @@ mod tests {
         assert!(html.contains("引用内容"));
     }
 
+    /// 文档节：段落复用 + 分栏 + HTML 输出。
+    #[test]
+    fn section_reuses_paragraphs_and_columns() {
+        let mut doc = RichTextDoc::new();
+        let index = doc.add_section(&["第一栏", "第二栏"], 2, Some("小节"));
+        assert_eq!(index, 0);
+        let first_para = doc.section(0).expect("节").paragraphs[0];
+        assert_eq!(doc.section(0).expect("节").columns, 2);
+        assert_eq!(doc.section(0).expect("节").paragraphs.len(), 2);
+        // 分栏数上限夹取。
+        doc.add_section(&["x"], 9, None);
+        assert_eq!(doc.section(1).expect("节").columns, MAX_SECTION_COLUMNS);
+        // 段落确实落在文档里。
+        assert_eq!(doc.paragraphs[first_para].text(), "第一栏");
+        // HTML 输出为 section。
+        let html = doc.to_html();
+        assert!(html.contains("<section>"));
+        assert!(html.contains("小节"));
+    }
     /// 表格：单元格复用段落（可编辑），HTML 输出为 `<table>`。
     #[test]
     fn table_cells_reuse_paragraphs() {
