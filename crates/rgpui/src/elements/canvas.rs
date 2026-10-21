@@ -36,6 +36,7 @@ pub fn canvas<T>(
         id: None,
         a11y: None,
         origin: Point::default(),
+        bounds: Bounds::default(),
     }
 }
 
@@ -70,6 +71,8 @@ pub struct Canvas<T> {
     a11y: Option<CanvasA11y>,
     /// 最近一次预绘制的画布原点（语义节点是局部坐标，发布时需换算）。
     origin: Point<Pixels>,
+    /// 最近一次预绘制的画布矩形（用于填充零尺寸的整块摘要节点）。
+    bounds: Bounds<Pixels>,
 }
 
 impl<T: 'static> Canvas<T> {
@@ -99,6 +102,8 @@ impl<T: 'static> Canvas<T> {
     ///
     /// `semantics` 是应用对本帧画布上自绘对象的描述（见 [`CanvasSemantics`]）；
     /// 每个节点会作为画布元素的合成子节点发布。需要先 [`.id(..)`][Self::id]。
+    /// 宽高都为 0 的节点在发布时会展开成整块画布，适合走势图 / 波形这类整体摘要节点
+    /// （构建语义时还不知道自己的布局大小）。
     pub fn a11y(mut self, role: Role, semantics: CanvasSemantics) -> Self {
         let existing = self.a11y.take();
         self.a11y = Some(CanvasA11y {
@@ -189,8 +194,9 @@ impl<T: 'static> Element for Canvas<T> {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<T> {
-        // 记下画布原点：语义节点是画布局部坐标，发布合成子节点时要换算成窗口坐标。
+        // 记下画布原点 / 矩形：语义节点是画布局部坐标，发布合成子节点时要换算成窗口坐标。
         self.origin = bounds.origin;
+        self.bounds = bounds;
         Some(self.prepaint.take().unwrap()(bounds, window, cx))
     }
 
@@ -238,7 +244,10 @@ impl<T: 'static> Element for Canvas<T> {
         builder: &mut crate::A11ySubtreeBuilder,
     ) {
         if let Some(a11y) = &self.a11y {
-            push_canvas_a11y(builder, &a11y.semantics, self.origin);
+            // 零尺寸节点（整体摘要）按画布整块区域发布；有尺寸的节点原样保留。
+            let mut semantics = a11y.semantics.clone();
+            semantics.fill_empty_bounds(Bounds::new(Point::default(), self.bounds.size));
+            push_canvas_a11y(builder, &semantics, self.origin);
         }
     }
 

@@ -835,8 +835,8 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
 
 - **模型**：`CanvasNodeId`（u64，应用自定义的稳定 id）、`CanvasNode`（`role`/`label`/
   `bounds`（画布局部坐标）/`value`/`description`/`disabled`/`selected`/`focused`/`actions`，
-  builder 式构造 + 就地 setter）、`CanvasSemantics`（按绘制顺序存放的节点集合，含
-  `with_row_tolerance`）。
+  builder 式构造 + 就地 setter，`with_bounds`/`set_bounds` 改矩形）、`CanvasSemantics`
+  （按绘制顺序存放的节点集合，含 `with_row_tolerance`、`fill_empty_bounds`）。
 - **纯几何 / 顺序**：`reading_order_indices`（**两趟**：先整体按 y，再逐行按 x —— 避免用带
   容差的比较函数做排序，那种比较不满足全序、标准库可能 panic）、`node_at_point`
   （**逆绘制序** = 后画者在上）、`next_in_order`（两端环绕）、`window_bounds`
@@ -854,15 +854,21 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   （在 `paint` 里复算与发布侧一致的合成子节点 id）、`A11y::scale_factor` 每帧同步。
 - **元素接线**：`elements/canvas.rs` 的 [`Canvas`] 增加 `.id(..)` / `.a11y(role, semantics)` /
   `.a11y_label(..)` / `.on_canvas_a11y_action(..)`；`Element::id`/`a11y_role`/`write_a11y_info`/
-  `a11y_synthetic_children` 全部接上，预绘制记下画布原点供发布时换算。
+  `a11y_synthetic_children` 全部接上，预绘制记下画布原点与矩形供发布时换算。宽高都为 0 的
+  语义节点在发布前由 `CanvasSemantics::fill_empty_bounds` 展开成整块画布——走势图 / 波形这类
+  「整体摘要」节点在构建时还不知道自己的布局大小，正好用这条规则。
+- **已接线组件**：`InkLayerElement::a11y`（每笔一个 `GraphicsObject`）、`Sparkline::a11y(id, label)`
+  （摘要：数据点数 / 最新 / 最低 / 最高 + 样式与趋势）、`Waveform::a11y(id, label)`
+  （摘要：采样点数 / 峰值 + 播放进度）。
 - **示例**：`examples/showcase/src/bin/canvas_a11y.rs`（六个自绘卡片 / 圆形；指针点击、键盘
   ← → ↑ ↓ / `Home` / `End` / `Enter` / `Esc`、无障碍动作三条路径等价；工具栏显示阅读顺序）。
 - **测试**：7 项 —— 阅读顺序分行与导航环绕、命中测试（后画者在上 / 半开边界）、局部 → 窗口
-  矩形、AccessKit 节点映射（状态 / 动作 / 物理像素矩形）、集合维护，以及 `window::a11y` 侧
-  的桥接测试（合成子节点带矩形发布 + 焦点对象成为容器 active descendant）。
+  矩形、AccessKit 节点映射（状态 / 动作 / 物理像素矩形）、集合维护与零尺寸节点填充，以及
+  `window::a11y` 侧的桥接测试（合成子节点带矩形发布 + 焦点对象成为容器 active descendant）；
+  组件侧另有走势图 / 波形摘要节点 2 项。
 
-**本版暂缓**（后续增补）：把 `InkLayer` / `PageView` / `SheetGrid` 等既有自绘组件接到本模块
-（当前只有示例消费）、行 / 列（表格）语义与 `Role::Cell` 的 `row_index`/`column_index` 扩展、
+**本版暂缓**（后续增补）：把 `PageView` / `SheetGrid` 等既有自绘组件接到本模块、
+行 / 列（表格）语义与 `Role::Cell` 的 `row_index`/`column_index` 扩展、
 虚拟滚动下的语义节点裁剪与 `ScrollIntoView`。
 
 ## 二十九、P2 落地：国际文本 —— bidi 与东亚禁则（核心，无 feature 门控）
@@ -988,10 +994,11 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`）、轨道折叠（`Track::collapsed` / `row_height` / `with_collapsed` / `set_collapsed`、`tracks_height` / `track_top` / `toggle_track_collapsed`、`TrackCollapsed`、折叠箭头）、值曲线与纵向改值（`Track::value_range` / `set_keyframe_value`、`value_to_y` / `y_to_value` / `curve_points`、`KeyframeMoved.value`、冻结值域 + 抓取偏移） |
 | 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`）、页签组（`tabs`/`active_tab`/`with_tabs`/`set_tabs`/`set_active_tab`/`cycle_tab`/`tab_rects`/`tab_at`、`TaskPaneHit::Tab`、`TaskPaneEvent::TabSelected`） |
 | Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二）、逐段压感变宽（`pressure_width` / `stroke_paths` / `extend_stroke_with_pressure`）、画布语义接线（`InkLayer::semantics` / `InkLayerElement::a11y`，每笔一个 `GraphicsObject` 节点） |
+| 走势图 / 波形 `sparkline` `waveform` | 画布语义接线（`Sparkline::a11y` / `Waveform::a11y` 整体摘要节点：点数 / 极值 / 峰值 / 播放进度）、`CanvasSemantics::fill_empty_bounds`（零尺寸摘要节点按画布大小发布）、`CanvasNode::with_bounds`/`set_bounds` |
 
 仍未做（保持暂缓）：任务窗格多窗格并列、
-富文本分节 / 表格 / 批注 / 脚注、更多自绘组件接线画布语义（图表 / 波形等）、bidi 视觉重排、
-取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
+富文本分节 / 表格 / 批注 / 脚注、更多自绘组件接线画布语义（表格 / 页视图 / 仪表盘等）、
+bidi 视觉重排、取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 
 ### AGENTS 完整性检查清单（12 项）逐条结果
 

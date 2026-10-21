@@ -1,6 +1,8 @@
 //! 迷你走势图组件（Sparkline）：以折线、柱状或面积图展示一维数据序列。
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
+use accesskit::Role;
 
 /// 默认折线颜色（蓝色）。
 const DEFAULT_LINE_COLOR: u32 = 0x3b82f6;
@@ -158,6 +160,54 @@ fn compute_trend(data: &[f64]) -> SparklineTrend {
     }
 }
 
+/// 走势图样式的无障碍名称。
+fn variant_name(variant: SparklineVariant) -> &'static str {
+    match variant {
+        SparklineVariant::Line => "折线图",
+        SparklineVariant::Bar => "柱状图",
+        SparklineVariant::Area => "面积图",
+    }
+}
+
+/// 趋势的无障碍名称。
+fn trend_name(trend: SparklineTrend) -> &'static str {
+    match trend {
+        SparklineTrend::Up => "上升",
+        SparklineTrend::Down => "下降",
+        SparklineTrend::Neutral => "持平",
+    }
+}
+
+/// 走势图的整体语义：一个零尺寸摘要节点（发布时由画布填充整块区域）。
+fn sparkline_semantics(
+    data: &[f64],
+    variant: SparklineVariant,
+    label: &SharedString,
+) -> CanvasSemantics {
+    let summary = if data.is_empty() {
+        "暂无数据".to_string()
+    } else {
+        let min = data.iter().copied().fold(f64::INFINITY, f64::min);
+        let max = data.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let last = data[data.len() - 1];
+        format!(
+            "{} 个数据点 · 最新 {last:.2} · 最低 {min:.2} · 最高 {max:.2}",
+            data.len()
+        )
+    };
+    let mut semantics = CanvasSemantics::new();
+    semantics.push(
+        CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+            .with_value(summary)
+            .with_description(format!(
+                "{} · 趋势{}",
+                variant_name(variant),
+                trend_name(compute_trend(data))
+            )),
+    );
+    semantics
+}
+
 /// 走势图绘制所需的数据。
 #[derive(Clone)]
 struct SparklinePaintData {
@@ -200,6 +250,8 @@ pub struct Sparkline {
     custom_width: Option<Pixels>,
     /// 自定义高度。
     custom_height: Option<Pixels>,
+    /// 无障碍配置：元素 id + 画布名称（开启后发布一个整体摘要节点）。
+    a11y: Option<(ElementId, SharedString)>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -218,6 +270,7 @@ impl Sparkline {
             show_trend: false,
             custom_width: None,
             custom_height: None,
+            a11y: None,
             style: StyleRefinement::default(),
         }
     }
@@ -258,6 +311,15 @@ impl Sparkline {
     /// 设置自定义高度。
     pub fn height(mut self, height: Pixels) -> Self {
         self.custom_height = Some(height);
+        self
+    }
+
+    /// 把数值暴露给辅助技术：整块图表发布一个摘要节点（数据点数 / 最新 / 最低 / 最高 +
+    /// 样式与趋势），节点矩形在发布时按画布大小填充。
+    ///
+    /// `id` 是画布元素自身的标识，同一走势图跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
         self
     }
 
@@ -345,6 +407,11 @@ impl RenderOnce for Sparkline {
             None
         };
 
+        let a11y = self.a11y;
+        let semantics = a11y
+            .as_ref()
+            .map(|(_, label)| sparkline_semantics(&self.data, self.variant, label));
+
         let paint_data = SparklinePaintData {
             data: self.data,
             variant: self.variant,
@@ -386,6 +453,14 @@ impl RenderOnce for Sparkline {
                 let svg = sparkline_svg(bounds, &dom_data);
                 crate::components::dom_svg::svg_img_node(bounds, svg)
             });
+        }
+
+        // 无障碍：整块图表一个摘要节点（零尺寸，由画布按实际大小填充）。
+        if let (Some((id, label)), Some(semantics)) = (a11y, semantics) {
+            chart = chart
+                .id(id)
+                .a11y(Role::GraphicsObject, semantics)
+                .a11y_label(label);
         }
 
         let mut root = div()
@@ -750,5 +825,44 @@ fn paint_bar_sparkline(bounds: Bounds<Pixels>, data: &SparklinePaintData, window
             Bounds::new(point(x, y), size(bar_width, bar_height)),
             bar_color,
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::{SparklineVariant, sparkline_semantics};
+    use crate::{Bounds, SharedString};
+
+    /// 无障碍摘要：数据点数 / 极值 / 最新 + 样式与趋势；空数据退化。
+    #[test]
+    fn sparkline_a11y_summary() {
+        let label: SharedString = "内存占用".into();
+        let semantics = sparkline_semantics(&[3.0, 1.0, 2.0], SparklineVariant::Area, &label);
+        assert_eq!(semantics.len(), 1);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(node.label().to_string(), "内存占用");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("3 个数据点 · 最新 2.00 · 最低 1.00 · 最高 3.00".to_string())
+        );
+        // 首值 3 → 末值 2，趋势下降。
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("面积图 · 趋势下降".to_string())
+        );
+        // 零尺寸：发布时由画布按实际大小填充。
+        assert_eq!(node.bounds(), Bounds::default());
+
+        let semantics = sparkline_semantics(&[], SparklineVariant::Bar, &label);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("暂无数据".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("柱状图 · 趋势持平".to_string())
+        );
     }
 }

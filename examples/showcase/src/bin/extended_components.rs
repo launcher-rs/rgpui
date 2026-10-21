@@ -128,6 +128,7 @@ fn waveform() -> impl IntoElement {
         .playback_position(0.35)
         .color(hsla(0.62, 0.1, 0.5, 1.0))
         .active_color(hsla(0.6, 0.8, 0.55, 1.0))
+        .a11y("waveform-demo", "音频波形")
 }
 
 /// 三种走势图变体。
@@ -139,9 +140,24 @@ fn sparklines() -> impl IntoElement {
     v_flex()
         .id("sparklines")
         .gap(px(8.0))
-        .child(Sparkline::line(line_data).width(px(180.0)).height(px(40.0)))
-        .child(Sparkline::bar(bar_data).width(px(180.0)).height(px(40.0)))
-        .child(Sparkline::area(area_data).width(px(180.0)).height(px(40.0)))
+        .child(
+            Sparkline::line(line_data)
+                .width(px(180.0))
+                .height(px(40.0))
+                .a11y("sparkline-line", "折线走势"),
+        )
+        .child(
+            Sparkline::bar(bar_data)
+                .width(px(180.0))
+                .height(px(40.0))
+                .a11y("sparkline-bar", "柱状走势"),
+        )
+        .child(
+            Sparkline::area(area_data)
+                .width(px(180.0))
+                .height(px(40.0))
+                .a11y("sparkline-area", "面积走势"),
+        )
 }
 
 /// 简易 SVG 路径（心形）。
