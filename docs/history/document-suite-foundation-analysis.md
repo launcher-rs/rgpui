@@ -1325,4 +1325,53 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 - `cargo test -p rgpui-markdown --lib`：8 passed（新增 4 项：级别 / 文本 / 区间 / 锚点、
   行内标记剥离、同名锚点去重、无标题为空）。
 
+## 三十九、增补：核心富文本的查找替换与文档统计
+
+给 `RichTextDoc` 补上编辑器常用的三块能力（§三十七 批注 / 脚注之后的自然延伸）。
+
+- `find(needle, case_sensitive) -> Vec<Range<usize>>`：返回全部命中的**字符**区间
+  （按起点升序）；大小写无关时按字符做 `to_lowercase` 比较。
+- `replace_all(needle, with, case_sensitive) -> usize`：替换全部命中并返回次数；
+  - **从后往前替换**：前面的命中偏移不受影响；
+  - 替换文本沿用命中区间的行内属性（取区间起点处的 `RunProps`）；
+  - 批注 / 脚注区间随删除 / 插入自动平移（复用 §三十七 的区间平移规则）。
+- `props_at(index) -> Option<RunProps>`：取某字符位置的行内属性（段落分隔符返回 `None`）。
+- `stats() -> DocStats`：`chars`（不含段落分隔符）/ `paragraphs` / `lines`。
+
+### 示例
+
+`examples/showcase/src/bin/rich_text.rs` 增加「替换『项目符号』→『条目』」按钮，演示
+查找替换与属性沿用。
+
+### 附带修复：标题级别在 HTML 往返中丢失
+
+`from_html` 此前把 `<h1>`…`<h6>` 当普通块标签处理，**标题级别被丢弃**（`<h1>` 与 `<h2>`
+往返后都变成 `<p>`）。本轮补上：
+
+- `ParagraphStyle.heading: Option<u8>`（1–6，`None` 为普通段落）+ builder `heading(level)`。
+- `from_html` 在标题标签闭合时给承载标题文本的段落记级别；`to_html` 按级别输出
+  `<h1>`…`<h6>`（其余仍为 `<p>`）。
+- 渲染：`RichText` 的标题段落加粗，字号按级别倍率放大（1.8 / 1.5 / 1.3 / 1.15 / 1.05 / 1.0）；
+  基准字号取 `RichText::base_font_size`（新增 builder），未设置时取窗口默认文本字号
+  （rem 字号无法换算时沿用外层字号，仅加粗）。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：21 passed（新增 5 项：查找区间、替换与属性沿用、
+  替换后批注区间对齐、文档统计、标题级别往返）。
+
+## 四十、增补：Markdown 任务列表的真复选框
+
+`rgpui-markdown` 此前把任务列表渲染成纯文本标记（`[x] ` / `[ ] `），本轮换成真复选框：
+
+- 勾选框：12×12 圆角方框，勾选时填充主题主色并显示「✓」，未勾选时描边主题边框色。
+- 已勾选项的文本**加删除线 + 变暗**（`InlineFlattener` 新增 `done` 状态，走 muted 前景色 +
+  删除线样式）。
+- 普通列表项的标记（`• ` / `1. `）保持原样。
+
+### 验证
+
+- `cargo test -p rgpui-markdown --lib`：9 passed（新增 1 项：已勾选项加删除线并变暗）。
+- 示例：`examples/rgpui_story` 的「Markdown 基础」页补任务列表段落。
+
 
