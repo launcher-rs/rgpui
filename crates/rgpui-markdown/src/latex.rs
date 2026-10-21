@@ -15,6 +15,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use rgpui::{Hsla, Pixels, RenderImage, SvgRenderer, px};
 
+use crate::svg_image::{rasterize, rewrite_units_to_px, svg_size_px};
+
 /// 公式图片：光栅化结果 + 逻辑尺寸。
 #[derive(Clone)]
 pub struct LatexImage {
@@ -92,7 +94,7 @@ pub fn latex_image(
     let svg = render_latex_svg(latex, color, font_size).ok()?;
     let (width, height) = svg_size_px(&svg)?;
     // 以 1 倍逻辑尺寸光栅化：核心内部按 2 倍超采样，兼顾高分屏的清晰度。
-    let image = renderer.render_single_frame(svg.as_bytes(), 1.0).ok()?;
+    let image = rasterize(&svg, renderer)?;
     let result = Arc::new(LatexImage {
         image,
         width: px(width),
@@ -140,41 +142,11 @@ fn recolor_default_black(svg: &str, color: &str) -> String {
         .replace("rgba(0, 0, 0, 1)", color)
 }
 
-/// 把 SVG 根元素上的 `pt` 单位改写为 `px`（usvg 会按 1pt = 4/3px 换算）。
-fn rewrite_units_to_px(svg: &str) -> String {
-    let Some(start) = svg.find("<svg") else {
-        return svg.to_string();
-    };
-    let Some(rel_end) = svg[start..].find('>') else {
-        return svg.to_string();
-    };
-    let end = start + rel_end;
-    let (head, tail) = svg.split_at(end);
-    let head = head.replace("pt\"", "px\"");
-    format!("{head}{tail}")
-}
-
-/// 解析 SVG 根元素的像素尺寸。
-fn svg_size_px(svg: &str) -> Option<(f32, f32)> {
-    Some((svg_attr_px(svg, "width")?, svg_attr_px(svg, "height")?))
-}
-
-/// 读取 SVG 根元素上的数值属性（忽略单位后缀）。
-fn svg_attr_px(svg: &str, name: &str) -> Option<f32> {
-    let key = format!("{name}=\"");
-    let start = svg.find(&key)? + key.len();
-    let end = svg[start..].find('"')? + start;
-    let raw = svg[start..end]
-        .trim()
-        .trim_end_matches("px")
-        .trim_end_matches("pt");
-    raw.parse::<f32>().ok()
-}
-
 #[cfg(test)]
 mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
-    use super::{latex_cache_key, render_latex_svg, rewrite_units_to_px, svg_size_px};
+    use super::{latex_cache_key, render_latex_svg};
+    use crate::svg_image::svg_size_px;
     use rgpui::{Hsla, rgba};
 
     /// 公式能渲染出带尺寸的 SVG。
@@ -216,13 +188,5 @@ mod tests {
         let third = latex_cache_key("\\frac{1}{2}", Hsla::from(rgba(0xffffffff)), 20.0);
         assert_ne!(first, second);
         assert_ne!(first, third);
-    }
-
-    /// 单位改写只影响根元素，`pt` 后缀换成 `px`。
-    #[test]
-    fn rewrites_pt_units_to_px() {
-        let rewritten = rewrite_units_to_px("<svg width=\"10pt\" height=\"4pt\"><g/></svg>");
-        assert!(rewritten.contains("width=\"10px\""));
-        assert!(rewritten.contains("height=\"4px\""));
     }
 }

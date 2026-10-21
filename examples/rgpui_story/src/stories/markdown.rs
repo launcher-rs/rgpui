@@ -26,6 +26,10 @@ pub fn stories() -> Vec<StoryItem> {
             build: |_, cx| cx.new(|cx| MarkdownMathStory::new(cx)).into(),
         },
         StoryItem {
+            title: "Mermaid 图表",
+            build: |_, cx| cx.new(|cx| MarkdownMermaidStory::new(cx)).into(),
+        },
+        StoryItem {
             title: "综合文档",
             build: |_, cx| cx.new(|cx| MarkdownFullStory::new(cx)).into(),
         },
@@ -317,6 +321,48 @@ $$
             .gap(px(12.0))
             .p(px(16.0))
             .child(section_title("LaTeX 公式"))
+            .child(
+                v_flex()
+                    .p(px(16.0))
+                    .rounded(px(8.0))
+                    .bg(cx.theme().background)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .child(Markdown::new(source)),
+            )
+    }
+}
+
+/// Mermaid 图表示例：围栏代码块渲染成图表。
+struct MarkdownMermaidStory;
+
+impl MarkdownMermaidStory {
+    fn new(_cx: &mut Context<Self>) -> Self {
+        Self
+    }
+}
+
+impl rgpui::Render for MarkdownMermaidStory {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let source = r#"# Mermaid 图表
+
+````markdown
+```mermaid
+flowchart TD
+    A[开始] --> B{判断}
+    B -->|是| C[执行]
+    B -->|否| D[结束]
+```
+````
+
+围栏信息串为 `mermaid`（或 `mmd`）时，代码块会被渲染成图表；
+语法不合法时自动退回普通代码块，不中断整篇渲染。"#;
+
+        v_flex()
+            .id("markdown-mermaid-story")
+            .gap(px(12.0))
+            .p(px(16.0))
+            .child(section_title("Mermaid 图表"))
             .child(
                 v_flex()
                     .p(px(16.0))

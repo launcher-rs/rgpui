@@ -1152,4 +1152,51 @@ EntityInputHandler`，完全绕开 `input_ui::InputState`），与 `RichTextDoc`
   `cargo publish -p rgpui-markdown --dry-run --registry crates-io --features latex` 通过。
 - 示例：`examples/rgpui_story` 新增「LaTeX 公式」页（该示例 crate 启用 `latex` feature）。
 
+## 三十五、增补：Mermaid 图表渲染（`rgpui-markdown` 的 `mermaid` feature）
+
+承接 §三十四 的调研结论，把「可独立移植三层」中的第二层落地。
+
+### 与核心 `MermaidDiagram` 的分工
+
+rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子集 + div 全彩渲染**
+（不走 SVG 管道、可直接用 div 排版，但只支持 `flowchart` 与有限形状 / 边）。本模块走的是
+**完整 Mermaid 语法 + SVG 渲染**，两者并存、定位不同：
+
+| | 核心 `MermaidDiagram` | 本模块（`mermaid` feature） |
+|---|---|---|
+| 语法 | `flowchart` 子集 | 完整 Mermaid（渲染器支持范围内） |
+| 渲染 | div 元素（彩色、可交互、无需光栅化） | SVG → usvg 光栅化 → 图片 |
+| 入口 | 直接构造组件 | Markdown 围栏代码块（` ```mermaid `）自动识别 |
+| 依赖 | 无（核心自带） | `mermaid-rs-renderer`（可选依赖） |
+
+### 落地实现
+
+- **依赖**：`mermaid-rs-renderer 0.3`（`default-features = false`，去掉 CLI 与 PNG 输出，
+  只用 SVG 渲染路径），纯 Rust、无系统依赖。
+- **管线**（`crates/rgpui-markdown/src/mermaid.rs`）：`mermaid_rs_renderer::render_with_options`
+  → SVG → 核心 `SvgRenderer` 光栅化 → `RenderImage`；与公式管线共用 `svg_image.rs`
+  （尺寸解析 / 单位改写 / 光栅化）。
+- **识别**：代码块语言为 `mermaid` 或 `mmd`（大小写不敏感，可带 info 串）时走图表路径；
+  自定义代码块渲染器（`CodeBlockRenderer`）优先级更高，仍可覆盖。
+- **配色**：按 rgpui 主题背景亮度自动选 `Theme::dark()` / `Theme::modern()`，深色主题下
+  图表不会白底刺眼。
+- **尺寸**：按 SVG 固有尺寸光栅化（内部 2 倍超采样），超出 600px 宽时按比例缩放展示。
+- **缓存**：按「源码哈希 + 深浅配色」缓存（上限 32 条）。
+- **降级**：解析失败 / 无 SVG 渲染器时退回普通代码块，不中断整篇渲染。
+
+### 验证
+
+- `cargo check -p rgpui-markdown` 四种 feature 组合（默认 / `latex` / `mermaid` /
+  `latex,mermaid`）均通过；`cargo clippy -p rgpui-markdown --all-targets -- -D warnings`
+  四态通过；`rgpui_story` clippy 通过。
+- `cargo test -p rgpui-markdown --lib`：默认 4 passed / `latex` 11 / `mermaid` 9 /
+  `latex,mermaid` 15 全 passed（图表 4 项：语言识别 / SVG 渲染 / 非法源码报错 / 缓存键）。
+- `cargo check --workspace` 通过；`cargo fmt --all` 无变更。
+- 示例：`examples/rgpui_story` 新增「Mermaid 图表」页（该示例 crate 启用 `mermaid` feature）。
+
+### 后续（§三十四 调研表的剩余项）
+
+- tree-sitter 15 语言高亮包并入核心 `tree_sitter.rs` / `highlight`。
+- 块 ↔ 源码偏移映射（source map）：需在 `RichTextDoc` 模型上重写，属规划项。
+
 
