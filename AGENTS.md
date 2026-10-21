@@ -131,6 +131,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 | 菜单 | `menu/` | `PopupMenu`、`ContextMenu`、`DropdownMenu`、`Popconfirm`、`MenuBar`、`HoverCard`、`Notification`、`Toast` |
 | 对话框 | `dialog/` | `Dialog`、`AlertDialog`、`DialogHeader/Content/Footer`、`FocusTrapElement` |
 | 列表/表格/标签页 | `list/`、`table/`、`tabs/` | `List`、`VirtualList`、`DataTable`（表格语义：根 `Role::Table`、行 `Role::Row`、单元格 `Role::Cell` + 行列索引 `aria_row_index`/`aria_column_index`）、`TabBar`、`Accordion` |
+| 电子表格网格（`spreadsheet` feature 门控） | `sheet_grid.rs` | `SheetGrid`/`SheetGridState`/`SheetGridEvent`/`CellRef`/`CellRange`/`SheetDelegate`；无障碍语义：根 `Role::Grid`、单元格 `Role::Cell` + 行列索引、列头 `Role::ColumnHeader`、行头 `Role::RowHeader` |
 | 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState`、`Sidebar`/`SidebarSection`、`Select`、`Combobox`、`DatePicker`、`ColorPicker`、`Pagination`、`Steps`、`Timeline`、`Rate`、`Upload`、`Carousel`、`MermaidDiagram`、`DockArea` 等（`charts`/`effects`/`qr-code` feature 门控） |
 | 动画/手势/物理 | `animation/`、`mouse_gestures.rs`、`scroll_physics.rs` | `Spring`、`GestureDetector`、`ScrollPhysics` |
 | 对话（AI-chat） | `chat/` | `Message`/`MessageGroup`/`ChatView`、`Prompts`、`Suggestion`、`ThoughtChain`、`Attachments`/`FileCard`、`Sources`、`Actions`、`Sender`、`Bubble`、`MessageScroller`、`Marker` |

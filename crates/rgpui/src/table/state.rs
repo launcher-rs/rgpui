@@ -1439,6 +1439,9 @@ where
             .child(
                 self.render_cell(None, col_ix, window, cx)
                     .id(("col-header", col_ix))
+                    // 无障碍语义：表头列。
+                    .role(accesskit::Role::ColumnHeader)
+                    .aria_column_index(col_ix)
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.on_col_head_click(col_ix, window, cx);
                     }))

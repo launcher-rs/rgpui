@@ -37,9 +37,9 @@ use crate::{
     ActiveTheme as _, AnyElement, App, Axis, Bounds, Context, Div, ElementExt as _, Entity,
     EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseUpEvent, ParentElement as _, Pixels, Render, RenderOnce,
-    ScrollStrategy, ScrollableMask, Scrollbar, SharedString, Size, Stateful, Styled as _,
-    UniformListScrollHandle, VirtualListScrollHandle, Window, div, h_flex, h_virtual_list,
-    prelude::FluentBuilder, px, size, uniform_list, v_flex,
+    ScrollStrategy, ScrollableMask, Scrollbar, SharedString, Size, Stateful,
+    StatefulInteractiveElement as _, Styled as _, UniformListScrollHandle, VirtualListScrollHandle,
+    Window, div, h_flex, h_virtual_list, prelude::FluentBuilder, px, size, uniform_list, v_flex,
 };
 
 /// 行头列宽（像素）。
@@ -610,6 +610,9 @@ impl<D: SheetDelegate> SheetGridState<D> {
                         let label = state.delegate.column_label(col, cx);
                         div()
                             .id(format!("sheet-col-head:{col}"))
+                            // 无障碍语义：列头。
+                            .role(accesskit::Role::ColumnHeader)
+                            .aria_column_index(col)
                             .w_full()
                             .h_full()
                             .flex()
@@ -690,6 +693,9 @@ impl<D: SheetDelegate> SheetGridState<D> {
             .child(
                 div()
                     .id(("sheet-row-head", row))
+                    // 无障碍语义：行头。
+                    .role(accesskit::Role::RowHeader)
+                    .aria_row_index(row)
                     .w(ROW_HEADER_WIDTH)
                     .h_full()
                     .flex_shrink_0()
@@ -734,6 +740,10 @@ impl<D: SheetDelegate> SheetGridState<D> {
 
         div()
             .id(format!("sheet-cell:{}:{}", cell.row, cell.col))
+            // 无障碍语义：单元格角色 + 行列索引。
+            .role(accesskit::Role::Cell)
+            .aria_row_index(cell.row)
+            .aria_column_index(cell.col)
             .relative()
             .w_full()
             .h_full()
@@ -885,6 +895,8 @@ impl<D: SheetDelegate> RenderOnce for SheetGrid<D> {
 
         div()
             .id(("sheet-grid", entity_id))
+            // 无障碍语义：网格根节点。
+            .role(accesskit::Role::Grid)
             .key_context("SheetGrid")
             .track_focus(&focus_handle)
             .size_full()

@@ -1756,6 +1756,8 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 - `DataTable`：根节点 `Role::Table`；数据行 `Role::Row`；单元格 `Role::Cell` +
   `aria_row_index` / `aria_column_index`；行号列 `Role::RowHeader`；表头列
   `Role::ColumnHeader`。
+- `SheetGrid`（电子表格）：根节点 `Role::Grid`；单元格 `Role::Cell` + 行列索引；列头
+  `Role::ColumnHeader`；行头 `Role::RowHeader`。
 - 行列索引同时覆盖「左侧固定列」与「滚动区」两条渲染路径 ✓。
 
 ### 验证
