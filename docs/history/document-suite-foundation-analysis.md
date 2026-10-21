@@ -1698,3 +1698,18 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 - `cargo test -p rgpui --lib html_tables_and_sections`：1 passed（解析后仍是表格 / 节，
   列对齐与节标题都还原；再序列化仍带表格与节）。
 
+## 五十六、增补：核心富文本的 Markdown 导出
+
+与 HTML 导出互补，给「文档编辑器导出 .md」一条现成路径。
+
+- `RichTextDoc::to_markdown() -> String`：
+  - 标题级别 → `#`×级别；列表 → `- ` / `1. `；引用块 → `> `；
+  - 行内样式 → `**加粗**` / `*斜体*` / `~~删除线~~` / `` `代码` ``；链接 → `[文本](地址)`；
+  - 修订标记 → 内联 HTML `<ins>` / `<del>`（纯 Markdown 无对应语法，内联 HTML 是通用做法）；
+  - 表格 → Markdown 表格（表头行 + `---` 分隔行 + 数据行）；节标题 → `## 标题`。
+- 段落 / 表格 / 节的输出顺序与渲染一致（表格在其首个单元格段落处、节标题在其首个段落处）。
+
+### 验证
+
+- `cargo test -p rgpui --lib exports_markdown`：1 passed（标题 / 引用 / 样式 / 链接 / 表格都按预期导出）。
+
