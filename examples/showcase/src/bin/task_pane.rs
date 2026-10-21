@@ -63,7 +63,9 @@ impl TaskPaneApp {
 
         Self {
             pane,
-            status: "拖动内缘把手改宽 · ✕ 关闭 · 点标题栏页签切换正文".into(),
+            status:
+                "拖动内缘把手改宽 · 把把手拖过窗口中线可换边停靠 · ✕ 关闭 · 点标题栏页签切换正文"
+                    .into(),
         }
     }
 
@@ -84,7 +86,11 @@ impl TaskPaneApp {
 }
 
 impl Render for TaskPaneApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // 父容器矩形 = 窗口视口：把手拖过中线即可换边停靠。
+        let parent = Bounds::new(rgpui::point(px(0.0), px(0.0)), window.viewport_size());
+        self.pane
+            .update(cx, |pane, cx| pane.set_parent_bounds(parent, cx));
         let (visible, side, width, floating, closable, auto_hide, collapsed) =
             self.pane.read_with(cx, |pane, _| {
                 (
