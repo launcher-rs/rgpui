@@ -128,6 +128,8 @@ pub struct ParagraphStyle {
     pub line_height: Option<f32>,
     /// 段前距（`None` 表示无额外间距）。
     pub space_before: Option<Pixels>,
+    /// 是否为引用块内容（渲染带左边线与浅底，HTML 输出 `<blockquote>`）。
+    pub quote: bool,
 }
 
 impl ParagraphStyle {
@@ -876,26 +878,20 @@ impl RichTextDoc {
         while i < self.paragraphs.len() {
             let kind = self.paragraphs[i].style.list;
             let spans = collect_spans(self, offsets[i], self.paragraphs[i].char_len());
+            // 连续的引用段落合并为一个 `<blockquote>`。
+            if self.paragraphs[i].style.quote {
+                out.push_str("<blockquote>");
+                while i < self.paragraphs.len() && self.paragraphs[i].style.quote {
+                    let spans = collect_spans(self, offsets[i], self.paragraphs[i].char_len());
+                    push_paragraph_block(&mut out, &self.paragraphs[i], &spans, self);
+                    i += 1;
+                }
+                out.push_str("</blockquote>");
+                continue;
+            }
             match kind {
                 ListKind::None => {
-                    // 标题段落用 `<h1>`…`<h6>`，其余用 `<p>`。
-                    let tag = match self.paragraphs[i].style.heading {
-                        Some(level) => format!("h{}", level.clamp(1, 6)),
-                        None => "p".to_string(),
-                    };
-                    out.push('<');
-                    out.push_str(&tag);
-                    let css = paragraph_css(&self.paragraphs[i].style);
-                    if !css.is_empty() {
-                        out.push_str(" style=\"");
-                        out.push_str(&css);
-                        out.push('"');
-                    }
-                    out.push('>');
-                    push_paragraph_html(&mut out, &self.paragraphs[i], &spans, self);
-                    out.push_str("</");
-                    out.push_str(&tag);
-                    out.push('>');
+                    push_paragraph_block(&mut out, &self.paragraphs[i], &spans, self);
                     i += 1;
                 }
                 ListKind::Bullet | ListKind::Number => {
@@ -940,6 +936,8 @@ impl RichTextDoc {
         let mut footnotes: Vec<(usize, Range<usize>, u32, String)> = Vec::new();
         let mut open_annotations: Vec<(usize, usize, u32, String)> = Vec::new();
         let mut open_footnotes: Vec<(usize, usize, u32, String)> = Vec::new();
+        // 引用块嵌套深度（`<blockquote>`）。
+        let mut quote_depth = 0usize;
 
         while i < bytes.len() && paragraphs.len() <= MAX_PARAS && runs <= MAX_RUNS {
             if bytes[i] == b'<' {
@@ -993,6 +991,15 @@ impl RichTextDoc {
                                 footnotes.push((para_index, start..end, id, text));
                             }
                         }
+                        // 引用块闭合：没有 `<p>` 包裹时内容就在当前段落里。
+                        "blockquote" => {
+                            if quote_depth > 0 {
+                                if let Some(para) = paragraphs.last_mut() {
+                                    para.style.quote = true;
+                                }
+                                quote_depth -= 1;
+                            }
+                        }
                         _ => {
                             if is_block(&name) {
                                 // 标题标签闭合时给承载标题文本的段落记级别。
@@ -1000,6 +1007,12 @@ impl RichTextDoc {
                                     && let Some(para) = paragraphs.last_mut()
                                 {
                                     para.style.heading = Some(level);
+                                }
+                                // 引用块内的段落标记为引用样式。
+                                if quote_depth > 0
+                                    && let Some(para) = paragraphs.last_mut()
+                                {
+                                    para.style.quote = true;
                                 }
                                 new_paragraph(&mut paragraphs, list);
                             }
@@ -1062,6 +1075,12 @@ impl RichTextDoc {
 
                 if is_break(&name) {
                     new_paragraph(&mut paragraphs, list);
+                    continue;
+                }
+
+                // 引用块：进入时记深度，内容段落按引用样式渲染。
+                if name == "blockquote" {
+                    quote_depth += 1;
                     continue;
                 }
 
@@ -1244,6 +1263,27 @@ fn split_runs(runs: Vec<Run>, offset: usize) -> (Vec<Run>, Vec<Run>) {
 }
 
 /// 追加一个段落的行内 HTML（不含外层 `<p>`/`<li>`）。
+/// 输出一个段落的 HTML（`<p>` / `<h1>`…`<h6>` + 内联样式 + 内容）。
+fn push_paragraph_block(out: &mut String, para: &Paragraph, spans: &[Span], doc: &RichTextDoc) {
+    let tag = match para.style.heading {
+        Some(level) => format!("h{}", level.clamp(1, 6)),
+        None => "p".to_string(),
+    };
+    out.push('<');
+    out.push_str(&tag);
+    let css = paragraph_css(&para.style);
+    if !css.is_empty() {
+        out.push_str(" style=\"");
+        out.push_str(&css);
+        out.push('"');
+    }
+    out.push('>');
+    push_paragraph_html(out, para, spans, doc);
+    out.push_str("</");
+    out.push_str(&tag);
+    out.push('>');
+}
+
 /// 输出一段段落 HTML；批注 / 脚注区间按 `<mark>` / `<sup>` 包裹。
 fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: &RichTextDoc) {
     let mut run_offset = 0usize;
@@ -1837,6 +1877,15 @@ impl RenderOnce for RichText {
             }
             if let Some(space_before) = para.style.space_before {
                 paragraph = paragraph.mt(space_before);
+            }
+            // 引用块：左边线 + 浅底 + 内缩。
+            if para.style.quote {
+                paragraph = paragraph
+                    .pl(px(12.0))
+                    .border_l(px(3.0))
+                    .border_color(theme.tokens.border)
+                    .bg(theme.tokens.muted.opacity(0.15))
+                    .text_color(theme.tokens.muted_foreground);
             }
             column = column.child(paragraph.child(content));
             doc_offset += para.char_len() + 1;
@@ -2479,5 +2528,18 @@ mod tests {
         let reparsed = RichTextDoc::from_html(&html).expect("再解析");
         assert_eq!(reparsed.paragraphs[0].style.line_height, Some(1.8));
         assert_eq!(reparsed.paragraphs[0].style.space_before, Some(px(12.0)));
+    }
+
+    /// 引用块往返：`<blockquote>` 解析为引用段落，序列化还原。
+    #[test]
+    fn blockquote_round_trip() {
+        let doc = RichTextDoc::from_html("<blockquote><p>引用内容</p></blockquote>").expect("解析");
+        assert!(
+            doc.paragraphs.iter().any(|para| para.style.quote),
+            "引用段落应标记 quote：{doc:?}"
+        );
+        let html = doc.to_html();
+        assert!(html.contains("<blockquote>"));
+        assert!(html.contains("引用内容"));
     }
 }
