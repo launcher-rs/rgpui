@@ -315,6 +315,92 @@ pub struct Footnote {
     pub text: String,
 }
 
+/// 文档历史：快照式撤销 / 重做栈。
+///
+/// 用法：`history.edit(&mut doc, |doc| { …修改… })` 会在修改前压入快照；
+/// `undo` / `redo` 用快照整份替换文档。快照是文档拷贝，适合中小文档；
+/// 超大文档可改用差分 / 块级快照（后续增补）。
+#[derive(Clone, Debug, Default)]
+pub struct RichTextHistory {
+    /// 撤销栈（栈顶是最近一次编辑**前**的状态）。
+    undo: Vec<RichTextDoc>,
+    /// 重做栈（栈顶是最近一次撤销前的状态）。
+    redo: Vec<RichTextDoc>,
+}
+
+/// 历史栈条目上限（超出后丢弃最旧的快照，限制内存占用）。
+const HISTORY_LIMIT: usize = 100;
+
+impl RichTextHistory {
+    /// 创建历史（此时无可撤销的编辑）。
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 是否可撤销。
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    /// 是否可重做。
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    /// 清空历史（文档被整体替换时调用）。
+    pub fn clear(&mut self) {
+        self.undo.clear();
+        self.redo.clear();
+    }
+
+    /// 在历史中执行一次编辑：先压入编辑前的快照，再执行 `f`。
+    ///
+    /// 返回 `f` 是否真的改动了文档（未改动时不压栈，避免产生空撤销步骤）。
+    pub fn edit(&mut self, doc: &mut RichTextDoc, f: impl FnOnce(&mut RichTextDoc)) -> bool {
+        let before = doc.clone();
+        f(doc);
+        if *doc == before {
+            return false;
+        }
+        self.push_undo(before);
+        // 新编辑后原重做链失效。
+        self.redo.clear();
+        true
+    }
+
+    /// 手动记录一次编辑前的状态（供在历史之外修改文档的路径使用）。
+    pub fn record(&mut self, doc: &RichTextDoc) {
+        self.push_undo(doc.clone());
+        self.redo.clear();
+    }
+
+    /// 撤销一步：撤销栈顶快照写回文档，当前文档压入重做栈。
+    pub fn undo(&mut self, doc: &mut RichTextDoc) -> bool {
+        let Some(previous) = self.undo.pop() else {
+            return false;
+        };
+        self.redo.push(std::mem::replace(doc, previous));
+        true
+    }
+
+    /// 重做一步：重做栈顶快照写回文档，当前文档压回撤销栈。
+    pub fn redo(&mut self, doc: &mut RichTextDoc) -> bool {
+        let Some(next) = self.redo.pop() else {
+            return false;
+        };
+        self.undo.push(std::mem::replace(doc, next));
+        true
+    }
+
+    /// 压入撤销栈（超出上限时丢弃最旧的一条）。
+    fn push_undo(&mut self, snapshot: RichTextDoc) {
+        self.undo.push(snapshot);
+        if self.undo.len() > HISTORY_LIMIT {
+            self.undo.remove(0);
+        }
+    }
+}
+
 /// 文档统计（字符数 / 段落数 / 行数）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DocStats {
@@ -2163,5 +2249,58 @@ mod tests {
         assert!(html.contains("<h1>一级</h1>"));
         assert!(html.contains("<p>正文</p>"));
         assert!(html.contains("<h2>二级</h2>"));
+    }
+
+    /// 撤销 / 重做：编辑压栈、撤销回退、重做前进，新编辑清空重做链。
+    #[test]
+    fn history_undo_redo_round_trip() {
+        let mut doc = RichTextDoc::from_plain_text("第一段");
+        let mut history = RichTextHistory::new();
+        assert!(!history.can_undo());
+        assert!(!history.can_redo());
+
+        // 编辑一：追加文字。
+        assert!(history.edit(&mut doc, |doc| {
+            doc.insert_text(3, "（改）", RunProps::default());
+        }));
+        assert_eq!(doc.plain_text(), "第一段（改）");
+        assert!(history.can_undo());
+
+        // 编辑二：再加粗（属性变化也算改动）。
+        assert!(history.edit(&mut doc, |doc| {
+            doc.apply_props(0..3, |props| props.bold = true);
+        }));
+
+        // 撤销两步回到初始状态。
+        assert!(history.undo(&mut doc));
+        assert!(history.undo(&mut doc));
+        assert_eq!(doc.plain_text(), "第一段");
+        assert!(!history.can_undo());
+        assert!(history.can_redo());
+
+        // 重做恢复。
+        assert!(history.redo(&mut doc));
+        assert_eq!(doc.plain_text(), "第一段（改）");
+        assert!(history.redo(&mut doc));
+        assert!(doc.paragraphs[0].runs[0].props.bold);
+
+        // 新编辑清空重做链。
+        assert!(history.edit(&mut doc, |doc| {
+            doc.insert_text(0, "新", RunProps::default());
+        }));
+        assert!(!history.can_redo());
+    }
+
+    /// 历史：未产生改动的编辑不压栈；手动记录也可撤销。
+    #[test]
+    fn history_skips_noop_edits() {
+        let mut doc = RichTextDoc::from_plain_text("内容");
+        let mut history = RichTextHistory::new();
+        assert!(!history.edit(&mut doc, |_| {}));
+        assert!(!history.can_undo());
+
+        history.record(&doc);
+        assert!(history.can_undo());
+        assert!(history.undo(&mut doc));
     }
 }

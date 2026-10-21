@@ -8,7 +8,9 @@
 
 use std::ops::Range;
 
-use rgpui::rich_text::{ListKind, Paragraph, RichText, RichTextDoc, Run, RunProps};
+use rgpui::rich_text::{
+    ListKind, Paragraph, RichText, RichTextDoc, RichTextHistory, Run, RunProps,
+};
 use rgpui::{
     App, Bounds, Button, ClipboardItem, Context, Entity, IntoElement, ParentElement, Render,
     SharedString, Styled as _, TextAlign, TitlebarOptions, Window, WindowBounds, WindowOptions,
@@ -33,6 +35,8 @@ struct RichTextApp {
     handle: Entity<Self>,
     /// 当前文档。
     doc: RichTextDoc,
+    /// 撤销 / 重做历史。
+    history: RichTextHistory,
     /// 最近一次操作的结果提示。
     status: SharedString,
 }
@@ -40,9 +44,11 @@ struct RichTextApp {
 impl RichTextApp {
     /// 创建示例应用（含一段带样式的样例文档）。
     fn new(cx: &mut Context<Self>) -> Self {
+        let doc = sample_doc();
         Self {
             handle: cx.entity(),
-            doc: sample_doc(),
+            history: RichTextHistory::new(),
+            doc,
             status: "点击按钮修改文档；右侧/下方可查看 HTML 序列化结果".into(),
         }
     }
@@ -52,7 +58,9 @@ impl RichTextApp {
         let plain = self.doc.plain_text();
         match char_range(&plain, label) {
             Some(range) => {
-                self.doc.apply_props(range, f);
+                self.history.edit(&mut self.doc, |doc| {
+                    doc.apply_props(range, f);
+                });
                 self.status = format!("已对「{label}」应用样式").into();
             }
             None => self.status = format!("未在文档中找到「{label}」").into(),
@@ -182,13 +190,37 @@ impl RichTextApp {
     /// 查找并替换全部命中。
     fn replace_all(&mut self, needle: &str, with: &str, cx: &mut Context<Self>) {
         let hits = self.doc.find(needle, true);
-        let count = self.doc.replace_all(needle, with, true);
-        self.status = format!("把「{needle}」替换为「{with}」：命中 {} 处", count).into();
-        cx.notify();
-        // 命中数为 0 时提示未找到。
         if hits.is_empty() {
             self.status = format!("未找到「{needle}」").into();
+            cx.notify();
+            return;
         }
+        let mut count = 0usize;
+        self.history.edit(&mut self.doc, |doc| {
+            count = doc.replace_all(needle, with, true);
+        });
+        self.status = format!("把「{needle}」替换为「{with}」：命中 {count} 处").into();
+        cx.notify();
+    }
+
+    /// 撤销一步。
+    fn undo(&mut self, cx: &mut Context<Self>) {
+        if self.history.undo(&mut self.doc) {
+            self.status = "已撤销".into();
+        } else {
+            self.status = "没有可撤销的操作".into();
+        }
+        cx.notify();
+    }
+
+    /// 重做一步。
+    fn redo(&mut self, cx: &mut Context<Self>) {
+        if self.history.redo(&mut self.doc) {
+            self.status = "已重做".into();
+        } else {
+            self.status = "没有可重做的操作".into();
+        }
+        cx.notify();
     }
 }
 
@@ -284,6 +316,14 @@ impl Render for RichTextApp {
                         }
                     }),
             )
+            .child(Button::new("undo").label("撤销").on_click({
+                let handle = handle.clone();
+                move |_event, _window, cx| handle.update(cx, |this, cx| this.undo(cx))
+            }))
+            .child(Button::new("redo").label("重做").on_click({
+                let handle = handle.clone();
+                move |_event, _window, cx| handle.update(cx, |this, cx| this.redo(cx))
+            }))
             .child(Button::new("paste").label("从剪贴板粘贴").on_click({
                 let handle = handle.clone();
                 move |_event, _window, cx| handle.update(cx, |this, cx| this.paste(cx))

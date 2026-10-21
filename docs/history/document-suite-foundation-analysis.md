@@ -1374,4 +1374,28 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 - `cargo test -p rgpui-markdown --lib`：9 passed（新增 1 项：已勾选项加删除线并变暗）。
 - 示例：`examples/rgpui_story` 的「Markdown 基础」页补任务列表段落。
 
+## 四十一、增补：核心富文本的撤销 / 重做（快照式历史栈）
+
+`RichTextDoc` 可编辑但没有历史栈，编辑器只能自己在应用层维护副本。本轮把历史做进
+核心（文档模型与渲染同 crate，状态与视图分离更干净）。
+
+- `RichTextHistory`：
+  - `edit(&mut doc, f)`：**编辑前**压入文档快照，再执行 `f`；未产生改动的编辑不压栈
+    （避免空撤销步骤）；新编辑会清空重做链。
+  - `undo(&mut doc)` / `redo(&mut doc)`：用栈顶快照整份替换文档，当前文档压入另一侧栈。
+  - `record(&doc)`：手动记录（供在历史之外修改文档的路径使用）。
+  - `can_undo()` / `can_redo()` / `clear()`。
+  - 栈上限 100 条（超出丢弃最旧快照，限制内存占用）。
+- 快照是文档拷贝，适合中小文档；超大文档可改用差分 / 块级快照（后续增补）。
+
+### 示例
+
+`examples/showcase/src/bin/rich_text.rs`：行内样式与「替换」操作改走
+`history.edit`，新增「撤销 / 重做」按钮。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：23 passed（新增 2 项：撤销 / 重做往返与重做链
+  清空、未改动编辑不压栈）。
+
 
