@@ -505,6 +505,9 @@ fn test_nondeterministic_wake_detection() {
 fn test_nondeterministic_wake_allowed_with_parking() {
     let config = TestSchedulerConfig {
         allow_parking: true,
+        // 本用例靠外部 OS 线程唤醒：机器满载（CI 并行编译）时唤醒可能被拖到
+        // 十几秒后，硬超时放宽到 60 秒避免误报（真死锁仍会超时失败）。
+        park_timeout: std::time::Duration::from_secs(60),
         ..Default::default()
     };
     let scheduler = Arc::new(TestScheduler::new(config));

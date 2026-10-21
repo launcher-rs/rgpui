@@ -92,6 +92,7 @@ impl TestScheduler {
                 timeout_ticks: config.timeout_ticks,
                 next_session_id: SessionId(0),
                 capture_pending_traces: config.capture_pending_traces,
+                park_timeout: config.park_timeout,
                 pending_traces: BTreeMap::new(),
                 next_trace_id: TraceId(0),
                 is_main_thread: true,
@@ -402,8 +403,8 @@ impl TestScheduler {
     fn park(&self, deadline: Option<Instant>) -> bool {
         if self.state.lock().allow_parking {
             let start = Instant::now();
-            // 强制执行硬超时，防止测试无限期挂起
-            let hard_deadline = start + Duration::from_secs(15);
+            // 强制执行硬超时，防止测试无限期挂起（时长可配置）。
+            let hard_deadline = start + self.state.lock().park_timeout;
 
             // 使用提供的 deadline 或硬超时 deadline 中较早的一个
             let effective_deadline = deadline
@@ -658,6 +659,11 @@ pub struct TestSchedulerConfig {
     pub allow_parking: bool,
     pub capture_pending_traces: bool,
     pub timeout_ticks: RangeInclusive<usize>,
+    /// park 的硬超时（真实时间）：防止测试无限期挂起。
+    ///
+    /// 默认 15 秒；依赖外部线程唤醒的用例在机器满载时可能需要更长时间，
+    /// 此类用例可单独调大（见 `tests.rs` 的外部唤醒用例）。
+    pub park_timeout: Duration,
 }
 
 impl TestSchedulerConfig {
@@ -678,6 +684,7 @@ impl Default for TestSchedulerConfig {
             capture_pending_traces: env::var(PENDING_TRACES_VAR_NAME)
                 .map_or(false, |var| var == "1" || var == "true"),
             timeout_ticks: 1..=1000,
+            park_timeout: Duration::from_secs(15),
         }
     }
 }
@@ -706,6 +713,8 @@ struct SchedulerState {
     randomize_order: bool,
     allow_parking: bool,
     timeout_ticks: RangeInclusive<usize>,
+    /// park 的硬超时（真实时间）。
+    park_timeout: Duration,
     next_session_id: SessionId,
     capture_pending_traces: bool,
     next_trace_id: TraceId,

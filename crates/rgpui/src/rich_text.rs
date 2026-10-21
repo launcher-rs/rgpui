@@ -30,7 +30,7 @@ use crate::prelude::ActiveTheme as _;
 use crate::{
     App, ElementId, Hsla, InteractiveText, IntoElement, ParentElement as _, Pixels, RenderOnce,
     Rgba, StrikethroughStyle, Styled as _, StyledText, TextAlign, TextRun, UnderlineStyle, Window,
-    div, px, v_flex,
+    div, px, relative, v_flex,
 };
 
 /// 单次解析 HTML 的字节上限（防御恶意片段）。
@@ -113,8 +113,8 @@ pub enum ListKind {
     Number,
 }
 
-/// 段落级样式：对齐、缩进层级、列表标记、标题级别。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// 段落级样式：对齐、缩进层级、列表标记、标题级别、行高、段前距。
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ParagraphStyle {
     /// 水平对齐。
     pub align: TextAlign,
@@ -124,6 +124,10 @@ pub struct ParagraphStyle {
     pub list: ListKind,
     /// 标题级别（1–6；`None` 表示普通段落）。
     pub heading: Option<u8>,
+    /// 行高倍数（`None` 表示用外层默认行高）。
+    pub line_height: Option<f32>,
+    /// 段前距（`None` 表示无额外间距）。
+    pub space_before: Option<Pixels>,
 }
 
 impl ParagraphStyle {
@@ -1352,6 +1356,18 @@ fn paragraph_css(style: &ParagraphStyle) -> String {
             u32::from(style.indent) * INDENT_PX as u32
         ));
     }
+    if let Some(line_height) = style.line_height {
+        if !css.is_empty() {
+            css.push(';');
+        }
+        css.push_str(&format!("line-height:{line_height}"));
+    }
+    if let Some(space_before) = style.space_before {
+        if !css.is_empty() {
+            css.push(';');
+        }
+        css.push_str(&format!("margin-top:{}px", space_before.0.round() as i32));
+    }
     css
 }
 
@@ -1452,6 +1468,31 @@ fn apply_paragraph_css(style: &mut ParagraphStyle, css: &str) {
     {
         let level = (px / INDENT_PX).round().clamp(0.0, f32::from(MAX_INDENT)) as u8;
         style.indent = level;
+    }
+    // 行高：`1.5`（倍数）或 `24px`（绝对值）。
+    if let Some(v) = css_value(&lower, "line-height") {
+        let value = v.trim();
+        if let Ok(multiple) = value.parse::<f32>() {
+            if multiple > 0.0 {
+                style.line_height = Some(multiple);
+            }
+        } else if let Some(px) = value
+            .strip_suffix("px")
+            .and_then(|n| n.trim().parse::<f32>().ok())
+            && px > 0.0
+        {
+            // 绝对行高换算成倍数（以 16px 为基准字号）。
+            style.line_height = Some(px / 16.0);
+        }
+    }
+    // 段前距：`margin-top: 12px`。
+    if let Some(v) = css_value(&lower, "margin-top")
+        && let Some(value) = v
+            .strip_suffix("px")
+            .and_then(|n| n.trim().parse::<f32>().ok())
+        && value > 0.0
+    {
+        style.space_before = Some(px(value));
     }
 }
 
@@ -1789,6 +1830,13 @@ impl RenderOnce for RichText {
             // 标题段落按级别放大字号（基准字号取显式设置或窗口默认值）。
             if let (Some(level), Some(base_px)) = (heading, base_px) {
                 paragraph = paragraph.text_size(px(base_px.as_f32() * heading_scale(level)));
+            }
+            // 段落级行高与段前距。
+            if let Some(line_height) = para.style.line_height {
+                paragraph = paragraph.line_height(relative(line_height));
+            }
+            if let Some(space_before) = para.style.space_before {
+                paragraph = paragraph.mt(space_before);
             }
             column = column.child(paragraph.child(content));
             doc_offset += para.char_len() + 1;
@@ -2411,5 +2459,25 @@ mod tests {
         let html = doc.to_html();
         assert!(html.contains("<a href=\"https://example.com\">"));
         assert!(html.contains("示例站点"));
+    }
+
+    /// 段落行高 / 段前距往返：CSS 进 → 样式出 → CSS 回。
+    #[test]
+    fn paragraph_line_height_and_spacing_round_trip() {
+        let doc = RichTextDoc::from_html(
+            "<p style=\"line-height:1.8;margin-top:12px;text-align:center\">正文</p>",
+        )
+        .expect("解析");
+        let style = doc.paragraphs[0].style;
+        assert_eq!(style.line_height, Some(1.8));
+        assert_eq!(style.space_before, Some(px(12.0)));
+        assert_eq!(style.align, TextAlign::Center);
+        let html = doc.to_html();
+        assert!(html.contains("line-height:1.8"));
+        assert!(html.contains("margin-top:12px"));
+        // 往返后再解析，样式保持一致。
+        let reparsed = RichTextDoc::from_html(&html).expect("再解析");
+        assert_eq!(reparsed.paragraphs[0].style.line_height, Some(1.8));
+        assert_eq!(reparsed.paragraphs[0].style.space_before, Some(px(12.0)));
     }
 }

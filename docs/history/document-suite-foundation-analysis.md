@@ -1422,4 +1422,34 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 
 - `cargo test -p rgpui --lib rich_text`：24 passed（新增 1 项：链接地址解析与序列化往返）。
 
+## 四十三、增补：段落级行高 / 段前距 + 消除已知 flaky 测试
+
+### 段落级行高 / 段前距
+
+`ParagraphStyle` 新增两个字段（都是「有则用、无则继承外层」的口径）：
+
+- `line_height: Option<f32>`：行高倍数（`line-height:1.8` → `Some(1.8)`；`line-height:24px`
+  按 16px 基准字号换算成倍数）。
+- `space_before: Option<Pixels>`：段前距（`margin-top:12px`）。
+
+HTML 双向：`from_html` 解析 `line-height` / `margin-top`，`to_html` 输出同样的 CSS；渲染时
+段落容器应用 `line_height(relative(…))` 与 `mt(…)`。
+
+### 消除 flaky：测试调度器 park 硬超时可配置
+
+`util::scheduler` 的 park 硬超时此前写死 15 秒（真实时间）。依赖**外部 OS 线程唤醒**的
+用例（`test_nondeterministic_wake_allowed_with_parking`）在机器满载（CI 并行编译）时
+唤醒可能被拖到十几秒后，触发「测试在 park 时超时」误报 —— 这就是文档里长期记录的已知波动
+（重跑即过）。
+
+修法：
+
+- `TestSchedulerConfig` 新增 `park_timeout: Duration`（默认 15 秒），park 硬超时改用它。
+- 外部唤醒用例单独放宽到 60 秒：真死锁仍会超时失败，满载误报消除。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：25 passed（新增 1 项：行高 / 段前距 CSS 往返）。
+- `cargo test -p rgpui --lib scheduler`：17 passed。
+
 
