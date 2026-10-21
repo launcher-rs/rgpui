@@ -806,6 +806,16 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
 - **纯几何**：`clamp_width`（非有限值回落最小宽）、`resize_width`（拖左缘取负号 → 向左变宽）、
   `grip_rect`、`close_button_rect`、`floating_default_bounds`；浮动态的八向缩放直接复用
   `mdi` 的 `resize_edge_at`/`resize_edge_rects`/`resize_bounds`（`resize_edge_rects` 因此提为 pub）。
+  同侧多窗格：`normalize_stack_weight`（非有限 / 非正数回退 `1.0`，过小夹到 `MIN_STACK_WEIGHT`）、
+  `resize_stack_weights`（按「位移 × 总权重 / 可用高度」换算，保持相邻两格权重之和不变、
+  两格都夹到下限、其他格与总高度不动）。
+- **多窗格堆叠**：`TaskPaneStackState`（各格权重 / 堆叠矩形 / 子元素数 / 分隔条拖拽会话）+
+  `TaskPaneStack` 元素：子元素自上而下按 `flex_grow(weight)` 分高，相邻两格之间是
+  `STACK_SEPARATOR_HEIGHT`（4px）的分隔条，拖动时按「起点权重 + 总位移」重算（避免逐帧累积
+  误差），分隔条带 `cursor_row_resize` 光标、拖拽中高亮主题主色；`usable_height` 扣掉分隔条，
+  预绘制回写矩形与子元素数。`with_weights`/`weights`/`weight`/`set_weights`/`set_weight`
+  （越界补 `1.0`）/`begin_drag`/`update_drag`/`end_drag`。**隐藏的窗格不要加入**（元素会占位，
+  应在构建子元素列表时过滤）。
 - **元素**：`TaskPane::new(&state).title(…).body(|window, cx| …)` —— 停靠态是流式子元素
   （`flex_none` + 固定宽 + `h_full` + 内缘边框 + 内缘把手），浮动态是 `absolute` 子元素
   （**父容器须为定位祖先** `relative()`）+ 八向缩放块；把手 / 按钮 / 页签只设光标，命中与拖拽
@@ -817,14 +827,15 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
 - **示例**：`examples/showcase/src/bin/task_pane.rs`（显示 / 隐藏、停靠左 / 右、浮动 / 回停靠、
   加宽 / 收窄、关闭按钮开关、自动隐藏开关、下一个页签；标题栏是「属性 / 大纲」页签组，正文
   实时读取窗格宽度与停靠侧并随页签切换内容）。
-- **测试**：11 项 —— 纯几何 3 项（宽度夹取与内缘拖拽换算、把手 / 关闭按钮 / 浮动默认矩形、
-  页签等宽平铺与右侧预留）；状态 6 项（显隐 / 换侧 / 改宽事件、浮动 / 停靠切换与最小浮动尺寸、
-  停靠态两向把手拖拽改宽、浮动态标题栏平移 + 右下角缩放、关闭按钮「按下后滑走不触发」、
-  真实绘制回写矩形且隐藏 / 浮动两态均可渲染）；自动隐藏 1 项（悬停展开 / 移出收起、收起态
-  命中与有效宽度、浮动与关闭自动隐藏时保持展开、`Collapsed` 事件）；页签 1 项（点击命中 /
-  关闭按钮优先 / 事件 / 循环切换 / 越界与缩减夹取）。
+- **测试**：14 项 —— 纯几何 4 项（宽度夹取与内缘拖拽换算、把手 / 关闭按钮 / 浮动默认矩形、
+  页签等宽平铺与右侧预留、堆叠权重换算与夹取）；状态 7 项（显隐 / 换侧 / 改宽事件、浮动 / 停靠
+  切换与最小浮动尺寸、停靠态两向把手拖拽改宽、浮动态标题栏平移 + 右下角缩放、关闭按钮「按下后
+  滑走不触发」、堆叠分隔条拖拽（起点重算 / 下限 / 结束清理）、真实绘制回写矩形且隐藏 / 浮动
+  两态均可渲染）；自动隐藏 1 项（悬停展开 / 移出收起、收起态命中与有效宽度、浮动与关闭自动隐藏
+  时保持展开、`Collapsed` 事件）；页签 1 项（点击命中 / 关闭按钮优先 / 事件 / 循环切换 / 越界
+  与缩减夹取）；堆叠渲染 1 项（2:1 权重 → 200 / 100px、分隔条占位、第二格依次下移）。
 
-**本版暂缓**（后续增补）：多窗格并列（一屏多个任务窗格）、窗格内滚动位置记忆。
+**本版暂缓**（后续增补）：窗格内滚动位置记忆、跨侧拖拽停靠（把窗格从一侧拖到另一侧）。
 
 ## 二十八、P2 落地：画布语义（核心，无 feature 门控）
 
@@ -992,13 +1003,13 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | MDI `mdi` | `snap_rect` / `snap_active` / `with_snap`（拖动松手吸附到工作区边/中线）；`MdiLayout::Tabbed` 页签式（见 §二十六） |
 | 页视图 `page_view` | `PageArrangement`（单页 / 双页 / 双页封面）与 `page_slot` 等栅格几何 |
 | 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`）、轨道折叠（`Track::collapsed` / `row_height` / `with_collapsed` / `set_collapsed`、`tracks_height` / `track_top` / `toggle_track_collapsed`、`TrackCollapsed`、折叠箭头）、值曲线与纵向改值（`Track::value_range` / `set_keyframe_value`、`value_to_y` / `y_to_value` / `curve_points`、`KeyframeMoved.value`、冻结值域 + 抓取偏移） |
-| 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`）、页签组（`tabs`/`active_tab`/`with_tabs`/`set_tabs`/`set_active_tab`/`cycle_tab`/`tab_rects`/`tab_at`、`TaskPaneHit::Tab`、`TaskPaneEvent::TabSelected`） |
+| 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`）、页签组（`tabs`/`active_tab`/`with_tabs`/`set_tabs`/`set_active_tab`/`cycle_tab`/`tab_rects`/`tab_at`、`TaskPaneHit::Tab`、`TaskPaneEvent::TabSelected`）、多窗格堆叠（`TaskPaneStack`/`TaskPaneStackState`、`weights`/`set_weight(s)`、`begin_drag`/`update_drag`/`end_drag`、`STACK_SEPARATOR_HEIGHT`、`resize_stack_weights`/`normalize_stack_weight`） |
 | Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二）、逐段压感变宽（`pressure_width` / `stroke_paths` / `extend_stroke_with_pressure`）、画布语义接线（`InkLayer::semantics` / `InkLayerElement::a11y`，每笔一个 `GraphicsObject` 节点） |
 | 走势图 / 波形 `sparkline` `waveform` | 画布语义接线（`Sparkline::a11y` / `Waveform::a11y` 整体摘要节点：点数 / 极值 / 峰值 / 播放进度）、`CanvasSemantics::fill_empty_bounds`（零尺寸摘要节点按画布大小发布）、`CanvasNode::with_bounds`/`set_bounds` |
 
-仍未做（保持暂缓）：任务窗格多窗格并列、
-富文本分节 / 表格 / 批注 / 脚注、更多自绘组件接线画布语义（表格 / 页视图 / 仪表盘等）、
-bidi 视觉重排、取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
+仍未做（保持暂缓）：富文本分节 / 表格 / 批注 / 脚注、
+更多自绘组件接线画布语义（表格 / 页视图 / 仪表盘等）、bidi 视觉重排、
+取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 
 ### AGENTS 完整性检查清单（12 项）逐条结果
 
