@@ -39,6 +39,8 @@ struct RichTextApp {
     history: RichTextHistory,
     /// 最近一次操作的结果提示。
     status: SharedString,
+    /// 查找命中的字符区间（渲染为搜索高亮）。
+    highlight: Vec<std::ops::Range<usize>>,
 }
 
 impl RichTextApp {
@@ -50,6 +52,7 @@ impl RichTextApp {
             history: RichTextHistory::new(),
             doc,
             status: "点击按钮修改文档；右侧/下方可查看 HTML 序列化结果".into(),
+            highlight: Vec::new(),
         }
     }
 
@@ -203,6 +206,20 @@ impl RichTextApp {
         cx.notify();
     }
 
+    /// 查找「加粗」并高亮命中区间。
+    fn find_and_highlight(&mut self, cx: &mut Context<Self>) {
+        self.highlight = self.doc.find("加粗", true);
+        self.status = format!("命中 {} 处「加粗」", self.highlight.len()).into();
+        cx.notify();
+    }
+
+    /// 清除查找高亮。
+    fn clear_highlight(&mut self, cx: &mut Context<Self>) {
+        self.highlight.clear();
+        self.status = "已清除查找高亮".into();
+        cx.notify();
+    }
+
     /// 撤销一步。
     fn undo(&mut self, cx: &mut Context<Self>) {
         if self.history.undo(&mut self.doc) {
@@ -307,6 +324,20 @@ impl Render for RichTextApp {
                     }),
             )
             .child(
+                Button::new("find-add")
+                    .label("查找并高亮「加粗」")
+                    .on_click({
+                        let handle = handle.clone();
+                        move |_event, _window, cx| {
+                            handle.update(cx, |this, cx| this.find_and_highlight(cx))
+                        }
+                    }),
+            )
+            .child(Button::new("find-clear").label("清除高亮").on_click({
+                let handle = handle.clone();
+                move |_event, _window, cx| handle.update(cx, |this, cx| this.clear_highlight(cx))
+            }))
+            .child(
                 Button::new("replace-all")
                     .label("替换「项目符号」→「条目」")
                     .on_click({
@@ -387,6 +418,7 @@ impl Render for RichTextApp {
                     .bg(cx.theme().secondary)
                     .child(
                         RichText::new(self.doc.clone())
+                            .highlight_ranges(self.highlight.clone())
                             .on_annotation_click(move |id, _window, cx| {
                                 annotation_handle.update(cx, |this, cx| {
                                     this.status = format!("点击了批注 #{id}").into();

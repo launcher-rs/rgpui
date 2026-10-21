@@ -24,8 +24,8 @@
 //!     .map(|(_, layer)| InkLayerElement::new(layer.layer.clone()).opacity(layer.opacity));
 //! ```
 //!
-//! **本版暂缓**（后续增补）：压感/倾角曲线拟合、平滑重采样（Catmull-Rom 已用二次贝塞尔近似）、
-//! 橡皮的局部切割、触摸/数位板事件接入（现由 [`crate::Platform`] 的指针事件驱动）。
+//! **本版暂缓**（后续增补）：橡皮的局部切割、触摸 / 数位板事件接入
+//! （现由 [`crate::Platform`] 的指针事件驱动）。
 
 use lyon::path::{LineCap, LineJoin};
 
@@ -910,6 +910,75 @@ pub fn stroke_path(points: &[InkPoint], width: Pixels) -> Option<Path<Pixels>> {
     builder.build().ok()
 }
 
+/// Catmull-Rom 曲线平滑路径（三次贝塞尔拟合）。
+///
+/// 与 [`stroke_path`] 的中点二次贝塞尔近似相比，Catmull-Rom 穿过全部采样点
+/// （控制点 `p1 + (p2 - p0) / 6`、`p2 - (p3 - p1) / 6`），曲线更贴合原始笔迹；
+/// 两端按端点复制处理（`p0 = p1` / `p3 = p2`）。
+pub fn catmull_rom_path(points: &[InkPoint], width: Pixels) -> Option<Path<Pixels>> {
+    if points.is_empty() {
+        return None;
+    }
+    let options = StrokeOptions::default()
+        .with_line_width(width.0)
+        .with_line_cap(LineCap::Round)
+        .with_line_join(LineJoin::Round);
+    let mut builder = PathBuilder::stroke(width).with_style(PathStyle::Stroke(options));
+    let first = points[0].position;
+    builder.move_to(first);
+    match points.len() {
+        // 单点：画一个极短线段，配合圆头渲染成圆点。
+        1 => {
+            builder.line_to(point(px(first.x.0 + 0.01), first.y));
+        }
+        2 => {
+            builder.line_to(points[1].position);
+        }
+        _ => {
+            for i in 0..points.len() - 1 {
+                // 前后控制点：首尾复制端点。
+                let p0 = if i == 0 {
+                    points[0].position
+                } else {
+                    points[i - 1].position
+                };
+                let p1 = points[i].position;
+                let p2 = points[i + 1].position;
+                let p3 = if i + 2 < points.len() {
+                    points[i + 2].position
+                } else {
+                    p2
+                };
+                let c1 = point(
+                    px(p1.x.0 + (p2.x.0 - p0.x.0) / 6.0),
+                    px(p1.y.0 + (p2.y.0 - p0.y.0) / 6.0),
+                );
+                let c2 = point(
+                    px(p2.x.0 - (p3.x.0 - p1.x.0) / 6.0),
+                    px(p2.y.0 - (p3.y.0 - p1.y.0) / 6.0),
+                );
+                builder.cubic_bezier_to(p2, c1, c2);
+            }
+        }
+    }
+    builder.build().ok()
+}
+
+/// 压感曲线拟合：把原始压感按幂曲线整形。
+///
+/// `gamma < 1` 让轻压区更饱满（笔画更粗），`gamma > 1` 让重压区更突出；
+/// 非有限值按满压（1.0）处理，曲线结果夹取到 0..=1。
+pub fn smooth_pressure(pressure: f32, gamma: f32) -> f32 {
+    if !pressure.is_finite() {
+        return 1.0;
+    }
+    let pressure = pressure.clamp(0.0, 1.0);
+    if !gamma.is_finite() || gamma <= 0.0 {
+        return pressure;
+    }
+    pressure.powf(gamma).clamp(0.0, 1.0)
+}
+
 /// 按压感缩放的笔画宽度：`pressure` 0..=1 线性映射到基础宽度的
 /// [`MIN_PRESSURE_SCALE`]..=1 倍（非有限值按满压处理）。
 pub fn pressure_width(base: Pixels, pressure: f32) -> Pixels {
@@ -1264,6 +1333,39 @@ mod tests {
         assert_eq!(InkPoint::new(pt(0.0, 0.0)).pressure, 1.0);
     }
 
+    /// Catmull-Rom 平滑：曲线穿过全部采样点（含首尾端点复制处理）。
+    #[test]
+    fn catmull_rom_path_covers_all_points() {
+        assert!(catmull_rom_path(&[], px(2.0)).is_none());
+        let single = catmull_rom_path(&[InkPoint::new(pt(1.0, 1.0))], px(2.0));
+        assert!(single.is_some());
+        let pair = catmull_rom_path(
+            &[InkPoint::new(pt(0.0, 0.0)), InkPoint::new(pt(1.0, 1.0))],
+            px(2.0),
+        );
+        assert!(pair.is_some());
+        let many: Vec<InkPoint> = (0..5)
+            .map(|i| InkPoint::new(pt(i as f32, (i * i) as f32)))
+            .collect();
+        assert!(catmull_rom_path(&many, px(2.0)).is_some());
+    }
+
+    /// 压感曲线拟合：gamma 整形 + 越界 / 非有限值处理。
+    #[test]
+    fn pressure_curve_fitting() {
+        // gamma = 1 时原样。
+        assert!((smooth_pressure(0.5, 1.0) - 0.5).abs() < 1e-6);
+        // gamma < 1 时轻压区更饱满（值更大）。
+        assert!(smooth_pressure(0.5, 0.5) > 0.5);
+        // gamma > 1 时轻压区更细（值更小）。
+        assert!(smooth_pressure(0.5, 2.0) < 0.5);
+        // 越界夹取；非有限值按满压。
+        assert_eq!(smooth_pressure(2.0, 1.0), 1.0);
+        assert_eq!(smooth_pressure(-1.0, 1.0), 0.0);
+        assert_eq!(smooth_pressure(f32::NAN, 1.0), 1.0);
+        // 非法 gamma 退化为原值。
+        assert!((smooth_pressure(0.4, 0.0) - 0.4).abs() < 1e-6);
+    }
     /// 压感宽度映射与逐段拆分：满压退化为单条平滑路径。
     #[test]
     fn pressure_width_and_segmented_paths() {

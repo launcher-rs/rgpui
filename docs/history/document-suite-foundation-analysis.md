@@ -1682,3 +1682,67 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 - `cargo test -p rgpui --lib revisions_mark`：1 passed（标记落到运行上 + 有效文本排除删除内容 +
   HTML `<ins>` / `<del>`）。
 
+## 五十五、增补：核心富文本的 HTML 解析侧（表格 / 节往返闭环）
+
+§五十二 / §五十三 的表格与节此前**只出不进**（解析侧仍按普通段落处理），本轮补上解析：
+
+- **表格**：`<table>` / `<tr>` / `<th>` / `<td>` 解析为 `RichTable`；每个单元格是新建的
+  段落（与 `add_table` 的表示一致），列对齐取 `align` 属性或 `style` 的 `text-align`。
+  注意 `<tr>` 原本落在通用块级标签分支里，表格处理需前置才能拿到行 / 单元格边界。
+- **节**：`<section>` 解析为 `RichSection`（节内段落连续，标题取 `data-title` 属性）。
+- 序列化侧同步：节标题改用 `data-title` 属性输出（不再输出 `<h3>`），避免标题与内容
+  段落重复。
+
+### 验证
+
+- `cargo test -p rgpui --lib html_tables_and_sections`：1 passed（解析后仍是表格 / 节，
+  列对齐与节标题都还原；再序列化仍带表格与节）。
+
+## 五十六、增补：核心富文本的 Markdown 导出
+
+与 HTML 导出互补，给「文档编辑器导出 .md」一条现成路径。
+
+- `RichTextDoc::to_markdown() -> String`：
+  - 标题级别 → `#`×级别；列表 → `- ` / `1. `；引用块 → `> `；
+  - 行内样式 → `**加粗**` / `*斜体*` / `~~删除线~~` / `` `代码` ``；链接 → `[文本](地址)`；
+  - 修订标记 → 内联 HTML `<ins>` / `<del>`（纯 Markdown 无对应语法，内联 HTML 是通用做法）；
+  - 表格 → Markdown 表格（表头行 + `---` 分隔行 + 数据行）；节标题 → `## 标题`。
+- 段落 / 表格 / 节的输出顺序与渲染一致（表格在其首个单元格段落处、节标题在其首个段落处）。
+
+### 验证
+
+- `cargo test -p rgpui --lib exports_markdown`：1 passed（标题 / 引用 / 样式 / 链接 / 表格都按预期导出）。
+
+## 五十七、增补：核心富文本的查找高亮
+
+`find` 此前只给区间，渲染层不体现「命中在哪」。本轮把命中区间接到渲染上：
+
+- `RichText::highlight_ranges(ranges)`：传入**文档级字符区间**（可直接用
+  `RichTextDoc::find` 的结果），渲染为搜索高亮（主题 warning 浅底），与批注背景分层
+  互不干扰。
+- HTML 序列化不受影响（查找命中只是渲染态，HTML 里不额外标记）。
+
+### 示例
+
+showcase 与 story 的富文本页都加了「查找并高亮『加粗』」按钮（命中数显示在状态行）。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：821 passed + 1 ignored（新增用例覆盖导出与往返；查找高亮为
+  渲染态，由示例页展示）。
+
+## 五十八、增补：Ink 笔迹的曲线平滑与压感整形
+
+ink 模块的两个暂缓项落地（模块文档同步更新）：
+
+- `catmull_rom_path(points, width)`：Catmull-Rom 曲线平滑（三次贝塞尔拟合，控制点
+  `p1 + (p2 - p0) / 6`、`p2 - (p3 - p1) / 6`，两端复制端点）。与既有
+  `stroke_path` 的「中点二次贝塞尔近似」相比，曲线**穿过全部采样点**，笔迹更贴合。
+- `smooth_pressure(pressure, gamma)`：压感曲线整形（幂曲线；`gamma < 1` 让轻压区更饱满、
+  `gamma > 1` 让重压区更突出；非有限值按满压、非法 gamma 退化为原值）。
+
+### 验证
+
+- `cargo test -p rgpui --lib ink`：新增 2 项（Catmull-Rom 路径覆盖全部采样点；压感曲线
+  整形与越界处理）。
+

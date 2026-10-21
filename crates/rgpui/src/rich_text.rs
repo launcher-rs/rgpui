@@ -20,8 +20,14 @@
 //! let element = RichText::new(doc);
 //! ```
 //!
-//! **本版暂缓**（后续增补）：节（section）/分栏、表格、修订、项目符号字体与层级样式、
-//! 可编辑光标与选区（现为只读渲染）。
+//! 结构化能力（都**不引入新的文本空间**，结构只引用文档段落，因此字符坐标编辑与
+//! 批注 / 脚注区间对结构内文本同样生效）：
+//! - 表格 [`RichTable`]（[`RichTextDoc::add_table`]）；
+//! - 节 / 分栏 [`RichSection`]（[`RichTextDoc::add_section`]）；
+//! - 批注 [`Annotation`]、脚注 [`Footnote`]（区间随编辑自动平移）；
+//! - 修订标记（[`RunProps::inserted`] / [`RunProps::deleted`]）。
+//!
+//! **本版暂缓**（后续增补）：项目符号字体与层级样式、可编辑光标与选区（现为只读渲染）。
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -486,6 +492,29 @@ pub struct RichTable {
     pub alignments: Vec<TableAlign>,
 }
 
+/// 表格解析中间态。
+#[derive(Default)]
+struct TableBuilder {
+    /// 表头行的单元格段落索引。
+    header: Vec<usize>,
+    /// 数据行的单元格段落索引。
+    rows: Vec<Vec<usize>>,
+    /// 当前行的单元格段落索引。
+    current_row: Vec<usize>,
+    /// 当前行是否表头行（出现过 `<th>`）。
+    current_is_header: bool,
+    /// 各列对齐。
+    alignments: Vec<TableAlign>,
+}
+
+/// 节解析中间态。
+#[derive(Default)]
+struct SectionBuilder {
+    /// 节内首个段落的索引（节内段落连续）。
+    start: usize,
+    /// 节标题（来自 `data-title` 属性）。
+    title: Option<String>,
+}
 /// 文档节：一组段落 + 分栏排版。
 ///
 /// 与表格同理，节内段落复用文档段落（不引入新的文本空间）：节出现在其**首个段落**
@@ -701,6 +730,96 @@ impl RichTextDoc {
                 }
                 out.push_str(&run.text);
             }
+        }
+        out
+    }
+
+    /// 导出为 Markdown 文本。
+    ///
+    /// 覆盖标题级别、列表、引用块、行内样式（粗 / 斜 / 删除线 / 行内代码）、链接、
+    /// 表格与节（节标题按二级标题输出）；修订标记用内联 HTML（`<ins>` / `<del>`）表达。
+    pub fn to_markdown(&self) -> String {
+        let mut out = String::new();
+        // 段落 → 表格 / 节归属（与渲染同款：按首个单元格 / 段落插入）。
+        let mut table_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut table_cells: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        for (table_index, table) in self.tables.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in table.header.iter().chain(table.rows.iter().flatten()) {
+                table_cells.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                table_at.insert(first, table_index);
+            }
+        }
+        let mut section_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut section_paragraphs: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
+        for (section_index, section) in self.sections.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in &section.paragraphs {
+                section_paragraphs.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                section_at.insert(first, section_index);
+            }
+        }
+
+        let mut index = 0usize;
+        while index < self.paragraphs.len() {
+            // 表格：整表输出一次。
+            if let Some(table_index) = table_at.get(&index) {
+                push_table_markdown(&mut out, &self.tables[*table_index], &self.paragraphs);
+                while index < self.paragraphs.len() && table_cells.contains(&index) {
+                    index += 1;
+                }
+                continue;
+            }
+            // 节：标题按二级标题输出，节内段落照常。
+            if let Some(section_index) = section_at.get(&index) {
+                if let Some(title) = &self.sections[*section_index].title {
+                    out.push_str("## ");
+                    out.push_str(title);
+                    out.push('\n');
+                    out.push('\n');
+                }
+            }
+            if section_paragraphs.contains(&index) {
+                index += 1;
+                continue;
+            }
+            // 普通段落。
+            let para = &self.paragraphs[index];
+            match para.style.list {
+                ListKind::Bullet => {
+                    out.push_str("- ");
+                    out.push_str(&runs_to_markdown(&para.runs));
+                    out.push('\n');
+                }
+                ListKind::Number => {
+                    out.push_str("1. ");
+                    out.push_str(&runs_to_markdown(&para.runs));
+                    out.push('\n');
+                }
+                ListKind::None => {
+                    if para.style.quote {
+                        out.push_str("> ");
+                    }
+                    if let Some(level) = para.style.heading {
+                        for _ in 0..level {
+                            out.push('#');
+                        }
+                        out.push(' ');
+                    }
+                    out.push_str(&runs_to_markdown(&para.runs));
+                    out.push('\n');
+                }
+            }
+            index += 1;
         }
         out
     }
@@ -1079,12 +1198,14 @@ impl RichTextDoc {
             // 节：整节输出一次（节内段落不再单独输出）。
             if let Some(section_index) = section_at.get(&i) {
                 let section = &self.sections[*section_index];
-                out.push_str("<section>");
+                // 节标题走 `data-title` 属性（内容段落另行输出，避免标题重复）。
+                out.push_str("<section");
                 if let Some(title) = &section.title {
-                    out.push_str("<h3>");
-                    escape_html(&mut out, title);
-                    out.push_str("</h3>");
+                    out.push_str(" data-title=\"");
+                    escape_html_attr(&mut out, title);
+                    out.push('"');
                 }
+                out.push('>');
                 for para_index in &section.paragraphs {
                     if let Some(para) = self.paragraphs.get(*para_index) {
                         let spans: Vec<Span> = Vec::new();
@@ -1172,6 +1293,11 @@ impl RichTextDoc {
         let mut open_footnotes: Vec<(usize, usize, u32, String)> = Vec::new();
         // 引用块嵌套深度（`<blockquote>`）。
         let mut quote_depth = 0usize;
+        // 表格 / 节：解析期收集单元格与节内段落，收尾时登记到文档。
+        let mut table: Option<TableBuilder> = None;
+        let mut section: Option<SectionBuilder> = None;
+        let mut tables: Vec<RichTable> = Vec::new();
+        let mut sections: Vec<RichSection> = Vec::new();
 
         while i < bytes.len() && paragraphs.len() <= MAX_PARAS && runs <= MAX_RUNS {
             if bytes[i] == b'<' {
@@ -1200,6 +1326,98 @@ impl RichTextDoc {
                         skip += 1;
                     }
                     continue;
+                }
+                // 表格 / 节：块级结构（单元格与节内段落都是普通段落）。
+                match name.as_str() {
+                    "table" => {
+                        if !closing {
+                            table = Some(TableBuilder::default());
+                        } else if let Some(builder) = table.take() {
+                            tables.push(RichTable {
+                                header: builder.header,
+                                rows: builder.rows,
+                                alignments: builder.alignments,
+                            });
+                        }
+                        continue;
+                    }
+                    "tr" => {
+                        if let Some(builder) = table.as_mut() {
+                            if !closing {
+                                builder.current_row.clear();
+                                builder.current_is_header = false;
+                            } else if !builder.current_row.is_empty() {
+                                if builder.current_is_header {
+                                    builder.header = builder.current_row.clone();
+                                } else {
+                                    builder.rows.push(builder.current_row.clone());
+                                }
+                                builder.current_row.clear();
+                            }
+                        }
+                        continue;
+                    }
+                    "th" | "td" => {
+                        if let Some(builder) = table.as_mut() {
+                            if !closing {
+                                // 新单元格：新建段落承载内容。
+                                paragraphs.push(Paragraph::default());
+                                builder.current_row.push(paragraphs.len() - 1);
+                                if name == "th" {
+                                    builder.current_is_header = true;
+                                }
+                                // 列对齐：`align` 属性或 `style` 里的 `text-align`。
+                                let align = attr(name_src, "align")
+                                    .map(|value| value.to_string())
+                                    .or_else(|| {
+                                        let css = attr(name_src, "style")?.to_ascii_lowercase();
+                                        css_value(&css, "text-align").map(|value| value.to_string())
+                                    });
+                                if let Some(align) = align {
+                                    let value = match align.trim() {
+                                        "center" => Some(TableAlign::Center),
+                                        "right" => Some(TableAlign::Right),
+                                        "left" => Some(TableAlign::Left),
+                                        _ => None,
+                                    };
+                                    if let Some(value) = value {
+                                        let col = builder.current_row.len() - 1;
+                                        while builder.alignments.len() <= col {
+                                            builder.alignments.push(TableAlign::Left);
+                                        }
+                                        builder.alignments[col] = value;
+                                    }
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                    "section" => {
+                        if !closing {
+                            // 新段落承载节内内容（节内段落连续，便于收尾时取范围）。
+                            paragraphs.push(Paragraph::default());
+                            let start = paragraphs.len() - 1;
+                            let title = attr(name_src, "data-title").map(decode_text);
+                            section = Some(SectionBuilder { start, title });
+                        } else if let Some(builder) = section.take() {
+                            let mut end = paragraphs.len();
+                            // 去掉尾部空段。
+                            while end > builder.start
+                                && paragraphs.get(end - 1).is_some_and(Paragraph::is_empty)
+                            {
+                                end -= 1;
+                                paragraphs.remove(end);
+                            }
+                            let indices: Vec<usize> = (builder.start..end).collect();
+                            sections.push(RichSection {
+                                paragraphs: indices,
+                                columns: 1,
+                                title: builder.title,
+                            });
+                        }
+                        continue;
+                    }
+                    _ => {}
                 }
                 if skip > 0 {
                     continue;
@@ -1424,8 +1642,8 @@ impl RichTextDoc {
             paragraphs,
             annotations,
             footnotes,
-            tables: Vec::new(),
-            sections: Vec::new(),
+            tables,
+            sections,
         })
     }
 }
@@ -1540,6 +1758,97 @@ fn push_table_html(
     out.push_str("</table>");
 }
 
+/// 把行内运行序列转成 Markdown。
+fn runs_to_markdown(runs: &[Run]) -> String {
+    let mut out = String::new();
+    for run in runs {
+        if run.text.is_empty() {
+            continue;
+        }
+        let text = &run.text;
+        if run.props.deleted {
+            out.push_str("<del>");
+            out.push_str(text);
+            out.push_str("</del>");
+            continue;
+        }
+        if run.props.inserted {
+            out.push_str("<ins>");
+            out.push_str(text);
+            out.push_str("</ins>");
+            continue;
+        }
+        if let Some(href) = &run.link {
+            out.push('[');
+            out.push_str(text);
+            out.push_str("](");
+            out.push_str(href);
+            out.push(')');
+            continue;
+        }
+        if run.props.code {
+            out.push('`');
+            out.push_str(text);
+            out.push('`');
+            continue;
+        }
+        if run.props.bold {
+            out.push_str("**");
+            out.push_str(text);
+            out.push_str("**");
+            continue;
+        }
+        if run.props.italic {
+            out.push('*');
+            out.push_str(text);
+            out.push('*');
+            continue;
+        }
+        if run.props.strikethrough {
+            out.push_str("~~");
+            out.push_str(text);
+            out.push_str("~~");
+            continue;
+        }
+        out.push_str(text);
+    }
+    out
+}
+
+/// 把表格输出为 Markdown（表头行 + 分隔行 + 数据行）。
+fn push_table_markdown(out: &mut String, table: &RichTable, paragraphs: &[Paragraph]) {
+    let cell_text = |para_index: usize| -> String {
+        paragraphs
+            .get(para_index)
+            .map(|para| runs_to_markdown(&para.runs))
+            .unwrap_or_default()
+    };
+    if !table.header.is_empty() {
+        out.push('|');
+        for para_index in &table.header {
+            out.push(' ');
+            out.push_str(&cell_text(*para_index));
+            out.push_str(" |");
+        }
+        out.push('\n');
+        // 分隔行：按表头列数输出 `---`。
+        out.push('|');
+        for _ in &table.header {
+            out.push_str(" --- |");
+        }
+        out.push('\n');
+    }
+    for row in &table.rows {
+        out.push('|');
+        for para_index in row {
+            out.push(' ');
+            out.push_str(&cell_text(*para_index));
+            out.push_str(" |");
+        }
+        out.push('\n');
+    }
+    out.push('\n');
+}
 /// 输出一个段落的 HTML（`<p>` / `<h1>`…`<h6>` + 内联样式 + 内容）。
 fn push_paragraph_block(out: &mut String, para: &Paragraph, spans: &[Span], doc: &RichTextDoc) {
     let tag = match para.style.heading {
@@ -1601,6 +1910,10 @@ fn push_paragraph_html(
                     out.push_str("\">");
                     escape_html(out, &piece);
                     out.push_str("</sup>");
+                }
+                // 查找命中：只是渲染高亮，HTML 里不额外标记。
+                Some((SpanKind::Highlight, _)) => {
+                    escape_html(out, &piece);
                 }
                 None => {
                     escape_html(out, &piece);
@@ -2018,6 +2331,8 @@ pub struct RichText {
     on_link_click: Option<Arc<dyn Fn(&str, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 基础字号（`None` 表示继承外层字号；标题按级别倍率放大）。
     base_font_size: Option<Pixels>,
+    /// 查找命中区间（文档级字符区间；渲染为搜索高亮）。
+    highlight_ranges: Vec<Range<usize>>,
 }
 
 impl RichText {
@@ -2028,6 +2343,7 @@ impl RichText {
             on_annotation_click: None,
             on_link_click: None,
             base_font_size: None,
+            highlight_ranges: Vec::new(),
         }
     }
 
@@ -2051,6 +2367,14 @@ impl RichText {
         handler: impl Fn(&str, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
         self.on_link_click = Some(Arc::new(handler));
+        self
+    }
+
+    /// 设置查找命中区间（文档级字符区间；渲染为搜索高亮）。
+    ///
+    /// 区间可用 [`RichTextDoc::find`] 的结果直接传入。
+    pub fn highlight_ranges(mut self, ranges: Vec<Range<usize>>) -> Self {
+        self.highlight_ranges = ranges;
         self
     }
 
@@ -2091,6 +2415,8 @@ impl RenderOnce for RichText {
         // 修订配色：插入用主色，删除用弱化前景色。
         let insert_color = theme.tokens.primary.color;
         let delete_color = theme.tokens.muted_foreground.color;
+        // 查找命中高亮（主题 warning 浅底）。
+        let highlight_bg = theme.tokens.warning.opacity(0.3);
         // 标题基准字号：显式设置优先，否则取窗口默认文本字号（rem 字号无法换算时留空）。
         let base_px = self
             .base_font_size
@@ -2167,7 +2493,19 @@ impl RenderOnce for RichText {
                     None
                 }
             };
-            let spans = collect_spans(&self.doc, doc_offset, para.char_len());
+            let mut spans = collect_spans(&self.doc, doc_offset, para.char_len());
+            // 查找命中区间（文档级 → 段内）。
+            for range in &self.highlight_ranges {
+                let start = range.start.max(doc_offset);
+                let end = range.end.min(doc_offset + para.char_len());
+                if start < end {
+                    spans.push(Span {
+                        range: (start - doc_offset)..(end - doc_offset),
+                        kind: SpanKind::Highlight,
+                        id: 0,
+                    });
+                }
+            }
             let heading = para.style.heading;
             let built = build_paragraph(
                 para,
@@ -2181,6 +2519,7 @@ impl RenderOnce for RichText {
                 link_color,
                 insert_color,
                 delete_color,
+                highlight_bg,
                 heading.is_some(),
             );
             let styled = StyledText::new(built.text).with_runs(built.runs);
@@ -2254,6 +2593,8 @@ enum SpanKind {
     Annotation,
     /// 脚注引用标记（主题色）。
     Footnote,
+    /// 查找命中区间（搜索高亮）。
+    Highlight,
 }
 
 /// 段落内的高亮区间（段内字符偏移，左闭右开）。
@@ -2526,6 +2867,7 @@ fn build_paragraph(
     link_color: Hsla,
     insert_color: Hsla,
     delete_color: Hsla,
+    highlight_bg: Hsla,
     bold_all: bool,
 ) -> ParagraphBuild {
     let mut text = String::new();
@@ -2589,6 +2931,9 @@ fn build_paragraph(
                 }
                 Some((SpanKind::Footnote, _)) => {
                     color = footnote_color;
+                }
+                Some((SpanKind::Highlight, _)) => {
+                    background_color = Some(highlight_bg);
                 }
                 None => {}
             }
@@ -3079,6 +3424,54 @@ mod tests {
         assert!(html.contains("引用内容"));
     }
 
+    /// Markdown 导出：标题 / 列表 / 引用 / 行内样式 / 链接 / 表格。
+    #[test]
+    fn exports_markdown() {
+        let mut doc = RichTextDoc::new();
+        let mut title = Paragraph::new("标题");
+        title.style.heading = Some(2);
+        doc.paragraphs.push(title);
+        let mut quote = Paragraph::new("引用内容");
+        quote.style.quote = true;
+        doc.paragraphs.push(quote);
+        doc.paragraphs
+            .push(Paragraph::new("带 **加粗** 与 `代码` 的段落"));
+        let mut link_para = Paragraph::default();
+        link_para.runs = vec![Run::with_link(
+            "链接",
+            RunProps::default(),
+            "https://example.com",
+        )];
+        doc.paragraphs.push(link_para);
+        doc.add_table(&["列"], &[vec!["值"]], vec![TableAlign::Left]);
+        let markdown = doc.to_markdown();
+        assert!(markdown.contains("## 标题"));
+        assert!(markdown.contains("> 引用内容"));
+        assert!(markdown.contains("带 **加粗** 与 `代码` 的段落"));
+        assert!(markdown.contains("[链接](https://example.com)"));
+        assert!(markdown.contains("| 列 |"));
+        assert!(markdown.contains("| --- |"));
+        assert!(markdown.contains("| 值 |"));
+    }
+    /// 表格 / 节的 HTML 往返：解析回来仍是表格 / 节（含列对齐与节标题）。
+    #[test]
+    fn html_tables_and_sections_round_trip() {
+        let html = "<table><tr><th>甲</th><th align=\"right\">乙</th></tr><tr><td>一</td><td>二</td></tr></table><section data-title=\"小节\"><p>节内段落。</p></section>";
+        let doc = RichTextDoc::from_html(html).expect("解析");
+        assert_eq!(doc.tables.len(), 1);
+        let table = &doc.tables[0];
+        assert_eq!(table.header.len(), 2);
+        assert_eq!(table.rows.len(), 1);
+        assert_eq!(table.alignments.get(1), Some(&TableAlign::Right));
+        assert_eq!(doc.sections.len(), 1);
+        assert_eq!(doc.sections[0].title.as_deref(), Some("小节"));
+        assert_eq!(doc.sections[0].paragraphs.len(), 1);
+        // 再序列化仍带表格与节。
+        let out = doc.to_html();
+        assert!(out.contains("<table>"));
+        assert!(out.contains("<th>"));
+        assert!(out.contains("data-title=\"小节\""));
+    }
     /// 修订标记：插入 / 删除区间 + 有效文本（不含删除内容）+ HTML `<ins>` / `<del>`。
     #[test]
     fn revisions_mark_ranges_and_exclude_deleted_text() {
@@ -3114,7 +3507,7 @@ mod tests {
         assert_eq!(doc.paragraphs[first_para].text(), "第一栏");
         // HTML 输出为 section。
         let html = doc.to_html();
-        assert!(html.contains("<section>"));
+        assert!(html.contains("<section"));
         assert!(html.contains("小节"));
     }
     /// 表格：单元格复用段落（可编辑），HTML 输出为 `<table>`。
