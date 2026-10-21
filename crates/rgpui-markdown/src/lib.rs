@@ -14,7 +14,13 @@ pub mod code_block;
 pub mod markdown;
 pub mod rich_text;
 
+/// LaTeX 公式渲染（解析 → 排版 → SVG → 光栅化），由 `latex` feature 门控。
+#[cfg(feature = "latex")]
+pub mod latex;
+
 pub use code_block::{CodeBlock, CodeBlockCopyState};
+#[cfg(feature = "latex")]
+pub use latex::{LatexImage, latex_image, render_latex_svg};
 pub use markdown::Markdown;
 pub use rich_text::{
     CalloutKind, CodeBlockRenderer, LinkClickHandler, ListItem, RichBlock, RichInline,

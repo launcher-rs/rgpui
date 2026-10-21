@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 rgpui = { workspace = true, features = ["charts", "effects", "qr-code", "dom-backend"] }
 rgpui-platform.workspace = true
-rgpui-markdown.workspace = true
+rgpui-markdown = { workspace = true, features = ["latex"] }
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
 
