@@ -1,5 +1,9 @@
 //! 代码块组件：带行号、复制按钮与简易关键字高亮的代码展示。
+//!
+//! 开启 `syntax-highlight` feature 后，代码块改用核心的 tree-sitter 高亮器
+//! （按语言查表，未注册的语言回退到简易分词高亮）。
 
+use rgpui::prelude::ActiveTheme as _;
 use rgpui::*;
 
 /// 复制按钮状态。
@@ -92,7 +96,7 @@ impl CodeBlock {
 }
 
 impl RenderOnce for CodeBlock {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
         let lines: Vec<&str> = self.code.split('\n').collect();
         let is_rust = self
@@ -156,6 +160,22 @@ impl RenderOnce for CodeBlock {
 
         let mut content = div().flex().flex_col().py(px(12.0));
 
+        // 真实语法高亮（`syntax-highlight` feature；按语言查核心高亮器）。
+        #[cfg(feature = "syntax-highlight")]
+        let real_runs = syntax::highlight_runs(&self.code, self.language.as_deref(), window, cx);
+        #[cfg(not(feature = "syntax-highlight"))]
+        let real_runs: Option<Vec<(std::ops::Range<usize>, HighlightStyle)>> = None;
+        #[cfg(not(feature = "syntax-highlight"))]
+        let _ = &window;
+
+        // 每行起始字节偏移（高亮运行按字节区间给出，需按行裁剪）。
+        let mut line_offsets = Vec::with_capacity(lines.len());
+        let mut offset = 0usize;
+        for line_text in &lines {
+            line_offsets.push(offset);
+            offset += line_text.len() + 1;
+        }
+
         for (idx, line_text) in lines.iter().enumerate() {
             let line_num = idx + 1;
             let is_highlighted = self.highlight_lines.contains(&line_num);
@@ -180,17 +200,36 @@ impl RenderOnce for CodeBlock {
             }
 
             let mut code_row = div().flex().flex_row().flex_1().min_w_0();
-            let tokens = tokenize(line_text, is_rust);
 
-            for (kind, text) in tokens {
-                let color = match kind {
-                    TokenKind::Keyword => keyword_color,
-                    TokenKind::StringLiteral => string_color,
-                    TokenKind::Comment => comment_color,
-                    TokenKind::Number => number_color,
-                    TokenKind::Plain => plain_color,
-                };
-                code_row = code_row.child(div().text_color(color).child(text.to_string()));
+            if let Some(runs) = &real_runs {
+                // 真实高亮：按本行字节区间裁剪运行。
+                let line_start = line_offsets[idx];
+                let line_end = line_start + line_text.len();
+                for (range, style) in runs {
+                    if range.end <= line_start {
+                        continue;
+                    }
+                    if range.start >= line_end {
+                        break;
+                    }
+                    let start = range.start.max(line_start);
+                    let end = range.end.min(line_end);
+                    code_row =
+                        code_row.child(styled_span(&self.code[start..end], style, plain_color));
+                }
+            } else {
+                let tokens = tokenize(line_text, is_rust);
+
+                for (kind, text) in tokens {
+                    let color = match kind {
+                        TokenKind::Keyword => keyword_color,
+                        TokenKind::StringLiteral => string_color,
+                        TokenKind::Comment => comment_color,
+                        TokenKind::Number => number_color,
+                        TokenKind::Plain => plain_color,
+                    };
+                    code_row = code_row.child(div().text_color(color).child(text.to_string()));
+                }
             }
 
             row = row.child(code_row);
@@ -222,6 +261,97 @@ impl RenderOnce for CodeBlock {
 /// 直接复用 `rgpui::SafeStrSlice::safe_prefix_until`，不本地手写循环。
 fn code_id_prefix(code: &str) -> &str {
     code.safe_prefix_until(16)
+}
+
+/// 按高亮样式渲染一段文本（颜色缺失时用兜底色）。
+fn styled_span(text: &str, style: &HighlightStyle, fallback: Hsla) -> Div {
+    let mut span = div()
+        .text_color(style.color.unwrap_or(fallback))
+        .child(text.to_string());
+    if let Some(weight) = style.font_weight {
+        span = span.font_weight(weight);
+    }
+    if let Some(font_style) = style.font_style
+        && font_style == FontStyle::Italic
+    {
+        span = span.italic();
+    }
+    if let Some(background) = style.background_color {
+        span = span.bg(background);
+    }
+    span
+}
+
+/// 真实语法高亮（`syntax-highlight` feature）：调用核心 tree-sitter 高亮器。
+///
+/// 高亮结果按「语言 + 代码内容 + 主题语法色」缓存，避免每帧重解析。
+#[cfg(feature = "syntax-highlight")]
+mod syntax {
+    use std::collections::HashMap;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::ops::Range;
+    use std::sync::{Arc, Mutex, OnceLock};
+
+    use rgpui::highlight::{ThemeHighlightResolver, highlighter_for};
+    use rgpui::prelude::ActiveTheme as _;
+    use rgpui::{App, HighlightStyle, Window};
+
+    /// 缓存条目上限（超出后整体清空）。
+    const CACHE_LIMIT: usize = 32;
+
+    /// 缓存键：语言 + 代码哈希 + 主题语法色哈希。
+    type CacheKey = (String, u64, u64);
+
+    /// 高亮运行缓存：值为共享的（区间，样式）列表。
+    fn cache() -> &'static Mutex<HashMap<CacheKey, Arc<Vec<(Range<usize>, HighlightStyle)>>>> {
+        static CACHE: OnceLock<Mutex<HashMap<CacheKey, Arc<Vec<(Range<usize>, HighlightStyle)>>>>> =
+            OnceLock::new();
+        CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    /// 计算代码内容哈希。
+    fn code_hash(code: &str) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        code.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// 取代码块的真实高亮运行（无对应语言高亮器时返回 `None`，回退简易高亮）。
+    pub(super) fn highlight_runs(
+        code: &str,
+        language: Option<&str>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Vec<(Range<usize>, HighlightStyle)>> {
+        let language = language?;
+        let resolver = ThemeHighlightResolver::from_app(cx);
+        let theme_hash = {
+            let mut hasher = DefaultHasher::new();
+            cx.theme().highlight_theme.style.syntax.hash(&mut hasher);
+            hasher.finish()
+        };
+        let key: CacheKey = (language.to_string(), code_hash(code), theme_hash);
+
+        if let Ok(guard) = cache().lock()
+            && let Some(hit) = guard.get(&key)
+        {
+            return Some((**hit).clone());
+        }
+
+        let mut highlighter = highlighter_for(language)?;
+        let rope = ropey::Rope::from_str(code);
+        highlighter.update(None, &rope, false, window, cx);
+        let runs = highlighter.styles(&(0..code.len()), &resolver);
+
+        if let Ok(mut guard) = cache().lock() {
+            if guard.len() >= CACHE_LIMIT {
+                guard.clear();
+            }
+            guard.insert(key, Arc::new(runs.clone()));
+        }
+        Some(runs)
+    }
 }
 
 /// 对一行代码做简易分词（注释/字符串/数字/关键字/普通文本）。

@@ -26,14 +26,56 @@ use crate::{App, HighlightStyle, SharedString, theme::ActiveTheme};
 #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
 pub mod tree_sitter;
 
+/// Bash 高亮器（`tree-sitter-bash` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-bash"))]
+pub use tree_sitter::bash_highlighter;
+/// C 高亮器（`tree-sitter-c` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-c"))]
+pub use tree_sitter::c_highlighter;
+/// C# 高亮器（`tree-sitter-c-sharp` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-c-sharp"))]
+pub use tree_sitter::c_sharp_highlighter;
+/// C++ 高亮器（`tree-sitter-cpp` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-cpp"))]
+pub use tree_sitter::cpp_highlighter;
+/// CSS 高亮器（`tree-sitter-css` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-css"))]
+pub use tree_sitter::css_highlighter;
+/// Go 高亮器（`tree-sitter-go` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-go"))]
+pub use tree_sitter::go_highlighter;
+/// HTML 高亮器（`tree-sitter-html` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-html"))]
+pub use tree_sitter::html_highlighter;
+/// Java 高亮器（`tree-sitter-java` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-java"))]
+pub use tree_sitter::java_highlighter;
+/// JavaScript 高亮器（`tree-sitter-javascript` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-javascript"))]
+pub use tree_sitter::javascript_highlighter;
 /// JSON 高亮器（O6，`tree-sitter-json` feature 门控）。
 #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-json"))]
 pub use tree_sitter::json_highlighter;
+/// PHP 高亮器（`tree-sitter-php` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-php"))]
+pub use tree_sitter::php_highlighter;
+/// Python 高亮器（`tree-sitter-python` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-python"))]
+pub use tree_sitter::python_highlighter;
+/// Ruby 高亮器（`tree-sitter-ruby` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-ruby"))]
+pub use tree_sitter::ruby_highlighter;
 /// TOML 高亮器（O6，`tree-sitter-toml` feature 门控）。
 #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-toml"))]
 pub use tree_sitter::toml_highlighter;
+/// YAML 高亮器（`tree-sitter-yaml` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-yaml"))]
+pub use tree_sitter::yaml_highlighter;
 #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
 pub use tree_sitter::{TreeSitterHighlighter, rust_highlighter};
+/// TypeScript / TSX 高亮器（`tree-sitter-typescript` feature 门控）。
+#[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-typescript"))]
+pub use tree_sitter::{tsx_highlighter, typescript_highlighter};
 
 /// 语法高亮 trait。
 ///
@@ -204,6 +246,11 @@ static HIGHLIGHTER_REGISTRY: std::sync::LazyLock<
 /// 新语言三步（JSON/TOML 已进 1.2，其余按需加）：1. 加 `tree-sitter-xxx`
 /// 可选依赖 + feature 门；2. 写 `Highlighter` 实现（query 随 grammar 版本保证
 /// 有效，抄 `tree_sitter.rs` 的 Rust 实现）；3. 本函数一行注册。
+/// 已内置的语言包：`tree-sitter`（Rust）/ `tree-sitter-json` / `tree-sitter-toml` /
+/// `tree-sitter-javascript` / `tree-sitter-typescript`（含 TSX）/ `tree-sitter-python` /
+/// `tree-sitter-bash` / `tree-sitter-go` / `tree-sitter-c` / `tree-sitter-cpp` /
+/// `tree-sitter-c-sharp` / `tree-sitter-java` / `tree-sitter-ruby` / `tree-sitter-php` /
+/// `tree-sitter-css` / `tree-sitter-html` / `tree-sitter-yaml`。
 /// wasm 下 tree-sitter 整体不可用，注册了也降级（见 `highlighter_for`）。
 pub fn register_highlighter(language: &'static str, factory: HighlighterFactory) {
     if let Ok(mut registry) = HIGHLIGHTER_REGISTRY.write() {
@@ -233,11 +280,71 @@ pub fn highlighter_for(language: &str) -> Option<Box<dyn Highlighter>> {
     if language == "toml" {
         return Some(toml_highlighter());
     }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-javascript"))]
+    if language == "javascript" || language == "js" {
+        return Some(javascript_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-typescript"))]
+    if language == "typescript" || language == "ts" {
+        return Some(typescript_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-typescript"))]
+    if language == "tsx" {
+        return Some(tsx_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-python"))]
+    if language == "python" || language == "py" {
+        return Some(python_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-bash"))]
+    if language == "bash" || language == "sh" || language == "shell" {
+        return Some(bash_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-go"))]
+    if language == "go" || language == "golang" {
+        return Some(go_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-c"))]
+    if language == "c" {
+        return Some(c_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-cpp"))]
+    if language == "cpp" || language == "c++" {
+        return Some(cpp_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-c-sharp"))]
+    if language == "c_sharp" || language == "csharp" || language == "cs" {
+        return Some(c_sharp_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-java"))]
+    if language == "java" {
+        return Some(java_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-ruby"))]
+    if language == "ruby" || language == "rb" {
+        return Some(ruby_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-php"))]
+    if language == "php" {
+        return Some(php_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-css"))]
+    if language == "css" {
+        return Some(css_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-html"))]
+    if language == "html" {
+        return Some(html_highlighter());
+    }
+    #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter-yaml"))]
+    if language == "yaml" || language == "yml" {
+        return Some(yaml_highlighter());
+    }
     None
 }
 
 /// 支持的语言列表（候选名录：文档/UI 展示用，可用性以 [`highlighter_for`] 为准，
-/// 1.2 实现 Rust/JSON/TOML，其余语言包不进）。
+/// 语言包按 `tree-sitter-<语言>` feature 门控，未开启的语言不可用）。
 pub fn supported_languages() -> Vec<&'static str> {
     vec![
         "rust",

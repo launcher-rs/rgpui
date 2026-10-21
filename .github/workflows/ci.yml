@@ -97,9 +97,12 @@ jobs:
       - name: cargo check (feature combos)
         # 纯 Rust 组合三平台都跑；需要系统库的 webview 只在 Linux 跑
         #（macOS/Windows 的 webview 依赖各平台 SDK，不在 CI 里装）。
-        # 注意别加 scap/screen-capture：已知编译失败（AGENTS.md）。
+        # 注意别加 scap/screen-capture：需要平台屏幕捕获后端，CI 容器不具备，
+        # 该 feature 由本地验证覆盖（见 AGENTS.md「跨平台注意」）。
         run: |
           cargo check -p rgpui --features editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter,tree-sitter-json,tree-sitter-toml,ribbon,viewport
+          # 多语言语法高亮包（每个语言一个 feature，纯 C 解析器，三平台可编）
+          cargo check -p rgpui --features tree-sitter-javascript,tree-sitter-typescript,tree-sitter-python,tree-sitter-bash,tree-sitter-go,tree-sitter-c,tree-sitter-cpp,tree-sitter-c-sharp,tree-sitter-java,tree-sitter-ruby,tree-sitter-php,tree-sitter-css,tree-sitter-html,tree-sitter-yaml
 
       - name: cargo check (webview)
         if: runner.os == 'Linux'
