@@ -1662,3 +1662,23 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 
 - `cargo test -p rgpui --lib section_reuses`：1 passed（段落复用 + 分栏夹取 + HTML 输出）。
 
+## 五十四、增补：核心富文本的修订标记（tracked changes）
+
+§三十二 清单里的「修订」落地。做法是**在行内属性上打标记**（不引入新的文本空间）：
+
+- `RunProps` 新增 `inserted` / `deleted` 两个标记（+ builder `inserted()` / `deleted()`）。
+- 接口：
+  - `mark_inserted(range)`：标记为修订插入（渲染为主色 + 下划线）；
+  - `mark_deleted(range)`：标记为修订删除（**文本保留在文档里**，渲染为删除线 + 变暗）；
+  - `clear_revisions(range)`：清除标记；
+  - `effective_text()`：不含删除内容的文本（复制 / 导出用；`plain_text()` 仍是模型原文）。
+- HTML：插入输出 `<ins>`、删除输出 `<del>`。
+- 示例：showcase 与 story 的富文本页都加了「插入 / 删除」演示段。
+
+至此 §三十二 富文本清单（分节 / 分栏 / 表格 / 批注 / 脚注 / 修订）全部落地。
+
+### 验证
+
+- `cargo test -p rgpui --lib revisions_mark`：1 passed（标记落到运行上 + 有效文本排除删除内容 +
+  HTML `<ins>` / `<del>`）。
+

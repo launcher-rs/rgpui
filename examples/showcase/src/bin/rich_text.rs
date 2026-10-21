@@ -486,6 +486,12 @@ fn sample_doc() -> RichTextDoc {
     }
     let len = doc.char_len();
     doc.insert_footnote(len, "*", "脚注示例：文末脚注内容");
+    // 修订标记：插入为主色下划线，删除为删除线变暗。
+    let revised = Paragraph::new("这一段演示修订：插入与删除。");
+    doc.paragraphs.push(revised);
+    doc.mark_inserted(0..4);
+    doc.mark_deleted(10..13);
+
     // 分栏节（段落复用，按栏数排布）。
     doc.add_section(
         &[

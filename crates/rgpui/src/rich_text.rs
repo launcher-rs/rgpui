@@ -44,7 +44,7 @@ const INDENT_PX: f32 = 24.0;
 /// 缩进的最大层级。
 const MAX_INDENT: u8 = 8;
 
-/// 行内富文本属性：粗体/斜体/下划线/删除线/行内代码 + 可选前景色。
+/// 行内富文本属性：粗体/斜体/下划线/删除线/行内代码 + 修订标记 + 可选前景色。
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RunProps {
     /// 是否粗体。
@@ -57,6 +57,10 @@ pub struct RunProps {
     pub strikethrough: bool,
     /// 是否行内代码（等宽字体 + 浅底）。
     pub code: bool,
+    /// 是否为修订插入（渲染为主色 + 下划线）。
+    pub inserted: bool,
+    /// 是否为修订删除（渲染为删除线 + 变暗；文本仍留在文档里）。
+    pub deleted: bool,
     /// 前景色覆盖；`None` 表示跟随主题/父级。
     pub color: Option<Hsla>,
 }
@@ -94,6 +98,18 @@ impl RunProps {
     /// 置为行内代码。
     pub fn code(mut self) -> Self {
         self.code = true;
+        self
+    }
+
+    /// 置为修订插入（主色 + 下划线）。
+    pub fn inserted(mut self) -> Self {
+        self.inserted = true;
+        self
+    }
+
+    /// 置为修订删除（删除线 + 变暗；文本仍留在文档里）。
+    pub fn deleted(mut self) -> Self {
+        self.deleted = true;
         self
     }
 
@@ -652,6 +668,41 @@ impl RichTextDoc {
         }
         self.tables.push(table);
         self.tables.len() - 1
+    }
+
+    /// 标记区间为修订插入（渲染为主色 + 下划线）。
+    pub fn mark_inserted(&mut self, range: Range<usize>) {
+        self.apply_props(range, |props| props.inserted = true);
+    }
+
+    /// 标记区间为修订删除（文本保留在文档里，渲染为删除线 + 变暗）。
+    pub fn mark_deleted(&mut self, range: Range<usize>) {
+        self.apply_props(range, |props| props.deleted = true);
+    }
+
+    /// 清除区间上的修订标记。
+    pub fn clear_revisions(&mut self, range: Range<usize>) {
+        self.apply_props(range, |props| {
+            props.inserted = false;
+            props.deleted = false;
+        });
+    }
+
+    /// 有效文本（不含修订删除的内容；复制 / 导出用）。
+    pub fn effective_text(&self) -> String {
+        let mut out = String::new();
+        for (index, para) in self.paragraphs.iter().enumerate() {
+            if index > 0 {
+                out.push('\n');
+            }
+            for run in &para.runs {
+                if run.props.deleted {
+                    continue;
+                }
+                out.push_str(&run.text);
+            }
+        }
+        out
     }
 
     /// 取表格（按索引）。
@@ -1322,6 +1373,8 @@ impl RichTextDoc {
                         underline: style.underline,
                         strikethrough: style.strikethrough,
                         code: style.code,
+                        inserted: false,
+                        deleted: false,
                         color: style.color,
                     },
                     link,
@@ -1595,6 +1648,14 @@ fn run_tags(props: &RunProps) -> (String, String) {
     if props.strikethrough {
         open.push_str("<s>");
         close.insert_str(0, "</s>");
+    }
+    if props.inserted {
+        open.push_str("<ins>");
+        close.insert_str(0, "</ins>");
+    }
+    if props.deleted {
+        open.push_str("<del>");
+        close.insert_str(0, "</del>");
     }
     if props.code {
         open.push_str("<code>");
@@ -2027,6 +2088,9 @@ impl RenderOnce for RichText {
         let footnote_color = theme.tokens.primary.color;
         // 链接颜色（主题主色）。
         let link_color = theme.tokens.primary.color;
+        // 修订配色：插入用主色，删除用弱化前景色。
+        let insert_color = theme.tokens.primary.color;
+        let delete_color = theme.tokens.muted_foreground.color;
         // 标题基准字号：显式设置优先，否则取窗口默认文本字号（rem 字号无法换算时留空）。
         let base_px = self
             .base_font_size
@@ -2115,6 +2179,8 @@ impl RenderOnce for RichText {
                 annotation_bg,
                 footnote_color,
                 link_color,
+                insert_color,
+                delete_color,
                 heading.is_some(),
             );
             let styled = StyledText::new(built.text).with_runs(built.runs);
@@ -2422,15 +2488,16 @@ fn build_cell_runs(para: &Paragraph, base: &crate::TextStyle) -> (String, Vec<Te
             font = font.italic();
         }
         let color = run.props.color.unwrap_or(base.color);
-        let underline = run.props.underline.then(|| UnderlineStyle {
+        let underline = (run.props.underline || run.props.inserted).then(|| UnderlineStyle {
             thickness: px(1.0),
             color: Some(color),
             wavy: false,
         });
-        let strikethrough = run.props.strikethrough.then(|| StrikethroughStyle {
-            thickness: px(1.0),
-            color: Some(color),
-        });
+        let strikethrough =
+            (run.props.strikethrough || run.props.deleted).then(|| StrikethroughStyle {
+                thickness: px(1.0),
+                color: Some(color),
+            });
         runs.push(TextRun {
             len: run.text.len(),
             font,
@@ -2457,6 +2524,8 @@ fn build_paragraph(
     annotation_bg: Hsla,
     footnote_color: Hsla,
     link_color: Hsla,
+    insert_color: Hsla,
+    delete_color: Hsla,
     bold_all: bool,
 ) -> ParagraphBuild {
     let mut text = String::new();
@@ -2507,6 +2576,13 @@ fn build_paragraph(
             if is_link {
                 color = link_color;
             }
+            // 修订：插入为主色 + 下划线；删除为变暗 + 删除线。
+            if run.props.inserted {
+                color = insert_color;
+            }
+            if run.props.deleted {
+                color = delete_color;
+            }
             match kind {
                 Some((SpanKind::Annotation, _)) => {
                     background_color = Some(annotation_bg);
@@ -2516,15 +2592,17 @@ fn build_paragraph(
                 }
                 None => {}
             }
-            let underline = (run.props.underline || is_link).then(|| UnderlineStyle {
-                thickness: px(1.0),
-                color: Some(color),
-                wavy: false,
-            });
-            let strikethrough = run.props.strikethrough.then(|| StrikethroughStyle {
-                thickness: px(1.0),
-                color: Some(color),
-            });
+            let underline =
+                (run.props.underline || is_link || run.props.inserted).then(|| UnderlineStyle {
+                    thickness: px(1.0),
+                    color: Some(color),
+                    wavy: false,
+                });
+            let strikethrough =
+                (run.props.strikethrough || run.props.deleted).then(|| StrikethroughStyle {
+                    thickness: px(1.0),
+                    color: Some(color),
+                });
             runs.push(TextRun {
                 len: piece.len(),
                 font,
@@ -3001,6 +3079,25 @@ mod tests {
         assert!(html.contains("引用内容"));
     }
 
+    /// 修订标记：插入 / 删除区间 + 有效文本（不含删除内容）+ HTML `<ins>` / `<del>`。
+    #[test]
+    fn revisions_mark_ranges_and_exclude_deleted_text() {
+        let mut doc = RichTextDoc::from_plain_text("hello world");
+        doc.mark_inserted(0..5);
+        doc.mark_deleted(6..11);
+        let runs = &doc.paragraphs[0].runs;
+        assert!(runs.iter().any(|run| run.props.inserted));
+        assert!(runs.iter().any(|run| run.props.deleted));
+        // 有效文本不含删除内容（复制 / 导出用）。
+        assert_eq!(doc.effective_text(), "hello ");
+        // HTML 输出 ins / del。
+        let html = doc.to_html();
+        assert!(html.contains("<ins>"));
+        assert!(html.contains("<del>"));
+        // 清除标记后恢复完整文本。
+        doc.clear_revisions(0..11);
+        assert_eq!(doc.effective_text(), "hello world");
+    }
     /// 文档节：段落复用 + 分栏 + HTML 输出。
     #[test]
     fn section_reuses_paragraphs_and_columns() {
