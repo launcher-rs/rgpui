@@ -886,9 +886,10 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   组件侧另有走势图 / 波形摘要节点 2 项 + 图表摘要节点 7 项（饼 / 仪表盘 / 雷达 / 树图 /
   折线 / 面积 / 通用坐标轴，`charts` feature 门控）。
 
-**本版暂缓**（后续增补）：把 `PageView` / `SheetGrid` 等既有自绘组件接到本模块、
-行 / 列（表格）语义与 `Role::Cell` 的 `row_index`/`column_index` 扩展、
-虚拟滚动下的语义节点裁剪与 `ScrollIntoView`。
+**本版暂缓**（后续增补）：`Role::Cell` 行 / 列语义（`row_index`/`column_index`）与
+虚拟滚动下的语义节点裁剪 / `ScrollIntoView`。注：`SheetGrid` / `PageView` 本身全部经
+div / 虚拟列表渲染、原生进入无障碍树（单元格还带 `sheet-cell:{r}:{c}` 元素 id），
+**画布语义接线不适用** —— 后续方向是给这些 div 标注结构化语义，而非画布语义。
 
 ## 二十九、P2 落地：国际文本 —— bidi 与东亚禁则（核心，无 feature 门控）
 
@@ -1017,8 +1018,13 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | 仪表盘图表 `components/charts`（`charts` feature） | 画布语义接线：`Gauge::a11y` / `PieChart::a11y`（含 `Donut` 变体）/ `RadarChart::a11y` / `TreeMap::a11y` / `LineChart::a11y` / `AreaChart::a11y` / `Chart::a11y` 各自发布一个整体摘要节点（扇区占比 / 进度 / 轴值 / 顶层占比 / 逐系列极值，零值剔除、超长截断）；div 点阵渲染的 `DonutChart` / `Heatmap` / `BarChart` 本身有子节点，无需接线 |
 
 仍未做（保持暂缓）：富文本分节 / 表格 / 批注 / 脚注、
-更多自绘组件接线画布语义（表格 / 页视图）、bidi 视觉重排、
-取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
+bidi 视觉重排、取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
+
+> 备注：此前暂缓的「更多自绘组件接线画布语义」至此收官——canva 绘制的图表家族已全部接入
+> （走势图 / 波形 / 饼 / 仪表盘 / 雷达 / 树图 / 折线 / 面积 / 通用坐标轴），
+> div 点阵渲染的 `DonutChart` / `Heatmap` / `BarChart` 与 div / 虚拟列表渲染的
+> `SheetGrid` / `PageView` 原生进入无障碍树，画布语义接线对其不适用
+> （后续方向见 §二十八 暂缓：`Role::Cell` 行列语义标注）。
 
 ### AGENTS 完整性检查清单（12 项）逐条结果
 
