@@ -1835,3 +1835,20 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 ### 验证
 
 - `cargo test -p rgpui --lib erase_local`：1 passed（中段被剪 → 笔画切成两段，端点正确）。
+## 六十三、增补：动画时间线的多选关键帧
+
+§二十四 暂缓项「多选关键帧与框选」中的**多选**部分落地（框选仍待做）：
+
+- 状态新增 `multi_keyframes`（附加多选集合，仅对当前轨道有效）：
+  - `toggle_keyframe_selection(track, index, cx)`：Ctrl / Cmd 点击切换附加选中；换轨道时
+    落到新轨道的主选中项并清空集合；
+  - `selected_keyframe_indices()`：主选中项在前、其余按升序；
+  - `is_keyframe_selected(track, keyframe)`：主项或附加项均算选中（渲染高亮用）；
+  - `remove_selected_keyframes(cx)`：删除全部选中（逐个抛 `KeyframeRemoved`）。
+- 交互：关键帧上 **Ctrl / Cmd 点击**切换多选（不进入拖拽）；Delete / Backspace 键删除
+  全部选中（此前只删主选中项）。
+- 指针事件：`on_pointer_down` 增加 `modifiers` 参数（其它调用点传 `Modifiers::default()`）。
+
+### 验证
+
+- `cargo test -p rgpui --lib multi_select_keyframes`：1 passed（切换附加选中、取消、批量删除）。

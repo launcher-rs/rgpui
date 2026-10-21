@@ -137,7 +137,7 @@ impl TimelineApp {
         Self {
             state,
             playing: false,
-            status: "拖拽标尺移动播放头 · 拖拽关键帧改时间 / 改值 · 双击轨道空白新增".into(),
+            status: "拖拽标尺移动播放头 · 拖拽关键帧改时间 / 改值 · Ctrl+点击多选关键帧 · 双击轨道空白新增".into(),
         }
     }
 
