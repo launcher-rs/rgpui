@@ -130,6 +130,54 @@ impl RichTextApp {
         self.status = "已重置为样例文档".into();
         cx.notify();
     }
+
+    /// 给正文里的某个词加一条批注。
+    fn add_annotation(&mut self, cx: &mut Context<Self>) {
+        let plain = self.doc.plain_text();
+        match char_range(&plain, "颜色") {
+            Some(range) => {
+                let id = self.doc.add_annotation(range, "批注示例：这里用红色标注");
+                if let Some(annotation) = self.doc.annotation_mut(id) {
+                    annotation.author = Some("示例".to_string());
+                }
+                self.status = format!("已添加批注 #{id}").into();
+            }
+            None => self.status = "未在文档中找到「颜色」".into(),
+        }
+        cx.notify();
+    }
+
+    /// 删除第一条批注。
+    fn remove_first_annotation(&mut self, cx: &mut Context<Self>) {
+        match self.doc.annotations.first().map(|item| item.id) {
+            Some(id) => {
+                self.doc.remove_annotation(id);
+                self.status = format!("已删除批注 #{id}").into();
+            }
+            None => self.status = "当前没有批注".into(),
+        }
+        cx.notify();
+    }
+
+    /// 在正文末尾插入脚注引用。
+    fn add_footnote(&mut self, cx: &mut Context<Self>) {
+        let len = self.doc.char_len();
+        let id = self.doc.insert_footnote(len, "*", "脚注示例：文末脚注内容");
+        self.status = format!("已插入脚注 #{id}").into();
+        cx.notify();
+    }
+
+    /// 删除第一条脚注（引用标记一并移除）。
+    fn remove_first_footnote(&mut self, cx: &mut Context<Self>) {
+        match self.doc.footnotes.first().map(|item| item.id) {
+            Some(id) => {
+                self.doc.remove_footnote(id);
+                self.status = format!("已删除脚注 #{id}").into();
+            }
+            None => self.status = "当前没有脚注".into(),
+        }
+        cx.notify();
+    }
 }
 
 impl Render for RichTextApp {
@@ -186,6 +234,34 @@ impl Render for RichTextApp {
                 let handle = handle.clone();
                 move |_event, _window, cx| handle.update(cx, |this, cx| this.copy_html(cx))
             }))
+            .child(Button::new("add-annotation").label("添加批注").on_click({
+                let handle = handle.clone();
+                move |_event, _window, cx| handle.update(cx, |this, cx| this.add_annotation(cx))
+            }))
+            .child(
+                Button::new("remove-annotation")
+                    .label("删除首条批注")
+                    .on_click({
+                        let handle = handle.clone();
+                        move |_event, _window, cx| {
+                            handle.update(cx, |this, cx| this.remove_first_annotation(cx))
+                        }
+                    }),
+            )
+            .child(Button::new("add-footnote").label("插入脚注").on_click({
+                let handle = handle.clone();
+                move |_event, _window, cx| handle.update(cx, |this, cx| this.add_footnote(cx))
+            }))
+            .child(
+                Button::new("remove-footnote")
+                    .label("删除首条脚注")
+                    .on_click({
+                        let handle = handle.clone();
+                        move |_event, _window, cx| {
+                            handle.update(cx, |this, cx| this.remove_first_footnote(cx))
+                        }
+                    }),
+            )
             .child(Button::new("paste").label("从剪贴板粘贴").on_click({
                 let handle = handle.clone();
                 move |_event, _window, cx| handle.update(cx, |this, cx| this.paste(cx))
@@ -200,6 +276,30 @@ impl Render for RichTextApp {
 
         let html = self.doc.to_html();
         let html_preview = preview(&html, 320);
+        // 批注点击：回传到应用状态（示例展示批注 id）。
+        let annotation_handle = self.handle.clone();
+
+        // 批注 / 脚注清单（展示模型内容与区间）。
+        let mut notes = div().flex().flex_col().gap_1().text_xs();
+        for annotation in &self.doc.annotations {
+            notes = notes.child(format!(
+                "批注 #{} [{}..{}] {}：{}",
+                annotation.id,
+                annotation.range.start,
+                annotation.range.end,
+                annotation.author.as_deref().unwrap_or("匿名"),
+                annotation.note
+            ));
+        }
+        for footnote in &self.doc.footnotes {
+            notes = notes.child(format!(
+                "脚注 #{} [{}..{}]：{}",
+                footnote.id, footnote.range.start, footnote.range.end, footnote.text
+            ));
+        }
+        if self.doc.annotations.is_empty() && self.doc.footnotes.is_empty() {
+            notes = notes.child("（暂无批注与脚注）");
+        }
 
         div()
             .flex()
@@ -221,7 +321,28 @@ impl Render for RichTextApp {
                     .border_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().secondary)
-                    .child(RichText::new(self.doc.clone())),
+                    .child(RichText::new(self.doc.clone()).on_annotation_click(
+                        move |id, _window, cx| {
+                            annotation_handle.update(cx, |this, cx| {
+                                this.status = format!("点击了批注 #{id}").into();
+                                cx.notify();
+                            });
+                        },
+                    )),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("批注与脚注："),
+            )
+            .child(
+                div()
+                    .p_2()
+                    .rounded_md()
+                    .bg(cx.theme().secondary)
+                    .text_xs()
+                    .child(notes),
             )
             .child(
                 div()
@@ -276,6 +397,17 @@ fn sample_doc() -> RichTextDoc {
     number_b.style.list = ListKind::Number;
 
     doc.paragraphs = vec![title, body, bullet_a, bullet_b, number_a, number_b];
+
+    // 预置一条批注与一个脚注（正文高亮 + 文末脚注）。
+    let plain = doc.plain_text();
+    if let Some(range) = char_range(&plain, "加粗") {
+        let id = doc.add_annotation(range, "批注示例：加粗处可再确认语气");
+        if let Some(annotation) = doc.annotation_mut(id) {
+            annotation.author = Some("示例".to_string());
+        }
+    }
+    let len = doc.char_len();
+    doc.insert_footnote(len, "*", "脚注示例：文末脚注内容");
     doc
 }
 

@@ -1261,4 +1261,68 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 - `cargo check -p rgpui-markdown` 四种 feature 组合通过；`cargo check --workspace` 通过；
   `cargo fmt --all` 无变更。
 
+## 三十七、增补：核心富文本的批注与脚注
+
+§三十二 仍未做清单里的「富文本批注 / 文末脚注」落地。两者都做成**旁挂层**（不改段落 /
+运行的块级结构），因此不破坏既有的字符坐标编辑模型。
+
+### 模型
+
+- `Annotation { id, range, note, author }`：挂在文档字符区间上的备注。
+- `Footnote { id, range, text }`：正文引用标记（普通字符，插入时一并写入）+ 文末脚注文本。
+- `RichTextDoc` 新增 `annotations` / `footnotes` 两个字段（默认空）。
+
+### 接口
+
+- 批注：`add_annotation(range, note) -> u32`（超界自动夹取）、`annotation(id)`、
+  `annotation_mut(id)`（设置作者等）、`annotations_at(index)`（按位置查）、`remove_annotation(id)`。
+- 脚注：`insert_footnote(index, marker, text) -> u32`（写标记 + 登记）、`footnote(id)`、
+  `remove_footnote(id)`（记录与正文标记一并删除）。
+
+### 编辑语义（区间随编辑平移）
+
+- 插入：插入点之前的区间不动，之后的整体后移，覆盖插入点的区间变长。
+- 删除：删除点之前的保持不变，之后的整体前移，相交的按存活文本收缩（删除后前后两段
+  相邻，区间长度取存活字符数）。
+- `insert_text` / `delete` 均已挂钩（`split_paragraph` / `merge_paragraph` 走同一路径，
+  自动继承）。
+
+### 渲染与 HTML 往返
+
+- 渲染：`RichText` 按区间切分运行 —— 批注区间给**背景高亮**（主题 warning 色），
+  脚注引用标记给**主题主色**；`build_paragraph` 收到段内区间列表，逐运行按边界切分。
+- HTML：批注序列化为 `<mark data-annotation="id" data-note="…">`，脚注引用序列化为
+  `<sup data-footnote="id" data-text="…">`；`from_html` 反向还原（解析期记段内区间，
+  收尾时按段落起点换算成文档级区间）。属性值额外转义引号。
+
+### 示例
+
+`examples/showcase/src/bin/rich_text.rs` 增加「添加批注 / 删除首条批注 / 插入脚注 /
+删除首条脚注」四个按钮与批注 / 脚注清单区（样例文档预置一条批注与一个脚注）。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：16 passed（新增 4 项：批注增删查、批注区间随
+  编辑平移、脚注插入与删除、批注/脚注 HTML 往返）。
+- `cargo check -p showcase --bin rich_text` 通过；`cargo check --workspace` 通过。
+
+## 三十八、增补：Markdown 文档大纲（TOC）提取
+
+`rgpui-markdown` 新增 `toc` 模块：从 Markdown 源码提取标题，供阅读器渲染目录、
+做「点击标题跳转」与生成锚点链接。
+
+- `extract_headings(source) -> Vec<Heading>`；`Heading { level, text, range, anchor }`：
+  - `level`：标题级别（1–6）；`text`：去掉行内标记（`**加粗**`、`代码`）后的纯文本；
+  - `range`：标题在源码中的字节区间（含 `#` 前缀与行尾换行，便于定位 / 跳转）；
+  - `anchor`：锚点 slug（小写，空白与标点转连字符，保留字母数字与 CJK；同名标题
+    依次追加 `-1`、`-2` 去重，与 GitHub 习惯一致）。
+- 实现走 pulldown-cmark 的 offset 迭代器（`Event::Start(Tag::Heading)` → 收集行内文本
+  → `Event::End(TagEnd::Heading)` 收尾），不额外解析一遍。
+- 示例：`examples/rgpui_story` 新增「文档大纲」页（按层级缩进展示标题 + 锚点）。
+
+### 验证
+
+- `cargo test -p rgpui-markdown --lib`：8 passed（新增 4 项：级别 / 文本 / 区间 / 锚点、
+  行内标记剥离、同名锚点去重、无标题为空）。
+
 
