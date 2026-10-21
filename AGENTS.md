@@ -221,5 +221,3 @@ Web 示例是独立子 crate（含 `index.html`、`trunk.toml`、`.cargo/config.
 
 - 所有函数中文注释（`///` 公开 API，`//` 内部逻辑），不写英文注释。
 
-
-
