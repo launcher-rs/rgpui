@@ -1,7 +1,11 @@
 //! Markdown 渲染组件：将 Markdown 源码解析为富文本块并渲染。
 
+#[cfg(not(feature = "latex"))]
+use crate::rich_text::render_blocks;
+#[cfg(feature = "latex")]
+use crate::rich_text::render_blocks_with_svg;
 use crate::rich_text::{
-    CalloutKind, LinkClickHandler, ListItem, RichBlock, RichInline, TableAlignment, render_blocks,
+    CalloutKind, LinkClickHandler, ListItem, RichBlock, RichInline, TableAlignment,
 };
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use rgpui::*;
@@ -94,6 +98,21 @@ impl RenderOnce for Markdown {
         let base_size = self.base_font_size.unwrap_or(px(14.0));
 
         let parsed = parse_markdown_cached(&self.source);
+        // 公式渲染需要 SVG 渲染器（`latex` feature）；其余情况走无 SVG 的路径。
+        #[cfg(feature = "latex")]
+        let elements = {
+            let renderer = cx.svg_renderer();
+            render_blocks_with_svg(
+                &parsed.0,
+                base_size,
+                &self.on_link_click,
+                "md",
+                theme,
+                &None,
+                &renderer,
+            )
+        };
+        #[cfg(not(feature = "latex"))]
         let elements = render_blocks(&parsed.0, base_size, &self.on_link_click, "md", theme);
 
         self.base
@@ -135,6 +154,8 @@ fn inlines_to_plain_text(inlines: &[RichInline]) -> String {
                 out.push_str(&inlines_to_plain_text(children));
             }
             RichInline::Code(s) => out.push_str(s),
+            // 公式：退化为源码文本。
+            RichInline::Math(s) => out.push_str(s),
             RichInline::Link { text, .. } => {
                 out.push_str(&inlines_to_plain_text(text));
             }
@@ -174,6 +195,9 @@ fn parse_markdown_with_urls(source: &str) -> (Vec<RichBlock>, Vec<Range<usize>>)
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
     options.insert(Options::ENABLE_FOOTNOTES);
+    // 公式：$...$ / $$...$$（`latex` feature 下渲染成公式图片）。
+    #[cfg(feature = "latex")]
+    options.insert(Options::ENABLE_MATH);
 
     let parser = Parser::new_ext(source, options);
     let events: Vec<(Event, Range<usize>)> = parser.into_offset_iter().collect();
@@ -264,6 +288,15 @@ impl UrlTrackingBlockBuilder {
                 self.push_block(RichBlock::HorizontalRule, span);
             }
             Event::Html(html) => self.push_inline(RichInline::Html(html.to_string())),
+            // 行内公式：$...$。
+            #[cfg(feature = "latex")]
+            Event::InlineMath(text) => self.push_inline(RichInline::Math(text.to_string())),
+            // 展示公式：$$...$$（块级事件，单独成块）。
+            #[cfg(feature = "latex")]
+            Event::DisplayMath(text) => {
+                let span = range.clone();
+                self.push_block(RichBlock::Math(text.to_string()), span);
+            }
             Event::TaskListMarker(checked) => {
                 if let Some(list) = self.list_stack.last_mut() {
                     list.current_item_checked = Some(*checked);
@@ -661,6 +694,8 @@ fn try_parse_callout_header(
 mod tests {
     // 显式导入：父模块 `use rgpui::*` 引入的 `test` 模块名会遮蔽内置属性。
     use super::{parse_markdown_cached, parse_markdown_with_urls};
+    #[cfg(feature = "latex")]
+    use crate::rich_text::{RichBlock, RichInline};
 
     /// 缓存正确性：相同内容复用解析结果，不同内容重新解析（含中文）。
     #[test]
@@ -718,5 +753,28 @@ mod tests {
             assert!(doc.is_char_boundary(span.end));
             let _ = &doc[span.clone()];
         }
+    }
+
+    /// 公式解析：行内 `$...$` 进入段落内容，`$$...$$` 单独成块。
+    #[cfg(feature = "latex")]
+    #[test]
+    fn parses_math_inline_and_display() {
+        let doc = "行内 $a^2 + b^2$ 公式。\n\n$$\n\\frac{1}{2}\n$$\n";
+        let (blocks, spans) = parse_markdown_with_urls(doc);
+        // 展示公式单独成块。
+        assert!(
+            blocks
+                .iter()
+                .any(|block| matches!(block, RichBlock::Math(source) if source.contains("frac"))),
+            "展示公式应单独成块：{blocks:?}"
+        );
+        // 行内公式进入段落内容。
+        assert!(
+            blocks.iter().any(|block| matches!(block, RichBlock::Paragraph(inlines)
+                if inlines.iter().any(|inline| matches!(inline, RichInline::Math(source) if source.contains("a^2"))))),
+            "行内公式应进入段落：{blocks:?}"
+        );
+        // 块与区间仍然一一对应。
+        assert_eq!(spans.len(), blocks.len());
     }
 }

@@ -83,6 +83,10 @@ pub enum RichInline {
     Strikethrough(Vec<RichInline>),
     /// 行内代码。
     Code(String),
+    /// 行内公式（LaTeX 源码，不含 `$` 分隔符）。
+    ///
+    /// `latex` feature 下渲染为公式图片，否则降级显示源码文本。
+    Math(String),
     /// 链接。
     Link {
         /// 链接文本。
@@ -173,6 +177,10 @@ pub enum RichBlock {
     },
     /// 水平分割线。
     HorizontalRule,
+    /// 展示公式（LaTeX 源码，不含 `$$` 分隔符）。
+    ///
+    /// `latex` feature 下渲染为公式图片，否则降级显示源码文本。
+    Math(String),
     /// 图片。
     Image {
         /// 替代文本。
@@ -301,6 +309,8 @@ impl InlineFlattener {
                     self.strikethrough = prev;
                 }
                 RichInline::Code(code) => self.push_text(code, true),
+                // 公式降级为源码文本（图片路径在渲染层单独处理）。
+                RichInline::Math(source) => self.push_text(source, false),
                 RichInline::Link { text, url } => {
                     let prev = self.in_link.take();
                     self.in_link = Some(url.clone());
@@ -437,6 +447,137 @@ impl InlineFlattener {
     }
 }
 
+/// 行内公式的字号倍率（相对正文）。
+const INLINE_MATH_SCALE: f32 = 1.12;
+/// 展示公式的字号倍率（相对正文）。
+const DISPLAY_MATH_SCALE: f32 = 1.25;
+
+/// 行内内容分段：文本段与公式段交替。
+enum InlineSegment {
+    /// 文本段（保持原有链接等语义）。
+    Text(Vec<RichInline>),
+    /// 公式段（LaTeX 源码）。
+    Math(String),
+}
+
+/// 行内内容含顶层公式时返回分段结果，否则返回 `None`。
+fn split_math_segments_if_any(inlines: &[RichInline]) -> Option<Vec<InlineSegment>> {
+    if !inlines
+        .iter()
+        .any(|inline| matches!(inline, RichInline::Math(_)))
+    {
+        return None;
+    }
+    Some(split_math_segments(inlines))
+}
+
+/// 按公式切分行内内容。
+///
+/// 只处理顶层公式；嵌套在加粗 / 样式里的公式按源码文本处理（展平器降级路径）。
+fn split_math_segments(inlines: &[RichInline]) -> Vec<InlineSegment> {
+    let mut segments = Vec::new();
+    let mut current: Vec<RichInline> = Vec::new();
+    for inline in inlines {
+        match inline {
+            RichInline::Math(source) => {
+                if !current.is_empty() {
+                    segments.push(InlineSegment::Text(std::mem::take(&mut current)));
+                }
+                segments.push(InlineSegment::Math(source.clone()));
+            }
+            other => current.push(other.clone()),
+        }
+    }
+    if !current.is_empty() {
+        segments.push(InlineSegment::Text(current));
+    }
+    segments
+}
+
+/// 渲染含公式的行内内容：文本段与公式图片段按序排布（整段可换行）。
+fn render_math_segments(
+    segments: Vec<InlineSegment>,
+    base_size: Pixels,
+    link_handler: Option<&LinkClickHandler>,
+    element_id: Option<ElementId>,
+    theme: &Theme,
+    svg: Option<&SvgRenderer>,
+) -> AnyElement {
+    // 段落内多段文本需要各自唯一的元素 id（否则无障碍树出现重名节点）。
+    let base_name = match &element_id {
+        Some(ElementId::Name(name)) => name.to_string(),
+        _ => "rich-inline".to_string(),
+    };
+    let mut row = div()
+        .flex()
+        .flex_row()
+        .flex_wrap()
+        .items_center()
+        .gap(px(2.0))
+        .text_size(base_size)
+        .line_height(relative(1.5));
+    for (index, segment) in segments.into_iter().enumerate() {
+        match segment {
+            InlineSegment::Text(text) => {
+                let id = if index == 0 {
+                    element_id.clone()
+                } else {
+                    Some(ElementId::Name(format!("{base_name}-s{index}").into()))
+                };
+                row = row.child(render_inline_element(
+                    &text,
+                    base_size,
+                    link_handler,
+                    id,
+                    theme,
+                    svg,
+                ));
+            }
+            InlineSegment::Math(source) => {
+                row = row.child(render_math_element(
+                    &source,
+                    px(base_size.as_f32() * INLINE_MATH_SCALE),
+                    theme,
+                    svg,
+                ));
+            }
+        }
+    }
+    row.into_any_element()
+}
+
+/// 渲染公式元素：命中 `latex` feature 且光栅化成功时返回图片，否则降级为源码文本。
+fn render_math_element(
+    source: &str,
+    font_size: Pixels,
+    theme: &Theme,
+    svg: Option<&SvgRenderer>,
+) -> AnyElement {
+    #[cfg(feature = "latex")]
+    if let Some(renderer) = svg
+        && let Some(image) = crate::latex::latex_image(
+            source,
+            theme.tokens.foreground.color,
+            font_size.as_f32(),
+            renderer,
+        )
+    {
+        return img(image.image.clone())
+            .w(image.width)
+            .h(image.height)
+            .into_any_element();
+    }
+    #[cfg(not(feature = "latex"))]
+    let _ = svg;
+    // 降级：等宽显示源码文本。
+    div()
+        .text_size(font_size)
+        .font_family(theme.mono_font_family.clone())
+        .text_color(theme.tokens.muted_foreground)
+        .child(source.to_string())
+        .into_any_element()
+}
+
 /// 渲染行内元素为可点击链接或纯文本。
 pub fn render_inlines(
     inlines: &[RichInline],
@@ -445,6 +586,25 @@ pub fn render_inlines(
     element_id: Option<ElementId>,
     theme: &Theme,
 ) -> AnyElement {
+    render_inlines_with_svg(inlines, base_size, link_handler, element_id, theme, None)
+}
+
+/// 渲染行内元素（可传入 SVG 渲染器，使公式渲染为图片）。
+///
+/// `svg` 为 `None` 时公式降级为源码文本。
+pub fn render_inlines_with_svg(
+    inlines: &[RichInline],
+    base_size: Pixels,
+    link_handler: Option<&LinkClickHandler>,
+    element_id: Option<ElementId>,
+    theme: &Theme,
+    svg: Option<&SvgRenderer>,
+) -> AnyElement {
+    // 含公式时按段渲染：文本段沿用原路径，公式段渲染成图片。
+    if let Some(segments) = split_math_segments_if_any(inlines) {
+        return render_math_segments(segments, base_size, link_handler, element_id, theme, svg);
+    }
+
     let font_family = theme.font_family.clone();
     let font_mono = theme.mono_font_family.clone();
     let text_color = theme.tokens.foreground.color;
@@ -574,6 +734,50 @@ pub fn render_blocks_with(
     theme: &Theme,
     code_block_renderer: &Option<CodeBlockRenderer>,
 ) -> Vec<AnyElement> {
+    render_blocks_inner(
+        blocks,
+        base_size,
+        on_link_click,
+        id_prefix,
+        theme,
+        code_block_renderer,
+        None,
+    )
+}
+
+/// 渲染块列表（可指定代码块自定义渲染器与 SVG 渲染器）。
+///
+/// 传入 SVG 渲染器后，`latex` feature 下公式会渲染成公式图片，否则显示源码文本。
+pub fn render_blocks_with_svg(
+    blocks: &[RichBlock],
+    base_size: Pixels,
+    on_link_click: &Option<LinkClickHandler>,
+    id_prefix: &str,
+    theme: &Theme,
+    code_block_renderer: &Option<CodeBlockRenderer>,
+    svg: &SvgRenderer,
+) -> Vec<AnyElement> {
+    render_blocks_inner(
+        blocks,
+        base_size,
+        on_link_click,
+        id_prefix,
+        theme,
+        code_block_renderer,
+        Some(svg),
+    )
+}
+
+/// 渲染块列表（内部实现）。
+fn render_blocks_inner(
+    blocks: &[RichBlock],
+    base_size: Pixels,
+    on_link_click: &Option<LinkClickHandler>,
+    id_prefix: &str,
+    theme: &Theme,
+    code_block_renderer: &Option<CodeBlockRenderer>,
+    svg: Option<&SvgRenderer>,
+) -> Vec<AnyElement> {
     let mut elements = Vec::new();
     let mut block_idx = 0u32;
 
@@ -586,6 +790,7 @@ pub fn render_blocks_with(
             &mut block_idx,
             theme,
             code_block_renderer,
+            svg,
         );
         elements.push(el);
     }
@@ -602,6 +807,7 @@ fn render_block(
     block_idx: &mut u32,
     theme: &Theme,
     code_block_renderer: &Option<CodeBlockRenderer>,
+    svg: Option<&SvgRenderer>,
 ) -> AnyElement {
     *block_idx += 1;
     let idx = *block_idx;
@@ -609,7 +815,14 @@ fn render_block(
     match block {
         RichBlock::Paragraph(inlines) => {
             let id = ElementId::Name(format!("{}-p-{}", id_prefix, idx).into());
-            let el = render_inline_element(inlines, base_size, on_link_click, Some(id), theme);
+            let el = render_inline_element(
+                inlines,
+                base_size,
+                on_link_click.as_ref(),
+                Some(id),
+                theme,
+                svg,
+            );
             div().mb(px(12.0)).child(el).into_any_element()
         }
 
@@ -624,7 +837,8 @@ fn render_block(
                 _ => px(12.0),
             };
 
-            let el = render_inline_element(content, size, on_link_click, Some(id), theme);
+            let el =
+                render_inline_element(content, size, on_link_click.as_ref(), Some(id), theme, svg);
             div()
                 .mt(top_margin)
                 .mb(px(8.0))
@@ -651,13 +865,14 @@ fn render_block(
         }
 
         RichBlock::BlockQuote(inner_blocks) => {
-            let children = render_blocks_with(
+            let children = render_blocks_inner(
                 inner_blocks,
                 base_size,
                 on_link_click,
                 id_prefix,
                 theme,
                 code_block_renderer,
+                svg,
             );
             div()
                 .mb(px(12.0))
@@ -681,6 +896,7 @@ fn render_block(
                 false,
                 1,
                 theme,
+                svg,
             );
             div().mb(px(12.0)).children(children).into_any_element()
         }
@@ -695,6 +911,7 @@ fn render_block(
                 true,
                 *start,
                 theme,
+                svg,
             );
             div().mb(px(12.0)).children(children).into_any_element()
         }
@@ -712,6 +929,7 @@ fn render_block(
             id_prefix,
             block_idx,
             theme,
+            svg,
         ),
 
         RichBlock::HorizontalRule => div()
@@ -724,6 +942,19 @@ fn render_block(
             .child(img(SharedString::from(url.clone())).max_w(px(600.0)))
             .into_any_element(),
 
+        // 展示公式：居中排布，命中 `latex` feature 且光栅化成功时显示公式图片。
+        RichBlock::Math(source) => div()
+            .mb(px(12.0))
+            .flex()
+            .justify_center()
+            .child(render_math_element(
+                source,
+                px(base_size.as_f32() * DISPLAY_MATH_SCALE),
+                theme,
+                svg,
+            ))
+            .into_any_element(),
+
         RichBlock::Callout {
             kind,
             title,
@@ -731,13 +962,14 @@ fn render_block(
         } => {
             let label = title.as_deref().unwrap_or(kind.label());
             let header_text = format!("{} {}", kind.icon(), label);
-            let children = render_blocks_with(
+            let children = render_blocks_inner(
                 blocks,
                 base_size,
                 on_link_click,
                 id_prefix,
                 theme,
                 code_block_renderer,
+                svg,
             );
             let bg = match kind {
                 CalloutKind::Note => theme.tokens.info,
@@ -767,13 +999,14 @@ fn render_block(
         }
 
         RichBlock::FootnoteDefinition { label, blocks } => {
-            let children = render_blocks_with(
+            let children = render_blocks_inner(
                 blocks,
                 base_size,
                 on_link_click,
                 id_prefix,
                 theme,
                 code_block_renderer,
+                svg,
             );
             div()
                 .mb(px(8.0))
@@ -804,10 +1037,16 @@ fn heading_style(level: u8) -> (Pixels, FontWeight) {
 fn render_inline_element(
     inlines: &[RichInline],
     base_size: Pixels,
-    on_link_click: &Option<LinkClickHandler>,
+    link_handler: Option<&LinkClickHandler>,
     element_id: Option<ElementId>,
     theme: &Theme,
+    svg: Option<&SvgRenderer>,
 ) -> AnyElement {
+    // 含公式时按段渲染：文本段沿用原路径，公式段渲染成图片。
+    if let Some(segments) = split_math_segments_if_any(inlines) {
+        return render_math_segments(segments, base_size, link_handler, element_id, theme, svg);
+    }
+
     let font_family = theme.font_family.clone();
     let font_mono = theme.mono_font_family.clone();
     let text_color = theme.tokens.foreground.color;
@@ -828,7 +1067,7 @@ fn render_inline_element(
         let click_ranges: Vec<std::ops::Range<usize>> =
             flattened.links.iter().map(|l| l.range.clone()).collect();
 
-        if on_link_click.is_some() {
+        if link_handler.is_some() {
             let urls: Vec<String> = flattened.links.iter().map(|l| l.url.clone()).collect();
             return div()
                 .text_size(base_size)
@@ -876,6 +1115,7 @@ fn render_list_items(
     ordered: bool,
     start: u64,
     theme: &Theme,
+    svg: Option<&SvgRenderer>,
 ) -> Vec<AnyElement> {
     let mut elements = Vec::new();
 
@@ -896,8 +1136,14 @@ fn render_list_items(
         };
 
         let id = ElementId::Name(format!("{}-li-{}", id_prefix, idx).into());
-        let content_el =
-            render_inline_element(&item.content, base_size, on_link_click, Some(id), theme);
+        let content_el = render_inline_element(
+            &item.content,
+            base_size,
+            on_link_click.as_ref(),
+            Some(id),
+            theme,
+            svg,
+        );
 
         let row = div()
             .flex()
@@ -926,6 +1172,7 @@ fn render_list_items(
                 false,
                 1,
                 theme,
+                svg,
             );
             elements.push(div().pl(px(20.0)).children(children).into_any_element());
         }
@@ -944,6 +1191,7 @@ fn render_table(
     id_prefix: &str,
     block_idx: &mut u32,
     theme: &Theme,
+    svg: Option<&SvgRenderer>,
 ) -> AnyElement {
     let col_count = headers.len();
     if col_count == 0 {
@@ -970,7 +1218,14 @@ fn render_table(
         for (ci, header) in headers.iter().enumerate() {
             *block_idx += 1;
             let id = ElementId::Name(format!("{}-th-{}", id_prefix, *block_idx).into());
-            let el = render_inline_element(header, base_size, on_link_click, Some(id), theme);
+            let el = render_inline_element(
+                header,
+                base_size,
+                on_link_click.as_ref(),
+                Some(id),
+                theme,
+                svg,
+            );
             let mut cell = div()
                 .flex_1()
                 .px(px(12.0))
@@ -1006,7 +1261,14 @@ fn render_table(
         for (ci, cell_data) in row_data.iter().enumerate() {
             *block_idx += 1;
             let id = ElementId::Name(format!("{}-td-{}", id_prefix, *block_idx).into());
-            let el = render_inline_element(cell_data, base_size, on_link_click, Some(id), theme);
+            let el = render_inline_element(
+                cell_data,
+                base_size,
+                on_link_click.as_ref(),
+                Some(id),
+                theme,
+                svg,
+            );
             let mut cell = div()
                 .flex_1()
                 .px(px(12.0))

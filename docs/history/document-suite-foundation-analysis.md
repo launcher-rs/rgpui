@@ -1101,4 +1101,55 @@ rucap 里成熟的取色浮层移植进 rgpui。
   `eyedropper::tests` 2 项：采样越界与 HEX 格式、放大镜角落钳制）。
 - `cargo check --workspace` 通过；`cargo fmt --all` 无变更。
 
+## 三十四、增补：Markdown LaTeX 公式（`rgpui-markdown` 的 `latex` feature）
+
+### 背景：rumark 调研结论
+
+调研 `D:\code\rumark`（基于已发布 rgpui 的块式 Markdown 编辑器，约 5.5 万行）后确认：
+其**编辑器内核是自建的 WYSIWYG 块模型**（`InlineTextTree` + 每块直接 `impl
+EntityInputHandler`，完全绕开 `input_ui::InputState`），与 `RichTextDoc` / `InputState`
+不兼容，**不能整体移植**。可独立移植的只有与块模型弱耦合的三层：
+
+| 层次 | 内容 | 规模 | 判定 |
+|------|------|------|------|
+| P1 | LaTeX 渲染管线（ratex 体系） | ~250 行 | **本批落地** |
+| P1 | Mermaid 完整渲染（`mermaid-rs-renderer`） | ~765 行 | 后续批（核心已有 flowchart 子集 div 渲染，需先定「两套并存」口径） |
+| P2 | tree-sitter 15 语言高亮包 | ~815 行 | 后续批（并入核心 `tree_sitter.rs` / `highlight`） |
+| P2 | 块 ↔ 源码偏移映射（source map） | ~1700 行 | 规划项（需在 `RichTextDoc` 模型上重写） |
+| P3 | 表格在位编辑 / 大纲工作区 / 导出 | ~10000 行 | 不搬（应用层，核心已有 `DataTable` / `SheetGrid` / `Tree` 对应能力） |
+
+### 落地实现
+
+- **依赖**：`ratex-parser` / `ratex-layout` / `ratex-svg`（`embed-fonts`，含 `standalone`），
+  均为纯 Rust、无系统依赖；仅在 `latex` feature 下启用。
+- **管线**（`crates/rgpui-markdown/src/latex.rs`）：`ratex_parser::parse` → `ratex_layout::layout`
+  → `ratex_layout::to_display_list` → `ratex_svg::render_to_svg`（`embed_glyphs` 把字形转成
+  **路径轮廓**，usvg 不认识 KaTeX 字体，只能走轮廓）→ 核心 `SvgRenderer`（usvg / resvg）
+  光栅化为 `RenderImage`。
+- **尺寸口径**：ratex 以 `pt` 标注尺寸而 usvg 按 1pt = 4/3px 换算，直接光栅化会与排版字号
+  脱节；因此先把根元素 `pt` 改写为 `px`，再以改写后的数值作为逻辑尺寸（显式设 `w` / `h`，
+  不依赖图片自身的缩放约定）。
+- **着色**：ratex 默认黑色填充按主题前景色替换（`rgba(0,0,0,1)` → 主题色）。
+- **缓存**：按「源码 + 颜色 + 字号」哈希缓存光栅化结果（上限 64 条），长文档里同一公式
+  只光栅化一次。
+- **模型**：`RichInline::Math`（行内 `$...$`）与 `RichBlock::Math`（展示 `$$...$$`）加入块模型；
+  行内公式按「文本段 + 公式图片段」切分后混排（段落内多段文本各自唯一元素 id，避免无障碍
+  树重名），展示公式居中排布。
+- **降级**：未启用 `latex` feature、没有 SVG 渲染器、或公式解析失败时，一律退回等宽源码
+  文本，不中断整篇渲染。
+- **接线**：`Markdown` 组件在 `latex` feature 下取 `cx.svg_renderer()` 走
+  `render_blocks_with_svg`；`render_blocks` / `render_blocks_with` 旧签名保持不变（公式按
+  文本降级）。
+
+### 验证
+
+- `cargo check -p rgpui-markdown --features latex` 与默认 feature 侧均通过；
+  `cargo clippy -p rgpui-markdown --all-targets -- -D warnings` 双侧通过。
+- `cargo test -p rgpui-markdown --features latex --lib` 10 passed（公式 5 项：SVG 生成 /
+  尺寸 / 非法 LaTeX / 主题着色 / 缓存键；解析 1 项：行内与展示公式入模）；默认 feature 侧
+  4 passed。
+- `cargo check --workspace` 通过；`cargo fmt --all` 无变更；
+  `cargo publish -p rgpui-markdown --dry-run --registry crates-io --features latex` 通过。
+- 示例：`examples/rgpui_story` 新增「LaTeX 公式」页（该示例 crate 启用 `latex` feature）。
+
 

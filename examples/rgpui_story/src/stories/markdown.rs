@@ -22,6 +22,10 @@ pub fn stories() -> Vec<StoryItem> {
             build: |_, cx| cx.new(|cx| MarkdownShowcaseStory::new(cx)).into(),
         },
         StoryItem {
+            title: "LaTeX 公式",
+            build: |_, cx| cx.new(|cx| MarkdownMathStory::new(cx)).into(),
+        },
+        StoryItem {
             title: "综合文档",
             build: |_, cx| cx.new(|cx| MarkdownFullStory::new(cx)).into(),
         },
@@ -261,6 +265,58 @@ def greet(name: str) -> str:
             .gap(px(12.0))
             .p(px(16.0))
             .child(section_title("Markdown 语法全览"))
+            .child(
+                v_flex()
+                    .p(px(16.0))
+                    .rounded(px(8.0))
+                    .bg(cx.theme().background)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .child(Markdown::new(source)),
+            )
+    }
+}
+
+/// LaTeX 公式示例：行内公式与展示公式。
+struct MarkdownMathStory;
+
+impl MarkdownMathStory {
+    fn new(_cx: &mut Context<Self>) -> Self {
+        Self
+    }
+}
+
+impl rgpui::Render for MarkdownMathStory {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let source = r#"# LaTeX 公式
+
+公式由 `rgpui-markdown` 的 `latex` feature 支持：纯 Rust 解析 → 排版 → SVG → 光栅化，
+不依赖系统字体与外部服务。
+
+## 行内公式
+
+勾股定理写作 $a^2 + b^2 = c^2$，欧拉恒等式则是 $e^{i\pi} + 1 = 0$。
+行内公式与正文同基线排布。
+
+## 展示公式
+
+$$
+\int_{-\infty}^{\infty} e^{-x^2} \, dx = \sqrt{\pi}
+$$
+
+$$
+\frac{\partial \mathcal{L}}{\partial w} = \sum_{i=1}^{n} \left(y_i - \hat{y}_i\right) x_i
+$$
+
+## 降级显示
+
+无法解析的公式（如 $\frac{a}$）会退回为等宽源码文本，不会中断整篇渲染。"#;
+
+        v_flex()
+            .id("markdown-math-story")
+            .gap(px(12.0))
+            .p(px(16.0))
+            .child(section_title("LaTeX 公式"))
             .child(
                 v_flex()
                     .p(px(16.0))

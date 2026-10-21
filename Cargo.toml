@@ -58,6 +58,12 @@ thiserror = "2.0"
 backtrace = "0.3"
 # Markdown 解析（rgpui-markdown 使用）
 pulldown-cmark = "0.13"
+# LaTeX 公式解析 / 排版 / SVG 输出（rgpui-markdown 的 `latex` feature 使用）
+ratex-parser = "0.1.15"
+ratex-layout = "0.1.15"
+# `embed-fonts`（含 `standalone`）：内嵌 KaTeX 字体，字形转路径轮廓
+# （usvg 光栅化不认识 KaTeX 字体，只能走轮廓）
+ratex-svg = { version = "0.1.15", features = ["embed-fonts"] }
 
 # ---- 异步与并发 ----
 # 异步运行时（用于 async-tar）
