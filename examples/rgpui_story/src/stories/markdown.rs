@@ -34,6 +34,10 @@ pub fn stories() -> Vec<StoryItem> {
             build: |_, cx| cx.new(|cx| MarkdownCodeHighlightStory::new(cx)).into(),
         },
         StoryItem {
+            title: "文档大纲",
+            build: |_, cx| cx.new(|cx| MarkdownTocStory::new(cx)).into(),
+        },
+        StoryItem {
             title: "综合文档",
             build: |_, cx| cx.new(|cx| MarkdownFullStory::new(cx)).into(),
         },
@@ -451,6 +455,84 @@ plain text stays plain
                     .border_1()
                     .border_color(cx.theme().border)
                     .child(Markdown::new(source)),
+            )
+    }
+}
+
+/// 文档大纲示例：提取标题并按层级缩进展示。
+struct MarkdownTocStory;
+
+impl MarkdownTocStory {
+    fn new(_cx: &mut Context<Self>) -> Self {
+        Self
+    }
+}
+
+impl rgpui::Render for MarkdownTocStory {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let source = r#"# rgpui 文档
+
+## 快速开始
+
+添加依赖并创建窗口。
+
+### 平台后端
+
+Windows / macOS / Linux 各自实现。
+
+## 组件
+
+- 基础元素
+- 输入与表单
+- 菜单与通知
+
+### 图表
+
+按 feature 门控。
+
+## 主题
+
+内置浅色 / 深色两套主题。
+"#;
+
+        let headings = rgpui_markdown::extract_headings(source);
+        let mut toc = v_flex().gap(px(4.0));
+        for heading in &headings {
+            toc = toc.child(
+                div()
+                    .pl(px(f32::from(heading.level.saturating_sub(1)) * 16.0))
+                    .flex()
+                    .flex_row()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("H{}", heading.level)),
+                    )
+                    .child(div().text_sm().child(heading.text.clone()))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("#{}", heading.anchor)),
+                    ),
+            );
+        }
+
+        v_flex()
+            .id("markdown-toc-story")
+            .gap(px(12.0))
+            .p(px(16.0))
+            .child(section_title("文档大纲（extract_headings）"))
+            .child(
+                v_flex()
+                    .p(px(16.0))
+                    .rounded(px(8.0))
+                    .bg(cx.theme().background)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .child(toc),
             )
     }
 }

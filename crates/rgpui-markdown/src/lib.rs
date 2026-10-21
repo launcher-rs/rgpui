@@ -9,12 +9,14 @@
 //! - [`Markdown`]：将 Markdown 源码解析并渲染为富文本元素。
 //! - [`rich_text`]：富文本块模型（段落/标题/列表/表格/引用/代码块）与渲染函数。
 //! - [`code_block`]：带行号、复制按钮与简易高亮的代码块组件。
+//! - [`toc`]：文档大纲提取（标题级别 / 文本 / 源码区间 / 锚点）。
 //! - [`latex`]（`latex` feature）：LaTeX 公式渲染成图片。
 //! - [`mermaid`]（`mermaid` feature）：Mermaid 围栏代码块渲染成图表。
 
 pub mod code_block;
 pub mod markdown;
 pub mod rich_text;
+pub mod toc;
 
 /// SVG 光栅化辅助（公式 / 图表管线共用）。
 #[cfg(any(feature = "latex", feature = "mermaid"))]
@@ -38,3 +40,4 @@ pub use rich_text::{
     CalloutKind, CodeBlockRenderer, LinkClickHandler, ListItem, RichBlock, RichInline,
     TableAlignment, render_blocks_with,
 };
+pub use toc::{Heading, extract_headings};

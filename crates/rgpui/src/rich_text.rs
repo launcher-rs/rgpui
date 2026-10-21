@@ -20,14 +20,17 @@
 //! let element = RichText::new(doc);
 //! ```
 //!
-//! **本版暂缓**（后续增补）：节（section）/分栏、表格、批注、修订、文末脚注/尾注、
-//! 项目符号字体与层级样式、可编辑光标与选区（现为只读渲染）。
+//! **本版暂缓**（后续增补）：节（section）/分栏、表格、修订、项目符号字体与层级样式、
+//! 可编辑光标与选区（现为只读渲染）。
 
 use std::ops::Range;
+use std::sync::Arc;
 
+use crate::prelude::ActiveTheme as _;
 use crate::{
-    App, Hsla, IntoElement, ParentElement as _, RenderOnce, Rgba, StrikethroughStyle, Styled as _,
-    StyledText, TextAlign, TextRun, UnderlineStyle, Window, div, px, v_flex,
+    App, ElementId, Hsla, InteractiveText, IntoElement, ParentElement as _, RenderOnce, Rgba,
+    StrikethroughStyle, Styled as _, StyledText, TextAlign, TextRun, UnderlineStyle, Window, div,
+    px, v_flex,
 };
 
 /// 单次解析 HTML 的字节上限（防御恶意片段）。
@@ -276,11 +279,43 @@ impl Paragraph {
     }
 }
 
+/// 批注：挂在文档字符区间上的备注（不改动正文内容）。
+///
+/// 区间为文档级字符偏移（左闭右开）；正文插入 / 删除时随编辑自动平移。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Annotation {
+    /// 批注标识（文档内唯一，从 1 开始）。
+    pub id: u32,
+    /// 批注覆盖的字符区间。
+    pub range: Range<usize>,
+    /// 批注正文。
+    pub note: String,
+    /// 批注作者（可选）。
+    pub author: Option<String>,
+}
+
+/// 脚注：正文中的引用标记 + 文末脚注文本。
+///
+/// 引用标记是正文里的普通字符（插入时一并写入），区间随编辑自动平移。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Footnote {
+    /// 脚注序号（文档内唯一，从 1 开始）。
+    pub id: u32,
+    /// 正文引用标记所在的字符区间。
+    pub range: Range<usize>,
+    /// 脚注文本。
+    pub text: String,
+}
+
 /// 富文本文档：段落序列。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RichTextDoc {
     /// 段落序列，至少一段。
     pub paragraphs: Vec<Paragraph>,
+    /// 批注列表（挂在字符区间上的备注）。
+    pub annotations: Vec<Annotation>,
+    /// 脚注列表（正文引用点 + 文末脚注文本）。
+    pub footnotes: Vec<Footnote>,
 }
 
 impl RichTextDoc {
@@ -288,6 +323,8 @@ impl RichTextDoc {
     pub fn new() -> Self {
         Self {
             paragraphs: vec![Paragraph::default()],
+            annotations: Vec::new(),
+            footnotes: Vec::new(),
         }
     }
 
@@ -295,6 +332,8 @@ impl RichTextDoc {
     pub fn from_plain_text(text: &str) -> Self {
         Self {
             paragraphs: text.split('\n').map(Paragraph::new).collect(),
+            annotations: Vec::new(),
+            footnotes: Vec::new(),
         }
     }
 
@@ -318,6 +357,102 @@ impl RichTextDoc {
         self.paragraphs.iter().all(Paragraph::is_empty)
     }
 
+    /// 添加批注：覆盖字符区间 `range`（超界自动夹取），返回批注 id。
+    pub fn add_annotation(&mut self, range: Range<usize>, note: impl Into<String>) -> u32 {
+        let total = self.char_len();
+        let start = range.start.min(total);
+        let end = range.end.min(total).max(start);
+        let id = self.next_annotation_id();
+        self.annotations.push(Annotation {
+            id,
+            range: start..end,
+            note: note.into(),
+            author: None,
+        });
+        id
+    }
+
+    /// 按 id 取批注（只读）。
+    pub fn annotation(&self, id: u32) -> Option<&Annotation> {
+        self.annotations.iter().find(|item| item.id == id)
+    }
+
+    /// 按 id 取批注（可写，用于设置作者等）。
+    pub fn annotation_mut(&mut self, id: u32) -> Option<&mut Annotation> {
+        self.annotations.iter_mut().find(|item| item.id == id)
+    }
+
+    /// 取覆盖某字符位置的所有批注（按区间起点排序）。
+    pub fn annotations_at(&self, index: usize) -> Vec<&Annotation> {
+        let mut hits: Vec<&Annotation> = self
+            .annotations
+            .iter()
+            .filter(|item| item.range.start <= index && index < item.range.end)
+            .collect();
+        hits.sort_by_key(|item| item.range.start);
+        hits
+    }
+
+    /// 删除批注记录（正文文字保留），返回是否删到。
+    pub fn remove_annotation(&mut self, id: u32) -> bool {
+        let before = self.annotations.len();
+        self.annotations.retain(|item| item.id != id);
+        self.annotations.len() != before
+    }
+
+    /// 插入脚注引用标记并登记脚注，返回脚注 id。
+    ///
+    /// `marker` 是写入正文的引用标记（如 `"*"`、`"¹"`），`text` 是文末脚注内容。
+    pub fn insert_footnote(&mut self, index: usize, marker: &str, text: impl Into<String>) -> u32 {
+        let total = self.char_len();
+        let index = index.min(total);
+        let id = self.next_footnote_id();
+        // 先写标记文本（会顺带平移既有区间），再登记本脚注的引用区间。
+        self.insert_text(index, marker, RunProps::default());
+        let len = marker.chars().count();
+        self.footnotes.push(Footnote {
+            id,
+            range: index..index + len,
+            text: text.into(),
+        });
+        id
+    }
+
+    /// 按 id 取脚注。
+    pub fn footnote(&self, id: u32) -> Option<&Footnote> {
+        self.footnotes.iter().find(|item| item.id == id)
+    }
+
+    /// 删除脚注记录与正文中的引用标记，返回是否删到。
+    pub fn remove_footnote(&mut self, id: u32) -> bool {
+        let Some(pos) = self.footnotes.iter().position(|item| item.id == id) else {
+            return false;
+        };
+        let range = self.footnotes[pos].range.clone();
+        self.footnotes.remove(pos);
+        // 引用标记是正文普通字符，一并删除（其余区间随之平移）。
+        self.delete(range);
+        true
+    }
+
+    /// 下一个批注 id（从 1 开始，跳过已用编号）。
+    fn next_annotation_id(&self) -> u32 {
+        let mut id = 1u32;
+        while self.annotations.iter().any(|item| item.id == id) {
+            id += 1;
+        }
+        id
+    }
+
+    /// 下一个脚注 id（从 1 开始，跳过已用编号）。
+    fn next_footnote_id(&self) -> u32 {
+        let mut id = 1u32;
+        while self.footnotes.iter().any(|item| item.id == id) {
+            id += 1;
+        }
+        id
+    }
+
     /// 把字符索引映射到 `(段落索引, 段内偏移)`；越界时归到末段末尾。
     pub fn locate(&self, index: usize) -> (usize, usize) {
         let mut start = 0usize;
@@ -339,12 +474,14 @@ impl RichTextDoc {
             return;
         }
         let total = self.char_len();
-        let (p, offset) = self.locate(index.min(total));
+        let index = index.min(total);
+        let (p, offset) = self.locate(index);
         let segments: Vec<&str> = text.split('\n').collect();
         if segments.len() == 1 {
             if let Some(para) = self.paragraphs.get_mut(p) {
                 para.insert_run(offset, text, props);
             }
+            self.shift_ranges_for_insert(index, text.chars().count());
             return;
         }
 
@@ -390,6 +527,7 @@ impl RichTextDoc {
             at += 1;
         }
         self.paragraphs.insert(at, last);
+        self.shift_ranges_for_insert(index, text.chars().count());
     }
 
     /// 删除字符区间 `[start, end)`，跨段落时合并段落。
@@ -407,6 +545,7 @@ impl RichTextDoc {
             if let Some(para) = self.paragraphs.get_mut(p1) {
                 para.remove_range(o1, o2);
             }
+            self.shift_ranges_for_delete(start, end);
             return;
         }
 
@@ -423,6 +562,33 @@ impl RichTextDoc {
             para.runs.extend(tail);
         }
         self.paragraphs.drain(p1 + 1..=p2);
+        self.shift_ranges_for_delete(start, end);
+    }
+
+    /// 插入后平移批注 / 脚注区间。
+    fn shift_ranges_for_insert(&mut self, index: usize, delta: usize) {
+        if delta == 0 {
+            return;
+        }
+        for annotation in &mut self.annotations {
+            shift_range_for_insert(&mut annotation.range, index, delta);
+        }
+        for footnote in &mut self.footnotes {
+            shift_range_for_insert(&mut footnote.range, index, delta);
+        }
+    }
+
+    /// 删除后收缩 / 平移批注 / 脚注区间。
+    fn shift_ranges_for_delete(&mut self, start: usize, end: usize) {
+        if start >= end {
+            return;
+        }
+        for annotation in &mut self.annotations {
+            shift_range_for_delete(&mut annotation.range, start, end);
+        }
+        for footnote in &mut self.footnotes {
+            shift_range_for_delete(&mut footnote.range, start, end);
+        }
     }
 
     /// 在字符索引处拆分段落（等价于插入一个换行）。
@@ -486,12 +652,22 @@ impl RichTextDoc {
     }
 
     /// 序列化为 HTML：普通段落用 `<p>`，列表用 `<ul>`/`<ol>` + `<li>`，
-    /// 行内样式用 `<b>`/`<i>`/`<u>`/`<s>` 与 `<span style="color:#rrggbb">`。
+    /// 行内样式用 `<b>`/`<i>`/`<u>`/`<s>` 与 `<span style="color:#rrggbb">`，
+    /// 批注用 `<mark data-annotation="id" data-note="…">`，脚注标记用
+    /// `<sup data-footnote="id" data-text="…">`。
     pub fn to_html(&self) -> String {
         let mut out = String::new();
         let mut i = 0;
+        // 段落起点的文档级偏移（把批注 / 脚注区间换算到段内）。
+        let mut offsets = Vec::with_capacity(self.paragraphs.len());
+        let mut acc = 0usize;
+        for para in &self.paragraphs {
+            offsets.push(acc);
+            acc += para.char_len() + 1;
+        }
         while i < self.paragraphs.len() {
             let kind = self.paragraphs[i].style.list;
+            let spans = collect_spans(self, offsets[i], self.paragraphs[i].char_len());
             match kind {
                 ListKind::None => {
                     out.push_str("<p");
@@ -502,7 +678,7 @@ impl RichTextDoc {
                         out.push('"');
                     }
                     out.push('>');
-                    push_paragraph_html(&mut out, &self.paragraphs[i]);
+                    push_paragraph_html(&mut out, &self.paragraphs[i], &spans, self);
                     out.push_str("</p>");
                     i += 1;
                 }
@@ -513,7 +689,7 @@ impl RichTextDoc {
                     out.push('>');
                     while i < self.paragraphs.len() && self.paragraphs[i].style.list == kind {
                         out.push_str("<li>");
-                        push_paragraph_html(&mut out, &self.paragraphs[i]);
+                        push_paragraph_html(&mut out, &self.paragraphs[i], &spans, self);
                         out.push_str("</li>");
                         i += 1;
                     }
@@ -543,6 +719,11 @@ impl RichTextDoc {
         let mut paragraphs: Vec<Paragraph> = vec![Paragraph::default()];
         let mut runs = 0usize;
         let mut skip = 0i32;
+        // 批注 / 脚注：解析期先记段内区间，收尾时换算成文档级区间。
+        let mut annotations: Vec<(usize, Range<usize>, u32, String)> = Vec::new();
+        let mut footnotes: Vec<(usize, Range<usize>, u32, String)> = Vec::new();
+        let mut open_annotations: Vec<(usize, usize, u32, String)> = Vec::new();
+        let mut open_footnotes: Vec<(usize, usize, u32, String)> = Vec::new();
 
         while i < bytes.len() && paragraphs.len() <= MAX_PARAS && runs <= MAX_RUNS {
             if bytes[i] == b'<' {
@@ -583,6 +764,19 @@ impl RichTextDoc {
                             new_paragraph(&mut paragraphs, list);
                         }
                         "li" => {}
+                        // 批注 / 脚注闭合：区间到当前段落的文本末尾。
+                        "mark" => {
+                            if let Some((para_index, start, id, note)) = open_annotations.pop() {
+                                let end = paragraphs.last().map_or(0, Paragraph::char_len);
+                                annotations.push((para_index, start..end, id, note));
+                            }
+                        }
+                        "sup" => {
+                            if let Some((para_index, start, id, text)) = open_footnotes.pop() {
+                                let end = paragraphs.last().map_or(0, Paragraph::char_len);
+                                footnotes.push((para_index, start..end, id, text));
+                            }
+                        }
                         _ => {
                             if is_block(&name) {
                                 new_paragraph(&mut paragraphs, list);
@@ -613,6 +807,32 @@ impl RichTextDoc {
                         if let Some(para) = paragraphs.last_mut() {
                             para.style.list = list.unwrap_or(ListKind::Bullet);
                         }
+                        continue;
+                    }
+                    // 批注：`<mark data-annotation="id" data-note="…">`。
+                    "mark" => {
+                        let id = attr(name_src, "data-annotation")
+                            .and_then(|value| value.parse::<u32>().ok())
+                            .unwrap_or(0);
+                        let note = attr(name_src, "data-note")
+                            .map(decode_text)
+                            .unwrap_or_default();
+                        let para_index = paragraphs.len().saturating_sub(1);
+                        let start = paragraphs.last().map_or(0, Paragraph::char_len);
+                        open_annotations.push((para_index, start, id, note));
+                        continue;
+                    }
+                    // 脚注引用：`<sup data-footnote="id" data-text="…">`。
+                    "sup" => {
+                        let id = attr(name_src, "data-footnote")
+                            .and_then(|value| value.parse::<u32>().ok())
+                            .unwrap_or(0);
+                        let text = attr(name_src, "data-text")
+                            .map(decode_text)
+                            .unwrap_or_default();
+                        let para_index = paragraphs.len().saturating_sub(1);
+                        let start = paragraphs.last().map_or(0, Paragraph::char_len);
+                        open_footnotes.push((para_index, start, id, text));
                         continue;
                     }
                     _ => {}
@@ -686,7 +906,39 @@ impl RichTextDoc {
         for para in &mut paragraphs {
             para.normalize();
         }
-        Some(Self { paragraphs })
+        // 段内区间 → 文档级区间（段落起点按字符累计）。
+        let mut offsets: Vec<usize> = Vec::with_capacity(paragraphs.len());
+        let mut acc = 0usize;
+        for para in &paragraphs {
+            offsets.push(acc);
+            acc += para.char_len() + 1;
+        }
+        let to_doc_range = |para_index: usize, range: Range<usize>| -> Range<usize> {
+            let base = offsets.get(para_index).copied().unwrap_or(0);
+            (base + range.start)..(base + range.end)
+        };
+        let annotations = annotations
+            .into_iter()
+            .map(|(para_index, range, id, note)| Annotation {
+                id,
+                range: to_doc_range(para_index, range),
+                note,
+                author: None,
+            })
+            .collect();
+        let footnotes = footnotes
+            .into_iter()
+            .map(|(para_index, range, id, text)| Footnote {
+                id,
+                range: to_doc_range(para_index, range),
+                text,
+            })
+            .collect();
+        Some(Self {
+            paragraphs,
+            annotations,
+            footnotes,
+        })
     }
 }
 
@@ -698,6 +950,36 @@ struct StyleState {
     underline: bool,
     strikethrough: bool,
     color: Option<Hsla>,
+}
+
+/// 插入后平移区间：插入点之前的区间不动，插入点之后的整体后移，
+/// 覆盖插入点的区间长度增加。
+fn shift_range_for_insert(range: &mut Range<usize>, index: usize, delta: usize) {
+    if range.start >= index {
+        range.start += delta;
+        range.end += delta;
+    } else if range.end > index {
+        range.end += delta;
+    }
+}
+
+/// 删除后调整区间：完全在删除点之前的保持不变，完全之后的整体前移，
+/// 与删除点相交的按存活文本收缩（删除后前后两段相邻）。
+fn shift_range_for_delete(range: &mut Range<usize>, start: usize, end: usize) {
+    if range.end <= start {
+        return;
+    }
+    let removed = end.saturating_sub(start);
+    if range.start >= end {
+        range.start -= removed;
+        range.end -= removed;
+        return;
+    }
+    // 相交：起点夹到删除点，长度取删除前后的存活字符数。
+    let before = start.saturating_sub(range.start);
+    let after = range.end.saturating_sub(end);
+    range.start = range.start.min(start);
+    range.end = range.start + before + after;
 }
 
 /// 按字符偏移把运行序列切成前后两半。
@@ -730,12 +1012,57 @@ fn split_runs(runs: Vec<Run>, offset: usize) -> (Vec<Run>, Vec<Run>) {
 }
 
 /// 追加一个段落的行内 HTML（不含外层 `<p>`/`<li>`）。
-fn push_paragraph_html(out: &mut String, para: &Paragraph) {
+/// 输出一段段落 HTML；批注 / 脚注区间按 `<mark>` / `<sup>` 包裹。
+fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: &RichTextDoc) {
+    let mut run_offset = 0usize;
     for run in &para.runs {
         let (open, close) = run_tags(&run.props);
-        out.push_str(&open);
-        escape_html(out, &run.text);
-        out.push_str(&close);
+        for (piece, span) in split_run_by_spans(&run.text, run_offset, spans) {
+            out.push_str(&open);
+            match span {
+                Some((SpanKind::Annotation, id)) => {
+                    let note = doc
+                        .annotation(id)
+                        .map(|item| item.note.clone())
+                        .unwrap_or_default();
+                    out.push_str(&format!("<mark data-annotation=\"{id}\" data-note=\""));
+                    escape_html_attr(out, &note);
+                    out.push_str("\">");
+                    escape_html(out, &piece);
+                    out.push_str("</mark>");
+                }
+                Some((SpanKind::Footnote, id)) => {
+                    let text = doc
+                        .footnote(id)
+                        .map(|item| item.text.clone())
+                        .unwrap_or_default();
+                    out.push_str(&format!("<sup data-footnote=\"{id}\" data-text=\""));
+                    escape_html_attr(out, &text);
+                    out.push_str("\">");
+                    escape_html(out, &piece);
+                    out.push_str("</sup>");
+                }
+                None => {
+                    escape_html(out, &piece);
+                }
+            }
+            out.push_str(&close);
+        }
+        run_offset += run.char_len();
+    }
+}
+
+/// HTML 属性值转义（额外转义引号）。
+fn escape_html_attr(out: &mut String, text: &str) {
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
     }
 }
 
@@ -1050,22 +1377,37 @@ fn numeric_char(digits: &str) -> Option<char> {
 /// 富文本文档的只读渲染元素。
 ///
 /// 逐段落排版：对齐与缩进取自 [`ParagraphStyle`]，列表段落以「• 」/「N. 」标记开头，
-/// 行内属性映射到 [`crate::TextRun`]。
+/// 行内属性映射到 [`crate::TextRun`]；批注区间给背景高亮、脚注引用标记给主题色。
+/// 设置 [`RichText::on_annotation_click`] 后，点击批注高亮会回传批注 id。
 #[derive(IntoElement)]
 pub struct RichText {
     /// 待渲染文档。
     doc: RichTextDoc,
+    /// 批注点击回调（批注 id → 回调）。
+    on_annotation_click: Option<Arc<dyn Fn(u32, &mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl RichText {
     /// 创建渲染元素。
     pub fn new(doc: RichTextDoc) -> Self {
-        Self { doc }
+        Self {
+            doc,
+            on_annotation_click: None,
+        }
     }
 
     /// 取文档引用。
     pub fn doc(&self) -> &RichTextDoc {
         &self.doc
+    }
+
+    /// 设置批注点击回调（回传被点击的批注 id）。
+    pub fn on_annotation_click(
+        mut self,
+        handler: impl Fn(u32, &mut Window, &mut App) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_annotation_click = Some(Arc::new(handler));
+        self
     }
 }
 
@@ -1076,10 +1418,16 @@ impl From<RichTextDoc> for RichText {
 }
 
 impl RenderOnce for RichText {
-    fn render(self, window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let base = window.text_style();
+        let theme = cx.theme();
+        // 批注背景色与脚注标记色（跟随主题）。
+        let annotation_bg = theme.tokens.warning.opacity(0.28);
+        let footnote_color = theme.tokens.primary.color;
         let mut column = v_flex().w_full().gap_1();
         let mut number = 0usize;
+        // 当前段落的文档级起始字符偏移（区间换算用）。
+        let mut doc_offset = 0usize;
 
         for para in &self.doc.paragraphs {
             let marker = match para.style.list {
@@ -1096,28 +1444,168 @@ impl RenderOnce for RichText {
                     None
                 }
             };
-            let (text, runs) = build_paragraph(para, &base, marker.as_deref());
+            let spans = collect_spans(&self.doc, doc_offset, para.char_len());
+            let (text, runs, annotation_ranges) = build_paragraph(
+                para,
+                &base,
+                marker.as_deref(),
+                &spans,
+                annotation_bg,
+                footnote_color,
+            );
+            let styled = StyledText::new(text).with_runs(runs);
+            // 有批注且注册了回调时，批注高亮可点击（回传批注 id）。
+            let content = match (&self.on_annotation_click, annotation_ranges.is_empty()) {
+                (Some(handler), false) => {
+                    let ranges: Vec<Range<usize>> = annotation_ranges
+                        .iter()
+                        .map(|(range, _)| range.clone())
+                        .collect();
+                    let ids: Vec<u32> = annotation_ranges.iter().map(|(_, id)| *id).collect();
+                    let handler = handler.clone();
+                    InteractiveText::new(
+                        ElementId::Name(format!("rich-text-annotation-{doc_offset}").into()),
+                        styled,
+                    )
+                    .on_change(ranges, move |index, window, cx| {
+                        if let Some(id) = ids.get(index) {
+                            handler(*id, window, cx);
+                        }
+                    })
+                    .into_any_element()
+                }
+                _ => styled.into_any_element(),
+            };
             column = column.child(
                 div()
                     .w_full()
                     .text_align(para.style.align)
                     .pl(px(f32::from(para.style.indent) * INDENT_PX))
-                    .child(StyledText::new(text).with_runs(runs)),
+                    .child(content),
             );
+            doc_offset += para.char_len() + 1;
         }
 
         column
     }
 }
 
-/// 把段落编译成 `(文本, 运行)`，可选的列表标记作为首个运行。
+/// 段落内的高亮区间类型。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SpanKind {
+    /// 批注覆盖区间（背景高亮）。
+    Annotation,
+    /// 脚注引用标记（主题色）。
+    Footnote,
+}
+
+/// 段落内的高亮区间（段内字符偏移，左闭右开）。
+#[derive(Clone, Debug)]
+struct Span {
+    /// 段内字符区间。
+    range: Range<usize>,
+    /// 区间类型。
+    kind: SpanKind,
+    /// 对应的批注 / 脚注 id。
+    id: u32,
+}
+
+/// 收集落在某段落内的高亮区间（批注背景 / 脚注标记）。
+fn collect_spans(doc: &RichTextDoc, para_start: usize, para_len: usize) -> Vec<Span> {
+    let para_end = para_start + para_len;
+    let mut spans: Vec<Span> = Vec::new();
+    for annotation in &doc.annotations {
+        let start = annotation.range.start.max(para_start);
+        let end = annotation.range.end.min(para_end);
+        if start < end {
+            spans.push(Span {
+                range: (start - para_start)..(end - para_start),
+                kind: SpanKind::Annotation,
+                id: annotation.id,
+            });
+        }
+    }
+    for footnote in &doc.footnotes {
+        let start = footnote.range.start.max(para_start);
+        let end = footnote.range.end.min(para_end);
+        if start < end {
+            spans.push(Span {
+                range: (start - para_start)..(end - para_start),
+                kind: SpanKind::Footnote,
+                id: footnote.id,
+            });
+        }
+    }
+    spans.sort_by_key(|span| span.range.start);
+    spans
+}
+
+/// 按高亮区间切分一段运行文本，返回（片段，区间类型与 id）。
+fn split_run_by_spans(
+    text: &str,
+    run_start: usize,
+    spans: &[Span],
+) -> Vec<(String, Option<(SpanKind, u32)>)> {
+    let chars: Vec<char> = text.chars().collect();
+    let run_end = run_start + chars.len();
+    // 与本运行相交的区间（夹到运行范围内）。
+    let mut hits: Vec<(usize, usize, SpanKind, u32)> = spans
+        .iter()
+        .filter_map(|span| {
+            let start = span.range.start.max(run_start);
+            let end = span.range.end.min(run_end);
+            (start < end).then_some((start, end, span.kind, span.id))
+        })
+        .collect();
+    if hits.is_empty() {
+        return vec![(text.to_string(), None)];
+    }
+    hits.sort_by_key(|(start, _, _, _)| *start);
+
+    let mut out: Vec<(String, Option<(SpanKind, u32)>)> = Vec::new();
+    let mut cursor = run_start;
+    while cursor < run_end {
+        // 当前光标处生效的区间（后开的覆盖先开的）。
+        let mut active: Option<(SpanKind, u32)> = None;
+        for (start, end, kind, id) in &hits {
+            if *start <= cursor && cursor < *end {
+                active = Some((*kind, *id));
+            }
+        }
+        // 下一处边界（区间起止）。
+        let mut next = run_end;
+        for (start, end, _, _) in &hits {
+            if *start > cursor {
+                next = next.min(*start);
+            }
+            if *end > cursor {
+                next = next.min(*end);
+            }
+        }
+        let take = (next - cursor).min(chars.len());
+        let from = cursor - run_start;
+        let piece: String = chars[from..from + take].iter().collect();
+        out.push((piece, active));
+        cursor += take;
+    }
+    out
+}
+
+/// 把段落编译成 `(文本, 运行, 批注点击区间)`，可选的列表标记作为首个运行。
+///
+/// `spans` 是段内高亮区间（批注背景 / 脚注标记），会按其边界切分运行；
+/// 第三个返回值是批注片段的**字节**区间与批注 id（供点击回调用）。
 fn build_paragraph(
     para: &Paragraph,
     base: &crate::TextStyle,
     marker: Option<&str>,
-) -> (String, Vec<TextRun>) {
+    spans: &[Span],
+    annotation_bg: Hsla,
+    footnote_color: Hsla,
+) -> (String, Vec<TextRun>, Vec<(Range<usize>, u32)>) {
     let mut text = String::new();
     let mut runs = Vec::new();
+    let mut annotation_ranges: Vec<(Range<usize>, u32)> = Vec::new();
 
     if let Some(marker) = marker {
         text.push_str(marker);
@@ -1129,36 +1617,59 @@ fn build_paragraph(
         });
     }
 
+    // 当前运行的段内起始字符偏移（区间按字符计）。
+    let mut run_offset = 0usize;
     for run in &para.runs {
         if run.text.is_empty() {
             continue;
         }
-        let mut font = base.font();
-        if run.props.bold {
-            font = font.bold();
+        let pieces = split_run_by_spans(&run.text, run_offset, spans);
+        run_offset += run.char_len();
+        for (piece, kind) in pieces {
+            if piece.is_empty() {
+                continue;
+            }
+            let mut font = base.font();
+            if run.props.bold {
+                font = font.bold();
+            }
+            if run.props.italic {
+                font = font.italic();
+            }
+            let mut color = run.props.color.unwrap_or(base.color);
+            let mut background_color = None;
+            match kind {
+                Some((SpanKind::Annotation, _)) => {
+                    background_color = Some(annotation_bg);
+                }
+                Some((SpanKind::Footnote, _)) => {
+                    color = footnote_color;
+                }
+                None => {}
+            }
+            let underline = run.props.underline.then(|| UnderlineStyle {
+                thickness: px(1.0),
+                color: Some(color),
+                wavy: false,
+            });
+            let strikethrough = run.props.strikethrough.then(|| StrikethroughStyle {
+                thickness: px(1.0),
+                color: Some(color),
+            });
+            runs.push(TextRun {
+                len: piece.len(),
+                font,
+                color,
+                background_color,
+                underline,
+                strikethrough,
+            });
+            let byte_start = text.len();
+            text.push_str(&piece);
+            if let Some((SpanKind::Annotation, id)) = kind {
+                annotation_ranges.push((byte_start..text.len(), id));
+            }
         }
-        if run.props.italic {
-            font = font.italic();
-        }
-        let color = run.props.color.unwrap_or(base.color);
-        let underline = run.props.underline.then(|| UnderlineStyle {
-            thickness: px(1.0),
-            color: Some(color),
-            wavy: false,
-        });
-        let strikethrough = run.props.strikethrough.then(|| StrikethroughStyle {
-            thickness: px(1.0),
-            color: Some(color),
-        });
-        runs.push(TextRun {
-            len: run.text.len(),
-            font,
-            color,
-            background_color: None,
-            underline,
-            strikethrough,
-        });
-        text.push_str(&run.text);
     }
 
     // 空段落占一行高度（标记已提供高度时无需补位）。
@@ -1172,7 +1683,7 @@ fn build_paragraph(
         });
     }
 
-    (text, runs)
+    (text, runs, annotation_ranges)
 }
 
 #[cfg(test)]
@@ -1354,8 +1865,85 @@ mod tests {
 
         let mut doc = RichTextDoc {
             paragraphs: Vec::new(),
+            annotations: Vec::new(),
+            footnotes: Vec::new(),
         };
         doc.normalize();
         assert_eq!(doc.paragraphs.len(), 1);
+    }
+
+    /// 批注：添加 / 按位置查询 / 删除。
+    #[test]
+    fn annotation_add_query_remove() {
+        let mut doc = RichTextDoc::from_plain_text("hello world");
+        let id = doc.add_annotation(0..5, "问候语");
+        assert_eq!(id, 1);
+        let annotation = doc.annotation(id).expect("批注");
+        assert_eq!(annotation.range, 0..5);
+        assert_eq!(annotation.note, "问候语");
+        // 命中区间内，区间外不命中。
+        assert_eq!(doc.annotations_at(2).len(), 1);
+        assert!(doc.annotations_at(7).is_empty());
+        // 作者可后写。
+        doc.annotation_mut(id).expect("批注").author = Some("小明".to_string());
+        assert_eq!(
+            doc.annotation(id).and_then(|item| item.author.clone()),
+            Some("小明".to_string())
+        );
+        assert!(doc.remove_annotation(id));
+        assert!(doc.annotation(id).is_none());
+    }
+
+    /// 批注区间随正文插入 / 删除平移。
+    #[test]
+    fn annotation_range_follows_edits() {
+        let mut doc = RichTextDoc::from_plain_text("hello world");
+        let id = doc.add_annotation(6..11, "宾语");
+        // 在批注之前插入：区间整体后移。
+        doc.insert_text(0, ">> ", RunProps::default());
+        assert_eq!(doc.annotation(id).expect("批注").range, 9..14);
+        // 在批注内部插入：区间变长。
+        doc.insert_text(10, "*", RunProps::default());
+        assert_eq!(doc.annotation(id).expect("批注").range, 9..15);
+        // 删除批注覆盖的文本：区间收缩到删除点。
+        doc.delete(9..12);
+        assert_eq!(doc.annotation(id).expect("批注").range, 9..12);
+    }
+
+    /// 脚注：插入引用标记 + 登记文末脚注；删除时标记文本一并移除。
+    #[test]
+    fn footnote_insert_and_remove() {
+        let mut doc = RichTextDoc::from_plain_text("正文");
+        let id = doc.insert_footnote(2, "*", "脚注内容");
+        assert_eq!(id, 1);
+        // 标记文本写进正文，脚注文本单独登记。
+        assert_eq!(doc.plain_text(), "正文*");
+        let footnote = doc.footnote(id).expect("脚注");
+        assert_eq!(footnote.text, "脚注内容");
+        assert_eq!(footnote.range, 2..3);
+        // 删除脚注：记录与正文标记一并消失。
+        assert!(doc.remove_footnote(id));
+        assert_eq!(doc.plain_text(), "正文");
+        assert!(doc.footnote(id).is_none());
+    }
+
+    /// HTML 往返：批注 / 脚注可序列化并还原。
+    #[test]
+    fn annotations_and_footnotes_round_trip_html() {
+        let mut doc = RichTextDoc::from_plain_text("hello world");
+        let annotation_id = doc.add_annotation(0..5, "问候语");
+        let footnote_id = doc.insert_footnote(11, "*", "脚注内容");
+        let html = doc.to_html();
+        assert!(html.contains("data-annotation=\"1\""));
+        assert!(html.contains("data-footnote=\"1\""));
+
+        let parsed = RichTextDoc::from_html(&html).expect("解析");
+        assert_eq!(parsed.paragraphs.len(), 1);
+        let annotation = parsed.annotation(annotation_id).expect("批注");
+        assert_eq!(annotation.range, 0..5);
+        assert_eq!(annotation.note, "问候语");
+        let footnote = parsed.footnote(footnote_id).expect("脚注");
+        assert_eq!(footnote.text, "脚注内容");
+        assert_eq!(footnote.range, 11..12);
     }
 }
