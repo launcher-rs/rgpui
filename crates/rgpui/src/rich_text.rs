@@ -3255,7 +3255,7 @@ mod tests {
         assert_eq!(doc.paragraphs[first_para].text(), "第一栏");
         // HTML 输出为 section。
         let html = doc.to_html();
-        assert!(html.contains("<section>"));
+        assert!(html.contains("<section"));
         assert!(html.contains("小节"));
     }
     /// 表格：单元格复用段落（可编辑），HTML 输出为 `<table>`。

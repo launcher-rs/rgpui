@@ -1682,3 +1682,19 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 - `cargo test -p rgpui --lib revisions_mark`：1 passed（标记落到运行上 + 有效文本排除删除内容 +
   HTML `<ins>` / `<del>`）。
 
+## 五十五、增补：核心富文本的 HTML 解析侧（表格 / 节往返闭环）
+
+§五十二 / §五十三 的表格与节此前**只出不进**（解析侧仍按普通段落处理），本轮补上解析：
+
+- **表格**：`<table>` / `<tr>` / `<th>` / `<td>` 解析为 `RichTable`；每个单元格是新建的
+  段落（与 `add_table` 的表示一致），列对齐取 `align` 属性或 `style` 的 `text-align`。
+  注意 `<tr>` 原本落在通用块级标签分支里，表格处理需前置才能拿到行 / 单元格边界。
+- **节**：`<section>` 解析为 `RichSection`（节内段落连续，标题取 `data-title` 属性）。
+- 序列化侧同步：节标题改用 `data-title` 属性输出（不再输出 `<h3>`），避免标题与内容
+  段落重复。
+
+### 验证
+
+- `cargo test -p rgpui --lib html_tables_and_sections`：1 passed（解析后仍是表格 / 节，
+  列对齐与节标题都还原；再序列化仍带表格与节）。
+
