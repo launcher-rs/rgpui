@@ -870,13 +870,18 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   「整体摘要」节点在构建时还不知道自己的布局大小，正好用这条规则。
 - **已接线组件**：`InkLayerElement::a11y`（每笔一个 `GraphicsObject`）、`Sparkline::a11y(id, label)`
   （摘要：数据点数 / 最新 / 最低 / 最高 + 样式与趋势）、`Waveform::a11y(id, label)`
-  （摘要：采样点数 / 峰值 + 播放进度）。
+  （摘要：采样点数 / 峰值 + 播放进度）、仪表盘图表家族（`charts` feature）：
+  `PieChart::a11y(id, label)`（摘要：扇区数 / 总计 + 占比降序列举，零值剔除、最多 5 项，两变体
+  `Pie` / `Donut` 共用）、`Gauge::a11y(id, label)`（摘要：格式化数值 + 当前百分比，钳到量程）、
+  `RadarChart::a11y(id, label)`（摘要：轴数 / 数据集数 + 按轴序列出数值，超长截断、空数据退化）、
+  `TreeMap::a11y(id, label)`（摘要：顶层项数 / 总计 + 总值降序列举，子节点计入父项）。
 - **示例**：`examples/showcase/src/bin/canvas_a11y.rs`（六个自绘卡片 / 圆形；指针点击、键盘
   ← → ↑ ↓ / `Home` / `End` / `Enter` / `Esc`、无障碍动作三条路径等价；工具栏显示阅读顺序）。
 - **测试**：7 项 —— 阅读顺序分行与导航环绕、命中测试（后画者在上 / 半开边界）、局部 → 窗口
   矩形、AccessKit 节点映射（状态 / 动作 / 物理像素矩形）、集合维护与零尺寸节点填充，以及
   `window::a11y` 侧的桥接测试（合成子节点带矩形发布 + 焦点对象成为容器 active descendant）；
-  组件侧另有走势图 / 波形摘要节点 2 项。
+  组件侧另有走势图 / 波形摘要节点 2 项 + 仪表盘图表摘要节点 4 项（饼 / 仪表盘 / 雷达 / 树图，
+  `charts` feature 门控）。
 
 **本版暂缓**（后续增补）：把 `PageView` / `SheetGrid` 等既有自绘组件接到本模块、
 行 / 列（表格）语义与 `Role::Cell` 的 `row_index`/`column_index` 扩展、
@@ -1006,9 +1011,10 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`）、页签组（`tabs`/`active_tab`/`with_tabs`/`set_tabs`/`set_active_tab`/`cycle_tab`/`tab_rects`/`tab_at`、`TaskPaneHit::Tab`、`TaskPaneEvent::TabSelected`）、多窗格堆叠（`TaskPaneStack`/`TaskPaneStackState`、`weights`/`set_weight(s)`、`begin_drag`/`update_drag`/`end_drag`、`STACK_SEPARATOR_HEIGHT`、`resize_stack_weights`/`normalize_stack_weight`） |
 | Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二）、逐段压感变宽（`pressure_width` / `stroke_paths` / `extend_stroke_with_pressure`）、画布语义接线（`InkLayer::semantics` / `InkLayerElement::a11y`，每笔一个 `GraphicsObject` 节点） |
 | 走势图 / 波形 `sparkline` `waveform` | 画布语义接线（`Sparkline::a11y` / `Waveform::a11y` 整体摘要节点：点数 / 极值 / 峰值 / 播放进度）、`CanvasSemantics::fill_empty_bounds`（零尺寸摘要节点按画布大小发布）、`CanvasNode::with_bounds`/`set_bounds` |
+| 仪表盘图表 `components/charts`（`charts` feature） | 画布语义接线：`Gauge::a11y` / `PieChart::a11y`（含 `Donut` 变体）/ `RadarChart::a11y` / `TreeMap::a11y` 各自发布一个整体摘要节点（扇区占比 / 进度 / 轴值 / 顶层占比，零值剔除、超长截断）；div 点阵渲染的 `DonutChart` / `Heatmap` / `BarChart` 本身有子节点，无需接线 |
 
 仍未做（保持暂缓）：富文本分节 / 表格 / 批注 / 脚注、
-更多自绘组件接线画布语义（表格 / 页视图 / 仪表盘等）、bidi 视觉重排、
+更多自绘组件接线画布语义（表格 / 页视图 / 坐标轴折线类图表等）、bidi 视觉重排、
 取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 
 ### AGENTS 完整性检查清单（12 项）逐条结果

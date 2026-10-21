@@ -1,6 +1,8 @@
 //! 仪表盘组件（半圆弧进度）。
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
+use accesskit::Role;
 use std::rc::Rc;
 
 /// 仪表盘尺寸。
@@ -58,7 +60,23 @@ pub struct Gauge {
     size: GaugeSize,
     color: Option<Hsla>,
     track_color: Option<Hsla>,
+    /// 无障碍配置：元素 id + 画布名称（开启后发布一个整体摘要节点）。
+    a11y: Option<(ElementId, SharedString)>,
     style: StyleRefinement,
+}
+
+/// 仪表盘整体语义：一个零尺寸摘要节点（发布时由画布填充整块区域）。
+fn gauge_semantics(value: f32, formatted_value: &str, label: &SharedString) -> CanvasSemantics {
+    let mut semantics = CanvasSemantics::new();
+    semantics.push(
+        CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+            .with_value(formatted_value.to_string())
+            .with_description(format!(
+                "半圆弧进度 · 量程 0–100%，当前 {:.0}%",
+                (value.clamp(0.0, 1.0) * 100.0).round()
+            )),
+    );
+    semantics
 }
 
 impl Gauge {
@@ -72,6 +90,7 @@ impl Gauge {
             size: GaugeSize::default(),
             color: None,
             track_color: None,
+            a11y: None,
             style: StyleRefinement::default(),
         }
     }
@@ -111,6 +130,15 @@ impl Gauge {
         self.track_color = Some(color);
         self
     }
+
+    /// 把进度值暴露给辅助技术：发布一个整体摘要节点（格式化数值 + 当前百分比），
+    /// 节点矩形在发布时按画布大小填充。
+    ///
+    /// `id` 是画布元素自身的标识，同一仪表盘跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
+        self
+    }
 }
 
 impl Styled for Gauge {
@@ -138,6 +166,11 @@ impl RenderOnce for Gauge {
         let text_color = theme.tokens.foreground;
         let label_color = theme.tokens.muted_foreground;
 
+        let a11y = self.a11y;
+        let semantics = a11y
+            .as_ref()
+            .map(|(_, label)| gauge_semantics(self.value, &formatted_value, label));
+
         let paint_data = PaintData {
             value: self.value,
             color: gauge_color,
@@ -160,8 +193,8 @@ impl RenderOnce for Gauge {
                     .w(px(width))
                     .h(px(height))
                     .relative()
-                    .child(
-                        canvas(
+                    .child({
+                        let mut chart = canvas(
                             move |_bounds, _window, _cx| paint_data,
                             move |bounds, data, window, _cx| {
                                 if bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
@@ -227,8 +260,17 @@ impl RenderOnce for Gauge {
                                 }
                             },
                         )
-                        .size_full(),
-                    )
+                        .size_full();
+
+                        // 无障碍：整块仪表一个摘要节点（零尺寸，由画布按实际大小填充）。
+                        if let (Some((id, label)), Some(semantics)) = (a11y, semantics) {
+                            chart = chart
+                                .id(id)
+                                .a11y(Role::GraphicsObject, semantics)
+                                .a11y_label(label);
+                        }
+                        chart
+                    })
                     .child(
                         div()
                             .absolute()
@@ -249,5 +291,40 @@ impl RenderOnce for Gauge {
             .when_some(self.label, |this, lbl| {
                 this.child(div().text_sm().text_color(label_color).child(lbl))
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::gauge_semantics;
+    use crate::{Bounds, SharedString};
+
+    /// 无障碍摘要：格式化数值 + 当前百分比描述（钳制到 0–100%）。
+    #[test]
+    fn gauge_a11y_summary() {
+        let label: SharedString = "CPU 占用".into();
+        let semantics = gauge_semantics(0.754, "75%", &label);
+        assert_eq!(semantics.len(), 1);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(node.label().to_string(), "CPU 占用");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("75%".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("半圆弧进度 · 量程 0–100%，当前 75%".to_string())
+        );
+        // 零尺寸：发布时由画布按实际大小填充。
+        assert_eq!(node.bounds(), Bounds::default());
+
+        // 超界数值在描述里钳到量程。
+        let over = gauge_semantics(2.0, "200%", &label);
+        let node = over.get(1).expect("摘要节点");
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("半圆弧进度 · 量程 0–100%，当前 100%".to_string())
+        );
     }
 }
