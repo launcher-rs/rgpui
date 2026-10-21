@@ -1,6 +1,8 @@
 //! 饼图/环形图组件。
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
+use accesskit::Role;
 
 /// 默认系列配色。
 const CHART_COLORS: [u32; 8] = [
@@ -101,7 +103,42 @@ pub struct PieChart {
     center_label: Option<SharedString>,
     size: PieChartSize,
     donut_thickness: f32,
+    /// 无障碍配置：元素 id + 画布名称（开启后发布一个整体摘要节点）。
+    a11y: Option<(ElementId, SharedString)>,
     style: StyleRefinement,
+}
+
+/// 饼图整体语义：一个零尺寸摘要节点（发布时由画布填充整块区域）。
+fn pie_semantics(segments: &[PieChartSegment], label: &SharedString) -> CanvasSemantics {
+    // 占比按正扇区计算，零 / 负值不参与。
+    let mut sorted: Vec<&PieChartSegment> = segments.iter().filter(|s| s.value > 0.0).collect();
+    sorted.sort_by(|a, b| b.value.total_cmp(&a.value));
+    let total: f64 = sorted.iter().map(|s| s.value).sum();
+
+    let summary = if total <= 0.0 {
+        "暂无数据".to_string()
+    } else {
+        format!("{} 个扇区 · 总计 {total:.2}", sorted.len())
+    };
+    let mut parts = Vec::new();
+    for segment in sorted.iter().take(5) {
+        parts.push(format!(
+            "{} {:.1}%",
+            segment.label,
+            segment.value / total * 100.0
+        ));
+    }
+    if sorted.len() > 5 {
+        parts.push(format!("等 {} 项", sorted.len()));
+    }
+
+    let mut semantics = CanvasSemantics::new();
+    semantics.push(
+        CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+            .with_value(summary)
+            .with_description(parts.join("、")),
+    );
+    semantics
 }
 
 impl PieChart {
@@ -115,6 +152,7 @@ impl PieChart {
             center_label: None,
             size: PieChartSize::Md,
             donut_thickness: 0.35,
+            a11y: None,
             style: StyleRefinement::default(),
         }
     }
@@ -170,6 +208,15 @@ impl PieChart {
         self.label_position = position;
         self
     }
+
+    /// 把图表数据暴露给辅助技术：发布一个整体摘要节点（扇区数 / 总计 + 占比最高项），
+    /// 节点矩形在发布时按画布大小填充。
+    ///
+    /// `id` 是画布元素自身的标识，同一图表跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
+        self
+    }
 }
 
 impl Styled for PieChart {
@@ -188,6 +235,15 @@ impl RenderOnce for PieChart {
 
         let total: f64 = self.segments.iter().map(|s| s.value).sum();
 
+        let a11y = if total == 0.0 || self.segments.is_empty() {
+            None
+        } else {
+            self.a11y
+        };
+        let semantics = a11y
+            .as_ref()
+            .map(|(_, label)| pie_semantics(&self.segments, label));
+
         let chart = if total == 0.0 || self.segments.is_empty() {
             render_empty_chart(chart_size, theme)
         } else {
@@ -199,6 +255,8 @@ impl RenderOnce for PieChart {
                 self.donut_thickness,
                 self.center_label.clone(),
                 theme,
+                a11y,
+                semantics,
             )
         };
 
@@ -236,6 +294,8 @@ fn render_pie_chart(
     donut_thickness: f32,
     center_label: Option<SharedString>,
     theme: &Theme,
+    a11y: Option<(ElementId, SharedString)>,
+    semantics: Option<CanvasSemantics>,
 ) -> Div {
     let size_f32 = pixels_to_f32(chart_size);
     let center = size_f32 * 0.5;
@@ -284,8 +344,8 @@ fn render_pie_chart(
         outer_radius,
         inner_radius,
     };
-    container = container.child(
-        canvas(
+    container = container.child({
+        let mut chart = canvas(
             move |_bounds, _window, _cx| paint_data,
             move |bounds, data, window, _cx| {
                 if bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
@@ -336,8 +396,17 @@ fn render_pie_chart(
                 }
             },
         )
-        .size_full(),
-    );
+        .size_full();
+
+        // 无障碍：整块图表一个摘要节点（零尺寸，由画布按实际大小填充）。
+        if let (Some((id, label)), Some(semantics)) = (a11y, semantics) {
+            chart = chart
+                .id(id)
+                .a11y(Role::GraphicsObject, semantics)
+                .a11y_label(label);
+        }
+        chart
+    });
 
     if variant == PieChartVariant::Donut {
         let inner_size = inner_radius * 2.0 - 4.0;
@@ -495,4 +564,49 @@ fn render_legend(
                     ),
             )
         }))
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::{PieChartSegment, pie_semantics};
+    use crate::{Bounds, SharedString};
+
+    /// 无障碍摘要：扇区数 / 总计 + 占比降序列举（零值剔除、最多 5 项）。
+    #[test]
+    fn pie_a11y_summary() {
+        let label: SharedString = "磁盘分布".into();
+        let semantics = pie_semantics(
+            &[
+                PieChartSegment::new("A", 40.0),
+                PieChartSegment::new("B", 35.0),
+                PieChartSegment::new("C", 25.0),
+            ],
+            &label,
+        );
+        assert_eq!(semantics.len(), 1);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(node.label().to_string(), "磁盘分布");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("3 个扇区 · 总计 100.00".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("A 40.0%、B 35.0%、C 25.0%".to_string())
+        );
+        // 零尺寸：发布时由画布按实际大小填充。
+        assert_eq!(node.bounds(), Bounds::default());
+
+        // 超过 5 项只列前 5，末尾补总数提示。
+        let segments: Vec<PieChartSegment> = (0..7)
+            .map(|i| PieChartSegment::new(format!("s{i}"), 1.0))
+            .collect();
+        let many = pie_semantics(&segments, &label);
+        let node = many.get(1).expect("摘要节点");
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("s0 14.3%、s1 14.3%、s2 14.3%、s3 14.3%、s4 14.3%、等 7 项".to_string())
+        );
+    }
 }

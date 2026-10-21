@@ -1,6 +1,8 @@
 //! 矩形树图组件（squarified treemap，用于层次数据可视化）。
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
+use accesskit::Role;
 
 /// 默认系列配色。
 const CHART_COLORS: [u32; 8] = [
@@ -285,7 +287,51 @@ pub struct TreeMap {
     show_labels: bool,
     padding: Pixels,
     min_cell_size: Pixels,
+    /// 无障碍配置：元素 id + 画布名称（开启后发布一个整体摘要节点）。
+    a11y: Option<(ElementId, SharedString)>,
     style: StyleRefinement,
+}
+
+/// 矩形树图整体语义：一个零尺寸摘要节点（发布时由画布填充整块区域）。
+///
+/// 摘要按顶层项总值降序列举占比（零值剔除、最多 5 项），子节点计入父项总值。
+fn treemap_semantics(data: &[TreeMapNode], label: &SharedString) -> CanvasSemantics {
+    let total: f64 = data.iter().map(|node| node.total_value()).sum();
+
+    let summary = if data.is_empty() || total <= 0.0 {
+        "暂无数据".to_string()
+    } else {
+        format!(
+            "{} 个顶层项 · 总计 {total:.2}",
+            data.iter().filter(|node| node.total_value() > 0.0).count()
+        )
+    };
+    let mut parts = Vec::new();
+    if total > 0.0 {
+        let mut sorted: Vec<&TreeMapNode> = data
+            .iter()
+            .filter(|node| node.total_value() > 0.0)
+            .collect();
+        sorted.sort_by(|a, b| b.total_value().total_cmp(&a.total_value()));
+        for node in sorted.iter().take(5) {
+            parts.push(format!(
+                "{} {:.1}%",
+                node.label,
+                node.total_value() / total * 100.0
+            ));
+        }
+        if sorted.len() > 5 {
+            parts.push(format!("等 {} 项", sorted.len()));
+        }
+    }
+
+    let mut semantics = CanvasSemantics::new();
+    semantics.push(
+        CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+            .with_value(summary)
+            .with_description(parts.join("、")),
+    );
+    semantics
 }
 
 impl TreeMap {
@@ -297,6 +343,7 @@ impl TreeMap {
             show_labels: true,
             padding: px(2.0),
             min_cell_size: px(20.0),
+            a11y: None,
             style: StyleRefinement::default(),
         }
     }
@@ -330,6 +377,15 @@ impl TreeMap {
         self.min_cell_size = size;
         self
     }
+
+    /// 把层次数据暴露给辅助技术：发布一个整体摘要节点（顶层项数 / 总计 +
+    /// 占比最高项），节点矩形在发布时按画布大小填充。
+    ///
+    /// `id` 是画布元素自身的标识，同一图表跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
+        self
+    }
 }
 
 impl Styled for TreeMap {
@@ -349,6 +405,11 @@ impl RenderOnce for TreeMap {
         let min_cell = pixels_to_f32(self.min_cell_size);
         let border_color: Hsla = theme.tokens.background.color;
 
+        let a11y = self.a11y;
+        let semantics = a11y
+            .as_ref()
+            .map(|(_, label)| treemap_semantics(&data, label));
+
         div()
             .w_full()
             .h(px(300.0))
@@ -360,8 +421,8 @@ impl RenderOnce for TreeMap {
                 el.style().refine(&user_style);
                 el
             })
-            .child(
-                canvas(
+            .child({
+                let mut chart = canvas(
                     move |_bounds, _window, _cx| {},
                     move |bounds, _, window, cx| {
                         let bx = pixels_to_f32(bounds.origin.x);
@@ -456,7 +517,59 @@ impl RenderOnce for TreeMap {
                 )
                 .absolute()
                 .inset_0()
-                .size_full(),
-            )
+                .size_full();
+
+                // 无障碍：整块图表一个摘要节点（零尺寸，由画布按实际大小填充）。
+                if let (Some((id, label)), Some(semantics)) = (a11y, semantics) {
+                    chart = chart
+                        .id(id)
+                        .a11y(Role::GraphicsObject, semantics)
+                        .a11y_label(label);
+                }
+                chart
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::{TreeMapNode, treemap_semantics};
+    use crate::{Bounds, SharedString};
+
+    /// 无障碍摘要：顶层项数 / 总计 + 总值降序列举（子节点计入父项、零值剔除）。
+    #[test]
+    fn treemap_a11y_summary() {
+        let label: SharedString = "磁盘占用".into();
+        let data = vec![
+            TreeMapNode::new("文档", 40.0),
+            TreeMapNode::new("媒体", 30.0).children(vec![
+                TreeMapNode::new("视频", 20.0),
+                TreeMapNode::new("音乐", 10.0),
+            ]),
+            TreeMapNode::new("空目录", 0.0),
+        ];
+        let semantics = treemap_semantics(&data, &label);
+        assert_eq!(semantics.len(), 1);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(node.label().to_string(), "磁盘占用");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("2 个顶层项 · 总计 70.00".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("文档 57.1%、媒体 42.9%".to_string())
+        );
+        // 零尺寸：发布时由画布按实际大小填充。
+        assert_eq!(node.bounds(), Bounds::default());
+
+        // 空数据退化为「暂无数据」摘要。
+        let empty = treemap_semantics(&[], &label);
+        let node = empty.get(1).expect("摘要节点");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("暂无数据".to_string())
+        );
     }
 }

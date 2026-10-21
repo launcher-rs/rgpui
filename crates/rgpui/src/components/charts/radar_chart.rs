@@ -1,6 +1,8 @@
 //! 雷达图组件。
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
+use accesskit::Role;
 
 /// 默认系列配色。
 const CHART_COLORS: [u32; 8] = [
@@ -87,7 +89,62 @@ pub struct RadarChart {
     show_legend: bool,
     grid_levels: usize,
     fill_opacity: f32,
+    /// 无障碍配置：元素 id + 画布名称（开启后发布一个整体摘要节点）。
+    a11y: Option<(ElementId, SharedString)>,
     style: StyleRefinement,
+}
+
+/// 雷达图整体语义：一个零尺寸摘要节点（发布时由画布填充整块区域）。
+///
+/// 摘要按轴序列出各数据集数值（超过 6 轴 / 3 个数据集截断）。
+fn radar_semantics(
+    axes: &[SharedString],
+    datasets: &[RadarDataset],
+    label: &SharedString,
+) -> CanvasSemantics {
+    let mut semantics = CanvasSemantics::new();
+    if axes.is_empty() || datasets.is_empty() {
+        semantics.push(
+            CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+                .with_value("暂无数据"),
+        );
+        return semantics;
+    }
+
+    let summary = format!("{} 轴 · {} 个数据集", axes.len(), datasets.len());
+    let mut parts = Vec::new();
+    for dataset in datasets.iter().take(3) {
+        let values: Vec<String> = (0..axes.len().min(6))
+            .map(|i| {
+                let axis = axes
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| format!("轴{}", i + 1).into());
+                let value = dataset
+                    .values
+                    .get(i)
+                    .copied()
+                    .unwrap_or(0.0)
+                    .clamp(0.0, 1.0);
+                format!("{axis} {value:.2}")
+            })
+            .collect();
+        let mut detail = format!("{}：{}", dataset.label, values.join("、"));
+        if axes.len() > 6 {
+            detail.push_str(&format!("、等 {} 轴", axes.len()));
+        }
+        parts.push(detail);
+    }
+    if datasets.len() > 3 {
+        parts.push(format!("等 {} 个数据集", datasets.len()));
+    }
+
+    semantics.push(
+        CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+            .with_value(summary)
+            .with_description(parts.join("；")),
+    );
+    semantics
 }
 
 impl RadarChart {
@@ -101,6 +158,7 @@ impl RadarChart {
             show_legend: true,
             grid_levels: 5,
             fill_opacity: 0.2,
+            a11y: None,
             style: StyleRefinement::default(),
         }
     }
@@ -152,6 +210,15 @@ impl RadarChart {
         self.fill_opacity = opacity.clamp(0.0, 1.0);
         self
     }
+
+    /// 把各数据集数值暴露给辅助技术：发布一个整体摘要节点（轴数 / 数据集数 +
+    /// 按轴序列出的数值），节点矩形在发布时按画布大小填充。
+    ///
+    /// `id` 是画布元素自身的标识，同一图表跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
+        self
+    }
 }
 
 impl Styled for RadarChart {
@@ -197,6 +264,11 @@ impl RenderOnce for RadarChart {
                 .into_any_element();
         }
 
+        let a11y = self.a11y;
+        let semantics = a11y
+            .as_ref()
+            .map(|(_, label)| radar_semantics(&self.axes, &self.datasets, label));
+
         let paint_data = PaintData {
             axes: self.axes.clone(),
             datasets: self.datasets,
@@ -222,8 +294,8 @@ impl RenderOnce for RadarChart {
                 div()
                     .size(chart_size)
                     .relative()
-                    .child(
-                        canvas(
+                    .child({
+                        let mut chart = canvas(
                             move |_bounds, _window, _cx| paint_data,
                             move |bounds, data, window, _cx| {
                                 if bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
@@ -336,8 +408,17 @@ impl RenderOnce for RadarChart {
                                 }
                             },
                         )
-                        .size_full(),
-                    )
+                        .size_full();
+
+                        // 无障碍：整块图表一个摘要节点（零尺寸，由画布按实际大小填充）。
+                        if let (Some((id, label)), Some(semantics)) = (a11y, semantics) {
+                            chart = chart
+                                .id(id)
+                                .a11y(Role::GraphicsObject, semantics)
+                                .a11y_label(label);
+                        }
+                        chart
+                    })
                     .children(axis_labels.iter().enumerate().map(|(i, label)| {
                         let angle = angle_for_axis(i, n_axes);
                         let label_dist = 0.5 + label_padding / (chart_size / px(1.0));
@@ -379,5 +460,48 @@ impl RenderOnce for RadarChart {
                 )
             })
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::{RadarDataset, radar_semantics};
+    use crate::{Bounds, SharedString};
+
+    /// 无障碍摘要：轴数 / 数据集数 + 按轴序列出各数据集数值；空数据退化。
+    #[test]
+    fn radar_a11y_summary() {
+        let label: SharedString = "角色属性".into();
+        let axes: Vec<SharedString> = vec!["力量".into(), "敏捷".into(), "智力".into()];
+        let datasets = vec![
+            RadarDataset::new("战士", vec![0.8, 0.5, 0.3]),
+            RadarDataset::new("法师", vec![0.3, 0.6, 0.9]),
+        ];
+        let semantics = radar_semantics(&axes, &datasets, &label);
+        assert_eq!(semantics.len(), 1);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(node.label().to_string(), "角色属性");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("3 轴 · 2 个数据集".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some(
+                "战士：力量 0.80、敏捷 0.50、智力 0.30；法师：力量 0.30、敏捷 0.60、智力 0.90"
+                    .to_string()
+            )
+        );
+        // 零尺寸：发布时由画布按实际大小填充。
+        assert_eq!(node.bounds(), Bounds::default());
+
+        // 空数据退化为「暂无数据」摘要。
+        let empty = radar_semantics(&axes, &[], &label);
+        let node = empty.get(1).expect("摘要节点");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("暂无数据".to_string())
+        );
     }
 }
