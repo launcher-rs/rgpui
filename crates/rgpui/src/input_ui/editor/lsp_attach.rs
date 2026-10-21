@@ -16,14 +16,19 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use crate::lsp::{
-    CompletionPopupState, CompletionProvider, CompletionState, DiagnosticEntry,
-    DiagnosticsProvider, HoverProvider, HoverState, PositionMapping,
+    CompletionPopupState, CompletionProvider, CompletionState, DefinitionProvider, DefinitionState,
+    DiagnosticEntry, DiagnosticsProvider, FormattingProvider, HoverProvider, HoverState,
+    PositionMapping, RenameProvider, SignatureHelpProvider, SignatureHelpState,
 };
-use crate::{App, Context, Entity, HighlightStyle, Hsla, Task, UnderlineStyle, Window, px};
+use crate::prelude::ActiveTheme as _;
+use crate::{
+    App, Context, Entity, HighlightStyle, Hsla, SharedString, Task, UnderlineStyle, Window, px,
+};
 use lsp_types::{
     CompletionContext, CompletionResponse, CompletionTriggerKind, DiagnosticSeverity,
-    InsertTextFormat, Uri,
+    InsertTextFormat, TextEdit, Uri,
 };
+use std::ops::Range;
 
 use super::super::decorations::{TextDecoration, normalize};
 use super::state::EditorState;
@@ -44,6 +49,22 @@ pub(super) struct LspAttach {
     diagnostics_provider: Option<Rc<dyn DiagnosticsProvider>>,
     /// 悬停 provider（应用注入，传输自理）。
     hover_provider: Option<Rc<dyn HoverProvider>>,
+    /// 格式化 provider（应用注入，传输自理）。
+    formatting_provider: Option<Rc<dyn FormattingProvider>>,
+    /// 重命名 provider（应用注入，传输自理）。
+    rename_provider: Option<Rc<dyn RenameProvider>>,
+    /// 定义 / 引用 provider（应用注入，传输自理）。
+    definition_provider: Option<Rc<dyn DefinitionProvider>>,
+    /// 定义 / 引用跳转结果（最近一次请求）。
+    definition: DefinitionState,
+    /// 签名提示 provider（应用注入，传输自理）。
+    signature_help_provider: Option<Rc<dyn SignatureHelpProvider>>,
+    /// 签名提示状态（最近一次请求；应用层渲染浮层）。
+    signature_help: SignatureHelpState,
+    /// 同符号高亮（最近一次请求；渲染为背景装饰）。
+    document_highlights: Vec<crate::lsp::DocumentHighlight>,
+    /// 同符号高亮装饰集合（内部输入上独立一层）。
+    highlights_collection: Option<TextDecorationCollection>,
     /// 当前文档 URI（诊断请求按 URI 取数，未设置时不请求）。
     document_uri: Option<Uri>,
     /// 补全状态（选中/可见/列表）。
@@ -75,6 +96,14 @@ impl LspAttach {
             completion_provider: None,
             diagnostics_provider: None,
             hover_provider: None,
+            formatting_provider: None,
+            rename_provider: None,
+            definition_provider: None,
+            definition: DefinitionState::default(),
+            signature_help_provider: None,
+            signature_help: SignatureHelpState::default(),
+            document_highlights: Vec::new(),
+            highlights_collection: None,
             document_uri: None,
             completion: CompletionState::default(),
             popup,
@@ -269,6 +298,380 @@ impl EditorState {
             self.lsp.hover.clear();
             cx.notify();
         }
+    }
+
+    /// 设置格式化 provider（应用实现传输后注入；传 `None` 断开）。
+    pub fn set_formatting_provider(
+        &mut self,
+        provider: Option<Rc<dyn FormattingProvider>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.formatting_provider = provider;
+        if self.lsp.formatting_provider.is_none() {
+            self.lsp.next_epoch();
+            cx.notify();
+        }
+    }
+
+    /// 设置签名提示 provider（应用实现传输后注入；传 `None` 断开）。
+    pub fn set_signature_help_provider(
+        &mut self,
+        provider: Option<Rc<dyn SignatureHelpProvider>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.signature_help_provider = provider;
+        if self.lsp.signature_help_provider.is_none() {
+            self.lsp.next_epoch();
+            self.lsp.signature_help.clear();
+            cx.notify();
+        }
+    }
+
+    /// 签名提示状态（最近一次请求；应用层渲染浮层）。
+    pub fn signature_help_state(&self) -> &SignatureHelpState {
+        &self.lsp.signature_help
+    }
+
+    /// 请求同符号高亮（服务端返回的相同符号范围渲染为背景装饰）。
+    ///
+    /// 高亮走 `DefinitionProvider::document_highlights`（默认不支持时为空）。
+    pub fn request_document_highlights(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.definition_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.document_highlights(&text, offset, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, _window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                let Ok(highlights) = response else { return };
+                this.lsp.document_highlights = highlights;
+                this.refresh_highlight_decorations(cx);
+                cx.notify();
+            });
+        }));
+    }
+
+    /// 同符号高亮刷到装饰集合（背景色；与诊断层分开）。
+    fn refresh_highlight_decorations(&mut self, cx: &mut Context<Self>) {
+        // 同符号高亮背景色（主题主色的浅底）。
+        let background = cx.theme().tokens.primary.color.opacity(0.18);
+        let highlights = self.lsp.document_highlights.clone();
+        let existing = self.lsp.highlights_collection.clone();
+        let mut created = None;
+        self.input.update(cx, |state, cx| {
+            let text = state.text().clone();
+            let decorations: Vec<TextDecoration> = highlights
+                .iter()
+                .map(|highlight| {
+                    let range = PositionMapping::position_to_offset(&text, highlight.range.start)
+                        ..PositionMapping::position_to_offset(&text, highlight.range.end);
+                    TextDecoration::new(
+                        range,
+                        HighlightStyle {
+                            background_color: Some(background),
+                            ..Default::default()
+                        },
+                    )
+                })
+                .collect();
+            if let Some(collection) = existing {
+                let decorations = normalize(&text, decorations);
+                if collection.set_in_place(&mut state.core.decorations, decorations) {
+                    cx.notify();
+                }
+            } else if !decorations.is_empty() {
+                created = Some(state.create_decorations_collection(decorations, cx));
+            }
+        });
+        if let Some(collection) = created {
+            self.lsp.highlights_collection = Some(collection);
+        }
+    }
+
+    /// 请求签名提示（结果写入状态，浮层由应用渲染）。
+    pub fn request_signature_help(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.signature_help_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.signature_help(&text, offset, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, _window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                match response {
+                    Ok(Some(response)) => {
+                        this.lsp.signature_help.response = Some(response);
+                        this.lsp.signature_help.active_signature = None;
+                        this.lsp.signature_help.active_parameter = None;
+                        this.lsp.signature_help.visible = true;
+                        cx.notify();
+                    }
+                    Ok(None) => {
+                        this.lsp.signature_help.clear();
+                        cx.notify();
+                    }
+                    Err(_) => {}
+                }
+            });
+        }));
+    }
+
+    /// 设置定义 / 引用 provider（应用实现传输后注入；传 `None` 断开）。
+    pub fn set_definition_provider(
+        &mut self,
+        provider: Option<Rc<dyn DefinitionProvider>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.definition_provider = provider;
+        if self.lsp.definition_provider.is_none() {
+            self.lsp.next_epoch();
+            self.lsp.definition.clear();
+            cx.notify();
+        }
+    }
+
+    /// 定义 / 引用跳转结果（最近一次请求；应用层可渲染列表）。
+    pub fn definition_locations(&self) -> &[crate::lsp::DefinitionLocation] {
+        &self.lsp.definition.locations
+    }
+
+    /// 跳转到定义：命中位置在当前文档时直接移动光标。
+    pub fn goto_definition(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.definition_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.definition(&text, offset, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                let Ok(locations) = response else { return };
+                this.apply_definition_locations(locations, window, cx);
+            });
+        }));
+    }
+
+    /// 查找引用：结果写入定义状态（应用层渲染列表）。
+    pub fn find_references(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.definition_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.references(&text, offset, true, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, _window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                let Ok(locations) = response else { return };
+                this.lsp.definition.locations = locations;
+                this.lsp.definition.visible = !this.lsp.definition.locations.is_empty();
+                cx.notify();
+            });
+        }));
+    }
+
+    /// 应用定义跳转结果：当前文档内的命中点直接移动光标。
+    fn apply_definition_locations(
+        &mut self,
+        locations: Vec<crate::lsp::DefinitionLocation>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.definition.locations = locations;
+        self.lsp.definition.visible = !self.lsp.definition.locations.is_empty();
+        // 当前文档内的首个命中点：移动光标过去。
+        let current_uri = self.lsp.document_uri.clone();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let target = current_uri.and_then(|uri| {
+            self.lsp
+                .definition
+                .locations
+                .iter()
+                .find(|location| location.uri == uri)
+                .map(|location| PositionMapping::position_to_offset(&text, location.range.start))
+        });
+        if let Some(target) = target {
+            self.input
+                .update(cx, |state, cx| state.set_selected_range(target..target, cx));
+        }
+        cx.notify();
+    }
+
+    /// 设置重命名 provider（应用实现传输后注入；传 `None` 断开）。
+    pub fn set_rename_provider(
+        &mut self,
+        provider: Option<Rc<dyn RenameProvider>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.rename_provider = provider;
+        if self.lsp.rename_provider.is_none() {
+            self.lsp.next_epoch();
+            cx.notify();
+        }
+    }
+
+    /// 请求重命名光标处符号为 `new_name`（服务端返回的工作区编辑会被应用）。
+    ///
+    /// 与格式化同款 epoch 防抖：请求发出后文档再变，本次结果作废。
+    pub fn request_rename(&mut self, new_name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.rename_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        let new_name = new_name.to_string();
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.rename(&text, offset, &new_name, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                let Ok(Some(edit)) = response else { return };
+                // 只应用属于当前文档的编辑（跨文件重命名由应用层处理）。
+                let edits = super::code_actions::edits_for_workspace_edit(
+                    &edit,
+                    this.lsp.document_uri.as_ref(),
+                );
+                this.apply_lsp_text_edits(&edits, window, cx);
+            });
+        }));
+    }
+
+    /// 请求整篇格式化（应用返回的文本编辑会被应用；无 provider 时不做任何事）。
+    ///
+    /// 与补全 / 悬停同款 epoch 防抖：请求发出后若文档再变，本次结果作废。
+    pub fn request_formatting(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.formatting_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.formatting(&text, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                if let Ok(edits) = response {
+                    this.apply_lsp_text_edits(&edits, window, cx);
+                }
+            });
+        }));
+    }
+
+    /// 应用 LSP 文本编辑（按字节偏移倒序应用，靠前编辑的位置不受后面改动影响）。
+    fn apply_lsp_text_edits(
+        &mut self,
+        edits: &[TextEdit],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if edits.is_empty() {
+            return;
+        }
+        let caret = self.input.read_with(cx, |state, _| state.cursor());
+        let mut offsets: Vec<(Range<usize>, SharedString)> =
+            self.input.read_with(cx, |state, _| {
+                let text = state.text();
+                edits
+                    .iter()
+                    .map(|edit| {
+                        (
+                            PositionMapping::position_to_offset(text, edit.range.start)
+                                ..PositionMapping::position_to_offset(text, edit.range.end),
+                            SharedString::from(edit.new_text.clone()),
+                        )
+                    })
+                    .collect()
+            });
+        offsets.sort_by_key(|a| std::cmp::Reverse(a.0.start));
+        for (range, new_text) in offsets {
+            self.suppress_auto_complete_once();
+            self.input.update(cx, |state, cx| {
+                state.set_selected_range(range, cx);
+                state.replace(new_text, window, cx);
+            });
+        }
+        let caret = caret.min(self.input.read_with(cx, |state, _| state.text().len()));
+        self.input
+            .update(cx, |state, cx| state.set_selected_range(caret..caret, cx));
     }
 
     /// 当前文档 URI（诊断请求按 URI 取数）。
@@ -594,9 +997,246 @@ mod tests {
         }
     }
 
+    /// 假格式化 provider：把整篇文本替换为小写（验证编辑能被应用）。
+    struct FakeFormattingProvider;
+
+    impl FormattingProvider for FakeFormattingProvider {
+        fn formatting(
+            &self,
+            text: &ropey::Rope,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Vec<TextEdit>>> {
+            let original = text.to_string();
+            let lowered = original.to_lowercase();
+            let lines: Vec<&str> = original.split('\n').collect();
+            let last = lines.len().saturating_sub(1);
+            Task::ready(Ok(vec![TextEdit {
+                range: lsp_types::Range {
+                    start: lsp_types::Position::new(0, 0),
+                    end: lsp_types::Position::new(last as u32, lines[last].len() as u32),
+                },
+                new_text: lowered,
+            }]))
+        }
+    }
+
+    /// 格式化请求：provider 返回的编辑被应用到文档。
+    #[rgpui::test]
+    fn request_formatting_applies_edits(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "ABC\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_formatting_provider(Some(std::rc::Rc::new(FakeFormattingProvider)), cx);
+                state.request_formatting(window, cx);
+            });
+        });
+        // 格式化任务经后台执行器返回，文本在下一轮更新后生效。
+        cx.run_until_parked();
+        let text = editor.read_with(cx, |state, cx| state.text(cx));
+        assert_eq!(text, "abc\n");
+    }
+    /// 假重命名 provider：把整篇文本替换为新名字。
+    struct FakeRenameProvider;
+
+    impl RenameProvider for FakeRenameProvider {
+        fn rename(
+            &self,
+            text: &ropey::Rope,
+            _offset: usize,
+            new_name: &str,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Option<lsp_types::WorkspaceEdit>>> {
+            let original = text.to_string();
+            let lines: Vec<&str> = original.split('\n').collect();
+            let last = lines.len().saturating_sub(1);
+            let uri: lsp_types::Uri = "file:///rename-test.rs".parse().expect("URI");
+            Task::ready(Ok(Some(lsp_types::WorkspaceEdit {
+                changes: Some(std::collections::HashMap::from([(
+                    uri,
+                    vec![TextEdit {
+                        range: lsp_types::Range {
+                            start: lsp_types::Position::new(0, 0),
+                            end: lsp_types::Position::new(last as u32, lines[last].len() as u32),
+                        },
+                        new_text: new_name.to_string(),
+                    }],
+                )])),
+                document_changes: None,
+                change_annotations: None,
+            })))
+        }
+    }
+
+    /// 重命名请求：服务端返回的工作区编辑被应用到当前文档。
+    #[rgpui::test]
+    fn request_rename_applies_workspace_edit(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "old name\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_document_uri(Some("file:///rename-test.rs".parse().unwrap()), cx);
+                state.set_rename_provider(Some(std::rc::Rc::new(FakeRenameProvider)), cx);
+                state.request_rename("new name", window, cx);
+            });
+        });
+        cx.run_until_parked();
+        let text = editor.read_with(cx, |state, cx| state.text(cx));
+        assert_eq!(text, "new name");
+    }
+    /// 假定义 provider：返回当前文档内的一个位置（偏移 2）。
+    struct FakeDefinitionProvider;
+
+    impl DefinitionProvider for FakeDefinitionProvider {
+        fn definition(
+            &self,
+            _text: &ropey::Rope,
+            _offset: usize,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Vec<crate::lsp::DefinitionLocation>>> {
+            Task::ready(Ok(vec![crate::lsp::DefinitionLocation {
+                uri: "file:///def-test.rs".parse().expect("URI"),
+                range: lsp_types::Range {
+                    start: lsp_types::Position::new(0, 2),
+                    end: lsp_types::Position::new(0, 5),
+                },
+                display_name: None,
+            }]))
+        }
+
+        fn references(
+            &self,
+            _text: &ropey::Rope,
+            _offset: usize,
+            _include_declarations: bool,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Vec<crate::lsp::DefinitionLocation>>> {
+            Task::ready(Ok(Vec::new()))
+        }
+
+        fn document_highlights(
+            &self,
+            _text: &ropey::Rope,
+            _offset: usize,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Vec<crate::lsp::DocumentHighlight>>> {
+            Task::ready(Ok(vec![crate::lsp::DocumentHighlight {
+                range: lsp_types::Range {
+                    start: lsp_types::Position::new(0, 0),
+                    end: lsp_types::Position::new(0, 3),
+                },
+                kind: Some(crate::lsp::DocumentHighlightKind::Text),
+            }]))
+        }
+    }
+
+    /// 定义跳转：命中位置在当前文档时，光标移到目标偏移。
+    #[rgpui::test]
+    fn goto_definition_moves_cursor(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_document_uri(Some("file:///def-test.rs".parse().unwrap()), cx);
+                state.set_definition_provider(Some(std::rc::Rc::new(FakeDefinitionProvider)), cx);
+                state.goto_definition(window, cx);
+            });
+        });
+        cx.run_until_parked();
+        let cursor = editor.read_with(cx, |state, cx| state.cursor(cx));
+        assert_eq!(cursor, 2);
+        // 结果同时保留给应用层渲染。
+        let locations = editor.read_with(cx, |state, _| state.definition_locations().len());
+        assert_eq!(locations, 1);
+    }
+    /// 同符号高亮：请求后装饰集合带上高亮范围。
+    #[rgpui::test]
+    fn request_document_highlights_creates_decorations(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_definition_provider(Some(std::rc::Rc::new(FakeDefinitionProvider)), cx);
+                state.request_document_highlights(window, cx);
+            });
+        });
+        cx.run_until_parked();
+        let ranges = editor.read_with(cx, |state, cx| {
+            state
+                .lsp
+                .highlights_collection
+                .as_ref()
+                .map(|collection| collection.get_ranges(cx))
+                .unwrap_or_default()
+        });
+        assert_eq!(ranges, vec![0..3]);
+    }
+    /// 假签名提示 provider：返回一个固定签名。
+    struct FakeSignatureHelpProvider;
+
+    impl SignatureHelpProvider for FakeSignatureHelpProvider {
+        fn signature_help(
+            &self,
+            _text: &ropey::Rope,
+            _offset: usize,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Option<lsp_types::SignatureHelp>>> {
+            Task::ready(Ok(Some(lsp_types::SignatureHelp {
+                signatures: vec![lsp_types::SignatureInformation {
+                    label: "fn add(a: i32, b: i32) -> i32".to_string(),
+                    documentation: None,
+                    parameters: None,
+                    active_parameter: None,
+                }],
+                active_signature: Some(0),
+                active_parameter: None,
+            })))
+        }
+    }
+
+    /// 签名提示请求：结果写入状态（应用层渲染浮层）。
+    #[rgpui::test]
+    fn request_signature_help_fills_state(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "add(1, 2)\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_signature_help_provider(
+                    Some(std::rc::Rc::new(FakeSignatureHelpProvider)),
+                    cx,
+                );
+                state.request_signature_help(window, cx);
+            });
+        });
+        cx.run_until_parked();
+        let state = editor.read_with(cx, |state, _| state.signature_help_state().clone());
+        assert!(state.visible);
+        let response = state.response.expect("签名提示");
+        assert_eq!(response.signatures.len(), 1);
+    }
     /// 假补全 provider（固定返回 `println` / `print` 两个条目）。
     struct FakeCompletionProvider;
-
     impl CompletionProvider for FakeCompletionProvider {
         fn completions(
             &self,

@@ -30,6 +30,8 @@ impl TestDispatcher {
             capture_pending_traces: std::env::var("PENDING_TRACES")
                 .map_or(false, |var| var == "1" || var == "true"),
             timeout_ticks: 0..=1000,
+            // park 硬超时（真实时间）：防挂起。
+            park_timeout: std::time::Duration::from_secs(15),
         }));
         Self::from_scheduler(scheduler)
     }

@@ -29,8 +29,8 @@ use std::sync::Arc;
 use crate::prelude::ActiveTheme as _;
 use crate::{
     App, ElementId, Hsla, InteractiveText, IntoElement, ParentElement as _, Pixels, RenderOnce,
-    Rgba, StrikethroughStyle, Styled as _, StyledText, TextAlign, TextRun, UnderlineStyle, Window,
-    div, px, v_flex,
+    Rgba, SharedString, StrikethroughStyle, Styled as _, StyledText, TextAlign, TextRun,
+    UnderlineStyle, Window, div, px, relative, v_flex,
 };
 
 /// 单次解析 HTML 的字节上限（防御恶意片段）。
@@ -44,7 +44,7 @@ const INDENT_PX: f32 = 24.0;
 /// 缩进的最大层级。
 const MAX_INDENT: u8 = 8;
 
-/// 行内富文本属性：粗体/斜体/下划线/删除线 + 可选前景色。
+/// 行内富文本属性：粗体/斜体/下划线/删除线/行内代码 + 可选前景色。
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RunProps {
     /// 是否粗体。
@@ -55,6 +55,8 @@ pub struct RunProps {
     pub underline: bool,
     /// 是否删除线。
     pub strikethrough: bool,
+    /// 是否行内代码（等宽字体 + 浅底）。
+    pub code: bool,
     /// 前景色覆盖；`None` 表示跟随主题/父级。
     pub color: Option<Hsla>,
 }
@@ -89,6 +91,12 @@ impl RunProps {
         self
     }
 
+    /// 置为行内代码。
+    pub fn code(mut self) -> Self {
+        self.code = true;
+        self
+    }
+
     /// 设置前景色。
     pub fn color(mut self, color: Hsla) -> Self {
         self.color = Some(color);
@@ -113,8 +121,8 @@ pub enum ListKind {
     Number,
 }
 
-/// 段落级样式：对齐、缩进层级、列表标记、标题级别。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// 段落级样式：对齐、缩进层级、列表标记、标题级别、行高、段前距。
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ParagraphStyle {
     /// 水平对齐。
     pub align: TextAlign,
@@ -124,6 +132,12 @@ pub struct ParagraphStyle {
     pub list: ListKind,
     /// 标题级别（1–6；`None` 表示普通段落）。
     pub heading: Option<u8>,
+    /// 行高倍数（`None` 表示用外层默认行高）。
+    pub line_height: Option<f32>,
+    /// 段前距（`None` 表示无额外间距）。
+    pub space_before: Option<Pixels>,
+    /// 是否为引用块内容（渲染带左边线与浅底，HTML 输出 `<blockquote>`）。
+    pub quote: bool,
 }
 
 impl ParagraphStyle {
@@ -147,6 +161,8 @@ pub struct Run {
     pub text: String,
     /// 行内属性。
     pub props: RunProps,
+    /// 链接地址（`None` 表示普通文本）。
+    pub link: Option<String>,
 }
 
 impl Run {
@@ -155,6 +171,7 @@ impl Run {
         Self {
             text: text.into(),
             props: RunProps::default(),
+            link: None,
         }
     }
 
@@ -163,6 +180,16 @@ impl Run {
         Self {
             text: text.into(),
             props,
+            link: None,
+        }
+    }
+
+    /// 以指定属性创建**链接**文本运行。
+    pub fn with_link(text: impl Into<String>, props: RunProps, link: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            props,
+            link: Some(link.into()),
         }
     }
 
@@ -191,10 +218,12 @@ impl Run {
             Some(Run {
                 text: head.to_string(),
                 props: self.props,
+                link: self.link.clone(),
             }),
             Some(Run {
                 text: tail.to_string(),
                 props: self.props,
+                link: self.link.clone(),
             }),
         )
     }
@@ -251,6 +280,7 @@ impl Paragraph {
         head.push(Run {
             text: text.to_string(),
             props,
+            link: None,
         });
         head.extend(tail);
         self.runs = head;
@@ -277,6 +307,8 @@ impl Paragraph {
             }
             if let Some(last) = out.last_mut()
                 && last.props == run.props
+                // 链接不同的运行不能合并（否则链接地址会丢失）。
+                && last.link == run.link
             {
                 last.text.push_str(&run.text);
                 continue;
@@ -313,6 +345,92 @@ pub struct Footnote {
     pub range: Range<usize>,
     /// 脚注文本。
     pub text: String,
+}
+
+/// 文档历史：快照式撤销 / 重做栈。
+///
+/// 用法：`history.edit(&mut doc, |doc| { …修改… })` 会在修改前压入快照；
+/// `undo` / `redo` 用快照整份替换文档。快照是文档拷贝，适合中小文档；
+/// 超大文档可改用差分 / 块级快照（后续增补）。
+#[derive(Clone, Debug, Default)]
+pub struct RichTextHistory {
+    /// 撤销栈（栈顶是最近一次编辑**前**的状态）。
+    undo: Vec<RichTextDoc>,
+    /// 重做栈（栈顶是最近一次撤销前的状态）。
+    redo: Vec<RichTextDoc>,
+}
+
+/// 历史栈条目上限（超出后丢弃最旧的快照，限制内存占用）。
+const HISTORY_LIMIT: usize = 100;
+
+impl RichTextHistory {
+    /// 创建历史（此时无可撤销的编辑）。
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 是否可撤销。
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    /// 是否可重做。
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    /// 清空历史（文档被整体替换时调用）。
+    pub fn clear(&mut self) {
+        self.undo.clear();
+        self.redo.clear();
+    }
+
+    /// 在历史中执行一次编辑：先压入编辑前的快照，再执行 `f`。
+    ///
+    /// 返回 `f` 是否真的改动了文档（未改动时不压栈，避免产生空撤销步骤）。
+    pub fn edit(&mut self, doc: &mut RichTextDoc, f: impl FnOnce(&mut RichTextDoc)) -> bool {
+        let before = doc.clone();
+        f(doc);
+        if *doc == before {
+            return false;
+        }
+        self.push_undo(before);
+        // 新编辑后原重做链失效。
+        self.redo.clear();
+        true
+    }
+
+    /// 手动记录一次编辑前的状态（供在历史之外修改文档的路径使用）。
+    pub fn record(&mut self, doc: &RichTextDoc) {
+        self.push_undo(doc.clone());
+        self.redo.clear();
+    }
+
+    /// 撤销一步：撤销栈顶快照写回文档，当前文档压入重做栈。
+    pub fn undo(&mut self, doc: &mut RichTextDoc) -> bool {
+        let Some(previous) = self.undo.pop() else {
+            return false;
+        };
+        self.redo.push(std::mem::replace(doc, previous));
+        true
+    }
+
+    /// 重做一步：重做栈顶快照写回文档，当前文档压回撤销栈。
+    pub fn redo(&mut self, doc: &mut RichTextDoc) -> bool {
+        let Some(next) = self.redo.pop() else {
+            return false;
+        };
+        self.undo.push(std::mem::replace(doc, next));
+        true
+    }
+
+    /// 压入撤销栈（超出上限时丢弃最旧的一条）。
+    fn push_undo(&mut self, snapshot: RichTextDoc) {
+        self.undo.push(snapshot);
+        if self.undo.len() > HISTORY_LIMIT {
+            self.undo.remove(0);
+        }
+    }
 }
 
 /// 文档统计（字符数 / 段落数 / 行数）。
@@ -594,6 +712,7 @@ impl RichTextDoc {
             first.runs.push(Run {
                 text: (*seg).to_string(),
                 props,
+                link: None,
             });
         }
 
@@ -608,6 +727,7 @@ impl RichTextDoc {
             last.runs.push(Run {
                 text: (*seg).to_string(),
                 props,
+                link: None,
             });
         }
         last.runs.extend(tail);
@@ -766,26 +886,20 @@ impl RichTextDoc {
         while i < self.paragraphs.len() {
             let kind = self.paragraphs[i].style.list;
             let spans = collect_spans(self, offsets[i], self.paragraphs[i].char_len());
+            // 连续的引用段落合并为一个 `<blockquote>`。
+            if self.paragraphs[i].style.quote {
+                out.push_str("<blockquote>");
+                while i < self.paragraphs.len() && self.paragraphs[i].style.quote {
+                    let spans = collect_spans(self, offsets[i], self.paragraphs[i].char_len());
+                    push_paragraph_block(&mut out, &self.paragraphs[i], &spans, self);
+                    i += 1;
+                }
+                out.push_str("</blockquote>");
+                continue;
+            }
             match kind {
                 ListKind::None => {
-                    // 标题段落用 `<h1>`…`<h6>`，其余用 `<p>`。
-                    let tag = match self.paragraphs[i].style.heading {
-                        Some(level) => format!("h{}", level.clamp(1, 6)),
-                        None => "p".to_string(),
-                    };
-                    out.push('<');
-                    out.push_str(&tag);
-                    let css = paragraph_css(&self.paragraphs[i].style);
-                    if !css.is_empty() {
-                        out.push_str(" style=\"");
-                        out.push_str(&css);
-                        out.push('"');
-                    }
-                    out.push('>');
-                    push_paragraph_html(&mut out, &self.paragraphs[i], &spans, self);
-                    out.push_str("</");
-                    out.push_str(&tag);
-                    out.push('>');
+                    push_paragraph_block(&mut out, &self.paragraphs[i], &spans, self);
                     i += 1;
                 }
                 ListKind::Bullet | ListKind::Number => {
@@ -830,6 +944,8 @@ impl RichTextDoc {
         let mut footnotes: Vec<(usize, Range<usize>, u32, String)> = Vec::new();
         let mut open_annotations: Vec<(usize, usize, u32, String)> = Vec::new();
         let mut open_footnotes: Vec<(usize, usize, u32, String)> = Vec::new();
+        // 引用块嵌套深度（`<blockquote>`）。
+        let mut quote_depth = 0usize;
 
         while i < bytes.len() && paragraphs.len() <= MAX_PARAS && runs <= MAX_RUNS {
             if bytes[i] == b'<' {
@@ -883,6 +999,15 @@ impl RichTextDoc {
                                 footnotes.push((para_index, start..end, id, text));
                             }
                         }
+                        // 引用块闭合：没有 `<p>` 包裹时内容就在当前段落里。
+                        "blockquote" => {
+                            if quote_depth > 0 {
+                                if let Some(para) = paragraphs.last_mut() {
+                                    para.style.quote = true;
+                                }
+                                quote_depth -= 1;
+                            }
+                        }
                         _ => {
                             if is_block(&name) {
                                 // 标题标签闭合时给承载标题文本的段落记级别。
@@ -891,13 +1016,19 @@ impl RichTextDoc {
                                 {
                                     para.style.heading = Some(level);
                                 }
+                                // 引用块内的段落标记为引用样式。
+                                if quote_depth > 0
+                                    && let Some(para) = paragraphs.last_mut()
+                                {
+                                    para.style.quote = true;
+                                }
                                 new_paragraph(&mut paragraphs, list);
                             }
                             let kind = tag_kind(&name);
                             if !kind.is_empty()
                                 && let Some(pos) = stack.iter().rposition(|(k, _)| *k == kind)
                             {
-                                style = stack[pos].1;
+                                style = stack[pos].1.clone();
                                 stack.truncate(pos);
                             }
                         }
@@ -955,6 +1086,12 @@ impl RichTextDoc {
                     continue;
                 }
 
+                // 引用块：进入时记深度，内容段落按引用样式渲染。
+                if name == "blockquote" {
+                    quote_depth += 1;
+                    continue;
+                }
+
                 if is_block(&name) {
                     // 段落级样式（对齐 / 缩进）落在当前段落上。
                     if let Some(css) = attr(name_src, "style")
@@ -972,8 +1109,14 @@ impl RichTextDoc {
                 if token.ends_with('/') {
                     continue;
                 }
-                stack.push((kind, style));
+                stack.push((kind, style.clone()));
                 apply_inline_tag(&name, &mut style, attr(name_src, "style"));
+                // 链接：`<a href="…">` 的地址挂在样式状态上（关闭时随栈恢复）。
+                if name == "a"
+                    && let Some(href) = attr(name_src, "href")
+                {
+                    style.link = Some(decode_text(href));
+                }
                 continue;
             }
 
@@ -995,6 +1138,7 @@ impl RichTextDoc {
                 continue;
             }
             if let Some(para) = paragraphs.last_mut() {
+                let link = style.link.clone();
                 para.runs.push(Run {
                     text,
                     props: RunProps {
@@ -1002,8 +1146,10 @@ impl RichTextDoc {
                         italic: style.italic,
                         underline: style.underline,
                         strikethrough: style.strikethrough,
+                        code: style.code,
                         color: style.color,
                     },
+                    link,
                 });
                 runs += 1;
             }
@@ -1055,13 +1201,17 @@ impl RichTextDoc {
 }
 
 /// 行内样式的解析状态。
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct StyleState {
     bold: bool,
     italic: bool,
     underline: bool,
     strikethrough: bool,
+    /// 行内代码（`<code>`）。
+    code: bool,
     color: Option<Hsla>,
+    /// 当前链接地址（`<a href="…">`）。
+    link: Option<String>,
 }
 
 /// 插入后平移区间：插入点之前的区间不动，插入点之后的整体后移，
@@ -1124,6 +1274,27 @@ fn split_runs(runs: Vec<Run>, offset: usize) -> (Vec<Run>, Vec<Run>) {
 }
 
 /// 追加一个段落的行内 HTML（不含外层 `<p>`/`<li>`）。
+/// 输出一个段落的 HTML（`<p>` / `<h1>`…`<h6>` + 内联样式 + 内容）。
+fn push_paragraph_block(out: &mut String, para: &Paragraph, spans: &[Span], doc: &RichTextDoc) {
+    let tag = match para.style.heading {
+        Some(level) => format!("h{}", level.clamp(1, 6)),
+        None => "p".to_string(),
+    };
+    out.push('<');
+    out.push_str(&tag);
+    let css = paragraph_css(&para.style);
+    if !css.is_empty() {
+        out.push_str(" style=\"");
+        out.push_str(&css);
+        out.push('"');
+    }
+    out.push('>');
+    push_paragraph_html(out, para, spans, doc);
+    out.push_str("</");
+    out.push_str(&tag);
+    out.push('>');
+}
+
 /// 输出一段段落 HTML；批注 / 脚注区间按 `<mark>` / `<sup>` 包裹。
 fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: &RichTextDoc) {
     let mut run_offset = 0usize;
@@ -1131,6 +1302,12 @@ fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: 
         let (open, close) = run_tags(&run.props);
         for (piece, span) in split_run_by_spans(&run.text, run_offset, spans) {
             out.push_str(&open);
+            // 链接：`<a href="…">` 包裹（放在批注 / 脚注标签之外）。
+            if let Some(href) = &run.link {
+                out.push_str("<a href=\"");
+                escape_html_attr(out, href);
+                out.push_str("\">");
+            }
             match span {
                 Some((SpanKind::Annotation, id)) => {
                     let note = doc
@@ -1157,6 +1334,9 @@ fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: 
                 None => {
                     escape_html(out, &piece);
                 }
+            }
+            if run.link.is_some() {
+                out.push_str("</a>");
             }
             out.push_str(&close);
         }
@@ -1198,6 +1378,10 @@ fn run_tags(props: &RunProps) -> (String, String) {
         open.push_str("<s>");
         close.insert_str(0, "</s>");
     }
+    if props.code {
+        open.push_str("<code>");
+        close.insert_str(0, "</code>");
+    }
     if let Some(color) = props.color {
         open.push_str("<span style=\"color:");
         open.push_str(&color_hex(color));
@@ -1226,6 +1410,18 @@ fn paragraph_css(style: &ParagraphStyle) -> String {
             "margin-left:{}px",
             u32::from(style.indent) * INDENT_PX as u32
         ));
+    }
+    if let Some(line_height) = style.line_height {
+        if !css.is_empty() {
+            css.push(';');
+        }
+        css.push_str(&format!("line-height:{line_height}"));
+    }
+    if let Some(space_before) = style.space_before {
+        if !css.is_empty() {
+            css.push(';');
+        }
+        css.push_str(&format!("margin-top:{}px", space_before.0.round() as i32));
     }
     css
 }
@@ -1273,6 +1469,7 @@ fn apply_inline_tag(name: &str, style: &mut StyleState, css: Option<&str>) {
         "i" | "em" => style.italic = true,
         "u" => style.underline = true,
         "s" | "strike" | "del" => style.strikethrough = true,
+        "code" => style.code = true,
         _ => {}
     }
     if let Some(css) = css {
@@ -1327,6 +1524,31 @@ fn apply_paragraph_css(style: &mut ParagraphStyle, css: &str) {
     {
         let level = (px / INDENT_PX).round().clamp(0.0, f32::from(MAX_INDENT)) as u8;
         style.indent = level;
+    }
+    // 行高：`1.5`（倍数）或 `24px`（绝对值）。
+    if let Some(v) = css_value(&lower, "line-height") {
+        let value = v.trim();
+        if let Ok(multiple) = value.parse::<f32>() {
+            if multiple > 0.0 {
+                style.line_height = Some(multiple);
+            }
+        } else if let Some(px) = value
+            .strip_suffix("px")
+            .and_then(|n| n.trim().parse::<f32>().ok())
+            && px > 0.0
+        {
+            // 绝对行高换算成倍数（以 16px 为基准字号）。
+            style.line_height = Some(px / 16.0);
+        }
+    }
+    // 段前距：`margin-top: 12px`。
+    if let Some(v) = css_value(&lower, "margin-top")
+        && let Some(value) = v
+            .strip_suffix("px")
+            .and_then(|n| n.trim().parse::<f32>().ok())
+        && value > 0.0
+    {
+        style.space_before = Some(px(value));
     }
 }
 
@@ -1394,6 +1616,8 @@ fn tag_kind(name: &str) -> &'static str {
         "u" => "u",
         "s" | "strike" | "del" => "s",
         "span" | "font" => "span",
+        "a" => "a",
+        "code" => "code",
         _ => "",
     }
 }
@@ -1511,6 +1735,8 @@ pub struct RichText {
     doc: RichTextDoc,
     /// 批注点击回调（批注 id → 回调）。
     on_annotation_click: Option<Arc<dyn Fn(u32, &mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 链接点击回调（链接地址 → 回调）。
+    on_link_click: Option<Arc<dyn Fn(&str, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 基础字号（`None` 表示继承外层字号；标题按级别倍率放大）。
     base_font_size: Option<Pixels>,
 }
@@ -1521,6 +1747,7 @@ impl RichText {
         Self {
             doc,
             on_annotation_click: None,
+            on_link_click: None,
             base_font_size: None,
         }
     }
@@ -1536,6 +1763,15 @@ impl RichText {
         handler: impl Fn(u32, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
         self.on_annotation_click = Some(Arc::new(handler));
+        self
+    }
+
+    /// 设置链接点击回调（回传被点击的链接地址）。
+    pub fn on_link_click(
+        mut self,
+        handler: impl Fn(&str, &mut Window, &mut App) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_link_click = Some(Arc::new(handler));
         self
     }
 
@@ -1571,6 +1807,8 @@ impl RenderOnce for RichText {
         // 批注背景色与脚注标记色（跟随主题）。
         let annotation_bg = theme.tokens.warning.opacity(0.28);
         let footnote_color = theme.tokens.primary.color;
+        // 链接颜色（主题主色）。
+        let link_color = theme.tokens.primary.color;
         // 标题基准字号：显式设置优先，否则取窗口默认文本字号（rem 字号无法换算时留空）。
         let base_px = self
             .base_font_size
@@ -1600,32 +1838,44 @@ impl RenderOnce for RichText {
             };
             let spans = collect_spans(&self.doc, doc_offset, para.char_len());
             let heading = para.style.heading;
-            let (text, runs, annotation_ranges) = build_paragraph(
+            let built = build_paragraph(
                 para,
                 &base,
+                theme.mono_font_family.clone(),
+                theme.tokens.muted.opacity(0.3),
                 marker.as_deref(),
                 &spans,
                 annotation_bg,
                 footnote_color,
+                link_color,
                 heading.is_some(),
             );
-            let styled = StyledText::new(text).with_runs(runs);
-            // 有批注且注册了回调时，批注高亮可点击（回传批注 id）。
-            let content = match (&self.on_annotation_click, annotation_ranges.is_empty()) {
-                (Some(handler), false) => {
+            let styled = StyledText::new(built.text).with_runs(built.runs);
+            // 批注 / 链接可点击：把两类区间合并到一个 InteractiveText（按序号分发）。
+            let clickable = !built.annotations.is_empty() || !built.links.is_empty();
+            let content = match (&self.on_annotation_click, &self.on_link_click, clickable) {
+                (Some(annotation_handler), Some(link_handler), true) => {
+                    let annotation_ranges = built.annotations.clone();
+                    let link_ranges = built.links.clone();
                     let ranges: Vec<Range<usize>> = annotation_ranges
                         .iter()
                         .map(|(range, _)| range.clone())
+                        .chain(link_ranges.iter().map(|(range, _)| range.clone()))
                         .collect();
-                    let ids: Vec<u32> = annotation_ranges.iter().map(|(_, id)| *id).collect();
-                    let handler = handler.clone();
+                    let annotation_count = annotation_ranges.len();
+                    let annotation_handler = annotation_handler.clone();
+                    let link_handler = link_handler.clone();
                     InteractiveText::new(
-                        ElementId::Name(format!("rich-text-annotation-{doc_offset}").into()),
+                        ElementId::Name(format!("rich-text-link-{doc_offset}").into()),
                         styled,
                     )
                     .on_change(ranges, move |index, window, cx| {
-                        if let Some(id) = ids.get(index) {
-                            handler(*id, window, cx);
+                        if index < annotation_count {
+                            if let Some((_, id)) = annotation_ranges.get(index) {
+                                annotation_handler(*id, window, cx);
+                            }
+                        } else if let Some((_, href)) = link_ranges.get(index - annotation_count) {
+                            link_handler(href, window, cx);
                         }
                     })
                     .into_any_element()
@@ -1639,6 +1889,22 @@ impl RenderOnce for RichText {
             // 标题段落按级别放大字号（基准字号取显式设置或窗口默认值）。
             if let (Some(level), Some(base_px)) = (heading, base_px) {
                 paragraph = paragraph.text_size(px(base_px.as_f32() * heading_scale(level)));
+            }
+            // 段落级行高与段前距。
+            if let Some(line_height) = para.style.line_height {
+                paragraph = paragraph.line_height(relative(line_height));
+            }
+            if let Some(space_before) = para.style.space_before {
+                paragraph = paragraph.mt(space_before);
+            }
+            // 引用块：左边线 + 浅底 + 内缩。
+            if para.style.quote {
+                paragraph = paragraph
+                    .pl(px(12.0))
+                    .border_l(px(3.0))
+                    .border_color(theme.tokens.border)
+                    .bg(theme.tokens.muted.opacity(0.15))
+                    .text_color(theme.tokens.muted_foreground);
             }
             column = column.child(paragraph.child(content));
             doc_offset += para.char_len() + 1;
@@ -1756,15 +2022,19 @@ fn split_run_by_spans(
 fn build_paragraph(
     para: &Paragraph,
     base: &crate::TextStyle,
+    mono_font: SharedString,
+    code_bg: Hsla,
     marker: Option<&str>,
     spans: &[Span],
     annotation_bg: Hsla,
     footnote_color: Hsla,
+    link_color: Hsla,
     bold_all: bool,
-) -> (String, Vec<TextRun>, Vec<(Range<usize>, u32)>) {
+) -> ParagraphBuild {
     let mut text = String::new();
     let mut runs = Vec::new();
     let mut annotation_ranges: Vec<(Range<usize>, u32)> = Vec::new();
+    let mut link_ranges: Vec<(Range<usize>, String)> = Vec::new();
 
     if let Some(marker) = marker {
         text.push_str(marker);
@@ -1789,6 +2059,9 @@ fn build_paragraph(
                 continue;
             }
             let mut font = base.font();
+            if run.props.code {
+                font.family = mono_font.clone();
+            }
             if run.props.bold || bold_all {
                 font = font.bold();
             }
@@ -1797,6 +2070,15 @@ fn build_paragraph(
             }
             let mut color = run.props.color.unwrap_or(base.color);
             let mut background_color = None;
+            // 行内代码：浅底 + 等宽字体。
+            if run.props.code {
+                background_color = Some(code_bg);
+            }
+            // 链接：主题主色 + 下划线。
+            let is_link = run.link.is_some();
+            if is_link {
+                color = link_color;
+            }
             match kind {
                 Some((SpanKind::Annotation, _)) => {
                     background_color = Some(annotation_bg);
@@ -1806,7 +2088,7 @@ fn build_paragraph(
                 }
                 None => {}
             }
-            let underline = run.props.underline.then(|| UnderlineStyle {
+            let underline = (run.props.underline || is_link).then(|| UnderlineStyle {
                 thickness: px(1.0),
                 color: Some(color),
                 wavy: false,
@@ -1828,6 +2110,9 @@ fn build_paragraph(
             if let Some((SpanKind::Annotation, id)) = kind {
                 annotation_ranges.push((byte_start..text.len(), id));
             }
+            if let Some(href) = &run.link {
+                link_ranges.push((byte_start..text.len(), href.clone()));
+            }
         }
     }
 
@@ -1842,7 +2127,24 @@ fn build_paragraph(
         });
     }
 
-    (text, runs, annotation_ranges)
+    ParagraphBuild {
+        text,
+        runs,
+        annotations: annotation_ranges,
+        links: link_ranges,
+    }
+}
+
+/// 段落编译结果。
+struct ParagraphBuild {
+    /// 拼接后的文本。
+    text: String,
+    /// 行内运行。
+    runs: Vec<TextRun>,
+    /// 批注片段的字节区间与批注 id。
+    annotations: Vec<(Range<usize>, u32)>,
+    /// 链接片段的字节区间与地址。
+    links: Vec<(Range<usize>, String)>,
 }
 
 #[cfg(test)]
@@ -2163,5 +2465,123 @@ mod tests {
         assert!(html.contains("<h1>一级</h1>"));
         assert!(html.contains("<p>正文</p>"));
         assert!(html.contains("<h2>二级</h2>"));
+    }
+
+    /// 撤销 / 重做：编辑压栈、撤销回退、重做前进，新编辑清空重做链。
+    #[test]
+    fn history_undo_redo_round_trip() {
+        let mut doc = RichTextDoc::from_plain_text("第一段");
+        let mut history = RichTextHistory::new();
+        assert!(!history.can_undo());
+        assert!(!history.can_redo());
+
+        // 编辑一：追加文字。
+        assert!(history.edit(&mut doc, |doc| {
+            doc.insert_text(3, "（改）", RunProps::default());
+        }));
+        assert_eq!(doc.plain_text(), "第一段（改）");
+        assert!(history.can_undo());
+
+        // 编辑二：再加粗（属性变化也算改动）。
+        assert!(history.edit(&mut doc, |doc| {
+            doc.apply_props(0..3, |props| props.bold = true);
+        }));
+
+        // 撤销两步回到初始状态。
+        assert!(history.undo(&mut doc));
+        assert!(history.undo(&mut doc));
+        assert_eq!(doc.plain_text(), "第一段");
+        assert!(!history.can_undo());
+        assert!(history.can_redo());
+
+        // 重做恢复。
+        assert!(history.redo(&mut doc));
+        assert_eq!(doc.plain_text(), "第一段（改）");
+        assert!(history.redo(&mut doc));
+        assert!(doc.paragraphs[0].runs[0].props.bold);
+
+        // 新编辑清空重做链。
+        assert!(history.edit(&mut doc, |doc| {
+            doc.insert_text(0, "新", RunProps::default());
+        }));
+        assert!(!history.can_redo());
+    }
+
+    /// 历史：未产生改动的编辑不压栈；手动记录也可撤销。
+    #[test]
+    fn history_skips_noop_edits() {
+        let mut doc = RichTextDoc::from_plain_text("内容");
+        let mut history = RichTextHistory::new();
+        assert!(!history.edit(&mut doc, |_| {}));
+        assert!(!history.can_undo());
+
+        history.record(&doc);
+        assert!(history.can_undo());
+        assert!(history.undo(&mut doc));
+    }
+
+    /// 链接往返：`<a href="…">` 解析出链接地址，序列化时还原。
+    #[test]
+    fn html_links_round_trip() {
+        let doc = RichTextDoc::from_html(
+            "<p>见 <a href=\"https://example.com\">示例站点</a> 了解更多</p>",
+        )
+        .expect("解析");
+        let link_run = doc.paragraphs[0]
+            .runs
+            .iter()
+            .find(|run| run.link.is_some())
+            .expect("链接运行");
+        assert_eq!(link_run.link.as_deref(), Some("https://example.com"));
+        let html = doc.to_html();
+        assert!(html.contains("<a href=\"https://example.com\">"));
+        assert!(html.contains("示例站点"));
+    }
+
+    /// 段落行高 / 段前距往返：CSS 进 → 样式出 → CSS 回。
+    #[test]
+    fn paragraph_line_height_and_spacing_round_trip() {
+        let doc = RichTextDoc::from_html(
+            "<p style=\"line-height:1.8;margin-top:12px;text-align:center\">正文</p>",
+        )
+        .expect("解析");
+        let style = doc.paragraphs[0].style;
+        assert_eq!(style.line_height, Some(1.8));
+        assert_eq!(style.space_before, Some(px(12.0)));
+        assert_eq!(style.align, TextAlign::Center);
+        let html = doc.to_html();
+        assert!(html.contains("line-height:1.8"));
+        assert!(html.contains("margin-top:12px"));
+        // 往返后再解析，样式保持一致。
+        let reparsed = RichTextDoc::from_html(&html).expect("再解析");
+        assert_eq!(reparsed.paragraphs[0].style.line_height, Some(1.8));
+        assert_eq!(reparsed.paragraphs[0].style.space_before, Some(px(12.0)));
+    }
+
+    /// 引用块往返：`<blockquote>` 解析为引用段落，序列化还原。
+    #[test]
+    fn blockquote_round_trip() {
+        let doc = RichTextDoc::from_html("<blockquote><p>引用内容</p></blockquote>").expect("解析");
+        assert!(
+            doc.paragraphs.iter().any(|para| para.style.quote),
+            "引用段落应标记 quote：{doc:?}"
+        );
+        let html = doc.to_html();
+        assert!(html.contains("<blockquote>"));
+        assert!(html.contains("引用内容"));
+    }
+
+    /// 行内代码往返：`<code>` 解析出行内代码属性，序列化还原。
+    #[test]
+    fn inline_code_round_trip() {
+        let doc = RichTextDoc::from_html("<p>看 <code>let x = 1;</code> 这行</p>").expect("解析");
+        let code_run = doc.paragraphs[0]
+            .runs
+            .iter()
+            .find(|run| run.props.code)
+            .expect("代码运行");
+        assert_eq!(code_run.text, "let x = 1;");
+        let html = doc.to_html();
+        assert!(html.contains("<code>let x = 1;</code>"));
     }
 }

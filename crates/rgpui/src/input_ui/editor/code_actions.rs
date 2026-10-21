@@ -16,7 +16,9 @@
 use std::ops::Range;
 use std::rc::Rc;
 
-use lsp_types::{CodeAction, CodeActionOrCommand, DocumentChanges, OneOf, TextEdit, Uri};
+use lsp_types::{
+    CodeAction, CodeActionOrCommand, DocumentChanges, OneOf, TextEdit, Uri, WorkspaceEdit,
+};
 use ropey::Rope;
 
 use crate::lsp::{DiagnosticEntry, PositionMapping};
@@ -156,6 +158,14 @@ fn edits_for_action(action: &CodeAction, uri: Option<&Uri>) -> Vec<TextEdit> {
     let Some(edit) = &action.edit else {
         return Vec::new();
     };
+    edits_for_workspace_edit(edit, uri)
+}
+
+/// 从工作区编辑里取出属于目标文档的文本编辑。
+///
+/// `changes` 与 `documentChanges` 两种形式都支持；未设文档 URI 时只在编辑确实
+/// 只涉及一个文档时应用，避免猜错目标。
+pub(super) fn edits_for_workspace_edit(edit: &WorkspaceEdit, uri: Option<&Uri>) -> Vec<TextEdit> {
     let mut docs: Vec<(&Uri, Vec<TextEdit>)> = Vec::new();
     if let Some(changes) = &edit.changes {
         docs.extend(changes.iter().map(|(doc, edits)| (doc, edits.clone())));
@@ -558,9 +568,9 @@ mod tests {
     }
 
     /// 建带 provider 的编辑器测试窗口（三个用例共用桩代码）。
-    fn probe_with_provider<'a>(
-        cx: &'a mut crate::TestAppContext,
-    ) -> (Entity<EditorState>, &'a mut crate::VisualTestContext) {
+    fn probe_with_provider(
+        cx: &mut crate::TestAppContext,
+    ) -> (Entity<EditorState>, &mut crate::VisualTestContext) {
         cx.update(crate::input_ui::init);
         cx.update(crate::theme::init);
         let (probe, cx) = cx.add_window_view(|window, cx| {

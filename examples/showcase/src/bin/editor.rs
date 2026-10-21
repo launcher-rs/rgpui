@@ -19,8 +19,9 @@ use rgpui::{
         InputEvent, StickyPosition,
     },
     lsp::{
-        CompletionProvider, DiagnosticEntry, DiagnosticsProvider, HoverContent, HoverProvider,
-        HoverResponse,
+        CompletionProvider, DefinitionProvider, DiagnosticEntry, DiagnosticsProvider,
+        FormattingProvider, HoverContent, HoverProvider, HoverResponse, RenameProvider,
+        SignatureHelpProvider,
     },
     prelude::*,
     px, rgb, size, v_flex, white, yellow,
@@ -93,6 +94,229 @@ impl CompletionProvider for DemoCompletionProvider {
 
 /// 演示用假诊断 provider：首行一个 warning（真 provider 按 URI 取数）。
 struct DemoDiagnosticsProvider;
+
+/// 假签名提示 provider：返回一个固定签名。
+struct DemoSignatureHelpProvider;
+
+impl SignatureHelpProvider for DemoSignatureHelpProvider {
+    fn signature_help(
+        &self,
+        _text: &rgpui::input_ui::Rope,
+        _offset: usize,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Option<lsp_types::SignatureHelp>>> {
+        rgpui::Task::ready(Ok(Some(lsp_types::SignatureHelp {
+            signatures: vec![lsp_types::SignatureInformation {
+                label: "fn add(a: i32, b: i32) -> i32".to_string(),
+                documentation: None,
+                parameters: None,
+                active_parameter: None,
+            }],
+            active_signature: Some(0),
+            active_parameter: None,
+        })))
+    }
+}
+/// 假定义 provider：把光标处的词当作定义（跳到文档开头）。
+struct DemoDefinitionProvider;
+
+impl DefinitionProvider for DemoDefinitionProvider {
+    fn definition(
+        &self,
+        text: &rgpui::input_ui::Rope,
+        offset: usize,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<rgpui::lsp::DefinitionLocation>>> {
+        let content = text.to_string();
+        let byte = offset.min(content.len());
+        let is_word = |c: char| c.is_alphanumeric() || c == '_';
+        let mut start = byte;
+        while start > 0 {
+            let Some(prev) = content[..start].chars().next_back() else {
+                break;
+            };
+            if !is_word(prev) {
+                break;
+            }
+            start -= prev.len_utf8();
+        }
+        let mut end = byte;
+        while end < content.len() {
+            let Some(next) = content[end..].chars().next() else {
+                break;
+            };
+            if !is_word(next) {
+                break;
+            }
+            end += next.len_utf8();
+        }
+        if start >= end {
+            return rgpui::Task::ready(Ok(Vec::new()));
+        }
+        let line = content[..start].matches('\n').count() as u32;
+        let column = start - content[..start].rfind('\n').map_or(0, |i| i + 1);
+        let uri: lsp_types::Uri = "file:///demo.rs".parse().expect("URI");
+        rgpui::Task::ready(Ok(vec![rgpui::lsp::DefinitionLocation {
+            uri,
+            range: lsp_types::Range {
+                start: lsp_types::Position::new(line, column as u32),
+                end: lsp_types::Position::new(line, (column + (end - start)) as u32),
+            },
+            display_name: None,
+        }]))
+    }
+
+    fn references(
+        &self,
+        _text: &rgpui::input_ui::Rope,
+        _offset: usize,
+        _include_declarations: bool,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<rgpui::lsp::DefinitionLocation>>> {
+        rgpui::Task::ready(Ok(Vec::new()))
+    }
+
+    fn document_highlights(
+        &self,
+        text: &rgpui::input_ui::Rope,
+        offset: usize,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<rgpui::lsp::DocumentHighlight>>> {
+        // 同符号高亮：光标所在的词整体标出。
+        let content = text.to_string();
+        let byte = offset.min(content.len());
+        let is_word = |c: char| c.is_alphanumeric() || c == '_';
+        let mut start = byte;
+        while start > 0 {
+            let Some(prev) = content[..start].chars().next_back() else {
+                break;
+            };
+            if !is_word(prev) {
+                break;
+            }
+            start -= prev.len_utf8();
+        }
+        let mut end = byte;
+        while end < content.len() {
+            let Some(next) = content[end..].chars().next() else {
+                break;
+            };
+            if !is_word(next) {
+                break;
+            }
+            end += next.len_utf8();
+        }
+        if start >= end {
+            return rgpui::Task::ready(Ok(Vec::new()));
+        }
+        let line = content[..start].matches('\n').count() as u32;
+        let column = start - content[..start].rfind('\n').map_or(0, |i| i + 1);
+        rgpui::Task::ready(Ok(vec![rgpui::lsp::DocumentHighlight {
+            range: lsp_types::Range {
+                start: lsp_types::Position::new(line, column as u32),
+                end: lsp_types::Position::new(line, (column + (end - start)) as u32),
+            },
+            kind: Some(rgpui::lsp::DocumentHighlightKind::Text),
+        }]))
+    }
+}
+/// 假重命名 provider：把光标处的词替换为新名字。
+struct DemoRenameProvider;
+
+impl RenameProvider for DemoRenameProvider {
+    fn rename(
+        &self,
+        text: &rgpui::input_ui::Rope,
+        offset: usize,
+        new_name: &str,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Option<lsp_types::WorkspaceEdit>>> {
+        // 找出光标所在的词（空白分隔），生成一条替换编辑。
+        let content = text.to_string();
+        let byte = offset.min(content.len());
+        let is_word = |c: char| c.is_alphanumeric() || c == '_';
+        let mut start = byte;
+        while start > 0 {
+            let Some(prev) = content[..start].chars().next_back() else {
+                break;
+            };
+            if !is_word(prev) {
+                break;
+            }
+            start -= prev.len_utf8();
+        }
+        let mut end = byte;
+        while end < content.len() {
+            let Some(next) = content[end..].chars().next() else {
+                break;
+            };
+            if !is_word(next) {
+                break;
+            }
+            end += next.len_utf8();
+        }
+        if start >= end {
+            return rgpui::Task::ready(Ok(None));
+        }
+        // 行号 / 字节列（LSP 行列按字节列换算）。
+        let line = content[..start].matches('\n').count() as u32;
+        let column = start - content[..start].rfind('\n').map_or(0, |i| i + 1);
+        let end_line = line + content[start..end].matches('\n').count() as u32;
+        let end_column = column + (end - start);
+        let uri: lsp_types::Uri = "file:///demo.rs".parse().expect("URI");
+        rgpui::Task::ready(Ok(Some(lsp_types::WorkspaceEdit {
+            changes: Some(std::collections::HashMap::from([(
+                uri,
+                vec![lsp_types::TextEdit {
+                    range: lsp_types::Range {
+                        start: lsp_types::Position::new(line, column as u32),
+                        end: lsp_types::Position::new(end_line, end_column as u32),
+                    },
+                    new_text: new_name.to_string(),
+                }],
+            )])),
+            document_changes: None,
+            change_annotations: None,
+        })))
+    }
+}
+/// 假格式化 provider：去掉每行行尾空白（真语言服务器按各自规则返回编辑）。
+struct DemoFormattingProvider;
+
+impl FormattingProvider for DemoFormattingProvider {
+    fn formatting(
+        &self,
+        text: &rgpui::input_ui::Rope,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<lsp_types::TextEdit>>> {
+        let original = text.to_string();
+        let lines: Vec<&str> = original.split('\n').collect();
+        let formatted: String = lines
+            .iter()
+            .map(|line| line.trim_end())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if formatted == original {
+            return rgpui::Task::ready(Ok(Vec::new()));
+        }
+        // 整篇替换：结束位置取最后一行及其字节长度（LSP 行列按字节列换算）。
+        let last = lines.len().saturating_sub(1);
+        let end = lsp_types::Position::new(last as u32, lines[last].len() as u32);
+        rgpui::Task::ready(Ok(vec![lsp_types::TextEdit {
+            range: lsp_types::Range {
+                start: lsp_types::Position::new(0, 0),
+                end,
+            },
+            new_text: formatted,
+        }]))
+    }
+}
 
 impl DiagnosticsProvider for DemoDiagnosticsProvider {
     fn diagnostics(
@@ -453,6 +677,10 @@ impl EditorDemo {
             state.set_completion_provider(Some(Rc::new(DemoCompletionProvider)), cx);
             state.set_diagnostics_provider(Some(Rc::new(DemoDiagnosticsProvider)), cx);
             state.set_hover_provider(Some(Rc::new(DemoHoverProvider)), cx);
+            state.set_formatting_provider(Some(Rc::new(DemoFormattingProvider)), cx);
+            state.set_rename_provider(Some(Rc::new(DemoRenameProvider)), cx);
+            state.set_definition_provider(Some(Rc::new(DemoDefinitionProvider)), cx);
+            state.set_signature_help_provider(Some(Rc::new(DemoSignatureHelpProvider)), cx);
             // 透镜假 provider（文本变更自动刷新，点击跳光标到透镜行）。
             state.set_codelens_provider(Some(Rc::new(DemoCodelensProvider)), cx);
             state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
@@ -834,6 +1062,68 @@ impl Render for EditorDemo {
                         .child(lsp_button(&demo, "lang-demo", "语言: demo", |state, window, cx| {
                             state.set_language("demo", window, cx);
                         }))
+                        .child(lsp_button(
+                            &demo,
+                            "lang-python",
+                            "语言: python",
+                            |state, window, cx| {
+                                state.set_language("python", window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "lang-javascript",
+                            "语言: javascript",
+                            |state, window, cx| {
+                                state.set_language("javascript", window, cx);
+                            },
+                        ))
+                        .child(lsp_button(&demo, "lang-go", "语言: go", |state, window, cx| {
+                            state.set_language("go", window, cx);
+                        }))
+                        .child(lsp_button(&demo, "lang-json", "语言: json", |state, window, cx| {
+                            state.set_language("json", window, cx);
+                        }))
+                        .child(lsp_button(
+                            &demo,
+                            "format-doc",
+                            "格式化文档（LSP）",
+                            |state, window, cx| {
+                                state.request_formatting(window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "rename-symbol",
+                            "重命名光标处 → renamed",
+                            |state, window, cx| {
+                                state.request_rename("renamed", window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "goto-definition",
+                            "跳转定义（LSP）",
+                            |state, window, cx| {
+                                state.goto_definition(window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "signature-help",
+                            "签名提示（LSP）",
+                            |state, window, cx| {
+                                state.request_signature_help(window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "document-highlights",
+                            "同符号高亮（LSP）",
+                            |state, window, cx| {
+                                state.request_document_highlights(window, cx);
+                            },
+                        ))
                         .child(lsp_button(
                             &demo,
                             "lang-unknown",

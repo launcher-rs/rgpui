@@ -1374,4 +1374,229 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 - `cargo test -p rgpui-markdown --lib`：9 passed（新增 1 项：已勾选项加删除线并变暗）。
 - 示例：`examples/rgpui_story` 的「Markdown 基础」页补任务列表段落。
 
+## 四十一、增补：核心富文本的撤销 / 重做（快照式历史栈）
+
+`RichTextDoc` 可编辑但没有历史栈，编辑器只能自己在应用层维护副本。本轮把历史做进
+核心（文档模型与渲染同 crate，状态与视图分离更干净）。
+
+- `RichTextHistory`：
+  - `edit(&mut doc, f)`：**编辑前**压入文档快照，再执行 `f`；未产生改动的编辑不压栈
+    （避免空撤销步骤）；新编辑会清空重做链。
+  - `undo(&mut doc)` / `redo(&mut doc)`：用栈顶快照整份替换文档，当前文档压入另一侧栈。
+  - `record(&doc)`：手动记录（供在历史之外修改文档的路径使用）。
+  - `can_undo()` / `can_redo()` / `clear()`。
+  - 栈上限 100 条（超出丢弃最旧快照，限制内存占用）。
+- 快照是文档拷贝，适合中小文档；超大文档可改用差分 / 块级快照（后续增补）。
+
+### 示例
+
+`examples/showcase/src/bin/rich_text.rs`：行内样式与「替换」操作改走
+`history.edit`，新增「撤销 / 重做」按钮。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：23 passed（新增 2 项：撤销 / 重做往返与重做链
+  清空、未改动编辑不压栈）。
+
+## 四十二、增补：核心富文本的链接支持
+
+此前核心富文本模型**没有链接概念**：HTML 里的 `<a href="…">` 解析后只保留文字、地址丢失，
+序列化也不会输出链接。本轮补齐：
+
+- `Run` 新增 `link: Option<String>`（链接地址），构造器 `Run::with_link(text, props, link)`。
+- 解析：`from_html` 识别 `<a href>`，地址挂在解析样式状态上（随标签栈进出自动恢复 /
+  还原）；`StyleState` 因此不再 `Copy`（改为 `Clone`）。
+- 归一：`Paragraph::normalize` 合并相邻同属性运行时**同时比较链接地址**（否则链接会被
+  并进普通文本而丢地址）。
+- 序列化：`to_html` 输出 `<a href="…">`（地址按属性口径转义）。
+- 渲染：链接文本用主题主色 + 下划线。
+- 交互：`RichText::on_link_click(handler)` 回传被点击的链接地址；与批注点击共用一个
+  `InteractiveText`（两类区间合并到一个序号空间，按序号分发）。
+
+### 示例
+
+`examples/showcase/src/bin/rich_text.rs`：样例正文加入「链接」运行，并演示
+`on_link_click` 回传地址。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：24 passed（新增 1 项：链接地址解析与序列化往返）。
+
+## 四十三、增补：段落级行高 / 段前距 + 消除已知 flaky 测试
+
+### 段落级行高 / 段前距
+
+`ParagraphStyle` 新增两个字段（都是「有则用、无则继承外层」的口径）：
+
+- `line_height: Option<f32>`：行高倍数（`line-height:1.8` → `Some(1.8)`；`line-height:24px`
+  按 16px 基准字号换算成倍数）。
+- `space_before: Option<Pixels>`：段前距（`margin-top:12px`）。
+
+HTML 双向：`from_html` 解析 `line-height` / `margin-top`，`to_html` 输出同样的 CSS；渲染时
+段落容器应用 `line_height(relative(…))` 与 `mt(…)`。
+
+### 消除 flaky：测试调度器 park 硬超时可配置
+
+`util::scheduler` 的 park 硬超时此前写死 15 秒（真实时间）。依赖**外部 OS 线程唤醒**的
+用例（`test_nondeterministic_wake_allowed_with_parking`）在机器满载（CI 并行编译）时
+唤醒可能被拖到十几秒后，触发「测试在 park 时超时」误报 —— 这就是文档里长期记录的已知波动
+（重跑即过）。
+
+修法：
+
+- `TestSchedulerConfig` 新增 `park_timeout: Duration`（默认 15 秒），park 硬超时改用它。
+- 外部唤醒用例单独放宽到 60 秒：真死锁仍会超时失败，满载误报消除。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：25 passed（新增 1 项：行高 / 段前距 CSS 往返）。
+- `cargo test -p rgpui --lib scheduler`：17 passed。
+
+## 四十四、修复：Markdown 脚注引用标记被丢弃
+
+`rgpui-markdown` 此前解析了脚注**定义**（`[^1]: …` → `RichBlock::FootnoteDefinition`，
+渲染为文末带左边框的块），但**正文里的引用标记**（`[^1]`）在事件流里没有对应处理，
+被直接丢弃 —— 读者只看到文末的脚注，正文里没有任何指向它的标记。
+
+修复：
+
+- 模型新增 `RichInline::FootnoteRef(String)`（脚注标签）。
+- 解析：`Event::FootnoteReference(label)` → 行内脚注引用。
+- 渲染：按链接色渲染 `[^label]` 标记（与脚注定义块的 `[^label]` 标题一致）。
+- `inlines_to_plain_text` 同步输出 `[^label]` 文本。
+
+### 验证
+
+- `cargo test -p rgpui-markdown --lib`：10 passed（新增 1 项：脚注引用进入段落内容）。
+- 示例：`examples/rgpui_story` 的「语法全览」页补脚注段落。
+
+
+
+
+## 四十五、增补：核心富文本的引用块
+
+`ParagraphStyle` 新增 `quote: bool`：段落属于引用块。
+
+- 解析：`from_html` 识别 `<blockquote>`（含嵌套深度计数），块内段落标记为引用样式；
+  没有 `<p>` 包裹时（`<blockquote>直接文字</blockquote>`）内容段落同样被标记。
+- 序列化：`to_html` 把**连续**的引用段落合并输出为 `<blockquote>…</blockquote>`。
+- 渲染：引用段落加左边线 + 浅底 + 内缩 + 弱化文字色（跟随主题）。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：26 passed（新增 1 项：引用块往返）。
+
+## 四十六、增补：行内代码 + 编辑器示例的多语言入口
+
+### 行内代码（`<code>`）
+
+核心富文本此前把 `<code>` 降级为普通文本（只留文字、丢掉等宽语义）。本轮补齐：
+
+- `RunProps` 新增 `code: bool` + builder `RunProps::code()`。
+- 解析：`from_html` 识别 `<code>`；序列化：`to_html` 输出 `<code>…</code>`。
+- 渲染：等宽字体（主题等宽族）+ 浅底（主题 muted 色）。
+
+### 编辑器示例的多语言入口
+
+`examples/showcase/src/bin/editor.rs` 的语言按钮从只有 `rust` 扩到
+`rust` / `python` / `javascript` / `go` / `json` / `demo` / 未知语言降级，
+对应 showcase 的 `editor` feature 追加启用 `tree-sitter-json` / `tree-sitter-toml` /
+`tree-sitter-javascript` / `tree-sitter-python` / `tree-sitter-go` 语言包。
+
+### 组件库新增「富文本」页
+
+`examples/rgppui_story` 新增「富文本」页（`stories/rich_text.rs`），集中展示本轮富文本
+能力：标题级别、行内样式（粗 / 斜 / 下划线 / 删除线 / 行内代码）、链接（可点击回传地址）、
+引用块、行高与段前距、批注（可点击回传 id）、脚注引用，以及撤销 / 重做按钮。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：27 passed（新增 1 项：行内代码往返）。
+- `cargo check -p showcase --bin editor --features editor` 与
+  `cargo check -p showcase --all-features` 通过。
+
+## 四十七、增补：LSP 格式化（文档 / 选区）
+
+LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触发入口** —— 应用即便接了
+语言服务器也用不上格式化。本轮补齐整条链路：
+
+- 新增 provider trait `crate::lsp::FormattingProvider`：
+  - `formatting(text, window, cx)`：整篇格式化，返回 `Vec<TextEdit>`；
+  - `range_formatting(text, range, window, cx)`：范围格式化（默认不支持，返回空编辑）。
+- `EditorState` 新增 `set_formatting_provider`（注入 / 断开）与 `request_formatting`
+  （触发请求）；请求经 **epoch 防抖**（与补全 / 悬停同款）：请求发出后文档再变则结果作废。
+- 编辑应用：LSP 行列按 UTF-8 字节列换算（`PositionMapping`，与诊断下划线同款），
+  编辑**按字节偏移倒序**应用（靠前编辑的位置不受后面改动影响），应用前抑制一次自动补全，
+  应用后光标回到原位置（与「接受代码操作」同款逻辑）。
+- 示例：`examples/showcase/src/bin/editor.rs` 注入假格式化 provider（去行尾空白）并加
+  「格式化文档（LSP）」按钮。
+
+### 验证
+
+- `cargo test -p rgpui --features editor --lib lsp_attach`：14 passed（新增 1 项：
+  格式化请求的编辑被应用到文档）。
+
+## 四十八、增补：LSP 重命名
+
+与格式化同款缺口：LSP 客户端 trait 有 `rename`，编辑器侧没有触发入口。
+
+- 新增 provider trait `crate::lsp::RenameProvider`：
+  `rename(text, offset, new_name, window, cx)` → `Option<WorkspaceEdit>`（`None` 表示服务端
+  不支持或位置无符号）。
+- `EditorState` 新增 `set_rename_provider`（注入 / 断开）与 `request_rename(new_name)`
+  （epoch 防抖，与格式化 / 补全 / 悬停同款）。
+- 编辑应用：复用格式化那条路径（`apply_lsp_text_edits`：字节列换算 + 倒序应用 + 光标复位），
+  并把「从工作区编辑里取当前文档的编辑」抽成公共 helper
+  （`code_actions::edits_for_workspace_edit`，代码操作与重命名共用）——
+  `changes` / `documentChanges` 两种形式都支持，未设文档 URI 时只在编辑确实只涉及一个
+  文档时应用，避免猜错目标。
+- 示例：`examples/showcase/src/bin/editor.rs` 注入假重命名 provider（把光标处的词改名）
+  并加「重命名光标处 → renamed」按钮。
+
+### 验证
+
+- `cargo test -p rgpui --features editor --lib lsp_attach`：15 passed（新增 1 项：
+  重命名请求的工作区编辑被应用）。
+
+## 四十九、增补：LSP 定义跳转 / 查找引用
+
+`crate::lsp::DefinitionProvider` 早就有（定义 / 引用 / 同符号高亮），编辑器侧同样没有
+触发入口。本轮补齐：
+
+- 新增状态 `crate::lsp::DefinitionState`（`locations` + `visible`）。
+- `EditorState` 新增 `set_definition_provider`（注入 / 断开）、`goto_definition`
+  （跳转：命中位置在**当前文档**时直接移动光标）、`find_references`（结果写入状态供应用
+  渲染列表）、`definition_locations`（应用读取结果）。请求同样走 epoch 防抖。
+- 位置换算复用 `PositionMapping`（UTF-8 字节列，与诊断下划线同款）。
+- 示例：`examples/showcase/src/bin/editor.rs` 注入假定义 provider 并加「跳转定义（LSP）」按钮。
+
+### 验证
+
+- `cargo test -p rgpui --features editor --lib lsp_attach`：16 passed（新增 1 项：
+  定义跳转把光标移到目标偏移，结果同时可供应用层渲染）。
+
+## 五十、增补：LSP 签名提示
+
+- 新增 `crate::lsp::SignatureHelpProvider`（`signature_help(text, offset, …)` →
+  `Option<SignatureHelp>`）与状态 `crate::lsp::SignatureHelpState`（响应 + 激活签名 / 参数 +
+  可见性）。
+- `EditorState` 新增 `set_signature_help_provider`（注入 / 断开）、
+  `request_signature_help`（请求，epoch 防抖）、`signature_help_state`（应用层读状态渲染浮层）。
+- 示例：`examples/showcase/src/bin/editor.rs` 注入假签名提示 provider 并加「签名提示（LSP）」按钮。
+
+至此 LSP 客户端 trait 里的主要请求（补全 / 悬停 / 诊断 / 格式化 / 重命名 / 定义引用 /
+签名提示）在编辑器侧都有了触发入口。
+
+### 附：同符号高亮（document highlights）
+
+复用 `DefinitionProvider::document_highlights`（默认不支持时为空）：
+
+- `EditorState::request_document_highlights`：请求后把返回的范围渲染为**背景装饰**
+  （主题主色浅底），走内部输入上独立的一层装饰集合（与诊断下划线分层）。
+- 示例：showcase 的「同符号高亮（LSP）」按钮（假 provider 标出光标所在的词）。
+
+### 验证
+
+- `cargo test -p rgpui --features editor --lib lsp_attach`：18 passed（新增 1 项：
+  同符号高亮请求后装饰集合带上高亮范围）。
 
