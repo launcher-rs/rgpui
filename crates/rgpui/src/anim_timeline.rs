@@ -736,6 +736,16 @@ pub enum TimelineEvent {
     },
 }
 
+/// 框选会话（轨道内的行局部坐标：x 为内容区坐标，y 为行内坐标）。
+#[derive(Clone, Copy, Debug)]
+struct BoxSelect {
+    /// 所在轨道下标。
+    track: usize,
+    /// 锚点（行局部坐标）。
+    anchor: Point<Pixels>,
+    /// 当前位置（行局部坐标）。
+    current: Point<Pixels>,
+}
 /// 时间线控件状态：数据模型 + 播放头 + 缩放 / 滚动 / 选择。
 pub struct TimelineState {
     /// 数据模型。
@@ -760,6 +770,8 @@ pub struct TimelineState {
     selected_keyframe: Option<usize>,
     /// 额外选中的关键帧下标（同一轨道内；主选中项不在其中）。
     multi_keyframes: std::collections::HashSet<usize>,
+    /// 框选会话（轨道下标 + 锚点 + 当前位置；行内局部坐标）。
+    box_select: Option<BoxSelect>,
     /// 是否正在拖拽播放头。
     scrubbing: bool,
     /// 正在拖拽的关键帧（轨道, 关键帧）。
@@ -789,6 +801,7 @@ impl TimelineState {
             selected_track: None,
             selected_keyframe: None,
             multi_keyframes: std::collections::HashSet::new(),
+            box_select: None,
             scrubbing: false,
             dragging: None,
             drag_range: (0.0, 1.0),
@@ -1209,6 +1222,40 @@ impl TimelineState {
         removed
     }
 
+    /// 框选会话（进行中；含轨道下标与行局部坐标的锚点 / 当前位置）。
+    pub fn box_selecting(&self) -> Option<(usize, Point<Pixels>, Point<Pixels>)> {
+        self.box_select
+            .map(|select| (select.track, select.anchor, select.current))
+    }
+
+    /// 按框选范围更新关键帧选择（框内全选、框外清除）。
+    fn apply_box_selection(&mut self, box_select: BoxSelect, cx: &mut Context<Self>) {
+        let x0 = box_select.anchor.x.min(box_select.current.x).as_f32();
+        let x1 = box_select.anchor.x.max(box_select.current.x).as_f32();
+        let y0 = box_select.anchor.y.min(box_select.current.y).as_f32();
+        let y1 = box_select.anchor.y.max(box_select.current.y).as_f32();
+        let track_index = box_select.track;
+        let Some(track) = self.timeline.track(track_index) else {
+            return;
+        };
+        let range = self.range_for(track_index, track);
+        let mut hits = Vec::new();
+        for (kf_index, keyframe) in track.keyframes.iter().enumerate() {
+            let kx = time_to_x(keyframe.time, self.px_per_second, self.scroll);
+            let ky = value_to_y(keyframe.value, range, TRACK_HEIGHT);
+            if kx >= x0 && kx <= x1 && ky >= y0 && ky <= y1 {
+                hits.push(kf_index);
+            }
+        }
+        // 主选中项取框内第一个，其余进多选集合。
+        self.multi_keyframes.clear();
+        self.selected_track = Some(track_index);
+        self.selected_keyframe = hits.first().copied();
+        for index in hits.iter().skip(1) {
+            self.multi_keyframes.insert(*index);
+        }
+        cx.notify();
+    }
     /// 清空选择。
     pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
         self.select_keyframe(usize::MAX, usize::MAX, cx);
@@ -1352,6 +1399,12 @@ impl TimelineState {
                     });
                 } else {
                     self.selected_track = Some(track);
+                    // 轨道内空白处按下 → 开始框选（行局部坐标）。
+                    self.box_select = Some(BoxSelect {
+                        track,
+                        anchor: point(local.x - LABEL_WIDTH, px(self.row_y(track, local))),
+                        current: point(local.x - LABEL_WIDTH, px(self.row_y(track, local))),
+                    });
                 }
             }
             // 左侧轨道名列的点击（折叠箭头 / 名称）不清空选择。
@@ -1366,6 +1419,12 @@ impl TimelineState {
     /// 指针移动：拖拽播放头 / 拖拽关键帧（水平改时间、垂直改值）。
     fn on_pointer_move(&mut self, local: Point<Pixels>, cx: &mut Context<Self>) {
         let x = (local.x - LABEL_WIDTH).as_f32();
+        if let Some(mut box_select) = self.box_select {
+            box_select.current = point(px(x), px(self.row_y(box_select.track, local)));
+            self.box_select = Some(box_select);
+            self.apply_box_selection(box_select, cx);
+            return;
+        }
         if self.scrubbing {
             let time = x_to_time(x, self.px_per_second, self.scroll);
             self.set_time(time, cx);
@@ -1398,6 +1457,9 @@ impl TimelineState {
 
     /// 指针释放：结束拖拽并清掉冻结的值域。
     fn on_pointer_up(&mut self, cx: &mut Context<Self>) {
+        if self.box_select.take().is_some() {
+            cx.notify();
+        }
         if self.scrubbing || self.dragging.is_some() {
             self.scrubbing = false;
             self.dragging = None;
@@ -1616,6 +1678,26 @@ impl TimelineState {
             })
             .children(curve)
             .children(markers)
+            // 框选矩形（仅当前轨道；行局部坐标）。
+            .children((|| {
+                let select = self.box_select?;
+                (select.track == index).then(|| {
+                    let x0 = select.anchor.x.min(select.current.x);
+                    let x1 = select.anchor.x.max(select.current.x);
+                    let y0 = select.anchor.y.min(select.current.y);
+                    let y1 = select.anchor.y.max(select.current.y);
+                    div()
+                        .absolute()
+                        .left(x0)
+                        .top(y0)
+                        .w(x1 - x0)
+                        .h(y1 - y0)
+                        .border_1()
+                        .border_color(accent)
+                        .bg(accent.opacity(0.12))
+                        .into_any_element()
+                })
+            })())
             .into_any_element()
     }
 }
@@ -1817,10 +1899,11 @@ impl RenderOnce for TimelineView {
 mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
     use super::{
-        COLLAPSED_TRACK_HEIGHT, DEFAULT_PX_PER_SECOND, Interpolation, Keyframe, MAX_PX_PER_SECOND,
-        MIN_PX_PER_SECOND, RULER_HEIGHT, TRACK_HEIGHT, Timeline, TimelineEvent, TimelineHit,
-        TimelineState, TimelineView, Track, VALUE_PADDING, clamp_px_per_second, curve_points,
-        format_time, ruler_step, snap_time, time_to_x, value_to_y, x_to_time, y_to_value,
+        COLLAPSED_TRACK_HEIGHT, DEFAULT_PX_PER_SECOND, Interpolation, Keyframe, LABEL_WIDTH,
+        MAX_PX_PER_SECOND, MIN_PX_PER_SECOND, RULER_HEIGHT, TRACK_HEIGHT, Timeline, TimelineEvent,
+        TimelineHit, TimelineState, TimelineView, Track, VALUE_PADDING, clamp_px_per_second,
+        curve_points, format_time, ruler_step, snap_time, time_to_x, value_to_y, x_to_time,
+        y_to_value,
     };
     use crate::{
         AppContext as _, Bounds, Context, Entity, IntoElement, Modifiers, ParentElement as _,
@@ -2295,6 +2378,54 @@ mod tests {
         );
     }
 
+    /// 框选：轨道内拖拽矩形选中框内关键帧。
+    #[rgpui::test]
+    fn box_select_picks_keyframes(cx: &mut crate::TestAppContext) {
+        let (state, _events, mut cx) = setup(cx);
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(600.0), px(200.0)));
+                // 轨道 1（第二行）的行内纵坐标：标尺高度 + 一行高。
+                let row_top = RULER_HEIGHT.as_f32() + TRACK_HEIGHT.as_f32();
+                // 在轨道 1 的空白处按下（时间 0 与 1 之间），向右拖过时间 2 的关键帧。
+                state.on_pointer_down(
+                    point(
+                        px(LABEL_WIDTH.as_f32() + DEFAULT_PX_PER_SECOND / 2.0),
+                        px(row_top),
+                    ),
+                    1,
+                    Modifiers::default(),
+                    window,
+                    cx,
+                );
+                state.on_pointer_move(
+                    point(
+                        px(LABEL_WIDTH.as_f32() + DEFAULT_PX_PER_SECOND * 2.0 + 10.0),
+                        px(row_top + TRACK_HEIGHT.as_f32()),
+                    ),
+                    cx,
+                );
+            })
+        });
+        // 框内命中时间 1 与时间 2 的关键帧（时间 0 在框外）。
+        let selected = state.read_with(cx, |state, _| state.selected_keyframe_indices());
+        assert_eq!(selected.len(), 2);
+        assert!(state.read_with(cx, |state, _| state.is_keyframe_selected(1, 1)));
+        assert!(state.read_with(cx, |state, _| state.is_keyframe_selected(1, 2)));
+        assert!(!state.read_with(cx, |state, _| state.is_keyframe_selected(1, 0)));
+
+        // 释放后框选结束，选中保留。
+        cx.update(|_, cx| state.update(cx, |state, cx| state.on_pointer_up(cx)));
+        assert!(
+            state
+                .read_with(cx, |state, _| state.box_selecting())
+                .is_none()
+        );
+        assert_eq!(
+            state.read_with(cx, |state, _| state.selected_keyframe_indices().len()),
+            2
+        );
+    }
     /// 纵向拖拽关键帧改值：按下不跳变、时间同步吸附、释放清空拖拽态。
     #[rgpui::test]
     fn vertical_drag_updates_keyframe_value(cx: &mut crate::TestAppContext) {

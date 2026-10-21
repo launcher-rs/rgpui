@@ -1835,9 +1835,9 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 ### 验证
 
 - `cargo test -p rgpui --lib erase_local`：1 passed（中段被剪 → 笔画切成两段，端点正确）。
-## 六十三、增补：动画时间线的多选关键帧
+## 六十三、增补：动画时间线的多选关键帧与框选
 
-§二十四 暂缓项「多选关键帧与框选」中的**多选**部分落地（框选仍待做）：
+§二十四 暂缓项「多选关键帧与框选」落地：
 
 - 状态新增 `multi_keyframes`（附加多选集合，仅对当前轨道有效）：
   - `toggle_keyframe_selection(track, index, cx)`：Ctrl / Cmd 点击切换附加选中；换轨道时
@@ -1849,6 +1849,15 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
   全部选中（此前只删主选中项）。
 - 指针事件：`on_pointer_down` 增加 `modifiers` 参数（其它调用点传 `Modifiers::default()`）。
 
+### 框选
+
+- 状态新增 `box_select`（轨道 + 锚点 + 当前位置，行局部坐标）与 `box_selecting()` 查询。
+- 交互：轨道内空白处**按下并拖拽**即框选（框内关键帧全选、框外清除，拖动过程中实时
+  更新）；双击仍是「请求新增关键帧」；释放后保留选中、矩形消失。
+- 渲染：框选矩形画在轨道行内（主题主色描边 + 浅底）。
+
 ### 验证
 
 - `cargo test -p rgpui --lib multi_select_keyframes`：1 passed（切换附加选中、取消、批量删除）。
+- `cargo test -p rgpui --lib box_select_picks`：1 passed（框内关键帧全选、框外清除、释放后保留）。
+
