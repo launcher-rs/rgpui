@@ -728,6 +728,96 @@ impl RichTextDoc {
         out
     }
 
+    /// 导出为 Markdown 文本。
+    ///
+    /// 覆盖标题级别、列表、引用块、行内样式（粗 / 斜 / 删除线 / 行内代码）、链接、
+    /// 表格与节（节标题按二级标题输出）；修订标记用内联 HTML（`<ins>` / `<del>`）表达。
+    pub fn to_markdown(&self) -> String {
+        let mut out = String::new();
+        // 段落 → 表格 / 节归属（与渲染同款：按首个单元格 / 段落插入）。
+        let mut table_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut table_cells: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        for (table_index, table) in self.tables.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in table.header.iter().chain(table.rows.iter().flatten()) {
+                table_cells.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                table_at.insert(first, table_index);
+            }
+        }
+        let mut section_at: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        let mut section_paragraphs: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
+        for (section_index, section) in self.sections.iter().enumerate() {
+            let mut first: Option<usize> = None;
+            for para_index in &section.paragraphs {
+                section_paragraphs.insert(*para_index);
+                first.get_or_insert(*para_index);
+            }
+            if let Some(first) = first {
+                section_at.insert(first, section_index);
+            }
+        }
+
+        let mut index = 0usize;
+        while index < self.paragraphs.len() {
+            // 表格：整表输出一次。
+            if let Some(table_index) = table_at.get(&index) {
+                push_table_markdown(&mut out, &self.tables[*table_index], &self.paragraphs);
+                while index < self.paragraphs.len() && table_cells.contains(&index) {
+                    index += 1;
+                }
+                continue;
+            }
+            // 节：标题按二级标题输出，节内段落照常。
+            if let Some(section_index) = section_at.get(&index) {
+                if let Some(title) = &self.sections[*section_index].title {
+                    out.push_str("## ");
+                    out.push_str(title);
+                    out.push('\n');
+                    out.push('\n');
+                }
+            }
+            if section_paragraphs.contains(&index) {
+                index += 1;
+                continue;
+            }
+            // 普通段落。
+            let para = &self.paragraphs[index];
+            match para.style.list {
+                ListKind::Bullet => {
+                    out.push_str("- ");
+                    out.push_str(&runs_to_markdown(&para.runs));
+                    out.push('\n');
+                }
+                ListKind::Number => {
+                    out.push_str("1. ");
+                    out.push_str(&runs_to_markdown(&para.runs));
+                    out.push('\n');
+                }
+                ListKind::None => {
+                    if para.style.quote {
+                        out.push_str("> ");
+                    }
+                    if let Some(level) = para.style.heading {
+                        for _ in 0..level {
+                            out.push('#');
+                        }
+                        out.push(' ');
+                    }
+                    out.push_str(&runs_to_markdown(&para.runs));
+                    out.push('\n');
+                }
+            }
+            index += 1;
+        }
+        out
+    }
+
     /// 取表格（按索引）。
     pub fn table(&self, index: usize) -> Option<&RichTable> {
         self.tables.get(index)
@@ -1662,6 +1752,97 @@ fn push_table_html(
     out.push_str("</table>");
 }
 
+/// 把行内运行序列转成 Markdown。
+fn runs_to_markdown(runs: &[Run]) -> String {
+    let mut out = String::new();
+    for run in runs {
+        if run.text.is_empty() {
+            continue;
+        }
+        let text = &run.text;
+        if run.props.deleted {
+            out.push_str("<del>");
+            out.push_str(text);
+            out.push_str("</del>");
+            continue;
+        }
+        if run.props.inserted {
+            out.push_str("<ins>");
+            out.push_str(text);
+            out.push_str("</ins>");
+            continue;
+        }
+        if let Some(href) = &run.link {
+            out.push('[');
+            out.push_str(text);
+            out.push_str("](");
+            out.push_str(href);
+            out.push(')');
+            continue;
+        }
+        if run.props.code {
+            out.push('`');
+            out.push_str(text);
+            out.push('`');
+            continue;
+        }
+        if run.props.bold {
+            out.push_str("**");
+            out.push_str(text);
+            out.push_str("**");
+            continue;
+        }
+        if run.props.italic {
+            out.push('*');
+            out.push_str(text);
+            out.push('*');
+            continue;
+        }
+        if run.props.strikethrough {
+            out.push_str("~~");
+            out.push_str(text);
+            out.push_str("~~");
+            continue;
+        }
+        out.push_str(text);
+    }
+    out
+}
+
+/// 把表格输出为 Markdown（表头行 + 分隔行 + 数据行）。
+fn push_table_markdown(out: &mut String, table: &RichTable, paragraphs: &[Paragraph]) {
+    let cell_text = |para_index: usize| -> String {
+        paragraphs
+            .get(para_index)
+            .map(|para| runs_to_markdown(&para.runs))
+            .unwrap_or_default()
+    };
+    if !table.header.is_empty() {
+        out.push('|');
+        for para_index in &table.header {
+            out.push(' ');
+            out.push_str(&cell_text(*para_index));
+            out.push_str(" |");
+        }
+        out.push('\n');
+        // 分隔行：按表头列数输出 `---`。
+        out.push('|');
+        for _ in &table.header {
+            out.push_str(" --- |");
+        }
+        out.push('\n');
+    }
+    for row in &table.rows {
+        out.push('|');
+        for para_index in row {
+            out.push(' ');
+            out.push_str(&cell_text(*para_index));
+            out.push_str(" |");
+        }
+        out.push('\n');
+    }
+    out.push('\n');
+}
 /// 输出一个段落的 HTML（`<p>` / `<h1>`…`<h6>` + 内联样式 + 内容）。
 fn push_paragraph_block(out: &mut String, para: &Paragraph, spans: &[Span], doc: &RichTextDoc) {
     let tag = match para.style.heading {
@@ -3201,6 +3382,35 @@ mod tests {
         assert!(html.contains("引用内容"));
     }
 
+    /// Markdown 导出：标题 / 列表 / 引用 / 行内样式 / 链接 / 表格。
+    #[test]
+    fn exports_markdown() {
+        let mut doc = RichTextDoc::new();
+        let mut title = Paragraph::new("标题");
+        title.style.heading = Some(2);
+        doc.paragraphs.push(title);
+        let mut quote = Paragraph::new("引用内容");
+        quote.style.quote = true;
+        doc.paragraphs.push(quote);
+        doc.paragraphs
+            .push(Paragraph::new("带 **加粗** 与 `代码` 的段落"));
+        let mut link_para = Paragraph::default();
+        link_para.runs = vec![Run::with_link(
+            "链接",
+            RunProps::default(),
+            "https://example.com",
+        )];
+        doc.paragraphs.push(link_para);
+        doc.add_table(&["列"], &[vec!["值"]], vec![TableAlign::Left]);
+        let markdown = doc.to_markdown();
+        assert!(markdown.contains("## 标题"));
+        assert!(markdown.contains("> 引用内容"));
+        assert!(markdown.contains("带 **加粗** 与 `代码` 的段落"));
+        assert!(markdown.contains("[链接](https://example.com)"));
+        assert!(markdown.contains("| 列 |"));
+        assert!(markdown.contains("| --- |"));
+        assert!(markdown.contains("| 值 |"));
+    }
     /// 表格 / 节的 HTML 往返：解析回来仍是表格 / 节（含列对齐与节标题）。
     #[test]
     fn html_tables_and_sections_round_trip() {
