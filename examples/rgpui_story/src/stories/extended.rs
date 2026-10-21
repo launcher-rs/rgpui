@@ -255,7 +255,8 @@ impl rgpui::Render for DataVizStory {
                         .data(&wave_data)
                         .playback_position(0.35)
                         .color(hsla(0.62, 0.1, 0.5, 1.0))
-                        .active_color(hsla(0.6, 0.8, 0.55, 1.0)),
+                        .active_color(hsla(0.6, 0.8, 0.55, 1.0))
+                        .a11y("story-waveform", "音频波形"),
                 ),
             )
             .child(div().h(px(16.0)))
@@ -266,10 +267,21 @@ impl rgpui::Render for DataVizStory {
                     .child(
                         Sparkline::line(line_data.clone())
                             .width(px(240.0))
-                            .height(px(40.0)),
+                            .height(px(40.0))
+                            .a11y("story-sparkline-line", "折线走势"),
                     )
-                    .child(Sparkline::bar(bar_data).width(px(240.0)).height(px(40.0)))
-                    .child(Sparkline::area(line_data).width(px(240.0)).height(px(40.0))),
+                    .child(
+                        Sparkline::bar(bar_data)
+                            .width(px(240.0))
+                            .height(px(40.0))
+                            .a11y("story-sparkline-bar", "柱状走势"),
+                    )
+                    .child(
+                        Sparkline::area(line_data)
+                            .width(px(240.0))
+                            .height(px(40.0))
+                            .a11y("story-sparkline-area", "面积走势"),
+                    ),
             )
             .child(div().h(px(16.0)))
             .child(section_title("SVG 渲染（SVGRenderer）"))

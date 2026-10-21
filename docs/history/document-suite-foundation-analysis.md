@@ -627,8 +627,10 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   `COLLAPSED_TRACK_HEIGHT`，`row_height` 取当前行高，`with_collapsed`/`set_collapsed` 设置）；
   `Timeline { tracks }`。
 - **轨道运算**：`normalize`（排序 + 同时间合并，保留最后一个）、`set_keyframe`（同时间覆盖并返回
-  是否新增）、`remove_keyframe`、`keyframe_index_at(time, tolerance)`、`move_keyframe`（移动后重新
-  排序并返回新下标）、`duration`、`value_at`（首帧前 / 末帧后保持端点值）；`Timeline::add_track`/
+  是否新增）、`set_keyframe_value`（只改值、不重排，非有限值忽略）、`remove_keyframe`、
+  `keyframe_index_at(time, tolerance)`、`move_keyframe`（移动后重新排序并返回新下标）、
+  `value_range`（曲线值域：上下各留 `VALUE_RANGE_PADDING`=10%，空轨道 `(0, 1)`，全等值上下各留
+  0.5）、`duration`、`value_at`（首帧前 / 末帧后保持端点值）；`Timeline::add_track`/
   `remove_track`/`move_track`（目标下标越界夹取）/`duration`（各轨最大值）/`values_at`。
 - **运行时桥接**：`Track::to_keyframe_animation(id, duration)` 把绝对秒映射到进度 0~1（端点值显式
   写入，覆盖 `KeyframeAnimation::new` 自带的首尾帧）。
@@ -641,26 +643,38 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   纵向偏移）、`tracks_height`/`track_top`（按各行实际高度累加的轨道区几何）。
 - **交互**：`hit_test` 把局部坐标映射为 `TimelineHit`（`Ruler`/`Keyframe`/`Track`/`None`，行号按
   `vscroll` 换算成内容坐标后逐行累加行高定位，折叠行整行算轨道空白）；标尺拖拽移动播放头、
-  关键帧拖拽改时间（吸附）、轨道空白双击抛 `KeyframeRequested`、`Ctrl/Cmd + 滚轮`以指针为锚
-  缩放；`Shift + 滚轮`纵向滚动轨道，其余滚轮水平平移时间轴；点轨道名前的箭头折叠 / 展开轨道
-  （点标签列不清空关键帧选择）；键盘 `Space` 播放/暂停、方向键按帧步进（`Shift` 1s）、
-  `Home`/`End`、`Delete` 删除关键帧、`+`/`-` 缩放。轨道与标签放进以标尺下沿为顶的裁剪容器，
-  滚动时不会盖住标尺；`on_prepaint` 在窗口缩小时把 `vscroll` 夹回可滚动范围。
+  关键帧拖拽水平改时间（吸附）、垂直改值（值按行内纵坐标换算，按下时冻结值域并记住
+  「指针值 → 关键帧值」偏移，拖动中曲线不随值域重算抖动、抓取不跳变）、轨道空白双击抛
+  `KeyframeRequested`、`Ctrl/Cmd + 滚轮`以指针为锚缩放；`Shift + 滚轮`纵向滚动轨道，其余滚轮
+  水平平移时间轴；点轨道名前的箭头折叠 / 展开轨道（点标签列不清空关键帧选择）；键盘 `Space`
+  播放/暂停、方向键按帧步进（`Shift` 1s）、`Home`/`End`、`Delete` 删除关键帧、`+`/`-` 缩放。
+  轨道与标签放进以标尺下沿为顶的裁剪容器，滚动时不会盖住标尺；`on_prepaint` 在窗口缩小时把
+  `vscroll` 夹回可滚动范围。
 - **事件**：`TimelineEvent::{TimeChanged, SelectionChanged, KeyframeMoved, KeyframeRequested,
-  KeyframeRemoved, PlaybackChanged, TrackMoved, TrackCollapsed}`。
+  KeyframeRemoved, PlaybackChanged, TrackMoved, TrackCollapsed}`；`KeyframeMoved` 同时带
+  `time` 与 `value`（纵向拖拽后的值）。
 - **纯几何**：`time_to_x`/`x_to_time`、`snap_time`、`ruler_step`（1/2/5×10ⁿ 整齐步长）、
-  `format_time`（`1.20s` / `1:02.5`）、`clamp_px_per_second`。
+  `format_time`（`1.20s` / `1:02.5`）、`clamp_px_per_second`；值轴 `value_to_y`/`y_to_value`
+  （行内上下各留 `VALUE_PADDING`=3px，越界夹到值域两端，互为逆映射）；值曲线 `curve_points`
+  （逐段按 `CURVE_SAMPLE_SPACING`=6px 采样，段尾给 `to.time` 补点——`Hold` 因此得到竖直跳变
+  而不是斜坡；总采样数受 `MAX_CURVE_SAMPLES`=512 限制），路径由内部 `polyline_path` 连成
+  `CURVE_STROKE_WIDTH`=1.5px 圆头折线。
+- **绘制**：每条展开且至少有 2 个关键帧的轨道在行内画一条值曲线（`canvas` 画布 + 80% 不透明度
+  主题主色），关键帧方块压在曲线对应高度上（`value_to_y`，夹在行内不越界），选中帧用主色高亮；
+  折叠行不画曲线与方块。
 - **示例**：`examples/showcase/src/bin/timeline.rs`（六轨：位置 X / 缩放 / 透明度 / 旋转 / 模糊 /
   颜色，后三轨把轨道区撑到需要纵向滚动；工具条含播放、回到开头、加/删关键帧、缩放、吸附开关、
   轨道上移 / 下移 / 折叠；预览方块由前三条轨道的当前值驱动，播放时后台按 1/60s 推进）。
-- **测试**：`anim_timeline::tests` 14 项（归一化与去重、三种插值求值、命中 / 移动 / 删除关键帧、
+- **测试**：`anim_timeline::tests` 18 项（归一化与去重、三种插值求值、命中 / 移动 / 删除关键帧、
+  改值与值域留白、值轴映射往返与夹取、曲线采样（首尾对齐 / 单帧与空轨退化 / `Hold` 竖直跳变）、
   时间映射与吸附 / 缩放夹取 / 标尺步长 / 时间格式化、总时长与当前值、进度式动画转换、播放头推进与
-  循环 / 播放状态、缩放滚动吸附与选中删除、命中测试坐标映射、模型层轨道重排（目标夹取 / 原地不动）、
-  状态层轨道重排（选中跟随 + `TrackMoved`）、纵向滚动（内容坐标命中 / 夹取 / 滚入视野）、
-  折叠行高与状态切换、折叠后行位 / 命中 / 可滚动范围 / `TrackCollapsed`）。
+  循环 / 播放状态、缩放滚动吸附与选中删除、纵向拖拽改值（抓取偏移 / 冻结值域 / 事件带值）、
+  命中测试坐标映射、模型层轨道重排（目标夹取 / 原地不动）、状态层轨道重排（选中跟随 +
+  `TrackMoved`）、纵向滚动（内容坐标命中 / 夹取 / 滚入视野）、折叠行高与状态切换、
+  折叠后行位 / 命中 / 可滚动范围 / `TrackCollapsed`）。
 
-**本版暂缓**（后续增补）：关键帧值曲线编辑器（当前只编辑时间）、多选关键帧与框选、
-轨道静音 / 独奏、音视频波形与对齐吸附、播放时钟内置到控件（现由应用推进 `advance`）。
+**本版暂缓**（后续增补）：值曲线的手柄拖拽与曲线预设（当前曲线随关键帧值实时重绘）、多选关键帧
+与框选、轨道静音 / 独奏、音视频波形与对齐吸附、播放时钟内置到控件（现由应用推进 `advance`）。
 
 ## 二十五、P2 落地：色板 / 取色器增强（核心，无 feature 门控）
 
@@ -821,8 +835,8 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
 
 - **模型**：`CanvasNodeId`（u64，应用自定义的稳定 id）、`CanvasNode`（`role`/`label`/
   `bounds`（画布局部坐标）/`value`/`description`/`disabled`/`selected`/`focused`/`actions`，
-  builder 式构造 + 就地 setter）、`CanvasSemantics`（按绘制顺序存放的节点集合，含
-  `with_row_tolerance`）。
+  builder 式构造 + 就地 setter，`with_bounds`/`set_bounds` 改矩形）、`CanvasSemantics`
+  （按绘制顺序存放的节点集合，含 `with_row_tolerance`、`fill_empty_bounds`）。
 - **纯几何 / 顺序**：`reading_order_indices`（**两趟**：先整体按 y，再逐行按 x —— 避免用带
   容差的比较函数做排序，那种比较不满足全序、标准库可能 panic）、`node_at_point`
   （**逆绘制序** = 后画者在上）、`next_in_order`（两端环绕）、`window_bounds`
@@ -840,15 +854,21 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   （在 `paint` 里复算与发布侧一致的合成子节点 id）、`A11y::scale_factor` 每帧同步。
 - **元素接线**：`elements/canvas.rs` 的 [`Canvas`] 增加 `.id(..)` / `.a11y(role, semantics)` /
   `.a11y_label(..)` / `.on_canvas_a11y_action(..)`；`Element::id`/`a11y_role`/`write_a11y_info`/
-  `a11y_synthetic_children` 全部接上，预绘制记下画布原点供发布时换算。
+  `a11y_synthetic_children` 全部接上，预绘制记下画布原点与矩形供发布时换算。宽高都为 0 的
+  语义节点在发布前由 `CanvasSemantics::fill_empty_bounds` 展开成整块画布——走势图 / 波形这类
+  「整体摘要」节点在构建时还不知道自己的布局大小，正好用这条规则。
+- **已接线组件**：`InkLayerElement::a11y`（每笔一个 `GraphicsObject`）、`Sparkline::a11y(id, label)`
+  （摘要：数据点数 / 最新 / 最低 / 最高 + 样式与趋势）、`Waveform::a11y(id, label)`
+  （摘要：采样点数 / 峰值 + 播放进度）。
 - **示例**：`examples/showcase/src/bin/canvas_a11y.rs`（六个自绘卡片 / 圆形；指针点击、键盘
   ← → ↑ ↓ / `Home` / `End` / `Enter` / `Esc`、无障碍动作三条路径等价；工具栏显示阅读顺序）。
 - **测试**：7 项 —— 阅读顺序分行与导航环绕、命中测试（后画者在上 / 半开边界）、局部 → 窗口
-  矩形、AccessKit 节点映射（状态 / 动作 / 物理像素矩形）、集合维护，以及 `window::a11y` 侧
-  的桥接测试（合成子节点带矩形发布 + 焦点对象成为容器 active descendant）。
+  矩形、AccessKit 节点映射（状态 / 动作 / 物理像素矩形）、集合维护与零尺寸节点填充，以及
+  `window::a11y` 侧的桥接测试（合成子节点带矩形发布 + 焦点对象成为容器 active descendant）；
+  组件侧另有走势图 / 波形摘要节点 2 项。
 
-**本版暂缓**（后续增补）：把 `InkLayer` / `PageView` / `SheetGrid` 等既有自绘组件接到本模块
-（当前只有示例消费）、行 / 列（表格）语义与 `Role::Cell` 的 `row_index`/`column_index` 扩展、
+**本版暂缓**（后续增补）：把 `PageView` / `SheetGrid` 等既有自绘组件接到本模块、
+行 / 列（表格）语义与 `Role::Cell` 的 `row_index`/`column_index` 扩展、
 虚拟滚动下的语义节点裁剪与 `ScrollIntoView`。
 
 ## 二十九、P2 落地：国际文本 —— bidi 与东亚禁则（核心，无 feature 门控）
@@ -971,13 +991,14 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
 | 画布对象工具 `object_toolkit` | `handle_point_rotated` / `hit_handle_rotated`（旋转后控制点）、`marquee_bounds` / `marquee_hits` + `MarqueeMode`（框选/交叉框选） |
 | MDI `mdi` | `snap_rect` / `snap_active` / `with_snap`（拖动松手吸附到工作区边/中线）；`MdiLayout::Tabbed` 页签式（见 §二十六） |
 | 页视图 `page_view` | `PageArrangement`（单页 / 双页 / 双页封面）与 `page_slot` 等栅格几何 |
-| 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`）、轨道折叠（`Track::collapsed` / `row_height` / `with_collapsed` / `set_collapsed`、`tracks_height` / `track_top` / `toggle_track_collapsed`、`TrackCollapsed`、折叠箭头） |
+| 动画时间线 `anim_timeline` | 纵向滚动（`vscroll`/`set_vscroll`/`max_vscroll`/`scroll_to_track` + 轨道区裁剪容器）、轨道重排（`Timeline::move_track` / `TimelineState::move_track` / `TimelineEvent::TrackMoved`）、轨道折叠（`Track::collapsed` / `row_height` / `with_collapsed` / `set_collapsed`、`tracks_height` / `track_top` / `toggle_track_collapsed`、`TrackCollapsed`、折叠箭头）、值曲线与纵向改值（`Track::value_range` / `set_keyframe_value`、`value_to_y` / `y_to_value` / `curve_points`、`KeyframeMoved.value`、冻结值域 + 抓取偏移） |
 | 任务窗格 `task_pane` | 自动隐藏（`auto_hide`/`collapsed`/`hovered` + `RAIL_WIDTH` 竖排标题轨道 + `set_auto_hide`/`set_collapsed`/`toggle_collapsed`/`set_hovered`/`effective_width`、`TaskPaneEvent::Collapsed`）、页签组（`tabs`/`active_tab`/`with_tabs`/`set_tabs`/`set_active_tab`/`cycle_tab`/`tab_rects`/`tab_at`、`TaskPaneHit::Tab`、`TaskPaneEvent::TabSelected`） |
 | Ink `ink` | `InkDocument` + `InkDocumentLayer` 多图层、`InkLayerElement::opacity`（见 §二十二）、逐段压感变宽（`pressure_width` / `stroke_paths` / `extend_stroke_with_pressure`）、画布语义接线（`InkLayer::semantics` / `InkLayerElement::a11y`，每笔一个 `GraphicsObject` 节点） |
+| 走势图 / 波形 `sparkline` `waveform` | 画布语义接线（`Sparkline::a11y` / `Waveform::a11y` 整体摘要节点：点数 / 极值 / 峰值 / 播放进度）、`CanvasSemantics::fill_empty_bounds`（零尺寸摘要节点按画布大小发布）、`CanvasNode::with_bounds`/`set_bounds` |
 
-仍未做（保持暂缓）：时间线值曲线、任务窗格多窗格并列、
-富文本分节 / 表格 / 批注 / 脚注、更多自绘组件接线画布语义（图表 / 波形等）、bidi 视觉重排、
-取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
+仍未做（保持暂缓）：任务窗格多窗格并列、
+富文本分节 / 表格 / 批注 / 脚注、更多自绘组件接线画布语义（表格 / 页视图 / 仪表盘等）、
+bidi 视觉重排、取色器吸管（屏幕捕获，`scap` feature 与 `windows-capture` API 不兼容）。
 
 ### AGENTS 完整性检查清单（12 项）逐条结果
 

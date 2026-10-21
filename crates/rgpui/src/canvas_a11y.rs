@@ -118,6 +118,13 @@ impl CanvasNode {
         self
     }
 
+    /// 设置画布局部矩形（零尺寸节点会在发布时展开成整块画布，见
+    /// [`CanvasSemantics::fill_empty_bounds`]）。
+    pub fn with_bounds(mut self, bounds: Bounds<Pixels>) -> Self {
+        self.bounds = bounds;
+        self
+    }
+
     /// 设置禁用状态。
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
@@ -216,6 +223,11 @@ impl CanvasNode {
     pub fn set_disabled(&mut self, disabled: bool) {
         self.disabled = disabled;
     }
+
+    /// 就地设置画布局部矩形。
+    pub fn set_bounds(&mut self, bounds: Bounds<Pixels>) {
+        self.bounds = bounds;
+    }
 }
 
 /// 画布语义集合：按绘制顺序存放（**先画的在前**，后画者在叠放上层）。
@@ -272,6 +284,22 @@ impl CanvasSemantics {
     /// 节点列表（绘制顺序）。
     pub fn nodes(&self) -> &[CanvasNode] {
         &self.nodes
+    }
+
+    /// 把零尺寸节点展开成给定矩形，返回被填充的节点数量。
+    ///
+    /// 面向「整体摘要」型自绘组件（走势图、波形等）：它们在构建语义时还不知道自己的
+    /// 布局大小，可以先给一个零尺寸矩形，由画布元素在发布前按自身 bounds 填充。只填
+    /// 宽高都为 0 的节点，已有尺寸的节点（单元格、笔画等）原样保留。
+    pub fn fill_empty_bounds(&mut self, bounds: Bounds<Pixels>) -> usize {
+        let mut filled = 0;
+        for node in &mut self.nodes {
+            if node.bounds.size.width <= px(0.0) && node.bounds.size.height <= px(0.0) {
+                node.bounds = bounds;
+                filled += 1;
+            }
+        }
+        filled
     }
 
     /// 迭代节点（绘制顺序）。
@@ -682,5 +710,29 @@ mod tests {
                 .row_tolerance(),
             px(8.0)
         );
+    }
+
+    /// 填充零尺寸摘要节点：只填宽高都为 0 的节点，已有尺寸的节点不动。
+    #[test]
+    fn fill_empty_bounds_expands_summary_nodes() {
+        let canvas = Bounds::new(point(px(0.0), px(0.0)), size(px(300.0), px(120.0)));
+        let cell = node(2, "格子", 10.0, 10.0, 20.0, 20.0);
+        let mut semantics = CanvasSemantics::new();
+        semantics.push(node(1, "摘要", 0.0, 0.0, 0.0, 0.0));
+        semantics.push(cell.clone());
+
+        assert_eq!(semantics.fill_empty_bounds(canvas), 1);
+        assert_eq!(semantics.get(1).expect("摘要节点").bounds(), canvas);
+        // 已有尺寸的节点保持原样。
+        assert_eq!(semantics.get(2).expect("格子节点").bounds(), cell.bounds());
+        // 再填一次没有可填节点。
+        assert_eq!(semantics.fill_empty_bounds(canvas), 0);
+
+        // `with_bounds` / `set_bounds` 就地改写矩形。
+        let moved = Bounds::new(point(px(5.0), px(5.0)), size(px(1.0), px(1.0)));
+        let mut summary = node(3, "n", 0.0, 0.0, 0.0, 0.0).with_bounds(moved);
+        assert_eq!(summary.bounds(), moved);
+        summary.set_bounds(canvas);
+        assert_eq!(summary.bounds(), canvas);
     }
 }

@@ -1,6 +1,8 @@
 //! 音频波形可视化：用垂直条形柱绘制波形。
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
+use accesskit::Role;
 
 /// 绘制用的波形快照数据。
 #[derive(Clone)]
@@ -28,6 +30,8 @@ pub struct Waveform {
     active_color: Option<Hsla>,
     /// 播放进度（0~1）。
     playback_position: f32,
+    /// 无障碍配置：元素 id + 画布名称（开启后发布一个整体摘要节点）。
+    a11y: Option<(ElementId, SharedString)>,
     /// 用户样式。
     style: StyleRefinement,
 }
@@ -42,6 +46,7 @@ impl Waveform {
             color: None,
             active_color: None,
             playback_position: 0.0,
+            a11y: None,
             style: StyleRefinement::default(),
         }
     }
@@ -81,6 +86,15 @@ impl Waveform {
         self.playback_position = position.clamp(0.0, 1.0);
         self
     }
+
+    /// 把波形暴露给辅助技术：整块波形发布一个摘要节点（采样点数 / 峰值 / 播放进度），
+    /// 节点矩形在发布时按画布大小填充。
+    ///
+    /// `id` 是画布元素自身的标识，同一波形跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
+        self
+    }
 }
 
 impl Default for Waveform {
@@ -102,6 +116,11 @@ impl RenderOnce for Waveform {
 
         let default_color = theme.tokens.muted_foreground.opacity(0.4);
         let default_active = *theme.tokens.primary;
+
+        let a11y = self.a11y;
+        let semantics = a11y
+            .as_ref()
+            .map(|(_, label)| waveform_semantics(&self.data, self.playback_position, label));
 
         let paint_data = WaveformPaintData {
             data: self.data,
@@ -135,6 +154,14 @@ impl RenderOnce for Waveform {
             });
         }
 
+        // 无障碍：整块波形一个摘要节点（零尺寸，由画布按实际大小填充）。
+        if let (Some((id, label)), Some(semantics)) = (a11y, semantics) {
+            chart = chart
+                .id(id)
+                .a11y(Role::GraphicsObject, semantics)
+                .a11y_label(label);
+        }
+
         let mut root = div()
             .relative()
             .when(user_style.size.width.is_none(), |this| this.w_full())
@@ -143,6 +170,41 @@ impl RenderOnce for Waveform {
         root.style().refine(&user_style);
         root
     }
+}
+
+/// 波形的整体语义：一个零尺寸摘要节点（发布时由画布填充整块区域）。
+fn waveform_semantics(
+    data: &[f32],
+    playback_position: f32,
+    label: &SharedString,
+) -> CanvasSemantics {
+    let (value, description) = if data.is_empty() {
+        ("暂无采样点".to_string(), None)
+    } else {
+        let peak = data
+            .iter()
+            .copied()
+            .filter(|value| value.is_finite())
+            .map(f32::abs)
+            .fold(0.0, f32::max);
+        let progress = if playback_position.is_finite() {
+            playback_position.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        (
+            format!("{} 个采样点 · 峰值 {peak:.2}", data.len()),
+            Some(format!("播放进度 {:.0}%", progress * 100.0)),
+        )
+    };
+    let mut semantics = CanvasSemantics::new();
+    let mut node = CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+        .with_value(value);
+    if let Some(description) = description {
+        node = node.with_description(description);
+    }
+    semantics.push(node);
+    semantics
 }
 
 /// 在窗口上绘制波形条形柱。
@@ -269,4 +331,38 @@ fn waveform_svg(bounds: Bounds<Pixels>, data: &WaveformPaintData) -> String {
 
     svg.push_str("</svg>");
     svg
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::waveform_semantics;
+    use crate::{Bounds, SharedString};
+
+    /// 无障碍摘要：采样点数 / 峰值 / 播放进度；空数据退化。
+    #[test]
+    fn waveform_a11y_summary() {
+        let label: SharedString = "音频".into();
+        let semantics = waveform_semantics(&[0.2, -0.8, 0.4], 0.25, &label);
+        assert_eq!(semantics.len(), 1);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(node.label().to_string(), "音频");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("3 个采样点 · 峰值 0.80".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("播放进度 25%".to_string())
+        );
+        assert_eq!(node.bounds(), Bounds::default());
+
+        let semantics = waveform_semantics(&[], 0.0, &label);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("暂无采样点".to_string())
+        );
+        assert!(node.description().is_none());
+    }
 }
