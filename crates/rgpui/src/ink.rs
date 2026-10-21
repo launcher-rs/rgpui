@@ -335,6 +335,44 @@ impl InkLayer {
         before - self.strokes.len()
     }
 
+    /// 局部擦除：剪掉落在圆内的**采样点**，笔画被切成前后两段。
+    ///
+    /// 与 [`Self::erase_at`]（整笔命中即删除）不同，本方法只剪掉圆内的点，笔画
+    /// 的其余部分保留；返回被剪掉的点数。
+    pub fn erase_local(&mut self, center: Point<Pixels>, radius: Pixels) -> usize {
+        let mut removed_points = 0usize;
+        let mut kept: Vec<Stroke> = Vec::with_capacity(self.strokes.len());
+        for stroke in self.strokes.drain(..) {
+            let mut part: Vec<InkPoint> = Vec::new();
+            for sample in stroke.points {
+                let dx = sample.position.x.0 - center.x.0;
+                let dy = sample.position.y.0 - center.y.0;
+                if dx * dx + dy * dy <= radius.0 * radius.0 {
+                    removed_points += 1;
+                    // 命中即断开当前段（残留不足两点视为整段被擦除）。
+                    if part.len() >= 2 {
+                        kept.push(Stroke {
+                            points: std::mem::take(&mut part),
+                            style: stroke.style,
+                        });
+                    } else {
+                        part.clear();
+                    }
+                    continue;
+                }
+                part.push(sample);
+            }
+            if part.len() >= 2 {
+                kept.push(Stroke {
+                    points: part,
+                    style: stroke.style,
+                });
+            }
+        }
+        self.strokes = kept;
+        removed_points
+    }
+
     /// 命中最近的笔画（距离在 `tolerance` 内）；返回笔画索引。
     pub fn hit_test(&self, position: Point<Pixels>, tolerance: Pixels) -> Option<usize> {
         self.strokes
@@ -654,6 +692,15 @@ impl InkDocument {
             .iter_mut()
             .filter(|layer| layer.is_editable())
             .map(|layer| layer.layer.erase_at(center, radius))
+            .sum()
+    }
+
+    /// 局部擦除（多层文档）：逐个可编辑图层剪掉圆内的采样点，返回剪掉的点数。
+    pub fn erase_local(&mut self, center: Point<Pixels>, radius: Pixels) -> usize {
+        self.layers
+            .iter_mut()
+            .filter(|layer| layer.is_editable())
+            .map(|layer| layer.layer.erase_local(center, radius))
             .sum()
     }
 
@@ -1227,6 +1274,34 @@ mod tests {
         assert_eq!(layer.strokes[0].points[0].position, pt(100.0, 100.0));
     }
 
+    /// 局部擦除：圆内采样点被剪掉，笔画切成前后两段（整笔擦除不受影响）。
+    #[test]
+    fn erase_local_cuts_stroke_into_parts() {
+        let mut layer = InkLayer::new();
+        layer.begin_stroke(pt(0.0, 0.0), pen());
+        layer.extend_stroke(pt(10.0, 0.0));
+        layer.extend_stroke(pt(20.0, 0.0));
+        layer.extend_stroke(pt(30.0, 0.0));
+        layer.extend_stroke(pt(40.0, 0.0));
+        layer.end_stroke();
+        assert_eq!(layer.strokes.len(), 1);
+
+        // 剪掉中段（x = 20 附近）→ 笔画变成两段。
+        let removed = layer.erase_local(pt(20.0, 0.0), px(2.0));
+        assert_eq!(removed, 1);
+        assert_eq!(layer.strokes.len(), 2);
+        assert_eq!(layer.strokes[0].points.len(), 2);
+        assert_eq!(layer.strokes[1].points.len(), 2);
+        // 段落的端点分别是擦除区间的前后。
+        assert_eq!(
+            layer.strokes[0].points.last().unwrap().position,
+            pt(10.0, 0.0)
+        );
+        assert_eq!(layer.strokes[1].points[0].position, pt(30.0, 0.0));
+
+        // 整笔擦除仍按笔画删除。
+        assert_eq!(layer.erase_at(pt(5.0, 0.0), px(2.0)), 1);
+    }
     #[test]
     fn lasso_selects_and_removes() {
         let mut layer = InkLayer::new();

@@ -1822,3 +1822,16 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 
 - `cargo test -p rgpui --lib docked_grip_drag_crosses`：1 passed（把手越过中线换边、再拖回
   换回）。
+## 六十二、增补：Ink 橡皮的局部切割
+
+§二十二 暂缓项「橡皮的局部切割」落地：此前橡皮只能整笔删除（`erase_at`）。
+
+- `InkLayer::erase_local(center, radius) -> usize`：剪掉落在圆内的**采样点**，笔画被切成
+  前后两段（残留不足两点的段视为整段被擦除）；返回被剪掉的点数。
+- `InkDocument::erase_local`：逐个可编辑图层应用（与 `erase_at` 的图层策略一致）。
+- 示例：showcase 的 `ink` 演示页加「橡皮：局部 / 整笔」切换按钮，状态栏显示擦除的点数 /
+  笔画数。
+
+### 验证
+
+- `cargo test -p rgpui --lib erase_local`：1 passed（中段被剪 → 笔画切成两段，端点正确）。
