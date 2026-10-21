@@ -1452,4 +1452,22 @@ HTML 双向：`from_html` 解析 `line-height` / `margin-top`，`to_html` 输出
 - `cargo test -p rgpui --lib rich_text`：25 passed（新增 1 项：行高 / 段前距 CSS 往返）。
 - `cargo test -p rgpui --lib scheduler`：17 passed。
 
+## 四十四、修复：Markdown 脚注引用标记被丢弃
+
+`rgpui-markdown` 此前解析了脚注**定义**（`[^1]: …` → `RichBlock::FootnoteDefinition`，
+渲染为文末带左边框的块），但**正文里的引用标记**（`[^1]`）在事件流里没有对应处理，
+被直接丢弃 —— 读者只看到文末的脚注，正文里没有任何指向它的标记。
+
+修复：
+
+- 模型新增 `RichInline::FootnoteRef(String)`（脚注标签）。
+- 解析：`Event::FootnoteReference(label)` → 行内脚注引用。
+- 渲染：按链接色渲染 `[^label]` 标记（与脚注定义块的 `[^label]` 标题一致）。
+- `inlines_to_plain_text` 同步输出 `[^label]` 文本。
+
+### 验证
+
+- `cargo test -p rgpui-markdown --lib`：10 passed（新增 1 项：脚注引用进入段落内容）。
+- 示例：`examples/rgpui_story` 的「语法全览」页补脚注段落。
+
 

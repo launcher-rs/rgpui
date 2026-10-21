@@ -103,6 +103,8 @@ pub enum RichInline {
     },
     /// 换行。
     LineBreak,
+    /// 脚注引用标记（`[^label]`；标签对应文末脚注定义）。
+    FootnoteRef(String),
     /// 原始 HTML（渲染时忽略）。
     Html(String),
     /// 带样式包裹的行内内容。
@@ -336,6 +338,13 @@ impl InlineFlattener {
                     }
                 }
                 RichInline::LineBreak => self.push_text("\n", false),
+                // 脚注引用：按链接色渲染 `[^label]` 标记。
+                RichInline::FootnoteRef(label) => {
+                    let prev = self.color_override;
+                    self.color_override = Some(self.link_color);
+                    self.push_text(&format!("[^{label}]"), false);
+                    self.color_override = prev;
+                }
                 RichInline::Html(_) => {}
                 RichInline::Styled {
                     children,

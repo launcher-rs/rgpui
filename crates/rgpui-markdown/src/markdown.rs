@@ -154,6 +154,13 @@ fn inlines_to_plain_text(inlines: &[RichInline]) -> String {
                 out.push_str(&inlines_to_plain_text(children));
             }
             RichInline::Code(s) => out.push_str(s),
+            // 脚注引用：按标记文本输出。
+            RichInline::FootnoteRef(label) => {
+                out.push('[');
+                out.push('^');
+                out.push_str(label);
+                out.push(']');
+            }
             // 公式：退化为源码文本。
             RichInline::Math(s) => out.push_str(s),
             RichInline::Link { text, .. } => {
@@ -288,6 +295,10 @@ impl UrlTrackingBlockBuilder {
                 self.push_block(RichBlock::HorizontalRule, span);
             }
             Event::Html(html) => self.push_inline(RichInline::Html(html.to_string())),
+            // 脚注引用标记（`[^label]`）：正文里要能看到引用，否则脚注定义无处指向。
+            Event::FootnoteReference(label) => {
+                self.push_inline(RichInline::FootnoteRef(label.to_string()));
+            }
             // 行内公式：$...$。
             #[cfg(feature = "latex")]
             Event::InlineMath(text) => self.push_inline(RichInline::Math(text.to_string())),
@@ -694,7 +705,6 @@ fn try_parse_callout_header(
 mod tests {
     // 显式导入：父模块 `use rgpui::*` 引入的 `test` 模块名会遮蔽内置属性。
     use super::{parse_markdown_cached, parse_markdown_with_urls};
-    #[cfg(feature = "latex")]
     use crate::rich_text::{RichBlock, RichInline};
 
     /// 缓存正确性：相同内容复用解析结果，不同内容重新解析（含中文）。
@@ -713,6 +723,16 @@ mod tests {
         assert_eq!(format!("{first:?}"), format!("{third:?}"));
     }
 
+    /// 脚注引用标记进入模型（正文里可见 `[^label]`）。
+    #[test]
+    fn footnote_reference_is_kept() {
+        let (blocks, _) = parse_markdown_with_urls("正文[^1]\n\n[^1]: 脚注内容\n");
+        assert!(
+            blocks.iter().any(|block| matches!(block, RichBlock::Paragraph(inlines)
+                if inlines.iter().any(|inline| matches!(inline, RichInline::FootnoteRef(label) if label == "1")))),
+            "脚注引用应进入段落内容：{blocks:?}"
+        );
+    }
     /// 块与区间一一对应；区间覆盖全文、无缝隙、切片合法（含嵌套/表格/代码/图片）。
     #[test]
     fn block_spans_align_and_tile() {
