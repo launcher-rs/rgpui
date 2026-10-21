@@ -1471,3 +1471,18 @@ HTML 双向：`from_html` 解析 `line-height` / `margin-top`，`to_html` 输出
 - 示例：`examples/rgpui_story` 的「语法全览」页补脚注段落。
 
 
+
+
+## 四十五、增补：核心富文本的引用块
+
+`ParagraphStyle` 新增 `quote: bool`：段落属于引用块。
+
+- 解析：`from_html` 识别 `<blockquote>`（含嵌套深度计数），块内段落标记为引用样式；
+  没有 `<p>` 包裹时（`<blockquote>直接文字</blockquote>`）内容段落同样被标记。
+- 序列化：`to_html` 把**连续**的引用段落合并输出为 `<blockquote>…</blockquote>`。
+- 渲染：引用段落加左边线 + 浅底 + 内缩 + 弱化文字色（跟随主题）。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：26 passed（新增 1 项：引用块往返）。
+
