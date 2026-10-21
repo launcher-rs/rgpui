@@ -1398,4 +1398,28 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 - `cargo test -p rgpui --lib rich_text`：23 passed（新增 2 项：撤销 / 重做往返与重做链
   清空、未改动编辑不压栈）。
 
+## 四十二、增补：核心富文本的链接支持
+
+此前核心富文本模型**没有链接概念**：HTML 里的 `<a href="…">` 解析后只保留文字、地址丢失，
+序列化也不会输出链接。本轮补齐：
+
+- `Run` 新增 `link: Option<String>`（链接地址），构造器 `Run::with_link(text, props, link)`。
+- 解析：`from_html` 识别 `<a href>`，地址挂在解析样式状态上（随标签栈进出自动恢复 /
+  还原）；`StyleState` 因此不再 `Copy`（改为 `Clone`）。
+- 归一：`Paragraph::normalize` 合并相邻同属性运行时**同时比较链接地址**（否则链接会被
+  并进普通文本而丢地址）。
+- 序列化：`to_html` 输出 `<a href="…">`（地址按属性口径转义）。
+- 渲染：链接文本用主题主色 + 下划线。
+- 交互：`RichText::on_link_click(handler)` 回传被点击的链接地址；与批注点击共用一个
+  `InteractiveText`（两类区间合并到一个序号空间，按序号分发）。
+
+### 示例
+
+`examples/showcase/src/bin/rich_text.rs`：样例正文加入「链接」运行，并演示
+`on_link_click` 回传地址。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：24 passed（新增 1 项：链接地址解析与序列化往返）。
+
 

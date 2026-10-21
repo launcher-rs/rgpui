@@ -147,6 +147,8 @@ pub struct Run {
     pub text: String,
     /// 行内属性。
     pub props: RunProps,
+    /// 链接地址（`None` 表示普通文本）。
+    pub link: Option<String>,
 }
 
 impl Run {
@@ -155,6 +157,7 @@ impl Run {
         Self {
             text: text.into(),
             props: RunProps::default(),
+            link: None,
         }
     }
 
@@ -163,6 +166,16 @@ impl Run {
         Self {
             text: text.into(),
             props,
+            link: None,
+        }
+    }
+
+    /// 以指定属性创建**链接**文本运行。
+    pub fn with_link(text: impl Into<String>, props: RunProps, link: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            props,
+            link: Some(link.into()),
         }
     }
 
@@ -191,10 +204,12 @@ impl Run {
             Some(Run {
                 text: head.to_string(),
                 props: self.props,
+                link: self.link.clone(),
             }),
             Some(Run {
                 text: tail.to_string(),
                 props: self.props,
+                link: self.link.clone(),
             }),
         )
     }
@@ -251,6 +266,7 @@ impl Paragraph {
         head.push(Run {
             text: text.to_string(),
             props,
+            link: None,
         });
         head.extend(tail);
         self.runs = head;
@@ -277,6 +293,8 @@ impl Paragraph {
             }
             if let Some(last) = out.last_mut()
                 && last.props == run.props
+                // 链接不同的运行不能合并（否则链接地址会丢失）。
+                && last.link == run.link
             {
                 last.text.push_str(&run.text);
                 continue;
@@ -680,6 +698,7 @@ impl RichTextDoc {
             first.runs.push(Run {
                 text: (*seg).to_string(),
                 props,
+                link: None,
             });
         }
 
@@ -694,6 +713,7 @@ impl RichTextDoc {
             last.runs.push(Run {
                 text: (*seg).to_string(),
                 props,
+                link: None,
             });
         }
         last.runs.extend(tail);
@@ -983,7 +1003,7 @@ impl RichTextDoc {
                             if !kind.is_empty()
                                 && let Some(pos) = stack.iter().rposition(|(k, _)| *k == kind)
                             {
-                                style = stack[pos].1;
+                                style = stack[pos].1.clone();
                                 stack.truncate(pos);
                             }
                         }
@@ -1058,8 +1078,14 @@ impl RichTextDoc {
                 if token.ends_with('/') {
                     continue;
                 }
-                stack.push((kind, style));
+                stack.push((kind, style.clone()));
                 apply_inline_tag(&name, &mut style, attr(name_src, "style"));
+                // 链接：`<a href="…">` 的地址挂在样式状态上（关闭时随栈恢复）。
+                if name == "a"
+                    && let Some(href) = attr(name_src, "href")
+                {
+                    style.link = Some(decode_text(href));
+                }
                 continue;
             }
 
@@ -1081,6 +1107,7 @@ impl RichTextDoc {
                 continue;
             }
             if let Some(para) = paragraphs.last_mut() {
+                let link = style.link.clone();
                 para.runs.push(Run {
                     text,
                     props: RunProps {
@@ -1090,6 +1117,7 @@ impl RichTextDoc {
                         strikethrough: style.strikethrough,
                         color: style.color,
                     },
+                    link,
                 });
                 runs += 1;
             }
@@ -1141,13 +1169,15 @@ impl RichTextDoc {
 }
 
 /// 行内样式的解析状态。
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct StyleState {
     bold: bool,
     italic: bool,
     underline: bool,
     strikethrough: bool,
     color: Option<Hsla>,
+    /// 当前链接地址（`<a href="…">`）。
+    link: Option<String>,
 }
 
 /// 插入后平移区间：插入点之前的区间不动，插入点之后的整体后移，
@@ -1217,6 +1247,12 @@ fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: 
         let (open, close) = run_tags(&run.props);
         for (piece, span) in split_run_by_spans(&run.text, run_offset, spans) {
             out.push_str(&open);
+            // 链接：`<a href="…">` 包裹（放在批注 / 脚注标签之外）。
+            if let Some(href) = &run.link {
+                out.push_str("<a href=\"");
+                escape_html_attr(out, href);
+                out.push_str("\">");
+            }
             match span {
                 Some((SpanKind::Annotation, id)) => {
                     let note = doc
@@ -1243,6 +1279,9 @@ fn push_paragraph_html(out: &mut String, para: &Paragraph, spans: &[Span], doc: 
                 None => {
                     escape_html(out, &piece);
                 }
+            }
+            if run.link.is_some() {
+                out.push_str("</a>");
             }
             out.push_str(&close);
         }
@@ -1480,6 +1519,7 @@ fn tag_kind(name: &str) -> &'static str {
         "u" => "u",
         "s" | "strike" | "del" => "s",
         "span" | "font" => "span",
+        "a" => "a",
         _ => "",
     }
 }
@@ -1597,6 +1637,8 @@ pub struct RichText {
     doc: RichTextDoc,
     /// 批注点击回调（批注 id → 回调）。
     on_annotation_click: Option<Arc<dyn Fn(u32, &mut Window, &mut App) + Send + Sync + 'static>>,
+    /// 链接点击回调（链接地址 → 回调）。
+    on_link_click: Option<Arc<dyn Fn(&str, &mut Window, &mut App) + Send + Sync + 'static>>,
     /// 基础字号（`None` 表示继承外层字号；标题按级别倍率放大）。
     base_font_size: Option<Pixels>,
 }
@@ -1607,6 +1649,7 @@ impl RichText {
         Self {
             doc,
             on_annotation_click: None,
+            on_link_click: None,
             base_font_size: None,
         }
     }
@@ -1622,6 +1665,15 @@ impl RichText {
         handler: impl Fn(u32, &mut Window, &mut App) + Send + Sync + 'static,
     ) -> Self {
         self.on_annotation_click = Some(Arc::new(handler));
+        self
+    }
+
+    /// 设置链接点击回调（回传被点击的链接地址）。
+    pub fn on_link_click(
+        mut self,
+        handler: impl Fn(&str, &mut Window, &mut App) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_link_click = Some(Arc::new(handler));
         self
     }
 
@@ -1657,6 +1709,8 @@ impl RenderOnce for RichText {
         // 批注背景色与脚注标记色（跟随主题）。
         let annotation_bg = theme.tokens.warning.opacity(0.28);
         let footnote_color = theme.tokens.primary.color;
+        // 链接颜色（主题主色）。
+        let link_color = theme.tokens.primary.color;
         // 标题基准字号：显式设置优先，否则取窗口默认文本字号（rem 字号无法换算时留空）。
         let base_px = self
             .base_font_size
@@ -1686,32 +1740,42 @@ impl RenderOnce for RichText {
             };
             let spans = collect_spans(&self.doc, doc_offset, para.char_len());
             let heading = para.style.heading;
-            let (text, runs, annotation_ranges) = build_paragraph(
+            let built = build_paragraph(
                 para,
                 &base,
                 marker.as_deref(),
                 &spans,
                 annotation_bg,
                 footnote_color,
+                link_color,
                 heading.is_some(),
             );
-            let styled = StyledText::new(text).with_runs(runs);
-            // 有批注且注册了回调时，批注高亮可点击（回传批注 id）。
-            let content = match (&self.on_annotation_click, annotation_ranges.is_empty()) {
-                (Some(handler), false) => {
+            let styled = StyledText::new(built.text).with_runs(built.runs);
+            // 批注 / 链接可点击：把两类区间合并到一个 InteractiveText（按序号分发）。
+            let clickable = !built.annotations.is_empty() || !built.links.is_empty();
+            let content = match (&self.on_annotation_click, &self.on_link_click, clickable) {
+                (Some(annotation_handler), Some(link_handler), true) => {
+                    let annotation_ranges = built.annotations.clone();
+                    let link_ranges = built.links.clone();
                     let ranges: Vec<Range<usize>> = annotation_ranges
                         .iter()
                         .map(|(range, _)| range.clone())
+                        .chain(link_ranges.iter().map(|(range, _)| range.clone()))
                         .collect();
-                    let ids: Vec<u32> = annotation_ranges.iter().map(|(_, id)| *id).collect();
-                    let handler = handler.clone();
+                    let annotation_count = annotation_ranges.len();
+                    let annotation_handler = annotation_handler.clone();
+                    let link_handler = link_handler.clone();
                     InteractiveText::new(
-                        ElementId::Name(format!("rich-text-annotation-{doc_offset}").into()),
+                        ElementId::Name(format!("rich-text-link-{doc_offset}").into()),
                         styled,
                     )
                     .on_change(ranges, move |index, window, cx| {
-                        if let Some(id) = ids.get(index) {
-                            handler(*id, window, cx);
+                        if index < annotation_count {
+                            if let Some((_, id)) = annotation_ranges.get(index) {
+                                annotation_handler(*id, window, cx);
+                            }
+                        } else if let Some((_, href)) = link_ranges.get(index - annotation_count) {
+                            link_handler(href, window, cx);
                         }
                     })
                     .into_any_element()
@@ -1846,11 +1910,13 @@ fn build_paragraph(
     spans: &[Span],
     annotation_bg: Hsla,
     footnote_color: Hsla,
+    link_color: Hsla,
     bold_all: bool,
-) -> (String, Vec<TextRun>, Vec<(Range<usize>, u32)>) {
+) -> ParagraphBuild {
     let mut text = String::new();
     let mut runs = Vec::new();
     let mut annotation_ranges: Vec<(Range<usize>, u32)> = Vec::new();
+    let mut link_ranges: Vec<(Range<usize>, String)> = Vec::new();
 
     if let Some(marker) = marker {
         text.push_str(marker);
@@ -1883,6 +1949,11 @@ fn build_paragraph(
             }
             let mut color = run.props.color.unwrap_or(base.color);
             let mut background_color = None;
+            // 链接：主题主色 + 下划线。
+            let is_link = run.link.is_some();
+            if is_link {
+                color = link_color;
+            }
             match kind {
                 Some((SpanKind::Annotation, _)) => {
                     background_color = Some(annotation_bg);
@@ -1892,7 +1963,7 @@ fn build_paragraph(
                 }
                 None => {}
             }
-            let underline = run.props.underline.then(|| UnderlineStyle {
+            let underline = (run.props.underline || is_link).then(|| UnderlineStyle {
                 thickness: px(1.0),
                 color: Some(color),
                 wavy: false,
@@ -1914,6 +1985,9 @@ fn build_paragraph(
             if let Some((SpanKind::Annotation, id)) = kind {
                 annotation_ranges.push((byte_start..text.len(), id));
             }
+            if let Some(href) = &run.link {
+                link_ranges.push((byte_start..text.len(), href.clone()));
+            }
         }
     }
 
@@ -1928,7 +2002,24 @@ fn build_paragraph(
         });
     }
 
-    (text, runs, annotation_ranges)
+    ParagraphBuild {
+        text,
+        runs,
+        annotations: annotation_ranges,
+        links: link_ranges,
+    }
+}
+
+/// 段落编译结果。
+struct ParagraphBuild {
+    /// 拼接后的文本。
+    text: String,
+    /// 行内运行。
+    runs: Vec<TextRun>,
+    /// 批注片段的字节区间与批注 id。
+    annotations: Vec<(Range<usize>, u32)>,
+    /// 链接片段的字节区间与地址。
+    links: Vec<(Range<usize>, String)>,
 }
 
 #[cfg(test)]
@@ -2302,5 +2393,23 @@ mod tests {
         history.record(&doc);
         assert!(history.can_undo());
         assert!(history.undo(&mut doc));
+    }
+
+    /// 链接往返：`<a href="…">` 解析出链接地址，序列化时还原。
+    #[test]
+    fn html_links_round_trip() {
+        let doc = RichTextDoc::from_html(
+            "<p>见 <a href=\"https://example.com\">示例站点</a> 了解更多</p>",
+        )
+        .expect("解析");
+        let link_run = doc.paragraphs[0]
+            .runs
+            .iter()
+            .find(|run| run.link.is_some())
+            .expect("链接运行");
+        assert_eq!(link_run.link.as_deref(), Some("https://example.com"));
+        let html = doc.to_html();
+        assert!(html.contains("<a href=\"https://example.com\">"));
+        assert!(html.contains("示例站点"));
     }
 }

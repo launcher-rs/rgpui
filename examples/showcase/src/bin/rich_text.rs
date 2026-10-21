@@ -340,6 +340,8 @@ impl Render for RichTextApp {
         let html_preview = preview(&html, 320);
         // 批注点击：回传到应用状态（示例展示批注 id）。
         let annotation_handle = self.handle.clone();
+        // 链接点击：回传到应用状态（示例展示链接地址）。
+        let link_handle = self.handle.clone();
 
         // 批注 / 脚注清单（展示模型内容与区间）。
         let mut notes = div().flex().flex_col().gap_1().text_xs();
@@ -383,14 +385,21 @@ impl Render for RichTextApp {
                     .border_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().secondary)
-                    .child(RichText::new(self.doc.clone()).on_annotation_click(
-                        move |id, _window, cx| {
-                            annotation_handle.update(cx, |this, cx| {
-                                this.status = format!("点击了批注 #{id}").into();
-                                cx.notify();
-                            });
-                        },
-                    )),
+                    .child(
+                        RichText::new(self.doc.clone())
+                            .on_annotation_click(move |id, _window, cx| {
+                                annotation_handle.update(cx, |this, cx| {
+                                    this.status = format!("点击了批注 #{id}").into();
+                                    cx.notify();
+                                });
+                            })
+                            .on_link_click(move |href, _window, cx| {
+                                link_handle.update(cx, |this, cx| {
+                                    this.status = format!("点击了链接：{href}").into();
+                                    cx.notify();
+                                });
+                            }),
+                    ),
             )
             .child(
                 div()
@@ -445,6 +454,12 @@ fn sample_doc() -> RichTextDoc {
             Run::with("删除线", RunProps::new().strikethrough()),
             Run::new("，以及 "),
             Run::with("颜色", RunProps::new().color(hsla(0.0, 0.85, 0.5, 1.0))),
+            Run::new("，还可以加 "),
+            Run::with_link(
+                "链接",
+                RunProps::default(),
+                "https://github.com/launcher-rs/rgpui",
+            ),
             Run::new("。"),
         ],
     };
