@@ -2104,7 +2104,8 @@ impl InputState {
         }
     }
 
-    /// 当前高亮器的语言名（未设高亮器时为 `None`）。
+    /// 当前高亮器的语言名（未设高亮器时为 `None`；`editor` feature 门控）。
+    #[cfg(feature = "editor")]
     pub fn highlighter_language(&self) -> Option<SharedString> {
         self.highlighter
             .as_ref()
