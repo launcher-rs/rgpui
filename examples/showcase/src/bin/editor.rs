@@ -836,6 +836,28 @@ impl Render for EditorDemo {
                         }))
                         .child(lsp_button(
                             &demo,
+                            "lang-python",
+                            "语言: python",
+                            |state, window, cx| {
+                                state.set_language("python", window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "lang-javascript",
+                            "语言: javascript",
+                            |state, window, cx| {
+                                state.set_language("javascript", window, cx);
+                            },
+                        ))
+                        .child(lsp_button(&demo, "lang-go", "语言: go", |state, window, cx| {
+                            state.set_language("go", window, cx);
+                        }))
+                        .child(lsp_button(&demo, "lang-json", "语言: json", |state, window, cx| {
+                            state.set_language("json", window, cx);
+                        }))
+                        .child(lsp_button(
+                            &demo,
                             "lang-unknown",
                             "语言: 未知降级",
                             |state, window, cx| {

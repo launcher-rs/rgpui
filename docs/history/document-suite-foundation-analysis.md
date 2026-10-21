@@ -1486,3 +1486,26 @@ HTML 双向：`from_html` 解析 `line-height` / `margin-top`，`to_html` 输出
 
 - `cargo test -p rgpui --lib rich_text`：26 passed（新增 1 项：引用块往返）。
 
+## 四十六、增补：行内代码 + 编辑器示例的多语言入口
+
+### 行内代码（`<code>`）
+
+核心富文本此前把 `<code>` 降级为普通文本（只留文字、丢掉等宽语义）。本轮补齐：
+
+- `RunProps` 新增 `code: bool` + builder `RunProps::code()`。
+- 解析：`from_html` 识别 `<code>`；序列化：`to_html` 输出 `<code>…</code>`。
+- 渲染：等宽字体（主题等宽族）+ 浅底（主题 muted 色）。
+
+### 编辑器示例的多语言入口
+
+`examples/showcase/src/bin/editor.rs` 的语言按钮从只有 `rust` 扩到
+`rust` / `python` / `javascript` / `go` / `json` / `demo` / 未知语言降级，
+对应 showcase 的 `editor` feature 追加启用 `tree-sitter-json` / `tree-sitter-toml` /
+`tree-sitter-javascript` / `tree-sitter-python` / `tree-sitter-go` 语言包。
+
+### 验证
+
+- `cargo test -p rgpui --lib rich_text`：27 passed（新增 1 项：行内代码往返）。
+- `cargo check -p showcase --bin editor --features editor` 与
+  `cargo check -p showcase --all-features` 通过。
+

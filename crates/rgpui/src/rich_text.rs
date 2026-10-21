@@ -29,8 +29,8 @@ use std::sync::Arc;
 use crate::prelude::ActiveTheme as _;
 use crate::{
     App, ElementId, Hsla, InteractiveText, IntoElement, ParentElement as _, Pixels, RenderOnce,
-    Rgba, StrikethroughStyle, Styled as _, StyledText, TextAlign, TextRun, UnderlineStyle, Window,
-    div, px, relative, v_flex,
+    Rgba, SharedString, StrikethroughStyle, Styled as _, StyledText, TextAlign, TextRun,
+    UnderlineStyle, Window, div, px, relative, v_flex,
 };
 
 /// 单次解析 HTML 的字节上限（防御恶意片段）。
@@ -44,7 +44,7 @@ const INDENT_PX: f32 = 24.0;
 /// 缩进的最大层级。
 const MAX_INDENT: u8 = 8;
 
-/// 行内富文本属性：粗体/斜体/下划线/删除线 + 可选前景色。
+/// 行内富文本属性：粗体/斜体/下划线/删除线/行内代码 + 可选前景色。
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RunProps {
     /// 是否粗体。
@@ -55,6 +55,8 @@ pub struct RunProps {
     pub underline: bool,
     /// 是否删除线。
     pub strikethrough: bool,
+    /// 是否行内代码（等宽字体 + 浅底）。
+    pub code: bool,
     /// 前景色覆盖；`None` 表示跟随主题/父级。
     pub color: Option<Hsla>,
 }
@@ -86,6 +88,12 @@ impl RunProps {
     /// 置为删除线。
     pub fn strikethrough(mut self) -> Self {
         self.strikethrough = true;
+        self
+    }
+
+    /// 置为行内代码。
+    pub fn code(mut self) -> Self {
+        self.code = true;
         self
     }
 
@@ -1138,6 +1146,7 @@ impl RichTextDoc {
                         italic: style.italic,
                         underline: style.underline,
                         strikethrough: style.strikethrough,
+                        code: style.code,
                         color: style.color,
                     },
                     link,
@@ -1198,6 +1207,8 @@ struct StyleState {
     italic: bool,
     underline: bool,
     strikethrough: bool,
+    /// 行内代码（`<code>`）。
+    code: bool,
     color: Option<Hsla>,
     /// 当前链接地址（`<a href="…">`）。
     link: Option<String>,
@@ -1367,6 +1378,10 @@ fn run_tags(props: &RunProps) -> (String, String) {
         open.push_str("<s>");
         close.insert_str(0, "</s>");
     }
+    if props.code {
+        open.push_str("<code>");
+        close.insert_str(0, "</code>");
+    }
     if let Some(color) = props.color {
         open.push_str("<span style=\"color:");
         open.push_str(&color_hex(color));
@@ -1454,6 +1469,7 @@ fn apply_inline_tag(name: &str, style: &mut StyleState, css: Option<&str>) {
         "i" | "em" => style.italic = true,
         "u" => style.underline = true,
         "s" | "strike" | "del" => style.strikethrough = true,
+        "code" => style.code = true,
         _ => {}
     }
     if let Some(css) = css {
@@ -1601,6 +1617,7 @@ fn tag_kind(name: &str) -> &'static str {
         "s" | "strike" | "del" => "s",
         "span" | "font" => "span",
         "a" => "a",
+        "code" => "code",
         _ => "",
     }
 }
@@ -1824,6 +1841,8 @@ impl RenderOnce for RichText {
             let built = build_paragraph(
                 para,
                 &base,
+                theme.mono_font_family.clone(),
+                theme.tokens.muted.opacity(0.3),
                 marker.as_deref(),
                 &spans,
                 annotation_bg,
@@ -2003,6 +2022,8 @@ fn split_run_by_spans(
 fn build_paragraph(
     para: &Paragraph,
     base: &crate::TextStyle,
+    mono_font: SharedString,
+    code_bg: Hsla,
     marker: Option<&str>,
     spans: &[Span],
     annotation_bg: Hsla,
@@ -2038,6 +2059,9 @@ fn build_paragraph(
                 continue;
             }
             let mut font = base.font();
+            if run.props.code {
+                font.family = mono_font.clone();
+            }
             if run.props.bold || bold_all {
                 font = font.bold();
             }
@@ -2046,6 +2070,10 @@ fn build_paragraph(
             }
             let mut color = run.props.color.unwrap_or(base.color);
             let mut background_color = None;
+            // 行内代码：浅底 + 等宽字体。
+            if run.props.code {
+                background_color = Some(code_bg);
+            }
             // 链接：主题主色 + 下划线。
             let is_link = run.link.is_some();
             if is_link {
@@ -2541,5 +2569,19 @@ mod tests {
         let html = doc.to_html();
         assert!(html.contains("<blockquote>"));
         assert!(html.contains("引用内容"));
+    }
+
+    /// 行内代码往返：`<code>` 解析出行内代码属性，序列化还原。
+    #[test]
+    fn inline_code_round_trip() {
+        let doc = RichTextDoc::from_html("<p>看 <code>let x = 1;</code> 这行</p>").expect("解析");
+        let code_run = doc.paragraphs[0]
+            .runs
+            .iter()
+            .find(|run| run.props.code)
+            .expect("代码运行");
+        assert_eq!(code_run.text, "let x = 1;");
+        let html = doc.to_html();
+        assert!(html.contains("<code>let x = 1;</code>"));
     }
 }

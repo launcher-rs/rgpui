@@ -48,7 +48,16 @@ qr-code = ["rgpui/qr-code"]
 # 输入延迟直方图统计。
 input-latency = ["rgpui/input-latency-histogram", "dep:hdrhistogram"]
 # 编辑器（含 tree-sitter 高亮、LSP、片段、inlay 等）。
-editor = ["rgpui/editor", "rgpui/tree-sitter", "dep:lsp-types"]
+editor = [
+    "rgpui/editor",
+    "rgpui/tree-sitter",
+    "rgpui/tree-sitter-json",
+    "rgpui/tree-sitter-toml",
+    "rgpui/tree-sitter-javascript",
+    "rgpui/tree-sitter-python",
+    "rgpui/tree-sitter-go",
+    "dep:lsp-types",
+]
 # 元素检查器（release 下需要显式开启）。
 inspector = ["rgpui/inspector"]
 
