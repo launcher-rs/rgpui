@@ -320,6 +320,12 @@ pub mod task_pane;
 #[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod canvas_a11y;
 
+/// 屏幕取色（吸管）：抓主屏首帧全屏冻结，十字线 / 放大镜采样并回传颜色，
+/// 由 `screen-capture` feature 门控。
+#[cfg(feature = "screen-capture")]
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+pub mod eyedropper;
+
 /// 双向文字（bidi）：段落基准方向解析（HTML `dir=auto` 口径）与 `start` / `end` 对齐规则，核心，无 feature 门控。
 #[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod bidi;
