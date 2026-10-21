@@ -201,6 +201,19 @@ fn sample_doc() -> RichTextDoc {
     doc.paragraphs.push(footnote);
     doc.insert_footnote(4, "*", "示例脚注：文末脚注内容。");
 
+    // 表格（单元格复用段落）。
+    doc.add_table(
+        &["能力", "状态"],
+        &[
+            vec!["撤销 / 重做", "已支持"],
+            vec!["链接 / 批注 / 脚注", "已支持"],
+        ],
+        vec![
+            rgpui::rich_text::TableAlign::Left,
+            rgpui::rich_text::TableAlign::Center,
+        ],
+    );
+
     doc
 }
 
