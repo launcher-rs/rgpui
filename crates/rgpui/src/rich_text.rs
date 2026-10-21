@@ -20,8 +20,14 @@
 //! let element = RichText::new(doc);
 //! ```
 //!
-//! **本版暂缓**（后续增补）：节（section）/分栏、表格、修订、项目符号字体与层级样式、
-//! 可编辑光标与选区（现为只读渲染）。
+//! 结构化能力（都**不引入新的文本空间**，结构只引用文档段落，因此字符坐标编辑与
+//! 批注 / 脚注区间对结构内文本同样生效）：
+//! - 表格 [`RichTable`]（[`RichTextDoc::add_table`]）；
+//! - 节 / 分栏 [`RichSection`]（[`RichTextDoc::add_section`]）；
+//! - 批注 [`Annotation`]、脚注 [`Footnote`]（区间随编辑自动平移）；
+//! - 修订标记（[`RunProps::inserted`] / [`RunProps::deleted`]）。
+//!
+//! **本版暂缓**（后续增补）：项目符号字体与层级样式、可编辑光标与选区（现为只读渲染）。
 
 use std::ops::Range;
 use std::sync::Arc;
