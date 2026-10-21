@@ -16,9 +16,9 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use crate::lsp::{
-    CompletionPopupState, CompletionProvider, CompletionState, DiagnosticEntry,
-    DiagnosticsProvider, FormattingProvider, HoverProvider, HoverState, PositionMapping,
-    RenameProvider,
+    CompletionPopupState, CompletionProvider, CompletionState, DefinitionProvider, DefinitionState,
+    DiagnosticEntry, DiagnosticsProvider, FormattingProvider, HoverProvider, HoverState,
+    PositionMapping, RenameProvider,
 };
 use crate::{
     App, Context, Entity, HighlightStyle, Hsla, SharedString, Task, UnderlineStyle, Window, px,
@@ -52,6 +52,10 @@ pub(super) struct LspAttach {
     formatting_provider: Option<Rc<dyn FormattingProvider>>,
     /// 重命名 provider（应用注入，传输自理）。
     rename_provider: Option<Rc<dyn RenameProvider>>,
+    /// 定义 / 引用 provider（应用注入，传输自理）。
+    definition_provider: Option<Rc<dyn DefinitionProvider>>,
+    /// 定义 / 引用跳转结果（最近一次请求）。
+    definition: DefinitionState,
     /// 当前文档 URI（诊断请求按 URI 取数，未设置时不请求）。
     document_uri: Option<Uri>,
     /// 补全状态（选中/可见/列表）。
@@ -85,6 +89,8 @@ impl LspAttach {
             hover_provider: None,
             formatting_provider: None,
             rename_provider: None,
+            definition_provider: None,
+            definition: DefinitionState::default(),
             document_uri: None,
             completion: CompletionState::default(),
             popup,
@@ -292,6 +298,114 @@ impl EditorState {
             self.lsp.next_epoch();
             cx.notify();
         }
+    }
+
+    /// 设置定义 / 引用 provider（应用实现传输后注入；传 `None` 断开）。
+    pub fn set_definition_provider(
+        &mut self,
+        provider: Option<Rc<dyn DefinitionProvider>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.definition_provider = provider;
+        if self.lsp.definition_provider.is_none() {
+            self.lsp.next_epoch();
+            self.lsp.definition.clear();
+            cx.notify();
+        }
+    }
+
+    /// 定义 / 引用跳转结果（最近一次请求；应用层可渲染列表）。
+    pub fn definition_locations(&self) -> &[crate::lsp::DefinitionLocation] {
+        &self.lsp.definition.locations
+    }
+
+    /// 跳转到定义：命中位置在当前文档时直接移动光标。
+    pub fn goto_definition(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.definition_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.definition(&text, offset, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                let Ok(locations) = response else { return };
+                this.apply_definition_locations(locations, window, cx);
+            });
+        }));
+    }
+
+    /// 查找引用：结果写入定义状态（应用层渲染列表）。
+    pub fn find_references(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.definition_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.references(&text, offset, true, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, _window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                let Ok(locations) = response else { return };
+                this.lsp.definition.locations = locations;
+                this.lsp.definition.visible = !this.lsp.definition.locations.is_empty();
+                cx.notify();
+            });
+        }));
+    }
+
+    /// 应用定义跳转结果：当前文档内的命中点直接移动光标。
+    fn apply_definition_locations(
+        &mut self,
+        locations: Vec<crate::lsp::DefinitionLocation>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.definition.locations = locations;
+        self.lsp.definition.visible = !self.lsp.definition.locations.is_empty();
+        // 当前文档内的首个命中点：移动光标过去。
+        let current_uri = self.lsp.document_uri.clone();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let target = current_uri.and_then(|uri| {
+            self.lsp
+                .definition
+                .locations
+                .iter()
+                .find(|location| location.uri == uri)
+                .map(|location| PositionMapping::position_to_offset(&text, location.range.start))
+        });
+        if let Some(target) = target {
+            self.input
+                .update(cx, |state, cx| state.set_selected_range(target..target, cx));
+        }
+        cx.notify();
     }
 
     /// 设置重命名 provider（应用实现传输后注入；传 `None` 断开）。
@@ -832,6 +946,61 @@ mod tests {
         cx.run_until_parked();
         let text = editor.read_with(cx, |state, cx| state.text(cx));
         assert_eq!(text, "new name");
+    }
+    /// 假定义 provider：返回当前文档内的一个位置（偏移 2）。
+    struct FakeDefinitionProvider;
+
+    impl DefinitionProvider for FakeDefinitionProvider {
+        fn definition(
+            &self,
+            _text: &ropey::Rope,
+            _offset: usize,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Vec<crate::lsp::DefinitionLocation>>> {
+            Task::ready(Ok(vec![crate::lsp::DefinitionLocation {
+                uri: "file:///def-test.rs".parse().expect("URI"),
+                range: lsp_types::Range {
+                    start: lsp_types::Position::new(0, 2),
+                    end: lsp_types::Position::new(0, 5),
+                },
+                display_name: None,
+            }]))
+        }
+
+        fn references(
+            &self,
+            _text: &ropey::Rope,
+            _offset: usize,
+            _include_declarations: bool,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Vec<crate::lsp::DefinitionLocation>>> {
+            Task::ready(Ok(Vec::new()))
+        }
+    }
+
+    /// 定义跳转：命中位置在当前文档时，光标移到目标偏移。
+    #[rgpui::test]
+    fn goto_definition_moves_cursor(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_document_uri(Some("file:///def-test.rs".parse().unwrap()), cx);
+                state.set_definition_provider(Some(std::rc::Rc::new(FakeDefinitionProvider)), cx);
+                state.goto_definition(window, cx);
+            });
+        });
+        cx.run_until_parked();
+        let cursor = editor.read_with(cx, |state, cx| state.cursor(cx));
+        assert_eq!(cursor, 2);
+        // 结果同时保留给应用层渲染。
+        let locations = editor.read_with(cx, |state, _| state.definition_locations().len());
+        assert_eq!(locations, 1);
     }
     /// 假补全 provider（固定返回 `println` / `print` 两个条目）。
     struct FakeCompletionProvider;

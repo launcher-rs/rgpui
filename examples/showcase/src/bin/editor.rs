@@ -19,8 +19,8 @@ use rgpui::{
         InputEvent, StickyPosition,
     },
     lsp::{
-        CompletionProvider, DiagnosticEntry, DiagnosticsProvider, FormattingProvider, HoverContent,
-        HoverProvider, HoverResponse, RenameProvider,
+        CompletionProvider, DefinitionProvider, DiagnosticEntry, DiagnosticsProvider,
+        FormattingProvider, HoverContent, HoverProvider, HoverResponse, RenameProvider,
     },
     prelude::*,
     px, rgb, size, v_flex, white, yellow,
@@ -94,6 +94,67 @@ impl CompletionProvider for DemoCompletionProvider {
 /// 演示用假诊断 provider：首行一个 warning（真 provider 按 URI 取数）。
 struct DemoDiagnosticsProvider;
 
+/// 假定义 provider：把光标处的词当作定义（跳到文档开头）。
+struct DemoDefinitionProvider;
+
+impl DefinitionProvider for DemoDefinitionProvider {
+    fn definition(
+        &self,
+        text: &rgpui::input_ui::Rope,
+        offset: usize,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<rgpui::lsp::DefinitionLocation>>> {
+        let content = text.to_string();
+        let byte = offset.min(content.len());
+        let is_word = |c: char| c.is_alphanumeric() || c == '_';
+        let mut start = byte;
+        while start > 0 {
+            let Some(prev) = content[..start].chars().next_back() else {
+                break;
+            };
+            if !is_word(prev) {
+                break;
+            }
+            start -= prev.len_utf8();
+        }
+        let mut end = byte;
+        while end < content.len() {
+            let Some(next) = content[end..].chars().next() else {
+                break;
+            };
+            if !is_word(next) {
+                break;
+            }
+            end += next.len_utf8();
+        }
+        if start >= end {
+            return rgpui::Task::ready(Ok(Vec::new()));
+        }
+        let line = content[..start].matches('\n').count() as u32;
+        let column = start - content[..start].rfind('\n').map_or(0, |i| i + 1);
+        let uri: lsp_types::Uri = "file:///demo.rs".parse().expect("URI");
+        rgpui::Task::ready(Ok(vec![rgpui::lsp::DefinitionLocation {
+            uri,
+            range: lsp_types::Range {
+                start: lsp_types::Position::new(line, column as u32),
+                end: lsp_types::Position::new(line, (column + (end - start)) as u32),
+            },
+            display_name: None,
+        }]))
+    }
+
+    fn references(
+        &self,
+        _text: &rgpui::input_ui::Rope,
+        _offset: usize,
+        _include_declarations: bool,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<rgpui::lsp::DefinitionLocation>>> {
+        rgpui::Task::ready(Ok(Vec::new()))
+    }
+}
 /// 假重命名 provider：把光标处的词替换为新名字。
 struct DemoRenameProvider;
 
@@ -549,6 +610,7 @@ impl EditorDemo {
             state.set_hover_provider(Some(Rc::new(DemoHoverProvider)), cx);
             state.set_formatting_provider(Some(Rc::new(DemoFormattingProvider)), cx);
             state.set_rename_provider(Some(Rc::new(DemoRenameProvider)), cx);
+            state.set_definition_provider(Some(Rc::new(DemoDefinitionProvider)), cx);
             // 透镜假 provider（文本变更自动刷新，点击跳光标到透镜行）。
             state.set_codelens_provider(Some(Rc::new(DemoCodelensProvider)), cx);
             state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
@@ -966,6 +1028,14 @@ impl Render for EditorDemo {
                             "重命名光标处 → renamed",
                             |state, window, cx| {
                                 state.request_rename("renamed", window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "goto-definition",
+                            "跳转定义（LSP）",
+                            |state, window, cx| {
+                                state.goto_definition(window, cx);
                             },
                         ))
                         .child(lsp_button(

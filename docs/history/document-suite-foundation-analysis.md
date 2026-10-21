@@ -1558,3 +1558,20 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 - `cargo test -p rgpui --features editor --lib lsp_attach`：15 passed（新增 1 项：
   重命名请求的工作区编辑被应用）。
 
+## 四十九、增补：LSP 定义跳转 / 查找引用
+
+`crate::lsp::DefinitionProvider` 早就有（定义 / 引用 / 同符号高亮），编辑器侧同样没有
+触发入口。本轮补齐：
+
+- 新增状态 `crate::lsp::DefinitionState`（`locations` + `visible`）。
+- `EditorState` 新增 `set_definition_provider`（注入 / 断开）、`goto_definition`
+  （跳转：命中位置在**当前文档**时直接移动光标）、`find_references`（结果写入状态供应用
+  渲染列表）、`definition_locations`（应用读取结果）。请求同样走 epoch 防抖。
+- 位置换算复用 `PositionMapping`（UTF-8 字节列，与诊断下划线同款）。
+- 示例：`examples/showcase/src/bin/editor.rs` 注入假定义 provider 并加「跳转定义（LSP）」按钮。
+
+### 验证
+
+- `cargo test -p rgpui --features editor --lib lsp_attach`：16 passed（新增 1 项：
+  定义跳转把光标移到目标偏移，结果同时可供应用层渲染）。
+

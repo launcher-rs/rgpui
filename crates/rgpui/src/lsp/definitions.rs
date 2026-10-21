@@ -82,6 +82,22 @@ impl DefinitionLocation {
     }
 }
 
+/// 定义 / 引用跳转结果（最近一次请求）。
+#[derive(Debug, Clone, Default)]
+pub struct DefinitionState {
+    /// 命中的位置列表（定义为一项，引用为多项）。
+    pub locations: Vec<DefinitionLocation>,
+    /// 是否有效（应用层据此渲染面板 / 提示）。
+    pub visible: bool,
+}
+
+impl DefinitionState {
+    /// 清空结果。
+    pub fn clear(&mut self) {
+        self.locations.clear();
+        self.visible = false;
+    }
+}
 /// 文档高亮类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentHighlightKind {
