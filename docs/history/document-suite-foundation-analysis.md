@@ -1765,3 +1765,30 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 - `cargo test -p rgpui --lib a11y_role_and_indices`：1 passed（角色与行列索引写入
   AccessKit 节点）。
 
+## 六十、增补：排序器拖拽实时预览 + 时间线缓动插值预设
+
+### 排序器：拖拽实时预览
+
+此前拖拽时只有「原格半透明 + 插入指示线」，看不到被拖项跟手移动。本轮补上预览：
+
+- 状态新增 `drag_position`（拖拽期间的指针位置，窗口坐标）：`update_drag` 记录，
+  `finish_drag` / `cancel_drag` 清空。
+- 渲染：拖拽中在指针位置画一份半透明副本（等尺寸、主题主色描边），随指针移动。
+
+### 时间线：缓动插值预设
+
+§二十六 暂缓项里的「曲线预设」落地（值曲线的手柄拖拽此前**已实现** —— 状态里本就有
+`dragging` / `set_keyframe_value`，本轮核对后修正文档口径）：
+
+- `Interpolation` 新增 `EaseIn` / `EaseOut` / `EaseInOut`（CSS 标准缓动曲线），
+  `ease(t)` 按曲线映射进度；新增 `label()` 给中文名（UI 展示用）。
+- 状态新增 `set_track_interpolation(index, interpolation, cx)`：改轨道插值并抛出
+  `TimelineEvent::TrackInterpolation`。
+- 示例：showcase 的 `timeline` 演示页加「插值：…」按钮组（作用于选中轨道，当前插值
+  用主题主色标出）。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：826 passed + 1 ignored（新增 3 项：拖拽指针位置记录与
+  清理、缓动曲线取值、设置轨道插值与事件）。
+

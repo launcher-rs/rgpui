@@ -14,9 +14,9 @@ use rgpui::anim_timeline::{
     Interpolation, Keyframe, Timeline, TimelineEvent, TimelineState, TimelineView, Track,
 };
 use rgpui::{
-    App, Bounds, Button, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled as _, TitlebarOptions, Window, WindowBounds, WindowOptions, div, hsla, prelude::*, px,
-    size, v_flex,
+    AnyElement, App, Bounds, Button, Context, Entity, IntoElement, ParentElement as _, Render,
+    SharedString, Styled as _, TitlebarOptions, Window, WindowBounds, WindowOptions, div, hsla,
+    prelude::*, px, size, v_flex,
 };
 use rgpui_platform::application;
 
@@ -121,6 +121,14 @@ impl TimelineApp {
                         format!("轨道 {} 已展开", index + 1)
                     }
                     .into();
+                }
+                TimelineEvent::TrackInterpolation {
+                    index,
+                    interpolation,
+                } => {
+                    this.status =
+                        format!("轨道 {} 的插值改为「{}」", index + 1, interpolation.label())
+                            .into();
                 }
             },
         )
@@ -245,6 +253,51 @@ impl TimelineApp {
     }
 }
 
+/// 插值选择按钮组：作用于选中轨道（未选中时按钮禁用）。
+fn interpolation_buttons(
+    cx: &mut Context<TimelineApp>,
+    state: Entity<TimelineState>,
+) -> Vec<AnyElement> {
+    let selected = state.read(cx).selection().0;
+    let mut out = Vec::new();
+    for (index, interpolation) in [
+        Interpolation::Linear,
+        Interpolation::Smooth,
+        Interpolation::EaseIn,
+        Interpolation::EaseOut,
+        Interpolation::EaseInOut,
+        Interpolation::Hold,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let state = state.clone();
+        let current = selected.and_then(|track| {
+            state
+                .read(cx)
+                .timeline()
+                .track(track)
+                .map(|track| track.interpolation)
+        });
+        let active = current == Some(interpolation);
+        let button = Button::new(format!("interp-{index}"))
+            .label(format!("插值：{}", interpolation.label()))
+            .on_click(move |_event, _window, cx| {
+                state.update(cx, |state, cx| {
+                    if let Some(track) = state.selection().0 {
+                        state.set_track_interpolation(track, interpolation, cx);
+                    }
+                });
+            });
+        out.push(
+            div()
+                .child(button)
+                .when(active, |this| this.text_color(cx.theme().primary))
+                .into_any_element(),
+        );
+    }
+    out
+}
 impl Render for TimelineApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (x, scale, opacity) = self.values(cx);
@@ -316,6 +369,7 @@ impl Render for TimelineApp {
                     .child(Button::new("track-fold").label("折叠轨道").on_click(
                         cx.listener(|this, _event, _window, cx| this.toggle_collapse(cx)),
                     ))
+                    .children(interpolation_buttons(cx, self.state.clone()))
                     .child(
                         Button::new("toggle-snap")
                             .label(if snapping {

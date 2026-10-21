@@ -102,6 +102,12 @@ pub enum Interpolation {
     Hold,
     /// 平滑插值（smoothstep）。
     Smooth,
+    /// 缓入（二次缓入：起步慢、收尾快）。
+    EaseIn,
+    /// 缓出（二次缓出：起步快、收尾慢）。
+    EaseOut,
+    /// 缓入缓出（三次缓动：两端慢、中段快）。
+    EaseInOut,
 }
 
 impl Interpolation {
@@ -112,6 +118,27 @@ impl Interpolation {
             Interpolation::Linear => t,
             Interpolation::Hold => 0.0,
             Interpolation::Smooth => t * t * (3.0 - 2.0 * t),
+            Interpolation::EaseIn => t * t,
+            Interpolation::EaseOut => 1.0 - (1.0 - t) * (1.0 - t),
+            Interpolation::EaseInOut => {
+                if t < 0.5 {
+                    4.0 * t * t * t
+                } else {
+                    1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+                }
+            }
+        }
+    }
+
+    /// 插值方式的中文名（UI 展示用）。
+    pub fn label(self) -> &'static str {
+        match self {
+            Interpolation::Linear => "线性",
+            Interpolation::Hold => "阶跃",
+            Interpolation::Smooth => "平滑",
+            Interpolation::EaseIn => "缓入",
+            Interpolation::EaseOut => "缓出",
+            Interpolation::EaseInOut => "缓入缓出",
         }
     }
 }
@@ -700,6 +727,13 @@ pub enum TimelineEvent {
         /// 是否折叠。
         collapsed: bool,
     },
+    /// 轨道插值方式变化。
+    TrackInterpolation {
+        /// 轨道下标。
+        index: usize,
+        /// 新的插值方式。
+        interpolation: Interpolation,
+    },
 }
 
 /// 时间线控件状态：数据模型 + 播放头 + 缩放 / 滚动 / 选择。
@@ -977,6 +1011,28 @@ impl TimelineState {
         let max = self.max_vscroll();
         self.vscroll = self.vscroll.min(max);
         cx.emit(TimelineEvent::TrackCollapsed { index, collapsed });
+        cx.notify();
+        true
+    }
+
+    /// 设置轨道的插值方式（值曲线形状），返回是否变化。
+    pub fn set_track_interpolation(
+        &mut self,
+        index: usize,
+        interpolation: Interpolation,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(track) = self.timeline.track_mut(index) else {
+            return false;
+        };
+        if track.interpolation == interpolation {
+            return false;
+        }
+        track.interpolation = interpolation;
+        cx.emit(TimelineEvent::TrackInterpolation {
+            index,
+            interpolation,
+        });
         cx.notify();
         true
     }
@@ -1788,6 +1844,62 @@ mod tests {
         assert_eq!(Track::new("empty").value_at(0.5), 0.0);
     }
 
+    /// 缓动插值：曲线形状与端点行为。
+    #[test]
+    fn easing_interpolation_curves() {
+        // 缓入（二次）：中点 0.25；缓出：0.75；缓入缓出：0.5。
+        assert!((Interpolation::EaseIn.ease(0.5) - 0.25).abs() < 1e-5);
+        assert!((Interpolation::EaseOut.ease(0.5) - 0.75).abs() < 1e-5);
+        assert!((Interpolation::EaseInOut.ease(0.5) - 0.5).abs() < 1e-5);
+        // 缓入缓出在四分之一处为 4 * 0.25³ = 0.0625。
+        assert!((Interpolation::EaseInOut.ease(0.25) - 0.0625).abs() < 1e-5);
+        // 所有插值：两端固定、中间单调。
+        for interpolation in [
+            Interpolation::Linear,
+            Interpolation::Smooth,
+            Interpolation::EaseIn,
+            Interpolation::EaseOut,
+            Interpolation::EaseInOut,
+        ] {
+            assert_eq!(interpolation.ease(0.0), 0.0);
+            assert_eq!(interpolation.ease(1.0), 1.0);
+            assert!(interpolation.ease(0.5) <= 1.0);
+            // 越界进度被夹取。
+            assert_eq!(interpolation.ease(-1.0), 0.0);
+            assert_eq!(interpolation.ease(2.0), 1.0);
+        }
+        // 中文名（UI 展示用）。
+        assert_eq!(Interpolation::EaseInOut.label(), "缓入缓出");
+    }
+
+    /// 设置轨道插值：轨道变化 + 抛出 `TrackInterpolation`；相同值不算变化。
+    #[rgpui::test]
+    fn set_track_interpolation_updates_track(cx: &mut crate::TestAppContext) {
+        let (state, events, mut cx) = setup(cx);
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                assert!(state.set_track_interpolation(0, Interpolation::EaseInOut, cx));
+                // 相同值不再变更。
+                assert!(!state.set_track_interpolation(0, Interpolation::EaseInOut, cx));
+                // 越界轨道忽略。
+                assert!(!state.set_track_interpolation(99, Interpolation::Linear, cx));
+            })
+        });
+        let interpolation = cx.update(|_, cx| {
+            state.read_with(cx, |state, _| {
+                state.timeline().track(0).map(|t| t.interpolation)
+            })
+        });
+        assert_eq!(interpolation, Some(Interpolation::EaseInOut));
+        let events = events.borrow().clone();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            TimelineEvent::TrackInterpolation {
+                index: 0,
+                interpolation: Interpolation::EaseInOut
+            }
+        )));
+    }
     /// 命中测试与关键帧移动 / 删除。
     #[test]
     fn keyframe_hit_move_and_remove() {

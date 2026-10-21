@@ -260,6 +260,8 @@ pub struct SorterState<D: SorterDelegate> {
     dragging: Option<usize>,
     /// 拖拽期间的插入槽。
     hover_slot: Option<usize>,
+    /// 拖拽期间的指针位置（窗口坐标；拖拽预览用）。
+    drag_position: Option<Point<Pixels>>,
     /// 最近一次预绘制的各单元格边界（窗口坐标，随滚动更新）。
     cell_bounds: Vec<Bounds<Pixels>>,
     /// 最近一次预绘制的根元素边界（即视口）。
@@ -287,6 +289,7 @@ impl<D: SorterDelegate> SorterState<D> {
             show_index: true,
             dragging: None,
             hover_slot: None,
+            drag_position: None,
             cell_bounds: Vec::new(),
             bounds: Bounds::default(),
             columns: 1,
@@ -489,6 +492,7 @@ impl<D: SorterDelegate> SorterState<D> {
         if self.dragging.is_none() {
             return;
         }
+        self.drag_position = Some(position);
         let slot = drop_slot(&self.cell_bounds, position);
         self.set_drop_slot(slot, cx);
     }
@@ -526,6 +530,7 @@ impl<D: SorterDelegate> SorterState<D> {
         let Some(from) = self.dragging.take() else {
             return;
         };
+        self.drag_position = None;
         let slot = self.hover_slot.take().unwrap_or(from);
 
         if self.selected.len() > 1 && self.selected.contains(&from) {
@@ -541,6 +546,7 @@ impl<D: SorterDelegate> SorterState<D> {
 
     /// 取消拖拽（不抛出事件）。
     pub fn cancel_drag(&mut self, cx: &mut Context<Self>) {
+        self.drag_position = None;
         if self.dragging.take().is_some() || self.hover_slot.take().is_some() {
             cx.notify();
         }
@@ -780,6 +786,32 @@ impl<D: SorterDelegate> Render for SorterState<D> {
             cells.push(item.child(content).into_any_element());
         }
 
+        // 拖拽预览：跟随指针的半透明副本（原格保留半透明占位）。
+        let ghost = match (dragging, self.drag_position) {
+            (Some(index), Some(position)) => {
+                let content = self
+                    .delegate
+                    .render_item(index, false, window, cx)
+                    .into_any_element();
+                Some(
+                    div()
+                        .absolute()
+                        .left(position.x - self.bounds.origin.x - cell.width / 2.0)
+                        .top(position.y - self.bounds.origin.y - cell.height / 2.0)
+                        .w(cell.width)
+                        .h(cell.height)
+                        .rounded_md()
+                        .border_2()
+                        .border_color(selected_border)
+                        .opacity(0.85)
+                        .overflow_hidden()
+                        .child(content)
+                        .into_any_element(),
+                )
+            }
+            _ => None,
+        };
+
         // 插入指示线：按插入槽落在对应单元格的左缘（末尾落在最后一格右缘）。
         let insertion = self.hover_slot.and_then(|slot| {
             let (x, y, height) = if slot < self.cell_bounds.len() {
@@ -821,6 +853,7 @@ impl<D: SorterDelegate> Render for SorterState<D> {
                     .content_start()
                     .children(cells),
             )
+            .children(ghost)
             .children(insertion.map(|(x, y, height)| {
                 div()
                     .absolute()
@@ -1114,6 +1147,29 @@ mod tests {
         assert_eq!(state.read_with(cx, |state, _| state.selection_len()), 5);
     }
 
+    /// 拖拽预览：拖拽期间记录指针位置，结束后清空（预览据此定位）。
+    #[rgpui::test]
+    fn drag_records_pointer_position(cx: &mut crate::TestAppContext) {
+        let (state, _events, mut cx) = setup(cx);
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                state.begin_drag(0, cx);
+                state.update_drag(crate::point(crate::px(120.0), crate::px(64.0)), cx);
+            })
+        });
+        let position = state.read_with(cx, |state, _| state.drag_position);
+        assert!(position.is_some(), "拖拽期间应记录指针位置");
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                state.cancel_drag(cx);
+            })
+        });
+        assert!(
+            state
+                .read_with(cx, |state, _| state.drag_position)
+                .is_none()
+        );
+    }
     /// 拖拽到有效槽位抛出重排事件，落到相邻槽位则视为无位移。
     #[rgpui::test]
     fn drag_reorder_emits_event(cx: &mut crate::TestAppContext) {
