@@ -1,6 +1,8 @@
 //! 图表基础组件：坐标轴、图例、提示框与通用绘制逻辑。
 
+use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
+use accesskit::Role;
 use std::rc::Rc;
 
 /// 默认系列配色。
@@ -654,7 +656,60 @@ pub struct Chart {
     y_axis: Axis,
     legend: Legend,
     tooltip: TooltipConfig,
+    /// 无障碍配置：元素 id + 画布名称（开启后发布一个整体摘要节点）。
+    a11y: Option<(ElementId, SharedString)>,
     style: StyleRefinement,
+}
+
+/// 通用图表整体语义：一个零尺寸摘要节点（发布时由画布填充整块区域）。
+///
+/// 摘要按系列列出类型 / 点数 / y 最值（最多 4 个系列），数值用 y 轴格式化器。
+fn chart_semantics(series: &[Series], y_axis: &Axis, label: &SharedString) -> CanvasSemantics {
+    let non_empty: Vec<&Series> = series.iter().filter(|s| !s.data.is_empty()).collect();
+    let total_points: usize = non_empty.iter().map(|s| s.data.len()).sum();
+
+    let summary = if non_empty.is_empty() {
+        "暂无数据".to_string()
+    } else {
+        format!("{} 个系列 · 共 {total_points} 点", non_empty.len())
+    };
+
+    let mut parts = Vec::new();
+    for s in non_empty.iter().take(4) {
+        let y_min = s.data.iter().map(|p| p.y).fold(f64::INFINITY, f64::min);
+        let y_max = s.data.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max);
+        let last = s.data[s.data.len() - 1].y;
+        parts.push(format!(
+            "{}（{}）：最新 {} · 范围 {}–{} · {} 点",
+            s.name,
+            series_type_name(s.series_type),
+            y_axis.format_value(last),
+            y_axis.format_value(y_min),
+            y_axis.format_value(y_max),
+            s.data.len()
+        ));
+    }
+    if non_empty.len() > 4 {
+        parts.push(format!("等 {} 个系列", non_empty.len()));
+    }
+
+    let mut semantics = CanvasSemantics::new();
+    semantics.push(
+        CanvasNode::new(1, Role::GraphicsObject, label.clone(), Bounds::default())
+            .with_value(summary)
+            .with_description(parts.join("；")),
+    );
+    semantics
+}
+
+/// 系列类型的中文名。
+fn series_type_name(series_type: SeriesType) -> &'static str {
+    match series_type {
+        SeriesType::Line => "折线",
+        SeriesType::Bar => "柱状",
+        SeriesType::Area => "面积",
+        SeriesType::Scatter => "散点",
+    }
 }
 
 impl Default for Chart {
@@ -672,6 +727,7 @@ impl Chart {
             y_axis: Axis::new().left(),
             legend: Legend::new(),
             tooltip: TooltipConfig::new(),
+            a11y: None,
             style: StyleRefinement::default(),
         }
     }
@@ -721,6 +777,15 @@ impl Chart {
     /// 设置是否显示提示框。
     pub fn show_tooltip(mut self, show: bool) -> Self {
         self.tooltip.show = show;
+        self
+    }
+
+    /// 把系列数据暴露给辅助技术：发布一个整体摘要节点（系列数 / 总点数 +
+    /// 逐系列类型与 y 极值），节点矩形在发布时按画布大小填充。
+    ///
+    /// `id` 是画布元素自身的标识，同一图表跨帧应使用同一 id。
+    pub fn a11y(mut self, id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        self.a11y = Some((id.into(), label.into()));
         self
     }
 
@@ -802,6 +867,11 @@ impl RenderOnce for Chart {
             padding: padding.clone(),
         };
 
+        let a11y = self.a11y;
+        let semantics = a11y
+            .as_ref()
+            .map(|(_, label)| chart_semantics(&series_for_legend, &y_axis_clone, label));
+
         let text_color: Hsla = theme.tokens.muted_foreground.color;
         let tooltip_bg = theme.tokens.popover;
         let tooltip_border = theme.tokens.border;
@@ -820,8 +890,8 @@ impl RenderOnce for Chart {
                 div()
                     .flex_1()
                     .relative()
-                    .child(
-                        canvas(
+                    .child({
+                        let mut chart = canvas(
                             move |bounds, window, _cx| {
                                 let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
                                 (paint_state, data_range, bounds, hitbox)
@@ -1077,8 +1147,17 @@ impl RenderOnce for Chart {
                                 }
                             },
                         )
-                        .size_full(),
-                    )
+                        .size_full();
+
+                        // 无障碍：整块图表一个摘要节点（零尺寸，由画布按实际大小填充）。
+                        if let (Some((id, label)), Some(semantics)) = (a11y, semantics) {
+                            chart = chart
+                                .id(id)
+                                .a11y(Role::GraphicsObject, semantics)
+                                .a11y_label(label);
+                        }
+                        chart
+                    })
                     .when(show_y_axis, |this| {
                         this.children(y_labels.iter().enumerate().map(|(i, label)| {
                             let tick_count = y_labels.len() - 1;
@@ -1114,5 +1193,57 @@ impl RenderOnce for Chart {
                         })),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::{Axis, DataPoint, Series, SeriesType, chart_semantics, series_type_name};
+    use crate::{Bounds, SharedString};
+
+    /// 无障碍摘要：系列数 / 总点数 + 逐系列类型与 y 最值（空数据退化）。
+    #[test]
+    fn chart_a11y_summary() {
+        let label: SharedString = "监控指标".into();
+        let series = vec![
+            Series::line(
+                "温度",
+                vec![DataPoint::new(0.0, 22.0), DataPoint::new(1.0, 19.0)],
+            ),
+            Series::bar(
+                "请求数",
+                vec![DataPoint::new(0.0, 1200.0), DataPoint::new(1.0, 980.0)],
+            ),
+            Series::new("空系列", vec![]),
+        ];
+        let semantics = chart_semantics(&series, &Axis::new().left(), &label);
+        assert_eq!(semantics.len(), 1);
+        let node = semantics.get(1).expect("摘要节点");
+        assert_eq!(node.label().to_string(), "监控指标");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("2 个系列 · 共 4 点".to_string())
+        );
+        assert_eq!(
+            node.description().map(|value| value.to_string()),
+            Some("温度（折线）：最新 19 · 范围 19–22 · 2 点；请求数（柱状）：最新 980 · 范围 980–1k · 2 点".to_string())
+        );
+        // 零尺寸：发布时由画布按实际大小填充。
+        assert_eq!(node.bounds(), Bounds::default());
+
+        // 空数据退化为「暂无数据」摘要。
+        let empty = chart_semantics(&[], &Axis::new(), &label);
+        let node = empty.get(1).expect("摘要节点");
+        assert_eq!(
+            node.value().map(|value| value.to_string()),
+            Some("暂无数据".to_string())
+        );
+
+        // 四种系列类型的中文名。
+        assert_eq!(series_type_name(SeriesType::Line), "折线");
+        assert_eq!(series_type_name(SeriesType::Bar), "柱状");
+        assert_eq!(series_type_name(SeriesType::Area), "面积");
+        assert_eq!(series_type_name(SeriesType::Scatter), "散点");
     }
 }
