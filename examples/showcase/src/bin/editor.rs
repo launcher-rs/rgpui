@@ -19,8 +19,8 @@ use rgpui::{
         InputEvent, StickyPosition,
     },
     lsp::{
-        CompletionProvider, DiagnosticEntry, DiagnosticsProvider, HoverContent, HoverProvider,
-        HoverResponse,
+        CompletionProvider, DiagnosticEntry, DiagnosticsProvider, FormattingProvider, HoverContent,
+        HoverProvider, HoverResponse,
     },
     prelude::*,
     px, rgb, size, v_flex, white, yellow,
@@ -93,6 +93,39 @@ impl CompletionProvider for DemoCompletionProvider {
 
 /// 演示用假诊断 provider：首行一个 warning（真 provider 按 URI 取数）。
 struct DemoDiagnosticsProvider;
+
+/// 假格式化 provider：去掉每行行尾空白（真语言服务器按各自规则返回编辑）。
+struct DemoFormattingProvider;
+
+impl FormattingProvider for DemoFormattingProvider {
+    fn formatting(
+        &self,
+        text: &rgpui::input_ui::Rope,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Vec<lsp_types::TextEdit>>> {
+        let original = text.to_string();
+        let lines: Vec<&str> = original.split('\n').collect();
+        let formatted: String = lines
+            .iter()
+            .map(|line| line.trim_end())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if formatted == original {
+            return rgpui::Task::ready(Ok(Vec::new()));
+        }
+        // 整篇替换：结束位置取最后一行及其字节长度（LSP 行列按字节列换算）。
+        let last = lines.len().saturating_sub(1);
+        let end = lsp_types::Position::new(last as u32, lines[last].len() as u32);
+        rgpui::Task::ready(Ok(vec![lsp_types::TextEdit {
+            range: lsp_types::Range {
+                start: lsp_types::Position::new(0, 0),
+                end,
+            },
+            new_text: formatted,
+        }]))
+    }
+}
 
 impl DiagnosticsProvider for DemoDiagnosticsProvider {
     fn diagnostics(
@@ -453,6 +486,7 @@ impl EditorDemo {
             state.set_completion_provider(Some(Rc::new(DemoCompletionProvider)), cx);
             state.set_diagnostics_provider(Some(Rc::new(DemoDiagnosticsProvider)), cx);
             state.set_hover_provider(Some(Rc::new(DemoHoverProvider)), cx);
+            state.set_formatting_provider(Some(Rc::new(DemoFormattingProvider)), cx);
             // 透镜假 provider（文本变更自动刷新，点击跳光标到透镜行）。
             state.set_codelens_provider(Some(Rc::new(DemoCodelensProvider)), cx);
             state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
@@ -856,6 +890,14 @@ impl Render for EditorDemo {
                         .child(lsp_button(&demo, "lang-json", "语言: json", |state, window, cx| {
                             state.set_language("json", window, cx);
                         }))
+                        .child(lsp_button(
+                            &demo,
+                            "format-doc",
+                            "格式化文档（LSP）",
+                            |state, window, cx| {
+                                state.request_formatting(window, cx);
+                            },
+                        ))
                         .child(lsp_button(
                             &demo,
                             "lang-unknown",

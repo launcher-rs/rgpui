@@ -1515,3 +1515,24 @@ HTML 双向：`from_html` 解析 `line-height` / `margin-top`，`to_html` 输出
 - `cargo check -p showcase --bin editor --features editor` 与
   `cargo check -p showcase --all-features` 通过。
 
+## 四十七、增补：LSP 格式化（文档 / 选区）
+
+LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触发入口** —— 应用即便接了
+语言服务器也用不上格式化。本轮补齐整条链路：
+
+- 新增 provider trait `crate::lsp::FormattingProvider`：
+  - `formatting(text, window, cx)`：整篇格式化，返回 `Vec<TextEdit>`；
+  - `range_formatting(text, range, window, cx)`：范围格式化（默认不支持，返回空编辑）。
+- `EditorState` 新增 `set_formatting_provider`（注入 / 断开）与 `request_formatting`
+  （触发请求）；请求经 **epoch 防抖**（与补全 / 悬停同款）：请求发出后文档再变则结果作废。
+- 编辑应用：LSP 行列按 UTF-8 字节列换算（`PositionMapping`，与诊断下划线同款），
+  编辑**按字节偏移倒序**应用（靠前编辑的位置不受后面改动影响），应用前抑制一次自动补全，
+  应用后光标回到原位置（与「接受代码操作」同款逻辑）。
+- 示例：`examples/showcase/src/bin/editor.rs` 注入假格式化 provider（去行尾空白）并加
+  「格式化文档（LSP）」按钮。
+
+### 验证
+
+- `cargo test -p rgpui --features editor --lib lsp_attach`：14 passed（新增 1 项：
+  格式化请求的编辑被应用到文档）。
+

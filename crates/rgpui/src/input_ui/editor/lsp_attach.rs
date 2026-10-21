@@ -17,13 +17,16 @@ use std::time::Duration;
 
 use crate::lsp::{
     CompletionPopupState, CompletionProvider, CompletionState, DiagnosticEntry,
-    DiagnosticsProvider, HoverProvider, HoverState, PositionMapping,
+    DiagnosticsProvider, FormattingProvider, HoverProvider, HoverState, PositionMapping,
 };
-use crate::{App, Context, Entity, HighlightStyle, Hsla, Task, UnderlineStyle, Window, px};
+use crate::{
+    App, Context, Entity, HighlightStyle, Hsla, SharedString, Task, UnderlineStyle, Window, px,
+};
 use lsp_types::{
     CompletionContext, CompletionResponse, CompletionTriggerKind, DiagnosticSeverity,
-    InsertTextFormat, Uri,
+    InsertTextFormat, TextEdit, Uri,
 };
+use std::ops::Range;
 
 use super::super::decorations::{TextDecoration, normalize};
 use super::state::EditorState;
@@ -44,6 +47,8 @@ pub(super) struct LspAttach {
     diagnostics_provider: Option<Rc<dyn DiagnosticsProvider>>,
     /// 悬停 provider（应用注入，传输自理）。
     hover_provider: Option<Rc<dyn HoverProvider>>,
+    /// 格式化 provider（应用注入，传输自理）。
+    formatting_provider: Option<Rc<dyn FormattingProvider>>,
     /// 当前文档 URI（诊断请求按 URI 取数，未设置时不请求）。
     document_uri: Option<Uri>,
     /// 补全状态（选中/可见/列表）。
@@ -75,6 +80,7 @@ impl LspAttach {
             completion_provider: None,
             diagnostics_provider: None,
             hover_provider: None,
+            formatting_provider: None,
             document_uri: None,
             completion: CompletionState::default(),
             popup,
@@ -269,6 +275,89 @@ impl EditorState {
             self.lsp.hover.clear();
             cx.notify();
         }
+    }
+
+    /// 设置格式化 provider（应用实现传输后注入；传 `None` 断开）。
+    pub fn set_formatting_provider(
+        &mut self,
+        provider: Option<Rc<dyn FormattingProvider>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.formatting_provider = provider;
+        if self.lsp.formatting_provider.is_none() {
+            self.lsp.next_epoch();
+            cx.notify();
+        }
+    }
+
+    /// 请求整篇格式化（应用返回的文本编辑会被应用；无 provider 时不做任何事）。
+    ///
+    /// 与补全 / 悬停同款 epoch 防抖：请求发出后若文档再变，本次结果作废。
+    pub fn request_formatting(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.formatting_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.formatting(&text, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                if let Ok(edits) = response {
+                    this.apply_lsp_text_edits(&edits, window, cx);
+                }
+            });
+        }));
+    }
+
+    /// 应用 LSP 文本编辑（按字节偏移倒序应用，靠前编辑的位置不受后面改动影响）。
+    fn apply_lsp_text_edits(
+        &mut self,
+        edits: &[TextEdit],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if edits.is_empty() {
+            return;
+        }
+        let caret = self.input.read_with(cx, |state, _| state.cursor());
+        let mut offsets: Vec<(Range<usize>, SharedString)> =
+            self.input.read_with(cx, |state, _| {
+                let text = state.text();
+                edits
+                    .iter()
+                    .map(|edit| {
+                        (
+                            PositionMapping::position_to_offset(text, edit.range.start)
+                                ..PositionMapping::position_to_offset(text, edit.range.end),
+                            SharedString::from(edit.new_text.clone()),
+                        )
+                    })
+                    .collect()
+            });
+        offsets.sort_by_key(|a| std::cmp::Reverse(a.0.start));
+        for (range, new_text) in offsets {
+            self.suppress_auto_complete_once();
+            self.input.update(cx, |state, cx| {
+                state.set_selected_range(range, cx);
+                state.replace(new_text, window, cx);
+            });
+        }
+        let caret = caret.min(self.input.read_with(cx, |state, _| state.text().len()));
+        self.input
+            .update(cx, |state, cx| state.set_selected_range(caret..caret, cx));
     }
 
     /// 当前文档 URI（诊断请求按 URI 取数）。
@@ -594,9 +683,51 @@ mod tests {
         }
     }
 
+    /// 假格式化 provider：把整篇文本替换为小写（验证编辑能被应用）。
+    struct FakeFormattingProvider;
+
+    impl FormattingProvider for FakeFormattingProvider {
+        fn formatting(
+            &self,
+            text: &ropey::Rope,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Vec<TextEdit>>> {
+            let original = text.to_string();
+            let lowered = original.to_lowercase();
+            let lines: Vec<&str> = original.split('\n').collect();
+            let last = lines.len().saturating_sub(1);
+            Task::ready(Ok(vec![TextEdit {
+                range: lsp_types::Range {
+                    start: lsp_types::Position::new(0, 0),
+                    end: lsp_types::Position::new(last as u32, lines[last].len() as u32),
+                },
+                new_text: lowered,
+            }]))
+        }
+    }
+
+    /// 格式化请求：provider 返回的编辑被应用到文档。
+    #[rgpui::test]
+    fn request_formatting_applies_edits(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "ABC\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_formatting_provider(Some(std::rc::Rc::new(FakeFormattingProvider)), cx);
+                state.request_formatting(window, cx);
+            });
+        });
+        // 格式化任务经后台执行器返回，文本在下一轮更新后生效。
+        cx.run_until_parked();
+        let text = editor.read_with(cx, |state, cx| state.text(cx));
+        assert_eq!(text, "abc\n");
+    }
     /// 假补全 provider（固定返回 `println` / `print` 两个条目）。
     struct FakeCompletionProvider;
-
     impl CompletionProvider for FakeCompletionProvider {
         fn completions(
             &self,

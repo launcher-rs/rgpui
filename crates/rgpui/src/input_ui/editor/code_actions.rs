@@ -558,9 +558,9 @@ mod tests {
     }
 
     /// 建带 provider 的编辑器测试窗口（三个用例共用桩代码）。
-    fn probe_with_provider<'a>(
-        cx: &'a mut crate::TestAppContext,
-    ) -> (Entity<EditorState>, &'a mut crate::VisualTestContext) {
+    fn probe_with_provider(
+        cx: &mut crate::TestAppContext,
+    ) -> (Entity<EditorState>, &mut crate::VisualTestContext) {
         cx.update(crate::input_ui::init);
         cx.update(crate::theme::init);
         let (probe, cx) = cx.add_window_view(|window, cx| {
