@@ -18,7 +18,8 @@ use std::time::Duration;
 use crate::lsp::{
     CompletionPopupState, CompletionProvider, CompletionState, DefinitionProvider, DefinitionState,
     DiagnosticEntry, DiagnosticsProvider, FormattingProvider, HoverProvider, HoverState,
-    PositionMapping, RenameProvider, SignatureHelpProvider, SignatureHelpState,
+    PositionMapping, RenameProvider, SemanticTokenTypeMap, SemanticTokensHighlighter,
+    SemanticTokensPayload, SemanticTokensProvider, SignatureHelpProvider, SignatureHelpState,
 };
 use crate::prelude::ActiveTheme as _;
 use crate::{
@@ -403,6 +404,78 @@ impl EditorState {
         }
     }
 
+    /// 设置语义高亮 provider（应用注入；传 `None` 断开）。
+    ///
+    /// 断开时高亮器不会被自动清掉（清高亮需要窗口上下文），应用可自行
+    /// `set_highlighter(None, window, cx)`。
+    pub fn set_semantic_tokens_provider(
+        &mut self,
+        provider: Option<Rc<dyn SemanticTokensProvider>>,
+        language: impl Into<String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.semantic.provider = provider;
+        self.semantic.language = language.into();
+        cx.notify();
+    }
+
+    /// 设置语义高亮的类型映射表（LSP 类型名 → 主题 token 名）。
+    pub fn set_semantic_token_type_map(&mut self, map: SemanticTokenTypeMap) {
+        self.semantic.type_map = map;
+    }
+
+    /// 请求语义高亮：结果解码后作为高亮器装进内部输入。
+    ///
+    /// token 区间按**字节列**解释（与仓库内其它 LSP 换算口径一致）；类型名经
+    /// 类型映射表落到主题 token 名，未映射的类型不高亮。
+    pub fn request_semantic_tokens(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.semantic.provider.clone() else {
+            return;
+        };
+        let Some(uri) = self.lsp.document_uri.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let language = self.semantic.language.clone();
+        let type_map = self.semantic.type_map.clone();
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.semantic_tokens_full_with_legend(&uri, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                let Ok(Some(payload)) = response else { return };
+                this.apply_semantic_tokens(&payload, &type_map, &language, window, cx);
+            });
+        }));
+    }
+
+    /// 应用语义高亮：解码 token → 生成高亮器 → 装进内部输入。
+    fn apply_semantic_tokens(
+        &mut self,
+        payload: &SemanticTokensPayload,
+        type_map: &SemanticTokenTypeMap,
+        language: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = self
+            .input
+            .read_with(cx, |state, _| state.text().to_string());
+        let runs = SemanticTokensHighlighter::decode_runs(&text, payload, type_map);
+        let highlighter = SemanticTokensHighlighter::new(language.to_string(), runs);
+        self.set_highlighter(Some(Box::new(highlighter)), window, cx);
+    }
     /// 请求签名提示（结果写入状态，浮层由应用渲染）。
     pub fn request_signature_help(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(provider) = self.lsp.signature_help_provider.clone() else {

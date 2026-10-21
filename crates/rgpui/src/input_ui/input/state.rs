@@ -2104,6 +2104,13 @@ impl InputState {
         }
     }
 
+    /// 当前高亮器的语言名（未设高亮器时为 `None`）。
+    pub fn highlighter_language(&self) -> Option<SharedString> {
+        self.highlighter
+            .as_ref()
+            .map(|highlighter| highlighter.language())
+    }
+
     #[cfg(feature = "editor")]
     /// 刷新语法高亮装饰与折叠候选（有 highlighter 时；编辑后调用）。
     fn refresh_highlight(&mut self, window: &mut Window, cx: &mut Context<Self>) {

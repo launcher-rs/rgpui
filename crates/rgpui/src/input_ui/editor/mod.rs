@@ -24,6 +24,8 @@ pub(super) mod lsp_attach;
 /// 缩略图（开关 + 浮层，O2）。
 pub(super) mod minimap;
 pub(super) mod multicursor;
+/// LSP 语义高亮（provider + 请求 + 高亮器接线）。
+pub(super) mod semantic;
 /// 代码片段最小版（占位解析 + 会话跳转 + 补全联动，M3）。
 pub(super) mod snippets;
 pub(super) mod state;

@@ -15,6 +15,7 @@ use super::extensions::ExtensionsState;
 use super::inlay_hints::InlayState;
 use super::lsp_attach::LspAttach;
 use super::minimap::MinimapState;
+use super::semantic::SemanticState;
 use super::snippets::SnippetSession;
 use crate::highlight::{DocumentSymbol, Highlighter};
 
@@ -36,6 +37,8 @@ pub struct EditorState {
     pub(super) codelens: CodelensState,
     /// 快速修复接入状态（provider + 菜单，见 `code_actions.rs`）。
     pub(super) code_actions: CodeActionsState,
+    /// 语义高亮接入状态（provider + 类型映射，见 `semantic.rs`）。
+    pub(super) semantic: SemanticState,
     /// 扩展表 + 变更订阅表运行时状态（见 `extensions.rs`，O7）。
     pub(super) extensions: ExtensionsState,
     /// 粘性滚动开关（默认开，见 `sticky_scroll.rs`）。
@@ -77,6 +80,7 @@ impl EditorState {
             minimap: MinimapState::new(),
             codelens: CodelensState::new(),
             code_actions: CodeActionsState::new(),
+            semantic: SemanticState::new(),
             extensions: ExtensionsState::new(),
             sticky_scroll: true,
             sticky_position: super::sticky_scroll::StickyPosition::Top,

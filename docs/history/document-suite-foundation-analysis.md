@@ -1600,3 +1600,26 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 - `cargo test -p rgpui --features editor --lib lsp_attach`：18 passed（新增 1 项：
   同符号高亮请求后装饰集合带上高亮范围）。
 
+## 五十一、增补：LSP 语义高亮（编辑器最后一个 LSP 缺口）
+
+`crate::lsp` 早就有 `SemanticTokensProvider` / `SemanticTokensState` / `SemanticTokenTypeMap`，
+但编辑器侧没接线（语义高亮是 tree-sitter 高亮之外的另一条通路，服务端更准）。
+
+- **载荷类型** `SemanticTokensPayload`（增量 token 数据 + 类型 / 修饰符图例）；
+  provider 新增 `semantic_tokens_full_with_legend`（默认不支持，返回 `None`）。
+- **解码** `SemanticTokensHighlighter::decode_runs`：增量 token → 「字节区间 + 主题 token 名」
+  （列按**字节列**解释，与仓库内其它 LSP 换算口径一致；类型名经 `SemanticTokenTypeMap`
+  映射，未映射的类型不高亮）。
+- **高亮器** `SemanticTokensHighlighter` 实现核心 `highlight::Highlighter` trait，
+  可直接装进 `set_highlighter`（与 tree-sitter 高亮器同一条通路，应用层渲染方式不变）。
+- **编辑器接线**：`set_semantic_tokens_provider` / `set_semantic_token_type_map` /
+  `request_semantic_tokens`（epoch 防抖）。
+- 示例：showcase 的「语义高亮（LSP）」按钮（假 provider 把首行前两个词标成 function）。
+
+至此 LSP 客户端 trait 里的主要请求在编辑器侧都有触发入口：补全 / 悬停 / 诊断 / 快速修复 /
+格式化 / 重命名 / 定义引用 / 签名提示 / 同符号高亮 / 语义高亮。
+
+### 验证
+
+- `cargo test -p rgpui --features editor --lib semantic`：2 passed（token 解码与样式解析）。
+

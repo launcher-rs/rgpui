@@ -21,7 +21,7 @@ use rgpui::{
     lsp::{
         CompletionProvider, DefinitionProvider, DiagnosticEntry, DiagnosticsProvider,
         FormattingProvider, HoverContent, HoverProvider, HoverResponse, RenameProvider,
-        SignatureHelpProvider,
+        SemanticTokensProvider, SignatureHelpProvider,
     },
     prelude::*,
     px, rgb, size, v_flex, white, yellow,
@@ -95,6 +95,24 @@ impl CompletionProvider for DemoCompletionProvider {
 /// 演示用假诊断 provider：首行一个 warning（真 provider 按 URI 取数）。
 struct DemoDiagnosticsProvider;
 
+/// 假语义 token provider：把首行前两个词标成 `function`。
+struct DemoSemanticTokensProvider;
+
+impl SemanticTokensProvider for DemoSemanticTokensProvider {
+    fn semantic_tokens_full_with_legend(
+        &self,
+        _uri: &lsp_types::Uri,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Option<rgpui::lsp::SemanticTokensPayload>>> {
+        // 第 0 行第 0 列长度 3（"fn "）为 function，第 3 列长度 4（"main"）为 function。
+        rgpui::Task::ready(Ok(Some(rgpui::lsp::SemanticTokensPayload {
+            data: vec![0, 0, 3, 0, 0, 0, 3, 4, 0, 0],
+            token_types: vec![lsp_types::SemanticTokenType::new("function")],
+            token_modifiers: Vec::new(),
+        })))
+    }
+}
 /// 假签名提示 provider：返回一个固定签名。
 struct DemoSignatureHelpProvider;
 
@@ -681,6 +699,11 @@ impl EditorDemo {
             state.set_rename_provider(Some(Rc::new(DemoRenameProvider)), cx);
             state.set_definition_provider(Some(Rc::new(DemoDefinitionProvider)), cx);
             state.set_signature_help_provider(Some(Rc::new(DemoSignatureHelpProvider)), cx);
+            state.set_semantic_tokens_provider(
+                Some(Rc::new(DemoSemanticTokensProvider)),
+                "rust",
+                cx,
+            );
             // 透镜假 provider（文本变更自动刷新，点击跳光标到透镜行）。
             state.set_codelens_provider(Some(Rc::new(DemoCodelensProvider)), cx);
             state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
@@ -1122,6 +1145,14 @@ impl Render for EditorDemo {
                             "同符号高亮（LSP）",
                             |state, window, cx| {
                                 state.request_document_highlights(window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "semantic-tokens",
+                            "语义高亮（LSP）",
+                            |state, window, cx| {
+                                state.request_semantic_tokens(window, cx);
                             },
                         ))
                         .child(lsp_button(
