@@ -18,6 +18,7 @@ use std::time::Duration;
 use crate::lsp::{
     CompletionPopupState, CompletionProvider, CompletionState, DiagnosticEntry,
     DiagnosticsProvider, FormattingProvider, HoverProvider, HoverState, PositionMapping,
+    RenameProvider,
 };
 use crate::{
     App, Context, Entity, HighlightStyle, Hsla, SharedString, Task, UnderlineStyle, Window, px,
@@ -49,6 +50,8 @@ pub(super) struct LspAttach {
     hover_provider: Option<Rc<dyn HoverProvider>>,
     /// 格式化 provider（应用注入，传输自理）。
     formatting_provider: Option<Rc<dyn FormattingProvider>>,
+    /// 重命名 provider（应用注入，传输自理）。
+    rename_provider: Option<Rc<dyn RenameProvider>>,
     /// 当前文档 URI（诊断请求按 URI 取数，未设置时不请求）。
     document_uri: Option<Uri>,
     /// 补全状态（选中/可见/列表）。
@@ -81,6 +84,7 @@ impl LspAttach {
             diagnostics_provider: None,
             hover_provider: None,
             formatting_provider: None,
+            rename_provider: None,
             document_uri: None,
             completion: CompletionState::default(),
             popup,
@@ -288,6 +292,57 @@ impl EditorState {
             self.lsp.next_epoch();
             cx.notify();
         }
+    }
+
+    /// 设置重命名 provider（应用实现传输后注入；传 `None` 断开）。
+    pub fn set_rename_provider(
+        &mut self,
+        provider: Option<Rc<dyn RenameProvider>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.rename_provider = provider;
+        if self.lsp.rename_provider.is_none() {
+            self.lsp.next_epoch();
+            cx.notify();
+        }
+    }
+
+    /// 请求重命名光标处符号为 `new_name`（服务端返回的工作区编辑会被应用）。
+    ///
+    /// 与格式化同款 epoch 防抖：请求发出后文档再变，本次结果作废。
+    pub fn request_rename(&mut self, new_name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.rename_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        let new_name = new_name.to_string();
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.rename(&text, offset, &new_name, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                let Ok(Some(edit)) = response else { return };
+                // 只应用属于当前文档的编辑（跨文件重命名由应用层处理）。
+                let edits = super::code_actions::edits_for_workspace_edit(
+                    &edit,
+                    this.lsp.document_uri.as_ref(),
+                );
+                this.apply_lsp_text_edits(&edits, window, cx);
+            });
+        }));
     }
 
     /// 请求整篇格式化（应用返回的文本编辑会被应用；无 provider 时不做任何事）。
@@ -725,6 +780,58 @@ mod tests {
         cx.run_until_parked();
         let text = editor.read_with(cx, |state, cx| state.text(cx));
         assert_eq!(text, "abc\n");
+    }
+    /// 假重命名 provider：把整篇文本替换为新名字。
+    struct FakeRenameProvider;
+
+    impl RenameProvider for FakeRenameProvider {
+        fn rename(
+            &self,
+            text: &ropey::Rope,
+            _offset: usize,
+            new_name: &str,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Option<lsp_types::WorkspaceEdit>>> {
+            let original = text.to_string();
+            let lines: Vec<&str> = original.split('\n').collect();
+            let last = lines.len().saturating_sub(1);
+            let uri: lsp_types::Uri = "file:///rename-test.rs".parse().expect("URI");
+            Task::ready(Ok(Some(lsp_types::WorkspaceEdit {
+                changes: Some(std::collections::HashMap::from([(
+                    uri,
+                    vec![TextEdit {
+                        range: lsp_types::Range {
+                            start: lsp_types::Position::new(0, 0),
+                            end: lsp_types::Position::new(last as u32, lines[last].len() as u32),
+                        },
+                        new_text: new_name.to_string(),
+                    }],
+                )])),
+                document_changes: None,
+                change_annotations: None,
+            })))
+        }
+    }
+
+    /// 重命名请求：服务端返回的工作区编辑被应用到当前文档。
+    #[rgpui::test]
+    fn request_rename_applies_workspace_edit(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "old name\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_document_uri(Some("file:///rename-test.rs".parse().unwrap()), cx);
+                state.set_rename_provider(Some(std::rc::Rc::new(FakeRenameProvider)), cx);
+                state.request_rename("new name", window, cx);
+            });
+        });
+        cx.run_until_parked();
+        let text = editor.read_with(cx, |state, cx| state.text(cx));
+        assert_eq!(text, "new name");
     }
     /// 假补全 provider（固定返回 `println` / `print` 两个条目）。
     struct FakeCompletionProvider;

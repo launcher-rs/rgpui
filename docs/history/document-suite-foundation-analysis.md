@@ -1536,3 +1536,25 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 - `cargo test -p rgpui --features editor --lib lsp_attach`：14 passed（新增 1 项：
   格式化请求的编辑被应用到文档）。
 
+## 四十八、增补：LSP 重命名
+
+与格式化同款缺口：LSP 客户端 trait 有 `rename`，编辑器侧没有触发入口。
+
+- 新增 provider trait `crate::lsp::RenameProvider`：
+  `rename(text, offset, new_name, window, cx)` → `Option<WorkspaceEdit>`（`None` 表示服务端
+  不支持或位置无符号）。
+- `EditorState` 新增 `set_rename_provider`（注入 / 断开）与 `request_rename(new_name)`
+  （epoch 防抖，与格式化 / 补全 / 悬停同款）。
+- 编辑应用：复用格式化那条路径（`apply_lsp_text_edits`：字节列换算 + 倒序应用 + 光标复位），
+  并把「从工作区编辑里取当前文档的编辑」抽成公共 helper
+  （`code_actions::edits_for_workspace_edit`，代码操作与重命名共用）——
+  `changes` / `documentChanges` 两种形式都支持，未设文档 URI 时只在编辑确实只涉及一个
+  文档时应用，避免猜错目标。
+- 示例：`examples/showcase/src/bin/editor.rs` 注入假重命名 provider（把光标处的词改名）
+  并加「重命名光标处 → renamed」按钮。
+
+### 验证
+
+- `cargo test -p rgpui --features editor --lib lsp_attach`：15 passed（新增 1 项：
+  重命名请求的工作区编辑被应用）。
+

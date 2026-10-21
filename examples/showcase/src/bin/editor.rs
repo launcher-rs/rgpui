@@ -20,7 +20,7 @@ use rgpui::{
     },
     lsp::{
         CompletionProvider, DiagnosticEntry, DiagnosticsProvider, FormattingProvider, HoverContent,
-        HoverProvider, HoverResponse,
+        HoverProvider, HoverResponse, RenameProvider,
     },
     prelude::*,
     px, rgb, size, v_flex, white, yellow,
@@ -94,6 +94,67 @@ impl CompletionProvider for DemoCompletionProvider {
 /// 演示用假诊断 provider：首行一个 warning（真 provider 按 URI 取数）。
 struct DemoDiagnosticsProvider;
 
+/// 假重命名 provider：把光标处的词替换为新名字。
+struct DemoRenameProvider;
+
+impl RenameProvider for DemoRenameProvider {
+    fn rename(
+        &self,
+        text: &rgpui::input_ui::Rope,
+        offset: usize,
+        new_name: &str,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> rgpui::Task<anyhow::Result<Option<lsp_types::WorkspaceEdit>>> {
+        // 找出光标所在的词（空白分隔），生成一条替换编辑。
+        let content = text.to_string();
+        let byte = offset.min(content.len());
+        let is_word = |c: char| c.is_alphanumeric() || c == '_';
+        let mut start = byte;
+        while start > 0 {
+            let Some(prev) = content[..start].chars().next_back() else {
+                break;
+            };
+            if !is_word(prev) {
+                break;
+            }
+            start -= prev.len_utf8();
+        }
+        let mut end = byte;
+        while end < content.len() {
+            let Some(next) = content[end..].chars().next() else {
+                break;
+            };
+            if !is_word(next) {
+                break;
+            }
+            end += next.len_utf8();
+        }
+        if start >= end {
+            return rgpui::Task::ready(Ok(None));
+        }
+        // 行号 / 字节列（LSP 行列按字节列换算）。
+        let line = content[..start].matches('\n').count() as u32;
+        let column = start - content[..start].rfind('\n').map_or(0, |i| i + 1);
+        let end_line = line + content[start..end].matches('\n').count() as u32;
+        let end_column = column + (end - start);
+        let uri: lsp_types::Uri = "file:///demo.rs".parse().expect("URI");
+        rgpui::Task::ready(Ok(Some(lsp_types::WorkspaceEdit {
+            changes: Some(std::collections::HashMap::from([(
+                uri,
+                vec![lsp_types::TextEdit {
+                    range: lsp_types::Range {
+                        start: lsp_types::Position::new(line, column as u32),
+                        end: lsp_types::Position::new(end_line, end_column as u32),
+                    },
+                    new_text: new_name.to_string(),
+                }],
+            )])),
+            document_changes: None,
+            change_annotations: None,
+        })))
+    }
+}
 /// 假格式化 provider：去掉每行行尾空白（真语言服务器按各自规则返回编辑）。
 struct DemoFormattingProvider;
 
@@ -487,6 +548,7 @@ impl EditorDemo {
             state.set_diagnostics_provider(Some(Rc::new(DemoDiagnosticsProvider)), cx);
             state.set_hover_provider(Some(Rc::new(DemoHoverProvider)), cx);
             state.set_formatting_provider(Some(Rc::new(DemoFormattingProvider)), cx);
+            state.set_rename_provider(Some(Rc::new(DemoRenameProvider)), cx);
             // 透镜假 provider（文本变更自动刷新，点击跳光标到透镜行）。
             state.set_codelens_provider(Some(Rc::new(DemoCodelensProvider)), cx);
             state.set_document_uri(Some("file:///demo.rs".parse().unwrap()), cx);
@@ -896,6 +958,14 @@ impl Render for EditorDemo {
                             "格式化文档（LSP）",
                             |state, window, cx| {
                                 state.request_formatting(window, cx);
+                            },
+                        ))
+                        .child(lsp_button(
+                            &demo,
+                            "rename-symbol",
+                            "重命名光标处 → renamed",
+                            |state, window, cx| {
+                                state.request_rename("renamed", window, cx);
                             },
                         ))
                         .child(lsp_button(
