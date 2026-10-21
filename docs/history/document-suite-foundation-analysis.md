@@ -1587,8 +1587,16 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 至此 LSP 客户端 trait 里的主要请求（补全 / 悬停 / 诊断 / 格式化 / 重命名 / 定义引用 /
 签名提示）在编辑器侧都有了触发入口。
 
+### 附：同符号高亮（document highlights）
+
+复用 `DefinitionProvider::document_highlights`（默认不支持时为空）：
+
+- `EditorState::request_document_highlights`：请求后把返回的范围渲染为**背景装饰**
+  （主题主色浅底），走内部输入上独立的一层装饰集合（与诊断下划线分层）。
+- 示例：showcase 的「同符号高亮（LSP）」按钮（假 provider 标出光标所在的词）。
+
 ### 验证
 
-- `cargo test -p rgpui --features editor --lib lsp_attach`：17 passed（新增 1 项：
-  签名提示请求的结果写入状态）。
+- `cargo test -p rgpui --features editor --lib lsp_attach`：18 passed（新增 1 项：
+  同符号高亮请求后装饰集合带上高亮范围）。
 

@@ -20,6 +20,7 @@ use crate::lsp::{
     DiagnosticEntry, DiagnosticsProvider, FormattingProvider, HoverProvider, HoverState,
     PositionMapping, RenameProvider, SignatureHelpProvider, SignatureHelpState,
 };
+use crate::prelude::ActiveTheme as _;
 use crate::{
     App, Context, Entity, HighlightStyle, Hsla, SharedString, Task, UnderlineStyle, Window, px,
 };
@@ -60,6 +61,10 @@ pub(super) struct LspAttach {
     signature_help_provider: Option<Rc<dyn SignatureHelpProvider>>,
     /// 签名提示状态（最近一次请求；应用层渲染浮层）。
     signature_help: SignatureHelpState,
+    /// 同符号高亮（最近一次请求；渲染为背景装饰）。
+    document_highlights: Vec<crate::lsp::DocumentHighlight>,
+    /// 同符号高亮装饰集合（内部输入上独立一层）。
+    highlights_collection: Option<TextDecorationCollection>,
     /// 当前文档 URI（诊断请求按 URI 取数，未设置时不请求）。
     document_uri: Option<Uri>,
     /// 补全状态（选中/可见/列表）。
@@ -97,6 +102,8 @@ impl LspAttach {
             definition: DefinitionState::default(),
             signature_help_provider: None,
             signature_help: SignatureHelpState::default(),
+            document_highlights: Vec::new(),
+            highlights_collection: None,
             document_uri: None,
             completion: CompletionState::default(),
             popup,
@@ -323,6 +330,77 @@ impl EditorState {
     /// 签名提示状态（最近一次请求；应用层渲染浮层）。
     pub fn signature_help_state(&self) -> &SignatureHelpState {
         &self.lsp.signature_help
+    }
+
+    /// 请求同符号高亮（服务端返回的相同符号范围渲染为背景装饰）。
+    ///
+    /// 高亮走 `DefinitionProvider::document_highlights`（默认不支持时为空）。
+    pub fn request_document_highlights(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider) = self.lsp.definition_provider.clone() else {
+            return;
+        };
+        let epoch = self.lsp.next_epoch();
+        let text = self.input.read_with(cx, |state, _| state.text().clone());
+        let offset = self.input.read_with(cx, |state, _| state.cursor());
+        self.lsp._lsp_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = this
+                .update_in(cx, |this, window, cx| {
+                    if this.lsp.epoch != epoch {
+                        return None;
+                    }
+                    Some(provider.document_highlights(&text, offset, window, cx))
+                })
+                .ok()
+                .flatten();
+            let Some(task) = task else { return };
+            let response = task.await;
+            let _ = this.update_in(cx, |this, _window, cx| {
+                if this.lsp.epoch != epoch {
+                    return;
+                }
+                let Ok(highlights) = response else { return };
+                this.lsp.document_highlights = highlights;
+                this.refresh_highlight_decorations(cx);
+                cx.notify();
+            });
+        }));
+    }
+
+    /// 同符号高亮刷到装饰集合（背景色；与诊断层分开）。
+    fn refresh_highlight_decorations(&mut self, cx: &mut Context<Self>) {
+        // 同符号高亮背景色（主题主色的浅底）。
+        let background = cx.theme().tokens.primary.color.opacity(0.18);
+        let highlights = self.lsp.document_highlights.clone();
+        let existing = self.lsp.highlights_collection.clone();
+        let mut created = None;
+        self.input.update(cx, |state, cx| {
+            let text = state.text().clone();
+            let decorations: Vec<TextDecoration> = highlights
+                .iter()
+                .map(|highlight| {
+                    let range = PositionMapping::position_to_offset(&text, highlight.range.start)
+                        ..PositionMapping::position_to_offset(&text, highlight.range.end);
+                    TextDecoration::new(
+                        range,
+                        HighlightStyle {
+                            background_color: Some(background),
+                            ..Default::default()
+                        },
+                    )
+                })
+                .collect();
+            if let Some(collection) = existing {
+                let decorations = normalize(&text, decorations);
+                if collection.set_in_place(&mut state.core.decorations, decorations) {
+                    cx.notify();
+                }
+            } else if !decorations.is_empty() {
+                created = Some(state.create_decorations_collection(decorations, cx));
+            }
+        });
+        if let Some(collection) = created {
+            self.lsp.highlights_collection = Some(collection);
+        }
     }
 
     /// 请求签名提示（结果写入状态，浮层由应用渲染）。
@@ -1045,6 +1123,22 @@ mod tests {
         ) -> Task<anyhow::Result<Vec<crate::lsp::DefinitionLocation>>> {
             Task::ready(Ok(Vec::new()))
         }
+
+        fn document_highlights(
+            &self,
+            _text: &ropey::Rope,
+            _offset: usize,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<Vec<crate::lsp::DocumentHighlight>>> {
+            Task::ready(Ok(vec![crate::lsp::DocumentHighlight {
+                range: lsp_types::Range {
+                    start: lsp_types::Position::new(0, 0),
+                    end: lsp_types::Position::new(0, 3),
+                },
+                kind: Some(crate::lsp::DocumentHighlightKind::Text),
+            }]))
+        }
     }
 
     /// 定义跳转：命中位置在当前文档时，光标移到目标偏移。
@@ -1068,6 +1162,31 @@ mod tests {
         // 结果同时保留给应用层渲染。
         let locations = editor.read_with(cx, |state, _| state.definition_locations().len());
         assert_eq!(locations, 1);
+    }
+    /// 同符号高亮：请求后装饰集合带上高亮范围。
+    #[rgpui::test]
+    fn request_document_highlights_creates_decorations(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_definition_provider(Some(std::rc::Rc::new(FakeDefinitionProvider)), cx);
+                state.request_document_highlights(window, cx);
+            });
+        });
+        cx.run_until_parked();
+        let ranges = editor.read_with(cx, |state, cx| {
+            state
+                .lsp
+                .highlights_collection
+                .as_ref()
+                .map(|collection| collection.get_ranges(cx))
+                .unwrap_or_default()
+        });
+        assert_eq!(ranges, vec![0..3]);
     }
     /// 假签名提示 provider：返回一个固定签名。
     struct FakeSignatureHelpProvider;
