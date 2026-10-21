@@ -1,9 +1,10 @@
 //! 动画时间线 —— 多轨关键帧编辑器（标尺 + 轨道 + 关键帧 + 播放头）。
 //!
 //! 面向动效 / 音视频 / 关键帧动画的**时间线编辑**场景：时间标尺、多条轨道、每条
-//! 轨道若干关键帧、可拖拽的播放头。缩略的纯数据模型（[`Timeline`] / [`Track`] /
-//! [`Keyframe`]）负责关键帧存储与求值（线性 / 保持 / 平滑），控件
-//! （[`TimelineState`] / [`TimelineView`]）负责标尺刻度、命中测试、拖拽与播放头。
+//! 轨道若干关键帧、可拖拽的播放头、按插值方式绘制的值曲线。缩略的纯数据模型
+//! （[`Timeline`] / [`Track`] / [`Keyframe`]）负责关键帧存储与求值（线性 / 保持 /
+//! 平滑），控件（[`TimelineState`] / [`TimelineView`]）负责标尺刻度、命中测试、
+//! 拖拽（水平改时间、垂直改值）与播放头。
 //!
 //! 轨道可直接转成运行时的进度式动画：`Track::to_keyframe_animation` 把「绝对秒 +
 //! 关键帧」映射成 [`KeyframeAnimation`](crate::animation::KeyframeAnimation)，编辑完
@@ -24,12 +25,15 @@
 //! TimelineView::new(&state)
 //! ```
 
+use lyon::path::{LineCap, LineJoin};
+
 use crate::{
     ActiveTheme as _, AnyElement, App, Bounds, Context, ElementExt as _, Entity, EventEmitter,
     FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render,
-    RenderOnce, ScrollDelta, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Window, div, point, prelude::FluentBuilder as _, px,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Path, PathBuilder, PathStyle,
+    Pixels, Point, Render, RenderOnce, ScrollDelta, ScrollWheelEvent, SharedString,
+    StatefulInteractiveElement as _, StrokeOptions, Styled as _, Window, canvas, div, point,
+    prelude::FluentBuilder as _, px,
 };
 
 use crate::animation::KeyframeAnimation;
@@ -58,6 +62,16 @@ pub const DEFAULT_FPS: f32 = 30.0;
 pub const MIN_TICK_SPACING: f32 = 56.0;
 /// 标尺刻度数量上限（防止极端缩放下渲染爆炸）。
 pub const MAX_TICKS: usize = 200;
+/// 值曲线在轨道行内的上下留白（像素）。
+pub const VALUE_PADDING: f32 = 3.0;
+/// 值曲线描边宽度（像素）。
+pub const CURVE_STROKE_WIDTH: Pixels = px(1.5);
+/// 值曲线采样间距（像素，越小越平滑、开销越大）。
+pub const CURVE_SAMPLE_SPACING: f32 = 6.0;
+/// 值曲线采样点数量上限（防止极度缩放下渲染爆炸）。
+pub const MAX_CURVE_SAMPLES: usize = 512;
+/// 值域留白比例：曲线上下各留最大值与最小值之差的 10%。
+pub const VALUE_RANGE_PADDING: f32 = 0.1;
 
 /// 单个关键帧：时间（秒）+ 值。
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -245,6 +259,48 @@ impl Track {
         self.keyframes
             .iter()
             .position(|kf| (kf.time - moved_time).abs() < 1e-6)
+    }
+
+    /// 修改下标处关键帧的值（不改时间，因此不需要重新排序），返回是否变化。
+    ///
+    /// 非有限值（`NaN` / 无穷）被忽略，避免污染值域与曲线采样。
+    pub fn set_keyframe_value(&mut self, index: usize, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        let Some(keyframe) = self.keyframes.get_mut(index) else {
+            return false;
+        };
+        if keyframe.value == value {
+            return false;
+        }
+        keyframe.value = value;
+        true
+    }
+
+    /// 曲线绘制用的值域 `(最小值, 最大值)`，上下各留 [`VALUE_RANGE_PADDING`] 比例。
+    ///
+    /// 空轨道（或全是非有限值）退化为 `(0.0, 1.0)`；所有值相同时上下各留 `0.5`，
+    /// 让水平曲线落在行中间而不是贴边。
+    pub fn value_range(&self) -> (f32, f32) {
+        let mut min = f32::INFINITY;
+        let mut max = f32::NEG_INFINITY;
+        for keyframe in &self.keyframes {
+            if keyframe.value.is_finite() {
+                min = min.min(keyframe.value);
+                max = max.max(keyframe.value);
+            }
+        }
+        if !min.is_finite() || !max.is_finite() {
+            return (0.0, 1.0);
+        }
+        let span = max - min;
+        let pad = if span > f32::EPSILON {
+            span * VALUE_RANGE_PADDING
+        } else {
+            0.5
+        };
+        (min - pad, max + pad)
     }
 
     /// 轨道时长（最后一个关键帧的时间；空轨道为 0）。
@@ -446,6 +502,130 @@ pub fn format_time(time: f32) -> String {
     }
 }
 
+/// 值 → 轨道行内纵坐标（0 在顶部，`height` 在底部），超出值域时夹到两端。
+pub fn value_to_y(value: f32, range: (f32, f32), height: Pixels) -> f32 {
+    let height = if height.as_f32().is_finite() {
+        height.as_f32().max(0.0)
+    } else {
+        0.0
+    };
+    let usable = (height - VALUE_PADDING * 2.0).max(0.0);
+    let (min, max) = range;
+    let span = max - min;
+    let t = if span.is_finite() && span > f32::EPSILON && value.is_finite() {
+        ((value - min) / span).clamp(0.0, 1.0)
+    } else {
+        0.5
+    };
+    VALUE_PADDING + (1.0 - t) * usable
+}
+
+/// 轨道行内纵坐标 → 值（[`value_to_y`] 的逆映射，越界夹到值域两端）。
+pub fn y_to_value(y: f32, range: (f32, f32), height: Pixels) -> f32 {
+    let height = if height.as_f32().is_finite() {
+        height.as_f32().max(0.0)
+    } else {
+        0.0
+    };
+    let usable = (height - VALUE_PADDING * 2.0).max(0.0);
+    let (min, max) = range;
+    let t = if usable > f32::EPSILON && y.is_finite() {
+        (1.0 - (y - VALUE_PADDING) / usable).clamp(0.0, 1.0)
+    } else {
+        0.5
+    };
+    min + (max - min) * t
+}
+
+/// 采样一条轨道的值曲线，返回轨道行内局部坐标（`x` 已含缩放与滚动）。
+///
+/// 逐段按 [`CURVE_SAMPLE_SPACING`] 采样，段尾补一个 `to.time` 处的点：`Hold`
+/// 因此得到一条竖直跳变，而不是一段斜坡；采样总量受 [`MAX_CURVE_SAMPLES`] 限制。
+pub fn curve_points(
+    track: &Track,
+    range: (f32, f32),
+    px_per_second: f32,
+    scroll: f32,
+    height: Pixels,
+) -> Vec<Point<Pixels>> {
+    let Some(first) = track.keyframes.first().copied() else {
+        return Vec::new();
+    };
+    if track.keyframes.len() < 2 || !px_per_second.is_finite() || px_per_second <= 0.0 {
+        return vec![point(
+            px(time_to_x(first.time, px_per_second, scroll)),
+            px(value_to_y(first.value, range, height)),
+        )];
+    }
+    // 每段的采样步数（按像素间距折算），再按总量上限等比缩减。
+    let mut steps: Vec<usize> = track
+        .keyframes
+        .windows(2)
+        .map(|pair| {
+            let span = (pair[1].time - pair[0].time).max(0.0) * px_per_second;
+            ((span / CURVE_SAMPLE_SPACING).ceil() as usize).clamp(1, MAX_CURVE_SAMPLES)
+        })
+        .collect();
+    let total: usize = steps.iter().sum();
+    if total > MAX_CURVE_SAMPLES {
+        let factor = MAX_CURVE_SAMPLES as f32 / total as f32;
+        for step in &mut steps {
+            *step = ((*step as f32 * factor).ceil() as usize).max(1);
+        }
+    }
+    let mut points = Vec::with_capacity(total + 1);
+    for (pair, steps) in track.keyframes.windows(2).zip(steps) {
+        let (from, to) = (pair[0], pair[1]);
+        let span = to.time - from.time;
+        for step in 0..steps {
+            // 末个采样点正好落在段尾：`Hold` 在 `to.time` 处先保持前值，
+            // 再由下面补的端点跳到新值，形成竖直跳变。
+            let progress = if steps > 1 {
+                step as f32 / (steps - 1) as f32
+            } else {
+                1.0
+            };
+            let time = from.time + span * progress;
+            let value = from.value + (to.value - from.value) * track.interpolation.ease(progress);
+            points.push(point(
+                px(time_to_x(time, px_per_second, scroll)),
+                px(value_to_y(value, range, height)),
+            ));
+        }
+    }
+    points.push(point(
+        px(time_to_x(
+            track.keyframes.last().map_or(first.time, |kf| kf.time),
+            px_per_second,
+            scroll,
+        )),
+        px(value_to_y(
+            track.keyframes.last().map_or(first.value, |kf| kf.value),
+            range,
+            height,
+        )),
+    ));
+    points
+}
+
+/// 把采样点连成一条圆头折线路径（点不足 2 个时返回 `None`）。
+fn polyline_path(points: &[Point<Pixels>]) -> Option<Path<Pixels>> {
+    if points.len() < 2 {
+        return None;
+    }
+    let options = StrokeOptions::default()
+        .with_line_width(CURVE_STROKE_WIDTH.0)
+        .with_line_cap(LineCap::Round)
+        .with_line_join(LineJoin::Round);
+    let mut builder =
+        PathBuilder::stroke(CURVE_STROKE_WIDTH).with_style(PathStyle::Stroke(options));
+    builder.move_to(points[0]);
+    for point in &points[1..] {
+        builder.line_to(*point);
+    }
+    builder.build().ok()
+}
+
 /// 命中测试结果（坐标为时间线局部像素）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TimelineHit {
@@ -479,7 +659,7 @@ pub enum TimelineEvent {
         /// 选中的关键帧。
         keyframe: Option<usize>,
     },
-    /// 关键帧被拖到新时间（`index` 为移动后的下标）。
+    /// 关键帧被拖动（时间与值都可能变化；`index` 为移动后的下标）。
     KeyframeMoved {
         /// 轨道下标。
         track: usize,
@@ -487,6 +667,8 @@ pub enum TimelineEvent {
         index: usize,
         /// 新时间（秒，已吸附）。
         time: f32,
+        /// 新值（纵向拖拽后的值）。
+        value: f32,
     },
     /// 请求在（轨道, 时间）处新增关键帧（双击空白处）。
     KeyframeRequested {
@@ -546,6 +728,10 @@ pub struct TimelineState {
     scrubbing: bool,
     /// 正在拖拽的关键帧（轨道, 关键帧）。
     dragging: Option<(usize, usize)>,
+    /// 拖拽关键帧时冻结的值域（避免值域随拖动缩放抖动）。
+    drag_range: (f32, f32),
+    /// 按下时指针值 → 关键帧值的偏移（保证抓取不跳变）。
+    drag_value_offset: f32,
     /// 最近一次预绘制的根元素边界。
     bounds: Bounds<Pixels>,
     /// 焦点句柄。
@@ -568,6 +754,8 @@ impl TimelineState {
             selected_keyframe: None,
             scrubbing: false,
             dragging: None,
+            drag_range: (0.0, 1.0),
+            drag_value_offset: 0.0,
             bounds: Bounds::default(),
             focus_handle: cx.focus_handle(),
         }
@@ -939,6 +1127,28 @@ impl TimelineState {
         }
     }
 
+    /// 轨道某一行内的局部纵坐标（去掉标尺高度、加上纵向滚动、减去行顶）。
+    fn row_y(&self, track: usize, local: Point<Pixels>) -> f32 {
+        (local.y - RULER_HEIGHT).as_f32() + self.vscroll - self.track_top(track)
+    }
+
+    /// 轨道绘制用值域：正在拖拽该轨道时用冻结值域，否则按当前关键帧计算。
+    fn range_for(&self, index: usize, track: &Track) -> (f32, f32) {
+        if self
+            .dragging
+            .is_some_and(|(drag_track, _)| drag_track == index)
+        {
+            self.drag_range
+        } else {
+            track.value_range()
+        }
+    }
+
+    /// 轨道行内纵坐标 → 关键帧值（按冻结值域与抓取偏移换算）。
+    fn value_at_y(&self, y: f32) -> f32 {
+        y_to_value(y, self.drag_range, TRACK_HEIGHT) + self.drag_value_offset
+    }
+
     /// 指针按下：标尺开始拖拽播放头；轨道上选中 / 拖拽关键帧；双击空白请求新增。
     fn on_pointer_down(
         &mut self,
@@ -960,6 +1170,17 @@ impl TimelineState {
             }
             TimelineHit::Keyframe { track, index } => {
                 self.select_keyframe(track, index, cx);
+                // 冻结值域并记录抓取偏移：纵向拖拽时曲线跟着指针走、不因值域缩放而抖动。
+                if let Some(model) = self.timeline.track(track) {
+                    self.drag_range = model.value_range();
+                    let pointer_value =
+                        y_to_value(self.row_y(track, local), self.drag_range, TRACK_HEIGHT);
+                    let value = model
+                        .keyframes
+                        .get(index)
+                        .map_or(pointer_value, |keyframe| keyframe.value);
+                    self.drag_value_offset = value - pointer_value;
+                }
                 self.dragging = Some((track, index));
             }
             TimelineHit::Track { track } => {
@@ -987,7 +1208,7 @@ impl TimelineState {
         }
     }
 
-    /// 指针移动：拖拽播放头 / 拖拽关键帧。
+    /// 指针移动：拖拽播放头 / 拖拽关键帧（水平改时间、垂直改值）。
     fn on_pointer_move(&mut self, local: Point<Pixels>, cx: &mut Context<Self>) {
         let x = (local.x - LABEL_WIDTH).as_f32();
         if self.scrubbing {
@@ -995,29 +1216,38 @@ impl TimelineState {
             self.set_time(time, cx);
         } else if let Some((track, index)) = self.dragging {
             let time = self.snapped(x_to_time(x, self.px_per_second, self.scroll).max(0.0));
-            let moved = self
-                .timeline
-                .track_mut(track)
-                .and_then(|t| t.move_keyframe(index, time));
-            if let Some(new_index) = moved {
-                self.selected_track = Some(track);
-                self.selected_keyframe = Some(new_index);
-                self.dragging = Some((track, new_index));
-                cx.emit(TimelineEvent::KeyframeMoved {
-                    track,
-                    index: new_index,
-                    time,
-                });
-                cx.notify();
-            }
+            let value = self.value_at_y(self.row_y(track, local));
+            let Some(model) = self.timeline.track_mut(track) else {
+                return;
+            };
+            let Some(new_index) = model.move_keyframe(index, time) else {
+                return;
+            };
+            model.set_keyframe_value(new_index, value);
+            let value = model
+                .keyframes
+                .get(new_index)
+                .map_or(value, |keyframe| keyframe.value);
+            self.selected_track = Some(track);
+            self.selected_keyframe = Some(new_index);
+            self.dragging = Some((track, new_index));
+            cx.emit(TimelineEvent::KeyframeMoved {
+                track,
+                index: new_index,
+                time,
+                value,
+            });
+            cx.notify();
         }
     }
 
-    /// 指针释放：结束拖拽。
+    /// 指针释放：结束拖拽并清掉冻结的值域。
     fn on_pointer_up(&mut self, cx: &mut Context<Self>) {
         if self.scrubbing || self.dragging.is_some() {
             self.scrubbing = false;
             self.dragging = None;
+            self.drag_range = (0.0, 1.0);
+            self.drag_value_offset = 0.0;
             cx.notify();
         }
     }
@@ -1152,15 +1382,21 @@ impl TimelineState {
 
         let mut markers: Vec<AnyElement> = Vec::with_capacity(track.len());
         if !collapsed {
+            let range = self.range_for(index, track);
+            let max_top = (TRACK_HEIGHT.as_f32() - KEYFRAME_SIZE.as_f32()).max(0.0);
             for (kf_index, keyframe) in track.keyframes.iter().enumerate() {
                 let x = time_to_x(keyframe.time, self.px_per_second, self.scroll);
                 let is_selected =
                     self.selected_track == Some(index) && self.selected_keyframe == Some(kf_index);
+                // 方块压在值曲线上（而不是行中间），纵向拖拽时能直接看到值变化。
+                let top = (value_to_y(keyframe.value, range, TRACK_HEIGHT)
+                    - KEYFRAME_SIZE.as_f32() * 0.5)
+                    .clamp(0.0, max_top);
                 markers.push(
                     div()
                         .absolute()
                         .left(px(x - KEYFRAME_SIZE.as_f32() * 0.5))
-                        .top(px((TRACK_HEIGHT.as_f32() - KEYFRAME_SIZE.as_f32()) * 0.5))
+                        .top(px(top))
                         .w(KEYFRAME_SIZE)
                         .h(KEYFRAME_SIZE)
                         .rounded_sm()
@@ -1175,6 +1411,28 @@ impl TimelineState {
                 );
             }
         }
+
+        // 值曲线：按插值方式采样成折线，画在关键帧方块下面。
+        let curve = (!collapsed && track.len() >= 2).then(|| {
+            let points = curve_points(
+                track,
+                self.range_for(index, track),
+                self.px_per_second,
+                self.scroll,
+                TRACK_HEIGHT,
+            );
+            canvas(
+                move |_bounds, _window, _cx| polyline_path(&points),
+                move |_bounds, path, window, _cx| {
+                    if let Some(path) = path {
+                        window.paint_path(path, accent.opacity(0.8));
+                    }
+                },
+            )
+            .absolute()
+            .size_full()
+            .into_any_element()
+        });
 
         div()
             .absolute()
@@ -1200,6 +1458,7 @@ impl TimelineState {
                         .child("双击添加关键帧"),
                 )
             })
+            .children(curve)
             .children(markers)
             .into_any_element()
     }
@@ -1403,9 +1662,9 @@ mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
     use super::{
         COLLAPSED_TRACK_HEIGHT, DEFAULT_PX_PER_SECOND, Interpolation, Keyframe, MAX_PX_PER_SECOND,
-        MIN_PX_PER_SECOND, TRACK_HEIGHT, Timeline, TimelineEvent, TimelineHit, TimelineState,
-        TimelineView, Track, clamp_px_per_second, format_time, ruler_step, snap_time, time_to_x,
-        x_to_time,
+        MIN_PX_PER_SECOND, RULER_HEIGHT, TRACK_HEIGHT, Timeline, TimelineEvent, TimelineHit,
+        TimelineState, TimelineView, Track, VALUE_PADDING, clamp_px_per_second, curve_points,
+        format_time, ruler_step, snap_time, time_to_x, value_to_y, x_to_time, y_to_value,
     };
     use crate::{
         AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement as _, Render,
@@ -1557,6 +1816,92 @@ mod tests {
         assert_eq!(track.len(), 2);
     }
 
+    /// 关键帧改值（不改时间）、值域留白：空轨道 / 单值 / 越界。
+    #[test]
+    fn keyframe_value_edit_and_range() {
+        let mut track =
+            Track::with_keyframes("t", vec![Keyframe::new(0.0, 0.0), Keyframe::new(1.0, 10.0)]);
+        // 值域上下各留 10%。
+        assert_eq!(track.value_range(), (-1.0, 11.0));
+
+        assert!(track.set_keyframe_value(1, 4.0));
+        assert_eq!(track.keyframes[1].value, 4.0);
+        // 时间不变，排序也不受影响。
+        assert_eq!(track.keyframes[1].time, 1.0);
+        assert_eq!(track.value_range(), (-0.4, 4.4));
+
+        // 值相同不算变化；越界下标与非有限值被忽略。
+        assert!(!track.set_keyframe_value(1, 4.0));
+        assert!(!track.set_keyframe_value(9, 1.0));
+        assert!(!track.set_keyframe_value(1, f32::NAN));
+        assert_eq!(track.keyframes[1].value, 4.0);
+
+        // 所有值相同：上下各留 0.5，曲线落在行中间。
+        let flat =
+            Track::with_keyframes("f", vec![Keyframe::new(0.0, 2.0), Keyframe::new(1.0, 2.0)]);
+        assert_eq!(flat.value_range(), (1.5, 2.5));
+        // 空轨道退化为 (0, 1)。
+        assert_eq!(Track::new("e").value_range(), (0.0, 1.0));
+    }
+
+    /// 值 ↔ 行内纵坐标：留白、中点、往返一致与越界夹取。
+    #[test]
+    fn value_geometry_roundtrips() {
+        let range = (-1.0, 11.0);
+        let height = TRACK_HEIGHT;
+
+        // 值域两端正好落在上下留白处。
+        assert!((value_to_y(11.0, range, height) - VALUE_PADDING).abs() < 1e-4);
+        assert!((value_to_y(-1.0, range, height) - (24.0 - VALUE_PADDING)).abs() < 1e-4);
+        // 中间值落在可用高度中点（3 + 18/2 = 12）。
+        let mid = value_to_y(5.0, range, height);
+        assert!((mid - 12.0).abs() < 1e-4);
+        assert!((y_to_value(mid, range, height) - 5.0).abs() < 1e-4);
+
+        // 越界值 / 越界坐标都夹到两端。
+        assert_eq!(value_to_y(100.0, range, height), VALUE_PADDING);
+        assert_eq!(y_to_value(-100.0, range, height), 11.0);
+        assert_eq!(y_to_value(100.0, range, height), -1.0);
+    }
+
+    /// 值曲线采样：首尾点对齐关键帧，单帧 / 空轨道退化，`Hold` 有竖直跳变。
+    #[test]
+    fn curve_samples_follow_interpolation() {
+        let track =
+            Track::with_keyframes("t", vec![Keyframe::new(0.0, 0.0), Keyframe::new(1.0, 10.0)]);
+        let range = track.value_range();
+        let points = curve_points(&track, range, 80.0, 0.0, TRACK_HEIGHT);
+        assert!(points.len() > 2);
+        assert!((points[0].x.as_f32()).abs() < 1e-4);
+        assert!((points[0].y.as_f32() - value_to_y(0.0, range, TRACK_HEIGHT)).abs() < 1e-4);
+        let last = points[points.len() - 1];
+        assert!((last.x.as_f32() - 80.0).abs() < 1e-4);
+        assert!((last.y.as_f32() - value_to_y(10.0, range, TRACK_HEIGHT)).abs() < 1e-4);
+
+        // 单关键帧只有一个点；空轨道没有点。
+        let single = Track::with_keyframes("s", vec![Keyframe::new(0.5, 1.0)]);
+        assert_eq!(
+            curve_points(&single, single.value_range(), 80.0, 0.0, TRACK_HEIGHT).len(),
+            1
+        );
+        assert!(curve_points(&Track::new("e"), (0.0, 1.0), 80.0, 0.0, TRACK_HEIGHT).is_empty());
+
+        // Hold：段尾竖直跳变（两点同 x、不同 y），跳变前保持首值。
+        let hold =
+            Track::with_keyframes("h", vec![Keyframe::new(0.0, 0.0), Keyframe::new(1.0, 10.0)])
+                .with_interpolation(Interpolation::Hold);
+        let range = hold.value_range();
+        let points = curve_points(&hold, range, 80.0, 0.0, TRACK_HEIGHT);
+        let jump = points.windows(2).find(|pair| {
+            (pair[0].x.as_f32() - pair[1].x.as_f32()).abs() < 1e-4
+                && (pair[0].y.as_f32() - pair[1].y.as_f32()).abs() > 1.0
+        });
+        assert!(jump.is_some(), "Hold 曲线应有竖直跳变");
+        for point in &points[..points.len() - 1] {
+            assert!((point.y.as_f32() - value_to_y(0.0, range, TRACK_HEIGHT)).abs() < 1e-3);
+        }
+    }
+
     /// 时间 ↔ 像素换算、吸附、缩放夹取与标尺步长。
     #[test]
     fn time_mapping_and_helpers() {
@@ -1701,6 +2046,68 @@ mod tests {
                 TimelineEvent::KeyframeRemoved { track: 1, index: 1 }
             ))
         );
+    }
+
+    /// 纵向拖拽关键帧改值：按下不跳变、时间同步吸附、释放清空拖拽态。
+    #[rgpui::test]
+    fn vertical_drag_updates_keyframe_value(cx: &mut crate::TestAppContext) {
+        let (state, events, mut cx) = setup(cx);
+
+        let (before, grabbed, moved_value, moved_time) = cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(600.0), px(200.0)));
+                let track = state.timeline().track(0).expect("轨道存在");
+                let range = track.value_range();
+                let row_top = RULER_HEIGHT.as_f32();
+                let keyframe_y = row_top + value_to_y(200.0, range, TRACK_HEIGHT);
+                // 在关键帧中心下方 2px 按下（命中只看时间），抓取偏移应被记住。
+                let grab = point(px(256.0), px(keyframe_y + 2.0));
+                state.on_pointer_down(grab, 1, window, cx);
+                let before = state.timeline().track(0).expect("轨道存在").keyframes[1].value;
+                // 指针不动（仍在按下点）：值应原样保持，不因抓取偏移跳变。
+                state.on_pointer_move(grab, cx);
+                let grabbed = state.timeline().track(0).expect("轨道存在").keyframes[1].value;
+                state.on_pointer_up(cx);
+                // 再抓住关键帧中心（偏移为 0），拖到行底。
+                state.on_pointer_down(point(px(256.0), px(keyframe_y)), 1, window, cx);
+                state.on_pointer_move(
+                    point(
+                        px(96.0 + 2.5 * DEFAULT_PX_PER_SECOND),
+                        px(row_top + TRACK_HEIGHT.as_f32() - VALUE_PADDING),
+                    ),
+                    cx,
+                );
+                let track = state.timeline().track(0).expect("轨道存在");
+                (
+                    before,
+                    grabbed,
+                    track.keyframes[1].value,
+                    track.keyframes[1].time,
+                )
+            })
+        });
+
+        assert_eq!(before, 200.0);
+        assert!(
+            (grabbed - 200.0).abs() < 1e-3,
+            "抓取偏移应抵消，实际 {grabbed}"
+        );
+        // 第一轨值域 0..200 → 冻结为 (-20, 220)，拖到底得到 -20。
+        assert!(
+            (moved_value + 20.0).abs() < 1e-3,
+            "拖到底得到 {moved_value}"
+        );
+        assert!((moved_time - 2.5).abs() < 1e-4);
+
+        let events = events.borrow();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            TimelineEvent::KeyframeMoved { index: 1, time, value, .. }
+                if (*time - 2.5).abs() < 1e-4 && (*value - moved_value).abs() < 1e-4
+        )));
+
+        cx.update(|_, cx| state.update(cx, |state, cx| state.on_pointer_up(cx)));
+        assert!(state.read_with(cx, |state, _| state.dragging.is_none()));
     }
 
     /// 命中测试按局部坐标区分标尺 / 关键帧 / 轨道空白 / 标签列。

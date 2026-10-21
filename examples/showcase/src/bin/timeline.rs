@@ -1,10 +1,10 @@
 //! 动画时间线示例
 //!
-//! 演示 `anim_timeline`：多轨关键帧时间线（标尺刻度 + 关键帧方块 + 播放头）。
-//! 拖拽标尺移动播放头，拖拽关键帧改时间，双击轨道空白处新增关键帧（值取当前插值），
-//! `Delete` 删除选中关键帧，`Ctrl/Cmd + 滚轮` 缩放、`Shift + 滚轮` 纵向滚动轨道、滚轮平移
-//! 时间轴，点轨道名前的箭头折叠 / 展开轨道。三轨的值实时驱动右侧预览方块（位置 / 缩放 /
-//! 透明度），播放头播放时按 `1/60s` 步进推进。
+//! 演示 `anim_timeline`：多轨关键帧时间线（标尺刻度 + 值曲线 + 关键帧方块 + 播放头）。
+//! 拖拽标尺移动播放头，拖拽关键帧改时间、上下拖拽改值，双击轨道空白处新增关键帧
+//! （值取当前插值），`Delete` 删除选中关键帧，`Ctrl/Cmd + 滚轮` 缩放、
+//! `Shift + 滚轮` 纵向滚动轨道、滚轮平移时间轴，点轨道名前的箭头折叠 / 展开轨道。
+//! 三轨的值实时驱动右侧预览方块（位置 / 缩放 / 透明度），播放头播放时按 `1/60s` 步进推进。
 //!
 //! 运行：`cargo run -p showcase --bin timeline`
 
@@ -93,8 +93,16 @@ impl TimelineApp {
                     });
                     this.status = format!("在第 {:.2} 秒新增关键帧", time).into();
                 }
-                TimelineEvent::KeyframeMoved { track, time, .. } => {
-                    this.status = format!("轨道 {} 的关键帧移到 {:.2} 秒", track + 1, time).into();
+                TimelineEvent::KeyframeMoved {
+                    track, time, value, ..
+                } => {
+                    this.status = format!(
+                        "轨道 {} 的关键帧 → {:.2} 秒 / 值 {:.2}",
+                        track + 1,
+                        time,
+                        value
+                    )
+                    .into();
                 }
                 TimelineEvent::KeyframeRemoved { track, .. } => {
                     this.status = format!("删除轨道 {} 的一个关键帧", track + 1).into();
@@ -121,7 +129,7 @@ impl TimelineApp {
         Self {
             state,
             playing: false,
-            status: "拖拽标尺移动播放头 · 拖拽关键帧改时间 · 双击轨道空白新增".into(),
+            status: "拖拽标尺移动播放头 · 拖拽关键帧改时间 / 改值 · 双击轨道空白新增".into(),
         }
     }
 
@@ -370,7 +378,7 @@ impl Render for TimelineApp {
                             ),
                     )
                     .child(div().text_xs().child(if selected {
-                        "已选中关键帧：Delete 删除，拖拽改时间"
+                        "已选中关键帧：Delete 删除，水平拖拽改时间、上下拖拽改值"
                     } else {
                         "未选中关键帧"
                     })),
