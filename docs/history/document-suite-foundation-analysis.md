@@ -1731,3 +1731,18 @@ showcase 与 story 的富文本页都加了「查找并高亮『加粗』」按�
 - `cargo test -p rgpui --lib`：821 passed + 1 ignored（新增用例覆盖导出与往返；查找高亮为
   渲染态，由示例页展示）。
 
+## 五十八、增补：Ink 笔迹的曲线平滑与压感整形
+
+ink 模块的两个暂缓项落地（模块文档同步更新）：
+
+- `catmull_rom_path(points, width)`：Catmull-Rom 曲线平滑（三次贝塞尔拟合，控制点
+  `p1 + (p2 - p0) / 6`、`p2 - (p3 - p1) / 6`，两端复制端点）。与既有
+  `stroke_path` 的「中点二次贝塞尔近似」相比，曲线**穿过全部采样点**，笔迹更贴合。
+- `smooth_pressure(pressure, gamma)`：压感曲线整形（幂曲线；`gamma < 1` 让轻压区更饱满、
+  `gamma > 1` 让重压区更突出；非有限值按满压、非法 gamma 退化为原值）。
+
+### 验证
+
+- `cargo test -p rgpui --lib ink`：新增 2 项（Catmull-Rom 路径覆盖全部采样点；压感曲线
+  整形与越界处理）。
+
