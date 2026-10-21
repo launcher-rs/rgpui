@@ -30,6 +30,10 @@ pub fn stories() -> Vec<StoryItem> {
             build: |_, cx| cx.new(|cx| MarkdownMermaidStory::new(cx)).into(),
         },
         StoryItem {
+            title: "多语言代码高亮",
+            build: |_, cx| cx.new(|cx| MarkdownCodeHighlightStory::new(cx)).into(),
+        },
+        StoryItem {
             title: "综合文档",
             build: |_, cx| cx.new(|cx| MarkdownFullStory::new(cx)).into(),
         },
@@ -363,6 +367,82 @@ flowchart TD
             .gap(px(12.0))
             .p(px(16.0))
             .child(section_title("Mermaid 图表"))
+            .child(
+                v_flex()
+                    .p(px(16.0))
+                    .rounded(px(8.0))
+                    .bg(cx.theme().background)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .child(Markdown::new(source)),
+            )
+    }
+}
+
+/// 多语言代码高亮示例：按围栏信息串选择语言。
+struct MarkdownCodeHighlightStory;
+
+impl MarkdownCodeHighlightStory {
+    fn new(_cx: &mut Context<Self>) -> Self {
+        Self
+    }
+}
+
+impl rgpui::Render for MarkdownCodeHighlightStory {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let source = r#"# 多语言代码高亮
+
+代码块的语言由围栏信息串决定，命中已注册的语言包时使用真实语法高亮，
+否则回退到简易分词高亮。
+
+## Rust
+
+```rust
+pub fn add(a: i32, b: i32) -> i32 {
+    // 注释
+    let sum = a + b;
+    sum
+}
+```
+
+## Python
+
+```python
+def add(a, b):
+    # 注释
+    return a + b
+```
+
+## JavaScript
+
+```javascript
+function add(a, b) {
+  // 注释
+  return a + b;
+}
+```
+
+## JSON
+
+```json
+{
+  "name": "rgpui",
+  "version": 1
+}
+```
+
+## 未注册语言
+
+```text
+plain text stays plain
+```
+"#;
+
+        v_flex()
+            .id("markdown-code-highlight-story")
+            .gap(px(12.0))
+            .p(px(16.0))
+            .child(section_title("多语言代码高亮"))
             .child(
                 v_flex()
                     .p(px(16.0))

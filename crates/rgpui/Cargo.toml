@@ -138,6 +138,76 @@ tree-sitter-toml = [
     "tree-sitter",
     "dep:tree-sitter-toml-ng",
 ]
+# JavaScript 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-javascript = [
+    "tree-sitter",
+    "dep:tree-sitter-javascript",
+]
+# TypeScript / TSX 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-typescript = [
+    "tree-sitter",
+    "dep:tree-sitter-typescript",
+]
+# Python 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-python = [
+    "tree-sitter",
+    "dep:tree-sitter-python",
+]
+# Bash 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-bash = [
+    "tree-sitter",
+    "dep:tree-sitter-bash",
+]
+# Go 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-go = [
+    "tree-sitter",
+    "dep:tree-sitter-go",
+]
+# C 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-c = [
+    "tree-sitter",
+    "dep:tree-sitter-c",
+]
+# C++ 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-cpp = [
+    "tree-sitter",
+    "dep:tree-sitter-cpp",
+]
+# C# 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-c-sharp = [
+    "tree-sitter",
+    "dep:tree-sitter-c-sharp",
+]
+# Java 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-java = [
+    "tree-sitter",
+    "dep:tree-sitter-java",
+]
+# Ruby 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-ruby = [
+    "tree-sitter",
+    "dep:tree-sitter-ruby",
+]
+# PHP 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-php = [
+    "tree-sitter",
+    "dep:tree-sitter-php",
+]
+# CSS 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-css = [
+    "tree-sitter",
+    "dep:tree-sitter-css",
+]
+# HTML 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-html = [
+    "tree-sitter",
+    "dep:tree-sitter-html",
+]
+# YAML 语言包（蕴含 tree-sitter 地基）。
+tree-sitter-yaml = [
+    "tree-sitter",
+    "dep:tree-sitter-yaml",
+]
 # WebView 组件：基于 wry 的网页视图，用于嵌入网页内容。
 # 默认关闭以保持核心精简，需要 WebView 的应用可显式开启。
 webview = ["dep:wry"]
@@ -245,6 +315,20 @@ tree-sitter-highlight = { version = "0.25", optional = true }
 tree-sitter-rust = { version = "0.24", optional = true }
 tree-sitter-json = { version = "0.24", optional = true }
 tree-sitter-toml-ng = { version = "0.7", optional = true }
+tree-sitter-javascript = { version = "0.25", optional = true }
+tree-sitter-typescript = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
+tree-sitter-bash = { version = "0.25", optional = true }
+tree-sitter-go = { version = "0.25", optional = true }
+tree-sitter-c = { version = "0.24", optional = true }
+tree-sitter-cpp = { version = "0.23", optional = true }
+tree-sitter-c-sharp = { version = "0.23", optional = true }
+tree-sitter-java = { version = "0.23", optional = true }
+tree-sitter-ruby = { version = "0.23", optional = true }
+tree-sitter-php = { version = "0.24", optional = true }
+tree-sitter-css = { version = "0.25", optional = true }
+tree-sitter-html = { version = "0.23", optional = true }
+tree-sitter-yaml = { version = "0.7", optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.4.3", features = ["wasm_js"] }

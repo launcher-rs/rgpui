@@ -1199,4 +1199,66 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 - tree-sitter 15 语言高亮包并入核心 `tree_sitter.rs` / `highlight`。
 - 块 ↔ 源码偏移映射（source map）：需在 `RichTextDoc` 模型上重写，属规划项。
 
+## 三十六、增补：tree-sitter 多语言包 + Markdown 代码块真实高亮
+
+承接 §三十四 调研表的 P2 项：把 rumark 的多语言高亮能力并入 rgpui 核心的
+`highlight` 扩展点（而不是移植它那套自建的高亮器）。
+
+### 核心：14 个语言包（各一个 feature）
+
+核心 `highlight` 模块早就有扩展点（`register_highlighter` + `highlight_for` + 按语言
+构造器），本轮按「三步法」补齐语言包：
+
+| feature | 语言 | grammar crate | 备注 |
+|---|---|---|---|
+| `tree-sitter` | Rust | `tree-sitter-rust` | 既有地基 |
+| `tree-sitter-json` | JSON | `tree-sitter-json` | 既有 |
+| `tree-sitter-toml` | TOML | `tree-sitter-toml-ng` | 既有 |
+| `tree-sitter-javascript` | JavaScript | `tree-sitter-javascript` | 含注入 / 局部查询 |
+| `tree-sitter-typescript` | TypeScript / TSX | `tree-sitter-typescript` | 两种语言同一查询 |
+| `tree-sitter-python` | Python | `tree-sitter-python` | |
+| `tree-sitter-bash` | Bash | `tree-sitter-bash` | |
+| `tree-sitter-go` | Go | `tree-sitter-go` | |
+| `tree-sitter-c` | C | `tree-sitter-c` | 查询名为单数 `HIGHLIGHT_QUERY` |
+| `tree-sitter-cpp` | C++ | `tree-sitter-cpp` | 内置查询较稀疏（仅 C++ 专有词） |
+| `tree-sitter-c-sharp` | C# | `tree-sitter-c-sharp` | 发布包未含注入 / 局部查询 |
+| `tree-sitter-java` | Java | `tree-sitter-java` | |
+| `tree-sitter-ruby` | Ruby | `tree-sitter-ruby` | |
+| `tree-sitter-php` | PHP | `tree-sitter-php` | |
+| `tree-sitter-css` | CSS | `tree-sitter-css` | 无符号（大纲为空） |
+| `tree-sitter-html` | HTML | `tree-sitter-html` | 含注入查询 |
+| `tree-sitter-yaml` | YAML | `tree-sitter-yaml` | 无符号 |
+
+要点：
+
+- **查询常量命名不一致**：各 grammar crate 暴露的常量名不统一（`HIGHLIGHT_QUERY` /
+  `HIGHLIGHTS_QUERY`），且部分 crate 未发布查询文件（`tree-sitter-md` 无 `queries/`，
+  因此本轮不提供 Markdown 语言包）。
+- **符号大纲复用一套映射**：各语言节点名差异大，用统一的
+  `common_symbol_kind` / `common_symbol_name`（按 `name` 字段取名）覆盖
+  函数 / 类 / 结构体 / 枚举 / 接口 / 模块 / 常量等；CSS / HTML / YAML 无符号大纲。
+- **捕获名改写**：主题名表（`HIGHLIGHT_NAMES`）按「点分部件」匹配（`string.escape`
+  能命中 `string.escape.special`），但裸名命中不了多段名；新增 `rewrite_captures`
+  把各语言查询里的非标准捕获名映射到名表（`escape` → `string.escape`、
+  CSS at-rule → `keyword` 等）。改写器是**状态机**：字符串字面量、字符类
+  `[…]`、注释里的 `@` 不改写（CSS 的 `"@media"` 不会被误伤）。
+- **别名**：`highlighter_for` 接受常见别名（`js` / `ts` / `py` / `sh` / `yml` / `c++` 等）。
+
+### rgpui-markdown：代码块接入真实高亮
+
+- 新增 feature `syntax-highlight`（蕴含核心 `tree-sitter` 地基 + `ropey`）。
+- `CodeBlock` 按围栏语言查核心高亮器：命中则按字节区间把高亮运行裁剪到各行渲染
+  （颜色 / 字重 / 斜体 / 背景），未命中回退原有的简易分词高亮。
+- **缓存**：高亮结果按「语言 + 代码内容哈希 + 主题语法色哈希」缓存（上限 32 条），
+  避免每帧重解析；主题切换自动失效。
+- `rgpui_story` 新增「多语言代码高亮」页（Rust / Python / JavaScript / JSON / 未注册
+  语言各一段）。
+
+### 验证
+
+- `cargo check -p rgpui --features <14 个语言包>` 通过；`cargo test -p rgpui --lib
+  highlight`：30 passed（14 个语言包各 1 项 + 捕获名改写 1 项 + 既有 Rust/JSON 用例）。
+- `cargo check -p rgpui-markdown` 四种 feature 组合通过；`cargo check --workspace` 通过；
+  `cargo fmt --all` 无变更。
+
 

@@ -1,7 +1,11 @@
-//! tree-sitter 语法高亮/折叠后端（Rust/JSON/TOML，各独立 feature 门）。
+//! tree-sitter 语法高亮/折叠后端（Rust/JSON/TOML + 多语言包，各独立 feature 门）。
 //!
 //! 编译门控：`--features tree-sitter`（Rust，地基，默认关闭），
-//! `--features tree-sitter-json` / `tree-sitter-toml`（各蕴含地基）；
+//! `--features tree-sitter-json` / `tree-sitter-toml` / `tree-sitter-javascript` /
+//! `tree-sitter-typescript` / `tree-sitter-python` / `tree-sitter-bash` /
+//! `tree-sitter-go` / `tree-sitter-c` / `tree-sitter-cpp` / `tree-sitter-c-sharp` /
+//! `tree-sitter-java` / `tree-sitter-ruby` / `tree-sitter-php` / `tree-sitter-css` /
+//! `tree-sitter-html` / `tree-sitter-yaml`（各蕴含地基）；
 //! wasm 目标下不编译（tree-sitter 含 C 运行时，见 `crates/rgpui/Cargo.toml` 说明）。
 //! 策略为全量重解析（tree-sitter 增量足够快，典型文件亚毫秒级）；
 //! 超大文件如有卡顿，后续再接 `TextEdit` 做增量。
@@ -43,6 +47,131 @@ const JSON_FOLDABLE_KINDS: [&str; 2] = ["object", "array"];
 #[cfg(feature = "tree-sitter-toml")]
 const TOML_FOLDABLE_KINDS: [&str; 3] = ["table", "table_array_element", "array"];
 
+/// 可折叠的 JavaScript 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-javascript")]
+const JAVASCRIPT_FOLDABLE_KINDS: [&str; 8] = [
+    "statement_block",
+    "object",
+    "array",
+    "class_body",
+    "switch_body",
+    "arguments",
+    "formal_parameters",
+    "template_substitution",
+];
+
+/// 可折叠的 TypeScript 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-typescript")]
+const TYPESCRIPT_FOLDABLE_KINDS: [&str; 10] = [
+    "statement_block",
+    "object",
+    "array",
+    "class_body",
+    "interface_body",
+    "enum_body",
+    "switch_body",
+    "arguments",
+    "formal_parameters",
+    "type_parameters",
+];
+
+/// 可折叠的 Python 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-python")]
+const PYTHON_FOLDABLE_KINDS: [&str; 4] =
+    ["block", "parameters", "argument_list", "parenthesized_list"];
+
+/// 可折叠的 Bash 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-bash")]
+const BASH_FOLDABLE_KINDS: [&str; 2] = ["compound_statement", "subshell"];
+
+/// 可折叠的 Go 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-go")]
+const GO_FOLDABLE_KINDS: [&str; 5] = [
+    "block",
+    "struct_type",
+    "interface_type",
+    "parameter_list",
+    "argument_list",
+];
+
+/// 可折叠的 C 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-c")]
+const C_FOLDABLE_KINDS: [&str; 5] = [
+    "compound_statement",
+    "struct_specifier",
+    "union_specifier",
+    "enum_specifier",
+    "declaration_list",
+];
+
+/// 可折叠的 C++ 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-cpp")]
+const CPP_FOLDABLE_KINDS: [&str; 6] = [
+    "compound_statement",
+    "class_specifier",
+    "namespace_definition",
+    "template_declaration",
+    "field_declaration_list",
+    "argument_list",
+];
+
+/// 可折叠的 C# 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-c-sharp")]
+const C_SHARP_FOLDABLE_KINDS: [&str; 8] = [
+    "block",
+    "class_declaration",
+    "struct_declaration",
+    "interface_declaration",
+    "enum_declaration",
+    "namespace_declaration",
+    "constructor_declaration",
+    "file_scoped_namespace_declaration",
+];
+
+/// 可折叠的 Java 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-java")]
+const JAVA_FOLDABLE_KINDS: [&str; 6] = [
+    "block",
+    "class_body",
+    "interface_body",
+    "enum_body",
+    "constructor_body",
+    "argument_list",
+];
+
+/// 可折叠的 Ruby 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-ruby")]
+const RUBY_FOLDABLE_KINDS: [&str; 6] = [
+    "body_statement",
+    "class",
+    "module",
+    "method",
+    "do_block",
+    "begin",
+];
+
+/// 可折叠的 PHP 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-php")]
+const PHP_FOLDABLE_KINDS: [&str; 5] = [
+    "compound_statement",
+    "class_declaration",
+    "interface_declaration",
+    "trait_declaration",
+    "enum_declaration",
+];
+
+/// 可折叠的 CSS 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-css")]
+const CSS_FOLDABLE_KINDS: [&str; 3] = ["block", "keyframe_block", "media_statement"];
+
+/// 可折叠的 HTML 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-html")]
+const HTML_FOLDABLE_KINDS: [&str; 4] = ["element", "script_element", "style_element", "fragment"];
+
+/// 可折叠的 YAML 语法节点（多行才折叠）。
+#[cfg(feature = "tree-sitter-yaml")]
+const YAML_FOLDABLE_KINDS: [&str; 3] = ["block_mapping", "block_sequence", "block_node"];
+
 /// tree-sitter 高亮器（`Highlighter` trait 实现； per-language 经构造器区分）。
 pub struct TreeSitterHighlighter {
     /// 语言名（`language()` 返回）。
@@ -76,9 +205,9 @@ impl TreeSitterHighlighter {
         let mut config = HighlightConfiguration::new(
             language.clone(),
             name,
-            highlights_query,
-            injections_query,
-            locals_query,
+            &rewrite_captures(highlights_query),
+            &rewrite_captures(injections_query),
+            &rewrite_captures(locals_query),
         )
         .expect("内置查询必须有效");
         config.configure(&HIGHLIGHT_NAMES);
@@ -137,6 +266,230 @@ impl TreeSitterHighlighter {
             &TOML_FOLDABLE_KINDS,
             toml_symbol_kind,
             toml_symbol_name,
+        )
+    }
+
+    /// 创建 JavaScript 高亮器（内置查询随 `tree-sitter-javascript` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-javascript")]
+    pub fn javascript() -> Self {
+        Self::new(
+            "javascript",
+            tree_sitter_javascript::LANGUAGE.into(),
+            tree_sitter_javascript::HIGHLIGHT_QUERY,
+            tree_sitter_javascript::INJECTIONS_QUERY,
+            tree_sitter_javascript::LOCALS_QUERY,
+            &JAVASCRIPT_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 TypeScript 高亮器（内置查询随 `tree-sitter-typescript` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-typescript")]
+    pub fn typescript() -> Self {
+        Self::new(
+            "typescript",
+            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            tree_sitter_typescript::HIGHLIGHTS_QUERY,
+            "",
+            tree_sitter_typescript::LOCALS_QUERY,
+            &TYPESCRIPT_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 TSX 高亮器（TypeScript + JSX 语法）。
+    #[cfg(feature = "tree-sitter-typescript")]
+    pub fn tsx() -> Self {
+        Self::new(
+            "tsx",
+            tree_sitter_typescript::LANGUAGE_TSX.into(),
+            tree_sitter_typescript::HIGHLIGHTS_QUERY,
+            "",
+            tree_sitter_typescript::LOCALS_QUERY,
+            &TYPESCRIPT_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 Python 高亮器（内置查询随 `tree-sitter-python` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-python")]
+    pub fn python() -> Self {
+        Self::new(
+            "python",
+            tree_sitter_python::LANGUAGE.into(),
+            tree_sitter_python::HIGHLIGHTS_QUERY,
+            "",
+            "",
+            &PYTHON_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 Bash 高亮器（内置查询随 `tree-sitter-bash` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-bash")]
+    pub fn bash() -> Self {
+        Self::new(
+            "bash",
+            tree_sitter_bash::LANGUAGE.into(),
+            tree_sitter_bash::HIGHLIGHT_QUERY,
+            "",
+            "",
+            &BASH_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 Go 高亮器（内置查询随 `tree-sitter-go` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-go")]
+    pub fn go() -> Self {
+        Self::new(
+            "go",
+            tree_sitter_go::LANGUAGE.into(),
+            tree_sitter_go::HIGHLIGHTS_QUERY,
+            "",
+            "",
+            &GO_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 C 高亮器（内置查询随 `tree-sitter-c` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-c")]
+    pub fn c() -> Self {
+        Self::new(
+            "c",
+            tree_sitter_c::LANGUAGE.into(),
+            tree_sitter_c::HIGHLIGHT_QUERY,
+            "",
+            "",
+            &C_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 C++ 高亮器（内置查询随 `tree-sitter-cpp` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-cpp")]
+    pub fn cpp() -> Self {
+        Self::new(
+            "cpp",
+            tree_sitter_cpp::LANGUAGE.into(),
+            tree_sitter_cpp::HIGHLIGHT_QUERY,
+            "",
+            "",
+            &CPP_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 C# 高亮器（内置查询随 `tree-sitter-c-sharp` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-c-sharp")]
+    pub fn c_sharp() -> Self {
+        Self::new(
+            "c_sharp",
+            tree_sitter_c_sharp::LANGUAGE.into(),
+            tree_sitter_c_sharp::HIGHLIGHTS_QUERY,
+            "",
+            "",
+            &C_SHARP_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 Java 高亮器（内置查询随 `tree-sitter-java` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-java")]
+    pub fn java() -> Self {
+        Self::new(
+            "java",
+            tree_sitter_java::LANGUAGE.into(),
+            tree_sitter_java::HIGHLIGHTS_QUERY,
+            "",
+            "",
+            &JAVA_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 Ruby 高亮器（内置查询随 `tree-sitter-ruby` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-ruby")]
+    pub fn ruby() -> Self {
+        Self::new(
+            "ruby",
+            tree_sitter_ruby::LANGUAGE.into(),
+            tree_sitter_ruby::HIGHLIGHTS_QUERY,
+            "",
+            tree_sitter_ruby::LOCALS_QUERY,
+            &RUBY_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+
+    /// 创建 PHP 高亮器（内置查询随 `tree-sitter-php` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-php")]
+    pub fn php() -> Self {
+        Self::new(
+            "php",
+            tree_sitter_php::LANGUAGE_PHP.into(),
+            tree_sitter_php::HIGHLIGHTS_QUERY,
+            tree_sitter_php::INJECTIONS_QUERY,
+            "",
+            &PHP_FOLDABLE_KINDS,
+            common_symbol_kind,
+            common_symbol_name,
+        )
+    }
+    /// 创建 CSS 高亮器（内置查询随 `tree-sitter-css` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-css")]
+    pub fn css() -> Self {
+        Self::new(
+            "css",
+            tree_sitter_css::LANGUAGE.into(),
+            tree_sitter_css::HIGHLIGHTS_QUERY,
+            "",
+            "",
+            &CSS_FOLDABLE_KINDS,
+            no_symbol_kind,
+            no_symbol_name,
+        )
+    }
+
+    /// 创建 HTML 高亮器（内置查询随 `tree-sitter-html` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-html")]
+    pub fn html() -> Self {
+        Self::new(
+            "html",
+            tree_sitter_html::LANGUAGE.into(),
+            tree_sitter_html::HIGHLIGHTS_QUERY,
+            tree_sitter_html::INJECTIONS_QUERY,
+            "",
+            &HTML_FOLDABLE_KINDS,
+            no_symbol_kind,
+            no_symbol_name,
+        )
+    }
+
+    /// 创建 YAML 高亮器（内置查询随 `tree-sitter-yaml` 版本保证有效）。
+    #[cfg(feature = "tree-sitter-yaml")]
+    pub fn yaml() -> Self {
+        Self::new(
+            "yaml",
+            tree_sitter_yaml::LANGUAGE.into(),
+            tree_sitter_yaml::HIGHLIGHTS_QUERY,
+            "",
+            "",
+            &YAML_FOLDABLE_KINDS,
+            no_symbol_kind,
+            no_symbol_name,
         )
     }
 
@@ -308,6 +661,102 @@ impl Highlighter for TreeSitterHighlighter {
     }
 }
 
+/// 捕获名改写表：各语言查询里的非标准捕获名 → 主题名表（`HIGHLIGHT_NAMES`）里的名字。
+///
+/// 主题名表按「点分部件」匹配（`string.escape` 能命中 `string.escape.special`），
+/// 但裸名（`escape`）命中不了多段名；这里显式改写，避免新语言包出现无色片段。
+const CAPTURE_ALIASES: [(&str, &str); 10] = [
+    ("escape", "string.escape"),
+    ("delimiter", "punctuation.delimiter"),
+    ("module", "type"),
+    ("module.builtin", "type"),
+    ("charset", "keyword"),
+    ("import", "keyword"),
+    ("keyframes", "keyword"),
+    ("media", "keyword"),
+    ("namespace", "keyword"),
+    ("supports", "keyword"),
+];
+
+/// 把查询里的捕获名改写到主题名表（未列出的捕获名按 tree-sitter-highlight 的
+/// 前缀匹配规则回退：能命中就着色，命中不了就不着色）。
+///
+/// 字符串字面量（`"…"`）、字符类（`[…]`）与注释（`;…`）内的 `@` 不是捕获名，
+/// 原样保留（CSS 的 `"@media"` 之类）。
+fn rewrite_captures(query: &str) -> String {
+    let mut out = String::with_capacity(query.len());
+    let mut chars = query.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            // 注释：整行复制。
+            ';' => {
+                out.push(ch);
+                for ch in chars.by_ref() {
+                    out.push(ch);
+                    if ch == '\n' {
+                        break;
+                    }
+                }
+            }
+            // 字符串字面量：到配对的引号为止。
+            '"' => {
+                out.push(ch);
+                let mut escaped = false;
+                for ch in chars.by_ref() {
+                    out.push(ch);
+                    if escaped {
+                        escaped = false;
+                    } else if ch == '\\' {
+                        escaped = true;
+                    } else if ch == '"' {
+                        break;
+                    }
+                }
+            }
+            // 字符类：到配对的右方括号为止。
+            '[' => {
+                out.push(ch);
+                for ch in chars.by_ref() {
+                    out.push(ch);
+                    if ch == ']' {
+                        break;
+                    }
+                }
+            }
+            // 捕获名：命中改写表则替换。
+            '@' => {
+                let rest: String = chars.clone().collect();
+                let mut replaced = false;
+                for (from, to) in CAPTURE_ALIASES {
+                    if !rest.starts_with(from) {
+                        continue;
+                    }
+                    // 后面紧跟标识符字符时说明是别的捕获名（如 `escape` vs `escape.x`）。
+                    let is_other_name = rest[from.len()..]
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '.');
+                    if is_other_name {
+                        continue;
+                    }
+                    out.push('@');
+                    out.push_str(to);
+                    for _ in 0..from.len() {
+                        chars.next();
+                    }
+                    replaced = true;
+                    break;
+                }
+                if !replaced {
+                    out.push('@');
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// Rust 语法节点种类转符号种类（非符号节点返回 `None`）。
 fn rust_symbol_kind(kind: &str) -> Option<SymbolKind> {
     match kind {
@@ -400,6 +849,89 @@ fn strip_quotes(text: &str) -> &str {
         text
     }
 }
+/// 通用符号种类映射（各语言按 grammar 节点名列举；无对应节点返回 `None`）。
+#[cfg(any(
+    feature = "tree-sitter-javascript",
+    feature = "tree-sitter-typescript",
+    feature = "tree-sitter-python",
+    feature = "tree-sitter-bash",
+    feature = "tree-sitter-go",
+    feature = "tree-sitter-c",
+    feature = "tree-sitter-cpp",
+    feature = "tree-sitter-c-sharp",
+    feature = "tree-sitter-java",
+    feature = "tree-sitter-ruby",
+    feature = "tree-sitter-php",
+))]
+fn common_symbol_kind(kind: &str) -> Option<SymbolKind> {
+    match kind {
+        "function_declaration"
+        | "function_definition"
+        | "function_item"
+        | "function_signature"
+        | "method"
+        | "method_definition"
+        | "method_declaration"
+        | "constructor_declaration"
+        | "singleton_method" => Some(SymbolKind::Function),
+        "class_declaration" | "class_definition" | "class_specifier" | "class" | "struct_item"
+        | "struct_declaration" | "record_declaration" => Some(SymbolKind::Struct),
+        "enum_declaration" | "enum_item" | "enum_specifier" => Some(SymbolKind::Enum),
+        "interface_declaration" | "trait_item" | "trait_declaration" | "protocol_declaration" => {
+            Some(SymbolKind::Trait)
+        }
+        "impl_item" | "impl_declaration" => Some(SymbolKind::Impl),
+        "module"
+        | "mod_item"
+        | "namespace_definition"
+        | "namespace_declaration"
+        | "package_declaration" => Some(SymbolKind::Module),
+        "const_declaration" | "const_item" | "constant" => Some(SymbolKind::Const),
+        "static_item" | "static_declaration" => Some(SymbolKind::Static),
+        _ => None,
+    }
+}
+
+/// 通用符号名：取 `name` 字段文本（各语言 grammar 约定一致）。
+#[cfg(any(
+    feature = "tree-sitter-javascript",
+    feature = "tree-sitter-typescript",
+    feature = "tree-sitter-python",
+    feature = "tree-sitter-bash",
+    feature = "tree-sitter-go",
+    feature = "tree-sitter-c",
+    feature = "tree-sitter-cpp",
+    feature = "tree-sitter-c-sharp",
+    feature = "tree-sitter-java",
+    feature = "tree-sitter-ruby",
+    feature = "tree-sitter-php",
+))]
+fn common_symbol_name(node: &tree_sitter::Node, bytes: &[u8]) -> Option<String> {
+    let name = node.child_by_field_name("name")?;
+    let text = bytes.get(name.start_byte()..name.end_byte())?;
+    Some(std::str::from_utf8(text).ok()?.to_string())
+}
+
+/// 无符号语言（CSS / HTML / YAML）的符号种类（恒为 `None`）。
+#[cfg(any(
+    feature = "tree-sitter-css",
+    feature = "tree-sitter-html",
+    feature = "tree-sitter-yaml",
+))]
+fn no_symbol_kind(_kind: &str) -> Option<SymbolKind> {
+    None
+}
+
+/// 无符号语言（CSS / HTML / YAML）的符号名（恒为 `None`）。
+#[cfg(any(
+    feature = "tree-sitter-css",
+    feature = "tree-sitter-html",
+    feature = "tree-sitter-yaml",
+))]
+fn no_symbol_name(_node: &tree_sitter::Node, _bytes: &[u8]) -> Option<String> {
+    None
+}
+
 /// `impl` 块名称：被实现的类型名，取不到时为 `"impl"`。
 fn impl_name(node: &tree_sitter::Node, bytes: &[u8]) -> String {
     let mut cursor = node.walk();
@@ -433,10 +965,255 @@ pub fn toml_highlighter() -> Box<dyn Highlighter> {
     Box::new(TreeSitterHighlighter::toml())
 }
 
+/// 创建 JavaScript 高亮器（`tree-sitter-javascript` feature 门控）。
+#[cfg(feature = "tree-sitter-javascript")]
+pub fn javascript_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::javascript())
+}
+
+/// 创建 TypeScript 高亮器（`tree-sitter-typescript` feature 门控）。
+#[cfg(feature = "tree-sitter-typescript")]
+pub fn typescript_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::typescript())
+}
+
+/// 创建 TSX 高亮器（`tree-sitter-typescript` feature 门控）。
+#[cfg(feature = "tree-sitter-typescript")]
+pub fn tsx_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::tsx())
+}
+
+/// 创建 Python 高亮器（`tree-sitter-python` feature 门控）。
+#[cfg(feature = "tree-sitter-python")]
+pub fn python_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::python())
+}
+
+/// 创建 Bash 高亮器（`tree-sitter-bash` feature 门控）。
+#[cfg(feature = "tree-sitter-bash")]
+pub fn bash_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::bash())
+}
+
+/// 创建 Go 高亮器（`tree-sitter-go` feature 门控）。
+#[cfg(feature = "tree-sitter-go")]
+pub fn go_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::go())
+}
+
+/// 创建 C 高亮器（`tree-sitter-c` feature 门控）。
+#[cfg(feature = "tree-sitter-c")]
+pub fn c_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::c())
+}
+
+/// 创建 C++ 高亮器（`tree-sitter-cpp` feature 门控）。
+#[cfg(feature = "tree-sitter-cpp")]
+pub fn cpp_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::cpp())
+}
+
+/// 创建 C# 高亮器（`tree-sitter-c-sharp` feature 门控）。
+#[cfg(feature = "tree-sitter-c-sharp")]
+pub fn c_sharp_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::c_sharp())
+}
+
+/// 创建 Java 高亮器（`tree-sitter-java` feature 门控）。
+#[cfg(feature = "tree-sitter-java")]
+pub fn java_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::java())
+}
+
+/// 创建 Ruby 高亮器（`tree-sitter-ruby` feature 门控）。
+#[cfg(feature = "tree-sitter-ruby")]
+pub fn ruby_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::ruby())
+}
+
+/// 创建 PHP 高亮器（`tree-sitter-php` feature 门控）。
+#[cfg(feature = "tree-sitter-php")]
+pub fn php_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::php())
+}
+
+/// 创建 CSS 高亮器（`tree-sitter-css` feature 门控）。
+#[cfg(feature = "tree-sitter-css")]
+pub fn css_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::css())
+}
+
+/// 创建 HTML 高亮器（`tree-sitter-html` feature 门控）。
+#[cfg(feature = "tree-sitter-html")]
+pub fn html_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::html())
+}
+
+/// 创建 YAML 高亮器（`tree-sitter-yaml` feature 门控）。
+#[cfg(feature = "tree-sitter-yaml")]
+pub fn yaml_highlighter() -> Box<dyn Highlighter> {
+    Box::new(TreeSitterHighlighter::yaml())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::highlight::NoHighlightStyles;
+
+    /// 断言高亮器产出了命名运行（语言包可用性检查）。
+    fn assert_named_runs(highlighter: &mut TreeSitterHighlighter) {
+        assert!(
+            highlighter.runs.iter().any(|(_, name)| name.is_some()),
+            "{} 未产出命名运行",
+            highlighter.language()
+        );
+    }
+
+    /// 各语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-javascript")]
+    #[test]
+    fn javascript_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::javascript();
+        highlighter.set_source("function add(a, b) {\n  return a + b;\n}\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// TypeScript 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-typescript")]
+    #[test]
+    fn typescript_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::typescript();
+        highlighter.set_source("interface Point {\n  x: number;\n}\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// TSX 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-typescript")]
+    #[test]
+    fn tsx_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::tsx();
+        highlighter.set_source("const App = () => <div>hi</div>;\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// Python 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-python")]
+    #[test]
+    fn python_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::python();
+        highlighter.set_source("def add(a, b):\n    return a + b\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// Bash 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-bash")]
+    #[test]
+    fn bash_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::bash();
+        highlighter.set_source("function add() {\n  echo 1\n}\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// Go 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-go")]
+    #[test]
+    fn go_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::go();
+        highlighter.set_source("func add(a int, b int) int {\n\treturn a + b\n}\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// C 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-c")]
+    #[test]
+    fn c_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::c();
+        highlighter.set_source("int add(int a, int b) {\n  return a + b;\n}\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// C++ 语言包：能构造高亮器并产出命名运行。
+    ///
+    /// C++ 的内置查询较稀疏（关键字表只含 C++ 专有词），样例取含 `class` 的片段。
+    #[cfg(feature = "tree-sitter-cpp")]
+    #[test]
+    fn cpp_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::cpp();
+        highlighter.set_source("class Point {\npublic:\n  int x;\n};\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// C# 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-c-sharp")]
+    #[test]
+    fn c_sharp_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::c_sharp();
+        highlighter.set_source("class Point {\n  public int X;\n}\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// Java 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-java")]
+    #[test]
+    fn java_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::java();
+        highlighter.set_source("class Point {\n  int x;\n}\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// Ruby 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-ruby")]
+    #[test]
+    fn ruby_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::ruby();
+        highlighter.set_source("def add(a, b)\n  a + b\nend\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// PHP 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-php")]
+    #[test]
+    fn php_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::php();
+        highlighter.set_source("<?php\nfunction add($a, $b) { return $a + $b; }\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// CSS 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-css")]
+    #[test]
+    fn css_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::css();
+        highlighter.set_source(".app {\n  color: red;\n}\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// HTML 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-html")]
+    #[test]
+    fn html_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::html();
+        highlighter.set_source("<div class=\"app\">\n  <span>hi</span>\n</div>\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// YAML 语言包：能构造高亮器并产出命名运行。
+    #[cfg(feature = "tree-sitter-yaml")]
+    #[test]
+    fn yaml_package_highlights() {
+        let mut highlighter = TreeSitterHighlighter::yaml();
+        highlighter.set_source("name: rgpui\nversion: 1\n");
+        assert_named_runs(&mut highlighter);
+    }
+
+    /// 捕获名改写：非标准名映射到主题名表，标识符相邻时视为别的捕获名。
+    #[test]
+    fn capture_aliases_are_rewritten() {
+        let rewritten = rewrite_captures("(escape) @escape (x) @escape_seq @module.builtin");
+        assert!(rewritten.contains("@string.escape (x)"));
+        assert!(rewritten.contains("@escape_seq"));
+        assert!(rewritten.contains("@type"));
+    }
 
     /// 关键字被识别为命名运行（非默认样式槽位）。
     #[test]

@@ -127,7 +127,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 | 基础元素 | `elements/` | `Button`、`Checkbox`、`Radio`、`Switch`、`Slider`、`Spinner`、`Skeleton`、`Badge`、`Tag`、`Separator`、`Kbd`、`Tooltip`、`Icon`、`Avatar`、`Alert`、`Breadcrumb`、`Card`、`Typography`、`Toggle` |
 | 表单 | `form/` | `Form`、`Field`、`FieldBuilder` |
 | 输入 | `input_ui/` | `Input`、`MaskedInput`、`NumberInput`、`PasswordInput`、`TextArea`；`InputState::reveal_offset/reveal_range`、`TextDecorationCollection`、`Debouncer`（见 `docs/1.2.0/1.2.0-dev-plan.md` §E） |
-| 编辑器 | `input_ui/editor/`（`editor` feature 门控，蕴含 `lsp`） | `EditorState`（包 `Entity<InputState>` 编排外壳 + 大纲缓存；透传 `set_value`/`reveal_*`/`set_read_only`/`set_line_comment_prefix`/`set_highlighter`/`goto_symbol`）、`Editor`（消费 `EditorState` 实体 + 粘性大纲顶栏 + 状态行）；行操作/多光标/自动闭合/括号匹配/当前行（`impl InputState`）；LSP 接线（`lsp_attach.rs`：provider 注入 + 防抖 + 诊断下划线）+ 片段（`snippets.rs`：子集解析 + 会话跳转）+ 行内提示（`inlay_hints.rs`：provider + 防抖 + paint overlay）+ 粘性顶栏（`sticky_scroll.rs`）+ 多语言注册表（`highlight::{register_highlighter,highlighter_for}` + `set_language`）+ 自定义 gutter（`gutter.rs`：具名 provider 注册/开关 + overlay，见 `docs/1.2.0/1.2.0-dev-plan.md` §M）；stdio LSP 传输（`lsp/stdio.rs`：子进程 + JSON-RPC）、Minimap（`minimap.rs`：缩略+跳转）、Vim（`vim.rs`：三态）、CodeLens（`codelens.rs`：行上透镜）、标尺+括号彩虹（`rulers`/`bracket_rainbow`）、JSON+TOML grammar（`tree_sitter.rs`）、extensions+on_edit 表（`extensions.rs`） |
+| 编辑器 | `input_ui/editor/`（`editor` feature 门控，蕴含 `lsp`） | `EditorState`（包 `Entity<InputState>` 编排外壳 + 大纲缓存；透传 `set_value`/`reveal_*`/`set_read_only`/`set_line_comment_prefix`/`set_highlighter`/`goto_symbol`）、`Editor`（消费 `EditorState` 实体 + 粘性大纲顶栏 + 状态行）；行操作/多光标/自动闭合/括号匹配/当前行（`impl InputState`）；LSP 接线（`lsp_attach.rs`：provider 注入 + 防抖 + 诊断下划线）+ 片段（`snippets.rs`：子集解析 + 会话跳转）+ 行内提示（`inlay_hints.rs`：provider + 防抖 + paint overlay）+ 粘性顶栏（`sticky_scroll.rs`）+ 多语言注册表（`highlight::{register_highlighter,highlighter_for}` + `set_language`；内置语言包按 `tree-sitter-<语言>` feature 门控：Rust/JSON/TOML/javascript/typescript(+tsx)/python/bash/go/c/cpp/c_sharp/java/ruby/php/css/html/yaml）+ 自定义 gutter（`gutter.rs`：具名 provider 注册/开关 + overlay，见 `docs/1.2.0/1.2.0-dev-plan.md` §M）；stdio LSP 传输（`lsp/stdio.rs`：子进程 + JSON-RPC）、Minimap（`minimap.rs`：缩略+跳转）、Vim（`vim.rs`：三态）、CodeLens（`codelens.rs`：行上透镜）、标尺+括号彩虹（`rulers`/`bracket_rainbow`）、JSON+TOML grammar（`tree_sitter.rs`）、extensions+on_edit 表（`extensions.rs`） |
 | 菜单 | `menu/` | `PopupMenu`、`ContextMenu`、`DropdownMenu`、`Popconfirm`、`MenuBar`、`HoverCard`、`Notification`、`Toast` |
 | 对话框 | `dialog/` | `Dialog`、`AlertDialog`、`DialogHeader/Content/Footer`、`FocusTrapElement` |
 | 列表/表格/标签页 | `list/`、`table/`、`tabs/` | `List`、`VirtualList`、`DataTable`、`TabBar`、`Accordion` |
@@ -197,7 +197,8 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 9. feature 组合按需通过：`charts,effects,qr-code` / `tokio` / `control-channel` / `webview` /
    `screen-capture`（吸管，Windows 本地验证）/ `dom-backend`（+ `cargo test -p rgpui-dom`）/
    `ribbon,viewport` / `spreadsheet` / `document` / `rgpui-markdown` 的 `latex`（公式）、
-   `mermaid`（图表）
+   `mermaid`（图表）、`syntax-highlight`（代码高亮）/ `tree-sitter-*`（14 个语言包，
+   含 `tree-sitter` 地基）
 10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过
 11. 发布要求无 dev 循环依赖（测试放消费方 `tests/`，见 1.1.1 教训）
 12. 命令清单 gate 通过（`CommandRegistry::validate()` 为空）；改控制通道 / MCP 后跑

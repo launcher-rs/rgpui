@@ -6,9 +6,19 @@ edition = "2024"
 publish = false
 
 [dependencies]
-rgpui = { workspace = true, features = ["charts", "effects", "qr-code", "dom-backend"] }
+rgpui = { workspace = true, features = [
+    "charts",
+    "effects",
+    "qr-code",
+    "dom-backend",
+    "tree-sitter",
+    "tree-sitter-json",
+    "tree-sitter-toml",
+    "tree-sitter-javascript",
+    "tree-sitter-python",
+] }
 rgpui-platform.workspace = true
-rgpui-markdown = { workspace = true, features = ["latex", "mermaid"] }
+rgpui-markdown = { workspace = true, features = ["latex", "mermaid", "syntax-highlight"] }
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
 
