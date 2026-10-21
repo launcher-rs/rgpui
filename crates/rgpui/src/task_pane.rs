@@ -12,6 +12,10 @@
 //! 通知，宿主视图必须 `cx.observe(&pane, |_, _, cx| cx.notify())`（或订阅 [`TaskPaneEvent`]）
 //! 才能在拖拽改宽 / 切换停靠时实时重绘。
 //!
+//! 同一侧要放多个窗格时用 [`TaskPaneStack`] + [`TaskPaneStackState`]：按权重自上而下分配
+//! 高度，相邻两格之间是可拖拽的分隔条（只改相邻两格、总高度不变），几何换算见
+//! [`resize_stack_weights`]。
+//!
 //! ```
 //! use rgpui::{div, prelude::*};
 //! use rgpui::task_pane::{TaskPane, TaskPaneState};
@@ -1094,14 +1098,336 @@ impl RenderOnce for TaskPane {
     }
 }
 
+/// 堆叠分隔条高度（像素）。
+pub const STACK_SEPARATOR_HEIGHT: Pixels = px(4.0);
+
+/// 单个窗格的最小权重（相对值；拖拽时不会把某一格压到 0）。
+pub const MIN_STACK_WEIGHT: f32 = 0.05;
+
+/// 规范化单个权重：非有限值或非正数回退到 `1.0`，过小的值夹到
+/// [`MIN_STACK_WEIGHT`]。
+pub fn normalize_stack_weight(weight: f32) -> f32 {
+    if weight.is_finite() && weight > 0.0 {
+        weight.max(MIN_STACK_WEIGHT)
+    } else {
+        1.0
+    }
+}
+
+/// 就地调整相邻两个窗格的权重（保持两者之和不变），返回是否发生变化。
+///
+/// `delta` 是指针的纵向位移，`usable` 是去掉分隔条后的可用高度：总权重不变时窗格
+/// 高度与权重成正比，因此 `delta` 像素正好换算成 `delta * 总权重 / usable`。
+/// 两格都夹在 [`MIN_STACK_WEIGHT`] 以上（两格都极窄时按对半分）。
+pub fn resize_stack_weights(
+    weights: &mut [f32],
+    index: usize,
+    delta: Pixels,
+    usable: Pixels,
+) -> bool {
+    if index + 1 >= weights.len() {
+        return false;
+    }
+    let usable = usable.as_f32();
+    let delta = delta.as_f32();
+    if !usable.is_finite() || usable <= 0.0 || !delta.is_finite() || delta == 0.0 {
+        return false;
+    }
+    let total: f32 = weights
+        .iter()
+        .map(|weight| normalize_stack_weight(*weight))
+        .sum();
+    let above = normalize_stack_weight(weights[index]);
+    let below = normalize_stack_weight(weights[index + 1]);
+    let pair = above + below;
+    let min = MIN_STACK_WEIGHT.min(pair * 0.5);
+    let next_above = (above + delta * total / usable).clamp(min, pair - min);
+    let next_below = pair - next_above;
+    if (next_above - weights[index]).abs() < 1e-4 && (next_below - weights[index + 1]).abs() < 1e-4
+    {
+        return false;
+    }
+    weights[index] = next_above;
+    weights[index + 1] = next_below;
+    true
+}
+
+/// 同侧多个任务窗格的垂直堆叠状态（各格按权重分配高度）。
+///
+/// 权重只表示相对比例：高度 = 可用高度 × 权重 / 权重之和。拖拽分隔条时只改相邻两格，
+/// 且保持两者之和不变，因此其他窗格与总高度都不动。
+pub struct TaskPaneStackState {
+    /// 各格权重（与子元素顺序一致；缺失时按 `1.0` 处理）。
+    weights: Vec<f32>,
+    /// 堆叠矩形（窗口坐标，预绘制写入）。
+    rect: Bounds<Pixels>,
+    /// 子元素数量（预绘制写入，用于扣除分隔条）。
+    slots: usize,
+    /// 正在拖拽的分隔条（其上方子元素下标）。
+    dragging: Option<usize>,
+    /// 拖拽起点指针 y（窗口坐标）。
+    drag_origin_y: f32,
+    /// 拖拽开始时上下两格的权重。
+    drag_start: (f32, f32),
+}
+
+impl TaskPaneStackState {
+    /// 创建空堆叠状态。
+    pub fn new(_cx: &mut Context<Self>) -> Self {
+        Self {
+            weights: Vec::new(),
+            rect: Bounds::default(),
+            slots: 0,
+            dragging: None,
+            drag_origin_y: 0.0,
+            drag_start: (1.0, 1.0),
+        }
+    }
+
+    /// 设置初始权重（非法值按 [`normalize_stack_weight`] 规范化）。
+    pub fn with_weights(mut self, weights: impl IntoIterator<Item = f32>) -> Self {
+        self.weights = weights.into_iter().map(normalize_stack_weight).collect();
+        self
+    }
+
+    /// 当前权重切片。
+    pub fn weights(&self) -> &[f32] {
+        &self.weights
+    }
+
+    /// 下标处的权重（缺失或非法时回退到 `1.0`）。
+    pub fn weight(&self, index: usize) -> f32 {
+        self.weights
+            .get(index)
+            .copied()
+            .map(normalize_stack_weight)
+            .unwrap_or(1.0)
+    }
+
+    /// 整体替换权重。
+    pub fn set_weights(&mut self, weights: impl IntoIterator<Item = f32>, cx: &mut Context<Self>) {
+        self.weights = weights.into_iter().map(normalize_stack_weight).collect();
+        cx.notify();
+    }
+
+    /// 设置单格权重（下标超出时补 `1.0`），返回是否变化。
+    pub fn set_weight(&mut self, index: usize, weight: f32, cx: &mut Context<Self>) -> bool {
+        let weight = normalize_stack_weight(weight);
+        if self.weights.len() <= index {
+            self.weights.resize(index + 1, 1.0);
+        }
+        if (self.weights[index] - weight).abs() < 1e-6 {
+            return false;
+        }
+        self.weights[index] = weight;
+        cx.notify();
+        true
+    }
+
+    /// 堆叠矩形（窗口坐标；预绘制前为默认值）。
+    pub fn rect(&self) -> Bounds<Pixels> {
+        self.rect
+    }
+
+    /// 子元素数量（预绘制前为 0）。
+    pub fn slots(&self) -> usize {
+        self.slots
+    }
+
+    /// 去掉分隔条后的可用高度。
+    pub fn usable_height(&self) -> Pixels {
+        let separators = self.slots.saturating_sub(1) as f32;
+        (self.rect.size.height - STACK_SEPARATOR_HEIGHT * separators).max(px(0.0))
+    }
+
+    /// 正在拖拽的分隔条（其上方子元素下标）。
+    pub fn dragging(&self) -> Option<usize> {
+        self.dragging
+    }
+
+    /// 开始拖拽下标 `index` 与 `index + 1` 之间的分隔条。
+    pub fn begin_drag(&mut self, index: usize, pointer_y: Pixels, cx: &mut Context<Self>) {
+        self.dragging = Some(index);
+        self.drag_origin_y = pointer_y.as_f32();
+        self.drag_start = (self.weight(index), self.weight(index + 1));
+        cx.notify();
+    }
+
+    /// 拖拽中：始终以「起点权重 + 总位移」重算，避免逐帧累积误差。
+    pub fn update_drag(&mut self, pointer_y: Pixels, cx: &mut Context<Self>) {
+        let Some(index) = self.dragging else {
+            return;
+        };
+        while self.weights.len() <= index + 1 {
+            self.weights.push(1.0);
+        }
+        self.weights[index] = self.drag_start.0;
+        self.weights[index + 1] = self.drag_start.1;
+        let delta = px(pointer_y.as_f32() - self.drag_origin_y);
+        let usable = self.usable_height();
+        if resize_stack_weights(&mut self.weights, index, delta, usable) {
+            cx.notify();
+        }
+    }
+
+    /// 结束拖拽。
+    pub fn end_drag(&mut self, cx: &mut Context<Self>) {
+        if self.dragging.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    /// 预绘制回写矩形与子元素数量（由堆叠元素调用）。
+    fn sync_layout(&mut self, rect: Bounds<Pixels>, slots: usize) {
+        self.rect = rect;
+        self.slots = slots;
+    }
+}
+
+/// 同侧多个任务窗格的垂直堆叠元素。
+///
+/// 子元素按顺序自上而下排列，高度按 [`TaskPaneStackState`] 的权重分配，相邻两格之间是
+/// 可拖拽的分隔条。子元素通常是 [`TaskPane`]；**不可见的窗格不要加入**（元素会占位，
+/// 应在构建子元素列表时过滤掉）。
+///
+/// ```
+/// use rgpui::{div, prelude::*};
+/// use rgpui::task_pane::{TaskPane, TaskPaneStack, TaskPaneStackState, TaskPaneState};
+///
+/// struct Demo {
+///     stack: Entity<TaskPaneStackState>,
+///     explorer: Entity<TaskPaneState>,
+///     properties: Entity<TaskPaneState>,
+/// }
+///
+/// impl Render for Demo {
+///     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+///         div().relative().flex().flex_row().size_full().child(
+///             TaskPaneStack::new(&self.stack)
+///                 .child(TaskPane::new(&self.explorer).title("资源管理器"))
+///                 .child(TaskPane::new(&self.properties).title("属性")),
+///         )
+///     }
+/// }
+/// ```
+#[derive(IntoElement)]
+pub struct TaskPaneStack {
+    /// 堆叠状态实体。
+    state: Entity<TaskPaneStackState>,
+    /// 子元素（自上而下）。
+    children: Vec<AnyElement>,
+}
+
+impl TaskPaneStack {
+    /// 使用给定堆叠状态创建元素。
+    pub fn new(state: &Entity<TaskPaneStackState>) -> Self {
+        Self {
+            state: state.clone(),
+            children: Vec::new(),
+        }
+    }
+
+    /// 追加一个子元素（通常是 [`TaskPane`]）。
+    pub fn child(mut self, child: impl IntoElement) -> Self {
+        self.children.push(child.into_any_element());
+        self
+    }
+
+    /// 追加若干子元素。
+    pub fn children(mut self, children: impl IntoIterator<Item = impl IntoElement>) -> Self {
+        for child in children {
+            self = self.child(child);
+        }
+        self
+    }
+}
+
+impl RenderOnce for TaskPaneStack {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = cx.theme();
+        let border = theme.border;
+        let accent = theme.primary;
+        let state = self.state;
+        let slots = self.children.len();
+        let weights: Vec<f32> = (0..slots)
+            .map(|index| state.read(cx).weight(index))
+            .collect();
+        let dragging = state.read(cx).dragging;
+
+        let mut column = div()
+            .id(("task-pane-stack", state.entity_id()))
+            .relative()
+            .flex_none()
+            .h_full()
+            .flex()
+            .flex_col()
+            .on_prepaint({
+                let state = state.clone();
+                move |bounds, _window, cx| {
+                    state.update(cx, |state, _| state.sync_layout(bounds, slots));
+                }
+            });
+
+        for (index, child) in self.children.into_iter().enumerate() {
+            if index > 0 {
+                // 分隔条：拖动时按纵向位移调整上下两格的权重。
+                column = column.child(
+                    div()
+                        .flex_none()
+                        .h(STACK_SEPARATOR_HEIGHT)
+                        .w_full()
+                        .bg(if dragging == Some(index - 1) {
+                            accent
+                        } else {
+                            border
+                        })
+                        .cursor_row_resize()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            window.listener_for(
+                                &state,
+                                move |state, event: &MouseDownEvent, _window, cx| {
+                                    state.begin_drag(index - 1, event.position.y, cx);
+                                },
+                            ),
+                        )
+                        .on_mouse_move(window.listener_for(
+                            &state,
+                            |state, event: &MouseMoveEvent, _window, cx| {
+                                state.update_drag(event.position.y, cx);
+                            },
+                        ))
+                        .capture_any_mouse_up(window.listener_for(
+                            &state,
+                            |state, _event: &MouseUpEvent, _window, cx| {
+                                state.end_drag(cx);
+                            },
+                        )),
+                );
+            }
+            column = column.child(
+                div()
+                    .flex_grow(weights[index])
+                    .flex_basis(px(0.0))
+                    .min_h(px(0.0))
+                    .overflow_hidden()
+                    .child(child),
+            );
+        }
+
+        column
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
     use super::{
-        CLOSE_BUTTON_WIDTH, DEFAULT_WIDTH, MAX_WIDTH, MIN_FLOATING_SIZE, MIN_WIDTH, RAIL_WIDTH,
-        TITLE_HEIGHT, TITLE_PADDING, TaskPane, TaskPaneEvent, TaskPaneHit, TaskPaneSide,
-        TaskPaneState, clamp_width, close_button_rect, floating_default_bounds, grip_rect,
-        resize_width, tab_rects,
+        CLOSE_BUTTON_WIDTH, DEFAULT_WIDTH, MAX_WIDTH, MIN_FLOATING_SIZE, MIN_STACK_WEIGHT,
+        MIN_WIDTH, RAIL_WIDTH, STACK_SEPARATOR_HEIGHT, TITLE_HEIGHT, TITLE_PADDING, TaskPane,
+        TaskPaneEvent, TaskPaneHit, TaskPaneSide, TaskPaneStack, TaskPaneStackState, TaskPaneState,
+        clamp_width, close_button_rect, floating_default_bounds, grip_rect, normalize_stack_weight,
+        resize_stack_weights, resize_width, tab_rects,
     };
     use crate::mdi::ResizeEdge;
     use crate::{
@@ -1677,5 +2003,136 @@ mod tests {
         let log = probe.read_with(cx, |probe, _| probe.log.borrow().clone());
         assert!(log.contains(&TaskPaneEvent::TabSelected(1)));
         assert!(log.contains(&TaskPaneEvent::TabSelected(2)));
+    }
+
+    /// 堆叠权重换算：位移按可用高度折算，两格之和不变、夹到下限、其他格不动。
+    #[test]
+    fn resize_stack_weights_moves_boundary() {
+        let mut weights = vec![1.0, 1.0, 2.0];
+        // 可用高度 200px、总权重 4：向下拖 30px → 上格 +30*4/200 = +0.6。
+        assert!(resize_stack_weights(&mut weights, 0, px(30.0), px(200.0)));
+        assert!((weights[0] - 1.6).abs() < 1e-4);
+        assert!((weights[1] - 0.4).abs() < 1e-4);
+        assert!((weights[2] - 2.0).abs() < 1e-4);
+        // 两格之和保持不变。
+        assert!((weights[0] + weights[1] - 2.0).abs() < 1e-4);
+
+        // 拖过头：下格夹到最小权重，上格吃掉剩余的。
+        assert!(resize_stack_weights(&mut weights, 0, px(1000.0), px(200.0)));
+        assert!((weights[1] - MIN_STACK_WEIGHT).abs() < 1e-6);
+        assert!((weights[0] - (2.0 - MIN_STACK_WEIGHT)).abs() < 1e-6);
+
+        // 位移为 0、下标越界、可用高度为 0 都不改动。
+        assert!(!resize_stack_weights(&mut weights, 0, px(0.0), px(200.0)));
+        assert!(!resize_stack_weights(&mut weights, 2, px(10.0), px(200.0)));
+        assert!(!resize_stack_weights(&mut weights, 0, px(10.0), px(0.0)));
+
+        // 非法权重先规范化，再参与换算。
+        assert_eq!(normalize_stack_weight(f32::NAN), 1.0);
+        assert_eq!(normalize_stack_weight(-2.0), 1.0);
+        assert_eq!(normalize_stack_weight(0.001), MIN_STACK_WEIGHT);
+        let mut dirty = vec![f32::NAN, 1.0];
+        assert!(resize_stack_weights(&mut dirty, 0, px(10.0), px(100.0)));
+        assert!(dirty[0] > 1.0);
+    }
+
+    /// 堆叠状态：权重规范化、分隔条拖拽（按总位移重算）与结束清理。
+    #[rgpui::test]
+    fn stack_state_resizes_with_drag(cx: &mut TestAppContext) {
+        let state = cx.new(|cx| TaskPaneStackState::new(cx));
+        let (usable, dragging) = cx.update(|cx| {
+            state.update(cx, |state, cx| {
+                state.set_weights([1.0, 1.0], cx);
+                // 视口 104px、两格一条分隔条 → 可用 100px。
+                state.rect = Bounds::new(point(px(0.0), px(0.0)), size(px(240.0), px(104.0)));
+                state.slots = 2;
+                state.begin_drag(0, px(100.0), cx);
+                (state.usable_height(), state.dragging())
+            })
+        });
+        assert_eq!(usable, px(100.0));
+        assert_eq!(dragging, Some(0));
+
+        // 向下拖 30px：上格 1.6、下格 0.4。
+        cx.update(|cx| state.update(cx, |state, cx| state.update_drag(px(130.0), cx)));
+        let (above, below) = state.read_with(cx, |state, _| (state.weight(0), state.weight(1)));
+        assert!((above - 1.6).abs() < 1e-4);
+        assert!((below - 0.4).abs() < 1e-4);
+
+        // 再拖到极远仍从起点算起，不累积误差：下格夹到最小权重。
+        cx.update(|cx| state.update(cx, |state, cx| state.update_drag(px(1000.0), cx)));
+        assert!((state.read_with(cx, |state, _| state.weight(1)) - MIN_STACK_WEIGHT).abs() < 1e-6);
+
+        cx.update(|cx| state.update(cx, |state, cx| state.end_drag(cx)));
+        assert_eq!(state.read_with(cx, |state, _| state.dragging()), None);
+
+        // 缺失下标回退 1.0；set_weight 越界补 1.0。
+        assert_eq!(state.read_with(cx, |state, _| state.weight(9)), 1.0);
+        assert!(cx.update(|cx| state.update(cx, |state, cx| state.set_weight(4, 3.0, cx))));
+        assert_eq!(state.read_with(cx, |state, _| state.weight(4)), 3.0);
+        assert_eq!(state.read_with(cx, |state, _| state.weight(3)), 1.0);
+        // 非正数回退 1.0；过小权重夹到下限。
+        cx.update(|cx| state.update(cx, |state, cx| state.set_weight(0, 0.0, cx)));
+        assert_eq!(state.read_with(cx, |state, _| state.weight(0)), 1.0);
+        cx.update(|cx| state.update(cx, |state, cx| state.set_weight(0, 0.001, cx)));
+        assert_eq!(
+            state.read_with(cx, |state, _| state.weight(0)),
+            MIN_STACK_WEIGHT
+        );
+    }
+
+    /// 真实绘制：按权重分配高度，分隔条占位，两格矩形依次下移。
+    #[rgpui::test]
+    fn stack_renders_weighted_panes(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+
+        struct StackProbe {
+            stack: Entity<TaskPaneStackState>,
+            first: Entity<TaskPaneState>,
+            second: Entity<TaskPaneState>,
+        }
+
+        impl Render for StackProbe {
+            fn render(
+                &mut self,
+                _window: &mut Window,
+                _cx: &mut Context<Self>,
+            ) -> impl IntoElement {
+                div().w(px(240.0)).h(px(304.0)).child(
+                    TaskPaneStack::new(&self.stack)
+                        .child(TaskPane::new(&self.first).title("一"))
+                        .child(TaskPane::new(&self.second).title("二")),
+                )
+            }
+        }
+
+        let (probe, cx) = cx.add_window_view(|_window, cx| StackProbe {
+            stack: cx.new(|cx| TaskPaneStackState::new(cx).with_weights([2.0, 1.0])),
+            first: cx.new(TaskPaneState::new),
+            second: cx.new(TaskPaneState::new),
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        let (first, second, slots, usable) = probe.read_with(&*cx, |probe, cx| {
+            (
+                probe.first.read(cx).rect(),
+                probe.second.read(cx).rect(),
+                probe.stack.read(cx).slots(),
+                probe.stack.read(cx).usable_height(),
+            )
+        });
+        assert_eq!(slots, 2);
+        assert_eq!(usable, px(300.0));
+        // 2:1 → 200px / 100px。
+        assert!((first.size.height - px(200.0)).abs() < px(1.0));
+        assert!((second.size.height - px(100.0)).abs() < px(1.0));
+        // 第二格紧接在第一格 + 分隔条之后。
+        assert!(
+            (second.origin.y - (first.origin.y + first.size.height + STACK_SEPARATOR_HEIGHT)).abs()
+                < px(1.0)
+        );
     }
 }
