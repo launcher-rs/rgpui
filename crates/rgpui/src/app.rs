@@ -69,6 +69,7 @@ mod async_context;
 #[cfg(feature = "bench")]
 mod bench_context;
 mod context;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod entity_map;
 #[cfg(any(test, feature = "test-support"))]
 mod headless_app_context;
