@@ -2085,3 +2085,28 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 
 `view.rs`（15，核心视图机制）、`util/scheduler/test_scheduler.rs`（8）、
 `theme/highlight.rs`、`elements/scroll/*` 等。
+## 七十、增补：lint 收紧第七批（`view` 模块 / 15 处）
+
+延续 §六十四～§六十九 的口径，本批覆盖视图机制核心 `view.rs`：
+已迁移模块数 41 → **42**。
+
+### 迁移要点
+
+`view.rs` 的 `unwrap` 全是**框架内部不变量**（视图实体在渲染前必然存在、视图类型由
+`ViewContext` 保证一致、带 id 的视图必有 `global_element_id`、`with_element_state`
+回调必带元素状态、无状态路径的渲染产物必然存在），语义完全不变，统一收敛到模块内
+`invariant` / `invariant_result` 助手。
+
+内嵌的 `mod any_view` 看不到外层助手，用 `use super::invariant_result;` 显式引入。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored。
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）。
+
+### 剩余候选
+
+`theme/highlight.rs`、`elements/scroll/*`、`platform.rs`、`platform/test/platform.rs`、
+`util/scheduler/test_scheduler.rs`（测试调度器）、`util/scheduler/tests.rs`（测试模块）
+等；`app/test_context.rs` / `app/bench_context.rs` / `app/test_app.rs` 等测试支撑模块
+已在第五批按测试断言语义整体放行。
