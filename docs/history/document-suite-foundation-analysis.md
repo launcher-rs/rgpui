@@ -1860,12 +1860,53 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 
 - `cargo test -p rgpui --lib multi_select_keyframes`：1 passed（切换附加选中、取消、批量删除）。
 - `cargo test -p rgpui --lib box_select_picks`：1 passed（框内关键帧全选、框外清除、释放后保留）。
-## 六十四、增补：lint 收紧第一批（`unwrap` / `expect` 迁移）
+## 六十四、增补：lint 收紧第一批（`unwrap` / `expect` 迁移，7 个模块 / 74 处）
 
 §三十一 暂缓项「全 crate 的 `unwrap` / `expect` 迁移」的**第一批**（按子系统分批 ✓）：
-新增代码在已迁移模块里用 `unwrap` 会直接编译失败。
+新增代码在已迁移模块里用 `unwrap` 会直接编译失败。已迁移模块从 24 个增至 **31 个**。
 
-本批迁移 3 个历史模块（生产代码共 24 处）：
+### 迁移口径
+
+分两类处理：
+
+- **可恢复的错误**（`Option` / `Result` 来自真实外部状态）：改为显式处理
+  ——`executor` 的测试调度器接口、`util::paths` 的主目录 / 正则、`lsp::stdio` 的互斥锁。
+- **框架内部不变量**（节点 id 有效、状态已测量、树结构自洽）：语义不变（同样 panic、同样
+  消息），但收敛到模块内的 `invariant` / `taffy_invariant` 助手，调用点写明「这是不变量断言」，
+  并给助手本身加局部 `#[allow(clippy::panic)]`（含注释说明）。这样模块能挂 deny，
+  新代码随手写 `unwrap` 仍会被编译失败拦住。
+
+### 逐模块
+
+- **`executor.rs`**（12 处）：`dispatcher.as_test()` 的 `Option` 改为「不是测试调度器就
+  忽略 / 返回默认值」；`Scope::spawn` 的通道已关闭时跳过任务并记日志；`Scope::drop` 取通道
+  改为忽略返回值；`rng()` 返回类型改为 `Option<SharedRng>`（无外部调用方）；`block_test`
+  的「future 未完成」用显式 `panic!` + 局部 allow（测试专用路径，失败要能看清）。
+- **`util/paths.rs`**（4 处）：取不到主目录时退回当前目录而非 panic；静态正则改为
+  `LazyLock<Option<Regex>>`（编译期常量，编译失败按「无匹配」处理）；`split_once` 改为
+  `unwrap_or` 兜底；`rsplitn` 首段改为 `unwrap_or_default`。
+- **`lsp/stdio.rs`**（8 处）：全部是 `Mutex::lock().unwrap()`，改用中毒可恢复写法
+  `lock().unwrap_or_else(|err| err.into_inner())`。
+- **`taffy.rs`**（20 处）：全部是 taffy 布局树的不变量断言（节点 id 失效），统一走
+  `taffy_invariant` 助手；`absolute_outer_origins` 的 Option 走 `invariant` 助手。
+- **`util/sum_tree`**（12 处：`mod.rs` 4 + `cursor.rs` 6 + `tree_map.rs` 2）：树结构自洽性
+  断言（`Arc::get_mut` 唯一持有、`nodes.pop()` 非空、`last_mut` / `first_mut` 存在）统一走
+  `invariant` 助手；叶节点 / 内部节点的互斥 panic 加局部 allow。
+- **`elements/text.rs`**（18 处）：文本状态未测量 / 未 prepaint 的断言统一走 `invariant`
+  助手；`with_runs` 的「文本段与文本长度不符」属调用方契约错误，保留 panic + 局部 allow。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored；`--features lsp,editor`：924 passed。
+- `cargo test --workspace`：全绿。
+- `cargo clippy -p rgpui --lib --all-targets -- -D warnings` 通过（默认与
+  `lsp,editor,test-support` 两组 feature）。
+
+### 后续批次候选（按风险从低到高）
+
+`app/entity_map.rs`（27 处，含泄漏检测的 `panic!`）、`app.rs`（32）、
+`keymap` / `keymap/context.rs`（84）、`lsp/stdio.rs` 余下的进程管理、
+`view.rs`（15，核心视图机制）、`window.rs`（24）、`elements/div.rs`（39）。
 
 - **`executor.rs`**（12 处）：`dispatcher.as_test()` 的 `Option` 改为「不是测试调度器就
   忽略 / 返回默认值」；`Scope::spawn` 的通道已关闭时跳过任务并记日志；

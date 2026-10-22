@@ -25,7 +25,20 @@ trait CapacityResultExt {
 
 impl<T> CapacityResultExt for Result<(), T> {
     fn unwrap_oob(self) {
-        self.unwrap_or_else(|_| panic!("item should fit into fixed size ArrayVec"))
+        invariant(self.ok(), "item should fit into fixed size ArrayVec")
+    }
+}
+
+/// 内部不变量：值为 `None` 说明树结构与调用前提不符，必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：失败即数据结构被破坏，必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
     }
 }
 
@@ -290,7 +303,10 @@ impl<T: Item> SumTree<T> {
                     child_summaries,
                     child_trees,
                     ..
-                } = Arc::get_mut(&mut parent_node.0).unwrap()
+                } = invariant(
+                    Arc::get_mut(&mut parent_node.0),
+                    "parent node must be uniquely owned",
+                )
                 else {
                     unreachable!()
                 };
@@ -311,7 +327,7 @@ impl<T: Item> SumTree<T> {
             Self::new(cx)
         } else {
             debug_assert_eq!(nodes.len(), 1);
-            nodes.pop().unwrap()
+            invariant(nodes.pop(), "node list must not be empty")
         }
     }
 
@@ -374,7 +390,7 @@ impl<T: Item> SumTree<T> {
             Self::new(cx)
         } else {
             debug_assert_eq!(nodes.len(), 1);
-            nodes.pop().unwrap()
+            invariant(nodes.pop(), "node list must not be empty")
         }
     }
 
@@ -651,9 +667,16 @@ impl<T: Item> SumTree<T> {
                 child_trees,
                 ..
             } => {
-                let last_summary = child_summaries.last_mut().unwrap();
-                let last_child = child_trees.last_mut().unwrap();
-                *last_summary = last_child.update_last_recursive(f, cx).unwrap();
+                let last_summary = invariant(
+                    child_summaries.last_mut(),
+                    "internal node must have children",
+                );
+                let last_child =
+                    invariant(child_trees.last_mut(), "internal node must have children");
+                *last_summary = invariant(
+                    last_child.update_last_recursive(f, cx),
+                    "recursive update must produce a summary",
+                );
                 *summary = sum(child_summaries.iter(), cx);
                 Some(summary.clone())
             }
@@ -695,9 +718,16 @@ impl<T: Item> SumTree<T> {
                 child_trees,
                 ..
             } => {
-                let first_summary = child_summaries.first_mut().unwrap();
-                let first_child = child_trees.first_mut().unwrap();
-                *first_summary = first_child.update_first_recursive(f, cx).unwrap();
+                let first_summary = invariant(
+                    child_summaries.first_mut(),
+                    "internal node must have children",
+                );
+                let first_child =
+                    invariant(child_trees.first_mut(), "internal node must have children");
+                *first_summary = invariant(
+                    first_child.update_first_recursive(f, cx),
+                    "recursive update must produce a summary",
+                );
                 *summary = sum(child_summaries.iter(), cx);
                 Some(summary.clone())
             }
@@ -822,12 +852,16 @@ impl<T: Item> SumTree<T> {
                         .unwrap_oob();
                     trees_to_append.push(other).unwrap_oob();
                 } else {
-                    let tree_to_append = child_trees
-                        .last_mut()
-                        .unwrap()
-                        .push_tree_recursive(other, cx);
-                    *child_summaries.last_mut().unwrap() =
-                        child_trees.last().unwrap().0.summary().clone();
+                    let tree_to_append =
+                        invariant(child_trees.last_mut(), "internal node must have children")
+                            .push_tree_recursive(other, cx);
+                    *invariant(
+                        child_summaries.last_mut(),
+                        "internal node must have children",
+                    ) = invariant(child_trees.last(), "internal node must have children")
+                        .0
+                        .summary()
+                        .clone();
 
                     if let Some(split_tree) = tree_to_append {
                         summaries_to_append
@@ -945,9 +979,12 @@ impl<T: Item> SumTree<T> {
             Summary::add_summary(&mut full_summary, summary, cx);
             *summary = full_summary;
 
-            let first = child_trees.first_mut().unwrap();
+            let first = invariant(child_trees.first_mut(), "internal node must have children");
             let res = Self::append_large(small, first, cx);
-            *child_summaries.first_mut().unwrap() = first.summary().clone();
+            *invariant(
+                child_summaries.first_mut(),
+                "internal node must have children",
+            ) = first.summary().clone();
             if let Some(tree) = res {
                 if child_trees.len() < 2 * TREE_BASE {
                     child_summaries
@@ -1125,7 +1162,7 @@ impl<T: Item> SumTree<T> {
             Node::Leaf { .. } => self,
             Node::Internal {
                 ref child_trees, ..
-            } => child_trees.first().unwrap().leftmost_leaf(),
+            } => invariant(child_trees.first(), "internal node must have children").leftmost_leaf(),
         }
     }
 
@@ -1134,7 +1171,7 @@ impl<T: Item> SumTree<T> {
             Node::Leaf { .. } => self,
             Node::Internal {
                 ref child_trees, ..
-            } => child_trees.last().unwrap().rightmost_leaf(),
+            } => invariant(child_trees.last(), "internal node must have children").rightmost_leaf(),
         }
     }
 }
@@ -1342,6 +1379,7 @@ impl<T: Item> Node<T> {
         }
     }
 
+    #[allow(clippy::panic)] // 不变量断言：叶节点没有子树，调用前提被破坏
     fn child_trees(&self) -> &ArrayVec<SumTree<T>, { 2 * TREE_BASE }, u8> {
         match self {
             Node::Internal { child_trees, .. } => child_trees,
@@ -1349,6 +1387,7 @@ impl<T: Item> Node<T> {
         }
     }
 
+    #[allow(clippy::panic)] // 不变量断言：内部节点没有条目，调用前提被破坏
     fn items(&self) -> &ArrayVec<T, { 2 * TREE_BASE }, u8> {
         match self {
             Node::Leaf { items, .. } => items,

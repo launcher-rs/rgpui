@@ -1,3 +1,4 @@
+use super::invariant;
 use std::{cmp::Ordering, fmt::Debug};
 
 use super::{Bias, ContextLessSummary, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree};
@@ -100,7 +101,11 @@ impl<K: Clone + Ord, V: Clone> TreeMap<K, V> {
         let key = MapKeyRef(Some(key));
         let mut new_tree = cursor.slice(&key, Bias::Left);
         if key.cmp(&cursor.end(), ()) == Ordering::Equal {
-            removed = Some(cursor.item().unwrap().value.clone());
+            removed = Some(
+                invariant(cursor.item(), "cursor must point at an item")
+                    .value
+                    .clone(),
+            );
             cursor.next();
         }
         new_tree.append(cursor.suffix(), ());
@@ -146,7 +151,7 @@ impl<K: Clone + Ord, V: Clone> TreeMap<K, V> {
         let mut new_tree = cursor.slice(&key, Bias::Left);
         let mut result = None;
         if key.cmp(&cursor.end(), ()) == Ordering::Equal {
-            let mut updated = cursor.item().unwrap().clone();
+            let mut updated = invariant(cursor.item(), "cursor must point at an item").clone();
             result = Some(f(&mut updated.value));
             new_tree.push(updated, ());
             cursor.next();

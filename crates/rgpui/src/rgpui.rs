@@ -192,6 +192,7 @@ mod subscription;
 pub mod runtime_stats;
 
 /// Taffy 布局引擎封装 - Flexbox 和 Grid 布局的 Rust 实现
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod taffy;
 
 /// 测试支持模块 - 提供测试用的 mock 上下文和工具

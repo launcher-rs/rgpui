@@ -25,6 +25,7 @@ pub mod shell_builder;
 #[cfg(not(target_family = "wasm"))]
 pub mod shell_env;
 pub mod size;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod sum_tree;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
