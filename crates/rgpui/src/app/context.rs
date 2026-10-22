@@ -1,5 +1,18 @@
 //! 应用上下文，为实体提供专用操作的上下文类型。
 
+/// 内部不变量：值为 `None` 说明前提被破坏（类型不符、实体已释放等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `expect`：语义与原先一致（同样 panic、同样消息），但把
+/// 「这是不变量断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 use crate::{
     AnyView, AnyWindowHandle, AppContext, AsyncApp, DispatchPhase, Effect, EntityId, EventEmitter,
     FocusHandle, FocusOutEvent, Focusable, Global, KeystrokeObserver, Priority, Reservation,
@@ -70,9 +83,10 @@ impl<'a, T: 'static> Context<'a, T> {
     ///
     /// 实体必须存活，否则会 panic。
     pub fn entity(&self) -> Entity<T> {
-        self.weak_entity()
-            .upgrade()
-            .expect("当我们拥有实体上下文时，实体必须存活")
+        invariant(
+            self.weak_entity().upgrade(),
+            "当我们拥有实体上下文时，实体必须存活",
+        )
     }
 
     /// 返回此上下文所属实体的弱引用句柄。
@@ -180,7 +194,7 @@ impl<'a, T: 'static> Context<'a, T> {
         let (subscription, activate) = self.app.release_listeners.insert(
             self.entity_state.entity_id,
             Box::new(move |this, cx| {
-                let this = this.downcast_mut().expect("invalid entity type");
+                let this = invariant(this.downcast_mut(), "invalid entity type");
                 on_release(this, cx);
             }),
         );
@@ -203,7 +217,7 @@ impl<'a, T: 'static> Context<'a, T> {
         let (subscription, activate) = self.app.release_listeners.insert(
             entity_id,
             Box::new(move |entity, cx| {
-                let entity = entity.downcast_mut().expect("invalid entity type");
+                let entity = invariant(entity.downcast_mut(), "invalid entity type");
                 if let Some(this) = this.upgrade() {
                     this.update(cx, |this, cx| on_release(this, entity, cx));
                 }
@@ -434,7 +448,7 @@ impl<'a, T: 'static> Context<'a, T> {
                     else {
                         return false;
                     };
-                    let event = event.downcast_ref().expect("invalid event type");
+                    let event = invariant(event.downcast_ref(), "invalid event type");
                     cx.with_window(subscriber_id, |window, cx| {
                         subscriber.update(cx, |subscriber, cx| {
                             on_event(subscriber, &emitter, event, window, cx);
