@@ -8,6 +8,7 @@ use std::{
 };
 
 /// 颜色定义模块。
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod color;
 /// 代码高亮主题模块。
 pub mod highlight;

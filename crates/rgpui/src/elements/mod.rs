@@ -12,6 +12,7 @@ mod caret;
 mod checkbox;
 mod container_query;
 mod deferred;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod div;
 mod element_ext;
 mod icon;

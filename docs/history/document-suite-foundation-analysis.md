@@ -1931,3 +1931,29 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 - `cargo test -p rgpui --lib`：830 passed + 1 ignored；`--features lsp,editor`：924 passed + 1 ignored。
 - `cargo clippy -p rgpui --lib --all-targets -- -D warnings` 通过（默认与
   `lsp,editor,test-support` 两组 feature）。
+## 六十五、增补：lint 收紧第二批（4 个模块 / 25 处）
+
+延续 §六十四 的口径（可恢复错误显式处理、内部不变量收敛到 `invariant` 助手），
+本批再迁移 4 个模块：已迁移模块数 31 → **35**。
+
+- **`elements/div.rs`**（8 处）：`DragMoveEvent::drag` 的活动拖拽类型、`action` / 拖拽载荷 /
+  drag-over 样式的 `downcast_ref`（都按 `TypeId` 校验过类型）、`active_drag` 的取出、
+  全局 hitbox 栈的取出，统一走 `invariant`。
+- **`theme/color.rs`**（7 处）：内嵌 `default-colors.json` 的解析、HSL 通道字符串的解析与
+  三段切分、色阶 500 权重的兜底取值，走 `invariant` / `invariant_result`。
+- **`inspector.rs`**（3 处）：检查器候选元素非空、状态与值的 `downcast`（按 `TypeId` 校验），
+  走 `invariant` / `invariant_result`（反射调用 `invoke` 的类型不符也走 `invariant_result`）。
+- **`app/async_context.rs`**（7 处）：「只取一次」的 `build_entity` / `args` 约定走 `invariant`；
+  「app 已释放」与「异步上下文禁止 `as_mut`」属 API 误用，保留 panic + 局部 allow。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored。
+- `cargo clippy -p rgpui --lib --all-targets -- -D warnings` 通过（默认与
+  `lsp,editor,test-support,inspector` 两组 feature）。
+
+### 剩余候选（按风险从低到高）
+
+`app/entity_map.rs`（25 处，含泄漏检测的 `panic!`）、`app.rs`（32）、`window.rs`（24）、
+`view.rs`（15，核心视图机制）、`util/scheduler/test_scheduler.rs`（8，测试调度器）、
+`theme/highlight.rs`、`elements/scroll/*` 等。

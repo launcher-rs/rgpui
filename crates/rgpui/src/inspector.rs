@@ -48,6 +48,26 @@ impl InspectorElementId {
     }
 }
 
+/// 内部不变量：值为 `None` 说明类型 / 状态前提被破坏，必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：结果为 `Err` 说明类型前提被破坏，必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use conditional::*;
 
@@ -190,11 +210,13 @@ mod conditional {
             let chosen = chosen.unwrap_or_else(|| {
                 // 去重后取首个（同一帧可能在 rendered/next 重复出现）。
                 let mut seen = std::collections::HashSet::new();
-                candidates
-                    .into_iter()
-                    .map(|(id, _)| id)
-                    .find(|id| seen.insert(id.clone()))
-                    .expect("候选非空")
+                invariant(
+                    candidates
+                        .into_iter()
+                        .map(|(id, _)| id)
+                        .find(|id| seen.insert(id.clone())),
+                    "候选非空",
+                )
             });
 
             self.select(chosen, window);
@@ -241,7 +263,7 @@ mod conditional {
             let mut inspector_state = active_element
                 .states
                 .remove(&type_id)
-                .map(|state| *state.downcast().unwrap());
+                .map(|state| *invariant_result(state.downcast(), "state type checked by TypeId"));
 
             let result = f(&mut inspector_state, window);
 
@@ -326,7 +348,7 @@ mod conditional {
             self.renderers_by_type_id.insert(
                 TypeId::of::<T>(),
                 Box::new(move |id, value, window, cx| {
-                    let value = value.downcast_ref().unwrap();
+                    let value = invariant(value.downcast_ref(), "value type checked by TypeId");
                     f(id, value, window, cx).into_any_element()
                 }),
             );
@@ -562,9 +584,7 @@ pub mod inspector_reflection {
         pub fn invoke(&self, value: T) -> T {
             let boxed = Box::new(value) as Box<dyn Any>;
             let result = (self.function)(boxed);
-            *result
-                .downcast::<T>()
-                .expect("Type mismatch in reflection invoke")
+            *super::invariant_result(result.downcast::<T>(), "Type mismatch in reflection invoke")
         }
     }
 }

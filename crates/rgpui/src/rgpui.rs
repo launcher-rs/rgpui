@@ -125,6 +125,7 @@ pub mod http_client;
 mod input;
 
 /// 检查器 - 开发调试用的 UI 检查工具
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod inspector;
 
 /// 检查器默认面板 - 开箱即用的检查器 UI（检查器打开时可用）
