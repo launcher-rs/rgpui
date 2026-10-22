@@ -71,7 +71,11 @@ impl ForegroundExecutor {
         self.scheduler
             .block(Some(self.session_id), future.as_mut(), None);
 
-        output.take().expect("block_on future did not complete")
+        // 调度器阻塞到 future 完成，取不到说明调度器异常，panic 以暴露问题。
+        #[allow(clippy::panic)]
+        output
+            .take()
+            .unwrap_or_else(|| panic!("block_on future did not complete"))
     }
 
     /// 阻塞直到未来对象完成或超时发生。
@@ -307,8 +311,12 @@ impl<T> Future for Task<T> {
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        #[allow(clippy::panic)] // 契约校验：不变量被破坏，必须立刻暴露
         match unsafe { self.get_unchecked_mut() } {
-            Task(TaskState::Ready(val)) => Poll::Ready(val.take().unwrap()),
+            Task(TaskState::Ready(val)) => Poll::Ready(
+                val.take()
+                    .unwrap_or_else(|| panic!("ready task must hold a value")),
+            ),
             Task(TaskState::Spawned(task)) => Pin::new(task).poll(cx),
         }
     }

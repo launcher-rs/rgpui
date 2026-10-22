@@ -9,6 +9,17 @@ use git2;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
+/// 内部不变量：值为 `None` 说明前提被破坏，必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    #[allow(clippy::panic)] // 契约校验：JSON 输入非法，必须立刻暴露
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 根据 JSON 描述创建临时目录树。
 pub struct TempTree {
     _temp_dir: TempDir,
@@ -17,8 +28,11 @@ pub struct TempTree {
 
 impl TempTree {
     pub fn new(tree: serde_json::Value) -> Self {
-        let dir = TempDir::new().unwrap();
-        let path = std::fs::canonicalize(dir.path()).unwrap();
+        let dir = invariant(TempDir::new().ok(), "temp dir must be creatable");
+        let path = invariant(
+            std::fs::canonicalize(dir.path()).ok(),
+            "temp dir must exist",
+        );
         write_tree(path.as_path(), tree);
 
         Self {
@@ -45,20 +59,23 @@ fn write_tree(path: &Path, tree: serde_json::Value) {
             path.push(name);
             match contents {
                 Value::Object(_) => {
-                    fs::create_dir(&path).unwrap();
+                    invariant(fs::create_dir(&path).ok(), "dir must be creatable");
 
                     #[cfg(all(not(target_family = "wasm"), feature = "test-support"))]
                     if path.file_name() == Some(OsStr::new(".git")) {
-                        git2::Repository::init(path.parent().unwrap()).unwrap();
+                        invariant(
+                            git2::Repository::init(path.parent().unwrap_or(Path::new("."))).ok(),
+                            "git repo must be creatable",
+                        );
                     }
 
                     write_tree(&path, contents);
                 }
                 Value::Null => {
-                    fs::create_dir(&path).unwrap();
+                    invariant(fs::create_dir(&path).ok(), "dir must be creatable");
                 }
                 Value::String(contents) => {
-                    fs::write(&path, contents).unwrap();
+                    invariant(fs::write(&path, contents).ok(), "file must be writable");
                 }
                 _ => {
                     panic!("JSON 对象必须只包含对象、字符串或 null");

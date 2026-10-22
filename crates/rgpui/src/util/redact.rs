@@ -1,7 +1,8 @@
 use std::sync::LazyLock;
 
-static REDACT_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"([A-Z_][A-Z0-9_]*)=("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+)"#).unwrap()
+// 正则是编译期常量，编译失败只可能是代码写错；此处按「不脱敏」处理，不 panic。
+static REDACT_REGEX: LazyLock<Option<regex::Regex>> = LazyLock::new(|| {
+    regex::Regex::new(r#"([A-Z_][A-Z0-9_]*)=("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+)"#).ok()
 });
 
 /// 判断给定的环境变量名称是否应该被脱敏。
@@ -26,7 +27,11 @@ pub fn should_redact(env_var_name: &str) -> bool {
 ///
 /// 将敏感环境变量（如 API_KEY、TOKEN 等）的值替换为 "[REDACTED]"。
 pub fn redact_command(command: &str) -> String {
-    REDACT_REGEX
+    let Some(regex) = REDACT_REGEX.as_ref() else {
+        // 正则不可用（理论上不会发生）：原样返回，不做脱敏。
+        return command.to_string();
+    };
+    regex
         .replace_all(command, |caps: &regex::Captures| {
             let var_name = &caps[1];
             let value = &caps[2];

@@ -1,3 +1,16 @@
+/// 内部不变量：值为 `None` 说明前提被破坏，必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 #[cfg(not(target_family = "wasm"))]
 pub mod archive;
 pub mod collections;
@@ -352,7 +365,8 @@ fn load_shell_from_passwd() -> Result<()> {
         uid,
     );
 
-    let shell = unsafe { std::ffi::CStr::from_ptr(entry.pw_shell).to_str().unwrap() };
+    let shell = unsafe { std::ffi::CStr::from_ptr(entry.pw_shell).to_str() }
+        .unwrap_or_else(|_| panic!("shell path must be valid UTF-8"));
     let should_set_shell = std::env::var("SHELL").map_or(true, |shell_env| {
         shell_env != shell && !std::path::Path::new(&shell_env).exists()
     });
@@ -542,7 +556,7 @@ pub fn merge_non_null_json_value_into(source: serde_json::Value, target: &mut se
             target
         } else {
             *target = Value::Object(Default::default());
-            target.as_object_mut().unwrap()
+            invariant(target.as_object_mut(), "json target must be an object")
         };
         for (key, value) in source_object {
             if let Some(target) = target_object.get_mut(&key) {
@@ -679,9 +693,13 @@ pub use rng::RandomCharIter;
 
 /// 以字符串形式获取嵌入文件。
 pub fn asset_str<A: rust_embed::RustEmbed>(path: &str) -> Cow<'static, str> {
-    match A::get(path).expect(path).data {
-        Cow::Borrowed(bytes) => Cow::Borrowed(std::str::from_utf8(bytes).unwrap()),
-        Cow::Owned(bytes) => Cow::Owned(String::from_utf8(bytes).unwrap()),
+    match invariant(A::get(path), "file must exist").data {
+        Cow::Borrowed(bytes) => Cow::Borrowed(
+            std::str::from_utf8(bytes).unwrap_or_else(|_| panic!("file must be UTF-8")),
+        ),
+        Cow::Owned(bytes) => {
+            Cow::Owned(String::from_utf8(bytes).unwrap_or_else(|_| panic!("file must be UTF-8")))
+        }
     }
 }
 

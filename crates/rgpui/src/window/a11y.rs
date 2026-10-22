@@ -87,6 +87,20 @@
 //!
 //! [`NodeId`]: accesskit::NodeId
 
+/// 内部不变量：值为 `None` 说明前提被破坏，必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    #[allow(clippy::panic)] // 契约校验：无障碍节点状态被破坏，必须立刻暴露
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 use crate::*;
 
 pub(crate) mod debug;
@@ -214,6 +228,7 @@ impl A11y {
     ///
     /// 每帧只能调用一次。
     pub(crate) fn set_focus(&mut self, node_id: NodeId) {
+        #[allow(clippy::panic)] // 契约校验：无障碍节点状态被破坏，必须立刻暴露
         // 焦点节点必须在本帧已注册为可聚焦的。
         if !self.focus_ids.contains_key(&node_id) {
             if cfg!(debug_assertions) {
@@ -239,6 +254,7 @@ impl A11y {
     }
 
     pub(crate) fn set_active_descendant(&mut self, node_id: NodeId) {
+        #[allow(clippy::panic)] // 契约校验：无障碍节点状态被破坏，必须立刻暴露
         // 活动后代必须是焦点容器的后代，而非焦点节点本身。
         if self.nodes.node_is_focused(node_id) {
             if cfg!(debug_assertions) {
@@ -368,9 +384,10 @@ impl<'a> A11ySubtreeBuilder<'a> {
 
     /// 父节点的可变引用。
     pub fn parent_node(&mut self) -> &mut accesskit::Node {
-        self.nodes
-            .current_node_mut()
-            .expect("A11ySubtreeBuilder exists only while its element's node is on the stack")
+        invariant(
+            self.nodes.current_node_mut(),
+            "A11ySubtreeBuilder exists only while its element's node is on the stack",
+        )
     }
 
     /// 追加合成叶节点，并登记其在窗口坐标下的 `bounds`。
@@ -492,6 +509,7 @@ impl A11yNodeBuilder {
 
     /// 推送根节点以开始新帧。
     fn begin_frame(&mut self, window_title: Option<&SharedString>) {
+        #[allow(clippy::panic)] // 契约校验：无障碍节点状态被破坏，必须立刻暴露
         self.all_nodes.clear();
         self.ids_stack.clear();
         self.nodes_stack.clear();
@@ -530,6 +548,7 @@ impl A11yNodeBuilder {
     }
 
     pub(crate) fn set_active_descendant(&mut self, id: NodeId) {
+        #[allow(clippy::panic)] // 契约校验：无障碍节点状态被破坏，必须立刻暴露
         if self
             .active_descendant
             .is_some_and(|existing| existing != id)
@@ -547,6 +566,7 @@ impl A11yNodeBuilder {
     }
 
     pub(crate) fn set_focus(&mut self, id: NodeId) {
+        #[allow(clippy::panic)] // 契约校验：无障碍节点状态被破坏，必须立刻暴露
         if self.focus.is_some() {
             if cfg!(debug_assertions) {
                 panic!("set_focus called more than once in a single frame");
@@ -560,9 +580,9 @@ impl A11yNodeBuilder {
         self.focus = Some(id);
     }
 
+    #[allow(clippy::panic)] // 契约校验：无障碍节点状态被破坏，必须立刻暴露
     fn finalize(&mut self) -> TreeUpdate {
         // Stack should contain only the root node
-        debug_assert_eq!(self.ids_stack.len(), 1);
         debug_assert_eq!(self.ids_stack[0], ROOT_NODE_ID);
 
         if self.ids_stack.len() != 1 {

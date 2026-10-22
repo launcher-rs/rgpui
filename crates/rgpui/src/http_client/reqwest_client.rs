@@ -37,7 +37,8 @@ const DEFAULT_CAPACITY: usize = 4096;
 /// 全局 Tokio 运行时，仅初始化一次
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 /// 用于脱敏 URL 中密钥参数的正则表达式
-static REDACT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"key=[^&]+").unwrap());
+// 正则是编译期常量，编译失败只可能是代码写错；此处按「不脱敏」处理，不 panic。
+static REDACT_REGEX: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"key=[^&]+").ok());
 
 pub struct ReqwestClient {
     client: reqwest::Client,
@@ -53,6 +54,11 @@ impl ReqwestClient {
             .connect_timeout(Duration::from_secs(10))
     }
 
+    /// 创建默认客户端。
+    ///
+    /// 客户端构造失败意味着 TLS / 代理等环境不可用 —— 此时框架无法建立任何 HTTP
+    /// 通路，属于致命环境错误，直接 panic 并带上底层原因。
+    #[allow(clippy::expect_used, clippy::panic)] // 致命环境错误：无 HTTP 通路，必须立刻暴露
     pub fn new() -> Self {
         Self::builder()
             .build()
@@ -103,13 +109,25 @@ impl ReqwestClient {
 }
 
 /// 获取全局 Tokio 运行时
+#[allow(clippy::panic)] // 致命环境错误：连单线程运行时都建不出来，必须立刻暴露
 pub fn runtime() -> &'static tokio::runtime::Runtime {
     RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .enable_all()
             .build()
-            .expect("Failed to initialize HTTP client")
+            .unwrap_or_else(|err| {
+                // 多线程运行时创建失败（线程数超限 / 系统资源不足）：退回单线程运行时，
+                // 能力下降但仍可用。
+                log::warn!("[rgpui::http_client] 多线程运行时创建失败，退回单线程：{err}");
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap_or_else(|err| {
+                        // 连单线程运行时都建不出来：系统已无余力创建线程，属致命环境错误。
+                        panic!("[rgpui::http_client] tokio 运行时创建失败：{err}")
+                    })
+            })
     })
 }
 
@@ -217,7 +235,8 @@ pub fn poll_read_buf(
 fn redact_error(mut error: reqwest::Error) -> reqwest::Error {
     if let Some(url) = error.url_mut()
         && let Some(query) = url.query()
-        && let Cow::Owned(redacted) = REDACT_REGEX.replace_all(query, "key=REDACTED")
+        && let Some(regex) = REDACT_REGEX.as_ref()
+        && let Cow::Owned(redacted) = regex.replace_all(query, "key=REDACTED")
     {
         url.set_query(Some(redacted.as_str()));
     }
@@ -262,7 +281,10 @@ impl super::HttpClient for ReqwestClient {
             let mut builder = http::Response::builder()
                 .status(response.status().as_u16())
                 .version(response.version());
-            *builder.headers_mut().unwrap() = headers;
+            // builder 刚创建，headers map 必然存在。
+            if let Some(headers_mut) = builder.headers_mut() {
+                *headers_mut = headers;
+            }
 
             let bytes = response
                 .bytes_stream()

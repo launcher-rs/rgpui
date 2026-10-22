@@ -29,6 +29,17 @@ use std::{
     time::Duration,
 };
 
+/// 内部不变量：值为 `None` 说明前提被破坏，必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    #[allow(clippy::panic)] // 契约校验：不变量被破坏，必须立刻暴露
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 const PENDING_TRACES_VAR_NAME: &str = "PENDING_TRACES";
 
 pub struct TestScheduler {
@@ -50,11 +61,16 @@ impl TestScheduler {
         mut f: impl AsyncFnMut(Arc<TestScheduler>) -> R,
     ) -> Vec<R> {
         let num_iterations = std::env::var("ITERATIONS")
-            .map(|iterations| iterations.parse().unwrap())
+            .map(|iterations| {
+                invariant(
+                    iterations.parse::<usize>().ok(),
+                    "iterations must be a number",
+                )
+            })
             .unwrap_or(default_iterations);
 
         let seed = std::env::var("SEED")
-            .map(|seed| seed.parse().unwrap())
+            .map(|seed| invariant(seed.parse::<u64>().ok(), "seed must be a number"))
             .unwrap_or(0);
 
         (seed..seed + num_iterations as u64)
@@ -107,6 +123,7 @@ impl TestScheduler {
     }
 
     pub fn end_test(&self) {
+        #[allow(clippy::panic)] // 契约校验：不变量被破坏，必须立刻暴露
         let mut state = self.state.lock();
         if let Some((message, backtrace)) = &state.non_determinism_error {
             panic!("{}\n{:?}", message, backtrace)
@@ -401,6 +418,7 @@ impl TestScheduler {
     }
 
     fn park(&self, deadline: Option<Instant>) -> bool {
+        #[allow(clippy::panic)] // 契约校验：不变量被破坏，必须立刻暴露
         if self.state.lock().allow_parking {
             let start = Instant::now();
             // 强制执行硬超时，防止测试无限期挂起（时长可配置）。
@@ -461,7 +479,7 @@ impl TestScheduler {
         } else if self.state.lock().capture_pending_traces {
             let mut pending_traces = String::new();
             for (_, trace) in mem::take(&mut self.state.lock().pending_traces) {
-                writeln!(pending_traces, "{:?}", exclude_wakers_from_trace(trace)).unwrap();
+                let _ = writeln!(pending_traces, "{:?}", exclude_wakers_from_trace(trace));
             }
             panic!("Parking forbidden. Pending traces:\n{}", pending_traces);
         } else {
@@ -473,6 +491,7 @@ impl TestScheduler {
 }
 
 fn assert_correct_thread(expected: &Thread, state: &Arc<Mutex<SchedulerState>>) {
+    #[allow(clippy::panic)] // 契约校验：不变量被破坏，必须立刻暴露
     let current_thread = thread::current();
     let mut state = state.lock();
     if state.parking_allowed_once {

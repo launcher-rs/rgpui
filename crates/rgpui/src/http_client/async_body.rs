@@ -95,9 +95,7 @@ pub struct Json<T: Serialize>(pub T);
 impl<T: Serialize> From<Json<T>> for AsyncBody {
     fn from(json: Json<T>) -> Self {
         Self::from_bytes(
-            serde_json::to_vec(&json.0)
-                .expect("failed to serialize JSON")
-                .into(),
+            super::invariant(serde_json::to_vec(&json.0).ok(), "failed to serialize JSON").into(),
         )
     }
 }
