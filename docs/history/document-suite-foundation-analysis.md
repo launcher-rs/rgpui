@@ -2054,3 +2054,34 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 
 `window.rs`（24）、`view.rs`（15，核心视图机制）、`util/scheduler/test_scheduler.rs`（8）、
 `theme/highlight.rs`、`elements/scroll/*` 等。
+## 六十九、增补：lint 收紧第六批（`window` 模块 / 24 处）
+
+延续 §六十四～§六十八 的口径，本批覆盖窗口核心 `window.rs`：
+已迁移模块数 40 → **41**。
+
+### 迁移要点
+
+- **状态 / 类型不变量**（焦点句柄已登记、布局引擎存在、根视图存在、渲染实体栈非空、
+  事件监听器存在、downcast 类型一致、精灵图集回调必返 `Some`）：走模块内
+  `invariant` / `invariant_result` 助手，语义不变。
+- **可恢复的失败**（平台窗口映射失败）：改为记 `error` 日志，不中断窗口创建。
+- **重入调用**（同一状态类型与元素 id 在 `with_element_state` 回调内再次进入）：
+  属契约违规，走 `invariant` 并保留原消息。
+
+### 实现细节
+
+- `sprite_atlas.get_or_insert_with(...)` 返回 `Result<Option<AtlasTile>, E>`：`?` 解掉
+  `Result` 后还剩一层 `Option`，要用 `invariant` 再解一次。
+- `Box<dyn Any>::downcast::<T>()` 返回 `Result<Box<T>, _>`，`downcast_mut` 返回
+  `Option<&mut T>` —— 两个助手不能混用。
+
+### 验证
+
+- `cargo test --workspace`：全绿（`rgpui` 830 passed + 1 ignored）。
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）。
+- `cargo check --workspace --examples` / `-p showcase --all-features` 通过。
+
+### 剩余候选
+
+`view.rs`（15，核心视图机制）、`util/scheduler/test_scheduler.rs`（8）、
+`theme/highlight.rs`、`elements/scroll/*` 等。
