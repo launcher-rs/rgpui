@@ -83,6 +83,13 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 ## 提交与 PR 规范
 
 - 提交前：`cargo check --workspace` + `cargo fmt --all` + 相关包 clippy，无错误警告。
+
+**clippy 验证命令必须与 CI 一致**：CI 跑的是
+`cargo clippy --workspace --lib --bins -- -D warnings`（`--workspace` 会把各成员的
+feature **统一**到一份并集，例如 `examples/image_showcase` 启用 `rgpui/reqwest`，
+于是 `http_client/reqwest_client.rs` 也会被编译）。用 `cargo clippy -p rgpui --lib`
+单包验证会漏掉只在某个 feature 下编译的代码 —— 第四批就因此在 CI 上翻车。
+**结论：改到带 feature 门控的文件时，至少跑一次 `--workspace` 全量命令。**
 - **禁止 `#[allow(dead_code)]`**，无用代码删除或重构。平台专属字段仅在部分目标上使用
   时，用 `#[cfg_attr(<目标>, allow(dead_code))]` 精确限定（只对不编译其用途的目标生效），
   不得整块放宽。
