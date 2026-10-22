@@ -429,6 +429,7 @@ pub(crate) mod fast;
 mod view;
 
 /// 窗口系统 - 窗口创建、管理、渲染管线和事件处理
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod window;
 
 /// 窗口定位器 - 计算新窗口在屏幕上的初始位置

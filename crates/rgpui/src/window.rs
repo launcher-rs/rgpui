@@ -1,5 +1,28 @@
 //! 窗口管理：窗口创建、事件分发、渲染管线与输入处理。
 
+/// 内部不变量：值为 `None` 说明前提被破坏（类型不符、状态缺失等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic、同样消息），但把
+/// 「这是不变量断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：结果为 `Err` 说明前提被破坏（类型 downcast 失败等），必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 #[cfg(any(feature = "inspector", debug_assertions))]
 use super::rems;
 #[cfg(any(feature = "inspector", debug_assertions))]
@@ -585,7 +608,10 @@ impl FocusHandle {
 
 impl Clone for FocusHandle {
     fn clone(&self) -> Self {
-        Self::for_id(self.id, &self.handles).unwrap()
+        invariant(
+            Self::for_id(self.id, &self.handles),
+            "focus handle must be registered",
+        )
     }
 }
 
@@ -602,9 +628,7 @@ impl Drop for FocusHandle {
         self.handles
             .read()
             .get(self.id)
-            .unwrap()
-            .ref_count
-            .fetch_sub(1, SeqCst);
+            .map(|handle| handle.ref_count.fetch_sub(1, SeqCst));
     }
 }
 
@@ -1916,7 +1940,10 @@ impl Window {
             platform_window.set_app_id(&app_id);
         }
 
-        platform_window.map_window().unwrap();
+        // 平台窗口映射失败说明窗口已失效，必须立刻暴露。
+        if let Err(err) = platform_window.map_window() {
+            log::error!("[rgpui::window] 平台窗口映射失败：{err}");
+        }
 
         #[cfg(feature = "dom-backend")]
         let supports_dom = platform_window.supports_dom();
@@ -2482,7 +2509,7 @@ impl Window {
                     window_handle
                         .update(cx, |_, window, cx| {
                             if let Some(entity) = handle.upgrade() {
-                                let event = event.downcast_ref().expect("invalid event type");
+                                let event = invariant(event.downcast_ref(), "invalid event type");
                                 on_event(entity, event, window, cx);
                                 true
                             } else {
@@ -2510,7 +2537,7 @@ impl Window {
         let (subscription, activate) = cx.release_listeners.insert(
             entity_id,
             Box::new(move |entity, cx| {
-                let entity = entity.downcast_mut().expect("invalid entity type");
+                let entity = invariant(entity.downcast_mut(), "invalid entity type");
                 let _ = window_handle.update(cx, |_, window, cx| on_release(entity, window, cx));
             }),
         );
@@ -3103,7 +3130,8 @@ impl Window {
         // Retained P3a：布局树跨帧保留，帧末只释放无人认领节点（替代整树清空），
         // 并把本帧节点统计记入帧统计（量化口径）。关闭时恢复旧行为。
         let retain = self.retention_enabled();
-        let layout_stats = self.layout_engine.as_mut().unwrap().end_frame(retain);
+        let layout_stats =
+            invariant(self.layout_engine.as_mut(), "layout engine must exist").end_frame(retain);
         self.fast_stats.note_layout_nodes(
             layout_stats.reused_clean,
             layout_stats.rewritten,
@@ -3285,11 +3313,11 @@ impl Window {
         // stretches to fill the viewport unless explicitly sized, window roots
         // fill the window when their size is `auto`.
         let scale_factor = self.scale_factor();
-        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
+        let mut root_element = invariant(self.root.as_ref(), "window must have a root view")
+            .clone()
+            .into_any_element();
         let root_layout_id = root_element.request_layout(self, cx);
-        self.layout_engine
-            .as_mut()
-            .unwrap()
+        invariant(self.layout_engine.as_mut(), "layout engine must exist")
             .stretch_auto_size_to_fill(root_layout_id, root_size, scale_factor);
         root_element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
 
@@ -3304,9 +3332,7 @@ impl Window {
         if let Some(prompt) = self.prompt.take() {
             let mut element = prompt.view.any_view().into_any_element();
             let prompt_layout_id = element.request_layout(self, cx);
-            self.layout_engine
-                .as_mut()
-                .unwrap()
+            invariant(self.layout_engine.as_mut(), "layout engine must exist")
                 .stretch_auto_size_to_fill(prompt_layout_id, root_size, scale_factor);
             element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
             prompt_element = Some(element);
@@ -4082,29 +4108,32 @@ impl Window {
                 type_name,
             } = any;
             // Using the extra inner option to avoid needing to reallocate a new box.
-            let mut state_box = inner
-                .downcast::<Option<S>>()
-                .map_err(|_| {
-                    #[cfg(debug_assertions)]
-                    {
-                        anyhow::anyhow!(
-                            "invalid element state type for id, requested {:?}, actual: {:?}",
-                            std::any::type_name::<S>(),
-                            type_name
-                        )
-                    }
+            let mut state_box = inner.downcast::<Option<S>>().map_err(|_| {
+                #[cfg(debug_assertions)]
+                {
+                    anyhow::anyhow!(
+                        "invalid element state type for id, requested {:?}, actual: {:?}",
+                        std::any::type_name::<S>(),
+                        type_name
+                    )
+                }
 
-                    #[cfg(not(debug_assertions))]
-                    {
-                        anyhow::anyhow!(
-                            "invalid element state type for id, requested {:?}",
-                            std::any::type_name::<S>(),
-                        )
-                    }
-                })
-                .unwrap();
+                #[cfg(not(debug_assertions))]
+                {
+                    anyhow::anyhow!(
+                        "invalid element state type for id, requested {:?}",
+                        std::any::type_name::<S>(),
+                    )
+                }
+            });
 
-            let state = state_box.take().expect(
+            // 重入调用（同一状态类型与元素 id 在回调内再次进入）属契约违规。
+            let mut state_box = invariant_result(
+                state_box,
+                "reentrant call to with_element_state for the same state type and element id",
+            );
+            let state = invariant(
+                state_box.take(),
                 "reentrant call to with_element_state for the same state type and element id",
             );
             let (result, state) = f(Some(state), self);
@@ -4151,8 +4180,10 @@ impl Window {
         if let Some(global_id) = global_id {
             self.with_element_state(global_id, |state, cx| {
                 let (result, state) = f(Some(state), cx);
-                let state =
-                    state.expect("you must return some state when you pass some element id");
+                let state = invariant(
+                    state,
+                    "you must return some state when you pass some element id",
+                );
                 (result, state)
             })
         } else {
@@ -4194,7 +4225,10 @@ impl Window {
         content_mask: Option<ContentMask<Pixels>>,
     ) {
         self.invalidator.debug_assert_prepaint();
-        let parent_node = self.next_frame.dispatch_tree.active_node_id().unwrap();
+        let parent_node = invariant(
+            self.next_frame.dispatch_tree.active_node_id(),
+            "active node must exist during prepaint",
+        );
         self.next_frame.deferred_draws.push(DeferredDraw {
             current_view: self.current_view(),
             parent_node,
@@ -4574,8 +4608,8 @@ impl Window {
                 .get_or_insert_with(&params.clone().into(), &mut || {
                     let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
                     Ok(Some((size, Cow::Owned(bytes))))
-                })?
-                .expect("Callback above only errors or returns Some");
+                })?;
+            let tile = invariant(tile, "Callback above only errors or returns Some");
             let bounds = Bounds {
                 origin: integer_origin + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
@@ -4664,9 +4698,9 @@ impl Window {
                 .get_or_insert_with(&params.clone().into(), &mut || {
                     let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
                     Ok(Some((size, Cow::Owned(bytes))))
-                })?
-                .expect("Callback above only errors or returns Some");
+                })?;
 
+            let tile = invariant(tile, "Callback above only errors or returns Some");
             let bounds = Bounds {
                 origin: integer_origin + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
@@ -4779,13 +4813,13 @@ impl Window {
             .get_or_insert_with(&params.into(), &mut || {
                 Ok(Some((
                     data.size(frame_index),
-                    Cow::Borrowed(
-                        data.as_bytes(frame_index)
-                            .expect("It's the caller's job to pass a valid frame index"),
-                    ),
+                    Cow::Borrowed(invariant(
+                        data.as_bytes(frame_index),
+                        "It's the caller's job to pass a valid frame index",
+                    )),
                 )))
-            })?
-            .expect("Callback above only returns Some");
+            })?;
+        let tile = invariant(tile, "Callback above only returns Some");
         let content_mask = self.snapped_content_mask();
         let corner_radii = corner_radii.scale(self.scale_factor());
         let opacity = self.element_opacity();
@@ -4873,7 +4907,7 @@ impl Window {
         let key = self.window_layout.current_key();
         let retain = self.retention_enabled();
 
-        self.layout_engine.as_mut().unwrap().request_layout(
+        invariant(self.layout_engine.as_mut(), "layout engine must exist").request_layout(
             style,
             rem_size,
             scale_factor,
@@ -4911,19 +4945,16 @@ impl Window {
         let scale_factor = self.scale_factor();
         let key = self.window_layout.current_key();
         let retain = self.retention_enabled();
-        self.layout_engine
-            .as_mut()
-            .unwrap()
-            .request_measured_layout(
-                style,
-                rem_size,
-                scale_factor,
-                fingerprint,
-                text_state,
-                measure,
-                key,
-                retain,
-            )
+        invariant(self.layout_engine.as_mut(), "layout engine must exist").request_measured_layout(
+            style,
+            rem_size,
+            scale_factor,
+            fingerprint,
+            text_state,
+            measure,
+            key,
+            retain,
+        )
     }
 
     /// 不带文本测量复用的布局申请（`request_measured_layout` 的旧签名兼容入口）。
@@ -4951,7 +4982,7 @@ impl Window {
     ) {
         self.invalidator.debug_assert_prepaint();
 
-        let mut layout_engine = self.layout_engine.take().unwrap();
+        let mut layout_engine = invariant(self.layout_engine.take(), "layout engine must exist");
         layout_engine.compute_layout(layout_id, available_space, self, cx);
         self.layout_engine = Some(layout_engine);
     }
@@ -4964,10 +4995,7 @@ impl Window {
         self.invalidator.debug_assert_prepaint();
 
         let scale_factor = self.scale_factor();
-        let mut bounds = self
-            .layout_engine
-            .as_mut()
-            .unwrap()
+        let mut bounds = invariant(self.layout_engine.as_mut(), "layout engine must exist")
             .layout_bounds(layout_id, scale_factor)
             .map(Into::into);
         let snapped_offset = self.pixel_snap_point(self.element_offset());
@@ -5050,7 +5078,10 @@ impl Window {
     /// 获取当前正在渲染的视图的实体 ID
     pub fn current_view(&self) -> EntityId {
         self.invalidator.debug_assert_paint_or_prepaint();
-        self.rendered_entity_stack.last().copied().unwrap()
+        invariant(
+            self.rendered_entity_stack.last().copied(),
+            "rendered entity stack must not be empty",
+        )
     }
 
     #[inline]
@@ -5467,7 +5498,7 @@ impl Window {
         // Capture phase, events bubble from back to front. Handlers for this phase are used for
         // special purposes, such as detecting events outside of a given Bounds.
         for listener in &mut mouse_listeners {
-            let listener = listener.as_mut().unwrap();
+            let listener = invariant(listener.as_mut(), "mouse listener must exist");
             listener(event, DispatchPhase::Capture, self, cx);
             if !cx.propagate_event {
                 break;
@@ -5477,7 +5508,7 @@ impl Window {
         // Bubble phase, where most normal handlers do their work.
         if cx.propagate_event {
             for listener in mouse_listeners.iter_mut().rev() {
-                let listener = listener.as_mut().unwrap();
+                let listener = invariant(listener.as_mut(), "mouse listener must exist");
                 listener(event, DispatchPhase::Bubble, self, cx);
                 if !cx.propagate_event {
                     break;
