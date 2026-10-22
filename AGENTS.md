@@ -58,7 +58,7 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 （`rgpui.rs` 里 26 个套件模块 + `executor` / `taffy` / `util::paths` / `util::sum_tree` /
 `lsp::stdio` / `elements::text` / `elements::div` / `theme::color` / `inspector` /
 `app::async_context` / `app::entity_map` / `app`（含 `app::context`）/ `element` /
-`http_client` / `window`（含 `window::a11y`）/ `app::context`），
+`http_client` / `window`（含 `window::a11y`），
 新增代码在这些模块里用 `unwrap` 会直接编译失败；
 其余历史模块按同一口径逐步迁移（见 docs §六十四 的迁移口径与后续批次候选）。
 
