@@ -64,6 +64,7 @@ use crate::{
     root::Root,
 };
 
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod async_context;
 #[cfg(feature = "bench")]
 mod bench_context;

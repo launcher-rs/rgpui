@@ -12,6 +12,18 @@
 //! 它们共同提供了完整的类 Dom 事件和类 Tailwind 样式能力，你可以用它们来构建
 //! 自定义元素。Div 通过将这两个系统组合成一个全能元素来构建。
 
+/// 内部不变量：值为 `None` 说明类型 / 状态前提被破坏，必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
 use crate::PinchEvent;
 use crate::collections::HashMap;
 use crate::refineable::Refineable;
@@ -69,10 +81,12 @@ pub struct DragMoveEvent<T> {
 impl<T: 'static> DragMoveEvent<T> {
     /// 返回此事件的拖拽状态。
     pub fn drag<'b>(&self, cx: &'b App) -> &'b T {
-        cx.active_drag
-            .as_ref()
-            .and_then(|drag| drag.value.downcast_ref::<T>())
-            .expect("DragMoveEvent is only valid when the stored active drag is of the same type.")
+        invariant(
+            cx.active_drag
+                .as_ref()
+                .and_then(|drag| drag.value.downcast_ref::<T>()),
+            "DragMoveEvent is only valid when the stored active drag is of the same type.",
+        )
     }
 
     /// 即将被释放（drop）的项目。
@@ -404,7 +418,7 @@ impl Interactivity {
         self.action_listeners.push((
             TypeId::of::<A>(),
             Box::new(move |action, phase, window, cx| {
-                let action = action.downcast_ref().unwrap();
+                let action = invariant(action.downcast_ref(), "action type checked by TypeId");
                 if phase == DispatchPhase::Capture {
                     (listener)(action, window, cx)
                 } else {
@@ -423,7 +437,7 @@ impl Interactivity {
         self.action_listeners.push((
             TypeId::of::<A>(),
             Box::new(move |action, phase, window, cx| {
-                let action = action.downcast_ref().unwrap();
+                let action = invariant(action.downcast_ref(), "action type checked by TypeId");
                 if phase == DispatchPhase::Bubble {
                     (listener)(action, window, cx)
                 }
@@ -535,7 +549,14 @@ impl Interactivity {
         self.drop_listeners.push((
             TypeId::of::<T>(),
             Box::new(move |dragged_value, window, cx| {
-                listener(dragged_value.downcast_ref().unwrap(), window, cx);
+                listener(
+                    invariant(
+                        dragged_value.downcast_ref(),
+                        "drop payload type checked by TypeId",
+                    ),
+                    window,
+                    cx,
+                );
             }),
         ));
     }
@@ -597,7 +618,13 @@ impl Interactivity {
         self.drag_listener = Some((
             Arc::new(value),
             Box::new(move |value, offset, window, cx| {
-                constructor(value.downcast_ref().unwrap(), offset, window, cx).into()
+                constructor(
+                    invariant(value.downcast_ref(), "drag payload type checked by TypeId"),
+                    offset,
+                    window,
+                    cx,
+                )
+                .into()
             }),
         ));
     }
@@ -1101,7 +1128,10 @@ pub trait InteractiveElement: Sized {
             Box::new(move |currently_dragged: &dyn Any, window, cx| {
                 f(
                     StyleRefinement::default(),
-                    currently_dragged.downcast_ref::<S>().unwrap(),
+                    invariant(
+                        currently_dragged.downcast_ref::<S>(),
+                        "drag-over style type checked by TypeId",
+                    ),
                     window,
                     cx,
                 )
@@ -2825,10 +2855,10 @@ impl Interactivity {
                         let drag_state_type = drag.value.as_ref().type_id();
                         for (drop_state_type, listener) in &drop_listeners {
                             if *drop_state_type == drag_state_type {
-                                let drag = cx
-                                    .active_drag
-                                    .take()
-                                    .expect("checked for type drag state type above");
+                                let drag = invariant(
+                                    cx.active_drag.take(),
+                                    "checked for type drag state type above",
+                                );
 
                                 let mut can_drop = true;
                                 if let Some(predicate) = &can_drop_predicate {
@@ -3865,7 +3895,11 @@ impl GroupHitboxes {
     }
 
     pub fn pop(name: &SharedString, cx: &mut App) {
-        cx.default_global::<Self>().0.get_mut(name).unwrap().pop();
+        invariant(
+            cx.default_global::<Self>().0.get_mut(name),
+            "hitbox stack must exist",
+        )
+        .pop();
     }
 }
 

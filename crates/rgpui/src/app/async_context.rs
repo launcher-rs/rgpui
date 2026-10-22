@@ -27,12 +27,22 @@ pub struct AsyncApp {
     pub(crate) foreground_executor: ForegroundExecutor,
 }
 
+/// 内部不变量：值为 `None` 说明「只取一次」的约定被破坏，必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：约定被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
 impl AsyncApp {
     /// 获取内部 app 的强引用
+    #[allow(clippy::panic)] // app 已释放说明异步任务越过生命周期，必须立刻暴露
     fn app(&self) -> std::rc::Rc<AppCell> {
         self.app
             .upgrade()
-            .expect("app was released before async operation completed")
+            .unwrap_or_else(|| panic!("app was released before async operation completed"))
     }
 
     /// wasm 上重借安全的实体更新。
@@ -103,6 +113,7 @@ impl AppContext for AsyncApp {
         app.update_entity(handle, update)
     }
 
+    #[allow(clippy::panic)] // API 误用：异步上下文中不能直接可变借用，必须立刻暴露
     fn as_mut<'a, T>(&'a mut self, _handle: &Entity<T>) -> GpuiBorrow<'a, T>
     where
         T: 'static,
@@ -421,18 +432,16 @@ impl AppContext for AsyncWindowContext {
     {
         let mut build_entity = Some(build_entity);
         match self.app.update_window(self.window, |_, _, cx| {
-            cx.new(
-                build_entity
-                    .take()
-                    .expect("build_entity is taken exactly once"),
-            )
+            cx.new(invariant(
+                build_entity.take(),
+                "build_entity is taken exactly once",
+            ))
         }) {
             Ok(entity) => entity,
-            Err(_) => self.app.new(
-                build_entity
-                    .take()
-                    .expect("update_window returned Err without invoking the closure"),
-            ),
+            Err(_) => self.app.new(invariant(
+                build_entity.take(),
+                "update_window returned Err without invoking the closure",
+            )),
         }
     }
 
@@ -447,14 +456,15 @@ impl AppContext for AsyncWindowContext {
     ) -> Entity<T> {
         let mut args = Some((reservation, build_entity));
         match self.app.update_window(self.window, |_, _, cx| {
-            let (reservation, build_entity) = args.take().expect("args are taken exactly once");
+            let (reservation, build_entity) = invariant(args.take(), "args are taken exactly once");
             cx.insert_entity(reservation, build_entity)
         }) {
             Ok(entity) => entity,
             Err(_) => {
-                let (reservation, build_entity) = args
-                    .take()
-                    .expect("update_window returned Err without invoking the closure");
+                let (reservation, build_entity) = invariant(
+                    args.take(),
+                    "update_window returned Err without invoking the closure",
+                );
                 self.app.insert_entity(reservation, build_entity)
             }
         }
@@ -468,6 +478,7 @@ impl AppContext for AsyncWindowContext {
         self.app.update_entity(handle, update)
     }
 
+    #[allow(clippy::panic)] // API 误用：异步上下文中不能直接可变借用，必须立刻暴露
     fn as_mut<'a, T>(&'a mut self, _: &Entity<T>) -> GpuiBorrow<'a, T>
     where
         T: 'static,

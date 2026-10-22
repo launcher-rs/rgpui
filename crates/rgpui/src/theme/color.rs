@@ -1,3 +1,22 @@
+/// 内部不变量：值为 `None` 说明数据前提被破坏，必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：结果为 `Err` 说明数据（内嵌 JSON / 数字解析）被破坏，必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
 use std::{collections::HashMap, fmt::Display};
 
 use rgpui::{
@@ -335,8 +354,10 @@ impl Colorize for Hsla {
 
 pub(crate) static DEFAULT_COLORS: once_cell::sync::Lazy<ShadcnColors> =
     once_cell::sync::Lazy::new(|| {
-        serde_json::from_str(include_str!("./default-colors.json"))
-            .expect("failed to parse default-colors.json")
+        invariant_result(
+            serde_json::from_str(include_str!("./default-colors.json")),
+            "failed to parse default-colors.json",
+        )
     });
 
 type ColorScales = HashMap<usize, ShadcnColor>;
@@ -515,7 +536,7 @@ impl ColorName {
         if let Some(color) = colors.get(&scale) {
             color.hsla
         } else {
-            colors.get(&500).unwrap().hsla
+            invariant(colors.get(&500), "color scale must have a 500 weight").hsla
         }
     }
 }
@@ -583,7 +604,10 @@ fn from_hsl_channel<'de, D>(deserializer: D) -> Result<Hsla, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s: String = Deserialize::deserialize(deserializer).unwrap();
+    let s: String = invariant_result(
+        Deserialize::deserialize(deserializer),
+        "hsl channel must be a string",
+    );
 
     let mut parts = s.split_whitespace();
     if parts.clone().count() != 3 {
@@ -593,15 +617,13 @@ where
     }
 
     fn parse_number(s: &str) -> f32 {
-        s.trim_end_matches('%')
-            .parse()
-            .expect("failed to parse number")
+        invariant_result(s.trim_end_matches('%').parse(), "failed to parse number")
     }
 
     let (h, s, l) = (
-        parse_number(parts.next().unwrap()),
-        parse_number(parts.next().unwrap()),
-        parse_number(parts.next().unwrap()),
+        parse_number(invariant(parts.next(), "hsl channel must have 3 parts")),
+        parse_number(invariant(parts.next(), "hsl channel must have 3 parts")),
+        parse_number(invariant(parts.next(), "hsl channel must have 3 parts")),
     );
 
     Ok(hsl(h, s, l))
