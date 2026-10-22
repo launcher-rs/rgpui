@@ -30,6 +30,7 @@ mod semantic_tokens;
 mod signature_help;
 /// stdio LSP 传输（O1，子进程 + JSON-RPC；wasm 无进程原语，不编译）。
 #[cfg(not(target_family = "wasm"))]
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod stdio;
 mod types;
 

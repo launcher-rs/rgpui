@@ -30,6 +30,7 @@ mod surface;
 mod svg;
 mod switch;
 mod tag;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod text;
 mod toast;
 mod toggle;

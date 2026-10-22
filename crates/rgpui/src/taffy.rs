@@ -91,6 +91,29 @@ pub struct TaffyLayoutEngine {
 
 const EXPECT_MESSAGE: &str = "we should avoid taffy layout errors by construction if possible";
 
+/// taffy 布局操作的结果：节点 id 失效等属框架内部不变量被破坏，必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `expect`：语义与原先完全一致（同样 panic、同样消息），
+/// 但把「这是不变量断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：失败即框架被破坏，必须立刻暴露
+fn taffy_invariant<T>(result: Result<T, taffy::TaffyError>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：值为 `None` 说明框架状态被破坏（缓存未建立等），必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：失败即框架被破坏，必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 impl TaffyLayoutEngine {
     pub fn new() -> Self {
         let mut taffy = TaffyTree::new();
@@ -179,14 +202,14 @@ impl TaffyLayoutEngine {
                 continue;
             }
             stack.push((node, true));
-            for child in self.taffy.children(node).expect(EXPECT_MESSAGE) {
+            for child in taffy_invariant(self.taffy.children(node), EXPECT_MESSAGE) {
                 if doomed_set.contains(&child) {
                     stack.push((child, false));
                 }
             }
         }
         for node in ordered {
-            self.taffy.remove(node).expect(EXPECT_MESSAGE);
+            taffy_invariant(self.taffy.remove(node), EXPECT_MESSAGE);
         }
         self.claimed_nodes.clear();
         self.occurrences.clear();
@@ -257,16 +280,18 @@ impl TaffyLayoutEngine {
         for child in children {
             self.detach_if_parented((*child).into());
         }
-        if children.is_empty() {
-            self.taffy.new_leaf(style)
-        } else {
-            self.taffy.new_with_children(
-                style,
-                // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
-                LayoutId::to_taffy_slice(children),
-            )
-        }
-        .expect(EXPECT_MESSAGE)
+        taffy_invariant(
+            if children.is_empty() {
+                self.taffy.new_leaf(style)
+            } else {
+                self.taffy.new_with_children(
+                    style,
+                    // This is safe because LayoutId is repr(transparent) to taffy::tree::NodeId.
+                    LayoutId::to_taffy_slice(children),
+                )
+            },
+            EXPECT_MESSAGE,
+        )
     }
 
     pub fn request_layout(
@@ -297,24 +322,21 @@ impl TaffyLayoutEngine {
             self.claimed_nodes.insert(node);
             let mut clean = true;
             // 样式比对：不写即不脏，Taffy 布局缓存保留（核心收益）。
-            if self.taffy.style(node).expect(EXPECT_MESSAGE) != &taffy_style {
-                self.taffy
-                    .set_style(node, taffy_style)
-                    .expect(EXPECT_MESSAGE);
+            if taffy_invariant(self.taffy.style(node), EXPECT_MESSAGE) != &taffy_style {
+                taffy_invariant(self.taffy.set_style(node, taffy_style), EXPECT_MESSAGE);
                 clean = false;
             }
             if retained.children != children_nodes {
-                self.taffy
-                    .set_children(node, &children_nodes)
-                    .expect(EXPECT_MESSAGE);
+                taffy_invariant(
+                    self.taffy.set_children(node, &children_nodes),
+                    EXPECT_MESSAGE,
+                );
                 retained.children = children_nodes;
                 clean = false;
             }
             // 之前是测量节点、现在不是：清除上下文（致脏，正确）。
             if retained.has_measure {
-                self.taffy
-                    .set_node_context(node, None)
-                    .expect(EXPECT_MESSAGE);
+                taffy_invariant(self.taffy.set_node_context(node, None), EXPECT_MESSAGE);
                 retained.has_measure = false;
                 retained.measure_fingerprint = None;
                 clean = false;
@@ -365,15 +387,15 @@ impl TaffyLayoutEngine {
 
         // 保留关闭：旧行为（每帧新分配，帧末整树清空；不跟踪槽位）。
         if !retain {
-            let node = self
-                .taffy
-                .new_leaf_with_context(
+            let node = taffy_invariant(
+                self.taffy.new_leaf_with_context(
                     taffy_style,
                     NodeContext {
                         measure: StackSafe::new(Box::new(measure)),
                     },
-                )
-                .expect(EXPECT_MESSAGE);
+                ),
+                EXPECT_MESSAGE,
+            );
             self.layout_nodes_allocated += 1;
             return (LayoutId::from(node), None);
         }
@@ -390,26 +412,25 @@ impl TaffyLayoutEngine {
                 _ => None,
             };
             let mut clean = carried.is_some();
-            if self.taffy.style(node).expect(EXPECT_MESSAGE) != &taffy_style {
-                self.taffy
-                    .set_style(node, taffy_style)
-                    .expect(EXPECT_MESSAGE);
+            if taffy_invariant(self.taffy.style(node), EXPECT_MESSAGE) != &taffy_style {
+                taffy_invariant(self.taffy.set_style(node, taffy_style), EXPECT_MESSAGE);
                 clean = false;
             }
             if !retained.children.is_empty() {
-                self.taffy.set_children(node, &[]).expect(EXPECT_MESSAGE);
+                taffy_invariant(self.taffy.set_children(node, &[]), EXPECT_MESSAGE);
                 retained.children = Vec::new();
                 clean = false;
             }
             if carried.is_none() {
-                self.taffy
-                    .set_node_context(
+                taffy_invariant(
+                    self.taffy.set_node_context(
                         node,
                         Some(NodeContext {
                             measure: StackSafe::new(Box::new(measure)),
                         }),
-                    )
-                    .expect(EXPECT_MESSAGE);
+                    ),
+                    EXPECT_MESSAGE,
+                );
                 retained.measure_fingerprint = fingerprint;
                 retained.measured_state = text_state;
                 retained.has_measure = true;
@@ -423,15 +444,15 @@ impl TaffyLayoutEngine {
             return (LayoutId::from(node), carried);
         }
 
-        let node = self
-            .taffy
-            .new_leaf_with_context(
+        let node = taffy_invariant(
+            self.taffy.new_leaf_with_context(
                 taffy_style,
                 NodeContext {
                     measure: StackSafe::new(Box::new(measure)),
                 },
-            )
-            .expect(EXPECT_MESSAGE);
+            ),
+            EXPECT_MESSAGE,
+        );
         self.claimed_nodes.insert(node);
         self.retained.insert(
             slot,
@@ -458,7 +479,7 @@ impl TaffyLayoutEngine {
         size: Size<Pixels>,
         scale_factor: f32,
     ) {
-        let style = self.taffy.style(id.0).expect(EXPECT_MESSAGE);
+        let style = taffy_invariant(self.taffy.style(id.0), EXPECT_MESSAGE);
         let stretch_width = style.size.width.is_auto();
         let stretch_height = style.size.height.is_auto();
         if !stretch_width && !stretch_height {
@@ -475,7 +496,7 @@ impl TaffyLayoutEngine {
         }
         // Retained：样式不变不写，否则每帧致脏根节点、布局缓存全废。
         if stretched != *style {
-            self.taffy.set_style(id.0, stretched).expect(EXPECT_MESSAGE);
+            taffy_invariant(self.taffy.set_style(id.0, stretched), EXPECT_MESSAGE);
         }
     }
 
@@ -506,7 +527,7 @@ impl TaffyLayoutEngine {
             .get(&id)
             .is_none_or(|last| *last != available_space);
         if space_changed {
-            self.taffy.mark_dirty(id.into()).expect(EXPECT_MESSAGE);
+            taffy_invariant(self.taffy.mark_dirty(id.into()), EXPECT_MESSAGE);
             self.last_spaces.insert(id, available_space);
         }
 
@@ -517,9 +538,7 @@ impl TaffyLayoutEngine {
                 self.absolute_layout_bounds.remove(&id);
                 self.absolute_outer_origins.remove(&id);
                 stack.extend(
-                    self.taffy
-                        .children(id.into())
-                        .expect(EXPECT_MESSAGE)
+                    taffy_invariant(self.taffy.children(id.into()), EXPECT_MESSAGE)
                         .into_iter()
                         .map(LayoutId::from),
                 );
@@ -540,8 +559,8 @@ impl TaffyLayoutEngine {
             transform(available_space.height),
         );
 
-        self.taffy
-            .compute_layout_with_measure(
+        taffy_invariant(
+            self.taffy.compute_layout_with_measure(
                 id.into(),
                 available_space.into(),
                 |known_dimensions, available_space, _id, node_context, _style| {
@@ -571,8 +590,9 @@ impl TaffyLayoutEngine {
                         (node_context.measure)(known_dimensions, available_space, window, cx);
                     snap_measured_size_to_device_pixels(measured_size, scale_factor).into()
                 },
-            )
-            .expect(EXPECT_MESSAGE);
+            ),
+            EXPECT_MESSAGE,
+        );
     }
 
     // Pixel snapping
@@ -655,7 +675,7 @@ impl TaffyLayoutEngine {
             return layout;
         }
 
-        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
+        let layout = taffy_invariant(self.taffy.layout(id.into()), EXPECT_MESSAGE);
         let layout_location = layout.location;
         let layout_size = layout.size;
         let parent = self.taffy.parent(id.0);
@@ -664,10 +684,10 @@ impl TaffyLayoutEngine {
             Some(parent_id) => {
                 let parent_id = LayoutId::from(parent_id);
                 self.layout_bounds(parent_id, scale_factor);
-                let parent_origin = *self
-                    .absolute_outer_origins
-                    .get(&parent_id)
-                    .expect("parent absolute outer origin should be cached");
+                let parent_origin = invariant(
+                    self.absolute_outer_origins.get(&parent_id).copied(),
+                    "parent absolute outer origin should be cached",
+                );
                 parent_origin + Point::from(layout_location)
             }
             None => Point::from(layout_location),

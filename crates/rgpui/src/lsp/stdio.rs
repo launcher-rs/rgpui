@@ -194,7 +194,12 @@ impl Transport {
                 } else {
                     Ok(value.get("result").cloned().unwrap_or(Value::Null))
                 };
-                if let Some(tx) = this.pending.lock().unwrap().remove(&id) {
+                if let Some(tx) = this
+                    .pending
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .remove(&id)
+                {
                     let _ = tx.send(result);
                 }
             } else if let Some(method) = value.get("method").and_then(Value::as_str) {
@@ -245,7 +250,7 @@ impl Transport {
 
     /// 在途请求全失败（读循环结束时调用）。
     fn fail_all_pending(&self) {
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.pending.lock().unwrap_or_else(|err| err.into_inner());
         for (_, tx) in pending.drain() {
             let _ = tx.send(Err(ResponseError {
                 code: -1,
@@ -271,17 +276,23 @@ impl Transport {
             "params": params,
         });
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap().insert(id, tx);
+        self.pending
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .insert(id, tx);
         let queued = self
             .writer
             .lock()
-            .unwrap()
+            .unwrap_or_else(|err| err.into_inner())
             .send(encode_message(
                 &serde_json::to_vec(&body).unwrap_or_default(),
             ))
             .is_ok();
         if !queued {
-            self.pending.lock().unwrap().remove(&id);
+            self.pending
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .remove(&id);
         }
         async move {
             if !queued {
@@ -303,7 +314,7 @@ impl Transport {
         if self
             .writer
             .lock()
-            .unwrap()
+            .unwrap_or_else(|err| err.into_inner())
             .send(encode_message(
                 &serde_json::to_vec(&body).unwrap_or_default(),
             ))
@@ -315,7 +326,11 @@ impl Transport {
 
     /// 取一条服务端通知（无则 `None`，不阻塞）。
     fn try_recv_notification(&self) -> Option<ServerNotification> {
-        self.notifications.lock().unwrap().try_recv().ok()
+        self.notifications
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .try_recv()
+            .ok()
     }
 }
 
@@ -390,7 +405,12 @@ impl StdioLspClient {
 impl Drop for StdioLspClient {
     /// 杀子进程（`try_wait` 顺手回收已退出的，阻塞式 `wait` 不做）。
     fn drop(&mut self) {
-        if let Some(mut child) = self.child.lock().unwrap().take() {
+        if let Some(mut child) = self
+            .child
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .take()
+        {
             let _ = child.kill();
             let _ = child.try_wait();
         }
