@@ -47,6 +47,7 @@ mod action;
 pub mod commands;
 
 /// 应用核心模块 - 包含 App 主结构体、Context、EntityMap 等
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod app;
 
 /// Arena 分配器 - 高效的实体内存分配策略

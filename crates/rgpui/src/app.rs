@@ -1,5 +1,27 @@
 //! 应用核心 —— 提供 App 上下文、实体生命周期管理及事件调度。
 
+/// 内部不变量：值为 `None` 说明前提被破坏（类型不符、状态缺失等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：结果为 `Err` 说明前提被破坏（类型 downcast 失败等），必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
 use crate::scheduler::Instant;
 use std::{
     any::{TypeId, type_name},
@@ -67,17 +89,27 @@ use crate::{
 #[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod async_context;
 #[cfg(feature = "bench")]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// 测试支撑模块：断言失败就该炸（同 clippy.toml 的 allow-*-in-tests 口径）
 mod bench_context;
 mod context;
 #[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod entity_map;
 #[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// 测试支撑模块：断言失败就该炸（同 clippy.toml 的 allow-*-in-tests 口径）
 mod headless_app_context;
 #[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// 测试支撑模块：断言失败就该炸（同 clippy.toml 的 allow-*-in-tests 口径）
 mod test_app;
 #[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// 测试支撑模块：断言失败就该炸（同 clippy.toml 的 allow-*-in-tests 口径）
 mod test_context;
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// 测试支撑模块：断言失败就该炸（同 clippy.toml 的 allow-*-in-tests 口径）
 mod visual_test_context;
 
 /// 应用完全退出前，[Context::on_app_quit] 返回的 future 可运行的最大时长。
@@ -621,7 +653,10 @@ impl SystemWindowTabController {
             return;
         };
 
-        let current_index = tabs.iter().position(|tab| tab.id == id).unwrap();
+        let current_index = invariant(
+            tabs.iter().position(|tab| tab.id == id),
+            "tab id must exist in the tab list",
+        );
         let next_index = (current_index + 1) % tabs.len();
 
         let _ = &tabs[next_index].handle.update(cx, |_, window, _| {
@@ -636,7 +671,10 @@ impl SystemWindowTabController {
             return;
         };
 
-        let current_index = tabs.iter().position(|tab| tab.id == id).unwrap();
+        let current_index = invariant(
+            tabs.iter().position(|tab| tab.id == id),
+            "tab id must exist in the tab list",
+        );
         let previous_index = if current_index == 0 {
             tabs.len() - 1
         } else {
@@ -1225,7 +1263,7 @@ impl App {
             (
                 TypeId::of::<Evt>(),
                 Box::new(move |event, cx| {
-                    let event: &Evt = event.downcast_ref().expect("invalid event type");
+                    let event: &Evt = invariant(event.downcast_ref(), "invalid event type");
                     if let Some(entity) = handle.upgrade() {
                         on_event(entity, event, cx)
                     } else {
@@ -1300,7 +1338,8 @@ impl App {
                     clear.clear(cx);
 
                     cx.window_handles.insert(id, window.handle);
-                    cx.windows.get_mut(id).unwrap().replace(Box::new(window));
+                    invariant(cx.windows.get_mut(id), "window id must be registered")
+                        .replace(Box::new(window));
                     Ok(handle)
                 }
                 Err(e) => {
@@ -1659,8 +1698,12 @@ impl App {
                     })
                     .collect::<Vec<_>>()
                 {
-                    self.update_window(window, |_, window, cx| window.draw(cx).clear(cx))
-                        .unwrap();
+                    if let Err(err) =
+                        self.update_window(window, |_, window, cx| window.draw(cx).clear(cx))
+                    {
+                        // 窗口已不在栈上（可能已被关闭）：跳过重绘，不中断整帧处理。
+                        log::debug!("[rgpui::app] 重绘窗口失败：{err}");
+                    }
                 }
 
                 if self.pending_effects.is_empty() {
@@ -1700,13 +1743,14 @@ impl App {
             .retain(|handle_id, focus| {
                 if focus.ref_count.load(SeqCst) == 0 {
                     for window_handle in self.windows() {
-                        window_handle
-                            .update(self, |_, window, _| {
-                                if window.focus == Some(handle_id) {
-                                    window.blur();
-                                }
-                            })
-                            .unwrap();
+                        if let Err(err) = window_handle.update(self, |_, window, _| {
+                            if window.focus == Some(handle_id) {
+                                window.blur();
+                            }
+                        }) {
+                            // 窗口已关闭：无需再取消焦点。
+                            log::debug!("[rgpui::app] 取消焦点失败：{err}");
+                        }
                     }
                     false
                 } else {
@@ -1755,6 +1799,7 @@ impl App {
         callback(self);
     }
 
+    #[allow(clippy::panic)] // 契约违规：调用前提被破坏，必须立刻暴露
     fn apply_entity_created_effect(
         &mut self,
         entity: AnyEntity,
@@ -1774,7 +1819,9 @@ impl App {
                     let entity = entity.clone();
                     |_, window, cx| (observer)(entity, &mut Some(window), cx)
                 })
-                .expect("All windows should be off the stack when flushing effects");
+                .unwrap_or_else(|err| {
+                    panic!("All windows should be off the stack when flushing effects: {err}")
+                });
             } else {
                 (observer)(entity.clone(), &mut None, self)
             }
@@ -1808,7 +1855,7 @@ impl App {
         self.update(|cx| {
             let mut window = cx.windows.get_mut(id)?.take()?;
 
-            let root_view = window.root.clone().unwrap();
+            let root_view = invariant(window.root.clone(), "window must have a root view");
 
             cx.window_update_stack.push(window.handle.id);
             let result = update(root_view, &mut window, cx);
@@ -1876,6 +1923,7 @@ impl App {
     }
 
     /// 获取执行器的引用，可用于生成 future。
+    #[allow(clippy::panic)] // 契约违规：调用前提被破坏，必须立刻暴露
     pub fn foreground_executor(&self) -> &ForegroundExecutor {
         if self.quitting {
             panic!("Can't spawn on main thread after on_app_quit")
@@ -1885,6 +1933,7 @@ impl App {
 
     /// 在主线程上生成给定函数返回的 future。闭包将使用 [AsyncApp] 调用，
     /// 允许跨 await 点访问应用状态。
+    #[allow(clippy::panic)] // 契约违规：调用前提被破坏，必须立刻暴露
     #[track_caller]
     pub fn spawn<AsyncFn, R>(&self, f: AsyncFn) -> Task<R>
     where
@@ -1903,6 +1952,7 @@ impl App {
 
     /// 在主线程上以给定优先级生成给定函数返回的 future。
     /// 闭包将使用 [AsyncApp] 调用，允许跨 await 点访问应用状态。
+    #[allow(clippy::panic)] // 契约违规：调用前提被破坏，必须立刻暴露
     pub fn spawn_with_priority<AsyncFn, R>(&self, priority: Priority, f: AsyncFn) -> Task<R>
     where
         AsyncFn: AsyncFnOnce(&mut AsyncApp) -> R + 'static,
@@ -1947,6 +1997,7 @@ impl App {
     }
 
     /// 访问给定类型的全局变量。如果未分配该类型的全局变量则 panic。
+    #[allow(clippy::panic)] // 契约违规：调用前提被破坏，必须立刻暴露
     #[track_caller]
     pub fn global<G: Global>(&self) -> &G {
         // Retained 依赖追踪 P1 读 hook：记录值读取时的版本号。
@@ -1955,7 +2006,7 @@ impl App {
         }
         self.globals_by_type
             .get(&TypeId::of::<G>())
-            .map(|any_state| any_state.downcast_ref::<G>().unwrap())
+            .map(|any_state| invariant(any_state.downcast_ref::<G>(), "global type must match"))
             .unwrap_or_else(|| panic!("no state of type {} exists", type_name::<G>()))
     }
 
@@ -1964,7 +2015,7 @@ impl App {
         let global = self
             .globals_by_type
             .get(&TypeId::of::<G>())
-            .map(|any_state| any_state.downcast_ref::<G>().unwrap());
+            .map(|any_state| invariant(any_state.downcast_ref::<G>(), "global type must match"));
         // Retained 依赖追踪 P1 读 hook：有值记版本号，无值记不存在。
         if let Some(recorder) = self.global_recorders.borrow_mut().last_mut() {
             if global.is_some() {
@@ -1977,6 +2028,7 @@ impl App {
     }
 
     /// 可变访问给定类型的全局变量。如果未分配该类型的全局变量则 panic。
+    #[allow(clippy::panic)] // 契约违规：调用前提被破坏，必须立刻暴露
     #[track_caller]
     pub fn global_mut<G: Global>(&mut self) -> &mut G {
         let global_type = TypeId::of::<G>();
@@ -1993,11 +2045,13 @@ impl App {
         let global_type = TypeId::of::<G>();
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
         self.bump_global_generation(global_type);
-        self.globals_by_type
-            .entry(global_type)
-            .or_insert_with(|| Box::<G>::default())
-            .downcast_mut::<G>()
-            .unwrap()
+        invariant(
+            self.globals_by_type
+                .entry(global_type)
+                .or_insert_with(|| Box::<G>::default())
+                .downcast_mut::<G>(),
+            "global type must match",
+        )
     }
 
     /// 设置给定类型全局变量的值。
@@ -2017,16 +2071,18 @@ impl App {
     }
 
     /// 从应用上下文中移除给定类型的全局变量。不通知全局观察者。
+    #[allow(clippy::panic)] // 契约违规：调用前提被破坏，必须立刻暴露
     pub fn remove_global<G: Global>(&mut self) -> G {
         let global_type = TypeId::of::<G>();
         self.push_effect(Effect::NotifyGlobalObservers { global_type });
         self.bump_global_generation(global_type);
-        *self
-            .globals_by_type
-            .remove(&global_type)
-            .unwrap_or_else(|| panic!("no global added for {}", type_name::<G>()))
-            .downcast()
-            .unwrap()
+        *invariant_result(
+            self.globals_by_type
+                .remove(&global_type)
+                .unwrap_or_else(|| panic!("no global added for {}", type_name::<G>()))
+                .downcast(),
+            "global type must match",
+        )
     }
 
     /// 注册一个回调，当给定类型的全局变量被更新时调用。
@@ -2048,12 +2104,12 @@ impl App {
     /// 将给定类型的全局变量移动到栈上。
     #[track_caller]
     pub(crate) fn lease_global<G: Global>(&mut self) -> GlobalLease<G> {
-        GlobalLease::new(
+        GlobalLease::new(invariant_result(
             self.globals_by_type
                 .remove(&TypeId::of::<G>())
-                .with_context(|| format!("no global registered of type {}", type_name::<G>()))
-                .unwrap(),
-        )
+                .with_context(|| format!("no global registered of type {}", type_name::<G>())),
+            "global type must match",
+        ))
     }
 
     /// 将全局变量移动到栈后恢复该类型的全局变量。
@@ -2156,9 +2212,7 @@ impl App {
             TypeId::of::<T>(),
             Box::new(
                 move |any_entity: AnyEntity, window: &mut Option<&mut Window>, cx: &mut App| {
-                    any_entity
-                        .downcast::<T>()
-                        .unwrap()
+                    invariant_result(any_entity.downcast::<T>(), "entity type must match")
                         .update(cx, |entity_state, cx| {
                             on_new(entity_state, window.as_deref_mut(), cx)
                         })
@@ -2179,7 +2233,7 @@ impl App {
         let (subscription, activate) = self.release_listeners.insert(
             handle.entity_id(),
             Box::new(move |entity, cx| {
-                let entity = entity.downcast_mut().expect("invalid entity type");
+                let entity = invariant(entity.downcast_mut(), "invalid entity type");
                 on_release(entity, cx)
             }),
         );
@@ -2283,7 +2337,7 @@ impl App {
             .or_default()
             .push(Rc::new(move |action, phase, cx| {
                 if phase == DispatchPhase::Bubble {
-                    let action = action.downcast_ref().unwrap();
+                    let action = invariant(action.downcast_ref(), "action type must match");
                     listener(action, cx)
                 }
             }));
@@ -2908,7 +2962,12 @@ impl App {
         let task = self
             .loading_assets
             .remove(&asset_id)
-            .map(|boxed_task| *boxed_task.downcast::<Shared<Task<A::Output>>>().unwrap())
+            .map(|boxed_task| {
+                *invariant_result(
+                    boxed_task.downcast::<Shared<Task<A::Output>>>(),
+                    "asset task type must match",
+                )
+            })
             .unwrap_or_else(|| {
                 is_first = true;
                 let future = A::load(source.clone(), self);
@@ -3164,10 +3223,13 @@ impl AppContext for App {
             .windows
             .get(window.id)
             .context("window not found")?
-            .as_deref()
-            .expect("attempted to read a window that is already on the stack");
+            .as_deref();
+        let window = invariant(
+            window,
+            "attempted to read a window that is already on the stack",
+        );
 
-        let root_view = window.root.clone().unwrap();
+        let root_view = invariant(window.root.clone(), "window must have a root view");
         let view = Root::root_view_downcast::<T>(root_view, self)
             .map_err(|_| anyhow!("root view's type has changed"))?;
 
@@ -3248,13 +3310,13 @@ impl<G: Global> Deref for GlobalLease<G> {
     type Target = G;
 
     fn deref(&self) -> &Self::Target {
-        self.global.downcast_ref().unwrap()
+        invariant(self.global.downcast_ref(), "global type must match")
     }
 }
 
 impl<G: Global> DerefMut for GlobalLease<G> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.global.downcast_mut().unwrap()
+        invariant(self.global.downcast_mut(), "global type must match")
     }
 }
 
@@ -3347,13 +3409,17 @@ impl<'a, T: 'static> GpuiBorrow<'a, T> {
 
 impl<'a, T: 'static> std::borrow::Borrow<T> for GpuiBorrow<'a, T> {
     fn borrow(&self) -> &T {
-        self.inner.as_ref().unwrap().borrow()
+        // 借用期内实体必然存在（Lease 借用后由 GpuiBorrow 持有）。
+        let lease: &Lease<T> = invariant(self.inner.as_ref(), "borrow must be alive");
+        lease
     }
 }
 
 impl<'a, T: 'static> std::borrow::BorrowMut<T> for GpuiBorrow<'a, T> {
     fn borrow_mut(&mut self) -> &mut T {
-        self.inner.as_mut().unwrap().borrow_mut()
+        // 借用期内实体必然存在（Lease 借用后由 GpuiBorrow 持有）。
+        let lease: &mut Lease<T> = invariant(self.inner.as_mut(), "borrow must be alive");
+        lease
     }
 }
 
@@ -3361,19 +3427,23 @@ impl<'a, T: 'static> std::ops::Deref for GpuiBorrow<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.inner.as_ref().unwrap()
+        // 借用期内实体必然存在（Lease 借用后由 GpuiBorrow 持有）。
+        let lease: &Lease<T> = invariant(self.inner.as_ref(), "borrow must be alive");
+        lease
     }
 }
 
 impl<'a, T: 'static> std::ops::DerefMut for GpuiBorrow<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.inner.as_mut().unwrap()
+        // 借用期内实体必然存在（Lease 借用后由 GpuiBorrow 持有）。
+        let lease: &mut Lease<T> = invariant(self.inner.as_mut(), "borrow must be alive");
+        lease
     }
 }
 
 impl<'a, T> Drop for GpuiBorrow<'a, T> {
     fn drop(&mut self) {
-        let lease = self.inner.take().unwrap();
+        let lease = invariant(self.inner.take(), "borrow must be alive");
         self.app.notify(lease.id);
         self.app.entities.end_lease(lease);
         self.app.finish_update();

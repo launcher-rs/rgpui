@@ -2012,3 +2012,45 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `app/test_app.rs`（12）、`util/scheduler/tests.rs`、`elements/scroll/*`、`theme/highlight.rs`
 等 —— 这些属于「核心框架 / 测试支撑」的大文件，改造面大，留给后续批次（每批一个文件，
 配套单测与 CI 兜底）。
+## 六十八、增补：lint 收紧第五批（`app` 模块 / 约 40 处）
+
+延续 §六十四～§六十七 的口径，本批覆盖应用核心 `app` 模块（含子模块 `app/context.rs`）：
+已迁移模块数 39 → **40**。
+
+### 迁移口径
+
+- **类型 / 状态不变量**（downcast 类型一致、标签页 id 存在、窗口已登记、借用期内实体存活等）：
+  走模块内 `invariant` / `invariant_result` 助手，语义不变（同样 panic、同样消息）。
+- **可恢复的结果**（`update_window` / `Entity::update` 返回 `Result`）：改为显式处理并记
+  debug 日志 —— 窗口已关闭时跳过重绘 / 取消焦点，不中断整帧处理。
+- **契约违规**（quit 后 spawn、全局变量未注册、flush effects 时窗口未出栈）：保留 panic +
+  局部 `#[allow(clippy::panic)]` + 注释。
+
+### 关键实现细节
+
+- `Box<dyn Any>::downcast::<T>()` 返回 `Result<Box<T>, Box<dyn Any>>`，`downcast_mut` 返回
+  `Option<&mut T>` —— 两者要用不同的助手（`invariant_result` / `invariant`）。
+- `GpuiBorrow` 持有的是 `Option<Lease<T>>`，`Lease<T>: Deref<Target = T>`，因此
+  `Borrow` / `Deref` 实现里要显式标注 `let lease: &Lease<T> = ...` 再交给自动 deref。
+
+### 测试支撑子模块的口径
+
+`app/` 下的 `test_context.rs` / `test_app.rs` / `bench_context.rs` /
+`visual_test_context.rs` / `headless_app_context.rs` 只在 `test` / `test-support` 下编译，
+不是生产路径；它们的 `unwrap` / `expect` / `panic!` 就是测试断言本身（"未找到窗口"、
+"根视图类型不匹配"、"benchmark 窗口意外关闭"）。这批给它们整体加
+`#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` + 注释说明，
+与根目录 `clippy.toml` 的 `allow-*-in-tests` 同口径 —— 不用逐个改写成 `match`。
+
+### 验证
+
+- `cargo test --workspace`：全绿（`rgpui` 830 passed + 1 ignored）。
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）；
+  `cargo clippy -p rgpui --features test-support --lib --all-targets -- -D warnings` 通过。
+- `cargo check --workspace` / `--workspace --examples` / `-p showcase --all-features` 通过。
+- `cargo publish -p rgpui --dry-run` 通过。
+
+### 剩余候选
+
+`window.rs`（24）、`view.rs`（15，核心视图机制）、`util/scheduler/test_scheduler.rs`（8）、
+`theme/highlight.rs`、`elements/scroll/*` 等。
