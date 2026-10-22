@@ -169,22 +169,31 @@ impl BackgroundExecutor {
         self.spawn(self.inner.scheduler().timer(duration))
     }
 
-    /// 在测试中，运行任意数量的任务（由 SEED 环境变量确定）
+    /// 在测试中，运行任意数量的任务（由 SEED 环境变量确定）。
+    ///
+    /// 非测试调度器返回 `None`（没有随机延迟可言）。
     #[cfg(any(test, feature = "test-support"))]
-    pub fn simulate_random_delay(&self) -> impl Future<Output = ()> + use<> {
-        self.dispatcher.as_test().unwrap().simulate_random_delay()
+    pub fn simulate_random_delay(&self) -> Option<crate::scheduler::Yield> {
+        self.dispatcher
+            .as_test()
+            .map(|test| test.simulate_random_delay())
     }
 
     /// 在测试中，推进时间。这不会运行任何任务，但会使 `timer` 准备就绪。
     #[cfg(any(test, feature = "test-support"))]
     pub fn advance_clock(&self, duration: Duration) {
-        self.dispatcher.as_test().unwrap().advance_clock(duration)
+        if let Some(test) = self.dispatcher.as_test() {
+            test.advance_clock(duration);
+        }
     }
 
     /// 在测试中，运行一个任务。
     #[cfg(any(test, feature = "test-support"))]
     pub fn tick(&self) -> bool {
-        self.dispatcher.as_test().unwrap().scheduler().tick()
+        self.dispatcher
+            .as_test()
+            .map(|test| test.scheduler().tick())
+            .unwrap_or(false)
     }
 
     /// 在测试中，运行任务直到调度器将进入休眠状态。
@@ -195,18 +204,18 @@ impl BackgroundExecutor {
     /// 当没有可运行任务时，我们将时钟推进到下一个计时器。
     #[cfg(any(test, feature = "test-support"))]
     pub fn run_until_parked(&self) {
-        let scheduler = self.dispatcher.as_test().unwrap().scheduler();
+        let Some(scheduler) = self.dispatcher.as_test().map(|test| test.scheduler()) else {
+            return;
+        };
         scheduler.run();
     }
 
     /// 在测试中，防止 `run_until_parked` 在有未完成任务时恐慌。
     #[cfg(any(test, feature = "test-support"))]
     pub fn allow_parking(&self) {
-        self.dispatcher
-            .as_test()
-            .unwrap()
-            .scheduler()
-            .allow_parking();
+        if let Some(test) = self.dispatcher.as_test() {
+            test.scheduler().allow_parking();
+        }
 
         if std::env::var("GPUI_RUN_UNTIL_PARKED_LOG").ok().as_deref() == Some("1") {
             log::warn!("[rgpui::executor] allow_parking: enabled");
@@ -216,27 +225,23 @@ impl BackgroundExecutor {
     /// 设置 block_on 中运行前要执行的 tick 范围。
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_block_on_ticks(&self, range: std::ops::RangeInclusive<usize>) {
-        self.dispatcher
-            .as_test()
-            .unwrap()
-            .scheduler()
-            .set_timeout_ticks(range);
+        if let Some(test) = self.dispatcher.as_test() {
+            test.scheduler().set_timeout_ticks(range);
+        }
     }
 
     /// 撤销 [`Self::allow_parking`] 的效果。
     #[cfg(any(test, feature = "test-support"))]
     pub fn forbid_parking(&self) {
-        self.dispatcher
-            .as_test()
-            .unwrap()
-            .scheduler()
-            .forbid_parking();
+        if let Some(test) = self.dispatcher.as_test() {
+            test.scheduler().forbid_parking();
+        }
     }
 
     /// 在测试中，返回调度器使用的 rng。
     #[cfg(any(test, feature = "test-support"))]
-    pub fn rng(&self) -> crate::scheduler::SharedRng {
-        self.dispatcher.as_test().unwrap().scheduler().rng()
+    pub fn rng(&self) -> Option<crate::scheduler::SharedRng> {
+        self.dispatcher.as_test().map(|test| test.scheduler().rng())
     }
 
     /// 调度器有多少个 CPU 可用。
@@ -252,10 +257,11 @@ impl BackgroundExecutor {
     /// 如果不是在测试执行器上调用则会恐慌。
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_num_cpus(&self, count: usize) {
-        self.dispatcher
-            .as_test()
-            .expect("set_num_cpus can only be called on a test executor")
-            .set_num_cpus(count);
+        let Some(test) = self.dispatcher.as_test() else {
+            log::warn!("[rgpui::executor] set_num_cpus 只在测试调度器上有效，已忽略");
+            return;
+        };
+        test.set_num_cpus(count);
     }
 
     /// 我们是否在主线程上。
@@ -343,7 +349,12 @@ impl ForegroundExecutor {
         // Otherwise, awaiting futures that depend on same-session foreground work can deadlock.
         scheduler.block(None, future.as_mut(), None);
 
-        output.take().expect("block_test future did not complete")
+        // 调度器阻塞到 future 完成，`output` 必为 `Some`；取不到说明调度器异常，
+        // 此时 panic 以暴露问题（测试专用路径，失败要能看清）。
+        #[allow(clippy::panic)]
+        output
+            .take()
+            .unwrap_or_else(|| panic!("block_test future did not complete"))
     }
 
     /// 阻塞当前线程直到给定的未来任务解析。
@@ -406,7 +417,11 @@ impl<'a> Scope<'a> {
     where
         F: Future<Output = ()> + Send + 'a,
     {
-        let tx = self.tx.clone().unwrap();
+        let Some(tx) = self.tx.clone() else {
+            // Scope 已关闭：任务无处可放，直接忽略。
+            log::warn!("[rgpui::executor] Scope 已关闭，忽略 spawn 的任务");
+            return;
+        };
 
         // SAFETY: The 'a lifetime is guaranteed to outlive any of these futures because
         // dropping this `Scope` blocks until all of the futures have resolved.
@@ -425,7 +440,7 @@ impl<'a> Scope<'a> {
 
 impl Drop for Scope<'_> {
     fn drop(&mut self) {
-        self.tx.take().unwrap();
+        let _ = self.tx.take();
 
         // Wait until the channel is closed, which means that all of the spawned
         // futures have resolved.

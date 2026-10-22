@@ -31,7 +31,8 @@ pub fn home_dir() -> &'static PathBuf {
                 PathBuf::from("/home/zed")
             }
         } else {
-            dirs::home_dir().expect("failed to determine home directory")
+            // 取不到主目录时退回当前目录（路径压缩会退化成原样返回，不 panic）。
+            dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
         }
     })
 }
@@ -809,17 +810,20 @@ impl PathWithPosition {
         // Let's avoid repeated init cost on this. It is subject to thread contention, but
         // so far this code isn't called from multiple hot paths. Getting contention here
         // in the future seems unlikely.
-        static SUFFIX_RE: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(ROW_COL_CAPTURE_REGEX).unwrap());
+        // 正则是编译期常量，编译失败只可能是代码写错；此处按「无匹配」处理，不 panic。
+        static SUFFIX_RE: LazyLock<Option<Regex>> =
+            LazyLock::new(|| Regex::new(ROW_COL_CAPTURE_REGEX).ok());
         match SUFFIX_RE
-            .captures(maybe_file_name_with_row_col)
+            .as_ref()
+            .and_then(|re| re.captures(maybe_file_name_with_row_col))
             .map(|caps| caps.extract())
         {
             Some((_, [file_name, maybe_row, maybe_column])) => {
                 let row = maybe_row.parse::<u32>().ok();
                 let column = maybe_column.parse::<u32>().ok();
 
-                let (_, suffix) = trimmed.split_once(file_name).unwrap();
+                // 正则保证文件名在串内；万一不在（理论上不可能），按无后缀处理。
+                let (_, suffix) = trimmed.split_once(file_name).unwrap_or(("", ""));
                 let path_without_suffix = &trimmed[..trimmed.len() - suffix.len()];
 
                 Self {
@@ -839,7 +843,8 @@ impl PathWithPosition {
                     .into_iter()
                     .rev()
                     .fuse();
-                let mut path_string = path_parts.next().expect("rsplitn should have the rest of the string as its last parameter that we reversed").to_owned();
+                // `rsplitn` 至少产出一段（整串），取不到时按空串处理。
+                let mut path_string = path_parts.next().unwrap_or_default().to_owned();
                 let mut row = None;
                 let mut column = None;
                 if let Some(maybe_row) = path_parts.next() {

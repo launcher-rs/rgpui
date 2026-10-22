@@ -92,6 +92,7 @@ mod element;
 mod elements;
 
 /// 执行器模块 - 定义前台和后台任务执行器 trait
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod executor;
 
 /// 平台调度器 - 跨平台的定时器和任务调度实现

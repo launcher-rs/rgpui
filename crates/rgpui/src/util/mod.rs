@@ -9,6 +9,7 @@ pub mod disambiguate;
 pub mod fs;
 pub mod markdown;
 pub mod path_list;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod paths;
 #[cfg(not(target_family = "wasm"))]
 pub mod process;

@@ -1860,4 +1860,33 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 
 - `cargo test -p rgpui --lib multi_select_keyframes`：1 passed（切换附加选中、取消、批量删除）。
 - `cargo test -p rgpui --lib box_select_picks`：1 passed（框内关键帧全选、框外清除、释放后保留）。
+## 六十四、增补：lint 收紧第一批（`unwrap` / `expect` 迁移）
 
+§三十一 暂缓项「全 crate 的 `unwrap` / `expect` 迁移」的**第一批**（按子系统分批 ✓）：
+新增代码在已迁移模块里用 `unwrap` 会直接编译失败。
+
+本批迁移 3 个历史模块（生产代码共 24 处）：
+
+- **`executor.rs`**（12 处）：`dispatcher.as_test()` 的 `Option` 改为「不是测试调度器就
+  忽略 / 返回默认值」；`Scope::spawn` 的通道已关闭时跳过任务并记日志；
+  `Scope::drop` 取通道改为忽略返回值；`rng()` 返回类型改为 `Option<SharedRng>`（无外部
+  调用方）；`block_test` 的「future 未完成」用显式 `panic!` + 局部
+  `#[allow(clippy::panic)]`（测试专用路径，失败要能看清）。
+- **`util/paths.rs`**（4 处）：取不到主目录时退回当前目录而非 panic；静态正则改为
+  `LazyLock<Option<Regex>>`（编译期常量，编译失败按「无匹配」处理）；`split_once` 改为
+  `unwrap_or` 兜底；`rsplitn` 首段改为 `unwrap_or_default`。
+- **`lsp/stdio.rs`**（8 处）：全部是 `Mutex::lock().unwrap()`，改用中毒可恢复写法
+  `lock().unwrap_or_else(|err| err.into_inner())`。
+
+三个模块均加上 `#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`
+（`executor` 在 `rgpui.rs`、`util::paths` 在 `util/mod.rs`、`lsp::stdio` 在 `lsp/mod.rs`）。
+
+后续批次候选（按风险从低到高）：`elements/text.rs`（18）、`util/sum_tree`（20）、
+`taffy.rs`（20，全是 `expect`）、`view.rs`（15，核心视图机制，改动面大）、
+`app/entity_map.rs`（27，含泄漏检测的 `panic!`）。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored；`--features lsp,editor`：924 passed + 1 ignored。
+- `cargo clippy -p rgpui --lib --all-targets -- -D warnings` 通过（默认与
+  `lsp,editor,test-support` 两组 feature）。
