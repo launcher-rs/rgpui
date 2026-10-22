@@ -36,10 +36,25 @@ impl From<u64> for EntityId {
     }
 }
 
+/// 内部不变量：值为 `None` 说明实体 / 引用计数的前提被破坏，必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::expect_used, clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
 impl EntityId {
     /// 将此实体 ID 转换为 [NonZeroU64]
     pub fn as_non_zero_u64(self) -> NonZeroU64 {
-        NonZeroU64::new(self.0.as_ffi()).unwrap()
+        invariant(
+            NonZeroU64::new(self.0.as_ffi()),
+            "entity id must be non-zero",
+        )
     }
 
     /// 将此实体 ID 转换为 [u64]
@@ -173,7 +188,10 @@ impl EntityMap {
 
     /// 将实体移回后返回。
     pub fn end_lease<T>(&mut self, mut lease: Lease<T>) {
-        self.entities.insert(lease.id, lease.entity.take().unwrap());
+        self.entities.insert(
+            lease.id,
+            invariant(lease.entity.take(), "lease must hold its entity"),
+        );
     }
 
     pub fn read<T: 'static>(&self, entity: &Entity<T>) -> &T {
@@ -255,7 +273,10 @@ impl EntityMap {
 
         dropped_entity_ids
             .filter_map(|entity_id| {
-                let count = ref_counts.counts.remove(entity_id).unwrap();
+                let count = invariant(
+                    ref_counts.counts.remove(entity_id),
+                    "dropped entity must have a ref count",
+                );
                 debug_assert_eq!(
                     count.load(SeqCst),
                     0,
@@ -271,6 +292,7 @@ impl EntityMap {
 }
 
 #[track_caller]
+#[allow(clippy::expect_used, clippy::panic)] // 不变量断言：同一实体被重复租约，必须立刻暴露
 fn double_lease_panic<T>(operation: &str) -> ! {
     panic!(
         "无法在 {operation} {} 时操作，因为它正在被更新；常见原因是 subscribe/subscribe_in 回调内又 update 了同一实体，请直接使用回调的 &mut T 参数",
@@ -288,17 +310,24 @@ impl<T: 'static> core::ops::Deref for Lease<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.entity.as_ref().unwrap().downcast_ref().unwrap()
+        invariant(
+            invariant(self.entity.as_ref(), "lease must hold its entity").downcast_ref(),
+            "lease entity type must match",
+        )
     }
 }
 
 impl<T: 'static> core::ops::DerefMut for Lease<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.entity.as_mut().unwrap().downcast_mut().unwrap()
+        invariant(
+            invariant(self.entity.as_mut(), "lease must hold its entity").downcast_mut(),
+            "lease entity type must match",
+        )
     }
 }
 
 impl<T> Drop for Lease<T> {
+    #[allow(clippy::expect_used, clippy::panic)] // 契约校验：Lease 未经 end_lease 释放，必须立刻暴露
     fn drop(&mut self) {
         if self.entity.is_some() && !panicking() {
             panic!("Lease 必须通过 EntityMap::end_lease 结束")
@@ -319,6 +348,7 @@ pub struct AnyEntity {
 }
 
 impl AnyEntity {
+    #[allow(clippy::panic)] // 不变量断言：实体映射必须活得比句柄久
     fn new(
         id: EntityId,
         entity_type: TypeId,
@@ -332,7 +362,7 @@ impl AnyEntity {
             handle_id: entity_map
                 .clone()
                 .upgrade()
-                .unwrap()
+                .unwrap_or_else(|| panic!("entity map must outlive its handles"))
                 .write()
                 .leak_detector
                 .handle_created(id, Some(type_name)),
@@ -376,6 +406,7 @@ impl AnyEntity {
 }
 
 impl Clone for AnyEntity {
+    #[allow(clippy::expect_used, clippy::panic)] // 契约校验：实体被过度释放，必须立刻暴露
     fn clone(&self) -> Self {
         if let Some(entity_map) = self.entity_map.upgrade() {
             let entity_map = entity_map.read();
@@ -395,7 +426,7 @@ impl Clone for AnyEntity {
             handle_id: self
                 .entity_map
                 .upgrade()
-                .unwrap()
+                .unwrap_or_else(|| panic!("entity map must outlive its handles"))
                 .write()
                 .leak_detector
                 .handle_created(self.entity_id, None),
@@ -404,6 +435,7 @@ impl Clone for AnyEntity {
 }
 
 impl Drop for AnyEntity {
+    #[allow(clippy::expect_used, clippy::panic)] // 契约校验：句柄被过度释放，必须立刻暴露
     fn drop(&mut self) {
         if let Some(entity_map) = self.entity_map.upgrade() {
             let entity_map = entity_map.upgradable_read();
@@ -656,6 +688,7 @@ impl AnyWeakEntity {
     }
 
     /// 将此弱实体引用升级为强引用。
+    #[allow(clippy::panic)] // 不变量断言：实体映射必须活得比句柄久
     pub fn upgrade(&self) -> Option<AnyEntity> {
         let ref_counts = &self.entity_ref_counts.upgrade()?;
         let ref_counts = ref_counts.read();
@@ -675,7 +708,7 @@ impl AnyWeakEntity {
             handle_id: self
                 .entity_ref_counts
                 .upgrade()
-                .unwrap()
+                .unwrap_or_else(|| panic!("entity map must outlive its handles"))
                 .write()
                 .leak_detector
                 .handle_created(self.entity_id, None),
@@ -710,10 +743,11 @@ impl AnyWeakEntity {
     /// - 如果实体最近被丢弃但清理尚未完成则 panic
     ///   （资源会保留到效果周期结束）。
     #[cfg(any(test, feature = "leak-detection"))]
+    #[allow(clippy::expect_used, clippy::panic)] // 契约校验：实体被过度释放，必须立刻暴露
     pub fn assert_released(&self) {
         self.entity_ref_counts
             .upgrade()
-            .unwrap()
+            .unwrap_or_else(|| panic!("entity map must outlive its handles"))
             .write()
             .leak_detector
             .assert_released(self.entity_id);
@@ -1059,6 +1093,7 @@ impl LeakDetector {
     /// 如果实体的任何句柄仍然存活则 panic。panic 消息
     /// 包含每个泄漏句柄的回溯（如果设置了 `LEAK_BACKTRACE`），
     /// 否则建议设置环境变量以获取更多信息。
+    #[allow(clippy::expect_used, clippy::panic)] // 契约校验：句柄泄漏，必须立刻暴露
     pub fn assert_released(&mut self, entity_id: EntityId) {
         use std::fmt::Write as _;
 
@@ -1068,9 +1103,9 @@ impl LeakDetector {
                 if let Some(mut backtrace) = backtrace {
                     backtrace.resolve();
                     let backtrace = BacktraceFormatter(backtrace);
-                    writeln!(out, "Leaked handle:\n{:?}", backtrace).unwrap();
+                    let _ = writeln!(out, "Leaked handle:\n{:?}", backtrace);
                 } else {
-                    writeln!(out, "泄漏的句柄：（导出 LEAK_BACKTRACE 以查找分配位置）").unwrap();
+                    let _ = writeln!(out, "泄漏的句柄：（导出 LEAK_BACKTRACE 以查找分配位置）");
                 }
             }
             panic!("{} 的句柄泄漏:\n{out}", data.type_name);
@@ -1098,6 +1133,7 @@ impl LeakDetector {
     ///
     /// 如果存在任何新实体句柄则 panic。panic 消息列出每个
     /// 泄漏实体及其类型名称，并在设置 `LEAK_BACKTRACE` 时包含分配位置回溯。
+    #[allow(clippy::expect_used, clippy::panic)] // 
     pub fn assert_no_new_leaks(&self, snapshot: &LeakDetectorSnapshot) {
         use std::fmt::Write as _;
 
@@ -1111,19 +1147,17 @@ impl LeakDetector {
                     let mut backtrace = backtrace.clone();
                     backtrace.resolve();
                     let backtrace = BacktraceFormatter(backtrace);
-                    writeln!(
+                    let _ = writeln!(
                         out,
                         "实体 {} ({entity_id:?}) 的泄漏句柄:\n{:?}",
                         data.type_name, backtrace
-                    )
-                    .unwrap();
+                    );
                 } else {
-                    writeln!(
+                    let _ = writeln!(
                         out,
                         "实体 {} ({entity_id:?}) 的泄漏句柄：（导出 LEAK_BACKTRACE 以查找分配位置）",
                         data.type_name
-                    )
-                    .unwrap();
+                    );
                 }
             }
         }
@@ -1136,6 +1170,7 @@ impl LeakDetector {
 
 #[cfg(any(test, feature = "leak-detection"))]
 impl Drop for LeakDetector {
+    #[allow(clippy::panic)] // 契约校验：存在泄漏句柄，必须立刻暴露
     fn drop(&mut self) {
         use std::fmt::Write;
 
@@ -1149,19 +1184,17 @@ impl Drop for LeakDetector {
                 if let Some(mut backtrace) = backtrace {
                     backtrace.resolve();
                     let backtrace = BacktraceFormatter(backtrace);
-                    writeln!(
+                    let _ = writeln!(
                         out,
                         "实体 {} ({entity_id:?}) 的泄漏句柄:\n{:?}",
                         data.type_name, backtrace
-                    )
-                    .unwrap();
+                    );
                 } else {
-                    writeln!(
+                    let _ = writeln!(
                         out,
                         "实体 {} ({entity_id:?}) 的泄漏句柄：（导出 LEAK_BACKTRACE 以查找分配位置）",
                         data.type_name
-                    )
-                    .unwrap();
+                    );
                 }
             }
         }

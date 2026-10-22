@@ -1957,3 +1957,25 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `app/entity_map.rs`（25 处，含泄漏检测的 `panic!`）、`app.rs`（32）、`window.rs`（24）、
 `view.rs`（15，核心视图机制）、`util/scheduler/test_scheduler.rs`（8，测试调度器）、
 `theme/highlight.rs`、`elements/scroll/*` 等。
+## 六十六、增补：lint 收紧第三批（`app::entity_map` / 25 处）
+
+延续 §六十四 / §六十五 的口径，本批迁移实体系统的核心 `app/entity_map.rs`：已迁移模块数
+35 → **36**。
+
+- **不变量**（走 `invariant`）：实体 id 非零、租约必持有实体、租约实体的类型与租约一致、
+  被释放实体的引用计数必存在、实体映射必活得比句柄久。
+- **契约违规**（保留 panic + 局部 allow + 注释）：同一实体被重复租约（`double_lease_panic`）、
+  `Lease` 未经 `end_lease` 释放、实体 / 句柄被过度释放、泄漏检测发现泄漏句柄。
+- 泄漏报告里的 `writeln!` 改为 `let _ = writeln!(...)`（写 `String` 不会失败，无需断言）。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored；`--features leak-detection` 同样通过。
+- `cargo clippy -p rgpui --lib --all-targets -- -D warnings` 通过（默认与
+  `lsp,editor,test-support,inspector,leak-detection` 两组 feature）。
+
+### 剩余候选
+
+`app.rs`（32）、`window.rs`（24）、`view.rs`（15，核心视图机制）、
+`util/scheduler/test_scheduler.rs`（8，测试调度器）、`theme/highlight.rs`、
+`elements/scroll/*` 等。
