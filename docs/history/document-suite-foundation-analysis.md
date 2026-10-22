@@ -1979,3 +1979,36 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `app.rs`（32）、`window.rs`（24）、`view.rs`（15，核心视图机制）、
 `util/scheduler/test_scheduler.rs`（8，测试调度器）、`theme/highlight.rs`、
 `elements/scroll/*` 等。
+## 六十七、增补：lint 收紧第四批（13 个文件 / 约 45 处）
+
+延续 §六十四～§六十六 的口径，本批覆盖「元素生命周期 + 无障碍 + HTTP + 工具层」：
+已迁移模块数 36 → **39**（新增 `element` / `http_client` / `window::a11y`）。
+
+- **`element.rs`**：元素生命周期的调用顺序契约（必须先 `request_layout` 再 `prepaint` 再
+  `paint`）—— 4 处 `panic!` 属**内部契约违规**，集中在 `impl GlobalElementId`（一个
+  `#[allow(clippy::panic)]` + 注释覆盖该 impl 内的同类 panic）；`debug_assert` 里的
+  `global_id` 取值走 `invariant`。
+- **`window/a11y.rs`**：无障碍节点状态被破坏时的 5 处 `panic!`（`set_focus` 未注册、
+  `active_descendant` 越界等）属契约违规，改为逐处局部 allow + 注释；「构造器只在
+  元素节点在栈上时存在」的不变量走 `invariant`。
+- **`http_client/`**：测试替身的 `as_fake` 误用、假响应体构造失败等契约违规保留 panic
+  + 局部 allow；JSON 序列化失败走 `invariant`。
+- **`util/`**：`util/mod.rs`（shell 路径、JSON 目标、文件读取、静态正则）、
+  `util/rel_path.rs`（`file_stem` / `extension` 改用 `?` 传播非 UTF-8 情况）、
+  `util/redact.rs`（静态正则改 `Option`）、`util/path_list.rs`（`write!` 忽略返回值）、
+  `util/scheduler/{clock,executor,test_scheduler}.rs`（起始时间解析、调度器状态不变量）、
+  `util/test.rs` 与 `util/test/marked_text.rs`（临时目录 / 仓库创建失败、标记文本格式非法）。
+
+### 验证
+
+- `cargo test --workspace`：全绿（`rgpui` 830 passed + 1 ignored）。
+- `cargo clippy -p rgpui --lib --all-targets -- -D warnings` 通过（默认与
+  `lsp,editor,test-support,inspector,leak-detection` 两组 feature）。
+- `cargo fmt --all` 无变更。
+
+### 剩余候选
+
+`app.rs`（32）、`window.rs`（24）、`app/test_context.rs`（28）、`app/bench_context.rs`（15）、
+`app/test_app.rs`（12）、`util/scheduler/tests.rs`、`elements/scroll/*`、`theme/highlight.rs`
+等 —— 这些属于「核心框架 / 测试支撑」的大文件，改造面大，留给后续批次（每批一个文件，
+配套单测与 CI 兜底）。

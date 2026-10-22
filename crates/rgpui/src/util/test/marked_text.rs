@@ -110,6 +110,7 @@ pub fn marked_text_ranges_by(
 /// 源代码中修剪掉。
 #[track_caller]
 pub fn marked_text_ranges(
+    #[allow(clippy::panic)] // 契约校验：标记文本格式非法，必须立刻暴露
     marked_text: &str,
     ranges_are_directed: bool,
 ) -> (String, Vec<Range<usize>>) {

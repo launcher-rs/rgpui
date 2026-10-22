@@ -143,7 +143,7 @@ impl PathList {
             if !order.is_empty() {
                 order.push(',');
             }
-            write!(&mut order, "{}", *ix).unwrap();
+            let _ = write!(&mut order, "{}", *ix);
         }
         SerializedPathList { paths, order }
     }

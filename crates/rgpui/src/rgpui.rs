@@ -86,6 +86,7 @@ pub use commands::{CommandDescriptor, CommandRegistry};
 pub use component_text::{ComponentText, ComponentTextViewStyle};
 
 /// 元素系统核心 - 定义 Element trait 和元素树构建机制
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod element;
 
 /// 内置元素 - 提供 Div、Canvas、Img 等预定义 UI 元素
@@ -119,6 +120,7 @@ mod gestures;
 mod global;
 
 /// HTTP 客户端库 - 提供异步 HTTP 请求能力
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod http_client;
 
 /// 输入事件 - 定义键盘、鼠标、触摸等输入事件类型

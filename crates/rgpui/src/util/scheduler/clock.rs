@@ -25,7 +25,10 @@ impl TestClock {
     /// 创建一个新的 TestClock，初始时间为 2025-07-01T23:59:58。
     pub fn new() -> Self {
         const START_TIME: &str = "2025-07-01T23:59:58-00:00";
-        let utc_now = DateTime::parse_from_rfc3339(START_TIME).unwrap().to_utc();
+        // 起始时间是编译期常量，解析失败只可能是代码写错；解析不了就退回 Unix 纪元。
+        let utc_now = DateTime::parse_from_rfc3339(START_TIME)
+            .map(|time| time.to_utc())
+            .unwrap_or_else(|_| DateTime::UNIX_EPOCH);
         Self(Mutex::new(TestClockState {
             now: Instant::now(),
             utc_now,

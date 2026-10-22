@@ -1,5 +1,20 @@
 #![allow(missing_docs)]
 
+/// 内部不变量：值为 `None` 说明前提被破坏，必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+#[cfg_attr(not(feature = "test-support"), allow(dead_code))] // 仅测试替身用到
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    #[allow(clippy::panic)] // 契约校验：测试替身状态被破坏，必须立刻暴露
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 mod async_body;
 #[cfg(not(target_family = "wasm"))]
 pub mod github;
@@ -112,6 +127,7 @@ pub trait HttpClient: 'static + Send + Sync {
     }
 
     #[cfg(feature = "test-support")]
+    #[allow(clippy::panic)] // API 误用：非测试替身上调用 as_fake，必须立刻暴露
     fn as_fake(&self) -> &FakeHttpClient {
         panic!("called as_fake on {}", type_name::<Self>())
     }
@@ -350,6 +366,7 @@ impl HttpClient for BlockedHttpClient {
     }
 
     #[cfg(feature = "test-support")]
+    #[allow(clippy::panic)] // API 误用：非测试替身上调用 as_fake，必须立刻暴露
     fn as_fake(&self) -> &FakeHttpClient {
         panic!("called as_fake on {}", type_name::<Self>())
     }
@@ -388,23 +405,25 @@ impl FakeHttpClient {
         })
     }
 
+    #[allow(clippy::panic)] // 契约校验：测试替身状态被破坏，必须立刻暴露
     pub fn with_404_response() -> Arc<HttpClientWithUrl> {
         log::warn!("Using fake HTTP client with 404 response");
         Self::create(|_| async move {
             Ok(Response::builder()
                 .status(404)
                 .body(Default::default())
-                .unwrap())
+                .unwrap_or_else(|_| panic!("fake response body must be valid")))
         })
     }
 
+    #[allow(clippy::panic)] // 契约校验：测试替身状态被破坏，必须立刻暴露
     pub fn with_200_response() -> Arc<HttpClientWithUrl> {
         log::warn!("Using fake HTTP client with 200 response");
         Self::create(|_| async move {
             Ok(Response::builder()
                 .status(200)
                 .body(Default::default())
-                .unwrap())
+                .unwrap_or_else(|_| panic!("fake response body must be valid")))
         })
     }
 
@@ -414,7 +433,7 @@ impl FakeHttpClient {
         F: Fn(FakeHttpHandler, Request<AsyncBody>) -> Fut + Send + Sync + 'static,
     {
         let mut handler = self.handler.lock();
-        let old_handler = handler.take().unwrap();
+        let old_handler = invariant(handler.take(), "fake handler must be set");
         *handler = Some(Arc::new(move |req| {
             Box::pin(new_handler(old_handler.clone(), req))
         }));
@@ -434,7 +453,7 @@ impl HttpClient for FakeHttpClient {
         &self,
         req: Request<AsyncBody>,
     ) -> BoxFuture<'static, anyhow::Result<Response<AsyncBody>>> {
-        ((self.handler.lock().as_ref().unwrap())(req)) as _
+        ((invariant(self.handler.lock().as_ref(), "fake handler must be set"))(req)) as _
     }
 
     fn user_agent(&self) -> Option<&HeaderValue> {

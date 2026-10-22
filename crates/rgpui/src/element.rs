@@ -12,6 +12,19 @@
 //!
 //! 但是，大多数情况下，您不需要实现自己的元素。RGPUI 提供了许多开箱即用的元素，应涵盖大多数常见用例，建议您使用这些元素来构建 `components`，使用 [`RenderOnce`] trait 和 `#[derive(IntoElement)]` 宏。仅在需要手动控制布局和绘制过程时才实现元素，例如使用自己的自定义布局算法或渲染代码编辑器时。
 
+/// 内部不变量：值为 `None` 说明前提被破坏，必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 #[cfg(feature = "dom-backend")]
 use crate::DomNode;
 use crate::{
@@ -298,6 +311,9 @@ enum ElementDrawPhase<RequestLayoutState, PrepaintState> {
 }
 
 /// [`Element`] 实现者的包装器，使其可在窗口中绘制。
+// 本 impl 的 panic 全部对应「元素生命周期调用顺序被破坏」（先 request_layout 再 prepaint 再 paint 等），
+// 属内部契约违规，直接 panic 暴露，不做静默降级。
+#[allow(clippy::panic)]
 impl<E: Element> Drawable<E> {
     pub(crate) fn new(element: E) -> Self {
         Drawable {
@@ -381,7 +397,10 @@ impl<E: Element> Drawable<E> {
             } => {
                 if let Some(element_id) = self.element.id() {
                     window.element_id_stack.push(element_id);
-                    debug_assert_eq!(&*global_id.as_ref().unwrap().0, &*window.element_id_stack);
+                    debug_assert_eq!(
+                        &*invariant(global_id.as_ref(), "global id must be set").0,
+                        &*window.element_id_stack
+                    );
                 }
 
                 let bounds = window.layout_bounds(layout_id);
@@ -527,7 +546,10 @@ impl<E: Element> Drawable<E> {
             } => {
                 if let Some(element_id) = self.element.id() {
                     window.element_id_stack.push(element_id);
-                    debug_assert_eq!(&*global_id.as_ref().unwrap().0, &*window.element_id_stack);
+                    debug_assert_eq!(
+                        &*invariant(global_id.as_ref(), "global id must be set").0,
+                        &*window.element_id_stack
+                    );
                 }
 
                 window.next_frame.dispatch_tree.set_active_node(node_id);

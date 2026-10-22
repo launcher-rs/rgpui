@@ -63,6 +63,7 @@ use std::{
 };
 use uuid::Uuid;
 
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub(crate) mod a11y;
 mod prompts;
 

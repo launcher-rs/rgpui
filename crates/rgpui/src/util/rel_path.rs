@@ -128,11 +128,11 @@ impl RelPath {
     }
 
     pub fn file_stem(&self) -> Option<&str> {
-        Some(self.as_std_path().file_stem()?.to_str().unwrap())
+        self.as_std_path().file_stem()?.to_str()
     }
 
     pub fn extension(&self) -> Option<&str> {
-        Some(self.as_std_path().extension()?.to_str().unwrap())
+        self.as_std_path().extension()?.to_str()
     }
 
     pub fn parent(&self) -> Option<&Self> {
@@ -326,7 +326,10 @@ impl RelPathBuf {
             let mut filename = PathBuf::from(filename);
             filename.set_extension(extension);
             self.pop();
-            self.0.push_str(filename.to_str().unwrap());
+            let Some(name) = filename.to_str() else {
+                return false;
+            };
+            self.0.push_str(name);
             true
         } else {
             false

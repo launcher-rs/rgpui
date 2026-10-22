@@ -53,11 +53,12 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 `redundant_clone`、`disallowed_methods`；`style` 为 `allow`。
 
 根目录 `clippy.toml` 允许测试代码用 `unwrap` / `expect` / `panic!`（断言失败就是要炸）。
-生产代码按模块收紧：**36 个模块**声明带
+生产代码按模块收紧：**39 个模块**声明带
 `#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`
 （`rgpui.rs` 里 26 个套件模块 + `executor` / `taffy` / `util::paths` / `util::sum_tree` /
 `lsp::stdio` / `elements::text` / `elements::div` / `theme::color` / `inspector` /
-`app::async_context` / `app::entity_map`），新增代码在这些模块里用 `unwrap` 会直接编译失败；
+`app::async_context` / `app::entity_map` / `element` / `http_client` / `window::a11y`），
+新增代码在这些模块里用 `unwrap` 会直接编译失败；
 其余历史模块按同一口径逐步迁移（见 docs §六十四 的迁移口径与后续批次候选）。
 
 ## 托盘与窗口隐藏
