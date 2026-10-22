@@ -426,6 +426,7 @@ pub mod util;
 pub(crate) mod fast;
 
 /// 视图系统 - 定义 View trait 和窗口视图的生命周期管理
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod view;
 
 /// 窗口系统 - 窗口创建、管理、渲染管线和事件处理

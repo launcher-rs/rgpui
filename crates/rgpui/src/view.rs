@@ -1,5 +1,28 @@
 //! 视图系统 —— 提供 AnyView、ViewContext 等核心视图抽象与渲染管线。
 
+/// 内部不变量：值为 `None` 说明前提被破坏（视图类型不符、元素缺失等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：结果为 `Err` 说明前提被破坏（类型 downcast 失败等），必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 use crate::collections::FxHashSet;
 use crate::refineable::Refineable;
 use crate::{
@@ -149,6 +172,7 @@ impl std::fmt::Debug for AnyWeakView {
 }
 
 mod any_view {
+    use super::invariant_result;
     use crate::{AnyElement, AnyView, App, IntoElement, Render, Window};
 
     pub(crate) fn render<V: 'static + Render>(
@@ -156,7 +180,7 @@ mod any_view {
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        let view = view.clone().downcast::<V>().unwrap();
+        let view = invariant_result(view.clone().downcast::<V>(), "view type must match");
         // Record the view's Render type name so the accessibility debug dump can
         // attribute nodes to the view that produced them.
         #[cfg(debug_assertions)]
@@ -353,12 +377,10 @@ impl<V: View> Element for ViewElement<V> {
                         cx.begin_dependency_recording();
                         let ((element, layout_id), accessed_entities) = cx
                             .detect_accessed_entities(|cx| {
-                                let mut element = self
-                                    .view
-                                    .take()
-                                    .unwrap()
-                                    .render(window, cx)
-                                    .into_any_element();
+                                let mut element =
+                                    invariant(self.view.take(), "view must exist before rendering")
+                                        .render(window, cx)
+                                        .into_any_element();
                                 let layout_id = element.request_layout(window, cx);
                                 (element, layout_id)
                             });
@@ -374,12 +396,10 @@ impl<V: View> Element for ViewElement<V> {
             window.with_id(
                 ElementId::Name(std::any::type_name::<V>().into()),
                 |window| {
-                    let mut element = self
-                        .view
-                        .take()
-                        .unwrap()
-                        .render(window, cx)
-                        .into_any_element();
+                    let mut element =
+                        invariant(self.view.take(), "view must exist before rendering")
+                            .render(window, cx)
+                            .into_any_element();
                     let layout_id = element.request_layout(window, cx);
                     (layout_id, Some(element))
                 },
@@ -402,7 +422,7 @@ impl<V: View> Element for ViewElement<V> {
             window.with_rendered_view(entity_id, |window| {
                 let prepaint_start = window.prepaint_index();
                 window.with_element_state::<ViewElementState, _>(
-                    global_id.unwrap(),
+                    invariant(global_id, "view with an id must have a global element id"),
                     |mut element_state, window| {
                         let content_mask = window.content_mask();
                         let text_style = window.text_style();
@@ -446,7 +466,8 @@ impl<V: View> Element for ViewElement<V> {
                             let _ = element.take();
                             self.pending_accessed_entities = None;
                             self.pending_dependencies = None;
-                            let mut element_state = element_state.unwrap();
+                            let mut element_state =
+                                invariant(element_state, "view element state must exist");
                             window.reuse_prepaint(element_state.prepaint_range.clone());
                             cx.entities
                                 .extend_accessed(&element_state.accessed_entities);
@@ -502,12 +523,10 @@ impl<V: View> Element for ViewElement<V> {
                         // Retained P1：绘制前后开关依赖记录。
                         cx.begin_dependency_recording();
                         let (mut element, accessed_entities) = cx.detect_accessed_entities(|cx| {
-                            let mut element = self
-                                .view
-                                .take()
-                                .unwrap()
-                                .render(window, cx)
-                                .into_any_element();
+                            let mut element =
+                                invariant(self.view.take(), "view must exist before rendering")
+                                    .render(window, cx)
+                                    .into_any_element();
                             element.layout_as_root(bounds.size.into(), window, cx);
                             element.prepaint_at(bounds.origin, window, cx);
                             element
@@ -541,10 +560,10 @@ impl<V: View> Element for ViewElement<V> {
             window.with_id(
                 ElementId::Name(std::any::type_name::<V>().into()),
                 |window| {
-                    element.as_mut().unwrap().prepaint(window, cx);
+                    invariant(element.as_mut(), "view element must exist").prepaint(window, cx);
                 },
             );
-            Some(element.take().unwrap())
+            Some(invariant(element.take(), "view element must exist"))
         }
     }
 
@@ -567,9 +586,10 @@ impl<V: View> Element for ViewElement<V> {
                 let caching_disabled = false;
                 if self.cached_style.is_some() && !caching_disabled {
                     window.with_element_state::<ViewElementState, _>(
-                        global_id.unwrap(),
+                        invariant(global_id, "view with an id must have a global element id"),
                         |element_state, window| {
-                            let mut element_state = element_state.unwrap();
+                            let mut element_state =
+                                invariant(element_state, "view element state must exist");
 
                             let paint_start = window.paint_index();
 
@@ -596,9 +616,10 @@ impl<V: View> Element for ViewElement<V> {
                     let paint_reads = cx.end_dependency_recording();
                     let paint_end = window.paint_index();
                     window.with_element_state::<ViewElementState, _>(
-                        global_id.unwrap(),
+                        invariant(global_id, "view with an id must have a global element id"),
                         |element_state, _window| {
-                            let mut element_state = element_state.unwrap();
+                            let mut element_state =
+                                invariant(element_state, "view element state must exist");
                             element_state.paint_range = paint_start..paint_end;
                             element_state.dependencies.merge(paint_reads);
                             (Some(fresh), element_state)
@@ -607,9 +628,10 @@ impl<V: View> Element for ViewElement<V> {
                 } else {
                     // prepaint 已复用：重放 paint 区间。
                     window.with_element_state::<ViewElementState, _>(
-                        global_id.unwrap(),
+                        invariant(global_id, "view with an id must have a global element id"),
                         |element_state, window| {
-                            let mut element_state = element_state.unwrap();
+                            let mut element_state =
+                                invariant(element_state, "view element state must exist");
                             let paint_start = window.paint_index();
                             window.reuse_paint(element_state.paint_range.clone());
                             let paint_end = window.paint_index();
@@ -624,7 +646,7 @@ impl<V: View> Element for ViewElement<V> {
             window.with_id(
                 ElementId::Name(std::any::type_name::<V>().into()),
                 |window| {
-                    element.as_mut().unwrap().paint(window, cx);
+                    invariant(element.as_mut(), "view element must exist").paint(window, cx);
                 },
             );
         }
