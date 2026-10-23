@@ -28,7 +28,7 @@ $PSStyle.OutputRendering = 'PlainText'
 rgpui（核心：框架 + 基础组件 + 扩展组件/动画/手势/滚动物理，charts/effects/qr-code/tokio/webview feature 门控）
   ├── rgpui-markdown（独立 Markdown 库）└── rgpui-term / rgpui-3d（专业集成库）
 
-crates/                 # 12 个库 crate（rgpui / rgpui-{3d,character,linux,macos,macros,markdown,platform,term,web,wgpu,windows}）
+crates/                 # 13 个库 crate（rgpui / rgpui-{3d,character,dom,linux,macos,macros,markdown,platform,term,web,wgpu,windows}）
 examples/               # 17 个示例 crate（同根 workspace；showcase 为核心示例集合，一个功能一个 bin，见 examples/README.md）
 ```
 
@@ -226,8 +226,9 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 9. feature 组合按需通过：`charts,effects,qr-code` / `tokio` / `control-channel` / `webview` /
    `screen-capture`（吸管，Windows 本地验证）/ `dom-backend`（+ `cargo test -p rgpui-dom`）/
    `ribbon,viewport` / `spreadsheet` / `document` / `rgpui-markdown` 的 `latex`（公式）、
-   `mermaid`（图表）、`syntax-highlight`（代码高亮）/ `tree-sitter-*`（14 个语言包，
-   含 `tree-sitter` 地基）
+   `mermaid`（图表）、`syntax-highlight`（代码高亮）/ `tree-sitter-*`（`tree-sitter`
+   地基自带 Rust grammar，另有 16 个语言 feature：json/toml/javascript/typescript/
+   python/bash/go/c/cpp/c-sharp/java/ruby/php/css/html/yaml）
 10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过
 11. 发布要求无 dev 循环依赖（测试放消费方 `tests/`，见 1.1.1 教训）
 12. 命令清单 gate 通过（`CommandRegistry::validate()` 为空）；改控制通道 / MCP 后跑
