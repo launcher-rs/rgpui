@@ -60,6 +60,7 @@ pub mod pulse_indicator;
 #[cfg(feature = "qr-code")]
 pub mod qr_code;
 pub mod rate;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod resizable;
 #[cfg(feature = "effects")]
 pub mod ripple;

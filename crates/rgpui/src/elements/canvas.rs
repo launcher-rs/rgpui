@@ -21,6 +21,19 @@ use crate::{
     Point, SharedString, Style, StyleRefinement, Styled, Window,
 };
 
+/// 内部不变量：值为 `None` 说明前提被破坏（回调被取走后再次取用等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 使用给定的绘制回调构造画布元素。
 /// 适用于向视图添加短期自定义绘制。
 pub fn canvas<T>(
@@ -197,7 +210,12 @@ impl<T: 'static> Element for Canvas<T> {
         // 记下画布原点 / 矩形：语义节点是画布局部坐标，发布合成子节点时要换算成窗口坐标。
         self.origin = bounds.origin;
         self.bounds = bounds;
-        Some(self.prepaint.take().unwrap()(bounds, window, cx))
+        // prepaint 回调构造时必带，且每次 prepaint 只取一次
+        Some(
+            invariant(self.prepaint.take(), "画布：prepaint 回调必存在")(
+                bounds, window, cx,
+            ),
+        )
     }
 
     fn paint(
@@ -210,8 +228,9 @@ impl<T: 'static> Element for Canvas<T> {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let prepaint = prepaint.take().unwrap();
-        let paint = self.paint.take().unwrap();
+        // prepaint 闭包由本帧 prepaint 取用、paint 闭包构造时必带，各只取一次
+        let prepaint = invariant(prepaint.take(), "画布：本帧 prepaint 状态必存在");
+        let paint = invariant(self.paint.take(), "画布：paint 回调必存在");
 
         // 无障碍：登记语义节点上的动作监听器。先于自绘完成，避免与绘制闭包争借用。
         if window.is_a11y_active()

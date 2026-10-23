@@ -210,7 +210,9 @@ pub mod runtime_stats;
 mod taffy;
 
 /// 测试支持模块 - 提供测试用的 mock 上下文和工具
+// 测试支撑模块：断言失败就该炸（同 clippy.toml 测试放行口径）
 #[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod test;
 
 /// 文本系统 - 文本排版、字体管理和 GPU 文本渲染管线

@@ -6,6 +6,7 @@ mod badge;
 mod breadcrumb;
 mod button;
 mod button_icon;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod canvas;
 mod card;
 mod caret;

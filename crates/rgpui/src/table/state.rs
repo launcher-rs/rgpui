@@ -21,6 +21,19 @@ use crate::{
 
 use super::*;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（列索引越界等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 测量是否开启的辅助函数。
 ///
 /// 读取环境变量 `ZED_MEASUREMENTS` 或 `rgpui_MEASUREMENTS` 判断是否输出渲染耗时。
@@ -1074,11 +1087,10 @@ where
         }
 
         let sort = self.col_groups.get(col_ix).and_then(|g| g.column.sort);
-        if sort.is_none() {
+        // 无排序设置则不动
+        let Some(sort) = sort else {
             return;
-        }
-
-        let sort = sort.unwrap();
+        };
         let sort = match sort {
             ColumnSort::Ascending => ColumnSort::Default,
             ColumnSort::Descending => ColumnSort::Ascending,
@@ -1311,11 +1323,12 @@ where
                             let ix = *ix;
                             view.resizing_col = Some(ix);
 
-                            let col_group = view
-                                .col_groups
-                                .get(ix)
-                                .expect("BUG: invalid col index")
-                                .clone();
+                            // 列索引来自命中测试的行内序号，必在 col_groups 内
+                            let col_group = invariant(
+                                view.col_groups.get(ix),
+                                "表格：命中列索引必在 col_groups 内",
+                            )
+                            .clone();
 
                             view.resize_cols(
                                 ix,
@@ -1428,7 +1441,11 @@ where
     /// 其 `scroll_to_item` 方法的条目位置。
     fn render_th(&mut self, col_ix: usize, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let entity_id = cx.entity_id();
-        let col_group = self.col_groups.get(col_ix).expect("BUG: invalid col index");
+        // col_ix 来自表头渲染循环，必在 col_groups 内
+        let col_group = invariant(
+            self.col_groups.get(col_ix),
+            "表格：表头列索引必在 col_groups 内",
+        );
 
         let movable = self.col_movable && col_group.column.movable;
         let paddings = col_group.column.paddings;

@@ -4,6 +4,19 @@ use std::{cell::Cell, ops::Range, rc::Rc};
 
 use crate::{prelude::FluentBuilder as _, *};
 
+/// 内部不变量：值为 `None` 说明前提被破坏（ResizeHandle 恒有 id 而框架未传），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 面板最小尺寸。
 const PANEL_MIN_SIZE: Pixels = px(100.0);
 /// 手柄内边距（扩展热区）。
@@ -469,6 +482,8 @@ impl Styled for ResizablePanel {
 }
 
 impl RenderOnce for ResizablePanel {
+    // 契约违规：面板必须在 ResizablePanelGroup 内渲染（group 渲染时注入 state）
+    #[allow(clippy::expect_used)]
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         if !self.visible {
             return div().id(("resizable-panel", self.index)).into_any_element();
@@ -653,55 +668,59 @@ impl<T: 'static, E: 'static + Render> Element for ResizeHandle<T, E> {
         let accent = theme.tokens.accent;
         let border = theme.tokens.border;
 
-        window.with_element_state(id.unwrap(), |state, window| {
-            let state = state.unwrap_or_else(ResizeHandleState::default);
+        // ResizeHandle::id() 恒返回 Some，框架必带元素 id
+        window.with_element_state(
+            invariant(id, "调整手柄：元素必有 id"),
+            |state, window| {
+                let state = state.unwrap_or_else(ResizeHandleState::default);
 
-            let bg_color = if state.is_active() { accent } else { border };
+                let bg_color = if state.is_active() { accent } else { border };
 
-            let mut handle_element = div()
-                .id(self.id.clone())
-                .occlude()
-                .absolute()
-                .flex_shrink_0()
-                .group("handle");
+                let mut handle_element = div()
+                    .id(self.id.clone())
+                    .occlude()
+                    .absolute()
+                    .flex_shrink_0()
+                    .group("handle");
 
-            let on_drag = self.on_drag.clone();
-            let drag_value = self.drag_value.clone();
-            handle_element = handle_element
-                .on_drag(drag_value.clone(), move |_, position, window, cx| {
-                    (on_drag)(drag_value.clone(), &position, window, cx)
-                });
+                let on_drag = self.on_drag.clone();
+                let drag_value = self.drag_value.clone();
+                handle_element =
+                    handle_element.on_drag(drag_value.clone(), move |_, position, window, cx| {
+                        (on_drag)(drag_value.clone(), &position, window, cx)
+                    });
 
-            handle_element = match axis {
-                Axis::Horizontal => handle_element
-                    .cursor_col_resize()
-                    .top_0()
-                    .left(neg_offset)
-                    .h_full()
-                    .w(HANDLE_SIZE)
-                    .px(HANDLE_PADDING),
-                Axis::Vertical => handle_element
-                    .cursor_row_resize()
-                    .top(neg_offset)
-                    .left_0()
-                    .w_full()
-                    .h(HANDLE_SIZE)
-                    .py(HANDLE_PADDING),
-            };
+                handle_element = match axis {
+                    Axis::Horizontal => handle_element
+                        .cursor_col_resize()
+                        .top_0()
+                        .left(neg_offset)
+                        .h_full()
+                        .w(HANDLE_SIZE)
+                        .px(HANDLE_PADDING),
+                    Axis::Vertical => handle_element
+                        .cursor_row_resize()
+                        .top(neg_offset)
+                        .left_0()
+                        .w_full()
+                        .h(HANDLE_SIZE)
+                        .py(HANDLE_PADDING),
+                };
 
-            handle_element = handle_element.child(
-                div()
-                    .bg(bg_color)
-                    .group_hover("handle", |this| this.bg(accent))
-                    .when(axis.is_horizontal(), |this| this.h_full().w(HANDLE_SIZE))
-                    .when(axis.is_vertical(), |this| this.w_full().h(HANDLE_SIZE)),
-            );
+                handle_element = handle_element.child(
+                    div()
+                        .bg(bg_color)
+                        .group_hover("handle", |this| this.bg(accent))
+                        .when(axis.is_horizontal(), |this| this.h_full().w(HANDLE_SIZE))
+                        .when(axis.is_vertical(), |this| this.w_full().h(HANDLE_SIZE)),
+                );
 
-            let mut el = handle_element.into_any_element();
-            let layout_id = el.request_layout(window, cx);
+                let mut el = handle_element.into_any_element();
+                let layout_id = el.request_layout(window, cx);
 
-            ((layout_id, el), state)
-        })
+                ((layout_id, el), state)
+            },
+        )
     }
 
     fn prepaint(
@@ -728,31 +747,35 @@ impl<T: 'static, E: 'static + Render> Element for ResizeHandle<T, E> {
     ) {
         request_layout.paint(window, cx);
 
-        window.with_element_state(id.unwrap(), |state: Option<ResizeHandleState>, window| {
-            let state = state.unwrap_or_else(ResizeHandleState::default);
+        // ResizeHandle::id() 恒返回 Some，框架必带元素 id
+        window.with_element_state(
+            invariant(id, "调整手柄：元素必有 id"),
+            |state: Option<ResizeHandleState>, window| {
+                let state = state.unwrap_or_else(ResizeHandleState::default);
 
-            window.on_mouse_event({
-                let state = state.clone();
-                move |event: &MouseDownEvent, phase, window, _| {
-                    if bounds.contains(&event.position) && phase.bubble() {
-                        state.set_active(true);
-                        window.refresh();
+                window.on_mouse_event({
+                    let state = state.clone();
+                    move |event: &MouseDownEvent, phase, window, _| {
+                        if bounds.contains(&event.position) && phase.bubble() {
+                            state.set_active(true);
+                            window.refresh();
+                        }
                     }
-                }
-            });
+                });
 
-            window.on_mouse_event({
-                let state = state.clone();
-                move |_: &MouseUpEvent, _, window, _| {
-                    if state.is_active() {
-                        state.set_active(false);
-                        window.refresh();
+                window.on_mouse_event({
+                    let state = state.clone();
+                    move |_: &MouseUpEvent, _, window, _| {
+                        if state.is_active() {
+                            state.set_active(false);
+                            window.refresh();
+                        }
                     }
-                }
-            });
+                });
 
-            ((), state)
-        });
+                ((), state)
+            },
+        );
     }
 }
 
