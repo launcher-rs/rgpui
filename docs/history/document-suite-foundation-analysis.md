@@ -2193,3 +2193,45 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 
 `theme/highlight.rs`、`elements/scroll/*`、`util/scheduler/test_scheduler.rs`、
 `keymap`（余项在测试区）、`elements/*` 小元素、`components/*` 等。
+
+## 七十三、增补：lint 收紧第十批（滚动 / 列表 / 菜单 / 输入元素 / 20 处）
+
+延续 §六十四～§七十二 的口径，本批覆盖 5 个模块：`elements::list`、
+`elements::scroll`（含 `auto_scroll`，`scrollable` / `scrollbar` /
+`scrollable_mask` 本就干净）、`menu::context_menu`、`input_ui::auto_scroll`、
+`input_ui::input::element`；已迁移模块数 52 → **57**。
+
+### 迁移要点
+
+- **可恢复失败（锁中毒恢复）**：两份 `auto_scroll.rs`（`elements::scroll` 与
+  `input_ui` 各一份，结构相同）的 4 处 `shared.lock().unwrap()` 改为
+  `lock().unwrap_or_else(|poisoned| poisoned.into_inner())` —— 共享状态只是
+  `Option<Pixels>`，没有跨 panic 的不变量，持锁线程中毒后仍可安全取回数据。
+- **不变量收敛**（模块内 `invariant` / `invariant_result` 助手，panic 语义不变）：
+  - `list`：可见项必已完成测量（`size` 为空或在可见区都会走 layout 分支）、
+    自动滚动调整后的重排不会再次请求滚动（第二次以 `autoscroll=false` 调用）；
+  - `context_menu`：传入 `Some(id)` 后外层状态必为 `Some`、`ContextMenu::id()`
+    恒返回 `Some` 故框架必带元素 id（×2）、`element` 构造时为 `Some` 且
+    `request_layout` 每帧只 `take` 一次；
+  - `input::element`：行首/行尾索引必在行内（`position_for_index` 必有结果）、
+    上方已检查 `line_corners` 非空故路径必有点、可见行索引来自 display_map 快照
+    必能取到。
+- **彻底消除**：`list` 的 `Count(usize)` 换 `std::cmp::Ord::cmp`（整数比较恒有
+  次序；须完全限定以避开 `SeekTarget::cmp` 同名冲突）、`Height(Pixels)` 换
+  `f32::total_cmp`（NaN 也给确定次序，消除 `partial_cmp().unwrap()`）。
+- deny 属性加在子模块声明处（`elements/mod.rs` 的 `mod list` / `mod scroll`、
+  `menu/mod.rs` 的 `mod context_menu`、`input_ui/mod.rs` 的 `mod auto_scroll`、
+  `input_ui/input/mod.rs` 的 `mod element`），不扩大到父模块整棵树。
+- docs §七十三 + AGENTS.md 名单同步。
+
+### 验证
+
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）。
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored。
+- `cargo fmt --all --check` 干净。
+
+### 剩余候选
+
+`theme/highlight.rs`、`util/scheduler/test_scheduler.rs`（已带 invariant 助手）、
+`rgpui_util/mod.rs`（`debug_panic!` 宏定义处需单独处理）、`perf/implementation.rs`、
+`util/mod.rs`（余项）、`elements/*` 小元素、`components/*` 等。

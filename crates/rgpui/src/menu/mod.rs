@@ -2,6 +2,7 @@ use crate::App;
 
 mod actions;
 mod app_menu_bar;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod context_menu;
 mod dropdown_menu;
 mod global_state;

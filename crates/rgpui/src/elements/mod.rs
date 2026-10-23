@@ -20,8 +20,10 @@ mod image_cache;
 mod img;
 mod kbd;
 mod label;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod list;
 mod radio;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod scroll;
 mod separator;
 mod skeleton;
