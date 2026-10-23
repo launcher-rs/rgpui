@@ -20,6 +20,10 @@
 //! let image = result.into_render_image();
 //! ```
 
+// 生产代码禁用 `unwrap` / `expect` / `panic!`（与 rgpui 核心同一口径）；
+// 测试代码由根目录 `clippy.toml` 的 `allow-*-in-tests` 放行。
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 /// 重新导出 scenekit 公开类型
 pub use scenekit;
 

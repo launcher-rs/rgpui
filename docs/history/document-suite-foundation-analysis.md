@@ -2563,8 +2563,8 @@ warning 的主 span `文件:行:列` 去重 —— clippy 对同一站点会随�
 | `rgpui-windows` | 59 | `directx_renderer` 24、`direct_write` 11、`platform` 6、`directx_atlas` 6、`directx_devices` 3，尾部 `window` / `events` 各 2、`vsync` / `keyboard` / `global_hotkey` / `dispatcher` / `clipboard` 各 1 |
 | `rgpui-wgpu` | 21 | `wgpu_renderer` 18、`wgpu_atlas` 3 |
 | `rgpui-macros` | 12 | `derive_refineable` 5、`icon_named` 3、`derive_action` 2、`styles` 1、`rgpui_macros` 1 |
-| `rgpui-term` / `rgpui-3d` / `rgpui-platform` | 2 / 2 / 1 | `terminal_element`、`context`、`rgpui_platform` |
-| 合计 | **97** | |
+| `rgpui-term` / `rgpui-3d` / `rgpui-platform` | 2 / 2 / 1 | `terminal_element`、`context`、`rgpui_platform`（**第十七批已全部封死**，见 §八十一） |
+| 合计 | **97**（第十七批后剩 92） | |
 
 `rgpui-markdown` 与 `rgpui-character` 实测 **0 站点**（两者都没有平台 `cfg` 门控
 代码），本批直接补上 crate 根 `#![deny]`，零代码改动封死。
@@ -2607,10 +2607,11 @@ CI 的 clippy 步骤是 `cargo clippy --workspace --lib --bins -- -D warnings`�
 在 Windows 端全绿（含 tests / examples / benches），说明这 15 处是存量唯一的
 `--all-targets` 违规。
 
-**建议（未采纳，需决策）**：把 CI 的 clippy 步骤改成 `--all-targets` 就能永久堵住
+**建议**：把 CI 的 clippy 步骤改成 `--all-targets` 就能永久堵住
 这个盲区，但 mac / linux runner 上 `cfg` 门控的测试代码从未按此口径度量过，
 贸然改法可能让 CI 因存量问题变红 —— 先在两条 runner 上单独跑一次
 `--all-targets` 看清单，再决定要不要并入 CI。
+**（第十七批已采纳，度量与结论见 §八十一。）**
 
 ## 八十、增补：发布完整性复核（`cargo publish --dry-run` 全 crate 扫描）
 
@@ -2641,3 +2642,77 @@ bidi 的 `Start` / `End` 两个变体只在本地工作区（§双向文字 bidi
 
 顺带把 AGENTS.md 第 10 条从「只演练 `rgpui`」扩成「全 crate 扫描」，
 这样发布顺序类错误在发版前就会被本地抓住，而不是让下游 `cargo add` 时炸。
+
+## 八十一、增补：lint 收紧第十七批（term / 3d / platform 封死 + CI 口径抬到 `--all-targets`）
+
+分支 `chore/lint-unwrap-crates-b`。本批把 §七十九「剩余候选」表里最后三个可本地
+度量的兄弟 crate 收掉，并顺手把 CI 的 clippy 口径补全。
+
+### 三处 crate 根封死（5 站点）
+
+`rgpui-term` / `rgpui-3d` / `rgpui-platform` 各加一条
+`#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`，站点迁移如下：
+
+| 站点 | 迁法 |
+|------|------|
+| `rgpui-term/terminal_element.rs` 批量段落落盘 | `current_batch.take()` 的 `unwrap` 改 `if let Some(...)` —— 外层 `if let Some(ref mut batch)` 已证明是 `Some`，`take()` 只是把批段落摘出来落盘，走不到 `None` |
+| `rgpui-term/terminal_element.rs` 单元格宽度兜底 | `em_advance().or(ch_advance()).unwrap()` → `unwrap_or_else` 记警告并按字号 0.6 倍估值：格子尺寸略偏远好于整个终端面板崩掉 |
+| `rgpui-3d/context.rs` `into_render_image` | `RgbaImage::from_raw(...).unwrap()` → `match` + 尺寸不符时记警告（期望/实得字节数与宽高）并以 1×1 透明像素占位；`rgpui-3d` 因此新增 `log` 依赖 |
+| `rgpui-3d/context.rs` 蒙皮根检测 | `joints[i].parent.as_ref().unwrap() != ...` 式的解引用 → `match parent { None => true, Some(p) => p >= num_joints }` |
+| `rgpui-platform/rgpui_platform.rs` `current_platform` | 保留 panic 作为契约，就近 `#[allow(clippy::expect_used)]` + 中文理由：Windows 平台初始化失败意味着连第一个窗口都建不起来，改成 `Result` 只会把同一份错误处理压到每个应用的 `main` 上 |
+
+另外补了两处裸 `unreachable!()` 的消息（§七十九列的 `rgpui-term` 2 处）：
+`Hidden` 光标已在上面短路返回、`0..=15` 具名色已穷举。
+
+### CI 的第二处盲区这次真的堵上了
+
+§七十九 结尾那条「建议（未采纳）」本批采纳，但要先把风险量出来：`--all-targets`
+相对 `--lib --bins` 的**增量面**只有两类目标 —— `#[cfg(test)]` 代码与库内
+`examples/`（`examples/*` 是 workspace 成员的 bin，`--bins` 早就覆盖到了）。
+Windows 端 `cargo clippy --workspace --all-targets -- -D warnings` 全绿（0 warning），
+本地看不到的是 mac / linux `cfg` 门控里的测试代码，逐个点过：
+`rgpui-linux` 9 个 + `rgpui-macos` 4 个 `mod tests`，两个 crate 都没有
+`tests/` `examples/` `benches/` 目录，14 个模块里 `.clone()` 合计只有 6 处
+（`rgpui-linux/platform.rs` 3、`pasteboard.rs` 2、`tray.rs` 1），
+`redundant_clone` 这条 deny 能炸到的面很小。故 CI 步骤改为
+`cargo clippy --workspace --all-targets -- -D warnings`，AGENTS.md 的开发命令、
+CI 概览与「Linux 端构建前置」三处口径同步跟上。若 ubuntu / macos runner 上仍有存量，
+按 CI 报出的 `文件:行` 就地修，不再退回旧口径。
+
+### `rgpui-linux` 两处裸 `#[allow(dead_code)]` 删除
+
+按 AGENTS.md「禁止 `#[allow(dead_code)]`，无用代码删除或重构」：
+
+- `wayland/serial.rs` 的 `SerialTracker::latest_of(&[SerialKind])` —— 零调用方，
+  `get_latest()` 已覆盖同一语义（它只在给定子集里取最大，而调用方全都传全集）。
+- `wayland/client.rs` 的 `WaylandClientStatePtr::ime_enabled()` getter ——
+  **只删 getter 会把 `ime_enabled: Option<bool>` 变成只写字段**，那是一条新的
+  `dead_code` 警告，ubuntu runner 在 `-D warnings` 下直接变红。所以 getter、
+  字段声明、初始化与 `enable_ime` / `disable_ime` 里的两处写入一起删掉；
+  真正的 IME 状态由 `text_input: Option<TextInput>` 与 `composing` 表达，
+  这个 `Option<bool>` 从合并进来就没有读者。
+  删后 `grep -rn 'allow(dead_code)' crates/rgpui-linux` 为空。
+
+### 新增套件基座整合示例 `showcase --bin app_suite`
+
+单功能示例已经一个模块一个 bin（`command_registry` / `ribbon` / `qat` /
+`mini_toolbar` / `backstage` / `viewport` / `ruler` / `canvas_objects` /
+`formula_bar` / `sheet_grid` / `page_view` / `automation`），缺的是**它们怎么协同**。
+`examples/showcase/src/bin/app_suite.rs`（`required-features = ["ribbon", "document"]`）
+补上这一层：
+
+- 一份命令表（26 条，全部 `app_suite::` 前缀）同时喂给 QAT、Ribbon（含 Alt/F10
+  按键提示）、Backstage 与状态栏；每个入口只写命令 id，点击经
+  `App::dispatch_command` 落到同一批 `on_action`。
+- 状态栏的「最近命令」文本取自 `CommandRegistry::label_for`，与 UI 文案同源；
+  `cx.bind_keys` 逐条把描述符里的 `with_keystroke` 落到键映射上。
+- 内容区是 `PageView` + `Viewport` + 参考线，缩放 / 排布 / 边距 / 参考线 /
+  折叠功能区都做成了命令（视图选项卡），文档模型（段落 / 表格 / 图片块）
+  由插入与剪贴板命令改动；表格合计留空，`数据 → 重新计算`（F9）补齐 ——
+  借电子表格基座的「待重算」语义演示命令驱动模型。
+- 照抄 `automation.rs` 的 gate：`#[cfg(test)]` 里
+  `assert!(CommandRegistry::global().validate().is_empty())`，
+  跑法 `cargo test -p showcase --bin app_suite`（本批通过）。
+- 按键提示在整块功能区内互不相同（选项卡 H/J/N/K，条目用其余字母）——
+  `validate()` 不查 keytip 唯一性，靠人工分配。
+- 实跑截图核对过顶栏、功能区、纸页页眉页脚与「合计 待重算」的渲染。

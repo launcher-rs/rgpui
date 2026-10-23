@@ -77,7 +77,10 @@ jobs:
           done
 
       - name: cargo clippy
-        run: cargo clippy --workspace --lib --bins -- -D warnings
+        # `--all-targets` 覆盖 lib / bins / examples / tests / benches：`--lib --bins`
+        # 看不见 `#[cfg(test)]` 代码与库内 examples（第十七批前 rgpui-dom 的
+        # redundant_clone 与 rgpui-3d examples 就是这么漏掉的）。
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo check
         run: cargo check --workspace

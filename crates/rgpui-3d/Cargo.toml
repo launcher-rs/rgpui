@@ -18,6 +18,7 @@ scenekit = { version = "0.1.0", features = ["renderer", "loader"] }
 wgpu = { workspace = true }
 image = { workspace = true }
 bytemuck.workspace = true
+log.workspace = true
 gltf = "1.4"
 smallvec = { workspace = true }
 smol = { workspace = true }

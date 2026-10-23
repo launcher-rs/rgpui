@@ -6517,6 +6517,7 @@ dependencies = [
  "bytemuck",
  "gltf",
  "image",
+ "log",
  "pollster 1.0.1",
  "rfd",
  "rgpui",

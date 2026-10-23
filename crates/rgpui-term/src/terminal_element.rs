@@ -617,8 +617,11 @@ impl TerminalElement {
                                 batch.append_zero_width_chars(chars);
                             }
                         } else {
-                            let old_batch = current_batch.take().unwrap();
-                            batched_runs.push(old_batch);
+                            // 外层 `if let Some(ref mut batch)` 已证明此处必然是 Some，
+                            // take() 只是把它从 current_batch 里摘出来落盘。
+                            if let Some(old_batch) = current_batch.take() {
+                                batched_runs.push(old_batch);
+                            }
                             let mut new_batch = BatchedTextRun::new_from_char(
                                 cell_point,
                                 cell.c,
@@ -918,10 +921,16 @@ fn measure_cell_width(
     }
 
     if widths.is_empty() {
+        // 兜底路径：逐个字符测不到时退回 em / ch 宽度。两者都失败说明字体系统本身
+        // 出问题，此时按终端等宽字常见宽高比给一个估值并记警告——格子尺寸略偏远好于
+        // 整个终端面板崩掉。
         return text_system
             .em_advance(font_id, font_size)
             .or_else(|_| text_system.ch_advance(font_id, font_size))
-            .unwrap();
+            .unwrap_or_else(|err| {
+                log::warn!("测量终端单元格宽度失败（{err}），按字号 0.6 倍估值");
+                px((f32::from(font_size) * 0.6).ceil())
+            });
     }
 
     let mut min_width = widths[0];
@@ -1505,7 +1514,9 @@ impl Element for TerminalElement {
                         AlacCursorShape::Underline => (CursorShape::Underline, None),
                         AlacCursorShape::Beam => (CursorShape::Bar, None),
                         AlacCursorShape::HollowBlock => (CursorShape::Hollow, None),
-                        AlacCursorShape::Hidden => unreachable!(),
+                        AlacCursorShape::Hidden => {
+                            unreachable!("Hidden 光标已在上面短路返回，不会走到成形这一步")
+                        }
                     };
 
                     CursorLayout::new(
@@ -1787,7 +1798,8 @@ fn indexed_color_to_hsla(idx: u8) -> Hsla {
                 13 => NamedColor::BrightMagenta,
                 14 => NamedColor::BrightCyan,
                 15 => NamedColor::BrightWhite,
-                _ => unreachable!(),
+                // 外层 match 已把 idx 限定在 0..=15，具名色在此穷举完毕
+                _ => unreachable!("0..=15 的具名色已穷举"),
             };
             named_color_to_hsla(named)
         }
