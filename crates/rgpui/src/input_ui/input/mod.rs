@@ -5,7 +5,6 @@
 /// 子模块仅限 `input_ui` 内部经 `input::` 路径引用（`pub(super)`），公开 API 走下方重导出。
 pub(super) mod clear_button;
 pub(super) mod content_type;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub(super) mod element;
 pub(super) mod mask_pattern;
 pub(super) mod mode;

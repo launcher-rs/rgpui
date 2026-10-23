@@ -11,7 +11,6 @@
 //! 按阶段逐个落子，每个阶段自带 oracle 式正确性校验。
 
 pub(crate) mod dependencies;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub(crate) mod layout_key;
 pub(crate) mod stats;
 

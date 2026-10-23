@@ -26,7 +26,13 @@
 #![warn(missing_docs)]
 #![allow(clippy::type_complexity)] // 回调在 RGPUI 中大量使用，类型复杂度检查不适用
 #![allow(clippy::collapsible_else_if)] // 平台特定代码中可能产生误报
-#![allow(unused_mut)] // 平台特定代码中可能产生误报
+#![allow(unused_mut)]
+// 平台特定代码中可能产生误报
+// 生产代码全量封死 `unwrap` / `expect` / `panic!`（第十六批完成的终态）：
+// 可恢复错误显式处理，内部不变量收敛到 `invariant` / `invariant_result` 助手，
+// 契约要求 panic 的位置就近写 `#[allow(clippy::panic)]` + reason。
+// 测试代码由根目录 `clippy.toml` 的 `allow-*-in-tests` 放行，不受此属性影响。
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 /// 将自身 crate 重导出为 `rgpui`，使得宏展开时能正确引用
 extern crate self as rgpui;
@@ -39,20 +45,16 @@ pub static GPUI_MANIFEST_DIR: &'static str = env!("CARGO_MANIFEST_DIR");
 
 /// Action 系统 - 定义用户交互动作的序列化与分发机制
 #[macro_use]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod action;
 
 /// 命令注册表 - 在 Action 之上附加 UI 元数据，供功能区/命令面板/CLI/MCP 按 id 统一分发
 /// （核心，无 feature 门控：它是 UI 与外部自动化的共同底座）
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod commands;
 
 /// 应用核心模块 - 包含 App 主结构体、Context、EntityMap 等
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod app;
 
 /// Arena 分配器 - 高效的实体内存分配策略
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod arena;
 
 /// 资源缓存 - 管理已加载的资源数据
@@ -72,7 +74,6 @@ mod color;
 
 /// Web DOM 后端 - DOM 树数据模型与构建器（feature `dom-backend` 门控，默认关闭）
 #[cfg(feature = "dom-backend")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod dom;
 
 /// 颜色模块 - 定义 HSL、RGBA 等颜色类型及转换
@@ -90,22 +91,18 @@ pub use commands::{CommandDescriptor, CommandRegistry};
 pub use component_text::{ComponentText, ComponentTextViewStyle};
 
 /// 元素系统核心 - 定义 Element trait 和元素树构建机制
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod element;
 
 /// 内置元素 - 提供 Div、Canvas、Img 等预定义 UI 元素
 mod elements;
 
 /// 执行器模块 - 定义前台和后台任务执行器 trait
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod executor;
 
 /// 平台调度器 - 跨平台的定时器和任务调度实现
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod platform_scheduler;
 
 /// 精化类型 - 支持部分初始化的类型安全模式
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod refineable;
 
 /// 任务调度器 - 异步任务的执行和协调
@@ -126,14 +123,12 @@ mod gestures;
 mod global;
 
 /// HTTP 客户端库 - 提供异步 HTTP 请求能力
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod http_client;
 
 /// 输入事件 - 定义键盘、鼠标、触摸等输入事件类型
 mod input;
 
 /// 检查器 - 开发调试用的 UI 检查工具
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod inspector;
 
 /// 检查器默认面板 - 开箱即用的检查器 UI（检查器打开时可用）
@@ -144,7 +139,6 @@ pub mod inspector_panel;
 mod interactive;
 
 /// 键盘事件分发 - 层级化的按键事件处理管线
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod key_dispatch;
 
 /// 快捷键映射 - 定义 Keymap 和 KeyBinding，管理键盘快捷键绑定
@@ -157,26 +151,21 @@ mod path_builder;
 pub mod perf;
 
 /// 平台抽象层 - 定义 Platform trait，各平台实现此 trait 以提供系统能力
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod platform;
 
 /// 预导入模块 - 常用类型的便捷重导出
 pub mod prelude;
 
 /// 性能分析工具 - 任务计时和线程性能追踪
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod profiler;
 
 /// 优先级队列 - Windows/Linux/WASM 平台下的异步消息队列
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod queue;
 
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod rgpui_util;
 
 /// 场景系统 - 元素树渲染后的场景描述，用于绘制指令生成
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod scene;
 
 /// 共享字符串 - 引用计数的不可变字符串，降低内存拷贝开销
@@ -186,7 +175,6 @@ mod shared_string;
 mod shared_uri;
 
 /// 单实例模式 - 确保应用程序只有一个实例运行
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod single_instance;
 
 /// 样式系统 - 定义 Style 结构体，包含布局和视觉属性
@@ -208,7 +196,6 @@ mod subscription;
 pub mod runtime_stats;
 
 /// Taffy 布局引擎封装 - Flexbox 和 Grid 布局的 Rust 实现
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod taffy;
 
 /// 测试支持模块 - 提供测试用的 mock 上下文和工具
@@ -218,7 +205,6 @@ mod taffy;
 pub mod test;
 
 /// 文本系统 - 文本排版、字体管理和 GPU 文本渲染管线
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod text_system;
 
 /// 过渡动画系统 - Transition 组合动画、缓动函数与 Lerp 插值
@@ -230,7 +216,6 @@ mod system;
 // ==================== 第二部分：UI 组件子系统（元素/表单/菜单/对话框/列表/扩展） ====================
 
 /// 根视图 - 窗口顶层视图，管理全局覆盖层
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod root;
 
 /// 对话框组件 - 模态对话框与警告对话框
@@ -269,91 +254,70 @@ pub mod tabs;
 pub mod title_bar;
 
 #[cfg(feature = "ribbon")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod backstage;
 #[cfg(feature = "ribbon")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod keytips;
 #[cfg(feature = "ribbon")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod mini_toolbar;
 #[cfg(feature = "ribbon")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod qat;
 /// Ribbon 套件基座：Ribbon + 按键提示 + 快速访问工具栏 + 迷你工具栏 + 应用菜单，
 /// 由 `ribbon` feature 门控（普通应用不开启时不参与编译）。
 #[cfg(feature = "ribbon")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod ribbon;
 
 #[cfg(feature = "viewport")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod guides;
 /// 画布对象工具：选区手柄 / 缩放 / 旋转 / 对齐分布，由 `viewport` feature 门控。
 #[cfg(feature = "viewport")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod object_toolkit;
 /// 视口与标尺基座：画布视口 + 刻度/对齐参考线，由 `viewport` feature 门控。
 #[cfg(feature = "viewport")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod viewport;
 
 /// 电子表格基座：公式栏（名称框 + fx + 公式输入），由 `spreadsheet` feature 门控。
 #[cfg(feature = "spreadsheet")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod formula_bar;
 /// 电子表格基座：二维网格（行列头 + 虚拟化单元格 + 矩形选区 + 填充柄），
 /// 由 `spreadsheet` feature 门控。
 #[cfg(feature = "spreadsheet")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod sheet_grid;
 
 /// 文档套件基座：分页画布（页尺寸/页边距/页眉页脚 + 屏幕映射），
 /// 由 `document` feature 门控（蕴含 `viewport`）。
 #[cfg(feature = "document")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod page_view;
 
 /// 富文本文档模型（段落 + 行内运行）与只读渲染元素（核心，无 feature 门控）。
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod rich_text;
 
 /// Ink 笔迹层：墨迹笔画模型 / 编辑操作（擦除 / 套索 / 抽稀）与绘制元素（核心，无 feature 门控）。
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod ink;
 
 /// 缩略图排序器：可拖拽重排的缩略图网格（幻灯片 / 页面 / 图片），核心，无 feature 门控。
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod sorter;
 
 /// 动画时间线：多轨关键帧编辑器（标尺 + 轨道 + 关键帧 + 播放头），核心，无 feature 门控。
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod anim_timeline;
 
 /// 多文档界面（MDI）：MDI 区域 + 子文档窗口（标题栏 / 最小化 / 最大化 / 缩放 / 排布），核心，无 feature 门控。
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod mdi;
 
 /// 任务窗格：可停靠 / 可浮动的侧边面板（标题栏拖拽 / 内缘改宽 / 关闭），核心，无 feature 门控。
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod task_pane;
 
 /// 画布语义：把自绘对象（单元格 / 页元素 / 笔迹…）发布给辅助技术，核心，无 feature 门控。
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod canvas_a11y;
 
 /// 屏幕取色（吸管）：抓主屏首帧全屏冻结，十字线 / 放大镜采样并回传颜色，
 /// 由 `screen-capture` feature 门控。
 #[cfg(feature = "screen-capture")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod eyedropper;
 
 /// 双向文字（bidi）：段落基准方向解析（HTML `dir=auto` 口径）与 `start` / `end` 对齐规则，核心，无 feature 门控。
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod bidi;
 
 /// 东亚断行（禁则 / kinsoku）：CJK 换行点的行首 / 行末禁则与胶连字符规则，核心，无 feature 门控。
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod line_break;
 
 /// 动画子模块 - 值驱动（弹簧）原语 + 上层动画 DSL + 核心动画桥接
@@ -368,7 +332,6 @@ pub mod lsp;
 
 /// WebView 组件 - 基于 wry 的网页视图，用于嵌入网页内容（feature `webview` 门控）
 #[cfg(feature = "webview")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod webview;
 
 /// 语法高亮 trait - tree-sitter/syntect 等解析器的抽象层
@@ -384,7 +347,6 @@ pub mod mouse_gestures;
 pub mod scroll_physics;
 
 /// 文件监视 API - 监控文件或目录的变化
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod file_watcher;
 
 /// 配置持久化 API - 应用配置的加载、保存和监听
@@ -400,7 +362,6 @@ pub mod debug_overlay;
 pub mod fps_hud;
 
 /// 国际化 (I18n) 支持 - 多语言文本管理和本地化
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod i18n;
 
 /// 主题热重载 - 运行时主题切换和监听
@@ -420,24 +381,20 @@ pub mod markdown_ext;
 
 /// Tokio 异步运行时集成 - 在 Tokio 线程池上生成任务并通过 RGPUI 任务返回结果（feature `tokio` 门控）
 #[cfg(feature = "tokio")]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod tokio;
 
 /// 控制通道 - 本机 JSON-RPC over TCP（密钥鉴权），把命令注册表暴露给 CLI / 脚本
 /// 与外部自动化（feature `control-channel` 门控，隐含 `tokio`）
 #[cfg(all(feature = "control-channel", not(target_family = "wasm")))]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod control_channel;
 
 /// MCP 服务端 - 把命令注册表暴露成 MCP 工具，供 AI 客户端调用
 /// （随 `control-channel` 一起开启）
 #[cfg(all(feature = "control-channel", not(target_family = "wasm")))]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod mcp;
 
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod util;
 
 // ==================== 第三部分：视图与窗口 ====================
@@ -446,11 +403,9 @@ pub mod util;
 pub(crate) mod fast;
 
 /// 视图系统 - 定义 View trait 和窗口视图的生命周期管理
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod view;
 
 /// 窗口系统 - 窗口创建、管理、渲染管线和事件处理
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod window;
 
 /// 窗口定位器 - 计算新窗口在屏幕上的初始位置

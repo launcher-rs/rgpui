@@ -1,34 +1,26 @@
 mod alert;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod anchored;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod animation;
 mod avatar;
 mod badge;
 mod breadcrumb;
 mod button;
 mod button_icon;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod canvas;
 mod card;
 mod caret;
 mod checkbox;
 mod container_query;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod deferred;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod div;
 mod element_ext;
 mod icon;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod image_cache;
 mod img;
 mod kbd;
 mod label;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod list;
 mod radio;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod scroll;
 mod separator;
 mod skeleton;
@@ -38,15 +30,12 @@ mod surface;
 mod svg;
 mod switch;
 mod tag;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod text;
 mod toast;
 mod toggle;
 mod tooltip;
 mod typography;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod uniform_list;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod virtual_list;
 
 pub use alert::*;

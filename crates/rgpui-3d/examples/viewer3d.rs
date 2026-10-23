@@ -744,7 +744,6 @@ impl Render for Viewer3D {
                             .text_sm()
                             .cursor_pointer()
                             .on_mouse_down(MouseButton::Left, {
-                                let state = state.clone();
                                 move |_: &MouseDownEvent, _, _| {
                                     state.lock().unwrap().pending_clear = true;
                                 }

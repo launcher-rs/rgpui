@@ -1,13 +1,24 @@
 #![allow(clippy::disallowed_methods, reason = "build scripts are exempt")]
+// 构建脚本同样禁用 `unwrap` / `expect` / `panic!`：失败统一走 `Result`，
+// 由 cargo 以「failed to run custom build command」的形式报给开发者。
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-fn main() {
-    #[cfg(target_os = "windows")]
-    {
-        // Compile HLSL shaders — debug 和 release 都预编译，
-        // 避免 debug 模式下运行时 D3DCompileFromFile 消耗大量栈空间
-        // 导致 STATUS_ACCESS_VIOLATION（1MB 默认栈溢出）。
-        compile_shaders();
-    }
+/// Windows 上预编译 HLSL 着色器，其他平台直接成功返回。
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    compile_shaders()
+}
+
+#[cfg(target_os = "windows")]
+fn compile_shaders() -> Result<(), Box<dyn std::error::Error>> {
+    // Compile HLSL shaders — debug 和 release 都预编译，
+    // 避免 debug 模式下运行时 D3DCompileFromFile 消耗大量栈空间
+    // 导致 STATUS_ACCESS_VIOLATION（1MB 默认栈溢出）。
+    shader_compilation::compile_shaders()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn compile_shaders() -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -19,15 +30,16 @@ mod shader_compilation {
         process::{self, Command},
     };
 
-    pub fn compile_shaders() {
-        let shader_path =
-            PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("src/shaders.hlsl");
-        let out_dir = std::env::var("OUT_DIR").unwrap();
+    /// 预编译全部着色器模块并生成 `shaders_bytes.rs`。
+    pub fn compile_shaders() -> Result<(), Box<dyn std::error::Error>> {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")?;
+        let shader_path = Path::new(&manifest_dir).join("src/shaders.hlsl");
+        let out_dir = std::env::var("OUT_DIR")?;
 
         println!("cargo:rerun-if-changed={}", shader_path.display());
 
         // Check if fxc.exe is available
-        let fxc_path = find_fxc_compiler();
+        let fxc_path = find_fxc_compiler()?;
 
         // Define all modules
         let modules = [
@@ -43,30 +55,30 @@ mod shader_compilation {
 
         let rust_binding_path = format!("{}/shaders_bytes.rs", out_dir);
         if Path::new(&rust_binding_path).exists() {
-            fs::remove_file(&rust_binding_path)
-                .expect("Failed to remove existing Rust binding file");
+            fs::remove_file(&rust_binding_path)?;
         }
         for module in modules {
-            compile_shader_for_module(
-                module,
-                &out_dir,
-                &fxc_path,
-                shader_path.to_str().unwrap(),
-                &rust_binding_path,
-            );
+            let shader_str = shader_path
+                .to_str()
+                .ok_or_else(|| format!("着色器路径不是合法 UTF-8: {}", shader_path.display()))?;
+            compile_shader_for_module(module, &out_dir, &fxc_path, shader_str, &rust_binding_path)?;
         }
 
         {
-            let shader_path = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
-                .join("src/color_text_raster.hlsl");
+            let color_shader_path = Path::new(&manifest_dir).join("src/color_text_raster.hlsl");
+            let shader_str = color_shader_path.to_str().ok_or_else(|| {
+                format!("着色器路径不是合法 UTF-8: {}", color_shader_path.display())
+            })?;
             compile_shader_for_module(
                 "emoji_rasterization",
                 &out_dir,
                 &fxc_path,
-                shader_path.to_str().unwrap(),
+                shader_str,
                 &rust_binding_path,
-            );
+            )?;
         }
+
+        Ok(())
     }
 
     /// Locate `binary` in the newest installed Windows SDK.
@@ -112,13 +124,14 @@ mod shader_compilation {
         Ok(None)
     }
 
-    /// You can set the `GPUI_FXC_PATH` environment variable to specify the path to the fxc.exe compiler.
-    fn find_fxc_compiler() -> String {
+    /// 依次尝试 `GPUI_FXC_PATH` 环境变量、`PATH`（`where.exe fxc.exe`）、Windows SDK
+    /// 安装目录，都找不到则返回错误。可用 `GPUI_FXC_PATH` 手动指定 `fxc.exe` 路径。
+    fn find_fxc_compiler() -> Result<String, Box<dyn std::error::Error>> {
         // Check environment variable
         if let Ok(path) = std::env::var("GPUI_FXC_PATH")
             && Path::new(&path).exists()
         {
-            return path;
+            return Ok(path);
         }
 
         // Try to find in PATH
@@ -129,23 +142,24 @@ mod shader_compilation {
             && output.status.success()
         {
             let path = String::from_utf8_lossy(&output.stdout);
-            return path.trim().to_string();
+            return Ok(path.trim().to_string());
         }
 
-        if let Ok(Some(path)) = find_latest_windows_sdk_binary("fxc.exe") {
-            return path.to_string_lossy().into_owned();
+        if let Some(path) = find_latest_windows_sdk_binary("fxc.exe")? {
+            return Ok(path.to_string_lossy().into_owned());
         }
 
-        panic!("Failed to find fxc.exe");
+        Err("Failed to find fxc.exe".into())
     }
 
+    /// 编译单个模块的顶点/片元着色器，并生成对应的 Rust 绑定。
     fn compile_shader_for_module(
         module: &str,
         out_dir: &str,
         fxc_path: &str,
         shader_path: &str,
         rust_binding_path: &str,
-    ) {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Compile vertex shader
         let output_file = format!("{}/{}_vs.h", out_dir, module);
         let const_name = format!("{}_VERTEX_BYTES", module.to_uppercase());
@@ -157,7 +171,7 @@ mod shader_compilation {
             shader_path,
             "vs_4_1",
         );
-        generate_rust_binding(&const_name, &output_file, rust_binding_path);
+        generate_rust_binding(&const_name, &output_file, rust_binding_path)?;
 
         // Compile fragment shader
         let output_file = format!("{}/{}_ps.h", out_dir, module);
@@ -170,7 +184,9 @@ mod shader_compilation {
             shader_path,
             "ps_4_1",
         );
-        generate_rust_binding(&const_name, &output_file, rust_binding_path);
+        generate_rust_binding(&const_name, &output_file, rust_binding_path)?;
+
+        Ok(())
     }
 
     fn compile_shader_impl(
@@ -215,12 +231,21 @@ mod shader_compilation {
         }
     }
 
-    fn generate_rust_binding(const_name: &str, head_file: &str, output_path: &str) {
-        let header_content = fs::read_to_string(head_file).expect("Failed to read header file");
+    /// 把头文件里的字节数组转成 Rust 常量追加进绑定文件。
+    fn generate_rust_binding(
+        const_name: &str,
+        head_file: &str,
+        output_path: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let header_content = fs::read_to_string(head_file)?;
         let const_definition = {
-            let global_var_start = header_content.find("const BYTE").unwrap();
+            let global_var_start = header_content
+                .find("const BYTE")
+                .ok_or_else(|| format!("头文件里没有 `const BYTE` 数组: {head_file}"))?;
             let global_var = &header_content[global_var_start..];
-            let equal = global_var.find('=').unwrap();
+            let equal = global_var
+                .find('=')
+                .ok_or_else(|| format!("头文件里的数组声明缺少 `=`: {head_file}"))?;
             global_var[equal + 1..].trim()
         };
         let rust_binding = format!(
@@ -231,13 +256,9 @@ mod shader_compilation {
         let mut options = fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(output_path)
-            .expect("Failed to open Rust binding file");
-        options
-            .write_all(rust_binding.as_bytes())
-            .expect("Failed to write Rust binding file");
+            .open(output_path)?;
+        options.write_all(rust_binding.as_bytes())?;
+
+        Ok(())
     }
 }
-
-#[cfg(target_os = "windows")]
-use shader_compilation::compile_shaders;

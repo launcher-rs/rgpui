@@ -123,8 +123,11 @@ MDI 文档多窗（§二十六）、任务窗格（§二十七）、画布语义
   D3D11 离屏渲染目标（临时换 target → 重画 → `CopyResource` 到 staging → Map 读回 →
   换回，BGRA→RGBA），macOS 尚未实现；
 - ✅ 命令/功能 parity 清单 + gate 测试（`CommandRegistry::validate`，§三十一）；
-- ⏳ 生产 crate 加 `deny(clippy::unwrap_used, expect_used, panic, todo, unimplemented)` ——
-  按模块收紧，已覆盖 24 个套件模块（§三十一），全 crate 迁移未完成；
+- ✅ 核心 crate 生产代码 lint 收紧（第十六批，§七十九）—— `rgpui` 生产代码零
+  `unwrap` / `expect` / `panic!`，由 `rgpui.rs` 顶部一条 crate 根
+  `#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` 封死；
+  ⏳ 兄弟 crate（`rgpui-{windows,wgpu,macros,term,3d,platform}` 及需 CI 度量的
+  `rgpui-{macos,linux}`）按同一口径继续，站点分布见 §七十九 的剩余候选表；
 - ⏳ i18n catalog 审计 + RTL 镜像 —— catalog 审计与语言方向已落地（§三十一），
   外壳/图标镜像未做。
 
@@ -2463,3 +2466,178 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `file` / `keymap`）、`system/` 其余（`tab_stop` / `tray` / `window_border` /
 `window_ext`）、`animation/` 其余、`fast/` 其余（`dependencies` / `stats`）
 等（各父模块其余子模块当前无站点）。
+
+> §七十九 复核更正：上面这份「剩余候选」是按 grep 命中数排的，而 grep 把
+> `#[cfg(test)]` 里的站点也算了进来——这些模块的生产代码当时其实早已迁移干净，
+> 缺的只是 deny 落点。第十六批因此改为一次性把核心 crate 全量封死，
+> 后续批次口径换成兄弟 crate（见 §七十九 的表）。
+
+## 七十九、增补：lint 收紧第十六批（核心 crate 全量封死 + 构建脚本 + markdown/character 补章 / 核心生产代码 0 处改动）
+
+延续 §六十四～§七十八 的口径，本批收尾核心 crate：**`rgpui` 的生产代码已经没有
+`unwrap` / `expect` / `panic!` 站点**，所以不再逐模块盖章，改为一条 crate 根属性把
+整个 crate 封死。
+
+### 度量方法（重要，之前的「剩余候选」名单失真）
+
+用 `cargo clippy --workspace --lib --bins --all-features -- -W clippy::unwrap_used
+-W clippy::expect_used -W clippy::panic` 把三个 lint 在**全 crate、全 feature** 范围
+临时打开计数。要点：
+
+- `--lib` 排除 `#[cfg(test)]`，测的就是生产代码；测试代码由根目录 `clippy.toml` 的
+  `allow-*-in-tests` 放行，不受收紧影响。
+- `--all-features` 把 feature 门控代码（`dom-backend` / `control-channel` / `editor`
+  / `webview` / `latex` …）一并纳入，避免第四批那种「单包验证漏掉门控代码」的翻车。
+- 据此复核 §六十四 以来的「剩余候选」：`rich_text.rs`（29 处命中）、`ink.rs`（24）、
+  `mdi.rs`（27）、`keymap/context.rs`（44）、`elements/scroll/scrollable.rs`（40）
+  **全部落在第一个 `#[cfg(test)]` 之后**，即早已迁移完毕；grep 直接计数会把测试站点
+  算成待办，是名单失真的原因。
+
+### 本批改动
+
+- **crate 根属性**：`rgpui.rs` 顶部 `#![deny(clippy::unwrap_used, clippy::expect_used,
+  clippy::panic)]`，覆盖面等价于给 `rgpui.rs` 里 62 个尚无祖先 deny 的顶层模块声明
+  逐个补章，但只有一行、且把根文件自身的条目也纳入了。
+- **清理冗余**：删除散在 19 个文件里的 **95 处**模块级 `#[deny(...)]`（写法完全一致，
+  整行删除）。就近放行**一律保留**，全 crate 共 **149 处**：
+  `allow(clippy::panic)` 122、`allow(expect_used, panic)` 12、
+  `allow(unwrap_used, expect_used, panic)` 9、`allow(unwrap_used, panic)` 3、
+  `allow(expect_used)` 2、`allow(unwrap_used)` 1。其中挂在模块声明上的只有那 9 处三合一，
+  且全部由 `cfg(test)` / `feature = "test-support"` / `feature = "bench"` 门控
+  （`app::{bench_context, headless_app_context, test_app, test_context,
+  visual_test_context}`、`platform::{test, visual_test}`、`rgpui::test`、`util::test`）；
+  其余是函数/语句级就近放行，带中文注释说明为什么 panic 是契约。crate 根属性生效后
+  这些仍然必要——审计过一遍，**生产侧没有一处整棵子树的豁免**。
+- **封死的边界要说清**：三个 lint 看不见 `unreachable!` / `unimplemented!`（它们展开成
+  `panic` 但不是 `panic!` 的直接调用）。本批给核心 crate **所有裸 `unreachable!()`
+  补上消息**（生产侧 `util/sum_tree/cursor.rs` 6 处、`util/paths.rs` / `util/mod.rs` /
+  `theme/color.rs` 各 1 处；复核又补了 `util/sum_tree/mod.rs` 3 处 —— 等高合并的两处
+  let-else 与 `_ =>` 兜底、测试侧 `util/test/marked_text.rs` 1 处 +
+  `platform/app_menu.rs` 2 处），不变量被破坏时能一眼看出是哪个分支。
+  终态：`grep -rn 'unreachable!()' crates/rgpui/src` **为空**。
+  `unimplemented!` 只存在于 `platform/test/*` 的测试桩、`key_dispatch.rs` 的
+  `#[cfg(test)]` 假输入源与 `action.rs` 的文档示例（`/// #` 行），生产侧没有，
+  因此不把 `clippy::unimplemented` 加进 deny 列表。
+- **构建脚本纳入体系**：`rgpui/build.rs`（1 处）、`rgpui-windows/build.rs`（12 处）、
+  `rgpui-macos/build.rs`（13 处）此前完全在模块属性之外。三处统一：
+  `fn main() -> Result<(), Box<dyn std::error::Error>>` + `?` 传播，顶部加
+  `#![deny(...)]`。语义不变（失败仍然中止构建），诊断反而更好——
+  - `rgpui-windows`：`find_fxc_compiler` 由 `panic!("Failed to find fxc.exe")` 改为
+    返回 `Err`，且 Windows SDK 注册表查询的错误不再被 `if let Ok(Some(..))` 吞掉；
+    着色器编译失败仍走 `cargo::error=` + `process::exit(1)`（本来就是 lint 干净路径）。
+  - `rgpui-macos`：`xcrun --show-sdk-path` / bindgen / metal / metallib 的
+    `unwrap` / `expect` / `panic!` 换成带上下文的 `Err`。
+  - `rgpui`：`manifest_required().unwrap()` 改为 `map_err` 携带原始错误。
+- **顺带封掉两个纯 Rust crate**：`rgpui-markdown`、`rgpui-character` 实测 0 站点，
+  且都不含平台 `cfg` 门控代码，直接在 crate 根（`src/lib.rs` /
+  `src/rgpui_character.rs`）补 `#![deny(clippy::unwrap_used, clippy::expect_used,
+  clippy::panic)]`，零代码改动。
+
+### 验证
+
+- `cargo clippy --workspace --lib --bins --all-features -- -D warnings` 通过
+  （CI 一致口径，含 crate 根 deny 与三个 build.rs 的文件级 deny；Windows 端）。
+- 核心 crate 生产代码在全 feature 下**零告警**，即根属性生效后无需任何就地 allow。
+- **反向验证**（证明根属性确实在此前裸奔的模块上生效）：临时在 `color.rs::rgb` 里加
+  `Some(hex).unwrap()` / `.expect("probe")` / `panic!("probe")` 三种写法，
+  `cargo clippy -p rgpui --lib -- -D warnings` 三条全部报错
+  （`used unwrap() on an Option value` / `used expect() ...` /
+  `panic should not be present in production code`），随后撤掉探针。
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored（与第十五批持平）。
+- `cargo test -p rgpui-markdown --lib`：10 passed（新章生效后测试代码不受影响，
+  `clippy.toml` 的 `allow-*-in-tests` 仍然放行）。
+- `cargo fmt --all` 干净。
+
+### 剩余候选（口径改口：兄弟 crate）
+
+核心 crate 已封死，下一站是把同一套 lint 推到平台/工具 crate（分支名
+`feat/lint-unwrap-crates-a` 的 crates-b）。
+
+度量口径（本次修正）：一次 `cargo clippy --workspace --lib --bins --all-features
+-- -W clippy::unwrap_used -W clippy::expect_used -W clippy::panic`，把每条
+warning 的主 span `文件:行:列` 去重 —— clippy 对同一站点会随编译路径重复播报，
+而 `-p <crate> --all-features` 又会把依赖 crate 的告警一起带进来，两个口径都虚高。
+
+| crate | 站点 | 集中位置 |
+|-------|------|----------|
+| `rgpui-windows` | 59 | `directx_renderer` 24、`direct_write` 11、`platform` 6、`directx_atlas` 6、`directx_devices` 3，尾部 `window` / `events` 各 2、`vsync` / `keyboard` / `global_hotkey` / `dispatcher` / `clipboard` 各 1 |
+| `rgpui-wgpu` | 21 | `wgpu_renderer` 18、`wgpu_atlas` 3 |
+| `rgpui-macros` | 12 | `derive_refineable` 5、`icon_named` 3、`derive_action` 2、`styles` 1、`rgpui_macros` 1 |
+| `rgpui-term` / `rgpui-3d` / `rgpui-platform` | 2 / 2 / 1 | `terminal_element`、`context`、`rgpui_platform` |
+| 合计 | **97** | |
+
+`rgpui-markdown` 与 `rgpui-character` 实测 **0 站点**（两者都没有平台 `cfg` 门控
+代码），本批直接补上 crate 根 `#![deny]`，零代码改动封死。
+
+同一批复核还漏了 **裸 `unreachable!()`**（三个 lint 看不见它）：核心已清零，
+兄弟 crate 的存量是 `rgpui-macos` 6、`rgpui-windows` 4、`rgpui-linux` 4、
+`rgpui-term` 2、`rgpui-macros` 1 —— 各批次迁移时一并补消息，别只盯 97 这个数字。
+
+需要 CI 矩阵度量（本地交叉编译缺 C 工具链，`x86_64-unknown-linux-gnu` /
+`aarch64-apple-darwin` 都停在 `cc-rs` 找不到编译器），下面是 **grep 上界**
+（含 `#[cfg(test)]`，只用于排批次顺序，不是精确站点数）：
+
+| crate | grep 上界 | 集中位置 |
+|-------|-----------|----------|
+| `rgpui-linux` | 104 | `linux/wayland/client` 40、`linux/platform` 18、`linux/x11/client` 16、`linux/dispatcher` 13，尾部 `wayland/window` 5、`x11/window` 4、`wayland/clipboard` / `headless/client` 各 3 |
+| `rgpui-macos` | 70 | `metal_renderer` 21、`pasteboard` 10、`text_system` 8、`window` 6、`metal_atlas` 5、`screen_capture` / `platform` / `notifications` 各 4 |
+| `rgpui-dom` | 18 | 全在 `web.rs`（`#[cfg(target_family = "wasm")]` 门控，本地根本不编译） |
+| `rgpui-web` | 4 | `dispatcher` 3、`platform` 1 |
+
+渲染后端批次的口径与 UI 层不同：多为「这帧画不出来」的可恢复失败，落到
+`Result` + 日志降级，改动面大于核心批，按 crate 逐个开。
+`rgpui-dom` 非 wasm 部分（`lib.rs` / `css.rs` / `diff.rs`）实测 0 站点，
+但 `web.rs` 有 18 处，所以它不能像 markdown / character 那样零成本封死。
+
+### CI 口径的第二处盲区：`--lib --bins` 看不见 tests / examples
+
+CI 的 clippy 步骤是 `cargo clippy --workspace --lib --bins -- -D warnings`，
+`--lib` 不编译 `#[cfg(test)]` 代码，也不编译 `examples/` 目标。workspace 级
+`deny` 的 `redundant_clone` 因此一直没管到测试代码，本地按 AGENTS.md 的开发命令
+（`cargo clippy -p <pkg> --all-targets -- -D warnings`）一跑就红：
+
+- `rgpui-dom` 测试代码 **13 处** `redundant_clone`（`diff.rs` 7、`lib.rs` 6，
+  全是「克隆完就丢弃」的末次使用），已用 `cargo clippy --fix` 就地删掉克隆；
+  `cargo test -p rgpui-dom --all-features` 15 passed。
+- `rgpui-3d` 两个示例各 1 处：`viewer3d.rs` / `scenekit_skin.rs` 里最后一个回调
+  的 `let state = state.clone();` —— 闭包本来就是 `move`，直接接管外层 `state`
+  即可，删掉这行 shadow。
+
+复核后 `cargo clippy --workspace --all-targets --all-features --keep-going -- -D warnings`
+在 Windows 端全绿（含 tests / examples / benches），说明这 15 处是存量唯一的
+`--all-targets` 违规。
+
+**建议（未采纳，需决策）**：把 CI 的 clippy 步骤改成 `--all-targets` 就能永久堵住
+这个盲区，但 mac / linux runner 上 `cfg` 门控的测试代码从未按此口径度量过，
+贸然改法可能让 CI 因存量问题变红 —— 先在两条 runner 上单独跑一次
+`--all-targets` 看清单，再决定要不要并入 CI。
+
+## 八十、增补：发布完整性复核（`cargo publish --dry-run` 全 crate 扫描）
+
+AGENTS.md 检查清单第 10 条只对 `rgpui` 做发布演练，看不到 crate 之间的**发布顺序**
+问题。把 13 个 `publish = true` 的 crate 逐个 `cargo publish -p X --dry-run
+--registry crates-io` 跑一遍（dry-run 会打包本地源码、按 registry 版本解析
+path 依赖后重新编译，正是工作区内互相引用时永远不会暴露的那条路径）：
+
+| crate | 结果 |
+|-------|------|
+| `rgpui` / `rgpui-macros` / `rgpui-markdown` / `rgpui-character` / `rgpui-term` / `rgpui-3d` / `rgpui-platform` / `rgpui-wgpu` | 通过 |
+| `rgpui-dom` | **失败**：`css.rs:193-194` 用 `TextAlign::Start` / `TextAlign::End` |
+| `rgpui-{windows,macos,linux,web}` | 本机不是对应目标，留给 CI/发布机 |
+
+根因：crates.io 上的 `rgpui@1.5.0` 里 `TextAlign` 只有 `Left / Center / Right`，
+bidi 的 `Start` / `End` 两个变体只在本地工作区（§双向文字 bidi）有，**尚未发布**。
+`rgpui-dom` 的依赖声明是 `rgpui = { workspace = true, features = ["dom-backend"] }`
+（caret 语义 ≥1.5.0 <2.0），所以只要先发一个带 bidi 变体的 `rgpui`，
+`rgpui-dom` 立刻恢复可发布。
+
+拉取已发布的 `rgpui-dom-1.5.0.crate` 核对过：它的 `css.rs` 只映射
+`Left / Center / Right` —— **线上工件是好的**，坏的是 HEAD 的可发布性。
+也就是说这条不是事故，而是下一次发版的硬约束：
+
+> 发版顺序必须是 `rgpui`（带 `TextAlign::Start/End`）→ 其他 crate。
+> 反过来先 `cargo publish -p rgpui-dom`，会得到一个编译不过的版本，
+> 且只能 yank 补救。
+
+顺带把 AGENTS.md 第 10 条从「只演练 `rgpui`」扩成「全 crate 扫描」，
+这样发布顺序类错误在发版前就会被本地抓住，而不是让下游 `cargo add` 时炸。

@@ -28,7 +28,7 @@ $PSStyle.OutputRendering = 'PlainText'
 rgpui（核心：框架 + 基础组件 + 扩展组件/动画/手势/滚动物理，charts/effects/qr-code/tokio/webview feature 门控）
   ├── rgpui-markdown（独立 Markdown 库）└── rgpui-term / rgpui-3d（专业集成库）
 
-crates/                 # 12 个库 crate（rgpui / rgpui-{3d,character,linux,macos,macros,markdown,platform,term,web,wgpu,windows}）
+crates/                 # 13 个库 crate（rgpui / rgpui-{3d,character,dom,linux,macos,macros,markdown,platform,term,web,wgpu,windows}）
 examples/               # 17 个示例 crate（同根 workspace；showcase 为核心示例集合，一个功能一个 bin，见 examples/README.md）
 ```
 
@@ -53,32 +53,30 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 `redundant_clone`、`disallowed_methods`；`style` 为 `allow`。
 
 根目录 `clippy.toml` 允许测试代码用 `unwrap` / `expect` / `panic!`（断言失败就是要炸）。
-生产代码按模块收紧：**95 个模块**声明带
-`#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`
-（`rgpui.rs` 里 26 个套件模块 + `executor` / `taffy` / `util::paths` / `util::sum_tree` /
-`lsp::stdio` / `elements::text` / `elements::div` / `theme::color` / `inspector` /
-`app::async_context` / `app::entity_map` / `app`（含 `app::context`）/ `element` /
-`http_client` / `window`（含 `window::a11y`）/ `view` /
-`platform`（含 `keystroke` / `threaded_dispatcher`）/ `platform_scheduler` /
-`key_dispatch` / `profiler`（含 `profiler::actions`）/
-`scene` / `arena` / `action` / `root` / `dom`（`dom-backend`） /
-`text_system`（含 `line_layout` / `font_features`）/
-`elements::list` / `elements::scroll` / `menu::context_menu` /
-`input_ui::auto_scroll` / `input_ui::input::element` /
-`util`（全树）/ `refineable` / `rgpui_util` / `perf::implementation` /
-`elements::canvas` / `table::state` / `components::resizable` / `input_ui::indent` /
-`elements::anchored` / `elements::animation` / `elements::deferred` /
-`elements::image_cache` / `elements::uniform_list` / `elements::virtual_list` /
-`components::animated_collapsible` / `components::date_picker` /
-`components::description_list` / `components::navigation_menu` /
-`components::otp_input` / `components::segmented_nav` / `components::sparkline` /
-`components::status_bar` / `components::charts`（含 10 个子模块）/
-`tabs::accordion` / `keymap::binding` / `theme::registry` / `theme::schema` /
-`input_ui::history` / `queue` / `single_instance` / `file_watcher` / `tokio` /
-`webview` / `system::focus_trap` / `system::svg_renderer` /
-`highlight::tree_sitter` / `animation::animate` / `fast::layout_key`，
-新增代码在这些模块里用 `unwrap` 会直接编译失败；
-其余历史模块按同一口径逐步迁移（见 docs §六十四 的迁移口径与后续批次候选）。
+**`rgpui` 核心 crate 已全量封死**（第十六批）：`rgpui.rs` 顶部一条
+`#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` 覆盖整个 crate，
+原先散在 19 个文件里的 95 处模块级 `#[deny]` 已随之删除。新增代码在核心里用
+`unwrap` / `expect` / `panic!` 直接编译失败；确要以 panic 作为契约的位置就近写
+`#[allow(clippy::panic)] // 中文注释说明理由`（现存 149 处豁免里只有 9 处挂在模块声明上，
+且都被 `cfg(test)` / `test-support` / `bench` 门控，生产侧没有整棵子树的豁免）。
+这三个 lint **看不见** `unreachable!` / `unimplemented!`：核心 crate 里已无裸
+`unreachable!()`（`grep -rn 'unreachable!()' crates/rgpui/src` 为空，全部带中文消息），
+`unimplemented!` 只出现在 `platform/test/*` 的假平台桩、`#[cfg(test)]` 测试代码与
+文档示例里。
+三个 `build.rs`（`rgpui` / `rgpui-windows` /
+`rgpui-macos`）也加了文件级 `#![deny]`，`main` 返回 `Result` 让 cargo 转成构建失败。
+`rgpui-markdown` / `rgpui-character` 实测本就 0 站点，crate 根补同一条 `#![deny]`。
+CI 的 clippy 跑 `--lib --bins`，**看不见 `#[cfg(test)]` 与 `examples/` 目标**，
+本地按开发命令跑 `--all-targets` 才会暴露（`redundant_clone` 对测试代码同样生效）；
+第十六批已把存量 15 处清零，Windows 端 `--workspace --all-targets --all-features
+-- -D warnings` 全绿。
+**剩余战场是兄弟 crate**（一次 `--workspace --all-features -W` 度量、按 `文件:行:列`
+去重，共 97 处）：`rgpui-windows` 59（`directx_renderer` 24 / `direct_write` 11 /
+`platform` 6 / `directx_atlas` 6 / `directx_devices` 3）、`rgpui-wgpu` 21
+（`wgpu_renderer` 18 / `wgpu_atlas` 3）、`rgpui-macros` 12、
+`rgpui-term` / `rgpui-3d` / `rgpui-platform` 2 / 2 / 1；`rgpui-macos`（`metal_renderer` 为主）与
+`rgpui-linux`（`wayland/client` 为主）本地编不到，靠 CI 矩阵度量。迁移口径见 docs §六十四，
+核心终态与兄弟 crate 站点分布见 §七十九。
 
 ## 托盘与窗口隐藏
 
@@ -228,9 +226,13 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 9. feature 组合按需通过：`charts,effects,qr-code` / `tokio` / `control-channel` / `webview` /
    `screen-capture`（吸管，Windows 本地验证）/ `dom-backend`（+ `cargo test -p rgpui-dom`）/
    `ribbon,viewport` / `spreadsheet` / `document` / `rgpui-markdown` 的 `latex`（公式）、
-   `mermaid`（图表）、`syntax-highlight`（代码高亮）/ `tree-sitter-*`（14 个语言包，
-   含 `tree-sitter` 地基）
-10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过
+   `mermaid`（图表）、`syntax-highlight`（代码高亮）/ `tree-sitter-*`（`tree-sitter`
+   地基自带 Rust grammar，另有 16 个语言 feature：json/toml/javascript/typescript/
+   python/bash/go/c/cpp/c-sharp/java/ruby/php/css/html/yaml）
+10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过；发版前对**全部**
+    `publish = true` 的 crate 各跑一次 dry-run（它按 registry 版本解析 path 依赖，
+    能抓到 crate 之间的发布顺序问题，见 docs §八十）：先 `rgpui`、后消费方，
+    反过来发会让上游编译不过、只能 yank 补救
 11. 发布要求无 dev 循环依赖（测试放消费方 `tests/`，见 1.1.1 教训）
 12. 命令清单 gate 通过（`CommandRegistry::validate()` 为空）；改控制通道 / MCP 后跑
     `cargo test -p rgpui --features control-channel --lib` 与

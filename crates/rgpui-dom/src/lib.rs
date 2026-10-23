@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn test_reconcile_no_changes() {
         let a = key(&[ElementId::Name("a".into())], &[]);
-        let old = build(&[(a.clone(), div_node())]);
+        let old = build(&[(a, div_node())]);
         let new = old.clone();
         let patches = reconcile(&old, &new);
         assert!(patches.is_empty());
@@ -217,7 +217,7 @@ mod tests {
         // keyed 语义下 a 跨帧保留，不应被删除
         assert!(!patches.contains(&DomPatch::RemoveNode { key: a.clone() }));
         assert!(patches.contains(&DomPatch::CreateNode {
-            key: b.clone(),
+            key: b,
             parent: root,
             index: 0,
             node: div_node(),
@@ -240,12 +240,12 @@ mod tests {
         let mut changed = div_node();
         changed.style.width = px(200.0);
         let mut new = build(&[(a.clone(), changed.clone())]);
-        new.children.insert(root.clone(), vec![a.clone()]);
+        new.children.insert(root, vec![a.clone()]);
         new.z_orders.insert(a.clone(), 0);
 
         let patches = reconcile(&old, &new);
         assert!(patches.contains(&DomPatch::UpdateNode {
-            key: a.clone(),
+            key: a,
             node: changed,
         }));
     }
@@ -261,8 +261,8 @@ mod tests {
         ]);
         tree.children.insert(root, vec![a.clone()]);
         tree.children.insert(a.clone(), vec![text.clone()]);
-        tree.z_orders.insert(a.clone(), 0);
-        tree.z_orders.insert(text.clone(), 1);
+        tree.z_orders.insert(a, 0);
+        tree.z_orders.insert(text, 1);
 
         let html = to_html(&tree);
         assert!(html.contains("<div"));

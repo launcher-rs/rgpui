@@ -13,6 +13,10 @@
 //! - [`latex`]（`latex` feature）：LaTeX 公式渲染成图片。
 //! - [`mermaid`]（`mermaid` feature）：Mermaid 围栏代码块渲染成图表。
 
+// 生产代码禁用 `unwrap` / `expect` / `panic!`（与 rgpui 核心同一口径）；
+// 测试代码由根目录 `clippy.toml` 的 `allow-*-in-tests` 放行。
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 pub mod code_block;
 pub mod markdown;
 pub mod rich_text;

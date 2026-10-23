@@ -641,7 +641,7 @@ pub fn normalize_lexically(path: &Path) -> Result<PathBuf, NormalizeError> {
 
     for component in iter {
         match component {
-            Component::RootDir => unreachable!(),
+            Component::RootDir => unreachable!("根组件已在循环前消费，RootDir 不可能再次出现"),
             Component::Prefix(_) => return Err(NormalizeError),
             Component::CurDir => continue,
             Component::ParentDir => {

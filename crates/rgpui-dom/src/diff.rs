@@ -205,7 +205,7 @@ mod tests {
         assert_eq!(
             patches,
             vec![DomPatch::CreateNode {
-                key: a.clone(),
+                key: a,
                 parent: DomNodeKey::root(),
                 index: 0,
                 node: node("div"),
@@ -230,7 +230,7 @@ mod tests {
         tree.nodes.insert(a.clone(), node("div"));
         tree.nodes.insert(b.clone(), node("div"));
         tree.children.insert(DomNodeKey::root(), vec![a.clone()]);
-        tree.children.insert(a.clone(), vec![b.clone()]);
+        tree.children.insert(a, vec![b]);
         let patches = reconcile(&tree, &tree);
         assert!(patches.is_empty());
     }
@@ -250,7 +250,7 @@ mod tests {
         // 新树：root > a（无 b 子节点）
         let mut new = DomTree::default();
         new.nodes.insert(a.clone(), node("div"));
-        new.children.insert(DomNodeKey::root(), vec![a.clone()]);
+        new.children.insert(DomNodeKey::root(), vec![a]);
 
         let patches = reconcile(&old, &new);
         // 只应删除 b，不重复删除 a
@@ -286,7 +286,7 @@ mod tests {
         t1.kind = DomNodeKind::Text { text: "old".into() };
         let mut t2 = node("div");
         t2.kind = DomNodeKind::Text { text: "new".into() };
-        let old = tree(vec![(a.clone(), t1.clone())]);
+        let old = tree(vec![(a.clone(), t1)]);
         let new = tree(vec![(a.clone(), t2.clone())]);
         let patches = reconcile(&old, &new);
         assert_eq!(patches, vec![DomPatch::UpdateNode { key: a, node: t2 }]);
@@ -315,8 +315,8 @@ mod tests {
             vec![
                 DomPatch::RemoveNode { key: b.clone() },
                 DomPatch::CreateNode {
-                    key: b.clone(),
-                    parent: a.clone(),
+                    key: b,
+                    parent: a,
                     index: 0,
                     node: new_node,
                 },

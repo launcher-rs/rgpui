@@ -24,7 +24,6 @@ use crate::{App, HighlightStyle, SharedString, theme::ActiveTheme};
 ///
 /// 编译门控：`--features tree-sitter`（默认关闭），wasm 目标下不编译。
 #[cfg(all(not(target_family = "wasm"), feature = "tree-sitter"))]
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod tree_sitter;
 
 /// Bash 高亮器（`tree-sitter-bash` feature 门控）。

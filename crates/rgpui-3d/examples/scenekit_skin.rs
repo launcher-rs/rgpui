@@ -546,7 +546,6 @@ impl Render for SkinView {
                             .text_sm()
                             .cursor_pointer()
                             .on_mouse_down(MouseButton::Left, {
-                                let state = state.clone();
                                 move |_: &MouseDownEvent, _, _| {
                                     let mut s = state.lock().unwrap();
                                     s.auto_rotate = !s.auto_rotate;

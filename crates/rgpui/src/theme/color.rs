@@ -530,7 +530,7 @@ impl ColorName {
             ColorName::Fuchsia => &DEFAULT_COLORS.fuchsia,
             ColorName::Pink => &DEFAULT_COLORS.pink,
             ColorName::Rose => &DEFAULT_COLORS.rose,
-            _ => unreachable!(),
+            _ => unreachable!("ColorName 的具名色已在此穷举"),
         };
 
         if let Some(color) = colors.get(&scale) {
