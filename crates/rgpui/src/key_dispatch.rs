@@ -62,6 +62,19 @@ use std::{
     rc::Rc,
 };
 
+/// 内部不变量：值为 `None` 说明前提被破坏（栈为空、状态缺失等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// `DispatchTree` 中节点的 ID。注意这些 ID 在帧之间**不是**稳定的，因此
 /// `DispatchNodeId` 只能与提供它的 `DispatchTree` 一起使用。
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -217,14 +230,14 @@ impl DispatchTree {
     }
 
     pub fn set_focus_id(&mut self, focus_id: FocusId) {
-        let node_id = *self.node_stack.last().unwrap();
+        let node_id = *invariant(self.node_stack.last(), "按键分发：node stack 不能为空");
         self.nodes[node_id.0].focus_id = Some(focus_id);
         self.focusable_node_ids.insert(focus_id, node_id);
     }
 
     pub fn set_view_id(&mut self, view_id: EntityId) {
         if self.view_stack.last().copied() != Some(view_id) {
-            let node_id = *self.node_stack.last().unwrap();
+            let node_id = *invariant(self.node_stack.last(), "按键分发：node stack 不能为空");
             self.nodes[node_id.0].view_id = Some(view_id);
             self.view_node_ids.insert(view_id, node_id);
             self.view_stack.push(view_id);
@@ -232,7 +245,7 @@ impl DispatchTree {
     }
 
     pub fn pop_node(&mut self) {
-        let node = &self.nodes[self.active_node_id().unwrap().0];
+        let node = &self.nodes[invariant(self.active_node_id(), "按键分发：必须存在活动节点").0];
         if node.context.is_some() {
             self.context_stack.pop();
         }
@@ -544,7 +557,11 @@ impl DispatchTree {
             let (bindings, _, _) = self.bindings_for_input(&input[0..=last], dispatch_path);
             if !bindings.is_empty() {
                 to_replay.push(Replay {
-                    keystroke: input.drain(0..=last).next_back().unwrap(),
+                    // `last < input.len()` ⇒ `0..=last` 非空，drain 必有最后一个元素
+                    keystroke: invariant(
+                        input.drain(0..=last).next_back(),
+                        "按键分发：被重放的前缀区间不能为空",
+                    ),
                     bindings,
                 });
                 break;
@@ -599,7 +616,7 @@ impl DispatchTree {
     }
 
     fn active_node(&mut self) -> &mut DispatchNode {
-        let active_node_id = self.active_node_id().unwrap();
+        let active_node_id = invariant(self.active_node_id(), "按键分发：必须存在活动节点");
         &mut self.nodes[active_node_id.0]
     }
 

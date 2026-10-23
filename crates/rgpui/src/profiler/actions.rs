@@ -6,6 +6,29 @@ use itertools::Itertools;
 
 use crate::action::Action;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（栈为空等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：结果为 `Err` 说明前提被破坏（容量检查失手等），必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct ActionStatistics {
@@ -132,14 +155,16 @@ pub(crate) fn update_running_action(action: &(dyn Action + 'static), cx: &mut cr
 
 #[doc(hidden)]
 pub(crate) fn save_action_timing() {
-    let (action, started) = RUNNING_ACTIONS
-        .with(|stack| stack.borrow_mut().pop())
-        .expect("only called after `update_running_action`");
+    let (action, started) = invariant(
+        RUNNING_ACTIONS.with(|stack| stack.borrow_mut().pop()),
+        "动作采样：只会在 update_running_action 之后被调用",
+    );
     let now = Instant::now();
     let runtime = now.duration_since(started);
     let mut statistics = ACTION_STATISTICS.lock();
     if runtime >= statistics.runtime_to_beat {
         cold_path();
+        // heapless 定长集合：push 前已检查 is_full，容量必有空位
         if statistics.longest_runtimes.is_full()
             && let Some(to_replace) = statistics
                 .longest_runtimes
@@ -152,21 +177,24 @@ pub(crate) fn save_action_timing() {
                 end: now,
             };
         } else {
-            statistics
-                .longest_runtimes
-                .push(ActionTiming {
+            invariant_result(
+                statistics.longest_runtimes.push(ActionTiming {
                     name: action,
                     start: started,
                     end: now,
-                })
-                .expect("just checked it is not full");
+                }),
+                "动作采样：push 前已确认集合未满",
+            );
         };
-        statistics.runtime_to_beat = statistics
-            .longest_runtimes
-            .iter()
-            .map(|action| action.runtime())
-            .min()
-            .expect("never empty");
+        // 刚写入至少一个元素的 heapless 集合，min 必有值
+        statistics.runtime_to_beat = invariant(
+            statistics
+                .longest_runtimes
+                .iter()
+                .map(|action| action.runtime())
+                .min(),
+            "动作采样：刚写入元素的集合必非空",
+        );
     }
 }
 

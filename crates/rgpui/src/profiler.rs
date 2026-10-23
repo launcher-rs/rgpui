@@ -21,6 +21,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::{SharedString, TasksIncluded, WindowId};
 
+/// 内部不变量：值为 `None` 说明前提被破坏（固定长度数组为空等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 #[doc(hidden)]
 pub fn get_all_timings(included: TasksIncluded) -> Vec<ThreadTaskTimings> {
     let global_thread_timings = GLOBAL_THREAD_TIMINGS.lock();
@@ -421,19 +434,22 @@ impl TaskStatistics {
         let yielded_after = task.poll_duration();
         if yielded_after >= self.poll_time_to_beat {
             cold_path();
-            let to_replace = self
-                .longest_poll_times
-                .iter()
-                .position_min_by_key(|task| task.since_spawn())
-                .expect("guarded by the comparison with nth_longest_yield_time");
+            // 固定长度 [TaskTiming; 5] 数组上的迭代器必非空，min/position_min 必有值
+            let to_replace = invariant(
+                self.longest_poll_times
+                    .iter()
+                    .position_min_by_key(|task| task.since_spawn()),
+                "采样统计：固定长度数组的迭代器必非空",
+            );
             self.longest_poll_times[to_replace] = task;
 
-            self.poll_time_to_beat = self
-                .longest_poll_times
-                .iter()
-                .map(|task| task.since_spawn())
-                .min()
-                .expect("never empty");
+            self.poll_time_to_beat = invariant(
+                self.longest_poll_times
+                    .iter()
+                    .map(|task| task.since_spawn())
+                    .min(),
+                "采样统计：固定长度数组的迭代器必非空",
+            );
         }
     }
 
@@ -442,19 +458,22 @@ impl TaskStatistics {
         let runtime = task.since_spawn();
         if runtime >= self.runtime_to_beat {
             cold_path();
-            let to_replace = self
-                .longest_runtimes
-                .iter()
-                .position_min_by_key(|task| task.since_spawn())
-                .expect("guarded by the comparison with nth_longest_yield_time");
+            // 固定长度 [TaskTiming; 5] 数组上的迭代器必非空，min/position_min 必有值
+            let to_replace = invariant(
+                self.longest_runtimes
+                    .iter()
+                    .position_min_by_key(|task| task.since_spawn()),
+                "采样统计：固定长度数组的迭代器必非空",
+            );
             self.longest_runtimes[to_replace] = task;
 
-            self.runtime_to_beat = self
-                .longest_runtimes
-                .iter()
-                .map(|task| task.since_spawn())
-                .min()
-                .expect("never empty");
+            self.runtime_to_beat = invariant(
+                self.longest_runtimes
+                    .iter()
+                    .map(|task| task.since_spawn())
+                    .min(),
+                "采样统计：固定长度数组的迭代器必非空",
+            );
         }
     }
 }
@@ -525,10 +544,10 @@ impl ThreadTimings {
             location,
             start,
             spawned,
-        } = self
-            .running
-            .take()
-            .expect("this function is only ever called after register_task_start");
+        } = invariant(
+            self.running.take(),
+            "采样统计：save_task_timing 只会在计时开始后被调用",
+        );
 
         let timing = TaskTiming {
             location,

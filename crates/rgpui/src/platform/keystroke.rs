@@ -7,6 +7,19 @@ use std::{
 
 use crate::PlatformKeyboardMapper;
 
+/// 内部不变量：值为 `None` 说明前提被破坏，必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 这是一个辅助 trait，用于简化某些函数的实现
 pub trait AsKeystroke {
     /// 返回按键的 RGPUI 表示。
@@ -737,7 +750,10 @@ fn display_key(key: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[cfg(target_os = "macos")]
         "platform" => '⌘',
 
-        key if key.len() == 1 => key.chars().next().unwrap().to_ascii_uppercase(),
+        // `len() == 1`（字节数）⇒ 恰好一个 ASCII 字符
+        key if key.len() == 1 => {
+            invariant(key.chars().next(), "len==1 的字符串必恰有一个字符").to_ascii_uppercase()
+        }
         key => return f.write_str(key),
     };
     f.write_char(key)

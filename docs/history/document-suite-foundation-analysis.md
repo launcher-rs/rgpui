@@ -2110,3 +2110,42 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `util/scheduler/test_scheduler.rs`（测试调度器）、`util/scheduler/tests.rs`（测试模块）
 等；`app/test_context.rs` / `app/bench_context.rs` / `app/test_app.rs` 等测试支撑模块
 已在第五批按测试断言语义整体放行。
+
+## 七十一、增补：lint 收紧第八批（平台 / 分发 / 采样层 / 22 处）
+
+延续 §六十四～§七十 的口径，本批覆盖 4 个模块：`platform`（含 `keystroke` /
+`threaded_dispatcher`）、`platform_scheduler`、`key_dispatch`、`profiler`（含
+`profiler::actions`）；已迁移模块数 42 → **46**。
+
+### 迁移要点
+
+- **不变量收敛**：`key_dispatch`（node/view 栈非空、活动节点必存在、被重放前缀区间
+  非空）、`profiler`（固定长度 `[TaskTiming; 5]` 数组迭代器必非空、`save_task_timing`
+  只在计时开始后调用）、`profiler::actions`（运行栈必有元素、heapless 集合 push 前已
+  查未满，`push` 返回 `Result` 走 `invariant_result`）、`keystroke`（`len()==1` 的
+  字符串恰有一个字符）与 `platform.rs` 的 `NoopTextSystem::layout_line`（自身
+  `glyph_for_char` 恒 `Some`、`advance` 恒 `Ok`）统一走模块内 `invariant` /
+  `invariant_result` 助手，panic 语义不变。
+- **可恢复失败**：`ClipboardString::with_json_metadata` 的 `serde_json::to_string`
+  失败（自定义 `Serialize` 报错、非字符串键等）改为记警告并保留原元数据，剪贴板
+  文本不受影响。
+- **契约 / 环境致命错误保留 panic + 局部 allow**：`threaded_dispatcher` 的 3 处
+  线程创建失败（worker / 定时器 / 基准实时线程，失败即调度器不可用）与 1 处
+  dispatcher 拆解后派发；`platform_scheduler` 的 wasm 阻塞 panic 收进带 allow 的
+  `cannot_block_on_wasm() -> !` 辅助函数（属性挂在 wasm 尾表达式 block 上不稳定）。
+- **测试支撑整体放行**：`platform/test`（`TestPlatform` 的 prompt 模拟断言）与
+  macOS 的 `platform/visual_test` 按第五批口径在模块声明处 `#[allow]` + 注释。
+
+### 验证
+
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored。
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）。
+- `cargo clippy -p rgpui --features test-support --lib -- -D warnings` 通过
+  （`threaded_dispatcher` / `platform::test` 只在 test 或 test-support feature 下编译，
+  单跑 `--lib` 验不到）。
+
+### 剩余候选
+
+`scene.rs`、`arena.rs`、`action.rs`、`root.rs`、`dom.rs`（`dom-backend` feature）、
+`text_system.rs`、`theme/highlight.rs`、`elements/scroll/*`、
+`util/scheduler/test_scheduler.rs` 等。
