@@ -14,6 +14,19 @@ use std::{cell::RefCell, cmp, ops::Range, rc::Rc};
 
 use super::ListHorizontalSizingBehavior;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（request_layout 阶段未设置滚动偏移等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// uniform_list 为一组等高元素提供延迟渲染。
 /// 当渲染到设置了 overflow-y: hidden 和固定（或最大）高度的容器中时，
 /// uniform_list 只会渲染可见子集的元素。
@@ -373,7 +386,11 @@ impl Element for UniformList {
             height: longest_item_size.height * self.item_count,
         };
 
-        let shared_scroll_offset = self.interactivity.scroll_offset.clone().unwrap();
+        // 本元素是滚动容器，request_layout 阶段必已设置共享滚动偏移
+        let shared_scroll_offset = invariant(
+            self.interactivity.scroll_offset.clone(),
+            "uniform_list：request_layout 阶段必已设置 scroll_offset",
+        );
         let item_height = longest_item_size.height;
         let shared_scroll_to_item = self.scroll_handle.as_mut().and_then(|handle| {
             let mut handle = handle.0.borrow_mut();

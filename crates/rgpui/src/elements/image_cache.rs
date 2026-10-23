@@ -10,6 +10,19 @@ use futures::{FutureExt, future::Shared};
 use smallvec::SmallVec;
 use std::{collections::HashMap, fmt, sync::Arc};
 
+/// 内部不变量：结果为 `Err` 说明前提被破坏（AnyEntity 与声明类型不符），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 /// 一个图像缓存元素，其所有子 img 元素将使用此元素指定的缓存。
 /// 注意这可以简单地传递 `Entity<T: ImageCache>`
 pub fn image_cache(image_cache_provider: impl ImageCacheProvider) -> ImageCacheElement {
@@ -63,7 +76,11 @@ mod any_image_cache {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<Result<Arc<RenderImage>, ImageCacheError>> {
-        let image_cache = image_cache.clone().downcast::<I>().unwrap();
+        // 调用方按 I 声明 AnyEntity 的实体类型，下转型必成功
+        let image_cache = invariant_result(
+            image_cache.clone().downcast::<I>(),
+            "图像缓存：AnyEntity 下转型必成功",
+        );
         image_cache.update(cx, |image_cache, cx| image_cache.load(resource, window, cx))
     }
 }
