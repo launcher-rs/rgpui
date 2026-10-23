@@ -169,7 +169,7 @@ pub fn marked_text_ranges(
                     current_range_start..unmarked_len
                 });
             }
-            _ => unreachable!(),
+            _ => unreachable!("match_indices 只会返回已列入的标记字符"),
         }
     }
 

@@ -380,7 +380,7 @@ mod tests {
         assert_eq!(
             match &item {
                 MenuItem::Action { name, .. } => name.as_ref(),
-                _ => unreachable!(),
+                _ => unreachable!("上面构造的必然是 Action 变体"),
             },
             "Test Action"
         );
@@ -412,7 +412,7 @@ mod tests {
         assert_eq!(
             match &submenu {
                 MenuItem::Submenu(menu) => menu.name.as_ref(),
-                _ => unreachable!(),
+                _ => unreachable!("上面构造的必然是 Submenu 变体"),
             },
             "Submenu"
         );

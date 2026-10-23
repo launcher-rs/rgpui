@@ -308,7 +308,7 @@ impl<T: Item> SumTree<T> {
                     "parent node must be uniquely owned",
                 )
                 else {
-                    unreachable!()
+                    unreachable!("刚新建的父节点必然是内部节点")
                 };
                 let child_summary = child_node.summary();
                 <T::Summary as Summary>::add_summary(summary, child_summary, cx);
@@ -973,7 +973,7 @@ impl<T: Item> SumTree<T> {
                 child_trees,
             } = Arc::make_mut(&mut large.0)
             else {
-                unreachable!();
+                unreachable!("较大的一侧高度更高，必然是内部节点");
             };
             let mut full_summary = small.summary().clone();
             Summary::add_summary(&mut full_summary, summary, cx);
@@ -1133,7 +1133,7 @@ impl<T: Item> SumTree<T> {
                     })))
                 }
             }
-            _ => unreachable!(),
+            _ => unreachable!("等高子树合并时两侧节点类型必然一致"),
         }
     }
 

@@ -59,8 +59,10 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 `unwrap` / `expect` / `panic!` 直接编译失败；确要以 panic 作为契约的位置就近写
 `#[allow(clippy::panic)] // 中文注释说明理由`（现存 149 处豁免里只有 9 处挂在模块声明上，
 且都被 `cfg(test)` / `test-support` / `bench` 门控，生产侧没有整棵子树的豁免）。
-这三个 lint **看不见** `unreachable!` / `unimplemented!`：核心生产代码里的
-`unreachable!()` 已全部补上消息，`unimplemented!` 只留给 `platform/test/*` 的假平台桩。
+这三个 lint **看不见** `unreachable!` / `unimplemented!`：核心 crate 里已无裸
+`unreachable!()`（`grep -rn 'unreachable!()' crates/rgpui/src` 为空，全部带中文消息），
+`unimplemented!` 只出现在 `platform/test/*` 的假平台桩、`#[cfg(test)]` 测试代码与
+文档示例里。
 三个 `build.rs`（`rgpui` / `rgpui-windows` /
 `rgpui-macos`）也加了文件级 `#![deny]`，`main` 返回 `Result` 让 cargo 转成构建失败。
 `rgpui-markdown` / `rgpui-character` 实测本就 0 站点，crate 根补同一条 `#![deny]`。

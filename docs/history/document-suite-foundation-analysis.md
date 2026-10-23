@@ -2509,11 +2509,15 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
   其余是函数/语句级就近放行，带中文注释说明为什么 panic 是契约。crate 根属性生效后
   这些仍然必要——审计过一遍，**生产侧没有一处整棵子树的豁免**。
 - **封死的边界要说清**：三个 lint 看不见 `unreachable!` / `unimplemented!`（它们展开成
-  `panic` 但不是 `panic!` 的直接调用）。本批顺带给核心 crate 生产代码里
-  **所有裸 `unreachable!()` 补上消息**（`util/sum_tree/cursor.rs` 6 处、
-  `util/paths.rs` / `util/mod.rs` / `theme/color.rs` 各 1 处），不变量被破坏时能一眼看出
-  是哪个分支；`unimplemented!` 只存在于 `platform/test/*` 的测试桩（假平台没有真实窗口），
-  那里保留原样，不加 `clippy::unimplemented` 到 deny 列表。
+  `panic` 但不是 `panic!` 的直接调用）。本批给核心 crate **所有裸 `unreachable!()`
+  补上消息**（生产侧 `util/sum_tree/cursor.rs` 6 处、`util/paths.rs` / `util/mod.rs` /
+  `theme/color.rs` 各 1 处；复核又补了 `util/sum_tree/mod.rs` 3 处 —— 等高合并的两处
+  let-else 与 `_ =>` 兜底、测试侧 `util/test/marked_text.rs` 1 处 +
+  `platform/app_menu.rs` 2 处），不变量被破坏时能一眼看出是哪个分支。
+  终态：`grep -rn 'unreachable!()' crates/rgpui/src` **为空**。
+  `unimplemented!` 只存在于 `platform/test/*` 的测试桩、`key_dispatch.rs` 的
+  `#[cfg(test)]` 假输入源与 `action.rs` 的文档示例（`/// #` 行），生产侧没有，
+  因此不把 `clippy::unimplemented` 加进 deny 列表。
 - **构建脚本纳入体系**：`rgpui/build.rs`（1 处）、`rgpui-windows/build.rs`（12 处）、
   `rgpui-macos/build.rs`（13 处）此前完全在模块属性之外。三处统一：
   `fn main() -> Result<(), Box<dyn std::error::Error>>` + `?` 传播，顶部加
@@ -2564,6 +2568,10 @@ warning 的主 span `文件:行:列` 去重 —— clippy 对同一站点会随�
 
 `rgpui-markdown` 与 `rgpui-character` 实测 **0 站点**（两者都没有平台 `cfg` 门控
 代码），本批直接补上 crate 根 `#![deny]`，零代码改动封死。
+
+同一批复核还漏了 **裸 `unreachable!()`**（三个 lint 看不见它）：核心已清零，
+兄弟 crate 的存量是 `rgpui-macos` 6、`rgpui-windows` 4、`rgpui-linux` 4、
+`rgpui-term` 2、`rgpui-macros` 1 —— 各批次迁移时一并补消息，别只盯 97 这个数字。
 
 需要 CI 矩阵度量（本地交叉编译缺 C 工具链，`x86_64-unknown-linux-gnu` /
 `aarch64-apple-darwin` 都停在 `cc-rs` 找不到编译器），下面是 **grep 上界**
