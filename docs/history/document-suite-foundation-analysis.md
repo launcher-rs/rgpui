@@ -2472,7 +2472,7 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 > 缺的只是 deny 落点。第十六批因此改为一次性把核心 crate 全量封死，
 > 后续批次口径换成兄弟 crate（见 §七十九 的表）。
 
-## 七十九、增补：lint 收紧第十六批（核心 crate 全量封死 + 构建脚本 / 0 处代码改动）
+## 七十九、增补：lint 收紧第十六批（核心 crate 全量封死 + 构建脚本 + markdown/character 补章 / 核心生产代码 0 处改动）
 
 延续 §六十四～§七十八 的口径，本批收尾核心 crate：**`rgpui` 的生产代码已经没有
 `unwrap` / `expect` / `panic!` 站点**，所以不再逐模块盖章，改为一条 crate 根属性把
@@ -2524,6 +2524,10 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
   - `rgpui-macos`：`xcrun --show-sdk-path` / bindgen / metal / metallib 的
     `unwrap` / `expect` / `panic!` 换成带上下文的 `Err`。
   - `rgpui`：`manifest_required().unwrap()` 改为 `map_err` 携带原始错误。
+- **顺带封掉两个纯 Rust crate**：`rgpui-markdown`、`rgpui-character` 实测 0 站点，
+  且都不含平台 `cfg` 门控代码，直接在 crate 根（`src/lib.rs` /
+  `src/rgpui_character.rs`）补 `#![deny(clippy::unwrap_used, clippy::expect_used,
+  clippy::panic)]`，零代码改动。
 
 ### 验证
 
@@ -2536,19 +2540,30 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
   （`used unwrap() on an Option value` / `used expect() ...` /
   `panic should not be present in production code`），随后撤掉探针。
 - `cargo test -p rgpui --lib`：830 passed + 1 ignored（与第十五批持平）。
+- `cargo test -p rgpui-markdown --lib`：10 passed（新章生效后测试代码不受影响，
+  `clippy.toml` 的 `allow-*-in-tests` 仍然放行）。
 - `cargo fmt --all` 干净。
 
 ### 剩余候选（口径改口：兄弟 crate）
 
 核心 crate 已封死，下一站是把同一套 lint 推到平台/工具 crate（分支名
-`feat/lint-unwrap-crates-a` 的 crates-b）。本地 Windows 实测精确数：
+`feat/lint-unwrap-crates-a` 的 crates-b）。
+
+度量口径（本次修正）：一次 `cargo clippy --workspace --lib --bins --all-features
+-- -W clippy::unwrap_used -W clippy::expect_used -W clippy::panic`，把每条
+warning 的主 span `文件:行:列` 去重 —— clippy 对同一站点会随编译路径重复播报，
+而 `-p <crate> --all-features` 又会把依赖 crate 的告警一起带进来，两个口径都虚高。
 
 | crate | 站点 | 集中位置 |
 |-------|------|----------|
-| `rgpui-windows` | 60 | `directx_renderer` 24、`direct_write` 11、`directx_atlas` 6、`platform` 5、`directx_devices` 3，尾部零散 1–2 |
-| `rgpui-wgpu` | 21 | `wgpu_renderer` 17、`wgpu_atlas` 3、`wgpu_context` |
-| `rgpui-macros` | 12 | `derive_refineable` 5、`icon_named` 3、其余 proc-macro 零散 |
-| `rgpui-term` / `rgpui-3d` / `rgpui-platform` | 2 / 2 / 2 | `terminal_element`、`context`、`rgpui_platform` |
+| `rgpui-windows` | 59 | `directx_renderer` 24、`direct_write` 11、`platform` 6、`directx_atlas` 6、`directx_devices` 3，尾部 `window` / `events` 各 2、`vsync` / `keyboard` / `global_hotkey` / `dispatcher` / `clipboard` 各 1 |
+| `rgpui-wgpu` | 21 | `wgpu_renderer` 18、`wgpu_atlas` 3 |
+| `rgpui-macros` | 12 | `derive_refineable` 5、`icon_named` 3、`derive_action` 2、`styles` 1、`rgpui_macros` 1 |
+| `rgpui-term` / `rgpui-3d` / `rgpui-platform` | 2 / 2 / 1 | `terminal_element`、`context`、`rgpui_platform` |
+| 合计 | **97** | |
+
+`rgpui-markdown` 与 `rgpui-character` 实测 **0 站点**（两者都没有平台 `cfg` 门控
+代码），本批直接补上 crate 根 `#![deny]`，零代码改动封死。
 
 需要 CI 矩阵度量（本地交叉编译缺 C 工具链，`x86_64-unknown-linux-gnu` /
 `aarch64-apple-darwin` 都停在 `cc-rs` 找不到编译器）：`rgpui-linux`

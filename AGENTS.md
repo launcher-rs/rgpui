@@ -63,9 +63,12 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 `unreachable!()` 已全部补上消息，`unimplemented!` 只留给 `platform/test/*` 的假平台桩。
 三个 `build.rs`（`rgpui` / `rgpui-windows` /
 `rgpui-macos`）也加了文件级 `#![deny]`，`main` 返回 `Result` 让 cargo 转成构建失败。
-**剩余战场是兄弟 crate**：`rgpui-windows` 60 处（`directx_renderer` 24 / `direct_write` 11 /
-`directx_atlas` 6 / `platform` 5）、`rgpui-wgpu` 21、`rgpui-macros` 12、
-`rgpui-term` / `rgpui-3d` / `rgpui-platform` 少量；`rgpui-macos`（`metal_renderer` 为主）与
+`rgpui-markdown` / `rgpui-character` 实测本就 0 站点，crate 根补同一条 `#![deny]`。
+**剩余战场是兄弟 crate**（一次 `--workspace --all-features -W` 度量、按 `文件:行:列`
+去重，共 97 处）：`rgpui-windows` 59（`directx_renderer` 24 / `direct_write` 11 /
+`platform` 6 / `directx_atlas` 6 / `directx_devices` 3）、`rgpui-wgpu` 21
+（`wgpu_renderer` 18 / `wgpu_atlas` 3）、`rgpui-macros` 12、
+`rgpui-term` / `rgpui-3d` / `rgpui-platform` 2 / 2 / 1；`rgpui-macos`（`metal_renderer` 为主）与
 `rgpui-linux`（`wayland/client` 为主）本地编不到，靠 CI 矩阵度量。迁移口径见 docs §六十四，
 核心终态与兄弟 crate 站点分布见 §七十九。
 
