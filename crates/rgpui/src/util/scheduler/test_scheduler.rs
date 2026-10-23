@@ -122,8 +122,9 @@ impl TestScheduler {
         }
     }
 
+    // 契约校验：测试结束时非确定性错误必须暴露
+    #[allow(clippy::panic)] // 契约校验：不变量被破坏，必须立刻暴露
     pub fn end_test(&self) {
-        #[allow(clippy::panic)] // 契约校验：不变量被破坏，必须立刻暴露
         let mut state = self.state.lock();
         if let Some((message, backtrace)) = &state.non_determinism_error {
             panic!("{}\n{:?}", message, backtrace)
@@ -490,8 +491,9 @@ impl TestScheduler {
     }
 }
 
+// 契约校验：测试线程与调度器线程不一致时必须暴露（非确定性）
+#[allow(clippy::panic)] // 契约校验：不变量被破坏，必须立刻暴露
 fn assert_correct_thread(expected: &Thread, state: &Arc<Mutex<SchedulerState>>) {
-    #[allow(clippy::panic)] // 契约校验：不变量被破坏，必须立刻暴露
     let current_thread = thread::current();
     let mut state = state.lock();
     if state.parking_allowed_once {

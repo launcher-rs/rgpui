@@ -7,6 +7,29 @@ use std::{num::NonZero, time::Duration};
 
 type HashMap<K, V> = FxHashMap<K, V>;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（成功用例缺迭代次数等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：结果为 `Ok` 说明前提被破坏（无元数据时用例必为失败），必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_err<'a, T, E>(result: &'a Result<T, E>, message: &str) -> &'a E {
+    match result {
+        Err(err) => err,
+        Ok(_) => panic!("{message}"),
+    }
+}
+
 pub mod consts {
     //! 预设标识符和常量，使分析器和过程宏在通信协议上保持一致。
 
@@ -300,10 +323,24 @@ impl Output {
                 && let Ok(timings) = entry.2
             {
                 if let Some(handle) = categories.get_mut(&mdata.importance) {
-                    handle.insert(entry.0, (timings, mdata.iterations.unwrap(), mdata.weight));
+                    handle.insert(
+                        entry.0,
+                        (
+                            timings,
+                            invariant(mdata.iterations, "perf：成功用例必有迭代次数"),
+                            mdata.weight,
+                        ),
+                    );
                 } else {
                     let mut new = HashMap::default();
-                    new.insert(entry.0, (timings, mdata.iterations.unwrap(), mdata.weight));
+                    new.insert(
+                        entry.0,
+                        (
+                            timings,
+                            invariant(mdata.iterations, "perf：成功用例必有迭代次数"),
+                            mdata.weight,
+                        ),
+                    );
                     categories.insert(mdata.importance, new);
                 }
             }
@@ -339,7 +376,10 @@ impl std::fmt::Display for Output {
                             f,
                             "| {} | {:.2} | {} | {:.2} | {} | {} ({}) |",
                             name,
-                            timings.iters_per_sec(metadata.iterations.unwrap()),
+                            timings.iters_per_sec(invariant(
+                                metadata.iterations,
+                                "perf：成功用例必有迭代次数",
+                            )),
                             {
                                 // Very small mean runtimes will give inaccurate
                                 // results. Should probably also penalise weight.
@@ -351,7 +391,7 @@ impl std::fmt::Display for Output {
                                 }
                             },
                             timings.stddev.as_secs_f64() * 1000.,
-                            metadata.iterations.unwrap(),
+                            invariant(metadata.iterations, "perf：成功用例必有迭代次数"),
                             metadata.importance,
                             metadata.weight,
                         )?;
@@ -373,7 +413,7 @@ impl std::fmt::Display for Output {
                 None => writeln!(
                     f,
                     "| ({}) {} | N/A | N/A | N/A | N/A | N/A |",
-                    timings.as_ref().unwrap_err(),
+                    invariant_err(timings, "perf：无元数据时用例必为失败"),
                     name
                 )?,
             }
