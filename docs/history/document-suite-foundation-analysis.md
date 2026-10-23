@@ -2611,3 +2611,33 @@ CI 的 clippy 步骤是 `cargo clippy --workspace --lib --bins -- -D warnings`�
 这个盲区，但 mac / linux runner 上 `cfg` 门控的测试代码从未按此口径度量过，
 贸然改法可能让 CI 因存量问题变红 —— 先在两条 runner 上单独跑一次
 `--all-targets` 看清单，再决定要不要并入 CI。
+
+## 八十、增补：发布完整性复核（`cargo publish --dry-run` 全 crate 扫描）
+
+AGENTS.md 检查清单第 10 条只对 `rgpui` 做发布演练，看不到 crate 之间的**发布顺序**
+问题。把 13 个 `publish = true` 的 crate 逐个 `cargo publish -p X --dry-run
+--registry crates-io` 跑一遍（dry-run 会打包本地源码、按 registry 版本解析
+path 依赖后重新编译，正是工作区内互相引用时永远不会暴露的那条路径）：
+
+| crate | 结果 |
+|-------|------|
+| `rgpui` / `rgpui-macros` / `rgpui-markdown` / `rgpui-character` / `rgpui-term` / `rgpui-3d` / `rgpui-platform` / `rgpui-wgpu` | 通过 |
+| `rgpui-dom` | **失败**：`css.rs:193-194` 用 `TextAlign::Start` / `TextAlign::End` |
+| `rgpui-{windows,macos,linux,web}` | 本机不是对应目标，留给 CI/发布机 |
+
+根因：crates.io 上的 `rgpui@1.5.0` 里 `TextAlign` 只有 `Left / Center / Right`，
+bidi 的 `Start` / `End` 两个变体只在本地工作区（§双向文字 bidi）有，**尚未发布**。
+`rgpui-dom` 的依赖声明是 `rgpui = { workspace = true, features = ["dom-backend"] }`
+（caret 语义 ≥1.5.0 <2.0），所以只要先发一个带 bidi 变体的 `rgpui`，
+`rgpui-dom` 立刻恢复可发布。
+
+拉取已发布的 `rgpui-dom-1.5.0.crate` 核对过：它的 `css.rs` 只映射
+`Left / Center / Right` —— **线上工件是好的**，坏的是 HEAD 的可发布性。
+也就是说这条不是事故，而是下一次发版的硬约束：
+
+> 发版顺序必须是 `rgpui`（带 `TextAlign::Start/End`）→ 其他 crate。
+> 反过来先 `cargo publish -p rgpui-dom`，会得到一个编译不过的版本，
+> 且只能 yank 补救。
+
+顺带把 AGENTS.md 第 10 条从「只演练 `rgpui`」扩成「全 crate 扫描」，
+这样发布顺序类错误在发版前就会被本地抓住，而不是让下游 `cargo add` 时炸。

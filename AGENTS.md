@@ -229,7 +229,10 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
    `mermaid`（图表）、`syntax-highlight`（代码高亮）/ `tree-sitter-*`（`tree-sitter`
    地基自带 Rust grammar，另有 16 个语言 feature：json/toml/javascript/typescript/
    python/bash/go/c/cpp/c-sharp/java/ruby/php/css/html/yaml）
-10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过
+10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过；发版前对**全部**
+    `publish = true` 的 crate 各跑一次 dry-run（它按 registry 版本解析 path 依赖，
+    能抓到 crate 之间的发布顺序问题，见 docs §八十）：先 `rgpui`、后消费方，
+    反过来发会让上游编译不过、只能 yank 补救
 11. 发布要求无 dev 循环依赖（测试放消费方 `tests/`，见 1.1.1 教训）
 12. 命令清单 gate 通过（`CommandRegistry::validate()` 为空）；改控制通道 / MCP 后跑
     `cargo test -p rgpui --features control-channel --lib` 与
