@@ -1,5 +1,7 @@
 mod alert;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod anchored;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod animation;
 mod avatar;
 mod badge;
@@ -12,11 +14,13 @@ mod card;
 mod caret;
 mod checkbox;
 mod container_query;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod deferred;
 #[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod div;
 mod element_ext;
 mod icon;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod image_cache;
 mod img;
 mod kbd;
@@ -40,7 +44,9 @@ mod toast;
 mod toggle;
 mod tooltip;
 mod typography;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod uniform_list;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod virtual_list;
 
 pub use alert::*;

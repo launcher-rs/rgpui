@@ -11,6 +11,19 @@ use crate::{
 pub use easing::*;
 use smallvec::SmallVec;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（元素 id 缺失、回调被重复取用等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 一个可以应用于元素的动画。
 #[derive(Clone)]
 pub struct Animation {
@@ -175,82 +188,87 @@ impl<E: IntoElement + 'static> Element for AnimationElement<E> {
         window: &mut Window,
         cx: &mut App,
     ) -> (crate::LayoutId, Self::RequestLayoutState) {
-        window.with_element_state(global_id.unwrap(), |state, window| {
-            let mut state = state.unwrap_or_else(|| AnimationState {
-                start: Instant::now(),
-                animation_ix: 0,
-                delayed_frame_pending: Rc::new(Cell::new(false)),
-            });
-            let (animation_ix, delta, done) = if cx.reduce_motion() {
-                let animation_ix = self.animations.len() - 1;
-                let delta = if self.animations[animation_ix].oneshot {
-                    1.0
-                } else {
-                    0.0
-                };
-                (animation_ix, delta, true)
-            } else {
-                let animation_ix = state.animation_ix;
-                let duration = self.animations[animation_ix].duration;
-
-                let elapsed = if self.animations[animation_ix].synced && !duration.is_zero() {
-                    let elapsed = cx.background_executor().now() - cx.synced_animation_epoch;
-                    // Reduce modulo the duration before f32 conversion, which loses sub-second precision at scale.
-                    Duration::from_nanos((elapsed.as_nanos() % duration.as_nanos()) as u64)
-                } else {
-                    state.start.elapsed()
-                };
-                let mut delta = elapsed.as_secs_f32() / duration.as_secs_f32();
-
-                let mut done = false;
-                if delta > 1.0 {
-                    if self.animations[animation_ix].oneshot {
-                        if animation_ix >= self.animations.len() - 1 {
-                            done = true;
-                        } else {
-                            state.start = Instant::now();
-                            state.animation_ix += 1;
-                        }
-                        delta = 1.0;
+        // id() 恒返回 Some，框架必带元素 id
+        window.with_element_state(
+            invariant(global_id, "动画元素：元素必有 id"),
+            |state, window| {
+                let mut state = state.unwrap_or_else(|| AnimationState {
+                    start: Instant::now(),
+                    animation_ix: 0,
+                    delayed_frame_pending: Rc::new(Cell::new(false)),
+                });
+                let (animation_ix, delta, done) = if cx.reduce_motion() {
+                    let animation_ix = self.animations.len() - 1;
+                    let delta = if self.animations[animation_ix].oneshot {
+                        1.0
                     } else {
-                        delta %= 1.0;
-                    }
-                }
-                (animation_ix, delta, done)
-            };
-            let delta = (self.animations[animation_ix].easing)(delta);
+                        0.0
+                    };
+                    (animation_ix, delta, true)
+                } else {
+                    let animation_ix = state.animation_ix;
+                    let duration = self.animations[animation_ix].duration;
 
-            debug_assert!(
-                (0.0..=1.0).contains(&delta),
-                "delta should always be between 0 and 1"
-            );
+                    let elapsed = if self.animations[animation_ix].synced && !duration.is_zero() {
+                        let elapsed = cx.background_executor().now() - cx.synced_animation_epoch;
+                        // Reduce modulo the duration before f32 conversion, which loses sub-second precision at scale.
+                        Duration::from_nanos((elapsed.as_nanos() % duration.as_nanos()) as u64)
+                    } else {
+                        state.start.elapsed()
+                    };
+                    let mut delta = elapsed.as_secs_f32() / duration.as_secs_f32();
 
-            let element = self.element.take().expect("should only be called once");
-            let mut element = (self.animator)(element, animation_ix, delta).into_any_element();
-
-            if !done {
-                match self.animations[animation_ix].max_fps {
-                    Some(max_fps) if max_fps.is_finite() && max_fps > 0.0 => {
-                        if !state.delayed_frame_pending.get() {
-                            state.delayed_frame_pending.set(true);
-                            let delayed_frame_pending = state.delayed_frame_pending.clone();
-                            let view = window.current_view();
-                            let interval = Duration::from_secs_f32(1.0 / max_fps);
-                            window
-                                .spawn(cx, async move |cx| {
-                                    cx.background_executor().timer(interval).await;
-                                    delayed_frame_pending.set(false);
-                                    cx.update(move |_, cx| cx.notify(view)).ok();
-                                })
-                                .detach();
+                    let mut done = false;
+                    if delta > 1.0 {
+                        if self.animations[animation_ix].oneshot {
+                            if animation_ix >= self.animations.len() - 1 {
+                                done = true;
+                            } else {
+                                state.start = Instant::now();
+                                state.animation_ix += 1;
+                            }
+                            delta = 1.0;
+                        } else {
+                            delta %= 1.0;
                         }
                     }
-                    _ => window.request_animation_frame(),
-                }
-            }
+                    (animation_ix, delta, done)
+                };
+                let delta = (self.animations[animation_ix].easing)(delta);
 
-            ((element.request_layout(window, cx), element), state)
-        })
+                debug_assert!(
+                    (0.0..=1.0).contains(&delta),
+                    "delta should always be between 0 and 1"
+                );
+
+                // element 构造时必带，且每帧只取一次
+                let element = invariant(self.element.take(), "动画元素：element 每帧只取一次");
+                let mut element = (self.animator)(element, animation_ix, delta).into_any_element();
+
+                if !done {
+                    match self.animations[animation_ix].max_fps {
+                        Some(max_fps) if max_fps.is_finite() && max_fps > 0.0 => {
+                            if !state.delayed_frame_pending.get() {
+                                state.delayed_frame_pending.set(true);
+                                let delayed_frame_pending = state.delayed_frame_pending.clone();
+                                let view = window.current_view();
+                                let interval = Duration::from_secs_f32(1.0 / max_fps);
+                                window
+                                    .spawn(cx, async move |cx| {
+                                        cx.background_executor().timer(interval).await;
+                                        delayed_frame_pending.set(false);
+                                        cx.update(move |_, cx| cx.notify(view)).ok();
+                                    })
+                                    .detach();
+                            }
+                        }
+                        _ => window.request_animation_frame(),
+                    }
+                }
+
+                ((element.request_layout(window, cx), element), state)
+            },
+        )
     }
 
     fn prepaint(

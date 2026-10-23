@@ -2326,3 +2326,44 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `elements/*` 小元素（`alert` / `avatar` / `badge` / `tag` / `kbd` 等）、
 `components/*`（`pagination` / `steps` / `timeline` 等）、`menu/` 余项、
 `form/*`、`title_bar/*` 等。
+
+## 七十六、增补：lint 收紧第十三批（elements 小元素族 / 9 处）
+
+延续 §六十四～§七十五 的口径，本批覆盖 `elements` 树下 6 个小元素模块：
+`anchored`、`animation`、`deferred`、`image_cache`、`uniform_list`、
+`virtual_list`；已迁移模块数 65 → **71**。
+
+### 迁移要点
+
+- **不变量收敛**（模块内 `invariant` / `invariant_result` 助手）：
+  - `anchored`：上方已 `is_empty` 提前返回，非空集合求归约必有结果；
+  - `animation`：`id()` 恒返回 `Some` 故框架必带元素 id；`element` 构造时必带
+    且每帧只取一次（原 `expect("should only be called once")`）；
+  - `deferred`：`child` 构造时必带、`request_layout` / `paint` 各取用一次；
+  - `image_cache`：调用方按 `I` 声明 `AnyEntity` 实体类型，`downcast::<I>()`
+    返回 `Result` 走 `invariant_result`；
+  - `uniform_list`：本元素是滚动容器，`request_layout` 阶段必已设置共享
+    `scroll_offset`；
+  - `virtual_list`：`id()` 恒返回 `Some`，框架必带元素 id。
+- deny 属性加在 `elements/mod.rs` 的 6 个子模块声明处，不扩大到 `elements`
+  父模块整棵树（deny 模块 65 → 71）。
+- docs §七十六 + AGENTS.md 名单同步。
+
+### 验证
+
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）。
+- `cargo clippy -p rgpui --features test-support --lib` 与
+  `cargo clippy -p rgpui --features dom-backend --lib` 通过（`anchored` 含
+  dom-backend cfg 代码）。
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored。
+- `cargo fmt --all --check` 干净。
+
+### 剩余候选
+
+`components/*`（`otp_input` / `sparkline` / `status_bar` / `charts/*` /
+`navigation_menu` / `description_list` / `date_picker` / `segmented_nav` /
+`animated_collapsible`）、`tabs::accordion`、`keymap::binding`、
+`theme::registry` / `theme::schema`、`input_ui::history`、`file_watcher`、
+`queue`、`single_instance`、`webview`、`tokio`、`system/*`、
+`highlight::tree_sitter`、`animation::animate`、`elements::alert/avatar/badge` 等
+（`alert` / `avatar` / `badge` / `tag` / `kbd` / `form` / `title_bar` 当前无站点）。

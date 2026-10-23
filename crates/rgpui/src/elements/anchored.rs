@@ -11,6 +11,19 @@ use crate::{
 #[cfg(feature = "dom-backend")]
 use crate::DomNode;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（非空集合求归约必有结果等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 锚定元素用于跟踪其子元素的状态。
 pub struct AnchoredState {
     child_layout_ids: SmallVec<[LayoutId; 4]>,
@@ -146,12 +159,15 @@ impl Element for Anchored {
             return;
         }
 
-        let children_bounds = request_layout
-            .child_layout_ids
-            .iter()
-            .map(|id| window.layout_bounds(*id))
-            .reduce(|acc, bounds| acc.union(&bounds))
-            .unwrap();
+        // 上方已检查 child_layout_ids 非空，归约必有结果
+        let children_bounds = invariant(
+            request_layout
+                .child_layout_ids
+                .iter()
+                .map(|id| window.layout_bounds(*id))
+                .reduce(|acc, bounds| acc.union(&bounds)),
+            "锚定元素：非空子布局集合归约必有结果",
+        );
 
         let (origin, mut desired) = self.position_mode.get_position_and_bounds(
             self.anchor_position,
