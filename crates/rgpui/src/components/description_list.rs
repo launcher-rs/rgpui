@@ -5,6 +5,19 @@
 
 use crate::{prelude::FluentBuilder as _, *};
 
+/// 内部不变量：值为 `None` 说明前提被破坏（行分组已保证非空等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 描述列表项。
 pub enum DescriptionItem {
     /// 一个「标签 / 值」项。
@@ -224,7 +237,8 @@ impl DescriptionList {
                 rows.push(vec![]);
                 current_span = 0;
             }
-            let last_group = rows.last_mut().unwrap();
+            // 上方 rows.is_empty 时已 push 过一行，必有末行
+            let last_group = invariant(rows.last_mut(), "描述列表：行分组必非空");
             last_group.push(item);
             current_span += span;
         }

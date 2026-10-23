@@ -5,6 +5,19 @@ use std::{sync::Arc, time::Duration};
 
 use crate::animation::{durations, easing::easings};
 
+/// 内部不变量：值为 `None` 说明前提被破坏（守卫已保证存在等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 分段导航条目。
 #[derive(Clone)]
 struct SegmentedNavItem {
@@ -202,7 +215,8 @@ impl RenderOnce for SegmentedNav {
             .p(px(4.0))
             .h(self.nav_size.height())
             .when(active_index.is_some(), |this| {
-                let idx = active_index.unwrap();
+                // .when 守卫已检查 active_index.is_some()
+                let idx = invariant(active_index, "分段导航：守卫内 active_index 必在");
                 this.child(
                     div()
                         .id("segmented-indicator")

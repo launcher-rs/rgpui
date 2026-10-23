@@ -4,6 +4,19 @@ use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
 use accesskit::Role;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（守卫已保证非空等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 默认系列配色。
 const CHART_COLORS: [u32; 8] = [
     0x3b82f6, 0x22c55e, 0xf59e0b, 0xef4444, 0x8b5cf6, 0x06b6d4, 0xf97316, 0xec4899,
@@ -479,7 +492,8 @@ impl RenderOnce for AreaChart {
                                                 fill_builder.line_to(*pt);
                                             }
                                             fill_builder.line_to(point(
-                                                screen_pts.last().unwrap().x,
+                                                // 上方 s.points.len() < 2 已 continue，点集必非空
+                                                invariant(screen_pts.last(), "面积图：点集非空").x,
                                                 chart_bottom,
                                             ));
                                             fill_builder.close();
@@ -555,7 +569,9 @@ impl RenderOnce for AreaChart {
                                                 })
                                                 .collect();
 
-                                            let bottom_pts = baselines.last().unwrap();
+                                            // 同一迭代内上方已 push 过基线，必非空
+                                            let bottom_pts =
+                                                invariant(baselines.last(), "面积图：基线必非空");
 
                                             let mut fill_builder = PathBuilder::fill();
                                             fill_builder.move_to(bottom_pts[0]);

@@ -9,6 +9,7 @@
 
 use crate::App;
 
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod animated_collapsible;
 pub mod animated_counter;
 pub mod animated_list;
@@ -30,7 +31,9 @@ pub mod command_palette;
 #[cfg(feature = "effects")]
 pub mod confetti;
 pub mod countdown;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod date_picker;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod description_list;
 pub mod dock;
 #[cfg(feature = "dom-backend")]
@@ -49,9 +52,11 @@ pub mod layout_transition;
 #[cfg(feature = "effects")]
 pub mod marquee;
 pub mod mermaid;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod navigation_menu;
 pub mod notification_center;
 pub mod number_ticker;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod otp_input;
 pub mod pagination;
 #[cfg(feature = "effects")]
@@ -65,15 +70,18 @@ pub mod resizable;
 #[cfg(feature = "effects")]
 pub mod ripple;
 pub mod search_panel;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod segmented_nav;
 pub mod select;
 #[cfg(feature = "effects")]
 pub mod shimmer;
 pub mod sidebar;
 pub mod sortable_list;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod sparkline;
 pub mod split_pane;
 pub mod spotlight;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod status_bar;
 pub mod steps;
 pub mod svg_renderer;
@@ -86,6 +94,7 @@ pub mod view_router;
 pub mod waveform;
 
 #[cfg(feature = "charts")]
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod charts;
 
 pub use animated_collapsible::*;

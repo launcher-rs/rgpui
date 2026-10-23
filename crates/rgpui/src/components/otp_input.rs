@@ -4,6 +4,19 @@ use std::sync::Arc;
 
 use crate::{prelude::FluentBuilder as _, *};
 
+/// 内部不变量：值为 `None` 说明前提被破坏（守卫已保证存在等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 actions!(
     otp_input,
     [
@@ -326,10 +339,11 @@ impl OTPState {
 
 impl Focusable for OTPState {
     fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handles
-            .first()
-            .cloned()
-            .expect("OTPState must have at least one focus handle")
+        // 构造时必带至少一个焦点句柄
+        invariant(
+            self.focus_handles.first().cloned(),
+            "OTP：创建时必带至少一个焦点句柄",
+        )
     }
 }
 
@@ -646,12 +660,16 @@ impl RenderOnce for OTPInput {
                     separator.is_some() && i == separator_position - 1 && i + 1 < digit_count;
 
                 if should_show_separator {
+                    // should_show_separator 含 separator.is_some() 守卫
                     vec![
                         digit_box,
                         div()
                             .text_size(font_size)
                             .text_color(muted_foreground)
-                            .child(separator.clone().unwrap())
+                            .child(invariant(
+                                separator.clone(),
+                                "OTP：应显示分隔符时必有 separator",
+                            ))
                             .into_any_element(),
                     ]
                 } else {

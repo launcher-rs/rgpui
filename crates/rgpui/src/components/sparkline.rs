@@ -4,6 +4,19 @@ use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{prelude::FluentBuilder as _, *};
 use accesskit::Role;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（守卫已保证非空等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 默认折线颜色（蓝色）。
 const DEFAULT_LINE_COLOR: u32 = 0x3b82f6;
 /// 上升趋势颜色（绿色）。
@@ -751,7 +764,11 @@ fn paint_area_sparkline(bounds: Bounds<Pixels>, data: &SparklinePaintData, windo
     for pt in screen_points.iter().skip(1) {
         fill_builder.line_to(*pt);
     }
-    fill_builder.line_to(point(screen_points.last().unwrap().x, chart_bottom));
+    // 上方 point_count < 2 已提前返回，点集必非空
+    fill_builder.line_to(point(
+        invariant(screen_points.last(), "Sparkline：点集非空").x,
+        chart_bottom,
+    ));
     fill_builder.close();
 
     if let Ok(path) = fill_builder.build() {
