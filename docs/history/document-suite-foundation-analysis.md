@@ -2235,3 +2235,51 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `theme/highlight.rs`、`util/scheduler/test_scheduler.rs`（已带 invariant 助手）、
 `rgpui_util/mod.rs`（`debug_panic!` 宏定义处需单独处理）、`perf/implementation.rs`、
 `util/mod.rs`（余项）、`elements/*` 小元素、`components/*` 等。
+
+## 七十四、增补：lint 收紧第十一批（util 全树 / refineable / rgpui_util / perf / 19 处）
+
+延续 §六十四～§七十三 的口径，本批覆盖 4 个 deny 落点：`util`（全树，含
+`scheduler` / `rel_path` / `collections` 等子模块）、`refineable`、`rgpui_util`、
+`perf::implementation`；已迁移模块数 57 → **61**。
+
+### 迁移要点
+
+- **可恢复失败**：
+  - `util::load_shell_from_passwd` 的 passwd shell 非 UTF-8 panic 改为 `?` 转
+    `Err` —— 该函数本就返回 `Result` 且调用方 `.log_err()`，与既有
+    `anyhow::ensure!` 失败通道一致；
+  - `test_scheduler` 两处错位的语句级 `#[allow]`（只盖住 `let` 语句、盖不住后面
+    的 `panic!`）上移到函数级。
+- **不变量收敛**（`invariant` / `invariant_result` / `invariant_err` 助手）：
+  - `util`：内嵌资源构建期必为 UTF-8（×2）、emoji 正则为编译期字面量；
+  - `refineable`：级联槽位 0 必为基础细化（`base` / `merged` 各一处）；
+  - `perf::implementation`：成功用例必有迭代次数（×3）、无元数据时用例必为失败
+    （`unwrap_err` 走新增的 `invariant_err`）。
+- **契约 / 公开语义保留 panic + 函数级 allow**：`rgpui_util::some_or_debug_panic`
+  （该函数职责就是「缺失即暴露」）、`UnwrapFuture::poll`（文档已声明 Err 即 panic）、
+  `rel_path` / `rel_path_buf`（测试支撑辅助，路径写错是测试作者的错误，`unwrap` 走
+  allow）。
+- **测试支撑整体放行**：`util::test`（`#[cfg(any(test, feature = "test-support"))]`）
+  在模块声明处 `#[allow]` + 注释，覆盖其子模块 `assertions` / `marked_text`。
+- **宏展开不触发 lint 的实证**：`debug_panic!`（本地 `macro_rules!`）在已 deny 的
+  `app.rs` 中调用通过 —— `clippy::panic` 不追本地宏展开，故 `rgpui_util` 的宏定义
+  体与 `debug_panic!` 调用点无需处理；deny 加在 `rgpui.rs` 的 `mod rgpui_util`、
+  `mod util`、`pub mod refineable` 与 `perf/mod.rs` 的 `mod implementation` 处。
+- 注意 `unwrap_err()` 属 `clippy::unwrap_used`，纯 `.unwrap()` 文本扫描会漏，需
+  单独扫（本批在 `perf` 抓到 1 处；`util` 余项都在 `#[cfg(test)]` 区由 clippy.toml
+  放行）。
+- docs §七十四 + AGENTS.md 名单同步。
+
+### 验证
+
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）。
+- `cargo clippy -p rgpui --features test-support --lib` 通过（`util::test`、
+  `rel_path` 辅助只在 test / test-support 下编译）。
+- `cargo test -p rgpui --lib` 与 `--features test-support --lib`：各 830 passed +
+  1 ignored。
+- `cargo fmt --all --check` 干净。
+
+### 剩余候选
+
+`theme/highlight.rs`、`fast/*`（余项在测试区）、`rgpui_util/arc_cow.rs`、
+`elements/*` 小元素、`components/*`、`table/state.rs`、`input_ui/indent.rs` 等。

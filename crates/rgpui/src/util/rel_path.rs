@@ -400,13 +400,17 @@ impl From<&RelPath> for Arc<RelPath> {
     }
 }
 
+// 测试支撑辅助：路径写错是测试作者的错误，构造时 panic 便于定位
 #[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::unwrap_used, clippy::panic)]
 #[track_caller]
 pub fn rel_path(path: &str) -> &RelPath {
     RelPath::unix(path).unwrap()
 }
 
+// 测试支撑辅助：路径写错是测试作者的错误，构造时 panic 便于定位
 #[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::unwrap_used, clippy::panic)]
 #[track_caller]
 pub fn rel_path_buf(path: &str) -> RelPathBuf {
     RelPath::unix(path).unwrap().to_rel_path_buf()

@@ -105,6 +105,7 @@ mod executor;
 mod platform_scheduler;
 
 /// 精化类型 - 支持部分初始化的类型安全模式
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod refineable;
 
 /// 任务调度器 - 异步任务的执行和协调
@@ -170,6 +171,7 @@ pub mod profiler;
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
 pub mod queue;
 
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod rgpui_util;
 
 /// 场景系统 - 元素树渲染后的场景描述，用于绘制指令生成
@@ -428,6 +430,7 @@ pub mod mcp;
 
 /// 工具函数 - 异步超时、延迟执行等通用辅助工具
 #[allow(missing_docs)]
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod util;
 
 // ==================== 第三部分：视图与窗口 ====================

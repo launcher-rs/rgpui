@@ -55,6 +55,8 @@ macro_rules! debug_panic {
 }
 
 /// 返回选项值，如果在调试模式下为 None 则 panic
+// 契约违规：该函数的职责就是「缺失即暴露」，panic 是其公开语义
+#[allow(clippy::panic)]
 #[track_caller]
 pub fn some_or_debug_panic<T>(option: Option<T>) -> Option<T> {
     #[cfg(debug_assertions)]
@@ -371,6 +373,8 @@ where
 {
     type Output = T;
 
+    // 契约：UnwrapFuture 的公开语义就是「Err 则 panic」（文档已声明）
+    #[allow(clippy::unwrap_used, clippy::panic)]
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let inner = unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().0) };
         match inner.poll(cx) {

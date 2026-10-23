@@ -11,6 +11,20 @@ fn invariant<T>(value: Option<T>, message: &str) -> T {
     }
 }
 
+/// 内部不变量：结果为 `Err` 说明前提被破坏（内嵌资源非 UTF-8、字面量正则解析失败等），
+/// 必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 #[cfg(not(target_family = "wasm"))]
 pub mod archive;
 pub mod collections;
@@ -40,7 +54,9 @@ pub mod shell_env;
 pub mod size;
 #[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod sum_tree;
+// 测试支撑模块：断言失败就该炸（同 clippy.toml 测试放行口径）
 #[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod test;
 pub mod time;
 
@@ -365,8 +381,9 @@ fn load_shell_from_passwd() -> Result<()> {
         uid,
     );
 
+    // passwd 的 shell 字段非 UTF-8 属环境数据错误，转 Err 由调用方 log_err 记录
     let shell = unsafe { std::ffi::CStr::from_ptr(entry.pw_shell).to_str() }
-        .unwrap_or_else(|_| panic!("shell path must be valid UTF-8"));
+        .map_err(|_| anyhow::anyhow!("shell path must be valid UTF-8"))?;
     let should_set_shell = std::env::var("SHELL").map_or(true, |shell_env| {
         shell_env != shell && !std::path::Path::new(&shell_env).exists()
     });
@@ -694,12 +711,14 @@ pub use rng::RandomCharIter;
 /// 以字符串形式获取嵌入文件。
 pub fn asset_str<A: rust_embed::RustEmbed>(path: &str) -> Cow<'static, str> {
     match invariant(A::get(path), "file must exist").data {
-        Cow::Borrowed(bytes) => Cow::Borrowed(
-            std::str::from_utf8(bytes).unwrap_or_else(|_| panic!("file must be UTF-8")),
-        ),
-        Cow::Owned(bytes) => {
-            Cow::Owned(String::from_utf8(bytes).unwrap_or_else(|_| panic!("file must be UTF-8")))
-        }
+        Cow::Borrowed(bytes) => Cow::Borrowed(invariant_result(
+            std::str::from_utf8(bytes),
+            "util：内嵌资源必须是 UTF-8（构建期已校验）",
+        )),
+        Cow::Owned(bytes) => Cow::Owned(invariant_result(
+            String::from_utf8(bytes),
+            "util：内嵌资源必须是 UTF-8（构建期已校验）",
+        )),
     }
 }
 
@@ -789,8 +808,13 @@ impl PartialOrd for NumericPrefixWithSuffix<'_> {
 }
 
 fn emoji_regex() -> &'static Regex {
-    static EMOJI_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new("(\\p{Emoji}|\u{200D})").unwrap());
+    // 模式是编译期字面量，必然合法
+    static EMOJI_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+        invariant_result(
+            Regex::new("(\\p{Emoji}|\u{200D})"),
+            "util：emoji 正则字面量必然合法",
+        )
+    });
     &EMOJI_REGEX
 }
 

@@ -2,6 +2,19 @@
 
 pub use rgpui_macros::Refineable;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（级联槽位 0 必为基细化），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 可使用部分更新进行细化的类型特征。
 ///
 /// `Refineable` 特征支持分层配置模式，其中基础配置
@@ -104,7 +117,7 @@ impl<S: Refineable + Default> Cascade<S> {
     ///
     /// 基础细化始终存在，并作为级联的基础。
     pub fn base(&mut self) -> &mut S::Refinement {
-        self.0[0].as_mut().unwrap()
+        invariant(self.0[0].as_mut(), "级联槽位 0 必为基础细化")
     }
 
     /// 设置级联中特定槽位的细化。
@@ -119,7 +132,7 @@ impl<S: Refineable + Default> Cascade<S> {
     /// 细化按顺序应用，后面的槽位优先。
     /// 空槽位（`None`）在合并期间被跳过。
     pub fn merged(&self) -> S::Refinement {
-        let mut merged = self.0[0].clone().unwrap();
+        let mut merged = invariant(self.0[0].clone(), "级联槽位 0 必为基础细化");
         for refinement in self.0.iter().skip(1).flatten() {
             merged.refine(refinement);
         }
