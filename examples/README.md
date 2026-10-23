@@ -92,6 +92,7 @@ cargo run -p showcase --bin <名称>
 
 | bin | 说明 | 运行 |
 |-----|------|------|
+| `app_suite` | **套件基座整合演示**：一份命令表同时驱动 QAT / Ribbon（含按键提示）/ 应用菜单 / 分页视口 / 迷你工具栏，状态栏回显 `label_for`；画面上的 ①…⑨ 编号浮标 + 右侧组件清单标出每块对应的模块（悬停描边，`Ctrl+Shift+E/I` 开关，Shift + 左键拖框选唤出 `MiniToolbar`） | `cargo run -p showcase --bin app_suite` |
 | `command_registry` | 命令注册表：按 id 派发 + 命令面板接入 | `cargo run -p showcase --bin command_registry` |
 | `automation` | 控制通道 / MCP：本机 TCP（JSON-RPC + 密钥）与 stdio MCP 工具调用同一套命令 | `cargo run -p showcase --bin automation`（加 `--mcp` 开 MCP） |
 | `ribbon` | Ribbon 功能区（选项卡 / 分组 / 大·小·切换·下拉按钮 / 上下文选项卡）+ Alt/F10 按键提示 | `cargo run -p showcase --bin ribbon` |

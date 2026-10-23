@@ -54,19 +54,6 @@ impl SerialTracker {
             .unwrap_or(0)
     }
 
-    /// 返回指定 [`SerialKind`] 列表中的最新序列号
-    ///
-    /// 如果未跟踪则返回 0
-    #[allow(dead_code)]
-    pub fn latest_of(&self, kinds: &[SerialKind]) -> u32 {
-        kinds
-            .iter()
-            .filter_map(|kind| self.serials.get(kind))
-            .max_by_key(|serial_data| serial_data.serial)
-            .map(|serial_data| serial_data.serial)
-            .unwrap_or(0)
-    }
-
     /// 返回所有已跟踪类型中的最新序列号
     ///
     /// 如果没有任何序列号被跟踪则返回 0

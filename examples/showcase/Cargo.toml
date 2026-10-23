@@ -298,6 +298,12 @@ name = "command_registry"
 path = "src/bin/command_registry.rs"
 required-features = ["ribbon"]
 
+# 应用套件基座整合演示（Ribbon + QAT + Backstage + 按键提示 + 分页视口共用一份命令表）。
+[[bin]]
+name = "app_suite"
+path = "src/bin/app_suite.rs"
+required-features = ["ribbon", "document"]
+
 # ---------- 控制通道 / MCP（control-channel feature） ----------
 [[bin]]
 name = "automation"

@@ -66,17 +66,18 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 三个 `build.rs`（`rgpui` / `rgpui-windows` /
 `rgpui-macos`）也加了文件级 `#![deny]`，`main` 返回 `Result` 让 cargo 转成构建失败。
 `rgpui-markdown` / `rgpui-character` 实测本就 0 站点，crate 根补同一条 `#![deny]`。
-CI 的 clippy 跑 `--lib --bins`，**看不见 `#[cfg(test)]` 与 `examples/` 目标**，
-本地按开发命令跑 `--all-targets` 才会暴露（`redundant_clone` 对测试代码同样生效）；
-第十六批已把存量 15 处清零，Windows 端 `--workspace --all-targets --all-features
--- -D warnings` 全绿。
-**剩余战场是兄弟 crate**（一次 `--workspace --all-features -W` 度量、按 `文件:行:列`
-去重，共 97 处）：`rgpui-windows` 59（`directx_renderer` 24 / `direct_write` 11 /
+CI 的 clippy 自第十七批起跑 `--all-targets`（lib / bins / examples / tests / benches
+全覆盖）—— 旧的 `--lib --bins` **看不见 `#[cfg(test)]` 与库内 `examples/` 目标**，
+`redundant_clone` 对测试代码同样生效，第十六批把存量 15 处清零后就把口径抬上来了；
+Windows 端 `--workspace --all-targets -- -D warnings` 全绿。
+**剩余战场是兄弟 crate**（第十七批后一次 `--workspace --all-features -W` 度量、
+按 `文件:行:列` 去重，共 92 处）：`rgpui-windows` 59（`directx_renderer` 24 / `direct_write` 11 /
 `platform` 6 / `directx_atlas` 6 / `directx_devices` 3）、`rgpui-wgpu` 21
-（`wgpu_renderer` 18 / `wgpu_atlas` 3）、`rgpui-macros` 12、
-`rgpui-term` / `rgpui-3d` / `rgpui-platform` 2 / 2 / 1；`rgpui-macos`（`metal_renderer` 为主）与
+（`wgpu_renderer` 18 / `wgpu_atlas` 3）、`rgpui-macros` 12；`rgpui-term` / `rgpui-3d` /
+`rgpui-platform` 已在 crate 根补 `#![deny]`（term 的 2 处、3d 的 2 处、platform 的 1 处
+分别改成 `if let` / 记警告降级 / 就近 `#[allow]` 契约）；`rgpui-macos`（`metal_renderer` 为主）与
 `rgpui-linux`（`wayland/client` 为主）本地编不到，靠 CI 矩阵度量。迁移口径见 docs §六十四，
-核心终态与兄弟 crate 站点分布见 §七十九。
+核心终态与兄弟 crate 站点分布见 §七十九，第十七批收口见 §八十一。
 
 ## 托盘与窗口隐藏
 
@@ -102,7 +103,7 @@ CI 的 clippy 跑 `--lib --bins`，**看不见 `#[cfg(test)]` 与 `examples/` �
 - 提交前：`cargo check --workspace` + `cargo fmt --all` + 相关包 clippy，无错误警告。
 
 **clippy 验证命令必须与 CI 一致**：CI 跑的是
-`cargo clippy --workspace --lib --bins -- -D warnings`（`--workspace` 会把各成员的
+`cargo clippy --workspace --all-targets -- -D warnings`（`--workspace` 会把各成员的
 feature **统一**到一份并集，例如 `examples/image_showcase` 启用 `rgpui/reqwest`，
 于是 `http_client/reqwest_client.rs` 也会被编译）。用 `cargo clippy -p rgpui --lib`
 单包验证会漏掉只在某个 feature 下编译的代码 —— 第四批就因此在 CI 上翻车。
@@ -119,7 +120,7 @@ feature **统一**到一份并集，例如 `examples/image_showcase` 启用 `rgp
   版本分支完成后再开一个 PR 合入 main。
 - `gh pr create / merge --squash`；CI 全绿再合并；等 CI 时不要反复 push 刷运行。
 - CI（`.github/workflows/ci.yml`）：三平台矩阵，跑 fmt（逐库）+ clippy
- （`--workspace --lib --bins -D warnings`）+ check + test；同分支 push/PR 共用
+ （`--workspace --all-targets -D warnings`）+ check + test；同分支 push/PR 共用
   concurrency 组，后触发自动取消先触发的。
 
 ## 跨平台注意
@@ -134,7 +135,7 @@ feature **统一**到一份并集，例如 `examples/image_showcase` 启用 `rgp
 `examples/webview` 启用 `rgpui/webview` → `wry` → `webkit2gtk` → `gtk` → `glib-sys`，
 缺系统库时 `cargo check --workspace` 会卡在 `glib-sys` 的 build script
 （`The system library 'glib-2.0' ... was not found`），连带 CI 用的
-`cargo clippy --workspace --lib --bins` 一起失败。先装齐：
+`cargo clippy --workspace --all-targets` 一起失败。先装齐：
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
@@ -236,7 +237,7 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 11. 发布要求无 dev 循环依赖（测试放消费方 `tests/`，见 1.1.1 教训）
 12. 命令清单 gate 通过（`CommandRegistry::validate()` 为空）；改控制通道 / MCP 后跑
     `cargo test -p rgpui --features control-channel --lib` 与
-    `cargo test -p showcase --bin automation`
+    `cargo test -p showcase --bin automation` 与 `--bin app_suite`（套件基座整合示例）
 
 ## Web/WASM 开发
 

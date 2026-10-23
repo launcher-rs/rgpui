@@ -26,9 +26,25 @@ pub struct RenderResult {
 
 impl RenderResult {
     /// 转换为 rgpui RenderImage，可直接在窗口中绘制
+    ///
+    /// 像素缓冲与宽高不匹配（GPU 回读异常）时不再 panic：记一条警告并退回一帧
+    /// 1×1 全透明占位图，宁可这一帧画不出内容，也不让整个应用跟着崩掉。
     pub fn into_render_image(self) -> RenderImage {
-        let img_buffer = image::RgbaImage::from_raw(self.width, self.height, self.data)
-            .expect("无效的像素数据尺寸");
+        let expected = (self.width as usize)
+            .saturating_mul(self.height as usize)
+            .saturating_mul(4);
+        let actual = self.data.len();
+        let img_buffer = match image::RgbaImage::from_raw(self.width, self.height, self.data) {
+            Some(buffer) => buffer,
+            None => {
+                log::warn!(
+                    "3D 回读像素尺寸不符：期望 {expected} 字节，实得 {actual} 字节（{}×{}），本帧以透明占位",
+                    self.width,
+                    self.height
+                );
+                image::RgbaImage::from_pixel(1, 1, image::Rgba([0, 0, 0, 0]))
+            }
+        };
         let frame = image::Frame::new(img_buffer);
         RenderImage::new(smallvec::smallvec![frame])
     }
@@ -1431,7 +1447,12 @@ impl Scenix3D {
 
         let mut queue: Vec<usize> = Vec::new();
         for i in 0..num_joints {
-            if self.joints[i].parent.is_none() || self.joints[i].parent.unwrap() >= num_joints {
+            // 没有父节点、或父索引越界（数据里指向了不存在的关节）都当作根节点处理。
+            let is_root = match self.joints[i].parent {
+                None => true,
+                Some(p) => p >= num_joints,
+            };
+            if is_root {
                 self.cached_global_mats[i] = local_mats[i];
                 queue.push(i);
             }

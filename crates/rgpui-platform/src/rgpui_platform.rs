@@ -1,6 +1,10 @@
 //! 便捷工具包，重新导出 RGPUI 的平台特性及 `current_platform` 构造函数，
 //! 使使用者无需手动编写 `#[cfg]` 条件编译代码。
 
+// 生产代码禁用 `unwrap` / `expect` / `panic!`（与 rgpui 核心同一口径）；
+// 测试代码由根目录 `clippy.toml` 的 `allow-*-in-tests` 放行。
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 pub use rgpui::Platform;
 
 use std::rc::Rc;
@@ -38,6 +42,10 @@ pub fn web_init() {
 ///
 /// # 参数
 /// * `headless` - 是否以无头模式初始化平台
+// Windows 平台初始化失败意味着连第一个窗口都建不起来，这里没有可返回的兜底
+// 实现；改成 `Result` 会把同一份错误处理压到每个示例/应用的 `main` 上，
+// 所以以 panic 作为契约（携带底层错误的 Debug 输出），就近放行。
+#[allow(clippy::expect_used)]
 pub fn current_platform(headless: bool) -> Rc<dyn Platform> {
     #[cfg(target_os = "macos")]
     {
