@@ -895,7 +895,7 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 
     for component in components {
         match component {
-            Component::Prefix(..) => unreachable!(),
+            Component::Prefix(..) => unreachable!("盘符前缀只出现在开头，已在循环前消费"),
             Component::RootDir => {
                 ret.push(component.as_os_str());
             }

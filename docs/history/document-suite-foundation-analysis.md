@@ -123,8 +123,11 @@ MDI 文档多窗（§二十六）、任务窗格（§二十七）、画布语义
   D3D11 离屏渲染目标（临时换 target → 重画 → `CopyResource` 到 staging → Map 读回 →
   换回，BGRA→RGBA），macOS 尚未实现；
 - ✅ 命令/功能 parity 清单 + gate 测试（`CommandRegistry::validate`，§三十一）；
-- ⏳ 生产 crate 加 `deny(clippy::unwrap_used, expect_used, panic, todo, unimplemented)` ——
-  按模块收紧，已覆盖 24 个套件模块（§三十一），全 crate 迁移未完成；
+- ✅ 核心 crate 生产代码 lint 收紧（第十六批，§七十九）—— `rgpui` 生产代码零
+  `unwrap` / `expect` / `panic!`，由 `rgpui.rs` 顶部一条 crate 根
+  `#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` 封死；
+  ⏳ 兄弟 crate（`rgpui-{windows,wgpu,macros,term,3d,platform}` 及需 CI 度量的
+  `rgpui-{macos,linux}`）按同一口径继续，站点分布见 §七十九 的剩余候选表；
 - ⏳ i18n catalog 审计 + RTL 镜像 —— catalog 审计与语言方向已落地（§三十一），
   外壳/图标镜像未做。
 
@@ -2496,8 +2499,21 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
   clippy::panic)]`，覆盖面等价于给 `rgpui.rs` 里 62 个尚无祖先 deny 的顶层模块声明
   逐个补章，但只有一行、且把根文件自身的条目也纳入了。
 - **清理冗余**：删除散在 19 个文件里的 **95 处**模块级 `#[deny(...)]`（写法完全一致，
-  整行删除）。`#[allow(clippy::panic)]` 等 148 处例外声明**一律保留**——它们正是
-  契约 panic 与 `test-support` 门控代码的就近放行，crate 根属性生效后仍然必要。
+  整行删除）。就近放行**一律保留**，全 crate 共 **149 处**：
+  `allow(clippy::panic)` 122、`allow(expect_used, panic)` 12、
+  `allow(unwrap_used, expect_used, panic)` 9、`allow(unwrap_used, panic)` 3、
+  `allow(expect_used)` 2、`allow(unwrap_used)` 1。其中挂在模块声明上的只有那 9 处三合一，
+  且全部由 `cfg(test)` / `feature = "test-support"` / `feature = "bench"` 门控
+  （`app::{bench_context, headless_app_context, test_app, test_context,
+  visual_test_context}`、`platform::{test, visual_test}`、`rgpui::test`、`util::test`）；
+  其余是函数/语句级就近放行，带中文注释说明为什么 panic 是契约。crate 根属性生效后
+  这些仍然必要——审计过一遍，**生产侧没有一处整棵子树的豁免**。
+- **封死的边界要说清**：三个 lint 看不见 `unreachable!` / `unimplemented!`（它们展开成
+  `panic` 但不是 `panic!` 的直接调用）。本批顺带给核心 crate 生产代码里
+  **所有裸 `unreachable!()` 补上消息**（`util/sum_tree/cursor.rs` 6 处、
+  `util/paths.rs` / `util/mod.rs` / `theme/color.rs` 各 1 处），不变量被破坏时能一眼看出
+  是哪个分支；`unimplemented!` 只存在于 `platform/test/*` 的测试桩（假平台没有真实窗口），
+  那里保留原样，不加 `clippy::unimplemented` 到 deny 列表。
 - **构建脚本纳入体系**：`rgpui/build.rs`（1 处）、`rgpui-windows/build.rs`（12 处）、
   `rgpui-macos/build.rs`（13 处）此前完全在模块属性之外。三处统一：
   `fn main() -> Result<(), Box<dyn std::error::Error>>` + `?` 传播，顶部加

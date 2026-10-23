@@ -108,7 +108,7 @@ where
                         Some(&items[entry.index()])
                     }
                 }
-                _ => unreachable!(),
+                _ => unreachable!("栈顶条目必然指向叶子节点"),
             }
         } else {
             None
@@ -129,7 +129,7 @@ where
                         Some(&item_summaries[entry.index()])
                     }
                 }
-                _ => unreachable!(),
+                _ => unreachable!("栈顶条目必然指向叶子节点"),
             }
         } else {
             None
@@ -152,7 +152,7 @@ where
             } else {
                 match *entry.tree.0 {
                     Node::Leaf { ref items, .. } => Some(&items[entry.index() + 1]),
-                    _ => unreachable!(),
+                    _ => unreachable!("取下一项时栈顶条目必然指向叶子节点"),
                 }
             }
         } else if self.at_end {
@@ -170,7 +170,7 @@ where
                     Node::Internal {
                         ref child_trees, ..
                     } => return Some(child_trees[entry.index() + 1].leftmost_leaf()),
-                    Node::Leaf { .. } => unreachable!(),
+                    Node::Leaf { .. } => unreachable!("叶子节点没有子树，栈中条目必然指向内部节点"),
                 };
             }
         }
@@ -193,7 +193,7 @@ where
             } else {
                 match *entry.tree.0 {
                     Node::Leaf { ref items, .. } => Some(&items[entry.index() - 1]),
-                    _ => unreachable!(),
+                    _ => unreachable!("取上一项时栈顶条目必然指向叶子节点"),
                 }
             }
         } else if self.at_end {
@@ -211,7 +211,7 @@ where
                     Node::Internal {
                         ref child_trees, ..
                     } => return Some(child_trees[entry.index() - 1].rightmost_leaf()),
-                    Node::Leaf { .. } => unreachable!(),
+                    Node::Leaf { .. } => unreachable!("叶子节点没有子树，栈中条目必然指向内部节点"),
                 };
             }
         }

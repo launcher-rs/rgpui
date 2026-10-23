@@ -57,12 +57,17 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 `#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` 覆盖整个 crate，
 原先散在 19 个文件里的 95 处模块级 `#[deny]` 已随之删除。新增代码在核心里用
 `unwrap` / `expect` / `panic!` 直接编译失败；确要以 panic 作为契约的位置就近写
-`#[allow(clippy::panic)]` + reason。三个 `build.rs`（`rgpui` / `rgpui-windows` /
+`#[allow(clippy::panic)] // 中文注释说明理由`（现存 149 处豁免里只有 9 处挂在模块声明上，
+且都被 `cfg(test)` / `test-support` / `bench` 门控，生产侧没有整棵子树的豁免）。
+这三个 lint **看不见** `unreachable!` / `unimplemented!`：核心生产代码里的
+`unreachable!()` 已全部补上消息，`unimplemented!` 只留给 `platform/test/*` 的假平台桩。
+三个 `build.rs`（`rgpui` / `rgpui-windows` /
 `rgpui-macos`）也加了文件级 `#![deny]`，`main` 返回 `Result` 让 cargo 转成构建失败。
 **剩余战场是兄弟 crate**：`rgpui-windows` 60 处（`directx_renderer` 24 / `direct_write` 11 /
 `directx_atlas` 6 / `platform` 5）、`rgpui-wgpu` 21、`rgpui-macros` 12、
 `rgpui-term` / `rgpui-3d` / `rgpui-platform` 少量；`rgpui-macos`（`metal_renderer` 为主）与
-`rgpui-linux`（`wayland/client` 为主）本地编不到，靠 CI 矩阵度量。迁移口径见 docs §六十四。
+`rgpui-linux`（`wayland/client` 为主）本地编不到，靠 CI 矩阵度量。迁移口径见 docs §六十四，
+核心终态与兄弟 crate 站点分布见 §七十九。
 
 ## 托盘与窗口隐藏
 
