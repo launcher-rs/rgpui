@@ -18,6 +18,30 @@ use crate::{
 };
 use std::{cell::RefCell, ops::Range, rc::Rc};
 
+/// 内部不变量：值为 `None` 说明前提被破坏（元素未测量、重试仍失败等），
+/// 必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：结果为 `Err` 说明前提被破坏（布局重试仍请求滚动等），必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 type RenderItemFn = dyn FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static;
 
 /// 创建一个新的列表元素
@@ -1109,7 +1133,8 @@ impl StateInner {
                 }
             }
 
-            let size = size.unwrap();
+            // 可见区内必已测量（size 为空或在可见区都会走上面的 layout 分支）
+            let size = invariant(size, "列表布局：可见项必已完成测量");
             rendered_height += size.height;
             max_item_width = max_item_width.max(size.width);
             measured_items.push_back(ListItem::Measured {
@@ -1567,9 +1592,18 @@ impl Element for List {
                 Ok(layout) => layout,
                 Err(autoscroll_request) => {
                     state.logical_scroll_top = Some(autoscroll_request);
-                    state
-                        .prepaint_items(bounds, padding, false, &mut self.render_item, window, cx)
-                        .unwrap()
+                    // 首次已按调整后的 scroll_top 重新布局，第二次不会再次请求滚动
+                    invariant_result(
+                        state.prepaint_items(
+                            bounds,
+                            padding,
+                            false,
+                            &mut self.render_item,
+                            window,
+                            cx,
+                        ),
+                        "列表布局：重排后不应再次请求自动滚动",
+                    )
                 }
             };
 
@@ -1702,13 +1736,14 @@ impl<'a> crate::sum_tree::Dimension<'a, ListItemSummary> for Height {
 
 impl crate::sum_tree::SeekTarget<'_, ListItemSummary, ListItemSummary> for Count {
     fn cmp(&self, other: &ListItemSummary, _: ()) -> std::cmp::Ordering {
-        self.0.partial_cmp(&other.count).unwrap()
+        std::cmp::Ord::cmp(&self.0, &other.count)
     }
 }
 
 impl crate::sum_tree::SeekTarget<'_, ListItemSummary, ListItemSummary> for Height {
     fn cmp(&self, other: &ListItemSummary, _: ()) -> std::cmp::Ordering {
-        self.0.partial_cmp(&other.height).unwrap()
+        // 总序比较：NaN 也给出确定次序，高度不该出现 NaN
+        self.0.0.total_cmp(&other.height.0)
     }
 }
 

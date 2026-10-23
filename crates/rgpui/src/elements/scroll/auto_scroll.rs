@@ -29,7 +29,11 @@ impl Default for AutoScroll {
 impl AutoScroll {
     /// 当前滚动增量。正值 = 向底部。
     pub fn delta(&self) -> Option<Pixels> {
-        *self.shared.lock().unwrap()
+        // 共享状态只是 Option<Pixels>，无跨 panic 的不变量，锁中毒可安全恢复
+        *self
+            .shared
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// 计算给定视口边界内鼠标 Y 位置的滚动增量。
@@ -68,7 +72,11 @@ impl AutoScroll {
         F: Fn(Pixels, &mut T, &mut Context<T>) + Send + 'static,
     {
         let was_idle = self.task.is_none();
-        *self.shared.lock().unwrap() = delta;
+        // 共享状态只是 Option<Pixels>，无跨 panic 的不变量，锁中毒可安全恢复
+        *self
+            .shared
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = delta;
 
         if delta.is_none() {
             self.task = None;
@@ -94,7 +102,11 @@ impl AutoScroll {
                 cx.background_executor()
                     .timer(Duration::from_millis(16))
                     .await;
-                let Some(d) = *shared.lock().unwrap() else {
+                // 共享状态只是 Option<Pixels>，无跨 panic 的不变量，锁中毒可安全恢复
+                let Some(d) = *shared
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                else {
                     break;
                 };
                 let alive = this
@@ -117,7 +129,11 @@ impl AutoScroll {
 
     /// 停止自动滚动并清除状态。
     pub fn stop(&mut self) {
-        *self.shared.lock().unwrap() = None;
+        // 共享状态只是 Option<Pixels>，无跨 panic 的不变量，锁中毒可安全恢复
+        *self
+            .shared
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         self.task = None;
         self.last_drag_position = None;
     }

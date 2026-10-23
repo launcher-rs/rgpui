@@ -11,6 +11,7 @@ use crate::App;
 pub(super) const MASK_CHAR: char = '*';
 
 pub mod async_file_loader;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod auto_scroll;
 mod blink_cursor;
 mod change;

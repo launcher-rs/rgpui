@@ -28,6 +28,20 @@ pub(super) const RIGHT_MARGIN: Pixels = px(10.);
 pub(crate) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(10.);
 pub(crate) const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
 
+/// 内部不变量：值为 `None` 说明前提被破坏（索引不在行内、可见行缺失等），
+/// 必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 将文本装饰范围限制在可见范围内并合并样式。
 fn compose_decorations(
     mut styles: Vec<(Range<usize>, HighlightStyle)>,
@@ -644,12 +658,19 @@ impl TextElement {
             );
 
             if line_cursor_start.is_some() || line_cursor_end.is_some() {
-                let start = line_cursor_start
-                    .unwrap_or_else(|| line.position_for_index(0, last_layout, false).unwrap());
+                // 行首/行尾索引必在行内，position_for_index 必有结果
+                let start = line_cursor_start.unwrap_or_else(|| {
+                    invariant(
+                        line.position_for_index(0, last_layout, false),
+                        "输入元素：行首索引必在行内",
+                    )
+                });
 
                 let end = line_cursor_end.unwrap_or_else(|| {
-                    line.position_for_index(line.len(), last_layout, false)
-                        .unwrap()
+                    invariant(
+                        line.position_for_index(line.len(), last_layout, false),
+                        "输入元素：行尾索引必在行内",
+                    )
                 });
 
                 // 将选区拆分为多个片段
@@ -726,7 +747,8 @@ impl TextElement {
         }
 
         let path_origin = bounds.origin + point(line_number_width, px(0.));
-        let first_p = *points.get(0).unwrap();
+        // 上方已检查 line_corners 非空，每个角点必推入 3 个点
+        let first_p = *invariant(points.first(), "输入元素：选区路径必有点");
         let mut builder = PathBuilder::fill();
         builder.move_to(path_origin + first_p);
         for p in points.iter().skip(1) {
@@ -1028,10 +1050,11 @@ impl TextElement {
 
         for (vi, &buffer_line) in last_layout.visible_buffer_lines.iter().enumerate() {
             let line_text: String = display_text.slice_line(buffer_line).into();
-            let line_item = state
-                .display_map
-                .line(buffer_line)
-                .expect("line should exists in wrapper");
+            // 可见行索引来自 display_map 的快照，必能取到对应行
+            let line_item = invariant(
+                state.display_map.line(buffer_line),
+                "输入元素：可见行必存在于 display_map",
+            );
 
             debug_assert_eq!(line_item.len(), line_text.len());
 

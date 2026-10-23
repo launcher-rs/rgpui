@@ -11,6 +11,19 @@ use crate::{
 
 use crate::menu::PopupMenu;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（元素缺 id、状态缺失等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 为元素添加右键菜单的扩展 trait
 pub trait ContextMenuExt: InteractiveElement + ParentElement + Styled {
     /// 为元素添加右键菜单
@@ -81,7 +94,9 @@ impl<E: ParentElement + Styled> ContextMenu<E> {
         window.with_optional_element_state::<ContextMenuState, _>(
             Some(id),
             |element_state, window| {
-                let mut element_state = element_state.unwrap().unwrap_or_default();
+                // 传入了 Some(id)，外层必为 Some；内层 None 表示首帧未初始化
+                let mut element_state =
+                    invariant(element_state, "上下文菜单：已传入元素 id").unwrap_or_default();
                 let result = f(self, &mut element_state, window, cx);
                 (result, Some(element_state))
             },
@@ -164,8 +179,9 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
     ) -> (crate::LayoutId, Self::RequestLayoutState) {
         let anchor = self.anchor;
 
+        // ContextMenu::id() 恒返回 Some，框架必带元素 id
         self.with_element_state(
-            id.unwrap(),
+            invariant(id, "上下文菜单：元素必有 id"),
             window,
             cx,
             |this, state: &mut ContextMenuState, window, cx| {
@@ -216,12 +232,13 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                     }
                 }
 
-                let mut element = this
-                    .element
-                    .take()
-                    .expect("Element should exists.")
-                    .children(menu_element)
-                    .into_any_element();
+                // 构造时必有 element，request_layout 每帧只 take 一次
+                let mut element = invariant(
+                    this.element.take(),
+                    "上下文菜单：request_layout 时元素必存在",
+                )
+                .children(menu_element)
+                .into_any_element();
 
                 let layout_id = element.request_layout(window, cx);
 
@@ -268,8 +285,9 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
         // 在设置元素状态之前取出构建器以避免借用问题
         let builder = self.menu.clone();
 
+        // ContextMenu::id() 恒返回 Some，框架必带元素 id
         self.with_element_state(
-            id.unwrap(),
+            invariant(id, "上下文菜单：元素必有 id"),
             window,
             cx,
             |_view, state: &mut ContextMenuState, window, _| {
