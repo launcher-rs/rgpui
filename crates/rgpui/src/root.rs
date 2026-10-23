@@ -7,6 +7,20 @@ use crate::{
 };
 use std::rc::Rc;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（窗口无根视图、根视图类型不符等），
+/// 必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 actions!(root, [Tab, TabPrev]);
 
 const CONTEXT: &str = "Root";
@@ -94,21 +108,21 @@ impl Root {
     where
         F: FnOnce(&mut Self, &mut Window, &mut Context<Self>) -> R,
     {
-        let root = window
-            .root::<Root>()
-            .flatten()
-            .expect("BUG: window first layer should be a rgpui::Root.");
+        // 窗口首层必然挂载的是 rgpui::Root（建窗时由框架写入）
+        let root = invariant(
+            window.root::<Root>().flatten(),
+            "窗口根视图：首层必须是 rgpui::Root",
+        );
 
         root.update(cx, |root, cx| f(root, window, cx))
     }
 
     /// 只读访问窗口中的 Root 视图。
     pub fn read<'a>(window: &'a Window, cx: &'a App) -> &'a Self {
-        &window
-            .root::<Root>()
-            .expect("The window root view should be of type `rgpui::Root`.")
-            .unwrap()
-            .read(cx)
+        // 窗口首层必然挂载的是 rgpui::Root（建窗时由框架写入）；
+        // 外层 Option 为「窗口是否有根视图」，内层为 downcast 是否成功
+        let root = invariant(window.root::<Root>(), "窗口根视图：窗口必须有根视图");
+        &invariant(root, "窗口根视图：首层必须是 rgpui::Root").read(cx)
     }
 
     /// 获取窗口的工具提示覆盖层实体。

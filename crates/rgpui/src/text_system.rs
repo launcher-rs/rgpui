@@ -34,6 +34,20 @@ use std::{
     sync::Arc,
 };
 
+/// 内部不变量：值为 `None` 说明前提被破坏（句柄已被取走、池中无对应项等），
+/// 必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 特定字体的不透明标识符。
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 #[repr(C)]
@@ -146,6 +160,8 @@ impl TextSystem {
     /// # Panics
     ///
     /// 如果字体和所有回退字体都无法解析，则会 panic。
+    // 环境/配置错误：字体与所有回退字体都解析不了（公开 API 已在 # Panics 中声明）
+    #[allow(clippy::panic)]
     pub fn resolve_font(&self, font: &Font) -> FontId {
         if let Ok(font_id) = self.font_id(font) {
             return font_id;
@@ -850,14 +866,17 @@ pub struct LineWrapperHandle {
 impl Drop for LineWrapperHandle {
     fn drop(&mut self) {
         let mut state = self.text_system.wrapper_pool.lock();
-        let wrapper = self.wrapper.take().unwrap();
-        state
-            .get_mut(&FontIdWithSize {
+        // 句柄构造时必带 wrapper，Drop 只执行一次；
+        // 借出的 wrapper 与字体/字号配对，池中必有对应槽位
+        let wrapper = invariant(self.wrapper.take(), "LineWrapperHandle：wrapper 必存在");
+        let pool = invariant(
+            state.get_mut(&FontIdWithSize {
                 font_id: wrapper.font_id,
                 font_size: wrapper.font_size,
-            })
-            .unwrap()
-            .push(wrapper);
+            }),
+            "LineWrapperHandle：wrapper 池中必有对应槽位",
+        );
+        pool.push(wrapper);
     }
 }
 
@@ -865,13 +884,15 @@ impl Deref for LineWrapperHandle {
     type Target = LineWrapper;
 
     fn deref(&self) -> &Self::Target {
-        self.wrapper.as_ref().unwrap()
+        // 构造时必带 wrapper，仅 Drop 会取走（而 Drop 之后不会再有借用）
+        invariant(self.wrapper.as_ref(), "LineWrapperHandle：wrapper 必存在")
     }
 }
 
 impl DerefMut for LineWrapperHandle {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.wrapper.as_mut().unwrap()
+        // 构造时必带 wrapper，仅 Drop 会取走（而 Drop 之后不会再有借用）
+        invariant(self.wrapper.as_mut(), "LineWrapperHandle：wrapper 必存在")
     }
 }
 

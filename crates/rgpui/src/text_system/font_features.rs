@@ -88,8 +88,9 @@ impl<'de> serde::Deserialize<'de> for FontFeatures {
                                 }
                             }
                             FeatureValue::Number(value) => {
-                                if value.is_u64() {
-                                    feature_list.push((key, value.as_u64().unwrap() as u32));
+                                // is_u64 为真时 as_u64 必有值，直接用 if let 收敛
+                                if let Some(value) = value.as_u64() {
+                                    feature_list.push((key, value as u32));
                                 } else {
                                     log::error!(
                                         "Incorrect font feature value {} for feature tag {}",

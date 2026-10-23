@@ -19,6 +19,20 @@ use crate::{
     Pixels, Point, SharedString, TextAlign, WhiteSpace,
 };
 
+/// 内部不变量：值为 `None` 说明前提被破坏（DOM 栈为空、origins 与栈不平行等），
+/// 必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// DOM 显示类型（v1 仅区分显示/隐藏）。
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DomDisplay {
@@ -397,16 +411,9 @@ impl DomTreeBuilder {
         is_keyed: bool,
         element_path: &[ElementId],
     ) -> DomNodeKey {
-        let parent = self
-            .stack
-            .last()
-            .expect("dom stack 不能为空，需先 begin_frame")
-            .clone();
         // 父节点的窗口绝对原点（根节点为 0,0）。
-        let parent_origin = *self
-            .origins
-            .last()
-            .expect("dom origins 与 stack 平行，不能为空");
+        let parent = invariant(self.stack.last(), "DOM 栈不能为空，需先 begin_frame").clone();
+        let parent_origin = *invariant(self.origins.last(), "DOM origins 与 stack 平行，不能为空");
 
         // 把本节点的窗口绝对坐标换算为相对父节点原点的坐标。
         // 绝对定位的 CSS 子元素相对最近 positioned 祖先定位，若保留绝对坐标，
@@ -496,7 +503,7 @@ impl DomTreeBuilder {
 
     /// 当前 DOM 父节点 key。
     pub fn current_parent(&self) -> DomNodeKey {
-        self.stack.last().expect("dom stack 不能为空").clone()
+        invariant(self.stack.last(), "DOM 栈不能为空").clone()
     }
 
     /// 当前 DOM 栈深度（根节点也算一层）。

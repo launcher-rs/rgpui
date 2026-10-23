@@ -10,6 +10,20 @@ use std::{
     fmt::Display,
 };
 
+/// 内部不变量：值为 `None` 说明前提被破坏（all_names 与 by_name 不一致等），
+/// 必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 定义并注册可用作动作的单元结构体。对于更复杂的数据类型，请派生 `Action`。
 ///
 /// 例如：
@@ -288,6 +302,8 @@ impl ActionRegistry {
         }
     }
 
+    // 契约违规：动作/别名重复注册（宏生成或 #[action(deprecated_aliases)] 写错）
+    #[allow(clippy::panic)]
     fn insert_action(&mut self, action: MacroActionData) {
         let name = action.name;
         if self.by_name.contains_key(name) {
@@ -377,10 +393,11 @@ impl ActionRegistry {
         self.all_names
             .iter()
             .map(|name| {
-                let action_data = self
-                    .by_name
-                    .get(name)
-                    .expect("All actions in all_names should be registered");
+                // all_names 与 by_name 由同一 insert_action 维护，必有一一对应
+                let action_data = invariant(
+                    self.by_name.get(name),
+                    "动作注册表：all_names 中的动作必已注册",
+                );
                 (*name, (action_data.json_schema)(generator))
             })
             .collect::<Vec<_>>()
