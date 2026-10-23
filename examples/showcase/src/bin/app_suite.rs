@@ -1,17 +1,24 @@
 //! 应用套件基座整合演示：一份命令表驱动 Ribbon / 按键提示 / 快速访问工具栏 /
-//! 应用菜单（Backstage）/ 分页视口（PageView + Viewport + 参考线）。
+//! 应用菜单（Backstage）/ 分页视口（PageView + Viewport + 参考线）/ 迷你工具栏，
+//! 并用「编号标注 + 组件清单」把画面上每一块对应到哪个套件基座模块直接标出来。
 //!
 //! 与单功能示例（`ribbon` / `qat` / `backstage` / `page_view`）不同，本例把套件基座的
 //! 各块拼成一个可用的编辑器骨架：每个入口只写命令 id，点击经 `App::dispatch_command`
 //! 派发到同一批 `on_action`，改动同一份文档模型；状态栏回显
 //! `CommandRegistry::label_for` 取出的标签，用来证明「UI 文案」与「命令清单」同源。
 //!
+//! 组件对照：屏幕上的 ①…⑨ 编号就是 `Region` 枚举（本文件内唯一真源，同时驱动浮标、
+//! 侧边编号条与右侧清单），悬停任一编号即给对应区域描蓝边；Shift + 左键拖框选唤出
+//! `MiniToolbar`（它的入口与 QAT 一样都是 `QatItem` + 命令 id）。
+//!
 //! 运行：`cargo run -p showcase --bin app_suite`（依赖 `ribbon` + `document` feature，
-//! showcase 默认开启）。按 Alt/F10 显示按键提示，再按提示键即可纯键盘操作功能区。
+//! showcase 默认开启）。按 Alt/F10 显示按键提示，再按提示键即可纯键盘操作功能区；
+//! `Ctrl+Shift+E` 开关区域浮标、`Ctrl+Shift+I` 开关右侧组件清单、Esc 取消框选。
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::backstage::{Backstage, BackstageState, BackstageTab};
+use rgpui::mini_toolbar::MiniToolbar;
 use rgpui::page_view::{PageArrangement, PageLabels, PageLayout, PageMargins, PageSetup, PageView};
 use rgpui::qat::{QatItem, QuickAccessToolbar};
 use rgpui::ribbon::{
@@ -55,7 +62,9 @@ actions!(
         ToggleMargins,
         ToggleGuides,
         CollapseRibbon,
-        Recalc
+        Recalc,
+        ToggleCallouts,
+        ToggleInspector
     ]
 );
 
@@ -191,6 +200,26 @@ fn cmd_collapse_ribbon() -> CommandDescriptor {
 fn cmd_recalc() -> CommandDescriptor {
     command("Recalc", "重新计算", "数据", Some("L"), Some("f9"))
 }
+/// 「组件标注」命令（切换画面上各区域的编号标注与高亮描边）。
+fn cmd_toggle_callouts() -> CommandDescriptor {
+    command(
+        "ToggleCallouts",
+        "组件标注",
+        "视图",
+        Some("E"),
+        Some("ctrl-shift-e"),
+    )
+}
+/// 「组件清单」命令（切换右侧的组件对照面板）。
+fn cmd_toggle_inspector() -> CommandDescriptor {
+    command(
+        "ToggleInspector",
+        "组件清单",
+        "视图",
+        Some("W"),
+        Some("ctrl-shift-i"),
+    )
+}
 
 register_command!(cmd_new);
 register_command!(cmd_open);
@@ -218,6 +247,8 @@ register_command!(cmd_toggle_margins);
 register_command!(cmd_toggle_guides);
 register_command!(cmd_collapse_ribbon);
 register_command!(cmd_recalc);
+register_command!(cmd_toggle_callouts);
+register_command!(cmd_toggle_inspector);
 
 /// 段落样式（功能区「样式库」的三个库项对应三档）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -308,6 +339,122 @@ impl PageLabels for SuiteLabels {
     }
 }
 
+/// 本示例演示的套件基座组件（编号标注与右侧清单一一对应）。
+///
+/// 每个变体就是画面上的一个区域：标注轨道里的编号、清单里的行、区域的高亮描边
+/// 全部由这一个枚举串起来，看界面不用再猜「这块是哪个模块」。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Region {
+    /// 快速访问工具栏。
+    Qat,
+    /// 应用菜单（Backstage）。
+    Backstage,
+    /// 功能区。
+    Ribbon,
+    /// 按键提示。
+    KeyTips,
+    /// 分页画布。
+    PageView,
+    /// 视口（缩放 / 平移）。
+    Viewport,
+    /// 标尺与参考线。
+    Guides,
+    /// 迷你工具栏。
+    MiniToolbar,
+    /// 命令注册表。
+    Commands,
+}
+
+impl Region {
+    /// 中文模块名（浮标与清单标题）。
+    fn title(self) -> &'static str {
+        match self {
+            Region::Qat => "快速访问工具栏",
+            Region::Backstage => "应用菜单",
+            Region::Ribbon => "功能区",
+            Region::KeyTips => "按键提示",
+            Region::PageView => "分页画布",
+            Region::Viewport => "视口",
+            Region::Guides => "标尺参考线",
+            Region::MiniToolbar => "迷你工具栏",
+            Region::Commands => "命令注册表",
+        }
+    }
+
+    /// 模块名（类型 / 函数名）。
+    fn module(self) -> &'static str {
+        match self {
+            Region::Qat => "QuickAccessToolbar",
+            Region::Backstage => "Backstage",
+            Region::Ribbon => "Ribbon",
+            Region::KeyTips => "KeyTips",
+            Region::PageView => "PageView",
+            Region::Viewport => "Viewport",
+            Region::Guides => "ruler_ticks / align",
+            Region::MiniToolbar => "MiniToolbar",
+            Region::Commands => "CommandRegistry",
+        }
+    }
+
+    /// 源文件与所属 feature。
+    fn source(self) -> &'static str {
+        match self {
+            Region::Qat => "qat.rs · ribbon",
+            Region::Backstage => "backstage.rs · ribbon",
+            Region::Ribbon => "ribbon.rs · ribbon",
+            Region::KeyTips => "keytips.rs · ribbon",
+            Region::PageView => "page_view.rs · document",
+            Region::Viewport => "viewport.rs · viewport",
+            Region::Guides => "guides.rs · viewport",
+            Region::MiniToolbar => "mini_toolbar.rs · ribbon",
+            Region::Commands => "commands.rs · 核心",
+        }
+    }
+
+    /// 在本示例里的触发方式。
+    fn trigger(self) -> &'static str {
+        match self {
+            Region::Qat => "顶栏图标条，每项只写命令 id",
+            Region::Backstage => "点顶栏「文件」开合整窗菜单",
+            Region::Ribbon => "四个选项卡 + 「数据」上下文选项卡",
+            Region::KeyTips => "按 Alt 或 F10 显示按键提示，再按字母",
+            Region::PageView => "画布上的纸页、页眉页脚与页间距",
+            Region::Viewport => "滚轮缩放、左键拖拽平移、视图 › 适应窗口",
+            Region::Guides => "视图 › 内容参考线（虚线框即内容区）",
+            Region::MiniToolbar => "Shift + 左键拖框选，命令条就近浮出",
+            Region::Commands => "状态栏回显 label_for，条数即注册表规模",
+        }
+    }
+
+    /// 带圈编号（按画面顺序：顶栏 → 功能区 → 画布 → 状态栏，与 [`REGIONS`] 一致）。
+    fn badge(self) -> &'static str {
+        match self {
+            Region::Backstage => "①",
+            Region::Qat => "②",
+            Region::Ribbon => "③",
+            Region::KeyTips => "④",
+            Region::PageView => "⑤",
+            Region::Viewport => "⑥",
+            Region::Guides => "⑦",
+            Region::MiniToolbar => "⑧",
+            Region::Commands => "⑨",
+        }
+    }
+}
+
+/// 清单的排列顺序：顶栏 → 功能区 → 画布 → 状态栏（与编号一致）。
+const REGIONS: [Region; 9] = [
+    Region::Backstage,
+    Region::Qat,
+    Region::Ribbon,
+    Region::KeyTips,
+    Region::PageView,
+    Region::Viewport,
+    Region::Guides,
+    Region::MiniToolbar,
+    Region::Commands,
+];
+
 /// 演示视图：套件基座各块共用一份命令表。
 struct AppSuite {
     /// 文档页。
@@ -324,6 +471,16 @@ struct AppSuite {
     arrangement: PageArrangement,
     /// 是否显示内容区参考线。
     guides: bool,
+    /// 是否显示组件标注（编号浮标 + 区域描边）。
+    callouts: bool,
+    /// 是否显示右侧组件清单面板。
+    inspector: bool,
+    /// 当前被高亮的组件（清单悬停时给出）。
+    highlighted: Option<Region>,
+    /// 框选区间（窗口坐标，Shift + 左键拖拽）。
+    selection: Option<(Point<Pixels>, Point<Pixels>)>,
+    /// 是否正在框选。
+    marquee: bool,
     /// 视口（缩放 + 平移）。
     viewport: Viewport,
     /// 功能区状态。
@@ -365,6 +522,11 @@ impl AppSuite {
             },
             arrangement: PageArrangement::Single,
             guides: true,
+            callouts: true,
+            inspector: true,
+            highlighted: None,
+            selection: None,
+            marquee: false,
             viewport: Viewport::new()
                 .with_zoom(0.5)
                 .with_offset(point(px(64.0), px(16.0))),
@@ -429,8 +591,211 @@ impl AppSuite {
         }
     }
 
-    /// 功能区选项卡：所有条目只写命令 id，标签由命令描述符提供。
+    /// 组件标注浮标：编号 + 中文模块名，高亮时补出源文件与 feature。
     ///
+    /// `slot` 用来区分同一组件在不同位置的浮标（顶栏 / 功能区 / 标注条 / 清单），
+    /// 避免元素 id 冲突；悬停浮标即把对应组件设为高亮。
+    fn tag(&self, region: Region, slot: &str, entity: Entity<Self>) -> rgpui::AnyElement {
+        let active = self.highlighted == Some(region);
+        h_flex()
+            .id(format!("tag-{slot}-{}", region.module()))
+            .flex_shrink_0()
+            .items_center()
+            .gap(px(4.0))
+            .px(px(6.0))
+            .py(px(2.0))
+            .rounded_full()
+            .cursor_pointer()
+            .text_xs()
+            .bg(if active { rgb(0x1d4ed8) } else { rgb(0x475569) })
+            .text_color(rgb(0xf8fafc))
+            .on_hover(move |hovered, _window, app| {
+                entity.update(app, |this, cx| {
+                    this.highlighted = if *hovered { Some(region) } else { None };
+                    cx.notify();
+                });
+            })
+            .child(region.badge())
+            .child(region.title())
+            .when(active, |this| this.child(format!("· {}", region.source())))
+            .into_any_element()
+    }
+
+    /// 编号方块：只占一个方块宽，挂在各区域的标注轨道上（悬停即高亮该区域）。
+    fn chip(&self, region: Region, entity: Entity<Self>) -> rgpui::AnyElement {
+        let active = self.highlighted == Some(region);
+        div()
+            .id(format!("chip-{}", region.module()))
+            .flex_shrink_0()
+            .w(px(22.0))
+            .h(px(20.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_md()
+            .cursor_pointer()
+            .text_xs()
+            .bg(if active { rgb(0x2563eb) } else { rgb(0x334155) })
+            .text_color(rgb(0xf8fafc))
+            .on_hover(move |hovered, _window, app| {
+                entity.update(app, |this, cx| {
+                    this.highlighted = if *hovered { Some(region) } else { None };
+                    cx.notify();
+                });
+            })
+            .child(region.badge())
+            .into_any_element()
+    }
+
+    /// 竖向标注轨道：把若干区域的编号方块贴在对应区域旁边。
+    fn rail(&self, regions: &[Region], entity: Entity<Self>) -> rgpui::AnyElement {
+        v_flex()
+            .w(px(30.0))
+            .flex_shrink_0()
+            .items_center()
+            .gap(px(3.0))
+            .py(px(3.0))
+            .bg(rgb(0x0f172a))
+            .children(
+                regions
+                    .iter()
+                    .map(|region| self.chip(*region, entity.clone())),
+            )
+            .into_any_element()
+    }
+
+    /// 标注说明行：悬停时给出该组件的源文件、feature 与触发方式，
+    /// 平时给出整套标注操作口径（浮标 / 清单 / 迷你工具栏）。
+    fn hint_line(&self) -> rgpui::AnyElement {
+        let text = match self.highlighted {
+            Some(region) => format!(
+                "{} {} · {} —— {}",
+                region.badge(),
+                region.title(),
+                region.source(),
+                region.trigger()
+            ),
+            None => "编号方块 = 组件标注：悬停方块或右侧清单行即高亮对应区域；\
+                 Ctrl+Shift+E 开关浮标，Ctrl+Shift+I 开关清单；Shift + 左键拖框选唤出迷你工具栏。"
+                .to_string(),
+        };
+        h_flex()
+            .w_full()
+            .flex_shrink_0()
+            .px(px(10.0))
+            .py(px(3.0))
+            .bg(rgb(0x0f172a))
+            .text_xs()
+            .text_color(rgb(0xcbd5e1))
+            .child(text)
+            .into_any_element()
+    }
+
+    /// 右侧组件清单：编号 / 模块 / 源文件与 feature / 触发方式，悬停行高亮对应区域。
+    fn inspector_panel(&self, entity: Entity<Self>) -> rgpui::AnyElement {
+        v_flex()
+            .id("suite-inspector")
+            .w(px(288.0))
+            .flex_shrink_0()
+            .border_l_1()
+            .border_color(rgb(0xcbd5e1))
+            .bg(rgb(0xf8fafc))
+            .px(px(10.0))
+            .py(px(8.0))
+            .gap(px(5.0))
+            .overflow_y_scroll()
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(rgpui::FontWeight::SEMIBOLD)
+                    .text_color(rgb(0x0f172a))
+                    .child("本演示用到的套件基座组件"),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(0x64748b))
+                    .child("悬停任意一行 → 界面上对应区域点亮描边；Ctrl+Shift+I 开关本面板。"),
+            )
+            .children(REGIONS.iter().map(|region| {
+                let region = *region;
+                let active = self.highlighted == Some(region);
+                let entity = entity.clone();
+                v_flex()
+                    .id(format!("insp-{}", region.module()))
+                    .w_full()
+                    .flex_shrink_0()
+                    .gap(px(1.0))
+                    .px(px(6.0))
+                    .py(px(4.0))
+                    .rounded_md()
+                    .cursor_pointer()
+                    .border_1()
+                    .border_color(if active { rgb(0x2563eb) } else { rgb(0xe2e8f0) })
+                    .bg(if active { rgb(0xdbeafe) } else { rgb(0xffffff) })
+                    .on_hover(move |hovered, _window, app| {
+                        entity.update(app, |this, cx| {
+                            this.highlighted = if *hovered { Some(region) } else { None };
+                            cx.notify();
+                        });
+                    })
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .child(
+                                div()
+                                    .w(px(18.0))
+                                    .h(px(18.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded_full()
+                                    .text_xs()
+                                    .bg(if active { rgb(0x2563eb) } else { rgb(0x64748b) })
+                                    .text_color(rgb(0xffffff))
+                                    .child(region.badge()),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(rgpui::FontWeight::SEMIBOLD)
+                                    .text_color(rgb(0x0f172a))
+                                    .child(region.title()),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x475569))
+                                    .child(region.module()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(0x64748b))
+                            .child(region.source()),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(0x334155))
+                            .child(region.trigger()),
+                    )
+            }))
+            .child(div().text_xs().text_color(rgb(0x64748b)).child(
+                "未在本文档区演示：公式栏 / 电子表格网格 → showcase --bin spreadsheet；\
+                         控制通道 / MCP → showcase --bin automation。",
+            ))
+            .into_any_element()
+    }
+
+    /// 迷你工具栏的落点：框选终点右下偏移，避免压住选区。
+    fn toolbar_at(selection: (Point<Pixels>, Point<Pixels>)) -> Point<Pixels> {
+        point(selection.1.x + px(6.0), selection.1.y + px(20.0))
+    }
+
+    /// 功能区选项卡：所有条目只写命令 id，标签由命令描述符提供。
     /// 按键提示在整块功能区里必须互不相同（前缀解析按字符匹配候选项），
     /// 选项卡用 H/J/N/K，条目用其余字母。
     fn ribbon_tabs(&self, collapsed: bool) -> Vec<RibbonTab> {
@@ -578,6 +943,23 @@ impl AppSuite {
                                 .keytip("R")
                                 .icon(IconName::WindowMinimize)
                                 .checked(collapsed),
+                        ),
+                )
+                .group(
+                    RibbonGroup::new("演示标注")
+                        .item(
+                            RibbonItem::toggle("app_suite::ToggleCallouts")
+                                .label("区域浮标")
+                                .keytip("E")
+                                .icon(IconName::Eye)
+                                .checked(self.callouts),
+                        )
+                        .item(
+                            RibbonItem::toggle("app_suite::ToggleInspector")
+                                .label("组件清单")
+                                .keytip("W")
+                                .icon(IconName::PanelRight)
+                                .checked(self.inspector),
                         ),
                 ),
             RibbonTab::new("data", "数据")
@@ -914,6 +1296,32 @@ impl AppSuite {
         self.record("CollapseRibbon", cx);
     }
 
+    fn on_toggle_callouts(
+        &mut self,
+        _: &ToggleCallouts,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.callouts = !self.callouts;
+        if !self.callouts {
+            self.highlighted = None;
+        }
+        self.record("ToggleCallouts", cx);
+    }
+
+    fn on_toggle_inspector(
+        &mut self,
+        _: &ToggleInspector,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.inspector = !self.inspector;
+        if !self.inspector {
+            self.highlighted = None;
+        }
+        self.record("ToggleInspector", cx);
+    }
+
     fn on_recalc(&mut self, _: &Recalc, _window: &mut Window, cx: &mut Context<Self>) {
         let mut filled = 0usize;
         for page in &mut self.pages {
@@ -953,6 +1361,26 @@ impl Render for AppSuite {
         let collapsed = self.ribbon.read(cx).is_collapsed();
         let tabs = self.ribbon_tabs(collapsed);
         let backstage_tabs = self.backstage_tabs();
+        // 高亮判定：清单 / 方块悬停中落在哪块区域，就给对应区域描蓝边。
+        let header_hot = matches!(
+            self.highlighted,
+            Some(Region::Backstage) | Some(Region::Qat)
+        );
+        let ribbon_hot = matches!(
+            self.highlighted,
+            Some(Region::Ribbon) | Some(Region::KeyTips)
+        );
+        let canvas_hot = matches!(
+            self.highlighted,
+            Some(Region::PageView)
+                | Some(Region::Viewport)
+                | Some(Region::Guides)
+                | Some(Region::MiniToolbar)
+        );
+        let status_hot = self.highlighted == Some(Region::Commands);
+        let selection = self.selection;
+        // 悬停高亮走实体句柄：浮标与清单行都通过它改写 `highlighted`。
+        let entity = cx.entity();
 
         v_flex()
             .id("app-suite")
@@ -987,16 +1415,35 @@ impl Render for AppSuite {
             .on_action(cx.listener(Self::on_toggle_guides))
             .on_action(cx.listener(Self::on_collapse_ribbon))
             .on_action(cx.listener(Self::on_recalc))
-            // 顶栏：文件入口 + 快速访问工具栏 + 保存状态。
+            .on_action(cx.listener(Self::on_toggle_callouts))
+            .on_action(cx.listener(Self::on_toggle_inspector))
+            .on_key_down(
+                cx.listener(|this, event: &rgpui::KeyDownEvent, _window, cx| {
+                    // Esc 取消框选（迷你工具栏随之收起）。
+                    if event.keystroke.key == "escape" && this.selection.take().is_some() {
+                        cx.notify();
+                    }
+                }),
+            )
+            // 顶栏：① 文件入口（Backstage）+ ② 快速访问工具栏 + 保存状态。
             .child(
                 h_flex()
                     .w_full()
                     .flex_shrink_0()
                     .items_center()
-                    .gap(px(8.0))
+                    .gap(px(6.0))
                     .px(px(8.0))
                     .py(px(4.0))
                     .bg(rgb(0x1e293b))
+                    .border_b_2()
+                    .border_color(if header_hot {
+                        rgb(0x38bdf8)
+                    } else {
+                        rgb(0x1e293b)
+                    })
+                    .when(self.callouts, |this| {
+                        this.child(self.tag(Region::Backstage, "head", entity.clone()))
+                    })
                     .child(
                         div()
                             .id("file-entry")
@@ -1012,6 +1459,9 @@ impl Render for AppSuite {
                             }))
                             .child("文件"),
                     )
+                    .when(self.callouts, |this| {
+                        this.child(self.tag(Region::Qat, "head", entity.clone()))
+                    })
                     .child(
                         QuickAccessToolbar::new()
                             .item(QatItem::button("app_suite::New").icon(IconName::Plus))
@@ -1030,60 +1480,123 @@ impl Render for AppSuite {
                             .child(format!("{dirty} · {page_count} 页")),
                     ),
             )
-            .child(Ribbon::new(&self.ribbon, tabs))
-            // 内容区：分页画布 + 视口（滚轮 Ctrl/⌘ 缩放，否则平移，左键拖拽平移）。
             .child(
-                div()
-                    .relative()
+                // 功能区（③）与按键提示（④）：左侧编号轨道 + 高亮描边。
+                h_flex()
+                    .w_full()
+                    .flex_shrink_0()
+                    .items_stretch()
+                    .when(self.callouts, |this| {
+                        this.child(self.rail(&[Region::Ribbon, Region::KeyTips], entity.clone()))
+                    })
+                    .child(
+                        div()
+                            .flex_grow_1()
+                            .min_w(px(0.0))
+                            .border_2()
+                            .border_color(if ribbon_hot {
+                                rgb(0x2563eb)
+                            } else {
+                                rgb(0xe2e8f0)
+                            })
+                            .child(Ribbon::new(&self.ribbon, tabs)),
+                    ),
+            )
+            // 内容区：标注轨道（⑤⑥⑦⑧）+ 分页画布 + 视口 + 右侧组件清单。
+            // 滚轮 Ctrl/⌘ 缩放、左键拖拽平移（视口）；Shift + 左键拖框选（迷你工具栏）。
+            .child(
+                h_flex()
+                    .w_full()
                     .flex_grow_1()
                     .min_h(px(0.0))
-                    .overflow_hidden()
-                    .bg(rgb(0xf1f5f9))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, event: &MouseDownEvent, _, cx| {
-                            this.dragging = true;
-                            this.last_pointer = event.position;
-                            cx.notify();
-                        }),
-                    )
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        cx.listener(|this, _: &MouseUpEvent, _, cx| {
-                            this.dragging = false;
-                            cx.notify();
-                        }),
-                    )
-                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                        this.anchor = event.position;
-                        if this.dragging {
-                            let delta = event.position - this.last_pointer;
-                            this.last_pointer = event.position;
-                            this.viewport.pan_by(delta);
-                        }
-                        cx.notify();
-                    }))
-                    .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _, cx| {
-                        this.viewport.apply_wheel(event, px(50.0));
-                        cx.notify();
-                    }))
+                    .items_stretch()
+                    .when(self.callouts, |this| {
+                        this.child(self.rail(
+                            &[
+                                Region::PageView,
+                                Region::Viewport,
+                                Region::Guides,
+                                Region::MiniToolbar,
+                            ],
+                            entity.clone(),
+                        ))
+                    })
                     .child(
-                        div().absolute().top_0().left_0().size_full().child(
-                            PageView::new(
-                                self.layout(),
-                                viewport,
-                                SuiteLabels {
-                                    title: "rgpui 应用套件基座".into(),
-                                    pages: page_count,
-                                },
+                        div()
+                            .relative()
+                            .flex_grow_1()
+                            .min_w(px(0.0))
+                            .min_h(px(0.0))
+                            .overflow_hidden()
+                            .border_2()
+                            .border_color(if canvas_hot {
+                                rgb(0x2563eb)
+                            } else {
+                                rgb(0xe2e8f0)
+                            })
+                            .bg(rgb(0xf1f5f9))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                                    if event.modifiers.shift {
+                                        this.marquee = true;
+                                        this.selection = Some((event.position, event.position));
+                                    } else {
+                                        this.dragging = true;
+                                        this.last_pointer = event.position;
+                                    }
+                                    cx.notify();
+                                }),
                             )
-                            .content_guide(self.guides)
-                            .area_guide(self.guides),
-                        ),
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                cx.listener(|this, _: &MouseUpEvent, _, cx| {
+                                    this.dragging = false;
+                                    this.marquee = false;
+                                    cx.notify();
+                                }),
+                            )
+                            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                                this.anchor = event.position;
+                                if this.marquee {
+                                    if let Some((start, _)) = this.selection {
+                                        this.selection = Some((start, event.position));
+                                    }
+                                } else if this.dragging {
+                                    let delta = event.position - this.last_pointer;
+                                    this.last_pointer = event.position;
+                                    this.viewport.pan_by(delta);
+                                }
+                                cx.notify();
+                            }))
+                            .on_scroll_wheel(cx.listener(
+                                |this, event: &ScrollWheelEvent, _, cx| {
+                                    this.viewport.apply_wheel(event, px(50.0));
+                                    cx.notify();
+                                },
+                            ))
+                            .child(
+                                div().absolute().top_0().left_0().size_full().child(
+                                    PageView::new(
+                                        self.layout(),
+                                        viewport,
+                                        SuiteLabels {
+                                            title: "rgpui 应用套件基座".into(),
+                                            pages: page_count,
+                                        },
+                                    )
+                                    .content_guide(self.guides)
+                                    .area_guide(self.guides),
+                                ),
+                            )
+                            .children(overlays),
                     )
-                    .children(overlays),
+                    .when(self.inspector, |this| {
+                        this.child(self.inspector_panel(entity.clone()))
+                    }),
             )
-            // 状态栏：最近命令、命令清单规模、待重算表格、视口读数。
+            .when(self.callouts, |this| this.child(self.hint_line()))
+            // 状态栏：⑨ 命令注册表 + 最近命令、命令清单规模、待重算表格、视口读数。
             .child(
                 h_flex()
                     .w_full()
@@ -1094,7 +1607,11 @@ impl Render for AppSuite {
                     .py(px(6.0))
                     .border_t_1()
                     .border_color(rgb(0xcbd5e1))
-                    .bg(rgb(0xf8fafc))
+                    .bg(if status_hot {
+                        rgb(0xdbeafe)
+                    } else {
+                        rgb(0xf8fafc)
+                    })
                     .text_xs()
                     .text_color(rgb(0x475569))
                     .child(format!("最近命令：{last}"))
@@ -1102,8 +1619,35 @@ impl Render for AppSuite {
                         "命令清单 {} 条 · 待重算 {stale} 张 · 排布 {arrangement} · {margins}",
                         CommandRegistry::global().len()
                     ))
+                    .when(self.callouts, |this| {
+                        this.child(div().ml_auto().child(self.tag(
+                            Region::Commands,
+                            "status",
+                            entity.clone(),
+                        )))
+                    })
                     .child(div().ml_auto().child(format!("缩放 {:.0}%", zoom * 100.0))),
             )
+            // 框选矩形与迷你工具栏：鼠标事件给的是窗口坐标，所以挂在根容器上。
+            .children(selection.map(|(start, end)| {
+                div()
+                    .absolute()
+                    .left(start.x.min(end.x))
+                    .top(start.y.min(end.y))
+                    .w((start.x - end.x).abs())
+                    .h((start.y - end.y).abs())
+                    .border_1()
+                    .border_color(rgb(0x2563eb))
+                    .bg(rgb(0x60a5fa).opacity(0.25))
+            }))
+            .children(selection.map(|selection| {
+                MiniToolbar::new()
+                    .at(Self::toolbar_at(selection))
+                    .item(QatItem::button("app_suite::Bold").label("B"))
+                    .item(QatItem::button("app_suite::StyleTitle").label("标题"))
+                    .item(QatItem::separator())
+                    .item(QatItem::button("app_suite::Copy").icon(IconName::Copy))
+            }))
             .child(Backstage::new(&self.backstage, backstage_tabs).sidebar_width(px(150.0)))
     }
 }
@@ -1122,6 +1666,8 @@ fn run_example() {
             KeyBinding::new("ctrl-c", Copy, None),
             KeyBinding::new("ctrl-b", Bold, None),
             KeyBinding::new("f9", Recalc, None),
+            KeyBinding::new("ctrl-shift-e", ToggleCallouts, None),
+            KeyBinding::new("ctrl-shift-i", ToggleInspector, None),
         ]);
         let bounds = Bounds::centered(None, size(px(1040.0), px(780.0)), cx);
         cx.open_window(
