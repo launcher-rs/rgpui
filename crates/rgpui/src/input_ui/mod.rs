@@ -26,6 +26,7 @@ mod display_map;
 /// 代码编辑器子系统（`editor` feature 门控）。
 #[cfg(feature = "editor")]
 pub mod editor;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod history;
 #[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod indent;

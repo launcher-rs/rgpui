@@ -12,6 +12,32 @@ use std::{
     sync::{Arc, LazyLock, OnceLock},
 };
 
+/// 内部不变量：结果为 `Err` 说明前提被破坏（字面正则必可编译），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：值为 `None` 说明前提被破坏（位图尺寸与缓冲长度一致），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 #[cfg(target_os = "macos")]
 const EMOJI_FONT_FAMILIES: &[&str] = &["Apple Color Emoji", ".AppleColorEmojiUI"];
 
@@ -35,8 +61,13 @@ const EMOJI_FONT_FAMILIES: &[&str] = &[
 const EMOJI_FONT_FAMILIES: &[&str] = &[];
 
 fn is_emoji_presentation(c: char) -> bool {
-    static EMOJI_PRESENTATION_REGEX: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new("\\p{Emoji_Presentation}").unwrap());
+    static EMOJI_PRESENTATION_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+        // 字面正则必可编译
+        invariant_result(
+            regex::Regex::new("\\p{Emoji_Presentation}"),
+            "emoji 正则字面量必可编译",
+        )
+    });
     let mut buf = [0u8; 4];
     EMOJI_PRESENTATION_REGEX.is_match(c.encode_utf8(&mut buf))
 }
@@ -184,9 +215,11 @@ impl SvgRenderer {
             SvgSize::ScaleFactor(scale_factor * SMOOTH_SVG_SCALE_FACTOR),
         )
         .map(|pixmap| {
-            let mut buffer =
-                image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take())
-                    .unwrap();
+            // 位图尺寸与缓冲长度一致，from_raw 必成功
+            let mut buffer = invariant(
+                image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()),
+                "SVG 位图：尺寸与缓冲长度一致",
+            );
 
             for pixel in buffer.chunks_exact_mut(4) {
                 swap_rgba_pa_to_bgra(pixel);

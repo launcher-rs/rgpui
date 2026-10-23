@@ -1,6 +1,19 @@
 use instant::{Duration, Instant};
 use std::fmt::Debug;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（守卫已保证栈非空等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 历史记录条目 - 表示历史中的一次变更。
 /// 必须实现 Clone 和 PartialEq 才能在 History 中使用。
 pub trait HistoryItem: Clone + PartialEq {
@@ -169,7 +182,8 @@ where
                 .count()
                 > 0
             {
-                let change = self.undos.pop().unwrap();
+                // while 守卫 count > 0 保证栈非空
+                let change = invariant(self.undos.pop(), "历史：同版本守卫内 pop 必有元素");
                 changes.push(change);
             }
 
@@ -192,7 +206,8 @@ where
                 .count()
                 > 0
             {
-                let change = self.redos.pop().unwrap();
+                // while 守卫 count > 0 保证栈非空
+                let change = invariant(self.redos.pop(), "历史：同版本守卫内 pop 必有元素");
                 changes.push(change);
             }
             self.undos.extend(changes.clone());

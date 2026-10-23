@@ -16,6 +16,19 @@ use ropey::Rope;
 use tree_sitter::{Language, Parser, Tree};
 use tree_sitter_highlight::{Highlight, HighlightConfiguration, HighlightEvent};
 
+/// 内部不变量：结果为 `Err` 说明前提被破坏（内嵌高亮查询构建期必有效），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 use crate::highlight::{
     DocumentSymbol, FoldRange, HighlightStyle, HighlightStyleResolver, Highlighter, SymbolKind,
     TextEdit,
@@ -202,14 +215,17 @@ impl TreeSitterHighlighter {
         symbol_kind: fn(&str) -> Option<SymbolKind>,
         symbol_name: fn(&tree_sitter::Node, &[u8]) -> Option<String>,
     ) -> Self {
-        let mut config = HighlightConfiguration::new(
-            language.clone(),
-            name,
-            &rewrite_captures(highlights_query),
-            &rewrite_captures(injections_query),
-            &rewrite_captures(locals_query),
-        )
-        .expect("内置查询必须有效");
+        // 内嵌高亮查询构建期必有效
+        let mut config = invariant_result(
+            HighlightConfiguration::new(
+                language.clone(),
+                name,
+                &rewrite_captures(highlights_query),
+                &rewrite_captures(injections_query),
+                &rewrite_captures(locals_query),
+            ),
+            "内置查询必须有效",
+        );
         config.configure(&HIGHLIGHT_NAMES);
         Self {
             name,

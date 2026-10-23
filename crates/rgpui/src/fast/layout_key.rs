@@ -9,6 +9,19 @@
 
 use std::hash::{Hash, Hasher};
 
+/// 内部不变量：值为 `None` 说明前提被破坏（递归栈计算位时必有帧），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 元素树路径的哈希键（父键 + 步进的链式哈希）。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct LayoutKey(u64);
@@ -104,7 +117,8 @@ impl WindowLayout {
         let step = match id {
             Some(id) => hash_id_step(id),
             None => {
-                let frame = self.stack.last_mut().expect("布局键栈在检查后为空");
+                // 调用方契约：进入子步进计算前必已 push 栈帧
+                let frame = invariant(self.stack.last_mut(), "布局键栈在检查后为空");
                 let index = frame.child_index;
                 frame.child_index = frame.child_index.wrapping_add(1);
                 hash_index_step(index)

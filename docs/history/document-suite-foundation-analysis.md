@@ -2410,3 +2410,56 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `input_ui::history`、`file_watcher`、`queue`、`single_instance`、`webview`、
 `tokio`、`system::svg_renderer` / `system::focus_trap`、`highlight::tree_sitter`、
 `animation::animate`、`fast::layout_key`、`menu/` 余项、`form/*`、`title_bar/*` 等。
+
+## 七十八、增补：lint 收紧第十五批（杂项模块族 / 19 处）
+
+延续 §六十四～§七十七 的口径，本批覆盖 15 个分散模块：`tabs::accordion`、
+`keymap::binding`、`theme::registry`、`theme::schema`、`input_ui::history`、
+`queue`、`single_instance`、`file_watcher`、`tokio`、`webview`、
+`system::focus_trap`、`system::svg_renderer`、`highlight::tree_sitter`、
+`animation::animate`、`fast::layout_key`；已迁移模块数 80 → **95**。
+
+### 迁移要点
+
+- **不变量收敛**：
+  - `id()` 恒返回 `Some` 型：`tabs::accordion`（×2）、`system::focus_trap`；
+  - 内嵌资源构建期有效型（`invariant_result`）：`theme::registry` 的内嵌默认主题
+    JSON（×2）、`theme::schema` 的自生成 JSON Schema 序列化、
+    `highlight::tree_sitter` 的内置高亮查询、`system::svg_renderer` 的 emoji
+    字面正则；
+  - 守卫非空型：`input_ui::history`（同版本 `count > 0` 守卫内 pop，×2）、
+    `queue::pop`（`recv()` 非空守卫 + 末级优先级权重必中 w/w = 1.0）、
+    `fast::layout_key`（进入子步进计算前必已 push 栈帧）；
+  - 位图一致性型：`svg_renderer` 的 `ImageBuffer::from_raw`（尺寸×缓冲一致）。
+- **彻底消除**：`animation::animate` 关键帧排序用 `f32::total_cmp` 取代
+  `partial_cmp().unwrap()`；`single_instance` 的 `is_err` 提前返回 + `unwrap`
+  收敛为 `let Ok(handle) = handle else { return Err(AlreadyRunning) };`。
+- **可恢复失败**：`file_watcher` 两处 `Mutex::lock().unwrap()` 走锁中毒恢复
+  `unwrap_or_else(|p| p.into_inner())`（监视器注册表无跨 panic 不变量，
+  轮询任务中毒后继续用现有状态）。
+- **契约保留 panic + 函数级 allow**：`keymap::binding::new`（文档声明「解析错误时
+  触发 panic」）、`tokio::init`（运行时构建失败属环境致命，启动即失败）。
+- **webview 无代码改动**：唯一 `.unwrap()` 位于文档示例（`//!` 代码块）中，
+  不参与 lint；deny 直接加在模块声明上（`feature = "webview"` 门控）。
+- deny 属性 15 处：`tabs/mod.rs`、`keymap.rs`、`theme/mod.rs`（×2）、
+  `input_ui/mod.rs`、`rgpui.rs`（queue / single_instance / webview / file_watcher /
+  tokio ×5）、`system/mod.rs`（×2）、`highlight/mod.rs`、`animation/mod.rs`、
+  `fast/mod.rs`（deny 模块 80 → 95）。
+- docs §七十八 + AGENTS.md 名单同步。
+
+### 验证
+
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）。
+- `cargo clippy -p rgpui --features tree-sitter --lib`（tree_sitter deny）、
+  `--features tokio --lib`、`--features webview --lib`、
+  `--features test-support --lib` 均通过。
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored。
+- `cargo fmt --all --check` 干净。
+
+### 剩余候选
+
+`menu/` 余项、`form/*`、`title_bar/*`、`tabs/` 其余（`tab_bar` 等）、
+`theme/` 其余（`settings` / `highlight` 等）、`keymap/` 其余（`context` /
+`file` / `keymap`）、`system/` 其余（`tab_stop` / `tray` / `window_border` /
+`window_ext`）、`animation/` 其余、`fast/` 其余（`dependencies` / `stats`）
+等（各父模块其余子模块当前无站点）。

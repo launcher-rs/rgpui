@@ -10,6 +10,7 @@ pub use tokio::task::JoinError;
 ///
 /// 如果需要更多线程（或在 RGPUI 外部访问运行时），可以自行创建运行时
 /// 并将 Handle 传递给 `init_from_handle`。
+#[allow(clippy::expect_used)] // 环境致命：运行时构建失败（资源耗尽）即启动失败
 pub fn init(cx: &mut App) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         // 由于现在有两个执行器，尽量保持占用最小
