@@ -86,14 +86,12 @@ use crate::{
     root::Root,
 };
 
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod async_context;
 #[cfg(feature = "bench")]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 // 测试支撑模块：断言失败就该炸（同 clippy.toml 的 allow-*-in-tests 口径）
 mod bench_context;
 mod context;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod entity_map;
 #[cfg(any(test, feature = "test-support"))]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

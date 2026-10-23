@@ -15,7 +15,6 @@ mod delegate;
 mod loading;
 
 /// 表格状态模块 - TableState、选择模式与行渲染逻辑
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod state;
 
 /// 表格组件模块 - Table、表头、表体、表行、表单元格等组件

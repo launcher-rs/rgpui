@@ -53,32 +53,16 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 `redundant_clone`、`disallowed_methods`；`style` 为 `allow`。
 
 根目录 `clippy.toml` 允许测试代码用 `unwrap` / `expect` / `panic!`（断言失败就是要炸）。
-生产代码按模块收紧：**95 个模块**声明带
-`#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`
-（`rgpui.rs` 里 26 个套件模块 + `executor` / `taffy` / `util::paths` / `util::sum_tree` /
-`lsp::stdio` / `elements::text` / `elements::div` / `theme::color` / `inspector` /
-`app::async_context` / `app::entity_map` / `app`（含 `app::context`）/ `element` /
-`http_client` / `window`（含 `window::a11y`）/ `view` /
-`platform`（含 `keystroke` / `threaded_dispatcher`）/ `platform_scheduler` /
-`key_dispatch` / `profiler`（含 `profiler::actions`）/
-`scene` / `arena` / `action` / `root` / `dom`（`dom-backend`） /
-`text_system`（含 `line_layout` / `font_features`）/
-`elements::list` / `elements::scroll` / `menu::context_menu` /
-`input_ui::auto_scroll` / `input_ui::input::element` /
-`util`（全树）/ `refineable` / `rgpui_util` / `perf::implementation` /
-`elements::canvas` / `table::state` / `components::resizable` / `input_ui::indent` /
-`elements::anchored` / `elements::animation` / `elements::deferred` /
-`elements::image_cache` / `elements::uniform_list` / `elements::virtual_list` /
-`components::animated_collapsible` / `components::date_picker` /
-`components::description_list` / `components::navigation_menu` /
-`components::otp_input` / `components::segmented_nav` / `components::sparkline` /
-`components::status_bar` / `components::charts`（含 10 个子模块）/
-`tabs::accordion` / `keymap::binding` / `theme::registry` / `theme::schema` /
-`input_ui::history` / `queue` / `single_instance` / `file_watcher` / `tokio` /
-`webview` / `system::focus_trap` / `system::svg_renderer` /
-`highlight::tree_sitter` / `animation::animate` / `fast::layout_key`，
-新增代码在这些模块里用 `unwrap` 会直接编译失败；
-其余历史模块按同一口径逐步迁移（见 docs §六十四 的迁移口径与后续批次候选）。
+**`rgpui` 核心 crate 已全量封死**（第十六批）：`rgpui.rs` 顶部一条
+`#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` 覆盖整个 crate，
+原先散在 19 个文件里的 95 处模块级 `#[deny]` 已随之删除。新增代码在核心里用
+`unwrap` / `expect` / `panic!` 直接编译失败；确要以 panic 作为契约的位置就近写
+`#[allow(clippy::panic)]` + reason。三个 `build.rs`（`rgpui` / `rgpui-windows` /
+`rgpui-macos`）也加了文件级 `#![deny]`，`main` 返回 `Result` 让 cargo 转成构建失败。
+**剩余战场是兄弟 crate**：`rgpui-windows` 60 处（`directx_renderer` 24 / `direct_write` 11 /
+`directx_atlas` 6 / `platform` 5）、`rgpui-wgpu` 21、`rgpui-macros` 12、
+`rgpui-term` / `rgpui-3d` / `rgpui-platform` 少量；`rgpui-macos`（`metal_renderer` 为主）与
+`rgpui-linux`（`wayland/client` 为主）本地编不到，靠 CI 矩阵度量。迁移口径见 docs §六十四。
 
 ## 托盘与窗口隐藏
 

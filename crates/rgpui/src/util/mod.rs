@@ -36,7 +36,6 @@ pub mod disambiguate;
 pub mod fs;
 pub mod markdown;
 pub mod path_list;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod paths;
 #[cfg(not(target_family = "wasm"))]
 pub mod process;
@@ -52,7 +51,6 @@ pub mod shell_builder;
 #[cfg(not(target_family = "wasm"))]
 pub mod shell_env;
 pub mod size;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod sum_tree;
 // 测试支撑模块：断言失败就该炸（同 clippy.toml 测试放行口径）
 #[cfg(any(test, feature = "test-support"))]

@@ -11,7 +11,6 @@ use crate::App;
 pub(super) const MASK_CHAR: char = '*';
 
 pub mod async_file_loader;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod auto_scroll;
 mod blink_cursor;
 mod change;
@@ -26,9 +25,7 @@ mod display_map;
 /// 代码编辑器子系统（`editor` feature 门控）。
 #[cfg(feature = "editor")]
 pub mod editor;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod history;
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod indent;
 /// 表单输入子系统。
 mod input;

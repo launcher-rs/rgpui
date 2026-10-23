@@ -1,7 +1,6 @@
 //! 标签页/手风琴/折叠面板子系统 - Tabs、Accordion、Collapsible 组件
 
 /// 手风琴组件模块 - 可展开/折叠的面板组
-#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod accordion;
 /// 折叠面板组件模块 - 简单的展开/折叠容器
 mod collapsible;

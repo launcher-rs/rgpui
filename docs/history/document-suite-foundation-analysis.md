@@ -2463,3 +2463,80 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `file` / `keymap`）、`system/` 其余（`tab_stop` / `tray` / `window_border` /
 `window_ext`）、`animation/` 其余、`fast/` 其余（`dependencies` / `stats`）
 等（各父模块其余子模块当前无站点）。
+
+> §七十九 复核更正：上面这份「剩余候选」是按 grep 命中数排的，而 grep 把
+> `#[cfg(test)]` 里的站点也算了进来——这些模块的生产代码当时其实早已迁移干净，
+> 缺的只是 deny 落点。第十六批因此改为一次性把核心 crate 全量封死，
+> 后续批次口径换成兄弟 crate（见 §七十九 的表）。
+
+## 七十九、增补：lint 收紧第十六批（核心 crate 全量封死 + 构建脚本 / 0 处代码改动）
+
+延续 §六十四～§七十八 的口径，本批收尾核心 crate：**`rgpui` 的生产代码已经没有
+`unwrap` / `expect` / `panic!` 站点**，所以不再逐模块盖章，改为一条 crate 根属性把
+整个 crate 封死。
+
+### 度量方法（重要，之前的「剩余候选」名单失真）
+
+用 `cargo clippy --workspace --lib --bins --all-features -- -W clippy::unwrap_used
+-W clippy::expect_used -W clippy::panic` 把三个 lint 在**全 crate、全 feature** 范围
+临时打开计数。要点：
+
+- `--lib` 排除 `#[cfg(test)]`，测的就是生产代码；测试代码由根目录 `clippy.toml` 的
+  `allow-*-in-tests` 放行，不受收紧影响。
+- `--all-features` 把 feature 门控代码（`dom-backend` / `control-channel` / `editor`
+  / `webview` / `latex` …）一并纳入，避免第四批那种「单包验证漏掉门控代码」的翻车。
+- 据此复核 §六十四 以来的「剩余候选」：`rich_text.rs`（29 处命中）、`ink.rs`（24）、
+  `mdi.rs`（27）、`keymap/context.rs`（44）、`elements/scroll/scrollable.rs`（40）
+  **全部落在第一个 `#[cfg(test)]` 之后**，即早已迁移完毕；grep 直接计数会把测试站点
+  算成待办，是名单失真的原因。
+
+### 本批改动
+
+- **crate 根属性**：`rgpui.rs` 顶部 `#![deny(clippy::unwrap_used, clippy::expect_used,
+  clippy::panic)]`，覆盖面等价于给 `rgpui.rs` 里 62 个尚无祖先 deny 的顶层模块声明
+  逐个补章，但只有一行、且把根文件自身的条目也纳入了。
+- **清理冗余**：删除散在 19 个文件里的 **95 处**模块级 `#[deny(...)]`（写法完全一致，
+  整行删除）。`#[allow(clippy::panic)]` 等 148 处例外声明**一律保留**——它们正是
+  契约 panic 与 `test-support` 门控代码的就近放行，crate 根属性生效后仍然必要。
+- **构建脚本纳入体系**：`rgpui/build.rs`（1 处）、`rgpui-windows/build.rs`（12 处）、
+  `rgpui-macos/build.rs`（13 处）此前完全在模块属性之外。三处统一：
+  `fn main() -> Result<(), Box<dyn std::error::Error>>` + `?` 传播，顶部加
+  `#![deny(...)]`。语义不变（失败仍然中止构建），诊断反而更好——
+  - `rgpui-windows`：`find_fxc_compiler` 由 `panic!("Failed to find fxc.exe")` 改为
+    返回 `Err`，且 Windows SDK 注册表查询的错误不再被 `if let Ok(Some(..))` 吞掉；
+    着色器编译失败仍走 `cargo::error=` + `process::exit(1)`（本来就是 lint 干净路径）。
+  - `rgpui-macos`：`xcrun --show-sdk-path` / bindgen / metal / metallib 的
+    `unwrap` / `expect` / `panic!` 换成带上下文的 `Err`。
+  - `rgpui`：`manifest_required().unwrap()` 改为 `map_err` 携带原始错误。
+
+### 验证
+
+- `cargo clippy --workspace --lib --bins --all-features -- -D warnings` 通过
+  （CI 一致口径，含 crate 根 deny 与三个 build.rs 的文件级 deny；Windows 端）。
+- 核心 crate 生产代码在全 feature 下**零告警**，即根属性生效后无需任何就地 allow。
+- **反向验证**（证明根属性确实在此前裸奔的模块上生效）：临时在 `color.rs::rgb` 里加
+  `Some(hex).unwrap()` / `.expect("probe")` / `panic!("probe")` 三种写法，
+  `cargo clippy -p rgpui --lib -- -D warnings` 三条全部报错
+  （`used unwrap() on an Option value` / `used expect() ...` /
+  `panic should not be present in production code`），随后撤掉探针。
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored（与第十五批持平）。
+- `cargo fmt --all` 干净。
+
+### 剩余候选（口径改口：兄弟 crate）
+
+核心 crate 已封死，下一站是把同一套 lint 推到平台/工具 crate（分支名
+`feat/lint-unwrap-crates-a` 的 crates-b）。本地 Windows 实测精确数：
+
+| crate | 站点 | 集中位置 |
+|-------|------|----------|
+| `rgpui-windows` | 60 | `directx_renderer` 24、`direct_write` 11、`directx_atlas` 6、`platform` 5、`directx_devices` 3，尾部零散 1–2 |
+| `rgpui-wgpu` | 21 | `wgpu_renderer` 17、`wgpu_atlas` 3、`wgpu_context` |
+| `rgpui-macros` | 12 | `derive_refineable` 5、`icon_named` 3、其余 proc-macro 零散 |
+| `rgpui-term` / `rgpui-3d` / `rgpui-platform` | 2 / 2 / 2 | `terminal_element`、`context`、`rgpui_platform` |
+
+需要 CI 矩阵度量（本地交叉编译缺 C 工具链，`x86_64-unknown-linux-gnu` /
+`aarch64-apple-darwin` 都停在 `cc-rs` 找不到编译器）：`rgpui-linux`
+（grep 上界：`wayland/client` 40、`platform` 18、`dispatcher` 7、`x11/client` 3）、
+`rgpui-macos`（`metal_renderer` 21、`window` / `text_system` / `pasteboard` 若干）。
+渲染后端批次的口径与 UI 层不同：多为「这帧画不出来」的可恢复失败，落到
+`Result` + 日志降级，改动面大于核心批，按 crate 逐个开。
