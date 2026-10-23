@@ -27,6 +27,7 @@ mod display_map;
 #[cfg(feature = "editor")]
 pub mod editor;
 mod history;
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod indent;
 /// 表单输入子系统。
 mod input;

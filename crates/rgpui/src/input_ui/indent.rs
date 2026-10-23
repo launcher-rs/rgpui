@@ -9,6 +9,19 @@ use super::{
     input::element::TextElement, input::mode::InputMode,
 };
 
+/// 内部不变量：结果为 `Err` 说明前提被破坏（路径构建失败等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 /// 制表符大小设置，用于缩进计算。
 #[derive(Debug, Copy, Clone)]
 pub struct TabSize {
@@ -140,7 +153,8 @@ impl TextElement {
         }
 
         builder.translate(bounds.origin);
-        let path = builder.build().unwrap();
+        // 缩进引导线均已 move_to/line_to 过，路径必可构建
+        let path = invariant_result(builder.build(), "缩进线：路径构建器必非空");
         Some(path)
     }
 
@@ -188,7 +202,8 @@ impl TextElement {
             builder.line_to(point(x, height));
         }
         builder.translate(bounds.origin);
-        let path = builder.build().unwrap();
+        // 缩进引导线均已 move_to/line_to 过，路径必可构建
+        let path = invariant_result(builder.build(), "缩进线：路径构建器必非空");
         Some(path)
     }
 }

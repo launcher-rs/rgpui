@@ -2283,3 +2283,46 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 
 `theme/highlight.rs`、`fast/*`（余项在测试区）、`rgpui_util/arc_cow.rs`、
 `elements/*` 小元素、`components/*`、`table/state.rs`、`input_ui/indent.rs` 等。
+
+## 七十五、增补：lint 收紧第十二批（画布 / 表格 / 分栏 / 缩进 / 11 处）
+
+延续 §六十四～§七十四 的口径，本批覆盖 4 个模块：`elements::canvas`、
+`table::state`、`components::resizable`、`input_ui::indent`；已迁移模块数
+61 → **65**。另给根 `test` 模块（`#[cfg(any(test, feature = "test-support"))]`）
+补了测试支撑放行声明。
+
+### 迁移要点
+
+- **不变量收敛**（模块内 `invariant` / `invariant_result` 助手）：
+  - `canvas`：prepaint / paint 回调构造时必带、每帧各 `take` 一次（×3）；
+  - `table::state`：列索引来自命中测试与表头渲染循环，必在 `col_groups` 内
+    （原两处 `expect("BUG: invalid col index")`）；
+  - `resizable`：`ResizeHandle::id()` 恒返回 `Some`，框架必带元素 id（×2）。
+- **彻底消除**：`table::state` 的 `sort` 先 `is_none` 返回再 `unwrap` 收敛为
+  `let Some(sort) = sort else { return; }`，不再需要助手。
+- **契约保留 panic + 函数级 allow**：`resizable::RenderOnce::render` 的
+  `expect("ResizablePanel must be used within a ResizablePanelGroup")` ——
+  面板必须由 group 渲染注入 state，属公开用法契约。
+- **助手类型注意**：`indent` 的 `PathBuilder::build()` 返回 `Result`（非
+  `Option`），走 `invariant_result`；同时删掉该模块无使用点的 Option 版助手，
+  避免 `dead_code` 告警。
+- deny 属性加在子模块声明处（`elements/mod.rs` 的 `mod canvas`、`table/mod.rs`
+  的 `mod state`、`components/mod.rs` 的 `pub mod resizable`、`input_ui/mod.rs`
+  的 `mod indent`），共 4 处（deny 模块 61 → 65）。
+- docs §七十五 + AGENTS.md 名单同步。
+
+### 验证
+
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）。
+- `cargo clippy -p rgpui --features test-support --lib` 通过（根 `test` 模块只在
+  test / test-support 下编译）。
+- `cargo test -p rgpui --lib` 与 `--features test-support --lib`：各 830 passed +
+  1 ignored。
+- `cargo fmt --all --check` 干净。
+
+### 剩余候选
+
+`theme/highlight.rs`、`fast/*`（余项在测试区）、`rgpui_util/arc_cow.rs`、
+`elements/*` 小元素（`alert` / `avatar` / `badge` / `tag` / `kbd` 等）、
+`components/*`（`pagination` / `steps` / `timeline` 等）、`menu/` 余项、
+`form/*`、`title_bar/*` 等。
