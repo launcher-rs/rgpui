@@ -5,6 +5,19 @@ use std::collections::HashSet;
 use std::hash::Hash;
 use std::sync::Arc;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（守卫已保证存在等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 导航菜单排列方向。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum NavigationMenuOrientation {
@@ -269,7 +282,9 @@ fn render_menu_item<T: Clone + PartialEq + Eq + Hash + 'static>(
                                 this.hover(|style| style.bg(muted.opacity(0.3)))
                             })
                             .when(!disabled && on_toggle.is_some(), |this: Div| {
-                                let on_toggle = on_toggle.unwrap();
+                                // 上方已检查 on_toggle.is_some()
+                                let on_toggle =
+                                    invariant(on_toggle, "导航菜单：守卫内 on_toggle 必在");
                                 this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                                     on_toggle(item_id.clone(), !is_expanded_copy, window, cx);
                                 })

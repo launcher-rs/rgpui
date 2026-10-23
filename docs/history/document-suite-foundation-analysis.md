@@ -2367,3 +2367,46 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `queue`、`single_instance`、`webview`、`tokio`、`system/*`、
 `highlight::tree_sitter`、`animation::animate`、`elements::alert/avatar/badge` 等
 （`alert` / `avatar` / `badge` / `tag` / `kbd` / `form` / `title_bar` 当前无站点）。
+
+## 七十七、增补：lint 收紧第十四批（components 族 + charts 全子树 / 13 处）
+
+延续 §六十四～§七十六 的口径，本批覆盖 11 个模块：`components` 下的
+`otp_input` / `sparkline` / `status_bar` / `animated_collapsible` /
+`navigation_menu` / `description_list` / `date_picker` / `segmented_nav`
+8 个组件，以及 `components::charts`（deny 挂在 `pub mod charts` 上，覆盖
+`chart` / `area_chart` / `line_chart` 等全部 10 个子模块）；已迁移模块数
+71 → **80**（本批 9 个 deny 落点）。
+
+### 迁移要点
+
+- **不变量收敛**（全部 13 处均为「守卫已保证存在」型，模块内 `invariant` 助手）：
+  - `is_some()` 守卫型：`otp_input` 的分隔符（`should_show_separator` 含
+    `separator.is_some()`）、`status_bar` 的回调（`clickable = on_click.is_some()
+    && !disabled`）、`animated_collapsible` / `navigation_menu` 的 `.when(…
+    on_toggle.is_some())` 分支、`segmented_nav` 的 `.when(active_index.is_some())`；
+  - 非空集合型：`sparkline`（`point_count < 2` 提前返回）、`charts::area_chart`
+    （`s.points.len() < 2 → continue` + 同迭代内 `baselines` 已 push）、
+    `charts::line_chart` / `charts::chart`（`screen_points.len() >= 2` 守卫）、
+    `description_list`（`rows.is_empty()` 时已 push 首行）；
+  - 构造不变量型：`otp_input` 的焦点句柄（构造时必带 ≥1 个）、`date_picker` 的
+    `NaiveDate::from_ymd_opt`（日历网格年月日由合法值推导）。
+- deny 属性加在 `components/mod.rs` 的 8 个模块声明处 + `pub mod charts`
+  （`#[cfg(feature = "charts")]` 之下，10 个子模块整体覆盖；除 3 个已迁移文件外
+  其余 7 个子模块本就干净）（deny 模块 71 → 80）。
+- docs §七十七 + AGENTS.md 名单同步。
+
+### 验证
+
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径，
+  workspace 特性并集含 `charts`）。
+- `cargo clippy -p rgpui --features charts --lib` 与
+  `cargo clippy -p rgpui --features test-support --lib` 通过。
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored。
+- `cargo fmt --all --check` 干净。
+
+### 剩余候选
+
+`tabs::accordion`、`keymap::binding`、`theme::registry` / `theme::schema`、
+`input_ui::history`、`file_watcher`、`queue`、`single_instance`、`webview`、
+`tokio`、`system::svg_renderer` / `system::focus_trap`、`highlight::tree_sitter`、
+`animation::animate`、`fast::layout_key`、`menu/` 余项、`form/*`、`title_bar/*` 等。

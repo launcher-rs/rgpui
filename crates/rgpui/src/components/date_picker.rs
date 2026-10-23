@@ -10,6 +10,19 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
+/// 内部不变量：值为 `None` 说明前提被破坏（日历网格年月日必构成合法日期等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// DatePicker 实例计数器（元素 ID 唯一，避免同页多实例冲突）。
 static DATE_PICKER_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -139,7 +152,11 @@ impl Render for DatePickerState {
                 }
                 let day = (cell - lead + 1) as u32;
                 let panel = panel.clone();
-                let date = NaiveDate::from_ymd_opt(year, month, day).unwrap();
+                // 日历网格由合法年月 + 格号推导，必构成合法日期
+                let date = invariant(
+                    NaiveDate::from_ymd_opt(year, month, day),
+                    "日期选择器：网格年月日必构成合法日期",
+                );
                 let is_selected = selected == Some(date);
                 let label = format!("{day}");
                 let on_change = on_change.clone();

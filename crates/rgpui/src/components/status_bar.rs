@@ -13,6 +13,19 @@
 
 use std::sync::Arc;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（可点击必带回调等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 use crate::*;
 
 /// 状态栏单个条目（纯文本 / 图标文本 / 可点击按钮）。
@@ -198,7 +211,8 @@ fn render_status_bar_item(side: &'static str, item: &StatusBarItem, cx: &mut App
     element = element.child(item.label.clone());
 
     if clickable {
-        let on_click = item.on_click.clone().expect("clickable implies handler");
+        // clickable = on_click.is_some() && !disabled
+        let on_click = invariant(item.on_click.clone(), "状态栏：可点击必带回调");
         element = element
             .cursor_pointer()
             .hover(|this| this.bg(theme.secondary_hover))
