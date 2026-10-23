@@ -98,6 +98,7 @@ mod elements;
 mod executor;
 
 /// 平台调度器 - 跨平台的定时器和任务调度实现
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod platform_scheduler;
 
 /// 精化类型 - 支持部分初始化的类型安全模式
@@ -139,6 +140,7 @@ pub mod inspector_panel;
 mod interactive;
 
 /// 键盘事件分发 - 层级化的按键事件处理管线
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod key_dispatch;
 
 /// 快捷键映射 - 定义 Keymap 和 KeyBinding，管理键盘快捷键绑定
@@ -151,12 +153,14 @@ mod path_builder;
 pub mod perf;
 
 /// 平台抽象层 - 定义 Platform trait，各平台实现此 trait 以提供系统能力
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod platform;
 
 /// 预导入模块 - 常用类型的便捷重导出
 pub mod prelude;
 
 /// 性能分析工具 - 任务计时和线程性能追踪
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod profiler;
 
 /// 优先级队列 - Windows/Linux/WASM 平台下的异步消息队列

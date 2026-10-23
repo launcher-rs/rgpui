@@ -18,6 +18,13 @@ use std::{
     time::Duration,
 };
 
+/// wasm 上没有阻塞式调度：调用 [`Scheduler::block`] 即用法错误，必须立刻暴露。
+#[cfg(target_family = "wasm")]
+#[allow(clippy::panic)] // 契约违规：wasm 无阻塞调度，调用即错误
+fn cannot_block_on_wasm() -> ! {
+    panic!("Cannot block on wasm")
+}
+
 /// [`Scheduler`] 的生产实现，包装 [`PlatformDispatcher`]。
 ///
 /// 这允许 RGPUI 将调度器 crate 的执行器类型与平台的
@@ -54,7 +61,7 @@ impl Scheduler for PlatformScheduler {
         #[cfg(target_family = "wasm")]
         {
             let _ = (&future, &timeout);
-            panic!("Cannot block on wasm")
+            cannot_block_on_wasm()
         }
         #[cfg(not(target_family = "wasm"))]
         {

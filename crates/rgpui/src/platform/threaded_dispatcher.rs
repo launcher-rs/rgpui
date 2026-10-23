@@ -132,6 +132,8 @@ impl ThreadedDispatcher {
         for i in 0..thread_count {
             let mut receiver: PriorityQueueReceiver<RunnableVariant> = background_receiver.clone();
             let idle = idle.clone();
+            // 环境致命错误：工作线程创建失败意味着后台执行器不可用，必须立刻暴露
+            #[allow(clippy::expect_used, clippy::panic)]
             thread::Builder::new()
                 .name(format!("ThreadedDispatcherWorker-{i}"))
                 .spawn(move || {
@@ -158,6 +160,8 @@ impl ThreadedDispatcher {
         {
             let timers = timers.clone();
             let idle = idle.clone();
+            // 环境致命错误：定时器线程创建失败意味着延时任务不可用，必须立刻暴露
+            #[allow(clippy::expect_used, clippy::panic)]
             thread::Builder::new()
                 .name("ThreadedDispatcherTimer".to_owned())
                 .spawn(move || {
@@ -323,6 +327,8 @@ impl PlatformDispatcher for ThreadedDispatcher {
 
     fn dispatch(&self, runnable: RunnableVariant, priority: Priority) {
         self.idle.increment();
+        // 契约违规：dispatcher 拆解后仍派发任务，与「worker 常驻」的前提矛盾
+        #[allow(clippy::panic)]
         self.background_sender
             .send(priority, runnable)
             .unwrap_or_else(|_| panic!("threaded dispatcher workers are no longer running"));
@@ -356,6 +362,8 @@ impl PlatformDispatcher for ThreadedDispatcher {
     fn spawn_realtime(&self, f: Box<dyn FnOnce() + Send>) {
         // Benchmarks don't need realtime scheduling priority; a plain thread
         // keeps this portable.
+        // 环境致命错误：实时线程创建失败意味着基准测试不可用，必须立刻暴露
+        #[allow(clippy::expect_used, clippy::panic)]
         thread::Builder::new()
             .name("ThreadedDispatcherRealtime".to_owned())
             .spawn(f)

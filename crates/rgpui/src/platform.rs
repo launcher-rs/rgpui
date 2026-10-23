@@ -19,9 +19,13 @@ mod threaded_dispatcher;
 pub mod layer_shell;
 
 #[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// 测试支撑模块：断言失败就该炸（同 clippy.toml 的 allow-*-in-tests 口径）
 mod test;
 
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// 测试支撑模块：断言失败就该炸（同 clippy.toml 的 allow-*-in-tests 口径）
 mod visual_test;
 
 #[cfg(all(
@@ -80,6 +84,29 @@ use std::{
 };
 use strum::EnumIter;
 use uuid::Uuid;
+
+/// 内部不变量：值为 `None` 说明前提被破坏（类型不符、状态缺失等），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
+/// 内部不变量：结果为 `Err` 说明前提被破坏（恒成功的调用失败等），必须立刻暴露。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
 
 pub use app_menu::*;
 pub use keyboard::*;
@@ -1550,12 +1577,16 @@ impl PlatformTextSystem for NoopTextSystem {
     fn layout_line(&self, text: &str, font_size: Pixels, _runs: &[FontRun]) -> LineLayout {
         let mut position = px(0.);
         let metrics = self.font_metrics(FontId(0));
-        let em_width = font_size
-            * self
-                .advance(FontId(0), self.glyph_for_char(FontId(0), 'm').unwrap())
-                .unwrap()
-                .width
-            / metrics.units_per_em as f32;
+        // NoopTextSystem 自身的 glyph_for_char 恒返回 Some、advance 恒返回 Ok
+        let glyph = invariant(
+            self.glyph_for_char(FontId(0), 'm'),
+            "NoopTextSystem：字符 'm' 必有字形",
+        );
+        let advance = invariant_result(
+            self.advance(FontId(0), glyph),
+            "NoopTextSystem：advance 必成功",
+        );
+        let em_width = font_size * advance.width / metrics.units_per_em as f32;
         let mut glyphs = Vec::new();
         for (ix, c) in text.char_indices() {
             if let Some(glyph) = self.glyph_for_char(FontId(0), c) {
@@ -3134,8 +3165,14 @@ impl ClipboardString {
     }
 
     /// 返回一个新的剪贴板项目，其元数据通过 JSON 序列化后替换为给定值。
+    ///
+    /// 序列化失败（自定义 `Serialize` 实现报错、非字符串键等）时保留原元数据并记警告，
+    /// 剪贴板文本本身不受影响。
     pub fn with_json_metadata<T: Serialize>(mut self, metadata: T) -> Self {
-        self.metadata = Some(serde_json::to_string(&metadata).unwrap());
+        match serde_json::to_string(&metadata) {
+            Ok(json) => self.metadata = Some(json),
+            Err(err) => log::warn!("[rgpui::platform] 剪贴板元数据 JSON 序列化失败，已忽略：{err}"),
+        }
         self
     }
 
