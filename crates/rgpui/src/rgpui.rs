@@ -39,6 +39,7 @@ pub static GPUI_MANIFEST_DIR: &'static str = env!("CARGO_MANIFEST_DIR");
 
 /// Action 系统 - 定义用户交互动作的序列化与分发机制
 #[macro_use]
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod action;
 
 /// 命令注册表 - 在 Action 之上附加 UI 元数据，供功能区/命令面板/CLI/MCP 按 id 统一分发
@@ -51,6 +52,7 @@ pub mod commands;
 mod app;
 
 /// Arena 分配器 - 高效的实体内存分配策略
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod arena;
 
 /// 资源缓存 - 管理已加载的资源数据
@@ -70,6 +72,7 @@ mod color;
 
 /// Web DOM 后端 - DOM 树数据模型与构建器（feature `dom-backend` 门控，默认关闭）
 #[cfg(feature = "dom-backend")]
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod dom;
 
 /// 颜色模块 - 定义 HSL、RGBA 等颜色类型及转换
@@ -170,6 +173,7 @@ pub mod queue;
 mod rgpui_util;
 
 /// 场景系统 - 元素树渲染后的场景描述，用于绘制指令生成
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod scene;
 
 /// 共享字符串 - 引用计数的不可变字符串，降低内存拷贝开销
@@ -208,6 +212,7 @@ mod taffy;
 pub mod test;
 
 /// 文本系统 - 文本排版、字体管理和 GPU 文本渲染管线
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod text_system;
 
 /// 过渡动画系统 - Transition 组合动画、缓动函数与 Lerp 插值
@@ -219,6 +224,7 @@ mod system;
 // ==================== 第二部分：UI 组件子系统（元素/表单/菜单/对话框/列表/扩展） ====================
 
 /// 根视图 - 窗口顶层视图，管理全局覆盖层
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod root;
 
 /// 对话框组件 - 模态对话框与警告对话框

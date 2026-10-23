@@ -2149,3 +2149,47 @@ ink 模块的两个暂缓项落地（模块文档同步更新）：
 `scene.rs`、`arena.rs`、`action.rs`、`root.rs`、`dom.rs`（`dom-backend` feature）、
 `text_system.rs`、`theme/highlight.rs`、`elements/scroll/*`、
 `util/scheduler/test_scheduler.rs` 等。
+
+## 七十二、增补：lint 收紧第九批（场景 / 分配器 / 动作 / 根视图 / DOM / 文本系统 / 27 处）
+
+延续 §六十四～§七十一 的口径，本批覆盖 6 个模块：`scene`、`arena`、`action`、
+`root`、`dom`（`dom-backend` feature 门控）、`text_system`（含 `line_layout` /
+`font_features` 子模块）；已迁移模块数 46 → **52**。
+
+### 迁移要点
+
+- **不变量收敛**（模块内 `invariant` / `invariant_result` 助手，panic 语义不变）：
+  - `scene`：三种精灵批（monochrome / subpixel / polychrome）的 `peek().unwrap()` ——
+    `batch_kind` 取自已排序种类表里 order 为 Some 的首项，对应迭代器必有待处理元素；
+  - `arena`：`Layout::from_size_align`（chunk_size 合法时必成功）、
+    `NonZeroUsize::try_from`（chunk_size 必非零）走 `invariant_result`；
+  - `action`：`all_names` 与 `by_name` 由同一 `insert_action` 维护，必有一一对应；
+  - `root`：窗口首层必然挂载 `rgpui::Root`（外层 Option 为「有无根视图」、内层为
+    downcast 是否成功，两层各解一次）；
+  - `dom`：DOM 栈与 origins 平行且非空（`begin_frame` 保证）；
+  - `text_system`：`LineWrapperHandle` 构造时必带 wrapper（Drop/Deref 各一处）、
+    wrapper 池必有对应槽位；`line_layout` 的字形索引必指向字符起点、行内 x 必有对应
+    索引（上方已夹取到行内区间）。
+- **可恢复失败**：`font_features` 的 `is_u64()` + `as_u64().unwrap()` 收敛为
+  `if let Some(v) = value.as_u64()`，失败路径的错误日志保持不变。
+- **契约 / 环境错误保留 panic + 函数级 allow**：`arena::alloc`（chunk_size 放不下单个
+  T）、`action::insert_action`（动作/别名重复注册）、`text_system::resolve_font`
+  （字体与全部回退字体解析失败，公开 API 已在 `# Panics` 声明）。
+  注意 `#[allow(clippy::panic)]` 挂在 `panic!` **宏调用**上会被 rustc 忽略并告警
+  （unused attribute），必须上移到函数级。
+- `rgpui.rs` 新增 6 个 deny 模块声明（deny 模块 46 → 52）。
+- docs §七十二 + AGENTS.md 名单同步。
+
+### 验证
+
+- `cargo clippy --workspace --lib --bins -- -D warnings` 通过（CI 一致口径）。
+- `cargo clippy -p rgpui --features test-support --lib` 与
+  `cargo clippy -p rgpui --features dom-backend --lib` 通过（`dom` 只在
+  `dom-backend` feature 下编译）。
+- `cargo test -p rgpui --lib`：830 passed + 1 ignored；
+  `cargo test -p rgpui --features dom-backend --lib`：833 passed + 1 ignored。
+
+### 剩余候选
+
+`theme/highlight.rs`、`elements/scroll/*`、`util/scheduler/test_scheduler.rs`、
+`keymap`（余项在测试区）、`elements/*` 小元素、`components/*` 等。

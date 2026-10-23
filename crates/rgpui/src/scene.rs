@@ -16,6 +16,20 @@ use std::{
     slice,
 };
 
+/// 内部不变量：值为 `None` 说明前提被破坏（批处理迭代器与已排序的种类表不一致等），
+/// 必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 /// 路径顶点的缩放像素类型别名（已废弃，使用 `PathVertex<ScaledPixels>`）。
 #[allow(non_camel_case_types, unused)]
 pub type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
@@ -376,7 +390,14 @@ impl<'a> Iterator for BatchIterator<'a> {
                 Some(PrimitiveBatch::Underlines(underlines_start..underlines_end))
             }
             PrimitiveKind::MonochromeSprite => {
-                let texture_id = self.monochrome_sprites_iter.peek().unwrap().tile.texture_id;
+                // `batch_kind` 取自 orders_and_kinds 里 order 为 Some 的首项，
+                // 排序后该种类的 peek 必然存在
+                let texture_id = invariant(
+                    self.monochrome_sprites_iter.peek(),
+                    "场景批处理：monochrome 批次必有待处理精灵",
+                )
+                .tile
+                .texture_id;
                 let sprites_start = self.monochrome_sprites_start;
                 let mut sprites_end = sprites_start + 1;
                 self.monochrome_sprites_iter.next();
@@ -397,7 +418,14 @@ impl<'a> Iterator for BatchIterator<'a> {
                 })
             }
             PrimitiveKind::SubpixelSprite => {
-                let texture_id = self.subpixel_sprites_iter.peek().unwrap().tile.texture_id;
+                // `batch_kind` 取自 orders_and_kinds 里 order 为 Some 的首项，
+                // 排序后该种类的 peek 必然存在
+                let texture_id = invariant(
+                    self.subpixel_sprites_iter.peek(),
+                    "场景批处理：subpixel 批次必有待处理精灵",
+                )
+                .tile
+                .texture_id;
                 let sprites_start = self.subpixel_sprites_start;
                 let mut sprites_end = sprites_start + 1;
                 self.subpixel_sprites_iter.next();
@@ -418,7 +446,14 @@ impl<'a> Iterator for BatchIterator<'a> {
                 })
             }
             PrimitiveKind::PolychromeSprite => {
-                let texture_id = self.polychrome_sprites_iter.peek().unwrap().tile.texture_id;
+                // `batch_kind` 取自 orders_and_kinds 里 order 为 Some 的首项，
+                // 排序后该种类的 peek 必然存在
+                let texture_id = invariant(
+                    self.polychrome_sprites_iter.peek(),
+                    "场景批处理：polychrome 批次必有待处理精灵",
+                )
+                .tile
+                .texture_id;
                 let sprites_start = self.polychrome_sprites_start;
                 let mut sprites_end = sprites_start + 1;
                 self.polychrome_sprites_iter.next();

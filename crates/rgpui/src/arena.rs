@@ -9,6 +9,20 @@ use std::{
     rc::Rc,
 };
 
+/// 内部不变量：结果为 `Err` 说明前提被破坏（chunk_size 为 0 或大得离谱），
+/// 必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 struct ArenaElement {
     value: *mut u8,
     drop: unsafe fn(*mut u8),
@@ -40,8 +54,11 @@ impl Drop for Chunk {
 
 impl Chunk {
     fn new(chunk_size: NonZeroUsize) -> Self {
-        // 仅在 chunk_size 大得离谱时才会失败
-        let layout = alloc::Layout::from_size_align(chunk_size.get(), 1).unwrap();
+        // 仅在 chunk_size 大得离谱时才会失败（align=1 时要求 size <= isize::MAX）
+        let layout = invariant_result(
+            alloc::Layout::from_size_align(chunk_size.get(), 1),
+            "Arena：chunk_size 超出 Layout 可表达范围",
+        );
         let start = unsafe { alloc::alloc(layout) };
         if start.is_null() {
             handle_alloc_error(layout);
@@ -88,7 +105,11 @@ impl Drop for Arena {
 
 impl Arena {
     pub fn new(chunk_size: usize) -> Self {
-        let chunk_size = NonZeroUsize::try_from(chunk_size).unwrap();
+        // chunk_size 必须非零，0 是调用方的用法错误
+        let chunk_size = invariant_result(
+            NonZeroUsize::try_from(chunk_size),
+            "Arena：chunk_size 必须非零",
+        );
         Self {
             chunks: vec![Chunk::new(chunk_size)],
             elements: Vec::new(),
@@ -129,6 +150,8 @@ impl Arena {
     }
 
     #[inline(always)]
+    // 契约违规：chunk_size 小到连单个 T 都放不下，属构造参数错误
+    #[allow(clippy::panic)]
     pub fn alloc<T>(&mut self, f: impl FnOnce() -> T) -> ArenaBox<T> {
         #[inline(always)]
         unsafe fn inner_writer<T, F>(ptr: *mut T, f: F)
