@@ -169,6 +169,7 @@ pub mod profiler;
 
 /// 优先级队列 - Windows/Linux/WASM 平台下的异步消息队列
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod queue;
 
 #[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -185,6 +186,7 @@ mod shared_string;
 mod shared_uri;
 
 /// 单实例模式 - 确保应用程序只有一个实例运行
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod single_instance;
 
 /// 样式系统 - 定义 Style 结构体，包含布局和视觉属性
@@ -366,6 +368,7 @@ pub mod lsp;
 
 /// WebView 组件 - 基于 wry 的网页视图，用于嵌入网页内容（feature `webview` 门控）
 #[cfg(feature = "webview")]
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod webview;
 
 /// 语法高亮 trait - tree-sitter/syntect 等解析器的抽象层
@@ -381,6 +384,7 @@ pub mod mouse_gestures;
 pub mod scroll_physics;
 
 /// 文件监视 API - 监控文件或目录的变化
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod file_watcher;
 
 /// 配置持久化 API - 应用配置的加载、保存和监听
@@ -416,6 +420,7 @@ pub mod markdown_ext;
 
 /// Tokio 异步运行时集成 - 在 Tokio 线程池上生成任务并通过 RGPUI 任务返回结果（feature `tokio` 门控）
 #[cfg(feature = "tokio")]
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod tokio;
 
 /// 控制通道 - 本机 JSON-RPC over TCP（密钥鉴权），把命令注册表暴露给 CLI / 脚本

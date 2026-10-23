@@ -30,6 +30,7 @@ impl Clone for KeyBinding {
 
 impl KeyBinding {
     /// 从给定数据构建新键绑定。解析错误时触发 panic
+    #[allow(clippy::unwrap_used)] // 公开契约：解析错误时 panic（见上方文档）
     pub fn new<A: Action>(keystrokes: &str, action: A, context: Option<&str>) -> Self {
         let context_predicate =
             context.map(|context| KeyBindingContextPredicate::parse(context).unwrap().into());

@@ -1,5 +1,6 @@
 //! 快捷键映射：定义按键绑定与上下文匹配逻辑。
 
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod binding;
 mod context;
 /// keymap.json 文件加载（M7：`load_keymap_json`）。

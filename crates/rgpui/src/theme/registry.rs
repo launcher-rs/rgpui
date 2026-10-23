@@ -11,6 +11,19 @@ use std::{
 
 const DEFAULT_THEME: &str = include_str!("./default-theme.json");
 
+/// 内部不变量：结果为 `Err` 说明前提被破坏（内嵌默认主题 JSON 构建期必有效），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 /// 主题目录默认相对路径（存在时启动即加载，并启动热重载监视）。
 const DEFAULT_THEMES_DIR: &str = "./themes";
 
@@ -27,9 +40,12 @@ pub static DEFAULT_THEME_COLORS: LazyLock<
 > = LazyLock::new(|| {
     let mut colors = HashMap::new();
 
-    let themes: Vec<ThemeConfig> = serde_json::from_str::<ThemeSet>(DEFAULT_THEME)
-        .expect("Failed to parse themes/default.json")
-        .themes;
+    // 内嵌默认主题 JSON 构建期必有效
+    let themes: Vec<ThemeConfig> = invariant_result(
+        serde_json::from_str::<ThemeSet>(DEFAULT_THEME),
+        "主题注册表：内嵌默认主题必可解析",
+    )
+    .themes;
 
     for theme in themes {
         let mut theme_color = ThemeColor::default();
@@ -292,9 +308,12 @@ impl ThemeRegistry {
     }
 
     fn init_default_themes(&mut self) {
-        let default_themes: Vec<ThemeConfig> = serde_json::from_str::<ThemeSet>(DEFAULT_THEME)
-            .expect("failed to parse default theme.")
-            .themes;
+        // 内嵌默认主题 JSON 构建期必有效
+        let default_themes: Vec<ThemeConfig> = invariant_result(
+            serde_json::from_str::<ThemeSet>(DEFAULT_THEME),
+            "主题注册表：内嵌默认主题必可解析",
+        )
+        .themes;
         for theme in default_themes.into_iter() {
             if theme.mode.is_dark() {
                 self.default_themes.insert(ThemeMode::Dark, Rc::new(theme));

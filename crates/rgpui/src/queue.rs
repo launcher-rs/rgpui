@@ -11,6 +11,19 @@ use rand::{RngExt, SeedableRng, rngs::SmallRng};
 
 use crate::Priority;
 
+/// 内部不变量：值为 `None` 说明前提被破坏（阻塞弹出必有元素），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant<T>(value: Option<T>, message: &str) -> T {
+    match value {
+        Some(value) => value,
+        None => panic!("{message}"),
+    }
+}
+
 struct PriorityQueues<T> {
     high_priority: VecDeque<T>,
     medium_priority: VecDeque<T>,
@@ -287,7 +300,9 @@ impl<T> PriorityQueueReceiver<T> {
     ///
     /// 如果发送者被丢弃
     pub fn pop(&mut self) -> Result<T, RecvError> {
-        self.pop_inner(true).map(|e| e.unwrap())
+        // recv() 非空守卫 + 末级权重必中（w/w = 1.0），阻塞模式必取到元素
+        self.pop_inner(true)
+            .map(|e| invariant(e, "优先级队列：阻塞弹出必有元素"))
     }
 
     /// 返回队列元素的迭代器

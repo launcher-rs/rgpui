@@ -11,6 +11,19 @@ use super::color::{
 };
 use super::{Colorize, Theme, ThemeColor, ThemeMode, ThemeToken, ThemeTokens};
 
+/// 内部不变量：结果为 `Err` 说明前提被破坏（序列化自生成的 schema 不应失败），必须立刻暴露。
+///
+/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
+/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
+#[inline]
+#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
+fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) => panic!("{message}"),
+    }
+}
+
 fn try_parse_theme_token(value: &str) -> anyhow::Result<ThemeToken> {
     Ok(ThemeToken::new(
         try_parse_theme_color(value)?,
@@ -946,7 +959,11 @@ impl Theme {
 /// `ThemeSet` / `ThemeConfig` 等均派生 `JsonSchema`，未知字段沿用解析时的宽容口径。
 pub fn theme_json_schema() -> String {
     let schema = schemars::schema_for!(ThemeSet);
-    serde_json::to_string_pretty(&schema).expect("主题 JSON Schema 序列化不应失败")
+    // 序列化自生成的 schema 不应失败
+    invariant_result(
+        serde_json::to_string_pretty(&schema),
+        "主题 JSON Schema 序列化不应失败",
+    )
 }
 
 /// 将主题 JSON Schema 写入指定路径（如 `.theme-schema.json`）。

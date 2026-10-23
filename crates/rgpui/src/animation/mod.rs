@@ -6,6 +6,7 @@
 //! - `bridge` 提供弹簧与核心动画的桥接（`delta * duration` 换算为 dt）。
 //! - `animate` 提供 `AnimationPreset` / `KeyframeAnimation` / `StaggerConfig` 等上层便捷构造器。
 
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod animate;
 pub mod bridge;
 pub mod durations;

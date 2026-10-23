@@ -74,11 +74,9 @@ impl SingleInstance {
                 windows::core::PCWSTR::from_raw(mutex_name_utf16.as_ptr()),
             );
 
-            if handle.is_err() {
+            let Ok(handle) = handle else {
                 return Err(AlreadyRunning);
-            }
-
-            let handle = handle.unwrap();
+            };
 
             if windows::Win32::Foundation::GetLastError() == ERROR_ALREADY_EXISTS {
                 CloseHandle(handle).ok();

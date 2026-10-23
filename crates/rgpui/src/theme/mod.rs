@@ -13,8 +13,10 @@ pub mod color;
 /// 代码高亮主题模块。
 pub mod highlight;
 /// 主题注册表模块。
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod registry;
 /// 主题 JSON 模式定义模块。
+#[deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod schema;
 /// 主题设置模块。
 pub mod settings;

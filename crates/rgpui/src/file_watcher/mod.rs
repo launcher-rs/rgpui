@@ -185,7 +185,11 @@ impl AsyncFileWatcher {
         F: Fn(FileEvent) + Send + Sync + 'static,
     {
         let path = path.as_ref().to_path_buf();
-        self.inner.lock().unwrap().watch(path, callback);
+        // 锁中毒恢复：监视器注册表无跨 panic 不变量，用现有状态继续
+        self.inner
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .watch(path, callback);
     }
 
     /// 启动轮询检查。
@@ -196,7 +200,11 @@ impl AsyncFileWatcher {
             loop {
                 interval.tick().await;
                 // check_changes() 内部会调用注册的回调派发事件
-                let _events = inner.lock().unwrap().check_changes();
+                // 锁中毒恢复：监视器注册表无跨 panic 不变量，用现有状态继续轮询
+                let _events = inner
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .check_changes();
             }
         });
         self._task = Some(handle);

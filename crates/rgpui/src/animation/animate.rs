@@ -182,8 +182,7 @@ impl KeyframeAnimation {
             self.keyframes[pos] = (pct, value);
         } else {
             self.keyframes.push((pct, value));
-            self.keyframes
-                .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            self.keyframes.sort_by(|a, b| a.0.total_cmp(&b.0));
         }
         self
     }
