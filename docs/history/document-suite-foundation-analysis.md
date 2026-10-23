@@ -2566,8 +2566,40 @@ warning 的主 span `文件:行:列` 去重 —— clippy 对同一站点会随�
 代码），本批直接补上 crate 根 `#![deny]`，零代码改动封死。
 
 需要 CI 矩阵度量（本地交叉编译缺 C 工具链，`x86_64-unknown-linux-gnu` /
-`aarch64-apple-darwin` 都停在 `cc-rs` 找不到编译器）：`rgpui-linux`
-（grep 上界：`wayland/client` 40、`platform` 18、`dispatcher` 7、`x11/client` 3）、
-`rgpui-macos`（`metal_renderer` 21、`window` / `text_system` / `pasteboard` 若干）。
+`aarch64-apple-darwin` 都停在 `cc-rs` 找不到编译器），下面是 **grep 上界**
+（含 `#[cfg(test)]`，只用于排批次顺序，不是精确站点数）：
+
+| crate | grep 上界 | 集中位置 |
+|-------|-----------|----------|
+| `rgpui-linux` | 104 | `linux/wayland/client` 40、`linux/platform` 18、`linux/x11/client` 16、`linux/dispatcher` 13，尾部 `wayland/window` 5、`x11/window` 4、`wayland/clipboard` / `headless/client` 各 3 |
+| `rgpui-macos` | 70 | `metal_renderer` 21、`pasteboard` 10、`text_system` 8、`window` 6、`metal_atlas` 5、`screen_capture` / `platform` / `notifications` 各 4 |
+| `rgpui-dom` | 18 | 全在 `web.rs`（`#[cfg(target_family = "wasm")]` 门控，本地根本不编译） |
+| `rgpui-web` | 4 | `dispatcher` 3、`platform` 1 |
+
 渲染后端批次的口径与 UI 层不同：多为「这帧画不出来」的可恢复失败，落到
 `Result` + 日志降级，改动面大于核心批，按 crate 逐个开。
+`rgpui-dom` 非 wasm 部分（`lib.rs` / `css.rs` / `diff.rs`）实测 0 站点，
+但 `web.rs` 有 18 处，所以它不能像 markdown / character 那样零成本封死。
+
+### CI 口径的第二处盲区：`--lib --bins` 看不见 tests / examples
+
+CI 的 clippy 步骤是 `cargo clippy --workspace --lib --bins -- -D warnings`，
+`--lib` 不编译 `#[cfg(test)]` 代码，也不编译 `examples/` 目标。workspace 级
+`deny` 的 `redundant_clone` 因此一直没管到测试代码，本地按 AGENTS.md 的开发命令
+（`cargo clippy -p <pkg> --all-targets -- -D warnings`）一跑就红：
+
+- `rgpui-dom` 测试代码 **13 处** `redundant_clone`（`diff.rs` 7、`lib.rs` 6，
+  全是「克隆完就丢弃」的末次使用），已用 `cargo clippy --fix` 就地删掉克隆；
+  `cargo test -p rgpui-dom --all-features` 15 passed。
+- `rgpui-3d` 两个示例各 1 处：`viewer3d.rs` / `scenekit_skin.rs` 里最后一个回调
+  的 `let state = state.clone();` —— 闭包本来就是 `move`，直接接管外层 `state`
+  即可，删掉这行 shadow。
+
+复核后 `cargo clippy --workspace --all-targets --all-features --keep-going -- -D warnings`
+在 Windows 端全绿（含 tests / examples / benches），说明这 15 处是存量唯一的
+`--all-targets` 违规。
+
+**建议（未采纳，需决策）**：把 CI 的 clippy 步骤改成 `--all-targets` 就能永久堵住
+这个盲区，但 mac / linux runner 上 `cfg` 门控的测试代码从未按此口径度量过，
+贸然改法可能让 CI 因存量问题变红 —— 先在两条 runner 上单独跑一次
+`--all-targets` 看清单，再决定要不要并入 CI。

@@ -64,6 +64,10 @@ workspace 级 `deny`：`dbg_macro`、`todo`、`declare_interior_mutable_const`�
 三个 `build.rs`（`rgpui` / `rgpui-windows` /
 `rgpui-macos`）也加了文件级 `#![deny]`，`main` 返回 `Result` 让 cargo 转成构建失败。
 `rgpui-markdown` / `rgpui-character` 实测本就 0 站点，crate 根补同一条 `#![deny]`。
+CI 的 clippy 跑 `--lib --bins`，**看不见 `#[cfg(test)]` 与 `examples/` 目标**，
+本地按开发命令跑 `--all-targets` 才会暴露（`redundant_clone` 对测试代码同样生效）；
+第十六批已把存量 15 处清零，Windows 端 `--workspace --all-targets --all-features
+-- -D warnings` 全绿。
 **剩余战场是兄弟 crate**（一次 `--workspace --all-features -W` 度量、按 `文件:行:列`
 去重，共 97 处）：`rgpui-windows` 59（`directx_renderer` 24 / `direct_write` 11 /
 `platform` 6 / `directx_atlas` 6 / `directx_devices` 3）、`rgpui-wgpu` 21
