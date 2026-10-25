@@ -42,6 +42,9 @@ actions!(
         ScrollLineDown,
         ScrollPageUp,
         ScrollPageDown,
+        SearchNext,
+        SearchPrevious,
+        ClearSearch,
         ChangeTheme
     ]
 );
@@ -167,6 +170,9 @@ impl TerminalView {
             }
             // 超链接点击由业务层订阅 Terminal 事件处理（如打开浏览器），视图无需重绘
             Event::HyperlinkClick(_) => {}
+            // 搜索状态变化要重绘（高亮可能新增或消失）；具体状态由业务层
+            // 订阅 Terminal 的 SearchUpdated 事件或查询 search_status
+            Event::SearchUpdated(_) => cx.notify(),
         }
     }
 
@@ -454,6 +460,62 @@ impl TerminalView {
         cx.notify();
     }
 
+    /// 跳到下一个搜索匹配（由 [`SearchNext`] 动作驱动）。
+    fn search_next(&mut self, _: &SearchNext, _window: &mut Window, cx: &mut Context<Self>) {
+        self.terminal.update(cx, |terminal, _| {
+            terminal.search_next();
+        });
+        cx.notify();
+    }
+
+    /// 跳到上一个搜索匹配（由 [`SearchPrevious`] 动作驱动）。
+    fn search_previous(
+        &mut self,
+        _: &SearchPrevious,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.terminal.update(cx, |terminal, _| {
+            terminal.search_previous();
+        });
+        cx.notify();
+    }
+
+    /// 清除搜索高亮与状态（由 [`ClearSearch`] 动作驱动）。
+    fn clear_search(&mut self, _: &ClearSearch, _window: &mut Window, cx: &mut Context<Self>) {
+        self.terminal.update(cx, |terminal, _| {
+            terminal.clear_search();
+        });
+        cx.notify();
+    }
+
+    /// 按正则设置搜索关键词（转给内部 [`Terminal`] 实体，排队到下次 `sync` 处理）。
+    ///
+    /// 不在此处 notify：入队后 `sync` 会 emit [`Event::Wakeup`]，视图靠该事件刷新。
+    pub fn search(&self, query: &str, cx: &mut App) {
+        self.terminal.update(cx, |terminal, _| {
+            terminal.search(query);
+        });
+    }
+
+    /// 按字面量设置搜索关键词：元字符被转义，所见即所搜。
+    ///
+    /// 搜索条这类直接吃用户输入的入口应当用它，避免 `.` `(` `[` 被当成正则。
+    pub fn search_literal(&self, query: &str, cx: &mut App) {
+        self.terminal.update(cx, |terminal, _| {
+            terminal.search_literal(query);
+        });
+    }
+
+    /// 当前搜索匹配状态（非法 / 无匹配 / 命中）。
+    ///
+    /// 搜索是排队执行的，状态在 [`Terminal::sync`] 之后才准确；
+    /// 实时跟进请订阅 [`Event::SearchUpdated`]。
+    pub fn search_status(&self, cx: &App) -> crate::SearchStatus {
+        self.terminal
+            .read_with(cx, |terminal, _| terminal.search_status())
+    }
+
     /// Synchronizes terminal state with the window for rendering.
     ///
     /// Should be called before rendering to ensure the terminal content is up to date.
@@ -506,6 +568,9 @@ impl Render for TerminalView {
             .on_action(cx.listener(Self::scroll_line_down))
             .on_action(cx.listener(Self::scroll_page_up))
             .on_action(cx.listener(Self::scroll_page_down))
+            .on_action(cx.listener(Self::search_next))
+            .on_action(cx.listener(Self::search_previous))
+            .on_action(cx.listener(Self::clear_search))
             .child(TerminalElement::new(
                 terminal,
                 focus_handle.clone(),

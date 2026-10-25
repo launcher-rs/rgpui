@@ -2106,6 +2106,9 @@ fn apply_paragraph_css(style: &mut ParagraphStyle, css: &str) {
         style.align = match v {
             "center" => TextAlign::Center,
             "right" => TextAlign::Right,
+            // `start` / `end` 是方向无关对齐，必须原样保留——绘制入口才按段落方向解析成左右。
+            "start" => TextAlign::Start,
+            "end" => TextAlign::End,
             _ => TextAlign::Left,
         };
     }
@@ -3134,6 +3137,31 @@ mod tests {
         assert_eq!(back.paragraphs[0].style.indent, 1);
         assert_eq!(back.paragraphs[1].style.list, ListKind::Bullet);
         assert_eq!(back.paragraphs[2].style.list, ListKind::Number);
+    }
+
+    /// 方向无关对齐（`Start` / `End`）经 HTML 往返后仍是 `Start` / `End`，
+    /// 不被提前解析成绝对的左右。
+    #[test]
+    fn html_logical_alignment_round_trip() {
+        let mut doc = RichTextDoc::new();
+        doc.paragraphs[0].runs = vec![Run::new("عربي")];
+        doc.paragraphs[0].style.align = TextAlign::Start;
+        let second = Paragraph {
+            runs: vec![Run::new("latin")],
+            style: ParagraphStyle {
+                align: TextAlign::End,
+                ..ParagraphStyle::default()
+            },
+        };
+        doc.paragraphs.push(second);
+
+        let html = doc.to_html();
+        assert!(html.contains("text-align:start"), "{html}");
+        assert!(html.contains("text-align:end"), "{html}");
+
+        let back = RichTextDoc::from_html(&html).unwrap();
+        assert_eq!(back.paragraphs[0].style.align, TextAlign::Start);
+        assert_eq!(back.paragraphs[1].style.align, TextAlign::End);
     }
 
     #[test]

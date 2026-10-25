@@ -11,7 +11,8 @@
 
 约 60 个组件。feature 门控：`charts`（图表，`mod.rs:86-87`/`167-168`）、
 `effects`（aurora/confetti/marquee/particle_emitter/ripple/shimmer/pulse_indicator）、
-`qr-code`、`dom-backend`（dom_svg）。
+`qr-code`、`dom-backend`（dom_svg）、`screen-capture`（吸管 `eyedropper`，非 components
+目录，见「日期/颜色/命令」）。
 
 ## 导入与初始化
 
@@ -49,8 +50,40 @@ tree 的快捷键。由统一 `init.rs:30` 调用。
 **DatePicker**（`date_picker.rs:17`）：`new()`（`:30`）、`select(NaiveDate)`（`:41`）、
 `on_change`（`:48`）、`selected() -> Option<NaiveDate>`（`:57`）。
 
-**ColorPicker**（`color_picker.rs:14`）：`new(window, cx)`（`:35`）、`color(Hsla)`（`:90`）、
-`on_change`（`:96`）、`color_value() -> Hsla`（`:105`）。
+**ColorPickerState**（`color_picker.rs:18`，状态实体，`impl Render` `:305`，经
+`cx.new(|cx| ColorPickerState::new(window, cx))` 创建后**直接嵌入实体**；没有独立的
+`ColorPicker` 元素类型）。构建：`new(window, cx)`（`:49`）、`color(Hsla)`（`:114`）、
+`on_change`（`:120`，`Fn(Hsla, &mut Window, &mut App) + Send + Sync + 'static`）、
+`show_palette(bool)`（`:129`，是否显示主题色板与最近颜色，默认开）、
+`recent_limit(usize)`（`:135`，最小 1，默认 `RECENT_COLORS_LIMIT` = 12）。
+读写：`color_value() -> Hsla`（`:141`）、`recents() -> &[Hsla]`（`:146`，最新在前）、
+`push_recent(color, cx) -> bool`（`:151`，去重置顶 + 截断，返回列表是否变化）、
+`clear_recents(cx)`（`:160`）、`set_color(color, window, cx)`（`:187`，直接应用颜色：
+同步三滑块与 hex 并触发 `on_change`，颜色以传入值为准不受滑块步长量化）、
+`begin_eyedropper(cx)`（`:171`，启动吸管，`screen-capture` feature 门控；取回的色经
+`pending_pick` 在下一次 render 应用）。最近颜色记录时机：点色板色块、hex 输入框回车、
+或应用显式 `push_recent`。示例：`cargo run -p showcase --bin color_picker`。
+
+**ColorPalette**（`color_palette.rs:75`，`#[derive(IntoElement)]` 色块自动换行网格，
+无 feature 门控；可作取色器快捷色板，也可独立用于「选一个预设色」）：
+`new(id)`（`:92`，id 在父级内唯一）、`colors(impl IntoIterator<Item = Hsla>)`（`:104`）、
+`selected(Option<Hsla>)`（`:110`，同色色块加描边）、`swatch_size(f32)`（`:116`，边长像素
+最小 6，默认 `SWATCH_SIZE` = 16）、`gap(f32)`（`:122`，非负，默认 `SWATCH_GAP` = 4）、
+`on_select(F)`（`:128`，`Fn(Hsla, &mut Window, &mut App) + 'static`）、
+`on_select_arc(Arc<dyn Fn(Hsla, &mut Window, &mut App) + 'static>)`（`:137`，多色板共享
+同一回调）。色板构建器：`theme_palette(cx: &App) -> Vec<Hsla>`（`:41`，主题主色/语义色/
+命名色共 18 项）、`color_name_palette(scale) -> Vec<Hsla>`（`:66`，指定色阶
+50–950 的全部命名色，非法色阶回退 500）；最近颜色维护为纯函数
+`push_recent(&mut Vec<Hsla>, Hsla, limit) -> bool`（`:28`，已存在先移除再置顶、截断到
+limit，已在首位且未超限返回 `false`），上限常量 `RECENT_COLORS_LIMIT = 12`（`:19`）。
+
+**吸管（屏幕取色）**（`screen-capture` feature 门控：`pub mod eyedropper;` `rgpui.rs:315`，
+`Cargo.toml` `screen-capture = ["scap"]`）：`open_eyedropper(cx, on_result)`
+（`eyedropper.rs:70`）抓主屏**首帧**打开全屏冻结 Overlay（十字线 + 9×9 放大镜 +
+HEX/RGB 信息条；启动推流取首帧即停流，全程内存不落盘），左键确认、右键/`Esc` 取消；
+`EyedropperResult`（`:55`）为 `Picked(Hsla)` / `Cancelled` / `Failed(SharedString)`
+（不支持环境 / 无捕获源 / 推流启动失败 / 首帧超时 / 开窗失败等中文原因），回调在主线程
+`App` 上下文恰好触发一次。`ColorPickerState::begin_eyedropper` 即其接线。
 
 **CommandPalette**（`command_palette.rs:220`）：`new(window, cx, Vec<Command>)`（`:235`）、
 `on_close`（`:264`）。`CommandPaletteState`（`:130`）：`new(commands)`（`:145`）、
@@ -200,6 +233,7 @@ action：`OTPBackspace`/`OTPDelete`/`OTPLeft`/`OTPRight`/`OTPHome`/`OTPEnd`/`OTP
 | `effects` | `Aurora`、`Confetti`、`Marquee`、`ParticleEmitter`、`Ripple`、`Shimmer`、`PulseIndicator` | `components/{aurora,confetti,marquee,particle_emitter,ripple,shimmer,pulse_indicator}.rs` |
 | `qr-code` | `QrCode` | `components/qr_code.rs` |
 | `dom-backend` | `dom_svg`（内部） | `components/dom_svg.rs` |
+| `screen-capture` | 吸管 `open_eyedropper`/`EyedropperResult`（`ColorPickerState::begin_eyedropper` 接线） | `eyedropper.rs` |
 
 启用示例：`cargo run -p showcase --all-features --bin charts` / `--bin effects` / `--bin qr_code`。
 

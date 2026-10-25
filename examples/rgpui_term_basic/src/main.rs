@@ -17,8 +17,8 @@ use rgpui::{
 };
 use rgpui_platform::application;
 use rgpui_term::{
-    Clear, Copy, Event, InputOrigin, Paste, SelectAll, Terminal, TerminalBuilder, TerminalConfig,
-    TerminalContent, TerminalMiddleware, TerminalView, TextStyle, ThemeManager,
+    Clear, Copy, Event, InputOrigin, Paste, SearchStatus, SelectAll, Terminal, TerminalBuilder,
+    TerminalConfig, TerminalContent, TerminalMiddleware, TerminalView, TextStyle, ThemeManager,
 };
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -62,6 +62,8 @@ const SIDEBAR_HEADER_LEFT_PADDING: f32 = 68.0;
 const TEXT_PRIMARY: u32 = 0xd8d8d8;
 const TEXT_SUBTLE: u32 = 0xa6a6a6;
 const TEXT_FAINT: u32 = 0x5a5a5a;
+// 搜索无匹配 / 正则非法的提示色
+const TEXT_WARN: u32 = 0xe06c75;
 
 const SURFACE_SIDEBAR: u32 = 0x202020;
 const BORDER_SOFT: u32 = 0x3a3a3a;
@@ -380,6 +382,7 @@ fn main() {
                     search_query: String::new(),
                     term_search_visible: false,
                     term_search_query: String::new(),
+                    term_search_regex: false,
                     favorites,
                     recent_dirs,
                     saved_workspaces,
@@ -573,6 +576,8 @@ struct AgentTermApp {
     // 终端内容搜索（Ctrl/Cmd+F 呼出，与侧栏会话过滤无关）
     term_search_visible: bool,
     term_search_query: String,
+    // 关键词是否按正则处理；默认关闭（字面量），Alt+R 切换
+    term_search_regex: bool,
     // Favorites
     favorites: FavoritesData,
     // Recent directories
@@ -937,12 +942,39 @@ impl AgentTermApp {
     }
 
     /// 把搜索条里的查询词下发给活动终端（增量重算首个匹配）。
+    ///
+    /// 默认走字面量入口：用户输入的 `.` `(` `[` 就是它本身，不会被当成正则元字符；
+    /// 按 Alt+R 切到正则模式后才交给 `Terminal::search`。
     fn apply_term_search(&mut self, cx: &mut Context<Self>) {
         let query = self.term_search_query.clone();
+        let regex = self.term_search_regex;
         if let Some(terminal) = self.active_terminal() {
-            terminal.update(cx, |terminal, _| terminal.search(&query));
+            terminal.update(cx, |terminal, _| {
+                if regex {
+                    terminal.search(&query);
+                } else {
+                    terminal.search_literal(&query);
+                }
+            });
         }
         cx.notify();
+    }
+
+    /// 当前活动终端的搜索状态（非法 / 无匹配 / 命中 / 未激活）。
+    fn term_search_status(&self, cx: &App) -> SearchStatus {
+        self.active_terminal()
+            .map(|terminal| terminal.read(cx).search_status())
+            .unwrap_or(SearchStatus::Idle)
+    }
+
+    /// 搜索状态的中文提示（搜索条右侧回显，区分「非法正则」与「无匹配」）。
+    fn term_search_status_text(&self, cx: &App) -> Cow<'static, str> {
+        match self.term_search_status(cx) {
+            SearchStatus::Idle => Cow::from(""),
+            SearchStatus::Invalid => Cow::from("正则非法"),
+            SearchStatus::NotFound => Cow::from("无匹配"),
+            SearchStatus::Matched => Cow::from("已命中"),
+        }
     }
 
     /// 搜索条打开期间的按键路由：可打印字符进查询词，Enter/Shift+Enter 跳匹配，
@@ -978,6 +1010,11 @@ impl AgentTermApp {
             }
             "space" => {
                 self.term_search_query.push(' ');
+                self.apply_term_search(cx);
+            }
+            // Alt+R 切换字面量 / 正则模式，切换后立刻按新模式重算
+            "r" if modifiers.alt => {
+                self.term_search_regex = !self.term_search_regex;
                 self.apply_term_search(cx);
             }
             key => {
@@ -1019,7 +1056,7 @@ impl AgentTermApp {
                         rgb(TEXT_PRIMARY)
                     })
                     .child(if self.term_search_query.is_empty() {
-                        "搜索终端内容…（Esc 关闭）".to_string()
+                        "搜索终端内容…（Alt+R 切换字面/正则，Esc 关闭）".to_string()
                     } else {
                         format!("{}▏", self.term_search_query)
                     }),
@@ -1057,6 +1094,46 @@ impl AgentTermApp {
                             }
                         }),
                     ),
+            )
+            .child(
+                div()
+                    .id("term-search-mode")
+                    .cursor_pointer()
+                    .px(px(6.0))
+                    .rounded(px(4.0))
+                    .text_sm()
+                    .bg(if self.term_search_regex {
+                        rgb(TEXT_FAINT)
+                    } else {
+                        rgba(0x00000000)
+                    })
+                    .text_color(if self.term_search_regex {
+                        rgb(TEXT_PRIMARY)
+                    } else {
+                        rgb(TEXT_SUBTLE)
+                    })
+                    .child(if self.term_search_regex {
+                        "正则"
+                    } else {
+                        "字面"
+                    })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.term_search_regex = !this.term_search_regex;
+                            this.apply_term_search(cx);
+                        }),
+                    ),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(if self.term_search_status(cx) == SearchStatus::Matched {
+                        rgb(TEXT_SUBTLE)
+                    } else {
+                        rgb(TEXT_WARN)
+                    })
+                    .child(self.term_search_status_text(cx)),
             )
             .child(
                 div()

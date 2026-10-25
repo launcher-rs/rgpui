@@ -161,7 +161,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 | 对话框 | `dialog/` | `Dialog`、`AlertDialog`、`DialogHeader/Content/Footer`、`FocusTrapElement` |
 | 列表/表格/标签页 | `list/`、`table/`、`tabs/` | `List`、`VirtualList`、`DataTable`（表格语义：根 `Role::Table`、行 `Role::Row`、单元格 `Role::Cell` + 行列索引 `aria_row_index`/`aria_column_index`）、`TabBar`、`Accordion` |
 | 电子表格网格（`spreadsheet` feature 门控） | `sheet_grid.rs` | `SheetGrid`/`SheetGridState`/`SheetGridEvent`/`CellRef`/`CellRange`/`SheetDelegate`；无障碍语义：根 `Role::Grid`、单元格 `Role::Cell` + 行列索引、列头 `Role::ColumnHeader`、行头 `Role::RowHeader` |
-| 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState`、`Sidebar`/`SidebarSection`、`Select`、`Combobox`、`DatePicker`、`ColorPicker`、`Pagination`、`Steps`、`Timeline`、`Rate`、`Upload`、`Carousel`、`MermaidDiagram`、`DockArea` 等（`charts`/`effects`/`qr-code` feature 门控） |
+| 标题栏/扩展 | `title_bar/`、`components/` | `TitleBar`、动画 13 组件、`SplitPane`、`CommandPalette`、`ImageViewer`、`SearchPanelState`、`Sidebar`/`SidebarSection`、`Select`、`ComboboxState`、`DatePickerState`、`ColorPickerState`、`Pagination`、`Steps`、`Timeline`、`Rate`、`UploadState`、`Carousel`、`MermaidDiagram`、`DockArea` 等（`charts`/`effects`/`qr-code` feature 门控） |
 | 动画/手势/物理 | `animation/`（`spring.rs` / `easing.rs` / `mod.rs` 里的手势与物理） | `Spring`、`GestureDetector`、`ScrollPhysics` |
 | 对话（AI-chat） | `chat/` | `Message`/`MessageGroup`/`ChatView`、`Prompts`、`Suggestion`、`ThoughtChain`、`Attachments`/`FileCard`、`Sources`、`Actions`、`Sender`、`Bubble`、`MessageScroller`、`Marker` |
 | 剪贴板（核心，无 feature 门控） | `platform.rs`（`Platform::read/write_to_clipboard`，各平台 `clipboard.rs`/`pasteboard.rs`） | `ClipboardItem`/`ClipboardEntry`/`ClipboardString`/`ClipboardFormat`；富负载条目 `ClipboardEntry::Format`（HTML/RTF/CSV/自定义 MIME，MIME 常量见 `ClipboardFormat::{HTML,RTF,PLAIN_TEXT,CSV,TSV,MARKDOWN,URI_LIST}`），构造器 `new_html`/`new_rtf`/`new_with_format`/`with_string`/`with_format`，读取 `text`/`html`/`rtf`/`format`/`formats` |
@@ -176,9 +176,9 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 | 画布语义（核心，无 feature 门控） | `canvas_a11y.rs`（+ `elements/canvas.rs` 接线） | `CanvasNodeId`/`CanvasNode`/`CanvasSemantics`/`CanvasActionHandler`；`CanvasNode::{new,with_value,with_description,with_bounds,disabled,selected,focused,with_action,with_actions,set_*}`、`CanvasSemantics::{new,push,extend,clear,get,get_mut,index_of,hit_test,reading_order,first_in_reading_order,next_in_reading_order,window_bounds,with_row_tolerance,fill_empty_bounds}`；几何 `reading_order_indices`/`node_at_point`/`next_in_order`/`window_bounds`；无障碍桥 `accesskit_node`/`push_canvas_a11y`/`register_canvas_a11y_actions`（框架侧 `A11ySubtreeBuilder::{push_child_with_bounds,scale_factor}`、`synthetic_child_node_id`）；元素 `Canvas::{id,a11y,a11y_label,on_canvas_a11y_action}`（零尺寸语义节点发布时按画布大小填充）；接线组件 `InkLayerElement::a11y`、`Sparkline::a11y`、`Waveform::a11y`、`PieChart::a11y`、`Gauge::a11y`、`RadarChart::a11y`、`TreeMap::a11y`、`LineChart::a11y`、`AreaChart::a11y`、`Chart::a11y`（后七个随 `charts` feature，整体摘要节点） |
 | 双向文字 bidi（核心，无 feature 门控） | `bidi.rs`（+ `style.rs` 的 `TextAlign`、`text_system/line.rs` 绘制入口、`rgpui-dom` CSS 映射） | `TextDirection`（`Ltr`/`Rtl`）、`TextDirection::{resolve,is_rtl,for_locale}`（`resolve` 为 HTML `dir=auto` 口径：首个强方向字符，无强方向字符回退 LTR；`for_locale` 按语言标签给基准方向）、`primary_language`/`is_rtl_locale`（CLDR 常用 RTL 语言、主语言子标签、大小写不敏感）、`strong_direction`/`is_rtl_char`（UBA `L`/`R`/`AL`，基于 `unicode-bidi`）；`TextAlign::{Start,End}` + `TextAlign::resolve(TextDirection)`（按段落自身方向在绘制入口解析；`rich_text`/DOM 后端分别透传 `text-align:start\|end`） |
 | 东亚断行禁则（核心，无 feature 门控） | `line_break.rs`（+ `text_system/line_wrapper.rs`、`text_system/line_layout.rs` 接线） | `BreakClass`/`break_class`、`is_ideographic`、`is_line_start_prohibited`（行首禁则）/`is_line_end_prohibited`（行末禁则）/`is_no_break`（胶连字符）/`can_break_between`；两条换行路径在候选断点处按禁则否决（不改半角 ASCII 标点行为） |
-| 应用套件基座（`ribbon` / `viewport` / `spreadsheet` / `document` / `control-channel` feature；`commands.rs` 为核心，其余默认关闭） | `commands.rs`、`ribbon.rs`、`keytips.rs`、`qat.rs`、`mini_toolbar.rs`、`backstage.rs`、`viewport.rs`、`guides.rs`、`formula_bar.rs`、`sheet_grid.rs`、`page_view.rs`、`object_toolkit.rs`、`control_channel.rs`、`mcp.rs` | `CommandDescriptor`/`CommandRegistry`/`register_command!`/`App::dispatch_command`/`label_for`/`CommandRegistry::validate`、`Ribbon`/`RibbonState`/`RibbonTab`/`RibbonGroup`/`RibbonItem`/`RibbonSplitButton`/`RibbonGallery`/`RibbonComboBox`、`KeyTip`/`KeyTipScope`/`resolve_key`、`QuickAccessToolbar`/`QatItem`/`QatButton`、`MiniToolbar`、`Backstage`/`BackstageState`/`BackstageTab`、`Viewport`、`ruler_ticks`/`align`、`FormulaBar`/`FormulaBarState`/`FormulaBarEvent`（`spreadsheet`）、`SheetGrid`/`SheetGridState`/`SheetGridEvent`/`SheetDelegate`/`CellRef`/`CellRange`/`column_label`（`spreadsheet`）、`PageView`/`PageLayout`/`PageSetup`/`PageSize`/`PageMargins`/`PageArrangement`/`PageLabels`（`document`）、`ResizeHandle`/`SelectionHandles`/`AlignMode`/`handle_point`/`handle_point_rotated`/`hit_handle`/`hit_handle_rotated`/`marquee_bounds`/`marquee_hits`/`MarqueeMode`/`resize_bounds`/`rotate_point`/`angle_between`/`union_bounds`/`align`/`distribute`（`viewport`）、`ControlChannel`/`ControlChannelOptions`/`App::start_control_channel`/`McpServer`/`tool_name`（`control-channel`） |
+| 应用套件基座（`ribbon` / `viewport` / `spreadsheet` / `document` / `control-channel` feature；`commands.rs` 为核心，其余默认关闭） | `commands.rs`、`ribbon.rs`、`keytips.rs`、`qat.rs`、`mini_toolbar.rs`、`backstage.rs`、`viewport.rs`、`guides.rs`、`formula_bar.rs`、`sheet_grid.rs`、`page_view.rs`、`object_toolkit.rs`、`control_channel.rs`、`mcp.rs` | `CommandDescriptor`/`CommandRegistry`/`CommandRegistration`/`register_command!`/`App::dispatch_command`/`label_for`/`CommandRegistry::validate`、`Ribbon`/`RibbonState`/`RibbonContext`/`RibbonTab`/`RibbonGroup`/`RibbonItem`/`RibbonButton`/`RibbonToggle`/`RibbonDropdown`/`RibbonDropdownItem`/`RibbonSplitButton`/`RibbonGallery`/`RibbonGalleryItem`/`RibbonComboBox`/`RibbonComboBoxItem`、`KeyTip`/`KeyTipScope`/`KeyTipMatch`/`resolve_key`/`keytip_visible`/`derive_keytip`、`QuickAccessToolbar`/`QatItem`/`QatButton`、`MiniToolbar`（**未自动绑定编辑器选区**，由宿主自行挂接）、`Backstage`/`BackstageState`/`BackstageTab`、`Viewport`、`RulerTicks`/`ruler_ticks`/`nice_step`/`Guide`/`GuideAxis`/`Anchor`/`SnapResult`/`align`（`guides`）、`FormulaBar`/`FormulaBarState`/`FormulaBarEvent`（`spreadsheet`）、`SheetGrid`/`SheetGridState`/`SheetGridEvent`/`SheetDelegate`/`CellRef`/`CellRange`/`column_label`（`spreadsheet`；**只做 UI 基座与单元格模型，仓库内没有公式求值引擎**，计算由宿主实现 `SheetDelegate`）、`PageView`/`PageLayout`/`PageSetup`/`PageSize`/`PageMargins`/`PageArrangement`/`PageLabels`（`document`）、`ResizeHandle`/`SelectionHandles`/`AlignMode`/`handle_point`/`handle_point_rotated`/`hit_handle`/`hit_handle_rotated`/`marquee_bounds`/`marquee_hits`/`MarqueeMode`/`resize_bounds`/`rotate_point`/`angle_between`/`union_bounds`/`align`/`distribute`（`viewport`）、`ControlChannel`/`ControlChannelOptions`/`App::start_control_channel`/`McpServer`/`tool_name`（`control-channel`） |
 | 国际化 i18n（核心，无 feature 门控） | `i18n/mod.rs`（+ `bidi.rs` 的语言方向查表） | `I18nManager`（`new`/`with_fallback`/`load_translations`/`load_translations_map`/`load_locale_dir`/`t`/`set_locale`/`available_locales`/`snapshot`/`restore`）、`Locale`/`Translation`/`I18nSnapshot`；`direction`/`is_rtl`（语言标签 → 基准方向，走 `TextDirection::for_locale`）、`validate`（目录审计：空目录 / 当前或回退语言未加载 / 逐语言缺 key）；`bidi::primary_language`/`is_rtl_locale` |
-| 终端（`rgpui-term` 独立 crate） | `terminal.rs`、`terminal_element.rs`、`terminal_view.rs` | `Terminal`/`TerminalView`；IME 中文/日文输入：组合文本存 `Terminal::ime_composition`（`set_ime_composition`/`ime_composition`），`TerminalInputHandler` 按 UTF-16 区间（`utf16_slice`）应答 `marked_text_range`/`text_for_range`，组合期间在光标处画下划线预览（`LayoutState::composition`），`replace_text_in_range` 上屏到 PTY；组合期间 `on_key_down` 不直送终端 |
+| 终端（`rgpui-term` 独立 crate） | `terminal.rs`、`terminal_element.rs`、`terminal_view.rs`、`external.rs` | `Terminal`/`TerminalView`；**内容搜索**：`Terminal::{search,search_literal,search_next,search_previous,clear_search,search_status,search_query,search_is_literal,search_current}`（`search_literal` 走 `escape_literal` 转义元字符，不需要额外 `regex` 依赖），状态经 `Event::SearchUpdated(SearchStatus)`（`Idle`/`Invalid`/`NotFound`/`Matched`）回传，非法正则与「按下一处没反应」都不再静默；命中区间按 `output_revision` 在新输出/缩放后重定位（`refresh_search`），高亮不随滚动漂移；`TerminalView` 侧对应 `search`/`search_literal`/`search_status` + `SearchNext`/`SearchPrevious`/`ClearSearch` action；**OSC 8 超链接**：`hyperlink_at(point)` + `Event::HyperlinkClick(uri)`，元素层给链接加下划线与主题色；**外接 IO 后端**：`TerminalBuilder::new_external` → `take_external_handles()` 取 `ExternalHandles::{feed,rx}`（下行注入远端字节、上行 `PtyBoundMessage::{Input,Resize}`），用于 SSH/串口等非 PTY 传输，真实调用点见 `cargo run -p rgpui_term_basic --bin external_io`；IME 中文/日文输入：组合文本存 `Terminal::ime_composition`（`set_ime_composition`/`ime_composition`），`TerminalInputHandler` 按 UTF-16 区间（`utf16_slice`）应答 `marked_text_range`/`text_for_range`，组合期间在光标处画下划线预览（`LayoutState::composition`），`replace_text_in_range` 上屏到 PTY；组合期间 `on_key_down` 不直送终端 |
 | Markdown 渲染（`rgpui-markdown` 独立 crate；公式 / 图表随 feature 门控） | `crates/rgpui-markdown/src/{markdown,rich_text,code_block,latex,mermaid,svg_image,toc}.rs` | `Markdown`（解析 + 渲染）、`RichBlock`/`RichInline`（块模型，含 `Math` 变体）、`render_blocks`/`render_blocks_with`/`render_blocks_with_svg`、`CodeBlock`；文档大纲 `extract_headings`/`Heading`（级别 / 文本 / 源码区间 / 锚点 slug）；脚注引用 `RichInline::FootnoteRef`（`[^label]` 标记按链接色渲染）；公式管线 `render_latex_svg`/`latex_image`/`LatexImage`（`latex` feature：ratex 解析 → 排版 → SVG（字形转路径）→ usvg 光栅化；`$...$` 行内 / `$$...$$` 展示，失败降级为源码文本）；图表管线 `render_mermaid_svg`/`mermaid_image`/`is_mermaid_language`（`mermaid` feature：`mermaid-rs-renderer` → SVG → usvg；` ```mermaid ` 围栏自动成图，配色跟随主题深浅，失败降级为代码块）；任务列表渲染真复选框（勾选填充主色 + 文本删除线变暗） |
 
 `prelude` 含：`ActiveTheme`、`ElementExt`、`InteractiveElementExt`、`Selectable`、
@@ -253,5 +253,37 @@ Web 示例是独立子 crate（含 `index.html`、`trunk.toml`、`.cargo/config.
 ## 代码规范
 
 - 所有函数中文注释（`///` 公开 API，`//` 内部逻辑），不写英文注释。
+- **改了公开 API 就同步改 `skills/rgpui/references/`**：技能是 AI 编码时唯一能被自动
+  加载的 API 地图，`readme.md` 面向人类、`AGENTS.md` 面向约束，三者口径不一致时
+  AI 会照着过期的签名写代码。技能里每个符号都要能在源码里 grep 到（1.6 审查就抓到
+  `components.md` 把 `ColorPickerState` 写成不存在的 `ColorPicker`、
+  `treemap::{Treemap, TreemapItem}` 之类的「宣称的类型」）。
+
+## AI 编码技能（skills/rgpui）
+
+`skills/rgpui/SKILL.md` 是路由表（按主题指向 `references/*.md`，1.6 从 45 篇扩到 54 篇）。
+**仓库根的 `skills/` 本身不是 CLI 的扫描路径**，所以它不会被自动加载；本仓以
+Qoder 插件形式暴露（清单 `.qoder-plugin/plugin.json`，`"skills": "./skills/"`，
+插件名 `rgpui` 与目录名一致）：
+
+```bash
+# 先自检清单与技能目录（只读，不写用户配置）：
+qodercli plugins validate .
+# 安装（--scope 可选 user 全局 / project 随仓库共享 / local 个人不提交）：
+qodercli plugins install C:\code\rgpui_workspace\rgpui --scope user
+```
+
+改过 `SKILL.md` 或 `references/*.md` 后，重跑同一条 `plugins install` 即为刷新
+（本地目录安装不走 `plugins update`，那条是给 marketplace 源用的）。
+
+想让某个项目走**项目级**发现，可建目录联接 `.qoder\skills` → `skills`
+（`mklink /J` 即可，无需管理员权限）。注意 `.gitignore` 里现有 `.qoder/` 一条
+会让 `--scope project` 的落地文件与联接都进不了仓库 —— 要团队共享技能就先把
+需要提交的那部分从 `.qoder/` 整目录豁免出来。
+
+调用口径：CLI 只把 frontmatter 的 `name` + `description`（≤1024 字符）常驻，
+命中描述才展开 `SKILL.md`，`SKILL.md` 里的相对链接再按需展开单篇 reference
+（渐进披露）；手动入口是 `/rgpui`。所以 **`description` 要覆盖全部任务面**，
+路由表的「何时加载」列要写具体的类型名/命令，agent 是靠这些词决定读哪篇。
 
 

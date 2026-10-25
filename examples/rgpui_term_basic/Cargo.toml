@@ -8,6 +8,11 @@ publish = false
 name = "basic"
 path = "src/main.rs"
 
+# 外接 IO 后端（new_external）演示：无本地 PTY，自喂远端字节流
+[[bin]]
+name = "external_io"
+path = "src/bin/external_io.rs"
+
 [dependencies]
 log.workspace = true
 rgpui-term.workspace = true

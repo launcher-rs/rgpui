@@ -3,8 +3,11 @@ name = "rgpui-term"
 version.workspace = true
 edition.workspace = true
 publish = true
-description = "终端模拟器组件"
+description = "rgpui 终端组件：Alacritty 仿真内核 + 本地 PTY / 外接字节流后端、内容搜索、OSC 8 超链接、IME 输入"
 license = "Apache-2.0"
+readme = "README.md"
+keywords = ["terminal", "pty", "tui", "gui"]
+categories = ["gui", "asynchronous"]
 repository = "https://github.com/launcher-rs/rgpui"
 
 [dependencies]
