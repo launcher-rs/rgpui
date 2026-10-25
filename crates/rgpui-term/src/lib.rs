@@ -17,11 +17,12 @@ pub use config::{TerminalConfig, TerminalTheme, TerminalThemeConfig, hsla_from_r
 pub use external::{ExternalHandles, FeedHandle, PtyBoundMessage, PtyBoundReceiver};
 pub use middleware::{InputOrigin, TerminalMiddleware};
 pub use terminal::{
-    Event, IndexedCell, Terminal, TerminalBounds, TerminalBuilder, TerminalContent, ZedListener,
+    Event, IndexedCell, SearchStatus, Terminal, TerminalBounds, TerminalBuilder, TerminalContent,
+    ZedListener,
 };
 pub use terminal_element::{TerminalElement, TextStyle, convert_color};
 pub use terminal_view::{
-    ChangeTheme, Clear, Copy, Paste, ScrollLineDown, ScrollLineUp, ScrollPageDown, ScrollPageUp,
-    SelectAll, TerminalView,
+    ChangeTheme, Clear, ClearSearch, Copy, Paste, ScrollLineDown, ScrollLineUp, ScrollPageDown,
+    ScrollPageUp, SearchNext, SearchPrevious, SelectAll, TerminalView,
 };
 pub use theme_manager::{ThemeDefinition, ThemeManager};

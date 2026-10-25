@@ -108,6 +108,26 @@ pub enum Event {
     CloseTerminal,
     /// 点击了 OSC 8 超链接（携带 URI）
     HyperlinkClick(String),
+    /// 搜索匹配状态变化（关键词非法 / 无匹配 / 命中）
+    SearchUpdated(SearchStatus),
+}
+
+/// 搜索关键词的匹配状态。
+///
+/// 搜索是异步排队的（[`Terminal::search`] 只入队，实际编译与定位在
+/// [`Terminal::sync`] 期间完成），因此 UI 侧通过本状态（随
+/// [`Event::SearchUpdated`] 发出，也可用 [`Terminal::search_status`] 主动查询）
+/// 区分「关键词非法」「无匹配」与「命中」，而不是只看高亮有没有出现。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SearchStatus {
+    /// 未设置搜索（或已清除）
+    Idle,
+    /// 关键词无法编译为正则
+    Invalid,
+    /// 关键词有效但当前网格内没有匹配
+    NotFound,
+    /// 命中当前匹配（坐标见 [`Terminal::search_current`]）
+    Matched,
 }
 
 impl EventEmitter<Event> for Terminal {}
@@ -137,8 +157,11 @@ enum InternalEvent {
     SetSelection(Option<(Selection, AlacPoint)>),
     UpdateSelection(Point<Pixels>),
     Copy(Option<bool>),
-    /// 设置搜索关键词（空串表示清除）。
-    SearchSet(String),
+    /// 设置搜索关键词（空串表示清除）；`literal` 为真时按字面量匹配。
+    SearchSet {
+        query: String,
+        literal: bool,
+    },
     /// 在搜索结果间步进。
     SearchStep(AlacDirection),
 }
@@ -149,10 +172,18 @@ enum InternalEvent {
 /// query 全小写时忽略大小写，搜索范围覆盖全部滚动历史并自动回绕。
 /// query 编译失败时保持空状态（无匹配）。
 pub struct TerminalSearch {
+    /// 原始关键词（新输出到达后据此重定位）
+    query: String,
+    /// 关键词是否按字面量匹配（假定时关键词直接当正则处理）
+    literal: bool,
     /// 已编译正则
     regex: Option<RegexSearch>,
     /// 当前高亮的匹配（网格坐标）
     current: Option<SelectionRange>,
+    /// 当前匹配状态
+    status: SearchStatus,
+    /// 本次定位对应的输出轮次；轮次变化说明网格已漂移，需按 [`Self::query`] 重定位
+    revision: u64,
 }
 
 /// 终端尺寸管理。
@@ -537,6 +568,7 @@ impl TerminalBuilder {
                 block_tracker: BlockTracker::new(),
                 ime_composition: None,
                 search: None,
+                output_revision: 0,
             };
 
             Ok(TerminalBuilder {
@@ -598,6 +630,7 @@ impl TerminalBuilder {
             block_tracker: BlockTracker::new(),
             ime_composition: None,
             search: None,
+            output_revision: 0,
         };
 
         Ok(TerminalBuilder {
@@ -715,6 +748,8 @@ pub struct Terminal {
     ime_composition: Option<String>,
     /// 终端内容搜索（`None` 表示未激活）
     search: Option<TerminalSearch>,
+    /// 输出轮次：每次新输出到达或网格 resize 时递增，用于判定搜索高亮是否漂移
+    output_revision: u64,
 }
 
 impl Terminal {
@@ -852,6 +887,9 @@ impl Terminal {
             self.process_terminal_event(&event, &mut terminal, cx);
         }
 
+        // 渲染前先按输出轮次重定位搜索高亮（新输出/重排会让网格坐标漂移）。
+        self.refresh_search(&mut terminal, cx);
+
         self.last_content = Self::make_content(&terminal, &self.last_content);
 
         // 将当前搜索匹配同步到渲染内容
@@ -973,13 +1011,31 @@ impl Terminal {
         self.events.push_back(InternalEvent::Clear);
     }
 
-    /// 在终端内容（含滚动历史）中设置搜索关键词。
+    /// 在终端内容（含滚动历史）中按**正则**设置搜索关键词。
     ///
     /// 语义与 alacritty 一致：query 全小写时忽略大小写；找到的第一个匹配
     /// 从光标位置起向右搜索。空串清除搜索。
+    ///
+    /// 关键词按正则编译，非法正则不会中断会话，只会让状态变为
+    /// [`SearchStatus::Invalid`]（并 emit [`Event::SearchUpdated`]）；
+    /// 直接把用户输入喂给本方法时，输入 `.` `(` `[` 等元字符会得到正则语义，
+    /// 需要「所见即所搜」请改用 [`Self::search_literal`]。
     pub fn search(&mut self, query: &str) {
-        self.events
-            .push_back(InternalEvent::SearchSet(query.to_string()));
+        self.events.push_back(InternalEvent::SearchSet {
+            query: query.to_string(),
+            literal: false,
+        });
+    }
+
+    /// 按**字面量**搜索：先转义正则元字符，再交给搜索内核。
+    ///
+    /// 用于搜索条这类直接吃用户输入的场合，保证 `foo(bar)` 只匹配它本身。
+    /// 大小写语义与 [`Self::search`] 相同（全小写关键词忽略大小写）。
+    pub fn search_literal(&mut self, query: &str) {
+        self.events.push_back(InternalEvent::SearchSet {
+            query: query.to_string(),
+            literal: true,
+        });
     }
 
     /// 跳到下一个匹配（覆盖全部滚动历史，自动回绕）。
@@ -996,8 +1052,30 @@ impl Terminal {
 
     /// 清除搜索状态与高亮。
     pub fn clear_search(&mut self) {
-        self.events
-            .push_back(InternalEvent::SearchSet(String::new()));
+        self.events.push_back(InternalEvent::SearchSet {
+            query: String::new(),
+            literal: false,
+        });
+    }
+
+    /// 当前搜索匹配状态（关键词非法 / 无匹配 / 命中）。
+    pub fn search_status(&self) -> SearchStatus {
+        self.search
+            .as_ref()
+            .map(|search| search.status)
+            .unwrap_or(SearchStatus::Idle)
+    }
+
+    /// 当前生效的搜索关键词（未激活搜索时为 `None`）。
+    ///
+    /// 供搜索条回显：内核是排队执行的，UI 侧不必自己留一份关键词副本。
+    pub fn search_query(&self) -> Option<&str> {
+        self.search.as_ref().map(|search| search.query.as_str())
+    }
+
+    /// 当前关键词是否按字面量匹配（未激活搜索时为 `None`）。
+    pub fn search_is_literal(&self) -> Option<bool> {
+        self.search.as_ref().map(|search| search.literal)
     }
 
     /// 当前搜索匹配（网格坐标）。
@@ -1359,6 +1437,8 @@ impl Terminal {
                 cx.emit(event);
             }
             AlacTermEvent::Wakeup => {
+                // 新输出到达：既有匹配的网格坐标可能已被滚动历史挪动。
+                self.output_revision += 1;
                 let event = Event::Wakeup;
                 self.notify_middlewares_event(&event);
                 cx.emit(event);
@@ -1390,6 +1470,8 @@ impl Terminal {
 
                 self.pty_backend.on_resize(new_bounds.into());
                 term.resize(new_bounds);
+                // 网格重排会挪动既有匹配，标脏让搜索在下次 sync 重定位。
+                self.output_revision += 1;
             }
             InternalEvent::Clear => {
                 term.clear_screen(ClearMode::Saved);
@@ -1460,8 +1542,8 @@ impl Terminal {
                     }
                 }
             }
-            InternalEvent::SearchSet(query) => {
-                self.process_search_set(query.as_str(), term, cx);
+            InternalEvent::SearchSet { query, literal } => {
+                self.process_search_set(query.as_str(), *literal, term, cx);
             }
             InternalEvent::SearchStep(direction) => {
                 self.process_search_step(*direction, term, cx);
@@ -1470,41 +1552,122 @@ impl Terminal {
     }
 
     /// 处理搜索关键词设置（持有终端锁）。
+    ///
+    /// `literal` 为真时先把关键词转义成正则字面量；无论走哪条路径，结果状态都会
+    /// 随 [`Event::SearchUpdated`] 发出，供搜索条区分「非法 / 无匹配 / 命中」。
     fn process_search_set(
         &mut self,
         query: &str,
+        literal: bool,
         term: &mut Term<ZedListener>,
         cx: &mut Context<Self>,
     ) {
         if query.is_empty() {
             self.search = None;
+            cx.emit(Event::SearchUpdated(SearchStatus::Idle));
             cx.emit(Event::Wakeup);
             return;
         }
 
-        let mut regex = match RegexSearch::new(query) {
+        let pattern = if literal {
+            Self::escape_literal(query)
+        } else {
+            query.to_string()
+        };
+
+        let mut regex = match RegexSearch::new(&pattern) {
             Ok(regex) => Some(regex),
             Err(error) => {
-                log::warn!("failed to compile terminal search regex {query:?}: {error}");
+                log::warn!("failed to compile terminal search regex {pattern:?}: {error}");
                 None
             }
         };
 
         // 初次定位：从光标位置起向右找第一个匹配（无则回绕到网格顶端）。
         let first = regex.as_mut().and_then(|regex| {
-            let origin = term.grid().cursor.point;
-            Self::search_match(term, regex, origin, AlacDirection::Right)
+            Self::search_match(term, regex, term.grid().cursor.point, AlacDirection::Right)
         });
 
+        let status = match (&regex, &first) {
+            (Some(_), Some(_)) => SearchStatus::Matched,
+            (Some(_), None) => SearchStatus::NotFound,
+            (None, _) => SearchStatus::Invalid,
+        };
+
         self.search = Some(TerminalSearch {
+            query: query.to_string(),
+            literal,
             regex,
             current: first,
+            status,
+            revision: self.output_revision,
         });
 
         if let Some(range) = &first {
             term.scroll_to_point(range.start);
         }
+        cx.emit(Event::SearchUpdated(status));
         cx.emit(Event::Wakeup);
+    }
+
+    /// 转义正则元字符，让关键词按字面量匹配。
+    ///
+    /// 不引入 `regex` 依赖；元字符集覆盖 `regex-syntax` 的转义要求，多转义
+    /// 非元字符是安全的（`-` `#` `&` 只在字符类/带 `x` 模式时才是元字符）。
+    fn escape_literal(query: &str) -> String {
+        const META: [char; 18] = [
+            '.', '+', '*', '?', '(', ')', '[', ']', '{', '}', '|', '\\', '^', '$', '#', '&', '-',
+            '~',
+        ];
+        let mut escaped = String::with_capacity(query.len());
+        for ch in query.chars() {
+            if META.contains(&ch) {
+                escaped.push('\\');
+            }
+            escaped.push(ch);
+        }
+        escaped
+    }
+
+    /// 新输出到达或网格重排后重定位当前匹配。
+    ///
+    /// 搜索状态存的是网格坐标，输出滚动会把同一段文本挪到别的行；轮次变化时
+    /// 从既有匹配前一格起向右重找，命中就跟随、丢失则转 [`SearchStatus::NotFound`]，
+    /// 避免高亮盖在已经漂移的单元格上。
+    fn refresh_search(&mut self, term: &mut Term<ZedListener>, cx: &mut Context<Self>) {
+        let revision = self.output_revision;
+        let Some(search_state) = &mut self.search else {
+            return;
+        };
+        if search_state.revision == revision {
+            return;
+        }
+        let Some(regex) = &mut search_state.regex else {
+            search_state.revision = revision;
+            return;
+        };
+
+        let origin = search_state
+            .current
+            .as_ref()
+            .and_then(|current| Self::step_point(term, current.start, -1))
+            .unwrap_or_else(|| term.grid().cursor.point);
+        let found = Self::search_match(term, regex, origin, AlacDirection::Right);
+
+        let previous = search_state.status;
+        if let Some(range) = found {
+            search_state.current = Some(range);
+            search_state.status = SearchStatus::Matched;
+        } else {
+            search_state.current = None;
+            search_state.status = SearchStatus::NotFound;
+        }
+        search_state.revision = revision;
+
+        if search_state.status != previous {
+            let status = search_state.status;
+            cx.emit(Event::SearchUpdated(status));
+        }
     }
 
     /// 处理搜索步进（持有终端锁）。
@@ -1552,9 +1715,17 @@ impl Terminal {
                 is_block: false,
             };
             search_state.current = Some(range);
+            search_state.status = SearchStatus::Matched;
             term.scroll_to_point(range.start);
+        } else {
+            // 一次 search_next 已覆盖整张网格并回绕，没命中就是真没有。
+            search_state.current = None;
+            search_state.status = SearchStatus::NotFound;
         }
+        search_state.revision = self.output_revision;
 
+        let status = search_state.status;
+        cx.emit(Event::SearchUpdated(status));
         cx.emit(Event::Wakeup);
     }
 
@@ -1727,5 +1898,47 @@ mod tests {
             futures::executor::block_on(receiver.next()),
             Some(AlacTermEvent::Wakeup)
         ));
+    }
+
+    #[test]
+    fn escape_literal_keeps_plain_text_unchanged() {
+        // 不含元字符的关键词原样透传，避免无谓的转义噪声
+        assert_eq!(Terminal::escape_literal("plain text"), "plain text");
+        assert_eq!(Terminal::escape_literal("GET /health"), "GET /health");
+    }
+
+    #[test]
+    fn escape_literal_makes_invalid_regex_compilable() {
+        // 未闭合括号作为正则会编译失败（UI 只能得到 Invalid）；
+        // 走字面量入口转义后就是普通关键词
+        assert!(RegexSearch::new("foo(").is_err());
+        let escaped = Terminal::escape_literal("foo(");
+        assert_eq!(escaped, "foo\\(");
+        assert!(RegexSearch::new(&escaped).is_ok());
+    }
+
+    #[test]
+    fn external_builder_hands_out_transport_handles_once() {
+        // 外接后端的句柄只能被取走一次：第二次为 None，避免两个传输层抢同一条通道
+        let mut builder = TerminalBuilder::new_external(Some(100)).unwrap();
+        assert!(builder.take_external_handles().is_some());
+        assert!(builder.take_external_handles().is_none());
+    }
+
+    #[test]
+    fn literal_search_matches_the_dot_itself() {
+        // 同一份内容里既有 `axb` 又有 `a.b`：正则 `a.b` 先命中 `axb`，
+        // 字面量入口只命中 `a.b`
+        let term = term_with(b"axb a.b\r\n");
+        let term = term.lock();
+
+        let regex_hit = find_from_cursor(&term, "a.b").expect("正则 a.b 应命中 axb");
+        assert_eq!(regex_hit.start.line, Line(0));
+        assert_eq!(regex_hit.start.column, Column(0));
+
+        let literal_hit = find_from_cursor(&term, &Terminal::escape_literal("a.b"))
+            .expect("字面量 a.b 应命中 a.b");
+        assert_eq!(literal_hit.start.line, Line(0));
+        assert_eq!(literal_hit.start.column, Column(4));
     }
 }

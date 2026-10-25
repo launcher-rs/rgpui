@@ -60,7 +60,7 @@ enum LoopMsg {
 
 /// 传输层 → 终端 的注入句柄（下行字节流入口）。
 ///
-/// 由 [`crate::TerminalBuilder::new_external`] 创建，rulink 的 SSH 引擎持有。
+/// 由 [`crate::TerminalBuilder::new_external`] 创建，由应用侧的传输层持有。
 #[derive(Clone)]
 pub struct FeedHandle {
     tx: mpsc::Sender<LoopMsg>,
