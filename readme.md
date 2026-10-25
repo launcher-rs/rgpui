@@ -26,22 +26,25 @@ rgpui 是一个独立演进的 GPU 加速跨平台 UI 框架，支持 Windows、
 - **标签页**：Tab、TabBar、无状态 Tabs（值驱动，v1.3）、Accordion、TabDragDrop（拖拽排序）
 - **滚动**：Scrollable、Scrollbar、ScrollHandle、VirtualScroll
 - **状态栏**：StatusBar（v1.3 数据驱动重写，纯值驱动无实体）
-- **搜索**：SearchPanel
+- **搜索**：SearchPanelState
 - **聊天**：ChatView、Bubble、MessageScroller、Marker、Prompts、Suggestion、ThoughtChain
 - **侧边栏**：Sidebar、SidebarSection
 - **导航**：Breadcrumb、Steps、Timeline、Pagination
-- **选择器**：Select、Combobox、DatePicker、ColorPicker、Rate
-- **其他**：Carousel、Upload、TagInput、Skeleton、Kbd
+- **选择器**：Select、ComboboxState、DatePickerState、ColorPickerState、Rate
+- **其他**：Carousel、UploadState、TagInput、Skeleton、Kbd
 
-### 应用套件基座（`ribbon` / `viewport` feature，默认关闭）
-- **命令注册表**（`ribbon`）：`CommandDescriptor` / `CommandRegistry`（inventory 全局单例）/ `register_command!` / `App::dispatch_command` / `label_for`，命令面板已接入（`CommandPaletteState::from_registry`）
+### 应用套件基座（`ribbon` / `viewport` / `spreadsheet` / `document` / `control-channel` feature，默认关闭）
+- **命令注册表**（核心，不随 feature 开关）：`CommandDescriptor` / `CommandRegistry`（inventory 全局单例）/ `register_command!` / `App::dispatch_command` / `label_for`，命令面板已接入（`CommandPaletteState::from_registry`）；`validate()` 做命令清单体检
 - **Ribbon 功能区**（`ribbon`）：数据驱动 选项卡/分组/大·小·切换·下拉按钮/上下文选项卡，命令按 id 绑定、点击统一派发
 - **按键提示 KeyTips**（`ribbon`）：`Alt`/`F10` 逐层键盘导航（先选项卡、再命令），提示键与命令注册表同源
 - **快速访问工具栏 QAT**（`ribbon`）：`QuickAccessToolbar` 一排紧凑图标按钮，按命令 id 派发，可置于标题栏/Ribbon 之上
-- **迷你工具栏 MiniToolbar**（`ribbon`）：选中后就近浮出的紧凑命令条，与 QAT 共用 `QatItem`，支持绝对定位落点
+- **迷你工具栏 MiniToolbar**（`ribbon`）：选中后就近浮出的紧凑命令条，与 QAT 共用 `QatItem`，支持绝对定位落点；**不自动绑定编辑器选区**，由应用把 `InputState` 的选区变化接到它（见 `showcase --bin mini_toolbar`）
 - **应用菜单 Backstage**（`ribbon`）：覆盖整窗的文件面板，左导航 + 右内容，页面可为自定义内容或一条命令，`Esc` 关闭
 - **视口**（`viewport`）：`Viewport` 屏幕↔文档坐标映射、锚点缩放、平移、`fit`/`center`、滚轮交互
-- **标尺 + 对齐参考线/吸附**（`viewport`）：`ruler_ticks` 刻度与 `align` 六锚点吸附（产出参考线）
+- **标尺 + 对齐参考线/吸附**（`viewport`）：`ruler_ticks` 刻度与 `align` 六锚点吸附（产出参考线）；对象选择把手/缩放旋转/对齐分布见 `object_toolkit`（`SelectionHandles`/`ResizeHandle`）
+- **电子表格基座**（`spreadsheet`）：`FormulaBar`（名称框 + `fx` + 公式输入）+ `SheetGrid`（行列头/双轴虚拟化/矩形选区/填充柄/`SheetDelegate`）。**只做 UI 基座与单元格模型，不含公式求值引擎** —— 计算由宿主实现 `SheetDelegate` 自行完成
+- **文档基座**（`document`，蕴含 `viewport`）：`PageView` 分页画布 + 页眉页脚 + `PageSetup`/`PageSize`/`PageMargins`/`PageArrangement`/`PageLabels`
+- **控制通道 + MCP**（`control-channel`，蕴含 `tokio`/`tokio/net`）：`ControlChannel` 本机 TCP 上的 JSON-RPC（密钥校验）与 `McpServer` stdio 工具面，外部脚本/AI 客户端调同一批命令；示例 `showcase --bin automation`
 
 ### 编辑器能力
 - **编辑器核心**：EditorState + Editor 组件（右键菜单/查找/行操作/多光标可点）
@@ -63,6 +66,14 @@ rgpui 是一个独立演进的 GPU 加速跨平台 UI 框架，支持 Windows、
 - **崩溃快照**：`InspectorSnapshot` + `last.json` 滚动落盘 + panic 日志钩子
 - **面板插槽化**：Header/Section 可覆盖，支持自定义面板
 - **AI 可读**：`Window::inspector_tree_text` 导出 Markdown 缩进树
+
+### 终端（rgpui-term）
+- **仿真内核**：Alacritty `Term` + `vte` 状态机，VT100/xterm、256 色与 TrueColor、同步输出
+- **两种字节来源**：本地 PTY（`TerminalBuilder::new`）与**外接 IO**（`TerminalBuilder::new_external`：SSH / Telnet / 串口等外部字节流接入，`FeedHandle::feed` 下行、`PtyBoundReceiver` 上行键入与 resize，无本地进程）
+- **内容搜索**：`search`（正则）/ `search_literal`（字面量，元字符按原样）+ `search_next` / `search_previous`（覆盖滚动历史、自动回绕），`search_status` / `Event::SearchUpdated` 区分「正则非法 / 无匹配 / 命中」，新输出后按轮次重定位高亮
+- **OSC 8 超链接**：链接单元格着色 + 下划线，`Ctrl`/`Cmd` + 点击发 `Event::HyperlinkClick`
+- **中文/日文输入**：IME 组合预览留在终端内，确认后按 UTF-16 区间上屏给 PTY
+- **其他**：代码块跟踪（`Block`）、输入中间件（`TerminalMiddleware`）、主题热切换、`TerminalElement` 低层渲染元素
 
 ### 系统集成
 - 系统托盘（图标、右键菜单、窗口隐藏/恢复）

@@ -1,19 +1,27 @@
-# 命令注册表 / Ribbon / 快速访问工具栏 / 视口 / 标尺参考线
+# 命令注册表 / Ribbon / 视口 / 电子表格 / 文档 / 控制通道
 
-为文档/表格/演示类应用补齐的套件基座。均由 feature 门控，均不进根 glob，
+为文档/表格/演示类应用补齐的套件基座。除 `commands` 外均由 feature 门控，均不进根 glob，
 按 `rgpui::<模块>::*` 使用：
 
-- `rgpui::commands` — 命令注册表（UI 元数据 + 按 id 派发，feature `ribbon`）
+- `rgpui::commands` — 命令注册表（UI 元数据 + 按 id 派发，**核心，不随 feature 开关**）
 - `rgpui::ribbon` — 数据驱动 Ribbon 功能区（feature `ribbon`）
 - `rgpui::keytips` — 按键提示解析与徽标（feature `ribbon`）
 - `rgpui::qat` — 快速访问工具栏（feature `ribbon`）
-- `rgpui::mini_toolbar` — 选中后就近浮出的迷你工具栏（feature `ribbon`）
+- `rgpui::mini_toolbar` — 选中后就近浮出的迷你工具栏（feature `ribbon`，需应用自行接选区）
 - `rgpui::backstage` — 覆盖整窗的应用菜单/文件面板（feature `ribbon`）
 - `rgpui::viewport` — 屏幕 ↔ 文档坐标映射与缩放/平移（feature `viewport`）
 - `rgpui::guides` — 标尺刻度 + 对齐参考线/吸附（feature `viewport`）
+- `rgpui::object_toolkit` — 画布对象的选择把手/缩放旋转/对齐分布（feature `viewport`）
+- `rgpui::formula_bar` — 公式栏：名称框 + `fx` + 公式输入（feature `spreadsheet`）
+- `rgpui::sheet_grid` — 电子表格网格：行列头/双轴虚拟化/选区/填充柄（feature `spreadsheet`，**不含公式求值**，计算由宿主实现 `SheetDelegate`）
+- `rgpui::page_view` — 分页画布 + 页眉页脚 + 页面设置（feature `document`，蕴含 `viewport`）
+- `rgpui::control_channel` — 本机 TCP 上的 JSON-RPC 控制通道（feature `control-channel`，蕴含 `tokio`/`tokio/net`；wasm 目标下不编译）
+- `rgpui::mcp` — stdio MCP 工具面，与外部 AI 客户端共用同一批命令（feature `control-channel`）
 
-启用：`rgpui = { features = ["ribbon", "viewport"] }`（默认关闭，普通应用不必开启）。
-示例：`cargo run -p showcase --bin {command_registry,ribbon,qat,mini_toolbar,backstage,viewport,ruler}`。
+启用：`rgpui = { features = ["ribbon", "viewport", "spreadsheet", "document", "control-channel"] }`
+（默认全关，普通应用不必开启；`document` 已蕴含 `viewport`）。
+示例：`cargo run -p showcase --bin {command_registry,ribbon,qat,mini_toolbar,backstage,viewport,ruler,canvas_objects,formula_bar,sheet_grid,page_view,automation}`，
+整合演示：`cargo run -p showcase --bin app_suite`。
 
 ---
 
@@ -278,3 +286,52 @@ for guide in &result.guides {            // 绘制参考线
   每轴取偏移量最小且不超过阈值的候选，返回 `offset` 与 `guides`。
 - 类型：`GuideAxis`（Vertical/Horizontal）、`Anchor`（Start/Center/End）、
   `Guide { axis, position, anchor }`、`SnapResult { offset, guides }`。
+
+---
+
+## 5. 画布对象把手（`rgpui::object_toolkit`，feature `viewport`）
+
+在 `Viewport` 之上叠一层对象交互：选中框、把手命中、拖拽改尺寸/旋转、多选对齐分布。
+纯几何 + 元素，不绑具体业务对象——宿主把「被选中的东西」映射成矩形即可。
+
+- 元素：`ResizeHandle`（单个把手）、`SelectionHandles`（选中框 + 八向把手 + 旋转柄）
+- 几何：`handle_point` / `handle_point_rotated`（把手位置）、`hit_handle` /
+  `hit_handle_rotated`（命中判定）、`resize_bounds`（按把手拖动出新矩形）、
+  `rotate_point` / `angle_between`、`marquee_bounds` / `marquee_hits`（框选）、
+  `union_bounds`、`align` / `distribute`（多选对齐与等分，配合 `AlignMode`）
+- 示例：`cargo run -p showcase --bin canvas_objects`
+
+## 6. 电子表格基座（`rgpui::formula_bar` / `rgpui::sheet_grid`，feature `spreadsheet`）
+
+**口径提醒**：这两个模块只做「表格 UI 基座 + 单元格模型」，**仓库内没有公式求值引擎**。
+`=SUM(A1:A3)` 之类的计算由宿主实现 `SheetDelegate` 自行完成，框架不预测、不求值。
+
+- `FormulaBar` / `FormulaBarState` / `FormulaBarEvent`：名称框 + `fx` + 公式输入行，
+  `set_formula` / `formula` / `clear_formula` 读写的是**原文**
+- `SheetGrid` / `SheetGridState` / `SheetGridEvent`：行列头、双轴虚拟化、矩形选区、
+  填充柄拖拽填充；`CellRef` / `CellRange` 表示单元格与区域，`column_label` 生成 A/AA 列头
+- `SheetDelegate`：宿主侧数据与写入协议（读写单元格、由宿主负责重算）
+- 示例：`cargo run -p showcase --bin {formula_bar,sheet_grid}`
+
+## 7. 文档分页（`rgpui::page_view`，feature `document`）
+
+把 `Viewport` 的文档坐标铺成纸页：分页排列、页眉页脚、页边距与内容参考线。
+
+- 元素：`PageView`（`layout` + 视口 + 标签），`content_guide` / `area_guide` 开内容区/整页虚线框
+- 模型：`PageLayout`、`PageSetup` / `PageSize` / `PageMargins`、`PageArrangement`
+  （单页 / 对开 / 连续）、`PageLabels`
+- 示例：`cargo run -p showcase --bin page_view`
+
+## 8. 控制通道与 MCP（`rgpui::control_channel` / `rgpui::mcp`，feature `control-channel`）
+
+让外部进程（脚本、AI 客户端）调用应用已注册的命令——与 UI 走同一批 `CommandRegistry`
+条目，因此清单体检（`CommandRegistry::validate`）天然覆盖它们。
+
+- `App::start_control_channel(ControlChannelOptions)`：本机 TCP 上的 JSON-RPC，
+  `ControlChannelOptions::with_key` 设密钥（不设则 `generate_key` 随机生成，
+  经 `ControlChannel::key()` 读出交给调用方）；请求顶层 `key` 字段不匹配即拒绝
+  （`authorized`）
+- `McpServer` / `tool_name`：stdio 上的 MCP 工具面，一条命令映射一个工具
+- wasm 目标下这两个模块不编译（`not(target_family = "wasm")`），开了 feature 也没有服务端
+- 示例：`cargo run -p showcase --bin automation`（加 `--mcp` 走 stdio MCP）；
+  回归：`cargo test -p showcase --bin automation`

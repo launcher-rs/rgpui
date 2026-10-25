@@ -132,7 +132,7 @@ cargo run -p showcase --bin <名称>
 | `rgpui_story` | 组件 Storybook |
 | `desktop_pet` | 桌面宠物（托盘、单实例） |
 | `desktop_pet_3d` | 3D 桌面宠物（需 `rgpui-3d`） |
-| `rgpui_term_basic` | 终端基础 |
+| `rgpui_term_basic` | 终端基础（`--bin basic`：多标签/搜索条/OSC 8/IME；`--bin external_io`：外接 IO 后端，无本地 PTY） |
 | `rgpui_term_integration` | 终端集成 |
 | `screen_capture` | 屏幕捕获 |
 | `webview` | WebView 集成 |

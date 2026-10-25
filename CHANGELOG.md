@@ -2,6 +2,144 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [1.6.0] - 2026-10-25
+
+### 终端（`rgpui-term`）：外接 IO 后端 + 内容搜索 + OSC 8 超链接
+
+- **外接 IO 后端**：`TerminalBuilder::new_external` 建出不依赖本地 PTY 的终端，
+  `take_external_handles()` 交出 `ExternalHandles::{feed, rx}`——下行由传输层注入
+  远端字节，上行以 `PtyBoundMessage::{Input, Resize}` 回吐按键与缩放。SSH / 串口 /
+  远程开发这类「字节来自别处」的场景不用再 fork 一份终端实现。真实调用点：
+  `cargo run -p rgpui_term_basic --bin external_io`（内置模拟远端，回显输入并应答
+  `help` / `date` / `echo` / `exit`）
+- **内容搜索**：`Terminal::search`（正则）/ `search_literal`（字面量）/
+  `search_next` / `search_previous` / `clear_search`，`TerminalView` 侧同名方法 +
+  `SearchNext` / `SearchPrevious` / `ClearSearch` 三个 action
+- **搜索状态不再静默**：非法正则此前只 `log::warn`、按下一处无匹配时界面无反馈，
+  现在统一经 `Event::SearchUpdated(SearchStatus)` 回传 `Idle` / `Invalid` /
+  `NotFound` / `Matched`，搜索条可以直接把结论显示给用户
+- **命中区间随输出重定位**：此前高亮存的是过期的网格坐标，新行压进 scrollback 或
+  窗口缩放后就飘到别的内容上；现在按 `output_revision` 在 `sync()` 里重新定位
+- `search_literal` 自带元字符转义（`escape_literal`），不为此引入 `regex` 依赖
+- **OSC 8 超链接**：`Terminal::hyperlink_at(point)` 取出单元格链接，点击发
+  `Event::HyperlinkClick(uri)`；元素层给带链接的单元格加下划线与主题色
+- 演示：`term_basic` 的搜索条默认按字面量匹配，`Alt+R` 切字面/正则，`Esc` 关闭
+
+### 应用套件基座（`ribbon` / `viewport` / `spreadsheet` / `document` / `control-channel`）
+
+为文档 / 表格 / 演示类应用补齐的套件基座，均由 feature 门控、不进根 glob，按
+`rgpui::<模块>::*` 使用；`commands`（命令注册表）为核心，不随 feature 开关。
+
+- **命令注册表**（`commands.rs`）：`CommandDescriptor` / `CommandRegistry` /
+  `register_command!` / `App::dispatch_command`，UI 元数据与派发同源；
+  `CommandRegistry::validate()` 作为「声明了却没接线」的 CI gate
+- **Ribbon 功能区**（`ribbon.rs`）：`Ribbon` / `RibbonState` / `RibbonTab` /
+  `RibbonGroup` / `RibbonItem`（按钮、开关、下拉、拆分按钮、画廊、组合框）
+- **按键提示 KeyTip**（`keytips.rs`）：`Alt` / `F10` 逐层键盘导航，
+  `derive_keytip` 从标签自动取键、`resolve_key` 解析匹配
+- **快速访问工具栏**（`qat.rs`）与**迷你工具栏**（`mini_toolbar.rs`）：后者是选中后
+  就近浮出的临时条；**不自动绑定编辑器选区**，由宿主自行挂接
+- **Backstage**（`backstage.rs`）：覆盖整窗的应用菜单 / 文件面板
+- **视口**（`viewport.rs`）：屏幕 ↔ 文档坐标映射与缩放平移
+- **标尺与参考线**（`guides.rs`）：`ruler_ticks` / `nice_step` / `Guide` /
+  `GuideAxis` / `Anchor` / `SnapResult` / `align`
+- **对象操作**（`object_toolkit.rs`）：8 向 `ResizeHandle`（含旋转态）、框选
+  `marquee_bounds` / `marquee_hits`、对齐分布 `align` / `distribute`、
+  `SelectionHandles`
+- **电子表格 UI**（`spreadsheet`：`formula_bar.rs` + `sheet_grid.rs`）：
+  `SheetGrid` / `SheetGridState` / `SheetDelegate` / `CellRef` / `CellRange` /
+  `column_label` + `FormulaBar`。**口径说明：这一批只做 UI 基座与单元格模型，
+  仓库内没有公式求值引擎**——公式的解析与计算由宿主实现 `SheetDelegate` 提供；
+  无障碍侧根为 `Role::Grid`、单元格带行列索引
+- **分页文档**（`document`：`page_view.rs`）：`PageView` / `PageLayout` /
+  `PageSetup` / `PageSize` / `PageMargins` / `PageArrangement` / `PageLabels`，
+  多页排布 + 内容参考线
+- **控制通道与 MCP**（`control-channel`：`control_channel.rs` + `mcp.rs`）：
+  `App::start_control_channel` 起一个 JSON-RPC 服务，把命令注册表暴露给外部自动化 /
+  MCP 客户端；Web 端无 `net` 能力，随 feature 排除
+- 整合示例 `cargo run -p showcase --bin app_suite`（六大区域可切换）与
+  `--bin automation`（控制通道）
+
+### 富文本 / Markdown / 编辑器
+
+- **富文本**（`rich_text.rs`）：撤销重做（`RichTextHistory`）、批注（`Annotation`，
+  区间随编辑平移）、脚注、表格 `RichTable`、节 `RichSection`（分栏 + 标题）、
+  修订标记（`mark_inserted` / `mark_deleted` / `effective_text`）、查找替换、
+  段落样式（标题级别 1–6、行高、段前距、引用块）、行内代码；HTML 双向与
+  `to_markdown` 导出补齐表格与节
+- **Markdown**（`rgpui-markdown`）：`latex` feature（ratex → SVG → 光栅化，行内
+  `$...$` 与展示 `$$...$$`，失败降级为源码）、`mermaid` feature（围栏代码自动成图，
+  配色跟随主题深浅）、文档大纲 `extract_headings`、脚注引用按链接色渲染、任务列表
+  渲染真复选框
+- **代码高亮**：tree-sitter 多语言包 16 个 feature（Rust/JSON/TOML/js/ts/python/
+  bash/go/c/cpp/c#/java/ruby/php/css/html/yaml），编辑器 `set_language` 走注册表
+- **编辑器**：LSP 语义高亮接线（provider + 载荷解码 + 高亮器装配）；
+  `highlighter_language` 访问器随 `editor` feature 门控修正
+
+### 组件与无障碍
+
+- **屏幕取色**（`screen-capture`）：`open_eyedropper` 全屏冻结 + 十字线 + 放大镜，
+  `ColorPickerState::begin_eyedropper` 接线
+- **画布语义**（`canvas_a11y.rs`）：`CanvasSemantics` 把 canvas 绘制内容暴露为语义
+  节点（阅读顺序、命中测试、ActionKit 桥）；Ink / Sparkline / Waveform / 各类图表
+  接入摘要节点
+- **表格结构化语义**：`DataTable` 与 `SheetGrid` 的 `Role` 与 `aria_row_index` /
+  `aria_column_index`
+- **任务窗格**：多窗格垂直堆叠与分隔条拖拽（`TaskPaneStack`）
+- **动画时间线**：值曲线（`curve_points`）与关键帧改值、框选多选、缓动插值
+- **缩略图排序器**：拖拽时按指针位置画半透明预览副本
+- **色板**（`ColorPalette`）：主题语义色 / 命名色阶 / 最近颜色
+
+### 工程质量
+
+- `unwrap` / `expect` / `panic!` 迁移共 17 批：`rgpui` 核心 crate 全量以
+  `#![deny]` 封死，`rgpui-term` / `rgpui-3d` / `rgpui-platform` 补上同一条 crate 根
+  deny，三个 `build.rs` 也纳入体系
+- CI 的 clippy 抬到 `--workspace --all-targets -- -D warnings`（旧口径 `--lib --bins`
+  看不见 `#[cfg(test)]` 与库内 `examples/` 目标）；Windows 端全绿
+- 完整性检查清单新增：套件基座模块齐全 + 五个 feature 开关两侧可编译 +
+  `CommandRegistry::validate()` 为空
+
+### AI 编码技能（`skills/rgpui`）
+
+- 新增 9 篇参考：**terminal**（终端 crate 全貌：两种字节来源、搜索、OSC 8、IME、
+  中间件/主题/代码块）、**rich-text**、**ink**、**sorter**、**anim-timeline**、
+  **mdi**、**task-pane**、**canvas-a11y**、**text-direction**（RTL 基准方向 + 中文断行
+  禁则）；`SKILL.md` 路由表与 `description` 同步扩面（45 篇 → 54 篇）
+- `markdown.md` 补 `latex` / `mermaid` / `extract_headings`；`components.md` 的取色器
+  条目重写为真实类型 `ColorPickerState`（旧文档写的 `ColorPicker` **在代码里不存在**），
+  并补 `ColorPalette` 与屏幕取色；`feature-components.md` 补 `screen-capture` 一节、
+  删掉「`scap` 编译失败」的过期结论、修正 `treemap::{TreeMap, TreeMapNode}` 类型名
+- 技能此前**不会被任何 AI 工具加载**：仓库根 `skills/` 不是 CLI 的扫描路径。现在补
+  `.qoder-plugin/plugin.json`（`"skills": "./skills/"`），按 `qoder plugins install <仓库路径>`
+  或 `--plugin-dir` 用起来；AGENTS.md 新增「AI 编码技能」一节记录发现路径、重载命令与
+  口径规则（**改公开 API 必须同步改 references**，技能里的每个符号都要能在源码 grep 到）
+- `examples/rgpui_term_basic/README.md` 的「不含真实 shell，仅做界面还原」是错的
+  （`--bin basic` 走 `TerminalBuilder::new` 起真实 shell），改写为两个 bin 的真实行为，
+  并补上 `cargo run -p rgpui_term_basic` 现在必须带 `--bin` 的说明
+- `ink.rs` 模块头的「本版暂缓：橡皮的局部切割」过期（`erase_local` 已实现且示例在用）、
+  `anim_timeline.rs` 模块头的「线性 / 保持 / 平滑」少列三个缓动变体，两处按实现更正
+- `rich_text` 的 HTML **解析侧**不认 `text-align:start|end`（一律降级成 `left`），与
+  序列化侧写出的值不对称：现在保留逻辑对齐，新增
+  `html_logical_alignment_round_trip` 回归
+
+### 本次发布前的审查修复
+
+- `showcase` 的 `app_suite` bin 缺 `viewport` required-feature（`document` 传递启用
+  才没炸，显式声明才对）；`page_view` bin 同类问题一并补
+- `app_suite` 缩放四个命令声明了 `ctrl-up` / `ctrl-down` / `ctrl-0` /
+  `ctrl-shift-f` 却没进 `bind_keys`，注释还写着「与描述符同源」——补齐绑定
+- `app_suite` 的「标尺 / 参考线」区域声称用 `ruler_ticks` / `align`，实际画的是
+  `PageView::content_guide`——文案改回真实来源
+- `rgpui-term` 公开文档注释里泄露了内部项目名，改为「由应用侧的传输层持有」
+- `crates/rgpui-term` 补齐 crates.io 元数据（readme / keywords / categories，
+  description 不再只是「终端模拟器组件」）
+- 文档口径校正：`readme.md` 的套件基座章节此前只列了 ribbon / viewport，现在五个
+  feature 与全部模块都在，并新增终端章节
+- 组件索引里的 `ColorPicker` / `Combobox` / `DatePicker` / `Upload` / `SearchPanel`
+  都是**不存在的类型名**（实现是 `*State` 自渲染实体），`readme.md` 与 `AGENTS.md`
+  一并改为真实符号
+
 ## [1.5.0] - 2026-10-16
 
 ### 示例目录重构：核心示例按功能独立成 bin

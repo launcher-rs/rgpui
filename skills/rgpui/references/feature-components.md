@@ -1,6 +1,6 @@
-# 可选功能组件（Charts / Effects / QR-Code / WebView / DOM）
+# 可选功能组件（Charts / Effects / QR-Code / WebView / DOM / 屏幕捕获）
 
-**目录：** [概述](#概述) · [Charts](#charts) · [Effects](#effects) · [QR-Code](#qr-code) · [WebView](#webview) · [DOM 后端](#dom-后端) · [最佳实践](#最佳实践)
+**目录：** [概述](#概述) · [Charts](#charts) · [Effects](#effects) · [QR-Code](#qr-code) · [WebView](#webview) · [DOM 后端](#dom-后端) · [屏幕取色](#屏幕取色) · [最佳实践](#最佳实践)
 
 ## 概述
 
@@ -8,18 +8,23 @@
 
 | feature | 依赖 | 内容 |
 |---------|------|------|
-| `charts` | — | 11 个图表（`components/charts/`） |
+| `charts` | — | 10 个图表模块（`components/charts/`） |
 | `effects` | — | 装饰特效 7 个 |
 | `qr-code` | `qrcode` | `QRCodeComponent` |
 | `webview` | `wry` | `WebView`/`WebViewElement` |
 | `dom-backend` | — | 原生文本 DOM 层（见 `rgpui-dom`） |
+| `screen-capture` | `scap` + `windows-capture` | 屏幕取色 `open_eyedropper`（见下文） |
 
-showcase 对应 bin 由 `required-features` 门控（`examples/showcase/Cargo.toml:109-122`）。
+另两族 feature 不在本文件：**应用套件基座**（`ribbon`/`viewport`/`spreadsheet`/
+`document`/`control-channel`）见 `commands-ribbon-viewport.md`；**Markdown 公式与图表**
+（`rgpui-markdown` 的 `latex`/`mermaid`）见 `markdown.md`。
+
+showcase 对应 bin 由 `required-features` 门控（`examples/showcase/Cargo.toml`）。
 
 ## Charts
 
 `#[cfg(feature = "charts")] pub mod charts;`（`components/mod.rs:86`）+
-`pub use charts::*`（`:167`）。11 个图表：`area_chart`、`bar_chart`、`chart`、
+`pub use charts::*`（`:167`）。10 个图表模块：`area_chart`、`bar_chart`、`chart`、
 `donut_chart`、`gauge`、`heatmap`、`line_chart`、`pie_chart`、`radar_chart`、`treemap`。
 
 `charts/mod.rs` 重导出：
@@ -30,7 +35,7 @@ showcase 对应 bin 由 `required-features` 门控（`examples/showcase/Cargo.to
 
 其余模块为 `pub mod`（**未重导出**），经完整路径访问：`components::charts::gauge::Gauge`、
 `heatmap`、`radar_chart::{RadarChart, RadarChartSize}`、
-`treemap::{Treemap, TreemapItem}`、`area_chart::{AreaChart, AreaChartSize, AreaChartMode}`、
+`treemap::{TreeMap, TreeMapNode}`、`area_chart::{AreaChart, AreaChartSize, AreaChartMode}`、
 `donut_chart::{DonutChart, DonutChartSize}`。
 
 `Gauge::new(id)`（`gauge.rs:66`）、`GaugeSize`（`:8`）。
@@ -82,10 +87,24 @@ let view = cx.new(|cx| WebView::new(webview, window, cx));
 测试 `cargo test -p rgpui-dom`；示例 `hello_web`、`rgpui_story` 已开启。
 详见 `docs/web-dom-backend-usage.md`。
 
+## 屏幕取色
+
+`#[cfg(feature = "screen-capture")] pub mod eyedropper;`（`rgpui.rs:315`，feature 定义
+`screen-capture = ["scap"]`）。
+
+- `open_eyedropper(cx: &mut App, on_result: impl Fn(EyedropperResult, &mut App) + 'static)`
+  （`eyedropper.rs:70`）：推流取**首帧**做全屏冻结，叠加十字线 + 放大镜，回调恰好一次
+  （取消 / 失败同样回调，不会再触发 `Picked`）；环境不支持时直接回 `Failed`，不进异步流程。
+- `EyedropperResult`（`:55`）：`Picked(Hsla)` / `Cancelled` / `Failed(SharedString)`。
+- `ColorPickerState::begin_eyedropper(cx)`（`color_picker.rs:171`）是唯一的框架内调用点：
+  启用 feature 后取色器面板自动多出一行「屏幕取色」按钮（`:384` 的 `cfg` 分支）。
+- 运行：`cargo run -p showcase --bin color_picker --features screen-capture`。
+
+> 旧的「`scap` / `screen-capture` 与 `windows-capture` API 不兼容、编译失败」结论**已过期**
+> （AGENTS.md 已更正）：Windows 本地可编译，跨平台由 CI 矩阵兜底。
+
 ## 最佳实践
 
 - **默认特性不含这些组件**：用 `rgpui/{charts,effects,qr-code,webview}` 或
   `cargo run -p showcase --bin <bin> --features ...`。
 - **Charts 图标模块部分需完整路径**（`charts::gauge::Gauge`）。
-- **`scap`/`screen-capture` feature 已知编译失败**（`zed-scap` 与 `windows-capture`
-  不兼容），不要启用。
