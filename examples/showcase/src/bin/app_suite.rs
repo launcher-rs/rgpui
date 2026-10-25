@@ -11,9 +11,10 @@
 //! 侧边编号条与右侧清单），悬停任一编号即给对应区域描蓝边；Shift + 左键拖框选唤出
 //! `MiniToolbar`（它的入口与 QAT 一样都是 `QatItem` + 命令 id）。
 //!
-//! 运行：`cargo run -p showcase --bin app_suite`（依赖 `ribbon` + `document` feature，
-//! showcase 默认开启）。按 Alt/F10 显示按键提示，再按提示键即可纯键盘操作功能区；
-//! `Ctrl+Shift+E` 开关区域浮标、`Ctrl+Shift+I` 开关右侧组件清单、Esc 取消框选。
+//! 运行：`cargo run -p showcase --bin app_suite`（依赖 `ribbon` + `viewport` + `document`
+//! feature，showcase 默认开启）。按 Alt/F10 显示按键提示，再按提示键即可纯键盘操作功能区；
+//! `Ctrl+Shift+E` 开关区域浮标、`Ctrl+Shift+I` 开关右侧组件清单、Esc 取消框选；
+//! 缩放与命令注册表同源：`Ctrl+↑`/`Ctrl+↓` 放大缩小、`Ctrl+0` 实际大小、`Ctrl+Shift+F` 适应窗口。
 
 #![cfg_attr(target_family = "wasm", no_main)]
 
@@ -357,7 +358,7 @@ enum Region {
     PageView,
     /// 视口（缩放 / 平移）。
     Viewport,
-    /// 标尺与参考线。
+    /// 页面内容参考线（`PageView` 的虚线框开关）。
     Guides,
     /// 迷你工具栏。
     MiniToolbar,
@@ -375,7 +376,7 @@ impl Region {
             Region::KeyTips => "按键提示",
             Region::PageView => "分页画布",
             Region::Viewport => "视口",
-            Region::Guides => "标尺参考线",
+            Region::Guides => "内容参考线",
             Region::MiniToolbar => "迷你工具栏",
             Region::Commands => "命令注册表",
         }
@@ -390,7 +391,7 @@ impl Region {
             Region::KeyTips => "KeyTips",
             Region::PageView => "PageView",
             Region::Viewport => "Viewport",
-            Region::Guides => "ruler_ticks / align",
+            Region::Guides => "PageView::content_guide",
             Region::MiniToolbar => "MiniToolbar",
             Region::Commands => "CommandRegistry",
         }
@@ -405,7 +406,7 @@ impl Region {
             Region::KeyTips => "keytips.rs · ribbon",
             Region::PageView => "page_view.rs · document",
             Region::Viewport => "viewport.rs · viewport",
-            Region::Guides => "guides.rs · viewport",
+            Region::Guides => "page_view.rs · document",
             Region::MiniToolbar => "mini_toolbar.rs · ribbon",
             Region::Commands => "commands.rs · 核心",
         }
@@ -1665,6 +1666,10 @@ fn run_example() {
             KeyBinding::new("ctrl-x", Cut, None),
             KeyBinding::new("ctrl-c", Copy, None),
             KeyBinding::new("ctrl-b", Bold, None),
+            KeyBinding::new("ctrl-up", ZoomIn, None),
+            KeyBinding::new("ctrl-down", ZoomOut, None),
+            KeyBinding::new("ctrl-0", ZoomActual, None),
+            KeyBinding::new("ctrl-shift-f", ZoomFit, None),
             KeyBinding::new("f9", Recalc, None),
             KeyBinding::new("ctrl-shift-e", ToggleCallouts, None),
             KeyBinding::new("ctrl-shift-i", ToggleInspector, None),

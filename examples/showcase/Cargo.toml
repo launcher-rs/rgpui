@@ -302,7 +302,7 @@ required-features = ["ribbon"]
 [[bin]]
 name = "app_suite"
 path = "src/bin/app_suite.rs"
-required-features = ["ribbon", "document"]
+required-features = ["ribbon", "viewport", "document"]
 
 # ---------- 控制通道 / MCP（control-channel feature） ----------
 [[bin]]
@@ -360,7 +360,7 @@ required-features = ["spreadsheet"]
 [[bin]]
 name = "page_view"
 path = "src/bin/page_view.rs"
-required-features = ["document"]
+required-features = ["viewport", "document"]
 
 [[bin]]
 name = "dock"
