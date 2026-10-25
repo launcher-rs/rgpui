@@ -10,10 +10,10 @@ use rgpui::tabs::{Tab, TabBar};
 use rgpui::{
     ActiveTheme, AnyElement, App, AppContext, Axis, AxisExt, BoxShadow, Button, ButtonVariants,
     Context, DefiniteLength, Entity, FocusHandle, Focusable, IconName, InteractiveElement,
-    IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Pixels, Render, ScrollHandle, SharedString, Sizable, StatefulInteractiveElement,
-    Styled, Window, WindowBackgroundAppearance, WindowOptions, actions, div, h_flex, hsla, point,
-    prelude::*, px, rgb, rgba, v_flex,
+    IntoElement, KeyBinding, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ParentElement, Pixels, Render, ScrollHandle, SharedString, Sizable,
+    StatefulInteractiveElement, Styled, Window, WindowBackgroundAppearance, WindowOptions, actions,
+    div, h_flex, hsla, point, prelude::*, px, rgb, rgba, v_flex,
 };
 use rgpui_platform::application;
 use rgpui_term::{
@@ -46,7 +46,8 @@ actions!(
         SaveWorkspace,
         RestoreWorkspace,
         ToggleSearch,
-        DumpText
+        DumpText,
+        ToggleTermSearch
     ]
 );
 
@@ -175,6 +176,7 @@ fn platform_keybindings() -> Vec<KeyBinding> {
             KeyBinding::new("cmd-v", Paste, Some("Terminal")),
             KeyBinding::new("cmd-a", SelectAll, Some("Terminal")),
             KeyBinding::new("cmd-k", Clear, Some("Terminal")),
+            KeyBinding::new("cmd-f", ToggleTermSearch, Some("Terminal")),
             KeyBinding::new("cmd-t", NewTab, None),
             KeyBinding::new("cmd-w", CloseTab, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
@@ -191,6 +193,7 @@ fn platform_keybindings() -> Vec<KeyBinding> {
             KeyBinding::new("ctrl-shift-b", ToggleSidebar, None),
             KeyBinding::new("ctrl-shift-a", SelectAll, Some("Terminal")),
             KeyBinding::new("ctrl-shift-k", Clear, Some("Terminal")),
+            KeyBinding::new("ctrl-f", ToggleTermSearch, Some("Terminal")),
             KeyBinding::new("ctrl-shift-t", NewTab, None),
             KeyBinding::new("ctrl-shift-w", CloseTab, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
@@ -375,6 +378,8 @@ fn main() {
                     selected_theme: "One Dark".into(),
                     search_visible: false,
                     search_query: String::new(),
+                    term_search_visible: false,
+                    term_search_query: String::new(),
                     favorites,
                     recent_dirs,
                     saved_workspaces,
@@ -565,6 +570,9 @@ struct AgentTermApp {
     // Search
     search_visible: bool,
     search_query: String,
+    // 终端内容搜索（Ctrl/Cmd+F 呼出，与侧栏会话过滤无关）
+    term_search_visible: bool,
+    term_search_query: String,
     // Favorites
     favorites: FavoritesData,
     // Recent directories
@@ -695,6 +703,12 @@ impl AgentTermApp {
                         }
                     }
                     cx.notify();
+                }
+                // OSC 8 超链接：Ctrl/Cmd+点击交给系统浏览器打开，只放行 http(s)
+                Event::HyperlinkClick(uri)
+                    if uri.starts_with("http://") || uri.starts_with("https://") =>
+                {
+                    cx.open_url(uri);
                 }
                 _ => {}
             },
@@ -882,6 +896,181 @@ impl AgentTermApp {
         // Also dump full text
         let text = terminal.get_all_text();
         eprintln!("=== Terminal Full Text ===\n{}\n=== End ===", text);
+    }
+
+    /// 当前活动面板所属的终端实体。
+    fn active_terminal(&self) -> Option<Entity<Terminal>> {
+        let tab = self.tabs.get(self.active_tab_index)?;
+        tab.root.find_terminal(self.active_pane_id).cloned()
+    }
+
+    /// 开/关终端内容搜索条；打开时焦点移到根视图，按键归搜索条。
+    fn on_toggle_term_search(
+        &mut self,
+        _: &ToggleTermSearch,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.term_search_visible {
+            self.close_term_search(window, cx);
+        } else {
+            self.term_search_visible = true;
+            self.term_search_query.clear();
+            self.focus_handle.focus(window, cx);
+            cx.notify();
+        }
+    }
+
+    /// 关闭搜索条并清空当前终端的搜索状态与高亮。
+    fn close_term_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.term_search_visible = false;
+        self.term_search_query.clear();
+        if let Some(terminal) = self.active_terminal() {
+            terminal.update(cx, |terminal, _| terminal.clear_search());
+        }
+        // 焦点交还终端视图，后续按键恢复直送 PTY
+        if let Some(tab) = self.tabs.get(self.active_tab_index) {
+            let view = tab.root.first_terminal_view();
+            view.read(cx).focus_handle(cx).focus(window, cx);
+        }
+        cx.notify();
+    }
+
+    /// 把搜索条里的查询词下发给活动终端（增量重算首个匹配）。
+    fn apply_term_search(&mut self, cx: &mut Context<Self>) {
+        let query = self.term_search_query.clone();
+        if let Some(terminal) = self.active_terminal() {
+            terminal.update(cx, |terminal, _| terminal.search(&query));
+        }
+        cx.notify();
+    }
+
+    /// 搜索条打开期间的按键路由：可打印字符进查询词，Enter/Shift+Enter 跳匹配，
+    /// Esc 关闭。根视图持有焦点，这些键不会到达终端。
+    fn on_term_search_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.term_search_visible {
+            return;
+        }
+        let keystroke = &event.keystroke;
+        let modifiers = &keystroke.modifiers;
+        match keystroke.key.as_str() {
+            "escape" => self.close_term_search(window, cx),
+            "return" => {
+                if let Some(terminal) = self.active_terminal() {
+                    terminal.update(cx, |terminal, _| {
+                        if modifiers.shift {
+                            terminal.search_previous();
+                        } else {
+                            terminal.search_next();
+                        }
+                    });
+                }
+            }
+            "backspace" => {
+                if self.term_search_query.pop().is_some() {
+                    self.apply_term_search(cx);
+                }
+            }
+            "space" => {
+                self.term_search_query.push(' ');
+                self.apply_term_search(cx);
+            }
+            key => {
+                if key.chars().count() == 1
+                    && !modifiers.control
+                    && !modifiers.alt
+                    && !modifiers.platform
+                {
+                    self.term_search_query.push_str(key);
+                    self.apply_term_search(cx);
+                }
+            }
+        }
+    }
+
+    /// 渲染悬浮在终端区右上角的搜索条。
+    fn render_term_search_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .id("term-search-bar")
+            .absolute()
+            .top(px(24.0))
+            .right(px(24.0))
+            .flex()
+            .items_center()
+            .gap(px(10.0))
+            .px(px(12.0))
+            .py(px(6.0))
+            .rounded(px(8.0))
+            .bg(rgba(0x202020ee))
+            .border_1()
+            .border_color(rgba(rgba_u32(BORDER_SOFT, 0.4)))
+            .child(div().text_sm().text_color(rgb(TEXT_FAINT)).child("⌕"))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(if self.term_search_query.is_empty() {
+                        rgb(TEXT_FAINT)
+                    } else {
+                        rgb(TEXT_PRIMARY)
+                    })
+                    .child(if self.term_search_query.is_empty() {
+                        "搜索终端内容…（Esc 关闭）".to_string()
+                    } else {
+                        format!("{}▏", self.term_search_query)
+                    }),
+            )
+            .child(
+                div()
+                    .id("term-search-prev")
+                    .cursor_pointer()
+                    .text_sm()
+                    .text_color(rgb(TEXT_SUBTLE))
+                    .hover(|s| s.text_color(rgb(TEXT_PRIMARY)))
+                    .child("↑")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            if let Some(terminal) = this.active_terminal() {
+                                terminal.update(cx, |terminal, _| terminal.search_previous());
+                            }
+                        }),
+                    ),
+            )
+            .child(
+                div()
+                    .id("term-search-next")
+                    .cursor_pointer()
+                    .text_sm()
+                    .text_color(rgb(TEXT_SUBTLE))
+                    .hover(|s| s.text_color(rgb(TEXT_PRIMARY)))
+                    .child("↓")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            if let Some(terminal) = this.active_terminal() {
+                                terminal.update(cx, |terminal, _| terminal.search_next());
+                            }
+                        }),
+                    ),
+            )
+            .child(
+                div()
+                    .id("term-search-close")
+                    .cursor_pointer()
+                    .text_sm()
+                    .text_color(rgb(TEXT_SUBTLE))
+                    .hover(|s| s.text_color(rgb(TEXT_PRIMARY)))
+                    .child("×")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, window, cx| this.close_term_search(window, cx)),
+                    ),
+            )
     }
 
     fn split_active_pane(&mut self, axis: Axis, window: &mut Window, cx: &mut Context<Self>) {
@@ -2056,6 +2245,9 @@ impl AgentTermApp {
                         .child(pane_el),
                 )
             })
+            .when(self.term_search_visible, |el| {
+                el.child(self.render_term_search_bar(cx))
+            })
             .when(self.tabs.is_empty(), |el| {
                 el.flex()
                     .items_center()
@@ -2159,6 +2351,8 @@ impl Render for AgentTermApp {
                     .on_action(cx.listener(Self::on_split_right))
                     .on_action(cx.listener(Self::on_split_down))
                     .on_action(cx.listener(Self::on_dump_text))
+                    .on_action(cx.listener(Self::on_toggle_term_search))
+                    .on_key_down(cx.listener(Self::on_term_search_key))
                     .on_mouse_move(cx.listener(Self::update_resize_drag))
                     .on_mouse_up(MouseButton::Left, cx.listener(Self::stop_resize_drag))
                     .child(self.render_terminal_container(window, cx))

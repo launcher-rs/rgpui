@@ -23,13 +23,13 @@ use std::{
 
 use alacritty_terminal::{
     Term,
-    event::{Event as AlacTermEvent, EventListener, Notify, WindowSize},
+    event::{Event as AlacTermEvent, EventListener, Notify, OnResize, WindowSize},
     event_loop::{EventLoop, Msg, Notifier},
     grid::{Dimensions, Scroll as AlacScroll},
     index::{Column, Direction as AlacDirection, Line, Point as AlacPoint, Side},
     selection::{Selection, SelectionRange, SelectionType},
     sync::FairMutex,
-    term::{Config, RenderableCursor, TermMode, cell::Cell},
+    term::{Config, RenderableCursor, TermMode, cell::Cell, search::RegexSearch},
     tty,
     vte::ansi::{
         ClearMode, CursorShape as AlacCursorShape, CursorStyle as AlacCursorStyle, Handler,
@@ -58,6 +58,34 @@ use crate::{InputOrigin, TerminalMiddleware};
 
 const DEFAULT_SCROLL_HISTORY_LINES: usize = 10_000;
 const MAX_SCROLL_HISTORY_LINES: usize = 100_000;
+
+/// 终端后端写通道：决定用户输入、OSC 应答与尺寸变化发往何处。
+enum PtyBackend {
+    /// 本地 PTY：由 Alacritty 事件循环托管，字节直达 ConPTY/PTY 句柄。
+    Local(Notifier),
+    /// 外联字节流：转发给调用方的传输层（SSH/Telnet/串口等）。
+    External(crate::external::ExternalPtyWriter),
+}
+
+impl PtyBackend {
+    /// 写入下行字节（等价于写本地 PTY）。
+    fn notify(&self, bytes: Cow<'static, [u8]>) {
+        match self {
+            PtyBackend::Local(notifier) => notifier.notify(bytes),
+            PtyBackend::External(writer) => writer.notify(bytes),
+        }
+    }
+
+    /// 通知网格尺寸变化。
+    fn on_resize(&mut self, window_size: WindowSize) {
+        match self {
+            PtyBackend::Local(notifier) => {
+                notifier.0.send(Msg::Resize(window_size)).ok();
+            }
+            PtyBackend::External(writer) => writer.on_resize(window_size),
+        }
+    }
+}
 const DEBUG_TERMINAL_WIDTH: Pixels = px(500.);
 const DEBUG_TERMINAL_HEIGHT: Pixels = px(30.);
 const DEBUG_CELL_WIDTH: Pixels = px(5.);
@@ -78,6 +106,8 @@ pub enum Event {
     SelectionsChanged,
     /// 终端进程已退出
     CloseTerminal,
+    /// 点击了 OSC 8 超链接（携带 URI）
+    HyperlinkClick(String),
 }
 
 impl EventEmitter<Event> for Terminal {}
@@ -95,7 +125,7 @@ impl EventListener for ZedListener {
     }
 }
 
-/// 用于终端状态管理的内部事件。
+/// 内部事件队列。
 ///
 /// 这些事件在同步期间排队并处理，以更新终端状态。
 #[derive(Clone)]
@@ -107,6 +137,22 @@ enum InternalEvent {
     SetSelection(Option<(Selection, AlacPoint)>),
     UpdateSelection(Point<Pixels>),
     Copy(Option<bool>),
+    /// 设置搜索关键词（空串表示清除）。
+    SearchSet(String),
+    /// 在搜索结果间步进。
+    SearchStep(AlacDirection),
+}
+
+/// 终端内容搜索状态。
+///
+/// 建立在 alacritty `RegexSearch`（增量缓存 DFA）之上；搜索语义与其对齐：
+/// query 全小写时忽略大小写，搜索范围覆盖全部滚动历史并自动回绕。
+/// query 编译失败时保持空状态（无匹配）。
+pub struct TerminalSearch {
+    /// 已编译正则
+    regex: Option<RegexSearch>,
+    /// 当前高亮的匹配（网格坐标）
+    current: Option<SelectionRange>,
 }
 
 /// 终端尺寸管理。
@@ -243,6 +289,8 @@ pub struct TerminalContent {
     pub scrolled_to_bottom: bool,
     /// 历史行数
     pub history_size: usize,
+    /// 当前搜索匹配（网格坐标，供渲染高亮）
+    pub search_match: Option<SelectionRange>,
 }
 
 impl Default for TerminalContent {
@@ -262,6 +310,7 @@ impl Default for TerminalContent {
             scrolled_to_top: false,
             scrolled_to_bottom: true,
             history_size: 0,
+            search_match: None,
         }
     }
 }
@@ -351,6 +400,8 @@ fn default_shell_command() -> Option<String> {
 pub struct TerminalBuilder {
     terminal: Terminal,
     events_rx: UnboundedReceiver<AlacTermEvent>,
+    /// 外联传输层句柄（仅 `new_external` 非空）。
+    external: Option<crate::external::ExternalHandles>,
 }
 
 impl TerminalBuilder {
@@ -473,7 +524,7 @@ impl TerminalBuilder {
 
             let terminal = Terminal {
                 term,
-                pty_tx: Some(Notifier(pty_tx)),
+                pty_backend: PtyBackend::Local(Notifier(pty_tx)),
                 events: VecDeque::with_capacity(10),
                 last_content: TerminalContent::default(),
                 last_mouse: None,
@@ -485,13 +536,86 @@ impl TerminalBuilder {
                 event_loop_task: Task::ready(Ok(())),
                 block_tracker: BlockTracker::new(),
                 ime_composition: None,
+                search: None,
             };
 
             Ok(TerminalBuilder {
                 terminal,
                 events_rx,
+                external: None,
             })
         })
+    }
+
+    /// 创建由调用方提供字节流的外联终端（SSH/Telnet/串口等）。
+    ///
+    /// 不生成任何本地进程：远端方向字节经 [`FeedHandle::feed`] 注入，上行
+    /// 字节与尺寸变化从 [`PtyBoundMessage`] 通道读出（通过
+    /// [`Self::take_external_handles`] 取走句柄）。会话结束时由传输层调用
+    /// [`FeedHandle::end_session`]，UI 侧以 `Event::CloseTerminal` 收场，
+    /// 与本地进程退出一致。
+    ///
+    /// 创建过程无进程拉起与 OS 等待，无需异步：直接返回。
+    pub fn new_external(max_scroll_history_lines: Option<usize>) -> Result<TerminalBuilder> {
+        let scrolling_history = max_scroll_history_lines
+            .unwrap_or(DEFAULT_SCROLL_HISTORY_LINES)
+            .min(MAX_SCROLL_HISTORY_LINES);
+
+        let config = Config {
+            scrolling_history,
+            default_cursor_style: AlacCursorStyle {
+                shape: AlacCursorShape::Block,
+                blinking: false,
+            },
+            ..Config::default()
+        };
+
+        let (events_tx, events_rx) = unbounded();
+
+        let term = Term::new(
+            config,
+            &TerminalBounds::default(),
+            ZedListener(events_tx.clone()),
+        );
+
+        let term = Arc::new(FairMutex::new(term));
+
+        let (feed_handle, writer, bound_rx) =
+            crate::external::spawn_feed_loop(term.clone(), ZedListener(events_tx));
+
+        let terminal = Terminal {
+            term,
+            pty_backend: PtyBackend::External(writer),
+            events: VecDeque::with_capacity(10),
+            last_content: TerminalContent::default(),
+            last_mouse: None,
+            selection_head: None,
+            breadcrumb_text: String::new(),
+            scroll_px: px(0.),
+            selection_phase: SelectionPhase::Ended,
+            middlewares: Vec::new(),
+            event_loop_task: Task::ready(Ok(())),
+            block_tracker: BlockTracker::new(),
+            ime_composition: None,
+            search: None,
+        };
+
+        Ok(TerminalBuilder {
+            terminal,
+            events_rx,
+            external: Some(crate::external::ExternalHandles {
+                feed: feed_handle,
+                rx: bound_rx,
+            }),
+        })
+    }
+
+    /// 取走外联传输层句柄（仅 [`Self::new_external`] 创建的终端可用）。
+    ///
+    /// `feed` 由传输层持有并注入远端字节；`rx` 交由传输层的独立线程/任务
+    /// 循环驱动，转发 SSH channel。
+    pub fn take_external_handles(&mut self) -> Option<crate::external::ExternalHandles> {
+        self.external.take()
     }
 
     /// 订阅终端事件并返回已配置的 Terminal。
@@ -565,8 +689,8 @@ impl TerminalBuilder {
 pub struct Terminal {
     /// Alacritty 终端实例
     term: Arc<FairMutex<Term<ZedListener>>>,
-    /// PTY 写入器
-    pty_tx: Option<Notifier>,
+    /// 后端写通道（本地 PTY 或外联传输层）
+    pty_backend: PtyBackend,
     /// 内部事件队列
     events: VecDeque<InternalEvent>,
     /// 上次鼠标位置
@@ -589,6 +713,8 @@ pub struct Terminal {
     block_tracker: BlockTracker,
     /// IME 组合中（尚未上屏）的文本；`None` 表示没有正在进行的组合
     ime_composition: Option<String>,
+    /// 终端内容搜索（`None` 表示未激活）
+    search: Option<TerminalSearch>,
 }
 
 impl Terminal {
@@ -631,9 +757,7 @@ impl Terminal {
             return false;
         };
 
-        if let Some(pty_tx) = &self.pty_tx {
-            pty_tx.notify(filtered);
-        }
+        self.pty_backend.notify(filtered);
         true
     }
 
@@ -730,6 +854,9 @@ impl Terminal {
 
         self.last_content = Self::make_content(&terminal, &self.last_content);
 
+        // 将当前搜索匹配同步到渲染内容
+        self.last_content.search_match = self.search.as_ref().and_then(|search| search.current);
+
         // Check for prompt detection to finalize blocks
         self.block_tracker.on_sync(&terminal, &self.last_content);
 
@@ -766,6 +893,7 @@ impl Terminal {
             scrolled_to_top: content.display_offset == term.history_size(),
             scrolled_to_bottom: content.display_offset == 0,
             history_size: term.history_size(),
+            search_match: None,
         }
     }
 
@@ -845,6 +973,38 @@ impl Terminal {
         self.events.push_back(InternalEvent::Clear);
     }
 
+    /// 在终端内容（含滚动历史）中设置搜索关键词。
+    ///
+    /// 语义与 alacritty 一致：query 全小写时忽略大小写；找到的第一个匹配
+    /// 从光标位置起向右搜索。空串清除搜索。
+    pub fn search(&mut self, query: &str) {
+        self.events
+            .push_back(InternalEvent::SearchSet(query.to_string()));
+    }
+
+    /// 跳到下一个匹配（覆盖全部滚动历史，自动回绕）。
+    pub fn search_next(&mut self) {
+        self.events
+            .push_back(InternalEvent::SearchStep(AlacDirection::Right));
+    }
+
+    /// 跳到上一个匹配（覆盖全部滚动历史，自动回绕）。
+    pub fn search_previous(&mut self) {
+        self.events
+            .push_back(InternalEvent::SearchStep(AlacDirection::Left));
+    }
+
+    /// 清除搜索状态与高亮。
+    pub fn clear_search(&mut self) {
+        self.events
+            .push_back(InternalEvent::SearchSet(String::new()));
+    }
+
+    /// 当前搜索匹配（网格坐标）。
+    pub fn search_current(&self) -> Option<SelectionRange> {
+        self.search.as_ref().and_then(|search| search.current)
+    }
+
     /// 返回是否正在选择文本。
     pub fn selection_started(&self) -> bool {
         self.selection_phase == SelectionPhase::Selecting
@@ -895,6 +1055,19 @@ impl Terminal {
         self.last_content.mode.intersects(TermMode::MOUSE_MODE) && !shift
     }
 
+    /// 查询网格坐标处单元格携带的 OSC 8 超链接 URI。
+    pub fn hyperlink_at(&self, point: AlacPoint) -> Option<String> {
+        let term = self.term.lock();
+        let last_line = term.bottommost_line();
+        let last_col = term.last_column();
+        if !(term.topmost_line()..=last_line).contains(&point.line) || point.column > last_col {
+            return None;
+        }
+        term.grid()[point.line][point.column]
+            .hyperlink()
+            .map(|hyperlink| hyperlink.uri().to_string())
+    }
+
     /// 检查鼠标位置是否发生变化。
     fn mouse_changed(&mut self, point: AlacPoint, side: AlacDirection) -> bool {
         match self.last_mouse {
@@ -921,6 +1094,19 @@ impl Terminal {
             self.last_content.terminal_bounds,
             self.last_content.display_offset,
         );
+
+        // Ctrl/Cmd + 单击 OSC 8 超链接：打开并跳过本击的选择逻辑。
+        if e.button == MouseButton::Left
+            && !self.mouse_mode(e.modifiers.shift)
+            && (e.modifiers.control || e.modifiers.platform)
+        {
+            if let Some(uri) = self.hyperlink_at(point) {
+                let event = Event::HyperlinkClick(uri);
+                self.notify_middlewares_event(&event);
+                _cx.emit(event);
+                return;
+            }
+        }
 
         if self.mouse_mode(e.modifiers.shift) {
             if let Some(bytes) =
@@ -1202,10 +1388,7 @@ impl Terminal {
 
                 self.last_content.terminal_bounds = new_bounds;
 
-                if let Some(pty_tx) = &self.pty_tx {
-                    pty_tx.0.send(Msg::Resize(new_bounds.into())).ok();
-                }
-
+                self.pty_backend.on_resize(new_bounds.into());
                 term.resize(new_bounds);
             }
             InternalEvent::Clear => {
@@ -1277,7 +1460,145 @@ impl Terminal {
                     }
                 }
             }
+            InternalEvent::SearchSet(query) => {
+                self.process_search_set(query.as_str(), term, cx);
+            }
+            InternalEvent::SearchStep(direction) => {
+                self.process_search_step(*direction, term, cx);
+            }
         }
+    }
+
+    /// 处理搜索关键词设置（持有终端锁）。
+    fn process_search_set(
+        &mut self,
+        query: &str,
+        term: &mut Term<ZedListener>,
+        cx: &mut Context<Self>,
+    ) {
+        if query.is_empty() {
+            self.search = None;
+            cx.emit(Event::Wakeup);
+            return;
+        }
+
+        let mut regex = match RegexSearch::new(query) {
+            Ok(regex) => Some(regex),
+            Err(error) => {
+                log::warn!("failed to compile terminal search regex {query:?}: {error}");
+                None
+            }
+        };
+
+        // 初次定位：从光标位置起向右找第一个匹配（无则回绕到网格顶端）。
+        let first = regex.as_mut().and_then(|regex| {
+            let origin = term.grid().cursor.point;
+            Self::search_match(term, regex, origin, AlacDirection::Right)
+        });
+
+        self.search = Some(TerminalSearch {
+            regex,
+            current: first,
+        });
+
+        if let Some(range) = &first {
+            term.scroll_to_point(range.start);
+        }
+        cx.emit(Event::Wakeup);
+    }
+
+    /// 处理搜索步进（持有终端锁）。
+    fn process_search_step(
+        &mut self,
+        direction: AlacDirection,
+        term: &mut Term<ZedListener>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(search_state) = &mut self.search else {
+            return;
+        };
+        let Some(regex) = &mut search_state.regex else {
+            return;
+        };
+
+        let anchor = search_state.current.as_ref().and_then(|current| {
+            let point = match direction {
+                // 紧贴匹配的边界向相反方向步进一格，否则搜索会重复命中自身。
+                AlacDirection::Right => Self::step_point(term, current.end, 1),
+                AlacDirection::Left => Self::step_point(term, current.start, -1),
+            };
+            point
+        });
+
+        let origin = match (anchor, direction) {
+            (Some(point), _) => point,
+            (None, AlacDirection::Right) => AlacPoint::new(term.topmost_line(), Column(0)),
+            (None, AlacDirection::Left) => {
+                AlacPoint::new(term.bottommost_line(), term.last_column())
+            }
+        };
+
+        let side = match direction {
+            AlacDirection::Right => Side::Right,
+            AlacDirection::Left => Side::Left,
+        };
+
+        let found = term.search_next(regex, origin, direction, side, None);
+
+        if let Some(match_range) = found {
+            let range = SelectionRange {
+                start: *match_range.start(),
+                end: *match_range.end(),
+                is_block: false,
+            };
+            search_state.current = Some(range);
+            term.scroll_to_point(range.start);
+        }
+
+        cx.emit(Event::Wakeup);
+    }
+
+    /// 将点按方向移动一格（列越界时折返到相邻行首/尾）。
+    fn step_point(term: &Term<ZedListener>, point: AlacPoint, step: i32) -> Option<AlacPoint> {
+        let columns = term.grid().columns() as i32;
+        if step > 0 {
+            if point.column.0 as i32 + 1 < columns {
+                Some(AlacPoint::new(point.line, Column(point.column.0 + 1)))
+            } else if let Some(line) = point.line.0.checked_add(1) {
+                Some(AlacPoint::new(Line(line), Column(0)))
+            } else {
+                None
+            }
+        } else if point.column.0 > 0 {
+            Some(AlacPoint::new(point.line, Column(point.column.0 - 1)))
+        } else if let Some(line) = point.line.0.checked_sub(1) {
+            Some(AlacPoint::new(
+                Line(line),
+                Column(((columns - 1).max(0)) as usize),
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// 以锚点为起点找一个匹配（一次 `search_next` 调用覆盖全部网格并自动回绕）。
+    fn search_match(
+        term: &Term<ZedListener>,
+        regex: &mut RegexSearch,
+        origin: AlacPoint,
+        direction: AlacDirection,
+    ) -> Option<SelectionRange> {
+        let side = match direction {
+            AlacDirection::Right => Side::Right,
+            AlacDirection::Left => Side::Left,
+        };
+
+        term.search_next(regex, origin, direction, side, None)
+            .map(|match_range| SelectionRange {
+                start: *match_range.start(),
+                end: *match_range.end(),
+                is_block: false,
+            })
     }
 }
 
@@ -1286,4 +1607,125 @@ fn make_selection(range: &std::ops::RangeInclusive<AlacPoint>) -> Selection {
     let mut selection = Selection::new(SelectionType::Simple, *range.start(), Side::Left);
     selection.update(*range.end(), Side::Right);
     selection
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use alacritty_terminal::{
+        event::Event as AlacTermEvent, event::EventListener, index::Column, sync::FairMutex,
+        term::Config, vte::ansi,
+    };
+
+    use super::*;
+
+    /// 构造默认网格（100 列 ×6 行）的 Term，并注入原始字节。
+    fn term_with(input: &[u8]) -> Arc<FairMutex<Term<ZedListener>>> {
+        let term = Term::new(
+            Config::default(),
+            &TerminalBounds::default(),
+            ZedListener(futures::channel::mpsc::unbounded().0),
+        );
+        let term = Arc::new(FairMutex::new(term));
+        let mut parser: ansi::Processor = ansi::Processor::default();
+        parser.advance(&mut *term.lock(), input);
+        term
+    }
+
+    /// 从光标位置向右找第一个匹配。
+    fn find_from_cursor(term: &Term<ZedListener>, query: &str) -> Option<SelectionRange> {
+        let mut regex = RegexSearch::new(query).ok()?;
+        search_match(
+            term,
+            &mut regex,
+            term.grid().cursor.point,
+            AlacDirection::Right,
+        )
+    }
+
+    /// 以锚点为起点找一个匹配（一次 `search_next` 调用覆盖全部网格并自动回绕）。
+    fn search_match(
+        term: &Term<ZedListener>,
+        regex: &mut RegexSearch,
+        origin: AlacPoint,
+        direction: AlacDirection,
+    ) -> Option<SelectionRange> {
+        let side = match direction {
+            AlacDirection::Right => Side::Right,
+            AlacDirection::Left => Side::Left,
+        };
+
+        term.search_next(regex, origin, direction, side, None)
+            .map(|matched| SelectionRange {
+                start: *matched.start(),
+                end: *matched.end(),
+                is_block: false,
+            })
+    }
+
+    #[test]
+    fn search_match_finds_text() {
+        let term = term_with(b"hello world");
+        let range = find_from_cursor(&term.lock(), "hello").expect("expected a match");
+        assert_eq!(range.start, AlacPoint::new(Line(0), Column(0)));
+        assert_eq!(range.end, AlacPoint::new(Line(0), Column(4)));
+    }
+
+    #[test]
+    fn search_match_after_cursor_skips_earlier_occurrences() {
+        let term = term_with(b"hello world hello");
+        let range = find_from_cursor(&term.lock(), "hello").expect("expected a match");
+        // 光标已越过第一个 "hello"，应命中第二个（自动回绕语义下取首个匹配）
+        let second_start = AlacPoint::new(Line(0), Column(12));
+        assert!(
+            range.start == second_start || range.start == AlacPoint::new(Line(0), Column(0)),
+            "unexpected match start {:?}",
+            range.start
+        );
+    }
+
+    #[test]
+    fn search_match_case_insensitive_when_query_lower() {
+        let term = term_with(b"Hello World");
+        let range = find_from_cursor(&term.lock(), "hello");
+        assert!(
+            range.is_some(),
+            "lowercase query should match capitalized text"
+        );
+    }
+
+    #[test]
+    fn search_match_wraps_grid() {
+        let term = term_with(b"\r\nbottom");
+        let range = find_from_cursor(&term.lock(), "bottom").expect("expected a match");
+        assert_eq!(range.start.line, Line(1));
+    }
+
+    #[test]
+    fn osc8_hyperlink_stored_in_cells() {
+        // OSC 8 序列：开链接 → 写文本 → 关链接 → 普通文本
+        let term = term_with(b"\x1b]8;;https://example.org\x1b\\click\x1b]8;;\x1b\\here");
+        let term = term.lock();
+        assert_eq!(
+            term.grid()[Line(0)][Column(0)]
+                .hyperlink()
+                .map(|h| h.uri().to_string()),
+            Some("https://example.org".to_string())
+        );
+        // 关闭链接后的单元格不应再携带 URI
+        assert_eq!(term.grid()[Line(0)][Column(6)].hyperlink(), None);
+    }
+
+    #[test]
+    fn wakeup_event_bridges() {
+        // ZedListener 桥事件仅发送、不阻塞（与 external 模块的用法同一语义）
+        let (sender, mut receiver) = futures::channel::mpsc::unbounded();
+        let listener = ZedListener(sender);
+        listener.send_event(AlacTermEvent::Wakeup);
+        assert!(matches!(
+            futures::executor::block_on(receiver.next()),
+            Some(AlacTermEvent::Wakeup)
+        ));
+    }
 }
