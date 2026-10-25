@@ -2,7 +2,8 @@
 //!
 //! 面向白板 / 手写批注 / 手绘应用的**墨迹层**：以「采样点序列 + 画笔样式」为笔画
 //! （[`Stroke`]），按工具（钢笔 / 荧光笔 / 橡皮 / 套索）编辑一整个 [`InkLayer`]：
-//! 落笔-移动-抬笔生成笔画、按半径擦除、套索选择、撤销等；多图层文档用 [`InkDocument`]
+//! 落笔-移动-抬笔生成笔画、按半径擦除整条笔画（[`InkLayer::erase_local`] 则做圆内的
+//! 局部切割，把笔画剪成两段）、套索选择、撤销等；多图层文档用 [`InkDocument`]
 //! 组织（可见 / 锁定 / 不透明度 / 叠放顺序，编辑落在激活图层）；并提供**纯几何**工具函数
 //! （点到线段距离、点在多边形内、Douglas–Peucker 抽稀）与把笔画平滑成 [`crate::Path`]
 //! 的构建器。渲染由 [`InkLayerElement`] 承担（逐笔画 `window.paint_path`）。
@@ -24,7 +25,7 @@
 //!     .map(|(_, layer)| InkLayerElement::new(layer.layer.clone()).opacity(layer.opacity));
 //! ```
 //!
-//! **本版暂缓**（后续增补）：橡皮的局部切割、触摸 / 数位板事件接入
+//! **本版暂缓**（后续增补）：触摸 / 数位板事件接入
 //! （现由 [`crate::Platform`] 的指针事件驱动）。
 
 use lyon::path::{LineCap, LineJoin};
