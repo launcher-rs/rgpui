@@ -165,6 +165,8 @@ impl TerminalView {
             Event::CloseTerminal => {
                 cx.notify();
             }
+            // 超链接点击由业务层订阅 Terminal 事件处理（如打开浏览器），视图无需重绘
+            Event::HyperlinkClick(_) => {}
         }
     }
 

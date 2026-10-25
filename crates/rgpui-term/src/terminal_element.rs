@@ -51,6 +51,8 @@ pub struct LayoutState {
     block_fragments: Vec<BlockFragment>,
     polygon_fragments: Vec<PolygonFragment>,
     selection_rects: Vec<LayoutRect>,
+    /// 搜索匹配高亮矩形（画在 selection 之下）
+    search_rects: Vec<LayoutRect>,
     cursor: Option<CursorLayout>,
     /// IME 组合预览：已排版好的文本 + 相对元素原点的位置（画在光标处）
     composition: Option<(ShapedLine, Point<Pixels>)>,
@@ -703,13 +705,25 @@ impl TerminalElement {
             fg_color.a *= 0.7;
         }
 
-        let underline = flags
-            .intersects(Flags::ALL_UNDERLINES)
-            .then(|| UnderlineStyle {
-                color: Some(fg_color),
+        // OSC 8 超链接：文字用主题蓝、强制下划线，色调优先于 DIM/BOLD 视觉。
+        let hyperlink_uri = indexed.cell.hyperlink();
+        let link_color = text_style.theme.ansi[4];
+
+        let underline = if hyperlink_uri.is_some() {
+            Some(UnderlineStyle {
+                color: Some(link_color),
                 thickness: Pixels::from(1.0),
-                wavy: flags.contains(Flags::UNDERCURL),
-            });
+                wavy: false,
+            })
+        } else {
+            flags
+                .intersects(Flags::ALL_UNDERLINES)
+                .then(|| UnderlineStyle {
+                    color: Some(fg_color),
+                    thickness: Pixels::from(1.0),
+                    wavy: flags.contains(Flags::UNDERCURL),
+                })
+        };
 
         let strikethrough = flags
             .intersects(Flags::STRIKEOUT)
@@ -732,7 +746,11 @@ impl TerminalElement {
 
         TextRun {
             len: indexed.c.len_utf8(),
-            color: fg_color,
+            color: if hyperlink_uri.is_some() {
+                link_color
+            } else {
+                fg_color
+            },
             background_color: None,
             font: Font {
                 weight,
@@ -828,6 +846,15 @@ const MONO_FONT_FAMILIES: &[&str] = &[
 
 fn selection_color(theme: &TerminalTheme) -> Hsla {
     theme.selection
+}
+
+/// 搜索高亮色：从 selection 色派生（同一色相、更低透明度），避免为每个
+/// 预设主题单独补字段。
+fn search_match_color(theme: &TerminalTheme) -> Hsla {
+    Hsla {
+        a: 0.30,
+        ..theme.selection
+    }
 }
 
 fn is_block_element_char(ch: char) -> bool {
@@ -1314,7 +1341,7 @@ fn push_block_fragments(
     }
 }
 
-fn selection_rects(
+fn range_rects(
     selection: &SelectionRange,
     display_offset: usize,
     dimensions: &TerminalBounds,
@@ -1460,6 +1487,7 @@ impl Element for TerminalElement {
             cursor_char,
             cursor,
             selection,
+            search_match,
             history_size,
             ..
         } = &self.terminal.read(cx).last_content;
@@ -1476,11 +1504,22 @@ impl Element for TerminalElement {
         let selection_rects = selection
             .as_ref()
             .map(|selection| {
-                selection_rects(
+                range_rects(
                     selection,
                     display_offset,
                     &dimensions,
                     selection_color(&text_style.theme),
+                )
+            })
+            .unwrap_or_default();
+
+        let search_rects = search_match
+            .map(|search_match| {
+                range_rects(
+                    &search_match,
+                    display_offset,
+                    &dimensions,
+                    search_match_color(&text_style.theme),
                 )
             })
             .unwrap_or_default();
@@ -1565,6 +1604,7 @@ impl Element for TerminalElement {
             block_fragments,
             polygon_fragments,
             selection_rects,
+            search_rects,
             cursor: cursor_layout,
             composition,
             background_color,
@@ -1607,6 +1647,11 @@ impl Element for TerminalElement {
 
             for fragment in &layout.polygon_fragments {
                 fragment.paint(origin, &layout.dimensions, window);
+            }
+
+            // 搜索高亮画在文本与 selection 之下
+            for rect in &layout.search_rects {
+                rect.paint(origin, &layout.dimensions, window);
             }
 
             for rect in &layout.selection_rects {

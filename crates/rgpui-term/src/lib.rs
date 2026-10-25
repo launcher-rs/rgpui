@@ -4,6 +4,7 @@
 
 mod block;
 mod config;
+mod external;
 mod mappings;
 mod middleware;
 mod terminal;
@@ -13,6 +14,7 @@ mod theme_manager;
 
 pub use block::{Block, BlockDetection};
 pub use config::{TerminalConfig, TerminalTheme, TerminalThemeConfig, hsla_from_rgb};
+pub use external::{ExternalHandles, FeedHandle, PtyBoundMessage, PtyBoundReceiver};
 pub use middleware::{InputOrigin, TerminalMiddleware};
 pub use terminal::{
     Event, IndexedCell, Terminal, TerminalBounds, TerminalBuilder, TerminalContent, ZedListener,
