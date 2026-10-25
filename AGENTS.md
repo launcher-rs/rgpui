@@ -267,14 +267,19 @@ Qoder 插件形式暴露（清单 `.qoder-plugin/plugin.json`，`"skills": "./sk
 插件名 `rgpui` 与目录名一致）：
 
 ```bash
-qoder plugins install C:\code\rgpui_workspace\rgpui   # 装进用户级插件缓存
-# 或本地联调（不复制文件，改文档即时生效）：
-qoder --plugin-dir C:\code\rgpui_workspace\rgpui
+# 先自检清单与技能目录（只读，不写用户配置）：
+qodercli plugins validate .
+# 安装（--scope 可选 user 全局 / project 随仓库共享 / local 个人不提交）：
+qodercli plugins install C:\code\rgpui_workspace\rgpui --scope user
 ```
 
-改过 SKILL.md / 清单后跑 `/skills reload`（或新开会话）。想让某个项目走
-**项目级**发现，可建目录联接 `.qoder\skills` → `skills`
-（`mklink /J` 即可，无需管理员权限）；`.qoder/` 已被 gitignore，联接不进仓库。
+改过 `SKILL.md` 或 `references/*.md` 后，重跑同一条 `plugins install` 即为刷新
+（本地目录安装不走 `plugins update`，那条是给 marketplace 源用的）。
+
+想让某个项目走**项目级**发现，可建目录联接 `.qoder\skills` → `skills`
+（`mklink /J` 即可，无需管理员权限）。注意 `.gitignore` 里现有 `.qoder/` 一条
+会让 `--scope project` 的落地文件与联接都进不了仓库 —— 要团队共享技能就先把
+需要提交的那部分从 `.qoder/` 整目录豁免出来。
 
 调用口径：CLI 只把 frontmatter 的 `name` + `description`（≤1024 字符）常驻，
 命中描述才展开 `SKILL.md`，`SKILL.md` 里的相对链接再按需展开单篇 reference

@@ -3,12 +3,9 @@
   "displayName": "rgpui 框架知识",
   "version": "1.6.0",
   "description": "rgpui framework knowledge: framework mechanics, component library, editor, terminal, markdown, and the application-suite foundation.",
-  "descriptionZh": "rgpui 框架知识：框架机制（元素/实体/事件/上下文/布局/测试）、组件库、代码编辑器、终端、Markdown 渲染与应用套件基座。",
   "author": { "name": "launcher-rs" },
   "homepage": "https://github.com/launcher-rs/rgpui",
   "repository": "https://github.com/launcher-rs/rgpui",
   "keywords": ["qoder-plugin", "skill", "rgpui", "rust", "gui"],
-  "category": "developer-tools",
-  "tags": ["skill", "rust", "ui-framework"],
   "skills": "./skills/"
 }

@@ -111,9 +111,10 @@
   并补 `ColorPalette` 与屏幕取色；`feature-components.md` 补 `screen-capture` 一节、
   删掉「`scap` 编译失败」的过期结论、修正 `treemap::{TreeMap, TreeMapNode}` 类型名
 - 技能此前**不会被任何 AI 工具加载**：仓库根 `skills/` 不是 CLI 的扫描路径。现在补
-  `.qoder-plugin/plugin.json`（`"skills": "./skills/"`），按 `qoder plugins install <仓库路径>`
-  或 `--plugin-dir` 用起来；AGENTS.md 新增「AI 编码技能」一节记录发现路径、重载命令与
-  口径规则（**改公开 API 必须同步改 references**，技能里的每个符号都要能在源码 grep 到）
+  `.qoder-plugin/plugin.json`（`"skills": "./skills/"`），`qodercli plugins validate .`
+  零告警通过，按 `qodercli plugins install <仓库路径>` 装起来用；AGENTS.md 新增
+  「AI 编码技能」一节记录发现路径、刷新方式与口径规则（**改公开 API 必须同步改
+  references**，技能里的每个符号都要能在源码 grep 到）
 - `examples/rgpui_term_basic/README.md` 的「不含真实 shell，仅做界面还原」是错的
   （`--bin basic` 走 `TerminalBuilder::new` 起真实 shell），改写为两个 bin 的真实行为，
   并补上 `cargo run -p rgpui_term_basic` 现在必须带 `--bin` 的说明
