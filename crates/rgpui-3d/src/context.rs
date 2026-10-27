@@ -1824,7 +1824,7 @@ impl Scenix3D {
         camera: &PerspectiveCamera,
     ) -> Result<RenderResult, ScenixError> {
         scene.update_world_transforms();
-        let (draws, _stats) = collect_visible_draws(scene, &self.gpu_scene, camera)?;
+        let (draws, _env_draws, _stats) = collect_visible_draws(scene, &self.gpu_scene, camera)?;
 
         let mut opaque = Vec::new();
         let mut transparent = Vec::new();
