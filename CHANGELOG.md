@@ -4,6 +4,8 @@
 
 ## [1.6.1] - 2026-10-27
 
+**本版仅 `rgpui-3d` 发布 1.6.1，其余 crate 保持 1.6.0。**
+
 ### 3D（`rgpui-3d`）：morph target + 多层动画 + 关节自省
 
 按动捕可行性报告（`ru_pet/docs/mocap-feasibility-research.md` §5.2 / §5.3）补齐 P0
