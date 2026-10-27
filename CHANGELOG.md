@@ -2,6 +2,37 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [1.6.1] - 2026-10-27
+
+### 3D（`rgpui-3d`）：morph target + 多层动画 + 关节自省
+
+按动捕可行性报告（`ru_pet/docs/mocap-feasibility-research.md` §5.2 / §5.3）补齐 P0
+引擎侧能力，scenekit 同步到 0.2：
+
+- **Morph target**：`load_gltf_skins` 读取 `primitive.morph_targets()` 并按 `MeshId`
+  保存增量（位置 + 法线），GPU 侧在 `@group(4) @binding(1..2)` 挂 morph 增量 / 权重
+  两个 storage buffer，避开 `max_bind_groups = 5` 的上限；`vs_skin` 在蒙皮循环前
+  先做 morph 混合，且放宽了 `mesh() && skin()` 门——**只有 morph 没有蒙皮的网格**
+  （VRM 表情）现在也能渲染。新增 `morph_mesh_ids` / `morph_mesh_count` /
+  `morph_target_names` / `morph_weights` / `set_morph_weight` /
+  `set_morph_weight_by_name` / `clear_morph_weights`，`mesh.extras().targetNames`
+  可读（VRM 0.x 无该字段时回退 `morph-N`）
+- **多层动画与 cross-fade**：`add_animation_layer` / `add_additive_animation_layer` /
+  `set_animation_layer_{weight,time,speed,additive,joint_mask}` /
+  `remove_animation_layer` / `clear_animation_layers` / `fade_to` / `is_cross_fading`；
+  每层独立采样，additive 层以静止姿态为基准叠加增量，cross-fade 用 smoothstep
+  淡出旧剪辑，morph 权重同样参与混合
+- **修 sampler 全局/局部索引 bug**：此前通道记录的是 glTF 全局 sampler 索引，
+  却按动画内局部数组取值，跨动画时错位；现在每个剪辑建立全局 → 局部的映射
+- **关节自省与手动摆姿**：`joint_names` / `joint_name` / `joint_index_by_name` /
+  `joint_rest_trs` / `joint_local_trs`、`set_joint_{translation,rotation,scale,trs}_override` /
+  `clear_joint_override(s)` / `joint_override_count`；覆盖在最后应用，**暂停或没有
+  动画剪辑时依然生效**（移除了 `advance_animation` 的早退）
+- glTF `extras` 与 `serde_json` 依赖随 morph 目标名解析启用
+
+已知未做（报告 §5.2 的 #4 / #5，与应用层无关）：非阻塞双缓冲回读（需 rgpui 侧
+atlas 提供 `upload_texture` 钩子）、透明 pass 的真 alpha 混合。
+
 ## [1.6.0] - 2026-10-25
 
 ### 终端（`rgpui-term`）：外接 IO 后端 + 内容搜索 + OSC 8 超链接

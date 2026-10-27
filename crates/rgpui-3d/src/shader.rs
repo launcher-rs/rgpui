@@ -9,6 +9,13 @@ struct FrameUniform {
 struct ObjectUniform {
     world: mat4x4<f32>,
     bone_offset: u32,
+    morph_base: u32,
+    weight_base: u32,
+    flags: u32,
+    vertex_count: u32,
+    morph_count: u32,
+    pad0: u32,
+    pad1: u32,
 };
 
 struct MaterialUniform {
@@ -87,6 +94,13 @@ struct FrameUniform {
 struct ObjectUniform {
     world: mat4x4<f32>,
     bone_offset: u32,
+    morph_base: u32,
+    weight_base: u32,
+    flags: u32,
+    vertex_count: u32,
+    morph_count: u32,
+    pad0: u32,
+    pad1: u32,
 };
 
 struct MaterialUniform {
@@ -108,6 +122,11 @@ struct VsOut {
 @group(3) @binding(0) var albedo_texture: texture_2d<f32>;
 @group(3) @binding(1) var tex_sampler: sampler;
 @group(4) @binding(0) var<storage> bones: array<mat4x4<f32>>;
+@group(4) @binding(1) var<storage> morph_deltas: array<vec3<f32>>;
+@group(4) @binding(2) var<storage> morph_weights: array<f32>;
+
+const SKIN_FLAG_JOINTS: u32 = 1u;
+const SKIN_FLAG_MORPH: u32 = 2u;
 
 @vertex
 fn vs_skin(
@@ -117,17 +136,42 @@ fn vs_skin(
     @location(3) color: vec4<f32>,
     @location(5) joint_indices: vec4<u32>,
     @location(6) joint_weights: vec4<f32>,
+    @builtin(vertex_index) vertex_index: u32,
 ) -> VsOut {
+    var local_position = position;
+    var local_normal = normal;
+
+    // morph 在蒙皮之前、于绑定姿态空间叠加，与
+    // scenekit_mesh::skin::apply_morph + cpu_skin 的顺序一致。
+    if ((object.flags & SKIN_FLAG_MORPH) != 0u) {
+        let stride = object.vertex_count * 2u;
+        for (var morph = 0u; morph < object.morph_count; morph = morph + 1u) {
+            let w = morph_weights[object.weight_base + morph];
+            if (w == 0.0) {
+                continue;
+            }
+            let block = object.morph_base + morph * stride;
+            local_position += morph_deltas[block + vertex_index] * w;
+            local_normal += morph_deltas[block + object.vertex_count + vertex_index] * w;
+        }
+    }
+
     var skinned_pos = vec4<f32>(0.0, 0.0, 0.0, 0.0);
     var skinned_nml = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-    let base = object.bone_offset;
-    for (var i = 0u; i < 4u; i++) {
-        let w = joint_weights[i];
-        if (w > 0.0) {
-            let bone = bones[base + joint_indices[i]];
-            skinned_pos += w * (bone * vec4<f32>(position, 1.0));
-            skinned_nml += w * (bone * vec4<f32>(normal, 0.0));
+    if ((object.flags & SKIN_FLAG_JOINTS) != 0u) {
+        let base = object.bone_offset;
+        for (var i = 0u; i < 4u; i++) {
+            let w = joint_weights[i];
+            if (w > 0.0) {
+                let bone = bones[base + joint_indices[i]];
+                skinned_pos += w * (bone * vec4<f32>(local_position, 1.0));
+                skinned_nml += w * (bone * vec4<f32>(local_normal, 0.0));
+            }
         }
+    } else {
+        // morph-only 网格（VRM 表情等）没有蒙皮：直接用物体矩阵变换。
+        skinned_pos = vec4<f32>(local_position, 1.0);
+        skinned_nml = vec4<f32>(local_normal, 0.0);
     }
     let world_position = object.world * skinned_pos;
     let world_normal = normalize((object.world * skinned_nml).xyz);

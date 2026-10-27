@@ -19,7 +19,8 @@ wgpu = { workspace = true }
 image = { workspace = true }
 bytemuck.workspace = true
 log.workspace = true
-gltf = "1.4"
+gltf = { version = "1.4", features = ["extras"] }
+serde_json = { workspace = true }
 smallvec = { workspace = true }
 smol = { workspace = true }
 rgpui-wgpu = { workspace = true, optional = true }

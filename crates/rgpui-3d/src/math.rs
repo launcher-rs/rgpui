@@ -78,6 +78,28 @@ pub(crate) fn find_lerp_factors(times: &[f32], t: f32) -> (usize, usize, f32) {
     (lo, hi, frac)
 }
 
+/// 按循环方式采样关键帧，返回 `(低帧, 高帧, 插值因子)`。
+///
+/// 时间超出最后关键帧时按剪辑总时长回绕，避免长跑后 `anim_time` 无限增长。
+pub(crate) fn sample_factors(times: &[f32], t: f32) -> (usize, usize, f32) {
+    if times.is_empty() {
+        return (0, 0, 0.0);
+    }
+    let last = times.len() - 1;
+    if t <= times[0] {
+        return (0, 0, 0.0);
+    }
+    if t >= times[last] {
+        let duration = times[last] - times[0];
+        if duration > 0.0 {
+            let wrapped = (t - times[0]) % duration;
+            return find_lerp_factors(times, times[0] + wrapped);
+        }
+        return (last, last, 0.0);
+    }
+    find_lerp_factors(times, t)
+}
+
 /// 插值两个 vec4 值（平移/缩放线性，旋转 slerp）
 pub(crate) fn lerp_value(a: [f32; 4], b: [f32; 4], t: f32, target: u32) -> [f32; 4] {
     if target == 1 {
@@ -114,6 +136,72 @@ pub(crate) fn lerp_value(a: [f32; 4], b: [f32; 4], t: f32, target: u32) -> [f32;
             a[3] + t * (b[3] - a[3]),
         ]
     }
+}
+
+/// 两个三维向量线性插值。
+pub(crate) fn lerp_vec3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    [
+        a[0] + t * (b[0] - a[0]),
+        a[1] + t * (b[1] - a[1]),
+        a[2] + t * (b[2] - a[2]),
+    ]
+}
+
+/// 四元数哈密顿乘法（`a * b`）。
+pub(crate) fn quat_mul(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    [
+        a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+        a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+        a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+        a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+    ]
+}
+
+/// 四元数共轭（单位四元数下等价于逆）。
+pub(crate) fn quat_conjugate(q: [f32; 4]) -> [f32; 4] {
+    [-q[0], -q[1], -q[2], q[3]]
+}
+
+/// 将 `target` 的 TRS 按 `weight` 混合进 `base`。
+pub(crate) fn blend_trs(
+    base: &mut ([f32; 3], [f32; 4], [f32; 3]),
+    target: ([f32; 3], [f32; 4], [f32; 3]),
+    weight: f32,
+) {
+    if weight <= 0.0 {
+        return;
+    }
+    let w = weight.clamp(0.0, 1.0);
+    base.0 = lerp_vec3(base.0, target.0, w);
+    base.1 = lerp_value(base.1, target.1, w, 1);
+    base.2 = lerp_vec3(base.2, target.2, w);
+}
+
+/// 把 `target` 相对静止姿态 `rest` 的 TRS 增量按 `weight` 叠加到 `base`。
+pub(crate) fn apply_additive_trs(
+    base: &mut ([f32; 3], [f32; 4], [f32; 3]),
+    target: ([f32; 3], [f32; 4], [f32; 3]),
+    rest: ([f32; 3], [f32; 4], [f32; 3]),
+    weight: f32,
+) {
+    if weight <= 0.0 {
+        return;
+    }
+    let w = weight.clamp(0.0, 1.0);
+    for i in 0..3 {
+        base.0[i] += (target.0[i] - rest.0[i]) * w;
+        let ratio = if rest.2[i].abs() > 1e-6 {
+            target.2[i] / rest.2[i]
+        } else {
+            1.0
+        };
+        base.2[i] *= 1.0 + (ratio - 1.0) * w;
+    }
+    // 旋转增量 = target * rest^-1，再乘到当前姿态上；按权重 slerp，
+    // 保持与位置/缩放一致的「叠加量」语义。
+    let delta = quat_mul(target.1, quat_conjugate(rest.1));
+    let combined = quat_mul(delta, base.1);
+    base.1 = lerp_value(base.1, combined, w, 1);
 }
 
 /// 从四元数构建 3x3 旋转矩阵列（返回列向量）

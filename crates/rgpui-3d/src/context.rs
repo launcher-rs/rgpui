@@ -8,7 +8,7 @@ use scenekit::{
     RendererLight, RendererMaterial, SceneGraph, ScenixError, TextureId, collect_visible_draws,
     sort_opaque_front_to_back, sort_transparent_back_to_front,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 // ============================================================================
 // 公开类型
@@ -126,11 +126,24 @@ pub struct Scenix3D {
     bone_capacity: u32,
     bone_bg: wgpu::BindGroup,
 
+    // Morph target 资源
+    morph_meshes: BTreeMap<MeshId, MorphMesh>,
+    /// morph 绘制所属的 glTF 节点（动画权重通道按节点寻址）。
+    node_to_morph_meshes: HashMap<usize, Vec<MeshId>>,
+    morph_delta_buffer: wgpu::Buffer,
+    morph_delta_capacity: u32,
+    morph_weight_buffer: wgpu::Buffer,
+    morph_weight_capacity: u32,
+
     cached_local_trs: Vec<([f32; 3], [f32; 4], [f32; 3])>,
     cached_global_mats: Vec<scenekit::Mat4>,
     cached_bone_data: Vec<f32>,
 
-    joint_overrides: Vec<Option<scenekit::Quat>>,
+    // 多层动画与 cross-fade
+    anim_layers: Vec<AnimLayer>,
+    anim_fade: Option<AnimFade>,
+
+    joint_overrides: Vec<JointOverride>,
 }
 
 impl Scenix3D {
@@ -513,19 +526,41 @@ impl Scenix3D {
             }],
         });
 
-        // 蒙皮管线绑定组布局（仅 bones storage buffer）
+        // 蒙皮管线绑定组布局：骨骼矩阵 + morph 增量 + morph 权重。
         let skin_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("rgpui-3d.skin_layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         });
 
         let skin_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -587,18 +622,50 @@ impl Scenix3D {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let morph_delta_capacity = 1u32;
+        let morph_delta_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("rgpui-3d.morph_delta_buffer"),
+            size: morph_delta_capacity as u64 * 16,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let morph_weight_capacity = 1u32;
+        let morph_weight_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("rgpui-3d.morph_weight_buffer"),
+            size: morph_weight_capacity as u64 * 4,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         let bone_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("rgpui-3d.bone_bg"),
             layout: &skin_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &bone_buffer,
-                    offset: 0,
-                    size: wgpu::BufferSize::new(bone_capacity as u64 * 64),
-                }),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &bone_buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(bone_capacity as u64 * 64),
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &morph_delta_buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(morph_delta_capacity as u64 * 16),
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &morph_weight_buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(morph_weight_capacity as u64 * 4),
+                    }),
+                },
+            ],
         });
 
         Ok(Self {
@@ -647,9 +714,17 @@ impl Scenix3D {
             bone_buffer,
             bone_capacity,
             bone_bg,
+            morph_meshes: BTreeMap::new(),
+            node_to_morph_meshes: HashMap::new(),
+            morph_delta_buffer,
+            morph_delta_capacity,
+            morph_weight_buffer,
+            morph_weight_capacity,
             cached_local_trs: Vec::new(),
             cached_global_mats: Vec::new(),
             cached_bone_data: Vec::new(),
+            anim_layers: Vec::new(),
+            anim_fade: None,
             joint_overrides: Vec::new(),
         })
     }
@@ -1039,12 +1114,19 @@ impl Scenix3D {
                 JointNode {
                     parent: parent_of[n.index()],
                     default_trs: (t, r, s),
+                    name: n.name().unwrap_or_default().to_string(),
                 }
             })
             .collect();
 
         self.skins.clear();
+        self.skinned_meshes.clear();
+        self.mesh_to_skin.clear();
+        self.morph_meshes.clear();
+        self.node_to_morph_meshes.clear();
         let mut mesh_to_skin: HashMap<MeshId, usize> = HashMap::new();
+        let mut morph_meshes: BTreeMap<MeshId, MorphMesh> = BTreeMap::new();
+        let mut node_to_morph_meshes: HashMap<usize, Vec<MeshId>> = HashMap::new();
 
         // 计算每个 glTF mesh 的起始 MeshId（匹配 GltfLoader 的 1-based 顺序分配）
         let mut mesh_prim_start: Vec<u64> = Vec::new();
@@ -1071,44 +1153,58 @@ impl Scenix3D {
         }
 
         for node in document.nodes() {
-            let (Some(mesh_gltf), Some(skin)) = (node.mesh(), node.skin()) else {
+            let Some(mesh_gltf) = node.mesh() else {
                 continue;
             };
-            let skin_index = self.skins.len();
-
-            let ibm: Vec<scenekit::Mat4> = {
-                let reader = skin.reader(|buffer| Some(&buffer_data[buffer.index()].0));
-                let Some(iter) = reader.read_inverse_bind_matrices() else {
-                    continue;
-                };
-                iter.map(|cols| {
-                    scenekit::Mat4::from_cols(
-                        scenekit::Vec4::new(cols[0][0], cols[0][1], cols[0][2], cols[0][3]),
-                        scenekit::Vec4::new(cols[1][0], cols[1][1], cols[1][2], cols[1][3]),
-                        scenekit::Vec4::new(cols[2][0], cols[2][1], cols[2][2], cols[2][3]),
-                        scenekit::Vec4::new(cols[3][0], cols[3][1], cols[3][2], cols[3][3]),
-                    )
-                })
-                .collect()
-            };
-
-            let joint_node_indices: Vec<usize> = skin.joints().map(|j| j.index()).collect();
-
-            self.skins.push(SkinData {
-                inverse_bind_matrices: ibm,
-                joint_node_indices,
-            });
-
             let mesh_idx = mesh_gltf.index();
-            let prim_start = mesh_prim_start[mesh_idx];
+            let Some(prim_start) = mesh_prim_start.get(mesh_idx).copied() else {
+                continue;
+            };
             let Some(gltf_mesh) = document.meshes().nth(mesh_idx) else {
                 continue;
             };
 
-            // 为每个 primitive 创建独立的 skinned mesh
+            // 同一个 skin 的逆绑定矩阵只解析一次，供该节点下所有 primitive 共享。
+            let skin_index = if let Some(skin) = node.skin() {
+                let ibm: Vec<scenekit::Mat4> = {
+                    let reader = skin.reader(|buffer| Some(&buffer_data[buffer.index()].0));
+                    let Some(iter) = reader.read_inverse_bind_matrices() else {
+                        continue;
+                    };
+                    iter.map(|cols| {
+                        scenekit::Mat4::from_cols(
+                            scenekit::Vec4::new(cols[0][0], cols[0][1], cols[0][2], cols[0][3]),
+                            scenekit::Vec4::new(cols[1][0], cols[1][1], cols[1][2], cols[1][3]),
+                            scenekit::Vec4::new(cols[2][0], cols[2][1], cols[2][2], cols[2][3]),
+                            scenekit::Vec4::new(cols[3][0], cols[3][1], cols[3][2], cols[3][3]),
+                        )
+                    })
+                    .collect()
+                };
+                let joint_node_indices: Vec<usize> = skin.joints().map(|j| j.index()).collect();
+                let index = self.skins.len();
+                self.skins.push(SkinData {
+                    inverse_bind_matrices: ibm,
+                    joint_node_indices,
+                });
+                Some(index)
+            } else {
+                None
+            };
+
+            let morph_names = morph_target_names(&gltf_mesh);
+            let mesh_weights = node
+                .weights()
+                .or_else(|| gltf_mesh.weights())
+                .map(<[f32]>::to_vec);
+
+            // 为每个 primitive 创建独立的 GPU 网格。蒙皮节点与 morph-only 节点
+            // （VRM 表情网格没有 JOINTS/WEIGHTS）都走皮肤顶点格式。
             for (prim_i, primitive) in gltf_mesh.primitives().enumerate() {
                 let prim_mesh_id = MeshId::new(prim_start + prim_i as u64);
-                if !asset.meshes.contains_key(&prim_mesh_id) {
+                if !asset.meshes.contains_key(&prim_mesh_id)
+                    || self.skinned_meshes.contains_key(&prim_mesh_id)
+                {
                     continue;
                 }
 
@@ -1168,11 +1264,78 @@ impl Scenix3D {
                     })
                     .unwrap_or_default();
 
-                let has_skin = !joint_indices.is_empty() && !joint_weights.is_empty();
+                let has_skin =
+                    skin_index.is_some() && !joint_indices.is_empty() && !joint_weights.is_empty();
                 let indices: Vec<u32> = reader
                     .read_indices()
                     .map(|iter| iter.into_u32().collect())
                     .unwrap_or_default();
+
+                // glTF morph target：POSITION 是增量，NORMAL 是目标绝对法线，
+                // 这里换算成相对基法线的增量（与 scenekit-loader 口径一致）。
+                let morph_targets: Vec<MorphTargetData> = {
+                    let mut base_normals: Option<Vec<[f32; 3]>> = None;
+                    let normalize = |n: [f32; 3]| {
+                        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+                        if len > 1e-6 {
+                            [n[0] / len, n[1] / len, n[2] / len]
+                        } else {
+                            [0.0; 3]
+                        }
+                    };
+                    reader
+                        .read_morph_targets()
+                        .enumerate()
+                        .map(|(target_index, (target_positions, target_normals, _))| {
+                            let name = morph_names
+                                .get(target_index)
+                                .filter(|name| !name.is_empty())
+                                .cloned()
+                                .unwrap_or_else(|| format!("morph-{target_index}"));
+                            let positions_delta = target_positions
+                                .map(|iter| iter.collect())
+                                .unwrap_or_default();
+                            let normals_delta = match target_normals {
+                                Some(iter) => {
+                                    let base = base_normals.get_or_insert_with(|| {
+                                        reader
+                                            .read_normals()
+                                            .map(|iter| iter.map(normalize).collect())
+                                            .unwrap_or_default()
+                                    });
+                                    if base.is_empty() {
+                                        Vec::new()
+                                    } else {
+                                        iter.enumerate()
+                                            .map(|(i, normal)| {
+                                                let absolute = normalize(normal);
+                                                let origin =
+                                                    base.get(i).copied().unwrap_or([0.0; 3]);
+                                                [
+                                                    absolute[0] - origin[0],
+                                                    absolute[1] - origin[1],
+                                                    absolute[2] - origin[2],
+                                                ]
+                                            })
+                                            .collect()
+                                    }
+                                }
+                                None => Vec::new(),
+                            };
+                            MorphTargetData {
+                                name,
+                                positions: positions_delta,
+                                normals: normals_delta,
+                            }
+                        })
+                        .collect()
+                };
+                let has_morph = !morph_targets.is_empty();
+
+                // 既没有蒙皮也没有 morph 的网格继续走普通管线，不复制顶点。
+                if !has_skin && !has_morph {
+                    continue;
+                }
 
                 let mut verts: Vec<SkinnedVertex> = Vec::with_capacity(positions.len());
                 let count = positions.len();
@@ -1187,7 +1350,7 @@ impl Scenix3D {
                                 .unwrap_or([1.0, 0.0, 0.0, 0.0]),
                         )
                     } else {
-                        ([0; 4], [1.0, 0.0, 0.0, 0.0])
+                        ([0; 4], [0.0; 4])
                     };
                     verts.push(SkinnedVertex {
                         position: positions.get(vi).copied().unwrap_or([0.0; 3]),
@@ -1251,21 +1414,52 @@ impl Scenix3D {
                         index_format,
                     },
                 );
-                mesh_to_skin.insert(prim_mesh_id, skin_index);
+                if let Some(skin_index) = skin_index {
+                    mesh_to_skin.insert(prim_mesh_id, skin_index);
+                }
+
+                if has_morph {
+                    let mut weights = vec![0.0f32; morph_targets.len()];
+                    if let Some(source) = mesh_weights.as_ref() {
+                        for (i, weight) in weights.iter_mut().enumerate() {
+                            *weight = source.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0);
+                        }
+                    }
+                    morph_meshes.insert(
+                        prim_mesh_id,
+                        MorphMesh {
+                            base: 0,
+                            weight_base: 0,
+                            vertex_count: verts.len() as u32,
+                            targets: morph_targets,
+                            overrides: vec![None; weights.len()],
+                            weights,
+                        },
+                    );
+                    node_to_morph_meshes
+                        .entry(node.index())
+                        .or_default()
+                        .push(prim_mesh_id);
+                }
             }
         }
 
         self.mesh_to_skin = mesh_to_skin;
         self.joints = joints;
+        self.morph_meshes = morph_meshes;
+        self.node_to_morph_meshes = node_to_morph_meshes;
+        self.rebuild_morph_meshes();
 
-        use std::collections::HashMap as HashMap2;
         self.anim_clips.clear();
         for anim in document.animations() {
-            let mut sampler_map: HashMap2<usize, AnimSampler> = HashMap2::new();
-            let samplers_in_order: Vec<usize> = anim.samplers().map(|s| s.index()).collect();
+            // glTF 的 sampler 索引是文档全局编号，而 `AnimChannel::sampler` 用来索引
+            // 当前剪辑内的 `samplers` 数组。这里按通道首次出现顺序重新分配局部槽位，
+            // 否则第二段动画会越界或采样到别的剪辑的曲线。
+            let mut sampler_slot: HashMap<usize, usize> = HashMap::new();
+            let mut samplers: Vec<AnimSampler> = Vec::new();
             for channel in anim.channels() {
-                let sampler_idx = channel.sampler().index();
-                if sampler_map.contains_key(&sampler_idx) {
+                let global_index = channel.sampler().index();
+                if sampler_slot.contains_key(&global_index) {
                     continue;
                 }
                 let reader = channel.reader(|buffer| Some(&buffer_data[buffer.index()].0));
@@ -1275,54 +1469,78 @@ impl Scenix3D {
                     .unwrap_or_default();
                 let is_cubic = channel.sampler().interpolation()
                     == gltf::animation::Interpolation::CubicSpline;
-                let outputs: Vec<[f32; 4]> = reader
-                    .read_outputs()
-                    .map(|output| match output {
-                        gltf::animation::util::ReadOutputs::Translations(iter) => {
-                            let all: Vec<[f32; 3]> = iter.collect();
-                            if is_cubic {
-                                all.iter()
-                                    .skip(1)
-                                    .step_by(3)
-                                    .map(|v| [v[0], v[1], v[2], 0.0])
-                                    .collect()
-                            } else {
-                                all.iter().map(|v| [v[0], v[1], v[2], 0.0]).collect()
+                let mut outputs: Vec<[f32; 4]> = Vec::new();
+                let mut morph_weights: Vec<f32> = Vec::new();
+                let mut morph_weight_count = 0usize;
+                match reader.read_outputs() {
+                    Some(gltf::animation::util::ReadOutputs::Translations(iter)) => {
+                        let all: Vec<[f32; 3]> = iter.collect();
+                        outputs = if is_cubic {
+                            all.iter()
+                                .skip(1)
+                                .step_by(3)
+                                .map(|v| [v[0], v[1], v[2], 0.0])
+                                .collect()
+                        } else {
+                            all.iter().map(|v| [v[0], v[1], v[2], 0.0]).collect()
+                        };
+                    }
+                    Some(gltf::animation::util::ReadOutputs::Rotations(iter)) => {
+                        let all: Vec<[f32; 4]> =
+                            iter.into_f32().map(|v| [v[0], v[1], v[2], v[3]]).collect();
+                        outputs = if is_cubic {
+                            all.iter().skip(1).step_by(3).copied().collect()
+                        } else {
+                            all
+                        };
+                    }
+                    Some(gltf::animation::util::ReadOutputs::Scales(iter)) => {
+                        let all: Vec<[f32; 3]> = iter.collect();
+                        outputs = if is_cubic {
+                            all.iter()
+                                .skip(1)
+                                .step_by(3)
+                                .map(|v| [v[0], v[1], v[2], 0.0])
+                                .collect()
+                        } else {
+                            all.iter().map(|v| [v[0], v[1], v[2], 0.0]).collect()
+                        };
+                    }
+                    Some(gltf::animation::util::ReadOutputs::MorphTargetWeights(iter)) => {
+                        let all: Vec<f32> = iter.into_f32().collect();
+                        let keyframes = times.len().max(1);
+                        let per_key = all.len() / keyframes;
+                        // 三次样条每帧布局为 [入切线 N][值 N][出切线 N]，
+                        // 只保留中间的值块；其余插值类型每帧就是 N 个权重。
+                        let weight_count = if is_cubic { per_key / 3 } else { per_key };
+                        if weight_count > 0 && per_key >= weight_count {
+                            morph_weight_count = weight_count;
+                            let value_offset = if is_cubic { weight_count } else { 0 };
+                            morph_weights = Vec::with_capacity(keyframes * weight_count);
+                            for frame in 0..keyframes {
+                                let start = frame * per_key + value_offset;
+                                if start >= all.len() {
+                                    break;
+                                }
+                                let end = (start + weight_count).min(all.len());
+                                morph_weights.extend_from_slice(&all[start..end]);
                             }
                         }
-                        gltf::animation::util::ReadOutputs::Rotations(iter) => {
-                            let all: Vec<[f32; 4]> =
-                                iter.into_f32().map(|v| [v[0], v[1], v[2], v[3]]).collect();
-                            if is_cubic {
-                                all.iter().skip(1).step_by(3).copied().collect()
-                            } else {
-                                all
-                            }
-                        }
-                        gltf::animation::util::ReadOutputs::Scales(iter) => {
-                            let all: Vec<[f32; 3]> = iter.collect();
-                            if is_cubic {
-                                all.iter()
-                                    .skip(1)
-                                    .step_by(3)
-                                    .map(|v| [v[0], v[1], v[2], 0.0])
-                                    .collect()
-                            } else {
-                                all.iter().map(|v| [v[0], v[1], v[2], 0.0]).collect()
-                            }
-                        }
-                        _ => Vec::new(),
-                    })
-                    .unwrap_or_default();
-                sampler_map.insert(sampler_idx, AnimSampler { times, outputs });
+                    }
+                    None => {}
+                }
+                let local_index = samplers.len();
+                sampler_slot.insert(global_index, local_index);
+                samplers.push(AnimSampler {
+                    times,
+                    outputs,
+                    morph_weights,
+                    morph_weight_count,
+                });
             }
-            let samplers: Vec<AnimSampler> = samplers_in_order
-                .iter()
-                .filter_map(|i| sampler_map.remove(i))
-                .collect();
             let channels: Vec<AnimChannel> = anim
                 .channels()
-                .map(|c| {
+                .filter_map(|c| {
                     use gltf::animation::Property;
                     let target = match c.target().property() {
                         Property::Translation => 0,
@@ -1330,11 +1548,12 @@ impl Scenix3D {
                         Property::Scale => 2,
                         Property::MorphTargetWeights => 3,
                     };
-                    AnimChannel {
+                    let sampler = *sampler_slot.get(&c.sampler().index())?;
+                    Some(AnimChannel {
                         node: c.target().node().index(),
                         target,
-                        sampler: c.sampler().index(),
-                    }
+                        sampler,
+                    })
                 })
                 .collect();
             self.anim_clips.push(AnimClip {
@@ -1344,6 +1563,12 @@ impl Scenix3D {
             });
         }
 
+        self.active_anim = 0;
+        self.anim_time = 0.0;
+        self.anim_layers.clear();
+        self.anim_fade = None;
+        self.joint_overrides.clear();
+
         Ok(())
     }
 
@@ -1351,89 +1576,255 @@ impl Scenix3D {
     // 动画控制
     // ========================================================================
 
-    /// 推进动画时间，计算骨骼矩阵并上传到 GPU
-    pub fn advance_animation(&mut self, dt: f32) {
-        if self.anim_clips.is_empty() || self.joints.is_empty() || self.anim_paused {
+    /// 采样一个剪辑到 `pose`（先填入静止姿态），同时输出它驱动的 morph 权重。
+    fn sample_clip_into(
+        &self,
+        clip_index: usize,
+        time: f32,
+        pose: &mut [([f32; 3], [f32; 4], [f32; 3])],
+        morph: &mut HashMap<MeshId, Vec<f32>>,
+    ) {
+        let Some(clip) = self.anim_clips.get(clip_index) else {
             return;
-        }
-
-        self.anim_time += dt * self.anim_speed;
-        let clip = &self.anim_clips[self.active_anim];
-        let num_joints = self.joints.len();
-
-        self.cached_local_trs.clear();
-        self.cached_local_trs
-            .extend(self.joints.iter().map(|j| j.default_trs));
-        self.cached_local_trs
-            .resize(num_joints, ([0.0; 3], [1.0, 0.0, 0.0, 0.0], [1.0; 3]));
-
+        };
         for channel in &clip.channels {
-            if channel.node >= num_joints || channel.sampler >= clip.samplers.len() {
+            let Some(sampler) = clip.samplers.get(channel.sampler) else {
                 continue;
-            }
-            let sampler = &clip.samplers[channel.sampler];
-            if sampler.times.is_empty() || sampler.outputs.is_empty() {
-                continue;
-            }
-
-            let t = self.anim_time;
-            let last = sampler.times.len() - 1;
-            let sample = if t <= sampler.times[0] {
-                sampler.outputs[0]
-            } else if t >= sampler.times[last] {
-                let loop_t = t - sampler.times[last];
-                let dur = sampler.times[last] - sampler.times[0];
-                if dur > 0.0 {
-                    let wrapped = loop_t % dur;
-                    let (low, high, frac) =
-                        find_lerp_factors(&sampler.times, sampler.times[0] + wrapped);
-                    lerp_value(
-                        sampler.outputs[low],
-                        sampler.outputs[high],
-                        frac,
-                        channel.target,
-                    )
-                } else {
-                    sampler.outputs[last]
-                }
-            } else {
-                let (low, high, frac) = find_lerp_factors(&sampler.times, t);
-                lerp_value(
-                    sampler.outputs[low],
-                    sampler.outputs[high],
-                    frac,
-                    channel.target,
-                )
             };
-
+            if sampler.times.is_empty() {
+                continue;
+            }
+            let (low, high, frac) = sample_factors(&sampler.times, time);
+            if channel.target == 3 {
+                if sampler.morph_weight_count == 0 || sampler.morph_weights.is_empty() {
+                    continue;
+                }
+                let Some(meshes) = self.node_to_morph_meshes.get(&channel.node) else {
+                    continue;
+                };
+                let count = sampler.morph_weight_count;
+                for mesh_id in meshes {
+                    let Some(mesh) = self.morph_meshes.get(mesh_id) else {
+                        continue;
+                    };
+                    let values = morph
+                        .entry(*mesh_id)
+                        .or_insert_with(|| vec![0.0f32; mesh.targets.len()]);
+                    for (i, value) in values.iter_mut().enumerate().take(count) {
+                        let lo = sampler
+                            .morph_weights
+                            .get(low * count + i)
+                            .copied()
+                            .unwrap_or(0.0);
+                        let hi = sampler
+                            .morph_weights
+                            .get(high * count + i)
+                            .copied()
+                            .unwrap_or(lo);
+                        *value = lo + (hi - lo) * frac;
+                    }
+                }
+                continue;
+            }
+            if low >= sampler.outputs.len() || high >= sampler.outputs.len() {
+                continue;
+            }
+            let Some(slot) = pose.get_mut(channel.node) else {
+                continue;
+            };
+            let value = lerp_value(
+                sampler.outputs[low],
+                sampler.outputs[high],
+                frac,
+                channel.target,
+            );
             match channel.target {
-                0 => self.cached_local_trs[channel.node].0 = [sample[0], sample[1], sample[2]],
-                1 => self.cached_local_trs[channel.node].1 = sample,
-                2 => self.cached_local_trs[channel.node].2 = [sample[0], sample[1], sample[2]],
+                0 => slot.0 = [value[0], value[1], value[2]],
+                1 => slot.1 = value,
+                2 => slot.2 = [value[0], value[1], value[2]],
                 _ => {}
             }
         }
+    }
 
-        for (i, override_q) in self.joint_overrides.iter().enumerate() {
+    /// 剪辑总时长（最后一个关键帧时间）。
+    fn clip_duration(&self, clip_index: usize) -> f32 {
+        self.anim_clips
+            .get(clip_index)
+            .map(|clip| {
+                clip.samplers
+                    .iter()
+                    .filter_map(|s| s.times.last().copied())
+                    .fold(0.0f32, f32::max)
+            })
+            .unwrap_or(0.0)
+    }
+
+    /// 推进动画时间，混合所有层与 cross-fade，计算骨骼矩阵并上传到 GPU。
+    ///
+    /// 即使暂停、没有动画剪辑或模型没有蒙皮，也会用静止姿态 + 关节覆盖
+    /// 重算一次局部/世界矩阵，保证手动摆姿势在静态模型上同样生效。
+    pub fn advance_animation(&mut self, dt: f32) {
+        let num_joints = self.joints.len();
+
+        if !self.anim_paused {
+            if self.active_anim < self.anim_clips.len() {
+                self.anim_time += dt * self.anim_speed;
+                let duration = self.clip_duration(self.active_anim);
+                if duration > 0.0 {
+                    self.anim_time = self.anim_time.rem_euclid(duration);
+                }
+            }
+            let layer_durations: Vec<f32> = self
+                .anim_layers
+                .iter()
+                .map(|layer| self.clip_duration(layer.clip))
+                .collect();
+            for (layer, duration) in self.anim_layers.iter_mut().zip(layer_durations) {
+                layer.time += dt * layer.speed;
+                if duration > 0.0 {
+                    layer.time = layer.time.rem_euclid(duration);
+                }
+            }
+            let fade_duration = self
+                .anim_fade
+                .as_ref()
+                .map(|fade| self.clip_duration(fade.clip))
+                .unwrap_or(0.0);
+            if let Some(fade) = self.anim_fade.as_mut() {
+                fade.time += dt * fade.speed;
+                fade.elapsed += dt;
+                if fade_duration > 0.0 {
+                    fade.time = fade.time.rem_euclid(fade_duration);
+                }
+            }
+            if self
+                .anim_fade
+                .as_ref()
+                .is_some_and(|fade| fade.elapsed >= fade.duration)
+            {
+                self.anim_fade = None;
+            }
+        }
+
+        if num_joints == 0 {
+            return;
+        }
+
+        // 静止姿态：未被子剪辑覆盖的分量保持模型原始 TRS。
+        let rest: Vec<([f32; 3], [f32; 4], [f32; 3])> =
+            self.joints.iter().map(|j| j.default_trs).collect();
+        let mut pose = rest.clone();
+        let mut morph_pose: HashMap<MeshId, Vec<f32>> = HashMap::new();
+        if self.active_anim < self.anim_clips.len() {
+            self.sample_clip_into(self.active_anim, self.anim_time, &mut pose, &mut morph_pose);
+        }
+
+        // cross-fade：旧剪辑按 smoothstep 权重让位给当前剪辑。
+        if let Some(fade) = self.anim_fade.as_ref() {
+            let t = (fade.elapsed / fade.duration.max(1e-6)).clamp(0.0, 1.0);
+            let eased = t * t * (3.0 - 2.0 * t);
+            let mut old_pose = rest.clone();
+            let mut old_morph: HashMap<MeshId, Vec<f32>> = HashMap::new();
+            self.sample_clip_into(fade.clip, fade.time, &mut old_pose, &mut old_morph);
+            for (slot, old) in pose.iter_mut().zip(old_pose.iter()) {
+                blend_trs(slot, *old, 1.0 - eased);
+            }
+            for (mesh_id, old_values) in &old_morph {
+                let Some(mesh) = self.morph_meshes.get(mesh_id) else {
+                    continue;
+                };
+                let values = morph_pose
+                    .entry(*mesh_id)
+                    .or_insert_with(|| vec![0.0f32; mesh.targets.len()]);
+                for (i, value) in values.iter_mut().enumerate().take(old_values.len()) {
+                    *value = old_values[i] + (*value - old_values[i]) * eased;
+                }
+            }
+        }
+
+        // 叠加层：非 additive 层按权重覆盖，additive 层以静止姿态为基准叠加增量。
+        for layer in &self.anim_layers {
+            if layer.weight <= 0.0 {
+                continue;
+            }
+            let mut layer_pose = rest.clone();
+            let mut layer_morph: HashMap<MeshId, Vec<f32>> = HashMap::new();
+            self.sample_clip_into(layer.clip, layer.time, &mut layer_pose, &mut layer_morph);
+            for i in 0..num_joints {
+                if let Some(mask) = &layer.joint_mask {
+                    if !mask.get(i).copied().unwrap_or(false) {
+                        continue;
+                    }
+                }
+                if layer.additive {
+                    apply_additive_trs(&mut pose[i], layer_pose[i], rest[i], layer.weight);
+                } else {
+                    blend_trs(&mut pose[i], layer_pose[i], layer.weight);
+                }
+            }
+            for (mesh_id, layer_values) in &layer_morph {
+                let Some(mesh) = self.morph_meshes.get(mesh_id) else {
+                    continue;
+                };
+                let values = morph_pose
+                    .entry(*mesh_id)
+                    .or_insert_with(|| vec![0.0f32; mesh.targets.len()]);
+                for (i, value) in values.iter_mut().enumerate().take(layer_values.len()) {
+                    *value = if layer.additive {
+                        *value + layer_values[i] * layer.weight
+                    } else {
+                        *value + (layer_values[i] - *value) * layer.weight
+                    };
+                }
+            }
+        }
+
+        // 手动覆盖最后应用：无论是否暂停、是否切到别的剪辑，覆盖都优先。
+        for (i, over) in self.joint_overrides.iter().enumerate() {
             if i >= num_joints {
                 break;
             }
-            if let Some(q) = override_q {
-                self.cached_local_trs[i].1 = [q.x, q.y, q.z, q.w];
+            if let Some(translation) = over.translation {
+                pose[i].0 = translation;
             }
+            if let Some(rotation) = over.rotation {
+                pose[i].1 = rotation;
+            }
+            if let Some(scale) = over.scale {
+                pose[i].2 = scale;
+            }
+        }
+
+        // 写回 CPU 缓存并更新 morph 权重（手动覆盖过的目标不参与动画）。
+        self.cached_local_trs.clear();
+        self.cached_local_trs.extend_from_slice(&pose);
+        let mut morph_changed = false;
+        for (mesh_id, values) in &morph_pose {
+            let Some(mesh) = self.morph_meshes.get_mut(mesh_id) else {
+                continue;
+            };
+            for i in 0..values.len().min(mesh.weights.len()) {
+                if mesh.overrides[i].is_some() {
+                    continue;
+                }
+                let weight = values[i].clamp(0.0, 1.0);
+                if (mesh.weights[i] - weight).abs() > 1e-6 {
+                    mesh.weights[i] = weight;
+                    morph_changed = true;
+                }
+            }
+        }
+        if morph_changed {
+            self.upload_morph_weights();
         }
 
         self.cached_global_mats.clear();
         self.cached_global_mats
             .resize(num_joints, scenekit::Mat4::IDENTITY);
-        let local_mats: Vec<scenekit::Mat4> = (0..num_joints)
-            .map(|i| {
-                trs_to_mat4(
-                    self.cached_local_trs[i].0,
-                    self.cached_local_trs[i].1,
-                    self.cached_local_trs[i].2,
-                )
-            })
+        let local_mats: Vec<scenekit::Mat4> = pose
+            .iter()
+            .map(|(t, r, s)| trs_to_mat4(*t, *r, *s))
             .collect();
 
         let mut children_of: Vec<Vec<usize>> = vec![Vec::new(); num_joints];
@@ -1482,18 +1873,7 @@ impl Scenix3D {
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            self.bone_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("rgpui-3d.bone_bg"),
-                layout: &self.skin_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &self.bone_buffer,
-                        offset: 0,
-                        size: wgpu::BufferSize::new(self.bone_capacity as u64 * 64),
-                    }),
-                }],
-            });
+            self.rebuild_skin_bind_group();
         }
 
         self.cached_bone_data.clear();
@@ -1672,6 +2052,8 @@ impl Scenix3D {
             samplers.push(AnimSampler {
                 times: times.clone(),
                 outputs: rotation_outputs,
+                morph_weights: Vec::new(),
+                morph_weight_count: 0,
             });
             channels.push(AnimChannel {
                 node: leg_node,
@@ -1700,6 +2082,8 @@ impl Scenix3D {
                 samplers.push(AnimSampler {
                     times: times.clone(),
                     outputs: knee_outputs,
+                    morph_weights: Vec::new(),
+                    morph_weight_count: 0,
                 });
                 channels.push(AnimChannel {
                     node: knee,
@@ -1722,6 +2106,8 @@ impl Scenix3D {
             samplers.push(AnimSampler {
                 times: times.clone(),
                 outputs: spine_outputs,
+                morph_weights: Vec::new(),
+                morph_weight_count: 0,
             });
             channels.push(AnimChannel {
                 node: spine,
@@ -1740,6 +2126,8 @@ impl Scenix3D {
         samplers.push(AnimSampler {
             times,
             outputs: hips_outputs,
+            morph_weights: Vec::new(),
+            morph_weight_count: 0,
         });
         channels.push(AnimChannel {
             node: hips,
@@ -1778,11 +2166,38 @@ impl Scenix3D {
     }
     /// 设置关节的旋转覆盖
     pub fn set_joint_rotation_override(&mut self, index: usize, rotation: scenekit::Quat) {
+        self.ensure_joint_override_slot(index);
         if index < self.joints.len() {
-            if self.joint_overrides.len() <= index {
-                self.joint_overrides.resize(index + 1, None)
-            }
-            self.joint_overrides[index] = Some(rotation);
+            self.joint_overrides[index].rotation =
+                Some([rotation.x, rotation.y, rotation.z, rotation.w]);
+        }
+    }
+    /// 设置关节的平移覆盖
+    pub fn set_joint_translation_override(&mut self, index: usize, translation: scenekit::Vec3) {
+        self.ensure_joint_override_slot(index);
+        if index < self.joints.len() {
+            self.joint_overrides[index].translation =
+                Some([translation.x, translation.y, translation.z]);
+        }
+    }
+    /// 设置关节的缩放覆盖
+    pub fn set_joint_scale_override(&mut self, index: usize, scale: scenekit::Vec3) {
+        self.ensure_joint_override_slot(index);
+        if index < self.joints.len() {
+            self.joint_overrides[index].scale = Some([scale.x, scale.y, scale.z]);
+        }
+    }
+    /// 确保覆盖数组能容纳 `index` 位置
+    fn ensure_joint_override_slot(&mut self, index: usize) {
+        if index < self.joints.len() && self.joint_overrides.len() <= index {
+            self.joint_overrides
+                .resize(index + 1, JointOverride::default());
+        }
+    }
+    /// 清除单个关节的所有覆盖分量
+    pub fn clear_joint_override(&mut self, index: usize) {
+        if let Some(over) = self.joint_overrides.get_mut(index) {
+            *over = JointOverride::default();
         }
     }
     /// 清除所有关节覆盖
@@ -1791,18 +2206,344 @@ impl Scenix3D {
     }
     /// 获取当前被覆盖的关节数量
     pub fn joint_override_count(&self) -> usize {
-        self.joint_overrides.iter().filter(|o| o.is_some()).count()
+        self.joint_overrides
+            .iter()
+            .filter(|over| !over.is_empty())
+            .count()
     }
-    /// 清除所有蒙皮和动画数据（用于在 load_gltf_skins 失败后恢复干净状态）
+    /// 一次设置关节的完整 TRS 覆盖
+    pub fn set_joint_trs_override(
+        &mut self,
+        index: usize,
+        translation: scenekit::Vec3,
+        rotation: scenekit::Quat,
+        scale: scenekit::Vec3,
+    ) {
+        self.set_joint_translation_override(index, translation);
+        self.set_joint_rotation_override(index, rotation);
+        self.set_joint_scale_override(index, scale);
+    }
+    /// 获取关节名称
+    pub fn joint_name(&self, index: usize) -> Option<&str> {
+        self.joints.get(index).map(|joint| joint.name.as_str())
+    }
+    /// 按名称查找关节索引（大小写不敏感，重名时取第一个）
+    pub fn joint_index_by_name(&self, name: &str) -> Option<usize> {
+        self.joints
+            .iter()
+            .position(|joint| joint.name.eq_ignore_ascii_case(name))
+    }
+    /// 获取全部关节名称（顺序与关节索引一致）
+    pub fn joint_names(&self) -> Vec<String> {
+        self.joints.iter().map(|joint| joint.name.clone()).collect()
+    }
+    /// 获取关节的静止姿态 TRS
+    pub fn joint_rest_trs(&self, index: usize) -> Option<([f32; 3], [f32; 4], [f32; 3])> {
+        self.joints.get(index).map(|joint| joint.default_trs)
+    }
+    /// 获取关节当前的局部 TRS（需在 `advance_animation` 之后调用）
+    pub fn joint_local_trs(&self, index: usize) -> Option<([f32; 3], [f32; 4], [f32; 3])> {
+        self.cached_local_trs.get(index).copied()
+    }
+
+    // ========================================================================
+    // Morph target 控制
+    // ========================================================================
+
+    /// 列出所有带 morph target 的网格
+    pub fn morph_mesh_ids(&self) -> Vec<MeshId> {
+        self.morph_meshes.keys().copied().collect()
+    }
+    /// 带 morph target 的网格数量
+    pub fn morph_mesh_count(&self) -> usize {
+        self.morph_meshes.len()
+    }
+    /// 获取网格的 morph target 名称列表
+    pub fn morph_target_names(&self, mesh: MeshId) -> Vec<String> {
+        self.morph_meshes
+            .get(&mesh)
+            .map(MorphMesh::target_names)
+            .unwrap_or_default()
+    }
+    /// 获取网格当前的 morph 权重
+    pub fn morph_weights(&self, mesh: MeshId) -> Vec<f32> {
+        self.morph_meshes
+            .get(&mesh)
+            .map(|m| m.weights.clone())
+            .unwrap_or_default()
+    }
+    /// 按索引设置 morph 权重并锁定（后续动画不会再改写该目标）。
+    pub fn set_morph_weight(&mut self, mesh: MeshId, index: usize, weight: f32) {
+        let Some(target) = self.morph_meshes.get_mut(&mesh) else {
+            return;
+        };
+        if index >= target.weights.len() {
+            return;
+        }
+        let clamped = weight.clamp(0.0, 1.0);
+        target.weights[index] = clamped;
+        target.overrides[index] = Some(clamped);
+        let offset = (target.weight_base as u64 + index as u64) * 4;
+        self.queue.write_buffer(
+            &self.morph_weight_buffer,
+            offset,
+            bytemuck::bytes_of(&clamped),
+        );
+    }
+    /// 按名称设置 morph 权重并锁定；名称不存在时返回 `false`。
+    pub fn set_morph_weight_by_name(&mut self, mesh: MeshId, name: &str, weight: f32) -> bool {
+        let Some(index) = self
+            .morph_meshes
+            .get(&mesh)
+            .and_then(|m| m.target_index(name))
+        else {
+            return false;
+        };
+        self.set_morph_weight(mesh, index, weight);
+        true
+    }
+    /// 解除网格所有 morph 目标的手动锁定，恢复由动画/默认权重驱动。
+    pub fn clear_morph_weights(&mut self, mesh: MeshId) {
+        let Some(target) = self.morph_meshes.get_mut(&mesh) else {
+            return;
+        };
+        for over in &mut target.overrides {
+            *over = None;
+        }
+    }
+
+    // ========================================================================
+    // 多层动画
+    // ========================================================================
+
+    /// 追加一个动画层；剪辑索引非法时返回 `None`。
+    ///
+    /// `weight` 为 0 的层不会参与混合，可在保留层配置的同时临时禁用。
+    pub fn add_animation_layer(&mut self, clip: usize, weight: f32) -> Option<usize> {
+        if clip >= self.anim_clips.len() {
+            return None;
+        }
+        self.anim_layers.push(AnimLayer::new(clip, weight));
+        Some(self.anim_layers.len() - 1)
+    }
+    /// 追加一个 additive 层（以静止姿态为基准叠加增量）。
+    pub fn add_additive_animation_layer(&mut self, clip: usize, weight: f32) -> Option<usize> {
+        let index = self.add_animation_layer(clip, weight)?;
+        self.anim_layers[index].additive = true;
+        Some(index)
+    }
+    /// 移除动画层
+    pub fn remove_animation_layer(&mut self, index: usize) {
+        if index < self.anim_layers.len() {
+            self.anim_layers.remove(index);
+        }
+    }
+    /// 清空所有动画层
+    pub fn clear_animation_layers(&mut self) {
+        self.anim_layers.clear();
+    }
+    /// 动画层数量
+    pub fn animation_layer_count(&self) -> usize {
+        self.anim_layers.len()
+    }
+    /// 设置层权重（0..=1）
+    pub fn set_animation_layer_weight(&mut self, index: usize, weight: f32) {
+        if let Some(layer) = self.anim_layers.get_mut(index) {
+            layer.weight = weight.clamp(0.0, 1.0);
+        }
+    }
+    /// 设置层的局部播放时间
+    pub fn set_animation_layer_time(&mut self, index: usize, time: f32) {
+        if let Some(layer) = self.anim_layers.get_mut(index) {
+            layer.time = time;
+        }
+    }
+    /// 设置层播放速度
+    pub fn set_animation_layer_speed(&mut self, index: usize, speed: f32) {
+        if let Some(layer) = self.anim_layers.get_mut(index) {
+            layer.speed = speed;
+        }
+    }
+    /// 设置层是否以静止姿态为基准叠加
+    pub fn set_animation_layer_additive(&mut self, index: usize, additive: bool) {
+        if let Some(layer) = self.anim_layers.get_mut(index) {
+            layer.additive = additive;
+        }
+    }
+    /// 设置层的关节参与掩码；`None` 表示整副骨架参与
+    pub fn set_animation_layer_joint_mask(&mut self, index: usize, mask: Option<Vec<bool>>) {
+        if let Some(layer) = self.anim_layers.get_mut(index) {
+            layer.joint_mask = mask;
+        }
+    }
+
+    /// 启动从当前剪辑到 `index` 的 cross-fade。
+    ///
+    /// `duration` 为 0 时立即切换；fade 期间旧剪辑以 smoothstep 权重淡出。
+    pub fn fade_to(&mut self, index: usize, duration: f32) {
+        if index >= self.anim_clips.len() {
+            return;
+        }
+        if duration <= 0.0 {
+            self.anim_fade = None;
+            self.active_anim = index;
+            self.anim_time = 0.0;
+            return;
+        }
+        self.anim_fade = Some(AnimFade {
+            clip: self.active_anim,
+            time: self.anim_time,
+            speed: self.anim_speed,
+            elapsed: 0.0,
+            duration,
+        });
+        self.active_anim = index;
+        self.anim_time = 0.0;
+    }
+    /// 是否正在 cross-fade
+    pub fn is_cross_fading(&self) -> bool {
+        self.anim_fade.is_some()
+    }
+
+    /// 清除所有蒙皮、morph 和动画数据（用于在 load_gltf_skins 失败后恢复干净状态）
     pub fn clear_skin_data(&mut self) {
         self.skinned_meshes.clear();
         self.mesh_to_skin.clear();
         self.joints.clear();
         self.anim_clips.clear();
         self.skins.clear();
+        self.morph_meshes.clear();
+        self.node_to_morph_meshes.clear();
+        self.anim_layers.clear();
+        self.anim_fade = None;
+        self.joint_overrides.clear();
         self.active_anim = 0;
         self.anim_time = 0.0;
         self.anim_paused = false;
+    }
+
+    // ========================================================================
+    // Morph GPU 资源
+    // ========================================================================
+
+    /// 重建全局 morph 增量/权重布局并上传。
+    ///
+    /// 每个目标占用 `2 * vertex_count` 个 `vec3` 槽位（位置块在前、法线块在后），
+    /// 与 scenekit 的打包方式一致；`vec3` 在 storage array 中按 16 字节对齐。
+    fn rebuild_morph_meshes(&mut self) {
+        let mut delta_count = 0u32;
+        let mut weight_count = 0u32;
+        for mesh in self.morph_meshes.values() {
+            delta_count += mesh.targets.len() as u32 * mesh.vertex_count * 2;
+            weight_count += mesh.targets.len() as u32;
+        }
+
+        let delta_elems = delta_count.max(1);
+        let weight_elems = weight_count.max(1);
+        let mut bind_group_dirty = false;
+        if delta_elems > self.morph_delta_capacity {
+            self.morph_delta_capacity = delta_elems.next_power_of_two();
+            self.morph_delta_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("rgpui-3d.morph_delta_buffer"),
+                size: self.morph_delta_capacity as u64 * 16,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            bind_group_dirty = true;
+        }
+        if weight_elems > self.morph_weight_capacity {
+            self.morph_weight_capacity = weight_elems.next_power_of_two();
+            self.morph_weight_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("rgpui-3d.morph_weight_buffer"),
+                size: self.morph_weight_capacity as u64 * 4,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            bind_group_dirty = true;
+        }
+        if bind_group_dirty {
+            self.rebuild_skin_bind_group();
+        }
+
+        let mut deltas = vec![[0.0f32; 4]; delta_elems as usize];
+        let mut base = 0u32;
+        let mut weight_base = 0u32;
+        for mesh in self.morph_meshes.values_mut() {
+            mesh.base = base;
+            mesh.weight_base = weight_base;
+            let vertex_count = mesh.vertex_count as usize;
+            for target in &mesh.targets {
+                for i in 0..vertex_count {
+                    let value = target.positions.get(i).copied().unwrap_or([0.0; 3]);
+                    deltas[(base + i as u32) as usize] = [value[0], value[1], value[2], 0.0];
+                }
+                base += mesh.vertex_count;
+                for i in 0..vertex_count {
+                    let value = target.normals.get(i).copied().unwrap_or([0.0; 3]);
+                    deltas[(base + i as u32) as usize] = [value[0], value[1], value[2], 0.0];
+                }
+                base += mesh.vertex_count;
+                weight_base += 1;
+            }
+        }
+        self.queue
+            .write_buffer(&self.morph_delta_buffer, 0, bytemuck::cast_slice(&deltas));
+        self.upload_morph_weights();
+    }
+
+    /// 把 CPU 侧的 morph 权重整体同步到 GPU。
+    fn upload_morph_weights(&mut self) {
+        if self.morph_weight_capacity == 0 {
+            return;
+        }
+        let mut data = vec![0.0f32; self.morph_weight_capacity as usize];
+        for mesh in self.morph_meshes.values() {
+            let start = mesh.weight_base as usize;
+            for (i, weight) in mesh.weights.iter().enumerate() {
+                if let Some(slot) = data.get_mut(start + i) {
+                    *slot = *weight;
+                }
+            }
+        }
+        self.queue
+            .write_buffer(&self.morph_weight_buffer, 0, bytemuck::cast_slice(&data));
+    }
+
+    /// 用当前的骨骼/morph 缓冲重建蒙皮绑定组。
+    fn rebuild_skin_bind_group(&mut self) {
+        let bone_size = self.bone_capacity as u64 * 64;
+        let delta_size = self.morph_delta_capacity as u64 * 16;
+        let weight_size = self.morph_weight_capacity as u64 * 4;
+        self.bone_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("rgpui-3d.bone_bg"),
+            layout: &self.skin_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &self.bone_buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(bone_size),
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &self.morph_delta_buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(delta_size),
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &self.morph_weight_buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(weight_size),
+                    }),
+                },
+            ],
+        });
     }
     /// 获取 GPU 场景的可变引用
     pub fn gpu_scene_mut(&mut self) -> &mut GpuScene {
@@ -1878,24 +2619,38 @@ impl Scenix3D {
         for (i, draw) in all_draws.iter().enumerate() {
             let object_off = i as u64 * self.object_stride;
             let material_off = i as u64 * self.material_stride;
-            let is_skinned = draw_is_skinned[i];
 
-            let (world, bone_offset) = if is_skinned {
-                let bo = self
-                    .mesh_to_skin
-                    .get(&draw.mesh_id)
-                    .and_then(|&si| skin_offsets.get(si).copied())
-                    .unwrap_or(0);
-                (mat4_to_array(mat4_identity()), bo)
+            let mut flags = 0u32;
+            let mut bone_offset = 0u32;
+            // 蒙皮网格遵循 glTF 规范：忽略节点自身变换，由关节世界矩阵承担；
+            // morph-only 网格（没有 JOINTS/WEIGHTS）仍需节点世界矩阵。
+            let world = if let Some(&skin_index) = self.mesh_to_skin.get(&draw.mesh_id) {
+                flags |= SKIN_FLAG_JOINTS;
+                bone_offset = skin_offsets.get(skin_index).copied().unwrap_or(0);
+                mat4_to_array(mat4_identity())
             } else if let Some(&node_idx) = self.mesh_to_node.get(&draw.mesh_id) {
                 if node_idx < self.cached_global_mats.len() {
-                    (mat4_to_array(self.cached_global_mats[node_idx]), 0)
+                    mat4_to_array(self.cached_global_mats[node_idx])
                 } else {
-                    (mat4_to_array(draw.world_matrix), 0)
+                    mat4_to_array(draw.world_matrix)
                 }
             } else {
-                (mat4_to_array(draw.world_matrix), 0)
+                mat4_to_array(draw.world_matrix)
             };
+
+            let (morph_base, weight_base, vertex_count, morph_count) =
+                match self.morph_meshes.get(&draw.mesh_id) {
+                    Some(morph) => {
+                        flags |= SKIN_FLAG_MORPH;
+                        (
+                            morph.base,
+                            morph.weight_base,
+                            morph.vertex_count,
+                            morph.targets.len() as u32,
+                        )
+                    }
+                    None => (0, 0, 0, 0),
+                };
 
             self.queue.write_buffer(
                 &self.object_buffer,
@@ -1903,7 +2658,12 @@ impl Scenix3D {
                 bytemuck::bytes_of(&ObjectUniform {
                     world,
                     bone_offset,
-                    _pad: [0u32; 3],
+                    morph_base,
+                    weight_base,
+                    flags,
+                    vertex_count,
+                    morph_count,
+                    _pad: [0u32; 2],
                 }),
             );
 
@@ -2175,3 +2935,26 @@ impl Scenix3D {
 
 unsafe impl Send for Scenix3D {}
 unsafe impl Sync for Scenix3D {}
+
+/// 读取 glTF mesh 的 `extras.targetNames`（morph target 名称列表）。
+///
+/// VRM 等资产靠这个字段给表情命名；缺失或格式不对时返回空列表，
+/// 调用方会退化成 `morph-<索引>`。
+fn morph_target_names(mesh: &gltf::Mesh<'_>) -> Vec<String> {
+    let Some(extras) = mesh.extras() else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(extras.get()) else {
+        return Vec::new();
+    };
+    value
+        .get("targetNames")
+        .and_then(|names| names.as_array())
+        .map(|names| {
+            names
+                .iter()
+                .map(|name| name.as_str().unwrap_or_default().to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
