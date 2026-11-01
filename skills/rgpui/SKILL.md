@@ -50,7 +50,7 @@ description: rgpui 框架知识，涵盖操作/快捷键、异步/后台任务�
 | Windows 平台 | [windows.md](references/windows.md) | 托盘、鼠标穿透、Mica、自启动、焦点窗口、`WM_USER` 消息 |
 | 可选功能组件 | [feature-components.md](references/feature-components.md) | `charts`/`effects`/`qr-code`/`webview`/`dom-backend` feature |
 | FPS 浮层 | [fps-hud.md](references/fps-hud.md) | `FpsHudState`、`FpsHud` |
-| Markdown | [markdown.md](references/markdown.md) | `rgpui-markdown`：`Markdown`、`RichBlock`、`CodeBlock`、`latex`/`mermaid`、`extract_headings` |
+| Markdown | [markdown.md](references/markdown.md) | `rgpui-markdown`：`Markdown`、`MarkdownState` 流式增量、`MarkdownSelectionState` 文档级选区与复制、`RichBlock`、`CodeBlock`、`latex`/`mermaid`、`extract_headings` |
 | 终端 | [terminal.md](references/terminal.md) | `rgpui-term`：`Terminal`/`TerminalView`/`TerminalElement`、本地 PTY 与 `new_external` 外接 IO、内容搜索与 `SearchStatus`、OSC 8 超链接、IME 组合输入 |
 
 ## 扩展参考

@@ -152,6 +152,33 @@ impl：`ScrollHandle`（`:44`）、`UniformListScrollHandle`（`:58`）、
 `with_scroll_handle`（`:249`）。句柄 `VirtualListScrollHandle`（`:39`）：
 `new`、`base_handle`、`scroll_to_item`、`scroll_to_bottom`。
 
+### 长列表：虚拟化是默认选择
+
+> 实测（2026-10-30，Windows，release + LTO，1000 行 × 约 80 字符，900×600 窗口）：
+> 逐行 `div` 每帧全量刷新 **46.3 ms/帧（22.3 FPS）**；`uniform_list` 同负载
+> **2.8 ms/帧**，内存低约 13 MB。行数越多差距越大，超过 100 行不要逐行拼 `div`。
+
+```rust
+// 反例：1000 个 div 全部参与布局与绘制，每帧刷新时整表重排
+div().flex().flex_col().children((0..1000).map(row))
+
+// 正例：等高行交给 uniform_list，只渲染可见区间
+uniform_list(
+    "entries",
+    1000,
+    cx.processor(|_this, range, _window, _cx| range.map(row).collect::<Vec<_>>()),
+)
+.h_full() // 必须：撑满有确定高度的父容器
+```
+
+**`.h_full()` 坑**：`uniform_list` 依赖父容器给出确定高度，列表自身必须
+`.h_full()` 或 `flex_grow()`。若父容器是 `div().size_full()` 而列表没有高度约束，
+整块列表不渲染（本次实测踩到，无报错）。参考实现：
+`examples/list_showcase/src/bin/uniform_list.rs:36`。
+
+不等高行用 `v_virtual_list`，它需要先提供每项尺寸（`Rc<Vec<Size<Pixels>>>`）；
+**该路径没有与本条同口径的实测数据**，不要假设与 `uniform_list` 一样快。
+
 ## 越界回弹
 
 `Overscroll<E>`（`scroll/overscroll.rs:160`）：`new(child, &ScrollHandle, axis)`
@@ -166,6 +193,8 @@ div().overflow_y_scrollbar().overscroll(true)   // 拖到边界有回弹
 
 - **想要滚动条就用 `overflow_*_scrollbar`**：自动句柄 + 滚动条，无需 `.id()`。
 - **需要编程滚动才手动 `.id() + track_scroll`**，并自行叠 `Scrollbar`（需 `.relative()`）。
-- **长列表用 `uniform_list`（等高）或 `v_virtual_list`（不等高）**，避免一次渲染全部。
+- **长列表（>100 行）虚拟化是默认选择**：等高用 `uniform_list`，不等高用
+  `v_virtual_list`；逐行 `div` 在 1000 行实测 46.3 ms/帧，虚拟化后 2.8 ms/帧。
+  正反例与 `.h_full()` 坑见上文「长列表：虚拟化是默认选择」。
 - **`#[track_caller]` 撞 id**：循环内创建多个滚动/滚动条时显式 `.id(...)`。
 - **记得 `use rgpui::ScrollableElement;`**：滚动类型不在 prelude。

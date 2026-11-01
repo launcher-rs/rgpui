@@ -23,8 +23,12 @@ impl MetalAtlas {
         }))
     }
 
-    pub(crate) fn metal_texture(&self, id: AtlasTextureId) -> metal::Texture {
-        self.0.lock().texture(id).metal_texture.clone()
+    /// 返回 `id` 对应的 GPU 纹理；该纹理的所有瓦片都被移除后返回 `None`。
+    ///
+    /// 缓存过的视图可能重放「图片被丢弃之前」的绘制，调用方必须跳过这批精灵，
+    /// 而不是假定纹理一定存在。
+    pub(crate) fn metal_texture(&self, id: AtlasTextureId) -> Option<metal::Texture> {
+        Some(self.0.lock().texture(id)?.metal_texture.clone())
     }
 }
 
@@ -52,7 +56,9 @@ impl PlatformAtlas for MetalAtlas {
             let tile = lock
                 .allocate(size, key.texture_kind())
                 .context("failed to allocate")?;
-            let texture = lock.texture(tile.texture_id);
+            let texture = lock
+                .texture(tile.texture_id)
+                .context("新分配的图集瓦片指向不存在的纹理")?;
             texture.upload(tile.bounds, &bytes);
             lock.tiles_by_key.insert(key.clone(), tile);
             Ok(Some(tile))
@@ -188,13 +194,13 @@ impl MetalAtlasState {
         .unwrap()
     }
 
-    fn texture(&self, id: AtlasTextureId) -> &MetalAtlasTexture {
+    fn texture(&self, id: AtlasTextureId) -> Option<&MetalAtlasTexture> {
         let textures = match id.kind {
             AtlasTextureKind::Monochrome => &self.monochrome_textures,
             AtlasTextureKind::Polychrome => &self.polychrome_textures,
             AtlasTextureKind::Subpixel => unreachable!(),
         };
-        textures[id.index as usize].as_ref().unwrap()
+        textures.textures.get(id.index as usize)?.as_ref()
     }
 }
 
@@ -335,7 +341,29 @@ mod tests {
         let tile_a2 = insert_tile(&atlas, &key_a, small);
 
         // The texture must actually exist  — this would panic before the fix.
-        let _texture = atlas.metal_texture(tile_a2.texture_id);
+        assert!(atlas.metal_texture(tile_a2.texture_id).is_some());
+    }
+
+    #[test]
+    fn test_metal_texture_is_none_after_last_tile_removed() {
+        let Some(atlas) = create_atlas() else {
+            return;
+        };
+
+        let key = make_image_key(1, 0);
+        let tile = insert_tile(
+            &atlas,
+            &key,
+            Size {
+                width: DevicePixels(64),
+                height: DevicePixels(64),
+            },
+        );
+        assert!(atlas.metal_texture(tile.texture_id).is_some());
+
+        // 移除前的场景可能仍带着这个瓦片，查纹理必须返回 None 而不是 panic。
+        atlas.remove(&key);
+        assert!(atlas.metal_texture(tile.texture_id).is_none());
     }
 
     #[test]

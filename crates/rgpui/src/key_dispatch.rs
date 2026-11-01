@@ -642,15 +642,34 @@ mod tests {
     };
     use core::panic;
     use smallvec::SmallVec;
-    use std::{cell::RefCell, ops::Range, rc::Rc};
+    use std::{cell::RefCell, ops::Range, rc::Rc, time::Duration};
 
     use crate::{
-        ActionRegistry, App, Bounds, Context, DispatchTree, FocusHandle, InputHandler, IntoElement,
-        KeyBinding, KeyContext, Keymap, Pixels, Point, Render, Subscription, TestAppContext,
-        UTF16Selection, Unbind, Window,
+        ActionRegistry, App, Bounds, Context, DispatchTree, FocusHandle, InputHandler,
+        InteractiveElement, IntoElement, KeyBinding, KeyContext, Keymap, Pixels, Point, Render,
+        Subscription, TestAppContext, UTF16Selection, Unbind, Window, div,
     };
 
-    actions!(dispatch_test, [TestAction, SecondaryTestAction]);
+    actions!(
+        dispatch_test,
+        [TestAction, SecondaryTestAction, StandaloneModifierAction]
+    );
+
+    struct StandaloneModifierView {
+        focus_handle: FocusHandle,
+        action_count: usize,
+    }
+
+    impl Render for StandaloneModifierView {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .key_context("StandaloneModifier")
+                .track_focus(&self.focus_handle)
+                .on_action(cx.listener(|this, _: &StandaloneModifierAction, _, _| {
+                    this.action_count += 1;
+                }))
+        }
+    }
 
     fn test_dispatch_tree(bindings: Vec<KeyBinding>) -> DispatchTree {
         let registry = ActionRegistry::default();
@@ -1044,6 +1063,108 @@ mod tests {
         cx.update(|_, _| {
             let count_after_focus_change = *pending_input_changed_count.borrow();
             assert!(count_after_focus_change > *count_after_pending_for_assertion.borrow());
+        });
+    }
+
+    /// 独立修饰键必须参与超时：超过 1 秒后待定序列被冲掉，不会与下一次
+    /// shift 拼成 `shift shift`。
+    #[crate::test]
+    fn test_standalone_modifier_sequence_timeout_and_recovery(cx: &mut TestAppContext) {
+        use crate::Modifiers;
+
+        cx.update(|cx| {
+            cx.bind_keys([KeyBinding::new(
+                "shift shift",
+                StandaloneModifierAction,
+                Some("StandaloneModifier"),
+            )]);
+        });
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            let focus_handle = cx.focus_handle();
+            window.focus(&focus_handle, cx);
+            StandaloneModifierView {
+                focus_handle,
+                action_count: 0,
+            }
+        });
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        cx.simulate_modifiers_change(shift);
+        cx.simulate_modifiers_change(Modifiers::default());
+        cx.update(|window, _| {
+            assert_eq!(
+                window.pending_input_keystrokes(),
+                Some([Keystroke::parse("shift").expect("合法击键")].as_slice())
+            );
+        });
+        cx.background_executor.advance_clock(Duration::from_secs(2));
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            assert!(!window.has_pending_keystrokes());
+            assert_eq!(view.read_with(cx, |view, _| view.action_count), 0);
+        });
+
+        // 超时之后重新开始：单次 shift 仍不应触发动作。
+        cx.simulate_modifiers_change(shift);
+        cx.simulate_modifiers_change(Modifiers::default());
+        cx.update(|window, cx| {
+            assert!(window.has_pending_keystrokes());
+            assert_eq!(view.read_with(cx, |view, _| view.action_count), 0);
+        });
+
+        cx.simulate_modifiers_change(shift);
+        cx.simulate_modifiers_change(Modifiers::default());
+        cx.update(|window, cx| {
+            assert!(!window.has_pending_keystrokes());
+            assert_eq!(view.read_with(cx, |view, _| view.action_count), 1);
+        });
+    }
+
+    /// 超时之内完成 `shift shift` 仍应正常分发。
+    #[crate::test]
+    fn test_standalone_modifier_sequence_dispatches_before_timeout(cx: &mut TestAppContext) {
+        use crate::Modifiers;
+
+        cx.update(|cx| {
+            cx.bind_keys([KeyBinding::new(
+                "shift shift",
+                StandaloneModifierAction,
+                Some("StandaloneModifier"),
+            )]);
+        });
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            let focus_handle = cx.focus_handle();
+            window.focus(&focus_handle, cx);
+            StandaloneModifierView {
+                focus_handle,
+                action_count: 0,
+            }
+        });
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        cx.simulate_modifiers_change(shift);
+        cx.simulate_modifiers_change(Modifiers::default());
+        cx.background_executor
+            .advance_clock(Duration::from_millis(500));
+        cx.update(|window, cx| {
+            assert!(window.has_pending_keystrokes());
+            assert_eq!(view.read_with(cx, |view, _| view.action_count), 0);
+        });
+        cx.simulate_modifiers_change(shift);
+        cx.simulate_modifiers_change(Modifiers::default());
+        cx.update(|window, cx| {
+            assert!(!window.has_pending_keystrokes());
+            assert_eq!(view.read_with(cx, |view, _| view.action_count), 1);
+        });
+        cx.background_executor.advance_clock(Duration::from_secs(2));
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            assert!(!window.has_pending_keystrokes());
+            assert_eq!(view.read_with(cx, |view, _| view.action_count), 1);
         });
     }
 

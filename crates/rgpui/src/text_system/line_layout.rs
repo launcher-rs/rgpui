@@ -372,12 +372,12 @@ impl WrappedLineLayout {
                     .unwrapped_layout
                     .closest_index_for_x(position_in_unwrapped_line.x))
             } else {
-                // 上方已夹取 x 使其落在行内区间，index_for_x 必有结果
-                Ok(invariant(
-                    self.unwrapped_layout
-                        .index_for_x(position_in_unwrapped_line.x),
-                    "行排版：行内 x 坐标必有对应索引",
-                ))
+                // 排字器可能把行尾的零宽换行边界字形放到行宽之外，于是该行在
+                // `index_for_x` 有字形的范围之外还多出一小条。命中这一小条时
+                // 按「越过行尾」处理，返回行尾索引而不是 panic。
+                self.unwrapped_layout
+                    .index_for_x(position_in_unwrapped_line.x)
+                    .ok_or(wrapped_line_end_index)
             }
         }
     }
@@ -1042,6 +1042,33 @@ mod tests {
             .iter()
             .map(|g| f32::from(g.position.x))
             .collect()
+    }
+
+    /// 行尾零宽字形被放在行宽之外时，命中那条窄缝不能 panic。
+    #[test]
+    fn test_index_for_position_past_wrapped_line_width() {
+        // 行宽 10，换行边界字形落在 10.1：x ∈ [10, 10.1) 是 `index_for_x`
+        // 没有字形的窄缝，但仍在行尾边界之内。
+        let mut unwrapped = make_layout(vec![glyph_at(0., 0), glyph_at(10.1, 5)]);
+        unwrapped.width = px(10.);
+        unwrapped.len = 6;
+        let mut wrap_boundaries = SmallVec::new();
+        wrap_boundaries.push(WrapBoundary {
+            run_ix: 0,
+            glyph_ix: 1,
+        });
+        let layout = WrappedLineLayout {
+            unwrapped_layout: Arc::new(unwrapped),
+            wrap_boundaries,
+            wrap_width: Some(px(10.)),
+        };
+
+        assert_eq!(
+            layout.index_for_position(point(px(10.05), px(0.)), px(20.)),
+            Err(5)
+        );
+        // 最近索引路径同样不应 panic。
+        let _ = layout.closest_index_for_position(point(px(10.05), px(0.)), px(20.));
     }
 
     #[test]

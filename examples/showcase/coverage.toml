@@ -1,0 +1,178 @@
+# 组件覆盖表：AGENTS.md「组件库索引」每一行 → 源码模块 + 展示它的示例 bin。
+#
+# - 表键必须是 AGENTS.md 组件索引第一列去掉括注后的名字。
+# - modules：相对仓库根的源码文件或目录，必须真实存在（抓模块改名/搬迁后的文档漂移）。
+# - bins：写成 "<package>:<bin>"，package 为 Cargo.toml 里的 package.name；
+#   bin 必须在该包的清单里登记（关闭 autobins 时），或存在 src/bin/<bin>.rs / src/main.rs。
+# - 校验入口：crates/rgpui/tests/guards.rs。
+
+[components."滚动"]
+modules = ["crates/rgpui/src/elements/scroll"]
+bins = ["showcase:scrollable", "list_showcase:uniform_list"]
+
+[components."基础元素"]
+modules = ["crates/rgpui/src/elements"]
+bins = ["showcase:component_gallery", "showcase:extended_components"]
+
+[components."表单"]
+modules = ["crates/rgpui/src/form"]
+bins = ["showcase:form"]
+
+[components."输入"]
+modules = ["crates/rgpui/src/input_ui"]
+bins = ["showcase:input"]
+
+[components."编辑器"]
+modules = ["crates/rgpui/src/input_ui/editor"]
+bins = ["showcase:editor"]
+
+[components."菜单"]
+modules = ["crates/rgpui/src/menu"]
+bins = ["showcase:component_gallery"]
+
+[components."对话框"]
+modules = ["crates/rgpui/src/dialog"]
+bins = ["showcase:dialog"]
+
+[components."列表/表格/标签页"]
+modules = [
+    "crates/rgpui/src/list",
+    "crates/rgpui/src/table",
+    "crates/rgpui/src/tabs",
+]
+bins = [
+    "showcase:tabs",
+    "list_showcase:list_example",
+    "list_showcase:data_table",
+    "list_showcase:uniform_list",
+]
+
+[components."电子表格网格"]
+modules = ["crates/rgpui/src/sheet_grid.rs"]
+bins = ["showcase:sheet_grid"]
+
+[components."标题栏/扩展"]
+modules = ["crates/rgpui/src/title_bar", "crates/rgpui/src/components"]
+bins = [
+    "showcase:component_gallery",
+    "showcase:extended_components",
+    "showcase:sidebar",
+    "showcase:dock",
+]
+
+[components."动画/手势/物理"]
+modules = ["crates/rgpui/src/animation"]
+bins = ["showcase:animation"]
+
+[components."对话"]
+modules = ["crates/rgpui/src/chat"]
+bins = ["showcase:chat"]
+
+[components."剪贴板"]
+modules = ["crates/rgpui/src/platform.rs"]
+bins = ["showcase:rich_clipboard"]
+
+[components."富文本"]
+modules = ["crates/rgpui/src/rich_text.rs"]
+bins = ["showcase:rich_text"]
+
+[components."Ink 笔迹"]
+modules = ["crates/rgpui/src/ink.rs"]
+bins = ["showcase:ink"]
+
+[components."缩略图排序器"]
+modules = ["crates/rgpui/src/sorter.rs"]
+bins = ["showcase:sorter"]
+
+[components."动画时间线"]
+modules = ["crates/rgpui/src/anim_timeline.rs"]
+bins = ["showcase:timeline"]
+
+[components."色板"]
+modules = ["crates/rgpui/src/components/color_palette.rs"]
+bins = ["showcase:color_picker"]
+
+[components."屏幕取色"]
+modules = ["crates/rgpui/src/eyedropper.rs"]
+bins = ["showcase:color_picker"]
+
+[components."多文档界面 MDI"]
+modules = ["crates/rgpui/src/mdi.rs"]
+bins = ["showcase:mdi"]
+
+[components."任务窗格"]
+modules = ["crates/rgpui/src/task_pane.rs"]
+bins = ["showcase:task_pane"]
+
+[components."画布语义"]
+modules = ["crates/rgpui/src/canvas_a11y.rs"]
+bins = ["showcase:canvas_a11y"]
+
+[components."双向文字 bidi"]
+modules = ["crates/rgpui/src/bidi.rs"]
+bins = ["showcase:intl_text"]
+
+[components."东亚断行禁则"]
+modules = ["crates/rgpui/src/line_break.rs"]
+bins = ["showcase:intl_text"]
+
+[components."应用套件基座"]
+modules = [
+    "crates/rgpui/src/commands.rs",
+    "crates/rgpui/src/ribbon.rs",
+    "crates/rgpui/src/keytips.rs",
+    "crates/rgpui/src/qat.rs",
+    "crates/rgpui/src/mini_toolbar.rs",
+    "crates/rgpui/src/backstage.rs",
+    "crates/rgpui/src/viewport.rs",
+    "crates/rgpui/src/guides.rs",
+    "crates/rgpui/src/formula_bar.rs",
+    "crates/rgpui/src/sheet_grid.rs",
+    "crates/rgpui/src/page_view.rs",
+    "crates/rgpui/src/object_toolkit.rs",
+    "crates/rgpui/src/control_channel.rs",
+    "crates/rgpui/src/mcp.rs",
+]
+bins = [
+    "showcase:app_suite",
+    "showcase:command_registry",
+    "showcase:automation",
+    "showcase:ribbon",
+    "showcase:qat",
+    "showcase:mini_toolbar",
+    "showcase:backstage",
+    "showcase:viewport",
+    "showcase:ruler",
+    "showcase:canvas_objects",
+    "showcase:formula_bar",
+    "showcase:page_view",
+]
+
+[components."国际化 i18n"]
+modules = ["crates/rgpui/src/i18n/mod.rs"]
+bins = ["showcase:i18n"]
+
+[components."终端"]
+modules = [
+    "crates/rgpui-term/src/terminal.rs",
+    "crates/rgpui-term/src/terminal_element.rs",
+    "crates/rgpui-term/src/terminal_view.rs",
+    "crates/rgpui-term/src/external.rs",
+]
+bins = ["rgpui_term_basic:basic", "rgpui_term_basic:external_io"]
+
+[components."Markdown 渲染"]
+modules = [
+    "crates/rgpui-markdown/src/markdown.rs",
+    "crates/rgpui-markdown/src/rich_text.rs",
+    "crates/rgpui-markdown/src/code_block.rs",
+    "crates/rgpui-markdown/src/latex.rs",
+    "crates/rgpui-markdown/src/mermaid.rs",
+    "crates/rgpui-markdown/src/svg_image.rs",
+    "crates/rgpui-markdown/src/toc.rs",
+]
+bins = [
+    "showcase:markdown",
+    "showcase:markdown_stream",
+    "showcase:markdown_selection",
+]

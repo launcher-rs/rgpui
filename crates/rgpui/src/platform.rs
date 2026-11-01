@@ -9,7 +9,12 @@ pub mod popup;
 
 #[cfg(all(
     any(test, feature = "test-support"),
-    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+    any(
+        target_os = "windows",
+        target_os = "linux",
+        target_os = "macos",
+        target_family = "wasm"
+    )
 ))]
 mod threaded_dispatcher;
 
@@ -120,7 +125,12 @@ pub use test::{TestDispatcher, TestScreenCaptureSource, TestScreenCaptureStream}
 
 #[cfg(all(
     any(test, feature = "test-support"),
-    any(target_os = "windows", target_os = "linux", target_family = "wasm")
+    any(
+        target_os = "windows",
+        target_os = "linux",
+        target_os = "macos",
+        target_family = "wasm"
+    )
 ))]
 pub use threaded_dispatcher::ThreadedDispatcher;
 
@@ -1459,7 +1469,12 @@ pub trait PlatformDispatcher: Send + Sync {
     // 此 cfg 必须与 `threaded_dispatcher` 模块的匹配，该模块在编译时实现此方法
     #[cfg(all(
         any(test, feature = "test-support"),
-        any(target_os = "windows", target_os = "linux", target_family = "wasm")
+        any(
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "macos",
+            target_family = "wasm"
+        )
     ))]
     fn as_threaded(&self) -> Option<&ThreadedDispatcher> {
         None

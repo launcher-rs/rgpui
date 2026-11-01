@@ -47,8 +47,15 @@ tree 的快捷键。由统一 `init.rs:30` 调用。
 
 ## 日期/颜色/命令
 
-**DatePicker**（`date_picker.rs:17`）：`new()`（`:30`）、`select(NaiveDate)`（`:41`）、
-`on_change`（`:48`）、`selected() -> Option<NaiveDate>`（`:57`）。
+**DatePicker**（`date_picker.rs:32`，状态实体，`impl Render` `:207`，经
+`cx.new(|cx| DatePickerState::new(cx))` 创建后直接嵌入实体）：构建 `new(cx)`（`:51`）、
+`select(NaiveDate)`（`:65`，预填选中并切月）、`on_change`（`:73`）、
+`on_close`（`:82`，`Esc` 关闭回调，弹窗由父组件隐藏）；读取 `selected() -> Option<NaiveDate>`
+（`:91`）、`active_day() -> NaiveDate`（`:96`）；`focus(window, cx)`（`:101`，弹窗打开后
+调用即可纯键盘操作）。键盘：方向键 ±1 / ±7 天、`Home` / `End` 周首周末、`PageUp` /
+`PageDown` 换月（日期钳制）、`Enter` / `Space` 选中、`Esc` 关闭。无障碍：面板
+`Role::Grid`（`key_context("DatePicker")`）、日期格 `Role::GridCell` + `aria_selected`，
+活动日经 `aria_active_descendant` 报告；活动日描边、选中日填充。
 
 **ColorPickerState**（`color_picker.rs:18`，状态实体，`impl Render` `:305`，经
 `cx.new(|cx| ColorPickerState::new(window, cx))` 创建后**直接嵌入实体**；没有独立的
@@ -94,10 +101,15 @@ HEX/RGB 信息条；启动推流取首帧即停流，全程内存不落盘），
 
 ## 布局与导览
 
-**SplitPane**（`split_pane.rs`）：`SplitPane::new(Entity<SplitPaneState>)`（`:271`）、
-`show_collapse_buttons(bool)`、`on_resize`；状态 `SplitPaneState::new(cx)`（`:80`）。
+**SplitPane**（`split_pane.rs`）：`SplitPane::new(Entity<SplitPaneState>)`（`:309`）、
+`show_collapse_buttons(bool)`、`on_resize`；状态 `SplitPaneState::new(cx)`（`:80`）；
+键盘 `focus(window, cx)`（`:240`）与 `on_key_down`（`:246`）：分隔条可 Tab 聚焦，
+沿分隔方向的方向键按 1%（`Shift` 10%）调整、`Home` / `End` 到最小 / 最大、
+`Enter` / `Space` 折叠或展开第一个面板（折叠后焦点落在展开按钮上，键盘不中断）。
+分隔条无障碍为 `Role::Splitter` + `aria_numeric_value`（百分比）/ min / max /
+`aria_orientation`。
 枚举 `SplitDirection`（`:15`）、`SplitPaneEvent`（`:25`）、`CollapsiblePane`（`:45`）。
-`impl EventEmitter<SplitPaneEvent>`（`:242`）。
+`impl EventEmitter<SplitPaneEvent>`（`:280`）。
 
 **Resizable**（`resizable.rs`）：`ResizablePanelGroup`（`:285`）：`axis(Axis)`（`:308`）、
 `group(ResizablePanelGroup)`（`:329`）；`ResizablePanel`（`:394`）：`child`（`:429`）、

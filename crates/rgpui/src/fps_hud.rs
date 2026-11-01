@@ -34,6 +34,9 @@ pub struct FpsHudState {
     pub cpu_usage: f64,
     /// 内存占用（MB）。需调用方经 [`update_memory`](Self::update_memory) 喂入。
     pub memory_mb: f64,
+    /// 平均绘制耗时（毫秒）。为 0 时回退到窗口自带的
+    /// [`Window::frame_stats`]；也可经 [`update_draw_ms`](Self::update_draw_ms) 手动喂入。
+    pub draw_ms: f64,
     /// 是否可见。
     pub visible: bool,
     /// 是否显示 CPU 行。
@@ -60,6 +63,7 @@ impl FpsHudState {
             frame_time_ms: 0.0,
             cpu_usage: 0.0,
             memory_mb: 0.0,
+            draw_ms: 0.0,
             visible: true,
             show_cpu: false,
             show_memory: false,
@@ -110,6 +114,13 @@ impl FpsHudState {
     /// 更新内存占用（MB）。
     pub fn update_memory(&mut self, mb: f64) {
         self.memory_mb = mb;
+    }
+
+    /// 写入平均绘制耗时（毫秒），覆盖窗口自带的帧统计。
+    ///
+    /// 仅在调用方有自己的计时口径时使用；置 0 恢复为读取 [`Window::frame_stats`]。
+    pub fn update_draw_ms(&mut self, avg_ms: f64) {
+        self.draw_ms = avg_ms;
     }
 
     /// 切换可见性。
@@ -204,13 +215,20 @@ impl Render for FpsHud {
             window.request_animation_frame();
         }
 
-        let (fps, frame_time_ms, cpu_usage, memory_mb, show_cpu, show_memory) = {
+        let (fps, frame_time_ms, cpu_usage, memory_mb, draw_ms, show_cpu, show_memory) = {
             let state = self.state.read(cx);
+            // 未手动喂入时读取窗口自带的 CPU 绘制耗时（上一帧）。
+            let draw_ms = if state.draw_ms > 0.0 {
+                state.draw_ms
+            } else {
+                window.frame_stats().avg_ms
+            };
             (
                 state.fps,
                 state.frame_time_ms,
                 state.cpu_usage,
                 state.memory_mb,
+                draw_ms,
                 state.show_cpu || self.show_cpu,
                 state.show_memory || self.show_memory,
             )
@@ -233,6 +251,14 @@ impl Render for FpsHud {
         let cpu_color = if cpu_usage < 50.0 {
             crate::green_400()
         } else if cpu_usage < 80.0 {
+            crate::yellow_400()
+        } else {
+            crate::red_400()
+        };
+        // 以 60Hz 单帧预算 16.7ms 为界：≤8ms 绿、≤16ms 黄、更高红。
+        let draw_color = if draw_ms <= 8.0 {
+            crate::green_400()
+        } else if draw_ms <= 16.0 {
             crate::yellow_400()
         } else {
             crate::red_400()
@@ -278,6 +304,21 @@ impl Render for FpsHud {
                                     .child(format!("({frame_time_ms:.1}ms)")),
                             ),
                     )
+                    .when(draw_ms > 0.0, |this| {
+                        this.child(
+                            h_flex()
+                                .gap(px(8.0))
+                                .items_center()
+                                .child(div().text_xs().text_color(label_color).child("DRAW"))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_semibold()
+                                        .text_color(draw_color)
+                                        .child(format!("{draw_ms:.2} ms")),
+                                ),
+                        )
+                    })
                     .when(show_cpu, |this| {
                         this.child(
                             h_flex()
@@ -341,6 +382,17 @@ mod tests {
         state.record_frame(start + Duration::from_micros(33_334));
         assert!((state.fps - 60.0).abs() < 1.0, "得到 {}", state.fps);
         assert_eq!(state.fps_history.len(), 2);
+    }
+
+    /// 手动喂入绘制耗时后直接生效；置 0 表示回退到窗口统计。
+    #[test]
+    fn test_update_draw_ms() {
+        let mut state = FpsHudState::new();
+        assert_eq!(state.draw_ms, 0.0);
+        state.update_draw_ms(7.42);
+        assert!((state.draw_ms - 7.42).abs() < f64::EPSILON);
+        state.update_draw_ms(0.0);
+        assert_eq!(state.draw_ms, 0.0);
     }
 
     /// 历史裁剪到上限。

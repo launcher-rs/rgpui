@@ -1,12 +1,11 @@
 //! Markdown 渲染组件：将 Markdown 源码解析为富文本块并渲染。
 
-#[cfg(not(feature = "latex"))]
-use crate::rich_text::render_blocks;
-#[cfg(feature = "latex")]
-use crate::rich_text::render_blocks_with_svg;
 use crate::rich_text::{
     CalloutKind, LinkClickHandler, ListItem, RichBlock, RichInline, TableAlignment,
+    render_blocks_selected,
 };
+use crate::selection::{MarkdownSelectionState, SelectionRender};
+use crate::state::MarkdownState;
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use rgpui::*;
 use std::collections::hash_map::DefaultHasher;
@@ -14,41 +13,75 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
-/// 解析缓存：单条目（最近一次文档全文 → 块列表 + 块源码区间）。
-///
-/// `Markdown::render` 每帧都会调用解析；分屏拖拽等高频重渲染场景下文本不变，
-/// 命中缓存可省去 pulldown 全文解析（大文档 debug 下可达数十毫秒）。
-/// 值用 `Arc` 共享，避免每帧深拷贝全部块字符串；键为内容哈希，冲突概率可忽略，
-/// 且最坏情况也只是某一帧显示旧内容。
-static PARSE_CACHE: Mutex<Option<(u64, Arc<(Vec<RichBlock>, Vec<Range<usize>>)>)>> =
-    Mutex::new(None);
+/// 解析结果：顶层富文本块 + 一一对应的源码区间。
+pub type ParsedMarkdown = Arc<(Vec<RichBlock>, Vec<Range<usize>>)>;
 
-/// 带单条目缓存的解析：内容不变直接复用上次结果（`Arc` 共享，无深拷贝）。
-fn parse_markdown_cached(source: &str) -> Arc<(Vec<RichBlock>, Vec<Range<usize>>)> {
+/// 一次性渲染路径的跨实例缓存容量。
+const PARSE_CACHE_CAPACITY: usize = 8;
+
+/// 多条目 LRU 解析缓存。
+///
+/// 一次性 `Markdown::new(source)` 每次渲染都会重新取块列表；单条缓存会在
+/// 多条消息轮流渲染时互相踢掉，这里保留最近 8 篇，按内容哈希命中。
+/// 流式场景不走这张表：`MarkdownState` 自己持有最近一次解析结果。
+#[derive(Default)]
+struct ParseCache {
+    entries: Vec<(u64, ParsedMarkdown)>,
+}
+
+impl ParseCache {
+    /// 命中后把条目移到表头（最近使用）。
+    fn get(&mut self, hash: u64) -> Option<ParsedMarkdown> {
+        let index = self.entries.iter().position(|(h, _)| *h == hash)?;
+        let entry = self.entries.remove(index);
+        let parsed = entry.1.clone();
+        self.entries.insert(0, entry);
+        Some(parsed)
+    }
+
+    /// 插入并淘汰最久未用的条目。
+    fn insert(&mut self, hash: u64, parsed: ParsedMarkdown) {
+        self.entries.retain(|(h, _)| *h != hash);
+        self.entries.insert(0, (hash, parsed));
+        self.entries.truncate(PARSE_CACHE_CAPACITY);
+    }
+
+    /// 当前缓存条目数。
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// 解析缓存：最多保留最近 8 篇文档。
+static PARSE_CACHE: Mutex<ParseCache> = Mutex::new(ParseCache {
+    entries: Vec::new(),
+});
+
+/// 带 LRU 缓存的解析：内容不变直接复用上次结果（`Arc` 共享，无深拷贝）。
+fn parse_markdown_cached(source: &str) -> ParsedMarkdown {
     let mut hasher = DefaultHasher::new();
     source.hash(&mut hasher);
     let hash = hasher.finish();
 
-    if let Ok(guard) = PARSE_CACHE.lock() {
-        if let Some((cached_hash, parsed)) = guard.as_ref() {
-            if *cached_hash == hash {
-                return parsed.clone();
-            }
-        }
+    if let Ok(mut guard) = PARSE_CACHE.lock()
+        && let Some(parsed) = guard.get(hash)
+    {
+        return parsed;
     }
 
     let parsed = Arc::new(parse_markdown_with_urls(source));
     if let Ok(mut guard) = PARSE_CACHE.lock() {
-        *guard = Some((hash, parsed.clone()));
+        guard.insert(hash, parsed.clone());
     }
     parsed
 }
 
-/// 解析 Markdown 源码为富文本块 + 顶层块源码区间（带单条目缓存）。
+/// 解析 Markdown 源码为富文本块 + 顶层块源码区间（带 LRU 缓存）。
 ///
 /// 供虚拟化、WYSIWYG 块编辑等按块处理的场景使用：调用方按需渲染块区间，
 /// 用区间把编辑结果拼回全文，避免全文建树。
-pub fn parse_markdown(source: &str) -> Arc<(Vec<RichBlock>, Vec<Range<usize>>)> {
+pub fn parse_markdown(source: &str) -> ParsedMarkdown {
     parse_markdown_cached(source)
 }
 
@@ -57,12 +90,22 @@ pub fn parse_markdown(source: &str) -> Arc<(Vec<RichBlock>, Vec<Range<usize>>)> 
 pub struct Markdown {
     /// 基础 Div。
     base: Div,
-    /// Markdown 源码。
-    source: SharedString,
+    /// Markdown 源码来源。
+    source: MarkdownSource,
     /// 基础字号。
     base_font_size: Option<Pixels>,
     /// 链接点击回调。
     on_link_click: Option<LinkClickHandler>,
+    /// 文档级选区状态（`Some` 时启用拖选与复制）。
+    selection: Option<Entity<MarkdownSelectionState>>,
+}
+
+/// Markdown 组件的数据来源。
+enum MarkdownSource {
+    /// 一次性渲染的静态源码。
+    Static(SharedString),
+    /// 流式增量状态（追加期间继续显示上一次解析结果）。
+    State(Entity<MarkdownState>),
 }
 
 impl Markdown {
@@ -70,15 +113,39 @@ impl Markdown {
     pub fn new(source: impl Into<SharedString>) -> Self {
         Self {
             base: div(),
-            source: source.into(),
+            source: MarkdownSource::Static(source.into()),
             base_font_size: None,
             on_link_click: None,
+            selection: None,
+        }
+    }
+
+    /// 使用 [`MarkdownState`] 创建 Markdown 组件。
+    ///
+    /// 状态追加源码后在后台重新解析，解析完成前继续渲染上一次的块列表；
+    /// 适合 AI 回答等流式输出场景。
+    pub fn new_state(state: Entity<MarkdownState>) -> Self {
+        Self {
+            base: div(),
+            source: MarkdownSource::State(state),
+            base_font_size: None,
+            on_link_click: None,
+            selection: None,
         }
     }
 
     /// 设置基础字号。
     pub fn base_font_size(mut self, size: Pixels) -> Self {
         self.base_font_size = Some(size);
+        self
+    }
+
+    /// 启用文档级选区：拖选文本、`Ctrl+C` 复制由宿主驱动。
+    ///
+    /// 状态由宿主创建为 `Entity`，并需观察它以便选区变化时重绘
+    /// （`cx.observe(&state, |_, _, cx| cx.notify())`）。
+    pub fn selection(mut self, state: Entity<MarkdownSelectionState>) -> Self {
+        self.selection = Some(state);
         self
     }
 
@@ -97,30 +164,54 @@ impl RenderOnce for Markdown {
         let theme = cx.theme();
         let base_size = self.base_font_size.unwrap_or(px(14.0));
 
-        let parsed = parse_markdown_cached(&self.source);
+        let parsed = match &self.source {
+            MarkdownSource::Static(source) => parse_markdown_cached(source),
+            MarkdownSource::State(state) => state.read(cx).parsed(),
+        };
+        // 选区模式：清空并重建叶子登记表，快照当前选区。
+        let selection_render = self
+            .selection
+            .as_ref()
+            .map(|state| SelectionRender::new(state, theme.tokens.selection.color, cx));
         // 公式渲染需要 SVG 渲染器（`latex` feature）；其余情况走无 SVG 的路径。
         #[cfg(feature = "latex")]
         let elements = {
             let renderer = cx.svg_renderer();
-            render_blocks_with_svg(
+            render_blocks_selected(
                 &parsed.0,
                 base_size,
                 &self.on_link_click,
                 "md",
                 theme,
-                &None,
-                &renderer,
+                Some(&renderer),
+                selection_render,
             )
         };
         #[cfg(not(feature = "latex"))]
-        let elements = render_blocks(&parsed.0, base_size, &self.on_link_click, "md", theme);
+        let elements = render_blocks_selected(
+            &parsed.0,
+            base_size,
+            &self.on_link_click,
+            "md",
+            theme,
+            None,
+            selection_render,
+        );
 
-        self.base
+        let base = self
+            .base
             .flex()
             .flex_col()
             .font_family(theme.font_family.clone())
-            .text_color(theme.tokens.foreground)
-            .children(elements)
+            .text_color(theme.tokens.foreground);
+        // 叶子外的鼠标抬起也要结束拖选，避免 pressed 卡住。
+        let base = match self.selection {
+            Some(state) => base.on_mouse_up(MouseButton::Left, move |_event, _window, cx| {
+                state.update(cx, |state, cx| state.end(cx));
+            }),
+            None => base,
+        };
+        base.children(elements)
     }
 }
 
@@ -196,7 +287,7 @@ struct TableState {
 }
 
 /// 解析 Markdown 源码为富文本块列表（含顶层块源码区间，一一对应）。
-fn parse_markdown_with_urls(source: &str) -> (Vec<RichBlock>, Vec<Range<usize>>) {
+pub(crate) fn parse_markdown_with_urls(source: &str) -> (Vec<RichBlock>, Vec<Range<usize>>) {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
@@ -704,8 +795,31 @@ fn try_parse_callout_header(
 #[cfg(test)]
 mod tests {
     // 显式导入：父模块 `use rgpui::*` 引入的 `test` 模块名会遮蔽内置属性。
-    use super::{parse_markdown_cached, parse_markdown_with_urls};
+    use super::{
+        PARSE_CACHE_CAPACITY, ParseCache, parse_markdown_cached, parse_markdown_with_urls,
+    };
     use crate::rich_text::{RichBlock, RichInline};
+    use std::sync::Arc;
+
+    /// 缓存有界且淘汰最久未用的条目；命中的条目会被提升为最近使用。
+    #[test]
+    fn parse_cache_is_bounded_lru() {
+        let mut cache = ParseCache::default();
+        let parsed = Arc::new((Vec::new(), Vec::new()));
+        for hash in 0..(PARSE_CACHE_CAPACITY as u64 + 3) {
+            cache.insert(hash, parsed.clone());
+        }
+        assert_eq!(cache.len(), PARSE_CACHE_CAPACITY);
+        // 最早的 3 条被淘汰。
+        for hash in 0..3u64 {
+            assert!(cache.get(hash).is_none());
+        }
+        // 命中把条目移到表头：继续插入时淘汰的是更早的条目。
+        assert!(cache.get(3).is_some());
+        cache.insert(999, parsed);
+        assert!(cache.get(3).is_some());
+        assert!(cache.get(4).is_none());
+    }
 
     /// 缓存正确性：相同内容复用解析结果，不同内容重新解析（含中文）。
     #[test]

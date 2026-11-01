@@ -90,6 +90,14 @@ impl WindowsDisplay {
         })
     }
 
+    /// 该显示器自身的 DPI 缩放因子。
+    ///
+    /// 与「尚未定位的窗口当前恰好落在哪台显示器」无关：把目标显示器的逻辑坐标
+    /// 换算成物理像素时必须用这个值。
+    pub(crate) fn scale_factor(&self) -> f32 {
+        self.scale_factor
+    }
+
     /// 将显示器句柄转换为显示器 ID
     pub(crate) fn display_id_for_monitor(monitor: HMONITOR) -> DisplayId {
         DisplayId::new(monitor.0 as u64)

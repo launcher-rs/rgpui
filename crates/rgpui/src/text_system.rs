@@ -69,7 +69,9 @@ pub struct TextSystem {
     font_ids_by_font: RwLock<FxHashMap<Font, Result<FontId>>>,
     font_metrics: RwLock<FxHashMap<FontId, FontMetrics>>,
     raster_bounds: RwLock<FxHashMap<RenderGlyphParams, Bounds<DevicePixels>>>,
-    wrapper_pool: Mutex<FxHashMap<FontIdWithSize, Vec<LineWrapper>>>,
+    // 池里只缓存字符宽度：包装器持有 `Arc<TextSystem>`，缓存整个包装器
+    // 会形成 TextSystem -> 池 -> 包装器 -> TextSystem 的引用环。
+    wrapper_pool: Mutex<FxHashMap<FontIdWithSize, Vec<CharWidthCache>>>,
     font_runs_pool: Mutex<Vec<Vec<FontRun>>>,
     fallback_font_stack: SmallVec<[Font; 2]>,
 }
@@ -324,9 +326,8 @@ impl TextSystem {
         let wrappers = lock
             .entry(FontIdWithSize { font_id, font_size })
             .or_default();
-        let wrapper = wrappers
-            .pop()
-            .unwrap_or_else(|| LineWrapper::new(font_id, font_size, self.clone()));
+        let char_widths = wrappers.pop().unwrap_or_default();
+        let wrapper = LineWrapper::new(font_id, font_size, self.clone(), char_widths);
 
         LineWrapperHandle {
             wrapper: Some(wrapper),
@@ -876,7 +877,7 @@ impl Drop for LineWrapperHandle {
             }),
             "LineWrapperHandle：wrapper 池中必有对应槽位",
         );
-        pool.push(wrapper);
+        pool.push(wrapper.into_char_widths());
     }
 }
 

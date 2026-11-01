@@ -749,7 +749,12 @@ pub struct App {
 
     /// 每个 App 的元素 arena。在不同 App 实例间隔离元素分配
     /// （对多个 App 并发运行的测试很重要）。
-    pub(crate) element_arena: RefCell<Arena>,
+    ///
+    /// 单独放在 `Rc` 分配里：绘制期间通过线程局部的裸指针
+    /// （`CURRENT_ELEMENT_ARENA`）访问它，而那时 `&mut App` 仍然存活。
+    /// 若内联在 `App` 结构体内，这些访问会与 `&mut App` 独占的内存别名，
+    /// 属于未定义行为。
+    pub(crate) element_arena: Rc<RefCell<Arena>>,
     /// 每个 App 的事件 arena。
     pub(crate) event_arena: Arena,
 
@@ -918,7 +923,7 @@ impl App {
 
                 #[cfg(any(test, feature = "test-support", debug_assertions))]
                 name: None,
-                element_arena: RefCell::new(Arena::new(1024 * 1024)),
+                element_arena: Rc::new(RefCell::new(Arena::new(1024 * 1024))),
                 event_arena: Arena::new(1024 * 1024),
 
                 #[cfg(any(test, feature = "leak-detection"))]

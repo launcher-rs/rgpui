@@ -49,7 +49,9 @@ impl Render for FpsDemo {
                     .gap(px(8.0))
                     .p(px(24.0))
                     .child(div().text_2xl().child("FPS 监控 HUD"))
-                    .child(div().text_sm().child("右上角浮层实时显示帧率与帧时间。"))
+                    .child(div().text_sm().child(
+                        "右上角浮层实时显示帧率、帧时间与 CPU 绘制耗时（DRAW，读自 Window::frame_stats）。",
+                    ))
                     .child(div().text_sm().child(
                         "FpsHud::new(state).show_cpu(true).show_memory(true).continuous(true)",
                     )),

@@ -8,6 +8,9 @@
 //!   点击直接应用到取色器；
 //! - 「记录当前颜色 / 清空最近」按钮演示程序化维护最近颜色。
 //!
+//! 启用 `screen-capture` feature（showcase 默认开启）时，动作行多出「吸管取色」：
+//! 调 [`ColorPickerState::begin_eyedropper`]，从屏幕首帧取色并写回取色器。
+//!
 //! 运行：`cargo run -p showcase --bin color_picker`
 
 use rgpui::{
@@ -96,6 +99,31 @@ impl Render for ColorPickerApp {
 
         let hex = hex_string(self.color);
 
+        // 动作行：吸管按钮只在 `screen-capture` feature 下编译（底层走平台屏幕捕获）。
+        let action_row = {
+            let row = div()
+                .flex()
+                .flex_row()
+                .gap_2()
+                .child(Button::new("remember").label("记录当前颜色").on_click({
+                    let handle = handle.clone();
+                    move |_event, _window, cx| handle.update(cx, |this, cx| this.remember(cx))
+                }))
+                .child(Button::new("clear").label("清空最近").on_click({
+                    move |_event, _window, cx| handle.update(cx, |this, cx| this.clear(cx))
+                }));
+            #[cfg(feature = "screen-capture")]
+            let row = {
+                let picker = self.picker.clone();
+                row.child(Button::new("eyedropper").label("吸管取色").on_click(
+                    move |_event, _window, cx| {
+                        picker.update(cx, |picker, cx| picker.begin_eyedropper(cx));
+                    },
+                ))
+            };
+            row
+        };
+
         div()
             .flex()
             .flex_row()
@@ -117,23 +145,7 @@ impl Render for ColorPickerApp {
                             .child(self.status.clone()),
                     )
                     .child(self.picker.clone())
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap_2()
-                            .child(Button::new("remember").label("记录当前颜色").on_click({
-                                let handle = handle.clone();
-                                move |_event, _window, cx| {
-                                    handle.update(cx, |this, cx| this.remember(cx))
-                                }
-                            }))
-                            .child(Button::new("clear").label("清空最近").on_click({
-                                move |_event, _window, cx| {
-                                    handle.update(cx, |this, cx| this.clear(cx))
-                                }
-                            })),
-                    ),
+                    .child(action_row),
             )
             .child(
                 div()

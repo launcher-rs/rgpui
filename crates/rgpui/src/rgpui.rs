@@ -159,8 +159,13 @@ pub mod prelude;
 /// 性能分析工具 - 任务计时和线程性能追踪
 pub mod profiler;
 
-/// 优先级队列 - Windows/Linux/WASM 平台下的异步消息队列
-#[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
+/// 优先级队列 - Windows/Linux/macOS/WASM 平台下的异步消息队列
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    target_family = "wasm"
+))]
 pub mod queue;
 
 mod rgpui_util;
@@ -402,6 +407,8 @@ pub mod util;
 /// Retained Mode 实验区 - 增量帧渲染统一收敛于此，管线文件仅保留 hook（见 `fast/mod.rs`）
 pub(crate) mod fast;
 
+pub use fast::FrameStatsSnapshot;
+
 /// 视图系统 - 定义 View trait 和窗口视图的生命周期管理
 mod view;
 
@@ -587,8 +594,13 @@ pub use path_builder::*;
 /// 重导出平台抽象层相关类型
 pub use platform::*;
 pub use profiler::*;
-/// 重导出优先级队列类型（仅 Windows/Linux/WASM）
-#[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
+/// 重导出优先级队列类型（仅 Windows/Linux/macOS/WASM）
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    target_family = "wasm"
+))]
 pub use queue::{PriorityQueueReceiver, PriorityQueueSender};
 /// 重导出 rgpui_util 中的常用工具（defer、log_err、measure 等）
 pub use rgpui_util::{

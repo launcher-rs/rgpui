@@ -1,6 +1,7 @@
 # 文档索引
 
-- **现行文档**：`rgpui-book/`（8 章教程）、`web-dom-backend-usage.md`（Web DOM 后端用法指南）、
+- **现行文档**：`TODO.md`（任务状态板：已完成 / 进行中 / 未开始，含落地位置与回归测试）、
+  `rgpui-book/`（8 章教程）、`web-dom-backend-usage.md`（Web DOM 后端用法指南）、
   `retained-mode.md`（保留模式：实验分支的行为变化、实测收益与应用层契约）、
   `utf8-slice-safety.md`（UTF-8 切片安全：中文 panic 事故与规范）、
   `migration-guide-from-rgpui-component.md`（旧 `rgpui-component` / `rgpui-tokio` / `rgpui-ui` 用户迁移指南）、

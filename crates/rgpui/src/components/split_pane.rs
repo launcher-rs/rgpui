@@ -89,7 +89,7 @@ impl SplitPaneState {
             collapsed_pane: None,
             ratio_before_collapse: 0.5,
             bounds: Bounds::default(),
-            focus_handle: cx.focus_handle(),
+            focus_handle: cx.focus_handle().tab_stop(true),
         }
     }
 
@@ -224,12 +224,58 @@ impl SplitPaneState {
         };
 
         let new_ratio = (relative_pos / total_size).clamp(0.0, 1.0);
-        let old_ratio = self.ratio;
-        self.set_ratio(new_ratio, cx);
+        self.apply_ratio(new_ratio, cx);
+    }
 
+    /// 夹紧并应用比例，变化时派发 `Resized` 事件（鼠标拖拽与键盘共用）。
+    fn apply_ratio(&mut self, ratio: f32, cx: &mut Context<Self>) {
+        let old_ratio = self.ratio;
+        self.set_ratio(ratio, cx);
         if (self.ratio - old_ratio).abs() > f32::EPSILON {
             cx.emit(SplitPaneEvent::Resized { ratio: self.ratio });
         }
+    }
+
+    /// 聚焦分隔条（Tab 到达或父组件显式调用）。
+    pub fn focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.focus_handle.focus(window, cx);
+    }
+
+    /// 键盘：沿分隔方向的方向键按 1%（`Shift` 10%）调整、`Home` / `End`
+    /// 到最小 / 最大、`Enter` / `Space` 折叠或展开第一个面板。
+    pub fn on_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        let key = event.keystroke.key.to_ascii_lowercase();
+        let step = if event.keystroke.modifiers.shift {
+            0.10
+        } else {
+            0.01
+        };
+        match key.as_str() {
+            "left" if self.direction == SplitDirection::Horizontal => {
+                self.apply_ratio(self.ratio - step, cx)
+            }
+            "right" if self.direction == SplitDirection::Horizontal => {
+                self.apply_ratio(self.ratio + step, cx)
+            }
+            "up" if self.direction == SplitDirection::Vertical => {
+                self.apply_ratio(self.ratio - step, cx)
+            }
+            "down" if self.direction == SplitDirection::Vertical => {
+                self.apply_ratio(self.ratio + step, cx)
+            }
+            // `set_ratio` 内部夹紧到 min / max 约束。
+            "home" => self.apply_ratio(0.0, cx),
+            "end" => self.apply_ratio(1.0, cx),
+            "enter" | "space" => {
+                if self.collapsed_pane.is_some() {
+                    self.expand(cx);
+                } else {
+                    self.collapse(CollapsiblePane::First, cx);
+                }
+            }
+            _ => return,
+        }
+        cx.stop_propagation();
     }
 }
 
@@ -334,6 +380,10 @@ impl RenderOnce for SplitPane {
         let direction = self.direction.unwrap_or(state.direction);
         let ratio = state.ratio;
         let collapsed_pane = state.collapsed_pane;
+        let focus_handle = state.focus_handle.clone();
+        let pane_id = self.state.entity_id();
+        let min_ratio = state.clamp_ratio(0.0);
+        let max_ratio = state.clamp_ratio(1.0);
         let user_style = self.style;
 
         let (first_size, second_size) = match collapsed_pane {
@@ -346,14 +396,41 @@ impl RenderOnce for SplitPane {
         let state_for_drag = self.state.clone();
         let state_for_move = self.state.clone();
         let state_for_up = self.state.clone();
+        let state_for_key_divider = self.state.clone();
+        let state_for_key_expand = self.state.clone();
         let on_resize_drag = self.on_resize.clone();
         let on_resize_move = self.on_resize.clone();
+        let on_resize_key_divider = self.on_resize.clone();
 
         let is_horizontal = direction == SplitDirection::Horizontal;
         let is_dragging = state.is_dragging;
 
         let divider = div()
-            .id("split-pane-divider")
+            .id(("split-pane-divider", pane_id))
+            // 无障碍语义：分隔条，值为主面板占比（百分比）。
+            .role(accesskit::Role::Splitter)
+            .aria_label("分隔条")
+            .aria_numeric_value(f64::from(ratio * 100.0))
+            .aria_min_numeric_value(f64::from(min_ratio * 100.0))
+            .aria_max_numeric_value(f64::from(max_ratio * 100.0))
+            .aria_numeric_value_step(1.0)
+            .aria_orientation(match direction {
+                SplitDirection::Horizontal => accesskit::Orientation::Horizontal,
+                SplitDirection::Vertical => accesskit::Orientation::Vertical,
+            })
+            .track_focus(&focus_handle)
+            .on_key_down(window.listener_for(
+                &state_for_key_divider,
+                move |state, event: &KeyDownEvent, window, cx| {
+                    let before = state.ratio;
+                    state.on_key_down(event, cx);
+                    if (state.ratio - before).abs() > f32::EPSILON
+                        && let Some(ref handler) = on_resize_key_divider
+                    {
+                        handler(state.ratio, window, cx);
+                    }
+                },
+            ))
             .flex_shrink_0()
             .bg(theme.tokens.border)
             .when(is_horizontal, |this| {
@@ -474,7 +551,7 @@ impl RenderOnce for SplitPane {
                     })
                     .child(
                         div()
-                            .id("collapse-first")
+                            .id(("collapse-first", pane_id))
                             .size(px(16.0))
                             .rounded_full()
                             .bg(theme.tokens.muted)
@@ -495,7 +572,7 @@ impl RenderOnce for SplitPane {
                     )
                     .child(
                         div()
-                            .id("collapse-second")
+                            .id(("collapse-second", pane_id))
                             .size(px(16.0))
                             .rounded_full()
                             .bg(theme.tokens.muted)
@@ -537,7 +614,17 @@ impl RenderOnce for SplitPane {
                     })
                     .child(
                         div()
-                            .id("expand-pane")
+                            .id(("expand-pane", pane_id))
+                            // 折叠态下焦点落在展开按钮上，`Enter` / `Space` 继续可用。
+                            .role(accesskit::Role::Button)
+                            .aria_label("展开面板")
+                            .track_focus(&focus_handle)
+                            .on_key_down(window.listener_for(
+                                &state_for_key_expand,
+                                move |state, event: &KeyDownEvent, _, cx| {
+                                    state.on_key_down(event, cx);
+                                },
+                            ))
                             .size(px(20.0))
                             .rounded_full()
                             .bg(theme.tokens.accent)
@@ -593,5 +680,187 @@ impl RenderOnce for SplitPane {
                 .absolute()
                 .size_full(),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 注：不能 `use super::*`——本模块的 glob 会把 `crate::test` 带进来遮蔽内置 `#[test]`。
+    use super::{CollapsiblePane, SplitDirection, SplitPaneEvent, SplitPaneState};
+    use crate::{
+        AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
+        TestAppContext, Window, components::SplitPane, div,
+    };
+    use std::{cell::RefCell, rc::Rc};
+
+    /// 渲染分隔面板的测试宿主（需显示折叠按钮，折叠后展开按钮才承载焦点）。
+    struct Probe {
+        state: Entity<SplitPaneState>,
+    }
+
+    impl Render for Probe {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                SplitPane::new(self.state.clone())
+                    .show_collapse_buttons(true)
+                    .first(div())
+                    .second(div()),
+            )
+        }
+    }
+
+    /// 构建宿主视图并收集 `SplitPaneEvent`。
+    fn setup(
+        cx: &mut TestAppContext,
+        direction: SplitDirection,
+    ) -> (
+        Entity<SplitPaneState>,
+        Rc<RefCell<Vec<SplitPaneEvent>>>,
+        &mut crate::VisualTestContext,
+    ) {
+        cx.update(crate::theme::init);
+        let events: Rc<RefCell<Vec<SplitPaneEvent>>> = Rc::new(RefCell::new(Vec::new()));
+        let sink = events.clone();
+        let (probe, cx) = cx.add_window_view(move |window, cx| {
+            let state = cx.new(|cx| {
+                let mut state = SplitPaneState::new(cx);
+                state.set_direction(direction, cx);
+                state
+            });
+            cx.subscribe_in(
+                &state,
+                window,
+                move |_this, _state, event: &SplitPaneEvent, _window, _cx| {
+                    sink.borrow_mut().push(event.clone());
+                },
+            )
+            .detach();
+            Probe { state }
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+        (state, events, cx)
+    }
+
+    /// 聚焦分隔条。
+    fn focus(state: &Entity<SplitPaneState>, cx: &mut crate::VisualTestContext) {
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.focus(window, cx));
+        });
+    }
+
+    /// 读取当前比例。
+    fn ratio(state: &Entity<SplitPaneState>, cx: &mut crate::VisualTestContext) -> f32 {
+        state.read_with(cx, |state, _| state.ratio())
+    }
+
+    /// 方向键按 1% / `Shift` 10% 调整，并派发 `Resized`。
+    #[rgpui::test]
+    fn keyboard_nudges_ratio(cx: &mut TestAppContext) {
+        let (state, events, mut cx) = setup(cx, SplitDirection::Horizontal);
+        focus(&state, &mut cx);
+
+        cx.simulate_keystrokes("right");
+        assert!((ratio(&state, &mut cx) - 0.51).abs() < 1e-6);
+        cx.simulate_keystrokes("shift-right");
+        assert!((ratio(&state, &mut cx) - 0.61).abs() < 1e-6);
+        cx.simulate_keystrokes("left");
+        assert!((ratio(&state, &mut cx) - 0.60).abs() < 1e-6);
+        // 水平分割忽略上下键。
+        cx.simulate_keystrokes("up down");
+        assert!((ratio(&state, &mut cx) - 0.60).abs() < 1e-6);
+
+        let resized = events
+            .borrow()
+            .iter()
+            .filter(|event| matches!(event, SplitPaneEvent::Resized { .. }))
+            .count();
+        assert_eq!(resized, 3);
+    }
+
+    /// 垂直分割用上下键调整。
+    #[rgpui::test]
+    fn vertical_keyboard_uses_vertical_arrows(cx: &mut TestAppContext) {
+        let (state, _events, mut cx) = setup(cx, SplitDirection::Vertical);
+        focus(&state, &mut cx);
+
+        cx.simulate_keystrokes("down");
+        assert!((ratio(&state, &mut cx) - 0.51).abs() < 1e-6);
+        cx.simulate_keystrokes("up up");
+        assert!((ratio(&state, &mut cx) - 0.49).abs() < 1e-6);
+        // 垂直分割忽略左右键。
+        cx.simulate_keystrokes("left right");
+        assert!((ratio(&state, &mut cx) - 0.49).abs() < 1e-6);
+    }
+
+    /// `Home` / `End` 夹紧到最小 / 最大比例。
+    #[rgpui::test]
+    fn home_end_go_to_limits(cx: &mut TestAppContext) {
+        let (state, _events, mut cx) = setup(cx, SplitDirection::Horizontal);
+        cx.update(|_, cx| state.update(cx, |state, cx| state.set_min_first(200.0, cx)));
+        focus(&state, &mut cx);
+
+        cx.simulate_keystrokes("home");
+        assert!(ratio(&state, &mut cx) < 0.5);
+        cx.simulate_keystrokes("end");
+        assert!(ratio(&state, &mut cx) > 0.5);
+        let (lower, upper) = state.read_with(cx, |state, _| {
+            (state.clamp_ratio(0.0), state.clamp_ratio(1.0))
+        });
+        assert!((ratio(&state, &mut cx) - upper).abs() < 1e-6);
+        assert!(lower < 0.5);
+    }
+
+    /// `Enter` / `Space` 折叠与展开；折叠后焦点落在展开按钮上，键盘仍可用。
+    #[rgpui::test]
+    fn keyboard_toggles_collapse(cx: &mut TestAppContext) {
+        let (state, events, mut cx) = setup(cx, SplitDirection::Horizontal);
+        focus(&state, &mut cx);
+
+        cx.simulate_keystrokes("enter");
+        assert_eq!(
+            state.read_with(cx, |state, _| state.collapsed_pane()),
+            Some(CollapsiblePane::First)
+        );
+        cx.simulate_keystrokes("space");
+        assert_eq!(state.read_with(cx, |state, _| state.collapsed_pane()), None);
+
+        let toggles = events
+            .borrow()
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    SplitPaneEvent::PaneCollapsed { .. } | SplitPaneEvent::PaneExpanded { .. }
+                )
+            })
+            .count();
+        assert_eq!(toggles, 2);
+    }
+
+    /// 无障碍树：分隔条以 `Splitter` 角色报告百分比与方向。
+    #[rgpui::test]
+    fn a11y_tree_reports_splitter(cx: &mut TestAppContext) {
+        let (state, _events, mut cx) = setup(cx, SplitDirection::Horizontal);
+        focus(&state, &mut cx);
+
+        cx.update(|window, cx| {
+            window.force_a11y_active_for_test();
+            let _ = window.draw(cx);
+        });
+        let json = cx
+            .update(|window, _| window.debug_a11y_tree_json())
+            .expect("无障碍树未捕获");
+        let tree: serde_json::Value = serde_json::from_str(&json).expect("树 JSON 必可解析");
+        let splitter = tree["nodes"]
+            .as_object()
+            .expect("nodes 必为对象")
+            .values()
+            .find(|node| node["aria"]["role"] == "Splitter")
+            .expect("分隔条必在树中");
+
+        assert_eq!(splitter["aria"]["numeric_value"], 50.0);
+        assert!(splitter["aria"]["min_numeric_value"].is_number());
+        assert!(splitter["aria"]["max_numeric_value"].is_number());
+        assert_eq!(splitter["aria"]["orientation"], "Horizontal");
     }
 }

@@ -493,10 +493,17 @@ impl Element for UniformList {
                         scroll_offset = *updated_scroll_offset
                     }
 
+                    // 可见区间与行内偏移用 f64 计算：滚动偏移本身是 f32，
+                    // 超长列表（约 560 万行、2^27px 以上）相加后相邻 f32 间隔
+                    // 会超过行高，导致行距错乱、顶部露白。这里只把相对偏移
+                    // 转回 Pixels，不再参与大数相加。
+                    let scroll_top = -scroll_offset.y.to_f64();
+                    let item_height_f64 = item_height.to_f64();
                     let first_visible_element_ix =
-                        (-(scroll_offset.y + padding.top) / item_height).floor() as usize;
-                    let last_visible_element_ix = ((-scroll_offset.y + padded_bounds.size.height)
-                        / item_height)
+                        ((scroll_top - padding.top.to_f64()) / item_height_f64).floor() as usize;
+                    let last_visible_element_ix = ((scroll_top
+                        + padded_bounds.size.height.to_f64())
+                        / item_height_f64)
                         .ceil() as usize;
 
                     let visible_range = first_visible_element_ix
@@ -515,9 +522,9 @@ impl Element for UniformList {
                     let content_mask = ContentMask { bounds };
                     window.with_content_mask(Some(content_mask), |window| {
                         for (mut item, ix) in items.into_iter().zip(visible_range.clone()) {
+                            let item_top = item_height_f64 * ix as f64 - scroll_top;
                             let item_origin = padded_bounds.origin
-                                + scroll_offset
-                                + point(Pixels::ZERO, item_height * ix);
+                                + point(scroll_offset.x, Pixels::from(item_top));
 
                             let available_width = if can_scroll_horizontally {
                                 padded_bounds.size.width + scroll_offset.x.abs()
@@ -882,5 +889,74 @@ mod test {
                 assert_eq!(view.visible_range, ix..ix + 10);
             })
         }
+    }
+
+    /// 超过 2^27px 后 f32 只能表示 16px 的整数倍，
+    /// 直接在大数上做加法会让相邻行重叠或跳行。
+    #[rgpui::test]
+    fn test_item_positions_far_down_long_list(cx: &mut TestAppContext) {
+        use crate::{
+            Bounds, Pixels, UniformListScrollHandle, Window, canvas, point, prelude::*, px,
+            uniform_list,
+        };
+        use std::cell::RefCell;
+        use std::ops::Range;
+        use std::rc::Rc;
+
+        struct TestView {
+            scroll_handle: UniformListScrollHandle,
+            item_bounds: Rc<RefCell<Vec<(usize, Bounds<Pixels>)>>>,
+        }
+
+        impl Render for TestView {
+            fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                let item_bounds = self.item_bounds.clone();
+                uniform_list(
+                    "entries",
+                    10_000_000,
+                    cx.processor(move |_, range: Range<usize>, _window, _cx| {
+                        range
+                            .map(|ix| {
+                                let item_bounds = item_bounds.clone();
+                                canvas(
+                                    move |bounds, _, _| item_bounds.borrow_mut().push((ix, bounds)),
+                                    |_, _, _, _| {},
+                                )
+                                .w_full()
+                                .h(px(24.0))
+                            })
+                            .collect()
+                    }),
+                )
+                .track_scroll(&self.scroll_handle)
+                .h(px(200.0))
+            }
+        }
+
+        let item_bounds = Rc::new(RefCell::new(Vec::new()));
+        let scroll_handle = UniformListScrollHandle::new();
+        // 该偏移落在第 9_000_002 项内 16px 处；
+        // 之后每一行仍须严格按 24px 间距排布。
+        scroll_handle
+            .0
+            .borrow()
+            .base_handle
+            .set_offset(point(px(0.0), px(-216_000_064.0)));
+
+        let (_view, cx) = cx.add_window_view(|_, _| TestView {
+            scroll_handle,
+            item_bounds: item_bounds.clone(),
+        });
+        cx.run_until_parked();
+
+        let item_tops = item_bounds
+            .borrow()
+            .iter()
+            .map(|(ix, bounds)| (*ix, bounds.origin.y))
+            .collect::<Vec<_>>();
+        let expected_tops = (9_000_002..9_000_011)
+            .map(|ix| (ix, px(-16.0 + 24.0 * (ix - 9_000_002) as f32)))
+            .collect::<Vec<_>>();
+        assert_eq!(item_tops, expected_tops);
     }
 }

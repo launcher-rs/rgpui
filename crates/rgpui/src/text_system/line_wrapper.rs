@@ -18,22 +18,49 @@ pub struct LineWrapper {
     text_system: Arc<TextSystem>,
     pub(crate) font_id: FontId,
     pub(crate) font_size: Pixels,
-    cached_ascii_char_widths: [Option<Pixels>; 128],
-    cached_other_char_widths: HashMap<char, Pixels>,
+    char_widths: CharWidthCache,
+}
+
+/// 单字体单字号下的字符宽度缓存。
+///
+/// 池里只保存这份缓存而不再保存整个 `LineWrapper`：包装器持有
+/// `Arc<TextSystem>`，池又挂在 `TextSystem` 上，放整个包装器会让
+/// 文本系统永远无法回收。
+pub(crate) struct CharWidthCache {
+    ascii: [Option<Pixels>; 128],
+    other: HashMap<char, Pixels>,
+}
+
+impl Default for CharWidthCache {
+    fn default() -> Self {
+        Self {
+            ascii: [None; 128],
+            other: HashMap::default(),
+        }
+    }
 }
 
 impl LineWrapper {
     /// 可应用于一行的最大缩进量。
     pub const MAX_INDENT: u32 = 256;
 
-    pub(crate) fn new(font_id: FontId, font_size: Pixels, text_system: Arc<TextSystem>) -> Self {
+    pub(crate) fn new(
+        font_id: FontId,
+        font_size: Pixels,
+        text_system: Arc<TextSystem>,
+        char_widths: CharWidthCache,
+    ) -> Self {
         Self {
             text_system,
             font_id,
             font_size,
-            cached_ascii_char_widths: [None; 128],
-            cached_other_char_widths: HashMap::default(),
+            char_widths,
         }
+    }
+
+    /// 取出字符宽度缓存，供包装器池复用。
+    pub(crate) fn into_char_widths(self) -> CharWidthCache {
+        self.char_widths
     }
 
     /// 使用此包装器的字体和字体大小将文本行包装到给定宽度。
@@ -487,22 +514,22 @@ impl LineWrapper {
     #[inline(always)]
     fn width_for_char(&mut self, c: char) -> Pixels {
         if (c as u32) < 128 {
-            if let Some(cached_width) = self.cached_ascii_char_widths[c as usize] {
+            if let Some(cached_width) = self.char_widths.ascii[c as usize] {
                 cached_width
             } else {
                 let width = self
                     .text_system
                     .layout_width(self.font_id, self.font_size, c);
-                self.cached_ascii_char_widths[c as usize] = Some(width);
+                self.char_widths.ascii[c as usize] = Some(width);
                 width
             }
-        } else if let Some(cached_width) = self.cached_other_char_widths.get(&c) {
+        } else if let Some(cached_width) = self.char_widths.other.get(&c) {
             *cached_width
         } else {
             let width = self
                 .text_system
                 .layout_width(self.font_id, self.font_size, c);
-            self.cached_other_char_widths.insert(c, width);
+            self.char_widths.other.insert(c, width);
             width
         }
     }
@@ -682,7 +709,12 @@ mod tests {
         let dispatcher = TestDispatcher::new(0);
         let cx = TestAppContext::build(dispatcher, None);
         let id = cx.text_system().resolve_font(&font(".ZedMono"));
-        LineWrapper::new(id, px(16.), cx.text_system().clone())
+        LineWrapper::new(
+            id,
+            px(16.),
+            cx.text_system().clone(),
+            CharWidthCache::default(),
+        )
     }
 
     fn generate_test_runs(input_run_len: &[usize]) -> Vec<TextRun> {
@@ -1589,6 +1621,25 @@ mod tests {
                 .wrap_line(&[LineFragment::text("你好世界你好世界")], wrap_width)
                 .collect::<Vec<_>>(),
             &[Boundary::new(9, 0), Boundary::new(18, 0)]
+        );
+    }
+
+    // 回归：换行器池曾直接存放 `LineWrapper`，而包装器持有 `Arc<TextSystem>`，
+    // 于是 TextSystem 永远回收不掉。池里只留字符宽度缓存后应能正常释放。
+    #[rgpui::test]
+    fn test_wrapper_pool_does_not_retain_text_system() {
+        let cx = TestAppContext::build(TestDispatcher::new(0), None);
+        let weak = {
+            let text_system = cx.text_system().clone();
+            let weak = Arc::downgrade(&text_system);
+            let handle = text_system.line_wrapper(font(".ZedMono"), px(16.));
+            drop(handle);
+            weak
+        };
+        drop(cx);
+        assert!(
+            weak.upgrade().is_none(),
+            "换行器池不应把 TextSystem 留在内存里"
         );
     }
 }

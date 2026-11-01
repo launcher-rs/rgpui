@@ -216,6 +216,16 @@ impl A11y {
         self.active_this_frame = !self.force_disabled && self.active_flag.load(Ordering::SeqCst);
     }
 
+    /// 测试用：绕过平台能力探测强制无障碍活跃，便于断言树结构。
+    ///
+    /// 测试平台不会触发系统无障碍激活，`debug_a11y_tree_json` 因此拿不到
+    /// 任何树；本方法把标志位打开并解除 `new_inaccessible` 的强制禁用。
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn force_active_for_test(&mut self) {
+        self.force_disabled = false;
+        self.active_flag.store(true, Ordering::SeqCst);
+    }
+
     pub(crate) fn is_active(&self) -> bool {
         self.active_this_frame
     }

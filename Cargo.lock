@@ -4095,6 +4095,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 name = "list_showcase"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "rand 0.10.2",
  "rgpui",
  "rgpui-platform",
@@ -6473,6 +6474,7 @@ dependencies = [
  "tendril",
  "thiserror 2.0.20",
  "tokio",
+ "toml 1.1.5+spec-1.1.0",
  "tracing",
  "tree-sitter",
  "tree-sitter-bash",
@@ -7755,6 +7757,7 @@ dependencies = [
  "lyon",
  "rand 0.10.2",
  "rgpui",
+ "rgpui-markdown",
  "rgpui-platform",
  "serde_json",
  "unicode-segmentation",

@@ -83,6 +83,8 @@ pub struct WindowsWindowState {
     pub last_reported_modifiers: Cell<Option<Modifiers>>,
     pub last_reported_capslock: Cell<Option<Capslock>>,
     pub hovered: Cell<bool>,
+    /// 最近一次真实鼠标位置（逻辑像素），用于过滤窗口重绘时系统合成的移动消息。
+    pub(crate) mouse_position: Cell<Point<Pixels>>,
     pub direct_manipulation: DirectManipulationHandler,
 
     pub renderer: RefCell<DirectXRenderer>,
@@ -194,6 +196,7 @@ impl WindowsWindowState {
             last_reported_modifiers: Cell::new(last_reported_modifiers),
             last_reported_capslock: Cell::new(last_reported_capslock),
             hovered: Cell::new(hovered),
+            mouse_position: Cell::new(Point::default()),
             renderer: RefCell::new(renderer),
             force_render_after_recovery: Cell::new(false),
             click_state,
@@ -606,13 +609,8 @@ impl WindowsWindow {
             set_dwm_corner_round(hwnd);
         }
         this.state.border_offset.update(hwnd)?;
-        let placement = retrieve_window_placement(
-            hwnd,
-            display,
-            params.bounds,
-            this.state.scale_factor.get(),
-            &this.state.border_offset,
-        )?;
+        let placement =
+            retrieve_window_placement(hwnd, display, params.bounds, &this.state.border_offset)?;
         if params.show {
             unsafe { SetWindowPlacement(hwnd, &placement)? };
         } else {
@@ -1699,7 +1697,6 @@ fn retrieve_window_placement(
     hwnd: HWND,
     display: WindowsDisplay,
     initial_bounds: Bounds<Pixels>,
-    scale_factor: f32,
     border_offset: &WindowBorderOffset,
 ) -> Result<WINDOWPLACEMENT> {
     let mut placement = WINDOWPLACEMENT {
@@ -1713,7 +1710,9 @@ fn retrieve_window_placement(
     } else {
         display.default_bounds()
     };
-    let bounds = bounds.to_device_pixels(scale_factor);
+    // 用目标显示器自己的 DPI，而不是窗口被系统临时放到别处时读到的 DPI：
+    // 主副屏缩放不同时，后者会把逻辑边界换算成错误的物理矩形。
+    let bounds = bounds.to_device_pixels(display.scale_factor());
     placement.rcNormalPosition = calculate_window_rect(bounds, border_offset);
     Ok(placement)
 }
