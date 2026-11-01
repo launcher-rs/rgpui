@@ -213,6 +213,10 @@ tree-sitter-yaml = [
 webview = ["dep:wry"]
 # WebView 检查器：为 WebView 启用 Chrome DevTools 调试工具。
 webview-inspector = ["webview", "wry/devtools"]
+# 基准测试支撑：`BenchAppContext` / `BenchReport` / `bench_platform` 与 `#[rgpui::bench]`
+# 宏生成代码所需的运行时。它复用测试平台的线程调度器与假 HTTP 客户端，
+# 因此隐含 `test-support`；普通构建不编译 criterion 与这些测试支撑代码。
+bench = ["dep:criterion", "test-support", "input-latency-histogram"]
 
 [lib]
 path = "src/rgpui.rs"
@@ -244,6 +248,7 @@ parking_lot.workspace = true
 postage = { workspace = true, optional = true }
 proptest = { workspace = true, optional = true }
 chrono.workspace = true
+criterion = { workspace = true, optional = true }
 profiling.workspace = true
 rand.workspace = true
 raw-window-handle.workspace = true
@@ -393,7 +398,8 @@ postage.workspace = true
 pretty_assertions.workspace = true
 lyon = { version = "1.0", features = ["extra"] }
 rand.workspace = true
-criterion.workspace = true
+# 仓库级守卫（tests/guards.rs）解析示例清单与覆盖表。
+toml.workspace = true
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 proptest = { workspace = true }

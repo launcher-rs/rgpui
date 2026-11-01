@@ -1,8 +1,50 @@
 //! 富文本渲染：将结构化的富文本块模型渲染为 rgpui 元素。
 
 use crate::code_block::CodeBlock;
+use crate::selection::{SelectableText, SelectionRender};
 use rgpui::prelude::FluentBuilder as _;
 use rgpui::*;
+use std::ops::Range;
+use std::rc::Rc;
+
+/// 把选区高亮叠加到文本片段上：按区间切分 `TextRun` 并替换背景色。
+///
+/// 文本片段与原文按字节一一对应，切分点落在字符边界（由选区模型保证）。
+fn apply_selection_highlight(
+    runs: Vec<TextRun>,
+    range: &Range<usize>,
+    highlight: Hsla,
+) -> Vec<TextRun> {
+    let mut out = Vec::with_capacity(runs.len() + 2);
+    let mut offset = 0;
+    for run in runs {
+        let start = offset;
+        let end = start + run.len;
+        offset = end;
+
+        let from = start.max(range.start);
+        let to = end.min(range.end);
+        if from >= to {
+            out.push(run);
+            continue;
+        }
+        if start < from {
+            let mut head = run.clone();
+            head.len = from - start;
+            out.push(head);
+        }
+        let mut middle = run.clone();
+        middle.len = to - from;
+        middle.background_color = Some(highlight);
+        out.push(middle);
+        if to < end {
+            let mut tail = run;
+            tail.len = end - to;
+            out.push(tail);
+        }
+    }
+    out
+}
 
 /// 表格单元格对齐方式。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -532,6 +574,8 @@ fn render_math_segments(
     theme: &Theme,
     svg: Option<&SvgRenderer>,
     done: bool,
+    leaf_prefix: &str,
+    selection: Option<SelectionRender>,
 ) -> AnyElement {
     // 段落内多段文本需要各自唯一的元素 id（否则无障碍树出现重名节点）。
     let base_name = match &element_id {
@@ -546,6 +590,8 @@ fn render_math_segments(
         .gap(px(2.0))
         .text_size(base_size)
         .line_height(relative(1.5));
+    // 列表标记前缀只挂到第一段文本叶子上。
+    let mut prefix_pending = true;
     for (index, segment) in segments.into_iter().enumerate() {
         match segment {
             InlineSegment::Text(text) => {
@@ -554,6 +600,8 @@ fn render_math_segments(
                 } else {
                     Some(ElementId::Name(format!("{base_name}-s{index}").into()))
                 };
+                let prefix = if prefix_pending { leaf_prefix } else { "" };
+                prefix_pending = false;
                 row = row.child(render_inline_element(
                     &text,
                     base_size,
@@ -562,6 +610,8 @@ fn render_math_segments(
                     theme,
                     svg,
                     done,
+                    prefix,
+                    selection.clone(),
                 ));
             }
             InlineSegment::Math(source) => {
@@ -641,6 +691,8 @@ pub fn render_inlines_with_svg(
             theme,
             svg,
             false,
+            "",
+            None,
         );
     }
     let font_family = theme.font_family.clone();
@@ -780,6 +832,7 @@ pub fn render_blocks_with(
         theme,
         code_block_renderer,
         None,
+        None,
     )
 }
 
@@ -803,6 +856,29 @@ pub fn render_blocks_with_svg(
         theme,
         code_block_renderer,
         Some(svg),
+        None,
+    )
+}
+
+/// 渲染块列表（选区模式；`selection` 为 `Some` 时登记叶子并绘制高亮）。
+pub(crate) fn render_blocks_selected(
+    blocks: &[RichBlock],
+    base_size: Pixels,
+    on_link_click: &Option<LinkClickHandler>,
+    id_prefix: &str,
+    theme: &Theme,
+    svg: Option<&SvgRenderer>,
+    selection: Option<SelectionRender>,
+) -> Vec<AnyElement> {
+    render_blocks_inner(
+        blocks,
+        base_size,
+        on_link_click,
+        id_prefix,
+        theme,
+        &None,
+        svg,
+        selection,
     )
 }
 
@@ -815,6 +891,7 @@ fn render_blocks_inner(
     theme: &Theme,
     code_block_renderer: &Option<CodeBlockRenderer>,
     svg: Option<&SvgRenderer>,
+    selection: Option<SelectionRender>,
 ) -> Vec<AnyElement> {
     let mut elements = Vec::new();
     let mut block_idx = 0u32;
@@ -829,6 +906,7 @@ fn render_blocks_inner(
             theme,
             code_block_renderer,
             svg,
+            selection.clone(),
         );
         elements.push(el);
     }
@@ -846,6 +924,7 @@ fn render_block(
     theme: &Theme,
     code_block_renderer: &Option<CodeBlockRenderer>,
     svg: Option<&SvgRenderer>,
+    mut selection: Option<SelectionRender>,
 ) -> AnyElement {
     *block_idx += 1;
     let idx = *block_idx;
@@ -861,6 +940,8 @@ fn render_block(
                 theme,
                 svg,
                 false,
+                "",
+                selection.clone(),
             );
             div().mb(px(12.0)).child(el).into_any_element()
         }
@@ -884,6 +965,8 @@ fn render_block(
                 theme,
                 svg,
                 false,
+                "",
+                selection.clone(),
             );
             div()
                 .mt(top_margin)
@@ -914,7 +997,37 @@ fn render_block(
             if let Some(lang) = language {
                 cb = cb.language(lang.clone());
             }
-            div().mb(px(12.0)).child(cb).into_any_element()
+            let mut wrapper = div().mb(px(12.0)).child(cb);
+            // 代码块整块作为叶子：按下放置锚点，拖过时按方向扩到块首/块尾。
+            if let Some(sel) = selection.as_mut() {
+                let leaf = sel.register("", code);
+                let code_len = code.len();
+                if sel
+                    .range_for(leaf, code)
+                    .is_some_and(|range| range == (0..code_len))
+                {
+                    wrapper = wrapper.bg(sel.highlight);
+                }
+                let state = sel.state.clone();
+                let move_state = state.clone();
+                wrapper = wrapper
+                    .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                        state.update(cx, |state, cx| state.begin(leaf, 0, cx));
+                    })
+                    .on_mouse_move(move |_event, _window, cx| {
+                        if !move_state.read(cx).is_pressed() {
+                            return;
+                        }
+                        let from_above = move_state
+                            .read(cx)
+                            .selection()
+                            .map(|selection| selection.ordered().0.leaf < leaf)
+                            .unwrap_or(true);
+                        let byte = if from_above { code_len } else { 0 };
+                        move_state.update(cx, |state, cx| state.extend(leaf, byte, cx));
+                    });
+            }
+            wrapper.into_any_element()
         }
 
         RichBlock::BlockQuote(inner_blocks) => {
@@ -926,6 +1039,7 @@ fn render_block(
                 theme,
                 code_block_renderer,
                 svg,
+                selection.clone(),
             );
             div()
                 .mb(px(12.0))
@@ -950,6 +1064,7 @@ fn render_block(
                 1,
                 theme,
                 svg,
+                selection.clone(),
             );
             div().mb(px(12.0)).children(children).into_any_element()
         }
@@ -965,6 +1080,7 @@ fn render_block(
                 *start,
                 theme,
                 svg,
+                selection.clone(),
             );
             div().mb(px(12.0)).children(children).into_any_element()
         }
@@ -983,6 +1099,7 @@ fn render_block(
             block_idx,
             theme,
             svg,
+            selection.clone(),
         ),
 
         RichBlock::HorizontalRule => div()
@@ -1023,6 +1140,7 @@ fn render_block(
                 theme,
                 code_block_renderer,
                 svg,
+                selection.clone(),
             );
             let bg = match kind {
                 CalloutKind::Note => theme.tokens.info,
@@ -1060,6 +1178,7 @@ fn render_block(
                 theme,
                 code_block_renderer,
                 svg,
+                selection.clone(),
             );
             div()
                 .mb(px(8.0))
@@ -1087,6 +1206,9 @@ fn heading_style(level: u8) -> (Pixels, FontWeight) {
 }
 
 /// 渲染行内元素为单个元素。
+///
+/// `leaf_prefix` 是复制时加在叶子文本前的标记（列表项用，其余为空）；
+/// `selection` 为 `Some` 时走可拖选路径，登记叶子并叠加选区高亮。
 fn render_inline_element(
     inlines: &[RichInline],
     base_size: Pixels,
@@ -1095,6 +1217,8 @@ fn render_inline_element(
     theme: &Theme,
     svg: Option<&SvgRenderer>,
     done: bool,
+    leaf_prefix: &str,
+    mut selection: Option<SelectionRender>,
 ) -> AnyElement {
     // 含公式时按段渲染：文本段沿用原路径，公式段渲染成图片。
     if let Some(segments) = split_math_segments_if_any(inlines) {
@@ -1106,6 +1230,8 @@ fn render_inline_element(
             theme,
             svg,
             done,
+            leaf_prefix,
+            selection.clone(),
         );
     }
     let font_family = theme.font_family.clone();
@@ -1122,44 +1248,65 @@ fn render_inline_element(
         return div().into_any_element();
     }
 
-    let styled = StyledText::new(SharedString::from(flattened.text)).with_runs(flattened.runs);
+    let text = flattened.text;
+    let mut runs = flattened.runs;
+    let flattened_links = flattened.links;
 
-    if !flattened.links.is_empty() {
-        let id = element_id.unwrap_or_else(|| ElementId::Name("rich-inline".into()));
-        let click_ranges: Vec<std::ops::Range<usize>> =
-            flattened.links.iter().map(|l| l.range.clone()).collect();
-
-        if link_handler.is_some() {
-            let urls: Vec<String> = flattened.links.iter().map(|l| l.url.clone()).collect();
-            return div()
-                .text_size(base_size)
-                .line_height(relative(1.5))
-                .child(InteractiveText::new(id, styled).on_change(
-                    click_ranges,
-                    move |idx, _window, cx| {
-                        if let Some(url) = urls.get(idx) {
-                            cx.open_url(url);
-                        }
-                    },
-                ))
-                .into_any_element();
-        } else {
-            let urls: Vec<String> = flattened.links.iter().map(|l| l.url.clone()).collect();
-            return div()
-                .text_size(base_size)
-                .line_height(relative(1.5))
-                .child(InteractiveText::new(id, styled).on_change(
-                    click_ranges,
-                    move |idx, _window, cx| {
-                        if let Some(url) = urls.get(idx) {
-                            cx.open_url(url);
-                        }
-                    },
-                ))
-                .into_any_element();
+    // 选区模式：登记叶子、叠加高亮，并交给可拖选元素渲染。
+    if let Some(selection) = selection.as_mut() {
+        let leaf = selection.register(leaf_prefix, &text);
+        if let Some(range) = selection.range_for(leaf, &text) {
+            runs = apply_selection_highlight(runs, &range, selection.highlight);
         }
+        let state = selection.state.clone();
+        let styled = StyledText::new(SharedString::from(text.clone())).with_runs(runs);
+        let links: Vec<(Range<usize>, String)> = flattened_links
+            .into_iter()
+            .map(|link| (link.range, link.url))
+            .collect();
+        let on_link: Option<Rc<dyn Fn(&str, &mut Window, &mut App)>> = if links.is_empty() {
+            None
+        } else {
+            Some(Rc::new(|url, _window, cx| cx.open_url(url)))
+        };
+        let id = element_id.unwrap_or_else(|| ElementId::Name("rich-inline".into()));
+        return div()
+            .text_size(base_size)
+            .line_height(relative(1.5))
+            .child(SelectableText::new(
+                id,
+                styled,
+                SharedString::from(text),
+                leaf,
+                state,
+                links,
+                on_link,
+            ))
+            .into_any_element();
     }
 
+    let styled = StyledText::new(SharedString::from(text)).with_runs(runs);
+
+    if !flattened_links.is_empty() {
+        let id = element_id.unwrap_or_else(|| ElementId::Name("rich-inline".into()));
+        let click_ranges: Vec<Range<usize>> =
+            flattened_links.iter().map(|l| l.range.clone()).collect();
+        let urls: Vec<String> = flattened_links.iter().map(|l| l.url.clone()).collect();
+        return div()
+            .text_size(base_size)
+            .line_height(relative(1.5))
+            .child(InteractiveText::new(id, styled).on_change(
+                click_ranges,
+                move |idx, _window, cx| {
+                    if let Some(url) = urls.get(idx) {
+                        cx.open_url(url);
+                    }
+                },
+            ))
+            .into_any_element();
+    }
+
+    let _ = link_handler;
     div()
         .text_size(base_size)
         .line_height(relative(1.5))
@@ -1209,6 +1356,7 @@ fn render_list_items(
     start: u64,
     theme: &Theme,
     svg: Option<&SvgRenderer>,
+    selection: Option<SelectionRender>,
 ) -> Vec<AnyElement> {
     let mut elements = Vec::new();
 
@@ -1217,6 +1365,11 @@ fn render_list_items(
         let idx = *block_idx;
 
         // 任务列表项用真复选框，其余用文本标记（• / 1.）。
+        let marker_text = if ordered {
+            format!("{}. ", start + i as u64)
+        } else {
+            "\u{2022} ".to_string()
+        };
         let marker: Option<AnyElement> = match item.checked {
             Some(checked) => Some(
                 div()
@@ -1250,11 +1403,7 @@ fn render_list_items(
                     .into_any_element(),
             ),
             None => {
-                let text = if ordered {
-                    format!("{}. ", start + i as u64)
-                } else {
-                    "\u{2022} ".to_string()
-                };
+                let text = marker_text.clone();
                 Some(
                     div()
                         .flex_shrink_0()
@@ -1265,6 +1414,12 @@ fn render_list_items(
                         .into_any_element(),
                 )
             }
+        };
+        // 复制时任务项不带复选框标记，其余保留列表标记。
+        let leaf_prefix = if item.checked.is_some() {
+            ""
+        } else {
+            marker_text.as_str()
         };
 
         let id = ElementId::Name(format!("{}-li-{}", id_prefix, idx).into());
@@ -1278,6 +1433,8 @@ fn render_list_items(
             theme,
             svg,
             done,
+            leaf_prefix,
+            selection.clone(),
         );
 
         let row = div()
@@ -1301,6 +1458,7 @@ fn render_list_items(
                 1,
                 theme,
                 svg,
+                selection.clone(),
             );
             elements.push(div().pl(px(20.0)).children(children).into_any_element());
         }
@@ -1320,6 +1478,7 @@ fn render_table(
     block_idx: &mut u32,
     theme: &Theme,
     svg: Option<&SvgRenderer>,
+    selection: Option<SelectionRender>,
 ) -> AnyElement {
     let col_count = headers.len();
     if col_count == 0 {
@@ -1354,6 +1513,8 @@ fn render_table(
                 theme,
                 svg,
                 false,
+                "",
+                selection.clone(),
             );
             let mut cell = div()
                 .flex_1()
@@ -1398,6 +1559,8 @@ fn render_table(
                 theme,
                 svg,
                 false,
+                "",
+                selection.clone(),
             );
             let mut cell = div()
                 .flex_1()

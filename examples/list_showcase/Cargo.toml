@@ -9,3 +9,18 @@ description = "列表与表格展示：虚拟列表/等高列表/数据表格/�
 rgpui.workspace = true
 rgpui-platform.workspace = true
 rand.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+# bench 目标需要 `BenchAppContext` / `#[rgpui::bench]` 的运行时支撑。
+rgpui = { workspace = true, features = ["bench"] }
+# `#[rgpui::bench]` 生成的无头渲染器入口由平台的 test-support 门控提供。
+rgpui-platform = { workspace = true, features = ["test-support"] }
+
+[[bench]]
+name = "text_shaping"
+harness = false
+
+[[bench]]
+name = "scene_build"
+harness = false

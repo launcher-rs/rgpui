@@ -1,19 +1,21 @@
 # Markdown 渲染（rgpui-markdown）
 
-**目录：** [概述](#概述) · [Markdown 组件](#markdown-组件) · [富文本块模型](#富文本块模型) · [公式与图表（latex / mermaid）](#公式与图表latex--mermaid) · [文档大纲（toc）](#文档大纲toc) · [CodeBlock](#codeblock) · [markdown_ext 插件](#markdown_ext-插件) · [最佳实践](#最佳实践)
+**目录：** [概述](#概述) · [Markdown 组件](#markdown-组件) · [流式增量（MarkdownState）](#流式增量markdownstate) · [文档级选区（MarkdownSelectionState）](#文档级选区markdownselectionstate) · [富文本块模型](#富文本块模型) · [公式与图表（latex / mermaid）](#公式与图表latex--mermaid) · [文档大纲（toc）](#文档大纲toc) · [CodeBlock](#codeblock) · [markdown_ext 插件](#markdown_ext-插件) · [最佳实践](#最佳实践)
 
 ## 概述
 
 `rgpui-markdown` 是**独立库 crate**（`crates/rgpui-markdown/`），重依赖
 `pulldown-cmark = "0.13"` 不污染核心默认构建。入口 `lib.rs`：常开模块
-`pub mod code_block;` / `markdown;` / `rich_text;` / `toc;`，另有私有助手
+`pub mod code_block;` / `markdown;` / `rich_text;` / `selection;` / `toc;`，另有私有助手
 `mod svg_image;`（`any(latex, mermaid)` 下编译，`lib.rs:26-27`）与 feature 门控的
-`pub mod latex;`（`lib.rs:30-31`）/ `pub mod mermaid;`（`:34-35`）。crate 根重导出
+`pub mod latex;`（`lib.rs:34`）/ `pub mod mermaid;`（`:38`）。crate 根重导出
 `CodeBlock`/`CodeBlockCopyState`/`Markdown`/`CalloutKind`/`CodeBlockRenderer`/
 `LinkClickHandler`/`ListItem`/`RichBlock`/`RichInline`/`TableAlignment`/`render_blocks_with`
-（`lib.rs:37-46`）、`Heading`/`extract_headings`（`:47`），门控侧
-`latex::{LatexImage, latex_image, render_latex_svg}`（`:38-39`）与
-`mermaid::{MermaidImage, is_mermaid_language, mermaid_image, render_mermaid_svg}`（`:41-42`）。
+（`lib.rs:40-50`）、`Heading`/`extract_headings`（`:51`）、`Markdown`/`ParsedMarkdown`/
+`parse_markdown`（`:43`）、`MarkdownState`（`:46`）、
+`MarkdownSelection`/`MarkdownSelectionState`/`SelectionPoint`（`:49`），门控侧
+`latex::{LatexImage, latex_image, render_latex_svg}`（`:42`）与
+`mermaid::{MermaidImage, is_mermaid_language, mermaid_image, render_mermaid_svg}`（`:45`）。
 
 核心侧另有 `crates/rgpui/src/markdown_ext/`（`pub mod markdown_ext;` `rgpui.rs:299`），
 prelude 重导出 `MarkdownPlugin`/`MarkdownRenderer`/`PluginManager`（`prelude.rs:88`）。
@@ -26,10 +28,80 @@ prelude 重导出 `MarkdownPlugin`/`MarkdownRenderer`/`PluginManager`（`prelude
 
 ## Markdown 组件
 
-`Markdown`（`rgpui-markdown/src/markdown.rs:57`）：`new(source: impl Into<SharedString>)`（`:70`）、
-`base_font_size(Pixels)`（`:80`）、`on_link_click(handler)`（`:86`，`impl RenderOnce` `:95`）。
+`Markdown`（`rgpui-markdown/src/markdown.rs:92`）：`new(source: impl Into<SharedString>)`（`:113`）、
+`new_state(Entity<MarkdownState>)`（`:127`）、`base_font_size(Pixels)`（`:138`）、
+`selection(Entity<MarkdownSelectionState>)`（`:147`）、
+`on_link_click(handler)`（`:153`，`impl RenderOnce` `:162`）。
 
-`parse_markdown(source: &str) -> Arc<(Vec<RichBlock>, Vec<Range<usize>>)>`（`:51`）。
+`parse_markdown(source: &str) -> ParsedMarkdown`（`:86`），
+`ParsedMarkdown = Arc<(Vec<RichBlock>, Vec<Range<usize>>)>`（`:19`）。
+静态路径走 crate 级 LRU（`ParseCache`，容量 8，命中即提升为最近使用），
+同一份源码跨帧渲染不会重复解析。
+
+## 流式增量（MarkdownState）
+
+`MarkdownState`（`state.rs:16`，crate 根重导出）：`new(source)`（`:28`，同步完成首次
+解析，首帧即有内容）、`append(&str, cx)`（`:41`）、`set_source(source, cx)`（`:50`）、
+`source()`（`:56`）、`parsed() -> ParsedMarkdown`（`:61`）、`is_parsing()`（`:66`）。
+
+- 追加/替换只更新源码并入队一次 **16ms 防抖**的后台整篇解析（`schedule_parse` `:71`）；
+  解析期间 `parsed()` 仍返回上一版块列表，主线程不会每来一个 chunk 就重建整篇文档。
+- 每次调度递增 `generation`，后台结果回来时比对，过期结果直接丢弃；新调度同时丢弃
+  旧 `Task` 即取消旧解析。
+- 渲染用 `Markdown::new_state(state)`——组件订阅该实体，解析完成 `cx.notify()` 后
+  自动重绘；适合 AI 回答/日志等逐块输出场景。
+
+```rust
+let state = cx.new(|_| MarkdownState::new(""));
+state.update(cx, |state, cx| state.append("# 你好", cx));
+let element = Markdown::new_state(state);
+```
+
+完整示例：`cargo run -p showcase --bin markdown_stream`（逐块注入 + 状态行 + 重新播放）。
+
+## 文档级选区（MarkdownSelectionState）
+
+`selection.rs`（无 feature 门控）给整篇 Markdown 提供**跨块拖选 + 复制**：
+
+- `SelectionPoint`（`selection.rs:19`）：`leaf: usize`（文本叶子在文档中的顺序索引）
+  + `byte: usize`（叶子内 UTF-8 字节偏移）；`new(leaf, byte)`（`:28`）。
+- `MarkdownSelection`（`:35`）：`anchor` / `head` 两个 `SelectionPoint`，`ordered()`（`:44`）、
+  `is_collapsed()`（`:53`）、`range_for_leaf(leaf, text)`（`:61`，首尾叶按端点裁剪、
+  中间叶整段选中；端点吸附到字符边界）。
+- `MarkdownSelectionState`（`:131`，crate 根重导出）：`new()`（`:147`）、
+  `selection()`（`:156`）、`is_pressed()`（`:161`）、`begin(leaf, byte, cx)`（`:166`）、
+  `extend(leaf, byte, cx)`（`:177`）、`end(cx)`（`:192`）、`clear(cx)`（`:200`）、
+  `select_all(cx)`（`:208`）、`selected_text() -> Option<String>`（`:229`）、
+  `copy_to_clipboard(cx: &mut App) -> bool`（`:236`，内部写
+  `ClipboardItem::new_string`）。
+
+接线与模型：
+
+- `Markdown::selection(state)`（`markdown.rs:147`）打开选区模式；**必须**
+  `cx.observe(&selection, |_, _, cx| cx.notify())`，否则拖选改变实体状态后宿主不重绘。
+- 渲染时按**阅读顺序**登记文本叶子（`SelectionRender::register`）：段落/标题各算一个
+  叶子（行内加粗/斜体/行内代码/链接共用同一叶子的纯文本），任务列表保留 `• ` /
+  `1. ` 标记前缀；**代码块整块一个叶子**（点击或拖过即整块高亮，无法逐字符选）；
+  表格每个单元格各自一个叶子。
+- 高亮：段落类叶子把 `TextRun` 在选区边界处切分并替换 `background_color`；
+  代码块用整块底色叠一层主题选区色。`SelectableText`（`selection.rs:307` 的
+  自定义元素）包装 `StyledText`，用 `TextLayout::index_for_position` 做字符命中，
+  按下 `begin`、移动 `extend`、抬起 `end`，悬停时在 `paint` 里设 `CursorStyle::IBeam`。
+- `selected_text()` 按叶子顺序拼接（叶子间 `\n`），列表项保留标记；`select_all` 需要
+  至少渲染过一帧（叶子表非空）。
+- 宿主负责键盘：`Ctrl/Cmd+A` → `select_all`、`Ctrl/Cmd+C` → `copy_to_clipboard`、
+  `Esc` → `clear`（`event.keystroke.modifiers.secondary()` 判平台主修饰键）。
+
+```rust
+let selection = cx.new(|_| MarkdownSelectionState::new());
+let _sub = cx.observe(&selection, |_, _, cx| cx.notify());
+let element = Markdown::new(source).selection(selection.clone());
+// 键盘回调里：
+selection.update(cx, |state, cx| state.copy_to_clipboard(cx));
+```
+
+完整示例：`cargo run -p showcase --bin markdown_selection`（拖选、`Ctrl+A` 全选、
+`Ctrl+C` 复制、`Esc` 清空 + 状态行）。
 
 ## 富文本块模型
 
@@ -81,7 +153,7 @@ rgpui-markdown = { workspace = true, features = ["latex", "mermaid"] }
   `img` 元素。
 
 接线：启用 `latex` 后 `Markdown` 渲染自动走 `render_blocks_with_svg`
-（`markdown.rs:102-114`，内部取 `cx.svg_renderer()`），`$...$` → `RichInline::Math`、
+（`markdown.rs:160-175`，内部取 `cx.svg_renderer()`），`$...$` → `RichInline::Math`、
 `$$...$$` → `RichBlock::Math`（解析在 `markdown.rs:304/309`）；未启用则显示源码文本。
 
 ### `mermaid` feature（`src/mermaid.rs`）
@@ -134,6 +206,12 @@ rgpui-markdown = { workspace = true, features = ["latex", "mermaid"] }
 - **`Markdown::new` 一行渲染**（含 `$...$`/`$$...$$` 与 ` ```mermaid ` 围栏自动接线）；
   需自定义块渲染用 `RichBlock` + `render_blocks_with`；需公式图片需
   `render_blocks_with_svg` 传入 `SvgRenderer`。
+- **流式输出**（AI 回答、日志、逐 token 生成）用 `MarkdownState` +
+  `Markdown::new_state`，不要每帧 `Markdown::new(全量源码)`：后者每次都换 hash，
+  会击穿 LRU 并在主线程重复整篇解析。
+- **可复制阅读**用 `Markdown::selection` + `MarkdownSelectionState`：实体交给宿主，
+  用 `cx.observe` 触发重绘，`Ctrl+C` 调 `copy_to_clipboard`；代码块是整块选中，
+  不要指望逐字符选择。
 - **目录/跳转**用 `extract_headings`（`Heading.anchor` 同名自动去重）。
 - **链接点击**用 `on_link_click`；代码块用 `CodeBlock`（行号/高亮/复制）。
 - **区分两套 Markdown**：本 crate 渲染真实 UI 元素；核心 `markdown_ext` 是

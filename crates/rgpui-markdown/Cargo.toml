@@ -29,5 +29,6 @@ mermaid-rs-renderer = { workspace = true, optional = true }
 ropey = { workspace = true, optional = true }
 
 [dev-dependencies]
+rgpui = { workspace = true, features = ["test-support"] }
 pollster = { workspace = true }
 smol = { workspace = true }

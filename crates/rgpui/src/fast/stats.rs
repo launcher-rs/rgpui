@@ -97,29 +97,34 @@ impl FrameStats {
     }
 }
 
-/// 可打印、可断言的帧统计快照。
+/// 单个窗口的帧统计快照（可打印、可断言）。
+///
+/// 耗时均为 CPU 侧 draw 段（布局 + 场景构建 + 文本绘制），不含 GPU 提交与桌面
+/// 合成；单位为毫秒。经 [`Window::frame_stats`](crate::Window::frame_stats) 读取，
+/// 仅用于调试与性能观测，字段可能随 Retained 实验扩展。
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct FrameStatsSnapshot {
+#[non_exhaustive]
+pub struct FrameStatsSnapshot {
     /// 已记录帧数。
-    pub(crate) frames: u64,
+    pub frames: u64,
     /// 上一帧耗时（毫秒）。
-    pub(crate) last_ms: f64,
+    pub last_ms: f64,
     /// 平均帧耗时（毫秒）。
-    pub(crate) avg_ms: f64,
+    pub avg_ms: f64,
     /// 最大单帧耗时（毫秒）。
-    pub(crate) max_ms: f64,
+    pub max_ms: f64,
     /// 记录时保留总开关是否开启。
-    pub(crate) retention_on: bool,
+    pub retention_on: bool,
     /// 复用上帧输出的视图数。
-    pub(crate) views_reused: u64,
+    pub views_reused: u64,
     /// 重新绘制的视图数。
-    pub(crate) views_rebuilt: u64,
+    pub views_rebuilt: u64,
     /// 无写入复用的布局节点数。
-    pub(crate) layout_nodes_reused: u64,
+    pub layout_nodes_reused: u64,
     /// 命中但改写的布局节点数。
-    pub(crate) layout_nodes_rewritten: u64,
+    pub layout_nodes_rewritten: u64,
     /// 新分配的布局节点数。
-    pub(crate) layout_nodes_allocated: u64,
+    pub layout_nodes_allocated: u64,
 }
 
 impl fmt::Display for FrameStatsSnapshot {

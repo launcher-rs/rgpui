@@ -20,6 +20,8 @@
 pub mod code_block;
 pub mod markdown;
 pub mod rich_text;
+pub mod selection;
+pub mod state;
 pub mod toc;
 
 /// SVG 光栅化辅助（公式 / 图表管线共用）。
@@ -37,11 +39,13 @@ pub mod mermaid;
 pub use code_block::{CodeBlock, CodeBlockCopyState};
 #[cfg(feature = "latex")]
 pub use latex::{LatexImage, latex_image, render_latex_svg};
-pub use markdown::Markdown;
+pub use markdown::{Markdown, ParsedMarkdown, parse_markdown};
 #[cfg(feature = "mermaid")]
 pub use mermaid::{MermaidImage, is_mermaid_language, mermaid_image, render_mermaid_svg};
 pub use rich_text::{
     CalloutKind, CodeBlockRenderer, LinkClickHandler, ListItem, RichBlock, RichInline,
     TableAlignment, render_blocks_with,
 };
+pub use selection::{MarkdownSelection, MarkdownSelectionState, SelectionPoint};
+pub use state::MarkdownState;
 pub use toc::{Heading, extract_headings};

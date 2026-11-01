@@ -1272,7 +1272,10 @@ impl MetalRenderer {
             return false;
         }
 
-        let texture = self.sprite_atlas.metal_texture(texture_id);
+        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），跳过这批精灵即可。
+        let Some(texture) = self.sprite_atlas.metal_texture(texture_id) else {
+            return true;
+        };
         let texture_size = size(
             DevicePixels(texture.width() as i32),
             DevicePixels(texture.height() as i32),
@@ -1337,7 +1340,10 @@ impl MetalRenderer {
         }
         align_offset(instance_offset);
 
-        let texture = self.sprite_atlas.metal_texture(texture_id);
+        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），跳过这批精灵即可。
+        let Some(texture) = self.sprite_atlas.metal_texture(texture_id) else {
+            return true;
+        };
         let texture_size = size(
             DevicePixels(texture.width() as i32),
             DevicePixels(texture.height() as i32),

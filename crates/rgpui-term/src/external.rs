@@ -215,10 +215,13 @@ fn external_loop(
 
         if !pending.is_empty() {
             // 先租约再解锁：防止 UI 线程在本轮解析前反复抢占（镜像 event_loop）。
+            // 租约占的就是 `next` 锁，因此这里只能退到 `lock_unfair`（只等 data）：
+            // parking_lot 不可重入，持租约再走 `lock()` 会二次加 `next` 自锁，
+            // 解析线程就此永不消费，远端字节再也进不了网格。
             let _lease = terminal.lease();
             let mut term = terminal
                 .try_lock_unfair()
-                .unwrap_or_else(|| terminal.lock());
+                .unwrap_or_else(|| terminal.lock_unfair());
 
             let mut processed = 0usize;
             for chunk in &pending {
@@ -345,6 +348,39 @@ mod tests {
         wait_row_text(&terminal, 0, "hello");
         // ANSI SGR 红色字节被消费，"world"（第 6 列起）纯文本上屏
         wait_row_text(&terminal, 6, "world");
+    }
+
+    /// 回归：UI 线程正持有 data 锁时到达的字节，解锁后必须仍被解析上屏。
+    ///
+    /// 解析线程先取租约（`next`），`try_lock_unfair` 失败后若退回 `lock()`
+    /// 就是同线程二次加 `next`，parking_lot 不可重入 → 线程永久自锁，
+    /// 通道照常收字节但网格再也不更新（外接 SSH/Telnet 会话"卡住不出字"）。
+    #[test]
+    fn feed_survives_contention_with_ui_lock() {
+        let (terminal, proxy, _events) = make_term();
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy);
+
+        // 占住 data 锁，逼出 try_lock_unfair 的失败分支。
+        let guard = terminal.lock_unfair();
+        assert!(feed.feed("contended".as_bytes()));
+        sleep(Duration::from_millis(120));
+        drop(guard);
+
+        // 用 try_lock 轮询：自锁的线程会一直占着 next，wait_row_text 的
+        // 公平 lock() 反而会把测试挂死，这里要的是有限时间内失败。
+        let mut appeared = false;
+        for _ in 0..200 {
+            sleep(Duration::from_millis(10));
+            if let Some(term) = terminal.try_lock_unfair() {
+                let text: String = (0..9).map(|i| term.grid()[Line(0)][Column(i)].c).collect();
+                drop(term);
+                if text == "contended" {
+                    appeared = true;
+                    break;
+                }
+            }
+        }
+        assert!(appeared, "UI 持锁期间到达的字节没有被解析上屏");
     }
 
     #[test]

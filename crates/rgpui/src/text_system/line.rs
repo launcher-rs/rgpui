@@ -361,6 +361,30 @@ impl WrappedLine {
     }
 }
 
+/// 判断一行文本的绘制范围是否与当前裁剪区相交。
+///
+/// 行完全在裁剪区外时可以跳过整个逐字形循环（位置推进 + 装饰状态机）。
+/// 外扩量取行高与字号中较大者，覆盖下划线、删除线、下标与斜体等可能超出
+/// line box 的像素，避免边缘误裁。
+fn line_is_visible(
+    origin: Point<Pixels>,
+    layout: &LineLayout,
+    line_height: Pixels,
+    wrap_boundaries: &[WrapBoundary],
+    window: &Window,
+) -> bool {
+    let line_bounds = Bounds::new(
+        origin,
+        size(
+            layout.width,
+            line_height * (wrap_boundaries.len() as f32 + 1.),
+        ),
+    );
+    line_bounds
+        .dilate(line_height.max(layout.font_size))
+        .intersects(&window.content_mask().bounds)
+}
+
 fn paint_line(
     origin: Point<Pixels>,
     layout: &LineLayout,
@@ -372,6 +396,10 @@ fn paint_line(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<()> {
+    if !line_is_visible(origin, layout, line_height, wrap_boundaries, window) {
+        return Ok(());
+    }
+
     let line_bounds = Bounds::new(
         origin,
         size(
@@ -618,6 +646,11 @@ fn paint_line_background(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<()> {
+    // 整行落在裁剪区外时直接返回，背景段一定也不可见。
+    if !line_is_visible(origin, layout, line_height, wrap_boundaries, window) {
+        return Ok(());
+    }
+
     let line_bounds = Bounds::new(
         origin,
         size(

@@ -452,7 +452,7 @@ impl ArenaClearNeeded {
     /// arena 可能会释放其绘制仍引用的内存。
     pub fn clear(self, cx: &mut App) {
         assert!(
-            std::ptr::eq(self.arena, &cx.element_arena),
+            std::ptr::eq(self.arena, &*cx.element_arena),
             "ArenaClearNeeded::clear called with a different App than the draw ran against"
         );
         cx.element_arena.borrow_mut().clear();
@@ -4023,6 +4023,22 @@ impl Window {
             })
     }
 
+    /// 返回本窗口自创建以来的累计帧统计快照。
+    ///
+    /// 耗时为 CPU 侧 draw 段（布局 + 场景构建 + 文本绘制），不含 GPU 提交与桌面
+    /// 合成；仅用于调试与性能观测，便于应用自查性能回归（如 [`crate::FpsHud`]）。
+    ///
+    /// ```no_run
+    /// # use rgpui::Window;
+    /// fn log_draw_time(window: &Window) {
+    ///     let stats = window.frame_stats();
+    ///     println!("avg draw {:.2} ms / {} frames", stats.avg_ms, stats.frames);
+    /// }
+    /// ```
+    pub fn frame_stats(&self) -> crate::fast::stats::FrameStatsSnapshot {
+        self.fast_stats.snapshot()
+    }
+
     /// 为被调用函数中的元素提供新的命名空间，其标识符必须唯一。
     /// 可在自定义元素中使用，以区分多组子元素。
     pub fn with_element_namespace<R>(
@@ -4602,6 +4618,16 @@ impl Window {
 
         let raster_bounds = self.text_system().raster_bounds(&params)?;
         if !raster_bounds.is_zero() {
+            let content_mask = self.snapped_content_mask();
+            // 字形完全落在裁剪区外时不必查询图集，直接跳过。
+            let glyph_bounds = Bounds {
+                origin: integer_origin + raster_bounds.origin.map(Into::into),
+                size: raster_bounds.size.map(Into::into),
+            };
+            if !glyph_bounds.intersects(&content_mask.bounds) {
+                return Ok(());
+            }
+
             let tile = self
                 .sprite_atlas
                 .get_or_insert_with(&params.clone().into(), &mut || {
@@ -4613,7 +4639,6 @@ impl Window {
                 origin: integer_origin + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
             };
-            let content_mask = self.snapped_content_mask();
 
             if subpixel_rendering {
                 self.next_frame.scene.insert_primitive(SubpixelSprite {
@@ -4692,6 +4717,16 @@ impl Window {
 
         let raster_bounds = self.text_system().raster_bounds(&params)?;
         if !raster_bounds.is_zero() {
+            let content_mask = self.snapped_content_mask();
+            // 字形完全落在裁剪区外时不必查询图集，直接跳过。
+            let glyph_bounds = Bounds {
+                origin: integer_origin + raster_bounds.origin.map(Into::into),
+                size: raster_bounds.size.map(Into::into),
+            };
+            if !glyph_bounds.intersects(&content_mask.bounds) {
+                return Ok(());
+            }
+
             let tile = self
                 .sprite_atlas
                 .get_or_insert_with(&params.clone().into(), &mut || {
@@ -4704,7 +4739,6 @@ impl Window {
                 origin: integer_origin + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
             };
-            let content_mask = self.snapped_content_mask();
             let opacity = self.element_opacity();
 
             self.next_frame.scene.insert_primitive(PolychromeSprite {
@@ -5654,8 +5688,15 @@ impl Window {
                     accepts
                 });
 
-            currently_pending.needs_timeout |=
-                match_result.pending_has_binding || text_input_requires_timeout;
+            // 待定序列只有独立按下的修饰键时也必须超时：否则第一次 shift
+            // 会一直待定，IME 切换英文后再按一次 shift 会被当成 `shift shift`。
+            let standalone_modifier = matches!(
+                currently_pending.keystrokes.as_slice(),
+                [keystroke] if keystroke.is_modifier_key()
+            );
+            currently_pending.needs_timeout |= match_result.pending_has_binding
+                || text_input_requires_timeout
+                || standalone_modifier;
 
             if currently_pending.needs_timeout {
                 currently_pending.timer = Some(self.spawn(cx, async move |cx| {
@@ -7245,6 +7286,13 @@ impl Window {
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_modifiers(&mut self, modifiers: Modifiers) {
         self.modifiers = modifiers;
+    }
+
+    /// 用于测试：强制无障碍在本帧活跃，使 `debug_a11y_tree_json`
+    /// 能捕获树结构（测试平台不会触发系统无障碍激活）。
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn force_a11y_active_for_test(&mut self) {
+        self.a11y.force_active_for_test();
     }
 
     /// 用于测试：模拟鼠标移动事件到给定位置。

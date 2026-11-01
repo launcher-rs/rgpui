@@ -169,12 +169,14 @@ impl Scene {
         self.quads.sort_by_key(|quad| quad.order);
         self.paths.sort_by_key(|path| path.order);
         self.underlines.sort_by_key(|underline| underline.order);
+        // 合批以 texture_id 为界（见 `Scene::batches`），排序键必须与之一致：
+        // 按 tile_id 排序会把同一张纹理的精灵打散成多个批次。
         self.monochrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
         self.subpixel_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
         self.polychrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
         self.surfaces.sort_by_key(|surface| surface.order);
     }
 
@@ -1026,6 +1028,87 @@ impl PathVertex<Pixels> {
             xy_position: self.xy_position.scale(factor),
             st_position: self.st_position,
             content_mask: self.content_mask.scale(factor),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AtlasTextureKind, DevicePixels, TileId, bounds, size};
+
+    /// 构造一个只关心 order 与所属纹理/瓦片 ID 的单色精灵。
+    fn sprite(order: DrawOrder, texture_index: u32, tile_id: u32) -> MonochromeSprite {
+        MonochromeSprite {
+            order,
+            pad: 0,
+            bounds: bounds(
+                point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                size(ScaledPixels(8.0), ScaledPixels(8.0)),
+            ),
+            content_mask: ContentMask {
+                bounds: bounds(
+                    point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                    size(ScaledPixels(100.0), ScaledPixels(100.0)),
+                ),
+            },
+            color: Hsla::default(),
+            tile: AtlasTile {
+                texture_id: AtlasTextureId {
+                    index: texture_index,
+                    kind: AtlasTextureKind::Monochrome,
+                },
+                tile_id: TileId(tile_id),
+                padding: 0,
+                bounds: Bounds {
+                    origin: Point::default(),
+                    size: size(DevicePixels(8), DevicePixels(8)),
+                },
+            },
+            transformation: TransformationMatrix::default(),
+        }
+    }
+
+    /// 同纹理精灵必须聚成一个批次：排序键按 texture_id 而非 tile_id。
+    #[test]
+    fn test_sprite_sort_keeps_texture_batches_contiguous() {
+        let mut scene = Scene::default();
+        // 两张纹理的瓦片 ID 交替递增，按 tile_id 排序会把批次打散成 5 段。
+        scene.monochrome_sprites = vec![
+            sprite(0, 1, 10),
+            sprite(0, 0, 99),
+            sprite(0, 1, 11),
+            sprite(0, 0, 98),
+            sprite(0, 1, 12),
+        ];
+        scene.finish();
+
+        let texture_order = scene
+            .monochrome_sprites
+            .iter()
+            .map(|sprite| sprite.tile.texture_id.index)
+            .collect::<Vec<_>>();
+        assert_eq!(texture_order, vec![0, 0, 1, 1, 1]);
+
+        let batches = scene.batches().collect::<Vec<_>>();
+        assert_eq!(batches.len(), 2, "同一 order 下应按纹理分成 2 个批次");
+        match (&batches[0], &batches[1]) {
+            (
+                PrimitiveBatch::MonochromeSprites {
+                    texture_id: first,
+                    range: first_range,
+                },
+                PrimitiveBatch::MonochromeSprites {
+                    texture_id: second,
+                    range: second_range,
+                },
+            ) => {
+                assert_eq!(first.index, 0);
+                assert_eq!(*first_range, 0..2);
+                assert_eq!(second.index, 1);
+                assert_eq!(*second_range, 2..5);
+            }
+            other => panic!("期望两个单色精灵批次，实际为 {other:?}"),
         }
     }
 }

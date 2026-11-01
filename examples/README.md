@@ -33,6 +33,7 @@ cargo run -p showcase --bin <名称>
 | `form` | 表单 `Form`/`Field` 与校验 | `cargo run -p showcase --bin form` |
 | `input` | 输入组件（Input/TextArea 等） | `cargo run -p showcase --bin input` |
 | `extended_components` | 扩展组件集合 | `cargo run -p showcase --bin extended_components` |
+| `icons` | 内置图标总览（全部 `IconName` + 三种用法） | `cargo run -p showcase --bin icons` |
 | `dialog` | 对话框 / 焦点陷阱 | `cargo run -p showcase --bin dialog` |
 | `sidebar` | 侧边栏 | `cargo run -p showcase --bin sidebar` |
 | `scrollable` | 滚动 / 滚动条 | `cargo run -p showcase --bin scrollable` |
@@ -75,6 +76,8 @@ cargo run -p showcase --bin <名称>
 |-----|------|------|
 | `i18n` | 国际化（`I18nManager` / `I18nText` / 复数规则） | `cargo run -p showcase --bin i18n` |
 | `markdown` | Markdown 渲染（含代码高亮/数学/任务列表插件） | `cargo run -p showcase --bin markdown` |
+| `markdown_stream` | Markdown 流式增量渲染（`MarkdownState` + 防抖后台解析） | `cargo run -p showcase --bin markdown_stream` |
+| `markdown_selection` | Markdown 文档级选区（拖选 / Ctrl+C 复制 / Ctrl+A 全选） | `cargo run -p showcase --bin markdown_selection` |
 | `tabs` | 标签页（含拖拽重排） | `cargo run -p showcase --bin tabs` |
 | `tree` | 树形控件 | `cargo run -p showcase --bin tree` |
 | `status_bar` | 状态栏 | `cargo run -p showcase --bin status_bar` |
@@ -107,7 +110,7 @@ cargo run -p showcase --bin <名称>
 | `ink` | Ink 笔迹：钢笔 / 荧光笔落笔（可开压感变宽），橡皮擦除，套索框选 + 撤销 / 清空 + 多图层 | `cargo run -p showcase --bin ink` |
 | `sorter` | 缩略图排序器：拖拽重排（插入指示线）+ 缩放 + 多选 + 键盘导航 | `cargo run -p showcase --bin sorter` |
 | `timeline` | 动画时间线：多轨关键帧编辑（标尺 / 值曲线 / 关键帧拖拽改时间与值 / 播放头 / 纵向滚动 / 轨道重排 / 轨道折叠），实时驱动预览方块 | `cargo run -p showcase --bin timeline` |
-| `color_picker` | 取色器增强：主题色板 / 最近颜色快捷色块 + 独立命名色阶色板，点击即应用 | `cargo run -p showcase --bin color_picker` |
+| `color_picker` | 取色器增强：主题色板 / 最近颜色快捷色块 + 独立命名色阶色板，点击即应用；「吸管取色」按钮走 `begin_eyedropper` | `cargo run -p showcase --bin color_picker` |
 | `mdi` | 多文档界面：子窗口标题栏 / 最小化 / 最大化 / 八向缩放 + 层叠与平铺排布 | `cargo run -p showcase --bin mdi` |
 | `task_pane` | 任务窗格：可停靠 / 可浮动侧边面板（内缘拖拽改宽 / 标题栏拖动 / ✕ 关闭 / 自动隐藏 / 页签组） | `cargo run -p showcase --bin task_pane` |
 | `canvas_a11y` | 画布语义：自绘对象暴露给辅助技术（合成子节点 / 阅读顺序 / 键盘与无障碍动作） | `cargo run -p showcase --bin canvas_a11y` |
@@ -140,6 +143,36 @@ cargo run -p showcase --bin <名称>
 | `tokio_example` | Tokio 异步集成 |
 
 运行独立示例：`cargo run -p <crate> [--bin <名称>]`。
+
+## 基准（list_showcase/benches）
+
+`list_showcase` 内置两个 Criterion 基准，用于给文本管线与长列表改动做前后对比：
+
+```bash
+cargo bench -p list_showcase --bench text_shaping
+cargo bench -p list_showcase --bench scene_build
+```
+
+- `text_shaping`：1000 行、每行约 90 字符的唯一 ASCII 文本，逐行调用
+  `WindowTextSystem::layout_line`。每次迭代换一个 `WindowTextSystem`（行布局缓存为空），
+  字体表仍共享。输出是 1000 行总耗时，**除以 1000** 即单行 µs。
+- `scene_build`：同样 1000 行，对比「逐行 `div`」与「`uniform_list`」两种渲染方式。
+  bench 构建下 `cx.notify()` 的 effect flush 会同步 `Window::draw` 但不 `present`，
+  所以只覆盖 CPU 侧（布局 + shaping + 绘制 + 场景构建），不含 GPU 提交。
+
+基准依赖 `bench` feature（`rgpui` 提供 `BenchAppContext` 与 `#[rgpui::bench]` 宏），
+已在 `examples/list_showcase/Cargo.toml` 的 `[dev-dependencies]` 中启用，正常构建不受影响。
+首次运行 Criterion 需要完整编译一次 release 依赖，耗时较长。
+
+Windows / DirectWrite 参考基线（2026-11-01，release）：
+
+| 基准 | 结果 |
+|---|---|
+| `text_shaping` | 1.33–1.38 ms / 1000 行（约 1.35 µs/行） |
+| `scene_build` / `divs` | 4.87 ms/帧 |
+| `scene_build` / `uniform_list` | 394 µs/帧 |
+
+数字随机器与平台变化，只用于同一台机器上的改动前后对比。
 
 ## 新增示例约定
 

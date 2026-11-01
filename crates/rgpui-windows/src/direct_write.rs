@@ -17,6 +17,7 @@ use ::rgpui::{ResultExt, maybe};
 use anyhow::{Context, Result};
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rgpui::collections::HashMap;
+use smallvec::SmallVec;
 use windows::{
     Win32::{
         Foundation::*,
@@ -100,6 +101,13 @@ struct DirectWriteState {
     font_to_font_id: HashMap<Font, FontId>,
     font_info_cache: HashMap<usize, FontId>,
     layout_line_scratch: Vec<u16>,
+    /// 按 `(字体, 字号位模式)` 缓存的文本格式。
+    ///
+    /// `CreateTextFormat` 的参数只取决于字体信息与字号，但每行文本重排都会调用它；
+    /// 缓存后每行只剩 `CreateTextLayout` 一个 COM 对象，高频文本刷新（终端、流式聊天）
+    /// 能省掉字体族与回退链的重复查找。字体集合在启动后不变，`FontId` 单调递增，
+    /// 因此缓存无需失效逻辑。
+    text_format_cache: HashMap<(FontId, u32), IDWriteTextFormat1>,
 }
 
 impl GPUState {
@@ -241,6 +249,7 @@ impl DirectWriteTextSystem {
                 font_to_font_id: HashMap::default(),
                 font_info_cache: HashMap::default(),
                 layout_line_scratch: Vec::new(),
+                text_format_cache: HashMap::default(),
             }),
         })
     }
@@ -546,6 +555,79 @@ impl DirectWriteState {
         font_size: Pixels,
         font_runs: &[FontRun],
     ) -> Result<LineLayout> {
+        if !text.contains(is_line_separator) {
+            return self.layout_line_without_separators(components, text, font_size, font_runs);
+        }
+
+        // DirectWrite 即使关闭换行也会把 U+2028 / U+2029 当成强制换行，
+        // 于是后续文本被挤到下一个基线，行排版随即断言失败。这里沿用
+        // Cosmic Text 后端的「分段再拼接」办法：让每个分隔符留在所在段
+        // 的末尾，再按水平方向把各段字形衔接起来。
+        let mut layout = LineLayout {
+            font_size,
+            len: text.len(),
+            ..Default::default()
+        };
+        let mut remaining_runs = font_runs;
+        let mut run_offset = 0;
+        let mut text_offset = 0;
+        let mut segment_runs = SmallVec::<[FontRun; 4]>::new();
+        for segment in text.split_inclusive(is_line_separator) {
+            segment_runs.clear();
+            let mut remaining_bytes = segment.len();
+            while remaining_bytes > 0 {
+                let Some(run) = remaining_runs.first() else {
+                    break;
+                };
+                // 空段或越界段直接跳过，避免 `run.len - run_offset` 下溢。
+                if run_offset >= run.len {
+                    remaining_runs = &remaining_runs[1..];
+                    run_offset = 0;
+                    continue;
+                }
+                let len = remaining_bytes.min(run.len - run_offset);
+                segment_runs.push(FontRun {
+                    len,
+                    font_id: run.font_id,
+                });
+                remaining_bytes -= len;
+                run_offset += len;
+                if run_offset == run.len {
+                    remaining_runs = &remaining_runs[1..];
+                    run_offset = 0;
+                }
+            }
+
+            let segment_layout =
+                self.layout_line_without_separators(components, segment, font_size, &segment_runs)?;
+            for mut run in segment_layout.runs {
+                for glyph in &mut run.glyphs {
+                    glyph.index += text_offset;
+                    glyph.position.x += layout.width;
+                }
+                if let Some(last) = layout.runs.last_mut()
+                    && last.font_id == run.font_id
+                {
+                    last.glyphs.append(&mut run.glyphs);
+                } else {
+                    layout.runs.push(run);
+                }
+            }
+            layout.width += segment_layout.width;
+            layout.ascent = layout.ascent.max(segment_layout.ascent);
+            layout.descent = layout.descent.max(segment_layout.descent);
+            text_offset += segment.len();
+        }
+        Ok(layout)
+    }
+
+    fn layout_line_without_separators(
+        &mut self,
+        components: &DirectWriteComponents,
+        text: &str,
+        font_size: Pixels,
+        font_runs: &[FontRun],
+    ) -> Result<LineLayout> {
         if font_runs.is_empty() {
             return Ok(LineLayout {
                 font_size,
@@ -561,23 +643,32 @@ impl DirectWriteState {
             let mut utf16_offset = 0u32;
             let text_layout = {
                 let first_run = &font_runs[0];
-                let font_info = &self.fonts[first_run.font_id.0];
-                let collection = &font_info.font_collection;
-                let format: IDWriteTextFormat1 = components
-                    .factory
-                    .CreateTextFormat(
-                        &font_info.font_family_h,
-                        collection,
-                        font_info.font_face.GetWeight(),
-                        font_info.font_face.GetStyle(),
-                        DWRITE_FONT_STRETCH_NORMAL,
-                        font_size.as_f32(),
-                        &components.locale,
-                    )?
-                    .cast()?;
-                if let Some(ref fallbacks) = font_info.fallbacks {
-                    format.SetFontFallback(fallbacks)?;
-                }
+                // 字号按 f32 位模式入键：`Pixels` 内部就是 f32，位模式比较与浮点相等
+                // 语义一致，且避免 `Pixels` 未实现 `Eq` 的问题。
+                let cache_key = (first_run.font_id, font_size.as_f32().to_bits());
+                let format = match self.text_format_cache.get(&cache_key).cloned() {
+                    Some(format) => format,
+                    None => {
+                        let font_info = &self.fonts[first_run.font_id.0];
+                        let format: IDWriteTextFormat1 = components
+                            .factory
+                            .CreateTextFormat(
+                                &font_info.font_family_h,
+                                &font_info.font_collection,
+                                font_info.font_face.GetWeight(),
+                                font_info.font_face.GetStyle(),
+                                DWRITE_FONT_STRETCH_NORMAL,
+                                font_size.as_f32(),
+                                &components.locale,
+                            )?
+                            .cast()?;
+                        if let Some(ref fallbacks) = font_info.fallbacks {
+                            format.SetFontFallback(fallbacks)?;
+                        }
+                        self.text_format_cache.insert(cache_key, format.clone());
+                        format
+                    }
+                };
 
                 let layout = components.factory.CreateTextLayout(
                     text_wide,
@@ -585,6 +676,7 @@ impl DirectWriteState {
                     f32::INFINITY,
                     f32::INFINITY,
                 )?;
+                let font_info = &self.fonts[first_run.font_id.0];
                 let (current_text, next_offset) =
                     slice_at_char_boundary(text, utf8_offset, first_run.len);
                 utf8_offset = next_offset;
@@ -1031,26 +1123,6 @@ impl DirectWriteState {
             }
         }
 
-        let gpu_state = &self.gpu_state;
-        let params_buffer = {
-            let desc = D3D11_BUFFER_DESC {
-                ByteWidth: std::mem::size_of::<GlyphLayerTextureParams>() as u32,
-                Usage: D3D11_USAGE_DYNAMIC,
-                BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
-                CPUAccessFlags: D3D11_CPU_ACCESS_WRITE.0 as u32,
-                MiscFlags: 0,
-                StructureByteStride: 0,
-            };
-
-            let mut buffer = None;
-            unsafe {
-                gpu_state
-                    .device
-                    .CreateBuffer(&desc, None, Some(&mut buffer))
-            }?;
-            buffer
-        };
-
         let render_target_texture = {
             let mut texture = None;
             let desc = D3D11_TEXTURE2D_DESC {
@@ -1069,7 +1141,7 @@ impl DirectWriteState {
                 MiscFlags: 0,
             };
             unsafe {
-                gpu_state
+                self.gpu_state
                     .device
                     .CreateTexture2D(&desc, None, Some(&mut texture))
             }?;
@@ -1086,13 +1158,51 @@ impl DirectWriteState {
             };
             let mut rtv = None;
             unsafe {
-                gpu_state.device.CreateRenderTargetView(
+                self.gpu_state.device.CreateRenderTargetView(
                     &render_target_texture,
                     Some(&desc),
                     Some(&mut rtv),
                 )
             }?;
             rtv
+        };
+
+        Self::composite_color_layers(
+            &self.gpu_state,
+            &glyph_layers,
+            bitmap_size,
+            &render_target_texture,
+            &render_target_view,
+        )
+    }
+
+    /// 把彩色字形的各层合成到渲染目标并读回像素。
+    ///
+    /// 抽成独立方法是为了让「合成前是否清空渲染目标」可被单测覆盖。
+    fn composite_color_layers(
+        gpu_state: &GPUState,
+        glyph_layers: &[GlyphLayerTexture],
+        bitmap_size: Size<DevicePixels>,
+        render_target_texture: &ID3D11Texture2D,
+        render_target_view: &Option<ID3D11RenderTargetView>,
+    ) -> Result<Vec<u8>> {
+        let params_buffer = {
+            let desc = D3D11_BUFFER_DESC {
+                ByteWidth: std::mem::size_of::<GlyphLayerTextureParams>() as u32,
+                Usage: D3D11_USAGE_DYNAMIC,
+                BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
+                CPUAccessFlags: D3D11_CPU_ACCESS_WRITE.0 as u32,
+                MiscFlags: 0,
+                StructureByteStride: 0,
+            };
+
+            let mut buffer = None;
+            unsafe {
+                gpu_state
+                    .device
+                    .CreateBuffer(&desc, None, Some(&mut buffer))
+            }?;
+            buffer
         };
 
         let staging_texture = {
@@ -1131,8 +1241,16 @@ impl DirectWriteState {
             device_context.PSSetConstantBuffers(0, Some(std::slice::from_ref(&params_buffer)))
         };
         unsafe {
-            device_context.OMSetRenderTargets(Some(std::slice::from_ref(&render_target_view)), None)
+            device_context.OMSetRenderTargets(Some(std::slice::from_ref(render_target_view)), None)
         };
+        // 渲染目标创建时未初始化，没有层覆盖到的像素会保留 DXGI 分配池里
+        // 上一次光栅化的残留，彩色 emoji 边缘因此出现杂色块。合成前先清成
+        // 预乘透明。
+        if let Some(render_target_view) = render_target_view.as_ref() {
+            unsafe {
+                device_context.ClearRenderTargetView(render_target_view, &[0.0, 0.0, 0.0, 0.0])
+            };
+        }
         unsafe { device_context.PSSetSamplers(0, Some(std::slice::from_ref(&gpu_state.sampler))) };
         unsafe { device_context.OMSetBlendState(&gpu_state.blend_state, None, 0xffffffff) };
 
@@ -1165,7 +1283,7 @@ impl DirectWriteState {
                     .Unmap(params_buffer.as_ref().unwrap(), 0);
             };
 
-            let texture = [Some(layer.texture_view)];
+            let texture = [Some(layer.texture_view.clone())];
             unsafe { device_context.PSSetShaderResources(0, Some(&texture)) };
 
             let viewport = [D3D11_VIEWPORT {
@@ -1181,7 +1299,7 @@ impl DirectWriteState {
             unsafe { device_context.Draw(4, 0) };
         }
 
-        unsafe { device_context.CopyResource(&staging_texture, &render_target_texture) };
+        unsafe { device_context.CopyResource(&staging_texture, render_target_texture) };
 
         let mapped_data = {
             let mut mapped_data = D3D11_MAPPED_SUBRESOURCE::default();
@@ -1739,9 +1857,10 @@ fn apply_font_features(
     features: &FontFeatures,
 ) -> Result<()> {
     let tag_values = features.tag_value_list();
-    if tag_values.is_empty() {
-        return Ok(());
-    }
+
+    // 即使没有显式配置也要继续执行：随后会把 DirectWrite 默认开启的
+    // liga/clig/calt 补进 typography。空 typography 交给 SetTypography
+    // 会覆盖默认特性集，导致 Windows 上连字被意外关闭。
 
     // All of these features are enabled by default by DirectWrite.
     // If you want to (and can) peek into the source of DirectWrite
@@ -1906,9 +2025,221 @@ fn is_color_glyph(
 
 const DEFAULT_LOCALE_NAME: PCWSTR = windows::core::w!("en-US");
 
+/// DirectWrite 会把行分隔符 U+2028 / 段落分隔符 U+2029 当作强制换行，
+/// 而 GPUI 的单行排版不允许出现换行，需要按分隔符分段后自行拼接。
+fn is_line_separator(character: char) -> bool {
+    matches!(character, '\u{2028}' | '\u{2029}')
+}
+
 #[cfg(test)]
 mod tests {
     use crate::direct_write::ClusterAnalyzer;
+
+    #[test]
+    fn unicode_line_separators_preserve_shaped_line() -> anyhow::Result<()> {
+        check_unicode_separator_shaping('\u{2028}')
+    }
+
+    #[test]
+    fn unicode_paragraph_separators_preserve_shaped_line() -> anyhow::Result<()> {
+        check_unicode_separator_shaping('\u{2029}')
+    }
+
+    /// 含 U+2028 / U+2029 的单行排版应与去掉分隔符后的结果逐字形一致：
+    /// 宽度相同、可见字形位置相同、字节下标按分隔符剥离后一一对应。
+    fn check_unicode_separator_shaping(separator: char) -> anyhow::Result<()> {
+        use ::rgpui::{
+            Font, FontWeight, PlatformTextSystem, TextRun, TextSystem, WindowTextSystem, px,
+        };
+        use std::sync::Arc;
+
+        use super::DirectWriteTextSystem;
+        use crate::directx_devices::DirectXDevices;
+
+        let devices = DirectXDevices::new()?;
+        let platform_text_system = Arc::new(DirectWriteTextSystem::new(&devices)?);
+        let font = Font {
+            family: "Segoe UI".into(),
+            ..Default::default()
+        };
+        platform_text_system.font_id(&font)?;
+        let text_system = WindowTextSystem::new(Arc::new(TextSystem::new(platform_text_system)));
+
+        let separated_letters = ["a", "b", "c", "d", "e", "f"].join(&separator.to_string());
+        for text in [
+            separated_letters,
+            format!("{separator}ab{separator}{separator}cd{separator}"),
+            format!("{separator}{separator}{separator}{separator}{separator}"),
+            format!("é{separator}𐐀{separator}z"),
+        ] {
+            for multiple_fonts in [false, true] {
+                let mut runs = vec![TextRun {
+                    len: text.len(),
+                    font: font.clone(),
+                    ..Default::default()
+                }];
+                if multiple_fonts {
+                    let first_len = text.chars().next().map_or(0, char::len_utf8);
+                    runs[0].len = first_len;
+                    let mut bold_font = font.clone();
+                    bold_font.weight = FontWeight::BOLD;
+                    runs.push(TextRun {
+                        len: text.len() - first_len,
+                        font: bold_font,
+                        ..Default::default()
+                    });
+                }
+                let shaped = text_system.shape_line(text.clone().into(), px(14.0), &runs, None);
+
+                let mut reference_runs = runs.clone();
+                let mut offset = 0;
+                for run in &mut reference_runs {
+                    let end = offset + run.len;
+                    run.len = text[offset..end]
+                        .chars()
+                        .filter(|character| *character != separator)
+                        .map(char::len_utf8)
+                        .sum();
+                    offset = end;
+                }
+                let reference_text: String = text
+                    .chars()
+                    .filter(|character| *character != separator)
+                    .collect();
+                let reference =
+                    text_system.shape_line(reference_text.into(), px(14.0), &reference_runs, None);
+                assert!(
+                    (shaped.width() - reference.width()).abs() < px(0.001),
+                    "{text:?}, multiple_fonts={multiple_fonts}"
+                );
+
+                let visible_glyphs: Vec<_> = shaped
+                    .runs
+                    .iter()
+                    .flat_map(|run| run.glyphs.iter().map(|glyph| (run.font_id, glyph)))
+                    .filter(|(_, glyph)| !text[glyph.index..].starts_with(separator))
+                    .collect();
+                let reference_glyphs: Vec<_> = reference
+                    .runs
+                    .iter()
+                    .flat_map(|run| run.glyphs.iter().map(|glyph| (run.font_id, glyph)))
+                    .collect();
+                assert_eq!(visible_glyphs.len(), reference_glyphs.len(), "{text:?}");
+                for ((actual_font, actual), (expected_font, expected)) in
+                    visible_glyphs.into_iter().zip(reference_glyphs)
+                {
+                    assert_eq!(actual_font, expected_font, "{text:?}");
+                    assert_eq!(actual.id, expected.id, "{text:?}");
+                    assert!((actual.position.x - expected.position.x).abs() < px(0.001));
+                    assert!((actual.position.y - expected.position.y).abs() < px(0.001));
+                    let reference_index: usize = text[..actual.index]
+                        .chars()
+                        .filter(|character| *character != separator)
+                        .map(char::len_utf8)
+                        .sum();
+                    assert_eq!(reference_index, expected.index, "{text:?}");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 彩色字形合成前必须清空渲染目标：未被任何层覆盖的像素不应保留
+    /// 上一批光栅化残留的内容。
+    #[test]
+    fn color_emoji_composites_over_cleared_texture() -> anyhow::Result<()> {
+        use ::rgpui::{DevicePixels, Rgba, bounds, point, size};
+        use std::ffi::c_void;
+        use windows::Win32::Graphics::Direct3D11::{
+            D3D11_BIND_RENDER_TARGET, D3D11_RENDER_TARGET_VIEW_DESC,
+            D3D11_RENDER_TARGET_VIEW_DESC_0, D3D11_RTV_DIMENSION_TEXTURE2D, D3D11_SUBRESOURCE_DATA,
+            D3D11_TEX2D_RTV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+        };
+        use windows::Win32::Graphics::Dxgi::Common::{
+            DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC,
+        };
+
+        use super::{DirectWriteState, GPUState, GlyphLayerTexture};
+        use crate::directx_devices::DirectXDevices;
+
+        let devices = DirectXDevices::new()?;
+        let gpu_state = GPUState::new(&devices)?;
+
+        const SIZE: u32 = 32;
+        // 先用不透明白色填满渲染目标，任何漏清的像素都会保留这个标记。
+        let poison = vec![0xffu8; (SIZE * SIZE * 4) as usize];
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: SIZE,
+            Height: SIZE,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+            CPUAccessFlags: 0,
+            MiscFlags: 0,
+        };
+        let initial_data = D3D11_SUBRESOURCE_DATA {
+            pSysMem: poison.as_ptr() as *const c_void,
+            SysMemPitch: SIZE * 4,
+            SysMemSlicePitch: 0,
+        };
+        let texture = unsafe {
+            let mut texture = None;
+            gpu_state
+                .device
+                .CreateTexture2D(&desc, Some(&initial_data), Some(&mut texture))?;
+            texture.unwrap()
+        };
+        let render_target_view = unsafe {
+            let desc = D3D11_RENDER_TARGET_VIEW_DESC {
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                ViewDimension: D3D11_RTV_DIMENSION_TEXTURE2D,
+                Anonymous: D3D11_RENDER_TARGET_VIEW_DESC_0 {
+                    Texture2D: D3D11_TEX2D_RTV { MipSlice: 0 },
+                },
+            };
+            let mut rtv = None;
+            gpu_state
+                .device
+                .CreateRenderTargetView(&texture, Some(&desc), Some(&mut rtv))?;
+            rtv.unwrap()
+        };
+
+        // 只在左上角放一个 4×4 的不透明层，右下角没有任何层覆盖。
+        let layer_alpha = vec![255u8; 4 * 4];
+        let layer = GlyphLayerTexture::new(
+            &gpu_state,
+            Rgba {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            },
+            bounds(point(0, 0), size(4, 4)),
+            &layer_alpha,
+        )?;
+
+        let rasterized = DirectWriteState::composite_color_layers(
+            &gpu_state,
+            std::slice::from_ref(&layer),
+            size(DevicePixels(SIZE as i32), DevicePixels(SIZE as i32)),
+            &texture,
+            &Some(render_target_view),
+        )?;
+
+        let corner = (SIZE as usize - 1 + (SIZE as usize - 1) * SIZE as usize) * 4;
+        assert_eq!(
+            &rasterized[corner..corner + 4],
+            &[0, 0, 0, 0],
+            "未被任何层覆盖的像素保留了未清空渲染目标的残留内容"
+        );
+        Ok(())
+    }
 
     #[test]
     fn test_cluster_map() {

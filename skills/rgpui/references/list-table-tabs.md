@@ -173,7 +173,10 @@ let state = cx.new(|cx| ListState::new(MyDelegate { items }, window, cx));
 - **别混淆旧式与新式**：需要委托/虚拟化用 `rgpui::list::List`/`DataTable`；
   `rgpui::List`/`rgpui::ListState` 是旧式。
 - **三者都要显式 import**（不在 prelude，根也不 glob 它们）。
-- **大列表/大表格必须用委托式**（虚拟化只渲染可见项）。
+- **大列表/大表格必须用委托式**（虚拟化只渲染可见项）；>100 行的等高列表用
+  `uniform_list` + `.h_full()`（父容器需有确定高度），不等高用 `v_virtual_list`。
+  逐行 `div` 在 1000 行实测 46.3 ms/帧，虚拟化 2.8 ms/帧；正反例与 `.h_full()`
+  坑见 `scroll.md` 的「长列表：虚拟化是默认选择」。
 - **静态表格**（`table::Table`）适合小规模固定内容，直接拼 HTML 风格结构。
 - **`TableDelegate::cell_text` 用于导出**（如 CSV），默认空字符串。
 - **`visible_rows_changed`/`visible_columns_changed` 会被频繁调用**，保持轻量。

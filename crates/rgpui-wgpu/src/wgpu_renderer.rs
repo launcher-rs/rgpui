@@ -1579,7 +1579,10 @@ impl WgpuRenderer {
         instance_offset: &mut u64,
         pass: &mut wgpu::RenderPass<'_>,
     ) -> bool {
-        let tex_info = self.atlas.get_texture_info(texture_id);
+        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），跳过这批精灵即可。
+        let Some(tex_info) = self.atlas.get_texture_info(texture_id) else {
+            return true;
+        };
         let data = unsafe { Self::instance_bytes(sprites) };
         self.draw_instances_with_texture(
             data,
@@ -1598,7 +1601,10 @@ impl WgpuRenderer {
         instance_offset: &mut u64,
         pass: &mut wgpu::RenderPass<'_>,
     ) -> bool {
-        let tex_info = self.atlas.get_texture_info(texture_id);
+        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），跳过这批精灵即可。
+        let Some(tex_info) = self.atlas.get_texture_info(texture_id) else {
+            return true;
+        };
         let data = unsafe { Self::instance_bytes(sprites) };
         let resources = self.resources();
         let pipeline = resources
@@ -1623,7 +1629,10 @@ impl WgpuRenderer {
         instance_offset: &mut u64,
         pass: &mut wgpu::RenderPass<'_>,
     ) -> bool {
-        let tex_info = self.atlas.get_texture_info(texture_id);
+        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），跳过这批精灵即可。
+        let Some(tex_info) = self.atlas.get_texture_info(texture_id) else {
+            return true;
+        };
         let data = unsafe { Self::instance_bytes(sprites) };
         self.draw_instances_with_texture(
             data,

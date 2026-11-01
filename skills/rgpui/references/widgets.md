@@ -179,11 +179,50 @@ cx.subscribe(&slider, |this, _, ev: &SliderEvent, cx| {
 
 ## Icon/Img/Svg
 
-**Icon**：`Icon`（`icon.rs:52`）：`new(impl Into<Icon>/)`（`:97`）、`path`（`:110`）、
-`data(&'static [u8])`（`:116`）、`transform(Transformation)`（`:127`）、`rotate`（`:138`）、
-`empty()`（`:133`）、`view(&mut App) -> Entity<Icon>`（`:122`）、`impl Sizable`。
-`IconName` 由 `icon_named!(IconName, "assets/icons")`（`icon.rs:29`）从内置资源生成；
-`trait IconNamed`（`:14`）允许自定义图标类型作即插即用替代。
+**Icon**：`Icon`（`icon.rs:52`）：`new(impl Into<Icon>)`（`:97`）、`path(impl Into<SharedString>)`（`:110`）、
+`data(&'static [u8])`（`:116`）、`transform(Transformation)`（`:127`）、`rotate(radians)`（`:138`）、
+`empty()`（`:133`）、`view(&mut App) -> Entity<Icon>`（`:122`）、`impl Sizable`（`with_size` / `small()` 等）、
+`impl Styled`（`text_color`）。未显式设置尺寸时取 `window.text_style()` 字号；`data` 走编译期
+嵌入字节，不依赖运行时 `AssetSource`。
+
+三种用法：
+
+1. **内置命名图标**：`Icon::new(IconName::Check)`。`IconName` 由
+   `icon_named!(IconName, "assets/icons")`（`icon.rs:29`）从 `crates/rgpui/assets/icons/*.svg`
+   生成，变体名为文件名 PascalCase（`arrow-right.svg` → `ArrowRight`），SVG 字节编译期嵌入。
+2. **自定义路径 + 数据**：`Icon::default().path("icons/star.svg").data(include_bytes!("…/star.svg"))`。
+3. **自定义 `IconNamed`**（`icon.rs:14`）：实现 `path()` 与 `bytes()` 后 `Icon::new(MyIcon)`；
+   任何 `impl IconNamed` 也可直接 `Into<Icon>` / `IntoElement` 当即插即用替代。
+
+内置 `IconName`（与 `crates/rgpui/assets/icons` 一一对应，按变体名排序）：
+`IconName::ALargeSmall`、`IconName::ArrowDown`、`IconName::ArrowLeft`、`IconName::ArrowRight`、
+`IconName::ArrowUp`、`IconName::Asterisk`、`IconName::Battery`、`IconName::BatteryCharging`、
+`IconName::BatteryFull`、`IconName::BatteryLow`、`IconName::BatteryMedium`、`IconName::BatteryWarning`、
+`IconName::Bell`、`IconName::BookOpen`、`IconName::Bot`、`IconName::Building2`、
+`IconName::Calendar`、`IconName::CaseSensitive`、`IconName::ChartPie`、`IconName::Check`、
+`IconName::ChevronDown`、`IconName::ChevronLeft`、`IconName::ChevronRight`、`IconName::ChevronUp`、
+`IconName::ChevronsUpDown`、`IconName::CircleCheck`、`IconName::CircleUser`、`IconName::CircleX`、
+`IconName::Close`、`IconName::Copy`、`IconName::Cpu`、`IconName::Dash`、
+`IconName::Delete`、`IconName::Ellipsis`、`IconName::EllipsisVertical`、`IconName::ExternalLink`、
+`IconName::Eye`、`IconName::EyeOff`、`IconName::File`、`IconName::Folder`、
+`IconName::FolderClosed`、`IconName::FolderOpen`、`IconName::Frame`、`IconName::GalleryVerticalEnd`、
+`IconName::Github`、`IconName::Globe`、`IconName::HardDrive`、`IconName::Heart`、
+`IconName::HeartOff`、`IconName::Inbox`、`IconName::Info`、`IconName::Inspector`、
+`IconName::LayoutDashboard`、`IconName::Loader`、`IconName::LoaderCircle`、`IconName::Map`、
+`IconName::Maximize`、`IconName::MemoryStick`、`IconName::Menu`、`IconName::Minimize`、
+`IconName::Minus`、`IconName::Moon`、`IconName::Network`、`IconName::Palette`、
+`IconName::PanelBottom`、`IconName::PanelBottomOpen`、`IconName::PanelLeft`、`IconName::PanelLeftClose`、
+`IconName::PanelLeftOpen`、`IconName::PanelRight`、`IconName::PanelRightClose`、`IconName::PanelRightOpen`、
+`IconName::Pause`、`IconName::Play`、`IconName::Plus`、`IconName::Redo`、
+`IconName::Redo2`、`IconName::Replace`、`IconName::ResizeCorner`、`IconName::Search`、
+`IconName::Settings`、`IconName::Settings2`、`IconName::SortAscending`、`IconName::SortDescending`、
+`IconName::SquareTerminal`、`IconName::Star`、`IconName::StarFill`、`IconName::StarOff`、
+`IconName::Sun`、`IconName::ThumbsDown`、`IconName::ThumbsUp`、`IconName::TriangleAlert`、
+`IconName::Undo`、`IconName::Undo2`、`IconName::User`、`IconName::WindowClose`、
+`IconName::WindowMaximize`、`IconName::WindowMinimize`、`IconName::WindowRestore`。
+
+示例：`cargo run -p showcase --bin icons`；`crates/rgpui/tests/guards.rs` 会校验本清单、
+`icons.rs` 与 `assets/icons` 三者一致，改图标务必同步这三处。
 
 **Img**：自由函数 `img(source: impl Into<ImageSource>) -> Img`（`img.rs:198`）。
 `ImageSource`（`:41`）`From`：`SharedUri`/`String`/`SharedString`/`&Path`/`PathBuf`/
@@ -229,5 +268,5 @@ cx.subscribe(&slider, |this, _, ev: &SliderEvent, cx| {
 - **基础组件必须显式 import**：prelude 不含 `Button`/`Checkbox`/`Badge` 等。
 - **按钮变体用 `ButtonVariants` trait**：`Button::new(id).primary().label("确定")`。
 - **滑块状态是实体**：`cx.new(|_| SliderState::new()...)`，事件走 `SliderEvent`。
-- **图标直接用 `IconName::Xxx`**（内置资源），自定义图标实现 `IconNamed`。
+- **图标直接用 `IconName::Check` 这类内置变体**（完整清单见上），自定义图标实现 `IconNamed`。
 - **图片用 `img(source)`**，需要交互先 `.id()`。

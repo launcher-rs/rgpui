@@ -270,6 +270,18 @@ impl Keystroke {
         }
         self
     }
+
+    /// 返回这个按键本身是否为修饰键（`shift` / `control` / `alt` /
+    /// `platform` / `function`）。
+    ///
+    /// 独立按下的修饰键也要参与按键序列的超时生命周期，否则会一直留在
+    /// 待定序列里与后面的按键意外拼成多击快捷键。
+    pub fn is_modifier_key(&self) -> bool {
+        matches!(
+            self.key.as_str(),
+            "shift" | "control" | "alt" | "platform" | "function"
+        )
+    }
 }
 
 impl KeybindingKeystroke {

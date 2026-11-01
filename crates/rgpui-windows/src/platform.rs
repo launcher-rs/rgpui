@@ -404,15 +404,11 @@ fn translate_accelerator(msg: &MSG) -> Option<()> {
         return None;
     }
 
-    let result = unsafe {
-        SendMessageW(
-            msg.hwnd,
-            WM_GPUI_KEYDOWN,
-            Some(msg.wParam),
-            Some(msg.lParam),
-        )
-    };
-    (result.0 == 0).then_some(())
+    // 直接调用目标窗口的处理函数，而不是投递 WM_GPUI_KEYDOWN：
+    // 该消息的 wParam 承载虚拟键码，无法同时携带校验号，
+    // 任何进程都能伪造一条按键消息。
+    let window = window_from_hwnd(msg.hwnd)?;
+    (window.handle_keydown_msg(msg.wParam, msg.lParam) == Some(0)).then_some(())
 }
 
 impl Platform for WindowsPlatform {
@@ -870,7 +866,7 @@ impl Platform for WindowsPlatform {
         if self.inner.state.current_cursor.get().map(|c| c.0) != hcursor.map(|c| c.0) {
             self.post_message(
                 WM_GPUI_CURSOR_STYLE_CHANGED,
-                WPARAM(0),
+                WPARAM(self.inner.validation_number),
                 LPARAM(hcursor.map_or(0, |c| c.0 as isize)),
             );
             self.inner.state.current_cursor.set(hcursor);
@@ -1215,6 +1211,9 @@ impl WindowsPlatformInner {
     }
 
     fn handle_device_lost(&self, lparam: LPARAM) -> Option<isize> {
+        if lparam.0 == 0 {
+            return None;
+        }
         let directx_devices = lparam.0 as *const DirectXDevices;
         let directx_devices = unsafe { &*directx_devices };
         self.state.directx_devices.borrow_mut().take();

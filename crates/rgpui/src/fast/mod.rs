@@ -15,6 +15,7 @@ pub(crate) mod layout_key;
 pub(crate) mod stats;
 
 pub(crate) use stats::FrameStats;
+pub use stats::FrameStatsSnapshot;
 
 #[cfg(test)]
 mod tests;

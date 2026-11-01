@@ -72,7 +72,7 @@ impl ComponentsDemo {
                     }
                 })
         });
-        let date = cx.new(|_| DatePickerState::new());
+        let date = cx.new(DatePickerState::new);
         let color = cx.new(|cx| {
             ColorPickerState::new(window, cx).on_change({
                 let demo = demo.clone();
