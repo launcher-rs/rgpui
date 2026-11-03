@@ -136,17 +136,38 @@ let state = cx.new(|cx| ListState::new(MyDelegate { items }, window, cx));
 
 ## TabBar/Tab
 
-`TabBar`（`tabs/tab_bar.rs:40`）：`new(id)`（`:58`）、变体 `with_variant(TabVariant)`（`:78`）、
-`pill()`（`:84`）、`outline()`（`:90`）、`segmented()`（`:96`）、`underline()`（`:102`）、
-`menu(bool)`（`:108`）、`track_scroll(&ScrollHandle)`（`:114`）、`prefix`/`suffix`（`:120`/`:126`）、
-`child(impl Into<Tab>)`（`:138`）/`children`（`:132`）、`selected_index(usize)`（`:144`）、
-`last_empty_space`（`:150`）、`on_change`（`:158`）。
+`TabBar`（`tabs/tab_bar.rs:73`）：`new(id)`（`:91`）、变体 `with_variant(TabVariant)`（`:111`）、
+`pill()`（`:117`）、`outline()`（`:123`）、`segmented()`（`:129`）、`underline()`（`:135`）、
+`menu(bool)`（`:141`）、`track_scroll(&ScrollHandle)`（`:147`）、`prefix`/`suffix`（`:153`/`:159`）、
+`child(impl Into<Tab>)`（`:171`）/`children`（`:165`）、`selected_index(usize)`（`:177`）、
+`last_empty_space`（`:183`）、`on_change(impl Fn(usize, &mut Window, &mut App))`（`:191`）。
 
 `Tab`（`tabs/tab.rs:411`）：`new()`（`:487`）、`label`（`:492`）、`icon`（`:498`）、
 `with_variant`（`:504`）/`pill`/`outline`/`segmented`/`underline`（`:510`-`:528`）、
 `prefix`/`suffix`（`:534`/`:540`）、`disabled`（`:546`）、`on_click`（`:552`）。
 `impl From<&str/String/SharedString/Icon/IconName>`（`:432`-`:456`）。
 `TabVariant`（`:16`）：`Tab`(默认)/`Outline`/`Pill`/`Segmented`/`Underline`。
+
+### 键盘与无障碍
+
+页签栏用 **roving focus**（漫游焦点）：焦点停在**容器**上，容器报 `Role::TabList`
+（`tab_bar.rs:462`），每个页签报 `Role::Tab` + `aria_selected` + `aria_disabled`，
+选中项再声明 `aria_active_descendant()`（`tab.rs:734` 起），屏幕阅读器随焦点播报当前页签。
+
+键盘（需 `on_change`，没有回调时按键不生效）：
+
+| 按键 | 行为 |
+|------|------|
+| `→` / `↓` | 下一个页签（`advance_tab`，`tab_bar.rs:41`） |
+| `←` / `↑` | 上一个页签 |
+| `Home` / `Ctrl+Home` | 第一个可用页签（`edge_tab`，`tab_bar.rs:58`） |
+| `End` / `Ctrl+End` | 最后一个可用页签 |
+
+两条 helper 都**跳过 `disabled(true)` 的页签**，全部禁用时保持原位。
+容器自身是停靠点（`tab_stop(true)`），子页签不参与 Tab 链 —— 按 Tab 进出页签栏、
+按方向键在页签间移动，与 ARIA Authoring Practices 的 Tabs 模式一致。
+回归测试见 `tab_bar.rs` 的 `tab_bar_navigates_with_keyboard` /
+`tab_bar_and_tab_report_roles`。
 
 ## Tabs/Accordion/Collapsible
 

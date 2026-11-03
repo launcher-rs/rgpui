@@ -9,11 +9,14 @@ use crate::StyledExt as _;
 use crate::prelude::FluentBuilder as _;
 use crate::{
     AccessibleAction, ActiveTheme, Along, App, Axis, Background, Bounds, Corners, DefiniteLength,
-    DragMoveEvent, Empty, Entity, EntityId, EventEmitter, InteractiveElement, IntoElement, IsZero,
-    MouseButton, MouseDownEvent, Orientation, ParentElement as _, Pixels, Point, Render,
-    RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    h_flex, px, relative,
+    DragMoveEvent, Empty, Entity, EntityId, EventEmitter, FocusableExt as _, InteractiveElement,
+    IntoElement, IsZero, KeyDownEvent, MouseButton, MouseDownEvent, Orientation,
+    ParentElement as _, Pixels, Point, Render, RenderOnce, Role, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window, div, h_flex, px, relative,
 };
+
+/// `PageUp` / `PageDown` 一次跨过的步长数。
+const PAGE_STEPS: f32 = 10.0;
 
 /// 拖动缩略图的标识。
 #[derive(Clone)]
@@ -408,6 +411,87 @@ impl SliderState {
         self.dragging = false;
         cx.emit(SliderEvent::Release(self.value));
     }
+
+    /// 把值吸附到步长格点，与拖动落点保持一致（`step` 非正时原样返回）。
+    fn snap(&self, value: f32) -> f32 {
+        if self.step > 0.0 {
+            (value / self.step).round() * self.step
+        } else {
+            value
+        }
+    }
+
+    /// 把可动的一端设为给定值。
+    ///
+    /// 范围模式只动右端并保住 `Range` 形态 —— 早先直接用 `set_value(f32)` 改值
+    /// 会把双缩略图压成单值，拖动条随之消失。
+    fn set_end_value(&mut self, value: f32) {
+        let value = value.clamp(self.min, self.max);
+        self.value = match self.value {
+            SliderValue::Single(_) => SliderValue::Single(value),
+            // 与拖动同一口径：右端降到起点以下时停在起点，左端不动。
+            SliderValue::Range(start, _) => SliderValue::Range(start, value.max(start)),
+        };
+        self.update_thumb_pos();
+    }
+
+    /// 按 `steps` 个步长移动可动端（可为负），并发出 `Change` 与 `Release`。
+    ///
+    /// 方向键、`Home`/`End`、`PageUp`/`PageDown` 与辅助技术的增减动作共用这条路径。
+    fn step_end(&mut self, steps: f32, cx: &mut crate::Context<Self>) {
+        let target = self.value.end() + self.step * steps;
+        self.set_end_value(self.snap(target));
+        cx.emit(SliderEvent::Change(self.value));
+        // 键盘没有按下/释放两段：每次按键即一次完整操作，
+        // 只发 Change 会让订阅「提交」的调用方（保存、联动）永远等不到。
+        cx.emit(SliderEvent::Release(self.value));
+        cx.notify();
+    }
+
+    /// 把可动端设为区间端点（`Home` → 最小值，`End` → 最大值）。
+    fn set_end_to_extreme(&mut self, max: bool, cx: &mut crate::Context<Self>) {
+        self.set_end_value(if max { self.max } else { self.min });
+        cx.emit(SliderEvent::Change(self.value));
+        cx.emit(SliderEvent::Release(self.value));
+        cx.notify();
+    }
+
+    /// 处理滑块聚焦时的按键：返回是否消费了该按键。
+    ///
+    /// 带修饰键（ctrl/alt/…）的组合留给宿主，这里只接裸键。
+    fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut crate::Context<Self>) -> bool {
+        let keystroke = &event.keystroke;
+        if keystroke.modifiers.modified() {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "right" | "up" => {
+                self.step_end(1.0, cx);
+                true
+            }
+            "left" | "down" => {
+                self.step_end(-1.0, cx);
+                true
+            }
+            "pageup" => {
+                self.step_end(PAGE_STEPS, cx);
+                true
+            }
+            "pagedown" => {
+                self.step_end(-PAGE_STEPS, cx);
+                true
+            }
+            "home" => {
+                self.set_end_to_extreme(false, cx);
+                true
+            }
+            "end" => {
+                self.set_end_to_extreme(true, cx);
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 impl EventEmitter<SliderEvent> for SliderState {}
@@ -539,6 +623,12 @@ impl RenderOnce for Slider {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let axis = self.axis;
         let entity_id = self.state.entity_id();
+        // 焦点句柄按滑块实体缓存：同一个 state 在多个窗口里各自持有自己的句柄。
+        let focus_handle = window
+            .use_keyed_state(("slider-focus", entity_id), cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone();
+        let is_focused = focus_handle.is_focused(window);
         let state = self.state.read(cx);
         let is_range = state.value().is_range();
         let percentage = state.percentage.clone();
@@ -600,38 +690,38 @@ impl RenderOnce for Slider {
             .aria_min_numeric_value(min)
             .aria_max_numeric_value(max)
             .aria_numeric_value_step(step as f64)
+            .aria_disabled(self.disabled)
             .aria_orientation(if axis.is_vertical() {
                 Orientation::Vertical
             } else {
                 Orientation::Horizontal
             })
-            // 禁用态不挂增减动作：辅助技术就不提供改值入口（与 checkbox/radio 同款口径）。
+            // 禁用态不挂增减动作、不进焦点链：辅助技术与 Tab 都跳过（与 checkbox/radio 同款口径）。
             .when(!self.disabled, |this| {
-                this.on_a11y_action(AccessibleAction::Increment, {
-                    let state = slider_state.clone();
-                    move |_, window, cx| {
-                        state.update(cx, |state, cx| {
-                            let value =
-                                (state.value().end() + state.step_value()).min(state.max_value());
-                            state.set_value(value, window, cx);
-                            // 与拖动路径同款：改值后必须发 `Change`，否则订阅方
-                            // （如 color_picker 的颜色预览）不会跟随更新。
-                            cx.emit(SliderEvent::Change(state.value()));
-                        });
-                    }
-                })
-                .on_a11y_action(AccessibleAction::Decrement, {
-                    let state = slider_state;
-                    move |_, window, cx| {
-                        state.update(cx, |state, cx| {
-                            let value =
-                                (state.value().end() - state.step_value()).max(state.min_value());
-                            state.set_value(value, window, cx);
-                            cx.emit(SliderEvent::Change(state.value()));
-                        });
-                    }
-                })
+                // 句柄本身要标成制表位，`focus_next` 才会把 Tab 交给我们。
+                this.track_focus(&focus_handle.tab_stop(true))
+                    .on_key_down({
+                        let state = slider_state.clone();
+                        move |event: &KeyDownEvent, _, cx| {
+                            state.update(cx, |state, cx| {
+                                state.handle_key_down(event, cx);
+                            });
+                        }
+                    })
+                    .on_a11y_action(AccessibleAction::Increment, {
+                        let state = slider_state.clone();
+                        move |_, _, cx| {
+                            state.update(cx, |state, cx| state.step_end(1.0, cx));
+                        }
+                    })
+                    .on_a11y_action(AccessibleAction::Decrement, {
+                        let state = slider_state;
+                        move |_, _, cx| {
+                            state.update(cx, |state, cx| state.step_end(-1.0, cx));
+                        }
+                    })
             })
+            .focus_ring(is_focused, px(2.), window, cx)
             .flex()
             .flex_1()
             .items_center()
@@ -895,5 +985,109 @@ mod tests {
         assert_eq!(node.numeric_value(), Some(4.0));
         assert!(!node.supports_action(accesskit::Action::Increment));
         assert!(!node.supports_action(accesskit::Action::Decrement));
+        assert!(node.is_disabled(), "禁用态要写进无障碍树");
+    }
+
+    /// 方向键 / `Home` / `End` / `PageUp` / `PageDown` 必须能改值。
+    ///
+    /// 回归测试：滑块此前只响应鼠标，键盘用户完全动不了它，
+    /// 无障碍树里的增减动作也只有屏幕阅读器能触发。
+    #[rgpui::test]
+    fn slider_keyboard_adjusts_value(cx: &mut crate::TestAppContext) {
+        use crate::{AppContext as _, InputEvent as _, Keystroke, Render};
+
+        struct Probe {
+            state: Entity<SliderState>,
+        }
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                let state = self.state.clone();
+                div().size_full().child(Slider::new(&state))
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let state = cx.update(|cx| {
+            cx.new(|_| {
+                SliderState::new()
+                    .min(0.0)
+                    .max(10.0)
+                    .step(2.0)
+                    .default_value(4.0)
+            })
+        });
+        let probe = state.clone();
+        let window = cx.add_window(move |_, _| Probe { state: probe });
+        cx.update_window(window.into(), |_, window, cx| {
+            window.draw(cx).clear(cx);
+            // 焦点进入滑块（唯一 Tab 停靠点），再绘制一次让按键处理器完成注册。
+            window.focus_next(cx);
+            assert!(window.focused(cx).is_some(), "Tab 应落到滑块上");
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+
+        let press = |cx: &mut crate::TestAppContext, key: &str| {
+            let keystroke = Keystroke::parse(key).unwrap();
+            cx.update_window(window.into(), |_, window, cx| {
+                window.dispatch_event(
+                    KeyDownEvent {
+                        keystroke,
+                        is_held: false,
+                        prefer_character_input: false,
+                    }
+                    .to_platform_input(),
+                    cx,
+                );
+                window.draw(cx).clear(cx);
+            })
+            .unwrap();
+        };
+
+        let value = |cx: &mut crate::TestAppContext| cx.update(|cx| state.read(cx).value());
+
+        press(cx, "right");
+        assert_eq!(value(cx), SliderValue::Single(6.0));
+        press(cx, "left");
+        press(cx, "left");
+        assert_eq!(value(cx), SliderValue::Single(2.0));
+        press(cx, "pagedown");
+        assert_eq!(
+            value(cx),
+            SliderValue::Single(0.0),
+            "PageDown 按十倍步长递减并夹紧到最小值"
+        );
+        press(cx, "end");
+        assert_eq!(value(cx), SliderValue::Single(10.0));
+        press(cx, "home");
+        assert_eq!(value(cx), SliderValue::Single(0.0));
+    }
+
+    /// 键盘与增减动作改范围滑块的右端时，必须保住 `Range` 形态。
+    ///
+    /// 回归测试：改值原先走 `set_value(f32)`，会把双缩略图压成单值，左端直接消失。
+    #[rgpui::test]
+    fn stepping_keeps_range_shape(cx: &mut crate::TestAppContext) {
+        let state = cx.update(|cx| {
+            cx.new(|_| {
+                SliderState::new()
+                    .min(0.0)
+                    .max(10.0)
+                    .step(1.0)
+                    .default_value((2.0, 6.0))
+            })
+        });
+        cx.update(|cx| {
+            state.update(cx, |state, cx| {
+                state.step_end(2.0, cx);
+                assert_eq!(state.value(), SliderValue::Range(2.0, 8.0));
+                state.step_end(-20.0, cx);
+                assert_eq!(
+                    state.value(),
+                    SliderValue::Range(2.0, 2.0),
+                    "右端降到起点以下时停在起点，左端不被拖着走"
+                );
+            });
+        });
     }
 }

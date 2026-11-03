@@ -104,33 +104,40 @@ RadioGroup::vertical("plan")
 
 ### Switch
 
-`Switch`（`switch.rs:15`）：`new(impl Into<ElementId>)`（`:40`）、`checked(bool)`（`:57`）、
-`label(impl Into<ComponentText>)`（`:63`）、`color(impl Into<Hsla>)`（`:78`）、
-`tooltip`（`:84`）、`on_change(impl Fn(&bool, &mut Window, &mut App))`（`:69`）。
+`Switch`（`switch.rs:16`）：`new(impl Into<ElementId>)`（`:45`）、`checked(bool)`（`:64`）、
+`label(impl Into<ComponentText>)`（`:70`）、`color(impl Into<Hsla>)`（`:85`）、
+`tooltip`（`:91`）、`on_change(impl Fn(bool, &mut Window, &mut App))`（`:76`，按值传新状态）、
+`tab_stop(bool)`（`:97`）、`tab_index(isize)`（`:103`）。
 实现 `Sizable`/`Disableable`。
+键盘：开关自身进 Tab 链，聚焦后 **空格/回车** 切换（`disabled(true)` 时不进焦点链，
+并在无障碍树里报 `disabled`）。值语义走 `Toggled`（AccessKit 没有 `Checked` 属性）。
 
 ### Toggle / ToggleGroup
 
 `Toggle`（`toggle.rs:10`）：`new(label)`（`:23`）、`pressed(bool)`（`:33`）、
-`on_change(impl Fn(&bool, &mut Window, &mut App))`（`:39`）。
+`on_change(impl Fn(&bool, &mut Window, &mut App))`（`:39`）。按下态按 `aria-pressed`
+口径公布（`toggled`）。
 
-`ToggleGroup`（`:80`）：`new(Vec<SharedString>)`（`:91`）、
-`selected(Option<usize>)`（`:100`）、`on_change(impl Fn(&usize, ...))`（`:106`）。
+`ToggleGroup`（`:82`）：`new(Vec<SharedString>)`（`:93`）、
+`selected(Option<usize>)`（`:102`）、`on_change(impl Fn(&usize, ...))`（`:108`）。
 
 ## Slider
 
-`Slider`（`slider.rs:417`）：`new(&Entity<SliderState>)`（`:430`）、
-`horizontal()`（`:440`）/`vertical()`（`:446`）、`disabled(bool)`（`:452`）。
+`Slider`（`slider.rs:505`）：`new(&Entity<SliderState>)`（`:518`）、
+`horizontal()`（`:528`）/`vertical()`（`:534`）、`disabled(bool)`（`:540`）。
+键盘：聚焦后 **←/↓ 减、→/↑ 加**（一步）、`PageUp/PageDown` 十倍步长、`Home/End` 到端点；
+范围滑块（`SliderValue::Range`）改的是**右端**且保持 `Range` 形态，右端降到起点以下时停在起点。
+辅助技术动作 `Increment`/`Decrement` 与按键同一条路径。
 
-`SliderState`（`:192`，`Clone`）：`new()`（`:213`）、`min(f32)`（`:227`）、
-`max(f32)`（`:244`）、`step(f32)`（`:257`）、`scale(SliderScale)`（`:263`）、
-`default_value(impl Into<SliderValue>)`（`:280`）、`set_value(...)`（`:287`）、
-`value()`（`:299`）、`min_value()`/`max_value()`/`step_value()`（`:304`/`:309`/`:314`）。
-`impl EventEmitter<SliderEvent>`（`:413`）。
+`SliderState`（`:195`，`Clone`）：`new()`（`:216`）、`min(f32)`（`:230`）、
+`max(f32)`（`:247`）、`step(f32)`（`:260`）、`scale(SliderScale)`（`:266`）、
+`default_value(impl Into<SliderValue>)`（`:283`）、`set_value(...)`（`:290`）、
+`value()`（`:302`）、`min_value()`/`max_value()`/`step_value()`（`:307`/`:312`/`:317`）。
+`impl EventEmitter<SliderEvent>`（`:501`）。
 
-`SliderValue`（`:53`）：`Single(f32)` / `Range(f32, f32)`，`From<f32>`/`From<(f32,f32)>`/`From<Range<f32>>`，`clamp`/`is_single`/`is_range`/`start`/`end`。
-`SliderScale`（`:151`）：`Linear`（默认）/ `Logarithmic`（min 必须 > 0）。
-`SliderEvent`（`:39`）：`Change(SliderValue)` / `Release(SliderValue)`。
+`SliderValue`（`:56`）：`Single(f32)` / `Range(f32, f32)`，`From<f32>`/`From<(f32,f32)>`/`From<Range<f32>>`，`clamp`/`is_single`/`is_range`/`start`/`end`。
+`SliderScale`（`:154`）：`Linear`（默认）/ `Logarithmic`（min 必须 > 0）。
+`SliderEvent`（`:42`）：`Change(SliderValue)` / `Release(SliderValue)`。
 
 ```rust
 let slider = cx.new(|_| SliderState::new().min(0.).max(100.).default_value(30.));

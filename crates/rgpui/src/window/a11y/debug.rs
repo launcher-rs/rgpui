@@ -266,6 +266,12 @@ fn node_to_json(
     if let Some(v) = node.orientation() {
         aria.insert("orientation".into(), json!(format!("{v:?}")));
     }
+    if node.is_disabled() {
+        aria.insert("disabled".into(), json!(true));
+    }
+    if let Some(v) = node.live() {
+        aria.insert("live".into(), json!(format!("{v:?}")));
+    }
 
     // Numeric properties.
     if let Some(v) = node.numeric_value() {

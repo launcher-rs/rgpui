@@ -5,8 +5,8 @@ use std::{sync::Arc, time::Duration};
 use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, Animation, AnimationExt as _, App, Background, ComponentText, Disableable,
-    ElementId, ElementSize, Hsla, InteractiveElement, IntoElement, ManagedTooltipExt as _,
-    ParentElement as _, RenderOnce, Role, SharedString, Side, Sizable,
+    ElementId, ElementSize, FocusableExt as _, Hsla, InteractiveElement, IntoElement,
+    ManagedTooltipExt as _, ParentElement as _, RenderOnce, Role, SharedString, Side, Sizable,
     StatefulInteractiveElement as _, StyleRefinement, Styled, StyledExt as _, Toggled, Tooltip,
     Window, div, h_flex, px,
 };
@@ -34,6 +34,10 @@ pub struct Switch {
     color: Option<Hsla>,
     /// 提示文本（悬停时以 `Tooltip` 浮层显示）
     tooltip: Option<SharedString>,
+    /// 是否参与 Tab 焦点链
+    tab_stop: bool,
+    /// 焦点顺序（负值表示不进 Tab 链）
+    tab_index: isize,
 }
 
 impl Switch {
@@ -51,6 +55,8 @@ impl Switch {
             size: ElementSize::Medium,
             color: None,
             tooltip: None,
+            tab_stop: true,
+            tab_index: 0,
         }
     }
 
@@ -86,6 +92,18 @@ impl Switch {
         self.tooltip = Some(tooltip.into());
         self
     }
+
+    /// 设置是否参与 Tab 焦点链，默认：true。
+    pub fn tab_stop(mut self, tab_stop: bool) -> Self {
+        self.tab_stop = tab_stop;
+        self
+    }
+
+    /// 设置焦点顺序，默认：0。
+    pub fn tab_index(mut self, tab_index: isize) -> Self {
+        self.tab_index = tab_index;
+        self
+    }
 }
 
 impl Styled for Switch {
@@ -113,6 +131,12 @@ impl RenderOnce for Switch {
         let checked = self.checked;
         let on_change = self.on_change.clone();
         let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
+        // 焦点句柄与动画状态同键不同型，各自独立存活。
+        let focus_handle = window
+            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone();
+        let is_focused = focus_handle.is_focused(window);
 
         let checked_bg = self
             .color
@@ -154,6 +178,7 @@ impl RenderOnce for Switch {
             h_flex()
                 .id(self.id.clone())
                 .role(Role::Switch)
+                .aria_disabled(self.disabled)
                 .aria_toggled(if checked {
                     Toggled::True
                 } else {
@@ -163,19 +188,27 @@ impl RenderOnce for Switch {
                     self.label.as_ref().map(|l| l.get_text(cx)),
                     |this, label| this.aria_label(label),
                 )
+                // 禁用态不进焦点链：Tab 跳过，辅助技术也不提供激活动作。
+                .when(!self.disabled, |this| {
+                    this.track_focus(
+                        &focus_handle
+                            .tab_stop(self.tab_stop)
+                            .tab_index(self.tab_index),
+                    )
+                })
                 .when_some(self.tooltip.clone(), |this, tooltip| {
                     // 悬停提示：与 `Checkbox` / `Button` 同一套受管 tooltip
                     this.managed_tooltip(move |window, cx| {
                         Tooltip::new(tooltip.clone()).build(window, cx)
                     })
                 })
+                .focus_ring(is_focused, px(2.), window, cx)
                 .gap_2()
                 .items_start()
                 .when(self.label_side.is_left(), |this| this.flex_row_reverse())
                 .child(
-                    // Switch 轨道
+                    // Switch 轨道（纯视觉：id 属于外层可聚焦节点，重复 id 会让两节点抢同一份元素状态）
                     div()
-                        .id(self.id.clone())
                         .w(bg_width)
                         .h(bg_height)
                         .rounded(radius)
@@ -242,7 +275,9 @@ impl RenderOnce for Switch {
                         .filter(|_| !self.disabled),
                     |this, on_change| {
                         let toggle_state = toggle_state.clone();
-                        this.on_mouse_down(crate::MouseButton::Left, move |_, window, cx| {
+                        // 挂在 on_click 而非 on_mouse_down：框架会把聚焦元素上的
+                        // Enter/Space 合成为点击，键盘用户因此才能切换开关。
+                        this.on_click(move |_, window, cx| {
                             cx.stop_propagation();
                             _ = toggle_state.update(cx, |this, _| *this = checked);
                             on_change(!checked, window, cx);
@@ -319,5 +354,84 @@ mod tests {
             })
             .unwrap();
         assert!(showing, "Switch 的 .tooltip() 应在悬停后显示浮层");
+    }
+
+    /// 键盘必须能切换开关：Tab 聚焦后按空格/回车等同于点击。
+    ///
+    /// 回归测试：`on_change` 原先挂在 `on_mouse_down` 上，且开关不进焦点链，
+    /// 键盘用户既聚焦不了也切换不了。
+    #[rgpui::test]
+    fn switch_toggles_with_keyboard(cx: &mut crate::TestAppContext) {
+        use crate::{
+            AnyWindowHandle, AppContext as _, InputEvent as _, KeyDownEvent, KeyUpEvent, Keystroke,
+            Render,
+        };
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        struct Probe {
+            flips: Arc<Mutex<Vec<bool>>>,
+            checked: Arc<AtomicBool>,
+        }
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                let flips = self.flips.clone();
+                let checked = self.checked.clone();
+                div().size_full().child(
+                    Switch::new("switch-key")
+                        .label("开启")
+                        .checked(checked.load(Ordering::SeqCst))
+                        .on_change(move |next, _, _| {
+                            checked.store(next, Ordering::SeqCst);
+                            flips.lock().unwrap().push(next);
+                        }),
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let flips = Arc::new(Mutex::new(Vec::new()));
+        let probe_flips = flips.clone();
+        let window = cx.add_window(move |_, _| Probe {
+            flips: probe_flips,
+            checked: Arc::new(AtomicBool::new(false)),
+        });
+        let any_window = AnyWindowHandle::from(window);
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            window.focus_next(cx);
+            assert!(window.focused(cx).is_some(), "Tab 应落到开关上");
+        })
+        .unwrap();
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+
+        let press = |cx: &mut crate::TestAppContext, key: &str| {
+            let keystroke = Keystroke::parse(key).unwrap();
+            cx.update_window(any_window, |_, window, cx| {
+                window.dispatch_event(
+                    KeyDownEvent {
+                        keystroke: keystroke.clone(),
+                        is_held: false,
+                        prefer_character_input: false,
+                    }
+                    .to_platform_input(),
+                    cx,
+                );
+                window.dispatch_event(KeyUpEvent { keystroke }.to_platform_input(), cx);
+                window.draw(cx).clear(cx);
+            })
+            .unwrap();
+        };
+
+        press(cx, "space");
+        press(cx, "enter");
+        assert_eq!(
+            *flips.lock().unwrap(),
+            vec![true, false],
+            "空格与回车各切换一次"
+        );
     }
 }

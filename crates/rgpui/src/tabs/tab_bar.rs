@@ -2,9 +2,10 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use crate::{
     Anchor, Animation, AnimationExt as _, AnyElement, App, Background, Bounds, Div, Edges,
-    ElementId, InteractiveElement, IntoElement, ParentElement, Pixels, RenderOnce, Role,
-    ScrollHandle, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    Window, div, prelude::FluentBuilder as _, px,
+    ElementId, FocusableExt as _, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
+    Pixels, RenderOnce, Role, ScrollHandle, SharedString, Stateful,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    prelude::FluentBuilder as _, px,
 };
 use smallvec::SmallVec;
 
@@ -33,6 +34,39 @@ impl TabIndicatorBounds {
     fn resize(&mut self, num_tabs: usize) {
         self.tabs.resize(num_tabs, Bounds::default());
     }
+}
+
+/// 从当前页签按 `step` 方向（`-1` 左、`+1` 右）找下一个未禁用的页签。
+///
+/// 首尾回绕；`current` 为 `None` 时按方向从端点起步。全部禁用或没有页签时返回 `None`。
+fn advance_tab(current: Option<usize>, step: isize, disabled: &[bool]) -> Option<usize> {
+    let count = disabled.len() as isize;
+    if count == 0 {
+        return None;
+    }
+    let start = match current {
+        Some(ix) => ix as isize,
+        None => {
+            if step > 0 {
+                -1
+            } else {
+                count
+            }
+        }
+    };
+    (1..=count)
+        .map(|offset| (start + step * offset).rem_euclid(count) as usize)
+        .find(|ix| !disabled[*ix])
+}
+
+/// 取第一个（`last` 为假）或最后一个（`last` 为真）未禁用的页签。
+fn edge_tab(disabled: &[bool], last: bool) -> Option<usize> {
+    let mut iter = disabled
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| !**d)
+        .map(|(ix, _)| ix);
+    if last { iter.next_back() } else { iter.next() }
 }
 
 /// 包含多个 [`Tab`] 项目的 TabBar 元素。
@@ -414,8 +448,40 @@ impl RenderOnce for TabBar {
         let selected_index = self.selected_index;
         let on_change = self.on_change.clone();
 
+        // 键盘换页签：焦点停在 `TabList` 容器上，用左右方向键在可用页签间移动，
+        // `Home`/`End` 跳到端点；选中项通过 `aria_active_descendant` 播报，
+        // 这是 ARIA 页签组的标准做法（每个页签自己不进 Tab 链）。
+        let focus_handle = window
+            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone();
+        let is_focused = focus_handle.is_focused(window);
+        let disabled_flags: Vec<bool> = self.children.iter().map(|tab| tab.disabled).collect();
+        let key_on_change = on_change.clone();
+
         self.base
             .role(Role::TabList)
+            .track_focus(&focus_handle.tab_stop(true))
+            .focus_ring(is_focused, px(2.), window, cx)
+            .on_key_down(move |event: &KeyDownEvent, window, cx| {
+                let Some(on_change) = &key_on_change else {
+                    return;
+                };
+                if event.keystroke.modifiers.modified() {
+                    return;
+                }
+                let next = match event.keystroke.key.as_str() {
+                    "left" => advance_tab(selected_index, -1, &disabled_flags),
+                    "right" => advance_tab(selected_index, 1, &disabled_flags),
+                    "home" => edge_tab(&disabled_flags, false),
+                    "end" => edge_tab(&disabled_flags, true),
+                    _ => return,
+                };
+                if let Some(ix) = next.filter(|ix| Some(*ix) != selected_index) {
+                    cx.stop_propagation();
+                    on_change(ix, window, cx);
+                }
+            })
             .group("tab-bar")
             .relative()
             .flex()
@@ -532,5 +598,192 @@ impl RenderOnce for TabBar {
                 )
             })
             .when_some(self.suffix, |this, suffix| this.child(suffix))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        AnyWindowHandle, AppContext as _, Element as _, InputEvent as _, Keystroke, Render, canvas,
+    };
+    use std::sync::{Arc, Mutex};
+
+    /// 受控页签栏视图：`on_change` 把选中项写回自身，模拟真实用法。
+    struct Probe {
+        selected: usize,
+        moves: Arc<Mutex<Vec<usize>>>,
+    }
+
+    impl Render for Probe {
+        fn render(&mut self, _: &mut Window, cx: &mut crate::Context<Self>) -> impl IntoElement {
+            let moves = self.moves.clone();
+            let this = cx.entity();
+            div().size_full().child(
+                TabBar::new("bar")
+                    .selected_index(self.selected)
+                    .child(Tab::new().label("一"))
+                    .child(Tab::new().label("二").disabled(true))
+                    .child(Tab::new().label("三"))
+                    .child(Tab::new().label("四"))
+                    .on_change(move |ix, _, cx| {
+                        moves.lock().unwrap().push(ix);
+                        this.update(cx, |probe, cx| {
+                            probe.selected = ix;
+                            cx.notify();
+                        });
+                    }),
+            )
+        }
+    }
+
+    /// 建窗、绘制两次（第二次让焦点句柄完成注册）并把焦点交给页签栏。
+    fn focused_bar(
+        cx: &mut crate::TestAppContext,
+        moves: Arc<Mutex<Vec<usize>>>,
+    ) -> AnyWindowHandle {
+        cx.update(crate::theme::init);
+        let window = cx.add_window(move |_, _| Probe { selected: 0, moves });
+        let any_window = AnyWindowHandle::from(window);
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            window.focus_next(cx);
+            window.draw(cx).clear(cx);
+            assert!(window.focused(cx).is_some(), "Tab 应落到页签栏上");
+        })
+        .unwrap();
+        any_window
+    }
+
+    /// 向窗口派发一次按键并重绘。
+    fn press(cx: &mut crate::TestAppContext, window: AnyWindowHandle, key: &str) {
+        let keystroke = Keystroke::parse(key).unwrap();
+        cx.update_window(window, |_, window, cx| {
+            window.dispatch_event(
+                KeyDownEvent {
+                    keystroke,
+                    is_held: false,
+                    prefer_character_input: false,
+                }
+                .to_platform_input(),
+                cx,
+            );
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+    }
+
+    /// 页签栏键盘换页：左右方向键在可用页签间移动并回绕，`Home`/`End` 到端点。
+    ///
+    /// 回归测试：此前整条页签栏不在 Tab 链上、也没有按键处理，
+    /// 键盘用户完全无法切换页签。
+    #[rgpui::test]
+    fn tab_bar_navigates_with_keyboard(cx: &mut crate::TestAppContext) {
+        let moves = Arc::new(Mutex::new(Vec::new()));
+        let window = focused_bar(cx, moves.clone());
+
+        for key in ["right", "right", "right", "end", "left", "home", "left"] {
+            press(cx, window, key);
+        }
+
+        assert_eq!(
+            *moves.lock().unwrap(),
+            vec![2, 3, 0, 3, 2, 0, 3],
+            "第 1 项禁用：右移跳过它，End/Home 取端点，越界回绕"
+        );
+    }
+
+    /// 没有 `on_change`（页签自己响应点击）时按键应安静地什么都不做。
+    #[rgpui::test]
+    fn tab_bar_without_on_change_ignores_keys(cx: &mut crate::TestAppContext) {
+        struct StaticBar;
+        impl Render for StaticBar {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    TabBar::new("static")
+                        .child(Tab::new().label("一"))
+                        .child(Tab::new().label("二")),
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let window = cx.add_window(|_, _| StaticBar);
+        let any_window = AnyWindowHandle::from(window);
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            window.focus_next(cx);
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        press(cx, any_window, "right");
+    }
+
+    /// 无障碍语义：容器报 `TabList`，页签报 `Tab` 并带选中态、标签与禁用态。
+    #[rgpui::test]
+    fn tab_bar_and_tab_report_roles(cx: &mut crate::TestAppContext) {
+        use crate::IntoElement as _;
+
+        type Captured = Arc<Mutex<Option<[accesskit::Node; 3]>>>;
+        struct RolesProbe {
+            captured: Captured,
+        }
+        impl Render for RolesProbe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                let captured = self.captured.clone();
+                canvas(
+                    move |_, window, cx| {
+                        let bar = TabBar::new("bar")
+                            .selected_index(0)
+                            .child(Tab::new().label("一"))
+                            .child(Tab::new().label("二").disabled(true))
+                            .render(window, cx)
+                            .into_element();
+                        assert_eq!(bar.a11y_role(), Some(Role::TabList));
+                        let mut list = accesskit::Node::new(Role::TabList);
+                        bar.write_a11y_info(&mut list);
+
+                        let first = Tab::new()
+                            .label("一")
+                            .selected(true)
+                            .render(window, cx)
+                            .into_element();
+                        assert_eq!(first.a11y_role(), Some(Role::Tab));
+                        let mut first_node = accesskit::Node::new(Role::Tab);
+                        first.write_a11y_info(&mut first_node);
+
+                        let second = Tab::new()
+                            .label("二")
+                            .disabled(true)
+                            .render(window, cx)
+                            .into_element();
+                        let mut second_node = accesskit::Node::new(Role::Tab);
+                        second.write_a11y_info(&mut second_node);
+
+                        *captured.lock().unwrap() = Some([list, first_node, second_node]);
+                    },
+                    |_, _, _, _| {},
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let captured: Captured = Arc::new(Mutex::new(None));
+        let result = captured.clone();
+        let (_, cx) = cx.add_window_view(move |_, _| RolesProbe { captured });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let [list, first, second] = result.lock().unwrap().take().unwrap();
+        assert_eq!(list.role(), Role::TabList);
+        assert_eq!(first.role(), Role::Tab);
+        assert_eq!(first.label(), Some("一"));
+        assert_eq!(first.is_selected(), Some(true), "选中页签要报 selected");
+        assert_ne!(
+            second.is_selected(),
+            Some(true),
+            "未选中页签不能报 selected"
+        );
+        assert!(second.is_disabled(), "禁用页签要写进无障碍树");
     }
 }

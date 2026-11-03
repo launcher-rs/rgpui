@@ -513,6 +513,7 @@ impl RenderOnce for Button {
             } else {
                 Role::Button
             })
+            .aria_disabled(self.disabled)
             .when_some(
                 self.aria_label.clone().or_else(|| self.label.clone()),
                 |this, label| this.aria_label(label),

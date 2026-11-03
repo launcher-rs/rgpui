@@ -258,6 +258,7 @@ impl Checkbox {
         self.base
             .id(self.id.clone())
             .role(Role::CheckBox)
+            .aria_disabled(self.disabled)
             .aria_toggled(if checked {
                 Toggled::True
             } else {
@@ -440,10 +441,12 @@ mod tests {
         let [unchecked, checked, disabled] = result.lock().unwrap().take().unwrap();
         assert_eq!(unchecked.label(), Some("记住我"));
         assert_eq!(unchecked.toggled(), Some(Toggled::False));
+        assert!(!unchecked.is_disabled());
         assert!(unchecked.supports_action(accesskit::Action::Click));
         assert_eq!(checked.toggled(), Some(Toggled::True));
         assert!(checked.supports_action(accesskit::Action::Click));
         // 禁用态不挂点击：辅助技术不提供激活动作。
+        assert!(disabled.is_disabled(), "禁用态要写进无障碍树");
         assert!(!disabled.supports_action(accesskit::Action::Click));
     }
 

@@ -220,6 +220,7 @@ impl Radio {
         self.base
             .id(self.id.clone())
             .role(Role::RadioButton)
+            .aria_disabled(disabled)
             .aria_toggled(if checked {
                 Toggled::True
             } else {
@@ -491,22 +492,24 @@ mod tests {
         use crate::{Element as _, IntoElement as _, Render, canvas};
         use std::sync::{Arc, Mutex};
 
-        type Captured = Arc<Mutex<Option<accesskit::Node>>>;
+        type Captured = Arc<Mutex<Option<[accesskit::Node; 2]>>>;
         struct Probe(Captured);
         impl Render for Probe {
             fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
                 let captured = self.0.clone();
                 canvas(
                     move |_, window, cx| {
-                        let el = Radio::new("choice")
-                            .label("选项 A")
-                            .checked(true)
-                            .render_box(window, cx)
-                            .into_element();
-                        assert_eq!(el.a11y_role(), Some(Role::RadioButton));
-                        let mut node = accesskit::Node::new(Role::RadioButton);
-                        el.write_a11y_info(&mut node);
-                        *captured.lock().unwrap() = Some(node);
+                        let mut info = |radio: Radio| {
+                            let el = radio.render_box(window, cx).into_element();
+                            assert_eq!(el.a11y_role(), Some(Role::RadioButton));
+                            let mut node = accesskit::Node::new(Role::RadioButton);
+                            el.write_a11y_info(&mut node);
+                            node
+                        };
+                        *captured.lock().unwrap() = Some([
+                            info(Radio::new("choice").label("选项 A").checked(true)),
+                            info(Radio::new("off").disabled(true)),
+                        ]);
                     },
                     |_, _, _, _| {},
                 )
@@ -529,11 +532,13 @@ mod tests {
 
             let _ = window.draw(cx);
         });
-        let node = result.lock().unwrap().take().unwrap();
+        let [node, disabled] = result.lock().unwrap().take().unwrap();
         assert_eq!(node.label(), Some("选项 A"));
         assert_eq!(node.toggled(), Some(Toggled::True));
         assert_eq!(node.is_selected(), Some(true));
+        assert!(!node.is_disabled());
         assert!(node.supports_action(accesskit::Action::Click));
+        assert!(disabled.is_disabled(), "禁用态要写进无障碍树");
     }
 
     /// 悬停 `.tooltip()` 必须真的弹出浮层。
