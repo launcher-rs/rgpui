@@ -317,29 +317,33 @@ where
             .update(cx, |input, cx| input.set_loading(searching, window, cx));
     }
 
+    /// 判断滚动到展平行 `visible_end` 时是否应当加载下一页。
+    ///
+    /// 判定单位是**条目**：`visible_end` 数的是展平行（含节头、节尾），
+    /// 而代理的分页单位是条目，两者直接比较会让「每节一行」这类多节列表
+    /// 提前一到两倍触发。
+    fn should_load_more(&self, visible_end: usize) -> bool {
+        let loaded_items = self.rows_cache.items_before(visible_end);
+        let remaining_items = self.rows_cache.items_count().saturating_sub(loaded_items);
+        remaining_items <= self.delegate.load_more_threshold()
+    }
+
     /// 当可见范围接近末尾时，调度代理的 `load_more` 方法。
     fn load_more_if_need(
         &mut self,
-        entities_count: usize,
         visible_end: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // FIXME: 这里需要空节条目的数量。
-
-        let threshold = self.delegate.load_more_threshold();
-        // 安全处理减法逻辑，防止溢出
-        if visible_end >= entities_count.saturating_sub(threshold) {
-            if !self.delegate.has_more(cx) {
-                return;
-            }
-
-            self._load_more_task = cx.spawn_in(window, async move |view, cx| {
-                _ = view.update_in(cx, |view, window, cx| {
-                    view.delegate.load_more(window, cx);
-                });
-            });
+        if !self.should_load_more(visible_end) || !self.delegate.has_more(cx) {
+            return;
         }
+
+        self._load_more_task = cx.spawn_in(window, async move |view, cx| {
+            _ = view.update_in(cx, |view, window, cx| {
+                view.delegate.load_more(window, cx);
+            });
+        });
     }
 
     /// 设置取消时是否重置选中项。
@@ -467,13 +471,19 @@ where
         let id = SharedString::from(format!("list-item-{}", ix));
 
         let total_items = self.rows_cache.items_count();
+        // `aria-posinset` 是**在整个集合内**的序号：多节列表里若用节内 `ix.row`，
+        // 每节都从 1 重新计数，与 `size_of_set`（全部条目数）对不上，
+        // 辅助技术会播报「第 1 项，共 30 项」在很多行上重复。
+        let position_in_set = self.rows_cache.item_position_of(&ix).unwrap_or(ix.row + 1);
 
         div()
             .id(id)
             .role(Role::ListItem)
-            .aria_position_in_set(ix.row + 1)
+            .aria_position_in_set(position_in_set)
             .aria_size_of_set(total_items)
             .aria_selected(selected)
+            // 焦点停留在列表容器上、由容器代读当前行（activedescendant 模式）。
+            .when(selectable && selected, |this| this.aria_active_descendant())
             .w_full()
             .relative()
             .overflow_hidden()
@@ -506,7 +516,6 @@ where
     fn render_items(
         &mut self,
         items_count: usize,
-        entities_count: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -535,12 +544,7 @@ where
                             "virtual-list",
                             rows_cache.entries_sizes.clone(),
                             move |list, visible_range: Range<usize>, window, cx| {
-                                list.load_more_if_need(
-                                    entities_count,
-                                    visible_range.end,
-                                    window,
-                                    cx,
-                                );
+                                list.load_more_if_need(visible_range.end, window, cx);
 
                                 // 注意：这里的 v_virtual_list 无法使用 gap_y，
                                 // 因为节头、节尾始终作为空子条目渲染，
@@ -641,12 +645,20 @@ where
             None
         };
         let items_count = self.rows_cache.items_count();
-        let entities_count = self.rows_cache.len();
         let mouse_right_clicked_index = self.mouse_right_clicked_index;
 
         v_flex()
             .key_context("List")
             .id("list-state")
+            // 焦点落在这个容器上，所以角色也要挂在它身上：可选列表是「列表框」
+            // （aria-selected + 上下键 + Confirm/Cancel 已由 ListState 实现），
+            // 纯展示列表才是 `List`。挂在外层包装元素上会让代读（activedescendant）
+            // 找不到聚焦祖先。
+            .role(if self.selectable {
+                Role::ListBox
+            } else {
+                Role::List
+            })
             .track_focus(&self.focus_handle)
             .size_full()
             .relative()
@@ -682,7 +694,7 @@ where
                         if let Some(view) = initial_view {
                             this.child(view)
                         } else {
-                            this.child(self.render_items(items_count, entities_count, window, cx))
+                            this.child(self.render_items(items_count, window, cx))
                         }
                     })
                     // 点击外部以取消右键点击的行
@@ -768,9 +780,184 @@ where
 
         div()
             .id("list")
-            .role(Role::List)
             .size_full()
             .refine_style(&self.style)
             .child(self.state.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TestAppContext;
+    use crate::list::ListItem;
+
+    /// 多节测试代理：`sections` 节，每节 `per_section` 条，且节头、节尾都渲染。
+    struct SectionsDelegate {
+        sections: usize,
+        per_section: usize,
+        threshold: usize,
+        has_more: bool,
+    }
+
+    impl ListDelegate for SectionsDelegate {
+        type Item = ListItem;
+
+        fn sections_count(&self, _: &App) -> usize {
+            self.sections
+        }
+
+        fn items_count(&self, _: usize, _: &App) -> usize {
+            self.per_section
+        }
+
+        fn render_item(
+            &mut self,
+            ix: IndexPath,
+            _: &mut Window,
+            _: &mut Context<ListState<Self>>,
+        ) -> Option<ListItem> {
+            Some(ListItem::new(ix).child(format!("第 {} 节第 {} 行", ix.section, ix.row)))
+        }
+
+        fn render_section_header(
+            &mut self,
+            section: usize,
+            _: &mut Window,
+            _: &mut Context<ListState<Self>>,
+        ) -> Option<impl IntoElement> {
+            Some(div().child(format!("节头 {}", section)).h(px(24.)))
+        }
+
+        fn render_section_footer(
+            &mut self,
+            section: usize,
+            _: &mut Window,
+            _: &mut Context<ListState<Self>>,
+        ) -> Option<impl IntoElement> {
+            Some(div().child(format!("节尾 {}", section)).h(px(24.)))
+        }
+
+        fn set_selected_index(
+            &mut self,
+            _: Option<IndexPath>,
+            _: &mut Window,
+            _: &mut Context<ListState<Self>>,
+        ) {
+        }
+
+        fn has_more(&self, _: &App) -> bool {
+            self.has_more
+        }
+
+        fn load_more_threshold(&self) -> usize {
+            self.threshold
+        }
+    }
+
+    fn build(
+        cx: &mut TestAppContext,
+        sections: usize,
+        per_section: usize,
+        threshold: usize,
+    ) -> (
+        Entity<ListState<SectionsDelegate>>,
+        &mut crate::VisualTestContext,
+    ) {
+        cx.update(crate::theme::init);
+        cx.add_window_view(move |window, cx| {
+            ListState::new(
+                SectionsDelegate {
+                    sections,
+                    per_section,
+                    threshold,
+                    has_more: true,
+                },
+                window,
+                cx,
+            )
+        })
+    }
+
+    /// `load_more` 的阈值单位是条目，不是展平行。
+    #[rgpui::test]
+    fn load_more_threshold_counts_items_not_rows(cx: &mut TestAppContext) {
+        // 6 节 × 1 条 = 6 个条目，但展平行是 18（每节：节头 + 条目 + 节尾）。
+        let (list, cx) = build(cx, 6, 1, 2);
+        // 渲染一帧，完成测量并填好展平缓存。
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        list.update_in(cx, |state, _, _| {
+            assert_eq!(state.rows_cache.items_count(), 6);
+            assert_eq!(state.rows_cache.len(), 18, "每节应展开为 3 行");
+            // 渲染到第 9 行 = 已渲染 3 条，还剩 3 条 > 阈值 2 → 不加载。
+            assert!(!state.should_load_more(9));
+            // 渲染到第 12 行 = 已渲染 4 条，还剩 2 条 ≤ 阈值 → 加载。
+            // 旧的按行数判定要等到第 16 行以后，分页会明显滞后。
+            assert!(state.should_load_more(12));
+            assert!(state.should_load_more(18));
+        });
+    }
+
+    /// 可选列表报 `ListBox`，行报 `ListItem` 且序号跨节连续。
+    #[rgpui::test]
+    fn listbox_reports_roles_and_global_positions(cx: &mut TestAppContext) {
+        // 3 节 × 2 条 = 6 个条目。
+        let (list, cx) = build(cx, 3, 2, 20);
+        // 选中第 1 节第 0 行：全局序号应为 3（前两节共 2 条在前）。
+        list.update_in(cx, |state, window, cx| {
+            state.set_selected_index(Some(IndexPath::new(0).section(1)), window, cx)
+        });
+        cx.update(|window, cx| {
+            window.force_a11y_active_for_test();
+            let _ = window.draw(cx);
+        });
+        let json = cx
+            .update(|window, _| window.debug_a11y_tree_json())
+            .expect("无障碍树未捕获");
+        let tree: serde_json::Value = serde_json::from_str(&json).expect("树 JSON 必可解析");
+        let nodes = tree["nodes"].as_object().expect("nodes 必为对象");
+        let values: Vec<&serde_json::Value> = nodes.values().collect();
+
+        assert!(
+            values.iter().any(|node| node["aria"]["role"] == "ListBox"),
+            "可选列表要以 ListBox 角色出现"
+        );
+
+        let items: Vec<&serde_json::Value> = values
+            .iter()
+            .filter(|node| node["aria"]["role"] == "ListItem")
+            .cloned()
+            .collect();
+        assert!(!items.is_empty(), "列表行要以 ListItem 角色出现");
+        for item in &items {
+            assert_eq!(
+                item["aria"]["size_of_set"], 6,
+                "集合大小是全部条目数，不是行数"
+            );
+        }
+
+        // 序号在多节列表里必须全局唯一（旧实现按节内 row 计数会重复）。
+        let mut positions: Vec<i64> = items
+            .iter()
+            .filter_map(|item| item["aria"]["position_in_set"].as_i64())
+            .collect();
+        let count = positions.len();
+        positions.sort_unstable();
+        positions.dedup();
+        assert_eq!(positions.len(), count, "aria-posinset 不得重复");
+
+        let selected: Vec<&serde_json::Value> = items
+            .iter()
+            .filter(|item| item["aria"]["selected"] == true)
+            .cloned()
+            .collect();
+        assert_eq!(selected.len(), 1, "有且仅有一行被选中");
+        assert_eq!(
+            selected[0]["aria"]["position_in_set"], 3,
+            "第 1 节第 0 行的全局序号是 3"
+        );
     }
 }

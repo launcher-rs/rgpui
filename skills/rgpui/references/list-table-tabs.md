@@ -50,10 +50,10 @@
 `is_focused(window, cx)`（`:158`）、`set_selected_index`（`:179`）、`selected_index()`（`:190`）、
 `set_right_clicked_index`（`:195`）、`set_query(&str, window, cx)`（`:211`）、
 `set_item_to_measure_index`（`:222`）、`scroll_to_item`（`:233`）、`scroll_handle()`（`:253`）、
-`scroll_to_selected_item`（`:258`）、`reset_on_cancel(bool)`（`:346`）。
+`scroll_to_selected_item`（`:258`）、`reset_on_cancel(bool)`（`:345`）。
 
-`List<D>`（`:702`）：`new(&Entity<ListState<D>>)`（`:713`）、`scrollbar_visible(bool)`（`:722`）、
-`search_placeholder(impl Into<SharedString>)`（`:728`），`impl Styled`/`Sizable`。
+`List<D>`（`:712`）：`new(&Entity<ListState<D>>)`（`:723`）、`scrollbar_visible(bool)`（`:732`）、
+`search_placeholder(impl Into<SharedString>)`（`:738`），`impl Styled`/`Sizable`。
 
 `ListEvent`（`:32`）：`Select(IndexPath)` / `Confirm(IndexPath)` / `Cancel`。
 `ListItem`（`list_item.rs:27`）：`new(id)`（`:46`）、`separator()`（`:66`）、
@@ -75,6 +75,19 @@ impl ListDelegate for MyDelegate {
 let state = cx.new(|cx| ListState::new(MyDelegate { items }, window, cx));
 // 渲染：List::new(&state)
 ```
+
+## 委托式 List 的键盘、无障碍与分页
+
+- **快捷键**（`list::init` 绑定在 `key_context("List")` 上）：`up`/`down` 换行、
+  `enter` 确认、`secondary-enter` 次级确认、`escape` 取消。
+- **角色**：`selectable(true)`（默认）时容器 `list-state` 报 `Role::ListBox`，
+  纯展示列表报 `Role::List`；行报 `Role::ListItem` + `aria_selected`，
+  选中行同时声明 `aria_active_descendant()`（焦点留在容器上的代读模式）。
+- **`aria-posinset` 是跨节的全局序号**（第 1 节第 0 行在「2 条/节」的列表里是第 3 项），
+  `aria-size-of-set` 是全部条目数；两者单位必须一致，否则播报会重复「第 1 项，共 N 项」。
+- **`load_more_threshold()` 的单位是条目**，不是展平行：节头、节尾也是行，
+  按行数判定会让多节列表的分页明显滞后（每节一行时滞后近一倍）。
+  判定见 `ListState::should_load_more`，回归测试 `load_more_threshold_counts_items_not_rows`。
 
 ## Table（委托式）
 

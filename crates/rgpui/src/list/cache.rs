@@ -19,12 +19,6 @@ pub(crate) struct MeasuredEntrySize {
 }
 
 impl RowEntry {
-    #[inline]
-    #[allow(unused)]
-    pub(crate) fn is_section_header(&self) -> bool {
-        matches!(self, RowEntry::SectionHeader(_))
-    }
-
     pub(crate) fn eq_index_path(&self, path: &IndexPath) -> bool {
         match self {
             RowEntry::Entry(index_path) => index_path == path,
@@ -32,7 +26,6 @@ impl RowEntry {
         }
     }
 
-    #[allow(unused)]
     pub(crate) fn index(&self) -> IndexPath {
         match self {
             RowEntry::Entry(index_path) => *index_path,
@@ -42,23 +35,8 @@ impl RowEntry {
     }
 
     #[inline]
-    #[allow(unused)]
-    pub(crate) fn is_section_footer(&self) -> bool {
-        matches!(self, RowEntry::SectionFooter(_))
-    }
-
-    #[inline]
     pub(crate) fn is_entry(&self) -> bool {
         matches!(self, RowEntry::Entry(_))
-    }
-
-    #[inline]
-    #[allow(unused)]
-    pub(crate) fn section_ix(&self) -> Option<usize> {
-        match self {
-            RowEntry::SectionHeader(ix) | RowEntry::SectionFooter(ix) => Some(*ix),
-            _ => None,
-        }
     }
 }
 
@@ -98,6 +76,24 @@ impl RowsCache {
     /// 返回第一个条目行的展平位置，跳过节头和节尾。
     pub(crate) fn first_entry_position(&self) -> Option<usize> {
         self.entities.iter().position(RowEntry::is_entry)
+    }
+
+    /// 返回展平位置 `flatten_ix` **之前**的条目行数（节头、节尾不计）。
+    ///
+    /// 用于把「已滚动到第几行」换算成「已渲染几个条目」：分页阈值与
+    /// `aria-posinset` 都以条目为单位，直接用行数会在多节列表里失真。
+    pub(crate) fn items_before(&self, flatten_ix: usize) -> usize {
+        self.entities
+            .iter()
+            .take(flatten_ix)
+            .filter(|entry| entry.is_entry())
+            .count()
+    }
+
+    /// 返回条目在展平行中的全局序号（从 1 开始）；该路径不在缓存里时返回 `None`。
+    pub(crate) fn item_position_of(&self, path: &IndexPath) -> Option<usize> {
+        self.position_of(path)
+            .map(|flatten_ix| self.items_before(flatten_ix) + 1)
     }
 
     /// 返回上一行；如果该行是第一节的第一行，则跳到最后一行。
@@ -264,6 +260,40 @@ mod tests {
         row_cache.entities = Rc::new(build_entities(&[2]));
 
         assert_eq!(row_cache.first_entry_position(), Some(1));
+    }
+
+    /// 展平行含节头/节尾，换算到条目单位时必须把它们剔除。
+    #[test]
+    fn items_before_and_item_position_count_entries_only() {
+        let mut row_cache = RowsCache::default();
+        // section 0: 2 条  -> 行 0..4（头、条目×2、尾）
+        // section 1: 3 条  -> 行 4..9
+        // section 2: 1 条  -> 行 9..12
+        row_cache.sections = Rc::new(vec![2, 3, 1]);
+        row_cache.entities = Rc::new(build_entities(&[2, 3, 1]));
+        row_cache.items_count = 6;
+
+        assert_eq!(row_cache.items_before(0), 0);
+        // 第 4 行之前是 section 0 的 2 个条目（行 0 是节头、行 3 是节尾）。
+        assert_eq!(row_cache.items_before(4), 2);
+        // 行 4 是 section 1 的节头，本身不计入条目。
+        assert_eq!(row_cache.items_before(5), 2);
+        assert_eq!(row_cache.items_before(9), 5);
+        assert_eq!(row_cache.items_before(12), 6);
+
+        // 全局序号跨节连续：section 1 的第一条是第 3 条，而不是第 1 条。
+        assert_eq!(
+            row_cache.item_position_of(&IndexPath::new(0).section(1)),
+            Some(3)
+        );
+        assert_eq!(
+            row_cache.item_position_of(&IndexPath::new(2).section(1)),
+            Some(5)
+        );
+        assert_eq!(
+            row_cache.item_position_of(&IndexPath::new(0).section(2)),
+            Some(6)
+        );
     }
 
     #[test]
