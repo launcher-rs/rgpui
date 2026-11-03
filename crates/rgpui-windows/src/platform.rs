@@ -534,19 +534,35 @@ impl Platform for WindowsPlatform {
             .detach();
     }
 
-    fn activate(&self, _ignoring_other_apps: bool) {}
-
-    fn hide(&self) {}
-
-    // todo(windows)
-    fn hide_other_apps(&self) {
-        unimplemented!()
+    // Windows 没有 macOS `NSApplication.activate` 那样的应用级激活 API，
+    // 语义等价物是把本进程创建的每个窗口逐一恢复并带到前台——逐句柄走
+    // `WindowsWindow::activate`（内含绕过前台窗口限制的 Alt 模拟）。
+    fn activate(&self, _ignoring_other_apps: bool) {
+        for handle in self.raw_window_handles.read().iter() {
+            if let Some(inner) = window_from_hwnd(handle.as_raw()) {
+                WindowsWindow(inner).activate();
+            }
+        }
     }
 
-    // todo(windows)
-    fn unhide_other_apps(&self) {
-        unimplemented!()
+    // 同 `activate`：应用级隐藏在 Windows 上是把每个窗口 `SW_HIDE`
+    // （从任务栏移除），与 `Window::hide_window` 的窗口级口径一致。
+    fn hide(&self) {
+        for handle in self.raw_window_handles.read().iter() {
+            if let Some(inner) = window_from_hwnd(handle.as_raw()) {
+                WindowsWindow(inner).hide();
+            }
+        }
     }
+
+    // Windows 没有「隐藏其他应用」的系统级 API（macOS
+    // NSApplication.hideOtherApplications 独有），与 Linux / Web 同口径保留空操作。
+    // 此处原为 `unimplemented!()`，而 `App::hide_other_apps` 是直接转发，
+    // 于是应用调用即 panic。
+    fn hide_other_apps(&self) {}
+
+    // 同上：没有隐藏过其他应用，也就无从恢复。
+    fn unhide_other_apps(&self) {}
 
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
         WindowsDisplay::displays()

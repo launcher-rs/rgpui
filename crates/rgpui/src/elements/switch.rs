@@ -5,9 +5,10 @@ use std::{sync::Arc, time::Duration};
 use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, Animation, AnimationExt as _, App, Background, ComponentText, Disableable,
-    ElementId, ElementSize, Hsla, InteractiveElement, IntoElement, ParentElement as _, RenderOnce,
-    Role, SharedString, Side, Sizable, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    StyledExt as _, Toggled, Window, div, h_flex, px,
+    ElementId, ElementSize, Hsla, InteractiveElement, IntoElement, ManagedTooltipExt as _,
+    ParentElement as _, RenderOnce, Role, SharedString, Side, Sizable,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, StyledExt as _, Toggled, Tooltip,
+    Window, div, h_flex, px,
 };
 
 /// 可切换开/关的开关（Switch）元素。
@@ -31,7 +32,7 @@ pub struct Switch {
     size: ElementSize,
     /// 选中时的背景色
     color: Option<Hsla>,
-    /// 提示文本（当前简化存储，暂不渲染）
+    /// 提示文本（悬停时以 `Tooltip` 浮层显示）
     tooltip: Option<SharedString>,
 }
 
@@ -162,6 +163,12 @@ impl RenderOnce for Switch {
                     self.label.as_ref().map(|l| l.get_text(cx)),
                     |this, label| this.aria_label(label),
                 )
+                .when_some(self.tooltip.clone(), |this, tooltip| {
+                    // 悬停提示：与 `Checkbox` / `Button` 同一套受管 tooltip
+                    this.managed_tooltip(move |window, cx| {
+                        Tooltip::new(tooltip.clone()).build(window, cx)
+                    })
+                })
                 .gap_2()
                 .items_start()
                 .when(self.label_side.is_left(), |this| this.flex_row_reverse())
@@ -269,5 +276,48 @@ mod tests {
     fn test_switch_label_side() {
         let s = Switch::new("test-switch-2").label("标签");
         assert!(s.label_side.is_right());
+    }
+
+    /// 悬停 `.tooltip()` 必须真的弹出浮层。
+    ///
+    /// 回归测试：`tooltip` 字段此前只存不渲染，调用方设了提示什么也不发生。
+    #[rgpui::test]
+    fn switch_tooltip_shows_on_hover(cx: &mut crate::TestAppContext) {
+        use crate::{AnyWindowHandle, AppContext as _, Render, Root, point};
+
+        struct Probe;
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    Switch::new("switch-tooltip")
+                        .label("开启")
+                        .tooltip("提示文本"),
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let window = cx.add_window(|_, _| Probe);
+        let any_window = AnyWindowHandle::from(window);
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            // 悬停判定发生在绘制阶段：先把鼠标放进开关轨道内，再绘制一次
+            window.simulate_mouse_move(point(px(4.), px(4.)), cx);
+        })
+        .unwrap();
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        cx.executor().advance_clock(Duration::from_millis(600));
+        cx.run_until_parked();
+
+        let showing = cx
+            .update_window(any_window, |_, window, cx| {
+                Root::tooltip_overlay(window, cx)
+                    .is_some_and(|overlay| overlay.read(cx).is_showing())
+            })
+            .unwrap();
+        assert!(showing, "Switch 的 .tooltip() 应在悬停后显示浮层");
     }
 }

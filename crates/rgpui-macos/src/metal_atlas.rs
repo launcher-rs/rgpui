@@ -247,7 +247,10 @@ impl MetalAtlasTexture {
         match self.metal_texture.pixel_format() {
             A8Unorm | R8Unorm => 1,
             RGBA8Unorm | BGRA8Unorm => 4,
-            _ => unimplemented!(),
+            // 图集纹理只在 `A8Unorm`（灰度）与 `BGRA8Unorm`（彩色）之间二选一创建，
+            // 见本文件 `Atlas::new` 里的 pixel_format 分支；走到这里说明创建路径被改坏了，
+            // 原样 panic 但不留裸 `unimplemented!`（口径同核心 crate）。
+            other => unreachable!("图集纹理只按 A8Unorm / BGRA8Unorm 创建，实际为 {other:?}"),
         }
     }
 
