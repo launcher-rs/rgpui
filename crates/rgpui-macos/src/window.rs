@@ -28,7 +28,7 @@ use image::RgbaImage;
 use rgpui::{
     AnyWindowHandle, BackgroundExecutor, Bounds, Capslock, CursorStyle, ExternalPaths,
     FileDropEvent, ForegroundExecutor, KeyDownEvent, Keystroke, Modifiers, ModifiersChangedEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, PlatformAtlas,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, NativeMenu, Pixels, PlatformAtlas,
     PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point, PromptButton,
     PromptLevel, RequestFrameOptions, SharedString, Size, SystemWindowTab, WindowAppearance,
     WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowKind, WindowParams, point,
@@ -1483,6 +1483,34 @@ impl PlatformWindow for MacWindow {
 
             Some(done_rx)
         }
+    }
+
+    /// 在窗口主区的指定位置弹出原生菜单，选中项的 id 经通道回传。
+    ///
+    /// AppKit 的菜单跑在自己的模态循环里，期间的回调会重入平台层取锁，所以弹菜单必须等到
+    /// 当前这次事件处理返回、锁已释放之后 —— 交给前台执行器的任务正好满足这一点。
+    fn show_native_menu(
+        &self,
+        position: Point<Pixels>,
+        menu: NativeMenu,
+    ) -> Option<oneshot::Receiver<SharedString>> {
+        let (done_tx, done_rx) = oneshot::channel();
+        let lock = self.0.lock();
+        let native_window = lock.native_window;
+        let closed = lock.closed.clone();
+        let executor = lock.foreground_executor.clone();
+        executor
+            .spawn(async move {
+                if closed.load(Ordering::Acquire) {
+                    return;
+                }
+                if let Some(id) = crate::native_menu::pop_up_menu(native_window, position, menu) {
+                    let _ = done_tx.send(id);
+                }
+            })
+            .detach();
+
+        Some(done_rx)
     }
 
     fn activate(&self) {

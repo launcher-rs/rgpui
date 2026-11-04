@@ -1,6 +1,6 @@
 # 菜单与通知（Menu）
 
-**目录：** [概述](#概述) · [PopupMenu](#popupmenu) · [ContextMenu](#contextmenu) · [DropdownMenu](#dropdownmenu) · [Popover/Popconfirm/HoverCard](#popoverpopconfirmhovercard) · [AppMenuBar](#appmenubar) · [Notification](#notification) · [全局状态](#全局状态) · [最佳实践](#最佳实践)
+**目录：** [概述](#概述) · [PopupMenu](#popupmenu) · [ContextMenu](#contextmenu) · [DropdownMenu](#dropdownmenu) · [Popover/Popconfirm/HoverCard](#popoverpopconfirmhovercard) · [AppMenuBar](#appmenubar) · [NativeMenu](#nativemenuos-原生弹出菜单) · [Notification](#notification) · [全局状态](#全局状态) · [最佳实践](#最佳实践)
 
 ## 概述
 
@@ -8,8 +8,9 @@
 `pub use menu::*`（`rgpui.rs:530`）→ 既可 `rgpui::menu::PopupMenu` 也可
 `rgpui::PopupMenu`。**与 `dialog` 一样均不在 prelude。**
 
-导出（`menu/mod.rs:15-24`）：`actions::*`、`AppMenuBar`、`ContextMenu`/`ContextMenuExt`/
+导出（`menu/mod.rs:16-26`）：`actions::*`、`AppMenuBar`、`ContextMenu`/`ContextMenuExt`/
 `ContextMenuState`、`DropdownMenu`、`GlobalState`、`HoverCard`/`HoverCardState`、
+`NativeMenu`/`NativeMenuItem`、
 `Notification`/`NotificationId`/`NotificationList`/`NotificationType`、`Popconfirm`、
 `Popover`、`PopupMenu`/`PopupMenuItem`。
 
@@ -107,6 +108,50 @@ Button::new("more").label("更多").dropdown_menu(|menu, window, cx| menu.item(/
 - `App::on_app_menu_action(impl FnMut(&dyn Action, &mut App))`（`:2487`）—— 平台原生
   菜单项被选中时回调（**注意需与 `menu::AppMenuBar` 区分**）。
 
+## NativeMenu（OS 原生弹出菜单）
+
+`NativeMenu`（`native_menu.rs:40`）与 `NativeMenuItem`（`:16`）是与平台无关的菜单描述，
+经 `Window::show_native_menu`（`window.rs:2744`）交给系统弹出菜单（Windows
+`TrackPopupMenuEx`、macOS `NSMenu`）。**只能表达原生菜单能表达的东西**：标签、勾选、
+禁用、分隔线、子菜单 —— 没有图标、富文本、自定义元素；要那些仍用 `PopupMenu`。
+
+```rust
+let receiver = window.show_native_menu(
+    window.mouse_position(),
+    NativeMenu::new()
+        .action("复制", "copy")
+        .disabled("粘贴", "paste", true)
+        .separator()
+        .checked("自动换行", "word-wrap", word_wrap)
+        .submenu("打开方式", |menu| menu.action("新窗口", "open-new")),
+);
+if let Some(receiver) = receiver {
+    cx.spawn(async move |this, cx| {
+        match receiver.await {
+            Ok(id) => { /* 选中项的 id："copy" / "word-wrap" / … */ }
+            Err(_) => { /* 按 Esc 或点别处关掉，没选任何项 */ }
+        }
+    })
+    .detach();
+}
+```
+
+- 构建器全部链式、返回 `Self`：`new()`（`:47`）、`action(label, id)`（`:52`）、
+  `checked(label, id, checked)`（`:63`）、`disabled(label, id, disabled)`（`:79`）、
+  `separator()`（`:95`）、`submenu(label, |menu| …)`（`:101`）；只读侧 `items()`（`:115`）、
+  `is_empty()`（`:120`）。`label` 只管显示，`id` 才是回传给应用层的稳定标识。
+- `position` 是**客户区**坐标（`Point<Pixels>`，原点左上），`window.mouse_position()` 可直接用。
+- 返回 `Option<oneshot::Receiver<SharedString>>`。`None` 表示「本平台没有原生弹出菜单能力」
+  或菜单为空 —— **Linux 就是 `None`**（没有能承载应用自定义项的原生弹出菜单协议），
+  收到 `None` 要回退到框架自绘的 `PopupMenu`/`ContextMenu`，别静默什么都不做。
+- 平台层是 `PlatformWindow::show_native_menu`（`platform.rs:1185`），**trait 默认实现返回
+  `None`**；Windows 实现在 `crates/rgpui-windows/src/window.rs:897`，macOS 在
+  `crates/rgpui-macos/src/window.rs:1492`。原生菜单的模态循环会重入平台层，所以两处都
+  在前台执行器任务里弹窗、结果经 `oneshot` 送回，不在 `App` 借用期间阻塞。
+- 真实用例：`cargo run -p showcase --bin native_menu`
+  （`examples/showcase/src/bin/native_menu.rs`），同屏对照原生弹出菜单与框架自绘
+  `context_menu`。
+
 ## Notification
 
 `Notification`（`notification.rs:79`）：`new()`（`:137`）、`message`（`:158`）、
@@ -138,6 +183,8 @@ id 相同会去重；`autohide` 默认 5 秒后自动隐藏（`:497`）。
 - **菜单 id 跨渲染稳定**：`context_menu` 已自动处理；手动 `ContextMenu::new` 需注意。
 - **原生 vs 应用内菜单**：应用内用 `AppMenuBar`（普通 action），原生用
   `App::set_menus` + `on_app_menu_action`。
+- **原生弹出菜单要处理 `None`**：`Window::show_native_menu` 在 Linux 直接返回 `None`，
+  调用方必须回退到 `PopupMenu`/`ContextMenu`；`Err` 是「用户关掉了菜单」，不是失败。
 - **通知去重靠 id**：`Notification::id::<T>()`，同 id 覆盖。
 - **注意区分**：`menu::Notification`（应用内通知条，`NotificationList` 管理）与
   `components::NotificationCenterState`/`NotificationItem`（通知中心，见

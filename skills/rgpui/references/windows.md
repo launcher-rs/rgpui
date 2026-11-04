@@ -1,6 +1,6 @@
 # Windows 平台实现（rgpui-windows）
 
-**目录：** [概述](#概述) · [托盘](#托盘) · [鼠标穿透](#鼠标穿透) · [Mica 背景](#mica-背景) · [自启动](#自启动) · [焦点窗口](#焦点窗口) · [自定义消息](#自定义消息) · [DComp 与子窗口](#dcomp-与子窗口) · [最佳实践](#最佳实践)
+**目录：** [概述](#概述) · [托盘](#托盘) · [鼠标穿透](#鼠标穿透) · [Mica 背景](#mica-背景) · [自启动](#自启动) · [焦点窗口](#焦点窗口) · [原生弹出菜单](#原生弹出菜单) · [自定义消息](#自定义消息) · [DComp 与子窗口](#dcomp-与子窗口) · [最佳实践](#最佳实践)
 
 ## 概述
 
@@ -8,6 +8,7 @@
 `Platform`/`PlatformWindow`。入口 `rgpui_windows.rs`，主要模块：
 `platform.rs`（窗口/消息循环）、`events.rs`（窗口过程与 NCHITTEST）、`window.rs`（DComp/材质）、
 `tray.rs`、`auto_launch.rs`、`focused_window.rs`、`global_hotkey.rs`、`notifications.rs`、
+`native_menu.rs`、
 `clipboard.rs`、`directx_renderer.rs`、`dispatcher.rs`、`vsync.rs`、`direct_write.rs`、
 `system_settings.rs`。
 
@@ -46,6 +47,22 @@ MicaAlt（`WindowBackgroundAppearance::MicaBackdrop`/`MicaAltBackdrop`，内核�
 `focused_window.rs`（`:17` 起）用 `GetForegroundWindow` 查询，返回
 `FocusedWindowInfo`（`platform.rs:219`）。应用层 `App::focused_window_info()`
 （`app.rs:2689`）。
+
+## 原生弹出菜单
+
+`native_menu.rs`：`track_native_menu(hwnd, client_point, NativeMenu) -> Option<SharedString>`
+（`:27`）+ `append_items`（`:66`，递归建子菜单）。走 `CreatePopupMenu`/`AppendMenuW`/
+`TrackPopupMenuEx`，与托盘菜单同一套 API，但用 `TPM_RETURNCMD | TPM_NONOTIFY`
+**不经过 `WM_COMMAND`** —— 命令 ID 直接作为返回值给出，菜单不参与窗口消息路由。
+
+- `TrackPopupMenuEx` 内部是嵌套消息循环，只能在主线程调用，所以 `window.rs` 的
+  `PlatformWindow::show_native_menu`（`:897`）把它放进前台执行器任务，等当前 `App`
+  借用结束、消息循环重新转起来才弹出；结果经 `oneshot` 送回应用层。
+- 逻辑坐标 → 物理像素按 `scale_factor` 缩放，再 `ClientToScreen` 转屏幕坐标；弹出前后
+  分别 `SetForegroundWindow` 与 `PostMessageW(WM_NULL)`，否则菜单关掉后窗口里的第一次
+  点击会被吞掉。
+- 命令 ID 从 `FIRST_COMMAND_ID = 1`（`:21`）起编，因为 `0` 是「没选任何东西」的返回值。
+- 应用层 API 与回退策略见 `menu.md` 的 NativeMenu 一节。
 
 ## 自定义消息
 

@@ -189,6 +189,10 @@ path = "src/bin/set_menus.rs"
 name = "native_notification"
 path = "src/bin/native_notification.rs"
 
+[[bin]]
+name = "native_menu"
+path = "src/bin/native_menu.rs"
+
 # ---------- 性能与调试 ----------
 [[bin]]
 name = "input_latency"

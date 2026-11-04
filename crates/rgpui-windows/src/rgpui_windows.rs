@@ -22,6 +22,7 @@ mod events;
 mod focused_window;
 mod global_hotkey;
 mod keyboard;
+mod native_menu;
 mod notifications;
 mod platform;
 mod power;

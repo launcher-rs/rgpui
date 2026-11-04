@@ -889,6 +889,36 @@ impl PlatformWindow for WindowsWindow {
         Some(done_rx)
     }
 
+    /// 在客户区的指定位置弹出 Win32 原生菜单，选中项的 id 经通道回传。
+    ///
+    /// `TrackPopupMenuEx` 在自己的消息循环里阻塞，因此放进前台执行器的任务中执行：
+    /// 任务要等当前这次事件处理返回、`App` 的借用结束以后才跑，菜单弹出期间不会再有
+    /// 框架代码重入。
+    fn show_native_menu(
+        &self,
+        position: Point<Pixels>,
+        menu: NativeMenu,
+    ) -> Option<oneshot::Receiver<SharedString>> {
+        let (done_tx, done_rx) = oneshot::channel();
+        let handle = self.0.clone();
+        let scale_factor = self.state.scale_factor.get();
+        // 框架的客户区坐标是逻辑像素，Win32 菜单要的是物理像素。
+        let point = POINT {
+            x: (position.x.as_f32() * scale_factor) as i32,
+            y: (position.y.as_f32() * scale_factor) as i32,
+        };
+        self.0
+            .executor
+            .spawn(async move {
+                if let Some(id) = crate::native_menu::track_native_menu(handle.hwnd, point, menu) {
+                    let _ = done_tx.send(id);
+                }
+            })
+            .detach();
+
+        Some(done_rx)
+    }
+
     /// 激活窗口并将其置于前台
     /// 如果窗口已最小化则恢复，如果已隐藏则显示
     /// 通过模拟 Alt 键输入绕过 Windows 前台窗口限制

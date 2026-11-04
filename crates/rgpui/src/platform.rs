@@ -49,6 +49,7 @@ pub(crate) type PlatformScreenCaptureFrame = ();
 #[cfg(all(target_os = "macos", feature = "screen-capture"))]
 pub(crate) type PlatformScreenCaptureFrame = core_video::image_buffer::CVImageBuffer;
 
+use crate::menu::NativeMenu;
 use crate::rgpui_util;
 use crate::scheduler::Instant;
 pub use crate::scheduler::RunnableMeta;
@@ -1174,6 +1175,20 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         detail: Option<&str>,
         answers: &[PromptButton],
     ) -> Option<oneshot::Receiver<usize>>;
+    /// 在窗口的指定位置弹出 OS 原生菜单（Windows `TrackPopupMenuEx`、macOS `NSMenu`）。
+    ///
+    /// 菜单模态地跑在自己的事件循环里，所以选中结果只能异步回传：返回的通道在用户
+    /// 点中某项时送出该项的 `id`，用户直接关掉菜单则通道被丢弃。
+    ///
+    /// 默认实现返回 `None` —— 表示该平台没有原生弹出菜单能力（Linux 的窗口菜单只能由
+    /// 窗管自己画，装不下应用提供的项），调用方据此回退到框架自绘的菜单。
+    fn show_native_menu(
+        &self,
+        _position: Point<Pixels>,
+        _menu: NativeMenu,
+    ) -> Option<oneshot::Receiver<SharedString>> {
+        None
+    }
     /// 将窗口置于前台并获得焦点。
     fn activate(&self);
     /// 窗口是否当前处于活动（获得焦点）状态。
