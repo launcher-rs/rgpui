@@ -499,11 +499,14 @@ impl TerminalElement {
     }
 
     /// 布局单元格网格，生成批量文本运行和背景矩形。
-    /// 包含视口裁剪，仅渲染可见行以提高性能。
+    ///
+    /// 传入的 `grid` 来自 `renderable_content().display_iter`，本身就已经按视口
+    /// 裁剪（只有可见的 `rows × cols` 个单元格），因此这里不需要再做二次裁剪；
+    /// 早先预留的 `viewport_lines` 参数若真启用反而会把行号算错
+    /// （`line_index` 是裁剪后重新编号的），已随该分支一并删除。
     fn layout_grid(
         grid: impl Iterator<Item = IndexedCell>,
         text_style: &TextStyle,
-        viewport_lines: Option<(i32, i32)>, // (start_line, end_line) for culling
     ) -> (
         Vec<LayoutRect>,
         Vec<BlockFragment>,
@@ -523,18 +526,7 @@ impl TerminalElement {
         let mut polygon_fragments: Vec<PolygonFragment> = Vec::with_capacity(estimated_regions);
         let mut current_batch: Option<BatchedTextRun> = None;
 
-        // Filter cells based on viewport if culling is enabled
-        let filtered_grid: Box<dyn Iterator<Item = IndexedCell>> =
-            if let Some((start, end)) = viewport_lines {
-                Box::new(grid.filter(move |cell| {
-                    let line = cell.point.line.0;
-                    line >= start && line < end
-                }))
-            } else {
-                Box::new(grid)
-            };
-
-        let linegroups = filtered_grid.into_iter().chunk_by(|i| i.point.line);
+        let linegroups = grid.chunk_by(|i| i.point.line);
         for (line_index, (_, line)) in linegroups.into_iter().enumerate() {
             let alac_line = line_index as i32;
 
@@ -1495,11 +1487,8 @@ impl Element for TerminalElement {
         let display_offset = *display_offset;
         let history_size = *history_size;
 
-        let (rects, block_fragments, polygon_fragments, batched_text_runs) = Self::layout_grid(
-            cells.iter().cloned(),
-            &text_style,
-            None, // Viewport culling disabled for now, can be enabled for large terminals
-        );
+        let (rects, block_fragments, polygon_fragments, batched_text_runs) =
+            Self::layout_grid(cells.iter().cloned(), &text_style);
 
         let selection_rects = selection
             .as_ref()

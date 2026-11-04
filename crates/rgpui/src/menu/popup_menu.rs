@@ -16,6 +16,8 @@ use crate::{ElementSize, ScrollableElement as _, Side, StyledExt, elements::Kbd}
 use std::sync::Arc;
 
 const CONTEXT: &str = "PopupMenu";
+/// 子菜单贴合窗口边缘时保留的间距
+const SUBMENU_EDGE_PADDING: Pixels = px(4.);
 
 /// 初始化弹窗菜单的快捷键绑定
 pub fn init(cx: &mut App) {
@@ -70,8 +72,6 @@ pub enum PopupMenuItem {
         handler: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync>>,
     },
     /// 打开另一个弹窗菜单的子菜单项
-    ///
-    /// 注意：仅当父菜单不是 `scrollable` 时才支持。
     Submenu {
         /// 子菜单图标
         icon: Option<Icon>,
@@ -459,7 +459,7 @@ impl PopupMenu {
 
     /// 设置菜单是否可滚动以显示垂直滚动条
     ///
-    /// 注意：如果为 true，子菜单将无法支持。
+    /// 滚动只作用于条目列表；子菜单照常展开在条目列表之外。
     pub fn scrollable(mut self, scrollable: bool) -> Self {
         self.scrollable = scrollable;
         self
@@ -1191,7 +1191,6 @@ impl PopupMenu {
         };
 
         let selected = self.selected_index == Some(ix);
-        const EDGE_PADDING: Pixels = px(4.);
         const INNER_PADDING: Pixels = px(8.);
 
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
@@ -1359,10 +1358,9 @@ impl PopupMenu {
                         ),
                 )
                 .when(selected, |this| {
-                    this.child({
-                        let (anchor, left) = self.submenu_anchor;
-                        let is_bottom_pos =
-                            matches!(anchor, Anchor::BottomLeft | Anchor::BottomRight);
+                    let (anchor, left) = self.submenu_anchor;
+                    let is_bottom_pos = matches!(anchor, Anchor::BottomLeft | Anchor::BottomRight);
+                    this.child(
                         deferred(
                             anchored()
                                 .anchor(anchor)
@@ -1375,10 +1373,10 @@ impl PopupMenu {
                                         .left(left)
                                         .child(menu.clone()),
                                 )
-                                .snap_to_window_with_margin(Edges::all(EDGE_PADDING)),
+                                .snap_to_window_with_margin(Edges::all(SUBMENU_EDGE_PADDING)),
                         )
-                        .with_priority(self.priority + 1)
-                    })
+                        .with_priority(self.priority + 1),
+                    )
                 }),
         }
     }
@@ -1480,7 +1478,6 @@ impl Render for PopupMenu {
                     .on_prepaint(move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds)),
             )
             .when(self.scrollable, |this| {
-                // TODO: 当菜单受 `overflow_y_scroll` 限制时，子菜单将无法显示
                 this.vertical_scrollbar(&self.scroll_handle)
             })
     }
@@ -1540,5 +1537,91 @@ mod tests {
         // 非标准项忽略危险样式设置。
         let separator = PopupMenuItem::separator().danger(true);
         assert!(matches!(separator, PopupMenuItem::Separator));
+    }
+
+    /// 滚动菜单的子菜单照常展开在条目列表之外，且不被滚动容器裁剪：
+    /// `deferred` 绘制与 hitbox 都在滚动容器的内容遮罩之外。
+    #[rgpui::test]
+    fn scrollable_menu_submenu_is_hit_testable(cx: &mut rgpui::TestAppContext) {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        struct MenuHost {
+            menu: Entity<PopupMenu>,
+        }
+
+        impl Render for MenuHost {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(self.menu.clone())
+            }
+        }
+
+        let slot: Rc<RefCell<Option<Entity<PopupMenu>>>> = Rc::new(RefCell::new(None));
+        let menu_slot = slot.clone();
+
+        let window = cx.open_window(
+            rgpui::size(rgpui::px(400.), rgpui::px(400.)),
+            move |window, cx| {
+                let menu = PopupMenu::build(window, cx, |menu, window, cx| {
+                    let mut menu = menu
+                        .scrollable(true)
+                        .max_w(rgpui::px(160.))
+                        .max_h(rgpui::px(200.));
+                    for ix in 0..30 {
+                        menu = if ix == 0 {
+                            menu.submenu("More", window, cx, |submenu, _, _| {
+                                submenu.item(PopupMenuItem::new("Ping"))
+                            })
+                        } else {
+                            menu.item(PopupMenuItem::new(format!("Item {ix}")))
+                        };
+                    }
+                    menu
+                });
+                *menu_slot.borrow_mut() = Some(menu.clone());
+                MenuHost { menu }
+            },
+        );
+
+        cx.run_until_parked();
+
+        let menu = slot.borrow().clone().expect("菜单实体应已创建");
+        cx.update(|cx| {
+            menu.update(cx, |menu, cx| {
+                menu.selected_index = Some(0);
+                cx.notify();
+            });
+        });
+        cx.run_until_parked();
+
+        let items_bounds = cx.update(|cx| menu.read_with(cx, |menu, _| menu.bounds));
+        // 子菜单从条目右缘展开：取点落在条目列表右侧、子菜单内部。
+        let probe = rgpui::point(
+            items_bounds.right() + rgpui::px(10.),
+            items_bounds.origin.y + rgpui::px(20.),
+        );
+        let hitbox_bounds = window
+            .update(cx, |_, window, _| {
+                let hit = window.rendered_frame.hit_test(probe);
+                hit.ids
+                    .iter()
+                    .filter_map(|id| {
+                        window
+                            .rendered_frame
+                            .hitboxes
+                            .iter()
+                            .find(|hitbox| hitbox.id == *id)
+                            .map(|hitbox| hitbox.bounds)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap();
+
+        assert!(
+            hitbox_bounds
+                .iter()
+                .any(|bounds| bounds.left() >= items_bounds.right()),
+            "滚动菜单的子菜单应可命中，且其 hitbox 位于滚动区域之外；probe={probe:?} items={items_bounds:?} hits={hitbox_bounds:?}"
+        );
     }
 }

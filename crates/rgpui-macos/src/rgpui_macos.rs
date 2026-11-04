@@ -37,6 +37,8 @@ mod focused_window;
 mod global_hotkey;
 mod notifications;
 mod permissions;
+mod power;
+mod system_info;
 mod tray;
 
 use cocoa::{

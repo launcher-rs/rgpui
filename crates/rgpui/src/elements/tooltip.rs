@@ -399,6 +399,12 @@ impl TooltipOverlay {
         self.epoch
     }
 
+    /// 当前是否已显示 tooltip 内容（供组件侧单测断言 tooltip 真被挂上）。
+    #[cfg(test)]
+    pub(crate) fn is_showing(&self) -> bool {
+        self.content.is_some()
+    }
+
     /// 请求显示 tooltip。如果已有其他 tooltip 活跃或最近刚隐藏，
     /// 则立即显示并带滑动动画，否则启动延迟。
     pub(crate) fn request_show(

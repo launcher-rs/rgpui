@@ -14,6 +14,15 @@
 //! 4. [`icon_catalog_matches_assets`]：`skills/rgpui/references/widgets.md` 的 `IconName`
 //!    清单与 `examples/showcase/src/bin/icons.rs` 必须与 `crates/rgpui/assets/icons/*.svg`
 //!    完全一致，防止文档漏写或示例出现空白格。
+//! 5. [`platform_methods_have_real_call_sites`]：`Platform` / `PlatformWindow` 的每个
+//!    非测试方法都要在核心或平台后端里有一处 `platform.<方法>(` 调用 —— 这正是
+//!    AGENTS.md「加平台方法必须同时加 App 包装 + 真实调用点」的机器版，防止再出现
+//!    「实现了但应用层一行都调不到」。
+//! 6. [`no_stub_macros_outside_tests`]：生产代码与示例里禁止 `todo!` / `unimplemented!`；
+//!    `#[cfg(test)]` 块与 `platform/test/` 假实现除外。
+//! 7. [`prelude_does_not_shadow_crate_root`]：`prelude` 显式重导出的名字若与 `crate` 根
+//!    显式重导出**来自不同模块**，同时 `use rgpui::*` 与 `use rgpui::prelude::*` 会
+//!    产生歧义；已知冲突登记在 [`PRELUDE_NAME_CONFLICTS`]。
 //!
 //! 发布包里这些文件不存在时跳过；存在 `CI` 环境变量时改为失败，避免守卫静默失效。
 #![cfg(not(target_family = "wasm"))]
@@ -981,6 +990,600 @@ fn check_icon_catalog(root: &Path) -> Result<(), String> {
     }
 }
 
+// ==================== 守卫五 / 六 / 七：平台调用点、桩宏、prelude 遮蔽 ====================
+
+/// 逐字符扫描一行 Rust 代码，跳过字符串/字符字面量与行注释。
+///
+/// `visit` 只会收到「真正的代码」字符：字符串内容与 `//` 之后的内容都不回调。
+/// 三个下游用途共用这一套词法：统计花括号深度、判断桩宏、判断方法调用。
+fn scan_code(line: &str, mut visit: impl FnMut(char)) {
+    let chars: Vec<char> = line.chars().collect();
+    let mut index = 0;
+    let mut in_string = false;
+    let mut in_char = false;
+    let mut escaped = false;
+
+    while index < chars.len() {
+        let ch = chars[index];
+
+        if in_string || in_char {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if in_string && ch == '"' {
+                in_string = false;
+            } else if in_char && ch == '\'' {
+                in_char = false;
+            }
+            index += 1;
+            continue;
+        }
+
+        match ch {
+            '/' if chars.get(index + 1) == Some(&'/') => break,
+            '"' => in_string = true,
+            // 只把真正的字符字面量（`'a'` / `'\n'`）当字面量；
+            // 生命周期（`&'static str`）里的单引号按普通字符处理。
+            '\'' => {
+                let mut rest = chars[index + 1..].iter().copied();
+                match rest.next() {
+                    Some('\\') => in_char = true,
+                    Some(_) if rest.next() == Some('\'') => in_char = true,
+                    _ => {}
+                }
+            }
+            other => visit(other),
+        }
+        index += 1;
+    }
+}
+
+/// 去掉行注释后的代码（字面量内容也会被去掉，避免把字符串里的片段当成代码）。
+fn code_without_comments(line: &str) -> String {
+    let mut code = String::with_capacity(line.len());
+    scan_code(line, |ch| code.push(ch));
+    code
+}
+
+/// 一行代码里的花括号净增量（字符串与注释里的花括号不计）。
+fn brace_delta(line: &str) -> i32 {
+    let mut delta = 0;
+    scan_code(line, |ch| match ch {
+        '{' => delta += 1,
+        '}' => delta -= 1,
+        _ => {}
+    });
+    delta
+}
+
+/// 是否是「只在测试构建里存在」的 cfg 属性。
+///
+/// `feature = "test-support"` 也算：它只服务于测试与基准，不是产品构建的一部分。
+fn is_cfg_test_attribute(trimmed: &str) -> bool {
+    trimmed.starts_with("#[cfg(")
+        && trimmed.contains("test")
+        && (!trimmed.contains("feature") || trimmed.contains("test-support"))
+}
+
+/// 把 `#[cfg(test)]` 修饰的整块（模块、函数、测试）替换成空行，行号保持不变。
+fn strip_cfg_test_items(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut output = String::with_capacity(text.len());
+    let mut index = 0;
+
+    while index < lines.len() {
+        if !is_cfg_test_attribute(lines[index].trim()) {
+            output.push_str(lines[index]);
+            output.push('\n');
+            index += 1;
+            continue;
+        }
+
+        // 属性后面可能还跟着其它属性（如 `#[test]`）或空行，先找到条目首行。
+        let mut item = index + 1;
+        while item < lines.len() {
+            let trimmed = lines[item].trim();
+            if trimmed.is_empty() || trimmed.starts_with("#[") {
+                item += 1;
+                continue;
+            }
+            break;
+        }
+
+        let mut end = item.min(lines.len().saturating_sub(1));
+        if item < lines.len() {
+            let mut depth = 0;
+            let mut opened = false;
+            while end < lines.len() {
+                depth += brace_delta(lines[end]);
+                if lines[end].contains('{') {
+                    opened = true;
+                }
+                if opened {
+                    if depth <= 0 {
+                        break;
+                    }
+                } else if lines[end].trim_end().ends_with(';') {
+                    break;
+                }
+                end += 1;
+            }
+        }
+
+        for _ in index..=end.min(lines.len().saturating_sub(1)) {
+            output.push('\n');
+        }
+        index = end + 1;
+    }
+
+    output
+}
+
+/// 平台 trait 的一条方法声明。
+struct TraitMethod {
+    /// 方法名。
+    name: String,
+    /// 定义所在行号（1 起）。
+    line: usize,
+    /// 是否被 `#[cfg(test)]` 之类的测试属性门控。
+    test_only: bool,
+}
+
+/// 从 `platform.rs` 里解析指定 trait 的方法（trait 的右花括号必须顶格，rustfmt 保证）。
+fn trait_methods(text: &str, header: &str) -> Result<Vec<TraitMethod>, String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines
+        .iter()
+        .position(|line| line.starts_with(header))
+        .ok_or_else(|| format!("platform.rs 里找不到 `{header}`"))?;
+
+    let mut methods = Vec::new();
+    let mut pending_test_only = false;
+    for (offset, line) in lines.iter().enumerate().skip(start + 1) {
+        if line.starts_with('}') {
+            break;
+        }
+        let trimmed = line.trim();
+        if is_cfg_test_attribute(trimmed) {
+            pending_test_only = true;
+            continue;
+        }
+        let Some(rest) = trimmed.strip_prefix("fn ") else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            .collect();
+        if name.is_empty() {
+            continue;
+        }
+        methods.push(TraitMethod {
+            name,
+            line: offset + 1,
+            test_only: pending_test_only,
+        });
+        pending_test_only = false;
+    }
+
+    if methods.is_empty() {
+        Err(format!("从 `{header}` 里没有解析出任何方法"))
+    } else {
+        Ok(methods)
+    }
+}
+
+/// 调用点扫描时排除的文件：测试假平台与测试上下文。
+///
+/// 这些文件里的 `self.platform.foo()` 只是测试基础设施，不能证明应用层可达；
+/// 排除后守卫才能抓住「只在假平台里被调用」的公开 API。
+const CALL_SITE_EXCLUDES: &[&str] = &[
+    "crates/rgpui/src/platform/test/",
+    "crates/rgpui/src/platform/test.rs",
+    "crates/rgpui/src/platform/visual_test.rs",
+    "crates/rgpui/src/app/bench_context.rs",
+    "crates/rgpui/src/app/headless_app_context.rs",
+    "crates/rgpui/src/app/test_app.rs",
+    "crates/rgpui/src/app/test_context.rs",
+    "crates/rgpui/src/app/visual_test_context.rs",
+    "crates/rgpui/src/test.rs",
+];
+
+/// 已知的「接收者不是 `platform` / `platform_window`」的方法补充说明。
+struct MethodExemption {
+    /// trait 名（`Platform` 或 `PlatformWindow`）。
+    trait_name: &'static str,
+    /// 方法名。
+    method: &'static str,
+    /// 除 `platform` / `platform_window` 外，还允许哪些接收者名字。
+    extra_receivers: &'static [&'static str],
+    /// 为什么需要额外接收者。
+    reason: &'static str,
+}
+
+/// 方法级补充接收者；不影响其它方法仍必须命中标准接收者。
+const METHOD_EXEMPTIONS: &[MethodExemption] = &[MethodExemption {
+    trait_name: "PlatformWindow",
+    method: "get_raw_handle",
+    extra_receivers: &["window"],
+    reason: "Windows 后端 open_window 在创建 WindowsWindow 后立即取 HWND 登记，接收者是局部变量 window",
+}];
+
+/// 把成员访问两侧的空白（含换行）压掉，还原 `a\n  .b(` 这种链式写法。
+///
+/// `self\n.platform_window\n.prompt(` 压成 `self.platform_window.prompt(` 后，
+/// 守卫才能在跨行链式调用上正确识别接收者。
+fn compact_member_access(code: &str) -> String {
+    let mut output = String::with_capacity(code.len());
+    let mut pending_space = false;
+    for ch in code.chars() {
+        if ch.is_whitespace() {
+            pending_space = true;
+            continue;
+        }
+        if ch == '.' {
+            output.push('.');
+        } else {
+            if pending_space && !output.is_empty() && !output.ends_with('.') {
+                output.push(' ');
+            }
+            output.push(ch);
+        }
+        pending_space = false;
+    }
+    output
+}
+
+/// 收集调用点扫描的源码：`crates/*/src` 与 `examples` 下的 Rust 文件（已剔除测试块与注释）。
+fn collect_call_sites(root: &Path) -> Result<Vec<(String, String)>, String> {
+    let mut sources = Vec::new();
+    for dir in ["crates", "examples"] {
+        for entry in WalkDir::new(root.join(dir)) {
+            let entry = entry.map_err(|error| format!("遍历 {dir} 失败：{error}"))?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                continue;
+            }
+            let relative = relative_string(root, path);
+            if !relative.contains("/src/") {
+                continue;
+            }
+            if CALL_SITE_EXCLUDES
+                .iter()
+                .any(|excluded| relative == *excluded || relative.starts_with(excluded))
+            {
+                continue;
+            }
+            let text = strip_cfg_test_items(&read_text(path)?);
+            let code: Vec<String> = text.lines().map(code_without_comments).collect();
+            sources.push((relative, compact_member_access(&code.join("\n"))));
+        }
+    }
+    Ok(sources)
+}
+
+/// 守卫五主逻辑：每个平台方法都要有一处 `platform.<方法>(` / `platform_window.<方法>(`。
+fn check_platform_call_sites(root: &Path) -> Result<(), String> {
+    let platform_path = root.join("crates/rgpui/src/platform.rs");
+    let text = read_text(&platform_path)?;
+    let platform_methods = trait_methods(&text, "pub trait Platform:")?;
+    let window_methods = trait_methods(&text, "pub trait PlatformWindow:")?;
+    let sources = collect_call_sites(root)?;
+
+    let mut errors = Vec::new();
+    for (trait_name, receiver, methods) in [
+        ("Platform", "platform", &platform_methods),
+        ("PlatformWindow", "platform_window", &window_methods),
+    ] {
+        for method in methods {
+            if method.test_only {
+                continue;
+            }
+            let exemptions: Vec<&MethodExemption> = METHOD_EXEMPTIONS
+                .iter()
+                .filter(|entry| entry.trait_name == trait_name && entry.method == method.name)
+                .collect();
+            for exemption in &exemptions {
+                if exemption.reason.trim().is_empty() {
+                    errors.push(format!(
+                        "platform.rs:{}：{trait_name}::{} 的补充接收者缺少理由",
+                        method.line, method.name
+                    ));
+                }
+            }
+
+            let mut matched = false;
+            let mut standard = vec![receiver];
+            for exemption in &exemptions {
+                standard.extend(exemption.extra_receivers.iter().copied());
+            }
+            for candidate in standard {
+                let needle = format!("{candidate}.{}(", method.name);
+                if sources.iter().any(|(_, code)| code.contains(&needle)) {
+                    matched = true;
+                    break;
+                }
+            }
+            if !matched {
+                errors.push(format!(
+                    "platform.rs:{}：{trait_name}::{} 没有任何 `{receiver}.{}(` 调用点（App 包装 + 真实调用点缺一不可）",
+                    method.line, method.name, method.name
+                ));
+            }
+        }
+    }
+
+    for entry in METHOD_EXEMPTIONS {
+        let methods = match entry.trait_name {
+            "Platform" => &platform_methods,
+            "PlatformWindow" => &window_methods,
+            other => {
+                errors.push(format!("METHOD_EXEMPTIONS 里的 trait 名未知：{other}"));
+                continue;
+            }
+        };
+        if !methods.iter().any(|method| method.name == entry.method) {
+            errors.push(format!(
+                "METHOD_EXEMPTIONS 里的 {}::{} 已不存在，请撤掉登记",
+                entry.trait_name, entry.method
+            ));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(join_errors(
+            "平台 trait 方法缺少真实调用点；应用层调不到的能力等于没实现",
+            &errors,
+        ))
+    }
+}
+
+/// 守卫六主逻辑：生产代码与示例里不允许 `todo!` / `unimplemented!`。
+fn check_no_stub_macros(root: &Path) -> Result<(), String> {
+    let mut errors = Vec::new();
+    for dir in ["crates", "examples"] {
+        for entry in WalkDir::new(root.join(dir)) {
+            let entry = entry.map_err(|error| format!("遍历 {dir} 失败：{error}"))?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                continue;
+            }
+            let relative = relative_string(root, path);
+            if !relative.contains("/src/") {
+                continue;
+            }
+            if relative.starts_with("crates/rgpui/src/platform/test/")
+                || relative == "crates/rgpui/src/platform/test.rs"
+            {
+                continue;
+            }
+            let text = strip_cfg_test_items(&read_text(path)?);
+            for (index, line) in text.lines().enumerate() {
+                let code = code_without_comments(line);
+                for stub in ["todo!(", "unimplemented!("] {
+                    if code.contains(stub) {
+                        errors.push(format!(
+                            "{relative}:{}：生产代码里出现 {stub}（测试假平台与 #[cfg(test)] 除外）",
+                            index + 1
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(join_errors("发现未完成的桩代码", &errors))
+    }
+}
+
+/// 解析文件里所有 `pub use` 语句，返回（模块路径, 导出名）。
+///
+/// 只处理显式列出的名字：glob 重导出无法静态展开，跳过；`as _` 也跳过。
+fn parse_pub_use_exports(text: &str, require_crate_prefix: bool) -> Vec<(String, String)> {
+    let mut statements = Vec::new();
+    let mut current = String::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if current.is_empty() {
+            if !trimmed.starts_with("pub use ") {
+                continue;
+            }
+            current.push_str(trimmed);
+        } else {
+            current.push(' ');
+            current.push_str(trimmed);
+        }
+        if current.ends_with(';') {
+            statements.push(std::mem::take(&mut current));
+        }
+    }
+
+    let mut exports = Vec::new();
+    for statement in statements {
+        let body = statement
+            .trim_start_matches("pub use ")
+            .trim_end_matches(';')
+            .trim();
+        let body = if require_crate_prefix {
+            let Some(rest) = body.strip_prefix("crate::") else {
+                continue;
+            };
+            rest
+        } else {
+            body
+        };
+        exports.extend(parse_use_body(body));
+    }
+    exports
+}
+
+/// 解析一条 use 语句的主体（不含 `pub use` 与结尾分号）。
+fn parse_use_body(body: &str) -> Vec<(String, String)> {
+    let Some(open) = body.find('{') else {
+        if body.ends_with('*') {
+            return Vec::new();
+        }
+        return bare_use_entry(body).into_iter().collect();
+    };
+    let Some(close) = body.rfind('}') else {
+        return Vec::new();
+    };
+    let module = body[..open].trim().trim_end_matches("::").to_string();
+    let inner = &body[open + 1..close];
+
+    let mut entries = Vec::new();
+    let mut depth = 0;
+    let mut item = String::new();
+    for ch in inner.chars() {
+        match ch {
+            '{' => {
+                depth += 1;
+                item.push(ch);
+            }
+            '}' => {
+                depth -= 1;
+                item.push(ch);
+            }
+            ',' if depth == 0 => {
+                if let Some(entry) = bare_use_entry(item.trim()) {
+                    entries.push(entry);
+                }
+                item.clear();
+            }
+            _ => item.push(ch),
+        }
+    }
+    if let Some(entry) = bare_use_entry(item.trim()) {
+        entries.push(entry);
+    }
+
+    entries
+        .into_iter()
+        .map(|(name_module, name)| (join_module(&module, &name_module), name))
+        .collect()
+}
+
+/// 解析 `a::B`、`B`、`a::B as C`；返回（模块部分, 最终名字）。
+fn bare_use_entry(entry: &str) -> Option<(String, String)> {
+    let entry = entry.trim();
+    if entry.is_empty() || entry.ends_with('*') {
+        return None;
+    }
+    // 嵌套分组（`a::{B, C}`）在显式导出里不出现；出现就整体跳过，交给 glob 规则。
+    if entry.contains('{') {
+        return None;
+    }
+    let (path, alias) = match entry.split_once(" as ") {
+        Some((path, alias)) => (path.trim(), Some(alias.trim())),
+        None => (entry, None),
+    };
+    let name = match alias {
+        Some("_") => return None,
+        Some(alias) if !alias.is_empty() => alias.to_string(),
+        _ => path.rsplit("::").next()?.to_string(),
+    };
+    let module = path
+        .rsplit_once("::")
+        .map(|(module, _)| module.to_string())
+        .unwrap_or_default();
+    Some((module, name))
+}
+
+/// 把 use 分组里的相对模块拼到外层模块上。
+fn join_module(parent: &str, child: &str) -> String {
+    match (parent.is_empty(), child.is_empty()) {
+        (true, _) => child.to_string(),
+        (false, true) => parent.to_string(),
+        (false, false) => format!("{parent}::{child}"),
+    }
+}
+
+/// 已知的 prelude ↔ crate 根重名冲突（必须写明为什么暂时保留）。
+struct PreludeConflict {
+    /// 冲突的名字。
+    name: &'static str,
+    /// 保留原因与计划。
+    reason: &'static str,
+}
+
+/// 已知冲突白名单；条目失效（不再冲突）时守卫会报错，避免白名单腐烂。
+const PRELUDE_NAME_CONFLICTS: &[PreludeConflict] = &[PreludeConflict {
+    name: "ThemeMode",
+    reason: "prelude 导出 theme_watcher::ThemeMode（主题运行模式），根导出 theme::ThemeMode（亮暗模式）；\
+             2.0 把前者更名为 ThemeWatcherMode 后再撤销本条",
+}];
+
+/// 守卫七主逻辑：prelude 显式重导出不得与 crate 根显式重导出同名不同源。
+fn check_prelude_exports(root: &Path) -> Result<(), String> {
+    let prelude = read_text(&root.join("crates/rgpui/src/prelude.rs"))?;
+    let crate_root = read_text(&root.join("crates/rgpui/src/rgpui.rs"))?;
+    let prelude_exports = parse_pub_use_exports(&prelude, true);
+    let root_exports = parse_pub_use_exports(&crate_root, false);
+
+    let mut root_modules: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (module, name) in root_exports {
+        if !module.is_empty() {
+            root_modules.entry(name).or_default().insert(module);
+        }
+    }
+
+    let mut errors = Vec::new();
+    let mut used_conflicts = BTreeSet::new();
+    for (module, name) in prelude_exports {
+        if module.is_empty() {
+            continue;
+        }
+        let Some(modules) = root_modules.get(&name) else {
+            continue;
+        };
+        if modules.contains(&module) {
+            continue;
+        }
+        if let Some(conflict) = PRELUDE_NAME_CONFLICTS
+            .iter()
+            .find(|conflict| conflict.name == name)
+        {
+            if conflict.reason.trim().is_empty() {
+                errors.push(format!("PRELUDE_NAME_CONFLICTS 里的 {name} 缺少理由"));
+            }
+            used_conflicts.insert(name);
+            continue;
+        }
+        errors.push(format!(
+            "prelude 重导出 crate::{module}::{name}，而 crate 根同名符号来自 {}；\
+             同时 `use rgpui::*` 与 `use rgpui::prelude::*` 会歧义",
+            modules.iter().cloned().collect::<Vec<_>>().join(", ")
+        ));
+    }
+
+    for conflict in PRELUDE_NAME_CONFLICTS {
+        if !used_conflicts.contains(conflict.name) {
+            errors.push(format!(
+                "PRELUDE_NAME_CONFLICTS 里的 {} 已不再冲突，请撤掉登记",
+                conflict.name
+            ));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(join_errors("prelude 与 crate 根存在歧义重导出", &errors))
+    }
+}
+
 // ==================== 测试入口 ====================
 
 /// 守卫一：只允许能编译的 doctest 围栏。
@@ -1035,6 +1638,81 @@ fn icon_catalog_matches_assets() {
     if let Err(report) = check_icon_catalog(&root) {
         panic!("{report}");
     }
+}
+
+/// 守卫五：`Platform` / `PlatformWindow` 的方法都要有真实调用点。
+#[test]
+fn platform_methods_have_real_call_sites() {
+    let Some(root) = repo_root() else { return };
+    if require(&root, "crates/rgpui/src/platform.rs").is_none()
+        || require(&root, "crates").is_none()
+        || require(&root, "examples").is_none()
+    {
+        return;
+    }
+    if let Err(report) = check_platform_call_sites(&root) {
+        panic!("{report}");
+    }
+}
+
+/// 守卫六：生产代码与示例里不允许 `todo!` / `unimplemented!`。
+#[test]
+fn no_stub_macros_outside_tests() {
+    let Some(root) = repo_root() else { return };
+    if require(&root, "crates").is_none() || require(&root, "examples").is_none() {
+        return;
+    }
+    if let Err(report) = check_no_stub_macros(&root) {
+        panic!("{report}");
+    }
+}
+
+/// 守卫七：prelude 与 crate 根不得有同名不同源的显式重导出。
+#[test]
+fn prelude_does_not_shadow_crate_root() {
+    let Some(root) = repo_root() else { return };
+    if require(&root, "crates/rgpui/src/prelude.rs").is_none()
+        || require(&root, "crates/rgpui/src/rgpui.rs").is_none()
+    {
+        return;
+    }
+    if let Err(report) = check_prelude_exports(&root) {
+        panic!("{report}");
+    }
+}
+
+/// 自测：新守卫的词法扫描与解析要能处理注释、生命周期、cfg(test) 与 use 分组。
+#[test]
+fn guard_scanners_handle_comments_lifetimes_and_groups() {
+    let stripped = strip_cfg_test_items(
+        "fn a() {}\n#[cfg(test)]\nmod tests {\n    fn b() { todo!() }\n}\nfn c() {}\n",
+    );
+    assert!(!stripped.contains("todo!"), "cfg(test) 块应被剔除");
+    assert!(stripped.contains("fn a"));
+    assert!(stripped.contains("fn c"));
+    assert_eq!(
+        stripped.lines().count(),
+        6,
+        "剔除只填空行，行号必须保持不变"
+    );
+
+    assert!(!code_without_comments("let x = 1; // unimplemented!() //").contains("unimplemented!"));
+    assert_eq!(
+        brace_delta("fn f() -> &'static str { // }"),
+        1,
+        "生命周期里的单引号不能被当成字符字面量"
+    );
+
+    let exports = parse_use_body("theme_watcher::{ThemeColors, ThemeMode as Mode}");
+    assert_eq!(
+        exports,
+        vec![
+            ("theme_watcher".to_string(), "ThemeColors".to_string()),
+            ("theme_watcher".to_string(), "Mode".to_string()),
+        ]
+    );
+    assert!(parse_use_body("paint::*").is_empty());
+    assert!(parse_use_body("A as _").is_empty());
 }
 
 /// 自测：围栏扫描器要能区分可编译围栏、关闭编译围栏与非 doctest 代码。

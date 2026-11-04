@@ -581,15 +581,6 @@ pub trait Platform: 'static {
         NetworkStatus::Connected
     }
 
-    /// 在指定位置显示右键上下文菜单。
-    fn show_context_menu(
-        &self,
-        _position: Point<Pixels>,
-        _items: Vec<TrayMenuItem>,
-        _callback: Box<dyn FnMut(SharedString)>,
-    ) {
-    }
-
     /// 返回操作系统信息（名称、版本号）。
     fn os_info(&self) -> OsInfo {
         OsInfo {

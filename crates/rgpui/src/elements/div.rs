@@ -42,7 +42,7 @@ use smallvec::SmallVec;
 use stacksafe::{StackSafe, stacksafe};
 use std::{
     any::{Any, TypeId},
-    cell::RefCell,
+    cell::{Cell, RefCell},
     cmp::Ordering,
     fmt::Debug,
     marker::PhantomData,
@@ -1302,6 +1302,24 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
+    /// 设置此元素的禁用状态。
+    ///
+    /// 只影响无障碍树（辅助技术播报「不可用」），不改视觉样式与事件；
+    /// 组件侧仍需自己跳过交互（例如不注册点击监听、不进入焦点链）。
+    fn aria_disabled(mut self, disabled: bool) -> Self {
+        self.interactivity().aria.disabled = disabled;
+        self
+    }
+
+    /// 设置此元素的实时区域类型。
+    ///
+    /// 用于内容会在无用户操作时变化的区域（通知、进度、日志）：
+    /// `Polite` 不打断当前朗读，`Assertive` 立即打断。
+    fn aria_live(mut self, live: accesskit::Live) -> Self {
+        self.interactivity().aria.live = Some(live);
+        self
+    }
+
     /// 设置此元素的切换状态。
     fn aria_toggled(mut self, toggled: accesskit::Toggled) -> Self {
         self.interactivity().aria.toggled = Some(toggled);
@@ -2100,6 +2118,10 @@ pub(crate) struct AriaProperties {
     pub(crate) column_index: Option<usize>,
     pub(crate) row_count: Option<usize>,
     pub(crate) column_count: Option<usize>,
+    /// 禁用态：辅助技术据此播报「灰化/不可用」，并让点击动作失去意义。
+    pub(crate) disabled: bool,
+    /// 实时区域类型：内容自行变化的区域（通知、进度）用它宣告播报策略。
+    pub(crate) live: Option<accesskit::Live>,
 }
 
 /// 交互状态结构体。驱动 `Div` 元素中所有通用交互功能。
@@ -3124,9 +3146,10 @@ impl Interactivity {
                     .clone();
 
                 let tooltip_is_hoverable = tooltip_builder.hoverable;
-                let build_tooltip = Rc::new(move |window: &mut Window, cx: &mut App| {
-                    Some(((tooltip_builder.build)(window, cx), tooltip_is_hoverable))
-                });
+                let build_tooltip: Rc<dyn Fn(&mut Window, &mut App) -> Option<(AnyView, bool)>> =
+                    Rc::new(move |window: &mut Window, cx: &mut App| {
+                        Some(((tooltip_builder.build)(window, cx), tooltip_is_hoverable))
+                    });
                 // Use bounds instead of testing hitbox since this is called during prepaint.
                 let check_is_hovered_during_prepaint = Rc::new({
                     let pending_mouse_down = pending_mouse_down.clone();
@@ -3146,11 +3169,32 @@ impl Interactivity {
                 register_tooltip_mouse_handlers(
                     &active_tooltip,
                     self.tooltip_id,
-                    build_tooltip,
+                    build_tooltip.clone(),
                     check_is_hovered,
                     check_is_hovered_during_prepaint,
                     self.tooltip_show_delay,
                     window,
+                );
+
+                // 键盘聚焦同样要展开提示：焦点变化不派发鼠标事件，
+                // 上面的悬停状态机因此永远不会被唤醒，键盘用户看不到任何提示。
+                let shown_by_focus = element_state
+                    .tooltip_shown_by_focus
+                    .get_or_insert_with(Default::default)
+                    .clone();
+                let is_focused = self
+                    .tracked_focus_handle
+                    .as_ref()
+                    .is_some_and(|handle| handle.is_focused(window));
+                let anchor = hitbox.bounds.bottom_center();
+                show_or_hide_tooltip_on_focus(
+                    is_focused,
+                    &active_tooltip,
+                    &build_tooltip,
+                    &shown_by_focus,
+                    anchor,
+                    window,
+                    cx,
                 );
             }
 
@@ -3498,6 +3542,12 @@ impl Interactivity {
         if let Some(count) = self.aria.column_count {
             node.set_column_count(count);
         }
+        if self.aria.disabled {
+            node.set_disabled();
+        }
+        if let Some(live) = self.aria.live {
+            node.set_live(live);
+        }
         if !self.click_listeners.is_empty() {
             node.add_action(accesskit::Action::Click);
         }
@@ -3526,6 +3576,8 @@ pub struct InteractiveElementState {
     pub(crate) pending_keyboard_down: Option<Rc<RefCell<Option<u64>>>>,
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     pub(crate) active_tooltip: Option<Rc<RefCell<Option<ActiveTooltip>>>>,
+    /// 提示是否由键盘焦点展开（用于失焦时精确收起，不影响悬停态）。
+    pub(crate) tooltip_shown_by_focus: Option<Rc<Cell<bool>>>,
 }
 
 /// 元素或包含它的分组是否被鼠标点击。
@@ -3608,6 +3660,48 @@ pub(crate) fn set_tooltip_on_window(
         Some(ActiveTooltip::WaitingForHide { tooltip, .. }) => tooltip.clone(),
     };
     Some(window.set_tooltip(tooltip))
+}
+
+/// 按焦点状态展开或收起元素的工具提示。
+///
+/// 与鼠标路径共用 `active_tooltip` 状态：聚焦时立刻构建（不等悬停延时），
+/// 失焦时收起。`shown_by_focus` 保证同一段焦点期间只构建一次视图。
+fn show_or_hide_tooltip_on_focus(
+    is_focused: bool,
+    active_tooltip: &Rc<RefCell<Option<ActiveTooltip>>>,
+    build_tooltip: &Rc<dyn Fn(&mut Window, &mut App) -> Option<(AnyView, bool)>>,
+    shown_by_focus: &Rc<Cell<bool>>,
+    anchor: Point<Pixels>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    if !is_focused {
+        if shown_by_focus.replace(false) {
+            clear_active_tooltip(active_tooltip, window);
+        }
+        return;
+    }
+    if shown_by_focus.get() {
+        return;
+    }
+    let Some((view, is_hoverable)) = build_tooltip(window, cx) else {
+        return;
+    };
+    shown_by_focus.set(true);
+    *active_tooltip.borrow_mut() = Some(ActiveTooltip::Visible {
+        tooltip: AnyTooltip {
+            view,
+            mouse_position: anchor,
+            // 焦点期间保持可见；失焦由本函数的另一分支主动清除。
+            check_visible_and_update: Rc::new({
+                let shown_by_focus = shown_by_focus.clone();
+                move |_, _, _| shown_by_focus.get()
+            }),
+        },
+        is_hoverable,
+    });
+    // 本帧的 `set_tooltip_on_window` 已经过去，需要再来一帧把提示挂上窗口。
+    window.refresh();
 }
 
 pub(crate) fn register_tooltip_mouse_handlers(
@@ -4559,6 +4653,97 @@ mod tests {
         drop(active_tooltip);
 
         assert!(weak_active_tooltip.upgrade().is_none());
+    }
+
+    /// 提示所有者视图：目标 div 同时挂提示与焦点句柄。
+    struct FocusTooltipOwner {
+        captured_active_tooltip: CapturedActiveTooltip,
+        handle: FocusHandle,
+    }
+
+    impl Render for FocusTooltipOwner {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            TooltipCaptureElement {
+                child: div()
+                    .size_full()
+                    .child(
+                        div()
+                            .id("target")
+                            .w(px(50.))
+                            .h(px(50.))
+                            .tooltip(|_, cx| cx.new(|_| TestTooltipView).into())
+                            .track_focus(&self.handle.clone().tab_stop(true))
+                            .into_any_element(),
+                    )
+                    .into_any_element(),
+                captured_active_tooltip: self.captured_active_tooltip.clone(),
+            }
+        }
+    }
+
+    /// 键盘聚焦要展开提示，失焦要收起。
+    ///
+    /// 回归测试：提示原先只由鼠标移动事件驱动，键盘用户既看不到也等不到。
+    #[test]
+    fn tooltip_shows_on_focus_and_hides_on_blur() {
+        let mut test_app = TestAppContext::single();
+        let (handle, other) = test_app.update(|cx| (cx.focus_handle(), cx.focus_handle()));
+        let captured_active_tooltip: CapturedActiveTooltip = Rc::new(RefCell::new(None));
+        let window = test_app.add_window({
+            let captured_active_tooltip = captured_active_tooltip.clone();
+            let handle = handle.clone();
+            move |_, _| FocusTooltipOwner {
+                captured_active_tooltip,
+                handle,
+            }
+        });
+        let any_window = window.into();
+
+        let draw = |test_app: &mut TestAppContext| {
+            test_app
+                .update_window(any_window, |_, window, cx| {
+                    window.draw(cx).clear(cx);
+                })
+                .unwrap();
+        };
+        draw(&mut test_app);
+
+        test_app
+            .update_window(any_window, |_, window, cx| {
+                window.focus(&handle, cx);
+            })
+            .unwrap();
+        // 聚焦那一帧只完成了提示构建，还要一帧才挂到窗口上。
+        draw(&mut test_app);
+        draw(&mut test_app);
+
+        let active = captured_active_tooltip
+            .borrow()
+            .clone()
+            .and_then(|weak| weak.upgrade())
+            .expect("聚焦后应持有活动提示");
+        assert!(
+            matches!(
+                active.borrow().as_ref(),
+                Some(ActiveTooltip::Visible { .. })
+            ),
+            "键盘聚焦要立刻展开提示（不等悬停延时）"
+        );
+
+        test_app
+            .update_window(any_window, |_, window, cx| {
+                window.focus(&other, cx);
+            })
+            .unwrap();
+        draw(&mut test_app);
+
+        let active = captured_active_tooltip
+            .borrow()
+            .clone()
+            .unwrap()
+            .upgrade()
+            .unwrap();
+        assert!(active.borrow().is_none(), "失焦后提示要收起");
     }
 
     struct HoverListenerLayoutTestView {

@@ -132,22 +132,47 @@ impl SemanticTokensHighlighter {
         }
     }
 
-    /// 把语义高亮载荷解码为「字节区间 + 主题 token 名」。
+    /// 把语义高亮载荷解码为「字节区间 + 主题 token 名」（UTF-16 列，协议缺省）。
     ///
     /// `data` 为增量编码（每 5 个 `u32`）：行增量、列增量、长度、类型下标、修饰符位集。
-    /// 列按**字节列**解释（与仓库内 LSP 换算口径一致）。
     pub fn decode_runs(
         text: &str,
         payload: &SemanticTokensPayload,
         type_map: &SemanticTokenTypeMap,
     ) -> Vec<(Range<usize>, String)> {
-        // 每行的字节起点（行首）。
-        let mut line_starts: Vec<usize> = vec![0];
+        Self::decode_runs_with(
+            text,
+            payload,
+            type_map,
+            &lsp_types::PositionEncodingKind::UTF16,
+        )
+    }
+
+    /// 按协商的 `encoding` 解码语义高亮。
+    ///
+    /// token 的列与长度都按该编码计数（**不是字节**）：UTF-16 下中文占 1 列、
+    /// emoji 占 2 列；直接当字节用会在非 ASCII 行上把高亮区间整体推错。
+    pub fn decode_runs_with(
+        text: &str,
+        payload: &SemanticTokensPayload,
+        type_map: &SemanticTokenTypeMap,
+        encoding: &lsp_types::PositionEncodingKind,
+    ) -> Vec<(Range<usize>, String)> {
+        // 每行内容的字节区间（不含行尾换行符）。
+        let mut line_ranges: Vec<Range<usize>> = Vec::new();
+        let mut line_start = 0;
         for (index, byte) in text.bytes().enumerate() {
             if byte == b'\n' {
-                line_starts.push(index + 1);
+                let mut end = index;
+                if end > line_start && text.as_bytes()[end - 1] == b'\r' {
+                    end -= 1;
+                }
+                line_ranges.push(line_start..end);
+                line_start = index + 1;
             }
         }
+        line_ranges.push(line_start..text.len());
+
         let tokens = SemanticTokensState::decode_tokens(
             &payload.token_types,
             &payload.token_modifiers,
@@ -155,19 +180,44 @@ impl SemanticTokensHighlighter {
         );
         let mut runs = Vec::with_capacity(tokens.len());
         let mut line = 0u32;
-        let mut char_start = 0u32;
+        let mut unit_start = 0u32;
+        // 「单位列 → 字节列」单调游标：token 按行、按列递增，扫描不回头。
+        let mut scan_line = usize::MAX;
+        let mut scan_unit = 0u32;
+        let mut scan_byte = 0usize;
+        let mut scan_chars: std::str::Chars<'_> = "".chars();
         for token in tokens {
             line += token.delta_line;
-            char_start = if token.delta_line == 0 {
-                char_start + token.delta_start
+            unit_start = if token.delta_line == 0 {
+                unit_start + token.delta_start
             } else {
                 token.delta_start
             };
-            let Some(base) = line_starts.get(line as usize) else {
+            let Some(line_range) = line_ranges.get(line as usize) else {
                 continue;
             };
-            let start = base + char_start as usize;
-            let end = start + token.length as usize;
+            if scan_line != line as usize {
+                scan_line = line as usize;
+                scan_unit = 0;
+                scan_byte = 0;
+                scan_chars = text[line_range.clone()].chars();
+            }
+            let start = line_range.start
+                + scan_to_unit(
+                    &mut scan_chars,
+                    &mut scan_unit,
+                    &mut scan_byte,
+                    unit_start,
+                    encoding,
+                );
+            let end = line_range.start
+                + scan_to_unit(
+                    &mut scan_chars,
+                    &mut scan_unit,
+                    &mut scan_byte,
+                    unit_start + token.length,
+                    encoding,
+                );
             // 类型名 → 主题 token 名（未映射的类型不高亮）。
             let Some(type_name) = payload
                 .token_types
@@ -183,6 +233,45 @@ impl SemanticTokensHighlighter {
         }
         runs
     }
+}
+
+/// 字符在给定编码下占多少个单位（UTF-8 字节 / UTF-16 码元 / UTF-32 码点）。
+fn char_unit_len(ch: char, encoding: &lsp_types::PositionEncodingKind) -> u32 {
+    if *encoding == lsp_types::PositionEncodingKind::UTF8 {
+        ch.len_utf8() as u32
+    } else if *encoding == lsp_types::PositionEncodingKind::UTF32 {
+        1
+    } else {
+        ch.len_utf16() as u32
+    }
+}
+
+/// 把扫描游标推进到 `target_unit` 列，返回对应的行内字节列。
+///
+/// token 列在同一行内单调不减，游标只前进；目标列落在代理对中间时停在
+/// 字符起点（与 ropey 的字节换算口径一致）。
+fn scan_to_unit(
+    chars: &mut std::str::Chars<'_>,
+    unit: &mut u32,
+    byte: &mut usize,
+    target_unit: u32,
+    encoding: &lsp_types::PositionEncodingKind,
+) -> usize {
+    while *unit < target_unit {
+        // 先克隆再前进：字符跨过目标列时不消费它，停在字符起点（向下取整）。
+        let mut next = chars.clone();
+        let Some(ch) = next.next() else {
+            break;
+        };
+        let len = char_unit_len(ch, encoding);
+        if *unit + len > target_unit {
+            break;
+        }
+        *unit += len;
+        *byte += ch.len_utf8();
+        *chars = next;
+    }
+    *byte
 }
 
 impl crate::highlight::Highlighter for SemanticTokensHighlighter {
@@ -328,6 +417,31 @@ mod tests {
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].0, 0..2);
         assert_eq!(runs[0].1, "function");
+    }
+
+    /// 语义 token 的列按 UTF-16 码元计：中文/emoji 前面不能按字节偏移落位。
+    ///
+    /// 回归测试：原实现把 `deltaStart` 当字节列，`中文` 之后整段高亮会左移 4 字节。
+    #[test]
+    fn decodes_utf16_columns_not_bytes() {
+        let payload = SemanticTokensPayload {
+            // 第 0 行第 3 列落在 emoji 的代理对中间（向下取整到 🎉 起点），长度 2。
+            // 若把列当字节，第 3 列只会落在「中」的中间，整段高亮左移。
+            data: vec![0, 3, 2, 0, 0],
+            token_types: vec![lsp_types::SemanticTokenType::new("function")],
+            token_modifiers: Vec::new(),
+        };
+        let text = "中文🎉! tail\n";
+        let runs = SemanticTokensHighlighter::decode_runs(
+            text,
+            &payload,
+            &SemanticTokenTypeMap::default(),
+        );
+        assert_eq!(runs.len(), 1);
+        // `中文` = 6 字节，`🎉` = 4 字节：UTF-16 第 3 列落在 emoji 中间，
+        // 向下取整到 🎉 起点（字节 6）；第 5 列在 `!` 之后（字节 11）。
+        assert_eq!(runs[0].0, 6..11);
+        assert_eq!(&text[runs[0].0.clone()], "🎉!");
     }
 
     /// 高亮器样式：命中区间返回解析出的样式，区间外为默认样式。

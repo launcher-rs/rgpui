@@ -12,7 +12,7 @@ use std::{
 use crate::{
     ActiveTheme as _, Anchor, Animation, AnimationExt as _, AnyElement, App, AppContext,
     ClickEvent, Context, DismissEvent, ElementId, Entity, EventEmitter, Hsla, Icon, IconName,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, Role, SharedString,
     StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Window, div,
     prelude::FluentBuilder, px,
 };
@@ -573,6 +573,10 @@ impl Render for NotificationList {
 
         v_flex()
             .id("notification-list")
+            // 通知是「没有用户操作也会自己出现」的内容：`log` + 礼貌实时区域，
+            // 屏幕阅读器才会在新通知到达时读出，而不是等用户去找它。
+            .role(Role::Log)
+            .aria_live(accesskit::Live::Polite)
             .max_h(size.height)
             .pt(margins.top)
             .pb(margins.bottom)

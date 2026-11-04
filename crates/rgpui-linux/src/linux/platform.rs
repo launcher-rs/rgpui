@@ -912,8 +912,11 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         Some(self.inner.with_common(|common| common.button_layout))
     }
 
-    fn register_url_scheme(&self, _: &str) -> Task<anyhow::Result<()>> {
-        Task::ready(Err(anyhow!("register_url_scheme unimplemented")))
+    /// 把应用注册为 URL scheme 处理器（写用户级桌面入口 + `xdg-mime`）
+    fn register_url_scheme(&self, url: &str) -> Task<anyhow::Result<()>> {
+        let scheme = url.to_string();
+        self.background_executor()
+            .spawn(async move { crate::linux::url_scheme::register_url_scheme(&scheme) })
     }
 
     fn write_to_primary(&self, item: ClipboardItem) {

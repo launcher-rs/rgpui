@@ -59,6 +59,8 @@ impl RenderOnce for Toggle {
 
         Button::new(self.label.clone())
             .label(self.label)
+            // 按下态按 aria-pressed 口径公布（`Button` 渲染时仍会覆盖 role）。
+            .toggled(pressed)
             .map(|mut this| {
                 if pressed {
                     this.style()

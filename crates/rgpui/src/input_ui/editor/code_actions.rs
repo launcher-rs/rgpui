@@ -21,7 +21,7 @@ use lsp_types::{
 };
 use ropey::Rope;
 
-use crate::lsp::{DiagnosticEntry, PositionMapping};
+use crate::lsp::DiagnosticEntry;
 use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme as _, Anchor, AnyElement, App, Context, Entity, InteractiveElement, IntoElement,
@@ -368,22 +368,10 @@ impl EditorState {
             return;
         }
         let caret = self.input.read_with(cx, |state, _| state.cursor());
+        let encoding = self.position_encoding().clone();
         let offsets: Vec<(Range<usize>, SharedString)> = self.input.read_with(cx, |state, _| {
-            let text = state.text();
-            edits
-                .iter()
-                .map(|edit| {
-                    (
-                        PositionMapping::position_to_offset(text, edit.range.start)
-                            ..PositionMapping::position_to_offset(text, edit.range.end),
-                        SharedString::from(edit.new_text.clone()),
-                    )
-                })
-                .collect()
+            super::lsp_attach::positioned_offsets(state.text(), &edits, &encoding)
         });
-        let mut offsets = offsets;
-        // 倒序应用：靠前编辑的字节位置不受后面改动影响。
-        offsets.sort_by_key(|a| std::cmp::Reverse(a.0.start));
         for (range, new_text) in offsets {
             // 程序化写入同样会发 `Change`：不抑制的话，插入文本末字符命中触发条件
             //（如 "bar" 这样的单词、或 `.`/`:`）会立刻弹出补全。逐段写入各消一次，
@@ -504,6 +492,7 @@ pub(super) fn render_code_action_menu(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lsp::PositionMapping;
     use crate::{AppContext as _, Render};
     use std::time::Duration;
 

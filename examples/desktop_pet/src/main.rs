@@ -982,7 +982,7 @@ fn rand_f32() -> f32 {
 /// 程序入口点。
 fn main() {
     // 尝试获取单例实例（防止重复启动）
-    let _instance = match SingleInstance::acquire(APP_ID) {
+    let instance = match SingleInstance::acquire(APP_ID) {
         Ok(instance) => instance, // 首次运行，获取成功
         Err(_) => {
             // 已有实例在运行
@@ -1065,6 +1065,14 @@ fn main() {
                     },
                 )
                 .expect("failed to open desktop pet window");
+
+            // 第二个实例启动时把桌宠窗口带回前台（与托盘「显示窗口」一致）
+            let activation_visible = window_visible.clone();
+            instance.on_activate(cx, move |cx| {
+                activation_visible.store(true, std::sync::atomic::Ordering::Release);
+                let _ = window_handle.update(cx, |_, window, _| window.activate_window());
+                cx.activate(true);
+            });
 
             // 设置托盘回调
             setup_tray_callbacks(cx, window_handle, window_visible);

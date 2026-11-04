@@ -1,6 +1,6 @@
 # 画布语义（Canvas Accessibility）
 
-**目录：** [为什么需要](#为什么需要) · [CanvasNode](#canvasnode) · [CanvasSemantics](#canvassemantics) · [几何自由函数](#几何自由函数) · [AccessKit 桥](#accesskit-桥) · [Canvas 元素接线](#canvas-元素接线) · [已接入的组件](#已接入的组件) · [表格/网格交叉引用](#表格网格交叉引用) · [最佳实践](#最佳实践)
+**目录：** [为什么需要](#为什么需要) · [CanvasNode](#canvasnode) · [CanvasSemantics](#canvassemantics) · [几何自由函数](#几何自由函数) · [AccessKit 桥](#accesskit-桥) · [Canvas 元素接线](#canvas-元素接线) · [已接入的组件](#已接入的组件) · [元素级 ARIA 构建器](#元素级-aria-构建器) · [表格/网格交叉引用](#表格网格交叉引用) · [最佳实践](#最佳实践)
 
 ## 为什么需要
 
@@ -94,10 +94,44 @@ self.bounds.size))` 把宽高都为 0 的节点展开成整块画布（构建语
   `RadarChart`（`:218`）、`TreeMap`（`:385`）、`LineChart`（`:300`）、`AreaChart`（`:340`）、
   `Chart`（`:800`）—— 后七个多为「整体摘要」型（用零尺寸节点 + 画布大小填充）。
 
+## 元素级 ARIA 构建器
+
+真实元素树（`Stateful<Div>` 及组件）不走画布语义，而是用 `StatefulInteractiveElement`
+上的一批构建器（`crates/rgpui/src/elements/div.rs`，全部要跟在 `.id(..)` 之后）：
+
+| 构建器 | 位置 | 落到 AccessKit |
+|--------|------|----------------|
+| `role(Role)` | `:725` | 覆盖默认 `GenericContainer`（`a11y_role()` 读的就是它） |
+| `aria_label` / `aria_description` / `aria_keyshortcuts` | `:1241`/`:1248`/`:1257` | `label` / `description` / `keyboard_shortcut` |
+| `aria_active_descendant()` | `:1273` | 焦点留在祖先、由它代读子项（页签栏、树、网格的 roving focus） |
+| `aria_selected(bool)` | `:1294` | `Selected` |
+| `aria_expanded(bool)` | `:1300` | `Expanded` |
+| `aria_disabled(bool)` | `:1309` | `disabled`（禁用组件必须报这个，否则辅助技术仍会朗读并可尝试操作） |
+| `aria_live(accesskit::Live)` | `:1318` | `live`：`Polite` 不打断当前朗读，`Assertive` 立即打断 |
+| `aria_toggled(Toggled)` | `:1324` | `toggled`（开关/按压态；AccessKit **没有** `Checked` 属性，别写 `aria_checked`） |
+| `aria_numeric_value` / `_step` / `aria_min`·`_max_numeric_value` | `:1330`/`:1336`/`:1354`/`:1360` | 滑杆数值三件套 |
+| `aria_value` / `aria_placeholder` | `:1342`/`:1348` | 文本值 / 占位提示 |
+| `aria_orientation` / `aria_level` | `:1366`/`:1372` | 方向 / 标题或树层级 |
+| `aria_position_in_set` / `aria_size_of_set` | `:1378`/`:1384` | 集合内位置 |
+| `aria_row_index` / `aria_column_index` / `aria_row_count` / `aria_column_count` | `:1390`/`:1396`/`:1402`/`:1408` | 表格/网格行列 |
+
+**实时区域（live region）**：内容会在没有用户操作时自己变化（提示、进度、日志）就要声明，
+否则屏幕阅读器只在用户主动去找它时才读出。要点是「**id 跨帧稳定 + 只挂一次**」：
+同一条位置复用同一 `.id(..)`，内容变化即为一次播报；每帧换 id 会被当成删一增一而反复播报。
+
+```rust
+// 已经在框架里落地的两处，可照抄
+div().id("toast-0").role(Role::Status).aria_live(accesskit::Live::Polite)  // elements/toast.rs
+div().id("notification-list").role(Role::Log).aria_live(accesskit::Live::Polite)  // menu/notification.rs
+```
+
+`Role::Status` 隐含 polite 播报、`Role::Log` 用于追加式日志；两者都要与
+`aria_live` 一起写，语义角色才是完整的。
+
 ## 表格/网格交叉引用
 
 表格/网格类**不走**画布语义（它们是真实元素树），而是给 `Stateful<Div>` 挂 `StatefulInteractiveElement`
-的 `aria_row_index`/`aria_column_index`（`elements/div.rs:1239`/`:1372`/`:1378`）：
+的 `aria_row_index`/`aria_column_index`（`elements/div.rs:1390`/`:1396`）：
 `DataTable` 根 `Role::Table`、行 `Role::Row`、单元格 `Role::Cell` + 行列索引；
 `SheetGrid`（`spreadsheet` feature）根 `Role::Grid`、单元格 `Role::Cell`、列头 `Role::ColumnHeader`、
 行头 `Role::RowHeader`。详见 `list-table-tabs.md`。

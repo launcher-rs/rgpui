@@ -6,9 +6,10 @@ use crate::elements::checkbox::checkbox_check_icon;
 use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, AnyElement, App, Axis, ComponentText, Disableable, ElementId, ElementSize,
-    FocusableExt as _, InteractiveElement, IntoElement, Orientation, ParentElement, RenderOnce,
-    Role, Selectable, SharedString, Sizable, StatefulInteractiveElement, StyleRefinement, Styled,
-    StyledExt as _, Toggled, Window, div, h_flex, px, relative, rems, v_flex,
+    FocusableExt as _, InteractiveElement, IntoElement, ManagedTooltipExt as _, Orientation,
+    ParentElement, RenderOnce, Role, Selectable, SharedString, Sizable, StatefulInteractiveElement,
+    StyleRefinement, Styled, StyledExt as _, Toggled, Tooltip, Window, div, h_flex, px, relative,
+    rems, v_flex,
 };
 
 /// 单选按钮（Radio）元素。
@@ -196,6 +197,7 @@ impl Radio {
     /// 渲染树与原来完全一致（外层仍包一层 `div`）。
     fn render_box(self, window: &mut Window, cx: &mut App) -> crate::Stateful<crate::Div> {
         let checked = self.checked;
+        let tooltip = self.tooltip.clone();
         let focus_handle = window
             .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
             .read(cx)
@@ -218,13 +220,14 @@ impl Radio {
         self.base
             .id(self.id.clone())
             .role(Role::RadioButton)
+            .aria_disabled(disabled)
             .aria_toggled(if checked {
                 Toggled::True
             } else {
                 Toggled::False
             })
-            // 单选兼具"切换"与"选中"语义，不同辅助技术各读一种，两边都报。
-            .aria_selected(checked)
+            // ARIA 里单选按钮的选中态是 aria-checked（accesskit 的 Toggled），
+            // aria-selected 不是 Role::RadioButton 支持的属性，不再重复上报。
             .when_some(
                 self.label.as_ref().map(|l| l.get_text(cx)),
                 |this, label| this.aria_label(label),
@@ -242,6 +245,12 @@ impl Radio {
             .items_start()
             .line_height(relative(1.))
             .rounded(cx.theme().radius * 0.5)
+            .when_some(tooltip, |this, tooltip| {
+                // 悬停提示：与 `Checkbox` / `Button` 同一套受管 tooltip
+                this.managed_tooltip(move |window, cx| {
+                    Tooltip::new(tooltip.clone()).build(window, cx)
+                })
+            })
             .focus_ring(is_focused, px(2.), window, cx)
             .map(|this| match self.size {
                 ElementSize::XSmall => this.text_xs(),
@@ -483,22 +492,24 @@ mod tests {
         use crate::{Element as _, IntoElement as _, Render, canvas};
         use std::sync::{Arc, Mutex};
 
-        type Captured = Arc<Mutex<Option<accesskit::Node>>>;
+        type Captured = Arc<Mutex<Option<[accesskit::Node; 2]>>>;
         struct Probe(Captured);
         impl Render for Probe {
             fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
                 let captured = self.0.clone();
                 canvas(
                     move |_, window, cx| {
-                        let el = Radio::new("choice")
-                            .label("选项 A")
-                            .checked(true)
-                            .render_box(window, cx)
-                            .into_element();
-                        assert_eq!(el.a11y_role(), Some(Role::RadioButton));
-                        let mut node = accesskit::Node::new(Role::RadioButton);
-                        el.write_a11y_info(&mut node);
-                        *captured.lock().unwrap() = Some(node);
+                        let mut info = |radio: Radio| {
+                            let el = radio.render_box(window, cx).into_element();
+                            assert_eq!(el.a11y_role(), Some(Role::RadioButton));
+                            let mut node = accesskit::Node::new(Role::RadioButton);
+                            el.write_a11y_info(&mut node);
+                            node
+                        };
+                        *captured.lock().unwrap() = Some([
+                            info(Radio::new("choice").label("选项 A").checked(true)),
+                            info(Radio::new("off").disabled(true)),
+                        ]);
                     },
                     |_, _, _, _| {},
                 )
@@ -521,10 +532,60 @@ mod tests {
 
             let _ = window.draw(cx);
         });
-        let node = result.lock().unwrap().take().unwrap();
+        let [node, disabled] = result.lock().unwrap().take().unwrap();
         assert_eq!(node.label(), Some("选项 A"));
         assert_eq!(node.toggled(), Some(Toggled::True));
-        assert_eq!(node.is_selected(), Some(true));
+        assert_eq!(
+            node.is_selected(),
+            None,
+            "RadioButton 的选中态走 aria-checked，不再写非法的 aria-selected"
+        );
+        assert!(!node.is_disabled());
         assert!(node.supports_action(accesskit::Action::Click));
+        assert!(disabled.is_disabled(), "禁用态要写进无障碍树");
+    }
+
+    /// 悬停 `.tooltip()` 必须真的弹出浮层。
+    ///
+    /// 回归测试：`tooltip` 字段此前只存不渲染，调用方设了提示什么也不发生。
+    #[rgpui::test]
+    fn radio_tooltip_shows_on_hover(cx: &mut crate::TestAppContext) {
+        use crate::{AnyWindowHandle, AppContext as _, Render, Root, point};
+
+        struct Probe;
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    Radio::new("radio-tooltip")
+                        .label("选项 A")
+                        .tooltip("提示文本"),
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let window = cx.add_window(|_, _| Probe);
+        let any_window = AnyWindowHandle::from(window);
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            // 悬停判定发生在绘制阶段：先把鼠标放进单选框盒内，再绘制一次
+            window.simulate_mouse_move(point(px(4.), px(4.)), cx);
+        })
+        .unwrap();
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(600));
+        cx.run_until_parked();
+
+        let showing = cx
+            .update_window(any_window, |_, window, cx| {
+                Root::tooltip_overlay(window, cx)
+                    .is_some_and(|overlay| overlay.read(cx).is_showing())
+            })
+            .unwrap();
+        assert!(showing, "Radio 的 .tooltip() 应在悬停后显示浮层");
     }
 }

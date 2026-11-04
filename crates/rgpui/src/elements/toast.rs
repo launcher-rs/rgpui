@@ -3,8 +3,8 @@
 //! 提供可堆叠、自动消失的 Toast 通知组件
 
 use crate::{
-    AnyElement, Context, IntoElement, ParentElement, Pixels, Render, SharedString, Styled, Window,
-    div, px,
+    AnyElement, Context, ElementId, InteractiveElement as _, IntoElement, ParentElement, Pixels,
+    Render, Role, SharedString, StatefulInteractiveElement as _, Styled, Window, div, px,
 };
 use std::time::Duration;
 
@@ -173,11 +173,18 @@ impl Render for ToastStack {
 /// 渲染单个 Toast 通知
 fn render_toast(
     toast: &Toast,
-    _index: usize,
+    index: usize,
     position: ToastPosition,
     offset: Pixels,
 ) -> AnyElement {
     let mut toast_div = div()
+        // 有 ID 才会进无障碍树；同一条位置复用 ID，内容变化即成为一次实时播报。
+        .id(ElementId::Name(format!("toast-{index}").into()))
+        // Toast 是自动出现又消失的消息：按 `status` 语义 + 礼貌播报，
+        // 不打断辅助技术正在朗读的内容。
+        .role(Role::Status)
+        .aria_live(accesskit::Live::Polite)
+        .aria_label(toast.title.clone())
         .absolute()
         .w(px(320.0))
         .rounded_lg()
@@ -205,4 +212,53 @@ fn render_toast(
     };
 
     toast_div.into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AppContext as _, Entity, Render, TestAppContext};
+
+    /// 承载 Toast 堆栈的窗口视图。
+    struct StackProbe {
+        stack: Entity<ToastStack>,
+    }
+
+    impl Render for StackProbe {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(self.stack.clone())
+        }
+    }
+
+    /// Toast 必须是礼貌实时区域：它自己出现自己消失，用户无法主动去「按」它。
+    #[rgpui::test]
+    fn toast_is_a_polite_live_region(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        let stack = cx.update(|cx| cx.new(|_| ToastStack::new()));
+        let (_handle, mut cx) = cx.add_window_view(move |window, cx| {
+            stack.update(cx, |stack, cx| {
+                stack.push(Toast::new("已保存").body("3 个文件"), window, cx);
+            });
+            StackProbe { stack }
+        });
+        cx.update(|window, cx| {
+            window.force_a11y_active_for_test();
+            let _ = window.draw(cx);
+        });
+        let json = cx
+            .update(|window, _| window.debug_a11y_tree_json())
+            .expect("无障碍树未捕获");
+        let tree: serde_json::Value = serde_json::from_str(&json).expect("树 JSON 必可解析");
+        let nodes = tree["nodes"].as_object().expect("nodes 必为对象");
+
+        let node = nodes
+            .values()
+            .find(|node| node["aria"]["role"] == "Status")
+            .expect("Toast 必须以 Status 角色出现在无障碍树里");
+        assert_eq!(
+            node["aria"]["live"], "Polite",
+            "Toast 要声明礼貌实时区域，通知到达时才会被读出"
+        );
+        assert_eq!(node["aria"]["label"], "已保存");
+    }
 }

@@ -5,9 +5,10 @@ use std::{sync::Arc, time::Duration};
 use crate::prelude::FluentBuilder as _;
 use crate::{
     ActiveTheme, Animation, AnimationExt, AnyElement, App, ComponentText, Disableable, ElementId,
-    ElementSize, FocusableExt as _, IconNamed, InteractiveElement, IntoElement, ParentElement,
-    RenderOnce, Role, Selectable, SharedString, Sizable, StatefulInteractiveElement, Styled,
-    StyledExt as _, Svg, Toggled, Window, div, px, relative, rems, svg,
+    ElementSize, FocusableExt as _, IconNamed, InteractiveElement, IntoElement,
+    ManagedTooltipExt as _, ParentElement, RenderOnce, Role, Selectable, SharedString, Sizable,
+    StatefulInteractiveElement, Styled, StyledExt as _, Svg, Toggled, Tooltip, Window, div, px,
+    relative, rems, svg,
 };
 
 /// 复选框（Checkbox）元素。
@@ -35,7 +36,7 @@ pub struct Checkbox {
     tab_index: isize,
     /// 值变更回调（参数为变更后的选中状态，按值传递）
     on_change: Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync + 'static>>,
-    /// 提示文本（当前简化存储，暂不渲染）
+    /// 提示文本（悬停时以 `Tooltip` 浮层显示）
     tooltip: Option<SharedString>,
 }
 
@@ -234,6 +235,7 @@ impl Checkbox {
     /// 渲染树与原来完全一致（外层仍包一层 `div`）。
     fn render_box(self, window: &mut Window, cx: &mut App) -> crate::Stateful<crate::Div> {
         let checked = self.checked;
+        let tooltip = self.tooltip.clone();
 
         let focus_handle = window
             .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
@@ -256,6 +258,7 @@ impl Checkbox {
         self.base
             .id(self.id.clone())
             .role(Role::CheckBox)
+            .aria_disabled(self.disabled)
             .aria_toggled(if checked {
                 Toggled::True
             } else {
@@ -288,6 +291,12 @@ impl Checkbox {
                 this.text_color(cx.theme().muted_foreground)
             })
             .rounded(cx.theme().radius * 0.5)
+            .when_some(tooltip, |this, tooltip| {
+                // 悬停提示：与 `Button` 同一套受管 tooltip（浮层按元素 bounds 定位）
+                this.managed_tooltip(move |window, cx| {
+                    Tooltip::new(tooltip.clone()).build(window, cx)
+                })
+            })
             .focus_ring(is_focused, px(2.), window, cx)
             .refine_style(&self.style)
             .child(
@@ -432,10 +441,12 @@ mod tests {
         let [unchecked, checked, disabled] = result.lock().unwrap().take().unwrap();
         assert_eq!(unchecked.label(), Some("记住我"));
         assert_eq!(unchecked.toggled(), Some(Toggled::False));
+        assert!(!unchecked.is_disabled());
         assert!(unchecked.supports_action(accesskit::Action::Click));
         assert_eq!(checked.toggled(), Some(Toggled::True));
         assert!(checked.supports_action(accesskit::Action::Click));
         // 禁用态不挂点击：辅助技术不提供激活动作。
+        assert!(disabled.is_disabled(), "禁用态要写进无障碍树");
         assert!(!disabled.supports_action(accesskit::Action::Click));
     }
 
@@ -455,5 +466,51 @@ mod tests {
             let unchecked = check_svg(ElementSize::Medium, false, false, cx);
             assert!(!unchecked.has_embedded_data());
         });
+    }
+
+    /// 悬停 `.tooltip()` 必须真的弹出浮层。
+    ///
+    /// 回归测试：`tooltip` 字段此前只存不渲染，构造单测（`test_checkbox_build`）
+    /// 只看得到 `Some(..)`，调用方设了提示却什么也不发生。
+    #[rgpui::test]
+    fn checkbox_tooltip_shows_on_hover(cx: &mut TestAppContext) {
+        use crate::{AnyWindowHandle, AppContext as _, Render, Root, point};
+
+        struct Probe;
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut crate::Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    Checkbox::new("cb-tooltip")
+                        .label("复选")
+                        .tooltip("提示文本"),
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let window = cx.add_window(|_, _| Probe);
+        let any_window = AnyWindowHandle::from(window);
+
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            // 悬停判定发生在绘制阶段：先把鼠标放进复选框盒内，再绘制一次
+            window.simulate_mouse_move(point(px(4.), px(4.)), cx);
+        })
+        .unwrap();
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        // 首次显示有 500ms 延迟（`SHOW_DELAY`），推进模拟时钟到延迟之后
+        cx.executor().advance_clock(Duration::from_millis(600));
+        cx.run_until_parked();
+
+        let showing = cx
+            .update_window(any_window, |_, window, cx| {
+                Root::tooltip_overlay(window, cx)
+                    .is_some_and(|overlay| overlay.read(cx).is_showing())
+            })
+            .unwrap();
+        assert!(showing, "Checkbox 的 .tooltip() 应在悬停后显示浮层");
     }
 }

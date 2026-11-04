@@ -32,54 +32,53 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 
 ## Platform trait
 
-`pub trait Platform: 'static`（`platform.rs:265`），约 35+ 自有方法，按类别：
+`pub trait Platform: 'static`（`platform.rs:302`），约 35+ 自有方法，按类别：
 
 | 类别 | 方法（行号） |
 |------|-------------|
-| 执行器/文本 | `background_executor`(:267)、`foreground_executor`(:269)、`text_system`(:271) |
-| 生命周期 | `run`(:274)、`quit`(:276)、`restart`(:278)、`activate`(:280)、`hide`(:282)、`hide_other_apps`/`unhide_other_apps`(:284/:286) |
-| 显示 | `displays`(:289)、`primary_display`(:291)、`active_window`(:293)、`window_stack`(:295)、`screen_capture_sources`(:305)、`is_screen_capture_supported`(:300) |
-| 外观 | `window_appearance`(:325)、`reduce_motion_enabled`(:331，系统「减少动态效果」)、`button_layout`(:336) |
-| URL | `open_url`(:341)、`on_open_urls`(:343)、`register_url_scheme`(:345) |
-| 文件 | `prompt_for_paths`(:348)、`prompt_for_new_path`(:353)、`reveal_path`(:361)、`open_with_system`(:363) |
-| 菜单 | `set_menus`(:371)、`get_menus`(:373)、`set_dock_menu`(:378)、`perform_dock_menu_action`(:380)、`add_recent_document`(:382)、`update_jump_list`(:384)、`on_app_menu_action`(:392)、`on_will_open_app_menu`(:394)、`on_validate_app_menu_command`(:396) |
-| 电源/热 | `thermal_state`(:399)、`on_thermal_state_change`(:401)、`on_system_power_event`(:518)、`on_system_wake`(:521)、`start_power_save_blocker`(:530)、`system_idle_time`(:538) |
-| 系统信息 | `os_info`(:557)、`focused_window_info`(:500)、`network_status`(:543)、`compositor_name`(:404)、`app_path`(:408) |
-| 剪贴板 | `read_from_clipboard`/`write_to_clipboard`(:425/:427)、`read_from_primary`/`write_to_primary`(:431/:434)、`read_from_find_pasteboard`/`write_to_find_pasteboard`(:438/:441)；富负载用 `ClipboardEntry::Format(ClipboardFormat)`（`new_html`/`new_rtf`/`new_with_format`，MIME 常量 `ClipboardFormat::HTML` 等，读取 `text`/`html`/`rtf`/`format`/`formats`） |
-| 凭据 | `write_credentials`/`read_credentials`/`delete_credentials`(:444/:446/:448) |
-| 键盘 | `keyboard_layout`(:451)、`keyboard_mapper`(:453)、`on_keyboard_layout_change`(:455) |
-| 托盘 | `set_tray`(:458)、`set_tray_icon`(:460)、`set_tray_menu`(:462)、`set_tray_tooltip`(:464)、`set_tray_panel_mode`(:466)、`get_tray_icon_bounds`(:468)、`on_tray_icon_event`(:472)、`on_tray_menu_action`(:474) |
-| 热键 | `register_global_hotkey`(:477)、`unregister_global_hotkey`(:481)、`on_global_hotkey`(:483) |
-| 通知 | `show_notification`(:486) |
-| 自启动 | `set_auto_launch`(:491)、`is_auto_launch_enabled`(:495) |
-| 权限 | `check_permission`(:511)、`request_permission`(:515) |
-| 光标 | `set_cursor_style`(:413)、`hide_cursor_until_mouse_moves`(:416)、`is_cursor_visible`(:419)、`should_auto_hide_scrollbars`(:422) |
-| 上下文菜单 | `show_context_menu`(:548) |
+| 执行器/文本 | `background_executor`(:304)、`foreground_executor`(:306)、`text_system`(:308) |
+| 生命周期 | `run`(:311)、`quit`(:313)、`restart`(:315)、`activate`(:317)、`hide`(:319)、`hide_other_apps`/`unhide_other_apps`(:321/:323) |
+| 显示 | `displays`(:326)、`primary_display`(:328)、`active_window`(:330)、`window_stack`(:332)、`is_screen_capture_supported`(:337)、`screen_capture_sources`(:342) |
+| 外观 | `window_appearance`(:362)、`reduce_motion_enabled`(:368，系统「减少动态效果」)、`button_layout`(:373) |
+| URL | `open_url`(:378)、`on_open_urls`(:380)、`register_url_scheme`(:382) |
+| 文件 | `prompt_for_paths`(:385)、`prompt_for_new_path`(:390)、`can_select_mixed_files_and_dirs`(:396)、`reveal_path`(:398)、`open_with_system`(:400) |
+| 菜单 | `set_menus`(:408)、`get_menus`(:410)、`set_dock_menu`(:415)、`perform_dock_menu_action`(:417)、`add_recent_document`(:419)、`update_jump_list`(:421)、`on_app_menu_action`(:429)、`on_will_open_app_menu`(:431)、`on_validate_app_menu_command`(:433) |
+| 电源/热 | `thermal_state`(:436)、`on_thermal_state_change`(:438)、`on_system_power_event`(:555)、`on_system_wake`(:558)、`start_power_save_blocker`(:567)、`system_idle_time`(:575) |
+| 系统信息 | `os_info`(:585)、`focused_window_info`(:537)、`network_status`(:580)、`compositor_name`(:441)、`app_path`(:445) |
+| 剪贴板 | `read_from_clipboard`/`write_to_clipboard`(:462/:464)、`read_from_primary`/`write_to_primary`(:468/:471)、`read_from_find_pasteboard`/`write_to_find_pasteboard`(:475/:478)；富负载用 `ClipboardEntry::Format(ClipboardFormat)`（`new_html`/`new_rtf`/`new_with_format`，MIME 常量 `ClipboardFormat::HTML` 等，读取 `text`/`html`/`rtf`/`format`/`formats`） |
+| 凭据 | `write_credentials`/`read_credentials`/`delete_credentials`(:481/:483/:485) |
+| 键盘 | `keyboard_layout`(:488)、`keyboard_mapper`(:490)、`on_keyboard_layout_change`(:492) |
+| 托盘 | `set_tray`(:495)、`set_tray_icon`(:497)、`set_tray_menu`(:499)、`set_tray_tooltip`(:501)、`set_tray_panel_mode`(:503)、`get_tray_icon_bounds`(:505)、`on_tray_icon_event`(:509)、`on_tray_menu_action`(:511) |
+| 热键 | `register_global_hotkey`(:514)、`unregister_global_hotkey`(:518)、`on_global_hotkey`(:520) |
+| 通知 | `show_notification`(:523) |
+| 自启动 | `set_auto_launch`(:528)、`is_auto_launch_enabled`(:532) |
+| 权限 | `check_permission`(:548)、`request_permission`(:552) |
+| 光标 | `set_cursor_style`(:450)、`hide_cursor_until_mouse_moves`(:453)、`is_cursor_visible`(:456)、`should_auto_hide_scrollbars`(:459) |
 
-类型：`SystemPowerEvent{Sleep,WakeUp}`(:141)、
-`PowerSaveBlockerKind{PreventSleep,PreventDisplaySleep}`(:150)、`trait PowerSaveBlocker`(:161)、
-`OsInfo{name,version}`(:165)、`PermissionStatus{NotDetermined,Granted,Denied,Unavailable}`(:174)、
-`PermissionType{Accessibility,ScreenCapture,InputMonitoring}`(:189)、
-`NetworkStatus{Disconnected,ConnectedBelowRequired,Connected}`(:208)、
-`FocusedWindowInfo{app_name,window_title,bundle_id,pid}`(:219)、`WindowPosition`(:232)。
+类型：`SystemPowerEvent{Sleep,WakeUp}`(:178)、
+`PowerSaveBlockerKind{PreventSleep,PreventDisplaySleep}`(:187)、`trait PowerSaveBlocker`(:198)、
+`OsInfo{name,version}`(:202)、`PermissionStatus{NotDetermined,Granted,Denied,Unavailable}`(:211)、
+`PermissionType{Accessibility,ScreenCapture,InputMonitoring}`(:226)、
+`NetworkStatus{Disconnected,ConnectedBelowRequired,Connected}`(:245)、
+`FocusedWindowInfo{app_name,window_title,bundle_id,pid}`(:256)、`WindowPosition`(:269)。
 
 ## PlatformWindow
 
-`pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle`（`platform.rs:1114`）。
-核心：`bounds`(:1116)、`is_maximized`(:1118)、`resize`(:1124)、`scale_factor`(:1126)、
-`appearance`(:1128)、`activate`(:1150)、`is_active`(:1152)、`set_title`(:1158)、
-`minimize`(:1162)、`zoom`(:1164)、`toggle_fullscreen`(:1166)、`draw`(:1192)、
-`on_input`(:1172)、`on_resize`(:1178)、`on_should_close`(:1182)、
-`on_appearance_changed`(:1188)、`is_subpixel_rendering_supported`(:1198)、
-`gpu_specs`(:1311)、`set_input_handler`/`take_input_handler`(:1138/:1140)。
+`pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle`（`platform.rs:1142`）。
+核心：`bounds`(:1144)、`is_maximized`(:1146)、`resize`(:1152)、`scale_factor`(:1154)、
+`appearance`(:1156)、`activate`(:1178)、`is_active`(:1180)、`set_title`(:1186)、
+`minimize`(:1190)、`zoom`(:1192)、`toggle_fullscreen`(:1194)、`draw`(:1220)、
+`on_input`(:1200)、`on_resize`(:1206)、`on_should_close`(:1210)、
+`on_appearance_changed`(:1216)、`is_subpixel_rendering_supported`(:1226)、
+`gpu_specs`(:1339)、`set_input_handler`/`take_input_handler`(:1166/:1168)。
 
 **rgpui 自有 API：**
-`get_raw_handle() -> HWND`（`:1278`，**仅 Windows**，后端 `open_window` 登记 HWND 用）、
-`set_mouse_passthrough(bool)`（`:1363`）、`set_position(Point<Pixels>)`（`:1357`）、
-`hide()`（`:1360`）、`set_titlebar_visible(bool)`（`:1369`）、
-`set_input_region(Option<&[Bounds<Pixels>]>)`（`:1293`）、`request_attention()`（`:1354`）、
-`set_exclusive_zone(Pixels)`（`:1344`）、`set_exclusive_edge`（`:1351`）、
-`set_text_content_type`（`:1373`）、`supports_dom`/`dom_tree_update`/`on_dom_event`/`on_dom_scroll`（`:1205`-`:1231`，`dom-backend`）。
+`get_raw_handle() -> HWND`（`:1306`，**仅 Windows**，后端 `open_window` 登记 HWND 用）、
+`set_mouse_passthrough(bool)`（`:1391`）、`set_position(Point<Pixels>)`（`:1385`）、
+`hide()`（`:1388`）、`set_titlebar_visible(bool)`（`:1397`）、
+`set_input_region(Option<&[Bounds<Pixels>]>)`（`:1321`）、`request_attention()`（`:1382`）、
+`set_exclusive_zone(Pixels)`（`:1372`）、`set_exclusive_edge`（`:1379`）、
+`set_text_content_type`（`:1401`）、`supports_dom`/`dom_tree_update`/`on_dom_event`/`on_dom_scroll`（`:1233`-`:1259`，`dom-backend`）。
 
 ## App 包装方法
 
@@ -87,38 +86,38 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 
 | 方法 | 位置 |
 |------|------|
-| `quit()` | `:1015` |
-| `reduce_motion()` | `:1038` |
-| `windows()` | `:1240` |
-| `activate(bool)` | `:1313` |
-| `hide()` | `:1318` |
-| `open_url(&str)` | `:1468` |
-| `register_url_scheme(&str) -> Task<Result<()>>` | `:1476` |
-| `prompt_for_paths(...)` | `:1504` |
-| `reveal_path(&Path)` | `:1545` |
-| `open_with_system(&Path)` | `:1550` |
-| `restart()` | `:1560` |
-| `set_menus(...)` / `get_menus()` | `:2471` / `:2477` |
-| `on_app_menu_action(FnMut(&dyn Action, &mut App))` | `:2487` |
-| `set_dock_menu(Vec<MenuItem>)` | `:2524` |
-| `add_recent_document(&Path)` | `:2537` |
-| `update_jump_list(...)` | `:2543` |
-| `show_notification(title, body) -> Result<()>` | `:2578` |
-| `push_notification(title, message) -> Result<()>` | `:2585` |
-| `check_permission(PermissionType) -> PermissionStatus` | `:2626` |
-| `request_permission(PermissionType)` | `:2631` |
-| `os_info() -> OsInfo` | `:2636` |
-| `system_idle_time() -> Option<Duration>` | `:2641` |
-| `network_status() -> NetworkStatus` | `:2646` |
-| `on_system_power_event(...)` | `:2655` |
-| `start_power_save_blocker(...)` | `:2671` |
-| `set_auto_launch(app_id, enabled)` | `:2679` |
-| `is_auto_launch_enabled(app_id)` | `:2684` |
-| `focused_window_info() -> Option<FocusedWindowInfo>` | `:2689` |
-| `register_global_hotkey(id, &Keystroke)` | `:2747` |
-| `unregister_global_hotkey(id)` | `:2755` |
-| `on_global_hotkey(FnMut(u32, &mut App))` | `:2760` |
-| `set_keep_alive_without_windows(bool)` | `:2618` |
+| `quit()` | `:1058` |
+| `reduce_motion()` | `:1081` |
+| `windows()` | `:1283` |
+| `activate(bool)` | `:1357` |
+| `hide()` | `:1362` |
+| `open_url(&str)` | `:1512` |
+| `register_url_scheme(&str) -> Task<Result<()>>` | `:1520` |
+| `prompt_for_paths(...)` | `:1548` |
+| `reveal_path(&Path)` | `:1589` |
+| `open_with_system(&Path)` | `:1594` |
+| `restart()` | `:1604` |
+| `set_menus(...)` / `get_menus()` | `:2530` / `:2536` |
+| `on_app_menu_action(FnMut(&dyn Action, &mut App))` | `:2546` |
+| `set_dock_menu(Vec<MenuItem>)` | `:2583` |
+| `add_recent_document(&Path)` | `:2596` |
+| `update_jump_list(...)` | `:2602` |
+| `show_notification(title, body) -> Result<()>` | `:2637` |
+| `push_notification(title, message) -> Result<()>` | `:2644` |
+| `check_permission(PermissionType) -> PermissionStatus` | `:2685` |
+| `request_permission(PermissionType)` | `:2690` |
+| `os_info() -> OsInfo` | `:2695` |
+| `system_idle_time() -> Option<Duration>` | `:2700` |
+| `network_status() -> NetworkStatus` | `:2705` |
+| `on_system_power_event(...)` | `:2714` |
+| `start_power_save_blocker(...)` | `:2730` |
+| `set_auto_launch(app_id, enabled)` | `:2738` |
+| `is_auto_launch_enabled(app_id)` | `:2743` |
+| `focused_window_info() -> Option<FocusedWindowInfo>` | `:2748` |
+| `register_global_hotkey(id, &Keystroke)` | `:2806` |
+| `unregister_global_hotkey(id)` | `:2814` |
+| `on_global_hotkey(FnMut(u32, &mut App))` | `:2819` |
+| `set_keep_alive_without_windows(bool)` | `:2677` |
 
 ## 窗口方法
 
@@ -135,12 +134,12 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 `TrayMenuItem::{Action{label,id},Separator,Submenu{label,items},Toggle{label,checked,id}}`（`:20`）、
 `Tray{tooltip,icon,icon_data,menu_builder,visible}`（`:50`）。
 
-**App 方法：** `set_tray(Tray, Option<Vec<MenuItem>>)`（`app.rs:2552`）、
-`set_tray_icon(Option<&[u8]>)`（`:2557`）、`set_tray_menu(Vec<TrayMenuItem>)`（`:2562`）、
-`set_tray_tooltip(&str)`（`:2567`）、`set_tray_panel_mode(bool)`（`:2573`）、
-`tray_icon_bounds() -> Option<Bounds<Pixels>>`（`:2590`）、
-`on_tray_icon_event(FnMut(TrayIconEvent, &mut App))`（`:2595`）、
-`on_tray_menu_action(FnMut(SharedString, &mut App))`（`:2605`）。
+**App 方法：** `set_tray(Tray, Option<Vec<MenuItem>>)`（`app.rs:2611`）、
+`set_tray_icon(Option<&[u8]>)`（`:2616`）、`set_tray_menu(Vec<TrayMenuItem>)`（`:2621`）、
+`set_tray_tooltip(&str)`（`:2626`）、`set_tray_panel_mode(bool)`（`:2632`）、
+`tray_icon_bounds() -> Option<Bounds<Pixels>>`（`:2649`）、
+`on_tray_icon_event(FnMut(TrayIconEvent, &mut App))`（`:2654`）、
+`on_tray_menu_action(FnMut(SharedString, &mut App))`（`:2664`）。
 图标接受 PNG/ICO 字节。Windows 实现见 `windows.md`。
 
 ## 权限
@@ -151,10 +150,54 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 
 ## 单实例
 
-`pub mod single_instance;`（`rgpui.rs:166`）+ `pub use single_instance::*`（`:512`）：
-`AlreadyRunning`（`single_instance/mod.rs:10`）、`SingleInstance`（`:21`）：
-`acquire(app_id) -> Result<Self, AlreadyRunning>`（`:45`）、`on_activate(Fn())`（`:124`）、
-`send_activate_to_existing(app_id)`（`:169`）。
+`pub mod single_instance;`（`rgpui.rs:183`）+ `pub use single_instance::*`（`:615`）：
+`AlreadyRunning`（`single_instance/mod.rs:24`）、`SingleInstance`（`:86`）：
+`acquire(app_id) -> Result<Self, AlreadyRunning>`（`:129`）、
+`on_activate(&App, FnMut(&mut App))`（`:297`）、`send_activate_to_existing(app_id)`（`:364`）。
+
+`acquire` 成功即启动激活监听线程；`send_activate_to_existing` 在 Windows（命名事件）与
+Unix（套接字）都可用，会触发已运行实例注册的回调。回调调度到**主线程**执行，可以直接
+操作 `App`；注册之前到达的激活信号会缓存一次，注册后立即补发。
+
+```rust
+let instance = match SingleInstance::acquire(APP_ID) {
+    Ok(instance) => instance,
+    Err(_) => {
+        let _ = send_activate_to_existing(APP_ID);
+        std::process::exit(0);
+    }
+};
+
+application().run(move |cx| {
+    instance.on_activate(cx, |cx| {
+        cx.show_all_windows();
+        cx.activate(true);
+    });
+});
+```
+
+## 平台能力实现矩阵
+
+这些能力在 `Platform` 上有默认实现（返回空值/`None`），各后端必须真正实现，
+否则应用层拿到的是「看似成功」的空结果。1.6 审查后的实际实现：
+
+| 能力 | Windows（`rgpui-windows`） | macOS（`rgpui-macos`） | Linux（`rgpui-linux`） |
+|------|---------------------------|------------------------|------------------------|
+| 全局热键 | `RegisterHotKey` + `WM_HOTKEY` | Carbon `RegisterEventHotKey`（`global_hotkey.rs`） | X11 `XGrabKey`；Wayland 注册时如实报错 |
+| `os_info` | `RtlGetVersion`（按 build ≥ 22000 报 Windows 11） | `NSProcessInfo.operatingSystemVersion` | `/etc/os-release`，缺失时 `uname` |
+| `system_idle_time` | `GetLastInputInfo` + `GetTickCount64`（处理 32 位回绕） | `CGEventSourceSecondsSinceLastEventType` | D-Bus：ScreenSaver → Mutter IdleMonitor |
+| `network_status` | `InternetGetConnectedState` | `getifaddrs`（非回环、UP、有地址） | 门户 `NetworkMonitor`，回退 `/sys/class/net` |
+| 电源事件 | `PowerRegisterSuspendResumeNotification` → 主线程消息窗口 | `NSWorkspace` WillSleep/DidWake 通知 | login1 `PrepareForSleep` 信号 |
+| 电源抑制 | `SetThreadExecutionState(ES_CONTINUOUS|…)` | IOKit `IOPMAssertionCreateWithName` | logind `Inhibit`（fd 持有即生效） |
+| `register_url_scheme` | `HKCU\Software\Classes\<scheme>` | `NSWorkspace.setDefaultApplicationAtURL`（macOS 12+） | `$XDG_DATA_HOME/applications` 桌面入口 + `xdg-mime default` |
+| `focused_window_info` | `GetForegroundWindow` + 进程查询 | `NSWorkspace` + `AXUIElement`（需辅助功能授权） | X11 EWMH；**Wayland 原生会话返回 `None`**（无等价协议） |
+
+两条易踩的边界：
+
+- `focused_window_info()` 返回 `None` 表示「问不到」，不是「没有窗口」；Linux
+  Wayland 会话必然走到这里，不要把它当成空数据渲染成 `"Unknown"`。
+- `system_idle_time()` 返回 `None` 表示本轮探测失败；Windows 的 `GetLastInputInfo`
+  成功但刚有输入时会给 `Some(0)`，两者语义不同。
 
 ## 最佳实践
 

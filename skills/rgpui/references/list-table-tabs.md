@@ -50,10 +50,10 @@
 `is_focused(window, cx)`（`:158`）、`set_selected_index`（`:179`）、`selected_index()`（`:190`）、
 `set_right_clicked_index`（`:195`）、`set_query(&str, window, cx)`（`:211`）、
 `set_item_to_measure_index`（`:222`）、`scroll_to_item`（`:233`）、`scroll_handle()`（`:253`）、
-`scroll_to_selected_item`（`:258`）、`reset_on_cancel(bool)`（`:346`）。
+`scroll_to_selected_item`（`:258`）、`reset_on_cancel(bool)`（`:345`）。
 
-`List<D>`（`:702`）：`new(&Entity<ListState<D>>)`（`:713`）、`scrollbar_visible(bool)`（`:722`）、
-`search_placeholder(impl Into<SharedString>)`（`:728`），`impl Styled`/`Sizable`。
+`List<D>`（`:712`）：`new(&Entity<ListState<D>>)`（`:723`）、`scrollbar_visible(bool)`（`:732`）、
+`search_placeholder(impl Into<SharedString>)`（`:738`），`impl Styled`/`Sizable`。
 
 `ListEvent`（`:32`）：`Select(IndexPath)` / `Confirm(IndexPath)` / `Cancel`。
 `ListItem`（`list_item.rs:27`）：`new(id)`（`:46`）、`separator()`（`:66`）、
@@ -75,6 +75,19 @@ impl ListDelegate for MyDelegate {
 let state = cx.new(|cx| ListState::new(MyDelegate { items }, window, cx));
 // 渲染：List::new(&state)
 ```
+
+## 委托式 List 的键盘、无障碍与分页
+
+- **快捷键**（`list::init` 绑定在 `key_context("List")` 上）：`up`/`down` 换行、
+  `enter` 确认、`secondary-enter` 次级确认、`escape` 取消。
+- **角色**：`selectable(true)`（默认）时容器 `list-state` 报 `Role::ListBox`，
+  纯展示列表报 `Role::List`；行报 `Role::ListItem` + `aria_selected`，
+  选中行同时声明 `aria_active_descendant()`（焦点留在容器上的代读模式）。
+- **`aria-posinset` 是跨节的全局序号**（第 1 节第 0 行在「2 条/节」的列表里是第 3 项），
+  `aria-size-of-set` 是全部条目数；两者单位必须一致，否则播报会重复「第 1 项，共 N 项」。
+- **`load_more_threshold()` 的单位是条目**，不是展平行：节头、节尾也是行，
+  按行数判定会让多节列表的分页明显滞后（每节一行时滞后近一倍）。
+  判定见 `ListState::should_load_more`，回归测试 `load_more_threshold_counts_items_not_rows`。
 
 ## Table（委托式）
 
@@ -136,17 +149,38 @@ let state = cx.new(|cx| ListState::new(MyDelegate { items }, window, cx));
 
 ## TabBar/Tab
 
-`TabBar`（`tabs/tab_bar.rs:40`）：`new(id)`（`:58`）、变体 `with_variant(TabVariant)`（`:78`）、
-`pill()`（`:84`）、`outline()`（`:90`）、`segmented()`（`:96`）、`underline()`（`:102`）、
-`menu(bool)`（`:108`）、`track_scroll(&ScrollHandle)`（`:114`）、`prefix`/`suffix`（`:120`/`:126`）、
-`child(impl Into<Tab>)`（`:138`）/`children`（`:132`）、`selected_index(usize)`（`:144`）、
-`last_empty_space`（`:150`）、`on_change`（`:158`）。
+`TabBar`（`tabs/tab_bar.rs:73`）：`new(id)`（`:91`）、变体 `with_variant(TabVariant)`（`:111`）、
+`pill()`（`:117`）、`outline()`（`:123`）、`segmented()`（`:129`）、`underline()`（`:135`）、
+`menu(bool)`（`:141`）、`track_scroll(&ScrollHandle)`（`:147`）、`prefix`/`suffix`（`:153`/`:159`）、
+`child(impl Into<Tab>)`（`:171`）/`children`（`:165`）、`selected_index(usize)`（`:177`）、
+`last_empty_space`（`:183`）、`on_change(impl Fn(usize, &mut Window, &mut App))`（`:191`）。
 
 `Tab`（`tabs/tab.rs:411`）：`new()`（`:487`）、`label`（`:492`）、`icon`（`:498`）、
 `with_variant`（`:504`）/`pill`/`outline`/`segmented`/`underline`（`:510`-`:528`）、
 `prefix`/`suffix`（`:534`/`:540`）、`disabled`（`:546`）、`on_click`（`:552`）。
 `impl From<&str/String/SharedString/Icon/IconName>`（`:432`-`:456`）。
 `TabVariant`（`:16`）：`Tab`(默认)/`Outline`/`Pill`/`Segmented`/`Underline`。
+
+### 键盘与无障碍
+
+页签栏用 **roving focus**（漫游焦点）：焦点停在**容器**上，容器报 `Role::TabList`
+（`tab_bar.rs:462`），每个页签报 `Role::Tab` + `aria_selected` + `aria_disabled`，
+选中项再声明 `aria_active_descendant()`（`tab.rs:734` 起），屏幕阅读器随焦点播报当前页签。
+
+键盘（需 `on_change`，没有回调时按键不生效）：
+
+| 按键 | 行为 |
+|------|------|
+| `→` / `↓` | 下一个页签（`advance_tab`，`tab_bar.rs:41`） |
+| `←` / `↑` | 上一个页签 |
+| `Home` / `Ctrl+Home` | 第一个可用页签（`edge_tab`，`tab_bar.rs:58`） |
+| `End` / `Ctrl+End` | 最后一个可用页签 |
+
+两条 helper 都**跳过 `disabled(true)` 的页签**，全部禁用时保持原位。
+容器自身是停靠点（`tab_stop(true)`），子页签不参与 Tab 链 —— 按 Tab 进出页签栏、
+按方向键在页签间移动，与 ARIA Authoring Practices 的 Tabs 模式一致。
+回归测试见 `tab_bar.rs` 的 `tab_bar_navigates_with_keyboard` /
+`tab_bar_and_tab_report_roles`。
 
 ## Tabs/Accordion/Collapsible
 

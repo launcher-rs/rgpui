@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     Animation, AnimationExt as _, AnyElement, App, Background, ClickEvent, Div, Edges, ElementId,
-    Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce,
+    Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role,
     SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
 
@@ -621,6 +621,8 @@ impl RenderOnce for Tab {
             hover_style = self.variant.disabled(self.selected, cx);
         }
         let tab_bar_prefix = self.tab_bar_prefix.unwrap_or_default();
+        // 标签文本随后会被内容闭包消费，无障碍标签先取一份。
+        let tab_label = self.label.clone();
         if !tab_bar_prefix {
             if self.ix == 0 && self.variant == TabVariant::Tab {
                 tab_style.borders.left = px(0.);
@@ -727,6 +729,13 @@ impl RenderOnce for Tab {
 
         self.base
             .id(self.ix)
+            // 页签语义：`TabList` 下的每个页签报 `Tab` + 选中态，
+            // 选中项再声明为活动后代，屏幕阅读器才会随焦点播报它。
+            .role(Role::Tab)
+            .aria_selected(self.selected)
+            .aria_disabled(self.disabled)
+            .when_some(tab_label, |this, label| this.aria_label(label))
+            .when(self.selected, |this| this.aria_active_descendant())
             .relative()
             .flex()
             .flex_wrap()

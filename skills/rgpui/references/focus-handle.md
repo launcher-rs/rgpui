@@ -24,7 +24,8 @@ struct FocusableComponent {
 impl FocusableComponent {
     fn new(cx: &mut Context<Self>) -> Self {
         Self {
-            focus_handle: cx.focus_handle(),
+            // 需要键盘可达的组件在创建句柄时就声明停靠点（见「键盘导航」）。
+            focus_handle: cx.focus_handle().tab_stop(true),
         }
     }
 }
@@ -36,6 +37,8 @@ impl FocusableComponent {
 impl Render for FocusableComponent {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
+            // 句柄在创建时就已 `.tab_stop(true)`（见上一节），
+            // 这里只负责跟踪焦点状态与样式。
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_enter))
             .child("可聚焦内容")
@@ -81,7 +84,8 @@ struct MyInput {
 
 impl MyInput {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let focus_handle = cx.focus_handle();
+        // 输入框必须是 Tab 停靠点，否则键盘用户走不到它。
+        let focus_handle = cx.focus_handle().tab_stop(true);
         let _subscriptions = vec![
             cx.on_focus(&focus_handle, window, Self::handle_focus),
             cx.on_blur(&focus_handle, window, Self::handle_blur),
@@ -116,22 +120,61 @@ impl Render for MyInput {
 
 ## 键盘导航
 
+### Tab 停靠点：`track_focus()` 本身不够
+
+`FocusHandle::new` / `Context::focus_handle()` 建的句柄默认 `tab_stop = false`
+（`window.rs:514-527`），`track_focus()`（`div.rs:748`）只登记句柄、不改这个标志，
+所以**光有 `track_focus()` 的元素按 Tab 是走不到的**。要成为键盘停靠点，在建句柄时
+显式声明（`FocusHandle::tab_stop`，`window.rs:555`）：
+
+```rust
+// ✅ 好：一次声明，全程是停靠点
+let focus_handle = cx.focus_handle().tab_stop(true);
+```
+
+组件里的真实写法与此一致，可作参照：`input/state.rs:482`、`table/state.rs:280`、
+`split_pane.rs:92`、`otp_input.rs:590`、`hotkey_input.rs:355`；
+`Button`/`Checkbox`/`Radio`/`Switch` 则把 `tab_stop(bool)` / `tab_index(isize)`
+透传成自己的构建器（`button.rs:394`/`:402`、`checkbox.rs:92`/`:98`、
+`radio.rs:90`/`:96`、`switch.rs:97`/`:103`）。
+
+反过来，**容器**要「自己不被 Tab 停到、但 `focus_next` 能进到内部第一个停靠点」时，
+用 div 上的 `.tab_stop(false)`（`div.rs:760`）——它作用在元素自建的句柄上
+（`div.rs:2246-2261`），须与 `.tab_index(..)` 配合；`.tab_index()`（`div.rs:769`）
+会顺带把 `tab_stop` 置真，`.tab_group()`（`div.rs:779`）让组内索引从 0 重新计数。
+
 ### Tab 顺序
 
-带有 `track_focus()` 的元素自动参与 Tab 导航。
+按「句柄是停靠点」的元素以文档顺序参与 Tab 导航；负 `tab_index` 排在前面，
+`0` 保持文档顺序，正数按索引升序（`window.rs:544`）。
 
 ```rust
 div()
     .child(
-        input1.track_focus(&focus1)  // Tab 顺序：1
+        input1.track_focus(&focus1.tab_stop(true))  // Tab 顺序：1
     )
     .child(
-        input2.track_focus(&focus2)  // Tab 顺序：2
+        input2.track_focus(&focus2.tab_stop(true))  // Tab 顺序：2
     )
     .child(
-        input3.track_focus(&focus3)  // Tab 顺序：3
+        input3.track_focus(&focus3.tab_stop(true))  // Tab 顺序：3
     )
 ```
+
+`FocusHandle` 的 `tab_stop`/`tab_index` 都按值消费自己，所以句柄字段要被再次命名时
+先克隆：`&self.focus_handle.clone().tab_stop(true)`。
+
+### 键盘激活与提示
+
+- **Enter / 空格 = 点击**：聚焦元素收到 Enter 或空格时，框架合成一次
+  `ClickEvent::Keyboard`（`elements/div.rs:3001-3017`）。因此可点击组件必须用
+  `.on_click(..)` 注册行为；只用 `.on_mouse_down(..)` 的组件鼠标能点、键盘不能。
+- **`.tooltip(..)` 随焦点展开**：div 内置提示（`elements/div.rs:1562`）除了鼠标悬停，
+  现在也响应键盘聚焦——聚焦即在元素下沿锚点处显示提示，失焦立即收起
+  （`show_or_hide_tooltip_on_focus`）。组件级 `Tooltip` / `TooltipOverlay`
+  （`elements/tooltip.rs:24`/`:370`）仍只由悬停驱动，需要键盘可达的提示就挂 div 的 `.tooltip(..)`。
+- **焦点可见**：`FocusableExt::focus_ring(is_focused, px(2.), window, cx)` 或
+  `StyledExt::focused_border(cx)`；无可见焦点指示的停靠点等于把键盘用户丢在黑暗里。
 
 ### 容器内的焦点
 
@@ -232,7 +275,11 @@ div()
 ### ❌ 不要：忘记跟踪焦点
 
 ```rust
-// ❌ 坏：没有 track_focus，键盘导航将不起作用
+// ❌ 坏：没有 track_focus，键盘导航与焦点样式都不起作用
 div()
     .on_action(cx.listener(Self::on_enter))
+
+// ❌ 坏：跟踪了焦点，但句柄没声明停靠点，Tab 依然走不到
+div()
+    .track_focus(&cx.focus_handle())
 ```

@@ -191,7 +191,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 `get_raw_handle`（仅 Windows，后端 `open_window` 登记 HWND 用）。
 `Platform` 约 35+ 自有方法：托盘 8 件套、全局热键、通知、电源、权限（统一走
 `check_permission` / `request_permission`，类别见 `PermissionType`）、
-网络状态、系统信息、Dock 菜单、上下文菜单、`reduce_motion_enabled`（系统「减少
+网络状态、系统信息、Dock 菜单、`reduce_motion_enabled`（系统「减少
 动态效果」，四平台各自读取，核心层每次建窗同步一次）；
 另 `WindowOptions.mouse_passthrough`、`WindowKind::Overlay`、Mica 材质、
 `tray.rs` / `single_instance/mod.rs`。
@@ -246,8 +246,11 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
 14. 仓库级守卫通过：`cargo test -p rgpui --test guards`（`crates/rgpui/tests/guards.rs`）。
     它校验文档围栏（doctest 会跑的 crate 禁止 ` ```ignore ` / ` ```no_run `）、
     `AGENTS.md` 组件索引 ↔ `examples/showcase/coverage.toml` ↔ 实际模块与 bin、
-    以及 `examples/*/Cargo.toml` 的 `required-features`。改组件索引、覆盖表、示例 bin
-    或文档示例后必须跑。
+    `examples/*/Cargo.toml` 的 `required-features`、内置图标清单，以及三条新增门禁：
+    `Platform`/`PlatformWindow` 每个非测试方法都要有真实调用点（否则应用层调不到）、
+    生产代码与示例禁止 `todo!`/`unimplemented!`、`prelude` 不得与 crate 根
+    同名不同源地重导出（已知例外登记在守卫白名单里并写明理由）。改组件索引、覆盖表、
+    示例 bin、文档示例或平台 trait 后必须跑。
 
 ## Web/WASM 开发
 

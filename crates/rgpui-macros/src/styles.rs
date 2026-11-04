@@ -960,8 +960,6 @@ fn box_prefixes() -> Vec<BoxStylePrefix> {
             fields: vec![quote! { min_size.width }],
             doc_string_prefix: "Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)",
         },
-        // TODO: These don't use the same size ramp as the others
-        // see https://tailwindcss.com/docs/max-width
         BoxStylePrefix {
             prefix: "min_h",
             auto_allowed: true,
@@ -974,16 +972,12 @@ fn box_prefixes() -> Vec<BoxStylePrefix> {
             fields: vec![quote! {max_size.width}, quote! {max_size.height}],
             doc_string_prefix: "Sets the maximum width and height of the element.",
         },
-        // TODO: These don't use the same size ramp as the others
-        // see https://tailwindcss.com/docs/max-width
         BoxStylePrefix {
             prefix: "max_w",
             auto_allowed: true,
             fields: vec![quote! { max_size.width }],
             doc_string_prefix: "Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)",
         },
-        // TODO: These don't use the same size ramp as the others
-        // see https://tailwindcss.com/docs/max-width
         BoxStylePrefix {
             prefix: "max_h",
             auto_allowed: true,
@@ -1011,6 +1005,11 @@ fn box_prefixes() -> Vec<BoxStylePrefix> {
     ]
 }
 
+/// 盒子样式后缀档位表（长度 / 百分比 / 自动）。
+///
+/// 所有盒子前缀（含 `min_h`、`max_w`、`max_h`）**共用这一份档位**：同名后缀在任何
+/// 前缀下都表示同一个长度（`w_4` 与 `max_w_4` 都是 1rem）。上游 gpui 曾给 max/min
+/// 系列另开 px 档位，这里刻意不跟 —— 两套数字会让迁移代码悄悄改变语义。
 fn box_style_suffixes() -> Vec<BoxStyleSuffix> {
     vec![
         BoxStyleSuffix {
@@ -1502,4 +1501,58 @@ fn border_suffixes() -> Vec<BorderStyleSuffix> {
             doc_string_suffix: "32px",
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 取出单个前缀生成的全部方法名。
+    ///
+    /// 先把生成的 token 解析回 `ItemFn` 再取标识符，避免字符串匹配把文档里的方法名也算进去。
+    fn generated_method_names(prefix_name: &str) -> Vec<String> {
+        let prefixes = box_prefixes()
+            .into_iter()
+            .filter(|prefix| prefix.prefix == prefix_name)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            prefixes.len(),
+            1,
+            "盒子前缀 {prefix_name} 必须且只能声明一次"
+        );
+
+        generate_box_style_methods(prefixes, box_style_suffixes(), Visibility::Inherited)
+            .into_iter()
+            .map(|tokens| {
+                syn::parse2::<syn::ItemFn>(tokens)
+                    .expect("生成的样式方法必须是函数项")
+                    .sig
+                    .ident
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// `min_h` / `max_w` / `max_h` 必须与 `w` / `h` 共用同一档位表。
+    ///
+    /// 这些前缀没有各自的档位配置，方法名只差前缀本身；一旦有人给某一个另开档位，
+    /// 同样的后缀就会在不同系列里表示不同长度，这个测试会立刻失败。
+    #[test]
+    fn size_prefixes_share_the_same_ramp() {
+        let reference = generated_method_names("w");
+
+        for prefix in [
+            "h", "size", "min_size", "min_w", "min_h", "max_size", "max_w", "max_h",
+        ] {
+            let expected = reference
+                .iter()
+                .map(|name| format!("{prefix}{}", &name["w".len()..]))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                generated_method_names(prefix),
+                expected,
+                "前缀 {prefix} 的档位与 w 不一致"
+            );
+        }
+    }
 }
