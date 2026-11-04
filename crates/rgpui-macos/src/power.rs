@@ -41,7 +41,7 @@ thread_local! {
     /// 电源事件回调；AppKit 在主线程投递通知，回调也只在主线程被取出
     static CALLBACKS: RefCell<PowerCallbacks> = RefCell::new(PowerCallbacks::default());
     /// 观察者是否已注册（进程内只注册一次）
-    static OBSERVERS_INSTALLED: Cell<bool> = Cell::new(false);
+    static OBSERVERS_INSTALLED: Cell<bool> = const { Cell::new(false) };
 }
 
 #[derive(Default)]
