@@ -151,10 +151,31 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 
 ## 单实例
 
-`pub mod single_instance;`（`rgpui.rs:166`）+ `pub use single_instance::*`（`:512`）：
-`AlreadyRunning`（`single_instance/mod.rs:10`）、`SingleInstance`（`:21`）：
-`acquire(app_id) -> Result<Self, AlreadyRunning>`（`:45`）、`on_activate(Fn())`（`:124`）、
-`send_activate_to_existing(app_id)`（`:169`）。
+`pub mod single_instance;`（`rgpui.rs:183`）+ `pub use single_instance::*`（`:615`）：
+`AlreadyRunning`（`single_instance/mod.rs:24`）、`SingleInstance`（`:86`）：
+`acquire(app_id) -> Result<Self, AlreadyRunning>`（`:129`）、
+`on_activate(&App, FnMut(&mut App))`（`:297`）、`send_activate_to_existing(app_id)`（`:364`）。
+
+`acquire` 成功即启动激活监听线程；`send_activate_to_existing` 在 Windows（命名事件）与
+Unix（套接字）都可用，会触发已运行实例注册的回调。回调调度到**主线程**执行，可以直接
+操作 `App`；注册之前到达的激活信号会缓存一次，注册后立即补发。
+
+```rust
+let instance = match SingleInstance::acquire(APP_ID) {
+    Ok(instance) => instance,
+    Err(_) => {
+        let _ = send_activate_to_existing(APP_ID);
+        std::process::exit(0);
+    }
+};
+
+application().run(move |cx| {
+    instance.on_activate(cx, |cx| {
+        cx.show_all_windows();
+        cx.activate(true);
+    });
+});
+```
 
 ## 最佳实践
 
