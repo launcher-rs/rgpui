@@ -28,7 +28,7 @@ bins = ["showcase:editor"]
 
 [components."菜单"]
 modules = ["crates/rgpui/src/menu"]
-bins = ["showcase:component_gallery"]
+bins = ["showcase:component_gallery", "showcase:native_menu"]
 
 [components."对话框"]
 modules = ["crates/rgpui/src/dialog"]

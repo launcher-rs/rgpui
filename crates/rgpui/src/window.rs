@@ -27,6 +27,7 @@ fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
 use super::rems;
 #[cfg(any(feature = "inspector", debug_assertions))]
 use crate::Inspector;
+use crate::menu::NativeMenu;
 use crate::{
     Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset,
     AsyncWindowContext, AvailableSpace, Background, BorderStyle, Bounds, BoxShadow, Capslock,
@@ -2729,6 +2730,26 @@ impl Window {
     /// 打开原生标题栏上下文菜单，在实现客户端装饰时很有用（Wayland 和 X11）
     pub fn show_window_menu(&self, position: Point<Pixels>) {
         self.platform_window.show_window_menu(position)
+    }
+
+    /// 在窗口内指定位置弹出 OS 原生菜单（Windows `TrackPopupMenuEx` / macOS `NSMenu`）。
+    ///
+    /// `position` 是客户区坐标，与 [`Window::mouse_position`] 同一口径。菜单由系统自己
+    /// 绘制与排版，因此只有 [`NativeMenu`] 能表达的项（标签、勾选、禁用、分隔线、子菜单）。
+    ///
+    /// 返回 `None` 表示当前平台没有原生弹出菜单能力，或菜单是空的 —— 调用方据此回退到
+    /// 框架自绘的 [`PopupMenu`](crate::menu::PopupMenu)。返回 `Some(receiver)` 时本方法
+    /// 立刻返回（菜单在平台自己的事件循环里模态运行），用 `cx.spawn` 等待结果：点中某项
+    /// 送出该项的 `id`，用户直接关掉菜单则 `await` 返回 `Err`。
+    pub fn show_native_menu(
+        &self,
+        position: Point<Pixels>,
+        menu: NativeMenu,
+    ) -> Option<oneshot::Receiver<SharedString>> {
+        if menu.is_empty() {
+            return None;
+        }
+        self.platform_window.show_native_menu(position, menu)
     }
 
     /// 处理 Linux 和 macOS 的窗口移动。

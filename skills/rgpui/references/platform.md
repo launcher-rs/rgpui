@@ -64,21 +64,25 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 
 ## PlatformWindow
 
-`pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle`（`platform.rs:1142`）。
-核心：`bounds`(:1144)、`is_maximized`(:1146)、`resize`(:1152)、`scale_factor`(:1154)、
-`appearance`(:1156)、`activate`(:1178)、`is_active`(:1180)、`set_title`(:1186)、
-`minimize`(:1190)、`zoom`(:1192)、`toggle_fullscreen`(:1194)、`draw`(:1220)、
-`on_input`(:1200)、`on_resize`(:1206)、`on_should_close`(:1210)、
-`on_appearance_changed`(:1216)、`is_subpixel_rendering_supported`(:1226)、
-`gpu_specs`(:1339)、`set_input_handler`/`take_input_handler`(:1166/:1168)。
+`pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle`（`platform.rs:1143`）。
+核心：`bounds`(:1145)、`is_maximized`(:1147)、`resize`(:1153)、`scale_factor`(:1155)、
+`appearance`(:1157)、`activate`(:1193)、`is_active`(:1195)、`set_title`(:1201)、
+`minimize`(:1205)、`zoom`(:1207)、`toggle_fullscreen`(:1209)、`draw`(:1235)、
+`on_input`(:1215)、`on_resize`(:1221)、`on_should_close`(:1225)、
+`on_appearance_changed`(:1231)、`is_subpixel_rendering_supported`(:1241)、
+`gpu_specs`(:1354)、`set_input_handler`/`take_input_handler`(:1167/:1169)。
 
 **rgpui 自有 API：**
-`get_raw_handle() -> HWND`（`:1306`，**仅 Windows**，后端 `open_window` 登记 HWND 用）、
-`set_mouse_passthrough(bool)`（`:1391`）、`set_position(Point<Pixels>)`（`:1385`）、
-`hide()`（`:1388`）、`set_titlebar_visible(bool)`（`:1397`）、
-`set_input_region(Option<&[Bounds<Pixels>]>)`（`:1321`）、`request_attention()`（`:1382`）、
-`set_exclusive_zone(Pixels)`（`:1372`）、`set_exclusive_edge`（`:1379`）、
-`set_text_content_type`（`:1401`）、`supports_dom`/`dom_tree_update`/`on_dom_event`/`on_dom_scroll`（`:1233`-`:1259`，`dom-backend`）。
+`prompt`（`:1171`）、
+`show_native_menu(Point<Pixels>, NativeMenu) -> Option<oneshot::Receiver<SharedString>>`
+（`:1185`，**trait 默认实现返回 `None`** —— Linux 没有能承载应用自定义项的原生弹出菜单协议，
+调用方收到 `None` 回退 `PopupMenu`/`ContextMenu`）、
+`get_raw_handle() -> HWND`（`:1321`，**仅 Windows**，后端 `open_window` 登记 HWND 用）、
+`set_mouse_passthrough(bool)`（`:1406`）、`set_position(Point<Pixels>)`（`:1400`）、
+`hide()`（`:1403`）、`set_titlebar_visible(bool)`（`:1412`）、
+`set_input_region(Option<&[Bounds<Pixels>]>)`（`:1336`）、`request_attention()`（`:1397`）、
+`set_exclusive_zone(Pixels)`（`:1387`）、`set_exclusive_edge`（`:1394`）、
+`set_text_content_type`（`:1416`）、`supports_dom`/`dom_tree_update`/`on_dom_event`/`on_dom_scroll`（`:1248`-`:1274`，`dom-backend`）。
 
 ## App 包装方法
 
@@ -121,11 +125,13 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 
 ## 窗口方法
 
-`Window`（`window.rs`）：`activate_window()`（`:5989`）、`request_attention()`（`:5994`）、
-`minimize_window()`（`:5999`）、`hide_window()`（`:6004`）、
-`set_mouse_passthrough(bool)`（`:6009`）、`set_position(Point<Pixels>)`（`:6014`）、
-`set_titlebar_visible(bool)`（`:2311`）、`set_input_region`（`:2343`）、
-`is_window_active()`（`:2678`）、`on_window_should_close(...)`（`:6241`）。
+`Window`（`window.rs`）：`activate_window()`（`:6084`）、`request_attention()`（`:6089`）、
+`minimize_window()`（`:6094`）、`hide_window()`（`:6099`）、
+`set_mouse_passthrough(bool)`（`:6104`）、`set_position(Point<Pixels>)`（`:6109`）、
+`set_titlebar_visible(bool)`（`:2339`）、`set_input_region`（`:2371`）、
+`is_window_active()`（`:2706`）、`show_window_menu(position)`（`:2731`）、
+`show_native_menu(position, NativeMenu) -> Option<Receiver<SharedString>>`（`:2744`，见
+`menu.md` 的 NativeMenu 一节）、`on_window_should_close(...)`（`:6336`）。
 
 ## 托盘
 

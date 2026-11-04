@@ -20,7 +20,7 @@ rgpui 是一个独立演进的 GPU 加速跨平台 UI 框架，支持 Windows、
 ### 组件库
 - **基础**：Button、Checkbox、Radio、Switch、Toggle、Slider、Spinner、Badge、Tag、Separator、Tooltip、Icon、Avatar、Alert、Card、Typography
 - **表单**：Form、Field、Input、MaskedInput、NumberInput、PasswordInput、TextArea
-- **菜单**：PopupMenu（含 danger 样式）、ContextMenu、DropdownMenu、MenuBar、HoverCard、Notification、Toast、Popconfirm
+- **菜单**：PopupMenu（含 danger 样式）、ContextMenu、DropdownMenu、MenuBar、HoverCard、Notification、Toast、Popconfirm、NativeMenu（OS 原生弹出菜单，Linux 自动回退自绘菜单）
 - **对话框**：Dialog（按标识关闭 `DialogId`）、AlertDialog、遮罩可见性控制
 - **列表/表格**：List、VirtualList、DataTable
 - **标签页**：Tab、TabBar、无状态 Tabs（值驱动，v1.3）、Accordion、TabDragDrop（拖拽排序）

@@ -35,6 +35,7 @@ mod window_appearance;
 mod auto_launch;
 mod focused_window;
 mod global_hotkey;
+mod native_menu;
 mod notifications;
 mod permissions;
 mod power;

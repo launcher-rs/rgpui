@@ -157,7 +157,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 | 表单 | `form/` | `Form`、`Field`、`FieldBuilder` |
 | 输入 | `input_ui/` | `Input`、`MaskedInput`、`NumberInput`、`PasswordInput`、`TextArea`；`InputState::reveal_offset/reveal_range`、`TextDecorationCollection`、`Debouncer`（见 `docs/1.2.0/1.2.0-dev-plan.md` §E） |
 | 编辑器 | `input_ui/editor/`（`editor` feature 门控，蕴含 `lsp`） | `EditorState`（包 `Entity<InputState>` 编排外壳 + 大纲缓存；透传 `set_value`/`reveal_*`/`set_read_only`/`set_line_comment_prefix`/`set_highlighter`/`goto_symbol`）、`Editor`（消费 `EditorState` 实体 + 粘性大纲顶栏 + 状态行）；行操作/多光标/自动闭合/括号匹配/当前行（`impl InputState`）；LSP 接线（`lsp_attach.rs`：provider 注入 + 防抖 + 诊断下划线 + 格式化 `request_formatting` + 重命名 `request_rename` + 定义/引用 `goto_definition`/`find_references` + 签名提示 `request_signature_help` + 同符号高亮 `request_document_highlights` + 语义高亮 `request_semantic_tokens`）+ 片段（`snippets.rs`：子集解析 + 会话跳转）+ 行内提示（`inlay_hints.rs`：provider + 防抖 + paint overlay）+ 粘性顶栏（`sticky_scroll.rs`）+ 多语言注册表（`highlight::{register_highlighter,highlighter_for}` + `set_language`；内置语言包按 `tree-sitter-<语言>` feature 门控：Rust/JSON/TOML/javascript/typescript(+tsx)/python/bash/go/c/cpp/c_sharp/java/ruby/php/css/html/yaml）+ 自定义 gutter（`gutter.rs`：具名 provider 注册/开关 + overlay，见 `docs/1.2.0/1.2.0-dev-plan.md` §M）；stdio LSP 传输（`lsp/stdio.rs`：子进程 + JSON-RPC）、Minimap（`minimap.rs`：缩略+跳转）、Vim（`vim.rs`：三态）、CodeLens（`codelens.rs`：行上透镜）、标尺+括号彩虹（`rulers`/`bracket_rainbow`）、JSON+TOML grammar（`tree_sitter.rs`）、extensions+on_edit 表（`extensions.rs`） |
-| 菜单 | `menu/` | `PopupMenu`、`ContextMenu`、`DropdownMenu`、`Popconfirm`、`MenuBar`、`HoverCard`、`Notification`、`Toast` |
+| 菜单 | `menu/` | `PopupMenu`、`ContextMenu`、`DropdownMenu`、`Popconfirm`、`MenuBar`、`HoverCard`、`Notification`、`Toast`、`NativeMenu`/`NativeMenuItem`（OS 原生弹出菜单，`Window::show_native_menu`） |
 | 对话框 | `dialog/` | `Dialog`、`AlertDialog`、`DialogHeader/Content/Footer`、`FocusTrapElement` |
 | 列表/表格/标签页 | `list/`、`table/`、`tabs/` | `List`、`VirtualList`、`UniformList`/`uniform_list`、`DataTable`（表格语义：根 `Role::Table`、行 `Role::Row`、单元格 `Role::Cell` + 行列索引 `aria_row_index`/`aria_column_index`）、`TabBar`、`Accordion` |
 | 电子表格网格（`spreadsheet` feature 门控） | `sheet_grid.rs` | `SheetGrid`/`SheetGridState`/`SheetGridEvent`/`CellRef`/`CellRange`/`SheetDelegate`；无障碍语义：根 `Role::Grid`、单元格 `Role::Cell` + 行列索引、列头 `Role::ColumnHeader`、行头 `Role::RowHeader` |
@@ -188,7 +188,13 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
 
 `PlatformWindow`：`hide`、`set_mouse_passthrough`、`set_position`、
 `set_titlebar_visible`、`set_input_region`、`request_attention`、
-`get_raw_handle`（仅 Windows，后端 `open_window` 登记 HWND 用）。
+`get_raw_handle`（仅 Windows，后端 `open_window` 登记 HWND 用）、
+`show_native_menu`（OS 原生弹出菜单，`Window::show_native_menu` 包装；Windows 走
+`TrackPopupMenuEx` + `TPM_RETURNCMD`，macOS 走 `NSMenu popUpMenuPositioningItem:`，
+两者都在前台执行器任务里做模态循环、结果经 `oneshot::Receiver<SharedString>` 回传。
+**trait 默认实现返回 `None`** —— Linux 没有能承载应用自定义项的原生弹出菜单协议
+（托盘菜单是进程外 DBus `com.canonical.dbusmenu`，`show_window_menu` 带不了我们的菜单项），
+调用方收到 `None` 应回退到框架自绘的 `PopupMenu` / `ContextMenu`）。
 `Platform` 约 35+ 自有方法：托盘 8 件套、全局热键、通知、电源、权限（统一走
 `check_permission` / `request_permission`，类别见 `PermissionType`）、
 网络状态、系统信息、Dock 菜单、`reduce_motion_enabled`（系统「减少
