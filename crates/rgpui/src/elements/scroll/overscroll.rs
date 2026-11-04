@@ -38,7 +38,7 @@ struct OverscrollInner {
     x: ScrollPhysics,
     /// 每轴一个物理模型（边界 `[0, 0]`，位置即该轴视觉位移）。
     y: ScrollPhysics,
-    /// 上次滚轮事件后内层逻辑偏移（钳制口径；没动即到边，见 [`OverscrollState::pull`]）。
+    /// 上一次看到的内层逻辑偏移（钳制口径，随帧同步，见 [`OverscrollState::sync_last_offset`]）。
     last_offset: Point<Pixels>,
 }
 
@@ -90,20 +90,26 @@ impl OverscrollState {
         inner.y.tick(SETTLE_DT);
     }
 
+    /// 用内层当前逻辑位刷新「上次偏移」（钳制口径，与 [`Self::pull`] 同）。
+    ///
+    /// 滚动条拖动、`ScrollHandle::set_offset` / `scroll_to_bottom`、内容变矮后的
+    /// prepaint 钳制都会在不发滚轮事件的前提下改动逻辑位；只靠滚轮路径更新会让
+    /// 下一次滚轮被误判成「逻辑位动了」，从而吞掉到边后的第一次拉伸。
+    fn sync_last_offset(&self, handle: &ScrollHandle) {
+        let mut inner = self.0.borrow_mut();
+        inner.last_offset = clamped_offset(handle);
+    }
+
     /// 处理一次滚轮/触摸增量，返回视觉位移是否有变化（有才需重绘）。
     ///
     /// 本监听挂在冒泡阶段，内层滚动区先消费：逻辑偏移没动说明到边（或内容
     /// 未溢出），且增量指向界外时才拉伸；逻辑动了说明滚回去了，视觉清零。
     fn pull(&self, delta: Point<Pixels>, handle: &ScrollHandle, axis: ScrollbarAxis) -> bool {
         let mut inner = self.0.borrow_mut();
-        let offset = handle.offset();
         let max = handle.max_offset();
         // 内层消费与钳制之间有一帧时间差：事件时刻的偏移可能是瞬时超界值
         // （下次 prepaint 才钳回），到边判定必须看钳制后的逻辑位（与绘制同口径）。
-        let clamped = point(
-            offset.x.clamp(-max.x, px(0.)),
-            offset.y.clamp(-max.y, px(0.)),
-        );
+        let clamped = clamped_offset(handle);
         // 两轴各判各的「逻辑位是否动了」：合并成一个布尔会让一轴的逻辑滚动把
         // 另一轴已拉出的视觉位移一起清零（`Both` 轴下表现为回弹中途跳变）。
         let moved_x = clamped.x != inner.last_offset.x;
@@ -151,6 +157,16 @@ impl OverscrollState {
     }
 }
 
+/// 内层滚动区的逻辑偏移，钳制到 `[-max, 0]`（与绘制同口径的逻辑位）。
+fn clamped_offset(handle: &ScrollHandle) -> Point<Pixels> {
+    let max = handle.max_offset();
+    let offset = handle.offset();
+    point(
+        offset.x.clamp(-max.x, px(0.)),
+        offset.y.clamp(-max.y, px(0.)),
+    )
+}
+
 /// 越界回弹包装器：把滚动区包一层，到边后内容跟手拉伸、松手回弹。
 ///
 /// 主入口是 [`Scrollable::overscroll`](super::Scrollable::overscroll)；
@@ -188,6 +204,11 @@ where
             .clone();
         let view: EntityId = window.current_view();
 
+        // 每帧对齐「上次逻辑位」：滚轮之外的路径（滚条拖动、程序化滚动、
+        // prepaint 钳制）改动逻辑位后，下一次滚轮才不会被误判成「逻辑位动了」。
+        let handle = self.handle.clone();
+        state.sync_last_offset(&handle);
+
         // 回弹推进：有残留即收敛一帧并请求下一帧；收敛完自动停。
         if state.settling() {
             state.settle();
@@ -195,7 +216,6 @@ where
         }
         let visual = state.visual();
 
-        let handle = self.handle.clone();
         let axis = self.axis;
         div()
             .id(self.id)
@@ -232,8 +252,8 @@ mod tests {
     use super::*;
     use crate::elements::scroll::scrollable::ScrollableElement;
     use crate::{
-        Context, Div, Render, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext,
-        point, px,
+        Context, Div, Render, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement,
+        TestAppContext, VisualTestContext, point, px,
     };
 
     /// 强制重绘一帧（`scrollable.rs` 测试同款）。
@@ -315,6 +335,131 @@ mod tests {
         assert!(
             (settled_y - initial_y).abs() < px(1.0),
             "回弹后应归位（{settled_y:?} ≈ {initial_y:?}）"
+        );
+    }
+
+    /// Both 轴 + 内容两向都溢出：任一轴到边继续滚都应拉伸。
+    struct BothBounceTest;
+    impl Render for BothBounceTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().w(px(200.)).h(px(100.)).child(
+                div()
+                    .size_full()
+                    .flex()
+                    .overflow_scrollbar()
+                    .overscroll(true)
+                    .child(cell("both-a", 150., 150.))
+                    .child(cell("both-b", 150., 150.)),
+            )
+        }
+    }
+
+    /// 200x100 视口 + 300x150 内容（两轴都可滚）里的单元格。
+    fn cell(selector: &'static str, width: f32, height: f32) -> Div {
+        div()
+            .w(px(width))
+            .h(px(height))
+            .flex_shrink_0()
+            .debug_selector(move || selector.to_string())
+    }
+
+    /// 纵向到边继续下拉：`Both` 经 `Scrollable` 也要拉伸并回弹
+    /// （回归「Both 轴内容被交叉轴拉伸压平、纵向溢出为零」）。
+    #[crate::test]
+    fn overscroll_both_axis_vertical_pull(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        let (_, cx) = cx.add_window_view(|_, _| BothBounceTest);
+        let cx: &mut VisualTestContext = cx;
+        draw(cx);
+
+        // 先滚到底（逻辑位钳制在 -max），此时无视觉位移。
+        scroll(cx, 10., 10., 0., -500.);
+        let bottom_y = cx.debug_bounds("both-a").unwrap().origin.y;
+        // 到底后继续同向滚：内容跟手上移（橡胶带）。
+        scroll(cx, 10., 10., 0., -40.);
+        let pulled_y = cx.debug_bounds("both-a").unwrap().origin.y;
+        assert!(
+            pulled_y < bottom_y,
+            "Both 轴纵向到边继续滚应拉伸（{pulled_y:?} < {bottom_y:?}）"
+        );
+        assert!(
+            bottom_y - pulled_y <= px(MAX_PULL + 1.0),
+            "拉伸应钳制在上限内（{bottom_y:?} - {pulled_y:?}）"
+        );
+
+        // 无新事件时逐帧回弹，回到逻辑位对应的边界。
+        pump_frames(cx, 300);
+        let settled_y = cx.debug_bounds("both-a").unwrap().origin.y;
+        assert!(
+            (settled_y - bottom_y).abs() < px(1.0),
+            "回弹后应停在底边（{settled_y:?} ≈ {bottom_y:?}）"
+        );
+    }
+
+    /// 横向到边继续右拉：`Both` 的水平轴同样要触发拉伸。
+    #[crate::test]
+    fn overscroll_both_axis_horizontal_pull(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        let (_, cx) = cx.add_window_view(|_, _| BothBounceTest);
+        let cx: &mut VisualTestContext = cx;
+        draw(cx);
+
+        let initial = cx.debug_bounds("both-a").unwrap().origin.x;
+        scroll(cx, 10., 10., 40., 0.);
+        let pulled = cx.debug_bounds("both-a").unwrap().origin.x;
+        assert!(
+            pulled > initial,
+            "Both 轴横向到边继续滚应拉伸（{pulled:?} > {initial:?}）"
+        );
+
+        pump_frames(cx, 300);
+        let settled = cx.debug_bounds("both-a").unwrap().origin.x;
+        assert!(
+            (settled - initial).abs() < px(1.0),
+            "回弹后应归位（{settled:?} ≈ {initial:?}）"
+        );
+    }
+
+    /// 不经滚轮（程序化/滚条拖动）先到边，随后的首个滚轮事件仍要拉伸，不能被吞。
+    struct EdgeJumpTest(ScrollHandle);
+    impl Render for EdgeJumpTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().w(px(200.)).h(px(100.)).child(Overscroll::new(
+                div()
+                    .id("jump-area")
+                    .size_full()
+                    .flex_col()
+                    .track_scroll(&self.0)
+                    .overflow_y_scroll()
+                    .child(row("jump-first", 50.))
+                    .child(row("jump-second", 50.))
+                    .child(row("jump-third", 50.)),
+                &self.0,
+                ScrollbarAxis::Vertical,
+            ))
+        }
+    }
+
+    /// 滚轮之外的路径把逻辑位改到边界后，「上次偏移」必须随帧同步刷新——否则下一次
+    /// 滚轮会被判成「逻辑位动了」，回弹就把这次增量连同残留位移一起吞掉。
+    #[crate::test]
+    fn overscroll_first_wheel_after_programmatic_scroll(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        let handle = ScrollHandle::new();
+        let (_, cx) = cx.add_window_view(|_, _| EdgeJumpTest(handle.clone()));
+        let cx: &mut VisualTestContext = cx;
+        draw(cx);
+
+        // 200x100 视口 + 150 内容：可滚 50px，直接跳到底。
+        cx.update(|_, _| handle.set_offset(point(px(0.), px(-50.))));
+        draw(cx);
+        let bottom_y = cx.debug_bounds("jump-first").unwrap().origin.y;
+
+        scroll(cx, 10., 10., 0., -40.);
+        let pulled_y = cx.debug_bounds("jump-first").unwrap().origin.y;
+        assert!(
+            pulled_y < bottom_y,
+            "到边后的首个滚轮事件应拉伸而不是被吞（{pulled_y:?} < {bottom_y:?}）"
         );
     }
 

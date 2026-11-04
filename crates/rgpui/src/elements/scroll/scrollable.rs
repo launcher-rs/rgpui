@@ -143,7 +143,11 @@ where
             .map(|this| match self.axis {
                 ScrollbarAxis::Vertical => this.h_auto().min_h_full(),
                 ScrollbarAxis::Horizontal => this.w_auto().min_w_full(),
-                ScrollbarAxis::Both => this.size_auto().min_size_full(),
+                // `Both` 的滚动区是行向 flex，交叉轴即垂直方向：默认的
+                // `align-items: stretch` 会把内容高度压成视口高度，纵向溢出随之消失
+                // （`max_offset.y = 0`，既滚不动也无从回弹）。显式 `self_start`
+                // 让交叉轴尺寸回到内容驱动，`min_size_full` 仍保证不满一屏时撑满。
+                ScrollbarAxis::Both => this.size_auto().min_size_full().self_start(),
             });
 
         // 保持滚动区域在正常流中：其内容尺寸必须传递给 auto 尺寸的祖先
@@ -628,6 +632,30 @@ mod tests {
         let second = cx.debug_bounds("both-axis-vertical-second-row").unwrap();
 
         assert_eq!(second.top() - first.bottom(), px(10.));
+    }
+
+    #[crate::test]
+    fn overflow_scrollbar_scrolls_vertically(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        let (_, cx) = cx.add_window_view(|_, _| OverflowScrollbarVerticalTest);
+        let cx: &mut VisualTestContext = cx;
+        draw(cx);
+
+        let last_initial_y = cx
+            .debug_bounds("both-axis-vertical-last-row")
+            .unwrap()
+            .origin
+            .y;
+        scroll(cx, 10., 10., 0., -50.);
+
+        assert!(
+            cx.debug_bounds("both-axis-vertical-last-row")
+                .unwrap()
+                .origin
+                .y
+                < last_initial_y,
+            "Both 轴的纵向溢出应可滚"
+        );
     }
 
     #[crate::test]
