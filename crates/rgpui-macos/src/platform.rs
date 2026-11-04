@@ -45,11 +45,12 @@ use rgpui::util::{
 };
 use rgpui::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, FocusedWindowInfo,
-    ForegroundExecutor, KeyContext, Keymap, Keystroke, Menu, MenuItem, OsMenu, OwnedMenu,
-    PathPromptOptions, PermissionStatus, PermissionType, Platform, PlatformDisplay,
-    PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result,
-    SharedString, SystemMenuType, Task, ThermalState, TrayIconEvent, TrayMenuItem,
-    WindowAppearance, WindowKind, WindowParams, popup::PopupNotSupportedError,
+    ForegroundExecutor, KeyContext, Keymap, Keystroke, Menu, MenuItem, NetworkStatus, OsInfo,
+    OsMenu, OwnedMenu, PathPromptOptions, PermissionStatus, PermissionType, Platform,
+    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
+    PlatformWindow, PowerSaveBlocker, PowerSaveBlockerKind, Result, SharedString, SystemMenuType,
+    SystemPowerEvent, Task, ThermalState, TrayIconEvent, TrayMenuItem, WindowAppearance,
+    WindowKind, WindowParams, popup::PopupNotSupportedError,
 };
 use semver::Version;
 use std::{
@@ -192,8 +193,6 @@ pub(crate) struct MacPlatformState {
     cursor_visible: Arc<AtomicBool>,
     /// 全局快捷键管理器
     global_hotkey: MacGlobalHotkey,
-    /// 全局快捷键触发回调
-    on_global_hotkey: Option<Box<dyn FnMut(u32)>>,
     /// 菜单栏状态栏图标（托盘）
     tray: Option<MacTray>,
     /// 托盘图标点击回调
@@ -249,7 +248,6 @@ impl MacPlatform {
             keyboard_mapper,
             cursor_visible: Arc::new(AtomicBool::new(true)),
             global_hotkey: MacGlobalHotkey::new(),
-            on_global_hotkey: None,
             tray: None,
             tray_icon_event_callback: None,
             tray_menu_action_callback: None,
@@ -508,7 +506,8 @@ impl MacPlatform {
         }
     }
 
-    fn os_version() -> Version {
+    /// 返回系统版本（供 `os_info` 与 URL scheme 注册共用）
+    pub(crate) fn os_version() -> Version {
         let version = unsafe {
             let process_info = NSProcessInfo::processInfo(nil);
             process_info.operatingSystemVersion()
@@ -1251,7 +1250,7 @@ impl Platform for MacPlatform {
     }
 
     fn on_global_hotkey(&self, callback: Box<dyn FnMut(u32)>) {
-        self.0.lock().on_global_hotkey = Some(callback);
+        crate::global_hotkey::set_callback(callback);
     }
 
     fn set_tray_icon(&self, icon: Option<&[u8]>) {
@@ -1308,6 +1307,39 @@ impl Platform for MacPlatform {
 
     fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
         focused_window::get_focused_window_info()
+    }
+
+    /// 注册系统电源事件回调（睡眠 / 唤醒）
+    fn on_system_power_event(&self, callback: Box<dyn FnMut(SystemPowerEvent)>) {
+        crate::power::set_power_event_callback(callback);
+    }
+
+    /// 注册系统唤醒回调
+    fn on_system_wake(&self, callback: Box<dyn FnMut()>) {
+        crate::power::set_wake_callback(callback);
+    }
+
+    /// 启动电源抑制句柄（IOKit 电源管理断言）
+    fn start_power_save_blocker(
+        &self,
+        kind: PowerSaveBlockerKind,
+    ) -> Option<Box<dyn PowerSaveBlocker>> {
+        crate::power::start_power_save_blocker(kind)
+    }
+
+    /// 返回系统空闲时长（自上次 HID 输入以来）
+    fn system_idle_time(&self) -> Option<std::time::Duration> {
+        crate::system_info::system_idle_time()
+    }
+
+    /// 返回当前网络连接状态
+    fn network_status(&self) -> NetworkStatus {
+        crate::system_info::network_status()
+    }
+
+    /// 返回操作系统名称与版本号
+    fn os_info(&self) -> OsInfo {
+        crate::system_info::os_info()
     }
 }
 

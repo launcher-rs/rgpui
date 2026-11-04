@@ -115,6 +115,10 @@ fn main() {
         });
         log_capabilities(cx);
 
+        // 运行时注册 URL scheme：写入用户级注册表 / 桌面入口，`daemon-app://...`
+        // 之后会拉起本应用（失败只记日志，不影响常驻运行）
+        cx.register_url_scheme("daemon-app").detach_and_log_err(cx);
+
         let _ = cx.show_notification("Daemon App", "Application started in background");
 
         cx.activate(true);
@@ -266,6 +270,13 @@ fn log_capabilities(cx: &App) {
         eprintln!("Permission {kind:?}: {:?}", cx.check_permission(kind));
     }
     eprintln!("Auto launch enabled: {}", cx.is_auto_launch_enabled(APP_ID));
+    match cx.focused_window_info() {
+        Some(info) => eprintln!(
+            "Focused window: app={:?} title={:?} pid={:?} bundle={:?}",
+            info.app_name, info.window_title, info.pid, info.bundle_id
+        ),
+        None => eprintln!("Focused window: unavailable（Wayland 原生会话或无活动窗口）"),
+    }
 }
 
 fn open_overlay(cx: &mut App) {

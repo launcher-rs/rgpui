@@ -16,6 +16,7 @@ mod text_system;
 mod tray;
 #[cfg(any(feature = "wayland", feature = "x11"))]
 mod tray_sni;
+mod url_scheme;
 #[cfg(feature = "wayland")]
 mod wayland;
 #[cfg(feature = "x11")]

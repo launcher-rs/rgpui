@@ -85,6 +85,8 @@ pub(crate) struct WindowsPlatformState {
     global_hotkey: RefCell<WindowsGlobalHotkey>,
     // 新增：全局快捷键回调
     global_hotkey_callback: RefCell<Option<Box<dyn FnMut(u32)>>>,
+    /// 睡眠/唤醒通知注册句柄：持有期间系统事件会投递到平台消息窗口
+    power_registration: RefCell<Option<PowerEventRegistration>>,
 }
 
 #[derive(Default)]
@@ -96,6 +98,8 @@ struct PlatformCallbacks {
     will_open_app_menu: Cell<Option<Box<dyn FnMut()>>>,
     validate_app_menu_command: Cell<Option<Box<dyn FnMut(&dyn Action) -> bool>>>,
     keyboard_layout_change: Cell<Option<Box<dyn FnMut()>>>,
+    system_power_event: Cell<Option<Box<dyn FnMut(SystemPowerEvent)>>>,
+    system_wake: Cell<Option<Box<dyn FnMut()>>>,
 }
 
 impl WindowsPlatformState {
@@ -117,6 +121,7 @@ impl WindowsPlatformState {
             tray_menu_action_callback: RefCell::new(None),
             global_hotkey: RefCell::new(WindowsGlobalHotkey::new()),
             global_hotkey_callback: RefCell::new(None),
+            power_registration: RefCell::new(None),
         }
     }
 }
@@ -195,6 +200,9 @@ impl WindowsPlatform {
             .take()
             .context("CreateWindowExW did not run correctly")?;
         let handle = result?;
+
+        // 睡眠/唤醒事件注册到平台消息窗口，回调在系统线程发起、由主线程派发
+        *inner.state.power_registration.borrow_mut() = register_power_events(handle);
 
         let disable_direct_composition = std::env::var(DISABLE_DIRECT_COMPOSITION)
             .is_ok_and(|value| value == "true" || value == "1");
@@ -836,6 +844,43 @@ impl Platform for WindowsPlatform {
         crate::get_focused_window_info()
     }
 
+    /// 注册系统电源事件回调（睡眠 / 唤醒）
+    fn on_system_power_event(&self, callback: Box<dyn FnMut(SystemPowerEvent)>) {
+        self.inner
+            .state
+            .callbacks
+            .system_power_event
+            .set(Some(callback));
+    }
+
+    /// 注册系统唤醒回调
+    fn on_system_wake(&self, callback: Box<dyn FnMut()>) {
+        self.inner.state.callbacks.system_wake.set(Some(callback));
+    }
+
+    /// 启动电源抑制句柄（基于 `SetThreadExecutionState`）
+    fn start_power_save_blocker(
+        &self,
+        kind: PowerSaveBlockerKind,
+    ) -> Option<Box<dyn PowerSaveBlocker>> {
+        crate::start_power_save_blocker(kind)
+    }
+
+    /// 返回系统空闲时长（自上次键盘/鼠标输入以来）
+    fn system_idle_time(&self) -> Option<std::time::Duration> {
+        crate::system_idle_time()
+    }
+
+    /// 返回当前网络连接状态
+    fn network_status(&self) -> NetworkStatus {
+        crate::network_status()
+    }
+
+    /// 返回操作系统名称与版本号
+    fn os_info(&self) -> OsInfo {
+        crate::os_info()
+    }
+
     /// 获取权限状态（Windows 没有按应用的这类授权模型，一律视为已授予）
     fn check_permission(&self, _kind: PermissionType) -> PermissionStatus {
         PermissionStatus::Granted
@@ -1016,8 +1061,9 @@ impl Platform for WindowsPlatform {
         })
     }
 
-    fn register_url_scheme(&self, _: &str) -> Task<anyhow::Result<()>> {
-        Task::ready(Err(anyhow!("register_url_scheme unimplemented")))
+    /// 注册 URL scheme（写入 `HKCU\Software\Classes`，无需管理员权限）
+    fn register_url_scheme(&self, url: &str) -> Task<anyhow::Result<()>> {
+        Task::ready(register_url_scheme(url))
     }
 
     fn perform_dock_menu_action(&self, action: usize) {
@@ -1090,6 +1136,7 @@ impl WindowsPlatformInner {
             WM_GPUI_TRAY_ICON => self.handle_tray_icon_event(handle, lparam),
             WM_COMMAND => self.handle_tray_menu_command(wparam),
             WM_HOTKEY => self.handle_global_hotkey(wparam),
+            WM_GPUI_POWER_EVENT => self.handle_power_event(wparam),
             _ => None,
         };
         if let Some(result) = handled {
@@ -1320,6 +1367,23 @@ impl WindowsPlatformInner {
         }
         Some(0)
     }
+
+    /// 处理系统线程转投来的睡眠/唤醒事件。
+    ///
+    /// 唤醒时先触发只关心唤醒的回调，再触发通用电源事件回调 —— 两个回调可以同时注册。
+    fn handle_power_event(&self, wparam: WPARAM) -> Option<isize> {
+        let event = decode_power_event(wparam);
+        if let Some(event) = event {
+            if event == SystemPowerEvent::WakeUp {
+                self.with_callback(|callbacks| &callbacks.system_wake, |callback| callback());
+            }
+            self.with_callback(
+                |callbacks| &callbacks.system_power_event,
+                |callback| callback(event),
+            );
+        }
+        Some(0)
+    }
 }
 
 impl Drop for WindowsPlatform {
@@ -1360,6 +1424,27 @@ struct PlatformWindowCreateContext {
     main_receiver: Option<PriorityQueueReceiver<RunnableVariant>>,
     directx_devices: Option<DirectXDevices>,
     dispatcher: Option<Arc<WindowsDispatcher>>,
+}
+
+/// 把应用注册为某个 URL scheme 的处理器。
+///
+/// 只写当前用户（`HKCU\Software\Classes\<scheme>`），不触碰机器级配置，
+/// 因此不需要管理员权限。命令行带上 `"%1"`，浏览器传入的完整 URL 会原样交给应用。
+fn register_url_scheme(scheme: &str) -> Result<()> {
+    if scheme.is_empty() || scheme.contains(['\\', '/', ' ']) {
+        return Err(anyhow!("URL scheme 非法: {scheme:?}"));
+    }
+
+    let key = windows_registry::CURRENT_USER
+        .create("Software\\Classes")?
+        .create(scheme)?;
+    key.set_string("", &format!("URL:{scheme} protocol"))?;
+    key.set_string("URL Protocol", "")?;
+
+    let command = key.create("shell\\open\\command")?;
+    let exe = std::env::current_exe()?;
+    command.set_string("", &format!("\"{}\" \"%1\"", exe.display()))?;
+    Ok(())
 }
 
 fn open_target(target: impl AsRef<OsStr>) -> Result<()> {
