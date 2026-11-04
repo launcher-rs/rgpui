@@ -32,19 +32,19 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 
 ## Platform trait
 
-`pub trait Platform: 'static`（`platform.rs:265`），约 35+ 自有方法，按类别：
+`pub trait Platform: 'static`（`platform.rs:302`），约 35+ 自有方法，按类别：
 
 | 类别 | 方法（行号） |
 |------|-------------|
-| 执行器/文本 | `background_executor`(:267)、`foreground_executor`(:269)、`text_system`(:271) |
-| 生命周期 | `run`(:274)、`quit`(:276)、`restart`(:278)、`activate`(:280)、`hide`(:282)、`hide_other_apps`/`unhide_other_apps`(:284/:286) |
-| 显示 | `displays`(:289)、`primary_display`(:291)、`active_window`(:293)、`window_stack`(:295)、`screen_capture_sources`(:305)、`is_screen_capture_supported`(:300) |
-| 外观 | `window_appearance`(:325)、`reduce_motion_enabled`(:331，系统「减少动态效果」)、`button_layout`(:336) |
-| URL | `open_url`(:341)、`on_open_urls`(:343)、`register_url_scheme`(:382) |
-| 文件 | `prompt_for_paths`(:385)、`prompt_for_new_path`(:390)、`reveal_path`(:398)、`open_with_system`(:400) |
+| 执行器/文本 | `background_executor`(:304)、`foreground_executor`(:306)、`text_system`(:308) |
+| 生命周期 | `run`(:311)、`quit`(:313)、`restart`(:315)、`activate`(:317)、`hide`(:319)、`hide_other_apps`/`unhide_other_apps`(:321/:323) |
+| 显示 | `displays`(:326)、`primary_display`(:328)、`active_window`(:330)、`window_stack`(:332)、`is_screen_capture_supported`(:337)、`screen_capture_sources`(:342) |
+| 外观 | `window_appearance`(:362)、`reduce_motion_enabled`(:368，系统「减少动态效果」)、`button_layout`(:373) |
+| URL | `open_url`(:378)、`on_open_urls`(:380)、`register_url_scheme`(:382) |
+| 文件 | `prompt_for_paths`(:385)、`prompt_for_new_path`(:390)、`can_select_mixed_files_and_dirs`(:396)、`reveal_path`(:398)、`open_with_system`(:400) |
 | 菜单 | `set_menus`(:408)、`get_menus`(:410)、`set_dock_menu`(:415)、`perform_dock_menu_action`(:417)、`add_recent_document`(:419)、`update_jump_list`(:421)、`on_app_menu_action`(:429)、`on_will_open_app_menu`(:431)、`on_validate_app_menu_command`(:433) |
 | 电源/热 | `thermal_state`(:436)、`on_thermal_state_change`(:438)、`on_system_power_event`(:555)、`on_system_wake`(:558)、`start_power_save_blocker`(:567)、`system_idle_time`(:575) |
-| 系统信息 | `os_info`(:594)、`focused_window_info`(:537)、`network_status`(:580)、`compositor_name`(:441)、`app_path`(:445) |
+| 系统信息 | `os_info`(:585)、`focused_window_info`(:537)、`network_status`(:580)、`compositor_name`(:441)、`app_path`(:445) |
 | 剪贴板 | `read_from_clipboard`/`write_to_clipboard`(:462/:464)、`read_from_primary`/`write_to_primary`(:468/:471)、`read_from_find_pasteboard`/`write_to_find_pasteboard`(:475/:478)；富负载用 `ClipboardEntry::Format(ClipboardFormat)`（`new_html`/`new_rtf`/`new_with_format`，MIME 常量 `ClipboardFormat::HTML` 等，读取 `text`/`html`/`rtf`/`format`/`formats`） |
 | 凭据 | `write_credentials`/`read_credentials`/`delete_credentials`(:481/:483/:485) |
 | 键盘 | `keyboard_layout`(:488)、`keyboard_mapper`(:490)、`on_keyboard_layout_change`(:492) |
@@ -54,7 +54,6 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 | 自启动 | `set_auto_launch`(:528)、`is_auto_launch_enabled`(:532) |
 | 权限 | `check_permission`(:548)、`request_permission`(:552) |
 | 光标 | `set_cursor_style`(:450)、`hide_cursor_until_mouse_moves`(:453)、`is_cursor_visible`(:456)、`should_auto_hide_scrollbars`(:459) |
-| 上下文菜单 | `show_context_menu`(:585) |
 
 类型：`SystemPowerEvent{Sleep,WakeUp}`(:178)、
 `PowerSaveBlockerKind{PreventSleep,PreventDisplaySleep}`(:187)、`trait PowerSaveBlocker`(:198)、
@@ -65,21 +64,21 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 
 ## PlatformWindow
 
-`pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle`（`platform.rs:1114`）。
-核心：`bounds`(:1116)、`is_maximized`(:1118)、`resize`(:1124)、`scale_factor`(:1126)、
-`appearance`(:1128)、`activate`(:1150)、`is_active`(:1152)、`set_title`(:1158)、
-`minimize`(:1162)、`zoom`(:1164)、`toggle_fullscreen`(:1166)、`draw`(:1192)、
-`on_input`(:1172)、`on_resize`(:1178)、`on_should_close`(:1182)、
-`on_appearance_changed`(:1188)、`is_subpixel_rendering_supported`(:1198)、
-`gpu_specs`(:1311)、`set_input_handler`/`take_input_handler`(:1138/:1140)。
+`pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle`（`platform.rs:1142`）。
+核心：`bounds`(:1144)、`is_maximized`(:1146)、`resize`(:1152)、`scale_factor`(:1154)、
+`appearance`(:1156)、`activate`(:1178)、`is_active`(:1180)、`set_title`(:1186)、
+`minimize`(:1190)、`zoom`(:1192)、`toggle_fullscreen`(:1194)、`draw`(:1220)、
+`on_input`(:1200)、`on_resize`(:1206)、`on_should_close`(:1210)、
+`on_appearance_changed`(:1216)、`is_subpixel_rendering_supported`(:1226)、
+`gpu_specs`(:1339)、`set_input_handler`/`take_input_handler`(:1166/:1168)。
 
 **rgpui 自有 API：**
-`get_raw_handle() -> HWND`（`:1278`，**仅 Windows**，后端 `open_window` 登记 HWND 用）、
-`set_mouse_passthrough(bool)`（`:1363`）、`set_position(Point<Pixels>)`（`:1357`）、
-`hide()`（`:1360`）、`set_titlebar_visible(bool)`（`:1369`）、
-`set_input_region(Option<&[Bounds<Pixels>]>)`（`:1293`）、`request_attention()`（`:1354`）、
-`set_exclusive_zone(Pixels)`（`:1344`）、`set_exclusive_edge`（`:1351`）、
-`set_text_content_type`（`:1373`）、`supports_dom`/`dom_tree_update`/`on_dom_event`/`on_dom_scroll`（`:1205`-`:1231`，`dom-backend`）。
+`get_raw_handle() -> HWND`（`:1306`，**仅 Windows**，后端 `open_window` 登记 HWND 用）、
+`set_mouse_passthrough(bool)`（`:1391`）、`set_position(Point<Pixels>)`（`:1385`）、
+`hide()`（`:1388`）、`set_titlebar_visible(bool)`（`:1397`）、
+`set_input_region(Option<&[Bounds<Pixels>]>)`（`:1321`）、`request_attention()`（`:1382`）、
+`set_exclusive_zone(Pixels)`（`:1372`）、`set_exclusive_edge`（`:1379`）、
+`set_text_content_type`（`:1401`）、`supports_dom`/`dom_tree_update`/`on_dom_event`/`on_dom_scroll`（`:1233`-`:1259`，`dom-backend`）。
 
 ## App 包装方法
 
