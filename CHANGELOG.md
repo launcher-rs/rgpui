@@ -2,6 +2,21 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复（滚动）
+
+- **`Both` 轴经 `Scrollable` 的越界回弹不生效**：`Scrollable`（`Both`）的内容层是行向
+  flex 容器的唯一子项，垂直方向即交叉轴，默认 `align-items: stretch` 把它压成视口高度，
+  `max_offset.y = 0` —— 纵向既滚不动，回弹也因 `max <= 0` 从不触发。内容层改用
+  `self_start()`（交叉轴尺寸由内容驱动）并保留 `min_size_full()`（不满一屏仍撑满）。
+  回归测试：`overflow_scrollbar_scrolls_vertically`、`overscroll_both_axis_vertical_pull`。
+- **到边后首个滚轮事件被吞**：`Overscroll` 的「上次逻辑位」原先只在滚轮路径更新，
+  滚条拖动、`ScrollHandle::set_offset` / `scroll_to_bottom`、内容变矮后的 prepaint
+  钳制都会让它与真实逻辑位脱节，下一次滚轮被误判成「逻辑位动了」从而吞掉增量。
+  现在每次 `render` 按钳制口径同步一次。回归测试：
+  `overscroll_first_wheel_after_programmatic_scroll`。
+
 ## [1.6.1] - 2026-10-27
 
 **本版仅 `rgpui-3d` 发布 1.6.1，其余 crate 保持 1.6.0。**

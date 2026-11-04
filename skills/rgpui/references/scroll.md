@@ -78,7 +78,7 @@ fn manual(handle: &ScrollHandle) -> impl IntoElement {
 | `overflow_x_scrollbar` | `#[track_caller] fn overflow_x_scrollbar(self) -> Scrollable<Self>` | `:54` |
 | `overflow_y_scrollbar` | `#[track_caller] fn overflow_y_scrollbar(self) -> Scrollable<Self>` | `:61` |
 
-`Scrollable<E>`（`:67`）由上述方法返回，其唯一公开构建器是
+`Scrollable<E>`（`:68`）由上述方法返回，其唯一公开构建器是
 `overscroll(bool)`（`:91`）。
 
 > 全部方法标 `#[track_caller]`，默认 id 取调用点；同一调用点创建多个滚动区会撞 id。
@@ -181,13 +181,22 @@ uniform_list(
 
 ## 越界回弹
 
-`Overscroll<E>`（`scroll/overscroll.rs:160`）：`new(child, &ScrollHandle, axis)`
-（`:170`，`#[track_caller]`）。通常不必直接用 —— `Scrollable::overscroll(true)`
+`Overscroll<E>`（`scroll/overscroll.rs:176`）：`new(child, &ScrollHandle, axis)`
+（`:186`，`#[track_caller]`）。通常不必直接用 —— `Scrollable::overscroll(true)`
 （`scrollable.rs:91`）即自动包裹；它遵循 `cx.reduce_motion()`。
 
 ```rust
 div().overflow_y_scrollbar().overscroll(true)   // 拖到边界有回弹
+div().flex().overflow_scrollbar().overscroll(true)  // Both 轴两向都回弹
 ```
+
+- **`Both` 轴可用**（1.6.2 修复）：`Scrollable` 的内容层此前被行向 flex 容器的
+  默认 `align-items: stretch` 压成视口高度，`max_offset.y = 0` → 纵向既不滚动也不
+  回弹；现在是 `self_start()` + `min_size_full()`，交叉轴尺寸由内容驱动、不满一屏
+  仍撑满。自搭 `Both` 滚动区若把内容写成固定 `h_full()`，同样会丢掉纵向溢出。
+- **到边后首个滚轮不被吞**（1.6.2 修复）：`last_offset` 随帧同步（不只滚轮路径），
+  滚条拖动 / `set_offset` / `scroll_to_bottom` / 内容变矮后的 prepaint 钳制都先对齐
+  再判定，紧接的滚轮会正常拉伸。
 
 ## 最佳实践
 
