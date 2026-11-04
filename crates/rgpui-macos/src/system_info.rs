@@ -15,7 +15,7 @@ unsafe extern "C" {
 }
 
 /// `kCGEventSourceStateHIDSystemState`
-const CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: i32 = 0;
+const CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: i32 = 1;
 /// `kCGAnyInputEventType`
 const CG_ANY_INPUT_EVENT_TYPE: u32 = 0xFFFF_FFFF;
 

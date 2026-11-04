@@ -68,7 +68,7 @@ unsafe extern "C" {
     fn InstallEventHandler(
         target: *mut c_void,
         handler: unsafe extern "C" fn(EventHandlerCallRef, EventRef, *mut c_void) -> i32,
-        num_types: usize,
+        num_types: i32,
         event_types: *const EventTypeSpec,
         user_data: *mut c_void,
         out_ref: *mut EventHandlerRef,
@@ -227,8 +227,6 @@ impl MacGlobalHotkey {
             event_class: K_EVENT_CLASS_KEYBOARD,
             event_kind: K_EVENT_HOT_KEY_PRESSED,
         };
-        debug_assert_eq!(event_type.event_class, K_EVENT_CLASS_KEYBOARD);
-        debug_assert_eq!(event_type.event_kind, K_EVENT_HOT_KEY_PRESSED);
         let mut handler_ref: EventHandlerRef = std::ptr::null_mut();
         let status = unsafe {
             InstallEventHandler(

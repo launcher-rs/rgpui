@@ -12,7 +12,7 @@ use block::ConcreteBlock;
 use cocoa::base::{id, nil};
 use core_foundation::base::TCFType;
 use core_foundation::string::CFString;
-use objc::{class, msg_send, sel_impl};
+use objc::{class, msg_send, sel, sel_impl};
 use rgpui::{PowerSaveBlocker, PowerSaveBlockerKind, SystemPowerEvent};
 
 #[link(name = "AppKit", kind = "framework")]
