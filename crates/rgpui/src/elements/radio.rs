@@ -226,8 +226,8 @@ impl Radio {
             } else {
                 Toggled::False
             })
-            // 单选兼具"切换"与"选中"语义，不同辅助技术各读一种，两边都报。
-            .aria_selected(checked)
+            // ARIA 里单选按钮的选中态是 aria-checked（accesskit 的 Toggled），
+            // aria-selected 不是 Role::RadioButton 支持的属性，不再重复上报。
             .when_some(
                 self.label.as_ref().map(|l| l.get_text(cx)),
                 |this, label| this.aria_label(label),
@@ -535,7 +535,11 @@ mod tests {
         let [node, disabled] = result.lock().unwrap().take().unwrap();
         assert_eq!(node.label(), Some("选项 A"));
         assert_eq!(node.toggled(), Some(Toggled::True));
-        assert_eq!(node.is_selected(), Some(true));
+        assert_eq!(
+            node.is_selected(),
+            None,
+            "RadioButton 的选中态走 aria-checked，不再写非法的 aria-selected"
+        );
         assert!(!node.is_disabled());
         assert!(node.supports_action(accesskit::Action::Click));
         assert!(disabled.is_disabled(), "禁用态要写进无障碍树");
