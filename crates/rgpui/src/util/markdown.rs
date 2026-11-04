@@ -70,22 +70,20 @@ impl Display for MarkdownString {
 /// 转义 markdown 文本块中的 markdown 特殊字符。Markdown 代码块遵循
 /// 不同的规则，在这种情况下应使用 `MarkdownInlineCode` 或 `MarkdownCodeBlock`。
 ///
-/// 还转义以下 markdown 扩展：
+/// 行内记号一律转义：`\`、`` ` ``、`*`、`_`、`[`、`^`（上标）、`$`（行内数学）、
+/// `~`（删除线）、`&`；`<` / `>` 改成 HTML 实体（避免被当成标签或引用块）。
 ///
-/// * `^` 用于上标
-/// * `$` 用于行内数学
-/// * `~` 用于删除线
+/// 块级记号只在**行首**（其前只有空白）才有语法意义，所以 `#`、`+`、`-`、`=`
+/// 只在该位置转义，行内的连字符、加号保持原样（更干净，且不影响语义）。
+/// 行首「数字 + `.` / `)`」是有序列表记号，点/括号转义成 `1\.` / `1\)`，
+/// 否则 `1. 文本` 会被解析成列表项。
 ///
 /// 某些字符的转义是不必要的，因为虽然它们参与 markdown 语法，
 /// 但参与的其他字符已被转义：
 ///
-/// * `!`、`]`、`(` 和 `)` 用于链接语法，但 `[` 被转义，因此它们被解析为
-///   纯文本。
+/// * `!`、`]`、`(` 和 `)` 用于链接语法，但 `[` 被转义，因此它们被解析为纯文本。
 ///
 /// * `;` 用于 HTML 实体语法，但 `&` 被转义，因此它们被解析为纯文本。
-///
-/// TODO：目前有一个转义未完成。行首数字后的句点（`[0-9]*\.`）也应转义，
-/// 以避免被解释为列表项。
 pub struct MarkdownEscaped<'a>(pub &'a str);
 
 /// 实现 `Display` 以格式化 markdown 行内代码（用反引号包裹），处理包含
@@ -103,61 +101,65 @@ pub struct MarkdownCodeBlock<'a> {
 
 impl Display for MarkdownEscaped<'_> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut start_of_unescaped = None;
-        for (ix, c) in self.0.char_indices() {
+        let mut out = String::with_capacity(self.0.len() + 8);
+        // 行首状态：块级记号（`#` `+` `-` `=` 与 `1.`）只在行首有语法意义。
+        let mut line_start = true;
+        // 行首连续数字：紧跟的 `.` / `)` 是有序列表记号。
+        let mut digit_run = false;
+        for c in self.0.chars() {
             match c {
-                // Always escaped.
-                '\\' | '`' | '*' | '_' | '[' | '^' | '$' | '~' | '&' |
-                // TODO: these only need to be escaped when they are the first non-whitespace
-                // character of the line of a block. There should probably be both an `escape_block`
-                // which does this and an `escape_inline` method which does not escape these.
-                '#' | '+' | '=' | '-' => {
-                    match start_of_unescaped {
-                        None => {}
-                        Some(start_of_unescaped) => {
-                            write!(formatter, "{}", &self.0[start_of_unescaped..ix])?;
-                        }
-                    }
-                    write!(formatter, "\\")?;
-                    // Can include this char in the "unescaped" text since a
-                    // backslash was just emitted.
-                    start_of_unescaped = Some(ix);
+                '\n' => {
+                    out.push(c);
+                    line_start = true;
+                    digit_run = false;
                 }
-                // Escaped since `<` is used in opening HTML tags. `&lt;` is used since Markdown
-                // supports HTML entities, and this allows the text to be used directly in HTML.
+                // 行内记号：任何位置都要转义。
+                '\\' | '`' | '*' | '_' | '[' | '^' | '$' | '~' | '&' => {
+                    out.push('\\');
+                    out.push(c);
+                    line_start = false;
+                    digit_run = false;
+                }
+                // `<` / `>` 用 HTML 实体：既能当纯文本，也不会被当成标签或引用块。
                 '<' => {
-                    match start_of_unescaped {
-                        None => {}
-                        Some(start_of_unescaped) => {
-                            write!(formatter, "{}", &self.0[start_of_unescaped..ix])?;
-                        }
-                    }
-                    write!(formatter, "&lt;")?;
-                    start_of_unescaped = None;
+                    out.push_str("&lt;");
+                    line_start = false;
+                    digit_run = false;
                 }
-                // Escaped since `>` is used for blockquotes. `&gt;` is used since Markdown supports
-                // HTML entities, and this allows the text to be used directly in HTML.
                 '>' => {
-                    match start_of_unescaped {
-                        None => {}
-                        Some(start_of_unescaped) => {
-                            write!(formatter, "{}", &self.0[start_of_unescaped..ix])?;
-                        }
-                    }
-                    write!(formatter, "&gt;")?;
-                    start_of_unescaped = None;
+                    out.push_str("&gt;");
+                    line_start = false;
+                    digit_run = false;
                 }
-                _ => {
-                    if start_of_unescaped.is_none() {
-                        start_of_unescaped = Some(ix);
-                    }
+                // 块级记号：只在行首（前面只有空白）成语法，行内保持原样。
+                '#' | '+' | '=' | '-' if line_start => {
+                    out.push('\\');
+                    out.push(c);
+                    line_start = false;
+                    digit_run = false;
+                }
+                // 行首 `1.` / `1)` 会被解析成有序列表，转义点/括号。
+                '.' | ')' if digit_run => {
+                    out.push('\\');
+                    out.push(c);
+                    line_start = false;
+                    digit_run = false;
+                }
+                c if line_start && c.is_whitespace() => {
+                    out.push(c);
+                }
+                c if line_start && c.is_ascii_digit() => {
+                    out.push(c);
+                    digit_run = true;
+                }
+                c => {
+                    out.push(c);
+                    line_start = false;
+                    digit_run = false;
                 }
             }
         }
-        if let Some(start_of_unescaped) = start_of_unescaped {
-            write!(formatter, "{}", &self.0[start_of_unescaped..])?;
-        }
-        Ok(())
+        formatter.write_str(&out)
     }
 }
 
@@ -269,10 +271,10 @@ mod tests {
         \# Heading
 
         Another heading
-        \=\=\=
+        \===
 
         Another heading variant
-        \-\-\-
+        \---
 
         Paragraph with \[link](https://example.com) and \`code\`, \*emphasis\*, and \~strikethrough\~.
 
@@ -285,12 +287,51 @@ mod tests {
           \* Item 2
           \+ Item 3
 
-        Some math:  \$\`\\sqrt{3x\-1}\+(1\+x)\^2\`\$
+        Some math:  \$\`\\sqrt{3x-1}+(1+x)\^2\`\$
 
         HTML entity: \&nbsp;
         "#;
 
         assert_eq!(MarkdownEscaped(input).to_string(), expected);
+    }
+
+    /// 块级记号只在行首转义；行内的连字符/加号保持原样。
+    #[test]
+    fn test_markdown_escaped_only_at_line_start() {
+        assert_eq!(
+            MarkdownEscaped("a - b + c # d = e").to_string(),
+            "a - b + c # d = e",
+            "行内的块级记号没有语法意义，不该被转义"
+        );
+        assert_eq!(
+            MarkdownEscaped("  # Heading").to_string(),
+            "  \\# Heading",
+            "前导空白后仍是行首"
+        );
+        assert_eq!(MarkdownEscaped("- item").to_string(), "\\- item");
+        assert_eq!(MarkdownEscaped("=").to_string(), "\\=");
+        assert_eq!(
+            MarkdownEscaped("line\n# next").to_string(),
+            "line\n\\# next",
+            "换行后重新回到行首状态"
+        );
+    }
+
+    /// 行首「数字 + `.` / `)`」按有序列表转义，避免被解析成列表项。
+    #[test]
+    fn test_markdown_escaped_ordered_list_marker() {
+        assert_eq!(MarkdownEscaped("1. step").to_string(), "1\\. step");
+        assert_eq!(MarkdownEscaped("12) step").to_string(), "12\\) step");
+        assert_eq!(
+            MarkdownEscaped("v1.2.3").to_string(),
+            "v1.2.3",
+            "不在行首的数字点号是普通文本"
+        );
+        assert_eq!(
+            MarkdownEscaped("1.5 倍").to_string(),
+            "1\\.5 倍",
+            "行首小数也按列表记号处理"
+        );
     }
 
     #[test]

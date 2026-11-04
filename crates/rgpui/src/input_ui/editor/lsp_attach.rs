@@ -27,7 +27,7 @@ use crate::{
 };
 use lsp_types::{
     CompletionContext, CompletionResponse, CompletionTriggerKind, DiagnosticSeverity,
-    InsertTextFormat, TextEdit, Uri,
+    InsertTextFormat, PositionEncodingKind, TextEdit, Uri,
 };
 use std::ops::Range;
 
@@ -68,6 +68,8 @@ pub(super) struct LspAttach {
     highlights_collection: Option<TextDecorationCollection>,
     /// 当前文档 URI（诊断请求按 URI 取数，未设置时不请求）。
     document_uri: Option<Uri>,
+    /// LSP 列号单位（服务器 `initialize` 结果里的 `positionEncoding`；缺省 UTF-16）。
+    position_encoding: PositionEncodingKind,
     /// 补全状态（选中/可见/列表）。
     completion: CompletionState,
     /// 补全弹窗状态（应用渲染 `CompletionPopup` 用，与 `completion` 同步）。
@@ -106,6 +108,7 @@ impl LspAttach {
             document_highlights: Vec::new(),
             highlights_collection: None,
             document_uri: None,
+            position_encoding: PositionEncodingKind::UTF16,
             completion: CompletionState::default(),
             popup,
             diagnostics: Vec::new(),
@@ -176,6 +179,35 @@ fn diagnostic_color(severity: DiagnosticSeverity) -> Hsla {
 /// 诊断严重程度 → 下划线形状（错误波浪，警告直线，其余点状）。
 fn diagnostic_wavy(severity: DiagnosticSeverity) -> bool {
     severity == DiagnosticSeverity::ERROR
+}
+
+/// 把 LSP 编辑列表换算成字节区间，并按「倒序应用」排好序。
+///
+/// 倒序是为了让靠前编辑的字节位置不受后面写入影响。同一位置有多条编辑时
+/// 先应用范围更长的那条（短插入点落在替换区间之外，不会被吃掉）；范围
+/// 完全相同的按服务端顺序倒着写 —— 连续多次插入拼出的文本才与服务端一致。
+pub(crate) fn positioned_offsets(
+    text: &ropey::Rope,
+    edits: &[TextEdit],
+    encoding: &PositionEncodingKind,
+) -> Vec<(Range<usize>, SharedString)> {
+    let mut offsets: Vec<(Range<usize>, SharedString)> = edits
+        .iter()
+        .map(|edit| {
+            (
+                PositionMapping::position_to_offset_with(text, edit.range.start, encoding.clone())
+                    ..PositionMapping::position_to_offset_with(
+                        text,
+                        edit.range.end,
+                        encoding.clone(),
+                    ),
+                SharedString::from(edit.new_text.clone()),
+            )
+        })
+        .collect();
+    offsets.reverse();
+    offsets.sort_by(|a, b| b.0.start.cmp(&a.0.start).then(b.0.end.cmp(&a.0.end)));
+    offsets
 }
 
 impl EditorState {
@@ -372,6 +404,7 @@ impl EditorState {
         // 同符号高亮背景色（主题主色的浅底）。
         let background = cx.theme().tokens.primary.color.opacity(0.18);
         let highlights = self.lsp.document_highlights.clone();
+        let encoding = self.lsp.position_encoding.clone();
         let existing = self.lsp.highlights_collection.clone();
         let mut created = None;
         self.input.update(cx, |state, cx| {
@@ -379,8 +412,16 @@ impl EditorState {
             let decorations: Vec<TextDecoration> = highlights
                 .iter()
                 .map(|highlight| {
-                    let range = PositionMapping::position_to_offset(&text, highlight.range.start)
-                        ..PositionMapping::position_to_offset(&text, highlight.range.end);
+                    let range = PositionMapping::position_to_offset_with(
+                        &text,
+                        highlight.range.start,
+                        encoding.clone(),
+                    )
+                        ..PositionMapping::position_to_offset_with(
+                            &text,
+                            highlight.range.end,
+                            encoding.clone(),
+                        );
                     TextDecoration::new(
                         range,
                         HighlightStyle {
@@ -426,7 +467,7 @@ impl EditorState {
 
     /// 请求语义高亮：结果解码后作为高亮器装进内部输入。
     ///
-    /// token 区间按**字节列**解释（与仓库内其它 LSP 换算口径一致）；类型名经
+    /// token 的列与长度按当前 `position_encoding` 计（缺省 UTF-16）；类型名经
     /// 类型映射表落到主题 token 名，未映射的类型不高亮。
     pub fn request_semantic_tokens(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(provider) = self.semantic.provider.clone() else {
@@ -472,7 +513,12 @@ impl EditorState {
         let text = self
             .input
             .read_with(cx, |state, _| state.text().to_string());
-        let runs = SemanticTokensHighlighter::decode_runs(&text, payload, type_map);
+        let runs = SemanticTokensHighlighter::decode_runs_with(
+            &text,
+            payload,
+            type_map,
+            &self.lsp.position_encoding,
+        );
         let highlighter = SemanticTokensHighlighter::new(language.to_string(), runs);
         self.set_highlighter(Some(Box::new(highlighter)), window, cx);
     }
@@ -610,6 +656,7 @@ impl EditorState {
         self.lsp.definition.visible = !self.lsp.definition.locations.is_empty();
         // 当前文档内的首个命中点：移动光标过去。
         let current_uri = self.lsp.document_uri.clone();
+        let encoding = self.lsp.position_encoding.clone();
         let text = self.input.read_with(cx, |state, _| state.text().clone());
         let target = current_uri.and_then(|uri| {
             self.lsp
@@ -617,7 +664,13 @@ impl EditorState {
                 .locations
                 .iter()
                 .find(|location| location.uri == uri)
-                .map(|location| PositionMapping::position_to_offset(&text, location.range.start))
+                .map(|location| {
+                    PositionMapping::position_to_offset_with(
+                        &text,
+                        location.range.start,
+                        encoding.clone(),
+                    )
+                })
         });
         if let Some(target) = target {
             self.input
@@ -720,21 +773,10 @@ impl EditorState {
             return;
         }
         let caret = self.input.read_with(cx, |state, _| state.cursor());
-        let mut offsets: Vec<(Range<usize>, SharedString)> =
-            self.input.read_with(cx, |state, _| {
-                let text = state.text();
-                edits
-                    .iter()
-                    .map(|edit| {
-                        (
-                            PositionMapping::position_to_offset(text, edit.range.start)
-                                ..PositionMapping::position_to_offset(text, edit.range.end),
-                            SharedString::from(edit.new_text.clone()),
-                        )
-                    })
-                    .collect()
-            });
-        offsets.sort_by_key(|a| std::cmp::Reverse(a.0.start));
+        let encoding = self.lsp.position_encoding.clone();
+        let offsets: Vec<(Range<usize>, SharedString)> = self.input.read_with(cx, |state, _| {
+            positioned_offsets(state.text(), edits, &encoding)
+        });
         for (range, new_text) in offsets {
             self.suppress_auto_complete_once();
             self.input.update(cx, |state, cx| {
@@ -756,6 +798,30 @@ impl EditorState {
     /// 当前文档 URI（修复应用按 URI 挑属于本文档的编辑）。
     pub fn document_uri(&self) -> Option<&Uri> {
         self.lsp.document_uri.as_ref()
+    }
+
+    /// 设置 LSP 列号单位（照抄服务器 `InitializeResult.capabilities.position_encoding`）。
+    ///
+    /// 缺省 UTF-16（协议缺省）；服务器声明 UTF-8 / UTF-32 时必须同步设置，
+    /// 否则诊断下划线、编辑应用、语义高亮在含中文/emoji 的行上会错位。
+    ///
+    /// ```rust,ignore
+    /// let encoding = result.capabilities.position_encoding
+    ///     .unwrap_or(lsp_types::PositionEncodingKind::UTF16);
+    /// editor.update(cx, |state, cx| state.set_position_encoding(encoding, cx));
+    /// ```
+    pub fn set_position_encoding(
+        &mut self,
+        encoding: PositionEncodingKind,
+        cx: &mut Context<Self>,
+    ) {
+        self.lsp.position_encoding = encoding;
+        cx.notify();
+    }
+
+    /// 当前 LSP 列号单位。
+    pub fn position_encoding(&self) -> &PositionEncodingKind {
+        &self.lsp.position_encoding
     }
 
     /// 当前补全状态（列表/选中/可见，应用层按需读取）。
@@ -965,16 +1031,25 @@ impl EditorState {
     /// 标黄/括号匹配创建，见 [`TextDecorationCollection`] 层级规则。
     fn refresh_diagnostic_decorations(&mut self, cx: &mut Context<Self>) {
         let diagnostics = self.lsp.diagnostics.clone();
+        let encoding = self.lsp.position_encoding.clone();
         let existing = self.lsp.diagnostics_collection.clone();
         let mut created = None;
         self.input.update(cx, |state, cx| {
             let text = state.text().clone();
-            // LSP 行列按 UTF-8 字节列换算（与 Editor 状态行一致，CJK 以字节计）。
+            // 服务端报文按协商编码计列（缺省 UTF-16），这里换算成字节偏移再画下划线。
             let decorations: Vec<TextDecoration> = diagnostics
                 .iter()
                 .map(|entry| {
-                    let range = PositionMapping::position_to_offset(&text, entry.range.start)
-                        ..PositionMapping::position_to_offset(&text, entry.range.end);
+                    let range = PositionMapping::position_to_offset_with(
+                        &text,
+                        entry.range.start,
+                        encoding.clone(),
+                    )
+                        ..PositionMapping::position_to_offset_with(
+                            &text,
+                            entry.range.end,
+                            encoding.clone(),
+                        );
                     TextDecoration::new(
                         range,
                         HighlightStyle {
@@ -1766,5 +1841,70 @@ mod tests {
         });
         // 0 处上移回绕到末项。
         assert_eq!(selected_index(&editor, cx), 1);
+    }
+}
+
+#[cfg(test)]
+mod position_tests {
+    use super::positioned_offsets;
+    use lsp_types::{Position, PositionEncodingKind, Range as LspRange, TextEdit};
+
+    /// 同一位置的编辑：范围长的先写，连续插入保持服务端顺序。
+    ///
+    /// 回归测试：原实现只按起点倒序（稳定排序），两条 0..0 插入会按服务端顺序
+    /// 正着写，后一条落在前面 —— 拼出来的文本与服务器给的相反。
+    #[test]
+    fn same_start_edits_apply_in_stable_order() {
+        let rope = ropey::Rope::from("abc\n");
+        let edit = |start: u32, end: u32, new_text: &str| TextEdit {
+            range: LspRange::new(Position::new(0, start), Position::new(0, end)),
+            new_text: new_text.to_string(),
+        };
+        let edits = vec![edit(0, 0, "x"), edit(0, 3, "y"), edit(0, 0, "z")];
+        let offsets = positioned_offsets(&rope, &edits, &PositionEncodingKind::UTF16);
+        assert_eq!(
+            offsets
+                .iter()
+                .map(|(range, _)| range.clone())
+                .collect::<Vec<_>>(),
+            vec![0..3, 0..0, 0..0]
+        );
+        let mut applied = rope.to_string();
+        for (range, new_text) in &offsets {
+            applied.replace_range(range.clone(), new_text);
+        }
+        // 替换先落位，两次插入 x、z 仍按服务端顺序拼在它前面。
+        assert_eq!(applied, "xzy\n");
+    }
+
+    /// 编辑区间按协商编码解码：UTF-8 与 UTF-16 对含中文的行给出不同字节位置。
+    #[test]
+    fn offsets_follow_position_encoding() {
+        let rope = ropey::Rope::from("中a\n");
+        let edit = |start: u32, end: u32| TextEdit {
+            range: LspRange::new(Position::new(0, start), Position::new(0, end)),
+            new_text: "x".into(),
+        };
+        // UTF-16：`中` 占 1 列，第 1..2 列是 `a`。
+        let utf16 = positioned_offsets(
+            &rope,
+            std::slice::from_ref(&edit(1, 2)),
+            &PositionEncodingKind::UTF16,
+        );
+        assert_eq!(utf16[0].0, 3..4);
+        // UTF-8：列即字节，第 3..4 列才是 `a`。
+        let utf8 = positioned_offsets(
+            &rope,
+            std::slice::from_ref(&edit(3, 4)),
+            &PositionEncodingKind::UTF8,
+        );
+        assert_eq!(utf8[0].0, 3..4);
+        // 声称 UTF-8 却给了非字符边界：向下取整到「中」的起点，不切半个字符。
+        let mid = positioned_offsets(
+            &rope,
+            std::slice::from_ref(&edit(1, 2)),
+            &PositionEncodingKind::UTF8,
+        );
+        assert_eq!(mid[0].0, 0..0);
     }
 }

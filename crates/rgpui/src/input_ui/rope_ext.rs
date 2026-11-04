@@ -213,12 +213,15 @@ pub trait RopeExt {
 
     /// 从给定的行、列 [`Position`]（0 起始）获取字节偏移。
     ///
-    /// 列以字符为单位。
+    /// 列以字符（码点）为单位：这是人读坐标（光标行列），**不是** LSP 报文口径。
+    /// 线上报文的列单位由服务器协商（缺省 UTF-16 码元），换算请用
+    /// `lsp::PositionMapping`（按下发编码计列），两者在含 emoji 的行上会差 1 列。
     fn position_to_offset(&self, line_col: &Position) -> usize;
 
     /// 从给定字节偏移获取行、列 [`Position`]（0 起始）。
     ///
-    /// 列以字符为单位。
+    /// 列以字符（码点）为单位，与 [`RopeExt::position_to_offset`] 成对；
+    /// LSP 报文的列换算见 `lsp::PositionMapping`。
     fn offset_to_position(&self, offset: usize) -> Position;
 
     /// 从给定字节偏移获取点（行、列）。

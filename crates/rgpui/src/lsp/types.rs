@@ -193,27 +193,244 @@ impl DocumentVersion {
     }
 }
 
-/// 位置转换工具：字节偏移 ↔ LSP Position。
+/// 位置转换工具：字节偏移 ↔ LSP Position（按协商的 `positionEncoding` 换算）。
+///
+/// LSP 的 `Position.character` **不是字节偏移**：单位由服务器在 `initialize`
+/// 结果里用 [`lsp_types::PositionEncodingKind`] 声明，缺省是 UTF-16 码元。
+/// 用字节列直接当 `character` 发出去，任何一行含中文（3 字节）或 emoji
+/// （UTF-16 代理对）都会错位；反过来把服务器给的单位列当字节用，诊断区间
+/// 和下划线就会落在错误位置。
+///
+/// 仓库里另有一套**码点**口径（[`crate::RopeExt::position_to_offset`] /
+/// [`crate::RopeExt::offset_to_position`]），服务于 `InputState::cursor_position`
+/// 这类人读坐标，与线上报文无关；两套不要混用。
 pub struct PositionMapping;
 
 impl PositionMapping {
-    /// 将字节偏移转换为 LSP Position（行号 + 列号）。
+    /// 将字节偏移转换为 LSP Position（UTF-16 口径，协议缺省）。
     pub fn offset_to_position(text: &Rope, offset: usize) -> lsp_types::Position {
-        use ropey::LineType;
-        let line = text.byte_to_line_idx(offset, LineType::LF);
-        let line_start = text.line_to_byte_idx(line, LineType::LF);
-        let column = offset - line_start;
-        lsp_types::Position::new(line as u32, column as u32)
+        Self::offset_to_position_with(text, offset, lsp_types::PositionEncodingKind::UTF16)
     }
 
-    /// 将 LSP Position 转换为字节偏移。
+    /// 将 LSP Position 转换为字节偏移（UTF-16 口径，协议缺省）。
     pub fn position_to_offset(text: &Rope, position: lsp_types::Position) -> usize {
+        Self::position_to_offset_with(text, position, lsp_types::PositionEncodingKind::UTF16)
+    }
+
+    /// 按 `encoding` 把字节偏移转换为 LSP Position。
+    pub fn offset_to_position_with(
+        text: &Rope,
+        offset: usize,
+        encoding: lsp_types::PositionEncodingKind,
+    ) -> lsp_types::Position {
         use ropey::LineType;
-        let line = position.line as usize;
+        let offset = offset.min(text.len());
+        let line_ix = text.byte_to_line_idx(offset, LineType::LF);
+        let line_start = text.line_to_byte_idx(line_ix, LineType::LF);
+        let line = text.line(line_ix, LineType::LF);
+        let byte_col = line.floor_char_boundary((offset - line_start).min(line.len()));
+        let character = byte_col_to_unit_col(line, byte_col, &encoding);
+        lsp_types::Position::new(line_ix as u32, character as u32)
+    }
+
+    /// 按 `encoding` 把 LSP Position 转换为字节偏移。
+    ///
+    /// 越界的行号收敛到最后一行；超出行长的列收敛到行尾（含换行符之前），
+    /// 与 LSP 规范「character 大于行长时回退到行长」一致。
+    pub fn position_to_offset_with(
+        text: &Rope,
+        position: lsp_types::Position,
+        encoding: lsp_types::PositionEncodingKind,
+    ) -> usize {
+        use ropey::LineType;
         let last_line = text.len_lines(LineType::LF).saturating_sub(1);
-        let line = line.min(last_line);
-        let line_start = text.line_to_byte_idx(line, LineType::LF);
-        let column = position.character as usize;
-        (line_start + column).min(text.len())
+        let line_ix = (position.line as usize).min(last_line);
+        let line_start = text.line_to_byte_idx(line_ix, LineType::LF);
+        let line = text.line(line_ix, LineType::LF);
+        let content_len = line_content_len(line);
+        let byte_col =
+            unit_col_to_byte_col(line, position.character as usize, &encoding, content_len);
+        (line_start + byte_col).min(text.len())
+    }
+}
+
+/// 行内容的字节长度（不含行尾的 `\n` / `\r\n`）。
+fn line_content_len(line: ropey::RopeSlice<'_>) -> usize {
+    let len = line.len();
+    if len > 0 && line.byte(len - 1) == b'\n' {
+        let len = len - 1;
+        if len > 0 && line.byte(len - 1) == b'\r' {
+            return len - 1;
+        }
+        return len;
+    }
+    len
+}
+
+/// 行内字节列 → `encoding` 单位列（`byte_col` 必须落在字符边界上）。
+fn byte_col_to_unit_col(
+    line: ropey::RopeSlice<'_>,
+    byte_col: usize,
+    encoding: &lsp_types::PositionEncodingKind,
+) -> usize {
+    if *encoding == lsp_types::PositionEncodingKind::UTF8 {
+        byte_col
+    } else if *encoding == lsp_types::PositionEncodingKind::UTF32 {
+        line.slice(..byte_col).chars().count()
+    } else {
+        line.byte_to_utf16_idx(byte_col)
+    }
+}
+
+/// 行内 `encoding` 单位列 → 字节列（超出 `content_len` 截断，代理对中间向下取整）。
+fn unit_col_to_byte_col(
+    line: ropey::RopeSlice<'_>,
+    unit_col: usize,
+    encoding: &lsp_types::PositionEncodingKind,
+    content_len: usize,
+) -> usize {
+    let content = line.slice(..content_len);
+    if *encoding == lsp_types::PositionEncodingKind::UTF8 {
+        // 服务端声称 UTF-8 却给了非字符边界时向下取整，避免切出半个字符。
+        content.floor_char_boundary(unit_col.min(content_len))
+    } else if *encoding == lsp_types::PositionEncodingKind::UTF32 {
+        let mut byte_col = 0;
+        for (taken, ch) in content.chars().enumerate() {
+            if taken == unit_col {
+                break;
+            }
+            byte_col += ch.len_utf8();
+        }
+        byte_col
+    } else {
+        content.utf16_to_byte_idx(unit_col.min(content.len_utf16()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PositionMapping;
+    use lsp_types::{Position, PositionEncodingKind};
+    use ropey::Rope;
+
+    /// 含中文（3 字节 / 1 个 UTF-16 码元）与 emoji（4 字节 / 2 个码元）的一行。
+    fn sample() -> Rope {
+        Rope::from("let s = \"中文🎉\";\nB\n")
+    }
+
+    /// UTF-16 口径（协议缺省）：列按码元计，emoji 占 2 列。
+    #[test]
+    fn utf16_columns_count_code_units() {
+        let text = sample();
+        assert_eq!(
+            PositionMapping::offset_to_position(&text, 0),
+            Position::new(0, 0)
+        );
+        assert_eq!(
+            PositionMapping::offset_to_position(&text, 9),
+            Position::new(0, 9)
+        );
+        assert_eq!(
+            PositionMapping::offset_to_position(&text, 12),
+            Position::new(0, 10)
+        );
+        assert_eq!(
+            PositionMapping::offset_to_position(&text, 15),
+            Position::new(0, 11)
+        );
+        // 🎉 = 4 字节 / 2 码元：跳过后列号 +2 而不是 +4。
+        assert_eq!(
+            PositionMapping::offset_to_position(&text, 19),
+            Position::new(0, 13)
+        );
+        assert_eq!(
+            PositionMapping::offset_to_position(&text, 20),
+            Position::new(0, 14)
+        );
+        assert_eq!(
+            PositionMapping::offset_to_position(&text, 21),
+            Position::new(0, 15)
+        );
+        assert_eq!(
+            PositionMapping::offset_to_position(&text, 22),
+            Position::new(1, 0)
+        );
+    }
+
+    /// 原地往返：前端给的位置换算回字节偏移后必须落回原字符边界。
+    #[test]
+    fn utf16_round_trips_at_char_boundaries() {
+        let text = sample();
+        for offset in [0, 1, 9, 12, 15, 19, 20, 21, 22, 23, 24] {
+            let position = PositionMapping::offset_to_position(&text, offset);
+            assert_eq!(
+                PositionMapping::position_to_offset(&text, position),
+                offset,
+                "offset {offset} 往返后不一致（position {position:?}）"
+            );
+        }
+    }
+
+    /// UTF-8 口径：列就是字节数。
+    #[test]
+    fn utf8_columns_are_bytes() {
+        let text = sample();
+        let utf8 = PositionEncodingKind::UTF8;
+        assert_eq!(
+            PositionMapping::offset_to_position_with(&text, 19, utf8.clone()),
+            Position::new(0, 19)
+        );
+        assert_eq!(
+            PositionMapping::position_to_offset_with(&text, Position::new(0, 19), utf8),
+            19
+        );
+    }
+
+    /// UTF-32 口径：列按码点计，emoji 只占 1 列。
+    #[test]
+    fn utf32_columns_count_code_points() {
+        let text = sample();
+        let utf32 = PositionEncodingKind::UTF32;
+        assert_eq!(
+            PositionMapping::offset_to_position_with(&text, 9, utf32.clone()),
+            Position::new(0, 9)
+        );
+        // `"中文` 之后是 11 个码点。
+        assert_eq!(
+            PositionMapping::offset_to_position_with(&text, 15, utf32.clone()),
+            Position::new(0, 11)
+        );
+        assert_eq!(
+            PositionMapping::offset_to_position_with(&text, 19, utf32.clone()),
+            Position::new(0, 12)
+        );
+        for offset in [0, 9, 12, 15, 19, 20, 21, 22, 23, 24] {
+            let position = PositionMapping::offset_to_position_with(&text, offset, utf32.clone());
+            assert_eq!(
+                PositionMapping::position_to_offset_with(&text, position, utf32.clone()),
+                offset
+            );
+        }
+    }
+
+    /// 越界收敛：行号超界取最后一行，列超界取行尾（换行符之前）。
+    #[test]
+    fn out_of_range_positions_clamp_to_line_end() {
+        let text = sample();
+        assert_eq!(
+            PositionMapping::position_to_offset(&text, Position::new(99, 0)),
+            24,
+            "超界行号应落到最后一行（末尾换行之后的空行）行首"
+        );
+        assert_eq!(
+            PositionMapping::position_to_offset(&text, Position::new(0, 999)),
+            21,
+            "超界列应停在换行符之前"
+        );
+        // 代理对中间的单位列向下取整到字符起点。
+        assert_eq!(
+            PositionMapping::position_to_offset(&text, Position::new(0, 12)),
+            15
+        );
     }
 }

@@ -632,8 +632,11 @@ impl Asset for ImageAssetLoader {
         cx: &mut App,
     ) -> impl Future<Output = Self::Output> + Send + 'static {
         let client = cx.http_client();
-        // TODO: Can we make SVGs always rescale?
-        // let scale_factor = cx.scale_factor();
+        // 这里**拿不到**窗口缩放因子：资源加载器没有 window，`Asset::load` 只给 `&mut App`，
+        // 而 `App` 侧没有 scale_factor（`PlatformDisplay` 也没暴露），且同一份资源在
+        // 缓存里跨窗口共享 —— 按某个窗口的 DPI 光栅化会让另一个窗口尺寸失真。
+        // 实际做法是固定 2× 超采样（`SMOOTH_SVG_SCALE_FACTOR`），对 ≤2× 的屏幕都是清晰的；
+        // 真正按设备像素精确缩放的路子留给渲染器采样，而不是这里。
         let svg_renderer = cx.svg_renderer();
         let asset_source = cx.asset_source().clone();
         async move {

@@ -86,18 +86,43 @@ Editor::new(&editor)
 
 | 方法 | 位置 |
 |------|------|
-| `set_completion_provider(...)` | `:153` |
-| `set_diagnostics_provider(...)` | `:247` |
-| `set_hover_provider(...)` | `:261` |
-| `set_document_uri(Option<Uri>, cx)` / `document_uri()` | `:275` / `:281` |
-| `set_auto_completion_enabled(bool, cx)` / `auto_completion_enabled()` | `:167` / `:177` |
-| `set_auto_completion_min_prefix_len(usize, cx)` | `:184` |
-| `request_completions(window, cx)` / `accept_completion(...)` / `dismiss_completion(cx)` | `:310`/`:390`/`:419` |
-| `completion_menu_active()` / `select_next_completion(cx)` / `select_previous_completion(cx)` | `:428`/`:433`/`:443` |
-| `diagnostics() -> &[DiagnosticEntry]` | `:296` |
-| `request_diagnostics(window, cx)` | `:453` |
-| `request_hover(offset, window, cx)` / `dismiss_hover(cx)` / `hover_state()` | `:533`/`:570`/`:301` |
+| `set_completion_provider(...)` | `:215` |
+| `set_diagnostics_provider(...)` | `:309` |
+| `set_hover_provider(...)` | `:323` |
+| `set_formatting_provider(...)` / `set_rename_provider(...)` | `:337` / `:683` |
+| `set_definition_provider(...)` / `goto_definition(...)` / `find_references(...)` | `:568` / `:587` / `:617` |
+| `set_semantic_tokens_provider(...)` / `request_semantic_tokens(...)` | `:452` / `:472` |
+| `set_signature_help_provider(...)` / `request_signature_help(...)` | `:350` / `:526` |
+| `request_document_highlights(...)` / `request_formatting(...)` / `request_rename(...)` | `:371` / `:736` / `:698` |
+| `set_document_uri(Option<Uri>, cx)` / `document_uri()` | `:793` / `:799` |
+| `set_position_encoding(PositionEncodingKind, cx)` / `position_encoding()` | `:813` / `:823` |
+| `set_auto_completion_enabled(bool, cx)` / `auto_completion_enabled()` | `:229` / `:239` |
+| `set_auto_completion_min_prefix_len(usize, cx)` | `:246` |
+| `request_completions(window, cx)` / `accept_completion(...)` / `dismiss_completion(cx)` | `:852`/`:932`/`:961` |
+| `completion_menu_active()` / `select_next_completion(cx)` / `select_previous_completion(cx)` | `:970`/`:975`/`:985` |
+| `diagnostics() -> &[DiagnosticEntry]` | `:838` |
+| `request_diagnostics(window, cx)` | `:995` |
+| `request_hover(offset, window, cx)` / `dismiss_hover(cx)` / `hover_state()` | `:1084`/`:1121`/`:843` |
 
+**位置编码必须照抄服务器的协商结果。** LSP 的 `Position.character` 单位由服务器
+`initialize` 结果里的 `capabilities.position_encoding` 决定（缺省 **UTF-16 码元**），
+既不是字节也不是码点 —— 按字节发/收，任何含中文（3 字节）或 emoji（代理对）的行都会错位。
+
+```rust
+let encoding = result.capabilities.position_encoding.clone()
+    .unwrap_or(lsp_types::PositionEncodingKind::UTF16);
+editor.update(cx, |state, cx| state.set_position_encoding(encoding, cx));
+```
+
+设置后诊断下划线、格式化/重命名/Code Action 的编辑应用、语义高亮解码全部按该编码换算。
+公开换算入口：`lsp::PositionMapping::offset_to_position_with` /
+`position_to_offset_with`（`lsp/types.rs`），语义高亮用
+`SemanticTokensHighlighter::decode_runs_with`（`lsp/semantic_tokens.rs`）。
+同一位置的多条编辑按「起点倒序 → 范围长者先 → 同范围按服务端顺序倒着写」应用
+（`lsp_attach::positioned_offsets`），连续插入不会被后面的编辑吃掉或颠倒。
+
+> `RopeExt::position_to_offset` / `offset_to_position` 是**码点**口径，服务于
+> `InputState::cursor_position` 这类人读坐标，不要拿来换算 LSP 报文。
 > stdio LSP 传输在 `lsp/stdio.rs`（子进程 + JSON-RPC）。
 
 ## 片段

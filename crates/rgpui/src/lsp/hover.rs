@@ -136,9 +136,11 @@ mod tests {
         // 旧算术会得到 100..103，而全文不足 30 字节
         assert_ne!(response.range, 100..103);
         let all = text.to_string();
+        // LSP 缺省按 UTF-16 码元计列：第 1 行第 0..3 列是「第二行」三个汉字，
+        // 不是 3 个字节（1 个汉字 3 字节）——按字节算只会切出「第」。
         assert_eq!(
             &all[response.range.clone()],
-            "第",
+            "第二行",
             "换算出的区间要能按字节切出内容"
         );
         assert!(matches!(
