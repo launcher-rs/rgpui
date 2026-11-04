@@ -863,7 +863,8 @@ impl ThemeColor {
         apply_background_color!(overlay);
         apply_color!(window_border, fallback = self.border);
 
-        // TODO: Apply default fallback colors to highlight.
+        // 高亮主题的缺省颜色不在这里补：`Theme::apply_config` 会用刚应用的主题色
+        // 调用 `HighlightThemeStyle::fill_missing_from`，那时调色板才是最终的。
 
         // Ensure opacity for list_active, table_active, selection.
         let clamp_alpha = |raw: Option<&str>, color: Hsla, background: Background, max: f32| {
@@ -949,6 +950,17 @@ impl Theme {
 
         self.tokens = self.colors.apply_config(&config, &default_colors);
         self.mode = config.mode;
+
+        // 主题色落地后，再把高亮主题里缺失的编辑器颜色补成本主题的语义色
+        if let Some(style) = &config.highlight {
+            let mut style = style.clone();
+            style.fill_missing_from(&self.colors, config.mode);
+            self.highlight_theme = Arc::new(HighlightTheme {
+                name: config.name.to_string(),
+                appearance: config.mode,
+                style,
+            });
+        }
     }
 }
 
@@ -1080,5 +1092,55 @@ mod tests {
                 linear_color_stop(blue.alpha(0.3), 1.),
             )
         );
+    }
+
+    /// 自定义主题只写部分 `highlight` 颜色时：显式值保留，关键编辑器颜色用主题语义色补齐，
+    /// 装饰色（活动行、行号栏底色）保持缺失 —— 省略等于关闭，不能被兜底强行打开。
+    #[test]
+    fn test_apply_config_fills_missing_highlight_colors() {
+        let config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "Partial Highlight",
+            "mode": "light",
+            "colors": {
+                "foreground": "#112233",
+                "muted.foreground": "#445566"
+            },
+            "highlight": {
+                "editor.foreground": "#0f0f0f"
+            }
+        }))
+        .unwrap();
+
+        let mut theme = Theme::default();
+        theme.apply_config(&std::rc::Rc::new(config));
+
+        let style = &theme.highlight_theme.style;
+        assert_eq!(
+            style.editor_foreground,
+            Some(try_parse_color("#0f0f0f").unwrap()),
+            "显式给出的编辑器前景色不能被兜底覆盖"
+        );
+        assert_eq!(
+            style.editor_background,
+            Some(try_parse_color("#ffffff").unwrap()),
+            "缺省的编辑器背景应跟随主题背景"
+        );
+        assert_eq!(
+            style.editor_line_number,
+            Some(try_parse_color("#445566").unwrap()),
+            "缺省的行号颜色应跟随弱化前景色"
+        );
+        assert_eq!(
+            style.editor_active_line_number,
+            Some(try_parse_color("#112233").unwrap()),
+            "缺省的当前行行号应跟随正文前景色"
+        );
+        assert_eq!(
+            style.editor_invisible,
+            Some(try_parse_color("#445566").unwrap().opacity(0.4)),
+            "缺省的不可见字符颜色应是弱化前景色的低透明度版本"
+        );
+        assert_eq!(style.editor_active_line, None);
+        assert_eq!(style.editor_gutter_background, None);
     }
 }

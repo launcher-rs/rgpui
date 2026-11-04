@@ -141,17 +141,17 @@ ThemeRegistry::watch_themes_dir(cx);                         // :191
 }
 ```
 
-- `ThemeConfig`（`schema.rs:39`）：`is_default`、`name`、`mode`，字体
+- `ThemeConfig`（`schema.rs:52`）：`is_default`、`name`、`mode`，字体
   （`font.size`/`font.family`/`mono_font.family`/`mono_font.size`）、
   圆角（`radius`/`radius.lg`）、`shadow`、`colors`、`highlight`。
-- `ThemeConfigColors`（`schema.rs:83`）：按 `"accent.background"` 之类键名
+- `ThemeConfigColors`（`schema.rs:96`）：按 `"accent.background"` 之类键名
   覆盖 `ThemeColor`，全部字段 `Option`，未设的走默认。
-- 生成 JSON Schema：`theme_json_schema() -> String`（`:947`）、
-  `write_theme_json_schema(path)`（`:953`）。
+- 生成 JSON Schema：`theme_json_schema() -> String`（`:972`）、
+  `write_theme_json_schema(path)`（`:982`）。
 
 ## 语法高亮主题
 
-`HighlightTheme`（`theme/highlight.rs:499`，兼容 Zed 主题格式）实现
+`HighlightTheme`（`theme/highlight.rs:531`，兼容 Zed 主题格式）实现
 `Deref<Target = SyntaxColors>`：
 
 ```rust
@@ -159,12 +159,20 @@ cx.theme().highlight_theme.style.editor_background   // Option<Hsla>
 cx.theme().highlight_theme.style.syntax.keyword      // Option<ThemeStyle>
 ```
 
-- `HighlightThemeStyle`（`highlight.rs:467`）：`editor_background`、
+- `HighlightThemeStyle`（`highlight.rs:470`）：`editor_background`、
   `editor_foreground`、`editor_active_line`、`editor_line_number`、
-  `editor_gutter_background`、`status: StatusColors`、`syntax: SyntaxColors`。
-- `HighlightTheme::default_light()` / `default_dark()`（`:519`/`:524`）。
-- `SyntaxColors::style(name) -> Option<HighlightStyle>`（`:239`）按 token 名取样式。
-- `StatusColors`（`:315`）提供 `error()`/`warning()`/`info()`/`success()`/`hint()`
+  `editor_active_line_number`、`editor_invisible`、`editor_gutter_background`、
+  `status: StatusColors`、`syntax: SyntaxColors`（`syntax` 可整段省略）。
+- **缺失颜色由主题语义色补齐**（`HighlightThemeStyle::fill_missing_from`，`:512`，
+  `Theme::apply_config` 调用）：`editor_background` ← 输入框背景、
+  `editor_foreground` ← `foreground`、`editor_line_number` ← `muted_foreground`、
+  `editor_active_line_number` ← `foreground`、`editor_invisible` ←
+  `muted_foreground.opacity(0.4)`。显式值原样保留；`editor_active_line` 与
+  `editor_gutter_background` 属于装饰，省略即不绘制，不会被兜底打开。
+  编辑器正文与行号真的读取这些字段（`editor_foreground` 只影响带编辑器铬的模式）。
+- `HighlightTheme::default_light()` / `default_dark()`（`:551`/`:556`）。
+- `SyntaxColors::style(name) -> Option<HighlightStyle>`（`:242`）按 token 名取样式。
+- `StatusColors`（`:318`）提供 `error()`/`warning()`/`info()`/`success()`/`hint()`
   及各自 `_background`/`_border` 方法（均需 `&App`，如 `status.error(cx)`）。
 
 ## 主题监听（theme_watcher）

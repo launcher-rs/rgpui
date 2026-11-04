@@ -1,4 +1,7 @@
-use crate::{ActiveTheme, App, FontWeight, HighlightStyle, Hsla, theme::ThemeMode};
+use crate::{
+    ActiveTheme, App, FontWeight, HighlightStyle, Hsla,
+    theme::{ThemeColor, ThemeMode, color::Colorize},
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -483,15 +486,44 @@ pub struct HighlightThemeStyle {
     #[serde(rename = "editor.invisible")]
     /// 不可见字符（空白）颜色。
     pub editor_invisible: Option<Hsla>,
-    /// 行号栏（gutter）背景色，未设置时回退到 `editor_background`。
+    /// 行号栏（gutter）背景色，未设置时不绘制行号栏底色。
     #[serde(rename = "editor.gutter.background")]
     pub editor_gutter_background: Option<Hsla>,
     #[serde(flatten)]
     /// 状态颜色（错误/警告/信息/成功/提示）。
     pub status: StatusColors,
-    #[serde(rename = "syntax")]
+    #[serde(rename = "syntax", default)]
     /// 语法高亮颜色表。
     pub syntax: SyntaxColors,
+}
+
+impl HighlightThemeStyle {
+    /// 用主题调色板补齐缺失的关键编辑器颜色。
+    ///
+    /// 自定义主题的 `highlight` 段常只写语法色；背景、前景、行号这些决定可读性的
+    /// 字段留空时，读取侧只能各自散落兜底。这里统一补成主题自身的语义色，让
+    /// `HighlightTheme` 在应用后是自洽的：
+    /// - 背景跟输入框背景（暗色下是 `input` 与透明色的混合）；
+    /// - 前景与当前行行号跟正文前景色；
+    /// - 普通行号用弱化前景色，不可见字符再降一档透明度。
+    ///
+    /// 活动行背景与行号栏底色属于装饰，`syntax` 缺失项也交给读取侧回退，不在这里填充，
+    /// 以免主题作者省略就等于「关闭」的意图被覆盖。
+    pub(crate) fn fill_missing_from(&mut self, colors: &ThemeColor, mode: ThemeMode) {
+        let editor_background = if mode.is_dark() {
+            colors.input.mix_oklab(Hsla::transparent_black(), 0.3)
+        } else {
+            colors.background
+        };
+        self.editor_background.get_or_insert(editor_background);
+        self.editor_foreground.get_or_insert(colors.foreground);
+        self.editor_line_number
+            .get_or_insert(colors.muted_foreground);
+        self.editor_active_line_number
+            .get_or_insert(colors.foreground);
+        self.editor_invisible
+            .get_or_insert_with(|| colors.muted_foreground.opacity(0.4));
+    }
 }
 
 /// 代码高亮主题，兼容 Zed 主题格式。

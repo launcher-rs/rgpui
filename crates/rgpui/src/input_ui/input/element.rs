@@ -1429,7 +1429,15 @@ impl Element for TextElement {
         let text_style = window.text_style();
         let disabled = state.disabled;
         let dim = |color: Hsla| if disabled { color.opacity(0.5) } else { color };
-        let fg = dim(text_style.color);
+        // 编辑器正文色优先取高亮主题的 `editor.foreground`（主题可把正文压得比 UI 文字柔），
+        // 普通输入框继续跟随容器的文本色。
+        let editor_foreground = cx
+            .theme()
+            .highlight_theme
+            .style
+            .editor_foreground
+            .filter(|_| state.mode.has_editor_chrome());
+        let fg = dim(editor_foreground.unwrap_or(text_style.color));
         let (display_text, text_color) = if is_empty {
             (
                 &Rope::from(placeholder.as_str()),
@@ -1717,11 +1725,24 @@ impl Element for TextElement {
 
         let state = self.state.read(cx);
         let line_numbers = if state.mode.line_number() {
+            // 行号颜色跟着高亮主题走，主题没写时退回弱化/正文前景色
+            let line_number_color = cx
+                .theme()
+                .highlight_theme
+                .style
+                .editor_line_number
+                .unwrap_or(cx.theme().muted_foreground);
+            let active_line_number_color = cx
+                .theme()
+                .highlight_theme
+                .style
+                .editor_active_line_number
+                .unwrap_or(cx.theme().foreground);
             let mut line_numbers = Vec::with_capacity(last_layout.visible_buffer_lines.len());
             let other_line_runs = vec![TextRun {
                 len: line_number_len,
                 font: style.font(),
-                color: cx.theme().muted_foreground,
+                color: line_number_color,
                 background_color: None,
                 underline: None,
                 strikethrough: None,
@@ -1729,7 +1750,7 @@ impl Element for TextElement {
             let current_line_runs = vec![TextRun {
                 len: line_number_len,
                 font: style.font(),
-                color: cx.theme().foreground,
+                color: active_line_number_color,
                 background_color: None,
                 underline: None,
                 strikethrough: None,
