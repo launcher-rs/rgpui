@@ -1474,6 +1474,8 @@ impl Terminal {
                 self.output_revision += 1;
             }
             InternalEvent::Clear => {
+                // 清屏会丢弃滚动历史并重排网格，既有搜索匹配的坐标随之失效。
+                self.output_revision += 1;
                 term.clear_screen(ClearMode::Saved);
 
                 let cursor = term.grid().cursor.point;

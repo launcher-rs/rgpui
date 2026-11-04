@@ -1,6 +1,6 @@
 # rgpui 开发 TODO
 
-更新：2026-11-01
+更新：2026-11-04
 
 状态图例：✅ 已完成 / 🚧 进行中 / ⬜ 未开始 / — 不适用（已判定无需改动）。
 完成项直接给出落地文件与回归测试；本文件不引用仓库外的临时材料。
@@ -16,7 +16,8 @@
 | T3 | DirectWrite `IDWriteTextFormat1` 缓存 | P1 | ✅ |
 | T4 | `paint_line` 行级 + 字形级裁剪 | P2 | ✅ |
 | T5 | 公开 `Window::frame_stats()` + HUD 接线 | P5 | ✅ |
-| T12 | 纯 ASCII 单字体快路径 | 可选 | ⬜（T2 基线 1.35 µs/行，收益需实测再决定） |
+| T12 | 纯 ASCII 单字体快路径 | 可选 | —（不实现：见下） |
+| T13 | 终端 `layout_grid` 去整屏克隆 + 背景合并线性化 | 高 | ✅ |
 
 ### Markdown 与组件
 
@@ -56,13 +57,44 @@
 
 ## 未完成项
 
-### T12 纯 ASCII 单字体快路径（可选）
+（无）
 
-前置：T2 的 shaping 数字。方案：`text.is_ascii() && font_runs.len() == 1` 且该字体无 fallback 时跳过 `CreateTextLayout`，用 `GetDesignGlyphMetrics` + advance 累加自算；必须与完整 shaping 做 golden test（抽样 1000 行逐字节对比）。
+## 已判定不做
 
-验收：终端典型行 µs 下降 ≥30%；非 ASCII / 多 run / 有 fallback 路径行为不变；kerning 与连字语义写进文档。
+### T12 纯 ASCII 单字体快路径（不做）
+
+- 复测：`text_shaping` 1000 行唯一 ASCII 为 1.36–1.44 ms（≈1.39 µs/行），与 T2 基线 1.35 µs/行一致；这是**缓存全 miss** 下的纯排版成本。`WindowTextSystem::shape_line` 按「文本 + 样式」缓存，终端每帧对未变化的行命中的是缓存，快路径的实际收益上限只是「每帧变化行数 × 30%」。
+- 语义代价：绕过 `CreateTextLayout` 只能用 `GetDesignGlyphMetrics` 累加 advance，等于放弃 kerning 与连字（P0-2 刚把 DirectWrite 默认的 liga/clig/calt 恢复回来），同时要自行重建 fallback 与字形聚类。
+- 验收要求「抽样 1000 行与完整 shaping 逐字节比对」依赖 GPU/COM 的 DirectWrite，CI 矩阵无法执行，只能本地人工比对，回归无保障。
+- 结论：收益场景窄、语义风险与维护成本高，标记 —（不实现）。
+
+### 终端与文本管线候选三项（2026-11-04 评估，不做）
+
+1. **终端 prepaint 整屏重排缓存**：12,000 格（60×200）`layout_grid` 实测 0.63–0.69 ms/帧。核对重绘来源后确认收益场景过窄：本 crate 没有光标闪烁定时器（`CursorBlinkingChange` 只在应用切换该设置时发一次），空闲不重绘；`Wakeup`（新输出）与滚动分别改变 `output_revision` / `display_offset`，缓存必然 miss，真正命中的只有选区拖拽、搜索词输入、焦点切换这几类交互突发帧。实现上 `TerminalView::render` 每帧新建 `TerminalElement`，缓存得寄存在视图里跨帧共享，还要在 `set_theme` / `text_style_mut` / 字号变化时失效，并把缓存的 `Vec`（含每行 `String`）复制进元素——为不足 4% 的帧预算引入跨帧状态与失效风险不划算；若将来 profiling 显示拖选帧超预算再重启。
+2. **`Terminal::make_content` 的整屏克隆**：每次同步克隆 12,000 个 `Cell` 实测 51 µs；复用 `Vec` 缓冲只省约 0.7 µs（分配占比 <2%），克隆本身才是成本。要真正消除得让渲染直接读网格，会把 alacritty 锁带进 prepaint，暂不划算。
+3. **`shape_line_by_hash` 的按哈希缓存**：`try_layout_line_by_hash` / `layout_line_by_hash` 里按内容哈希查找本帧/上帧布局确实是 `iter().find` 的 O(n) 扫描（`FxHashMap` 的键是 `Arc<HashedCacheKey>`，按内容探测只能扫）。但 `crates/` 与 `examples/` 里只有 `shape_line_by_hash` 的定义、没有调用方，不构成热点；等有实际调用时把键换成可借用探测的 `HashedCacheKeyRef` 即可 O(1)。
 
 ## 已完成记录
+
+### 代码复查修正（2026-11-04）
+
+- `crates/rgpui-term/src/terminal.rs`：`InternalEvent::Clear` 清屏会丢弃滚动历史并重排网格，但没有递增 `output_revision`，`refresh_search` 会误判「网格未变」而保留旧坐标，搜索高亮继续盖在已清空的格子上。补一次递增，复用既有的重定位路径。
+- 验证：`cargo test -p rgpui-term --lib`（44 条）、`cargo clippy -p rgpui-term --all-targets -- -D warnings`、`cargo check --workspace`、`cargo fmt --all -- --check`、`cargo test -p rgpui --test guards`（9 条）均通过。
+
+### T13 终端 `layout_grid` 去整屏克隆 + 背景合并线性化
+
+- `crates/rgpui-term/src/terminal_element.rs`
+  - `layout_grid` 改为借用 `&IndexedCell`（`impl Iterator<Item = &'a IndexedCell>`）：`prepaint` 不再 `cells.iter().cloned()` 造临时整屏副本，逐格克隆（含可选 `Arc` 扩展数据）随之消失。
+  - 删掉从未启用的 `viewport_lines` 参数与 `Box<dyn Iterator>` 动态派发，行分组改为 `chunk_by(point.line)`（显示行号的归零见下方复查修正）。
+  - `merge_background_regions` 从「两两比较、反复扫描到不动点」的 O(n²) 改为单趟线性：`layout_grid` 按行生成、行内已是最大同色跨度，只需沿「上一行同列跨度 + 同色」向下延伸；上一行映射用两张 `HashMap` 逐行滚动，避免拿旧实现的 `can_merge_with` / `merge_with`。
+  - 新增空白格快速路径：默认底色、无装饰、无零宽附标的空格直接跳过颜色解析与三次形状匹配（这类格子不产生背景矩形、也进不了文本运行）。同进程 A/B 实测典型 shell 输出（约 6/7 为空格）整屏布局 619 µs → 512 µs（−17.3%），全文本行与带底色空格场景在噪声内（−1 ~ −2%）。
+  - 回归测试：`test_background_region_merges_vertical_same_span`、`test_background_region_keeps_different_colors_separate`（改成直接验合并结果）、`test_background_region_merge_preserves_cell_coverage`（逐格交错底色，校验不重复覆盖、不漏覆盖、颜色一致）、`test_layout_grid_batches_text_and_merges_background`（文本运行被换行切断、相邻同色空格合并成一个矩形、制表框字符走块片段而非文本）。
+  - 复查修正：行分组曾直接用 `point.line` 当绘制行号，但 alacritty 的网格坐标以回滚缓冲为基准，回滚时首行是 `-display_offset`，会导致整屏上移、底部留空。`layout_grid` 增加 `display_offset` 参数换算成 0 基显示行；新增 `test_layout_grid_normalizes_scrollback_line_numbers`（临时回退该行会得到 `-6` 并失败）。
+- 实测（Windows / DirectWrite，release，60×200 = 12,000 格）：
+  - 纯文本：旧（克隆 42.6 µs + 布局 774.6 µs）≈ 817 µs → 新 627.6 µs（约 −23%）。
+  - 整行同底色：742.7 µs → 645.3 µs（约 −13%）。
+  - 逐格交错底色：240.9 ms → 1.85 ms；单独测合并 12,000 个不可合并矩形 241.9 ms → 1.10 ms，60 行整行同色合并为 1 个矩形耗时 13.6 µs。旧实现在这类 TUI 配色下会直接掉帧。
+- 验证：`cargo fmt -p rgpui-term`、`cargo clippy -p rgpui-term --all-targets -- -D warnings`、`cargo test -p rgpui-term`（最终 44 条通过）；`cargo clippy --workspace --all-targets -- -D warnings` 通过。实机运行 `external_io` 演示并注入蓝/红底色、反色、制表线与方块字符，截图确认背景矩形、块片段与文本运行渲染正确。
 
 ### T11 图标能力文档化
 
@@ -183,7 +215,7 @@
 
 ## 建议顺序
 
-1. **T12**（可选）：T2 基线约 1.35 µs/行，快路径收益需先量化场景内占比再决定，不预设要做。
+本轮待办已清空。上一轮列出的三个实测候选已在 2026-11-04 评估并全部判定不做，理由见「已判定不做 → 终端与文本管线候选三项」；下次继续找优化时重新按实测场景占比立项。
 
 ## 明确不做（本轮）
 
