@@ -817,7 +817,7 @@ impl Terminal {
             && std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
         {
             let count = TRACE_KEY_INPUTS.fetch_add(1, Ordering::Relaxed) + 1;
-            if count <= 3 || count % 50 == 0 {
+            if count <= 3 || count.is_multiple_of(50) {
                 eprintln!(
                     "[rt-trace] terminal accepted keystroke #{count} bytes={:02x?}",
                     input.as_ref()
@@ -847,7 +847,7 @@ impl Terminal {
         let esc = to_esc_str(keystroke, &self.last_content.mode, option_as_meta);
         let trace_count = if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
             let count = TRACE_KEY_EVENTS.fetch_add(1, Ordering::Relaxed) + 1;
-            if count <= 3 || count % 50 == 0 {
+            if count <= 3 || count.is_multiple_of(50) {
                 eprintln!(
                     "[rt-trace] terminal received keydown #{count}: key={} mapped={}",
                     keystroke.key,
