@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### 新增（组件）
+
+- **`Questionnaire` 向导式表单**：`QuestionnaireState` + `Questionnaire` 元素，把多步问答
+  收进一条流程——顶部步骤条 + 当前步内容 + 底部导航（上一步 / 下一步 / 提交），并按步接收
+  调用方的校验结果，未通过的步不放行前进、仍可后退。答值不进组件模型，由调用方持有（与
+  `Form` / `Field` 组合使用）。事件 `QuestionnaireEvent::{StepChanged, Submit}`。
+  用例：`cargo run -p showcase --bin questionnaire`。
+
 ### 修复（滚动）
 
 - **`Both` 轴经 `Scrollable` 的越界回弹不生效**：`Scrollable`（`Both`）的内容层是行向

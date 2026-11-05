@@ -102,6 +102,10 @@ name = "form"
 path = "src/bin/form.rs"
 
 [[bin]]
+name = "questionnaire"
+path = "src/bin/questionnaire.rs"
+
+[[bin]]
 name = "input"
 path = "src/bin/input.rs"
 
