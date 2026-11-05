@@ -53,6 +53,8 @@ charts = ["rgpui/charts"]
 effects = ["rgpui/effects"]
 # 二维码组件。
 qr-code = ["rgpui/qr-code"]
+# 文本差异查看器。
+diff = ["rgpui/diff"]
 # 输入延迟直方图统计。
 input-latency = ["rgpui/input-latency-histogram", "dep:hdrhistogram"]
 # 屏幕取色（吸管）；`color_picker` bin 里的吸管按钮在该 feature 下编译。
@@ -108,6 +110,7 @@ path = "src/bin/questionnaire.rs"
 [[bin]]
 name = "diff"
 path = "src/bin/diff.rs"
+required-features = ["diff"]
 
 [[bin]]
 name = "input"
