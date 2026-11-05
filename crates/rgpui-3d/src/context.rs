@@ -4,9 +4,9 @@ use crate::types::*;
 use bytemuck;
 use rgpui::RenderImage;
 use scenekit::{
-    Geometry, GpuError, GpuScene, MaterialId, MeshId, PackedVertex, PerspectiveCamera,
-    RendererLight, RendererMaterial, SceneGraph, ScenixError, TextureId, collect_visible_draws,
-    sort_opaque_front_to_back, sort_transparent_back_to_front,
+    Geometry, GpuError, GpuScene, MaterialId, MeshId, NodeId, NodeKind, PackedVertex,
+    PerspectiveCamera, RendererLight, RendererMaterial, SceneGraph, ScenixError, TextureId,
+    collect_visible_draws, sort_opaque_front_to_back, sort_transparent_back_to_front,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -75,6 +75,9 @@ pub struct Scenix3D {
     material_layout: wgpu::BindGroupLayout,
     texture_layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
+    pipeline_double_sided: wgpu::RenderPipeline,
+    pipeline_blend: wgpu::RenderPipeline,
+    pipeline_blend_double_sided: wgpu::RenderPipeline,
     pipeline_layout: wgpu::PipelineLayout,
 
     // uniform 资源
@@ -110,6 +113,9 @@ pub struct Scenix3D {
 
     // 蒙皮/骨骼动画
     skin_pipeline: wgpu::RenderPipeline,
+    skin_pipeline_double_sided: wgpu::RenderPipeline,
+    skin_pipeline_blend: wgpu::RenderPipeline,
+    skin_pipeline_blend_double_sided: wgpu::RenderPipeline,
     skin_pipeline_layout: wgpu::PipelineLayout,
     skin_layout: wgpu::BindGroupLayout,
     skinned_meshes: HashMap<MeshId, GpuSkinnedMesh>,
@@ -136,6 +142,8 @@ pub struct Scenix3D {
     morph_weight_capacity: u32,
 
     cached_local_trs: Vec<([f32; 3], [f32; 4], [f32; 3])>,
+    /// `cached_local_trs` 叠加手动覆盖**之前**的值，即纯动画姿态。
+    cached_local_trs_base: Vec<([f32; 3], [f32; 4], [f32; 3])>,
     cached_global_mats: Vec<scenekit::Mat4>,
     cached_bone_data: Vec<f32>,
 
@@ -427,40 +435,62 @@ impl Scenix3D {
             immediate_size: 0,
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("rgpui-3d.pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Some(PackedVertex::layout())],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            primitive: wgpu::PrimitiveState {
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: msaa_state,
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let pipeline = create_render_pipeline(
+            &device,
+            &shader,
+            &pipeline_layout,
+            color_format,
+            msaa_state,
+            "rgpui-3d.pipeline",
+            "vs_main",
+            "fs_main",
+            PackedVertex::layout(),
+            Some(wgpu::Face::Back),
+            wgpu::BlendState::REPLACE,
+            true,
+        );
+        let pipeline_double_sided = create_render_pipeline(
+            &device,
+            &shader,
+            &pipeline_layout,
+            color_format,
+            msaa_state,
+            "rgpui-3d.pipeline_double_sided",
+            "vs_main",
+            "fs_main",
+            PackedVertex::layout(),
+            None,
+            wgpu::BlendState::REPLACE,
+            true,
+        );
+        let pipeline_blend = create_render_pipeline(
+            &device,
+            &shader,
+            &pipeline_layout,
+            color_format,
+            msaa_state,
+            "rgpui-3d.pipeline_blend",
+            "vs_main",
+            "fs_main",
+            PackedVertex::layout(),
+            Some(wgpu::Face::Back),
+            wgpu::BlendState::ALPHA_BLENDING,
+            false,
+        );
+        let pipeline_blend_double_sided = create_render_pipeline(
+            &device,
+            &shader,
+            &pipeline_layout,
+            color_format,
+            msaa_state,
+            "rgpui-3d.pipeline_blend_double_sided",
+            "vs_main",
+            "fs_main",
+            PackedVertex::layout(),
+            None,
+            wgpu::BlendState::ALPHA_BLENDING,
+            false,
+        );
 
         let object_stride = aligned_size::<ObjectUniform>();
         let material_stride = aligned_size::<MaterialUniform>();
@@ -580,40 +610,62 @@ impl Scenix3D {
             immediate_size: 0,
         });
 
-        let skin_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("rgpui-3d.skin_pipeline"),
-            layout: Some(&skin_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &skin_shader,
-                entry_point: Some("vs_skin"),
-                buffers: &[Some(SkinnedVertex::layout())],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            primitive: wgpu::PrimitiveState {
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: msaa_state,
-            fragment: Some(wgpu::FragmentState {
-                module: &skin_shader,
-                entry_point: Some("fs_skin"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let skin_pipeline = create_render_pipeline(
+            &device,
+            &skin_shader,
+            &skin_pipeline_layout,
+            color_format,
+            msaa_state,
+            "rgpui-3d.skin_pipeline",
+            "vs_skin",
+            "fs_skin",
+            SkinnedVertex::layout(),
+            Some(wgpu::Face::Back),
+            wgpu::BlendState::REPLACE,
+            true,
+        );
+        let skin_pipeline_double_sided = create_render_pipeline(
+            &device,
+            &skin_shader,
+            &skin_pipeline_layout,
+            color_format,
+            msaa_state,
+            "rgpui-3d.skin_pipeline_double_sided",
+            "vs_skin",
+            "fs_skin",
+            SkinnedVertex::layout(),
+            None,
+            wgpu::BlendState::REPLACE,
+            true,
+        );
+        let skin_pipeline_blend = create_render_pipeline(
+            &device,
+            &skin_shader,
+            &skin_pipeline_layout,
+            color_format,
+            msaa_state,
+            "rgpui-3d.skin_pipeline_blend",
+            "vs_skin",
+            "fs_skin",
+            SkinnedVertex::layout(),
+            Some(wgpu::Face::Back),
+            wgpu::BlendState::ALPHA_BLENDING,
+            false,
+        );
+        let skin_pipeline_blend_double_sided = create_render_pipeline(
+            &device,
+            &skin_shader,
+            &skin_pipeline_layout,
+            color_format,
+            msaa_state,
+            "rgpui-3d.skin_pipeline_blend_double_sided",
+            "vs_skin",
+            "fs_skin",
+            SkinnedVertex::layout(),
+            None,
+            wgpu::BlendState::ALPHA_BLENDING,
+            false,
+        );
 
         let bone_capacity = 128u32;
         let bone_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -680,6 +732,9 @@ impl Scenix3D {
             material_layout,
             texture_layout,
             pipeline,
+            pipeline_double_sided,
+            pipeline_blend,
+            pipeline_blend_double_sided,
             pipeline_layout,
             frame_buffer,
             frame_bind_group,
@@ -699,6 +754,9 @@ impl Scenix3D {
             clear_color: [1.0, 1.0, 1.0, 1.0],
             frame_index: 0,
             skin_pipeline,
+            skin_pipeline_double_sided,
+            skin_pipeline_blend,
+            skin_pipeline_blend_double_sided,
             skin_pipeline_layout,
             skin_layout,
             skinned_meshes: HashMap::new(),
@@ -721,6 +779,7 @@ impl Scenix3D {
             morph_weight_buffer,
             morph_weight_capacity,
             cached_local_trs: Vec::new(),
+            cached_local_trs_base: Vec::new(),
             cached_global_mats: Vec::new(),
             cached_bone_data: Vec::new(),
             anim_layers: Vec::new(),
@@ -812,79 +871,119 @@ impl Scenix3D {
             alpha_to_coverage_enabled: false,
         };
 
-        self.pipeline = self
-            .device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("rgpui-3d.pipeline"),
-                layout: Some(&self.pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[Some(PackedVertex::layout())],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                },
-                primitive: wgpu::PrimitiveState {
-                    cull_mode: Some(wgpu::Face::Back),
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: Some(true),
-                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-                multisample: msaa_state,
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: self.color_format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                }),
-                multiview_mask: None,
-                cache: None,
-            });
+        self.pipeline = create_render_pipeline(
+            &self.device,
+            &shader,
+            &self.pipeline_layout,
+            self.color_format,
+            msaa_state,
+            "rgpui-3d.pipeline",
+            "vs_main",
+            "fs_main",
+            PackedVertex::layout(),
+            Some(wgpu::Face::Back),
+            wgpu::BlendState::REPLACE,
+            true,
+        );
+        self.pipeline_double_sided = create_render_pipeline(
+            &self.device,
+            &shader,
+            &self.pipeline_layout,
+            self.color_format,
+            msaa_state,
+            "rgpui-3d.pipeline_double_sided",
+            "vs_main",
+            "fs_main",
+            PackedVertex::layout(),
+            None,
+            wgpu::BlendState::REPLACE,
+            true,
+        );
+        self.pipeline_blend = create_render_pipeline(
+            &self.device,
+            &shader,
+            &self.pipeline_layout,
+            self.color_format,
+            msaa_state,
+            "rgpui-3d.pipeline_blend",
+            "vs_main",
+            "fs_main",
+            PackedVertex::layout(),
+            Some(wgpu::Face::Back),
+            wgpu::BlendState::ALPHA_BLENDING,
+            false,
+        );
+        self.pipeline_blend_double_sided = create_render_pipeline(
+            &self.device,
+            &shader,
+            &self.pipeline_layout,
+            self.color_format,
+            msaa_state,
+            "rgpui-3d.pipeline_blend_double_sided",
+            "vs_main",
+            "fs_main",
+            PackedVertex::layout(),
+            None,
+            wgpu::BlendState::ALPHA_BLENDING,
+            false,
+        );
 
-        self.skin_pipeline = self
-            .device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("rgpui-3d.skin_pipeline"),
-                layout: Some(&self.skin_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &skin_shader,
-                    entry_point: Some("vs_skin"),
-                    buffers: &[Some(SkinnedVertex::layout())],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                },
-                primitive: wgpu::PrimitiveState {
-                    cull_mode: Some(wgpu::Face::Back),
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: Some(true),
-                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-                multisample: msaa_state,
-                fragment: Some(wgpu::FragmentState {
-                    module: &skin_shader,
-                    entry_point: Some("fs_skin"),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: self.color_format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                }),
-                multiview_mask: None,
-                cache: None,
-            });
+        self.skin_pipeline = create_render_pipeline(
+            &self.device,
+            &skin_shader,
+            &self.skin_pipeline_layout,
+            self.color_format,
+            msaa_state,
+            "rgpui-3d.skin_pipeline",
+            "vs_skin",
+            "fs_skin",
+            SkinnedVertex::layout(),
+            Some(wgpu::Face::Back),
+            wgpu::BlendState::REPLACE,
+            true,
+        );
+        self.skin_pipeline_double_sided = create_render_pipeline(
+            &self.device,
+            &skin_shader,
+            &self.skin_pipeline_layout,
+            self.color_format,
+            msaa_state,
+            "rgpui-3d.skin_pipeline_double_sided",
+            "vs_skin",
+            "fs_skin",
+            SkinnedVertex::layout(),
+            None,
+            wgpu::BlendState::REPLACE,
+            true,
+        );
+        self.skin_pipeline_blend = create_render_pipeline(
+            &self.device,
+            &skin_shader,
+            &self.skin_pipeline_layout,
+            self.color_format,
+            msaa_state,
+            "rgpui-3d.skin_pipeline_blend",
+            "vs_skin",
+            "fs_skin",
+            SkinnedVertex::layout(),
+            Some(wgpu::Face::Back),
+            wgpu::BlendState::ALPHA_BLENDING,
+            false,
+        );
+        self.skin_pipeline_blend_double_sided = create_render_pipeline(
+            &self.device,
+            &skin_shader,
+            &self.skin_pipeline_layout,
+            self.color_format,
+            msaa_state,
+            "rgpui-3d.skin_pipeline_blend_double_sided",
+            "vs_skin",
+            "fs_skin",
+            SkinnedVertex::layout(),
+            None,
+            wgpu::BlendState::ALPHA_BLENDING,
+            false,
+        );
     }
 
     /// 设置 MSAA 采样数（1 = 关闭抗锯齿，推荐 4 或 8）
@@ -1083,6 +1182,61 @@ impl Scenix3D {
             self.register_pbr_material(*id, material)?;
         }
         Ok(())
+    }
+
+    /// 注册静态 glTF 资产（无蒙皮），并把资产场景克隆到 `scene` 的 `parent` 下。
+    ///
+    /// 资产内的 mesh / material / texture ID 会加上各自偏移量重新映射，
+    /// 避免与宠物本体或其他道具冲突。返回克隆出的根节点，资产为空时返回空列表。
+    pub fn register_static_gltf(
+        &mut self,
+        asset: &scenekit::GltfAsset,
+        scene: &mut SceneGraph,
+        parent: NodeId,
+        mesh_base: u64,
+        material_base: u64,
+        texture_base: u64,
+    ) -> Result<Vec<NodeId>, ScenixError> {
+        if asset.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let remap_mesh = |id: MeshId| MeshId::new(id.get() + mesh_base);
+        let remap_material = |id: MaterialId| MaterialId::new(id.get() + material_base);
+        let remap_texture = |id: TextureId| TextureId::new(id.get() + texture_base);
+
+        for (id, geometry) in &asset.meshes {
+            self.register_mesh(remap_mesh(*id), geometry)?;
+        }
+        for (id, texture) in &asset.textures {
+            let sampler = asset.samplers.get(id).copied().unwrap_or_default();
+            self.register_texture(remap_texture(*id), texture, sampler)?;
+        }
+        for (id, material) in &asset.materials {
+            let mut material = material.clone();
+            material.albedo_texture = material.albedo_texture.map(remap_texture);
+            material.metallic_roughness_texture =
+                material.metallic_roughness_texture.map(remap_texture);
+            material.normal_texture = material.normal_texture.map(remap_texture);
+            material.occlusion_texture = material.occlusion_texture.map(remap_texture);
+            material.emissive_texture = material.emissive_texture.map(remap_texture);
+            self.register_pbr_material(remap_material(*id), &material)?;
+        }
+
+        let mut roots = Vec::new();
+        for &root in asset.scene.roots() {
+            if let Some(id) = clone_static_node(
+                &asset.scene,
+                root,
+                scene,
+                parent,
+                &remap_mesh,
+                &remap_material,
+            ) {
+                roots.push(id);
+            }
+        }
+        Ok(roots)
     }
 
     // ========================================================================
@@ -1781,6 +1935,9 @@ impl Scenix3D {
         }
 
         // 手动覆盖最后应用：无论是否暂停、是否切到别的剪辑，覆盖都优先。
+        // 先留存覆盖前的动画姿态，应用层要用它还原基底（覆盖是绝对替换，读不回基底）。
+        self.cached_local_trs_base.clear();
+        self.cached_local_trs_base.extend_from_slice(&pose);
         for (i, over) in self.joint_overrides.iter().enumerate() {
             if i >= num_joints {
                 break;
@@ -1904,6 +2061,22 @@ impl Scenix3D {
     pub fn animation_names(&self) -> Vec<String> {
         self.anim_clips.iter().map(|c| c._name.clone()).collect()
     }
+
+    /// 只保留许可的剪辑（按名称精确匹配），其余从运行时内存中移除。
+    ///
+    /// 未授权片段不注册就没有播放入口；调用后索引会重排，调用方需按名称重新解析。
+    pub fn retain_animations(&mut self, allowed: &[String]) {
+        self.anim_clips.retain(|clip| {
+            allowed
+                .iter()
+                .any(|name| name.as_str() == clip._name.as_str())
+        });
+        self.active_anim = 0;
+        self.anim_time = 0.0;
+        self.anim_layers.clear();
+        self.anim_fade = None;
+    }
+
     /// 切换到指定动画剪辑
     pub fn set_active_animation(&mut self, index: usize) {
         if index < self.anim_clips.len() {
@@ -2244,6 +2417,13 @@ impl Scenix3D {
     /// 获取关节当前的局部 TRS（需在 `advance_animation` 之后调用）
     pub fn joint_local_trs(&self, index: usize) -> Option<([f32; 3], [f32; 4], [f32; 3])> {
         self.cached_local_trs.get(index).copied()
+    }
+    /// 获取关节**未被手动覆盖前**的局部 TRS，即纯动画姿态。
+    ///
+    /// 手动覆盖是对局部 TRS 的绝对替换，`joint_local_trs` 读不回动画基底；
+    /// 应用层要把增量叠加在动画之上时必须用这个接口。
+    pub fn joint_animated_local_trs(&self, index: usize) -> Option<([f32; 3], [f32; 4], [f32; 3])> {
+        self.cached_local_trs_base.get(index).copied()
     }
 
     // ========================================================================
@@ -2600,6 +2780,7 @@ impl Scenix3D {
         );
 
         let all_draws: Vec<_> = opaque.iter().chain(transparent.iter()).collect();
+        let has_transparent = !transparent.is_empty();
         let mut draw_is_skinned = Vec::with_capacity(all_draws.len());
         for draw in &all_draws {
             draw_is_skinned.push(self.skinned_meshes.contains_key(&draw.mesh_id));
@@ -2724,18 +2905,29 @@ impl Scenix3D {
             });
 
             if draw_count > 0 {
+                let mut double_sided = false;
                 pass.set_pipeline(&self.pipeline);
                 pass.set_bind_group(0, &self.frame_bind_group, &[]);
 
                 for (i, draw) in all_draws.iter().enumerate() {
-                    if draw_is_skinned[i] {
+                    if draw_is_skinned[i] || draw.transparent {
                         continue;
                     }
                     let Some(mesh) = self.gpu_scene.mesh(draw.mesh_id) else {
                         continue;
                     };
-                    if self.gpu_scene.material(draw.material_id).is_none() {
+                    let Some(material) = self.gpu_scene.material(draw.material_id) else {
                         continue;
+                    };
+
+                    let draw_double_sided = material_double_sided(material);
+                    if draw_double_sided != double_sided {
+                        pass.set_pipeline(if draw_double_sided {
+                            &self.pipeline_double_sided
+                        } else {
+                            &self.pipeline
+                        });
+                        double_sided = draw_double_sided;
                     }
 
                     pass.set_bind_group(
@@ -2771,18 +2963,29 @@ impl Scenix3D {
 
                 let has_skinned = draw_is_skinned.iter().any(|&s| s);
                 if has_skinned {
+                    let mut double_sided = false;
                     pass.set_pipeline(&self.skin_pipeline);
                     pass.set_bind_group(4, &self.bone_bg, &[]);
 
                     for (i, draw) in all_draws.iter().enumerate() {
-                        if !draw_is_skinned[i] {
+                        if !draw_is_skinned[i] || draw.transparent {
                             continue;
                         }
                         let Some(skinned) = self.skinned_meshes.get(&draw.mesh_id) else {
                             continue;
                         };
-                        if self.gpu_scene.material(draw.material_id).is_none() {
+                        let Some(material) = self.gpu_scene.material(draw.material_id) else {
                             continue;
+                        };
+
+                        let draw_double_sided = material_double_sided(material);
+                        if draw_double_sided != double_sided {
+                            pass.set_pipeline(if draw_double_sided {
+                                &self.skin_pipeline_double_sided
+                            } else {
+                                &self.skin_pipeline
+                            });
+                            double_sided = draw_double_sided;
                         }
 
                         pass.set_bind_group(
@@ -2811,6 +3014,77 @@ impl Scenix3D {
                         pass.set_vertex_buffer(0, skinned.vertex_buffer.slice(..));
                         pass.set_index_buffer(skinned.index_buffer.slice(..), skinned.index_format);
                         pass.draw_indexed(0..skinned.index_count, 0, 0..1);
+                    }
+                }
+
+                if has_transparent {
+                    // 半透明阶段：保留深度测试、关闭深度写入，
+                    // 按 back-to-front 顺序提交，片元在同一通道内依次叠加。
+                    let mut current: Option<(bool, bool)> = None;
+                    for (i, draw) in all_draws.iter().enumerate() {
+                        if !draw.transparent {
+                            continue;
+                        }
+                        let skinned = draw_is_skinned[i];
+                        let Some(material) = self.gpu_scene.material(draw.material_id) else {
+                            continue;
+                        };
+                        let draw_double_sided = material_double_sided(material);
+
+                        if current != Some((skinned, draw_double_sided)) {
+                            pass.set_pipeline(match (skinned, draw_double_sided) {
+                                (false, false) => &self.pipeline_blend,
+                                (false, true) => &self.pipeline_blend_double_sided,
+                                (true, false) => &self.skin_pipeline_blend,
+                                (true, true) => &self.skin_pipeline_blend_double_sided,
+                            });
+                            if skinned {
+                                pass.set_bind_group(4, &self.bone_bg, &[]);
+                            }
+                            current = Some((skinned, draw_double_sided));
+                        }
+
+                        pass.set_bind_group(
+                            1,
+                            &self.object_bind_group,
+                            &[(i as u64 * self.object_stride) as u32],
+                        );
+                        pass.set_bind_group(
+                            2,
+                            &self.material_bind_group,
+                            &[(i as u64 * self.material_stride) as u32],
+                        );
+
+                        let tex_bg = self
+                            .gpu_scene
+                            .material(draw.material_id)
+                            .and_then(|m| match m {
+                                RendererMaterial::Pbr(pbr) => pbr.albedo_texture,
+                                _ => None,
+                            })
+                            .and_then(|tex_id| self.textures.get(&tex_id))
+                            .map(|entry| &entry.bind_group)
+                            .unwrap_or(&self.white_bind_group);
+                        pass.set_bind_group(3, tex_bg, &[]);
+
+                        if skinned {
+                            let Some(mesh) = self.skinned_meshes.get(&draw.mesh_id) else {
+                                continue;
+                            };
+                            pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                            pass.set_index_buffer(mesh.index_buffer.slice(..), mesh.index_format);
+                            pass.draw_indexed(0..mesh.index_count, 0, 0..1);
+                        } else {
+                            let Some(mesh) = self.gpu_scene.mesh(draw.mesh_id) else {
+                                continue;
+                            };
+                            pass.set_vertex_buffer(0, mesh.vertex_buffer().slice(..));
+                            pass.set_index_buffer(
+                                mesh.index_buffer().slice(..),
+                                mesh.packed().index_format.to_wgpu(),
+                            );
+                            pass.draw_indexed(0..mesh.packed().index_count, 0, 0..1);
+                        }
                     }
                 }
             }
@@ -2935,6 +3209,93 @@ impl Scenix3D {
 
 unsafe impl Send for Scenix3D {}
 unsafe impl Sync for Scenix3D {}
+
+fn material_double_sided(material: &RendererMaterial) -> bool {
+    matches!(material, RendererMaterial::Pbr(pbr) if pbr.double_sided)
+}
+
+/// 递归克隆静态资产的场景节点，只保留空节点/分组/网格；
+/// 光源、相机等载荷在道具场景里没有对应 GPU 资源，直接跳过。
+fn clone_static_node(
+    src: &SceneGraph,
+    src_id: NodeId,
+    dst: &mut SceneGraph,
+    parent: NodeId,
+    remap_mesh: &dyn Fn(MeshId) -> MeshId,
+    remap_material: &dyn Fn(MaterialId) -> MaterialId,
+) -> Option<NodeId> {
+    let node = src.get(src_id)?;
+    let mut cloned = node.clone();
+    match &mut cloned.kind {
+        NodeKind::Mesh {
+            mesh_id,
+            material_id,
+        } => {
+            *mesh_id = remap_mesh(*mesh_id);
+            *material_id = remap_material(*material_id);
+        }
+        NodeKind::Empty | NodeKind::Group => {}
+        _ => return None,
+    }
+    let id = dst.add_child(parent, cloned).ok()?;
+    if let Some(children) = src.children(src_id) {
+        for &child in children {
+            clone_static_node(src, child, dst, id, remap_mesh, remap_material);
+        }
+    }
+    Some(id)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_render_pipeline(
+    device: &wgpu::Device,
+    shader: &wgpu::ShaderModule,
+    layout: &wgpu::PipelineLayout,
+    color_format: wgpu::TextureFormat,
+    msaa_state: wgpu::MultisampleState,
+    label: &'static str,
+    vertex_entry: &'static str,
+    fragment_entry: &'static str,
+    vertex_layout: wgpu::VertexBufferLayout<'static>,
+    cull_mode: Option<wgpu::Face>,
+    blend: wgpu::BlendState,
+    depth_write: bool,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(label),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some(vertex_entry),
+            buffers: &[Some(vertex_layout)],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        primitive: wgpu::PrimitiveState {
+            cull_mode,
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(depth_write),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: msaa_state,
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some(fragment_entry),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: color_format,
+                blend: Some(blend),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
 
 /// 读取 glTF mesh 的 `extras.targetNames`（morph target 名称列表）。
 ///

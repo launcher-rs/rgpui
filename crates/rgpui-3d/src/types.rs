@@ -53,16 +53,69 @@ impl MaterialUniform {
             scenekit::RendererMaterial::Pbr(pbr) => pbr.albedo_texture.is_some(),
             _ => false,
         };
+        // params = [alpha_cutoff, output_alpha, shader_code, has_texture]
+        // Mask 用存储阈值裁剪；Blend 走混合管线，output_alpha 为 -1 表示
+        // 由片元返回采样后的实时 alpha。
+        // 裁剪/不透明材质输出常量 alpha，避免背景被意外削成半透明。
+        let (alpha_cutoff, output_alpha) = match material {
+            scenekit::RendererMaterial::Pbr(pbr) => match pbr.alpha_mode {
+                scenekit::AlphaMode::Mask(cutoff) => (cutoff.clamp(0.0, 1.0), 1.0),
+                scenekit::AlphaMode::Blend => (0.0, -1.0),
+                scenekit::AlphaMode::Opaque => (0.0, color.a),
+            },
+            _ => (0.0, color.a),
+        };
         Self {
             base_color: [color.r, color.g, color.b, color.a],
             emissive_cutoff: [0.0, 0.0, 0.0, 0.0],
             params: [
-                0.0,
-                1.0,
+                alpha_cutoff,
+                output_alpha,
                 material.preview_shader_code(),
                 if has_texture { 1.0 } else { 0.0 },
             ],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MaterialUniform;
+    use scenekit::{AlphaMode, Color, PbrMaterial, RendererMaterial};
+
+    fn params(material: PbrMaterial) -> [f32; 4] {
+        MaterialUniform::from_material(&RendererMaterial::Pbr(material)).params
+    }
+
+    /// `params.x` / `params.y` 分别是裁剪阈值与输出 alpha：
+    /// Opaque 输出常量 alpha，Mask 裁剪后按不透明输出，Blend 用 -1 哨兵走实时采样。
+    #[test]
+    fn material_params_encode_alpha_modes() {
+        let albedo = Color {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 0.5,
+        };
+        let opaque = params(PbrMaterial::new().albedo(albedo));
+        assert_eq!(opaque[0], 0.0);
+        assert_eq!(opaque[1], 0.5);
+
+        let mask = params(
+            PbrMaterial::new()
+                .albedo(albedo)
+                .alpha_mode(AlphaMode::Mask(1.7)),
+        );
+        assert_eq!(mask[0], 1.0);
+        assert_eq!(mask[1], 1.0);
+
+        let blend = params(
+            PbrMaterial::new()
+                .albedo(albedo)
+                .alpha_mode(AlphaMode::Blend),
+        );
+        assert_eq!(blend[0], 0.0);
+        assert_eq!(blend[1], -1.0);
     }
 }
 
