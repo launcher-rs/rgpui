@@ -869,7 +869,7 @@ impl Terminal {
                     self.input_with_origin(string.into_bytes(), InputOrigin::Keystroke)
                 }
             };
-            if trace_count.is_some_and(|count| count <= 3 || count % 50 == 0) {
+            if trace_count.is_some_and(|count| count <= 3 || count.is_multiple_of(50)) {
                 eprintln!("[rt-trace] terminal handled keydown {:?}", keystroke.key);
             }
             true
@@ -919,10 +919,13 @@ impl Terminal {
     /// 同步终端状态并更新内容以供渲染。
     pub fn sync(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let term = self.term.clone();
-        // Rendering must not wait for the parser thread. In particular, the external
-        // backend can hold this lock while parsing a large response; blocking here
-        // would freeze the entire UI. Keep rendering the last snapshot and retry on
-        // the next frame instead. Events stay queued until we acquire the lock.
+        // 渲染不能等解析线程：外联后端解析大段响应时会长时间持有数据锁，
+        // 在这里阻塞会把整个 UI 冻住。抢不到锁就沿用上一帧快照直接返回，
+        // 事件留在队列里下一帧再处理。
+        //
+        // 不会因此停在不一致画面上：外联循环在解析完成、释放数据锁之后才发
+        // `Wakeup`（同步输出超时路径同样先解锁再发），那一帧的 notify 会重新
+        // 渲染并再次尝试取锁；纯同步输出缓冲期间本就没有可见变化。
         let Some(mut terminal) = term.try_lock_unfair() else {
             if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
                 && !SYNC_LOCK_BUSY.swap(true, Ordering::Relaxed)

@@ -10,10 +10,12 @@
   收进一条流程——顶部步骤条 + 当前步内容 + 底部导航（上一步 / 下一步 / 提交），并按步接收
   调用方的校验结果，未通过的步不放行前进、仍可后退。答值不进组件模型，由调用方持有（与
   `Form` / `Field` 组合使用）。事件 `QuestionnaireEvent::{StepChanged, Submit}`。
+  内容页数与步骤数不一致时页码钳制、导航仍以步骤模型为准；空向导不渲染导航。
   用例：`cargo run -p showcase --bin questionnaire`。
 - **`DiffView` 差异查看器**（`diff` feature）：`DiffState` + `DiffView` 元素，基于 `similar`
   crate 计算行级差异，以统一视图形式展示——新增行绿色背景、删除行红色背景、未变更行默认背景，
-  可选显示行号。提供 `added_count/removed_count/unchanged_count` 统计方法。
+  可选显示行号。行内容去掉行尾换行与 CRLF 的 `\r`；行列表走 `uniform_list` 虚拟化，
+  长行不折行、可横向滚动。提供 `added_count/removed_count/unchanged_count` 统计方法。
   用例：`cargo run -p showcase --bin diff --features rgpui/diff`。
 
 ### 修复（滚动）
