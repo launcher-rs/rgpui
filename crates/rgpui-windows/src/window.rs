@@ -676,6 +676,69 @@ impl WindowsWindowInner {
             }
         }
     }
+    /// 激活窗口并将其置于前台。
+    ///
+    /// 放在 Inner 上而不是 `WindowsWindow` 上：`WindowsWindow` 的 Drop 会销毁
+    /// 真正的 HWND，平台层用临时包装去调用就会把窗口一起销毁。
+    pub(crate) fn activate_window(self: &Rc<Self>) {
+        let hwnd = self.hwnd;
+        let this = self.clone();
+        self.executor
+            .spawn(async move {
+                this.set_window_placement().log_err();
+
+                unsafe {
+                    // 如果窗口已最小化，则恢复
+                    if IsIconic(hwnd).as_bool() {
+                        ShowWindowAsync(hwnd, SW_RESTORE).ok().log_err();
+                    }
+                    // 如果窗口已隐藏，则显示
+                    if !IsWindowVisible(hwnd).as_bool() {
+                        ShowWindowAsync(hwnd, SW_SHOWNORMAL).ok().log_err();
+                    }
+
+                    SetActiveWindow(hwnd).ok();
+                    SetFocus(Some(hwnd)).ok();
+                }
+
+                // Windows 要求窗口必须接收到输入事件才能设置为前台窗口
+                // 通过模拟 Alt 键输入来绕过此限制
+                // 更多信息: https://gist.github.com/Aetopia/1581b40f00cc0cadc93a0e8ccb65dc8c
+                let inputs = [
+                    INPUT {
+                        r#type: INPUT_KEYBOARD,
+                        Anonymous: INPUT_0 {
+                            ki: KEYBDINPUT {
+                                wVk: VK_MENU,
+                                dwFlags: KEYBD_EVENT_FLAGS(0),
+                                ..Default::default()
+                            },
+                        },
+                    },
+                    INPUT {
+                        r#type: INPUT_KEYBOARD,
+                        Anonymous: INPUT_0 {
+                            ki: KEYBDINPUT {
+                                wVk: VK_MENU,
+                                dwFlags: KEYEVENTF_KEYUP,
+                                ..Default::default()
+                            },
+                        },
+                    },
+                ];
+                unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+
+                // todo(windows)
+                // crate `windows 0.56` reports true as Err
+                unsafe { SetForegroundWindow(hwnd).as_bool() };
+            })
+            .detach();
+    }
+
+    /// 隐藏窗口（从任务栏移除）。
+    pub(crate) fn hide_window(&self) {
+        unsafe { ShowWindowAsync(self.hwnd, SW_HIDE).ok().log_err() };
+    }
 }
 
 impl Drop for WindowsWindow {
@@ -919,63 +982,8 @@ impl PlatformWindow for WindowsWindow {
         Some(done_rx)
     }
 
-    /// 激活窗口并将其置于前台
-    /// 如果窗口已最小化则恢复，如果已隐藏则显示
-    /// 通过模拟 Alt 键输入绕过 Windows 前台窗口限制
     fn activate(&self) {
-        let hwnd = self.0.hwnd;
-        let this = self.0.clone();
-        self.0
-            .executor
-            .spawn(async move {
-                this.set_window_placement().log_err();
-
-                unsafe {
-                    // 如果窗口已最小化，则恢复
-                    if IsIconic(hwnd).as_bool() {
-                        ShowWindowAsync(hwnd, SW_RESTORE).ok().log_err();
-                    }
-                    // 如果窗口已隐藏，则显示
-                    if !IsWindowVisible(hwnd).as_bool() {
-                        ShowWindowAsync(hwnd, SW_SHOWNORMAL).ok().log_err();
-                    }
-
-                    SetActiveWindow(hwnd).ok();
-                    SetFocus(Some(hwnd)).ok();
-                }
-
-                // Windows 要求窗口必须接收到输入事件才能设置为前台窗口
-                // 通过模拟 Alt 键输入来绕过此限制
-                // 更多信息: https://gist.github.com/Aetopia/1581b40f00cc0cadc93a0e8ccb65dc8c
-                let inputs = [
-                    INPUT {
-                        r#type: INPUT_KEYBOARD,
-                        Anonymous: INPUT_0 {
-                            ki: KEYBDINPUT {
-                                wVk: VK_MENU,
-                                dwFlags: KEYBD_EVENT_FLAGS(0),
-                                ..Default::default()
-                            },
-                        },
-                    },
-                    INPUT {
-                        r#type: INPUT_KEYBOARD,
-                        Anonymous: INPUT_0 {
-                            ki: KEYBDINPUT {
-                                wVk: VK_MENU,
-                                dwFlags: KEYEVENTF_KEYUP,
-                                ..Default::default()
-                            },
-                        },
-                    },
-                ];
-                unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
-
-                // todo(windows)
-                // crate `windows 0.56` reports true as Err
-                unsafe { SetForegroundWindow(hwnd).as_bool() };
-            })
-            .detach();
+        self.0.activate_window();
     }
 
     fn is_active(&self) -> bool {
@@ -1034,7 +1042,7 @@ impl PlatformWindow for WindowsWindow {
 
     /// 隐藏窗口（从任务栏移除）
     fn hide(&self) {
-        unsafe { ShowWindowAsync(self.0.hwnd, SW_HIDE).ok().log_err() };
+        self.0.hide_window();
     }
 
     /// 最大化窗口

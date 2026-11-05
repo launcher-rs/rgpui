@@ -548,7 +548,7 @@ impl Platform for WindowsPlatform {
     fn activate(&self, _ignoring_other_apps: bool) {
         for handle in self.raw_window_handles.read().iter() {
             if let Some(inner) = window_from_hwnd(handle.as_raw()) {
-                WindowsWindow(inner).activate();
+                inner.activate_window();
             }
         }
     }
@@ -558,7 +558,7 @@ impl Platform for WindowsPlatform {
     fn hide(&self) {
         for handle in self.raw_window_handles.read().iter() {
             if let Some(inner) = window_from_hwnd(handle.as_raw()) {
-                WindowsWindow(inner).hide();
+                inner.hide_window();
             }
         }
     }
