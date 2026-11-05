@@ -18,11 +18,15 @@
 //! 事件循环在 RGPUI spawn 任务中运行并异步处理事件。
 
 use std::{
-    borrow::Cow, cmp, collections::VecDeque, ops::Deref, path::PathBuf,
+    borrow::Cow,
+    cmp,
+    collections::VecDeque,
+    ops::Deref,
+    path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
-        atomic::AtomicUsize,
         Arc,
+        atomic::AtomicUsize,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -813,9 +817,7 @@ impl Terminal {
     /// 向终端发送输入，附带来源元数据。
     pub fn input_with_origin(&mut self, input: impl Into<Cow<'static, [u8]>>, origin: InputOrigin) {
         let input = input.into();
-        if origin == InputOrigin::Keystroke
-            && std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
-        {
+        if origin == InputOrigin::Keystroke && std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
             let count = TRACE_KEY_INPUTS.fetch_add(1, Ordering::Relaxed) + 1;
             if count <= 3 || count.is_multiple_of(50) {
                 eprintln!(
