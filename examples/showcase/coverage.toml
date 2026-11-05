@@ -15,8 +15,11 @@ modules = ["crates/rgpui/src/elements"]
 bins = ["showcase:component_gallery", "showcase:extended_components"]
 
 [components."表单"]
-modules = ["crates/rgpui/src/form"]
-bins = ["showcase:form"]
+modules = [
+    "crates/rgpui/src/form",
+    "crates/rgpui/src/components/questionnaire.rs",
+]
+bins = ["showcase:form", "showcase:questionnaire"]
 
 [components."输入"]
 modules = ["crates/rgpui/src/input_ui"]

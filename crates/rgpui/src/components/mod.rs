@@ -59,6 +59,7 @@ pub mod particle_emitter;
 pub mod pulse_indicator;
 #[cfg(feature = "qr-code")]
 pub mod qr_code;
+pub mod questionnaire;
 pub mod rate;
 pub mod resizable;
 #[cfg(feature = "effects")]
@@ -141,6 +142,7 @@ pub use particle_emitter::*;
 pub use pulse_indicator::*;
 #[cfg(feature = "qr-code")]
 pub use qr_code::*;
+pub use questionnaire::*;
 pub use rate::*;
 pub use resizable::*;
 #[cfg(feature = "effects")]

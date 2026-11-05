@@ -109,3 +109,62 @@ Form::horizontal()
 - **没有内建校验/错误显示**：校验逻辑自行实现，错误用 `Alert` 或自定义元素展示。
 - **`Field` 显式 `.child(控件)`**，可挂 `Input`/`Switch`/`RadioGroup` 等任意元素。
 - **需显式 import `Form`/`Field`**（不在 prelude）。
+
+## Questionnaire（向导式表单）
+
+`QuestionnaireState`（`components/questionnaire.rs`）+ `Questionnaire` 元素，把多步问答
+收进一条流程。状态与元素分离（同 `Carousel` 模式）：父组件 `cx.new(|_| QuestionnaireState::new()
+.with_steps(...))` 持有进度与校验位，`render` 里放 `Questionnaire::new(&state).child(第一步)
+.child(第二步)`，每步一个内容元素、只渲染当前步。
+
+| 方法 | 签名 | 位置 |
+|------|------|------|
+| `QuestionStep::new` | `fn new(title: impl Into<SharedString>) -> Self` | `:31` |
+| `QuestionStep::description` | `fn description(mut self, impl Into<SharedString>) -> Self` | `:40` |
+| `QuestionnaireState::new` | `fn new() -> Self` | `:72` |
+| `with_steps` | `fn with_steps(mut self, impl IntoIterator<Item = QuestionStep>) -> Self` | `:83` |
+| `push_step` | `fn push_step(&mut self, QuestionStep, &mut Context<Self>)` | `:91` |
+| `steps`/`current`/`total` | 只读访问 | `:99`/`:105`/`:110` |
+| `is_last`/`is_submitted` | 状态查询 | `:115`/`:125` |
+| `is_step_valid`/`set_step_valid` | 校验位读写 | `:120`/`:130` |
+| `can_advance` | 当前步能否前进 | `:139` |
+| `next`/`prev`/`go_to` | 导航（前进受校验限制，后退自由） | `:144`/`:151`/`:158` |
+| `submit` | 末步且校验通过时提交，发 `Submit` 事件 | `:172` |
+| `reset` | 回到第一步并清除提交态 | `:182` |
+| `Questionnaire::new` | `fn new(&Entity<QuestionnaireState>) -> Self` | `:230` |
+| `show_steps`/`show_progress` | 控制顶部步骤条与计数显示 | `:247`/`:254` |
+| `prev_label`/`next_label`/`submit_label` | 本地化按钮文案 | `:261`/`:268`/`:275` |
+| `child`/`children` | 挂入每步内容（`ParentElement`） | `:286` |
+
+事件：`QuestionnaireEvent::StepChanged { from, to }`（步骤切换）与 `QuestionnaireEvent::Submit`
+（末步提交）。应用经 `cx.subscribe(&wizard, |_, _, event, cx| ...)` 接收。
+
+示例：`cargo run -p showcase --bin questionnaire`（`examples/showcase/src/bin/questionnaire.rs`）。
+
+```rust
+use rgpui::{Questionnaire, QuestionnaireState, QuestionStep};
+
+let wizard = cx.new(|_| {
+    QuestionnaireState::new().with_steps(vec![
+        QuestionStep::new("基本信息").description("请填写姓名与邮箱"),
+        QuestionStep::new("偏好设置"),
+        QuestionStep::new("确认提交"),
+    ])
+});
+
+// render 里
+Questionnaire::new(&wizard)
+    .child(v_form().child(field().label("姓名").child(Input::new(&name))))
+    .child(v_form().child(field().label("通知").child(Switch::new("notify"))))
+    .child(div().child("核对信息后提交"))
+```
+
+**最佳实践：**
+
+- **答值不进组件模型**：向导只管「第几步、能否前进、何时提交」，各步的 `Input`/`Switch`/
+  `RadioGroup` 等由调用方持有并回写校验位（`wizard.update(cx, |state, cx| state.set_step_valid(0, valid, cx))`）。
+- **校验门控**：`next` 只在 `can_advance()`（当前步 `is_step_valid` 且未到末步）时生效；
+  `go_to` 后退自由、前进要求途中每一步都通过校验。
+- **提交幂等**：`submit` 仅在末步且校验通过时发 `Submit`，重复调用无副作用；`reset` 清除
+  提交态并回到第一步。
+- **空向导安全**：`total() == 0` 时不渲染内容区，也不报错。
