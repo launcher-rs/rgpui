@@ -48,7 +48,7 @@ fn vs_main(
     let world_position = object.world * vec4<f32>(position, 1.0);
     let world_normal = normalize((object.world * vec4<f32>(normal, 0.0)).xyz);
     out.position = frame.view_projection * world_position;
-    out.color = material.base_color * vec4<f32>(color.rgb, max(color.a, 1.0));
+    out.color = material.base_color * vec4<f32>(color.rgb, 1.0);
     out.normal = world_normal;
     out.uv = uv;
     return out;
@@ -62,13 +62,23 @@ fn fs_main(
 ) -> @location(0) vec4<f32> {
     let shader_code = material.params.z;
     let n = normalize(normal);
-    if (shader_code > 5.5) {
-        return vec4<f32>(n * 0.5 + vec3<f32>(0.5), color.a);
-    }
 
     var base = color.rgb;
+    var alpha = color.a;
     if (material.params.w > 0.5) {
-        base *= textureSample(albedo_texture, tex_sampler, uv).rgb;
+        let texel = textureSample(albedo_texture, tex_sampler, uv);
+        base *= texel.rgb;
+        alpha *= texel.a;
+    }
+    // params.x 为 alpha 裁剪阈值，0 表示不裁剪。
+    if (material.params.x > 0.0 && alpha < material.params.x) {
+        discard;
+    }
+    // params.y < 0 表示混合材质，输出实时 alpha；否则输出常量 alpha。
+    let out_alpha = select(material.params.y, alpha, material.params.y < 0.0);
+
+    if (shader_code > 5.5) {
+        return vec4<f32>(n * 0.5 + vec3<f32>(0.5), out_alpha);
     }
 
     let light_dir = normalize(vec3<f32>(-0.35, 0.8, 0.45));
@@ -79,7 +89,7 @@ fn fs_main(
     let ambient = 0.22;
     let lit = base * (ambient + diffuse * 0.78) + material.emissive_cutoff.rgb;
     let wire_boost = select(vec3<f32>(1.0), vec3<f32>(1.22), shader_code > 4.5 && shader_code < 5.5);
-    return vec4<f32>(lit * wire_boost, color.a);
+    return vec4<f32>(lit * wire_boost, out_alpha);
 }
 "#;
 
@@ -177,7 +187,7 @@ fn vs_skin(
     let world_normal = normalize((object.world * skinned_nml).xyz);
     var out: VsOut;
     out.position = frame.view_projection * world_position;
-    out.color = material.base_color * vec4<f32>(color.rgb, max(color.a, 1.0));
+    out.color = material.base_color * vec4<f32>(color.rgb, 1.0);
     out.normal = world_normal;
     out.uv = uv;
     return out;
@@ -191,13 +201,24 @@ fn fs_skin(
 ) -> @location(0) vec4<f32> {
     let shader_code = material.params.z;
     let n = normalize(normal);
-    if (shader_code > 5.5) {
-        return vec4<f32>(n * 0.5 + vec3<f32>(0.5), color.a);
-    }
+
     var base = color.rgb;
+    var alpha = color.a;
     if (material.params.w > 0.5) {
-        base *= textureSample(albedo_texture, tex_sampler, uv).rgb;
+        let texel = textureSample(albedo_texture, tex_sampler, uv);
+        base *= texel.rgb;
+        alpha *= texel.a;
     }
+    if (material.params.x > 0.0 && alpha < material.params.x) {
+        discard;
+    }
+    // params.y < 0 表示混合材质，输出实时 alpha；否则输出常量 alpha。
+    let out_alpha = select(material.params.y, alpha, material.params.y < 0.0);
+
+    if (shader_code > 5.5) {
+        return vec4<f32>(n * 0.5 + vec3<f32>(0.5), out_alpha);
+    }
+
     let light_dir = normalize(vec3<f32>(-0.35, 0.8, 0.45));
     var diffuse = max(dot(n, light_dir), 0.0);
     if (shader_code > 3.5 && shader_code < 4.5) {
@@ -206,6 +227,6 @@ fn fs_skin(
     let ambient = 0.22;
     let lit = base * (ambient + diffuse * 0.78) + material.emissive_cutoff.rgb;
     let wire_boost = select(vec3<f32>(1.0), vec3<f32>(1.22), shader_code > 4.5 && shader_code < 5.5);
-    return vec4<f32>(lit * wire_boost, color.a);
+    return vec4<f32>(lit * wire_boost, out_alpha);
 }
 "#;
