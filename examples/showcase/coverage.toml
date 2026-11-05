@@ -21,6 +21,10 @@ modules = [
 ]
 bins = ["showcase:form", "showcase:questionnaire"]
 
+[components."差异查看器"]
+modules = ["crates/rgpui/src/components/diff.rs"]
+bins = ["showcase:diff"]
+
 [components."输入"]
 modules = ["crates/rgpui/src/input_ui"]
 bins = ["showcase:input"]

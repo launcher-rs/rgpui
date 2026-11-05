@@ -106,6 +106,10 @@ name = "questionnaire"
 path = "src/bin/questionnaire.rs"
 
 [[bin]]
+name = "diff"
+path = "src/bin/diff.rs"
+
+[[bin]]
 name = "input"
 path = "src/bin/input.rs"
 
