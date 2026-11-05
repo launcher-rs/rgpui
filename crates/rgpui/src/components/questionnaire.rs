@@ -177,8 +177,16 @@ impl QuestionnaireState {
 
     /// 回到第一步并清除提交态（步骤内容与各步答值由调用方自行清空）。
     pub fn reset(&mut self, cx: &mut Context<Self>) {
+        let was_submitted = self.submitted;
         self.submitted = false;
-        self.set_current(0, cx);
+        if self.current == 0 {
+            // `set_current` 同值直接返回：已停在首步时提交态的变化也要重绘。
+            if was_submitted {
+                cx.notify();
+            }
+        } else {
+            self.set_current(0, cx);
+        }
     }
 
     /// 最后一步下标（无步骤时为 0）。
@@ -303,15 +311,19 @@ impl RenderOnce for Questionnaire {
                 )
             });
 
-        // 内容数与步骤数不一致时以较短者为准，避免翻到空白页。
+        // 内容数与步骤数不一致时以较短者为准，避免翻到空白页；但导航状态
+        // （能否前进 / 是否末步 / 提交）以步骤模型为准，否则页数偏少时末步
+        // 提交按钮会因模型尚未到末步而点了没反应。
         let count = total.min(page_count);
-        let current = if count == 0 {
+        let page_index = if page_count == 0 {
             0
         } else {
-            raw_current.min(count - 1)
+            raw_current.min(page_count - 1)
         };
-        let valid = valid_flags.get(current).copied().unwrap_or(true);
-        let description = steps.get(current).and_then(|step| step.description.clone());
+        let valid = valid_flags.get(raw_current).copied().unwrap_or(true);
+        let description = steps
+            .get(page_index)
+            .and_then(|step| step.description.clone());
         let items: Vec<StepItem> = steps
             .iter()
             .map(|step| StepItem::new(step.title.clone()))
@@ -325,8 +337,14 @@ impl RenderOnce for Questionnaire {
         let current_page = if count == 0 {
             None
         } else {
-            _ = pages.by_ref().take(current).collect::<Vec<_>>();
+            _ = pages.by_ref().take(page_index).collect::<Vec<_>>();
             pages.next()
+        };
+
+        let progress_label = if total == 0 {
+            "无步骤".to_string()
+        } else {
+            format!("第 {} 步，共 {} 步", raw_current + 1, total)
         };
 
         let mut root = div()
@@ -337,10 +355,10 @@ impl RenderOnce for Questionnaire {
             .w_full()
             // 无障碍语义：整组作为分组节点，并把进度写进无障碍名。
             .role(accesskit::Role::Group)
-            .aria_label(format!("第 {} 步，共 {} 步", current + 1, count));
+            .aria_label(progress_label);
 
         if self.show_steps && count > 0 {
-            root = root.child(Steps::new(items, current));
+            root = root.child(Steps::new(items, raw_current));
         }
 
         if self.show_progress && count > 0 {
@@ -350,7 +368,7 @@ impl RenderOnce for Questionnaire {
                     .text_xs()
                     .text_color(muted_foreground)
                     .debug_selector(move || "questionnaire-progress".to_string())
-                    .child(format!("第 {} / {} 步", current + 1, count)),
+                    .child(format!("第 {} / {} 步", raw_current + 1, total)),
             );
         }
 
@@ -387,7 +405,8 @@ impl RenderOnce for Questionnaire {
 
         // 底部导航：后退在首步禁用；末步把前进换成提交。
         let prev_state = state.clone();
-        let is_last = current + 1 >= count;
+        // 末步判定以步骤模型为准：页数偏少时仍要能走到真正的末步并提交。
+        let is_last = total == 0 || raw_current + 1 >= total;
         let right_enabled = if is_last { !submitted && valid } else { valid };
         let right_label = if is_last {
             self.submit_label
@@ -400,47 +419,49 @@ impl RenderOnce for Questionnaire {
             "questionnaire-next"
         };
 
-        root = root.child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .pt(px(4.0))
-                .child(
-                    div()
-                        .id(("questionnaire-prev", entity_id))
-                        .debug_selector(move || "questionnaire-prev".to_string())
-                        .child(
-                            Button::new(("questionnaire-prev-button", entity_id))
-                                .outline()
-                                .label(self.prev_label)
-                                .disabled(current == 0)
-                                .on_click(move |_, _, cx| {
-                                    prev_state.update(cx, |state, cx| state.prev(cx));
-                                }),
-                        ),
-                )
-                .child(
-                    div()
-                        .id((right_selector, entity_id))
-                        .debug_selector(move || right_selector.to_string())
-                        .child(
-                            Button::new((right_selector, entity_id))
-                                .primary()
-                                .label(right_label)
-                                .disabled(!right_enabled)
-                                .on_click(move |_, _, cx| {
-                                    state.update(cx, |state, cx| {
-                                        if is_last {
-                                            state.submit(cx);
-                                        } else {
-                                            state.next(cx);
-                                        }
-                                    });
-                                }),
-                        ),
-                ),
-        );
+        if count > 0 {
+            root = root.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .pt(px(4.0))
+                    .child(
+                        div()
+                            .id(("questionnaire-prev", entity_id))
+                            .debug_selector(move || "questionnaire-prev".to_string())
+                            .child(
+                                Button::new(("questionnaire-prev-button", entity_id))
+                                    .outline()
+                                    .label(self.prev_label)
+                                    .disabled(raw_current == 0)
+                                    .on_click(move |_, _, cx| {
+                                        prev_state.update(cx, |state, cx| state.prev(cx));
+                                    }),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id((right_selector, entity_id))
+                            .debug_selector(move || right_selector.to_string())
+                            .child(
+                                Button::new((right_selector, entity_id))
+                                    .primary()
+                                    .label(right_label)
+                                    .disabled(!right_enabled)
+                                    .on_click(move |_, _, cx| {
+                                        state.update(cx, |state, cx| {
+                                            if is_last {
+                                                state.submit(cx);
+                                            } else {
+                                                state.next(cx);
+                                            }
+                                        });
+                                    }),
+                            ),
+                    ),
+            );
+        }
 
         if submitted {
             root = root.child(
@@ -725,6 +746,64 @@ mod tests {
         draw(cx);
         assert!(cx.debug_bounds("questionnaire-body").is_none());
         assert!(cx.debug_bounds("questionnaire-progress").is_none());
+        assert!(
+            cx.debug_bounds("questionnaire-submit").is_none(),
+            "空向导不应渲染可点的提交按钮"
+        );
+        assert!(cx.debug_bounds("questionnaire-prev").is_none());
+    }
+
+    /// 停在首步时重置也要清除「已提交」标记。
+    #[rgpui::test]
+    fn reset_at_first_step_clears_submitted_marker(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        let (view, cx) = cx.add_window_view(|_window, cx| {
+            let state =
+                cx.new(|_| QuestionnaireState::new().with_steps(vec![QuestionStep::new("唯一步")]));
+            SingleStepWizard { state }
+        });
+        draw(cx);
+        click_primary(cx);
+        assert!(cx.debug_bounds("questionnaire-submitted").is_some());
+
+        cx.update(|_, cx| {
+            view.update(cx, |view, cx| {
+                view.state.update(cx, |state, cx| state.reset(cx));
+            });
+        });
+        draw(cx);
+        assert!(
+            cx.debug_bounds("questionnaire-submitted").is_none(),
+            "reset 停在首步时也要重绘并清除已提交标记"
+        );
+    }
+
+    /// 内容页少于步骤数：导航以步骤模型为准，末步仍能提交。
+    #[rgpui::test]
+    fn fewer_pages_than_steps_still_reaches_submit(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        let (_view, cx) = cx.add_window_view(|_window, cx| {
+            let state = cx.new(|_| {
+                QuestionnaireState::new().with_steps(
+                    (0..3)
+                        .map(|ix| QuestionStep::new(format!("第{ix}步")))
+                        .collect::<Vec<_>>(),
+                )
+            });
+            ShortPagesWizard { state }
+        });
+        draw(cx);
+
+        click_primary(cx);
+        assert!(cx.debug_bounds("page-1").is_some());
+
+        // 第二次前进走到模型的末步，内容钳制在最后一页，主按钮应换成提交。
+        click_primary(cx);
+        assert!(cx.debug_bounds("page-1").is_some());
+        assert!(cx.debug_bounds("questionnaire-submit").is_some());
+
+        click_primary(cx);
+        assert!(cx.debug_bounds("questionnaire-submitted").is_some());
     }
 
     /// 无步骤宿主（只为空向导渲染测试存在）。
@@ -738,6 +817,40 @@ mod tests {
                 .w(px(200.))
                 .h(px(200.))
                 .child(Questionnaire::new(&self.state))
+        }
+    }
+
+    /// 单步宿主（验证首步重置的提交态）。
+    struct SingleStepWizard {
+        state: Entity<QuestionnaireState>,
+    }
+
+    impl Render for SingleStepWizard {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div().w(px(300.)).h(px(200.)).child(
+                Questionnaire::new(&self.state)
+                    .child(div().h(px(20.)).debug_selector(|| "page-0".to_string())),
+            )
+        }
+    }
+
+    /// 只有两页内容、却有三步的宿主（验证页数与步骤数不一致）。
+    struct ShortPagesWizard {
+        state: Entity<QuestionnaireState>,
+    }
+
+    impl Render for ShortPagesWizard {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let page = |ix: usize| -> Div {
+                div()
+                    .h(px(20.))
+                    .debug_selector(move || format!("page-{ix}"))
+            };
+            div().w(px(300.)).h(px(300.)).child(
+                Questionnaire::new(&self.state)
+                    .child(page(0))
+                    .child(page(1)),
+            )
         }
     }
 }

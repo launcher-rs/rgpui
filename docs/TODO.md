@@ -1,6 +1,6 @@
 # rgpui 开发 TODO
 
-更新：2026-11-04
+更新：2026-11-06
 
 状态图例：✅ 已完成 / 🚧 进行中 / ⬜ 未开始 / — 不适用（已判定无需改动）。
 完成项直接给出落地文件与回归测试；本文件不引用仓库外的临时材料。
@@ -75,6 +75,20 @@
 3. **`shape_line_by_hash` 的按哈希缓存**：`try_layout_line_by_hash` / `layout_line_by_hash` 里按内容哈希查找本帧/上帧布局确实是 `iter().find` 的 O(n) 扫描（`FxHashMap` 的键是 `Arc<HashedCacheKey>`，按内容探测只能扫）。但 `crates/` 与 `examples/` 里只有 `shape_line_by_hash` 的定义、没有调用方，不构成热点；等有实际调用时把键换成可借用探测的 `HashedCacheKeyRef` 即可 O(1)。
 
 ## 已完成记录
+
+### 代码复查修正（2026-11-06，复查 #81 / #82）
+
+- `crates/rgpui/src/components/diff.rs`
+  - `DiffState::new` 之前只去掉行尾 `\n`：CRLF 文本会把 `\r` 留在行内容里（不可见回车、行号列被撑宽）。改为先剥 `\n` 再剥紧邻的 `\r`，新增 `diff_strips_carriage_return`。
+  - `DiffView` 从逐行 `v_flex` 全量渲染改为 `uniform_list`：固定 `line_height` 行高、行内容 `whitespace_nowrap`、`ListHorizontalSizingBehavior::Unconstrained` 横向滚动，满足 AGENTS 检查清单第 13 条的长列表虚拟化约定；元素 ID 带上 `EntityId`，避免多实例共享滚动位置。补 `diff_view_draws_in_bounded_container`（200 行差异在定高父容器里完成布局与绘制）。`skills/rgpui/references/diff.md` 同步说明。
+- `crates/rgpui/src/components/questionnaire.rs`
+  - `reset()` 在「已停在第 0 步且已提交」时因 `set_current` 同值提前返回而不重绘，「已提交」标记会留在界面上。改为提交态有变化也 `cx.notify()`；新增 `reset_at_first_step_clears_submitted_marker`。
+  - 内容页数与步骤数不一致时，渲染把当前页钳制到页数范围，但按钮点击走模型：页数偏少时末页显示的「提交」在模型里尚未到末步，点了没反应。改为「页码钳制、导航以步骤模型为准」，补 `fewer_pages_than_steps_still_reaches_submit`；空向导不再渲染导航按钮（此前空向导的提交按钮可点并会发出 `Submit`）。
+- `examples/showcase/src/bin/questionnaire.rs`
+  - 示例宣称按步校验，但第 0 步（姓名/邮箱必填）从未回写 `set_step_valid`，空表单也能一路走到提交；第 2 步的同意勾选也只在 `on_change` 回写，初始与「重新开始」后都残留为通过。改为：初始把第 0/2 步置为不通过、订阅两个 `InputEvent::Change` 回写第 0 步校验，「重新开始」清空输入并重置第 0/2 步校验。
+  - 顺带修掉 `examples/showcase/src/bin/diff.rs` 里 `cx.new(|cx| DiffDemo::new(cx))` 的 `redundant_closure`（该 bin 只在 `--features diff` 下编译，常规 workspace clippy 覆盖不到）。
+- `crates/rgpui-term/src/terminal.rs`：`sync` 的非阻塞语义注释改为中文，并写清「解析线程释放数据锁后才发 `Wakeup`」的重绘保证；第 872 行 `count % 50 == 0` 改为 `is_multiple_of(50)`（与同文件另外两处一致）。
+- 验证：`cargo test -p rgpui --features diff --lib components::diff`（8 条，含定高容器绘制冒烟）、`cargo test -p rgpui --lib components::questionnaire`（7 条）、`cargo test -p rgpui-term --lib`（44 条）、`cargo clippy -p rgpui --features diff --all-targets -- -D warnings`、`cargo clippy -p rgpui-term --all-targets -- -D warnings`、`cargo clippy -p showcase --bin questionnaire --bin diff --features diff -- -D warnings`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo check --workspace`、`cargo fmt --all -- --check`、`cargo test -p rgpui --test guards`（9 条）均通过；未做实机截图（本轮改动为组件内部布局/状态机，绘制冒烟测试覆盖了定高容器路径）。
 
 ### 代码复查修正（2026-11-04）
 

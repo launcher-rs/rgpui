@@ -121,19 +121,19 @@ Form::horizontal()
 |------|------|------|
 | `QuestionStep::new` | `fn new(title: impl Into<SharedString>) -> Self` | `:31` |
 | `QuestionStep::description` | `fn description(mut self, impl Into<SharedString>) -> Self` | `:40` |
-| `QuestionnaireState::new` | `fn new() -> Self` | `:72` |
-| `with_steps` | `fn with_steps(mut self, impl IntoIterator<Item = QuestionStep>) -> Self` | `:83` |
-| `push_step` | `fn push_step(&mut self, QuestionStep, &mut Context<Self>)` | `:91` |
-| `steps`/`current`/`total` | 只读访问 | `:99`/`:105`/`:110` |
-| `is_last`/`is_submitted` | 状态查询 | `:115`/`:125` |
-| `is_step_valid`/`set_step_valid` | 校验位读写 | `:120`/`:130` |
-| `can_advance` | 当前步能否前进 | `:139` |
-| `next`/`prev`/`go_to` | 导航（前进受校验限制，后退自由） | `:144`/`:151`/`:158` |
-| `submit` | 末步且校验通过时提交，发 `Submit` 事件 | `:172` |
-| `reset` | 回到第一步并清除提交态 | `:182` |
-| `Questionnaire::new` | `fn new(&Entity<QuestionnaireState>) -> Self` | `:230` |
-| `show_steps`/`show_progress` | 控制顶部步骤条与计数显示 | `:247`/`:254` |
-| `prev_label`/`next_label`/`submit_label` | 本地化按钮文案 | `:261`/`:268`/`:275` |
+| `QuestionnaireState::new` | `fn new() -> Self` | `:68` |
+| `with_steps` | `fn with_steps(mut self, impl IntoIterator<Item = QuestionStep>) -> Self` | `:78` |
+| `push_step` | `fn push_step(&mut self, QuestionStep, &mut Context<Self>)` | `:86` |
+| `steps`/`current`/`total` | 只读访问 | `:94`/`:99`/`:104` |
+| `is_last`/`is_submitted` | 状态查询 | `:109`/`:114` |
+| `is_step_valid`/`set_step_valid` | 校验位读写 | `:119`/`:126` |
+| `can_advance` | 当前步能否前进 | `:136` |
+| `next`/`prev`/`go_to` | 导航（前进受校验限制，后退自由） | `:141`/`:148`/`:155` |
+| `submit` | 末步且校验通过时提交，发 `Submit` 事件 | `:169` |
+| `reset` | 回到第一步并清除提交态 | `:179` |
+| `Questionnaire::new` | `fn new(&Entity<QuestionnaireState>) -> Self` | `:240` |
+| `show_steps`/`show_progress` | 控制顶部步骤条与计数显示 | `:254`/`:260` |
+| `prev_label`/`next_label`/`submit_label` | 本地化按钮文案 | `:266`/`:272`/`:278` |
 | `child`/`children` | 挂入每步内容（`ParentElement`） | `:286` |
 
 事件：`QuestionnaireEvent::StepChanged { from, to }`（步骤切换）与 `QuestionnaireEvent::Submit`
@@ -166,5 +166,7 @@ Questionnaire::new(&wizard)
 - **校验门控**：`next` 只在 `can_advance()`（当前步 `is_step_valid` 且未到末步）时生效；
   `go_to` 后退自由、前进要求途中每一步都通过校验。
 - **提交幂等**：`submit` 仅在末步且校验通过时发 `Submit`，重复调用无副作用；`reset` 清除
-  提交态并回到第一步。
-- **空向导安全**：`total() == 0` 时不渲染内容区，也不报错。
+  提交态并回到第一步（已停在首步时也会重绘）。
+- **内容页与步骤数一致**：`Questionnaire` 的 `child` 数量应与 `steps()` 一一对应。数量不一致时
+  页码按内容页钳制、导航仍以步骤模型为准（页数偏少不会出现「提交按钮点了没反应」）。
+- **空向导安全**：`total() == 0` 时不渲染内容区与导航按钮，也不报错。

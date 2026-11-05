@@ -105,7 +105,7 @@ fn run_example() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
             },
-            |_window, cx| cx.new(|cx| DiffDemo::new(cx)),
+            |_window, cx| cx.new(DiffDemo::new),
         )
         .unwrap();
         cx.activate(true);

@@ -52,11 +52,11 @@ impl DiffState {
 
         for change in diff.iter_all_changes() {
             let tag = change.tag();
-            let text = change
-                .as_str()
-                .unwrap_or("")
-                .trim_end_matches('\n')
-                .to_string();
+            // 逐行输入可能带 CRLF：去掉行尾的 `\n` 与紧随的 `\r`，
+            // 否则视图里会残留一个不可见的回车（行号对齐也会被撑开）。
+            let raw = change.as_str().unwrap_or("");
+            let text = raw.strip_suffix('\n').unwrap_or(raw);
+            let text = text.strip_suffix('\r').unwrap_or(text).to_string();
 
             match tag {
                 ChangeTag::Equal => {
@@ -170,11 +170,13 @@ impl DiffView {
 
 impl RenderOnce for DiffView {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state = self.state.read(cx);
+        let state = self.state;
+        let entity_id = state.entity_id();
+        let line_count = state.read(cx).lines().len();
+        let show_line_numbers = state.read(cx).is_show_line_numbers();
         let line_height = self.line_height;
-        let show_line_numbers = state.is_show_line_numbers();
-        let theme = cx.theme();
 
+        let theme = cx.theme();
         let added_bg = theme.tokens.success.color.opacity(0.15);
         let removed_bg = theme.tokens.danger.color.opacity(0.15);
         let added_fg = theme.tokens.success.color;
@@ -184,55 +186,76 @@ impl RenderOnce for DiffView {
 
         let line_number_width = if show_line_numbers { px(60.0) } else { px(0.0) };
 
-        v_flex()
-            .id("diff-view")
-            .size_full()
-            .overflow_scroll()
-            .children(state.lines().iter().map(move |line| {
-                let (bg, fg) = match line.kind {
-                    DiffLineKind::Unchanged => (None, text_color),
-                    DiffLineKind::Added => (Some(added_bg), added_fg),
-                    DiffLineKind::Removed => (Some(removed_bg), removed_fg),
-                };
+        // 差异动辄上千行，逐行 `div` 会把整份文本都排进布局；交给 `uniform_list`
+        // 只渲染视口内的行。横向不约束，长行可横向滚动而不是折行破坏「一行一高」。
+        uniform_list(
+            ("diff-view", entity_id),
+            line_count,
+            move |range, _window, cx| {
+                let state = state.read(cx);
+                let lines = state.lines();
 
-                let prefix = match line.kind {
-                    DiffLineKind::Unchanged => "  ",
-                    DiffLineKind::Added => "+ ",
-                    DiffLineKind::Removed => "- ",
-                };
+                range
+                    .map(|ix| {
+                        let line = &lines[ix];
+                        let (bg, fg) = match line.kind {
+                            DiffLineKind::Unchanged => (None, text_color),
+                            DiffLineKind::Added => (Some(added_bg), added_fg),
+                            DiffLineKind::Removed => (Some(removed_bg), removed_fg),
+                        };
 
-                let line_number_text = if show_line_numbers {
-                    match (line.old_line, line.new_line) {
-                        (Some(old), Some(new)) => format!("{old:>3} {new:>3} "),
-                        (Some(old), None) => format!("{old:>3}     "),
-                        (None, Some(new)) => format!("    {new:>3} "),
-                        (None, None) => "        ".to_string(),
-                    }
-                } else {
-                    String::new()
-                };
+                        let prefix = match line.kind {
+                            DiffLineKind::Unchanged => "  ",
+                            DiffLineKind::Added => "+ ",
+                            DiffLineKind::Removed => "- ",
+                        };
 
-                let content_text = format!("{prefix}{}", line.text);
+                        let line_number_text = if show_line_numbers {
+                            match (line.old_line, line.new_line) {
+                                (Some(old), Some(new)) => format!("{old:>3} {new:>3} "),
+                                (Some(old), None) => format!("{old:>3}     "),
+                                (None, Some(new)) => format!("    {new:>3} "),
+                                (None, None) => "        ".to_string(),
+                            }
+                        } else {
+                            String::new()
+                        };
 
-                h_flex()
-                    .h(line_height)
-                    .w_full()
-                    .when_some(bg, |el, bg| el.bg(bg))
-                    .child(
-                        div()
-                            .w(line_number_width)
-                            .text_color(line_number_color)
-                            .child(line_number_text),
-                    )
-                    .child(div().flex_grow(1.0).text_color(fg).child(content_text))
-            }))
+                        let content_text = format!("{prefix}{}", line.text);
+
+                        h_flex()
+                            .h(line_height)
+                            .w_full()
+                            .when_some(bg, |el, bg| el.bg(bg))
+                            .child(
+                                div()
+                                    .w(line_number_width)
+                                    .text_color(line_number_color)
+                                    .child(line_number_text),
+                            )
+                            .child(
+                                div()
+                                    .flex_grow(1.0)
+                                    .whitespace_nowrap()
+                                    .text_color(fg)
+                                    .child(content_text),
+                            )
+                    })
+                    .collect::<Vec<_>>()
+            },
+        )
+        .size_full()
+        .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{DiffLineKind, DiffState};
-    use crate::{AppContext as _, TestAppContext};
+    use super::{DiffLineKind, DiffState, DiffView};
+    use crate::{
+        AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
+        Render, Styled as _, TestAppContext, Window, div, px,
+    };
 
     /// 创建测试用的 DiffState。
     fn setup(cx: &mut TestAppContext) -> crate::Entity<DiffState> {
@@ -344,5 +367,67 @@ mod tests {
         });
         assert_eq!(len, 2);
         assert!(all_unchanged);
+    }
+
+    /// CRLF 文本的行尾 `\r` 不应留在行内容里。
+    #[rgpui::test]
+    fn diff_strips_carriage_return(cx: &mut TestAppContext) {
+        let state = cx.update(|cx| cx.new(|_| DiffState::new("a\r\nb\r\n", "a\r\nc\r\n")));
+        let texts = state.read_with(cx, |state, _| {
+            state
+                .lines()
+                .iter()
+                .map(|line| line.text.to_string())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            texts,
+            vec!["a".to_string(), "b".to_string(), "c".to_string()]
+        );
+    }
+
+    /// 差异视图能在确定高度的父容器里完成布局与绘制（`uniform_list` 的前置条件）。
+    #[rgpui::test]
+    fn diff_view_draws_in_bounded_container(cx: &mut TestAppContext) {
+        /// 只提供固定高度父容器的宿主视图。
+        struct Host {
+            state: Entity<DiffState>,
+        }
+
+        impl Render for Host {
+            fn render(
+                &mut self,
+                _window: &mut Window,
+                _cx: &mut Context<Self>,
+            ) -> impl IntoElement {
+                div()
+                    .w(px(400.))
+                    .h(px(200.))
+                    .debug_selector(|| "diff-host".to_string())
+                    .child(DiffView::new(&self.state))
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let (_view, cx) = cx.add_window_view(|_window, cx| {
+            let state = cx.new(|_| {
+                let old = (0..200)
+                    .map(|ix| format!("old line {ix}\n"))
+                    .collect::<String>();
+                let new = (0..200)
+                    .map(|ix| format!("new line {ix}\n"))
+                    .collect::<String>();
+                DiffState::new(old, new)
+            });
+            Host { state }
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+
+        let bounds = cx.debug_bounds("diff-host").expect("宿主视图应完成绘制");
+        assert!(bounds.size.width > px(0.));
+        assert_eq!(bounds.size.height, px(200.));
     }
 }
