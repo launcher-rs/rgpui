@@ -71,7 +71,16 @@ impl FeedHandle {
     ///
     /// 返回 `false` 表示终端会话已结束、注入被丢弃。
     pub fn feed(&self, bytes: impl Into<Vec<u8>>) -> bool {
-        self.tx.send(LoopMsg::Feed(bytes.into())).is_ok()
+        let bytes = bytes.into();
+        if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
+            let hex = bytes
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            eprintln!("[rt-trace] feed len={} hex={hex}", bytes.len());
+        }
+        self.tx.send(LoopMsg::Feed(bytes)).is_ok()
     }
 
     /// 结束终端会话（等价远端进程退出）。
@@ -131,7 +140,10 @@ impl Notify for ExternalPtyWriter {
         if bytes.is_empty() {
             return;
         }
-        let _ = self.tx.send(PtyBoundMessage::Input(bytes.into_owned()));
+        let result = self.tx.send(PtyBoundMessage::Input(bytes.into_owned()));
+        if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() && result.is_err() {
+            eprintln!("[rt-trace] external writer send failed: receiver dropped");
+        }
     }
 }
 
@@ -157,6 +169,8 @@ fn external_loop(
     feed_rx: mpsc::Receiver<LoopMsg>,
 ) {
     let mut state = ExternalLoopState::default();
+    let trace = std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some();
+    let mut batch_id = 0usize;
 
     loop {
         // 同步超时窗口内等待新字节；超时则结束同步输出（镜像 event_loop L229-249）。
@@ -169,7 +183,13 @@ fn external_loop(
             Some(timeout) => match feed_rx.recv_timeout(timeout) {
                 Ok(message) => Some(message),
                 Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if trace {
+                        eprintln!("[rt-trace] timeout stop_sync start");
+                    }
                     state.parser.stop_sync(&mut *terminal.lock());
+                    if trace {
+                        eprintln!("[rt-trace] timeout stop_sync done");
+                    }
                     proxy.send_event(AlacTermEvent::Wakeup);
                     continue;
                 }
@@ -214,18 +234,37 @@ fn external_loop(
         }
 
         if !pending.is_empty() {
+            batch_id += 1;
+            if trace {
+                eprintln!("[rt-trace] batch {batch_id} lease wait");
+            }
             // 先租约再解锁：防止 UI 线程在本轮解析前反复抢占（镜像 event_loop）。
             // 租约占的就是 `next` 锁，因此这里只能退到 `lock_unfair`（只等 data）：
             // parking_lot 不可重入，持租约再走 `lock()` 会二次加 `next` 自锁，
             // 解析线程就此永不消费，远端字节再也进不了网格。
             let _lease = terminal.lease();
+            if trace {
+                eprintln!("[rt-trace] batch {batch_id} lease acquired; data lock wait");
+            }
             let mut term = terminal
                 .try_lock_unfair()
                 .unwrap_or_else(|| terminal.lock_unfair());
+            if trace {
+                eprintln!("[rt-trace] batch {batch_id} data lock acquired");
+            }
 
             let mut processed = 0usize;
-            for chunk in &pending {
+            for (chunk_id, chunk) in pending.iter().enumerate() {
+                if trace {
+                    eprintln!(
+                        "[rt-trace] batch {batch_id} advance {chunk_id} start len={}",
+                        chunk.len()
+                    );
+                }
                 state.parser.advance(&mut *term, chunk);
+                if trace {
+                    eprintln!("[rt-trace] batch {batch_id} advance {chunk_id} done");
+                }
                 processed += chunk.len();
             }
 

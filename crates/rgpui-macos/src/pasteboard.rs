@@ -379,6 +379,8 @@ mod tests {
 
     unsafe fn simulate_external_file_copy(pasteboard: &Pasteboard, paths: &[&str]) {
         unsafe {
+            pasteboard.inner.clearContents();
+
             let ns_paths: Vec<id> = paths.iter().map(|p| ns_string(p)).collect();
             let ns_array = NSArray::arrayWithObjects(nil, &ns_paths);
 

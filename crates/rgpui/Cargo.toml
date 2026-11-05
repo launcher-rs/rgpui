@@ -69,6 +69,8 @@ charts = []
 effects = []
 # 二维码组件（引入 qrcode 依赖）。默认关闭。
 qr-code = ["dep:qrcode"]
+# 文本差异查看器（引入 similar 依赖）。默认关闭。
+diff = ["dep:similar"]
 # AVIF 图片解码：默认关闭以减体积（image 的 avif 特性会引入 rav1e 整套 AV1
 # 编码器链，对只做解码的 UI 框架是纯负担）。需要时显式开启。
 image-avif = ["image/avif"]
@@ -334,6 +336,8 @@ tree-sitter-php = { version = "0.24", optional = true }
 tree-sitter-css = { version = "0.25", optional = true }
 tree-sitter-html = { version = "0.23", optional = true }
 tree-sitter-yaml = { version = "0.7", optional = true }
+# 文本差异计算（`diff` feature）
+similar = { workspace = true, optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.4.3", features = ["wasm_js"] }

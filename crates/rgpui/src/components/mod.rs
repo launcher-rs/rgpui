@@ -32,6 +32,8 @@ pub mod confetti;
 pub mod countdown;
 pub mod date_picker;
 pub mod description_list;
+#[cfg(feature = "diff")]
+pub mod diff;
 pub mod dock;
 #[cfg(feature = "dom-backend")]
 mod dom_svg;
@@ -111,6 +113,8 @@ pub use confetti::*;
 pub use countdown::*;
 pub use date_picker::*;
 pub use description_list::*;
+#[cfg(feature = "diff")]
+pub use diff::*;
 pub use dock::*;
 pub use drag_drop::*;
 pub use drawer_navigation::*;

@@ -58,6 +58,8 @@ thiserror = "2.0"
 backtrace = "0.3"
 # Markdown 解析（rgpui-markdown 使用）
 pulldown-cmark = "0.13"
+# 文本差异计算（rgpui 的 `diff` feature 使用）
+similar = "3.2.1"
 # LaTeX 公式解析 / 排版 / SVG 输出（rgpui-markdown 的 `latex` feature 使用）
 ratex-parser = "0.1.15"
 ratex-layout = "0.1.15"

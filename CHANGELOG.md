@@ -11,6 +11,10 @@
   调用方的校验结果，未通过的步不放行前进、仍可后退。答值不进组件模型，由调用方持有（与
   `Form` / `Field` 组合使用）。事件 `QuestionnaireEvent::{StepChanged, Submit}`。
   用例：`cargo run -p showcase --bin questionnaire`。
+- **`DiffView` 差异查看器**（`diff` feature）：`DiffState` + `DiffView` 元素，基于 `similar`
+  crate 计算行级差异，以统一视图形式展示——新增行绿色背景、删除行红色背景、未变更行默认背景，
+  可选显示行号。提供 `added_count/removed_count/unchanged_count` 统计方法。
+  用例：`cargo run -p showcase --bin diff --features rgpui/diff`。
 
 ### 修复（滚动）
 

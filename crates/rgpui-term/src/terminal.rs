@@ -18,7 +18,17 @@
 //! 事件循环在 RGPUI spawn 任务中运行并异步处理事件。
 
 use std::{
-    borrow::Cow, cmp, collections::VecDeque, ops::Deref, path::PathBuf, sync::Arc, time::Duration,
+    borrow::Cow,
+    cmp,
+    collections::VecDeque,
+    ops::Deref,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::AtomicUsize,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
 
 use alacritty_terminal::{
@@ -58,6 +68,9 @@ use crate::{InputOrigin, TerminalMiddleware};
 
 const DEFAULT_SCROLL_HISTORY_LINES: usize = 10_000;
 const MAX_SCROLL_HISTORY_LINES: usize = 100_000;
+static SYNC_LOCK_BUSY: AtomicBool = AtomicBool::new(false);
+static TRACE_KEY_EVENTS: AtomicUsize = AtomicUsize::new(0);
+static TRACE_KEY_INPUTS: AtomicUsize = AtomicUsize::new(0);
 
 /// 终端后端写通道：决定用户输入、OSC 应答与尺寸变化发往何处。
 enum PtyBackend {
@@ -804,6 +817,15 @@ impl Terminal {
     /// 向终端发送输入，附带来源元数据。
     pub fn input_with_origin(&mut self, input: impl Into<Cow<'static, [u8]>>, origin: InputOrigin) {
         let input = input.into();
+        if origin == InputOrigin::Keystroke && std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
+            let count = TRACE_KEY_INPUTS.fetch_add(1, Ordering::Relaxed) + 1;
+            if count <= 3 || count.is_multiple_of(50) {
+                eprintln!(
+                    "[rt-trace] terminal accepted keystroke #{count} bytes={:02x?}",
+                    input.as_ref()
+                );
+            }
+        }
 
         // Detect Enter key from user input to start block tracking
         if matches!(origin, InputOrigin::Keystroke | InputOrigin::Text) && input.as_ref() == b"\x0d"
@@ -825,6 +847,19 @@ impl Terminal {
     /// 常规字符输入通过 InputHandler::replace_text_in_range 处理。
     pub fn try_keystroke(&mut self, keystroke: &Keystroke, option_as_meta: bool) -> bool {
         let esc = to_esc_str(keystroke, &self.last_content.mode, option_as_meta);
+        let trace_count = if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
+            let count = TRACE_KEY_EVENTS.fetch_add(1, Ordering::Relaxed) + 1;
+            if count <= 3 || count.is_multiple_of(50) {
+                eprintln!(
+                    "[rt-trace] terminal received keydown #{count}: key={} mapped={}",
+                    keystroke.key,
+                    esc.is_some()
+                );
+            }
+            Some(count)
+        } else {
+            None
+        };
         if let Some(esc) = esc {
             match esc {
                 Cow::Borrowed(string) => {
@@ -834,6 +869,9 @@ impl Terminal {
                     self.input_with_origin(string.into_bytes(), InputOrigin::Keystroke)
                 }
             };
+            if trace_count.is_some_and(|count| count <= 3 || count % 50 == 0) {
+                eprintln!("[rt-trace] terminal handled keydown {:?}", keystroke.key);
+            }
             true
         } else {
             false
@@ -881,7 +919,23 @@ impl Terminal {
     /// 同步终端状态并更新内容以供渲染。
     pub fn sync(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let term = self.term.clone();
-        let mut terminal = term.lock_unfair();
+        // Rendering must not wait for the parser thread. In particular, the external
+        // backend can hold this lock while parsing a large response; blocking here
+        // would freeze the entire UI. Keep rendering the last snapshot and retry on
+        // the next frame instead. Events stay queued until we acquire the lock.
+        let Some(mut terminal) = term.try_lock_unfair() else {
+            if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
+                && !SYNC_LOCK_BUSY.swap(true, Ordering::Relaxed)
+            {
+                eprintln!("[rt-trace] UI sync could not acquire data lock");
+            }
+            return;
+        };
+        if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
+            && SYNC_LOCK_BUSY.swap(false, Ordering::Relaxed)
+        {
+            eprintln!("[rt-trace] UI sync acquired data lock again");
+        }
 
         while let Some(event) = self.events.pop_front() {
             self.process_terminal_event(&event, &mut terminal, cx);
