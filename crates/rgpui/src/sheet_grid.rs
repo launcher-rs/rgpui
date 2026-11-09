@@ -1127,9 +1127,7 @@ impl<D: SheetDelegate> Render for SheetGridState<D> {
                 .flex_grow_1()
                 .min_h(px(0.0))
                 .child(row_headers)
-                .when(frozen_cols > 0, |this| {
-                    this.child(frozen_col_cells.expect("冻结列存在时应有列表"))
-                })
+                .when_some(frozen_col_cells, |this, cells| this.child(cells))
                 .child(body),
         );
 
