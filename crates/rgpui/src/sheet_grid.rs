@@ -276,6 +276,10 @@ pub struct SheetGridState<D: SheetDelegate> {
     fill_target: Option<CellRef>,
     /// 正在编辑的单元格（应用侧编辑时置位，用于抑制重复请求）。
     editing: Option<CellRef>,
+    /// 冻结的行数（顶部固定）。
+    frozen_rows: usize,
+    /// 冻结的列数（左侧固定）。
+    frozen_cols: usize,
     /// 最近一次渲染时缓存的行数。
     rows: usize,
     /// 最近一次渲染时缓存的列数。
@@ -296,6 +300,8 @@ impl<D: SheetDelegate> SheetGridState<D> {
             filling: false,
             fill_target: None,
             editing: None,
+            frozen_rows: 0,
+            frozen_cols: 0,
             rows: 0,
             cols: 0,
         }
@@ -330,6 +336,33 @@ impl<D: SheetDelegate> SheetGridState<D> {
     pub fn set_editing(&mut self, cell: Option<CellRef>, cx: &mut Context<Self>) {
         if self.editing != cell {
             self.editing = cell;
+            cx.notify();
+        }
+    }
+
+    /// 冻结的行数。
+    pub fn frozen_rows(&self) -> usize {
+        self.frozen_rows
+    }
+
+    /// 冻结的列数。
+    pub fn frozen_cols(&self) -> usize {
+        self.frozen_cols
+    }
+
+    /// 设置冻结行列（顶部 `rows` 行、左侧 `cols` 列不随滚动）。
+    ///
+    /// 会至少保留一行/一列参与滚动，避免整个视图被冻结。
+    pub fn set_frozen(&mut self, rows: usize, cols: usize, cx: &mut Context<Self>) {
+        if self.rows == 0 || self.cols == 0 {
+            self.rows = self.delegate.rows_count(cx);
+            self.cols = self.delegate.cols_count(cx);
+        }
+        let rows = rows.min(self.rows.saturating_sub(1));
+        let cols = cols.min(self.cols.saturating_sub(1));
+        if self.frozen_rows != rows || self.frozen_cols != cols {
+            self.frozen_rows = rows;
+            self.frozen_cols = cols;
             cx.notify();
         }
     }
@@ -429,16 +462,22 @@ impl<D: SheetDelegate> SheetGridState<D> {
         self.focus_handle.focus(window, cx);
     }
 
-    /// 滚动到指定单元格使其可见。
+    /// 滚动到指定单元格使其可见（冻结区域内的行列无需滚动）。
     pub fn scroll_to_cell(&mut self, cell: CellRef, cx: &mut Context<Self>) {
-        self.vertical_scroll
-            .scroll_to_item(cell.row, ScrollStrategy::Nearest);
+        self.vertical_scroll.scroll_to_item(
+            cell.row.saturating_sub(self.frozen_rows),
+            ScrollStrategy::Nearest,
+        );
 
-        // 水平方向：按列宽累计计算目标位置，手动夹取偏移。
+        // 水平方向：冻结列固定，滚动区域从第一非冻结列开始累计宽度。
+        if cell.col < self.frozen_cols {
+            cx.notify();
+            return;
+        }
         let viewport_width = self.horizontal_scroll.bounds().size.width;
         if viewport_width > px(0.0) {
             let mut col_x = px(0.0);
-            for col in 0..cell.col {
+            for col in self.frozen_cols..cell.col {
                 col_x += self.delegate.column_width(col, cx);
             }
             let col_w = self.delegate.column_width(cell.col, cx);
@@ -540,7 +579,9 @@ impl<D: SheetDelegate> SheetGridState<D> {
         let modifiers = event.keystroke.modifiers;
         let extend = modifiers.shift;
         let command = modifiers.control || modifiers.platform;
-        let page_rows = (self.visible_body_height() / self.delegate.row_height(cx))
+        let row_height = self.delegate.row_height(cx);
+        let frozen_height = row_height * self.frozen_rows as f32;
+        let page_rows = ((self.bounds.size.height - COL_HEADER_HEIGHT - frozen_height) / row_height)
             .max(1.0)
             .floor() as i64;
 
@@ -585,15 +626,87 @@ impl<D: SheetDelegate> SheetGridState<D> {
         cx.stop_propagation();
     }
 
-    /// 内容区可视高度（扣掉列头）。
-    fn visible_body_height(&self) -> Pixels {
-        (self.bounds.size.height - COL_HEADER_HEIGHT).max(px(0.0))
+    /// 冻结区域总宽度。
+    fn frozen_width(&self, cx: &App) -> Pixels {
+        (0..self.frozen_cols).fold(px(0.0), |sum, col| {
+            sum + self.delegate.column_width(col, cx)
+        })
     }
 
-    /// 渲染列头行。
+    /// 列头单元格。
+    fn render_col_header(&self, col: usize, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let border = theme.border;
+        let label = self.delegate.column_label(col, cx);
+        div()
+            .id(format!("sheet-col-head:{col}"))
+            // 无障碍语义：列头。
+            .role(accesskit::Role::ColumnHeader)
+            .aria_column_index(col)
+            .w_full()
+            .h_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .border_r_1()
+            .border_b_1()
+            .border_color(border)
+            .text_sm()
+            .child(label)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |state, _event, window, cx| {
+                    state.focus(window, cx);
+                    state.select_col(col, cx);
+                }),
+            )
+            .into_any_element()
+    }
+
+    /// 行头单元格。
+    fn render_row_header(
+        &self,
+        row: usize,
+        row_height: Pixels,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme();
+        let border = theme.border;
+        let head_bg = theme.table_head;
+        let head_fg = theme.table_head_foreground;
+        let row_label = self.delegate.row_label(row, cx);
+        div()
+            .id(("sheet-row-head", row))
+            // 无障碍语义：行头。
+            .role(accesskit::Role::RowHeader)
+            .aria_row_index(row)
+            .w(ROW_HEADER_WIDTH)
+            .h(row_height)
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .border_r_1()
+            .border_b_1()
+            .border_color(border)
+            .bg(head_bg)
+            .text_color(head_fg)
+            .text_sm()
+            .child(row_label)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |state, _event, window, cx| {
+                    state.focus(window, cx);
+                    state.select_row(row, cx);
+                }),
+            )
+            .into_any_element()
+    }
+
+    /// 渲染列头行（冻结列固定在左侧，其余随水平滚动）。
     fn render_header(
         &mut self,
-        col_sizes: Rc<Vec<Size<Pixels>>>,
+        body_col_sizes: Rc<Vec<Size<Pixels>>>,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -602,41 +715,31 @@ impl<D: SheetDelegate> SheetGridState<D> {
         let head_bg = theme.table_head;
         let head_fg = theme.table_head_foreground;
         let horizontal = self.horizontal_scroll.clone();
+        let frozen_cols = self.frozen_cols;
+        let frozen_width = self.frozen_width(cx);
 
-        let columns = h_virtual_list(cx.entity(), "sheet-col-header", col_sizes, {
+        let columns = h_virtual_list(cx.entity(), "sheet-col-header", body_col_sizes, {
             move |state: &mut Self, range: Range<usize>, _window, cx| {
                 range
-                    .map(|col| {
-                        let label = state.delegate.column_label(col, cx);
-                        div()
-                            .id(format!("sheet-col-head:{col}"))
-                            // 无障碍语义：列头。
-                            .role(accesskit::Role::ColumnHeader)
-                            .aria_column_index(col)
-                            .w_full()
-                            .h_full()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .border_r_1()
-                            .border_b_1()
-                            .border_color(border)
-                            .text_sm()
-                            .child(label)
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |state, _event, window, cx| {
-                                    state.focus(window, cx);
-                                    state.select_col(col, cx);
-                                }),
-                            )
-                            .into_any_element()
-                    })
+                    .map(|index| state.render_col_header(index + frozen_cols, cx))
                     .collect::<Vec<AnyElement>>()
             }
         })
         .track_scroll(&horizontal)
         .flex_1();
+
+        let mut frozen_headers = Vec::new();
+        for col in 0..frozen_cols {
+            let width = self.delegate.column_width(col, cx);
+            frozen_headers.push(
+                div()
+                    .w(width)
+                    .h_full()
+                    .flex_shrink_0()
+                    .child(self.render_col_header(col, cx))
+                    .into_any_element(),
+            );
+        }
 
         h_flex()
             .h(COL_HEADER_HEIGHT)
@@ -652,30 +755,44 @@ impl<D: SheetDelegate> SheetGridState<D> {
                     .border_b_1()
                     .border_color(border),
             )
+            .when(frozen_cols > 0, |this| {
+                this.child(
+                    h_flex()
+                        .w(frozen_width)
+                        .h_full()
+                        .flex_shrink_0()
+                        .children(frozen_headers),
+                )
+            })
             .child(columns)
             .into_any_element()
     }
 
-    /// 渲染单行：行头 + 虚拟化单元格。
-    fn render_row(
+    /// 渲染滚动区域的单行单元格（行头由独立列表绘制）。
+    fn render_row_cells(
         &mut self,
         row: usize,
         row_height: Pixels,
-        col_sizes: Rc<Vec<Size<Pixels>>>,
+        body_col_sizes: Rc<Vec<Size<Pixels>>>,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let theme = cx.theme();
         let border = theme.border;
-        let head_bg = theme.table_head;
-        let head_fg = theme.table_head_foreground;
         let horizontal = self.horizontal_scroll.clone();
-        let row_label = self.delegate.row_label(row, cx);
+        let frozen_cols = self.frozen_cols;
 
-        let cells = h_virtual_list(cx.entity(), ("sheet-row", row), col_sizes, {
+        let cells = h_virtual_list(cx.entity(), ("sheet-row", row), body_col_sizes, {
             move |state: &mut Self, range: Range<usize>, window, cx| {
                 range
-                    .map(|col| state.render_cell(CellRef::new(row, col), border, window, cx))
+                    .map(|index| {
+                        state.render_cell(
+                            CellRef::new(row, index + frozen_cols),
+                            border,
+                            window,
+                            cx,
+                        )
+                    })
                     .collect::<Vec<AnyElement>>()
             }
         })
@@ -686,37 +803,43 @@ impl<D: SheetDelegate> SheetGridState<D> {
             .id(("sheet-row", row))
             .flex()
             .flex_row()
+            .w_full()
             .h(row_height)
             .flex_shrink_0()
             .border_b_1()
             .border_color(border)
-            .child(
+            .child(cells)
+    }
+
+    /// 渲染固定宽度的单元格行（冻结列 / 冻结交角）。
+    #[allow(clippy::too_many_arguments)]
+    fn render_fixed_row(
+        &mut self,
+        id: &'static str,
+        row: usize,
+        row_height: Pixels,
+        cols: &[usize],
+        widths: &[Pixels],
+        border: Hsla,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut row_div = h_flex()
+            .id((id, row))
+            .h(row_height)
+            .flex_shrink_0()
+            .border_b_1()
+            .border_color(border);
+        for (col, width) in cols.iter().zip(widths.iter()) {
+            row_div = row_div.child(
                 div()
-                    .id(("sheet-row-head", row))
-                    // 无障碍语义：行头。
-                    .role(accesskit::Role::RowHeader)
-                    .aria_row_index(row)
-                    .w(ROW_HEADER_WIDTH)
+                    .w(*width)
                     .h_full()
                     .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .border_r_1()
-                    .border_color(border)
-                    .bg(head_bg)
-                    .text_color(head_fg)
-                    .text_sm()
-                    .child(row_label)
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |state, _event, window, cx| {
-                            state.focus(window, cx);
-                            state.select_row(row, cx);
-                        }),
-                    ),
-            )
-            .child(cells)
+                    .child(self.render_cell(CellRef::new(row, *col), border, window, cx)),
+            );
+        }
+        row_div.into_any_element()
     }
 
     /// 渲染单个单元格（含选区高亮、活动边框与填充柄）。
@@ -812,28 +935,203 @@ impl<D: SheetDelegate> Render for SheetGridState<D> {
         let rows = self.rows;
         let cols = self.cols;
         let row_height = self.delegate.row_height(cx);
-        let col_sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
-            (0..cols)
+        let frozen_rows = self.frozen_rows.min(rows.saturating_sub(1));
+        let frozen_cols = self.frozen_cols.min(cols.saturating_sub(1));
+        let body_rows = rows.saturating_sub(frozen_rows);
+        let frozen_width = self.frozen_width(cx);
+        let frozen_height = row_height * frozen_rows as f32;
+        let border = cx.theme().border;
+        let head_bg = cx.theme().table_head;
+        let head_fg = cx.theme().table_head_foreground;
+        let vertical = self.vertical_scroll.clone();
+        let horizontal = self.horizontal_scroll.clone();
+
+        let body_col_sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
+            (frozen_cols..cols)
                 .map(|col| size(self.delegate.column_width(col, cx), row_height))
                 .collect(),
         );
+        let frozen_col_indices: Rc<Vec<usize>> = Rc::new((0..frozen_cols).collect());
+        let frozen_col_widths: Rc<Vec<Pixels>> = Rc::new(
+            (0..frozen_cols)
+                .map(|col| self.delegate.column_width(col, cx))
+                .collect(),
+        );
 
-        let header = self.render_header(col_sizes.clone(), window, cx);
-        let vertical = self.vertical_scroll.clone();
+        let header = self.render_header(body_col_sizes.clone(), window, cx);
+
+        // 冻结行条：冻结列 / 冻结行 / 交角 / 可见固定行头。
+        let frozen_strip = if frozen_rows > 0 {
+            let mut row_headers = Vec::new();
+            let mut corner_rows = Vec::new();
+            let mut cell_rows = Vec::new();
+            for row in 0..frozen_rows {
+                row_headers.push(self.render_row_header(row, row_height, cx));
+                if frozen_cols > 0 {
+                    corner_rows.push(self.render_fixed_row(
+                        "sheet-freeze-corner",
+                        row,
+                        row_height,
+                        &frozen_col_indices,
+                        &frozen_col_widths,
+                        border,
+                        window,
+                        cx,
+                    ));
+                }
+                let list = h_virtual_list(
+                    cx.entity(),
+                    ("sheet-freeze-row", row),
+                    body_col_sizes.clone(),
+                    {
+                        move |state: &mut Self, range: Range<usize>, window, cx| {
+                            range
+                                .map(|index| {
+                                    state.render_cell(
+                                        CellRef::new(row, index + frozen_cols),
+                                        border,
+                                        window,
+                                        cx,
+                                    )
+                                })
+                                .collect::<Vec<AnyElement>>()
+                        }
+                    },
+                )
+                .with_scroll_handle(&horizontal)
+                .flex_1();
+                cell_rows.push(
+                    div()
+                        .id(("sheet-freeze-row-cells", row))
+                        .flex()
+                        .flex_row()
+                        .h(row_height)
+                        .flex_shrink_0()
+                        .border_b_1()
+                        .border_color(border)
+                        .child(list)
+                        .into_any_element(),
+                );
+            }
+            Some(
+                h_flex()
+                    .h(frozen_height)
+                    .flex_shrink_0()
+                    .child(
+                        v_flex()
+                            .id("sheet-freeze-row-heads")
+                            .w(ROW_HEADER_WIDTH)
+                            .h_full()
+                            .flex_shrink_0()
+                            .bg(head_bg)
+                            .text_color(head_fg)
+                            .children(row_headers),
+                    )
+                    .when(frozen_cols > 0, |this| {
+                        this.child(
+                            v_flex()
+                                .id("sheet-freeze-corner")
+                                .w(frozen_width)
+                                .h_full()
+                                .flex_shrink_0()
+                                .children(corner_rows),
+                        )
+                    })
+                    .child(
+                        v_flex()
+                            .id("sheet-freeze-rows")
+                            .flex_1()
+                            .h_full()
+                            .children(cell_rows),
+                    )
+                    .into_any_element(),
+            )
+        } else {
+            None
+        };
+
+        let row_headers = uniform_list(
+            "sheet-row-headers",
+            body_rows,
+            cx.processor(move |state: &mut Self, range: Range<usize>, _window, cx| {
+                range
+                    .map(|index| state.render_row_header(index + frozen_rows, row_height, cx))
+                    .collect::<Vec<AnyElement>>()
+            }),
+        )
+        .track_scroll(&vertical)
+        .w(ROW_HEADER_WIDTH)
+        .flex_shrink_0();
+
+        let frozen_col_cells = (frozen_cols > 0).then(|| {
+            let indices = frozen_col_indices.clone();
+            let widths = frozen_col_widths.clone();
+            uniform_list(
+                "sheet-freeze-cols",
+                body_rows,
+                cx.processor(move |state: &mut Self, range: Range<usize>, window, cx| {
+                    range
+                        .map(|index| {
+                            state.render_fixed_row(
+                                "sheet-freeze-col",
+                                index + frozen_rows,
+                                row_height,
+                                &indices,
+                                &widths,
+                                border,
+                                window,
+                                cx,
+                            )
+                        })
+                        .collect::<Vec<AnyElement>>()
+                }),
+            )
+            .track_scroll(&vertical)
+            .w(frozen_width)
+            .flex_shrink_0()
+            .into_any_element()
+        });
 
         let body = uniform_list(
             "sheet-rows",
-            rows,
+            body_rows,
             cx.processor(
                 move |state: &mut Self, visible_range: Range<usize>, window, cx| {
                     visible_range
-                        .map(|row| state.render_row(row, row_height, col_sizes.clone(), window, cx))
+                        .map(|index| {
+                            state.render_row_cells(
+                                index + frozen_rows,
+                                row_height,
+                                body_col_sizes.clone(),
+                                window,
+                                cx,
+                            )
+                        })
                         .collect::<Vec<_>>()
                 },
             ),
         )
         .flex_grow_1()
         .track_scroll(&vertical);
+
+        let mut content = v_flex().size_full().child(header);
+        if let Some(strip) = frozen_strip {
+            content = content.child(strip);
+        }
+        content = content.child(
+            // 用 items_stretch（而非 h_flex 默认的 items_center）：虚拟列表高度为
+            // auto，必须由父容器拉伸到整行，否则会塌成 0 高。
+            div()
+                .flex()
+                .flex_row()
+                .flex_grow_1()
+                .min_h(px(0.0))
+                .child(row_headers)
+                .when(frozen_cols > 0, |this| {
+                    this.child(frozen_col_cells.expect("冻结列存在时应有列表"))
+                })
+                .child(body),
+        );
 
         div()
             .size_full()
@@ -843,7 +1141,7 @@ impl<D: SheetDelegate> Render for SheetGridState<D> {
                 let state = cx.entity();
                 move |bounds, _window, cx| state.update(cx, |state, _| state.bounds = bounds)
             })
-            .child(v_flex().size_full().child(header).child(body))
+            .child(content)
             .child(
                 div()
                     .absolute()
@@ -856,7 +1154,7 @@ impl<D: SheetDelegate> Render for SheetGridState<D> {
             .child(
                 div()
                     .absolute()
-                    .left(ROW_HEADER_WIDTH)
+                    .left(ROW_HEADER_WIDTH + frozen_width)
                     .right_0()
                     .bottom_0()
                     .h(Scrollbar::width())
@@ -1144,5 +1442,20 @@ mod tests {
         );
         cx.update(|_, cx| state.update(cx, |state, cx| state.set_editing(None, cx)));
         assert_eq!(state.read_with(cx, |state, _| state.editing()), None);
+    }
+
+    /// 冻结行列至少保留一行一列滚动。
+    #[rgpui::test]
+    fn freeze_clamps_to_leave_scrollable_area(cx: &mut crate::TestAppContext) {
+        let (state, _events, mut cx) = setup(cx);
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| state.set_frozen(5, 5, cx));
+        });
+        assert_eq!(state.read_with(cx, |state, _| state.frozen_rows()), 2);
+        assert_eq!(state.read_with(cx, |state, _| state.frozen_cols()), 1);
+
+        cx.update(|_, cx| state.update(cx, |state, cx| state.set_frozen(0, 0, cx)));
+        assert_eq!(state.read_with(cx, |state, _| state.frozen_rows()), 0);
+        assert_eq!(state.read_with(cx, |state, _| state.frozen_cols()), 0);
     }
 }

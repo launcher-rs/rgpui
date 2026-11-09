@@ -449,10 +449,8 @@ impl RenderOnce for Input {
                 state.masked = true;
             }
 
-            // 仅单行模式
-            if state.mode.is_single_line() {
-                state.text_align = text_align;
-            }
+            // 单行与多行都支持段落对齐；未显式设置时保持左对齐。
+            state.text_align = text_align;
         });
 
         let state = self.state.read(cx);

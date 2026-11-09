@@ -1875,7 +1875,11 @@ impl Window {
             Box::new(move || {
                 skip_if_app_borrowed(handle.update(&mut cx, |_, window, _cx| {
                     for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
-                        if window.mouse_hit_test.ids.contains(&hitbox.id) {
+                        // 只有该区域是最上层 hitbox 时才算窗口控制区。
+                        // 标题栏整条是 Drag 区，但其上还压着快速访问工具栏、文件入口等
+                        // 按钮；若按“包含鼠标”判定，系统会把按钮点击当成标题栏拖拽，
+                        // 这些按钮就永远收不到点击。
+                        if window.mouse_hit_test.ids.first() == Some(&hitbox.id) {
                             return Some(*area);
                         }
                     }
@@ -2396,6 +2400,16 @@ impl Window {
                 })
                 .log_err();
         })
+    }
+
+    /// 同步派发动作：直接沿当前帧的焦点路径分发，不经过 `cx.defer`。
+    ///
+    /// 供命令注册表（[`App::dispatch_command`]）使用：命令派发通常发生在点击回调里，
+    /// 立即分发可以避免下一帧的延迟与节点 id 失效问题。
+    pub(crate) fn dispatch_action_now(&mut self, action: &dyn Action, cx: &mut App) {
+        let focus_id = self.focused(cx).map(|handle| handle.id);
+        let node_id = self.focus_node_id_in_rendered_frame(focus_id);
+        self.dispatch_action_on_node_inner(node_id, action, cx);
     }
 
     pub(crate) fn dispatch_keystroke_observers(
