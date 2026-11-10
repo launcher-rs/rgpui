@@ -4,16 +4,38 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-06
+
+本版所有发布 crate 统一到 1.7.0（`rgpui-3d` 此前单独发过 1.6.1，本版起与其他 crate 同步）。
+
+### 新增（`rgpui-3d`）
+
+- **半透明与双面材质**：`AlphaMode::Mask(cutoff)` 在片元着色器按 `params.x` 裁剪
+  （`discard`），`AlphaMode::Blend` 输出实时采样 alpha（`params.y = -1` 哨兵）并走
+  `ALPHA_BLENDING` 管线——保留深度测试、关闭深度写入，在不透明绘制之后按
+  back-to-front 单独提交；`double_sided` 材质切换 `cull_mode: None` 管线。普通/蒙皮 ×
+  单双面 × 不透明/混合共 8 条管线由 `create_render_pipeline` 统一构造，渲染循环按
+  连续同值只切一次管线。
+- **静态 glTF 资产注册**：`register_static_gltf` 把 `GltfAsset` 的 mesh / material /
+  texture 按传入偏移量重映射 ID 后注册，并把资产场景克隆到指定父节点（跳过无 GPU
+  资源的光源/相机节点）。
+- **动画剪辑过滤**：`retain_animations` 只保留许可片段并重置播放状态，调用方按名称
+  重新解析索引。
+- **动画基底自省**：`joint_animated_local_trs` 返回手动覆盖之前的纯动画姿态，供应用层
+  在动画之上叠加增量。
+
 ### 新增（组件）
 
 - **`Questionnaire` 向导式表单**：`QuestionnaireState` + `Questionnaire` 元素，把多步问答
   收进一条流程——顶部步骤条 + 当前步内容 + 底部导航（上一步 / 下一步 / 提交），并按步接收
   调用方的校验结果，未通过的步不放行前进、仍可后退。答值不进组件模型，由调用方持有（与
   `Form` / `Field` 组合使用）。事件 `QuestionnaireEvent::{StepChanged, Submit}`。
+  内容页数与步骤数不一致时页码钳制、导航仍以步骤模型为准；空向导不渲染导航。
   用例：`cargo run -p showcase --bin questionnaire`。
 - **`DiffView` 差异查看器**（`diff` feature）：`DiffState` + `DiffView` 元素，基于 `similar`
   crate 计算行级差异，以统一视图形式展示——新增行绿色背景、删除行红色背景、未变更行默认背景，
-  可选显示行号。提供 `added_count/removed_count/unchanged_count` 统计方法。
+  可选显示行号。行内容去掉行尾换行与 CRLF 的 `\r`；行列表走 `uniform_list` 虚拟化，
+  长行不折行、可横向滚动。提供 `added_count/removed_count/unchanged_count` 统计方法。
   用例：`cargo run -p showcase --bin diff --features rgpui/diff`。
 
 ### 修复（滚动）

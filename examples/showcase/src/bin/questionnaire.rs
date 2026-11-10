@@ -13,7 +13,7 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 use rgpui::components::{QuestionStep, Questionnaire, QuestionnaireEvent, QuestionnaireState};
-use rgpui::input_ui::{Input, InputState};
+use rgpui::input_ui::{Input, InputEvent, InputState};
 use rgpui::{
     App, Bounds, Button, Checkbox, Context, Entity, IntoElement, ParentElement, Render, Switch,
     Window, WindowBounds, WindowOptions, div, field, prelude::*, px, rgb, v_flex, v_form,
@@ -41,15 +41,29 @@ struct QuestionnaireDemo {
 impl QuestionnaireDemo {
     /// 创建演示视图并初始化向导与输入状态。
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let wizard = cx.new(|_| {
-            QuestionnaireState::new().with_steps(vec![
+        let wizard = cx.new(|cx| {
+            let mut state = QuestionnaireState::new().with_steps(vec![
                 QuestionStep::new("基本信息").description("请填写姓名与邮箱"),
                 QuestionStep::new("偏好设置").description("选择通知与主题偏好"),
                 QuestionStep::new("确认提交").description("核对信息后提交"),
-            ])
+            ]);
+            // 姓名与邮箱初始为空、协议未勾选：第 0/2 步先不放行，
+            // 答值变化时再回写。
+            state.set_step_valid(0, false, cx);
+            state.set_step_valid(2, false, cx);
+            state
         });
         let name_input = cx.new(|cx| InputState::new(window, cx).placeholder("请输入姓名"));
         let email_input = cx.new(|cx| InputState::new(window, cx).placeholder("name@example.com"));
+
+        for input in [&name_input, &email_input] {
+            cx.subscribe(input, |this, _, event, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.sync_basic_info_valid(cx);
+                }
+            })
+            .detach();
+        }
 
         let this = cx.entity().clone();
         cx.subscribe(&wizard, move |_, _, event, cx| {
@@ -70,6 +84,14 @@ impl QuestionnaireDemo {
         }
     }
 
+    /// 第 0 步校验：姓名非空，邮箱含 `@`。
+    fn sync_basic_info_valid(&mut self, cx: &mut Context<Self>) {
+        let valid = !self.name_input.read(cx).value().trim().is_empty()
+            && self.email_input.read(cx).value().contains('@');
+        self.wizard
+            .update(cx, |state, cx| state.set_step_valid(0, valid, cx));
+    }
+
     /// 提交时校验并写入结果。
     fn commit(&mut self, cx: &mut Context<Self>) {
         let name = self.name_input.read(cx).value().to_string();
@@ -88,11 +110,21 @@ impl QuestionnaireDemo {
         cx.notify();
     }
 
-    /// 回到第一步并清空结果。
-    fn restart(&mut self, cx: &mut Context<Self>) {
-        self.wizard.update(cx, |state, cx| state.reset(cx));
+    /// 回到第一步：清空输入与各步答值，并重新同步校验位。
+    fn restart(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.name_input
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.email_input
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.notify = true;
         self.agree = false;
         self.result.clear();
+        self.result_ok = false;
+        self.wizard.update(cx, |state, cx| {
+            state.set_step_valid(0, false, cx);
+            state.set_step_valid(2, false, cx);
+            state.reset(cx);
+        });
         cx.notify();
     }
 }
@@ -211,8 +243,8 @@ impl Render for QuestionnaireDemo {
                             Button::new("q-restart")
                                 .outline()
                                 .label("重新开始")
-                                .on_click(move |_, _, cx| {
-                                    restart_view.update(cx, |this, cx| this.restart(cx));
+                                .on_click(move |_, window, cx| {
+                                    restart_view.update(cx, |this, cx| this.restart(window, cx));
                                 }),
                         )
                     }),

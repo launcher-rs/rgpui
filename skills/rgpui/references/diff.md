@@ -75,12 +75,14 @@ DiffView::new(&diff_state)
 | `new` | `fn new(state: &Entity<DiffState>) -> Self` | `:152` |
 | `line_height` | `fn line_height(mut self, height: impl Into<Pixels>) -> Self` | `:161` |
 
-`impl RenderOnce for DiffView`（`:168`）渲染差异行列表：
+`impl RenderOnce for DiffView`（`:169`）用 `uniform_list` 渲染差异行（只排布视口内的行）：
 - 新增行：绿色背景（`theme.tokens.success.color.opacity(0.15)`）+ 绿色文字
 - 删除行：红色背景（`theme.tokens.danger.color.opacity(0.15)`）+ 红色文字
 - 未变更行：默认背景 + 默认文字色
 - 可选行号列（宽 60px，灰色文字）
 - 每行前缀：`+ `（新增）/ `- `（删除）/ `  `（未变更）
+- 行内容不折行（`whitespace_nowrap`），长行由列表横向滚动（`ListHorizontalSizingBehavior::Unconstrained`）；
+  行高固定为 `line_height`，`DiffState::new` 会去掉行尾的 `\n` / `\r`（CRLF 文本不会残留回车）。
 
 ## 最佳实践
 
@@ -110,7 +112,8 @@ div()
 
 ### 滚动
 
-`DiffView` 内置垂直滚动（`overflow_scroll`），大量差异行不会撑破布局。
+`DiffView` 内部是 `uniform_list`：只渲染视口内的行，垂直滚动虚拟化；
+长行不折行，可横向滚动。父容器仍须提供确定高度（见上一节）。
 
 ### Feature 门控
 
