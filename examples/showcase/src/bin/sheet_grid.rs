@@ -12,8 +12,8 @@ use rgpui::sheet_grid::{
 };
 use rgpui::{
     App, Bounds, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement,
-    Render, SharedString, Styled, Window, WindowBounds, WindowOptions, div, h_flex, prelude::*, px,
-    rgb, size, v_flex,
+    Pixels, Render, SharedString, Styled, Window, WindowBounds, WindowOptions, div, h_flex,
+    prelude::*, px, rgb, size, v_flex,
 };
 use rgpui_platform::application;
 
@@ -54,6 +54,10 @@ fn parse_ref(text: &str) -> Option<CellRef> {
 struct DemoSheet {
     /// 单元格文本（`[row][col]`）。
     cells: Vec<Vec<String>>,
+    /// 用户拖拽调整过的列宽（列号 → 像素）。
+    col_widths: std::collections::BTreeMap<usize, Pixels>,
+    /// 用户拖拽调整过的行高（行号 → 像素）。
+    row_heights: std::collections::BTreeMap<usize, Pixels>,
 }
 
 impl DemoSheet {
@@ -70,7 +74,11 @@ impl DemoSheet {
             line[2] = (700 * row).to_string();
             line[3] = format!("=B{}-C{}", row + 1, row + 1);
         }
-        Self { cells }
+        Self {
+            cells,
+            col_widths: Default::default(),
+            row_heights: Default::default(),
+        }
     }
 
     /// 读取单元格文本。
@@ -103,6 +111,14 @@ impl SheetDelegate for DemoSheet {
 
     fn text(&self, cell: CellRef, _cx: &App) -> SharedString {
         self.value(cell).into()
+    }
+
+    fn column_width(&self, col: usize, _cx: &App) -> Pixels {
+        self.col_widths.get(&col).copied().unwrap_or(px(96.0))
+    }
+
+    fn row_height(&self, row: usize, _cx: &App) -> Pixels {
+        self.row_heights.get(&row).copied().unwrap_or(px(24.0))
     }
 }
 
@@ -194,6 +210,38 @@ impl SheetGridDemo {
                         (_, Some(col)) => format!("选中 {} 列", column_label(*col)),
                         _ => "选中表头".to_string(),
                     };
+                    cx.notify();
+                }
+                SheetGridEvent::ColumnResized { col, width } => {
+                    this.grid.update(cx, |grid, cx| {
+                        grid.delegate_mut().col_widths.insert(*col, *width);
+                        cx.notify();
+                    });
+                    this.status = format!("{} 列宽 {:.0}px", column_label(*col), width.as_f32());
+                    cx.notify();
+                }
+                SheetGridEvent::RowResized { row, height } => {
+                    this.grid.update(cx, |grid, cx| {
+                        grid.delegate_mut().row_heights.insert(*row, *height);
+                        cx.notify();
+                    });
+                    this.status = format!("第 {} 行行高 {:.0}px", row + 1, height.as_f32());
+                    cx.notify();
+                }
+                SheetGridEvent::AutoFitColumn { col } => {
+                    // 演示用估算：按最长文本的字符数近似（实际应用可用文本系统精确测量）。
+                    let sheet = this.grid.read(cx).delegate();
+                    let max_chars = (0..sheet.rows_count(cx))
+                        .map(|row| sheet.value(CellRef::new(row, *col)).chars().count())
+                        .max()
+                        .unwrap_or(4) as f32;
+                    let width = px((max_chars * 9.0 + 16.0).clamp(40.0, 400.0));
+                    this.grid.update(cx, |grid, cx| {
+                        grid.delegate_mut().col_widths.insert(*col, width);
+                        cx.notify();
+                    });
+                    this.status =
+                        format!("{} 列自动宽度 {:.0}px", column_label(*col), width.as_f32());
                     cx.notify();
                 }
             },
