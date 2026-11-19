@@ -365,6 +365,9 @@ pub enum SelectionPhase {
     Ended,
 }
 
+/// 拖选停在视口上下缘时，自动滚动每隔多久走一拍。
+const DRAG_EDGE_TICK: Duration = Duration::from_millis(100);
+
 #[cfg(windows)]
 fn find_on_path(executable: &str) -> Option<String> {
     let path = std::env::var_os("PATH")?;
@@ -576,6 +579,8 @@ impl TerminalBuilder {
                 breadcrumb_text: String::new(),
                 scroll_px: px(0.),
                 selection_phase: SelectionPhase::Ended,
+                drag_edge: None,
+                drag_edge_task: None,
                 middlewares: Vec::new(),
                 event_loop_task: Task::ready(Ok(())),
                 block_tracker: BlockTracker::new(),
@@ -638,6 +643,8 @@ impl TerminalBuilder {
             breadcrumb_text: String::new(),
             scroll_px: px(0.),
             selection_phase: SelectionPhase::Ended,
+            drag_edge: None,
+            drag_edge_task: None,
             middlewares: Vec::new(),
             event_loop_task: Task::ready(Ok(())),
             block_tracker: BlockTracker::new(),
@@ -751,6 +758,10 @@ pub struct Terminal {
     scroll_px: Pixels,
     /// 选择阶段
     selection_phase: SelectionPhase,
+    /// 拖选停在视口上下缘（含首末行）时记下指针与网格边界，供自动滚动定时器复用
+    drag_edge: Option<(Point<Pixels>, Bounds<Pixels>)>,
+    /// 边缘自动滚动的定时器：每次拖拽事件重起一拍，所以只在指针停住时补滚
+    drag_edge_task: Option<Task<()>>,
     /// 中间件列表
     middlewares: Vec<Arc<dyn TerminalMiddleware>>,
     /// 事件循环任务
@@ -1300,6 +1311,8 @@ impl Terminal {
 
         self.selection_phase = SelectionPhase::Ended;
         self.last_mouse = None;
+        self.drag_edge = None;
+        self.drag_edge_task = None;
     }
 
     /// 处理鼠标移动事件。
@@ -1330,40 +1343,102 @@ impl Terminal {
         region: Bounds<Pixels>,
         cx: &mut Context<Self>,
     ) {
-        let position = e.position - self.last_content.terminal_bounds.bounds.origin;
-
         if !self.mouse_mode(e.modifiers.shift) {
-            self.selection_phase = SelectionPhase::Selecting;
-            self.events
-                .push_back(InternalEvent::UpdateSelection(position));
-
-            if !self.last_content.mode.contains(TermMode::ALT_SCREEN)
-                && let Some(scroll_lines) = self.drag_line_delta(e, region)
-            {
-                self.events
-                    .push_back(InternalEvent::Scroll(AlacScroll::Delta(scroll_lines)));
-            }
-
-            cx.notify();
+            self.drag_select(e.position, region, cx);
         }
     }
 
-    /// 计算拖拽滚动的行数。
-    fn drag_line_delta(&self, e: &MouseMoveEvent, region: Bounds<Pixels>) -> Option<i32> {
-        let top = region.origin.y;
-        let bottom = region.bottom_left().y;
+    /// 把选区焦点拖到 `pointer`（窗口坐标），并按指针与视口上下缘的距离滚动。
+    ///
+    /// 先滚后选：`UpdateSelection` 用滚动之后的 `display_offset` 反推行号，反过来
+    /// 选区焦点会落在旧视口上，边缘滚动时就追不上滚出去的那些行。
+    pub fn drag_select(
+        &mut self,
+        pointer: Point<Pixels>,
+        region: Bounds<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.push_drag(pointer, region, cx);
+        self.arm_edge_scroll(pointer, region, cx);
+    }
 
-        let scroll_lines = if e.position.y < top {
-            let scroll_delta = (top - e.position.y).pow(1.1);
-            (scroll_delta / self.last_content.terminal_bounds.line_height).ceil() as i32
-        } else if e.position.y > bottom {
-            let scroll_delta = -((e.position.y - bottom).pow(1.1));
-            (scroll_delta / self.last_content.terminal_bounds.line_height).floor() as i32
-        } else {
-            return None;
+    fn push_drag(
+        &mut self,
+        pointer: Point<Pixels>,
+        region: Bounds<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.selection_phase = SelectionPhase::Selecting;
+
+        if !self.last_content.mode.contains(TermMode::ALT_SCREEN)
+            && let Some(scroll_lines) = self.drag_line_delta(pointer.y, region)
+        {
+            self.events
+                .push_back(InternalEvent::Scroll(AlacScroll::Delta(scroll_lines)));
+        }
+
+        let position = pointer - self.last_content.terminal_bounds.bounds.origin;
+        self.events
+            .push_back(InternalEvent::UpdateSelection(position));
+
+        cx.notify();
+    }
+
+    /// 指针停在视口上下缘（含首末行）时续上一拍定时器：移动过程中由拖拽事件自己
+    /// 滚，指针不动时按 `DRAG_EDGE_TICK` 一拍一拍继续滚。每次事件都重起这一拍。
+    fn arm_edge_scroll(
+        &mut self,
+        pointer: Point<Pixels>,
+        region: Bounds<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        let at_edge = self.drag_line_delta(pointer.y, region).is_some();
+        if !at_edge || self.last_content.mode.contains(TermMode::ALT_SCREEN) {
+            self.drag_edge = None;
+            self.drag_edge_task = None;
+            return;
+        }
+
+        self.drag_edge = Some((pointer, region));
+        self.drag_edge_task = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(DRAG_EDGE_TICK).await;
+                let keep_going = this
+                    .update(cx, |terminal, cx| terminal.drag_edge_tick(cx))
+                    .unwrap_or(false);
+                if !keep_going {
+                    break;
+                }
+            }
+        }));
+    }
+
+    /// 定时器的一拍：仍停在视口上下缘就再滚一次并把选区焦点压过去。
+    fn drag_edge_tick(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some((pointer, _)) = self.drag_edge else {
+            return false;
         };
+        if !self.selection_started() {
+            return false;
+        }
+        // 边界按最新一次渲染的网格算：窗口 resized 后首末行位置会变。
+        let region = self.last_content.terminal_bounds.bounds;
+        if self.drag_line_delta(pointer.y, region).is_none() {
+            self.drag_edge = None;
+            return false;
+        }
+        self.push_drag(pointer, region, cx);
+        true
+    }
 
-        Some(scroll_lines.clamp(-3, 3))
+    /// 计算拖拽滚动的行数：视口外按距离加速（最多 3 行），贴着首行 / 末行也照滚，
+    /// 这样指针停在视口内最后一行也能继续往下选。
+    fn drag_line_delta(&self, pointer_y: Pixels, region: Bounds<Pixels>) -> Option<i32> {
+        drag_scroll_lines(
+            pointer_y,
+            region,
+            self.last_content.terminal_bounds.line_height,
+        )
     }
 
     /// 处理滚轮事件。
@@ -1832,6 +1907,36 @@ impl Terminal {
     }
 }
 
+/// 指针在视口外 `gap` 像素时应滚动的行数：距离按 1.1 次幂放大后折算成行，越靠外越快。
+fn outside_lines(gap: Pixels, line_height: Pixels) -> i32 {
+    (gap.pow(1.1) / line_height).ceil() as i32
+}
+
+/// 拖选时应滚动的行数：视口外按距离加速，视口内贴着首行 / 末行也照滚一行，
+/// 这样指针停在可见的第一行或最后一行仍能继续往滚出视口的方向选。上限 3 行。
+fn drag_scroll_lines(
+    pointer_y: Pixels,
+    region: Bounds<Pixels>,
+    line_height: Pixels,
+) -> Option<i32> {
+    let top = region.origin.y;
+    let bottom = region.bottom_left().y;
+
+    let scroll_lines = if pointer_y < top {
+        outside_lines(top - pointer_y, line_height)
+    } else if pointer_y > bottom {
+        -outside_lines(pointer_y - bottom, line_height)
+    } else if pointer_y < top + line_height {
+        1
+    } else if pointer_y > bottom - line_height {
+        -1
+    } else {
+        return None;
+    };
+
+    Some(scroll_lines.clamp(-3, 3))
+}
+
 /// 从范围创建选择区域。
 fn make_selection(range: &std::ops::RangeInclusive<AlacPoint>) -> Selection {
     let mut selection = Selection::new(SelectionType::Simple, *range.start(), Side::Left);
@@ -1999,5 +2104,52 @@ mod tests {
             .expect("字面量 a.b 应命中 a.b");
         assert_eq!(literal_hit.start.line, Line(0));
         assert_eq!(literal_hit.start.column, Column(4));
+    }
+
+    /// 视口 400×120，行高 20 → 6 行。
+    fn viewport() -> Bounds<Pixels> {
+        Bounds {
+            origin: Point {
+                x: px(100.0),
+                y: px(60.0),
+            },
+            size: Size {
+                width: px(400.0),
+                height: px(120.0),
+            },
+        }
+    }
+
+    #[test]
+    fn dragging_inside_the_viewport_does_not_scroll() {
+        let region = viewport();
+        assert_eq!(drag_scroll_lines(px(80.0), region, px(20.0)), None);
+        assert_eq!(drag_scroll_lines(px(120.0), region, px(20.0)), None);
+        assert_eq!(drag_scroll_lines(px(160.0), region, px(20.0)), None);
+    }
+
+    #[test]
+    fn first_and_last_visible_row_still_scroll() {
+        // 指针落在可见的第一行 / 最后一行里：继续往滚出视口的方向走，
+        // 否则选到边缘就再也选不动了
+        let region = viewport();
+        assert_eq!(drag_scroll_lines(px(61.0), region, px(20.0)), Some(1));
+        assert_eq!(drag_scroll_lines(px(178.0), region, px(20.0)), Some(-1));
+    }
+
+    #[test]
+    fn dragging_past_the_edge_accelerates_and_stays_capped() {
+        let region = viewport();
+        // 刚出界一行 → 一行
+        assert_eq!(drag_scroll_lines(px(59.0), region, px(20.0)), Some(1));
+        // 越靠外越快
+        assert!(
+            outside_lines(px(40.0), px(20.0)) > outside_lines(px(10.0), px(20.0)),
+            "离视口越远应滚得越多"
+        );
+        // 下缘取负值，且两端都被钳在 ±3
+        assert_eq!(drag_scroll_lines(px(181.0), region, px(20.0)), Some(-1));
+        assert_eq!(drag_scroll_lines(px(-500.0), region, px(20.0)), Some(3));
+        assert_eq!(drag_scroll_lines(px(900.0), region, px(20.0)), Some(-3));
     }
 }
