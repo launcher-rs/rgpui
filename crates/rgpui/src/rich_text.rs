@@ -2531,7 +2531,7 @@ impl RenderOnce for RichText {
             let content = match (&self.on_annotation_click, &self.on_link_click, clickable) {
                 (Some(annotation_handler), Some(link_handler), true) => {
                     let annotation_ranges = built.annotations.clone();
-                    let link_ranges = built.links.clone();
+                    let link_ranges = built.links;
                     let ranges: Vec<Range<usize>> = annotation_ranges
                         .iter()
                         .map(|(range, _)| range.clone())

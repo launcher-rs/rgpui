@@ -410,7 +410,7 @@ impl RenderOnce for DockArea {
                         div()
                             .text_sm()
                             .text_color(if is_active { accent } else { muted_foreground })
-                            .child(tab_title.clone()),
+                            .child(tab_title),
                     )
                     .on_click(move |_, _, cx| {
                         tab_state.update(cx, |state, cx| {

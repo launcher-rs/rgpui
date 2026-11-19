@@ -1497,7 +1497,7 @@ impl<D: SheetDelegate> Render for SheetGridState<D> {
         let body = v_virtual_list(
             cx.entity(),
             "sheet-rows",
-            body_row_sizes.clone(),
+            body_row_sizes,
             move |state: &mut Self, visible_range: Range<usize>, window, cx| {
                 visible_range
                     .map(|index| {
