@@ -279,6 +279,19 @@ impl Render for ResizeRowDrag {
     }
 }
 
+/// 合并单元格区域（左上角 + 跨度），由委托按需提供。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MergeRegion {
+    /// 左上角行号。
+    pub row: usize,
+    /// 左上角列号。
+    pub col: usize,
+    /// 行跨度。
+    pub row_span: usize,
+    /// 列跨度。
+    pub col_span: usize,
+}
+
 /// 为电子表格网格提供数据与单元格渲染的代理 trait。
 pub trait SheetDelegate: Sized + 'static {
     /// 行数。
@@ -307,6 +320,13 @@ pub trait SheetDelegate: Sized + 'static {
     /// 实现应按行返回，网格用每行尺寸驱动垂直虚拟化（`v_virtual_list`）。
     fn row_height(&self, _row: usize, _cx: &App) -> Pixels {
         DEFAULT_ROW_HEIGHT
+    }
+
+    /// 覆盖给定单元格的合并区域；无合并返回 `None`（默认）。
+    ///
+    /// 合并区的左上格横向跨列绘制内容，被覆盖的格渲染为空白。
+    fn merge_region_at(&self, _cell: CellRef, _cx: &App) -> Option<MergeRegion> {
+        None
     }
 
     /// 单元格文本（供默认渲染与公式栏同步使用）。
@@ -1160,6 +1180,71 @@ impl<D: SheetDelegate> SheetGridState<D> {
         let active_border = theme.table_active_border;
         let hover_bg = theme.table_hover;
         let surface = theme.background;
+
+        // 合并感知：被覆盖的格渲染为空白（末列保留右边框）；左上格内容
+        // 横向溢出到覆盖列（委托侧决定内容与背景）。
+        let region = self.delegate.merge_region_at(cell, cx);
+        if let Some(region) = region
+            && (region.row_span > 1 || region.col_span > 1)
+        {
+            let is_top_left = cell.row == region.row && cell.col == region.col;
+            if !is_top_left {
+                let last_col = cell.col == region.col + region.col_span - 1;
+                let mut covered = div()
+                    .id(format!("sheet-cell:{}:{}", cell.row, cell.col))
+                    .w_full()
+                    .h_full();
+                if last_col {
+                    covered = covered.border_r_1().border_color(border);
+                }
+                return covered.into_any_element();
+            }
+            let span_width: Pixels = (region.col..region.col + region.col_span)
+                .map(|col| self.delegate.column_width(col, cx))
+                .fold(px(0.0), |sum, width| sum + width);
+            let content = self.delegate.render_cell(cell, selected, window, cx);
+            return div()
+                .id(format!("sheet-cell:{}:{}", cell.row, cell.col))
+                .role(accesskit::Role::Cell)
+                .aria_row_index(cell.row)
+                .aria_column_index(cell.col)
+                .relative()
+                .w_full()
+                .h_full()
+                .border_r_1()
+                .border_color(border)
+                .when(selected, |this| this.bg(active_bg))
+                .child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top_0()
+                        .w(span_width)
+                        .h_full()
+                        .px(px(4.0))
+                        .flex()
+                        .items_center()
+                        .overflow_hidden()
+                        .child(content),
+                )
+                .when(is_active, |this| {
+                    this.child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .border_2()
+                            .border_color(active_border),
+                    )
+                })
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |state, event, window, cx| {
+                        state.on_cell_mouse_down(event, cell, window, cx);
+                    }),
+                )
+                .into_any_element();
+        }
+
         let content = self.delegate.render_cell(cell, selected, window, cx);
 
         div()
