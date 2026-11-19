@@ -5405,6 +5405,9 @@ impl Window {
         self.last_input_modality = match &event {
             PlatformInput::KeyDown(_) => InputModality::Keyboard,
             PlatformInput::MouseMove(_) | PlatformInput::MouseDown(_) => InputModality::Mouse,
+            // 文件拖放随后被翻译成 MouseMove/MouseUp，须按鼠标模态计；否则键盘
+            // 输入后拖入文件时 is_hovered 仍被抑制，根节点的 drop 监听不会触发。
+            PlatformInput::FileDrop(_) => InputModality::Mouse,
             PlatformInput::Touch(_) => InputModality::Touch,
             _ => self.last_input_modality,
         };
