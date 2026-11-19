@@ -4,8 +4,14 @@
 //! 状态与元素分离：父组件 `cx.new(|cx| DiffState::new(old, new))` 持有状态，
 //! `render` 里放 `DiffView::new(state)` 渲染差异。
 
+use std::{collections::HashMap, ops::Range};
+
 use crate::{prelude::*, *};
 use similar::{ChangeTag, TextDiff};
+
+/// 行内容前缀宽度：`"  "`（未变更）与 `"+"`/`"-"` 加空格均为 2 字节，
+/// 字符高亮区间换算到含前缀的内容文本时平移该宽度。
+const PREFIX_WIDTH: usize = 2;
 
 /// 差异行类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +22,23 @@ pub enum DiffLineKind {
     Added,
     /// 删除行。
     Removed,
+}
+
+/// 行内字符高亮区间：在差异行上强调一段字符（如搜索命中）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffSpanHighlight {
+    /// 行索引（`lines()` 的下标）。
+    pub line: usize,
+    /// 行内容（不含行号与 `+`/`-` 前缀）的字节区间；须落在字符边界上，
+    /// 越界或非边界的区间渲染时忽略。
+    pub range: Range<usize>,
+}
+
+impl DiffSpanHighlight {
+    /// 创建一条行内字符高亮。
+    pub fn new(line: usize, range: Range<usize>) -> Self {
+        Self { line, range }
+    }
 }
 
 /// 差异行。
@@ -37,6 +60,12 @@ pub struct DiffState {
     lines: Vec<DiffLine>,
     /// 是否显示行号。
     show_line_numbers: bool,
+    /// 字符级高亮区间集合（按行索引；渲染时以强调背景显示）。
+    span_highlights: Vec<DiffSpanHighlight>,
+    /// `uniform_list` 滚动句柄（状态实体持有，跨帧保持滚动位置）。
+    scroll_handle: UniformListScrollHandle,
+    /// 待执行的一次性滚动目标（消费后清空，避免每帧重复定位）。
+    scroll_target: Option<usize>,
 }
 
 impl DiffState {
@@ -93,6 +122,9 @@ impl DiffState {
         Self {
             lines,
             show_line_numbers: true,
+            span_highlights: Vec::new(),
+            scroll_handle: UniformListScrollHandle::default(),
+            scroll_target: None,
         }
     }
 
@@ -135,6 +167,104 @@ impl DiffState {
             .filter(|l| l.kind == DiffLineKind::Unchanged)
             .count()
     }
+
+    /// 设置字符级高亮区间（替换现有集合；渲染时以强调背景显示，如搜索命中）。
+    pub fn set_span_highlights(
+        &mut self,
+        highlights: impl IntoIterator<Item = DiffSpanHighlight>,
+        cx: &mut Context<Self>,
+    ) {
+        self.span_highlights = highlights.into_iter().collect();
+        cx.notify();
+    }
+
+    /// 清空字符级高亮区间。
+    pub fn clear_span_highlights(&mut self, cx: &mut Context<Self>) {
+        if !self.span_highlights.is_empty() {
+            self.span_highlights.clear();
+            cx.notify();
+        }
+    }
+
+    /// 字符级高亮区间集合。
+    pub fn span_highlights(&self) -> &[DiffSpanHighlight] {
+        &self.span_highlights
+    }
+
+    /// 按查询词生成全行命中区间（大小写不敏感，按字符边界对齐；空查询返回空集）。
+    ///
+    /// 返回结果可直接喂给 [`Self::set_span_highlights`]，与
+    /// [`Self::scroll_to_line`] 配合实现「搜索 → 高亮 + 跳转」联动。
+    pub fn highlights_for_query(&self, query: &str) -> Vec<DiffSpanHighlight> {
+        let query_lower: Vec<char> = query.to_lowercase().chars().collect();
+        if query_lower.is_empty() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for (ix, line) in self.lines.iter().enumerate() {
+            let text = line.text.as_ref();
+            let mut search_start = 0;
+            while search_start < text.len() {
+                // `get` 失败说明起点不在字符边界（不应发生，防御性跳过整行剩余部分）。
+                let Some(rest) = text.get(search_start..) else {
+                    break;
+                };
+                let Some(first_len) = rest.chars().next().map(|c| c.len_utf8()) else {
+                    break;
+                };
+                if let Some(matched_len) = insensitive_prefix_len(rest, &query_lower) {
+                    out.push(DiffSpanHighlight {
+                        line: ix,
+                        range: search_start..search_start + matched_len,
+                    });
+                }
+                search_start += first_len;
+                while search_start < text.len() && !text.is_char_boundary(search_start) {
+                    search_start += 1;
+                }
+            }
+        }
+        out
+    }
+
+    /// 滚动到指定行（一次性：下次布局按 `Nearest` 策略定位，越界收敛到末行）。
+    pub fn scroll_to_line(&mut self, line: usize, cx: &mut Context<Self>) {
+        self.scroll_target = Some(line);
+        cx.notify();
+    }
+
+    /// 滚动句柄（`DiffView` 每帧取用传给 `uniform_list`）。
+    pub fn scroll_handle(&self) -> &UniformListScrollHandle {
+        &self.scroll_handle
+    }
+}
+
+/// 大小写不敏感前缀匹配：`rest` 以 `query_lower`（已按字符小写）开头时，
+/// 返回原串中匹配部分的字节长度。
+///
+/// 与 `label.rs` / `search_panel` 的同名逻辑同款：避免整串 `to_lowercase()`
+/// 后字节偏移漂移切错多字节字符（`İ` 等小写后字节数会变化）。
+fn insensitive_prefix_len(rest: &str, query_lower: &[char]) -> Option<usize> {
+    if query_lower.is_empty() {
+        return None;
+    }
+    let mut chars = rest.chars();
+    let mut orig_consumed = 0usize;
+    let mut qi = 0usize;
+    while qi < query_lower.len() {
+        let Some(c) = chars.next() else {
+            return None;
+        };
+        orig_consumed += c.len_utf8();
+        let mut lowered = c.to_lowercase();
+        while let Some(lc) = lowered.next() {
+            if qi >= query_lower.len() || lc != query_lower[qi] {
+                return None;
+            }
+            qi += 1;
+        }
+    }
+    Some(orig_consumed)
 }
 
 impl Render for DiffState {
@@ -175,6 +305,42 @@ impl RenderOnce for DiffView {
         let line_count = state.read(cx).lines().len();
         let show_line_numbers = state.read(cx).is_show_line_numbers();
         let line_height = self.line_height;
+        let scroll_handle = state.read(cx).scroll_handle().clone();
+
+        // 一次性滚动目标：设置延迟滚动并在本帧消费掉，避免每帧重复定位。
+        let scroll_target = state.read(cx).scroll_target;
+        if let Some(line) = scroll_target {
+            let last = line_count.saturating_sub(1);
+            scroll_handle.scroll_to_item(line.min(last), ScrollStrategy::Nearest);
+            state.update(cx, |s, _| s.scroll_target = None);
+        }
+
+        // 字符级高亮按行索引预分组：区间平移掉 `+`/`-` 前缀宽度（2 字节），
+        // 落到含前缀的内容文本上；非法区间（越界 / 非字符边界）忽略。
+        let mut highlight_by_line: HashMap<usize, Vec<(Range<usize>, HighlightStyle)>> =
+            HashMap::new();
+        let span_count = state.read(cx).span_highlights().len();
+        if span_count > 0 {
+            let accent = cx.theme().tokens.accent.color;
+            let span_style = HighlightStyle {
+                background_color: Some(accent.opacity(0.35)),
+                ..Default::default()
+            };
+            for span in state.read(cx).span_highlights() {
+                if span.line >= line_count {
+                    continue;
+                }
+                let start = span.range.start + PREFIX_WIDTH;
+                let end = span.range.end + PREFIX_WIDTH;
+                if start >= end {
+                    continue;
+                }
+                highlight_by_line
+                    .entry(span.line)
+                    .or_default()
+                    .push((start..end, span_style.clone()));
+            }
+        }
 
         let theme = cx.theme();
         let added_bg = theme.tokens.success.color.opacity(0.15);
@@ -222,6 +388,13 @@ impl RenderOnce for DiffView {
                         };
 
                         let content_text = format!("{prefix}{}", line.text);
+                        // 有该行高亮时用带样式区间渲染（背景强调），否则直接放文本。
+                        let content_child = match highlight_by_line.get(&ix) {
+                            Some(spans) if !spans.is_empty() => StyledText::new(content_text)
+                                .with_highlights(spans.iter().cloned())
+                                .into_any_element(),
+                            _ => content_text.into_any_element(),
+                        };
 
                         h_flex()
                             .h(line_height)
@@ -238,12 +411,13 @@ impl RenderOnce for DiffView {
                                     .flex_grow(1.0)
                                     .whitespace_nowrap()
                                     .text_color(fg)
-                                    .child(content_text),
+                                    .child(content_child),
                             )
                     })
                     .collect::<Vec<_>>()
             },
         )
+        .track_scroll(&scroll_handle)
         .size_full()
         .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
     }
@@ -251,7 +425,7 @@ impl RenderOnce for DiffView {
 
 #[cfg(test)]
 mod tests {
-    use super::{DiffLineKind, DiffState, DiffView};
+    use super::{DiffLineKind, DiffSpanHighlight, DiffState, DiffView};
     use crate::{
         AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
         Render, Styled as _, TestAppContext, Window, div, px,
@@ -427,6 +601,105 @@ mod tests {
         });
 
         let bounds = cx.debug_bounds("diff-host").expect("宿主视图应完成绘制");
+        assert!(bounds.size.width > px(0.));
+        assert_eq!(bounds.size.height, px(200.));
+    }
+
+    /// 字符级高亮：设置 / 读取 / 清空，`clear` 在空集合上不重复通知。
+    #[rgpui::test]
+    fn span_highlights_roundtrip(cx: &mut TestAppContext) {
+        let state = setup(cx);
+        state.update(cx, |state, cx| {
+            state.set_span_highlights([DiffSpanHighlight::new(1, 5..18)], cx);
+        });
+        let spans = state.read_with(cx, |state, _| state.span_highlights().to_vec());
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].line, 1);
+        assert_eq!(spans[0].range, 5..18);
+        state.update(cx, |state, cx| state.clear_span_highlights(cx));
+        assert!(state.read_with(cx, |state, _| state.span_highlights().is_empty()));
+    }
+
+    /// `highlights_for_query` 大小写不敏感、全行多命中、CJK 多字节区间按字符边界。
+    #[rgpui::test]
+    fn highlights_for_query_finds_all_matches(cx: &mut TestAppContext) {
+        let old = "Alpha\nbeta gamma\n";
+        let new = "alpha BETA\n日本語 beta\n";
+        let state = cx.update(|cx| cx.new(|_| DiffState::new(old, new)));
+        let spans = state.read_with(cx, |state, _| state.highlights_for_query("beta"));
+        // similar 先输出旧行再输出新行：line 1（删除行）`beta gamma` 命中 0..4，
+        // line 2（新增行）`alpha BETA` 命中 6..10，line 3（新增行）
+        // `日本語 beta` 命中 10..14（「日本語」9 字节 + 空格 = 偏移 10）。
+        assert_eq!(
+            spans,
+            vec![
+                DiffSpanHighlight::new(1, 0..4),
+                DiffSpanHighlight::new(2, 6..10),
+                DiffSpanHighlight::new(3, 10..14),
+            ]
+        );
+        // 空查询返回空集。
+        let empty = state.read_with(cx, |state, _| state.highlights_for_query(""));
+        assert!(empty.is_empty());
+        // 未命中返回空集。
+        let none = state.read_with(cx, |state, _| state.highlights_for_query("zzz"));
+        assert!(none.is_empty());
+    }
+
+    /// 滚动定位：目标在消费后被清空（一次性语义）。
+    #[rgpui::test]
+    fn scroll_to_line_consumes_target(cx: &mut TestAppContext) {
+        let state = setup(cx);
+        state.update(cx, |state, cx| state.scroll_to_line(3, cx));
+        let target = state.read_with(cx, |state, _| state.scroll_target);
+        assert_eq!(target, Some(3));
+        state.update(cx, |state, _| state.scroll_target = None);
+        assert!(state.read_with(cx, |state, _| state.scroll_target.is_none()));
+    }
+
+    /// 带高亮区间的差异视图能在确定高度的父容器里完成布局与绘制。
+    #[rgpui::test]
+    fn diff_view_draws_with_span_highlights(cx: &mut TestAppContext) {
+        /// 只提供固定高度父容器的宿主视图。
+        struct Host {
+            state: Entity<DiffState>,
+        }
+
+        impl Render for Host {
+            fn render(
+                &mut self,
+                _window: &mut Window,
+                _cx: &mut Context<Self>,
+            ) -> impl IntoElement {
+                div()
+                    .w(px(400.))
+                    .h(px(200.))
+                    .debug_selector(|| "diff-host-spans".to_string())
+                    .child(DiffView::new(&self.state))
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let (_view, cx) = cx.add_window_view(|_window, cx| {
+            let state = cx.new(|_| {
+                let old = "alpha line\nsecond line\n".to_string();
+                let new = "ALPHA LINE\nsecond line\n".to_string();
+                DiffState::new(old, new)
+            });
+            state.update(cx, |state, cx| {
+                let spans = state.highlights_for_query("alpha");
+                state.set_span_highlights(spans, cx);
+            });
+            Host { state }
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+
+        let bounds = cx
+            .debug_bounds("diff-host-spans")
+            .expect("带高亮的宿主视图应完成绘制");
         assert!(bounds.size.width > px(0.));
         assert_eq!(bounds.size.height, px(200.));
     }
