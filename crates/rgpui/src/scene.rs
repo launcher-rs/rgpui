@@ -7,10 +7,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AtlasTextureId, AtlasTile, Background, Bounds, ContentMask, Corners, Edges, Hsla, Path, Pixels,
-    Point, Radians, ScaledPixels, Size, bounds_tree::BoundsTree, path_winding::PathTiles,
+    Point, Radians, ScaledPixels, Size, TimedTransformation, bounds_tree::BoundsTree,
+    path_winding::PathTiles,
 };
 use smallvec::SmallVec;
-use std::{collections::VecDeque, fmt::Debug, iter::Peekable, ops::Range, rc::Rc, slice};
+use std::{
+    collections::VecDeque, fmt::Debug, iter::Peekable, ops::Range, rc::Rc, slice, time::Duration,
+};
 
 /// 内部不变量：值为 `None` 说明前提被破坏（批处理迭代器与已排序的种类表不一致等），
 /// 必须立刻暴露。
@@ -67,6 +70,9 @@ pub struct Scene {
     pub polychrome_sprites: Vec<PolychromeSprite>,
     /// 平台原生绘制表面列表。
     pub surfaces: Vec<PaintSurface>,
+    /// 场景级精灵动画表：每项指向 `monochrome_sprites` 的一个下标，由
+    /// `advance_animations` 在呈现前推进（不重绘视图）。
+    animations: Vec<SpriteAnimation>,
 }
 
 /// 渲染场景的构建和管理方法。
@@ -85,6 +91,7 @@ impl Scene {
         self.subpixel_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
+        self.animations.clear();
     }
 
     /// 返回场景中的绘制操作数量。
@@ -141,13 +148,19 @@ impl Scene {
     /// 不在图层内时立即插入排序树分配绘制顺序；在图层内则并入图层，
     /// 关闭时统一落地。
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
-        let primitive = primitive.into();
+        self.try_insert_primitive(primitive.into());
+    }
+
+    /// 插入一个渲染图元，返回它是否被保留（被裁剪掉时为 `false`）。
+    ///
+    /// 动画精灵插入失败时不能登记动画项，否则动画表会指向不存在的图元。
+    fn try_insert_primitive(&mut self, primitive: Primitive) -> bool {
         let clipped_bounds = primitive
             .bounds()
             .intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {
-            return;
+            return false;
         }
 
         let kind = primitive.kind();
@@ -176,6 +189,53 @@ impl Scene {
         }
         self.paint_operations
             .push(PaintOperation::Primitive(primitive));
+        true
+    }
+
+    /// 插入一个由 [`Scene::advance_animations`] 持续变换的单色精灵。
+    ///
+    /// 精灵的颜色取动画 alpha 之前的底色；动画项记录它的下标、变换与中心，
+    /// 每次呈现前按已过时间推进矩阵与 alpha，无须重绘视图。
+    pub(crate) fn insert_animated_sprite(
+        &mut self,
+        mut sprite: MonochromeSprite,
+        mut animation: SpriteAnimation,
+    ) {
+        sprite.animation = SpriteAnimationId(self.animations.len() as u32);
+        animation.base_color = sprite.color;
+        if self.try_insert_primitive(sprite.into()) {
+            self.animations.push(animation);
+        }
+    }
+
+    /// 场景里所有动画都要求呈现时，相邻两次呈现之间可以等待的最长时间；
+    /// 场景里没有动画时为 `None`，某个动画要求每帧都画时为 `Some(ZERO)`。
+    pub(crate) fn animation_frame_interval(&self) -> Option<Duration> {
+        self.animations
+            .iter()
+            .map(|animation| {
+                animation
+                    .transformation
+                    .min_frame_interval()
+                    .unwrap_or_default()
+            })
+            .min()
+    }
+
+    /// 把每个动画精灵推进到动画时钟 `elapsed` 时刻的姿态，供呈现前调用。
+    ///
+    /// 只改场景中已有精灵的矩阵与 alpha，不触碰视图、不重建场景。
+    pub(crate) fn advance_animations(&mut self, elapsed: Duration) {
+        for animation in &self.animations {
+            let Some(sprite) = self.monochrome_sprites.get_mut(animation.sprite_index) else {
+                continue;
+            };
+            let pose = animation.transformation.at(elapsed);
+            sprite.transformation = pose
+                .transformation
+                .into_matrix(animation.center, animation.scale_factor);
+            sprite.color = animation.base_color.opacity(pose.alpha_factor());
+        }
     }
 
     /// 按给定绘制顺序把图元放入对应的种类列表。
@@ -220,7 +280,17 @@ impl Scene {
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
         for operation in &prev_scene.paint_operations[range] {
             match operation {
-                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
+                PaintOperation::Primitive(primitive) => {
+                    // 动画 id 是「插入时的场景」内的下标，重放时要取回动画定义。
+                    if let Primitive::MonochromeSprite(sprite) = primitive
+                        && let Some(animation) =
+                            prev_scene.animations.get(sprite.animation.0 as usize)
+                    {
+                        self.insert_animated_sprite(*sprite, *animation);
+                    } else {
+                        self.insert_primitive(primitive.clone());
+                    }
+                }
                 PaintOperation::StartLayer => self.push_layer(),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
@@ -246,6 +316,14 @@ impl Scene {
         sort_in_place(&mut self.monochrome_sprites, keys, |sprite| {
             (sprite.order, sprite.tile.texture_id.index)
         });
+        // 排序打乱了精灵顺序，动画项要跟着找到自己的精灵下标。
+        if !self.animations.is_empty() {
+            for (index, sprite) in self.monochrome_sprites.iter().enumerate() {
+                if let Some(animation) = self.animations.get_mut(sprite.animation.0 as usize) {
+                    animation.sprite_index = index;
+                }
+            }
+        }
         sort_in_place(&mut self.subpixel_sprites, keys, |sprite| {
             (sprite.order, sprite.tile.texture_id.index)
         });
@@ -929,14 +1007,54 @@ impl Default for TransformationMatrix {
     }
 }
 
+/// 指向所属场景动画表某一条目的下标；`NONE` 表示这个精灵不带动画。
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct SpriteAnimationId(u32);
+
+impl SpriteAnimationId {
+    /// 无动画。
+    pub const NONE: Self = Self(u32::MAX);
+}
+
+/// 由窗口在每次呈现前应用到精灵上的动画定义（场景级，不触发视图重绘）。
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct SpriteAnimation {
+    transformation: TimedTransformation,
+    /// 变换矩阵的中心（元素中心，逻辑像素）。
+    center: Point<Pixels>,
+    /// 构建时的显示比例。
+    scale_factor: f32,
+    /// 动画 alpha 之前的底色。
+    base_color: Hsla,
+    /// 精灵在 `Scene::monochrome_sprites` 中的下标（`finish` 排序后修正）。
+    sprite_index: usize,
+}
+
+impl SpriteAnimation {
+    pub(crate) fn new(
+        transformation: TimedTransformation,
+        center: Point<Pixels>,
+        scale_factor: f32,
+    ) -> Self {
+        Self {
+            transformation,
+            center,
+            scale_factor,
+            base_color: Hsla::default(),
+            sprite_index: 0,
+        }
+    }
+}
+
 /// 单色精灵 — 从图集纹理中采样的灰度字形或图标。
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct MonochromeSprite {
     /// 绘制顺序。
     pub order: DrawOrder,
-    /// 8 字节对齐填充。
-    pub pad: u32,
+    /// 所属场景动画表的条目（`SpriteAnimationId::NONE` 表示不带动画）。
+    pub animation: SpriteAnimationId,
     /// 边界矩形。
     pub bounds: Bounds<ScaledPixels>,
     /// 内容裁剪蒙版。
@@ -1191,7 +1309,7 @@ mod tests {
     fn sprite(order: DrawOrder, texture_index: u32, tile_id: u32) -> MonochromeSprite {
         MonochromeSprite {
             order,
-            pad: 0,
+            animation: SpriteAnimationId::NONE,
             bounds: bounds(
                 point(ScaledPixels(0.0), ScaledPixels(0.0)),
                 size(ScaledPixels(8.0), ScaledPixels(8.0)),
@@ -1526,5 +1644,134 @@ mod tests {
             vec![(1, 0, 10), (1, 1, 11), (2, 0, 20), (2, 1, 21), (2, 1, 22)],
             "同键精灵必须保持插入顺序"
         );
+    }
+}
+
+#[cfg(test)]
+mod animation_tests {
+    use super::*;
+    use crate::{Hsla, TimedTransformation, Transformation, hsla, point, px, size};
+
+    fn animated_sprite(color: Hsla) -> MonochromeSprite {
+        MonochromeSprite {
+            order: 0,
+            animation: SpriteAnimationId::NONE,
+            bounds: Bounds {
+                origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                size: size(ScaledPixels(8.0), ScaledPixels(8.0)),
+            },
+            content_mask: ContentMask {
+                bounds: Bounds {
+                    origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                    size: size(ScaledPixels(100.0), ScaledPixels(100.0)),
+                },
+            },
+            color,
+            tile: AtlasTile {
+                texture_id: crate::AtlasTextureId {
+                    index: 0,
+                    kind: crate::AtlasTextureKind::Monochrome,
+                },
+                tile_id: crate::TileId(1),
+                padding: 0,
+                bounds: Bounds {
+                    origin: point(crate::DevicePixels(0), crate::DevicePixels(0)),
+                    size: size(crate::DevicePixels(8), crate::DevicePixels(8)),
+                },
+            },
+            transformation: TransformationMatrix::default(),
+        }
+    }
+
+    /// 场景级动画：插入后 sprite 带动画 id；advance 只改矩阵与 alpha；
+    /// finish 排序后动画仍指向自己的精灵。
+    #[test]
+    fn advance_animations_moves_sprite_without_rebuild() {
+        use std::time::Duration;
+
+        let mut scene = Scene::default();
+        let mut sprite = animated_sprite(Hsla::default());
+        // 静态底色（动画 alpha 之前）。
+        sprite.color = crate::hsla(0.0, 0.0, 0.0, 1.0);
+        let animation = TimedTransformation::rotation(Duration::from_secs(1), Default::default());
+        scene.insert_animated_sprite(
+            sprite,
+            SpriteAnimation::new(animation, point(px(4.), px(4.)), 1.0),
+        );
+        assert_eq!(scene.monochrome_sprites.len(), 1);
+        assert_ne!(
+            scene.monochrome_sprites[0].animation,
+            SpriteAnimationId::NONE
+        );
+
+        // 推进 1/4 个周期 → 旋转 90°（矩阵变化），alpha 仍 1。
+        scene.finish();
+        scene.advance_animations(Duration::from_millis(250));
+        let sprite = &scene.monochrome_sprites[0];
+        assert!(
+            sprite.transformation.rotation_scale[0][1].abs() > 0.5,
+            "1/4 周期应转 90°"
+        );
+        assert!(sprite.color.a >= 0.99);
+        // 没有动画的精灵 id 保持 NONE。
+        let plain = animated_sprite(Hsla::default());
+        assert_eq!(plain.animation, SpriteAnimationId::NONE);
+    }
+
+    /// 动画 alpha 合成进精灵颜色（底色 × alpha）。
+    #[test]
+    fn advance_animations_applies_alpha() {
+        use std::time::Duration;
+
+        let mut scene = Scene::default();
+        let animation = TimedTransformation::new(Duration::from_secs(2))
+            .from(Default::default())
+            .to(Transformation::alpha(0.0));
+        let mut sprite = animated_sprite(hsla(0.0, 0.0, 0.0, 1.0));
+        sprite.color = hsla(0.0, 0.0, 0.0, 1.0);
+        scene.insert_animated_sprite(
+            sprite,
+            SpriteAnimation::new(animation, point(px(4.), px(4.)), 1.0),
+        );
+        scene.finish();
+
+        // 半个周期（1s）→ alpha = 0.5。
+        scene.advance_animations(Duration::from_secs(1));
+        assert!(scene.monochrome_sprites[0].color.a < 0.6, "alpha 应 ≈ 0.5");
+    }
+
+    /// 动画 id 越界（图元被裁掉）时 advance 安全跳过。
+    #[test]
+    fn advance_animations_skips_missing_sprite() {
+        use std::time::Duration;
+
+        let mut scene = Scene::default();
+        let animation = TimedTransformation::rotation(Duration::from_secs(1), Default::default());
+        // 直接塞一条指向不存在精灵的动画（模拟插入失败）。
+        scene.animations.push(SpriteAnimation {
+            transformation: animation,
+            center: point(px(0.), px(0.)),
+            scale_factor: 1.0,
+            base_color: Hsla::default(),
+            sprite_index: 99,
+        });
+        scene.advance_animations(Duration::from_millis(100)); // 不 panic
+    }
+
+    /// 无动画时 animation_frame_interval 为 None；with_max_fps 生效。
+    #[test]
+    fn animation_frame_interval_reflects_scene() {
+        use std::time::Duration;
+
+        let mut scene = Scene::default();
+        assert!(scene.animation_frame_interval().is_none());
+        let animation = TimedTransformation::new(Duration::from_secs(1)).with_max_fps(15.0);
+        let sprite = animated_sprite(Hsla::default());
+        scene.insert_animated_sprite(
+            sprite,
+            SpriteAnimation::new(animation, point(px(0.), px(0.)), 1.0),
+        );
+        let interval = scene.animation_frame_interval().expect("应有间隔");
+        assert!((interval.as_secs_f32() - 1.0 / 15.0).abs() < 1e-4);
     }
 }

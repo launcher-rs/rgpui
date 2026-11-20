@@ -30,7 +30,6 @@
 
 | 项 | 来源 | 说明与做法 |
 |---|---|---|
-| **SVG 场景层变换动画** | zed `aff99ecc32` | 上游 +474 行落在 `elements/svg.rs` + `scene.rs` + `window.rs`：变换只改场景层、不重渲染视图。rgpui 的 SVG 走 sprite 路径，需先确认能否复用现有 scene 变换（D1 之后场景层已有 order/批次概念）。 |
 | **D3 / D4 硬件实测** | zed / gpui-fast | D3（GPU −79%～−81%、描边 CPU 2–8×）与 D4（软件适配器整帧 ~100ms → 13ms）的性能数据都是上游口径，rgpui 需在硬件 / 远程桌面（软件适配器）上实测确认。 |
 
 **已完成（2026-11-21）**：动画改用 executor 时钟（zed `99e70ee4a0`，`956454d8`）、
@@ -41,6 +40,7 @@ borrow / window 错误诊断（zed `c408f8efc4`，`50e1936f`——含上游前�
 `merge` 完全不去重、保留视图依赖集无界膨胀，改为吸收点哈希去重：完全相同的
 重复只保留首次，不同版本 / 读取方式并存，is_stale 语义逐位不变）、
 B3 UAX #14 接线（zed `f0210f1621`，见下文批次 B 落地纪要）。
+SVG 场景层变换动画（zed `aff99ecc32`，见下文「SVG 场景层变换动画」落地纪要）。
 
 ### 二、需要前置条件或无法本机验证
 
@@ -550,6 +550,44 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 - **预期收益**：上游实测 GPU 时间 −79%～−81%（painting 例 / Git Graph 场景），
   rgpui 未单独复测（共享机器噪声大）；CPU 侧描边变慢 2–8× 为上游已声明取舍，
   笔迹（ink）的长笔画场景待硬件实测确认。
+
+---
+
+## SVG 场景层变换动画（2026-11-21，对齐 zed `aff99ecc32`，已完成）
+
+场景级精灵动画：SVG 只绘制一次，之后由场景在每次呈现前按已过时间推进矩阵与
+alpha，不重绘视图（上游实测主线程 CPU 指令 200 个动画 SVG 6.07M → 162K，37×）。
+
+- **核心**（`scene.rs`）：`SpriteAnimationId`（MonochromeSprite 原 `pad` 字段位，
+  `NONE = u32::MAX`）+ `SpriteAnimation`（变换、中心、scale_factor、底色、精灵下标）
+  + `Scene::animations`；`insert_animated_sprite`（插入失败时不登记动画）、
+  `advance_animations(elapsed)`（只改矩阵与 alpha）、`animation_frame_interval()`
+  （各动画 `min_frame_interval` 取最小）；`finish()` 排序后修正 sprite_index；
+  `replay` 从源场景取回动画定义。
+- **API**（`elements/svg.rs`）：`Transformation` 加 `alpha` 字段 + `with_alpha` /
+  `alpha_factor`；`TimedTransformation`（period/from/to、四个分量各自
+  `EasingFn = fn(f32)->f32`（rgpui 的缓动是自由函数，不用上游的 Easing 枚举）、
+  `alternate`、`with_max_fps`）+ `Svg::with_timed_transformation`；静态
+  `with_transformation` 与动画共用同一字段（`Transformation` → `TimedTransformation`
+  的 From 转换）。
+- **窗口接线**（`window.rs`）：`paint_animated_svg`（有动画走
+  `insert_animated_sprite`，否则普通插入）；`advance_scene_animations` 在
+  present 前调用（同步动画时钟 `synced_animation_epoch`）；draw 后把
+  `scene_animation_interval` 写进 Rc<Cell>，帧循环把它并进 `needs_present`
+  与 `min_frame_interval`（动画档与温控/失焦档取最长）；帧末若仍有动画则
+  `Window::request_frame()`。
+- **平台**：`PlatformWindow::request_frame` 新方法（默认空实现）；
+  Windows 用 `RedrawWindow(RDW_INVALIDATE|RDW_NOERASE|RDW_NOFRAME)`。
+  **macOS / Linux 未实现**（默认空操作）——那两个平台目前只在其它失效
+  引起出帧时推进动画，CI 矩阵也无法本地验证；登记为后续。
+- **reduce motion**：`Svg::paint` 检查 `cx.reduce_motion()`，开启时按起始变换
+  静态绘制（不登记动画）。
+- **真实调用点**：`examples/showcase/src/bin/animation.rs` 加了一个
+  `with_timed_transformation` 旋转的 SVG，与原有 `with_animation` 版本并列对照。
+- **验证**：`elements::svg::tests` 4 条（旋转插值/回绕、缩放+alpha+alternate、
+  max_fps、period=0）、`scene::animation_tests` 4 条（advance 只改矩阵与 alpha、
+  alpha 合成、越界动画安全跳过、frame_interval）；rgpui --lib 932、
+  --features editor 1038、guards 9、wgpu 29、workspace clippy 全绿。
 
 ---
 

@@ -1396,6 +1396,13 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 请求用户注意力（任务栏闪烁/弹跳，提示用户查看窗口）。
     fn request_attention(&self) {}
 
+    /// 请求再出一帧（即使窗口当前没有失效区域）。
+    ///
+    /// 场景里有定时变换动画时由帧循环调用：动画只推进场景里的精灵、不重绘视图，
+    /// 但仍然需要平台再交付一次帧回调。**默认实现为空**——没有实现的平台退化为
+    //「只在有其它失效时才推进动画」（动画不会自己持续跑）。
+    fn request_frame(&self) {}
+
     /// 设置窗口在屏幕上的位置。
     fn set_position(&mut self, _position: Point<Pixels>) {}
 

@@ -41,12 +41,12 @@ use crate::{
     PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
     RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
-    StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
-    SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRenderingMode, TextStyle,
-    TextStyleRefinement, TransformationMatrix, Underline, UnderlineStyle, WindowAppearance,
-    WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations, WindowOptions,
-    WindowParams, WindowTextSystem, point, prelude::*, profiler, px, root::Root, size,
-    transparent_black,
+    SpriteAnimation, SpriteAnimationId, StrikethroughStyle, Style, SubpixelSprite, SubscriberSet,
+    Subscription, SystemWindowTab, SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task,
+    TextRenderingMode, TextStyle, TextStyleRefinement, TransformationMatrix, Underline,
+    UnderlineStyle, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls,
+    WindowDecorations, WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler,
+    px, root::Root, size, transparent_black,
 };
 
 use crate::collections::{FxHashMap, FxHashSet};
@@ -1176,6 +1176,9 @@ pub struct Window {
     pub(crate) next_tooltip_id: TooltipId,
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
     next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>>,
+    /// 当前场景里定时变换动画要求的呈现间隔；`Some` 时即使没有重绘也要
+    /// 继续呈现（由 `advance_scene_animations` 推进动画）。
+    scene_animation_interval: Rc<Cell<Option<Duration>>>,
     pub(crate) dirty_views: FxHashSet<EntityId>,
     focus_listeners: SubscriberSet<(), AnyWindowFocusListener>,
     pub(crate) focus_lost_listeners: SubscriberSet<(), AnyObserver>,
@@ -1553,6 +1556,7 @@ impl Window {
         let hovered = Rc::new(Cell::new(platform_window.is_hovered()));
         let needs_present = Rc::new(Cell::new(false));
         let next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>> = Default::default();
+        let scene_animation_interval = Rc::new(Cell::new(None::<Duration>));
         let input_rate_tracker = Rc::new(RefCell::new(InputRateTracker::default()));
         let last_frame_time = Rc::new(Cell::new(None));
 
@@ -1711,6 +1715,7 @@ impl Window {
             let active = active.clone();
             let needs_present = needs_present.clone();
             let next_frame_callbacks = next_frame_callbacks.clone();
+            let scene_animation_interval = scene_animation_interval.clone();
             let input_rate_tracker = input_rate_tracker.clone();
             let mut deferred_force_render = false;
             move |request_frame_options| {
@@ -1747,17 +1752,24 @@ impl Window {
                 // - Inactive window (not focused): capped by `inactive_frame_interval`
                 // 两档都可经 `WindowOptions` 配置（`None` 即关闭该档），同时命中时
                 // 取较长间隔。强制呈现与「本帧有下一帧回调」完全不受限。
+                let animation_interval = scene_animation_interval
+                    .get()
+                    .filter(|_| !invalidator.is_dirty());
                 let min_frame_interval = if request_frame_options.require_presentation
                     || (!request_frame_options.force_render
                         && next_frame_callbacks.borrow().is_empty())
                 {
                     None
                 } else {
-                    frame_throttle.interval(
+                    let throttled = frame_throttle.interval(
                         active.get(),
                         input_rate_tracker.borrow_mut().is_high_rate(),
                         thermal_state,
-                    )
+                    );
+                    match (throttled, animation_interval) {
+                        (Some(a), Some(b)) => Some(a.max(b)),
+                        (a, b) => a.or(b),
+                    }
                 };
 
                 let now = Instant::now();
@@ -1791,9 +1803,11 @@ impl Window {
                 // Keep presenting if input was recently arriving at a high rate (>= 60fps).
                 // Once high-rate input is detected, we sustain presentation for 1 second
                 // to prevent display underclocking during active input.
+                // 场景里有定时变换动画时同样要持续呈现——但只推进动画、不重绘。
                 let needs_present = request_frame_options.require_presentation
                     || needs_present.get()
-                    || input_rate_tracker.borrow_mut().is_high_rate();
+                    || input_rate_tracker.borrow_mut().is_high_rate()
+                    || scene_animation_interval.get().is_some();
 
                 if invalidator.is_dirty() || force_render {
                     measure("frame duration", || {
@@ -1804,17 +1818,29 @@ impl Window {
                                 window.refresh();
                             }
                             let arena_clear_needed = window.draw(cx);
+                            window.advance_scene_animations(cx);
                             window.present();
                             arena_clear_needed.clear(cx);
                         }));
                     })
                 } else if needs_present {
-                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, _| window.present()));
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, cx| {
+                        window.advance_scene_animations(cx);
+                        window.present();
+                    }));
                 }
 
                 skip_if_app_borrowed(
                     handle.update(&mut cx, |_, window, _| window.complete_frame()),
                 );
+
+                // 场景里有定时变换动画：请平台再出一帧，动画才会持续跑
+                // （动画只推进场景，不重绘视图）。
+                if scene_animation_interval.get().is_some() {
+                    skip_if_app_borrowed(
+                        handle.update(&mut cx, |_, window, _| window.request_frame()),
+                    );
+                }
             }
         }));
         platform_window.on_resize(Box::new({
@@ -2105,6 +2131,7 @@ impl Window {
             active,
             hovered,
             needs_present,
+            scene_animation_interval,
             input_rate_tracker,
             #[cfg(feature = "input-latency-histogram")]
             input_latency_tracker: InputLatencyTracker::new()?,
@@ -2703,6 +2730,14 @@ impl Window {
         self.on_next_frame(move |_, cx| cx.notify(entity));
     }
 
+    /// 请平台再交付一帧（即使本窗口当前没有失效区域）。
+    ///
+    /// 场景级定时变换动画（`Svg::with_timed_transformation`）由帧循环自动调用；
+    /// 外部一般不需要直接调它。平台未实现时为空操作。
+    pub(crate) fn request_frame(&self) {
+        self.platform_window.request_frame();
+    }
+
     /// 运行通过 [`Self::on_next_frame`] 安排的所有回调，返回运行的数量。
     ///
     /// 测试没有平台帧循环，因此这模拟了
@@ -3281,6 +3316,9 @@ impl Window {
         let previous_focus_path = self.rendered_frame.focus_path();
         let previous_window_active = self.rendered_frame.window_active;
         mem::swap(&mut self.rendered_frame, &mut self.next_frame);
+        // 场景里的定时变换动画要求继续出帧（无动画时清空，回到按需渲染）。
+        self.scene_animation_interval
+            .set(self.rendered_frame.scene.animation_frame_interval());
         self.next_frame.clear();
         // 调试帧覆盖层：把读数直接追加进已完成的本帧场景。它不经布局与文本系统，
         // 因而不触发失效、也不会成为新的绘制来源；追加的图元 order 递增，天然画在最上层。
@@ -3380,6 +3418,14 @@ impl Window {
             self.mark_view_dirty(entity);
         }
         self.invalidator.replace_views(views);
+    }
+
+    /// 把当前场景里的定时变换动画推进到同步动画时钟的当前时刻。
+    ///
+    /// 呈现前调用：只改场景里精灵的矩阵与 alpha，不重绘视图、不重建场景。
+    pub(crate) fn advance_scene_animations(&mut self, cx: &App) {
+        let elapsed = cx.background_executor().now() - cx.synced_animation_epoch;
+        self.rendered_frame.scene.advance_animations(elapsed);
     }
 
     #[profiling::function]
@@ -4836,7 +4882,7 @@ impl Window {
             } else {
                 self.next_frame.scene.insert_primitive(MonochromeSprite {
                     order: 0,
-                    pad: 0,
+                    animation: SpriteAnimationId::NONE,
                     bounds,
                     content_mask,
                     color: color.opacity(element_opacity),
@@ -4942,12 +4988,13 @@ impl Window {
     /// 在当前层叠上下文中将单色 SVG 绘制到下一帧的场景中。
     ///
     /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
-    pub fn paint_svg(
+    pub(crate) fn paint_animated_svg(
         &mut self,
         bounds: Bounds<Pixels>,
         path: SharedString,
         mut data: Option<&[u8]>,
         transformation: TransformationMatrix,
+        animation: Option<SpriteAnimation>,
         color: Hsla,
         cx: &App,
     ) -> Result<()> {
@@ -4991,15 +5038,22 @@ impl Window {
             .map_origin(|value| ScaledPixels(round_half_toward_zero(value.0)))
             .map_size(|size| size.ceil());
 
-        self.next_frame.scene.insert_primitive(MonochromeSprite {
+        let sprite = MonochromeSprite {
             order: 0,
-            pad: 0,
+            animation: SpriteAnimationId::NONE,
             bounds: final_bounds,
             content_mask,
             color: color.opacity(element_opacity),
             tile,
             transformation,
-        });
+        };
+        match animation {
+            Some(animation) => self
+                .next_frame
+                .scene
+                .insert_animated_sprite(sprite, animation),
+            None => self.next_frame.scene.insert_primitive(sprite),
+        }
 
         Ok(())
     }

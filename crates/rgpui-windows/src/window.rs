@@ -1045,6 +1045,21 @@ impl PlatformWindow for WindowsWindow {
         self.0.hide_window();
     }
 
+    /// 请求再出一帧：把窗口标为失效，等 WM_PAINT 到来时走 draw_window。
+    ///
+    /// 场景级定时变换动画（`Scene::advance_animations`）依赖它持续出帧：
+    /// 动画只推进场景、不重绘视图，但仍需平台交付帧回调。
+    fn request_frame(&self) {
+        unsafe {
+            let _ = RedrawWindow(
+                Some(self.0.hwnd),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_NOERASE | RDW_NOFRAME,
+            );
+        }
+    }
+
     /// 最大化窗口
     fn zoom(&self) {
         unsafe {
