@@ -16,7 +16,7 @@ use crate::{
 
 use super::super::blink_cursor::CURSOR_WIDTH;
 use super::super::input::{FOLD_ICON_HITBOX_WIDTH, LINE_NUMBER_RIGHT_MARGIN};
-use super::super::layout::LastLayout;
+use super::super::layout::{LastLayout, RowTopY};
 use super::super::rope_ext::RopeExt as _;
 use super::super::{Input, InputState};
 use super::ToggleCodeActions;
@@ -74,7 +74,8 @@ pub(crate) fn layout_fold_icons(
         }
 
         let mut infos = Vec::with_capacity(last_layout.visible_buffer_lines.len());
-        let mut offset_y = last_layout.visible_top;
+        // 行顶 f64 累加（与文本绘制同口径，防超长文档漂移）。
+        let mut offset_y = RowTopY::new(last_layout.visible_top);
 
         for (line, &buffer_line) in last_layout
             .lines
@@ -87,11 +88,11 @@ pub(crate) fn layout_fold_icons(
                     buffer_line,
                     is_folded,
                     display_row: buffer_line,
-                    offset_y,
+                    offset_y: offset_y.pixels(),
                 });
             }
 
-            offset_y += line.wrapped_lines.len() * last_layout.line_height;
+            offset_y.advance_rows(line.wrapped_lines.len(), last_layout.line_height);
         }
 
         infos
@@ -247,8 +248,8 @@ pub(crate) fn paint_inlay_hints(
     let style = window.text_style();
     let font_size = style.font_size.to_pixels(window.rem_size());
     let color = cx.theme().muted_foreground;
-    // 与文本绘制同循环（行高累加口径一致，见 element paint）。
-    let mut y = px(0.);
+    // 与文本绘制同循环（行高累加口径一致，f64 累加，见 element paint）。
+    let mut y = RowTopY::new(px(0.));
     for ((line_layout, &buffer_row), &row_start) in last_layout
         .lines
         .iter()
@@ -280,7 +281,7 @@ pub(crate) fn paint_inlay_hints(
                     None,
                 );
                 let _ = shaped.paint(
-                    point(text_origin.x + pos.x, text_origin.y + y + pos.y),
+                    point(text_origin.x + pos.x, text_origin.y + y.pixels() + pos.y),
                     line_height,
                     TextAlign::Left,
                     None,
@@ -289,7 +290,7 @@ pub(crate) fn paint_inlay_hints(
                 );
             }
         }
-        y += line_layout.size(line_height).height;
+        y.advance(line_layout.size(line_height).height);
     }
 }
 

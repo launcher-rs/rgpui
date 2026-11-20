@@ -142,16 +142,23 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 - 验收：增量重换与全量重换逐宽度对照测试（`test_set_wrap_width_incremental_matches_full`）
   + 区间性质测试（`test_wrap_line_measured_valid_widths`）。
 
-### C3 垂直坐标精度 + 9 位行号
+### C3 垂直坐标精度 + 9 位行号（已完成）
 
-- 问题：`Pixels` 是 f32，2^24 px（约 16.7M px ≈ 16 万行 × 100px）以上
-  f32 整数精度丢失，行 y 累加漂移。gpui-kit 的解法是编辑器内部坐标改 f64。
-- rgpui **范围收缩**（`Pixels` 是框架级类型，不动）：editor 内部的行顶
-  累加 y（`layout.rs` 的行高累加、`gutter.rs` 的 `y += …`、sticky scroll）
-  改 `f64` 累加、输出转 `Pixels`；行长与滚动偏移不动。
-- 9 位行号：行号宽度公式（`line_number_width`）按最大行号位数自适应，
-  支持亿级行；`GutterStyle.width`（C1）优先。
-- 测试：>2^24 px 的虚拟文档 y 精度断言（合成的超高行高）、9 位行号宽度。
+- 对照 `e028806a`（编辑器内部坐标 f64 + 9 位行号）。rgpui **范围收缩**
+  （`Pixels` 是框架级 f32 类型，不动）：摸底确认行顶 y 的逐行累加只发生在
+  绘制循环——`TextElement`（选区边框、活动行背景、装饰背景、文本、行号，
+  `input/element.rs`）与 editor 叠层（折叠图标、行内提示 `editor_ui.rs`，
+  gutter 标记列 `gutter.rs`）共 8 处；滚动偏移、行长度、`visible_top` 都是
+  单次乘法，不在改动范围。
+- 落地：`input_ui/layout.rs` 新增 `RowTopY`（f64 行顶累加器：
+  `new` / `advance` / `advance_rows` / `pixels`），8 处累加循环全部换用，
+  绘制输出时才转回 `Pixels`（单次舍入）；长文档（>2^24 px）行顶不再跨行漂移。
+- 9 位行号：行号宽度公式本就按最大行号位数自适应（`ilog10 + 2`，亿级行
+  天然覆盖），提为可测函数 `line_number_digits`；自定义宽度走 C1 的
+  `GutterStyle.width`。
+- 测试：`test_row_top_y_precision_beyond_f32_integer`（100 万行 × 17.3px
+  越过 2^24，累加器误差 ≤ 1 个 f32 ulp，朴素 f32 累加明显更差）、
+  `test_line_number_digits_adaptive`（9/10 位行号位数）。
 
 ---
 

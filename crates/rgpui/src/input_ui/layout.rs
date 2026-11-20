@@ -15,6 +15,38 @@ pub(crate) struct WhitespaceIndicators {
     pub(crate) tab: ShapedLine,
 }
 
+/// 行顶纵向坐标累加器（f64 累加，对标 gpui-kit `e028806a` 的 f64 垂直坐标）。
+///
+/// `Pixels` 是 f32：超过 2^24 px（约 1670 万）后整数精度不再连续，行顶 y 逐行
+/// 累加会漂移。editor 内部（文本/装饰背景/选区/行号/活动行/折叠图标/gutter
+/// 标记/行内提示）的行顶 y 统一用它累加，绘制输出时才转回 `Pixels`（单次
+/// 舍入），长文档下逐行坐标不再跨行累计误差。起步用 `visible_top`（单次乘法，
+/// 误差只有 1 ulp）或 `px(0.)`；滚动偏移与行长度不经这里，维持原口径。
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct RowTopY(f64);
+
+impl RowTopY {
+    /// 从给定行顶开始累加。
+    pub(crate) fn new(top: Pixels) -> Self {
+        Self(f64::from(top.0))
+    }
+
+    /// 累加一行的高度。
+    pub(crate) fn advance(&mut self, height: Pixels) {
+        self.0 += f64::from(height.0);
+    }
+
+    /// 累加 `rows` 行等高行高（折叠行组、行号行组一次过）。
+    pub(crate) fn advance_rows(&mut self, rows: usize, line_height: Pixels) {
+        self.0 += rows as f64 * f64::from(line_height.0);
+    }
+
+    /// 读出当前行顶作为绘制坐标（转回 f32，单次舍入）。
+    pub(crate) fn pixels(&self) -> Pixels {
+        px(self.0 as f32)
+    }
+}
+
 /// 上次布局信息，用于渲染和命中测试。
 #[derive(Clone)]
 pub(crate) struct LastLayout {
@@ -66,5 +98,45 @@ impl LastLayout {
             TextAlign::Center => (self.content_width - line_width).half().max(px(0.)),
             TextAlign::Right | TextAlign::End => (self.content_width - line_width).max(px(0.)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `RowTopY` 超长文档精度（对标 gpui-kit `e028806a`）：
+    /// 100 万行 × 17.3px ≈ 1730 万 px，越过 2^24 的 f32 整数精度界。
+    /// f64 累加输出与精确乘积只差一次 f32 舍入（该量级 ulp = 2）；
+    /// 朴素 f32 逐行累加因 17.3 不是 ulp 的整数倍、每步都引入舍入误差，
+    /// 跨行累计后明显更差。
+    #[test]
+    fn test_row_top_y_precision_beyond_f32_integer() {
+        let line_height = px(17.3);
+        let rows: usize = 1_000_000;
+        let mut acc = RowTopY::new(px(0.));
+        let mut naive = px(0.);
+        for _ in 0..rows {
+            acc.advance(line_height);
+            naive += line_height;
+        }
+        let exact = f64::from(line_height.0) * rows as f64;
+        let acc_err = (f64::from(acc.pixels().0) - exact).abs();
+        let naive_err = (f64::from(naive.0) - exact).abs();
+        assert!(
+            acc_err <= 2.0,
+            "f64 累加器误差 {acc_err} 不应超过一个 f32 ulp"
+        );
+        assert!(
+            naive_err > acc_err,
+            "朴素 f32 累加误差 {naive_err} 应大于累加器误差 {acc_err}"
+        );
+        // 整组累加与逐行累加等价。
+        let mut group = RowTopY::new(px(0.));
+        group.advance_rows(rows, line_height);
+        assert!(
+            (f64::from(group.pixels().0) - exact).abs() <= 2.0,
+            "advance_rows 与逐行 advance 应等价"
+        );
     }
 }

@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 use crate::{AnyElement, App, Entity, Pixels, Point, SharedString, Window, point, px, size};
 
-use super::super::layout::LastLayout;
+use super::super::layout::{LastLayout, RowTopY};
 use super::state::EditorState;
 
 /// gutter 列宽（标记格固定尺寸，行高见布局）。
@@ -149,8 +149,8 @@ pub(crate) fn layout_gutter_markers(
         return GutterMarkersLayout::default();
     }
     let mut items = Vec::new();
-    // 与文本绘制同循环（行高累加口径一致，fold 图标同款）；标记取行顶 y。
-    let mut y = last_layout.visible_top;
+    // 与文本绘制同循环（行高 f64 累加口径一致，fold 图标同款）；标记取行顶 y。
+    let mut y = RowTopY::new(last_layout.visible_top);
     for (line_layout, &buffer_row) in last_layout
         .lines
         .iter()
@@ -158,7 +158,7 @@ pub(crate) fn layout_gutter_markers(
     {
         for build in &builders {
             if let Some(mut element) = build(buffer_row, window, cx) {
-                let cell_origin = point(origin.x, origin.y + y);
+                let cell_origin = point(origin.x, origin.y + y.pixels());
                 element.prepaint_as_root(
                     cell_origin,
                     size(GUTTER_WIDTH, line_height).into(),
@@ -168,7 +168,7 @@ pub(crate) fn layout_gutter_markers(
                 items.push(element);
             }
         }
-        y += line_layout.size(line_height).height;
+        y.advance(line_layout.size(line_height).height);
     }
     GutterMarkersLayout {
         width: GUTTER_WIDTH,

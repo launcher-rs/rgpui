@@ -18,7 +18,7 @@ use crate::theme::ActiveTheme as _;
 use crate::{DomNode, DomNodeKind, DomStyle};
 
 use super::super::{
-    LastLayout, MASK_CHAR, RopeExt as _, TextDecoration, WhitespaceIndicators,
+    LastLayout, MASK_CHAR, RopeExt as _, RowTopY, TextDecoration, WhitespaceIndicators,
     blink_cursor::CURSOR_WIDTH, display_map::LineLayout,
 };
 use super::{InputState, mode::InputMode};
@@ -342,6 +342,12 @@ fn empty_bottom_height(
     }
 }
 
+/// 行号位数：最大行号的十进制位数再加一列留白，按总行数自适应
+/// （9 位行号——亿级行——天然覆盖，对标 gpui-kit `e028806a` 的 9 位行号）。
+pub(crate) fn line_number_digits(total_lines: usize) -> usize {
+    total_lines.max(1).ilog10() as usize + 2
+}
+
 /// 文本元素，负责渲染输入框中的文本、光标、选区、行号与折叠图标。
 pub(crate) struct TextElement {
     pub(crate) state: Entity<InputState>,
@@ -630,8 +636,8 @@ impl TextElement {
         let start_ix = range.start;
         let end_ix = range.end;
 
-        // 从 visible_top 开始（已包含可见范围前所有行）
-        let mut offset_y = visible_top;
+        // 从 visible_top 开始（已包含可见范围前所有行）；f64 累加防超长文档漂移
+        let mut offset_y = RowTopY::new(visible_top);
         let mut line_corners = vec![];
 
         // 仅遍历可见（非隐藏）buffer 行
@@ -644,7 +650,7 @@ impl TextElement {
             let line_size = line.size(line_height);
             let line_wrap_width = line_size.width;
 
-            let line_origin = point(px(0.), offset_y);
+            let line_origin = point(px(0.), offset_y.pixels());
 
             let line_cursor_start = line.position_for_index(
                 start_ix.saturating_sub(prev_lines_offset),
@@ -714,7 +720,7 @@ impl TextElement {
                 break;
             }
 
-            offset_y += line_size.height;
+            offset_y.advance(line_size.height);
         }
 
         let mut points = vec![];
@@ -902,7 +908,7 @@ impl TextElement {
     ) -> (Pixels, usize) {
         let total_lines = text.lines_len();
         // 在最大行号之外再加一列，使右对齐数字与左边缘保持间距。
-        let line_number_len = total_lines.max(1).ilog10() as usize + 2;
+        let line_number_len = line_number_digits(total_lines);
         // 行号沟槽样式（宽度/间距/字体覆盖，`None` 跟默认；对标 gpui-kit GutterStyle）。
         let gutter = &state.gutter_style;
 
@@ -1907,10 +1913,10 @@ impl Element for TextElement {
             .editor_active_line
             .map(|color| if disabled { color.opacity(0.5) } else { color });
 
-        // 绘制活动行
-        let mut offset_y = px(0.);
+        // 绘制活动行（行顶 f64 累加）
+        let mut offset_y = RowTopY::new(px(0.));
         if let Some(line_numbers) = prepaint.line_numbers.as_ref() {
-            offset_y += invisible_top_padding;
+            offset_y.advance(invisible_top_padding);
 
             // 每项为普通行。
             for (lines, &buffer_line) in line_numbers
@@ -1918,7 +1924,7 @@ impl Element for TextElement {
                 .zip(prepaint.last_layout.visible_buffer_lines.iter())
             {
                 let is_active = prepaint.current_row == Some(buffer_line);
-                let p = point(input_bounds.origin.x, origin.y + offset_y);
+                let p = point(input_bounds.origin.x, origin.y + offset_y.pixels());
                 let height = line_height * lines.len() as f32;
                 // 绘制当前行背景
                 if is_active {
@@ -1929,7 +1935,7 @@ impl Element for TextElement {
                         ));
                     }
                 }
-                offset_y += height;
+                offset_y.advance_rows(lines.len(), line_height);
             }
         }
 
@@ -1962,11 +1968,11 @@ impl Element for TextElement {
 
         // 绘制装饰背景（搜索标黄/语法高亮块等），在选区之下、文本之下。
         {
-            let mut bg_offset_y = invisible_top_padding;
+            let mut bg_offset_y = RowTopY::new(invisible_top_padding);
             for line in prepaint.last_layout.lines.iter() {
                 let p = point(
                     origin.x + prepaint.last_layout.line_number_width + (scroll_offset),
-                    origin.y + bg_offset_y,
+                    origin.y + bg_offset_y.pixels(),
                 );
                 let _ = line.paint_background(
                     p,
@@ -1976,7 +1982,7 @@ impl Element for TextElement {
                     window,
                     cx,
                 );
-                bg_offset_y += line.size(line_height).height;
+                bg_offset_y.advance(line.size(line_height).height);
             }
         }
 
@@ -1987,8 +1993,8 @@ impl Element for TextElement {
             }
         }
 
-        // 绘制文本
-        let mut offset_y = invisible_top_padding;
+        // 绘制文本（行顶 f64 累加，装饰背景同口径）
+        let mut offset_y = RowTopY::new(invisible_top_padding);
 
         for (line, &buffer_line) in prepaint
             .last_layout
@@ -1997,7 +2003,7 @@ impl Element for TextElement {
             .zip(prepaint.last_layout.visible_buffer_lines.iter())
         {
             let _row = buffer_line;
-            let line_y = origin.y + offset_y;
+            let line_y = origin.y + offset_y.pixels();
             let p = point(
                 origin.x + prepaint.last_layout.line_number_width + (scroll_offset),
                 line_y,
@@ -2012,7 +2018,7 @@ impl Element for TextElement {
                 window,
                 cx,
             );
-            offset_y += line.size(line_height).height;
+            offset_y.advance(line.size(line_height).height);
         }
 
         // 绘制闪烁光标（含额外光标，同闪烁）
@@ -2027,10 +2033,10 @@ impl Element for TextElement {
             }
         }
 
-        // 绘制行号
-        let mut offset_y = px(0.);
+        // 绘制行号（行顶 f64 累加，与文本绘制同口径）
+        let mut offset_y = RowTopY::new(px(0.));
         if let Some(line_numbers) = prepaint.line_numbers.as_ref() {
-            offset_y += invisible_top_padding;
+            offset_y.advance(invisible_top_padding);
 
             if let Some(gutter_bg) = cx.theme().highlight_theme.style.editor_gutter_background {
                 window.paint_quad(fill(
@@ -2054,10 +2060,10 @@ impl Element for TextElement {
                 #[cfg(feature = "editor")]
                 let p = point(
                     input_bounds.origin.x + prepaint.gutter_width,
-                    origin.y + offset_y,
+                    origin.y + offset_y.pixels(),
                 );
                 #[cfg(not(feature = "editor"))]
-                let p = point(input_bounds.origin.x, origin.y + offset_y);
+                let p = point(input_bounds.origin.x, origin.y + offset_y.pixels());
                 let is_active = prepaint.current_row == Some(buffer_line);
 
                 let height = line_height * lines.len() as f32;
@@ -2077,7 +2083,7 @@ impl Element for TextElement {
 
                 for line in lines {
                     _ = line.paint(p, line_height, TextAlign::Left, None, window, cx);
-                    offset_y += line_height;
+                    offset_y.advance(line_height);
                 }
             }
         }
@@ -2302,6 +2308,20 @@ mod tests {
     use ropey::Rope;
 
     use super::*;
+
+    /// 行号位数按总行数自适应：9 位行号（亿级行）宽度 = 位数 + 一列留白
+    /// （对标 gpui-kit `e028806a` 的 9 位行号）。
+    #[test]
+    fn test_line_number_digits_adaptive() {
+        assert_eq!(line_number_digits(0), 2);
+        assert_eq!(line_number_digits(1), 2);
+        assert_eq!(line_number_digits(9), 2);
+        assert_eq!(line_number_digits(10), 3);
+        assert_eq!(line_number_digits(99_999_999), 9);
+        // 9 位行号：最大行号 100,000,000 共 9 位，加留白列 = 10。
+        assert_eq!(line_number_digits(100_000_000), 10);
+        assert_eq!(line_number_digits(1_000_000_000), 11);
+    }
 
     #[test]
     fn test_plain_text_decorations_include_unstyled_gaps() {
