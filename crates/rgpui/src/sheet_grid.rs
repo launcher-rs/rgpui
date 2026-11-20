@@ -232,6 +232,11 @@ pub enum SheetGridEvent {
         /// 目标列号。
         col: usize,
     },
+    /// 双击行头分隔线，请求重置该行为默认行高。
+    ResetRowHeight {
+        /// 目标行号。
+        row: usize,
+    },
 }
 
 /// 行/列尺寸拖拽状态。
@@ -772,6 +777,11 @@ impl<D: SheetDelegate> SheetGridState<D> {
         // 手柄压在行头上，必须截断事件，避免触发表头整行选择。
         cx.stop_propagation();
         self.focus(window, cx);
+        // 双击：重置该行为默认行高。
+        if event.click_count >= 2 {
+            cx.emit(SheetGridEvent::ResetRowHeight { row });
+            return;
+        }
         let height = self.delegate.row_height(row, cx);
         self.resize_row = Some(ResizeDrag {
             index: row,
