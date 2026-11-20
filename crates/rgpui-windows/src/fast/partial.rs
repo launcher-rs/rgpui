@@ -447,10 +447,10 @@ pub(crate) fn signatures(
         out.push(s);
     }
     for p in &scene.paths {
-        // 路径按顶点所处的具体位置为键：移动过的路径算新图元。
-        // rgpui 的 Path 字段比上游多，用 Debug 保守覆盖。
+        // 路径按内容为键：分桶是确定性的（同输入同输出），Debug 覆盖绘制参数
+        // 与全部瓦片 / 曲线；移动过的路径算新图元。
         let key = Key::new(7).debug(p).done();
-        out.push(sig(key, p.order, &p.bounds, &p.content_mask, 1.0));
+        out.push(sig(key, p.order(), &p.bounds(), p.content_mask(), 1.0));
     }
     Some(out)
 }

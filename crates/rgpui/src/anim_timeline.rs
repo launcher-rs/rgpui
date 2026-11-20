@@ -26,7 +26,7 @@
 //! TimelineView::new(&state)
 //! ```
 
-use lyon::path::{LineCap, LineJoin};
+use lyon_path::{LineCap, LineJoin};
 
 use crate::{
     ActiveTheme as _, AnyElement, App, Bounds, Context, ElementExt as _, Entity, EventEmitter,
@@ -637,7 +637,7 @@ pub fn curve_points(
 }
 
 /// 把采样点连成一条圆头折线路径（点不足 2 个时返回 `None`）。
-fn polyline_path(points: &[Point<Pixels>]) -> Option<Path<Pixels>> {
+fn polyline_path(points: &[Point<Pixels>]) -> Option<Path> {
     if points.len() < 2 {
         return None;
     }

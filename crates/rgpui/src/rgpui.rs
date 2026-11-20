@@ -147,6 +147,9 @@ mod keymap;
 /// 路径构建器 - 链式调用构建路径字符串的工具
 mod path_builder;
 
+/// 路径环绕数分桶 - Slug 式逐像素覆盖的 CPU 预处理（分桶成瓦片 + backdrop）
+mod path_winding;
+
 /// 性能基准测试工具 - 提供帧率和渲染性能的基准测试支持
 pub mod perf;
 

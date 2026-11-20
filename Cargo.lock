@@ -6467,7 +6467,7 @@ dependencies = [
  "libc",
  "log",
  "lsp-types",
- "lyon",
+ "lyon_path",
  "mach2",
  "metal",
  "nix",

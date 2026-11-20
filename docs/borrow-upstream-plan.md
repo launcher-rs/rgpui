@@ -30,12 +30,13 @@
 
 | 项 | 来源 | 说明与做法 |
 |---|---|---|
-| **D4c 像素对拍** | gpui-fast `3268abe` | D4b 的 canvas 路径缺验收门槛。做法：同一串场景分别走整帧与 partial，回读像素逐字节比对。**完成前 D4 必须保持 `RGPUI_PARTIAL_REDRAW=1` 默认关闭**（见 D4 节）。 |
+| **D4c 像素对拍** | gpui-fast `3268abe` | D4b 的 canvas 路径缺验收门槛。做法：同一串场景分别走整帧与 partial，回读像素逐字节比对。**完成前 D4 必须保持 `RGPUI_PARTIAL_REDRAW=1` 默认关闭**（见 D4 节）。注意 D3 落地后 DX 的整帧路径已换 path tile 管线，对拍基线以两者共同的当前实现为准。 |
 | **B3 UAX #14 接线** | zed `f0210f1621` | API 已就绪（B1），但两条软换行路径仍是「拉丁空格换行 + 禁则否决」。接线要贯通元素样式层到 `text_system` 的模式开关，候选断点改为预计算集合查询；影响全部软换行文本，回归面大，单独立批次。 |
 | **SVG 场景层变换动画** | zed `aff99ecc32` | 上游 +474 行落在 `elements/svg.rs` + `scene.rs` + `window.rs`：变换只改场景层、不重渲染视图。rgpui 的 SVG 走 sprite 路径，需先确认能否复用现有 scene 变换（D1 之后场景层已有 order/批次概念）。 |
 | **`fast/` P2 视图复用** | gpui-fast `0f5bf7f` | 哈希定位重复状态。rgpui `fast/` 目前只有 partial（D4），没有 view 复用层；与 D4c 同属 `fast/` 后续。 |
 | **动画改用 executor 时钟** | zed `99e70ee4a0` | 极小（`elements/animation.rs` 4 行）：动画时间基准从 `Instant::now()` 换成 executor 的时钟，使暂停/恢复与测试时钟一致。 |
 | **borrow / window 错误诊断** | zed `c408f8efc4` | +234 行在 `app.rs` / `window.rs` / `async_context.rs`：借用冲突与窗口创建失败时给出可读诊断（含已借用位置）。rgpui 目前是裸 panic 消息。 |
+| **D3 硬件实测** | zed `ffe0fa29e4` | D3 已落地（见下文 D3 节），但 GPU 收益（上游 −79%～−81%）与描边 CPU 代价（2–8×）都是上游口径，rgpui 需在硬件上跑 `painting` 例与 ink 长笔画确认。 |
 
 ### 二、需要前置条件或无法本机验证
 
@@ -55,10 +56,9 @@
 
 ### 四、技术债（不新增能力，但要清）
 
-1. **`crates/rgpui/Cargo.toml` 有一条未使用的 `tiny-skia-path = "0.11"`**
-   （D3 环绕数路径填充的遗留依赖，注释写着「环绕数路径渲染（D3）」但
-   `grep -rn tiny_skia_path crates/rgpui/src` 为空）。当前 `cargo clippy` 会报
-   `unused dependency`。二选一：完成 D3 实现，或删依赖 + 回滚 `Cargo.lock`。
+1. ~~**`crates/rgpui/Cargo.toml` 有一条未使用的 `tiny-skia-path = "0.11"`**~~
+   已清：D3 落地后 `path_builder.rs` 的描边/虚线展开正式使用
+   `tiny_skia_path`（`lyon` → `lyon_path` 一并完成）。
 2. **报告里还有两条次要项未定位到确切提交**（手势 MouseUp 被吞后的收尾、
    行注解卡片视口钉住），动手前需回看 temp/ 三仓库原始调研报告确认改动范围。
 3. **`docs/borrow-upstream-plan.md` B1 方案与实际实现不一致**：方案写「引入
@@ -401,6 +401,110 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 
 **仍未做**：D4c 像素对拍（逐帧对比整帧与 partial 路径，开 `=1` 前的验收门槛）
 与硬件 GPU 实测。按本计划约定，D4c 完成前不把默认开关翻开。
+
+### D3 现状摸底（2026-11-20，对齐 zed `ffe0fa29e4`）
+
+**上游改动**：23 文件 +2470/−2095。核心三件：`path_winding.rs`（+842 新模块）、
+`path_builder.rs`（+432 重写）、`scene.rs`（±266）；三后端 shader 全改
+（wgsl ±222 / hlsl ±225 / metal ±274），渲染器大幅简化
+（metal −721 / wgpu −717 / directx −565 净删为主）；`window.rs` 仅 ±19。
+上游实测（Intel HD 4600）：GPU 时间 painting 例 −79%、Git Graph −81%；
+填充持平或更快，**描边 CPU 侧变慢 2–8×**（lyon 描边镶嵌换成 tiny-skia 轮廓展开）。
+
+**机制（Slug 式逐像素环绕数）**：`PathBuilder` 把轮廓转成闭合的单调二次曲线链
+（三次贝塞尔按 0.25px 容差近似成二次、按极值点拆单调段）；CPU 按显示比例把曲线
+分桶到方形 cell（cell 尺寸按成本模型选幂次），未列入 cell 的曲线贡献折进 backdrop；
+相邻同列表同 backdrop 的 cell 合并成矩形 `PathTile`（大矩形 → 9 tile：4 角 4 边 1 内部）。
+每 tile 一个 GPU 实例，shader 只遍历该 tile 的曲线：向左/向上射线数交叉算环绕数，
+半像素内按 Slug 公式计部分覆盖；even-odd / non-zero 两种填充规则都在 shader 侧实现。
+**不再有 MSAA、中间纹理、额外 render pass、CPU 镶嵌。**
+
+**rgpui 现状差异（移植必须适配）**：
+
+1. rgpui `Path` 是泛型 `Path<P>` + 预镶嵌三角形（`vertices: Vec<PathVertex>`），
+   由完整 `lyon`（tessellation）产出；上游 `Path` 非泛型 = `Arc<[PathCurve]>` +
+   even_odd 标志，`Path::new`/`push_triangle`/`scale`/`build_path` 全删。
+   公开 API 面其实不大：仓内 `push_triangle`/`build_path` 无外部调用点，
+   `Path<Pixels>` 类型标注只在 ink.rs / anim_timeline.rs / window.rs / path_builder.rs。
+2. rgpui 的 `StrokeOptions`/`FillOptions` 直接重导出 lyon tessellation 类型，
+   ink.rs / anim_timeline.rs / painting 例用了 `.with_line_width/.with_line_cap/.with_line_join`
+   builder 链；上游换成自有精简 struct（无 builder 方法）。**有意偏差**：rgpui 版
+   自有 struct 保留同款 builder 方法，6 处调用点不动。
+3. 依赖变化：`lyon = "1.0"` → `lyon_path = "1.0"`（只留 path 构建，去掉 tessellation）
+   + `tiny-skia-path`（描边展开：dash + stroke→outline，**预置依赖正是为此**）。
+   ink.rs / anim_timeline.rs 直接用的 `lyon::path::{LineCap, LineJoin}` 改由
+   path_builder 重导出（lyon_path 同名类型，语义一致）。
+4. **rgpui `Background` 是 136 字节**（上游 72：无 PatternSlash/Checkerboard/Conic 等
+   pattern 档），`PathPaint` 相应为 176 字节（bounds 16 + mask 16 + Background 136 +
+   even_odd 4 + pad 4）——三端 shader 结构体**按 rgpui 口径写，不能照抄上游 HLSL**。
+   `PathCurve` 40 字节、`PathTile` 56 字节与上游一致。
+5. 场景层：`Scene::paths: Vec<PaintedPath>`（含 `Rc<PathTiles>`，`append_to` 把
+   paints/curves/tiles 三数组平铺给渲染器）；分桶发生在 `PaintedPath::new`
+   （即 `paint_path` 调用点，按当时 scale_factor），`retain_visible(content_mask)`
+   先裁掉 mask 外 tile。批处理仍是 `PrimitiveKind::Path` 按 order 分批。
+6. 与 D2 的交互：tile 实例直接进主通道，走非 quad 批的既有口径（深度禁用态，
+   与 sprites/shadow/underline 一致——rgpui 未移植非 quad 视口深度的部分），
+   不再需要 path 专用的 rasterization/resolve 两个管线与中间纹理。
+   wgpu 侧 `path_globals_bind_group` / gamma（Loop-Blinn 残留）一并删除。
+7. 与 D4 的交互：`fast::partial` 现在用 `.debug(p)` 保守签整条路径；`PaintedPath`
+   的 Debug 会展开全部 tile+curve（大且无谓），改成结构化键：
+   paint 字段 + tile 数 + tile 几何 + 曲线字节 hash（binning 确定性保证同输入同输出）。
+8. 验证基座：wgpu 有 D2 的 headless 真渲染回读测试、DX 有 WARP 端到端测试，
+   两端各加一条 path smoke（画三角形路径，读像素断言内部全 coverage、边缘半覆盖）；
+   Metal 本地编不到，shader 翻译靠 CI 矩阵兜底。上游 `randomized_element_tree.rs`
+   是 test-support 的随机对拍，rgpui 无此文件，不引入。
+9. `examples/showcase` 的 `painting` / `paths_bench` bin 用 PathBuilder API，
+   编译应无感；`render_to_image`（test-support）走 wgpu 渲染路径自动获得新管线。
+
+**预计规模**：核心 ~1100 行（path_builder 重写 + path_winding 移植 + scene/window
+改动）+ wgpu ~400 + DX ~350 + Metal ~250 + 三端 shader ~450 + 测试 ~300，比 D2 大。
+上游 `path_winding.rs` 的 5 条单测（九宫格 tile / 超大路径只画可见 tile / 溢出跳过 /
+非有限点 fail 整条路径 / 端点平衡）随模块移植。
+
+**D3 已落地**（2026-11-20/21）：
+
+- **核心**：`path_builder.rs` 重写（lyon_path 构建 + tiny-skia-path 描边/虚线展开
+  → `Outline` → 闭合单调二次曲线链，三次贝塞尔按 0.25px 容差近似成二次、按极值点
+  拆单调段）；新模块 `path_winding.rs`（BINNER thread_local 分桶：cell 尺寸成本模型、
+  backdrop 步进、run 合并成 `PathTile`，5 条单测全移植）；`scene.rs` 的 `Path` 去泛型
+  去三角形，新增 `PathCurve`/`PathPaint`/`PathTile`/`PaintedPath`（`Rc<PathTiles>`
+  缓存，`append_to` 平铺三数组），`window.rs::paint_path` 改走 `PaintedPath::new`
+  （分桶发生在绘制时、按当时 scale_factor，`retain_visible` 先裁 mask 外瓦片）。
+  依赖 `lyon = "1.0"` → `lyon_path = "1.0"`（dev-dep 里未用的 `lyon` 一并删除），
+  预置的 tiny-skia-path 正式启用——技术债 §四.1 就此清账。
+- **公开 API 变化**（对齐上游，有意为之）：`Path<Pixels>` → `Path`（非泛型，
+  只能由 `PathBuilder` 构建）；`Path::new`/`push_triangle`/`scale`/`build_path`
+  删除（仓内无外部调用点）；自有 `StrokeOptions`/`FillOptions`（**有意偏差**：保留
+  `with_line_width/with_line_cap/with_line_join` builder 方法，ink.rs / anim_timeline.rs /
+  painting 例 6 处调用点不动）；`LineCap`/`LineJoin`/`FillRule`/`Transform` 改由
+  path_builder 重导出（lyon_path 同名类型）。`showcase` 的 `painting`/`paths_bench`
+  仅 `Path<Pixels>` 类型标注两处改动。
+- **三后端**：删旧 path_rasterization/resolve 双管线与中间纹理（wgpu 连同
+  Loop-Blinn 残留的 path_globals/gamma 缓冲一起删），改「瓦片实例直接进主通道」：
+  wgpu 每批一个三槽 bind group（tiles/curves/paints 存储缓冲，批内平铺、批内下标）；
+  DX 复用核心的 `PathPaint`/`PathCurve`/`PathTile` 类型（布局即 GPU 布局），
+  t1=本批瓦片区间视图、t2/t3=全量曲线/绘制参数视图（**首次提交时槽位交叉写反，
+  WARP 测试抓出后修正**）；Metal 三缓冲共用实例池、按 256 对齐分段绑定，
+  三角带 4 顶点、角点按 `vertex_id` 位选（与上游一致，避免 origin+size 插值的
+  瓦片接缝）。三端 shader 的 `PathPaint` 按 rgpui 136 字节 `Background` 口径
+  （176 字节）写，不照抄上游 112 字节版本；布局守卫
+  `gpu_struct_layout.rs` 新增 PathCurve(40)/PathTile(56)/PathPaint(176) 三条。
+- **顺手修复 D2 遗留回归**：wgpu 共享渲染通道挂深度附件后，`depth_stencil: None`
+  的管线（阴影/下划线/全部文本精灵）被 wgpu 验证拒绝、整批静默丢画
+  （无头回读实验证实：D2 之后下划线/精灵在本分支就不出图）。给全部非 quad 管线
+  配「`Always` + 不写深度」的深度态（语义等价关闭深度测试），DX/Metal 无此问题
+  （DX 显式禁用深度态、Metal 走 PSO 默认禁用）。回读测试
+  `dbg_underline` 式最小用例验证后删除。
+- **验证**：`path_winding` 5 条单测；wgpu 无头真渲染回读
+  `headless_path_smoke.rs` 2 条（三角形填充内部/外部/边缘 AA、宽 2 横线描边——
+  三角形回读逐像素画出正确形状且边缘有半透明抗锯齿）；DX WARP 端到端
+  `path_tile_pipeline_fills_triangle_with_winding`；Metal 本地编不到，shader 随
+  CI 矩阵兜底。`cargo test -p rgpui --lib` 921、`-p rgpui-windows` 24（含 partial
+  23 + WARP path 1）、`-p rgpui-wgpu --features test-support` 29、guards 9、
+  `cargo clippy --workspace --all-targets -- -D warnings` 退出 0。
+- **预期收益**：上游实测 GPU 时间 −79%～−81%（painting 例 / Git Graph 场景），
+  rgpui 未单独复测（共享机器噪声大）；CPU 侧描边变慢 2–8× 为上游已声明取舍，
+  笔迹（ink）的长笔画场景待硬件实测确认。
 
 ---
 

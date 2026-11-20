@@ -617,7 +617,7 @@ impl TextElement {
         range: Range<usize>,
         last_layout: &LastLayout,
         bounds: &Bounds<Pixels>,
-    ) -> Option<Path<Pixels>> {
+    ) -> Option<Path> {
         if range.is_empty() {
             return None;
         }
@@ -771,7 +771,7 @@ impl TextElement {
         bounds: &mut Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
-    ) -> Vec<Path<Pixels>> {
+    ) -> Vec<Path> {
         let state = self.state.read(cx);
         if !state.focus_handle.is_focused(window) {
             return Vec::new();
@@ -1165,11 +1165,11 @@ pub(crate) struct PrepaintState {
     /// 当前行索引（0 起始，无换行，与光标同行）。
     current_row: Option<usize>,
     /// 选区路径（主选区 + 额外选区）。
-    selection_paths: Vec<Path<Pixels>>,
-    indent_guides_path: Option<Path<Pixels>>,
+    selection_paths: Vec<Path>,
+    indent_guides_path: Option<Path>,
     /// 标尺路径（O5；`None` 即关闭；颜色 paint 阶段读 state）。
     #[cfg(feature = "editor")]
-    rulers_path: Option<Path<Pixels>>,
+    rulers_path: Option<Path>,
     bounds: Bounds<Pixels>,
     /// 折叠图标布局数据（`editor` feature 门控，类型见 `editor_ui`）。
     #[cfg(feature = "editor")]

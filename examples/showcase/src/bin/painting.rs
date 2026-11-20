@@ -8,7 +8,7 @@ use rgpui::{
 use rgpui_platform::application;
 
 struct PaintingViewer {
-    default_lines: Vec<(Path<Pixels>, Background)>,
+    default_lines: Vec<(Path, Background)>,
     background_quads: Vec<(Bounds<Pixels>, Background)>,
     lines: Vec<Vec<Point<Pixels>>>,
     start: Point<Pixels>,

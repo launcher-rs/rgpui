@@ -302,7 +302,7 @@ taffy = "=0.10.1"
 thiserror.workspace = true
 hdrhistogram = { workspace = true, optional = true }
 waker-fn = "1.2.0"
-lyon = "1.0"
+lyon_path = "1.0"
 # 环绕数路径渲染（D3）：描边与虚线展开为闭合轮廓
 tiny-skia-path = "0.11"
 pin-project = "1.1.13"
@@ -404,7 +404,6 @@ backtrace.workspace = true
 env_logger.workspace = true
 postage.workspace = true
 pretty_assertions.workspace = true
-lyon = { version = "1.0", features = ["extra"] }
 rand.workspace = true
 # 仓库级守卫（tests/guards.rs）解析示例清单与覆盖表。
 toml.workspace = true

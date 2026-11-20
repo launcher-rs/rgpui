@@ -6,17 +6,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AtlasTextureId, AtlasTile, Background, Bounds, ContentMask, Corners, Edges, Hsla, Pixels,
-    Point, Radians, ScaledPixels, Size, bounds_tree::BoundsTree, point,
+    AtlasTextureId, AtlasTile, Background, Bounds, ContentMask, Corners, Edges, Hsla, Path, Pixels,
+    Point, Radians, ScaledPixels, Size, bounds_tree::BoundsTree, path_winding::PathTiles,
 };
 use smallvec::SmallVec;
-use std::{
-    collections::VecDeque,
-    fmt::Debug,
-    iter::Peekable,
-    ops::{Add, Range, Sub},
-    slice,
-};
+use std::{collections::VecDeque, fmt::Debug, iter::Peekable, ops::Range, rc::Rc, slice};
 
 /// 内部不变量：值为 `None` 说明前提被破坏（批处理迭代器与已排序的种类表不一致等），
 /// 必须立刻暴露。
@@ -31,10 +25,6 @@ fn invariant<T>(value: Option<T>, message: &str) -> T {
         None => panic!("{message}"),
     }
 }
-
-/// 路径顶点的缩放像素类型别名（已废弃，使用 `PathVertex<ScaledPixels>`）。
-#[allow(non_camel_case_types, unused)]
-pub type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
 
 /// 绘制顺序值，数值越小越先绘制。
 pub type DrawOrder = u32;
@@ -66,7 +56,7 @@ pub struct Scene {
     /// 四边形图元列表。
     pub quads: Vec<Quad>,
     /// 矢量路径图元列表。
-    pub paths: Vec<Path<ScaledPixels>>,
+    pub paths: Vec<PaintedPath>,
     /// 下划线图元列表。
     pub underlines: Vec<Underline>,
     /// 单色精灵图元列表。
@@ -201,7 +191,6 @@ impl Scene {
             }
             Primitive::Path(mut path) => {
                 path.order = order;
-                path.id = PathId(self.paths.len());
                 self.paths.push(path);
             }
             Primitive::Underline(mut underline) => {
@@ -399,7 +388,7 @@ pub enum Primitive {
     /// 四边形
     Quad(Quad),
     /// 矢量路径
-    Path(Path<ScaledPixels>),
+    Path(PaintedPath),
     /// 下划线
     Underline(Underline),
     /// 单色精灵（灰度字形/图标）
@@ -446,7 +435,7 @@ impl Primitive {
         match self {
             Primitive::Shadow(shadow) => &shadow.content_mask,
             Primitive::Quad(quad) => &quad.content_mask,
-            Primitive::Path(path) => &path.content_mask,
+            Primitive::Path(path) => &path.paint.content_mask,
             Primitive::Underline(underline) => &underline.content_mask,
             Primitive::MonochromeSprite(sprite) => &sprite.content_mask,
             Primitive::SubpixelSprite(sprite) => &sprite.content_mask,
@@ -462,7 +451,7 @@ struct BatchIterator<'a> {
     quads_start: usize,
     quads_iter: Peekable<slice::Iter<'a, Quad>>,
     paths_start: usize,
-    paths_iter: Peekable<slice::Iter<'a, Path<ScaledPixels>>>,
+    paths_iter: Peekable<slice::Iter<'a, PaintedPath>>,
     underlines_start: usize,
     underlines_iter: Peekable<slice::Iter<'a, Underline>>,
     monochrome_sprites_start: usize,
@@ -1042,184 +1031,161 @@ impl From<PaintSurface> for Primitive {
     }
 }
 
-/// 路径的唯一标识符。
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PathId(pub usize);
-
-/// 由一系列顶点和控制点组成的矢量路径，支持填充和变换。
-#[derive(Clone, Debug)]
-pub struct Path<P: Clone + Debug + Default + PartialEq> {
-    /// 路径的唯一标识符。
-    pub id: PathId,
-    /// 绘制顺序。
-    pub order: DrawOrder,
-    /// 路径的边界矩形。
-    pub bounds: Bounds<P>,
-    /// 内容裁剪蒙版。
-    pub content_mask: ContentMask<P>,
-    /// 路径的顶点列表。
-    pub vertices: Vec<PathVertex<P>>,
-    /// 路径填充颜色。
-    pub color: Background,
-    start: Point<P>,
-    current: Point<P>,
-    contour_count: usize,
-}
-
-impl Path<Pixels> {
-    /// 使用给定的起始点创建新路径。
-    pub fn new(start: Point<Pixels>) -> Self {
-        Self {
-            id: PathId(0),
-            order: DrawOrder::default(),
-            vertices: Vec::new(),
-            start,
-            current: start,
-            bounds: Bounds {
-                origin: start,
-                size: Default::default(),
-            },
-            content_mask: Default::default(),
-            color: Default::default(),
-            contour_count: 0,
-        }
-    }
-
-    /// 按给定因子缩放此路径。
-    pub fn scale(&self, factor: f32) -> Path<ScaledPixels> {
-        Path {
-            id: self.id,
-            order: self.order,
-            bounds: self.bounds.scale(factor),
-            content_mask: self.content_mask.scale(factor),
-            vertices: self
-                .vertices
-                .iter()
-                .map(|vertex| vertex.scale(factor))
-                .collect(),
-            start: self.start.map(|start| start.scale(factor)),
-            current: self.current.scale(factor),
-            contour_count: self.contour_count,
-            color: self.color,
-        }
-    }
-
-    /// 将起点、当前点移动到给定点。
-    pub fn move_to(&mut self, to: Point<Pixels>) {
-        self.contour_count += 1;
-        self.start = to;
-        self.current = to;
-    }
-
-    /// 从当前点到给定点绘制直线。
-    pub fn line_to(&mut self, to: Point<Pixels>) {
-        self.contour_count += 1;
-        if self.contour_count > 1 {
-            self.push_triangle(
-                (self.start, self.current, to),
-                (point(0., 1.), point(0., 1.), point(0., 1.)),
-            );
-        }
-        self.current = to;
-    }
-
-    /// 从当前点到给定点绘制曲线，使用给定的控制点。
-    pub fn curve_to(&mut self, to: Point<Pixels>, ctrl: Point<Pixels>) {
-        self.contour_count += 1;
-        if self.contour_count > 1 {
-            self.push_triangle(
-                (self.start, self.current, to),
-                (point(0., 1.), point(0., 1.), point(0., 1.)),
-            );
-        }
-
-        self.push_triangle(
-            (self.current, ctrl, to),
-            (point(0., 0.), point(0.5, 0.), point(1., 1.)),
-        );
-        self.current = to;
-    }
-
-    /// 向 Path 添加三角形。
-    pub fn push_triangle(
-        &mut self,
-        xy: (Point<Pixels>, Point<Pixels>, Point<Pixels>),
-        st: (Point<f32>, Point<f32>, Point<f32>),
-    ) {
-        self.bounds = self
-            .bounds
-            .union(&Bounds {
-                origin: xy.0,
-                size: Default::default(),
-            })
-            .union(&Bounds {
-                origin: xy.1,
-                size: Default::default(),
-            })
-            .union(&Bounds {
-                origin: xy.2,
-                size: Default::default(),
-            });
-
-        self.vertices.push(PathVertex {
-            xy_position: xy.0,
-            st_position: st.0,
-            content_mask: Default::default(),
-        });
-        self.vertices.push(PathVertex {
-            xy_position: xy.1,
-            st_position: st.1,
-            content_mask: Default::default(),
-        });
-        self.vertices.push(PathVertex {
-            xy_position: xy.2,
-            st_position: st.2,
-            content_mask: Default::default(),
-        });
-    }
-}
-
-impl<T> Path<T>
-where
-    T: Clone + Debug + Default + PartialEq + PartialOrd + Add<T, Output = T> + Sub<Output = T>,
-{
-    /// 返回路径与内容遮罩的交集边界。
-    #[allow(unused)]
-    pub fn clipped_bounds(&self) -> Bounds<T> {
-        self.bounds.intersect(&self.content_mask.bounds)
-    }
-}
-
-impl From<Path<ScaledPixels>> for Primitive {
-    fn from(path: Path<ScaledPixels>) -> Self {
-        Primitive::Path(path)
-    }
-}
-
-#[derive(Clone, Debug)]
+/// 一条路径曲线：xy 各为二次多项式的单调二次贝塞尔（Slug 路径渲染的最小单元）。
+///
+/// 参数形式 `x(t) = (a.x * t + b.x) * t + p0.x`、`y(t) = (a.y * t + b.y) * t + p0.y`，
+/// 且 y 随 t 单调（t: 0→1 时 y 从 `p0.y` 走到 `p1.y`）；`sign` 记录 y 的走向，
+/// 供环绕数步进使用。直线是二次项为零的特例。
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
-#[expect(missing_docs)]
-pub struct PathVertex<P: Clone + Debug + Default + PartialEq> {
-    pub xy_position: Point<P>,
-    pub st_position: Point<f32>,
-    pub content_mask: ContentMask<P>,
+pub struct PathCurve {
+    /// 起点坐标。
+    pub p0: Point<f32>,
+    /// 终点坐标。
+    pub p1: Point<f32>,
+    /// 二次项系数。
+    pub a: Point<f32>,
+    /// 一次项系数。
+    pub b: Point<f32>,
+    /// y 走向符号（+1 向下 / -1 向上）。
+    pub sign: f32,
+    /// 8 字节对齐填充。
+    pub pad: u32, // align to 8 bytes
 }
 
-#[expect(missing_docs)]
-impl PathVertex<Pixels> {
-    pub fn scale(&self, factor: f32) -> PathVertex<ScaledPixels> {
-        PathVertex {
-            xy_position: self.xy_position.scale(factor),
-            st_position: self.st_position,
-            content_mask: self.content_mask.scale(factor),
+/// 路径的绘制参数（GPU 传输结构，随曲线/瓦片数组一起上传）。
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct PathPaint {
+    /// 路径边界（设备像素）。
+    pub bounds: Bounds<ScaledPixels>,
+    /// 内容裁剪蒙版。
+    pub content_mask: ContentMask<ScaledPixels>,
+    /// 填充背景。
+    pub color: Background,
+    /// 填充规则：非 0 为奇偶（even-odd），0 为非零环绕（non-zero）。
+    pub even_odd: u32,
+    /// 8 字节对齐填充。
+    pub pad: u32, // align to 8 bytes
+}
+
+/// 路径瓦片：一组合并的 cell，GPU 实例按其曲线列表逐像素计算环绕数与覆盖。
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+pub struct PathTile {
+    /// 本帧 `PathPaint` 数组的下标。
+    pub paint: u32,
+    /// 本帧 `PathCurve` 数组中的起始下标。
+    pub curve_start: u32,
+    /// 本瓦片列出的曲线数量。
+    pub curve_count: u32,
+    /// 未列入本瓦片的曲线沿参考角向左射线的环绕数贡献。
+    pub backdrop: i32,
+    /// 瓦片矩形左上角（设备像素）。
+    pub top_left: Point<f32>,
+    /// 瓦片矩形右下角（设备像素）。
+    pub bottom_right: Point<f32>,
+    /// backdrop 的参考点（所在 cell 的左上角）。
+    pub reference: Point<f32>,
+    /// 列表曲线包围盒左上角（供 shader 早退与越界判定）。
+    pub curves_top_left: Point<f32>,
+    /// 列表曲线包围盒右下角。
+    pub curves_bottom_right: Point<f32>,
+}
+
+/// 一条待绘制的填充路径：分桶瓦片 + 绘制参数。
+///
+/// 由 [`crate::Window::paint_path`] 构建（分桶依赖显示比例，发生在绘制时）；
+/// `Rc<PathTiles>` 让缓存复用的 `Path` 克隆成本与曲线数量无关。
+#[derive(Clone, Debug)]
+pub struct PaintedPath {
+    /// 绘制顺序（场景分配，渲染侧只读）。
+    order: DrawOrder,
+    /// 涂刷边界（瓦片边界外扩抗锯齿边距，设备像素）。
+    bounds: Bounds<ScaledPixels>,
+    /// 分桶结果。
+    tiles: Rc<PathTiles>,
+    /// 绘制参数。
+    paint: PathPaint,
+}
+
+impl PaintedPath {
+    /// 把 `path` 按显示比例分桶成瓦片，在 `content_mask` 内以 `color` 填充。
+    pub fn new(
+        path: Path,
+        scale_factor: f32,
+        content_mask: ContentMask<Pixels>,
+        color: Background,
+    ) -> Self {
+        let content_mask = content_mask.scale(scale_factor);
+        let mut tiles = path.bin(scale_factor);
+        tiles.retain_visible(content_mask.bounds);
+        let paint = PathPaint {
+            bounds: tiles.bounds(),
+            content_mask,
+            color,
+            even_odd: path.even_odd().into(),
+            pad: 0,
+        };
+        Self {
+            order: 0,
+            bounds: tiles.painted_bounds(),
+            tiles: Rc::new(tiles),
+            paint,
         }
+    }
+
+    /// 本路径的瓦片数量。
+    pub fn tile_count(&self) -> usize {
+        self.tiles.tiles().len()
+    }
+
+    /// 绘制顺序（由场景在插入时分配）。
+    pub fn order(&self) -> DrawOrder {
+        self.order
+    }
+
+    /// 涂刷边界（设备像素）。
+    pub fn bounds(&self) -> Bounds<ScaledPixels> {
+        self.bounds
+    }
+
+    /// 内容裁剪蒙版（设备像素）。
+    pub fn content_mask(&self) -> &ContentMask<ScaledPixels> {
+        &self.paint.content_mask
+    }
+
+    /// 把绘制参数、曲线与瓦片平铺进本帧的三条 GPU 数组。
+    ///
+    /// 渲染器按批调用（批内路径依次追加，`paint_index` / `curve_start` 随之为批内下标）。
+    pub fn append_to(
+        &self,
+        paints: &mut Vec<PathPaint>,
+        curves: &mut Vec<PathCurve>,
+        tiles: &mut Vec<PathTile>,
+    ) {
+        let paint_index = paints.len() as u32;
+        let curve_start = curves.len() as u32;
+        paints.push(self.paint);
+        curves.extend_from_slice(self.tiles.curves());
+        tiles.extend(self.tiles.tiles().iter().map(|tile| PathTile {
+            paint: paint_index,
+            curve_start: curve_start + tile.curve_start,
+            ..*tile
+        }));
+    }
+}
+
+impl From<PaintedPath> for Primitive {
+    fn from(path: PaintedPath) -> Self {
+        Primitive::Path(path)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AtlasTextureKind, DevicePixels, TileId, bounds, size};
+    use crate::{AtlasTextureKind, DevicePixels, TileId, bounds, point, size};
 
     /// 构造一个只关心 order 与所属纹理/瓦片 ID 的单色精灵。
     fn sprite(order: DrawOrder, texture_index: u32, tile_id: u32) -> MonochromeSprite {

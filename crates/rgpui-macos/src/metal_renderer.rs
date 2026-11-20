@@ -36,9 +36,6 @@ pub(crate) type PointF = rgpui::Point<f32>;
 const SHADERS_METALLIB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/shaders.metallib"));
 #[cfg(feature = "runtime_shaders")]
 const SHADERS_SOURCE_FILE: &str = include_str!(concat!(env!("OUT_DIR"), "/stitched_shaders.metal"));
-// 使用 4x MSAA，所有设备都支持它。
-// https://developer.apple.com/documentation/metal/mtldevice/1433355-supportstexturesamplecount
-const PATH_SAMPLE_COUNT: u32 = 4;
 
 pub(crate) type Context = Arc<Mutex<InstanceBufferPool>>;
 pub(crate) type Renderer = MetalRenderer;
@@ -119,8 +116,7 @@ pub(crate) struct MetalRenderer {
     /// 对于无头渲染，跟踪输出是否应该不透明
     opaque: bool,
     command_queue: CommandQueue,
-    paths_rasterization_pipeline_state: metal::RenderPipelineState,
-    path_sprites_pipeline_state: metal::RenderPipelineState,
+    path_tiles_pipeline_state: metal::RenderPipelineState,
     shadows_pipeline_state: metal::RenderPipelineState,
     quads_pipeline_state: metal::RenderPipelineState,
     opaque_quads_pipeline_state: metal::RenderPipelineState,
@@ -133,9 +129,6 @@ pub(crate) struct MetalRenderer {
     instance_buffer_pool: Arc<Mutex<InstanceBufferPool>>,
     sprite_atlas: Arc<MetalAtlas>,
     core_video_texture_cache: core_video::metal_texture_cache::CVMetalTextureCache,
-    path_intermediate_texture: Option<metal::Texture>,
-    path_intermediate_msaa_texture: Option<metal::Texture>,
-    path_sample_count: u32,
     // anti-overdraw 深度态：混合 quad 通道只比较不写深度，不透明通道比较并写深度；
     // 其余图元不设深度态（Metal 默认深度测试关闭、不写深度）。
     quad_depth_state: metal::DepthStencilState,
@@ -143,14 +136,6 @@ pub(crate) struct MetalRenderer {
     // anti-overdraw 深度纹理（Depth32Float），视口尺寸变化时重建
     depth_texture: Option<metal::Texture>,
     depth_texture_size: Size<DevicePixels>,
-}
-
-#[repr(C)]
-pub struct PathRasterizationVertex {
-    pub xy_position: Point<ScaledPixels>,
-    pub st_position: Point<f32>,
-    pub color: Background,
-    pub bounds: Bounds<ScaledPixels>,
 }
 
 impl MetalRenderer {
@@ -274,21 +259,12 @@ impl MetalRenderer {
         let opaque_quad_depth_state =
             build_depth_stencil_state(&device, metal::MTLCompareFunction::Greater, true);
 
-        let paths_rasterization_pipeline_state = build_path_rasterization_pipeline_state(
+        let path_tiles_pipeline_state = build_pipeline_state(
             &device,
             &library,
-            "paths_rasterization",
-            "path_rasterization_vertex",
-            "path_rasterization_fragment",
-            MTLPixelFormat::BGRA8Unorm,
-            PATH_SAMPLE_COUNT,
-        );
-        let path_sprites_pipeline_state = build_path_sprite_pipeline_state(
-            &device,
-            &library,
-            "path_sprites",
-            "path_sprite_vertex",
-            "path_sprite_fragment",
+            "path_tiles",
+            "path_tile_vertex",
+            "path_tile_fragment",
             MTLPixelFormat::BGRA8Unorm,
         );
         let shadows_pipeline_state = build_pipeline_state(
@@ -362,8 +338,7 @@ impl MetalRenderer {
             is_unified_memory,
             opaque,
             command_queue,
-            paths_rasterization_pipeline_state,
-            path_sprites_pipeline_state,
+            path_tiles_pipeline_state,
             shadows_pipeline_state,
             quads_pipeline_state,
             opaque_quads_pipeline_state,
@@ -375,9 +350,6 @@ impl MetalRenderer {
             instance_buffer_pool,
             sprite_atlas,
             core_video_texture_cache,
-            path_intermediate_texture: None,
-            path_intermediate_msaa_texture: None,
-            path_sample_count: PATH_SAMPLE_COUNT,
             quad_depth_state,
             opaque_quad_depth_state,
             depth_texture: None,
@@ -424,45 +396,6 @@ impl MetalRenderer {
                     setDrawableSize: ns_size
                 ];
             }
-        }
-        self.update_path_intermediate_textures(size);
-    }
-
-    fn update_path_intermediate_textures(&mut self, size: Size<DevicePixels>) {
-        // 我们不确定何时会发生，但有时这里的 size 可能为 0。最有可能是在
-        // 窗口创建时的布局传递之前。零大小的纹理创建会导致 SIGABRT。
-        // https://github.com/zed-industries/zed/issues/36229
-        if size.width.0 <= 0 || size.height.0 <= 0 {
-            self.path_intermediate_texture = None;
-            self.path_intermediate_msaa_texture = None;
-            return;
-        }
-
-        let texture_descriptor = metal::TextureDescriptor::new();
-        texture_descriptor.set_width(size.width.0 as u64);
-        texture_descriptor.set_height(size.height.0 as u64);
-        texture_descriptor.set_pixel_format(metal::MTLPixelFormat::BGRA8Unorm);
-        texture_descriptor.set_storage_mode(metal::MTLStorageMode::Private);
-        texture_descriptor
-            .set_usage(metal::MTLTextureUsage::RenderTarget | metal::MTLTextureUsage::ShaderRead);
-        self.path_intermediate_texture = Some(self.device.new_texture(&texture_descriptor));
-
-        if self.path_sample_count > 1 {
-            // https://developer.apple.com/documentation/metal/choosing-a-resource-storage-mode-for-apple-gpus
-            // 渲染 MSAA 纹理在单次传递中完成，因此我们可以在 Apple Silicon 上使用无内存存储
-            let storage_mode = if self.is_apple_gpu {
-                metal::MTLStorageMode::Memoryless
-            } else {
-                metal::MTLStorageMode::Private
-            };
-
-            let msaa_descriptor = texture_descriptor;
-            msaa_descriptor.set_texture_type(metal::MTLTextureType::D2Multisample);
-            msaa_descriptor.set_storage_mode(storage_mode);
-            msaa_descriptor.set_sample_count(self.path_sample_count as _);
-            self.path_intermediate_msaa_texture = Some(self.device.new_texture(&msaa_descriptor));
-        } else {
-            self.path_intermediate_msaa_texture = None;
         }
     }
 
@@ -674,9 +607,6 @@ impl MetalRenderer {
             anyhow::bail!("Invalid size for render_scene_to_image: {:?}", size);
         }
 
-        // 更新此大小的路径中间纹理
-        self.update_path_intermediate_textures(size);
-
         // 创建离屏纹理作为渲染目标
         let texture_descriptor = metal::TextureDescriptor::new();
         texture_descriptor.set_width(size.width.0 as u64);
@@ -830,40 +760,13 @@ impl MetalRenderer {
                     viewport_size,
                     command_encoder,
                 ),
-                PrimitiveBatch::Paths(range) => {
-                    let paths = &scene.paths[range];
-                    command_encoder.end_encoding();
-
-                    let did_draw = self.draw_paths_to_intermediate(
-                        paths,
-                        instance_buffer,
-                        &mut instance_offset,
-                        viewport_size,
-                        command_buffer,
-                    );
-
-                    command_encoder = new_command_encoder_for_texture(
-                        command_buffer,
-                        texture,
-                        viewport_size,
-                        Some((&depth_texture, metal::MTLLoadAction::Load)),
-                        |color_attachment| {
-                            color_attachment.set_load_action(metal::MTLLoadAction::Load);
-                        },
-                    );
-
-                    if did_draw {
-                        self.draw_paths_from_intermediate(
-                            paths,
-                            instance_buffer,
-                            &mut instance_offset,
-                            viewport_size,
-                            command_encoder,
-                        )
-                    } else {
-                        false
-                    }
-                }
+                PrimitiveBatch::Paths(range) => self.draw_path_tiles(
+                    &scene.paths[range],
+                    instance_buffer,
+                    &mut instance_offset,
+                    viewport_size,
+                    command_encoder,
+                ),
                 PrimitiveBatch::Underlines(range) => self.draw_underlines(
                     &scene.underlines[range],
                     instance_buffer,
@@ -926,89 +829,98 @@ impl MetalRenderer {
         Ok(command_buffer.to_owned())
     }
 
-    fn draw_paths_to_intermediate(
+    /// 路径瓦片批：把批内路径平铺成绘制参数 / 曲线 / 瓦片三段实例数据写入
+    /// 共享实例缓冲，三个缓冲下标分别指向各自段（256 对齐），按瓦片实例数
+    /// 绘制。`tile.paint` / `tile.curve_start` 是批内下标（逐批平铺）。
+    fn draw_path_tiles(
         &self,
-        paths: &[Path<ScaledPixels>],
+        paths: &[PaintedPath],
         instance_buffer: &mut InstanceBuffer,
         instance_offset: &mut usize,
         viewport_size: Size<DevicePixels>,
-        command_buffer: &metal::CommandBufferRef,
+        command_encoder: &metal::RenderCommandEncoderRef,
     ) -> bool {
-        if paths.is_empty() {
+        let mut paints: Vec<PathPaint> = Vec::new();
+        let mut curves: Vec<PathCurve> = Vec::new();
+        let mut tiles: Vec<PathTile> = Vec::new();
+        for path in paths {
+            path.append_to(&mut paints, &mut curves, &mut tiles);
+        }
+        if tiles.is_empty() {
             return true;
         }
-        let Some(intermediate_texture) = &self.path_intermediate_texture else {
-            return false;
-        };
-
-        let render_pass_descriptor = metal::RenderPassDescriptor::new();
-        let color_attachment = render_pass_descriptor
-            .color_attachments()
-            .object_at(0)
-            .unwrap();
-        color_attachment.set_load_action(metal::MTLLoadAction::Clear);
-        color_attachment.set_clear_color(metal::MTLClearColor::new(0., 0., 0., 0.));
-
-        if let Some(msaa_texture) = &self.path_intermediate_msaa_texture {
-            color_attachment.set_texture(Some(msaa_texture));
-            color_attachment.set_resolve_texture(Some(intermediate_texture));
-            color_attachment.set_store_action(metal::MTLStoreAction::MultisampleResolve);
-        } else {
-            color_attachment.set_texture(Some(intermediate_texture));
-            color_attachment.set_store_action(metal::MTLStoreAction::Store);
-        }
-
-        let command_encoder = command_buffer.new_render_command_encoder(render_pass_descriptor);
-        command_encoder.set_render_pipeline_state(&self.paths_rasterization_pipeline_state);
-
         align_offset(instance_offset);
-        let mut vertices = Vec::new();
-        for path in paths {
-            vertices.extend(path.vertices.iter().map(|v| PathRasterizationVertex {
-                xy_position: v.xy_position,
-                st_position: v.st_position,
-                color: path.color,
-                bounds: path.bounds.intersect(&path.content_mask.bounds),
-            }));
-        }
-        let vertices_bytes_len = mem::size_of_val(vertices.as_slice());
-        let next_offset = *instance_offset + vertices_bytes_len;
+
+        command_encoder.set_render_pipeline_state(&self.path_tiles_pipeline_state);
+
+        // 三段数据在实例缓冲里各占一段（对齐 256），按各自偏移绑定到
+        // 瓦片 / 曲线 / 绘制参数三个下标。
+        let paint_bytes_len = mem::size_of_val(paints.as_slice());
+        let curve_bytes_len = mem::size_of_val(curves.as_slice());
+        let tile_bytes_len = mem::size_of_val(tiles.as_slice());
+        let paints_offset = *instance_offset;
+        let curves_offset = paints_offset + paint_bytes_len.div_ceil(256) * 256;
+        let tiles_offset = curves_offset + curve_bytes_len.div_ceil(256) * 256;
+        let next_offset = tiles_offset + tile_bytes_len;
         if next_offset > instance_buffer.size {
-            command_encoder.end_encoding();
             return false;
         }
+
+        for (offset, data, data_len) in [
+            (paints_offset, paints.as_ptr(), paint_bytes_len),
+            (curves_offset, curves.as_ptr(), curve_bytes_len),
+            (tiles_offset, tiles.as_ptr(), tile_bytes_len),
+        ] {
+            let buffer_contents =
+                unsafe { (instance_buffer.metal_buffer.contents() as *mut u8).add(offset) };
+            unsafe {
+                ptr::copy_nonoverlapping(data as *const u8, buffer_contents, data_len);
+            }
+        }
+
         command_encoder.set_vertex_buffer(
-            PathRasterizationInputIndex::Vertices as u64,
+            PathTileInputIndex::PathTiles as u64,
             Some(&instance_buffer.metal_buffer),
-            *instance_offset as u64,
+            tiles_offset as u64,
+        );
+        command_encoder.set_vertex_buffer(
+            PathTileInputIndex::PathCurves as u64,
+            Some(&instance_buffer.metal_buffer),
+            curves_offset as u64,
+        );
+        command_encoder.set_vertex_buffer(
+            PathTileInputIndex::PathPaints as u64,
+            Some(&instance_buffer.metal_buffer),
+            paints_offset as u64,
+        );
+        command_encoder.set_fragment_buffer(
+            PathTileInputIndex::PathTiles as u64,
+            Some(&instance_buffer.metal_buffer),
+            tiles_offset as u64,
+        );
+        command_encoder.set_fragment_buffer(
+            PathTileInputIndex::PathCurves as u64,
+            Some(&instance_buffer.metal_buffer),
+            curves_offset as u64,
+        );
+        command_encoder.set_fragment_buffer(
+            PathTileInputIndex::PathPaints as u64,
+            Some(&instance_buffer.metal_buffer),
+            paints_offset as u64,
         );
         command_encoder.set_vertex_bytes(
-            PathRasterizationInputIndex::ViewportSize as u64,
+            PathTileInputIndex::ViewportSize as u64,
             mem::size_of_val(&viewport_size) as u64,
             &viewport_size as *const Size<DevicePixels> as *const _,
         );
-        command_encoder.set_fragment_buffer(
-            PathRasterizationInputIndex::Vertices as u64,
-            Some(&instance_buffer.metal_buffer),
-            *instance_offset as u64,
-        );
-        let buffer_contents =
-            unsafe { (instance_buffer.metal_buffer.contents() as *mut u8).add(*instance_offset) };
-        unsafe {
-            ptr::copy_nonoverlapping(
-                vertices.as_ptr() as *const u8,
-                buffer_contents,
-                vertices_bytes_len,
-            );
-        }
-        command_encoder.draw_primitives(
-            metal::MTLPrimitiveType::Triangle,
+
+        command_encoder.draw_primitives_instanced(
+            metal::MTLPrimitiveType::TriangleStrip,
             0,
-            vertices.len() as u64,
+            4,
+            tiles.len() as u64,
         );
         *instance_offset = next_offset;
-
-        command_encoder.end_encoding();
         true
     }
 
@@ -1210,96 +1122,6 @@ impl MetalRenderer {
         self.depth_texture = Some(texture.clone());
         self.depth_texture_size = viewport_size;
         texture
-    }
-
-    fn draw_paths_from_intermediate(
-        &self,
-        paths: &[Path<ScaledPixels>],
-        instance_buffer: &mut InstanceBuffer,
-        instance_offset: &mut usize,
-        viewport_size: Size<DevicePixels>,
-        command_encoder: &metal::RenderCommandEncoderRef,
-    ) -> bool {
-        let Some(first_path) = paths.first() else {
-            return true;
-        };
-
-        let Some(ref intermediate_texture) = self.path_intermediate_texture else {
-            return false;
-        };
-
-        command_encoder.set_render_pipeline_state(&self.path_sprites_pipeline_state);
-        command_encoder.set_vertex_buffer(
-            SpriteInputIndex::Vertices as u64,
-            Some(&self.unit_vertices),
-            0,
-        );
-        command_encoder.set_vertex_bytes(
-            SpriteInputIndex::ViewportSize as u64,
-            mem::size_of_val(&viewport_size) as u64,
-            &viewport_size as *const Size<DevicePixels> as *const _,
-        );
-
-        command_encoder.set_fragment_texture(
-            SpriteInputIndex::AtlasTexture as u64,
-            Some(intermediate_texture),
-        );
-
-        // 从中间纹理复制路径到可绘制对象时，
-        // 每个像素只能复制一次，以防透明路径。
-        //
-        // 如果所有路径具有相同的绘制顺序，则它们的边界都是
-        // 不相交的，因此我们可以单独复制每个路径的边界。如果此
-        // 批次组合了不同的绘制顺序，我们执行单次复制
-        // 以获取最小包围矩形。
-        let sprites;
-        if paths.last().unwrap().order == first_path.order {
-            sprites = paths
-                .iter()
-                .map(|path| PathSprite {
-                    bounds: path.clipped_bounds(),
-                })
-                .collect();
-        } else {
-            let mut bounds = first_path.clipped_bounds();
-            for path in paths.iter().skip(1) {
-                bounds = bounds.union(&path.clipped_bounds());
-            }
-            sprites = vec![PathSprite { bounds }];
-        }
-
-        align_offset(instance_offset);
-        let sprite_bytes_len = mem::size_of_val(sprites.as_slice());
-        let next_offset = *instance_offset + sprite_bytes_len;
-        if next_offset > instance_buffer.size {
-            return false;
-        }
-
-        command_encoder.set_vertex_buffer(
-            SpriteInputIndex::Sprites as u64,
-            Some(&instance_buffer.metal_buffer),
-            *instance_offset as u64,
-        );
-
-        let buffer_contents =
-            unsafe { (instance_buffer.metal_buffer.contents() as *mut u8).add(*instance_offset) };
-        unsafe {
-            ptr::copy_nonoverlapping(
-                sprites.as_ptr() as *const u8,
-                buffer_contents,
-                sprite_bytes_len,
-            );
-        }
-
-        command_encoder.draw_primitives_instanced(
-            metal::MTLPrimitiveType::Triangle,
-            0,
-            6,
-            sprites.len() as u64,
-        );
-        *instance_offset = next_offset;
-
-        true
     }
 
     fn draw_underlines(
@@ -1738,81 +1560,6 @@ fn build_opaque_quad_pipeline_state(
         .expect("could not create render pipeline state")
 }
 
-fn build_path_sprite_pipeline_state(
-    device: &metal::DeviceRef,
-    library: &metal::LibraryRef,
-    label: &str,
-    vertex_fn_name: &str,
-    fragment_fn_name: &str,
-    pixel_format: metal::MTLPixelFormat,
-) -> metal::RenderPipelineState {
-    let vertex_fn = library
-        .get_function(vertex_fn_name, None)
-        .expect("error locating vertex function");
-    let fragment_fn = library
-        .get_function(fragment_fn_name, None)
-        .expect("error locating fragment function");
-
-    let descriptor = metal::RenderPipelineDescriptor::new();
-    descriptor.set_label(label);
-    descriptor.set_vertex_function(Some(vertex_fn.as_ref()));
-    descriptor.set_fragment_function(Some(fragment_fn.as_ref()));
-    // 路径精灵回贴主纹理时也画在挂深度的通道里
-    descriptor.set_depth_attachment_pixel_format(metal::MTLPixelFormat::Depth32Float);
-    let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
-    color_attachment.set_pixel_format(pixel_format);
-    color_attachment.set_blending_enabled(true);
-    color_attachment.set_rgb_blend_operation(metal::MTLBlendOperation::Add);
-    color_attachment.set_alpha_blend_operation(metal::MTLBlendOperation::Add);
-    color_attachment.set_source_rgb_blend_factor(metal::MTLBlendFactor::One);
-    color_attachment.set_source_alpha_blend_factor(metal::MTLBlendFactor::One);
-    color_attachment.set_destination_rgb_blend_factor(metal::MTLBlendFactor::OneMinusSourceAlpha);
-    color_attachment.set_destination_alpha_blend_factor(metal::MTLBlendFactor::One);
-
-    device
-        .new_render_pipeline_state(&descriptor)
-        .expect("could not create render pipeline state")
-}
-
-fn build_path_rasterization_pipeline_state(
-    device: &metal::DeviceRef,
-    library: &metal::LibraryRef,
-    label: &str,
-    vertex_fn_name: &str,
-    fragment_fn_name: &str,
-    pixel_format: metal::MTLPixelFormat,
-    path_sample_count: u32,
-) -> metal::RenderPipelineState {
-    let vertex_fn = library
-        .get_function(vertex_fn_name, None)
-        .expect("error locating vertex function");
-    let fragment_fn = library
-        .get_function(fragment_fn_name, None)
-        .expect("error locating fragment function");
-
-    let descriptor = metal::RenderPipelineDescriptor::new();
-    descriptor.set_label(label);
-    descriptor.set_vertex_function(Some(vertex_fn.as_ref()));
-    descriptor.set_fragment_function(Some(fragment_fn.as_ref()));
-    if path_sample_count > 1 {
-        descriptor.set_raster_sample_count(path_sample_count as _);
-        descriptor.set_alpha_to_coverage_enabled(false);
-    }
-    let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
-    color_attachment.set_pixel_format(pixel_format);
-    color_attachment.set_blending_enabled(true);
-    color_attachment.set_rgb_blend_operation(metal::MTLBlendOperation::Add);
-    color_attachment.set_alpha_blend_operation(metal::MTLBlendOperation::Add);
-    color_attachment.set_source_rgb_blend_factor(metal::MTLBlendFactor::One);
-    color_attachment.set_source_alpha_blend_factor(metal::MTLBlendFactor::One);
-    color_attachment.set_destination_rgb_blend_factor(metal::MTLBlendFactor::OneMinusSourceAlpha);
-    color_attachment.set_destination_alpha_blend_factor(metal::MTLBlendFactor::OneMinusSourceAlpha);
-
-    device
-        .new_render_pipeline_state(&descriptor)
-        .expect("could not create render pipeline state")
-}
-
 // 对齐到 256 的倍数使 Metal 满意。
 fn align_offset(offset: &mut usize) {
     *offset = (*offset).div_ceil(256) * 256;
@@ -1861,15 +1608,11 @@ enum SurfaceInputIndex {
 }
 
 #[repr(C)]
-enum PathRasterizationInputIndex {
-    Vertices = 0,
-    ViewportSize = 1,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub struct PathSprite {
-    pub bounds: Bounds<ScaledPixels>,
+enum PathTileInputIndex {
+    PathTiles = 0,
+    PathCurves = 1,
+    PathPaints = 2,
+    ViewportSize = 3,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

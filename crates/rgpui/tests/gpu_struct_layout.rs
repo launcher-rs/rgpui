@@ -3,7 +3,7 @@
 //! 验证所有 GPU 传输结构体的内存布局与 WGSL 着色器中的定义完全匹配。
 //! 这是防止渲染错误的关键守卫——布局不匹配会导致 GPU 读取错误数据。
 
-use rgpui::{Background, Hsla, Quad, Shadow, TransformationMatrix};
+use rgpui::{Background, Hsla, PathCurve, PathPaint, PathTile, Quad, Shadow, TransformationMatrix};
 use std::mem::{align_of, offset_of, size_of};
 
 #[test]
@@ -93,4 +93,68 @@ fn verify_shadow_layout() {
     assert_eq!(offset_of!(Shadow, element_bounds), 72);
     assert_eq!(offset_of!(Shadow, element_corner_radii), 88);
     assert_eq!(offset_of!(Shadow, inset), 104);
+}
+
+#[test]
+fn verify_path_curve_layout() {
+    // WGSL/HLSL/Metal PathCurve 布局（环绕数路径渲染，D3）:
+    // p0: vec2<f32>    offset 0
+    // p1: vec2<f32>    offset 8
+    // a: vec2<f32>     offset 16
+    // b: vec2<f32>     offset 24
+    // sign: f32        offset 32
+    // pad: u32         offset 36
+    // 总大小: 40
+    assert_eq!(size_of::<PathCurve>(), 40, "PathCurve 大小必须为 40 字节");
+    assert_eq!(align_of::<PathCurve>(), 4, "PathCurve 对齐必须为 4");
+    assert_eq!(offset_of!(PathCurve, p0), 0);
+    assert_eq!(offset_of!(PathCurve, p1), 8);
+    assert_eq!(offset_of!(PathCurve, a), 16);
+    assert_eq!(offset_of!(PathCurve, b), 24);
+    assert_eq!(offset_of!(PathCurve, sign), 32);
+    assert_eq!(offset_of!(PathCurve, pad), 36);
+}
+
+#[test]
+fn verify_path_tile_layout() {
+    // WGSL/HLSL/Metal PathTile 布局:
+    // paint: u32                       offset 0
+    // curve_start: u32                 offset 4
+    // curve_count: u32                 offset 8
+    // backdrop: i32                    offset 12
+    // top_left: vec2<f32>              offset 16
+    // bottom_right: vec2<f32>          offset 24
+    // reference: vec2<f32>             offset 32
+    // curves_top_left: vec2<f32>       offset 40
+    // curves_bottom_right: vec2<f32>   offset 48
+    // 总大小: 56
+    assert_eq!(size_of::<PathTile>(), 56, "PathTile 大小必须为 56 字节");
+    assert_eq!(align_of::<PathTile>(), 4, "PathTile 对齐必须为 4");
+    assert_eq!(offset_of!(PathTile, paint), 0);
+    assert_eq!(offset_of!(PathTile, curve_start), 4);
+    assert_eq!(offset_of!(PathTile, curve_count), 8);
+    assert_eq!(offset_of!(PathTile, backdrop), 12);
+    assert_eq!(offset_of!(PathTile, top_left), 16);
+    assert_eq!(offset_of!(PathTile, bottom_right), 24);
+    assert_eq!(offset_of!(PathTile, reference), 32);
+    assert_eq!(offset_of!(PathTile, curves_top_left), 40);
+    assert_eq!(offset_of!(PathTile, curves_bottom_right), 48);
+}
+
+#[test]
+fn verify_path_paint_layout() {
+    // WGSL/HLSL/Metal PathPaint 布局（rgpui Background 为 136 字节，比上游大）:
+    // bounds: Bounds                   offset 0
+    // content_mask: Bounds             offset 16
+    // color: Background                offset 32 (align 8)
+    // even_odd: u32                    offset 168
+    // pad: u32                         offset 172
+    // 总大小: 176
+    assert_eq!(size_of::<PathPaint>(), 176, "PathPaint 大小必须为 176 字节");
+    assert_eq!(align_of::<PathPaint>(), 8, "PathPaint 对齐必须为 8");
+    assert_eq!(offset_of!(PathPaint, bounds), 0);
+    assert_eq!(offset_of!(PathPaint, content_mask), 16);
+    assert_eq!(offset_of!(PathPaint, color), 32);
+    assert_eq!(offset_of!(PathPaint, even_odd), 168);
+    assert_eq!(offset_of!(PathPaint, pad), 172);
 }
