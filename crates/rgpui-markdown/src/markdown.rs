@@ -287,7 +287,34 @@ struct TableState {
 }
 
 /// 解析 Markdown 源码为富文本块列表（含顶层块源码区间，一一对应）。
+///
+/// 解析器或其扩展在极端输入上 panic 时，降级为「保留换行的纯文本段落」，
+/// 不让一篇外部来源的 Markdown（AI 输出、粘贴内容）把整个界面打崩。
+/// 对齐 gpui-kit `249a963c`；解析器本身无跨调用状态，捕获是安全的。
 pub(crate) fn parse_markdown_with_urls(source: &str) -> (Vec<RichBlock>, Vec<Range<usize>>) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        parse_markdown_inner(source)
+    })) {
+        Ok(parsed) => parsed,
+        Err(_) => plain_text_fallback(source),
+    }
+}
+
+/// 降级结果：整篇作为一个保留换行的段落，区间覆盖全文。
+fn plain_text_fallback(source: &str) -> (Vec<RichBlock>, Vec<Range<usize>>) {
+    let mut inline = Vec::new();
+    for (index, line) in source.split('\n').enumerate() {
+        if index > 0 {
+            inline.push(RichInline::LineBreak);
+        }
+        if !line.is_empty() {
+            inline.push(RichInline::Text(line.to_string()));
+        }
+    }
+    (vec![RichBlock::Paragraph(inline)], vec![0..source.len()])
+}
+
+fn parse_markdown_inner(source: &str) -> (Vec<RichBlock>, Vec<Range<usize>>) {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
@@ -797,9 +824,47 @@ mod tests {
     // 显式导入：父模块 `use rgpui::*` 引入的 `test` 模块名会遮蔽内置属性。
     use super::{
         PARSE_CACHE_CAPACITY, ParseCache, parse_markdown_cached, parse_markdown_with_urls,
+        plain_text_fallback,
     };
     use crate::rich_text::{RichBlock, RichInline};
     use std::sync::Arc;
+
+    /// 降级：整篇一个段落，保留换行，区间覆盖全文。
+    #[test]
+    fn plain_text_fallback_keeps_line_breaks() {
+        let source = "a\n===\n---\nb";
+        let (blocks, spans) = plain_text_fallback(source);
+        assert_eq!(spans, vec![0..source.len()]);
+        let RichBlock::Paragraph(inline) = &blocks[0] else {
+            unreachable!("降级结果应是一个段落")
+        };
+        // a / br / === / br / --- / br / b
+        assert_eq!(inline.len(), 7);
+        assert!(matches!(&inline[0], RichInline::Text(t) if t == "a"));
+        assert!(matches!(inline[1], RichInline::LineBreak));
+        assert!(matches!(&inline[6], RichInline::Text(t) if t == "b"));
+    }
+
+    /// 空行保留为连续的换行，不被吞掉。
+    #[test]
+    fn plain_text_fallback_preserves_blank_lines() {
+        let (blocks, _) = plain_text_fallback("a\n\nb");
+        let RichBlock::Paragraph(inline) = &blocks[0] else {
+            unreachable!("降级结果应是一个段落")
+        };
+        // a / br / br / b
+        assert_eq!(inline.len(), 4);
+        assert!(matches!(inline[1], RichInline::LineBreak));
+        assert!(matches!(inline[2], RichInline::LineBreak));
+    }
+
+    /// 上游报过的崩溃输入（`a\n===\n---\nb\n===`）在 pulldown-cmark 上正常解析，
+    /// 块与区间仍一一对应。
+    #[test]
+    fn upstream_crash_input_parses_without_panic() {
+        let (blocks, spans) = parse_markdown_with_urls("a\n===\n---\nb\n===");
+        assert_eq!(blocks.len(), spans.len());
+    }
 
     /// 缓存有界且淘汰最久未用的条目；命中的条目会被提升为最近使用。
     #[test]
