@@ -550,15 +550,14 @@ mod tests {
         });
 
         // 模拟 UI：每 16ms 一帧，进门记 attempts，取到锁记 successes 并短暂持有。
-        let ui_stats = stats.clone();
-        let ui_term = terminal.clone();
+        // stats / terminal 之后不再使用，直接移入线程，不做冗余 clone。
         let ui = std::thread::spawn(move || {
             let mut successes = 0u64;
             for _ in 0..12 {
                 std::thread::sleep(Duration::from_millis(16));
-                ui_stats.attempts.fetch_add(1, Ordering::Relaxed);
-                if ui_term.try_lock_unfair().is_some() {
-                    ui_stats.successes.fetch_add(1, Ordering::Relaxed);
+                stats.attempts.fetch_add(1, Ordering::Relaxed);
+                if terminal.try_lock_unfair().is_some() {
+                    stats.successes.fetch_add(1, Ordering::Relaxed);
                     successes += 1;
                     std::thread::sleep(Duration::from_millis(2));
                 }
