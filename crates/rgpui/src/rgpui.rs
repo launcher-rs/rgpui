@@ -412,6 +412,9 @@ pub use fast::FrameStatsSnapshot;
 /// 视图系统 - 定义 View trait 和窗口视图的生命周期管理
 mod view;
 
+/// 帧率节流 - 失焦 / 温控两档省电帧间隔的判定（窗口内部使用）
+mod frame_throttle;
+
 /// 窗口系统 - 窗口创建、管理、渲染管线和事件处理
 mod window;
 

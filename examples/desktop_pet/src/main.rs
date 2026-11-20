@@ -1034,7 +1034,11 @@ fn main() {
                         window_background: WindowBackgroundAppearance::Transparent, // 透明背景
                         mouse_passthrough: true, // 初始鼠标穿透（由 NCHITTEST 动态控制）
                         kind: WindowKind::Overlay, // 覆盖窗口类型（置顶、无装饰）
-                        ..Default::default()     // 其他选项使用默认值
+                        // 桌宠是永不获得焦点的覆盖窗（穿透 + Overlay），若沿用失焦
+                        // 节流会被压到 30fps，与下方 60fps 的动画循环对不上。
+                        // 这里显式关闭失焦档；温控档保持默认，过热时仍会自动降频。
+                        inactive_frame_interval: None,
+                        ..Default::default() // 其他选项使用默认值
                     },
                     // 视图创建回调
                     |window, cx| {

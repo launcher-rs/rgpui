@@ -2233,6 +2233,24 @@ pub struct WindowOptions {
     /// Windows/Linux：是否启用鼠标事件穿透（点击穿透到后面的窗口）。
     /// 用于桌面宠物、覆盖层等需要让鼠标点击穿透到下层窗口的场景。
     pub mouse_passthrough: bool,
+
+    /// 窗口失焦时的最小帧间隔，默认约 30fps（`33_333µs`）。
+    ///
+    /// - `None`：失焦时不限帧（动画窗口、需要后台持续刷新的窗口可这么设）。
+    /// - `Some(Duration::ZERO)`：等价于不限帧。
+    ///
+    /// 高速率输入（≥60fps 的鼠标移动等）期间本档自动暂停，避免输入延迟抖动；
+    /// 强制呈现（如拖动窗口、连续滚动）也不受本档限制。与温控档同时命中时
+    /// **取较长的那条间隔**。
+    pub inactive_frame_interval: Option<Duration>,
+
+    /// 系统温控进入 `Serious` / `Critical` 时的最小帧间隔，默认约 60fps（`16_667µs`）。
+    ///
+    /// `None` 表示温控降频时也不限帧。`Nominal` / `Fair` 不触发本档——
+    /// `Fair` 只是「减少非必要工作」的提示，不构成限帧依据。
+    ///
+    /// 强制呈现同样不受本档限制；与失焦档同时命中时取较长的那条间隔。
+    pub thermal_frame_interval: Option<Duration>,
 }
 
 /// 创建窗口时的配置参数。
@@ -2349,6 +2367,8 @@ impl Default for WindowOptions {
             tabbing_identifier: None,
             app_owns_titlebar_drag: false,
             mouse_passthrough: false,
+            inactive_frame_interval: Some(crate::frame_throttle::DEFAULT_INACTIVE_FRAME_INTERVAL),
+            thermal_frame_interval: Some(crate::frame_throttle::DEFAULT_THERMAL_FRAME_INTERVAL),
         }
     }
 }

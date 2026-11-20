@@ -43,13 +43,14 @@ use crate::{
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
     StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRenderingMode, TextStyle,
-    TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
-    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
-    WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, root::Root,
-    size, transparent_black,
+    TextStyleRefinement, TransformationMatrix, Underline, UnderlineStyle, WindowAppearance,
+    WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations, WindowOptions,
+    WindowParams, WindowTextSystem, point, prelude::*, profiler, px, root::Root, size,
+    transparent_black,
 };
 
 use crate::collections::{FxHashMap, FxHashSet};
+use crate::frame_throttle::FrameThrottle;
 use crate::refineable::Refineable;
 use crate::rgpui_util::post_inc;
 use crate::rgpui_util::{ResultExt, log_err, measure};
@@ -1486,6 +1487,8 @@ impl Window {
             is_movable,
             app_owns_titlebar_drag,
             mouse_passthrough,
+            inactive_frame_interval,
+            thermal_frame_interval,
             is_resizable,
             is_minimizable,
             display_id,
@@ -1657,6 +1660,9 @@ impl Window {
                 });
             }
         }));
+        // 两档省电帧间隔只在创建时给一次，之后随窗口固定。
+        // 判定（含「取最长间隔」与输入速率豁免）收敛在 `frame_throttle.rs`。
+        let frame_throttle = FrameThrottle::new(inactive_frame_interval, thermal_frame_interval);
         platform_window.on_request_frame(Box::new({
             let mut cx = cx.to_async();
             let invalidator = invalidator.clone();
@@ -1695,19 +1701,21 @@ impl Window {
                     skip_if_app_borrowed(handle.update(&mut cx, |_, _, cx| cx.thermal_state()));
 
                 // Throttle frame rate based on conditions:
-                // - Thermal pressure (Serious/Critical): cap to ~60fps
-                // - Inactive window (not focused): cap to ~30fps to save energy
+                // - Thermal pressure (Serious/Critical): capped by `thermal_frame_interval`
+                // - Inactive window (not focused): capped by `inactive_frame_interval`
+                // 两档都可经 `WindowOptions` 配置（`None` 即关闭该档），同时命中时
+                // 取较长间隔。强制呈现与「本帧有下一帧回调」完全不受限。
                 let min_frame_interval = if request_frame_options.require_presentation
                     || (!request_frame_options.force_render
                         && next_frame_callbacks.borrow().is_empty())
                 {
                     None
-                } else if !active.get() && !input_rate_tracker.borrow_mut().is_high_rate() {
-                    Some(Duration::from_micros(33333))
-                } else if let Some(ThermalState::Critical | ThermalState::Serious) = thermal_state {
-                    Some(Duration::from_micros(16667))
                 } else {
-                    None
+                    frame_throttle.interval(
+                        active.get(),
+                        input_rate_tracker.borrow_mut().is_high_rate(),
+                        thermal_state,
+                    )
                 };
 
                 let now = Instant::now();
