@@ -61,6 +61,9 @@ const UI_BUSY_LOCKED_READ: usize = 4096;
 /// SSH 拆成小包，`try_recv` 永远凑不满上限，按批次大小触发会让
 /// 让锁逻辑在这些最需要它的场景里从不生效。
 const UI_GRACE_SLICES: u32 = 24;
+/// 拖动让锁的最长等待：必须覆盖一个 UI 帧周期（60Hz ≈ 16.7ms）加余量。
+/// 取 10ms 会在 UI 下次采样前重新持锁，两者节拍错拍（实测帧成功率 ~27%）。
+const UI_YIELD_TIMEOUT: Duration = Duration::from_millis(25);
 const UI_GRACE_SLICE: Duration = Duration::from_millis(1);
 
 /// 终端 → 传输层 方向的消息（等价于写本地 PTY 的字节与尺寸控制）。
@@ -324,14 +327,35 @@ fn external_loop(
             }
         }
 
-        // 刷屏让锁（见函数头注释）：只要上一段窗口里 UI 帧试过取锁却没抢到
+        // 拖动滚动条期间：每解析一小批就把数据锁交还 UI，并等 UI 真正取走
+        // 一次（successes 前进）再解析下一批。拖动帧因此能逐帧拿到锁（接近
+        // 60Hz），不再与解析批次错拍成「动一段、卡一段」。
+        //
+        // 只做「每批让锁」还不够：4KB 小批解析极快，解析线程几乎立刻又去抢锁，
+        // UI 的 60Hz 采样会与批次节拍错拍，大约隔帧才抢得到（实测 ~30Hz）。
+        // 这里显式等 UI 取走一次，把节拍对齐到 UI 帧上。10ms 超时兜底：
+        // UI 停手（最小化、拖动已结束但标志未清）时也不会把解析卡死。
+        let dragging = sync_stats.ui_dragging.load(Ordering::Relaxed);
+        if dragging {
+            let target = sync_stats.successes.load(Ordering::Relaxed) + 1;
+            let deadline = Instant::now() + UI_YIELD_TIMEOUT;
+            while sync_stats.successes.load(Ordering::Relaxed) < target && Instant::now() < deadline
+            {
+                std::thread::sleep(UI_GRACE_SLICE);
+            }
+            if trace {
+                eprintln!("[rt-trace] batch {batch_id} drag yield to UI");
+            }
+        }
+
+        // 非拖动刷屏让锁（见函数头注释）：只要上一段窗口里 UI 帧试过取锁却没抢到
         // （attempts 涨、successes 没涨），下一批取锁之前就在锁外站一会儿，
         // 让 UI 把帧画出来、把排队的滚动/复制事件处理掉。
         // 不再以「本批攒满 64KB」为前提：逐行小包刷屏时该条件几乎永不成立，
         // UI 会连续多帧取不到锁，拖动滚动条就卡住。
         let attempts = sync_stats.attempts.load(Ordering::Relaxed);
         let successes = sync_stats.successes.load(Ordering::Relaxed);
-        if attempts > last_attempts && successes == last_successes {
+        if !dragging && attempts > last_attempts && successes == last_successes {
             if trace {
                 eprintln!("[rt-trace] batch {batch_id} grace park for a UI frame");
             }
@@ -671,6 +695,68 @@ mod tests {
         }
         stats.ui_dragging.store(false, Ordering::Relaxed);
         assert!(seen, "拖动期间网格应照常更新（不能整体停摆）");
+    }
+
+    /// 拖动滚动条 + 持续刷屏：UI 每帧都要尽量拿到数据锁（帧节拍）。
+    ///
+    /// 这是 issue #1「拖一段卡一下、再卡一下」的直接量化。拖动时 UI 帧要
+    /// 连续拿到锁（接近 60Hz）；一旦隔帧才拿到一次，就表现为「动一段、卡一段」。
+    /// 只有刷屏让锁（grace park）时，整批 64KB 解析期间 UI 全被挡在锁外，
+    /// 每批只能捡一帧 → 约 30Hz、成段卡顿；拖动期间把每轮持锁切到 4KB
+    /// （`UI_BUSY_LOCKED_READ`）后，锁在批间频繁回到 UI，帧成功率应显著回升。
+    #[test]
+    fn dragging_scrollbar_under_flood_keeps_frame_cadence() {
+        let (terminal, proxy, _events) = make_term();
+        let stats = fresh_stats();
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy, stats.clone());
+
+        // 一次性灌 100MB：无论解析快慢，整个观察窗口里解析线程都满载有活干。
+        let feeder = std::thread::spawn(move || {
+            let chunk = vec![b'a'; 64 * 1024];
+            for _ in 0..1_600 {
+                if !feed.feed(chunk.clone()) {
+                    break;
+                }
+            }
+        });
+
+        // 模拟「正在拖滚动条」。
+        stats.ui_dragging.store(true, Ordering::Relaxed);
+
+        // 模拟 UI：60Hz 一帧，进门记 attempts，取到锁记 successes 并按帧重绘持锁
+        // ~2ms。同时记录最长连续丢帧段，量化「卡」的成段程度。
+        let ui_stats = stats.clone();
+        let ui = std::thread::spawn(move || {
+            const FRAMES: u32 = 30;
+            let mut successes = 0u32;
+            let mut cur_miss = 0u32;
+            let mut max_miss = 0u32;
+            for _ in 0..FRAMES {
+                sleep(Duration::from_millis(16));
+                ui_stats.attempts.fetch_add(1, Ordering::Relaxed);
+                if terminal.try_lock_unfair().is_some() {
+                    ui_stats.successes.fetch_add(1, Ordering::Relaxed);
+                    successes += 1;
+                    cur_miss = 0;
+                    sleep(Duration::from_millis(2));
+                } else {
+                    cur_miss += 1;
+                    if cur_miss > max_miss {
+                        max_miss = cur_miss;
+                    }
+                }
+            }
+            (successes, FRAMES, max_miss)
+        });
+
+        let (successes, frames, max_miss) = ui.join().expect("UI 模拟线程 panic");
+        feeder.join().expect("feed 线程 panic");
+        stats.ui_dragging.store(false, Ordering::Relaxed);
+        eprintln!("[cadence] drag+flood: {successes}/{frames} 帧抢到锁，最长连丢 {max_miss} 帧");
+        assert!(
+            successes * 4 >= frames * 3, // >= 75%
+            "拖动刷屏时 UI 只抢到 {successes}/{frames} 帧（最长连丢 {max_miss} 帧），拖动仍会成段卡顿"
+        );
     }
 
     #[test]
