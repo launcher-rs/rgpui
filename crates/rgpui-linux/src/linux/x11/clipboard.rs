@@ -1207,7 +1207,6 @@ pub(crate) enum WaitConfig {
     Until(Instant),
 
     /// 永远等待直到新事件到达
-    #[allow(unused)]
     #[allow(
         unused,
         reason = "目前我们不在应用关闭时等待剪贴板内容同步，但未来可能会"
