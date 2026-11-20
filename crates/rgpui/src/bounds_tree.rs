@@ -1,5 +1,6 @@
 //! 空间索引树：基于 R-tree 的区域查询数据结构，用于命中检测。
 
+use crate::scene::PrimitiveKind;
 use crate::{Bounds, Half};
 use std::{
     cmp,
@@ -12,12 +13,13 @@ use std::{
 /// 值越高 = 树越短 = 缓存未命中越少，但每个节点的工作量越大。
 const MAX_CHILDREN: usize = 12;
 
-/// 一种空间树，优化用于查找相交边界中的最大排序值。
+/// 一种空间树，优化用于查找相交边界中的最大排序键。
 ///
-/// 这是 R-tree 的变体，专为给重叠 UI 元素分配 z-order 的用例设计。关键优化：
-/// - 跟踪具有全局最大排序值的叶节点，支持 O(1) 快速路径查询
-/// - 使用更高的分支因子（4）以降低树高度
-/// - 基于 max_order 元数据在搜索过程中进行激进剪枝
+/// 这是 R-tree 的变体，专为给重叠 UI 元素分配 z-order 的用例设计。每个边界带
+/// 一个排序值与一个图元种类；共享排序值的边界按种类顺序绘制。关键优化：
+/// - 跟踪具有全局最大排序键的叶节点，支持 O(1) 快速路径查询
+/// - 使用更高的分支因子以降低树高度
+/// - 基于 max_key 元数据在搜索过程中进行激进剪枝
 #[derive(Debug)]
 pub(crate) struct BoundsTree<U>
 where
@@ -27,7 +29,7 @@ where
     nodes: Vec<Node<U>>,
     /// 根节点索引（如果有）。
     root: Option<usize>,
-    /// 具有最高排序值的叶节点索引（用于快速路径查询）。
+    /// 具有最高排序键的叶节点索引（用于快速路径查询）。
     max_leaf: Option<usize>,
     /// 插入时用于树遍历的可复用栈。
     insert_path: Vec<usize>,
@@ -43,18 +45,25 @@ where
 {
     /// 包含此节点及其所有后代的边界框。
     bounds: Bounds<U>,
-    /// 此子树中的最大排序值。
-    max_order: u32,
+    /// 此子树中的最大排序键。
+    max_key: Key,
     /// 节点特定数据。
     kind: NodeKind,
+}
+
+/// 边界的排序键：先按排序值，再按图元种类（决定共享同一排序值的边界的绘制顺序）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Key {
+    ordering: u32,
+    kind: PrimitiveKind,
 }
 
 #[derive(Debug, Clone)]
 enum NodeKind {
     /// 包含实际边界数据的叶节点。
     Leaf {
-        /// 分配给此边界的排序值。
-        order: u32,
+        /// 分配给此边界的排序键。
+        key: Key,
     },
     /// 具有子节点的内部节点。
     Internal {
@@ -66,7 +75,7 @@ enum NodeKind {
 /// 用于子节点索引的固定大小数组，避免堆分配。
 #[derive(Debug, Clone)]
 struct NodeChildren {
-    // Keeps an invariant where the max order child is always at the end
+    // 不变量：max_key 最大的子节点始终排在末尾
     indices: [usize; MAX_CHILDREN],
     len: u8,
 }
@@ -114,38 +123,46 @@ where
         self.search_stack.clear();
     }
 
-    /// 将边界插入树中并返回其分配的排序值。
+    /// 将给定种类的边界插入树中并返回其分配的排序值。
     ///
-    /// 排序值是与新边界相交的任何现有边界最大排序值加一。
-    pub fn insert(&mut self, new_bounds: Bounds<U>) -> u32 {
-        // Find maximum ordering among intersecting bounds
-        let max_intersecting = self.find_max_ordering(&new_bounds);
-        let ordering = max_intersecting + 1;
+    /// 排序值是与新边界相交的任何现有边界最大排序值加一；但若相交边界里排序值
+    /// 最大的那些种类都不超过 `max_shared_kind`（它们在同一排序值内会先被绘制），
+    /// 新边界就直接共享该最大排序值。
+    pub fn insert(
+        &mut self,
+        new_bounds: Bounds<U>,
+        kind: PrimitiveKind,
+        max_shared_kind: PrimitiveKind,
+    ) -> u32 {
+        let ordering = match self.find_max_key(&new_bounds) {
+            None => 1,
+            Some(max_key) if max_key.kind <= max_shared_kind => max_key.ordering,
+            Some(max_key) => max_key.ordering + 1,
+        };
+        let key = Key { ordering, kind };
 
         // Insert the new leaf
-        let new_leaf_idx = self.insert_leaf(new_bounds, ordering);
+        let new_leaf_idx = self.insert_leaf(new_bounds, key);
 
         // Update max_leaf tracking
         self.max_leaf = match self.max_leaf {
             None => Some(new_leaf_idx),
-            Some(old_idx) if self.nodes[old_idx].max_order < ordering => Some(new_leaf_idx),
+            Some(old_idx) if self.nodes[old_idx].max_key < key => Some(new_leaf_idx),
             some => some,
         };
 
         ordering
     }
 
-    /// 查找与查询相交的所有边界中的最大排序值。
-    fn find_max_ordering(&mut self, query: &Bounds<U>) -> u32 {
-        let Some(root_idx) = self.root else {
-            return 0;
-        };
+    /// 查找与查询相交的所有边界中的最大排序键。
+    fn find_max_key(&mut self, query: &Bounds<U>) -> Option<Key> {
+        let root_idx = self.root?;
 
-        // Fast path: check if the max-ordering leaf intersects
+        // Fast path: check if the max-key leaf intersects
         if let Some(max_idx) = self.max_leaf {
             let max_node = &self.nodes[max_idx];
             if query.intersects(&max_node.bounds) {
-                return max_node.max_order;
+                return Some(max_node.max_key);
             }
         }
 
@@ -153,15 +170,16 @@ where
         self.search_stack.clear();
         self.search_stack.push(NonNull::from(&self.nodes[root_idx]));
 
-        let mut max_found = 0u32;
+        // `None` 排序低于任何 key。
+        let mut max_found = None;
 
         while let Some(node) = self.search_stack.pop() {
-            // SAFETY: `node` is guaranteed to be valid as the `nodes` stack is unmodified in this function
-            // and the `search_stack` only contains pointers from this function call.
+            // SAFETY: `node` 一定有效——`nodes` 在本函数中不会被修改，
+            // `search_stack` 只持有本次调用产生的指针。
             let node = unsafe { node.as_ref() };
 
             // Pruning: skip if this subtree can't improve our result
-            if node.max_order <= max_found {
+            if Some(node.max_key) <= max_found {
                 continue;
             }
 
@@ -171,18 +189,18 @@ where
             }
 
             match &node.kind {
-                NodeKind::Leaf { order } => {
-                    max_found = cmp::max(max_found, *order);
+                NodeKind::Leaf { key } => {
+                    max_found = cmp::max(max_found, Some(*key));
                 }
                 NodeKind::Internal { children } => {
-                    // Children are maintained with highest max_order at the end.
-                    // Push in forward order to highest (last) is popped first.
+                    // 子节点按 max_key 升序维护（最大在末尾）。
+                    // 正序压栈，最大的（栈顶）先弹出。
                     self.search_stack.extend(
                         children
                             .as_slice()
                             .iter()
                             .map(|&child_idx| &self.nodes[child_idx])
-                            .filter(|node| node.max_order > max_found)
+                            .filter(|node| Some(node.max_key) > max_found)
                             .map(NonNull::from),
                     );
                 }
@@ -192,14 +210,14 @@ where
         max_found
     }
 
-    /// 插入一个具有给定边界和排序值的叶节点。
+    /// 插入一个具有给定边界和排序键的叶节点。
     /// 返回新叶节点的索引。
-    fn insert_leaf(&mut self, bounds: Bounds<U>, order: u32) -> usize {
+    fn insert_leaf(&mut self, bounds: Bounds<U>, key: Key) -> usize {
         let new_leaf_idx = self.nodes.len();
         self.nodes.push(Node {
             bounds: bounds.clone(),
-            max_order: order,
-            kind: NodeKind::Leaf { order },
+            max_key: key,
+            kind: NodeKind::Leaf { key },
         });
 
         let Some(root_idx) = self.root else {
@@ -211,11 +229,11 @@ where
         // If root is a leaf, create internal node with both
         if matches!(self.nodes[root_idx].kind, NodeKind::Leaf { .. }) {
             let root_bounds = self.nodes[root_idx].bounds.clone();
-            let root_order = self.nodes[root_idx].max_order;
+            let root_key = self.nodes[root_idx].max_key;
 
             let mut children = NodeChildren::new();
             // Max end invariant
-            if order > root_order {
+            if key > root_key {
                 children.push(root_idx);
                 children.push(new_leaf_idx);
             } else {
@@ -226,7 +244,7 @@ where
             let new_root_idx = self.nodes.len();
             self.nodes.push(Node {
                 bounds: root_bounds.union(&bounds),
-                max_order: cmp::max(root_order, order),
+                max_key: cmp::max(root_key, key),
                 kind: NodeKind::Internal { children },
             });
             self.root = Some(new_root_idx);
@@ -270,24 +288,24 @@ where
 
                     if let NodeKind::Internal { children } = &mut node.kind {
                         children.push(new_leaf_idx);
-                        // Swap new leaf only if it has the highest max_order
-                        if order <= node.max_order {
+                        // 仅当新叶的 max_key 最大时才交换到末尾
+                        if key <= node.max_key {
                             let last = children.len() - 1;
                             children.indices.swap(last - 1, last);
                         }
                     }
 
                     node.bounds = node.bounds.union(&bounds);
-                    node.max_order = cmp::max(node.max_order, order);
+                    node.max_key = cmp::max(node.max_key, key);
                     break;
                 } else {
                     // Node is full, create new internal with [best_leaf, new_leaf]
                     let sibling_bounds = self.nodes[best_child_idx].bounds.clone();
-                    let sibling_order = self.nodes[best_child_idx].max_order;
+                    let sibling_key = self.nodes[best_child_idx].max_key;
 
                     let mut new_children = NodeChildren::new();
                     // Max end invariant
-                    if order > sibling_order {
+                    if key > sibling_key {
                         new_children.push(best_child_idx);
                         new_children.push(new_leaf_idx);
                     } else {
@@ -296,10 +314,10 @@ where
                     }
 
                     let new_internal_idx = self.nodes.len();
-                    let new_internal_max = cmp::max(sibling_order, order);
+                    let new_internal_max_key = cmp::max(sibling_key, key);
                     self.nodes.push(Node {
                         bounds: sibling_bounds.union(&bounds),
-                        max_order: new_internal_max,
+                        max_key: new_internal_max_key,
                         kind: NodeKind::Internal {
                             children: new_children,
                         },
@@ -312,9 +330,8 @@ where
 
                         children.indices[best_child_pos] = new_internal_idx;
 
-                        // If new internal has highest max_order, swap it to the end
-                        // to maintain sorting invariant
-                        if new_internal_max > parent.max_order {
+                        // 若新内部节点 max_key 最大，交换到末尾以保持排序不变量
+                        if new_internal_max_key > parent.max_key {
                             children.indices.swap(best_child_pos, children_len - 1);
                         }
                     }
@@ -326,14 +343,14 @@ where
             }
         }
 
-        // Propagate bounds and max_order updates up the tree
+        // 向上传播边界与 max_key 更新
         let mut updated_child_idx = None;
         for &node_idx in self.insert_path.iter().rev() {
             let node = &mut self.nodes[node_idx];
             node.bounds = node.bounds.union(&bounds);
 
-            if node.max_order < order {
-                node.max_order = order;
+            if node.max_key < key {
+                node.max_key = key;
 
                 // Swap updated child to end (skip first iteration since the invariant is already handled by previous cases)
                 if let Some(child_idx) = updated_child_idx {
@@ -380,6 +397,7 @@ mod tests {
     #[test]
     fn test_insert() {
         let mut tree = BoundsTree::<f32>::default();
+        let (quad, shadow) = (PrimitiveKind::Quad, PrimitiveKind::Shadow);
         let bounds1 = Bounds {
             origin: Point { x: 0.0, y: 0.0 },
             size: Size {
@@ -403,9 +421,9 @@ mod tests {
         };
 
         // Insert the bounds into the tree and verify the order is correct
-        assert_eq!(tree.insert(bounds1), 1);
-        assert_eq!(tree.insert(bounds2), 2);
-        assert_eq!(tree.insert(bounds3), 3);
+        assert_eq!(tree.insert(bounds1, quad, shadow), 1);
+        assert_eq!(tree.insert(bounds2, quad, shadow), 2);
+        assert_eq!(tree.insert(bounds3, quad, shadow), 3);
 
         // Insert non-overlapping bounds and verify they can reuse orders
         let bounds4 = Bounds {
@@ -429,9 +447,9 @@ mod tests {
                 height: 10.0,
             },
         };
-        assert_eq!(tree.insert(bounds4), 1); // bounds4 does not overlap with bounds1, bounds2, or bounds3
-        assert_eq!(tree.insert(bounds5), 1); // bounds5 does not overlap with any other bounds
-        assert_eq!(tree.insert(bounds6), 2); // bounds6 overlaps with bounds4, so it should have a different order
+        assert_eq!(tree.insert(bounds4, quad, shadow), 1); // bounds4 does not overlap with bounds1, bounds2, or bounds3
+        assert_eq!(tree.insert(bounds5, quad, shadow), 1); // bounds5 does not overlap with any other bounds
+        assert_eq!(tree.insert(bounds6, quad, shadow), 2); // bounds6 overlaps with bounds4, so it should have a different order
     }
 
     #[test]
@@ -441,7 +459,13 @@ mod tests {
             // let seed = 44;
             let mut tree = BoundsTree::default();
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
-            let mut expected_quads: Vec<(Bounds<f32>, u32)> = Vec::new();
+            let mut expected_quads: Vec<(Bounds<f32>, u32, PrimitiveKind)> = Vec::new();
+            let kinds = [
+                PrimitiveKind::Shadow,
+                PrimitiveKind::Quad,
+                PrimitiveKind::Path,
+                PrimitiveKind::Underline,
+            ];
 
             // Insert a random number of random AABBs into the tree.
             let num_bounds = rng.random_range(1..=max_bounds);
@@ -454,17 +478,24 @@ mod tests {
                     origin: Point { x: min_x, y: min_y },
                     size: Size { width, height },
                 };
+                let kind = kinds[rng.random_range(0..kinds.len())];
+                let max_shared_kind = kinds[rng.random_range(0..kinds.len())];
 
-                let expected_ordering = expected_quads
+                // 朴素口径：相交边界里的最大 (排序值, 种类)；种类可共享则复用排序值。
+                let max_intersecting = expected_quads
                     .iter()
-                    .filter_map(|quad| quad.0.intersects(&bounds).then_some(quad.1))
-                    .max()
-                    .unwrap_or(0)
-                    + 1;
-                expected_quads.push((bounds, expected_ordering));
+                    .filter(|quad| quad.0.intersects(&bounds))
+                    .map(|quad| (quad.1, quad.2))
+                    .max();
+                let expected_ordering = match max_intersecting {
+                    None => 1,
+                    Some((ordering, max_kind)) if max_kind <= max_shared_kind => ordering,
+                    Some((ordering, _)) => ordering + 1,
+                };
+                expected_quads.push((bounds, expected_ordering, kind));
 
                 // Insert the AABB into the tree and collect intersections.
-                let actual_ordering = tree.insert(bounds);
+                let actual_ordering = tree.insert(bounds, kind, max_shared_kind);
                 assert_eq!(actual_ordering, expected_ordering);
             }
         }

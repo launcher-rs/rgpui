@@ -9,7 +9,9 @@ use crate::{
     AtlasTextureId, AtlasTile, Background, Bounds, ContentMask, Corners, Edges, Hsla, Pixels,
     Point, Radians, ScaledPixels, Size, bounds_tree::BoundsTree, point,
 };
+use smallvec::SmallVec;
 use std::{
+    collections::VecDeque,
     fmt::Debug,
     iter::Peekable,
     ops::{Add, Range, Sub},
@@ -37,12 +39,28 @@ pub type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
 /// 绘制顺序值，数值越小越先绘制。
 pub type DrawOrder = u32;
 
-/// 渲染场景 — 收集所有绘制图元（四边形、路径、精灵、阴影等），供 GPU 批量渲染。
+/// 挂起中的绘制图层：记录图层内图元在 `paint_operations` 中的区间、并集边界与
+/// 种类聚合；图层关闭时才统一插入排序树分配绘制顺序（对标上游图元批处理改进）。
+struct Layer {
+    /// 图层内图元在 `paint_operations` 里的连续区间（可多段）。
+    primitives: SmallVec<[Range<usize>; 1]>,
+    /// 图层内所有图元的并集边界（空边界 = 还没有图元，union 以空为单位元）。
+    bounds: Bounds<ScaledPixels>,
+    /// 图层内最大图元种类（作为插入排序树的 key 种类）。
+    max_kind: PrimitiveKind,
+    /// 图层内最严的 `max_shared_kind`（图层整体能否共享他方排序值）。
+    max_shared_kind: PrimitiveKind,
+}
+
+/// 渲染场景 — 收集所有绘制图元（四边形、文本、阴影等），供 GPU 批量渲染。
 #[derive(Default)]
 pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
     primitive_bounds: BoundsTree<ScaledPixels>,
-    layer_stack: Vec<DrawOrder>,
+    /// 图层在 `layers` 队列中的下标栈。
+    layer_stack: Vec<usize>,
+    /// 挂起图层队列（先进先出，最外层关闭时统一落地）。
+    layers: VecDeque<Layer>,
     /// 阴影图元列表。
     pub shadows: Vec<Shadow>,
     /// 四边形图元列表。
@@ -68,6 +86,7 @@ impl Scene {
         self.paint_operations.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
+        self.layers.clear();
         self.paths.clear();
         self.shadows.clear();
         self.quads.clear();
@@ -84,22 +103,55 @@ impl Scene {
     }
 
     /// 推入一个新的绘制图层，后续图元将在此图层内绘制。
-    pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        let order = self.primitive_bounds.insert(bounds);
-        self.layer_stack.push(order);
-        self.paint_operations
-            .push(PaintOperation::StartLayer(bounds));
+    ///
+    /// 图层不立刻占用绘制顺序：关闭时以「图层内图元的并集边界」插入排序树，
+    /// 按与其他图元相同的规则共享或新建绘制顺序；图层内所有图元共用该顺序。
+    pub fn push_layer(&mut self) {
+        self.layer_stack.push(self.layers.len());
+        self.layers.push_back(Layer {
+            primitives: SmallVec::new(),
+            bounds: Bounds::default(),
+            max_kind: PrimitiveKind::Shadow,
+            max_shared_kind: PrimitiveKind::Surface,
+        });
+        self.paint_operations.push(PaintOperation::StartLayer);
     }
 
     /// 弹出当前绘制图层，返回上一层。
+    ///
+    /// 最外层图层关闭时，挂起队列里的所有图层（含嵌套）统一插入排序树。
     pub fn pop_layer(&mut self) {
         self.layer_stack.pop();
+        if self.layer_stack.is_empty() {
+            while let Some(layer) = self.layers.pop_front() {
+                self.insert_layer(layer);
+            }
+        }
         self.paint_operations.push(PaintOperation::EndLayer);
     }
 
+    /// 落地一个挂起图层：按并集边界分配绘制顺序，图层内图元共用该顺序。
+    fn insert_layer(&mut self, layer: Layer) {
+        if layer.primitives.is_empty() {
+            return;
+        }
+        let order =
+            self.primitive_bounds
+                .insert(layer.bounds, layer.max_kind, layer.max_shared_kind);
+        for index in layer.primitives.into_iter().flatten() {
+            if let PaintOperation::Primitive(primitive) = &self.paint_operations[index] {
+                let primitive = primitive.clone();
+                self.push_primitive(primitive, order);
+            }
+        }
+    }
+
     /// 插入一个渲染图元到场景中。
+    ///
+    /// 不在图层内时立即插入排序树分配绘制顺序；在图层内则并入图层，
+    /// 关闭时统一落地。
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
-        let mut primitive = primitive.into();
+        let primitive = primitive.into();
         let clipped_bounds = primitive
             .bounds()
             .intersect(&primitive.content_mask().bounds);
@@ -108,48 +160,71 @@ impl Scene {
             return;
         }
 
-        let order = self
+        let kind = primitive.kind();
+        match self
             .layer_stack
             .last()
             .copied()
-            .unwrap_or_else(|| self.primitive_bounds.insert(clipped_bounds));
-        match &mut primitive {
-            Primitive::Shadow(shadow) => {
-                shadow.order = order;
-                self.shadows.push(*shadow);
+            .and_then(|layer_ix| self.layers.get_mut(layer_ix))
+        {
+            Some(layer) => {
+                layer.bounds = layer.bounds.union(&clipped_bounds);
+                layer.max_kind = layer.max_kind.max(kind);
+                layer.max_shared_kind = layer.max_shared_kind.min(kind.max_shared_kind());
+                let index = self.paint_operations.len();
+                match layer.primitives.last_mut() {
+                    Some(range) if range.end == index => range.end += 1,
+                    _ => layer.primitives.push(index..index + 1),
+                }
             }
-            Primitive::Quad(quad) => {
-                quad.order = order;
-                self.quads.push(*quad);
-            }
-            Primitive::Path(path) => {
-                path.order = order;
-                path.id = PathId(self.paths.len());
-                self.paths.push(path.clone());
-            }
-            Primitive::Underline(underline) => {
-                underline.order = order;
-                self.underlines.push(*underline);
-            }
-            Primitive::MonochromeSprite(sprite) => {
-                sprite.order = order;
-                self.monochrome_sprites.push(*sprite);
-            }
-            Primitive::SubpixelSprite(sprite) => {
-                sprite.order = order;
-                self.subpixel_sprites.push(*sprite);
-            }
-            Primitive::PolychromeSprite(sprite) => {
-                sprite.order = order;
-                self.polychrome_sprites.push(*sprite);
-            }
-            Primitive::Surface(surface) => {
-                surface.order = order;
-                self.surfaces.push(surface.clone());
+            None => {
+                let order =
+                    self.primitive_bounds
+                        .insert(clipped_bounds, kind, kind.max_shared_kind());
+                self.push_primitive(primitive.clone(), order);
             }
         }
         self.paint_operations
             .push(PaintOperation::Primitive(primitive));
+    }
+
+    /// 按给定绘制顺序把图元放入对应的种类列表。
+    fn push_primitive(&mut self, primitive: Primitive, order: DrawOrder) {
+        match primitive {
+            Primitive::Shadow(mut shadow) => {
+                shadow.order = order;
+                self.shadows.push(shadow);
+            }
+            Primitive::Quad(mut quad) => {
+                quad.order = order;
+                self.quads.push(quad);
+            }
+            Primitive::Path(mut path) => {
+                path.order = order;
+                path.id = PathId(self.paths.len());
+                self.paths.push(path);
+            }
+            Primitive::Underline(mut underline) => {
+                underline.order = order;
+                self.underlines.push(underline);
+            }
+            Primitive::MonochromeSprite(mut sprite) => {
+                sprite.order = order;
+                self.monochrome_sprites.push(sprite);
+            }
+            Primitive::SubpixelSprite(mut sprite) => {
+                sprite.order = order;
+                self.subpixel_sprites.push(sprite);
+            }
+            Primitive::PolychromeSprite(mut sprite) => {
+                sprite.order = order;
+                self.polychrome_sprites.push(sprite);
+            }
+            Primitive::Surface(mut surface) => {
+                surface.order = order;
+                self.surfaces.push(surface);
+            }
+        }
     }
 
     /// 重放指定范围内的绘制操作，从另一个场景复制图元。
@@ -157,7 +232,7 @@ impl Scene {
         for operation in &prev_scene.paint_operations[range] {
             match operation {
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
-                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
+                PaintOperation::StartLayer => self.push_layer(),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
         }
@@ -165,6 +240,10 @@ impl Scene {
 
     /// 完成场景构建，按绘制顺序排序所有图元。
     pub fn finish(&mut self) {
+        debug_assert!(
+            self.layer_stack.is_empty(),
+            "场景图层未平衡（push/pop 不成对）"
+        );
         self.shadows.sort_by_key(|shadow| shadow.order);
         self.quads.sort_by_key(|quad| quad.order);
         self.paths.sort_by_key(|path| path.order);
@@ -216,9 +295,25 @@ pub(crate) enum PrimitiveKind {
     Surface,
 }
 
+impl PrimitiveKind {
+    /// 重叠图元的绘制顺序保证按绘制次序；但为了 GPU 合批，渲染器在同一绘制顺序内
+    /// 先按种类、再按图集纹理排序，最后才按绘制次序。因此一个图元只有在它重叠的
+    /// 最上层图元种类不超过这里返回的种类时，才能共享其绘制顺序；否则需要新的顺序。
+    /// 精灵特例：同顺序内还要按图集纹理排序，不能与任何精灵共享顺序（只能与排在
+    /// 自己之前的种类共享）。
+    fn max_shared_kind(self) -> Self {
+        match self {
+            Self::MonochromeSprite => Self::Underline,
+            Self::SubpixelSprite => Self::MonochromeSprite,
+            Self::PolychromeSprite => Self::SubpixelSprite,
+            kind => kind,
+        }
+    }
+}
+
 pub(crate) enum PaintOperation {
     Primitive(Primitive),
-    StartLayer(Bounds<ScaledPixels>),
+    StartLayer,
     EndLayer,
 }
 
@@ -255,6 +350,20 @@ impl Primitive {
             Primitive::SubpixelSprite(sprite) => &sprite.bounds,
             Primitive::PolychromeSprite(sprite) => &sprite.bounds,
             Primitive::Surface(surface) => &surface.bounds,
+        }
+    }
+
+    /// 获取此图元的种类。
+    pub(crate) fn kind(&self) -> PrimitiveKind {
+        match self {
+            Primitive::Shadow(_) => PrimitiveKind::Shadow,
+            Primitive::Quad(_) => PrimitiveKind::Quad,
+            Primitive::Path(_) => PrimitiveKind::Path,
+            Primitive::Underline(_) => PrimitiveKind::Underline,
+            Primitive::MonochromeSprite(_) => PrimitiveKind::MonochromeSprite,
+            Primitive::SubpixelSprite(_) => PrimitiveKind::SubpixelSprite,
+            Primitive::PolychromeSprite(_) => PrimitiveKind::PolychromeSprite,
+            Primitive::Surface(_) => PrimitiveKind::Surface,
         }
     }
 
@@ -1110,5 +1219,111 @@ mod tests {
             }
             other => panic!("期望两个单色精灵批次，实际为 {other:?}"),
         }
+    }
+
+    /// 构造指定矩形的普通四边形（内容蒙版全覆盖，裁剪后即自身边界）。
+    fn quad_at(x: f32, y: f32, w: f32, h: f32) -> Quad {
+        Quad {
+            order: 0,
+            border_style: BorderStyle::default(),
+            bounds: bounds(
+                point(ScaledPixels(x), ScaledPixels(y)),
+                size(ScaledPixels(w), ScaledPixels(h)),
+            ),
+            content_mask: ContentMask {
+                bounds: bounds(
+                    point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                    size(ScaledPixels(1000.0), ScaledPixels(1000.0)),
+                ),
+            },
+            background: Background::default(),
+            border_color: Hsla::default(),
+            corner_radii: Corners::default(),
+            border_widths: Edges::default(),
+            continuous_corners: 0,
+            transform: TransformationMatrix::default(),
+            blend_mode: 0,
+            pad_quad: 0,
+        }
+    }
+
+    /// 种类安全的重叠可共享绘制顺序：一串依次重叠的四边形只占一个顺序，
+    /// 合批成单个批次（旧口径每个重叠都开新顺序，批次数翻倍）。
+    #[test]
+    fn test_overlapping_quads_share_order_and_batch() {
+        let mut scene = Scene::default();
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.insert_primitive(quad_at(5., 5., 10., 10.));
+        scene.insert_primitive(quad_at(10., 10., 10., 10.));
+        scene.finish();
+
+        assert_eq!(
+            scene.quads.iter().map(|q| q.order).collect::<Vec<_>>(),
+            vec![1, 1, 1],
+            "Quad 与 Quad 种类安全，应共享顺序"
+        );
+        assert_eq!(scene.batches().count(), 1, "同一顺序同一种类应合成一个批次");
+    }
+
+    /// 精灵不能与精灵共享绘制顺序（同顺序内按图集纹理排序会破坏绘制次序），
+    /// 但可以与排在它之前的种类（如 Quad）共享。
+    #[test]
+    fn test_sprites_cannot_share_order_with_sprites() {
+        let mut scene = Scene::default();
+        // 先一个四边形，再两个互相重叠的单色精灵（边界相同）。
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.insert_primitive(sprite(0, 0, 1));
+        scene.insert_primitive(sprite(0, 1, 2));
+        scene.finish();
+
+        // 精灵与 Quad 种类安全：共享顺序 1。
+        assert_eq!(scene.quads[0].order, 1);
+        assert_eq!(scene.monochrome_sprites[0].order, 1);
+        // 精灵与精灵不共享：第二个精灵开新顺序 2。
+        assert_eq!(scene.monochrome_sprites[1].order, 2);
+    }
+
+    /// 图层关闭后才统一落地：层内图元共用一个顺序，整层可与他方共享；
+    /// 空层不占顺序。
+    #[test]
+    fn test_layers_insert_deferred_and_share_order() {
+        let mut scene = Scene::default();
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.push_layer();
+        scene.insert_primitive(quad_at(5., 5., 10., 10.));
+        scene.insert_primitive(quad_at(6., 6., 10., 10.));
+        scene.pop_layer();
+        // 空图层不插入排序树，也不产生图元。
+        scene.push_layer();
+        scene.pop_layer();
+        scene.finish();
+
+        assert_eq!(
+            scene.quads.iter().map(|q| q.order).collect::<Vec<_>>(),
+            vec![1, 1, 1],
+            "图层的并集边界与第一个 Quad 相交且种类安全，层内图元应共享顺序 1"
+        );
+        assert_eq!(scene.batches().count(), 1);
+    }
+
+    /// 嵌套图层在最外层关闭时统一落地；图元在图层内不再即时查询排序树。
+    #[test]
+    fn test_nested_layers_flush_on_outermost_pop() {
+        let mut scene = Scene::default();
+        scene.push_layer();
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.push_layer();
+        scene.insert_primitive(quad_at(40., 40., 10., 10.));
+        scene.pop_layer();
+        // 内层关闭后尚未落地：图元此时还没进入种类列表。
+        assert!(scene.quads.is_empty(), "最外层未关闭前不应落地");
+        scene.pop_layer();
+        scene.finish();
+
+        // 外层只含第一个 Quad，内层只含第二个；两块边界不相交 → 共享顺序 1。
+        assert_eq!(
+            scene.quads.iter().map(|q| q.order).collect::<Vec<_>>(),
+            vec![1, 1]
+        );
     }
 }

@@ -4294,28 +4294,20 @@ impl Window {
         });
     }
 
-    /// 为指定边界创建新的绘制层。"图层"是一批
+    /// 创建一个新的绘制图层。"图层"是一批
     /// 不重叠且具有相同绘制顺序的几何图形。通常出于
     /// 性能原因使用。
     ///
+    /// `f` 内部绘制的图层叠在本图层之上（包括叠在 `f` 后续绘制的内容之上）。
+    /// 图层的边界与绘制顺序在关闭时由内部图元统一决定，无需调用方提供。
+    ///
     /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
-    pub fn paint_layer<R>(&mut self, bounds: Bounds<Pixels>, f: impl FnOnce(&mut Self) -> R) -> R {
+    pub fn paint_layer<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
         self.invalidator.debug_assert_paint();
 
-        let content_mask = self.content_mask();
-        let clipped_bounds = bounds.intersect(&content_mask.bounds);
-        if !clipped_bounds.is_empty() {
-            self.next_frame
-                .scene
-                .push_layer(self.cover_bounds(clipped_bounds));
-        }
-
+        self.next_frame.scene.push_layer();
         let result = f(self);
-
-        if !clipped_bounds.is_empty() {
-            self.next_frame.scene.pop_layer();
-        }
-
+        self.next_frame.scene.pop_layer();
         result
     }
 

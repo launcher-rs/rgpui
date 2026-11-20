@@ -174,9 +174,7 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 
 ### 子项顺序与范围
 
-| 子项 | 内容 | rgpui 落点 | 本地可验证性 | 优先级 |
-|------|------|-----------|-------------|--------|
-| D1 | 图元批处理改进 | `scene.rs`（1114 行）+ bounds 相关 | benches 对比 | 高 |
+| D1 | 图元批处理改进 | `scene.rs`（1114 行）+ bounds 相关 | benches 对比 | 高（已完成） |
 | D2 | 深度缓冲 anti-overdraw | `rgpui-wgpu` WGSL 先行；DirectX 次之；Metal 本地编不到靠 CI | wgpu 示例目测 + 帧统计 | 高 |
 | D3 | path_winding 环绕数重写 | rgpui Path 实现（落地前摸底） | paths bench + 示例 | 中 |
 | D4 | Windows 软适配器部分重绘 | `directx_renderer.rs` | Windows 本地 | 中 |
@@ -186,6 +184,32 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
   （对照上游 diff 的关键文件清单），与维护者确认后实施。
 - 风险：渲染行为回归只能靠示例目测 + bench 数字；Metal 端 rgpui-macos
   本地编译不了（AGENTS.md），shader 改动依赖 CI 矩阵。
+
+### D1 图元批处理（已完成，对齐 zed `1d8eda94bd`）
+
+- 摸底结论：rgpui 的 `Scene`/`BoundsTree` 与上游改动前形态一致——每个图元
+  插入排序树取「最大相交顺序 +1」，`paint_layer(bounds)` 开层即占一个顺序；
+  合批在 `finish()` 后按 (order, 种类[, 纹理]) 分组。
+- 落地：
+  - `bounds_tree.rs`：叶子 key 从 `u32` 换成 `{ ordering, kind }`，
+    `insert(bounds, kind, max_shared_kind)`——相交最大 key 的种类不超过
+    `max_shared_kind` 时直接复用其排序值（同顺序内按种类排序保证绘制次序）。
+  - `scene.rs`：`PrimitiveKind::max_shared_kind`（精灵特例：同顺序内还按
+    图集纹理排序，只能与排在自己之前的种类共享）；`Primitive::kind()`；
+    **图层改挂起落地**——`push_layer()` 只记挂起层（并集边界、种类聚合、
+    图元区间），最外层关闭时整层按并集边界插入排序树，层内图元共用顺序；
+    `paint_layer`/`StartLayer` 不再带边界参数。
+  - 公开 API 变化（有意为之，同上游）：`Window::paint_layer` 去掉 `bounds`
+    参数、`Scene::push_layer` 去掉 `bounds` 参数；仓内三处调用点同步
+    （`ShapedLine::paint` / `paint_background`、滚动条）。
+- 测试：`bounds_tree` 随机对拍升级为带种类口径（1000 种子）；scene 级新增
+  重叠 Quad 共享顺序合 1 批、精灵不与精灵共享、挂起图层落地与嵌套、
+  空层不占顺序。
+- 测量：`scene_build` bench 在共享机器上噪声极大（同代码 3.3–11ms 波动），
+  交错 A/B 下 uniform_list（合批最重路径）D1 稳定更快（≈407–448 →
+  366–388 µs，约 8–10%）；divs 组噪声内不可分辨。批次收敛的直接证据由
+  单测断言（依次重叠的三个 Quad：旧口径顺序 1/2/3 → 新口径全 1、批次
+  3 → 1；上游同改动 Zed 启动帧批次 20 → 4）。
 
 ---
 
