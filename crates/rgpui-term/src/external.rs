@@ -23,8 +23,8 @@
 
 use std::{
     borrow::Cow,
-    sync::{Arc, mpsc},
-    time::Instant,
+    sync::{Arc, atomic::Ordering, mpsc},
+    time::{Duration, Instant},
 };
 
 use alacritty_terminal::{
@@ -34,10 +34,18 @@ use alacritty_terminal::{
     vte::ansi,
 };
 
-use crate::terminal::ZedListener;
+use crate::terminal::{SyncStats, ZedListener};
 
 /// 与 alacritty `event_loop` 一致的单轮持锁解析字节上限。
 const MAX_LOCKED_READ: usize = u16::MAX as usize;
+
+/// 刷屏让锁：解析一批后若通道里还压着数据、而 UI 帧抢锁失败，
+/// 就在锁外最多站这些毫秒（1ms 一档，UI 帧取到锁即提前走）。
+/// 上限要大于一个 UI 帧周期（60Hz 约 16ms）：让锁窗口必须能盖住
+/// 下一次帧取锁的时点，否则「忙一段、让几毫秒」会与帧节拍错拍，
+/// 每次取锁都正好撞在解析忙时，UI 反而永远进不来。
+const UI_GRACE_SLICES: u32 = 24;
+const UI_GRACE_SLICE: Duration = Duration::from_millis(1);
 
 /// 终端 → 传输层 方向的消息（等价于写本地 PTY 的字节与尺寸控制）。
 ///
@@ -163,14 +171,27 @@ struct ExternalLoopState {
 ///
 /// 与 alacritty `event_loop::spawn` 行为对齐（同步超时、缓冲上限强制锁定、
 /// Wakeup 触发条件一致），但以通道代替 OS 轮询，无需 `EventedReadWrite`。
+///
+/// 与 alacritty 不同的一点：alacritty 的解析与 UI 在同一事件循环线程上，
+/// 不存在锁争用；这里解析线程与 UI 线程隔着一把 FairMutex。持续刷屏时
+/// 每批 64KB 背靠背解析会把数据锁几乎占满，UI 的 `try_lock_unfair` 长期
+/// 抢不到 → 画面停更、排队的滚动/复制事件无人处理（拖动滚动条卡顿、
+/// Ctrl+C 走陈旧选区的复制分支发不出 ^C）。因此加了一条让锁规则：
+/// 某批打满持锁上限、通道里还有数据、且上一段窗口里 UI 试过取锁却没取到
+/// （`SyncStats` 的 attempts 涨了而 successes 没涨）→ 在下批取锁前，
+/// 在锁外站最多 24ms（超过一帧周期，保证盖住下一次取锁时点）等 UI
+/// 补上一帧，取到即走；UI 不缺锁时一毫秒都不多等。
 fn external_loop(
     terminal: Arc<FairMutex<Term<ZedListener>>>,
     proxy: ZedListener,
     feed_rx: mpsc::Receiver<LoopMsg>,
+    sync_stats: Arc<SyncStats>,
 ) {
     let mut state = ExternalLoopState::default();
     let trace = std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some();
     let mut batch_id = 0usize;
+    let mut last_attempts = 0u64;
+    let mut last_successes = 0u64;
 
     loop {
         // 同步超时窗口内等待新字节；超时则结束同步输出（镜像 event_loop L229-249）。
@@ -213,6 +234,7 @@ fn external_loop(
         // 超出部分留在通道里下一轮继续（与 event_loop 的持锁上限一致）。
         let mut pending: Vec<Vec<u8>> = Vec::new();
         let mut budget = 0usize;
+        let mut budget_hit = false;
         if !exited {
             if let Some(LoopMsg::Feed(bytes)) = first {
                 budget += bytes.len();
@@ -231,6 +253,9 @@ fn external_loop(
                     Err(_) => break,
                 }
             }
+            // 打满持锁上限而不是收干了通道：后面大概率还压着数据，
+            // 这正是需要让锁的持续刷屏形态。
+            budget_hit = !exited && budget >= MAX_LOCKED_READ;
         }
 
         if !pending.is_empty() {
@@ -274,6 +299,27 @@ fn external_loop(
             }
         }
 
+        // 刷屏让锁（见函数头注释）：这一批打满了持锁上限，且上一段窗口里
+        // UI 帧试了取锁却没抢到（attempts 涨、successes 没涨），下一批取锁
+        // 之前在锁外站一会儿，让 UI 把帧画出来、把排队的滚动/复制事件处理掉。
+        if budget_hit {
+            let attempts = sync_stats.attempts.load(Ordering::Relaxed);
+            let successes = sync_stats.successes.load(Ordering::Relaxed);
+            if attempts > last_attempts && successes == last_successes {
+                if trace {
+                    eprintln!("[rt-trace] batch {batch_id} grace park for a UI frame");
+                }
+                for _ in 0..UI_GRACE_SLICES {
+                    std::thread::sleep(UI_GRACE_SLICE);
+                    if sync_stats.successes.load(Ordering::Relaxed) > successes {
+                        break;
+                    }
+                }
+            }
+            last_attempts = sync_stats.attempts.load(Ordering::Relaxed);
+            last_successes = sync_stats.successes.load(Ordering::Relaxed);
+        }
+
         if exited {
             break;
         }
@@ -290,6 +336,7 @@ fn external_loop(
 pub(crate) fn spawn_feed_loop(
     terminal: Arc<FairMutex<Term<ZedListener>>>,
     proxy: ZedListener,
+    sync_stats: Arc<SyncStats>,
 ) -> (FeedHandle, ExternalPtyWriter, PtyBoundReceiver) {
     let (feed_tx, feed_rx) = mpsc::channel::<LoopMsg>();
     let (bound_tx, bound_rx) = mpsc::channel::<PtyBoundMessage>();
@@ -298,7 +345,7 @@ pub(crate) fn spawn_feed_loop(
     // feed 会因通道无接收端而失败，最终以 CloseTerminal 收场）。
     if std::thread::Builder::new()
         .name("rgpui-term-external".to_string())
-        .spawn(move || external_loop(terminal, proxy, feed_rx))
+        .spawn(move || external_loop(terminal, proxy, feed_rx, sync_stats))
         .is_err()
     {
         log::error!("failed to spawn rgpui-term external feed loop thread");
@@ -325,6 +372,10 @@ mod tests {
 
     use super::*;
     use crate::terminal::{TerminalBounds, ZedListener};
+
+    fn fresh_stats() -> Arc<SyncStats> {
+        Arc::new(SyncStats::default())
+    }
 
     /// 构造默认网格的 Term + 事件桥（与真实 UI 侧结构一致）。
     fn make_term() -> (
@@ -379,7 +430,7 @@ mod tests {
     #[test]
     fn external_feed_parses_ansi() {
         let (terminal, proxy, _events) = make_term();
-        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy);
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy, fresh_stats());
 
         feed.feed("hello ".as_bytes());
         feed.feed("\x1b[31mworld".as_bytes());
@@ -397,7 +448,7 @@ mod tests {
     #[test]
     fn feed_survives_contention_with_ui_lock() {
         let (terminal, proxy, _events) = make_term();
-        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy);
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy, fresh_stats());
 
         // 占住 data 锁，逼出 try_lock_unfair 的失败分支。
         let guard = terminal.lock_unfair();
@@ -425,7 +476,7 @@ mod tests {
     #[test]
     fn notify_reaches_bound_receiver() {
         let (terminal, proxy, _events) = make_term();
-        let (_feed, writer, rx) = spawn_feed_loop(terminal, proxy);
+        let (_feed, writer, rx) = spawn_feed_loop(terminal, proxy, fresh_stats());
 
         writer.notify(b"ls\r\n");
 
@@ -438,7 +489,7 @@ mod tests {
     #[test]
     fn on_resize_reaches_bound_receiver() {
         let (terminal, proxy, _events) = make_term();
-        let (_feed, mut writer, rx) = spawn_feed_loop(terminal, proxy);
+        let (_feed, mut writer, rx) = spawn_feed_loop(terminal, proxy, fresh_stats());
 
         writer.on_resize(WindowSize {
             num_lines: 24,
@@ -459,7 +510,7 @@ mod tests {
     #[test]
     fn end_session_sends_exit() {
         let (terminal, proxy, mut events) = make_term();
-        let (feed, _writer, _rx) = spawn_feed_loop(terminal, proxy);
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal, proxy, fresh_stats());
 
         feed.end_session();
 
@@ -469,17 +520,64 @@ mod tests {
     #[test]
     fn dropping_feed_handle_also_exits() {
         let (terminal, proxy, mut events) = make_term();
-        let (feed, _writer, _rx) = spawn_feed_loop(terminal, proxy);
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal, proxy, fresh_stats());
 
         drop(feed);
 
         wait_event(&mut events, &|event| matches!(event, AlacTermEvent::Exit));
     }
 
+    /// 刷屏让锁回归：解析线程持续满负荷解析时，UI 也必须能按帧拿到数据锁。
+    ///
+    /// 旧实现只在 64KB 批次之间放锁，间隙以微秒计——模拟 UI 按 16ms 一帧
+    /// `try_lock_unfair` 时整段刷屏期一次都进不来（画面停更、排队的滚动/
+    /// 复制事件无人处理，即 issue #1 的「拖动卡顿」「Ctrl+C 发不出」）。
+    #[test]
+    fn flood_still_lets_the_ui_get_a_frame_lock() {
+        let (terminal, proxy, _events) = make_term();
+        let stats = fresh_stats();
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy, stats.clone());
+
+        // 一次性灌 100MB：无论解析快慢，UI 的观察窗口都落在满负荷期内。
+        let feeder_feed = feed.clone();
+        std::thread::spawn(move || {
+            let chunk = vec![b'a'; 64 * 1024];
+            for _ in 0..1_600 {
+                if !feeder_feed.feed(chunk.clone()) {
+                    break;
+                }
+            }
+        });
+
+        // 模拟 UI：每 16ms 一帧，进门记 attempts，取到锁记 successes 并短暂持有。
+        let ui_stats = stats.clone();
+        let ui_term = terminal.clone();
+        let ui = std::thread::spawn(move || {
+            let mut successes = 0u64;
+            for _ in 0..12 {
+                std::thread::sleep(Duration::from_millis(16));
+                ui_stats.attempts.fetch_add(1, Ordering::Relaxed);
+                if ui_term.try_lock_unfair().is_some() {
+                    ui_stats.successes.fetch_add(1, Ordering::Relaxed);
+                    successes += 1;
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            }
+            successes
+        });
+
+        let successes = ui.join().expect("UI 模拟线程 panic");
+        drop(feed);
+        assert!(
+            successes >= 4,
+            "持续刷屏 200ms 内 UI 只抢到 {successes}/12 帧的数据锁，让锁失效"
+        );
+    }
+
     #[test]
     fn writer_keeps_live_after_terminal_use() {
         let (terminal, proxy, mut events) = make_term();
-        let (feed, writer, rx) = spawn_feed_loop(terminal, proxy);
+        let (feed, writer, rx) = spawn_feed_loop(terminal, proxy, fresh_stats());
 
         // 注入 + 上行各一次后双方都应继续工作
         feed.feed("a".as_bytes());

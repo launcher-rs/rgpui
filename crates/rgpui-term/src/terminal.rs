@@ -26,7 +26,7 @@ use std::{
     sync::{
         Arc,
         atomic::AtomicUsize,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -71,6 +71,15 @@ const MAX_SCROLL_HISTORY_LINES: usize = 100_000;
 static SYNC_LOCK_BUSY: AtomicBool = AtomicBool::new(false);
 static TRACE_KEY_EVENTS: AtomicUsize = AtomicUsize::new(0);
 static TRACE_KEY_INPUTS: AtomicUsize = AtomicUsize::new(0);
+
+/// 数据锁争用的 UI-解析心跳：`sync()` 每帧进门记一次「试图取锁」，
+/// 取到再记一次「取到了」；外联解析循环据此识别「UI 想画但被饿着」，
+/// 主动在锁外让出几毫秒（见 `external::external_loop` 的刷屏让锁）。
+#[derive(Default)]
+pub(crate) struct SyncStats {
+    pub(crate) attempts: AtomicU64,
+    pub(crate) successes: AtomicU64,
+}
 
 /// 终端后端写通道：决定用户输入、OSC 应答与尺寸变化发往何处。
 enum PtyBackend {
@@ -571,6 +580,7 @@ impl TerminalBuilder {
 
             let terminal = Terminal {
                 term,
+                sync_stats: Arc::new(SyncStats::default()),
                 pty_backend: PtyBackend::Local(Notifier(pty_tx)),
                 events: VecDeque::with_capacity(10),
                 last_content: TerminalContent::default(),
@@ -630,11 +640,17 @@ impl TerminalBuilder {
 
         let term = Arc::new(FairMutex::new(term));
 
-        let (feed_handle, writer, bound_rx) =
-            crate::external::spawn_feed_loop(term.clone(), ZedListener(events_tx));
+        // 让锁心跳要在解析循环拉起前就位：解析线程读、sync() 写。
+        let sync_stats = Arc::new(SyncStats::default());
+        let (feed_handle, writer, bound_rx) = crate::external::spawn_feed_loop(
+            term.clone(),
+            ZedListener(events_tx),
+            sync_stats.clone(),
+        );
 
         let terminal = Terminal {
             term,
+            sync_stats,
             pty_backend: PtyBackend::External(writer),
             events: VecDeque::with_capacity(10),
             last_content: TerminalContent::default(),
@@ -774,6 +790,8 @@ pub struct Terminal {
     search: Option<TerminalSearch>,
     /// 输出轮次：每次新输出到达或网格 resize 时递增，用于判定搜索高亮是否漂移
     output_revision: u64,
+    /// UI 帧与解析线程的数据锁争用心跳（外联后端的刷屏让锁读它）
+    sync_stats: Arc<SyncStats>,
 }
 
 impl Terminal {
@@ -937,6 +955,7 @@ impl Terminal {
         // 不会因此停在不一致画面上：外联循环在解析完成、释放数据锁之后才发
         // `Wakeup`（同步输出超时路径同样先解锁再发），那一帧的 notify 会重新
         // 渲染并再次尝试取锁；纯同步输出缓冲期间本就没有可见变化。
+        self.sync_stats.attempts.fetch_add(1, Ordering::Relaxed);
         let Some(mut terminal) = term.try_lock_unfair() else {
             if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
                 && !SYNC_LOCK_BUSY.swap(true, Ordering::Relaxed)
@@ -945,6 +964,7 @@ impl Terminal {
             }
             return;
         };
+        self.sync_stats.successes.fetch_add(1, Ordering::Relaxed);
         if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
             && SYNC_LOCK_BUSY.swap(false, Ordering::Relaxed)
         {
