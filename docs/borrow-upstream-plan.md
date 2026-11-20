@@ -30,15 +30,15 @@
 
 | 项 | 来源 | 说明与做法 |
 |---|---|---|
-| **D4c 像素对拍** | gpui-fast `3268abe` | D4b 的 canvas 路径缺验收门槛。做法：同一串场景分别走整帧与 partial，回读像素逐字节比对。**完成前 D4 必须保持 `RGPUI_PARTIAL_REDRAW=1` 默认关闭**（见 D4 节）。注意 D3 落地后 DX 的整帧路径已换 path tile 管线，对拍基线以两者共同的当前实现为准。 |
 | **B3 UAX #14 接线** | zed `f0210f1621` | API 已就绪（B1），但两条软换行路径仍是「拉丁空格换行 + 禁则否决」。接线要贯通元素样式层到 `text_system` 的模式开关，候选断点改为预计算集合查询；影响全部软换行文本，回归面大，单独立批次。 |
 | **SVG 场景层变换动画** | zed `aff99ecc32` | 上游 +474 行落在 `elements/svg.rs` + `scene.rs` + `window.rs`：变换只改场景层、不重渲染视图。rgpui 的 SVG 走 sprite 路径，需先确认能否复用现有 scene 变换（D1 之后场景层已有 order/批次概念）。 |
 | **`fast/` P2 视图复用** | gpui-fast `0f5bf7f` | 哈希定位重复状态。rgpui `fast/` 目前只有 partial（D4），没有 view 复用层；与 D4c 同属 `fast/` 后续。 |
-| **D3 硬件实测** | zed `ffe0fa29e4` | D3 已落地（见下文 D3 节），但 GPU 收益（上游 −79%～−81%）与描边 CPU 代价（2–8×）都是上游口径，rgpui 需在硬件上跑 `painting` 例与 ink 长笔画确认。 |
+| **D3 / D4 硬件实测** | zed / gpui-fast | D3（GPU −79%～−81%、描边 CPU 2–8×）与 D4（软件适配器整帧 ~100ms → 13ms）的性能数据都是上游口径，rgpui 需在硬件 / 远程桌面（软件适配器）上实测确认。 |
 
 **已完成（2026-11-21）**：动画改用 executor 时钟（zed `99e70ee4a0`，`956454d8`）、
 borrow / window 错误诊断（zed `c408f8efc4`，`50e1936f`——含上游前置的 borrow_origin
-追踪机制，window.rs 21 处 log_err 站点加操作与窗口 id 上下文）。
+追踪机制，window.rs 21 处 log_err 站点加操作与窗口 id 上下文）、D4c 像素对拍
+（gpui-fast `3268abe`，`df1790af`——通过后软件适配器默认开启 partial 重绘）。
 
 ### 二、需要前置条件或无法本机验证
 
@@ -232,7 +232,7 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 | D1 | 图元批处理改进 | `scene.rs`（1114 行）+ bounds 相关 | benches 对比 | 高（已完成） |
 | D2 | 深度缓冲 anti-overdraw | `rgpui-wgpu` WGSL 先行；DirectX 次之；Metal 本地编不到靠 CI | wgpu 示例目测 + 帧统计 | 高 |
 | D3 | path_winding 环绕数重写 | rgpui Path 实现（落地前摸底） | paths bench + 示例 | 中 |
-| D4 | Windows 软适配器部分重绘 | `directx_renderer.rs` | Windows 本地 | 中（D4a/D4b 已完成） |
+| D4 | Windows 软适配器部分重绘 | `directx_renderer.rs` | Windows 本地 | 中（D4a/D4b/D4c 已完成） |
 | D5 | 动态纹理后端 | DirectX / wgpu 动态上传路径 | Windows 本地 | 中 |
 
 - 进入方式：**每个子项开独立提交**；D 批次动工前写单项现状摸底
@@ -391,18 +391,28 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 - 图集：`DirectXAtlasState` 记录自上次以来的瓦片上传，`take_uploads()` 在
   溢出时返回 `None` 强制整帧（对齐上游 `Uploads` 的 4096 上限）。
 
-**与上游的关键差异（有意）**：上游 `wanted()` 在软件适配器上默认开启；rgpui
-这边**只有显式 `RGPUI_PARTIAL_REDRAW=1` 才启用绘制**。原因：D4b 缺上游那套
-579 行像素对拍测试兜底，默认开会让 CI / 无显卡环境静默走新渲染路径。默认
-路径（整帧绘制）字节不变。
+**与上游的关键差异（历史口径，已随 D4c 收敛）**：D4b 落地时因缺像素对拍
+兜底，rgpui 只有显式 `RGPUI_PARTIAL_REDRAW=1` 才启用；D4c 对拍通过后改为
+对齐上游——软件适配器默认开启，`=0` 强制关、`=1` 硬件上也强制开。
 
 **验证**：`fast::partial` 9 个单测（含 WARP 真设备上的 canvas 控制流：
 整帧画一次 / 无变化不画 / damage 按矩形画）、`cargo test -p rgpui-windows`
 23 passed、`clippy -p rgpui-windows --all-targets -D warnings` 全绿、
 `cargo check --workspace` 通过。
 
-**仍未做**：D4c 像素对拍（逐帧对比整帧与 partial 路径，开 `=1` 前的验收门槛）
-与硬件 GPU 实测。按本计划约定，D4c 完成前不把默认开关翻开。
+**仍未做**：硬件 GPU 实测（软件适配器已默认开启，见 D4c 落地纪要）。
+
+**D4c 已落地**（2026-11-21，`df1790af`）：像素对拍门槛补齐——同一串场景
+分别走 partial canvas 与整帧参考路径，回读像素**逐字节**比对。场景 =
+不透明绿块 + 红色三角形路径（D3 环绕数管线）+ 蓝色下划线；帧 A 全量绘制、
+帧 B 只移动三角形（其余像素从 canvas 原样拷贝、damage 区重画），并断言
+帧 B 的 damage 计划非空（防退化成整帧对拍自证）。绘制代码抽成
+`BatchRenderer`（device/context/pipelines/globals/viewport/atlas 闭包）
+与 `upload_scene_buffers_into`，渲染器与对拍测试共用同一份实现，消除测试
+侧复制漂移；WARP 软件设备上运行，CI 无显卡环境可用。**验收通过后按约定
+翻开默认开关**：软件适配器上自动开启（对齐上游 wanted()，上游 WARP 实测
+整帧 ~100ms → 13ms），`RGPUI_PARTIAL_REDRAW=0` 强制关闭、`=1` 在硬件
+适配器上也强制开启。
 
 ### D3 现状摸底（2026-11-20，对齐 zed `ffe0fa29e4`）
 

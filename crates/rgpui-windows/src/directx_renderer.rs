@@ -61,7 +61,7 @@ pub(crate) struct DirectXRenderer {
     /// meaning we lost all the allocated gpu textures and scene resources.
     skip_draws: bool,
 
-    /// D4 部分重绘状态（软件适配器 + 开关）。整帧路径不受影响。
+    /// D4 部分重绘状态（软件适配器默认开；RGPUI_PARTIAL_REDRAW=0/1 覆盖）。整帧路径不受影响。
     partial: crate::fast::partial::Partial,
 }
 

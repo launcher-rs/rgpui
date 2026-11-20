@@ -959,30 +959,35 @@ impl Partial {
 
     /// 是否启用实际的部分重绘绘制。
     ///
-    /// 与上游不同：rgpui 这边默认**不**在软件适配器上自动开启——D4b 的 canvas
-    /// 路径缺少上游那套 579 行像素对拍测试兜底，贸然默认会让 CI/无显卡环境
-    /// 静默走新路径。只有显式 `RGPUI_PARTIAL_REDRAW=1` 才启用。
-    /// 软件适配器信息仅用于日志提示，不参与开关。
+    /// 默认口径（对齐上游 wanted()）：**软件适配器**上自动开启——软件光栅化
+    /// 上整帧绘制最贵，部分重绘收益最大（上游 WARP 实测整帧 ~100ms → 13ms）；
+    /// 硬件适配器默认关闭（有真实的呈现路径，收益不稳定）。
+    /// `RGPUI_PARTIAL_REDRAW=1` 在硬件适配器上也强制开启，`=0` 强制关闭。
+    /// 开启依据是 D4c 像素对拍：partial canvas 与整帧逐字节一致
+    /// （`partial_redraw_reproduces_full_frame_pixels`）。
     pub(crate) fn for_adapter(adapter: &IDXGIAdapter1) -> Partial {
-        let on = matches!(std::env::var("RGPUI_PARTIAL_REDRAW").as_deref(), Ok("1"));
-        if on {
-            let software = unsafe { adapter.GetDesc1() }.is_ok_and(|desc| {
-                use windows::Win32::Graphics::Dxgi::DXGI_ADAPTER_FLAG_SOFTWARE;
-                desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0
-                    || (desc.VendorId, desc.DeviceId) == (0x1414, 0x8c)
-            });
-            log::info!(
-                target: "rgpui::partial",
-                "部分重绘已开启（软件适配器: {software}）"
-            );
-        }
+        let software = unsafe { adapter.GetDesc1() }.is_ok_and(|desc| {
+            use windows::Win32::Graphics::Dxgi::DXGI_ADAPTER_FLAG_SOFTWARE;
+            desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0
+                || (desc.VendorId, desc.DeviceId) == (0x1414, 0x8c)
+        });
+        let on = match std::env::var("RGPUI_PARTIAL_REDRAW").as_deref() {
+            Ok("0") => false,
+            Ok("1") => true,
+            _ => software,
+        };
+        log::info!(
+            target: "rgpui::partial",
+            "部分重绘{}（软件适配器: {software}）",
+            if on { "已开启" } else { "已关闭" }
+        );
         Partial {
             on,
             ..Default::default()
         }
     }
 
-    /// 是否处于部分重绘模式（软件适配器 + 开关）。
+    /// 是否处于部分重绘模式（软件适配器默认开，或环境变量强制开）。
     pub(crate) fn is_on(&self) -> bool {
         self.on
     }
