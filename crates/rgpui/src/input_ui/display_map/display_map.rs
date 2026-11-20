@@ -142,6 +142,12 @@ impl DisplayMap {
         self.rebuild_fold_projection();
     }
 
+    /// 一次性设置折叠集合（按 start_line），只折叠仍在候选中的行。
+    pub fn set_folded_lines(&mut self, start_lines: &[usize]) {
+        self.fold_map.set_folded_lines(start_lines);
+        self.rebuild_fold_projection();
+    }
+
     /// 切换给定 start_line 处的折叠。
     pub fn toggle_fold(&mut self, start_line: usize) {
         self.fold_map.toggle_fold(start_line);
@@ -164,6 +170,12 @@ impl DisplayMap {
     #[inline]
     pub fn folded_ranges(&self) -> &[FoldRange] {
         self.fold_map.folded_ranges()
+    }
+
+    /// 获取所有折叠候选（来自高亮器 / LSP）。
+    #[inline]
+    pub fn fold_candidates(&self) -> &[FoldRange] {
+        self.fold_map.fold_candidates()
     }
 
     /// 清除所有折叠。

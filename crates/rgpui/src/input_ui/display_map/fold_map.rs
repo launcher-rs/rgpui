@@ -161,6 +161,21 @@ impl FoldMap {
         }
     }
 
+    /// 一次性设置折叠集合（按 start_line），只折叠仍在候选中的行。
+    ///
+    /// 用于 `fold_all` / `fold_at_level`：候选本身不变，只替换 folded 集合。
+    /// 传入不在候选中的 start_line 会被忽略。
+    pub fn set_folded_lines(&mut self, start_lines: &[usize]) {
+        self.folded = self
+            .candidates
+            .iter()
+            .filter(|c| start_lines.contains(&c.start_line))
+            .copied()
+            .collect();
+        self.folded.sort_by_key(|r| r.start_line);
+        self.needs_rebuild = true;
+    }
+
     /// 切换给定 start_line 处的折叠。
     pub fn toggle_fold(&mut self, start_line: usize) {
         let is_folded = self.is_folded_at(start_line);
@@ -340,5 +355,59 @@ impl FoldMap {
         }
 
         self.needs_rebuild = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candidates() -> Vec<FoldRange> {
+        vec![
+            FoldRange::new(0, 9),
+            FoldRange::new(1, 4),
+            FoldRange::new(5, 8),
+            FoldRange::new(2, 3),
+        ]
+    }
+
+    #[test]
+    fn set_folded_lines_only_folds_candidates() {
+        let mut map = FoldMap::new();
+        map.set_candidates(candidates());
+        // 传入 1、5（候选）与 42（非候选）：只折叠候选中的行。
+        map.set_folded_lines(&[1, 5, 42]);
+        let folded = map.folded_ranges();
+        assert_eq!(folded.len(), 2);
+        assert_eq!(folded[0].start_line, 1);
+        assert_eq!(folded[1].start_line, 5);
+        assert!(map.is_folded_at(1));
+        assert!(map.is_folded_at(5));
+        assert!(!map.is_folded_at(42));
+    }
+
+    #[test]
+    fn set_folded_lines_replaces_previous_set() {
+        let mut map = FoldMap::new();
+        map.set_candidates(candidates());
+        map.set_folded_lines(&[0, 1, 2]);
+        assert_eq!(map.folded_ranges().len(), 3);
+        // 第二次调用整体替换，不是追加。
+        map.set_folded_lines(&[2]);
+        assert_eq!(map.folded_ranges().len(), 1);
+        assert_eq!(map.folded_ranges()[0].start_line, 2);
+    }
+
+    #[test]
+    fn clear_folds_keeps_candidates() {
+        let mut map = FoldMap::new();
+        map.set_candidates(candidates());
+        map.set_folded_lines(&[0, 1, 2]);
+        map.clear_folds();
+        assert!(map.folded_ranges().is_empty());
+        // 候选保留，之后仍能再次折叠。
+        assert_eq!(map.fold_candidates().len(), 4);
+        map.set_folded_lines(&[1]);
+        assert_eq!(map.folded_ranges().len(), 1);
     }
 }

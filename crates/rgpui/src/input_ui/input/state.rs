@@ -671,6 +671,60 @@ impl InputState {
         cx.notify();
     }
 
+    /// 折叠所有候选区段。只改折叠集合，候选保留。仅在启用折叠的多行输入生效。
+    pub fn fold_all(&mut self, cx: &mut Context<Self>) {
+        if !self.mode.is_folding() {
+            return;
+        }
+        let lines: Vec<usize> = self
+            .display_map
+            .fold_candidates()
+            .iter()
+            .map(|c| c.start_line)
+            .collect();
+        self.display_map.set_folded_lines(&lines);
+        cx.notify();
+    }
+
+    /// 展开所有折叠区段。候选保留。仅在启用折叠的多行输入生效。
+    pub fn unfold_all(&mut self, cx: &mut Context<Self>) {
+        if !self.mode.is_folding() {
+            return;
+        }
+        self.display_map.clear_folds();
+        cx.notify();
+    }
+
+    /// 折叠指定嵌套层级并展开其它层级，对齐 Zed 的 `editor::FoldAtLevel`。
+    ///
+    /// level 从 1 起：没有被其它候选包含的候选是第 1 层，包在第 1 层里的是
+    /// 第 2 层，依此类推。候选按 start_line 排序且起点唯一，用栈在单遍里
+    /// 算出每个候选的嵌套深度。仅在启用折叠的多行输入生效。
+    pub fn fold_at_level(&mut self, level: usize, cx: &mut Context<Self>) {
+        if !self.mode.is_folding() || level == 0 {
+            return;
+        }
+        // open 保存当前候选的祖先的 end_line；长度即当前嵌套深度。
+        let mut open: Vec<usize> = Vec::new();
+        let mut lines = Vec::new();
+        for candidate in self.display_map.fold_candidates() {
+            while open.last().is_some_and(|&end| end < candidate.end_line) {
+                open.pop();
+            }
+            if open.len() + 1 == level {
+                lines.push(candidate.start_line);
+            }
+            open.push(candidate.end_line);
+        }
+        self.display_map.set_folded_lines(&lines);
+        cx.notify();
+    }
+
+    /// 当前的高亮器折叠候选（只读）。
+    pub fn fold_candidates(&self) -> &[crate::input_ui::FoldRange] {
+        self.display_map.fold_candidates()
+    }
+
     /// 设置是否显示行号，仅多行生效（单行忽略）。
     pub fn line_number(mut self, line_number: bool) -> Self {
         debug_assert!(self.mode.is_multi_line());
@@ -2559,6 +2613,10 @@ impl InputState {
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
         });
+        // 失焦结束未提交的 IME 组合：组合文本已经在 core.text 里，这里只清掉
+        // 标记（不再画组合下划线），文本原样保留。对齐 gpui-kit 的失焦提交语义，
+        // 避免焦点切走后留着一段"组合中"的悬挂状态。
+        self.core.end_ime_composition();
         self.clamp_number_value(window, cx);
         cx.emit(InputEvent::Blur);
         cx.notify();
