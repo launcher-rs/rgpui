@@ -32,13 +32,16 @@
 |---|---|---|
 | **B3 UAX #14 接线** | zed `f0210f1621` | API 已就绪（B1），但两条软换行路径仍是「拉丁空格换行 + 禁则否决」。接线要贯通元素样式层到 `text_system` 的模式开关，候选断点改为预计算集合查询；影响全部软换行文本，回归面大，单独立批次。 |
 | **SVG 场景层变换动画** | zed `aff99ecc32` | 上游 +474 行落在 `elements/svg.rs` + `scene.rs` + `window.rs`：变换只改场景层、不重渲染视图。rgpui 的 SVG 走 sprite 路径，需先确认能否复用现有 scene 变换（D1 之后场景层已有 order/批次概念）。 |
-| **`fast/` P2 视图复用** | gpui-fast `0f5bf7f` | 哈希定位重复状态。rgpui `fast/` 目前只有 partial（D4），没有 view 复用层；与 D4c 同属 `fast/` 后续。 |
 | **D3 / D4 硬件实测** | zed / gpui-fast | D3（GPU −79%～−81%、描边 CPU 2–8×）与 D4（软件适配器整帧 ~100ms → 13ms）的性能数据都是上游口径，rgpui 需在硬件 / 远程桌面（软件适配器）上实测确认。 |
 
 **已完成（2026-11-21）**：动画改用 executor 时钟（zed `99e70ee4a0`，`956454d8`）、
 borrow / window 错误诊断（zed `c408f8efc4`，`50e1936f`——含上游前置的 borrow_origin
 追踪机制，window.rs 21 处 log_err 站点加操作与窗口 id 上下文）、D4c 像素对拍
-（gpui-fast `3268abe`，`df1790af`——通过后软件适配器默认开启 partial 重绘）。
+（gpui-fast `3268abe`，`df1790af`——通过后软件适配器默认开启 partial 重绘）、
+`fast/` 依赖快照哈希去重（gpui-fast `0f5bf7f` 思想，`5ad60a83`——上游修的是
+`unique_states`/`OffsetReads::of` 的二次方回溯；rgpui 的对应问题在 `absorb_*`/
+`merge` 完全不去重、保留视图依赖集无界膨胀，改为吸收点哈希去重：完全相同的
+重复只保留首次，不同版本 / 读取方式并存，is_stale 语义逐位不变）。
 
 ### 二、需要前置条件或无法本机验证
 
