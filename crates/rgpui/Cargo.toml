@@ -303,6 +303,8 @@ thiserror.workspace = true
 hdrhistogram = { workspace = true, optional = true }
 waker-fn = "1.2.0"
 lyon = "1.0"
+# 环绕数路径渲染（D3）：描边与虚线展开为闭合轮廓
+tiny-skia-path = "0.11"
 pin-project = "1.1.13"
 spin = "0.12.3"
 pollster.workspace = true

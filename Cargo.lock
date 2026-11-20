@@ -6523,6 +6523,7 @@ dependencies = [
  "tempfile",
  "tendril",
  "thiserror 2.0.20",
+ "tiny-skia-path 0.11.4",
  "tokio",
  "toml 1.1.5+spec-1.1.0",
  "tracing",
@@ -8477,7 +8478,18 @@ dependencies = [
  "cfg-if",
  "log",
  "png",
- "tiny-skia-path",
+ "tiny-skia-path 0.12.0",
+]
+
+[[package]]
+name = "tiny-skia-path"
+version = "0.11.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c9e7fc0c2e86a30b117d0462aa261b72b7a99b7ebd7deb3a14ceda95c5bdc93"
+dependencies = [
+ "arrayref",
+ "bytemuck",
+ "strict-num",
 ]
 
 [[package]]
@@ -9140,7 +9152,7 @@ dependencies = [
  "skrifa 0.44.0",
  "strict-num",
  "svgtypes",
- "tiny-skia-path",
+ "tiny-skia-path 0.12.0",
  "unicode-bidi",
  "unicode-script",
  "unicode-vo",
