@@ -21,6 +21,53 @@
 
 ---
 
+## 剩余待办总览（2026-11-20 收尾盘点）
+
+批次 A/B/C/D 与两批轻量项均已落地（各节标注「已完成」）。下面是**尚未完成**
+或**需要做但被阻塞**的全部条目，按「能否立刻动手」分三组，末尾附技术债清单。
+
+### 一、可立刻动手（无外部前置）
+
+| 项 | 来源 | 说明与做法 |
+|---|---|---|
+| **D4c 像素对拍** | gpui-fast `3268abe` | D4b 的 canvas 路径缺验收门槛。做法：同一串场景分别走整帧与 partial，回读像素逐字节比对。**完成前 D4 必须保持 `RGPUI_PARTIAL_REDRAW=1` 默认关闭**（见 D4 节）。 |
+| **B3 UAX #14 接线** | zed `f0210f1621` | API 已就绪（B1），但两条软换行路径仍是「拉丁空格换行 + 禁则否决」。接线要贯通元素样式层到 `text_system` 的模式开关，候选断点改为预计算集合查询；影响全部软换行文本，回归面大，单独立批次。 |
+| **SVG 场景层变换动画** | zed `aff99ecc32` | 上游 +474 行落在 `elements/svg.rs` + `scene.rs` + `window.rs`：变换只改场景层、不重渲染视图。rgpui 的 SVG 走 sprite 路径，需先确认能否复用现有 scene 变换（D1 之后场景层已有 order/批次概念）。 |
+| **`fast/` P2 视图复用** | gpui-fast `0f5bf7f` | 哈希定位重复状态。rgpui `fast/` 目前只有 partial（D4），没有 view 复用层；与 D4c 同属 `fast/` 后续。 |
+| **动画改用 executor 时钟** | zed `99e70ee4a0` | 极小（`elements/animation.rs` 4 行）：动画时间基准从 `Instant::now()` 换成 executor 的时钟，使暂停/恢复与测试时钟一致。 |
+| **borrow / window 错误诊断** | zed `c408f8efc4` | +234 行在 `app.rs` / `window.rs` / `async_context.rs`：借用冲突与窗口创建失败时给出可读诊断（含已借用位置）。rgpui 目前是裸 panic 消息。 |
+
+### 二、需要前置条件或无法本机验证
+
+| 项 | 阻塞原因 |
+|---|---|
+| **D5 动态纹理**（gpui-fast `9235ef5` / `b533574`） | core 没有 `DynamicTexturePlatform` / `DynamicTextureId` 抽象，Windows `PaintSurface` 无帧字段，也没有视频示例——现在实现只会造出零调用点的 API，违反「能力必须有真实调用点」。等真实需求（视频 / 摄像头 / 流式画布）再引入。 |
+| **macOS display-link 遮挡复用**（gpui-fast `184e2f3`） | 只在 macOS 生效，本机（Windows）编不到也验不了，靠 CI 矩阵兜底；且依赖 `fast/` 视图复用（见上表 P2）先落地。 |
+| **GLES 3.0 无 compute 路径** | 只影响 web / 移动后端；`rgpui-web` 当前目标平台与验证环境都不在本机。 |
+| **`Primitives/finish` 基准组** | rgpui 核心 crate 没有 `benches/` 与 `[[bench]]`，补基准要先引入整套 criterion 设施。 |
+
+### 三、已判定不适用（登记，不实施）
+
+| 项 | 结论 |
+|---|---|
+| notification 高于模态层（gpui-kit `f1d1f5a6`） | rgpui 的 `NotificationCenter` 是普通 `IntoElement`，层级由调用方布局决定，无框架级 z-order 可调。 |
+| 行注解卡片（gpui-kit annotation cards） | rgpui 无多文件 diff 场景，等真实需求再引入。 |
+
+### 四、技术债（不新增能力，但要清）
+
+1. **`crates/rgpui/Cargo.toml` 有一条未使用的 `tiny-skia-path = "0.11"`**
+   （D3 环绕数路径填充的遗留依赖，注释写着「环绕数路径渲染（D3）」但
+   `grep -rn tiny_skia_path crates/rgpui/src` 为空）。当前 `cargo clippy` 会报
+   `unused dependency`。二选一：完成 D3 实现，或删依赖 + 回滚 `Cargo.lock`。
+2. **报告里还有两条次要项未定位到确切提交**（手势 MouseUp 被吞后的收尾、
+   行注解卡片视口钉住），动手前需回看 temp/ 三仓库原始调研报告确认改动范围。
+3. **`docs/borrow-upstream-plan.md` B1 方案与实际实现不一致**：方案写「引入
+   `unicode-linebreak` crate」，实际落地用的是 `icu_segmenter`
+   （`LineSegmenter::new_for_non_complex_scripts`，compiled_data 编进二进制）。
+   已在下文 B1 处加注，历史方案段保留以免丢失决策脉络。
+
+---
+
 ## 批次 A：DiffView 增强（对齐 gpui-kit）
 
 对照提交：`fa6c72d3`（diff `span_highlights` 字符级高亮）、
@@ -63,7 +110,7 @@ API**。rgpui 是单文件 unified 视图，gpui-kit 的「文件头/注解卡�
 ### 暂不做（登记 backlog）
 
 - 行注解卡片（gpui-kit 的 annotation cards）：rgpui 无多文件 diff 场景，
-  等真实需求再引入。
+  等真实需求再引入（已收进「剩余待办总览 · 三、已判定不适用」）。
 
 ---
 
@@ -82,6 +129,12 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
    版本；该 crate 无传递依赖拖累。注意仓库有 `binary-size-optimization.md`
    专项——落地时确认表体积影响，若显著则用 feature 门控（默认开启，
    `no_std` 场景不受影响——本仓库不做 no_std）。
+
+   > **落地修正（B1 实际实现）**：最终用的是 `icu_segmenter` 而不是
+   > `unicode-linebreak`——`LineSegmenter::new_for_non_complex_scripts` +
+   > `compiled_data`（规则表编进二进制、无运行时数据加载），non-complex
+   > 变体跳过天城文等复杂文字的例外规则，与 zed 同款取舍，对拉丁 / CJK /
+   > 谚文场景足够。上面的 `unicode-linebreak` 是当时的备选，保留以存决策脉络。
 2. **新增 API（不改旧行为）**：
    - `pub fn uax14_break_class(c: char) -> Uax14Class`（透出 crate 的类枚举，
      或转成自有枚举——落地时定）。
@@ -177,7 +230,7 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 | D1 | 图元批处理改进 | `scene.rs`（1114 行）+ bounds 相关 | benches 对比 | 高（已完成） |
 | D2 | 深度缓冲 anti-overdraw | `rgpui-wgpu` WGSL 先行；DirectX 次之；Metal 本地编不到靠 CI | wgpu 示例目测 + 帧统计 | 高 |
 | D3 | path_winding 环绕数重写 | rgpui Path 实现（落地前摸底） | paths bench + 示例 | 中 |
-| D4 | Windows 软适配器部分重绘 | `directx_renderer.rs` | Windows 本地 | 中 |
+| D4 | Windows 软适配器部分重绘 | `directx_renderer.rs` | Windows 本地 | 中（D4a/D4b 已完成） |
 | D5 | 动态纹理后端 | DirectX / wgpu 动态上传路径 | Windows 本地 | 中 |
 
 - 进入方式：**每个子项开独立提交**；D 批次动工前写单项现状摸底
@@ -270,6 +323,115 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
     `opaque_channel_occludes_and_blended_channel_culls_opaque_rects`（不透明
     通道遮挡 + 混合通道剔除断言）；Metal 本地编不到，靠 CI 矩阵。
 
+### D4 现状摸底（2026-11-20，对齐 gpui-fast `3268abe`）
+
+**上游改动**：5 文件 +2137/−6 —— `fast/partial.rs`（+1541）、
+`fast/layers/tests.rs`（+579）、`directx_renderer.rs`（+14）、
+`directx_atlas.rs`（+8）、`fast/mod.rs`（+1）。hooks 很小，算法本体很大。
+
+**机制**：两 canvas 交替，画完拷回 swap chain；每帧图元压成 `Sig`
+（外观 hash + 边界 + mask + 可达范围）与上一帧比对得 `Plan`——无变化直接
+显示上一 canvas；有变化则拷贝上一 canvas 并对 damage 矩形开 scissor 重绘；
+垂直整像素滚动且同 clip 内 ≥4 个图元同幅移动时，`CopySubresourceRegion`
+搬移该 clip，damage 只剩暴露条带 + 未跟随的静态图元 + 其它变化。安全阀：
+非整像素滚动/非像素对齐 clip、scroll layer、surface、damage > 60%、
+绘制顺序不一致、变形 sprite、图集 tile 重传、clear 色变化 → 整帧绘制。
+上游 WARP 2vCPU / 1440×900 实测：整帧 ~100 ms → 12.7–14 ms，App CPU
+172% → 16–20%。
+
+**rgpui 现状差异（移植必须适配）**：
+
+1. rgpui 的 `fast/` 只有 `dependencies`（P1）/`layout_key`（P3a）/`stats`，
+   没有上游的 `frame::FrameState`、`composition::DirectXComposition`、
+   `device_recovery::RecoveryState`、`Drawer` trait 与 `layers` 像素测试
+   harness——`partial.rs` 的渲染半段（`Canvas`/`Scissor`/`RendererDrawer`，
+   约 500 行）无法直接复用，需要按 rgpui 的 `DirectXRenderer` 重写。
+2. `DirectXRenderer::draw_into` 直接按 `scene.batches()` 调 `draw_*`，没有
+   Drawer 抽象；damage 剪裁要么包 device context 的 scissor 状态（上游的
+   `Scissor` guard，含失败恢复），要么给每个 `draw_*` 加区域参数（侵入更大）。
+3. `DirectXAtlas` 是本地 `DirectXAtlasState`（非上游泛型 `AtlasState<B>`），
+   `Uploads` 加字段比上游更轻，但要在 `get_or_insert_with` 的上传路径记录 tile。
+4. **最大技术风险**：D2 深度缓冲刚落地，`pre_draw` 每帧 `Clear(0)` 并绑定
+   DepthStencil；拷贝上一 canvas 后，damage 区重绘必须同步清空对应深度，
+   否则深度测试会误剔除。上游 partial 基于它自己的 anti-overdraw，深度口径
+   （shader 反推 instance_id）与 rgpui 的逐实例 `Quad.depth` 不同，不能直接照搬。
+5. `Quad` 已加 `depth: f32`（D2），`Sig` 必须排除该字段，否则排序变化会被
+   误判成内容变化而丢掉整帧复用。
+6. rgpui 有 `render_to_image`（test-support）可作像素对拍基座，但上游 579 行
+   测试依赖 `fast::layers` harness，需新写等价 harness。
+
+**建议拆分（每个独立提交）**：
+
+- D4a `Sig`/`Plan` 纯算法 + 单测（约 900 行）：先只做判定，不接绘制，
+  以环境变量默认关闭。
+- D4b 双 canvas + scissor + 滚动块搬移（约 500 行）：含 D2 深度同步。
+- D4c atlas uploads + 像素对拍测试（约 600 行）：复用 `render_to_image`。
+
+**状态**：摸底完成；D4a 已落地——`crates/rgpui-windows/src/fast/partial.rs`
+实现 `Area` / `Sig` / `signatures` / `Plan` / `plan`，按 rgpui 差异修正
+（`Quad.depth` 不进签名；quad 的 `transform`/`blend_mode`/`continuous_corners`
+与多色精灵的 `transformation` 进签名并按矩阵算可达范围；有 `surface` 直接不比较）。
+渲染器加默认关闭的判定 hook（`RGPUI_PARTIAL_REDRAW=1` 开启，只记 debug 日志、
+不改绘制），设备丢失时清空上一帧签名。8 个单测、`clippy -p rgpui-windows
+--all-targets -D warnings`、`cargo check --workspace` 全绿。
+
+**D4b 已落地**（2026-11-20）：
+
+- `fast::partial` 增加 `Drawer` trait + `Scissor` guard + `Canvas`（颜色/深度
+  各两张纹理交替）+ `Partial::frame`。damage 区用 `ID3D11DeviceContext1::ClearView`
+  只清颜色与深度（**深度清 0.0**，对齐 rgpui「越大越近」），scissor 下按矩形
+  重画；滚动用 `CopySubresourceRegion` 把颜色与深度一起搬，保持 anti-overdraw
+  的深度与像素对应；最后整张 canvas `CopyResource` 回交换链 buffer。
+- 渲染器：`draw_batches` 从 `draw_into` 抽出供 partial 复用；`PartialDrawer`
+  实现 `Drawer`，`begin` 临时把 canvas 视图换进 `resources` 并在 `Drop` 恢复
+  （路径栅格化会读回 `render_target_view`）；`RENDER_TARGET_FORMAT` /
+  `render_target` 提为 `pub(crate)`；设备丢失时 `partial.reset()`。
+- 图集：`DirectXAtlasState` 记录自上次以来的瓦片上传，`take_uploads()` 在
+  溢出时返回 `None` 强制整帧（对齐上游 `Uploads` 的 4096 上限）。
+
+**与上游的关键差异（有意）**：上游 `wanted()` 在软件适配器上默认开启；rgpui
+这边**只有显式 `RGPUI_PARTIAL_REDRAW=1` 才启用绘制**。原因：D4b 缺上游那套
+579 行像素对拍测试兜底，默认开会让 CI / 无显卡环境静默走新渲染路径。默认
+路径（整帧绘制）字节不变。
+
+**验证**：`fast::partial` 9 个单测（含 WARP 真设备上的 canvas 控制流：
+整帧画一次 / 无变化不画 / damage 按矩形画）、`cargo test -p rgpui-windows`
+23 passed、`clippy -p rgpui-windows --all-targets -D warnings` 全绿、
+`cargo check --workspace` 通过。
+
+**仍未做**：D4c 像素对拍（逐帧对比整帧与 partial 路径，开 `=1` 前的验收门槛）
+与硬件 GPU 实测。按本计划约定，D4c 完成前不把默认开关翻开。
+
+---
+
+## Scene 排序加速（2026-11-20，对齐 zed `d3fc053d5b`，已完成）
+
+**上游做法**：`Scene::finish` 原来对图元本身 `sort_by_key`，每次交换都整体拷贝
+一个实例结构体（`Quad` 100+ 字节）。改成先排小的 `(键, 下标)` 对，再按置换的环
+把图元搬到位，每个图元只搬一次；已有序的数组提前返回、不分配；一个键缓冲在
+`finish` 内跨图元种类复用。`paths` / `surfaces` 不是 `Copy` 且数量少，保持
+`sort_by_key`。
+
+**rgpui 移植**（`crates/rgpui/src/scene.rs` 新增 `sort_in_place`）：
+
+- 键打包成 `u64`：`(major as u64) << 32 | minor as u64`，低 32 位放**插入下标**，
+  因此相等键保持插入顺序——与原来的稳定 `sort_by_key` 结果逐位一致，也正因为
+  有这条保证才敢用 `sort_unstable`。
+- 覆盖 `shadows` / `quads` / `underlines` / 三种精灵；D2 的深度赋值循环原样保留
+  在排序之后（下标即绘制序，不能提前）。
+- 精灵键仍是 `(order, texture_id.index)`（D1 合批口径），未改成 `tile_id`。
+
+**验证**：`scene::tests` 新增 4 条——`test_finish_sort_matches_stable_sort`
+（6 组输入逐位对比稳定排序，含重复 order / 已有序 / 空数组）、
+`test_finish_is_idempotent`（连调两次结果与深度不变）、
+`test_sort_in_place_follows_multiple_cycles`（直接验证多环置换搬移）、
+`test_sprite_sort_is_stable_across_texture_groups`（同键精灵保持插入序）。
+`cargo test -p rgpui --lib` 全绿、`cargo clippy -p rgpui --all-targets` 退出 0。
+
+**未做**：上游同提交带的 `benches/primitives.rs` 里 `Primitives/finish` 基准组。
+rgpui 核心 crate 目前没有 bench 目标（无 `[[bench]]`、无 `benches/`），补基准要
+先引入整套 criterion 设施，与本次改动无关，登记待有基准框架时再补。
+
 ---
 
 ## 调研依据（2026-11-20，temp/ 三仓库均活跃至前一天）
@@ -279,12 +441,86 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
   哈希定位重复状态（`0f5bf7f`）、macOS 遮挡复用 display links（`184e2f3`）、
   app 被借用时推迟帧请求（`32c506f`）等。
 - **zed `crates/gpui`**：11-12 同日渲染管线三连（`be07e43ea0` / `1d8eda94bd`
-  / `ffe0fa29e4`）+ 排序加速；UAX #14 断行（`f0210f1621`）；电源/热帧间隔
-  可配置（`7c8dbadcb5`，后续可评估给 `Platform` trait）；SVG 变换动画
+  / `ffe0fa29e4`）+ 排序加速（`d3fc053d5b`，已完成，见「Scene 排序加速」）；
+  UAX #14 断行（`f0210f1621`）；电源/热帧间隔
+  可配置（`7c8dbadcb5`，已完成，见「帧间隔可配置」）；SVG 变换动画
   （`aff99ecc32`）；arena 包 `Rc` 防 UB（`2529740084`）等。
 - **gpui-kit**（组件库下游）：diff `span_highlights`（`fa6c72d3`）、
   editor `GutterStyle`（`d758da0f`）、大文档软换行加速（`514f243d`）、
   f64 坐标 + 9 位行号（`e028806a`）、input 折叠 API / IME 失焦组合 /
   RTL 段落起始边等。
-- 未纳入本轮但可后续评估：zed 电源/热帧间隔 API、gpui-kit 的 input 折叠
-  API 与 RTL 段落起始边（与 rgpui bidi 同源）、zed SVG 变换动画。
+- 未纳入本轮但可后续评估：zed SVG 变换动画、gpui-kit RTL 段落起始边
+  （与 rgpui bidi 同源）。（zed 电源/热帧间隔与 gpui-kit input 折叠 API
+  已在后续两批完成。）
+
+---
+
+## 轻量借鉴项（2026-11-20 第二批，已完成）
+
+三项低风险、可独立验证的 gpui-kit 改动，均未改公开 API 语义：
+
+1. **input 公开折叠 API**（`6898b31c`）：`InputState::fold_all` / `unfold_all` /
+   `fold_at_level` / `fold_candidates`。`fold_at_level` 用栈单遍算候选嵌套深度
+   （level 1 = 不被其它候选包含），只改 folded 集合、候选保留。底座新增
+   `FoldMap::set_folded_lines` / `DisplayMap::set_folded_lines` / `DisplayMap::fold_candidates`。
+   测试：`fold_map::tests` 3 条（只折候选、整体替换、clear 保留候选）。
+2. **IME 失焦结束组合**（`39540772`）：`TextCore::end_ime_composition()` 清
+   `ime_marked_range` 但保留文本与选区；`InputState::on_blur` 调用它，避免焦点
+   切走后留下"组合中"的悬挂下划线。测试：`core::tests` 1 条。
+3. **Markdown 解析 panic 降级**（`249a963c`）：`parse_markdown_with_urls` 用
+   `catch_unwind` 包住解析，panic 时降级为「保留换行的纯文本段落」
+   （`plain_text_fallback`，区间覆盖全文）。rgpui 用 pulldown-cmark，上游报的
+   崩溃输入本来就不 panic，这层是外部来源 Markdown 的防御兜底。
+   测试：`markdown::tests` 3 条（换行保留、空行保留、上游崩溃输入不 panic）。
+
+验证：`cargo test -p rgpui-markdown` 20 passed、`cargo test -p rgpui --lib`
+相关 8 条、`cargo clippy --workspace --all-targets -D warnings` 无 error、
+`cargo check -p rgpui --features editor` 通过。
+
+**不适用（登记，不实施）**：gpui-kit `f1d1f5a6`「notification 高于模态层」。
+上游有自动挂载的 toast 栈（`WindowState` 里 `deferred(11 + dialogs)`），rgpui 的
+`NotificationCenter` 是普通 `IntoElement`，层级由调用方布局决定，没有框架级
+z-order 可调。等真实需求（需要框架统一托管 toast）再引入。
+
+---
+
+## 帧间隔可配置（2026-11-20，对齐 zed `7c8dbadcb5`，已完成）
+
+**上游做法**：`WindowOptions` 增加 `inactive_frame_interval` /
+`low_power_frame_interval` / `thermal_frame_interval`，`window.rs` 把命中的限制
+收进一个数组再 `.max()`（**最长间隔胜出**），强制呈现绕过全部限制。
+
+**rgpui 的差异（有意）**：
+
+- rgpui 没有 `PowerMode` 抽象（`grep -rn 'PowerMode\|low_power\|power_mode'`
+  全仓为空），没有电源状态来源就加 low-power 档只会得到永远不命中的死配置，
+  因此**只搬失焦档与温控档**，low-power 档登记在案，等有真实电源来源再补。
+- 判定逻辑没有塞进 `window.rs` 的帧回调，而是抽到独立模块
+  `crates/rgpui/src/frame_throttle.rs`（`FrameThrottle { inactive, thermal }`
+  + `interval(active, high_rate_input, thermal_state) -> Option<Duration>`），
+  这样「取最长」「输入速率豁免」「`None` 只关自己那一档」都能直接单测，
+  不必起真窗口。帧回调只剩「强制呈现 / 有下一帧回调 → 不限帧」这层门。
+
+**默认值不变**：`Some(33_333µs)`（失焦 ≈30fps）/ `Some(16_667µs)`
+（温控 ≈60fps），与原硬编码完全一致；`WindowOptions::default()` 从
+`frame_throttle` 的两个常量取，单测 `window_options_defaults_feed_this_module`
+把这条接线钉住，防止两处各改各的。
+
+**语义要点**（写进字段文档）：
+
+- `None` = 该档关闭（不限帧），不是「回退默认值」；`Some(ZERO)` 等价不限帧。
+- 两档同时命中取较长间隔（失焦 30fps + 温控 60fps → 30fps，与原「先命中先返回」
+  的顺序结果一致）。
+- 温控档只认 `Serious` / `Critical`；`Fair` 只是「减少非必要工作」的提示，
+  不构成限帧依据。
+- 高速率输入（≥60fps）只暂停失焦档，不暂停温控档。
+
+**真实调用点**：`examples/desktop_pet` 的桌宠是永不获得焦点的 Overlay 穿透窗，
+原先一直被失焦档压到 30fps，而它自己按 60fps 驱动动画循环——现在显式设
+`inactive_frame_interval: None`，温控档保持默认（过热仍降频）。
+
+**验证**：`frame_throttle::tests` 7 条（默认值等价旧行为、`Fair` 不限帧、
+取最长、输入速率豁免、单档关闭、热状态未知、`WindowOptions` 默认接线）、
+`cargo test -p rgpui --lib` 912 passed、`cargo clippy --workspace --all-targets
+-- -D warnings` 退出 0、`python .github/scripts/check_platform_calls.py` 全通过。
+
