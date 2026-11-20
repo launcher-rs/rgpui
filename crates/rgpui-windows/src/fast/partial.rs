@@ -948,6 +948,15 @@ pub(crate) struct Partial {
 }
 
 impl Partial {
+    /// 测试基座：无视环境变量强制开启，供像素对拍使用。
+    #[cfg(test)]
+    pub(crate) fn forced_on() -> Partial {
+        Partial {
+            on: true,
+            ..Default::default()
+        }
+    }
+
     /// 是否启用实际的部分重绘绘制。
     ///
     /// 与上游不同：rgpui 这边默认**不**在软件适配器上自动开启——D4b 的 canvas
