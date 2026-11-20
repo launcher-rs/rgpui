@@ -244,18 +244,25 @@ impl Scene {
             self.layer_stack.is_empty(),
             "场景图层未平衡（push/pop 不成对）"
         );
-        self.shadows.sort_by_key(|shadow| shadow.order);
-        self.quads.sort_by_key(|quad| quad.order);
+        // 排序策略见 `sort_in_place`：排小的 `(键, 下标)` 对，再把图元按置换
+        // 逐环搬到位，每个图元只搬一次。`paths` / `surfaces` 不是 `Copy` 且数量少，
+        // 继续用 `sort_by_key`。
+        let keys = &mut Vec::new();
+        sort_in_place(&mut self.shadows, keys, |shadow| (shadow.order, 0));
+        sort_in_place(&mut self.quads, keys, |quad| (quad.order, 0));
         self.paths.sort_by_key(|path| path.order);
-        self.underlines.sort_by_key(|underline| underline.order);
+        sort_in_place(&mut self.underlines, keys, |underline| (underline.order, 0));
         // 合批以 texture_id 为界（见 `Scene::batches`），排序键必须与之一致：
         // 按 tile_id 排序会把同一张纹理的精灵打散成多个批次。
-        self.monochrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
-        self.subpixel_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
-        self.polychrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
+        sort_in_place(&mut self.monochrome_sprites, keys, |sprite| {
+            (sprite.order, sprite.tile.texture_id.index)
+        });
+        sort_in_place(&mut self.subpixel_sprites, keys, |sprite| {
+            (sprite.order, sprite.tile.texture_id.index)
+        });
+        sort_in_place(&mut self.polychrome_sprites, keys, |sprite| {
+            (sprite.order, sprite.tile.texture_id.index)
+        });
         self.surfaces.sort_by_key(|surface| surface.order);
         // 深度缓冲 anti-overdraw：排序后的下标即绘制序，按「越大越近」给每个
         // quad 分配单调深度，渲染器的不透明通道据此跳过被遮住像素。
@@ -284,6 +291,53 @@ impl Scene {
             polychrome_sprites_iter: self.polychrome_sprites.iter().peekable(),
             surfaces_start: 0,
             surfaces_iter: self.surfaces.iter().peekable(),
+        }
+    }
+}
+
+/// 按 `(主键, 次键)` 就地排序图元，但**不搬图元本身**。
+///
+/// 图元结构体很大（`Quad` 100+ 字节），`sort_by_key` 的每次交换都要整体拷贝，
+/// 而交换次数是 O(n log n)。这里改排小的 `(键, 下标)` 对（16 字节），排完再按
+/// 置换的环把图元搬到位，每个图元只搬一次。`keys` 由调用方复用，跨图元种类
+/// 只分配一次。
+///
+/// 稳定性：下标是排序键的低 32 位，因此相等键保持插入顺序，与原来的
+/// `sort_by_key`（稳定排序）结果逐位一致；有了这条保证才能用 `sort_unstable`。
+///
+/// 已经有序的数组直接返回，不分配也不搬动（网格 / 条纹这类常见场景）。
+fn sort_in_place<T: Copy>(
+    primitives: &mut [T],
+    keys: &mut Vec<(u64, u32)>,
+    key: impl Fn(&T) -> (u32, u32),
+) {
+    if primitives.is_sorted_by_key(&key) {
+        return;
+    }
+    keys.clear();
+    keys.extend(primitives.iter().enumerate().map(|(index, primitive)| {
+        let (major, minor) = key(primitive);
+        ((major as u64) << 32 | minor as u64, index as u32)
+    }));
+    keys.sort_unstable();
+
+    // `keys[target].1` 是 target 位置应放入的源下标。沿着置换的每个环搬一圈，
+    // 搬过的槽位把下标指向自己作为「已处理」标记。
+    for start in 0..primitives.len() {
+        if keys[start].1 as usize == start {
+            continue;
+        }
+        let displaced = primitives[start];
+        let mut target = start;
+        loop {
+            let source = keys[target].1 as usize;
+            keys[target].1 = target as u32;
+            if source == start {
+                primitives[target] = displaced;
+                break;
+            }
+            primitives[target] = primitives[source];
+            target = source;
         }
     }
 }
@@ -1381,6 +1435,130 @@ mod tests {
         assert_eq!(
             scene.quads.iter().map(|q| q.order).collect::<Vec<_>>(),
             vec![1, 1]
+        );
+    }
+
+    /// 构造带指定 order、以 `x` 作为身份标记的四边形（排序后靠 `bounds.origin.x` 认人）。
+    fn quad_with_order(order: u32, x: f32) -> Quad {
+        let mut quad = quad_at(x, 0., 10., 10.);
+        quad.order = order;
+        quad
+    }
+
+    fn quad_identity(quads: &[Quad]) -> Vec<(u32, f32)> {
+        quads
+            .iter()
+            .map(|quad| (quad.order, quad.bounds.origin.x.0))
+            .collect()
+    }
+
+    /// 就地置换排序必须与稳定 `sort_by_key` 逐位一致（含相等 order 的先后）。
+    #[test]
+    fn test_finish_sort_matches_stable_sort() {
+        // 刻意造出：逆序、重复 order、已有序、单元素等形态。
+        let cases: Vec<Vec<(u32, f32)>> = vec![
+            vec![(3, 30.), (1, 10.), (2, 20.)],
+            vec![(1, 10.), (1, 11.), (0, 0.), (1, 12.)],
+            vec![(0, 0.), (1, 10.), (2, 20.)],
+            vec![(7, 70.)],
+            vec![],
+            vec![(2, 20.), (2, 21.), (1, 10.), (2, 22.), (1, 11.), (0, 0.)],
+        ];
+
+        for case in cases {
+            let mut scene = Scene::default();
+            scene.quads = case
+                .iter()
+                .map(|&(order, x)| quad_with_order(order, x))
+                .collect();
+            let mut expected = scene.quads.clone();
+            expected.sort_by_key(|quad| quad.order);
+
+            scene.finish();
+
+            assert_eq!(
+                quad_identity(&scene.quads),
+                quad_identity(&expected),
+                "输入 {case:?} 的排序结果必须与稳定排序一致"
+            );
+        }
+    }
+
+    /// 重复排序（finish 连调）不得改变结果，也不得破坏深度赋值。
+    #[test]
+    fn test_finish_is_idempotent() {
+        let mut scene = Scene::default();
+        scene.quads = vec![
+            quad_with_order(2, 20.),
+            quad_with_order(0, 0.),
+            quad_with_order(1, 10.),
+            quad_with_order(1, 11.),
+        ];
+        scene.finish();
+        let once = quad_identity(&scene.quads);
+        let depths = scene
+            .quads
+            .iter()
+            .map(|quad| quad.depth)
+            .collect::<Vec<_>>();
+
+        scene.finish();
+
+        assert_eq!(quad_identity(&scene.quads), once);
+        assert_eq!(
+            scene
+                .quads
+                .iter()
+                .map(|quad| quad.depth)
+                .collect::<Vec<_>>(),
+            depths,
+            "第二次 finish 必须给出同样的深度"
+        );
+    }
+
+    /// 置换可能包含多个环：直接验证 `sort_in_place` 的搬移逻辑。
+    #[test]
+    fn test_sort_in_place_follows_multiple_cycles() {
+        // 键 = 值本身；输入构成 (0 1 2)(3 4) 两个环。
+        let mut values = vec![1u32, 2, 0, 4, 3];
+        let mut keys = Vec::new();
+        sort_in_place(&mut values, &mut keys, |value| (*value, 0));
+        assert_eq!(values, vec![0, 1, 2, 3, 4]);
+
+        // 已经有序时不改动、也不清空复用缓冲之外的语义（幂等）。
+        let mut values = vec![0u32, 1, 2];
+        sort_in_place(&mut values, &mut keys, |value| (*value, 0));
+        assert_eq!(values, vec![0, 1, 2]);
+    }
+
+    /// 精灵键是 `(order, texture_id)`，稳定性同样要保住（决定批次内绘制顺序）。
+    #[test]
+    fn test_sprite_sort_is_stable_across_texture_groups() {
+        let mut scene = Scene::default();
+        scene.monochrome_sprites = vec![
+            sprite(2, 1, 21),
+            sprite(1, 1, 11),
+            sprite(2, 0, 20),
+            sprite(1, 0, 10),
+            sprite(2, 1, 22),
+        ];
+        scene.finish();
+
+        let actual = scene
+            .monochrome_sprites
+            .iter()
+            .map(|sprite| {
+                (
+                    sprite.order,
+                    sprite.tile.texture_id.index,
+                    sprite.tile.tile_id.0,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual,
+            vec![(1, 0, 10), (1, 1, 11), (2, 0, 20), (2, 1, 21), (2, 1, 22)],
+            "同键精灵必须保持插入顺序"
         );
     }
 }
