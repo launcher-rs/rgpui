@@ -464,6 +464,7 @@ pub struct RibbonButton {
     label: Option<SharedString>,
     icon: Option<IconName>,
     large: bool,
+    disabled: bool,
     keytip: Option<SharedString>,
 }
 
@@ -475,8 +476,17 @@ impl RibbonButton {
             label: None,
             icon: None,
             large: false,
+            disabled: false,
             keytip: None,
         }
+    }
+
+    /// 置灰按钮：仍占位展示，但不响应悬停与点击。
+    ///
+    /// 用于“功能已列出、尚未实现”的骨架；实现后去掉此调用即可。
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 
     /// 覆盖显示标签（默认取注册表标签）。
@@ -516,6 +526,7 @@ pub struct RibbonToggle {
     label: Option<SharedString>,
     icon: Option<IconName>,
     checked: bool,
+    disabled: bool,
     keytip: Option<SharedString>,
 }
 
@@ -527,8 +538,15 @@ impl RibbonToggle {
             label: None,
             icon: None,
             checked: false,
+            disabled: false,
             keytip: None,
         }
+    }
+
+    /// 置灰切换按钮：仍展示选中态，但不响应悬停与点击。
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 
     /// 覆盖显示标签。
@@ -935,9 +953,9 @@ impl RenderOnce for Ribbon {
         let tab_strip = h_flex()
             .w_full()
             .items_center()
-            .gap(px(2.0))
-            .px(px(8.0))
-            .pt(px(4.0))
+            .gap(px(1.0))
+            .px(px(6.0))
+            .pt(px(2.0))
             .border_b_1()
             .border_color(theme.border)
             .children(tabs.iter().enumerate().map(|(index, tab)| {
@@ -961,8 +979,8 @@ impl RenderOnce for Ribbon {
                 let body = h_flex()
                     .w_full()
                     .items_stretch()
-                    .px(px(6.0))
-                    .py(px(4.0))
+                    .px(px(4.0))
+                    .py(px(2.0))
                     .children(tab.groups.iter().enumerate().map(|(index, group)| {
                         let is_last = index + 1 == tab.groups.len();
                         render_group(group, is_last, show_control_keytips, &pending, cx)
@@ -1026,10 +1044,10 @@ fn render_tab(
         .flex()
         .items_center()
         .gap(px(4.0))
-        .px(px(10.0))
-        .py(px(5.0))
+        .px(px(8.0))
+        .py(px(3.0))
         .rounded_md()
-        .text_sm()
+        .text_size(px(12.0))
         .cursor_pointer()
         .when(is_active, |this| {
             this.bg(theme.background)
@@ -1067,12 +1085,12 @@ fn render_collapse_toggle(
         .id("ribbon-collapse-toggle")
         .items_center()
         .justify_center()
-        .size(px(22.0))
+        .size(px(20.0))
         .rounded_md()
         .cursor_pointer()
         .text_color(theme.muted_foreground)
         .hover(|style| style.bg(theme.muted).text_color(theme.foreground))
-        .child(Icon::new(icon).with_size(px(14.0)))
+        .child(Icon::new(icon).with_size(px(12.0)))
         .on_click(move |_event, _window, cx| {
             state.update(cx, |state, cx| state.toggle_collapsed(cx));
         })
@@ -1092,20 +1110,20 @@ fn render_group(
         .flex_1()
         .justify_between()
         .items_center()
-        .px(px(6.0))
-        .pt(px(4.0))
-        .pb(px(2.0))
+        .px(px(3.0))
+        .pt(px(2.0))
+        .pb(px(1.0))
         .child(
             h_flex()
                 .flex_1()
                 .items_start()
-                .gap(px(4.0))
+                .gap(px(2.0))
                 .children(render_group_items(&group.items, show_keytips, pending, cx)),
         )
         .child(
             div()
-                .pt(px(2.0))
-                .text_size(px(10.0))
+                .pt(px(1.0))
+                .text_size(px(9.0))
                 .text_color(theme.muted_foreground)
                 .child(group.label.clone()),
         );
@@ -1113,7 +1131,7 @@ fn render_group(
     div()
         .flex()
         .when(!is_last, |this| {
-            this.border_r_1().border_color(theme.border).pr(px(4.0))
+            this.border_r_1().border_color(theme.border).pr(px(3.0))
         })
         .child(content)
 }
@@ -1178,8 +1196,8 @@ fn render_group_items(
                 elements.push(
                     div()
                         .w(px(1.0))
-                        .h(px(56.0))
-                        .mx(px(3.0))
+                        .h(px(46.0))
+                        .mx(px(2.0))
                         .bg(theme.border)
                         .into_any_element(),
                 );
@@ -1294,29 +1312,37 @@ fn render_small_button(
 ) -> crate::AnyElement {
     let theme = cx.theme();
     let label = command_label(&button.command, &button.label);
-    let foreground = theme.foreground;
+    let foreground = if button.disabled {
+        theme.muted_foreground
+    } else {
+        theme.foreground
+    };
     let badge = item_keytip(&button.command, &button.label, &button.keytip)
         .and_then(|keytip| keytip_badge(&keytip, pending, show_keytips, None));
     let mut element = h_flex()
         .id(button.command.clone())
         .items_center()
-        .gap(px(6.0))
-        .px(px(6.0))
-        .py(px(3.0))
+        .gap(px(2.0))
+        .px(px(3.0))
+        .py(px(2.0))
         .rounded_md()
-        .cursor_pointer()
-        .text_sm()
+        .text_size(px(11.0))
         .text_color(foreground)
-        .hover(|style| style.bg(theme.muted));
+        .when(!button.disabled, |this| {
+            this.cursor_pointer().hover(|style| style.bg(theme.muted))
+        })
+        .when(button.disabled, |this| this.cursor_default());
 
     if let Some(icon) = button.icon.clone() {
-        element = element.child(Icon::new(icon).with_size(px(16.0)).text_color(foreground));
+        element = element.child(Icon::new(icon).with_size(px(12.0)).text_color(foreground));
     }
 
     element
         .child(label)
         .when_some(badge, |this, badge| this.child(badge))
-        .on_click(dispatch(&button.command))
+        .when(!button.disabled, |this| {
+            this.on_click(dispatch(&button.command))
+        })
         .into_any_element()
 }
 
@@ -1329,30 +1355,38 @@ fn render_large_button(
 ) -> impl IntoElement {
     let theme = cx.theme();
     let label = command_label(&button.command, &button.label);
-    let foreground = theme.foreground;
+    let foreground = if button.disabled {
+        theme.muted_foreground
+    } else {
+        theme.foreground
+    };
     let badge = item_keytip(&button.command, &button.label, &button.keytip)
         .and_then(|keytip| keytip_badge(&keytip, pending, show_keytips, None));
     let mut element = v_flex()
         .id(button.command.clone())
-        .w(px(64.0))
+        .w(px(56.0))
         .items_center()
         .justify_start()
-        .gap(px(4.0))
-        .px(px(4.0))
-        .py(px(6.0))
+        .gap(px(2.0))
+        .px(px(3.0))
+        .py(px(4.0))
         .rounded_md()
-        .cursor_pointer()
         .text_color(foreground)
-        .hover(|style| style.bg(theme.muted));
+        .when(!button.disabled, |this| {
+            this.cursor_pointer().hover(|style| style.bg(theme.muted))
+        })
+        .when(button.disabled, |this| this.cursor_default());
 
     if let Some(icon) = button.icon.clone() {
-        element = element.child(Icon::new(icon).with_size(px(24.0)).text_color(foreground));
+        element = element.child(Icon::new(icon).with_size(px(18.0)).text_color(foreground));
     }
 
     element
-        .child(div().text_size(px(11.0)).text_center().child(label))
+        .child(div().text_size(px(10.0)).text_center().child(label))
         .when_some(badge, |this, badge| this.child(badge))
-        .on_click(dispatch(&button.command))
+        .when(!button.disabled, |this| {
+            this.on_click(dispatch(&button.command))
+        })
 }
 
 /// 渲染一个切换按钮。
@@ -1364,32 +1398,39 @@ fn render_toggle(
 ) -> impl IntoElement {
     let theme = cx.theme();
     let label = command_label(&toggle.command, &toggle.label);
-    let foreground = theme.foreground;
+    let foreground = if toggle.disabled {
+        theme.muted_foreground
+    } else {
+        theme.foreground
+    };
     let badge = item_keytip(&toggle.command, &toggle.label, &toggle.keytip)
         .and_then(|keytip| keytip_badge(&keytip, pending, show_keytips, None));
     let mut element = v_flex()
         .id(toggle.command.clone())
-        .w(px(64.0))
+        .w(px(50.0))
         .items_center()
-        .gap(px(4.0))
-        .px(px(4.0))
-        .py(px(6.0))
+        .gap(px(2.0))
+        .px(px(3.0))
+        .py(px(4.0))
         .rounded_md()
-        .cursor_pointer()
         .text_color(foreground)
         .when(toggle.checked, |this| this.bg(theme.accent))
-        .when(!toggle.checked, |this| {
+        .when(!toggle.disabled, |this| this.cursor_pointer())
+        .when(toggle.disabled, |this| this.cursor_default())
+        .when(!toggle.checked && !toggle.disabled, |this| {
             this.hover(|style| style.bg(theme.muted))
         });
 
     if let Some(icon) = toggle.icon.clone() {
-        element = element.child(Icon::new(icon).with_size(px(24.0)).text_color(foreground));
+        element = element.child(Icon::new(icon).with_size(px(16.0)).text_color(foreground));
     }
 
     element
-        .child(div().text_size(px(11.0)).text_center().child(label))
+        .child(div().text_size(px(10.0)).text_center().child(label))
         .when_some(badge, |this, badge| this.child(badge))
-        .on_click(dispatch(&toggle.command))
+        .when(!toggle.disabled, |this| {
+            this.on_click(dispatch(&toggle.command))
+        })
 }
 
 /// 渲染一个下拉按钮（触发按钮 + 弹出菜单，菜单项按 id 派发）。
@@ -1456,6 +1497,7 @@ fn render_split(
         label: split.label.clone(),
         icon: split.icon.clone(),
         large: split.large,
+        disabled: false,
         keytip: split.keytip.clone(),
     };
     let main = if split.large {

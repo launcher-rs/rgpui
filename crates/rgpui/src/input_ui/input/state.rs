@@ -1008,6 +1008,14 @@ impl InputState {
         self
     }
 
+    /// 运行时切换“回车提交”行为。
+    ///
+    /// 块式编辑器会在段落（回车换块）与代码块（回车换行）之间切换输入状态，
+    /// 构造参数无法在运行期改，因此提供这个 setter。
+    pub fn set_submit_on_enter(&mut self, submit: bool) {
+        self.submit_on_enter = submit;
+    }
+
     /// 设置多行输入的软换行模式，默认 true。
     pub fn soft_wrap(mut self, wrap: bool) -> Self {
         debug_assert!(self.mode.is_multi_line());

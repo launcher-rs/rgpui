@@ -2828,15 +2828,47 @@ impl App {
     /// 将动作分发到当前活动窗口或全局动作处理程序
     /// 参见 [`crate::Action`] 了解动作如何工作的更多信息
     pub fn dispatch_action(&mut self, action: &dyn Action) {
-        if let Some(active_window) = self.active_window() {
-            active_window
-                .update(self, |_, window, cx| {
-                    window.dispatch_action(action.boxed_clone(), cx)
-                })
-                .log_err();
+        // 平台上报的“活动窗口”偶尔为空（窗口刚创建、尚未激活等），
+        // 此时退回到任意一个仍存活的窗口，避免命令被静默丢弃。
+        let window = self.active_window().or_else(|| self.first_window_handle());
+
+        if let Some(window) = window {
+            let dispatched = window
+                .update(self, |_, window, cx| window.dispatch_action_now(action, cx))
+                .is_ok();
+
+            if dispatched {
+                return;
+            }
+
+            // 同步更新失败通常意味着调用发生在窗口事件/渲染回调内部：
+            // 该窗口正被借用（`windows` 槽位暂时为空），立即派发必然失败。
+            // 推迟到本次更新结束后再派发，命令才不会“点了没反应”。
+            let action = action.boxed_clone();
+            self.defer(move |cx| {
+                let window = cx.active_window().or_else(|| cx.first_window_handle());
+                if let Some(window) = window {
+                    window
+                        .update(cx, |_, window, cx| {
+                            window.dispatch_action_now(action.as_ref(), cx)
+                        })
+                        .log_err();
+                } else {
+                    cx.dispatch_global_action(action.as_ref());
+                }
+            });
         } else {
             self.dispatch_global_action(action);
         }
+    }
+
+    /// 返回任意一个存活窗口的句柄；没有窗口时为 `None`。
+    fn first_window_handle(&self) -> Option<AnyWindowHandle> {
+        self.windows
+            .values()
+            .flatten()
+            .next()
+            .map(|window| window.handle)
     }
 
     fn dispatch_global_action(&mut self, action: &dyn Action) {

@@ -333,7 +333,7 @@ impl TreeState {
         for ancestor in ancestors.into_iter().rev() {
             if !ancestor.is_expanded() {
                 RefCell::borrow_mut(&ancestor.state).expanded = true;
-                cx.emit(TreeEvent::Expanded(ancestor.id.clone()));
+                cx.emit(TreeEvent::Expanded(ancestor.id));
             }
         }
 

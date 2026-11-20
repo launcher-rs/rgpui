@@ -12,7 +12,7 @@
  * 此文件所属的项目根据以下任一许可证授权：
  * Apache 2.0 或 MIT 许可证，由被许可人选择。所选许可证的
  * 条款和条件适用于此文件。
-*/
+ */
 
 // 更多关于在 X11 上使用剪贴板的信息：
 // https://tronche.com/gui/x/icccm/sec-2.html#s-2.6
@@ -1207,7 +1207,6 @@ pub(crate) enum WaitConfig {
     Until(Instant),
 
     /// 永远等待直到新事件到达
-    #[allow(unused)]
     #[allow(
         unused,
         reason = "目前我们不在应用关闭时等待剪贴板内容同步，但未来可能会"

@@ -30,10 +30,11 @@ use alacritty_terminal::{
 };
 use itertools::Itertools;
 use rgpui::{
-    AbsoluteLength, App, Bounds, ContentMask, Element, ElementId, Entity, FocusHandle, Font,
-    FontStyle, FontWeight, GlobalElementId, Hitbox, Hsla, InputHandler, IntoElement, LayoutId,
-    PathBuilder, Pixels, Point, Rgba, ShapedLine, StrikethroughStyle, TextRun, UTF16Selection,
-    UnderlineStyle, Window, fill, point, px, size,
+    AbsoluteLength, App, Bounds, ContentMask, DispatchPhase, Element, ElementId, Entity,
+    FocusHandle, Font, FontStyle, FontWeight, GlobalElementId, Hitbox, Hsla, InputHandler,
+    IntoElement, LayoutId, MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels, Point, Rgba,
+    ShapedLine, StrikethroughStyle, TextRun, UTF16Selection, UnderlineStyle, Window, fill, point,
+    px, size,
 };
 
 use crate::{
@@ -1633,6 +1634,38 @@ impl Element for TerminalElement {
             cursor_bounds: layout.cursor.as_ref().map(|c| c.bounds(bounds.origin)),
         };
         window.handle_input(&self.focus, input_handler, cx);
+
+        // 拖选中把鼠标事件收一份到窗口层：元素上的鼠标监听只在 hitbox 被 hover 时
+        // 派发，指针一旦拖出终端（状态栏、相邻面板）选区就停在原地，边缘自动滚动
+        // 也就永远触发不了。视口内仍由元素自己的监听处理，这里只补界外那段，
+        // 松开鼠标的落点同样不看位置——在界外松开也要能结束拖选。
+        if self.terminal.read(cx).selection_started() {
+            let terminal = self.terminal.clone();
+            window.on_mouse_event(move |event: &MouseMoveEvent, phase, _window, cx| {
+                if phase != DispatchPhase::Bubble || !event.dragging() {
+                    return;
+                }
+                let bounds = terminal.read(cx).last_content().terminal_bounds.bounds;
+                if bounds.contains(&event.position) {
+                    return;
+                }
+                let _ = terminal.update(cx, |terminal, cx| {
+                    terminal.drag_select(event.position, bounds, cx);
+                });
+            });
+
+            let terminal = self.terminal.clone();
+            window.on_mouse_event(move |event: &MouseUpEvent, phase, _window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                let bounds = terminal.read(cx).last_content().terminal_bounds.bounds;
+                if bounds.contains(&event.position) {
+                    return;
+                }
+                let _ = terminal.update(cx, |terminal, cx| terminal.mouse_up(event, cx));
+            });
+        }
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             window.paint_quad(fill(bounds, layout.background_color));

@@ -790,7 +790,7 @@ fn snapshot_full_tree(
             rows.push(FullTreeRow {
                 selected: active == Some(&id),
                 id: id.clone(),
-                key: key.clone(),
+                key: key,
                 depth,
                 has_children: !children.is_empty(),
                 expanded: is_expanded,

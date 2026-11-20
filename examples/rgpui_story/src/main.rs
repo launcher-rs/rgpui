@@ -178,22 +178,20 @@ fn title_bar(_window: &mut Window, cx: &mut Context<StoryApp>) -> impl IntoEleme
                         for (name, mode, checked) in &items {
                             let name = name.clone();
                             let mode = *mode;
-                            menu = menu.item(
-                                PopupMenuItem::new(name.clone()).checked(*checked).on_click(
-                                    move |_, window, cx| {
-                                        Theme::change(mode, Some(window), cx);
-                                        // wasm 下主题切换不会重置内嵌字体（配置无 font_family），
-                                        // 但保持与桌面一致的健壮性，切换后显式恢复内嵌字体族。
-                                        #[cfg(target_family = "wasm")]
-                                        {
-                                            let theme = cx.global_mut::<Theme>();
-                                            theme.font_family = "Inter Variable".into();
-                                            theme.mono_font_family = "JetBrains Mono".into();
-                                        }
-                                        cx.refresh_windows();
-                                    },
-                                ),
-                            );
+                            menu = menu.item(PopupMenuItem::new(name).checked(*checked).on_click(
+                                move |_, window, cx| {
+                                    Theme::change(mode, Some(window), cx);
+                                    // wasm 下主题切换不会重置内嵌字体（配置无 font_family），
+                                    // 但保持与桌面一致的健壮性，切换后显式恢复内嵌字体族。
+                                    #[cfg(target_family = "wasm")]
+                                    {
+                                        let theme = cx.global_mut::<Theme>();
+                                        theme.font_family = "Inter Variable".into();
+                                        theme.mono_font_family = "JetBrains Mono".into();
+                                    }
+                                    cx.refresh_windows();
+                                },
+                            ));
                         }
                         menu
                     }),
