@@ -39,11 +39,27 @@ use crate::terminal::{SyncStats, ZedListener};
 /// 与 alacritty `event_loop` 一致的单轮持锁解析字节上限。
 const MAX_LOCKED_READ: usize = u16::MAX as usize;
 
-/// 刷屏让锁：解析一批后若通道里还压着数据、而 UI 帧抢锁失败，
-/// 就在锁外最多站这些毫秒（1ms 一档，UI 帧取到锁即提前走）。
+/// UI 正在拖动 / 刚滚过滚轮时，单轮持锁解析的字节上限。
+///
+/// 拖动每一帧都要拿数据锁重排网格。原来拖动期间是「整体停摆，2 秒上限放行
+/// 一批」：停摆期间远端日志不再显示，2 秒一到又整批（最多 64KB）持锁解析，
+/// 恰好把那一帧的 `try_lock` 顶掉 —— 表现就是「拖一段卡一下、再卡一下」。
+///
+/// 改成不停摆、只把每轮持锁切小：锁很快让出来，UI 帧基本不会失手，日志也照常
+/// 往下走，不再有周期性的顿挫。4KB 大约是一屏日志的量级，一次解析的耗时远小于
+/// 一帧的预算。
+const UI_BUSY_LOCKED_READ: usize = 4096;
+
+/// 刷屏让锁：解析一批后若 UI 帧抢锁失败，就在锁外最多站这些毫秒
+/// （1ms 一档，UI 帧取到锁即提前走）。
 /// 上限要大于一个 UI 帧周期（60Hz 约 16ms）：让锁窗口必须能盖住
 /// 下一次帧取锁的时点，否则「忙一段、让几毫秒」会与帧节拍错拍，
 /// 每次取锁都正好撞在解析忙时，UI 反而永远进不来。
+///
+/// 触发条件只看 UI 有没有饿着（attempts 涨而 successes 没涨），
+/// 不看这批有没有攒满 64KB：docker logs -f 这类逐行刷屏的字节常被
+/// SSH 拆成小包，`try_recv` 永远凑不满上限，按批次大小触发会让
+/// 让锁逻辑在这些最需要它的场景里从不生效。
 const UI_GRACE_SLICES: u32 = 24;
 const UI_GRACE_SLICE: Duration = Duration::from_millis(1);
 
@@ -80,13 +96,10 @@ impl FeedHandle {
     /// 返回 `false` 表示终端会话已结束、注入被丢弃。
     pub fn feed(&self, bytes: impl Into<Vec<u8>>) -> bool {
         let bytes = bytes.into();
-        if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
-            let hex = bytes
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<Vec<_>>()
-                .join(" ");
-            eprintln!("[rt-trace] feed len={} hex={hex}", bytes.len());
+        // 只记长度：早先这里把每个字节格式化成十六进制再拼接，单批 64KB 就是
+        // 六万多次分配，光打印就能把刷屏拖垮，诊断数据全被自身开销污染。
+        if crate::terminal_element::trace_enabled() && bytes.len() >= 4096 {
+            eprintln!("[rt-trace] feed len={}", bytes.len());
         }
         self.tx.send(LoopMsg::Feed(bytes)).is_ok()
     }
@@ -177,10 +190,11 @@ struct ExternalLoopState {
 /// 每批 64KB 背靠背解析会把数据锁几乎占满，UI 的 `try_lock_unfair` 长期
 /// 抢不到 → 画面停更、排队的滚动/复制事件无人处理（拖动滚动条卡顿、
 /// Ctrl+C 走陈旧选区的复制分支发不出 ^C）。因此加了一条让锁规则：
-/// 某批打满持锁上限、通道里还有数据、且上一段窗口里 UI 试过取锁却没取到
-/// （`SyncStats` 的 attempts 涨了而 successes 没涨）→ 在下批取锁前，
-/// 在锁外站最多 24ms（超过一帧周期，保证盖住下一次取锁时点）等 UI
-/// 补上一帧，取到即走；UI 不缺锁时一毫秒都不多等。
+/// 只要上一段窗口里 UI 试过取锁却没取到（`SyncStats` 的 attempts 涨了
+/// 而 successes 没涨）→ 在下批取锁前，在锁外站最多 24ms（超过一帧周期，
+/// 保证盖住下一次取锁时点）等 UI 补上一帧，取到即走；UI 不缺锁时一毫秒
+/// 都不多等。条件刻意不依赖「本批攒满 64KB」：docker logs 刷屏常被拆成
+/// 小包，按批大小判断会让让锁在最需要它的场景里失效。
 fn external_loop(
     terminal: Arc<FairMutex<Term<ZedListener>>>,
     proxy: ZedListener,
@@ -225,22 +239,37 @@ fn external_loop(
             },
         };
 
+        // UI 正在拖滚动条 / 刚滚过滚轮：把每轮持锁的解析量切小，让数据锁尽快
+        // 回到 UI 手里。不再整体停摆（见 UI_BUSY_LOCKED_READ 的注释）。
+        let now_ms = || {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0)
+        };
+        let ui_busy = sync_stats.ui_dragging.load(Ordering::Relaxed)
+            || now_ms().saturating_sub(sync_stats.last_scroll_ms.load(Ordering::Relaxed)) < 200;
+        let locked_read_limit = if ui_busy {
+            UI_BUSY_LOCKED_READ
+        } else {
+            MAX_LOCKED_READ
+        };
+
         let mut exited = match first {
             Some(LoopMsg::Exited) | None => true,
             Some(LoopMsg::Feed(_)) => false,
         };
 
-        // 收集当前已就绪的字节块（至多 MAX_LOCKED_READ），单轮持锁解析完；
+        // 收集当前已就绪的字节块（至多 locked_read_limit），单轮持锁解析完；
         // 超出部分留在通道里下一轮继续（与 event_loop 的持锁上限一致）。
         let mut pending: Vec<Vec<u8>> = Vec::new();
         let mut budget = 0usize;
-        let mut budget_hit = false;
         if !exited {
             if let Some(LoopMsg::Feed(bytes)) = first {
                 budget += bytes.len();
                 pending.push(bytes);
             }
-            while budget < MAX_LOCKED_READ {
+            while budget < locked_read_limit {
                 match feed_rx.try_recv() {
                     Ok(LoopMsg::Feed(bytes)) => {
                         budget += bytes.len();
@@ -253,42 +282,38 @@ fn external_loop(
                     Err(_) => break,
                 }
             }
-            // 打满持锁上限而不是收干了通道：后面大概率还压着数据，
-            // 这正是需要让锁的持续刷屏形态。
-            budget_hit = !exited && budget >= MAX_LOCKED_READ;
         }
 
         if !pending.is_empty() {
             batch_id += 1;
-            if trace {
-                eprintln!("[rt-trace] batch {batch_id} lease wait");
-            }
             // 先租约再解锁：防止 UI 线程在本轮解析前反复抢占（镜像 event_loop）。
             // 租约占的就是 `next` 锁，因此这里只能退到 `lock_unfair`（只等 data）：
             // parking_lot 不可重入，持租约再走 `lock()` 会二次加 `next` 自锁，
             // 解析线程就此永不消费，远端字节再也进不了网格。
             let _lease = terminal.lease();
-            if trace {
-                eprintln!("[rt-trace] batch {batch_id} lease acquired; data lock wait");
-            }
             let mut term = terminal
                 .try_lock_unfair()
                 .unwrap_or_else(|| terminal.lock_unfair());
             if trace {
-                eprintln!("[rt-trace] batch {batch_id} data lock acquired");
+                // 每批只留一行「拿到锁」，不再逐块打印：刷屏时一秒几百批，
+                // 光是写 stderr 就能把被测对象本身拖慢，数据全被观测手段污染。
+                eprintln!("[rt-trace] batch {batch_id}");
             }
 
             let mut processed = 0usize;
-            for (chunk_id, chunk) in pending.iter().enumerate() {
-                if trace {
-                    eprintln!(
-                        "[rt-trace] batch {batch_id} advance {chunk_id} start len={}",
-                        chunk.len()
-                    );
-                }
+            for chunk in pending.iter() {
+                // 每块只记「慢的」：单块解析耗时就是持锁时间，UI 这一帧能不能
+                // 拿到锁全看它。逐块无脑打印会把刷屏拖慢一个数量级。
+                let chunk_t0 = trace.then(std::time::Instant::now);
                 state.parser.advance(&mut *term, chunk);
-                if trace {
-                    eprintln!("[rt-trace] batch {batch_id} advance {chunk_id} done");
+                if let Some(t0) = chunk_t0 {
+                    let ms = t0.elapsed().as_secs_f64() * 1000.0;
+                    if ms > 3.0 {
+                        eprintln!(
+                            "[rt-trace] batch {batch_id} advance {} bytes took {ms:.1}ms",
+                            chunk.len()
+                        );
+                    }
                 }
                 processed += chunk.len();
             }
@@ -299,26 +324,28 @@ fn external_loop(
             }
         }
 
-        // 刷屏让锁（见函数头注释）：这一批打满了持锁上限，且上一段窗口里
-        // UI 帧试了取锁却没抢到（attempts 涨、successes 没涨），下一批取锁
-        // 之前在锁外站一会儿，让 UI 把帧画出来、把排队的滚动/复制事件处理掉。
-        if budget_hit {
-            let attempts = sync_stats.attempts.load(Ordering::Relaxed);
-            let successes = sync_stats.successes.load(Ordering::Relaxed);
-            if attempts > last_attempts && successes == last_successes {
-                if trace {
-                    eprintln!("[rt-trace] batch {batch_id} grace park for a UI frame");
-                }
-                for _ in 0..UI_GRACE_SLICES {
-                    std::thread::sleep(UI_GRACE_SLICE);
-                    if sync_stats.successes.load(Ordering::Relaxed) > successes {
-                        break;
-                    }
+        // 刷屏让锁（见函数头注释）：只要上一段窗口里 UI 帧试过取锁却没抢到
+        // （attempts 涨、successes 没涨），下一批取锁之前就在锁外站一会儿，
+        // 让 UI 把帧画出来、把排队的滚动/复制事件处理掉。
+        // 不再以「本批攒满 64KB」为前提：逐行小包刷屏时该条件几乎永不成立，
+        // UI 会连续多帧取不到锁，拖动滚动条就卡住。
+        let attempts = sync_stats.attempts.load(Ordering::Relaxed);
+        let successes = sync_stats.successes.load(Ordering::Relaxed);
+        if attempts > last_attempts && successes == last_successes {
+            if trace {
+                eprintln!("[rt-trace] batch {batch_id} grace park for a UI frame");
+            }
+            for _ in 0..UI_GRACE_SLICES {
+                std::thread::sleep(UI_GRACE_SLICE);
+                if sync_stats.successes.load(Ordering::Relaxed) > successes {
+                    break;
                 }
             }
-            last_attempts = sync_stats.attempts.load(Ordering::Relaxed);
-            last_successes = sync_stats.successes.load(Ordering::Relaxed);
         }
+        // 基线每批都推进（不只是让锁那批）：否则 UI 两次帧之间攒下的
+        // attempts 会被反复当成「新饥饿」，形成无谓的站桩。
+        last_attempts = sync_stats.attempts.load(Ordering::Relaxed);
+        last_successes = sync_stats.successes.load(Ordering::Relaxed);
 
         if exited {
             break;
@@ -571,6 +598,79 @@ mod tests {
             successes >= 4,
             "持续刷屏 200ms 内 UI 只抢到 {successes}/12 帧的数据锁，让锁失效"
         );
+    }
+
+    /// 逐行小包刷屏回归：docker logs -f 把历史日志一行行推过来时，
+    /// 每批都远小于 64KB，旧实现要等「攒满上限」才让锁，于是整段刷屏
+    /// 期间一次都不让，UI 连续丢帧、拖动滚动条卡住（issue #1 的形态）。
+    #[test]
+    fn small_packet_flood_still_lets_the_ui_get_a_frame_lock() {
+        let (terminal, proxy, _events) = make_term();
+        let stats = fresh_stats();
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy, stats.clone());
+
+        // 每 1ms 一行 ~200B，持续约 200ms：解析线程一直有活干，但
+        // try_recv 无论怎么攒都到不了 MAX_LOCKED_READ。
+        let feeder = std::thread::spawn(move || {
+            let line = b"2026-11-20T13:00:00 INFO container log line payload payload\n";
+            for _ in 0..200 {
+                sleep(Duration::from_millis(1));
+                if !feed.feed(line.to_vec()) {
+                    break;
+                }
+            }
+        });
+
+        let ui = std::thread::spawn(move || {
+            let mut successes = 0u64;
+            for _ in 0..12 {
+                sleep(Duration::from_millis(16));
+                stats.attempts.fetch_add(1, Ordering::Relaxed);
+                if terminal.try_lock_unfair().is_some() {
+                    stats.successes.fetch_add(1, Ordering::Relaxed);
+                    successes += 1;
+                    sleep(Duration::from_millis(2));
+                }
+            }
+            successes
+        });
+
+        feeder.join().expect("feed 线程 panic");
+        let successes = ui.join().expect("UI 模拟线程 panic");
+        assert!(
+            successes >= 4,
+            "逐行小包刷屏 200ms 内 UI 只抢到 {successes}/12 帧的数据锁，让锁失效"
+        );
+    }
+
+    /// 拖滚动条期间解析线程必须让出数据锁，松手后接着解析且不丢字节。
+    #[test]
+    fn dragging_scrollbar_still_feeds_the_grid() {
+        let (terminal, proxy, _events) = make_term();
+        let stats = fresh_stats();
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy, stats.clone());
+
+        stats.ui_dragging.store(true, Ordering::Relaxed);
+        assert!(feed.feed("during drag".as_bytes()));
+
+        // 拖动期间不再整体停摆：字节照常进网格，只是每轮持锁切到
+        // UI_BUSY_LOCKED_READ，好把数据锁频繁让回 UI。
+        // 早先的实现会一直停到 2 秒上限才放行第一批 —— 那一批又整块持锁，
+        // 恰好顶掉拖动帧，表现成「拖一段卡一下」。这里卡 400ms 上限：
+        // 只要还在停摆，这条断言必然超时。
+        let mut seen = false;
+        for _ in 0..40 {
+            sleep(Duration::from_millis(10));
+            let term = terminal.lock();
+            let text: String = (0..11).map(|i| term.grid()[Line(0)][Column(i)].c).collect();
+            drop(term);
+            if text == "during drag" {
+                seen = true;
+                break;
+            }
+        }
+        stats.ui_dragging.store(false, Ordering::Relaxed);
+        assert!(seen, "拖动期间网格应照常更新（不能整体停摆）");
     }
 
     #[test]
