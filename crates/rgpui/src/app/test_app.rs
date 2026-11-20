@@ -606,4 +606,34 @@ mod tests {
             assert_eq!(global.0, "world");
         });
     }
+
+    // 借用诊断：冲突错误要带上「尝试位置 + 已存在借用组起点」（对齐上游
+    // c408f8efc4）。AppCell 字段在本模块内可直接访问。
+    #[test]
+    fn test_borrow_error_reports_origin() {
+        let app = TestApp::new();
+
+        // 持有可变借用组，起点应被记录。
+        let guard = app.app.borrow_mut();
+        let origin = app.app.borrow_origin.get().expect("借用组起点应被记录");
+        assert_eq!(origin.1, "mutable");
+
+        // 冲突的可变借用返回带双端位置的错误。
+        let Err(error) = app.app.try_borrow_mut() else {
+            panic!("可变借用冲突应失败");
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("attempted mutable App borrow at"),
+            "消息应含尝试位置: {message}"
+        );
+        assert!(
+            message.contains("existing mutable borrow group began at"),
+            "消息应含已存在借用组起点: {message}"
+        );
+        drop(guard);
+
+        // 释放后再借不冲突；旧 origin 残留由下一个借用组覆盖。
+        app.app.try_borrow_mut().expect("释放后应能再次可变借用");
+    }
 }

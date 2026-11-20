@@ -898,6 +898,7 @@ impl<T> AppContext for Context<'_, T> {
     }
 
     #[inline]
+    #[track_caller]
     fn update_window<R, F>(&mut self, window: AnyWindowHandle, update: F) -> Result<R>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> R,

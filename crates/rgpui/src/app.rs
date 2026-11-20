@@ -25,7 +25,7 @@ fn invariant_result<T, E>(result: Result<T, E>, message: &str) -> T {
 use crate::scheduler::Instant;
 use std::{
     any::{TypeId, type_name},
-    cell::{BorrowMutError, Cell, Ref, RefCell, RefMut},
+    cell::{Cell, Ref, RefCell, RefMut},
     marker::PhantomData,
     mem,
     ops::{Deref, DerefMut},
@@ -118,7 +118,52 @@ pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(200);
 #[doc(hidden)]
 pub struct AppCell {
     app: RefCell<App>,
+    /// 当前借用组的起点（尝试借用位置 + 共享/可变种类）。
+    ///
+    /// 重叠的共享借用只记第一个（`borrow` 先探测 `try_borrow_mut` 是否成功，
+    /// 成功说明这是一组新借用的第一个）；释放后旧值会残留，由下一个借用组
+    /// 覆盖。冲突诊断靠它给出「已借用的位置」。
+    borrow_origin: Cell<Option<(&'static std::panic::Location<'static>, &'static str)>>,
 }
+
+/// 借用冲突的可读诊断：尝试借用的位置、种类与已存在借用组的起点。
+///
+/// 有意的取舍（对齐上游 `c408f8efc4`）：诊断只在失败路径格式化，
+/// `try_borrow_mut` 以 anyhow 结果返回，不再夹带标准库的 `BorrowMutError`。
+pub(crate) struct AppBorrowError {
+    attempted: &'static std::panic::Location<'static>,
+    kind: &'static str,
+    origin: Option<(&'static std::panic::Location<'static>, &'static str)>,
+}
+
+impl std::fmt::Display for AppBorrowError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            attempted,
+            kind,
+            origin,
+        } = self;
+        write!(
+            formatter,
+            "RefCell already borrowed: attempted {kind} App borrow at {attempted}; "
+        )?;
+        match origin {
+            Some((origin, existing_kind)) => write!(
+                formatter,
+                "existing {existing_kind} borrow group began at {origin}"
+            ),
+            None => write!(formatter, "origin unavailable"),
+        }
+    }
+}
+
+impl std::fmt::Debug for AppBorrowError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, formatter)
+    }
+}
+
+impl std::error::Error for AppBorrowError {}
 
 impl AppCell {
     #[doc(hidden)]
@@ -128,27 +173,63 @@ impl AppCell {
             let thread_id = std::thread::current().id();
             eprintln!("borrowed {thread_id:?}");
         }
-        AppRef(self.app.borrow())
+        // 重叠的共享借用保留第一个起点：先探测 `try_borrow_mut` 是否成功，
+        // 成功说明这是新借用组的第一个共享借用。
+        let starts_borrow_group = self.app.try_borrow_mut().is_ok();
+        let attempted = std::panic::Location::caller();
+        let borrow = match self.app.try_borrow() {
+            Ok(borrow) => borrow,
+            Err(_) => self.borrow_failed(AppBorrowError {
+                attempted,
+                kind: "shared",
+                origin: self.borrow_origin.get(),
+            }),
+        };
+        if starts_borrow_group {
+            self.borrow_origin
+                .set(Some((std::panic::Location::caller(), "shared")));
+        }
+        AppRef(borrow)
     }
 
     #[doc(hidden)]
     #[track_caller]
     pub fn borrow_mut(&self) -> AppRefMut<'_> {
-        if option_env!("TRACK_THREAD_BORROWS").is_some() {
-            let thread_id = std::thread::current().id();
-            eprintln!("borrowed {thread_id:?}");
+        match self.try_borrow_mut() {
+            Ok(borrow) => borrow,
+            Err(error) => self.borrow_failed(error),
         }
-        AppRefMut(self.app.borrow_mut())
     }
 
     #[doc(hidden)]
     #[track_caller]
-    pub fn try_borrow_mut(&self) -> Result<AppRefMut<'_>, BorrowMutError> {
+    pub fn try_borrow_mut(&self) -> Result<AppRefMut<'_>> {
         if option_env!("TRACK_THREAD_BORROWS").is_some() {
             let thread_id = std::thread::current().id();
             eprintln!("borrowed {thread_id:?}");
         }
-        Ok(AppRefMut(self.app.try_borrow_mut()?))
+        let borrow = match self.app.try_borrow_mut() {
+            Ok(borrow) => borrow,
+            Err(_error) => {
+                return Err(AppBorrowError {
+                    attempted: std::panic::Location::caller(),
+                    kind: "mutable",
+                    origin: self.borrow_origin.get(),
+                }
+                .into());
+            }
+        };
+        self.borrow_origin
+            .set(Some((std::panic::Location::caller(), "mutable")));
+        Ok(AppRefMut(borrow))
+    }
+
+    /// 借用冲突的统一 panic 出口：共享与可变借用共用同一份诊断格式。
+    #[cold]
+    #[track_caller]
+    #[allow(clippy::panic)] // 契约：借用冲突必须立刻炸，错误消息已携带双端位置
+    fn borrow_failed(&self, error: impl std::fmt::Display) -> ! {
+        panic!("{error}")
     }
 }
 
@@ -929,6 +1010,7 @@ impl App {
                 #[cfg(any(test, feature = "leak-detection"))]
                 _ref_counts,
             }),
+            borrow_origin: Cell::new(None),
         });
 
         init_app_menus(platform.as_ref(), &app.borrow());
@@ -1851,6 +1933,7 @@ impl App {
             .or_insert(window);
     }
 
+    #[track_caller]
     pub(crate) fn update_window_id<T, F>(&mut self, id: WindowId, update: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T,
@@ -3231,6 +3314,7 @@ impl AppContext for App {
         read(entity, self)
     }
 
+    #[track_caller]
     fn update_window<T, F>(&mut self, handle: AnyWindowHandle, update: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T,

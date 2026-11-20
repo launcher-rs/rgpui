@@ -753,6 +753,7 @@ pub trait AppContext {
     ///
     /// 闭包接收三个参数：窗口的 AnyView、可变 Window 引用、可变 App 引用。
     /// 通过此方法可以修改窗口内容、替换根视图等。
+    #[track_caller]
     fn update_window<T, F>(&mut self, window: AnyWindowHandle, f: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T;

@@ -72,7 +72,7 @@ use smallvec::SmallVec;
 use std::{
     any::{Any, TypeId},
     borrow::Cow,
-    cell::{BorrowMutError, Cell, RefCell},
+    cell::{Cell, RefCell},
     cmp,
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
@@ -317,14 +317,14 @@ fn draw_in_progress() -> bool {
 ///
 /// Windows 在窗口过程中嵌套泵消息（见 `rgpui-windows` 的
 /// `run_foreground_task`），此时 `RefCell<App>` 往往还在上层调用的借用期内，
-/// `Entity::update` 会以 `BorrowMutError` 失败。这类回调是逐事件重试的
+/// `Entity::update` 会以 `AppBorrowError` 失败。这类回调是逐事件重试的
 /// （下一帧、下一次命中测试都会再来），跳过即可；一律按 ERROR 记录会把
 /// 真正的故障淹没在刷屏里。非重入错误仍按 `log_err` 的级别记录。
 #[track_caller]
 fn skip_if_app_borrowed<T>(result: Result<T>) -> Option<T> {
     match result {
         Ok(value) => Some(value),
-        Err(err) if err.downcast_ref::<BorrowMutError>().is_some() => {
+        Err(err) if err.downcast_ref::<crate::app::AppBorrowError>().is_some() => {
             log::debug!("App 已被借用，跳过本次重入的平台回调");
             None
         }
@@ -1592,19 +1592,43 @@ impl Window {
                     Box::new(move || {
                         log::info!("Accessibility activated");
                         active_flag.store(true, SeqCst);
-                        activation_sender.send_blocking(()).log_err();
+                        activation_sender
+                            .send_blocking(())
+                            .with_context(|| {
+                                format!(
+                                    "queuing accessibility activation for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
+                            .log_err();
                         Some(initial_tree.clone())
                     })
                 },
                 action: Box::new(move |request| {
-                    action_sender.send_blocking(request).log_err();
+                    action_sender
+                        .send_blocking(request)
+                        .with_context(|| {
+                            format!(
+                                "queuing accessibility action for window {:?}",
+                                handle.window_id()
+                            )
+                        })
+                        .log_err();
                 }),
                 deactivation: {
                     let active_flag = a11y_active_flag.clone();
                     Box::new(move || {
                         log::info!("Accessibility deactivated");
                         active_flag.store(false, SeqCst);
-                        deactivation_sender.send_blocking(()).log_err();
+                        deactivation_sender
+                            .send_blocking(())
+                            .with_context(|| {
+                                format!(
+                                    "queuing accessibility deactivation for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
+                            .log_err();
                     })
                 },
             });
@@ -1620,6 +1644,12 @@ impl Window {
                     while activation_receiver.recv().await.is_ok() {
                         handle
                             .update(&mut async_cx, |_, window, _| window.refresh())
+                            .with_context(|| {
+                                format!(
+                                    "handling accessibility activation for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
                             .log_err();
                     }
                 })
@@ -1631,6 +1661,12 @@ impl Window {
                     while deactivation_receiver.recv().await.is_ok() {
                         handle
                             .update(&mut async_cx, |_, window, _| window.refresh())
+                            .with_context(|| {
+                                format!(
+                                    "handling accessibility deactivation for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
                             .log_err();
                     }
                 })
@@ -1643,6 +1679,12 @@ impl Window {
                         handle
                             .update(&mut async_cx, |_, window, cx| {
                                 window.handle_a11y_action(request, cx);
+                            })
+                            .with_context(|| {
+                                format!(
+                                    "handling accessibility action for window {:?}",
+                                    handle.window_id()
+                                )
                             })
                             .log_err();
                     }
@@ -1780,6 +1822,7 @@ impl Window {
             move |_, _| {
                 handle
                     .update(&mut cx, |_, window, cx| window.bounds_changed(cx))
+                    .with_context(|| format!("handling resize for window {:?}", handle.window_id()))
                     .log_err();
             }
         }));
@@ -1788,6 +1831,7 @@ impl Window {
             move || {
                 handle
                     .update(&mut cx, |_, window, cx| window.bounds_changed(cx))
+                    .with_context(|| format!("handling move for window {:?}", handle.window_id()))
                     .log_err();
             }
         }));
@@ -1801,6 +1845,12 @@ impl Window {
                     .spawn(async move {
                         handle
                             .update(&mut cx, |_, window, cx| window.appearance_changed(cx))
+                            .with_context(|| {
+                                format!(
+                                    "handling appearance change for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
                             .log_err();
                     })
                     .detach();
@@ -1811,6 +1861,12 @@ impl Window {
             move || {
                 handle
                     .update(&mut cx, |_, window, cx| window.button_layout_changed(cx))
+                    .with_context(|| {
+                        format!(
+                            "handling button layout change for window {:?}",
+                            handle.window_id()
+                        )
+                    })
                     .log_err();
             }
         }));
@@ -1832,6 +1888,12 @@ impl Window {
 
                         SystemWindowTabController::update_last_active(cx, window.handle.id);
                     })
+                    .with_context(|| {
+                        format!(
+                            "handling active status change for window {:?}",
+                            handle.window_id()
+                        )
+                    })
                     .log_err();
             }
         }));
@@ -1843,6 +1905,12 @@ impl Window {
                         window.hovered.set(active);
                         window.refresh();
                     })
+                    .with_context(|| {
+                        format!(
+                            "handling hover status change for window {:?}",
+                            handle.window_id()
+                        )
+                    })
                     .log_err();
             }
         }));
@@ -1851,6 +1919,9 @@ impl Window {
             Box::new(move |event| {
                 handle
                     .update(&mut cx, |_, window, cx| window.dispatch_event(event, cx))
+                    .with_context(|| {
+                        format!("dispatching input for window {:?}", handle.window_id())
+                    })
                     .log_err()
                     .unwrap_or(DispatchEventResult::default())
             })
@@ -1863,6 +1934,9 @@ impl Window {
                     .update(&mut cx, |_, window, cx| {
                         window.dispatch_event_for_dom(keys, event, cx)
                     })
+                    .with_context(|| {
+                        format!("dispatching input for window {:?}", handle.window_id())
+                    })
                     .log_err()
                     .unwrap_or(DispatchEventResult::default())
             })
@@ -1874,6 +1948,9 @@ impl Window {
                 let _ = handle
                     .update(&mut cx, |_, window, _cx| {
                         window.dispatch_dom_scroll(keys, left, top);
+                    })
+                    .with_context(|| {
+                        format!("handling dom scroll for window {:?}", handle.window_id())
                     })
                     .log_err();
             })
@@ -1903,6 +1980,12 @@ impl Window {
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::move_tab_to_new_window(cx, handle.window_id());
                     })
+                    .with_context(|| {
+                        format!(
+                            "moving tab to new window from window {:?}",
+                            handle.window_id()
+                        )
+                    })
                     .log_err();
             })
         });
@@ -1912,6 +1995,9 @@ impl Window {
                 handle
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::merge_all_windows(cx, handle.window_id());
+                    })
+                    .with_context(|| {
+                        format!("merging all windows into window {:?}", handle.window_id())
                     })
                     .log_err();
             })
@@ -1923,6 +2009,9 @@ impl Window {
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::select_next_tab(cx, handle.window_id());
                     })
+                    .with_context(|| {
+                        format!("selecting next tab for window {:?}", handle.window_id())
+                    })
                     .log_err();
             })
         });
@@ -1932,6 +2021,9 @@ impl Window {
                 handle
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::select_previous_tab(cx, handle.window_id())
+                    })
+                    .with_context(|| {
+                        format!("selecting previous tab for window {:?}", handle.window_id())
                     })
                     .log_err();
             })
@@ -1943,6 +2035,9 @@ impl Window {
                     .update(&mut cx, |_, window, cx| {
                         let tab_bar_visible = window.platform_window.tab_bar_visible();
                         SystemWindowTabController::set_visible(cx, tab_bar_visible);
+                    })
+                    .with_context(|| {
+                        format!("toggling tab bar for window {:?}", handle.window_id())
                     })
                     .log_err();
             })
@@ -2406,6 +2501,7 @@ impl Window {
                     let node_id = window.focus_node_id_in_rendered_frame(focus_id);
                     window.dispatch_action_on_node(node_id, action.as_ref(), cx);
                 })
+                .with_context(|| format!("dispatching action for window {:?}", window.window_id()))
                 .log_err();
         })
     }
@@ -5789,6 +5885,7 @@ impl Window {
                 || standalone_modifier;
 
             if currently_pending.needs_timeout {
+                let window_id = self.handle.window_id();
                 currently_pending.timer = Some(self.spawn(cx, async move |cx| {
                     cx.background_executor.timer(Duration::from_secs(1)).await;
                     cx.update(move |window, cx| {
@@ -5811,6 +5908,9 @@ impl Window {
 
                         window.pending_input_changed(cx);
                         window.replay_pending_input(to_replay, cx)
+                    })
+                    .with_context(|| {
+                        format!("handling pending input timeout for window {:?}", window_id)
                     })
                     .log_err();
                 }));
@@ -7466,6 +7566,7 @@ impl<V: 'static + Render> WindowHandle<V> {
     /// 更新此窗口的根视图。
     ///
     /// 如果窗口已关闭或根视图的类型不匹配，这将失败
+    #[track_caller]
     pub fn update<C, R>(
         &self,
         cx: &mut C,
@@ -7588,6 +7689,7 @@ impl AnyWindowHandle {
     /// 更新此窗口根视图的状态。
     ///
     /// 如果窗口已关闭，这将失败。
+    #[track_caller]
     pub fn update<C, R>(
         self,
         cx: &mut C,
