@@ -9,6 +9,7 @@ use std::ops::Range;
 use crate::{App, AppContext as _, Context, Entity, Pixels, SharedString, Window, px};
 
 use super::super::InputState;
+use super::super::input::GutterStyle;
 use super::code_actions::CodeActionsState;
 use super::codelens::CodelensState;
 use super::extensions::ExtensionsState;
@@ -186,6 +187,21 @@ impl EditorState {
         let _ = self.input.update(cx, |state, cx| {
             state.set_ruler_color(color, cx);
         });
+    }
+
+    /// 设置行号沟槽样式（宽度/间距/颜色/字体；见 [`GutterStyle`]，
+    /// 对标 gpui-kit editor 的 `GutterStyle`；默认全 `None` 跟主题）。
+    pub fn set_gutter_style(&self, style: GutterStyle, cx: &mut App) {
+        let _ = self.input.update(cx, |state, cx| {
+            state.gutter_style = style;
+            cx.notify();
+        });
+    }
+
+    /// 当前行号沟槽样式。
+    pub fn gutter_style(&self, cx: &App) -> GutterStyle {
+        self.input
+            .read_with(cx, |state, _| state.gutter_style.clone())
     }
 
     /// 设置括号彩虹开关（O5；透传内部输入）。
@@ -398,6 +414,39 @@ mod tests {
         assert_eq!(text, "fn main() {}\n");
         let cursor = editor.read_with(cx, |state, cx| state.cursor(cx));
         assert_eq!(cursor, "fn main() {}\n".len());
+    }
+
+    /// 行号沟槽样式透传：默认全 `None`，设置后原样读回（对标 gpui-kit GutterStyle）。
+    #[rgpui::test]
+    fn gutter_style_roundtrip(cx: &mut crate::TestAppContext) {
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| EditorState::new(window, cx, "fn main() {}\n"));
+            Probe { state: editor }
+        });
+        let editor = probe.read_with(cx, |probe, _| probe.state.clone());
+        // 默认：全 `None`（跟主题/测量值）。
+        assert_eq!(
+            editor.read_with(cx, |state, cx| state.gutter_style(cx)),
+            GutterStyle::default()
+        );
+        // 显式设置后原样读回。
+        let style = GutterStyle {
+            width: Some(px(80.)),
+            gap: Some(px(12.)),
+            color: Some(crate::red()),
+            active_color: Some(crate::blue()),
+            font_size: Some(px(11.)),
+            font_family: Some("Iosevka".into()),
+        };
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_gutter_style(style.clone(), cx);
+            });
+        });
+        assert_eq!(
+            editor.read_with(cx, |state, cx| state.gutter_style(cx)),
+            style
+        );
     }
 
     /// 未注册语言静默降级（语言记 `None`，大纲为空，不 panic）。

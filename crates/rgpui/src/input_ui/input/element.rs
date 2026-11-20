@@ -3,7 +3,7 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use crate::{
-    AnyElement, App, Bounds, Corners, Edges, Element, ElementId, ElementInputHandler, Entity,
+    AnyElement, App, Bounds, Corners, Edges, Element, ElementId, ElementInputHandler, Entity, Font,
     GlobalElementId, Half, HighlightStyle, Hsla, IntoElement, LayoutId, MouseButton,
     MouseMoveEvent, MouseUpEvent, Path, PathBuilder, Pixels, Point, Position, ShapedLine,
     SharedString, Size, Style, TextAlign, TextRun, TextStyle, UnderlineStyle, Window, fill, point,
@@ -903,14 +903,24 @@ impl TextElement {
         let total_lines = text.lines_len();
         // 在最大行号之外再加一列，使右对齐数字与左边缘保持间距。
         let line_number_len = total_lines.max(1).ilog10() as usize + 2;
+        // 行号沟槽样式（宽度/间距/字体覆盖，`None` 跟默认；对标 gpui-kit GutterStyle）。
+        let gutter = &state.gutter_style;
 
         let mut line_number_width = if state.mode.line_number() {
+            let measure_size = gutter.font_size.unwrap_or(font_size);
+            let measure_font = match &gutter.font_family {
+                Some(family) => Font {
+                    family: family.clone(),
+                    ..style.font()
+                },
+                None => style.font(),
+            };
             let empty_line_number = window.text_system().shape_line(
                 "+".repeat(line_number_len).into(),
-                font_size,
+                measure_size,
                 &[TextRun {
                     len: line_number_len,
-                    font: style.font(),
+                    font: measure_font,
                     color: crate::black(),
                     background_color: None,
                     underline: None,
@@ -919,7 +929,10 @@ impl TextElement {
                 None,
             );
 
-            empty_line_number.width + LINE_NUMBER_RIGHT_MARGIN
+            let gap = gutter.gap.unwrap_or(LINE_NUMBER_RIGHT_MARGIN);
+            let measured = empty_line_number.width + gap;
+            // 最小宽度覆盖：实际宽度取测量宽与设定值的较大者。
+            gutter.width.map(|w| measured.max(w)).unwrap_or(measured)
         } else if state.mode.is_multi_line() && state.mode.is_folding() {
             LINE_NUMBER_RIGHT_MARGIN
         } else {
@@ -1725,23 +1738,29 @@ impl Element for TextElement {
 
         let state = self.state.read(cx);
         let line_numbers = if state.mode.line_number() {
-            // 行号颜色跟着高亮主题走，主题没写时退回弱化/正文前景色
-            let line_number_color = cx
-                .theme()
-                .highlight_theme
-                .style
-                .editor_line_number
+            // 行号颜色跟着高亮主题走，主题没写时退回弱化/正文前景色；
+            // `GutterStyle.color/active_color` 优先于主题（对标 gpui-kit）。
+            let gutter = &state.gutter_style;
+            let line_number_color = gutter
+                .color
+                .or(cx.theme().highlight_theme.style.editor_line_number)
                 .unwrap_or(cx.theme().muted_foreground);
-            let active_line_number_color = cx
-                .theme()
-                .highlight_theme
-                .style
-                .editor_active_line_number
+            let active_line_number_color = gutter
+                .active_color
+                .or(cx.theme().highlight_theme.style.editor_active_line_number)
                 .unwrap_or(cx.theme().foreground);
+            let line_number_font = || match &gutter.font_family {
+                Some(family) => Font {
+                    family: family.clone(),
+                    ..style.font()
+                },
+                None => style.font(),
+            };
+            let line_number_size = gutter.font_size.unwrap_or(text_size);
             let mut line_numbers = Vec::with_capacity(last_layout.visible_buffer_lines.len());
             let other_line_runs = vec![TextRun {
                 len: line_number_len,
-                font: style.font(),
+                font: line_number_font(),
                 color: line_number_color,
                 background_color: None,
                 underline: None,
@@ -1749,7 +1768,7 @@ impl Element for TextElement {
             }];
             let current_line_runs = vec![TextRun {
                 len: line_number_len,
-                font: style.font(),
+                font: line_number_font(),
                 color: active_line_number_color,
                 background_color: None,
                 underline: None,
@@ -1772,11 +1791,12 @@ impl Element for TextElement {
                 };
 
                 let mut sub_lines: SmallVec<[ShapedLine; 1]> = SmallVec::new();
-                sub_lines.push(
-                    window
-                        .text_system()
-                        .shape_line(line_no, text_size, &runs, None),
-                );
+                sub_lines.push(window.text_system().shape_line(
+                    line_no,
+                    line_number_size,
+                    &runs,
+                    None,
+                ));
                 for _ in 0..line.wrapped_lines.len().saturating_sub(1) {
                     sub_lines.push(ShapedLine::default());
                 }

@@ -51,15 +51,22 @@ Editor::new(&editor)
 | `set_highlighter(Option<Box<dyn Highlighter>>, window, cx)` | `:298` | 语法高亮 |
 | `set_language(&str, window, cx)` | `:314` | 查注册表 + 联动大纲/高亮 |
 | `language() -> Option<SharedString>` | `:325` | 当前语言 |
-| `set_font_size(Option<Pixels>, cx)` / `font_size()` | `:335` / `:330` | 字号 |
-| `outline() -> &[DocumentSymbol]` | `:343` | 大纲缓存 |
-| `goto_symbol(&DocumentSymbol, cx)` | `:348` | 跳符号 |
-| `set_vim_enabled(bool, cx)` / `vim_enabled(cx)` / `vim_mode(cx)` | `:198`/`:214`/`:219` | Vim |
-| `set_rulers(Vec<usize>, cx)` / `set_ruler_color` | `:174` / `:181` | 标尺 |
-| `set_bracket_rainbow_enabled(bool, cx)` | `:188` | 括号彩虹 |
-| `chrome_geometry(cx) -> Option<ChromeGeometry>` | `:251` | gutter/行号几何 |
+| `set_font_size(Option<Pixels>, cx)` / `font_size()` | `:355` / `:350` | 字号 |
+| `outline() -> &[DocumentSymbol]` | `:363` | 大纲缓存 |
+| `goto_symbol(&DocumentSymbol, cx)` | `:368` | 跳符号 |
+| `set_vim_enabled(bool, cx)` / `vim_enabled(cx)` / `vim_mode(cx)` | `:218`/`:234`/`:239` | Vim |
+| `set_rulers(Vec<usize>, cx)` / `set_ruler_color` | `:179` / `:186` | 标尺 |
+| `set_gutter_style(GutterStyle, cx)` / `gutter_style(cx)` | `:194` / `:202` | 行号沟槽样式 |
+| `set_bracket_rainbow_enabled(bool, cx)` | `:208` | 括号彩虹 |
+| `chrome_geometry(cx) -> Option<ChromeGeometry>` | `:271` | gutter/行号几何 |
 
-`ChromeGeometry`（`:227`）：`gutter_end`/`numbers_end`/`fold_end`/`text_start`。
+`ChromeGeometry`（`:247`）：`gutter_end`/`numbers_end`/`fold_end`/`text_start`。
+
+`GutterStyle`（`input/state.rs`）：行号沟槽样式，对标 gpui-kit 的 editor
+`GutterStyle`——`width`（数字区最小宽）/ `gap`（数字区与正文间距）/
+`color`、`active_color`（普通/当前行行号颜色，覆盖高亮主题）/
+`font_size`、`font_family`（行号字体，默认跟正文）；各字段 `None` 回落到
+主题/测量默认。
 
 ## Editor 组件
 

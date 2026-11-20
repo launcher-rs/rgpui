@@ -66,7 +66,7 @@ pub use input::{
     ShowCharacterPalette, Undo,
 };
 pub use input::{
-    InputContentType, MaskPattern, NumberInput, NumberInputEvent, NumberStep, TextArea,
+    GutterStyle, InputContentType, MaskPattern, NumberInput, NumberInputEvent, NumberStep, TextArea,
 };
 pub(crate) use layout::{LastLayout, WhitespaceIndicators};
 pub use rope_ext::{InputEdit, Point, Position, RopeExt, RopeLines};

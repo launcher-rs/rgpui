@@ -17,8 +17,7 @@ use crate::{
     Styled as _, Subscription, TextAlign, UTF16Selection, Window, div, point,
     prelude::FluentBuilder as _, px,
 };
-// `ruler_color` 字段类型用（`editor` feature 门控，默认构建不用）。
-#[cfg(feature = "editor")]
+// `ruler_color`（`editor` feature 门控）与常驻的 [`GutterStyle`] 字段类型用。
 use crate::Hsla;
 use regex::Regex;
 use ropey::{Rope, RopeSlice};
@@ -328,6 +327,24 @@ pub(crate) fn init(cx: &mut App) {
     number_input::init(cx);
 }
 
+/// 行号沟槽样式（对标 gpui-kit 的 editor `GutterStyle`，`d758da0f`）：
+/// 各字段 `None` 回落到主题测量默认，设置后覆盖对应项。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GutterStyle {
+    /// 数字区最小宽度（实际宽度取该值与按最大行号位数测量宽度的较大者）。
+    pub width: Option<Pixels>,
+    /// 数字区与正文的间距（覆盖默认 `LINE_NUMBER_RIGHT_MARGIN`）。
+    pub gap: Option<Pixels>,
+    /// 普通行号颜色（覆盖高亮主题 `editor_line_number`）。
+    pub color: Option<Hsla>,
+    /// 当前行行号颜色（覆盖高亮主题 `editor_active_line_number`）。
+    pub active_color: Option<Hsla>,
+    /// 行号字号（默认跟正文字号）。
+    pub font_size: Option<Pixels>,
+    /// 行号字体族名（默认跟正文字体；rgpui 的 `Font.family` 即字体族名）。
+    pub font_family: Option<SharedString>,
+}
+
 /// InputState 用于保存 [`super::Input`] 的编辑状态。
 pub struct InputState {
     pub(super) focus_handle: FocusHandle,
@@ -464,6 +481,8 @@ pub struct InputState {
     /// gutter provider 表（具名 + 独立开关；`editor` feature 门控）。
     #[cfg(feature = "editor")]
     pub(crate) gutter_markers: Vec<super::super::editor::gutter::GutterMarkerEntry>,
+    /// 行号沟槽样式（默认全 `None` 跟主题/测量值，见 [`GutterStyle`]）。
+    pub(crate) gutter_style: GutterStyle,
     /// 主光标之外的额外光标（多光标编辑，见 `input_ui/multicursor.rs`；
     /// 字段常驻（读点太多），行为由 `editor` feature 门控）。
     pub(crate) extra_selections: Vec<Selection>,
@@ -593,6 +612,7 @@ impl InputState {
             gutter_column_enabled: false,
             #[cfg(feature = "editor")]
             gutter_markers: Vec::new(),
+            gutter_style: GutterStyle::default(),
             extra_selections: Vec::new(),
             #[cfg(feature = "editor")]
             vim: super::super::editor::vim::VimState::default(),
@@ -1026,6 +1046,12 @@ impl InputState {
     /// 设置是否显示空白字符。
     pub fn show_whitespaces(mut self, show: bool) -> Self {
         self.show_whitespaces = show;
+        self
+    }
+
+    /// 设置行号沟槽样式（见 [`GutterStyle`]；默认全 `None` 跟主题）。
+    pub fn gutter_style(mut self, style: GutterStyle) -> Self {
+        self.gutter_style = style;
         self
     }
 
