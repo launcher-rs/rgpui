@@ -24,3 +24,7 @@ harness = false
 [[bench]]
 name = "scene_build"
 harness = false
+
+[[bench]]
+name = "text_wrap"
+harness = false
