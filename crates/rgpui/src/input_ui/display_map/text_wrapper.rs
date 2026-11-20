@@ -3,7 +3,8 @@ use std::ops::Range;
 
 use crate::sum_tree::{Bias, Dimensions, SumTree};
 use crate::{
-    App, Font, LineFragment, Pixels, Point, ShapedLine, Size, TextAlign, Window, point, px, size,
+    App, Font, LineFragment, Pixels, Point, ShapedLine, Size, TextAlign, Window, WrapMeasurement,
+    point, px, size,
 };
 use ropey::Rope;
 use smallvec::SmallVec;
@@ -34,6 +35,13 @@ pub(crate) struct LineItem {
     ///
     /// 不包含行末尾的 `\n`。
     pub(crate) wrapped_lines: SmallVec<[Range<usize>; 1]>,
+    /// 该行换行结构稳定的换行宽度半开区间 `[valid_from, valid_to)`。
+    ///
+    /// 换行宽度变化时，区间覆盖新宽度的行原样保留、不重新换行
+    /// （对齐上游 gpui-kit `514f243d` Part A7：只重换 resize 真正改变的行）。
+    /// `(Pixels::MAX, Pixels::MAX)` 表示未测量（不关闭换行时的行），必须重换。
+    valid_from: Pixels,
+    valid_to: Pixels,
 }
 
 impl LineItem {
@@ -240,7 +248,42 @@ impl TextWrapper {
         }
 
         self.wrap_width = wrap_width;
-        self.update_all(&self.text.clone(), cx);
+        match wrap_width {
+            // 新宽度已知：只重换「有效区间」不覆盖它的行。
+            Some(wrap_width) => self.rewrap_changed_widths(wrap_width, cx),
+            // 关闭换行：无需测量，全量重建（每行只留整行范围）。
+            None => self.update_all(&self.text.clone(), cx),
+        }
+    }
+
+    /// 换行宽度变化时的增量重换行：逐行对照 `valid_from..valid_to` 区间，
+    /// 覆盖新宽度的行原样克隆，其余行重新测量。换行宽度连续变化（拖分隔条、
+    /// 缩放窗口）时，绝大多数行的断点结构其实不变，这是 editor 大文档 resize
+    /// 卡顿的主因（上游 gpui-kit `514f243d` Part A7 同款思路）。
+    fn rewrap_changed_widths(&mut self, wrap_width: Pixels, cx: &mut App) {
+        let mut line_wrapper = cx
+            .text_system()
+            .line_wrapper(self.font.clone(), self.font_size);
+        let mut new_lines = Vec::with_capacity(self.lines_count());
+        for (row, item) in self.lines.iter().enumerate() {
+            if item.valid_from <= wrap_width && wrap_width < item.valid_to {
+                new_lines.push(item.clone());
+                continue;
+            }
+
+            let start = self.text.line_start_offset(row);
+            let end = self.text.line_end_offset(row);
+            let line_str = self.text.slice(start..end).to_string();
+            new_lines.push(Self::item_for_line(
+                &line_str,
+                self.wrapping_indent,
+                wrap_width,
+                &mut |line_str, wrap_width| {
+                    line_wrapper.wrap_line_measured(&[LineFragment::text(line_str)], wrap_width)
+                },
+            ));
+        }
+        self.lines = SumTree::from_iter(new_lines, &());
     }
 
     /// 设置续行缩进模式。
@@ -298,9 +341,7 @@ impl TextWrapper {
             range,
             new_text,
             &mut |line_str, wrap_width| {
-                line_wrapper
-                    .wrap_line(&[LineFragment::text(line_str)], wrap_width)
-                    .collect()
+                line_wrapper.wrap_line_measured(&[LineFragment::text(line_str)], wrap_width)
             },
         );
     }
@@ -313,7 +354,7 @@ impl TextWrapper {
         new_text: &Rope,
         wrap_line: &mut F,
     ) where
-        F: FnMut(&str, Pixels) -> Vec<crate::Boundary>,
+        F: FnMut(&str, Pixels) -> WrapMeasurement,
     {
         // 移除旧的变更行。
         let buffer_line_count = self.lines_count();
@@ -337,49 +378,26 @@ impl TextWrapper {
         // 行不包含 `\n`。
         for line in Rope::from(changed_text.slice(new_range)).iter_lines() {
             let line_str = line.to_string();
-            let mut wrapped_lines = SmallVec::<[Range<usize>; 1]>::new();
-            let mut prev_boundary_ix = 0;
-            let mut indent_chars = 0;
-
-            // 如果 wrap_width 为 Pixels::MAX，跳过换行以禁用自动换行
             if let Some(wrap_width) = wrap_width {
-                match self.wrapping_indent {
-                    WrappingIndent::Same => {
-                        // 这里只有换行行，如果没有换行，`line_wraps` 结果为空。
-                        for boundary in wrap_line(&line_str, wrap_width) {
-                            wrapped_lines.push(prev_boundary_ix..boundary.ix);
-                            prev_boundary_ix = boundary.ix;
-                            indent_chars = boundary.next_indent;
-                        }
-                    }
-                    WrappingIndent::None => {
-                        // 第一个视觉行保持该行的前导缩进，因此原样换行。
-                        let bondaries = wrap_line(&line_str, wrap_width);
-                        if let Some(first) = bondaries.first() {
-                            let first_ix = first.ix;
-                            wrapped_lines.push(prev_boundary_ix..first_ix);
-                            prev_boundary_ix = first_ix;
-
-                            for boundary in wrap_line(&line_str[first_ix..], wrap_width) {
-                                let ix = first_ix + boundary.ix;
-                                wrapped_lines.push(prev_boundary_ix..ix);
-                                prev_boundary_ix = ix;
-                            }
-                        }
-                    }
-                }
+                new_lines.push(Self::item_for_line(
+                    &line_str,
+                    self.wrapping_indent,
+                    wrap_width,
+                    wrap_line,
+                ));
+            } else {
+                // 关闭自动换行（含 `Pixels::MAX` 禁用口径）：只留整行范围，
+                // 有效区间标记为未测量——重新开启换行宽度时必须重测。
+                let mut wrapped_lines = SmallVec::<[Range<usize>; 1]>::new();
+                wrapped_lines.push(0..line_str.len());
+                new_lines.push(LineItem {
+                    len: line_str.len(),
+                    indent: 0,
+                    wrapped_lines,
+                    valid_from: Pixels::MAX,
+                    valid_to: Pixels::MAX,
+                });
             }
-
-            // 行的剩余部分
-            if !line_str[prev_boundary_ix..].is_empty() || prev_boundary_ix == 0 {
-                wrapped_lines.push(prev_boundary_ix..line.len());
-            }
-
-            new_lines.push(LineItem {
-                len: line.len(),
-                indent: indent_chars,
-                wrapped_lines,
-            });
         }
 
         if self.lines.is_empty() {
@@ -397,6 +415,75 @@ impl TextWrapper {
         }
 
         self.text = changed_text.clone();
+    }
+
+    /// 由一条 buffer 行文本构造 [`LineItem`]：按续行缩进模式软换行，
+    /// 并附带换行宽度稳定区间。
+    fn item_for_line<F>(
+        line_str: &str,
+        wrapping_indent: WrappingIndent,
+        wrap_width: Pixels,
+        wrap_line: &mut F,
+    ) -> LineItem
+    where
+        F: FnMut(&str, Pixels) -> WrapMeasurement,
+    {
+        let mut wrapped_lines = SmallVec::<[Range<usize>; 1]>::new();
+        let mut prev_boundary_ix = 0;
+        let mut indent_chars = 0;
+        let valid;
+
+        match wrapping_indent {
+            WrappingIndent::Same => {
+                // 这里只有换行行，如果没有换行，`wrapped_lines` 结果为空。
+                let measurement = wrap_line(line_str, wrap_width);
+                for segment in measurement.segments {
+                    wrapped_lines.push(prev_boundary_ix..segment.boundary.ix);
+                    prev_boundary_ix = segment.boundary.ix;
+                    indent_chars = segment.boundary.next_indent;
+                }
+                valid = (measurement.valid_from, measurement.valid_to);
+            }
+            WrappingIndent::None => {
+                // 第一个视觉行保持该行的前导缩进，因此原样换行。
+                let first = wrap_line(line_str, wrap_width);
+                if let Some(head) = first.segments.first() {
+                    let first_ix = head.boundary.ix;
+                    wrapped_lines.push(prev_boundary_ix..first_ix);
+                    prev_boundary_ix = first_ix;
+
+                    let rest = wrap_line(&line_str[first_ix..], wrap_width);
+                    for segment in rest.segments {
+                        let ix = first_ix + segment.boundary.ix;
+                        wrapped_lines.push(prev_boundary_ix..ix);
+                        prev_boundary_ix = ix;
+                    }
+
+                    // 组合结构的区间 = 首断点自身区间 ∩ 「从首断点起重换的剩余」区间；
+                    // `first` 的行级区间不采用——它的尾段条件是面向整行的。
+                    valid = (
+                        head.valid_from.max(rest.valid_from),
+                        head.valid_to.min(rest.valid_to),
+                    );
+                } else {
+                    valid = (first.valid_from, first.valid_to);
+                }
+            }
+        }
+
+        // 行的剩余部分
+        if !line_str[prev_boundary_ix..].is_empty() || prev_boundary_ix == 0 {
+            wrapped_lines.push(prev_boundary_ix..line_str.len());
+        }
+
+        let (valid_from, valid_to) = valid;
+        LineItem {
+            len: line_str.len(),
+            indent: indent_chars,
+            wrapped_lines,
+            valid_from,
+            valid_to,
+        }
     }
 
     /// 更新文本包装器并重新计算换行行。
@@ -807,7 +894,20 @@ mod tests {
     use super::*;
     use std::rc::Rc;
 
-    use crate::{Boundary, FontFeatures, FontStyle, FontWeight, px};
+    use crate::{
+        Boundary, FontFeatures, FontStyle, FontWeight, TestAppContext, TestDispatcher, WrapSegment,
+        px,
+    };
+
+    /// 测试专用：「未测量」的测量结果——区间为空集，任何换行宽度都要求重换行。
+    fn unmeasured() -> WrapMeasurement {
+        WrapMeasurement {
+            segments: Vec::new(),
+            tail_width: px(0.),
+            valid_from: Pixels::MAX,
+            valid_to: Pixels::MAX,
+        }
+    }
 
     #[test]
     fn test_update() {
@@ -824,8 +924,8 @@ mod tests {
             "Hello, 世界!\r\nThis is second line.\nThis is third line.\n这里是第 4 行。",
         );
 
-        fn fake_wrap_line(_line: &str, _wrap_width: Pixels) -> Vec<Boundary> {
-            vec![]
+        fn fake_wrap_line(_line: &str, _wrap_width: Pixels) -> WrapMeasurement {
+            unmeasured()
         }
 
         #[track_caller]
@@ -1020,7 +1120,7 @@ mod tests {
     fn test_longest_row_after_shrink() {
         let mut wrapper = TextWrapper::new(test_font(), px(14.), None);
         let mut text = Rope::from("aa\nthis is the longest line\nbb");
-        wrapper._update(&text, &(0..text.len()), &text, &mut |_, _| vec![]);
+        wrapper._update(&text, &(0..text.len()), &text, &mut |_, _| unmeasured());
         assert_eq!(wrapper.longest_row(), 1);
 
         // 缩小第 1 行，使第 0 行现在最长。
@@ -1029,7 +1129,9 @@ mod tests {
         let range = start..end;
         let new_text = "a very very long first line now";
         text.replace(range.clone(), new_text);
-        wrapper._update(&text, &range, &Rope::from(new_text), &mut |_, _| vec![]);
+        wrapper._update(&text, &range, &Rope::from(new_text), &mut |_, _| {
+            unmeasured()
+        });
         assert_eq!(wrapper.longest_row(), 0);
     }
 
@@ -1038,7 +1140,7 @@ mod tests {
     fn test_edit_last_line_and_full_delete() {
         let mut wrapper = TextWrapper::new(test_font(), px(14.), None);
         let mut text = Rope::from("one\ntwo\nthree");
-        wrapper._update(&text, &(0..text.len()), &text, &mut |_, _| vec![]);
+        wrapper._update(&text, &(0..text.len()), &text, &mut |_, _| unmeasured());
         assert_eq!(wrapper.lines_count(), 3);
 
         // 仅替换最后一行。
@@ -1046,14 +1148,16 @@ mod tests {
         let range = start..text.len();
         let new_text = "THREE EDITED";
         text.replace(range.clone(), new_text);
-        wrapper._update(&text, &range, &Rope::from(new_text), &mut |_, _| vec![]);
+        wrapper._update(&text, &range, &Rope::from(new_text), &mut |_, _| {
+            unmeasured()
+        });
         assert_eq!(wrapper.lines_count(), 3);
         assert_eq!(wrapper.line(2).unwrap().len(), "THREE EDITED".len());
 
         // 删除所有内容。
         let range = 0..text.len();
         text.replace(range.clone(), "");
-        wrapper._update(&text, &range, &Rope::from(""), &mut |_, _| vec![]);
+        wrapper._update(&text, &range, &Rope::from(""), &mut |_, _| unmeasured());
         assert_eq!(wrapper.lines_count(), 1);
         assert_eq!(wrapper.len(), 1);
         assert_eq!(wrapper.line(0).unwrap().wrapped_lines.as_slice(), [0..0]);
@@ -1069,16 +1173,22 @@ mod tests {
                     len: 2,
                     indent: 0,
                     wrapped_lines: smallvec::smallvec![0..2],
+                    valid_from: px(0.),
+                    valid_to: Pixels::MAX,
                 },
                 LineItem {
                     len: 4,
                     indent: 0,
                     wrapped_lines: smallvec::smallvec![0..2, 2..4],
+                    valid_from: px(0.),
+                    valid_to: Pixels::MAX,
                 },
                 LineItem {
                     len: 1,
                     indent: 0,
                     wrapped_lines: smallvec::smallvec![0..1],
+                    valid_from: px(0.),
+                    valid_to: Pixels::MAX,
                 },
             ],
             &(),
@@ -1110,12 +1220,21 @@ mod tests {
         let mut text = Rope::from("aa\nbbbb\nc");
         let mut fake_wrap_line = |line: &str, _wrap_width: Pixels| {
             if line.len() > 2 {
-                vec![Boundary {
-                    ix: 2,
-                    next_indent: 0,
-                }]
+                WrapMeasurement {
+                    segments: vec![WrapSegment {
+                        boundary: Boundary {
+                            ix: 2,
+                            next_indent: 0,
+                        },
+                        valid_from: px(0.),
+                        valid_to: Pixels::MAX,
+                    }],
+                    tail_width: px(0.),
+                    valid_from: px(0.),
+                    valid_to: Pixels::MAX,
+                }
             } else {
-                vec![]
+                unmeasured()
             }
         };
 
@@ -1140,6 +1259,47 @@ mod tests {
         assert_eq!(wrapper.wrap_row_to_buffer_line(2), 2);
         assert_eq!(wrapper.wrap_row_to_buffer_line(3), 2);
         assert_eq!(wrapper.wrap_row_to_buffer_line(4), 3);
+    }
+
+    /// 换行宽度变化的增量重换行（`set_wrap_width`）必须与全量重换在每个宽度下一致。
+    #[test]
+    fn test_set_wrap_width_incremental_matches_full() {
+        let dispatcher = TestDispatcher::new(0);
+        let cx = &mut TestAppContext::build(dispatcher, None);
+        let font = crate::font(".ZedMono");
+        let text = Rope::from(
+            "aa bbb cccc ddddd eeee\nshort\nhello world foo bar baz qux\nsupercalifragilisticexpialidocious",
+        );
+
+        let ranges_of = |wrapper: &TextWrapper| -> Vec<Vec<Range<usize>>> {
+            wrapper
+                .iter_lines()
+                .map(|line| line.wrapped_lines.iter().cloned().collect())
+                .collect()
+        };
+
+        let mut wrapper = TextWrapper::new(font.clone(), px(16.), Some(px(72.)));
+        cx.update(|cx| wrapper.prepare_if_need(&text, cx));
+
+        // 往返扫过多个宽度：每次增量结果都必须等于按该宽度从零全量构建的基准。
+        for width in [
+            px(64.),
+            px(160.),
+            px(48.),
+            px(88.),
+            px(20.),
+            px(72.),
+            px(120.),
+        ] {
+            cx.update(|cx| wrapper.set_wrap_width(Some(width), cx));
+            let mut reference = TextWrapper::new(font.clone(), px(16.), Some(width));
+            cx.update(|cx| reference.prepare_if_need(&text, cx));
+            assert_eq!(
+                ranges_of(&wrapper),
+                ranges_of(&reference),
+                "width {width:?}"
+            );
+        }
     }
 
     #[test]

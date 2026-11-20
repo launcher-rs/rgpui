@@ -109,10 +109,12 @@ assert!(can_break_between('a', ')'));      // 半角 ASCII 行为不变
 
 两条换行路径都只在**非单词字符**的候选断点处调用 `can_break_between` 否决：
 
-- `LineWrapper::wrap_line`（`text_system/line_wrapper.rs:40`，否决点 `:78`）；
+- `LineWrapper::wrap_line`（`text_system/line_wrapper.rs:67`，否决点 `:125`；
+  同算法的 `wrap_line_measured` 在 `:86`，额外给出换行结构稳定的
+  `wrap_width` 区间，`TextWrapper::set_wrap_width` 的增量重换行据此跳过未受影响的行）；
 - `LineLayout::compute_wrap_boundaries`（`text_system/line_layout.rs:142`，否决点 `:194`）。
 
-单词内部不断行由 `LineWrapper::is_word_char`（`line_wrapper.rs:451`）负责，与禁则
+单词内部不断行由 `LineWrapper::is_word_char`（`line_wrapper.rs:520`）负责，与禁则
 判定互不干涉。规则只面向 CJK 与全角标点，**半角 ASCII 标点（`)` `]` `,` `.`）
 保持拉丁既有行为**。`uax14_break_indices` 的 UAX #14 完整口径**尚未接入**这两条
 路径（接线会改变全部软换行行为，登记在 `docs/borrow-upstream-plan.md` 批次 B3）。

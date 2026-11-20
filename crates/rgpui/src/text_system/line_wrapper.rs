@@ -1,6 +1,6 @@
 use crate::collections::HashMap;
 use crate::{FontId, Pixels, SharedString, TextRun, TextSystem, px};
-use std::{borrow::Cow, iter, sync::Arc};
+use std::{borrow::Cow, sync::Arc};
 
 /// 确定从开头、结尾还是中间截断文本。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -69,6 +69,25 @@ impl LineWrapper {
         fragments: &'a [LineFragment],
         wrap_width: Pixels,
     ) -> impl Iterator<Item = Boundary> + 'a {
+        self.wrap_line_measured(fragments, wrap_width)
+            .segments
+            .into_iter()
+            .map(|segment| segment.boundary)
+    }
+
+    /// 与 [`LineWrapper::wrap_line`] 同算法，但一次性收集全部断点，并给出
+    /// 该行换行结构保持稳定的 `wrap_width` 半开区间 `[valid_from, valid_to)`：
+    /// `wrap_width` 落在区间内时，断点的位置与数量完全不变（增量重换行的依据）。
+    ///
+    /// 每个断点的下界 = 断点字符**计入前**的累计宽度（低于它断点会前移），
+    /// 上界 = 触发超宽的字符计入后的累计宽度（达到它断点后移）；
+    /// 行级下界再并入最后一个断点之后尾段的累计宽度（防止尾段冒出新增断点）；
+    /// 未换行的行下界即整行总宽、上界为 [`Pixels::MAX`]。
+    pub fn wrap_line_measured(
+        &mut self,
+        fragments: &[LineFragment],
+        wrap_width: Pixels,
+    ) -> WrapMeasurement {
         let mut width = px(0.);
         let mut first_non_whitespace_ix = None;
         let mut indent = None;
@@ -77,93 +96,115 @@ impl LineWrapper {
         let mut last_wrap_ix = 0;
         let mut prev_c = '\0';
         let mut index = 0;
-        let mut candidates = fragments
+        let mut segments = Vec::new();
+        let mut valid_from = px(0.);
+        let mut valid_to = Pixels::MAX;
+        for candidate in fragments
             .iter()
-            .flat_map(move |fragment| fragment.wrap_boundary_candidates())
-            .peekable();
-        iter::from_fn(move || {
-            for candidate in candidates.by_ref() {
-                let ix = index;
-                index += candidate.len_utf8();
-                let mut new_prev_c = prev_c;
-                let item_width = match candidate {
-                    WrapBoundaryCandidate::Char { character: c } => {
-                        if c == '\n' {
-                            continue;
-                        }
-
-                        if Self::is_word_char(c) {
-                            if prev_c == ' ' && c != ' ' && first_non_whitespace_ix.is_some() {
-                                last_candidate_ix = ix;
-                                last_candidate_width = width;
-                            }
-                        } else {
-                            // CJK may not be space separated, e.g.: `Hello world你好世界`
-                            // 但要遵守东亚禁则：`。` 不可起行、`「` 不可收行、胶连字符两侧不可断。
-                            if c != ' '
-                                && first_non_whitespace_ix.is_some()
-                                && crate::line_break::can_break_between(prev_c, c)
-                            {
-                                last_candidate_ix = ix;
-                                last_candidate_width = width;
-                            }
-                        }
-
-                        if c != ' ' && first_non_whitespace_ix.is_none() {
-                            first_non_whitespace_ix = Some(ix);
-                        }
-
-                        new_prev_c = c;
-
-                        self.width_for_char(c)
+            .flat_map(|fragment| fragment.wrap_boundary_candidates())
+        {
+            let ix = index;
+            index += candidate.len_utf8();
+            let mut new_prev_c = prev_c;
+            let item_width = match candidate {
+                WrapBoundaryCandidate::Char { character: c } => {
+                    if c == '\n' {
+                        continue;
                     }
-                    WrapBoundaryCandidate::Element {
-                        width: element_width,
-                        ..
-                    } => {
-                        if prev_c == ' ' && first_non_whitespace_ix.is_some() {
+
+                    if Self::is_word_char(c) {
+                        if prev_c == ' ' && c != ' ' && first_non_whitespace_ix.is_some() {
                             last_candidate_ix = ix;
                             last_candidate_width = width;
                         }
-
-                        if first_non_whitespace_ix.is_none() {
-                            first_non_whitespace_ix = Some(ix);
-                        }
-
-                        element_width
-                    }
-                };
-
-                width += item_width;
-                if width > wrap_width && ix > last_wrap_ix {
-                    if let (None, Some(first_non_whitespace_ix)) = (indent, first_non_whitespace_ix)
-                    {
-                        indent = Some(
-                            Self::MAX_INDENT.min((first_non_whitespace_ix - last_wrap_ix) as u32),
-                        );
-                    }
-
-                    if last_candidate_ix > 0 {
-                        last_wrap_ix = last_candidate_ix;
-                        width -= last_candidate_width;
-                        last_candidate_ix = 0;
                     } else {
-                        last_wrap_ix = ix;
-                        width = item_width;
+                        // CJK may not be space separated, e.g.: `Hello world你好世界`
+                        // 但要遵守东亚禁则：`。` 不可起行、`「` 不可收行、胶连字符两侧不可断。
+                        if c != ' '
+                            && first_non_whitespace_ix.is_some()
+                            && crate::line_break::can_break_between(prev_c, c)
+                        {
+                            last_candidate_ix = ix;
+                            last_candidate_width = width;
+                        }
                     }
 
-                    if let Some(indent) = indent {
-                        width += self.width_for_char(' ') * indent as f32;
+                    if c != ' ' && first_non_whitespace_ix.is_none() {
+                        first_non_whitespace_ix = Some(ix);
                     }
 
-                    return Some(Boundary::new(last_wrap_ix, indent.unwrap_or(0)));
+                    new_prev_c = c;
+
+                    self.width_for_char(c)
+                }
+                WrapBoundaryCandidate::Element {
+                    width: element_width,
+                    ..
+                } => {
+                    if prev_c == ' ' && first_non_whitespace_ix.is_some() {
+                        last_candidate_ix = ix;
+                        last_candidate_width = width;
+                    }
+
+                    if first_non_whitespace_ix.is_none() {
+                        first_non_whitespace_ix = Some(ix);
+                    }
+
+                    element_width
+                }
+            };
+
+            width += item_width;
+            if width > wrap_width && ix > last_wrap_ix {
+                // 断点结构稳定的边界：有候选断点时下界是候选字符计入前的宽度
+                // （低于它触发点会退到候选之前），无候选（强制断点）时下界是
+                // 触发字符计入前的宽度（低于它强制断点会落在更早的字符上）。
+                let segment_from = if last_candidate_ix > 0 {
+                    last_candidate_width
+                } else {
+                    width - item_width
+                };
+                let segment_to = width;
+
+                if let (None, Some(first_non_whitespace_ix)) = (indent, first_non_whitespace_ix) {
+                    indent =
+                        Some(Self::MAX_INDENT.min((first_non_whitespace_ix - last_wrap_ix) as u32));
                 }
 
-                prev_c = new_prev_c;
+                if last_candidate_ix > 0 {
+                    last_wrap_ix = last_candidate_ix;
+                    width -= last_candidate_width;
+                    last_candidate_ix = 0;
+                } else {
+                    last_wrap_ix = ix;
+                    width = item_width;
+                }
+
+                if let Some(indent) = indent {
+                    width += self.width_for_char(' ') * indent as f32;
+                }
+
+                segments.push(WrapSegment {
+                    boundary: Boundary::new(last_wrap_ix, indent.unwrap_or(0)),
+                    valid_from: segment_from,
+                    valid_to: segment_to,
+                });
+                valid_from = valid_from.max(segment_from);
+                valid_to = valid_to.min(segment_to);
             }
 
-            None
-        })
+            prev_c = new_prev_c;
+        }
+
+        // 扫描结束没有再触发断点：尾段累计宽度也是下界的一部分
+        // （未换行的行此时尾段就是整行，下界即总宽、上界保持 MAX）。
+        valid_from = valid_from.max(width);
+        WrapMeasurement {
+            segments,
+            tail_width: width,
+            valid_from,
+            valid_to,
+        }
     }
 
     /// 根据行的宽度确定是否应截断该行。
@@ -698,6 +739,33 @@ impl Boundary {
     }
 }
 
+/// 一个软换行断点，附带该断点保持稳定的 `wrap_width` 半开区间。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WrapSegment {
+    /// 断点。
+    pub boundary: Boundary,
+    /// 区间下界（闭）：`wrap_width` 低于它，该断点会前移。
+    pub valid_from: Pixels,
+    /// 区间上界（开）：`wrap_width` 达到它，该断点会后移。
+    pub valid_to: Pixels,
+}
+
+/// 一次软换行测量的完整结果：断点列表 + 整行换行结构稳定的 `wrap_width` 区间。
+///
+/// 区间判定只保证「不断」的一侧是精确的：区间内结构必然一致，区间外只是
+/// 可能需要重测——保守方向只会多换行，不会错换行。
+#[derive(Debug, Clone, PartialEq)]
+pub struct WrapMeasurement {
+    /// 全部断点（含各自的稳定区间）。
+    pub segments: Vec<WrapSegment>,
+    /// 最后一个断点之后尾段的累计宽度（无断点时为整行总宽）。
+    pub tail_width: Pixels,
+    /// 整行换行结构（含「尾段不新增断点」）稳定的区间下界（闭）。
+    pub valid_from: Pixels,
+    /// 区间上界（开）；未换行的行为 [`Pixels::MAX`]。
+    pub valid_to: Pixels,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -870,6 +938,46 @@ mod tests {
                 Boundary::new(18, 0)
             ],
         );
+    }
+
+    /// `wrap_line_measured` 的稳定区间：区间内断点结构不变，达到上界后必变；
+    /// 未换行的行上界为 MAX、下界为整行总宽。
+    #[test]
+    fn test_wrap_line_measured_valid_widths() {
+        let mut wrapper = build_wrapper();
+        let text = "aa bbb cccc ddddd eeee";
+
+        let ixs = |m: &WrapMeasurement| -> Vec<usize> {
+            m.segments.iter().map(|s| s.boundary.ix).collect()
+        };
+        let measured = wrapper.wrap_line_measured(&[LineFragment::text(text)], px(72.));
+        assert_eq!(ixs(&measured), vec![7, 12, 18]);
+
+        // 闭下界、开上界：区间内任意宽度探测，断点结构与宽度 72 时完全一致。
+        let probes = [
+            measured.valid_from,
+            px((measured.valid_from.0 + measured.valid_to.0) / 2.0),
+            px(measured.valid_to.0 - 0.5),
+        ];
+        for probe in probes {
+            let again = wrapper.wrap_line_measured(&[LineFragment::text(text)], probe);
+            assert_eq!(ixs(&again), vec![7, 12, 18], "probe {probe:?}");
+        }
+
+        // 上界是保守口径：恰好达到上界时结构可能恰好不变（触发点后移但没有
+        // 新候选），但足够超出（远超整行总宽）必然不同。
+        let far =
+            wrapper.wrap_line_measured(&[LineFragment::text(text)], measured.valid_to + px(200.));
+        assert_ne!(ixs(&far), ixs(&measured));
+
+        // 未换行的行：上界是 MAX，下界是整行总宽；低于下界就出现断点。
+        let unwrapped = wrapper.wrap_line_measured(&[LineFragment::text(text)], px(500.));
+        assert!(unwrapped.segments.is_empty());
+        assert_eq!(unwrapped.valid_to, Pixels::MAX);
+        assert!(unwrapped.valid_from > px(0.));
+        let shrunk =
+            wrapper.wrap_line_measured(&[LineFragment::text(text)], unwrapped.valid_from - px(0.5));
+        assert!(!shrunk.segments.is_empty());
     }
 
     #[test]

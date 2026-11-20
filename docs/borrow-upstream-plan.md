@@ -123,14 +123,24 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
   在 C3 处理）。
 - 测试：样式生效（宽度/颜色绘制断言）、None 回落主题默认。
 
-### C2 大文档软换行加速
+### C2 大文档软换行加速（已完成）
 
 - gpui-kit 思路（`514f243d`）：大文档、非 ASCII 文本的软换行把测量成本
-  压到 O(视口)。rgpui 的换行在 `text_system/line_wrapper.rs` + editor
-  layout；落地前先 profile `editor` 大文档（10 万行 CJK）热点，再决定：
-  逐段测量缓存、未变行跳过、二分换行改增量换行等。
-- 本项**先测量后动手**，产出 profile 数据再定改法（防止盲目优化）。
-- 验收：100k 行文本的换行首帧/滚动帧耗时对比数据。
+  压到 O(视口)。本项按「先测量后动手」执行，测量结论与落地：
+  - **基线数据**：新增 bench `cargo bench -p list_showcase --bench text_wrap`
+    （拉丁/CJK 各 1 万行，走 `LineWrapper::wrap_line` 全路径）：
+    拉丁 ≈ **7.98 ms/万行**、CJK ≈ **7.68 ms/万行**（约 0.8 µs/行）。
+  - **上游 Part A/B（monospace 宽度表 / CharWidths 前缀和）不落地**：
+    rgpui 的 `wrap_line` 本就是逐字符增量扫描 + 字符宽度缓存（ASCII 数组 +
+    HashMap），没有上游那种「每次探测都问 shaper」的 shaped probe 路径，
+    宽度表思路没有收益。
+  - **落地的是 Part A7（resize 只重换受影响的行）**：`LineWrapper::wrap_line_measured`
+    换行同时产出每断点的 `wrap_width` 稳定半开区间（`WrapSegment`/`WrapMeasurement`），
+    `LineItem` 附带行级区间 `[valid_from, valid_to)`；`TextWrapper::set_wrap_width`
+    改为 `rewrap_changed_widths` 增量重换——拖分隔条/缩放窗口时，断点结构不变的行
+    （绝大多数）原样克隆。区间保守方向只会多换行不会错换行（恰在上界可能仍一致）。
+- 验收：增量重换与全量重换逐宽度对照测试（`test_set_wrap_width_incremental_matches_full`）
+  + 区间性质测试（`test_wrap_line_measured_valid_widths`）。
 
 ### C3 垂直坐标精度 + 9 位行号
 
