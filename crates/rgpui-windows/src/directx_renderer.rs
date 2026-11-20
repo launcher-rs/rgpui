@@ -25,7 +25,7 @@ use rgpui::*;
 
 /// 环境变量名，用于禁用 DirectComposition
 pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "GPUI_DISABLE_DIRECT_COMPOSITION";
-const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
+pub(crate) const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 // 此配置用于路径的 MSAA 渲染，保证被 DirectX 11 支持
 const PATH_MULTISAMPLE_COUNT: u32 = 4;
 
@@ -62,6 +62,9 @@ pub(crate) struct DirectXRenderer {
     /// In that case we want to discard the first frame that we draw as we got reset in the middle of a frame
     /// meaning we lost all the allocated gpu textures and scene resources.
     skip_draws: bool,
+
+    /// D4 部分重绘状态（软件适配器 + 开关）。整帧路径不受影响。
+    partial: crate::fast::partial::Partial,
 }
 
 /// Direct3D 设备对象
@@ -79,7 +82,7 @@ pub(crate) struct DirectXRendererDevices {
 struct DirectXResources {
     // Direct3D rendering objects
     swap_chain: IDXGISwapChain1,
-    render_target: Option<ID3D11Texture2D>,
+    pub(crate) render_target: Option<ID3D11Texture2D>,
     render_target_view: Option<ID3D11RenderTargetView>,
 
     // Path intermediate textures (with MSAA)
@@ -193,6 +196,8 @@ impl DirectXRenderer {
             Some(composition)
         };
 
+        let partial = crate::fast::partial::Partial::for_adapter(&devices.adapter);
+
         Ok(DirectXRenderer {
             hwnd,
             atlas,
@@ -205,6 +210,7 @@ impl DirectXRenderer {
             width: 1,
             height: 1,
             skip_draws: false,
+            partial,
         })
     }
 
@@ -347,6 +353,8 @@ impl DirectXRenderer {
         self.pipelines = pipelines;
         self.direct_composition = direct_composition;
         self.skip_draws = true;
+        // 图集纹理随设备重建，旧签名与 canvas 已失效，下一帧必须整帧绘制。
+        self.partial.reset();
         Ok(())
     }
 
@@ -360,8 +368,85 @@ impl DirectXRenderer {
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
+        if self.draw_partial(scene, background_appearance)? {
+            return Ok(());
+        }
         self.draw_into(scene, background_appearance)?;
         self.present()
+    }
+
+    /// D4 部分重绘：软件适配器上从上一帧 canvas 造当前帧，拷回交换链并提交。
+    /// 返回 `true` 表示本帧已完整处理（含 present）。整帧路径返回 `false`。
+    fn draw_partial(
+        &mut self,
+        scene: &Scene,
+        background_appearance: WindowBackgroundAppearance,
+    ) -> Result<bool> {
+        if self.skip_draws || !self.partial.is_on() {
+            return Ok(false);
+        }
+        let clear = match background_appearance {
+            WindowBackgroundAppearance::Opaque => [1.0f32; 4],
+            _ => [0.0f32; 4],
+        };
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let (device, context) = (devices.device.clone(), devices.device_context.clone());
+        let context1 = match context.cast::<ID3D11DeviceContext1>() {
+            Ok(c) => c,
+            Err(_) => {
+                self.partial.reset();
+                return Ok(false);
+            }
+        };
+        let size = (self.width, self.height);
+        let uploaded = self.atlas.take_uploads();
+        let mut partial = std::mem::take(&mut self.partial);
+        let result = (|| -> Result<bool> {
+            let Some(uploaded) = uploaded else {
+                partial.reset();
+                return Ok(false);
+            };
+            let canvas = {
+                let mut drawer = PartialDrawer {
+                    renderer: self,
+                    scene,
+                    clear,
+                    saved: None,
+                };
+                partial.frame(
+                    &device,
+                    &context,
+                    &context1,
+                    size,
+                    scene,
+                    &uploaded,
+                    &mut drawer,
+                )?
+            };
+            let Some(canvas) = canvas else {
+                return Ok(false);
+            };
+            let resources = self.resources.as_ref().context("resources missing")?;
+            let buffer = resources
+                .render_target
+                .as_ref()
+                .context("render target missing")?;
+            // SAFETY: 两张纹理同尺寸同格式，都是活的渲染目标。
+            unsafe { context.CopyResource(buffer, &canvas) };
+            Ok(true)
+        })();
+        self.partial = partial;
+        match result {
+            Ok(true) => {
+                self.present()?;
+                Ok(true)
+            }
+            Ok(false) => Ok(false),
+            Err(e) => {
+                self.partial.reset();
+                Err(e)
+            }
+        }
     }
 
     /// 把场景画进当前绑定的渲染目标，但不提交（`Present`）。
@@ -386,7 +471,12 @@ impl DirectXRenderer {
         )?;
 
         self.upload_scene_buffers(scene)?;
+        self.draw_batches(scene)
+    }
 
+    /// 把场景的所有批次画一遍（不透明通道 + 混合通道），不含清屏与上传。
+    /// partial 路径在 damage 的 scissor 内复用本方法。
+    fn draw_batches(&mut self, scene: &Scene) -> Result<()> {
         // 不透明通道先画：从前往后、写深度，被遮住的后续片元在深度测试处失败。
         self.draw_opaque_quads(scene.quads.len())?;
 
@@ -1393,6 +1483,69 @@ struct PathRasterizationSprite {
 #[repr(C)]
 struct PathSprite {
     bounds: Bounds<ScaledPixels>,
+}
+
+/// 部分重绘时供 `fast::partial` 调用的绘制接口。
+///
+/// 持有渲染器可变借用；每次 `begin` 临时把 canvas 的颜色/深度视图换进
+/// `resources`，`drop` 时恢复——路径栅格化完成后会读回 `render_target_view`。
+struct PartialDrawer<'a> {
+    renderer: &'a mut DirectXRenderer,
+    scene: &'a Scene,
+    clear: [f32; 4],
+    /// begin 前的窗口渲染目标，drop 时恢复。
+    saved: Option<(
+        Option<ID3D11RenderTargetView>,
+        Option<ID3D11DepthStencilView>,
+    )>,
+}
+
+impl crate::fast::partial::Drawer for PartialDrawer<'_> {
+    fn clear(&self) -> [f32; 4] {
+        self.clear
+    }
+
+    fn prepare(&mut self) -> Result<()> {
+        self.renderer.upload_scene_buffers(self.scene)
+    }
+
+    fn begin(
+        &mut self,
+        color: &Option<ID3D11RenderTargetView>,
+        depth: &Option<ID3D11DepthStencilView>,
+        clear: [f32; 4],
+    ) -> Result<()> {
+        let resources = self
+            .renderer
+            .resources
+            .as_mut()
+            .context("resources missing")?;
+        // 只保存一次：整帧路径里 begin 可能被调用多轮（每个 damage 矩形）。
+        if self.saved.is_none() {
+            self.saved = Some((
+                resources.render_target_view.clone(),
+                resources.depth_stencil_view.clone(),
+            ));
+        }
+        resources.render_target_view = color.clone();
+        resources.depth_stencil_view = depth.clone();
+        self.renderer.pre_draw(&clear, self.scene.quads.len())
+    }
+
+    fn draw(&mut self) -> Result<()> {
+        self.renderer.draw_batches(self.scene)
+    }
+}
+
+impl Drop for PartialDrawer<'_> {
+    fn drop(&mut self) {
+        if let (Some(saved), Some(resources)) =
+            (self.saved.take(), self.renderer.resources.as_mut())
+        {
+            resources.render_target_view = saved.0;
+            resources.depth_stencil_view = saved.1;
+        }
+    }
 }
 
 impl Drop for DirectXRenderer {

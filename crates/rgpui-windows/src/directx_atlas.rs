@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use etagere::BucketedAtlasAllocator;
 use parking_lot::Mutex;
 use rgpui::collections::FxHashMap;
@@ -23,6 +25,9 @@ struct DirectXAtlasState {
     polychrome_textures: AtlasTextureList<DirectXAtlasTexture>,
     subpixel_textures: AtlasTextureList<DirectXAtlasTexture>,
     tiles_by_key: FxHashMap<AtlasKey, AtlasTile>,
+    /// 自上次 `take_uploads` 以来重传的瓦片；溢出时必须整帧绘制。
+    partial_uploads: HashSet<(AtlasTextureId, u32)>,
+    partial_uploads_lost: bool,
 }
 
 struct DirectXAtlasTexture {
@@ -43,7 +48,28 @@ impl DirectXAtlas {
             polychrome_textures: Default::default(),
             subpixel_textures: Default::default(),
             tiles_by_key: Default::default(),
+            partial_uploads: Default::default(),
+            partial_uploads_lost: false,
         }))
+    }
+
+    /// 取走自上次调用以来上传的瓦片；`None` 表示记录溢出，必须整帧绘制。
+    pub(crate) fn take_uploads(&self) -> Option<HashSet<(AtlasTextureId, u32)>> {
+        let mut lock = self.0.lock();
+        let tiles = std::mem::take(&mut lock.partial_uploads);
+        let lost = std::mem::take(&mut lock.partial_uploads_lost);
+        (!lost).then_some(tiles)
+    }
+
+    fn record_upload(&self, tile: &AtlasTile) {
+        let mut lock = self.0.lock();
+        // 超过 4096 个就不值得记了，标记溢出让这一帧走整帧路径。
+        if lock.partial_uploads.len() >= 4096 {
+            lock.partial_uploads.clear();
+            lock.partial_uploads_lost = true;
+        }
+        lock.partial_uploads
+            .insert((tile.texture_id, tile.tile_id.0));
     }
 
     /// 返回 `id` 对应的纹理视图；该纹理的所有瓦片都被移除后返回 `None`。
@@ -70,6 +96,8 @@ impl DirectXAtlas {
         lock.polychrome_textures = AtlasTextureList::default();
         lock.subpixel_textures = AtlasTextureList::default();
         lock.tiles_by_key.clear();
+        lock.partial_uploads.clear();
+        lock.partial_uploads_lost = true;
     }
 }
 
@@ -96,6 +124,8 @@ impl PlatformAtlas for DirectXAtlas {
                 .ok_or_else(|| anyhow::anyhow!("新分配的图集瓦片指向不存在的纹理"))?;
             texture.upload(&lock.device_context, tile.bounds, &bytes);
             lock.tiles_by_key.insert(key.clone(), tile);
+            drop(lock);
+            self.record_upload(&tile);
             Ok(Some(tile))
         }
     }
