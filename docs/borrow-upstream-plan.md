@@ -30,18 +30,17 @@
 
 | 项 | 来源 | 说明与做法 |
 |---|---|---|
-| **B3 UAX #14 接线** | zed `f0210f1621` | API 已就绪（B1），但两条软换行路径仍是「拉丁空格换行 + 禁则否决」。接线要贯通元素样式层到 `text_system` 的模式开关，候选断点改为预计算集合查询；影响全部软换行文本，回归面大，单独立批次。 |
 | **SVG 场景层变换动画** | zed `aff99ecc32` | 上游 +474 行落在 `elements/svg.rs` + `scene.rs` + `window.rs`：变换只改场景层、不重渲染视图。rgpui 的 SVG 走 sprite 路径，需先确认能否复用现有 scene 变换（D1 之后场景层已有 order/批次概念）。 |
 | **D3 / D4 硬件实测** | zed / gpui-fast | D3（GPU −79%～−81%、描边 CPU 2–8×）与 D4（软件适配器整帧 ~100ms → 13ms）的性能数据都是上游口径，rgpui 需在硬件 / 远程桌面（软件适配器）上实测确认。 |
 
 **已完成（2026-11-21）**：动画改用 executor 时钟（zed `99e70ee4a0`，`956454d8`）、
 borrow / window 错误诊断（zed `c408f8efc4`，`50e1936f`——含上游前置的 borrow_origin
 追踪机制，window.rs 21 处 log_err 站点加操作与窗口 id 上下文）、D4c 像素对拍
-（gpui-fast `3268abe`，`df1790af`——通过后软件适配器默认开启 partial 重绘）、
-`fast/` 依赖快照哈希去重（gpui-fast `0f5bf7f` 思想，`5ad60a83`——上游修的是
+（gpui-fast `3268abe`，`df1790af`——通过后软件适配器默认开启 partial 重绘）、`fast/` 依赖快照哈希去重（gpui-fast `0f5bf7f` 思想，`5ad60a83`——上游修的是
 `unique_states`/`OffsetReads::of` 的二次方回溯；rgpui 的对应问题在 `absorb_*`/
 `merge` 完全不去重、保留视图依赖集无界膨胀，改为吸收点哈希去重：完全相同的
-重复只保留首次，不同版本 / 读取方式并存，is_stale 语义逐位不变）。
+重复只保留首次，不同版本 / 读取方式并存，is_stale 语义逐位不变）、
+B3 UAX #14 接线（zed `f0210f1621`，见下文批次 B 落地纪要）。
 
 ### 二、需要前置条件或无法本机验证
 
@@ -156,9 +155,40 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
    `uax14_break_indices_basic_rules` 覆盖拉丁空格（LB18）、连字符（LB21）、
    货币（LB25）、千分位（LB29/30）、NBSP（WJ）、CJK、强制断点（LB2/5）。
 
+### B3 接线（2026-11-21，已完成，对齐 zed `f0210f1621`）
+
+两条软换行路径的候选断点从「拉丁空格 + 禁则否决」改为 **UAX #14 断点集合查询**：
+
+- `LineWrapper` 新增 `text_buffer`（fragment 拼接成行文本，内联元素占位为等长
+  `a`，与相邻单词在分段器眼中粘结）+ `break_indices(&self, text)`（每次构造
+  `LineSegmenter`——`segment_str` 按值消费分段器且不实现 `Clone`，compiled_data
+  下构造只是取静态表指针，代价可忽略）。`wrap_line_measured` 拆成「重建文本」
+  与「扫描」两半（`wrap_line_measured_with_text`），文本临时 `mem::take` 出
+  self，避免与 `width_for_char(&mut self)` 的借用冲突。
+- 候选判定：断点 **且** 字素边界（`grapheme_indices` 游标对齐，组合标记 /
+  ZWJ 序列 / 肤色修饰不被切开）且行首已有非空白；对**所有**候选生效（含元素
+  候选，这点曾放错到 Char 分支，混合 fragment 用例抓出）。
+- 换行触发条件从 `ix > last_wrap_ix` 改为 `grapheme_index > last_wrap_ix`，
+  新增 `wrap_at_candidate = 有候选 && 触发宽 - 候选前宽 <= wrap_width`：否则
+  按「超宽字素整体换行」处理（`width -= width_before_grapheme`），缩进计入后
+  随新行起算。C2 的 `valid_from/valid_to` 区间结构保留，下界口径随之改成
+  「候选前宽 / 字素前宽」二选一。
+- `truncate_wrapped_line`（多行截断那条路径）同步改断点集合查询，并在换行符
+  位置也消费断点（跳过空行时迭代器不滞留）。
+- `LineLayout::compute_wrap_boundaries`：断点 ∩ 「shaping 未拆开的字素起点」
+  （`glyph.index` 恰为断点位置），避免把连字 / 组合标记切断；原先的
+  `invariant` 字符提取改为 `text.as_bytes()[index]` 字节判定（上游同款）。
+- **删除** `LineWrapper::is_word_char`（约 60 行类别表）与其测试，替换为
+  `test_break_indices_follow_uax14`（拉丁空格 / 连字符 / CJK 逐字 / 行首禁则 /
+  字素边界不参与断开）。
+- **行为变化**（上游已声明）：连字符后可断（LB21）、URL / 路径中 `/` `?` 可断、
+  emoji 序列不再被拆开、半角 ASCII 标点的「单词字符」豁免取消。`can_break_between`
+  保留为公开局部判定助手，但软换行不再逐对调用（UAX #14 LB13 等已涵盖禁则）。
+
 ### 风险
 
-- UAX #14 与现有 `is_word_char` 拉丁换行口径的边界（半角标点行为保持）。
+- 本批未改元素样式层（计划原先设想的「模式开关」没有引入——上游也是直接替换
+  而非开关）；回归靠 `line_wrapper` 19 条 + 全量库测试兜住。
 - crate 表体积（见 binary-size 文档约束）。
 
 ---

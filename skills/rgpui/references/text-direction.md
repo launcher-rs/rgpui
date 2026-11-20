@@ -105,31 +105,23 @@ assert!(can_break_between('a', ')'));      // 半角 ASCII 行为不变
 口径（完整规则表）时用 `uax14_break_indices` 取候选断点集合。两者在重叠规则
 上口径一致（禁则否决的位置 UAX #14 同样不产出断点，见互验测试）。
 
-## 与文本系统的接线
+## 与文本系统的接线（B3 已接线，UAX #14 口径）
 
-两条换行路径都只在**非单词字符**的候选断点处调用 `can_break_between` 否决：
+两条换行路径的候选断点都改为 **UAX #14 断点集合查询**（`LineWrapper::break_indices`
+与 `compute_wrap_boundaries` 内的 `uax14_break_indices`），不再使用逐字符的
+`is_word_char`（已删除）与逐对 `can_break_between` 否决：
 
-- `LineWrapper::wrap_line`（`text_system/line_wrapper.rs:67`，否决点 `:125`；
-  同算法的 `wrap_line_measured` 在 `:86`，额外给出换行结构稳定的
-  `wrap_width` 区间，`TextWrapper::set_wrap_width` 的增量重换行据此跳过未受影响的行）；
-- `LineLayout::compute_wrap_boundaries`（`text_system/line_layout.rs:142`，否决点 `:194`）。
+- `LineWrapper::wrap_line` / `wrap_line_measured`（`text_system/line_wrapper.rs`）：
+  先把 fragment 拼成行文本（内联元素占位为等长 `a`，与相邻单词粘结），
+  一次性算断点集合；候选必须同时是**字素边界**（emoji ZWJ 序列、肤色修饰、
+  组合标记不被切开），超宽字素整体换行；
+- `LineLayout::compute_wrap_boundaries`（`text_system/line_layout.rs`）：
+  断点 ∩「shaping 未拆开的字素起点」（字形起点恰为断点），避免把连字 /
+  组合标记切断。
 
-单词内部不断行由 `LineWrapper::is_word_char`（`line_wrapper.rs:520`）负责，与禁则
-判定互不干涉。规则只面向 CJK 与全角标点，**半角 ASCII 标点（`)` `]` `,` `.`）
-保持拉丁既有行为**。`uax14_break_indices` 的 UAX #14 完整口径**尚未接入**这两条
-路径（接线会改变全部软换行行为，登记在 `docs/borrow-upstream-plan.md` 批次 B3）。
-`bidi` 侧的接线在 `TextAlign`（`style.rs`）与绘制入口
-（`text_system/line.rs`）；rgpui-dom 只做序列化透传。
+`can_break_between` 仍是公开的局部判定助手（东亚禁则 + 胶连），但**软换行不再
+逐对调用它**——UAX #14 的 LB13 等规则已涵盖禁则（互验测试保证两者在重叠规则上
+一致）。
 
-## 实践要点
-
-- **应用作者通常什么都不用做**：文本经过 `ShapedLine::paint` / `WrappedLine::paint`
-  与两条 wrap 路径时，方向解析与禁则否决自动生效；混排 CJK 的换行不需要任何显式开关。
-- **需要显式判定的场合**才直接调 API：自建 HTML-ish 渲染器（对每个块级元素跑
-  `TextDirection::resolve` 决定 `start`/`end` 落点）、按语言翻转外壳（用
-  `for_locale` / `I18nManager::is_rtl`，不要看具体文本）、自定义换行逻辑（在候选
-  断点处用 `can_break_between` 否决，与两条内置路径同一口径）。
-- **布局是逐行解析方向的**：同一份 `text_align(Start)` 样式在 LTR 行与 RTL 行上
-  呈现相反对齐，这是特性而非 bug。
-- `Start`/`End` 经 `to_html` 导出后 `from_html` 读不回来（降级 `Left`）；需要往返
-  保真的文档模型请直接在 `ParagraphStyle.align` 上设置。
+行为变化（对齐上游 `f0210f1621`）：连字符后允许断行（LB21）、URL / 路径中的
+`/` `?` 可断、emoji 序列不再被拆开；半角 ASCII 标点的旧“单词字符”豁免随之取消。

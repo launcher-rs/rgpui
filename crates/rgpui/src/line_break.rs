@@ -284,6 +284,8 @@ pub fn uax14_break_indices(text: &str) -> impl Iterator<Item = usize> + use<'_> 
     // compiled_data 特性把规则表编进二进制（无运行时数据加载）；
     // non-complex 变体跳过复杂文字（天城文等）的例外规则，与 zed 同款取舍，
     // 对本框架面向的拉丁 / CJK / 谚文场景足够。
+    // 分段器每次构造：`segment_str` 按值消费分段器（不实现 Clone），
+    // 而 compiled_data 下构造只是取一个静态表指针，代价可忽略。
     icu_segmenter::LineSegmenter::new_for_non_complex_scripts(Default::default()).segment_str(text)
 }
 
