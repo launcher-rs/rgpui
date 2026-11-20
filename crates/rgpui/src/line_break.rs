@@ -257,11 +257,41 @@ fn is_open_punctuation(c: char) -> bool {
     )
 }
 
+/// Unicode UAX #14 断行机会的字节偏移迭代器（ICU `LineSegmenter`，LB1–LB31
+/// 完整规则）。
+///
+/// 与 [`can_break_between`] 的关系：本函数是 UAX #14 的**完整**判定（含
+/// 标点类组合规则，如数字与单位、货币符号、URL 中的连接符等）；
+/// [`can_break_between`] 只覆盖「东亚禁则 + 胶连字符」的局部否决，不改变
+/// 半角 ASCII 既有行为。软换行需要严格 UAX #14 口径时取本函数的偏移集合作
+/// 为候选断点。
+///
+/// 偏移是**允许**断行的位置（行尾在偏移前结束），与 `segment_str` 口径一致：
+/// 换行符之后、字符串末尾等强制断点同样会产出。
+///
+/// ```
+/// use rgpui::line_break::uax14_break_indices;
+///
+/// // 拉丁文本在空格后断行（断点在空格之后，LB18）。
+/// let breaks: Vec<usize> = uax14_break_indices("hello world").collect();
+/// assert!(breaks.contains(&6));
+/// // CJK 字之间允许断行，但「好」与「。」之间不可（「。」属行首禁则）。
+/// let breaks: Vec<usize> = uax14_break_indices("你好。世界").collect();
+/// assert!(breaks.contains(&3) && breaks.contains(&9));
+/// assert!(!breaks.contains(&6));
+/// ```
+pub fn uax14_break_indices(text: &str) -> impl Iterator<Item = usize> + use<'_> {
+    // compiled_data 特性把规则表编进二进制（无运行时数据加载）；
+    // non-complex 变体跳过复杂文字（天城文等）的例外规则，与 zed 同款取舍，
+    // 对本框架面向的拉丁 / CJK / 谚文场景足够。
+    icu_segmenter::LineSegmenter::new_for_non_complex_scripts(Default::default()).segment_str(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         BreakClass, break_class, can_break_between, is_ideographic, is_line_end_prohibited,
-        is_line_start_prohibited, is_no_break,
+        is_line_start_prohibited, is_no_break, uax14_break_indices,
     };
 
     // 字符分类覆盖汉字 / 假名 / 小写假名 / 长音符 / 句读 / 开括号 / 谚文 / 单词 / 空白 / 其他。
@@ -345,6 +375,57 @@ mod tests {
         assert!(!is_no_break(' '));
         assert!(!is_no_break('\n'));
         assert!(!is_no_break('\u{200B}'), "零宽空格是断行点，不是胶连字符");
+    }
+
+    // UAX #14 断行机会：拉丁空格、连字符、货币/数字组合、禁则与胶连。
+    #[test]
+    fn uax14_break_indices_basic_rules() {
+        let breaks = |t: &str| -> Vec<usize> { uax14_break_indices(t).collect() };
+
+        // 拉丁文本在空格后断行（LB18 禁止断在空格前，断点落在空格之后）。
+        assert!(breaks("hello world").contains(&6));
+        // 连字符之后可断（LB21 只禁止断在连字符前）。
+        let hy = breaks("hello-world");
+        assert!(hy.contains(&6));
+        assert!(!hy.contains(&5));
+        // 货币符号与数字之间不可断（LB25 PR×ID）。
+        assert!(!breaks("$5").contains(&1));
+        // 千分位逗号两侧不可断（LB29/LB30 NU×IS / IS×NU）。
+        let num = breaks("1,000");
+        assert!(!num.contains(&1) && !num.contains(&2));
+        // 不换行空格（WJ）两侧不可断。
+        let nbsp = breaks("a\u{00A0}b");
+        assert!(!nbsp.contains(&1) && !nbsp.contains(&2));
+        // CJK 之间可断；行首禁则字符前不可断（与禁则口径一致）。
+        assert!(breaks("你好").contains(&3));
+        assert!(!breaks("好。").contains(&3));
+        // 换行符与串尾是强制断点（LB5/LB2）。
+        let multiline = breaks("a\nb");
+        assert!(multiline.contains(&2) && multiline.contains(&3));
+    }
+
+    // UAX #14 与东亚禁则在重叠规则上的口径互验：禁则否决的位置 UAX #14 同样不产出断点。
+    #[test]
+    fn uax14_agrees_with_kinsoku_on_prohibited_breaks() {
+        let breaks = |t: &str| -> Vec<usize> { uax14_break_indices(t).collect() };
+        for (prev, next) in [
+            ('好', '。'),
+            ('话', '」'),
+            ('あ', 'ぁ'),
+            ('「', '你'),
+            ('（', '好'),
+        ] {
+            let text = format!("{prev}{next}");
+            let offset = prev.len_utf8();
+            assert!(
+                !can_break_between(prev, next),
+                "禁则口径 {prev:?}{next:?} 应否决"
+            );
+            assert!(
+                !breaks(&text).contains(&offset),
+                "UAX #14 口径 {prev:?}{next:?} 也应不产出断点"
+            );
+        }
     }
 
     // 表意文字范围（基本区 / 扩展区 / 兼容区）。

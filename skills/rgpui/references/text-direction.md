@@ -90,6 +90,7 @@ HTML/CSS 透传（均为序列化侧）：`rich_text` 导出 HTML 时 `paragraph
 | `is_no_break(c)` | `:108` | 胶连字符：NBSP `U+00A0`、数字空格 `U+2007`、不换行连字符 `U+2011`、窄空格 `U+202F`、ZWNJ/ZWJ `U+200C`/`U+200D`、词连接符 `U+2060`、`U+FEFF`；零宽空格 `U+200B` **不是**胶连字符 |
 | `can_break_between(prev, next) -> bool` | `:127` | 四个条件全过才可断：两侧非胶连、`prev` 非行末禁则、`next` 非行首禁则 |
 | `is_ideographic(c)` | `:135` | 汉字（基本区 + 扩展 A–G + 兼容表意文字） |
+| `uax14_break_indices(text) -> impl Iterator<Item = usize>` | `:283` | UAX #14 完整断行机会（ICU `LineSegmenter`，LB1–LB31：标点类组合、货币/数字、URL 连接符等）；产出**允许断**的字节偏移，含换行后与串尾强制断点 |
 
 ```rust
 use rgpui::line_break::can_break_between;
@@ -100,6 +101,10 @@ assert!(!can_break_between('「', '好'));   // 开引号不可收行
 assert!(can_break_between('a', ')'));      // 半角 ASCII 行为不变
 ```
 
+`can_break_between` 是「东亚禁则 + 胶连」的局部否决；需要**严格 UAX #14**
+口径（完整规则表）时用 `uax14_break_indices` 取候选断点集合。两者在重叠规则
+上口径一致（禁则否决的位置 UAX #14 同样不产出断点，见互验测试）。
+
 ## 与文本系统的接线
 
 两条换行路径都只在**非单词字符**的候选断点处调用 `can_break_between` 否决：
@@ -109,7 +114,9 @@ assert!(can_break_between('a', ')'));      // 半角 ASCII 行为不变
 
 单词内部不断行由 `LineWrapper::is_word_char`（`line_wrapper.rs:451`）负责，与禁则
 判定互不干涉。规则只面向 CJK 与全角标点，**半角 ASCII 标点（`)` `]` `,` `.`）
-保持拉丁既有行为**。`bidi` 侧的接线在 `TextAlign`（`style.rs`）与绘制入口
+保持拉丁既有行为**。`uax14_break_indices` 的 UAX #14 完整口径**尚未接入**这两条
+路径（接线会改变全部软换行行为，登记在 `docs/borrow-upstream-plan.md` 批次 B3）。
+`bidi` 侧的接线在 `TextAlign`（`style.rs`）与绘制入口
 （`text_system/line.rs`）；rgpui-dom 只做序列化透传。
 
 ## 实践要点

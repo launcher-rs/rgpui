@@ -87,14 +87,16 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
      或转成自有枚举——落地时定）。
    - `pub fn uax14_break_opportunities(text: &str) -> impl Iterator<Item = usize>`
      （返回可断位置的字节偏移，LB2–LB31 规则由 crate 的 pair 表给出）。
-3. **接线（独立小步）**：`text_system/line_wrapper.rs` /
-   `line_layout.rs` 的换行路径加 `LineBreakMode { Kinsoku, Uax14 }` 开关
-   （默认 `Kinsoku` 保持现状），`Uax14` 模式下候选断点由
-   `uax14_break_opportunities` 给出，再用**现有禁则否决**做二次修正
-   （UAX #14 已覆盖东亚规则，禁则否决保留为极端情况的兜底）。
-4. **互验测试**：取 zed `line_wrapper.rs` 的实现为参考，对拍样本
-   （拉丁词、CJK 混排、URL、韩文泰文组合、emoji ZWJ 序列）断言两者
-   断点一致；差异处逐个归因（是 rgpui 禁则兜底还是规则缺口）。
+3. **接线（登记为后续批次 B3，暂不动）**：`text_system/line_wrapper.rs`
+   （editor 软换行 `input_ui/display_map/text_wrapper.rs` 调用）与
+   `line_layout.rs::compute_wrap_boundaries`（div 文本布局）两条路径目前是
+   「拉丁空格换行 + 禁则否决」；接 UAX #14 需要贯通元素样式层到 text_system
+   的模式开关（候选断点改为预计算 `uax14_break_indices` 集合查询），改动
+   影响全部软换行文本，回归面大。B1 的 API 已就绪，接线单独立批次。
+4. **互验测试（已完成）**：`uax14_agrees_with_kinsoku_on_prohibited_breaks`
+   断言禁则否决的位置 UAX #14 同样不产出断点（两口径在重叠规则上一致）；
+   `uax14_break_indices_basic_rules` 覆盖拉丁空格（LB18）、连字符（LB21）、
+   货币（LB25）、千分位（LB29/30）、NBSP（WJ）、CJK、强制断点（LB2/5）。
 
 ### 风险
 

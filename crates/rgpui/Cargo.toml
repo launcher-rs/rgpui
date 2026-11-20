@@ -315,6 +315,8 @@ lsp-types = { workspace = true, optional = true }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 unicode-bidi = "0.3"
 unicode-segmentation = { workspace = true }
+# UAX #14 断行（LineSegmenter，与 zed 同款；compiled_data 把规则表编进二进制）
+icu_segmenter = { version = "2.3", default-features = false, features = ["compiled_data"] }
 qrcode = { workspace = true, optional = true }
 wry = { version = "0.56.1", optional = true }
 tree-sitter = { version = "0.25", optional = true }
