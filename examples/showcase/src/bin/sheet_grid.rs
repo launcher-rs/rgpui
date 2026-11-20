@@ -268,7 +268,7 @@ impl SheetGridDemo {
                     let text = text.to_string();
                     this.grid.update(cx, |grid, cx| {
                         grid.delegate_mut().set(active, text.clone());
-                        grid.set_editing(None, cx);
+                        grid.set_editing(None, None, cx);
                         cx.notify();
                     });
                     this.status = format!("{} ← {}", cell_ref(active), text);
@@ -279,7 +279,8 @@ impl SheetGridDemo {
                     let value = this.grid.read(cx).delegate().value(active);
                     let bar = this.bar.clone();
                     bar.update(cx, |bar, cx| bar.set_formula(value, window, cx));
-                    this.grid.update(cx, |grid, cx| grid.set_editing(None, cx));
+                    this.grid
+                        .update(cx, |grid, cx| grid.set_editing(None, None, cx));
                     this.status = "已取消编辑".to_string();
                     cx.notify();
                 }

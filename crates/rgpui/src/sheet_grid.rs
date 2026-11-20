@@ -33,6 +33,7 @@
 
 use std::{ops::Range, rc::Rc};
 
+use crate::input_ui::{Input, InputState};
 use crate::{
     ActiveTheme as _, AnyElement, App, AppContext as _, Axis, Bounds, Context, Div, DragMoveEvent,
     ElementExt as _, Empty, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Hsla,
@@ -368,6 +369,10 @@ pub struct SheetGridState<D: SheetDelegate> {
     fill_target: Option<CellRef>,
     /// 正在编辑的单元格（应用侧编辑时置位，用于抑制重复请求）。
     editing: Option<CellRef>,
+    /// 编辑中的单元格内输入框（应用侧提供，由网格渲染到编辑格上）。
+    editing_input: Option<Entity<InputState>>,
+    /// 单击选区后直接键入的首字符（用于"键入即编辑"）。
+    typed_char: Option<char>,
     /// 列宽拖拽状态（起点与按下时的原始列宽不可变，预览值每次从起点重算）。
     resize_col: Option<ResizeDrag>,
     /// 行高拖拽状态。
@@ -396,6 +401,8 @@ impl<D: SheetDelegate> SheetGridState<D> {
             filling: false,
             fill_target: None,
             editing: None,
+            editing_input: None,
+            typed_char: None,
             resize_col: None,
             resize_row: None,
             frozen_rows: 0,
@@ -431,11 +438,26 @@ impl<D: SheetDelegate> SheetGridState<D> {
     }
 
     /// 设置正在编辑的单元格。
-    pub fn set_editing(&mut self, cell: Option<CellRef>, cx: &mut Context<Self>) {
-        if self.editing != cell {
+    ///
+    /// `input` 为应用侧提供的单元格内输入框；进入编辑时由网格渲染到该格上，
+    /// 回车/点击其他格提交、Esc 由应用层决定。置 `None` 退出编辑。
+    pub fn set_editing(
+        &mut self,
+        cell: Option<CellRef>,
+        input: Option<Entity<InputState>>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.editing != cell || self.editing_input != input {
             self.editing = cell;
+            self.editing_input = input;
+            self.typed_char = None;
             cx.notify();
         }
+    }
+
+    /// 取出"键入即编辑"的首字符（单击选区后直接打字）。
+    pub fn take_typed_char(&mut self) -> Option<char> {
+        self.typed_char.take()
     }
 
     /// 冻结的行数。
@@ -893,6 +915,24 @@ impl<D: SheetDelegate> SheetGridState<D> {
         let modifiers = event.keystroke.modifiers;
         let extend = modifiers.shift;
         let command = modifiers.control || modifiers.platform;
+
+        // 键入即编辑：非编辑态下直接打字，首字符作为新内容的开头。
+        if !self.editing.is_some()
+            && !modifiers.control
+            && !modifiers.alt
+            && !modifiers.platform
+            && !modifiers.shift
+            && key.len() == 1
+            && key.chars().next().is_some_and(|ch| !ch.is_control())
+        {
+            let cursor = self.selection.cursor;
+            self.typed_char = Some(key.chars().next().expect("单字符"));
+            self.editing = Some(cursor);
+            cx.emit(SheetGridEvent::EditRequested(cursor));
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
         // 翻页步长按活动单元格所在行的行高估算，冻结行高度逐行累加。
         let frozen_height: Pixels = (0..self.frozen_rows.min(self.rows))
             .map(|row| self.effective_row_height(row, cx))
@@ -1171,6 +1211,29 @@ impl<D: SheetDelegate> SheetGridState<D> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        // 编辑中的格：渲染应用提供的单元格内输入框（直接在格上改字）。
+        if self.editing == Some(cell)
+            && let Some(input) = self.editing_input.clone()
+        {
+            return div()
+                .id(format!("sheet-cell:{}:{}", cell.row, cell.col))
+                .relative()
+                .w_full()
+                .h_full()
+                .overflow_hidden()
+                .bg(cx.theme().background)
+                .border_2()
+                .border_color(cx.theme().table_active_border)
+                .child(
+                    Input::new(&input)
+                        .bordered(false)
+                        .focus_bordered(false)
+                        .h_full()
+                        .w_full()
+                        .px(px(2.0)),
+                )
+                .into_any_element();
+        }
         let theme = cx.theme();
         let selection = self.selection;
         let selected = selection.contains(cell);
@@ -1828,14 +1891,14 @@ mod tests {
         let (state, _events, mut cx) = setup(cx);
         cx.update(|_, cx| {
             state.update(cx, |state, cx| {
-                state.set_editing(Some(CellRef::new(1, 1)), cx)
+                state.set_editing(Some(CellRef::new(1, 1)), None, cx)
             });
         });
         assert_eq!(
             state.read_with(cx, |state, _| state.editing()),
             Some(CellRef::new(1, 1))
         );
-        cx.update(|_, cx| state.update(cx, |state, cx| state.set_editing(None, cx)));
+        cx.update(|_, cx| state.update(cx, |state, cx| state.set_editing(None, None, cx)));
         assert_eq!(state.read_with(cx, |state, _| state.editing()), None);
     }
 
