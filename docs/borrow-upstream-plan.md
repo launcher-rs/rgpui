@@ -34,9 +34,11 @@
 | **B3 UAX #14 接线** | zed `f0210f1621` | API 已就绪（B1），但两条软换行路径仍是「拉丁空格换行 + 禁则否决」。接线要贯通元素样式层到 `text_system` 的模式开关，候选断点改为预计算集合查询；影响全部软换行文本，回归面大，单独立批次。 |
 | **SVG 场景层变换动画** | zed `aff99ecc32` | 上游 +474 行落在 `elements/svg.rs` + `scene.rs` + `window.rs`：变换只改场景层、不重渲染视图。rgpui 的 SVG 走 sprite 路径，需先确认能否复用现有 scene 变换（D1 之后场景层已有 order/批次概念）。 |
 | **`fast/` P2 视图复用** | gpui-fast `0f5bf7f` | 哈希定位重复状态。rgpui `fast/` 目前只有 partial（D4），没有 view 复用层；与 D4c 同属 `fast/` 后续。 |
-| **动画改用 executor 时钟** | zed `99e70ee4a0` | 极小（`elements/animation.rs` 4 行）：动画时间基准从 `Instant::now()` 换成 executor 的时钟，使暂停/恢复与测试时钟一致。 |
-| **borrow / window 错误诊断** | zed `c408f8efc4` | +234 行在 `app.rs` / `window.rs` / `async_context.rs`：借用冲突与窗口创建失败时给出可读诊断（含已借用位置）。rgpui 目前是裸 panic 消息。 |
 | **D3 硬件实测** | zed `ffe0fa29e4` | D3 已落地（见下文 D3 节），但 GPU 收益（上游 −79%～−81%）与描边 CPU 代价（2–8×）都是上游口径，rgpui 需在硬件上跑 `painting` 例与 ink 长笔画确认。 |
+
+**已完成（2026-11-21）**：动画改用 executor 时钟（zed `99e70ee4a0`，`956454d8`）、
+borrow / window 错误诊断（zed `c408f8efc4`，`50e1936f`——含上游前置的 borrow_origin
+追踪机制，window.rs 21 处 log_err 站点加操作与窗口 id 上下文）。
 
 ### 二、需要前置条件或无法本机验证
 
