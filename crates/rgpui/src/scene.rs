@@ -257,6 +257,12 @@ impl Scene {
         self.polychrome_sprites
             .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
         self.surfaces.sort_by_key(|surface| surface.order);
+        // 深度缓冲 anti-overdraw：排序后的下标即绘制序，按「越大越近」给每个
+        // quad 分配单调深度，渲染器的不透明通道据此跳过被遮住像素。
+        let depth_scale = quad_depth_scale(self.quads.len());
+        for (index, quad) in self.quads.iter_mut().enumerate() {
+            quad.depth = quad_depth(index as u32, depth_scale);
+        }
     }
 
     /// 返回按绘制顺序分批的图元迭代器。
@@ -280,6 +286,20 @@ impl Scene {
             surfaces_iter: self.surfaces.iter().peekable(),
         }
     }
+}
+
+/// 一帧含 `quad_count` 个 quad 时，相邻两个 quad 之间的深度步长。
+///
+/// 分母取（数量 + 1）向上取幂并封顶在 2^24（24 位深度缓冲的整数精度边界），
+/// 保证深度在缓冲精度内单调可分。
+pub fn quad_depth_scale(quad_count: usize) -> f32 {
+    let denominator = (quad_count.min((1 << 24) - 1) + 1).next_power_of_two();
+    1.0 / denominator as f32
+}
+
+/// 把 quad 在 [`Scene::quads`] 中的下标映射为深度，值越大越靠近观察者。
+pub fn quad_depth(quad_id: u32, scale: f32) -> f32 {
+    ((quad_id + 1) as f32 * scale).min(1.0)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Default)]
@@ -664,8 +684,9 @@ pub struct Quad {
     pub transform: TransformationMatrix,
     /// 混合模式索引。
     pub blend_mode: u32,
-    /// 8 字节对齐填充。
-    pub pad_quad: u32,
+    /// 深度缓冲 anti-overdraw 用的深度值（「越大越近」，由 `Scene::finish`
+    /// 按排序后的绘制序统一赋值；占据原 `pad_quad` 填充槽，布局大小不变）。
+    pub depth: f32,
 }
 
 impl From<Quad> for Primitive {
@@ -1243,7 +1264,7 @@ mod tests {
             continuous_corners: 0,
             transform: TransformationMatrix::default(),
             blend_mode: 0,
-            pad_quad: 0,
+            depth: 0.0,
         }
     }
 
@@ -1263,6 +1284,42 @@ mod tests {
             "Quad 与 Quad 种类安全，应共享顺序"
         );
         assert_eq!(scene.batches().count(), 1, "同一顺序同一种类应合成一个批次");
+    }
+
+    /// 深度缓冲 anti-overdraw：`finish` 排序后按绘制序给每个 quad 赋单调深度。
+    #[test]
+    fn test_quad_depths_assigned_monotonic() {
+        let mut scene = Scene::default();
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.insert_primitive(quad_at(5., 5., 10., 10.));
+        scene.insert_primitive(quad_at(2., 2., 4., 4.));
+        scene.finish();
+
+        let scale = quad_depth_scale(scene.quads.len());
+        let expected: Vec<f32> = (0..scene.quads.len() as u32)
+            .map(|index| quad_depth(index, scale))
+            .collect();
+        let actual: Vec<f32> = scene.quads.iter().map(|quad| quad.depth).collect();
+        assert_eq!(actual, expected, "深度必须按下标经统一 scale 映射");
+        for window in actual.windows(2) {
+            assert!(window[1] > window[0], "深度必须沿绘制序单调递增");
+        }
+        assert!(
+            actual[actual.len() - 1] <= 1.0 && actual[0] > 0.0,
+            "深度必须落在 (0, 1]"
+        );
+    }
+
+    /// 深度步长：分母为 (数量 + 1) 的下一个幂，并在 2^24 处封顶
+    /// （24 位深度缓冲的整数精度边界）。
+    #[test]
+    fn test_quad_depth_scale_power_of_two_and_cap() {
+        assert_eq!(quad_depth_scale(0), 1.0);
+        assert_eq!(quad_depth_scale(3), 0.25);
+        assert_eq!(quad_depth_scale(4), 0.125);
+        let capped = quad_depth_scale(1 << 30);
+        assert_eq!(capped, 1.0 / (1 << 24) as f32);
+        assert_eq!(quad_depth(1 << 24, capped), 1.0, "深度必须封顶在 1");
     }
 
     /// 精灵不能与精灵共享绘制顺序（同顺序内按图集纹理排序会破坏绘制次序），

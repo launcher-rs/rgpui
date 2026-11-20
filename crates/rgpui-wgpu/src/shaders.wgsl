@@ -80,7 +80,9 @@ fn apply_contrast_and_gamma_correction3(sample: vec3<f32>, color: vec3<f32>, enh
 struct GlobalParams {
     viewport_size: vec2<f32>,
     premultiplied_alpha: u32,
+    quad_count: u32,
     pad: u32,
+    pad2: u32,
 }
 
 struct GammaParams {
@@ -210,6 +212,28 @@ fn distance_from_clip_rect_transformed(unit_vertex: vec2<f32>, bounds: Bounds, c
     let position = unit_vertex * vec2<f32>(bounds.size) + bounds.origin;
     let transformed = transpose(transform.rotation_scale) * position + transform.translation;
     return distance_from_clip_rect_impl(transformed, clip_bounds);
+}
+
+// 深度缓冲 anti-overdraw：退化位置用于把不参与某通道的实例空转掉。
+const CULLED_POSITION: vec4<f32> = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+
+// 把单位顶点按 content_mask 做几何裁剪（不透明通道要写深度，
+// 不能靠片元阶段的 clip_distances 丢弃）。
+struct ClippedVertex {
+    position: vec2<f32>,
+    // 裁剪后角点相对原 bounds 的比例。
+    unit_vertex: vec2<f32>,
+}
+
+fn clip_to_mask(unit_vertex: vec2<f32>, bounds: Bounds, mask: Bounds) -> ClippedVertex {
+    let origin = max(bounds.origin, mask.origin);
+    let corner = min(bounds.origin + bounds.size, mask.origin + mask.size);
+    let size = max(corner - origin, vec2<f32>(0.0));
+
+    var result: ClippedVertex;
+    result.position = origin + unit_vertex * size;
+    result.unit_vertex = (result.position - bounds.origin) / bounds.size;
+    return result;
 }
 
 // https://gamedev.stackexchange.com/questions/92015/optimized-linear-to-srgb-glsl
@@ -795,7 +819,22 @@ struct Quad {
     continuous_corners: u32,
     transform: TransformationMatrix,
     blend_mode: u32,
-    pad_quad: u32,
+    depth: f32,
+}
+
+// 实心、完全不透明、无圆角无边框的矩形：由不透明通道绘制（开深度写），
+// quad 通道直接剔除。深度值由核心 `Scene::finish` 逐实例写入 quad.depth。
+fn is_opaque_rectangle(quad: Quad) -> bool {
+    return quad.background.tag == 0u
+        && quad.background.solid.a >= 1.0
+        && quad.corner_radii.top_left == 0.0
+        && quad.corner_radii.top_right == 0.0
+        && quad.corner_radii.bottom_left == 0.0
+        && quad.corner_radii.bottom_right == 0.0
+        && quad.border_widths.top == 0.0
+        && quad.border_widths.right == 0.0
+        && quad.border_widths.bottom == 0.0
+        && quad.border_widths.left == 0.0;
 }
 @group(1) @binding(0) var<storage, read> b_quads: array<Quad>;
 
@@ -821,7 +860,13 @@ fn vs_quad(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
     let local_position = unit_vertex * quad.bounds.size + quad.bounds.origin;
 
     var out = QuadVarying();
+    if (is_opaque_rectangle(quad)) {
+        out.position = CULLED_POSITION;
+        return out;
+    }
     out.position = to_device_position_transformed(unit_vertex, quad.bounds, quad.transform);
+    // 深度缓冲 anti-overdraw：混合通道写自己的深度（不写深度值以外的语义不变）。
+    out.position.z = quad.depth;
 
     let gradient = prepare_gradient_color(
         quad.background.tag,
@@ -1223,6 +1268,40 @@ fn quarter_ellipse_sdf(point: vec2<f32>, radii: vec2<f32>) -> f32 {
 // Modulus that has the same sign as `a`.
 fn fmod(a: f32, b: f32) -> f32 {
     return a - b * trunc(a / b);
+}
+
+// --- opaque quads --- //
+
+struct OpaqueQuadVarying {
+    @builtin(position) position: vec4<f32>,
+    @location(0) @interpolate(flat) color: vec4<f32>,
+}
+
+// 从前往后画全部 quad（实例索引反向映射到 quad 下标），顶点阶段只留下
+// 不透明矩形：先画近的，后面的像素在深度测试处直接失败、不进片元着色器。
+@vertex
+fn vs_opaque_quad(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) instance_id: u32) -> OpaqueQuadVarying {
+    let quad_id = globals.quad_count - 1u - instance_id;
+    let quad = b_quads[quad_id];
+
+    var out = OpaqueQuadVarying();
+    if (!is_opaque_rectangle(quad)) {
+        out.position = CULLED_POSITION;
+        out.color = vec4<f32>(0.0);
+        return out;
+    }
+
+    let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
+    let clipped = clip_to_mask(unit_vertex, quad.bounds, quad.content_mask);
+    out.position = to_device_position_impl(clipped.position);
+    out.position.z = quad.depth;
+    out.color = blend_color(hsla_to_rgba(quad.background.solid), 1.0);
+    return out;
+}
+
+@fragment
+fn fs_opaque_quad(input: OpaqueQuadVarying) -> @location(0) vec4<f32> {
+    return input.color;
 }
 
 // --- shadows --- //

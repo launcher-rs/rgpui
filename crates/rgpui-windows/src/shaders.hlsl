@@ -6,7 +6,8 @@ cbuffer GlobalParams: register(b0) {
     float grayscale_enhanced_contrast;
     float subpixel_enhanced_contrast;
     uint is_bgr;
-    uint3 global_pad;
+    uint global_quad_count;
+    uint2 global_pad;
 };
 
 Texture2D<float4> t_sprite: register(t0);
@@ -642,8 +643,23 @@ struct Quad {
     uint pad_after_continuous_corners;
     TransformationMatrix transform;
     uint blend_mode;
-    uint pad_quad;
+    float depth; // 深度缓冲 anti-overdraw：「越大越近」，核心 finish() 按绘制序赋值
 };
+
+// 「实心不透明矩形」谓词：纯色不透明背景、无圆角、无边框宽度。
+// 满足的 quad 走不透明通道（从前往后画、写深度），混合通道直接剔除。
+bool is_opaque_rectangle(Quad quad) {
+    return quad.background.tag == 0u &&
+        quad.background.solid.a >= 1.0 &&
+        quad.corner_radii.top_left == 0.0 &&
+        quad.corner_radii.top_right == 0.0 &&
+        quad.corner_radii.bottom_left == 0.0 &&
+        quad.corner_radii.bottom_right == 0.0 &&
+        quad.border_widths.top == 0.0 &&
+        quad.border_widths.right == 0.0 &&
+        quad.border_widths.bottom == 0.0 &&
+        quad.border_widths.left == 0.0;
+}
 
 struct QuadVertexOutput {
     nointerpolation uint quad_id: TEXCOORD0;
@@ -675,9 +691,28 @@ StructuredBuffer<Quad> quads: register(t1);
 QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     Quad quad = quads[quad_id];
+    QuadVertexOutput output;
+
+    // 不透明矩形已由不透明通道从前往后画过：混合通道退化成
+    // 零面积三角形，并用负裁剪距离整体裁掉。
+    if (is_opaque_rectangle(quad)) {
+        output.position = float4(0.0, 0.0, 0.0, 1.0);
+        output.clip_distance = float4(-1.0, -1.0, -1.0, -1.0);
+        output.quad_id = quad_id;
+        output.border_color = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_solid = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_color0 = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_color1 = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_color2 = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_color3 = float4(0.0, 0.0, 0.0, 0.0);
+        output.local_position = float2(0.0, 0.0);
+        return output;
+    }
 
     float2 local_position = unit_vertex * quad.bounds.size + quad.bounds.origin;
     float4 device_position = to_device_position_transformed(unit_vertex, quad.bounds, quad.transform);
+    // 深度「越大越近」：混合通道只测不写，落在不透明矩形后面的片元直接失败。
+    device_position.z = quad.depth;
 
     GradientColor gradient = prepare_gradient_color(
         quad.background.tag,
@@ -688,7 +723,6 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
     float4 clip_distance = distance_from_clip_rect_transformed(unit_vertex, quad.bounds, quad.content_mask, quad.transform);
     float4 border_color = hsla_to_rgba(quad.border_color);
 
-    QuadVertexOutput output;
     output.position = device_position;
     output.border_color = border_color;
     output.quad_id = quad_id;
@@ -991,6 +1025,44 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
     }
 
     return color * float4(1.0, 1.0, 1.0, saturate(antialias_threshold - outer_sdf));
+}
+
+/*
+**
+**              Opaque quads（anti-overdraw 不透明通道）
+**
+*/
+
+struct OpaqueQuadVertexOutput {
+    float4 position: SV_Position;
+    nointerpolation float4 color: COLOR0;
+    float4 clip_distance: SV_ClipDistance;
+};
+
+OpaqueQuadVertexOutput opaque_quad_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
+    float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
+    // 反向索引全局 quad 号：排序靠后 = 更近，从前往后画才能遮住更远的。
+    uint quad_id = global_quad_count - 1u - instance_id;
+    Quad quad = quads[quad_id];
+
+    OpaqueQuadVertexOutput output;
+    if (!is_opaque_rectangle(quad)) {
+        output.position = float4(0.0, 0.0, 0.0, 1.0);
+        output.color = float4(0.0, 0.0, 0.0, 0.0);
+        output.clip_distance = float4(-1.0, -1.0, -1.0, -1.0);
+        return output;
+    }
+
+    float4 device_position = to_device_position_transformed(unit_vertex, quad.bounds, quad.transform);
+    device_position.z = quad.depth;
+    output.position = device_position;
+    output.color = hsla_to_rgba(quad.background.solid);
+    output.clip_distance = distance_from_clip_rect_transformed(unit_vertex, quad.bounds, quad.content_mask, quad.transform);
+    return output;
+}
+
+float4 opaque_quad_fragment(OpaqueQuadVertexOutput input): SV_Target {
+    return input.color;
 }
 
 /*

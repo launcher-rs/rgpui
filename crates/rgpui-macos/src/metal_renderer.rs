@@ -123,6 +123,7 @@ pub(crate) struct MetalRenderer {
     path_sprites_pipeline_state: metal::RenderPipelineState,
     shadows_pipeline_state: metal::RenderPipelineState,
     quads_pipeline_state: metal::RenderPipelineState,
+    opaque_quads_pipeline_state: metal::RenderPipelineState,
     underlines_pipeline_state: metal::RenderPipelineState,
     monochrome_sprites_pipeline_state: metal::RenderPipelineState,
     polychrome_sprites_pipeline_state: metal::RenderPipelineState,
@@ -135,6 +136,13 @@ pub(crate) struct MetalRenderer {
     path_intermediate_texture: Option<metal::Texture>,
     path_intermediate_msaa_texture: Option<metal::Texture>,
     path_sample_count: u32,
+    // anti-overdraw 深度态：混合 quad 通道只比较不写深度，不透明通道比较并写深度；
+    // 其余图元不设深度态（Metal 默认深度测试关闭、不写深度）。
+    quad_depth_state: metal::DepthStencilState,
+    opaque_quad_depth_state: metal::DepthStencilState,
+    // anti-overdraw 深度纹理（Depth32Float），视口尺寸变化时重建
+    depth_texture: Option<metal::Texture>,
+    depth_texture_size: Size<DevicePixels>,
 }
 
 #[repr(C)]
@@ -259,6 +267,13 @@ impl MetalRenderer {
             },
         );
 
+        // anti-overdraw 深度态：深度「越大越近」，深度比较用 Greater；
+        // 其余图元不设深度态（Metal 默认深度测试关闭、不写深度）。
+        let quad_depth_state =
+            build_depth_stencil_state(&device, metal::MTLCompareFunction::Greater, false);
+        let opaque_quad_depth_state =
+            build_depth_stencil_state(&device, metal::MTLCompareFunction::Greater, true);
+
         let paths_rasterization_pipeline_state = build_path_rasterization_pipeline_state(
             &device,
             &library,
@@ -290,6 +305,15 @@ impl MetalRenderer {
             "quads",
             "quad_vertex",
             "quad_fragment",
+            MTLPixelFormat::BGRA8Unorm,
+        );
+        // 不透明通道：无混合管线，深度「Greater + 写」在编码器上设。
+        let opaque_quads_pipeline_state = build_opaque_quad_pipeline_state(
+            &device,
+            &library,
+            "opaque_quads",
+            "opaque_quad_vertex",
+            "opaque_quad_fragment",
             MTLPixelFormat::BGRA8Unorm,
         );
         let underlines_pipeline_state = build_pipeline_state(
@@ -342,6 +366,7 @@ impl MetalRenderer {
             path_sprites_pipeline_state,
             shadows_pipeline_state,
             quads_pipeline_state,
+            opaque_quads_pipeline_state,
             underlines_pipeline_state,
             monochrome_sprites_pipeline_state,
             polychrome_sprites_pipeline_state,
@@ -353,6 +378,10 @@ impl MetalRenderer {
             path_intermediate_texture: None,
             path_intermediate_msaa_texture: None,
             path_sample_count: PATH_SAMPLE_COUNT,
+            quad_depth_state,
+            opaque_quad_depth_state,
+            depth_texture: None,
+            depth_texture_size: Size::default(),
         }
     }
 
@@ -767,15 +796,23 @@ impl MetalRenderer {
         let alpha = if self.opaque { 1. } else { 0. };
         let mut instance_offset = 0;
 
+        // anti-overdraw 深度纹理：与视口尺寸一致，跨帧复用
+        let depth_texture = self.ensure_depth_texture(viewport_size);
+
         let mut command_encoder = new_command_encoder_for_texture(
             command_buffer,
             texture,
             viewport_size,
+            Some((&depth_texture, metal::MTLLoadAction::Clear)),
             |color_attachment| {
                 color_attachment.set_load_action(metal::MTLLoadAction::Clear);
                 color_attachment.set_clear_color(metal::MTLClearColor::new(0., 0., 0., alpha));
             },
         );
+
+        // 不透明通道：批处理循环之前按反序把不透明矩形从前到后画一遍并写深度；
+        // 混合通道的 shader 会在顶点级把这些矩形剔除。
+        self.draw_opaque_quads(&scene.quads, viewport_size, command_encoder);
 
         for batch in scene.batches() {
             let ok = match batch {
@@ -809,6 +846,7 @@ impl MetalRenderer {
                         command_buffer,
                         texture,
                         viewport_size,
+                        Some((&depth_texture, metal::MTLLoadAction::Load)),
                         |color_attachment| {
                             color_attachment.set_load_action(metal::MTLLoadAction::Load);
                         },
@@ -1051,6 +1089,8 @@ impl MetalRenderer {
         align_offset(instance_offset);
 
         command_encoder.set_render_pipeline_state(&self.quads_pipeline_state);
+        // anti-overdraw：混合 quad 只按深度比较（Greater），不写深度
+        command_encoder.set_depth_stencil_state(&self.quads_depth_state);
         command_encoder.set_vertex_buffer(
             QuadInputIndex::Vertices as u64,
             Some(&self.unit_vertices),
@@ -1094,6 +1134,82 @@ impl MetalRenderer {
         );
         *instance_offset = next_offset;
         true
+    }
+
+    /// anti-overdraw 不透明通道：反序索引全量 quad 数组（实例 0 = 最后画、最靠前），
+    /// 用「Greater + 写深度」管线只画不透明矩形，其余实例在顶点级被几何剔除。
+    ///
+    /// 数据走 `scene.quads` 全量缓冲（不是实例批缓冲），所以整个场景只画这一次。
+    fn draw_opaque_quads(
+        &self,
+        quads: &[Quad],
+        viewport_size: Size<DevicePixels>,
+        command_encoder: &metal::RenderCommandEncoderRef,
+    ) {
+        if quads.is_empty() {
+            return;
+        }
+        let quad_count = quads.len() as u32;
+        let quad_buffer = self.device.new_buffer_with_data(
+            quads.as_ptr() as *const c_void,
+            mem::size_of_val(quads) as u64,
+            if self.is_unified_memory {
+                MTLResourceOptions::StorageModeShared
+                    | MTLResourceOptions::CPUCacheModeWriteCombined
+            } else {
+                MTLResourceOptions::StorageModeManaged
+            },
+        );
+
+        command_encoder.set_render_pipeline_state(&self.opaque_quads_pipeline_state);
+        // anti-overdraw：不透明通道「Greater + 写深度」
+        command_encoder.set_depth_stencil_state(&self.opaque_quad_depth_state);
+        command_encoder.set_vertex_buffer(
+            QuadInputIndex::Vertices as u64,
+            Some(&self.unit_vertices),
+            0,
+        );
+        command_encoder.set_vertex_buffer(QuadInputIndex::Quads as u64, Some(&quad_buffer), 0);
+        command_encoder.set_vertex_bytes(
+            QuadInputIndex::ViewportSize as u64,
+            mem::size_of_val(&viewport_size) as u64,
+            &viewport_size as *const Size<DevicePixels> as *const _,
+        );
+        command_encoder.set_vertex_bytes(
+            QuadInputIndex::QuadCount as u64,
+            mem::size_of_val(&quad_count) as u64,
+            &quad_count as *const u32 as *const _,
+        );
+        command_encoder.draw_primitives_instanced(
+            metal::MTLPrimitiveType::Triangle,
+            0,
+            6,
+            quad_count as u64,
+        );
+    }
+
+    /// 取与视口尺寸一致的 Depth32Float 深度纹理，尺寸不变时跨帧复用。
+    fn ensure_depth_texture(&mut self, viewport_size: Size<DevicePixels>) -> metal::Texture {
+        if let Some(texture) = &self.depth_texture
+            && self.depth_texture_size == viewport_size
+        {
+            return texture.clone();
+        }
+        let descriptor = metal::TextureDescriptor::new();
+        descriptor.set_width(i32::from(viewport_size.width) as u64);
+        descriptor.set_height(i32::from(viewport_size.height) as u64);
+        descriptor.set_depth(1);
+        descriptor.set_array_length(1);
+        descriptor.set_sample_count(1);
+        descriptor.set_mipmap_level_count(1);
+        descriptor.set_pixel_format(metal::MTLPixelFormat::Depth32Float);
+        // metal-rs 0.33 没有 DepthStencil usage 位，深度附件按 RenderTarget 申请
+        descriptor.set_usage(metal::MTLTextureUsage::RenderTarget);
+        descriptor.set_storage_mode(metal::MTLStorageMode::Private);
+        let texture = self.device.new_texture(&descriptor);
+        self.depth_texture = Some(texture.clone());
+        self.depth_texture_size = viewport_size;
+        texture
     }
 
     fn draw_paths_from_intermediate(
@@ -1507,6 +1623,8 @@ fn new_command_encoder_for_texture<'a>(
     command_buffer: &'a metal::CommandBufferRef,
     texture: &'a metal::TextureRef,
     viewport_size: Size<DevicePixels>,
+    // anti-overdraw 深度纹理及其装载动作；None 表示该通道不挂深度
+    depth: Option<(&metal::TextureRef, metal::MTLLoadAction)>,
     configure_color_attachment: impl Fn(&RenderPassColorAttachmentDescriptorRef),
 ) -> &'a metal::RenderCommandEncoderRef {
     let render_pass_descriptor = metal::RenderPassDescriptor::new();
@@ -1518,6 +1636,17 @@ fn new_command_encoder_for_texture<'a>(
     color_attachment.set_store_action(metal::MTLStoreAction::Store);
     configure_color_attachment(color_attachment);
 
+    if let Some((depth_texture, load_action)) = depth {
+        // metal-rs 不暴露 depthStencil 属性，深度纹理经 depthAttachment 挂上
+        if let Some(depth_attachment) = render_pass_descriptor.depth_attachment() {
+            depth_attachment.set_texture(Some(depth_texture));
+            depth_attachment.set_load_action(load_action);
+            // 深度「越大越近」，初始值取最小的 0
+            depth_attachment.set_clear_depth(0.0);
+            depth_attachment.set_store_action(metal::MTLStoreAction::DontCare);
+        }
+    }
+
     let command_encoder = command_buffer.new_render_command_encoder(render_pass_descriptor);
     command_encoder.set_viewport(metal::MTLViewport {
         originX: 0.0,
@@ -1528,6 +1657,18 @@ fn new_command_encoder_for_texture<'a>(
         zfar: 1.0,
     });
     command_encoder
+}
+
+/// 创建深度模板态：深度比较函数 + 是否写深度（不使用模板）。
+fn build_depth_stencil_state(
+    device: &metal::DeviceRef,
+    compare_function: metal::MTLCompareFunction,
+    depth_write_enabled: bool,
+) -> metal::DepthStencilState {
+    let descriptor = metal::DepthStencilDescriptor::new();
+    descriptor.set_depth_compare_function(compare_function);
+    descriptor.set_depth_write_enabled(depth_write_enabled);
+    device.new_depth_stencil_state(&descriptor)
 }
 
 fn build_pipeline_state(
@@ -1549,6 +1690,9 @@ fn build_pipeline_state(
     descriptor.set_label(label);
     descriptor.set_vertex_function(Some(vertex_fn.as_ref()));
     descriptor.set_fragment_function(Some(fragment_fn.as_ref()));
+    // 主渲染通道挂着深度附件，管线必须声明一致的深度附件像素格式
+    // （深度态按图元种类在编码器上设，见 draw_quads / draw_opaque_quads）
+    descriptor.set_depth_attachment_pixel_format(metal::MTLPixelFormat::Depth32Float);
     let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
     color_attachment.set_pixel_format(pixel_format);
     color_attachment.set_blending_enabled(true);
@@ -1558,6 +1702,36 @@ fn build_pipeline_state(
     color_attachment.set_source_alpha_blend_factor(metal::MTLBlendFactor::One);
     color_attachment.set_destination_rgb_blend_factor(metal::MTLBlendFactor::OneMinusSourceAlpha);
     color_attachment.set_destination_alpha_blend_factor(metal::MTLBlendFactor::One);
+
+    device
+        .new_render_pipeline_state(&descriptor)
+        .expect("could not create render pipeline state")
+}
+
+/// 不透明 quad 通道管线：无混合；深度「Greater + 写深度」在编码器上设。
+fn build_opaque_quad_pipeline_state(
+    device: &metal::DeviceRef,
+    library: &metal::LibraryRef,
+    label: &str,
+    vertex_fn_name: &str,
+    fragment_fn_name: &str,
+    pixel_format: metal::MTLPixelFormat,
+) -> metal::RenderPipelineState {
+    let vertex_fn = library
+        .get_function(vertex_fn_name, None)
+        .expect("error locating vertex function");
+    let fragment_fn = library
+        .get_function(fragment_fn_name, None)
+        .expect("error locating fragment function");
+
+    let descriptor = metal::RenderPipelineDescriptor::new();
+    descriptor.set_label(label);
+    descriptor.set_vertex_function(Some(vertex_fn.as_ref()));
+    descriptor.set_fragment_function(Some(fragment_fn.as_ref()));
+    descriptor.set_depth_attachment_pixel_format(metal::MTLPixelFormat::Depth32Float);
+    let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
+    color_attachment.set_pixel_format(pixel_format);
+    color_attachment.set_blending_enabled(false);
 
     device
         .new_render_pipeline_state(&descriptor)
@@ -1583,6 +1757,8 @@ fn build_path_sprite_pipeline_state(
     descriptor.set_label(label);
     descriptor.set_vertex_function(Some(vertex_fn.as_ref()));
     descriptor.set_fragment_function(Some(fragment_fn.as_ref()));
+    // 路径精灵回贴主纹理时也画在挂深度的通道里
+    descriptor.set_depth_attachment_pixel_format(metal::MTLPixelFormat::Depth32Float);
     let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
     color_attachment.set_pixel_format(pixel_format);
     color_attachment.set_blending_enabled(true);
@@ -1654,6 +1830,8 @@ enum QuadInputIndex {
     Vertices = 0,
     Quads = 1,
     ViewportSize = 2,
+    // 不透明通道按「后画在前」反序索引全量 quad 缓冲，需要总数
+    QuadCount = 3,
 }
 
 #[repr(C)]

@@ -211,6 +211,65 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
   单测断言（依次重叠的三个 Quad：旧口径顺序 1/2/3 → 新口径全 1、批次
   3 → 1；上游同改动 Zed 启动帧批次 20 → 4）。
 
+### D2 深度缓冲 anti-overdraw（已完成，对齐 zed `be07e43ea0`）
+
+- 上游机制（WebRender 式双通道）：
+  - 深度函数 `depth = saturate((quad_index + 1) × depth_scale)`（越大越近），
+    深度比较用 **Greater**（0 为最远，pass 开始 Clear 0、结束 Discard）。
+  - **不透明通道**：把「实心不透明、无圆角、无边框」的矩形 quad **从前往后**
+    画（实例索引反向映射），开深度测试 + 深度写、无混合；非候选实例在顶点
+    着色器里退化成退化三角形（CULLED_POSITION）。
+  - **混合通道**（既有 back-to-front 循环）：quad 着色器剔除不透明矩形并写
+    自己的深度；其余图元（阴影/路径/精灵/下划线）用视口 min=max=quad 游标
+    深度把整批压到一个深度平面，落在不透明 quad 后面直接深度测试失败、不进
+    片元着色器。上游实测（Intel HD 4600）片元着色次数 −47%～−66%。
+  - `paint_quad` 侧：圆角矩形拆「矩形内部 + 四条边带」，内部实心不透明时进
+    不透明通道；纯直角边框的边带退化为边框色矩形；`largest_border_interior`
+    改为沿角弧的更大内部（±1%）。
+- rgpui 现状差异（移植必须适配，不能照搬 diff）：
+  - 三后端 shader 都停在旧版：无 `clip_to_mask`/`is_shaped` 助手（rgpui 用
+    `clip_distances` FS 裁剪），quad 顶点着色器带 `transform` 路径；
+  - **实例索引 ≠ quad 全局索引**：wgpu 是旧式 `instance_offset` 顺序写（每批
+    独立 bind group），拿不到全局 quad 号；DirectX 的 `draw_range` 用
+    `StartInstanceLocation` 倒是等价全局索引。上游「shader 里由 instance_id
+    反推深度」在 wgpu 侧不成立。
+- 适配决策：深度**逐实例携带**——核心 `Quad` 的尾部 `pad_quad: u32` 换成
+  `depth: f32`（大小/对齐不变，`gpu_struct_layout` 守卫测试同步），`finish()`
+  排序后统一赋值（排序后下标即绘制序）；三后端 Quad 着色器结构同步该字段，
+  不透明通道只需再加一个全局 `quad_count` 做反向索引；非 quad 批的视口深度
+  游标用核心导出的 `quad_depth_scale`/`quad_depth` 在 CPU 算。
+  `is_opaque_rectangle` 谓词沿用上游（tag==0 实心、a≥1、无圆角、无边框；
+  rgpui 当前核心 quad 一律 transform 恒等、continuous=0，谓词无需加项），
+  不透明通道的 content_mask 裁剪用从上游回移的 `clip_to_mask` 几何裁剪
+  （深度写入不能靠 FS 丢弃）。
+- 范围：核心（scene/geometry/window）+ rgpui-wgpu（WGSL + renderer + 深度纹理）
+  + rgpui-windows（HLSL + D3D11 深度态 + ID3D11DeviceContext1 DiscardView）
+  + rgpui-macos（shaders.metal + metal_renderer，本地编不到靠 CI）一次提交
+  ——核心 Quad 布局一改，三后端必须同步，拆开会有中间态渲染错位。
+- 测试：finish 深度单调/量化断言；paint_quad 拆分（圆角内部独立实心矩形、
+  纯边框边带退化矩形、border-only 语义不回退）；三端布局守卫。
+- 落地纪要（本批实际实现与上游的差异）：
+  - 深度逐实例：核心 `Quad.depth: f32`（`finish()` 排序后按
+    `quad_depth(index)` 赋值），wgpu/DX/Metal 三端 shader 的 Quad 结构同步
+    `pad → depth`；`gpu_struct_layout` 守卫断言 `offset_of!(Quad, depth) == 260`。
+  - 不透明通道：三端都是「批处理循环之前，全量 `scene.quads` 反序
+    （`quad_count - 1 - instance_id`）画一遍」，非候选实例在顶点级几何退化；
+    wgpu 用 `clip_to_mask` + `CULLED_POSITION`，HLSL/Metal 用 clip distance
+    几何裁剪（FS discard 会连深度一起写，不能用）。
+  - 深度态：wgpu 三管线各自 `DepthStencilState`（新式 Option 字段）；DX 三个
+    `ID3D11DepthStencilState`（禁用 / Greater 不写 / Greater 写）随
+    `PipelineState` 携带；Metal（metal-rs 0.33）管线只能声明
+    `depth_attachment_pixel_format`，深度态在 `RenderCommandEncoder`
+    上按通道设，非 quad 图元走 Metal 默认「深度禁用」态。
+  - 未移植项（登记 backlog）：非 quad 批的「视口 min=max=quad 游标深度」
+    anti-overdraw（wgpu 无深度态管线 / DX 深度禁用态 / Metal 默认态，三端
+    行为一致但拿不到上游那 −47%～−66% 里的非 quad 部分）；DX 的
+    `DiscardView`（rgpui 每帧 Clear，无需丢弃）。
+  - 验证：wgpu 侧 `crates/rgpui-wgpu/tests/headless_quad_smoke.rs`（无头
+    16×16 真渲染回读，不透明覆盖 + 半透明叠加）；DX 侧 WARP 端到端测试
+    `opaque_channel_occludes_and_blended_channel_culls_opaque_rects`（不透明
+    通道遮挡 + 混合通道剔除断言）；Metal 本地编不到，靠 CI 矩阵。
+
 ---
 
 ## 调研依据（2026-11-20，temp/ 三仓库均活跃至前一天）

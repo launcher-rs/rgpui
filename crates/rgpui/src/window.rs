@@ -4396,42 +4396,43 @@ impl Window {
 
     /// 计算仅含边框的四边形内部的最大空白区域，用于把大片透明内部像素排除在渲染之外。
     fn largest_border_interior(quad: &Quad) -> Bounds<ScaledPixels> {
-        let radii = &quad.corner_radii;
-        let widths = &quad.border_widths;
-        let edge_radii = Edges {
-            top: radii.top_left.max(radii.top_right),
-            right: radii.top_right.max(radii.bottom_right),
-            bottom: radii.bottom_left.max(radii.bottom_right),
-            left: radii.top_left.max(radii.bottom_left),
-        };
+        let size = quad.bounds.size;
+        let diagonal = (size.width.0 * size.width.0 + size.height.0 * size.height.0).sqrt();
+        if diagonal == 0. {
+            return Bounds::default();
+        }
+        // 内部的角落在角弧上：取弧上切线与四边形长宽比一致的点，
+        // 与真正的最大内部相差不超过 1%。
+        let cos = size.height.0 / diagonal;
+        let sin = size.width.0 / diagonal;
 
-        let antialias_inset = point(ScaledPixels(1.0), ScaledPixels(1.0));
-        let inset_bounds = |top_left_inset, bottom_right_inset| {
-            Bounds::from_corners(
-                quad.bounds.origin + top_left_inset + antialias_inset,
-                quad.bounds.bottom_right() - bottom_right_inset - antialias_inset,
+        // 角的内侧边框边是绕角心的四分之一椭圆弧，半径各减去对应边框宽度。
+        let corner_inset = |radius: ScaledPixels, width_x: ScaledPixels, width_y: ScaledPixels| {
+            point(
+                width_x.max(radius - (radius - width_x) * cos),
+                width_y.max(radius - (radius - width_y) * sin),
             )
         };
 
-        // 圆角只需在一个轴向上排除：两个候选带都为空（不含边框像素），
-        // 因此选择面积更大者作为内部区域。
-        let horizontal_band = inset_bounds(
-            point(widths.left, widths.top.max(edge_radii.top)),
-            point(widths.right, widths.bottom.max(edge_radii.bottom)),
-        );
-        let vertical_band = inset_bounds(
-            point(widths.left.max(edge_radii.left), widths.top),
-            point(widths.right.max(edge_radii.right), widths.bottom),
-        );
+        let radii = &quad.corner_radii;
+        let widths = &quad.border_widths;
+        let top_left = corner_inset(radii.top_left, widths.left, widths.top);
+        let top_right = corner_inset(radii.top_right, widths.right, widths.top);
+        let bottom_right = corner_inset(radii.bottom_right, widths.right, widths.bottom);
+        let bottom_left = corner_inset(radii.bottom_left, widths.left, widths.bottom);
 
-        let area = |bounds: &Bounds<ScaledPixels>| {
-            bounds.size.width.0.max(0.) * bounds.size.height.0.max(0.)
-        };
-        if area(&horizontal_band) >= area(&vertical_band) {
-            horizontal_band
-        } else {
-            vertical_band
-        }
+        let antialias_inset = point(ScaledPixels(1.0), ScaledPixels(1.0));
+        Bounds::from_corners(
+            quad.bounds.origin
+                + point(top_left.x.max(bottom_left.x), top_left.y.max(top_right.y))
+                + antialias_inset,
+            quad.bounds.bottom_right()
+                - point(
+                    top_right.x.max(bottom_right.x),
+                    bottom_left.y.max(bottom_right.y),
+                )
+                - antialias_inset,
+        )
     }
 
     /// 在当前层叠上下文中将一个或多个四边形绘制到下一帧的场景中。
@@ -4461,24 +4462,77 @@ impl Window {
             continuous_corners: 0,
             transform: TransformationMatrix::default(),
             blend_mode: 0,
-            pad_quad: 0,
+            depth: 0.0,
+        };
+        self.insert_quad(quad);
+    }
+
+    /// 把一个四边形（必要时先拆分）提交进场景：实心矩形直通；带圆角或边框的
+    /// 拆成「矩形内部 + 四条边带」，实心不透明的内部因此能进渲染器的不透明
+    /// 深度通道，只有边带参与边框与圆角着色。
+    fn insert_quad(&mut self, quad: Quad) {
+        let has_background = !quad.background.is_transparent();
+        let has_border =
+            quad.border_widths != Edges::default() && !quad.border_color.is_transparent();
+        if !has_background && !has_border {
+            return;
+        }
+
+        let is_rectangle =
+            quad.border_widths == Edges::default() && quad.corner_radii == Corners::default();
+        if has_background && is_rectangle {
+            self.next_frame.scene.insert_primitive(quad);
+            return;
+        }
+
+        let plain_border = quad.corner_radii == Corners::default()
+            && quad.border_style == BorderStyle::Solid
+            && (!has_background || quad.border_color.is_opaque());
+
+        // 围绕内部拆分：边框与圆角的着色只跑在内部四周的边带上。
+        // 仅带边框、无填充的四边形直接提交会为每块透明的内部像素运行一次
+        // 四边形着色器，当形状较大时开销尤其高。
+        let inner_bounds = if plain_border {
+            let widths = quad.border_widths;
+            quad.bounds.extend(Edges {
+                top: ScaledPixels(-widths.top.0),
+                right: ScaledPixels(-widths.right.0),
+                bottom: ScaledPixels(-widths.bottom.0),
+                left: ScaledPixels(-widths.left.0),
+            })
+        } else {
+            Self::largest_border_interior(&quad)
         };
 
-        if !quad.background.is_transparent() {
-            self.next_frame.scene.insert_primitive(quad);
-            return;
-        }
-
-        // 仅带边框、无填充的四边形直接提交到场景会为每块透明的内部像素运行一次
-        // 四边形着色器，当形状较大时开销尤其高。这里围绕其空白内部进行拆分。
-        let outer_bounds = quad.bounds;
-        let inner_bounds = Self::largest_border_interior(&quad);
+        // 纯直角边框的边带就是边框色的矩形；否则每条边带是「被该边带裁剪的
+        // 整个四边形」，边框、圆角与渐变仍相对完整四边形着色。
+        let strip_quad = if plain_border {
+            Quad {
+                background: quad.border_color.into(),
+                border_widths: Edges::default(),
+                ..quad
+            }
+        } else {
+            quad
+        };
 
         if inner_bounds.is_empty() {
-            self.next_frame.scene.insert_primitive(quad);
+            self.next_frame.scene.insert_primitive(strip_quad);
             return;
         }
 
+        if has_background {
+            self.next_frame.scene.insert_primitive(Quad {
+                content_mask: ContentMask {
+                    bounds: quad.content_mask.bounds.intersect(&inner_bounds),
+                },
+                border_widths: Edges::default(),
+                corner_radii: Corners::default(),
+                ..quad
+            });
+        }
+
+        let outer_bounds = quad.bounds;
         let strips = [
             // Top
             Bounds::from_corners(
@@ -4503,15 +4557,12 @@ impl Window {
         ];
 
         for strip in strips {
-            let content_mask_bounds = quad.content_mask.bounds.intersect(&strip);
-            if !content_mask_bounds.is_empty() {
-                self.next_frame.scene.insert_primitive(Quad {
-                    content_mask: ContentMask {
-                        bounds: content_mask_bounds,
-                    },
-                    ..quad
-                });
-            }
+            self.next_frame.scene.insert_primitive(Quad {
+                content_mask: ContentMask {
+                    bounds: quad.content_mask.bounds.intersect(&strip),
+                },
+                ..strip_quad
+            });
         }
     }
 
@@ -7837,12 +7888,16 @@ pub fn outline(
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, rc::Rc};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
 
     use crate::{
-        AppContext as _, Bounds, Context, FocusHandle, InteractiveElement as _, IntoElement,
-        ParentElement, Pixels, Render, Styled, TestAppContext, Window, WindowOptions, canvas, div,
-        px, size,
+        AppContext as _, BackgroundTag, BorderStyle, Bounds, Context, Corners, Edges, FocusHandle,
+        Hsla, InteractiveElement as _, IntoElement, ParentElement, Pixels, Quad, Render, Styled,
+        TestAppContext, Window, WindowOptions, canvas, div, fill, outline, point, px, quad, size,
+        transparent_black,
     };
 
     struct EmptyView;
@@ -8025,5 +8080,145 @@ mod tests {
             })
             .unwrap();
         assert_eq!(b_focus_count.get(), 1);
+    }
+
+    /// 不透明的纯红色。
+    fn opaque_red() -> Hsla {
+        Hsla {
+            h: 0.0,
+            s: 1.0,
+            l: 0.5,
+            a: 1.0,
+        }
+    }
+
+    struct PaintHolder {
+        paint: Rc<dyn Fn(&mut Window)>,
+        sink: Rc<RefCell<Vec<Quad>>>,
+    }
+
+    impl Render for PaintHolder {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let (paint, sink) = (self.paint.clone(), self.sink.clone());
+            div().size_full().child(canvas(
+                |_, _, _| {},
+                move |_, _, window, _| {
+                    // 只取本次 paint 新增的图元（窗口背景等基础图元在此之前的阶段落下）。
+                    let base = window.next_frame.scene.quads.len();
+                    paint(window);
+                    *sink.borrow_mut() = window.next_frame.scene.quads[base..].to_vec();
+                },
+            ))
+        }
+    }
+
+    /// 在画布元素的绘制阶段调用 `paint_quad`，并把场景里落下的四边形取回来。
+    fn painted_quads(cx: &mut TestAppContext, paint: impl 'static + Fn(&mut Window)) -> Vec<Quad> {
+        let paint: Rc<dyn Fn(&mut Window)> = Rc::new(paint);
+        let sink = Rc::new(RefCell::new(Vec::<Quad>::new()));
+        let window = cx.add_window({
+            let (paint, sink) = (paint.clone(), sink.clone());
+            move |_, _| PaintHolder { paint, sink }
+        });
+        cx.update_window(window.into(), |_, window, cx| {
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        sink.take()
+    }
+
+    /// 实心无圆角的矩形直通为单个图元（本身就是不透明深度通道的候选）。
+    #[test]
+    fn test_paint_quad_opaque_rectangle_passthrough() {
+        let mut cx = TestAppContext::single();
+        let quads = painted_quads(&mut cx, |window| {
+            window.paint_quad(fill(
+                Bounds {
+                    origin: point(px(0.), px(0.)),
+                    size: size(px(100.), px(50.)),
+                },
+                opaque_red(),
+            ));
+        });
+        assert_eq!(quads.len(), 1, "实心直角矩形不应拆分");
+    }
+
+    /// 圆角矩形拆成「实心内部 + 四条边带」：内部无圆角无边框（进不透明通道），
+    /// 边带保留原圆角、按边带裁剪。
+    #[test]
+    fn test_paint_quad_splits_rounded_rectangle_into_interior_and_strips() {
+        let mut cx = TestAppContext::single();
+        let quads = painted_quads(&mut cx, |window| {
+            window.paint_quad(quad(
+                Bounds {
+                    origin: point(px(10.), px(10.)),
+                    size: size(px(100.), px(60.)),
+                },
+                px(8.),
+                opaque_red(),
+                px(0.),
+                transparent_black(),
+                BorderStyle::Solid,
+            ));
+        });
+        assert_eq!(quads.len(), 5, "一个内部 + 四条边带");
+        assert_eq!(quads[0].corner_radii, Corners::default(), "内部不应带圆角");
+        assert_eq!(quads[0].border_widths, Edges::default(), "内部不应带边框");
+        assert!(
+            quads[1..]
+                .iter()
+                .all(|q| q.corner_radii != Corners::default()),
+            "边带应保留原圆角"
+        );
+        let interior_mask = quads[0].content_mask.bounds;
+        let outer = quads[1].bounds;
+        assert!(
+            interior_mask.origin.x > outer.origin.x
+                && interior_mask.origin.y > outer.origin.y
+                && interior_mask.right() < outer.right()
+                && interior_mask.bottom() < outer.bottom(),
+            "内部图元的蒙版应严格落在原矩形之内（边界仍属原矩形）"
+        );
+    }
+
+    /// 无填充的纯直角不透明边框：边带退化为边框色的实心矩形（不继承边框宽度）。
+    #[test]
+    fn test_paint_quad_plain_border_strips_become_border_colored() {
+        let mut cx = TestAppContext::single();
+        let quads = painted_quads(&mut cx, |window| {
+            window.paint_quad(outline(
+                Bounds {
+                    origin: point(px(0.), px(0.)),
+                    size: size(px(100.), px(60.)),
+                },
+                opaque_red(),
+                BorderStyle::Solid,
+            ));
+        });
+        assert_eq!(quads.len(), 4, "四条边框边带");
+        for quad in &quads {
+            assert_eq!(quad.border_widths, Edges::default(), "边带不应再带边框宽度");
+            assert!(
+                matches!(quad.background.tag, BackgroundTag::Solid)
+                    && quad.background.solid == opaque_red(),
+                "边带应是不透明的边框色"
+            );
+        }
+    }
+
+    /// 无填充无边框的完全透明四边形不落任何图元。
+    #[test]
+    fn test_paint_quad_fully_transparent_is_noop() {
+        let mut cx = TestAppContext::single();
+        let quads = painted_quads(&mut cx, |window| {
+            window.paint_quad(fill(
+                Bounds {
+                    origin: point(px(0.), px(0.)),
+                    size: size(px(100.), px(50.)),
+                },
+                transparent_black(),
+            ));
+        });
+        assert!(quads.is_empty(), "完全透明不应提交任何四边形");
     }
 }

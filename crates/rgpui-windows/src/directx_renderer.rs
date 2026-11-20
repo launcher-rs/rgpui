@@ -88,6 +88,9 @@ struct DirectXResources {
     path_intermediate_msaa_texture: ID3D11Texture2D,
     path_intermediate_msaa_view: Option<ID3D11RenderTargetView>,
 
+    // anti-overdraw 深度模板（D32_FLOAT，随渲染目标同尺寸）
+    depth_stencil_view: Option<ID3D11DepthStencilView>,
+
     // Cached viewport
     viewport: D3D11_VIEWPORT,
 }
@@ -101,6 +104,17 @@ struct DirectXRenderPipelines {
     mono_sprites: PipelineState<MonochromeSprite>,
     subpixel_sprites: PipelineState<SubpixelSprite>,
     poly_sprites: PipelineState<PolychromeSprite>,
+    /// anti-overdraw 不透明通道：着色器 + 无混合 + 写深度态。
+    /// 实例数据直接读 `quad_pipeline` 的全量缓冲视图，不另设缓冲。
+    opaque_quads: OpaqueQuadPipeline,
+}
+
+/// 不透明 quad 通道的着色器与状态（缓冲复用 quad 管线那份）。
+struct OpaqueQuadPipeline {
+    vertex: ID3D11VertexShader,
+    fragment: ID3D11PixelShader,
+    blend_state: ID3D11BlendState,
+    depth_state: ID3D11DepthStencilState,
 }
 
 struct DirectXGlobalElements {
@@ -199,7 +213,7 @@ impl DirectXRenderer {
         self.atlas.clone()
     }
 
-    fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
+    fn pre_draw(&self, clear_color: &[f32; 4], quad_count: usize) -> Result<()> {
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
             .devices
@@ -215,7 +229,8 @@ impl DirectXRenderer {
                 grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
                 subpixel_enhanced_contrast: self.font_info.subpixel_enhanced_contrast,
                 is_bgr: self.font_info.is_bgr as u32,
-                _pad: [0; 3],
+                quad_count: quad_count as u32,
+                _pad: [0; 2],
             }],
         )?;
         unsafe {
@@ -226,8 +241,20 @@ impl DirectXRenderer {
                     .context("missing render target view")?,
                 clear_color,
             );
-            device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            // 深度从 0 开始（「越大越近」），与主渲染目标一并绑定。
+            device_context.ClearDepthStencilView(
+                resources
+                    .depth_stencil_view
+                    .as_ref()
+                    .context("missing depth stencil view")?,
+                D3D11_CLEAR_DEPTH.0,
+                0.0,
+                0,
+            );
+            device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.depth_stencil_view.as_ref(),
+            );
             device_context.RSSetViewports(Some(slice::from_ref(&resources.viewport)));
         }
         Ok(())
@@ -309,9 +336,10 @@ impl DirectXRenderer {
             .handle_device_lost(&devices.device, &devices.device_context);
 
         unsafe {
-            devices
-                .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            devices.device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.depth_stencil_view.as_ref(),
+            );
         }
         self.devices = Some(devices);
         self.resources = Some(resources);
@@ -349,12 +377,18 @@ impl DirectXRenderer {
             // and so likely do not have the textures anymore that are required for drawing
             return Ok(());
         }
-        self.pre_draw(&match background_appearance {
-            WindowBackgroundAppearance::Opaque => [1.0f32; 4],
-            _ => [0.0f32; 4],
-        })?;
+        self.pre_draw(
+            &match background_appearance {
+                WindowBackgroundAppearance::Opaque => [1.0f32; 4],
+                _ => [0.0f32; 4],
+            },
+            scene.quads.len(),
+        )?;
 
         self.upload_scene_buffers(scene)?;
+
+        // 不透明通道先画：从前往后、写深度，被遮住的后续片元在深度测试处失败。
+        self.draw_opaque_quads(scene.quads.len())?;
 
         for batch in scene.batches() {
             match batch {
@@ -492,9 +526,10 @@ impl DirectXRenderer {
         resources.recreate_resources(devices, width, height)?;
 
         unsafe {
-            devices
-                .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            devices.device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.depth_stencil_view.as_ref(),
+            );
         }
 
         Ok(())
@@ -598,6 +633,35 @@ impl DirectXRenderer {
         )
     }
 
+    /// 不透明通道：用 quad 管线的全量缓冲视图 + 不透明着色器，从前往后
+    /// 画一遍（非候选实例在顶点着色器里被裁掉），开深度写、无混合。
+    fn draw_opaque_quads(&mut self, quad_count: usize) -> Result<()> {
+        if quad_count == 0 {
+            return Ok(());
+        }
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let resources = self.resources.as_ref().context("resources missing")?;
+        let quad_pipeline = &self.pipelines.quad_pipeline;
+        let opaque = &self.pipelines.opaque_quads;
+        set_pipeline_state(
+            &devices.device_context,
+            slice::from_ref(&quad_pipeline.view),
+            D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+            slice::from_ref(&resources.viewport),
+            &opaque.vertex,
+            &opaque.fragment,
+            slice::from_ref(&self.globals.global_params_buffer),
+            &opaque.blend_state,
+            &opaque.depth_state,
+        );
+        unsafe {
+            devices
+                .device_context
+                .DrawInstanced(4, quad_count as u32, 0, 0);
+        }
+        Ok(())
+    }
+
     fn draw_paths_to_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
         if paths.is_empty() {
             return Ok(());
@@ -655,9 +719,10 @@ impl DirectXRenderer {
                 RENDER_TARGET_FORMAT,
             );
             // Restore main render target
-            devices
-                .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            devices.device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.depth_stencil_view.as_ref(),
+            );
         }
 
         Ok(())
@@ -906,6 +971,7 @@ impl DirectXResources {
             path_intermediate_srv,
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
+            depth_stencil_view,
             viewport,
         ) = create_resources(devices, &swap_chain, width, height)?;
         set_rasterizer_state(&devices.device, &devices.device_context)?;
@@ -918,6 +984,7 @@ impl DirectXResources {
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
             path_intermediate_srv,
+            depth_stencil_view,
             viewport,
         })
     }
@@ -936,6 +1003,7 @@ impl DirectXResources {
             path_intermediate_srv,
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
+            depth_stencil_view,
             viewport,
         ) = create_resources(devices, &self.swap_chain, width, height)?;
         self.render_target = Some(render_target);
@@ -944,6 +1012,7 @@ impl DirectXResources {
         self.path_intermediate_msaa_texture = path_intermediate_msaa_texture;
         self.path_intermediate_msaa_view = path_intermediate_msaa_view;
         self.path_intermediate_srv = path_intermediate_srv;
+        self.depth_stencil_view = depth_stencil_view;
         self.viewport = viewport;
         Ok(())
     }
@@ -951,12 +1020,19 @@ impl DirectXResources {
 
 impl DirectXRenderPipelines {
     pub fn new(device: &ID3D11Device) -> Result<Self> {
+        // 三档深度态：非 quad 图元关闭深度；混合 quad 只测不写；
+        // 不透明 quad 测试并写入。比较都是 Greater（「越大越近」）。
+        let no_depth_state = create_depth_stencil_state(device, false, false)?;
+        let quad_depth_state = create_depth_stencil_state(device, true, false)?;
+        let opaque_depth_state = create_depth_stencil_state(device, true, true)?;
+
         let shadow_pipeline = PipelineState::new(
             device,
             "shadow_pipeline",
             ShaderModule::Shadow,
             4,
             create_blend_state(device)?,
+            no_depth_state.clone(),
         )?;
         let quad_pipeline = PipelineState::new(
             device,
@@ -964,13 +1040,29 @@ impl DirectXRenderPipelines {
             ShaderModule::Quad,
             64,
             create_blend_state(device)?,
+            quad_depth_state,
         )?;
+        let opaque_quads = OpaqueQuadPipeline {
+            vertex: {
+                let raw_shader =
+                    RawShaderBytes::new(ShaderModule::OpaqueQuad, ShaderTarget::Vertex)?;
+                create_vertex_shader(device, raw_shader.as_bytes())?
+            },
+            fragment: {
+                let raw_shader =
+                    RawShaderBytes::new(ShaderModule::OpaqueQuad, ShaderTarget::Fragment)?;
+                create_fragment_shader(device, raw_shader.as_bytes())?
+            },
+            blend_state: create_opaque_blend_state(device)?,
+            depth_state: opaque_depth_state,
+        };
         let path_rasterization_pipeline = PipelineState::new(
             device,
             "path_rasterization_pipeline",
             ShaderModule::PathRasterization,
             32,
             create_blend_state_for_path_rasterization(device)?,
+            no_depth_state.clone(),
         )?;
         let path_sprite_pipeline = PipelineState::new(
             device,
@@ -978,6 +1070,7 @@ impl DirectXRenderPipelines {
             ShaderModule::PathSprite,
             4,
             create_blend_state_for_path_sprite(device)?,
+            no_depth_state.clone(),
         )?;
         let underline_pipeline = PipelineState::new(
             device,
@@ -985,6 +1078,7 @@ impl DirectXRenderPipelines {
             ShaderModule::Underline,
             4,
             create_blend_state(device)?,
+            no_depth_state.clone(),
         )?;
         let mono_sprites = PipelineState::new(
             device,
@@ -992,6 +1086,7 @@ impl DirectXRenderPipelines {
             ShaderModule::MonochromeSprite,
             512,
             create_blend_state(device)?,
+            no_depth_state.clone(),
         )?;
         let subpixel_sprites = PipelineState::new(
             device,
@@ -999,6 +1094,7 @@ impl DirectXRenderPipelines {
             ShaderModule::SubpixelSprite,
             512,
             create_blend_state_for_subpixel_rendering(device)?,
+            no_depth_state.clone(),
         )?;
         let poly_sprites = PipelineState::new(
             device,
@@ -1006,6 +1102,7 @@ impl DirectXRenderPipelines {
             ShaderModule::PolychromeSprite,
             16,
             create_blend_state(device)?,
+            no_depth_state,
         )?;
 
         Ok(Self {
@@ -1017,6 +1114,7 @@ impl DirectXRenderPipelines {
             mono_sprites,
             subpixel_sprites,
             poly_sprites,
+            opaque_quads,
         })
     }
 }
@@ -1092,7 +1190,9 @@ struct GlobalParams {
     grayscale_enhanced_contrast: f32,
     subpixel_enhanced_contrast: f32,
     is_bgr: u32,
-    _pad: [u32; 3],
+    /// 不透明通道反向索引用的全局 quad 数。
+    quad_count: u32,
+    _pad: [u32; 2],
 }
 
 struct PipelineState<T> {
@@ -1103,6 +1203,7 @@ struct PipelineState<T> {
     buffer_size: usize,
     view: Option<ID3D11ShaderResourceView>,
     blend_state: ID3D11BlendState,
+    depth_state: ID3D11DepthStencilState,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -1113,6 +1214,7 @@ impl<T> PipelineState<T> {
         shader_module: ShaderModule,
         buffer_size: usize,
         blend_state: ID3D11BlendState,
+        depth_state: ID3D11DepthStencilState,
     ) -> Result<Self> {
         let vertex = {
             let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Vertex)?;
@@ -1133,6 +1235,7 @@ impl<T> PipelineState<T> {
             buffer_size,
             view,
             blend_state,
+            depth_state,
             _marker: std::marker::PhantomData,
         })
     }
@@ -1178,6 +1281,7 @@ impl<T> PipelineState<T> {
             &self.fragment,
             global_params,
             &self.blend_state,
+            &self.depth_state,
         );
         unsafe {
             device_context.DrawInstanced(vertex_count, instance_count, 0, 0);
@@ -1203,6 +1307,7 @@ impl<T> PipelineState<T> {
             &self.fragment,
             global_params,
             &self.blend_state,
+            &self.depth_state,
         );
         unsafe {
             device_context.PSSetSamplers(0, Some(sampler));
@@ -1234,6 +1339,7 @@ impl<T> PipelineState<T> {
             &self.fragment,
             global_params,
             &self.blend_state,
+            &self.depth_state,
         );
         unsafe {
             device_context.DrawInstanced(vertex_count, instance_count, 0, 0);
@@ -1262,6 +1368,7 @@ impl<T> PipelineState<T> {
             &self.fragment,
             global_params,
             &self.blend_state,
+            &self.depth_state,
         );
         unsafe {
             device_context.PSSetSamplers(0, Some(sampler));
@@ -1372,6 +1479,7 @@ fn create_resources(
     Option<ID3D11ShaderResourceView>,
     ID3D11Texture2D,
     Option<ID3D11RenderTargetView>,
+    Option<ID3D11DepthStencilView>,
     D3D11_VIEWPORT,
 )> {
     let (render_target, render_target_view) =
@@ -1380,6 +1488,7 @@ fn create_resources(
         create_path_intermediate_texture(&devices.device, width, height)?;
     let (path_intermediate_msaa_texture, path_intermediate_msaa_view) =
         create_path_intermediate_msaa_texture_and_view(&devices.device, width, height)?;
+    let depth_stencil_view = create_depth_stencil_and_view(&devices.device, width, height)?;
     let viewport = set_viewport(&devices.device_context, width as f32, height as f32);
     Ok((
         render_target,
@@ -1388,8 +1497,42 @@ fn create_resources(
         path_intermediate_srv,
         path_intermediate_msaa_texture,
         path_intermediate_msaa_view,
+        depth_stencil_view,
         viewport,
     ))
+}
+
+/// anti-overdraw 深度纹理（D32_FLOAT）与其深度模板视图。
+/// 只返回视图：D3D11 的 DSV 自持纹理引用，纹理随视图存活。
+#[inline]
+fn create_depth_stencil_and_view(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+) -> Result<Option<ID3D11DepthStencilView>> {
+    let texture = unsafe {
+        let mut output = None;
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: width,
+            Height: height,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_D32_FLOAT,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: D3D11_BIND_DEPTH_STENCIL.0 as u32,
+            CPUAccessFlags: 0,
+            MiscFlags: 0,
+        };
+        device.CreateTexture2D(&desc, None, Some(&mut output))?;
+        output.context("创建深度纹理失败")?
+    };
+    let mut view = None;
+    unsafe { device.CreateDepthStencilView(&texture, None, Some(&mut view))? };
+    Ok(view)
 }
 
 #[inline]
@@ -1629,6 +1772,50 @@ fn create_blend_state_for_subpixel_rendering(device: &ID3D11Device) -> Result<ID
     }
 }
 
+/// 深度模板状态：`enabled=false` 关闭深度测试（非 quad 图元）；
+/// `write=true` 时写入深度。比较一律 Greater——深度「越大越近」，
+/// 不透明通道从前往后画，更远的片元直接失败。
+#[inline]
+fn create_depth_stencil_state(
+    device: &ID3D11Device,
+    enabled: bool,
+    write: bool,
+) -> Result<ID3D11DepthStencilState> {
+    let desc = D3D11_DEPTH_STENCIL_DESC {
+        DepthEnable: enabled.into(),
+        DepthWriteMask: if write {
+            D3D11_DEPTH_WRITE_MASK_ALL
+        } else {
+            D3D11_DEPTH_WRITE_MASK_ZERO
+        },
+        DepthFunc: D3D11_COMPARISON_GREATER,
+        ..Default::default()
+    };
+    unsafe {
+        let mut state = None;
+        device.CreateDepthStencilState(&desc, Some(&mut state))?;
+        Ok(state.unwrap())
+    }
+}
+
+/// 不透明通道的混合状态：完全关闭混合，颜色直写。
+#[inline]
+fn create_opaque_blend_state(device: &ID3D11Device) -> Result<ID3D11BlendState> {
+    let desc = D3D11_BLEND_DESC {
+        RenderTarget: [D3D11_RENDER_TARGET_BLEND_DESC {
+            BlendEnable: false.into(),
+            RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8,
+            ..Default::default()
+        }; 8],
+        ..Default::default()
+    };
+    unsafe {
+        let mut state = None;
+        device.CreateBlendState(&desc, Some(&mut state))?;
+        Ok(state.unwrap())
+    }
+}
+
 #[inline]
 fn create_blend_state_for_path_rasterization(device: &ID3D11Device) -> Result<ID3D11BlendState> {
     // If the feature level is set to greater than D3D_FEATURE_LEVEL_9_3, the display
@@ -1767,6 +1954,7 @@ fn set_pipeline_state(
     fragment_shader: &ID3D11PixelShader,
     global_params: &[Option<ID3D11Buffer>],
     blend_state: &ID3D11BlendState,
+    depth_state: &ID3D11DepthStencilState,
 ) {
     unsafe {
         device_context.VSSetShaderResources(1, Some(buffer_view));
@@ -1778,6 +1966,7 @@ fn set_pipeline_state(
         device_context.VSSetConstantBuffers(0, Some(global_params));
         device_context.PSSetConstantBuffers(0, Some(global_params));
         device_context.OMSetBlendState(blend_state, None, 0xFFFFFFFF);
+        device_context.OMSetDepthStencilState(depth_state, 0);
     }
 }
 
@@ -1807,6 +1996,7 @@ pub(crate) mod shader_resources {
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     pub(crate) enum ShaderModule {
         Quad,
+        OpaqueQuad,
         Shadow,
         Underline,
         PathRasterization,
@@ -1859,6 +2049,10 @@ pub(crate) mod shader_resources {
                 ShaderModule::Quad => match target {
                     ShaderTarget::Vertex => QUAD_VERTEX_BYTES,
                     ShaderTarget::Fragment => QUAD_FRAGMENT_BYTES,
+                },
+                ShaderModule::OpaqueQuad => match target {
+                    ShaderTarget::Vertex => OPAQUE_QUAD_VERTEX_BYTES,
+                    ShaderTarget::Fragment => OPAQUE_QUAD_FRAGMENT_BYTES,
                 },
                 ShaderModule::Shadow => match target {
                     ShaderTarget::Vertex => SHADOW_VERTEX_BYTES,
@@ -1972,6 +2166,7 @@ pub(crate) mod shader_resources {
         pub fn as_str(self) -> &'static str {
             match self {
                 ShaderModule::Quad => "quad",
+                ShaderModule::OpaqueQuad => "opaque_quad",
                 ShaderModule::Shadow => "shadow",
                 ShaderModule::Underline => "underline",
                 ShaderModule::PathRasterization => "path_rasterization",
@@ -2231,6 +2426,137 @@ mod readback_tests {
         assert_eq!(image.dimensions(), (4, 3));
         for pixel in image.pixels() {
             assert_eq!(pixel.0, [255, 0, 0, 255], "读回的像素应是红色且通道不串");
+        }
+    }
+
+    /// anti-overdraw 端到端（WARP）：
+    /// 1) 不透明通道从前往后画、写深度——近处绿块遮住远处红块；
+    /// 2) 混合通道把「实心不透明矩形」整个裁掉——清空重画后像素保持清屏色。
+    #[test]
+    fn opaque_channel_occludes_and_blended_channel_culls_opaque_rects() {
+        use super::{
+            DirectXGlobalElements, DirectXRenderPipelines, GlobalParams,
+            create_depth_stencil_and_view, set_pipeline_state, set_rasterizer_state, set_viewport,
+            update_buffer,
+        };
+        use rgpui::{
+            Bounds, ContentMask, Hsla, Quad, ScaledPixels, hsla, point, size, solid_background,
+        };
+        use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
+        use windows::Win32::Graphics::Direct3D11::D3D11_CLEAR_DEPTH;
+
+        let Some((device, device_context)) = create_warp_device() else {
+            return;
+        };
+
+        let mut pipelines = DirectXRenderPipelines::new(&device).expect("管线应能创建");
+        let globals = DirectXGlobalElements::new(&device).expect("全局参数应能创建");
+        update_buffer(
+            &device_context,
+            globals.global_params_buffer.as_ref().unwrap(),
+            &[GlobalParams {
+                gamma_ratios: [1.0, 0.0, 0.0, 0.0],
+                viewport_size: [8.0, 8.0],
+                grayscale_enhanced_contrast: 0.0,
+                subpixel_enhanced_contrast: 0.0,
+                is_bgr: 0,
+                quad_count: 2,
+                _pad: [0; 2],
+            }],
+        )
+        .expect("全局参数应能上传");
+
+        let red = hsla(0.0, 1.0, 0.5, 1.0);
+        let green = hsla(0.33, 1.0, 0.5, 1.0);
+        let solid = |color: Hsla, depth: f32| -> Quad {
+            let bounds = Bounds {
+                origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                size: size(ScaledPixels(8.0), ScaledPixels(8.0)),
+            };
+            Quad {
+                bounds,
+                content_mask: ContentMask { bounds },
+                background: solid_background(color),
+                border_color: color,
+                depth,
+                ..Quad::default()
+            }
+        };
+        // 排序后的场景序：红远（先画）、绿近（后画），深度按「越大越近」。
+        let quads = [solid(red, 0.4), solid(green, 0.8)];
+        pipelines
+            .quad_pipeline
+            .update_buffer(&device, &device_context, &quads)
+            .expect("quad 缓冲应能更新");
+
+        let target = create_offscreen_render_target(&device, 8, 8).expect("离屏目标应能创建");
+        let mut rtv_option = None;
+        unsafe { device.CreateRenderTargetView(&target, None, Some(&mut rtv_option)) }
+            .expect("渲染目标视图应能创建");
+        let rtv = rtv_option.expect("渲染目标视图不能为空");
+        let rtv_slot: Option<windows::Win32::Graphics::Direct3D11::ID3D11RenderTargetView> =
+            Some(rtv);
+        let dsv = create_depth_stencil_and_view(&device, 8, 8)
+            .expect("深度视图应能创建")
+            .expect("深度视图不能为空");
+        let viewport = set_viewport(&device_context, 8.0, 8.0);
+        set_rasterizer_state(&device, &device_context).expect("光栅化状态应能设置");
+
+        let clear = |device_context: &ID3D11DeviceContext, color: [f32; 4]| unsafe {
+            device_context.ClearRenderTargetView(rtv_slot.as_ref().unwrap(), &color);
+            device_context.ClearDepthStencilView(&dsv, D3D11_CLEAR_DEPTH.0, 0.0, 0);
+            device_context.OMSetRenderTargets(Some(std::slice::from_ref(&rtv_slot)), Some(&dsv));
+        };
+
+        // 第一段：不透明通道（反向索引：instance 0 → quad 1 绿，instance 1 → quad 0 红）。
+        clear(&device_context, [1.0, 1.0, 1.0, 1.0]);
+        set_pipeline_state(
+            &device_context,
+            std::slice::from_ref(&pipelines.quad_pipeline.view),
+            D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+            std::slice::from_ref(&viewport),
+            &pipelines.opaque_quads.vertex,
+            &pipelines.opaque_quads.fragment,
+            std::slice::from_ref(&globals.global_params_buffer),
+            &pipelines.opaque_quads.blend_state,
+            &pipelines.opaque_quads.depth_state,
+        );
+        unsafe { device_context.DrawInstanced(4, quads.len() as u32, 0, 0) };
+
+        let image = read_render_target(&device, &device_context, &target, 8, 8)
+            .expect("不透明通道后应能读回");
+        for pixel in image.pixels() {
+            assert!(
+                (pixel.0[1] as i16 - 255).abs() <= 8 && pixel.0[0] < 40,
+                "近处不透明绿应完全遮住远处红: {:?}",
+                pixel.0
+            );
+        }
+
+        // 第二段：只走混合通道——两个都是不透明矩形，应在顶点着色器被裁掉，
+        // 深度缓冲里还留着绿写入的深度，但没有任何东西被重画。
+        clear(&device_context, [0.0, 0.0, 1.0, 1.0]);
+        pipelines
+            .quad_pipeline
+            .draw(
+                &device_context,
+                std::slice::from_ref(&viewport),
+                std::slice::from_ref(&globals.global_params_buffer),
+                D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+                4,
+                quads.len() as u32,
+            )
+            .expect("混合通道应能绘制");
+
+        let image = read_render_target(&device, &device_context, &target, 8, 8)
+            .expect("混合通道后应能读回");
+        for pixel in image.pixels() {
+            assert_eq!(
+                pixel.0,
+                [0, 0, 255, 255],
+                "不透明矩形应被混合通道整个剔除: {:?}",
+                pixel.0
+            );
         }
     }
 }
