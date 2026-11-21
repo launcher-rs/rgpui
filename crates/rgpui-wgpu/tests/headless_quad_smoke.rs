@@ -8,8 +8,8 @@
 //! 端到端跑通的 shader 管线验证路径。
 
 use rgpui::{
-    Bounds, ContentMask, DevicePixels, Hsla, Point, Quad, ScaledPixels, Scene, Size, hsla,
-    solid_background,
+    Bounds, ContentMask, DevicePixels, Hsla, Point, Quad, ScaledPixels, Scene, Size, Underline,
+    hsla, solid_background,
 };
 use rgpui_wgpu::WgpuHeadlessRenderer;
 
@@ -88,5 +88,51 @@ fn headless_render_opaque_and_blended_quads() {
         near(px(4, 4), [127, 0, 127, 255]),
         "半透明蓝应叠加在红上: {:?}",
         px(4, 4)
+    );
+}
+
+/// 视口深度游标（D2 backlog）：插入更晚的不透明矩形必须盖住先画的非 quad 图元。
+/// 修复前非 quad 用 Always 深度态，会浮在最先绘制的不透明通道之上（z-order 反转）。
+#[test]
+fn headless_opaque_quad_occludes_earlier_underline() {
+    let size = Size {
+        width: DevicePixels(16),
+        height: DevicePixels(16),
+    };
+    let mut renderer = WgpuHeadlessRenderer::new(size).expect("无头渲染器创建失败");
+
+    let bounds = full_bounds();
+    let mut scene = Scene::default();
+    // 先插红色下划线（非 quad，绘制序更早），再插覆盖它的不透明绿色矩形。
+    scene.insert_primitive(Underline {
+        order: 0,
+        pad: 0,
+        bounds,
+        content_mask: ContentMask { bounds },
+        color: hsla(0.0, 1.0, 0.5, 1.0), // 红
+        thickness: ScaledPixels(16.0),
+        wavy: 0,
+    });
+    scene.insert_primitive(solid_quad(
+        bounds,
+        hsla(0.33, 1.0, 0.5, 1.0), // 绿
+    ));
+    scene.finish();
+
+    let (width, height, pixels) = renderer
+        .render_to_pixels(&scene, size)
+        .expect("离屏渲染失败");
+    assert_eq!((width, height), (16, 16));
+    let px = |x: u32, y: u32| -> [u8; 4] {
+        let i = ((y * width + x) * 4) as usize;
+        [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]]
+    };
+    let near =
+        |c: [u8; 4], t: [i16; 4]| -> bool { (0..4).all(|k| (c[k] as i16 - t[k]).abs() <= 40) };
+
+    assert!(
+        near(px(8, 8), [0, 255, 0, 255]),
+        "后画的不透明绿矩形应盖住先画的红下划线: {:?}",
+        px(8, 8)
     );
 }

@@ -6,7 +6,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use rgpui::{
     AtlasTextureId, Bounds, DevicePixels, GpuSpecs, MonochromeSprite, PaintedPath,
     PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene, Shadow, Size, SubpixelSprite,
-    Underline, get_gamma_correction_ratios,
+    Underline, get_gamma_correction_ratios, quad_depth, quad_depth_scale,
 };
 use std::cell::RefCell;
 use std::num::NonZeroU64;
@@ -716,12 +716,12 @@ impl WgpuRenderer {
             bias: wgpu::DepthBiasState::default(),
         };
 
-        // 非 quad 图元的深度态：比较 Always 且不写——语义上等价于「关闭深度
-        // 测试」。渲染通道挂了深度附件（D2 anti-overdraw），管线必须声明兼容
-        // 的深度态；`None` 的管线在该通道里会被验证拒绝、整批静默丢画
-        // （D2 遗留回归：阴影/下划线/精灵曾因此全部不出图）。
-        let disabled_depth_stencil = wgpu::DepthStencilState {
-            depth_compare: Some(wgpu::CompareFunction::Always),
+        // 非 quad 图元的深度态：Greater 且不写。渲染时每批把视口深度钉在 quad
+        // 游标处（见 draw 循环），于是落在不透明矩形之后的整片元在深度测试处
+        // 失败，不会浮在矩形之上。渲染通道挂了深度附件（D2 anti-overdraw），
+        // 管线必须声明兼容的深度态；`None` 会被验证拒绝、整批静默丢画。
+        let non_quad_depth_stencil = wgpu::DepthStencilState {
+            depth_compare: Some(wgpu::CompareFunction::Greater),
             ..quad_depth_stencil.clone()
         };
 
@@ -768,7 +768,7 @@ impl WgpuRenderer {
             wgpu::PrimitiveTopology::TriangleStrip,
             &[Some(color_target.clone())],
             1,
-            Some(disabled_depth_stencil.clone()),
+            Some(non_quad_depth_stencil.clone()),
             &shader_module,
         );
 
@@ -781,7 +781,7 @@ impl WgpuRenderer {
             wgpu::PrimitiveTopology::TriangleStrip,
             &[Some(color_target.clone())],
             1,
-            Some(disabled_depth_stencil.clone()),
+            Some(non_quad_depth_stencil.clone()),
             &shader_module,
         );
 
@@ -794,7 +794,7 @@ impl WgpuRenderer {
             wgpu::PrimitiveTopology::TriangleStrip,
             &[Some(color_target.clone())],
             1,
-            Some(disabled_depth_stencil.clone()),
+            Some(non_quad_depth_stencil.clone()),
             &shader_module,
         );
 
@@ -807,7 +807,7 @@ impl WgpuRenderer {
             wgpu::PrimitiveTopology::TriangleStrip,
             &[Some(color_target.clone())],
             1,
-            Some(disabled_depth_stencil.clone()),
+            Some(non_quad_depth_stencil.clone()),
             &shader_module,
         );
 
@@ -838,7 +838,7 @@ impl WgpuRenderer {
                     write_mask: wgpu::ColorWrites::COLOR,
                 })],
                 1,
-                Some(disabled_depth_stencil.clone()),
+                Some(non_quad_depth_stencil.clone()),
                 subpixel_module,
             ))
         } else {
@@ -854,7 +854,7 @@ impl WgpuRenderer {
             wgpu::PrimitiveTopology::TriangleStrip,
             &[Some(color_target)],
             1,
-            Some(disabled_depth_stencil),
+            Some(non_quad_depth_stencil),
             &shader_module,
         );
 
@@ -1147,13 +1147,38 @@ impl WgpuRenderer {
                 // 顶点着色器里退化为退化三角形。
                 overflow = !self.draw_opaque_quads(&scene.quads, &mut instance_offset, &mut pass);
                 if !overflow {
+                    // 视口深度游标（对齐上游 D2）：Quad 批的顶点着色器逐实例算深度，
+                    // 视口保持 (0,1)；其余批把深度钉在 quad 游标处，落在已画的
+                    // 不透明矩形后面就在深度测试处被剔除。否则非 quad 图元不测
+                    // 深度，会错误浮在插入更晚的不透明矩形之上（z-order 反转）。
+                    let depth_scale = quad_depth_scale(scene.quads.len());
+                    let viewport_width = self.surface_config.width as f32;
+                    let viewport_height = self.surface_config.height as f32;
+                    let mut quad_cursor: u32 = 0;
                     for batch in scene.batches() {
+                        let (min_depth, max_depth) = if matches!(&batch, PrimitiveBatch::Quads(_)) {
+                            (0.0, 1.0)
+                        } else {
+                            let depth = quad_depth(quad_cursor, depth_scale);
+                            (depth, depth)
+                        };
+                        pass.set_viewport(
+                            0.0,
+                            0.0,
+                            viewport_width,
+                            viewport_height,
+                            min_depth,
+                            max_depth,
+                        );
                         let ok = match batch {
-                            PrimitiveBatch::Quads(range) => self.draw_quads(
-                                &scene.quads[range],
-                                &mut instance_offset,
-                                &mut pass,
-                            ),
+                            PrimitiveBatch::Quads(range) => {
+                                quad_cursor += range.len() as u32;
+                                self.draw_quads(
+                                    &scene.quads[range],
+                                    &mut instance_offset,
+                                    &mut pass,
+                                )
+                            }
                             PrimitiveBatch::Shadows(range) => self.draw_shadows(
                                 &scene.shadows[range],
                                 &mut instance_offset,

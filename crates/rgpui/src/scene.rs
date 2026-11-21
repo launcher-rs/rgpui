@@ -1522,6 +1522,37 @@ mod tests {
         );
     }
 
+    /// 嵌套图层：子层的图元必须叠在外层「f 后续绘制」的图元之上
+    /// （`Window::paint_layer` 文档承诺）。三者边界两两重叠以强制 order 竞争。
+    #[test]
+    fn test_nested_layer_child_sits_above_outer_later_sibling() {
+        let mut scene = Scene::default();
+        scene.push_layer(); // 外层 f
+        scene.insert_primitive(quad_at(0., 0., 10., 10.)); // A：f 内、子层之前
+        scene.push_layer(); // 子层 g
+        scene.insert_primitive(quad_at(2., 2., 10., 10.)); // B：子层内，与 A/C 重叠
+        scene.pop_layer(); // g 关闭
+        scene.insert_primitive(quad_at(4., 4., 10., 10.)); // C：f 内、子层之后，与 B 重叠
+        scene.pop_layer(); // 外层关闭
+        scene.finish();
+
+        // 找回每个身份（靠 origin.x）的绘制序（quads 已按绘制序排好）。
+        let x_to_draw_index = |x: f32| {
+            scene
+                .quads
+                .iter()
+                .position(|q| (q.bounds.origin.x.0 - x).abs() < 0.01)
+                .expect("图元应存在")
+        };
+        let ia = x_to_draw_index(0.);
+        let ib = x_to_draw_index(2.);
+        let ic = x_to_draw_index(4.);
+        assert!(
+            ia < ic && ic < ib,
+            "绘制序应为 A < C < B（子层 B 叠在 f 后续的 C 之上），实际 A={ia}, C={ic}, B={ib}"
+        );
+    }
+
     /// 构造带指定 order、以 `x` 作为身份标记的四边形（排序后靠 `bounds.origin.x` 认人）。
     fn quad_with_order(order: u32, x: f32) -> Quad {
         let mut quad = quad_at(x, 0., 10., 10.);

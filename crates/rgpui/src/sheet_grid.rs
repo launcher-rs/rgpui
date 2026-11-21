@@ -453,9 +453,16 @@ impl<D: SheetDelegate> SheetGridState<D> {
         cx: &mut Context<Self>,
     ) {
         if self.editing != cell || self.editing_input != input {
+            // 只有切换到别的单元格（或退出编辑）才丢弃待输入的首字符。
+            // 响应 EditRequested 时，on_key_down 已把首字符存进 typed_char 并把
+            // editing 置为该格；此处仅为同一格绑定输入框，必须保留首字符，
+            // 否则应用先 set_editing(Some(cell), Some(input)) 再 take_typed_char()
+            // 的预期用法会静默丢失它。
+            if self.editing != cell {
+                self.typed_char = None;
+            }
             self.editing = cell;
             self.editing_input = input;
-            self.typed_char = None;
             cx.notify();
         }
     }
@@ -1911,6 +1918,43 @@ mod tests {
         );
         cx.update(|_, cx| state.update(cx, |state, cx| state.set_editing(None, None, cx)));
         assert_eq!(state.read_with(cx, |state, _| state.editing()), None);
+    }
+
+    /// 键入即编辑：为同一格绑定输入框不能吞掉 on_key_down 存下的首字符；
+    /// 切换到别的格才丢弃。
+    #[rgpui::test]
+    fn set_editing_keeps_typed_char_for_same_cell(cx: &mut crate::TestAppContext) {
+        use crate::input_ui::InputState;
+        let (state, _events, mut cx) = setup(cx);
+        let cell = CellRef::new(0, 1);
+
+        // 模拟 on_key_down：首字符入 typed_char，editing 直接置为该格（不走 set_editing）。
+        cx.update(|_, cx| {
+            state.update(cx, |state, _| {
+                state.typed_char = Some('x');
+                state.editing = Some(cell);
+            });
+        });
+
+        // 应用响应 EditRequested：同一格绑定真实输入框。
+        cx.update(|window, cx| {
+            let input = cx.new(|cx| InputState::new(window, cx));
+            state.update(cx, |state, cx| {
+                state.set_editing(Some(cell), Some(input), cx)
+            });
+        });
+        let taken = state.update(cx, |state, _| state.take_typed_char());
+        assert_eq!(taken, Some('x'), "同一格绑定输入框不应吞掉首字符");
+
+        // 切换到另一格：首字符应被清空。
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                state.typed_char = Some('y');
+                state.set_editing(Some(CellRef::new(2, 1)), None, cx);
+            });
+        });
+        let taken = state.update(cx, |state, _| state.take_typed_char());
+        assert_eq!(taken, None, "切换单元格应丢弃上一格的首字符");
     }
 
     /// 冻结行列至少保留一行一列滚动。

@@ -254,7 +254,8 @@ struct BatchRenderer<'a> {
     context: &'a ID3D11DeviceContext,
     pipelines: &'a mut DirectXRenderPipelines,
     globals: &'a DirectXGlobalElements,
-    viewport: &'a D3D11_VIEWPORT,
+    /// 视口深度范围按批调整：非 quad 批钉在 quad 游标深度（视口深度游标）。
+    viewport: D3D11_VIEWPORT,
     /// 图集纹理视图查询：返回 `None` 时跳过该批精灵（与现有行为一致）。
     atlas_views: &'a dyn Fn(AtlasTextureId) -> Option<[Option<ID3D11ShaderResourceView>; 1]>,
 }
@@ -264,10 +265,30 @@ impl BatchRenderer<'_> {
         // 不透明通道先画：从前往后、写深度，被遮住的后续片元在深度测试处失败。
         self.draw_opaque_quads(scene.quads.len())?;
 
+        // 视口深度游标（对齐上游 D2）：Quad 批的顶点着色器逐实例算深度，视口深度
+        // 保持 (0,1)；其余批把视口 MinDepth=MaxDepth 钉在 quad 游标处，落在已画的
+        // 不透明矩形后面就在深度测试处被剔除，不会再浮在矩形之上。
+        let depth_scale = quad_depth_scale(scene.quads.len());
+        let mut quad_cursor: u32 = 0;
         for batch in scene.batches() {
+            let depth = if matches!(&batch, PrimitiveBatch::Quads(_)) {
+                None
+            } else {
+                Some(quad_depth(quad_cursor, depth_scale))
+            };
+            if let Some(depth) = depth {
+                self.viewport.MinDepth = depth;
+                self.viewport.MaxDepth = depth;
+            } else {
+                self.viewport.MinDepth = 0.0;
+                self.viewport.MaxDepth = 1.0;
+            }
             match batch {
                 PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
-                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
+                PrimitiveBatch::Quads(range) => {
+                    quad_cursor += range.len() as u32;
+                    self.draw_quads(range.start, range.len())
+                }
                 PrimitiveBatch::Paths(range) => self.draw_path_tiles(&scene.paths[range]),
                 PrimitiveBatch::Underlines(range) => {
                     self.draw_underlines(range.start, range.len())
@@ -306,7 +327,7 @@ impl BatchRenderer<'_> {
         self.pipelines.shadow_pipeline.draw_range(
             self.device,
             self.context,
-            slice::from_ref(self.viewport),
+            slice::from_ref(&self.viewport),
             slice::from_ref(&self.globals.global_params_buffer),
             4,
             start as u32,
@@ -321,7 +342,7 @@ impl BatchRenderer<'_> {
         self.pipelines.quad_pipeline.draw_range(
             self.device,
             self.context,
-            slice::from_ref(self.viewport),
+            slice::from_ref(&self.viewport),
             slice::from_ref(&self.globals.global_params_buffer),
             4,
             start as u32,
@@ -341,7 +362,7 @@ impl BatchRenderer<'_> {
             self.context,
             slice::from_ref(&quad_pipeline.view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-            slice::from_ref(self.viewport),
+            slice::from_ref(&self.viewport),
             &opaque.vertex,
             &opaque.fragment,
             slice::from_ref(&self.globals.global_params_buffer),
@@ -400,7 +421,7 @@ impl BatchRenderer<'_> {
             self.context,
             slice::from_ref(&tile_view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-            slice::from_ref(self.viewport),
+            slice::from_ref(&self.viewport),
             &self.pipelines.path_tile_pipeline.vertex,
             &self.pipelines.path_tile_pipeline.fragment,
             slice::from_ref(&self.globals.global_params_buffer),
@@ -427,7 +448,7 @@ impl BatchRenderer<'_> {
         self.pipelines.underline_pipeline.draw_range(
             self.device,
             self.context,
-            slice::from_ref(self.viewport),
+            slice::from_ref(&self.viewport),
             slice::from_ref(&self.globals.global_params_buffer),
             4,
             start as u32,
@@ -452,7 +473,7 @@ impl BatchRenderer<'_> {
             self.device,
             self.context,
             &texture_binding,
-            slice::from_ref(self.viewport),
+            slice::from_ref(&self.viewport),
             slice::from_ref(&self.globals.global_params_buffer),
             slice::from_ref(&self.globals.sampler),
             start as u32,
@@ -477,7 +498,7 @@ impl BatchRenderer<'_> {
             self.device,
             self.context,
             &texture_binding,
-            slice::from_ref(self.viewport),
+            slice::from_ref(&self.viewport),
             slice::from_ref(&self.globals.global_params_buffer),
             slice::from_ref(&self.globals.sampler),
             start as u32,
@@ -502,7 +523,7 @@ impl BatchRenderer<'_> {
             self.device,
             self.context,
             &texture_binding,
-            slice::from_ref(self.viewport),
+            slice::from_ref(&self.viewport),
             slice::from_ref(&self.globals.global_params_buffer),
             slice::from_ref(&self.globals.sampler),
             start as u32,
@@ -845,7 +866,7 @@ impl DirectXRenderer {
             context: &devices.device_context,
             pipelines: &mut self.pipelines,
             globals: &self.globals,
-            viewport: &resources.viewport,
+            viewport: resources.viewport,
             atlas_views: &|id| atlas.get_texture_view(id),
         };
         batches.draw_scene(scene)
@@ -1084,10 +1105,11 @@ impl DirectXResources {
 
 impl DirectXRenderPipelines {
     pub fn new(device: &ID3D11Device) -> Result<Self> {
-        // 三档深度态：非 quad 图元关闭深度；混合 quad 只测不写；
-        // 不透明 quad 测试并写入。比较都是 Greater（「越大越近」）。
-        let no_depth_state = create_depth_stencil_state(device, false, false)?;
+        // 深度态：混合 quad 与所有非 quad 图元都只测不写（Greater，「越大越近」）；
+        // 不透明 quad 测试并写入。非 quad 每批的视口深度钉在 quad 游标处，落在
+        // 不透明矩形之后的片元在深度测试处失败。
         let quad_depth_state = create_depth_stencil_state(device, true, false)?;
+        let non_quad_depth_state = quad_depth_state.clone();
         let opaque_depth_state = create_depth_stencil_state(device, true, true)?;
 
         let shadow_pipeline = PipelineState::new(
@@ -1096,7 +1118,7 @@ impl DirectXRenderPipelines {
             ShaderModule::Shadow,
             4,
             create_blend_state(device)?,
-            no_depth_state.clone(),
+            non_quad_depth_state.clone(),
         )?;
         let quad_pipeline = PipelineState::new(
             device,
@@ -1126,7 +1148,7 @@ impl DirectXRenderPipelines {
             ShaderModule::PathTile,
             64,
             create_blend_state(device)?,
-            no_depth_state.clone(),
+            non_quad_depth_state.clone(),
         )?;
         let path_curves = InstanceBuffer::new(device, "path_curves", 256)?;
         let path_paints = InstanceBuffer::new(device, "path_paints", 16)?;
@@ -1136,7 +1158,7 @@ impl DirectXRenderPipelines {
             ShaderModule::Underline,
             4,
             create_blend_state(device)?,
-            no_depth_state.clone(),
+            non_quad_depth_state.clone(),
         )?;
         let mono_sprites = PipelineState::new(
             device,
@@ -1144,7 +1166,7 @@ impl DirectXRenderPipelines {
             ShaderModule::MonochromeSprite,
             512,
             create_blend_state(device)?,
-            no_depth_state.clone(),
+            non_quad_depth_state.clone(),
         )?;
         let subpixel_sprites = PipelineState::new(
             device,
@@ -1152,7 +1174,7 @@ impl DirectXRenderPipelines {
             ShaderModule::SubpixelSprite,
             512,
             create_blend_state_for_subpixel_rendering(device)?,
-            no_depth_state.clone(),
+            non_quad_depth_state.clone(),
         )?;
         let poly_sprites = PipelineState::new(
             device,
@@ -1160,7 +1182,7 @@ impl DirectXRenderPipelines {
             ShaderModule::PolychromeSprite,
             16,
             create_blend_state(device)?,
-            no_depth_state,
+            non_quad_depth_state,
         )?;
 
         Ok(Self {
@@ -2686,7 +2708,7 @@ mod readback_tests {
                 context: &self.context,
                 pipelines: &mut self.pipelines,
                 globals: &self.globals,
-                viewport: &viewport,
+                viewport,
                 atlas_views: &|_| None,
             };
             batches.draw_scene(scene)
@@ -2775,6 +2797,49 @@ mod readback_tests {
     }
 
     /// 对拍场景：不透明绿块（下层）+ 红色三角形路径 + 蓝色下划线。
+    /// 视口深度游标（D2 backlog）：插入更晚的不透明矩形必须盖住先画的非 quad
+    /// 图元。修复前非 quad 关闭深度测试，会浮在最先绘制的不透明通道之上。
+    #[test]
+    fn opaque_quad_occludes_earlier_underline() {
+        use rgpui::{Bounds, ContentMask, ScaledPixels, hsla, point, size, solid_background};
+
+        let Some((device, context)) = create_warp_device() else {
+            return;
+        };
+        let mut drawer = SceneDrawer::new(&device, &context, (16.0, 16.0));
+
+        let bounds = Bounds {
+            origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+            size: size(ScaledPixels(16.0), ScaledPixels(16.0)),
+        };
+        let mut scene = Scene::default();
+        // 先插红下划线（非 quad），再插覆盖它的不透明绿矩形。
+        scene.insert_primitive(Underline {
+            order: 0,
+            pad: 0,
+            bounds,
+            content_mask: ContentMask { bounds },
+            color: hsla(0.0, 1.0, 0.5, 1.0),
+            thickness: ScaledPixels(16.0),
+            wavy: 0,
+        });
+        scene.insert_primitive(Quad {
+            bounds,
+            content_mask: ContentMask { bounds },
+            background: solid_background(hsla(0.33, 1.0, 0.5, 1.0)),
+            border_color: hsla(0.33, 1.0, 0.5, 1.0),
+            ..Quad::default()
+        });
+        scene.finish();
+
+        let image = drawer.render_full_frame(scene).expect("整帧应能渲染读回");
+        let px = image.get_pixel(8, 8).0;
+        assert!(
+            px[1] >= 215 && px[0] <= 40 && px[2] <= 40 && px[3] >= 215,
+            "后画的不透明绿矩形应盖住先画的红下划线，实际 {px:?}"
+        );
+    }
+
     /// `translate` 把三角形整体平移，制造「其余不变、路径移动」的帧间变化。
     fn comparison_scene(translate: f32) -> Scene {
         use rgpui::{PathBuilder, ScaledPixels, hsla, point, px, size as gsize, solid_background};

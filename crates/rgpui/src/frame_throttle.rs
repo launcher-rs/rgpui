@@ -75,6 +75,34 @@ impl FrameThrottle {
     }
 }
 
+/// 把「强制呈现 / 下一帧回调 / 场景动画间隔 / 省电节流间隔」合成这一帧的最小间隔。
+///
+/// `None` 表示本帧不受限。规则：
+/// - 强制呈现（`require_presentation`）完全不受限；
+/// - 无强制渲染、无下一帧回调、也无场景动画的**纯空闲帧**不限速——以维持显示器
+///   刷新率、避免降频。注意场景动画正是靠帧末 `request_frame` 驱动的空闲帧，
+///   有动画间隔时**不能**短路，否则 `with_max_fps` 与失焦/温控省电档对动画窗口
+///   全部失效；
+/// - 其余情况取省电节流与动画间隔里较长的那条。
+pub(crate) fn combine_interval(
+    require_presentation: bool,
+    force_render: bool,
+    has_next_frame_callback: bool,
+    animation_interval: Option<Duration>,
+    throttled: Option<Duration>,
+) -> Option<Duration> {
+    if require_presentation
+        || (!force_render && !has_next_frame_callback && animation_interval.is_none())
+    {
+        None
+    } else {
+        match (throttled, animation_interval) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (a, b) => a.or(b),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,6 +200,58 @@ mod tests {
     fn unknown_thermal_state_is_treated_as_no_pressure() {
         let throttle = FrameThrottle::default();
         assert_eq!(micros(throttle.interval(true, false, None)), None);
+    }
+
+    #[test]
+    fn animation_frames_are_not_exempt_from_throttling() {
+        let animation = Duration::from_micros(66_667); // with_max_fps(15)
+
+        // 纯空闲帧：无强制呈现、无强制渲染、无下一帧回调、无动画 → 不限速。
+        assert_eq!(combine_interval(false, false, false, None, None), None);
+
+        // 场景动画帧也是「空闲帧」（靠帧末 request_frame 驱动），但有动画间隔时
+        // 必须参与节流，不能短路——否则 with_max_fps 形同虚设。
+        assert_eq!(
+            micros(combine_interval(false, false, false, Some(animation), None)),
+            Some(66_667)
+        );
+        // 动画间隔与省电节流同时命中：取较长者。
+        assert_eq!(
+            micros(combine_interval(
+                false,
+                false,
+                false,
+                Some(animation),
+                Some(Duration::from_micros(33_333))
+            )),
+            Some(66_667)
+        );
+        assert_eq!(
+            micros(combine_interval(
+                false,
+                false,
+                false,
+                Some(Duration::from_micros(10_000)),
+                Some(Duration::from_micros(33_333))
+            )),
+            Some(33_333)
+        );
+        // 强制呈现仍完全不受限。
+        assert_eq!(
+            combine_interval(true, false, false, Some(animation), None),
+            None
+        );
+        // 有下一帧回调的帧：无动画时走省电节流（不因"空闲"短路）。
+        assert_eq!(
+            micros(combine_interval(
+                false,
+                false,
+                true,
+                None,
+                Some(Duration::from_micros(33_333))
+            )),
+            Some(33_333)
+        );
     }
 
     #[test]

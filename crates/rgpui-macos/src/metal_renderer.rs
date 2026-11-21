@@ -11,7 +11,7 @@ use image::RgbaImage;
 use rgpui::{
     AtlasTextureId, Bounds, ContentMask, DevicePixels, MonochromeSprite, PaintSurface, PaintedPath,
     PathCurve, PathPaint, PathTile, PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene,
-    Shadow, Size, Surface, Underline, point, size,
+    Shadow, Size, Surface, Underline, point, quad_depth, quad_depth_scale, size,
 };
 
 use core_foundation::base::TCFType;
@@ -742,7 +742,28 @@ impl MetalRenderer {
         // 混合通道的 shader 会在顶点级把这些矩形剔除。
         self.draw_opaque_quads(&scene.quads, viewport_size, command_encoder);
 
+        // 视口深度游标（对齐上游 D2）：Quad 批视口深度保持 (0,1)，由着色器逐实例
+        // 算深度；其余批把视口 znear=zfar 钉在 quad 游标处并启用 Greater 深度态，
+        // 落在不透明矩形之后的整片元在深度测试处失败。
+        let depth_scale = quad_depth_scale(scene.quads.len());
+        let mut quad_cursor: u32 = 0;
         for batch in scene.batches() {
+            let is_quads = matches!(&batch, PrimitiveBatch::Quads(_));
+            let (znear, zfar) = if is_quads {
+                (0.0, 1.0)
+            } else {
+                let depth = quad_depth(quad_cursor, depth_scale) as f64;
+                (depth, depth)
+            };
+            command_encoder.set_viewport(metal::MTLViewport {
+                originX: 0.0,
+                originY: 0.0,
+                width: i32::from(viewport_size.width) as f64,
+                height: i32::from(viewport_size.height) as f64,
+                znear,
+                zfar,
+            });
+            command_encoder.set_depth_stencil_state(&self.quad_depth_state);
             let ok = match batch {
                 PrimitiveBatch::Shadows(range) => self.draw_shadows(
                     &scene.shadows[range],
@@ -751,13 +772,16 @@ impl MetalRenderer {
                     viewport_size,
                     command_encoder,
                 ),
-                PrimitiveBatch::Quads(range) => self.draw_quads(
-                    &scene.quads[range],
-                    instance_buffer,
-                    &mut instance_offset,
-                    viewport_size,
-                    command_encoder,
-                ),
+                PrimitiveBatch::Quads(range) => {
+                    quad_cursor += range.len() as u32;
+                    self.draw_quads(
+                        &scene.quads[range],
+                        instance_buffer,
+                        &mut instance_offset,
+                        viewport_size,
+                        command_encoder,
+                    )
+                }
                 PrimitiveBatch::Paths(range) => self.draw_path_tiles(
                     &scene.paths[range],
                     instance_buffer,

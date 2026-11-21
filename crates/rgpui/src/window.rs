@@ -50,7 +50,7 @@ use crate::{
 };
 
 use crate::collections::{FxHashMap, FxHashSet};
-use crate::frame_throttle::FrameThrottle;
+use crate::frame_throttle::{FrameThrottle, combine_interval};
 use crate::refineable::Refineable;
 use crate::rgpui_util::post_inc;
 use crate::rgpui_util::{ResultExt, log_err, measure};
@@ -1717,6 +1717,8 @@ impl Window {
             let next_frame_callbacks = next_frame_callbacks.clone();
             let scene_animation_interval = scene_animation_interval.clone();
             let input_rate_tracker = input_rate_tracker.clone();
+            // 动画帧被节流时靠延迟任务续帧；此标志防止同一等待期内重复排队。
+            let animation_frame_pending = Rc::new(Cell::new(false));
             let mut deferred_force_render = false;
             move |request_frame_options| {
                 // This must be checked before anything else: if this request
@@ -1755,22 +1757,20 @@ impl Window {
                 let animation_interval = scene_animation_interval
                     .get()
                     .filter(|_| !invalidator.is_dirty());
-                let min_frame_interval = if request_frame_options.require_presentation
-                    || (!request_frame_options.force_render
-                        && next_frame_callbacks.borrow().is_empty())
-                {
-                    None
-                } else {
-                    let throttled = frame_throttle.interval(
-                        active.get(),
-                        input_rate_tracker.borrow_mut().is_high_rate(),
-                        thermal_state,
-                    );
-                    match (throttled, animation_interval) {
-                        (Some(a), Some(b)) => Some(a.max(b)),
-                        (a, b) => a.or(b),
-                    }
-                };
+                // 纯空闲帧本不限速（维持刷新率），但场景动画靠帧末 request_frame
+                // 驱动的正是"空闲帧"——判定规则见 frame_throttle::combine_interval。
+                let throttled = frame_throttle.interval(
+                    active.get(),
+                    input_rate_tracker.borrow_mut().is_high_rate(),
+                    thermal_state,
+                );
+                let min_frame_interval = combine_interval(
+                    request_frame_options.require_presentation,
+                    request_frame_options.force_render,
+                    !next_frame_callbacks.borrow().is_empty(),
+                    animation_interval,
+                    throttled,
+                );
 
                 let now = Instant::now();
                 if let Some(min_interval) = min_frame_interval {
@@ -1786,6 +1786,23 @@ impl Window {
                         skip_if_app_borrowed(
                             handle.update(&mut cx, |_, window, _| window.complete_frame()),
                         );
+                        // 动画帧靠帧末 request_frame 续帧，提前 return 会跳过它，导致动画
+                        // 永久停住。这里按剩余等待时间安排一次性续帧：到点后重新请求一帧，
+                        // 既不忙等（等待期无帧），也不卡死（到点必续）。
+                        if animation_interval.is_some() && !animation_frame_pending.get() {
+                            animation_frame_pending.set(true);
+                            let remaining =
+                                min_interval.saturating_sub(now.duration_since(last_frame));
+                            let pending = animation_frame_pending.clone();
+                            cx.spawn(async move |cx: &mut crate::app::AsyncApp| {
+                                cx.background_executor().timer(remaining).await;
+                                pending.set(false);
+                                skip_if_app_borrowed(
+                                    handle.update(cx, |_, window, _| window.request_frame()),
+                                );
+                            })
+                            .detach();
+                        }
                         return;
                     }
                 }
