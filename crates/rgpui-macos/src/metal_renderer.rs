@@ -729,7 +729,7 @@ impl MetalRenderer {
         // anti-overdraw 深度纹理：与视口尺寸一致，跨帧复用
         let depth_texture = self.ensure_depth_texture(viewport_size);
 
-        let mut command_encoder = new_command_encoder_for_texture(
+        let command_encoder = new_command_encoder_for_texture(
             command_buffer,
             texture,
             viewport_size,
@@ -867,14 +867,14 @@ impl MetalRenderer {
         }
 
         for (offset, data, data_len) in [
-            (paints_offset, paints.as_ptr(), paint_bytes_len),
-            (curves_offset, curves.as_ptr(), curve_bytes_len),
-            (tiles_offset, tiles.as_ptr(), tile_bytes_len),
+            (paints_offset, paints.as_ptr() as *const u8, paint_bytes_len),
+            (curves_offset, curves.as_ptr() as *const u8, curve_bytes_len),
+            (tiles_offset, tiles.as_ptr() as *const u8, tile_bytes_len),
         ] {
             let buffer_contents =
                 unsafe { (instance_buffer.metal_buffer.contents() as *mut u8).add(offset) };
             unsafe {
-                ptr::copy_nonoverlapping(data as *const u8, buffer_contents, data_len);
+                ptr::copy_nonoverlapping(data, buffer_contents, data_len);
             }
         }
 
