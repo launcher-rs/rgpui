@@ -1,6 +1,6 @@
-# 上游借鉴开发计划（borrow-upstream）
+# 上游借鉴开发计划（1.8.0 版本分支）
 
-> 分支：`feat/borrow-upstream`（基于 `feat/diff`；PR #85 合入 main 后同步 main）
+> 分支：`feat/1.8.0`（基于 `feat/diff`；版本分支直接提交推送，完成后开 PR 合入 main）
 >
 > 背景与调研结论见本文末尾「调研依据」；本计划是 temp/ 三仓库（gpui-fast /
 > gpui-kit / zed）近期演进的借鉴落地路线。
