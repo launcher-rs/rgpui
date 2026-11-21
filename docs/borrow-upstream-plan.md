@@ -30,7 +30,7 @@
 
 | 项 | 来源 | 说明与做法 |
 |---|---|---|
-| **D3 / D4 硬件实测** | zed / gpui-fast | D3（GPU −79%～−81%、描边 CPU 2–8×）与 D4（软件适配器整帧 ~100ms → 13ms）的性能数据都是上游口径，rgpui 需在硬件 / 远程桌面（软件适配器）上实测确认。 |
+| **D3 / D4 端到端实测** | zed / gpui-fast | D3（路径渲染）与 D4（软件适配器部分重绘）需在本机实际场景确认效果；性能验收一律以本机口径为准。 |
 
 **已完成（2026-11-21）**：动画改用 executor 时钟（zed `99e70ee4a0`，`956454d8`）、
 borrow / window 错误诊断（zed `c408f8efc4`，`50e1936f`——含上游前置的 borrow_origin
@@ -313,7 +313,7 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
   - **混合通道**（既有 back-to-front 循环）：quad 着色器剔除不透明矩形并写
     自己的深度；其余图元（阴影/路径/精灵/下划线）用视口 min=max=quad 游标
     深度把整批压到一个深度平面，落在不透明 quad 后面直接深度测试失败、不进
-    片元着色器。上游实测（Intel HD 4600）片元着色次数 −47%～−66%。
+    片元着色器。
   - `paint_quad` 侧：圆角矩形拆「矩形内部 + 四条边带」，内部实心不透明时进
     不透明通道；纯直角边框的边带退化为边框色矩形；`largest_border_interior`
     改为沿角弧的更大内部（±1%）。
@@ -352,12 +352,15 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
     `PipelineState` 携带；Metal（metal-rs 0.33）管线只能声明
     `depth_attachment_pixel_format`，深度态在 `RenderCommandEncoder`
     上按通道设，非 quad 图元走 Metal 默认「深度禁用」态。
-  - 未移植项（登记 backlog）：非 quad 批的「视口 min=max=quad 游标深度」
-    anti-overdraw（wgpu 无深度态管线 / DX 深度禁用态 / Metal 默认态，三端
-    行为一致但拿不到上游那 −47%～−66% 里的非 quad 部分）；DX 的
-    `DiscardView`（rgpui 每帧 Clear，无需丢弃）。
+  - **视口深度游标已补齐（2026-11-21）**：非 quad 批按 quad 游标把视口深度钉在
+    `quad_depth(cursor)`，深度态从「禁用」改为 Greater 不写——既拿到非 quad 的
+    overdraw 收益，也修正了「插入更晚的不透明矩形被先画的非 quad 图元覆盖」的
+    z-order 错误。三后端同步（wgpu `set_viewport` / DX `RSSetViewports` 的
+    MinDepth=MaxDepth / Metal `MTLViewport.znear=zfar`）；各端加了不透明矩形
+    遮挡下划线的端到端像素测试。DX 的 `DiscardView` 仍未移植（rgpui 每帧 Clear，
+    无需丢弃）。
   - 验证：wgpu 侧 `crates/rgpui-wgpu/tests/headless_quad_smoke.rs`（无头
-    16×16 真渲染回读，不透明覆盖 + 半透明叠加）；DX 侧 WARP 端到端测试
+    16×16 真渲染回读，不透明覆盖 + 半透明叠加）；DX 侧软件适配器端到端测试
     `opaque_channel_occludes_and_blended_channel_culls_opaque_rects`（不透明
     通道遮挡 + 混合通道剔除断言）；Metal 本地编不到，靠 CI 矩阵。
 
@@ -374,8 +377,6 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 搬移该 clip，damage 只剩暴露条带 + 未跟随的静态图元 + 其它变化。安全阀：
 非整像素滚动/非像素对齐 clip、scroll layer、surface、damage > 60%、
 绘制顺序不一致、变形 sprite、图集 tile 重传、clear 色变化 → 整帧绘制。
-上游 WARP 2vCPU / 1440×900 实测：整帧 ~100 ms → 12.7–14 ms，App CPU
-172% → 16–20%。
 
 **rgpui 现状差异（移植必须适配）**：
 
@@ -431,7 +432,7 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 兜底，rgpui 只有显式 `RGPUI_PARTIAL_REDRAW=1` 才启用；D4c 对拍通过后改为
 对齐上游——软件适配器默认开启，`=0` 强制关、`=1` 硬件上也强制开。
 
-**验证**：`fast::partial` 9 个单测（含 WARP 真设备上的 canvas 控制流：
+**验证**：`fast::partial` 9 个单测（含软件适配器真设备上的 canvas 控制流：
 整帧画一次 / 无变化不画 / damage 按矩形画）、`cargo test -p rgpui-windows`
 23 passed、`clippy -p rgpui-windows --all-targets -D warnings` 全绿、
 `cargo check --workspace` 通过。
@@ -445,10 +446,9 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 帧 B 的 damage 计划非空（防退化成整帧对拍自证）。绘制代码抽成
 `BatchRenderer`（device/context/pipelines/globals/viewport/atlas 闭包）
 与 `upload_scene_buffers_into`，渲染器与对拍测试共用同一份实现，消除测试
-侧复制漂移；WARP 软件设备上运行，CI 无显卡环境可用。**验收通过后按约定
-翻开默认开关**：软件适配器上自动开启（对齐上游 wanted()，上游 WARP 实测
-整帧 ~100ms → 13ms），`RGPUI_PARTIAL_REDRAW=0` 强制关闭、`=1` 在硬件
-适配器上也强制开启。
+侧复制漂移；软件适配器设备上运行，CI 无显卡环境可用。**验收通过后按约定
+翻开默认开关**：软件适配器上自动开启（对齐上游 wanted()），
+`RGPUI_PARTIAL_REDRAW=0` 强制关闭、`=1` 在硬件适配器上也强制开启。
 
 ### D3 现状摸底（2026-11-20，对齐 zed `ffe0fa29e4`）
 
@@ -456,8 +456,8 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 `path_builder.rs`（+432 重写）、`scene.rs`（±266）；三后端 shader 全改
 （wgsl ±222 / hlsl ±225 / metal ±274），渲染器大幅简化
 （metal −721 / wgpu −717 / directx −565 净删为主）；`window.rs` 仅 ±19。
-上游实测（Intel HD 4600）：GPU 时间 painting 例 −79%、Git Graph −81%；
-填充持平或更快，**描边 CPU 侧变慢 2–8×**（lyon 描边镶嵌换成 tiny-skia 轮廓展开）。
+上游声明的取舍：**描边 CPU 侧变慢 2–8×**（lyon 描边镶嵌换成 tiny-skia 轮廓展开），
+笔迹密集场景需在本机实测确认。
 
 **机制（Slug 式逐像素环绕数）**：`PathBuilder` 把轮廓转成闭合的单调二次曲线链
 （三次贝塞尔按 0.25px 容差近似成二次、按极值点拆单调段）；CPU 按显示比例把曲线
@@ -497,7 +497,7 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 7. 与 D4 的交互：`fast::partial` 现在用 `.debug(p)` 保守签整条路径；`PaintedPath`
    的 Debug 会展开全部 tile+curve（大且无谓），改成结构化键：
    paint 字段 + tile 数 + tile 几何 + 曲线字节 hash（binning 确定性保证同输入同输出）。
-8. 验证基座：wgpu 有 D2 的 headless 真渲染回读测试、DX 有 WARP 端到端测试，
+8. 验证基座：wgpu 有 D2 的 headless 真渲染回读测试、DX 有软件适配器端到端测试，
    两端各加一条 path smoke（画三角形路径，读像素断言内部全 coverage、边缘半覆盖）；
    Metal 本地编不到，shader 翻译靠 CI 矩阵兜底。上游 `randomized_element_tree.rs`
    是 test-support 的随机对拍，rgpui 无此文件，不引入。
@@ -532,7 +532,7 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
   wgpu 每批一个三槽 bind group（tiles/curves/paints 存储缓冲，批内平铺、批内下标）；
   DX 复用核心的 `PathPaint`/`PathCurve`/`PathTile` 类型（布局即 GPU 布局），
   t1=本批瓦片区间视图、t2/t3=全量曲线/绘制参数视图（**首次提交时槽位交叉写反，
-  WARP 测试抓出后修正**）；Metal 三缓冲共用实例池、按 256 对齐分段绑定，
+  软件适配器测试抓出后修正**）；Metal 三缓冲共用实例池、按 256 对齐分段绑定，
   三角带 4 顶点、角点按 `vertex_id` 位选（与上游一致，避免 origin+size 插值的
   瓦片接缝）。三端 shader 的 `PathPaint` 按 rgpui 136 字节 `Background` 口径
   （176 字节）写，不照抄上游 112 字节版本；布局守卫
@@ -545,14 +545,13 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
   `dbg_underline` 式最小用例验证后删除。
 - **验证**：`path_winding` 5 条单测；wgpu 无头真渲染回读
   `headless_path_smoke.rs` 2 条（三角形填充内部/外部/边缘 AA、宽 2 横线描边——
-  三角形回读逐像素画出正确形状且边缘有半透明抗锯齿）；DX WARP 端到端
+  三角形回读逐像素画出正确形状且边缘有半透明抗锯齿）；DX 软件适配器端到端
   `path_tile_pipeline_fills_triangle_with_winding`；Metal 本地编不到，shader 随
   CI 矩阵兜底。`cargo test -p rgpui --lib` 921、`-p rgpui-windows` 24（含 partial
-  23 + WARP path 1）、`-p rgpui-wgpu --features test-support` 29、guards 9、
+  23 + path 1）、`-p rgpui-wgpu --features test-support` 29、guards 9、
   `cargo clippy --workspace --all-targets -- -D warnings` 退出 0。
-- **预期收益**：上游实测 GPU 时间 −79%～−81%（painting 例 / Git Graph 场景），
-  rgpui 未单独复测（共享机器噪声大）；CPU 侧描边变慢 2–8× 为上游已声明取舍，
-  笔迹（ink）的长笔画场景待硬件实测确认。
+- **验证口径**：GPU 侧收益以本机端到端实测为准（见 `docs/local-perf-baseline.md`）；
+  CPU 侧描边变慢 2–8× 为上游已声明取舍，笔迹（ink）的长笔画场景待本机确认。
 
 ---
 
@@ -577,7 +576,7 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 ## SVG 场景层变换动画（2026-11-21，对齐 zed `aff99ecc32`，已完成）
 
 场景级精灵动画：SVG 只绘制一次，之后由场景在每次呈现前按已过时间推进矩阵与
-alpha，不重绘视图（上游实测主线程 CPU 指令 200 个动画 SVG 6.07M → 162K，37×）。
+alpha，不重绘视图，避免每帧重绘整个视图树。
 
 - **核心**（`scene.rs`）：`SpriteAnimationId`（MonochromeSprite 原 `pad` 字段位，
   `NONE = u32::MAX`）+ `SpriteAnimation`（变换、中心、scale_factor、底色、精灵下标）
