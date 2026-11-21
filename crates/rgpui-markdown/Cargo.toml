@@ -15,7 +15,7 @@ default = []
 # LaTeX 公式渲染：解析 → 排版 → SVG → 光栅化（纯 Rust，无系统依赖）
 latex = ["dep:ratex-parser", "dep:ratex-layout", "dep:ratex-svg"]
 # Mermaid 图表渲染：SVG → 光栅化（纯 Rust，无系统依赖）
-mermaid = ["dep:mermaid-rs-renderer"]
+mermaid = ["dep:mermaid-renderer"]
 # 代码块真实语法高亮：接入核心 tree-sitter 高亮器（按语言查表，缺失时回退简易高亮）
 syntax-highlight = ["rgpui/tree-sitter", "dep:ropey"]
 
@@ -25,7 +25,7 @@ pulldown-cmark = { workspace = true }
 ratex-parser = { workspace = true, optional = true }
 ratex-layout = { workspace = true, optional = true }
 ratex-svg = { workspace = true, optional = true }
-mermaid-rs-renderer = { workspace = true, optional = true }
+mermaid-renderer = { workspace = true, optional = true }
 ropey = { workspace = true, optional = true }
 
 [dev-dependencies]

@@ -6,7 +6,8 @@ cbuffer GlobalParams: register(b0) {
     float grayscale_enhanced_contrast;
     float subpixel_enhanced_contrast;
     uint is_bgr;
-    uint3 global_pad;
+    uint global_quad_count;
+    uint2 global_pad;
 };
 
 Texture2D<float4> t_sprite: register(t0);
@@ -642,8 +643,23 @@ struct Quad {
     uint pad_after_continuous_corners;
     TransformationMatrix transform;
     uint blend_mode;
-    uint pad_quad;
+    float depth; // 深度缓冲 anti-overdraw：「越大越近」，核心 finish() 按绘制序赋值
 };
+
+// 「实心不透明矩形」谓词：纯色不透明背景、无圆角、无边框宽度。
+// 满足的 quad 走不透明通道（从前往后画、写深度），混合通道直接剔除。
+bool is_opaque_rectangle(Quad quad) {
+    return quad.background.tag == 0u &&
+        quad.background.solid.a >= 1.0 &&
+        quad.corner_radii.top_left == 0.0 &&
+        quad.corner_radii.top_right == 0.0 &&
+        quad.corner_radii.bottom_left == 0.0 &&
+        quad.corner_radii.bottom_right == 0.0 &&
+        quad.border_widths.top == 0.0 &&
+        quad.border_widths.right == 0.0 &&
+        quad.border_widths.bottom == 0.0 &&
+        quad.border_widths.left == 0.0;
+}
 
 struct QuadVertexOutput {
     nointerpolation uint quad_id: TEXCOORD0;
@@ -675,9 +691,28 @@ StructuredBuffer<Quad> quads: register(t1);
 QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     Quad quad = quads[quad_id];
+    QuadVertexOutput output;
+
+    // 不透明矩形已由不透明通道从前往后画过：混合通道退化成
+    // 零面积三角形，并用负裁剪距离整体裁掉。
+    if (is_opaque_rectangle(quad)) {
+        output.position = float4(0.0, 0.0, 0.0, 1.0);
+        output.clip_distance = float4(-1.0, -1.0, -1.0, -1.0);
+        output.quad_id = quad_id;
+        output.border_color = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_solid = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_color0 = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_color1 = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_color2 = float4(0.0, 0.0, 0.0, 0.0);
+        output.background_color3 = float4(0.0, 0.0, 0.0, 0.0);
+        output.local_position = float2(0.0, 0.0);
+        return output;
+    }
 
     float2 local_position = unit_vertex * quad.bounds.size + quad.bounds.origin;
     float4 device_position = to_device_position_transformed(unit_vertex, quad.bounds, quad.transform);
+    // 深度「越大越近」：混合通道只测不写，落在不透明矩形后面的片元直接失败。
+    device_position.z = quad.depth;
 
     GradientColor gradient = prepare_gradient_color(
         quad.background.tag,
@@ -688,7 +723,6 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
     float4 clip_distance = distance_from_clip_rect_transformed(unit_vertex, quad.bounds, quad.content_mask, quad.transform);
     float4 border_color = hsla_to_rgba(quad.border_color);
 
-    QuadVertexOutput output;
     output.position = device_position;
     output.border_color = border_color;
     output.quad_id = quad_id;
@@ -995,6 +1029,44 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
 
 /*
 **
+**              Opaque quads（anti-overdraw 不透明通道）
+**
+*/
+
+struct OpaqueQuadVertexOutput {
+    float4 position: SV_Position;
+    nointerpolation float4 color: COLOR0;
+    float4 clip_distance: SV_ClipDistance;
+};
+
+OpaqueQuadVertexOutput opaque_quad_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
+    float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
+    // 反向索引全局 quad 号：排序靠后 = 更近，从前往后画才能遮住更远的。
+    uint quad_id = global_quad_count - 1u - instance_id;
+    Quad quad = quads[quad_id];
+
+    OpaqueQuadVertexOutput output;
+    if (!is_opaque_rectangle(quad)) {
+        output.position = float4(0.0, 0.0, 0.0, 1.0);
+        output.color = float4(0.0, 0.0, 0.0, 0.0);
+        output.clip_distance = float4(-1.0, -1.0, -1.0, -1.0);
+        return output;
+    }
+
+    float4 device_position = to_device_position_transformed(unit_vertex, quad.bounds, quad.transform);
+    device_position.z = quad.depth;
+    output.position = device_position;
+    output.color = hsla_to_rgba(quad.background.solid);
+    output.clip_distance = distance_from_clip_rect_transformed(unit_vertex, quad.bounds, quad.content_mask, quad.transform);
+    return output;
+}
+
+float4 opaque_quad_fragment(OpaqueQuadVertexOutput input): SV_Target {
+    return input.color;
+}
+
+/*
+**
 **              Shadows
 **
 */
@@ -1100,105 +1172,193 @@ float4 shadow_fragment(ShadowFragmentInput input): SV_TARGET {
 
 /*
 **
-**              Path Rasterization
+**              Path Tiles
 **
 */
 
-struct PathRasterizationSprite {
-    float2 xy_position;
-    float2 st_position;
-    Background color;
+// Slug 式逐像素环绕数填充：CPU 把曲线分桶成瓦片（见核心 path_winding.rs），
+// 每瓦片一个实例；着色器沿像素中心向左、向上投射线，统计与瓦片所列曲线的
+// 交叉得环绕数，半像素内的交叉按 Slug 公式计入部分覆盖。
+
+struct PathCurve {
+    float2 p0;
+    float2 p1;
+    float2 a;
+    float2 b;
+    float sign;
+    uint pad;
+};
+
+struct PathTile {
+    uint paint;
+    uint curve_start;
+    uint curve_count;
+    int backdrop;
+    float2 top_left;
+    float2 bottom_right;
+    float2 reference;
+    float2 curves_top_left;
+    float2 curves_bottom_right;
+};
+
+struct PathPaint {
     Bounds bounds;
+    Bounds content_mask;
+    Background color;
+    uint even_odd;
+    uint pad;
 };
 
-StructuredBuffer<PathRasterizationSprite> path_rasterization_sprites: register(t1);
+// 瓦片缓冲按批绑定区间视图（实例下标批内从 0 起），曲线与绘制参数绑全量
+// 视图（tile.paint / tile.curve_start 是全帧下标）。
+StructuredBuffer<PathTile> path_tiles: register(t1);
+StructuredBuffer<PathCurve> path_curves: register(t2);
+StructuredBuffer<PathPaint> path_paints: register(t3);
 
-struct PathVertexOutput {
+struct PathTileVertexOutput {
     float4 position: SV_Position;
-    float2 st_position: TEXCOORD0;
-    nointerpolation uint vertex_id: TEXCOORD1;
-    float4 clip_distance: SV_ClipDistance;
+    nointerpolation uint tile_id: TEXCOORD0;
+    nointerpolation float4 curve_box: TEXCOORD1;
 };
 
-struct PathFragmentInput {
-    float4 position: SV_Position;
-    float2 st_position: TEXCOORD0;
-    nointerpolation uint vertex_id: TEXCOORD1;
-};
+PathTileVertexOutput path_tile_vertex(uint vertex_id: SV_VertexID, uint tile_id: SV_InstanceID) {
+    PathTile tile = path_tiles[tile_id];
+    PathPaint paint = path_paints[tile.paint];
 
-PathVertexOutput path_rasterization_vertex(uint vertex_id: SV_VertexID) {
-    PathRasterizationSprite sprite = path_rasterization_sprites[vertex_id];
+    // 相邻瓦片把共享边存成同一个数，各角独立钳边得到位级一致的边——光栅化
+    // 器既不重叠也不留缝；从 origin+size 插值则做不到。
+    float2 mask_top_left = paint.content_mask.origin;
+    float2 mask_bottom_right = paint.content_mask.origin + paint.content_mask.size;
+    float2 top_left = clamp(tile.top_left, mask_top_left, mask_bottom_right);
+    float2 bottom_right = clamp(tile.bottom_right, top_left, mask_bottom_right);
+    float2 position = float2(
+        (vertex_id & 1u) != 0u ? bottom_right.x : top_left.x,
+        (vertex_id & 2u) != 0u ? bottom_right.y : top_left.y);
 
-    PathVertexOutput output;
-    output.position = to_device_position_impl(sprite.xy_position);
-    output.st_position = sprite.st_position;
-    output.vertex_id = vertex_id;
-    output.clip_distance = distance_from_clip_rect_impl(sprite.xy_position, sprite.bounds);
-
+    PathTileVertexOutput output;
+    output.position = to_device_position_impl(position);
+    output.tile_id = tile_id;
+    output.curve_box = float4(tile.curves_top_left, tile.curves_bottom_right);
     return output;
 }
 
-float4 path_rasterization_fragment(PathFragmentInput input): SV_Target {
-    float2 dx = ddx(input.st_position);
-    float2 dy = ddy(input.st_position);
-    PathRasterizationSprite sprite = path_rasterization_sprites[input.vertex_id];
+// 解 a*t^2 + b*t + c = 0，取单调段上位于 [0, 1] 的根。
+float monotone_quadratic_root(float a, float b, float c, float direction) {
+    float discriminant = max(b * b - 4.0 * a * c, 0.0);
+    float denominator = b + direction * sqrt(discriminant);
+    if (denominator == 0.0) {
+        return 0.0;
+    }
+    return saturate(-2.0 * c / denominator);
+}
 
-    Background background = sprite.color;
-    Bounds bounds = sprite.bounds;
+// 覆盖度估算改编自 https://github.com/EricLengyel/Slug/blob/be3c13eb7d63f9e8aa5c583e42d92c374cb91d98/SlugPixelShader.hlsl
+// Copyright (c) 2017 Eric Lengyel.
+// Licensed under the MIT license.
 
-    float alpha;
-    if (length(float2(dx.x, dy.x))) {
-        alpha = 1.0;
-    } else {
-        float2 gradient = 2.0 * input.st_position.xx * float2(dx.x, dy.x) - float2(dx.y, dy.y);
-        float f = input.st_position.x * input.st_position.x - input.st_position.y;
-        float distance = f / length(gradient);
-        alpha = saturate(0.5 - distance);
+// 沿像素的向左与向上射线累计曲线的环绕数贡献。与 Slug 相同，半像素内的
+// 交叉按比例计入。
+void add_curve_winding(PathCurve curve, float2 center, inout float2 winding, inout float2 weight) {
+    float min_x = min(curve.p0.x, curve.p1.x);
+    float max_x = max(curve.p0.x, curve.p1.x);
+
+    [branch]
+    if (curve.p0.y <= center.y && center.y < curve.p1.y) {
+        [branch]
+        if (max_x <= center.x - 0.5) {
+            winding.x += curve.sign;
+        } else {
+            float t = monotone_quadratic_root(curve.a.y, curve.b.y, curve.p0.y - center.y, 1.0);
+            float x = (curve.a.x * t + curve.b.x) * t + curve.p0.x;
+            float distance = center.x - x;
+            winding.x += curve.sign * saturate(distance + 0.5);
+            weight.x = max(weight.x, saturate(1.0 - 2.0 * abs(distance)));
+        }
+    }
+
+    [branch]
+    if (min_x <= center.x && center.x < max_x) {
+        float direction = curve.p1.x > curve.p0.x ? 1.0 : -1.0;
+        [branch]
+        if (curve.p1.y <= center.y - 0.5) {
+            winding.y -= curve.sign * direction;
+        } else if (curve.p0.y < center.y + 0.5) {
+            float t = monotone_quadratic_root(curve.a.x, curve.b.x, curve.p0.x - center.x, direction);
+            float y = (curve.a.y * t + curve.b.y) * t + curve.p0.y;
+            float distance = center.y - y;
+            winding.y -= curve.sign * direction * saturate(distance + 0.5);
+            weight.y = max(weight.y, saturate(1.0 - 2.0 * abs(distance)));
+        }
+    }
+}
+
+// backdrop 给出未列入曲线沿「瓦片参考角向左射线」的环绕数。我们需要当前
+// 像素处两条射线上的环绕数。由于路径闭合，未列入曲线的链条只能在已列入
+// 曲线的端点处开始或结束，所以按「参考角与像素之间的已列入端点」逐个修正
+// backdrop 即可得到当前像素的环绕数。
+void correct_for_endpoint(float2 endpoint, float step, float2 reference, float2 center,
+                          inout float2 winding) {
+    if (endpoint.x <= reference.x) {
+        winding.x -= step * (float(endpoint.y <= center.y) - float(endpoint.y <= reference.y));
+    }
+    if (endpoint.y <= reference.y && endpoint.x <= center.x) {
+        winding.y += step;
+    }
+}
+
+struct PathTileFragmentInput {
+    float4 position: SV_Position;
+    nointerpolation uint tile_id: TEXCOORD0;
+    nointerpolation float4 curve_box: TEXCOORD1;
+};
+
+float4 path_tile_fragment(PathTileFragmentInput input): SV_Target {
+    float2 center = floor(input.position.xy) + 0.5;
+    PathTile tile = path_tiles[input.tile_id];
+    PathPaint paint = path_paints[tile.paint];
+
+    // 曲线包围盒之外环绕数恒为 backdrop（且瓦片矩形已保证该处必被填充）；
+    // 纯色可提前返回，渐变仍需按位置取色。
+    if (paint.color.tag == 0u
+        && (any(center < input.curve_box.xy) || any(center > input.curve_box.zw))) {
+        GradientColor solid = prepare_gradient_color(
+            0u, paint.color.color_space, paint.color.solid, paint.color.colors);
+        return solid.solid;
+    }
+
+    float2 winding = float(tile.backdrop);
+    float2 weight = float2(0.0, 0.0);
+    [loop]
+    for (uint i = 0u; i < tile.curve_count; i++) {
+        PathCurve curve = path_curves[tile.curve_start + i];
+        if (min(curve.p0.x, curve.p1.x) >= center.x + 0.5) {
+            break;
+        }
+        if (curve.p0.y < center.y + 0.5) {
+            add_curve_winding(curve, center, winding, weight);
+            correct_for_endpoint(curve.p0, curve.sign, tile.reference, center, winding);
+            correct_for_endpoint(curve.p1, -curve.sign, tile.reference, center, winding);
+        }
+    }
+
+    // 两条射线各算得一个环绕数，按各自最近交叉点到像素中心的距离加权
+    // 合成覆盖度（Slug 技法）。
+    float coverage = max(
+        abs(dot(winding, weight)) / max(weight.x + weight.y, 1.0 / 65536.0),
+        min(abs(winding.x), abs(winding.y)));
+    coverage = paint.even_odd != 0u
+        ? 1.0 - abs(1.0 - frac(coverage * 0.5) * 2.0)
+        : saturate(coverage);
+
+    if (coverage == 0.0) {
+        return float4(0.0, 0.0, 0.0, 0.0);
     }
 
     GradientColor gradient = prepare_gradient_color(
-        background.tag, background.color_space, background.solid, background.colors);
-
-    float4 color = gradient_color(background, input.position.xy, bounds,
+        paint.color.tag, paint.color.color_space, paint.color.solid, paint.color.colors);
+    float4 color = gradient_color(paint.color, input.position.xy, paint.bounds,
         gradient.solid, gradient.color0, gradient.color1, gradient.color2, gradient.color3);
-    return float4(color.rgb * color.a * alpha, alpha * color.a);
-}
-
-/*
-**
-**              Path Sprites
-**
-*/
-
-struct PathSprite {
-    Bounds bounds;
-};
-
-struct PathSpriteVertexOutput {
-    float4 position: SV_Position;
-    float2 texture_coords: TEXCOORD0;
-};
-
-StructuredBuffer<PathSprite> path_sprites: register(t1);
-
-PathSpriteVertexOutput path_sprite_vertex(uint vertex_id: SV_VertexID, uint sprite_id: SV_InstanceID) {
-    float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
-    PathSprite sprite = path_sprites[sprite_id];
-
-    // Don't apply content mask because it was already accounted for when rasterizing the path
-    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
-
-    float2 screen_position = sprite.bounds.origin + unit_vertex * sprite.bounds.size;
-    float2 texture_coords = screen_position / global_viewport_size;
-
-    PathSpriteVertexOutput output;
-    output.position = device_position;
-    output.texture_coords = texture_coords;
-    return output;
-}
-
-float4 path_sprite_fragment(PathSpriteVertexOutput input): SV_Target {
-    return t_sprite.Sample(s_sprite, input.texture_coords);
+    return float4(color.rgb, color.a * coverage);
 }
 
 /*

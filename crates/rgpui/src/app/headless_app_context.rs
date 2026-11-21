@@ -240,6 +240,7 @@ impl AppContext for HeadlessAppContext {
         app.read_entity(handle, read)
     }
 
+    #[track_caller]
     fn update_window<T, F>(&mut self, window: AnyWindowHandle, f: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T,

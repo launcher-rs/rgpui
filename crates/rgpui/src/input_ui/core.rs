@@ -91,6 +91,12 @@ impl TextCore {
         self.ime_marked_range.take();
         new_offset
     }
+
+    /// 结束未提交的 IME 组合：组合文本已写入 `text`，这里只清掉标记，
+    /// 文本与选区原样保留（失焦提交语义，对齐 gpui-kit）。
+    pub(super) fn end_ime_composition(&mut self) {
+        self.ime_marked_range.take();
+    }
 }
 
 #[cfg(test)]
@@ -117,6 +123,21 @@ mod tests {
         assert_eq!(core.cursor(), 2);
         core.ime_marked_range = Some(Selection::new(1, 4));
         assert_eq!(core.cursor(), 4);
+    }
+
+    /// 失焦结束 IME 组合：清掉标记，但组合文本与选区原样保留。
+    #[test]
+    fn end_ime_composition_keeps_text_and_selection() {
+        let mut core = TextCore::new();
+        core.text = Rope::from("nihao");
+        core.ime_marked_range = Some(Selection::new(0, 5));
+        core.selected_range = Selection::new(5, 5);
+        core.end_ime_composition();
+        assert!(core.ime_marked_range.is_none());
+        assert_eq!(core.text.to_string(), "nihao");
+        assert_eq!(core.selected_range, Selection::new(5, 5));
+        // 标记清空后光标回到选区末尾而不是组合末尾。
+        assert_eq!(core.cursor(), 5);
     }
 
     /// apply_replace：替换文本、坍缩选区、清 IME 标记、记历史。

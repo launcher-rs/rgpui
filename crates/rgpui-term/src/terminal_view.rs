@@ -21,15 +21,29 @@
 //! ```
 
 use rgpui::{
-    App, ClipboardItem, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
-    Render, ScrollWheelEvent, Styled, Window, actions, div, px,
+    App, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyDownEvent,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Render,
+    ScrollWheelEvent, Styled, Window, actions, div, px,
 };
 
 use crate::{Event, Terminal, TerminalElement, TextStyle, ThemeManager};
 
 const SCROLLBAR_WIDTH: f32 = 8.0;
 const SCROLLBAR_THUMB_MIN_HEIGHT: f32 = 20.0;
+
+/// 拖动滚动条诊断：累计收到多少次拖动事件、上一次打印的时间戳。
+///
+/// 只在 `RUTERM_TRACE_EXTERNAL` 打开时使用。按 250ms 节流打印，既能看出
+/// 「拖动事件是否还在来」，又不会因为刷屏本身拖慢 UI。
+static DRAG_EVENTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DRAG_REPORT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 actions!(
     terminal,
@@ -246,6 +260,20 @@ impl TerminalView {
             return;
         }
 
+        if crate::terminal_element::trace_enabled() {
+            let content = &self.terminal.read(cx).last_content;
+            let b = content.terminal_bounds.bounds;
+            eprintln!(
+                "[rt-trace] mousedown ({:.0},{:.0}) term_bounds=({:.0},{:.0})-({:.0},{:.0})",
+                f32::from(event.position.x),
+                f32::from(event.position.y),
+                f32::from(b.origin.x),
+                f32::from(b.origin.y),
+                f32::from(b.origin.x + b.size.width),
+                f32::from(b.origin.y + b.size.height),
+            );
+        }
+
         self.terminal.update(cx, |terminal, cx| {
             terminal.mouse_down(event, cx);
         });
@@ -277,9 +305,18 @@ impl TerminalView {
 
         // If click is on the thumb, start dragging
         if click_y >= thumb_top && click_y <= thumb_top + thumb_height {
+            if crate::terminal_element::trace_enabled() {
+                eprintln!(
+                    "[rt-trace] scrollbar grab click_y={click_y:.0} thumb_top={thumb_top:.0} \
+                     thumb_h={thumb_height:.0} offset={display_offset} history={history_size}"
+                );
+            }
             self.is_dragging_scrollbar = true;
             self.drag_start_y = event.position.y;
             self.drag_start_offset = display_offset;
+            // 拖动期间让解析线程暂停：拖动帧要独占数据锁重排网格，
+            // 否则和刷屏解析反复抢锁，表现成「动一段、卡一段」。
+            self.terminal.read(cx).set_ui_dragging(true);
         } else {
             // Click on track: scroll page up/down
             let thumb_center = thumb_top + thumb_height / 2.0;
@@ -299,6 +336,7 @@ impl TerminalView {
     fn on_mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
         if self.is_dragging_scrollbar {
             self.is_dragging_scrollbar = false;
+            self.terminal.read(cx).set_ui_dragging(false);
             cx.notify();
             return;
         }
@@ -369,6 +407,20 @@ impl TerminalView {
             (self.drag_start_offset as f32 - ratio * history_size as f32).round() as i32;
         let target_offset = target_offset.clamp(0, history_size as i32) as usize;
 
+        if crate::terminal_element::trace_enabled() {
+            let n = DRAG_EVENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            let now = now_ms();
+            let last = DRAG_REPORT_MS.load(std::sync::atomic::Ordering::Relaxed);
+            if now.saturating_sub(last) >= 250 {
+                DRAG_REPORT_MS.store(now, std::sync::atomic::Ordering::Relaxed);
+                eprintln!(
+                    "[rt-trace] drag n={n} dy={dy:.0} target={target_offset} \
+                     shown={} history={history_size}",
+                    content.display_offset
+                );
+            }
+        }
+
         self.terminal.update(cx, |terminal, _| {
             terminal.scroll_to_offset(target_offset);
         });
@@ -381,6 +433,8 @@ impl TerminalView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // 滚轮连滚同样要和刷屏解析错开数据锁，否则一帧一帧地丢。
+        self.terminal.read(cx).note_ui_scroll();
         self.terminal.update(cx, |terminal, _| {
             terminal.scroll_wheel(event, 1.0);
         });
@@ -388,13 +442,11 @@ impl TerminalView {
     }
 
     fn copy(&mut self, _: &Copy, _window: &mut Window, cx: &mut Context<Self>) {
+        // Terminal::copy 的 Copy 分支内部已把选区文本写入剪贴板，不再从
+        // last_content.selection_text 取（那会导致每帧重算选区文本，拖选卡顿）。
         self.terminal.update(cx, |terminal, _| {
             terminal.copy(Some(true));
         });
-
-        if let Some(text) = self.terminal.read(cx).last_content.selection_text.clone() {
-            cx.write_to_clipboard(ClipboardItem::new_string(text));
-        }
         cx.notify();
     }
 

@@ -19,6 +19,7 @@ mod directx_renderer;
 mod dispatcher;
 mod display;
 mod events;
+mod fast;
 mod focused_window;
 mod global_hotkey;
 mod keyboard;

@@ -36,20 +36,21 @@ use crate::{
     EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
     Hsla, InputHandler, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke,
     KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent, MonochromeSprite,
-    MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas,
-    PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point, PolychromeSprite,
-    Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams, RenderImage,
-    RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
+    MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, PaintedPath, Path, Pixels,
+    PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
+    PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
+    RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
-    StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
-    SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRenderingMode, TextStyle,
-    TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
-    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
-    WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler, px, root::Root,
-    size, transparent_black,
+    SpriteAnimation, SpriteAnimationId, StrikethroughStyle, Style, SubpixelSprite, SubscriberSet,
+    Subscription, SystemWindowTab, SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task,
+    TextRenderingMode, TextStyle, TextStyleRefinement, TransformationMatrix, Underline,
+    UnderlineStyle, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls,
+    WindowDecorations, WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler,
+    px, root::Root, size, transparent_black,
 };
 
 use crate::collections::{FxHashMap, FxHashSet};
+use crate::frame_throttle::{FrameThrottle, combine_interval};
 use crate::refineable::Refineable;
 use crate::rgpui_util::post_inc;
 use crate::rgpui_util::{ResultExt, log_err, measure};
@@ -71,7 +72,7 @@ use smallvec::SmallVec;
 use std::{
     any::{Any, TypeId},
     borrow::Cow,
-    cell::{BorrowMutError, Cell, RefCell},
+    cell::{Cell, RefCell},
     cmp,
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
@@ -316,14 +317,14 @@ fn draw_in_progress() -> bool {
 ///
 /// Windows 在窗口过程中嵌套泵消息（见 `rgpui-windows` 的
 /// `run_foreground_task`），此时 `RefCell<App>` 往往还在上层调用的借用期内，
-/// `Entity::update` 会以 `BorrowMutError` 失败。这类回调是逐事件重试的
+/// `Entity::update` 会以 `AppBorrowError` 失败。这类回调是逐事件重试的
 /// （下一帧、下一次命中测试都会再来），跳过即可；一律按 ERROR 记录会把
 /// 真正的故障淹没在刷屏里。非重入错误仍按 `log_err` 的级别记录。
 #[track_caller]
 fn skip_if_app_borrowed<T>(result: Result<T>) -> Option<T> {
     match result {
         Ok(value) => Some(value),
-        Err(err) if err.downcast_ref::<BorrowMutError>().is_some() => {
+        Err(err) if err.downcast_ref::<crate::app::AppBorrowError>().is_some() => {
             log::debug!("App 已被借用，跳过本次重入的平台回调");
             None
         }
@@ -1175,6 +1176,9 @@ pub struct Window {
     pub(crate) next_tooltip_id: TooltipId,
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
     next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>>,
+    /// 当前场景里定时变换动画要求的呈现间隔；`Some` 时即使没有重绘也要
+    /// 继续呈现（由 `advance_scene_animations` 推进动画）。
+    scene_animation_interval: Rc<Cell<Option<Duration>>>,
     pub(crate) dirty_views: FxHashSet<EntityId>,
     focus_listeners: SubscriberSet<(), AnyWindowFocusListener>,
     pub(crate) focus_lost_listeners: SubscriberSet<(), AnyObserver>,
@@ -1486,6 +1490,8 @@ impl Window {
             is_movable,
             app_owns_titlebar_drag,
             mouse_passthrough,
+            inactive_frame_interval,
+            thermal_frame_interval,
             is_resizable,
             is_minimizable,
             display_id,
@@ -1550,6 +1556,7 @@ impl Window {
         let hovered = Rc::new(Cell::new(platform_window.is_hovered()));
         let needs_present = Rc::new(Cell::new(false));
         let next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>> = Default::default();
+        let scene_animation_interval = Rc::new(Cell::new(None::<Duration>));
         let input_rate_tracker = Rc::new(RefCell::new(InputRateTracker::default()));
         let last_frame_time = Rc::new(Cell::new(None));
 
@@ -1589,19 +1596,43 @@ impl Window {
                     Box::new(move || {
                         log::info!("Accessibility activated");
                         active_flag.store(true, SeqCst);
-                        activation_sender.send_blocking(()).log_err();
+                        activation_sender
+                            .send_blocking(())
+                            .with_context(|| {
+                                format!(
+                                    "queuing accessibility activation for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
+                            .log_err();
                         Some(initial_tree.clone())
                     })
                 },
                 action: Box::new(move |request| {
-                    action_sender.send_blocking(request).log_err();
+                    action_sender
+                        .send_blocking(request)
+                        .with_context(|| {
+                            format!(
+                                "queuing accessibility action for window {:?}",
+                                handle.window_id()
+                            )
+                        })
+                        .log_err();
                 }),
                 deactivation: {
                     let active_flag = a11y_active_flag.clone();
                     Box::new(move || {
                         log::info!("Accessibility deactivated");
                         active_flag.store(false, SeqCst);
-                        deactivation_sender.send_blocking(()).log_err();
+                        deactivation_sender
+                            .send_blocking(())
+                            .with_context(|| {
+                                format!(
+                                    "queuing accessibility deactivation for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
+                            .log_err();
                     })
                 },
             });
@@ -1617,6 +1648,12 @@ impl Window {
                     while activation_receiver.recv().await.is_ok() {
                         handle
                             .update(&mut async_cx, |_, window, _| window.refresh())
+                            .with_context(|| {
+                                format!(
+                                    "handling accessibility activation for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
                             .log_err();
                     }
                 })
@@ -1628,6 +1665,12 @@ impl Window {
                     while deactivation_receiver.recv().await.is_ok() {
                         handle
                             .update(&mut async_cx, |_, window, _| window.refresh())
+                            .with_context(|| {
+                                format!(
+                                    "handling accessibility deactivation for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
                             .log_err();
                     }
                 })
@@ -1640,6 +1683,12 @@ impl Window {
                         handle
                             .update(&mut async_cx, |_, window, cx| {
                                 window.handle_a11y_action(request, cx);
+                            })
+                            .with_context(|| {
+                                format!(
+                                    "handling accessibility action for window {:?}",
+                                    handle.window_id()
+                                )
                             })
                             .log_err();
                     }
@@ -1657,13 +1706,19 @@ impl Window {
                 });
             }
         }));
+        // 两档省电帧间隔只在创建时给一次，之后随窗口固定。
+        // 判定（含「取最长间隔」与输入速率豁免）收敛在 `frame_throttle.rs`。
+        let frame_throttle = FrameThrottle::new(inactive_frame_interval, thermal_frame_interval);
         platform_window.on_request_frame(Box::new({
             let mut cx = cx.to_async();
             let invalidator = invalidator.clone();
             let active = active.clone();
             let needs_present = needs_present.clone();
             let next_frame_callbacks = next_frame_callbacks.clone();
+            let scene_animation_interval = scene_animation_interval.clone();
             let input_rate_tracker = input_rate_tracker.clone();
+            // 动画帧被节流时靠延迟任务续帧；此标志防止同一等待期内重复排队。
+            let animation_frame_pending = Rc::new(Cell::new(false));
             let mut deferred_force_render = false;
             move |request_frame_options| {
                 // This must be checked before anything else: if this request
@@ -1695,20 +1750,27 @@ impl Window {
                     skip_if_app_borrowed(handle.update(&mut cx, |_, _, cx| cx.thermal_state()));
 
                 // Throttle frame rate based on conditions:
-                // - Thermal pressure (Serious/Critical): cap to ~60fps
-                // - Inactive window (not focused): cap to ~30fps to save energy
-                let min_frame_interval = if request_frame_options.require_presentation
-                    || (!request_frame_options.force_render
-                        && next_frame_callbacks.borrow().is_empty())
-                {
-                    None
-                } else if !active.get() && !input_rate_tracker.borrow_mut().is_high_rate() {
-                    Some(Duration::from_micros(33333))
-                } else if let Some(ThermalState::Critical | ThermalState::Serious) = thermal_state {
-                    Some(Duration::from_micros(16667))
-                } else {
-                    None
-                };
+                // - Thermal pressure (Serious/Critical): capped by `thermal_frame_interval`
+                // - Inactive window (not focused): capped by `inactive_frame_interval`
+                // 两档都可经 `WindowOptions` 配置（`None` 即关闭该档），同时命中时
+                // 取较长间隔。强制呈现与「本帧有下一帧回调」完全不受限。
+                let animation_interval = scene_animation_interval
+                    .get()
+                    .filter(|_| !invalidator.is_dirty());
+                // 纯空闲帧本不限速（维持刷新率），但场景动画靠帧末 request_frame
+                // 驱动的正是"空闲帧"——判定规则见 frame_throttle::combine_interval。
+                let throttled = frame_throttle.interval(
+                    active.get(),
+                    input_rate_tracker.borrow_mut().is_high_rate(),
+                    thermal_state,
+                );
+                let min_frame_interval = combine_interval(
+                    request_frame_options.require_presentation,
+                    request_frame_options.force_render,
+                    !next_frame_callbacks.borrow().is_empty(),
+                    animation_interval,
+                    throttled,
+                );
 
                 let now = Instant::now();
                 if let Some(min_interval) = min_frame_interval {
@@ -1724,6 +1786,23 @@ impl Window {
                         skip_if_app_borrowed(
                             handle.update(&mut cx, |_, window, _| window.complete_frame()),
                         );
+                        // 动画帧靠帧末 request_frame 续帧，提前 return 会跳过它，导致动画
+                        // 永久停住。这里按剩余等待时间安排一次性续帧：到点后重新请求一帧，
+                        // 既不忙等（等待期无帧），也不卡死（到点必续）。
+                        if animation_interval.is_some() && !animation_frame_pending.get() {
+                            animation_frame_pending.set(true);
+                            let remaining =
+                                min_interval.saturating_sub(now.duration_since(last_frame));
+                            let pending = animation_frame_pending.clone();
+                            cx.spawn(async move |cx: &mut crate::app::AsyncApp| {
+                                cx.background_executor().timer(remaining).await;
+                                pending.set(false);
+                                skip_if_app_borrowed(
+                                    handle.update(cx, |_, window, _| window.request_frame()),
+                                );
+                            })
+                            .detach();
+                        }
                         return;
                     }
                 }
@@ -1741,9 +1820,11 @@ impl Window {
                 // Keep presenting if input was recently arriving at a high rate (>= 60fps).
                 // Once high-rate input is detected, we sustain presentation for 1 second
                 // to prevent display underclocking during active input.
+                // 场景里有定时变换动画时同样要持续呈现——但只推进动画、不重绘。
                 let needs_present = request_frame_options.require_presentation
                     || needs_present.get()
-                    || input_rate_tracker.borrow_mut().is_high_rate();
+                    || input_rate_tracker.borrow_mut().is_high_rate()
+                    || scene_animation_interval.get().is_some();
 
                 if invalidator.is_dirty() || force_render {
                     measure("frame duration", || {
@@ -1754,17 +1835,29 @@ impl Window {
                                 window.refresh();
                             }
                             let arena_clear_needed = window.draw(cx);
+                            window.advance_scene_animations(cx);
                             window.present();
                             arena_clear_needed.clear(cx);
                         }));
                     })
                 } else if needs_present {
-                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, _| window.present()));
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, cx| {
+                        window.advance_scene_animations(cx);
+                        window.present();
+                    }));
                 }
 
                 skip_if_app_borrowed(
                     handle.update(&mut cx, |_, window, _| window.complete_frame()),
                 );
+
+                // 场景里有定时变换动画：请平台再出一帧，动画才会持续跑
+                // （动画只推进场景，不重绘视图）。
+                if scene_animation_interval.get().is_some() {
+                    skip_if_app_borrowed(
+                        handle.update(&mut cx, |_, window, _| window.request_frame()),
+                    );
+                }
             }
         }));
         platform_window.on_resize(Box::new({
@@ -1772,6 +1865,7 @@ impl Window {
             move |_, _| {
                 handle
                     .update(&mut cx, |_, window, cx| window.bounds_changed(cx))
+                    .with_context(|| format!("handling resize for window {:?}", handle.window_id()))
                     .log_err();
             }
         }));
@@ -1780,6 +1874,7 @@ impl Window {
             move || {
                 handle
                     .update(&mut cx, |_, window, cx| window.bounds_changed(cx))
+                    .with_context(|| format!("handling move for window {:?}", handle.window_id()))
                     .log_err();
             }
         }));
@@ -1793,6 +1888,12 @@ impl Window {
                     .spawn(async move {
                         handle
                             .update(&mut cx, |_, window, cx| window.appearance_changed(cx))
+                            .with_context(|| {
+                                format!(
+                                    "handling appearance change for window {:?}",
+                                    handle.window_id()
+                                )
+                            })
                             .log_err();
                     })
                     .detach();
@@ -1803,6 +1904,12 @@ impl Window {
             move || {
                 handle
                     .update(&mut cx, |_, window, cx| window.button_layout_changed(cx))
+                    .with_context(|| {
+                        format!(
+                            "handling button layout change for window {:?}",
+                            handle.window_id()
+                        )
+                    })
                     .log_err();
             }
         }));
@@ -1824,6 +1931,12 @@ impl Window {
 
                         SystemWindowTabController::update_last_active(cx, window.handle.id);
                     })
+                    .with_context(|| {
+                        format!(
+                            "handling active status change for window {:?}",
+                            handle.window_id()
+                        )
+                    })
                     .log_err();
             }
         }));
@@ -1835,6 +1948,12 @@ impl Window {
                         window.hovered.set(active);
                         window.refresh();
                     })
+                    .with_context(|| {
+                        format!(
+                            "handling hover status change for window {:?}",
+                            handle.window_id()
+                        )
+                    })
                     .log_err();
             }
         }));
@@ -1843,6 +1962,9 @@ impl Window {
             Box::new(move |event| {
                 handle
                     .update(&mut cx, |_, window, cx| window.dispatch_event(event, cx))
+                    .with_context(|| {
+                        format!("dispatching input for window {:?}", handle.window_id())
+                    })
                     .log_err()
                     .unwrap_or(DispatchEventResult::default())
             })
@@ -1855,6 +1977,9 @@ impl Window {
                     .update(&mut cx, |_, window, cx| {
                         window.dispatch_event_for_dom(keys, event, cx)
                     })
+                    .with_context(|| {
+                        format!("dispatching input for window {:?}", handle.window_id())
+                    })
                     .log_err()
                     .unwrap_or(DispatchEventResult::default())
             })
@@ -1866,6 +1991,9 @@ impl Window {
                 let _ = handle
                     .update(&mut cx, |_, window, _cx| {
                         window.dispatch_dom_scroll(keys, left, top);
+                    })
+                    .with_context(|| {
+                        format!("handling dom scroll for window {:?}", handle.window_id())
                     })
                     .log_err();
             })
@@ -1895,6 +2023,12 @@ impl Window {
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::move_tab_to_new_window(cx, handle.window_id());
                     })
+                    .with_context(|| {
+                        format!(
+                            "moving tab to new window from window {:?}",
+                            handle.window_id()
+                        )
+                    })
                     .log_err();
             })
         });
@@ -1904,6 +2038,9 @@ impl Window {
                 handle
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::merge_all_windows(cx, handle.window_id());
+                    })
+                    .with_context(|| {
+                        format!("merging all windows into window {:?}", handle.window_id())
                     })
                     .log_err();
             })
@@ -1915,6 +2052,9 @@ impl Window {
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::select_next_tab(cx, handle.window_id());
                     })
+                    .with_context(|| {
+                        format!("selecting next tab for window {:?}", handle.window_id())
+                    })
                     .log_err();
             })
         });
@@ -1924,6 +2064,9 @@ impl Window {
                 handle
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::select_previous_tab(cx, handle.window_id())
+                    })
+                    .with_context(|| {
+                        format!("selecting previous tab for window {:?}", handle.window_id())
                     })
                     .log_err();
             })
@@ -1935,6 +2078,9 @@ impl Window {
                     .update(&mut cx, |_, window, cx| {
                         let tab_bar_visible = window.platform_window.tab_bar_visible();
                         SystemWindowTabController::set_visible(cx, tab_bar_visible);
+                    })
+                    .with_context(|| {
+                        format!("toggling tab bar for window {:?}", handle.window_id())
                     })
                     .log_err();
             })
@@ -2002,6 +2148,7 @@ impl Window {
             active,
             hovered,
             needs_present,
+            scene_animation_interval,
             input_rate_tracker,
             #[cfg(feature = "input-latency-histogram")]
             input_latency_tracker: InputLatencyTracker::new()?,
@@ -2398,6 +2545,7 @@ impl Window {
                     let node_id = window.focus_node_id_in_rendered_frame(focus_id);
                     window.dispatch_action_on_node(node_id, action.as_ref(), cx);
                 })
+                .with_context(|| format!("dispatching action for window {:?}", window.window_id()))
                 .log_err();
         })
     }
@@ -2597,6 +2745,14 @@ impl Window {
     pub fn request_animation_frame(&self) {
         let entity = self.current_view();
         self.on_next_frame(move |_, cx| cx.notify(entity));
+    }
+
+    /// 请平台再交付一帧（即使本窗口当前没有失效区域）。
+    ///
+    /// 场景级定时变换动画（`Svg::with_timed_transformation`）由帧循环自动调用；
+    /// 外部一般不需要直接调它。平台未实现时为空操作。
+    pub(crate) fn request_frame(&self) {
+        self.platform_window.request_frame();
     }
 
     /// 运行通过 [`Self::on_next_frame`] 安排的所有回调，返回运行的数量。
@@ -3177,6 +3333,9 @@ impl Window {
         let previous_focus_path = self.rendered_frame.focus_path();
         let previous_window_active = self.rendered_frame.window_active;
         mem::swap(&mut self.rendered_frame, &mut self.next_frame);
+        // 场景里的定时变换动画要求继续出帧（无动画时清空，回到按需渲染）。
+        self.scene_animation_interval
+            .set(self.rendered_frame.scene.animation_frame_interval());
         self.next_frame.clear();
         // 调试帧覆盖层：把读数直接追加进已完成的本帧场景。它不经布局与文本系统，
         // 因而不触发失效、也不会成为新的绘制来源；追加的图元 order 递增，天然画在最上层。
@@ -3276,6 +3435,14 @@ impl Window {
             self.mark_view_dirty(entity);
         }
         self.invalidator.replace_views(views);
+    }
+
+    /// 把当前场景里的定时变换动画推进到同步动画时钟的当前时刻。
+    ///
+    /// 呈现前调用：只改场景里精灵的矩阵与 alpha，不重绘视图、不重建场景。
+    pub(crate) fn advance_scene_animations(&mut self, cx: &App) {
+        let elapsed = cx.background_executor().now() - cx.synced_animation_epoch;
+        self.rendered_frame.scene.advance_animations(elapsed);
     }
 
     #[profiling::function]
@@ -4294,28 +4461,20 @@ impl Window {
         });
     }
 
-    /// 为指定边界创建新的绘制层。"图层"是一批
+    /// 创建一个新的绘制图层。"图层"是一批
     /// 不重叠且具有相同绘制顺序的几何图形。通常出于
     /// 性能原因使用。
     ///
+    /// `f` 内部绘制的图层叠在本图层之上（包括叠在 `f` 后续绘制的内容之上）。
+    /// 图层的边界与绘制顺序在关闭时由内部图元统一决定，无需调用方提供。
+    ///
     /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
-    pub fn paint_layer<R>(&mut self, bounds: Bounds<Pixels>, f: impl FnOnce(&mut Self) -> R) -> R {
+    pub fn paint_layer<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
         self.invalidator.debug_assert_paint();
 
-        let content_mask = self.content_mask();
-        let clipped_bounds = bounds.intersect(&content_mask.bounds);
-        if !clipped_bounds.is_empty() {
-            self.next_frame
-                .scene
-                .push_layer(self.cover_bounds(clipped_bounds));
-        }
-
+        self.next_frame.scene.push_layer();
         let result = f(self);
-
-        if !clipped_bounds.is_empty() {
-            self.next_frame.scene.pop_layer();
-        }
-
+        self.next_frame.scene.pop_layer();
         result
     }
 
@@ -4404,42 +4563,43 @@ impl Window {
 
     /// 计算仅含边框的四边形内部的最大空白区域，用于把大片透明内部像素排除在渲染之外。
     fn largest_border_interior(quad: &Quad) -> Bounds<ScaledPixels> {
-        let radii = &quad.corner_radii;
-        let widths = &quad.border_widths;
-        let edge_radii = Edges {
-            top: radii.top_left.max(radii.top_right),
-            right: radii.top_right.max(radii.bottom_right),
-            bottom: radii.bottom_left.max(radii.bottom_right),
-            left: radii.top_left.max(radii.bottom_left),
-        };
+        let size = quad.bounds.size;
+        let diagonal = (size.width.0 * size.width.0 + size.height.0 * size.height.0).sqrt();
+        if diagonal == 0. {
+            return Bounds::default();
+        }
+        // 内部的角落在角弧上：取弧上切线与四边形长宽比一致的点，
+        // 与真正的最大内部相差不超过 1%。
+        let cos = size.height.0 / diagonal;
+        let sin = size.width.0 / diagonal;
 
-        let antialias_inset = point(ScaledPixels(1.0), ScaledPixels(1.0));
-        let inset_bounds = |top_left_inset, bottom_right_inset| {
-            Bounds::from_corners(
-                quad.bounds.origin + top_left_inset + antialias_inset,
-                quad.bounds.bottom_right() - bottom_right_inset - antialias_inset,
+        // 角的内侧边框边是绕角心的四分之一椭圆弧，半径各减去对应边框宽度。
+        let corner_inset = |radius: ScaledPixels, width_x: ScaledPixels, width_y: ScaledPixels| {
+            point(
+                width_x.max(radius - (radius - width_x) * cos),
+                width_y.max(radius - (radius - width_y) * sin),
             )
         };
 
-        // 圆角只需在一个轴向上排除：两个候选带都为空（不含边框像素），
-        // 因此选择面积更大者作为内部区域。
-        let horizontal_band = inset_bounds(
-            point(widths.left, widths.top.max(edge_radii.top)),
-            point(widths.right, widths.bottom.max(edge_radii.bottom)),
-        );
-        let vertical_band = inset_bounds(
-            point(widths.left.max(edge_radii.left), widths.top),
-            point(widths.right.max(edge_radii.right), widths.bottom),
-        );
+        let radii = &quad.corner_radii;
+        let widths = &quad.border_widths;
+        let top_left = corner_inset(radii.top_left, widths.left, widths.top);
+        let top_right = corner_inset(radii.top_right, widths.right, widths.top);
+        let bottom_right = corner_inset(radii.bottom_right, widths.right, widths.bottom);
+        let bottom_left = corner_inset(radii.bottom_left, widths.left, widths.bottom);
 
-        let area = |bounds: &Bounds<ScaledPixels>| {
-            bounds.size.width.0.max(0.) * bounds.size.height.0.max(0.)
-        };
-        if area(&horizontal_band) >= area(&vertical_band) {
-            horizontal_band
-        } else {
-            vertical_band
-        }
+        let antialias_inset = point(ScaledPixels(1.0), ScaledPixels(1.0));
+        Bounds::from_corners(
+            quad.bounds.origin
+                + point(top_left.x.max(bottom_left.x), top_left.y.max(top_right.y))
+                + antialias_inset,
+            quad.bounds.bottom_right()
+                - point(
+                    top_right.x.max(bottom_right.x),
+                    bottom_left.y.max(bottom_right.y),
+                )
+                - antialias_inset,
+        )
     }
 
     /// 在当前层叠上下文中将一个或多个四边形绘制到下一帧的场景中。
@@ -4469,24 +4629,77 @@ impl Window {
             continuous_corners: 0,
             transform: TransformationMatrix::default(),
             blend_mode: 0,
-            pad_quad: 0,
+            depth: 0.0,
+        };
+        self.insert_quad(quad);
+    }
+
+    /// 把一个四边形（必要时先拆分）提交进场景：实心矩形直通；带圆角或边框的
+    /// 拆成「矩形内部 + 四条边带」，实心不透明的内部因此能进渲染器的不透明
+    /// 深度通道，只有边带参与边框与圆角着色。
+    fn insert_quad(&mut self, quad: Quad) {
+        let has_background = !quad.background.is_transparent();
+        let has_border =
+            quad.border_widths != Edges::default() && !quad.border_color.is_transparent();
+        if !has_background && !has_border {
+            return;
+        }
+
+        let is_rectangle =
+            quad.border_widths == Edges::default() && quad.corner_radii == Corners::default();
+        if has_background && is_rectangle {
+            self.next_frame.scene.insert_primitive(quad);
+            return;
+        }
+
+        let plain_border = quad.corner_radii == Corners::default()
+            && quad.border_style == BorderStyle::Solid
+            && (!has_background || quad.border_color.is_opaque());
+
+        // 围绕内部拆分：边框与圆角的着色只跑在内部四周的边带上。
+        // 仅带边框、无填充的四边形直接提交会为每块透明的内部像素运行一次
+        // 四边形着色器，当形状较大时开销尤其高。
+        let inner_bounds = if plain_border {
+            let widths = quad.border_widths;
+            quad.bounds.extend(Edges {
+                top: ScaledPixels(-widths.top.0),
+                right: ScaledPixels(-widths.right.0),
+                bottom: ScaledPixels(-widths.bottom.0),
+                left: ScaledPixels(-widths.left.0),
+            })
+        } else {
+            Self::largest_border_interior(&quad)
         };
 
-        if !quad.background.is_transparent() {
-            self.next_frame.scene.insert_primitive(quad);
-            return;
-        }
-
-        // 仅带边框、无填充的四边形直接提交到场景会为每块透明的内部像素运行一次
-        // 四边形着色器，当形状较大时开销尤其高。这里围绕其空白内部进行拆分。
-        let outer_bounds = quad.bounds;
-        let inner_bounds = Self::largest_border_interior(&quad);
+        // 纯直角边框的边带就是边框色的矩形；否则每条边带是「被该边带裁剪的
+        // 整个四边形」，边框、圆角与渐变仍相对完整四边形着色。
+        let strip_quad = if plain_border {
+            Quad {
+                background: quad.border_color.into(),
+                border_widths: Edges::default(),
+                ..quad
+            }
+        } else {
+            quad
+        };
 
         if inner_bounds.is_empty() {
-            self.next_frame.scene.insert_primitive(quad);
+            self.next_frame.scene.insert_primitive(strip_quad);
             return;
         }
 
+        if has_background {
+            self.next_frame.scene.insert_primitive(Quad {
+                content_mask: ContentMask {
+                    bounds: quad.content_mask.bounds.intersect(&inner_bounds),
+                },
+                border_widths: Edges::default(),
+                corner_radii: Corners::default(),
+                ..quad
+            });
+        }
+
+        let outer_bounds = quad.bounds;
         let strips = [
             // Top
             Bounds::from_corners(
@@ -4511,33 +4724,31 @@ impl Window {
         ];
 
         for strip in strips {
-            let content_mask_bounds = quad.content_mask.bounds.intersect(&strip);
-            if !content_mask_bounds.is_empty() {
-                self.next_frame.scene.insert_primitive(Quad {
-                    content_mask: ContentMask {
-                        bounds: content_mask_bounds,
-                    },
-                    ..quad
-                });
-            }
+            self.next_frame.scene.insert_primitive(Quad {
+                content_mask: ContentMask {
+                    bounds: quad.content_mask.bounds.intersect(&strip),
+                },
+                ..strip_quad
+            });
         }
     }
 
     /// 在当前 z-index 将给定的 `Path` 绘制到下一帧的场景中。
     ///
     /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
-    pub fn paint_path(&mut self, mut path: Path<Pixels>, color: impl Into<Background>) {
+    pub fn paint_path(&mut self, path: Path, color: impl Into<Background>) {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
         let content_mask = self.content_mask();
         let opacity = self.element_opacity();
-        path.content_mask = content_mask;
         let color: Background = color.into();
-        path.color = color.opacity(opacity);
-        self.next_frame
-            .scene
-            .insert_primitive(path.scale(scale_factor));
+        self.next_frame.scene.insert_primitive(PaintedPath::new(
+            path,
+            scale_factor,
+            content_mask,
+            color.opacity(opacity),
+        ));
     }
 
     /// 在当前 z-index 将下划线绘制到下一帧的场景中。
@@ -4688,7 +4899,7 @@ impl Window {
             } else {
                 self.next_frame.scene.insert_primitive(MonochromeSprite {
                     order: 0,
-                    pad: 0,
+                    animation: SpriteAnimationId::NONE,
                     bounds,
                     content_mask,
                     color: color.opacity(element_opacity),
@@ -4794,12 +5005,13 @@ impl Window {
     /// 在当前层叠上下文中将单色 SVG 绘制到下一帧的场景中。
     ///
     /// 此方法只能作为元素绘制的绘制阶段的一部分调用。
-    pub fn paint_svg(
+    pub(crate) fn paint_animated_svg(
         &mut self,
         bounds: Bounds<Pixels>,
         path: SharedString,
         mut data: Option<&[u8]>,
         transformation: TransformationMatrix,
+        animation: Option<SpriteAnimation>,
         color: Hsla,
         cx: &App,
     ) -> Result<()> {
@@ -4843,15 +5055,22 @@ impl Window {
             .map_origin(|value| ScaledPixels(round_half_toward_zero(value.0)))
             .map_size(|size| size.ceil());
 
-        self.next_frame.scene.insert_primitive(MonochromeSprite {
+        let sprite = MonochromeSprite {
             order: 0,
-            pad: 0,
+            animation: SpriteAnimationId::NONE,
             bounds: final_bounds,
             content_mask,
             color: color.opacity(element_opacity),
             tile,
             transformation,
-        });
+        };
+        match animation {
+            Some(animation) => self
+                .next_frame
+                .scene
+                .insert_animated_sprite(sprite, animation),
+            None => self.next_frame.scene.insert_primitive(sprite),
+        }
 
         Ok(())
     }
@@ -5737,6 +5956,7 @@ impl Window {
                 || standalone_modifier;
 
             if currently_pending.needs_timeout {
+                let window_id = self.handle.window_id();
                 currently_pending.timer = Some(self.spawn(cx, async move |cx| {
                     cx.background_executor.timer(Duration::from_secs(1)).await;
                     cx.update(move |window, cx| {
@@ -5759,6 +5979,9 @@ impl Window {
 
                         window.pending_input_changed(cx);
                         window.replay_pending_input(to_replay, cx)
+                    })
+                    .with_context(|| {
+                        format!("handling pending input timeout for window {:?}", window_id)
                     })
                     .log_err();
                 }));
@@ -7414,6 +7637,7 @@ impl<V: 'static + Render> WindowHandle<V> {
     /// 更新此窗口的根视图。
     ///
     /// 如果窗口已关闭或根视图的类型不匹配，这将失败
+    #[track_caller]
     pub fn update<C, R>(
         &self,
         cx: &mut C,
@@ -7536,6 +7760,7 @@ impl AnyWindowHandle {
     /// 更新此窗口根视图的状态。
     ///
     /// 如果窗口已关闭，这将失败。
+    #[track_caller]
     pub fn update<C, R>(
         self,
         cx: &mut C,
@@ -7845,12 +8070,16 @@ pub fn outline(
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, rc::Rc};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
 
     use crate::{
-        AppContext as _, Bounds, Context, FocusHandle, InteractiveElement as _, IntoElement,
-        ParentElement, Pixels, Render, Styled, TestAppContext, Window, WindowOptions, canvas, div,
-        px, size,
+        AppContext as _, BackgroundTag, BorderStyle, Bounds, Context, Corners, Edges, FocusHandle,
+        Hsla, InteractiveElement as _, IntoElement, ParentElement, Pixels, Quad, Render, Styled,
+        TestAppContext, Window, WindowOptions, canvas, div, fill, outline, point, px, quad, size,
+        transparent_black,
     };
 
     struct EmptyView;
@@ -8033,5 +8262,145 @@ mod tests {
             })
             .unwrap();
         assert_eq!(b_focus_count.get(), 1);
+    }
+
+    /// 不透明的纯红色。
+    fn opaque_red() -> Hsla {
+        Hsla {
+            h: 0.0,
+            s: 1.0,
+            l: 0.5,
+            a: 1.0,
+        }
+    }
+
+    struct PaintHolder {
+        paint: Rc<dyn Fn(&mut Window)>,
+        sink: Rc<RefCell<Vec<Quad>>>,
+    }
+
+    impl Render for PaintHolder {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let (paint, sink) = (self.paint.clone(), self.sink.clone());
+            div().size_full().child(canvas(
+                |_, _, _| {},
+                move |_, _, window, _| {
+                    // 只取本次 paint 新增的图元（窗口背景等基础图元在此之前的阶段落下）。
+                    let base = window.next_frame.scene.quads.len();
+                    paint(window);
+                    *sink.borrow_mut() = window.next_frame.scene.quads[base..].to_vec();
+                },
+            ))
+        }
+    }
+
+    /// 在画布元素的绘制阶段调用 `paint_quad`，并把场景里落下的四边形取回来。
+    fn painted_quads(cx: &mut TestAppContext, paint: impl 'static + Fn(&mut Window)) -> Vec<Quad> {
+        let paint: Rc<dyn Fn(&mut Window)> = Rc::new(paint);
+        let sink = Rc::new(RefCell::new(Vec::<Quad>::new()));
+        let window = cx.add_window({
+            let (paint, sink) = (paint.clone(), sink.clone());
+            move |_, _| PaintHolder { paint, sink }
+        });
+        cx.update_window(window.into(), |_, window, cx| {
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        sink.take()
+    }
+
+    /// 实心无圆角的矩形直通为单个图元（本身就是不透明深度通道的候选）。
+    #[test]
+    fn test_paint_quad_opaque_rectangle_passthrough() {
+        let mut cx = TestAppContext::single();
+        let quads = painted_quads(&mut cx, |window| {
+            window.paint_quad(fill(
+                Bounds {
+                    origin: point(px(0.), px(0.)),
+                    size: size(px(100.), px(50.)),
+                },
+                opaque_red(),
+            ));
+        });
+        assert_eq!(quads.len(), 1, "实心直角矩形不应拆分");
+    }
+
+    /// 圆角矩形拆成「实心内部 + 四条边带」：内部无圆角无边框（进不透明通道），
+    /// 边带保留原圆角、按边带裁剪。
+    #[test]
+    fn test_paint_quad_splits_rounded_rectangle_into_interior_and_strips() {
+        let mut cx = TestAppContext::single();
+        let quads = painted_quads(&mut cx, |window| {
+            window.paint_quad(quad(
+                Bounds {
+                    origin: point(px(10.), px(10.)),
+                    size: size(px(100.), px(60.)),
+                },
+                px(8.),
+                opaque_red(),
+                px(0.),
+                transparent_black(),
+                BorderStyle::Solid,
+            ));
+        });
+        assert_eq!(quads.len(), 5, "一个内部 + 四条边带");
+        assert_eq!(quads[0].corner_radii, Corners::default(), "内部不应带圆角");
+        assert_eq!(quads[0].border_widths, Edges::default(), "内部不应带边框");
+        assert!(
+            quads[1..]
+                .iter()
+                .all(|q| q.corner_radii != Corners::default()),
+            "边带应保留原圆角"
+        );
+        let interior_mask = quads[0].content_mask.bounds;
+        let outer = quads[1].bounds;
+        assert!(
+            interior_mask.origin.x > outer.origin.x
+                && interior_mask.origin.y > outer.origin.y
+                && interior_mask.right() < outer.right()
+                && interior_mask.bottom() < outer.bottom(),
+            "内部图元的蒙版应严格落在原矩形之内（边界仍属原矩形）"
+        );
+    }
+
+    /// 无填充的纯直角不透明边框：边带退化为边框色的实心矩形（不继承边框宽度）。
+    #[test]
+    fn test_paint_quad_plain_border_strips_become_border_colored() {
+        let mut cx = TestAppContext::single();
+        let quads = painted_quads(&mut cx, |window| {
+            window.paint_quad(outline(
+                Bounds {
+                    origin: point(px(0.), px(0.)),
+                    size: size(px(100.), px(60.)),
+                },
+                opaque_red(),
+                BorderStyle::Solid,
+            ));
+        });
+        assert_eq!(quads.len(), 4, "四条边框边带");
+        for quad in &quads {
+            assert_eq!(quad.border_widths, Edges::default(), "边带不应再带边框宽度");
+            assert!(
+                matches!(quad.background.tag, BackgroundTag::Solid)
+                    && quad.background.solid == opaque_red(),
+                "边带应是不透明的边框色"
+            );
+        }
+    }
+
+    /// 无填充无边框的完全透明四边形不落任何图元。
+    #[test]
+    fn test_paint_quad_fully_transparent_is_noop() {
+        let mut cx = TestAppContext::single();
+        let quads = painted_quads(&mut cx, |window| {
+            window.paint_quad(fill(
+                Bounds {
+                    origin: point(px(0.), px(0.)),
+                    size: size(px(100.), px(50.)),
+                },
+                transparent_black(),
+            ));
+        });
+        assert!(quads.is_empty(), "完全透明不应提交任何四边形");
     }
 }

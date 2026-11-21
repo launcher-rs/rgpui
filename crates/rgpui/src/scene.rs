@@ -6,14 +6,13 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AtlasTextureId, AtlasTile, Background, Bounds, ContentMask, Corners, Edges, Hsla, Pixels,
-    Point, Radians, ScaledPixels, Size, bounds_tree::BoundsTree, point,
+    AtlasTextureId, AtlasTile, Background, Bounds, ContentMask, Corners, Edges, Hsla, Path, Pixels,
+    Point, Radians, ScaledPixels, Size, TimedTransformation, bounds_tree::BoundsTree,
+    path_winding::PathTiles,
 };
+use smallvec::SmallVec;
 use std::{
-    fmt::Debug,
-    iter::Peekable,
-    ops::{Add, Range, Sub},
-    slice,
+    collections::VecDeque, fmt::Debug, iter::Peekable, ops::Range, rc::Rc, slice, time::Duration,
 };
 
 /// 内部不变量：值为 `None` 说明前提被破坏（批处理迭代器与已排序的种类表不一致等），
@@ -30,25 +29,37 @@ fn invariant<T>(value: Option<T>, message: &str) -> T {
     }
 }
 
-/// 路径顶点的缩放像素类型别名（已废弃，使用 `PathVertex<ScaledPixels>`）。
-#[allow(non_camel_case_types, unused)]
-pub type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
-
 /// 绘制顺序值，数值越小越先绘制。
 pub type DrawOrder = u32;
 
-/// 渲染场景 — 收集所有绘制图元（四边形、路径、精灵、阴影等），供 GPU 批量渲染。
+/// 挂起中的绘制图层：记录图层内图元在 `paint_operations` 中的区间、并集边界与
+/// 种类聚合；图层关闭时才统一插入排序树分配绘制顺序（对标上游图元批处理改进）。
+struct Layer {
+    /// 图层内图元在 `paint_operations` 里的连续区间（可多段）。
+    primitives: SmallVec<[Range<usize>; 1]>,
+    /// 图层内所有图元的并集边界（空边界 = 还没有图元，union 以空为单位元）。
+    bounds: Bounds<ScaledPixels>,
+    /// 图层内最大图元种类（作为插入排序树的 key 种类）。
+    max_kind: PrimitiveKind,
+    /// 图层内最严的 `max_shared_kind`（图层整体能否共享他方排序值）。
+    max_shared_kind: PrimitiveKind,
+}
+
+/// 渲染场景 — 收集所有绘制图元（四边形、文本、阴影等），供 GPU 批量渲染。
 #[derive(Default)]
 pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
     primitive_bounds: BoundsTree<ScaledPixels>,
-    layer_stack: Vec<DrawOrder>,
+    /// 图层在 `layers` 队列中的下标栈。
+    layer_stack: Vec<usize>,
+    /// 挂起图层队列（先进先出，最外层关闭时统一落地）。
+    layers: VecDeque<Layer>,
     /// 阴影图元列表。
     pub shadows: Vec<Shadow>,
     /// 四边形图元列表。
     pub quads: Vec<Quad>,
     /// 矢量路径图元列表。
-    pub paths: Vec<Path<ScaledPixels>>,
+    pub paths: Vec<PaintedPath>,
     /// 下划线图元列表。
     pub underlines: Vec<Underline>,
     /// 单色精灵图元列表。
@@ -59,6 +70,9 @@ pub struct Scene {
     pub polychrome_sprites: Vec<PolychromeSprite>,
     /// 平台原生绘制表面列表。
     pub surfaces: Vec<PaintSurface>,
+    /// 场景级精灵动画表：每项指向 `monochrome_sprites` 的一个下标，由
+    /// `advance_animations` 在呈现前推进（不重绘视图）。
+    animations: Vec<SpriteAnimation>,
 }
 
 /// 渲染场景的构建和管理方法。
@@ -68,6 +82,7 @@ impl Scene {
         self.paint_operations.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
+        self.layers.clear();
         self.paths.clear();
         self.shadows.clear();
         self.quads.clear();
@@ -76,6 +91,7 @@ impl Scene {
         self.subpixel_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
+        self.animations.clear();
     }
 
     /// 返回场景中的绘制操作数量。
@@ -84,80 +100,198 @@ impl Scene {
     }
 
     /// 推入一个新的绘制图层，后续图元将在此图层内绘制。
-    pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        let order = self.primitive_bounds.insert(bounds);
-        self.layer_stack.push(order);
-        self.paint_operations
-            .push(PaintOperation::StartLayer(bounds));
+    ///
+    /// 图层不立刻占用绘制顺序：关闭时以「图层内图元的并集边界」插入排序树，
+    /// 按与其他图元相同的规则共享或新建绘制顺序；图层内所有图元共用该顺序。
+    pub fn push_layer(&mut self) {
+        self.layer_stack.push(self.layers.len());
+        self.layers.push_back(Layer {
+            primitives: SmallVec::new(),
+            bounds: Bounds::default(),
+            max_kind: PrimitiveKind::Shadow,
+            max_shared_kind: PrimitiveKind::Surface,
+        });
+        self.paint_operations.push(PaintOperation::StartLayer);
     }
 
     /// 弹出当前绘制图层，返回上一层。
+    ///
+    /// 最外层图层关闭时，挂起队列里的所有图层（含嵌套）统一插入排序树。
     pub fn pop_layer(&mut self) {
         self.layer_stack.pop();
+        if self.layer_stack.is_empty() {
+            while let Some(layer) = self.layers.pop_front() {
+                self.insert_layer(layer);
+            }
+        }
         self.paint_operations.push(PaintOperation::EndLayer);
     }
 
+    /// 落地一个挂起图层：按并集边界分配绘制顺序，图层内图元共用该顺序。
+    fn insert_layer(&mut self, layer: Layer) {
+        if layer.primitives.is_empty() {
+            return;
+        }
+        let order =
+            self.primitive_bounds
+                .insert(layer.bounds, layer.max_kind, layer.max_shared_kind);
+        for index in layer.primitives.into_iter().flatten() {
+            if let PaintOperation::Primitive(primitive) = &self.paint_operations[index] {
+                let primitive = primitive.clone();
+                self.push_primitive(primitive, order);
+            }
+        }
+    }
+
     /// 插入一个渲染图元到场景中。
+    ///
+    /// 不在图层内时立即插入排序树分配绘制顺序；在图层内则并入图层，
+    /// 关闭时统一落地。
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
-        let mut primitive = primitive.into();
+        self.try_insert_primitive(primitive.into());
+    }
+
+    /// 插入一个渲染图元，返回它是否被保留（被裁剪掉时为 `false`）。
+    ///
+    /// 动画精灵插入失败时不能登记动画项，否则动画表会指向不存在的图元。
+    fn try_insert_primitive(&mut self, primitive: Primitive) -> bool {
         let clipped_bounds = primitive
             .bounds()
             .intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {
-            return;
+            return false;
         }
 
-        let order = self
+        let kind = primitive.kind();
+        match self
             .layer_stack
             .last()
             .copied()
-            .unwrap_or_else(|| self.primitive_bounds.insert(clipped_bounds));
-        match &mut primitive {
-            Primitive::Shadow(shadow) => {
-                shadow.order = order;
-                self.shadows.push(*shadow);
+            .and_then(|layer_ix| self.layers.get_mut(layer_ix))
+        {
+            Some(layer) => {
+                layer.bounds = layer.bounds.union(&clipped_bounds);
+                layer.max_kind = layer.max_kind.max(kind);
+                layer.max_shared_kind = layer.max_shared_kind.min(kind.max_shared_kind());
+                let index = self.paint_operations.len();
+                match layer.primitives.last_mut() {
+                    Some(range) if range.end == index => range.end += 1,
+                    _ => layer.primitives.push(index..index + 1),
+                }
             }
-            Primitive::Quad(quad) => {
-                quad.order = order;
-                self.quads.push(*quad);
-            }
-            Primitive::Path(path) => {
-                path.order = order;
-                path.id = PathId(self.paths.len());
-                self.paths.push(path.clone());
-            }
-            Primitive::Underline(underline) => {
-                underline.order = order;
-                self.underlines.push(*underline);
-            }
-            Primitive::MonochromeSprite(sprite) => {
-                sprite.order = order;
-                self.monochrome_sprites.push(*sprite);
-            }
-            Primitive::SubpixelSprite(sprite) => {
-                sprite.order = order;
-                self.subpixel_sprites.push(*sprite);
-            }
-            Primitive::PolychromeSprite(sprite) => {
-                sprite.order = order;
-                self.polychrome_sprites.push(*sprite);
-            }
-            Primitive::Surface(surface) => {
-                surface.order = order;
-                self.surfaces.push(surface.clone());
+            None => {
+                let order =
+                    self.primitive_bounds
+                        .insert(clipped_bounds, kind, kind.max_shared_kind());
+                self.push_primitive(primitive.clone(), order);
             }
         }
         self.paint_operations
             .push(PaintOperation::Primitive(primitive));
+        true
+    }
+
+    /// 插入一个由 [`Scene::advance_animations`] 持续变换的单色精灵。
+    ///
+    /// 精灵的颜色取动画 alpha 之前的底色；动画项记录它的下标、变换与中心，
+    /// 每次呈现前按已过时间推进矩阵与 alpha，无须重绘视图。
+    pub(crate) fn insert_animated_sprite(
+        &mut self,
+        mut sprite: MonochromeSprite,
+        mut animation: SpriteAnimation,
+    ) {
+        sprite.animation = SpriteAnimationId(self.animations.len() as u32);
+        animation.base_color = sprite.color;
+        if self.try_insert_primitive(sprite.into()) {
+            self.animations.push(animation);
+        }
+    }
+
+    /// 场景里所有动画都要求呈现时，相邻两次呈现之间可以等待的最长时间；
+    /// 场景里没有动画时为 `None`，某个动画要求每帧都画时为 `Some(ZERO)`。
+    pub(crate) fn animation_frame_interval(&self) -> Option<Duration> {
+        self.animations
+            .iter()
+            .map(|animation| {
+                animation
+                    .transformation
+                    .min_frame_interval()
+                    .unwrap_or_default()
+            })
+            .min()
+    }
+
+    /// 把每个动画精灵推进到动画时钟 `elapsed` 时刻的姿态，供呈现前调用。
+    ///
+    /// 只改场景中已有精灵的矩阵与 alpha，不触碰视图、不重建场景。
+    pub(crate) fn advance_animations(&mut self, elapsed: Duration) {
+        for animation in &self.animations {
+            let Some(sprite) = self.monochrome_sprites.get_mut(animation.sprite_index) else {
+                continue;
+            };
+            let pose = animation.transformation.at(elapsed);
+            sprite.transformation = pose
+                .transformation
+                .into_matrix(animation.center, animation.scale_factor);
+            sprite.color = animation.base_color.opacity(pose.alpha_factor());
+        }
+    }
+
+    /// 按给定绘制顺序把图元放入对应的种类列表。
+    fn push_primitive(&mut self, primitive: Primitive, order: DrawOrder) {
+        match primitive {
+            Primitive::Shadow(mut shadow) => {
+                shadow.order = order;
+                self.shadows.push(shadow);
+            }
+            Primitive::Quad(mut quad) => {
+                quad.order = order;
+                self.quads.push(quad);
+            }
+            Primitive::Path(mut path) => {
+                path.order = order;
+                self.paths.push(path);
+            }
+            Primitive::Underline(mut underline) => {
+                underline.order = order;
+                self.underlines.push(underline);
+            }
+            Primitive::MonochromeSprite(mut sprite) => {
+                sprite.order = order;
+                self.monochrome_sprites.push(sprite);
+            }
+            Primitive::SubpixelSprite(mut sprite) => {
+                sprite.order = order;
+                self.subpixel_sprites.push(sprite);
+            }
+            Primitive::PolychromeSprite(mut sprite) => {
+                sprite.order = order;
+                self.polychrome_sprites.push(sprite);
+            }
+            Primitive::Surface(mut surface) => {
+                surface.order = order;
+                self.surfaces.push(surface);
+            }
+        }
     }
 
     /// 重放指定范围内的绘制操作，从另一个场景复制图元。
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
         for operation in &prev_scene.paint_operations[range] {
             match operation {
-                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
-                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
+                PaintOperation::Primitive(primitive) => {
+                    // 动画 id 是「插入时的场景」内的下标，重放时要取回动画定义。
+                    if let Primitive::MonochromeSprite(sprite) = primitive
+                        && let Some(animation) =
+                            prev_scene.animations.get(sprite.animation.0 as usize)
+                    {
+                        self.insert_animated_sprite(*sprite, *animation);
+                    } else {
+                        self.insert_primitive(primitive.clone());
+                    }
+                }
+                PaintOperation::StartLayer => self.push_layer(),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
         }
@@ -165,19 +299,44 @@ impl Scene {
 
     /// 完成场景构建，按绘制顺序排序所有图元。
     pub fn finish(&mut self) {
-        self.shadows.sort_by_key(|shadow| shadow.order);
-        self.quads.sort_by_key(|quad| quad.order);
+        debug_assert!(
+            self.layer_stack.is_empty(),
+            "场景图层未平衡（push/pop 不成对）"
+        );
+        // 排序策略见 `sort_in_place`：排小的 `(键, 下标)` 对，再把图元按置换
+        // 逐环搬到位，每个图元只搬一次。`paths` / `surfaces` 不是 `Copy` 且数量少，
+        // 继续用 `sort_by_key`。
+        let keys = &mut Vec::new();
+        sort_in_place(&mut self.shadows, keys, |shadow| (shadow.order, 0));
+        sort_in_place(&mut self.quads, keys, |quad| (quad.order, 0));
         self.paths.sort_by_key(|path| path.order);
-        self.underlines.sort_by_key(|underline| underline.order);
+        sort_in_place(&mut self.underlines, keys, |underline| (underline.order, 0));
         // 合批以 texture_id 为界（见 `Scene::batches`），排序键必须与之一致：
         // 按 tile_id 排序会把同一张纹理的精灵打散成多个批次。
-        self.monochrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
-        self.subpixel_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
-        self.polychrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
+        sort_in_place(&mut self.monochrome_sprites, keys, |sprite| {
+            (sprite.order, sprite.tile.texture_id.index)
+        });
+        // 排序打乱了精灵顺序，动画项要跟着找到自己的精灵下标。
+        if !self.animations.is_empty() {
+            for (index, sprite) in self.monochrome_sprites.iter().enumerate() {
+                if let Some(animation) = self.animations.get_mut(sprite.animation.0 as usize) {
+                    animation.sprite_index = index;
+                }
+            }
+        }
+        sort_in_place(&mut self.subpixel_sprites, keys, |sprite| {
+            (sprite.order, sprite.tile.texture_id.index)
+        });
+        sort_in_place(&mut self.polychrome_sprites, keys, |sprite| {
+            (sprite.order, sprite.tile.texture_id.index)
+        });
         self.surfaces.sort_by_key(|surface| surface.order);
+        // 深度缓冲 anti-overdraw：排序后的下标即绘制序，按「越大越近」给每个
+        // quad 分配单调深度，渲染器的不透明通道据此跳过被遮住像素。
+        let depth_scale = quad_depth_scale(self.quads.len());
+        for (index, quad) in self.quads.iter_mut().enumerate() {
+            quad.depth = quad_depth(index as u32, depth_scale);
+        }
     }
 
     /// 返回按绘制顺序分批的图元迭代器。
@@ -203,6 +362,67 @@ impl Scene {
     }
 }
 
+/// 按 `(主键, 次键)` 就地排序图元，但**不搬图元本身**。
+///
+/// 图元结构体很大（`Quad` 100+ 字节），`sort_by_key` 的每次交换都要整体拷贝，
+/// 而交换次数是 O(n log n)。这里改排小的 `(键, 下标)` 对（16 字节），排完再按
+/// 置换的环把图元搬到位，每个图元只搬一次。`keys` 由调用方复用，跨图元种类
+/// 只分配一次。
+///
+/// 稳定性：下标是排序键的低 32 位，因此相等键保持插入顺序，与原来的
+/// `sort_by_key`（稳定排序）结果逐位一致；有了这条保证才能用 `sort_unstable`。
+///
+/// 已经有序的数组直接返回，不分配也不搬动（网格 / 条纹这类常见场景）。
+fn sort_in_place<T: Copy>(
+    primitives: &mut [T],
+    keys: &mut Vec<(u64, u32)>,
+    key: impl Fn(&T) -> (u32, u32),
+) {
+    if primitives.is_sorted_by_key(&key) {
+        return;
+    }
+    keys.clear();
+    keys.extend(primitives.iter().enumerate().map(|(index, primitive)| {
+        let (major, minor) = key(primitive);
+        ((major as u64) << 32 | minor as u64, index as u32)
+    }));
+    keys.sort_unstable();
+
+    // `keys[target].1` 是 target 位置应放入的源下标。沿着置换的每个环搬一圈，
+    // 搬过的槽位把下标指向自己作为「已处理」标记。
+    for start in 0..primitives.len() {
+        if keys[start].1 as usize == start {
+            continue;
+        }
+        let displaced = primitives[start];
+        let mut target = start;
+        loop {
+            let source = keys[target].1 as usize;
+            keys[target].1 = target as u32;
+            if source == start {
+                primitives[target] = displaced;
+                break;
+            }
+            primitives[target] = primitives[source];
+            target = source;
+        }
+    }
+}
+
+/// 一帧含 `quad_count` 个 quad 时，相邻两个 quad 之间的深度步长。
+///
+/// 分母取（数量 + 1）向上取幂并封顶在 2^24（24 位深度缓冲的整数精度边界），
+/// 保证深度在缓冲精度内单调可分。
+pub fn quad_depth_scale(quad_count: usize) -> f32 {
+    let denominator = (quad_count.min((1 << 24) - 1) + 1).next_power_of_two();
+    1.0 / denominator as f32
+}
+
+/// 把 quad 在 [`Scene::quads`] 中的下标映射为深度，值越大越靠近观察者。
+pub fn quad_depth(quad_id: u32, scale: f32) -> f32 {
+    ((quad_id + 1) as f32 * scale).min(1.0)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Default)]
 pub(crate) enum PrimitiveKind {
     Shadow,
@@ -216,9 +436,25 @@ pub(crate) enum PrimitiveKind {
     Surface,
 }
 
+impl PrimitiveKind {
+    /// 重叠图元的绘制顺序保证按绘制次序；但为了 GPU 合批，渲染器在同一绘制顺序内
+    /// 先按种类、再按图集纹理排序，最后才按绘制次序。因此一个图元只有在它重叠的
+    /// 最上层图元种类不超过这里返回的种类时，才能共享其绘制顺序；否则需要新的顺序。
+    /// 精灵特例：同顺序内还要按图集纹理排序，不能与任何精灵共享顺序（只能与排在
+    /// 自己之前的种类共享）。
+    fn max_shared_kind(self) -> Self {
+        match self {
+            Self::MonochromeSprite => Self::Underline,
+            Self::SubpixelSprite => Self::MonochromeSprite,
+            Self::PolychromeSprite => Self::SubpixelSprite,
+            kind => kind,
+        }
+    }
+}
+
 pub(crate) enum PaintOperation {
     Primitive(Primitive),
-    StartLayer(Bounds<ScaledPixels>),
+    StartLayer,
     EndLayer,
 }
 
@@ -230,7 +466,7 @@ pub enum Primitive {
     /// 四边形
     Quad(Quad),
     /// 矢量路径
-    Path(Path<ScaledPixels>),
+    Path(PaintedPath),
     /// 下划线
     Underline(Underline),
     /// 单色精灵（灰度字形/图标）
@@ -258,12 +494,26 @@ impl Primitive {
         }
     }
 
+    /// 获取此图元的种类。
+    pub(crate) fn kind(&self) -> PrimitiveKind {
+        match self {
+            Primitive::Shadow(_) => PrimitiveKind::Shadow,
+            Primitive::Quad(_) => PrimitiveKind::Quad,
+            Primitive::Path(_) => PrimitiveKind::Path,
+            Primitive::Underline(_) => PrimitiveKind::Underline,
+            Primitive::MonochromeSprite(_) => PrimitiveKind::MonochromeSprite,
+            Primitive::SubpixelSprite(_) => PrimitiveKind::SubpixelSprite,
+            Primitive::PolychromeSprite(_) => PrimitiveKind::PolychromeSprite,
+            Primitive::Surface(_) => PrimitiveKind::Surface,
+        }
+    }
+
     /// 获取此图元的内容裁剪蒙版。
     pub fn content_mask(&self) -> &ContentMask<ScaledPixels> {
         match self {
             Primitive::Shadow(shadow) => &shadow.content_mask,
             Primitive::Quad(quad) => &quad.content_mask,
-            Primitive::Path(path) => &path.content_mask,
+            Primitive::Path(path) => &path.paint.content_mask,
             Primitive::Underline(underline) => &underline.content_mask,
             Primitive::MonochromeSprite(sprite) => &sprite.content_mask,
             Primitive::SubpixelSprite(sprite) => &sprite.content_mask,
@@ -279,7 +529,7 @@ struct BatchIterator<'a> {
     quads_start: usize,
     quads_iter: Peekable<slice::Iter<'a, Quad>>,
     paths_start: usize,
-    paths_iter: Peekable<slice::Iter<'a, Path<ScaledPixels>>>,
+    paths_iter: Peekable<slice::Iter<'a, PaintedPath>>,
     underlines_start: usize,
     underlines_iter: Peekable<slice::Iter<'a, Underline>>,
     monochrome_sprites_start: usize,
@@ -555,8 +805,9 @@ pub struct Quad {
     pub transform: TransformationMatrix,
     /// 混合模式索引。
     pub blend_mode: u32,
-    /// 8 字节对齐填充。
-    pub pad_quad: u32,
+    /// 深度缓冲 anti-overdraw 用的深度值（「越大越近」，由 `Scene::finish`
+    /// 按排序后的绘制序统一赋值；占据原 `pad_quad` 填充槽，布局大小不变）。
+    pub depth: f32,
 }
 
 impl From<Quad> for Primitive {
@@ -756,14 +1007,54 @@ impl Default for TransformationMatrix {
     }
 }
 
+/// 指向所属场景动画表某一条目的下标；`NONE` 表示这个精灵不带动画。
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct SpriteAnimationId(u32);
+
+impl SpriteAnimationId {
+    /// 无动画。
+    pub const NONE: Self = Self(u32::MAX);
+}
+
+/// 由窗口在每次呈现前应用到精灵上的动画定义（场景级，不触发视图重绘）。
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct SpriteAnimation {
+    transformation: TimedTransformation,
+    /// 变换矩阵的中心（元素中心，逻辑像素）。
+    center: Point<Pixels>,
+    /// 构建时的显示比例。
+    scale_factor: f32,
+    /// 动画 alpha 之前的底色。
+    base_color: Hsla,
+    /// 精灵在 `Scene::monochrome_sprites` 中的下标（`finish` 排序后修正）。
+    sprite_index: usize,
+}
+
+impl SpriteAnimation {
+    pub(crate) fn new(
+        transformation: TimedTransformation,
+        center: Point<Pixels>,
+        scale_factor: f32,
+    ) -> Self {
+        Self {
+            transformation,
+            center,
+            scale_factor,
+            base_color: Hsla::default(),
+            sprite_index: 0,
+        }
+    }
+}
+
 /// 单色精灵 — 从图集纹理中采样的灰度字形或图标。
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct MonochromeSprite {
     /// 绘制顺序。
     pub order: DrawOrder,
-    /// 8 字节对齐填充。
-    pub pad: u32,
+    /// 所属场景动画表的条目（`SpriteAnimationId::NONE` 表示不带动画）。
+    pub animation: SpriteAnimationId,
     /// 边界矩形。
     pub bounds: Bounds<ScaledPixels>,
     /// 内容裁剪蒙版。
@@ -858,190 +1149,167 @@ impl From<PaintSurface> for Primitive {
     }
 }
 
-/// 路径的唯一标识符。
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PathId(pub usize);
-
-/// 由一系列顶点和控制点组成的矢量路径，支持填充和变换。
-#[derive(Clone, Debug)]
-pub struct Path<P: Clone + Debug + Default + PartialEq> {
-    /// 路径的唯一标识符。
-    pub id: PathId,
-    /// 绘制顺序。
-    pub order: DrawOrder,
-    /// 路径的边界矩形。
-    pub bounds: Bounds<P>,
-    /// 内容裁剪蒙版。
-    pub content_mask: ContentMask<P>,
-    /// 路径的顶点列表。
-    pub vertices: Vec<PathVertex<P>>,
-    /// 路径填充颜色。
-    pub color: Background,
-    start: Point<P>,
-    current: Point<P>,
-    contour_count: usize,
-}
-
-impl Path<Pixels> {
-    /// 使用给定的起始点创建新路径。
-    pub fn new(start: Point<Pixels>) -> Self {
-        Self {
-            id: PathId(0),
-            order: DrawOrder::default(),
-            vertices: Vec::new(),
-            start,
-            current: start,
-            bounds: Bounds {
-                origin: start,
-                size: Default::default(),
-            },
-            content_mask: Default::default(),
-            color: Default::default(),
-            contour_count: 0,
-        }
-    }
-
-    /// 按给定因子缩放此路径。
-    pub fn scale(&self, factor: f32) -> Path<ScaledPixels> {
-        Path {
-            id: self.id,
-            order: self.order,
-            bounds: self.bounds.scale(factor),
-            content_mask: self.content_mask.scale(factor),
-            vertices: self
-                .vertices
-                .iter()
-                .map(|vertex| vertex.scale(factor))
-                .collect(),
-            start: self.start.map(|start| start.scale(factor)),
-            current: self.current.scale(factor),
-            contour_count: self.contour_count,
-            color: self.color,
-        }
-    }
-
-    /// 将起点、当前点移动到给定点。
-    pub fn move_to(&mut self, to: Point<Pixels>) {
-        self.contour_count += 1;
-        self.start = to;
-        self.current = to;
-    }
-
-    /// 从当前点到给定点绘制直线。
-    pub fn line_to(&mut self, to: Point<Pixels>) {
-        self.contour_count += 1;
-        if self.contour_count > 1 {
-            self.push_triangle(
-                (self.start, self.current, to),
-                (point(0., 1.), point(0., 1.), point(0., 1.)),
-            );
-        }
-        self.current = to;
-    }
-
-    /// 从当前点到给定点绘制曲线，使用给定的控制点。
-    pub fn curve_to(&mut self, to: Point<Pixels>, ctrl: Point<Pixels>) {
-        self.contour_count += 1;
-        if self.contour_count > 1 {
-            self.push_triangle(
-                (self.start, self.current, to),
-                (point(0., 1.), point(0., 1.), point(0., 1.)),
-            );
-        }
-
-        self.push_triangle(
-            (self.current, ctrl, to),
-            (point(0., 0.), point(0.5, 0.), point(1., 1.)),
-        );
-        self.current = to;
-    }
-
-    /// 向 Path 添加三角形。
-    pub fn push_triangle(
-        &mut self,
-        xy: (Point<Pixels>, Point<Pixels>, Point<Pixels>),
-        st: (Point<f32>, Point<f32>, Point<f32>),
-    ) {
-        self.bounds = self
-            .bounds
-            .union(&Bounds {
-                origin: xy.0,
-                size: Default::default(),
-            })
-            .union(&Bounds {
-                origin: xy.1,
-                size: Default::default(),
-            })
-            .union(&Bounds {
-                origin: xy.2,
-                size: Default::default(),
-            });
-
-        self.vertices.push(PathVertex {
-            xy_position: xy.0,
-            st_position: st.0,
-            content_mask: Default::default(),
-        });
-        self.vertices.push(PathVertex {
-            xy_position: xy.1,
-            st_position: st.1,
-            content_mask: Default::default(),
-        });
-        self.vertices.push(PathVertex {
-            xy_position: xy.2,
-            st_position: st.2,
-            content_mask: Default::default(),
-        });
-    }
-}
-
-impl<T> Path<T>
-where
-    T: Clone + Debug + Default + PartialEq + PartialOrd + Add<T, Output = T> + Sub<Output = T>,
-{
-    /// 返回路径与内容遮罩的交集边界。
-    #[allow(unused)]
-    pub fn clipped_bounds(&self) -> Bounds<T> {
-        self.bounds.intersect(&self.content_mask.bounds)
-    }
-}
-
-impl From<Path<ScaledPixels>> for Primitive {
-    fn from(path: Path<ScaledPixels>) -> Self {
-        Primitive::Path(path)
-    }
-}
-
-#[derive(Clone, Debug)]
+/// 一条路径曲线：xy 各为二次多项式的单调二次贝塞尔（Slug 路径渲染的最小单元）。
+///
+/// 参数形式 `x(t) = (a.x * t + b.x) * t + p0.x`、`y(t) = (a.y * t + b.y) * t + p0.y`，
+/// 且 y 随 t 单调（t: 0→1 时 y 从 `p0.y` 走到 `p1.y`）；`sign` 记录 y 的走向，
+/// 供环绕数步进使用。直线是二次项为零的特例。
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
-#[expect(missing_docs)]
-pub struct PathVertex<P: Clone + Debug + Default + PartialEq> {
-    pub xy_position: Point<P>,
-    pub st_position: Point<f32>,
-    pub content_mask: ContentMask<P>,
+pub struct PathCurve {
+    /// 起点坐标。
+    pub p0: Point<f32>,
+    /// 终点坐标。
+    pub p1: Point<f32>,
+    /// 二次项系数。
+    pub a: Point<f32>,
+    /// 一次项系数。
+    pub b: Point<f32>,
+    /// y 走向符号（+1 向下 / -1 向上）。
+    pub sign: f32,
+    /// 8 字节对齐填充。
+    pub pad: u32, // align to 8 bytes
 }
 
-#[expect(missing_docs)]
-impl PathVertex<Pixels> {
-    pub fn scale(&self, factor: f32) -> PathVertex<ScaledPixels> {
-        PathVertex {
-            xy_position: self.xy_position.scale(factor),
-            st_position: self.st_position,
-            content_mask: self.content_mask.scale(factor),
+/// 路径的绘制参数（GPU 传输结构，随曲线/瓦片数组一起上传）。
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct PathPaint {
+    /// 路径边界（设备像素）。
+    pub bounds: Bounds<ScaledPixels>,
+    /// 内容裁剪蒙版。
+    pub content_mask: ContentMask<ScaledPixels>,
+    /// 填充背景。
+    pub color: Background,
+    /// 填充规则：非 0 为奇偶（even-odd），0 为非零环绕（non-zero）。
+    pub even_odd: u32,
+    /// 8 字节对齐填充。
+    pub pad: u32, // align to 8 bytes
+}
+
+/// 路径瓦片：一组合并的 cell，GPU 实例按其曲线列表逐像素计算环绕数与覆盖。
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+pub struct PathTile {
+    /// 本帧 `PathPaint` 数组的下标。
+    pub paint: u32,
+    /// 本帧 `PathCurve` 数组中的起始下标。
+    pub curve_start: u32,
+    /// 本瓦片列出的曲线数量。
+    pub curve_count: u32,
+    /// 未列入本瓦片的曲线沿参考角向左射线的环绕数贡献。
+    pub backdrop: i32,
+    /// 瓦片矩形左上角（设备像素）。
+    pub top_left: Point<f32>,
+    /// 瓦片矩形右下角（设备像素）。
+    pub bottom_right: Point<f32>,
+    /// backdrop 的参考点（所在 cell 的左上角）。
+    pub reference: Point<f32>,
+    /// 列表曲线包围盒左上角（供 shader 早退与越界判定）。
+    pub curves_top_left: Point<f32>,
+    /// 列表曲线包围盒右下角。
+    pub curves_bottom_right: Point<f32>,
+}
+
+/// 一条待绘制的填充路径：分桶瓦片 + 绘制参数。
+///
+/// 由 [`crate::Window::paint_path`] 构建（分桶依赖显示比例，发生在绘制时）；
+/// `Rc<PathTiles>` 让缓存复用的 `Path` 克隆成本与曲线数量无关。
+#[derive(Clone, Debug)]
+pub struct PaintedPath {
+    /// 绘制顺序（场景分配，渲染侧只读）。
+    order: DrawOrder,
+    /// 涂刷边界（瓦片边界外扩抗锯齿边距，设备像素）。
+    bounds: Bounds<ScaledPixels>,
+    /// 分桶结果。
+    tiles: Rc<PathTiles>,
+    /// 绘制参数。
+    paint: PathPaint,
+}
+
+impl PaintedPath {
+    /// 把 `path` 按显示比例分桶成瓦片，在 `content_mask` 内以 `color` 填充。
+    pub fn new(
+        path: Path,
+        scale_factor: f32,
+        content_mask: ContentMask<Pixels>,
+        color: Background,
+    ) -> Self {
+        let content_mask = content_mask.scale(scale_factor);
+        let mut tiles = path.bin(scale_factor);
+        tiles.retain_visible(content_mask.bounds);
+        let paint = PathPaint {
+            bounds: tiles.bounds(),
+            content_mask,
+            color,
+            even_odd: path.even_odd().into(),
+            pad: 0,
+        };
+        Self {
+            order: 0,
+            bounds: tiles.painted_bounds(),
+            tiles: Rc::new(tiles),
+            paint,
         }
+    }
+
+    /// 本路径的瓦片数量。
+    pub fn tile_count(&self) -> usize {
+        self.tiles.tiles().len()
+    }
+
+    /// 绘制顺序（由场景在插入时分配）。
+    pub fn order(&self) -> DrawOrder {
+        self.order
+    }
+
+    /// 涂刷边界（设备像素）。
+    pub fn bounds(&self) -> Bounds<ScaledPixels> {
+        self.bounds
+    }
+
+    /// 内容裁剪蒙版（设备像素）。
+    pub fn content_mask(&self) -> &ContentMask<ScaledPixels> {
+        &self.paint.content_mask
+    }
+
+    /// 把绘制参数、曲线与瓦片平铺进本帧的三条 GPU 数组。
+    ///
+    /// 渲染器按批调用（批内路径依次追加，`paint_index` / `curve_start` 随之为批内下标）。
+    pub fn append_to(
+        &self,
+        paints: &mut Vec<PathPaint>,
+        curves: &mut Vec<PathCurve>,
+        tiles: &mut Vec<PathTile>,
+    ) {
+        let paint_index = paints.len() as u32;
+        let curve_start = curves.len() as u32;
+        paints.push(self.paint);
+        curves.extend_from_slice(self.tiles.curves());
+        tiles.extend(self.tiles.tiles().iter().map(|tile| PathTile {
+            paint: paint_index,
+            curve_start: curve_start + tile.curve_start,
+            ..*tile
+        }));
+    }
+}
+
+impl From<PaintedPath> for Primitive {
+    fn from(path: PaintedPath) -> Self {
+        Primitive::Path(path)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AtlasTextureKind, DevicePixels, TileId, bounds, size};
+    use crate::{AtlasTextureKind, DevicePixels, TileId, bounds, point, size};
 
     /// 构造一个只关心 order 与所属纹理/瓦片 ID 的单色精灵。
     fn sprite(order: DrawOrder, texture_index: u32, tile_id: u32) -> MonochromeSprite {
         MonochromeSprite {
             order,
-            pad: 0,
+            animation: SpriteAnimationId::NONE,
             bounds: bounds(
                 point(ScaledPixels(0.0), ScaledPixels(0.0)),
                 size(ScaledPixels(8.0), ScaledPixels(8.0)),
@@ -1110,5 +1378,431 @@ mod tests {
             }
             other => panic!("期望两个单色精灵批次，实际为 {other:?}"),
         }
+    }
+
+    /// 构造指定矩形的普通四边形（内容蒙版全覆盖，裁剪后即自身边界）。
+    fn quad_at(x: f32, y: f32, w: f32, h: f32) -> Quad {
+        Quad {
+            order: 0,
+            border_style: BorderStyle::default(),
+            bounds: bounds(
+                point(ScaledPixels(x), ScaledPixels(y)),
+                size(ScaledPixels(w), ScaledPixels(h)),
+            ),
+            content_mask: ContentMask {
+                bounds: bounds(
+                    point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                    size(ScaledPixels(1000.0), ScaledPixels(1000.0)),
+                ),
+            },
+            background: Background::default(),
+            border_color: Hsla::default(),
+            corner_radii: Corners::default(),
+            border_widths: Edges::default(),
+            continuous_corners: 0,
+            transform: TransformationMatrix::default(),
+            blend_mode: 0,
+            depth: 0.0,
+        }
+    }
+
+    /// 种类安全的重叠可共享绘制顺序：一串依次重叠的四边形只占一个顺序，
+    /// 合批成单个批次（旧口径每个重叠都开新顺序，批次数翻倍）。
+    #[test]
+    fn test_overlapping_quads_share_order_and_batch() {
+        let mut scene = Scene::default();
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.insert_primitive(quad_at(5., 5., 10., 10.));
+        scene.insert_primitive(quad_at(10., 10., 10., 10.));
+        scene.finish();
+
+        assert_eq!(
+            scene.quads.iter().map(|q| q.order).collect::<Vec<_>>(),
+            vec![1, 1, 1],
+            "Quad 与 Quad 种类安全，应共享顺序"
+        );
+        assert_eq!(scene.batches().count(), 1, "同一顺序同一种类应合成一个批次");
+    }
+
+    /// 深度缓冲 anti-overdraw：`finish` 排序后按绘制序给每个 quad 赋单调深度。
+    #[test]
+    fn test_quad_depths_assigned_monotonic() {
+        let mut scene = Scene::default();
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.insert_primitive(quad_at(5., 5., 10., 10.));
+        scene.insert_primitive(quad_at(2., 2., 4., 4.));
+        scene.finish();
+
+        let scale = quad_depth_scale(scene.quads.len());
+        let expected: Vec<f32> = (0..scene.quads.len() as u32)
+            .map(|index| quad_depth(index, scale))
+            .collect();
+        let actual: Vec<f32> = scene.quads.iter().map(|quad| quad.depth).collect();
+        assert_eq!(actual, expected, "深度必须按下标经统一 scale 映射");
+        for window in actual.windows(2) {
+            assert!(window[1] > window[0], "深度必须沿绘制序单调递增");
+        }
+        assert!(
+            actual[actual.len() - 1] <= 1.0 && actual[0] > 0.0,
+            "深度必须落在 (0, 1]"
+        );
+    }
+
+    /// 深度步长：分母为 (数量 + 1) 的下一个幂，并在 2^24 处封顶
+    /// （24 位深度缓冲的整数精度边界）。
+    #[test]
+    fn test_quad_depth_scale_power_of_two_and_cap() {
+        assert_eq!(quad_depth_scale(0), 1.0);
+        assert_eq!(quad_depth_scale(3), 0.25);
+        assert_eq!(quad_depth_scale(4), 0.125);
+        let capped = quad_depth_scale(1 << 30);
+        assert_eq!(capped, 1.0 / (1 << 24) as f32);
+        assert_eq!(quad_depth(1 << 24, capped), 1.0, "深度必须封顶在 1");
+    }
+
+    /// 精灵不能与精灵共享绘制顺序（同顺序内按图集纹理排序会破坏绘制次序），
+    /// 但可以与排在它之前的种类（如 Quad）共享。
+    #[test]
+    fn test_sprites_cannot_share_order_with_sprites() {
+        let mut scene = Scene::default();
+        // 先一个四边形，再两个互相重叠的单色精灵（边界相同）。
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.insert_primitive(sprite(0, 0, 1));
+        scene.insert_primitive(sprite(0, 1, 2));
+        scene.finish();
+
+        // 精灵与 Quad 种类安全：共享顺序 1。
+        assert_eq!(scene.quads[0].order, 1);
+        assert_eq!(scene.monochrome_sprites[0].order, 1);
+        // 精灵与精灵不共享：第二个精灵开新顺序 2。
+        assert_eq!(scene.monochrome_sprites[1].order, 2);
+    }
+
+    /// 图层关闭后才统一落地：层内图元共用一个顺序，整层可与他方共享；
+    /// 空层不占顺序。
+    #[test]
+    fn test_layers_insert_deferred_and_share_order() {
+        let mut scene = Scene::default();
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.push_layer();
+        scene.insert_primitive(quad_at(5., 5., 10., 10.));
+        scene.insert_primitive(quad_at(6., 6., 10., 10.));
+        scene.pop_layer();
+        // 空图层不插入排序树，也不产生图元。
+        scene.push_layer();
+        scene.pop_layer();
+        scene.finish();
+
+        assert_eq!(
+            scene.quads.iter().map(|q| q.order).collect::<Vec<_>>(),
+            vec![1, 1, 1],
+            "图层的并集边界与第一个 Quad 相交且种类安全，层内图元应共享顺序 1"
+        );
+        assert_eq!(scene.batches().count(), 1);
+    }
+
+    /// 嵌套图层在最外层关闭时统一落地；图元在图层内不再即时查询排序树。
+    #[test]
+    fn test_nested_layers_flush_on_outermost_pop() {
+        let mut scene = Scene::default();
+        scene.push_layer();
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.push_layer();
+        scene.insert_primitive(quad_at(40., 40., 10., 10.));
+        scene.pop_layer();
+        // 内层关闭后尚未落地：图元此时还没进入种类列表。
+        assert!(scene.quads.is_empty(), "最外层未关闭前不应落地");
+        scene.pop_layer();
+        scene.finish();
+
+        // 外层只含第一个 Quad，内层只含第二个；两块边界不相交 → 共享顺序 1。
+        assert_eq!(
+            scene.quads.iter().map(|q| q.order).collect::<Vec<_>>(),
+            vec![1, 1]
+        );
+    }
+
+    /// 嵌套图层：子层的图元必须叠在外层「f 后续绘制」的图元之上
+    /// （`Window::paint_layer` 文档承诺）。三者边界两两重叠以强制 order 竞争。
+    #[test]
+    fn test_nested_layer_child_sits_above_outer_later_sibling() {
+        let mut scene = Scene::default();
+        scene.push_layer(); // 外层 f
+        scene.insert_primitive(quad_at(0., 0., 10., 10.)); // A：f 内、子层之前
+        scene.push_layer(); // 子层 g
+        scene.insert_primitive(quad_at(2., 2., 10., 10.)); // B：子层内，与 A/C 重叠
+        scene.pop_layer(); // g 关闭
+        scene.insert_primitive(quad_at(4., 4., 10., 10.)); // C：f 内、子层之后，与 B 重叠
+        scene.pop_layer(); // 外层关闭
+        scene.finish();
+
+        // 找回每个身份（靠 origin.x）的绘制序（quads 已按绘制序排好）。
+        let x_to_draw_index = |x: f32| {
+            scene
+                .quads
+                .iter()
+                .position(|q| (q.bounds.origin.x.0 - x).abs() < 0.01)
+                .expect("图元应存在")
+        };
+        let ia = x_to_draw_index(0.);
+        let ib = x_to_draw_index(2.);
+        let ic = x_to_draw_index(4.);
+        assert!(
+            ia < ic && ic < ib,
+            "绘制序应为 A < C < B（子层 B 叠在 f 后续的 C 之上），实际 A={ia}, C={ic}, B={ib}"
+        );
+    }
+
+    /// 构造带指定 order、以 `x` 作为身份标记的四边形（排序后靠 `bounds.origin.x` 认人）。
+    fn quad_with_order(order: u32, x: f32) -> Quad {
+        let mut quad = quad_at(x, 0., 10., 10.);
+        quad.order = order;
+        quad
+    }
+
+    fn quad_identity(quads: &[Quad]) -> Vec<(u32, f32)> {
+        quads
+            .iter()
+            .map(|quad| (quad.order, quad.bounds.origin.x.0))
+            .collect()
+    }
+
+    /// 就地置换排序必须与稳定 `sort_by_key` 逐位一致（含相等 order 的先后）。
+    #[test]
+    fn test_finish_sort_matches_stable_sort() {
+        // 刻意造出：逆序、重复 order、已有序、单元素等形态。
+        let cases: Vec<Vec<(u32, f32)>> = vec![
+            vec![(3, 30.), (1, 10.), (2, 20.)],
+            vec![(1, 10.), (1, 11.), (0, 0.), (1, 12.)],
+            vec![(0, 0.), (1, 10.), (2, 20.)],
+            vec![(7, 70.)],
+            vec![],
+            vec![(2, 20.), (2, 21.), (1, 10.), (2, 22.), (1, 11.), (0, 0.)],
+        ];
+
+        for case in cases {
+            let mut scene = Scene::default();
+            scene.quads = case
+                .iter()
+                .map(|&(order, x)| quad_with_order(order, x))
+                .collect();
+            let mut expected = scene.quads.clone();
+            expected.sort_by_key(|quad| quad.order);
+
+            scene.finish();
+
+            assert_eq!(
+                quad_identity(&scene.quads),
+                quad_identity(&expected),
+                "输入 {case:?} 的排序结果必须与稳定排序一致"
+            );
+        }
+    }
+
+    /// 重复排序（finish 连调）不得改变结果，也不得破坏深度赋值。
+    #[test]
+    fn test_finish_is_idempotent() {
+        let mut scene = Scene::default();
+        scene.quads = vec![
+            quad_with_order(2, 20.),
+            quad_with_order(0, 0.),
+            quad_with_order(1, 10.),
+            quad_with_order(1, 11.),
+        ];
+        scene.finish();
+        let once = quad_identity(&scene.quads);
+        let depths = scene
+            .quads
+            .iter()
+            .map(|quad| quad.depth)
+            .collect::<Vec<_>>();
+
+        scene.finish();
+
+        assert_eq!(quad_identity(&scene.quads), once);
+        assert_eq!(
+            scene
+                .quads
+                .iter()
+                .map(|quad| quad.depth)
+                .collect::<Vec<_>>(),
+            depths,
+            "第二次 finish 必须给出同样的深度"
+        );
+    }
+
+    /// 置换可能包含多个环：直接验证 `sort_in_place` 的搬移逻辑。
+    #[test]
+    fn test_sort_in_place_follows_multiple_cycles() {
+        // 键 = 值本身；输入构成 (0 1 2)(3 4) 两个环。
+        let mut values = vec![1u32, 2, 0, 4, 3];
+        let mut keys = Vec::new();
+        sort_in_place(&mut values, &mut keys, |value| (*value, 0));
+        assert_eq!(values, vec![0, 1, 2, 3, 4]);
+
+        // 已经有序时不改动、也不清空复用缓冲之外的语义（幂等）。
+        let mut values = vec![0u32, 1, 2];
+        sort_in_place(&mut values, &mut keys, |value| (*value, 0));
+        assert_eq!(values, vec![0, 1, 2]);
+    }
+
+    /// 精灵键是 `(order, texture_id)`，稳定性同样要保住（决定批次内绘制顺序）。
+    #[test]
+    fn test_sprite_sort_is_stable_across_texture_groups() {
+        let mut scene = Scene::default();
+        scene.monochrome_sprites = vec![
+            sprite(2, 1, 21),
+            sprite(1, 1, 11),
+            sprite(2, 0, 20),
+            sprite(1, 0, 10),
+            sprite(2, 1, 22),
+        ];
+        scene.finish();
+
+        let actual = scene
+            .monochrome_sprites
+            .iter()
+            .map(|sprite| {
+                (
+                    sprite.order,
+                    sprite.tile.texture_id.index,
+                    sprite.tile.tile_id.0,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual,
+            vec![(1, 0, 10), (1, 1, 11), (2, 0, 20), (2, 1, 21), (2, 1, 22)],
+            "同键精灵必须保持插入顺序"
+        );
+    }
+}
+
+#[cfg(test)]
+mod animation_tests {
+    use super::*;
+    use crate::{Hsla, TimedTransformation, Transformation, hsla, point, px, size};
+
+    fn animated_sprite(color: Hsla) -> MonochromeSprite {
+        MonochromeSprite {
+            order: 0,
+            animation: SpriteAnimationId::NONE,
+            bounds: Bounds {
+                origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                size: size(ScaledPixels(8.0), ScaledPixels(8.0)),
+            },
+            content_mask: ContentMask {
+                bounds: Bounds {
+                    origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                    size: size(ScaledPixels(100.0), ScaledPixels(100.0)),
+                },
+            },
+            color,
+            tile: AtlasTile {
+                texture_id: crate::AtlasTextureId {
+                    index: 0,
+                    kind: crate::AtlasTextureKind::Monochrome,
+                },
+                tile_id: crate::TileId(1),
+                padding: 0,
+                bounds: Bounds {
+                    origin: point(crate::DevicePixels(0), crate::DevicePixels(0)),
+                    size: size(crate::DevicePixels(8), crate::DevicePixels(8)),
+                },
+            },
+            transformation: TransformationMatrix::default(),
+        }
+    }
+
+    /// 场景级动画：插入后 sprite 带动画 id；advance 只改矩阵与 alpha；
+    /// finish 排序后动画仍指向自己的精灵。
+    #[test]
+    fn advance_animations_moves_sprite_without_rebuild() {
+        use std::time::Duration;
+
+        let mut scene = Scene::default();
+        let mut sprite = animated_sprite(Hsla::default());
+        // 静态底色（动画 alpha 之前）。
+        sprite.color = crate::hsla(0.0, 0.0, 0.0, 1.0);
+        let animation = TimedTransformation::rotation(Duration::from_secs(1), Default::default());
+        scene.insert_animated_sprite(
+            sprite,
+            SpriteAnimation::new(animation, point(px(4.), px(4.)), 1.0),
+        );
+        assert_eq!(scene.monochrome_sprites.len(), 1);
+        assert_ne!(
+            scene.monochrome_sprites[0].animation,
+            SpriteAnimationId::NONE
+        );
+
+        // 推进 1/4 个周期 → 旋转 90°（矩阵变化），alpha 仍 1。
+        scene.finish();
+        scene.advance_animations(Duration::from_millis(250));
+        let sprite = &scene.monochrome_sprites[0];
+        assert!(
+            sprite.transformation.rotation_scale[0][1].abs() > 0.5,
+            "1/4 周期应转 90°"
+        );
+        assert!(sprite.color.a >= 0.99);
+        // 没有动画的精灵 id 保持 NONE。
+        let plain = animated_sprite(Hsla::default());
+        assert_eq!(plain.animation, SpriteAnimationId::NONE);
+    }
+
+    /// 动画 alpha 合成进精灵颜色（底色 × alpha）。
+    #[test]
+    fn advance_animations_applies_alpha() {
+        use std::time::Duration;
+
+        let mut scene = Scene::default();
+        let animation = TimedTransformation::new(Duration::from_secs(2))
+            .from(Default::default())
+            .to(Transformation::alpha(0.0));
+        let mut sprite = animated_sprite(hsla(0.0, 0.0, 0.0, 1.0));
+        sprite.color = hsla(0.0, 0.0, 0.0, 1.0);
+        scene.insert_animated_sprite(
+            sprite,
+            SpriteAnimation::new(animation, point(px(4.), px(4.)), 1.0),
+        );
+        scene.finish();
+
+        // 半个周期（1s）→ alpha = 0.5。
+        scene.advance_animations(Duration::from_secs(1));
+        assert!(scene.monochrome_sprites[0].color.a < 0.6, "alpha 应 ≈ 0.5");
+    }
+
+    /// 动画 id 越界（图元被裁掉）时 advance 安全跳过。
+    #[test]
+    fn advance_animations_skips_missing_sprite() {
+        use std::time::Duration;
+
+        let mut scene = Scene::default();
+        let animation = TimedTransformation::rotation(Duration::from_secs(1), Default::default());
+        // 直接塞一条指向不存在精灵的动画（模拟插入失败）。
+        scene.animations.push(SpriteAnimation {
+            transformation: animation,
+            center: point(px(0.), px(0.)),
+            scale_factor: 1.0,
+            base_color: Hsla::default(),
+            sprite_index: 99,
+        });
+        scene.advance_animations(Duration::from_millis(100)); // 不 panic
+    }
+
+    /// 无动画时 animation_frame_interval 为 None；with_max_fps 生效。
+    #[test]
+    fn animation_frame_interval_reflects_scene() {
+        use std::time::Duration;
+
+        let mut scene = Scene::default();
+        assert!(scene.animation_frame_interval().is_none());
+        let animation = TimedTransformation::new(Duration::from_secs(1)).with_max_fps(15.0);
+        let sprite = animated_sprite(Hsla::default());
+        scene.insert_animated_sprite(
+            sprite,
+            SpriteAnimation::new(animation, point(px(0.), px(0.)), 1.0),
+        );
+        let interval = scene.animation_frame_interval().expect("应有间隔");
+        assert!((interval.as_secs_f32() - 1.0 / 15.0).abs() < 1e-4);
     }
 }

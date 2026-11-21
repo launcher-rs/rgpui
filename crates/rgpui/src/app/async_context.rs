@@ -130,6 +130,7 @@ impl AppContext for AsyncApp {
         lock.read_entity(handle, callback)
     }
 
+    #[track_caller]
     fn update_window<T, F>(&mut self, window: AnyWindowHandle, f: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T,
@@ -349,12 +350,16 @@ impl AsyncWindowContext {
     }
 
     /// [`App::update_window`] 的便捷方法。
+    #[inline(always)]
+    #[track_caller]
     pub fn update<R>(&mut self, update: impl FnOnce(&mut Window, &mut App) -> R) -> Result<R> {
         self.app
             .update_window(self.window, |_, window, cx| update(window, cx))
     }
 
     /// [`App::update_window`] 的便捷方法。
+    #[inline(always)]
+    #[track_caller]
     pub fn update_root<R>(
         &mut self,
         update: impl FnOnce(AnyView, &mut Window, &mut App) -> R,
@@ -493,6 +498,7 @@ impl AppContext for AsyncWindowContext {
         self.app.read_entity(handle, read)
     }
 
+    #[track_caller]
     fn update_window<T, F>(&mut self, window: AnyWindowHandle, update: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T,

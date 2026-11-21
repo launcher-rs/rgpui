@@ -80,7 +80,9 @@ fn apply_contrast_and_gamma_correction3(sample: vec3<f32>, color: vec3<f32>, enh
 struct GlobalParams {
     viewport_size: vec2<f32>,
     premultiplied_alpha: u32,
+    quad_count: u32,
     pad: u32,
+    pad2: u32,
 }
 
 struct GammaParams {
@@ -210,6 +212,28 @@ fn distance_from_clip_rect_transformed(unit_vertex: vec2<f32>, bounds: Bounds, c
     let position = unit_vertex * vec2<f32>(bounds.size) + bounds.origin;
     let transformed = transpose(transform.rotation_scale) * position + transform.translation;
     return distance_from_clip_rect_impl(transformed, clip_bounds);
+}
+
+// 深度缓冲 anti-overdraw：退化位置用于把不参与某通道的实例空转掉。
+const CULLED_POSITION: vec4<f32> = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+
+// 把单位顶点按 content_mask 做几何裁剪（不透明通道要写深度，
+// 不能靠片元阶段的 clip_distances 丢弃）。
+struct ClippedVertex {
+    position: vec2<f32>,
+    // 裁剪后角点相对原 bounds 的比例。
+    unit_vertex: vec2<f32>,
+}
+
+fn clip_to_mask(unit_vertex: vec2<f32>, bounds: Bounds, mask: Bounds) -> ClippedVertex {
+    let origin = max(bounds.origin, mask.origin);
+    let corner = min(bounds.origin + bounds.size, mask.origin + mask.size);
+    let size = max(corner - origin, vec2<f32>(0.0));
+
+    var result: ClippedVertex;
+    result.position = origin + unit_vertex * size;
+    result.unit_vertex = (result.position - bounds.origin) / bounds.size;
+    return result;
 }
 
 // https://gamedev.stackexchange.com/questions/92015/optimized-linear-to-srgb-glsl
@@ -795,7 +819,22 @@ struct Quad {
     continuous_corners: u32,
     transform: TransformationMatrix,
     blend_mode: u32,
-    pad_quad: u32,
+    depth: f32,
+}
+
+// 实心、完全不透明、无圆角无边框的矩形：由不透明通道绘制（开深度写），
+// quad 通道直接剔除。深度值由核心 `Scene::finish` 逐实例写入 quad.depth。
+fn is_opaque_rectangle(quad: Quad) -> bool {
+    return quad.background.tag == 0u
+        && quad.background.solid.a >= 1.0
+        && quad.corner_radii.top_left == 0.0
+        && quad.corner_radii.top_right == 0.0
+        && quad.corner_radii.bottom_left == 0.0
+        && quad.corner_radii.bottom_right == 0.0
+        && quad.border_widths.top == 0.0
+        && quad.border_widths.right == 0.0
+        && quad.border_widths.bottom == 0.0
+        && quad.border_widths.left == 0.0;
 }
 @group(1) @binding(0) var<storage, read> b_quads: array<Quad>;
 
@@ -821,7 +860,13 @@ fn vs_quad(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
     let local_position = unit_vertex * quad.bounds.size + quad.bounds.origin;
 
     var out = QuadVarying();
+    if (is_opaque_rectangle(quad)) {
+        out.position = CULLED_POSITION;
+        return out;
+    }
     out.position = to_device_position_transformed(unit_vertex, quad.bounds, quad.transform);
+    // 深度缓冲 anti-overdraw：混合通道写自己的深度（不写深度值以外的语义不变）。
+    out.position.z = quad.depth;
 
     let gradient = prepare_gradient_color(
         quad.background.tag,
@@ -1225,6 +1270,40 @@ fn fmod(a: f32, b: f32) -> f32 {
     return a - b * trunc(a / b);
 }
 
+// --- opaque quads --- //
+
+struct OpaqueQuadVarying {
+    @builtin(position) position: vec4<f32>,
+    @location(0) @interpolate(flat) color: vec4<f32>,
+}
+
+// 从前往后画全部 quad（实例索引反向映射到 quad 下标），顶点阶段只留下
+// 不透明矩形：先画近的，后面的像素在深度测试处直接失败、不进片元着色器。
+@vertex
+fn vs_opaque_quad(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) instance_id: u32) -> OpaqueQuadVarying {
+    let quad_id = globals.quad_count - 1u - instance_id;
+    let quad = b_quads[quad_id];
+
+    var out = OpaqueQuadVarying();
+    if (!is_opaque_rectangle(quad)) {
+        out.position = CULLED_POSITION;
+        out.color = vec4<f32>(0.0);
+        return out;
+    }
+
+    let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
+    let clipped = clip_to_mask(unit_vertex, quad.bounds, quad.content_mask);
+    out.position = to_device_position_impl(clipped.position);
+    out.position.z = quad.depth;
+    out.color = blend_color(hsla_to_rgba(quad.background.solid), 1.0);
+    return out;
+}
+
+@fragment
+fn fs_opaque_quad(input: OpaqueQuadVarying) -> @location(0) vec4<f32> {
+    return input.color;
+}
+
 // --- shadows --- //
 
 struct Shadow {
@@ -1322,103 +1401,181 @@ fn fs_shadow(input: ShadowVarying) -> @location(0) vec4<f32> {
     return blend_color(input.color, alpha);
 }
 
-// --- path rasterization --- //
+// --- path tiles --- //
 
-struct PathRasterizationVertex {
-    xy_position: vec2<f32>,
-    st_position: vec2<f32>,
-    color: Background,
-    bounds: Bounds,
+// Slug 式逐像素环绕数填充：CPU 把曲线分桶成瓦片（见核心 path_winding.rs），
+// 每瓦片一个实例；着色器沿像素中心向左、向上投射线，统计与瓦片所列曲线的
+// 交叉得环绕数，半像素内的交叉按 Slug 公式计入部分覆盖。
+
+struct PathTile {
+    paint: u32,
+    curve_start: u32,
+    curve_count: u32,
+    backdrop: i32,
+    top_left: vec2<f32>,
+    bottom_right: vec2<f32>,
+    reference: vec2<f32>,
+    curves_top_left: vec2<f32>,
+    curves_bottom_right: vec2<f32>,
 }
 
-@group(1) @binding(0) var<storage, read> b_path_vertices: array<PathRasterizationVertex>;
+struct PathCurve {
+    p0: vec2<f32>,
+    p1: vec2<f32>,
+    a: vec2<f32>,
+    b: vec2<f32>,
+    sign: f32,
+    pad: u32,
+}
 
-struct PathRasterizationVarying {
+struct PathPaint {
+    bounds: Bounds,
+    content_mask: Bounds,
+    color: Background,
+    even_odd: u32,
+    pad: u32,
+}
+
+@group(1) @binding(0) var<storage, read> b_path_tiles: array<PathTile>;
+@group(1) @binding(1) var<storage, read> b_path_curves: array<PathCurve>;
+@group(1) @binding(2) var<storage, read> b_path_paints: array<PathPaint>;
+
+struct PathTileVarying {
     @builtin(position) position: vec4<f32>,
-    @location(0) st_position: vec2<f32>,
-    @location(1) @interpolate(flat) vertex_id: u32,
-    //TODO: use `clip_distance` once Naga supports it
-    @location(3) clip_distances: vec4<f32>,
+    @location(0) @interpolate(flat) tile_id: u32,
+    @location(1) curve_box: vec4<f32>,
 }
 
 @vertex
-fn vs_path_rasterization(@builtin(vertex_index) vertex_id: u32) -> PathRasterizationVarying {
-    let v = b_path_vertices[vertex_id];
+fn vs_path_tile(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) instance_id: u32) -> PathTileVarying {
+    let tile = b_path_tiles[instance_id];
+    let paint = b_path_paints[tile.paint];
 
-    var out = PathRasterizationVarying();
-    out.position = to_device_position_impl(v.xy_position);
-    out.st_position = v.st_position;
-    out.vertex_id = vertex_id;
-    out.clip_distances = distance_from_clip_rect_impl(v.xy_position, v.bounds);
+    // 瓦片矩形直接钳到内容蒙版内（等价于几何裁剪，无须 clip distance）。
+    let mask_top_left = paint.content_mask.origin;
+    let mask_bottom_right = paint.content_mask.origin + paint.content_mask.size;
+    let top_left = clamp(tile.top_left, mask_top_left, mask_bottom_right);
+    let bottom_right = clamp(tile.bottom_right, top_left, mask_bottom_right);
+    let position = vec2<f32>(
+        select(top_left.x, bottom_right.x, (vertex_id & 1u) != 0u),
+        select(top_left.y, bottom_right.y, (vertex_id & 2u) != 0u),
+    );
+
+    var out = PathTileVarying();
+    out.position = to_device_position_impl(position);
+    out.tile_id = instance_id;
+    out.curve_box = vec4<f32>(tile.curves_top_left, tile.curves_bottom_right);
     return out;
 }
 
+// 解 a*t^2 + b*t + c = 0，取单调段上位于 [0, 1] 的根。
+fn monotone_quadratic_root(a: f32, b: f32, c: f32, direction: f32) -> f32 {
+    let discriminant = max(b * b - 4.0 * a * c, 0.0);
+    let denominator = b + direction * sqrt(discriminant);
+    if (denominator == 0.0) {
+        return 0.0;
+    }
+    return saturate(-2.0 * c / denominator);
+}
+
+// 覆盖度估算改编自 https://github.com/EricLengyel/Slug/blob/be3c13eb7d63f9e8aa5c583e42d92c374cb91d98/SlugPixelShader.hlsl
+// Copyright (c) 2017 Eric Lengyel.
+// Licensed under the MIT license.
+
+// 沿像素的向左与向上射线累计曲线的环绕数贡献。与 Slug 相同，半像素内的
+// 交叉按比例计入。
+fn add_curve_winding(curve: PathCurve, center: vec2<f32>, winding: ptr<function, vec2<f32>>,
+    weight: ptr<function, vec2<f32>>) {
+    let min_x = min(curve.p0.x, curve.p1.x);
+    let max_x = max(curve.p0.x, curve.p1.x);
+
+    if (curve.p0.y <= center.y && center.y < curve.p1.y) {
+        if (max_x <= center.x - 0.5) {
+            (*winding).x += curve.sign;
+        } else {
+            let t = monotone_quadratic_root(curve.a.y, curve.b.y, curve.p0.y - center.y, 1.0);
+            let x = (curve.a.x * t + curve.b.x) * t + curve.p0.x;
+            let distance = center.x - x;
+            (*winding).x += curve.sign * saturate(distance + 0.5);
+            (*weight).x = max((*weight).x, saturate(1.0 - 2.0 * abs(distance)));
+        }
+    }
+
+    if (min_x <= center.x && center.x < max_x) {
+        let direction = select(-1.0, 1.0, curve.p1.x > curve.p0.x);
+        if (curve.p1.y <= center.y - 0.5) {
+            (*winding).y -= curve.sign * direction;
+        } else if (curve.p0.y < center.y + 0.5) {
+            let t = monotone_quadratic_root(curve.a.x, curve.b.x, curve.p0.x - center.x, direction);
+            let y = (curve.a.y * t + curve.b.y) * t + curve.p0.y;
+            let distance = center.y - y;
+            (*winding).y -= curve.sign * direction * saturate(distance + 0.5);
+            (*weight).y = max((*weight).y, saturate(1.0 - 2.0 * abs(distance)));
+        }
+    }
+}
+
+// backdrop 给出未列入曲线沿「瓦片参考角向左射线」的环绕数。我们需要当前
+// 像素处两条射线上的环绕数。由于路径闭合，未列入曲线的链条只能在已列入
+// 曲线的端点处开始或结束，所以按「参考角与像素之间的已列入端点」逐个修正
+// backdrop 即可得到当前像素的环绕数。
+fn correct_for_endpoint(endpoint: vec2<f32>, step: f32, reference: vec2<f32>, center: vec2<f32>,
+    winding: ptr<function, vec2<f32>>) {
+    if (endpoint.x <= reference.x) {
+        (*winding).x -= step * (f32(endpoint.y <= center.y) - f32(endpoint.y <= reference.y));
+    }
+    if (endpoint.y <= reference.y && endpoint.x <= center.x) {
+        (*winding).y += step;
+    }
+}
+
 @fragment
-fn fs_path_rasterization(input: PathRasterizationVarying) -> @location(0) vec4<f32> {
-    let dx = dpdx(input.st_position);
-    let dy = dpdy(input.st_position);
-    if (any(input.clip_distances < vec4<f32>(0.0))) {
+fn fs_path_tile(input: PathTileVarying) -> @location(0) vec4<f32> {
+    let center = floor(input.position.xy) + 0.5;
+    let tile = b_path_tiles[input.tile_id];
+    let paint = b_path_paints[tile.paint];
+
+    // 曲线包围盒之外环绕数恒为 backdrop（且瓦片矩形已保证该处必被填充）；
+    // 纯色可提前返回，渐变仍需按位置取色。
+    if (paint.color.tag == 0u
+        && (any(center < input.curve_box.xy) || any(center > input.curve_box.zw))) {
+        return blend_color(hsla_to_rgba(paint.color.solid), 1.0);
+    }
+
+    var winding = vec2<f32>(f32(tile.backdrop));
+    var weight = vec2<f32>(0.0);
+    for (var i = 0u; i < tile.curve_count; i++) {
+        let curve = b_path_curves[tile.curve_start + i];
+        if (min(curve.p0.x, curve.p1.x) >= center.x + 0.5) {
+            break;
+        }
+        if (curve.p0.y < center.y + 0.5) {
+            add_curve_winding(curve, center, &winding, &weight);
+            correct_for_endpoint(curve.p0, curve.sign, tile.reference, center, &winding);
+            correct_for_endpoint(curve.p1, -curve.sign, tile.reference, center, &winding);
+        }
+    }
+
+    // 两条射线各算得一个环绕数，按各自最近交叉点到像素中心的距离加权
+    // 合成覆盖度（Slug 技法）。
+    var coverage = max(
+        abs(dot(winding, weight)) / max(weight.x + weight.y, 1.0 / 65536.0),
+        min(abs(winding.x), abs(winding.y)));
+    if (paint.even_odd != 0u) {
+        coverage = 1.0 - abs(1.0 - fract(coverage * 0.5) * 2.0);
+    } else {
+        coverage = saturate(coverage);
+    }
+
+    if (coverage == 0.0) {
         return vec4<f32>(0.0);
     }
 
-    let v = b_path_vertices[input.vertex_id];
-    let background = v.color;
-    let bounds = v.bounds;
-
-    var alpha: f32;
-    if (length(vec2<f32>(dx.x, dy.x)) < 0.001) {
-        // If the gradient is too small, return a solid color.
-        alpha = 1.0;
-    } else {
-        let gradient = 2.0 * input.st_position.xx * vec2<f32>(dx.x, dy.x) - vec2<f32>(dx.y, dy.y);
-        let f = input.st_position.x * input.st_position.x - input.st_position.y;
-        let distance = f / length(gradient);
-        alpha = saturate(0.5 - distance);
-    }
-    let prepared_gradient = prepare_gradient_color(
-        background.tag,
-        background.color_space,
-        background.solid,
-        background.colors,
-    );
-    let color = gradient_color(background, input.position.xy, bounds,
-        prepared_gradient.solid, prepared_gradient.color0, prepared_gradient.color1, prepared_gradient.color2, prepared_gradient.color3);
-    return vec4<f32>(color.rgb * color.a * alpha, color.a * alpha);
-}
-
-// --- paths --- //
-
-struct PathSprite {
-    bounds: Bounds,
-}
-@group(1) @binding(0) var<storage, read> b_path_sprites: array<PathSprite>;
-
-struct PathVarying {
-    @builtin(position) position: vec4<f32>,
-    @location(0) texture_coords: vec2<f32>,
-}
-
-@vertex
-fn vs_path(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) instance_id: u32) -> PathVarying {
-    let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
-    let sprite = b_path_sprites[instance_id];
-    // Don't apply content mask because it was already accounted for when rasterizing the path.
-    let device_position = to_device_position(unit_vertex, sprite.bounds);
-    // For screen-space intermediate texture, convert screen position to texture coordinates
-    let screen_position = sprite.bounds.origin + unit_vertex * sprite.bounds.size;
-    let texture_coords = screen_position / globals.viewport_size;
-
-    var out = PathVarying();
-    out.position = device_position;
-    out.texture_coords = texture_coords;
-
-    return out;
-}
-
-@fragment
-fn fs_path(input: PathVarying) -> @location(0) vec4<f32> {
-    let sample = textureSample(t_sprite, s_sprite, input.texture_coords);
-    return sample;
+    let gradient = prepare_gradient_color(paint.color.tag, paint.color.color_space,
+        paint.color.solid, paint.color.colors);
+    let color = gradient_color(paint.color, input.position.xy, paint.bounds,
+        gradient.solid, gradient.color0, gradient.color1, gradient.color2, gradient.color3);
+    return blend_color(color, coverage);
 }
 
 // --- underlines --- //

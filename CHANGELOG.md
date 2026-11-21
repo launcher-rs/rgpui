@@ -4,6 +4,63 @@
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-21
+
+本版所有发布 crate 统一到 1.8.0。主线是上游借鉴批次 A–D 的渲染管线升级
+（路径 / 深度缓冲 / 批处理 / 部分重绘）与文本系统升级（UAX #14、大文档），
+完整对照与升级指南见 `docs/1.8-vs-1.7-upgrade.md`。
+
+### 新增
+
+- **环绕数路径渲染**（对齐 zed `ffe0fa29e4`）：`Path` 从 CPU 镶嵌三角形改为
+  Slug 式 GPU 逐像素环绕数填充（CPU 分桶瓦片 + backdrop），不再需要 4x MSAA
+  与中间纹理。上游实测 GPU 时间 −79%～−81%（rgpui 未复测）。
+- **深度缓冲 anti-overdraw**（对齐 zed `be07e43ea0`）：不透明矩形从前到后绘制 +
+  逐实例深度，混合通道深度剔除被遮挡图元。三后端（wgpu/DX/Metal）。
+- **Windows 软适配器部分重绘**（D4a–D4c，对齐 gpui-fast `3268abe`）：双 canvas
+  交替 + damage 矩形 scissor 重画 + 滚动块搬移，逐像素对拍验收后默认开启；
+  `RGPUI_PARTIAL_REDRAW=0` 可关闭。
+- **SVG 场景层变换动画**（对齐 zed `aff99ecc32`）：`Svg::with_timed_transformation`
+  + `TimedTransformation`，动画只推进场景矩阵与 alpha，不重绘视图；
+  `reduce_motion` 开启时静态绘制。
+- **UAX #14 软换行**（对齐 zed `f0210f1621`）：软换行候选断点改为 `icu_segmenter`
+  分段器口径（连字符后/URL 可断、emoji 序列不拆、禁则由 LB13 涵盖）。
+- **GutterStyle**：行号沟槽样式可配（宽度/颜色/字号/右边距）。
+- **大文档三件套**：软换行增量重换（`set_wrap_width` 只重换受影响行）、
+  f64 行顶累加（`RowTopY`，百万行不漂移）、9 位行号自适应。
+- **帧间隔可配置**：`WindowOptions::inactive_frame_interval` /
+  `thermal_frame_interval`（失焦 ≈30fps / 温控 ≈60fps，默认与旧硬编码一致）。
+- **借用诊断**：App 借用冲突 panic 带「尝试位置 + 已存在借用组起点」；
+  `AppContext::update_window` 全链路 `#[track_caller]`。
+- **sheet-grid**：合并单元格、列宽/行高拖拽、单元格内编辑、`ResetRowHeight`。
+- **输入**：公开折叠 API（`fold_all`/`unfold_all`/`fold_at_level`）、
+  IME 失焦结束组合、`GutterStyle`。
+
+### 变更
+
+- **`Path` 去泛型**：`Path<Pixels>` → `Path`（= `Arc<[PathCurve]>`），只能由
+  `PathBuilder` 构建；`Path::new`/`push_triangle`/`scale`/`build_path` 删除。
+- **`paint_layer(bounds, ...)` → `paint_layer(...)`**：边界由场景按图层内容
+  自动计算；`Scene::push_layer` 同步去 bounds 参数。
+- **`MonochromeSprite.pad` → `animation` 字段**（`SpriteAnimationId`）。
+- **依赖**：`lyon` → `lyon_path`（tessellation 不再使用）；新增
+  `tiny-skia-path`（描边/虚线展开为闭合轮廓）。
+- **软换行位置变化**：UAX #14 口径与旧 `is_word_char` 不同（连字符后/URL 可断
+  等）；软换行 CPU 变慢（本机基准：拉丁 3.6× / CJK 2.4×，`segment_str`
+  0.66 µs/行，上游自述同口径取舍）；C2 增量重换部分抵消。
+
+### 修复
+
+- 拖动让锁窗口覆盖一个 UI 帧周期（rgpui-term 刷屏时 UI 帧率错拍 ~27% → 恢复）。
+- Metal shader 的 `clip_distance` 聚合赋值与 `stage_in` 兼容性（macOS CI）。
+- Markdown 解析 panic 降级为纯文本段落（外部来源防御兜底）。
+- sheet-grid「键入即编辑」保留首字符：同一单元格绑定输入框时不再清空 `typed_char`，
+  仅在切换或退出编辑时清空。
+- SVG 场景层动画帧纳入三档帧节流；节流早退改用一次性 timer 延迟续帧，避免动画卡死。
+- opaque quad 与非 quad 图元的 z-order：三后端引入视口深度游标，非 quad 批按深度
+  测试剔除被不透明矩形遮挡的片元。
+- 二次审查完整记录与验证数据见 `docs/1.8-review-2026-11-21.md`。
+
 ## [1.7.0] - 2026-11-06
 
 本版所有发布 crate 统一到 1.7.0（`rgpui-3d` 此前单独发过 1.6.1，本版起与其他 crate 同步）。

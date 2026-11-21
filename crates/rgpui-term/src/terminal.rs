@@ -26,7 +26,7 @@ use std::{
     sync::{
         Arc,
         atomic::AtomicUsize,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -71,6 +71,21 @@ const MAX_SCROLL_HISTORY_LINES: usize = 100_000;
 static SYNC_LOCK_BUSY: AtomicBool = AtomicBool::new(false);
 static TRACE_KEY_EVENTS: AtomicUsize = AtomicUsize::new(0);
 static TRACE_KEY_INPUTS: AtomicUsize = AtomicUsize::new(0);
+
+/// 数据锁争用的 UI-解析心跳：`sync()` 每帧进门记一次「试图取锁」，
+/// 取到再记一次「取到了」；外联解析循环据此识别「UI 想画但被饿着」，
+/// 主动在锁外让出几毫秒（见 `external::external_loop` 的刷屏让锁）。
+#[derive(Default)]
+pub(crate) struct SyncStats {
+    pub(crate) attempts: AtomicU64,
+    pub(crate) successes: AtomicU64,
+    /// UI 正在拖滚动条：解析线程此时暂停，让 UI 独占数据锁。
+    /// 否则拖动帧与刷屏解析反复抢锁，表现成「动一段、卡一段」。
+    pub(crate) ui_dragging: AtomicBool,
+    /// 最近一次滚轮滚动的毫秒时间戳。滚轮是离散事件、没有按下/抬起，
+    /// 解析线程据此在滚动后的短暂窗口内也让出数据锁。
+    pub(crate) last_scroll_ms: AtomicU64,
+}
 
 /// 终端后端写通道：决定用户输入、OSC 应答与尺寸变化发往何处。
 enum PtyBackend {
@@ -166,6 +181,14 @@ enum InternalEvent {
     Resize(TerminalBounds),
     Clear,
     Scroll(AlacScroll),
+    /// 滚到指定的**绝对**回滚偏移量（滚动条拖动专用）。
+    ///
+    /// 与 [`InternalEvent::Scroll`] 的增量语义不同：增量要在入队时就换算，
+    /// 而换算基准 `last_content.display_offset` 只有等这一帧 `sync()` 成功
+    /// 才会更新。快速拖动时一帧里会积压多个拖动事件，它们全部按同一个旧基准
+    /// 换算、再依次叠加，结果就是内容冲过指针位置一大截再弹回来 —— 手感上
+    /// 正是「滑一段就卡住」。绝对目标天然幂等，重复应用不会过冲。
+    ScrollToOffset(usize),
     ScrollToAlacPoint(AlacPoint),
     SetSelection(Option<(Selection, AlacPoint)>),
     UpdateSelection(Point<Pixels>),
@@ -177,6 +200,17 @@ enum InternalEvent {
     },
     /// 在搜索结果间步进。
     SearchStep(AlacDirection),
+}
+
+/// 入队一个「滚到绝对偏移量」请求，并丢掉紧邻的上一个同类型请求。
+///
+/// 同一帧内连续拖动时，后一个目标直接覆盖前一个：中间那些位置本来就没人看
+/// 得见，留着只会让 `sync` 白算几遍增量。合并后一帧最多只做一次滚动。
+fn push_scroll_to_offset(events: &mut VecDeque<InternalEvent>, target_offset: usize) {
+    if matches!(events.back(), Some(InternalEvent::ScrollToOffset(_))) {
+        events.pop_back();
+    }
+    events.push_back(InternalEvent::ScrollToOffset(target_offset));
 }
 
 /// 终端内容搜索状态。
@@ -571,6 +605,7 @@ impl TerminalBuilder {
 
             let terminal = Terminal {
                 term,
+                sync_stats: Arc::new(SyncStats::default()),
                 pty_backend: PtyBackend::Local(Notifier(pty_tx)),
                 events: VecDeque::with_capacity(10),
                 last_content: TerminalContent::default(),
@@ -630,11 +665,17 @@ impl TerminalBuilder {
 
         let term = Arc::new(FairMutex::new(term));
 
-        let (feed_handle, writer, bound_rx) =
-            crate::external::spawn_feed_loop(term.clone(), ZedListener(events_tx));
+        // 让锁心跳要在解析循环拉起前就位：解析线程读、sync() 写。
+        let sync_stats = Arc::new(SyncStats::default());
+        let (feed_handle, writer, bound_rx) = crate::external::spawn_feed_loop(
+            term.clone(),
+            ZedListener(events_tx),
+            sync_stats.clone(),
+        );
 
         let terminal = Terminal {
             term,
+            sync_stats,
             pty_backend: PtyBackend::External(writer),
             events: VecDeque::with_capacity(10),
             last_content: TerminalContent::default(),
@@ -774,6 +815,8 @@ pub struct Terminal {
     search: Option<TerminalSearch>,
     /// 输出轮次：每次新输出到达或网格 resize 时递增，用于判定搜索高亮是否漂移
     output_revision: u64,
+    /// UI 帧与解析线程的数据锁争用心跳（外联后端的刷屏让锁读它）
+    sync_stats: Arc<SyncStats>,
 }
 
 impl Terminal {
@@ -937,7 +980,11 @@ impl Terminal {
         // 不会因此停在不一致画面上：外联循环在解析完成、释放数据锁之后才发
         // `Wakeup`（同步输出超时路径同样先解锁再发），那一帧的 notify 会重新
         // 渲染并再次尝试取锁；纯同步输出缓冲期间本就没有可见变化。
+        self.sync_stats.attempts.fetch_add(1, Ordering::Relaxed);
         let Some(mut terminal) = term.try_lock_unfair() else {
+            if crate::terminal_element::trace_enabled() {
+                crate::terminal_element::note_sync_early();
+            }
             if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
                 && !SYNC_LOCK_BUSY.swap(true, Ordering::Relaxed)
             {
@@ -945,15 +992,26 @@ impl Terminal {
             }
             return;
         };
+        self.sync_stats.successes.fetch_add(1, Ordering::Relaxed);
         if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
             && SYNC_LOCK_BUSY.swap(false, Ordering::Relaxed)
         {
             eprintln!("[rt-trace] UI sync acquired data lock again");
         }
 
+        let sync_t0 = if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         while let Some(event) = self.events.pop_front() {
             self.process_terminal_event(&event, &mut terminal, cx);
         }
+        let events_left = if sync_t0.is_some() {
+            self.events.len()
+        } else {
+            0
+        };
 
         // 渲染前先按输出轮次重定位搜索高亮（新输出/重排会让网格坐标漂移）。
         self.refresh_search(&mut terminal, cx);
@@ -968,6 +1026,12 @@ impl Terminal {
 
         drop(terminal);
         self.notify_middlewares_output(&self.last_content);
+        if let Some(t0) = sync_t0 {
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            if ms > 2.0 {
+                eprintln!("[rt-trace] UI sync took {ms:.1}ms events_left={events_left}");
+            }
+        }
     }
 
     fn make_content(term: &Term<ZedListener>, last_content: &TerminalContent) -> TerminalContent {
@@ -981,11 +1045,11 @@ impl Terminal {
             cell: ic.cell.clone(),
         }));
 
-        let selection_text = if content.selection.is_some() {
-            term.selection_to_string()
-        } else {
-            None
-        };
+        // 选区文本只在真正复制时按需要算（见 process_terminal_event 的 Copy 分支）。
+        // 早先这里每帧都调 selection_to_string()：拖动选区时 selection 一直存在，
+        // 选区随拖动越拉越大，每帧重拷整段（长日志可达数 MB），帧率暴跌，
+        // 表现成「拖一段卡一下、再能动一段」。渲染只需要 selection 的坐标范围。
+        let selection_text = None;
 
         TerminalContent {
             cells,
@@ -1039,14 +1103,31 @@ impl Terminal {
             .push_back(InternalEvent::Scroll(AlacScroll::Bottom));
     }
 
+    /// 拖动滚动条期间请解析线程暂停，让 UI 独占数据锁。
+    ///
+    /// 拖动的每一帧都要重排可见网格，若同时被刷屏解析抢锁，就会一顿一顿。
+    /// 暂停期间远端字节留在 feed 通道里，松手后照常解析，不会丢日志。
+    pub fn set_ui_dragging(&self, dragging: bool) {
+        self.sync_stats
+            .ui_dragging
+            .store(dragging, Ordering::Relaxed);
+    }
+
+    /// 滚轮滚动打一个时间戳；解析线程在滚动后的一小段窗口内暂停。
+    pub fn note_ui_scroll(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        self.sync_stats.last_scroll_ms.store(now, Ordering::Relaxed);
+    }
+
     /// 滚动到滚动历史中的特定显示偏移量。
+    ///
+    /// 只入队、不在 UI 线程上取数据锁：拖动每帧都会调用，若在这里阻塞等锁，
+    /// 拖动就会被刷屏解析拖住。真正换算成增量发生在 `sync()` 持锁之后。
     pub fn scroll_to_offset(&mut self, target_offset: usize) {
-        let current = self.last_content.display_offset;
-        let delta = target_offset as i32 - current as i32;
-        if delta != 0 {
-            self.events
-                .push_back(InternalEvent::Scroll(AlacScroll::Delta(delta)));
-        }
+        push_scroll_to_offset(&mut self.events, target_offset);
     }
 
     /// 滚动到终端网格中的特定点。
@@ -1638,6 +1719,15 @@ impl Terminal {
             InternalEvent::Scroll(scroll) => {
                 term.scroll_display(*scroll);
             }
+            InternalEvent::ScrollToOffset(target) => {
+                // 基准取网格**当前**的偏移量，而不是上一帧快照：一帧里积压的多个
+                // 拖动事件都落到同一个目标上，不会层层叠加冲过头。
+                let current = term.grid().display_offset() as i32;
+                let delta = *target as i32 - current;
+                if delta != 0 {
+                    term.scroll_display(AlacScroll::Delta(delta));
+                }
+            }
             InternalEvent::ScrollToAlacPoint(point) => {
                 term.scroll_to_point(*point);
             }
@@ -1954,6 +2044,33 @@ mod tests {
     };
 
     use super::*;
+
+    /// 连续拖动只保留最后一个目标，不会把一帧内的多次拖动叠成多个事件。
+    #[test]
+    fn scroll_to_offset_coalesces_within_one_frame() {
+        let mut events: VecDeque<InternalEvent> = VecDeque::new();
+        push_scroll_to_offset(&mut events, 10);
+        push_scroll_to_offset(&mut events, 40);
+        push_scroll_to_offset(&mut events, 90);
+
+        assert_eq!(events.len(), 1, "同一帧的多次拖动应合并成一次");
+        match events.front() {
+            Some(InternalEvent::ScrollToOffset(target)) => assert_eq!(*target, 90),
+            _ => panic!("队列里应当是 ScrollToOffset"),
+        }
+    }
+
+    /// 合并只在「紧邻的上一个」是同类型时才发生：中间夹了别的动作（复制、
+    /// 清屏等）就不能吞掉，否则会打乱用户操作的先后顺序。
+    #[test]
+    fn scroll_to_offset_does_not_swallow_other_events() {
+        let mut events: VecDeque<InternalEvent> = VecDeque::new();
+        push_scroll_to_offset(&mut events, 10);
+        events.push_back(InternalEvent::Copy(Some(true)));
+        push_scroll_to_offset(&mut events, 90);
+
+        assert_eq!(events.len(), 3);
+    }
 
     /// 构造默认网格（100 列 ×6 行）的 Term，并注入原始字节。
     fn term_with(input: &[u8]) -> Arc<FairMutex<Term<ZedListener>>> {

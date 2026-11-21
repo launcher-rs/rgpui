@@ -28,7 +28,7 @@
 //! **本版暂缓**（后续增补）：触摸 / 数位板事件接入
 //! （现由 [`crate::Platform`] 的指针事件驱动）。
 
-use lyon::path::{LineCap, LineJoin};
+use lyon_path::{LineCap, LineJoin};
 
 use crate::canvas_a11y::{CanvasNode, CanvasSemantics};
 use crate::{
@@ -930,7 +930,7 @@ fn stroke_semantics(index: usize, stroke: &Stroke) -> Option<CanvasNode> {
 }
 
 /// 把采样点平滑成路径：中点二次贝塞尔（每段以中点为界，控制点取原采样点）。
-pub fn stroke_path(points: &[InkPoint], width: Pixels) -> Option<Path<Pixels>> {
+pub fn stroke_path(points: &[InkPoint], width: Pixels) -> Option<Path> {
     if points.is_empty() {
         return None;
     }
@@ -963,7 +963,7 @@ pub fn stroke_path(points: &[InkPoint], width: Pixels) -> Option<Path<Pixels>> {
 /// 与 [`stroke_path`] 的中点二次贝塞尔近似相比，Catmull-Rom 穿过全部采样点
 /// （控制点 `p1 + (p2 - p0) / 6`、`p2 - (p3 - p1) / 6`），曲线更贴合原始笔迹；
 /// 两端按端点复制处理（`p0 = p1` / `p3 = p2`）。
-pub fn catmull_rom_path(points: &[InkPoint], width: Pixels) -> Option<Path<Pixels>> {
+pub fn catmull_rom_path(points: &[InkPoint], width: Pixels) -> Option<Path> {
     if points.is_empty() {
         return None;
     }
@@ -1042,7 +1042,7 @@ pub fn pressure_width(base: Pixels, pressure: f32) -> Pixels {
 ///
 /// 压感全为 `1.0`（鼠标输入）或点数不超过 2 时退化为单条平滑的 [`stroke_path`]，
 /// 不产生额外开销；带压感时按线段拆分，相邻段靠圆头自然衔接。
-pub fn stroke_paths(points: &[InkPoint], width: Pixels) -> Vec<Path<Pixels>> {
+pub fn stroke_paths(points: &[InkPoint], width: Pixels) -> Vec<Path> {
     if points.is_empty() {
         return Vec::new();
     }
@@ -1074,7 +1074,7 @@ pub fn stroke_paths(points: &[InkPoint], width: Pixels) -> Vec<Path<Pixels>> {
 /// 半透明笔画（荧光笔、整层不透明度）仍走等宽单路径：逐段圆头在接缝处叠加会加深颜色，
 /// 出现「串珠」；等宽荧光笔也更接近真实马克笔。
 fn paint_stroke(window: &mut Window, points: &[InkPoint], width: Pixels, color: Hsla) {
-    let paths: Vec<Path<Pixels>> = if color.a >= 1.0 {
+    let paths: Vec<Path> = if color.a >= 1.0 {
         stroke_paths(points, width)
     } else {
         stroke_path(points, width).into_iter().collect()
@@ -1085,7 +1085,7 @@ fn paint_stroke(window: &mut Window, points: &[InkPoint], width: Pixels, color: 
 }
 
 /// 构造套索多边形路径（闭合、虚线）。
-fn polygon_path(polygon: &[Point<Pixels>], width: Pixels) -> Option<Path<Pixels>> {
+fn polygon_path(polygon: &[Point<Pixels>], width: Pixels) -> Option<Path> {
     if polygon.len() < 2 {
         return None;
     }

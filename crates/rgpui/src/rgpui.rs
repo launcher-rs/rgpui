@@ -147,6 +147,9 @@ mod keymap;
 /// 路径构建器 - 链式调用构建路径字符串的工具
 mod path_builder;
 
+/// 路径环绕数分桶 - Slug 式逐像素覆盖的 CPU 预处理（分桶成瓦片 + backdrop）
+mod path_winding;
+
 /// 性能基准测试工具 - 提供帧率和渲染性能的基准测试支持
 pub mod perf;
 
@@ -411,6 +414,9 @@ pub use fast::FrameStatsSnapshot;
 
 /// 视图系统 - 定义 View trait 和窗口视图的生命周期管理
 mod view;
+
+/// 帧率节流 - 失焦 / 温控两档省电帧间隔的判定（窗口内部使用）
+mod frame_throttle;
 
 /// 窗口系统 - 窗口创建、管理、渲染管线和事件处理
 mod window;
@@ -747,6 +753,7 @@ pub trait AppContext {
     ///
     /// 闭包接收三个参数：窗口的 AnyView、可变 Window 引用、可变 App 引用。
     /// 通过此方法可以修改窗口内容、替换根视图等。
+    #[track_caller]
     fn update_window<T, F>(&mut self, window: AnyWindowHandle, f: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T;

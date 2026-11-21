@@ -90,6 +90,7 @@ HTML/CSS 透传（均为序列化侧）：`rich_text` 导出 HTML 时 `paragraph
 | `is_no_break(c)` | `:108` | 胶连字符：NBSP `U+00A0`、数字空格 `U+2007`、不换行连字符 `U+2011`、窄空格 `U+202F`、ZWNJ/ZWJ `U+200C`/`U+200D`、词连接符 `U+2060`、`U+FEFF`；零宽空格 `U+200B` **不是**胶连字符 |
 | `can_break_between(prev, next) -> bool` | `:127` | 四个条件全过才可断：两侧非胶连、`prev` 非行末禁则、`next` 非行首禁则 |
 | `is_ideographic(c)` | `:135` | 汉字（基本区 + 扩展 A–G + 兼容表意文字） |
+| `uax14_break_indices(text) -> impl Iterator<Item = usize>` | `:283` | UAX #14 完整断行机会（ICU `LineSegmenter`，LB1–LB31：标点类组合、货币/数字、URL 连接符等）；产出**允许断**的字节偏移，含换行后与串尾强制断点 |
 
 ```rust
 use rgpui::line_break::can_break_between;
@@ -100,27 +101,27 @@ assert!(!can_break_between('「', '好'));   // 开引号不可收行
 assert!(can_break_between('a', ')'));      // 半角 ASCII 行为不变
 ```
 
-## 与文本系统的接线
+`can_break_between` 是「东亚禁则 + 胶连」的局部否决；需要**严格 UAX #14**
+口径（完整规则表）时用 `uax14_break_indices` 取候选断点集合。两者在重叠规则
+上口径一致（禁则否决的位置 UAX #14 同样不产出断点，见互验测试）。
 
-两条换行路径都只在**非单词字符**的候选断点处调用 `can_break_between` 否决：
+## 与文本系统的接线（B3 已接线，UAX #14 口径）
 
-- `LineWrapper::wrap_line`（`text_system/line_wrapper.rs:40`，否决点 `:78`）；
-- `LineLayout::compute_wrap_boundaries`（`text_system/line_layout.rs:142`，否决点 `:194`）。
+两条换行路径的候选断点都改为 **UAX #14 断点集合查询**（`LineWrapper::break_indices`
+与 `compute_wrap_boundaries` 内的 `uax14_break_indices`），不再使用逐字符的
+`is_word_char`（已删除）与逐对 `can_break_between` 否决：
 
-单词内部不断行由 `LineWrapper::is_word_char`（`line_wrapper.rs:451`）负责，与禁则
-判定互不干涉。规则只面向 CJK 与全角标点，**半角 ASCII 标点（`)` `]` `,` `.`）
-保持拉丁既有行为**。`bidi` 侧的接线在 `TextAlign`（`style.rs`）与绘制入口
-（`text_system/line.rs`）；rgpui-dom 只做序列化透传。
+- `LineWrapper::wrap_line` / `wrap_line_measured`（`text_system/line_wrapper.rs`）：
+  先把 fragment 拼成行文本（内联元素占位为等长 `a`，与相邻单词粘结），
+  一次性算断点集合；候选必须同时是**字素边界**（emoji ZWJ 序列、肤色修饰、
+  组合标记不被切开），超宽字素整体换行；
+- `LineLayout::compute_wrap_boundaries`（`text_system/line_layout.rs`）：
+  断点 ∩「shaping 未拆开的字素起点」（字形起点恰为断点），避免把连字 /
+  组合标记切断。
 
-## 实践要点
+`can_break_between` 仍是公开的局部判定助手（东亚禁则 + 胶连），但**软换行不再
+逐对调用它**——UAX #14 的 LB13 等规则已涵盖禁则（互验测试保证两者在重叠规则上
+一致）。
 
-- **应用作者通常什么都不用做**：文本经过 `ShapedLine::paint` / `WrappedLine::paint`
-  与两条 wrap 路径时，方向解析与禁则否决自动生效；混排 CJK 的换行不需要任何显式开关。
-- **需要显式判定的场合**才直接调 API：自建 HTML-ish 渲染器（对每个块级元素跑
-  `TextDirection::resolve` 决定 `start`/`end` 落点）、按语言翻转外壳（用
-  `for_locale` / `I18nManager::is_rtl`，不要看具体文本）、自定义换行逻辑（在候选
-  断点处用 `can_break_between` 否决，与两条内置路径同一口径）。
-- **布局是逐行解析方向的**：同一份 `text_align(Start)` 样式在 LTR 行与 RTL 行上
-  呈现相反对齐，这是特性而非 bug。
-- `Start`/`End` 经 `to_html` 导出后 `from_html` 读不回来（降级 `Left`）；需要往返
-  保真的文档模型请直接在 `ParagraphStyle.align` 上设置。
+行为变化（对齐上游 `f0210f1621`）：连字符后允许断行（LB21）、URL / 路径中的
+`/` `?` 可断、emoji 序列不再被拆开；半角 ASCII 标点的旧“单词字符”豁免随之取消。

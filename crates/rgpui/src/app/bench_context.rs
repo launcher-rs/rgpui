@@ -548,6 +548,7 @@ impl AppContext for BenchAppContext<'_, '_> {
         app.read_entity(handle, read)
     }
 
+    #[track_caller]
     fn update_window<T, F>(&mut self, window: AnyWindowHandle, update: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T,
@@ -673,6 +674,7 @@ impl AppContext for BenchWindowContext<'_, '_> {
         self.cx.read_entity(handle, read)
     }
 
+    #[track_caller]
     fn update_window<T, F>(&mut self, window: AnyWindowHandle, update: F) -> Result<T>
     where
         F: FnOnce(AnyView, &mut Window, &mut App) -> T,

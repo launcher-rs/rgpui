@@ -1,6 +1,6 @@
-//! Mermaid 图表渲染：mermaid-rs-renderer → SVG → usvg 光栅化。
+//! Mermaid 图表渲染：mermaid-renderer → SVG → usvg 光栅化。
 //!
-//! 由 `mermaid` feature 门控。`mermaid-rs-renderer` 是纯 Rust 实现（无浏览器、
+//! 由 `mermaid` feature 门控。`mermaid-renderer` 是自维护的纯 Rust 实现（无浏览器、
 //! 无系统依赖），能把 Mermaid 源码渲染成自包含 SVG；再交给 rgpui 核心的
 //! [`SvgRenderer`]（usvg / resvg）光栅化成图片。
 //!
@@ -49,15 +49,15 @@ pub fn is_mermaid_language(language: Option<&str>) -> bool {
 
 /// 渲染 Mermaid 源码为 SVG 文本（`dark` 决定图表配色，解析失败时返回错误文本）。
 pub fn render_mermaid_svg(source: &str, dark: bool) -> Result<String, String> {
-    let options = mermaid_rs_renderer::RenderOptions {
+    let options = mermaid_renderer::RenderOptions {
         theme: if dark {
-            mermaid_rs_renderer::Theme::dark()
+            mermaid_renderer::Theme::dark()
         } else {
-            mermaid_rs_renderer::Theme::modern()
+            mermaid_renderer::Theme::modern()
         },
         ..Default::default()
     };
-    mermaid_rs_renderer::render_with_options(source, options).map_err(|err| err.to_string())
+    mermaid_renderer::render_with_options(source, options).map_err(|err| err.to_string())
 }
 
 /// 图表缓存键（源码内容哈希 + 深浅配色标记）。

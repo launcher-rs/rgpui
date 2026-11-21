@@ -1,4 +1,4 @@
-use crate::collections::FxHashMap;
+use crate::collections::{FxHashMap, FxHashSet};
 use crate::{FontId, GlyphId, Pixels, PlatformTextSystem, Point, SharedString, Size, point, px};
 use parking_lot::{Mutex, RwLock, RwLockUpgradableReadGuard};
 use smallvec::SmallVec;
@@ -9,22 +9,9 @@ use std::{
     sync::Arc,
 };
 
-use super::LineWrapper;
-
 /// 内部不变量：值为 `None` 说明前提被破坏（字形索引不指向文本、坐标越界等），
 /// 必须立刻暴露。
 ///
-/// 统一走这里而不是散落的 `unwrap`：语义与原先一致（同样 panic），但把「这是不变量
-/// 断言」的意图写进调用点，模块级 `deny` 仍能拦住随手写的 unwrap。
-#[inline]
-#[allow(clippy::panic)] // 不变量断言：前提被破坏必须立刻暴露
-fn invariant<T>(value: Option<T>, message: &str) -> T {
-    match value {
-        Some(value) => value,
-        None => panic!("{message}"),
-    }
-}
-
 /// 已排版和样式化的文本行
 #[derive(Default, Debug)]
 pub struct LineLayout {
@@ -154,51 +141,40 @@ impl LineLayout {
             glyph_ix: 0,
         };
         let mut last_boundary_x = px(0.);
-        let mut prev_ch = '\0';
+        // 候选断点 = UAX #14 断点（分段器口径）∩ shaping 未拆开的字素内部
+        // 排除项。shaping 可能跨断点机会合字（连字、组合标记），所以只保留
+        // 「字形起点恰为断点」的位置（对齐上游 f0210f1621）。
+        let break_indices: FxHashSet<usize> =
+            crate::line_break::uax14_break_indices(text).collect();
         let mut glyphs = self
             .runs
             .iter()
             .enumerate()
             .flat_map(move |(run_ix, run)| {
                 run.glyphs.iter().enumerate().map(move |(glyph_ix, glyph)| {
-                    // 字形索引由 shaping 依原文本产生，必指向某字符起点
-                    let character = invariant(
-                        text[glyph.index..].chars().next(),
-                        "行排版：字形索引必指向文本内的字符",
-                    );
                     (
                         WrapBoundary { run_ix, glyph_ix },
-                        character,
+                        glyph.index,
                         glyph.position.x,
                     )
                 })
             })
             .peekable();
 
-        while let Some((boundary, ch, x)) = glyphs.next() {
-            if ch == '\n' {
+        while let Some((boundary, index, x)) = glyphs.next() {
+            // 此处逻辑与 `LineWrapper::wrap_line` 非常相似，用于确定文本换行，
+            // 但存在一些差异，因此必须在此处重复代码。
+            let byte = text.as_bytes()[index];
+            if byte == b'\n' {
                 continue;
             }
 
-            // 此处逻辑与 `LineWrapper::wrap_line` 非常相似，用于确定文本换行，
-            // 但存在一些差异，因此必须在此处重复代码。
-            if LineWrapper::is_word_char(ch) {
-                if prev_ch == ' ' && ch != ' ' && first_non_whitespace_ix.is_some() {
-                    last_candidate_ix = Some(boundary);
-                    last_candidate_x = x;
-                }
-            } else {
-                // 与 `LineWrapper::wrap_line` 同规则：CJK 可逐字换行，但须遵守东亚禁则。
-                if ch != ' '
-                    && first_non_whitespace_ix.is_some()
-                    && crate::line_break::can_break_between(prev_ch, ch)
-                {
-                    last_candidate_ix = Some(boundary);
-                    last_candidate_x = x;
-                }
+            if byte != b' ' && first_non_whitespace_ix.is_some() && break_indices.contains(&index) {
+                last_candidate_ix = Some(boundary);
+                last_candidate_x = x;
             }
 
-            if ch != ' ' && first_non_whitespace_ix.is_none() {
+            if byte != b' ' && first_non_whitespace_ix.is_none() {
                 first_non_whitespace_ix = Some(boundary);
             }
 
@@ -222,7 +198,6 @@ impl LineLayout {
                 }
                 boundaries.push(last_boundary);
             }
-            prev_ch = ch;
         }
 
         boundaries

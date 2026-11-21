@@ -302,7 +302,9 @@ taffy = "=0.10.1"
 thiserror.workspace = true
 hdrhistogram = { workspace = true, optional = true }
 waker-fn = "1.2.0"
-lyon = "1.0"
+lyon_path = "1.0"
+# 环绕数路径渲染（D3）：描边与虚线展开为闭合轮廓
+tiny-skia-path = "0.11"
 pin-project = "1.1.13"
 spin = "0.12.3"
 pollster.workspace = true
@@ -315,6 +317,8 @@ lsp-types = { workspace = true, optional = true }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 unicode-bidi = "0.3"
 unicode-segmentation = { workspace = true }
+# UAX #14 断行（LineSegmenter，与 zed 同款；compiled_data 把规则表编进二进制）
+icu_segmenter = { version = "2.3", default-features = false, features = ["compiled_data"] }
 qrcode = { workspace = true, optional = true }
 wry = { version = "0.56.1", optional = true }
 tree-sitter = { version = "0.25", optional = true }
@@ -400,7 +404,6 @@ backtrace.workspace = true
 env_logger.workspace = true
 postage.workspace = true
 pretty_assertions.workspace = true
-lyon = { version = "1.0", features = ["extra"] }
 rand.workspace = true
 # 仓库级守卫（tests/guards.rs）解析示例清单与覆盖表。
 toml.workspace = true

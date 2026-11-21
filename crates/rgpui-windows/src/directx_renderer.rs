@@ -25,9 +25,7 @@ use rgpui::*;
 
 /// 环境变量名，用于禁用 DirectComposition
 pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "GPUI_DISABLE_DIRECT_COMPOSITION";
-const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
-// 此配置用于路径的 MSAA 渲染，保证被 DirectX 11 支持
-const PATH_MULTISAMPLE_COUNT: u32 = 4;
+pub(crate) const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 
 /// 字体渲染信息，包含伽马校正、对比度等参数
 pub(crate) struct FontInfo {
@@ -62,6 +60,9 @@ pub(crate) struct DirectXRenderer {
     /// In that case we want to discard the first frame that we draw as we got reset in the middle of a frame
     /// meaning we lost all the allocated gpu textures and scene resources.
     skip_draws: bool,
+
+    /// D4 部分重绘状态（软件适配器默认开；RGPUI_PARTIAL_REDRAW=0/1 覆盖）。整帧路径不受影响。
+    partial: crate::fast::partial::Partial,
 }
 
 /// Direct3D 设备对象
@@ -79,14 +80,11 @@ pub(crate) struct DirectXRendererDevices {
 struct DirectXResources {
     // Direct3D rendering objects
     swap_chain: IDXGISwapChain1,
-    render_target: Option<ID3D11Texture2D>,
+    pub(crate) render_target: Option<ID3D11Texture2D>,
     render_target_view: Option<ID3D11RenderTargetView>,
 
-    // Path intermediate textures (with MSAA)
-    path_intermediate_texture: ID3D11Texture2D,
-    path_intermediate_srv: Option<ID3D11ShaderResourceView>,
-    path_intermediate_msaa_texture: ID3D11Texture2D,
-    path_intermediate_msaa_view: Option<ID3D11RenderTargetView>,
+    // anti-overdraw 深度模板（D32_FLOAT，随渲染目标同尺寸）
+    depth_stencil_view: Option<ID3D11DepthStencilView>,
 
     // Cached viewport
     viewport: D3D11_VIEWPORT,
@@ -95,12 +93,72 @@ struct DirectXResources {
 struct DirectXRenderPipelines {
     shadow_pipeline: PipelineState<Shadow>,
     quad_pipeline: PipelineState<Quad>,
-    path_rasterization_pipeline: PipelineState<PathRasterizationSprite>,
-    path_sprite_pipeline: PipelineState<PathSprite>,
+    /// 路径瓦片管线：着色器 + 瓦片实例缓冲。曲线与绘制参数在
+    /// `path_curves` / `path_paints` 两个独立缓冲里，随瓦片批一并绑定。
+    path_tile_pipeline: PipelineState<PathTile>,
+    path_curves: InstanceBuffer<PathCurve>,
+    path_paints: InstanceBuffer<PathPaint>,
     underline_pipeline: PipelineState<Underline>,
     mono_sprites: PipelineState<MonochromeSprite>,
     subpixel_sprites: PipelineState<SubpixelSprite>,
     poly_sprites: PipelineState<PolychromeSprite>,
+    /// anti-overdraw 不透明通道：着色器 + 无混合 + 写深度态。
+    /// 实例数据直接读 `quad_pipeline` 的全量缓冲视图，不另设缓冲。
+    opaque_quads: OpaqueQuadPipeline,
+}
+
+/// 只带结构化缓冲与视图的实例数据持有者（无着色器；由管线绑定为额外 SRV）。
+struct InstanceBuffer<T> {
+    label: &'static str,
+    buffer: ID3D11Buffer,
+    buffer_size: usize,
+    view: Option<ID3D11ShaderResourceView>,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<T> InstanceBuffer<T> {
+    fn new(device: &ID3D11Device, label: &'static str, buffer_size: usize) -> Result<Self> {
+        let buffer = create_buffer(device, std::mem::size_of::<T>(), buffer_size)?;
+        let view = create_buffer_view(device, &buffer)?;
+        Ok(Self {
+            label,
+            buffer,
+            buffer_size,
+            view,
+            _marker: std::marker::PhantomData,
+        })
+    }
+
+    fn update_buffer(
+        &mut self,
+        device: &ID3D11Device,
+        device_context: &ID3D11DeviceContext,
+        data: &[T],
+    ) -> Result<()> {
+        if self.buffer_size < data.len() {
+            let new_buffer_size = data.len().next_power_of_two();
+            log::debug!(
+                "Updating {} buffer size from {} to {}",
+                self.label,
+                self.buffer_size,
+                new_buffer_size
+            );
+            let buffer = create_buffer(device, std::mem::size_of::<T>(), new_buffer_size)?;
+            let view = create_buffer_view(device, &buffer)?;
+            self.buffer = buffer;
+            self.view = view;
+            self.buffer_size = new_buffer_size;
+        }
+        update_buffer(device_context, &self.buffer, data)
+    }
+}
+
+/// 不透明 quad 通道的着色器与状态（缓冲复用 quad 管线那份）。
+struct OpaqueQuadPipeline {
+    vertex: ID3D11VertexShader,
+    fragment: ID3D11PixelShader,
+    blend_state: ID3D11BlendState,
+    depth_state: ID3D11DepthStencilState,
 }
 
 struct DirectXGlobalElements {
@@ -138,6 +196,346 @@ impl DirectXRendererDevices {
             device_context: device_context.clone(),
             dxgi_device,
         })
+    }
+}
+
+/// 把场景缓冲上传到 GPU（quad / 阴影 / 下划线 / 精灵；路径瓦片按批绘制时上传）。
+fn upload_scene_buffers_into(
+    device: &ID3D11Device,
+    device_context: &ID3D11DeviceContext,
+    pipelines: &mut DirectXRenderPipelines,
+    scene: &Scene,
+) -> Result<()> {
+    if !scene.shadows.is_empty() {
+        pipelines
+            .shadow_pipeline
+            .update_buffer(device, device_context, &scene.shadows)?;
+    }
+
+    if !scene.quads.is_empty() {
+        pipelines
+            .quad_pipeline
+            .update_buffer(device, device_context, &scene.quads)?;
+    }
+
+    if !scene.underlines.is_empty() {
+        pipelines
+            .underline_pipeline
+            .update_buffer(device, device_context, &scene.underlines)?;
+    }
+
+    if !scene.monochrome_sprites.is_empty() {
+        pipelines
+            .mono_sprites
+            .update_buffer(device, device_context, &scene.monochrome_sprites)?;
+    }
+
+    if !scene.subpixel_sprites.is_empty() {
+        pipelines.subpixel_sprites.update_buffer(
+            device,
+            device_context,
+            &scene.subpixel_sprites,
+        )?;
+    }
+
+    if !scene.polychrome_sprites.is_empty() {
+        pipelines
+            .poly_sprites
+            .update_buffer(device, device_context, &scene.polychrome_sprites)?;
+    }
+
+    Ok(())
+}
+
+/// 批绘制的依赖打包：渲染器与 D4c 像素对拍测试共用同一份绘制代码，
+/// 避免测试侧复制实现造成漂移。
+struct BatchRenderer<'a> {
+    device: &'a ID3D11Device,
+    context: &'a ID3D11DeviceContext,
+    pipelines: &'a mut DirectXRenderPipelines,
+    globals: &'a DirectXGlobalElements,
+    /// 视口深度范围按批调整：非 quad 批钉在 quad 游标深度（视口深度游标）。
+    viewport: D3D11_VIEWPORT,
+    /// 图集纹理视图查询：返回 `None` 时跳过该批精灵（与现有行为一致）。
+    atlas_views: &'a dyn Fn(AtlasTextureId) -> Option<[Option<ID3D11ShaderResourceView>; 1]>,
+}
+
+impl BatchRenderer<'_> {
+    fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
+        // 不透明通道先画：从前往后、写深度，被遮住的后续片元在深度测试处失败。
+        self.draw_opaque_quads(scene.quads.len())?;
+
+        // 视口深度游标（对齐上游 D2）：Quad 批的顶点着色器逐实例算深度，视口深度
+        // 保持 (0,1)；其余批把视口 MinDepth=MaxDepth 钉在 quad 游标处，落在已画的
+        // 不透明矩形后面就在深度测试处被剔除，不会再浮在矩形之上。
+        let depth_scale = quad_depth_scale(scene.quads.len());
+        let mut quad_cursor: u32 = 0;
+        for batch in scene.batches() {
+            let depth = if matches!(&batch, PrimitiveBatch::Quads(_)) {
+                None
+            } else {
+                Some(quad_depth(quad_cursor, depth_scale))
+            };
+            if let Some(depth) = depth {
+                self.viewport.MinDepth = depth;
+                self.viewport.MaxDepth = depth;
+            } else {
+                self.viewport.MinDepth = 0.0;
+                self.viewport.MaxDepth = 1.0;
+            }
+            match batch {
+                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
+                PrimitiveBatch::Quads(range) => {
+                    quad_cursor += range.len() as u32;
+                    self.draw_quads(range.start, range.len())
+                }
+                PrimitiveBatch::Paths(range) => self.draw_path_tiles(&scene.paths[range]),
+                PrimitiveBatch::Underlines(range) => {
+                    self.draw_underlines(range.start, range.len())
+                }
+                PrimitiveBatch::MonochromeSprites { texture_id, range } => {
+                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
+                }
+                PrimitiveBatch::SubpixelSprites { texture_id, range } => {
+                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
+                }
+                PrimitiveBatch::PolychromeSprites { texture_id, range } => {
+                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
+                }
+                PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
+            }
+            .context(format!(
+                "scene too large:\
+            {} paths, {} shadows, {} quads, {} underlines, {} mono, {} subpixel, {} poly, {} surfaces",
+                scene.paths.len(),
+                scene.shadows.len(),
+                scene.quads.len(),
+                scene.underlines.len(),
+                scene.monochrome_sprites.len(),
+                scene.subpixel_sprites.len(),
+                scene.polychrome_sprites.len(),
+                scene.surfaces.len(),
+            ))?;
+        }
+        Ok(())
+    }
+
+    fn draw_shadows(&self, start: usize, len: usize) -> Result<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        self.pipelines.shadow_pipeline.draw_range(
+            self.device,
+            self.context,
+            slice::from_ref(&self.viewport),
+            slice::from_ref(&self.globals.global_params_buffer),
+            4,
+            start as u32,
+            len as u32,
+        )
+    }
+
+    fn draw_quads(&self, start: usize, len: usize) -> Result<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        self.pipelines.quad_pipeline.draw_range(
+            self.device,
+            self.context,
+            slice::from_ref(&self.viewport),
+            slice::from_ref(&self.globals.global_params_buffer),
+            4,
+            start as u32,
+            len as u32,
+        )
+    }
+
+    /// 不透明通道：用 quad 管线的全量缓冲视图 + 不透明着色器，从前往后
+    /// 画一遍（非候选实例在顶点着色器里被裁掉），开深度写、无混合。
+    fn draw_opaque_quads(&self, quad_count: usize) -> Result<()> {
+        if quad_count == 0 {
+            return Ok(());
+        }
+        let quad_pipeline = &self.pipelines.quad_pipeline;
+        let opaque = &self.pipelines.opaque_quads;
+        set_pipeline_state(
+            self.context,
+            slice::from_ref(&quad_pipeline.view),
+            D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+            slice::from_ref(&self.viewport),
+            &opaque.vertex,
+            &opaque.fragment,
+            slice::from_ref(&self.globals.global_params_buffer),
+            &opaque.blend_state,
+            &opaque.depth_state,
+        );
+        unsafe {
+            self.context.DrawInstanced(4, quad_count as u32, 0, 0);
+        }
+        Ok(())
+    }
+
+    /// 路径瓦片批：把批内路径平铺成绘制参数 / 曲线 / 瓦片三条数组，瓦片视图
+    /// 按批区间绑定（实例下标批内从 0 起），曲线与绘制参数绑全量视图
+    /// （`tile.paint` / `tile.curve_start` 是全帧下标）。
+    fn draw_path_tiles(&mut self, paths: &[PaintedPath]) -> Result<()> {
+        let mut paints = Vec::new();
+        let mut curves = Vec::new();
+        let mut tiles = Vec::new();
+        for path in paths {
+            path.append_to(&mut paints, &mut curves, &mut tiles);
+        }
+        if tiles.is_empty() {
+            return Ok(());
+        }
+
+        self.pipelines
+            .path_paints
+            .update_buffer(self.device, self.context, paints.as_slice())?;
+        self.pipelines
+            .path_curves
+            .update_buffer(self.device, self.context, curves.as_slice())?;
+        self.pipelines.path_tile_pipeline.update_buffer(
+            self.device,
+            self.context,
+            tiles.as_slice(),
+        )?;
+
+        let tile_view = create_buffer_view_range(
+            self.device,
+            &self.pipelines.path_tile_pipeline.buffer,
+            0,
+            tiles.len() as u32,
+        )?;
+        if tile_view.is_none() {
+            return Ok(());
+        }
+        let Some(paints_view) = self.pipelines.path_paints.view.clone() else {
+            return Ok(());
+        };
+        let Some(curves_view) = self.pipelines.path_curves.view.clone() else {
+            return Ok(());
+        };
+
+        set_pipeline_state(
+            self.context,
+            slice::from_ref(&tile_view),
+            D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+            slice::from_ref(&self.viewport),
+            &self.pipelines.path_tile_pipeline.vertex,
+            &self.pipelines.path_tile_pipeline.fragment,
+            slice::from_ref(&self.globals.global_params_buffer),
+            &self.pipelines.path_tile_pipeline.blend_state,
+            &self.pipelines.path_tile_pipeline.depth_state,
+        );
+        let paints_binding = [Some(paints_view)];
+        let curves_binding = [Some(curves_view)];
+        unsafe {
+            // t2 = 曲线，t3 = 绘制参数（与 HLSL 寄存器一致）。
+            self.context.VSSetShaderResources(2, Some(&curves_binding));
+            self.context.PSSetShaderResources(2, Some(&curves_binding));
+            self.context.VSSetShaderResources(3, Some(&paints_binding));
+            self.context.PSSetShaderResources(3, Some(&paints_binding));
+            self.context.DrawInstanced(4, tiles.len() as u32, 0, 0);
+        }
+        Ok(())
+    }
+
+    fn draw_underlines(&self, start: usize, len: usize) -> Result<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        self.pipelines.underline_pipeline.draw_range(
+            self.device,
+            self.context,
+            slice::from_ref(&self.viewport),
+            slice::from_ref(&self.globals.global_params_buffer),
+            4,
+            start as u32,
+            len as u32,
+        )
+    }
+
+    fn draw_monochrome_sprites(
+        &self,
+        texture_id: AtlasTextureId,
+        start: usize,
+        len: usize,
+    ) -> Result<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），此时跳过这批精灵。
+        let Some(texture_binding) = (self.atlas_views)(texture_id) else {
+            return Ok(());
+        };
+        self.pipelines.mono_sprites.draw_range_with_texture(
+            self.device,
+            self.context,
+            &texture_binding,
+            slice::from_ref(&self.viewport),
+            slice::from_ref(&self.globals.global_params_buffer),
+            slice::from_ref(&self.globals.sampler),
+            start as u32,
+            len as u32,
+        )
+    }
+
+    fn draw_subpixel_sprites(
+        &self,
+        texture_id: AtlasTextureId,
+        start: usize,
+        len: usize,
+    ) -> Result<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），此时跳过这批精灵。
+        let Some(texture_binding) = (self.atlas_views)(texture_id) else {
+            return Ok(());
+        };
+        self.pipelines.subpixel_sprites.draw_range_with_texture(
+            self.device,
+            self.context,
+            &texture_binding,
+            slice::from_ref(&self.viewport),
+            slice::from_ref(&self.globals.global_params_buffer),
+            slice::from_ref(&self.globals.sampler),
+            start as u32,
+            len as u32,
+        )
+    }
+
+    fn draw_polychrome_sprites(
+        &self,
+        texture_id: AtlasTextureId,
+        start: usize,
+        len: usize,
+    ) -> Result<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），此时跳过这批精灵。
+        let Some(texture_binding) = (self.atlas_views)(texture_id) else {
+            return Ok(());
+        };
+        self.pipelines.poly_sprites.draw_range_with_texture(
+            self.device,
+            self.context,
+            &texture_binding,
+            slice::from_ref(&self.viewport),
+            slice::from_ref(&self.globals.global_params_buffer),
+            slice::from_ref(&self.globals.sampler),
+            start as u32,
+            len as u32,
+        )
+    }
+
+    fn draw_surfaces(&self, surfaces: &[PaintSurface]) -> Result<()> {
+        if surfaces.is_empty() {
+            return Ok(());
+        }
+        Ok(())
     }
 }
 
@@ -179,6 +577,8 @@ impl DirectXRenderer {
             Some(composition)
         };
 
+        let partial = crate::fast::partial::Partial::for_adapter(&devices.adapter);
+
         Ok(DirectXRenderer {
             hwnd,
             atlas,
@@ -191,6 +591,7 @@ impl DirectXRenderer {
             width: 1,
             height: 1,
             skip_draws: false,
+            partial,
         })
     }
 
@@ -199,7 +600,7 @@ impl DirectXRenderer {
         self.atlas.clone()
     }
 
-    fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
+    fn pre_draw(&self, clear_color: &[f32; 4], quad_count: usize) -> Result<()> {
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
             .devices
@@ -215,7 +616,8 @@ impl DirectXRenderer {
                 grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
                 subpixel_enhanced_contrast: self.font_info.subpixel_enhanced_contrast,
                 is_bgr: self.font_info.is_bgr as u32,
-                _pad: [0; 3],
+                quad_count: quad_count as u32,
+                _pad: [0; 2],
             }],
         )?;
         unsafe {
@@ -226,8 +628,20 @@ impl DirectXRenderer {
                     .context("missing render target view")?,
                 clear_color,
             );
-            device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            // 深度从 0 开始（「越大越近」），与主渲染目标一并绑定。
+            device_context.ClearDepthStencilView(
+                resources
+                    .depth_stencil_view
+                    .as_ref()
+                    .context("missing depth stencil view")?,
+                D3D11_CLEAR_DEPTH.0,
+                0.0,
+                0,
+            );
+            device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.depth_stencil_view.as_ref(),
+            );
             device_context.RSSetViewports(Some(slice::from_ref(&resources.viewport)));
         }
         Ok(())
@@ -309,9 +723,10 @@ impl DirectXRenderer {
             .handle_device_lost(&devices.device, &devices.device_context);
 
         unsafe {
-            devices
-                .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            devices.device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.depth_stencil_view.as_ref(),
+            );
         }
         self.devices = Some(devices);
         self.resources = Some(resources);
@@ -319,6 +734,8 @@ impl DirectXRenderer {
         self.pipelines = pipelines;
         self.direct_composition = direct_composition;
         self.skip_draws = true;
+        // 图集纹理随设备重建，旧签名与 canvas 已失效，下一帧必须整帧绘制。
+        self.partial.reset();
         Ok(())
     }
 
@@ -332,8 +749,85 @@ impl DirectXRenderer {
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
+        if self.draw_partial(scene, background_appearance)? {
+            return Ok(());
+        }
         self.draw_into(scene, background_appearance)?;
         self.present()
+    }
+
+    /// D4 部分重绘：软件适配器上从上一帧 canvas 造当前帧，拷回交换链并提交。
+    /// 返回 `true` 表示本帧已完整处理（含 present）。整帧路径返回 `false`。
+    fn draw_partial(
+        &mut self,
+        scene: &Scene,
+        background_appearance: WindowBackgroundAppearance,
+    ) -> Result<bool> {
+        if self.skip_draws || !self.partial.is_on() {
+            return Ok(false);
+        }
+        let clear = match background_appearance {
+            WindowBackgroundAppearance::Opaque => [1.0f32; 4],
+            _ => [0.0f32; 4],
+        };
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let (device, context) = (devices.device.clone(), devices.device_context.clone());
+        let context1 = match context.cast::<ID3D11DeviceContext1>() {
+            Ok(c) => c,
+            Err(_) => {
+                self.partial.reset();
+                return Ok(false);
+            }
+        };
+        let size = (self.width, self.height);
+        let uploaded = self.atlas.take_uploads();
+        let mut partial = std::mem::take(&mut self.partial);
+        let result = (|| -> Result<bool> {
+            let Some(uploaded) = uploaded else {
+                partial.reset();
+                return Ok(false);
+            };
+            let canvas = {
+                let mut drawer = PartialDrawer {
+                    renderer: self,
+                    scene,
+                    clear,
+                    saved: None,
+                };
+                partial.frame(
+                    &device,
+                    &context,
+                    &context1,
+                    size,
+                    scene,
+                    &uploaded,
+                    &mut drawer,
+                )?
+            };
+            let Some(canvas) = canvas else {
+                return Ok(false);
+            };
+            let resources = self.resources.as_ref().context("resources missing")?;
+            let buffer = resources
+                .render_target
+                .as_ref()
+                .context("render target missing")?;
+            // SAFETY: 两张纹理同尺寸同格式，都是活的渲染目标。
+            unsafe { context.CopyResource(buffer, &canvas) };
+            Ok(true)
+        })();
+        self.partial = partial;
+        match result {
+            Ok(true) => {
+                self.present()?;
+                Ok(true)
+            }
+            Ok(false) => Ok(false),
+            Err(e) => {
+                self.partial.reset();
+                Err(e)
+            }
+        }
     }
 
     /// 把场景画进当前绑定的渲染目标，但不提交（`Present`）。
@@ -349,48 +843,33 @@ impl DirectXRenderer {
             // and so likely do not have the textures anymore that are required for drawing
             return Ok(());
         }
-        self.pre_draw(&match background_appearance {
-            WindowBackgroundAppearance::Opaque => [1.0f32; 4],
-            _ => [0.0f32; 4],
-        })?;
+        self.pre_draw(
+            &match background_appearance {
+                WindowBackgroundAppearance::Opaque => [1.0f32; 4],
+                _ => [0.0f32; 4],
+            },
+            scene.quads.len(),
+        )?;
 
         self.upload_scene_buffers(scene)?;
+        self.draw_batches(scene)
+    }
 
-        for batch in scene.batches() {
-            match batch {
-                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
-                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
-                PrimitiveBatch::Paths(range) => {
-                    let paths = &scene.paths[range];
-                    self.draw_paths_to_intermediate(paths)?;
-                    self.draw_paths_from_intermediate(paths)
-                }
-                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
-                PrimitiveBatch::MonochromeSprites { texture_id, range } => {
-                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
-                }
-                PrimitiveBatch::SubpixelSprites { texture_id, range } => {
-                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
-                }
-                PrimitiveBatch::PolychromeSprites { texture_id, range } => {
-                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
-                }
-                PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
-            }
-            .context(format!(
-                "scene too large:\
-                {} paths, {} shadows, {} quads, {} underlines, {} mono, {} subpixel, {} poly, {} surfaces",
-                scene.paths.len(),
-                scene.shadows.len(),
-                scene.quads.len(),
-                scene.underlines.len(),
-                scene.monochrome_sprites.len(),
-                scene.subpixel_sprites.len(),
-                scene.polychrome_sprites.len(),
-                scene.surfaces.len(),
-            ))?;
-        }
-        Ok(())
+    /// 把场景的所有批次画一遍（不透明通道 + 混合通道），不含清屏与上传。
+    /// partial 路径在 damage 的 scissor 内复用本方法。
+    fn draw_batches(&mut self, scene: &Scene) -> Result<()> {
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let resources = self.resources.as_ref().context("resources missing")?;
+        let atlas = &self.atlas;
+        let mut batches = BatchRenderer {
+            device: &devices.device,
+            context: &devices.device_context,
+            pipelines: &mut self.pipelines,
+            globals: &self.globals,
+            viewport: resources.viewport,
+            atlas_views: &|id| atlas.get_texture_view(id),
+        };
+        batches.draw_scene(scene)
     }
 
     /// 把场景离屏渲染成 RGBA 像素（视觉测试 / 导出用）。
@@ -492,326 +971,21 @@ impl DirectXRenderer {
         resources.recreate_resources(devices, width, height)?;
 
         unsafe {
-            devices
-                .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            devices.device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.depth_stencil_view.as_ref(),
+            );
         }
 
         Ok(())
     }
 
     fn upload_scene_buffers(&mut self, scene: &Scene) -> Result<()> {
-        let devices = self.devices.as_ref().context("devices missing")?;
-
-        if !scene.shadows.is_empty() {
-            self.pipelines.shadow_pipeline.update_buffer(
-                &devices.device,
-                &devices.device_context,
-                &scene.shadows,
-            )?;
-        }
-
-        if !scene.quads.is_empty() {
-            self.pipelines.quad_pipeline.update_buffer(
-                &devices.device,
-                &devices.device_context,
-                &scene.quads,
-            )?;
-        }
-
-        if !scene.underlines.is_empty() {
-            self.pipelines.underline_pipeline.update_buffer(
-                &devices.device,
-                &devices.device_context,
-                &scene.underlines,
-            )?;
-        }
-
-        if !scene.monochrome_sprites.is_empty() {
-            self.pipelines.mono_sprites.update_buffer(
-                &devices.device,
-                &devices.device_context,
-                &scene.monochrome_sprites,
-            )?;
-        }
-
-        if !scene.subpixel_sprites.is_empty() {
-            self.pipelines.subpixel_sprites.update_buffer(
-                &devices.device,
-                &devices.device_context,
-                &scene.subpixel_sprites,
-            )?;
-        }
-
-        if !scene.polychrome_sprites.is_empty() {
-            self.pipelines.poly_sprites.update_buffer(
-                &devices.device,
-                &devices.device_context,
-                &scene.polychrome_sprites,
-            )?;
-        }
-
-        Ok(())
-    }
-
-    fn draw_shadows(&mut self, start: usize, len: usize) -> Result<()> {
-        if len == 0 {
-            return Ok(());
-        }
-        let devices = self.devices.as_ref().context("devices missing")?;
-        self.pipelines.shadow_pipeline.draw_range(
-            &devices.device,
-            &devices.device_context,
-            slice::from_ref(
-                &self
-                    .resources
-                    .as_ref()
-                    .context("resources missing")?
-                    .viewport,
-            ),
-            slice::from_ref(&self.globals.global_params_buffer),
-            4,
-            start as u32,
-            len as u32,
-        )
-    }
-
-    fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
-        if len == 0 {
-            return Ok(());
-        }
-        let devices = self.devices.as_ref().context("devices missing")?;
-        self.pipelines.quad_pipeline.draw_range(
-            &devices.device,
-            &devices.device_context,
-            slice::from_ref(
-                &self
-                    .resources
-                    .as_ref()
-                    .context("resources missing")?
-                    .viewport,
-            ),
-            slice::from_ref(&self.globals.global_params_buffer),
-            4,
-            start as u32,
-            len as u32,
-        )
-    }
-
-    fn draw_paths_to_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
-        if paths.is_empty() {
-            return Ok(());
-        }
-
-        let devices = self.devices.as_ref().context("devices missing")?;
-        let resources = self.resources.as_ref().context("resources missing")?;
-        // Clear intermediate MSAA texture
-        unsafe {
-            devices.device_context.ClearRenderTargetView(
-                resources.path_intermediate_msaa_view.as_ref().unwrap(),
-                &[0.0; 4],
-            );
-            // Set intermediate MSAA texture as render target
-            devices.device_context.OMSetRenderTargets(
-                Some(slice::from_ref(&resources.path_intermediate_msaa_view)),
-                None,
-            );
-        }
-
-        // Collect all vertices and sprites for a single draw call
-        let mut vertices = Vec::new();
-
-        for path in paths {
-            vertices.extend(path.vertices.iter().map(|v| PathRasterizationSprite {
-                xy_position: v.xy_position,
-                st_position: v.st_position,
-                color: path.color,
-                bounds: path.clipped_bounds(),
-            }));
-        }
-
-        self.pipelines.path_rasterization_pipeline.update_buffer(
-            &devices.device,
-            &devices.device_context,
-            &vertices,
-        )?;
-
-        self.pipelines.path_rasterization_pipeline.draw(
-            &devices.device_context,
-            slice::from_ref(&resources.viewport),
-            slice::from_ref(&self.globals.global_params_buffer),
-            D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,
-            vertices.len() as u32,
-            1,
-        )?;
-
-        // Resolve MSAA to non-MSAA intermediate texture
-        unsafe {
-            devices.device_context.ResolveSubresource(
-                &resources.path_intermediate_texture,
-                0,
-                &resources.path_intermediate_msaa_texture,
-                0,
-                RENDER_TARGET_FORMAT,
-            );
-            // Restore main render target
-            devices
-                .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
-        }
-
-        Ok(())
-    }
-
-    fn draw_paths_from_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
-        let Some(first_path) = paths.first() else {
-            return Ok(());
-        };
-
-        // When copying paths from the intermediate texture to the drawable,
-        // each pixel must only be copied once, in case of transparent paths.
-        //
-        // If all paths have the same draw order, then their bounds are all
-        // disjoint, so we can copy each path's bounds individually. If this
-        // batch combines different draw orders, we perform a single copy
-        // for a minimal spanning rect.
-        let sprites = if paths.last().unwrap().order == first_path.order {
-            paths
-                .iter()
-                .map(|path| PathSprite {
-                    bounds: path.clipped_bounds(),
-                })
-                .collect::<Vec<_>>()
-        } else {
-            let mut bounds = first_path.clipped_bounds();
-            for path in paths.iter().skip(1) {
-                bounds = bounds.union(&path.clipped_bounds());
-            }
-            vec![PathSprite { bounds }]
-        };
-
-        let devices = self.devices.as_ref().context("devices missing")?;
-        let resources = self.resources.as_ref().context("resources missing")?;
-        self.pipelines.path_sprite_pipeline.update_buffer(
-            &devices.device,
-            &devices.device_context,
-            &sprites,
-        )?;
-
-        // Draw the sprites with the path texture
-        self.pipelines.path_sprite_pipeline.draw_with_texture(
-            &devices.device_context,
-            slice::from_ref(&resources.path_intermediate_srv),
-            slice::from_ref(&resources.viewport),
-            slice::from_ref(&self.globals.global_params_buffer),
-            slice::from_ref(&self.globals.sampler),
-            sprites.len() as u32,
-        )
-    }
-
-    fn draw_underlines(&mut self, start: usize, len: usize) -> Result<()> {
-        if len == 0 {
-            return Ok(());
-        }
-        let devices = self.devices.as_ref().context("devices missing")?;
-        let resources = self.resources.as_ref().context("resources missing")?;
-        self.pipelines.underline_pipeline.draw_range(
-            &devices.device,
-            &devices.device_context,
-            slice::from_ref(&resources.viewport),
-            slice::from_ref(&self.globals.global_params_buffer),
-            4,
-            start as u32,
-            len as u32,
-        )
-    }
-
-    fn draw_monochrome_sprites(
-        &mut self,
-        texture_id: AtlasTextureId,
-        start: usize,
-        len: usize,
-    ) -> Result<()> {
-        if len == 0 {
-            return Ok(());
-        }
-        let devices = self.devices.as_ref().context("devices missing")?;
-        let resources = self.resources.as_ref().context("resources missing")?;
-        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），此时跳过这批精灵。
-        let Some(texture_view) = self.atlas.get_texture_view(texture_id) else {
-            return Ok(());
-        };
-        self.pipelines.mono_sprites.draw_range_with_texture(
-            &devices.device,
-            &devices.device_context,
-            &texture_view,
-            slice::from_ref(&resources.viewport),
-            slice::from_ref(&self.globals.global_params_buffer),
-            slice::from_ref(&self.globals.sampler),
-            start as u32,
-            len as u32,
-        )
-    }
-
-    fn draw_subpixel_sprites(
-        &mut self,
-        texture_id: AtlasTextureId,
-        start: usize,
-        len: usize,
-    ) -> Result<()> {
-        if len == 0 {
-            return Ok(());
-        }
-        let devices = self.devices.as_ref().context("devices missing")?;
-        let resources = self.resources.as_ref().context("resources missing")?;
-        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），此时跳过这批精灵。
-        let Some(texture_view) = self.atlas.get_texture_view(texture_id) else {
-            return Ok(());
-        };
-        self.pipelines.subpixel_sprites.draw_range_with_texture(
-            &devices.device,
-            &devices.device_context,
-            &texture_view,
-            slice::from_ref(&resources.viewport),
-            slice::from_ref(&self.globals.global_params_buffer),
-            slice::from_ref(&self.globals.sampler),
-            start as u32,
-            len as u32,
-        )
-    }
-
-    fn draw_polychrome_sprites(
-        &mut self,
-        texture_id: AtlasTextureId,
-        start: usize,
-        len: usize,
-    ) -> Result<()> {
-        if len == 0 {
-            return Ok(());
-        }
-        let devices = self.devices.as_ref().context("devices missing")?;
-        let resources = self.resources.as_ref().context("resources missing")?;
-        // 纹理可能在场景构建后被释放（缓存视图重放旧绘制），此时跳过这批精灵。
-        let Some(texture_view) = self.atlas.get_texture_view(texture_id) else {
-            return Ok(());
-        };
-        self.pipelines.poly_sprites.draw_range_with_texture(
-            &devices.device,
-            &devices.device_context,
-            &texture_view,
-            slice::from_ref(&resources.viewport),
-            slice::from_ref(&self.globals.global_params_buffer),
-            slice::from_ref(&self.globals.sampler),
-            start as u32,
-            len as u32,
-        )
-    }
-
-    fn draw_surfaces(&mut self, surfaces: &[PaintSurface]) -> Result<()> {
-        if surfaces.is_empty() {
-            return Ok(());
-        }
-        Ok(())
+        let DirectXRenderer {
+            devices, pipelines, ..
+        } = self;
+        let devices = devices.as_ref().context("devices missing")?;
+        upload_scene_buffers_into(&devices.device, &devices.device_context, pipelines, scene)
     }
 
     /// 获取 GPU 规格信息
@@ -899,25 +1073,15 @@ impl DirectXResources {
             )?
         };
 
-        let (
-            render_target,
-            render_target_view,
-            path_intermediate_texture,
-            path_intermediate_srv,
-            path_intermediate_msaa_texture,
-            path_intermediate_msaa_view,
-            viewport,
-        ) = create_resources(devices, &swap_chain, width, height)?;
+        let (render_target, render_target_view, depth_stencil_view, viewport) =
+            create_resources(devices, &swap_chain, width, height)?;
         set_rasterizer_state(&devices.device, &devices.device_context)?;
 
         Ok(Self {
             swap_chain,
             render_target: Some(render_target),
             render_target_view,
-            path_intermediate_texture,
-            path_intermediate_msaa_texture,
-            path_intermediate_msaa_view,
-            path_intermediate_srv,
+            depth_stencil_view,
             viewport,
         })
     }
@@ -929,21 +1093,11 @@ impl DirectXResources {
         width: u32,
         height: u32,
     ) -> Result<()> {
-        let (
-            render_target,
-            render_target_view,
-            path_intermediate_texture,
-            path_intermediate_srv,
-            path_intermediate_msaa_texture,
-            path_intermediate_msaa_view,
-            viewport,
-        ) = create_resources(devices, &self.swap_chain, width, height)?;
+        let (render_target, render_target_view, depth_stencil_view, viewport) =
+            create_resources(devices, &self.swap_chain, width, height)?;
         self.render_target = Some(render_target);
         self.render_target_view = render_target_view;
-        self.path_intermediate_texture = path_intermediate_texture;
-        self.path_intermediate_msaa_texture = path_intermediate_msaa_texture;
-        self.path_intermediate_msaa_view = path_intermediate_msaa_view;
-        self.path_intermediate_srv = path_intermediate_srv;
+        self.depth_stencil_view = depth_stencil_view;
         self.viewport = viewport;
         Ok(())
     }
@@ -951,12 +1105,20 @@ impl DirectXResources {
 
 impl DirectXRenderPipelines {
     pub fn new(device: &ID3D11Device) -> Result<Self> {
+        // 深度态：混合 quad 与所有非 quad 图元都只测不写（Greater，「越大越近」）；
+        // 不透明 quad 测试并写入。非 quad 每批的视口深度钉在 quad 游标处，落在
+        // 不透明矩形之后的片元在深度测试处失败。
+        let quad_depth_state = create_depth_stencil_state(device, true, false)?;
+        let non_quad_depth_state = quad_depth_state.clone();
+        let opaque_depth_state = create_depth_stencil_state(device, true, true)?;
+
         let shadow_pipeline = PipelineState::new(
             device,
             "shadow_pipeline",
             ShaderModule::Shadow,
             4,
             create_blend_state(device)?,
+            non_quad_depth_state.clone(),
         )?;
         let quad_pipeline = PipelineState::new(
             device,
@@ -964,27 +1126,39 @@ impl DirectXRenderPipelines {
             ShaderModule::Quad,
             64,
             create_blend_state(device)?,
+            quad_depth_state,
         )?;
-        let path_rasterization_pipeline = PipelineState::new(
+        let opaque_quads = OpaqueQuadPipeline {
+            vertex: {
+                let raw_shader =
+                    RawShaderBytes::new(ShaderModule::OpaqueQuad, ShaderTarget::Vertex)?;
+                create_vertex_shader(device, raw_shader.as_bytes())?
+            },
+            fragment: {
+                let raw_shader =
+                    RawShaderBytes::new(ShaderModule::OpaqueQuad, ShaderTarget::Fragment)?;
+                create_fragment_shader(device, raw_shader.as_bytes())?
+            },
+            blend_state: create_opaque_blend_state(device)?,
+            depth_state: opaque_depth_state,
+        };
+        let path_tile_pipeline = PipelineState::new(
             device,
-            "path_rasterization_pipeline",
-            ShaderModule::PathRasterization,
-            32,
-            create_blend_state_for_path_rasterization(device)?,
+            "path_tile_pipeline",
+            ShaderModule::PathTile,
+            64,
+            create_blend_state(device)?,
+            non_quad_depth_state.clone(),
         )?;
-        let path_sprite_pipeline = PipelineState::new(
-            device,
-            "path_sprite_pipeline",
-            ShaderModule::PathSprite,
-            4,
-            create_blend_state_for_path_sprite(device)?,
-        )?;
+        let path_curves = InstanceBuffer::new(device, "path_curves", 256)?;
+        let path_paints = InstanceBuffer::new(device, "path_paints", 16)?;
         let underline_pipeline = PipelineState::new(
             device,
             "underline_pipeline",
             ShaderModule::Underline,
             4,
             create_blend_state(device)?,
+            non_quad_depth_state.clone(),
         )?;
         let mono_sprites = PipelineState::new(
             device,
@@ -992,6 +1166,7 @@ impl DirectXRenderPipelines {
             ShaderModule::MonochromeSprite,
             512,
             create_blend_state(device)?,
+            non_quad_depth_state.clone(),
         )?;
         let subpixel_sprites = PipelineState::new(
             device,
@@ -999,6 +1174,7 @@ impl DirectXRenderPipelines {
             ShaderModule::SubpixelSprite,
             512,
             create_blend_state_for_subpixel_rendering(device)?,
+            non_quad_depth_state.clone(),
         )?;
         let poly_sprites = PipelineState::new(
             device,
@@ -1006,17 +1182,20 @@ impl DirectXRenderPipelines {
             ShaderModule::PolychromeSprite,
             16,
             create_blend_state(device)?,
+            non_quad_depth_state,
         )?;
 
         Ok(Self {
             shadow_pipeline,
             quad_pipeline,
-            path_rasterization_pipeline,
-            path_sprite_pipeline,
+            path_tile_pipeline,
+            path_curves,
+            path_paints,
             underline_pipeline,
             mono_sprites,
             subpixel_sprites,
             poly_sprites,
+            opaque_quads,
         })
     }
 }
@@ -1092,7 +1271,9 @@ struct GlobalParams {
     grayscale_enhanced_contrast: f32,
     subpixel_enhanced_contrast: f32,
     is_bgr: u32,
-    _pad: [u32; 3],
+    /// 不透明通道反向索引用的全局 quad 数。
+    quad_count: u32,
+    _pad: [u32; 2],
 }
 
 struct PipelineState<T> {
@@ -1103,6 +1284,7 @@ struct PipelineState<T> {
     buffer_size: usize,
     view: Option<ID3D11ShaderResourceView>,
     blend_state: ID3D11BlendState,
+    depth_state: ID3D11DepthStencilState,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -1113,6 +1295,7 @@ impl<T> PipelineState<T> {
         shader_module: ShaderModule,
         buffer_size: usize,
         blend_state: ID3D11BlendState,
+        depth_state: ID3D11DepthStencilState,
     ) -> Result<Self> {
         let vertex = {
             let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Vertex)?;
@@ -1133,6 +1316,7 @@ impl<T> PipelineState<T> {
             buffer_size,
             view,
             blend_state,
+            depth_state,
             _marker: std::marker::PhantomData,
         })
     }
@@ -1160,60 +1344,6 @@ impl<T> PipelineState<T> {
         update_buffer(device_context, &self.buffer, data)
     }
 
-    fn draw(
-        &self,
-        device_context: &ID3D11DeviceContext,
-        viewport: &[D3D11_VIEWPORT],
-        global_params: &[Option<ID3D11Buffer>],
-        topology: D3D_PRIMITIVE_TOPOLOGY,
-        vertex_count: u32,
-        instance_count: u32,
-    ) -> Result<()> {
-        set_pipeline_state(
-            device_context,
-            slice::from_ref(&self.view),
-            topology,
-            viewport,
-            &self.vertex,
-            &self.fragment,
-            global_params,
-            &self.blend_state,
-        );
-        unsafe {
-            device_context.DrawInstanced(vertex_count, instance_count, 0, 0);
-        }
-        Ok(())
-    }
-
-    fn draw_with_texture(
-        &self,
-        device_context: &ID3D11DeviceContext,
-        texture: &[Option<ID3D11ShaderResourceView>],
-        viewport: &[D3D11_VIEWPORT],
-        global_params: &[Option<ID3D11Buffer>],
-        sampler: &[Option<ID3D11SamplerState>],
-        instance_count: u32,
-    ) -> Result<()> {
-        set_pipeline_state(
-            device_context,
-            slice::from_ref(&self.view),
-            D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-            viewport,
-            &self.vertex,
-            &self.fragment,
-            global_params,
-            &self.blend_state,
-        );
-        unsafe {
-            device_context.PSSetSamplers(0, Some(sampler));
-            device_context.VSSetShaderResources(0, Some(texture));
-            device_context.PSSetShaderResources(0, Some(texture));
-
-            device_context.DrawInstanced(4, instance_count, 0, 0);
-        }
-        Ok(())
-    }
-
     fn draw_range(
         &self,
         device: &ID3D11Device,
@@ -1234,6 +1364,7 @@ impl<T> PipelineState<T> {
             &self.fragment,
             global_params,
             &self.blend_state,
+            &self.depth_state,
         );
         unsafe {
             device_context.DrawInstanced(vertex_count, instance_count, 0, 0);
@@ -1262,6 +1393,7 @@ impl<T> PipelineState<T> {
             &self.fragment,
             global_params,
             &self.blend_state,
+            &self.depth_state,
         );
         unsafe {
             device_context.PSSetSamplers(0, Some(sampler));
@@ -1273,19 +1405,70 @@ impl<T> PipelineState<T> {
     }
 }
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct PathRasterizationSprite {
-    xy_position: Point<ScaledPixels>,
-    st_position: Point<f32>,
-    color: Background,
-    bounds: Bounds<ScaledPixels>,
+// 路径与瓦片/曲线/绘制参数的 GPU 布局与核心 scene.rs 的同名类型一致，
+// 直接复用 `rgpui::{PathCurve, PathTile, PathPaint}`，避免两处维护。
+
+/// 部分重绘时供 `fast::partial` 调用的绘制接口。
+///
+/// 持有渲染器可变借用；每次 `begin` 临时把 canvas 的颜色/深度视图换进
+/// `resources`，`drop` 时恢复——路径栅格化完成后会读回 `render_target_view`。
+struct PartialDrawer<'a> {
+    renderer: &'a mut DirectXRenderer,
+    scene: &'a Scene,
+    clear: [f32; 4],
+    /// begin 前的窗口渲染目标，drop 时恢复。
+    saved: Option<(
+        Option<ID3D11RenderTargetView>,
+        Option<ID3D11DepthStencilView>,
+    )>,
 }
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct PathSprite {
-    bounds: Bounds<ScaledPixels>,
+impl crate::fast::partial::Drawer for PartialDrawer<'_> {
+    fn clear(&self) -> [f32; 4] {
+        self.clear
+    }
+
+    fn prepare(&mut self) -> Result<()> {
+        self.renderer.upload_scene_buffers(self.scene)
+    }
+
+    fn begin(
+        &mut self,
+        color: &Option<ID3D11RenderTargetView>,
+        depth: &Option<ID3D11DepthStencilView>,
+        clear: [f32; 4],
+    ) -> Result<()> {
+        let resources = self
+            .renderer
+            .resources
+            .as_mut()
+            .context("resources missing")?;
+        // 只保存一次：整帧路径里 begin 可能被调用多轮（每个 damage 矩形）。
+        if self.saved.is_none() {
+            self.saved = Some((
+                resources.render_target_view.clone(),
+                resources.depth_stencil_view.clone(),
+            ));
+        }
+        resources.render_target_view = color.clone();
+        resources.depth_stencil_view = depth.clone();
+        self.renderer.pre_draw(&clear, self.scene.quads.len())
+    }
+
+    fn draw(&mut self) -> Result<()> {
+        self.renderer.draw_batches(self.scene)
+    }
+}
+
+impl Drop for PartialDrawer<'_> {
+    fn drop(&mut self) {
+        if let (Some(saved), Some(resources)) =
+            (self.saved.take(), self.renderer.resources.as_mut())
+        {
+            resources.render_target_view = saved.0;
+            resources.depth_stencil_view = saved.1;
+        }
+    }
 }
 
 impl Drop for DirectXRenderer {
@@ -1368,28 +1551,52 @@ fn create_resources(
 ) -> Result<(
     ID3D11Texture2D,
     Option<ID3D11RenderTargetView>,
-    ID3D11Texture2D,
-    Option<ID3D11ShaderResourceView>,
-    ID3D11Texture2D,
-    Option<ID3D11RenderTargetView>,
+    Option<ID3D11DepthStencilView>,
     D3D11_VIEWPORT,
 )> {
     let (render_target, render_target_view) =
         create_render_target_and_its_view(swap_chain, &devices.device)?;
-    let (path_intermediate_texture, path_intermediate_srv) =
-        create_path_intermediate_texture(&devices.device, width, height)?;
-    let (path_intermediate_msaa_texture, path_intermediate_msaa_view) =
-        create_path_intermediate_msaa_texture_and_view(&devices.device, width, height)?;
+    let depth_stencil_view = create_depth_stencil_and_view(&devices.device, width, height)?;
     let viewport = set_viewport(&devices.device_context, width as f32, height as f32);
     Ok((
         render_target,
         render_target_view,
-        path_intermediate_texture,
-        path_intermediate_srv,
-        path_intermediate_msaa_texture,
-        path_intermediate_msaa_view,
+        depth_stencil_view,
         viewport,
     ))
+}
+
+/// anti-overdraw 深度纹理（D32_FLOAT）与其深度模板视图。
+/// 只返回视图：D3D11 的 DSV 自持纹理引用，纹理随视图存活。
+#[inline]
+fn create_depth_stencil_and_view(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+) -> Result<Option<ID3D11DepthStencilView>> {
+    let texture = unsafe {
+        let mut output = None;
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: width,
+            Height: height,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_D32_FLOAT,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: D3D11_BIND_DEPTH_STENCIL.0 as u32,
+            CPUAccessFlags: 0,
+            MiscFlags: 0,
+        };
+        device.CreateTexture2D(&desc, None, Some(&mut output))?;
+        output.context("创建深度纹理失败")?
+    };
+    let mut view = None;
+    unsafe { device.CreateDepthStencilView(&texture, None, Some(&mut view))? };
+    Ok(view)
 }
 
 #[inline]
@@ -1489,70 +1696,6 @@ fn read_render_target(
 }
 
 #[inline]
-fn create_path_intermediate_texture(
-    device: &ID3D11Device,
-    width: u32,
-    height: u32,
-) -> Result<(ID3D11Texture2D, Option<ID3D11ShaderResourceView>)> {
-    let texture = unsafe {
-        let mut output = None;
-        let desc = D3D11_TEXTURE2D_DESC {
-            Width: width,
-            Height: height,
-            MipLevels: 1,
-            ArraySize: 1,
-            Format: RENDER_TARGET_FORMAT,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            Usage: D3D11_USAGE_DEFAULT,
-            BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
-            CPUAccessFlags: 0,
-            MiscFlags: 0,
-        };
-        device.CreateTexture2D(&desc, None, Some(&mut output))?;
-        output.unwrap()
-    };
-
-    let mut shader_resource_view = None;
-    unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut shader_resource_view))? };
-
-    Ok((texture, Some(shader_resource_view.unwrap())))
-}
-
-#[inline]
-fn create_path_intermediate_msaa_texture_and_view(
-    device: &ID3D11Device,
-    width: u32,
-    height: u32,
-) -> Result<(ID3D11Texture2D, Option<ID3D11RenderTargetView>)> {
-    let msaa_texture = unsafe {
-        let mut output = None;
-        let desc = D3D11_TEXTURE2D_DESC {
-            Width: width,
-            Height: height,
-            MipLevels: 1,
-            ArraySize: 1,
-            Format: RENDER_TARGET_FORMAT,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: PATH_MULTISAMPLE_COUNT,
-                Quality: D3D11_STANDARD_MULTISAMPLE_PATTERN.0 as u32,
-            },
-            Usage: D3D11_USAGE_DEFAULT,
-            BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
-            CPUAccessFlags: 0,
-            MiscFlags: 0,
-        };
-        device.CreateTexture2D(&desc, None, Some(&mut output))?;
-        output.unwrap()
-    };
-    let mut msaa_view = None;
-    unsafe { device.CreateRenderTargetView(&msaa_texture, None, Some(&mut msaa_view))? };
-    Ok((msaa_texture, Some(msaa_view.unwrap())))
-}
-
-#[inline]
 fn set_viewport(device_context: &ID3D11DeviceContext, width: f32, height: f32) -> D3D11_VIEWPORT {
     let viewport = [D3D11_VIEWPORT {
         TopLeftX: 0.0,
@@ -1629,39 +1772,43 @@ fn create_blend_state_for_subpixel_rendering(device: &ID3D11Device) -> Result<ID
     }
 }
 
+/// 深度模板状态：`enabled=false` 关闭深度测试（非 quad 图元）；
+/// `write=true` 时写入深度。比较一律 Greater——深度「越大越近」，
+/// 不透明通道从前往后画，更远的片元直接失败。
 #[inline]
-fn create_blend_state_for_path_rasterization(device: &ID3D11Device) -> Result<ID3D11BlendState> {
-    // If the feature level is set to greater than D3D_FEATURE_LEVEL_9_3, the display
-    // device performs the blend in linear space, which is ideal.
-    let mut desc = D3D11_BLEND_DESC::default();
-    desc.RenderTarget[0].BlendEnable = true.into();
-    desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-    desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
-    desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-    desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-    desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
-    desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8;
+fn create_depth_stencil_state(
+    device: &ID3D11Device,
+    enabled: bool,
+    write: bool,
+) -> Result<ID3D11DepthStencilState> {
+    let desc = D3D11_DEPTH_STENCIL_DESC {
+        DepthEnable: enabled.into(),
+        DepthWriteMask: if write {
+            D3D11_DEPTH_WRITE_MASK_ALL
+        } else {
+            D3D11_DEPTH_WRITE_MASK_ZERO
+        },
+        DepthFunc: D3D11_COMPARISON_GREATER,
+        ..Default::default()
+    };
     unsafe {
         let mut state = None;
-        device.CreateBlendState(&desc, Some(&mut state))?;
+        device.CreateDepthStencilState(&desc, Some(&mut state))?;
         Ok(state.unwrap())
     }
 }
 
+/// 不透明通道的混合状态：完全关闭混合，颜色直写。
 #[inline]
-fn create_blend_state_for_path_sprite(device: &ID3D11Device) -> Result<ID3D11BlendState> {
-    // If the feature level is set to greater than D3D_FEATURE_LEVEL_9_3, the display
-    // device performs the blend in linear space, which is ideal.
-    let mut desc = D3D11_BLEND_DESC::default();
-    desc.RenderTarget[0].BlendEnable = true.into();
-    desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-    desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
-    desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-    desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-    desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
-    desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8;
+fn create_opaque_blend_state(device: &ID3D11Device) -> Result<ID3D11BlendState> {
+    let desc = D3D11_BLEND_DESC {
+        RenderTarget: [D3D11_RENDER_TARGET_BLEND_DESC {
+            BlendEnable: false.into(),
+            RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8,
+            ..Default::default()
+        }; 8],
+        ..Default::default()
+    };
     unsafe {
         let mut state = None;
         device.CreateBlendState(&desc, Some(&mut state))?;
@@ -1767,6 +1914,7 @@ fn set_pipeline_state(
     fragment_shader: &ID3D11PixelShader,
     global_params: &[Option<ID3D11Buffer>],
     blend_state: &ID3D11BlendState,
+    depth_state: &ID3D11DepthStencilState,
 ) {
     unsafe {
         device_context.VSSetShaderResources(1, Some(buffer_view));
@@ -1778,6 +1926,7 @@ fn set_pipeline_state(
         device_context.VSSetConstantBuffers(0, Some(global_params));
         device_context.PSSetConstantBuffers(0, Some(global_params));
         device_context.OMSetBlendState(blend_state, None, 0xFFFFFFFF);
+        device_context.OMSetDepthStencilState(depth_state, 0);
     }
 }
 
@@ -1807,10 +1956,10 @@ pub(crate) mod shader_resources {
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     pub(crate) enum ShaderModule {
         Quad,
+        OpaqueQuad,
         Shadow,
         Underline,
-        PathRasterization,
-        PathSprite,
+        PathTile,
         MonochromeSprite,
         SubpixelSprite,
         PolychromeSprite,
@@ -1860,6 +2009,10 @@ pub(crate) mod shader_resources {
                     ShaderTarget::Vertex => QUAD_VERTEX_BYTES,
                     ShaderTarget::Fragment => QUAD_FRAGMENT_BYTES,
                 },
+                ShaderModule::OpaqueQuad => match target {
+                    ShaderTarget::Vertex => OPAQUE_QUAD_VERTEX_BYTES,
+                    ShaderTarget::Fragment => OPAQUE_QUAD_FRAGMENT_BYTES,
+                },
                 ShaderModule::Shadow => match target {
                     ShaderTarget::Vertex => SHADOW_VERTEX_BYTES,
                     ShaderTarget::Fragment => SHADOW_FRAGMENT_BYTES,
@@ -1868,13 +2021,9 @@ pub(crate) mod shader_resources {
                     ShaderTarget::Vertex => UNDERLINE_VERTEX_BYTES,
                     ShaderTarget::Fragment => UNDERLINE_FRAGMENT_BYTES,
                 },
-                ShaderModule::PathRasterization => match target {
-                    ShaderTarget::Vertex => PATH_RASTERIZATION_VERTEX_BYTES,
-                    ShaderTarget::Fragment => PATH_RASTERIZATION_FRAGMENT_BYTES,
-                },
-                ShaderModule::PathSprite => match target {
-                    ShaderTarget::Vertex => PATH_SPRITE_VERTEX_BYTES,
-                    ShaderTarget::Fragment => PATH_SPRITE_FRAGMENT_BYTES,
+                ShaderModule::PathTile => match target {
+                    ShaderTarget::Vertex => PATH_TILE_VERTEX_BYTES,
+                    ShaderTarget::Fragment => PATH_TILE_FRAGMENT_BYTES,
                 },
                 ShaderModule::MonochromeSprite => match target {
                     ShaderTarget::Vertex => MONOCHROME_SPRITE_VERTEX_BYTES,
@@ -1972,10 +2121,10 @@ pub(crate) mod shader_resources {
         pub fn as_str(self) -> &'static str {
             match self {
                 ShaderModule::Quad => "quad",
+                ShaderModule::OpaqueQuad => "opaque_quad",
                 ShaderModule::Shadow => "shadow",
                 ShaderModule::Underline => "underline",
-                ShaderModule::PathRasterization => "path_rasterization",
-                ShaderModule::PathSprite => "path_sprite",
+                ShaderModule::PathTile => "path_tile",
                 ShaderModule::MonochromeSprite => "monochrome_sprite",
                 ShaderModule::SubpixelSprite => "subpixel_sprite",
                 ShaderModule::PolychromeSprite => "polychrome_sprite",
@@ -2178,13 +2327,22 @@ mod dxgi {
 
 #[cfg(test)]
 mod readback_tests {
-    use super::{create_offscreen_render_target, read_render_target};
+    use super::{
+        BatchRenderer, DirectXGlobalElements, DirectXRenderPipelines, GlobalParams,
+        create_depth_stencil_and_view, create_offscreen_render_target, read_render_target,
+        set_rasterizer_state, set_viewport, update_buffer, upload_scene_buffers_into,
+    };
+    use crate::fast::partial::Drawer as _;
+    use anyhow::Result;
+    use rgpui::{PaintedPath, Quad, Scene, Underline};
+    use std::slice;
     use windows::Win32::Foundation::HMODULE;
     use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_WARP;
     use windows::Win32::Graphics::Direct3D11::{
-        D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device,
-        ID3D11DeviceContext,
+        D3D11_CLEAR_DEPTH, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice,
+        ID3D11DepthStencilView, ID3D11Device, ID3D11DeviceContext, ID3D11RenderTargetView,
     };
+    use windows::core::Interface as _;
 
     /// 用 WARP 软件设备跑测试：CI 的 Windows runner 没有独立显卡也能工作，
     /// 连 WARP 都建不起来（极少数环境）就跳过，不把环境问题变成回归噪声。
@@ -2231,6 +2389,605 @@ mod readback_tests {
         assert_eq!(image.dimensions(), (4, 3));
         for pixel in image.pixels() {
             assert_eq!(pixel.0, [255, 0, 0, 255], "读回的像素应是红色且通道不串");
+        }
+    }
+
+    /// anti-overdraw 端到端（WARP）：
+    /// 1) 不透明通道从前往后画、写深度——近处绿块遮住远处红块；
+    /// 2) 混合通道把「实心不透明矩形」整个裁掉——清空重画后像素保持清屏色。
+    #[test]
+    fn opaque_channel_occludes_and_blended_channel_culls_opaque_rects() {
+        use super::{
+            DirectXGlobalElements, DirectXRenderPipelines, GlobalParams,
+            create_depth_stencil_and_view, set_pipeline_state, set_rasterizer_state, set_viewport,
+            update_buffer,
+        };
+        use rgpui::{
+            Bounds, ContentMask, Hsla, Quad, ScaledPixels, hsla, point, size, solid_background,
+        };
+        use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
+        use windows::Win32::Graphics::Direct3D11::D3D11_CLEAR_DEPTH;
+
+        let Some((device, device_context)) = create_warp_device() else {
+            return;
+        };
+
+        let mut pipelines = DirectXRenderPipelines::new(&device).expect("管线应能创建");
+        let globals = DirectXGlobalElements::new(&device).expect("全局参数应能创建");
+        update_buffer(
+            &device_context,
+            globals.global_params_buffer.as_ref().unwrap(),
+            &[GlobalParams {
+                gamma_ratios: [1.0, 0.0, 0.0, 0.0],
+                viewport_size: [8.0, 8.0],
+                grayscale_enhanced_contrast: 0.0,
+                subpixel_enhanced_contrast: 0.0,
+                is_bgr: 0,
+                quad_count: 2,
+                _pad: [0; 2],
+            }],
+        )
+        .expect("全局参数应能上传");
+
+        let red = hsla(0.0, 1.0, 0.5, 1.0);
+        let green = hsla(0.33, 1.0, 0.5, 1.0);
+        let solid = |color: Hsla, depth: f32| -> Quad {
+            let bounds = Bounds {
+                origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                size: size(ScaledPixels(8.0), ScaledPixels(8.0)),
+            };
+            Quad {
+                bounds,
+                content_mask: ContentMask { bounds },
+                background: solid_background(color),
+                border_color: color,
+                depth,
+                ..Quad::default()
+            }
+        };
+        // 排序后的场景序：红远（先画）、绿近（后画），深度按「越大越近」。
+        let quads = [solid(red, 0.4), solid(green, 0.8)];
+        pipelines
+            .quad_pipeline
+            .update_buffer(&device, &device_context, &quads)
+            .expect("quad 缓冲应能更新");
+
+        let target = create_offscreen_render_target(&device, 8, 8).expect("离屏目标应能创建");
+        let mut rtv_option = None;
+        unsafe { device.CreateRenderTargetView(&target, None, Some(&mut rtv_option)) }
+            .expect("渲染目标视图应能创建");
+        let rtv = rtv_option.expect("渲染目标视图不能为空");
+        let rtv_slot: Option<windows::Win32::Graphics::Direct3D11::ID3D11RenderTargetView> =
+            Some(rtv);
+        let dsv = create_depth_stencil_and_view(&device, 8, 8)
+            .expect("深度视图应能创建")
+            .expect("深度视图不能为空");
+        let viewport = set_viewport(&device_context, 8.0, 8.0);
+        set_rasterizer_state(&device, &device_context).expect("光栅化状态应能设置");
+
+        let clear = |device_context: &ID3D11DeviceContext, color: [f32; 4]| unsafe {
+            device_context.ClearRenderTargetView(rtv_slot.as_ref().unwrap(), &color);
+            device_context.ClearDepthStencilView(&dsv, D3D11_CLEAR_DEPTH.0, 0.0, 0);
+            device_context.OMSetRenderTargets(Some(std::slice::from_ref(&rtv_slot)), Some(&dsv));
+        };
+
+        // 第一段：不透明通道（反向索引：instance 0 → quad 1 绿，instance 1 → quad 0 红）。
+        clear(&device_context, [1.0, 1.0, 1.0, 1.0]);
+        set_pipeline_state(
+            &device_context,
+            std::slice::from_ref(&pipelines.quad_pipeline.view),
+            D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+            std::slice::from_ref(&viewport),
+            &pipelines.opaque_quads.vertex,
+            &pipelines.opaque_quads.fragment,
+            std::slice::from_ref(&globals.global_params_buffer),
+            &pipelines.opaque_quads.blend_state,
+            &pipelines.opaque_quads.depth_state,
+        );
+        unsafe { device_context.DrawInstanced(4, quads.len() as u32, 0, 0) };
+
+        let image = read_render_target(&device, &device_context, &target, 8, 8)
+            .expect("不透明通道后应能读回");
+        for pixel in image.pixels() {
+            assert!(
+                (pixel.0[1] as i16 - 255).abs() <= 8 && pixel.0[0] < 40,
+                "近处不透明绿应完全遮住远处红: {:?}",
+                pixel.0
+            );
+        }
+
+        // 第二段：只走混合通道——两个都是不透明矩形，应在顶点着色器被裁掉，
+        // 深度缓冲里还留着绿写入的深度，但没有任何东西被重画。
+        clear(&device_context, [0.0, 0.0, 1.0, 1.0]);
+        set_pipeline_state(
+            &device_context,
+            std::slice::from_ref(&pipelines.quad_pipeline.view),
+            D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+            std::slice::from_ref(&viewport),
+            &pipelines.quad_pipeline.vertex,
+            &pipelines.quad_pipeline.fragment,
+            std::slice::from_ref(&globals.global_params_buffer),
+            &pipelines.quad_pipeline.blend_state,
+            &pipelines.quad_pipeline.depth_state,
+        );
+        unsafe { device_context.DrawInstanced(4, quads.len() as u32, 0, 0) };
+
+        let image = read_render_target(&device, &device_context, &target, 8, 8)
+            .expect("混合通道后应能读回");
+        for pixel in image.pixels() {
+            assert_eq!(
+                pixel.0,
+                [0, 0, 255, 255],
+                "不透明矩形应被混合通道整个剔除: {:?}",
+                pixel.0
+            );
+        }
+    }
+
+    /// 环绕数路径渲染端到端（WARP，D3）：
+    /// `PathBuilder::fill` 产出三角形曲线 → CPU 分桶成瓦片 → path_tile 管线
+    /// 逐像素算环绕数，内部实心、外部透明、边缘带部分覆盖。
+    #[test]
+    fn path_tile_pipeline_fills_triangle_with_winding() {
+        use super::{
+            DirectXGlobalElements, DirectXRenderPipelines, GlobalParams, create_buffer_view_range,
+            set_pipeline_state, set_rasterizer_state, set_viewport, update_buffer,
+        };
+        use rgpui::{
+            Bounds, ContentMask, PaintedPath, PathBuilder, hsla, point, px, size, solid_background,
+        };
+        use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
+
+        let Some((device, device_context)) = create_warp_device() else {
+            return;
+        };
+
+        let mut pipelines = DirectXRenderPipelines::new(&device).expect("管线应能创建");
+        let globals = DirectXGlobalElements::new(&device).expect("全局参数应能创建");
+        update_buffer(
+            &device_context,
+            globals.global_params_buffer.as_ref().unwrap(),
+            &[GlobalParams {
+                gamma_ratios: [1.0, 0.0, 0.0, 0.0],
+                viewport_size: [16.0, 16.0],
+                grayscale_enhanced_contrast: 0.0,
+                subpixel_enhanced_contrast: 0.0,
+                is_bgr: 0,
+                quad_count: 0,
+                _pad: [0; 2],
+            }],
+        )
+        .expect("全局参数应能上传");
+
+        // 三角形 (2,2)-(14,2)-(8,14)，实心红，scale 1.0。
+        let mut builder = PathBuilder::fill();
+        builder.add_polygon(
+            &[
+                point(px(2.), px(2.)),
+                point(px(14.), px(2.)),
+                point(px(8.), px(14.)),
+            ],
+            true,
+        );
+        let path = builder.build().expect("三角形路径应能构建");
+        let full = Bounds {
+            origin: point(px(0.), px(0.)),
+            size: size(px(16.), px(16.)),
+        };
+        let painted = PaintedPath::new(
+            path,
+            1.0,
+            ContentMask { bounds: full },
+            solid_background(hsla(0.0, 1.0, 0.5, 1.0)),
+        );
+        let mut paints: Vec<rgpui::PathPaint> = Vec::new();
+        let mut curves: Vec<rgpui::PathCurve> = Vec::new();
+        let mut tiles: Vec<rgpui::PathTile> = Vec::new();
+        painted.append_to(&mut paints, &mut curves, &mut tiles);
+        assert!(!tiles.is_empty(), "分桶应产出瓦片");
+
+        pipelines
+            .path_paints
+            .update_buffer(&device, &device_context, paints.as_slice())
+            .expect("绘制参数缓冲应能更新");
+        pipelines
+            .path_curves
+            .update_buffer(&device, &device_context, curves.as_slice())
+            .expect("曲线缓冲应能更新");
+        pipelines
+            .path_tile_pipeline
+            .update_buffer(&device, &device_context, tiles.as_slice())
+            .expect("瓦片缓冲应能更新");
+
+        let target = create_offscreen_render_target(&device, 16, 16).expect("离屏目标应能创建");
+        let mut rtv_option = None;
+        unsafe { device.CreateRenderTargetView(&target, None, Some(&mut rtv_option)) }
+            .expect("渲染目标视图应能创建");
+        let rtv = rtv_option.as_ref().expect("渲染目标视图不能为空").clone();
+        unsafe { device_context.ClearRenderTargetView(&rtv, &[0.0, 0.0, 0.0, 0.0]) };
+        let viewport = set_viewport(&device_context, 16.0, 16.0);
+        set_rasterizer_state(&device, &device_context).expect("光栅化状态应能设置");
+        unsafe {
+            device_context.OMSetRenderTargets(Some(std::slice::from_ref(&rtv_option)), None);
+        }
+
+        // 与 draw_path_tiles 相同的绑定口径：t1 = 本批瓦片区间视图，
+        // t2 = 全量曲线，t3 = 全量绘制参数。
+        let tile_view = create_buffer_view_range(
+            &device,
+            &pipelines.path_tile_pipeline.buffer,
+            0,
+            tiles.len() as u32,
+        )
+        .expect("瓦片区间视图应能创建");
+        assert!(tile_view.is_some(), "瓦片区间视图不能为空");
+        let paints_view = pipelines
+            .path_paints
+            .view
+            .as_ref()
+            .expect("绘制参数视图应存在")
+            .clone();
+        let curves_view = pipelines
+            .path_curves
+            .view
+            .as_ref()
+            .expect("曲线视图应存在")
+            .clone();
+
+        set_pipeline_state(
+            &device_context,
+            std::slice::from_ref(&tile_view),
+            D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+            std::slice::from_ref(&viewport),
+            &pipelines.path_tile_pipeline.vertex,
+            &pipelines.path_tile_pipeline.fragment,
+            std::slice::from_ref(&globals.global_params_buffer),
+            &pipelines.path_tile_pipeline.blend_state,
+            &pipelines.path_tile_pipeline.depth_state,
+        );
+        unsafe {
+            // t2 = 曲线，t3 = 绘制参数（与 HLSL 寄存器一致）。
+            device_context.VSSetShaderResources(2, Some(&[Some(curves_view.clone())]));
+            device_context.PSSetShaderResources(2, Some(&[Some(curves_view)]));
+            device_context.VSSetShaderResources(3, Some(&[Some(paints_view.clone())]));
+            device_context.PSSetShaderResources(3, Some(&[Some(paints_view)]));
+            device_context.DrawInstanced(4, tiles.len() as u32, 0, 0);
+        }
+
+        let image = read_render_target(&device, &device_context, &target, 16, 16)
+            .expect("路径绘制后应能读回");
+        let px = |x: u32, y: u32| image.get_pixel(x, y).0;
+        // 内部点：红色不透明。
+        let inside = px(8, 8);
+        assert!(
+            inside[0] >= 215 && inside[1] <= 40 && inside[2] <= 40 && inside[3] >= 215,
+            "三角形内部应为红色不透明（读回 BGRA->RGBA），实际 {inside:?}"
+        );
+        // 外部点：透明。
+        for (x, y) in [(0u32, 0u32), (15, 0), (0, 15), (1, 1)] {
+            let outside = px(x, y);
+            assert_eq!(
+                outside[3], 0,
+                "三角形外部 ({x},{y}) 应透明，实际 {outside:?}"
+            );
+        }
+    }
+
+    /// 真实渲染的对拍抽屉：在 WARP 设备上按 `draw_batches` / `draw_path_tiles`
+    /// 的口径把场景画进「当前绑定的渲染目标」。像素对拍的两侧（partial
+    /// canvas 与整帧参考）共用它，因此像素差异只可能来自 partial 机制本身
+    /// （canvas 拷贝、`CopySubresourceRegion` 搬移、`ClearView`、scissor）。
+    struct SceneDrawer {
+        device: ID3D11Device,
+        context: ID3D11DeviceContext,
+        pipelines: DirectXRenderPipelines,
+        globals: DirectXGlobalElements,
+        scene: Scene,
+        size: (f32, f32),
+    }
+
+    impl SceneDrawer {
+        fn new(device: &ID3D11Device, context: &ID3D11DeviceContext, size: (f32, f32)) -> Self {
+            let pipelines = DirectXRenderPipelines::new(device).expect("管线应能创建");
+            let globals = DirectXGlobalElements::new(device).expect("全局参数应能创建");
+            Self {
+                device: device.clone(),
+                context: context.clone(),
+                pipelines,
+                globals,
+                scene: Scene::default(),
+                size,
+            }
+        }
+
+        /// 批绘制：与渲染器共用 [`BatchRenderer`]（含路径瓦片批）。
+        fn batches(&mut self, scene: &Scene) -> Result<()> {
+            let viewport = set_viewport(&self.context, self.size.0, self.size.1);
+            let mut batches = BatchRenderer {
+                device: &self.device,
+                context: &self.context,
+                pipelines: &mut self.pipelines,
+                globals: &self.globals,
+                viewport,
+                atlas_views: &|_| None,
+            };
+            batches.draw_scene(scene)
+        }
+
+        /// 整帧参考：把 `scene` 画进离屏目标（含深度）并读回像素。
+        fn render_full_frame(&mut self, scene: Scene) -> Result<image::RgbaImage> {
+            let (width, height) = (self.size.0 as u32, self.size.1 as u32);
+            let target = create_offscreen_render_target(&self.device, width, height)?;
+            let mut view = None;
+            unsafe {
+                self.device
+                    .CreateRenderTargetView(&target, None, Some(&mut view))
+            }?;
+            let view = view.expect("渲染目标视图应能创建");
+            let depth = create_depth_stencil_and_view(&self.device, width, height)?
+                .expect("深度视图应能创建");
+
+            self.scene = scene;
+            self.prepare()?;
+            self.begin(&Some(view), &Some(depth), [0.0; 4])?;
+            self.draw()?;
+            read_render_target(&self.device, &self.context, &target, width, height)
+        }
+    }
+
+    impl crate::fast::partial::Drawer for SceneDrawer {
+        fn clear(&self) -> [f32; 4] {
+            [0.0; 4]
+        }
+
+        fn prepare(&mut self) -> Result<()> {
+            // 全局参数按帧上传：不透明通道的反向索引需要全局 quad 数
+            // （与渲染器 pre_draw 同口径）。
+            update_buffer(
+                &self.context,
+                self.globals.global_params_buffer.as_ref().unwrap(),
+                &[GlobalParams {
+                    gamma_ratios: [1.0, 0.0, 0.0, 0.0],
+                    viewport_size: [self.size.0, self.size.1],
+                    grayscale_enhanced_contrast: 0.0,
+                    subpixel_enhanced_contrast: 0.0,
+                    is_bgr: 0,
+                    quad_count: self.scene.quads.len() as u32,
+                    _pad: [0; 2],
+                }],
+            )?;
+            // 场景缓冲与渲染器的 upload_scene_buffers 共用同一份上传代码。
+            upload_scene_buffers_into(
+                &self.device,
+                &self.context,
+                &mut self.pipelines,
+                &self.scene,
+            )
+        }
+
+        fn begin(
+            &mut self,
+            color: &Option<ID3D11RenderTargetView>,
+            depth: &Option<ID3D11DepthStencilView>,
+            clear: [f32; 4],
+        ) -> Result<()> {
+            unsafe {
+                self.context
+                    .OMSetRenderTargets(Some(slice::from_ref(color)), depth.as_ref());
+                if let Some(view) = color {
+                    self.context.ClearRenderTargetView(view, &clear);
+                }
+                if let Some(view) = depth {
+                    self.context
+                        .ClearDepthStencilView(view, D3D11_CLEAR_DEPTH.0, 0.0, 0);
+                }
+            }
+            set_rasterizer_state(&self.device, &self.context)?;
+            set_viewport(&self.context, self.size.0, self.size.1);
+            Ok(())
+        }
+
+        fn draw(&mut self) -> Result<()> {
+            // draw_path_tiles 需要 &mut self，先把场景取出来避开借用冲突。
+            let scene = std::mem::take(&mut self.scene);
+            let result = self.batches(&scene);
+            self.scene = scene;
+            result
+        }
+    }
+
+    /// 对拍场景：不透明绿块（下层）+ 红色三角形路径 + 蓝色下划线。
+    /// 视口深度游标（D2 backlog）：插入更晚的不透明矩形必须盖住先画的非 quad
+    /// 图元。修复前非 quad 关闭深度测试，会浮在最先绘制的不透明通道之上。
+    #[test]
+    fn opaque_quad_occludes_earlier_underline() {
+        use rgpui::{Bounds, ContentMask, ScaledPixels, hsla, point, size, solid_background};
+
+        let Some((device, context)) = create_warp_device() else {
+            return;
+        };
+        let mut drawer = SceneDrawer::new(&device, &context, (16.0, 16.0));
+
+        let bounds = Bounds {
+            origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+            size: size(ScaledPixels(16.0), ScaledPixels(16.0)),
+        };
+        let mut scene = Scene::default();
+        // 先插红下划线（非 quad），再插覆盖它的不透明绿矩形。
+        scene.insert_primitive(Underline {
+            order: 0,
+            pad: 0,
+            bounds,
+            content_mask: ContentMask { bounds },
+            color: hsla(0.0, 1.0, 0.5, 1.0),
+            thickness: ScaledPixels(16.0),
+            wavy: 0,
+        });
+        scene.insert_primitive(Quad {
+            bounds,
+            content_mask: ContentMask { bounds },
+            background: solid_background(hsla(0.33, 1.0, 0.5, 1.0)),
+            border_color: hsla(0.33, 1.0, 0.5, 1.0),
+            ..Quad::default()
+        });
+        scene.finish();
+
+        let image = drawer.render_full_frame(scene).expect("整帧应能渲染读回");
+        let px = image.get_pixel(8, 8).0;
+        assert!(
+            px[1] >= 215 && px[0] <= 40 && px[2] <= 40 && px[3] >= 215,
+            "后画的不透明绿矩形应盖住先画的红下划线，实际 {px:?}"
+        );
+    }
+
+    /// `translate` 把三角形整体平移，制造「其余不变、路径移动」的帧间变化。
+    fn comparison_scene(translate: f32) -> Scene {
+        use rgpui::{PathBuilder, ScaledPixels, hsla, point, px, size as gsize, solid_background};
+        let mut scene = Scene::default();
+        // 不透明绿块：(0,0)-(16,8)，走不透明通道并写深度。
+        let quad_bounds = rgpui::Bounds {
+            origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+            size: gsize(ScaledPixels(16.0), ScaledPixels(8.0)),
+        };
+        scene.insert_primitive(Quad {
+            bounds: quad_bounds,
+            content_mask: rgpui::ContentMask {
+                bounds: quad_bounds,
+            },
+            background: solid_background(hsla(0.33, 1.0, 0.5, 1.0)),
+            border_color: hsla(0.33, 1.0, 0.5, 1.0),
+            ..Quad::default()
+        });
+        // 红色三角形路径（叠在绿块上，混合通道；深度口径与整帧一致）。
+        let mut builder = PathBuilder::fill();
+        builder.add_polygon(
+            &[
+                point(px(2.0 + translate), px(9.0)),
+                point(px(14.0 + translate), px(9.0)),
+                point(px(8.0 + translate), px(21.0)),
+            ],
+            true,
+        );
+        let path = builder.build().expect("三角形路径应能构建");
+        let mask = rgpui::Bounds {
+            origin: point(px(0.0), px(0.0)),
+            size: gsize(px(32.0), px(32.0)),
+        };
+        scene.insert_primitive(PaintedPath::new(
+            path,
+            1.0,
+            rgpui::ContentMask { bounds: mask },
+            solid_background(hsla(0.0, 1.0, 0.5, 1.0)),
+        ));
+        // 蓝色下划线（两帧不变）。
+        let underline_bounds = rgpui::Bounds {
+            origin: point(ScaledPixels(1.0), ScaledPixels(26.0)),
+            size: gsize(ScaledPixels(30.0), ScaledPixels(2.0)),
+        };
+        scene.insert_primitive(Underline {
+            order: 0,
+            pad: 0,
+            bounds: underline_bounds,
+            content_mask: rgpui::ContentMask {
+                bounds: underline_bounds,
+            },
+            color: hsla(0.66, 1.0, 0.5, 1.0),
+            thickness: ScaledPixels(2.0),
+            wavy: 0,
+        });
+        scene.finish();
+        scene
+    }
+
+    /// D4c 像素对拍（partial redraw 的验收门槛）：
+    /// 同一串场景分别走 partial canvas 与整帧参考路径，逐字节比对。
+    /// 帧 A 全量绘制、帧 B 只移动三角形——其余像素必须从 canvas 原样拷贝，
+    /// damage 区重画必须与整帧逐像素一致。
+    #[test]
+    fn partial_redraw_reproduces_full_frame_pixels() {
+        use crate::fast::partial::Partial;
+
+        let Some((device, context)) = create_warp_device() else {
+            return;
+        };
+        let context1 = context
+            .cast::<windows::Win32::Graphics::Direct3D11::ID3D11DeviceContext1>()
+            .expect("WARP 设备应支持 ID3D11DeviceContext1");
+        let size = (32u32, 32u32);
+        let mut drawer = SceneDrawer::new(&device, &context, (32.0, 32.0));
+        let mut partial = Partial::forced_on();
+        let empty_uploads = std::collections::HashSet::new();
+
+        let scene_a = comparison_scene(0.0);
+        let scene_b = comparison_scene(3.0);
+
+        // 帧 A：canvas 无上一帧 → 整帧绘制。抽屉先装上同一串场景
+        // （comparison_scene 是确定性的，签名用与绘制用各持一份）。
+        drawer.scene = comparison_scene(0.0);
+        let canvas_a = partial
+            .frame(
+                &device,
+                &context,
+                &context1,
+                size,
+                &scene_a,
+                &empty_uploads,
+                &mut drawer,
+            )
+            .expect("帧 A 应能绘制")
+            .expect("帧 A 应产出 canvas");
+        let partial_a = read_render_target(&device, &context, &canvas_a, size.0, size.1)
+            .expect("帧 A canvas 应能读回");
+        let reference_a = drawer
+            .render_full_frame(comparison_scene(0.0))
+            .expect("帧 A 整帧参考应能渲染");
+        assert_eq!(
+            partial_a.as_raw(),
+            reference_a.as_raw(),
+            "帧 A：partial 整帧绘制与整帧参考应逐字节一致"
+        );
+
+        // 帧 B：只移动三角形，其余不变 → 应产生 damage 计划而非整帧回退。
+        drawer.scene = comparison_scene(3.0);
+        let canvas_b = partial
+            .frame(
+                &device,
+                &context,
+                &context1,
+                size,
+                &scene_b,
+                &empty_uploads,
+                &mut drawer,
+            )
+            .expect("帧 B 应能绘制")
+            .expect("帧 B 应产出 canvas");
+        let plan = partial.last_plan.expect("帧 B 应有部分重绘计划");
+        assert!(
+            !plan.damage.is_empty(),
+            "移动三角形应产生非空 damage（否则本测试退化为整帧对拍，失去意义）"
+        );
+
+        let partial_b = read_render_target(&device, &context, &canvas_b, size.0, size.1)
+            .expect("帧 B canvas 应能读回");
+        let reference_b = drawer
+            .render_full_frame(comparison_scene(3.0))
+            .expect("帧 B 整帧参考应能渲染");
+
+        // 找出第一处不一致的像素，给出可定位的失败信息。
+        if partial_b.as_raw() != reference_b.as_raw() {
+            for y in 0..size.1 {
+                for x in 0..size.0 {
+                    let i = ((y * size.0 + x) * 4) as usize;
+                    if partial_b.as_raw()[i..i + 4] != reference_b.as_raw()[i..i + 4] {
+                        panic!(
+                            "帧 B 像素 ({x},{y}) 不一致：partial {:?} vs 整帧 {:?}（首处）",
+                            &partial_b.as_raw()[i..i + 4],
+                            &reference_b.as_raw()[i..i + 4],
+                        );
+                    }
+                }
+            }
+            panic!("帧 B：partial 与整帧像素不一致（未定位到首处差异）");
         }
     }
 }

@@ -30,20 +30,50 @@ DiffView::new(&diff_state)
 
 ## DiffState
 
-`DiffState`（`components/diff.rs:35`），差异状态实体，持有计算后的差异行列表。
+`DiffState`（`components/diff.rs:58`），差异状态实体，持有计算后的差异行列表。
 
 | 方法 | 签名 | 位置 |
 |------|------|------|
-| `new` | `fn new(old: impl Into<String>, new: impl Into<String>) -> Self` | `:44` |
-| `show_line_numbers` | `fn show_line_numbers(mut self, show: bool) -> Self` | `:96` |
-| `lines` | `fn lines(&self) -> &[DiffLine]` | `:102` |
-| `is_show_line_numbers` | `fn is_show_line_numbers(&self) -> bool` | `:107` |
-| `added_count` | `fn added_count(&self) -> usize` | `:112` |
-| `removed_count` | `fn removed_count(&self) -> usize` | `:120` |
-| `unchanged_count` | `fn unchanged_count(&self) -> usize` | `:128` |
+| `new` | `fn new(old: impl Into<String>, new: impl Into<String>) -> Self` | `:73` |
+| `show_line_numbers` | `fn show_line_numbers(mut self, show: bool) -> Self` | `:132` |
+| `lines` | `fn lines(&self) -> &[DiffLine]` | `:138` |
+| `is_show_line_numbers` | `fn is_show_line_numbers(&self) -> bool` | `:143` |
+| `added_count` | `fn added_count(&self) -> usize` | `:148` |
+| `removed_count` | `fn removed_count(&self) -> usize` | `:156` |
+| `unchanged_count` | `fn unchanged_count(&self) -> usize` | `:164` |
+| `set_span_highlights` | `fn set_span_highlights(&mut self, highlights: impl IntoIterator<Item = DiffSpanHighlight>, cx: &mut Context<Self>)` | `:172` |
+| `clear_span_highlights` | `fn clear_span_highlights(&mut self, cx: &mut Context<Self>)` | `:182` |
+| `span_highlights` | `fn span_highlights(&self) -> &[DiffSpanHighlight]` | `:190` |
+| `highlights_for_query` | `fn highlights_for_query(&self, query: &str) -> Vec<DiffSpanHighlight>` | `:198` |
+| `scroll_to_line` | `fn scroll_to_line(&mut self, line: usize, cx: &mut Context<Self>)` | `:231` |
+| `scroll_handle` | `fn scroll_handle(&self) -> &UniformListScrollHandle` | `:237` |
 
-`impl Render for DiffState`（`:136`）返回空 `div()`，状态本身不直接渲染，需配合 
+`impl Render for DiffState`（`:270`）返回空 `div()`，状态本身不直接渲染，需配合 
 `DiffView` 元素。
+
+### 字符级高亮与滚动定位
+
+`DiffSpanHighlight`（`components/diff.rs:29`）标出某一行内的一段字符区间
+（如搜索命中），`DiffView` 渲染时以主题强调色背景显示：
+
+```rust
+use rgpui::components::DiffSpanHighlight;
+
+// 搜索联动：生成命中区间 → 高亮 → 跳到首个命中行（一次性）。
+let spans = diff_state.read(cx).highlights_for_query(query);
+diff_state.update(cx, |state, cx| {
+    state.set_span_highlights(spans, cx);
+    if let Some(first) = state.span_highlights().first() {
+        state.scroll_to_line(first.line, cx);
+    }
+});
+```
+
+- `highlights_for_query` 大小写不敏感，按字符边界对齐（多字节字符安全）；
+  区间是**行内容**的字节区间（不含行号与 `+`/`-` 前缀，渲染时自动平移）。
+- `scroll_to_line` 是一次性语义：下次布局按 `Nearest` 策略定位，越界收敛到
+  末行；`DiffState` 持有滚动句柄，跨帧保持滚动位置。
+- 手工构造区间时须落在字符边界上，非法区间渲染时忽略。
 
 ### DiffLine
 
@@ -68,19 +98,21 @@ DiffView::new(&diff_state)
 
 ## DiffView
 
-`DiffView`（`components/diff.rs:143`），差异查看器元素，`impl IntoElement`。
+`DiffView`（`components/diff.rs:278`），差异查看器元素，`impl IntoElement`。
 
 | 方法 | 签名 | 位置 |
 |------|------|------|
-| `new` | `fn new(state: &Entity<DiffState>) -> Self` | `:152` |
-| `line_height` | `fn line_height(mut self, height: impl Into<Pixels>) -> Self` | `:161` |
+| `new` | `fn new(state: &Entity<DiffState>) -> Self` | `:287` |
+| `line_height` | `fn line_height(mut self, height: impl Into<Pixels>) -> Self` | `:295` |
 
-`impl RenderOnce for DiffView`（`:169`）用 `uniform_list` 渲染差异行（只排布视口内的行）：
+`impl RenderOnce for DiffView`（`:301`）用 `uniform_list` 渲染差异行（只排布视口内的行）：
 - 新增行：绿色背景（`theme.tokens.success.color.opacity(0.15)`）+ 绿色文字
 - 删除行：红色背景（`theme.tokens.danger.color.opacity(0.15)`）+ 红色文字
 - 未变更行：默认背景 + 默认文字色
 - 可选行号列（宽 60px，灰色文字）
 - 每行前缀：`+ `（新增）/ `- `（删除）/ `  `（未变更）
+- 字符高亮区间（`DiffState::set_span_highlights`）以主题强调色背景
+  （`theme.tokens.accent.color.opacity(0.35)`）渲染
 - 行内容不折行（`whitespace_nowrap`），长行由列表横向滚动（`ListHorizontalSizingBehavior::Unconstrained`）；
   行高固定为 `line_height`，`DiffState::new` 会去掉行尾的 `\n` / `\r`（CRLF 文本不会残留回车）。
 

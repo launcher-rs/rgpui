@@ -400,14 +400,7 @@ fn paint_line(
         return Ok(());
     }
 
-    let line_bounds = Bounds::new(
-        origin,
-        size(
-            layout.width,
-            line_height * (wrap_boundaries.len() as f32 + 1.),
-        ),
-    );
-    window.paint_layer(line_bounds, |window| {
+    window.paint_layer(|window| {
         let padding_top = (line_height - layout.ascent - layout.descent) / 2.;
         let baseline_offset = point(px(0.), padding_top + layout.ascent);
         let mut decoration_runs = decoration_runs.iter();
@@ -651,14 +644,7 @@ fn paint_line_background(
         return Ok(());
     }
 
-    let line_bounds = Bounds::new(
-        origin,
-        size(
-            layout.width,
-            line_height * (wrap_boundaries.len() as f32 + 1.),
-        ),
-    );
-    window.paint_layer(line_bounds, |window| {
+    window.paint_layer(|window| {
         let mut decoration_runs = decoration_runs.iter();
         let mut wraps = wrap_boundaries.iter().peekable();
         let mut run_end = 0;

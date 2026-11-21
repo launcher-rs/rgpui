@@ -1,6 +1,7 @@
 use crate::collections::HashMap;
 use crate::{FontId, Pixels, SharedString, TextRun, TextSystem, px};
-use std::{borrow::Cow, iter, sync::Arc};
+use std::{borrow::Cow, sync::Arc};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// 确定从开头、结尾还是中间截断文本。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -19,6 +20,9 @@ pub struct LineWrapper {
     pub(crate) font_id: FontId,
     pub(crate) font_size: Pixels,
     char_widths: CharWidthCache,
+    /// 重建的行文本（fragment 拼接，元素占位为等长的 `a`）：UAX #14 断点与
+    /// 字素边界都按这份文本的字节偏移计算。跨调用复用以避免重复分配。
+    text_buffer: String,
 }
 
 /// 单字体单字号下的字符宽度缓存。
@@ -55,6 +59,7 @@ impl LineWrapper {
             font_id,
             font_size,
             char_widths,
+            text_buffer: String::new(),
         }
     }
 
@@ -69,101 +74,178 @@ impl LineWrapper {
         fragments: &'a [LineFragment],
         wrap_width: Pixels,
     ) -> impl Iterator<Item = Boundary> + 'a {
+        self.wrap_line_measured(fragments, wrap_width)
+            .segments
+            .into_iter()
+            .map(|segment| segment.boundary)
+    }
+
+    /// 与 [`LineWrapper::wrap_line`] 同算法，但一次性收集全部断点，并给出
+    /// 该行换行结构保持稳定的 `wrap_width` 半开区间 `[valid_from, valid_to)`：
+    /// `wrap_width` 落在区间内时，断点的位置与数量完全不变（增量重换行的依据）。
+    ///
+    /// 每个断点的下界 = 断点字符**计入前**的累计宽度（低于它断点会前移），
+    /// 上界 = 触发超宽的字符计入后的累计宽度（达到它断点后移）；
+    /// 行级下界再并入最后一个断点之后尾段的累计宽度（防止尾段冒出新增断点）；
+    /// 未换行的行下界即整行总宽、上界为 [`Pixels::MAX`]。
+    pub fn wrap_line_measured(
+        &mut self,
+        fragments: &[LineFragment],
+        wrap_width: Pixels,
+    ) -> WrapMeasurement {
+        // 重建行文本：元素占位为等长的 `a`（词字符），使内联元素与相邻单词
+        // 在 UAX #14 眼中粘结成段（对齐上游 f0210f1621）。
+        // 文本缓冲临时取出：`width_for_char` 需要 `&mut self`，而扫描期间
+        // 断点 / 字素游标一直借 `text`，两者不能同时挂在 self 上。
+        let mut text = std::mem::take(&mut self.text_buffer);
+        text.clear();
+        for fragment in fragments {
+            match fragment {
+                LineFragment::Text {
+                    text: fragment_text,
+                } => text.push_str(fragment_text),
+                LineFragment::Element { len_utf8, .. } => {
+                    text.extend(std::iter::repeat_n('a', *len_utf8));
+                }
+            }
+        }
+        let result = self.wrap_line_measured_with_text(fragments, &text, wrap_width);
+        self.text_buffer = text;
+        result
+    }
+
+    /// [`Self::wrap_line_measured`] 的扫描本体：`text` 是已重建好的行文本
+    /// （由调用方持有，避免与 `&mut self` 的宽度缓存借用冲突）。
+    fn wrap_line_measured_with_text(
+        &mut self,
+        fragments: &[LineFragment],
+        text: &str,
+        wrap_width: Pixels,
+    ) -> WrapMeasurement {
+        // 候选断点改为预计算的 UAX #14 断点集合查询（B1 API 同款分段器）。
+        let mut break_indices = self.break_indices(text).peekable();
+        let mut grapheme_indices = text
+            .grapheme_indices(true)
+            .map(|(index, _)| index)
+            .peekable();
         let mut width = px(0.);
         let mut first_non_whitespace_ix = None;
         let mut indent = None;
         let mut last_candidate_ix = 0;
         let mut last_candidate_width = px(0.);
         let mut last_wrap_ix = 0;
-        let mut prev_c = '\0';
+        let mut grapheme_index = 0;
+        let mut width_before_grapheme = px(0.);
         let mut index = 0;
-        let mut candidates = fragments
+        let mut segments = Vec::new();
+        let mut valid_from = px(0.);
+        let mut valid_to = Pixels::MAX;
+        for candidate in fragments
             .iter()
-            .flat_map(move |fragment| fragment.wrap_boundary_candidates())
-            .peekable();
-        iter::from_fn(move || {
-            for candidate in candidates.by_ref() {
-                let ix = index;
-                index += candidate.len_utf8();
-                let mut new_prev_c = prev_c;
-                let item_width = match candidate {
-                    WrapBoundaryCandidate::Char { character: c } => {
-                        if c == '\n' {
-                            continue;
-                        }
-
-                        if Self::is_word_char(c) {
-                            if prev_c == ' ' && c != ' ' && first_non_whitespace_ix.is_some() {
-                                last_candidate_ix = ix;
-                                last_candidate_width = width;
-                            }
-                        } else {
-                            // CJK may not be space separated, e.g.: `Hello world你好世界`
-                            // 但要遵守东亚禁则：`。` 不可起行、`「` 不可收行、胶连字符两侧不可断。
-                            if c != ' '
-                                && first_non_whitespace_ix.is_some()
-                                && crate::line_break::can_break_between(prev_c, c)
-                            {
-                                last_candidate_ix = ix;
-                                last_candidate_width = width;
-                            }
-                        }
-
-                        if c != ' ' && first_non_whitespace_ix.is_none() {
-                            first_non_whitespace_ix = Some(ix);
-                        }
-
-                        new_prev_c = c;
-
-                        self.width_for_char(c)
+            .flat_map(|fragment| fragment.wrap_boundary_candidates())
+        {
+            let ix = index;
+            index += candidate.len_utf8();
+            // 推进字素游标到当前候选之前；候选若落在字素边界上（普通字符
+            // 恰是边界，组合标记不是），记录该字素的起点与前方累计宽度——
+            // 超宽字素换行时整体保留、缩进计入后随新行起算。
+            while grapheme_indices
+                .next_if(|position| *position < ix)
+                .is_some()
+            {}
+            let is_grapheme_boundary = grapheme_indices.next_if_eq(&ix).is_some();
+            if is_grapheme_boundary {
+                grapheme_index = ix;
+                width_before_grapheme = width;
+            }
+            // 候选断点 = UAX #14 允许断行的位置（含 CJK 逐字与禁则，分段器
+            // 口径），且必须落在字素边界上。对所有候选（含内联元素）生效。
+            if break_indices.next_if_eq(&ix).is_some()
+                && is_grapheme_boundary
+                && first_non_whitespace_ix.is_some()
+            {
+                last_candidate_ix = ix;
+                last_candidate_width = width;
+            }
+            let item_width = match candidate {
+                WrapBoundaryCandidate::Char { character: c } => {
+                    if c == '\n' {
+                        continue;
                     }
-                    WrapBoundaryCandidate::Element {
-                        width: element_width,
-                        ..
-                    } => {
-                        if prev_c == ' ' && first_non_whitespace_ix.is_some() {
-                            last_candidate_ix = ix;
-                            last_candidate_width = width;
-                        }
 
-                        if first_non_whitespace_ix.is_none() {
-                            first_non_whitespace_ix = Some(ix);
-                        }
-
-                        element_width
+                    if c != ' ' && first_non_whitespace_ix.is_none() {
+                        first_non_whitespace_ix = Some(ix);
                     }
+
+                    self.width_for_char(c)
+                }
+                WrapBoundaryCandidate::Element {
+                    width: element_width,
+                    ..
+                } => {
+                    if first_non_whitespace_ix.is_none() {
+                        first_non_whitespace_ix = Some(ix);
+                    }
+
+                    element_width
+                }
+            };
+
+            width += item_width;
+            if width > wrap_width && grapheme_index > last_wrap_ix {
+                // 断点结构稳定的边界：有候选断点时下界是候选字符计入前的宽度
+                // （低于它触发点会退到候选之前），无候选（超宽字素整体换行）时
+                // 下界是当前字素计入前的宽度（低于它断点会落在更早的字符上）。
+                let wrap_at_candidate =
+                    last_candidate_ix > last_wrap_ix && width - last_candidate_width <= wrap_width;
+                let segment_from = if wrap_at_candidate {
+                    last_candidate_width
+                } else {
+                    width_before_grapheme
                 };
+                let segment_to = width;
 
-                width += item_width;
-                if width > wrap_width && ix > last_wrap_ix {
-                    if let (None, Some(first_non_whitespace_ix)) = (indent, first_non_whitespace_ix)
-                    {
-                        indent = Some(
-                            Self::MAX_INDENT.min((first_non_whitespace_ix - last_wrap_ix) as u32),
-                        );
-                    }
-
-                    if last_candidate_ix > 0 {
-                        last_wrap_ix = last_candidate_ix;
-                        width -= last_candidate_width;
-                        last_candidate_ix = 0;
-                    } else {
-                        last_wrap_ix = ix;
-                        width = item_width;
-                    }
-
-                    if let Some(indent) = indent {
-                        width += self.width_for_char(' ') * indent as f32;
-                    }
-
-                    return Some(Boundary::new(last_wrap_ix, indent.unwrap_or(0)));
+                if let (None, Some(first_non_whitespace_ix)) = (indent, first_non_whitespace_ix) {
+                    indent =
+                        Some(Self::MAX_INDENT.min((first_non_whitespace_ix - last_wrap_ix) as u32));
                 }
 
-                prev_c = new_prev_c;
-            }
+                if wrap_at_candidate {
+                    last_wrap_ix = last_candidate_ix;
+                    width -= last_candidate_width;
+                    width_before_grapheme -= last_candidate_width;
+                } else {
+                    // 超宽字素整体保留，即使超出行宽。
+                    last_wrap_ix = grapheme_index;
+                    width -= width_before_grapheme;
+                    width_before_grapheme = px(0.);
+                }
+                last_candidate_ix = 0;
 
-            None
-        })
+                if let Some(indent) = indent {
+                    width += self.width_for_char(' ') * indent as f32;
+                    width_before_grapheme += self.width_for_char(' ') * indent as f32;
+                }
+
+                segments.push(WrapSegment {
+                    boundary: Boundary::new(last_wrap_ix, indent.unwrap_or(0)),
+                    valid_from: segment_from,
+                    valid_to: segment_to,
+                });
+                valid_from = valid_from.max(segment_from);
+                valid_to = valid_to.min(segment_to);
+            }
+        }
+
+        // 扫描结束没有再触发断点：尾段累计宽度也是下界的一部分
+        // （未换行的行此时尾段就是整行，下界即总宽、上界保持 MAX）。
+        valid_from = valid_from.max(width);
+        WrapMeasurement {
+            segments,
+            tail_width: width,
+            valid_from,
+            valid_to,
+        }
     }
 
     /// 根据行的宽度确定是否应截断该行。
@@ -369,11 +451,14 @@ impl LineWrapper {
         let mut last_candidate_ix = 0usize;
         let mut last_candidate_width = px(0.);
         let mut last_wrap_ix = 0usize;
-        let mut prev_c = '\0';
         let mut indent: Option<u32> = None;
         let mut truncate_ix = 0usize;
 
+        // 候选断点改为 UAX #14 断点集合查询（与 wrap_line_measured 同口径）。
+        let mut break_indices = self.break_indices(&text).peekable();
         for (ix, c) in text.char_indices() {
+            // 换行符位置也消费断点：跳过空行时不让迭代器滞留在后续文本之前。
+            let is_break = break_indices.next_if_eq(&ix).is_some();
             if c == '\n' {
                 if line >= max_lines - 1 && !text[ix + 1..].trim().is_empty() {
                     // 最后允许的行上遇到换行符，且下方有真实内容，在此处截断。
@@ -397,7 +482,6 @@ impl LineWrapper {
                 last_candidate_ix = 0;
                 last_candidate_width = px(0.);
                 last_wrap_ix = ix + 1;
-                prev_c = '\0';
                 indent = None;
                 truncate_ix = ix + 1;
                 continue;
@@ -405,12 +489,7 @@ impl LineWrapper {
 
             let char_width = self.width_for_char(c);
 
-            if Self::is_word_char(c) {
-                if prev_c == ' ' && first_non_whitespace_ix.is_some() {
-                    last_candidate_ix = ix;
-                    last_candidate_width = width;
-                }
-            } else if c != ' ' && first_non_whitespace_ix.is_some() {
+            if is_break && first_non_whitespace_ix.is_some() {
                 last_candidate_ix = ix;
                 last_candidate_width = width;
             }
@@ -465,50 +544,16 @@ impl LineWrapper {
                     return (result, Cow::Owned(runs));
                 }
             }
-
-            prev_c = c;
         }
+        drop(break_indices);
 
         // 文本在 max_lines 内无需截断。
         (text, Cow::Borrowed(runs))
     }
-
-    /// 此列表中的任何字符都应被视为单词字符，
-    /// 意味着它可以是不应换行的单词的一部分。
-    pub(crate) fn is_word_char(c: char) -> bool {
-        // ASCII alphanumeric characters, for English, numbers: `Hello123`, etc.
-        c.is_ascii_alphanumeric() ||
-        // Latin script in Unicode for French, German, Spanish, etc.
-        // Latin-1 Supplement
-        // https://en.wikipedia.org/wiki/Latin-1_Supplement
-        matches!(c, '\u{00C0}'..='\u{00FF}') ||
-        // Latin Extended-A
-        // https://en.wikipedia.org/wiki/Latin_Extended-A
-        matches!(c, '\u{0100}'..='\u{017F}') ||
-        // Latin Extended-B
-        // https://en.wikipedia.org/wiki/Latin_Extended-B
-        matches!(c, '\u{0180}'..='\u{024F}') ||
-        // Cyrillic for Russian, Ukrainian, etc.
-        // https://en.wikipedia.org/wiki/Cyrillic_script_in_Unicode
-        matches!(c, '\u{0400}'..='\u{04FF}') ||
-
-        // Vietnamese (https://vietunicode.sourceforge.net/charset/)
-        matches!(c, '\u{1E00}'..='\u{1EFF}') || // Latin Extended Additional
-        matches!(c, '\u{0300}'..='\u{036F}') || // Combining Diacritical Marks
-
-        // Bengali (https://en.wikipedia.org/wiki/Bengali_(Unicode_block))
-        matches!(c, '\u{0980}'..='\u{09FF}') ||
-
-        // Some other known special characters that should be treated as word characters,
-        // e.g. `a-b`, `var_name`, `I'm`/`won’t`, '@mention`, `#hashtag`, `100%`, `3.1415`,
-        // `2^3`, `a~b`, `a=1`, `Self::new`, etc. Trailing punctuation like `,`, `.`, `:`, `;`
-        // is included so it stays attached to the preceding word when wrapping.
-        matches!(c, '-' | '_' | '.' | '\'' | '’' | '‘' | '$' | '%' | '@' | '#' | '^' | '~' | ',' | '=' | ':' | ';') ||
-        // `⋯` character is special used in Zed, to keep this at the end of the line.
-        matches!(c, '⋯') ||
-
-        // Non-breaking glue characters
-        matches!(c, ' ' | ' ' | '‑')
+    /// UAX #14 允许断行的字节偏移（分段器口径，与 wrap_line_measured 同源）。
+    pub(crate) fn break_indices<'a>(&self, text: &'a str) -> impl Iterator<Item = usize> + use<'a> {
+        icu_segmenter::LineSegmenter::new_for_non_complex_scripts(Default::default())
+            .segment_str(text)
     }
 
     #[inline(always)]
@@ -698,6 +743,33 @@ impl Boundary {
     }
 }
 
+/// 一个软换行断点，附带该断点保持稳定的 `wrap_width` 半开区间。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WrapSegment {
+    /// 断点。
+    pub boundary: Boundary,
+    /// 区间下界（闭）：`wrap_width` 低于它，该断点会前移。
+    pub valid_from: Pixels,
+    /// 区间上界（开）：`wrap_width` 达到它，该断点会后移。
+    pub valid_to: Pixels,
+}
+
+/// 一次软换行测量的完整结果：断点列表 + 整行换行结构稳定的 `wrap_width` 区间。
+///
+/// 区间判定只保证「不断」的一侧是精确的：区间内结构必然一致，区间外只是
+/// 可能需要重测——保守方向只会多换行，不会错换行。
+#[derive(Debug, Clone, PartialEq)]
+pub struct WrapMeasurement {
+    /// 全部断点（含各自的稳定区间）。
+    pub segments: Vec<WrapSegment>,
+    /// 最后一个断点之后尾段的累计宽度（无断点时为整行总宽）。
+    pub tail_width: Pixels,
+    /// 整行换行结构（含「尾段不新增断点」）稳定的区间下界（闭）。
+    pub valid_from: Pixels,
+    /// 区间上界（开）；未换行的行为 [`Pixels::MAX`]。
+    pub valid_to: Pixels,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -870,6 +942,46 @@ mod tests {
                 Boundary::new(18, 0)
             ],
         );
+    }
+
+    /// `wrap_line_measured` 的稳定区间：区间内断点结构不变，达到上界后必变；
+    /// 未换行的行上界为 MAX、下界为整行总宽。
+    #[test]
+    fn test_wrap_line_measured_valid_widths() {
+        let mut wrapper = build_wrapper();
+        let text = "aa bbb cccc ddddd eeee";
+
+        let ixs = |m: &WrapMeasurement| -> Vec<usize> {
+            m.segments.iter().map(|s| s.boundary.ix).collect()
+        };
+        let measured = wrapper.wrap_line_measured(&[LineFragment::text(text)], px(72.));
+        assert_eq!(ixs(&measured), vec![7, 12, 18]);
+
+        // 闭下界、开上界：区间内任意宽度探测，断点结构与宽度 72 时完全一致。
+        let probes = [
+            measured.valid_from,
+            px((measured.valid_from.0 + measured.valid_to.0) / 2.0),
+            px(measured.valid_to.0 - 0.5),
+        ];
+        for probe in probes {
+            let again = wrapper.wrap_line_measured(&[LineFragment::text(text)], probe);
+            assert_eq!(ixs(&again), vec![7, 12, 18], "probe {probe:?}");
+        }
+
+        // 上界是保守口径：恰好达到上界时结构可能恰好不变（触发点后移但没有
+        // 新候选），但足够超出（远超整行总宽）必然不同。
+        let far =
+            wrapper.wrap_line_measured(&[LineFragment::text(text)], measured.valid_to + px(200.));
+        assert_ne!(ixs(&far), ixs(&measured));
+
+        // 未换行的行：上界是 MAX，下界是整行总宽；低于下界就出现断点。
+        let unwrapped = wrapper.wrap_line_measured(&[LineFragment::text(text)], px(500.));
+        assert!(unwrapped.segments.is_empty());
+        assert_eq!(unwrapped.valid_to, Pixels::MAX);
+        assert!(unwrapped.valid_from > px(0.));
+        let shrunk =
+            wrapper.wrap_line_measured(&[LineFragment::text(text)], unwrapped.valid_from - px(0.5));
+        assert!(!shrunk.segments.is_empty());
     }
 
     #[test]
@@ -1129,81 +1241,39 @@ mod tests {
         perform_test("abcdefgh…", &[4, 4, 4], &[4, 4, 3]);
     }
 
+    /// UAX #14 断点：拉丁空格（LB18）、连字符（LB21）、CJK 逐字、强制断点都给出；
+    /// 断点一律落在字素边界上（emoji ZWJ 序列 / 组合标记不被切开）。
     #[test]
-    fn test_is_word_char() {
-        #[track_caller]
-        fn assert_word(word: &str) {
-            for c in word.chars() {
+    fn test_break_indices_follow_uax14() {
+        let mut wrapper = build_wrapper();
+        let breaks = |text: &str| -> Vec<usize> { wrapper.break_indices(text).collect() };
+
+        // 拉丁空格（LB18）：`hello world` 在空格后可断（偏移 6 = "hello " 之后）。
+        assert!(breaks("hello world").contains(&6));
+        // 连字符后允许断行（LB21）：`non-English` 在连字符后可断。
+        assert!(breaks("non-English").contains(&4));
+        // CJK 逐字可断（ID 类）：`你好世界` 在每个字之间（含首尾哨兵 0 与 len）。
+        assert_eq!(breaks("你好世界"), vec![0, 3, 6, 9, 12]);
+        // 行首禁则（LB13 类）：`。` 不可起行 —— 与禁则口径一致。
+        let cjk = breaks("你好。世界");
+        assert!(!cjk.contains(&6), "「。」不可起行: {cjk:?}");
+
+        // 断点必须落在字素边界上：emoji ZWJ 序列（👩‍💻 = 女 + ZWJ + 笔记本）
+        // 与肤色修饰（👍🏽）内部不得断开。
+        for text in ["{1F469}{200D}{1F4BB}", "{1F44D}{1F3FD}", "e{0301}"] {
+            let text = format!("x{text}y");
+            let graphemes: std::collections::HashSet<usize> = text
+                .grapheme_indices(true)
+                .map(|(index, _)| index)
+                .chain(std::iter::once(text.len()))
+                .collect();
+            for index in breaks(&text) {
                 assert!(
-                    LineWrapper::is_word_char(c),
-                    "assertion failed for '{}' (unicode 0x{:x})",
-                    c,
-                    c as u32
+                    graphemes.contains(&index),
+                    "断点 {index} 落在字素内部: {text:?}"
                 );
             }
         }
-
-        #[track_caller]
-        fn assert_not_word(word: &str) {
-            let found = word.chars().any(|c| !LineWrapper::is_word_char(c));
-            assert!(found, "assertion failed for '{}'", word);
-        }
-
-        assert_word("Hello123");
-        assert_word("non-English");
-        assert_word("var_name");
-        assert_word("123456");
-        assert_word("3.1415");
-        assert_word("10^2");
-        assert_word("1~2");
-        assert_word("100%");
-        assert_word("@mention");
-        assert_word("#hashtag");
-        assert_word("$variable");
-        assert_word("a=1");
-        assert_word("Self::is_word_char");
-        assert_word("on;");
-        assert_word("more⋯");
-        assert_word("won’t");
-        assert_word("‘twas");
-
-        // Space
-        assert_not_word("foo bar");
-
-        // URL case
-        assert_word("github.com");
-        assert_not_word("zed-industries/zed");
-        assert_not_word("zed-industries\\zed");
-        assert_not_word("a=1&b=2");
-        assert_not_word("foo?b=2");
-
-        // Latin-1 Supplement
-        assert_word("ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏ");
-        // Latin Extended-A
-        assert_word("ĀāĂăĄąĆćĈĉĊċČčĎď");
-        // Latin Extended-B
-        assert_word("ƀƁƂƃƄƅƆƇƈƉƊƋƌƍƎƏ");
-        // Cyrillic
-        assert_word("АБВГДЕЖЗИЙКЛМНОП");
-        // Vietnamese (https://github.com/zed-industries/zed/issues/23245)
-        assert_word("ThậmchíđếnkhithuachạychúngcònnhẫntâmgiếtnốtsốđôngtùchínhtrịởYênBáivàCaoBằng");
-        // Bengali
-        assert_word("গিয়েছিলেন");
-        assert_word("ছেলে");
-        assert_word("হচ্ছিল");
-
-        // non-word characters
-        assert_not_word("你好");
-        assert_not_word("안녕하세요");
-        assert_not_word("こんにちは");
-        assert_not_word("😀😁😂");
-        assert_not_word("()[]{}<>");
-
-        // Non-breaking ("Glue") characters, see https://www.unicode.org/reports/tr14/
-        // (https://github.com/zed-industries/zed/issues/59664)
-        assert_word("\u{202F}"); // NNBSP " "
-        assert_word("\u{00A0}"); // NBSP " "
-        assert_word("\u{2011}"); // NBH "‑"
     }
 
     // For compatibility with the test macro

@@ -165,8 +165,10 @@ impl SheetGridDemo {
                     cx.notify();
                 }
                 SheetGridEvent::EditRequested(cell) => {
+                    // 演示里没有单元格内输入框实体，传 None：网格进入编辑态但
+                    // 单元格仍按普通格渲染（编辑经公式栏完成）。
                     this.grid
-                        .update(cx, |grid, cx| grid.set_editing(Some(*cell), cx));
+                        .update(cx, |grid, cx| grid.set_editing(Some(*cell), None, cx));
                     this.status = format!("编辑 {}（在公式栏输入后回车）", cell_ref(*cell));
                     cx.notify();
                 }
@@ -202,6 +204,15 @@ impl SheetGridDemo {
                         cell_ref(source.min()),
                         cell_ref(target.max())
                     );
+                    cx.notify();
+                }
+                SheetGridEvent::ResetRowHeight { row } => {
+                    // 双击行头分隔线：移除该行的自定义行高，回落默认值。
+                    this.grid.update(cx, |grid, cx| {
+                        grid.delegate_mut().row_heights.remove(row);
+                        cx.notify();
+                    });
+                    this.status = format!("第 {} 行行高已重置", row + 1);
                     cx.notify();
                 }
                 SheetGridEvent::HeaderClicked { col, row } => {
@@ -268,7 +279,7 @@ impl SheetGridDemo {
                     let text = text.to_string();
                     this.grid.update(cx, |grid, cx| {
                         grid.delegate_mut().set(active, text.clone());
-                        grid.set_editing(None, cx);
+                        grid.set_editing(None, None, cx);
                         cx.notify();
                     });
                     this.status = format!("{} ← {}", cell_ref(active), text);
@@ -279,7 +290,8 @@ impl SheetGridDemo {
                     let value = this.grid.read(cx).delegate().value(active);
                     let bar = this.bar.clone();
                     bar.update(cx, |bar, cx| bar.set_formula(value, window, cx));
-                    this.grid.update(cx, |grid, cx| grid.set_editing(None, cx));
+                    this.grid
+                        .update(cx, |grid, cx| grid.set_editing(None, None, cx));
                     this.status = "已取消编辑".to_string();
                     cx.notify();
                 }

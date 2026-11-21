@@ -73,6 +73,21 @@ impl Render for AnimationExample {
                                     .overflow_hidden()
                                     .path(ARROW_CIRCLE_SVG)
                                     .text_color(rgpui::black())
+                                    .with_timed_transformation(
+                                        // 场景级动画（D3 后的 Svg 动画管线）：SVG 只绘制一次，
+                                        // 之后由场景在每次呈现前旋转它，不重绘视图。
+                                        rgpui::TimedTransformation::rotation(
+                                            Duration::from_secs(2),
+                                            Transformation::default(),
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                svg()
+                                    .size_20()
+                                    .overflow_hidden()
+                                    .path(ARROW_CIRCLE_SVG)
+                                    .text_color(rgpui::black().opacity(0.5))
                                     .with_animation(
                                         "image_circle",
                                         Animation::new(Duration::from_secs(2))

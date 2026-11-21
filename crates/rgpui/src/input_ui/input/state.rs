@@ -17,8 +17,7 @@ use crate::{
     Styled as _, Subscription, TextAlign, UTF16Selection, Window, div, point,
     prelude::FluentBuilder as _, px,
 };
-// `ruler_color` 字段类型用（`editor` feature 门控，默认构建不用）。
-#[cfg(feature = "editor")]
+// `ruler_color`（`editor` feature 门控）与常驻的 [`GutterStyle`] 字段类型用。
 use crate::Hsla;
 use regex::Regex;
 use ropey::{Rope, RopeSlice};
@@ -328,6 +327,24 @@ pub(crate) fn init(cx: &mut App) {
     number_input::init(cx);
 }
 
+/// 行号沟槽样式（对标 gpui-kit 的 editor `GutterStyle`，`d758da0f`）：
+/// 各字段 `None` 回落到主题测量默认，设置后覆盖对应项。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GutterStyle {
+    /// 数字区最小宽度（实际宽度取该值与按最大行号位数测量宽度的较大者）。
+    pub width: Option<Pixels>,
+    /// 数字区与正文的间距（覆盖默认 `LINE_NUMBER_RIGHT_MARGIN`）。
+    pub gap: Option<Pixels>,
+    /// 普通行号颜色（覆盖高亮主题 `editor_line_number`）。
+    pub color: Option<Hsla>,
+    /// 当前行行号颜色（覆盖高亮主题 `editor_active_line_number`）。
+    pub active_color: Option<Hsla>,
+    /// 行号字号（默认跟正文字号）。
+    pub font_size: Option<Pixels>,
+    /// 行号字体族名（默认跟正文字体；rgpui 的 `Font.family` 即字体族名）。
+    pub font_family: Option<SharedString>,
+}
+
 /// InputState 用于保存 [`super::Input`] 的编辑状态。
 pub struct InputState {
     pub(super) focus_handle: FocusHandle,
@@ -464,6 +481,8 @@ pub struct InputState {
     /// gutter provider 表（具名 + 独立开关；`editor` feature 门控）。
     #[cfg(feature = "editor")]
     pub(crate) gutter_markers: Vec<super::super::editor::gutter::GutterMarkerEntry>,
+    /// 行号沟槽样式（默认全 `None` 跟主题/测量值，见 [`GutterStyle`]）。
+    pub(crate) gutter_style: GutterStyle,
     /// 主光标之外的额外光标（多光标编辑，见 `input_ui/multicursor.rs`；
     /// 字段常驻（读点太多），行为由 `editor` feature 门控）。
     pub(crate) extra_selections: Vec<Selection>,
@@ -593,6 +612,7 @@ impl InputState {
             gutter_column_enabled: false,
             #[cfg(feature = "editor")]
             gutter_markers: Vec::new(),
+            gutter_style: GutterStyle::default(),
             extra_selections: Vec::new(),
             #[cfg(feature = "editor")]
             vim: super::super::editor::vim::VimState::default(),
@@ -649,6 +669,60 @@ impl InputState {
         #[cfg(not(feature = "editor"))]
         let _ = window;
         cx.notify();
+    }
+
+    /// 折叠所有候选区段。只改折叠集合，候选保留。仅在启用折叠的多行输入生效。
+    pub fn fold_all(&mut self, cx: &mut Context<Self>) {
+        if !self.mode.is_folding() {
+            return;
+        }
+        let lines: Vec<usize> = self
+            .display_map
+            .fold_candidates()
+            .iter()
+            .map(|c| c.start_line)
+            .collect();
+        self.display_map.set_folded_lines(&lines);
+        cx.notify();
+    }
+
+    /// 展开所有折叠区段。候选保留。仅在启用折叠的多行输入生效。
+    pub fn unfold_all(&mut self, cx: &mut Context<Self>) {
+        if !self.mode.is_folding() {
+            return;
+        }
+        self.display_map.clear_folds();
+        cx.notify();
+    }
+
+    /// 折叠指定嵌套层级并展开其它层级，对齐 Zed 的 `editor::FoldAtLevel`。
+    ///
+    /// level 从 1 起：没有被其它候选包含的候选是第 1 层，包在第 1 层里的是
+    /// 第 2 层，依此类推。候选按 start_line 排序且起点唯一，用栈在单遍里
+    /// 算出每个候选的嵌套深度。仅在启用折叠的多行输入生效。
+    pub fn fold_at_level(&mut self, level: usize, cx: &mut Context<Self>) {
+        if !self.mode.is_folding() || level == 0 {
+            return;
+        }
+        // open 保存当前候选的祖先的 end_line；长度即当前嵌套深度。
+        let mut open: Vec<usize> = Vec::new();
+        let mut lines = Vec::new();
+        for candidate in self.display_map.fold_candidates() {
+            while open.last().is_some_and(|&end| end < candidate.end_line) {
+                open.pop();
+            }
+            if open.len() + 1 == level {
+                lines.push(candidate.start_line);
+            }
+            open.push(candidate.end_line);
+        }
+        self.display_map.set_folded_lines(&lines);
+        cx.notify();
+    }
+
+    /// 当前的高亮器折叠候选（只读）。
+    pub fn fold_candidates(&self) -> &[crate::input_ui::FoldRange] {
+        self.display_map.fold_candidates()
     }
 
     /// 设置是否显示行号，仅多行生效（单行忽略）。
@@ -1026,6 +1100,12 @@ impl InputState {
     /// 设置是否显示空白字符。
     pub fn show_whitespaces(mut self, show: bool) -> Self {
         self.show_whitespaces = show;
+        self
+    }
+
+    /// 设置行号沟槽样式（见 [`GutterStyle`]；默认全 `None` 跟主题）。
+    pub fn gutter_style(mut self, style: GutterStyle) -> Self {
+        self.gutter_style = style;
         self
     }
 
@@ -1887,6 +1967,21 @@ impl InputState {
         self.auto_scroll.stop();
     }
 
+    /// 取消进行中的鼠标手势（拖选 / 自动滚动），但保留已有选区。
+    ///
+    /// 用于鼠标释放被上层吞掉（弹出菜单、模态层、窗口失焦等）的情况：
+    /// 没有它，输入框会一直停在拖选状态，之后每次鼠标移动都会继续改选区。
+    /// 对齐 gpui-kit `5bece8fc` 的 `cancel_mouse_gesture` 语义（无列选，选区保留）。
+    pub fn cancel_mouse_gesture(&mut self, cx: &mut Context<Self>) {
+        let was_selecting = self.selecting;
+        self.selecting = false;
+        self.selected_word_range = None;
+        self.auto_scroll.stop();
+        if was_selecting {
+            cx.notify();
+        }
+    }
+
     pub(super) fn on_mouse_move(
         &mut self,
         event: &MouseMoveEvent,
@@ -2529,10 +2624,17 @@ impl InputState {
     fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // 注意：失焦时不取消选择。
         // 因为用户可能想通过 AppMenuBar 复制选中的文本（会获取焦点句柄）。
+        // 但进行中的拖选手势要取消：失焦时若还有按键按着，后续移动事件会
+        // 继续改选区（选区本身保留，对齐 gpui-kit 5bece8fc）。
+        self.cancel_mouse_gesture(cx);
 
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
         });
+        // 失焦结束未提交的 IME 组合：组合文本已经在 core.text 里，这里只清掉
+        // 标记（不再画组合下划线），文本原样保留。对齐 gpui-kit 的失焦提交语义，
+        // 避免焦点切走后留着一段"组合中"的悬挂状态。
+        self.core.end_ime_composition();
         self.clamp_number_value(window, cx);
         cx.emit(InputEvent::Blur);
         cx.notify();
@@ -3333,5 +3435,55 @@ mod typing_behavior_tests {
             state.read_with(cx, |state, _| state.value().to_string()),
             "".to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod gesture_tests {
+    use super::*;
+    use crate::Entity;
+
+    /// 持有输入框状态的测试宿主视图。
+    struct Probe {
+        state: Entity<InputState>,
+    }
+
+    impl crate::Render for Probe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            crate::div()
+        }
+    }
+
+    /// 拖选进行中（selecting）时取消手势：selecting 复位、选区保留、可再次 notify。
+    #[rgpui::test]
+    fn cancel_mouse_gesture_ends_drag_but_keeps_selection(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let state = cx.new(|cx| InputState::new(window, cx).multi_line(true));
+            state.update(cx, |state, cx| state.replace("alpha bravo", window, cx));
+            Probe { state }
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+
+        // 模拟拖选进行中：置 selecting。
+        cx.update(|_, cx| {
+            state.update(cx, |state, _| {
+                state.selecting = true;
+                state.auto_scroll.last_drag_position = None;
+            });
+        });
+        // 取消手势。
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| state.cancel_mouse_gesture(cx));
+        });
+        // selecting 复位；选区保留（拖选已完成的选区不受影响）。
+        state.read_with(cx, |state, _| {
+            assert!(!state.selecting, "selecting 应复位");
+        });
     }
 }

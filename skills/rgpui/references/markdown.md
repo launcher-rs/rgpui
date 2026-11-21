@@ -158,7 +158,7 @@ rgpui-markdown = { workspace = true, features = ["latex", "mermaid"] }
 
 ### `mermaid` feature（`src/mermaid.rs`）
 
-管线：`mermaid-rs-renderer` → SVG → usvg 光栅化。
+管线：自维护的 `mermaid-renderer` → SVG → usvg 光栅化。
 
 - `is_mermaid_language(language: Option<&str>) -> bool`（`mermaid.rs:42`）：围栏信息串
   首词为 `mermaid`/`mmd`（大小写不敏感）即判真。

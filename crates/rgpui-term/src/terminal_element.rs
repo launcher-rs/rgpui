@@ -44,6 +44,76 @@ use crate::{
 const SCROLLBAR_WIDTH: f32 = 8.0;
 const SCROLLBAR_THUMB_MIN_HEIGHT: f32 = 20.0;
 
+/// 渲染耗时诊断开关（与解析线程共用同一个环境变量）。
+///
+/// 每帧要判断多次，`std::env::var_os` 每次都要拿环境表锁，因此只查一次缓存起来。
+pub(crate) fn trace_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some())
+}
+
+/// 帧率探针：按秒汇总「画了多少帧、最慢一帧多久、有几帧没抢到数据锁」。
+///
+/// 零散的「这帧很慢」说明不了卡顿：真正要回答的是「这一秒到底出了几帧」。
+/// 秒级汇总一行输出，自身开销可以忽略。
+static FRAME_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PREP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static FRAME_MAX_PAINT_US: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static FRAME_MAX_SYNC_US: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static FRAME_MAX_PREP_US: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static SYNC_EARLY_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static FPS_WINDOW_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// 记录一次 sync 因抢不到数据锁而提前返回（只在诊断打开时调用）。
+pub(crate) fn note_sync_early() {
+    SYNC_EARLY_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// 记一次 prepaint，并按秒汇总「prepaint 几次 / paint 几次」。
+///
+/// 分开计数是为了区分「整帧没跑」和「跑到 paint 之前就断了」：刷屏时如果
+/// prepaint 有、paint 没有，说明卡在渲染管线里；两个都没有，说明连重绘请求
+/// 都没发出去。
+pub(crate) fn note_prepaint(prep_us: u64, sync_us: u64) {
+    use std::sync::atomic::Ordering::Relaxed;
+    PREP_COUNT.fetch_add(1, Relaxed);
+    FRAME_MAX_PREP_US.fetch_max(prep_us, Relaxed);
+    FRAME_MAX_SYNC_US.fetch_max(sync_us, Relaxed);
+
+    let now = now_ms();
+    let start = FPS_WINDOW_MS.load(Relaxed);
+    if start == 0 {
+        FPS_WINDOW_MS.store(now, Relaxed);
+        return;
+    }
+    if now.saturating_sub(start) < 1000 {
+        return;
+    }
+    if FPS_WINDOW_MS
+        .compare_exchange(start, now, Relaxed, Relaxed)
+        .is_err()
+    {
+        return;
+    }
+    let preps = PREP_COUNT.swap(0, Relaxed);
+    let paints = FRAME_COUNT.swap(0, Relaxed);
+    let max_prep = FRAME_MAX_PREP_US.swap(0, Relaxed) as f64 / 1000.0;
+    let max_sync = FRAME_MAX_SYNC_US.swap(0, Relaxed) as f64 / 1000.0;
+    let max_paint = FRAME_MAX_PAINT_US.swap(0, Relaxed) as f64 / 1000.0;
+    let early = SYNC_EARLY_COUNT.swap(0, Relaxed);
+    eprintln!(
+        "[rt-trace] prep={preps} paint={paints} max_prepaint={max_prep:.1}ms \
+         max_sync={max_sync:.1}ms max_paint={max_paint:.1}ms sync_early={early}"
+    );
+}
+
 /// Layout state computed during prepaint, used for painting.
 pub struct LayoutState {
     _hitbox: Hitbox,
@@ -1457,6 +1527,9 @@ impl Element for TerminalElement {
     ) -> Self::PrepaintState {
         let hitbox = window.insert_hitbox(bounds, rgpui::HitboxBehavior::Normal);
 
+        let trace = trace_enabled();
+        let frame_t0 = trace.then(std::time::Instant::now);
+
         let mut text_style = self.text_style.clone();
         let background_color = text_style.background;
         let foreground_color = text_style.foreground;
@@ -1480,10 +1553,14 @@ impl Element for TerminalElement {
 
         let dimensions = TerminalBounds::new(line_height, cell_width, bounds);
 
+        let sync_t0 = trace.then(std::time::Instant::now);
         self.terminal.update(cx, |terminal, cx| {
             terminal.set_size(dimensions);
             terminal.sync(window, cx);
         });
+        let sync_ms = sync_t0
+            .map(|t0| t0.elapsed().as_secs_f64() * 1000.0)
+            .unwrap_or(0.0);
 
         let TerminalContent {
             cells,
@@ -1500,8 +1577,12 @@ impl Element for TerminalElement {
         let display_offset = *display_offset;
         let history_size = *history_size;
 
+        let layout_t0 = trace.then(std::time::Instant::now);
         let (rects, block_fragments, polygon_fragments, batched_text_runs) =
             Self::layout_grid(cells.iter(), &text_style, display_offset);
+        let layout_ms = layout_t0
+            .map(|t0| t0.elapsed().as_secs_f64() * 1000.0)
+            .unwrap_or(0.0);
 
         let selection_rects = selection
             .as_ref()
@@ -1599,6 +1680,20 @@ impl Element for TerminalElement {
             Some((line, cursor_layout.origin))
         });
 
+        if let Some(t0) = frame_t0 {
+            let total_ms = t0.elapsed().as_secs_f64() * 1000.0;
+            note_prepaint((total_ms * 1000.0) as u64, (sync_ms * 1000.0) as u64);
+            if total_ms > 4.0 {
+                eprintln!(
+                    "[rt-trace] prepaint {total_ms:.1}ms (sync {sync_ms:.1} layout {layout_ms:.1}) \
+                     cells={} runs={} blocks={}",
+                    cells.len(),
+                    batched_text_runs.len(),
+                    block_fragments.len() + polygon_fragments.len(),
+                );
+            }
+        }
+
         LayoutState {
             _hitbox: hitbox,
             batched_text_runs,
@@ -1635,6 +1730,19 @@ impl Element for TerminalElement {
         };
         window.handle_input(&self.focus, input_handler, cx);
 
+        // 兜底：拖滚动条时若在终端**外**松手（状态栏、相邻面板），视图上的
+        // on_mouse_up 收不到事件，拖动状态就会一直挂着。这里在窗口层再挂一个
+        // 监听，任何一次松手都把状态清掉，避免解析线程长期按「UI 忙」的小切片跑。
+        {
+            let terminal = self.terminal.clone();
+            window.on_mouse_event(move |_: &MouseUpEvent, phase, _window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                let _ = terminal.update(cx, |terminal, _| terminal.set_ui_dragging(false));
+            });
+        }
+
         // 拖选中把鼠标事件收一份到窗口层：元素上的鼠标监听只在 hitbox 被 hover 时
         // 派发，指针一旦拖出终端（状态栏、相邻面板）选区就停在原地，边缘自动滚动
         // 也就永远触发不了。视口内仍由元素自己的监听处理，这里只补界外那段，
@@ -1667,6 +1775,7 @@ impl Element for TerminalElement {
             });
         }
 
+        let paint_t0 = trace_enabled().then(std::time::Instant::now);
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             window.paint_quad(fill(bounds, layout.background_color));
             let origin = bounds.origin;
@@ -1761,6 +1870,16 @@ impl Element for TerminalElement {
                 ));
             }
         });
+
+        if let Some(t0) = paint_t0 {
+            let us = t0.elapsed().as_micros() as u64;
+            FRAME_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            FRAME_MAX_PAINT_US.fetch_max(us, std::sync::atomic::Ordering::Relaxed);
+            let ms = us as f64 / 1000.0;
+            if ms > 4.0 {
+                eprintln!("[rt-trace] paint {ms:.1}ms");
+            }
+        }
     }
 }
 

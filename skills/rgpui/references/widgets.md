@@ -237,9 +237,14 @@ cx.subscribe(&slider, |this, _, ev: &SliderEvent, cx| {
 `image_cache(&Entity<I>)`。`Img` 实现 `InteractiveElement`/`StatefulInteractiveElement`，
 可 `.id()` 后交互。
 
-**Svg**：自由函数 `svg() -> Svg`（`svg.rs:33`）：`path`（`:46`）、
-`external_path`（`:52`）、`data(&[u8])`（`:59`）、`with_transformation(Transformation)`（`:80`）。
-`Transformation`（`:228`）：`scale`/`translate`/`rotate` + `with_scaling`/`with_translation`/`with_rotation`。
+**Svg**：自由函数 `svg() -> Svg`（`svg.rs:33`）：`path`、`external_path`、`data(&[u8])`、
+`with_transformation(Transformation)`（静态变换）、`with_timed_transformation(TimedTransformation)`
+（场景级动画：SVG 只画一次，之后由场景在每次呈现前推进矩阵与 alpha，不重绘视图；
+`reduce_motion` 开启时按起始变换静态绘制）。`Transformation`：`scale`/`translate`/`rotate`
++ `with_scaling`/`with_translation`/`with_rotation`/`with_alpha`/`alpha_factor`。
+`TimedTransformation`：`new(period)` + `from`/`to`/`with_easing(fn(f32)->f32)`（四分量各有
+`with_*_easing`）、`rotation(period, from)`（整圈旋转）、`alternate`/`with_max_fps`；
+`at(elapsed)` 返回该时刻变换。
 
 **Canvas**：`canvas<T>(prepaint, paint)`（`canvas.rs:12`），`Canvas::with_dom`（`:43`，需 `dom-backend`）。
 **Surface**：`surface(impl Into<SurfaceSource>)`（`surface.rs:33`）+ `object_fit`（`:43`，平台专属）。

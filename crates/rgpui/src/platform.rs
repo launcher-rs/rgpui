@@ -1396,6 +1396,19 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 请求用户注意力（任务栏闪烁/弹跳，提示用户查看窗口）。
     fn request_attention(&self) {}
 
+    /// 请求再出一帧（即使窗口当前没有失效区域）。
+    ///
+    /// 场景里有定时变换动画时由帧循环调用：动画只推进场景里的精灵、不重绘视图，
+    /// 但仍然需要平台再交付一次帧回调。
+    ///
+    /// **默认实现为空**。各平台的实际情况：
+    /// - Windows：`RedrawWindow(RDW_INVALIDATE|RDW_NOERASE|RDW_NOFRAME)`；
+    /// - macOS：CVDisplayLink 以屏幕刷新率持续驱动帧回调，无需显式请求；
+    /// - Wayland：`complete_frame` 的 `surface.commit()` 会触发合成器的帧回调；
+    /// - X11：尚未实现（需要在 xcb 连接上异步投递重绘请求；同步调 `refresh`
+    ///   会在帧回调里递归，不能照抄）。X11 上动画目前只在其它事件引起出帧时推进。
+    fn request_frame(&self) {}
+
     /// 设置窗口在屏幕上的位置。
     fn set_position(&mut self, _position: Point<Pixels>) {}
 
@@ -2233,6 +2246,24 @@ pub struct WindowOptions {
     /// Windows/Linux：是否启用鼠标事件穿透（点击穿透到后面的窗口）。
     /// 用于桌面宠物、覆盖层等需要让鼠标点击穿透到下层窗口的场景。
     pub mouse_passthrough: bool,
+
+    /// 窗口失焦时的最小帧间隔，默认约 30fps（`33_333µs`）。
+    ///
+    /// - `None`：失焦时不限帧（动画窗口、需要后台持续刷新的窗口可这么设）。
+    /// - `Some(Duration::ZERO)`：等价于不限帧。
+    ///
+    /// 高速率输入（≥60fps 的鼠标移动等）期间本档自动暂停，避免输入延迟抖动；
+    /// 强制呈现（如拖动窗口、连续滚动）也不受本档限制。与温控档同时命中时
+    /// **取较长的那条间隔**。
+    pub inactive_frame_interval: Option<Duration>,
+
+    /// 系统温控进入 `Serious` / `Critical` 时的最小帧间隔，默认约 60fps（`16_667µs`）。
+    ///
+    /// `None` 表示温控降频时也不限帧。`Nominal` / `Fair` 不触发本档——
+    /// `Fair` 只是「减少非必要工作」的提示，不构成限帧依据。
+    ///
+    /// 强制呈现同样不受本档限制；与失焦档同时命中时取较长的那条间隔。
+    pub thermal_frame_interval: Option<Duration>,
 }
 
 /// 创建窗口时的配置参数。
@@ -2349,6 +2380,8 @@ impl Default for WindowOptions {
             tabbing_identifier: None,
             app_owns_titlebar_drag: false,
             mouse_passthrough: false,
+            inactive_frame_interval: Some(crate::frame_throttle::DEFAULT_INACTIVE_FRAME_INTERVAL),
+            thermal_frame_interval: Some(crate::frame_throttle::DEFAULT_THERMAL_FRAME_INTERVAL),
         }
     }
 }
