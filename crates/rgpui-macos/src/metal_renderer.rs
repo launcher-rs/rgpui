@@ -110,7 +110,6 @@ impl InstanceBufferPool {
 pub(crate) struct MetalRenderer {
     device: metal::Device,
     layer: Option<metal::MetalLayer>,
-    is_apple_gpu: bool,
     is_unified_memory: bool,
     presents_with_transaction: bool,
     /// 对于无头渲染，跟踪输出是否应该不透明
@@ -334,7 +333,6 @@ impl MetalRenderer {
             device,
             layer,
             presents_with_transaction: false,
-            is_apple_gpu,
             is_unified_memory,
             opaque,
             command_queue,
