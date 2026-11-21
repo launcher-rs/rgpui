@@ -370,7 +370,14 @@ vertex QuadVertexOutput quad_vertex(uint unit_vertex_id [[vertex_id]],
 struct OpaqueQuadVertexOutput {
   float4 position [[position]];
   float4 color [[flat]];
+  // clip_distance 用于内容蒙版裁剪（GPU 级），只能出现在顶点输出，
+  // 不能作为 stage_in 传给片元——FS 用单独的输入结构。
   float clip_distance [[clip_distance]][4];
+};
+
+struct OpaqueQuadFragmentInput {
+  float4 position [[position]];
+  float4 color [[flat]];
 };
 
 vertex OpaqueQuadVertexOutput opaque_quad_vertex(
@@ -414,7 +421,7 @@ vertex OpaqueQuadVertexOutput opaque_quad_vertex(
   return output;
 }
 
-fragment float4 opaque_quad_fragment(OpaqueQuadVertexOutput input [[stage_in]]) {
+fragment float4 opaque_quad_fragment(OpaqueQuadFragmentInput input [[stage_in]]) {
   return input.color;
 }
 
