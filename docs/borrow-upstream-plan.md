@@ -63,8 +63,11 @@ SVG 场景层变换动画（zed `aff99ecc32`，见下文「SVG 场景层变换�
 1. ~~**`crates/rgpui/Cargo.toml` 有一条未使用的 `tiny-skia-path = "0.11"`**~~
    已清：D3 落地后 `path_builder.rs` 的描边/虚线展开正式使用
    `tiny_skia_path`（`lyon` → `lyon_path` 一并完成）。
-2. **报告里还有两条次要项未定位到确切提交**（手势 MouseUp 被吞后的收尾、
-   行注解卡片视口钉住），动手前需回看 temp/ 三仓库原始调研报告确认改动范围。
+2. ~~**报告里还有两条次要项未定位到确切提交**~~ 已定位并处理：
+   - 手势 MouseUp 被吞 → gpui-kit `5bece8fc`（"window: End mouse gestures when
+     the compositor consumes MouseUp"），已落地：见下文「输入拖选手势取消」。
+   - 行注解卡片视口钉住 → gpui-kit `cfab7b21`（annotation cards 视口钉住），
+     **不适用**：rgpui 的 DiffView 没有行注解卡片，等真实需求再引入。
 3. **`docs/borrow-upstream-plan.md` B1 方案与实际实现不一致**：方案写「引入
    `unicode-linebreak` crate」，实际落地用的是 `icu_segmenter`
    （`LineSegmenter::new_for_non_complex_scripts`，compiled_data 编进二进制）。
@@ -550,6 +553,24 @@ CJK 禁则（行首/行末/胶连），**明确不改半角 ASCII 标点行为**
 - **预期收益**：上游实测 GPU 时间 −79%～−81%（painting 例 / Git Graph 场景），
   rgpui 未单独复测（共享机器噪声大）；CPU 侧描边变慢 2–8× 为上游已声明取舍，
   笔迹（ink）的长笔画场景待硬件实测确认。
+
+---
+
+## 输入拖选手势取消（2026-11-21，对齐 gpui-kit `5bece8fc`）
+
+鼠标释放被上层吞掉（弹出菜单、模态层、窗口失焦等）时，输入框会一直停在
+拖选状态，之后每次鼠标移动都继续改选区。
+
+- `InputState::cancel_mouse_gesture(cx)`（公开 API）：`selecting` 复位、
+  清 `selected_word_range`、停 `auto_scroll`， was_selecting 时 notify；
+  **保留已有选区**（失焦复制文本的语义不受影响）。rgpui 无列选，对应上游
+  删掉的 `column_select_start` 无操作。
+- 接线三处（`input_ui/input/element.rs` / `state.rs`）：
+  1. 窗口级 MouseMove 的 **capture 阶段**（无按键拖拽中）到来 → 合成器接管了
+     输入路由，取消手势；
+  2. `MouseExitEvent` capture → 指针离开输入框时取消（防在框外继续拖）；
+  3. `InputState::on_blur` → 失焦时取消手势（保留选区与 IME 语义）。
+- 测试：`gesture_tests::cancel_mouse_gesture_ends_drag_but_keeps_selection`。
 
 ---
 

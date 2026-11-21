@@ -1967,6 +1967,21 @@ impl InputState {
         self.auto_scroll.stop();
     }
 
+    /// 取消进行中的鼠标手势（拖选 / 自动滚动），但保留已有选区。
+    ///
+    /// 用于鼠标释放被上层吞掉（弹出菜单、模态层、窗口失焦等）的情况：
+    /// 没有它，输入框会一直停在拖选状态，之后每次鼠标移动都会继续改选区。
+    /// 对齐 gpui-kit `5bece8fc` 的 `cancel_mouse_gesture` 语义（无列选，选区保留）。
+    pub fn cancel_mouse_gesture(&mut self, cx: &mut Context<Self>) {
+        let was_selecting = self.selecting;
+        self.selecting = false;
+        self.selected_word_range = None;
+        self.auto_scroll.stop();
+        if was_selecting {
+            cx.notify();
+        }
+    }
+
     pub(super) fn on_mouse_move(
         &mut self,
         event: &MouseMoveEvent,
@@ -2609,6 +2624,9 @@ impl InputState {
     fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // 注意：失焦时不取消选择。
         // 因为用户可能想通过 AppMenuBar 复制选中的文本（会获取焦点句柄）。
+        // 但进行中的拖选手势要取消：失焦时若还有按键按着，后续移动事件会
+        // 继续改选区（选区本身保留，对齐 gpui-kit 5bece8fc）。
+        self.cancel_mouse_gesture(cx);
 
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
@@ -3417,5 +3435,55 @@ mod typing_behavior_tests {
             state.read_with(cx, |state, _| state.value().to_string()),
             "".to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod gesture_tests {
+    use super::*;
+    use crate::Entity;
+
+    /// 持有输入框状态的测试宿主视图。
+    struct Probe {
+        state: Entity<InputState>,
+    }
+
+    impl crate::Render for Probe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            crate::div()
+        }
+    }
+
+    /// 拖选进行中（selecting）时取消手势：selecting 复位、选区保留、可再次 notify。
+    #[rgpui::test]
+    fn cancel_mouse_gesture_ends_drag_but_keeps_selection(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let (probe, cx) = cx.add_window_view(|window, cx| {
+            let state = cx.new(|cx| InputState::new(window, cx).multi_line(true));
+            state.update(cx, |state, cx| state.replace("alpha bravo", window, cx));
+            Probe { state }
+        });
+        let state = probe.read_with(cx, |probe, _| probe.state.clone());
+
+        // 模拟拖选进行中：置 selecting。
+        cx.update(|_, cx| {
+            state.update(cx, |state, _| {
+                state.selecting = true;
+                state.auto_scroll.last_drag_position = None;
+            });
+        });
+        // 取消手势。
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| state.cancel_mouse_gesture(cx));
+        });
+        // selecting 复位；选区保留（拖选已完成的选区不受影响）。
+        state.read_with(cx, |state, _| {
+            assert!(!state.selecting, "selecting 应复位");
+        });
     }
 }

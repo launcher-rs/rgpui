@@ -1399,8 +1399,14 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 请求再出一帧（即使窗口当前没有失效区域）。
     ///
     /// 场景里有定时变换动画时由帧循环调用：动画只推进场景里的精灵、不重绘视图，
-    /// 但仍然需要平台再交付一次帧回调。**默认实现为空**——没有实现的平台退化为
-    //「只在有其它失效时才推进动画」（动画不会自己持续跑）。
+    /// 但仍然需要平台再交付一次帧回调。
+    ///
+    /// **默认实现为空**。各平台的实际情况：
+    /// - Windows：`RedrawWindow(RDW_INVALIDATE|RDW_NOERASE|RDW_NOFRAME)`；
+    /// - macOS：CVDisplayLink 以屏幕刷新率持续驱动帧回调，无需显式请求；
+    /// - Wayland：`complete_frame` 的 `surface.commit()` 会触发合成器的帧回调；
+    /// - X11：尚未实现（需要在 xcb 连接上异步投递重绘请求；同步调 `refresh`
+    ///   会在帧回调里递归，不能照抄）。X11 上动画目前只在其它事件引起出帧时推进。
     fn request_frame(&self) {}
 
     /// 设置窗口在屏幕上的位置。

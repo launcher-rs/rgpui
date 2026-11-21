@@ -5,9 +5,9 @@ use std::rc::Rc;
 use crate::{
     AnyElement, App, Bounds, Corners, Edges, Element, ElementId, ElementInputHandler, Entity, Font,
     GlobalElementId, Half, HighlightStyle, Hsla, IntoElement, LayoutId, MouseButton,
-    MouseMoveEvent, MouseUpEvent, Path, PathBuilder, Pixels, Point, Position, ShapedLine,
-    SharedString, Size, Style, TextAlign, TextRun, TextStyle, UnderlineStyle, Window, fill, point,
-    px, relative, size,
+    MouseExitEvent, MouseMoveEvent, MouseUpEvent, Path, PathBuilder, Pixels, Point, Position,
+    ShapedLine, SharedString, Size, Style, TextAlign, TextRun, TextStyle, UnderlineStyle, Window,
+    fill, point, px, relative, size,
 };
 use ropey::Rope;
 
@@ -374,10 +374,34 @@ impl TextElement {
         window.on_mouse_event({
             let state = self.state.clone();
 
-            move |event: &MouseMoveEvent, _, window, cx| {
+            move |event: &MouseMoveEvent, phase, window, cx| {
                 if event.pressed_button == Some(MouseButton::Left) {
                     state.update(cx, |state, cx| {
                         state.on_drag_move(event, window, cx);
+                    });
+                } else if phase.capture() {
+                    // 捕获阶段到来的移动事件（无按键拖拽中）说明合成器接管了
+                    // 输入路由——拖选已失效，取消手势，避免选区被后续移动继续
+                    // 拖走（对齐 gpui-kit 5bece8fc）。
+                    state.update(cx, |state, cx| {
+                        if state.selecting {
+                            state.cancel_mouse_gesture(cx);
+                        }
+                    });
+                }
+            }
+        });
+
+        window.on_mouse_event({
+            let state = self.state.clone();
+            move |_: &MouseExitEvent, phase, _, cx| {
+                if phase.capture() {
+                    // 指针离开输入框时取消拖选（保留选区），防止在框外继续
+                    // 改选区。
+                    state.update(cx, |state, cx| {
+                        if state.selecting {
+                            state.cancel_mouse_gesture(cx);
+                        }
                     });
                 }
             }
