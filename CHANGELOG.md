@@ -54,6 +54,12 @@
 - 拖动让锁窗口覆盖一个 UI 帧周期（rgpui-term 刷屏时 UI 帧率错拍 ~27% → 恢复）。
 - Metal shader 的 `clip_distance` 聚合赋值与 `stage_in` 兼容性（macOS CI）。
 - Markdown 解析 panic 降级为纯文本段落（外部来源防御兜底）。
+- sheet-grid「键入即编辑」保留首字符：同一单元格绑定输入框时不再清空 `typed_char`，
+  仅在切换或退出编辑时清空。
+- SVG 场景层动画帧纳入三档帧节流；节流早退改用一次性 timer 延迟续帧，避免动画卡死。
+- opaque quad 与非 quad 图元的 z-order：三后端引入视口深度游标，非 quad 批按深度
+  测试剔除被不透明矩形遮挡的片元。
+- 二次审查完整记录与验证数据见 `docs/1.8-review-2026-11-21.md`。
 
 ## [1.7.0] - 2026-11-06
 
