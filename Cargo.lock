@@ -6412,7 +6412,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -6565,7 +6565,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-3d"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "bytemuck",
  "gltf",
@@ -6585,14 +6585,14 @@ dependencies = [
 
 [[package]]
 name = "rgpui-character"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "rgpui-dom"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "js-sys",
  "rgpui",
@@ -6603,7 +6603,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-linux"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -6650,7 +6650,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macos"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -6695,7 +6695,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macros"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -6705,7 +6705,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-markdown"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "mermaid-renderer",
  "pollster 1.0.1",
@@ -6720,7 +6720,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-platform"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "console_error_panic_hook",
  "rgpui",
@@ -6732,7 +6732,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-term"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -6748,7 +6748,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-web"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -6770,7 +6770,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-wgpu"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -6801,7 +6801,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-windows"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "accesskit",
  "accesskit_windows",

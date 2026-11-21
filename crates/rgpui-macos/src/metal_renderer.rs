@@ -9,9 +9,9 @@ use cocoa::{
 #[cfg(any(test, feature = "test-support"))]
 use image::RgbaImage;
 use rgpui::{
-    AtlasTextureId, Background, Bounds, ContentMask, DevicePixels, MonochromeSprite, PaintSurface,
-    Path, Point, PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene, Shadow, Size,
-    Surface, Underline, point, size,
+    AtlasTextureId, Bounds, ContentMask, DevicePixels, MonochromeSprite, PaintSurface, PaintedPath,
+    PathCurve, PathPaint, PathTile, PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene,
+    Shadow, Size, Surface, Underline, point, size,
 };
 
 use core_foundation::base::TCFType;
@@ -1002,7 +1002,7 @@ impl MetalRenderer {
 
         command_encoder.set_render_pipeline_state(&self.quads_pipeline_state);
         // anti-overdraw：混合 quad 只按深度比较（Greater），不写深度
-        command_encoder.set_depth_stencil_state(&self.quads_depth_state);
+        command_encoder.set_depth_stencil_state(&self.quad_depth_state);
         command_encoder.set_vertex_buffer(
             QuadInputIndex::Vertices as u64,
             Some(&self.unit_vertices),
