@@ -326,7 +326,10 @@ vertex QuadVertexOutput quad_vertex(uint unit_vertex_id [[vertex_id]],
     output.background_solid = float4(0.0);
     output.background_color0 = float4(0.0);
     output.background_color1 = float4(0.0);
-    output.clip_distance = {-1.0, -1.0, -1.0, -1.0};
+    output.clip_distance[0] = -1.0;
+    output.clip_distance[1] = -1.0;
+    output.clip_distance[2] = -1.0;
+    output.clip_distance[3] = -1.0;
     return output;
   }
 
@@ -346,14 +349,18 @@ vertex QuadVertexOutput quad_vertex(uint unit_vertex_id [[vertex_id]],
     quad.background.colors[1].color
   );
 
-  return QuadVertexOutput{
-      quad_id,
-      device_position,
-      border_color,
-      gradient.solid,
-      gradient.color0,
-      gradient.color1,
-      {clip_distance.x, clip_distance.y, clip_distance.z, clip_distance.w}};
+  QuadVertexOutput output;
+  output.quad_id = quad_id;
+  output.position = device_position;
+  output.border_color = border_color;
+  output.background_solid = gradient.solid;
+  output.background_color0 = gradient.color0;
+  output.background_color1 = gradient.color1;
+  output.clip_distance[0] = clip_distance.x;
+  output.clip_distance[1] = clip_distance.y;
+  output.clip_distance[2] = clip_distance.z;
+  output.clip_distance[3] = clip_distance.w;
+  return output;
 }
 
 // ---- 不透明 quad 通道（anti-overdraw）----
@@ -385,10 +392,14 @@ vertex OpaqueQuadVertexOutput opaque_quad_vertex(
   if (!is_opaque_rectangle(quad)) {
     output.position = float4(0.0, 0.0, 0.0, 1.0);
     output.color = float4(0.0);
-    output.clip_distance = {-1.0, -1.0, -1.0, -1.0};
+    output.clip_distance[0] = -1.0;
+    output.clip_distance[1] = -1.0;
+    output.clip_distance[2] = -1.0;
+    output.clip_distance[3] = -1.0;
     return output;
   }
 
+  float2 unit_vertex = unit_vertices[unit_vertex_id];
   float4 device_position =
       to_device_position(unit_vertex, quad.bounds, viewport_size);
   device_position.z = quad.depth;
@@ -396,8 +407,10 @@ vertex OpaqueQuadVertexOutput opaque_quad_vertex(
                                                  quad.content_mask.bounds);
   output.position = device_position;
   output.color = hsla_to_rgba(quad.background.solid);
-  output.clip_distance = {clip_distance.x, clip_distance.y, clip_distance.z,
-                          clip_distance.w};
+  output.clip_distance[0] = clip_distance.x;
+  output.clip_distance[1] = clip_distance.y;
+  output.clip_distance[2] = clip_distance.z;
+  output.clip_distance[3] = clip_distance.w;
   return output;
 }
 
@@ -795,11 +808,15 @@ vertex ShadowVertexOutput shadow_vertex(
       distance_from_clip_rect(unit_vertex, bounds, shadow.content_mask.bounds);
   float4 color = hsla_to_rgba(shadow.color);
 
-  return ShadowVertexOutput{
-      device_position,
-      color,
-      shadow_id,
-      {clip_distance.x, clip_distance.y, clip_distance.z, clip_distance.w}};
+  ShadowVertexOutput output;
+  output.position = device_position;
+  output.color = color;
+  output.shadow_id = shadow_id;
+  output.clip_distance[0] = clip_distance.x;
+  output.clip_distance[1] = clip_distance.y;
+  output.clip_distance[2] = clip_distance.z;
+  output.clip_distance[3] = clip_distance.w;
+  return output;
 }
 
 fragment float4 shadow_fragment(ShadowFragmentInput input [[stage_in]],
@@ -888,11 +905,15 @@ vertex UnderlineVertexOutput underline_vertex(
   float4 clip_distance = distance_from_clip_rect(unit_vertex, underline.bounds,
                                                  underline.content_mask.bounds);
   float4 color = hsla_to_rgba(underline.color);
-  return UnderlineVertexOutput{
-      device_position,
-      color,
-      underline_id,
-      {clip_distance.x, clip_distance.y, clip_distance.z, clip_distance.w}};
+  UnderlineVertexOutput output;
+  output.position = device_position;
+  output.color = color;
+  output.underline_id = underline_id;
+  output.clip_distance[0] = clip_distance.x;
+  output.clip_distance[1] = clip_distance.y;
+  output.clip_distance[2] = clip_distance.z;
+  output.clip_distance[3] = clip_distance.w;
+  return output;
 }
 
 fragment float4 underline_fragment(UnderlineFragmentInput input [[stage_in]],
@@ -960,7 +981,7 @@ vertex MonochromeSpriteVertexOutput monochrome_sprite_vertex(
       device_position,
       tile_position,
       color,
-      {clip_distance.x, clip_distance.y, clip_distance.z, clip_distance.w}};
+      clip_distance};
 }
 
 fragment float4 monochrome_sprite_fragment(
@@ -1013,12 +1034,16 @@ vertex PolychromeSpriteVertexOutput polychrome_sprite_vertex(
   float2 tile_position = to_tile_position(unit_vertex, sprite.tile, atlas_size);
   float2 local_position = unit_vertex * float2(sprite.bounds.size.width, sprite.bounds.size.height)
                           + float2(sprite.bounds.origin.x, sprite.bounds.origin.y);
-  return PolychromeSpriteVertexOutput{
-      device_position,
-      tile_position,
-      local_position,
-      sprite_id,
-      {clip_distance.x, clip_distance.y, clip_distance.z, clip_distance.w}};
+  PolychromeSpriteVertexOutput output;
+  output.position = device_position;
+  output.tile_position = tile_position;
+  output.local_position = local_position;
+  output.sprite_id = sprite_id;
+  output.clip_distance[0] = clip_distance.x;
+  output.clip_distance[1] = clip_distance.y;
+  output.clip_distance[2] = clip_distance.z;
+  output.clip_distance[3] = clip_distance.w;
+  return output;
 }
 
 fragment float4 polychrome_sprite_fragment(
@@ -1248,10 +1273,14 @@ vertex SurfaceVertexOutput surface_vertex(
   // We are going to copy the whole texture, so the texture position corresponds
   // to the current vertex of the unit triangle.
   float2 texture_position = unit_vertex;
-  return SurfaceVertexOutput{
-      device_position,
-      texture_position,
-      {clip_distance.x, clip_distance.y, clip_distance.z, clip_distance.w}};
+  SurfaceVertexOutput output;
+  output.position = device_position;
+  output.texture_position = texture_position;
+  output.clip_distance[0] = clip_distance.x;
+  output.clip_distance[1] = clip_distance.y;
+  output.clip_distance[2] = clip_distance.z;
+  output.clip_distance[3] = clip_distance.w;
+  return output;
 }
 
 fragment float4 surface_fragment(SurfaceFragmentInput input [[stage_in]],
