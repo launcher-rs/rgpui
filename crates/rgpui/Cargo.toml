@@ -298,7 +298,9 @@ tracing.workspace = true
 unicase.workspace = true
 stacksafe.workspace = true
 strum.workspace = true
-taffy = "=0.15.1"
+# taffy 0.15 起绝对定位节点被 hoist、Layout::location 改相对 containing block，
+# 现有 layout_bounds/anchored 体系需单独迁移，暂留 0.10.1
+taffy = "=0.10.1"
 thiserror.workspace = true
 hdrhistogram = { workspace = true, optional = true }
 waker-fn = "1.2.0"
