@@ -27,7 +27,7 @@ RGPUI 框架的 WebAssembly 平台实现，使用 `web-sys` API 与浏览器环�
 
 - 可选的 `wasm_thread` 支持，启用 Web Worker 多线程
 - 通过 `multithreaded` 特性标志控制
-- 使用 `parking_lot` 的 nightly 特性实现高效同步
+- 使用 `parking_lot` 实现高效同步
 
 ### 其他功能
 
