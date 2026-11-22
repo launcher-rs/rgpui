@@ -294,7 +294,8 @@ proc-macro2 = "1.0.107"
 # Rust 代码生成
 quote = "1.0.47"
 # Rust 源码解析
-syn = { version = "3.0.10", features = ["full", "extra-traits", "visit-mut"] }
+# 3.0.10 会让 bindgen 0.73.2 的 parse_quote 调用失败（macOS build.rs 命中），暂固定 3.0.9
+syn = { version = "=3.0.9", features = ["full", "extra-traits", "visit-mut"] }
 
 # ---- HTTP 网络 ----
 # HTTP 类型

@@ -563,39 +563,44 @@ impl TaffyLayoutEngine {
             self.taffy.compute_layout_with_measure(
                 id.into(),
                 available_space.into(),
-                |input: LayoutInput, _id, node_context, _style| -> LayoutOutput {
+                |input: LayoutInput, _id, node_context, style| -> LayoutOutput {
                     let Some(node_context) = node_context else {
                         return LayoutOutput::DEFAULT;
                     };
 
-                    let known_dimensions = Size {
-                        width: input
-                            .known_dimensions
-                            .width
-                            .map(|e| Pixels(e / scale_factor)),
-                        height: input
-                            .known_dimensions
-                            .height
-                            .map(|e| Pixels(e / scale_factor)),
-                    };
+                    // taffy 0.14+ 不再在 compute_leaf_layout 之外应用样式约束，
+                    // 测量闭包必须自己走 compute_leaf_layout（旧版本由 TaffyTree 内部完成）。
+                    taffy::compute_leaf_layout(
+                        input,
+                        style,
+                        |_, _| 0.0,
+                        |known_dimensions, available_space| {
+                            let known_dimensions = Size {
+                                width: known_dimensions.width.map(|e| Pixels(e / scale_factor)),
+                                height: known_dimensions.height.map(|e| Pixels(e / scale_factor)),
+                            };
 
-                    let available_space: Size<AvailableSpace> = input.available_space.into();
-                    let untransform = |ev: AvailableSpace| match ev {
-                        AvailableSpace::Definite(pixels) => {
-                            AvailableSpace::Definite(Pixels(pixels.0 / scale_factor))
-                        }
-                        AvailableSpace::MinContent => AvailableSpace::MinContent,
-                        AvailableSpace::MaxContent => AvailableSpace::MaxContent,
-                    };
-                    let available_space = size(
-                        untransform(available_space.width),
-                        untransform(available_space.height),
-                    );
+                            let available_space: Size<AvailableSpace> = available_space.into();
+                            let untransform = |ev: AvailableSpace| match ev {
+                                AvailableSpace::Definite(pixels) => {
+                                    AvailableSpace::Definite(Pixels(pixels.0 / scale_factor))
+                                }
+                                AvailableSpace::MinContent => AvailableSpace::MinContent,
+                                AvailableSpace::MaxContent => AvailableSpace::MaxContent,
+                            };
+                            let available_space = size(
+                                untransform(available_space.width),
+                                untransform(available_space.height),
+                            );
 
-                    let measured_size: Size<Pixels> =
-                        (node_context.measure)(known_dimensions, available_space, window, cx);
-                    LayoutOutput::from_outer_size(
-                        snap_measured_size_to_device_pixels(measured_size, scale_factor).into(),
+                            let measured_size: Size<Pixels> = (node_context.measure)(
+                                known_dimensions,
+                                available_space,
+                                window,
+                                cx,
+                            );
+                            snap_measured_size_to_device_pixels(measured_size, scale_factor).into()
+                        },
                     )
                 },
             ),
