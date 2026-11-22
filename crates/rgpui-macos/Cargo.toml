@@ -62,7 +62,7 @@ strum.workspace = true
 uuid.workspace = true
 
 [target.'cfg(target_os = "macos")'.build-dependencies]
-bindgen = "0.72"
+bindgen = "0.73.2"
 cbindgen = { version = "0.29.4", default-features = false }
 rgpui.workspace = true
 
