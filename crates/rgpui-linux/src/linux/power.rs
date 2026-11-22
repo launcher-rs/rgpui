@@ -6,8 +6,7 @@
 //! 那份记账等于把 fd 泄漏在框架里，应用忘没忘停都无人知晓。
 
 use anyhow::Context as _;
-use ashpd::zbus::zvariant::OwnedFd;
-use ashpd::zbus::{Connection, Proxy};
+use ashpd::zbus::{Connection, OwnedFd, Proxy};
 use calloop::channel::Sender;
 use futures::StreamExt as _;
 use rgpui::{PowerSaveBlocker, PowerSaveBlockerKind, Result, SystemPowerEvent};
