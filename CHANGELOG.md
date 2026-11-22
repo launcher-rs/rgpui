@@ -8,7 +8,8 @@
 
 - 依赖升级到最新稳定版：taffy 0.15.1（适配绝对定位 hoisting 与非 Option 对齐）、
   bindgen 0.73.2（prettyplease 0.3 / syn 3）、x11rb 0.14.0、wgpu 30.0.2、
-  tree-sitter 0.27.2、AccessKit 0.25 系列等。
+  tree-sitter 0.27.2、AccessKit 0.25 系列、core-video 0.6.1（显式启用 `metal`
+  feature，适配 `create_texture_from_image` 的 `&CVImageBuffer` 签名）等。
 - zed git 源改为自有发布：`rgpui-font-kit 0.14.2`、`rgpui-wasm-thread 0.3.3`、
   `rgpui-xim 0.4.1`（后者适配 x11rb 0.14，保留 `reset_ic`）。
 

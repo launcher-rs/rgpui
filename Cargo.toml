@@ -238,8 +238,8 @@ core-foundation = "0.10.1"
 # CoreFoundation 系统接口
 core-foundation-sys = "0.8.7"
 # CoreVideo 绑定
-# core-video 0.6.1 源码用 #[cfg(feature = "metal")] 门控 metal_texture，但发布清单未声明该 feature，无法启用
-core-video = { version = "=0.5.2", features = ["metal"] }
+# metal_texture/metal_texture_cache 由 Cargo 自动生成的 metal feature 门控，需显式启用
+core-video = { version = "0.6.1", features = ["metal"] }
 # Mach 内核接口
 mach2 = "0.7.0"
 # Metal GPU API 绑定
