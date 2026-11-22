@@ -166,7 +166,7 @@ fn at_spi_registry_alive() -> anyhow::Result<bool> {
             .deserialize()
             .context("解析 org.a11y.Bus.GetAddress 返回值失败")?;
 
-        let a11y = ConnectionBuilder::address(address.as_str())?
+        let a11y = ConnectionBuilder::address(address.as_str())
             .build()
             .await
             .context("连接辅助功能总线失败")?;
